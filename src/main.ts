@@ -16,6 +16,7 @@ import { FreeFlyCamera } from './render/freeFly';
 import { CarAssetLibrary, MANIFEST, manifestCar } from './render/carAssets';
 import { InputManager } from './input/inputManager';
 import { RaceSession } from './game/session';
+import { DroneMode } from './game/drone';
 import { DevPanel } from './ui/devPanel';
 import { creditsScreen, loadingScreen, mainMenu, pauseMenu, resultsScreen, settingsScreen } from './ui/screens';
 import { toast } from './ui/dom';
@@ -26,7 +27,7 @@ import { PERFORMANCE_CATEGORIES, Tier } from './sim/tuning';
 import { GarageState, decodeShareCode, loadGarage, saveGarage } from './garage/storage';
 import { ReplayData, decodeLog, encodeLog, loadBest, loadGhost, loadLastReplay, saveGhost, saveLastReplay, submitBest } from './replay/replay';
 
-type State = 'menu' | 'race' | 'garage' | 'freefly';
+type State = 'menu' | 'race' | 'garage' | 'freefly' | 'drone';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const uiRoot = document.getElementById('ui') as HTMLElement;
@@ -55,6 +56,19 @@ let garageScreen: { tick(): void; render(dt: number): void; dispose(): void } | 
 // ---------------------------------------------------------------------------
 let backdrop: { night: NightScene; world: World; cam: THREE.PerspectiveCamera; t: number; seed: number } | null = null;
 let fly: FreeFlyCamera | null = null;
+let drone: DroneMode | null = null;
+
+function startDrone(): void {
+  ensureBackdrop();
+  setOverlay(null);
+  drone?.dispose();
+  drone = new DroneMode(gr, backdrop!.night, backdrop!.world, uiRoot, () => {
+    drone?.dispose();
+    drone = null;
+    showMenu();
+  });
+  state = 'drone';
+}
 
 function ensureBackdrop(): void {
   const seed = seedFromString(seedStr);
@@ -120,6 +134,7 @@ function showMenu(): void {
         const r = loadLastReplay();
         if (r) startReplay(r);
       },
+      onDrone: startDrone,
       onSettings: () => openSettings(showMenu),
       onCredits: () => setOverlay(creditsScreen(showMenu)),
       onSeed: (s) => {
@@ -345,6 +360,7 @@ const loop = new FixedStepLoop({
   render(alpha, dt) {
     if (state === 'race' && session) session.render(alpha, dt);
     else if (state === 'garage' && garageScreen) garageScreen.render(dt);
+    else if (state === 'drone' && drone) drone.render(dt);
     else if (state === 'freefly' && fly && backdrop) {
       fly.update(dt);
       backdrop.night.lighting.update(fly.camera.position);
@@ -383,6 +399,7 @@ async function boot(): Promise<void> {
   const direct = params.get('race');
   if (direct === 'circuit' || direct === 'sprint' || direct === 'drift') startRace(direct);
   else if (params.has('garage')) void openGarage();
+  else if (params.has('drone')) startDrone();
   else showMenu();
   loop.start();
 }

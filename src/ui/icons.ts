@@ -69,6 +69,11 @@ export {
   Hammer,
   ListOrdered,
   Calendar,
+  Drone,
+  Compass,
+  Mountain,
+  ArrowUp,
+  ArrowDown,
   MousePointerClick,
   Undo2,
 } from 'lucide';

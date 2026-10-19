@@ -633,3 +633,57 @@ input[type='color'] {
   color: var(--cyan);
   pointer-events: auto;
 }
+
+/* ---------- drone mode ---------- */
+.drone-ui {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 15;
+}
+.drone-top {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  left: max(12px, env(safe-area-inset-left));
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: calc(100vw - 200px);
+}
+.drone-actions {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  display: flex;
+  gap: 6px;
+  pointer-events: auto;
+}
+.drone-updown {
+  position: absolute;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: 60px;
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: auto;
+}
+.drone-updown .btn {
+  width: 56px;
+  height: 56px;
+  justify-content: center;
+  touch-action: none;
+}
+@media (pointer: coarse) {
+  .drone-updown {
+    display: flex;
+  }
+}
+.drone-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: max(10px, env(safe-area-inset-bottom));
+  text-align: center;
+  font-size: 13px;
+  padding: 0 12px;
+}

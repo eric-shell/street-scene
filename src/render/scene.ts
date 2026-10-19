@@ -10,7 +10,8 @@ import { buildLightFx, LightFx } from './lightFx';
 import { FOG_COLOR, FOG_DENSITY, NightLighting } from './lighting';
 import { PostFx } from './post';
 import { makeNightEnvironment, makeSkyTexture } from './textures';
-import { buildRouteArrows, RouteArrows } from './routeArrows';
+import { buildRouteArrows, classifyBarriers, RouteArrows } from './routeArrows';
+import { buildRoadblocks } from './roadblocks';
 
 export const RETRO_HEIGHT = 240;
 
@@ -98,7 +99,8 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   scene.environment = gr.envMap;
   scene.environmentIntensity = 0.55;
   scene.fog = new THREE.FogExp2(FOG_COLOR, FOG_DENSITY);
-  const city = buildCityMeshes(world);
+  const barriers = classifyBarriers(world);
+  const city = buildCityMeshes(world, new Set(barriers.filter((b) => b.headOn).map((b) => b.wall)));
   scene.add(city.group);
   const fx = buildLightFx(city.lampPositions, city.signLights, world.heightAt, FOG_DENSITY);
   fx.setStrength(0.32, 0.85);
@@ -107,8 +109,10 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   lighting.setLamps(city.lampPositions);
   lighting.setPoolSize(QUALITY[settings.quality].pointLights);
   scene.add(lighting.group);
-  const arrows = buildRouteArrows(world);
-  if (arrows.mesh) scene.add(arrows.mesh);
+  const arrows = buildRouteArrows(world, barriers);
+  scene.add(arrows.group);
+  const roadblocks = buildRoadblocks(world, barriers, city.barrierLampMaterial);
+  scene.add(roadblocks.group);
   return {
     scene,
     city,
@@ -124,6 +128,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
       city.dispose();
       fx.dispose();
       arrows.dispose();
+      roadblocks.dispose();
     },
   };
 }

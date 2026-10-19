@@ -11,6 +11,8 @@ import { routeSample } from '../city/route';
 import { Vec2 } from '../sim/math';
 import { Rng } from '../sim/prng';
 import { GeoBuilder } from './geoBuilder';
+import { addPodiumFace, createPodiumOutput, makeFacadeKitTextures, podiumExtrusions, podiumFloors, podiumHeight } from './facadeKit';
+import { corridorClearance } from '../city/blocks';
 import {
   NEON_COLORS,
   SIGN_ATLAS_COLS,
@@ -39,7 +41,7 @@ export interface CityMeshes {
 const ROAD_Y = 0.02;
 const MARK_Y = 0.045;
 
-export function buildCityMeshes(world: World): CityMeshes {
+export function buildCityMeshes(world: World, barrierWalls?: Set<unknown>): CityMeshes {
   const group = new THREE.Group();
   group.name = 'city';
   const h = world.heightAt;
@@ -237,6 +239,8 @@ export function buildCityMeshes(world: World): CityMeshes {
   const rng = new Rng(world.seed ^ 0xb1d);
   const facadeTints = [0x4a4f5e, 0x564c44, 0x3e4858, 0x5c6270, 0x4a4252, 0x36404c].map((c) => new THREE.Color(c));
   const neon = NEON_COLORS.map((c) => new THREE.Color(c));
+  const podium = createPodiumOutput();
+  const scratch: number[] = [];
   const addBuilding = (b: Building) => {
     const ux = Math.cos(b.yaw);
     const uz = -Math.sin(b.yaw);
@@ -246,8 +250,12 @@ export function buildCityMeshes(world: World): CityMeshes {
     const hd = b.d / 2;
     const corner = (su: number, sw: number): Vec2 => ({ x: b.x + ux * hw * su + wx * hd * sw, z: b.z + uz * hw * su + wz * hd * sw });
     const cs = [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)];
-    const y0 = b.baseY;
     const y1 = b.baseY + b.h;
+    // Street level podium (2-4 floors) gets the facade kit; the tower starts above it.
+    const street = b.baseY + 0.6;
+    const floors = podiumFloors(rng, b.h - 0.6);
+    const y0 = street + podiumHeight(floors);
+    const ext = podiumExtrusions(rng, floors);
     const tint = facadeTints[b.style % facadeTints.length].clone().multiplyScalar(rng.range(0.7, 1.1));
     const offU = rng.int(0, WINDOW_COLS - 1) / WINDOW_COLS;
     const offV = rng.int(0, WINDOW_ROWS - 1) / WINDOW_ROWS;
@@ -263,12 +271,15 @@ export function buildCityMeshes(world: World): CityMeshes {
       const ml = Math.hypot(mx, mz) || 1;
       const nx = mx / ml;
       const nz = mz / ml;
+      // Faces that look onto a street get storefronts; the rest get plain masonry.
+      const front = corridorClearance(g, world.blocks.edgeGrid, (p.x + q.x) / 2 + nx * 1.5, (p.z + q.z) / 2 + nz * 1.5, scratch) < 2;
+      addPodiumFace(podium, { ax: p.x, az: p.z, bx: q.x, bz: q.z, nx, nz, y0: street, yBase: b.baseY, front }, floors, rng, ext);
+      if (y1 - y0 < 0.5) continue;
       const u0 = offU + uAcc * colsU;
       const u1 = offU + (uAcc + len) * colsU;
       uAcc += Math.round(len / 2.1) * 2.1 + 2.1;
-      // keep the ground floor dark-ish by starting the window grid one floor up
       const v0 = offV;
-      const v1 = offV + b.h * floorsV;
+      const v1 = offV + (y1 - y0) * floorsV;
       const a = walls.vertex(p.x, y0, p.z, nx, 0, nz, u0, v0, tint);
       const bb = walls.vertex(q.x, y0, q.z, nx, 0, nz, u1, v0, tint);
       const c = walls.vertex(q.x, y1, q.z, nx, 0, nz, u1, v1, tint);
@@ -315,6 +326,32 @@ export function buildCityMeshes(world: World): CityMeshes {
   const bMesh = new THREE.Mesh(track(walls.build()), buildingMat);
   bMesh.name = 'buildings';
   group.add(bMesh);
+  {
+    const kit = makeFacadeKitTextures(world.seed);
+    const podiumMat = track(
+      new THREE.MeshStandardMaterial({ map: track(kit.map), emissiveMap: track(kit.emissive), emissive: 0xffffff, emissiveIntensity: 1.05, roughness: 0.6, metalness: 0.05, envMapIntensity: 0.7 }),
+    );
+    const pm = new THREE.Mesh(track(podium.walls.build()), podiumMat);
+    pm.name = 'podiums';
+    group.add(pm);
+    const tm = new THREE.Mesh(track(podium.trim.build()), track(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7 })));
+    tm.name = 'podiumTrim';
+    group.add(tm);
+    if (podium.awnings.vertexCount) {
+      const am = new THREE.Mesh(track(podium.awnings.build()), track(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide })));
+      am.name = 'awnings';
+      group.add(am);
+    }
+    if (podium.spill.vertexCount) {
+      const sm = new THREE.Mesh(
+        track(podium.spill.build()),
+        track(new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 })),
+      );
+      sm.name = 'lightSpill';
+      sm.renderOrder = 1;
+      group.add(sm);
+    }
+  }
   const roofMesh = new THREE.Mesh(track(roofs.build()), track(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 })));
   roofMesh.name = 'roofs';
   group.add(roofMesh);
@@ -420,7 +457,7 @@ export function buildCityMeshes(world: World): CityMeshes {
     const H = 1.15;
     const T = 0.35;
     for (const w of world.walls) {
-      if (w.kind !== 'barrier') continue;
+      if (w.kind !== 'barrier' || (barrierWalls && !barrierWalls.has(w))) continue;
       const len = Math.hypot(w.bx - w.ax, w.bz - w.az);
       const dx = (w.bx - w.ax) / len;
       const dz = (w.bz - w.az) / len;

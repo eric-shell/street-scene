@@ -23,6 +23,7 @@ import {
   Keyboard,
   Gamepad2,
   Smartphone,
+  Drone,
   icon,
 } from './icons';
 import { Difficulty, Quality, Settings } from './settings';
@@ -39,6 +40,7 @@ export interface MenuOptions {
   onRace(mode: RaceMode): void;
   onGarage(): void;
   onReplay(): void;
+  onDrone(): void;
   onSettings(): void;
   onCredits(): void;
   onSeed(seed: string | null): void;
@@ -80,6 +82,7 @@ export function mainMenu(o: MenuOptions): HTMLElement {
     { class: 'nav', 'aria-label': 'Main menu' },
     btn(Wrench, 'Garage', o.onGarage, 'big primary', `Driving: ${o.carName}`),
     btn(Video, 'Watch last replay', o.onReplay, 'big'),
+    btn(Drone, 'Drone flyover', o.onDrone, 'big'),
     btn(SettingsIcon, 'Settings', o.onSettings, 'big'),
     btn(Info, 'Credits', o.onCredits, 'big'),
   );
