@@ -1,0 +1,226 @@
+{
+  "version": 1,
+  "notes": "Car space: meters, Y up, origin on the ground midway between the axles, car faces +Z, +X is the car's left. Wheel positions are wheel centers. Cars marked provisional have estimated geometry until `npm run assets` measures the converted GLB.",
+  "cars": [
+    {
+      "id": "proto",
+      "displayName": "Proto RS",
+      "source": "placeholder",
+      "provisional": false,
+      "file": "cars/proto.glb",
+      "baseBodyNode": "Body",
+      "wheelNodes": [],
+      "wheelRadius": 0.33,
+      "wheelWidth": 0.24,
+      "wheels": {
+        "FL": [
+          0.8,
+          0.33,
+          1.32
+        ],
+        "FR": [
+          -0.8,
+          0.33,
+          1.32
+        ],
+        "RL": [
+          0.8,
+          0.33,
+          -1.32
+        ],
+        "RR": [
+          -0.8,
+          0.33,
+          -1.32
+        ]
+      },
+      "wheelbase": 2.64,
+      "trackFront": 1.6,
+      "trackRear": 1.6,
+      "dimensions": {
+        "length": 4.36,
+        "width": 1.82,
+        "height": 1.3
+      },
+      "materialMap": {},
+      "defaultWheel": "wheel_proto_5spoke",
+      "defaultPaint": "#d11f3f"
+    },
+    {
+      "id": "cc96",
+      "displayName": "CC96",
+      "source": "icemaan",
+      "provisional": true,
+      "file": "cars/cc96.glb",
+      "baseBodyNode": "Body",
+      "wheelNodes": [],
+      "wheelRadius": 0.32,
+      "wheelWidth": 0.22,
+      "wheels": {
+        "FL": [
+          0.76,
+          0.32,
+          1.28
+        ],
+        "FR": [
+          -0.76,
+          0.32,
+          1.28
+        ],
+        "RL": [
+          0.76,
+          0.32,
+          -1.28
+        ],
+        "RR": [
+          -0.76,
+          0.32,
+          -1.28
+        ]
+      },
+      "wheelbase": 2.56,
+      "trackFront": 1.52,
+      "trackRear": 1.52,
+      "dimensions": {
+        "length": 4.3,
+        "width": 1.74,
+        "height": 1.3
+      },
+      "materialMap": {},
+      "defaultWheel": "wheel_proto_5spoke",
+      "defaultPaint": "#f2f2f2"
+    },
+    {
+      "id": "s64",
+      "displayName": "S64 Compact",
+      "source": "icemaan",
+      "provisional": false,
+      "file": "cars/s64.glb",
+      "baseBodyNode": "Body",
+      "wheelNodes": [],
+      "wheelRadius": 0.289,
+      "wheelWidth": 0.241,
+      "wheels": {
+        "FL": [
+          0.67,
+          0.289,
+          1.37
+        ],
+        "FR": [
+          -0.67,
+          0.289,
+          1.37
+        ],
+        "RL": [
+          0.67,
+          0.289,
+          -1.37
+        ],
+        "RR": [
+          -0.67,
+          0.289,
+          -1.37
+        ]
+      },
+      "wheelbase": 2.74,
+      "trackFront": 1.34,
+      "trackRear": 1.34,
+      "dimensions": {
+        "length": 3.95,
+        "width": 1.61,
+        "height": 1.16
+      },
+      "materialMap": {},
+      "defaultWheel": "wheel_s64_1",
+      "defaultPaint": "#ffcc1f"
+    },
+    {
+      "id": "gc14",
+      "displayName": "GC14 Coupe",
+      "source": "icemaan",
+      "provisional": false,
+      "file": "cars/gc14.glb",
+      "baseBodyNode": "Body",
+      "wheelNodes": [],
+      "wheelRadius": 0.326,
+      "wheelWidth": 0.285,
+      "wheels": {
+        "FL": [
+          0.745,
+          0.326,
+          1.335
+        ],
+        "FR": [
+          -0.745,
+          0.326,
+          1.335
+        ],
+        "RL": [
+          0.745,
+          0.326,
+          -1.335
+        ],
+        "RR": [
+          -0.745,
+          0.326,
+          -1.335
+        ]
+      },
+      "wheelbase": 2.67,
+      "trackFront": 1.49,
+      "trackRear": 1.49,
+      "dimensions": {
+        "length": 4.45,
+        "width": 2,
+        "height": 1.42
+      },
+      "materialMap": {},
+      "defaultWheel": "wheel_gc14_1",
+      "defaultPaint": "#1f6bff"
+    },
+    {
+      "id": "ar7",
+      "displayName": "A R7",
+      "source": "icemaan",
+      "provisional": true,
+      "file": "cars/ar7.glb",
+      "baseBodyNode": "Body",
+      "wheelNodes": [],
+      "wheelRadius": 0.32,
+      "wheelWidth": 0.24,
+      "wheels": {
+        "FL": [
+          0.76,
+          0.32,
+          1.22
+        ],
+        "FR": [
+          -0.76,
+          0.32,
+          1.22
+        ],
+        "RL": [
+          0.76,
+          0.32,
+          -1.22
+        ],
+        "RR": [
+          -0.76,
+          0.32,
+          -1.22
+        ]
+      },
+      "wheelbase": 2.44,
+      "trackFront": 1.52,
+      "trackRear": 1.52,
+      "dimensions": {
+        "length": 4.3,
+        "width": 1.76,
+        "height": 1.24
+      },
+      "materialMap": {},
+      "defaultWheel": "wheel_proto_5spoke",
+      "defaultPaint": "#ff6a00"
+    }
+  ]
+}

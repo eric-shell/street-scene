@@ -2,7 +2,7 @@
  * Picks a closed circuit and a point to point sprint through the road graph,
  * places checkpoints and a start grid, and closes off side streets.
  */
-import { ROUTE } from './config';
+import { CITY, ROUTE } from './config';
 import { RoadGraph, edgeBetween, otherNode } from './roadGraph';
 import { EdgeMouths, Wall, makeWall } from './blocks';
 import { Rng, deriveSeed } from '../sim/prng';
@@ -164,7 +164,7 @@ export function findCircuitNodes(g: RoadGraph, seed: number): number[] {
     const A = g.nodes[a];
     const B = g.nodes[b];
     const sep = sqrt((A.x - B.x) ** 2 + (A.z - B.z) ** 2);
-    if (sep < 250 || sep > 800) continue;
+    if (sep < 290 || sep > 940) continue;
     const none = new Uint8Array(n);
     const p1 = dijkstra(g, a, b, w, none, new Uint8Array(g.edges.length));
     if (!p1 || p1.length < 3) continue;
@@ -214,7 +214,7 @@ export function findSprintNodes(g: RoadGraph, seed: number): number[] {
     const p = p1.concat(p2.slice(1));
     // The first edge hosts the start grid, so it has to be long and straight enough.
     const first = g.edges[edgeBetween(g, p[0], p[1])];
-    if (first.length < 80) continue;
+    if (first.length < 90) continue;
     const len = pathLength(g, p, false);
     const stats = cornerStats(g, p, false);
     const sc = score(stats, len, ROUTE.sprintMinLength, ROUTE.sprintMaxLength);
@@ -356,13 +356,14 @@ export function routeBarriers(g: RoadGraph, mouths: EdgeMouths[], route: Route):
     const dl = sqrt((far.x - node.x) ** 2 + (far.z - node.z) ** 2) || 1;
     const dx = (far.x - node.x) / dl;
     const dz = (far.z - node.z) / dl;
-    const push = 1.5;
-    const w = makeWall(
-      { x: p.x + dx * push, z: p.z + dz * push },
-      { x: q.x + dx * push, z: q.z + dz * push },
-      { x: node.x, z: node.z },
-      'barrier',
-    );
+    // Place the barrier straight across the side street, just past where its walls start,
+    // so it never cuts into the route corridor at acute junctions.
+    const along = (pt: Vec2) => (pt.x - node.x) * dx + (pt.z - node.z) * dz;
+    const d = Math.max(along(p), along(q)) + 1.5;
+    const half = e.width / 2 + CITY.sidewalk;
+    const cx = node.x + dx * d;
+    const cz = node.z + dz * d;
+    const w = makeWall({ x: cx - dz * half, z: cz + dx * half }, { x: cx + dz * half, z: cz - dx * half }, { x: node.x, z: node.z }, 'barrier');
     if (w) walls.push(w);
   }
   return walls;

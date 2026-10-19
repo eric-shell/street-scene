@@ -2,9 +2,9 @@
 export const CITY = {
   gridW: 11,
   gridH: 11,
-  spacing: 120,
+  spacing: 140,
   /** Max random offset of grid nodes. Kept small so sectors stay wider than MIN_SECTOR_DEG. */
-  jitter: 10,
+  jitter: 12,
   /** Fraction of ordinary grid edges we try to remove. */
   removeFraction: 0.14,
   diagonalCount: 2,
@@ -14,7 +14,7 @@ export const CITY = {
 
   laneWidth: 3.6,
   /** Total road width by kind (curb to curb). */
-  width: { street: 11, avenue: 15, diagonal: 15, boulevard: 22 } as const,
+  width: { street: 13, avenue: 17, diagonal: 16, boulevard: 24 } as const,
   lanes: { street: 2, avenue: 4, diagonal: 4, boulevard: 4 } as const,
   sidewalk: 4,
   curbHeight: 0.15,
@@ -25,7 +25,7 @@ export const CITY = {
   hillFreq1: 0.0042,
   hillFreq2: 0.0026,
 
-  downtownRadius: 360,
+  downtownRadius: 420,
   broadphaseCell: 32,
 
   streetlightSpacing: 34,
@@ -33,10 +33,10 @@ export const CITY = {
 } as const;
 
 export const ROUTE = {
-  circuitMinLength: 1300,
-  circuitMaxLength: 2700,
-  sprintMinLength: 1900,
-  sprintMaxLength: 4200,
+  circuitMinLength: 1500,
+  circuitMaxLength: 3200,
+  sprintMinLength: 2200,
+  sprintMaxLength: 4900,
   minTightCorners: 3,
   minSweepers: 1,
   /** Turn angle thresholds in degrees. */

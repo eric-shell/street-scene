@@ -10,6 +10,7 @@ import { buildLightFx, LightFx } from './lightFx';
 import { FOG_COLOR, FOG_DENSITY, NightLighting } from './lighting';
 import { PostFx } from './post';
 import { makeNightEnvironment, makeSkyTexture } from './textures';
+import { buildRouteArrows, RouteArrows } from './routeArrows';
 
 export const RETRO_HEIGHT = 240;
 
@@ -85,6 +86,9 @@ export interface NightScene {
   city: CityMeshes;
   fx: LightFx;
   lighting: NightLighting;
+  arrows: RouteArrows;
+  /** Animate time-based effects (barrier lamps, arrows). */
+  update(time: number): void;
   dispose(): void;
 }
 
@@ -103,14 +107,23 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   lighting.setLamps(city.lampPositions);
   lighting.setPoolSize(QUALITY[settings.quality].pointLights);
   scene.add(lighting.group);
+  const arrows = buildRouteArrows(world);
+  if (arrows.mesh) scene.add(arrows.mesh);
   return {
     scene,
     city,
     fx,
     lighting,
+    arrows,
+    update(time) {
+      arrows.update(time);
+      const blink = Math.sin(time * 5) > 0 ? 3.2 : 0.6;
+      city.barrierLampMaterial.color.setRGB(1 * blink, 0.63 * blink, 0.12 * blink);
+    },
     dispose() {
       city.dispose();
       fx.dispose();
+      arrows.dispose();
     },
   };
 }

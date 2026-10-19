@@ -1,0 +1,415 @@
+{
+  "version": 1,
+  "parts": [
+    {
+      "id": "proto_frontBumper_street",
+      "displayName": "Street splitter",
+      "carId": "proto",
+      "slot": "frontBumper",
+      "file": "parts/proto_frontBumper_street.glb",
+      "hides": [
+        "Bumper_Front"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black",
+        "HeadLight"
+      ],
+      "tris": 60,
+      "generated": true
+    },
+    {
+      "id": "proto_frontBumper_widemouth",
+      "displayName": "Wide mouth",
+      "carId": "proto",
+      "slot": "frontBumper",
+      "file": "parts/proto_frontBumper_widemouth.glb",
+      "hides": [
+        "Bumper_Front"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black",
+        "Light",
+        "HeadLight"
+      ],
+      "tris": 84,
+      "generated": true
+    },
+    {
+      "id": "proto_rearBumper_diffuser",
+      "displayName": "Diffuser",
+      "carId": "proto",
+      "slot": "rearBumper",
+      "file": "parts/proto_rearBumper_diffuser.glb",
+      "hides": [
+        "Bumper_Rear"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black",
+        "TailLight",
+        "Chrome"
+      ],
+      "tris": 120,
+      "generated": true
+    },
+    {
+      "id": "proto_rearBumper_track",
+      "displayName": "Track tow hook",
+      "carId": "proto",
+      "slot": "rearBumper",
+      "file": "parts/proto_rearBumper_track.glb",
+      "hides": [
+        "Bumper_Rear"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black",
+        "Light",
+        "TailLight",
+        "Chrome"
+      ],
+      "tris": 72,
+      "generated": true
+    },
+    {
+      "id": "proto_sideSkirts_aero",
+      "displayName": "Aero skirts",
+      "carId": "proto",
+      "slot": "sideSkirts",
+      "file": "parts/proto_sideSkirts_aero.glb",
+      "hides": [
+        "Skirts_Stock"
+      ],
+      "materialSlots": [
+        "Paint"
+      ],
+      "tris": 24,
+      "generated": true
+    },
+    {
+      "id": "proto_hood_vented",
+      "displayName": "Vented hood",
+      "carId": "proto",
+      "slot": "hood",
+      "file": "parts/proto_hood_vented.glb",
+      "hides": [
+        "Hood"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 48,
+      "generated": true
+    },
+    {
+      "id": "proto_spoiler_ducktail",
+      "displayName": "Ducktail",
+      "carId": "proto",
+      "slot": "spoiler",
+      "file": "parts/proto_spoiler_ducktail.glb",
+      "hides": [],
+      "materialSlots": [
+        "Paint"
+      ],
+      "tris": 12,
+      "generated": true
+    },
+    {
+      "id": "proto_spoiler_gtwing",
+      "displayName": "GT wing",
+      "carId": "proto",
+      "slot": "spoiler",
+      "file": "parts/proto_spoiler_gtwing.glb",
+      "hides": [],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 60,
+      "generated": true
+    },
+    {
+      "id": "wheel_proto_5spoke",
+      "displayName": "Proto 5 spoke",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_proto_5spoke.glb",
+      "hides": [],
+      "materialSlots": [
+        "Tire",
+        "Rim",
+        "Black",
+        "Chrome"
+      ],
+      "tris": 352,
+      "generated": true
+    },
+    {
+      "id": "wheel_proto_deepdish",
+      "displayName": "Proto deep dish",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_proto_deepdish.glb",
+      "hides": [],
+      "materialSlots": [
+        "Tire",
+        "Rim",
+        "Black",
+        "Chrome"
+      ],
+      "tris": 388,
+      "generated": true
+    },
+    {
+      "id": "gc14_body_kit2",
+      "displayName": "Body kit 2",
+      "carId": "gc14",
+      "slot": "body",
+      "file": "parts/gc14_body_kit2.glb",
+      "hides": [
+        "Body"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Trim",
+        "Black",
+        "Glass",
+        "TailLight",
+        "HeadLight",
+        "Chrome"
+      ],
+      "tris": 2148,
+      "generated": true
+    },
+    {
+      "id": "gc14_body_kit3",
+      "displayName": "Body kit 3",
+      "carId": "gc14",
+      "slot": "body",
+      "file": "parts/gc14_body_kit3.glb",
+      "hides": [
+        "Body"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Trim",
+        "Black",
+        "Glass",
+        "TailLight",
+        "HeadLight",
+        "Chrome"
+      ],
+      "tris": 2328,
+      "generated": true
+    },
+    {
+      "id": "gc14_spoiler_1",
+      "displayName": "Spoiler 1",
+      "carId": "gc14",
+      "slot": "spoiler",
+      "file": "parts/gc14_spoiler_1.glb",
+      "hides": [],
+      "materialSlots": [
+        "Paint"
+      ],
+      "tris": 272,
+      "generated": true
+    },
+    {
+      "id": "wheel_gc14_1",
+      "displayName": "GC14 rim 1",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_gc14_1.glb",
+      "hides": [],
+      "materialSlots": [
+        "Tire",
+        "Rim",
+        "Black"
+      ],
+      "tris": 1656,
+      "generated": true
+    },
+    {
+      "id": "wheel_gc14_2",
+      "displayName": "GC14 rim 2",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_gc14_2.glb",
+      "hides": [],
+      "materialSlots": [
+        "Tire",
+        "Rim",
+        "Black",
+        "Chrome"
+      ],
+      "tris": 3152,
+      "generated": true
+    },
+    {
+      "id": "wheel_gc14_3",
+      "displayName": "GC14 rim 3",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_gc14_3.glb",
+      "hides": [],
+      "materialSlots": [
+        "Tire",
+        "Chrome",
+        "Rim",
+        "Black"
+      ],
+      "tris": 3152,
+      "generated": true
+    },
+    {
+      "id": "wheel_gc14_4",
+      "displayName": "GC14 rim 4",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_gc14_4.glb",
+      "hides": [],
+      "materialSlots": [
+        "Tire",
+        "Rim",
+        "Black",
+        "Chrome"
+      ],
+      "tris": 3136,
+      "generated": true
+    },
+    {
+      "id": "s64_body_kit2",
+      "displayName": "Body kit 2",
+      "carId": "s64",
+      "slot": "body",
+      "file": "parts/s64_body_kit2.glb",
+      "hides": [
+        "Body"
+      ],
+      "materialSlots": [
+        "TailLight",
+        "Paint",
+        "Black",
+        "HeadLight",
+        "Trim",
+        "Glass",
+        "Chrome"
+      ],
+      "tris": 1712,
+      "generated": true
+    },
+    {
+      "id": "s64_body_kit3",
+      "displayName": "Body kit 3",
+      "carId": "s64",
+      "slot": "body",
+      "file": "parts/s64_body_kit3.glb",
+      "hides": [
+        "Body"
+      ],
+      "materialSlots": [
+        "TailLight",
+        "Paint",
+        "Black",
+        "HeadLight",
+        "Trim",
+        "Glass"
+      ],
+      "tris": 1830,
+      "generated": true
+    },
+    {
+      "id": "s64_spoiler_1",
+      "displayName": "Spoiler 1",
+      "carId": "s64",
+      "slot": "spoiler",
+      "file": "parts/s64_spoiler_1.glb",
+      "hides": [],
+      "materialSlots": [
+        "Paint"
+      ],
+      "tris": 256,
+      "generated": true
+    },
+    {
+      "id": "s64_spoiler_2",
+      "displayName": "Spoiler 2",
+      "carId": "s64",
+      "slot": "spoiler",
+      "file": "parts/s64_spoiler_2.glb",
+      "hides": [],
+      "materialSlots": [
+        "Paint"
+      ],
+      "tris": 224,
+      "generated": true
+    },
+    {
+      "id": "wheel_s64_1",
+      "displayName": "S64 rim 1",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_s64_1.glb",
+      "hides": [],
+      "materialSlots": [
+        "Tire",
+        "Rim",
+        "Black",
+        "Chrome"
+      ],
+      "tris": 1308,
+      "generated": true
+    },
+    {
+      "id": "wheel_s64_2",
+      "displayName": "S64 rim 2",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_s64_2.glb",
+      "hides": [],
+      "materialSlots": [
+        "Tire",
+        "Rim",
+        "Black",
+        "Chrome"
+      ],
+      "tris": 1464,
+      "generated": true
+    },
+    {
+      "id": "wheel_s64_3",
+      "displayName": "S64 rim 3",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_s64_3.glb",
+      "hides": [],
+      "materialSlots": [
+        "Tire",
+        "Rim",
+        "Black",
+        "Chrome"
+      ],
+      "tris": 1136,
+      "generated": true
+    },
+    {
+      "id": "wheel_s64_0",
+      "displayName": "S64 rim 0",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_s64_0.glb",
+      "hides": [],
+      "materialSlots": [
+        "Tire",
+        "Rim",
+        "Black"
+      ],
+      "tris": 1412,
+      "generated": true
+    }
+  ]
+}
