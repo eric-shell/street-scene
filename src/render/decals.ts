@@ -235,6 +235,7 @@ export class DecalLayerView {
       depthWrite: false,
       polygonOffset: true,
       polygonOffsetFactor: -4,
+      polygonOffsetUnits: -4,
       roughness: 0.3,
       clearcoat: 1,
       alphaTest: 0.05,
@@ -248,6 +249,10 @@ export class DecalLayerView {
         geo.dispose();
         continue;
       }
+      // Lift the decal a few millimeters off the paint so it never loses the depth test.
+      const pa = geo.attributes.position as THREE.BufferAttribute;
+      const na = geo.attributes.normal as THREE.BufferAttribute;
+      for (let i = 0; i < pa.count; i++) pa.setXYZ(i, pa.getX(i) + na.getX(i) * 0.004, pa.getY(i) + na.getY(i) * 0.004, pa.getZ(i) + na.getZ(i) * 0.004);
       if (!isNumber) {
         const uv = geo.attributes.uv as THREE.BufferAttribute;
         const u0 = (idx % COLS) / COLS;

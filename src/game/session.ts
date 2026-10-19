@@ -5,6 +5,7 @@
  */
 import * as THREE from 'three';
 import { CarState } from '../sim/car';
+import { routeSample } from '../city/route';
 import { createRace, RaceConfig, RaceState, raceTime, standings, stepRace, ticksToSeconds } from '../sim/race';
 import { NEUTRAL_INPUT, unpackInput } from '../sim/input';
 import { VisualBuild } from '../sim/build';
@@ -110,6 +111,7 @@ export class RaceSession {
   private freeCam: FreeFlyCamera | null = null;
   private tvPoint = new THREE.Vector3();
   private tvValid = false;
+  private tvSide = 1;
   private unsub: (() => void)[] = [];
   readonly isReplay: boolean;
   readyPromise: Promise<void>;
@@ -282,14 +284,15 @@ export class RaceSession {
     // TV: a roadside camera ahead of the car that tracks it as it passes.
     const d = this.tvPoint.distanceTo(new THREE.Vector3(p.x, p.y, p.z));
     if (!this.tvValid || d > 70) {
-      const speed = Math.max(10, p.speed);
-      const fx = p.vx / speed;
-      const fz = p.vz / speed;
-      const ahead = 45;
-      const side = 6;
-      const x = p.x + fx * ahead + fz * side;
-      const z = p.z + fz * ahead - fx * side;
-      this.tvPoint.set(x, this.race.world.heightAt(x, z) + 3.5, z);
+      // Next roadside camera: on the route ahead, near the curb, so it is never inside a building.
+      const route = this.race.world.route;
+      const rc = this.race.cars[0];
+      const ahead = routeSample(route, rc.rawS + 45);
+      const half = route.segWidth[ahead.seg] / 2 - 1;
+      const side = this.tvSide = -this.tvSide;
+      const x = ahead.x + ahead.tz * half * side;
+      const z = ahead.z - ahead.tx * half * side;
+      this.tvPoint.set(x, this.race.world.heightAt(x, z) + 3.2, z);
       this.tvValid = true;
     }
     cam.position.copy(this.tvPoint);

@@ -186,6 +186,7 @@ async function openGarage(): Promise<void> {
     onExit: () => showMenu(),
     onTestDrive: () => startRace('circuit', true),
   });
+  (window as unknown as Record<string, unknown>).__nr = { garageScreen, gr };
   state = 'garage';
 }
 

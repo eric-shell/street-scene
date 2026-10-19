@@ -1,0 +1,136 @@
+# Authoring car parts
+
+This guide covers making a new aftermarket part in Blender (a bumper, skirts, a spoiler, a hood, wheels) and getting it into the game. A new part needs one GLB file and one catalog entry. You don't need to change any code.
+
+## 1. Slots
+
+Every visible piece of a car lives in a slot. The slot list is `PART_SLOTS` in `src/shared/parts.ts`:
+
+| Slot | What it is | Notes |
+|---|---|---|
+| `body` | The whole shell (a full body kit) | Base car GLB node `Body`. Kits that are one merged mesh are registered here. |
+| `frontBumper` | Front bumper, splitter, lip | |
+| `rearBumper` | Rear bumper, diffuser | |
+| `sideSkirts` | Both side skirts in one file | |
+| `spoiler` | Wing or ducktail | Garage offers "None" |
+| `hood` | Bonnet | |
+| `wheels` | One wheel (tire + rim) | Universal: fits every car |
+
+To add a new slot (canards, diffuser, mirrors, roof scoop), add it to `PART_SLOTS`, `SLOT_LABELS` and `TRI_BUDGETS` in `src/shared/parts.ts`. To show it in the garage body menu, also add it to `BODY_PART_SLOTS`.
+
+## 2. Coordinate convention (car space)
+
+Author every car and every car part in the same space:
+
+- Meters. 1 Blender unit = 1 m.
+- **Y up, car facing +Z** in glTF terms. In Blender (Z up), the car faces **−Y**. The glTF exporter's "+Y Up" option converts this for you.
+- Origin on the **ground**, at the **center between the axles**. The car's left side is +X in Blender and in glTF.
+- Parts use an **identity transform**. Model the bumper exactly where it sits on the car. Don't offset it to the origin.
+
+The easiest workflow: import the car (`public/cars/<carId>.glb`, or the source FBX if you re-run `npm run assets` afterwards), model the part on top of it, then export only the part.
+
+**Wheels are the exception.** They use wheel space:
+
+- The wheel center is at the origin.
+- The axle runs along X, with the outer face (rim face) toward +X.
+- Real size in meters. The game scales every wheel to the car's wheel radius and mirrors it for the right side, so any wheel fits any car.
+
+## 3. Material names
+
+Parts must use the shared material names. The game swaps each one for a runtime material, so a new bumper automatically takes the player's paint, finish and trim color:
+
+| Name | Used for | Driven by |
+|---|---|---|
+| `Paint` | Body color panels | Paint color and finish (gloss, metallic, matte, pearl, candy) |
+| `Trim` | Secondary panels, carbon look | Trim color |
+| `Black` | Grilles, vents, undertray | fixed |
+| `Chrome` | Exhaust tips, badges | fixed |
+| `Glass` | Windows | Window tint |
+| `Rim` | Wheel rim | Rim color |
+| `Tire` | Tire rubber | fixed |
+| `HeadLight` | Headlight lenses | Headlight color (emissive) |
+| `TailLight` | Taillight lenses | Taillight color (emissive, brighter when braking) |
+| `Light` | Indicators, fog lights | fixed amber glow |
+| `Interior` | Seats, dash | fixed |
+
+Name the Blender material exactly that (e.g. `Paint`). Suffixes like `Paint.001` are fine. Colors you set in Blender are ignored at runtime. They only matter for your own preview.
+
+## 4. Triangle budgets
+
+`npm run validate` enforces these (from `TRI_BUDGETS`):
+
+| Slot | Budget |
+|---|---|
+| frontBumper, rearBumper | 3000 |
+| sideSkirts, hood | 2000 |
+| spoiler | 1500 |
+| wheels | 3500 |
+| body | 12000 |
+
+Keep it low poly. Flat shading with a few hundred triangles looks right next to the IceMaan cars.
+
+## 5. File naming
+
+```
+<carId>_<slot>_<partId>.glb      e.g.  gc14_frontBumper_vented.glb
+wheel_<name>.glb                  e.g.  wheel_mesh_classic.glb
+```
+
+Car ids are in `src/assets/carManifest.json`: `proto`, `cc96`, `s64`, `gc14`, `ar7`. Put the file in `public/parts/`.
+
+## 6. Blender export settings (File > Export > glTF 2.0)
+
+- Format: **glTF Binary (.glb)**
+- Include: **Selected Objects** (select only the part)
+- Transform: **+Y Up** checked
+- Data > Mesh: **Apply Modifiers** checked, UVs and Normals on, Vertex Colors off
+- Data > Material: **Export**
+- Compression: off. The game loads plain GLB fine. `npm run assets` only compresses files it generates itself.
+- Before exporting, **apply all transforms** (Ctrl+A > All Transforms) so the object sits at its location with an identity transform.
+
+## 7. Add a catalog entry
+
+Add an object to `parts` in `src/assets/partsCatalog.json`:
+
+```json
+{
+  "id": "gc14_frontBumper_vented",
+  "displayName": "Vented bumper",
+  "carId": "gc14",
+  "slot": "frontBumper",
+  "file": "parts/gc14_frontBumper_vented.glb",
+  "hides": ["Bumper_Front"],
+  "materialSlots": ["Paint", "Black"],
+  "tris": 1840
+}
+```
+
+- `id`: unique, letters, digits, `_ - .` only.
+- `carId`: the car it fits, or `"universal"` for wheels.
+- `hides`: names of base car nodes to hide while this part is equipped (the stock bumper it replaces). Use `npm run inspect` to list node names.
+- `node` (optional): use when several parts live in one GLB. The part is that node inside `file`.
+- `tris`: informational; validation warns if it drifts from the file.
+
+Leave out `"generated": true`. Only entries generated by `npm run assets` carry that flag, and the script rewrites those on every run. Hand-written entries are kept.
+
+Then run:
+
+```
+npm run validate
+```
+
+It checks that the file exists, the slot and car are known, every material name is in the vocabulary, the triangle budget, and that the bounding box fits the car (to catch wrong scale or a forgotten transform). It fails loudly on any error. `npm run assets` runs the same validation at the end.
+
+## 8. Test a part without touching the catalog (dev preview)
+
+1. `npm run dev`, then open the garage (or go to `http://localhost:5175/?garage&dev`).
+2. Press **Ctrl+Shift+D** to enter dev mode. The panel border turns amber.
+3. **Drag and drop** your `.glb` onto the window.
+4. Pick the slot (guessed from the file name if it follows the naming convention) and tick the base meshes it should hide.
+5. Click **Equip**. The part is applied live with the player's paint, so you can check fit, materials and scale straight out of Blender.
+
+Dev parts aren't saved to the catalog. Add the catalog entry once you're happy.
+
+## 9. Splitting the IceMaan body kits
+
+The IceMaan kits ship as one merged mesh per kit, so they're registered as `body` variants. `assets/inspect.md` lists which cars need splitting and the steps. In short: separate the bumper faces in Edit Mode (P > Selection), name the new object `Bumper_Front`, then either export it as its own part (above) or keep it in the FBX and re-run `npm run assets`. In the second case, reference it with `"node": "Bumper_Front"` and add `"Bumper_Front"` to the replacement parts' `hides`.
