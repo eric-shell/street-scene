@@ -239,7 +239,10 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
   }
   for (const rc of r.cars) rc.state.impact = collideCarWithWorld(rc.state, rc.tuning, r.world);
   for (let i = 0; i < r.cars.length; i++) {
+    if (r.cars[i].finished) continue;
     for (let j = i + 1; j < r.cars.length; j++) {
+      // Finished cars pull out of the race: no contact, so they never block anyone.
+      if (r.cars[j].finished) continue;
       const imp = collideCars(r.cars[i].state, r.cars[i].tuning, r.cars[j].state, r.cars[j].tuning);
       if (imp > 0) {
         r.cars[i].state.impact = Math.max(r.cars[i].state.impact, imp);

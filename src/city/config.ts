@@ -43,7 +43,8 @@ export const ROUTE = {
   tightDeg: 65,
   sweeperMinDeg: 18,
   sweeperMaxDeg: 60,
-  maxTurnDeg: 140,
+  /** Hard limit: sharper turns (hairpins through acute junctions) are rejected. */
+  maxTurnDeg: 112,
   checkpointSpacing: 140,
   sprintStartOffset: 45,
   sprintFinishOffset: 20,

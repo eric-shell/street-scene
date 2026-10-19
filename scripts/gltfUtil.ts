@@ -128,3 +128,37 @@ export function addNode(doc: Document, name: string, mesh: Mesh): Node {
   doc.getRoot().listScenes()[0].addChild(node);
   return node;
 }
+
+/** All triangles (world space, baked transforms) as flat [ax,ay,az,bx,by,bz,cx,cy,cz] arrays. */
+export function triangles(doc: Document): number[][] {
+  const out: number[][] = [];
+  for (const mesh of doc.getRoot().listMeshes()) {
+    for (const p of mesh.listPrimitives()) {
+      if (p.getMode() !== Primitive.Mode.TRIANGLES) continue;
+      const pos = p.getAttribute('POSITION');
+      if (!pos) continue;
+      const idx = p.getIndices();
+      const count = idx ? idx.getCount() : pos.getCount();
+      const get = (i: number) => pos.getElement(idx ? idx.getScalar(i) : i, [0, 0, 0]) as number[];
+      for (let i = 0; i + 2 < count; i += 3) out.push([...get(i), ...get(i + 1), ...get(i + 2)]);
+    }
+  }
+  return out;
+}
+
+/** Lowest surface y hit by a vertical ray at (x, z), or null. */
+export function lowestHit(tris: number[][], x: number, z: number): number | null {
+  let best: number | null = null;
+  for (const t of tris) {
+    const [ax, ay, az, bx, by, bz, cx, cy, cz] = t;
+    const d = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
+    if (Math.abs(d) < 1e-12) continue;
+    const l1 = ((bz - cz) * (x - cx) + (cx - bx) * (z - cz)) / d;
+    const l2 = ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / d;
+    const l3 = 1 - l1 - l2;
+    if (l1 < 0 || l2 < 0 || l3 < 0) continue;
+    const y = l1 * ay + l2 * by + l3 * cy;
+    if (best === null || y < best) best = y;
+  }
+  return best;
+}

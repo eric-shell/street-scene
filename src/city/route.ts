@@ -148,7 +148,7 @@ function score(stats: CornerStats, len: number, minLen: number, maxLen: number):
   if (len > maxLen) s -= (len - maxLen) / 100;
   s -= Math.max(0, ROUTE.minTightCorners - stats.tight) * 2;
   s -= Math.max(0, ROUTE.minSweepers - stats.sweepers) * 2;
-  s -= Math.max(0, stats.maxTurn - ROUTE.maxTurnDeg) / 10;
+  s -= Math.max(0, stats.maxTurn - ROUTE.maxTurnDeg) * 10;
   return s;
 }
 
@@ -177,6 +177,7 @@ export function findCircuitNodes(g: RoadGraph, seed: number): number[] {
     const cycle = p1.concat(p2.slice(1, -1));
     const len = pathLength(g, cycle, true);
     const stats = cornerStats(g, cycle, true);
+    if (stats.maxTurn > ROUTE.maxTurnDeg && best) continue;
     const sc = score(stats, len, ROUTE.circuitMinLength, ROUTE.circuitMaxLength);
     if (sc > bestScore) {
       bestScore = sc;
@@ -217,6 +218,7 @@ export function findSprintNodes(g: RoadGraph, seed: number): number[] {
     if (first.length < 90) continue;
     const len = pathLength(g, p, false);
     const stats = cornerStats(g, p, false);
+    if (stats.maxTurn > ROUTE.maxTurnDeg && best) continue;
     const sc = score(stats, len, ROUTE.sprintMinLength, ROUTE.sprintMaxLength);
     if (sc > bestScore) {
       bestScore = sc;

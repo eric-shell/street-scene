@@ -66,12 +66,12 @@ Source: `assets/source/icemaan/coupe` (12 FBX files, converted with fbx2gltf).
 
 - Long axis is X; front faces +X (from headlight vs taillight material centroids). Rotated -90 degrees about Y.
 - Scale 1.3592 (raw length 3.274 m -> 4.45 m).
-- WARNING: wheel arches not detected; used 20%/80% of length. Set wheelOffset in scripts/assetConfig.json if wheels look wrong.
-- Wheel radius 0.326 m, width 0.285 m, wheelbase 2.670 m, track 1.490 m.
+- Wheel arches found at z=1.624 and z=-1.106 (arch tops 0.509 / 0.514).
+- Wheel radius 0.326 m, width 0.285 m, wheelbase 2.730 m, track 1.490 m.
 - Car dimensions 4.45 x 2.00 x 1.42 m.
 - Base car `public/cars/gc14.glb`: 30.1 KB, 2136 tris (body kit 1).
 - Body kits are single merged meshes, registered as `body` variants (3 kits). Bumpers need splitting in Blender to use the bumper slots (see below).
-- Spoiler 1: auto placed on the rear deck (deck height 1.263 m, offset [0.000, 1.267, -1.898]).
+- Spoiler 1: auto placed on the rear deck (deck height 1.273 m, offset [0.000, 1.277, -1.838]).
 
 <details><summary>Converted source files</summary>
 
@@ -215,13 +215,13 @@ Source: `assets/source/icemaan/hatch` (13 FBX files, converted with fbx2gltf).
 
 - Long axis is X; front faces +X (from headlight vs taillight material centroids). Rotated -90 degrees about Y.
 - Scale 1.2028 (raw length 3.284 m -> 3.95 m).
-- Wheel arches found at z=1.700 and z=-1.040 (arch tops 0.634 / 0.936).
-- Wheel radius 0.289 m, width 0.241 m, wheelbase 2.740 m, track 1.340 m.
+- Wheel arches found at z=1.400 and z=-1.120 (arch tops 0.498 / 0.503).
+- Wheel radius 0.270 m, width 0.241 m, wheelbase 2.520 m, track 1.340 m.
 - Car dimensions 3.95 x 1.61 x 1.16 m.
 - Base car `public/cars/s64.glb`: 26.9 KB, 1644 tris (body kit 1).
 - Body kits are single merged meshes, registered as `body` variants (3 kits). Bumpers need splitting in Blender to use the bumper slots (see below).
-- Spoiler 1: auto placed on the rear deck (deck height 0.697 m, offset [0.000, 0.708, -1.940]).
-- Spoiler 2: auto placed on the rear deck (deck height 0.697 m, offset [-0.000, 0.708, -1.839]).
+- Spoiler 1: auto placed on the rear deck (deck height 0.943 m, offset [0.000, 0.954, -1.750]).
+- Spoiler 2: auto placed on the rear deck (deck height 0.943 m, offset [-0.000, 0.954, -1.649]).
 
 <details><summary>Converted source files</summary>
 

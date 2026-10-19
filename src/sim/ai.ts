@@ -28,6 +28,8 @@ export const AI = {
   dodgeRate: 3,
   stuckSpeed: 1.5,
   stuckTime: 2.5,
+  progressWindow: 4,
+  progressMin: 8,
 } as const;
 
 export interface RacingLine {
@@ -54,12 +56,15 @@ export interface AiState {
   dodge: number;
   stuckTime: number;
   nitroHold: number;
+  /** Progress watchdog: distance at the last checkpoint of the timer. */
+  watchDist: number;
+  watchTime: number;
 }
 
 export function createAi(index: number, pace: number): AiState {
   // Small fixed personality per grid slot, no randomness needed.
   const bias = (((index * 37) % 5) - 2) * 0.35;
-  return { idx: -1, pace: pace * (1 - ((index * 13) % 3) * 0.012), bias, dodge: 0, stuckTime: 0, nitroHold: 0 };
+  return { idx: -1, pace: pace * (1 - ((index * 13) % 3) * 0.012), bias, dodge: 0, stuckTime: 0, nitroHold: 0, watchDist: -1e9, watchTime: 0 };
 }
 
 export function buildRacingLine(world: World): RacingLine {
@@ -201,7 +206,7 @@ export function aiInput(r: RaceState, rc: RaceCar): InputFrame {
   const fz = cos(c.yaw);
   let dodgeTarget = 0;
   for (const other of r.cars) {
-    if (other === rc) continue;
+    if (other === rc || other.finished) continue;
     const dx = other.state.x - c.x;
     const dz = other.state.z - c.z;
     const ahead = dx * fx + dz * fz;
@@ -244,11 +249,22 @@ export function aiInput(r: RaceState, rc: RaceCar): InputFrame {
     nitrous = true;
   }
 
-  // Stuck: let the race reset us.
+  // Stuck: too slow, or not making progress (e.g. scraping a wall), lets the race reset us.
   if (speed < AI.stuckSpeed) ai.stuckTime += DT;
   else ai.stuckTime = 0;
-  const reset = ai.stuckTime > AI.stuckTime || rc.wrongWayTime > 3;
-  if (reset) ai.stuckTime = 0;
+  ai.watchTime += DT;
+  let noProgress = false;
+  if (ai.watchTime >= AI.progressWindow) {
+    noProgress = rc.dist - ai.watchDist < AI.progressMin;
+    ai.watchDist = rc.dist;
+    ai.watchTime = 0;
+  }
+  const reset = ai.stuckTime > AI.stuckTime || rc.wrongWayTime > 3 || noProgress;
+  if (reset) {
+    ai.stuckTime = 0;
+    ai.watchTime = 0;
+    ai.watchDist = rc.dist;
+  }
 
   return { throttle, brake, steer, handbrake: false, nitrous, shift: 0, reset };
 }

@@ -22,7 +22,7 @@ import { cloneDocument, dedup, meshopt, prune, weld } from '@gltf-transform/func
 import { MeshoptEncoder } from 'meshoptimizer';
 import { MATERIAL_NAMES, PartEntry, PartsCatalog, partFileName } from '../src/shared/parts';
 import { createIO, formatInfo, inspectDocument } from './inspectAsset';
-import { apply, bakeTransforms, bounds, centroid, mul, positions, renameMaterials, rotY, scaleM, transformAll, translate, triangleCount, Mat4 } from './gltfUtil';
+import { apply, bakeTransforms, triangles, lowestHit, bounds, centroid, mul, positions, renameMaterials, rotY, scaleM, transformAll, translate, triangleCount, Mat4 } from './gltfUtil';
 import { protoBase, protoParts } from './placeholderCar';
 import { validateCatalog } from './validateParts';
 
@@ -114,31 +114,45 @@ interface CarFrame {
   notes: string[];
 }
 
-/** Find wheel arches along Z in a body that already faces +Z. */
-function findArches(pts: number[][], halfW: number): { z: number; top: number; half: number }[] {
-  const outer = pts.filter((p) => Math.abs(p[0]) > halfW * 0.72);
+/**
+ * Find wheel arches along Z in a body that already faces +Z. Casts vertical
+ * rays up through the body near both sides; under an arch the first surface
+ * hit is high (the fender), elsewhere it is the low sill or bumper.
+ */
+function findArches(tris: number[][], pts: number[][], halfW: number): { z: number; top: number; half: number }[] {
   const b = bounds(pts);
+  const cx = (b.max[0] + b.min[0]) / 2;
   const bin = 0.02;
   const n = Math.ceil((b.max[2] - b.min[2]) / bin) + 1;
-  const minY = new Array(n).fill(Infinity);
-  for (const p of outer) {
-    const i = Math.floor((p[2] - b.min[2]) / bin);
-    if (p[1] < minY[i]) minY[i] = p[1];
+  const profile: (number | null)[] = [];
+  for (let i = 0; i < n; i++) {
+    const z = b.min[2] + (i + 0.5) * bin;
+    const ys: number[] = [];
+    for (const f of [0.78, 0.86]) {
+      for (const side of [1, -1]) {
+        const y = lowestHit(tris, cx + side * halfW * f, z);
+        if (y !== null) ys.push(y);
+      }
+    }
+    profile.push(ys.length ? ys.reduce((a, c) => a + c, 0) / ys.length : null);
   }
-  const filled = minY.filter((v) => v !== Infinity).sort((a, c) => a - c);
-  const sill = filled[Math.floor(filled.length * 0.25)] ?? b.min[1];
+  const filled = profile.filter((v): v is number => v !== null).sort((a, c) => a - c);
+  const sill = filled[Math.floor(filled.length * 0.2)] ?? b.min[1];
   const height = b.max[1] - b.min[1];
   const thresh = sill + height * 0.12;
   const runs: { from: number; to: number }[] = [];
   let start = -1;
   let gap = 0;
   for (let i = 0; i < n; i++) {
-    const high = minY[i] !== Infinity && minY[i] > thresh;
-    if (high) {
+    const v = profile[i];
+    const high = v === null || v > thresh;
+    // Ignore the very ends (bumper overhang with no surface below).
+    const inside = i > n * 0.05 && i < n * 0.95;
+    if (high && inside) {
       if (start < 0) start = i;
       gap = 0;
     } else if (start >= 0) {
-      if (++gap > 3) {
+      if (++gap > 2) {
         runs.push({ from: start, to: i - gap });
         start = -1;
         gap = 0;
@@ -147,11 +161,14 @@ function findArches(pts: number[][], halfW: number): { z: number; top: number; h
   }
   if (start >= 0) runs.push({ from: start, to: n - 1 });
   return runs
-    .filter((r) => (r.to - r.from) * bin > 0.25)
+    .filter((r) => (r.to - r.from) * bin > 0.3 && (r.to - r.from) * bin < 1.4)
     .map((r) => {
       let top = -Infinity;
-      for (let i = r.from; i <= r.to; i++) if (minY[i] !== Infinity) top = Math.max(top, minY[i]);
-      return { z: b.min[2] + ((r.from + r.to) / 2 + 0.5) * bin, top, half: ((r.to - r.from) * bin) / 2 };
+      for (let i = r.from; i <= r.to; i++) {
+        const v = profile[i];
+        if (v !== null) top = Math.max(top, v);
+      }
+      return { z: b.min[2] + ((r.from + r.to) / 2 + 0.5) * bin, top: Number.isFinite(top) ? top : sill + height * 0.5, half: ((r.to - r.from) * bin) / 2 };
     });
 }
 
@@ -184,11 +201,16 @@ function computeFrame(carId: string, body: Document, wheelRaw: { radius: number;
   const b = bounds(pts);
   const halfW = (b.max[0] - b.min[0]) / 2;
   const cx = (b.max[0] + b.min[0]) / 2;
-  const arches = findArches(pts, halfW);
+  const tris = triangles(body).map((t) => [...apply(rs, t.slice(0, 3)), ...apply(rs, t.slice(3, 6)), ...apply(rs, t.slice(6, 9))]);
+  const arches = findArches(tris, pts, halfW);
   const mid = (b.max[2] + b.min[2]) / 2;
+  // The arches closest to each end in each half are the wheel wells.
   const front = arches.filter((a) => a.z > mid).sort((a, c) => c.half - a.half)[0];
   const rear = arches.filter((a) => a.z < mid).sort((a, c) => c.half - a.half)[0];
-  const wheelRadius = wheelRaw.radius * scale;
+  if (process.env.DEBUG_ARCHES) console.log(carId, arches);
+  // Never let the wheel be larger than the arch opening.
+  const archHalf = front && rear ? (front.half + rear.half) / 2 : Infinity;
+  const wheelRadius = Math.min(wheelRaw.radius * scale, archHalf * 1.0);
   const wheelWidth = wheelRaw.width * scale;
   let zf: number;
   let zr: number;
