@@ -29,7 +29,7 @@ export const CITY = {
   broadphaseCell: 32,
 
   streetlightSpacing: 34,
-  signCount: 46,
+  signCount: 90,
 } as const;
 
 export const ROUTE = {

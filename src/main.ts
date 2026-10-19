@@ -1,38 +1,53 @@
 import './style.css';
 import * as THREE from 'three';
 import { FixedStepLoop } from './loop';
+import { createWorld } from './city/world';
+import { seedFromString } from './sim/prng';
+import { initialSeed } from './seed';
+import { loadSettings } from './ui/settings';
+import { GameRenderer, createNightScene } from './render/scene';
+import { FreeFlyCamera } from './render/freeFly';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x05060f);
-const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
-camera.position.set(3, 2, 5);
-camera.lookAt(0, 0, 0);
-const cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshNormalMaterial());
-scene.add(cube);
+const settings = loadSettings();
+const q = new URLSearchParams(location.search).get('quality');
+if (q === 'low' || q === 'medium' || q === 'high') settings.quality = q;
+const gr = new GameRenderer(canvas, settings);
 
-function resize(): void {
-  const w = window.innerWidth;
-  const h = window.innerHeight;
-  renderer.setSize(w, h, false);
-  camera.aspect = w / h;
-  camera.updateProjectionMatrix();
+const seedStr = initialSeed();
+const world = createWorld(seedFromString(seedStr), 'circuit');
+const night = createNightScene(world, gr, settings);
+const fly = new FreeFlyCamera(canvas);
+const g0 = world.route.grid[0];
+fly.set(new THREE.Vector3(g0.x, world.heightAt(g0.x, g0.z) + 3, g0.z), g0.yaw + Math.PI, -0.08);
+const camParam = new URLSearchParams(location.search).get('cam');
+if (camParam === 'aerial') {
+  fly.set(new THREE.Vector3(g0.x - Math.sin(g0.yaw) * 160, 90, g0.z - Math.cos(g0.yaw) * 160), g0.yaw, -0.42);
+} else if (camParam) {
+  const [x, y, z, yaw, pitch] = camParam.split(',').map(Number);
+  fly.set(new THREE.Vector3(x, y, z), yaw, pitch);
 }
-window.addEventListener('resize', resize);
-resize();
 
-let angle = 0;
-let prevAngle = 0;
+const fpsEl = document.createElement('div');
+fpsEl.style.cssText = 'position:fixed;top:6px;left:8px;font:12px monospace;color:#8f8;z-index:10';
+document.body.appendChild(fpsEl);
+let frames = 0;
+let acc = 0;
+
 const loop = new FixedStepLoop({
-  tick() {
-    prevAngle = angle;
-    angle += 0.02;
-  },
-  render(alpha) {
-    cube.rotation.y = prevAngle + (angle - prevAngle) * alpha;
-    renderer.render(scene, camera);
+  tick() {},
+  render(_alpha, dt) {
+    fly.update(dt);
+    night.lighting.update(fly.camera.position);
+    gr.render(night.scene, fly.camera, dt);
+    frames++;
+    acc += dt;
+    if (acc > 0.5) {
+      fpsEl.textContent = `${Math.round(frames / acc)} fps  seed ${seedStr}`;
+      frames = 0;
+      acc = 0;
+    }
   },
 });
 loop.start();
+(window as unknown as Record<string, unknown>).__nr = { world, gr, night, fly };
