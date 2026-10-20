@@ -9,8 +9,20 @@
  */
 import * as THREE from 'three';
 
+/**
+ * Fog of a clear night: the defaults every self-fogging shader starts from.
+ * The weather (render/weather.ts) picks a mood per seed and retunes the scene
+ * fog and those shaders' fog uniforms to match.
+ */
 export const FOG_COLOR = 0x0a0b1c;
 export const FOG_DENSITY = 0.0042;
+
+/** Mood lighting: hemisphere sky colour and intensity, moon light intensity (weather.ts). */
+export interface MoodLighting {
+  hemi: number;
+  hemiIntensity: number;
+  moonLight: number;
+}
 
 export class NightLighting {
   readonly group = new THREE.Group();
@@ -22,14 +34,23 @@ export class NightLighting {
   private cutoff = Infinity;
   private frame = 0;
   private static readonly INTENSITY = 140;
+  private readonly hemi: THREE.HemisphereLight;
+  private readonly moon: THREE.DirectionalLight;
 
   constructor() {
     this.group.name = 'lighting';
-    const hemi = new THREE.HemisphereLight(0x3a4a9a, 0x0b0b14, 0.4);
-    this.group.add(hemi);
-    const moon = new THREE.DirectionalLight(0x7f8cff, 0.35);
-    moon.position.set(-200, 400, 120);
-    this.group.add(moon);
+    this.hemi = new THREE.HemisphereLight(0x3a4a9a, 0x0b0b14, 0.4);
+    this.group.add(this.hemi);
+    this.moon = new THREE.DirectionalLight(0x7f8cff, 0.35);
+    this.moon.position.set(-200, 400, 120);
+    this.group.add(this.moon);
+  }
+
+  /** The weather mood: an overcast sky lights everything a little flatter and the moon fades. */
+  setMood(m: MoodLighting): void {
+    this.hemi.color.setHex(m.hemi);
+    this.hemi.intensity = m.hemiIntensity;
+    this.moon.intensity = m.moonLight;
   }
 
   setLamps(lamps: THREE.Vector3[]): void {

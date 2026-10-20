@@ -7,7 +7,7 @@ import { World } from '../city/world';
 import { QUALITY, QualityProfile, Settings } from '../ui/settings';
 import { buildCityMeshes, CityMeshes } from './cityMeshes';
 import { buildLightFx, fadeSubPixel, LightFx } from './lightFx';
-import { FOG_COLOR, FOG_DENSITY, NightLighting } from './lighting';
+import { NightLighting } from './lighting';
 import { PostFx } from './post';
 import { makeNightEnvironment, makeSkyTexture } from './textures';
 import { buildRouteArrows, classifyBarriers, RouteArrows } from './routeArrows';
@@ -15,9 +15,11 @@ import { MEET_VARIANTS, buildRoadblocks, parkedCars } from './roadblocks';
 import { planMeets } from './meetPlan';
 import { buildProps, PropRenderer } from './props';
 import { buildDistrictMeshes } from './districts';
-import { buildBackdrop } from './backdrop';
+import { Backdrop, buildBackdrop } from './backdrop';
 import { buildCrowds, Crowds } from './crowds';
 import { buildStreetPolish } from './streetPolish';
+import { createWeather, Weather } from './weather';
+import { AirTraffic, buildAirTraffic } from './airTraffic';
 
 export const RETRO_HEIGHT = 240;
 
@@ -110,6 +112,12 @@ export interface NightScene {
   props: PropRenderer;
   /** Spectators at the start / finish (empty in open world); feed it car poses every frame (crowds.update). */
   crowds: Crowds;
+  /** The seed's weather mood: fog, sky, rain or mist (weather.ts). */
+  weather: Weather;
+  /** The news helicopter, its searchlight and the blimp (airTraffic.ts). */
+  air: AirTraffic;
+  /** Mountains, masts and the sky sprites (backdrop.ts). */
+  backdrop: Backdrop;
   /** Animate time-based effects (barrier lamps, arrows). */
   update(time: number): void;
   dispose(): void;
@@ -117,28 +125,41 @@ export interface NightScene {
 
 export function createNightScene(world: World, gr: GameRenderer, settings: Settings): NightScene {
   const scene = new THREE.Scene();
-  scene.background = gr.sky;
   scene.environment = gr.envMap;
-  scene.environmentIntensity = 0.55;
-  scene.fog = new THREE.FogExp2(FOG_COLOR, FOG_DENSITY);
+  // The seed's mood first: it sets the fog every other build fogs itself with, the sky and the haze.
+  const weather = createWeather(world, { quality: settings.quality });
+  const fogDensity = weather.def.fogDensity;
   const barriers = classifyBarriers(world);
   const city = buildCityMeshes(world, { detail: settings.quality });
   scene.add(city.group);
   // District dressing (lots, plazas, parks, river, roundabouts, subway) and the distant mountains.
   const districts = buildDistrictMeshes(world, { quality: settings.quality });
   scene.add(districts.group);
-  const backdrop = buildBackdrop(world.seed);
+  const bounds = world.graph.bounds;
+  const backdrop = buildBackdrop(world.seed, {
+    fogColor: weather.def.fogColor,
+    stars: weather.def.stars,
+    moon: weather.def.moon,
+    halo: weather.def.halo,
+    moonPhase: weather.moonPhase,
+    centerX: (bounds.minX + bounds.maxX) / 2,
+    centerZ: (bounds.minZ + bounds.maxZ) / 2,
+  });
   scene.add(backdrop.group);
   // Street level polish: road decals, puddles, graffiti, blade signs, banners, steam (pasted onto the drawn podiums).
   const polish = buildStreetPolish(world, { quality: settings.quality, facades: (city.group.getObjectByName('podiums') as THREE.Mesh | undefined)?.geometry });
   scene.add(polish.group);
-  const fx = buildLightFx(city.lampPositions, city.signLights, world.heightAt, FOG_DENSITY);
+  const fx = buildLightFx(city.lampPositions, city.signLights, world.heightAt, fogDensity);
   fx.setStrength(0.32, 0.85);
   scene.add(fx.group);
   const lighting = new NightLighting();
   lighting.setLamps(city.lampPositions);
   lighting.setPoolSize(gr.profile.pointLights);
   scene.add(lighting.group);
+  weather.apply(scene, lighting);
+  scene.add(weather.group);
+  const air = buildAirTraffic(world, { quality: settings.quality, fogDensity });
+  scene.add(air.group);
   // Street meets behind every cyan barrier: a crowd against the barrier, thinning back among parked
   // cars. Denser, deeper and drawn further at higher quality.
   const meetQ =
@@ -158,9 +179,12 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   const arrows = buildRouteArrows(world, barriers, { beacon: city.barrierLampMaterial });
   scene.add(arrows.group);
   // Parked cars cull per group against whatever camera renders the scene.
-  scene.onBeforeRender = (_r, _s, camera) => {
+  scene.onBeforeRender = (r, _s, camera) => {
+    const viewportHeight = r.domElement.clientHeight || window.innerHeight;
     roadblocks.update(camera);
-    backdrop.follow(camera);
+    backdrop.follow(camera, viewportHeight);
+    weather.view(camera, viewportHeight);
+    air.view(camera);
     districts.view(camera);
   };
   // Broken streetlights go dark: ground pool, reflection streak and the real light pool.
@@ -179,6 +203,8 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   const crowds = buildCrowds(world, world.openWorld ? [] : city.finishLine.gates, { ...crowdQ, drawDistance: meetQ.crowdDraw, meet });
   scene.add(crowds.group);
   stabilizeSmallEmitters(city);
+  // Every material that fogs itself in a shader now gets the mood's fog.
+  weather.retuneFog(scene);
   return {
     scene,
     city,
@@ -187,12 +213,17 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     arrows,
     props,
     crowds,
+    weather,
+    air,
+    backdrop,
     update(time) {
       city.update(time);
       arrows.update(time);
       districts.update(time);
       backdrop.update(time);
       polish.update(time);
+      weather.update(time);
+      air.update(time);
       // Hazard blink with soft edges: a hard 3.2 / 0.6 square wave strobes the bloom.
       const blink = 0.6 + 2.6 * THREE.MathUtils.smoothstep(Math.sin(time * 5), -0.35, 0.35);
       city.barrierLampMaterial.color.setRGB(1 * blink, 0.63 * blink, 0.12 * blink);
@@ -207,6 +238,8 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
       roadblocks.dispose();
       props.dispose();
       crowds.dispose();
+      weather.dispose();
+      air.dispose();
     },
   };
 }

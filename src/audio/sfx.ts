@@ -938,6 +938,96 @@ export class TrainRumble {
   }
 }
 
+/** Helicopter rotor mix: level, blade pass rate (Hz) and thump depth, the low body of the sound and the turbine whine. */
+const ROTOR = { level: 0.34, bladeHz: 10.5, thump: 0.85, bodyHz: 220, body: 3.2, whineHz: 1700, whine: 0.08 } as const;
+
+/**
+ * News helicopter rotor (render/airTraffic.ts): low filtered noise chopped at
+ * the blade pass rate for the thump, plus a thin turbine whine, panned and
+ * scaled by the helicopter's distance. Same shape as TrainRumble: created
+ * after the first user gesture, and the gain dies by itself unless the next
+ * frame renews it, so a scene that stops rendering never keeps thumping.
+ */
+export class HeliRotor {
+  private ctx: AudioContext;
+  private out: GainNode;
+  private pan: StereoPannerNode;
+  private src: AudioBufferSourceNode;
+  private lfo: OscillatorNode;
+
+  /** True while the browser still waits for the first user gesture. */
+  static blocked(): boolean {
+    return TrainRumble.blocked();
+  }
+
+  static create(): HeliRotor | null {
+    if (typeof window === 'undefined' || HeliRotor.blocked()) return null;
+    const h = audioHub();
+    if (!h) return null;
+    try {
+      return new HeliRotor(h);
+    } catch {
+      return null;
+    }
+  }
+
+  private constructor(h: NonNullable<ReturnType<typeof audioHub>>) {
+    const ctx = (this.ctx = h.ctx);
+    this.out = ctx.createGain();
+    this.out.gain.value = 0;
+    this.pan = ctx.createStereoPanner();
+    this.out.connect(this.pan).connect(h.sfxBus);
+    this.src = ctx.createBufferSource();
+    this.src.buffer = h.noise;
+    this.src.loop = true;
+    const body = ctx.createBiquadFilter();
+    body.type = 'lowpass';
+    body.frequency.value = ROTOR.bodyHz;
+    body.Q.value = 1.1;
+    const bodyGain = ctx.createGain();
+    bodyGain.gain.value = ROTOR.body * (1 - ROTOR.thump);
+    // The chop: a square wave at the blade pass rate opens and closes the body gain.
+    this.lfo = ctx.createOscillator();
+    this.lfo.type = 'square';
+    this.lfo.frequency.value = ROTOR.bladeHz;
+    const depth = ctx.createGain();
+    depth.gain.value = ROTOR.body * ROTOR.thump;
+    this.lfo.connect(depth).connect(bodyGain.gain);
+    const whine = ctx.createBiquadFilter();
+    whine.type = 'bandpass';
+    whine.frequency.value = ROTOR.whineHz;
+    whine.Q.value = 9;
+    const whineGain = ctx.createGain();
+    whineGain.gain.value = ROTOR.whine;
+    this.src.connect(body).connect(bodyGain).connect(this.out);
+    this.src.connect(whine).connect(whineGain).connect(this.out);
+    this.src.start();
+    this.lfo.start();
+  }
+
+  /** proximity 0..1 (1 = right overhead), pan -1..1. */
+  update(proximity: number, pan: number): void {
+    const now = this.ctx.currentTime;
+    const target = ROTOR.level * Math.pow(Math.max(0, proximity), 1.2);
+    const g = this.out.gain;
+    g.cancelScheduledValues(now);
+    g.setTargetAtTime(target, now, 0.12);
+    // Dead man's switch: silence unless the next frame renews it.
+    g.setTargetAtTime(0, now + 0.35, 0.2);
+    this.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan)) * 0.7, now, 0.1);
+  }
+
+  dispose(): void {
+    try {
+      this.src.stop();
+      this.lfo.stop();
+    } catch {
+      /* already stopped */
+    }
+    this.out.disconnect();
+  }
+}
+
 export class Sfx {
   private readonly ctx: AudioContext;
   private readonly bus: GainNode;
