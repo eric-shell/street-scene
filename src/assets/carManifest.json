@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "notes": "Car space: meters, Y up, origin on the ground midway between the axles, car faces +Z, +X is the car's left. Wheel positions are wheel centers. Cars marked provisional have estimated geometry until `npm run assets` measures the converted GLB.",
+  "notes": "Car space: meters, Y up, origin on the ground midway between the axles, car faces +Z, +X is the car's left. Wheel positions are wheel centers. Cars marked provisional have estimated geometry until `npm run assets` measures the converted GLB. `engine` is the car's spec (layout, aspiration, position; vocabulary in src/shared/carSpec.ts); which wheels are driven comes from drivingParams.json.",
   "cars": [
     {
       "id": "gc14",
@@ -47,8 +47,9 @@
       "defaultPaint": "#1f6bff",
       "selectable": true,
       "engine": {
-        "type": "v6",
-        "cylinders": 6
+        "layout": "V6",
+        "aspiration": "na",
+        "position": "front"
       }
     },
     {
@@ -96,8 +97,9 @@
       "defaultPaint": "#ffcc1f",
       "selectable": true,
       "engine": {
-        "type": "i4turbo",
-        "cylinders": 4
+        "layout": "I4",
+        "aspiration": "turbo",
+        "position": "front"
       }
     },
     {
@@ -145,8 +147,9 @@
       "defaultPaint": "#d11f3f",
       "selectable": false,
       "engine": {
-        "type": "i4",
-        "cylinders": 4
+        "layout": "I4",
+        "aspiration": "na",
+        "position": "front"
       }
     }
   ]

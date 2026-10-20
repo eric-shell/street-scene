@@ -2,7 +2,10 @@
  * Race cameras. Chase cameras follow a smoothed point behind the car, pull
  * back and widen FOV under nitrous, and never go through buildings: the line
  * from the car to the camera is tested against the static wall segments and
- * the camera is pushed in front of any hit. Render only.
+ * the camera is pushed in front of any hit. A mouse drag orbits the chase
+ * cameras around the car (and turns the head in the bumper and hood views);
+ * after letting go the view eases back behind the car once it is moving
+ * (ORBIT). Render only.
  *
  * Every number lives in the CAMERA table (live, mutated by the camera debug
  * panel) with CAMERA_DEFAULTS as the stock values and CAMERA_PARAM_META as the
@@ -15,6 +18,13 @@ import type { CarPose } from './carView';
 
 export const CAMERA_MODES = ['chase', 'close', 'bumper', 'hood'] as const;
 export type CameraMode = (typeof CAMERA_MODES)[number];
+
+/**
+ * Mouse orbit: radians per dragged pixel, the elevation range on top of the
+ * camera's own (rad), how long the view holds after release (s), how fast it
+ * eases back (1/s), and the speed (m/s) below which it stays where you left it.
+ */
+export const ORBIT = { yawPerPx: 0.006, pitchPerPx: 0.004, pitchMin: -0.25, pitchMax: 1.1, hold: 1.4, returnRate: 2.2, stillSpeed: 3 } as const;
 
 export interface ChaseParams {
   dist: number;
@@ -263,8 +273,34 @@ export class ChaseCamera {
   private initialized = false;
   private shake = 0;
   private scratch: number[] = [];
+  /** Mouse orbit offsets (rad) on top of the follow direction, and the time left before they ease back (s). */
+  private orbitYaw = 0;
+  private orbitPitch = 0;
+  private orbitHold = 0;
+  private orbiting = false;
 
   constructor(private readonly world: World | null) {}
+
+  /** Drag by (dx, dy) pixels: swing around the car (chase, close) or turn the head (bumper, hood). */
+  orbitBy(dx: number, dy: number): void {
+    this.orbitYaw -= dx * ORBIT.yawPerPx;
+    while (this.orbitYaw > Math.PI) this.orbitYaw -= Math.PI * 2;
+    while (this.orbitYaw < -Math.PI) this.orbitYaw += Math.PI * 2;
+    this.orbitPitch = Math.max(ORBIT.pitchMin, Math.min(ORBIT.pitchMax, this.orbitPitch + dy * ORBIT.pitchPerPx));
+    this.orbitHold = ORBIT.hold;
+  }
+
+  /** Mouse button held on the view (the orbit never eases back while held). */
+  setOrbiting(on: boolean): void {
+    this.orbiting = on;
+    this.orbitHold = ORBIT.hold;
+  }
+
+  /** Back to the plain follow view at once (camera switches). */
+  resetOrbit(): void {
+    this.orbitYaw = 0;
+    this.orbitPitch = 0;
+  }
 
   cycle(): CameraMode {
     this.mode = CAMERA_MODES[(CAMERA_MODES.indexOf(this.mode) + 1) % CAMERA_MODES.length];
@@ -288,6 +324,16 @@ export class ChaseCamera {
     const fz = Math.cos(p.yaw);
     const cam = this.camera;
     const common = CAMERA.common;
+    // Let go of a drag: hold a moment, then ease back behind the car once it moves.
+    if (!this.orbiting && (this.orbitYaw !== 0 || this.orbitPitch !== 0)) {
+      this.orbitHold -= dt;
+      if (this.orbitHold <= 0 && speed > ORBIT.stillSpeed) {
+        const k = 1 - Math.exp(-dt * ORBIT.returnRate);
+        this.orbitYaw -= this.orbitYaw * k;
+        this.orbitPitch -= this.orbitPitch * k;
+        if (Math.abs(this.orbitYaw) < 1e-3 && Math.abs(this.orbitPitch) < 1e-3) this.orbitYaw = this.orbitPitch = 0;
+      }
+    }
 
     if (this.mode === 'bumper' || this.mode === 'hood') {
       const q = CAMERA[this.mode];
@@ -295,7 +341,11 @@ export class ChaseCamera {
       const h = q.height;
       cam.position.set(p.x + fx * forward, p.y + h - p.pitch * forward, p.z + fz * forward);
       cam.up.set(0, 1, 0);
-      this.lookTarget.set(p.x + fx * (forward + q.lookDistance), p.y + h - q.lookDrop, p.z + fz * (forward + q.lookDistance));
+      // Head turn: the look point swings around the camera; dragging down looks down.
+      const ly = p.yaw + this.orbitYaw;
+      const lx = Math.sin(ly) * q.lookDistance;
+      const lz = Math.cos(ly) * q.lookDistance;
+      this.lookTarget.set(cam.position.x + lx, p.y + h - q.lookDrop - Math.tan(this.orbitPitch * 0.8) * q.lookDistance, cam.position.z + lz);
       cam.lookAt(this.lookTarget);
       cam.rotateZ(-p.roll * q.rollFollow);
       this.setFov(q.fov + Math.min(q.speedFovMax, speed * q.speedFovGain) + (nitro ? q.nitroFov : 0), dt);
@@ -321,10 +371,17 @@ export class ChaseCamera {
     this.dirYaw += dy * (1 - Math.exp(-dt * prof.yawStiffness));
 
     const dist = prof.dist + (nitro ? prof.nitroPullback : 0) + Math.min(prof.speedPullbackMax, speed * prof.speedPullback);
-    const bx = Math.sin(this.dirYaw);
-    const bz = Math.cos(this.dirYaw);
-    const target = new THREE.Vector3(p.x - bx * dist, p.y + prof.height, p.z - bz * dist);
-    const lookT = new THREE.Vector3(p.x + fx * prof.lookAhead, p.y + prof.lookHeight, p.z + fz * prof.lookAhead);
+    // Orbit: around the car's look point, at the same range, raised by the drag.
+    const oy = this.dirYaw + this.orbitYaw;
+    const bx = Math.sin(oy);
+    const bz = Math.cos(oy);
+    const rise = prof.height - prof.lookHeight;
+    const el = Math.atan2(rise, dist) + this.orbitPitch;
+    const range = Math.hypot(rise, dist);
+    const target = new THREE.Vector3(p.x - bx * range * Math.cos(el), p.y + prof.lookHeight + range * Math.sin(el), p.z - bz * range * Math.cos(el));
+    // Looking ahead of the car only makes sense from behind it: the further round, the more it aims at the car.
+    const ahead = prof.lookAhead * Math.max(0, Math.cos(this.orbitYaw));
+    const lookT = new THREE.Vector3(p.x + fx * ahead, p.y + prof.lookHeight, p.z + fz * ahead);
     if (!this.initialized) {
       this.pos.copy(target);
       this.look.copy(lookT);

@@ -13,7 +13,9 @@ import { AXLES, Axle, AxleStance, CarBuild, DecalLayer, GLOW_PATTERNS, MAX_DECAL
 import { PERFORMANCE_CATEGORIES, PerformanceCategory, TIER_NAMES, Tier } from '../sim/tuning';
 import { tuningForBuild } from '../sim/build';
 import { FEATURES } from '../shared/features';
-import { SELECTABLE_CAR_IDS, DEFAULT_CAR_ID } from '../sim/tuning';
+import { SELECTABLE_CAR_IDS, DEFAULT_CAR_ID, getBaseTuning } from '../sim/tuning';
+import type { SpecBadge } from '../shared/carSpec';
+import { specBadges } from '../shared/carSpec';
 import { measureStats, statBars } from '../sim/stats';
 import { SHAPE_LABELS } from '../render/decals';
 import { btn, h, iconBtn, segmented, toast } from '../ui/dom';
@@ -324,10 +326,12 @@ export class GarageScreen {
       });
       return h('div', { class: 'g-slider' }, h('div', { class: 'row', style: 'justify-content:space-between' }, h('span', {}, label), out), el);
     };
-    const choiceList = <T extends string | null>(items: { value: T; label: string; sub?: string }[], current: T, onPick: (x: T) => void) => {
+    const choiceList = <T extends string | null>(items: { value: T; label: string; sub?: string; tags?: SpecBadge[] }[], current: T, onPick: (x: T) => void) => {
       const list = h('div', { class: 'g-list' });
       for (const it of items) {
-        const el = h('button', { type: 'button', class: `g-item${it.value === current ? ' on' : ''}` }, h('span', {}, it.label), it.sub ? h('span', { class: 'muted' }, it.sub) : null);
+        // Spec tags (drivetrain code, engine) get their own row under the name; hover for the long form.
+        const tags = it.tags?.length ? h('span', { class: 'g-tags' }, ...it.tags.map((t) => h('span', { class: 'g-tag', title: t.title }, t.text))) : null;
+        const el = h('button', { type: 'button', class: `g-item${it.value === current ? ' on' : ''}${tags ? ' g-spec' : ''}` }, h('span', {}, it.label), it.sub ? h('span', { class: 'muted' }, it.sub) : null, tags);
         el.addEventListener('click', () => {
           list.querySelectorAll('.g-item').forEach((x) => x.classList.remove('on'));
           el.classList.add('on');
@@ -383,7 +387,7 @@ export class GarageScreen {
         const imported = MANIFEST.cars.filter((c) => SELECTABLE_CAR_IDS.includes(c.id) && this.availability[c.id] !== false);
         const cars = imported.length ? imported : MANIFEST.cars.filter((c) => SELECTABLE_CAR_IDS.includes(c.id));
         const list = choiceList(
-          cars.map((c) => ({ value: c.id, label: c.displayName, sub: c.source === 'icemaan' ? 'IceMaan' : undefined })),
+          cars.map((c) => ({ value: c.id, label: c.displayName, sub: c.source === 'icemaan' ? 'IceMaan' : undefined, tags: specBadges(c.engine, getBaseTuning(c.id).drivetrain.layout) })),
           b.carId,
           (id) => {
             if (id === b.carId) return;

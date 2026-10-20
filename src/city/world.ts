@@ -12,6 +12,7 @@ import { SpatialGrid } from './spatial';
 import { Terrain, createTerrain } from './terrain';
 import { cos, distToSegment, segmentT, sin, sqrt } from '../sim/math';
 import { CityDistricts, planDistricts } from './districts';
+import { pointInPolygon } from './districts/geom';
 import { Area, SURFACE_PHYSICS, Surface, SurfacePhysics } from './districts/types';
 
 export type { Surface, SurfacePhysics } from './districts/types';
@@ -112,6 +113,93 @@ function awayFromRoundabouts<T extends Wall>(graph: RoadGraph, rails: T[]): T[] 
   return rails.filter((w) => !bad.has(w.group ?? -1));
 }
 
+/** Drivable infill (corner pockets, plazas, verges, lots) whose frontage is open to the street. */
+const POCKETS = new Set(['cornerPlaza', 'plaza', 'verge', 'lot']);
+
+/**
+ * A closure barrier ends at its street's building line. Where a drivable
+ * pocket opens right there, carry the barrier on across the pocket to its
+ * far side, so the pocket is no way around the closure (and nobody drives
+ * through the parked cars behind it). Parks stay open: they are shortcuts.
+ */
+function sealBarriers(city: City, groups: BarrierGroup[]): void {
+  const pockets = city.districts.areas.filter((a) => a.kind === 'infill' && POCKETS.has(a.variant));
+  const sealed: Wall[] = [];
+  for (const gr of groups) {
+    for (const w of gr.walls) {
+      for (const atA of [true, false]) {
+        const ex = atA ? w.ax : w.bx;
+        const ez = atA ? w.az : w.bz;
+        const ox = atA ? w.bx : w.ax;
+        const oz = atA ? w.bz : w.az;
+        const len = sqrt((ex - ox) ** 2 + (ez - oz) ** 2) || 1;
+        const dx = (ex - ox) / len;
+        const dz = (ez - oz) / len;
+        const pocket = pockets.find((a) => pointInPolygon(ex + dx * 0.6, ez + dz * 0.6, a.polygon));
+        if (!pocket) continue;
+        // Farthest crossing of the ray with the pocket outline: where it leaves the pocket.
+        let reach = 0;
+        const P = pocket.polygon;
+        for (let i = 0; i < P.length; i++) {
+          const p = P[i];
+          const q = P[(i + 1) % P.length];
+          const sx = q.x - p.x;
+          const sz = q.z - p.z;
+          const den = dx * sz - dz * sx;
+          if (Math.abs(den) < 1e-9) continue;
+          const t = ((p.x - ex) * sz - (p.z - ez) * sx) / den;
+          const u = ((p.x - ex) * dz - (p.z - ez) * dx) / den;
+          if (t > 0 && u >= 0 && u <= 1) reach = Math.max(reach, t);
+        }
+        if (reach <= 0 || reach > 40) continue;
+        const nx = ex + dx * (reach + 0.1);
+        const nz = ez + dz * (reach + 0.1);
+        if (atA) {
+          w.ax = nx;
+          w.az = nz;
+        } else {
+          w.bx = nx;
+          w.bz = nz;
+        }
+        gr.length += reach + 0.1;
+        sealed.push(w);
+      }
+    }
+  }
+  // Two closures around one pocket both reach into it: clip them where they cross, a V like merged mouths.
+  for (let i = 0; i < sealed.length; i++) {
+    for (let j = i + 1; j < sealed.length; j++) {
+      const a = sealed[i];
+      const b = sealed[j];
+      const dax = a.bx - a.ax;
+      const daz = a.bz - a.az;
+      const dbx = b.bx - b.ax;
+      const dbz = b.bz - b.az;
+      const den = dax * dbz - daz * dbx;
+      if (Math.abs(den) < 1e-9) continue;
+      const t = ((b.ax - a.ax) * dbz - (b.az - a.az) * dbx) / den;
+      const u = ((b.ax - a.ax) * daz - (b.az - a.az) * dax) / den;
+      if (t <= 0 || t >= 1 || u <= 0 || u >= 1) continue;
+      const x = a.ax + dax * t;
+      const z = a.az + daz * t;
+      if (t > 0.5) {
+        a.bx = x;
+        a.bz = z;
+      } else {
+        a.ax = x;
+        a.az = z;
+      }
+      if (u > 0.5) {
+        b.bx = x;
+        b.bz = z;
+      } else {
+        b.ax = x;
+        b.az = z;
+      }
+    }
+  }
+}
+
 export function createRoute(city: City, kind: RouteKind): Route {
   const nodes = kind === 'circuit' ? findCircuitNodes(city.graph, city.seed) : findSprintNodes(city.graph, city.seed);
   return buildRoute(city.graph, kind, nodes);
@@ -123,6 +211,7 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
   const openWorld = opts.openWorld === true;
   const rails = openWorld ? [] : awayFromRoundabouts(graph, routeRails(graph, route, blocks.props, blocks.walls));
   const barrierGroups = openWorld ? [] : routeBarrierGroups(graph, blocks.mouths, route, rails);
+  sealBarriers(city, barrierGroups);
   const walls = blocks.walls.concat(routeBarriers(graph, blocks.mouths, route, barrierGroups), rails);
   const props = blocks.props;
   const propGrid = buildPropGrid(graph, props);

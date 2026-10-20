@@ -1,13 +1,15 @@
 /**
  * Validates src/assets/partsCatalog.json against the files in public/:
  * matching file, known slot and car, known material names, triangle budget,
- * bounding box sanity against the car, hidden mesh names, and per car size.
+ * bounding box sanity against the car, hidden mesh names, and per car size;
+ * plus every manifest car's engine spec (src/shared/carSpec.ts).
  *
  *   npm run validate
  */
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { MATERIAL_NAMES, PART_SLOTS, PartEntry, PartsCatalog, TRI_BUDGETS } from '../src/shared/parts';
+import { engineSpecErrors } from '../src/shared/carSpec';
 import { createIO } from './inspectAsset';
 import { bakeTransforms, bounds, positions, triangleCount } from './gltfUtil';
 
@@ -22,6 +24,7 @@ interface ManifestCar {
   file: string;
   provisional: boolean;
   dimensions: { length: number; width: number; height: number };
+  engine?: unknown;
 }
 
 const ROOT = process.cwd();
@@ -39,6 +42,7 @@ export async function validateCatalog(catalogPath = 'src/assets/partsCatalog.jso
   const carBytes = new Map<string, number>();
 
   for (const car of manifest.cars) {
+    for (const e of engineSpecErrors(car.engine)) errors.push(`car ${car.id}: ${e}`);
     const file = join(ROOT, publicDir, car.file);
     if (!existsSync(file)) {
       if (!car.provisional) errors.push(`car ${car.id}: ${car.file} is missing (run npm run assets)`);

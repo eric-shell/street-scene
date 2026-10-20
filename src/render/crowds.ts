@@ -1,10 +1,14 @@
 /**
- * Spectator crowds at the start and finish: rows of low poly people lining
+ * Spectator crowds. At the start and finish: rows of low poly people lining
  * the sidewalks along the outer edge, and standing behind closure barriers
- * and corner rails near the line (on the spectator side, never on the
- * route). One InstancedMesh per gate (a single merged person with optional
- * phone / flag / glowstick that the vertex shader hides per instance), so
- * the whole crowd is one or two draw calls.
+ * and corner rails near the line. Everywhere else on the route: a section of
+ * spectators behind every closure barrier and every corner rail with room
+ * behind it, standing between the wall and the parked cars (CROWD_STRIP;
+ * roadblocks.ts parks behind them). Never on the route. One InstancedMesh
+ * per stand (a single merged person with optional phone / flag / glowstick
+ * that the vertex shader hides per instance); sections far from the camera
+ * are not drawn, and density, rows and draw distance follow the graphics
+ * quality.
  *
  * Animation is all in the vertex shader: idle sway and bounce, arms up,
  * jumping and waving scaled by one float per instance ("excitement"),
@@ -17,6 +21,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { World } from '../city/world';
+import type { Wall } from '../city/blocks';
+import { RAIL } from '../sim/rails';
+import { railCurves } from './routeArrows';
 import { CITY } from '../city/config';
 import { Rng } from '../sim/prng';
 import { routeSample } from '../city/route';
@@ -47,6 +54,8 @@ export interface CrowdSpot {
   bz: number;
   /** Excitement heard by the listener (0 idle murmur, 1 cheering, up to ~1.5 at the finish). */
   level: number;
+  /** A start / finish stand, or a section along a closure or corner. */
+  kind: 'gate' | 'section';
 }
 
 export interface CrowdOptions {
@@ -54,6 +63,13 @@ export interface CrowdOptions {
   density?: number;
   /** Rows on the sidewalk (1 to 3). */
   rows?: number;
+  /** Sections behind every closure and corner rail (default on; never in an open world). */
+  sections?: boolean;
+  /** People per meter scale of the sections (default 0.7 * density) and their rows (1 or 2). */
+  sectionDensity?: number;
+  sectionRows?: number;
+  /** Sections further than this from the camera are not drawn (m). */
+  drawDistance?: number;
 }
 
 export interface Crowds {
@@ -62,6 +78,8 @@ export interface Crowds {
   spots: CrowdSpot[];
   /** Number of spectators. */
   readonly count: number;
+  /** Number of sections (stands away from the start / finish). */
+  readonly sectionCount: number;
   readonly enabled: boolean;
   /** Hide the crowd (test drive / open world) or show it again. */
   setEnabled(on: boolean): void;
@@ -240,49 +258,99 @@ function crowdMaterial(uniforms: { uTime: { value: number }; uCars: { value: THR
 // Placement
 // ---------------------------------------------------------------------------
 
+/**
+ * Depth (m) behind a closure barrier or a corner rail (plus how far a hit may
+ * shove a rail piece) that the spectators take; parked cars start behind it
+ * (roadblocks.ts), so people stand between the wall and the cars.
+ */
+export const CROWD_STRIP = 1.9;
+/** Rows behind a section's wall (m behind it); rails add RAIL.maxOffset. */
+const SECTION_ROWS = [0.55, 1.15];
+/** A section with fewer people than this is dropped; a section never holds more than SECTION_CAP. */
+const SECTION_MIN = 6;
+const SECTION_CAP = 170;
+/** Gate stands are thinned to this many people at density 1. */
+const GATE_CAP = 1100;
+
 interface Spot {
   x: number;
   y: number;
   z: number;
   /** Facing (three.js yaw): local +z toward the road. */
   yaw: number;
-  /** Signed route distance from the gate line. */
+  /** Signed route distance from the gate line (0 for sections). */
   ds: number;
-  /** +1 left of the road, -1 right. */
+  /** Audio stand of the gate: 0 left of the road, 1 right (sections have one). */
   side: number;
 }
 
-function placeCrowd(world: World, gate: CrowdGate, rng: Rng, density: number, rows: number): Spot[] {
+/** Shared placement state for every stand: spacing between everyone placed so far, plus the world checks. */
+function makePlacer(world: World) {
+  const cell = 0.5;
+  const taken = new Map<number, number[]>();
+  const key = (ix: number, iz: number) => (ix + 32768) * 65536 + (iz + 32768);
+  const contacts: Contact[] = [];
+  const near: number[] = [];
+  const route = world.route;
+  return {
+    /** A free standing spot: off the route corridor, not inside a block, not on a prop, clear of everyone else. */
+    ok(x: number, z: number): boolean {
+      const rp = world.routeProgress(x, z);
+      const half = route.segWidth[rp.seg] / 2;
+      const beyondEnds = !route.closed && (rp.s < 0.5 || rp.s > route.length - 0.5);
+      if (Math.abs(rp.lateral) < half + 0.5 && !beyondEnds) return false;
+      const n = world.collideCircle(x, z, 0.3, contacts);
+      for (let i = 0; i < n; i++) {
+        const c = contacts[i];
+        if (c.kind === 'wall' && (x - c.px) * c.nx + (z - c.pz) * c.nz < -0.15) return false;
+      }
+      if (world.propGrid && world.props) {
+        world.propGrid.query(x - 2, z - 2, x + 2, z + 2, near);
+        for (const id of near) {
+          const p = world.props[id];
+          if (p && (p.x - x) ** 2 + (p.z - z) ** 2 < (p.radius * 1.15 + 0.4) ** 2) return false;
+        }
+      }
+      const ix = Math.floor(x / cell);
+      const iz = Math.floor(z / cell);
+      for (let a = -1; a <= 1; a++) {
+        for (let b = -1; b <= 1; b++) {
+          const list = taken.get(key(ix + a, iz + b));
+          if (!list) continue;
+          for (let k = 0; k < list.length; k += 2) if ((list[k] - x) ** 2 + (list[k + 1] - z) ** 2 < 0.42 * 0.42) return false;
+        }
+      }
+      return true;
+    },
+    take(x: number, z: number): void {
+      const k = key(Math.floor(x / cell), Math.floor(z / cell));
+      let list = taken.get(k);
+      if (!list) taken.set(k, (list = []));
+      list.push(x, z);
+    },
+  };
+}
+type Placer = ReturnType<typeof makePlacer>;
+
+const groundY = (world: World, x: number, z: number) => world.heightAt(x, z) + (world.surfaceAt(x, z) === 'road' ? 0 : CITY.curbHeight);
+
+/** Keep every step-th person so a stand stays under its cap. */
+function thin(out: Spot[], cap: number): Spot[] {
+  if (out.length <= cap) return out;
+  const keep: Spot[] = [];
+  const step = out.length / cap;
+  for (let i = 0; i < cap; i++) keep.push(out[Math.floor(i * step)]);
+  return keep;
+}
+
+/** The start / finish crowd: sidewalk rows along the route near the line, and people behind its barriers and rails. */
+function placeGate(world: World, gate: CrowdGate, rng: Rng, density: number, rows: number, placer: Placer): Spot[] {
   const route = world.route;
   const L = route.length;
   const wrap = (d: number) => (route.closed ? ((((d + L / 2) % L) + L) % L) - L / 2 : d);
   const cy = Math.cos(gate.yaw);
   const sy = Math.sin(gate.yaw);
   const out: Spot[] = [];
-  // Minimum spacing between people: a coarse hash of placed positions.
-  const cell = 0.5;
-  const taken = new Map<number, number[]>();
-  const key = (ix: number, iz: number) => (ix + 32768) * 65536 + (iz + 32768);
-  const free = (x: number, z: number) => {
-    const ix = Math.floor(x / cell);
-    const iz = Math.floor(z / cell);
-    for (let a = -1; a <= 1; a++) {
-      for (let b = -1; b <= 1; b++) {
-        const list = taken.get(key(ix + a, iz + b));
-        if (!list) continue;
-        for (let k = 0; k < list.length; k += 2) if ((list[k] - x) ** 2 + (list[k + 1] - z) ** 2 < 0.42 * 0.42) return false;
-      }
-    }
-    return true;
-  };
-  const take = (x: number, z: number) => {
-    const k = key(Math.floor(x / cell), Math.floor(z / cell));
-    let list = taken.get(k);
-    if (!list) taken.set(k, (list = []));
-    list.push(x, z);
-  };
-  const contacts: Contact[] = [];
-  const near: number[] = [];
   // Route distance, continued past the ends of a sprint route (routeProgress clamps there).
   const p0 = route.points[0];
   const p1 = route.points[route.points.length - 1];
@@ -299,30 +367,13 @@ function placeCrowd(world: World, gate: CrowdGate, rng: Rng, density: number, ro
     const rp = world.routeProgress(x, z);
     const ds = wrap(routeS(x, z, rp.s) - gate.s);
     if (ds < -BACK || ds > FWD) return;
-    // Never on the route itself (also past the ends of a sprint route).
-    const half = route.segWidth[rp.seg] / 2;
-    const beyondEnds = !route.closed && (rp.s < 0.5 || rp.s > L - 0.5);
-    if (Math.abs(rp.lateral) < half + 0.5 && !beyondEnds) return;
     if (sidewalkRow && world.surfaceAt(x, z) !== 'sidewalk') return;
     // Clear of the gantry pillars and the firework racks beside them.
     const lx = (x - gate.position.x) * cy - (z - gate.position.z) * sy;
     const lz = (x - gate.position.x) * sy + (z - gate.position.z) * cy;
     if (Math.abs(lz) < 2.2 && Math.abs(lx) > gate.halfSpan - 1.4 && Math.abs(lx) < gate.halfSpan + 2.2) return;
-    // Not inside a block (behind a city wall) and not on a street prop.
-    const n = world.collideCircle(x, z, 0.3, contacts);
-    for (let i = 0; i < n; i++) {
-      const c = contacts[i];
-      if (c.kind === 'wall' && (x - c.px) * c.nx + (z - c.pz) * c.nz < -0.15) return;
-    }
-    if (world.propGrid && world.props) {
-      world.propGrid.query(x - 2, z - 2, x + 2, z + 2, near);
-      for (const id of near) {
-        const p = world.props[id];
-        if (p && (p.x - x) ** 2 + (p.z - z) ** 2 < (p.radius * 1.15 + 0.4) ** 2) return;
-      }
-    }
-    if (!free(x, z)) return;
-    take(x, z);
+    if (!placer.ok(x, z)) return;
+    placer.take(x, z);
     // Face the road, turned a little toward the line, with some personality.
     const gx = gate.position.x - x;
     const gz = gate.position.z - z;
@@ -330,8 +381,7 @@ function placeCrowd(world: World, gate: CrowdGate, rng: Rng, density: number, ro
     const fx = nx + (gx / gl) * 0.35;
     const fz = nz + (gz / gl) * 0.35;
     const yaw = Math.atan2(fx, fz) + rng.range(-0.3, 0.3);
-    const y = world.heightAt(x, z) + (world.surfaceAt(x, z) === 'road' ? 0 : CITY.curbHeight);
-    out.push({ x, y, z, yaw, ds, side: rp.lateral >= 0 ? 1 : -1 });
+    out.push({ x, y: groundY(world, x, z), z, yaw, ds, side: rp.lateral >= 0 ? 0 : 1 });
   };
 
   const spacing = 0.7 / Math.max(0.2, density);
@@ -358,7 +408,7 @@ function placeCrowd(world: World, gate: CrowdGate, rng: Rng, density: number, ro
     } else {
       // Closure barriers and corner rails: on the spectator side, before the parked cars.
       if (Math.abs(rp.lateral) > half + 40) continue;
-      depths = w.kind === 'barrier' ? [0.45] : [0.5, 1.05];
+      depths = w.kind === 'barrier' ? SECTION_ROWS.slice() : SECTION_ROWS.map((d) => d + RAIL.maxOffset);
     }
     const dx = (w.bx - w.ax) / (len || 1);
     const dz = (w.bz - w.az) / (len || 1);
@@ -373,20 +423,40 @@ function placeCrowd(world: World, gate: CrowdGate, rng: Rng, density: number, ro
     });
   }
   // Keep phones happy on busy corners: thin evenly down to the cap.
-  const cap = Math.round(1100 * Math.max(0.2, density));
-  if (out.length > cap) {
-    const keep: Spot[] = [];
-    const step = out.length / cap;
-    for (let i = 0; i < cap; i++) keep.push(out[Math.floor(i * step)]);
-    return keep;
+  return thin(out, Math.round(GATE_CAP * Math.max(0.2, density)));
+}
+
+/** A section of spectators lining one closure or corner rail on its far side, in front of the parked cars. */
+function placeSection(world: World, walls: readonly Wall[], rng: Rng, density: number, rows: number, placer: Placer): Spot[] {
+  const out: Spot[] = [];
+  const spacing = 0.7 / Math.max(0.2, density);
+  for (const w of walls) {
+    const len = Math.hypot(w.bx - w.ax, w.bz - w.az);
+    if (len < 0.3) continue;
+    const dx = (w.bx - w.ax) / len;
+    const dz = (w.bz - w.az) / len;
+    const depths = (w.kind === 'rail' ? SECTION_ROWS.map((d) => d + RAIL.maxOffset) : SECTION_ROWS).slice(0, Math.max(1, Math.min(2, rows)));
+    depths.forEach((depth, row) => {
+      for (let u = rng.range(0, spacing) + (row % 2) * spacing * 0.5; u < len; u += spacing * rng.range(0.85, 1.25)) {
+        if (rng.next() < 0.14) continue;
+        const along = u + rng.range(-0.1, 0.1);
+        const back = depth + rng.range(-0.08, 0.08);
+        const x = w.ax + dx * along - w.nx * back;
+        const z = w.az + dz * along - w.nz * back;
+        if (!placer.ok(x, z)) continue;
+        placer.take(x, z);
+        out.push({ x, y: groundY(world, x, z), z, yaw: Math.atan2(w.nx, w.nz) + rng.range(-0.4, 0.4), ds: 0, side: 0 });
+      }
+    });
   }
-  return out;
+  return thin(out, Math.round(SECTION_CAP * Math.max(0.3, density)));
 }
 
 // ---------------------------------------------------------------------------
 
-interface GateCrowd {
-  gate: CrowdGate;
+interface Stand {
+  /** The gate this stand cheers for, or null for a section (closure or corner). */
+  gate: CrowdGate | null;
   mesh: THREE.InstancedMesh;
   excite: THREE.InstancedBufferAttribute;
   x: Float32Array;
@@ -399,7 +469,7 @@ interface GateCrowd {
   /** Cheer waves: start time, strength, how long the stands hold it. */
   waves: { t0: number; strength: number; hold: number }[];
   maxE: number;
-  /** Index of this gate's first spot in Crowds.spots (left side, then right). */
+  /** Index of this stand's first spot in Crowds.spots (gates: left side, then right). */
   spot0: number;
 }
 
@@ -408,20 +478,20 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
   group.name = 'crowds';
   const density = opts.density ?? 1;
   const rows = opts.rows ?? 3;
+  const drawDistance = opts.drawDistance ?? 260;
   const rng = new Rng((world.seed ^ 0xc40d) >>> 0);
   const geo = personGeometry();
   const uniforms = { uTime: { value: 0 }, uCars: { value: Array.from({ length: MAX_CARS }, () => new THREE.Vector4(1e6, 1e6, 0, 0)) } };
   const mat = crowdMaterial(uniforms);
-  const crowds: GateCrowd[] = [];
+  const stands: Stand[] = [];
   const spots: CrowdSpot[] = [];
   const dummy = new THREE.Object3D();
+  const placer = makePlacer(world);
   let total = 0;
 
-  for (const gate of gates) {
-    const people = placeCrowd(world, gate, rng, density, rows);
-    if (!people.length) continue;
+  const addStand = (gate: CrowdGate | null, people: Spot[]) => {
     const n = people.length;
-    // Instance attributes live on a per gate geometry that shares the person's vertex buffers.
+    // Instance attributes live on a per stand geometry that shares the person's vertex buffers.
     const g = new THREE.BufferGeometry();
     for (const name of Object.keys(geo.attributes)) g.setAttribute(name, geo.attributes[name]);
     g.setIndex(geo.index);
@@ -430,17 +500,20 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
     const data = new Float32Array(n * 4);
     const excite = new THREE.InstancedBufferAttribute(new Float32Array(n), 1).setUsage(THREE.DynamicDrawUsage);
     const mesh = new THREE.InstancedMesh(g, mat, n);
-    mesh.name = 'crowd';
+    mesh.name = gate ? 'crowd' : 'crowdSection';
     const x = new Float32Array(n);
     const z = new Float32Array(n);
     const ds = new Float32Array(n);
     const spot = new Uint8Array(n);
     let cx = 0;
     let cz = 0;
-    const ends = [
-      { lo: Infinity, hi: -Infinity, a: [0, 0], b: [0, 0] },
-      { lo: Infinity, hi: -Infinity, a: [0, 0], b: [0, 0] },
-    ];
+    // Audio stand ends: gates per side, along the route; sections along their first wall's direction.
+    const sides = gate ? 2 : 1;
+    const ends = Array.from({ length: sides }, () => ({ lo: Infinity, hi: -Infinity, a: [0, 0], b: [0, 0] }));
+    const ax = people[0].x;
+    const az = people[0].z;
+    const ux = people[n - 1].x - ax;
+    const uz = people[n - 1].z - az;
     people.forEach((p, i) => {
       dummy.position.set(p.x, p.y, p.z);
       dummy.rotation.set(0, p.yaw, 0);
@@ -458,15 +531,15 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
       x[i] = p.x;
       z[i] = p.z;
       ds[i] = p.ds;
-      const side = p.side > 0 ? 0 : 1;
-      spot[i] = side;
-      const e = ends[side];
-      if (p.ds < e.lo) {
-        e.lo = p.ds;
+      spot[i] = p.side;
+      const e = ends[p.side];
+      const t = gate ? p.ds : (p.x - ax) * ux + (p.z - az) * uz;
+      if (t < e.lo) {
+        e.lo = t;
         e.a = [p.x, p.z];
       }
-      if (p.ds > e.hi) {
-        e.hi = p.ds;
+      if (t > e.hi) {
+        e.hi = t;
         e.b = [p.x, p.z];
       }
       cx += p.x;
@@ -486,16 +559,31 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
     for (const e of ends) {
       // A side without people still gets a (silent) spot so indices stay fixed.
       if (e.lo > e.hi) e.a = e.b = [cx, cz];
-      spots.push({ ax: e.a[0], az: e.a[1], bx: e.b[0], bz: e.b[1], level: 0 });
+      spots.push({ ax: e.a[0], az: e.a[1], bx: e.b[0], bz: e.b[1], level: 0, kind: gate ? 'gate' : 'section' });
     }
-    crowds.push({ gate, mesh, excite, x, z, ds, spot, cx, cz, radius, waves: [], maxE: 0, spot0 });
+    stands.push({ gate, mesh, excite, x, z, ds, spot, cx, cz, radius, waves: [], maxE: 0, spot0 });
     total += n;
+  };
+
+  // Gates first: their stands claim the spots near the line, sections fill in the rest.
+  for (const gate of gates) {
+    const people = placeGate(world, gate, rng, density, rows, placer);
+    if (people.length) addStand(gate, people);
+  }
+  if (opts.sections !== false && !world.openWorld) {
+    const sectionDensity = opts.sectionDensity ?? density * 0.7;
+    const sectionRows = opts.sectionRows ?? 2;
+    const sections: Wall[][] = [...(world.barrierGroups ?? []).map((g) => g.walls), ...railCurves(world)];
+    for (const walls of sections) {
+      const people = placeSection(world, walls, rng, sectionDensity, sectionRows, placer);
+      if (people.length >= SECTION_MIN) addStand(null, people);
+    }
   }
 
   // The menu backdrop never calls update(): keep the idle animation going from the render clock.
   let externalAt = -1;
-  if (crowds.length) {
-    crowds[0].mesh.onBeforeRender = () => {
+  if (stands.length) {
+    stands[0].mesh.onBeforeRender = () => {
       if (externalAt < 0 || performance.now() - externalAt > 500) uniforms.uTime.value = performance.now() / 1000;
     };
   }
@@ -505,9 +593,9 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
   const levelSum = new Float32Array(spots.length);
   const levelW = new Float32Array(spots.length);
 
-  function crowdFor(at: 'start' | 'lap' | 'finish'): GateCrowd | undefined {
-    if (at === 'lap') return crowds.find((c) => c.gate.kind === 'startFinish');
-    return crowds.find((c) => (at === 'finish' ? c.gate.kind !== 'start' : c.gate.kind !== 'finish'));
+  function standFor(at: 'start' | 'lap' | 'finish'): Stand | undefined {
+    if (at === 'lap') return stands.find((c) => c.gate?.kind === 'startFinish');
+    return stands.find((c) => c.gate && (at === 'finish' ? c.gate.kind !== 'start' : c.gate.kind !== 'finish'));
   }
 
   function update(time: number, dt: number, cars: readonly CrowdCar[], lx: number, lz: number): void {
@@ -529,7 +617,10 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
     const up = 1 - Math.exp(-dt * 7);
     const down = 1 - Math.exp(-dt * 0.8);
     const r2 = CHEER_RADIUS * CHEER_RADIUS;
-    for (const cr of crowds) {
+    for (const cr of stands) {
+      // Sections far from the camera are not drawn (gates always are: the cinematics look at them).
+      const camD = Math.hypot(lx - cr.cx, lz - cr.cz) - cr.radius;
+      cr.mesh.visible = !!cr.gate || camD < drawDistance;
       // Drop finished waves.
       for (let w = cr.waves.length - 1; w >= 0; w--) {
         const wv = cr.waves[w];
@@ -538,7 +629,7 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
       let carNear = false;
       const reach = cr.radius + CHEER_RADIUS;
       for (const c of cars) if ((c.x - cr.cx) ** 2 + (c.z - cr.cz) ** 2 < reach * reach) carNear = true;
-      const listenerNear = (lx - cr.cx) ** 2 + (lz - cr.cz) ** 2 < (cr.radius + 220) ** 2;
+      const listenerNear = camD < 220;
       // Idle and nobody around: nothing to compute.
       if (!carNear && !cr.waves.length && cr.maxE < 0.005) continue;
       const e = cr.excite.array as Float32Array;
@@ -588,6 +679,7 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
     group,
     spots,
     count: total,
+    sectionCount: stands.filter((s) => !s.gate).length,
     get enabled() {
       return enabled;
     },
@@ -596,13 +688,13 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
       group.visible = on;
     },
     cheer(at, strength = 1) {
-      const cr = crowdFor(at);
+      const cr = standFor(at);
       if (!cr || !enabled) return;
       cr.waves.push({ t0: now, strength, hold: at === 'finish' ? 7 : at === 'start' ? 3.5 : 2.5 });
     },
     update,
     dispose() {
-      for (const c of crowds) {
+      for (const c of stands) {
         c.mesh.geometry.dispose();
         c.mesh.dispose();
       }

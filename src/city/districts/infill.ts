@@ -1,34 +1,64 @@
 /**
  * Infill: fills the voids of the street frontage (stretches of sidewalk line
- * with no building behind them) with low, mostly drivable space, so collision
- * always matches what is visibly there and racers can cut corners creatively.
+ * with no building behind them) with low, mostly drivable space full of
+ * destructible clutter, so collision always matches what is visibly there
+ * and racers who cut a corner crash through cafe tables, bushes and crates
+ * instead of hitting an invisible wall or a solid box.
  *
  * Runs in the 'late' phase, after buildings are placed, on the void runs
  * blocks.ts finds along every block ring. Heuristics, per run:
- *  - Convex block corners (where void runs are most likely: acute and obtuse
- *    junction angles, busy nodes where square corner buildings do not fit)
- *    become corner plazas (drivable concrete, a fountain on roomy corners of
- *    busy junctions). The sharper the corner, the likelier.
+ *  - Convex block corners (the inside of every turn through that junction)
+ *    become corner pockets: drivable concrete reaching along both streets.
+ *    Most corners have a building a few meters along one street, so the
+ *    pocket may be shallow on that side (CFG.cornerMinSide) as long as it
+ *    wraps the corner. The sharper the corner, the likelier.
  *  - Long straight voids (large footprint gaps) become parking lots
- *    (drivable asphalt with painted bays), shorter ones small plazas, and the
- *    rest raised planters (solid, the frontage wall stays and is drawn as the
- *    planter's edge).
+ *    (drivable asphalt with painted bays), shorter ones small plazas, and
+ *    shallow ones verges (a drivable strip of pots and bushes).
+ *  - A share (CFG.solidChance) stays solid on purpose: raised planters and
+ *    the odd fountain on a roomy corner of a busy junction, so the clutter
+ *    has something hard among it. Voids where nothing drivable fits also
+ *    become raised planters.
  *  - Drivable infill stays CITY.districts.infill.gap m from any other
  *    drivable space and out of buildings and exclusions, and is walled on
  *    its back sides with low curbs (look 'lotEdge').
+ *  - Every drivable pocket is furnished by theme (cafe, garden, market, lot
+ *    clutter) with destructible props (AreaBuild.destructibles).
  * Whatever is left is a low 'boundary' wall drawn by render/districts/infill.ts.
- *
- * Content to add: parked cars in lots, bollards, kiosks, plaza benches,
- * better fountains, light poles, food trucks.
  */
 import { CITY } from '../config';
 import { Vec2, sqrt } from '../../sim/math';
+import { Rng } from '../../sim/prng';
 import type { Wall } from '../blocks';
-import type { Area, DistrictModule } from './types';
+import type { DistrictPropKind } from '../props';
+import { PROP_DEFS } from '../props';
+import type { Area, AreaBuild, DistrictModule } from './types';
 import { emptyBuild } from './types';
-import { PolygonIndex, circlePolygon, pointInPolygon, polyWalls, polygonBounds, rectPolygon } from './geom';
+import { PolygonIndex, circlePolygon, distToPolygonEdge, pointInPolygon, polyWalls, polygonBounds, rectPolygon } from './geom';
 
 const CFG = CITY.districts.infill;
+
+/** Pocket themes: which clutter a drivable pocket gets (Area.params.theme indexes this). */
+export const INFILL_THEMES = ['cafe', 'garden', 'market', 'lot'] as const;
+export type InfillTheme = (typeof INFILL_THEMES)[number];
+
+/**
+ * Clutter per theme: grid spacing (m), share of grid spots that get a prop,
+ * and the kinds with their weights. Shallow pockets (one row) are bushes and
+ * pots. Lots stay mostly open: they are runoff, not a maze.
+ */
+const FURNISH: Record<InfillTheme, { spacing: number; fill: number; kinds: [DistrictPropKind, number][] }> = {
+  cafe: { spacing: 2.8, fill: 0.75, kinds: [['cafeTable', 6], ['planterPot', 2], ['newsBox', 1]] },
+  garden: { spacing: 2.3, fill: 0.7, kinds: [['bush', 6], ['planterPot', 3]] },
+  market: { spacing: 2.2, fill: 0.6, kinds: [['crate', 4], ['barrel', 3], ['planterPot', 1], ['newsBox', 1]] },
+  lot: { spacing: 4.5, fill: 0.3, kinds: [['barrel', 5], ['crate', 2], ['trashBags', 2]] },
+};
+/** At most this many props per pocket (big lots stay cheap). */
+const MAX_PROPS = 36;
+/** Props keep this far from the pocket's sides beyond their radius (m). */
+const EDGE_CLEAR = 0.35;
+/** Pockets shallower than this (m) get a single row of greenery. */
+const SHALLOW = 4.6;
 
 function distToPolyline(x: number, z: number, pts: Vec2[]): number {
   let best = Infinity;
@@ -44,6 +74,11 @@ function distToPolyline(x: number, z: number, pts: Vec2[]): number {
     if (d < best) best = d;
   }
   return best;
+}
+
+/** Local frame of a pocket for furnishing: origin, along axis u (length lu), depth axis w (length lw). Parallelograms included. */
+function frameParams(o: Vec2, u: Vec2, w: Vec2, lu: number, lw: number): Record<string, number> {
+  return { ox: o.x, oz: o.z, ux: u.x, uz: u.z, wx: w.x, wz: w.z, lu, lw };
 }
 
 export const infillModule: DistrictModule = {
@@ -77,8 +112,20 @@ export const infillModule: DistrictModule = {
     };
 
     const add = (variant: string, polygon: Vec2[], frontSides: number, face: number, node: number, extra: Record<string, number>) => {
-      placed.add({ polygon });
-      ctx.addArea({ kind: 'infill', variant, polygon, path: [], nodes: node >= 0 ? [node] : [], edges: [], faces: [face], params: { frontSides, ...extra } });
+      // Only drivable pockets need the tunnelling gap; a solid planter may sit right beside one.
+      if (variant !== 'planter') placed.add({ polygon });
+      const params = { frontSides, seed: rng.int(1, 0x7ffffffe), ...extra };
+      ctx.addArea({ kind: 'infill', variant, polygon, path: [], nodes: node >= 0 ? [node] : [], edges: [], faces: [face], params });
+    };
+    const theme = (weights: [InfillTheme, number][]): number => {
+      let total = 0;
+      for (const [, w] of weights) total += w;
+      let r = rng.next() * total;
+      for (const [t, w] of weights) {
+        r -= w;
+        if (r <= 0) return INFILL_THEMES.indexOf(t);
+      }
+      return INFILL_THEMES.indexOf(weights[weights.length - 1][0]);
     };
 
     for (const run of L.voids) {
@@ -88,7 +135,7 @@ export const infillModule: DistrictModule = {
       for (let i = 1; i < pts.length; i++) pos.push(pos[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z));
       const used: [number, number][] = [];
 
-      // 1. Corner plazas.
+      // 1. Corner pockets.
       for (const c of run.corners) {
         if (c.angle > 160 * (Math.PI / 180)) continue;
         const i = c.index;
@@ -96,30 +143,44 @@ export const infillModule: DistrictModule = {
         const C = pts[i];
         const len1 = pos[i] - pos[i - 1];
         const len2 = pos[i + 1] - pos[i];
-        if (len1 < 5 || len2 < 5) continue;
+        // Room along both streets, short of the buildings that end the void.
+        const room1 = Math.min(CFG.cornerReach, len1 - CFG.cornerMargin);
+        const room2 = Math.min(CFG.cornerReach, len2 - CFG.cornerMargin);
+        if (Math.min(room1, room2) < CFG.cornerMinSide || Math.max(room1, room2) < CFG.minRun) continue;
         const deg = (c.angle * 180) / Math.PI;
-        const chance = deg < 80 ? 0.9 : deg < 110 ? 0.75 : 0.55;
+        const chance = deg < 80 ? 0.97 : deg < 110 ? 0.92 : 0.85;
         if (!rng.chance(chance)) continue;
         const u1 = { x: (pts[i - 1].x - C.x) / len1, z: (pts[i - 1].z - C.z) / len1 };
         const u2 = { x: (pts[i + 1].x - C.x) / len2, z: (pts[i + 1].z - C.z) / len2 };
-        let L1 = Math.min(CFG.cornerReach, len1);
-        let L2 = Math.min(CFG.cornerReach, len2);
-        for (let attempt = 0; attempt < 5 && Math.min(L1, L2) >= 5; attempt++) {
+        const solid = rng.chance(CFG.solidChance);
+        // Candidate reaches along each street, largest pocket first; a corner keeps wrapping the
+        // corner even when one side has to stay shallow to clear a building.
+        const reaches = (room: number) => [1, 0.78, 0.6, 0.45, 0.3].map((k) => Math.max(CFG.cornerMinSide, room * k)).filter((v, j, all) => j === 0 || v < all[j - 1] - 0.2);
+        const pairs: [number, number][] = [];
+        for (const a of reaches(room1)) for (const b of reaches(room2)) if (Math.max(a, b) >= CFG.minRun - 1e-9) pairs.push([a, b]);
+        pairs.sort((p, q) => q[0] * q[1] - p[0] * p[1] || q[0] - p[0]);
+        for (const [L1, L2] of pairs.slice(0, 12)) {
           const a = { x: C.x + u1.x * L1, z: C.z + u1.z * L1 };
           const b = { x: C.x + u2.x * L2, z: C.z + u2.z * L2 };
           const poly = [a, { x: C.x, z: C.z }, b, { x: a.x + u2.x * L2, z: a.z + u2.z * L2 }];
-          if (valid(poly, [a, C, b], true)) {
+          if (valid(poly, [a, C, b], !solid)) {
             used.push([pos[i] - L1, pos[i] + L2]);
+            if (solid) {
+              add('planter', poly, 2, run.face, c.node, { depth: Math.min(L1, L2), length: Math.max(L1, L2) });
+              break;
+            }
             const busy = c.node >= 0 && g.nodes[c.node].edges.length >= 4;
-            const fountain = Math.min(L1, L2) >= 10 && rng.chance(CFG.fountainChance + (busy ? 0.25 : 0));
+            const fountain = Math.min(L1, L2) >= 10 && rng.chance(CFG.fountainChance + (busy ? 0.15 : 0));
             const fr = Math.min(3, Math.max(1.6, Math.min(L1, L2) * 0.16));
             const cx = (poly[0].x + poly[1].x + poly[2].x + poly[3].x) / 4;
             const cz = (poly[0].z + poly[1].z + poly[2].z + poly[3].z) / 4;
-            add('cornerPlaza', poly, 2, run.face, c.node, { angle: c.angle, reach1: L1, reach2: L2, fountain: fountain ? fr : 0, fx: cx, fz: cz });
+            // Shallow corners are a strip of greenery; roomy ones a cafe terrace, a garden or a market corner.
+            const t = Math.min(L1, L2) < SHALLOW ? theme([['garden', 3], ['market', 1]]) : theme([['cafe', 3], ['garden', 2], ['market', 2]]);
+            // Frame: along street 1 (u1) and into the block along street 2 (u2), so a shallow side is the depth.
+            const frame = L2 <= L1 ? frameParams(C, u1, u2, L1, L2) : frameParams(C, u2, u1, L2, L1);
+            add('cornerPlaza', poly, 2, run.face, c.node, { angle: c.angle, reach1: L1, reach2: L2, fountain: fountain ? fr : 0, fx: cx, fz: cz, theme: t, ...frame });
             break;
           }
-          L1 *= 0.8;
-          L2 *= 0.8;
         }
       }
 
@@ -146,25 +207,39 @@ export const infillModule: DistrictModule = {
         for (const [s0, s1] of pieces) {
           if (s1 - s0 < CFG.minRun) continue;
           const r = rng.next();
-          const kind = s1 - s0 >= CFG.lotMinLen && r < CFG.lotChance ? 'lot' : r < CFG.lotChance + CFG.plazaChance ? 'plaza' : 'planter';
-          let done = false;
-          if (kind !== 'planter') {
-            const maxD = kind === 'lot' ? CFG.lotDepth : CFG.plazaDepth;
-            for (const inset of [1, 4, 8]) {
-              const a = s0 + inset;
-              const len = s1 - s0 - 2 * inset;
-              if (len < CFG.minRun) break;
-              for (let D = maxD; D >= 5 && !done; D -= 3) {
+          const solid = rng.chance(CFG.solidChance);
+          const kind = solid ? 'planter' : s1 - s0 >= CFG.lotMinLen && r < CFG.lotChance ? 'lot' : r < CFG.lotChance + CFG.plazaChance ? 'plaza' : 'verge';
+          /** Try insets [start, end] (m off each end of the piece) and depths in order; first valid wins. */
+          const tryRect = (variant: 'lot' | 'plaza' | 'verge', insets: [number, number][], depths: number[]): boolean => {
+            for (const [i0, i1] of insets) {
+              const a = s0 + i0;
+              const len = s1 - s0 - i0 - i1;
+              if (len < CFG.minRun) continue;
+              for (const D of depths) {
                 const o = at(a);
                 const poly = rectPolygon(o, u, w, len, D);
                 if (!valid(poly, [poly[0], poly[1]], true)) continue;
-                const fountain = kind === 'plaza' && Math.min(len, D) >= 10 && rng.chance(CFG.fountainChance);
+                const fountain = variant === 'plaza' && Math.min(len, D) >= 10 && rng.chance(CFG.fountainChance);
                 const fr = Math.min(3, Math.max(1.6, Math.min(len, D) * 0.16));
-                add(kind, poly, 1, run.face, -1, { depth: D, length: len, fountain: fountain ? fr : 0, fx: o.x + u.x * len * 0.5 + w.x * D * 0.5, fz: o.z + u.z * len * 0.5 + w.z * D * 0.5 });
-                done = true;
+                const t = variant === 'lot' ? INFILL_THEMES.indexOf('lot') : variant === 'verge' ? INFILL_THEMES.indexOf('garden') : theme([['cafe', 2], ['garden', 2], ['market', 1]]);
+                add(variant, poly, 1, run.face, -1, { depth: D, length: len, fountain: fountain ? fr : 0, fx: o.x + u.x * len * 0.5 + w.x * D * 0.5, fz: o.z + u.z * len * 0.5 + w.z * D * 0.5, theme: t, ...frameParams(o, u, w, len, D) });
+                return true;
               }
-              if (done) break;
             }
+            return false;
+          };
+          let done = false;
+          if (kind === 'lot' || kind === 'plaza') {
+            const maxD = kind === 'lot' ? CFG.lotDepth : CFG.plazaDepth;
+            const depths: number[] = [];
+            for (let D = maxD; D >= 5; D -= 3) depths.push(D);
+            done = tryRect(kind, [[1, 1], [4, 4], [8, 8]], depths);
+          }
+          // A shallow drivable strip where nothing deeper fits.
+          // Trimming one end clears a junction mouth or an alley entrance next to the piece.
+          if (!done && kind !== 'planter') {
+            const vd = [CFG.vergeDepth[0], (CFG.vergeDepth[0] + CFG.vergeDepth[1]) / 2, CFG.vergeDepth[1]];
+            done = tryRect('verge', [[0.5, 0.5], [0.5, 2.5], [2.5, 0.5], [2.5, 2.5], [0.5, 4.5], [4.5, 0.5], [4.5, 4.5]], vd);
           }
           if (!done) {
             const len = s1 - s0 - 0.4;
@@ -227,6 +302,52 @@ export const infillModule: DistrictModule = {
         b.hints.push({ kind: 'bay', points: [a, { x: a.x - wx * bayDepth, z: a.z - wz * bayDepth }], values: [] });
       }
     }
+    furnish(b, area);
     return b;
   },
 };
+
+/**
+ * Scatter the pocket's clutter on a jittered grid in its local frame (so
+ * parallelogram corners work too), clear of the sides and the fountain.
+ * Shallow pockets get a single row of bushes and pots down the middle.
+ */
+function furnish(b: AreaBuild, area: Area): void {
+  const P = area.params;
+  if (P.theme === undefined || P.lu === undefined) return;
+  const t = INFILL_THEMES[P.theme] ?? 'garden';
+  const f = FURNISH[t];
+  const rng = new Rng(P.seed >>> 0 || 1);
+  const lift = area.variant === 'lot' ? 0 : CITY.curbHeight;
+  const total = f.kinds.reduce((s, [, w]) => s + w, 0);
+  const pick = (): DistrictPropKind => {
+    let r = rng.next() * total;
+    for (const [k, w] of f.kinds) {
+      r -= w;
+      if (r <= 0) return k;
+    }
+    return f.kinds[0][0];
+  };
+  // Facing: toward the frontage (minus the depth axis), so tables and boxes square up with the street.
+  const yaw = Math.atan2(-P.wx, -P.wz);
+  const shallow = P.lw < SHALLOW;
+  const spacing = shallow ? Math.min(f.spacing, 2.3) : f.spacing;
+  const rows = shallow ? [P.lw / 2] : [];
+  if (!shallow) for (let v = spacing * 0.6; v < P.lw - 0.5; v += spacing) rows.push(v);
+  let count = 0;
+  for (const v0 of rows) {
+    for (let u0 = spacing * 0.55 + rng.range(0, spacing * 0.3); u0 < P.lu - 0.5 && count < MAX_PROPS; u0 += spacing) {
+      if (!rng.chance(shallow ? Math.min(0.9, f.fill + 0.15) : f.fill)) continue;
+      const kind: DistrictPropKind = shallow && t !== 'lot' ? (rng.chance(0.65) ? 'bush' : 'planterPot') : pick();
+      const r = PROP_DEFS[kind].radius;
+      const u = u0 + rng.range(-0.35, 0.35);
+      const v = shallow ? v0 + rng.range(-0.15, 0.15) : v0 + rng.range(-0.35, 0.35);
+      const x = P.ox + P.ux * u + P.wx * v;
+      const z = P.oz + P.uz * u + P.wz * v;
+      if (!pointInPolygon(x, z, area.polygon) || distToPolygonEdge(x, z, area.polygon) < r + EDGE_CLEAR) continue;
+      if (P.fountain > 0 && Math.hypot(x - P.fx, z - P.fz) < P.fountain + r + 0.8) continue;
+      b.destructibles.push({ kind, x, z, yaw: yaw + rng.range(-0.2, 0.2), lift, area: area.id });
+      count++;
+    }
+  }
+}

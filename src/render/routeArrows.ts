@@ -391,7 +391,10 @@ function buildRailMeshes(world: World, tex: THREE.Texture): RailMeshes {
     const k1 = k0 + l.subs[p];
     let total = 0;
     for (let k = k0; k < k1; k++) total += Math.hypot(l.bx[k] - l.ax[k], l.bz[k] - l.az[k]);
-    const fl = (l.bx[k1 - 1] - l.ax[k0]) * l.nz[k0] - (l.bz[k1 - 1] - l.az[k0]) * l.nx[k0] > 0 ? 1 : -1;
+    // The panel's u runs along the piece (a -> b), so its chevrons point toward b from either side;
+    // mirror them only when the piece runs against the way the route drives past it.
+    const rp = world.routeProgress((l.ax[k0] + l.bx[k1 - 1]) / 2, (l.az[k0] + l.bz[k1 - 1]) / 2);
+    const fl = (l.bx[k1 - 1] - l.ax[k0]) * rp.tx + (l.bz[k1 - 1] - l.az[k0]) * rp.tz >= 0 ? 1 : -1;
     const ph = (l.group[p] * 0.31 + p * 0.08) % 1;
     let s = 0;
     for (let k = k0; k < k1; k++) {

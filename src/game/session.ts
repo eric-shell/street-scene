@@ -12,7 +12,7 @@ import { VisualBuild } from '../sim/build';
 import { DT } from '../sim/constants';
 import { CarView, CarPose } from '../render/carView';
 import { LightTrails } from '../render/lightTrails';
-import { EngineType, EngineVoice, audioHub } from '../audio/engineAudio';
+import { EngineVoice, audioHub } from '../audio/engineAudio';
 import { Sfx } from '../audio/sfx';
 import { manifestCar } from '../render/carAssets';
 import { CarAssetLibrary } from '../render/carAssets';
@@ -21,11 +21,14 @@ import { RaceCinematics } from '../render/cinematics';
 import { GameRenderer, NightScene, createNightScene } from '../render/scene';
 import type { CrowdCar } from '../render/crowds';
 import { FreeFlyCamera } from '../render/freeFly';
+import { DroneMode } from './drone';
+import type { CameraMode } from '../render/camera';
 import { InputManager } from '../input/inputManager';
 import { Hud, HudData } from '../ui/hud';
 import { Settings } from '../ui/settings';
 import { formatTime } from '../ui/format';
 import { ReplayData } from '../replay/replay';
+import type { Area } from '../city/districts/types';
 
 interface Snap extends CarPose {
   vx: number;
@@ -84,10 +87,31 @@ function lerpSnap(a: Snap, b: Snap, t: number): Snap {
   };
 }
 
-export type ReplayCamMode = 'chase' | 'close' | 'hood' | 'tv' | 'orbit' | 'free';
+export type ReplayCamMode = 'chase' | 'close' | 'bumper' | 'hood' | 'tv' | 'orbit' | 'free';
 const REPLAY_CAMS: ReplayCamMode[] = ['chase', 'tv', 'orbit', 'close', 'hood', 'free'];
+/** Number key views: 1 chase, 2 close, 3 bumper, 4 hood, 5 trackside TV, 6 orbit, 7 free fly (replays); 0 is the drone. */
+const VIEW_KEYS: ReplayCamMode[] = ['chase', 'close', 'bumper', 'hood', 'tv', 'orbit', 'free'];
+const isFollowCam = (v: ReplayCamMode): v is CameraMode => v === 'chase' || v === 'close' || v === 'bumper' || v === 'hood';
 /** The circuit gantry sign switches to the next label this many ticks after the player passes under it. */
 const SIGN_DELAY = 70;
+/** District names for the open world HUD; plain streets and filler pockets read as the city. */
+const AREA_NAMES: Partial<Record<Area['kind'], string>> = {
+  alley: 'Raceway alley',
+  backAlley: 'Back alley',
+  park: 'Park',
+  subway: 'Under the El',
+  river: 'River channel',
+  roundabout: 'Roundabout',
+  monument: 'Monument',
+  waterfront: 'Waterfront',
+  lake: 'Lake',
+};
+const INFILL_NAMES: Record<string, string> = { lot: 'Parking lot', plaza: 'Plaza', cornerPlaza: 'Corner plaza', verge: 'Downtown' };
+/** A new district name shows as a HUD message once the car has been in it this long (s). */
+const AREA_SETTLE = 0.6;
+/** A crowd section's heard excitement crossing this cheers out loud, at most every SECTION_CHEER_GAP s. */
+const SECTION_CHEER_LEVEL = 0.7;
+const SECTION_CHEER_GAP = 8;
 
 export interface SessionOptions {
   config: RaceConfig;
@@ -133,8 +157,22 @@ export class RaceSession {
   private outroStarted = false;
   private alpha = 0;
   private time = 0;
+  /** Open world HUD: props the player broke, top speed (km/h), the district shown and the one being entered. */
+  private smashed = 0;
+  private topKmh = 0;
+  private areaName = 'Downtown';
+  private areaNext = '';
+  private areaFor = 0;
   private blur = 0;
   private replayCam: ReplayCamMode = 'chase';
+  /** Live sessions: a trackside or orbit view picked with the number keys (null: the follow camera). */
+  private liveView: 'tv' | 'orbit' | null = null;
+  /** Photo mode drone (0 key) and whether it paused the sim (live sessions hold still while it flies). */
+  private drone: DroneMode | null = null;
+  private droneResume = false;
+  private readonly uiRoot: HTMLElement;
+  /** The camera rendered last frame (the drone starts from it). */
+  private lastCamera: THREE.PerspectiveCamera | null = null;
   private freeCam: FreeFlyCamera | null = null;
   private tvPoint = new THREE.Vector3();
   private tvValid = false;
@@ -156,6 +194,9 @@ export class RaceSession {
   private fireworksLap = -1;
   /** Racer poses for the crowd (reused every frame). */
   private readonly crowdCars: CrowdCar[];
+  /** Last heard excitement and last cheer time (s) per crowd section spot. */
+  private readonly sectionLevel: number[] = [];
+  private readonly sectionCheerAt: number[] = [];
   readyPromise: Promise<void>;
 
   constructor(
@@ -167,6 +208,7 @@ export class RaceSession {
     private readonly opts: SessionOptions,
   ) {
     this.isReplay = !!opts.replay;
+    this.uiRoot = uiRoot;
     this.race = createRace(opts.config);
     this.night = createNightScene(this.race.world, gr, settings);
     this.cam = new ChaseCamera(this.race.world);
@@ -216,8 +258,7 @@ export class RaceSession {
     if (hub) {
       hub.setVolume(settings.engineVolume);
       this.engines = this.race.cars.map((rc, i) => {
-        const type = ((manifestCar(rc.carId) as unknown as { engine?: { type?: EngineType } }).engine?.type ?? 'i4') as EngineType;
-        return new EngineVoice(type, i === 0 ? 0.26 : 0.2);
+        return new EngineVoice(manifestCar(rc.carId).engine, i === 0 ? 0.26 : 0.2);
       });
       // Crashes, nitrous, scrapes, horn and countdown beeps (src/audio/sfx.ts).
       this.sfx = new Sfx();
@@ -233,11 +274,51 @@ export class RaceSession {
     }
     this.unsub.push(
       input.on('camera', () => {
-        if (this.cine.phase === 'outro') return;
+        // C is the drone's descend key: no camera cycling while it flies.
+        if (this.cine.phase === 'outro' || this.drone) return;
         if (this.isReplay) this.cycleReplayCam();
-        else this.hud.message(`Camera: ${this.cam.cycle()}`, 1);
+        else {
+          this.liveView = null;
+          this.cam.resetOrbit();
+          this.hud.message(`Camera: ${this.cam.cycle()}`, 1);
+        }
       }),
+      input.onView((n) => this.onViewKey(n)),
     );
+    // A mouse drag orbits the follow camera around the car at any time (touch keeps its steering).
+    {
+      const canvas = gr.canvas;
+      let drag: { id: number; x: number; y: number } | null = null;
+      const down = (e: PointerEvent) => {
+        if (e.pointerType === 'touch' || e.button !== 0 || this.drone || (this.isReplay && this.replayCam === 'free')) return;
+        drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
+        this.cam.setOrbiting(true);
+        canvas.style.cursor = 'grabbing';
+      };
+      const move = (e: PointerEvent) => {
+        if (!drag || e.pointerId !== drag.id) return;
+        this.cam.orbitBy(e.clientX - drag.x, e.clientY - drag.y);
+        drag.x = e.clientX;
+        drag.y = e.clientY;
+      };
+      const up = (e: PointerEvent) => {
+        if (!drag || e.pointerId !== drag.id) return;
+        drag = null;
+        this.cam.setOrbiting(false);
+        canvas.style.cursor = '';
+      };
+      canvas.addEventListener('pointerdown', down);
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+      window.addEventListener('pointercancel', up);
+      this.unsub.push(() => {
+        canvas.removeEventListener('pointerdown', down);
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        window.removeEventListener('pointercancel', up);
+        canvas.style.cursor = '';
+      });
+    }
     input.setTouchVisible(!this.isReplay);
     this.cineOn = !this.isReplay && opts.cinematics !== false;
     if (this.cineOn) {
@@ -280,12 +361,79 @@ export class RaceSession {
     } else if (this.finishedAt >= 0 && !this.resultsShown) this.skipFinish = true;
   }
 
+  /** True while the photo mode drone flies (Escape brings the camera back to the car). */
+  get droneActive(): boolean {
+    return !!this.drone;
+  }
+
+  /**
+   * 0 key: fly the camera drone from where the camera is now; 0 (or Escape)
+   * again flies back to the car. A live session holds still meanwhile (the
+   * drone uses the driving keys), a replay keeps playing.
+   */
+  toggleDrone(): void {
+    if (this.drone) {
+      this.drone.dispose();
+      this.drone = null;
+      // Keys pressed for the drone (WASD, E/Q, R) must not drive, shift or reset the car.
+      this.input.releaseAll();
+      if (this.droneResume) this.paused = false;
+      this.droneResume = false;
+      this.hud.root.style.display = '';
+      this.input.setTouchVisible(!this.isReplay);
+      this.cam.snap();
+      return;
+    }
+    if (this.cine.active || this.paused) return;
+    const cam = this.lastCamera ?? this.cam.camera;
+    const dir = cam.getWorldDirection(new THREE.Vector3());
+    this.drone = new DroneMode(this.gr, this.night, this.race.world, this.uiRoot, () => this.toggleDrone(), {
+      start: { x: cam.position.x, y: cam.position.y, z: cam.position.z, yaw: Math.atan2(dir.x, dir.z), pitch: Math.asin(Math.max(-1, Math.min(1, dir.y))) },
+      escape: false,
+      hint: 'WASD fly · drag to look · Space / Ctrl up / down · Shift boost · wheel speed · T tour · 0 or Esc back to the car',
+    });
+    this.droneResume = !this.isReplay;
+    if (this.droneResume) {
+      this.paused = true;
+      this.input.releaseAll();
+    }
+    this.hud.root.style.display = 'none';
+    this.input.setTouchVisible(false);
+  }
+
+  /** Number keys: 1..7 pick a view (VIEW_KEYS), 0 toggles the drone. */
+  private onViewKey(n: number): void {
+    if (this.cine.phase === 'outro') return;
+    if (n === 0) return this.toggleDrone();
+    const view = VIEW_KEYS[n - 1];
+    if (!view || (view === 'free' && !this.isReplay)) return;
+    if (this.drone) this.toggleDrone();
+    if (this.isReplay) return this.setReplayCam(view);
+    this.cam.resetOrbit();
+    if (isFollowCam(view)) {
+      this.liveView = null;
+      this.cam.mode = view;
+      this.cam.snap();
+    } else {
+      this.liveView = view === 'tv' ? 'tv' : 'orbit';
+      this.tvValid = false;
+    }
+    this.hud.message(`Camera: ${view}`, 1);
+  }
+
   private cycleReplayCam(): void {
-    this.replayCam = REPLAY_CAMS[(REPLAY_CAMS.indexOf(this.replayCam) + 1) % REPLAY_CAMS.length];
-    if (this.replayCam === 'chase' || this.replayCam === 'close' || this.replayCam === 'hood') {
-      this.cam.mode = this.replayCam === 'hood' ? 'hood' : this.replayCam;
+    this.setReplayCam(REPLAY_CAMS[(REPLAY_CAMS.indexOf(this.replayCam) + 1) % REPLAY_CAMS.length]);
+  }
+
+  private setReplayCam(view: ReplayCamMode): void {
+    this.replayCam = view;
+    this.tvValid = false;
+    if (isFollowCam(this.replayCam)) {
+      this.cam.mode = this.replayCam;
+      this.cam.snap();
     }
     if (this.replayCam === 'free') {
+      if (this.freeCam) return;
       this.freeCam = new FreeFlyCamera(this.gr.canvas);
       const p = this.curr[0];
       this.freeCam.set(new THREE.Vector3(p.x - Math.sin(p.yaw) * 12, p.y + 6, p.z - Math.cos(p.yaw) * 12), p.yaw, -0.3);
@@ -400,6 +548,7 @@ export class RaceSession {
       // Rivals crossing the finish get a smaller cheer.
       if (e.type === 'finish' && e.car !== 0 && !this.openWorld) this.night.crowds.cheer('finish', 0.8);
       if (e.car !== 0) continue;
+      if (e.type === 'prop') this.smashed++;
       const rc = r.cars[0];
       switch (e.type) {
         case 'lap': {
@@ -446,10 +595,16 @@ export class RaceSession {
     const p = poses[0];
     const player = r.cars[0];
     this.cam.impact(player.state.impact);
-    const camera = this.updateCamera(p, dt);
+    let camera: THREE.PerspectiveCamera;
+    if (this.drone) {
+      this.drone.update(dt);
+      camera = this.drone.camera;
+    } else camera = this.updateCamera(p, dt);
+    this.lastCamera = camera;
     this.trails.update(this.views[0].root, camera, p.nitro && !this.paused, dt);
     this.carLight.position.set(p.x - Math.sin(p.yaw) * 1.5, p.y + 4.2, p.z - Math.cos(p.yaw) * 1.5);
-    this.night.lighting.update(new THREE.Vector3(p.x, p.y, p.z));
+    // The few real point lights follow the action, or the drone when it flies off.
+    this.night.lighting.update(this.drone ? camera.position : new THREE.Vector3(p.x, p.y, p.z));
     this.night.update(this.time);
     // Corner rail pieces shoved by hits this race.
     this.night.arrows.syncRails(r.rails);
@@ -485,6 +640,20 @@ export class RaceSession {
     }
     this.night.crowds.update(this.time, this.paused ? 0 : dt, cc, camera.position.x, camera.position.z);
     this.sfx?.updateCrowds(this.night.crowds.spots, this.paused);
+    // A section erupting as racers pass: a burst of cheering and applause from it (at most every few seconds).
+    if (!this.paused) {
+      const spots = this.night.crowds.spots;
+      for (let i = 0; i < spots.length; i++) {
+        const s = spots[i];
+        if (s.kind !== 'section') continue;
+        const was = this.sectionLevel[i] ?? 0;
+        this.sectionLevel[i] = s.level;
+        if (s.level > SECTION_CHEER_LEVEL && was <= SECTION_CHEER_LEVEL && this.time > (this.sectionCheerAt[i] ?? -1e9) + SECTION_CHEER_GAP) {
+          this.sectionCheerAt[i] = this.time;
+          this.sfx?.crowdCheer((s.ax + s.bx) / 2, (s.az + s.bz) / 2, 0.55, true);
+        }
+      }
+    }
     // Horn (live races only, never recorded) flashes the player's headlights while held.
     const horn = !this.isReplay && !this.paused && this.input.hornHeld();
     this.sfx?.horn(horn);
@@ -533,17 +702,19 @@ export class RaceSession {
 
   private updateCamera(p: Snap, dt: number): THREE.PerspectiveCamera {
     const len = this.views[0].car.dimensions.length;
-    if (!this.isReplay || this.replayCam === 'chase' || this.replayCam === 'close' || this.replayCam === 'hood') {
+    // Cinematics always run on the follow camera; the number key views take over afterwards.
+    const view: ReplayCamMode = this.isReplay ? this.replayCam : this.cine.active ? 'chase' : (this.liveView ?? 'chase');
+    if (isFollowCam(view)) {
       this.cam.update(p, p.vx, p.vz, p.nitro, len, dt);
       this.applyCinematics(p, dt);
       return this.cam.camera;
     }
     const cam = this.cam.camera;
-    if (this.replayCam === 'free' && this.freeCam) {
+    if (view === 'free' && this.freeCam) {
       this.freeCam.update(dt);
       return this.freeCam.camera;
     }
-    if (this.replayCam === 'orbit') {
+    if (view === 'orbit') {
       const a = this.time * 0.35;
       cam.position.set(p.x + Math.sin(a) * 8, p.y + 2.6, p.z + Math.cos(a) * 8);
       cam.lookAt(p.x, p.y + 0.8, p.z);
@@ -552,15 +723,25 @@ export class RaceSession {
     // TV: a roadside camera ahead of the car that tracks it as it passes.
     const d = this.tvPoint.distanceTo(new THREE.Vector3(p.x, p.y, p.z));
     if (!this.tvValid || d > 70) {
-      // Next roadside camera: on the route ahead, near the curb, so it is never inside a building.
-      const route = this.race.world.route;
-      const rc = this.race.cars[0];
-      const ahead = routeSample(route, rc.rawS + 45);
-      const half = route.segWidth[ahead.seg] / 2 - 1;
-      const side = this.tvSide = -this.tvSide;
-      const x = ahead.x + ahead.tz * half * side;
-      const z = ahead.z - ahead.tx * half * side;
-      this.tvPoint.set(x, this.race.world.heightAt(x, z) + 3.2, z);
+      const side = (this.tvSide = -this.tvSide);
+      if (this.race.world.openWorld) {
+        // Open world: off the route, so a point ahead along the car's heading, pulled in front of any wall.
+        const fx = Math.sin(p.yaw);
+        const fz = Math.cos(p.yaw);
+        const pt = new THREE.Vector3(p.x + fx * 40 + fz * 5 * side, 0, p.z + fz * 40 - fx * 5 * side);
+        this.cam.keepOutOfWalls(p.x, p.z, pt, 3.2, 0);
+        pt.y = Math.max(pt.y, this.race.world.heightAt(pt.x, pt.z) + 3.2);
+        this.tvPoint.copy(pt);
+      } else {
+        // Next roadside camera: on the route ahead, near the curb, so it is never inside a building.
+        const route = this.race.world.route;
+        const rc = this.race.cars[0];
+        const ahead = routeSample(route, rc.rawS + 45);
+        const half = route.segWidth[ahead.seg] / 2 - 1;
+        const x = ahead.x + ahead.tz * half * side;
+        const z = ahead.z - ahead.tx * half * side;
+        this.tvPoint.set(x, this.race.world.heightAt(x, z) + 3.2, z);
+      }
       this.tvValid = true;
     }
     cam.position.copy(this.tvPoint);
@@ -607,10 +788,37 @@ export class RaceSession {
       ],
       ghost: !!this.ghostRace,
     };
+    if (this.openWorld) {
+      this.topKmh = Math.max(this.topKmh, c.speed * 3.6);
+      this.updateArea(c.x, c.z, dt);
+      data.openWorld = { area: this.areaName, smashed: this.smashed, topKmh: this.topKmh };
+    }
     this.hud.update(data, dt);
   }
 
+  /** Track the district under the player; a new one is announced once the car settles in it. */
+  private updateArea(x: number, z: number, dt: number): void {
+    const a = this.race.world.areaAt(x, z);
+    const name = !a ? 'Downtown' : a.kind === 'infill' ? (INFILL_NAMES[a.variant] ?? 'Downtown') : (AREA_NAMES[a.kind] ?? 'Downtown');
+    if (name === this.areaName) {
+      this.areaNext = '';
+      return;
+    }
+    if (name !== this.areaNext) {
+      this.areaNext = name;
+      this.areaFor = 0;
+    }
+    this.areaFor += dt;
+    if (this.areaFor < AREA_SETTLE) return;
+    this.areaName = name;
+    this.areaNext = '';
+    // Only the notable places get a callout; the plazas and lots just update the chip.
+    if (a && a.kind !== 'infill' && a.kind !== 'downtown') this.hud.message(name, 1.6);
+  }
+
   dispose(): void {
+    this.drone?.dispose();
+    this.drone = null;
     this.unsub.forEach((u) => u());
     this.freeCam?.dispose();
     this.hud.dispose();

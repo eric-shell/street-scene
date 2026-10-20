@@ -1,14 +1,14 @@
 ---
 name: dev
 description: Run the game in a browser - start the Vite dev server on port 5175, open a screen directly with URL params (race, garage, drone, seed, quality, dev mode), inspect it through the console handle, read the FPS meter against the frame-rate targets, stop the server. Use when asked to run, start, screenshot, profile or verify a change in the real app.
-argument-hint: [?race=circuit|sprint|drift | ?garage | ?drone] [&seed=...]
+argument-hint: [?race=circuit|sprint|drift | ?freeroam | ?garage | ?drone] [&seed=...]
 ---
 # Run the app
 
 1. Already up? `nc -z 127.0.0.1 5175 && echo up`. If so reuse it: Vite hot-reloads edits (changes under `src/sim` or `src/city` need a page reload to rebuild the world).
 2. Start `npm run dev` with `run_in_background: true` and wait for its `Local:   http://localhost:5175/` line. The port is pinned (`strictPort`): if something else holds it, say so rather than changing the port.
 3. Open `http://localhost:5175/` with params as needed:
-   - `?race=circuit|sprint|drift` straight into a race (3 laps / point to point / 2 laps); `?garage`; `?drone` (these skip the boot splash; a plain load shows it for about 3 s before the menu)
+   - `?race=circuit|sprint|drift` straight into a race (3 laps / point to point / 2 laps); `?freeroam` (open world, no rules); `?garage`; `?drone` (these skip the boot splash; a plain load shows it for about 3 s before the menu)
    - `?seed=<anything>` for a fixed city (default is the UTC date); `?quality=low|medium|high|auto`; `?fps` (meter: fps, frame time, auto level and aim)
    - `?dev` garage dev mode (Ctrl+Shift+D, then drag a GLB onto the window to try a part); `?build=<share code>`
    - Test drive = the garage's Test drive button: open world, no rivals, physics tuning panel on ` / F2

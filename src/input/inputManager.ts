@@ -2,6 +2,8 @@
  * Turns keyboard, touch and gamepad into one InputFrame per sim tick.
  * Steering ramps instead of snapping. Edge actions (shift, reset) latch until
  * the next sample. Everything is released when the window loses focus.
+ * The number keys (top row or keypad) pick camera views (onView): 1 and up
+ * the race cameras, 0 the drone.
  */
 import { InputFrame } from '../sim/input';
 import { TouchControls } from './touch';
@@ -20,6 +22,7 @@ export class InputManager {
   private shiftLatch: -1 | 0 | 1 = 0;
   private resetLatch = false;
   private listeners = new Map<Action, Set<() => void>>();
+  private viewListeners = new Set<(n: number) => void>();
   private abort = new AbortController();
   private gamepadPrev: boolean[] = [];
   /** Horn on the gamepad (right stick click); visual/audio only, not part of the input frame. */
@@ -48,6 +51,12 @@ export class InputManager {
     this.listeners.get(a)?.forEach((fn) => fn());
   }
 
+  /** A number key (0..9) was pressed: camera view hotkeys. */
+  onView(fn: (n: number) => void): () => void {
+    this.viewListeners.add(fn);
+    return () => this.viewListeners.delete(fn);
+  }
+
   private onKey(e: KeyboardEvent, down: boolean): void {
     const target = e.target as HTMLElement | null;
     // The tuning panel toggle also works while one of its sliders has focus (but not while typing).
@@ -66,6 +75,10 @@ export class InputManager {
       return;
     }
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) return;
+    if (down && !e.repeat && /^(Digit|Numpad)[0-9]$/.test(e.code)) {
+      const n = Number(e.code.slice(-1));
+      this.viewListeners.forEach((fn) => fn(n));
+    }
     if (down && !e.repeat) {
       switch (e.code) {
         case 'KeyC':

@@ -120,7 +120,8 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   scene.environmentIntensity = 0.55;
   scene.fog = new THREE.FogExp2(FOG_COLOR, FOG_DENSITY);
   const barriers = classifyBarriers(world);
-  const city = buildCityMeshes(world, new Set(barriers.filter((b) => b.headOn).map((b) => b.wall)));
+  // Every closure is drawn as a barrier: spectators stand right behind side closures too.
+  const city = buildCityMeshes(world);
   scene.add(city.group);
   // District dressing (lots, plazas, parks, river, roundabouts, subway) and the distant mountains.
   const districts = buildDistrictMeshes(world);
@@ -154,8 +155,14 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     },
   });
   scene.add(props.group);
-  // Spectators by the start / finish gantries (none in an open world test drive).
-  const crowdQ = { low: { density: 0.55, rows: 2 }, medium: { density: 0.8, rows: 2 }, high: { density: 1, rows: 3 } }[settings.quality] ?? { density: 0.8, rows: 2 };
+  // Spectators by the start / finish gantries and in sections behind every closure and corner rail
+  // (none in an open world). Sections thin out and draw less far at lower quality.
+  const crowdQ =
+    {
+      low: { density: 0.55, rows: 2, sectionDensity: 0.35, sectionRows: 1, drawDistance: 140 },
+      medium: { density: 0.8, rows: 2, sectionDensity: 0.55, sectionRows: 2, drawDistance: 190 },
+      high: { density: 1, rows: 3, sectionDensity: 0.8, sectionRows: 2, drawDistance: 260 },
+    }[settings.quality] ?? { density: 0.8, rows: 2, sectionDensity: 0.55, sectionRows: 2, drawDistance: 190 };
   const crowds = buildCrowds(world, world.openWorld ? [] : city.finishLine.gates, crowdQ);
   scene.add(crowds.group);
   stabilizeSmallEmitters(city);

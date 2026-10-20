@@ -1,14 +1,18 @@
 /**
- * Destructible street furniture: streetlights, traffic lights, garbage cans,
- * benches and bus stops. Generated once per city (deterministic, from the
+ * Destructible props: street furniture (streetlights, traffic lights, garbage
+ * cans, benches, bus stops) and the clutter districts scatter where racers
+ * cut through (bushes, planter pots, cafe tables, barrels, crates, dumpsters,
+ * news boxes, trash bags). Generated once per city (deterministic, from the
  * seed) and stored on CityBlocks.props. The sim tracks which props are broken
  * per race (RaceState.brokenProps) so replays reproduce every hit; the
  * renderer hides a broken prop's intact instance and spawns debris.
  *
  * Id layout: props[i] for i < blocks.streetlights.length is streetlights[i]
- * (same position, `light` = i), then traffic lights, then sidewalk furniture.
- * Every prop stands on a sidewalk, never on the drivable road, and clear of
- * intersection mouths (where route barriers go) and of every other prop.
+ * (same position, `light` = i), then traffic lights, then sidewalk furniture,
+ * then district props in area order. Street furniture stands on a sidewalk,
+ * never on the drivable road, and clear of intersection mouths (where route
+ * barriers go); district props stand where their area put them (pockets,
+ * parks, alleys). No prop overlaps another.
  */
 import { CITY } from './config';
 import type { EdgeMouths, Sector, Streetlight } from './blocks';
@@ -18,7 +22,11 @@ import type { Terrain } from './terrain';
 import { Rng, deriveSeed } from '../sim/prng';
 import { DEG, Vec2, atan2, distToSegment, sin, sqrt } from '../sim/math';
 
-export type PropKind = 'streetlight' | 'trafficLight' | 'garbageCan' | 'bench' | 'busStop';
+/** Sidewalk furniture placed by generateProps itself. */
+export type StreetPropKind = 'streetlight' | 'trafficLight' | 'garbageCan' | 'bench' | 'busStop';
+/** Clutter districts ask for (DistrictPropSpec): mostly soft, cheap to crash through. */
+export type DistrictPropKind = 'bush' | 'planterPot' | 'cafeTable' | 'barrel' | 'crate' | 'dumpster' | 'newsBox' | 'trashBags';
+export type PropKind = StreetPropKind | DistrictPropKind;
 
 export interface Prop {
   /** Index into CityBlocks.props. Stable for a given seed. */
@@ -42,6 +50,20 @@ export interface Prop {
   node?: number;
   /** Streetlights only: index into CityBlocks.streetlights (equal to id). */
   light?: number;
+  /** District props: the area (CityDistricts.areas id) that placed it. */
+  area?: number;
+}
+
+/** A destructible a district module asks for (AreaBuild.destructibles); generateProps places it last. */
+export interface DistrictPropSpec {
+  kind: PropKind;
+  x: number;
+  z: number;
+  /** Facing (local +Z), rad. */
+  yaw: number;
+  /** Height of the surface it stands on above the terrain (m): 0 on ground, CITY.curbHeight at sidewalk level. */
+  lift: number;
+  area: number;
 }
 
 export interface PropDef {
@@ -57,20 +79,37 @@ export interface PropDef {
   breakSpeed: number;
 }
 
-/** Default physical properties per kind. Tuned so a light pole is a big hit and a trash can a small one. */
+/**
+ * Default physical properties per kind. Tuned so a light pole is a big hit and
+ * a trash can a small one. District clutter is mostly soft (bushes and trash
+ * bags barely slow a car) so cutting through it is worth the risk; a dumpster
+ * is the exception: it stops a slow car dead and only goes flying when hit hard.
+ */
 export const PROP_DEFS: Record<PropKind, PropDef> = {
   streetlight: { radius: 0.22, mass: 320, height: 8.2, anchor: 2.2, breakSpeed: 3 },
   trafficLight: { radius: 0.25, mass: 380, height: 5.6, anchor: 2.2, breakSpeed: 3 },
   garbageCan: { radius: 0.38, mass: 45, height: 1.0, anchor: 1, breakSpeed: 0.5 },
   bench: { radius: 0.9, mass: 110, height: 0.9, anchor: 1.3, breakSpeed: 1.5 },
   busStop: { radius: 1.6, mass: 650, height: 2.6, anchor: 2.6, breakSpeed: 4 },
+  bush: { radius: 0.75, mass: 28, height: 1.1, anchor: 1, breakSpeed: 0.2 },
+  planterPot: { radius: 0.55, mass: 150, height: 1.5, anchor: 1, breakSpeed: 1.2 },
+  cafeTable: { radius: 0.8, mass: 38, height: 2.3, anchor: 1, breakSpeed: 0.3 },
+  barrel: { radius: 0.42, mass: 65, height: 1.0, anchor: 1, breakSpeed: 0.4 },
+  crate: { radius: 0.6, mass: 75, height: 1.2, anchor: 1, breakSpeed: 0.6 },
+  dumpster: { radius: 1.0, mass: 700, height: 1.4, anchor: 1, breakSpeed: 6 },
+  newsBox: { radius: 0.32, mass: 55, height: 1.1, anchor: 1, breakSpeed: 0.5 },
+  trashBags: { radius: 0.5, mass: 22, height: 0.6, anchor: 1, breakSpeed: 0.1 },
 };
+
+/** Street furniture kinds (sidewalk only), in the order generateProps places them. */
+export const STREET_PROP_KINDS: readonly StreetPropKind[] = ['streetlight', 'trafficLight', 'garbageCan', 'bench', 'busStop'];
+export const isStreetProp = (k: PropKind): k is StreetPropKind => (STREET_PROP_KINDS as readonly PropKind[]).includes(k);
 
 /** Emitted as RaceEvent { type: 'prop', car, value: propId } when a car breaks a prop. */
 export const PROP_EVENT = 'prop' as const;
 
 /** Distance behind the curb line (into the sidewalk) of each kind's center. */
-const SETBACK: Record<PropKind, number> = { streetlight: 0.8, trafficLight: 0.9, garbageCan: 0.9, bench: 2.0, busStop: 2.0 };
+const SETBACK: Record<StreetPropKind, number> = { streetlight: 0.8, trafficLight: 0.9, garbageCan: 0.9, bench: 2.0, busStop: 2.0 };
 /** Furniture keeps this far (along the curb) from each end of an edge: crosswalks, barriers, corners. */
 const MOUTH_CLEAR = 12;
 /** Clear distance (along the curb) kept around each streetlight pole. */
@@ -109,6 +148,7 @@ export function generateProps(
   terrain: Terrain,
   edgeGrid: SpatialGrid,
   reserved: { x: number; z: number; r: number }[] = [],
+  districtProps: readonly DistrictPropSpec[] = [],
 ): Prop[] {
   const rng = new Rng(deriveSeed(seed, 'props'));
   const props: Prop[] = [];
@@ -219,11 +259,11 @@ export function generateProps(
       if (len < 2 * MOUTH_CLEAR + 4) return;
       const u = { x: ax / len, z: az / len };
       const yaw = atan2(side.inward.x, side.inward.z);
-      const at = (s: number, kind: PropKind) => ({
+      const at = (s: number, kind: StreetPropKind) => ({
         x: side.from.x + u.x * s - side.inward.x * SETBACK[kind],
         z: side.from.z + u.z * s - side.inward.z * SETBACK[kind],
       });
-      const place = (kind: PropKind, lo: number, hi: number): boolean => {
+      const place = (kind: StreetPropKind, lo: number, hi: number): boolean => {
         const r = PROP_DEFS[kind].radius;
         const a = lo + r + 0.3;
         const b = hi - r - 0.3;
@@ -283,6 +323,25 @@ export function generateProps(
       });
     });
   });
+
+  // 4. District clutter, in area order. A spec that would overlap anything already placed is dropped.
+  for (const d of districtProps) {
+    const r = PROP_DEFS[d.kind].radius;
+    const reach = r + 2 + PROP_GAP;
+    grid.query(d.x - reach, d.z - reach, d.x + reach, d.z + reach, scratch);
+    let clear = true;
+    for (const id of scratch) {
+      const p = props[id];
+      const min = p.radius + r + PROP_GAP * 0.5;
+      if ((p.x - d.x) ** 2 + (p.z - d.z) ** 2 < min * min) {
+        clear = false;
+        break;
+      }
+    }
+    if (!clear) continue;
+    const p = push(d.kind, d.x, d.z, d.yaw, -1, { area: d.area });
+    p.y = terrain.heightAt(d.x, d.z) + d.lift;
+  }
 
   return props;
 }

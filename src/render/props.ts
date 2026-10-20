@@ -1,6 +1,8 @@
 /**
- * Street furniture: streetlights, traffic lights, garbage cans, benches and
- * bus stops from CityBlocks.props, instanced per kind and part. Traffic
+ * Destructible props from CityBlocks.props: street furniture (streetlights,
+ * traffic lights, garbage cans, benches, bus stops) and district clutter
+ * (bushes, planter pots, cafe tables, barrels, crates, dumpsters, news boxes,
+ * trash bags), instanced per kind and part, tinted per instance. Traffic
  * signals cycle red / amber / green in a shader (per intersection offset,
  * crossing directions out of phase), so they cost nothing on the CPU.
  *
@@ -12,7 +14,7 @@
  */
 import * as THREE from 'three';
 import type { World } from '../city/world';
-import type { Prop } from '../city/props';
+import type { DistrictPropKind, Prop } from '../city/props';
 import { GeoBuilder } from './geoBuilder';
 import { FOG_DENSITY } from './lighting';
 import { fadeSubPixel } from './lightFx';
@@ -92,6 +94,121 @@ function cyl(gb: GeoBuilder, cx: number, cz: number, y0: number, y1: number, r0:
 }
 
 const col = (hex: number, k = 1) => new THREE.Color(hex).multiplyScalar(k);
+
+// ---------- District clutter ----------
+
+/** Rounded shrub from two stacked tapered rings (open bottom). */
+function shrub(gb: GeoBuilder, cx: number, cz: number, y0: number, h: number, r: number, color: THREE.Color, seg = 7): void {
+  cyl(gb, cx, cz, y0, y0 + h * 0.45, r * 0.62, r, seg, color);
+  cyl(gb, cx, cz, y0 + h * 0.45, y0 + h, r, r * 0.3, seg, color);
+}
+
+function bushGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  shrub(s, 0, 0, 0, 1.1, 0.78, col(0x3d7436));
+  shrub(s, 0.32, -0.22, 0, 0.8, 0.5, col(0x335f2e));
+  shrub(s, -0.3, 0.25, 0, 0.7, 0.42, col(0x47823d));
+  return s.build();
+}
+
+function planterPotGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  cyl(s, 0, 0, 0, 0.62, 0.42, 0.53, 10, col(0x8a8c94));
+  cyl(s, 0, 0, 0.62, 0.635, 0.47, 0.47, 10, col(0x2a1d14));
+  shrub(s, 0, 0, 0.6, 0.9, 0.5, col(0x3a6e34));
+  return s.build();
+}
+
+function cafeFrameGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const alu = col(0xb4b8c0);
+  const dark = col(0x2a2c32);
+  cyl(s, 0, 0, 0, 0.04, 0.25, 0.25, 8, dark);
+  cyl(s, 0, 0, 0, 0.72, 0.035, 0.035, 6, alu);
+  cyl(s, 0, 0, 0.72, 0.76, 0.38, 0.38, 10, col(0xe6e6e2));
+  cyl(s, 0, 0, 0.76, 2.25, 0.025, 0.025, 6, alu);
+  for (const side of [-1, 1]) {
+    const x = side * 0.62;
+    box(s, x, 0.45, 0, 0.42, 0.04, 0.42, alu, false);
+    for (const [lx, lz] of [[-0.18, -0.18], [0.18, -0.18], [-0.18, 0.18], [0.18, 0.18]]) box(s, x + lx, 0.22, lz, 0.03, 0.44, 0.03, alu);
+    box(s, x + side * 0.2, 0.72, 0, 0.03, 0.5, 0.4, alu, false);
+  }
+  return s.build();
+}
+
+function cafeCanopyGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  cyl(s, 0, 0, 1.86, 2.3, 1.15, 0.06, 8, col(0xffffff));
+  return s.build();
+}
+
+function barrelGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const orange = col(0xff6a1a);
+  const white = col(0xe8e8e8);
+  const bands: [number, number, THREE.Color][] = [
+    [0, 0.22, orange],
+    [0.22, 0.34, white],
+    [0.34, 0.58, orange],
+    [0.58, 0.7, white],
+    [0.7, 0.93, orange],
+  ];
+  for (const [y0, y1, c] of bands) cyl(s, 0, 0, y0, y1, 0.4 - y0 * 0.04, 0.4 - y1 * 0.04, 10, c);
+  cyl(s, 0, 0, 0.93, 0.98, 0.3, 0.28, 10, col(0x1c1d20));
+  return s.build();
+}
+
+function crateGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const wood = col(0x9a7444);
+  const dark = col(0x6a4c2a);
+  box(s, 0, 0.4, 0, 0.85, 0.8, 0.85, wood);
+  for (const y of [0.12, 0.68]) box(s, 0, y, 0, 0.87, 0.08, 0.87, dark);
+  box(s, 0.08, 1.0, -0.06, 0.62, 0.4, 0.62, col(0xa88250));
+  box(s, -0.32, 0.9, 0.36, 0.3, 0.2, 0.22, dark);
+  return s.build();
+}
+
+function dumpsterGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const body = col(0x2f6a46);
+  const dark = col(0x1c2a22);
+  box(s, 0, 0.72, 0, 1.9, 1.08, 1.15, body);
+  box(s, 0, 1.3, -0.04, 1.96, 0.08, 1.22, dark);
+  for (const x of [-0.7, 0.7]) box(s, x, 0.72, 0.6, 0.1, 0.9, 0.06, dark);
+  for (const x of [-0.8, 0.8]) for (const z of [-0.45, 0.45]) cyl(s, x, z, 0, 0.18, 0.09, 0.09, 6, col(0x111214));
+  return s.build();
+}
+
+function newsBoxGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  box(s, 0, 0.62, 0, 0.5, 0.92, 0.45, col(0xd8d8d8));
+  box(s, 0, 0.8, 0.23, 0.4, 0.32, 0.02, col(0x9fb4c8));
+  box(s, 0, 0.08, 0, 0.42, 0.16, 0.38, col(0x2a2c32));
+  return s.build();
+}
+
+function trashBagsGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const bag = col(0x17191c);
+  shrub(s, 0, 0, 0, 0.62, 0.36, bag, 6);
+  shrub(s, 0.42, -0.12, 0, 0.5, 0.3, bag, 6);
+  shrub(s, -0.2, 0.36, 0, 0.45, 0.28, col(0x1f2a1f), 6);
+  return s.build();
+}
+
+/** Per kind: mesh parts (geometry, material slot, tinted per instance?) and the tints. */
+const CLUTTER: Record<DistrictPropKind, { parts: { geo: () => THREE.BufferGeometry; mat: 'matte' | 'solid' | 'canopy'; tint?: boolean }[]; tints: number[]; spin: boolean }> = {
+  bush: { parts: [{ geo: bushGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xd8e8c8, 0xf0ffd8, 0xc8d8b0], spin: true },
+  planterPot: { parts: [{ geo: planterPotGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xe8dcd0, 0xd0d8e0], spin: true },
+  cafeTable: { parts: [{ geo: cafeFrameGeo, mat: 'solid' }, { geo: cafeCanopyGeo, mat: 'canopy', tint: true }], tints: [0xc81e2e, 0x1d55c4, 0xe8e8ea, 0x2a9d5a, 0xf2b81c, 0x15161a], spin: true },
+  barrel: { parts: [{ geo: barrelGeo, mat: 'matte' }], tints: [0xffffff], spin: true },
+  crate: { parts: [{ geo: crateGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xd8c8b0, 0xb8a890], spin: true },
+  dumpster: { parts: [{ geo: dumpsterGeo, mat: 'solid', tint: true }], tints: [0xffffff, 0x6080ff, 0x9a9a9a, 0xd06030], spin: false },
+  newsBox: { parts: [{ geo: newsBoxGeo, mat: 'solid', tint: true }], tints: [0x2050c0, 0xc02020, 0xe0b020, 0x20a050, 0xe0e0e0], spin: false },
+  trashBags: { parts: [{ geo: trashBagsGeo, mat: 'solid' }], tints: [0xffffff], spin: true },
+};
+const CLUTTER_KINDS = Object.keys(CLUTTER) as DistrictPropKind[];
 
 function streetlightGeo(): { solid: THREE.BufferGeometry; lens: THREE.BufferGeometry } {
   const s = new GeoBuilder(true);
@@ -287,6 +404,24 @@ const lensFrag = /* glsl */ `
 // ---------------------------------------------------------------------------
 
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
+const tmpTint = new THREE.Color();
+/** Debris spawner of one breaking prop: local offsets (prop frame), half extents, push along the hit, lift, spin. */
+type SpawnFn = (
+  type: DebrisType,
+  lx: number,
+  ly: number,
+  lz: number,
+  yaw: number,
+  hx: number,
+  hy: number,
+  hz: number,
+  push: number,
+  lift: number,
+  spin: number,
+  color: THREE.Color,
+  life?: number,
+  sparky?: boolean,
+) => void;
 const CAN_TINTS = [0x2f6a46, 0x2f6a46, 0x5a6068, 0x34507a, 0x7a3a2a].map((c) => new THREE.Color(c));
 const AD_TINTS = [0xff3df2, 0x19e6ff, 0xffb020, 0x7cff6a, 0xffffff, 0xff4060].map((c) => new THREE.Color(c).multiplyScalar(1.5));
 
@@ -324,6 +459,8 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
   const lampLensMat = track(new THREE.MeshBasicMaterial({ vertexColors: true }));
   fadeSubPixel(lampLensMat, 0.36, 0.25);
   fadeSubPixel(glowMat, 0.05, 0.3);
+  const matteMat = track(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0 }));
+  const canopyMat = track(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0, side: THREE.DoubleSide }));
   const glassMat = track(new THREE.MeshStandardMaterial({ color: 0x9fc6e0, roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide, envMapIntensity: 1.6 }));
   const adMat = track(new THREE.MeshBasicMaterial({ map: track(adTexture()) }));
   const lensMat = track(
@@ -447,6 +584,24 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
     });
   }
 
+  // District clutter, tinted per instance; most kinds get a random spin so rows never look stamped.
+  const tintOf: THREE.Color[] = [];
+  for (const kind of CLUTTER_KINDS) {
+    const list = byKind(kind);
+    if (!list.length) continue;
+    const def = CLUTTER[kind];
+    const ids = def.parts.map((part, k) => addMesh(`${kind}${k}`, part.geo(), part.mat === 'matte' ? matteMat : part.mat === 'canopy' ? canopyMat : solidMat, list.length));
+    list.forEach((p, i) => {
+      const yaw = p.yaw + (def.spin ? hash01(p.id * 7) * 6.28 : 0);
+      const tint = tmpTint.setHex(def.tints[(hash01(p.id * 17) * def.tints.length) | 0]).multiplyScalar(0.85 + 0.3 * hash01(p.id * 23));
+      tintOf[p.id] = tint.clone();
+      def.parts.forEach((part, k) => {
+        place(ids[k], i, p, p.x, p.y, p.z, yaw);
+        if (part.tint) meshes[ids[k]].setColorAt(i, tint);
+      });
+    });
+  }
+
   // Keep the intact matrices so a prop can be restored.
   const intact = meshes.map((m) => (m.instanceMatrix.array as Float32Array).slice());
   const stumpBase = new Float32Array(poles.length * 16);
@@ -457,6 +612,7 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
   });
 
   const debris = new Debris(world.heightAt);
+  const clutterYaw = (p: Prop) => p.yaw + (CLUTTER[p.kind as DistrictPropKind]?.spin ? hash01(p.id * 7) * 6.28 : 0);
   group.add(debris.group);
   const shown = new Uint8Array(props.length);
   const tmpC = new THREE.Color();
@@ -630,7 +786,11 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
       return;
     }
 
-    if (p.kind === 'busStop') {
+    if (p.kind !== 'busStop') {
+      shatterClutter(p, spawn, speed, dx, dz);
+      return;
+    }
+    {
       const frame = col(0x2b2e36);
       spawn(D_BOX, 0, 2.52, 0.04, p.yaw + rnd(-0.1, 0.1), 1.75, 0.05, 0.86, rnd(0.2, 0.35), rnd(1.5, 3), 1.5, frame, rnd(5, 6), true);
       for (const x of [-1.55, 1.55]) for (const z of [-0.62, 0.6]) spawn(D_BOX, x, 1.24, z, p.yaw, 0.04, 1.22, 0.04, rnd(0.3, 0.6), rnd(1, 3), 4, frame, rnd(4.5, 6), true);
@@ -646,6 +806,79 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
       debris.burst(p.x, p.y + 1.2, p.z, dx, dz, speed * 0.3 + 2, 12);
     }
   };
+
+  /** District clutter coming apart; `spawn` takes local offsets in the prop's frame. */
+  function shatterClutter(p: Prop, spawn: SpawnFn, speed: number, dx: number, dz: number): void {
+    const tint = tintOf[p.id] ?? col(0xffffff);
+    const yaw = clutterYaw(p);
+    const leaves = (n: number, y0: number, y1: number, r: number, base: number) => {
+      for (let k = 0; k < n; k++) {
+        const s = rnd(0.05, 0.14);
+        const c = col(base, rnd(0.75, 1.15)).multiply(tint);
+        spawn(D_BOX, rnd(-r, r), rnd(y0, y1), rnd(-r, r), rnd(0, 6.28), s, s * 0.4, s, rnd(0.35, 0.8), rnd(1.5, 4) + speed * 0.06, 10, c, rnd(2.5, 4));
+      }
+    };
+    switch (p.kind) {
+      case 'bush':
+        leaves(16, 0.2, 1.0, 0.6, 0x3d7436);
+        for (let k = 0; k < 4; k++) spawn(D_CYL, rnd(-0.2, 0.2), 0.4, rnd(-0.2, 0.2), rnd(0, 6.28), 0.02, rnd(0.2, 0.35), 0.02, rnd(0.4, 0.7), rnd(1.5, 3), 8, col(0x4a3420), rnd(3, 4));
+        return;
+      case 'planterPot':
+        for (let k = 0; k < 7; k++) {
+          const s = rnd(0.1, 0.22);
+          spawn(D_BOX, rnd(-0.35, 0.35), rnd(0.15, 0.55), rnd(-0.35, 0.35), rnd(0, 6.28), s, s * rnd(0.5, 1), s * rnd(0.6, 1.2), rnd(0.35, 0.7), rnd(1, 3) + speed * 0.05, 7, col(0x8a8c94, rnd(0.8, 1.1)).multiply(tint), rnd(4, 5.5));
+        }
+        for (let k = 0; k < 8; k++) spawn(D_BOX, rnd(-0.3, 0.3), 0.62, rnd(-0.3, 0.3), rnd(0, 6.28), 0.06, 0.04, 0.06, rnd(0.4, 0.8), rnd(1, 2.5), 6, col(0x2a1d14), rnd(2.5, 4));
+        spawn(D_BOX, 0, 1.0, 0, rnd(0, 6.28), 0.32, 0.3, 0.32, rnd(0.5, 0.8), 2 + speed * 0.08, 6, col(0x3a6e34).multiply(tint));
+        leaves(8, 0.8, 1.4, 0.4, 0x3a6e34);
+        debris.burst(p.x, p.y + 0.3, p.z, dx, dz, speed * 0.2 + 1, 6);
+        return;
+      case 'cafeTable': {
+        const alu = col(0xb4b8c0);
+        spawn(D_CYL, 0, 0.74, 0, yaw, 0.38, 0.02, 0.38, rnd(0.5, 0.8), 2.5 + speed * 0.1, 9, col(0xe6e6e2), rnd(4, 5.5), true);
+        spawn(D_CYL, 0, 0.4, 0, yaw, 0.035, 0.36, 0.035, rnd(0.4, 0.7), rnd(1.5, 3), 6, alu, rnd(4, 5.5), true);
+        for (const side of [-0.62, 0.62]) spawn(D_BOX, side, 0.5, 0, yaw + rnd(-0.5, 0.5), 0.21, 0.3, 0.21, rnd(0.55, 0.95), rnd(2, 4) + speed * 0.08, 10, alu, rnd(4, 5.5), true);
+        spawn(D_BOX, 0, 2.05, 0, yaw, 1.05, 0.03, 1.05, rnd(0.25, 0.45), rnd(3, 5) + speed * 0.1, 4, tint.clone(), rnd(4.5, 6));
+        spawn(D_CYL, 0, 1.5, 0, yaw, 0.025, 0.75, 0.025, rnd(0.3, 0.5), rnd(1.5, 3), 5, alu, rnd(4, 5.5));
+        return;
+      }
+      case 'barrel':
+        spawn(D_CYL, 0, 0.48, 0, yaw, 0.38, 0.47, 0.38, rnd(0.6, 0.9), 2.5 + speed * 0.12, 8, col(0xff6a1a), rnd(4.5, 6));
+        spawn(D_CYL, 0, 0.97, 0, yaw, 0.29, 0.025, 0.29, rnd(0.6, 0.9), 3.5 + speed * 0.15, 12, col(0x1c1d20));
+        debris.burst(p.x, p.y + 0.4, p.z, dx, dz, speed * 0.15 + 1, 4);
+        return;
+      case 'crate': {
+        const wood = col(0x9a7444).multiply(tint);
+        for (let k = 0; k < 9; k++) spawn(D_BOX, rnd(-0.35, 0.35), rnd(0.1, 1.1), rnd(-0.35, 0.35), rnd(0, 6.28), rnd(0.25, 0.43), 0.03, rnd(0.05, 0.08), rnd(0.45, 0.85), rnd(1.5, 4) + speed * 0.07, 9, wood.clone().multiplyScalar(rnd(0.7, 1.1)));
+        spawn(D_BOX, 0.08, 1.0, -0.06, yaw, 0.31, 0.2, 0.31, rnd(0.5, 0.8), 2.5 + speed * 0.1, 6, wood);
+        return;
+      }
+      case 'dumpster': {
+        const body = col(0x2f6a46).multiply(tint);
+        spawn(D_BOX, 0, 0.72, 0, p.yaw, 0.95, 0.54, 0.58, rnd(0.3, 0.45), 1 + speed * 0.05, 2.5, body, rnd(6, 7), true);
+        spawn(D_BOX, 0, 1.4, 0, p.yaw + rnd(-0.3, 0.3), 0.98, 0.04, 0.61, rnd(0.35, 0.55), 3 + speed * 0.1, 5, col(0x1c2a22), rnd(5, 6), true);
+        const trash = [0xd8d4c8, 0x8a6a40, 0xc0302a, 0x3a7a4a, 0xe8e0a0, 0x17191c];
+        for (let k = 0; k < 12; k++) {
+          const s = rnd(0.05, 0.16);
+          spawn(D_BOX, rnd(-0.8, 0.8), rnd(0.8, 1.3), rnd(-0.4, 0.4), rnd(0, 6.28), s, s * rnd(0.4, 1), s, rnd(0.4, 0.8), rnd(2, 4.5) + speed * 0.06, 10, col(trash[k % trash.length]), rnd(3, 4.5));
+        }
+        debris.burst(p.x, p.y + 0.5, p.z, dx, dz, speed * 0.35 + 3, 22);
+        return;
+      }
+      case 'newsBox':
+        spawn(D_BOX, 0, 0.6, 0, p.yaw, 0.25, 0.46, 0.22, rnd(0.55, 0.85), 2 + speed * 0.1, 7, col(0xd8d8d8).multiply(tint), rnd(4.5, 6), true);
+        spawn(D_GLASS, 0, 0.8, 0.23, p.yaw, 0.2, 0.16, 0.01, rnd(0.5, 0.8), rnd(2, 3.5), 8, col(0xbfe0ff), rnd(2.5, 4));
+        for (let k = 0; k < 10; k++) spawn(D_BOX, rnd(-0.2, 0.2), rnd(0.5, 1), rnd(-0.2, 0.2), rnd(0, 6.28), rnd(0.1, 0.16), 0.004, rnd(0.12, 0.2), rnd(0.25, 0.6), rnd(2.5, 5), 4, col(0xeeeae0), rnd(3.5, 5));
+        return;
+      case 'trashBags':
+        for (let k = 0; k < 3; k++) spawn(D_BOX, rnd(-0.3, 0.3), 0.3, rnd(-0.3, 0.3), rnd(0, 6.28), rnd(0.22, 0.3), rnd(0.18, 0.25), rnd(0.22, 0.3), rnd(0.5, 0.9), rnd(1.5, 3.5) + speed * 0.06, 6, col(0x17191c), rnd(4, 5.5));
+        for (let k = 0; k < 10; k++) {
+          const s = rnd(0.04, 0.1);
+          spawn(D_BOX, rnd(-0.3, 0.3), rnd(0.2, 0.6), rnd(-0.3, 0.3), rnd(0, 6.28), s, s * rnd(0.3, 1), s, rnd(0.4, 0.9), rnd(1.5, 4) + speed * 0.05, 10, col([0xd8d4c8, 0x8a6a40, 0xc0302a, 0x3a7a4a][k % 4]), rnd(3, 4.5));
+        }
+        return;
+    }
+  }
 
   return {
     group,

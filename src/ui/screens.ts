@@ -28,6 +28,8 @@ import {
   Gauge,
   SlidersHorizontal,
   Camera,
+  Compass,
+  type IconNode,
   icon,
 } from './icons';
 import { Difficulty, Quality, Settings } from './settings';
@@ -45,6 +47,8 @@ export interface MenuOptions {
   carName: string;
   hasReplay: boolean;
   onRace(mode: RaceMode): void;
+  /** Free roam: the whole city, no route, rules or rivals. */
+  onFreeRoam(): void;
   onGarage(): void;
   onReplay(): void;
   onDrone(): void;
@@ -69,6 +73,9 @@ export function mainMenu(o: MenuOptions): HTMLElement {
     card.append(icon(info.icon, { size: 22 }), info.label, h('span', { class: 'best' }, best ? (m === 'drift' ? `Best ${Math.round(best.score ?? 0).toLocaleString()}` : `Best ${formatTime(best.time)}`) : info.sub));
     modes.append(card);
   });
+  const roam = h('button', { class: 'mode-card roam', type: 'button', onclick: () => o.onFreeRoam() });
+  roam.append(icon(Compass, { size: 22 }), 'Free roam', h('span', { class: 'best' }, 'The whole city, no rules'));
+  modes.append(roam);
   const seedInput = h('input', { type: 'text', value: o.seed, maxlength: 32, 'aria-label': 'Seed', style: 'flex:1;min-width:0' }) as HTMLInputElement;
   const event = h(
     'div',
@@ -100,7 +107,16 @@ export function mainMenu(o: MenuOptions): HTMLElement {
   return root;
 }
 
-export function pauseMenu(o: { onResume(): void; onRestart(): void; onSettings(): void; onQuit(): void }): HTMLElement {
+export function pauseMenu(o: {
+  onResume(): void;
+  onRestart(): void;
+  onSettings(): void;
+  onQuit(): void;
+  /** Restart button label (default "Restart race"). */
+  restartLabel?: string;
+  /** Extra buttons under Restart (free roam: a new city). */
+  extra?: { icon: IconNode; label: string; onClick(): void }[];
+}): HTMLElement {
   return h(
     'div',
     { class: 'screen center dim' },
@@ -109,7 +125,8 @@ export function pauseMenu(o: { onResume(): void; onRestart(): void; onSettings()
       { class: 'dialog panel', role: 'dialog', 'aria-label': 'Paused' },
       h('h2', { class: 'title' }, icon(Pause, { size: 22 }), 'Paused'),
       btn(Play, 'Resume', o.onResume, 'big primary'),
-      btn(RotateCcw, 'Restart race', o.onRestart, 'big'),
+      btn(RotateCcw, o.restartLabel ?? 'Restart race', o.onRestart, 'big'),
+      ...(o.extra ?? []).map((x) => btn(x.icon, x.label, x.onClick, 'big')),
       btn(SettingsIcon, 'Settings', o.onSettings, 'big'),
       btn(X, 'Quit to menu', o.onQuit, 'big'),
     ),

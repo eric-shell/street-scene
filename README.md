@@ -6,8 +6,12 @@ A browser street racing proof of concept in the spirit of NFSU2. You race at nig
 - Custom deterministic arcade car physics with drifting and nitrous
 - Three deterministic AI opponents with mild rubber banding
 - Garage with body kits and parts, paint finishes, vinyls, stance, tint, underglow and performance tiers
-- Replays and ghosts from input logs, plus a drone flyover mode
+- Replays and ghosts from input logs, plus a drone flyover mode (also a photo mode in any race: press 0)
+- Number key cameras and a mouse drag that orbits the camera around the car at any time
 - Synthesized engine sound (inline-4 turbo for the Proto Compact, V6 for the Proto Hatch) and a persistent music player
+- Destructible city: street furniture plus cafe tables, bushes, planter pots, crates, barrels, dumpsters, news boxes and trash bags in corner plazas, parks and alleys; back alley kicker jumps
+- Spectator crowds at the start and finish and behind every closure and corner rail
+- Free roam: the whole city of the event seed (or a new random one) with no route, rules or rivals
 - Test drive: free roam on the open seed map (no closures, rails, parked cars, crowds or rivals) with a live physics tuning panel and JSON export
 
 ## Run it
@@ -23,7 +27,7 @@ npm run inspect    # print node/material/triangle info for GLB files
 npm run music      # import albums / rebuild the music catalog (see docs/music.md)
 ```
 
-Useful URL parameters: `?seed=anything` (custom event), `?race=circuit|sprint|drift` (jump into a race), `?garage`, `?drone`, `?quality=low|medium|high|auto`, `?fps` (fps, frame time, auto graphics level), `?dev` (garage dev mode), `?build=<code>` (load a shared build).
+Useful URL parameters: `?seed=anything` (custom event), `?race=circuit|sprint|drift` (jump into a race), `?freeroam`, `?garage`, `?drone`, `?quality=low|medium|high|auto`, `?fps` (fps, frame time, auto graphics level), `?dev` (garage dev mode), `?build=<code>` (load a shared build).
 
 ## Controls
 
@@ -37,12 +41,15 @@ Useful URL parameters: `?seed=anything` (custom event), `?race=circuit|sprint|dr
 | Reset to road | R | Y | RST |
 | Horn and headlight flash (hold for a long blast) | H | Right stick click | |
 | Camera (chase, close, bumper, hood) | C | Back | CAM |
+| Camera views: 1 chase, 2 close, 3 bumper, 4 hood, 5 trackside TV, 6 orbit, 7 free (replays) | 1 to 7 | | |
+| Drone (photo mode in a race, flyover from the menu); again to come back | 0 | | |
+| Orbit the camera around the car (eases back once you drive on) | Mouse drag | | |
 | Pause | Esc / P | Start | II |
 | Physics tuning panel (always shown when enabled in Settings > Debug) | ` or F2 | | |
 | Menu free camera | Shift+F | | |
 | Music: mute / previous / next | M / [ / ] | | Player card |
 
-Drift by tapping the handbrake into a corner, or with a clutch kick (lift and stab the throttle while steering hard), then hold it with throttle and counter steer. With **traction control** off (the default, Settings), the driven wheels can spin: launches at high revs, full throttle in low gears mid corner (power oversteer on the rear wheel drive Proto Compact), slippery sidewalks and dirt, crests and clutch kicks. Spinning wheels lose most of their sideways grip. Traction control caps drive at the grip limit and cuts power in slides; AI opponents always drive with it. Nitrous refills from drifting, near misses with walls and drafting behind opponents. In replays, **C** cycles chase, TV, orbit, close, hood and free cameras. Drone mode uses WASD + drag; Space/Ctrl move up and down, Shift boosts, T toggles the auto tour.
+Drift by tapping the handbrake into a corner, or with a clutch kick (lift and stab the throttle while steering hard), then hold it with throttle and counter steer. With **traction control** off (the default, Settings), the driven wheels can spin: launches at high revs, full throttle in low gears mid corner (power oversteer on the rear wheel drive Proto Compact), slippery sidewalks and dirt, crests and clutch kicks. Spinning wheels lose most of their sideways grip. Traction control caps drive at the grip limit and cuts power in slides; AI opponents always drive with it. Nitrous refills from drifting, near misses with walls and drafting behind opponents. In replays, **C** cycles chase, TV, orbit, close, hood and free cameras. Drone mode uses WASD + drag; Space/Ctrl move up and down, Shift boosts, T toggles the auto tour. In a race or free roam, **0** freezes the action and hands the camera to the drone from where it is; 0 or Esc flies back to the car.
 
 ## Music
 
@@ -158,7 +165,12 @@ tests/
 - **Corner guard rails.** Every route corner has a long smooth rail on its outside at the back of the sidewalk (against the building line), so the road and the whole sidewalk are drivable runoff: along the incoming road, around a finely segmented fillet, and along the outgoing road, bending back behind the crosswalks of closed side streets and around street furniture. Rails are chains of 2.5 m modular pieces (`src/sim/rails.ts`), each a very heavy sim body: a hit shoves the piece back by impulse / mass (capped at 0.6 m, a hair of rotation, no spring back) and the dent stays for the race, so a wall rider leaves a stepped rail for the next lap. Neighbors are dragged along so no joint ever opens more than 1/8 of a car width. Low bounce and spin, but scraping drags speed off (`railDrag`, `railSpeedLoss`), shoving a piece costs speed (`railDentLoss`) and scraping into a step costs more (`railStepLoss`). Chevron panels on the rail modules (drawn at their displaced poses) and a giant translucent arrow above point the way.
 - **Side street car meets.** Closed side streets the racers are unlikely to hit are lined with rows of parked cars, mostly nose toward the track like spectators. Density follows the graphics quality.
 - **Light color temperature.** Windows, doors and arches use blackbody colors between 2000 K and 8000 K. Only signs and rooftop trims are neon colored.
+- **Inside corners you can crash through.** A share of junction corners (`openCornerChance`) keeps its buildings back, and the infill turns corner voids into drivable pockets: cafe terraces, gardens and market corners full of destructible clutter, shallow verges of bushes and pots where nothing deeper fits. About one corner solution in six stays solid on purpose (raised planters, the odd fountain). A closure barrier that ends where a pocket opens is carried across it, so a pocket is never a way around a closure.
+- **Closures stand back from the track.** Head-on closures (straight ahead of the incoming road) stand 7 m further into their street than before, side closures 3 m, so overshooting a corner has room. Every closure is drawn as a barrier now, with spectators between it and the parked cars.
+- **Crowd sections.** Besides the start and finish stands, every closure and every corner rail with room behind it gets a section of spectators (one instanced mesh each, culled by distance, thinner and closer at lower quality). Sections cheer as racers pass and burst into applause; at most eight crowd loops play at once.
+- **Engine voice for small speakers.** Most engine energy sits below 300 Hz, which laptop speakers barely reproduce, so the voice has a presence peak tracking the firing frequency and runs about 9 dB hotter than before.
 - **Garage cars.** Only the Proto Compact (`s64`) and Proto Hatch (`gc14`) are offered (manifest `selectable`). The Proto RS stays loadable for tests; saved builds for cars that are no longer offered move to the default car. Vinyls are hidden behind a feature flag (`src/shared/features.ts`).
+- **Car spec badges.** Each garage car tile shows its drivetrain code (FR, FA, MR, ...: engine position, then driven wheels) and engine layout (I4, V6, B4, ...), plus a Turbo or S/C tag. The engine (layout, aspiration, position) is declared per car in the manifest; the driven wheels come from the sim's drivetrain layout, so a badge can never disagree with the physics. The same spec drives the synthesized engine voice: cylinder count sets the firing frequency, six and up get the deeper voice, turbo adds the spool whistle and blow-off.
 - **Boot splash.** A page load that lands on the menu flashes the title in over black (neon flicker, chromatic split, shine, tagline tracking in) while the assets are checked, then flies it onto the menu's title block with a FLIP transform as the black fades to the city. The splash block is a copy of the menu's title block at the same column width, so it wraps the same way and the swap is invisible. Deep links (`?race=`, `?garage`, `?drone`) skip it; reduced motion gets a plain fade.
 - **Music autoplay.** Every session opens on the same track ("Astrology") from the top, then shuffles; only volume, mute, shuffle and the minimized state persist. Browsers only allow audible autoplay once the user has interacted with the site, so when that is refused the opening track simply waits for the first click, tap or key press (the splash says so) rather than running muted and being joined halfway. Engine audio starts on the first gesture for the same reason.
 - **Build version** (`v<package version> · <git hash> · <date>`) is shown under the title on the main menu.

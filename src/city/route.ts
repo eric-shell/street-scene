@@ -464,7 +464,7 @@ interface MouthBarrier {
   d: number;
 }
 
-function mouthBarrier(g: RoadGraph, mouths: EdgeMouths[], edge: number, node: number, rails: Wall[] = []): MouthBarrier {
+function mouthBarrier(g: RoadGraph, mouths: EdgeMouths[], edge: number, node: number, rails: Wall[] = [], setback = 0): MouthBarrier {
   const e = g.edges[edge];
   const m = mouths[edge];
   const p = node === e.a ? m.aP.outer : m.bP.outer;
@@ -478,6 +478,15 @@ function mouthBarrier(g: RoadGraph, mouths: EdgeMouths[], edge: number, node: nu
   // so it never cuts into the route corridor at acute junctions.
   const along = (pt: Vec2) => (pt.x - n.x) * dx + (pt.z - n.z) * dz;
   let d = Math.max(along(p), along(q)) + 1.5;
+  // Further into the street, keeping room between this end and the far one (which may move in too).
+  if (setback > 0) {
+    const far0 = (() => {
+      const fm = otherNode(e, node) === e.a ? [m.aP.outer, m.aN.outer] : [m.bP.outer, m.bN.outer];
+      return Math.max(...fm.map((pt) => (pt.x - far.x) * -dx + (pt.z - far.z) * -dz)) + 1.5;
+    })();
+    const room = dl - d - far0;
+    d += Math.max(0, Math.min(setback, (room - ROUTE.barrierMinRoom) / 2));
+  }
   const half = e.width / 2 + e.sidewalk;
   // Stay behind any corner rail that crosses this mouth (a side street leaving
   // right at the outside of a corner), so the barrier never pokes through it.
@@ -514,12 +523,24 @@ function segCross(p0: Vec2, p1: Vec2, q0: Vec2, q1: Vec2): number | null {
  */
 export function routeBarrierGroups(g: RoadGraph, mouths: EdgeMouths[], route: Route, rails: Wall[] = []): BarrierGroup[] {
   const byNode = new Map<number, MouthBarrier[]>();
+  const order = route.nodes;
   for (const cs of route.closedStreets) {
     let list = byNode.get(cs.node);
     if (!list) byNode.set(cs.node, (list = []));
     const n = g.nodes[cs.node];
     const near = rails.filter((w) => abs(w.ax - n.x) < 60 && abs(w.az - n.z) < 60);
-    list.push(mouthBarrier(g, mouths, cs.edge, cs.node, near));
+    // Head on: the closed street carries straight on from the incoming road (same test as the renderer's).
+    const i = order.indexOf(cs.node);
+    const prev = route.closed ? order[(i - 1 + order.length) % order.length] : i > 0 ? order[i - 1] : -1;
+    const next = i + 1 < order.length ? order[i + 1] : route.closed ? order[0] : -1;
+    const from = prev >= 0 ? g.nodes[prev] : null;
+    const to = from ? n : next >= 0 ? g.nodes[next] : null;
+    const base = from ?? n;
+    const il = to ? sqrt((to.x - base.x) ** 2 + (to.z - base.z) ** 2) || 1 : 1;
+    const far = g.nodes[otherNode(g.edges[cs.edge], cs.node)];
+    const fl = sqrt((far.x - n.x) ** 2 + (far.z - n.z) ** 2) || 1;
+    const headOn = !!to && ((to.x - base.x) * (far.x - n.x) + (to.z - base.z) * (far.z - n.z)) / (il * fl) > 0.55;
+    list.push(mouthBarrier(g, mouths, cs.edge, cs.node, near, headOn ? ROUTE.barrierSetbackHeadOn : ROUTE.barrierSetbackSide));
   }
   const all = [...byNode.values()].flat();
   const barrierAt = (edge: number, node: number) => all.find((b) => b.edge === edge && b.node === node);

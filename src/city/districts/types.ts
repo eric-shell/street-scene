@@ -27,6 +27,7 @@ import type { Rng } from '../../sim/prng';
 import type { RoadGraph } from '../roadGraph';
 import type { BlockFace, Building, EdgeMouths, Sector, Wall } from '../blocks';
 import type { Terrain } from '../terrain';
+import type { DistrictPropSpec } from '../props';
 
 export type AreaKind =
   | 'downtown'
@@ -183,10 +184,12 @@ export interface AreaBuild {
   /** Street furniture keeps clear of these circles (graph phase only). */
   reserved: Circle[];
   hints: AreaHint[];
+  /** Destructible clutter (bushes, tables, crates...): becomes CityBlocks.props after the street furniture. */
+  destructibles: DistrictPropSpec[];
 }
 
 export function emptyBuild(): AreaBuild {
-  return { walls: [], props: [], surfaces: [], heightMods: [], exclusions: [], openings: [], frontLooks: [], reserved: [], hints: [] };
+  return { walls: [], props: [], surfaces: [], heightMods: [], exclusions: [], openings: [], frontLooks: [], reserved: [], hints: [], destructibles: [] };
 }
 
 /**

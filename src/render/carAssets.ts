@@ -9,6 +9,7 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 import manifestJson from '../assets/carManifest.json';
 import catalogJson from '../assets/partsCatalog.json';
 import type { PartEntry, PartSlot, PartsCatalog } from '../shared/parts';
+import type { EngineSpec } from '../shared/carSpec';
 
 export interface ManifestCar {
   id: string;
@@ -30,8 +31,8 @@ export interface ManifestCar {
   defaultPaint: string;
   /** Offered in the garage. */
   selectable?: boolean;
-  /** Engine sound profile (see audio/engineAudio.ts). */
-  engine?: { type: 'i4' | 'i4turbo' | 'v6'; cylinders?: number };
+  /** Engine layout, aspiration and position (src/shared/carSpec.ts); the driven wheels come from drivingParams.json. */
+  engine: EngineSpec;
 }
 
 export const MANIFEST = manifestJson as unknown as { version: number; cars: ManifestCar[] };

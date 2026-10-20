@@ -14,6 +14,10 @@ import { riverCenter } from '../src/city/districts/river';
 import { LOST, createRace, stepRace } from '../src/sim/race';
 import { NEUTRAL_INPUT } from '../src/sim/input';
 import { raceConfig } from './helpers';
+import { isStreetProp } from '../src/city/props';
+import { classifyBarriers } from '../src/render/routeArrows';
+import { createCar, stepCar } from '../src/sim/car';
+import { getBaseTuning } from '../src/sim/tuning';
 import type { World } from '../src/city/world';
 
 describe('prng', () => {
@@ -171,7 +175,10 @@ describe('city generation', () => {
       const u = ((c.x - a.x) * (b.z - a.z) - (c.z - a.z) * (b.x - a.x)) / den;
       return t > 1e-6 && t < 1 - 1e-6 && u > 1e-6 && u < 1 - 1e-6;
     };
-    let merged = 0;
+    let headOn = 0;
+    let headOnDepth = 0;
+    let side = 0;
+    let sideDepth = 0;
     for (let i = 0; i < 40; i++) {
       const w = createWorld(rng.int(0, 0x7fffffff), i % 2 ? 'sprint' : 'circuit');
       const bars = w.walls.filter((x) => x.kind === 'barrier');
@@ -181,10 +188,12 @@ describe('city generation', () => {
         for (const o of bars.concat(rails)) {
           if (o === b) continue;
           expect(cross({ x: b.ax, z: b.az }, { x: b.bx, z: b.bz }, { x: o.ax, z: o.az }, { x: o.bx, z: o.bz })).toBe(false);
-          // Ends of different groups never nearly touch: those would have been merged.
+          // Ends of different groups never nearly touch (those would have been merged), unless two
+          // closures sealed across one corner pocket meet exactly in a V there.
           if (o.kind === 'barrier' && o.group !== b.group) {
             for (const [x, z] of [[b.ax, b.az], [b.bx, b.bz]]) {
-              expect(Math.min(Math.hypot(x - o.ax, z - o.az), Math.hypot(x - o.bx, z - o.bz))).toBeGreaterThan(2.9);
+              const d = Math.min(Math.hypot(x - o.ax, z - o.az), Math.hypot(x - o.bx, z - o.bz));
+              if (d > 1e-6) expect(d).toBeGreaterThan(2.9);
             }
           }
         }
@@ -193,10 +202,22 @@ describe('city generation', () => {
         expect(g.walls.length).toBe(g.edges.length);
         expect(Math.hypot(g.nx, g.nz)).toBeCloseTo(1, 6);
         expect(g.depth).toBeGreaterThanOrEqual(0);
-        if (g.walls.length > 1) merged++;
+      }
+      // Head-on closures (straight ahead of the incoming road) stand further back than side ones.
+      for (const b of classifyBarriers(w)) {
+        const n = w.graph.nodes[b.node];
+        const d = Math.hypot(b.x - n.x, b.z - n.z);
+        if (b.headOn) {
+          headOn++;
+          headOnDepth += d;
+        } else {
+          side++;
+          sideDepth += d;
+        }
       }
     }
-    expect(merged).toBeGreaterThan(20);
+    expect(headOn).toBeGreaterThan(20);
+    expect(headOnDepth / headOn).toBeGreaterThan(sideDepth / side + 2);
   });
 
   it('corner rails run along the back of the sidewalk and leave road and sidewalk drivable', () => {
@@ -245,9 +266,17 @@ describe('city generation', () => {
       expect(count('busStop')).toBeLessThan(count('bench'));
       props.forEach((p, i) => {
         expect(p.id).toBe(i);
-        expect(w.surfaceAt(p.x, p.z)).toBe('sidewalk');
+        // Street furniture on sidewalks; district clutter wherever its area put it (pockets, parks, alleys).
+        if (p.area === undefined) {
+          expect(isStreetProp(p.kind)).toBe(true);
+          expect(w.surfaceAt(p.x, p.z)).toBe('sidewalk');
+        } else expect(pointInPolygon(p.x, p.z, w.areas[p.area].polygon)).toBe(true);
         if (p.kind === 'trafficLight') expect(w.graph.nodes[p.node!].edges.length).toBeGreaterThanOrEqual(3);
       });
+      // District props come after all street furniture.
+      const firstDistrict = props.findIndex((p) => p.area !== undefined);
+      expect(firstDistrict).toBeGreaterThan(0);
+      for (const p of props.slice(firstDistrict)) expect(p.area).toBeDefined();
       // Nothing but streetlights (kept as generated) overlaps anything else.
       const scratch: number[] = [];
       for (const p of props) {
@@ -258,8 +287,9 @@ describe('city generation', () => {
           if (q !== p) expect(Math.hypot(p.x - q.x, p.z - q.z)).toBeGreaterThan(p.radius + q.radius);
         }
       }
-      // Off the drivable road with room for the prop's radius.
+      // Off the drivable road with room for the prop's radius (back alley dumpsters and bags are obstacles on purpose).
       for (const p of props) {
+        if (p.area !== undefined && w.areas[p.area].kind === 'backAlley') continue;
         for (const e of w.graph.edges) {
           const a = w.graph.nodes[e.a];
           const b = w.graph.nodes[e.b];
@@ -433,6 +463,98 @@ describe('districts', () => {
     expect(parks).toBeGreaterThan(8);
     expect(rivers).toBeGreaterThan(2);
     expect(lots + plazas).toBeGreaterThan(10);
+  });
+
+  it('inside corners are mostly drivable pockets full of clutter, with some solid ones left', () => {
+    const rng = new Rng(5);
+    let pockets = 0;
+    let solidCorners = 0;
+    let furnished = 0;
+    let turns = 0;
+    let clutterTurns = 0;
+    for (let i = 0; i < 16; i++) {
+      const w = createWorld(rng.int(0, 0x7fffffff), 'circuit');
+      const clutter = w.props.filter((p) => !isStreetProp(p.kind));
+      for (const a of w.areas) {
+        if (a.kind !== 'infill') continue;
+        if (a.variant === 'cornerPlaza') {
+          pockets++;
+          if (clutter.some((p) => p.area === a.id)) furnished++;
+        }
+        if (a.variant === 'planter' && a.params.frontSides === 2) solidCorners++;
+      }
+      // What the racers see on the inside of every turn of the route: clutter within reach of the apex.
+      const g = w.graph;
+      const N = w.route.nodes;
+      for (let k = 0; k < N.length; k++) {
+        const n = g.nodes[N[k]];
+        if (n.ring) continue;
+        const a = g.nodes[N[(k - 1 + N.length) % N.length]];
+        const b = g.nodes[N[(k + 1) % N.length]];
+        const la = Math.hypot(a.x - n.x, a.z - n.z);
+        const lb = Math.hypot(b.x - n.x, b.z - n.z);
+        const bx = (a.x - n.x) / la + (b.x - n.x) / lb;
+        const bz = (a.z - n.z) / la + (b.z - n.z) / lb;
+        const bl = Math.hypot(bx, bz);
+        if (bl < 0.5) continue;
+        turns++;
+        // The inside block corner lies on the bisector, reach / sin(half the angle between the roads) out.
+        const reach = Math.max(...n.edges.map((e) => g.edges[e].width / 2 + g.edges[e].sidewalk));
+        const halfAngle = Math.acos(Math.max(-1, Math.min(1, (bl * bl) / 2 - 1))) / 2;
+        const d = reach / Math.max(0.3, Math.sin(halfAngle));
+        const cx = n.x + (bx / bl) * d;
+        const cz = n.z + (bz / bl) * d;
+        if (clutter.some((p) => Math.hypot(p.x - cx, p.z - cz) < 12)) clutterTurns++;
+      }
+    }
+    expect(pockets).toBeGreaterThan(400);
+    // Solid corners are the exception.
+    expect(solidCorners * 4).toBeLessThan(pockets);
+    expect(furnished / pockets).toBeGreaterThan(0.85);
+    expect(clutterTurns / turns).toBeGreaterThan(0.25);
+  });
+
+  it('parks and alleys are full of destructible clutter, and back alley humps throw cars in the air', () => {
+    const rng = new Rng(9);
+    let jumps = 0;
+    const kinds = new Set<string>();
+    for (let i = 0; i < 12; i++) {
+      const w = createWorld(rng.int(0, 0x7fffffff), 'circuit');
+      for (const a of w.areas) {
+        const mine = w.props.filter((p) => p.area === a.id);
+        mine.forEach((p) => kinds.add(p.kind));
+        if (a.kind === 'park') expect(mine.filter((p) => p.kind === 'bush').length).toBeGreaterThan(10);
+        if (a.kind === 'alley') expect(mine.length).toBeGreaterThan(8);
+        if (a.kind === 'backAlley') expect(mine.some((p) => p.kind === 'dumpster')).toBe(true);
+        if (a.kind !== 'backAlley' || !a.params.jump || jumps >= 2) continue;
+        jumps++;
+        // Launch along the alley toward the hump, from both ends.
+        const [A, B] = a.path;
+        const len = Math.hypot(B.x - A.x, B.z - A.z);
+        for (const dir of [1, -1]) {
+          const ux = ((B.x - A.x) / len) * dir;
+          const uz = ((B.z - A.z) / len) * dir;
+          const s = a.params.jumpS - 35 * dir;
+          const x = A.x + ((B.x - A.x) / len) * s;
+          const z = A.z + ((B.z - A.z) / len) * s;
+          const c = createCar(x, z, Math.atan2(ux, uz), w.heightAt(x, z));
+          c.vx = ux * 24;
+          c.vz = uz * 24;
+          const t = getBaseTuning('s64');
+          let air = 0;
+          let best = 0;
+          for (let k = 0; k < 4 * 60; k++) {
+            stepCar(c, t, { ...NEUTRAL_INPUT, throttle: 0.6 }, { world: w });
+            air = c.wheels.every((wh) => !wh.contact) ? air + 1 : 0;
+            best = Math.max(best, air);
+          }
+          expect(best / 60).toBeGreaterThan(0.6);
+          expect(Number.isFinite(c.y) && Math.abs(c.pitch) < 0.2 && Math.abs(c.roll) < 0.2).toBe(true);
+        }
+      }
+    }
+    expect(jumps).toBe(2);
+    for (const k of ['bush', 'planterPot', 'cafeTable', 'barrel', 'crate', 'dumpster', 'newsBox', 'trashBags', 'bench']) expect(kinds).toContain(k);
   });
 
   it('routes drive around roundabout islands and narrow down in alleys', () => {

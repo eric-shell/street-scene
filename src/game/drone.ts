@@ -2,6 +2,11 @@
  * Drone flyover mode: a camera drone with inertia and banking to explore the
  * city. Keyboard + mouse, gamepad and touch (left stick move, right drag
  * look). "Tour" flies the event route automatically. Render only.
+ *
+ * Used on its own from the menu (it renders the backdrop city) and inside a
+ * race or free roam as a photo mode (0 key): the session starts it from its
+ * current camera, renders its own scene through the drone's camera and keeps
+ * Escape for itself (DroneOptions).
  */
 import * as THREE from 'three';
 import type { World } from '../city/world';
@@ -10,6 +15,15 @@ import type { GameRenderer } from '../render/scene';
 import { routeSample } from '../city/route';
 import { h, btn } from '../ui/dom';
 import { ArrowDown, ArrowUp, Compass, Drone, Gauge, Mountain, Route, X, icon } from '../ui/icons';
+
+export interface DroneOptions {
+  /** Start pose (world position, yaw and pitch in rad); default behind and above the grid. */
+  start?: { x: number; y: number; z: number; yaw: number; pitch: number };
+  /** Escape exits (default true); a session handles Escape itself. */
+  escape?: boolean;
+  /** Controls hint line. */
+  hint?: string;
+}
 
 const MAX_SPEED = 28;
 const BOOST = 3;
@@ -48,15 +62,22 @@ export class DroneMode {
     private readonly world: World,
     uiRoot: HTMLElement,
     onExit: () => void,
+    opts: DroneOptions = {},
   ) {
     const g0 = world.route.grid[0];
-    this.pos.set(g0.x - Math.sin(g0.yaw) * 30, world.heightAt(g0.x, g0.z) + 30, g0.z - Math.cos(g0.yaw) * 30);
-    this.yaw = g0.yaw;
+    if (opts.start) {
+      this.pos.set(opts.start.x, opts.start.y, opts.start.z);
+      this.yaw = opts.start.yaw;
+      this.pitch = Math.max(-1.45, Math.min(1.2, opts.start.pitch));
+    } else {
+      this.pos.set(g0.x - Math.sin(g0.yaw) * 30, world.heightAt(g0.x, g0.z) + 30, g0.z - Math.cos(g0.yaw) * 30);
+      this.yaw = g0.yaw;
+    }
     const o = { signal: this.abort.signal };
     window.addEventListener(
       'keydown',
       (e) => {
-        if (e.code === 'Escape') onExit();
+        if (e.code === 'Escape' && opts.escape !== false) onExit();
         if (e.code === 'KeyT' && !e.repeat) this.setTour(!this.tour);
         this.keys.add(e.code);
         if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
@@ -145,7 +166,7 @@ export class DroneMode {
       ),
       h('div', { class: 'drone-actions' }, this.tourBtn, btn(X, 'Exit', onExit, 'small')),
       h('div', { class: 'drone-updown' }, hold(ArrowUp, 1), hold(ArrowDown, -1)),
-      h('div', { class: 'drone-hint muted' }, 'WASD fly · drag to look · Space / Ctrl up / down · Shift boost · wheel speed · T tour · Esc exit'),
+      h('div', { class: 'drone-hint muted' }, opts.hint ?? 'WASD fly · drag to look · Space / Ctrl up / down · Shift boost · wheel speed · T tour · 0 or Esc exit'),
     );
     uiRoot.append(this.root);
   }

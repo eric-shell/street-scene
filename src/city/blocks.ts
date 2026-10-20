@@ -431,12 +431,49 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
     return exp(-r2);
   };
 
+  // Open corners: a share of junction corners keeps its buildings back, leaving a void the late
+  // infill turns into a corner pocket of clutter racers can cut through. Own random stream, so the
+  // choice does not depend on how many buildings were tried before.
+  const openCorners: Vec2[][] = [];
+  const openIndex = new PolygonIndex<{ polygon: Vec2[] }>(bminX, bminZ, bmaxX, bmaxZ);
+  if (CITY.districts.infill.enabled) {
+    const crng = new Rng(deriveSeed(seed, 'openCorners'));
+    const [r0, r1] = CITY.districts.infill.openCornerReach;
+    g.nodes.forEach((n, ni) => {
+      const m = n.edges.length;
+      if (m < 3 || n.ring) return;
+      sectors[ni].forEach((s, k) => {
+        if (s.angle > 170 * DEG || s.outer.length !== 1) return;
+        if (!crng.chance(CITY.districts.infill.openCornerChance)) return;
+        const dA = edgeDir(g, g.edges[n.edges[k]], n.id);
+        const dB = edgeDir(g, g.edges[n.edges[(k + 1) % m]], n.id);
+        const C = s.outer[0];
+        const rA = crng.range(r0, r1);
+        const rB = crng.range(r0, r1);
+        const poly = [{ x: C.x, z: C.z }, add(C, dA, rA), add(add(C, dA, rA), dB, rB), add(C, dB, rB)];
+        openCorners.push(poly);
+        openIndex.add({ polygon: poly });
+      });
+    });
+  }
+  /** Oriented footprint rectangle (o, u, w, bw, bd) contains (x, z). */
+  const inFootprint = (o: Vec2, u: Vec2, w: Vec2, bw: number, bd: number, x: number, z: number) => {
+    const a = (x - o.x) * u.x + (z - o.z) * u.z;
+    const b = (x - o.x) * w.x + (z - o.z) * w.z;
+    return a > 0 && a < bw && b > 0 && b < bd;
+  };
+
   const footprintOk = (o: Vec2, u: Vec2, w: Vec2, bw: number, bd: number): boolean => {
     for (let i = 0; i <= 3; i++) {
       for (let j = 0; j <= 3; j++) {
         const p = add(add(o, u, (bw * i) / 3), w, (bd * j) / 3);
-        if (corridorClearance(g, edgeGrid, p.x, p.z, scratch) < 0.25 || excluded(p.x, p.z)) return false;
+        if (corridorClearance(g, edgeGrid, p.x, p.z, scratch) < 0.25 || excluded(p.x, p.z) || openIndex.first(p.x, p.z)) return false;
       }
+    }
+    // Open corners smaller than the sample spacing: their corners must not fall inside either.
+    for (const poly of openCorners) {
+      if (Math.abs(poly[0].x - o.x) > 60 || Math.abs(poly[0].z - o.z) > 60) continue;
+      for (const q of poly) if (inFootprint(o, u, w, bw, bd, q.x, q.z)) return false;
     }
     return true;
   };
@@ -568,6 +605,7 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
   );
 
   // Void runs in ring order for the late modules.
+  let lateBuilds: AreaBuild[] = [];
   if (districts.late) {
     const voids: FrontageRun[] = [];
     faces.forEach((f, fi) => {
@@ -640,13 +678,20 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
         }
       }
       if (run) {
+        // The walk stops at the first non void sample (s0, k0), so a run still open here ends there.
         const r: FrontageRun = run;
+        if (k0 > 0) {
+          const p = pointAt(s0, k0);
+          r.length += Math.hypot(p.x - r.points[r.points.length - 1].x, p.z - r.points[r.points.length - 1].z);
+          r.points.push(p);
+          r.edges.push(f.segEdge[s0]);
+        }
         const lastCorner = r.corners[r.corners.length - 1];
         if (lastCorner && lastCorner.index >= r.points.length - 1) r.corners.pop();
       }
       close();
     });
-    const lateBuilds = districts.late({
+    lateBuilds = districts.late({
       terrain,
       buildings,
       voids,
@@ -731,8 +776,9 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
     }
   });
 
-  // Destructible street furniture (streetlights first, ids aligned with `streetlights`).
-  const props = generateProps(seed, g, sectors, mouths, streetlights, terrain, edgeGrid, reserved);
+  // Destructible street furniture (streetlights first, ids aligned with `streetlights`), then district clutter.
+  const clutter = [...districts.builds, ...lateBuilds].flatMap((b) => b.destructibles);
+  const props = generateProps(seed, g, sectors, mouths, streetlights, terrain, edgeGrid, reserved, clutter);
 
   // Neon sign anchors on building fronts, biased toward downtown.
   const signs: SignAnchor[] = [];

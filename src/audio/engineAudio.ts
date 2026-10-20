@@ -1,13 +1,20 @@
 /**
  * Synthesized engine sound with Web Audio. Each car gets a voice whose pitch
- * follows the firing frequency (rpm / 60 * cylinders / 2) and whose tone opens
- * up with throttle. Profiles:
- *  - i4turbo (s64, Proto Compact): raspy inline four, turbo spool whistle and a
- *    blow-off valve chuff when you lift at boost
- *  - v6 (gc14, Proto Hatch): deeper, smoother six with half-order growl
+ * follows the firing frequency (rpm / 60 * firings per revolution, from the
+ * car's EngineSpec) and whose tone opens up with throttle. The spec picks the
+ * voice:
+ *  - under six cylinders (s64, Proto Compact: I4): raspy, with a second order
+ *    bite; a turbocharged spec adds a spool whistle and a blow-off valve chuff
+ *    when you lift at boost
+ *  - six and up (gc14, Proto Hatch: V6): deeper, smoother, half-order growl
+ * Most of an engine's energy sits below 300 Hz, which laptop and phone
+ * speakers barely reproduce, so a presence peak that tracks the firing
+ * frequency lifts the harmonics in the 0.5 to 2.5 kHz range where small
+ * speakers work, and the voice runs hot enough to sit above the music.
  * Render side only; reads interpolated car state.
  */
-export type EngineType = 'i4' | 'i4turbo' | 'v6';
+import type { EngineSpec } from '../shared/carSpec';
+import { cylinderCount, firingsPerRev } from '../shared/carSpec';
 
 export interface EngineInput {
   rpm: number;
@@ -78,11 +85,24 @@ function softClip(amount: number): Float32Array<ArrayBuffer> {
   return curve;
 }
 
+/**
+ * Voice tone and level. PRESENCE: peak at the firing frequency times `harmonic`,
+ * clamped to [min, max] Hz, `gain` dB. GAIN scales every voice (the bus
+ * compressor keeps a full grid in check). LOWPASS: filter opening (Hz) at
+ * idle, plus per unit of rpm fraction and of throttle.
+ */
+const VOICE = {
+  presence: { harmonic: 6, min: 550, max: 2400, q: 0.8, gain: 9 },
+  gain: 1.9,
+  lowpass: { six: [480, 2400, 1700], four: [650, 3400, 2300] },
+} as const;
+
 export class EngineVoice {
   private ctx: AudioContext;
   private out: GainNode;
   private pan: StereoPannerNode;
   private filter: BiquadFilterNode;
+  private presence: BiquadFilterNode;
   private oscMain: OscillatorNode;
   private oscOrder: OscillatorNode;
   private oscSub: OscillatorNode;
@@ -98,26 +118,35 @@ export class EngineVoice {
   private boost = 0;
   private lastThrottle = 0;
   private stopped = false;
-  private readonly cylinders: number;
+  /** Combustion events per revolution: the fundamental is rpm / 60 times this. */
+  private readonly firings: number;
+  /** Six or more cylinders get the deeper, smoother voice. */
+  private readonly six: boolean;
 
   constructor(
-    private readonly type: EngineType,
+    spec: EngineSpec,
     private readonly base = 0.24,
   ) {
     const h = audioHub()!;
     const ctx = (this.ctx = h.ctx);
-    this.cylinders = type === 'v6' ? 6 : 4;
+    this.firings = firingsPerRev(spec);
+    const six = (this.six = cylinderCount(spec) >= 6);
+    const turbo = spec.aspiration === 'turbo';
     this.out = ctx.createGain();
     this.out.gain.value = 0;
     this.pan = ctx.createStereoPanner();
     this.out.connect(this.pan).connect(h.engineBus);
 
     const shaper = ctx.createWaveShaper();
-    shaper.curve = softClip(type === 'v6' ? 1.6 : 2.4);
+    shaper.curve = softClip(six ? 1.6 : 2.4);
     this.filter = ctx.createBiquadFilter();
     this.filter.type = 'lowpass';
-    this.filter.Q.value = type === 'v6' ? 2.2 : 1.2;
-    shaper.connect(this.filter).connect(this.out);
+    this.filter.Q.value = six ? 2.2 : 1.2;
+    this.presence = ctx.createBiquadFilter();
+    this.presence.type = 'peaking';
+    this.presence.Q.value = VOICE.presence.q;
+    this.presence.gain.value = VOICE.presence.gain;
+    shaper.connect(this.filter).connect(this.presence).connect(this.out);
 
     const osc = (wave: OscillatorType, gain: number): [OscillatorNode, GainNode] => {
       const o = ctx.createOscillator();
@@ -129,10 +158,10 @@ export class EngineVoice {
       return [o, g];
     };
     // Fundamental firing order, a second order component, and a sub rumble.
-    [this.oscMain, this.gMain] = osc('sawtooth', type === 'v6' ? 0.5 : 0.55);
-    [this.oscOrder, this.gOrder] = osc(type === 'v6' ? 'sawtooth' : 'square', type === 'v6' ? 0.38 : 0.16);
-    [this.oscSub, this.gSub] = osc('sine', type === 'v6' ? 0.55 : 0.3);
-    this.oscOrder.detune.value = type === 'v6' ? -6 : 4;
+    [this.oscMain, this.gMain] = osc('sawtooth', six ? 0.5 : 0.55);
+    [this.oscOrder, this.gOrder] = osc(six ? 'sawtooth' : 'square', six ? 0.38 : 0.16);
+    [this.oscSub, this.gSub] = osc('sine', six ? 0.55 : 0.3);
+    this.oscOrder.detune.value = six ? -6 : 4;
 
     // Exhaust / intake rasp from filtered noise.
     this.noiseSrc = ctx.createBufferSource();
@@ -146,7 +175,7 @@ export class EngineVoice {
     this.noiseSrc.connect(this.noiseBand).connect(this.gNoise).connect(shaper);
     this.noiseSrc.start();
 
-    if (type === 'i4turbo') {
+    if (turbo) {
       // Turbo spool whistle, straight to the output (not through the low pass).
       this.turbo = ctx.createOscillator();
       this.turbo.type = 'sine';
@@ -174,21 +203,24 @@ export class EngineVoice {
     const t = this.ctx.currentTime;
     const tc = 0.035;
     const rpm = Math.max(600, e.rpm);
-    const f = (rpm / 60) * (this.cylinders / 2);
+    const f = (rpm / 60) * this.firings;
     const load = Math.max(0, Math.min(1, e.throttle));
     const r = Math.min(1.05, rpm / e.redline);
     this.oscMain.frequency.setTargetAtTime(f, t, tc);
-    this.oscOrder.frequency.setTargetAtTime(this.type === 'v6' ? f * 0.5 : f * 2, t, tc);
+    this.oscOrder.frequency.setTargetAtTime(this.six ? f * 0.5 : f * 2, t, tc);
     this.oscSub.frequency.setTargetAtTime(f * 0.5, t, tc);
-    this.noiseBand.frequency.setTargetAtTime(f * (this.type === 'v6' ? 2.5 : 3.5), t, tc);
-    const open = this.type === 'v6' ? 260 + r * 1500 + load * 1100 : 380 + r * 2400 + load * 1700;
+    this.noiseBand.frequency.setTargetAtTime(f * (this.six ? 2.5 : 3.5), t, tc);
+    const lp = this.six ? VOICE.lowpass.six : VOICE.lowpass.four;
+    const open = lp[0] + r * lp[1] + load * lp[2];
     this.filter.frequency.setTargetAtTime(open * (e.nitro ? 1.3 : 1), t, tc);
-    this.gNoise.gain.setTargetAtTime((this.type === 'v6' ? 0.1 : 0.16) * (0.3 + load) * (0.4 + r), t, tc);
-    this.gMain.gain.setTargetAtTime((this.type === 'v6' ? 0.5 : 0.55) * (0.6 + 0.4 * load), t, tc);
+    const pr = VOICE.presence;
+    this.presence.frequency.setTargetAtTime(Math.max(pr.min, Math.min(pr.max, f * pr.harmonic)), t, tc);
+    this.gNoise.gain.setTargetAtTime((this.six ? 0.1 : 0.16) * (0.3 + load) * (0.4 + r), t, tc);
+    this.gMain.gain.setTargetAtTime((this.six ? 0.5 : 0.55) * (0.6 + 0.4 * load), t, tc);
     // Low rpm rumble fades as revs climb; the second order bites under load.
-    this.gSub.gain.setTargetAtTime((this.type === 'v6' ? 0.55 : 0.3) * (1.1 - 0.6 * r), t, tc);
-    this.gOrder.gain.setTargetAtTime((this.type === 'v6' ? 0.38 : 0.16) * (0.5 + 0.7 * load), t, tc);
-    const level = this.base * e.proximity * (0.45 + 0.55 * load) * (0.7 + 0.3 * r);
+    this.gSub.gain.setTargetAtTime((this.six ? 0.55 : 0.3) * (1.1 - 0.6 * r), t, tc);
+    this.gOrder.gain.setTargetAtTime((this.six ? 0.38 : 0.16) * (0.5 + 0.7 * load), t, tc);
+    const level = this.base * VOICE.gain * e.proximity * (0.45 + 0.55 * load) * (0.7 + 0.3 * r);
     this.out.gain.setTargetAtTime(level, t, 0.05);
     this.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, e.pan)), t, 0.05);
 
@@ -230,7 +262,7 @@ export class EngineVoice {
  * flywheel that chases the throttle, falls back to idle and bounces off the
  * rev limiter. Owns its EngineVoice (null when Web Audio is unavailable).
  *
- *   const eng = new FreeRevEngine('i4turbo', { idle: 900, redline: 7600 });
+ *   const eng = new FreeRevEngine(manifestCar('s64').engine, { idle: 900, redline: 7600 });
  *   // every frame: eng.update(throttle01, dt);   eng.rpm for a tach
  *   eng.dispose();
  */
@@ -241,11 +273,11 @@ export class FreeRevEngine {
   private readonly idle: number;
   private readonly redline: number;
 
-  constructor(type: EngineType, opts: { idle?: number; redline?: number; volume?: number } = {}) {
+  constructor(spec: EngineSpec, opts: { idle?: number; redline?: number; volume?: number } = {}) {
     this.idle = opts.idle ?? 900;
     this.redline = opts.redline ?? 7200;
     this.rpm = this.idle;
-    this.voice = audioHub() ? new EngineVoice(type, opts.volume ?? 0.24) : null;
+    this.voice = audioHub() ? new EngineVoice(spec, opts.volume ?? 0.24) : null;
   }
 
   /** Advance by dt seconds with throttle 0..1, then drive the voice. Returns rpm. */

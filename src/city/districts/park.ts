@@ -3,17 +3,21 @@
  * block's frontage is opened (no walls: you can cut straight across), the
  * surface is 'grass' (offroad grip and drag), buildings are kept out and the
  * terrain gets a bumpy hill that is flat at the park edge. Trees are solid
- * trunks (look 'tree') kept away from the edge so the shortcut stays open.
+ * trunks (look 'tree') kept away from the edge so the shortcut stays open;
+ * one small wood packs them tighter, with bushes underneath. Clusters of
+ * bushes (destructible, a car ploughs straight through) dot the grass, and
+ * a footpath loop inside the edge has benches and bins (destructible too).
  *
- * Content to add (render/districts/park.ts): footpaths, lamps, benches,
- * hedges, a pond or playground, better trees.
+ * Content to add (render/districts/park.ts): lamps, hedges, a pond or
+ * playground, better trees.
  */
 import { CITY } from '../config';
 import { cos, sin } from '../../sim/math';
 import { Rng } from '../../sim/prng';
 import type { DistrictModule } from './types';
+import type { PropKind } from '../props';
 import { emptyBuild } from './types';
-import { circlePolygon, distToPolygonEdge, pointInPolygon, polyWalls, polygonBounds, smooth01 } from './geom';
+import { circlePolygon, distToPolygonEdge, pointInPolygon, polyWalls, polygonArea, polygonBounds, smooth01 } from './geom';
 
 const CFG = CITY.districts.park;
 
@@ -31,6 +35,32 @@ function convex(ring: { x: number; z: number }[]): boolean {
     sign = s;
   }
   return true;
+}
+
+/** The ring moved inward by d (m), for a convex ring in block order (block on the right of travel); null when it collapses. */
+function insetRing(ring: { x: number; z: number }[], d: number): { x: number; z: number }[] | null {
+  const n = ring.length;
+  const lines = ring.map((p, i) => {
+    const q = ring[(i + 1) % n];
+    const l = Math.hypot(q.x - p.x, q.z - p.z) || 1;
+    const nx = (q.z - p.z) / l;
+    const nz = -(q.x - p.x) / l;
+    return { x: p.x + nx * d, z: p.z + nz * d, dx: (q.x - p.x) / l, dz: (q.z - p.z) / l, l };
+  });
+  const out: { x: number; z: number }[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = lines[(i - 1 + n) % n];
+    const b = lines[i];
+    if (a.l < 1 || b.l < 1) continue;
+    const den = a.dx * b.dz - a.dz * b.dx;
+    if (Math.abs(den) < 1e-6) continue;
+    const t = ((b.x - a.x) * b.dz - (b.z - a.z) * b.dx) / den;
+    out.push({ x: a.x + a.dx * t, z: a.z + a.dz * t });
+  }
+  if (out.length < 3) return null;
+  // Collapsed or flipped (the inset passed the middle): every point must sit d inside the original.
+  for (const p of out) if (!pointInPolygon(p.x, p.z, ring) || distToPolygonEdge(p.x, p.z, ring) < d - 0.5) return null;
+  return out;
 }
 
 export const parkModule: DistrictModule = {
@@ -115,18 +145,96 @@ export const parkModule: DistrictModule = {
         out.gz += hill * (P * sz * bump + P * dbz);
       },
     });
-    // Trees on a jittered grid, clear of the edge.
+    // Trees on a jittered grid, clear of the edge; one small wood packs them tighter.
     const rng = new Rng(area.params.seed);
     const rnd = () => rng.next();
+    const trees: { x: number; z: number }[] = [];
+    const addTree = (tx: number, tz: number) => {
+      trees.push({ x: tx, z: tz });
+      b.walls.push(...polyWalls(circlePolygon(tx, tz, CFG.treeRadius, 6), false, 'tree', id));
+      b.props.push({ kind: 'tree', x: tx, z: tz, yaw: rnd() * 6.28, size: 2.2 + rnd() * 1.6, height: 5 + rnd() * 4, area: id });
+    };
+    // The wood: a random spot at least its radius inside the edge (none in a park too small for it).
+    let grove: { x: number; z: number; r: number } | null = null;
+    const gr = CFG.groveRadius[0] + rnd() * (CFG.groveRadius[1] - CFG.groveRadius[0]);
+    for (let k = 0; k < 24 && !grove; k++) {
+      const gx = bb.minX + rnd() * (bb.maxX - bb.minX);
+      const gz = bb.minZ + rnd() * (bb.maxZ - bb.minZ);
+      if (pointInPolygon(gx, gz, ring) && distToPolygonEdge(gx, gz, ring) > gr + 6) grove = { x: gx, z: gz, r: gr };
+    }
+    const inGrove = (x: number, z: number) => !!grove && (x - grove.x) ** 2 + (z - grove.z) ** 2 < grove.r * grove.r;
     const step = CFG.treeSpacing;
     for (let x = bb.minX + step / 2; x < bb.maxX; x += step) {
       for (let z = bb.minZ + step / 2; z < bb.maxZ; z += step) {
         if (rnd() < 0.35) continue;
         const tx = x + (rnd() - 0.5) * step * 0.7;
         const tz = z + (rnd() - 0.5) * step * 0.7;
-        if (!pointInPolygon(tx, tz, ring) || distToPolygonEdge(tx, tz, ring) < 9) continue;
-        b.walls.push(...polyWalls(circlePolygon(tx, tz, CFG.treeRadius, 6), false, 'tree', id));
-        b.props.push({ kind: 'tree', x: tx, z: tz, yaw: rnd() * 6.28, size: 2.2 + rnd() * 1.6, height: 5 + rnd() * 4, area: id });
+        if (!pointInPolygon(tx, tz, ring) || distToPolygonEdge(tx, tz, ring) < 9 || inGrove(tx, tz)) continue;
+        addTree(tx, tz);
+      }
+    }
+    const clutter = (kind: PropKind, x: number, z: number, yaw: number) => b.destructibles.push({ kind, x, z, yaw, lift: 0, area: id });
+    /** Clear of tree trunks and of the park edge. */
+    const open = (x: number, z: number, r: number, edge: number) =>
+      pointInPolygon(x, z, ring) && distToPolygonEdge(x, z, ring) > edge && trees.every((t) => (t.x - x) ** 2 + (t.z - z) ** 2 > (CFG.treeRadius + r + 0.6) ** 2);
+    if (grove) {
+      const gs = CFG.groveSpacing;
+      for (let x = grove.x - grove.r; x < grove.x + grove.r; x += gs) {
+        for (let z = grove.z - grove.r; z < grove.z + grove.r; z += gs) {
+          if (rnd() < 0.2) continue;
+          const tx = x + (rnd() - 0.5) * gs * 0.8;
+          const tz = z + (rnd() - 0.5) * gs * 0.8;
+          if (inGrove(tx, tz) && open(tx, tz, CFG.treeRadius, 9)) addTree(tx, tz);
+        }
+      }
+      // Undergrowth.
+      for (let k = 0; k < grove.r * 1.6; k++) {
+        const a = rnd() * 6.28;
+        const d = Math.sqrt(rnd()) * grove.r;
+        const x = grove.x + Math.cos(a) * d;
+        const z = grove.z + Math.sin(a) * d;
+        if (open(x, z, 0.75, 4)) clutter('bush', x, z, rnd() * 6.28);
+      }
+    }
+    // Bush clusters on the open grass.
+    const clusters = Math.round(polygonArea(ring) / CFG.bushClusterArea);
+    for (let c = 0; c < clusters; c++) {
+      const cx = bb.minX + rnd() * (bb.maxX - bb.minX);
+      const cz = bb.minZ + rnd() * (bb.maxZ - bb.minZ);
+      if (!pointInPolygon(cx, cz, ring) || inGrove(cx, cz)) continue;
+      const n = 2 + Math.floor(rnd() * 5);
+      for (let k = 0; k < n; k++) {
+        const x = cx + (rnd() - 0.5) * 5;
+        const z = cz + (rnd() - 0.5) * 5;
+        if (open(x, z, 0.75, 2.5)) clutter('bush', x, z, rnd() * 6.28);
+      }
+    }
+    // Footpath loop with benches facing in and a bin beside some of them.
+    const path = insetRing(ring, CFG.pathInset);
+    if (path) {
+      b.hints.push({ kind: 'path', points: path, values: [] });
+      for (let i = 0; i < path.length; i++) {
+        const p = path[i];
+        const q = path[(i + 1) % path.length];
+        const len = Math.hypot(q.x - p.x, q.z - p.z);
+        if (len < 8) continue;
+        const ux = (q.x - p.x) / len;
+        const uz = (q.z - p.z) / len;
+        // Inward: right of travel along the ring (the block is on the right).
+        const nx = uz;
+        const nz = -ux;
+        for (let s = CFG.benchSpacing * (0.3 + 0.4 * rnd()); s < len - 4; s += CFG.benchSpacing) {
+          const x = p.x + ux * s + nx * 1.8;
+          const z = p.z + uz * s + nz * 1.8;
+          if (!open(x, z, 0.9, 3)) continue;
+          // Benches face the path (local +Z toward it, i.e. away from the park middle).
+          clutter('bench', x, z, Math.atan2(-nx, -nz));
+          if (rnd() < 0.5) {
+            const cx = x + ux * 1.6;
+            const cz = z + uz * 1.6;
+            if (open(cx, cz, 0.4, 3)) clutter('garbageCan', cx, cz, 0);
+          }
+        }
       }
     }
     return b;

@@ -2,6 +2,7 @@
  * Boot, game loop and top level state machine:
  *   menu -> race -> results -> (retry | replay | garage | menu)
  *   menu -> garage -> menu / test drive
+ *   menu -> free roam (open world on the event seed, or a new city from the pause menu) -> menu
  */
 import './style.css';
 import './ui/ui.css';
@@ -26,7 +27,7 @@ import { CameraPanel, applySavedCameraParams } from './ui/cameraPanel';
 import { creditsScreen, loadingScreen, mainMenu, pauseMenu, resultsScreen, settingsScreen } from './ui/screens';
 import { showSplash } from './ui/splash';
 import { toast } from './ui/dom';
-import { Check, Info } from './ui/icons';
+import { Check, Info, Shuffle } from './ui/icons';
 import { RaceConfig, RaceEntrant, RaceMode, standings, ticksToSeconds } from './sim/race';
 import { CarBuild, PerformanceBuild, VisualBuild, defaultVisual, PAINT_FINISHES } from './sim/build';
 import { DEFAULT_CAR_ID, PERFORMANCE_CATEGORIES, SELECTABLE_CAR_IDS, Tier } from './sim/tuning';
@@ -77,7 +78,9 @@ const dev = new TuningPanel(uiRoot);
 // Camera tuning (F3): saved tweaks apply to every race camera from boot.
 const camPanel = new CameraPanel(uiRoot);
 applySavedCameraParams();
-let testDriving = false;
+/** What the running session is: a race (or replay), a garage test drive, or free roam. */
+type SessionKind = 'race' | 'testDrive' | 'roam';
+let sessionKind: SessionKind = 'race';
 // One player for the whole app: music carries on across every screen.
 const music = new MusicPlayer();
 const musicWidget = new MusicWidget(document.body, music);
@@ -104,13 +107,15 @@ function startDrone(): void {
   ensureBackdrop();
   setOverlay(null);
   drone?.dispose();
-  drone = new DroneMode(gr, backdrop!.night, backdrop!.world, uiRoot, () => {
-    drone?.dispose();
-    drone = null;
-    showMenu();
-  });
+  drone = new DroneMode(gr, backdrop!.night, backdrop!.world, uiRoot, exitDrone);
   state = 'drone';
   syncMusicMode();
+}
+
+function exitDrone(): void {
+  drone?.dispose();
+  drone = null;
+  showMenu();
 }
 
 function ensureBackdrop(): void {
@@ -152,6 +157,11 @@ function syncMusicMode(): void {
   music.setDuck(state === 'race' && session?.paused ? 0.55 : 1);
 }
 
+/** The main menu's own overlay (settings, credits and dialogs replace it). */
+let menuEl: HTMLElement | null = null;
+/** Something other than the main menu is open on top of the menu city. */
+const overlayBusy = () => overlay !== menuEl;
+
 function setOverlay(el: HTMLElement | null): void {
   overlay?.remove();
   overlay = el;
@@ -183,6 +193,7 @@ function showMenu(): void {
       carName: `${currentBuild().name} · ${manifestCar(currentBuild().carId).displayName}`,
       hasReplay: !!loadLastReplay(),
       onRace: (m) => startRace(m),
+      onFreeRoam: () => startFreeRoam(seedStr),
       onGarage: () => void openGarage(),
       onReplay: () => {
         const r = loadLastReplay();
@@ -202,6 +213,7 @@ function showMenu(): void {
       },
     }),
   );
+  menuEl = overlay;
 }
 
 function openSettings(back: () => void): void {
@@ -303,14 +315,39 @@ function startRace(mode: RaceMode, testDrive = false): void {
     openWorld: testDrive || undefined,
   };
   const ghostData = count === 0 && !testDrive ? loadGhost(seed, mode) : null;
-  runSession(config, [build.visual, ...opp.visuals], null, ghostData, testDrive);
+  runSession(config, [build.visual, ...opp.visuals], null, ghostData, testDrive ? 'testDrive' : 'race');
+}
+
+/**
+ * Free roam: the whole city of a seed as an open world (no route, barriers,
+ * rails, parked cars, crowds or rivals), with the player's build and none of
+ * the test drive tuning. It never finishes; the pause menu goes back to the
+ * start, to a new random city, or to the menu.
+ */
+function startFreeRoam(seedText: string): void {
+  garageScreen?.dispose();
+  garageScreen = null;
+  const build = currentBuild();
+  const config: RaceConfig = {
+    seed: seedFromString(seedText),
+    mode: 'circuit',
+    laps: 1,
+    player: { name: 'You', carId: build.carId, performance: build.performance },
+    opponents: [],
+    difficulty: settings.difficulty,
+    manualGearbox: settings.manualGearbox,
+    tractionControl: settings.tractionControl,
+    openWorld: true,
+  };
+  runSession(config, [build.visual], null, null, 'roam');
 }
 
 function startReplay(r: ReplayData): void {
-  runSession(r.config, r.visuals, r, null, false);
+  runSession(r.config, r.visuals, r, null, 'race');
 }
 
-function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayData | null, ghost: ReplayData | null, testDrive: boolean): void {
+function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayData | null, ghost: ReplayData | null, kind: SessionKind): void {
+  const testDrive = kind === 'testDrive';
   session?.dispose();
   dev.close();
   setOverlay(null);
@@ -321,11 +358,11 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
     visuals,
     replay: replay ? { ...replay, decoded: decodeLog(replay.log) } : undefined,
     ghost: ghost ? { config: ghost.config, log: decodeLog(ghost.log), visual: ghost.visuals[0] } : null,
-    // Start / finish camera shots; test drives go straight to driving.
-    cinematics: !testDrive,
+    // Start / finish camera shots; test drives and free roam go straight to driving.
+    cinematics: kind === 'race',
   });
   state = 'race';
-  testDriving = testDrive;
+  sessionKind = kind;
   syncMusicMode();
   loop.resetAccumulator();
   if (testDrive) {
@@ -341,6 +378,7 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
   s.onFinish = ({ race, tuned }) => {
     if (s !== session) return;
     if (testDrive) return void openGarage();
+    if (kind === 'roam') return showMenu();
     syncMusicMode();
     const st = standings(race);
     const me = st.find((x) => x.car.isPlayer)!;
@@ -375,7 +413,7 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
         driftScore: race.drift.total,
         newBest,
         tuned,
-        onRetry: () => (replay ? startReplay(replay) : runSession(race.config, visuals, null, race.config.opponents.length ? null : loadGhost(race.config.seed, race.config.mode), false)),
+        onRetry: () => (replay ? startReplay(replay) : runSession(race.config, visuals, null, race.config.opponents.length ? null : loadGhost(race.config.seed, race.config.mode), 'race')),
         onReplay: () => startReplay(replay ?? data),
         onGarage: () => void openGarage(),
         onMenu: showMenu,
@@ -386,6 +424,8 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
 
 function togglePause(): void {
   if (state !== 'race' || !session) return;
+  // Escape in the photo mode drone flies back to the car instead of pausing.
+  if (session.droneActive) return session.toggleDrone();
   if (session.paused) {
     session.paused = false;
     setOverlay(null);
@@ -399,15 +439,23 @@ function togglePause(): void {
     setOverlay(
       pauseMenu({
         onResume: togglePause,
-        onRestart: () => lastConfig && runSession(lastConfig, lastVisuals, null, lastConfig.opponents.length || lastConfig.openWorld ? null : loadGhost(lastConfig.seed, lastConfig.mode), lastConfig.openWorld === true),
+        onRestart: () => lastConfig && runSession(lastConfig, lastVisuals, null, lastConfig.opponents.length || lastConfig.openWorld ? null : loadGhost(lastConfig.seed, lastConfig.mode), sessionKind),
+        restartLabel: sessionKind === 'race' ? undefined : 'Back to the start',
+        extra: sessionKind === 'roam' ? [{ icon: Shuffle, label: 'New city', onClick: () => startFreeRoam(String(Math.floor(Math.random() * 1e8))) }] : undefined,
         onSettings: () => openSettings(showPause),
-        onQuit: () => (testDriving ? void openGarage() : showMenu()),
+        onQuit: () => (sessionKind === 'testDrive' ? void openGarage() : showMenu()),
       }),
     );
   showPause();
 }
 
 input.on('pause', togglePause);
+// 0: the drone flyover from the menu (and back); in a race the session flies its own photo mode drone.
+input.onView((n) => {
+  if (n !== 0) return;
+  if (state === 'menu' && !overlayBusy()) startDrone();
+  else if (state === 'drone') exitDrone();
+});
 /** Show or hide the physics tuning panel for the current race (no argument = toggle). */
 function toggleTuningPanel(show = !dev.open): void {
   if (state !== 'race' || !session || session.isReplay) return;
@@ -481,7 +529,7 @@ const loop = new FixedStepLoop({
 async function boot(): Promise<void> {
   applyAutoQuality();
   const direct = params.get('race');
-  const deepLink = direct === 'circuit' || direct === 'sprint' || direct === 'drift' || params.has('garage') || params.has('drone');
+  const deepLink = direct === 'circuit' || direct === 'sprint' || direct === 'drift' || params.has('garage') || params.has('drone') || params.has('freeroam');
   // A normal start flashes the title in over the asset check and lands it on the
   // menu; deep links go straight to their screen behind a plain loading card.
   // On document.body, not #ui: it has to cover the music widget, which lives there too.
@@ -508,6 +556,7 @@ async function boot(): Promise<void> {
   if (direct === 'circuit' || direct === 'sprint' || direct === 'drift') startRace(direct);
   else if (params.has('garage')) void openGarage();
   else if (params.has('drone')) startDrone();
+  else if (params.has('freeroam')) startFreeRoam(seedStr);
   else showMenu();
   loop.start();
   if (splash) {

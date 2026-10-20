@@ -2,7 +2,9 @@
  * Sound effects with Web Audio. Synthesized (no asset files):
  *  - impacts: car vs car crunch, wall/barrier thud, guard rail clang, and prop
  *    breaks by kind (pole clang + glass, hollow can bang, bench crunch, big
- *    bus stop shatter). Each is rendered once into a few AudioBuffer variants
+ *    bus stop shatter, leafy bush swish, pot crack, cafe chair clatter, plastic
+ *    barrel thunk, crate splinter, dumpster boom, trash bag thump). Each is
+ *    rendered once into a few AudioBuffer variants
  *    by the small DSP recipes below, then replayed with pitch and level from
  *    the impact speed, spatialized to the camera, rate limited and capped
  *    to a fixed number of voices.
@@ -41,8 +43,25 @@ export interface SfxCar {
 }
 
 export type WallHitKind = 'wall' | 'barrier' | 'rail';
-export type SfxBank = 'crash' | WallHitKind | PropKind | 'firework';
+/** Prop kinds with their own impact sound (news boxes sound like garbage cans). */
+type PropSound = Exclude<PropKind, 'newsBox'>;
+export type SfxBank = 'crash' | WallHitKind | PropSound | 'firework';
 type Bank = SfxBank;
+const PROP_SOUND: Record<PropKind, PropSound> = {
+  streetlight: 'streetlight',
+  trafficLight: 'trafficLight',
+  garbageCan: 'garbageCan',
+  bench: 'bench',
+  busStop: 'busStop',
+  bush: 'bush',
+  planterPot: 'planterPot',
+  cafeTable: 'cafeTable',
+  barrel: 'barrel',
+  crate: 'crate',
+  dumpster: 'dumpster',
+  newsBox: 'garbageCan',
+  trashBags: 'trashBags',
+};
 
 const VARIANTS = 3;
 const MAX_VOICES = 14;
@@ -324,6 +343,108 @@ const RECIPES: Record<Bank, { seconds: number; make(t: Tape): void }> = {
       t.grains(0.05, 1.2, 40, 0.2, 2500, 7000, 2.2);
     },
   },
+  // Bush: a leafy swish and snapping twigs, barely a thud.
+  bush: {
+    seconds: 0.8,
+    make(t) {
+      t.noise(0, 0.45, 0.6, 0.18, [['bp', rnd(2200, 3200), 0.6]], 0.015);
+      t.noise(0, 0.3, 0.35, 0.1, [['hp', 5000, 0.7]], 0.01);
+      t.grains(0.01, 0.35, 40, 0.4, 1800, 5200, 2.2, 0.006);
+      t.thud(0, 90, 50, 0.04, 0.25, 0.06);
+    },
+  },
+  // Planter pot: a concrete crack over a heavy thud, shards and spilling soil.
+  planterPot: {
+    seconds: 1.0,
+    make(t) {
+      t.thud(0, rnd(100, 120), 40, 0.05, 0.85, 0.14);
+      t.modes(0, [
+        [rnd(420, 520), 0.4, 0.03],
+        [rnd(900, 1100), 0.3, 0.02],
+        [rnd(1700, 2000), 0.2, 0.015],
+      ]);
+      t.noise(0, 0.2, 0.5, 0.05, [['bp', 1200, 0.9]]);
+      t.grains(0.02, 0.5, 30, 0.35, 900, 3500, 2, 0.01);
+      t.noise(0.05, 0.5, 0.2, 0.2, [['lp', 600, 0.7]], 0.02);
+    },
+  },
+  // Cafe table: aluminium chairs clattering away in a few bounces.
+  cafeTable: {
+    seconds: 1.0,
+    make(t) {
+      const b = rnd(600, 720);
+      const clank = (at: number, a: number) => t.modes(at, BAR.map((r, i) => [b * r * rnd(0.95, 1.05), a / (1 + i * 0.7), 0.12] as [number, number, number]));
+      clank(0, 0.5);
+      clank(rnd(0.12, 0.18), 0.35);
+      clank(rnd(0.3, 0.38), 0.25);
+      clank(rnd(0.5, 0.6), 0.15);
+      t.thud(0, 120, 60, 0.03, 0.4, 0.06);
+      t.grains(0.02, 0.4, 12, 0.2, 1500, 4000, 2);
+    },
+  },
+  // Plastic barrel: a hollow thunk and a sloshing bounce.
+  barrel: {
+    seconds: 0.9,
+    make(t) {
+      const b = rnd(95, 120);
+      t.modes(0, [
+        [b, 0.7, 0.09],
+        [b * 1.9, 0.4, 0.06],
+        [b * 3.1, 0.25, 0.04],
+      ]);
+      t.noise(0, 0.1, 0.45, 0.03, [['bp', 500, 1.2]]);
+      t.modes(rnd(0.25, 0.32), [
+        [b * 1.05, 0.3, 0.07],
+        [b * 2, 0.15, 0.05],
+      ]);
+      t.noise(0.02, 0.4, 0.15, 0.15, [['bp', 1200, 1]], 0.01, 0.6);
+    },
+  },
+  // Crates: boards splintering, then the stack tumbling.
+  crate: {
+    seconds: 1.0,
+    make(t) {
+      t.thud(0, 105, 45, 0.05, 0.7, 0.1);
+      t.modes(0, [
+        [rnd(220, 260), 0.4, 0.04],
+        [rnd(450, 520), 0.3, 0.03],
+        [rnd(800, 900), 0.2, 0.02],
+      ]);
+      t.grains(0, 0.45, 80, 0.6, 400, 2200, 1.5, 0.014);
+      t.modes(rnd(0.22, 0.3), [[rnd(240, 280), 0.25, 0.04]]);
+      t.grains(0.25, 0.4, 20, 0.25, 600, 2000, 1.6);
+    },
+  },
+  // Dumpster: a huge steel boom and the lid slamming.
+  dumpster: {
+    seconds: 1.6,
+    make(t) {
+      t.thud(0, rnd(70, 85), 30, 0.07, 1, 0.25);
+      const b = rnd(110, 140);
+      t.modes(0, [
+        [b, 0.6, 0.5],
+        [b * 1.83, 0.45, 0.4],
+        [b * 2.97, 0.35, 0.3],
+        [b * 4.4, 0.2, 0.2],
+        [b * 6.1, 0.12, 0.12],
+      ]);
+      t.noise(0, 0.4, 0.6, 0.1, [['bp', 900, 0.8]]);
+      t.modes(rnd(0.3, 0.36), [
+        [b * 2.6, 0.3, 0.15],
+        [b * 4.1, 0.2, 0.1],
+      ]);
+      t.grains(0.05, 0.9, 25, 0.25, 1200, 4000, 2);
+    },
+  },
+  // Trash bags: a soft thump, plastic rustle and a bottle or two.
+  trashBags: {
+    seconds: 0.8,
+    make(t) {
+      t.thud(0, 80, 45, 0.05, 0.6, 0.08);
+      t.noise(0, 0.35, 0.45, 0.12, [['bp', rnd(2500, 3500), 0.5]], 0.01, 0.7);
+      t.glass(0.05, 0.4, 8, 0.25);
+    },
+  },
 };
 
 /** All impact sound banks. */
@@ -595,7 +716,15 @@ export interface SfxCrowdSpot {
   bz: number;
   /** 0 idle murmur, 1 cheering, up to ~1.5 at the finish. */
   level: number;
+  /** Sections (closures, corners) only play while the listener is close; gates from further away. */
+  kind?: 'gate' | 'section';
 }
+
+/** Crowd loops start above this proximity and stop below the second (gates, sections). */
+const CROWD_ON = { gate: 0.02, section: 0.06 };
+const CROWD_OFF = { gate: 0.01, section: 0.03 };
+/** At most this many crowd loops play at once. */
+const MAX_CROWD_LOOPS = 8;
 
 /** Crowds are loud: their loudness falls off over a longer distance than impacts (m). */
 const CROWD_REF = 30;
@@ -796,10 +925,24 @@ export class Sfx {
 
   /** A prop broken at the given car speed (m/s). */
   prop(kind: PropKind, speed: number, pos: SfxPos, key = 'prop'): void {
-    const base: Record<PropKind, number> = { streetlight: 0.9, trafficLight: 0.85, garbageCan: 0.65, bench: 0.75, busStop: 1 };
+    const base: Record<PropKind, number> = {
+      streetlight: 0.9,
+      trafficLight: 0.85,
+      garbageCan: 0.65,
+      bench: 0.75,
+      busStop: 1,
+      bush: 0.45,
+      planterPot: 0.8,
+      cafeTable: 0.6,
+      barrel: 0.6,
+      crate: 0.7,
+      dumpster: 1,
+      newsBox: 0.55,
+      trashBags: 0.45,
+    };
     const k = clamp01(speed / 25);
     // Props are distinct objects: a short gap only stops one hit playing twice.
-    this.play(kind, (base[kind] ?? 0.8) * (0.55 + 0.45 * k), (1.06 - 0.12 * k) * rnd(0.95, 1.05), pos, key, 0.03);
+    this.play(PROP_SOUND[kind], (base[kind] ?? 0.8) * (0.55 + 0.45 * k), (1.06 - 0.12 * k) * rnd(0.95, 1.05), pos, key, 0.03);
   }
 
   /** Countdown beep; GO is higher and longer. */
@@ -865,7 +1008,7 @@ export class Sfx {
     } else {
       const props = (r.world as unknown as { blocks?: { props?: { kind: PropKind; x: number; z: number }[] } }).blocks?.props;
       const p = props?.[e.value ?? -1];
-      const kind: PropKind = p?.kind && p.kind in RECIPES ? p.kind : 'garbageCan';
+      const kind: PropKind = p?.kind && p.kind in PROP_SOUND ? p.kind : 'garbageCan';
       this.prop(kind, car.speed, this.at(p?.x ?? car.x, p?.z ?? car.z, isPlayer), `prop:${e.value}`);
     }
   }
@@ -903,14 +1046,25 @@ export class Sfx {
     if (this.disposed || !spots.length) return;
     this.loadCrowd();
     if (!this.cheerBuf) return;
+    let playing = 0;
+    for (const l of this.crowdLoops) if (l) playing++;
     for (let i = 0; i < spots.length; i++) {
       const pos = this.crowdAt(spots[i]);
-      if (!this.crowdLoops[i]) {
+      const kind = spots[i].kind ?? 'gate';
+      let loop = this.crowdLoops[i];
+      if (!loop) {
         // Far stands stay silent until the listener comes near.
-        if (pos.proximity < 0.02) continue;
-        this.crowdLoops[i] = new CrowdLoop(this.ctx, this.bus, this.cheerBuf);
+        if (pos.proximity < CROWD_ON[kind] || playing >= MAX_CROWD_LOOPS) continue;
+        loop = this.crowdLoops[i] = new CrowdLoop(this.ctx, this.bus, this.cheerBuf);
+        playing++;
+      } else if (pos.proximity < CROWD_OFF[kind]) {
+        // Left behind: free the voice for the stands ahead.
+        loop.dispose();
+        this.crowdLoops[i] = undefined;
+        playing--;
+        continue;
       }
-      this.crowdLoops[i]!.update(spots[i].level, pos, paused);
+      loop.update(spots[i].level, pos, paused);
     }
   }
 

@@ -108,10 +108,11 @@ export function buildCityMeshes(world: World, barrierWalls?: Set<unknown>): City
     const ids = ring.map((p) => addGroundVertex(road, p.x, p.z, ROAD_Y, 10));
     for (let i = 0; i < ids.length; i++) road.triFacing(c, ids[i], ids[(i + 1) % ids.length], 0, 1, 0);
   });
-  // A strip between two polylines (each given as start/end points), subdivided along its length.
-  const strip = (gb: GeoBuilder, l0: Vec2, l1: Vec2, r0: Vec2, r1: Vec2, liftL: number, liftR: number, uvScale: number) => {
+  // A strip between two polylines (each given as start/end points), subdivided along its length
+  // (every 6 m; back alleys every 1 m so road and sidewalk follow their kicker humps).
+  const strip = (gb: GeoBuilder, l0: Vec2, l1: Vec2, r0: Vec2, r1: Vec2, liftL: number, liftR: number, uvScale: number, step = 6) => {
     const len = Math.max(Math.hypot(l1.x - l0.x, l1.z - l0.z), Math.hypot(r1.x - r0.x, r1.z - r0.z));
-    const steps = Math.max(1, Math.ceil(len / 6));
+    const steps = Math.max(1, Math.ceil(len / step));
     let prevL = -1;
     let prevR = -1;
     for (let i = 0; i <= steps; i++) {
@@ -127,9 +128,10 @@ export function buildCityMeshes(world: World, barrierWalls?: Set<unknown>): City
       prevR = vr;
     }
   };
+  const stepOf = (ei: number) => (g.edges[ei].kind === 'backAlley' ? 1 : 6);
   g.edges.forEach((_, ei) => {
     const m = mouths[ei];
-    strip(road, m.aP.curb, m.bP.curb, m.aN.curb, m.bN.curb, ROAD_Y, ROAD_Y, 10);
+    strip(road, m.aP.curb, m.bP.curb, m.aN.curb, m.bN.curb, ROAD_Y, ROAD_Y, 10, stepOf(ei));
   });
   const roadMesh = new THREE.Mesh(track(road.build()), roadMat);
   roadMesh.name = 'roads';
@@ -224,8 +226,8 @@ export function buildCityMeshes(world: World, barrierWalls?: Set<unknown>): City
   };
   g.edges.forEach((_, ei) => {
     const m = mouths[ei];
-    strip(walk, m.aP.curb, m.bP.curb, m.aP.outer, m.bP.outer, curbH, curbH, 4);
-    strip(walk, m.aN.curb, m.bN.curb, m.aN.outer, m.bN.outer, curbH, curbH, 4);
+    strip(walk, m.aP.curb, m.bP.curb, m.aP.outer, m.bP.outer, curbH, curbH, 4, stepOf(ei));
+    strip(walk, m.aN.curb, m.bN.curb, m.aN.outer, m.bN.outer, curbH, curbH, 4, stepOf(ei));
     curbFace(m.aP.curb, m.bP.curb);
     curbFace(m.aN.curb, m.bN.curb);
   });

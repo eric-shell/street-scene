@@ -106,12 +106,25 @@ export const CITY = {
       count: [1, 2],
       /** Consecutive straight street edges turned into one narrow raceway alley. */
       chain: [2, 3],
+      /** Clutter keeps this far from each end of an alley edge (junction mouths), m. */
+      endClear: 12,
+      /** Cafe table spacing along a restaurant front (m). */
+      tableSpacing: 2.3,
     },
     backAlley: {
       enabled: true,
       count: [1, 3],
       /** Both block sides the shortcut joins are at least this long. */
       minSide: 100,
+      /** Chance of a kicker hump: up and down ramps (m), flat top (m) and height (m). */
+      jumpChance: 0.75,
+      jumpRamp: 6,
+      jumpTop: 1.2,
+      jumpHeight: 0.95,
+      /** The hump fades to flat this far beyond the alley walls (m). */
+      jumpFade: 1.5,
+      /** Dumpster spacing along each wall (m). */
+      dumpsterSpacing: 16,
     },
     park: {
       enabled: true,
@@ -123,6 +136,14 @@ export const CITY = {
       hillEdge: 16,
       treeSpacing: 15,
       treeRadius: 0.4,
+      /** A small wood in each park: radius range (m) and its denser tree spacing (m). */
+      groveRadius: [15, 22],
+      groveSpacing: 6,
+      /** One cluster of drive-through bushes per this much park area (m^2). */
+      bushClusterArea: 800,
+      /** Footpath loop this far inside the park edge (m), with a bench every benchSpacing m. */
+      pathInset: 11,
+      benchSpacing: 36,
     },
     infill: {
       enabled: true,
@@ -132,13 +153,28 @@ export const CITY = {
       lotMinLen: 14,
       lotDepth: 26,
       plazaDepth: 14,
-      /** Corner plazas reach this far along both streets. */
+      /** Corner pockets reach this far along both streets. */
       cornerReach: 18,
+      /** A corner pocket needs this much void along its shorter street (m); the longer one needs minRun. */
+      cornerMinSide: 2.5,
+      /** Corner pockets stop this far short of the buildings that end the void (m). */
+      cornerMargin: 0.6,
       /** Infill keeps this far from other drivable space (wall tunnelling guard). */
       gap: 4,
-      lotChance: 0.5,
-      plazaChance: 0.3,
-      fountainChance: 0.4,
+      lotChance: 0.35,
+      plazaChance: 0.35,
+      /** Shallow drivable strip (verge) depths, deepest first (m). */
+      vergeDepth: [4.5, 2.5],
+      /**
+       * Share of junction block corners (3+ roads) where blocks.ts keeps the buildings back, so the
+       * corner becomes a void the infill furnishes: more inside corners worth cutting through.
+       */
+      openCornerChance: 0.35,
+      /** Reach of an open corner along each street (m). */
+      openCornerReach: [9, 15],
+      /** Share of corners and straight voids kept solid (raised planters): something hard among the clutter. */
+      solidChance: 0.14,
+      fountainChance: 0.15,
       planterDepth: 2.4,
     },
     /** Reserved unique features, documented placeholders (plan nothing yet). */
@@ -170,6 +206,14 @@ export const ROUTE = {
   gridRowSpacing: 8,
   gridFirstRow: 9,
   maxAttempts: 400,
+  /**
+   * Closure barriers stand this much further into their side street than where its walls start
+   * (m): head-on closures (straight ahead of the incoming road, where racers overshoot) more than
+   * side ones. Short streets keep at least barrierMinRoom m between their two ends.
+   */
+  barrierSetbackHeadOn: 7,
+  barrierSetbackSide: 3,
+  barrierMinRoom: 10,
   /** Corner guard rails: minimum turn, extra reach past the corner (m). */
   railMinTurnDeg: 30,
   railReach: 14,

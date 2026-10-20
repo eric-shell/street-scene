@@ -4,7 +4,7 @@
  */
 import type { World } from '../city/world';
 import { AREA_MAP_STYLE, AreaKind, AreaMapStyle } from '../city/districts/types';
-import { FlagTriangleRight, Timer, Trophy, TriangleAlert, Zap, Award, Ghost, icon } from './icons';
+import { FlagTriangleRight, Timer, Trophy, TriangleAlert, Zap, Award, Ghost, icon, Compass, Hammer } from './icons';
 import { formatTime } from './format';
 
 export interface HudCar {
@@ -39,6 +39,8 @@ export interface HudData {
   drift?: { total: number; current: number; multiplier: number };
   cars: HudCar[];
   ghost: boolean;
+  /** Open world (free roam, test drive): the district under the car and how much the player smashed. */
+  openWorld?: { area: string; smashed: number; topKmh: number };
 }
 
 export class Hud {
@@ -64,6 +66,8 @@ export class Hud {
   private driftEl: HTMLElement;
   private progressFill: HTMLElement;
   private ghostEl: HTMLElement;
+  private areaEl: HTMLElement;
+  private smashEl: HTMLElement;
   private msgTimer = 0;
   private lastCountdown: number | null = null;
   private roads: Path2D;
@@ -83,6 +87,8 @@ export class Hud {
         <div class="hud-chip hud-time"><span class="ic"></span><b class="v"></b></div>
         <div class="hud-chip hud-best"><span class="ic"></span><b class="v"></b></div>
         <div class="hud-chip hud-ghost"><span class="ic"></span><b class="v">Ghost</b></div>
+        <div class="hud-chip hud-area"><span class="ic"></span><b class="v"></b></div>
+        <div class="hud-chip hud-smash"><span class="ic"></span><b class="v"></b></div>
       </div>
       <div class="hud-progress"><div class="fill"></div></div>
       <div class="hud-center"></div>
@@ -105,6 +111,10 @@ export class Hud {
     q('.hud-time .ic').appendChild(icon(Timer, { size: 16 }));
     q('.hud-best .ic').appendChild(icon(Award, { size: 16 }));
     q('.hud-ghost .ic').appendChild(icon(Ghost, { size: 16 }));
+    q('.hud-area .ic').appendChild(icon(Compass, { size: 16 }));
+    q('.hud-smash .ic').appendChild(icon(Hammer, { size: 16 }));
+    this.areaEl = q('.hud-area .v');
+    this.smashEl = q('.hud-smash .v');
     q('.hud-wrong .ic').appendChild(icon(TriangleAlert, { size: 28 }));
     q('.hud-nitro .ic').appendChild(icon(Zap, { size: 18 }));
     this.posEl = q('.hud-pos .v');
@@ -189,6 +199,12 @@ export class Hud {
   }
 
   update(d: HudData, dt: number): void {
+    this.root.classList.toggle('open-world', !!d.openWorld);
+    if (d.openWorld) {
+      if (this.areaEl.textContent !== d.openWorld.area) this.areaEl.textContent = d.openWorld.area;
+      const smash = `${d.openWorld.smashed} smashed · top ${Math.round(d.openWorld.topKmh)}`;
+      if (this.smashEl.textContent !== smash) this.smashEl.textContent = smash;
+    }
     const racingMode = d.mode !== 'drift';
     this.posEl.textContent = racingMode ? `${d.position}/${d.carCount}` : 'Drift';
     this.lapEl.textContent = d.mode === 'sprint' ? `${Math.round(d.progress * 100)}%` : `${Math.max(1, Math.min(d.lap, d.laps))}/${d.laps}`;

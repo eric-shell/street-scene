@@ -265,6 +265,16 @@ input[type='color'] {
 .mode-card svg {
   color: var(--cyan);
 }
+/* Free roam spans the row under the race modes. */
+.mode-card.roam {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.mode-card.roam .best {
+  margin-left: auto;
+}
 .menu-foot {
   font-size: 12px;
   line-height: 1.5;
@@ -389,6 +399,26 @@ input[type='color'] {
 }
 .hud-pos b {
   font-size: 26px;
+}
+/* Open world (free roam, test drive): district and smash count instead of position, lap and best. */
+.hud-area,
+.hud-smash {
+  display: none;
+}
+.hud.open-world .hud-area,
+.hud.open-world .hud-smash {
+  display: flex;
+}
+.hud.open-world .hud-pos,
+.hud.open-world .hud-lap,
+.hud.open-world .hud-best,
+.hud.open-world .hud-ghost,
+.hud.open-world .hud-progress {
+  display: none;
+}
+.hud-area b {
+  font-size: 15px;
+  text-transform: uppercase;
 }
 .hud-ghost .ic {
   color: #c79bff;
@@ -1092,6 +1122,33 @@ input[type='color'] {
 .g-item .muted {
   font-size: 12px;
   font-weight: 500;
+}
+/* Car tiles: name and source on the first row, spec tags (drivetrain code, engine layout) beneath. */
+.g-item.g-spec {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+.g-item.g-spec > span:first-child {
+  flex: 1;
+}
+.g-tags {
+  flex-basis: 100%;
+  display: flex;
+  gap: 6px;
+}
+.g-tag {
+  font: 700 11px var(--font);
+  letter-spacing: 0.08em;
+  line-height: 1;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.05);
+}
+.g-item.on .g-tag {
+  color: var(--cyan);
+  border-color: rgba(25, 230, 255, 0.45);
 }
 .g-item:hover {
   border-color: rgba(25, 230, 255, 0.5);

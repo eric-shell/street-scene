@@ -271,7 +271,7 @@ export class GarageScene {
     this.voice?.dispose();
     this.voice = null;
     try {
-      this.voice = new EngineVoice(this.car.car.engine?.type ?? 'i4', 0.3);
+      this.voice = new EngineVoice(this.car.car.engine, 0.3);
       this.voiceCar = this.car.car.id;
     } catch {
       this.audioOk = false;
