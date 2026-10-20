@@ -12,9 +12,10 @@ import { DT, TICK_HZ } from './constants';
 import { InputFrame, NEUTRAL_INPUT, packInput, quantizeInput } from './input';
 import { CarTuning } from './tuning';
 import { PerformanceBuild, tuningForBuild, validatePerformance } from './build';
-import { DEG, abs, atan2, clamp, cos, lerp, sin, sqrt, yawOf } from './math';
+import { DEG, abs, atan2, clamp, cos, distToSegment, lerp, sin, sqrt, yawOf } from './math';
 import { AiState, aiInput, buildRacingLine, createAi, RacingLine } from './ai';
 import { stepProps } from './props';
+import { RailState, createRailState } from './rails';
 
 export type RaceMode = 'circuit' | 'sprint' | 'drift';
 export type Difficulty = 'easy' | 'medium' | 'hard';
@@ -35,6 +36,13 @@ export interface RaceConfig {
   manualGearbox: boolean;
   /** Player driver aid (AI cars always drive with it). Missing in old replays = off. */
   tractionControl?: boolean;
+  /**
+   * Open world (test drive): no opponents, no route barriers, rails, parked
+   * cars or crowds (World.openWorld), no countdown, laps, wrong way or route
+   * resets. Free roam on any street; only a car that is truly lost off the
+   * road network gets put back, on the nearest street.
+   */
+  openWorld?: boolean;
 }
 
 export type RacePhase = 'countdown' | 'racing' | 'finished';
@@ -95,6 +103,8 @@ export interface RaceState {
   hitTicks: { wall: number[]; pair: number[] };
   /** 1 = prop knocked down this race, indexed by prop id (world.props). Fresh per race. */
   brokenProps: Uint8Array;
+  /** Corner rail pieces displaced by hits this race (src/sim/rails.ts). Fresh per race. */
+  rails: RailState;
 }
 
 /** Impact sound events: minimum impact speed (m/s) and minimum gap between events (ticks). */
@@ -166,11 +176,15 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
   const config: RaceConfig = {
     ...cfgIn,
     laps: cfgIn.mode === 'sprint' ? 1 : Math.max(1, Math.min(10, Math.round(cfgIn.laps))),
-    opponents: cfgIn.mode === 'drift' ? [] : cfgIn.opponents.slice(0, 3),
+    opponents: cfgIn.mode === 'drift' || cfgIn.openWorld ? [] : cfgIn.opponents.slice(0, 3),
     player: { ...cfgIn.player, performance: validatePerformance(cfgIn.player.performance) },
   };
   const kind = config.mode === 'sprint' ? 'sprint' : 'circuit';
-  const w = world && world.seed === config.seed && world.route.kind === kind ? world : createWorld(config.seed, kind, cityForSeed(config.seed));
+  const open = config.openWorld === true;
+  const w =
+    world && world.seed === config.seed && world.route.kind === kind && (world.openWorld === true) === open
+      ? world
+      : createWorld(config.seed, kind, cityForSeed(config.seed), { openWorld: open });
   const route = w.route;
   const entrants = [config.player, ...config.opponents];
   const line = buildRacingLine(w);
@@ -217,18 +231,26 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
     line,
     tick: 0,
     phase: 'countdown',
-    countdownTicks: COUNTDOWN_SECONDS * TICK_HZ,
+    countdownTicks: open ? 0 : COUNTDOWN_SECONDS * TICK_HZ,
     cars,
     distance,
     inputLog: [],
     drift: { total: 0, current: 0, multiplier: 1, chainTime: 0, graceTime: 0, lastBank: 0 },
     events: [],
     hitTicks: { wall: cars.map(() => -HIT_EVENT_GAP), pair: cars.flatMap(() => cars.map(() => -HIT_EVENT_GAP)) },
-    brokenProps: new Uint8Array(w.props?.length ?? 0),
+    brokenProps: coveredPropsRemoved(w),
+    rails: createRailState(w),
   };
 }
 
 /** Race clock in seconds (0 until the green light). */
+/** Fresh broken-prop flags: props under this route's barriers/rails start removed (2, no debris). */
+function coveredPropsRemoved(w: World): Uint8Array {
+  const flags = new Uint8Array(w.props?.length ?? 0);
+  for (const id of w.coveredProps ?? []) flags[id] = 2;
+  return flags;
+}
+
 export function raceTime(r: RaceState): number {
   return Math.max(0, r.tick - r.countdownTicks) / TICK_HZ;
 }
@@ -239,6 +261,7 @@ export function ticksToSeconds(ticks: number): number {
 
 /** Reset a car to the road centerline at its current progress. */
 export function resetToRoad(r: RaceState, rc: RaceCar): void {
+  if (r.config.openWorld) return resetToStreet(r, rc);
   const route = r.world.route;
   const s = route.closed ? rc.rawS : clamp(rc.rawS, 0, route.length);
   const p = routeSample(route, s);
@@ -250,6 +273,60 @@ export function resetToRoad(r: RaceState, rc: RaceCar): void {
   rc.stuckTime = 0;
   rc.wrongWayTime = 0;
   r.events.push({ tick: r.tick, type: 'reset', car: rc.index });
+}
+
+/** Seconds off the road network before an open world car counts as lost and is put back. */
+const OPEN_WORLD_LOST_TIME = 2;
+
+/**
+ * Open world reset: onto the right hand lane of the nearest street, facing the
+ * way along it closest to the car's heading, clear of the intersections.
+ */
+export function resetToStreet(r: RaceState, rc: RaceCar): void {
+  const g = r.world.graph;
+  const c = rc.state;
+  let best = -1;
+  let bestD = Infinity;
+  for (const e of g.edges) {
+    const a = g.nodes[e.a];
+    const b = g.nodes[e.b];
+    const d = distToSegment(c.x, c.z, a.x, a.z, b.x, b.z);
+    if (d < bestD) {
+      bestD = d;
+      best = e.id;
+    }
+  }
+  if (best < 0) return;
+  const e = g.edges[best];
+  const a = g.nodes[e.a];
+  const b = g.nodes[e.b];
+  const len = e.length || 1;
+  let tx = (b.x - a.x) / len;
+  let tz = (b.z - a.z) / len;
+  const margin = Math.min(15, len / 3);
+  const u = clamp((c.x - a.x) * tx + (c.z - a.z) * tz, margin, len - margin);
+  const px = a.x + tx * u;
+  const pz = a.z + tz * u;
+  if (sin(c.yaw) * tx + cos(c.yaw) * tz < 0) {
+    tx = -tx;
+    tz = -tz;
+  }
+  const lateral = -Math.min(2, e.width * 0.175);
+  placeCar(c, px + tz * lateral, pz - tx * lateral, yawOf(tx, tz), r.world);
+  rc.resetCooldown = 1;
+  rc.stuckTime = 0;
+  rc.wrongWayTime = 0;
+  r.events.push({ tick: r.tick, type: 'reset', car: rc.index });
+}
+
+/** Open world: no laps, checkpoints or wrong way; only a car lost off the road network is put back. */
+function updateOpenWorld(r: RaceState, rc: RaceCar): void {
+  rc.wrongWay = false;
+  rc.wrongWayTime = 0;
+  const c = rc.state;
+  if (r.world.surfaceAt(c.x, c.z) === 'offroad') rc.stuckTime += DT;
+  else rc.stuckTime = 0;
+  if (rc.stuckTime > OPEN_WORLD_LOST_TIME) resetToStreet(r, rc);
 }
 
 /** Deterministic input for a finished player: lane keeping steer and braking to a stop. */
@@ -350,7 +427,7 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
   }
   const hit: WorldHit = { speed: 0, kind: 'wall' };
   for (const rc of r.cars) {
-    rc.state.impact = collideCarWithWorld(rc.state, rc.tuning, r.world, hit);
+    rc.state.impact = collideCarWithWorld(rc.state, rc.tuning, r.world, hit, r.rails, r.tick);
     if (hit.speed > WALL_EVENT_SPEED && r.tick - r.hitTicks.wall[rc.index] >= HIT_EVENT_GAP) {
       r.hitTicks.wall[rc.index] = r.tick;
       r.events.push({ tick: r.tick, type: 'wall', car: rc.index, kind: hit.kind, value: hit.speed });
@@ -399,7 +476,12 @@ function updateProgress(r: RaceState, rc: RaceCar): void {
   rc.rawS = p.s;
   rc.seg = p.seg;
   rc.lateral = p.lateral;
+  if (r.config.openWorld) return updateOpenWorld(r, rc);
   if (rc.finished) return;
+  // Progress never jumps: when the nearest route segment switches far ahead
+  // (a shortcut across a park, a lot or a back alley), only what the car could
+  // have driven this tick counts. Corner cuts stay well under the limit.
+  if (delta > LOST.maxJump) delta = Math.min(delta, c.speed * DT * 1.5 + 0.5);
   const prevDist = rc.dist;
   rc.dist += delta;
 
@@ -450,10 +532,40 @@ function updateProgress(r: RaceState, rc: RaceCar): void {
   const wasWrong = rc.wrongWay;
   rc.wrongWay = rc.wrongWayTime > 1.2;
   if (rc.wrongWay && !wasWrong) r.events.push({ tick: r.tick, type: 'wrongWay', car: rc.index });
-  // Out of the corridor (should never happen, but never leave a car lost).
-  const half = route.segWidth[p.seg] / 2;
-  if (abs(p.lateral) > half + 10) resetToRoad(r, rc);
+  // Lost: far outside the route corridor (beyond any corner cut, plaza, lot or
+  // park crossing), or off every drivable surface (inside a block), for a while.
+  // Racing lines over sidewalks, plazas and lots never trigger it.
+  // True distance to the projected point (lateral alone misses points beyond a segment's end),
+  // checked against the whole route when the hinted window says the car is far out.
+  const offFrom = (pp: { s: number; seg: number }) => {
+    const q = routeSample(route, pp.s);
+    return sqrt((c.x - q.x) ** 2 + (c.z - q.z) ** 2) - route.segWidth[pp.seg] / 2;
+  };
+  let off = offFrom(p);
+  if (off > LOST.lateral) off = offFrom(r.world.routeProgress(c.x, c.z));
+  const offroad = c.surface === 'offroad';
+  if (off > LOST.farLateral) return resetToRoad(r, rc);
+  if (off > LOST.lateral || offroad) rc.stuckTime += DT;
+  else rc.stuckTime = Math.max(0, rc.stuckTime - DT);
+  if (rc.stuckTime > (offroad ? LOST.offroadTime : LOST.time)) resetToRoad(r, rc);
 }
+
+/**
+ * When a racing car counts as lost (race modes; see updateOpenWorld for test
+ * drive). Distances in m beyond the route's half width, times in s.
+ * RaceCar.stuckTime is the lost timer.
+ */
+export const LOST = {
+  /** Further than this from the route corridor for `time` s. */
+  lateral: 60,
+  time: 5,
+  /** Off every drivable surface (inside a block) for this long. */
+  offroadTime: 1.5,
+  /** Instant reset this far out. */
+  farLateral: 160,
+  /** Forward progress jumps above this (m per tick) are cut to the distance actually driven. */
+  maxJump: 70,
+} as const;
 
 export function checkpointDist(r: RaceState, k: number): number {
   const route = r.world.route;

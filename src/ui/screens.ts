@@ -94,7 +94,7 @@ export function mainMenu(o: MenuOptions): HTMLElement {
     btn(Info, 'Credits', o.onCredits, 'big'),
   );
   if (!o.hasReplay) nav.children[1].setAttribute('disabled', '');
-  const menu = h('div', { class: 'menu' }, h('div', {}, h('h1', { class: 'logo' }, 'NIGHT RUN'), h('div', { class: 'tagline' }, 'Street racing after dark'), h('div', { class: 'build-version muted' }, BUILD_VERSION)), event, h('div', { class: 'label' }, icon(Flag, { size: 14 }), 'Race'), modes, nav);
+  const menu = h('div', { class: 'menu' }, h('div', {}, h('h1', { class: 'logo' }, 'STREET SCENE'), h('div', { class: 'tagline' }, 'Street racing after dark'), h('div', { class: 'build-version muted' }, BUILD_VERSION)), event, h('div', { class: 'label' }, icon(Flag, { size: 14 }), 'Race'), modes, nav);
   root.append(menu);
   return root;
 }
@@ -291,6 +291,7 @@ export function creditsScreen(onClose: () => void): HTMLElement {
         h('p', { class: 'muted' }, 'The S64 (Proto Compact) and GC14 (Proto Hatch) low poly cars with body kits, spoilers and rims.'),
         h('p', {}, 'Icons: ', h('b', {}, 'Lucide'), ' (lucide.dev), ISC license.'),
         musicCredits(),
+        h('p', {}, 'Crowd sound effects from ', h('b', {}, 'freesound_community'), ' (Pixabay): "applause" (freesound_community-applause-70507.mp3) and "crowd cheering" (freesound_community-crowd-cheering-6229.mp3), Pixabay Content License.'),
         h('p', {}, 'Built with three.js, Vite and glTF Transform. City, signs, vinyls and the Proto RS are generated procedurally. All shop and sponsor names are fictional.'),
       ),
       btn(X, 'Close', onClose, 'primary'),

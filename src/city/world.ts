@@ -11,8 +11,15 @@ import { Prop, buildPropGrid } from './props';
 import { SpatialGrid } from './spatial';
 import { Terrain, createTerrain } from './terrain';
 import { cos, distToSegment, segmentT, sin, sqrt } from '../sim/math';
+import { CityDistricts, planDistricts } from './districts';
+import { Area, SURFACE_PHYSICS, Surface, SurfacePhysics } from './districts/types';
 
-export type Surface = 'road' | 'sidewalk' | 'offroad';
+export type { Surface, SurfacePhysics } from './districts/types';
+
+/** Which tuning surface entry (road / sidewalk / offroad) a surface drives with. */
+export function surfacePhysics(s: Surface): SurfacePhysics {
+  return SURFACE_PHYSICS[s];
+}
 
 export interface Contact {
   /** Push direction (unit) out of the wall into drivable space. */
@@ -41,6 +48,8 @@ export interface City {
   graph: RoadGraph;
   terrain: Terrain;
   blocks: CityBlocks;
+  /** District areas (downtown blocks, parks, river, ...) and their builds. */
+  districts: CityDistricts;
 }
 
 export interface World extends City {
@@ -50,10 +59,21 @@ export interface World extends City {
   wallGrid: SpatialGrid;
   /** Closed side street barriers grouped per intersection (see route.ts). Barrier walls carry `group`. */
   barrierGroups: BarrierGroup[];
+  /**
+   * Open world (test drive): no route barriers, corner rails, parked cars or
+   * crowds; every street is drivable. The route still exists for the grid.
+   */
+  openWorld?: boolean;
   /** Destructible props (same array as blocks.props). Broken state lives on RaceState.brokenProps. */
   props: Prop[];
   /** Broadphase over props by id (each prop inserted with its radius). */
   propGrid: SpatialGrid;
+  /**
+   * Props this route's barriers or rails stand on. Props are generated per
+   * city but barriers per route, so these start every race as removed
+   * (RaceState.brokenProps = 2): no collision, not rendered, no debris.
+   */
+  coveredProps: number[];
   heightAt(x: number, z: number): number;
   slopeAt(x: number, z: number): { gx: number; gz: number };
   surfaceAt(x: number, z: number): Surface;
@@ -62,13 +82,34 @@ export interface World extends City {
   /** Distance to the nearest wall, capped at maxDist. */
   wallClearance(x: number, z: number, maxDist: number): number;
   routeProgress(x: number, z: number, hintSeg?: number): RouteProgress;
+  /** Every district area (same array as districts.areas). */
+  areas: Area[];
+  /** Area at a point (4 m raster): the block, park, plaza, channel... or null on plain streets. */
+  areaAt(x: number, z: number): Area | null;
 }
 
 export function createCity(seed: number): City {
   const graph = generateRoadGraph(seed);
-  const terrain = createTerrain(seed);
-  const blocks = generateBlocks(seed, graph, terrain);
-  return { seed, graph, terrain, blocks };
+  // Districts claim space and edit the graph (alleys, shortcuts, roundabouts, bridges) first.
+  const districts = planDistricts(seed, graph);
+  const terrain = createTerrain(seed, districts.heightMods);
+  const blocks = generateBlocks(seed, graph, terrain, districts.blocksInput);
+  districts.finalize(blocks);
+  return { seed, graph, terrain, blocks, districts };
+}
+
+/** Rails are planned around node centers; roundabouts get none (their ring has its own outer walls). */
+function awayFromRoundabouts<T extends Wall>(graph: RoadGraph, rails: T[]): T[] {
+  const rings = graph.nodes.filter((n) => n.ring);
+  if (!rings.length) return rails;
+  const bad = new Set<number>();
+  for (const w of rails) {
+    for (const n of rings) {
+      const r = n.ring!.outer + CITY.sidewalk + 25;
+      if (distToSegment(n.x, n.z, w.ax, w.az, w.bx, w.bz) < r) bad.add(w.group ?? -1);
+    }
+  }
+  return rails.filter((w) => !bad.has(w.group ?? -1));
 }
 
 export function createRoute(city: City, kind: RouteKind): Route {
@@ -76,14 +117,16 @@ export function createRoute(city: City, kind: RouteKind): Route {
   return buildRoute(city.graph, kind, nodes);
 }
 
-export function createWorld(seed: number, kind: RouteKind, city: City = createCity(seed)): World {
+export function createWorld(seed: number, kind: RouteKind, city: City = createCity(seed), opts: { openWorld?: boolean } = {}): World {
   const route = createRoute(city, kind);
   const { graph, blocks, terrain } = city;
-  const rails = routeRails(graph, route);
-  const barrierGroups = routeBarrierGroups(graph, blocks.mouths, route, rails);
+  const openWorld = opts.openWorld === true;
+  const rails = openWorld ? [] : awayFromRoundabouts(graph, routeRails(graph, route, blocks.props, blocks.walls));
+  const barrierGroups = openWorld ? [] : routeBarrierGroups(graph, blocks.mouths, route, rails);
   const walls = blocks.walls.concat(routeBarriers(graph, blocks.mouths, route, barrierGroups), rails);
   const props = blocks.props;
   const propGrid = buildPropGrid(graph, props);
+  const coveredProps = propsUnderWalls(props, propGrid, walls.slice(blocks.walls.length));
   const pad = 60;
   const wallGrid = SpatialGrid.forBounds(graph.bounds.minX - pad, graph.bounds.minZ - pad, graph.bounds.maxX + pad, graph.bounds.maxZ + pad, CITY.broadphaseCell);
   walls.forEach((w, i) => wallGrid.insertSegment(i, w.ax, w.az, w.bx, w.bz, 0.5));
@@ -151,20 +194,25 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
   function surfaceAt(x: number, z: number): Surface {
     edgeGrid.query(x - 1, z - 1, x + 1, z + 1, scratch);
     let best = Infinity;
+    let walk = Infinity;
     for (const id of scratch) {
       const e = graph.edges[id];
       const a = graph.nodes[e.a];
       const b = graph.nodes[e.b];
       const d = distToSegment(x, z, a.x, a.z, b.x, b.z) - e.width / 2;
       if (d < best) best = d;
+      if (d - e.sidewalk < walk) walk = d - e.sidewalk;
     }
-    if (best <= 0) return 'road';
-    if (best <= CITY.sidewalk) return 'sidewalk';
-    return 'offroad';
+    // District surface patches win over the street classification by priority (road 5, sidewalk 3).
+    const patch = city.districts.surfaceAt(x, z);
+    const base = best <= 0 ? 5 : walk <= 0 ? 3 : 0;
+    if (patch && patch.priority > base) return patch.surface;
+    return base === 5 ? 'road' : base === 3 ? 'sidewalk' : 'offroad';
   }
 
   const pts = route.points;
   const nseg = pts.length - 1;
+  const HINT_REACH = 40;
   function projectSeg(i: number, x: number, z: number) {
     const a = pts[i];
     const b = pts[i + 1];
@@ -185,10 +233,17 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
       }
     };
     if (hintSeg !== undefined && hintSeg >= 0 && hintSeg < nseg) {
-      for (let k = -2; k <= 2; k++) {
-        let i = hintSeg + k;
-        if (route.closed) i = (i + nseg) % nseg;
-        if (i >= 0 && i < nseg) consider(i);
+      // At least two segments each way, and at least HINT_REACH m (roundabout arcs are short).
+      consider(hintSeg);
+      for (const dir of [-1, 1]) {
+        let covered = 0;
+        for (let k = 1; k < nseg / 2 && (k <= 2 || covered < HINT_REACH); k++) {
+          let i = hintSeg + dir * k;
+          if (route.closed) i = (i + nseg) % nseg;
+          if (i < 0 || i >= nseg) break;
+          consider(i);
+          covered += route.cum[i + 1] - route.cum[i];
+        }
       }
     } else {
       for (let i = 0; i < nseg; i++) consider(i);
@@ -214,7 +269,9 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     walls,
     wallGrid,
     barrierGroups,
+    openWorld,
     props,
+    coveredProps,
     propGrid,
     heightAt: terrain.heightAt,
     slopeAt: terrain.slopeAt,
@@ -223,5 +280,21 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     collideBox,
     wallClearance,
     routeProgress,
+    areas: city.districts.areas,
+    areaAt: city.districts.areaAt,
   };
+}
+
+/** Ids of non-streetlight props that a route wall (barrier or rail) passes through. */
+function propsUnderWalls(props: Prop[], grid: SpatialGrid, routeWalls: Wall[]): number[] {
+  const out = new Set<number>();
+  const scratch: number[] = [];
+  for (const w of routeWalls) {
+    grid.query(Math.min(w.ax, w.bx) - 3, Math.min(w.az, w.bz) - 3, Math.max(w.ax, w.bx) + 3, Math.max(w.az, w.bz) + 3, scratch);
+    for (const id of scratch) {
+      const p = props[id];
+      if (p.kind !== 'streetlight' && distToSegment(p.x, p.z, w.ax, w.az, w.bx, w.bz) <= p.radius + 0.1) out.add(id);
+    }
+  }
+  return [...out].sort((a, b) => a - b);
 }

@@ -161,6 +161,10 @@ export interface CarTuning {
     railDrag: number;
     /** Fraction of along-rail speed lost per second of contact. */
     railSpeedLoss: number;
+    /** Share of along-rail speed lost per meter a hit shoves a rail piece back (src/sim/rails.ts). */
+    railDentLoss: number;
+    /** Share of speed lost per meter of step, per car circle, when scraping into a rail piece that sticks out past a dented one. */
+    railStepLoss: number;
     carRestitution: number;
     angularScale: number;
   };

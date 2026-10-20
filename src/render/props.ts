@@ -661,7 +661,8 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
           const p = props[i];
           setBroken(p, b === 1);
           // A bulk change (e.g. a state jump) just hides; a few fresh hits come apart.
-          if (b && fresh <= 6) {
+          // 2 = removed for this route (under a barrier/rail): just hidden.
+          if (b && broken[i] === 1 && fresh <= 6) {
             let best = 144;
             let vx = 0;
             let vz = 0;

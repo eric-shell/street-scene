@@ -13,6 +13,9 @@ import { makeNightEnvironment, makeSkyTexture } from './textures';
 import { buildRouteArrows, classifyBarriers, RouteArrows } from './routeArrows';
 import { buildRoadblocks } from './roadblocks';
 import { buildProps, PropRenderer } from './props';
+import { buildDistrictMeshes } from './districts';
+import { buildBackdrop } from './backdrop';
+import { buildCrowds, Crowds } from './crowds';
 
 export const RETRO_HEIGHT = 240;
 
@@ -103,6 +106,8 @@ export interface NightScene {
   arrows: RouteArrows;
   /** Street furniture; feed it RaceState.brokenProps every frame (props.update). */
   props: PropRenderer;
+  /** Spectators at the start / finish (empty in open world); feed it car poses every frame (crowds.update). */
+  crowds: Crowds;
   /** Animate time-based effects (barrier lamps, arrows). */
   update(time: number): void;
   dispose(): void;
@@ -117,6 +122,11 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   const barriers = classifyBarriers(world);
   const city = buildCityMeshes(world, new Set(barriers.filter((b) => b.headOn).map((b) => b.wall)));
   scene.add(city.group);
+  // District dressing (lots, plazas, parks, river, roundabouts, subway) and the distant mountains.
+  const districts = buildDistrictMeshes(world);
+  scene.add(districts.group);
+  const backdrop = buildBackdrop(world.seed);
+  scene.add(backdrop.group);
   const fx = buildLightFx(city.lampPositions, city.signLights, world.heightAt, FOG_DENSITY);
   fx.setStrength(0.32, 0.85);
   scene.add(fx.group);
@@ -129,7 +139,10 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   const arrows = buildRouteArrows(world, barriers, roadblocks.groups);
   scene.add(arrows.group);
   // Parked cars cull per group against whatever camera renders the scene.
-  scene.onBeforeRender = (_r, _s, camera) => roadblocks.update(camera);
+  scene.onBeforeRender = (_r, _s, camera) => {
+    roadblocks.update(camera);
+    backdrop.follow(camera);
+  };
   // Broken streetlights go dark: ground pool, reflection streak and the real light pool.
   const lampOff = new Uint8Array(city.lampPositions.length);
   const props = buildProps(world, {
@@ -141,6 +154,10 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     },
   });
   scene.add(props.group);
+  // Spectators by the start / finish gantries (none in an open world test drive).
+  const crowdQ = { low: { density: 0.55, rows: 2 }, medium: { density: 0.8, rows: 2 }, high: { density: 1, rows: 3 } }[settings.quality] ?? { density: 0.8, rows: 2 };
+  const crowds = buildCrowds(world, world.openWorld ? [] : city.finishLine.gates, crowdQ);
+  scene.add(crowds.group);
   stabilizeSmallEmitters(city);
   return {
     scene,
@@ -149,18 +166,24 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     lighting,
     arrows,
     props,
+    crowds,
     update(time) {
       arrows.update(time);
+      districts.update(time);
+      backdrop.update(time);
       // Hazard blink with soft edges: a hard 3.2 / 0.6 square wave strobes the bloom.
       const blink = 0.6 + 2.6 * THREE.MathUtils.smoothstep(Math.sin(time * 5), -0.35, 0.35);
       city.barrierLampMaterial.color.setRGB(1 * blink, 0.63 * blink, 0.12 * blink);
     },
     dispose() {
       city.dispose();
+      districts.dispose();
+      backdrop.dispose();
       fx.dispose();
       arrows.dispose();
       roadblocks.dispose();
       props.dispose();
+      crowds.dispose();
     },
   };
 }

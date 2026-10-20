@@ -1,12 +1,26 @@
 /**
  * Procedural road network: a jittered grid with some edges removed, a couple
  * of diagonal avenues and one wide straight boulevard. Pure and deterministic.
+ * Intersections join at most CITY.maxNodeDegree roads. District planning
+ * (districts/index.ts) edits the graph afterwards: narrow alleys, back alley
+ * shortcuts (splitEdge + addEdge), bridges and roundabout nodes.
  */
 import { CITY } from './config';
 import { Rng, deriveSeed } from '../sim/prng';
 import { atan2, DEG, sqrt, TAU } from '../sim/math';
 
-export type RoadKind = 'street' | 'avenue' | 'diagonal' | 'boulevard';
+/** 'alley': narrow raceway street. 'backAlley': skinny shortcut through a block (edge.shortcut). */
+export type RoadKind = 'street' | 'avenue' | 'diagonal' | 'boulevard' | 'alley' | 'backAlley';
+
+/** Roundabout geometry at a node (districts/roundabout.ts). */
+export interface RoundaboutRing {
+  /** Outer curb radius of the ring road. */
+  outer: number;
+  /** Island radius (curb of the center island). */
+  island: number;
+  /** Solid island (fountain, walls) or a low beveled planter you can jump. */
+  solid: boolean;
+}
 
 export interface RoadNode {
   id: number;
@@ -16,6 +30,8 @@ export interface RoadNode {
   gj: number;
   /** Incident edge ids sorted by outgoing angle (ascending atan2(dz, dx)). */
   edges: number[];
+  /** Set when the intersection is a roundabout. */
+  ring?: RoundaboutRing;
 }
 
 export interface RoadEdge {
@@ -26,7 +42,13 @@ export interface RoadEdge {
   lanes: 2 | 4;
   /** Curb to curb width. */
   width: number;
+  /** Sidewalk width on each side (curb to the outer sidewalk / wall line). */
+  sidewalk: number;
   length: number;
+  /** Back alley shortcut: drivable, never part of a route, never closed off by barriers. */
+  shortcut?: boolean;
+  /** Crosses the river channel at street level. */
+  bridge?: boolean;
 }
 
 export interface RoadGraph {
@@ -129,6 +151,7 @@ export function generateRoadGraph(seed: number): RoadGraph {
       kind: pe.kind,
       lanes: CITY.lanes[pe.kind],
       width: CITY.width[pe.kind],
+      sidewalk: CITY.sidewalkWidth[pe.kind],
       length: sqrt((a.x - b.x) ** 2 + (a.z - b.z) ** 2),
     };
   });
@@ -140,12 +163,14 @@ export function generateRoadGraph(seed: number): RoadGraph {
   // node at degree >= 2 (no dead ends).
   const alive = graph.edges.map(() => true);
   const degree = graph.nodes.map((n) => n.edges.length);
+  capNodeDegree(graph, alive, degree);
   const candidates = graph.edges.filter((e) => e.kind === 'street').map((e) => e.id);
   rng.shuffle(candidates);
   const target = Math.floor(candidates.length * CITY.removeFraction);
   let removed = 0;
   for (const ei of candidates) {
     if (removed >= target) break;
+    if (!alive[ei]) continue;
     const e = graph.edges[ei];
     if (degree[e.a] <= 2 || degree[e.b] <= 2) continue;
     alive[ei] = false;
@@ -175,7 +200,43 @@ export function generateRoadGraph(seed: number): RoadGraph {
   return graph;
 }
 
-function sortNodeEdges(g: RoadGraph): void {
+/**
+ * Busy junctions (a diagonal crossing a grid node gives 6 roads) lose grid
+ * streets until no node joins more than CITY.maxNodeDegree roads. Picks, in id
+ * order, the street whose far end has the most roads, keeping every node at
+ * degree >= 2 and the graph connected. Deterministic, no randomness.
+ */
+function capNodeDegree(g: RoadGraph, alive: boolean[], degree: number[]): void {
+  for (const n of g.nodes) {
+    while (degree[n.id] > CITY.maxNodeDegree) {
+      let pick = -1;
+      for (const kinds of [['street'], ['avenue', 'diagonal']]) {
+        let bestDeg = -1;
+        for (const eid of n.edges) {
+          const e = g.edges[eid];
+          if (!alive[eid] || !kinds.includes(e.kind)) continue;
+          const far = otherNode(e, n.id);
+          if (degree[far] <= 2 || degree[far] <= bestDeg) continue;
+          alive[eid] = false;
+          const ok = isConnected(g.nodes.length, g.edges, alive);
+          alive[eid] = true;
+          if (!ok) continue;
+          bestDeg = degree[far];
+          pick = eid;
+        }
+        if (pick >= 0) break;
+      }
+      if (pick < 0) break;
+      const e = g.edges[pick];
+      alive[pick] = false;
+      degree[e.a]--;
+      degree[e.b]--;
+    }
+  }
+}
+
+/** Re-sort every node's incident edge list (call after editing g.edges). */
+export function sortNodeEdges(g: RoadGraph): void {
   for (const n of g.nodes) n.edges = [];
   for (const e of g.edges) {
     g.nodes[e.a].edges.push(e.id);
@@ -254,6 +315,35 @@ export function graphIsConnected(g: RoadGraph): boolean {
     g.edges,
     g.edges.map(() => true),
   );
+}
+
+/**
+ * Split edge `eid` at parameter t (0..1 from a to b): the edge keeps its id and
+ * now ends at the new node, and a new edge of the same kind runs on to the old
+ * end. Returns the new node id. Call sortNodeEdges when done editing.
+ */
+export function splitEdge(g: RoadGraph, eid: number, t: number): number {
+  const e = g.edges[eid];
+  const a = g.nodes[e.a];
+  const b = g.nodes[e.b];
+  const id = g.nodes.length;
+  const x = a.x + (b.x - a.x) * t;
+  const z = a.z + (b.z - a.z) * t;
+  g.nodes.push({ id, x, z, gi: -1, gj: -1, edges: [] });
+  const oldB = e.b;
+  e.b = id;
+  e.length = sqrt((x - a.x) ** 2 + (z - a.z) ** 2);
+  g.edges.push({ ...e, id: g.edges.length, a: id, b: oldB, length: sqrt((b.x - x) ** 2 + (b.z - z) ** 2) });
+  return id;
+}
+
+/** Append an edge of the given kind between two nodes. Returns its id. Call sortNodeEdges when done. */
+export function addEdge(g: RoadGraph, a: number, b: number, kind: RoadKind): number {
+  const A = g.nodes[a];
+  const B = g.nodes[b];
+  const id = g.edges.length;
+  g.edges.push({ id, a, b, kind, lanes: CITY.lanes[kind], width: CITY.width[kind], sidewalk: CITY.sidewalkWidth[kind], length: sqrt((A.x - B.x) ** 2 + (A.z - B.z) ** 2) });
+  return id;
 }
 
 /** Find the edge joining two nodes, or -1. */

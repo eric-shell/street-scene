@@ -1,6 +1,6 @@
 {
   "_readme": [
-    "Night Run driving parameters: the ONE file that holds every car physics number.",
+    "Street Scene driving parameters: the ONE file that holds every car physics number.",
     "base: the shared tuning every car starts from (it is exactly the Proto Compact / s64).",
     "cars.<id>: per car overrides, merged over base. Write absolute values (e.g. \"mass\": 2000), only the keys that differ. Nested objects merge key by key, arrays (torqueCurve, ratios) replace the whole array.",
     "Keys starting with _ are comments and are ignored. Unknown keys fail loudly at startup, so typos never go unnoticed.",
@@ -125,6 +125,8 @@
       "railAngularScale": 0.18,
       "railDrag": 4,
       "railSpeedLoss": 0.4,
+      "railDentLoss": 1,
+      "railStepLoss": 1.2,
       "carRestitution": 0.3,
       "angularScale": 0.45
     }

@@ -4,9 +4,9 @@
  */
 import { CITY, ROUTE } from './config';
 import { RoadGraph, edgeBetween, otherNode } from './roadGraph';
-import { EdgeMouths, Wall, makeWall } from './blocks';
+import { EdgeMouths, Sector, Wall, computeMouths, computeSectors, makeWall } from './blocks';
 import { Rng, deriveSeed } from '../sim/prng';
-import { DEG, Vec2, abs, atan2, cos, lineIntersectT, sin, sqrt, wrapAngle, yawOf } from '../sim/math';
+import { DEG, Vec2, abs, atan2, clamp, cos, distToSegment, lineIntersectT, sign, sin, sqrt, wrapAngle, yawOf } from '../sim/math';
 
 export type RouteKind = 'circuit' | 'sprint';
 
@@ -136,8 +136,10 @@ function randomWeights(g: RoadGraph, rng: Rng): Float64Array {
   const w = new Float64Array(g.edges.length);
   g.edges.forEach((e, i) => {
     // Favor the wide fast roads a little so routes have long straights.
-    const kindBias = e.kind === 'boulevard' ? 0.7 : e.kind === 'diagonal' ? 0.75 : e.kind === 'avenue' ? 0.85 : 1;
-    w[i] = e.length * kindBias * rng.range(0.45, 1.9);
+    const kindBias = e.kind === 'boulevard' ? 0.7 : e.kind === 'diagonal' ? 0.75 : e.kind === 'avenue' ? 0.85 : e.kind === 'alley' ? 0.9 : 1;
+    const r = rng.range(0.45, 1.9);
+    // Back alley shortcuts are never part of a route (Infinity is never relaxed).
+    w[i] = e.shortcut ? Infinity : e.length * kindBias * r;
   });
   return w;
 }
@@ -203,6 +205,8 @@ export function findSprintNodes(g: RoadGraph, seed: number): number[] {
     const A = g.nodes[a];
     const B = g.nodes[b];
     if (sqrt((A.x - B.x) ** 2 + (A.z - B.z) ** 2) < span * 0.4) continue;
+    // Sprints start and end on a street, not in a roundabout.
+    if (A.ring || B.ring) continue;
     if (via === a || via === b) continue;
     // Go through a waypoint so sprints wind across town instead of beelining.
     const p1 = dijkstra(g, a, via, w, new Uint8Array(n), new Uint8Array(g.edges.length));
@@ -257,11 +261,19 @@ export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[]):
     const B = g.nodes[nodes[0]];
     const mid = { x: (A.x + B.x) / 2, z: (A.z + B.z) / 2 };
     const longest = g.edges[edges[edges.length - 1]];
-    points = [mid, ...nodes.map((id) => ({ x: g.nodes[id].x, z: g.nodes[id].z })), { x: mid.x, z: mid.z }];
-    segWidth = [longest.width, ...edges.slice(0, -1).map((e) => g.edges[e].width), longest.width];
+    points = [mid];
+    segWidth = [];
+    const n = nodes.length;
+    nodes.forEach((id, i) => {
+      const w = i === 0 ? longest.width : g.edges[edges[i - 1]].width;
+      appendNode(g, points, segWidth, w, nodes[(i - 1 + n) % n], id, nodes[(i + 1) % n]);
+    });
+    points.push({ x: mid.x, z: mid.z });
+    segWidth.push(longest.width);
   } else {
-    points = nodes.map((id) => ({ x: g.nodes[id].x, z: g.nodes[id].z }));
-    segWidth = edges.map((e) => g.edges[e].width);
+    points = [];
+    segWidth = [];
+    nodes.forEach((id, i) => appendNode(g, points, segWidth, i === 0 ? 0 : g.edges[edges[i - 1]].width, i > 0 ? nodes[i - 1] : -1, id, i + 1 < nodes.length ? nodes[i + 1] : -1));
   }
 
   const cum = [0];
@@ -315,10 +327,56 @@ export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[]):
   const routeNodeSet = new Set(nodes);
   for (const nid of routeNodeSet) {
     for (const eid of g.nodes[nid].edges) {
-      if (!onRoute.has(eid)) route.closedStreets.push({ edge: eid, node: nid });
+      // Shortcut entrances stay open.
+      if (!onRoute.has(eid) && !g.edges[eid].shortcut) route.closedStreets.push({ edge: eid, node: nid });
     }
   }
   return route;
+}
+
+/**
+ * Append a route node's points to the driving polyline. Plain intersections
+ * are one point at the node. Roundabouts (node.ring) are driven around the
+ * island counterclockwise seen from above with the island on the driver's
+ * left (decreasing atan2 angle): an entry point on the incoming road just
+ * outside the ring, an arc at the middle of the ring road, an exit point on
+ * the outgoing road. `inWidth` is the width of the segment arriving at the
+ * first appended point (ignored for the very first point).
+ */
+function appendNode(g: RoadGraph, points: Vec2[], segWidth: number[], inWidth: number, prev: number, id: number, next: number): void {
+  const P = g.nodes[id];
+  const ring = P.ring;
+  const push = (p: Vec2, w: number) => {
+    if (points.length) segWidth.push(w);
+    points.push(p);
+  };
+  if (!ring || prev < 0 || next < 0) {
+    push({ x: P.x, z: P.z }, inWidth);
+    return;
+  }
+  const A = g.nodes[prev];
+  const B = g.nodes[next];
+  const li = sqrt((P.x - A.x) ** 2 + (P.z - A.z) ** 2) || 1;
+  const lo = sqrt((B.x - P.x) ** 2 + (B.z - P.z) ** 2) || 1;
+  const din = { x: (P.x - A.x) / li, z: (P.z - A.z) / li };
+  const dout = { x: (B.x - P.x) / lo, z: (B.z - P.z) / lo };
+  const ringW = ring.outer - ring.island;
+  const Rd = (ring.outer + ring.island) / 2;
+  const Re = ring.outer + 3;
+  const aE = atan2(-din.z, -din.x);
+  const aX = atan2(dout.z, dout.x);
+  let sweep = aE - aX;
+  while (sweep <= 1e-6) sweep += 2 * Math.PI;
+  while (sweep > 2 * Math.PI) sweep -= 2 * Math.PI;
+  const delta = Math.min(30 * DEG, sweep / 3);
+  push({ x: P.x - din.x * Re, z: P.z - din.z * Re }, inWidth);
+  const arc = sweep - 2 * delta;
+  const steps = Math.max(1, Math.ceil(arc / (15 * DEG)));
+  for (let k = 0; k <= steps; k++) {
+    const a = aE - delta - (arc * k) / steps;
+    push({ x: P.x + cos(a) * Rd, z: P.z + sin(a) * Rd }, ringW);
+  }
+  push({ x: P.x + dout.x * Re, z: P.z + dout.z * Re }, ringW);
 }
 
 export function wrapS(route: Route, s: number): number {
@@ -420,7 +478,7 @@ function mouthBarrier(g: RoadGraph, mouths: EdgeMouths[], edge: number, node: nu
   // so it never cuts into the route corridor at acute junctions.
   const along = (pt: Vec2) => (pt.x - n.x) * dx + (pt.z - n.z) * dz;
   let d = Math.max(along(p), along(q)) + 1.5;
-  const half = e.width / 2 + CITY.sidewalk;
+  const half = e.width / 2 + e.sidewalk;
   // Stay behind any corner rail that crosses this mouth (a side street leaving
   // right at the outside of a corner), so the barrier never pokes through it.
   for (const w of rails) {
@@ -542,24 +600,72 @@ export function routeBarriers(g: RoadGraph, mouths: EdgeMouths[], route: Route, 
   return groups.flatMap((gr) => gr.walls);
 }
 
+/** A corner rail sub segment: a 'rail' Wall that also knows which modular rail piece it belongs to. */
+export interface RailWall extends Wall {
+  kind: 'rail';
+  /** Index of the corner rail (all segments of one rail share it). */
+  group: number;
+  /** Global rail piece index, consecutive along each rail (pieces are sim bodies, see src/sim/rails.ts). */
+  piece: number;
+}
+
+/** City wall segments around a node: its sector corners and the outer sidewalk lines of its edges. */
+function localCityWalls(g: RoadGraph, sectors: Sector[][], mouths: EdgeMouths[], node: number): [Vec2, Vec2][] {
+  const out: [Vec2, Vec2][] = [];
+  for (const s of sectors[node]) for (let i = 0; i + 1 < s.outer.length; i++) out.push([s.outer[i], s.outer[i + 1]]);
+  for (const eid of g.nodes[node].edges) {
+    const m = mouths[eid];
+    out.push([m.aP.outer, m.bP.outer], [m.aN.outer, m.bN.outer]);
+  }
+  return out;
+}
+
+/** 0 below e0, 1 above e1, a half cosine in between (C1, lowest peak curvature for the rise). */
+function cosStep(e0: number, e1: number, x: number): number {
+  const t = clamp((x - e0) / (e1 - e0), 0, 1);
+  return (1 - cos(t * Math.PI)) / 2;
+}
+
+/** Proper crossing test of segments ab and cd. */
+function segmentsCross(a: Vec2, b: Vec2, c: Vec2, d: Vec2): boolean {
+  const den = (b.x - a.x) * (d.z - c.z) - (b.z - a.z) * (d.x - c.x);
+  if (abs(den) < 1e-12) return false;
+  const t = ((c.x - a.x) * (d.z - c.z) - (c.z - a.z) * (d.x - c.x)) / den;
+  const u = ((c.x - a.x) * (b.z - a.z) - (c.z - a.z) * (b.x - a.x)) / den;
+  return t > 0 && t < 1 && u > 0 && u < 1;
+}
+
 /**
- * Smooth guard rails on the outside of every route corner, along the outer
- * curb line (ROUTE.railInset behind it, on the sidewalk) so the full road
- * width stays drivable: a straight run along the incoming road's outer curb,
- * a round fillet across the outer corner, and a straight run along the
- * outgoing road's outer curb. The fillet radius is chosen so the rail cuts at
- * most ROUTE.railCornerCut inside the outer curb corner (sharp at junctions,
- * rounded at plain bends). Cars that run wide glance off and keep their
- * momentum instead of nosing into a side street barrier. Each rail is one
- * connected chain of 'rail' walls (b of one segment == a of the next), all
- * sharing `group`, with normals toward the drivable side.
+ * Smooth guard rails on the outside of every route corner, at the back of the
+ * sidewalk (ROUTE.railInset in front of the building line), so the road and
+ * the whole sidewalk stay drivable runoff and no pocket is left between the
+ * rail and the city walls. Path: a straight run along the incoming road's
+ * outer sidewalk line, a round fillet across the outer corner, and a straight
+ * run along the outgoing road's outer sidewalk line, tangent continuous. At a
+ * plain bend the fillet follows the rounded sidewalk; at a junction it cuts at
+ * most ROUTE.railCornerCut inside the sharp corner. Where the rail crosses the
+ * mouth of a closed side street it bends smoothly back to pass behind that
+ * street's crosswalk. The path is sampled finely, then cut into modular pieces
+ * of about ROUTE.railPieceLength, each made of straight sub segments turning
+ * at most ROUTE.railMaxSubDeg. Each rail is one connected chain of 'rail'
+ * walls (b of one segment == a of the next), all sharing `group`, with normals
+ * toward the drivable side and `piece` numbered along the chain. The fillet is
+ * widened until the rail keeps clear of every city wall around the corner
+ * (pass the city's walls; without them the sidewalk lines are rebuilt), and
+ * the rail eases around street furniture (`props`) it would otherwise touch.
  */
-export function routeRails(g: RoadGraph, route: Route): Wall[] {
-  const walls: Wall[] = [];
+export function routeRails(g: RoadGraph, route: Route, props: readonly { x: number; z: number; radius: number }[] = [], cityWallList?: readonly Wall[]): RailWall[] {
+  const sectors = computeSectors(g);
+  const mouths = computeMouths(g, sectors);
+  const walls: RailWall[] = [];
   const n = route.nodes.length;
   const from = route.closed ? 0 : 1;
   const to = route.closed ? n : n - 1;
+  const step = ROUTE.railSampleStep;
+  const clear = ROUTE.railCrosswalkClear;
+  const cwEnd = ROUTE.railCrosswalkEnd;
   let rail = 0;
+  let piece = 0;
   for (let i = from; i < to; i++) {
     const prevId = route.nodes[(i - 1 + n) % n];
     const id = route.nodes[i];
@@ -579,55 +685,266 @@ export function routeRails(g: RoadGraph, route: Route): Wall[] {
     const side = leftTurn ? -1 : 1;
     const oin = { x: side * din.z, z: -side * din.x };
     const oout = { x: side * dout.z, z: -side * dout.x };
-    const eIn = g.edges[edgeBetween(g, prevId, id)];
-    const eOut = g.edges[edgeBetween(g, id, nextId)];
-    const inset = ROUTE.railInset;
-    const hIn = eIn.width / 2 + inset;
-    const hOut = eOut.width / 2 + inset;
+    const eInId = edgeBetween(g, prevId, id);
+    const eOutId = edgeBetween(g, id, nextId);
+    const eIn = g.edges[eInId];
+    const eOut = g.edges[eOutId];
+    const hIn = eIn.width / 2 + (eIn.sidewalk ?? CITY.sidewalk) - ROUTE.railInset;
+    const hOut = eOut.width / 2 + (eOut.sidewalk ?? CITY.sidewalk) - ROUTE.railInset;
     const pin = { x: P.x + oin.x * hIn, z: P.z + oin.z * hIn };
     const pout = { x: P.x + oout.x * hOut, z: P.z + oout.z * hOut };
     const t = lineIntersectT(pin, din, pout, dout);
     if (t === null) continue;
-    // V: where the two inset curb lines meet, outside the corner.
+    // V: where the two rail lines meet, outside the corner.
     const V = { x: pin.x + din.x * t, z: pin.z + din.z * t };
-    // Fillet radius: the apex sits R(1/c - 1) inside V. At a junction the outer curb
-    // corner is sharp, ~inset/c inside V, and the rail may cut railCornerCut past it.
-    // At a plain bend the curb is rounded (radius w/2 around P): follow it exactly.
+
+    // Side streets on the outside of the turn: everything not inside the wedge between
+    // the incoming road (looking back) and the outgoing road.
+    const back = { x: -din.x, z: -din.z };
+    const wedge = sign(back.x * dout.z - back.z * dout.x);
+    const outside: number[] = [];
+    for (const eid of P.edges) {
+      if (eid === eInId || eid === eOutId) continue;
+      const far = g.nodes[otherNode(g.edges[eid], id)];
+      const dl = sqrt((far.x - P.x) ** 2 + (far.z - P.z) ** 2) || 1;
+      const d = { x: (far.x - P.x) / dl, z: (far.z - P.z) / dl };
+      const inside = sign(back.x * d.z - back.z * d.x) === wedge && sign(d.x * dout.z - d.z * dout.x) === wedge;
+      if (!inside) outside.push(eid);
+    }
+
+    // Fillet radius. Plain bend: follow the rounded sidewalk (center near P). Junction: the
+    // apex sits R(1/c - 1) inside V, at most railCornerCut.
     const c = cos(theta / 2);
-    const rounded = P.edges.length === 2;
-    const cut = rounded ? 0 : ROUTE.railCornerCut;
-    let R = (inset + c * cut) / (1 - c) + (rounded ? (eIn.width + eOut.width) / 4 : 0);
-    const maxReach = Math.min(lenIn, lenOut) * 0.42;
     const tanHalf = sin(theta / 2) / c;
-    R = Math.max(1, Math.min(R, (maxReach - 1) / tanHalf));
-    const T = R * tanHalf;
-    const reach = Math.max(T + 1, Math.min(ROUTE.railReach + (eIn.width + eOut.width) * 0.4, maxReach));
-    const A = { x: V.x - din.x * reach, z: V.z - din.z * reach };
-    const T1 = { x: V.x - din.x * T, z: V.z - din.z * T };
-    const T2 = { x: V.x + dout.x * T, z: V.z + dout.z * T };
-    const B = { x: V.x + dout.x * reach, z: V.z + dout.z * reach };
-    // Fillet center: R inside the incoming line (toward P).
-    const O = { x: T1.x - oin.x * R, z: T1.z - oin.z * R };
-    const a0 = atan2(T1.z - O.z, T1.x - O.x);
-    const sweep = wrapAngle(atan2(T2.z - O.z, T2.x - O.x) - a0);
-    const pts: Vec2[] = [A, { x: (A.x + T1.x) / 2, z: (A.z + T1.z) / 2 }, T1];
-    const arcSteps = Math.max(2, ROUTE.railSegments - 4);
-    for (let k = 1; k < arcSteps; k++) {
-      const a = a0 + (sweep * k) / arcSteps;
-      pts.push({ x: O.x + cos(a) * R, z: O.z + sin(a) * R });
+    const maxReach = Math.min(lenIn, lenOut) * 0.42;
+    const rMax = Math.max(1, (maxReach - 1) / tanHalf);
+    let R = Math.min(rMax, outside.length ? (ROUTE.railCornerCut * c) / (1 - c) : Math.max(hIn, hOut) + 0.3);
+    // The city's real walls around the corner when given (district features included), else the sidewalk lines.
+    const cityWalls: [Vec2, Vec2][] = cityWallList
+      ? cityWallList
+          .filter((w) => Math.min(w.ax, w.bx) < P.x + 90 && Math.max(w.ax, w.bx) > P.x - 90 && Math.min(w.az, w.bz) < P.z + 90 && Math.max(w.az, w.bz) > P.z - 90)
+          .map((w) => [{ x: w.ax, z: w.az }, { x: w.bx, z: w.bz }])
+      : localCityWalls(g, sectors, mouths, id);
+    const nearProps = props.filter((q) => abs(q.x - P.x) < 70 && abs(q.z - P.z) < 70);
+    let best: { pts: Vec2[]; nrm: Vec2[]; score: number } | null = null;
+    let grew = false;
+    // Crosswalk bends are dropped again if they would bring the rail near a city wall.
+    let bends = true;
+    let bent = false;
+
+    let pts: Vec2[] = [];
+    let nrm: Vec2[] = [];
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const T = R * tanHalf;
+      const reach = Math.max(T + 1, Math.min(ROUTE.railReach + (eIn.width + eOut.width) * 0.4, maxReach));
+      const T1 = { x: V.x - din.x * T, z: V.z - din.z * T };
+      const T2 = { x: V.x + dout.x * T, z: V.z + dout.z * T };
+      // Fillet center: R inside the incoming line (toward P).
+      const O = { x: T1.x - oin.x * R, z: T1.z - oin.z * R };
+      pts = [];
+      nrm = [];
+      // Dense samples with the outward (away from the track) normal of the path.
+      const run = (p0: Vec2, d: Vec2, len: number, o: Vec2, last: boolean) => {
+        const k = Math.max(1, Math.ceil(len / step));
+        for (let j = 0; j < k + (last ? 1 : 0); j++) {
+          pts.push({ x: p0.x + (d.x * len * j) / k, z: p0.z + (d.z * len * j) / k });
+          nrm.push(o);
+        }
+      };
+      run({ x: V.x - din.x * reach, z: V.z - din.z * reach }, din, reach - T, oin, false);
+      const a0 = atan2(T1.z - O.z, T1.x - O.x);
+      const sweep = wrapAngle(atan2(T2.z - O.z, T2.x - O.x) - a0);
+      const arcSteps = Math.max(2, Math.ceil((R * abs(sweep)) / step));
+      for (let k = 0; k < arcSteps; k++) {
+        const a = a0 + (sweep * k) / arcSteps;
+        const ca = cos(a);
+        const sa = sin(a);
+        pts.push({ x: O.x + ca * R, z: O.z + sa * R });
+        nrm.push({ x: ca, z: sa });
+      }
+      run(T2, dout, reach - T, oout, true);
+
+      // Closed side streets on the outside: where the rail would run over a crosswalk, bend
+      // it smoothly back behind the stripes (never forward, which would eat the runoff).
+      const shift = new Float64Array(pts.length);
+      bent = false;
+      for (const eid of bends ? outside : []) {
+        const e = g.edges[eid];
+        const m = mouths[eid];
+        const ca = id === e.a ? m.aP.curb : m.bP.curb;
+        const cb = id === e.a ? m.aN.curb : m.bN.curb;
+        const mx = (ca.x + cb.x) / 2;
+        const mz = (ca.z + cb.z) / 2;
+        const far = g.nodes[otherNode(e, id)];
+        const dl = sqrt((far.x - P.x) ** 2 + (far.z - P.z) ** 2) || 1;
+        const dx = (far.x - P.x) / dl;
+        const dz = (far.z - P.z) / dl;
+        const half = e.width / 2 + 0.3;
+        // Long enough to stay gentle (narrow alley sidewalks included).
+        const ramp = Math.max(2.5, (e.sidewalk ?? CITY.sidewalk) - 0.8);
+        let minA = Infinity;
+        let maxA = -Infinity;
+        let nd = 0;
+        let nc = 0;
+        for (let k = 0; k < pts.length; k++) {
+          const rx = pts[k].x - mx;
+          const rz = pts[k].z - mz;
+          const along = rx * dx + rz * dz;
+          if (along < -4 || along > cwEnd + 6 || abs(rx * dz - rz * dx) > half) continue;
+          minA = Math.min(minA, along);
+          maxA = Math.max(maxA, along);
+          nd += nrm[k].x * dx + nrm[k].z * dz;
+          nc++;
+        }
+        if (!nc || maxA < ROUTE.railCrosswalkStart - clear || minA > cwEnd + clear) continue;
+        nd /= nc;
+        if (nd < 0.3) continue;
+        const amount = (cwEnd + clear - minA) / nd;
+        if (amount > ROUTE.railMaxBend) continue;
+        bent = true;
+        for (let k = 0; k < pts.length; k++) {
+          const rx = pts[k].x - mx;
+          const rz = pts[k].z - mz;
+          // Cosine ramps (gentlest curvature for the depth); bends of neighboring streets add up.
+          const w = (1 - cosStep(half, half + ramp, abs(rx * dz - rz * dx))) * cosStep(-8, -4, rx * dx + rz * dz);
+          shift[k] += amount * w;
+        }
+      }
+      for (let k = 0; k < pts.length; k++) {
+        if (shift[k] !== 0) pts[k] = { x: pts[k].x + nrm[k].x * shift[k], z: pts[k].z + nrm[k].z * shift[k] };
+      }
+
+      // Keep clear of the city walls around the corner (widen the fillet if it is not) and of
+      // street furniture (tighten a junction fillet that sweeps over a corner traffic light).
+      let ok = true;
+      for (let k = 0; k < pts.length && ok; k++) {
+        for (const [a, b] of cityWalls) {
+          if (distToSegment(pts[k].x, pts[k].z, a.x, a.z, b.x, b.z) < ROUTE.railInset * 0.5 || (k > 0 && segmentsCross(pts[k - 1], pts[k], a, b))) {
+            ok = false;
+            break;
+          }
+        }
+      }
+      // Only furniture by the fillet counts here (tightening it cannot help anywhere else).
+      let propHits = 0;
+      const reachV = R * tanHalf + 3;
+      for (const q of nearProps) {
+        if ((q.x - V.x) ** 2 + (q.z - V.z) ** 2 > reachV * reachV) continue;
+        const r2 = (q.radius + ROUTE.railPropClear) ** 2;
+        for (let k = 0; k < pts.length; k++) {
+          if ((pts[k].x - q.x) ** 2 + (pts[k].z - q.z) ** 2 < r2) {
+            propHits++;
+            break;
+          }
+        }
+      }
+      const score = ok ? propHits : 1e6;
+      if (!best || score < best.score) best = { pts, nrm, score };
+      if (ok && propHits === 0) break;
+      if (!ok && bent) {
+        bends = false;
+        continue;
+      }
+      if (!ok) {
+        if (R >= rMax) break;
+        R = Math.min(rMax, R * 1.3);
+        grew = true;
+      } else {
+        if (grew || !outside.length || R <= 3) break;
+        R = Math.max(3, R * 0.75);
+      }
     }
-    pts.push(T2, { x: (T2.x + B.x) / 2, z: (T2.z + B.z) / 2 }, B);
+    pts = best!.pts;
+    nrm = best!.nrm;
+
+    const cum = [0];
+    for (let k = 1; k < pts.length; k++) cum.push(cum[k - 1] + sqrt((pts[k].x - pts[k - 1].x) ** 2 + (pts[k].z - pts[k - 1].z) ** 2));
+    // Any prop still too close (furniture just inside a closed street, behind the rail): ease the
+    // rail away from it with a short smooth bend, toward the track if the prop is behind.
+    {
+      for (const q of nearProps) {
+        let kBest = -1;
+        let dBest = Infinity;
+        for (let k = 0; k < pts.length; k++) {
+          const d = (pts[k].x - q.x) ** 2 + (pts[k].z - q.z) ** 2;
+          if (d < dBest) {
+            dBest = d;
+            kBest = k;
+          }
+        }
+        const need = q.radius + ROUTE.railPropClear - sqrt(dBest);
+        if (kBest < 0 || need <= 0) continue;
+        const behind = (q.x - pts[kBest].x) * nrm[kBest].x + (q.z - pts[kBest].z) * nrm[kBest].z > 0;
+        const amount = behind ? -need - 0.05 : need + 0.05;
+        const s0 = cum[kBest];
+        const span = ROUTE.railPieceLength * 2.4;
+        const bentPts = pts.map((pt, k) => {
+          const w = 1 - cosStep(span * 0.25, span, abs(cum[k] - s0));
+          return w > 0 ? { x: pt.x + nrm[k].x * amount * w, z: pt.z + nrm[k].z * amount * w } : pt;
+        });
+        // Bending back must not take the rail near or past a city wall.
+        let clearOfWalls = true;
+        for (let k = 0; k < pts.length && clearOfWalls; k++) {
+          if (bentPts[k] === pts[k]) continue;
+          for (const [a, b] of cityWalls) {
+            if (distToSegment(bentPts[k].x, bentPts[k].z, a.x, a.z, b.x, b.z) < ROUTE.railInset * 0.5 || (k > 0 && segmentsCross(bentPts[k - 1], bentPts[k], a, b))) {
+              clearOfWalls = false;
+              break;
+            }
+          }
+        }
+        if (clearOfWalls) pts = bentPts;
+      }
+      for (let k = 1; k < pts.length; k++) cum[k] = cum[k - 1] + sqrt((pts[k].x - pts[k - 1].x) ** 2 + (pts[k].z - pts[k - 1].z) ** 2);
+    }
+
+    // Cut the path into pieces of equal length, each made of a few straight sub segments.
+    const total = cum[cum.length - 1];
+    if (total < 1) continue;
+    // Heading of each sample segment, for the turn inside a piece.
+    const head: number[] = [];
+    for (let k = 1; k < pts.length; k++) head.push(atan2(pts[k].z - pts[k - 1].z, pts[k].x - pts[k - 1].x));
+    const at = (s: number): { p: Vec2; k: number } => {
+      let lo = 0;
+      let hi = cum.length - 1;
+      while (hi - lo > 1) {
+        const mid = (lo + hi) >> 1;
+        if (cum[mid] <= s) lo = mid;
+        else hi = mid;
+      }
+      const u = clamp((s - cum[lo]) / (cum[lo + 1] - cum[lo] || 1), 0, 1);
+      return { p: { x: pts[lo].x + (pts[lo + 1].x - pts[lo].x) * u, z: pts[lo].z + (pts[lo + 1].z - pts[lo].z) * u }, k: lo };
+    };
+    const count = Math.max(1, Math.round(total / ROUTE.railPieceLength));
+    const pieceLen = total / count;
     let prev = pts[0];
-    let made = 0;
-    for (let k = 1; k < pts.length; k++) {
-      const w = makeWall(prev, pts[k], { x: P.x, z: P.z }, 'rail');
-      if (!w) continue;
-      w.group = rail;
-      walls.push(w);
-      prev = pts[k];
-      made++;
+    let prevS = 0;
+    for (let p = 0; p < count; p++) {
+      const s0 = p * pieceLen;
+      const s1 = p === count - 1 ? total : (p + 1) * pieceLen;
+      // Sub segment ends: wherever the path has turned railMaxSubDeg since the last one.
+      const ends: { p: Vec2; s: number }[] = [];
+      let turned = 0;
+      for (let k = at(s0).k + 1; k < pts.length - 1 && cum[k] < s1 - 0.05; k++) {
+        turned += abs(wrapAngle(head[k] - head[k - 1]));
+        if (cum[k] > s0 + 0.05 && turned >= ROUTE.railMaxSubDeg * DEG) {
+          ends.push({ p: pts[k], s: cum[k] });
+          turned = 0;
+        }
+      }
+      ends.push({ p: p === count - 1 ? pts[pts.length - 1] : at(s1).p, s: s1 });
+      for (const q of ends) {
+        // Normal toward the drivable side: inward of the path normal at the segment middle.
+        const o = nrm[at((prevS + q.s) / 2).k];
+        const w = makeWall(prev, q.p, { x: (prev.x + q.p.x) / 2 - o.x, z: (prev.z + q.p.z) / 2 - o.z }, 'rail');
+        if (!w) continue;
+        walls.push({ ...w, kind: 'rail', group: rail, piece });
+        prev = q.p;
+        prevS = q.s;
+      }
+      piece++;
     }
-    if (made) rail++;
+    rail++;
   }
   return walls;
 }

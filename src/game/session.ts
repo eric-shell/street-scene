@@ -19,6 +19,7 @@ import { CarAssetLibrary } from '../render/carAssets';
 import { CAMERA, ChaseCamera } from '../render/camera';
 import { RaceCinematics } from '../render/cinematics';
 import { GameRenderer, NightScene, createNightScene } from '../render/scene';
+import type { CrowdCar } from '../render/crowds';
 import { FreeFlyCamera } from '../render/freeFly';
 import { InputManager } from '../input/inputManager';
 import { Hud, HudData } from '../ui/hud';
@@ -85,6 +86,8 @@ function lerpSnap(a: Snap, b: Snap, t: number): Snap {
 
 export type ReplayCamMode = 'chase' | 'close' | 'hood' | 'tv' | 'orbit' | 'free';
 const REPLAY_CAMS: ReplayCamMode[] = ['chase', 'tv', 'orbit', 'close', 'hood', 'free'];
+/** The circuit gantry sign switches to the next label this many ticks after the player passes under it. */
+const SIGN_DELAY = 70;
 
 export interface SessionOptions {
   config: RaceConfig;
@@ -144,6 +147,15 @@ export class RaceSession {
   private sfx: Sfx | null = null;
   /** Headlight flash level driven by the horn (render side only). */
   private flash = 0;
+  /** Open world test drive: no crowds, fireworks or line celebrations. */
+  private readonly openWorld: boolean;
+  /** Text on the circuit gantry sign, and the tick a pending change is applied (-1 = none). */
+  private signText = '';
+  private signAt = -1;
+  /** Player lap whose line approach fireworks were launched. */
+  private fireworksLap = -1;
+  /** Racer poses for the crowd (reused every frame). */
+  private readonly crowdCars: CrowdCar[];
   readyPromise: Promise<void>;
 
   constructor(
@@ -159,6 +171,9 @@ export class RaceSession {
     this.night = createNightScene(this.race.world, gr, settings);
     this.cam = new ChaseCamera(this.race.world);
     this.cine = new RaceCinematics(this.cam, this.race.world, uiRoot);
+    this.openWorld = opts.config.openWorld === true || this.race.world.openWorld === true;
+    this.night.crowds.setEnabled(!this.openWorld);
+    this.crowdCars = this.race.cars.map(() => ({ x: 0, z: 0, speed: 0 }));
     this.hud = new Hud(uiRoot, this.race.world);
     const loads: Promise<void>[] = [];
     this.race.cars.forEach((rc, i) => {
@@ -206,9 +221,12 @@ export class RaceSession {
       });
       // Crashes, nitrous, scrapes, horn and countdown beeps (src/audio/sfx.ts).
       this.sfx = new Sfx();
+      const sfx = this.sfx;
+      this.night.city.finishLine.onFirework = (x, y, z, size) => sfx.firework(x, y, z, size);
     }
     this.curr = this.race.cars.map((c) => snap(c.state));
     this.prev = this.curr.map((s) => ({ ...s }));
+    if (!this.openWorld) this.updateCelebrations();
     if (this.ghostRace) {
       this.ghostCurr = snap(this.ghostRace.cars[0].state);
       this.ghostPrev = { ...this.ghostCurr };
@@ -311,7 +329,10 @@ export class RaceSession {
     this.sfx?.syncCountdown(r);
     this.handleEvents();
     if (r.phase === 'finished' && this.finishedAt < 0) this.finishedAt = r.tick;
-    if (r.tick === r.countdownTicks) this.night.city.finishLine.burst('start', 0.7);
+    if (!this.openWorld) {
+      if (r.tick === r.countdownTicks) this.celebrateStart();
+      this.updateCelebrations();
+    }
     // Results wait for the finish shot (or a skip); without cinematics, 2.5 s.
     const delay = this.cineOn ? CAMERA.outro.resultsDelay : 2.5;
     if (this.finishedAt >= 0 && !this.resultsShown && this.onFinish && (this.skipFinish || r.tick - this.finishedAt >= Math.round(delay / DT))) {
@@ -321,23 +342,88 @@ export class RaceSession {
     }
   }
 
+  /** Gate position for crowd sounds: the start line or the finish line (the same gate on circuits). */
+  private gatePos(at: 'start' | 'finish'): THREE.Vector3 | null {
+    const gates = this.night.city.finishLine.gates;
+    return (gates.find((g) => (at === 'finish' ? g.kind !== 'start' : g.kind !== 'finish')) ?? gates[0])?.position ?? null;
+  }
+
+  /** Green light: sparks, fireworks and the crowd erupting at the start gate. */
+  private celebrateStart(): void {
+    const fl = this.night.city.finishLine;
+    fl.burst('start', 0.7);
+    fl.fireworks('start');
+    this.night.crowds.cheer('start', 1);
+    const g = this.gatePos('start');
+    if (g) this.sfx?.crowdCheer(g.x, g.z, 1, true);
+  }
+
+  /**
+   * Sim driven (so replays match): the circuit sign label (START, LAP n,
+   * FINISH for the final lap) and the fireworks launched just before the
+   * player reaches the line, so the shells burst ahead as they pass under.
+   */
+  private updateCelebrations(): void {
+    const r = this.race;
+    const rc = r.cars[0];
+    const route = r.world.route;
+    const fl = this.night.city.finishLine;
+    const laps = r.config.laps;
+    if (route.closed) {
+      const want = rc.lap === 0 ? 'START' : rc.lap >= laps ? 'FINISH' : `LAP ${rc.lap + 1}`;
+      if (want !== this.signText) {
+        if (this.signAt < 0) this.signAt = r.tick + (this.signText ? SIGN_DELAY : 0);
+        if (r.tick >= this.signAt) {
+          const sub = want === 'START' ? (laps > 1 ? `${laps} LAPS` : '') : want === 'FINISH' ? (laps > 1 ? 'FINAL LAP' : '') : `OF ${laps}`;
+          fl.setSign('startFinish', want, sub);
+          this.signText = want;
+          this.signAt = -1;
+        }
+      }
+    }
+    if (!rc.finished && rc.lap >= 1 && this.fireworksLap !== rc.lap && r.tick > r.countdownTicks) {
+      const remaining = (route.closed ? rc.lap * route.length : r.distance) - rc.dist;
+      if (remaining > 0 && remaining < Math.max(18, rc.state.speed * 1.1)) {
+        this.fireworksLap = rc.lap;
+        const final = !route.closed || rc.lap >= laps;
+        // The final approach gets an opening salvo; the big show fires on the finish event.
+        fl.fireworks(final ? 'finish' : 'lap', final ? 0.4 : 1);
+      }
+    }
+  }
+
   private handleEvents(): void {
     const r = this.race;
     for (; this.eventIndex < r.events.length; this.eventIndex++) {
       const e = r.events[this.eventIndex];
       this.sfx?.raceEvent(e, r);
+      // Rivals crossing the finish get a smaller cheer.
+      if (e.type === 'finish' && e.car !== 0 && !this.openWorld) this.night.crowds.cheer('finish', 0.8);
       if (e.car !== 0) continue;
       const rc = r.cars[0];
       switch (e.type) {
         case 'lap': {
           const t = ticksToSeconds(rc.lapTimes[rc.lapTimes.length - 1] ?? 0);
           const best = rc.bestLap === rc.lapTimes[rc.lapTimes.length - 1];
-          if ((e.value ?? 0) < r.config.laps) this.hud.message(`Lap ${e.value}  ${formatTime(t)}${best ? '  BEST' : ''}${(e.value ?? 0) === r.config.laps - 1 ? '  ·  FINAL LAP' : ''}`, 2.6);
+          if ((e.value ?? 0) < r.config.laps) {
+            this.hud.message(`Lap ${e.value}  ${formatTime(t)}${best ? '  BEST' : ''}${(e.value ?? 0) === r.config.laps - 1 ? '  ·  FINAL LAP' : ''}`, 2.6);
+            if (!this.openWorld) {
+              this.night.crowds.cheer('lap', 1);
+              const g = this.gatePos('finish');
+              if (g) this.sfx?.crowdCheer(g.x, g.z, 1, true);
+            }
+          }
           break;
         }
         case 'finish':
           this.hud.message(`FINISH  ${formatTime(raceTime(r))}`, 4);
-          this.night.city.finishLine.burst('finish');
+          if (!this.openWorld) {
+            this.night.city.finishLine.burst('finish');
+            this.night.city.finishLine.fireworks('finish');
+            this.night.crowds.cheer('finish', 1.5);
+            const g = this.gatePos('finish');
+            if (g) this.sfx?.crowdCheer(g.x, g.z, 1.6, true);
+          }
           if (this.cineOn) this.input.setTouchVisible(false);
           break;
         case 'reset':
@@ -365,6 +451,8 @@ export class RaceSession {
     this.carLight.position.set(p.x - Math.sin(p.yaw) * 1.5, p.y + 4.2, p.z - Math.cos(p.yaw) * 1.5);
     this.night.lighting.update(new THREE.Vector3(p.x, p.y, p.z));
     this.night.update(this.time);
+    // Corner rail pieces shoved by hits this race.
+    this.night.arrows.syncRails(r.rails);
     this.night.city.finishLine.update(this.time);
     // Props mirror the sim's broken flags; fresh breaks come apart pushed by the nearest car.
     this.night.props.update(this.paused ? 0 : dt, this.time, r.brokenProps, this.curr);
@@ -387,6 +475,16 @@ export class RaceSession {
       return { x: p.x, z: p.z, yaw: p.yaw, vx: p.vx, vz: p.vz, nitro: p.nitro, halfLength: g.halfLength, halfWidth: g.halfWidth };
     });
     this.sfx?.updateCars(cars, this.race.world, dt, this.paused);
+    // Crowds react to the racers' (sim) poses and are heard from the camera.
+    const cc = this.crowdCars;
+    for (let i = 0; i < cc.length; i++) {
+      const p = poses[i];
+      cc[i].x = p.x;
+      cc[i].z = p.z;
+      cc[i].speed = p.speed;
+    }
+    this.night.crowds.update(this.time, this.paused ? 0 : dt, cc, camera.position.x, camera.position.z);
+    this.sfx?.updateCrowds(this.night.crowds.spots, this.paused);
     // Horn (live races only, never recorded) flashes the player's headlights while held.
     const horn = !this.isReplay && !this.paused && this.input.hornHeld();
     this.sfx?.horn(horn);
@@ -520,6 +618,7 @@ export class RaceSession {
     this.ghostView?.dispose();
     this.trails.dispose();
     this.engines.forEach((e) => e.dispose());
+    this.night.city.finishLine.onFirework = null;
     this.sfx?.dispose();
     this.cine.dispose();
     this.carLight.removeFromParent();

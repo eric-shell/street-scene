@@ -18,6 +18,7 @@ import type { Wall } from '../city/blocks';
 import { ChevronsRight, drawIcon } from '../ui/icons';
 import { GeoBuilder } from './geoBuilder';
 import { FOG_DENSITY } from './lighting';
+import { RailState, railLayout } from '../sim/rails';
 
 export interface BarrierInfo {
   wall: Wall;
@@ -179,6 +180,8 @@ export interface RouteArrows {
   group: THREE.Group;
   barriers: BarrierInfo[];
   update(time: number): void;
+  /** Move the corner rail pieces to the race's displaced poses (cheap when nothing moved). */
+  syncRails(state: RailState | null | undefined): void;
   dispose(): void;
 }
 
@@ -262,57 +265,12 @@ export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classif
   const curves = railCurves(world);
   const panels: Board[] = [];
   const giants: Board[] = [];
-  const frame = new GeoBuilder(true);
-  const dark = new THREE.Color(0x101218);
-  const post = new THREE.Color(0x2a2d36);
+  // Corner rails: modular pieces that follow the sim's rail state (see buildRailMeshes).
+  const rails = buildRailMeshes(world, tex);
+  for (const m of rails.meshes) group.add(m);
+  mats.push(rails.panelMaterial);
+  disposables.push(rails);
   curves.forEach((curve, ci) => {
-    curve.forEach((w, si) => {
-      const len = Math.hypot(w.bx - w.ax, w.bz - w.az);
-      const mx = (w.ax + w.bx) / 2;
-      const mz = (w.az + w.bz) / 2;
-      const ground = world.heightAt(mx, mz);
-      const yaw = Math.atan2(w.nx, w.nz);
-      // Chevron panel on the track side of the rail.
-      panels.push({ x: mx + w.nx * 0.2, y: ground + 0.75, z: mz + w.nz * 0.2, yaw, w: len + 0.02, h: 0.95, flip: flipFor(w), phase: (ci * 0.31 + si * 0.08) % 1, tilt: 0 });
-      // Backing wall and a post at each joint.
-      const v = [
-        [w.ax, ground + 0.15, w.az],
-        [w.bx, ground + 0.15, w.bz],
-        [w.bx, ground + 1.35, w.bz],
-        [w.ax, ground + 1.35, w.az],
-      ].map(([x, y, z]) => frame.vertex(x, y, z, w.nx, 0, w.nz, 0, 0, dark));
-      frame.quadFacing(v[0], v[1], v[2], v[3], w.nx, 0, w.nz);
-      frame.quadFacing(v[0], v[3], v[2], v[1], -w.nx, 0, -w.nz);
-      const top = [
-        [w.ax + w.nx * 0.3, w.az + w.nz * 0.3],
-        [w.bx + w.nx * 0.3, w.bz + w.nz * 0.3],
-        [w.bx - w.nx * 0.1, w.bz - w.nz * 0.1],
-        [w.ax - w.nx * 0.1, w.az - w.nz * 0.1],
-      ].map(([x, z]) => frame.vertex(x, ground + 1.35, z, 0, 1, 0, 0, 0, post));
-      frame.quadFacing(top[0], top[1], top[2], top[3], 0, 1, 0);
-      const px = w.ax + w.nx * 0.12;
-      const pz = w.az + w.nz * 0.12;
-      const pv = [
-        [px - 0.08, pz - 0.08],
-        [px + 0.08, pz - 0.08],
-        [px + 0.08, pz + 0.08],
-        [px - 0.08, pz + 0.08],
-      ];
-      for (let k = 0; k < 4; k++) {
-        const a = pv[k];
-        const b = pv[(k + 1) % 4];
-        const nx = (a[0] + b[0]) / 2 - px;
-        const nz = (a[1] + b[1]) / 2 - pz;
-        const l = Math.hypot(nx, nz) || 1;
-        const q = [
-          [a[0], ground, a[1]],
-          [b[0], ground, b[1]],
-          [b[0], ground + 1.45, b[1]],
-          [a[0], ground + 1.45, a[1]],
-        ].map(([x, y, z]) => frame.vertex(x, y, z, nx / l, 0, nz / l, 0, 0, post));
-        frame.quadFacing(q[0], q[1], q[2], q[3], nx / l, 0, nz / l);
-      }
-    });
     // One giant arrow over the apex of each curve.
     const mid = curve[Math.floor(curve.length / 2)];
     const mx = (mid.ax + mid.bx) / 2;
@@ -358,14 +316,6 @@ export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classif
 
   make(boardFrag, panels, false, 'chevronPanels');
   make(bigFrag, giants, true, 'giantArrows');
-  if (frame.vertexCount) {
-    const fg = frame.build();
-    const fm = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.4 });
-    const mesh = new THREE.Mesh(fg, fm);
-    mesh.name = 'railFrames';
-    group.add(mesh);
-    disposables.push(fg, fm);
-  }
 
   return {
     group,
@@ -373,8 +323,241 @@ export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classif
     update(time) {
       for (const m of mats) m.uniforms.time.value = time;
     },
+    syncRails(state) {
+      rails.sync(state);
+    },
     dispose() {
       for (const d of disposables) d.dispose();
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Corner rails: one module per sim rail piece
+// ---------------------------------------------------------------------------
+
+const railPanelVert = /* glsl */ `
+  attribute float aFlip;
+  attribute float aPhase;
+  varying vec2 vUv;
+  varying float vFlip;
+  varying float vPhase;
+  varying float vFog;
+  uniform float fogDensity;
+  void main() {
+    vUv = uv;
+    vFlip = aFlip;
+    vPhase = aPhase;
+    vec4 mv = viewMatrix * modelMatrix * vec4(position, 1.0);
+    float d = length(mv.xyz);
+    vFog = exp(-fogDensity * fogDensity * d * d * 0.5);
+    gl_Position = projectionMatrix * mv;
+  }
+`;
+
+interface RailMeshes {
+  meshes: THREE.Mesh[];
+  panelMaterial: THREE.ShaderMaterial;
+  sync(state: RailState | null | undefined): void;
+  dispose(): void;
+}
+
+/**
+ * Rail modules built from the sim's rail pieces (src/sim/rails.ts): a chevron
+ * panel facing the track along each piece, a dark backing wall with a cap,
+ * and a post at the start of each module, slightly inset so the modules read
+ * as separate pieces. Rest positions are kept; sync() moves the vertices of
+ * pieces that the race has shoved (offset and rotation about the piece's rest
+ * center, like the sim) and uploads only when something moved.
+ */
+function buildRailMeshes(world: World, tex: THREE.Texture): RailMeshes {
+  const l = railLayout(world);
+  const panel = new GeoBuilder();
+  const frame = new GeoBuilder(true);
+  const flip: number[] = [];
+  const phase: number[] = [];
+  const dark = new THREE.Color(0x101218);
+  const post = new THREE.Color(0x2a2d36);
+  // Vertex range of each piece in both builders.
+  const pStart = new Int32Array(l.count);
+  const pEnd = new Int32Array(l.count);
+  const fStart = new Int32Array(l.count);
+  const fEnd = new Int32Array(l.count);
+  const gap = 0.03;
+  for (let p = 0; p < l.count; p++) {
+    pStart[p] = panel.vertexCount;
+    fStart[p] = frame.vertexCount;
+    const k0 = l.first[p];
+    const k1 = k0 + l.subs[p];
+    let total = 0;
+    for (let k = k0; k < k1; k++) total += Math.hypot(l.bx[k] - l.ax[k], l.bz[k] - l.az[k]);
+    const fl = (l.bx[k1 - 1] - l.ax[k0]) * l.nz[k0] - (l.bz[k1 - 1] - l.az[k0]) * l.nx[k0] > 0 ? 1 : -1;
+    const ph = (l.group[p] * 0.31 + p * 0.08) % 1;
+    let s = 0;
+    for (let k = k0; k < k1; k++) {
+      const len = Math.hypot(l.bx[k] - l.ax[k], l.bz[k] - l.az[k]) || 1;
+      const ux = (l.bx[k] - l.ax[k]) / len;
+      const uz = (l.bz[k] - l.az[k]) / len;
+      // Trim the module ends a hair so neighboring pieces show a joint.
+      const ta = k === k0 ? Math.min(gap, len / 3) : 0;
+      const tb = k === k1 - 1 ? Math.min(gap, len / 3) : 0;
+      const ax = l.ax[k] + ux * ta;
+      const az = l.az[k] + uz * ta;
+      const bx = l.bx[k] - ux * tb;
+      const bz = l.bz[k] - uz * tb;
+      const nx = l.nx[k];
+      const nz = l.nz[k];
+      const ga = world.heightAt(ax, az);
+      const gb = world.heightAt(bx, bz);
+      const u0 = s / total;
+      const u1 = (s + len) / total;
+      s += len;
+      // Chevron panel on the track side.
+      const pv = [
+        panel.vertex(ax + nx * 0.08, ga + 0.28, az + nz * 0.08, nx, 0, nz, u0, 0),
+        panel.vertex(bx + nx * 0.08, gb + 0.28, bz + nz * 0.08, nx, 0, nz, u1, 0),
+        panel.vertex(bx + nx * 0.08, gb + 1.23, bz + nz * 0.08, nx, 0, nz, u1, 1),
+        panel.vertex(ax + nx * 0.08, ga + 1.23, az + nz * 0.08, nx, 0, nz, u0, 1),
+      ];
+      panel.quadFacing(pv[0], pv[1], pv[2], pv[3], nx, 0, nz);
+      for (let i = 0; i < 4; i++) {
+        flip.push(fl);
+        phase.push(ph);
+      }
+      // Backing wall (both faces) and a cap.
+      const v = [
+        [ax, ga + 0.15, az],
+        [bx, gb + 0.15, bz],
+        [bx, gb + 1.35, bz],
+        [ax, ga + 1.35, az],
+      ].map(([x, y, z]) => frame.vertex(x, y, z, nx, 0, nz, 0, 0, dark));
+      frame.quadFacing(v[0], v[1], v[2], v[3], nx, 0, nz);
+      const back = [
+        [ax, ga + 0.15, az],
+        [bx, gb + 0.15, bz],
+        [bx, gb + 1.35, bz],
+        [ax, ga + 1.35, az],
+      ].map(([x, y, z]) => frame.vertex(x, y, z, -nx, 0, -nz, 0, 0, dark));
+      frame.quadFacing(back[0], back[3], back[2], back[1], -nx, 0, -nz);
+      const top = [
+        [ax + nx * 0.16, ga, az + nz * 0.16],
+        [bx + nx * 0.16, gb, bz + nz * 0.16],
+        [bx - nx * 0.1, gb, bz - nz * 0.1],
+        [ax - nx * 0.1, ga, az - nz * 0.1],
+      ].map(([x, y, z]) => frame.vertex(x, y + 1.35, z, 0, 1, 0, 0, 0, post));
+      frame.quadFacing(top[0], top[1], top[2], top[3], 0, 1, 0);
+      if (k === k0) {
+        // Post at the start of the module.
+        const px = ax + ux * 0.1 + nx * 0.04;
+        const pz = az + uz * 0.1 + nz * 0.04;
+        const sq = [
+          [px - 0.08, pz - 0.08],
+          [px + 0.08, pz - 0.08],
+          [px + 0.08, pz + 0.08],
+          [px - 0.08, pz + 0.08],
+        ];
+        for (let i = 0; i < 4; i++) {
+          const a = sq[i];
+          const b = sq[(i + 1) % 4];
+          const qx = (a[0] + b[0]) / 2 - px;
+          const qz = (a[1] + b[1]) / 2 - pz;
+          const ql = Math.hypot(qx, qz) || 1;
+          const q = [
+            [a[0], ga, a[1]],
+            [b[0], ga, b[1]],
+            [b[0], ga + 1.45, b[1]],
+            [a[0], ga + 1.45, a[1]],
+          ].map(([x, y, z]) => frame.vertex(x, y, z, qx / ql, 0, qz / ql, 0, 0, post));
+          frame.quadFacing(q[0], q[1], q[2], q[3], qx / ql, 0, qz / ql);
+        }
+      }
+    }
+    pEnd[p] = panel.vertexCount;
+    fEnd[p] = frame.vertexCount;
+  }
+
+  const meshes: THREE.Mesh[] = [];
+  const panelMaterial = new THREE.ShaderMaterial({
+    vertexShader: railPanelVert,
+    fragmentShader: boardFrag,
+    uniforms: { map: { value: tex }, time: { value: 0 }, color: { value: new THREE.Color(0x19e6ff) }, fogDensity: { value: FOG_DENSITY } },
+    side: THREE.DoubleSide,
+  });
+  const frameMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.4 });
+  const geos: THREE.BufferGeometry[] = [];
+  const restOf: { pos: Float32Array; nor: Float32Array; geo: THREE.BufferGeometry; start: Int32Array; end: Int32Array }[] = [];
+  if (panel.vertexCount) {
+    const pg = panel.build();
+    pg.setAttribute('aFlip', new THREE.Float32BufferAttribute(flip, 1));
+    pg.setAttribute('aPhase', new THREE.Float32BufferAttribute(phase, 1));
+    const pm = new THREE.Mesh(pg, panelMaterial);
+    pm.name = 'railPanels';
+    meshes.push(pm);
+    geos.push(pg);
+    restOf.push({ pos: Float32Array.from(pg.attributes.position.array), nor: Float32Array.from(pg.attributes.normal.array), geo: pg, start: pStart, end: pEnd });
+  }
+  if (frame.vertexCount) {
+    const fg = frame.build();
+    const fm = new THREE.Mesh(fg, frameMaterial);
+    fm.name = 'railFrames';
+    meshes.push(fm);
+    geos.push(fg);
+    restOf.push({ pos: Float32Array.from(fg.attributes.position.array), nor: Float32Array.from(fg.attributes.normal.array), geo: fg, start: fStart, end: fEnd });
+  }
+
+  // Last pose drawn per piece.
+  const shownDx = new Float64Array(l.count);
+  const shownDz = new Float64Array(l.count);
+  const shownRot = new Float64Array(l.count);
+  let shownVersion = 0;
+  let shownState: RailState | null = null;
+  return {
+    meshes,
+    panelMaterial,
+    sync(state) {
+      if (!state || state.layout !== l) return;
+      if (state === shownState && state.version === shownVersion) return;
+      shownState = state;
+      shownVersion = state.version;
+      let dirty = false;
+      for (let p = 0; p < l.count; p++) {
+        const dx = state.dx[p];
+        const dz = state.dz[p];
+        const rot = state.rot[p];
+        if (dx === shownDx[p] && dz === shownDz[p] && rot === shownRot[p]) continue;
+        shownDx[p] = dx;
+        shownDz[p] = dz;
+        shownRot[p] = rot;
+        dirty = true;
+        const c = Math.cos(rot);
+        const sn = Math.sin(rot);
+        const ox = l.cx[p];
+        const oz = l.cz[p];
+        for (const r of restOf) {
+          const pos = r.geo.attributes.position.array as Float32Array;
+          const nor = r.geo.attributes.normal.array as Float32Array;
+          for (let v = r.start[p]; v < r.end[p]; v++) {
+            const x = r.pos[v * 3] - ox;
+            const z = r.pos[v * 3 + 2] - oz;
+            pos[v * 3] = ox + x * c - z * sn + dx;
+            pos[v * 3 + 2] = oz + x * sn + z * c + dz;
+            const nx = r.nor[v * 3];
+            const nz = r.nor[v * 3 + 2];
+            nor[v * 3] = nx * c - nz * sn;
+            nor[v * 3 + 2] = nx * sn + nz * c;
+          }
+        }
+      }
+      if (!dirty) return;
+      for (const r of restOf) {
+        r.geo.attributes.position.needsUpdate = true;
+        r.geo.attributes.normal.needsUpdate = true;
+      }
+    },
+    dispose() {
+      for (const g of geos) g.dispose();
+      panelMaterial.dispose();
+      frameMaterial.dispose();
     },
   };
 }

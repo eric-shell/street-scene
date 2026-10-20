@@ -66,7 +66,16 @@ export function buildCityMeshes(world: World, barrierWalls?: Set<unknown>): City
     const geo = new THREE.PlaneGeometry(size, size, 96, 96);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < pos.count; i++) pos.setY(i, h(pos.getX(i), pos.getZ(i)) - 0.4);
+    // Lowest height around each vertex, so the coarse ground never pokes through
+    // dips finer than its grid (the river channel, ramps).
+    const r = size / 96;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const z = pos.getZ(i);
+      let y = h(x, z);
+      for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) if (dx || dz) y = Math.min(y, h(x + dx * r * 0.5, z + dz * r * 0.5));
+      pos.setY(i, y - 0.4);
+    }
     geo.computeVertexNormals();
     const mesh = new THREE.Mesh(track(geo), track(new THREE.MeshStandardMaterial({ color: 0x0c0d12, roughness: 0.95 })));
     mesh.name = 'ground';

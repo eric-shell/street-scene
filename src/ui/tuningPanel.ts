@@ -107,6 +107,8 @@ export const PARAM_INFO: Record<string, ParamInfo> = {
   'collision.railAngularScale': P(0, 1, 0.01, 'How much rail hits spin the car. Higher = more rotation from rail hits.'),
   'collision.railDrag': P(0, 20, 0.1, 'Sliding friction while scraping a rail, m/s². Higher = scraping costs more speed.'),
   'collision.railSpeedLoss': P(0, 2, 0.01, 'Share of speed lost per second scraping a rail. Higher = rails punish fast scrapes more.'),
+  'collision.railDentLoss': P(0, 5, 0.05, 'Share of speed lost per meter a hit shoves a heavy rail piece back. Higher = denting rails costs more.'),
+  'collision.railStepLoss': P(0, 8, 0.1, 'Share of speed lost per meter of step when scraping into a rail piece that sticks out past a dented one. Higher = bumpy rails hurt more.'),
   'collision.carRestitution': P(0, 1, 0.01, 'Car to car bounce. Higher = cars bounce apart harder.'),
   'collision.angularScale': P(0, 1, 0.01, 'How much wall and car hits spin the car. Higher = more rotation from impacts.'),
 };

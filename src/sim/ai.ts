@@ -3,11 +3,15 @@
  * centerline within the road width, aim for curvature based target speeds with
  * a braking lookahead, use nitrous on straights, dodge each other with lateral
  * offsets and get mild rubber banding computed purely from race state.
+ * Steering counter steers body slip (wheels toward the direction of travel),
+ * brakes ease off with steering lock so they never trail brake into a spin,
+ * and a car pinned nose in against a wall, rail, barrier or car reverses out
+ * with the nose swinging toward the line before the stuck reset kicks in.
  */
 import type { World } from '../city/world';
 import type { RaceCar, RaceState } from './race';
 import { InputFrame, NEUTRAL_INPUT } from './input';
-import { DEG, abs, approach, atan2, clamp, cos, lerp, sin, sqrt } from './math';
+import { DEG, abs, approach, atan2, clamp, cos, lerp, sign, sin, sqrt } from './math';
 import { GRAVITY } from './tuning';
 import { DT } from './constants';
 import { routeSample } from '../city/route';
@@ -30,6 +34,23 @@ export const AI = {
   stuckTime: 2.5,
   progressWindow: 4,
   progressMin: 8,
+  /** Recovery: pressing on below this speed (m/s) for blockedTime (s) means nose in against something. */
+  blockedSpeed: 1.8,
+  blockedTime: 0.45,
+  /** Gap (m) at the nose below which the car counts as nose in against a wall. */
+  noseClear: 0.5,
+  /** Then reverse out, steering the nose toward the line, for up to this long (s). */
+  reverseTime: 1.6,
+  /** Reverse at least this long (s) before driving off once the nose points at the line within reverseDoneDeg. */
+  reverseMin: 0.55,
+  reverseDoneDeg: 25,
+  /** Sliding: above this body slip (deg) counter steer harder, feather the throttle and ease the brake. */
+  slideDeg: 12,
+  /** Counter steer per rad of body slip, always (wheels toward the direction of travel) and extra while sliding. */
+  slipCounter: 0.3,
+  slideCounter: 0.4,
+  /** Brake eased off by this share at full steering lock (no trail braking into a slide). */
+  brakeSteerRelief: 0.55,
 } as const;
 
 export interface RacingLine {
@@ -59,12 +80,18 @@ export interface AiState {
   /** Progress watchdog: distance at the last checkpoint of the timer. */
   watchDist: number;
   watchTime: number;
+  /** Seconds spent pressing on without moving (nose in against a wall, car or barrier). */
+  blocked: number;
+  /** Seconds left reversing out (0 = driving normally), time reversed so far and the reverse steer. */
+  reverse: number;
+  reversed: number;
+  reverseSteer: number;
 }
 
 export function createAi(index: number, pace: number): AiState {
   // Small fixed personality per grid slot, no randomness needed.
   const bias = (((index * 37) % 5) - 2) * 0.35;
-  return { idx: -1, pace: pace * (1 - ((index * 13) % 3) * 0.012), bias, dodge: 0, stuckTime: 0, nitroHold: 0, watchDist: -1e9, watchTime: 0 };
+  return { idx: -1, pace: pace * (1 - ((index * 13) % 3) * 0.012), bias, dodge: 0, stuckTime: 0, nitroHold: 0, watchDist: -1e9, watchTime: 0, blocked: 0, reverse: 0, reversed: 0, reverseSteer: 0 };
 }
 
 export function buildRacingLine(world: World): RacingLine {
@@ -223,7 +250,10 @@ export function aiInput(r: RaceState, rc: RaceCar): InputFrame {
   const extra = clamp(ai.bias + ai.dodge, -line.room[ti] - line.offset[ti], line.room[ti] - line.offset[ti]);
   const tx = line.x[ti] + line.nx[ti] * extra;
   const tz = line.z[ti] + line.nz[ti] * extra;
-  const steer = pursuitSteer(rc, tx, tz);
+  let steer = pursuitSteer(rc, tx, tz);
+  const sliding = abs(c.slipAngle) > AI.slideDeg * DEG && speed > 6;
+  // Catch slides: extra counter steer toward the direction of travel.
+  if (sliding) steer = clamp(steer - (c.slipAngle * AI.slideCounter) / (rc.tuning.steering.maxDeg * DEG), -1, 1);
 
   // Speed control: look a little ahead for the binding limit.
   let vt = Infinity;
@@ -233,10 +263,13 @@ export function aiInput(r: RaceState, rc: RaceCar): InputFrame {
   let throttle = 0;
   let brake = 0;
   if (err > 0) throttle = clamp(0.35 + err / 4, 0, 1) * (1 - 0.45 * abs(steer));
-  else brake = clamp(-err / 2.5, 0, 1);
+  else brake = clamp(-err / 2.5, 0, 1) * (1 - AI.brakeSteerRelief * abs(steer));
   if (brake > 0.15) throttle = 0;
-  // Ease off when sliding badly.
-  if (abs(c.slipAngle) > 20 * DEG) throttle *= 0.5;
+  // Ease off when sliding: feather the throttle, never stamp on the brakes mid slide.
+  if (sliding) {
+    throttle *= 0.45;
+    brake = Math.min(brake, 0.35);
+  }
 
   // Nitrous on straights.
   const far = line.speed[wrapIdx(line, ai.idx + 25)] * pace;
@@ -247,6 +280,15 @@ export function aiInput(r: RaceState, rc: RaceCar): InputFrame {
   } else if (c.nitro > 0.35 && err > 6 && far > speed + 8 && abs(steer) < 0.25 && speed > 15) {
     ai.nitroHold = 1.2;
     nitrous = true;
+  }
+
+  // Nose in against something: back out, steering so the nose swings toward the line.
+  const recover = recoverInput(r, rc, steer, throttle, tx, tz);
+  if (recover) {
+    throttle = recover.throttle;
+    brake = recover.brake;
+    steer = recover.steer;
+    nitrous = false;
   }
 
   // Stuck: too slow, or not making progress (e.g. scraping a wall), lets the race reset us.
@@ -269,6 +311,62 @@ export function aiInput(r: RaceState, rc: RaceCar): InputFrame {
   return { throttle, brake, steer, handbrake: false, nitrous, shift: 0, reset };
 }
 
+/**
+ * Reverse-out recovery. Pressing on below blockedSpeed for blockedTime means
+ * the car is pinned (nose in against a wall, rail, barrier or another car):
+ * brake into reverse with the steering flipped so the nose swings toward the
+ * target, until it points at it (after reverseMin) or reverseTime runs out.
+ * Returns the override, or null when driving normally.
+ */
+function recoverInput(r: RaceState, rc: RaceCar, steer: number, throttle: number, tx: number, tz: number): { throttle: number; brake: number; steer: number } | null {
+  const ai = rc.ai!;
+  const c = rc.state;
+  const fx = sin(c.yaw);
+  const fz = cos(c.yaw);
+  const dx = tx - c.x;
+  const dz = tz - c.z;
+  // Heading error to the target, positive = target to the left.
+  const herr = atan2(dx * fz - dz * fx, dx * fx + dz * fz);
+  if (ai.reverse > 0) {
+    ai.reverse -= DT;
+    ai.reversed += DT;
+    if (ai.reverse <= 0 || (ai.reversed > AI.reverseMin && abs(herr) < AI.reverseDoneDeg * DEG)) {
+      ai.reverse = 0;
+      ai.blocked = 0;
+      return null;
+    }
+    return { throttle: 0, brake: 1, steer: ai.reverseSteer };
+  }
+  if (c.gear > 0 && throttle > 0.25 && c.speed < AI.blockedSpeed && r.tick >= r.countdownTicks && noseBlocked(r, rc)) ai.blocked += DT;
+  else ai.blocked = Math.max(0, ai.blocked - DT * 2);
+  if (ai.blocked < AI.blockedTime) return null;
+  ai.blocked = 0;
+  ai.reverse = AI.reverseTime;
+  ai.reversed = 0;
+  // Reversing, positive steer (right) swings the nose left: steer toward the target side.
+  ai.reverseSteer = abs(herr) < 0.05 ? -sign(steer || 1) : herr > 0 ? 1 : -1;
+  return { throttle: 0, brake: 1, steer: ai.reverseSteer };
+}
+
+/** Something solid right at the nose: a wall, rail or barrier, or another car. */
+function noseBlocked(r: RaceState, rc: RaceCar): boolean {
+  const c = rc.state;
+  const g = rc.tuning.geometry;
+  const fx = sin(c.yaw);
+  const fz = cos(c.yaw);
+  const px = c.x + fx * (g.halfLength - g.halfWidth * 0.5);
+  const pz = c.z + fz * (g.halfLength - g.halfWidth * 0.5);
+  if (r.world.wallClearance(px, pz, 2) < g.halfWidth + AI.noseClear) return true;
+  for (const o of r.cars) {
+    if (o === rc) continue;
+    const dx = o.state.x - c.x;
+    const dz = o.state.z - c.z;
+    const ahead = dx * fx + dz * fz;
+    if (ahead > 0 && ahead < g.halfLength + o.tuning.geometry.halfLength + 0.6 && abs(dx * fz - dz * fx) < g.halfWidth + o.tuning.geometry.halfWidth) return true;
+  }
+  return false;
+}
+
 function pursuitSteer(rc: RaceCar, tx: number, tz: number): number {
   const c = rc.state;
   const t = rc.tuning;
@@ -284,7 +382,7 @@ function pursuitSteer(rc: RaceCar, tx: number, tz: number): number {
   const delta = atan2(k * t.geometry.wheelbase, 1);
   const limit = lerp(t.steering.maxDeg, t.steering.highSpeedDeg, clamp(c.speed / t.steering.fadeSpeed, 0, 1)) * DEG;
   // also counter the body slip a bit
-  return clamp(-(delta - c.slipAngle * 0.3) / limit, -1, 1);
+  return clamp(-(delta + c.slipAngle * AI.slipCounter) / limit, -1, 1);
 }
 
 function steerToward(r: RaceState, rc: RaceCar, _gain: number): number {

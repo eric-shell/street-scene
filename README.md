@@ -1,4 +1,4 @@
-# Night Run
+# Street Scene
 
 A browser street racing proof of concept in the spirit of NFSU2. You race at night through a procedurally generated neon city in tuner cars, with deep visual and performance customization in a garage. It runs on desktop and phone.
 
@@ -8,7 +8,7 @@ A browser street racing proof of concept in the spirit of NFSU2. You race at nig
 - Garage with body kits and parts, paint finishes, vinyls, stance, tint, underglow and performance tiers
 - Replays and ghosts from input logs, plus a drone flyover mode
 - Synthesized engine sound (inline-4 turbo for the Proto Compact, V6 for the Proto Hatch) and a persistent music player
-- Test drive with a live physics tuning panel and JSON export
+- Test drive: free roam on the open seed map (no closures, rails, parked cars, crowds or rivals) with a live physics tuning panel and JSON export
 
 ## Run it
 
@@ -47,6 +47,10 @@ Drift by tapping the handbrake into a corner, or with a clutch kick (lift and st
 ## Music
 
 A persistent music player runs across every screen and remembers where you left off. The soundtrack is **"CC BY: FREE TO USE - Electronic/Gaming Instrumentals" by 1000 Handz**, from the [Free Music Archive](https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Each track is credited (title, artist, album, source, license) in the player, the library, the "Now playing" banner and the credits screen. The library is organized by artist and album so more artists can be added; see [docs/music.md](docs/music.md).
+
+## Sound effects
+
+Crowd sounds are **sound effects from freesound_community** on Pixabay, under the [Pixabay Content License](https://pixabay.com/service/license-summary/): `freesound_community-applause-70507.mp3` (saved as `public/sfx/applause.mp3`) and `freesound_community-crowd-cheering-6229.mp3` (saved as `public/sfx/crowd-cheering.mp3`). They are also listed on the credits screen. Every other sound (engines, impacts, nitrous, horn, beeps, fireworks) is synthesized at runtime.
 
 ## Car assets
 
@@ -137,6 +141,7 @@ tests/
 - Parts catalog validation against the real files
 - Upgrades improve 0 to 100 km/h and top speed, and cover more ground in a race
 - AI opponents finish 50 random seeds (circuit and sprint) without getting stuck
+- Corner rails are smooth piece chains at the back of the sidewalk, clear of walls, barriers and props; dented pieces keep joints under 1/8 car width, steps cost speed, and dents replay identically; open world test drives have no closures, rails or rivals
 - A full race with AI replays identically (finish times and order); solo replays (ghost source) finish with the same time
 
 ## Decisions made along the way
@@ -148,7 +153,7 @@ tests/
 - **Merged body kits.** The IceMaan kits are single meshes, so they're `body` variants. Bumper slots stay empty for those cars until they're split. The Proto RS placeholder has separate bumpers, skirts, hood, spoilers and wheels to show the full slot system.
 - **Buildings are one merged geometry** with world-scale UVs, rather than instanced boxes, so window grids keep their proportions on every building. The street-level podium (2 to 4 floors) uses a separate facade kit atlas with per-level random protrusions.
 - **Collision shapes.** Cars are three circles along their length. Walls are the outer sidewalk line of every road (one sided, which stops tunnelling). Closed side streets are barrier segments. Head-on closures look like barriers with arrows. Side closures look like a line of parked cars but use the same segment.
-- **Corner guard rails.** Every route corner has a long smooth rail on its outside, from the incoming road's outer curb, around the corner, to the outgoing road's outer curb. It's real collision geometry in the sim, with low bounce and spin so cars that run wide glance off without spinning, but scraping along a rail drags speed off for as long as the car stays in contact (`railDrag`, `railSpeedLoss`). Chevron panels on the rail and a matching giant translucent arrow above it point the way.
+- **Corner guard rails.** Every route corner has a long smooth rail on its outside at the back of the sidewalk (against the building line), so the road and the whole sidewalk are drivable runoff: along the incoming road, around a finely segmented fillet, and along the outgoing road, bending back behind the crosswalks of closed side streets and around street furniture. Rails are chains of 2.5 m modular pieces (`src/sim/rails.ts`), each a very heavy sim body: a hit shoves the piece back by impulse / mass (capped at 0.6 m, a hair of rotation, no spring back) and the dent stays for the race, so a wall rider leaves a stepped rail for the next lap. Neighbors are dragged along so no joint ever opens more than 1/8 of a car width. Low bounce and spin, but scraping drags speed off (`railDrag`, `railSpeedLoss`), shoving a piece costs speed (`railDentLoss`) and scraping into a step costs more (`railStepLoss`). Chevron panels on the rail modules (drawn at their displaced poses) and a giant translucent arrow above point the way.
 - **Side street car meets.** Closed side streets the racers are unlikely to hit are lined with rows of parked cars, mostly nose toward the track like spectators. Density follows the graphics quality.
 - **Light color temperature.** Windows, doors and arches use blackbody colors between 2000 K and 8000 K. Only signs and rooftop trims are neon colored.
 - **Garage cars.** Only the Proto Compact (`s64`) and Proto Hatch (`gc14`) are offered (manifest `selectable`). The Proto RS stays loadable for tests; saved builds for cars that are no longer offered move to the default car. Vinyls are hidden behind a feature flag (`src/shared/features.ts`).

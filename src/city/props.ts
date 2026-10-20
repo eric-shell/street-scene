@@ -108,6 +108,7 @@ export function generateProps(
   streetlights: Streetlight[],
   terrain: Terrain,
   edgeGrid: SpatialGrid,
+  reserved: { x: number; z: number; r: number }[] = [],
 ): Prop[] {
   const rng = new Rng(deriveSeed(seed, 'props'));
   const props: Prop[] = [];
@@ -126,7 +127,7 @@ export function generateProps(
       const b = g.nodes[e.b];
       const d = distToSegment(x, z, a.x, a.z, b.x, b.z);
       if (d - e.width / 2 < road) road = d - e.width / 2;
-      if (d - e.width / 2 - CITY.sidewalk < corridor) corridor = d - e.width / 2 - CITY.sidewalk;
+      if (d - e.width / 2 - e.sidewalk < corridor) corridor = d - e.width / 2 - e.sidewalk;
     }
     return { road, corridor };
   };
@@ -135,6 +136,8 @@ export function generateProps(
     const c = clearances(x, z);
     // On a sidewalk: off every road, inside some road's sidewalk band.
     if (c.road < r + 0.2 || c.corridor > -r - 0.1) return false;
+    // District structures on the sidewalk (subway pillars...).
+    for (const q of reserved) if ((q.x - x) ** 2 + (q.z - z) ** 2 < (q.r + r + PROP_GAP) ** 2) return false;
     const reach = r + 2 + PROP_GAP;
     grid.query(x - reach, z - reach, x + reach, z + reach, scratch);
     for (const id of scratch) {
@@ -206,6 +209,7 @@ export function generateProps(
 
   // 3. Sidewalk furniture in the gaps between streetlights: cans, benches and the odd bus stop.
   g.edges.forEach((e, ei) => {
+    if (e.kind === 'backAlley') return;
     const sides = edgeSides(g, mouths, ei);
     const busSide = e.length >= CITY.propBusStopMinEdge && rng.chance(CITY.propBusStopChance) ? rng.int(0, 1) : -1;
     sides.forEach((side, si) => {

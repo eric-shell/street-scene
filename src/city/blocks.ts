@@ -1,20 +1,35 @@
 /**
- * Fills the space between roads: intersection corner geometry, curbs,
- * sidewalks, the wall line that bounds the drivable network, building
- * footprints and street furniture anchors. Pure and deterministic.
+ * Fills the space between roads: intersection corner geometry (round at
+ * roundabouts), curbs, sidewalks, block faces, the wall line that bounds the
+ * drivable network, building footprints and street furniture anchors. Pure
+ * and deterministic.
+ *
+ * Walls follow what is visibly built. The outer sidewalk line of every block
+ * (its frontage) is sampled every meter: in front of a building it is a
+ * 'building' wall; where a district opened it (parks, lots, plazas, ramps)
+ * there is no wall; where a district draws it (bridge parapets, planters) it
+ * takes that look; any other gap is a void. Void runs are handed to the late
+ * district modules (infill: lots, plazas, planters, fountains), and what is
+ * left becomes a low 'boundary' wall that the infill renderer draws.
  */
 import { CITY } from './config';
-import { RoadGraph, RoadEdge, edgeAngleFrom, otherNode, sectorAngle } from './roadGraph';
+import { RoadGraph, RoadEdge, RoadNode, edgeAngleFrom, otherNode, sectorAngle } from './roadGraph';
 import { SpatialGrid } from './spatial';
 import { Terrain } from './terrain';
 import { Prop, edgeSides, generateProps, lightStations } from './props';
 import { Rng, deriveSeed } from '../sim/prng';
-import { DEG, Vec2, atan2, clamp, cos, distToSegment, exp, lineIntersectT, sin, sqrt } from '../sim/math';
+import { DEG, Vec2, atan2, clamp, cos, distToSegment, exp, lineIntersectT, sin, sqrt, TAU } from '../sim/math';
+import type { AreaBuild, Circle, FrontageRun, FrontLook, LateContext, WallLook } from './districts/types';
+import { PolygonIndex } from './districts/geom';
 
 export type WallKind = 'wall' | 'barrier' | 'rail';
 
 /** Gap between the sidewalk wall line and building footprints (room for podium protrusions). */
 export const BUILDING_SETBACK = 1.3;
+/** Frontage sampling step (m) and probe depths behind the sidewalk line. */
+const FRONT_STEP = 1;
+const BUILDING_PROBE = BUILDING_SETBACK + 0.7;
+const AREA_PROBE = 0.5;
 
 /** A static collision segment. (nx, nz) points toward the drivable side. */
 export interface Wall {
@@ -31,6 +46,10 @@ export interface Wall {
    * Undefined for city walls.
    */
   group?: number;
+  /** City walls ('wall'): what draws this wall (see districts/types.ts WallLook). */
+  look?: WallLook;
+  /** Area (CityDistricts.areas id) that owns the wall, if any. */
+  area?: number;
 }
 
 export interface Sector {
@@ -53,6 +72,27 @@ export interface EdgeMouths {
   aN: MouthPoint;
   bP: MouthPoint;
   bN: MouthPoint;
+}
+
+/**
+ * A face of the planar road graph: a city block bounded by the outer sidewalk
+ * lines of its streets. The ring runs with the block on the right of travel
+ * (clockwise in x/z for real blocks); the single unbounded face around the
+ * city is flagged `outer`.
+ */
+export interface BlockFace {
+  id: number;
+  ring: Vec2[];
+  /** Per ring segment i (ring[i] -> ring[i + 1]): the edge it runs along, or -1 inside a rounded corner. */
+  segEdge: number[];
+  /** Per ring vertex: graph node whose corner it belongs to. */
+  vertNode: number[];
+  /** (node, sector index) corners in ring order. */
+  corners: { node: number; sector: number }[];
+  edges: number[];
+  /** Absolute area (m^2). */
+  area: number;
+  outer: boolean;
 }
 
 export interface Building {
@@ -96,6 +136,8 @@ export interface SignAnchor {
 export interface CityBlocks {
   sectors: Sector[][];
   mouths: EdgeMouths[];
+  faces: BlockFace[];
+  /** City walls: frontage (looks 'building' / 'boundary' / district looks) plus district walls. */
   walls: Wall[];
   buildings: Building[];
   /** Kept for the lighting code; every entry is also props[i] (kind 'streetlight'). */
@@ -104,6 +146,14 @@ export interface CityBlocks {
   props: Prop[];
   signs: SignAnchor[];
   edgeGrid: SpatialGrid;
+}
+
+/** What the district framework feeds into block generation (see districts/index.ts). */
+export interface BlocksDistrictInput {
+  /** Graph phase builds (exclusions, openings, front looks, reserved circles, walls). */
+  builds: AreaBuild[];
+  /** Runs the late modules on the void frontage; returns their builds. */
+  late?: (ctx: LateContext) => AreaBuild[];
 }
 
 const sub = (a: Vec2, b: Vec2): Vec2 => ({ x: a.x - b.x, z: a.z - b.z });
@@ -144,6 +194,35 @@ function sectorPoints(p: Vec2, dA: Vec2, oA: number, dB: Vec2, oB: number, angle
   return pts;
 }
 
+/**
+ * Roundabout corner: the arc of a circle of radius R around the node between
+ * where edge A's offset line (oA, CCW side) and edge B's (oB, CW side) meet it.
+ * `steps` arc pieces; null if the arc would not fit inside the sector.
+ */
+function ringArc(p: Vec2, dA: Vec2, oA: number, dB: Vec2, oB: number, R: number, angle: number, steps: number): Vec2[] | null {
+  if (R <= oA || R <= oB) return null;
+  const na: Vec2 = { x: -dA.z, z: dA.x };
+  const nb: Vec2 = { x: dB.z, z: -dB.x };
+  const pa = add(add(p, na, oA), dA, sqrt(R * R - oA * oA));
+  const pb = add(add(p, nb, oB), dB, sqrt(R * R - oB * oB));
+  const a0 = atan2(pa.z - p.z, pa.x - p.x);
+  let sweep = atan2(pb.z - p.z, pb.x - p.x) - a0;
+  while (sweep <= 0) sweep += TAU;
+  if (sweep >= angle) return null;
+  const pts: Vec2[] = [pa];
+  for (let i = 1; i < steps; i++) {
+    const a = a0 + (sweep * i) / steps;
+    pts.push({ x: p.x + cos(a) * R, z: p.z + sin(a) * R });
+  }
+  pts.push(pb);
+  return pts;
+}
+
+/** Arc pieces per roundabout corner: about one per 15 degrees of the sector. */
+function ringSteps(angle: number): number {
+  return Math.max(2, Math.ceil(angle / (15 * DEG)));
+}
+
 export function computeSectors(g: RoadGraph): Sector[][] {
   return g.nodes.map((n) => {
     const m = n.edges.length;
@@ -155,10 +234,21 @@ export function computeSectors(g: RoadGraph): Sector[][] {
       const dB = edgeDir(g, eB, n.id);
       const angle = sectorAngle(g, n, k);
       const p = { x: n.x, z: n.z };
+      const oA = eA.width / 2;
+      const oB = eB.width / 2;
+      if (n.ring && m >= 2) {
+        const steps = ringSteps(angle);
+        const curb = ringArc(p, dA, oA, dB, oB, n.ring.outer, angle, steps);
+        const outer = ringArc(p, dA, oA + eA.sidewalk, dB, oB + eB.sidewalk, n.ring.outer + CITY.sidewalk, angle, steps);
+        if (curb && outer) {
+          out.push({ angle, curb, outer });
+          continue;
+        }
+      }
       out.push({
         angle,
-        curb: sectorPoints(p, dA, eA.width / 2, dB, eB.width / 2, angle),
-        outer: sectorPoints(p, dA, eA.width / 2 + CITY.sidewalk, dB, eB.width / 2 + CITY.sidewalk, angle),
+        curb: sectorPoints(p, dA, oA, dB, oB, angle),
+        outer: sectorPoints(p, dA, oA + eA.sidewalk, dB, oB + eB.sidewalk, angle),
       });
     }
     return out;
@@ -184,6 +274,60 @@ export function computeMouths(g: RoadGraph, sectors: Sector[][]): EdgeMouths[] {
   });
 }
 
+/**
+ * Block faces by walking sectors: from sector k at node v, follow edge k + 1
+ * to its far node w, where the same side of that edge is sector j = index of
+ * the edge at w. The block stays on the right of travel.
+ */
+export function computeFaces(g: RoadGraph, sectors: Sector[][]): BlockFace[] {
+  const seen = g.nodes.map((n) => new Uint8Array(n.edges.length));
+  const faces: BlockFace[] = [];
+  for (const start of g.nodes) {
+    for (let k0 = 0; k0 < start.edges.length; k0++) {
+      if (seen[start.id][k0]) continue;
+      const ring: Vec2[] = [];
+      const segEdge: number[] = [];
+      const vertNode: number[] = [];
+      const corners: { node: number; sector: number }[] = [];
+      const edges: number[] = [];
+      let v = start.id;
+      let k = k0;
+      for (let guard = 0; guard < 4 * g.edges.length + 8 && !seen[v][k]; guard++) {
+        seen[v][k] = 1;
+        corners.push({ node: v, sector: k });
+        const s = sectors[v][k];
+        for (let i = 0; i < s.outer.length; i++) {
+          const p = s.outer[i];
+          const prev = ring[ring.length - 1];
+          if (prev && (prev.x - p.x) ** 2 + (prev.z - p.z) ** 2 < 1e-10) continue;
+          if (prev) segEdge.push(i === 0 ? edges[edges.length - 1] : -1);
+          ring.push(p);
+          vertNode.push(v);
+        }
+        const node: RoadNode = g.nodes[v];
+        const eid = node.edges[(k + 1) % node.edges.length];
+        edges.push(eid);
+        const w = otherNode(g.edges[eid], v);
+        k = g.nodes[w].edges.indexOf(eid);
+        v = w;
+      }
+      // Close the ring: the last segment runs along the last edge back to the first corner.
+      if (ring.length > 1 && (ring[0].x - ring[ring.length - 1].x) ** 2 + (ring[0].z - ring[ring.length - 1].z) ** 2 < 1e-10) {
+        ring.pop();
+        vertNode.pop();
+      } else segEdge.push(edges[edges.length - 1]);
+      let a2 = 0;
+      for (let i = 0; i < ring.length; i++) {
+        const p = ring[i];
+        const q = ring[(i + 1) % ring.length];
+        a2 += p.x * q.z - q.x * p.z;
+      }
+      faces.push({ id: faces.length, ring, segEdge, vertNode, corners, edges, area: Math.abs(a2 / 2), outer: a2 > 0 });
+    }
+  }
+  return faces;
+}
+
 export function makeWall(a: Vec2, b: Vec2, inside: Vec2, kind: WallKind): Wall | null {
   const d = sub(b, a);
   const len = sqrt(d.x * d.x + d.z * d.z);
@@ -204,7 +348,7 @@ export function buildEdgeGrid(g: RoadGraph): SpatialGrid {
   for (const e of g.edges) {
     const a = g.nodes[e.a];
     const b = g.nodes[e.b];
-    grid.insertSegment(e.id, a.x, a.z, b.x, b.z, e.width / 2 + CITY.sidewalk + 2);
+    grid.insertSegment(e.id, a.x, a.z, b.x, b.z, e.width / 2 + e.sidewalk + 2);
   }
   return grid;
 }
@@ -217,39 +361,66 @@ export function corridorClearance(g: RoadGraph, grid: SpatialGrid, x: number, z:
     const e = g.edges[id];
     const a = g.nodes[e.a];
     const b = g.nodes[e.b];
-    const d = distToSegment(x, z, a.x, a.z, b.x, b.z) - (e.width / 2 + CITY.sidewalk);
+    const d = distToSegment(x, z, a.x, a.z, b.x, b.z) - (e.width / 2 + e.sidewalk);
+    if (d < best) best = d;
+  }
+  // Roundabout rings are wider than their roads.
+  for (const n of g.nodes) {
+    if (!n.ring) continue;
+    const d = sqrt((x - n.x) ** 2 + (z - n.z) ** 2) - (n.ring.outer + CITY.sidewalk);
     if (d < best) best = d;
   }
   return best;
 }
 
-export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain): CityBlocks {
+/** Is (x, z) inside a building footprint grown by margin? */
+export function insideBuilding(b: Building, x: number, z: number, margin: number): boolean {
+  const ux = cos(b.yaw);
+  const uz = -sin(b.yaw);
+  const dx = x - b.x;
+  const dz = z - b.z;
+  const lu = dx * ux + dz * uz;
+  const lw = dx * -uz + dz * ux;
+  return lu * lu <= (b.w / 2 + margin) ** 2 && lw * lw <= (b.d / 2 + margin) ** 2;
+}
+
+/** Frontage sample classes. Values >= 0 index the front look list. */
+const OPEN = -1;
+const BUILT = -2;
+const VOID = -3;
+
+export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, districts: BlocksDistrictInput = { builds: [] }): CityBlocks {
   const rng = new Rng(deriveSeed(seed, 'blocks'));
   const sectors = computeSectors(g);
   const mouths = computeMouths(g, sectors);
+  const faces = computeFaces(g, sectors);
   const edgeGrid = buildEdgeGrid(g);
   const scratch: number[] = [];
+  const pad = 200;
+  const bminX = g.bounds.minX - pad;
+  const bminZ = g.bounds.minZ - pad;
+  const bmaxX = g.bounds.maxX + pad;
+  const bmaxZ = g.bounds.maxZ + pad;
 
-  // Walls along the outer sidewalk line of every edge side, plus around corners.
-  const walls: Wall[] = [];
-  g.edges.forEach((e, i) => {
-    const m = mouths[i];
-    const a = g.nodes[e.a];
-    const b = g.nodes[e.b];
-    const mid = { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 };
-    const wP = makeWall(m.aP.outer, m.bP.outer, mid, 'wall');
-    const wN = makeWall(m.aN.outer, m.bN.outer, mid, 'wall');
-    if (wP) walls.push(wP);
-    if (wN) walls.push(wN);
-  });
-  g.nodes.forEach((n, ni) => {
-    for (const s of sectors[ni]) {
-      for (let i = 0; i + 1 < s.outer.length; i++) {
-        const w = makeWall(s.outer[i], s.outer[i + 1], { x: n.x, z: n.z }, 'wall');
-        if (w) walls.push(w);
-      }
+  // District inputs: exclusions keep buildings out, openings remove frontage, front looks restyle it.
+  const exclusions = new PolygonIndex<{ polygon: Vec2[] }>(bminX, bminZ, bmaxX, bmaxZ);
+  const openings = new PolygonIndex<{ polygon: Vec2[] }>(bminX, bminZ, bmaxX, bmaxZ);
+  const fronts: FrontLook[] = [];
+  const frontIndex = new PolygonIndex<{ polygon: Vec2[]; i: number }>(bminX, bminZ, bmaxX, bmaxZ);
+  const reserved: Circle[] = [];
+  const districtWalls: Wall[] = [];
+  const absorb = (b: AreaBuild) => {
+    for (const p of b.exclusions) exclusions.add({ polygon: p });
+    for (const p of b.openings) openings.add({ polygon: p });
+    for (const f of b.frontLooks) {
+      frontIndex.add({ polygon: f.polygon, i: fronts.length });
+      fronts.push(f);
     }
-  });
+    for (const c of b.reserved) reserved.push(c);
+    for (const w of b.walls) districtWalls.push(w);
+  };
+  districts.builds.forEach(absorb);
+  const excluded = (x: number, z: number) => exclusions.first(x, z) !== null;
 
   // Buildings behind the wall line.
   const buildings: Building[] = [];
@@ -264,7 +435,7 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain): Ci
     for (let i = 0; i <= 3; i++) {
       for (let j = 0; j <= 3; j++) {
         const p = add(add(o, u, (bw * i) / 3), w, (bd * j) / 3);
-        if (corridorClearance(g, edgeGrid, p.x, p.z, scratch) < 0.25) return false;
+        if (corridorClearance(g, edgeGrid, p.x, p.z, scratch) < 0.25 || excluded(p.x, p.z)) return false;
       }
     }
     return true;
@@ -302,6 +473,8 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain): Ci
   };
 
   g.edges.forEach((e, ei) => {
+    // Back alleys run between the backs of the street buildings.
+    if (e.kind === 'backAlley') return;
     const m = mouths[ei];
     const a = g.nodes[e.a];
     const b = g.nodes[e.b];
@@ -342,7 +515,7 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain): Ci
   // Corner buildings fill the gaps where two streets meet.
   g.nodes.forEach((n, ni) => {
     sectors[ni].forEach((s, k) => {
-      if (s.angle > 170 * DEG) return;
+      if (s.angle > 170 * DEG || s.outer.length !== 1) return;
       const eA = g.edges[n.edges[k]];
       const dA = edgeDir(g, eA, n.id);
       const corner = s.outer[0];
@@ -353,22 +526,213 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain): Ci
     });
   });
 
+  // ---------- Frontage: classify the outer sidewalk line of every block ----------
+  const bgrid = SpatialGrid.forBounds(bminX, bminZ, bmaxX, bmaxZ, CITY.broadphaseCell);
+  buildings.forEach((b, i) => {
+    const r = sqrt(b.w * b.w + b.d * b.d) / 2;
+    bgrid.insertBox(i, b.x - r, b.z - r, b.x + r, b.z + r);
+  });
+  const bscratch: number[] = [];
+  const builtAt = (x: number, z: number, margin: number) => {
+    bgrid.query(x, z, x, z, bscratch);
+    for (const id of bscratch) if (insideBuilding(buildings[id], x, z, margin)) return true;
+    return false;
+  };
+  /** Per face, per ring segment: sample classes. */
+  const classes: Int16Array[][] = faces.map((f) =>
+    f.ring.map((p, i) => {
+      const q = f.ring[(i + 1) % f.ring.length];
+      const len = sqrt((q.x - p.x) ** 2 + (q.z - p.z) ** 2);
+      const n = Math.max(1, Math.round(len / FRONT_STEP));
+      const out = new Int16Array(n);
+      if (len < 1e-6) return out;
+      // Into the block: right of travel.
+      const rx = (q.z - p.z) / len;
+      const rz = -(q.x - p.x) / len;
+      for (let k = 0; k < n; k++) {
+        const t = (k + 0.5) / n;
+        const x = p.x + (q.x - p.x) * t;
+        const z = p.z + (q.z - p.z) * t;
+        const ax = x + rx * AREA_PROBE;
+        const az = z + rz * AREA_PROBE;
+        if (openings.first(ax, az)) out[k] = OPEN;
+        else {
+          const fl = frontIndex.first(ax, az);
+          if (fl) out[k] = fl.i;
+          else if (builtAt(x + rx * BUILDING_PROBE, z + rz * BUILDING_PROBE, 0.1)) out[k] = BUILT;
+          else out[k] = VOID;
+        }
+      }
+      return out;
+    }),
+  );
+
+  // Void runs in ring order for the late modules.
+  if (districts.late) {
+    const voids: FrontageRun[] = [];
+    faces.forEach((f, fi) => {
+      const m = f.ring.length;
+      const cls = classes[fi];
+      // Start the walk at a non void sample so runs never wrap.
+      let s0 = -1;
+      let k0 = 0;
+      for (let i = 0; i < m && s0 < 0; i++) {
+        const k = cls[i].findIndex((c) => c !== VOID);
+        if (k >= 0) {
+          s0 = i;
+          k0 = k;
+        }
+      }
+      if (s0 < 0) {
+        s0 = 0;
+        k0 = 0;
+      }
+      let run: FrontageRun | null = null;
+      const pointAt = (i: number, k: number): Vec2 => {
+        const p = f.ring[i];
+        const q = f.ring[(i + 1) % m];
+        const t = k / cls[i].length;
+        return { x: p.x + (q.x - p.x) * t, z: p.z + (q.z - p.z) * t };
+      };
+      const close = () => {
+        if (run && run.points.length > 1) voids.push(run);
+        run = null;
+      };
+      for (let step = 0; step <= m; step++) {
+        const i = (s0 + step) % m;
+        const c = cls[i];
+        const kStart = step === 0 ? k0 : 0;
+        const kEnd = step === m ? k0 : c.length;
+        for (let k = kStart; k < kEnd; k++) {
+          if (c[k] === VOID) {
+            if (!run) run = { face: fi, points: [pointAt(i, k)], edges: [], corners: [], length: 0 };
+          } else if (run) {
+            const r: FrontageRun = run;
+            // k = 0: the run ended exactly at the ring vertex already pushed.
+            if (k > 0) {
+              const p = pointAt(i, k);
+              r.length += Math.hypot(p.x - r.points[r.points.length - 1].x, p.z - r.points[r.points.length - 1].z);
+              r.points.push(p);
+              r.edges.push(f.segEdge[i]);
+            }
+            const lastCorner = r.corners[r.corners.length - 1];
+            if (lastCorner && lastCorner.index >= r.points.length - 1) r.corners.pop();
+            close();
+          }
+        }
+        if (step < m && run && kEnd === c.length) {
+          // The run continues past this segment's end, through ring vertex i + 1.
+          const r: FrontageRun = run;
+          const v = f.ring[(i + 1) % m];
+          const last = r.points[r.points.length - 1];
+          r.length += Math.hypot(v.x - last.x, v.z - last.z);
+          r.points.push({ x: v.x, z: v.z });
+          r.edges.push(f.segEdge[i]);
+          const p = f.ring[i];
+          const q = f.ring[(i + 2) % m];
+          const d1x = v.x - p.x;
+          const d1z = v.z - p.z;
+          const d2x = q.x - v.x;
+          const d2z = q.z - v.z;
+          const cross = d1x * d2z - d1z * d2x;
+          const turn = atan2(cross, d1x * d2x + d1z * d2z);
+          if (cross < 0 && turn < -10 * DEG) r.corners.push({ index: r.points.length - 1, angle: Math.PI + turn, node: f.vertNode[(i + 1) % m] });
+        }
+      }
+      if (run) {
+        const r: FrontageRun = run;
+        const lastCorner = r.corners[r.corners.length - 1];
+        if (lastCorner && lastCorner.index >= r.points.length - 1) r.corners.pop();
+      }
+      close();
+    });
+    const lateBuilds = districts.late({
+      terrain,
+      buildings,
+      voids,
+      insideBuilding: builtAt,
+      excluded,
+      clearance: (x, z) => corridorClearance(g, edgeGrid, x, z, scratch),
+    });
+    // Late openings and looks only reclaim void frontage.
+    const lateOpen = new PolygonIndex<{ polygon: Vec2[] }>(bminX, bminZ, bmaxX, bmaxZ);
+    const lateFront = new PolygonIndex<{ polygon: Vec2[]; i: number }>(bminX, bminZ, bmaxX, bmaxZ);
+    for (const b of lateBuilds) {
+      for (const p of b.openings) lateOpen.add({ polygon: p });
+      for (const fl of b.frontLooks) {
+        lateFront.add({ polygon: fl.polygon, i: fronts.length });
+        fronts.push(fl);
+      }
+      for (const w of b.walls) districtWalls.push(w);
+    }
+    faces.forEach((f, fi) => {
+      f.ring.forEach((p, i) => {
+        const q = f.ring[(i + 1) % f.ring.length];
+        const c = classes[fi][i];
+        const len = sqrt((q.x - p.x) ** 2 + (q.z - p.z) ** 2) || 1;
+        const rx = (q.z - p.z) / len;
+        const rz = -(q.x - p.x) / len;
+        for (let k = 0; k < c.length; k++) {
+          if (c[k] !== VOID) continue;
+          const t = (k + 0.5) / c.length;
+          const ax = p.x + (q.x - p.x) * t + rx * AREA_PROBE;
+          const az = p.z + (q.z - p.z) * t + rz * AREA_PROBE;
+          if (lateOpen.first(ax, az)) c[k] = OPEN;
+          else {
+            const fl = lateFront.first(ax, az);
+            if (fl) c[k] = fl.i;
+          }
+        }
+      });
+    });
+  }
+
+  // Emit frontage walls: one per run of equal class, normal toward the road (left of travel).
+  const walls: Wall[] = [];
+  faces.forEach((f, fi) => {
+    f.ring.forEach((p, i) => {
+      const q = f.ring[(i + 1) % f.ring.length];
+      const c = classes[fi][i];
+      const len = sqrt((q.x - p.x) ** 2 + (q.z - p.z) ** 2);
+      if (len < 0.05) return;
+      const nx = -(q.z - p.z) / len;
+      const nz = (q.x - p.x) / len;
+      let k = 0;
+      while (k < c.length) {
+        let j = k + 1;
+        while (j < c.length && c[j] === c[k]) j++;
+        if (c[k] !== OPEN) {
+          const t0 = k / c.length;
+          const t1 = j / c.length;
+          const look: WallLook = c[k] === BUILT ? 'building' : c[k] === VOID ? 'boundary' : fronts[c[k]].look;
+          const w: Wall = { ax: p.x + (q.x - p.x) * t0, az: p.z + (q.z - p.z) * t0, bx: p.x + (q.x - p.x) * t1, bz: p.z + (q.z - p.z) * t1, nx, nz, kind: 'wall', look };
+          if (c[k] >= 0) w.area = fronts[c[k]].area;
+          walls.push(w);
+        }
+        k = j;
+      }
+    });
+  });
+  for (const w of districtWalls) walls.push(w);
+
   // Streetlights on the sidewalk just behind the curb, staggered per side.
   const streetlights: Streetlight[] = [];
-  g.edges.forEach((_, ei) => {
+  g.edges.forEach((e, ei) => {
+    if (e.kind === 'backAlley') return;
     for (const side of edgeSides(g, mouths, ei)) {
       const along = sub(side.to, side.from);
       const len = sqrt(along.x * along.x + along.z * along.z);
       const u = { x: along.x / len, z: along.z / len };
       for (const s of lightStations(len, side.phase)) {
         const p = add(add(side.from, u, s), side.inward, -0.8);
+        if (reserved.some((c) => (c.x - p.x) ** 2 + (c.z - p.z) ** 2 < (c.r + 0.8) ** 2)) continue;
         streetlights.push({ x: p.x, z: p.z, dx: side.inward.x, dz: side.inward.z, edge: ei });
       }
     }
   });
 
   // Destructible street furniture (streetlights first, ids aligned with `streetlights`).
-  const props = generateProps(seed, g, sectors, mouths, streetlights, terrain, edgeGrid);
+  const props = generateProps(seed, g, sectors, mouths, streetlights, terrain, edgeGrid, reserved);
 
   // Neon sign anchors on building fronts, biased toward downtown.
   const signs: SignAnchor[] = [];
@@ -419,7 +783,7 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain): Ci
     });
   }
 
-  return { sectors, mouths, walls, buildings, streetlights, props, signs, edgeGrid };
+  return { sectors, mouths, faces, walls, buildings, streetlights, props, signs, edgeGrid };
 }
 
 export function edgeAngle(g: RoadGraph, e: RoadEdge): number {

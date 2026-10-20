@@ -4,6 +4,10 @@
  * point; glancing hits mostly keep their speed and slide along, head on hits
  * lose almost all of it. Corner rails bounce and spin little, but scraping
  * along them drags speed off for as long as the car stays in contact.
+ * When the race's RailState is passed, rails are the heavy modular pieces of
+ * src/sim/rails.ts at their displaced positions instead of the static rail
+ * walls: hits shove pieces back a little and cost speed for the dent, and the
+ * steps between dented and straight pieces catch cars scraping along.
  * Car vs car: equal-ish impulses. Fixed iteration order.
  */
 import { CarState } from './car';
@@ -11,6 +15,7 @@ import { CarTuning } from './tuning';
 import { DT } from './constants';
 import { abs, cos, sign, sin, sqrt } from './math';
 import type { Contact, World } from '../city/world';
+import { RailState, collideRails, pushRailPiece, railStepAhead } from './rails';
 
 /** Hardest static hit of a tick: normal impact speed (m/s) and what was hit. */
 export interface WorldHit {
@@ -35,12 +40,33 @@ function yawInertia(t: CarTuning): number {
 }
 
 const contacts: Contact[] = [];
+/** Rail piece of each contact (-1 for static walls), parallel to `contacts`. */
+const contactPiece: number[] = [];
+
+/** World contacts for a circle; with rail bodies, static rail walls are replaced by the displaced pieces. */
+function gatherContacts(world: World, rails: RailState | undefined, x: number, z: number, r: number): number {
+  const n = world.collideCircle(x, z, r, contacts);
+  contactPiece.length = 0;
+  if (!rails || !rails.layout.subCount) {
+    for (let i = 0; i < n; i++) contactPiece.push(-1);
+    return n;
+  }
+  let w = 0;
+  for (let i = 0; i < n; i++) {
+    if (contacts[i].kind === 'rail') continue;
+    contacts[w++] = contacts[i];
+    contactPiece.push(-1);
+  }
+  contacts.length = w;
+  return w + collideRails(rails, x, z, r, contacts, contactPiece);
+}
 
 /**
- * Resolve a car against static walls. Returns the impact speed (m/s) of the
- * hardest hit; `hit`, when given, also receives the kind of wall it was.
+ * Resolve a car against static walls (and the race's rail pieces, when given).
+ * Returns the impact speed (m/s) of the hardest hit; `hit`, when given, also
+ * receives the kind of wall it was.
  */
-export function collideCarWithWorld(c: CarState, t: CarTuning, world: World, hit?: WorldHit): number {
+export function collideCarWithWorld(c: CarState, t: CarTuning, world: World, hit?: WorldHit, rails?: RailState, tick = 0): number {
   const fx = sin(c.yaw);
   const fz = cos(c.yaw);
   const m = t.mass;
@@ -57,10 +83,11 @@ export function collideCarWithWorld(c: CarState, t: CarTuning, world: World, hit
     for (let pass = 0; pass < 2; pass++) {
       const cx = c.x + fx * circ.u;
       const cz = c.z + fz * circ.u;
-      const n = world.collideCircle(cx, cz, circ.r, contacts);
+      const n = gatherContacts(world, rails, cx, cz, circ.r);
       if (n === 0) break;
-      let best = contacts[0];
-      for (let i = 1; i < n; i++) if (contacts[i].depth > best.depth) best = contacts[i];
+      let bi = 0;
+      for (let i = 1; i < n; i++) if (contacts[i].depth > contacts[bi].depth) bi = i;
+      const best = contacts[bi];
       const { nx, nz, depth } = best;
       const rail = best.kind === 'rail';
       const angK = rail ? t.collision.railAngularScale : ang;
@@ -70,6 +97,15 @@ export function collideCarWithWorld(c: CarState, t: CarTuning, world: World, hit
         railDepth = depth;
         railTx = -nz;
         railTz = nx;
+      }
+      if (rails && contactPiece[bi] >= 0) {
+        // Scraping into a step where a dented piece meets one that was not shoved back.
+        const step = railStepAhead(rails, contactPiece[bi], c.vx, c.vz, cx, cz, DT);
+        if (step > 0) {
+          const keep = 1 - Math.min(0.5, step * t.collision.railStepLoss);
+          c.vx *= keep;
+          c.vz *= keep;
+        }
       }
       const rx = cx - nx * circ.r - c.x;
       const rz = cz - nz * circ.r - c.z;
@@ -90,6 +126,16 @@ export function collideCarWithWorld(c: CarState, t: CarTuning, world: World, hit
       const dv = Math.min(abs(vt), ((rail ? t.collision.railScrub : t.collision.wallScrub) * j) / m);
       c.vx -= sign(vt) * dv * tx;
       c.vz -= sign(vt) * dv * tz;
+      if (rails && contactPiece[bi] >= 0) {
+        // Shoving a heavy rail piece back soaks up speed along it.
+        const moved = pushRailPiece(rails, contactPiece[bi], nx, nz, j, best.px, best.pz, tick);
+        if (moved > 0) {
+          const loss = Math.min(0.5, moved * t.collision.railDentLoss);
+          const vt2 = c.vx * tx + c.vz * tz;
+          c.vx -= vt2 * loss * tx;
+          c.vz -= vt2 * loss * tz;
+        }
+      }
       if (-vn > impact) {
         impact = -vn;
         kind = best.kind;

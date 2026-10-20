@@ -8,6 +8,7 @@ import { InputFrame } from './input';
 import { CarTuning, GRAVITY, driveSplit } from './tuning';
 import { DEG, abs, approach, atan2, clamp, cos, lerp, sign, sin, sqrt } from './math';
 import type { Surface, World } from '../city/world';
+import { SURFACE_PHYSICS } from '../city/districts/types';
 
 export interface WheelState {
   /** Positive = pushed up into the arch, relative to the rest pose. */
@@ -292,7 +293,9 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
   }
   c.rearGrip = gripTarget < c.rearGrip ? approach(c.rearGrip, gripTarget, t.drift.gripDropRate * dt) : approach(c.rearGrip, gripTarget, t.drift.gripRecoverRate * dt);
 
-  const surfaceGrip = c.surface === 'road' ? 1 : c.surface === 'sidewalk' ? t.surface.sidewalkGrip : t.surface.offroadGrip;
+  // District surfaces (concrete, grass, water) drive like one of the three tuned ones.
+  const sp = SURFACE_PHYSICS[c.surface];
+  const surfaceGrip = sp === 'road' ? 1 : sp === 'sidewalk' ? t.surface.sidewalkGrip : t.surface.offroadGrip;
   const dragMul = c.drafting ? t.nitrous.draftDragMul : 1;
 
   // Traction control stability: cut the throttle once the body slides past a few degrees.
@@ -517,7 +520,7 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
   const drag = t.aero.drag * ctl.dragMul;
   Fu -= drag * vLong * speed + t.tires.rollingResistance * vLong;
   Fv -= drag * vLat * speed;
-  if (c.surface === 'offroad') {
+  if (SURFACE_PHYSICS[c.surface] === 'offroad') {
     Fu -= t.surface.offroadDrag * sign(vLong) * Math.min(1, abs(vLong));
   }
   if (c.nitroActive && contacts > 0) Fu += t.nitrous.force;

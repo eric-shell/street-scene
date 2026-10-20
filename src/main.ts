@@ -298,6 +298,8 @@ function startRace(mode: RaceMode, testDrive = false): void {
     difficulty: settings.difficulty,
     manualGearbox: settings.manualGearbox,
     tractionControl: settings.tractionControl,
+    // Test drive: free roam on the open seed map (no barriers, rails, parked cars, crowds or rivals).
+    openWorld: testDrive || undefined,
   };
   const ghostData = count === 0 && !testDrive ? loadGhost(seed, mode) : null;
   runSession(config, [build.visual, ...opp.visuals], null, ghostData, testDrive);
@@ -396,7 +398,7 @@ function togglePause(): void {
     setOverlay(
       pauseMenu({
         onResume: togglePause,
-        onRestart: () => lastConfig && runSession(lastConfig, lastVisuals, null, lastConfig.opponents.length ? null : loadGhost(lastConfig.seed, lastConfig.mode), false),
+        onRestart: () => lastConfig && runSession(lastConfig, lastVisuals, null, lastConfig.opponents.length || lastConfig.openWorld ? null : loadGhost(lastConfig.seed, lastConfig.mode), lastConfig.openWorld === true),
         onSettings: () => openSettings(showPause),
         onQuit: () => (testDriving ? void openGarage() : showMenu()),
       }),
@@ -474,7 +476,7 @@ const loop = new FixedStepLoop({
 
 async function boot(): Promise<void> {
   applyAutoQuality();
-  const loading = loadingScreen('NIGHT RUN');
+  const loading = loadingScreen('STREET SCENE');
   uiRoot.append(loading);
   availability = await assets.availability();
   const code = params.get('build');

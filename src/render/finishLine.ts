@@ -1,13 +1,18 @@
 /**
- * Start and finish gantries: a lit steel arch over the road with a neon
- * "FINISH" sign, chasing LED strips, neon tubes, waving checkered flags,
- * sweeping searchlight beams, a light pool and light curtain, a checkered
- * line on the asphalt, and a confetti + spark burst when the player crosses.
+ * Start and finish gantries: a lit steel arch over the road with a neon sign
+ * (START, LAP n, FINISH; see setSign), chasing LED strips, LED equalizer bars,
+ * xenon strobes, neon tubes, waving checkered flags, sweeping beams from the
+ * pillar caps, ground searchlights raking the sky, a moving head light rig
+ * over the line, a light pool and light curtain, a checkered line on the
+ * asphalt, a confetti + spark burst when the player crosses, and fireworks
+ * (rockets launched from mortar tubes beside the gantry that burst into
+ * colored spheres, rings and willows with streaking trails).
  * Circuits get one full gantry (start = finish); sprints get a lighter START
  * gantry and a full FINISH one. Everything is a handful of draw calls:
- * merged steel, instanced LEDs and beams, one Points cloud for sparks and one
- * InstancedMesh for confetti. Bright parts use colors above 1 so they bloom.
- * Render only.
+ * merged steel, instanced LEDs and beams, one Points cloud for sparks, one
+ * InstancedMesh for confetti, one Points + one LineSegments for fireworks
+ * (all pooled, no per-frame allocation). Bright parts use colors above 1 so
+ * they bloom. Render only.
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -39,12 +44,29 @@ export interface FinishLines {
   update(time: number): void;
   /** Fire the celebration at the finish (or start) gate. */
   burst(kind?: 'finish' | 'start', strength?: number): void;
+  /**
+   * Change the sign over the road at one gate (front face). The canvas is
+   * only redrawn when the text changes. `startFinish` falls back to the only
+   * gate on circuits.
+   */
+  setSign(kind: GateKind, text: string, sub?: string): void;
+  /** Launch fireworks from beside a gate: a small salvo for a lap, a show at the start, a big one at the finish. */
+  fireworks(show: FireworkShow, strength?: number): void;
+  /** Called when a shell bursts (world position and 0..1+ size), e.g. for the boom sound. */
+  onFirework: ((x: number, y: number, z: number, size: number) => void) | null;
   dispose(): void;
 }
 
+export type FireworkShow = 'start' | 'lap' | 'finish';
+
 const LINE_Y = 0.05;
 const CONFETTI = 720;
-const SPARKS = 900;
+const SPARKS = 1100;
+const ROCKETS = 32;
+const STARS = 2600;
+const FW = ROCKETS + STARS;
+const FLASHES = 6;
+const GRAVITY = 9.8;
 
 interface Theme {
   led: [THREE.Color, THREE.Color];
@@ -59,6 +81,26 @@ const THEMES: Record<GateKind, Theme> = {
   startFinish: { led: [new THREE.Color(1, 0.08, 0.12), new THREE.Color(1, 0.95, 0.85)], neonA: new THREE.Color(2.6, 0.25, 1.9), neonB: new THREE.Color(0.25, 2.2, 3), text: 'FINISH', glow: '#ff2d7a' },
   start: { led: [new THREE.Color(0.1, 1, 0.35), new THREE.Color(0.9, 1, 0.95)], neonA: new THREE.Color(0.2, 2.6, 1.2), neonB: new THREE.Color(0.25, 2.2, 3), text: 'START', glow: '#2dff9a' },
 };
+
+/** Sign glow by label: green START, amber LAP n, pink FINISH. */
+function signGlow(text: string, fallback: string): string {
+  if (text.startsWith('START')) return '#2dff9a';
+  if (text.startsWith('FINISH')) return '#ff2d7a';
+  if (text.startsWith('LAP') || text.startsWith('FINAL')) return '#ffc22d';
+  return fallback;
+}
+
+/** Firework star colors (HDR, they bloom). */
+const FW_COLORS = [
+  [4, 0.45, 0.55],
+  [0.6, 4, 1.1],
+  [0.55, 1.3, 4.6],
+  [4.2, 2.6, 0.7],
+  [2.9, 0.75, 4.2],
+  [0.7, 3.6, 4.2],
+  [3.6, 3.4, 3.2],
+  [4.2, 0.9, 2.6],
+] as const;
 
 const CONFETTI_COLORS = [0xffd23a, 0xff2d7a, 0x2de2ff, 0xffffff, 0xff4b2b, 0x9dff3a, 0xb06bff].map((c) => new THREE.Color(c).multiplyScalar(1.15));
 
@@ -112,18 +154,37 @@ function drawSign(ctx: CanvasRenderingContext2D, w: number, h: number, text: str
   ctx.shadowBlur = 0;
 }
 
-function signTexture(text: string, glow: string, sub: string): THREE.CanvasTexture {
+interface SignFace {
+  texture: THREE.CanvasTexture;
+  /** Redraw with new text (no-op when unchanged). */
+  set(text: string, glow: string, sub: string): void;
+}
+
+function signTexture(text: string, glow: string, sub: string): SignFace {
   const [c, ctx] = canvas(1536, 256);
-  drawSign(ctx, c.width, c.height, text, glow, sub);
+  let cur = '';
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4;
-  // Redraw once the display font has loaded (it is usually ready by race time).
-  document.fonts?.load(`900 64px Orbitron`).then(() => {
-    drawSign(ctx, c.width, c.height, text, glow, sub);
+  const state = { text, glow, sub };
+  const draw = () => {
+    drawSign(ctx, c.width, c.height, state.text, state.glow, state.sub);
+    cur = `${state.text}|${state.glow}|${state.sub}`;
     t.needsUpdate = true;
-  }, () => undefined);
-  return t;
+  };
+  draw();
+  // Redraw once the display font has loaded (it is usually ready by race time).
+  document.fonts?.load(`900 64px Orbitron`).then(draw, () => undefined);
+  return {
+    texture: t,
+    set(text2, glow2, sub2) {
+      if (`${text2}|${glow2}|${sub2}` === cur) return;
+      state.text = text2;
+      state.glow = glow2;
+      state.sub = sub2;
+      draw();
+    },
+  };
 }
 
 /** Vertical gradient: bright at the bottom (v = 0), black at the top. */
@@ -172,11 +233,26 @@ function dotTexture(): THREE.CanvasTexture {
 
 const box = (w: number, h: number, d: number, x: number, y: number, z: number) => new THREE.BoxGeometry(w, h, d).translate(x, y, z);
 
+/** LED roles: chase strip, xenon strobe, equalizer bar cell, lamp lens (searchlights, rig heads). */
+const LED_CHASE = 0;
+const LED_STROBE = 1;
+const LED_EQ = 2;
+const LED_LENS = 3;
+
 interface Led {
   gate: number;
-  /** Position along the strip, drives the chase pattern. */
+  /** Position along the strip, drives the chase pattern. Strobes: phase. EQ: column. Lens: beam index. */
   u: number;
+  kind: number;
+  /** EQ: cell row (0 = bottom) out of `rows`. */
+  row: number;
+  rows: number;
 }
+
+/** Beam roles: pillar cap sweeps, ground searchlights, moving heads on the light rig. */
+const BEAM_CAP = 0;
+const BEAM_SEARCH = 1;
+const BEAM_RIG = 2;
 
 interface GateRuntime {
   gate: FinishGate;
@@ -187,6 +263,9 @@ interface GateRuntime {
   neonA: THREE.MeshBasicMaterial;
   neonB: THREE.MeshBasicMaterial;
   curtain: THREE.MeshBasicMaterial;
+  sign: SignFace;
+  /** Mortar tube mouths beside the pillars (local x, z), rockets launch from here. */
+  tubes: [number, number][];
   flash: number;
   burstTime: number;
 }
@@ -250,7 +329,8 @@ export function buildFinishLines(world: World): FinishLines {
 
   const leds: Led[] = [];
   const ledPos: THREE.Vector3[] = [];
-  const beams: { gate: number; origin: THREE.Vector3; phase: number; side: number }[] = [];
+  const ledScale: number[] = [];
+  const beams: { gate: number; origin: THREE.Vector3; phase: number; side: number; kind: number; tilt: number; lx: number }[] = [];
   const gates: FinishGate[] = [];
   const runtime: GateRuntime[] = [];
 
@@ -303,18 +383,62 @@ export function buildFinishLines(world: World): FinishLines {
       // Flag poles on the pillar caps.
       for (const side of [-1, 1]) steel.push(new THREE.CylinderGeometry(0.06, 0.07, 3.2, 6).translate(side * L, H + 1.9, 0));
     }
+    // Firework mortar racks just outside the pillars, slightly tilted down the road.
+    const tubes: [number, number][] = [];
+    for (const side of [-1, 1]) {
+      const x0 = side * (L + pw / 2 + 0.75);
+      const b = baseY(x0) + 0.4;
+      dark.push(box(0.5, 0.25, 2.2, x0, b + 0.12, 0));
+      for (const z of [-0.7, 0, 0.7]) {
+        const tube = new THREE.CylinderGeometry(0.15, 0.17, 0.9, 8);
+        tube.rotateX(0.18);
+        tube.translate(x0, b + 0.6, z);
+        dark.push(tube);
+        tubes.push([x0, z]);
+      }
+    }
+    // Ground searchlights behind the sidewalk edge, raking the sky.
+    const searchX = half + 4.45;
+    const searchZ = full ? [-8, 10] : [-7];
+    for (const side of [-1, 1]) {
+      for (const z of searchZ) {
+        const x = side * searchX;
+        const b = baseY(x) + 0.4;
+        dark.push(box(0.7, 0.45, 0.7, x, b + 0.22, z));
+        dark.push(new THREE.CylinderGeometry(0.32, 0.26, 0.5, 10).translate(x, b + 0.7, z));
+        beams.push({ gate: gi, origin: toWorld(x, b + 0.95, z), phase: z * 0.7 + (side > 0 ? 2.1 : 0), side, kind: BEAM_SEARCH, tilt: 0, lx: x });
+        leds.push({ gate: gi, u: beams.length - 1, kind: LED_LENS, row: 0, rows: 1 });
+        ledPos.push(toWorld(x, b + 0.98, z));
+        ledScale.push(3.4);
+      }
+    }
+    // Light rig: moving heads hanging under the front of the lower truss chord.
+    {
+      const heads = full ? 6 : 4;
+      dark.push(box(2 * L - pw - 0.4, 0.18, 0.18, 0, signY - 0.62, -0.78));
+      for (let k = 0; k < heads; k++) {
+        const x = (k / (heads - 1) - 0.5) * (2 * L - pw - 1.6);
+        dark.push(box(0.3, 0.32, 0.3, x, signY - 0.86, -0.78));
+        beams.push({ gate: gi, origin: toWorld(x, signY - 1.02, -0.78), phase: k * 1.37, side: k % 2 ? 1 : -1, kind: BEAM_RIG, tilt: 0, lx: x });
+        leds.push({ gate: gi, u: beams.length - 1, kind: LED_LENS, row: 0, rows: 1 });
+        ledPos.push(toWorld(x, signY - 1.04, -0.78));
+        ledScale.push(1.9);
+      }
+    }
     const sm = new THREE.Mesh(track(mergeGeometries(steel)), steelMat);
     const dm = new THREE.Mesh(track(mergeGeometries(dark)), darkMat);
     steel.forEach((g) => g.dispose());
     dark.forEach((g) => g.dispose());
     root.add(sm, dm);
 
-    // ---------- Signs (front faces approaching cars, back says NIGHT RUN) ----------
+    // ---------- Signs (front faces approaching cars, back says STREET SCENE) ----------
     const signGeo = track(new THREE.PlaneGeometry(signW - 0.1, signH));
-    const front = new THREE.Mesh(signGeo, track(new THREE.MeshBasicMaterial({ map: track(signTexture(theme.text, theme.glow, kind === 'startFinish' ? 'START  ·  FINISH' : '')), color: new THREE.Color(1.35, 1.35, 1.35) })));
+    const sign = signTexture(theme.text, signGlow(theme.text, theme.glow), kind === 'startFinish' ? 'START  ·  FINISH' : '');
+    track(sign.texture);
+    const front = new THREE.Mesh(signGeo, track(new THREE.MeshBasicMaterial({ map: sign.texture, color: new THREE.Color(1.35, 1.35, 1.35) })));
     front.position.set(0, signY + signH / 2, -0.36);
     front.rotation.y = Math.PI;
-    const back = new THREE.Mesh(signGeo, track(new THREE.MeshBasicMaterial({ map: track(signTexture('NIGHT RUN', '#2de2ff', '')), color: new THREE.Color(1.2, 1.2, 1.2) })));
+    const back = new THREE.Mesh(signGeo, track(new THREE.MeshBasicMaterial({ map: track(signTexture('STREET SCENE', '#2de2ff', '').texture), color: new THREE.Color(1.2, 1.2, 1.2) })));
     back.position.set(0, signY + signH / 2, 0.36);
     root.add(front, back);
 
@@ -404,9 +528,10 @@ export function buildFinishLines(world: World): FinishLines {
     root.add(cm);
 
     // ---------- LED strips (chase lights) ----------
-    const addLed = (x: number, y: number, z: number, u: number) => {
-      leds.push({ gate: gi, u });
+    const addLed = (x: number, y: number, z: number, u: number, kind = LED_CHASE, scale = 1, row = 0, rows = 1) => {
+      leds.push({ gate: gi, u, kind, row, rows });
       ledPos.push(toWorld(x, y, z));
+      ledScale.push(scale);
     };
     const step = full ? 0.42 : 0.6;
     for (const z of [-0.62, 0.62]) {
@@ -419,14 +544,33 @@ export function buildFinishLines(world: World): FinishLines {
       }
     }
 
-    // ---------- Searchlight beams from the pillar caps ----------
+    // ---------- Xenon strobes on the pillar tops (front, back, cap) ----------
+    for (const side of [-1, 1]) {
+      const x = side * L;
+      addLed(x, H - 0.55, -pw / 2 - 0.1, side * 1.7, LED_STROBE, 2.6);
+      addLed(x, H - 0.55, pw / 2 + 0.1, side * 1.7 + 0.9, LED_STROBE, 2.6);
+      addLed(x + side * (pw / 2 + 0.1), H - 1.4, 0, side * 1.7 + 2.3, LED_STROBE, 2.6);
+    }
+
+    // ---------- LED equalizer bars on the outer pillar faces ----------
     if (full) {
+      const rows = Math.floor((signY - 1.8) / 0.3);
       for (const side of [-1, 1]) {
-        for (const ph of [0, Math.PI]) beams.push({ gate: gi, origin: toWorld(side * L, H + 0.4, 0), phase: ph + (side > 0 ? 1.3 : 0), side });
+        const x = side * (L + pw / 2 + 0.07);
+        for (let c = 0; c < 3; c++) {
+          for (let r = 0; r < rows; r++) addLed(x, 1.5 + r * 0.3, (c - 1) * 0.36, c + (side > 0 ? 3 : 0), LED_EQ, 1.45, r, rows);
+        }
       }
     }
 
-    runtime.push({ gate, root, theme, full, flags, neonA, neonB, curtain, flash: 0, burstTime: -1 });
+    // ---------- Searchlight beams from the pillar caps ----------
+    if (full) {
+      for (const side of [-1, 1]) {
+        for (const ph of [0, Math.PI]) beams.push({ gate: gi, origin: toWorld(side * L, H + 0.4, 0), phase: ph + (side > 0 ? 1.3 : 0), side, kind: BEAM_CAP, tilt: 0, lx: side * L });
+      }
+    }
+
+    runtime.push({ gate, root, theme, full, flags, neonA, neonB, curtain, sign, tubes, flash: 0, burstTime: -1 });
   });
 
   // ---------- Instanced LEDs ----------
@@ -437,9 +581,11 @@ export function buildFinishLines(world: World): FinishLines {
   ledMesh.frustumCulled = false;
   {
     const m = new THREE.Matrix4();
+    const white = new THREE.Color(1, 1, 1);
     ledPos.forEach((p, i) => {
-      ledMesh.setMatrixAt(i, m.makeTranslation(p.x, p.y, p.z));
-      ledMesh.setColorAt(i, new THREE.Color(1, 1, 1));
+      const k = ledScale[i] ?? 1;
+      ledMesh.setMatrixAt(i, m.makeScale(k, k, k).setPosition(p.x, p.y, p.z));
+      ledMesh.setColorAt(i, white);
     });
   }
   group.add(ledMesh);
@@ -490,12 +636,81 @@ export function buildFinishLines(world: World): FinishLines {
   /** Active spark fountains: world position, direction, until time, rate, hue. */
   const fountains: { at: THREE.Vector3; dir: THREE.Vector3; until: number; rate: number; acc: number; warm: boolean }[] = [];
 
+  // ---------- Fireworks: rockets + stars share one Points (heads) and one LineSegments (trails) ----------
+  const fw = {
+    pos: new Float32Array(FW * 3),
+    vel: new Float32Array(FW * 3),
+    col: new Float32Array(FW * 3),
+    life: new Float32Array(FW),
+    max: new Float32Array(FW),
+    drag: new Float32Array(FW),
+    grav: new Float32Array(FW),
+    /** 0 dead, 1 rocket, 2 star, 3 glitter star (crackles). */
+    kind: new Uint8Array(FW),
+    /** Rockets: shell size, burst type and palette. */
+    size: new Float32Array(ROCKETS),
+    type: new Uint8Array(ROCKETS),
+    pal: new Uint8Array(ROCKETS),
+    nextStar: 0,
+    /** Set when a shell burst this frame (its stars may sit behind the loop cursor). */
+    spawned: false,
+  };
+  const headPos = new Float32Array(FW * 3);
+  const headCol = new Float32Array(FW * 3);
+  const trailPos = new Float32Array(FW * 6);
+  const trailCol = new Float32Array(FW * 6);
+  const headGeo = track(new THREE.BufferGeometry());
+  headGeo.setAttribute('position', new THREE.BufferAttribute(headPos, 3).setUsage(THREE.DynamicDrawUsage));
+  headGeo.setAttribute('color', new THREE.BufferAttribute(headCol, 3).setUsage(THREE.DynamicDrawUsage));
+  const trailGeo = track(new THREE.BufferGeometry());
+  trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPos, 3).setUsage(THREE.DynamicDrawUsage));
+  trailGeo.setAttribute('color', new THREE.BufferAttribute(trailCol, 3).setUsage(THREE.DynamicDrawUsage));
+  const headMat = track(
+    new THREE.PointsMaterial({ size: 0.95, map: dot, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true }),
+  );
+  const trailMat = track(new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  const fwHeads = new THREE.Points(headGeo, headMat);
+  const fwTrails = new THREE.LineSegments(trailGeo, trailMat);
+  for (const o of [fwHeads, fwTrails]) {
+    o.frustumCulled = false;
+    o.visible = false;
+    group.add(o);
+  }
+  // Burst flashes: a few big additive sprites, hidden when idle.
+  const flashes: { sprite: THREE.Sprite; mat: THREE.SpriteMaterial; life: number; size: number }[] = [];
+  for (let i = 0; i < FLASHES; i++) {
+    const mat = track(new THREE.SpriteMaterial({ map: dot, color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    const sprite = new THREE.Sprite(mat);
+    sprite.visible = false;
+    sprite.frustumCulled = false;
+    group.add(sprite);
+    flashes.push({ sprite, mat, life: 0, size: 1 });
+  }
+  let nextFlash = 0;
+  /** Scheduled launches (event driven; the per frame path never allocates). */
+  const pending: { at: number; ox: number; oy: number; oz: number; tx: number; ty: number; tz: number; fuse: number; size: number; type: number; pal: number }[] = [];
+  let onFirework: FinishLines['onFirework'] = null;
+
   const rand = (a: number, b: number) => a + Math.random() * (b - a);
   const dummy = new THREE.Object3D();
   const tmpColor = new THREE.Color();
   let last = -1;
   let now = 0;
   let externalAt = -1;
+
+  function spawnSpark(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, warm: boolean): void {
+    const i = spark.next;
+    spark.next = (spark.next + 1) % SPARKS;
+    sparkPos[i * 3] = x;
+    sparkPos[i * 3 + 1] = y;
+    sparkPos[i * 3 + 2] = z;
+    spark.vel[i * 3] = vx;
+    spark.vel[i * 3 + 1] = vy;
+    spark.vel[i * 3 + 2] = vz;
+    spark.max[i] = spark.life[i] = life;
+    spark.warm[i] = warm ? 1 : 0;
+    sparkPoints.visible = true;
+  }
 
   function emitConfetti(rt: GateRuntime, strength: number): void {
     const g = rt.gate;
@@ -541,19 +756,241 @@ export function buildFinishLines(world: World): FinishLines {
       fo.acc += fo.rate * dt;
       while (fo.acc >= 1) {
         fo.acc -= 1;
-        const i = spark.next;
-        spark.next = (spark.next + 1) % SPARKS;
-        sparkPos[i * 3] = fo.at.x;
-        sparkPos[i * 3 + 1] = fo.at.y;
-        sparkPos[i * 3 + 2] = fo.at.z;
         const sp = rand(7, 13);
-        spark.vel[i * 3] = fo.dir.x * sp + rand(-2.2, 2.2);
-        spark.vel[i * 3 + 1] = fo.dir.y * sp + rand(-1, 1.5);
-        spark.vel[i * 3 + 2] = fo.dir.z * sp + rand(-2.2, 2.2);
-        spark.max[i] = spark.life[i] = rand(0.7, 1.5);
-        spark.warm[i] = fo.warm ? 1 : 0;
+        spawnSpark(fo.at.x, fo.at.y, fo.at.z, fo.dir.x * sp + rand(-2.2, 2.2), fo.dir.y * sp + rand(-1, 1.5), fo.dir.z * sp + rand(-2.2, 2.2), rand(0.7, 1.5), fo.warm);
       }
     }
+  }
+
+  // ---------- Fireworks ----------
+
+  /** Gate for a show: the start line for 'start', the finish for 'finish', the circuit line for laps. */
+  function gateFor(kind: 'start' | 'finish' | 'lap'): GateRuntime | undefined {
+    if (kind === 'lap') return runtime.find((r) => r.gate.kind === 'startFinish');
+    return runtime.find((r) => (kind === 'finish' ? r.gate.kind !== 'start' : r.gate.kind !== 'finish'));
+  }
+
+  function fireworks(show: FireworkShow, strength = 1): void {
+    const rt = gateFor(show);
+    if (!rt || !rt.tubes.length) return;
+    const g = rt.gate;
+    const cy = Math.cos(g.yaw);
+    const sy = Math.sin(g.yaw);
+    const n = Math.round((show === 'finish' ? 16 : show === 'start' ? 7 : 3) * Math.max(0.3, strength));
+    for (let k = 0; k < n; k++) {
+      const [lx, lz] = rt.tubes[(k * 5 + Math.floor(Math.random() * 2)) % rt.tubes.length];
+      const ox = g.position.x + lx * cy + lz * sy;
+      const oz = g.position.z - lx * sy + lz * cy;
+      // Bursts land ahead of the line, where a driver looking down the road (or the finish shot) sees them.
+      const ahead = show === 'finish' ? rand(-25, 95) : show === 'start' ? rand(35, 95) : rand(55, 100);
+      const p = routeSample(route, g.s + ahead);
+      const lat = rand(-26, 26);
+      const tx = p.x + p.tz * lat;
+      const tz = p.z - p.tx * lat;
+      const big = show === 'finish' ? rand(0.85, 1.25) : show === 'start' ? rand(0.7, 0.95) : rand(0.5, 0.7);
+      const height = show === 'lap' ? rand(18, 30) : show === 'start' ? rand(24, 40) : rand(26, 52);
+      const delay = show === 'finish' ? (k < 4 ? k * 0.09 : 0.5 + (k - 4) * 0.28 + rand(0, 0.12)) : show === 'start' ? k * 0.2 + rand(0, 0.1) : k * 0.16;
+      // Willows and double shells are saved for the bigger shows.
+      const type = show === 'lap' ? Math.floor(rand(0, 2)) : Math.floor(rand(0, 5));
+      pending.push({ at: now + delay, ox, oy: h(ox, oz) + 0.9, oz, tx, ty: h(tx, tz) + height, tz, fuse: rand(1.2, 1.55), size: big, type, pal: Math.floor(rand(0, FW_COLORS.length)) });
+    }
+  }
+
+  function launch(L: (typeof pending)[number]): void {
+    let i = -1;
+    for (let r = 0; r < ROCKETS; r++) {
+      if (fw.kind[r] === 0) {
+        i = r;
+        break;
+      }
+    }
+    if (i < 0) return;
+    const o = i * 3;
+    fw.kind[i] = 1;
+    fw.pos[o] = L.ox;
+    fw.pos[o + 1] = L.oy;
+    fw.pos[o + 2] = L.oz;
+    // Ballistic: reach the burst point exactly when the fuse runs out.
+    const T = L.fuse;
+    fw.vel[o] = (L.tx - L.ox) / T;
+    fw.vel[o + 1] = (L.ty - L.oy) / T + 0.5 * GRAVITY * T;
+    fw.vel[o + 2] = (L.tz - L.oz) / T;
+    fw.life[i] = fw.max[i] = T;
+    fw.drag[i] = 0;
+    fw.grav[i] = GRAVITY;
+    fw.size[i] = L.size;
+    fw.type[i] = L.type;
+    fw.pal[i] = L.pal;
+    fw.col[o] = 3.2;
+    fw.col[o + 1] = 1.9;
+    fw.col[o + 2] = 0.9;
+    fwHeads.visible = fwTrails.visible = true;
+    // Muzzle flash sparks.
+    for (let k = 0; k < 14; k++) spawnSpark(L.ox, L.oy + 0.3, L.oz, rand(-2, 2), rand(3, 9), rand(-2, 2), rand(0.25, 0.6), true);
+  }
+
+  function addStar(x: number, y: number, z: number, vx: number, vy: number, vz: number, c: readonly number[], life: number, drag: number, grav: number, glitter: boolean): void {
+    const i = ROCKETS + fw.nextStar;
+    fw.nextStar = (fw.nextStar + 1) % STARS;
+    const o = i * 3;
+    fw.spawned = true;
+    fw.kind[i] = glitter ? 3 : 2;
+    fw.pos[o] = x;
+    fw.pos[o + 1] = y;
+    fw.pos[o + 2] = z;
+    fw.vel[o] = vx;
+    fw.vel[o + 1] = vy;
+    fw.vel[o + 2] = vz;
+    fw.col[o] = c[0];
+    fw.col[o + 1] = c[1];
+    fw.col[o + 2] = c[2];
+    fw.life[i] = fw.max[i] = life;
+    fw.drag[i] = drag;
+    fw.grav[i] = grav;
+  }
+
+  /** A shell bursts: peony (0), ring (1), double (2), willow (3) or glitter crackle (4). */
+  function explode(r: number): void {
+    const o = r * 3;
+    const x = fw.pos[o];
+    const y = fw.pos[o + 1];
+    const z = fw.pos[o + 2];
+    const size = fw.size[r];
+    const type = fw.type[r];
+    const c1 = FW_COLORS[fw.pal[r]];
+    const c2 = FW_COLORS[(fw.pal[r] + 3) % FW_COLORS.length];
+    const gold = FW_COLORS[3];
+    const n = Math.round((type === 1 ? 90 : 150) * size);
+    const speed = 15 * size;
+    // Ring plane: a random tilt.
+    const ax = rand(-1, 1);
+    const az = rand(-1, 1);
+    const al = Math.hypot(ax, 1, az);
+    const nx = ax / al;
+    const ny = 1 / al;
+    const nz = az / al;
+    // Two axes in the plane.
+    let ux = ny;
+    let uy = -nx;
+    let uz = 0;
+    const ul = Math.hypot(ux, uy, uz) || 1;
+    ux /= ul;
+    uy /= ul;
+    uz /= ul;
+    const wx = ny * uz - nz * uy;
+    const wy = nz * ux - nx * uz;
+    const wz = nx * uy - ny * ux;
+    for (let k = 0; k < n; k++) {
+      let dx: number, dy: number, dz: number;
+      if (type === 1) {
+        const a = (k / n) * Math.PI * 2;
+        dx = Math.cos(a) * ux + Math.sin(a) * wx;
+        dy = Math.cos(a) * uy + Math.sin(a) * wy;
+        dz = Math.cos(a) * uz + Math.sin(a) * wz;
+      } else {
+        // Uniform on the sphere (Fibonacci spiral with jitter keeps the shell round).
+        const t = (k + 0.5) / n;
+        const inc = Math.acos(1 - 2 * t);
+        const az2 = k * 2.39996 + rand(-0.05, 0.05);
+        dx = Math.sin(inc) * Math.cos(az2);
+        dy = Math.cos(inc);
+        dz = Math.sin(inc) * Math.sin(az2);
+      }
+      const inner = type === 2 && k % 2 === 1;
+      const sp = speed * (inner ? 0.55 : 1) * rand(0.92, 1.06);
+      if (type === 3) addStar(x, y, z, dx * sp * 0.8, dy * sp * 0.8 + 1, dz * sp * 0.8, gold, rand(2.6, 3.4), 1.9, 2.2, true);
+      else addStar(x, y, z, dx * sp, dy * sp, dz * sp, inner ? c2 : c1, rand(1.5, 2.2), 1.45, 3.2, type === 4);
+    }
+    const f = flashes[nextFlash];
+    nextFlash = (nextFlash + 1) % FLASHES;
+    f.life = 0.35;
+    f.size = 16 * size;
+    f.sprite.position.set(x, y, z);
+    f.sprite.visible = true;
+    f.mat.color.setRGB(c1[0] * 0.45, c1[1] * 0.45, c1[2] * 0.45);
+    onFirework?.(x, y, z, size);
+  }
+
+  function updateFireworks(dt: number): void {
+    for (let k = pending.length - 1; k >= 0; k--) {
+      if (now >= pending[k].at) {
+        launch(pending[k]);
+        pending.splice(k, 1);
+      }
+    }
+    for (const f of flashes) {
+      if (f.life <= 0) continue;
+      f.life -= dt;
+      const k = Math.max(0, f.life / 0.35);
+      f.sprite.scale.setScalar(f.size * (1.2 - 0.4 * k));
+      f.mat.opacity = k * k;
+      if (f.life <= 0) f.sprite.visible = false;
+    }
+    if (!fwHeads.visible) return;
+    let alive = 0;
+    fw.spawned = false;
+    for (let i = 0; i < FW; i++) {
+      const o = i * 3;
+      const o2 = i * 6;
+      const kind = fw.kind[i];
+      if (kind === 0) continue;
+      fw.life[i] -= dt;
+      if (fw.life[i] <= 0) {
+        if (kind === 1) explode(i);
+        fw.kind[i] = 0;
+        headCol[o] = headCol[o + 1] = headCol[o + 2] = 0;
+        for (let a = 0; a < 6; a++) trailCol[o2 + a] = 0;
+        continue;
+      }
+      alive++;
+      const drag = fw.drag[i] > 0 ? Math.exp(-dt * fw.drag[i]) : 1;
+      fw.vel[o] *= drag;
+      fw.vel[o + 1] = fw.vel[o + 1] * drag - fw.grav[i] * dt;
+      fw.vel[o + 2] *= drag;
+      const x = (fw.pos[o] += fw.vel[o] * dt);
+      const y = (fw.pos[o + 1] += fw.vel[o + 1] * dt);
+      const z = (fw.pos[o + 2] += fw.vel[o + 2] * dt);
+      let b: number;
+      let tail: number;
+      if (kind === 1) {
+        // Rocket: steady hot head, long streak, a stream of embers.
+        b = 1;
+        tail = 0.11;
+        if (Math.random() < dt * 70) spawnSpark(x, y, z, -fw.vel[o] * 0.1 + rand(-0.8, 0.8), -fw.vel[o + 1] * 0.1 + rand(-0.8, 0.4), -fw.vel[o + 2] * 0.1 + rand(-0.8, 0.8), rand(0.3, 0.7), true);
+      } else {
+        const k = fw.life[i] / fw.max[i];
+        const age = fw.max[i] - fw.life[i];
+        // Pop on the burst, then a slow fade; the last 20% fades out fully.
+        b = (age < 0.08 ? 1.8 : 1) * (0.4 + 0.6 * k) * Math.min(1, k / 0.2);
+        if (kind === 3) b *= Math.random() < 0.45 ? 1.7 : 0.15;
+        tail = 0.075;
+      }
+      headPos[o] = x;
+      headPos[o + 1] = y;
+      headPos[o + 2] = z;
+      const r = fw.col[o] * b;
+      const g = fw.col[o + 1] * b;
+      const bl = fw.col[o + 2] * b;
+      headCol[o] = r;
+      headCol[o + 1] = g;
+      headCol[o + 2] = bl;
+      // Trail: from the head (lit) back along the velocity to black.
+      trailPos[o2] = x;
+      trailPos[o2 + 1] = y;
+      trailPos[o2 + 2] = z;
+      trailPos[o2 + 3] = x - fw.vel[o] * tail;
+      trailPos[o2 + 4] = y - fw.vel[o + 1] * tail;
+      trailPos[o2 + 5] = z - fw.vel[o + 2] * tail;
+      trailCol[o2] = r * 0.7;
+      trailCol[o2 + 1] = g * 0.7;
+      trailCol[o2 + 2] = bl * 0.7;
+      trailCol[o2 + 3] = trailCol[o2 + 4] = trailCol[o2 + 5] = 0;
+    }
+    headGeo.attributes.position.needsUpdate = true;
+    headGeo.attributes.color.needsUpdate = true;
+    trailGeo.attributes.position.needsUpdate = true;
+    trailGeo.attributes.color.needsUpdate = true;
+    if (!alive && !fw.spawned) fwHeads.visible = fwTrails.visible = false;
   }
 
   function updateParticles(dt: number): void {
@@ -625,45 +1062,106 @@ export function buildFinishLines(world: World): FinishLines {
     }
   }
 
+  const beamLevel = new Float32Array(Math.max(1, beams.length));
+
+  function updateBeams(time: number): void {
+    for (let i = 0; i < beams.length; i++) {
+      const bm = beams[i];
+      const rt = runtime[bm.gate];
+      const f = Math.min(1, rt.flash);
+      dummy.position.copy(bm.origin);
+      dummy.rotation.set(0, 0, 0);
+      let b: number;
+      if (bm.kind === BEAM_CAP) {
+        // Slow crossing sweeps; they snap upright and flare on a burst.
+        const sweep = Math.sin(time * 0.45 + bm.phase);
+        dummy.rotateY(rt.gate.yaw + bm.phase + time * 0.18 * bm.side);
+        dummy.rotateX(0.32 + 0.28 * sweep * (1 - f));
+        dummy.scale.setScalar(1);
+        b = 0.16 + 0.05 * Math.sin(time * 2.1 + i) + f * 0.4;
+        tmpColor.setRGB(b * 0.85, b * 0.9, b);
+      } else if (bm.kind === BEAM_SEARCH) {
+        // Long thin sky beams raking in slow figure eights; upright and bright on a burst.
+        dummy.rotateY(rt.gate.yaw + bm.phase + Math.sin(time * 0.21 + bm.phase) * 1.4 + time * 0.07 * bm.side);
+        dummy.rotateX((0.16 + 0.34 * (0.5 + 0.5 * Math.sin(time * 0.33 + bm.phase * 1.7))) * (1 - 0.7 * f));
+        dummy.scale.set(0.38, 2.2, 0.38);
+        b = 0.12 + 0.03 * Math.sin(time * 1.3 + i) + f * 0.3;
+        tmpColor.setRGB(b * 0.82, b * 0.9, b);
+      } else {
+        // Moving heads over the line: tight cones sweeping the asphalt in the gate colors.
+        dummy.rotateY(rt.gate.yaw);
+        dummy.rotateX(Math.PI - 0.22 + 0.42 * Math.sin(time * 0.9 + bm.phase));
+        dummy.rotateZ(0.36 * Math.sin(time * 0.67 + bm.phase * 1.3));
+        dummy.scale.set(0.3, 0.14, 0.3);
+        const c = bm.side > 0 ? rt.theme.neonA : rt.theme.neonB;
+        b = 0.075 + f * 0.09;
+        const strobe = f > 0 && Math.sin(time * 30 + bm.phase * 4) > 0.3 ? 1.6 : 1;
+        tmpColor.copy(c).multiplyScalar(b * strobe);
+      }
+      beamLevel[i] = b;
+      dummy.updateMatrix();
+      beamMesh.setMatrixAt(i, dummy.matrix);
+      beamMesh.setColorAt(i, tmpColor);
+    }
+    if (beams.length) {
+      beamMesh.instanceMatrix.needsUpdate = true;
+      if (beamMesh.instanceColor) beamMesh.instanceColor.needsUpdate = true;
+    }
+  }
+
+  function updateLeds(time: number): void {
+    for (let i = 0; i < leds.length; i++) {
+      const l = leds[i];
+      const rt = runtime[l.gate];
+      if (l.kind === LED_CHASE) {
+        // Chasing pairs of the gate colors, strobing white during a burst.
+        const strobe = rt.flash > 0 && Math.sin(time * 38 + l.u * 3) > 0;
+        if (strobe) tmpColor.setRGB(4, 4, 4);
+        else {
+          const wave = 0.5 + 0.5 * Math.sin(l.u * 1.6 - time * 8);
+          const b = 0.35 + 3.2 * wave ** 6;
+          const c = rt.theme.led[Math.floor(l.u / 2.4 + time * 1.2) % 2];
+          tmpColor.copy(c).multiplyScalar(b);
+        }
+      } else if (l.kind === LED_STROBE) {
+        // Idle: a rare double flash each; during a burst: fast alternating strobing.
+        let on: boolean;
+        if (rt.flash > 0) on = Math.sin(time * 47 + l.u * 2.1) > 0.7;
+        else {
+          const ph = (((time * 0.29 + l.u * 0.173) % 1) + 1) % 1;
+          on = ph < 0.012 || (ph > 0.035 && ph < 0.047);
+        }
+        if (on) tmpColor.setRGB(6, 6, 6.6);
+        else tmpColor.setRGB(0.05, 0.05, 0.06);
+      } else if (l.kind === LED_EQ) {
+        // Equalizer: three bouncing bars per pillar, green to amber to red.
+        const c = l.u;
+        const level = 0.42 + 0.2 * Math.sin(time * 7.1 + c * 1.3) + 0.16 * Math.sin(time * 11.3 + c * 2.7) + 0.12 * Math.sin(time * 3.1 + c) + rt.flash * 0.35;
+        const f = (l.row + 0.5) / l.rows;
+        if (f < level) {
+          if (f < 0.6) tmpColor.setRGB(0.2, 2.6, 0.55);
+          else if (f < 0.85) tmpColor.setRGB(2.8, 1.9, 0.2);
+          else tmpColor.setRGB(3.2, 0.25, 0.22);
+        } else tmpColor.setRGB(0.02, 0.025, 0.03);
+      } else {
+        // Lamp lens: follows its beam's brightness.
+        const b = beamLevel[l.u] ?? 0.15;
+        const bm = beams[l.u];
+        if (bm && bm.kind === BEAM_RIG) tmpColor.copy(bm.side > 0 ? rt.theme.neonA : rt.theme.neonB).multiplyScalar(b * 14);
+        else tmpColor.setRGB(b * 18, b * 19, b * 21);
+      }
+      ledMesh.setColorAt(i, tmpColor);
+    }
+    if (ledMesh.instanceColor) ledMesh.instanceColor.needsUpdate = true;
+  }
+
   function update(time: number, external = true): void {
     if (external) externalAt = performance.now();
     const dt = last < 0 ? 0 : Math.min(0.1, Math.max(0, time - last));
     last = time;
     now = time;
-    // LEDs: chasing pairs of the gate colors, strobing white during a burst.
-    for (let i = 0; i < leds.length; i++) {
-      const l = leds[i];
-      const rt = runtime[l.gate];
-      const strobe = rt.flash > 0 && Math.sin(time * 38 + l.u * 3) > 0;
-      if (strobe) tmpColor.setRGB(4, 4, 4);
-      else {
-        const wave = 0.5 + 0.5 * Math.sin(l.u * 1.6 - time * 8);
-        const b = 0.35 + 3.2 * wave ** 6;
-        const c = rt.theme.led[Math.floor(l.u / 2.4 + time * 1.2) % 2];
-        tmpColor.copy(c).multiplyScalar(b);
-      }
-      ledMesh.setColorAt(i, tmpColor);
-    }
-    if (ledMesh.instanceColor) ledMesh.instanceColor.needsUpdate = true;
-    // Beams: slow crossing sweeps; they snap upright and flare on a burst.
-    beams.forEach((bm, i) => {
-      const rt = runtime[bm.gate];
-      const f = Math.min(1, rt.flash);
-      const sweep = Math.sin(time * 0.45 + bm.phase);
-      dummy.position.copy(bm.origin);
-      dummy.rotation.set(0, 0, 0);
-      dummy.rotateY(rt.gate.yaw + bm.phase + time * 0.18 * bm.side);
-      dummy.rotateX(0.32 + 0.28 * sweep * (1 - f));
-      dummy.scale.setScalar(1);
-      dummy.updateMatrix();
-      beamMesh.setMatrixAt(i, dummy.matrix);
-      const b = 0.16 + 0.05 * Math.sin(time * 2.1 + i) + f * 0.4;
-      beamMesh.setColorAt(i, tmpColor.setRGB(b * 0.85, b * 0.9, b));
-    });
-    if (beams.length) {
-      beamMesh.instanceMatrix.needsUpdate = true;
-      if (beamMesh.instanceColor) beamMesh.instanceColor.needsUpdate = true;
-    }
+    updateBeams(time);
+    updateLeds(time);
     for (const rt of runtime) {
       // Flags wave from the pole outward.
       for (const fl of rt.flags) {
@@ -686,6 +1184,7 @@ export function buildFinishLines(world: World): FinishLines {
       rt.flash = Math.max(0, rt.flash - dt * 0.45);
     }
     updateParticles(dt);
+    updateFireworks(dt);
   }
 
   // The menu backdrop never calls update(): animate from the render clock instead.
@@ -709,11 +1208,24 @@ export function buildFinishLines(world: World): FinishLines {
     if (kind === 'finish') emitConfetti(rt, strength);
   }
 
+  function setSign(kind: GateKind, text: string, sub = ''): void {
+    const rt = runtime.find((r) => r.gate.kind === kind) ?? (kind === 'startFinish' && runtime.length === 1 ? runtime[0] : undefined);
+    rt?.sign.set(text, signGlow(text, rt.theme.glow), sub);
+  }
+
   return {
     group,
     gates,
     update: (t) => update(t, true),
     burst,
+    setSign,
+    fireworks,
+    get onFirework() {
+      return onFirework;
+    },
+    set onFirework(f) {
+      onFirework = f;
+    },
     dispose() {
       ledMesh.dispose();
       beamMesh.dispose();

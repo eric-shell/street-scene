@@ -6,6 +6,15 @@ import { createCity, createWorld } from '../src/city/world';
 import { CITY, ROUTE } from '../src/city/config';
 import { createTerrain } from '../src/city/terrain';
 import { distToSegment, segmentT } from '../src/sim/math';
+import { planDistricts } from '../src/city/districts';
+import { WALL_LOOKS } from '../src/city/districts/types';
+import { insideBuilding, BUILDING_SETBACK } from '../src/city/blocks';
+import { pointInPolygon, polygonCentroid } from '../src/city/districts/geom';
+import { riverCenter } from '../src/city/districts/river';
+import { LOST, createRace, stepRace } from '../src/sim/race';
+import { NEUTRAL_INPUT } from '../src/sim/input';
+import { raceConfig } from './helpers';
+import type { World } from '../src/city/world';
 
 describe('prng', () => {
   it('is deterministic and roughly uniform', () => {
@@ -22,7 +31,7 @@ describe('prng', () => {
   });
 
   it('hashes strings stably', () => {
-    expect(hashString('night run')).toBe(hashString('night run'));
+    expect(hashString('street scene')).toBe(hashString('street scene'));
     expect(hashString('a')).not.toBe(hashString('b'));
     expect(seedFromString('20261019')).toBe(20261019);
   });
@@ -62,8 +71,11 @@ describe('city generation', () => {
     let meetsTargets = 0;
     for (let i = 0; i < 200; i++) {
       const seed = rng.int(0, 0x7fffffff);
+      // The graph as the game sees it: districts add alleys, shortcuts, roundabouts and bridges.
       const g = generateRoadGraph(seed);
+      planDistricts(seed, g);
       expect(graphIsConnected(g)).toBe(true);
+      for (const n of g.nodes) expect(n.edges.length).toBeLessThanOrEqual(CITY.maxNodeDegree);
 
       const circuit = buildRoute(g, 'circuit', findCircuitNodes(g, seed));
       expect(circuit.closed).toBe(true);
@@ -75,6 +87,11 @@ describe('city generation', () => {
       }
       expect(new Set(circuit.edges).size).toBe(circuit.edges.length);
       expect(new Set(circuit.nodes).size).toBe(circuit.nodes.length);
+      // Never through a back alley shortcut; never barriers across one.
+      for (const r of [circuit]) {
+        for (const e of r.edges) expect(g.edges[e].shortcut).toBeFalsy();
+        for (const cs of r.closedStreets) expect(g.edges[cs.edge].shortcut).toBeFalsy();
+      }
       const first = circuit.points[0];
       const last = circuit.points[circuit.points.length - 1];
       expect(first.x).toBe(last.x);
@@ -182,7 +199,7 @@ describe('city generation', () => {
     expect(merged).toBeGreaterThan(20);
   });
 
-  it('corner rails run along the outer curb and leave the road drivable', () => {
+  it('corner rails run along the back of the sidewalk and leave road and sidewalk drivable', () => {
     const rng = new Rng(12);
     for (let i = 0; i < 30; i++) {
       const w = createWorld(rng.int(0, 0x7fffffff), i % 2 ? 'sprint' : 'circuit');
@@ -196,12 +213,13 @@ describe('city generation', () => {
             const e = w.graph.edges[eid];
             const a = w.graph.nodes[e.a];
             const b = w.graph.nodes[e.b];
-            // Away from the corner itself, where the fillet may cut ROUTE.railCornerCut inside the curb corner.
+            // Away from the corner itself, where the fillet may cut ROUTE.railCornerCut inside the sidewalk corner.
             const t = segmentT(x, z, a.x, a.z, b.x, b.z);
             if (t * e.length < 15 || (1 - t) * e.length < 15) continue;
-            // Never on the route's lanes (beside the edge, not past its ends).
+            // Never on the route's lanes or sidewalk (beside the edge, not past its ends).
             const d = distToSegment(x, z, a.x, a.z, b.x, b.z) - e.width / 2;
-            if (d < 3) expect(d).toBeGreaterThan(ROUTE.railInset - 0.05);
+            const walk = e.sidewalk ?? CITY.sidewalk;
+            if (d < walk + 1) expect(d).toBeGreaterThan(walk - ROUTE.railInset - 0.05);
           }
         }
       });
@@ -250,7 +268,7 @@ describe('city generation', () => {
       }
       // Clear of route barriers.
       for (const b of w.walls.filter((x) => x.kind === 'barrier')) {
-        for (const p of props) if (p.kind !== 'streetlight') expect(distToSegment(p.x, p.z, b.ax, b.az, b.bx, b.bz)).toBeGreaterThan(p.radius);
+        for (const p of props) if (p.kind !== 'streetlight' && !w.coveredProps.includes(p.id)) expect(distToSegment(p.x, p.z, b.ax, b.az, b.bx, b.bz)).toBeGreaterThan(p.radius);
       }
       expect(JSON.stringify(createWorld(seed, 'circuit').props)).toBe(JSON.stringify(props));
     }
@@ -276,5 +294,288 @@ describe('city generation', () => {
     }
     expect(hi - lo).toBeGreaterThan(8);
     expect(maxGrade).toBeLessThan(0.056);
+  });
+});
+
+describe('districts', () => {
+  it('caps intersections at five roads across 300 seeds', () => {
+    const rng = new Rng(5);
+    for (let i = 0; i < 300; i++) {
+      const g = generateRoadGraph(rng.int(0, 0x7fffffff));
+      expect(graphIsConnected(g)).toBe(true);
+      for (const n of g.nodes) {
+        expect(n.edges.length).toBeLessThanOrEqual(CITY.maxNodeDegree);
+        expect(n.edges.length).toBeGreaterThanOrEqual(2);
+      }
+    }
+  });
+
+  it('plans deterministic districts with downtown keeping most of the city', () => {
+    const a = createCity(20261019);
+    const b = createCity(20261019);
+    expect(JSON.stringify(a.districts.areas)).toBe(JSON.stringify(b.districts.areas));
+    expect(JSON.stringify(a.blocks.walls)).toBe(JSON.stringify(b.blocks.walls));
+    const rng = new Rng(404);
+    const seen = new Set<string>();
+    for (let i = 0; i < 24; i++) {
+      const c = createCity(rng.int(0, 0x7fffffff));
+      const blockArea = c.blocks.faces.reduce((s, f) => s + (f.outer ? 0 : f.area), 0);
+      const downtown = c.districts.areas.filter((x) => x.kind === 'downtown').reduce((s, x) => s + x.params.area, 0);
+      expect(downtown / blockArea).toBeGreaterThan(0.7);
+      c.districts.areas.forEach((x, k) => {
+        expect(x.id).toBe(k);
+        seen.add(x.kind);
+      });
+      // Faces are claimed at most once, and every interior face by someone.
+      const claimed = c.districts.areas.flatMap((x) => (x.kind === 'infill' ? [] : x.faces));
+      expect(new Set(claimed).size).toBe(claimed.length);
+      expect(claimed.length).toBe(c.blocks.faces.filter((f) => !f.outer).length);
+    }
+    for (const k of ['downtown', 'park', 'river', 'roundabout', 'alley', 'backAlley', 'subway', 'infill']) expect(seen.has(k)).toBe(true);
+  });
+
+  it('city walls always match visible geometry and never stand on a road', () => {
+    const rng = new Rng(808);
+    for (let i = 0; i < 40; i++) {
+      const w = createWorld(rng.int(0, 0x7fffffff), i % 2 ? 'sprint' : 'circuit');
+      const g = w.graph;
+      const scratch: number[] = [];
+      for (const wall of w.walls) {
+        if (wall.kind !== 'wall') continue;
+        expect(WALL_LOOKS).toContain(wall.look);
+        const mx = (wall.ax + wall.bx) / 2;
+        const mz = (wall.az + wall.bz) / 2;
+        if (wall.look === 'building') {
+          // A building stands right behind it.
+          const px = mx - wall.nx * (BUILDING_SETBACK + 0.7);
+          const pz = mz - wall.nz * (BUILDING_SETBACK + 0.7);
+          // (Neighbouring buildings may leave a gap under a meter: a 0.7 m margin covers it.)
+          expect(w.blocks.buildings.some((b) => insideBuilding(b, px, pz, 0.7))).toBe(true);
+        }
+        if (wall.look === 'island') continue;
+        // Not on any road (sampled along the wall).
+        for (const t of [0.1, 0.5, 0.9]) {
+          const x = wall.ax + (wall.bx - wall.ax) * t;
+          const z = wall.az + (wall.bz - wall.az) * t;
+          w.blocks.edgeGrid.query(x - 1, z - 1, x + 1, z + 1, scratch);
+          for (const id of scratch) {
+            const e = g.edges[id];
+            const a = g.nodes[e.a];
+            const b = g.nodes[e.b];
+            // Beside the road (not the round caps past the nodes, nor the curb step where a
+            // narrow alley runs on into a wider street right at the node).
+            const t = segmentT(x, z, a.x, a.z, b.x, b.z);
+            if (t * e.length < 1.5 || (1 - t) * e.length < 1.5) continue;
+            expect(distToSegment(x, z, a.x, a.z, b.x, b.z)).toBeGreaterThan(e.width / 2 - 0.05);
+          }
+          for (const n of g.nodes) if (n.ring) expect(Math.hypot(x - n.x, z - n.z) < n.ring.outer - 0.05 && Math.hypot(x - n.x, z - n.z) > n.ring.island + 0.05).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('districts are drivable where they say so, with exact terrain slopes', () => {
+    const rng = new Rng(77);
+    let lots = 0;
+    let plazas = 0;
+    let parks = 0;
+    let rivers = 0;
+    for (let i = 0; i < 12; i++) {
+      const w = createWorld(rng.int(0, 0x7fffffff), 'circuit');
+      for (const a of w.areas) {
+        const c = polygonCentroid(a.polygon.length ? a.polygon : [{ x: 0, z: 0 }]);
+        if (a.kind === 'infill' && a.variant === 'lot') {
+          lots++;
+          expect(w.surfaceAt(c.x, c.z)).toBe('road');
+          expect(w.areaAt(c.x, c.z)?.id).toBe(a.id);
+        }
+        if (a.kind === 'infill' && (a.variant === 'plaza' || a.variant === 'cornerPlaza') && pointInPolygon(c.x, c.z, a.polygon) && !a.params.fountain) {
+          plazas++;
+          expect(w.surfaceAt(c.x, c.z)).toBe('concrete');
+        }
+        if (a.kind === 'park') {
+          parks++;
+          expect(w.surfaceAt(c.x, c.z)).toBe('grass');
+          expect(w.areaAt(c.x, c.z)?.kind).toBe('park');
+          // No building in a park.
+          expect(w.blocks.buildings.some((b) => pointInPolygon(b.x, b.z, a.polygon))).toBe(false);
+        }
+        if (a.kind === 'river') {
+          rivers++;
+          const x = (w.graph.bounds.minX + w.graph.bounds.maxX) / 2 + 37;
+          const z = riverCenter(a.params, x);
+          // Bridges at street level, the channel floor well below it.
+          for (const eid of a.edges) {
+            const e = w.graph.edges[eid];
+            expect(e.bridge).toBe(true);
+          }
+          if (!a.edges.some((eid) => distToSegment(x, z, w.graph.nodes[w.graph.edges[eid].a].x, w.graph.nodes[w.graph.edges[eid].a].z, w.graph.nodes[w.graph.edges[eid].b].x, w.graph.nodes[w.graph.edges[eid].b].z) < 30)) {
+            expect(createTerrain(w.seed).heightAt(x, z) - w.heightAt(x, z)).toBeGreaterThan(a.params.depth - 0.01);
+            expect(['concrete', 'water']).toContain(w.surfaceAt(x, z));
+          }
+        }
+      }
+      // Slopes match heights everywhere, including district modifiers.
+      for (let k = 0; k < 400; k++) {
+        const x = rng.range(w.graph.bounds.minX, w.graph.bounds.maxX);
+        const z = rng.range(w.graph.bounds.minZ, w.graph.bounds.maxZ);
+        const s = w.slopeAt(x, z);
+        const e = 0.002;
+        const gx = (w.heightAt(x + e, z) - w.heightAt(x - e, z)) / (2 * e);
+        const gz = (w.heightAt(x, z + e) - w.heightAt(x, z - e)) / (2 * e);
+        // Kinks (ramp edges, bridge masks) are allowed to disagree on a hair.
+        if (Math.abs(s.gx - gx) > 1e-3 || Math.abs(s.gz - gz) > 1e-3) {
+          const h0 = w.heightAt(x, z);
+          expect(Math.abs(w.heightAt(x + 0.01, z) - h0 - s.gx * 0.01)).toBeLessThan(0.02);
+        }
+      }
+    }
+    expect(parks).toBeGreaterThan(8);
+    expect(rivers).toBeGreaterThan(2);
+    expect(lots + plazas).toBeGreaterThan(10);
+  });
+
+  it('routes drive around roundabout islands and narrow down in alleys', () => {
+    const rng = new Rng(9);
+    let rings = 0;
+    let alleys = 0;
+    for (let i = 0; i < 60; i++) {
+      const seed = rng.int(0, 0x7fffffff);
+      const g = generateRoadGraph(seed);
+      planDistricts(seed, g);
+      for (const kind of ['circuit', 'sprint'] as const) {
+        const route = buildRoute(g, kind, kind === 'circuit' ? findCircuitNodes(g, seed) : findSprintNodes(g, seed));
+        for (const id of route.nodes) {
+          const n = g.nodes[id];
+          if (!n.ring) continue;
+          rings++;
+          for (let k = 0; k + 1 < route.points.length; k++) {
+            const p = route.points[k];
+            const q = route.points[k + 1];
+            expect(distToSegment(n.x, n.z, p.x, p.z, q.x, q.z)).toBeGreaterThan(n.ring.island + 1);
+          }
+        }
+        route.edges.forEach((e) => {
+          if (g.edges[e].kind === 'alley') alleys++;
+        });
+        expect(route.segWidth.length).toBe(route.points.length - 1);
+        expect(Math.min(...route.segWidth)).toBeGreaterThanOrEqual(CITY.width.alley);
+      }
+    }
+    expect(rings).toBeGreaterThan(5);
+    expect(alleys).toBeGreaterThan(5);
+  });
+});
+
+/** Teleport the player along a polyline at a steady speed, one tick per step. */
+function driveAlong(r: ReturnType<typeof createRace>, pts: { x: number; z: number }[], speed: number): void {
+  const c = r.cars[0].state;
+  for (let k = 0; k + 1 < pts.length; k++) {
+    const a = pts[k];
+    const b = pts[k + 1];
+    const len = Math.hypot(b.x - a.x, b.z - a.z);
+    const tx = (b.x - a.x) / len;
+    const tz = (b.z - a.z) / len;
+    for (let s = 0; s < len; s += speed / 60) {
+      c.x = a.x + tx * s;
+      c.z = a.z + tz * s;
+      c.vx = tx * speed;
+      c.vz = tz * speed;
+      c.yaw = Math.atan2(tx, tz);
+      c.yawRate = 0;
+      stepRace(r, NEUTRAL_INPUT);
+    }
+  }
+}
+
+describe('race progress and resets', () => {
+  /** A route corner whose inside the old rule (|lateral| > half + 10) would reset on, while it is drivable. */
+  function insideCut(w: World) {
+    const g = w.graph;
+    const r = w.route;
+    const n = r.nodes.length;
+    const contacts: never[] = [];
+    for (let i = 0; i < n; i++) {
+      const a = g.nodes[r.nodes[(i - 1 + n) % n]];
+      const b = g.nodes[r.nodes[i]];
+      const c = g.nodes[r.nodes[(i + 1) % n]];
+      if (b.ring) continue;
+      const l1 = Math.hypot(b.x - a.x, b.z - a.z);
+      const l2 = Math.hypot(c.x - b.x, c.z - b.z);
+      const ux = (a.x - b.x) / l1 + (c.x - b.x) / l2;
+      const uz = (a.z - b.z) / l1 + (c.z - b.z) / l2;
+      const ul = Math.hypot(ux, uz);
+      if (ul < 0.6) continue;
+      let deepest = -1;
+      let oldReset = -1;
+      for (let d = 0; d < 60; d += 0.5) {
+        const x = b.x + (ux / ul) * d;
+        const z = b.z + (uz / ul) * d;
+        if (w.collideCircle(x, z, 1.4, contacts) || w.surfaceAt(x, z) === 'offroad') break;
+        deepest = d;
+        const p = w.routeProgress(x, z);
+        if (oldReset < 0 && Math.abs(p.lateral) > r.segWidth[p.seg] / 2 + 10) oldReset = d;
+      }
+      if (oldReset > 0 && deepest > oldReset + 1) {
+        const d = Math.min(deepest - 1, oldReset + 3);
+        return { a, b, c, apex: { x: b.x + (ux / ul) * d, z: b.z + (uz / ul) * d }, l1, l2 };
+      }
+    }
+    return null;
+  }
+
+  it('cutting the seed 43405381 inside corner never resets the car', () => {
+    const r = createRace(raceConfig(43405381, 'circuit', 0));
+    while (r.tick < r.countdownTicks) stepRace(r, NEUTRAL_INPUT);
+    const cut = insideCut(r.world);
+    expect(cut).not.toBeNull();
+    const { a, b, c, apex, l1, l2 } = cut!;
+    const before = { x: b.x + ((a.x - b.x) / l1) * 45, z: b.z + ((a.z - b.z) / l1) * 45 };
+    const after = { x: b.x + ((c.x - b.x) / l2) * 45, z: b.z + ((c.z - b.z) / l2) * 45 };
+    // Arrive on the incoming road, then take the cut across the inside of the corner.
+    r.cars[0].seg = -1;
+    driveAlong(r, [before, { x: before.x + (b.x - before.x) * 0.05, z: before.z + (b.z - before.z) * 0.05 }], 20);
+    const events = r.events.length;
+    const s0 = r.cars[0].dist;
+    const p0 = r.world.routeProgress(r.cars[0].state.x, r.cars[0].state.z);
+    let maxOff = 0;
+    const hook = r.cars[0];
+    const mid = { x: (before.x + apex.x) / 2, z: (before.z + apex.z) / 2 };
+    driveAlong(r, [r.cars[0].state, mid, apex, after], 22);
+    for (const pt of [apex]) {
+      const p = r.world.routeProgress(pt.x, pt.z);
+      maxOff = Math.max(maxOff, Math.abs(p.lateral) - r.world.route.segWidth[p.seg] / 2);
+    }
+    // The old rule would have reset here...
+    expect(maxOff).toBeGreaterThan(10);
+    // ...the new one does not, and progress follows the route without losing credit.
+    expect(r.events.slice(events).filter((e) => e.type === 'reset' && e.car === 0)).toEqual([]);
+    const p1 = r.world.routeProgress(hook.state.x, hook.state.z);
+    let ds = p1.s - p0.s;
+    if (r.world.route.closed && ds < -r.world.route.length / 2) ds += r.world.route.length;
+    expect(hook.dist - s0).toBeGreaterThan(ds - 1);
+  });
+
+  it('progress never jumps and genuinely lost cars are put back', () => {
+    const r = createRace(raceConfig(20261019, 'circuit', 0));
+    while (r.tick < r.countdownTicks) stepRace(r, NEUTRAL_INPUT);
+    const rc = r.cars[0];
+    // Drive normally for a second.
+    for (let k = 0; k < 60; k++) stepRace(r, { ...NEUTRAL_INPUT, throttle: 1 });
+    const d0 = rc.dist;
+    // Teleport 300 m ahead along the route: credit is only what a car could drive in a tick.
+    const route = r.world.route;
+    const target = route.points[Math.min(route.points.length - 1, rc.seg + 4)];
+    rc.state.x = target.x;
+    rc.state.z = target.z;
+    stepRace(r, NEUTRAL_INPUT);
+    expect(rc.dist - d0).toBeLessThan(LOST.maxJump);
+    // Far from everything for a while: reset.
+    const events = r.events.length;
+    const far = { x: r.world.graph.bounds.maxX + 400, z: r.world.graph.bounds.maxZ + 400 };
+    rc.state.x = far.x;
+    rc.state.z = far.z;
+    stepRace(r, NEUTRAL_INPUT);
+    expect(r.events.slice(events).some((e) => e.type === 'reset' && e.car === 0)).toBe(true);
   });
 });

@@ -1,5 +1,5 @@
 /**
- * Synthesized sound effects with Web Audio, no asset files:
+ * Sound effects with Web Audio. Synthesized (no asset files):
  *  - impacts: car vs car crunch, wall/barrier thud, guard rail clang, and prop
  *    breaks by kind (pole clang + glass, hollow can bang, bench crunch, big
  *    bus stop shatter). Each is rendered once into a few AudioBuffer variants
@@ -8,7 +8,11 @@
  *    to a fixed number of voices.
  *  - loops: nitrous jet whoosh (sweeping filtered noise + turbine whine) and
  *    a wall/rail scrape while a car grinds along a wall.
- *  - the horn (dual tone) and the countdown beeps.
+ *  - the horn (dual tone), the countdown beeps and firework booms.
+ * Crowd recordings (public/sfx, loaded lazily and decoded once per app):
+ *  - a looped cheering bed per crowd stand, positioned on the stand's
+ *    nearest point to the listener and swelling with the stand's excitement
+ *  - cheering + applause one-shots when the player crosses the line.
  * Render side only: reads race events and interpolated car state, never the
  * other way around. All randomness here is cosmetic (Math.random is fine).
  */
@@ -37,7 +41,7 @@ export interface SfxCar {
 }
 
 export type WallHitKind = 'wall' | 'barrier' | 'rail';
-export type SfxBank = 'crash' | WallHitKind | PropKind;
+export type SfxBank = 'crash' | WallHitKind | PropKind | 'firework';
 type Bank = SfxBank;
 
 const VARIANTS = 3;
@@ -297,6 +301,17 @@ const RECIPES: Record<Bank, { seconds: number; make(t: Tape): void }> = {
       t.grains(0.15, 0.5, 14, 0.2, 900, 2500, 2);
     },
   },
+  // Firework shell: a deep boom, a sharp crack and the crackle of the stars.
+  firework: {
+    seconds: 2.2,
+    make(t) {
+      t.thud(0, rnd(70, 85), 28, 0.08, 1, 0.32);
+      t.noise(0, 0.5, 0.75, 0.09, [['lp', 520, 0.7]]);
+      t.noise(0, 0.06, 0.45, 0.012, [['hp', 1500, 0.7]]);
+      t.noise(0.02, 1.6, 0.18, 0.6, [['lp', 260, 0.7]], 0.05);
+      t.grains(0.25, 1.6, 70, 0.32, 2500, 7500, 2.5, 0.004);
+    },
+  },
   // Bus stop: a whole glass shelter coming down.
   busStop: {
     seconds: 2.2,
@@ -530,6 +545,107 @@ class HornVoice {
   }
 }
 
+// ---------- crowd recordings ----------
+
+/** Crowd clips in public/sfx (freesound_community, see the credits screen). */
+const CROWD_FILES = { cheer: 'sfx/crowd-cheering.mp3', applause: 'sfx/applause.mp3' } as const;
+type CrowdClip = keyof typeof CROWD_FILES;
+const clipCache = new Map<CrowdClip, Promise<AudioBuffer | null>>();
+
+/**
+ * Bake a seamless loop: the last `fade` seconds are cross faded (equal power)
+ * into the head, and the result is that much shorter, so looping never clicks.
+ */
+function seamless(ctx: BaseAudioContext, buf: AudioBuffer, fade: number): AudioBuffer {
+  const f = Math.min(Math.floor(fade * buf.sampleRate), Math.floor(buf.length / 3));
+  const len = buf.length - f;
+  const out = ctx.createBuffer(buf.numberOfChannels, len, buf.sampleRate);
+  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+    const src = buf.getChannelData(ch);
+    const dst = out.getChannelData(ch);
+    dst.set(src.subarray(0, len));
+    for (let i = 0; i < f; i++) {
+      const k = i / f;
+      dst[i] = src[i] * Math.sqrt(k) + src[len + i] * Math.sqrt(1 - k);
+    }
+  }
+  return out;
+}
+
+/** Fetch and decode a crowd clip once per app (shared by every race); null if it cannot load. */
+function loadClip(ctx: AudioContext, name: CrowdClip): Promise<AudioBuffer | null> {
+  let p = clipCache.get(name);
+  if (!p) {
+    const base = import.meta.env?.BASE_URL ?? '/';
+    p = fetch(`${base}${CROWD_FILES[name]}`)
+      .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`${r.status}`))))
+      .then((b) => ctx.decodeAudioData(b))
+      .then((buf) => (name === 'cheer' ? seamless(ctx, buf, 1.2) : buf))
+      .catch(() => null);
+    clipCache.set(name, p);
+  }
+  return p;
+}
+
+/** A crowd stand (segment) and its excitement, as the crowd renderer reports it each frame. */
+export interface SfxCrowdSpot {
+  ax: number;
+  az: number;
+  bx: number;
+  bz: number;
+  /** 0 idle murmur, 1 cheering, up to ~1.5 at the finish. */
+  level: number;
+}
+
+/** Crowds are loud: their loudness falls off over a longer distance than impacts (m). */
+const CROWD_REF = 30;
+
+/** The looped cheering bed of one stand, filtered and attenuated by distance. */
+class CrowdLoop {
+  private readonly src: AudioBufferSourceNode;
+  private readonly lp: BiquadFilterNode;
+  private readonly out: GainNode;
+  private readonly panner: StereoPannerNode;
+
+  constructor(
+    private readonly ctx: AudioContext,
+    bus: AudioNode,
+    buf: AudioBuffer,
+  ) {
+    this.src = ctx.createBufferSource();
+    this.src.buffer = buf;
+    this.src.loop = true;
+    this.src.playbackRate.value = rnd(0.94, 1.04);
+    this.lp = ctx.createBiquadFilter();
+    this.lp.type = 'lowpass';
+    this.lp.frequency.value = 1200;
+    this.out = ctx.createGain();
+    this.out.gain.value = 0;
+    this.panner = ctx.createStereoPanner();
+    this.src.connect(this.lp).connect(this.out).connect(this.panner).connect(bus);
+    // Different stands start at different points of the loop so they never phase.
+    this.src.start(ctx.currentTime, Math.random() * buf.duration);
+  }
+
+  update(level: number, pos: SfxPos, paused: boolean): void {
+    const t = this.ctx.currentTime;
+    const l = Math.max(0, Math.min(1.6, level));
+    const gain = paused ? 0 : pos.proximity * (0.05 + 0.42 * l ** 1.3);
+    // Murmur sounds distant and muffled; cheering opens up the top end.
+    this.lp.frequency.setTargetAtTime(700 + 15000 * pos.proximity ** 1.2 * (0.35 + 0.65 * Math.min(1, l)), t, 0.25);
+    this.out.gain.setTargetAtTime(gain, t, paused ? 0.08 : 0.3);
+    this.panner.pan.setTargetAtTime(pos.pan, t, 0.1);
+  }
+
+  dispose(): void {
+    const t = this.ctx.currentTime;
+    this.out.gain.cancelScheduledValues(t);
+    this.out.gain.setTargetAtTime(0, t, 0.08);
+    this.src.stop(t + 0.5);
+    setTimeout(() => this.panner.disconnect(), 700);
+  }
+}
+
 // ---------- the effects player ----------
 
 const scratch: Contact[] = [];
@@ -565,6 +681,12 @@ export class Sfx {
   private readonly nitro: (NitroVoice | undefined)[] = [];
   private readonly scrape: (ScrapeLoop | undefined)[] = [];
   private hornVoice: HornVoice | null = null;
+  private crowdLoops: (CrowdLoop | undefined)[] = [];
+  private cheerBuf: AudioBuffer | null = null;
+  private applauseBuf: AudioBuffer | null = null;
+  private crowdLoading = false;
+  /** Crowd one-shots still playing (faded out on dispose). */
+  private crowdShots: GainNode[] = [];
   private lastCount: number | null = null;
   private warmTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
@@ -748,6 +870,105 @@ export class Sfx {
     }
   }
 
+  /** Start loading the crowd clips (lazy: only races with crowds call this). */
+  private loadCrowd(): void {
+    if (this.crowdLoading) return;
+    this.crowdLoading = true;
+    void loadClip(this.ctx, 'cheer').then((b) => {
+      if (!this.disposed) this.cheerBuf = b;
+    });
+    void loadClip(this.ctx, 'applause').then((b) => {
+      if (!this.disposed) this.applauseBuf = b;
+    });
+  }
+
+  /** Loudness and pan of a crowd stand: from its nearest point to the listener. */
+  private crowdAt(s: { ax: number; az: number; bx: number; bz: number }): SfxPos {
+    const l = this.listener;
+    const dx = s.bx - s.ax;
+    const dz = s.bz - s.az;
+    const len2 = dx * dx + dz * dz;
+    const t = len2 > 1e-6 ? clamp01(((l.x - s.ax) * dx + (l.z - s.az) * dz) / len2) : 0;
+    const px = s.ax + dx * t - l.x;
+    const pz = s.az + dz * t - l.z;
+    const d = Math.hypot(px, pz);
+    return { proximity: 1 / (1 + (d / CROWD_REF) ** 2), pan: Math.max(-1, Math.min(1, ((px * l.rx + pz * l.rz) / Math.max(4, d)) * 0.7)) };
+  }
+
+  /**
+   * Per frame: the cheering bed of every crowd stand, louder as the listener
+   * gets close and as the stand gets excited. Pass an empty list for no crowd.
+   */
+  updateCrowds(spots: readonly SfxCrowdSpot[], paused: boolean): void {
+    if (this.disposed || !spots.length) return;
+    this.loadCrowd();
+    if (!this.cheerBuf) return;
+    for (let i = 0; i < spots.length; i++) {
+      const pos = this.crowdAt(spots[i]);
+      if (!this.crowdLoops[i]) {
+        // Far stands stay silent until the listener comes near.
+        if (pos.proximity < 0.02) continue;
+        this.crowdLoops[i] = new CrowdLoop(this.ctx, this.bus, this.cheerBuf);
+      }
+      this.crowdLoops[i]!.update(spots[i].level, pos, paused);
+    }
+  }
+
+  /**
+   * The crowd erupts at a world position (the player crossing the line):
+   * a cheering swell, plus applause when `applause` is set. strength 1 = lap,
+   * about 1.6 = finish (louder and longer).
+   */
+  crowdCheer(x: number, z: number, strength: number, applause: boolean): void {
+    if (this.disposed) return;
+    this.loadCrowd();
+    const s = Math.max(0.2, strength);
+    const pos = this.crowdAt({ ax: x, az: z, bx: x, bz: z });
+    const shot = (buf: AudioBuffer | null, level: number, hold: number, offset: number) => {
+      if (!buf || level * pos.proximity < 0.01) return;
+      const ctx = this.ctx;
+      const t = ctx.currentTime;
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.playbackRate.value = rnd(0.97, 1.03);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(level * pos.proximity, t + 0.25);
+      g.gain.setTargetAtTime(0, t + hold, 0.8);
+      const pan = ctx.createStereoPanner();
+      pan.pan.value = pos.pan;
+      src.connect(g).connect(pan).connect(this.bus);
+      const start = Math.min(offset, Math.max(0, buf.duration - hold - 4));
+      src.start(t, start);
+      src.stop(t + hold + 4);
+      this.crowdShots.push(g);
+      src.onended = () => {
+        pan.disconnect();
+        this.crowdShots = this.crowdShots.filter((x) => x !== g);
+      };
+    };
+    shot(this.cheerBuf, 0.32 * s, 2 + 2.2 * s, rnd(0, 2));
+    if (applause) shot(this.applauseBuf, 0.26 * s, 2.5 + 4 * s, rnd(0.5, 3));
+  }
+
+  /** A firework shell bursting at a world position; heard with the speed of sound delay. */
+  firework(x: number, y: number, z: number, size: number): void {
+    if (this.disposed) return;
+    const l = this.listener;
+    const d = Math.hypot(x - l.x, y - 2, z - l.z);
+    const pos: SfxPos = { proximity: 1 / (1 + (d / 60) ** 2), pan: Math.max(-1, Math.min(1, (((x - l.x) * l.rx + (z - l.z) * l.rz) / Math.max(1, d)) * 0.7)) };
+    const delay = Math.min(0.6, d / 343);
+    const level = (0.35 + 0.35 * Math.min(1.3, size)) * 0.8;
+    this.later(() => this.play('firework', level, rnd(0.85, 1.1) / Math.max(0.7, Math.min(1.3, size)) ** 0.3, pos, `fw:${Math.floor(Math.random() * 6)}`, 0), delay);
+  }
+
+  /** setTimeout that respects dispose (firework booms arrive late). */
+  private later(fn: () => void, seconds: number): void {
+    setTimeout(() => {
+      if (!this.disposed) fn();
+    }, seconds * 1000);
+  }
+
   /** Horn on/off for the player's car (centered). */
   horn(on: boolean): void {
     if (this.disposed || (!on && !this.hornVoice)) return;
@@ -790,5 +1011,12 @@ export class Sfx {
     this.nitro.forEach((n) => n?.dispose());
     this.scrape.forEach((s) => s?.dispose());
     this.hornVoice?.dispose();
+    this.crowdLoops.forEach((c) => c?.dispose());
+    this.crowdLoops = [];
+    for (const g of this.crowdShots) {
+      g.gain.cancelScheduledValues(t);
+      g.gain.setTargetAtTime(0, t, 0.1);
+    }
+    this.crowdShots = [];
   }
 }

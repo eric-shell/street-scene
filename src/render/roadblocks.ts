@@ -1,7 +1,9 @@
 /**
  * Parked car meets: side streets the racers are unlikely to hit are closed
  * with rows of parked cars behind the barrier line, hazards blinking, and the
- * long corner rails get a row or two of spectators' cars behind them. The
+ * long corner rails get a row or two of spectators' cars behind them where
+ * there is room (closed street mouths; the rails run along the building line).
+ * Open world test drives (World.openWorld) get none. The
  * cars are the real garage models (manifest `selectable`), baked once into
  * four instanced parts per model (paint, dark details + wheels, glass, lights)
  * with random paint per instance. Placement never overlaps another car,
@@ -17,6 +19,7 @@ import { buildPlaceholderCar } from './carView';
 import { resolveMaterialName } from './carMaterials';
 import { kelvin } from './textures';
 import { BarrierInfo, railCurves } from './routeArrows';
+import { RAIL } from '../sim/rails';
 
 const PAINTS = [0xc81e2e, 0x1d55c4, 0xe8e8ea, 0x15161a, 0xf2b81c, 0x2a9d5a, 0x6b2fc2, 0x9aa3ad, 0xff6a00, 0x101a3a, 0x7a0f1a].map((c) => new THREE.Color(c));
 
@@ -384,7 +387,8 @@ export function buildRoadblocks(world: World, barriers: BarrierInfo[], hazardMat
   const pickKit = () => rng.int(0, cars.length - 1);
 
   // Closed side streets: front rows of every street first so they win over the back rows of a neighbor.
-  const mouths = groupMouths(world, barriers) ?? mergeMouths(barriers);
+  // Open world test drives have no closures and no parked cars at all.
+  const mouths = world.openWorld ? [] : groupMouths(world, barriers) ?? mergeMouths(barriers);
   // Car groups: one per barrier group (indexed by Mouth.group), compacted below.
   const groupInfo: (BarrierInfo | null)[] = [];
   const groupOf = new Map<number, number>();
@@ -424,7 +428,7 @@ export function buildRoadblocks(world: World, barriers: BarrierInfo[], hazardMat
   }
 
   // Corner rails: a row or two of cars behind the rail, nose to the track.
-  for (const curve of railCurves(world)) {
+  for (const curve of world.openWorld ? [] : railCurves(world)) {
     const gi = groupCars.length;
     groupInfo.push(null);
     groupCars.push([]);
@@ -439,7 +443,9 @@ export function buildRoadblocks(world: World, barriers: BarrierInfo[], hazardMat
         const t = (s - acc) / (segLen[i] || 1);
         const px = w.ax + (w.bx - w.ax) * t;
         const pz = w.az + (w.bz - w.az) * t;
-        const depth = 3.3 + r * 5.6 + rng.range(-0.2, 0.4);
+        // Rails sit at the back of the sidewalk, so these only fit in closed street mouths;
+        // keep clear of how far a hit can shove a rail piece back.
+        const depth = RAIL.maxOffset + 2.7 + r * 5.6 + rng.range(-0.2, 0.4);
         const yaw = Math.atan2(w.nx, w.nz) + rng.range(-0.25, 0.25);
         if (rng.chance(0.12)) continue;
         park(gi, pickKit(), px - w.nx * depth, pz - w.nz * depth, yaw, false);

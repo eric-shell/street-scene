@@ -36,7 +36,7 @@ export function loadGarage(): GarageState {
   } catch {
     /* fall through to default */
   }
-  return { current: 0, slots: [freshBuild(DEFAULT_CAR_ID, 'Night Runner')] };
+  return { current: 0, slots: [freshBuild(DEFAULT_CAR_ID, 'Street Scenener')] };
 }
 
 export function saveGarage(g: GarageState): boolean {
