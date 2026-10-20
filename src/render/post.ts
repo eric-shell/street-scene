@@ -1,7 +1,13 @@
 /**
  * Post processing chain: scene (optional MSAA) -> bloom (neon) -> vignette +
- * speed radial blur -> tone mapping/sRGB output -> optional retro PS2
- * quantize + dither.
+ * speed radial blur + nitrous warp -> tone mapping/sRGB output -> optional
+ * retro PS2 quantize + dither.
+ *
+ * Nitrous warp (setNitroFx): the edges of the frame stretch outward (samples
+ * pulled toward the vanishing point, more the further out), a heat haze
+ * ripple runs out from the middle, colour fringes split at the edges, the
+ * picture saturates and the bloom strengthens. The middle of the screen stays
+ * untouched so the road ahead is always readable. NITRO_FX holds the numbers.
  *
  * Bloom stability: the stock UnrealBloomPass extracts bright pixels with one
  * bilinear tap per texel of a buffer 2x-8x smaller than the scene, with a hard
@@ -21,12 +27,26 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { CopyShader } from 'three/examples/jsm/shaders/CopyShader.js';
 
+/**
+ * Nitrous warp at full strength: edge stretch (fraction of the distance to the
+ * vanishing point), ripple (uv offset), colour fringe (uv split), saturation
+ * (1 = none) and bloom strength multiplier.
+ */
+export const NITRO_FX = { stretch: 0.2, ripple: 0.006, fringe: 0.008, saturation: 1.35, bloom: 1.45, edgeTint: 0.06 } as const;
+
 const FxShader = {
   uniforms: {
     tDiffuse: { value: null as THREE.Texture | null },
     vignette: { value: 0.35 },
     blur: { value: 0.0 },
     center: { value: new THREE.Vector2(0.5, 0.55) },
+    warp: { value: 0.0 },
+    time: { value: 0.0 },
+    stretch: { value: NITRO_FX.stretch },
+    ripple: { value: NITRO_FX.ripple },
+    fringe: { value: NITRO_FX.fringe },
+    saturation: { value: 1.0 },
+    edgeTint: { value: NITRO_FX.edgeTint },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -37,13 +57,33 @@ const FxShader = {
     uniform float vignette;
     uniform float blur;
     uniform vec2 center;
+    uniform float warp;
+    uniform float time;
+    uniform float stretch;
+    uniform float ripple;
+    uniform float fringe;
+    uniform float saturation;
+    uniform float edgeTint;
     varying vec2 vUv;
     void main() {
-      vec4 c = texture2D(tDiffuse, vUv);
+      vec2 uv = vUv;
+      vec2 dir0 = vUv - center;
+      float r0 = length(dir0 * vec2(1.25, 1.0));
+      float edge = smoothstep(0.18, 0.95, r0);
+      if (warp > 0.001) {
+        // Nitrous: pull the edge samples toward the vanishing point, so the
+        // environment there stretches outward, and ripple it like heat haze.
+        float e2 = edge * edge;
+        uv = vUv - dir0 * stretch * warp * e2;
+        float ang = atan(dir0.y, dir0.x);
+        float wave = sin(r0 * 34.0 - time * 16.0) * 0.6 + sin(ang * 9.0 + time * 7.0) * 0.4;
+        uv += normalize(dir0 + 1e-5) * wave * ripple * warp * edge;
+      }
+      vec4 c = texture2D(tDiffuse, uv);
       if (blur > 0.001) {
         // Zoom blur from the vanishing point: zero in the middle, growing
         // progressively toward the edges, streaking along the travel direction.
-        vec2 dir = vUv - center;
+        vec2 dir = uv - center;
         float r = length(dir * vec2(1.25, 1.0));
         float w = pow(smoothstep(0.12, 0.85, r), 1.6);
         vec4 acc = c;
@@ -51,10 +91,22 @@ const FxShader = {
         for (int i = 1; i < 12; i++) {
           float k = float(i) / 11.0;
           float wt = 1.0 - k * 0.5;
-          acc += texture2D(tDiffuse, vUv - dir * blur * w * k * 0.16) * wt;
+          acc += texture2D(tDiffuse, uv - dir * blur * w * k * 0.16) * wt;
           total += wt;
         }
         c = acc / total;
+      }
+      if (warp > 0.001) {
+        // Colour fringes split along the stretch at the edges.
+        vec2 f = dir0 * fringe * warp * edge;
+        c.r = mix(c.r, texture2D(tDiffuse, uv + f).r, edge);
+        c.b = mix(c.b, texture2D(tDiffuse, uv - f).b, edge);
+        // A faint cold glow creeping in from the edges.
+        c.rgb += vec3(0.25, 0.55, 1.0) * edgeTint * warp * edge * edge;
+      }
+      if (abs(saturation - 1.0) > 0.001) {
+        float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+        c.rgb = max(vec3(0.0), mix(vec3(l), c.rgb, saturation));
       }
       vec2 q = vUv - 0.5;
       float v = 1.0 - vignette * smoothstep(0.25, 0.85, length(q * vec2(1.1, 1.0)) * 1.25);
@@ -245,6 +297,9 @@ export class PostFx {
   readonly retro: ShaderPass;
   /** MSAA on a half float target needs EXT_color_buffer_float. */
   readonly msaaSupported: boolean;
+  /** Bloom strength from the quality profile; nitrous scales it up from here. */
+  private bloomBase = 0.9;
+  private nitro = 0;
 
   constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {
     const size = renderer.getSize(new THREE.Vector2());
@@ -273,7 +328,8 @@ export class PostFx {
   configure(opts: { bloom: boolean; bloomScale: number; bloomStrength: number; retro: boolean; msaa?: number }): void {
     this.bloom.enabled = opts.bloom;
     this.bloom.scale = opts.bloomScale;
-    this.bloom.strength = opts.bloomStrength;
+    this.bloomBase = opts.bloomStrength;
+    this.bloom.strength = this.bloomBase * (1 + (NITRO_FX.bloom - 1) * this.nitro);
     this.retro.enabled = opts.retro;
     // Retro mode renders a few hundred pixels tall on purpose: no MSAA there.
     this.renderPass.setSamples(this.msaaSupported && !opts.retro ? (opts.msaa ?? 0) : 0);
@@ -287,6 +343,17 @@ export class PostFx {
 
   setSpeedBlur(amount: number): void {
     this.fx.uniforms.blur.value = amount;
+  }
+
+  /** Nitrous warp amount 0..1 (eased by the caller) and the clock (s) its ripple runs on. 0 turns it all off. */
+  setNitroFx(amount: number, time: number): void {
+    const a = Math.max(0, Math.min(1, amount));
+    this.nitro = a;
+    const u = this.fx.uniforms;
+    u.warp.value = a;
+    u.time.value = time;
+    u.saturation.value = 1 + (NITRO_FX.saturation - 1) * a;
+    this.bloom.strength = this.bloomBase * (1 + (NITRO_FX.bloom - 1) * a);
   }
 
   render(dt: number): void {

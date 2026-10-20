@@ -5,7 +5,11 @@
  * the camera is pushed in front of any hit. A mouse drag orbits the chase
  * cameras around the car (and turns the head in the bumper and hood views);
  * after letting go the view eases back behind the car once it is moving
- * (ORBIT). Render only.
+ * (ORBIT). Two shake layers ride on every follow camera: a heavy one for wall
+ * and car crashes and sudden stops (crash()), a light one for knocking over
+ * street furniture (knock()). Each is "trauma" that decays linearly, shown
+ * squared through smooth noise as sway, bob and roll, so it is the same at
+ * any frame rate and small hits stay subtle. Render only.
  *
  * Every number lives in the CAMERA table (live, mutated by the camera debug
  * panel) with CAMERA_DEFAULTS as the stock values and CAMERA_PARAM_META as the
@@ -64,11 +68,16 @@ export interface CameraParams {
   common: {
     fovStiffness: number;
     driftSwingMinSpeed: number;
-    shakeX: number;
-    shakeY: number;
-    shakeDecay: number;
-    impactThreshold: number;
-    impactScale: number;
+    heavyShake: number;
+    heavyRoll: number;
+    heavyDecay: number;
+    lightShake: number;
+    lightRoll: number;
+    lightDecay: number;
+    crashMin: number;
+    crashFull: number;
+    slowdownMin: number;
+    slowdownFull: number;
     wallMinFraction: number;
     wallMargin: number;
     wallLift: number;
@@ -145,11 +154,16 @@ export const CAMERA_DEFAULTS: CameraParams = {
   common: {
     fovStiffness: 4,
     driftSwingMinSpeed: 4,
-    shakeX: 0.35,
-    shakeY: 0.25,
-    shakeDecay: 6,
-    impactThreshold: 4,
-    impactScale: 20,
+    heavyShake: 0.55,
+    heavyRoll: 4.5,
+    heavyDecay: 1.6,
+    lightShake: 0.09,
+    lightRoll: 1.2,
+    lightDecay: 3.5,
+    crashMin: 3,
+    crashFull: 16,
+    slowdownMin: 0.45,
+    slowdownFull: 3,
     wallMinFraction: 0.15,
     wallMargin: 0.08,
     wallLift: 1.5,
@@ -227,11 +241,16 @@ export const CAMERA_PARAM_META: Record<string, [number, number, number, string]>
   ...COCKPIT_META('hood'),
   'common.fovStiffness': [0.5, 20, 0.1, 'How fast the FOV eases toward its target (1/s).'],
   'common.driftSwingMinSpeed': [0, 20, 0.5, 'Speed above which the drift swing kicks in (m/s).'],
-  'common.shakeX': [0, 1.5, 0.01, 'Horizontal impact shake amplitude (m).'],
-  'common.shakeY': [0, 1.5, 0.01, 'Vertical impact shake amplitude (m).'],
-  'common.shakeDecay': [0.5, 20, 0.1, 'How fast impact shake dies out (1/s).'],
-  'common.impactThreshold': [0, 20, 0.5, 'Impact speed below which there is no shake (m/s).'],
-  'common.impactScale': [2, 60, 0.5, 'Impact speed that gives full shake (m/s).'],
+  'common.heavyShake': [0, 2, 0.01, 'Heavy shake (crashes, sudden stops): sway and bob at full trauma (m).'],
+  'common.heavyRoll': [0, 15, 0.1, 'Heavy shake roll at full trauma (deg).'],
+  'common.heavyDecay': [0.2, 10, 0.05, 'Heavy trauma lost per second (full trauma lasts 1 / this s).'],
+  'common.lightShake': [0, 0.5, 0.005, 'Light shake (props knocked over): sway and bob at full trauma (m).'],
+  'common.lightRoll': [0, 5, 0.05, 'Light shake roll at full trauma (deg).'],
+  'common.lightDecay': [0.5, 20, 0.1, 'Light trauma lost per second.'],
+  'common.crashMin': [0, 20, 0.5, 'Wall or car impact speed below which there is no heavy shake (m/s).'],
+  'common.crashFull': [2, 60, 0.5, 'Wall or car impact speed that gives full heavy trauma (m/s).'],
+  'common.slowdownMin': [0.1, 5, 0.05, 'Speed lost in one sim tick that counts as a crash (m/s; braking hard loses about 0.25).'],
+  'common.slowdownFull': [0.5, 10, 0.1, 'Speed lost in one tick that gives full heavy trauma (m/s).'],
   'common.wallMinFraction': [0, 1, 0.01, 'Closest the wall push lets the camera get, as a fraction.'],
   'common.wallMargin': [0, 0.5, 0.01, 'Gap kept in front of a wall hit, as a fraction.'],
   'common.wallLift': [0, 5, 0.05, 'How much the camera rises when a wall pushes it in (m).'],
@@ -271,7 +290,11 @@ export class ChaseCamera {
   private dirYaw = 0;
   private fov = 62;
   private initialized = false;
-  private shake = 0;
+  /** Shake trauma 0..1 of the heavy and light layers, and the noise clock (s). */
+  private heavy = 0;
+  private light = 0;
+  private shakeT = 0;
+  private readonly shakeOff = new THREE.Vector3();
   private scratch: number[] = [];
   /** Mouse orbit offsets (rad) on top of the follow direction, and the time left before they ease back (s). */
   private orbitYaw = 0;
@@ -308,14 +331,50 @@ export class ChaseCamera {
     return this.mode;
   }
 
-  bump(amount: number): void {
-    this.shake = Math.min(1, this.shake + amount);
+  /** Heavy shake: a crash into a wall, rail or car, or a sudden stop. amount 0..1 trauma (takes the larger, plus a little). */
+  crash(amount: number): void {
+    if (amount <= 0) return;
+    this.heavy = Math.min(1, Math.max(this.heavy, amount) + amount * 0.15);
   }
 
-  /** Shake from a sim impact speed (m/s), using the common thresholds. */
-  impact(speed: number): void {
+  /** Light shake: knocking over street furniture. */
+  knock(amount: number): void {
+    if (amount <= 0) return;
+    this.light = Math.min(1, Math.max(this.light, amount) + amount * 0.2);
+  }
+
+  /** Heavy trauma from a wall or car impact speed (m/s). */
+  crashAt(speed: number): void {
     const c = CAMERA.common;
-    if (speed > c.impactThreshold) this.bump(Math.min(1, speed / Math.max(0.1, c.impactScale)));
+    this.crash((speed - c.crashMin) / Math.max(0.1, c.crashFull - c.crashMin));
+  }
+
+  /** Heavy trauma from the speed lost in one sim tick (m/s). */
+  slowdown(dv: number): void {
+    const c = CAMERA.common;
+    if (dv > c.slowdownMin) this.crash(0.25 + (0.75 * (dv - c.slowdownMin)) / Math.max(0.05, c.slowdownFull - c.slowdownMin));
+  }
+
+  /**
+   * This frame's shake: an offset in camera space (x right, y up, m) and a
+   * roll (rad), from smooth noise at a low (heavy) and a high (light) band.
+   */
+  private shakeNow(dt: number): number {
+    const c = CAMERA.common;
+    this.shakeT += dt;
+    this.heavy = Math.max(0, this.heavy - dt * c.heavyDecay);
+    this.light = Math.max(0, this.light - dt * c.lightDecay);
+    const h = this.heavy * this.heavy;
+    const l = this.light * this.light;
+    const t = this.shakeT;
+    // Sums of incommensurate sines: smooth, never repeating, zero mean.
+    const n = (a: number, b: number, p: number) => 0.6 * Math.sin(t * a + p) + 0.4 * Math.sin(t * b + p * 1.7);
+    this.shakeOff.set(
+      h * c.heavyShake * n(19, 31, 0.3) + l * c.lightShake * n(47, 61, 2.1),
+      h * c.heavyShake * 0.75 * n(23, 37, 1.1) + l * c.lightShake * 0.75 * n(53, 71, 4.2),
+      0,
+    );
+    return (h * c.heavyRoll * n(13, 29, 5.3) + l * c.lightRoll * n(41, 59, 0.7)) * (Math.PI / 180);
   }
 
   update(p: CarPose, vx: number, vz: number, nitro: boolean, carLength: number, dt: number): void {
@@ -347,7 +406,11 @@ export class ChaseCamera {
       const lz = Math.cos(ly) * q.lookDistance;
       this.lookTarget.set(cam.position.x + lx, p.y + h - q.lookDrop - Math.tan(this.orbitPitch * 0.8) * q.lookDistance, cam.position.z + lz);
       cam.lookAt(this.lookTarget);
-      cam.rotateZ(-p.roll * q.rollFollow);
+      // In the car a crash jolts the view: a fraction of the sway as head movement, plus the roll.
+      const roll = this.shakeNow(dt);
+      cam.translateX(this.shakeOff.x * 0.25);
+      cam.translateY(this.shakeOff.y * 0.25);
+      cam.rotateZ(-p.roll * q.rollFollow + roll);
       this.setFov(q.fov + Math.min(q.speedFovMax, speed * q.speedFovGain) + (nitro ? q.nitroFov : 0), dt);
       this.initialized = true;
       return;
@@ -394,15 +457,17 @@ export class ChaseCamera {
     // Keep the camera out of buildings.
     const out = this.pos.clone();
     this.keepOutOfWalls(p.x, p.z, out, common.groundClearance, common.wallLift);
-    if (this.shake > 0.001) {
-      out.x += (Math.random() - 0.5) * this.shake * common.shakeX;
-      out.y += (Math.random() - 0.5) * this.shake * common.shakeY;
-      this.shake *= Math.exp(-dt * common.shakeDecay);
-    }
     cam.position.copy(out);
     cam.up.set(0, 1, 0);
     this.lookTarget.copy(this.look);
     cam.lookAt(this.look);
+    // Shake in camera space after aiming, so it sways the picture rather than re-aiming at the car.
+    const roll = this.shakeNow(dt);
+    if (roll !== 0 || this.shakeOff.x !== 0 || this.shakeOff.y !== 0) {
+      cam.translateX(this.shakeOff.x);
+      cam.translateY(this.shakeOff.y);
+      cam.rotateZ(roll);
+    }
     this.setFov(prof.fov + Math.min(prof.speedFovMax, speed * prof.speedFovGain) + (nitro ? prof.nitroFov : 0), dt);
   }
 
