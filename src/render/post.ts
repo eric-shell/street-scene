@@ -3,11 +3,13 @@
  * speed radial blur + nitrous warp -> tone mapping/sRGB output -> optional
  * retro PS2 quantize + dither.
  *
- * Nitrous warp (setNitroFx): the edges of the frame stretch outward (samples
- * pulled toward the vanishing point, more the further out), a heat haze
- * ripple runs out from the middle, colour fringes split at the edges, the
- * picture saturates and the bloom strengthens. The middle of the screen stays
- * untouched so the road ahead is always readable. NITRO_FX holds the numbers.
+ * Nitrous warp (setNitroFx): outside the middle 50% of the screen the frame
+ * turns fluid. It stretches outward (samples pulled toward the vanishing point,
+ * more the further out), flows like liquid streaming past (a moving domain
+ * warp), blurs harder toward the edges, gains contrast and saturation there
+ * and splits into colour fringes; the bloom strengthens overall. Inside the
+ * middle 50% nothing changes, so the road ahead stays readable. NITRO_FX holds
+ * the numbers.
  *
  * Bloom stability: the stock UnrealBloomPass extracts bright pixels with one
  * bilinear tap per texel of a buffer 2x-8x smaller than the scene, with a hard
@@ -28,11 +30,14 @@ import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { CopyShader } from 'three/examples/jsm/shaders/CopyShader.js';
 
 /**
- * Nitrous warp at full strength: edge stretch (fraction of the distance to the
- * vanishing point), ripple (uv offset), colour fringe (uv split), saturation
- * (1 = none) and bloom strength multiplier.
+ * Nitrous warp at full strength, all ramping from the edge of the middle 50% of
+ * the screen (`inner`, as a fraction of the half screen) to the frame edge:
+ * stretch (fraction of the distance to the vanishing point), fluid flow (uv
+ * offset of the moving domain warp), extra zoom blur at the edge (multiplier),
+ * colour fringe (uv split), saturation and contrast at the edge (1 = none),
+ * a cold edge glow, and the bloom strength multiplier (whole frame).
  */
-export const NITRO_FX = { stretch: 0.2, ripple: 0.006, fringe: 0.008, saturation: 1.35, bloom: 1.45, edgeTint: 0.06 } as const;
+export const NITRO_FX = { inner: 0.5, stretch: 0.34, flow: 0.012, blurEdge: 2.2, fringe: 0.012, saturation: 1.5, contrast: 1.35, edgeTint: 0.05, bloom: 1.45 } as const;
 
 const FxShader = {
   uniforms: {
@@ -42,10 +47,13 @@ const FxShader = {
     center: { value: new THREE.Vector2(0.5, 0.55) },
     warp: { value: 0.0 },
     time: { value: 0.0 },
+    inner: { value: NITRO_FX.inner },
     stretch: { value: NITRO_FX.stretch },
-    ripple: { value: NITRO_FX.ripple },
+    flow: { value: NITRO_FX.flow },
+    blurEdge: { value: NITRO_FX.blurEdge },
     fringe: { value: NITRO_FX.fringe },
-    saturation: { value: 1.0 },
+    saturation: { value: NITRO_FX.saturation },
+    contrast: { value: NITRO_FX.contrast },
     edgeTint: { value: NITRO_FX.edgeTint },
   },
   vertexShader: /* glsl */ `
@@ -59,54 +67,65 @@ const FxShader = {
     uniform vec2 center;
     uniform float warp;
     uniform float time;
+    uniform float inner;
     uniform float stretch;
-    uniform float ripple;
+    uniform float flow;
+    uniform float blurEdge;
     uniform float fringe;
     uniform float saturation;
+    uniform float contrast;
     uniform float edgeTint;
     varying vec2 vUv;
     void main() {
       vec2 uv = vUv;
       vec2 dir0 = vUv - center;
-      float r0 = length(dir0 * vec2(1.25, 1.0));
-      float edge = smoothstep(0.18, 0.95, r0);
-      if (warp > 0.001) {
-        // Nitrous: pull the edge samples toward the vanishing point, so the
-        // environment there stretches outward, and ripple it like heat haze.
-        float e2 = edge * edge;
-        uv = vUv - dir0 * stretch * warp * e2;
-        float ang = atan(dir0.y, dir0.x);
-        float wave = sin(r0 * 34.0 - time * 16.0) * 0.6 + sin(ang * 9.0 + time * 7.0) * 0.4;
-        uv += normalize(dir0 + 1e-5) * wave * ripple * warp * edge;
+      // Nitrous mask: 0 inside the middle 50% of the screen (an ellipse through
+      // the half way marks), ramping to 1 at the frame edge.
+      float re = length(dir0 / vec2(0.5, 0.5));
+      float m = warp > 0.001 ? smoothstep(inner, 1.05, re) : 0.0;
+      if (m > 0.0) {
+        float m2 = m * m;
+        // Stretch: pull the edge samples toward the vanishing point.
+        uv = vUv - dir0 * stretch * warp * m2;
+        // Fluid: a moving domain warp, the frame streaming past like liquid.
+        vec2 p = uv * vec2(6.0, 4.0);
+        vec2 q = vec2(sin(p.y * 1.7 + time * 3.1 + sin(p.x * 1.3 - time * 2.3)), cos(p.x * 1.9 - time * 2.7 + sin(p.y * 1.1 + time * 1.9)));
+        // Outward streaming in drifting bands (not rings), so it reads as flow.
+        float stream = sin(dot(p, vec2(0.9, 1.4)) - time * 5.0 + q.x) * 0.5 + 0.5;
+        uv += (q * 0.6 + normalize(dir0 + 1e-5) * stream) * flow * warp * m;
       }
       vec4 c = texture2D(tDiffuse, uv);
-      if (blur > 0.001) {
+      float zoom = blur * (1.0 + blurEdge * warp * m);
+      if (zoom > 0.001) {
         // Zoom blur from the vanishing point: zero in the middle, growing
-        // progressively toward the edges, streaking along the travel direction.
+        // progressively toward the edges, streaking along the travel direction
+        // (much longer at the edges under nitrous). A per pixel jitter of the
+        // taps hides the banding of long streaks.
         vec2 dir = uv - center;
         float r = length(dir * vec2(1.25, 1.0));
         float w = pow(smoothstep(0.12, 0.85, r), 1.6);
+        float jit = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) / 11.0;
         vec4 acc = c;
         float total = 1.0;
         for (int i = 1; i < 12; i++) {
-          float k = float(i) / 11.0;
+          float k = (float(i) - jit) / 11.0;
           float wt = 1.0 - k * 0.5;
-          acc += texture2D(tDiffuse, uv - dir * blur * w * k * 0.16) * wt;
+          acc += texture2D(tDiffuse, uv - dir * zoom * w * k * 0.16) * wt;
           total += wt;
         }
         c = acc / total;
       }
-      if (warp > 0.001) {
-        // Colour fringes split along the stretch at the edges.
-        vec2 f = dir0 * fringe * warp * edge;
-        c.r = mix(c.r, texture2D(tDiffuse, uv + f).r, edge);
-        c.b = mix(c.b, texture2D(tDiffuse, uv - f).b, edge);
-        // A faint cold glow creeping in from the edges.
-        c.rgb += vec3(0.25, 0.55, 1.0) * edgeTint * warp * edge * edge;
-      }
-      if (abs(saturation - 1.0) > 0.001) {
+      if (m > 0.0) {
+        // Colour fringes split along the stretch.
+        vec2 f = dir0 * fringe * warp * m;
+        c.r = mix(c.r, texture2D(tDiffuse, uv + f).r, m);
+        c.b = mix(c.b, texture2D(tDiffuse, uv - f).b, m);
         float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
-        c.rgb = max(vec3(0.0), mix(vec3(l), c.rgb, saturation));
+        // Saturation and contrast ramp in from the middle 50% to the edges only.
+        c.rgb = max(vec3(0.0), mix(vec3(l), c.rgb, 1.0 + (saturation - 1.0) * warp * m));
+        c.rgb = max(vec3(0.0), (c.rgb - 0.18) * (1.0 + (contrast - 1.0) * warp * m) + 0.18);
+        // A faint cold glow creeping in from the edges.
+        c.rgb += vec3(0.25, 0.55, 1.0) * edgeTint * warp * m * m;
       }
       vec2 q = vUv - 0.5;
       float v = 1.0 - vignette * smoothstep(0.25, 0.85, length(q * vec2(1.1, 1.0)) * 1.25);
@@ -352,7 +371,6 @@ export class PostFx {
     const u = this.fx.uniforms;
     u.warp.value = a;
     u.time.value = time;
-    u.saturation.value = 1 + (NITRO_FX.saturation - 1) * a;
     this.bloom.strength = this.bloomBase * (1 + (NITRO_FX.bloom - 1) * a);
   }
 

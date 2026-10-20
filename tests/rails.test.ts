@@ -21,6 +21,8 @@ const cross = (ax: number, az: number, bx: number, bz: number, cx: number, cz: n
 };
 
 const rails = (w: ReturnType<typeof createWorld>) => w.walls.filter((x) => x.kind === 'rail') as RailWall[];
+/** Rail groups that are closures (side streets shut by straight cyan pieces) rather than corner rails. */
+const closureGroups = (w: ReturnType<typeof createWorld>) => new Set(w.barrierGroups.map((g) => (g.walls[0] as RailWall | undefined)?.group));
 
 describe('corner rails', () => {
   it('are smooth chains of modular pieces at the back of the sidewalk', () => {
@@ -28,7 +30,9 @@ describe('corner rails', () => {
     let pieces = 0;
     for (let i = 0; i < 16; i++) {
       const w = createWorld(rng.int(0, 0x7fffffff), i % 2 ? 'sprint' : 'circuit');
-      const rs = rails(w);
+      const all = rails(w);
+      const closures = closureGroups(w);
+      const rs = all.filter((r) => !closures.has(r.group));
       const scratch: number[] = [];
       rs.forEach((r, k) => {
         const next = rs[k + 1];
@@ -54,23 +58,27 @@ describe('corner rails', () => {
           if (d < (e.sidewalk ?? 4) + 1) expect(d).toBeGreaterThan((e.sidewalk ?? 4) - ROUTE.railInset - 0.05);
         }
       });
-      // Pieces about railPieceLength long.
+      // Pieces about railPieceLength long (closure pieces are straight, and short where a closure is).
       const len = new Map<number, number>();
-      for (const r of rs) len.set(r.piece, (len.get(r.piece) ?? 0) + Math.hypot(r.bx - r.ax, r.bz - r.az));
-      for (const l of len.values()) {
+      for (const r of all) len.set(r.piece, (len.get(r.piece) ?? 0) + Math.hypot(r.bx - r.ax, r.bz - r.az));
+      for (const r of rs) {
+        const l = len.get(r.piece)!;
         expect(l).toBeGreaterThan(ROUTE.railPieceLength * 0.6);
         expect(l).toBeLessThan(ROUTE.railPieceLength * 1.5);
       }
+      for (const r of all) if (closures.has(r.group)) expect(len.get(r.piece)!).toBeLessThan(ROUTE.railPieceLength * 1.5);
       pieces += len.size;
-      // Never through a city wall, a barrier or a prop.
+      // Never through a city wall, and corner rails clear of every prop.
       const others = w.walls.filter((x) => x.kind !== 'rail');
-      for (const r of rs) {
+      for (const r of all) {
         for (const o of others) {
           if (Math.abs(o.ax - r.ax) > 80 || Math.abs(o.az - r.az) > 80) continue;
           expect(cross(r.ax, r.az, r.bx, r.bz, o.ax, o.az, o.bx, o.bz)).toBe(false);
         }
         for (const p of w.props) {
           if (Math.abs(p.x - r.ax) > 6 || Math.abs(p.z - r.az) > 6) continue;
+          // A closure may stand right beside street furniture (and takes away whatever it stands on).
+          if (closures.has(r.group)) continue;
           expect(distToSegment(p.x, p.z, r.ax, r.az, r.bx, r.bz)).toBeGreaterThan(p.radius + 0.2);
         }
       }

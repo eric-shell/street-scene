@@ -15,10 +15,19 @@ import { LOST, createRace, stepRace } from '../src/sim/race';
 import { NEUTRAL_INPUT } from '../src/sim/input';
 import { raceConfig } from './helpers';
 import { isStreetProp } from '../src/city/props';
-import { classifyBarriers } from '../src/render/routeArrows';
+import type { RailWall } from '../src/city/route';
 import { createCar, stepCar } from '../src/sim/car';
 import { getBaseTuning } from '../src/sim/tuning';
 import type { World } from '../src/city/world';
+
+/** Proper crossing of segments ab and cd. */
+function segmentsCross(a: { x: number; z: number }, b: { x: number; z: number }, c: { x: number; z: number }, d: { x: number; z: number }): boolean {
+  const den = (b.x - a.x) * (d.z - c.z) - (b.z - a.z) * (d.x - c.x);
+  if (Math.abs(den) < 1e-12) return false;
+  const t = ((c.x - a.x) * (d.z - c.z) - (c.z - a.z) * (d.x - c.x)) / den;
+  const u = ((c.x - a.x) * (b.z - a.z) - (c.z - a.z) * (b.x - a.x)) / den;
+  return t > 0 && t < 1 && u > 0 && u < 1;
+}
 
 describe('prng', () => {
   it('is deterministic and roughly uniform', () => {
@@ -136,10 +145,22 @@ describe('city generation', () => {
     expect(p.s).toBeGreaterThan(w.route.length - 40);
     const h = w.heightAt(0, 0);
     expect(Math.abs(h)).toBeLessThan(11);
-    // every side street off the route is closed by exactly one barrier group
-    const closedBy = w.route.closedStreets.map((cs) => w.barrierGroups.filter((g) => g.node === cs.node && g.edges.includes(cs.edge)).length);
-    expect(closedBy.every((k) => k === 1)).toBe(true);
-    expect(w.walls.filter((x) => x.kind === 'barrier').length).toBe(w.route.closedStreets.length);
+    // Every side street off the route is closed: by exactly one closure group, or by the corner rail running across its mouth.
+    const railCrosses = (cs: { edge: number; node: number }) => {
+      const e = w.graph.edges[cs.edge];
+      const n = w.graph.nodes[cs.node];
+      const f = w.graph.nodes[e.a === cs.node ? e.b : e.a];
+      const l = Math.hypot(f.x - n.x, f.z - n.z);
+      const end = { x: n.x + ((f.x - n.x) / l) * Math.min(40, l), z: n.z + ((f.z - n.z) / l) * Math.min(40, l) };
+      return w.walls.some((r) => r.kind === 'rail' && segmentsCross(n, end, { x: r.ax, z: r.az }, { x: r.bx, z: r.bz }));
+    };
+    for (const cs of w.route.closedStreets) {
+      const groups = w.barrierGroups.filter((g) => g.node === cs.node && g.edges.includes(cs.edge)).length;
+      expect(groups === 1 || (groups === 0 && railCrosses(cs))).toBe(true);
+    }
+    // There are no yellow barrier walls any more: closures are cyan rail pieces.
+    expect(w.walls.filter((x) => x.kind === 'barrier').length).toBe(0);
+    for (const g of w.barrierGroups) for (const r of g.walls) expect(r.kind).toBe('rail');
   });
 
   it('corner rails and barriers never cross the route across 100 seeds', () => {
@@ -166,7 +187,7 @@ describe('city generation', () => {
     expect(rails).toBeGreaterThan(500);
   });
 
-  it('barrier groups never overlap and cover every barrier wall', () => {
+  it('closures are cyan rail pieces that never cross other rails, head-on ones further back', () => {
     const rng = new Rng(31);
     const cross = (a: { x: number; z: number }, b: { x: number; z: number }, c: { x: number; z: number }, d: { x: number; z: number }) => {
       const den = (b.x - a.x) * (d.z - c.z) - (b.z - a.z) * (d.x - c.x);
@@ -181,38 +202,36 @@ describe('city generation', () => {
     let sideDepth = 0;
     for (let i = 0; i < 40; i++) {
       const w = createWorld(rng.int(0, 0x7fffffff), i % 2 ? 'sprint' : 'circuit');
-      const bars = w.walls.filter((x) => x.kind === 'barrier');
-      const rails = w.walls.filter((x) => x.kind === 'rail');
-      for (const b of bars) {
-        expect(w.barrierGroups[b.group!].walls).toContain(b);
-        for (const o of bars.concat(rails)) {
-          if (o === b) continue;
-          expect(cross({ x: b.ax, z: b.az }, { x: b.bx, z: b.bz }, { x: o.ax, z: o.az }, { x: o.bx, z: o.bz })).toBe(false);
-          // Ends of different groups never nearly touch (those would have been merged), unless two
-          // closures sealed across one corner pocket meet exactly in a V there.
-          if (o.kind === 'barrier' && o.group !== b.group) {
-            for (const [x, z] of [[b.ax, b.az], [b.bx, b.bz]]) {
-              const d = Math.min(Math.hypot(x - o.ax, z - o.az), Math.hypot(x - o.bx, z - o.bz));
-              if (d > 1e-6) expect(d).toBeGreaterThan(2.9);
-            }
-          }
-        }
-      }
+      const rails = w.walls.filter((x) => x.kind === 'rail') as RailWall[];
+      const closureIds = new Set<number>();
       for (const g of w.barrierGroups) {
-        expect(g.walls.length).toBe(g.edges.length);
+        expect(g.walls.length).toBeGreaterThanOrEqual(g.edges.length);
+        const id = (g.walls[0] as RailWall).group;
+        closureIds.add(id);
+        for (const r of g.walls as RailWall[]) {
+          expect(r.kind).toBe('rail');
+          expect(r.group).toBe(id);
+          expect(w.walls).toContain(r);
+        }
         expect(Math.hypot(g.nx, g.nz)).toBeCloseTo(1, 6);
         expect(g.depth).toBeGreaterThanOrEqual(0);
-      }
-      // Head-on closures (straight ahead of the incoming road) stand further back than side ones.
-      for (const b of classifyBarriers(w)) {
-        const n = w.graph.nodes[b.node];
-        const d = Math.hypot(b.x - n.x, b.z - n.z);
-        if (b.headOn) {
+        // Head-on closures (straight ahead of the incoming road) stand further back than side ones.
+        const n = w.graph.nodes[g.node];
+        const d = Math.hypot(g.x - n.x, g.z - n.z);
+        if (g.headOn) {
           headOn++;
           headOnDepth += d;
         } else {
           side++;
           sideDepth += d;
+        }
+      }
+      // No closure piece crosses another rail piece, corner or closure.
+      for (const b of rails) {
+        if (!closureIds.has(b.group)) continue;
+        for (const o of rails) {
+          if (o === b || Math.abs(o.ax - b.ax) > 60 || Math.abs(o.az - b.az) > 60) continue;
+          expect(cross({ x: b.ax, z: b.az }, { x: b.bx, z: b.bz }, { x: o.ax, z: o.az }, { x: o.bx, z: o.bz })).toBe(false);
         }
       }
     }
@@ -224,7 +243,9 @@ describe('city generation', () => {
     const rng = new Rng(12);
     for (let i = 0; i < 30; i++) {
       const w = createWorld(rng.int(0, 0x7fffffff), i % 2 ? 'sprint' : 'circuit');
-      const rails = w.walls.filter((x) => x.kind === 'rail');
+      // Corner rails only: closures are straight rail pieces across side streets.
+      const closures = new Set(w.barrierGroups.map((g) => (g.walls[0] as RailWall).group));
+      const rails = w.walls.filter((x) => x.kind === 'rail' && !closures.has(x.group!));
       rails.forEach((r, k) => {
         // One connected chain per rail.
         const next = rails[k + 1];

@@ -642,7 +642,7 @@ export class RaceSession {
     // Props mirror the sim's broken flags; fresh breaks come apart pushed by the nearest car.
     this.night.props.update(this.paused ? 0 : dt, this.time, r.brokenProps, this.curr);
     // Progressive edge blur: grows with speed, much stronger while boosting (eased in and out).
-    const target = this.settings.radialBlur && !this.paused ? Math.max(0, Math.min(1, (p.speed - 25) / 45)) * 0.4 + (p.nitro ? 0.75 : 0) : 0;
+    const target = this.settings.radialBlur && !this.paused ? Math.max(0, Math.min(1, (p.speed - 25) / 45)) * 0.4 + (p.nitro ? 1 : 0) : 0;
     this.blur += (target - this.blur) * (1 - Math.exp(-dt * (target > this.blur ? 6 : 3)));
     this.gr.post.setSpeedBlur(this.blur);
     // Nitrous warp: in fast, out a little slower; follows the speed blur setting, off in the drone and while paused.

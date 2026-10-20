@@ -1,14 +1,12 @@
 /**
  * Spectator crowds. At the start and finish: rows of low poly people lining
- * the sidewalks along the outer edge, and standing behind closure barriers
- * and corner rails near the line. Everywhere else on the route: a section of
- * spectators behind every closure barrier and every corner rail with room
- * behind it, standing between the wall and the parked cars (CROWD_STRIP;
- * roadblocks.ts parks behind them). Never on the route. One InstancedMesh
+ * the sidewalks along the outer edge. Everywhere else on the route: the crowd
+ * of every street meet (meetPlan.ts), packed against the cyan barrier and
+ * thinning back among the parked cars. Never on the route. One InstancedMesh
  * per stand (a single merged person with optional phone / flag / glowstick
- * that the vertex shader hides per instance); sections far from the camera
- * are not drawn, and density, rows and draw distance follow the graphics
- * quality.
+ * that the vertex shader hides per instance) plus a few-box stand-in drawn
+ * instead beyond LOD_NEAR; sections past the draw distance are not drawn at
+ * all, and density and draw distance follow the graphics quality.
  *
  * Animation is all in the vertex shader: idle sway and bounce, arms up,
  * jumping and waving scaled by one float per instance ("excitement"),
@@ -21,9 +19,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { World } from '../city/world';
-import type { Wall } from '../city/blocks';
-import { RAIL } from '../sim/rails';
-import { railCurves } from './routeArrows';
+import type { MeetPlan } from './meetPlan';
 import { CITY } from '../city/config';
 import { Rng } from '../sim/prng';
 import { routeSample } from '../city/route';
@@ -63,11 +59,8 @@ export interface CrowdOptions {
   density?: number;
   /** Rows on the sidewalk (1 to 3). */
   rows?: number;
-  /** Sections behind every closure and corner rail (default on; never in an open world). */
-  sections?: boolean;
-  /** People per meter scale of the sections (default 0.7 * density) and their rows (1 or 2). */
-  sectionDensity?: number;
-  sectionRows?: number;
+  /** The street meets whose crowds become the sections (none in an open world). */
+  meet?: MeetPlan;
   /** Sections further than this from the camera are not drawn (m). */
   drawDistance?: number;
 }
@@ -92,6 +85,10 @@ export interface Crowds {
 
 /** Cars the shader steps away from (player + three opponents). */
 const MAX_CARS = 4;
+/** Stands further than this from the camera (m, from their edge) draw the few-box stand-in instead. */
+const LOD_NEAR = 70;
+/** A meet with fewer people than this gets no stand. */
+const SECTION_MIN = 6;
 /** A racer this close excites people (m). */
 const CHEER_RADIUS = 17;
 /** Cheer waves travel along the stands at this speed (m/s). */
@@ -144,6 +141,27 @@ function personGeometry(): THREE.BufferGeometry {
   const geo = mergeGeometries(parts)!;
   parts.forEach((g) => g.dispose());
   // Arms up and jumping reach above the rest pose.
+  geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 1.1, 0), 1.9);
+  return geo;
+}
+
+/** The far stand-in: legs, a torso as wide as the arms and a head (36 triangles instead of about 190). */
+function litePersonGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const add = (w: number, h: number, d: number, x: number, y: number, z: number, mat: number) => {
+    const g = new THREE.BoxGeometry(w, h, d).translate(x, y, z);
+    g.deleteAttribute('uv');
+    const n = g.attributes.position.count;
+    g.setAttribute('aPart', new THREE.Float32BufferAttribute(new Float32Array(n).fill(0), 1));
+    g.setAttribute('aMat', new THREE.Float32BufferAttribute(new Float32Array(n).fill(mat), 1));
+    g.setAttribute('aItem', new THREE.Float32BufferAttribute(new Float32Array(n).fill(0), 1));
+    parts.push(g);
+  };
+  add(0.34, 0.84, 0.2, 0, 0.42, 0, 1);
+  add(0.62, 0.62, 0.25, 0, 1.12, 0, 0);
+  add(0.22, 0.27, 0.23, 0, 1.6, 0.005, 2);
+  const geo = mergeGeometries(parts)!;
+  parts.forEach((g) => g.dispose());
   geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 1.1, 0), 1.9);
   return geo;
 }
@@ -258,17 +276,6 @@ function crowdMaterial(uniforms: { uTime: { value: number }; uCars: { value: THR
 // Placement
 // ---------------------------------------------------------------------------
 
-/**
- * Depth (m) behind a closure barrier or a corner rail (plus how far a hit may
- * shove a rail piece) that the spectators take; parked cars start behind it
- * (roadblocks.ts), so people stand between the wall and the cars.
- */
-export const CROWD_STRIP = 1.9;
-/** Rows behind a section's wall (m behind it); rails add RAIL.maxOffset. */
-const SECTION_ROWS = [0.55, 1.15];
-/** A section with fewer people than this is dropped; a section never holds more than SECTION_CAP. */
-const SECTION_MIN = 6;
-const SECTION_CAP = 170;
 /** Gate stands are thinned to this many people at density 1. */
 const GATE_CAP = 1100;
 
@@ -343,7 +350,7 @@ function thin(out: Spot[], cap: number): Spot[] {
   return keep;
 }
 
-/** The start / finish crowd: sidewalk rows along the route near the line, and people behind its barriers and rails. */
+/** The start / finish crowd: sidewalk rows along the route near the line (the meets stand behind its barriers). */
 function placeGate(world: World, gate: CrowdGate, rng: Rng, density: number, rows: number, placer: Placer): Spot[] {
   const route = world.route;
   const L = route.length;
@@ -405,11 +412,7 @@ function placeGate(world: World, gate: CrowdGate, rng: Rng, density: number, row
       if (-(w.nx * rp.tz - w.nz * rp.tx) * lside < 0.8) continue;
       depths = sidewalkRows.map((d) => -d);
       sidewalk = true;
-    } else {
-      // Closure barriers and corner rails: on the spectator side, before the parked cars.
-      if (Math.abs(rp.lateral) > half + 40) continue;
-      depths = w.kind === 'barrier' ? SECTION_ROWS.slice() : SECTION_ROWS.map((d) => d + RAIL.maxOffset);
-    }
+    } else continue; // Behind the barriers and rails near the line stands the street meet (meetPlan.ts).
     const dx = (w.bx - w.ax) / (len || 1);
     const dz = (w.bz - w.az) / (len || 1);
     depths.forEach((depth, row) => {
@@ -426,38 +429,14 @@ function placeGate(world: World, gate: CrowdGate, rng: Rng, density: number, row
   return thin(out, Math.round(GATE_CAP * Math.max(0.2, density)));
 }
 
-/** A section of spectators lining one closure or corner rail on its far side, in front of the parked cars. */
-function placeSection(world: World, walls: readonly Wall[], rng: Rng, density: number, rows: number, placer: Placer): Spot[] {
-  const out: Spot[] = [];
-  const spacing = 0.7 / Math.max(0.2, density);
-  for (const w of walls) {
-    const len = Math.hypot(w.bx - w.ax, w.bz - w.az);
-    if (len < 0.3) continue;
-    const dx = (w.bx - w.ax) / len;
-    const dz = (w.bz - w.az) / len;
-    const depths = (w.kind === 'rail' ? SECTION_ROWS.map((d) => d + RAIL.maxOffset) : SECTION_ROWS).slice(0, Math.max(1, Math.min(2, rows)));
-    depths.forEach((depth, row) => {
-      for (let u = rng.range(0, spacing) + (row % 2) * spacing * 0.5; u < len; u += spacing * rng.range(0.85, 1.25)) {
-        if (rng.next() < 0.14) continue;
-        const along = u + rng.range(-0.1, 0.1);
-        const back = depth + rng.range(-0.08, 0.08);
-        const x = w.ax + dx * along - w.nx * back;
-        const z = w.az + dz * along - w.nz * back;
-        if (!placer.ok(x, z)) continue;
-        placer.take(x, z);
-        out.push({ x, y: groundY(world, x, z), z, yaw: Math.atan2(w.nx, w.nz) + rng.range(-0.4, 0.4), ds: 0, side: 0 });
-      }
-    });
-  }
-  return thin(out, Math.round(SECTION_CAP * Math.max(0.3, density)));
-}
-
 // ---------------------------------------------------------------------------
 
 interface Stand {
   /** The gate this stand cheers for, or null for a section (closure or corner). */
   gate: CrowdGate | null;
   mesh: THREE.InstancedMesh;
+  /** The far stand-in, sharing the instance data. */
+  lite: THREE.InstancedMesh;
   excite: THREE.InstancedBufferAttribute;
   x: Float32Array;
   z: Float32Array;
@@ -481,6 +460,7 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
   const drawDistance = opts.drawDistance ?? 260;
   const rng = new Rng((world.seed ^ 0xc40d) >>> 0);
   const geo = personGeometry();
+  const liteGeo = litePersonGeometry();
   const uniforms = { uTime: { value: 0 }, uCars: { value: Array.from({ length: MAX_CARS }, () => new THREE.Vector4(1e6, 1e6, 0, 0)) } };
   const mat = crowdMaterial(uniforms);
   const stands: Stand[] = [];
@@ -545,12 +525,28 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
       cx += p.x;
       cz += p.z;
     });
-    g.setAttribute('iShirt', new THREE.InstancedBufferAttribute(shirt, 3));
-    g.setAttribute('iData', new THREE.InstancedBufferAttribute(data, 4));
+    const iShirt = new THREE.InstancedBufferAttribute(shirt, 3);
+    const iData = new THREE.InstancedBufferAttribute(data, 4);
+    g.setAttribute('iShirt', iShirt);
+    g.setAttribute('iData', iData);
     g.setAttribute('iExcite', excite);
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
     group.add(mesh);
+    // The stand-in shares the instance buffers, so excitement and placement stay in step.
+    const gl = new THREE.BufferGeometry();
+    for (const name of Object.keys(liteGeo.attributes)) gl.setAttribute(name, liteGeo.attributes[name]);
+    gl.setIndex(liteGeo.index);
+    gl.boundingSphere = liteGeo.boundingSphere!.clone();
+    gl.setAttribute('iShirt', iShirt);
+    gl.setAttribute('iData', iData);
+    gl.setAttribute('iExcite', excite);
+    const lite = new THREE.InstancedMesh(gl, mat, n);
+    lite.name = mesh.name + 'Far';
+    lite.instanceMatrix = mesh.instanceMatrix;
+    lite.boundingSphere = mesh.boundingSphere?.clone() ?? null;
+    lite.visible = false;
+    group.add(lite);
     cx /= n;
     cz /= n;
     let radius = 0;
@@ -561,29 +557,29 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
       if (e.lo > e.hi) e.a = e.b = [cx, cz];
       spots.push({ ax: e.a[0], az: e.a[1], bx: e.b[0], bz: e.b[1], level: 0, kind: gate ? 'gate' : 'section' });
     }
-    stands.push({ gate, mesh, excite, x, z, ds, spot, cx, cz, radius, waves: [], maxE: 0, spot0 });
+    stands.push({ gate, mesh, lite, excite, x, z, ds, spot, cx, cz, radius, waves: [], maxE: 0, spot0 });
     total += n;
   };
 
-  // Gates first: their stands claim the spots near the line, sections fill in the rest.
+  // The meets' crowds are planned already (meetPlan.ts): the gate stands keep clear of them.
+  const meetZones = world.openWorld ? [] : (opts.meet?.zones ?? []);
+  for (const zone of meetZones) for (const p of zone.people) placer.take(p.x, p.z);
   for (const gate of gates) {
     const people = placeGate(world, gate, rng, density, rows, placer);
     if (people.length) addStand(gate, people);
   }
-  if (opts.sections !== false && !world.openWorld) {
-    const sectionDensity = opts.sectionDensity ?? density * 0.7;
-    const sectionRows = opts.sectionRows ?? 2;
-    const sections: Wall[][] = [...(world.barrierGroups ?? []).map((g) => g.walls), ...railCurves(world)];
-    for (const walls of sections) {
-      const people = placeSection(world, walls, rng, sectionDensity, sectionRows, placer);
-      if (people.length >= SECTION_MIN) addStand(null, people);
-    }
+  for (const zone of meetZones) {
+    if (zone.people.length < SECTION_MIN) continue;
+    addStand(
+      null,
+      zone.people.map((p) => ({ x: p.x, y: p.y, z: p.z, yaw: p.yaw, ds: 0, side: 0 })),
+    );
   }
 
   // The menu backdrop never calls update(): keep the idle animation going from the render clock.
   let externalAt = -1;
   if (stands.length) {
-    stands[0].mesh.onBeforeRender = () => {
+    stands[0].mesh.onBeforeRender = stands[0].lite.onBeforeRender = () => {
       if (externalAt < 0 || performance.now() - externalAt > 500) uniforms.uTime.value = performance.now() / 1000;
     };
   }
@@ -618,9 +614,13 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
     const down = 1 - Math.exp(-dt * 0.8);
     const r2 = CHEER_RADIUS * CHEER_RADIUS;
     for (const cr of stands) {
-      // Sections far from the camera are not drawn (gates always are: the cinematics look at them).
+      // Sections far from the camera are not drawn (gates always are: the cinematics look at them);
+      // beyond LOD_NEAR the few-box stand-in is drawn instead.
       const camD = Math.hypot(lx - cr.cx, lz - cr.cz) - cr.radius;
-      cr.mesh.visible = !!cr.gate || camD < drawDistance;
+      const shown = !!cr.gate || camD < drawDistance;
+      const near = camD < LOD_NEAR;
+      cr.mesh.visible = shown && near;
+      cr.lite.visible = shown && !near;
       // Drop finished waves.
       for (let w = cr.waves.length - 1; w >= 0; w--) {
         const wv = cr.waves[w];
@@ -697,8 +697,11 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
       for (const c of stands) {
         c.mesh.geometry.dispose();
         c.mesh.dispose();
+        c.lite.geometry.dispose();
+        c.lite.dispose();
       }
       geo.dispose();
+      liteGeo.dispose();
       mat.dispose();
     },
   };

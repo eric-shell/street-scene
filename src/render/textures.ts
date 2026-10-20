@@ -1,6 +1,6 @@
 /**
  * Procedural canvas textures: asphalt, building facades and windows, neon
- * sign atlas, glow sprites, barrier stripes, and the night environment map.
+ * sign atlas, glow sprites, and the night environment map.
  * Render-side only, so plain Math.random is fine here, but we use a seeded
  * generator anyway so the city looks the same for the same seed.
  */
@@ -213,25 +213,6 @@ export function makeRadialGlow(): THREE.Texture {
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, S, S);
   return tex(c, false, false);
-}
-
-export function makeBarrierTexture(): THREE.Texture {
-  const W = 256;
-  const H = 64;
-  const [c, ctx] = canvas(W, H);
-  ctx.fillStyle = '#111';
-  ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = '#ffcc00';
-  for (let i = -2; i < 10; i++) {
-    ctx.beginPath();
-    const x = i * 32;
-    ctx.moveTo(x, H);
-    ctx.lineTo(x + 16, H);
-    ctx.lineTo(x + 16 + H / 2, 0);
-    ctx.lineTo(x + H / 2, 0);
-    ctx.fill();
-  }
-  return tex(c);
 }
 
 export function makeCheckerTexture(): THREE.Texture {

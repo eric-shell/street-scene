@@ -127,10 +127,11 @@ function cafeFrameGeo(): THREE.BufferGeometry {
   cyl(s, 0, 0, 0, 0.72, 0.035, 0.035, 6, alu);
   cyl(s, 0, 0, 0.72, 0.76, 0.38, 0.38, 10, col(0xe6e6e2));
   cyl(s, 0, 0, 0.76, 2.25, 0.025, 0.025, 6, alu);
+  // Bistro chairs: seat, back and two sled frames (one box each side instead of four legs).
   for (const side of [-1, 1]) {
     const x = side * 0.62;
     box(s, x, 0.45, 0, 0.42, 0.04, 0.42, alu, false);
-    for (const [lx, lz] of [[-0.18, -0.18], [0.18, -0.18], [-0.18, 0.18], [0.18, 0.18]]) box(s, x + lx, 0.22, lz, 0.03, 0.44, 0.03, alu);
+    for (const lz of [-0.19, 0.19]) box(s, x, 0.22, lz, 0.38, 0.44, 0.025, alu);
     box(s, x + side * 0.2, 0.72, 0, 0.03, 0.5, 0.4, alu, false);
   }
   return s.build();
