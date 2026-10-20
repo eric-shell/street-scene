@@ -87,8 +87,11 @@ const MEET = {
   carFirst: 4.7,
   carRow: 5.4,
   carSlot: 2.9,
-  /** Share of slots filled per row, front to back: densest where the crowd thins. */
-  carFill: [0.85, 0.72, 0.55, 0.4, 0.28, 0.2],
+  /**
+   * Share of slots filled per row, front to back: densest where the crowd thins, and the rows from
+   * the third back together sparser than the first, so a deep meet still reads front heavy.
+   */
+  carFill: [0.85, 0.72, 0.4, 0.24, 0.14, 0.06],
   /** A closure's meet stops this short of the far end of its street; a corner rail's reaches this far. */
   closureEndClear: 3,
   cornerDepth: 16,
@@ -98,6 +101,8 @@ const MEET = {
   /** People and cars keep this far from a route shortcut's sidewalks (m). */
   shortcutClear: 2.5,
   peopleCap: 340,
+  /** Steepest ground (rise per run) a car parks on: people stand on the river's banks, cars do not. */
+  carMaxGrade: 0.18,
 } as const;
 
 /** Surfaces a meet may stand on (block interiors are 'offroad', the river 'water'). */
@@ -189,9 +194,16 @@ export function planMeets(world: World, opts: MeetOptions): MeetPlan {
   };
   const contacts: Contact[] = [];
   const route = world.route;
-  /** Open ground: on a street, sidewalk, plaza or lawn, off the course, clear of walls, buildings and everything placed. */
-  const free = (x: number, z: number, r: number): boolean => {
+  /**
+   * Open ground: on a street, sidewalk, plaza or lawn, off the course, clear of walls, buildings and
+   * everything placed. `flat` (parked cars) also rules out the river's sloped banks.
+   */
+  const free = (x: number, z: number, r: number, flat = false): boolean => {
     if (!GROUND.has(world.surfaceAt(x, z))) return false;
+    if (flat) {
+      const sl = world.slopeAt(x, z);
+      if (sl.gx * sl.gx + sl.gz * sl.gz > MEET.carMaxGrade * MEET.carMaxGrade) return false;
+    }
     const rp = world.routeProgress(x, z);
     const beyondEnds = !route.closed && (rp.s < 0.5 || rp.s > route.length - 0.5);
     if (!beyondEnds && Math.abs(rp.lateral) < route.segWidth[rp.seg] / 2 + CITY.sidewalk + MEET.routeClear + r) return false;
@@ -218,7 +230,10 @@ export function planMeets(world: World, opts: MeetOptions): MeetPlan {
   const closureDepth = new Map<number, number>();
   for (const g of world.barrierGroups ?? []) {
     const id = (g.walls[0] as RailWall | undefined)?.group;
-    if (id !== undefined) closureDepth.set(id, g.depth);
+    if (id === undefined) continue;
+    // Behind a closure across a river ramp the trench climbs away: the meet stays near its foot.
+    const steep = g.edges.some((e) => world.graph.edges[e].kind === 'ramp');
+    closureDepth.set(id, steep ? Math.min(g.depth, MEET.cornerDepth + MEET.closureEndClear) : g.depth);
   }
   const d0 = RAIL.maxOffset;
 
@@ -255,7 +270,7 @@ export function planMeets(world: World, opts: MeetOptions): MeetPlan {
         const fx = Math.sin(yaw);
         const fz = Math.cos(yaw);
         let ok = true;
-        for (let k = -1; k <= 1 && ok; k++) ok = free(x + fx * off * k, z + fz * off * k, rad);
+        for (let k = -1; k <= 1 && ok; k++) ok = free(x + fx * off * k, z + fz * off * k, rad, true);
         if (!ok) continue;
         for (let k = -1; k <= 1; k++) taken.add(x + fx * off * k, z + fz * off * k, rad);
         zone.cars.push(plan.cars.length);

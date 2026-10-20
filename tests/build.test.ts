@@ -134,10 +134,12 @@ describe('performance upgrades', () => {
   });
 
   it('an upgraded car covers more ground in the same race time', () => {
+    // A minute of racing: long enough to include straights, where the upgrade tells (the first few
+    // hundred meters of a sprint can be corner after corner, where the autopilot's cornering speed rules).
     const run = (perf: PerformanceBuild) => {
       const r = createRace(raceConfig(5150, 'sprint', 0, perf));
       const pilot = createAi(7, 1);
-      for (let i = 0; i < 60 * 30; i++) stepRace(r, autopilotInput(r, r.cars[0], pilot));
+      for (let i = 0; i < 60 * 60; i++) stepRace(r, autopilotInput(r, r.cars[0], pilot));
       return r.cars[0].dist;
     };
     expect(run(allTier(3))).toBeGreaterThan(run(stockPerformance()) + 50);

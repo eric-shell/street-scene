@@ -18,7 +18,7 @@ import { Rng } from '../../sim/prng';
 import type { DistrictModule } from './types';
 import type { PropKind } from '../props';
 import { emptyBuild } from './types';
-import { circlePolygon, distToPolygonEdge, pointInPolygon, polyWalls, polygonArea, polygonBounds, smooth01 } from './geom';
+import { circlePolygon, distToPolygonEdge, pointInPolygon, polygonArea, polygonBounds, smooth01, solidWalls } from './geom';
 
 const CFG = CITY.districts.park;
 
@@ -152,7 +152,7 @@ export const parkModule: DistrictModule = {
     const trees: { x: number; z: number }[] = [];
     const addTree = (tx: number, tz: number) => {
       trees.push({ x: tx, z: tz });
-      b.walls.push(...polyWalls(circlePolygon(tx, tz, CFG.treeRadius, 6), false, 'tree', id));
+      b.walls.push(...solidWalls(circlePolygon(tx, tz, CFG.treeRadius, 6), 'tree', id));
       b.props.push({ kind: 'tree', x: tx, z: tz, yaw: rnd() * 6.28, size: 2.2 + rnd() * 1.6, height: 5 + rnd() * 4, area: id });
     };
     // The wood: a random spot at least its radius inside the edge (none in a park too small for it).

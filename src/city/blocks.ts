@@ -10,10 +10,13 @@
  * there is no wall; where a district draws it (bridge parapets, planters) it
  * takes that look; any other gap is a void. Void runs are handed to the late
  * district modules (infill: lots, plazas, planters, fountains), and what is
- * left becomes a low 'boundary' wall that the infill renderer draws.
+ * left becomes a low 'boundary' wall that the infill renderer draws. The
+ * river's channel and ramp edges are not streets: no curbs, sidewalks,
+ * buildings or furniture, and the frontage along them is open ground (the
+ * river's own trench and bank walls are the collision there).
  */
 import { CITY } from './config';
-import { RoadGraph, RoadEdge, RoadNode, edgeAngleFrom, otherNode, sectorAngle } from './roadGraph';
+import { RoadGraph, RoadEdge, RoadNode, edgeAngleFrom, isRiverEdge, otherNode, sectorAngle } from './roadGraph';
 import { SpatialGrid } from './spatial';
 import { Terrain } from './terrain';
 import { Prop, edgeSides, generateProps, lightStations } from './props';
@@ -50,6 +53,19 @@ export interface Wall {
   look?: WallLook;
   /** Area (CityDistricts.areas id) that owns the wall, if any. */
   area?: number;
+  /**
+   * Small convex solids (tree trunks, El pillars and stairs, plaza fountains): the solid this
+   * segment is a face of, shared by all its faces (consecutive walls). The sim collides with the
+   * solid as a whole (World.collideCircle), not with each one sided face: a face's 3 m anti
+   * tunnelling band reaches right through anything thinner than that and would shove a car out of
+   * the far side, then back, every tick.
+   */
+  solid?: Solid;
+}
+
+/** A small convex solid: its faces with outward unit normals, in order around it. */
+export interface Solid {
+  faces: { ax: number; az: number; bx: number; bz: number; nx: number; nz: number }[];
 }
 
 export interface Sector {
@@ -510,8 +526,8 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
   };
 
   g.edges.forEach((e, ei) => {
-    // Back alleys run between the backs of the street buildings.
-    if (e.kind === 'backAlley') return;
+    // Back alleys run between the backs of the street buildings; the river's edges are not streets.
+    if (e.kind === 'backAlley' || isRiverEdge(e)) return;
     const m = mouths[ei];
     const a = g.nodes[e.a];
     const b = g.nodes[e.b];
@@ -575,6 +591,8 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
     for (const id of bscratch) if (insideBuilding(buildings[id], x, z, margin)) return true;
     return false;
   };
+  /** Nodes on the river's channel or a ramp: their sector corners are open ground too. */
+  const riverNode = g.nodes.map((n) => n.edges.some((eid) => isRiverEdge(g.edges[eid])));
   /** Per face, per ring segment: sample classes. */
   const classes: Int16Array[][] = faces.map((f) =>
     f.ring.map((p, i) => {
@@ -583,6 +601,12 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
       const n = Math.max(1, Math.round(len / FRONT_STEP));
       const out = new Int16Array(n);
       if (len < 1e-6) return out;
+      // Along a channel or ramp edge, or around a corner of one: the river draws its own walls there.
+      const se = f.segEdge[i];
+      if (se >= 0 ? isRiverEdge(g.edges[se]) : riverNode[f.vertNode[i]]) {
+        out.fill(OPEN);
+        return out;
+      }
       // Into the block: right of travel.
       const rx = (q.z - p.z) / len;
       const rz = -(q.x - p.x) / len;
@@ -763,7 +787,7 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
   // Streetlights on the sidewalk just behind the curb, staggered per side.
   const streetlights: Streetlight[] = [];
   g.edges.forEach((e, ei) => {
-    if (e.kind === 'backAlley') return;
+    if (e.kind === 'backAlley' || isRiverEdge(e)) return;
     for (const side of edgeSides(g, mouths, ei)) {
       const along = sub(side.to, side.from);
       const len = sqrt(along.x * along.x + along.z * along.z);

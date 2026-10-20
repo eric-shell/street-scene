@@ -1,7 +1,7 @@
 /**
  * Minimap: a round, heading-up map canvas centred on a viewpoint, drawing the
  * district layers (AREA_MAP_STYLE), the street network, the route with its
- * shortcuts (purple dashes), closures and car markers. The race HUD centres it on the player's car; the drone
+ * shortcuts (dim pink dashes), closures and car markers. The race HUD centres it on the player's car; the drone
  * centres it on itself with a view cone and a north mark, and zooms out as it
  * climbs, so the same map serves both. The Path2D layers are built once per
  * world, so a frame is a handful of strokes. Render only.
@@ -15,8 +15,8 @@ const INK = {
   face: rgba('bg0', 0.78),
   road: rgba('muted', 0.24),
   route: PALETTE.orange,
-  /** Route shortcuts: the back alleys the route opens. */
-  shortcut: PALETTE.purple,
+  /** Route shortcuts: the back alleys the route opens, a dim pink that is there when looked for, not a second route. */
+  shortcut: rgba('red', 0.42),
   closure: PALETTE.yellow,
   rival: PALETTE.red,
   ghost: rgba('purple', 0.85),
@@ -183,11 +183,9 @@ export class Minimap {
       c.setLineDash(l.style.dash ?? []);
       c.stroke(l.path);
     }
-    // Shortcuts under the route line, so their dashes start where the alley leaves it.
+    // Shortcuts under the route line, so their dashes start where the alley leaves it; no glow.
     c.strokeStyle = INK.shortcut;
-    c.shadowColor = INK.shortcut;
-    c.shadowBlur = 5;
-    c.lineWidth = Math.max(6, 3.2 * px);
+    c.lineWidth = Math.max(4, 2.2 * px);
     c.setLineDash([4 * px, 3 * px]);
     c.stroke(this.shortcuts);
     c.setLineDash([]);

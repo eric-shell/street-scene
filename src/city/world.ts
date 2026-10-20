@@ -4,15 +4,15 @@
  * (seed, route kind) and never mutated afterwards.
  */
 import { CITY, ROUTE } from './config';
-import { CityBlocks, Wall, generateBlocks } from './blocks';
-import { RoadGraph, generateRoadGraph } from './roadGraph';
+import { CityBlocks, Solid, Wall, generateBlocks } from './blocks';
+import { RoadGraph, edgeBetween, generateRoadGraph } from './roadGraph';
 import { BarrierGroup, RailWall, Route, RouteKind, buildRoute, findCircuitNodes, findSprintNodes, routeBarrierGroups, routeRails } from './route';
 import { Prop, buildPropGrid } from './props';
 import { SpatialGrid } from './spatial';
 import { Terrain, createTerrain } from './terrain';
 import { cos, distToSegment, segmentT, sin, sqrt } from '../sim/math';
 import { CityDistricts, planDistricts } from './districts';
-import { carveRouteShortcuts, hasShortcutSpot } from './districts/alley';
+import { carveRouteShortcuts, hasShortcutSpot, qualifiedCount } from './districts/alley';
 
 /** Routes tried (the first pick, then alternatives) until one has room for a shortcut. */
 const ROUTE_TRIES = 12;
@@ -77,21 +77,54 @@ export function planRoads(seed: number): { graph: RoadGraph; districts: CityDist
   const districts = planDistricts(seed, graph, {
     topology(ctx) {
       // A route with no room for a shortcut (one wrapped around the river, say) is swapped for the
-      // next alternative that has one; after ROUTE_TRIES the first pick stands.
-      const pick = (find: (variant: number) => number[], closed: boolean, others: { nodes: number[]; closed: boolean }[]) => {
-        const first = { nodes: find(0), closed };
-        for (let v = 1; v < ROUTE_TRIES && !hasShortcutSpot(ctx, first, others); v++) {
-          const alt = { nodes: find(v), closed };
-          if (hasShortcutSpot(ctx, alt, others)) return alt;
+      // next alternative that has one: alternatives that still dive into the channel first, then
+      // routes picked without the river preference, since on the rare seed that cannot have both a
+      // shortcut on every route outranks the dive; after ROUTE_TRIES each way the first pick stands.
+      const pick = (find: (variant: number, prefer: boolean) => number[], closed: boolean, others: { nodes: number[]; closed: boolean }[]) => {
+        const first = { nodes: find(0, true), closed };
+        if (hasShortcutSpot(ctx, first, others)) return first;
+        for (const prefer of [true, false]) {
+          for (let v = 1; v < ROUTE_TRIES; v++) {
+            const alt = { nodes: find(v, prefer), closed };
+            if (hasShortcutSpot(ctx, alt, others)) return alt;
+          }
         }
         return first;
       };
+      // With a river, routes that dive into the channel are preferred (see findCircuitNodes).
+      const g = ctx.graph;
+      const hasChannel = g.edges.some((e) => e.kind === 'channel');
+      const dives = (nodes: number[], closed: boolean) => {
+        const m = closed ? nodes.length : nodes.length - 1;
+        for (let i = 0; i < m; i++) {
+          const e = edgeBetween(g, nodes[i], nodes[(i + 1) % nodes.length]);
+          if (e >= 0 && g.edges[e].kind === 'channel') return true;
+        }
+        return false;
+      };
+      // Anchors: feet of side ramps (one ramp and the channel both ways), ford feet when there are none.
+      const feet = (ford: boolean) => g.nodes.filter((nd) => nd.edges.some((e) => g.edges[e].kind === 'channel') && nd.edges.filter((e) => g.edges[e].kind === 'ramp').length === (ford ? 2 : 1)).map((nd) => nd.id);
+      const anchors = feet(false).length ? feet(false) : feet(true);
+      const preferCircuit = hasChannel ? { prefer: (nodes: number[]) => dives(nodes, true), anchors } : undefined;
+      const preferSprint = hasChannel ? { prefer: (nodes: number[]) => dives(nodes, false), anchors } : undefined;
       // The circuit is checked against the first sprint pick (whose start and finish it must keep clear).
-      const firstSprint = { nodes: findSprintNodes(ctx.graph, seed), closed: false };
-      const circuit = pick((v) => findCircuitNodes(ctx.graph, seed, v), true, [firstSprint]);
-      const sprint = pick((v) => (v ? findSprintNodes(ctx.graph, seed, v) : firstSprint.nodes), false, [circuit]);
+      const firstSprint = { nodes: findSprintNodes(g, seed, 0, preferSprint), closed: false };
+      const circuit = pick((v, p) => findCircuitNodes(g, seed, v, p ? preferCircuit : undefined), true, [firstSprint]);
+      const sprint = pick((v, p) => (v ? findSprintNodes(g, seed, v, p ? preferSprint : undefined) : firstSprint.nodes), false, [circuit]);
       carveRouteShortcuts(ctx, [circuit, sprint]);
-      routeNodes = { circuit: circuit.nodes, sprint: sprint.nodes };
+      // A route left without a cut (the other route's cuts took its only spot) is re-picked on the
+      // carved graph and carved again, the other route kept clear as before.
+      let sprint2 = sprint;
+      let circuit2 = circuit;
+      if (!qualifiedCount(g, sprint2)) {
+        sprint2 = pick((v, p) => findSprintNodes(g, seed, v, p ? preferSprint : undefined), false, [circuit2]);
+        carveRouteShortcuts(ctx, [circuit2, sprint2]);
+      }
+      if (!qualifiedCount(g, circuit2)) {
+        circuit2 = pick((v, p) => findCircuitNodes(g, seed, v, p ? preferCircuit : undefined), true, [sprint2]);
+        carveRouteShortcuts(ctx, [circuit2, sprint2]);
+      }
+      routeNodes = { circuit: circuit2.nodes, sprint: sprint2.nodes };
     },
   });
   if (!routeNodes) throw new Error('routes were not planned');
@@ -323,11 +356,59 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
   const edgeGrid = blocks.edgeGrid;
   const scratch: number[] = [];
 
+  /**
+   * Circle against a small convex solid as one body: from outside, pushed off the nearest point
+   * of its outline; from inside, out through the nearest face. Never toward the far side.
+   */
+  function collideSolid(s: Solid, kind: Wall['kind'], x: number, z: number, r: number, out: Contact[]): void {
+    let best = -Infinity;
+    let bi = 0;
+    for (let i = 0; i < s.faces.length; i++) {
+      const f = s.faces[i];
+      const sd = (x - f.ax) * f.nx + (z - f.az) * f.nz;
+      if (sd > best) {
+        best = sd;
+        bi = i;
+      }
+    }
+    if (best >= r) return;
+    if (best <= 0) {
+      const f = s.faces[bi];
+      out.push({ nx: f.nx, nz: f.nz, depth: r - best, px: x - f.nx * best, pz: z - f.nz * best, kind });
+      return;
+    }
+    let d2 = Infinity;
+    let px = 0;
+    let pz = 0;
+    for (const f of s.faces) {
+      const t = segmentT(x, z, f.ax, f.az, f.bx, f.bz);
+      const cx = f.ax + (f.bx - f.ax) * t;
+      const cz = f.az + (f.bz - f.az) * t;
+      const e2 = (x - cx) ** 2 + (z - cz) ** 2;
+      if (e2 < d2) {
+        d2 = e2;
+        px = cx;
+        pz = cz;
+      }
+    }
+    const d = sqrt(d2);
+    if (d >= r || d < 1e-9) return;
+    out.push({ nx: (x - px) / d, nz: (z - pz) / d, depth: r - d, px, pz, kind });
+  }
+
   function collideCircle(x: number, z: number, r: number, out: Contact[]): number {
     out.length = 0;
     wallGrid.query(x - r - 3, z - r - 3, x + r + 3, z + r + 3, scratch);
+    // A solid's faces are consecutive walls and the query is in ascending id order, so they come
+    // up one after another: the solid is handled once, at the first of them.
+    let lastSolid: Solid | undefined;
     for (const id of scratch) {
       const w = walls[id];
+      if (w.solid) {
+        if (w.solid !== lastSolid) collideSolid(w.solid, w.kind, x, z, r, out);
+        lastSolid = w.solid;
+        continue;
+      }
       const t = segmentT(x, z, w.ax, w.az, w.bx, w.bz);
       const cx = w.ax + (w.bx - w.ax) * t;
       const cz = w.az + (w.bz - w.az) * t;

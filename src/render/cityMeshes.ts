@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { CITY } from '../city/config';
 import { World } from '../city/world';
+import { isRiverEdge } from '../city/roadGraph';
 import { Vec2 } from '../sim/math';
 import { GeoBuilder } from './geoBuilder';
 import { buildFinishLines, FinishLines } from './finishLine';
@@ -46,6 +47,10 @@ export interface CityMeshOptions {
 
 const ROAD_Y = 0.02;
 const MARK_Y = 0.045;
+/** Curb faces reach this far below the ground (m), under the road's edge. */
+const CURB_FOOT = 0.08;
+/** Junction fans wider than this (m, roundabouts, flared shortcut mouths) are cut into rings about this far apart, so they drape. */
+const FAN_STEP = 7;
 /**
  * Roads and cobbles glow faintly sodium orange, scaled by their own texture:
  * the streetlights' spill between their pools, so no street goes black far
@@ -114,18 +119,37 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
   };
   const g = world.graph;
   const { sectors, mouths } = world.blocks;
+  // The river draws its channel floor and ramps itself (render/districts/river.ts): no asphalt, markings,
+  // curbs or sidewalks on its edges, nor at the nodes that only join them.
+  const riverOnly = g.nodes.map((n) => n.edges.every((eid) => isRiverEdge(g.edges[eid])));
   g.nodes.forEach((n, ni) => {
+    if (riverOnly[ni]) return;
     const ring: Vec2[] = [];
     for (const s of sectors[ni]) for (const p of s.curb) ring.push(p);
     const c = addGroundVertex(road, n.x, n.z, ROAD_Y, 10);
-    const ids = ring.map((p) => addGroundVertex(road, p.x, p.z, ROAD_Y, 10));
-    for (let i = 0; i < ids.length; i++) road.triFacing(c, ids[i], ids[(i + 1) % ids.length], 0, 1, 0);
+    let reach = 0;
+    for (const p of ring) reach = Math.max(reach, Math.hypot(p.x - n.x, p.z - n.z));
+    // Concentric rings out to the curb (the last one is the curb ring itself), so a wide fan drapes.
+    const bands = Math.max(1, Math.ceil(reach / FAN_STEP));
+    let inner: number[] = [];
+    for (let j = 1; j <= bands; j++) {
+      const t = j / bands;
+      const ids = ring.map((p) => addGroundVertex(road, n.x + (p.x - n.x) * t, n.z + (p.z - n.z) * t, ROAD_Y, 10));
+      for (let i = 0; i < ids.length; i++) {
+        const k = (i + 1) % ids.length;
+        if (j === 1) road.triFacing(c, ids[i], ids[k], 0, 1, 0);
+        else road.quadFacing(inner[i], ids[i], ids[k], inner[k], 0, 1, 0);
+      }
+      inner = ids;
+    }
   });
-  // A strip between two polylines (each given as start/end points), subdivided along its length
-  // (every 6 m; back alleys every 1 m so road and sidewalk follow their kicker humps).
-  const strip = (gb: GeoBuilder, l0: Vec2, l1: Vec2, r0: Vec2, r1: Vec2, liftL: number, liftR: number, uvScale: number, step = 6) => {
+  // A strip between two lines (each given as start/end points), subdivided along its length (every
+  // 6 m; back alleys every 1 m so road and sidewalk follow their kicker humps). An edge passes one
+  // step count (edgeSteps) to its road, both sidewalks and both curb faces, so they share vertices
+  // along the curb lines and stay joined over crests and dips.
+  const strip = (gb: GeoBuilder, l0: Vec2, l1: Vec2, r0: Vec2, r1: Vec2, liftL: number, liftR: number, uvScale: number, step = 6, count?: number) => {
     const len = Math.max(Math.hypot(l1.x - l0.x, l1.z - l0.z), Math.hypot(r1.x - r0.x, r1.z - r0.z));
-    const steps = Math.max(1, Math.ceil(len / step));
+    const steps = count ?? Math.max(1, Math.ceil(len / step));
     let prevL = -1;
     let prevR = -1;
     for (let i = 0; i <= steps; i++) {
@@ -142,15 +166,25 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     }
   };
   const stepOf = (ei: number) => (g.edges[ei].kind === 'backAlley' ? 1 : 6);
+  /** Pieces along an edge: its longest curb or building line over its step. */
+  const edgeSteps = (ei: number) => {
+    const m = mouths[ei];
+    const len = Math.max(
+      Math.hypot(m.bP.curb.x - m.aP.curb.x, m.bP.curb.z - m.aP.curb.z),
+      Math.hypot(m.bN.curb.x - m.aN.curb.x, m.bN.curb.z - m.aN.curb.z),
+      Math.hypot(m.bP.outer.x - m.aP.outer.x, m.bP.outer.z - m.aP.outer.z),
+      Math.hypot(m.bN.outer.x - m.aN.outer.x, m.bN.outer.z - m.aN.outer.z),
+    );
+    return Math.max(1, Math.ceil(len / stepOf(ei)));
+  };
   // Alleys (raceway alleys, back alleys, route shortcuts) are cobbled curb to curb between their
   // mouths, matching the sim's 'cobble' surface patches; the junction fans stay asphalt. Their UVs
   // run along and across the strip so the stones follow the alley.
   const cobbled = (ei: number) => g.edges[ei].kind === 'alley' || g.edges[ei].kind === 'backAlley';
   const cobble = new GeoBuilder();
-  const alignedStrip = (gb: GeoBuilder, l0: Vec2, l1: Vec2, r0: Vec2, r1: Vec2, lift: number, uvScale: number, step: number) => {
+  const alignedStrip = (gb: GeoBuilder, l0: Vec2, l1: Vec2, r0: Vec2, r1: Vec2, lift: number, uvScale: number, steps: number) => {
     const len = Math.max(Math.hypot(l1.x - l0.x, l1.z - l0.z), Math.hypot(r1.x - r0.x, r1.z - r0.z));
     const across = Math.hypot(r0.x - l0.x, r0.z - l0.z) / uvScale;
-    const steps = Math.max(1, Math.ceil(len / step));
     let prevL = -1;
     let prevR = -1;
     for (let i = 0; i <= steps; i++) {
@@ -169,10 +203,11 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
       prevR = vr;
     }
   };
-  g.edges.forEach((_, ei) => {
+  g.edges.forEach((e, ei) => {
+    if (isRiverEdge(e)) return;
     const m = mouths[ei];
-    if (cobbled(ei)) alignedStrip(cobble, m.aP.curb, m.bP.curb, m.aN.curb, m.bN.curb, ROAD_Y, COBBLE_TILE, stepOf(ei));
-    else strip(road, m.aP.curb, m.bP.curb, m.aN.curb, m.bN.curb, ROAD_Y, ROAD_Y, 10, stepOf(ei));
+    if (cobbled(ei)) alignedStrip(cobble, m.aP.curb, m.bP.curb, m.aN.curb, m.bN.curb, ROAD_Y, COBBLE_TILE, edgeSteps(ei));
+    else strip(road, m.aP.curb, m.bP.curb, m.aN.curb, m.bN.curb, ROAD_Y, ROAD_Y, 10, 6, edgeSteps(ei));
   });
   const roadMesh = new THREE.Mesh(track(road.build()), roadMat);
   roadMesh.name = 'roads';
@@ -227,6 +262,7 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     }
   };
   g.edges.forEach((e, ei) => {
+    if (isRiverEdge(e)) return;
     // No lane lines or crosswalk stripes on cobbles.
     if (cobbled(ei)) return;
     const m = mouths[ei];
@@ -270,34 +306,52 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
   // ---------- Sidewalks and curbs ----------
   const walk = new GeoBuilder();
   const curbH = CITY.curbHeight;
-  const curbFace = (p: Vec2, q: Vec2) => {
-    const yp = h(p.x, p.z);
-    const yq = h(q.x, q.z);
+  /**
+   * Curb face from p to q in `steps` pieces, draped like the strips beside it (a single quad would
+   * run straight through crests and sink under the road). Its foot reaches a little below the road
+   * so no slit opens where the road's and the sidewalk's interpolations differ.
+   */
+  const curbFace = (p: Vec2, q: Vec2, steps = 1) => {
     const dx = q.x - p.x;
     const dz = q.z - p.z;
     const l = Math.hypot(dx, dz) || 1;
     // normal faces away from the sidewalk; caller passes points so either side works
     const nx = dz / l;
     const nz = -dx / l;
-    const v0 = walk.vertex(p.x, yp + ROAD_Y, p.z, nx, 0, nz, 0, 0);
-    const v1 = walk.vertex(q.x, yq + ROAD_Y, q.z, nx, 0, nz, l / 4, 0);
-    const v2 = walk.vertex(q.x, yq + curbH, q.z, nx, 0, nz, l / 4, 0.05);
-    const v3 = walk.vertex(p.x, yp + curbH, p.z, nx, 0, nz, 0, 0.05);
-    walk.quad(v0, v1, v2, v3);
-    walk.quad(v0, v3, v2, v1); // both windings: curbs are seen from the road only, cheap enough
+    let lo = -1;
+    let hi = -1;
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const x = p.x + dx * t;
+      const z = p.z + dz * t;
+      const y = h(x, z);
+      const b = walk.vertex(x, y - CURB_FOOT, z, nx, 0, nz, (l * t) / 4, 0);
+      const top = walk.vertex(x, y + curbH, z, nx, 0, nz, (l * t) / 4, 0.05);
+      if (i > 0) {
+        walk.quad(lo, b, top, hi);
+        walk.quad(lo, hi, top, b); // both windings: curbs are seen from the road only, cheap enough
+      }
+      lo = b;
+      hi = top;
+    }
   };
-  g.edges.forEach((_, ei) => {
+  g.edges.forEach((e, ei) => {
+    if (isRiverEdge(e)) return;
     const m = mouths[ei];
-    strip(walk, m.aP.curb, m.bP.curb, m.aP.outer, m.bP.outer, curbH, curbH, 4, stepOf(ei));
-    strip(walk, m.aN.curb, m.bN.curb, m.aN.outer, m.bN.outer, curbH, curbH, 4, stepOf(ei));
-    curbFace(m.aP.curb, m.bP.curb);
-    curbFace(m.aN.curb, m.bN.curb);
+    const n = edgeSteps(ei);
+    strip(walk, m.aP.curb, m.bP.curb, m.aP.outer, m.bP.outer, curbH, curbH, 4, 6, n);
+    strip(walk, m.aN.curb, m.bN.curb, m.aN.outer, m.bN.outer, curbH, curbH, 4, 6, n);
+    curbFace(m.aP.curb, m.bP.curb, n);
+    curbFace(m.aN.curb, m.bN.curb, n);
   });
   g.nodes.forEach((_, ni) => {
+    if (riverOnly[ni]) return;
     for (const s of sectors[ni]) {
       for (let i = 0; i + 1 < s.curb.length; i++) {
-        strip(walk, s.curb[i], s.curb[i + 1], s.outer[i], s.outer[i + 1], curbH, curbH, 4);
-        curbFace(s.curb[i], s.curb[i + 1]);
+        const len = Math.max(Math.hypot(s.curb[i + 1].x - s.curb[i].x, s.curb[i + 1].z - s.curb[i].z), Math.hypot(s.outer[i + 1].x - s.outer[i].x, s.outer[i + 1].z - s.outer[i].z));
+        const n = Math.max(1, Math.ceil(len / 6));
+        strip(walk, s.curb[i], s.curb[i + 1], s.outer[i], s.outer[i + 1], curbH, curbH, 4, 6, n);
+        curbFace(s.curb[i], s.curb[i + 1], n);
       }
     }
   });

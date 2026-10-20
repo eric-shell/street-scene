@@ -4,10 +4,11 @@
  * into the city for it, see districts/alley.ts) and closes off side streets.
  */
 import { CITY, ROUTE } from './config';
-import { RoadGraph, edgeBetween, otherNode } from './roadGraph';
-import { EdgeMouths, Sector, Wall, computeMouths, computeSectors, makeWall } from './blocks';
+import { RoadGraph, edgeBetween, isRiverEdge, otherNode } from './roadGraph';
+import { EdgeMouths, Sector, Wall, buildEdgeGrid, computeMouths, computeSectors, corridorClearance, makeWall } from './blocks';
 import { Rng, deriveSeed } from '../sim/prng';
 import { shortcutSpan } from './districts/alley';
+import { isChannelNode } from './districts/river';
 import { DEG, Vec2, abs, atan2, clamp, cos, distToSegment, lineIntersectT, sign, sin, sqrt, wrapAngle, yawOf } from '../sim/math';
 
 export type RouteKind = 'circuit' | 'sprint';
@@ -158,9 +159,9 @@ function pathLength(g: RoadGraph, nodes: number[], closed: boolean): number {
 function randomWeights(g: RoadGraph, rng: Rng): Float64Array {
   const w = new Float64Array(g.edges.length);
   g.edges.forEach((e, i) => {
-    // Favor the wide fast roads a little so routes have long straights, and raceway alleys so
-    // more races squeeze through one.
-    const kindBias = e.kind === 'boulevard' ? 0.7 : e.kind === 'diagonal' ? 0.75 : e.kind === 'avenue' ? 0.85 : e.kind === 'alley' ? 0.78 : 1;
+    // Favor the wide fast roads a little so routes have long straights, raceway alleys so more races
+    // squeeze through one, and the river channel most of all: a race that can dive in, does.
+    const kindBias = e.kind === 'boulevard' ? 0.7 : e.kind === 'diagonal' ? 0.75 : e.kind === 'avenue' ? 0.85 : e.kind === 'alley' ? 0.78 : e.kind === 'channel' ? ROUTE.channelBias : 1;
     const r = rng.range(0.45, 1.9);
     // Back alley shortcuts are never part of a route (Infinity is never relaxed).
     w[i] = e.shortcut ? Infinity : e.length * kindBias * r;
@@ -178,15 +179,34 @@ function score(stats: CornerStats, len: number, minLen: number, maxLen: number):
   return s;
 }
 
+/**
+ * What the finders would rather pick (planRoads: a route that dives into the
+ * river channel). The search goes on past acceptable routes until it finds
+ * one `prefer` likes, and settles for the best plain route only when none
+ * liked comes within ROUTE.preferSlack of it. Every other attempt starts
+ * from one of the `anchors` (the feet of the river's side ramps): a path
+ * leaving a foot by its ramp can only come back along the channel.
+ */
+export interface RoutePreference {
+  prefer: (nodes: number[]) => boolean;
+  anchors: number[];
+}
+
 /** `variant` > 0 draws an alternative circuit from its own random stream (planRoads uses it when a circuit has no room for a shortcut). */
-export function findCircuitNodes(g: RoadGraph, seed: number, variant = 0): number[] {
+export function findCircuitNodes(g: RoadGraph, seed: number, variant = 0, want?: RoutePreference): number[] {
   const rng = new Rng(deriveSeed(seed, variant ? `circuit:${variant}` : 'circuit'));
   let best: number[] | null = null;
   let bestScore = -Infinity;
+  let preferred: number[] | null = null;
+  let preferredScore = -Infinity;
+  const prefer = want?.prefer;
+  const anchors = want?.anchors ?? [];
   const n = g.nodes.length;
-  for (let attempt = 0; attempt < ROUTE.maxAttempts; attempt++) {
+  // Looking for a liked route takes more tries: two in three start from an anchor.
+  const attempts = prefer ? ROUTE.maxAttempts * 2 : ROUTE.maxAttempts;
+  for (let attempt = 0; attempt < attempts; attempt++) {
     const w = randomWeights(g, rng);
-    const a = rng.int(0, n - 1);
+    const a = anchors.length && attempt % 3 ? anchors[rng.int(0, anchors.length - 1)] : rng.int(0, n - 1);
     const b = rng.int(0, n - 1);
     const A = g.nodes[a];
     const B = g.nodes[b];
@@ -210,24 +230,36 @@ export function findCircuitNodes(g: RoadGraph, seed: number, variant = 0): numbe
       bestScore = sc;
       best = cycle;
     }
-    if (sc >= 0) break;
+    const liked = !!prefer && prefer(cycle);
+    if (liked && sc > preferredScore) {
+      preferredScore = sc;
+      preferred = cycle;
+    }
+    if (sc >= 0 && (!prefer || liked)) break;
   }
+  if (preferred && preferredScore >= bestScore - ROUTE.preferSlack) return preferred;
   if (!best) throw new Error('could not find a circuit');
   return best;
 }
 
 /** `variant` > 0 draws an alternative sprint from its own random stream (see findCircuitNodes). */
-export function findSprintNodes(g: RoadGraph, seed: number, variant = 0): number[] {
+export function findSprintNodes(g: RoadGraph, seed: number, variant = 0, want?: RoutePreference): number[] {
   const rng = new Rng(deriveSeed(seed, variant ? `sprint:${variant}` : 'sprint'));
   const n = g.nodes.length;
   const span = sqrt((g.bounds.maxX - g.bounds.minX) ** 2 + (g.bounds.maxZ - g.bounds.minZ) ** 2);
   let best: number[] | null = null;
   let bestScore = -Infinity;
-  for (let attempt = 0; attempt < ROUTE.maxAttempts; attempt++) {
+  let preferred: number[] | null = null;
+  let preferredScore = -Infinity;
+  const prefer = want?.prefer;
+  const anchors = want?.anchors ?? [];
+  const attempts = prefer ? ROUTE.maxAttempts * 2 : ROUTE.maxAttempts;
+  for (let attempt = 0; attempt < attempts; attempt++) {
     const w = randomWeights(g, rng);
     const a = rng.int(0, n - 1);
     const b = rng.int(0, n - 1);
-    const via = rng.int(0, n - 1);
+    // Through a ramp foot: the leg in by the ramp forces the leg out along the channel, or vice versa.
+    const via = anchors.length && attempt % 3 ? anchors[rng.int(0, anchors.length - 1)] : rng.int(0, n - 1);
     const A = g.nodes[a];
     const B = g.nodes[b];
     if (sqrt((A.x - B.x) ** 2 + (A.z - B.z) ** 2) < span * 0.4) continue;
@@ -243,9 +275,10 @@ export function findSprintNodes(g: RoadGraph, seed: number, variant = 0): number
     const p2 = dijkstra(g, via, b, w, blocked, new Uint8Array(g.edges.length));
     if (!p2) continue;
     const p = p1.concat(p2.slice(1));
-    // The first edge hosts the start grid, so it has to be long and straight enough.
+    // The first edge hosts the start grid, so it has to be long and straight enough; grid and
+    // finish stay on streets, never in the river channel or on a ramp.
     const first = g.edges[edgeBetween(g, p[0], p[1])];
-    if (first.length < 90) continue;
+    if (first.length < 90 || isRiverEdge(first) || isRiverEdge(g.edges[edgeBetween(g, p[p.length - 2], p[p.length - 1])])) continue;
     const len = pathLength(g, p, false);
     const stats = cornerStats(g, p, false);
     if (stats.maxTurn > ROUTE.maxTurnDeg && best) continue;
@@ -254,8 +287,14 @@ export function findSprintNodes(g: RoadGraph, seed: number, variant = 0): number
       bestScore = sc;
       best = p;
     }
-    if (sc >= 0) break;
+    const liked = !!prefer && prefer(p);
+    if (liked && sc > preferredScore) {
+      preferredScore = sc;
+      preferred = p;
+    }
+    if (sc >= 0 && (!prefer || liked)) break;
   }
+  if (preferred && preferredScore >= bestScore - ROUTE.preferSlack) return preferred;
   if (!best) throw new Error('could not find a sprint');
   return best;
 }
@@ -277,10 +316,13 @@ export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[]):
   const nodePoint = new Map<number, number>();
 
   if (closed) {
-    // Start line in the middle of the longest straight.
+    // Start line in the middle of the longest straight that is a street (the grid, gantries and
+    // crowds belong on one, not on the river's floor or a ramp).
     let li = 0;
     edges.forEach((e, i) => {
-      if (g.edges[e].length > g.edges[edges[li]].length) li = i;
+      const river = isRiverEdge(g.edges[e]);
+      const riverBest = isRiverEdge(g.edges[edges[li]]);
+      if ((!river && riverBest) || (river === riverBest && g.edges[e].length > g.edges[edges[li]].length)) li = i;
     });
     nodes = nodes.slice(li + 1).concat(nodes.slice(0, li + 1));
     edges = polylineFrom(g, nodes, true);
@@ -357,18 +399,28 @@ export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[]):
   }
 
   // Shortcuts: back alleys joining two points of the route that save distance stay open (both ends);
-  // any other back alley at a route junction is closed off like a side street.
+  // any other back alley at a route junction is closed off like a side street. The saving is judged
+  // along the streets node to node, as the planner that carved the cut judged it: the driving polyline
+  // rounds every corner, which could reject a cut the planner accepted. sIn / sOut are polyline
+  // distances, the ones race progress uses.
+  const nodeCum: number[] = [0];
+  for (let i = 0; i < edges.length; i++) nodeCum.push(nodeCum[i] + g.edges[edges[i]].length);
+  const nodeTotal = nodeCum[edges.length];
+  const nodeS = new Map<number, number>();
+  nodes.forEach((id, i) => nodeS.set(id, nodeCum[i]));
   const open = new Set<number>();
   for (const e of g.edges) {
     if (!e.shortcut) continue;
     const ia = nodePoint.get(e.a);
     const ib = nodePoint.get(e.b);
-    if (ia === undefined || ib === undefined) continue;
-    const span = shortcutSpan(cum[ia], cum[ib], e.length, length, closed, startS, finishS);
+    const na = nodeS.get(e.a);
+    const nb = nodeS.get(e.b);
+    if (ia === undefined || ib === undefined || na === undefined || nb === undefined) continue;
+    const span = shortcutSpan(na, nb, e.length, nodeTotal, closed, closed ? 0 : startS, closed ? nodeTotal : nodeTotal - (length - finishS));
     if (!span) continue;
     const A = g.nodes[span.aFirst ? e.a : e.b];
     const B = g.nodes[span.aFirst ? e.b : e.a];
-    route.shortcuts.push({ edge: e.id, ax: A.x, az: A.z, bx: B.x, bz: B.z, sIn: span.sIn, sOut: span.sOut, length: e.length });
+    route.shortcuts.push({ edge: e.id, ax: A.x, az: A.z, bx: B.x, bz: B.z, sIn: cum[span.aFirst ? ia : ib], sOut: cum[span.aFirst ? ib : ia], length: e.length });
     open.add(e.id);
   }
   const onRoute = new Set(edges);
@@ -543,11 +595,16 @@ function mouthBarrier(g: RoadGraph, mouths: EdgeMouths[], edge: number, node: nu
     const room = dl - d - far0;
     d += Math.max(0, Math.min(setback, (room - ROUTE.barrierMinRoom) / 2));
   }
-  const half = e.width / 2 + e.sidewalk;
+  // Across a channel the closure runs fence to fence (the banks are drivable), a hair short of the
+  // fence walls; across a ramp, a hair short of its trench walls.
+  const half = e.kind === 'channel' ? e.width / 2 + CITY.districts.river.channelMargin + CITY.districts.river.bankWidth + 0.2 : e.kind === 'ramp' ? e.width / 2 - 0.3 : e.width / 2 + e.sidewalk;
+  // Past the plinths of the ramps meeting at a foot, so the closure never cuts a plinth face.
+  if (e.kind === 'channel' && n.edges.some((id) => g.edges[id].kind === 'ramp')) d = Math.max(d, CITY.districts.river.closureFootClear);
   // Stay behind any corner rail that crosses this mouth (a side street leaving
   // right at the outside of a corner), so the barrier never pokes through it.
   // A rail spanning the whole mouth closes the street by itself.
   const span = new Map<number, { lo: number; hi: number }>();
+  const d0 = d;
   for (const w of rails) {
     for (const [x, z] of [
       [w.ax, w.az],
@@ -555,7 +612,11 @@ function mouthBarrier(g: RoadGraph, mouths: EdgeMouths[], edge: number, node: nu
     ]) {
       const al = (x - n.x) * dx + (z - n.z) * dz;
       const lat = (x - n.x) * -dz + (z - n.z) * dx;
-      if (al > 0 && al < 60 && abs(lat) <= half + 0.5) {
+      // Rails in front of the barrier's own spot always count (the short street to a ford's ramp top
+      // is railed right across by a corner rail), further ones only on this end's half of the street:
+      // a piece between two ramp T nodes must not be closed at its far end because of the corner
+      // rail standing at the other junction.
+      if (al > 0 && al < Math.min(60, Math.max(dl / 2, d0 + 0.5)) && abs(lat) <= half + 0.5) {
         d = Math.max(d, al + 1);
         const g = span.get(w.group ?? -1) ?? { lo: Infinity, hi: -Infinity };
         g.lo = Math.min(g.lo, lat);
@@ -670,13 +731,23 @@ export function routeBarrierGroups(g: RoadGraph, mouths: EdgeMouths[], route: Ro
         snx += w.nx * len;
         snz += w.nz * len;
         length += len;
-        // Room behind this barrier before the far end of the side street.
+        // Room behind this barrier before the far end of the side street. A ford's street piece
+        // carries straight on down its ramp (a two-way node): the room runs onto the ramp's eased
+        // lip, where a crowd can still stand.
         const e = g.edges[b.edge];
         const farId = otherNode(e, b.node);
-        const other = barrierAt(b.edge, farId);
-        const farMouth = other ? other.d : mouthBarrier(g, mouths, b.edge, farId).d - 1.5;
-        const room = e.length - b.d - farMouth;
-        depth = Math.min(depth, other ? room / 2 : room);
+        const far = g.nodes[farId];
+        const onto = far.edges.length === 2 ? g.edges[far.edges[0] === b.edge ? far.edges[1] : far.edges[0]] : undefined;
+        let room: number;
+        if (onto?.kind === 'ramp') {
+          room = e.length - b.d + onto.length * CITY.districts.river.rampLip;
+        } else {
+          const other = barrierAt(b.edge, farId);
+          const farMouth = other ? other.d : mouthBarrier(g, mouths, b.edge, farId).d - 1.5;
+          room = e.length - b.d - farMouth;
+          if (other) room /= 2;
+        }
+        depth = Math.min(depth, room);
       }
       if (!walls.length) continue;
       const nl = sqrt(snx * snx + snz * snz) || 1;
@@ -785,6 +856,8 @@ function segmentsCross(a: Vec2, b: Vec2, c: Vec2, d: Vec2): boolean {
 export function routeRails(g: RoadGraph, route: Route, props: readonly { x: number; z: number; radius: number; kind?: string }[] = [], cityWallList?: readonly Wall[]): RailWall[] {
   const sectors = computeSectors(g);
   const mouths = computeMouths(g, sectors);
+  const edgeGrid = buildEdgeGrid(g);
+  const gridScratch: number[] = [];
   const walls: RailWall[] = [];
   const n = route.nodes.length;
   const from = route.closed ? 0 : 1;
@@ -808,6 +881,8 @@ export function routeRails(g: RoadGraph, route: Route, props: readonly { x: numb
     const turn = atan2(din.x * dout.z - din.z * dout.x, din.x * dout.x + din.z * dout.z);
     const theta = abs(turn);
     if (theta < ROUTE.railMinTurnDeg * DEG) continue;
+    // On the channel floor the banks and their fence are the walls: no rails at its nodes.
+    if (isChannelNode(g, id)) continue;
     // Left of a direction d is (dz, -dx). Turning left means the outside is on the right.
     const leftTurn = dout.x * din.z - dout.z * din.x > 0;
     const side = leftTurn ? -1 : 1;
@@ -849,7 +924,7 @@ export function routeRails(g: RoadGraph, route: Route, props: readonly { x: numb
     // It still stops TJUNCTION_CLEAR short of that junction (its traffic lights and crosswalk).
     const reachOf = (len: number, extra: number) => (extra > 0 ? Math.max(len * 0.42, Math.min((len + extra) * 0.42, len - TJUNCTION_CLEAR)) : len * 0.42);
     const maxReach = Math.min(reachOf(lenIn, insideRun(g, route, i, -1, oin)), reachOf(lenOut, insideRun(g, route, i, 1, oout)));
-    const rMax = Math.max(1, (maxReach - 1) / tanHalf);
+    const rMax = Math.max(1, Math.min(maxReach - 1, ROUTE.railFilletReach) / tanHalf);
     let R = Math.min(rMax, outside.length ? (ROUTE.railCornerCut * c) / (1 - c) : Math.max(hIn, hOut) + 0.3);
     // The city's real walls around the corner when given (district features included), else the sidewalk lines.
     const cityWalls: [Vec2, Vec2][] = cityWallList
@@ -869,6 +944,9 @@ export function routeRails(g: RoadGraph, route: Route, props: readonly { x: numb
     for (let attempt = 0; attempt < 10; attempt++) {
       const T = R * tanHalf;
       const reach = Math.max(T + 1, Math.min(ROUTE.railReach + (eIn.width + eOut.width) * 0.4, maxReach));
+      // A ramp has its own trench walls: the rail ends at the corner instead of running down it.
+      const reachIn = isRiverEdge(eIn) ? T + 0.5 : reach;
+      const reachOut = isRiverEdge(eOut) ? T + 0.5 : reach;
       const T1 = { x: V.x - din.x * T, z: V.z - din.z * T };
       const T2 = { x: V.x + dout.x * T, z: V.z + dout.z * T };
       // Fillet center: R inside the incoming line (toward P).
@@ -883,7 +961,7 @@ export function routeRails(g: RoadGraph, route: Route, props: readonly { x: numb
           nrm.push(o);
         }
       };
-      run({ x: V.x - din.x * reach, z: V.z - din.z * reach }, din, reach - T, oin, false);
+      run({ x: V.x - din.x * reachIn, z: V.z - din.z * reachIn }, din, reachIn - T, oin, false);
       const a0 = atan2(T1.z - O.z, T1.x - O.x);
       const sweep = wrapAngle(atan2(T2.z - O.z, T2.x - O.x) - a0);
       const arcSteps = Math.max(2, Math.ceil((R * abs(sweep)) / step));
@@ -894,7 +972,7 @@ export function routeRails(g: RoadGraph, route: Route, props: readonly { x: numb
         pts.push({ x: O.x + ca * R, z: O.z + sa * R });
         nrm.push({ x: ca, z: sa });
       }
-      run(T2, dout, reach - T, oout, true);
+      run(T2, dout, reachOut - T, oout, true);
 
       // Closed side streets on the outside: where the rail would run over a crosswalk, bend
       // it smoothly back behind the stripes (never forward, which would eat the runoff).
@@ -960,6 +1038,9 @@ export function routeRails(g: RoadGraph, route: Route, props: readonly { x: numb
           }
         }
       }
+      // A bend must also stay inside the road corridor: on an alley's narrow sidewalk it would
+      // otherwise push the rail past the building line.
+      for (let k = 0; k < pts.length && ok; k++) if (shift[k] !== 0 && corridorClearance(g, edgeGrid, pts[k].x, pts[k].z, gridScratch) > ROUTE.railCorridorSlack) ok = false;
       // Only furniture by the fillet counts here (tightening it cannot help anywhere else).
       let propHits = 0;
       const reachV = R * tanHalf + 3;
@@ -991,6 +1072,10 @@ export function routeRails(g: RoadGraph, route: Route, props: readonly { x: numb
     }
     pts = best!.pts;
     nrm = best!.nrm;
+    // A fillet widened past the sidewalk line (an opened corner pocket on the outside of the turn
+    // leaves it nothing to hug) would stand in the pocket's clutter: no rail is better there, the
+    // pocket's own back wall is the stop.
+    if (pts.some((q) => corridorClearance(g, edgeGrid, q.x, q.z, gridScratch) > ROUTE.railCorridorSlack)) continue;
 
     const cum = [0];
     for (let k = 1; k < pts.length; k++) cum.push(cum[k - 1] + sqrt((pts[k].x - pts[k - 1].x) ** 2 + (pts[k].z - pts[k - 1].z) ** 2));

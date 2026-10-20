@@ -58,23 +58,74 @@ export const CITY = {
     maxSpecialFraction: 0.45,
     river: {
       enabled: true,
-      chance: 0.5,
+      chance: 0.9,
       /** Channel cross section: flat floor half width, sloped bank width, depth (m). */
-      floorHalf: 9,
+      floorHalf: 11,
       bankWidth: 8,
       depth: 4.2,
       /** Meander amplitude (m) and wavelength (m) of the centerline. */
       meander: 9,
       wavelength: 640,
-      /** Water trickle half width on the floor (surface 'water'). */
-      waterHalf: 2.2,
+      /**
+       * Low flow trickle on the floor (surface 'water', offroad grip): half width and offset from the
+       * centerline (m), to one side of the racing line so it is a hazard to dodge, not a given.
+       */
+      waterHalf: 1.6,
+      waterOffset: 5.5,
       /** Solid bridge body beyond each bridge's sidewalk, seen from the channel as a culvert face. */
       bridgeBody: 4,
-      /** Access ramps cut into the bank from a street down to the floor. */
-      ramps: 2,
-      rampHalfWidth: 4,
+      /**
+       * The channel is a race venue: its floor joins the road graph (edges of kind 'channel' between
+       * the feet of the entrances) and routes dive in. Entrances per seed [min, max], counting a ford
+       * (a crossing street that dips through the channel instead of bridging it) as two; fords per seed
+       * [min, max] where crossing streets have room for one.
+       */
+      entrances: [4, 6],
+      fords: [2, 3],
+      /** Channel edges follow the meander with a node at least every this far (m): chords stay within about half a meter of it. */
+      nodeSpacing: 70,
+      /**
+       * Channel edge width (m) as the route sees it: the floor less a margin, so the chords between
+       * channel nodes (up to about 1.3 m off the true centerline) never put a floor edge wall "on the road".
+       */
+      channelMargin: 1.5,
+      /** Half widths (m) of side ramp trenches and of ford dips (a two lane street, curbs included). */
+      rampHalfWidth: 4.5,
+      fordHalfWidth: 5,
+      /**
+       * Ramp run from its top (ground level) to the floor edge (m): the steepest fords run about
+       * 1.2 x depth / rampMinRun (18%), typical ones half that; short enough that a side ramp fits
+       * between the bank street's frontage and the floor.
+       */
+      rampMinRun: 36,
+      rampMaxRun: 95,
+      /**
+       * Flat street kept between a junction's far sidewalk corner and a ford's ramp top (m): a mouth
+       * closure stands 1.5 m past that corner, so this keeps it off the plinth caps and trench walls.
+       */
+      fordSetback: 3.5,
+      /** Share of the run eased in at the top (a rounded lip cars launch over); the foot is a hard kink. */
+      rampLip: 0.3,
+      /** Solid retaining plinth beside each trench (m): keeps cars on the bank 4 m from the drop. */
+      rampBody: 4,
+      /** Ramp feet keep this far from a bridge's culvert face (m): room for a stub with a closure and a crowd behind it. */
+      footClear: 28,
+      /**
+       * A closure across the channel stands at least this far from a foot (m): past the widest plinth
+       * (an avenue ford's, 12.5 m) plus the skew the meander gives the closure line across the banks.
+       */
+      closureFootClear: 16,
+      /** Dead-end channel stubs from a foot toward a bridge (m): room for a closure at closureFootClear and a meet behind it. */
+      stubLength: 32,
+      stubMin: 22,
+      /** Gaps between crossings wider than this (m) seat two side ramps, a short stretch of floor between them. */
+      twoSlotGap: 110,
       /** Buildings and infill keep this far from the channel's top edge. */
       clearance: 5,
+      /** Clutter along the floor edges (barrels, crates, bags) about every this far (m), clear of feet and bridges. */
+      clutterSpacing: 28,
+      /** Other roads keep this far (m) from a ford's trench and plinths. */
+      fordClear: 3,
     },
     subway: {
       enabled: true,
@@ -107,9 +158,12 @@ export const CITY = {
     roundabout: {
       enabled: true,
       count: [2, 4],
-      /** Outer curb radius range (m) and ring road width (outer curb to island). */
-      outerRadius: [19, 23],
-      ringWidth: 10.5,
+      /**
+       * Outer curb radius range (m) and ring road width (outer curb to island): big circles with a
+       * four lane ring, room to overtake around the island and carry speed through it.
+       */
+      outerRadius: [29, 35],
+      ringWidth: 15,
       /** Chance a roundabout gets a solid fountain island instead of a jumpable planter. */
       fountainChance: 0.5,
       /** Every road leaving a roundabout is at least this long, and sectors at least minSectorDeg wide. */
@@ -321,6 +375,12 @@ export const ROUTE = {
   gridFirstRow: 9,
   maxAttempts: 400,
   /**
+   * Dijkstra weight factor of the river channel's edges (0.55: strongly preferred) and how much worse
+   * (score points) a route that dives into the channel may be than the best plain one and still win.
+   */
+  channelBias: 0.5,
+  preferSlack: 3,
+  /**
    * Closure barriers stand this much further into their side street than where its walls start
    * (m): head-on closures (straight ahead of the incoming road, where racers overshoot) more than
    * side ones. Short streets keep at least barrierMinRoom m between their two ends.
@@ -336,8 +396,15 @@ export const ROUTE = {
    * so the road and the whole sidewalk stay drivable runoff.
    */
   railInset: 0.3,
+  /** A corner rail may stand this far outside the road corridor (m, the sidewalk is polygonal at bends); a crosswalk bend needing more is dropped. */
+  railCorridorSlack: 0.09,
   /** How far (m) the rounded rail corner may cut inside the sharp outer sidewalk corner of an intersection. */
   railCornerCut: 2,
+  /**
+   * The fillet's tangent length is capped at this (m): a shallow bend's fillet would otherwise sweep
+   * its cut far along the road, where the rail belongs at the back of the sidewalk.
+   */
+  railFilletReach: 13,
   /** Rails are chains of modular pieces about this long (m), each a heavy sim body (src/sim/rails.ts). */
   railPieceLength: 2.5,
   /** Max heading change (deg) per straight sub segment of a piece, so curves read smooth. */

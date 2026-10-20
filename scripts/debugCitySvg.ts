@@ -20,7 +20,8 @@ for (const b of city.blocks.buildings) {
 for (const e of city.graph.edges) {
   const a = city.graph.nodes[e.a];
   const b = city.graph.nodes[e.b];
-  parts.push(`<line x1="${a.x}" y1="${a.z}" x2="${b.x}" y2="${b.z}" stroke="#333" stroke-width="${e.width}"/>`);
+  const color = e.kind === 'channel' ? '#245' : e.kind === 'ramp' ? '#357' : '#333';
+  parts.push(`<line x1="${a.x}" y1="${a.z}" x2="${b.x}" y2="${b.z}" stroke="${color}" stroke-width="${e.width}"/>`);
 }
 for (const w of circuit.walls) {
   parts.push(`<line x1="${w.ax}" y1="${w.az}" x2="${w.bx}" y2="${w.bz}" stroke="${w.kind === 'barrier' ? '#f80' : '#8af'}" stroke-width="1.2"/>`);

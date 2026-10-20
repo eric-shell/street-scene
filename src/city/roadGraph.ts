@@ -9,8 +9,33 @@ import { CITY } from './config';
 import { Rng, deriveSeed } from '../sim/prng';
 import { atan2, DEG, sqrt, TAU } from '../sim/math';
 
-/** 'alley': narrow raceway street. 'backAlley': skinny shortcut through a block (edge.shortcut). */
-export type RoadKind = 'street' | 'avenue' | 'diagonal' | 'boulevard' | 'alley' | 'backAlley';
+/**
+ * 'alley': narrow raceway street. 'backAlley': skinny shortcut through a block
+ * (edge.shortcut). 'channel': the floor of the river channel between the feet
+ * of its entrances; 'ramp': an entrance, from a street down to a channel node
+ * (districts/river.ts). Channel and ramp edges have no sidewalks, curbs,
+ * frontage or buildings: blocks.ts treats them as open ground the river draws.
+ */
+export type RoadKind = 'street' | 'avenue' | 'diagonal' | 'boulevard' | 'alley' | 'backAlley' | 'channel' | 'ramp';
+
+/** Curb to curb width, lanes and sidewalk of a kind made from the CITY tables (channel and ramp edges are sized by the river). */
+export interface RoadDims {
+  width: number;
+  lanes: 2 | 4;
+  sidewalk: number;
+}
+
+/** Kinds the CITY tables size: every street kind the grid generator and the alley planner make. */
+export type StreetKind = keyof typeof CITY.width;
+
+export function roadDims(kind: RoadKind): RoadDims {
+  if (kind === 'channel' || kind === 'ramp') throw new Error(`${kind} edges are sized by their district`);
+  const k = kind as StreetKind;
+  return { width: CITY.width[k], lanes: CITY.lanes[k], sidewalk: CITY.sidewalkWidth[k] };
+}
+
+/** An edge the river owns: the channel floor or an entrance ramp. */
+export const isRiverEdge = (e: { kind: RoadKind }): boolean => e.kind === 'channel' || e.kind === 'ramp';
 
 /** Roundabout geometry at a node (districts/roundabout.ts). */
 export interface RoundaboutRing {
@@ -144,14 +169,15 @@ export function generateRoadGraph(seed: number): RoadGraph {
   const edges: RoadEdge[] = proto.map((pe, i) => {
     const a = nodes[pe.a];
     const b = nodes[pe.b];
+    const dims = roadDims(pe.kind);
     return {
       id: i,
       a: pe.a,
       b: pe.b,
       kind: pe.kind,
-      lanes: CITY.lanes[pe.kind],
-      width: CITY.width[pe.kind],
-      sidewalk: CITY.sidewalkWidth[pe.kind],
+      lanes: dims.lanes,
+      width: dims.width,
+      sidewalk: dims.sidewalk,
       length: sqrt((a.x - b.x) ** 2 + (a.z - b.z) ** 2),
     };
   });
@@ -338,11 +364,18 @@ export function splitEdge(g: RoadGraph, eid: number, t: number): number {
 }
 
 /** Append an edge of the given kind between two nodes. Returns its id. Call sortNodeEdges when done. */
-export function addEdge(g: RoadGraph, a: number, b: number, kind: RoadKind): number {
+export function addEdge(g: RoadGraph, a: number, b: number, kind: RoadKind, dims: RoadDims = roadDims(kind)): number {
   const A = g.nodes[a];
   const B = g.nodes[b];
   const id = g.edges.length;
-  g.edges.push({ id, a, b, kind, lanes: CITY.lanes[kind], width: CITY.width[kind], sidewalk: CITY.sidewalkWidth[kind], length: sqrt((A.x - B.x) ** 2 + (A.z - B.z) ** 2) });
+  g.edges.push({ id, a, b, kind, lanes: dims.lanes, width: dims.width, sidewalk: dims.sidewalk, length: sqrt((A.x - B.x) ** 2 + (A.z - B.z) ** 2) });
+  return id;
+}
+
+/** Append a free node (not on the grid). Returns its id. Call sortNodeEdges when done. */
+export function addNode(g: RoadGraph, x: number, z: number): number {
+  const id = g.nodes.length;
+  g.nodes.push({ id, x, z, gi: -1, gj: -1, edges: [] });
   return id;
 }
 

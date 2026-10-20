@@ -629,6 +629,20 @@ function nodeCum(g: RoadGraph, r: CarveRoute): { cum: number[]; total: number } 
   return { cum, total: cum[n - 1] + close };
 }
 
+/**
+ * Where a route's shortcuts may start and end (node cum, m). A sprint's finish line stands
+ * sprintFinishOffset before the end, moved earlier by route.ts to keep sprintFinishNodeClear from
+ * any intersection; the same rule is applied here on the node polyline with the clearance again as
+ * slack, so nothing carved ends up past the finish the builder places.
+ */
+function routeBounds(g: RoadGraph, r: CarveRoute): { cum: number[]; total: number; lo: number; hi: number } {
+  const { cum, total } = nodeCum(g, r);
+  if (r.closed) return { cum, total, lo: 0, hi: total };
+  let finish = total - ROUTE.sprintFinishOffset;
+  for (let i = r.nodes.length - 2; i > 0; i--) if (Math.abs(finish - cum[i]) < ROUTE.sprintFinishNodeClear) finish = cum[i] - ROUTE.sprintFinishNodeClear;
+  return { cum, total, lo: ROUTE.sprintStartOffset, hi: finish - ROUTE.sprintFinishNodeClear };
+}
+
 /** Signed turn (rad) at route index i; 0 at the ends of a sprint. */
 function turnAt(g: RoadGraph, r: CarveRoute, i: number): number {
   const n = r.nodes.length;
@@ -739,12 +753,11 @@ export function shortcutSpan(sa: number, sb: number, length: number, total: numb
 }
 
 /** How many shortcut edges already give this route a real shortcut. */
-function qualifiedCount(g: RoadGraph, r: CarveRoute): number {
-  const { cum, total } = nodeCum(g, r);
+/** Shortcut edges joining two points of the route that save distance (carved or adopted). */
+export function qualifiedCount(g: RoadGraph, r: CarveRoute): number {
+  const { cum, total, lo, hi } = routeBounds(g, r);
   const pos = new Map<number, number>();
   r.nodes.forEach((id, i) => pos.set(id, cum[i]));
-  const lo = r.closed ? 0 : ROUTE.sprintStartOffset;
-  const hi = r.closed ? total : total - ROUTE.sprintFinishOffset;
   let count = 0;
   for (const e of g.edges) {
     if (!e.shortcut) continue;
@@ -768,14 +781,17 @@ export function carveRouteShortcuts(ctx: PlanContext, routes: CarveRoute[]): voi
   const g = ctx.graph;
   const planner = shortcutPlanner(ctx, routes);
   const madeAt: number[][] = routes.map(() => []);
+  // The route with the fewest spots cuts first: routes share streets, and one route's cut can take
+  // the block another route's only candidate needed.
+  const order = routes.map((r, ri) => ({ r, ri, n: planner.candidates(r).length })).sort((a, b) => a.n - b.n);
   for (let pass = 0; pass < cfg.perRoute; pass++) {
-    routes.forEach((r, ri) => {
+    order.forEach(({ r, ri }) => {
       if (qualifiedCount(g, r) > pass) return;
-      const { total } = nodeCum(g, r);
+      const { total, lo, hi } = routeBounds(g, r);
       const pick = () =>
         planner.candidates(r).filter(
           (c) =>
-            c.skip <= cfg.maxSkip * total &&
+            c.skip <= cfg.maxSkip * (r.closed ? total : hi - lo) &&
             madeAt[ri].every((at) => {
               const d = Math.abs(c.at - at);
               return (r.closed ? Math.min(d, total - d) : d) >= cfg.spacing;
@@ -801,11 +817,9 @@ export function carveRouteShortcuts(ctx: PlanContext, routes: CarveRoute[]): voi
   // A random back alley (backAlleyModule) that happens to join two points of a route and save distance
   // is a route shortcut too: it gets the construction site treatment, so every shortcut reads the same.
   for (const r of routes) {
-    const { cum, total } = nodeCum(g, r);
+    const { cum, total, lo, hi } = routeBounds(g, r);
     const pos = new Map<number, number>();
     r.nodes.forEach((id, i) => pos.set(id, cum[i]));
-    const lo = r.closed ? 0 : ROUTE.sprintStartOffset;
-    const hi = r.closed ? total : total - ROUTE.sprintFinishOffset;
     for (const a of ctx.areas) {
       if (a.kind !== 'backAlley' || a.variant === 'routeShortcut') continue;
       const e = g.edges[a.edges[0]];
@@ -819,9 +833,13 @@ export function carveRouteShortcuts(ctx: PlanContext, routes: CarveRoute[]): voi
 /** Whether a route has room for at least one shortcut, the other routes' start, grid and finish kept clear (dry run: nothing is carved). */
 export function hasShortcutSpot(ctx: PlanContext, r: CarveRoute, others: CarveRoute[] = []): boolean {
   const planner = shortcutPlanner(ctx, [r, ...others]);
-  if (planner.candidates(r).length) return true;
+  // The same skip limit the carve applies, or a route can pass here and then carve nothing.
+  const b = routeBounds(ctx.graph, r);
+  const maxSkip = CITY.districts.backAlley.route.maxSkip * (r.closed ? b.total : b.hi - b.lo);
+  const fits = () => planner.candidates(r).some((c) => c.skip <= maxSkip);
+  if (fits()) return true;
   planner.allowProtected(true);
-  return planner.candidates(r).length > 0 || planner.chordCuts(r).length > 0;
+  return fits() || planner.chordCuts(r).length > 0;
 }
 
 /** Candidate cuts for the given routes (their start, grid and finish kept clear), scored by the distance they save. */
@@ -836,17 +854,20 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
   const sprintGuard = (A: Vec2, B: Vec2): boolean => {
     for (const r of routes) {
       if (r.closed) continue;
-      const { cum, total } = nodeCum(g, r);
+      const { cum, total, hi } = routeBounds(g, r);
       for (const p of [A, B]) {
         const s = projectOnRoute(g, r, cum, p);
         if (s === null) continue;
-        if (s < START_CLEAR || s > total - FINISH_CLEAR) return false;
+        if (s < START_CLEAR || s > Math.min(total - FINISH_CLEAR, hi - 30)) return false;
       }
     }
     return true;
   };
   const [turnMin, turnMax] = cfg.turnDeg;
-  const blocked = ctx.areas.filter((a) => a.kind !== 'subway' && a.kind !== 'downtown' && a.polygon.length >= 3);
+  // Areas a cut may not pass through. Hills are terrain, not an obstacle: a back alley climbing a
+  // hill block is fine (and the hills claim two to four blocks each, which would starve routes
+  // through them of cuts).
+  const blocked = ctx.areas.filter((a) => a.kind !== 'subway' && a.kind !== 'downtown' && a.kind !== 'hills' && a.polygon.length >= 3);
 
   let allowProtected = false;
   const edgeOk = (eid: number) => {
@@ -856,7 +877,7 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
   };
   // The corner itself must be a plain junction (subway column nodes are fine: pillars keep off every
   // road and junction); the far ends of the cut's edges may be anything, roundabouts kept at a distance.
-  const cornerOk = (id: number) => !g.nodes[id].ring && (!ctx.claims.node.has(id) || ctx.areas[ctx.claims.node.get(id)!].kind === 'subway');
+  const cornerOk = (id: number) => !g.nodes[id].ring && (!ctx.claims.node.has(id) || ['subway', 'hills'].includes(ctx.areas[ctx.claims.node.get(id)!].kind));
   /** Other streets' corridors, rivers, roundabouts and other alleys stay clear of the cut's sidewalks. */
   const chordClear = (A: Vec2, B: Vec2, skip: number[], clear: number = cfg.clear): boolean => {
     const len = Math.hypot(B.x - A.x, B.z - A.z);

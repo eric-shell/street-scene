@@ -1,7 +1,7 @@
 /** Small pure 2D geometry helpers shared by the district modules. */
 import { Vec2, cos, sin, sqrt } from '../../sim/math';
 import { SpatialGrid } from '../spatial';
-import type { Wall } from '../blocks';
+import type { Solid, Wall } from '../blocks';
 import type { WallLook } from './types';
 
 export function polygonArea(poly: Vec2[]): number {
@@ -109,6 +109,14 @@ export function polyWalls(poly: Vec2[], inward: boolean, look: WallLook, area: n
     out.push({ ax: a.x, az: a.z, bx: b.x, bz: b.z, nx, nz, kind: 'wall', look, area });
   }
   return out;
+}
+
+/** Walls of a small convex solid (a closed convex polygon, normals outward) that the sim collides with as one body (Wall.solid). */
+export function solidWalls(poly: Vec2[], look: WallLook, area: number): Wall[] {
+  const walls = polyWalls(poly, false, look, area);
+  const solid: Solid = { faces: walls.map((w) => ({ ax: w.ax, az: w.az, bx: w.bx, bz: w.bz, nx: w.nx, nz: w.nz })) };
+  for (const w of walls) w.solid = solid;
+  return walls;
 }
 
 /** Point-in-polygon index over many polygons (bounding box broadphase). */

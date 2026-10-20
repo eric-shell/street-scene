@@ -35,7 +35,7 @@ import type { DistrictPropKind } from '../props';
 import { PROP_DEFS } from '../props';
 import type { Area, AreaBuild, DistrictModule } from './types';
 import { emptyBuild } from './types';
-import { PolygonIndex, circlePolygon, distToPolygonEdge, pointInPolygon, polyWalls, polygonBounds, rectPolygon } from './geom';
+import { PolygonIndex, circlePolygon, distToPolygonEdge, pointInPolygon, polyWalls, polygonBounds, rectPolygon, solidWalls } from './geom';
 
 const CFG = CITY.districts.infill;
 
@@ -281,7 +281,7 @@ export const infillModule: DistrictModule = {
     b.walls.push(...sides);
     if (area.params.fountain > 0) {
       const ring = circlePolygon(area.params.fx, area.params.fz, area.params.fountain, 12);
-      b.walls.push(...polyWalls(ring, false, 'fountain', id));
+      b.walls.push(...solidWalls(ring, 'fountain', id));
       b.props.push({ kind: 'fountain', x: area.params.fx, z: area.params.fz, yaw: 0, size: area.params.fountain, height: 0.8, area: id });
     }
     if (area.variant === 'lot') {

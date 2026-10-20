@@ -25,7 +25,7 @@ import { Rng } from '../../sim/prng';
 import type { AreaBuild, BuildContext, DistrictModule } from './types';
 import type { Area } from './types';
 import { emptyBuild } from './types';
-import { circlePolygon, polyWalls } from './geom';
+import { circlePolygon, solidWalls } from './geom';
 import { riverCenter } from './river';
 
 const CFG = CITY.districts.subway;
@@ -160,7 +160,7 @@ export const subwayModule: DistrictModule = {
       for (const n of g.nodes) if ((n.x - x) ** 2 + (n.z - z) ** 2 < clearOf[n.id] ** 2) return;
       // Never on a road (a diagonal or a back alley crossing under the deck), nor another street's sidewalk.
       if (!offRoads(x, z, r + 0.5, own)) return;
-      b.walls.push(...polyWalls(circlePolygon(x, z, r, 8), false, 'pillar', area.id));
+      b.walls.push(...solidWalls(circlePolygon(x, z, r, 8), 'pillar', area.id));
       b.reserved.push({ x, z, r: r + 0.4 });
       b.props.push({ kind: 'pillar', x, z, yaw: 0, size: r, height: area.params.deckHeight, area: area.id });
     };
@@ -288,7 +288,7 @@ function planStations(
     if (!ok) continue;
     const rise = CFG.deckHeight - CFG.mezzanineDrop;
     for (const s of stairs) {
-      b.walls.push(...polyWalls(s.poly, false, 'pillar', area.id));
+      b.walls.push(...solidWalls(s.poly, 'pillar', area.id));
       b.props.push({ kind: 'stair', x: s.bottom.x, z: s.bottom.z, yaw: yawOf(s.up.x, s.up.z), size: CFG.stairRun, height: rise, area: area.id });
       for (let t = 0; t <= CFG.stairRun; t += 2) b.reserved.push({ x: s.bottom.x + s.up.x * t, z: s.bottom.z + s.up.z * t, r: hw + 0.4 });
     }
