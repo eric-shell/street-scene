@@ -32,8 +32,8 @@ const INK = {
   rival: PALETTE.red,
   ghost: rgba('purple', 0.85),
   mapRim: rgba('orange', 0.55),
-  font: '"Barlow Semi Condensed", system-ui, sans-serif',
-  digits: '"Barlow Condensed", "Barlow Semi Condensed", system-ui, sans-serif',
+  font: '"Google Sans Flex", system-ui, sans-serif',
+  digits: '"Google Sans Flex", system-ui, sans-serif',
 } as const;
 
 export interface HudCar {
@@ -380,7 +380,7 @@ export class Hud {
     c.beginPath();
     c.arc(cx, cy, 3.5, 0, Math.PI * 2);
     c.fill();
-    c.font = `700 20px ${INK.digits}`;
+    c.font = `800 20px ${INK.digits}`;
     c.fillStyle = v > 1.6 ? INK.red : glow > 0.05 ? INK.text : v > 0 ? INK.fill : INK.caption;
     const shown = Math.abs(v) < 0.05 ? 0 : v;
     c.fillText((shown > 0 ? '+' : '') + shown.toFixed(1), cx, cy + 26);
@@ -446,12 +446,12 @@ export class Hud {
     c.stroke();
     c.shadowBlur = 0;
     c.fillStyle = INK.text;
-    c.font = `700 52px ${INK.digits}`;
+    c.font = `900 52px ${INK.digits}`;
     c.fillText(String(Math.round(d.speedKmh)), cx, cy + 40);
     c.font = `600 12px ${INK.font}`;
     c.fillStyle = INK.caption;
     c.fillText('KM/H', cx, cy + 66);
-    c.font = `700 30px ${INK.digits}`;
+    c.font = `900 30px ${INK.digits}`;
     c.fillStyle = d.rpm > d.redline * 0.95 ? INK.red : INK.needle;
     c.fillText(d.gear < 0 ? 'R' : String(d.gear), cx, cy - 6);
     if (d.manual) {

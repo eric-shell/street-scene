@@ -54,7 +54,7 @@ const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 function fontsReady(): Promise<unknown> {
   const fonts = document.fonts;
   if (!fonts?.load) return Promise.resolve();
-  const load = Promise.all([fonts.load('16px "Rubik Dirt"'), fonts.load('600 16px "Barlow Semi Condensed"')]).catch(() => undefined);
+  const load = Promise.all([fonts.load('italic 900 16px "Google Sans Flex"'), fonts.load('900 16px "Google Sans Flex"'), fonts.load('600 16px "Google Sans Flex"')]).catch(() => undefined);
   return Promise.race([load, delay(SPLASH.fontWait * 1000)]);
 }
 

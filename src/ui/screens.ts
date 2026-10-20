@@ -26,6 +26,7 @@ import {
   Drone,
   Music,
   Compass,
+  ChevronRight,
   type IconNode,
   icon,
 } from './icons';
@@ -61,20 +62,26 @@ const MODE_INFO: Record<RaceMode, { label: string; icon: typeof Flag; sub: strin
 };
 
 export function mainMenu(o: MenuOptions): HTMLElement {
-  const root = h('div', { class: 'screen' });
-  const modes = h('div', { class: 'modes' });
+  // The home screen: an opaque rail with a slashed edge carries the menu, so its contrast never depends on the city behind it.
+  const root = h('div', { class: 'screen home' }, h('div', { class: 'home-rail', 'aria-hidden': 'true' }), h('div', { class: 'home-slash', 'aria-hidden': 'true' }));
+  const modes = h('div', { class: 'modes', role: 'list' });
+  // Each mode is one numbered row: icon, name over its one-liner (or the record), and an arrow cue.
+  const row = (cls: string, ico: IconNode, label: string, sub: string, record: boolean, go: () => void) =>
+    h(
+      'button',
+      { class: `mode-card ${cls}`, type: 'button', role: 'listitem', onclick: go },
+      icon(ico, { size: 20 }),
+      h('span', { class: 'mc-text' }, h('span', { class: 'mc-label' }, label), h('span', { class: record ? 'best record' : 'best' }, sub)),
+      h('span', { class: 'mc-go' }, icon(ChevronRight, { size: 18 })),
+    );
   (Object.keys(MODE_INFO) as RaceMode[]).forEach((m) => {
     const info = MODE_INFO[m];
     const best = o.bests[m];
-    const card = h('button', { class: 'mode-card', type: 'button', onclick: () => o.onRace(m) });
-    // A set record shows as a value (mono, secondary color); otherwise the mode's one-line description.
+    // A set record shows as a value (secondary color); otherwise the mode's one-line description.
     const record = best ? (m === 'drift' ? `Best ${Math.round(best.score ?? 0).toLocaleString()}` : `Best ${formatTime(best.time)}`) : null;
-    card.append(icon(info.icon, { size: 22 }), info.label, h('span', { class: record ? 'best record' : 'best' }, record ?? info.sub));
-    modes.append(card);
+    modes.append(row('', info.icon, info.label, record ?? info.sub, !!record, () => o.onRace(m)));
   });
-  const roam = h('button', { class: 'mode-card roam', type: 'button', onclick: () => o.onFreeRoam() });
-  roam.append(icon(Compass, { size: 22 }), 'Free roam', h('span', { class: 'best' }, 'The whole city, no rules'));
-  modes.append(roam);
+  modes.append(row('roam', Compass, 'Free roam', 'The whole city, no rules', false, () => o.onFreeRoam()));
   const seedInput = h('input', { type: 'text', class: 'mono', value: o.seed, maxlength: 32, 'aria-label': 'Seed', placeholder: 'Type a seed', style: 'flex:1;min-width:0' }) as HTMLInputElement;
   seedInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') o.onSeed(seedInput.value.trim() || null);
