@@ -50,6 +50,7 @@ export {
   Shirt,
   Sun,
   Eye,
+  EyeOff,
   Camera,
   Keyboard,
   Gamepad2,

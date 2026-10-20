@@ -27,6 +27,7 @@ import {
   Music,
   Compass,
   ChevronRight,
+  EyeOff,
   type IconNode,
   icon,
 } from './icons';
@@ -53,6 +54,8 @@ export interface MenuOptions {
   onSettings(): void;
   onCredits(): void;
   onSeed(seed: string | null): void;
+  /** Hide every piece of UI to watch the menu city's flyover (H); any key or click brings it back. */
+  onHideUi(): void;
 }
 
 const MODE_INFO: Record<RaceMode, { label: string; icon: typeof Flag; sub: string }> = {
@@ -110,7 +113,8 @@ export function mainMenu(o: MenuOptions): HTMLElement {
   );
   // The title block is what the boot splash lands on (`.menu-head`, see ui/splash.ts).
   const menu = h('div', { class: 'menu' }, h('div', { class: 'menu-head' }, h('h1', { class: 'logo' }, 'STREET SCENE'), h('div', { class: 'tagline' }, 'Street racing after dark'), h('div', { class: 'build-version' }, BUILD_VERSION)), event, h('div', { class: 'section-title' }, 'Race'), modes, nav);
-  root.append(menu);
+  const watch = h('button', { class: 'btn small home-watch', type: 'button', title: 'Hide the menu and watch the city (H)', onclick: () => o.onHideUi() }, icon(EyeOff, { size: 16 }), 'Hide UI', h('kbd', {}, 'H'));
+  root.append(menu, watch);
   return root;
 }
 

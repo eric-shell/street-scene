@@ -410,6 +410,56 @@ kbd {
   max-height: calc(100vh - 24px);
   overflow-y: auto;
 }
+/* Hide UI: bottom left of the home screen, under the menu column (the menu leaves room for it). */
+.home-watch {
+  position: absolute;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  left: var(--menu-left);
+  background: var(--panel);
+  backdrop-filter: blur(6px);
+}
+.home-watch kbd {
+  margin-left: 2px;
+}
+/* Cinematic mode: all UI fades out, the menu city keeps flying; a hint fades in and out once. */
+body.cinematic #ui > *,
+body.cinematic > .mw {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s ease;
+}
+#ui > *,
+body > .mw {
+  transition: opacity 0.25s ease;
+}
+.cine-hint {
+  position: fixed;
+  left: max(16px, env(safe-area-inset-left));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 80;
+  padding: 8px 14px;
+  font: 600 13px var(--font);
+  letter-spacing: 0.04em;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+  animation: cine-hint 3.2s ease both;
+}
+@keyframes cine-hint {
+  0%, 100% {
+    opacity: 0;
+  }
+  15%, 70% {
+    opacity: 1;
+  }
+}
+/* Centered in the space above the Hide UI button. */
+.home .menu {
+  top: calc(50% - 32px);
+  max-height: calc(100vh - 80px);
+}
 .menu .nav {
   display: flex;
   flex-direction: column;
