@@ -10,6 +10,11 @@ coverage
 assets/converted/
 /city.svg
 
+# Playwright output
+test-results/
+playwright-report/
+playwright/.cache/
+
 # Environment and logs
 .env
 .env.*

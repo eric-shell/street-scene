@@ -1,6 +1,6 @@
 # Music
 
-The game has one persistent music player. It keeps playing across the menu, garage, races and drone mode, and remembers track, position, volume and shuffle between visits. Every track is credited in the player, in the "Now playing" banner, in the music library and on the credits screen with its **title, artist, album, source and license**.
+The game has one persistent music player. It keeps playing across the menu, garage, races and drone mode. Every visit opens with the same track ("Astrology", `OPENING_TRACK_ID` in `src/audio/musicPlayer.ts`) and shuffles on from there; volume, mute and shuffle are remembered between visits. Every track is credited in the player, in the "Now playing" banner, in the music library and on the credits screen with its **title, artist, album, source and license**.
 
 ## Library layout
 
@@ -44,4 +44,4 @@ The player card sits bottom-right in the menu, garage and drone mode. Use the mi
 | ] | Next track |
 | [ | Previous track (restarts the track if more than 4 s in) |
 
-The music volume is also in Settings. OS media keys and lock screen controls work through the Media Session API. Browsers block audio until the first click or key press, so music starts then.
+The music volume is also in Settings. OS media keys and lock screen controls work through the Media Session API. Browsers may block audio until the first click, tap or key press; the opening track then starts from the top.

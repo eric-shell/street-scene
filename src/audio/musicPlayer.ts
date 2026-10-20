@@ -1,8 +1,10 @@
 /**
  * Persistent music player. One audio element for the whole app, so music
- * keeps playing across menu, garage, races and drone mode. Track, position,
- * volume, shuffle and play state persist in localStorage and resume on reload.
- * Render/UI side only: the simulation never knows music exists.
+ * keeps playing across menu, garage, races and drone mode. Every session opens
+ * with the same track (OPENING_TRACK_ID, "Astrology") from the top, under the
+ * boot splash, and shuffles on from there; volume, mute, shuffle and the
+ * minimized state persist in localStorage. Render/UI side only: the simulation
+ * never knows music exists.
  */
 import catalogJson from '../assets/musicCatalog.json';
 
@@ -46,6 +48,9 @@ interface CatalogFile {
 
 export const MUSIC_CATALOG = catalogJson as unknown as CatalogFile;
 
+/** The track every session starts on: the signature tune under the boot splash. */
+export const OPENING_TRACK_ID = '1000-handz/electronic-gaming-instrumentals/25';
+
 /** Flatten the catalog (artists -> albums -> tracks) with full credits on every track. */
 export function allTracks(catalog: CatalogFile = MUSIC_CATALOG): MusicTrack[] {
   const out: MusicTrack[] = [];
@@ -71,17 +76,14 @@ export function allTracks(catalog: CatalogFile = MUSIC_CATALOG): MusicTrack[] {
 }
 
 interface Persisted {
-  trackId: string | null;
-  time: number;
   volume: number;
   muted: boolean;
   shuffle: boolean;
-  playing: boolean;
   minimized: boolean;
 }
 
 const KEY = 'nightrun.music.v1';
-const DEFAULTS: Persisted = { trackId: null, time: 0, volume: 0.6, muted: false, shuffle: true, playing: true, minimized: false };
+const DEFAULTS: Persisted = { volume: 0.6, muted: false, shuffle: true, minimized: false };
 const base = import.meta.env.BASE_URL ?? '/';
 
 export type MusicEvent = 'track' | 'state' | 'time';
@@ -93,7 +95,10 @@ export class MusicPlayer {
   private pos = 0;
   private s: Persisted;
   private listeners = new Map<MusicEvent, Set<() => void>>();
+  /** True once the browser has let us play audibly; before that play() waits for a gesture. */
   private unlocked = false;
+  /** Whether music should be playing: on at every session start, off after pause until play. */
+  private wantsPlay = true;
   private duck = 1;
   private saveTimer = 0;
   private errors = 0;
@@ -103,13 +108,10 @@ export class MusicPlayer {
     this.s = this.load();
     this.audio = new Audio();
     this.audio.preload = 'auto';
-    this.buildOrder(this.s.trackId);
+    this.buildOrder(this.openingTrack());
     this.applyVolume();
     this.audio.addEventListener('ended', () => this.next());
-    this.audio.addEventListener('timeupdate', () => {
-      this.emit('time');
-      this.scheduleSave();
-    });
+    this.audio.addEventListener('timeupdate', () => this.emit('time'));
     this.audio.addEventListener('play', () => this.emit('state'));
     this.audio.addEventListener('pause', () => this.emit('state'));
     this.audio.addEventListener('playing', () => (this.errors = 0));
@@ -117,22 +119,21 @@ export class MusicPlayer {
       // Skip unplayable files, but never loop forever if everything fails.
       if (++this.errors < Math.min(5, this.tracks.length)) this.next();
     });
-    if (this.current) this.loadTrack(this.current, this.s.time);
-    // Browsers only allow audio after a user gesture: start then if music was on.
+    if (this.current) this.loadTrack(this.current);
+    // Browsers only allow audio after a user gesture: start then if autoplay was refused.
     const unlock = () => {
       window.removeEventListener('pointerdown', unlock, true);
       window.removeEventListener('keydown', unlock, true);
       window.removeEventListener('touchend', unlock, true);
-      this.audio.muted = false;
       if (this.unlocked && this.playing) return;
       this.unlocked = true;
-      if (this.s.playing) void this.play();
+      if (this.wantsPlay) void this.play();
     };
     window.addEventListener('pointerdown', unlock, true);
     window.addEventListener('keydown', unlock, true);
     window.addEventListener('touchend', unlock, true);
     window.addEventListener('pagehide', () => this.save());
-    if (this.s.playing) void this.autoplay();
+    void this.autoplay();
     this.setupMediaSession();
   }
 
@@ -141,6 +142,10 @@ export class MusicPlayer {
   }
   get playing(): boolean {
     return !this.audio.paused;
+  }
+  /** True while the browser refuses to start music until the user interacts with the page. */
+  get blocked(): boolean {
+    return this.wantsPlay && !this.unlocked;
   }
   get volume(): number {
     return this.s.volume;
@@ -172,6 +177,13 @@ export class MusicPlayer {
     this.listeners.get(e)?.forEach((fn) => fn());
   }
 
+  /** The opening track's id, or null (with a warning) when a rebuilt catalog no longer has it. */
+  private openingTrack(): string | null {
+    if (this.tracks.some((t) => t.id === OPENING_TRACK_ID)) return OPENING_TRACK_ID;
+    if (this.tracks.length) console.warn(`Opening track ${OPENING_TRACK_ID} is not in the music catalog; starting on a random track`);
+    return null;
+  }
+
   private buildOrder(startId: string | null): void {
     const n = this.tracks.length;
     this.order = Array.from({ length: n }, (_, i) => i);
@@ -190,24 +202,17 @@ export class MusicPlayer {
     this.pos = 0;
   }
 
-  private loadTrack(t: MusicTrack, startAt = 0): void {
+  private loadTrack(t: MusicTrack): void {
     this.audio.src = base + t.file;
-    if (startAt > 0) {
-      const seek = () => {
-        if (startAt < this.audio.duration - 2) this.audio.currentTime = startAt;
-      };
-      this.audio.addEventListener('loadedmetadata', seek, { once: true });
-    }
-    this.s.trackId = t.id;
     this.updateMediaSession();
     this.emit('track');
-    this.save();
   }
 
   /**
-   * Start music on load. Browsers allow audible autoplay only after the user
-   * has interacted with the site, so if that is refused we start muted (always
-   * allowed) and unmute on the first click, tap or key press.
+   * Start music on load. Browsers allow audible autoplay only once the user has
+   * interacted with the site (or it has earned their trust), so a refusal just
+   * leaves the opening track waiting: the first click, tap or key press starts
+   * it from the top rather than joining a silently running track halfway.
    */
   private async autoplay(): Promise<void> {
     if (!this.current) return;
@@ -215,20 +220,14 @@ export class MusicPlayer {
       await this.audio.play();
       this.unlocked = true;
     } catch {
-      try {
-        this.audio.muted = true;
-        await this.audio.play();
-      } catch {
-        /* even muted autoplay refused: the first gesture starts it */
-      }
+      /* refused: the first gesture starts it */
     }
     this.emit('state');
   }
 
   async play(): Promise<void> {
     if (!this.current) return;
-    this.s.playing = true;
-    this.save();
+    this.wantsPlay = true;
     if (!this.unlocked) return; // will start on the first gesture
     try {
       await this.audio.play();
@@ -240,9 +239,8 @@ export class MusicPlayer {
   }
 
   pause(): void {
-    this.s.playing = false;
+    this.wantsPlay = false;
     this.audio.pause();
-    this.save();
     this.emit('state');
   }
 
@@ -255,7 +253,7 @@ export class MusicPlayer {
     if (!this.tracks.length) return;
     this.pos = (this.pos + 1) % this.order.length;
     this.loadTrack(this.current!);
-    if (this.s.playing) void this.play();
+    if (this.wantsPlay) void this.play();
   }
 
   prev(): void {
@@ -266,7 +264,7 @@ export class MusicPlayer {
     }
     this.pos = (this.pos - 1 + this.order.length) % this.order.length;
     this.loadTrack(this.current!);
-    if (this.s.playing) void this.play();
+    if (this.wantsPlay) void this.play();
   }
 
   playTrack(id: string): void {
@@ -324,18 +322,21 @@ export class MusicPlayer {
   }
 
   private load(): Persisted {
+    const p = { ...DEFAULTS };
     try {
       const raw = localStorage.getItem(KEY);
       if (raw) {
-        const p = { ...DEFAULTS, ...(JSON.parse(raw) as Partial<Persisted>) };
-        p.volume = Math.max(0, Math.min(1, Number(p.volume) || 0));
-        p.time = Math.max(0, Number(p.time) || 0);
-        return p;
+        // Only the known keys: older versions also stored the track and position.
+        const stored = JSON.parse(raw) as Partial<Persisted>;
+        if (typeof stored.volume === 'number') p.volume = Math.max(0, Math.min(1, stored.volume));
+        if (typeof stored.muted === 'boolean') p.muted = stored.muted;
+        if (typeof stored.shuffle === 'boolean') p.shuffle = stored.shuffle;
+        if (typeof stored.minimized === 'boolean') p.minimized = stored.minimized;
       }
     } catch {
       /* ignore */
     }
-    return { ...DEFAULTS };
+    return p;
   }
 
   private scheduleSave(): void {
@@ -347,7 +348,6 @@ export class MusicPlayer {
   }
 
   private save(): void {
-    this.s.time = this.audio?.currentTime || 0;
     try {
       localStorage.setItem(KEY, JSON.stringify(this.s));
     } catch {

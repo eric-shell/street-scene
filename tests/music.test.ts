@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import catalog from '../src/assets/musicCatalog.json';
+import { OPENING_TRACK_ID, allTracks } from '../src/audio/musicPlayer';
 
 describe('music catalog', () => {
   it('every track has its audio file and full attribution', () => {
@@ -28,5 +29,11 @@ describe('music catalog', () => {
       }
     }
     expect(tracks).toBeGreaterThanOrEqual(42);
+  });
+
+  it('has the opening track every session starts on', () => {
+    // A rebuilt catalog (npm run music) must still contain it, or the splash plays over a random track.
+    const opening = allTracks().find((t) => t.id === OPENING_TRACK_ID);
+    expect(opening?.title).toBe('Astrology');
   });
 });

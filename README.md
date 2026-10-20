@@ -46,7 +46,7 @@ Drift by tapping the handbrake into a corner, or with a clutch kick (lift and st
 
 ## Music
 
-A persistent music player runs across every screen and remembers where you left off. The soundtrack is **"CC BY: FREE TO USE - Electronic/Gaming Instrumentals" by 1000 Handz**, from the [Free Music Archive](https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Each track is credited (title, artist, album, source, license) in the player, the library, the "Now playing" banner and the credits screen. The library is organized by artist and album so more artists can be added; see [docs/music.md](docs/music.md).
+A persistent music player runs across every screen. Every session opens with "Astrology" under the boot splash and shuffles on from there; volume, mute and shuffle are remembered. The soundtrack is **"CC BY: FREE TO USE - Electronic/Gaming Instrumentals" by 1000 Handz**, from the [Free Music Archive](https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Each track is credited (title, artist, album, source, license) in the player, the library, the "Now playing" banner and the credits screen. The library is organized by artist and album so more artists can be added; see [docs/music.md](docs/music.md).
 
 ## Sound effects
 
@@ -144,6 +144,7 @@ tests/
 - AI opponents finish 50 random seeds (circuit and sprint) without getting stuck
 - Corner rails are smooth piece chains at the back of the sidewalk, clear of walls, barriers and props; dented pieces keep joints under 1/8 car width, steps cost speed, and dents replay identically; open world test drives have no closures, rails or rivals
 - A full race with AI replays identically (finish times and order); solo replays (ghost source) finish with the same time
+- Browser tests (`npm run e2e`, Playwright in headless Chromium against the dev server): the boot splash lands the title on the menu and deep links skip it; every session opens on "Astrology" from the top, waiting for the first click when the browser refuses autoplay and playing at once when it allows it
 
 ## Decisions made along the way
 
@@ -158,7 +159,8 @@ tests/
 - **Side street car meets.** Closed side streets the racers are unlikely to hit are lined with rows of parked cars, mostly nose toward the track like spectators. Density follows the graphics quality.
 - **Light color temperature.** Windows, doors and arches use blackbody colors between 2000 K and 8000 K. Only signs and rooftop trims are neon colored.
 - **Garage cars.** Only the Proto Compact (`s64`) and Proto Hatch (`gc14`) are offered (manifest `selectable`). The Proto RS stays loadable for tests; saved builds for cars that are no longer offered move to the default car. Vinyls are hidden behind a feature flag (`src/shared/features.ts`).
-- **Music autoplay.** Browsers only allow audible autoplay after the user has interacted with the site. The player tries to start with sound, falls back to starting muted, and unmutes on the first click, tap or key press. Engine audio starts on the first gesture for the same reason.
+- **Boot splash.** A page load that lands on the menu flashes the title in over black (neon flicker, chromatic split, shine, tagline tracking in) while the assets are checked, then flies it onto the menu's title block with a FLIP transform as the black fades to the city. The splash block is a copy of the menu's title block at the same column width, so it wraps the same way and the swap is invisible. Deep links (`?race=`, `?garage`, `?drone`) skip it; reduced motion gets a plain fade.
+- **Music autoplay.** Every session opens on the same track ("Astrology") from the top, then shuffles; only volume, mute, shuffle and the minimized state persist. Browsers only allow audible autoplay once the user has interacted with the site, so when that is refused the opening track simply waits for the first click, tap or key press (the splash says so) rather than running muted and being joined halfway. Engine audio starts on the first gesture for the same reason.
 - **Build version** (`v<package version> · <git hash> · <date>`) is shown under the title on the main menu.
 - **Routes avoid hairpins.** Turns sharper than 112° through acute diagonal junctions are rejected because cars wedge there.
 - **AI safety net.** If an AI car makes no progress for 4 s, or is stopped for 2.5 s, the race resets it to the road. Finished cars stop colliding so they never block anyone.

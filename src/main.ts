@@ -24,6 +24,7 @@ import { MusicWidget } from './ui/musicWidget';
 import { TuningPanel, applySavedTuning, loadSavedTuning } from './ui/tuningPanel';
 import { CameraPanel, applySavedCameraParams } from './ui/cameraPanel';
 import { creditsScreen, loadingScreen, mainMenu, pauseMenu, resultsScreen, settingsScreen } from './ui/screens';
+import { showSplash } from './ui/splash';
 import { toast } from './ui/dom';
 import { Check, Info } from './ui/icons';
 import { RaceConfig, RaceEntrant, RaceMode, standings, ticksToSeconds } from './sim/race';
@@ -479,10 +480,17 @@ const loop = new FixedStepLoop({
 
 async function boot(): Promise<void> {
   applyAutoQuality();
-  const loading = loadingScreen('STREET SCENE');
-  uiRoot.append(loading);
+  const direct = params.get('race');
+  const deepLink = direct === 'circuit' || direct === 'sprint' || direct === 'drift' || params.has('garage') || params.has('drone');
+  // A normal start flashes the title in over the asset check and lands it on the
+  // menu; deep links go straight to their screen behind a plain loading card.
+  // On document.body, not #ui: it has to cover the music widget, which lives there too.
+  const splash = deepLink ? null : showSplash(document.body, { soundBlocked: () => music.blocked });
+  const loading = splash ? null : loadingScreen('STREET SCENE');
+  if (loading) uiRoot.append(loading);
   availability = await assets.availability();
   const code = params.get('build');
+  let notice: (() => void) | null = null;
   if (code) {
     const b = await decodeShareCode(code);
     if (b) {
@@ -490,19 +498,25 @@ async function boot(): Promise<void> {
       if (garage.slots.length > 6) garage.slots.shift();
       garage.current = garage.slots.length - 1;
       saveGarage(garage);
-      toast(`Loaded shared build "${b.name}"`, Check);
-    } else toast('That build code could not be read', Info);
+      notice = () => toast(`Loaded shared build "${b.name}"`, Check);
+    } else notice = () => toast('That build code could not be read', Info);
     const u = new URL(location.href);
     u.searchParams.delete('build');
     history.replaceState(null, '', u);
   }
-  loading.remove();
-  const direct = params.get('race');
+  loading?.remove();
   if (direct === 'circuit' || direct === 'sprint' || direct === 'drift') startRace(direct);
   else if (params.has('garage')) void openGarage();
   else if (params.has('drone')) startDrone();
   else showMenu();
   loop.start();
+  if (splash) {
+    // The city renders under the black meanwhile, so its first (slow) frames are spent unseen.
+    splash.hold(overlay);
+    await splash.intro;
+    await splash.land(overlay);
+  }
+  notice?.();
 }
 
 void boot();

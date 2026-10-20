@@ -666,6 +666,275 @@ input[type='color'] {
   pointer-events: auto;
 }
 
+/* ---------- boot splash ----------
+   Title flash-in over black, then a flight onto the menu (ui/splash.ts). Every
+   animation waits for `.go` (fonts ready) and fills both ways, so nothing shows
+   before its cue and reduced motion can simply drop the animations. */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  pointer-events: auto;
+  overflow: hidden;
+  color: var(--text);
+}
+.splash-bg {
+  position: absolute;
+  inset: 0;
+  background: var(--bg);
+}
+.splash-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 55% 42% at 50% 50%, rgba(25, 230, 255, 0.16), rgba(154, 123, 255, 0.07) 45%, transparent 72%);
+  opacity: 0;
+}
+/* Same column as .menu, so the title wraps onto the same lines; JS centers and scales it. */
+.splash-block {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: min(420px, calc(100vw - 32px));
+  transform-origin: 0 0;
+  will-change: transform;
+}
+.splash:not(.go) .splash-block {
+  visibility: hidden;
+}
+.splash-title {
+  position: relative;
+}
+.splash-logo {
+  position: relative;
+}
+/* Chromatic split: solid cyan and magenta copies that converge onto the gradient. */
+.splash-logo::before,
+.splash-logo::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  mix-blend-mode: screen;
+  opacity: 0;
+  pointer-events: none;
+}
+.splash-logo::before {
+  color: var(--cyan);
+}
+.splash-logo::after {
+  color: var(--magenta);
+}
+.splash .logo.splash-copy {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  filter: none;
+}
+.splash .logo.splash-neon {
+  background: none;
+  color: #fff;
+  mix-blend-mode: screen;
+}
+.splash-neon span {
+  opacity: 0;
+  text-shadow: 0 0 6px #fff, 0 0 18px var(--cyan), 0 0 42px rgba(25, 230, 255, 0.7);
+}
+.splash .logo.splash-shine {
+  background: linear-gradient(100deg, transparent 42%, rgba(255, 255, 255, 0.9) 50%, transparent 58%) no-repeat;
+  background-size: 300% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  opacity: 0;
+}
+.splash .tagline {
+  white-space: nowrap;
+  opacity: 0;
+}
+.splash-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: max(28px, env(safe-area-inset-bottom, 0px) + 20px);
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  animation: splash-hint 2s ease-in-out infinite alternate;
+}
+.splash.go .splash-bg::after {
+  animation: splash-glow 2.2s ease-out 0.15s both;
+}
+.splash.go .splash-logo {
+  animation: splash-logo-in 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) 0.05s both;
+}
+.splash.go .splash-logo::before {
+  animation: splash-split-left 0.95s cubic-bezier(0.2, 0.8, 0.2, 1) 0.15s both;
+}
+.splash.go .splash-logo::after {
+  animation: splash-split-right 0.95s cubic-bezier(0.2, 0.8, 0.2, 1) 0.15s both;
+}
+.splash.go .splash-neon span {
+  animation: splash-flicker 0.6s steps(1, end) calc(0.25s + var(--i, 0) * 0.055s) both;
+}
+.splash.go .splash-neon {
+  animation: splash-fade-out 0.6s ease-out 1.55s both;
+}
+.splash.go .splash-shine {
+  animation: splash-shine 1.1s ease-in-out 1.15s both;
+}
+.splash.go .tagline {
+  animation: splash-tagline-in 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) 0.95s both;
+}
+@keyframes splash-glow {
+  0% {
+    opacity: 0;
+  }
+  45% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.6;
+  }
+}
+@keyframes splash-logo-in {
+  from {
+    opacity: 0;
+    transform: scale(1.15);
+    filter: blur(16px) drop-shadow(0 0 18px rgba(25, 230, 255, 0.35));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: blur(0) drop-shadow(0 0 18px rgba(25, 230, 255, 0.35));
+  }
+}
+@keyframes splash-split-left {
+  from {
+    transform: translate(-0.35em, -0.05em);
+    opacity: 0.9;
+  }
+  70% {
+    opacity: 0.6;
+  }
+  to {
+    transform: none;
+    opacity: 0;
+  }
+}
+@keyframes splash-split-right {
+  from {
+    transform: translate(0.35em, 0.05em);
+    opacity: 0.9;
+  }
+  70% {
+    opacity: 0.6;
+  }
+  to {
+    transform: none;
+    opacity: 0;
+  }
+}
+/* steps(1, end) holds each value until the next key: a neon tube striking. */
+@keyframes splash-flicker {
+  0% {
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  16% {
+    opacity: 0.1;
+  }
+  30% {
+    opacity: 1;
+  }
+  38% {
+    opacity: 0.25;
+  }
+  50%,
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes splash-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes splash-shine {
+  from {
+    opacity: 1;
+    background-position: 100% 0;
+  }
+  to {
+    opacity: 1;
+    background-position: 0% 0;
+  }
+}
+@keyframes splash-tagline-in {
+  from {
+    opacity: 0;
+    letter-spacing: 0.6em;
+    transform: translateY(0.4em);
+  }
+  to {
+    opacity: 1;
+    letter-spacing: 0.32em;
+    transform: none;
+  }
+}
+@keyframes splash-hint {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+/* The menu under the splash: laid out but unseen, so the title has a place to land;
+   then everything but the title block rises in while the title flies down. */
+.menu.splash-hold > * {
+  visibility: hidden;
+}
+.menu.splash-arrive > .menu-head {
+  visibility: hidden;
+}
+.menu.splash-arrive > :not(.menu-head) {
+  animation: splash-menu-in 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--i, 0) * 50ms) both;
+}
+.menu.splash-arrive > :nth-child(2) {
+  --i: 1;
+}
+.menu.splash-arrive > :nth-child(3) {
+  --i: 2;
+}
+.menu.splash-arrive > :nth-child(4) {
+  --i: 3;
+}
+.menu.splash-arrive > :nth-child(5) {
+  --i: 4;
+}
+@keyframes splash-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .splash *,
+  .splash *::before,
+  .splash *::after,
+  .menu.splash-arrive > * {
+    animation: none !important;
+  }
+  .splash .tagline {
+    opacity: 1;
+  }
+}
+
 /* ---------- drone mode ---------- */
 .drone-ui {
   position: fixed;

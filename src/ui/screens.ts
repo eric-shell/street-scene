@@ -94,7 +94,8 @@ export function mainMenu(o: MenuOptions): HTMLElement {
     btn(Info, 'Credits', o.onCredits, 'big'),
   );
   if (!o.hasReplay) nav.children[1].setAttribute('disabled', '');
-  const menu = h('div', { class: 'menu' }, h('div', {}, h('h1', { class: 'logo' }, 'STREET SCENE'), h('div', { class: 'tagline' }, 'Street racing after dark'), h('div', { class: 'build-version muted' }, BUILD_VERSION)), event, h('div', { class: 'label' }, icon(Flag, { size: 14 }), 'Race'), modes, nav);
+  // The title block is what the boot splash lands on (`.menu-head`, see ui/splash.ts).
+  const menu = h('div', { class: 'menu' }, h('div', { class: 'menu-head' }, h('h1', { class: 'logo' }, 'STREET SCENE'), h('div', { class: 'tagline' }, 'Street racing after dark'), h('div', { class: 'build-version muted' }, BUILD_VERSION)), event, h('div', { class: 'label' }, icon(Flag, { size: 14 }), 'Race'), modes, nav);
   root.append(menu);
   return root;
 }

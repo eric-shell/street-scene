@@ -12,6 +12,7 @@ Street Scene is a browser street racer (TypeScript, three.js, Vite, Vitest; no f
 | Typecheck, about 1 s (`noUnusedLocals`/`Parameters` are errors) | `npm run typecheck` |
 | Tests, about 35 s (Vitest, node env, 120 s per test) | `npm test` |
 | One file, one test | `npx vitest run tests/sim.test.ts -t "nitrous"` |
+| Browser tests, about 1 min (Playwright, Chromium; starts the dev server if needed) | `npm run e2e` (`-- e2e/splash.spec.ts -g "music"` narrows) |
 | Production build (typecheck + vite build) | `npm run build` |
 | Validate the parts catalog against `public/` | `npm run validate` |
 | Inspect a GLB (nodes, materials, triangles) | `npm run inspect -- public/cars/s64.glb` |
@@ -62,6 +63,6 @@ Aim for 120 fps, hold 60 fps on every supported device, never drop below 30 fps.
 
 - Orient with `/map` or `grep -rn "export .* <name>" src` instead of reading files to find things. Largest files: `ui/ui.css` 1.3k lines, `render/finishLine.ts` 1.2k, `audio/sfx.ts` 1k, `garage/garageUi.ts` 960, `city/route.ts` 950, `city/blocks.ts` 790; read those in ranges.
 - Never read `public/` media, `assets/source/` FBX or `package-lock.json` (denied in settings). For a GLB use `npm run inspect -- <file>`; `assets/inspect.md` is the last asset report; `npm ls <pkg>` gives versions.
-- Verify with `/check`: typecheck after every edit, the full suite after touching `src/sim/` or `src/city/` (replay determinism, many-seed AI and rail sweeps). Headless beats the browser: `npx tsx` imports any `src/sim` or `src/city` module directly (`/tune` measures a car that way, `scripts/debugCitySvg.ts <seed> out.svg` draws a city).
+- Verify with `/check`: typecheck after every edit, the full suite after touching `src/sim/` or `src/city/` (replay determinism, many-seed AI and rail sweeps). `npm run e2e` (Playwright, `e2e/`) covers what needs a real page: boot splash, menu, music; run it after touching `main.ts`, `ui/` or `audio/`, and give it a 180000 ms timeout. Headless beats the browser: `npx tsx` imports any `src/sim` or `src/city` module directly (`/tune` measures a car that way, `scripts/debugCitySvg.ts <seed> out.svg` draws a city).
 - `node_modules` must exist (`npm ci`). `npm run assets` and `npm run music` rewrite generated files and need external tools; run them only when the task is about assets or music.
 - The Blender MCP server in `.mcp.json` needs `uv` installed (`brew install uv`); it is only for modelling work and its connection failure is otherwise harmless.
