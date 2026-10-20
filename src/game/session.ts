@@ -29,6 +29,7 @@ import { Settings } from '../ui/settings';
 import { formatTime } from '../ui/format';
 import { ReplayData } from '../replay/replay';
 import type { Area } from '../city/districts/types';
+import { PROP_DEFS } from '../city/props';
 
 interface Snap extends CarPose {
   vx: number;
@@ -109,6 +110,11 @@ const AREA_NAMES: Partial<Record<Area['kind'], string>> = {
 const INFILL_NAMES: Record<string, string> = { lot: 'Parking lot', plaza: 'Plaza', cornerPlaza: 'Corner plaza', verge: 'Downtown' };
 /** A new district name shows as a HUD message once the car has been in it this long (s). */
 const AREA_SETTLE = 0.6;
+/** Nitrous screen warp easing rates in and out (1/s). */
+const NITRO_IN = 5;
+const NITRO_OUT = 2.5;
+/** On a tick where the player only hit props, the speed drop must exceed slowdownMin by this many times over to count as a crash. */
+const PROP_SLOWDOWN_EXTRA = 1.6;
 /** A crowd section's heard excitement crossing this cheers out loud, at most every SECTION_CHEER_GAP s. */
 const SECTION_CHEER_LEVEL = 0.7;
 const SECTION_CHEER_GAP = 8;
@@ -157,6 +163,12 @@ export class RaceSession {
   private outroStarted = false;
   private alpha = 0;
   private time = 0;
+  /** A reset moved the player this tick (its speed drop is not a crash); the player hit props, a wall or a car. */
+  private resetThisTick = false;
+  private propOnlyTick = false;
+  private hardHitTick = false;
+  /** Nitrous screen warp, eased in and out (0..1). */
+  private nitroFx = 0;
   /** Open world HUD: props the player broke, top speed (km/h), the district shown and the one being entered. */
   private smashed = 0;
   private topKmh = 0;
@@ -466,6 +478,10 @@ export class RaceSession {
       frame = this.input.sample(DT);
     }
     this.prev = this.curr;
+    const speedBefore = r.cars[0].state.speed;
+    this.resetThisTick = false;
+    this.propOnlyTick = false;
+    this.hardHitTick = false;
     stepRace(r, frame);
     this.curr = r.cars.map((c) => snap(c.state));
     if (this.ghostRace) {
@@ -476,6 +492,10 @@ export class RaceSession {
     }
     this.sfx?.syncCountdown(r);
     this.handleEvents();
+    // A sudden loss of speed (a hard hit on anything, a dumpster) shakes the camera hard; resets do not count.
+    // Ploughing through soft props (bushes, tables, bags) costs a little speed too: that stays a light knock.
+    const drop = speedBefore - r.cars[0].state.speed;
+    if (!this.resetThisTick) this.cam.slowdown(this.propOnlyTick && !this.hardHitTick ? drop - CAMERA.common.slowdownMin * PROP_SLOWDOWN_EXTRA : drop);
     if (r.phase === 'finished' && this.finishedAt < 0) this.finishedAt = r.tick;
     if (!this.openWorld) {
       if (r.tick === r.countdownTicks) this.celebrateStart();
@@ -547,7 +567,19 @@ export class RaceSession {
       this.sfx?.raceEvent(e, r);
       // Rivals crossing the finish get a smaller cheer.
       if (e.type === 'finish' && e.car !== 0 && !this.openWorld) this.night.crowds.cheer('finish', 0.8);
+      // A rival slamming into the player shakes the player's camera too.
+      if (e.type === 'crash' && e.other === 0) this.cam.crashAt(e.value ?? 0);
       if (e.car !== 0) continue;
+      // Camera shake: walls, rails and cars hit hard; knocking props over is a light knock, heavier props knock harder.
+      if (e.type === 'wall' || e.type === 'crash') {
+        this.cam.crashAt(e.value ?? 0);
+        this.hardHitTick = true;
+      } else if (e.type === 'prop') {
+        this.propOnlyTick = true;
+        const prop = r.world.props[e.value ?? -1];
+        const def = prop ? PROP_DEFS[prop.kind] : null;
+        if (def) this.cam.knock(Math.min(1, 0.35 + (def.mass * def.anchor) / 900));
+      } else if (e.type === 'reset') this.resetThisTick = true;
       if (e.type === 'prop') this.smashed++;
       const rc = r.cars[0];
       switch (e.type) {
@@ -593,8 +625,6 @@ export class RaceSession {
     this.views.forEach((v, i) => v.update(poses[i], this.time));
     if (this.ghostView && this.ghostPrev && this.ghostCurr) this.ghostView.update(lerpSnap(this.ghostPrev, this.ghostCurr, alpha), this.time);
     const p = poses[0];
-    const player = r.cars[0];
-    this.cam.impact(player.state.impact);
     let camera: THREE.PerspectiveCamera;
     if (this.drone) {
       this.drone.update(dt);
@@ -612,9 +642,14 @@ export class RaceSession {
     // Props mirror the sim's broken flags; fresh breaks come apart pushed by the nearest car.
     this.night.props.update(this.paused ? 0 : dt, this.time, r.brokenProps, this.curr);
     // Progressive edge blur: grows with speed, much stronger while boosting (eased in and out).
-    const target = this.settings.radialBlur && !this.paused ? Math.max(0, Math.min(1, (p.speed - 25) / 45)) * 0.4 + (p.nitro ? 0.75 : 0) : 0;
+    const target = this.settings.radialBlur && !this.paused ? Math.max(0, Math.min(1, (p.speed - 25) / 45)) * 0.4 + (p.nitro ? 1 : 0) : 0;
     this.blur += (target - this.blur) * (1 - Math.exp(-dt * (target > this.blur ? 6 : 3)));
     this.gr.post.setSpeedBlur(this.blur);
+    // Nitrous warp: in fast, out a little slower; follows the speed blur setting, off in the drone and while paused.
+    const warpTarget = this.settings.radialBlur && !this.paused && !this.drone && p.nitro ? 1 : 0;
+    this.nitroFx += (warpTarget - this.nitroFx) * (1 - Math.exp(-dt * (warpTarget > this.nitroFx ? NITRO_IN : NITRO_OUT)));
+    if (warpTarget === 0 && this.nitroFx < 0.002) this.nitroFx = 0;
+    this.gr.post.setNitroFx(this.nitroFx, this.time);
     this.updateHud(dt);
     this.updateEngines(poses, camera);
     this.updateSfx(poses, camera, dt);
@@ -817,6 +852,7 @@ export class RaceSession {
   }
 
   dispose(): void {
+    this.gr.post.setNitroFx(0, 0);
     this.drone?.dispose();
     this.drone = null;
     this.unsub.forEach((u) => u());

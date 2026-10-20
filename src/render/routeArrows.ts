@@ -1,37 +1,46 @@
 /**
- * Route guidance on closed side streets.
+ * Route guidance: the cyan barriers and the signs floating over them.
  *
- * Every barrier is classified by how likely racers are to hit it:
- *  - head on: the closed street continues straight ahead of the incoming road,
- *    so racers must turn here. These get a real barrier, a direction board with
- *    pulsing cyan Lucide chevrons, and a very large translucent arrow above it
- *    that sweeps in the direction to go.
- *  - side: the closed street branches off to the side. These are blocked by
- *    rows of parked cars (see roadblocks.ts), movie style, with an in-air
- *    arrow above each group of cars pointing the way the route goes.
- * Collision is the same wall segment either way. Render only.
+ * Every closure (a side street shut off the course) and every corner rail is
+ * a chain of cyan modular pieces (the sim's rail pieces, src/sim/rails.ts):
+ * a chevron panel facing the course whose chevrons march the way the route
+ * goes, an LED strip along the top with light comets running the same way, a
+ * soft glow pooled on the ground in front, posts, and an amber beacon
+ * blinking on every fourth post. Pieces a hit has shoved are redrawn where
+ * the race left them.
+ *
+ * Above every closure and at the apex of every corner rail floats a neon
+ * sign: a tube frame around big chevrons pointing the way to go (along the
+ * route past a side closure, toward the turn at a head-on one), hovering,
+ * scanline shimmering, fading in from the distance and out again before it
+ * would fill the screen. Behind the barriers stand the street meets
+ * (meetPlan.ts). Render only.
  */
 import * as THREE from 'three';
 import type { World } from '../city/world';
-import type { CarGroup } from './roadblocks';
 import type { Wall } from '../city/blocks';
+import type { BarrierGroup, RailWall } from '../city/route';
 import { ChevronsRight, drawIcon } from '../ui/icons';
 import { GeoBuilder } from './geoBuilder';
 import { FOG_DENSITY } from './lighting';
 import { RailState, railLayout } from '../sim/rails';
 
+/** A closure as the renderer sees it: its group, where it faces and which way the route goes past it. */
 export interface BarrierInfo {
-  wall: Wall;
-  /** Barrier center. */
+  group: BarrierGroup;
+  /** Closure center. */
   x: number;
   z: number;
+  /** Unit normal toward the course. */
+  nx: number;
+  nz: number;
   /** Unit direction from the intersection into the closed street. */
   sx: number;
   sz: number;
-  /** Route turns left (-1) or right (+1) as seen from the intersection looking at the barrier. 0 = unknown. */
+  /** Route turns left (-1) or right (+1) as seen from the intersection looking at the closure. 0 = unknown. */
   turn: -1 | 0 | 1;
   headOn: boolean;
-  /** Graph node of the intersection the barrier faces. */
+  /** Graph node of the intersection the closure faces. */
   node: number;
   /** Unit route directions into and out of that intersection. */
   inX: number;
@@ -44,74 +53,30 @@ export function classifyBarriers(world: World): BarrierInfo[] {
   const route = world.route;
   const g = world.graph;
   const order = route.nodes;
-  const out: BarrierInfo[] = [];
-  for (const wall of world.walls) {
-    if (wall.kind !== 'barrier') continue;
-    const mx = (wall.ax + wall.bx) / 2;
-    const mz = (wall.az + wall.bz) / 2;
-    let best = 0;
-    let bestD = Infinity;
-    // The barrier group knows its intersection; otherwise take the nearest route node.
-    const groupNode = wall.group !== undefined ? world.barrierGroups?.[wall.group]?.node : undefined;
-    const known = groupNode !== undefined ? order.indexOf(groupNode) : -1;
-    if (known >= 0) best = known;
-    else {
-      for (let i = 0; i < order.length; i++) {
-        const n = g.nodes[order[i]];
-        const d = (n.x - mx) ** 2 + (n.z - mz) ** 2;
-        if (d < bestD) {
-          bestD = d;
-          best = i;
-        }
-      }
-    }
+  const unit = (a: { x: number; z: number }, b: { x: number; z: number }) => {
+    const l = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+    return { x: (b.x - a.x) / l, z: (b.z - a.z) / l };
+  };
+  return (world.barrierGroups ?? []).map((gr) => {
+    const best = Math.max(0, order.indexOf(gr.node));
     const node = g.nodes[order[best]];
-    const sl = Math.hypot(mx - node.x, mz - node.z) || 1;
-    const sx = (mx - node.x) / sl;
-    const sz = (mz - node.z) / sl;
+    const sx = -gr.nx;
+    const sz = -gr.nz;
     const prevI = route.closed ? (best - 1 + order.length) % order.length : best - 1;
     const nextI = route.closed ? (best + 1) % order.length : best + 1;
-    const unit = (a: { x: number; z: number }, b: { x: number; z: number }) => {
-      const l = Math.hypot(b.x - a.x, b.z - a.z) || 1;
-      return { x: (b.x - a.x) / l, z: (b.z - a.z) / l };
-    };
     const inDir = prevI >= 0 ? unit(g.nodes[order[prevI]], node) : nextI < order.length ? unit(node, g.nodes[order[nextI]]) : { x: sx, z: sz };
-    const headOn = inDir.x * sx + inDir.z * sz > 0.55;
-    let turn: -1 | 0 | 1 = 0;
     const outDir = nextI >= 0 && nextI < order.length ? unit(node, g.nodes[order[nextI]]) : inDir;
-    if (nextI >= 0 && nextI < order.length) {
-      const o = outDir;
-      // left of forward (sx, sz) is (sz, -sx)
-      const leftDot = o.x * sz - o.z * sx;
-      if (Math.abs(leftDot) > 0.2) turn = leftDot > 0 ? -1 : 1;
-    }
-    out.push({ wall, x: mx, z: mz, sx, sz, turn, headOn, node: order[best], inX: inDir.x, inZ: inDir.z, outX: outDir.x, outZ: outDir.z });
-  }
-  return out;
+    let turn: -1 | 0 | 1 = 0;
+    // left of forward (sx, sz) is (sz, -sx)
+    const leftDot = outDir.x * sz - outDir.z * sx;
+    if (Math.abs(leftDot) > 0.2) turn = leftDot > 0 ? -1 : 1;
+    return { group: gr, x: gr.x, z: gr.z, nx: gr.nx, nz: gr.nz, sx, sz, turn, headOn: gr.headOn, node: order[best], inX: inDir.x, inZ: inDir.z, outX: outDir.x, outZ: outDir.z };
+  });
 }
 
 // ---------------------------------------------------------------------------
-// Direction boards (chevrons on the barrier)
+// Chevron panels on the rail modules
 // ---------------------------------------------------------------------------
-
-const boardVert = /* glsl */ `
-  attribute float aFlip;
-  attribute float aPhase;
-  varying vec2 vUv;
-  varying float vFlip;
-  varying float vPhase;
-  varying float vFog;
-  uniform float fogDensity;
-  void main() {
-    vUv = uv;
-    vFlip = aFlip;
-    vPhase = aPhase;
-    vec4 mv = viewMatrix * modelMatrix * instanceMatrix * vec4(position, 1.0);
-    float d = length(mv.xyz);
-    vFog = exp(-fogDensity * fogDensity * d * d * 0.5);
-    gl_Position = projectionMatrix * mv;
-  }
-`;
 
 const boardFrag = /* glsl */ `
   uniform sampler2D map;
@@ -130,29 +95,6 @@ const boardFrag = /* glsl */ `
     float glow = tex.r * march * pulse + tex.g * 0.35;
     vec3 c = color * glow * 2.6 + vec3(0.01, 0.02, 0.03) * tex.a;
     gl_FragColor = vec4(c * vFog, 1.0);
-  }
-`;
-
-// Giant translucent arrows: the same chevrons and animation as the boards, but
-// alpha blended with depth writes so overlapping instances never add up.
-const bigFrag = /* glsl */ `
-  uniform sampler2D map;
-  uniform float time;
-  uniform vec3 color;
-  varying vec2 vUv;
-  varying float vFlip;
-  varying float vPhase;
-  varying float vFog;
-  void main() {
-    vec2 uv = vec2(vFlip > 0.0 ? vUv.x : 1.0 - vUv.x, vUv.y);
-    vec4 tex = texture2D(map, uv);
-    float w = fract(uv.x * 1.5 - time * 1.1 + vPhase);
-    float march = 0.3 + 0.7 * pow(1.0 - w, 2.5);
-    float pulse = 0.7 + 0.3 * sin(time * 4.0 + vPhase * 6.2831);
-    float glow = tex.r * march * pulse + tex.g * 0.35;
-    float alpha = clamp(0.12 + glow * 0.75, 0.0, 0.85) * vFog;
-    if (alpha < 0.02) discard;
-    gl_FragColor = vec4(color * (0.35 + glow * 2.2), alpha);
   }
 `;
 
@@ -176,11 +118,106 @@ function boardTexture(): THREE.CanvasTexture {
   return t;
 }
 
+// ---------------------------------------------------------------------------
+// Floating neon signs
+// ---------------------------------------------------------------------------
+
+/** Sign size and height above the ground (m), and the view distances it fades in and out over. */
+const SIGN = { height: 5.8, aspect: 4, minWidth: 8, maxWidth: 14, fadeFar: [175, 125], fadeNear: [7, 18], hover: 0.14 } as const;
+
+const signVert = /* glsl */ `
+  uniform float time;
+  uniform float fogDensity;
+  attribute float aFlip;
+  attribute float aPhase;
+  varying vec2 vUv;
+  varying float vFlip;
+  varying float vPhase;
+  varying float vFade;
+  void main() {
+    vUv = uv;
+    vFlip = aFlip;
+    vPhase = aPhase;
+    vec4 wp = modelMatrix * instanceMatrix * vec4(position, 1.0);
+    wp.y += sin(time * 1.3 + aPhase * 6.2832) * ${SIGN.hover.toFixed(2)};
+    vec4 mv = viewMatrix * wp;
+    float d = length(mv.xyz);
+    vFade = exp(-fogDensity * fogDensity * d * d * 0.5) * smoothstep(${SIGN.fadeFar[0].toFixed(1)}, ${SIGN.fadeFar[1].toFixed(1)}, d) * smoothstep(${SIGN.fadeNear[0].toFixed(1)}, ${SIGN.fadeNear[1].toFixed(1)}, d);
+    gl_Position = projectionMatrix * mv;
+  }
+`;
+
+/** Channels of the sign texture: r chevrons, g the neon tube frame, b the backplate. */
+const signFrag = /* glsl */ `
+  uniform sampler2D map;
+  uniform float time;
+  uniform vec3 color;
+  varying vec2 vUv;
+  varying float vFlip;
+  varying float vPhase;
+  varying float vFade;
+  void main() {
+    vec2 uv = vec2(vFlip > 0.0 ? vUv.x : 1.0 - vUv.x, vUv.y);
+    vec4 tex = texture2D(map, uv);
+    // Chevrons light up in a wave marching the way to go; the frame glows steady.
+    float w = fract(uv.x * 1.2 - time * 1.3 + vPhase);
+    float march = 0.25 + 0.75 * pow(1.0 - w, 3.0);
+    float scan = 0.86 + 0.14 * sin(vUv.y * 90.0 + time * 6.0);
+    float flick = 0.95 + 0.05 * sin(time * 23.0 + vPhase * 40.0);
+    float chev = tex.r * march;
+    vec3 c = (color * (chev * 2.8 + tex.g * 1.9) + vec3(0.015, 0.04, 0.08) * tex.b) * scan * flick;
+    float alpha = clamp(tex.b * 0.4 + chev * 0.9 + tex.g * 0.95, 0.0, 0.95) * vFade;
+    if (alpha < 0.02) discard;
+    gl_FragColor = vec4(c, alpha);
+  }
+`;
+
+function signTexture(): THREE.CanvasTexture {
+  const W = 1024;
+  const H = 256;
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  // Channels add up: backplate (blue), tube frame (green), chevrons (red).
+  ctx.globalCompositeOperation = 'lighter';
+  const rr = (x: number, y: number, w: number, h: number, r: number) => {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  };
+  ctx.fillStyle = '#0000ff';
+  rr(14, 14, W - 28, H - 28, 46);
+  ctx.fill();
+  ctx.strokeStyle = '#00ff00';
+  ctx.lineWidth = 11;
+  ctx.shadowColor = '#00ff00';
+  ctx.shadowBlur = 16;
+  rr(20, 20, W - 40, H - 40, 40);
+  ctx.stroke();
+  ctx.lineWidth = 4;
+  ctx.shadowBlur = 0;
+  rr(42, 42, W - 84, H - 84, 26);
+  ctx.stroke();
+  ctx.shadowColor = '#ff0000';
+  ctx.shadowBlur = 20;
+  for (let i = 0; i < 3; i++) drawIcon(ctx, ChevronsRight, 150 + i * 255, 38, 180, '#ff0000', 3.2);
+  const t = new THREE.CanvasTexture(c);
+  t.anisotropy = 8;
+  return t;
+}
+
 export interface RouteArrows {
   group: THREE.Group;
   barriers: BarrierInfo[];
   update(time: number): void;
-  /** Move the corner rail pieces to the race's displaced poses (cheap when nothing moved). */
+  /** Move the rail pieces to the race's displaced poses (cheap when nothing moved). */
   syncRails(state: RailState | null | undefined): void;
   dispose(): void;
 }
@@ -220,33 +257,72 @@ function flipFor(w: Wall): number {
   return (w.bx - w.ax) * w.nz - (w.bz - w.az) * w.nx > 0 ? 1 : -1;
 }
 
-export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classifyBarriers(world), carGroups: CarGroup[] = []): RouteArrows {
+export interface RouteArrowOptions {
+  /** Blinking amber lamp material for the beacons on the rail posts (the scene animates it). */
+  beacon?: THREE.Material;
+}
+
+export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classifyBarriers(world), opts: RouteArrowOptions = {}): RouteArrows {
   const group = new THREE.Group();
   group.name = 'routeArrows';
   const disposables: { dispose(): void }[] = [];
   const mats: THREE.ShaderMaterial[] = [];
   const tex = boardTexture();
-  disposables.push(tex);
+  const signTex = signTexture();
+  disposables.push(tex, signTex);
 
-  const make = (frag: string, items: Board[], translucent: boolean, name: string) => {
-    if (!items.length) return;
+  // Rail modules (corner rails and closures alike) follow the sim's rail state.
+  const rails = buildRailMeshes(world, tex, opts.beacon ?? null);
+  for (const m of rails.meshes) group.add(m);
+  mats.push(...rails.materials);
+  disposables.push(rails);
+
+  const signs: Board[] = [];
+  const route = world.route;
+  // Closures: a sign over every one, chevrons pointing the way the route goes past it. Seen
+  // from the course (looking along -n) the viewer's right is (nz, -nx).
+  barriers.forEach((b, i) => {
+    const gr = b.group;
+    const rp = world.routeProgress(b.x, b.z);
+    // Head on: the way out of the turn. Side: along the route right there.
+    const dx = b.headOn ? b.outX : rp.tx;
+    const dz = b.headOn ? b.outZ : rp.tz;
+    const right = dx * b.nz - dz * b.nx;
+    if (Math.abs(right) < 0.25) return;
+    const w = Math.max(SIGN.minWidth, Math.min(SIGN.maxWidth, gr.length * 0.6));
+    const y = world.heightAt(b.x, b.z) + SIGN.height + (b.headOn ? 0.6 : 0);
+    signs.push({ x: b.x + b.nx * 0.4, y, z: b.z + b.nz * 0.4, yaw: Math.atan2(b.nx, b.nz), w, h: w / SIGN.aspect, flip: right > 0 ? 1 : -1, phase: (i * 0.29) % 1, tilt: -0.08 });
+  });
+  // Corner rails: one over the apex of each, unless a closure sign is right there.
+  const closureRails = new Set(barriers.map((b) => (b.group.walls[0] as RailWall | undefined)?.group));
+  railCurves(world).forEach((curve, ci) => {
+    if (closureRails.has((curve[0] as RailWall).group)) return;
+    const mid = curve[Math.floor(curve.length / 2)];
+    const mx = (mid.ax + mid.bx) / 2;
+    const mz = (mid.az + mid.bz) / 2;
+    if (signs.some((s) => Math.hypot(s.x - mx, s.z - mz) < 16)) return;
+    signs.push({ x: mx - mid.nx * 1.2, y: world.heightAt(mx, mz) + SIGN.height + 0.4, z: mz - mid.nz * 1.2, yaw: Math.atan2(mid.nx, mid.nz), w: 15, h: 15 / SIGN.aspect, flip: flipFor(mid), phase: (ci * 0.37) % 1, tilt: -0.1 });
+  });
+  void route;
+
+  if (signs.length) {
     const geo = new THREE.PlaneGeometry(1, 1);
-    const flip = new Float32Array(items.length);
-    const phase = new Float32Array(items.length);
+    const flip = new Float32Array(signs.length);
+    const phase = new Float32Array(signs.length);
     const mat = new THREE.ShaderMaterial({
-      vertexShader: boardVert,
-      fragmentShader: frag,
-      uniforms: { map: { value: tex }, time: { value: 0 }, color: { value: new THREE.Color(0x19e6ff) }, fogDensity: { value: FOG_DENSITY } },
+      vertexShader: signVert,
+      fragmentShader: signFrag,
+      uniforms: { map: { value: signTex }, time: { value: 0 }, color: { value: new THREE.Color(0x19e6ff) }, fogDensity: { value: FOG_DENSITY } },
       side: THREE.DoubleSide,
-      transparent: translucent,
-      depthWrite: true,
+      transparent: true,
+      depthWrite: false,
     });
-    const mesh = new THREE.InstancedMesh(geo, mat, items.length);
-    mesh.name = name;
+    const mesh = new THREE.InstancedMesh(geo, mat, signs.length);
+    mesh.name = 'routeSigns';
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const e = new THREE.Euler();
-    items.forEach((b, i) => {
+    signs.forEach((b, i) => {
       e.set(b.tilt, b.yaw, 0, 'YXZ');
       q.setFromEuler(e);
       m.compose(new THREE.Vector3(b.x, b.y, b.z), q, new THREE.Vector3(b.w, b.h, 1));
@@ -256,66 +332,11 @@ export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classif
     });
     geo.setAttribute('aFlip', new THREE.InstancedBufferAttribute(flip, 1));
     geo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(phase, 1));
-    if (translucent) mesh.renderOrder = 5;
+    mesh.renderOrder = 5;
     group.add(mesh);
     mats.push(mat);
     disposables.push(geo, mat);
-  };
-
-  const curves = railCurves(world);
-  const panels: Board[] = [];
-  const giants: Board[] = [];
-  // Corner rails: modular pieces that follow the sim's rail state (see buildRailMeshes).
-  const rails = buildRailMeshes(world, tex);
-  for (const m of rails.meshes) group.add(m);
-  mats.push(rails.panelMaterial);
-  disposables.push(rails);
-  curves.forEach((curve, ci) => {
-    // One giant arrow over the apex of each curve.
-    const mid = curve[Math.floor(curve.length / 2)];
-    const mx = (mid.ax + mid.bx) / 2;
-    const mz = (mid.az + mid.bz) / 2;
-    giants.push({ x: mx - mid.nx * 1.2, y: world.heightAt(mx, mz) + 6.2, z: mz - mid.nz * 1.2, yaw: Math.atan2(mid.nx, mid.nz), w: 16, h: 4, flip: flipFor(mid), phase: (ci * 0.29) % 1, tilt: -0.1 });
-  });
-
-  // Head-on closures without a nearby rail keep a board and a giant arrow of their own.
-  const railMids = curves.map((c) => {
-    const w = c[Math.floor(c.length / 2)];
-    return { x: (w.ax + w.bx) / 2, z: (w.az + w.bz) / 2 };
-  });
-  barriers
-    .filter((b) => b.headOn && b.turn !== 0 && !railMids.some((r) => Math.hypot(r.x - b.x, r.z - b.z) < 40))
-    .forEach((b, i) => {
-      const len = Math.hypot(b.wall.bx - b.wall.ax, b.wall.bz - b.wall.az);
-      const ground = Math.min(world.heightAt(b.wall.ax, b.wall.az), world.heightAt(b.wall.bx, b.wall.bz));
-      const w = Math.min(len * 0.85, 9);
-      const yaw = Math.atan2(-b.sx, -b.sz);
-      panels.push({ x: b.x - b.sx * 0.35, y: ground + 2.15, z: b.z - b.sz * 0.35, yaw, w, h: w / 4, flip: b.turn, phase: (i * 0.37) % 1, tilt: 0 });
-      giants.push({ x: b.x - b.sx * 1.5, y: ground + 7, z: b.z - b.sz * 1.5, yaw, w: 16, h: 4, flip: b.turn, phase: (i * 0.29) % 1, tilt: -0.1 });
-    });
-
-  // Side closures: an in-air arrow above each group of parked cars, pointing
-  // the way the route goes. It faces whichever way shows that direction best:
-  // toward the intersection (route crosses the street mouth) or toward the
-  // incoming racers (route turns away from the closed street).
-  carGroups.forEach((cg, i) => {
-    const b = cg.barrier;
-    if (!b || cg.cars === 0) return;
-    // Viewer looking into the street (along s), or along the incoming route: right = (-dz, dx).
-    const dotA = b.outX * -b.sz + b.outZ * b.sx;
-    const dotB = b.outX * -b.inZ + b.outZ * b.inX;
-    const useA = Math.abs(dotA) >= Math.abs(dotB);
-    const dot = useA ? dotA : dotB;
-    if (Math.abs(dot) < 0.3) return;
-    const yaw = useA ? Math.atan2(-b.sx, -b.sz) : Math.atan2(-b.inX, -b.inZ);
-    const x = cg.x;
-    const z = cg.z;
-    if (giants.some((gt) => Math.hypot(gt.x - x, gt.z - z) < 12)) return;
-    giants.push({ x, y: cg.y + 6.4, z, yaw, w: 12, h: 3, flip: dot > 0 ? 1 : -1, phase: (i * 0.23) % 1, tilt: -0.08 });
-  });
-
-  make(boardFrag, panels, false, 'chevronPanels');
-  make(bigFrag, giants, true, 'giantArrows');
+  }
 
   return {
     group,
@@ -333,8 +354,38 @@ export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classif
 }
 
 // ---------------------------------------------------------------------------
-// Corner rails: one module per sim rail piece
+// Rail modules: one per sim rail piece (corner rails and closures)
 // ---------------------------------------------------------------------------
+
+/** LED strip comets: spacing along the rail (m) and speed (cycles/s); ground glow reach in front (m). */
+const LED = { spacing: 7, speed: 1.4, poolReach: 1.35 } as const;
+
+/** The LED strip along the top: a steady glow with light comets running the way the route goes. */
+const ledFrag = /* glsl */ `
+  uniform float time;
+  uniform vec3 color;
+  varying vec2 vUv;
+  varying float vFlip;
+  varying float vFog;
+  void main() {
+    float comet = pow(fract(vUv.x * vFlip / ${LED.spacing.toFixed(1)} - time * ${LED.speed.toFixed(2)}), 10.0);
+    gl_FragColor = vec4(color * (0.45 + 2.8 * comet) * vFog, 1.0);
+  }
+`;
+
+/** The glow the strip throws on the ground in front of the barrier (additive), pulsing with the comets. */
+const poolFrag = /* glsl */ `
+  uniform float time;
+  uniform vec3 color;
+  varying vec2 vUv;
+  varying float vFlip;
+  varying float vFog;
+  void main() {
+    float comet = pow(fract(vUv.x * vFlip / ${LED.spacing.toFixed(1)} - time * ${LED.speed.toFixed(2)}), 6.0);
+    float fall = (1.0 - vUv.y) * (1.0 - vUv.y);
+    gl_FragColor = vec4(color * fall * (0.1 + 0.32 * comet) * vFog, 1.0);
+  }
+`;
 
 const railPanelVert = /* glsl */ `
   attribute float aFlip;
@@ -357,7 +408,8 @@ const railPanelVert = /* glsl */ `
 
 interface RailMeshes {
   meshes: THREE.Mesh[];
-  panelMaterial: THREE.ShaderMaterial;
+  /** Animated materials (time uniform). */
+  materials: THREE.ShaderMaterial[];
   sync(state: RailState | null | undefined): void;
   dispose(): void;
 }
@@ -370,10 +422,15 @@ interface RailMeshes {
  * pieces that the race has shoved (offset and rotation about the piece's rest
  * center, like the sim) and uploads only when something moved.
  */
-function buildRailMeshes(world: World, tex: THREE.Texture): RailMeshes {
+function buildRailMeshes(world: World, tex: THREE.Texture, beaconMaterial: THREE.Material | null): RailMeshes {
   const l = railLayout(world);
   const panel = new GeoBuilder();
   const frame = new GeoBuilder(true);
+  const led = new GeoBuilder();
+  const pool = new GeoBuilder();
+  const beacon = new GeoBuilder();
+  const ledFlip: number[] = [];
+  const poolFlip: number[] = [];
   const flip: number[] = [];
   const phase: number[] = [];
   const dark = new THREE.Color(0x101218);
@@ -383,10 +440,22 @@ function buildRailMeshes(world: World, tex: THREE.Texture): RailMeshes {
   const pEnd = new Int32Array(l.count);
   const fStart = new Int32Array(l.count);
   const fEnd = new Int32Array(l.count);
+  const lStart = new Int32Array(l.count);
+  const lEnd = new Int32Array(l.count);
+  const oStart = new Int32Array(l.count);
+  const oEnd = new Int32Array(l.count);
+  const bStart = new Int32Array(l.count);
+  const bEnd = new Int32Array(l.count);
   const gap = 0.03;
+  /** Distance along the current rail chain (m), for the LED comets. */
+  let chainS = 0;
   for (let p = 0; p < l.count; p++) {
     pStart[p] = panel.vertexCount;
     fStart[p] = frame.vertexCount;
+    lStart[p] = led.vertexCount;
+    oStart[p] = pool.vertexCount;
+    bStart[p] = beacon.vertexCount;
+    if (p === 0 || l.group[p] !== l.group[p - 1]) chainS = 0;
     const k0 = l.first[p];
     const k1 = k0 + l.subs[p];
     let total = 0;
@@ -426,6 +495,29 @@ function buildRailMeshes(world: World, tex: THREE.Texture): RailMeshes {
       for (let i = 0; i < 4; i++) {
         flip.push(fl);
         phase.push(ph);
+      }
+      // LED strip along the top edge, facing the course; u is the distance along the chain (m).
+      const sa = chainS + s - len;
+      const sb = chainS + s;
+      const lv = [
+        led.vertex(ax + nx * 0.11, ga + 1.24, az + nz * 0.11, nx, 0, nz, sa, 0),
+        led.vertex(bx + nx * 0.11, gb + 1.24, bz + nz * 0.11, nx, 0, nz, sb, 0),
+        led.vertex(bx + nx * 0.11, gb + 1.31, bz + nz * 0.11, nx, 0, nz, sb, 1),
+        led.vertex(ax + nx * 0.11, ga + 1.31, az + nz * 0.11, nx, 0, nz, sa, 1),
+      ];
+      led.quadFacing(lv[0], lv[1], lv[2], lv[3], nx, 0, nz);
+      // Its glow on the ground in front, fading out over LED.poolReach.
+      const R = LED.poolReach;
+      const ov = [
+        pool.vertex(ax + nx * 0.14, world.heightAt(ax + nx * 0.14, az + nz * 0.14) + 0.04, az + nz * 0.14, 0, 1, 0, sa, 0),
+        pool.vertex(bx + nx * 0.14, world.heightAt(bx + nx * 0.14, bz + nz * 0.14) + 0.04, bz + nz * 0.14, 0, 1, 0, sb, 0),
+        pool.vertex(bx + nx * R, world.heightAt(bx + nx * R, bz + nz * R) + 0.04, bz + nz * R, 0, 1, 0, sb, 1),
+        pool.vertex(ax + nx * R, world.heightAt(ax + nx * R, az + nz * R) + 0.04, az + nz * R, 0, 1, 0, sa, 1),
+      ];
+      pool.quadFacing(ov[0], ov[1], ov[2], ov[3], 0, 1, 0);
+      for (let i = 0; i < 4; i++) {
+        ledFlip.push(fl);
+        poolFlip.push(fl);
       }
       // Backing wall (both faces) and a cap.
       const v = [
@@ -473,10 +565,41 @@ function buildRailMeshes(world: World, tex: THREE.Texture): RailMeshes {
           ].map(([x, y, z]) => frame.vertex(x, y, z, qx / ql, 0, qz / ql, 0, 0, post));
           frame.quadFacing(q[0], q[1], q[2], q[3], qx / ql, 0, qz / ql);
         }
+        // An amber beacon on every fourth post.
+        if (beaconMaterial && p % 4 === 0) {
+          const y0 = ga + 1.45;
+          const y1 = ga + 1.58;
+          const c = [
+            [px - 0.075, pz - 0.075],
+            [px + 0.075, pz - 0.075],
+            [px + 0.075, pz + 0.075],
+            [px - 0.075, pz + 0.075],
+          ];
+          for (let i = 0; i < 4; i++) {
+            const a = c[i];
+            const b = c[(i + 1) % 4];
+            const qx = (a[0] + b[0]) / 2 - px;
+            const qz = (a[1] + b[1]) / 2 - pz;
+            const ql = Math.hypot(qx, qz) || 1;
+            const q = [
+              beacon.vertex(a[0], y0, a[1], qx / ql, 0, qz / ql, 0, 0),
+              beacon.vertex(b[0], y0, b[1], qx / ql, 0, qz / ql, 0, 0),
+              beacon.vertex(b[0], y1, b[1], qx / ql, 0, qz / ql, 0, 0),
+              beacon.vertex(a[0], y1, a[1], qx / ql, 0, qz / ql, 0, 0),
+            ];
+            beacon.quadFacing(q[0], q[1], q[2], q[3], qx / ql, 0, qz / ql);
+          }
+          const t = c.map(([x, z]) => beacon.vertex(x, y1, z, 0, 1, 0, 0, 0));
+          beacon.quadFacing(t[0], t[1], t[2], t[3], 0, 1, 0);
+        }
       }
     }
+    chainS += s;
     pEnd[p] = panel.vertexCount;
     fEnd[p] = frame.vertexCount;
+    lEnd[p] = led.vertexCount;
+    oEnd[p] = pool.vertexCount;
+    bEnd[p] = beacon.vertexCount;
   }
 
   const meshes: THREE.Mesh[] = [];
@@ -487,6 +610,19 @@ function buildRailMeshes(world: World, tex: THREE.Texture): RailMeshes {
     side: THREE.DoubleSide,
   });
   const frameMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.4 });
+  const ledMaterial = new THREE.ShaderMaterial({
+    vertexShader: railPanelVert,
+    fragmentShader: ledFrag,
+    uniforms: { time: { value: 0 }, color: { value: new THREE.Color(0x19e6ff) }, fogDensity: { value: FOG_DENSITY } },
+  });
+  const poolMaterial = new THREE.ShaderMaterial({
+    vertexShader: railPanelVert,
+    fragmentShader: poolFrag,
+    uniforms: { time: { value: 0 }, color: { value: new THREE.Color(0x19e6ff) }, fogDensity: { value: FOG_DENSITY } },
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
   const geos: THREE.BufferGeometry[] = [];
   const restOf: { pos: Float32Array; nor: Float32Array; geo: THREE.BufferGeometry; start: Int32Array; end: Int32Array }[] = [];
   if (panel.vertexCount) {
@@ -507,6 +643,23 @@ function buildRailMeshes(world: World, tex: THREE.Texture): RailMeshes {
     geos.push(fg);
     restOf.push({ pos: Float32Array.from(fg.attributes.position.array), nor: Float32Array.from(fg.attributes.normal.array), geo: fg, start: fStart, end: fEnd });
   }
+  const glowPart = (gb: GeoBuilder, mat: THREE.Material, name: string, start: Int32Array, end: Int32Array, flips: number[] | null, order = 0) => {
+    if (!gb.vertexCount) return;
+    const g = gb.build();
+    if (flips) {
+      g.setAttribute('aFlip', new THREE.Float32BufferAttribute(flips, 1));
+      g.setAttribute('aPhase', new THREE.Float32BufferAttribute(new Float32Array(flips.length), 1));
+    }
+    const m = new THREE.Mesh(g, mat);
+    m.name = name;
+    m.renderOrder = order;
+    meshes.push(m);
+    geos.push(g);
+    restOf.push({ pos: Float32Array.from(g.attributes.position.array), nor: Float32Array.from(g.attributes.normal.array), geo: g, start, end });
+  };
+  glowPart(led, ledMaterial, 'railLeds', lStart, lEnd, ledFlip);
+  glowPart(pool, poolMaterial, 'railGlow', oStart, oEnd, poolFlip, 2);
+  if (beaconMaterial) glowPart(beacon, beaconMaterial, 'railBeacons', bStart, bEnd, null);
 
   // Last pose drawn per piece.
   const shownDx = new Float64Array(l.count);
@@ -516,7 +669,7 @@ function buildRailMeshes(world: World, tex: THREE.Texture): RailMeshes {
   let shownState: RailState | null = null;
   return {
     meshes,
-    panelMaterial,
+    materials: [panelMaterial, ledMaterial, poolMaterial],
     sync(state) {
       if (!state || state.layout !== l) return;
       if (state === shownState && state.version === shownVersion) return;
@@ -561,6 +714,8 @@ function buildRailMeshes(world: World, tex: THREE.Texture): RailMeshes {
       for (const g of geos) g.dispose();
       panelMaterial.dispose();
       frameMaterial.dispose();
+      ledMaterial.dispose();
+      poolMaterial.dispose();
     },
   };
 }

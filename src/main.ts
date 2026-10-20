@@ -533,7 +533,7 @@ async function boot(): Promise<void> {
   // A normal start flashes the title in over the asset check and lands it on the
   // menu; deep links go straight to their screen behind a plain loading card.
   // On document.body, not #ui: it has to cover the music widget, which lives there too.
-  const splash = deepLink ? null : showSplash(document.body, { soundBlocked: () => music.blocked });
+  const splash = deepLink ? null : showSplash(document.body);
   const loading = splash ? null : loadingScreen('STREET SCENE');
   if (loading) uiRoot.append(loading);
   availability = await assets.availability();

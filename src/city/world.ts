@@ -3,10 +3,10 @@
  * collision and progress along the active route. Built once per race from
  * (seed, route kind) and never mutated afterwards.
  */
-import { CITY } from './config';
+import { CITY, ROUTE } from './config';
 import { CityBlocks, Wall, generateBlocks } from './blocks';
 import { RoadGraph, generateRoadGraph } from './roadGraph';
-import { BarrierGroup, Route, RouteKind, buildRoute, findCircuitNodes, findSprintNodes, routeBarrierGroups, routeBarriers, routeRails } from './route';
+import { BarrierGroup, RailWall, Route, RouteKind, buildRoute, findCircuitNodes, findSprintNodes, routeBarrierGroups, routeRails } from './route';
 import { Prop, buildPropGrid } from './props';
 import { SpatialGrid } from './spatial';
 import { Terrain, createTerrain } from './terrain';
@@ -152,8 +152,22 @@ function sealBarriers(city: City, groups: BarrierGroup[]): void {
           if (t > 0 && u >= 0 && u <= 1) reach = Math.max(reach, t);
         }
         if (reach <= 0 || reach > 40) continue;
-        const nx = ex + dx * (reach + 0.1);
-        const nz = ez + dz * (reach + 0.1);
+        // Or the first city wall on the way (a fountain basin, a boundary wall), whichever comes first.
+        for (const c of city.blocks.walls) {
+          if (Math.abs(c.ax - ex) > 45 || Math.abs(c.az - ez) > 45) continue;
+          const sx = c.bx - c.ax;
+          const sz = c.bz - c.az;
+          const den = dx * sz - dz * sx;
+          if (Math.abs(den) < 1e-9) continue;
+          const t = ((c.ax - ex) * sz - (c.az - ez) * sx) / den;
+          const u = ((c.ax - ex) * dz - (c.az - ez) * dx) / den;
+          // Walls touching the closure's own end count too (reach 0: no seal rather than a crossing).
+          if (t > -0.05 && t < reach && u >= 0 && u <= 1) reach = Math.max(0, t);
+        }
+        if (reach <= 0.1) continue;
+        // Just short of the pocket's back curb (never through it); the hair left is far narrower than a car.
+        const nx = ex + dx * (reach - 0.05);
+        const nz = ez + dz * (reach - 0.05);
         if (atA) {
           w.ax = nx;
           w.az = nz;
@@ -161,7 +175,7 @@ function sealBarriers(city: City, groups: BarrierGroup[]): void {
           w.bx = nx;
           w.bz = nz;
         }
-        gr.length += reach + 0.1;
+        gr.length += reach - 0.05;
         sealed.push(w);
       }
     }
@@ -200,6 +214,50 @@ function sealBarriers(city: City, groups: BarrierGroup[]): void {
   }
 }
 
+/**
+ * Closures become cyan modular rail pieces like the corner rails (src/sim/rails.ts):
+ * straight pieces of about ROUTE.railPieceLength along each closure segment, one
+ * rail group per barrier group (V joined segments chain like a bent rail), group
+ * and piece ids continuing after the corner rails'. The groups' walls become
+ * these pieces.
+ */
+function closureRails(groups: BarrierGroup[], cornerRails: RailWall[]): RailWall[] {
+  let rail = 0;
+  let piece = 0;
+  for (const w of cornerRails) {
+    rail = Math.max(rail, w.group + 1);
+    piece = Math.max(piece, w.piece + 1);
+  }
+  const out: RailWall[] = [];
+  for (const g of groups) {
+    const pieces: RailWall[] = [];
+    for (const w of g.walls) {
+      const len = sqrt((w.bx - w.ax) ** 2 + (w.bz - w.az) ** 2);
+      if (len < 0.05) continue;
+      const n = Math.max(1, Math.round(len / ROUTE.railPieceLength));
+      for (let k = 0; k < n; k++) {
+        const t0 = k / n;
+        const t1 = (k + 1) / n;
+        pieces.push({
+          ax: w.ax + (w.bx - w.ax) * t0,
+          az: w.az + (w.bz - w.az) * t0,
+          bx: k === n - 1 ? w.bx : w.ax + (w.bx - w.ax) * t1,
+          bz: k === n - 1 ? w.bz : w.az + (w.bz - w.az) * t1,
+          nx: w.nx,
+          nz: w.nz,
+          kind: 'rail',
+          group: rail,
+          piece: piece++,
+        });
+      }
+    }
+    g.walls = pieces;
+    out.push(...pieces);
+    rail++;
+  }
+  return out;
+}
+
 export function createRoute(city: City, kind: RouteKind): Route {
   const nodes = kind === 'circuit' ? findCircuitNodes(city.graph, city.seed) : findSprintNodes(city.graph, city.seed);
   return buildRoute(city.graph, kind, nodes);
@@ -212,7 +270,8 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
   const rails = openWorld ? [] : awayFromRoundabouts(graph, routeRails(graph, route, blocks.props, blocks.walls));
   const barrierGroups = openWorld ? [] : routeBarrierGroups(graph, blocks.mouths, route, rails);
   sealBarriers(city, barrierGroups);
-  const walls = blocks.walls.concat(routeBarriers(graph, blocks.mouths, route, barrierGroups), rails);
+  const closures = closureRails(barrierGroups, rails);
+  const walls = blocks.walls.concat(rails, closures);
   const props = blocks.props;
   const propGrid = buildPropGrid(graph, props);
   const coveredProps = propsUnderWalls(props, propGrid, walls.slice(blocks.walls.length));

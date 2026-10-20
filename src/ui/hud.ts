@@ -146,7 +146,8 @@ export class Hud {
     this.buildAreaLayers(world);
     this.routePath = new Path2D();
     world.route.points.forEach((p, i) => (i ? this.routePath.lineTo(p.x, p.z) : this.routePath.moveTo(p.x, p.z)));
-    this.closed = world.walls.filter((w) => w.kind === 'barrier').map((w) => ({ x: (w.ax + w.bx) / 2, z: (w.az + w.bz) / 2 }));
+    // Closures: one marker per closure group (they are cyan rail pieces now, like the corner rails).
+    this.closed = (world.barrierGroups ?? []).map((g) => ({ x: g.x, z: g.z }));
   }
 
   /** Minimap layers per district kind (styles from AREA_MAP_STYLE). */

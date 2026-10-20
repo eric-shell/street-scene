@@ -701,11 +701,51 @@ function loadClip(ctx: AudioContext, name: CrowdClip): Promise<AudioBuffer | nul
     p = fetch(`${base}${CROWD_FILES[name]}`)
       .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`${r.status}`))))
       .then((b) => ctx.decodeAudioData(b))
+      .then((buf) => loudEnough(ctx, buf, CROWD_TARGET_DB[name]))
       .then((buf) => (name === 'cheer' ? seamless(ctx, buf, 1.2) : buf))
       .catch(() => null);
     clipCache.set(name, p);
   }
   return p;
+}
+
+/**
+ * The recordings are quiet (cheer about -28 dB RMS, applause -32 dB with -3 dB
+ * clap peaks), so on decode each is brought up to a target RMS (dB) and its
+ * peaks rounded off by a soft limiter instead of clipping.
+ */
+const CROWD_TARGET_DB: Record<CrowdClip, number> = { cheer: -17, applause: -19 };
+/** Crowd mix on top of that: stand loops and the cheer / applause one-shots. */
+const CROWD_LOOP_GAIN = 3.2;
+const CROWD_SHOT_GAIN = 3;
+
+/** A copy of `buf` at the target RMS, peaks soft limited (tanh) below full scale. */
+function loudEnough(ctx: AudioContext, buf: AudioBuffer, targetDb: number): AudioBuffer {
+  let e = 0;
+  let n = 0;
+  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+    const d = buf.getChannelData(ch);
+    for (let i = 0; i < d.length; i++) e += d[i] * d[i];
+    n += d.length;
+  }
+  const rms = Math.sqrt(e / Math.max(1, n));
+  if (rms < 1e-6) return buf;
+  const gain = Math.min(30, 10 ** (targetDb / 20) / rms);
+  if (gain <= 1) return buf;
+  const out = ctx.createBuffer(buf.numberOfChannels, buf.length, buf.sampleRate);
+  // Linear up to the knee, then tanh rounds the peaks off toward 0.98.
+  const knee = 0.6;
+  const room = 0.98 - knee;
+  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+    const src = buf.getChannelData(ch);
+    const dst = out.getChannelData(ch);
+    for (let i = 0; i < src.length; i++) {
+      const x = src[i] * gain;
+      const a = Math.abs(x);
+      dst[i] = a <= knee ? x : Math.sign(x) * (knee + room * Math.tanh((a - knee) / room));
+    }
+  }
+  return out;
 }
 
 /** A crowd stand (segment) and its excitement, as the crowd renderer reports it each frame. */
@@ -727,7 +767,7 @@ const CROWD_OFF = { gate: 0.01, section: 0.03 };
 const MAX_CROWD_LOOPS = 8;
 
 /** Crowds are loud: their loudness falls off over a longer distance than impacts (m). */
-const CROWD_REF = 30;
+const CROWD_REF = 40;
 
 /** The looped cheering bed of one stand, filtered and attenuated by distance. */
 class CrowdLoop {
@@ -759,7 +799,7 @@ class CrowdLoop {
   update(level: number, pos: SfxPos, paused: boolean): void {
     const t = this.ctx.currentTime;
     const l = Math.max(0, Math.min(1.6, level));
-    const gain = paused ? 0 : pos.proximity * (0.05 + 0.42 * l ** 1.3);
+    const gain = paused ? 0 : pos.proximity * CROWD_LOOP_GAIN * (0.12 + 0.42 * l ** 1.2);
     // Murmur sounds distant and muffled; cheering opens up the top end.
     this.lp.frequency.setTargetAtTime(700 + 15000 * pos.proximity ** 1.2 * (0.35 + 0.65 * Math.min(1, l)), t, 0.25);
     this.out.gain.setTargetAtTime(gain, t, paused ? 0.08 : 0.3);
@@ -1101,8 +1141,8 @@ export class Sfx {
         this.crowdShots = this.crowdShots.filter((x) => x !== g);
       };
     };
-    shot(this.cheerBuf, 0.32 * s, 2 + 2.2 * s, rnd(0, 2));
-    if (applause) shot(this.applauseBuf, 0.26 * s, 2.5 + 4 * s, rnd(0.5, 3));
+    shot(this.cheerBuf, 0.32 * s * CROWD_SHOT_GAIN, 2 + 2.2 * s, rnd(0, 2));
+    if (applause) shot(this.applauseBuf, 0.26 * s * CROWD_SHOT_GAIN, 2.5 + 4 * s, rnd(0.5, 3));
   }
 
   /** A firework shell bursting at a world position; heard with the speed of sound delay. */

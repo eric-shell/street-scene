@@ -11,7 +11,8 @@ import { FOG_COLOR, FOG_DENSITY, NightLighting } from './lighting';
 import { PostFx } from './post';
 import { makeNightEnvironment, makeSkyTexture } from './textures';
 import { buildRouteArrows, classifyBarriers, RouteArrows } from './routeArrows';
-import { buildRoadblocks } from './roadblocks';
+import { MEET_VARIANTS, buildRoadblocks, parkedCars } from './roadblocks';
+import { planMeets } from './meetPlan';
 import { buildProps, PropRenderer } from './props';
 import { buildDistrictMeshes } from './districts';
 import { buildBackdrop } from './backdrop';
@@ -120,7 +121,6 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   scene.environmentIntensity = 0.55;
   scene.fog = new THREE.FogExp2(FOG_COLOR, FOG_DENSITY);
   const barriers = classifyBarriers(world);
-  // Every closure is drawn as a barrier: spectators stand right behind side closures too.
   const city = buildCityMeshes(world);
   scene.add(city.group);
   // District dressing (lots, plazas, parks, river, roundabouts, subway) and the distant mountains.
@@ -135,9 +135,23 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   lighting.setLamps(city.lampPositions);
   lighting.setPoolSize(gr.profile.pointLights);
   scene.add(lighting.group);
-  const roadblocks = buildRoadblocks(world, barriers, city.barrierLampMaterial, { rows: { low: 2, medium: 3, high: 4 }[settings.quality], railRows: settings.quality === 'high' ? 2 : 1, drawDistance: { low: 170, medium: 240, high: 300 }[settings.quality] });
+  // Street meets behind every cyan barrier: a crowd against the barrier, thinning back among parked
+  // cars. Denser, deeper and drawn further at higher quality.
+  const meetQ =
+    {
+      low: { peopleDensity: 0.45, peopleDepth: 5, carRows: 2, drawDistance: 170, crowdDraw: 140 },
+      medium: { peopleDensity: 0.7, peopleDepth: 7, carRows: 3, drawDistance: 240, crowdDraw: 190 },
+      high: { peopleDensity: 1, peopleDepth: 9, carRows: 5, drawDistance: 300, crowdDraw: 260 },
+    }[settings.quality] ?? { peopleDensity: 0.7, peopleDepth: 7, carRows: 3, drawDistance: 240, crowdDraw: 190 };
+  const meet = planMeets(world, {
+    cars: parkedCars().map((c) => ({ length: c.dimensions.length, width: c.dimensions.width, variants: MEET_VARIANTS })),
+    peopleDensity: meetQ.peopleDensity,
+    peopleDepth: meetQ.peopleDepth,
+    carRows: meetQ.carRows,
+  });
+  const roadblocks = buildRoadblocks(world, meet, city.barrierLampMaterial, { drawDistance: meetQ.drawDistance });
   scene.add(roadblocks.group);
-  const arrows = buildRouteArrows(world, barriers, roadblocks.groups);
+  const arrows = buildRouteArrows(world, barriers, { beacon: city.barrierLampMaterial });
   scene.add(arrows.group);
   // Parked cars cull per group against whatever camera renders the scene.
   scene.onBeforeRender = (_r, _s, camera) => {
@@ -155,15 +169,9 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     },
   });
   scene.add(props.group);
-  // Spectators by the start / finish gantries and in sections behind every closure and corner rail
-  // (none in an open world). Sections thin out and draw less far at lower quality.
-  const crowdQ =
-    {
-      low: { density: 0.55, rows: 2, sectionDensity: 0.35, sectionRows: 1, drawDistance: 140 },
-      medium: { density: 0.8, rows: 2, sectionDensity: 0.55, sectionRows: 2, drawDistance: 190 },
-      high: { density: 1, rows: 3, sectionDensity: 0.8, sectionRows: 2, drawDistance: 260 },
-    }[settings.quality] ?? { density: 0.8, rows: 2, sectionDensity: 0.55, sectionRows: 2, drawDistance: 190 };
-  const crowds = buildCrowds(world, world.openWorld ? [] : city.finishLine.gates, crowdQ);
+  // Spectators on the sidewalks by the start / finish gantries, and every meet's crowd (none in an open world).
+  const crowdQ = { low: { density: 0.55, rows: 2 }, medium: { density: 0.8, rows: 2 }, high: { density: 1, rows: 3 } }[settings.quality] ?? { density: 0.8, rows: 2 };
+  const crowds = buildCrowds(world, world.openWorld ? [] : city.finishLine.gates, { ...crowdQ, drawDistance: meetQ.crowdDraw, meet });
   scene.add(crowds.group);
   stabilizeSmallEmitters(city);
   return {

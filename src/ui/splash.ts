@@ -23,10 +23,6 @@ export interface Splash {
   land(menuRoot: HTMLElement | null): Promise<void>;
 }
 
-export interface SplashOptions {
-  /** Asked once the title is up: true shows a "tap for sound" hint (browser refused autoplay). */
-  soundBlocked?: () => boolean;
-}
 
 const TITLE = 'STREET SCENE';
 const TAGLINE = 'Street racing after dark';
@@ -44,8 +40,6 @@ const SPLASH = {
   gutter: 24,
   /** How long to wait for the display fonts before flashing in with fallbacks (s). */
   fontWait: 0.8,
-  /** When to ask whether sound is blocked and show the hint (s after the flash-in starts). */
-  hintAt: 1.4,
   /** The road's horizon sits this far under the tagline (fraction of the viewport height), within [min, max]. */
   horizonGap: 0.06,
   horizonMin: 0.55,
@@ -64,7 +58,12 @@ function fontsReady(): Promise<unknown> {
   return Promise.race([load, delay(SPLASH.fontWait * 1000)]);
 }
 
-export function showSplash(parent: HTMLElement, opts: SplashOptions = {}): Splash {
+/**
+ * There is no "tap for sound" prompt: music and sound try to start at once and,
+ * where the browser refuses audible autoplay, start on the first click, tap or
+ * key press of any kind (audio/musicPlayer.ts, audio/engineAudio.ts).
+ */
+export function showSplash(parent: HTMLElement): Splash {
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   // Three copies of the title share the logo's metrics: the gradient one that
   // stays, a per-letter neon layer that flickers on, and a shine that sweeps.
@@ -107,15 +106,7 @@ export function showSplash(parent: HTMLElement, opts: SplashOptions = {}): Splas
       },
       title: () => block.getBoundingClientRect(),
     });
-    await delay(SPLASH.hintAt * 1000);
-    if (opts.soundBlocked?.()) {
-      const hint = h('div', { class: 'splash-hint' }, 'Tap or click for sound');
-      root.append(hint);
-      const gone = () => hint.remove();
-      window.addEventListener('pointerdown', gone, { once: true, capture: true });
-      window.addEventListener('keydown', gone, { once: true, capture: true });
-    }
-    await delay((SPLASH.hold - SPLASH.hintAt) * 1000);
+    await delay(SPLASH.hold * 1000);
   })();
 
   const menuOf = (menuRoot: HTMLElement | null) => menuRoot?.querySelector<HTMLElement>('.menu') ?? null;

@@ -1,7 +1,7 @@
 /**
  * Turns the pure city description into three.js meshes: roads with markings,
  * curbs and sidewalks, buildings with procedural windows, streetlight lamp
- * positions, neon signs, barriers and the start line. Built once per world; read only.
+ * positions, neon signs and the start line. Built once per world; read only.
  */
 import * as THREE from 'three';
 import { CITY } from '../city/config';
@@ -22,7 +22,6 @@ import {
   WINDOW_COLS,
   WINDOW_ROWS,
   makeAsphalt,
-  makeBarrierTexture,
   makeFacade,
   makeSidewalk,
   makeSignAtlas,
@@ -43,7 +42,7 @@ export interface CityMeshes {
 const ROAD_Y = 0.02;
 const MARK_Y = 0.045;
 
-export function buildCityMeshes(world: World, barrierWalls?: Set<unknown>): CityMeshes {
+export function buildCityMeshes(world: World): CityMeshes {
   const group = new THREE.Group();
   group.name = 'city';
   const h = world.heightAt;
@@ -435,65 +434,10 @@ export function buildCityMeshes(world: World, barrierWalls?: Set<unknown>): City
     group.add(signMesh);
   }
 
-  // ---------- Barriers on closed side streets ----------
+  // ---------- Hazard lamp material ----------
+  // Closures are cyan rail pieces now (routeArrows.ts); this blinking amber (animated by the scene) is
+  // shared by the beacons on their posts and the hazards of the parked meet cars.
   const barrierLampMaterial = track(new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffa020).multiplyScalar(3) }));
-  {
-    const bb = new GeoBuilder();
-    const lamps = new GeoBuilder();
-    const H = 1.15;
-    const T = 0.35;
-    for (const w of world.walls) {
-      if (w.kind !== 'barrier' || (barrierWalls && !barrierWalls.has(w))) continue;
-      const len = Math.hypot(w.bx - w.ax, w.bz - w.az);
-      const dx = (w.bx - w.ax) / len;
-      const dz = (w.bz - w.az) / len;
-      const y = Math.min(h(w.ax, w.az), h(w.bx, w.bz));
-      const box = (ox: number, oz: number, x0: number, x1: number, y0: number, y1: number, t: number, gb: GeoBuilder, uLen: number) => {
-        // oriented box from along-offset x0..x1, centered at (ox, oz)
-        const pts = [
-          [x0, -t],
-          [x1, -t],
-          [x1, t],
-          [x0, t],
-        ].map(([a, b]) => ({ x: ox + dx * a + w.nx * b, z: oz + dz * a + w.nz * b }));
-        for (let i = 0; i < 4; i++) {
-          const p = pts[i];
-          const q = pts[(i + 1) % 4];
-          const mx = (p.x + q.x) / 2 - ox - dx * (x0 + x1) / 2;
-          const mz = (p.z + q.z) / 2 - oz - dz * (x0 + x1) / 2;
-          const ml = Math.hypot(mx, mz) || 1;
-          const nx = mx / ml;
-          const nz = mz / ml;
-          const sideLen = Math.hypot(q.x - p.x, q.z - p.z);
-          const a = gb.vertex(p.x, y0, p.z, nx, 0, nz, 0, 0);
-          const b2 = gb.vertex(q.x, y0, q.z, nx, 0, nz, sideLen / uLen, 0);
-          const c = gb.vertex(q.x, y1, q.z, nx, 0, nz, sideLen / uLen, 1);
-          const d = gb.vertex(p.x, y1, p.z, nx, 0, nz, 0, 1);
-          gb.quadFacing(a, b2, c, d, nx, 0, nz);
-        }
-        const t0 = gb.vertex(pts[0].x, y1, pts[0].z, 0, 1, 0, 0, 0);
-        const t1 = gb.vertex(pts[1].x, y1, pts[1].z, 0, 1, 0, 0, 0);
-        const t2 = gb.vertex(pts[2].x, y1, pts[2].z, 0, 1, 0, 0, 0);
-        const t3 = gb.vertex(pts[3].x, y1, pts[3].z, 0, 1, 0, 0, 0);
-        gb.quadFacing(t0, t1, t2, t3, 0, 1, 0);
-      };
-      box(w.ax, w.az, 0, len, y + 0.25, y + H, T / 2, bb, 2.2);
-      // legs
-      for (let s = 0.4; s < len; s += 3) box(w.ax, w.az, s, s + 0.15, y, y + 0.3, T / 2, bb, 2.2);
-      for (let s = 1; s < len - 0.5; s += 2.5) box(w.ax, w.az, s, s + 0.25, y + H, y + H + 0.2, 0.12, lamps, 1);
-    }
-    if (bb.vertexCount) {
-      const m = new THREE.Mesh(
-        track(bb.build()),
-        track(new THREE.MeshStandardMaterial({ map: track(makeBarrierTexture()), roughness: 0.5, emissive: 0x332200, emissiveIntensity: 0.5 })),
-      );
-      m.name = 'barriers';
-      group.add(m);
-      const lm = new THREE.Mesh(track(lamps.build()), barrierLampMaterial);
-      lm.name = 'barrierLamps';
-      group.add(lm);
-    }
-  }
 
   // ---------- Start / finish line ----------
   // Gantries, painted line and celebration effects live in finishLine.ts.

@@ -432,8 +432,14 @@ export interface BarrierGroup {
   node: number;
   /** Closed side street edges, one per segment, in the same order as walls. */
   edges: number[];
-  /** Barrier segments (the same objects as in World.walls). */
+  /**
+   * The closure: straight barrier segments while the world is being built,
+   * then (createWorld) cyan modular rail pieces, the same RailWall objects as in
+   * World.walls, all with one rail group id.
+   */
   walls: Wall[];
+  /** Some closed street of the group carries straight on from the incoming road (racers overshoot into it). */
+  headOn: boolean;
   /** Arrow anchor: length weighted mean of the segment midpoints. */
   x: number;
   z: number;
@@ -462,6 +468,9 @@ interface MouthBarrier {
   b: Vec2;
   /** Distance from the node along the side street. */
   d: number;
+  /** A corner rail already runs right across this mouth: it is the closure, no barrier of its own. */
+  railed: boolean;
+  headOn?: boolean;
 }
 
 function mouthBarrier(g: RoadGraph, mouths: EdgeMouths[], edge: number, node: number, rails: Wall[] = [], setback = 0): MouthBarrier {
@@ -490,6 +499,8 @@ function mouthBarrier(g: RoadGraph, mouths: EdgeMouths[], edge: number, node: nu
   const half = e.width / 2 + e.sidewalk;
   // Stay behind any corner rail that crosses this mouth (a side street leaving
   // right at the outside of a corner), so the barrier never pokes through it.
+  // A rail spanning the whole mouth closes the street by itself.
+  const span = new Map<number, { lo: number; hi: number }>();
   for (const w of rails) {
     for (const [x, z] of [
       [w.ax, w.az],
@@ -497,13 +508,21 @@ function mouthBarrier(g: RoadGraph, mouths: EdgeMouths[], edge: number, node: nu
     ]) {
       const al = (x - n.x) * dx + (z - n.z) * dz;
       const lat = (x - n.x) * -dz + (z - n.z) * dx;
-      if (al > 0 && al < 60 && abs(lat) <= half + 0.5) d = Math.max(d, al + 1);
+      if (al > 0 && al < 60 && abs(lat) <= half + 0.5) {
+        d = Math.max(d, al + 1);
+        const g = span.get(w.group ?? -1) ?? { lo: Infinity, hi: -Infinity };
+        g.lo = Math.min(g.lo, lat);
+        g.hi = Math.max(g.hi, lat);
+        span.set(w.group ?? -1, g);
+      }
     }
   }
+  let railed = false;
+  for (const g of span.values()) if (g.lo <= -half + 1.5 && g.hi >= half - 1.5) railed = true;
   const cx = n.x + dx * d;
   const cz = n.z + dz * d;
   // (-dz, dx) points toward the next edge in the node's angular order, so a -> b runs counterclockwise.
-  return { edge, node, k: n.edges.indexOf(edge), a: { x: cx + dz * half, z: cz - dx * half }, b: { x: cx - dz * half, z: cz + dx * half }, d };
+  return { edge, node, k: n.edges.indexOf(edge), a: { x: cx + dz * half, z: cz - dx * half }, b: { x: cx - dz * half, z: cz + dx * half }, d, railed };
 }
 
 /** Proper intersection parameter of segments p0p1 and q0q1 on the first, or null. */
@@ -540,7 +559,9 @@ export function routeBarrierGroups(g: RoadGraph, mouths: EdgeMouths[], route: Ro
     const far = g.nodes[otherNode(g.edges[cs.edge], cs.node)];
     const fl = sqrt((far.x - n.x) ** 2 + (far.z - n.z) ** 2) || 1;
     const headOn = !!to && ((to.x - base.x) * (far.x - n.x) + (to.z - base.z) * (far.z - n.z)) / (il * fl) > 0.55;
-    list.push(mouthBarrier(g, mouths, cs.edge, cs.node, near, headOn ? ROUTE.barrierSetbackHeadOn : ROUTE.barrierSetbackSide));
+    const mb = mouthBarrier(g, mouths, cs.edge, cs.node, near, headOn ? ROUTE.barrierSetbackHeadOn : ROUTE.barrierSetbackSide);
+    mb.headOn = headOn;
+    if (!mb.railed) list.push(mb);
   }
   const all = [...byNode.values()].flat();
   const barrierAt = (edge: number, node: number) => all.find((b) => b.edge === edge && b.node === node);
@@ -588,7 +609,9 @@ export function routeBarrierGroups(g: RoadGraph, mouths: EdgeMouths[], route: Ro
       let snz = 0;
       let length = 0;
       let depth = Infinity;
+      let headOn = false;
       for (const b of r) {
+        if (b.headOn) headOn = true;
         const w = makeWall(b.a, b.b, { x: n.x, z: n.z }, 'barrier');
         if (!w) continue;
         w.group = groups.length;
@@ -610,15 +633,10 @@ export function routeBarrierGroups(g: RoadGraph, mouths: EdgeMouths[], route: Ro
       }
       if (!walls.length) continue;
       const nl = sqrt(snx * snx + snz * snz) || 1;
-      groups.push({ id: groups.length, node: nid, edges, walls, x: sx / length, z: sz / length, nx: snx / nl, nz: snz / nl, length, depth: Math.max(0, depth) });
+      groups.push({ id: groups.length, node: nid, edges, walls, x: sx / length, z: sz / length, nx: snx / nl, nz: snz / nl, length, depth: Math.max(0, depth), headOn });
     }
   }
   return groups;
-}
-
-/** Barrier segments across the mouth of every closed side street (flattened groups). */
-export function routeBarriers(g: RoadGraph, mouths: EdgeMouths[], route: Route, groups = routeBarrierGroups(g, mouths, route)): Wall[] {
-  return groups.flatMap((gr) => gr.walls);
 }
 
 /** A corner rail sub segment: a 'rail' Wall that also knows which modular rail piece it belongs to. */
