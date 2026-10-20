@@ -6,10 +6,13 @@
  * centered; landing is a FLIP transform to the real block's rectangle, after
  * which the real one is shown and the splash removed, so the swap is invisible.
  * Only a page load that lands on the menu shows it; deep links skip it. CSS
- * (`.splash*`, `.menu.splash-*`) does the flash-in; this file only times it and
- * computes the flight.
+ * (`.splash*`, `.menu.splash-*`) does the flash-in, the impact flash and shake
+ * and the neon rule under the title; splashFx.ts draws the night road, traffic,
+ * skyline, bokeh and rain behind it on a canvas and floors it into a warp as
+ * the title flies. This file times it all and computes the flight.
  */
 import { h } from './dom';
+import { SplashFx, startSplashFx } from './splashFx';
 
 export interface Splash {
   /** Resolves once the flash-in has played and the minimum hold is over. */
@@ -29,8 +32,8 @@ const TITLE = 'STREET SCENE';
 const TAGLINE = 'Street racing after dark';
 
 const SPLASH = {
-  /** Shortest time the splash stays up after the fonts arrive (s): the flash-in plus a beat. */
-  hold: 2.4,
+  /** Shortest time the splash stays up after the fonts arrive (s): the flash-in plus a beat of the night road. */
+  hold: 3,
   /** Hold with reduced motion, where the flash-in is skipped (s). */
   reducedHold: 0.8,
   /** Flight from the center of the screen onto the menu (s). */
@@ -43,6 +46,12 @@ const SPLASH = {
   fontWait: 0.8,
   /** When to ask whether sound is blocked and show the hint (s after the flash-in starts). */
   hintAt: 1.4,
+  /** The road's horizon sits this far under the tagline (fraction of the viewport height), within [min, max]. */
+  horizonGap: 0.06,
+  horizonMin: 0.55,
+  horizonMax: 0.86,
+  /** The neon rule under the title fades this fast once the flight starts (s). */
+  ruleOut: 0.25,
 } as const;
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -61,17 +70,23 @@ export function showSplash(parent: HTMLElement, opts: SplashOptions = {}): Splas
   // stays, a per-letter neon layer that flickers on, and a shine that sweeps.
   const letters = TITLE.split('').map((ch, i) => (ch === ' ' ? ' ' : h('span', { style: `--i:${i}` }, ch)));
   const logo = h('h1', { class: 'logo splash-logo', 'data-text': TITLE }, TITLE);
+  // The rule is out of the layout flow, so the block keeps the menu head's exact size for the landing.
+  const rule = h('div', { class: 'splash-rule', 'aria-hidden': 'true' });
   const title = h(
     'div',
     { class: 'splash-title' },
     logo,
     h('div', { class: 'logo splash-copy splash-neon', 'aria-hidden': 'true' }, ...letters),
     h('div', { class: 'logo splash-copy splash-shine', 'aria-hidden': 'true' }, TITLE),
+    rule,
   );
   const block = h('div', { class: 'splash-block' }, title, h('div', { class: 'tagline' }, TAGLINE));
   const bg = h('div', { class: 'splash-bg' });
-  const root = h('div', { class: 'splash', role: 'presentation' }, bg, block);
+  const canvas = h('canvas', { class: 'splash-fx', 'aria-hidden': 'true' });
+  const flash = h('div', { class: 'splash-flash', 'aria-hidden': 'true' });
+  const root = h('div', { class: 'splash', role: 'presentation' }, bg, canvas, flash, block);
   parent.append(root);
+  let fx: SplashFx | null = null;
 
   let from = '';
   const intro = (async () => {
@@ -84,6 +99,14 @@ export function showSplash(parent: HTMLElement, opts: SplashOptions = {}): Splas
     block.style.transform = from;
     root.classList.add('go');
     if (reduced) return delay(SPLASH.reducedHold * 1000);
+    // The night road's horizon sits just under the tagline, wherever the enlarged block ended up.
+    fx = startSplashFx(canvas, {
+      horizon: () => {
+        const bottom = block.getBoundingClientRect().bottom;
+        return Math.max(innerHeight * SPLASH.horizonMin, Math.min(innerHeight * SPLASH.horizonMax, bottom + innerHeight * SPLASH.horizonGap));
+      },
+      title: () => block.getBoundingClientRect(),
+    });
     await delay(SPLASH.hintAt * 1000);
     if (opts.soundBlocked?.()) {
       const hint = h('div', { class: 'splash-hint' }, 'Tap or click for sound');
@@ -114,12 +137,17 @@ export function showSplash(parent: HTMLElement, opts: SplashOptions = {}): Splas
         const to = head.getBoundingClientRect();
         anims.push(block.animate([{ transform: from }, { transform: `translate(${to.left}px, ${to.top}px) scale(1)` }], { duration: ms, easing: 'cubic-bezier(0.7, 0, 0.25, 1)', fill: 'forwards' }));
         anims.push(bg.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms, easing: 'ease-in-out', fill: 'forwards' }));
+        // The road floors it into a warp and fades with the black; the rule is gone before the title lands.
+        fx?.warp();
+        anims.push(canvas.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms * 0.7, easing: 'ease-in-out', fill: 'forwards' }));
+        anims.push(rule.animate([{ opacity: 1 }, { opacity: 0 }], { duration: SPLASH.ruleOut * 1000, easing: 'ease-out', fill: 'forwards' }));
       } else {
         anims.push(root.animate([{ opacity: 1 }, { opacity: 0 }], { duration: reduced ? 300 : ms, easing: 'ease-in-out', fill: 'forwards' }));
       }
       await Promise.all(anims.map((a) => a.finished.catch(() => undefined)));
       // Same frame: the real title appears exactly where the splash copy stopped.
       menu?.classList.remove('splash-arrive');
+      fx?.stop();
       root.remove();
     },
   };
