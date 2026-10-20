@@ -9,6 +9,7 @@
 import * as THREE from 'three';
 import { Rng } from '../sim/prng';
 import { GeoBuilder } from './geoBuilder';
+import { kelvin } from './textures';
 
 /** Ground floor bay variants (atlas row 0). */
 export const GROUND_BAYS = ['shopWarm', 'shopCool', 'arch', 'lobby', 'shutter', 'restaurant', 'masonry', 'neonShop'] as const;
@@ -124,7 +125,7 @@ export function makeFacadeKitTextures(seed: number): FacadeKitTextures {
       case 'shopWarm':
       case 'shopCool': {
         band(variant === 'shopWarm' ? '#ffb347' : '#e8f6ff', true);
-        const lit = variant === 'shopWarm' ? '#ffcf8a' : '#dff2ff';
+        const lit = variant === 'shopWarm' ? kelvin(3000) : kelvin(5600);
         glass(x + 14, y + 52, W - 90, H - 70, lit, 0.95);
         mullions(x + 14, y + 52, W - 90, H - 70, 3);
         // door
@@ -144,7 +145,7 @@ export function makeFacadeKitTextures(seed: number): FacadeKitTextures {
         c.fill();
         archPath(e, x + 50, y + 34, W - 100, H - 48);
         const g = e.createRadialGradient(x + W / 2, y + H - 20, 10, x + W / 2, y + H - 20, H);
-        g.addColorStop(0, '#ffbe6b');
+        g.addColorStop(0, kelvin(2700));
         g.addColorStop(1, '#3a1d05');
         e.fillStyle = g;
         e.fill();
@@ -160,9 +161,9 @@ export function makeFacadeKitTextures(seed: number): FacadeKitTextures {
       case 'lobby': {
         c.fillStyle = '#23252c';
         c.fillRect(x, y, W, H - 14);
-        glass(x + 30, y + 40, W - 60, H - 54, '#cfe8ff', 0.85);
+        glass(x + 30, y + 40, W - 60, H - 54, kelvin(4600), 0.85);
         mullions(x + 30, y + 40, W - 60, H - 54, 4, '#8a8f99');
-        e.fillStyle = '#fff6e0';
+        e.fillStyle = kelvin(6200);
         e.fillRect(x + 22, y + 26, W - 44, 6);
         // revolving door hint
         c.strokeStyle = '#9aa';
@@ -185,7 +186,7 @@ export function makeFacadeKitTextures(seed: number): FacadeKitTextures {
         c.moveTo(x + 40, y + 140);
         c.bezierCurveTo(x + 90, y + 90, x + 120, y + 190, x + 200, y + 120);
         c.stroke();
-        e.fillStyle = '#ff9a3c';
+        e.fillStyle = kelvin(2200);
         e.globalAlpha = 0.6;
         e.fillRect(x + W / 2 - 10, y + 24, 20, 8);
         e.globalAlpha = 1;
@@ -193,7 +194,7 @@ export function makeFacadeKitTextures(seed: number): FacadeKitTextures {
       }
       case 'restaurant': {
         band('#ff3b3b', true);
-        glass(x + 20, y + 56, W - 40, H - 76, '#ff9a5a', 0.85);
+        glass(x + 20, y + 56, W - 40, H - 76, kelvin(2700), 0.85);
         mullions(x + 20, y + 56, W - 40, H - 76, 2);
         // paper lanterns
         for (let k = 0; k < 3; k++) {
@@ -213,7 +214,7 @@ export function makeFacadeKitTextures(seed: number): FacadeKitTextures {
           const wx = x + 40 + k * 110;
           c.fillStyle = '#5a504a';
           c.fillRect(wx - 6, y + 56, 72, 92);
-          glass(wx, y + 62, 60, 80, rng.chance(0.5) ? '#ffcf8a' : null, 0.6);
+          glass(wx, y + 62, 60, 80, rng.chance(0.5) ? kelvin(rng.range(2400, 3400)) : null, 0.6);
           c.fillStyle = '#222';
           for (let b = 1; b < 4; b++) c.fillRect(wx + b * 15, y + 62, 3, 80);
         }
@@ -221,7 +222,7 @@ export function makeFacadeKitTextures(seed: number): FacadeKitTextures {
       }
       case 'neonShop': {
         band('#ff3df2', true);
-        glass(x + 14, y + 52, W - 28, H - 70, '#ff6be8', 0.7);
+        glass(x + 14, y + 52, W - 28, H - 70, kelvin(4000), 0.75);
         mullions(x + 14, y + 52, W - 28, H - 70, 2);
         e.strokeStyle = '#22e6ff';
         e.lineWidth = 5;
@@ -242,7 +243,7 @@ export function makeFacadeKitTextures(seed: number): FacadeKitTextures {
         c.fillStyle = '#3a3e48';
         c.fillRect(x, y, W, H);
         const lit = rng.chance(0.6);
-        glass(x + 8, y + 24, W - 16, H - 52, lit ? '#d9ecff' : null, 0.55);
+        glass(x + 8, y + 24, W - 16, H - 52, lit ? kelvin(rng.range(4500, 6500)) : null, 0.55);
         mullions(x + 8, y + 24, W - 16, H - 52, 6, '#6d7380');
         break;
       }
@@ -255,7 +256,7 @@ export function makeFacadeKitTextures(seed: number): FacadeKitTextures {
           c.fill();
           if (rng.chance(0.55)) {
             archPath(e, wx + 4, y + 26, 48, H - 48);
-            e.fillStyle = '#ffc070';
+            e.fillStyle = kelvin(rng.range(2400, 3200));
             e.globalAlpha = 0.75;
             e.fill();
             e.globalAlpha = 1;
@@ -266,7 +267,7 @@ export function makeFacadeKitTextures(seed: number): FacadeKitTextures {
       case 'karaoke': {
         c.fillStyle = '#2b2233';
         c.fillRect(x, y, W, H);
-        glass(x + 10, y + 26, W - 20, H - 50, '#ff4fd8', 0.75);
+        glass(x + 10, y + 26, W - 20, H - 50, kelvin(3400), 0.7);
         mullions(x + 10, y + 26, W - 20, H - 50, 4, '#3a2a40');
         e.fillStyle = '#7cf2ff';
         e.fillRect(x + 10, y + 14, W - 20, 5);
@@ -278,7 +279,7 @@ export function makeFacadeKitTextures(seed: number): FacadeKitTextures {
           const wx = x + 36 + k * 112;
           c.fillStyle = '#c9c2b8';
           c.fillRect(wx - 4, y + 30, 80, 6);
-          glass(wx, y + 36, 72, H - 64, rng.chance(0.5) ? '#ffd9a0' : null, 0.65);
+          glass(wx, y + 36, 72, H - 64, rng.chance(0.5) ? kelvin(rng.range(2700, 4200)) : null, 0.65);
           mullions(wx, y + 36, 72, H - 64, 2, '#c9c2b8');
         }
         break;
@@ -335,7 +336,7 @@ export function createPodiumOutput(): PodiumOutput {
 }
 
 const AWNING_COLORS = [0x8a1c2b, 0x1c4a8a, 0x1f6b3a, 0x7a5a12, 0x5a1f7a, 0x222222].map((c) => new THREE.Color(c));
-const SPILL = { shopWarm: 0xffb060, shopCool: 0xcfe8ff, arch: 0xffa040, lobby: 0xcfe0ff, restaurant: 0xff5a3a, neonShop: 0xff4fd8 } as Record<string, number>;
+const SPILL: Record<string, string> = { shopWarm: kelvin(3000), shopCool: kelvin(5600), arch: kelvin(2700), lobby: kelvin(4600), restaurant: kelvin(2700), neonShop: kelvin(4000) };
 
 /** Pick how many podium floors a building gets (ground + 1..3). */
 export function podiumFloors(rng: Rng, height: number): number {
@@ -388,13 +389,13 @@ function box(gb: GeoBuilder, cx: number, cy: number, cz: number, ux: number, uz:
  * close up. Kept under the 0.6 m setback from the sidewalk wall line.
  */
 export function podiumExtrusions(rng: Rng, floors: number): number[] {
-  const ground = rng.range(0.06, 0.5);
+  const ground = rng.range(0.15, 0.8);
   const out = [ground];
   let prev = ground;
   for (let k = 0; k < floors; k++) {
-    // Upper levels either continue, step back toward the tower, or bulge a little.
+    // Upper levels continue, step back toward the tower, or bulge out as a bay.
     const r = rng.next();
-    const e = r < 0.4 ? prev : r < 0.75 ? Math.max(0.02, prev - rng.range(0.08, 0.3)) : Math.min(0.55, prev + rng.range(0.05, 0.2));
+    const e = r < 0.3 ? prev : r < 0.7 ? Math.max(0.02, prev - rng.range(0.15, 0.6)) : Math.min(1.15, prev + rng.range(0.1, 0.45));
     out.push(e);
     prev = e;
   }
@@ -453,6 +454,19 @@ export function addPodiumFace(out: PodiumOutput, f: PodiumFace, floors: number, 
     out.trim.quadFacing(v[0], v[1], v[2], v[3], 0, ny, 0);
   };
 
+  // Front faces get individually protruding ground floor bays (shopfront boxes, entries).
+  const flat = !f.front || rng.chance(0.3);
+  const bayExtra = variants.map(() => (flat ? 0 : rng.pick([0, 0, 0.18, 0.32, 0.5])));
+  const trimSide = (x: number, z: number, nx: number, nz: number, w: number, y0: number, y1: number) => {
+    // vertical strip w meters out from (x, z) along the face normal
+    const v = [
+      [x, y0, z],
+      [x + f.nx * w, y0, z + f.nz * w],
+      [x + f.nx * w, y1, z + f.nz * w],
+      [x, y1, z],
+    ].map(([px, py, pz]) => out.trim.vertex(px, py, pz, nx, 0, nz, 0, 0, trimColor));
+    out.trim.quadFacing(v[0], v[1], v[2], v[3], nx, 0, nz);
+  };
   for (let level = 0; level <= floors; level++) {
     const e = extAt(level);
     const l = lineFor(e);
@@ -461,7 +475,34 @@ export function addPodiumFace(out: PodiumOutput, f: PodiumFace, floors: number, 
     const y1 = level === 0 ? f.y0 + GROUND_H : y0 + PODIUM_FLOOR_H;
     for (let b = 0; b < bays; b++) {
       const uv = level === 0 ? cellUv(0, variants[b]) : cellUv(1, floorVariant);
-      quad(out.walls, l, b * bayLen + 0.01, (b + 1) * bayLen - 0.01, y0, y1, uv);
+      if (level === 0 && bayExtra[b] > 0) {
+        const x = bayExtra[b];
+        const lb = { ...l, ax: l.ax + f.nx * x, az: l.az + f.nz * x, bx: l.bx + f.nx * x, bz: l.bz + f.nz * x };
+        quad(out.walls, lb, b * bayLen + 0.01, (b + 1) * bayLen - 0.01, y0, y1, uv);
+        // cap on top of the protruding bay
+        const p0 = { x: l.ax + ux * b * bayLen, z: l.az + uz * b * bayLen };
+        const p1 = { x: l.ax + ux * (b + 1) * bayLen, z: l.az + uz * (b + 1) * bayLen };
+        const cap = [
+          [p0.x, p0.z],
+          [p1.x, p1.z],
+          [p1.x + f.nx * x, p1.z + f.nz * x],
+          [p0.x + f.nx * x, p0.z + f.nz * x],
+        ].map(([px, pz]) => out.trim.vertex(px, y1, pz, 0, 1, 0, 0, 0, trimColor));
+        out.trim.quadFacing(cap[0], cap[1], cap[2], cap[3], 0, 1, 0);
+      } else {
+        quad(out.walls, l, b * bayLen + 0.01, (b + 1) * bayLen - 0.01, y0, y1, uv);
+      }
+      if (level === 0) {
+        // side walls where neighbouring bays protrude by different amounts
+        const prev = b === 0 ? 0 : bayExtra[b - 1];
+        const d = bayExtra[b] - prev;
+        if (Math.abs(d) > 0.01) {
+          const px = l.ax + ux * b * bayLen + f.nx * Math.min(prev, bayExtra[b]);
+          const pz = l.az + uz * b * bayLen + f.nz * Math.min(prev, bayExtra[b]);
+          trimSide(px, pz, d > 0 ? -ux : ux, d > 0 ? -uz : uz, Math.abs(d), y0, y1);
+        }
+        if (b === bays - 1 && bayExtra[b] > 0.01) trimSide(l.bx, l.bz, ux, uz, bayExtra[b], y0, y1);
+      }
       if (f.front && b > 0) {
         const p = { x: l.ax + ux * b * bayLen, z: l.az + uz * b * bayLen };
         box(out.trim, p.x + f.nx * 0.12, (y0 + y1) / 2, p.z + f.nz * 0.12, ux, uz, 0.2, (y1 - y0) / 2, 0.14, trimColor);
@@ -493,8 +534,8 @@ export function addPodiumFace(out: PodiumOutput, f: PodiumFace, floors: number, 
   const bayLen = l0.len / bays;
   for (let b = 0; b < bays; b++) {
     const name = GROUND_BAYS[variants[b]];
-    const mx = l0.ax + ux * (b + 0.5) * bayLen + f.nx * 0.02;
-    const mz = l0.az + uz * (b + 0.5) * bayLen + f.nz * 0.02;
+    const mx = l0.ax + ux * (b + 0.5) * bayLen + f.nx * (0.02 + bayExtra[b]);
+    const mz = l0.az + uz * (b + 0.5) * bayLen + f.nz * (0.02 + bayExtra[b]);
     if ((name === 'shopWarm' || name === 'restaurant' || name === 'shopCool' || name === 'neonShop') && rng.chance(0.65)) {
       const col = AWNING_COLORS[rng.int(0, AWNING_COLORS.length - 1)];
       const depth = 1.3;

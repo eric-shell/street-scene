@@ -114,6 +114,10 @@ export interface CarTuning {
   collision: {
     wallRestitution: number;
     wallScrub: number;
+    /** Corner guard rails are smooth: little scrub and spin so racers keep momentum. */
+    railRestitution: number;
+    railScrub: number;
+    railAngularScale: number;
     carRestitution: number;
     angularScale: number;
   };
@@ -213,6 +217,9 @@ const BASE: Omit<CarTuning, 'carId' | 'geometry'> = {
   collision: {
     wallRestitution: 0.12,
     wallScrub: 0.22,
+    railRestitution: 0.04,
+    railScrub: 0.05,
+    railAngularScale: 0.18,
     carRestitution: 0.3,
     angularScale: 0.45,
   },
@@ -259,6 +266,9 @@ interface ManifestCar {
 }
 
 export const CAR_IDS: string[] = (manifest.cars as ManifestCar[]).map((c) => c.id);
+/** Cars offered in the garage and to AI opponents. Others stay loadable (tests, old saves). */
+export const SELECTABLE_CAR_IDS: string[] = (manifest.cars as (ManifestCar & { selectable?: boolean })[]).filter((c) => c.selectable).map((c) => c.id);
+export const DEFAULT_CAR_ID = SELECTABLE_CAR_IDS[0] ?? CAR_IDS[0];
 
 export function geometryFromManifest(carId: string): CarGeometry {
   const car = (manifest.cars as ManifestCar[]).find((c) => c.id === carId) ?? (manifest.cars as ManifestCar[])[0];

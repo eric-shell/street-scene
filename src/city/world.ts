@@ -6,7 +6,7 @@
 import { CITY } from './config';
 import { CityBlocks, Wall, generateBlocks } from './blocks';
 import { RoadGraph, generateRoadGraph } from './roadGraph';
-import { Route, RouteKind, buildRoute, findCircuitNodes, findSprintNodes, routeBarriers } from './route';
+import { Route, RouteKind, buildRoute, findCircuitNodes, findSprintNodes, routeBarriers, routeRails } from './route';
 import { SpatialGrid } from './spatial';
 import { Terrain, createTerrain } from './terrain';
 import { cos, distToSegment, segmentT, sin, sqrt } from '../sim/math';
@@ -44,7 +44,7 @@ export interface City {
 
 export interface World extends City {
   route: Route;
-  /** City walls plus this route's barriers. */
+  /** City walls plus this route's barriers and corner rails. */
   walls: Wall[];
   wallGrid: SpatialGrid;
   heightAt(x: number, z: number): number;
@@ -72,7 +72,7 @@ export function createRoute(city: City, kind: RouteKind): Route {
 export function createWorld(seed: number, kind: RouteKind, city: City = createCity(seed)): World {
   const route = createRoute(city, kind);
   const { graph, blocks, terrain } = city;
-  const walls = blocks.walls.concat(routeBarriers(graph, blocks.mouths, route));
+  const walls = blocks.walls.concat(routeBarriers(graph, blocks.mouths, route), routeRails(graph, route));
   const pad = 60;
   const wallGrid = SpatialGrid.forBounds(graph.bounds.minX - pad, graph.bounds.minZ - pad, graph.bounds.maxX + pad, graph.bounds.maxZ + pad, CITY.broadphaseCell);
   walls.forEach((w, i) => wallGrid.insertSegment(i, w.ax, w.az, w.bx, w.bz, 0.5));

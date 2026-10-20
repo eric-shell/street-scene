@@ -4,7 +4,7 @@
  *  - performance: read by the sim through applyBuild().
  * Validation clamps anything imported from storage or share codes.
  */
-import { CarTuning, PART_TIERS, PERFORMANCE_CATEGORIES, PerformanceCategory, Tier, CAR_IDS, getBaseTuning } from './tuning';
+import { CarTuning, PART_TIERS, PERFORMANCE_CATEGORIES, PerformanceCategory, Tier, DEFAULT_CAR_ID, SELECTABLE_CAR_IDS, getBaseTuning } from './tuning';
 import { PART_SLOTS, PartSlot } from '../shared/parts';
 
 export type PerformanceBuild = Record<PerformanceCategory, Tier>;
@@ -15,7 +15,7 @@ export type PaintFinish = (typeof PAINT_FINISHES)[number];
 export const VINYL_SHAPES = ['stripe', 'twinStripe', 'flame', 'tribal', 'sponsorA', 'sponsorB', 'sponsorC', 'number', 'star', 'chevron'] as const;
 export type VinylShape = (typeof VINYL_SHAPES)[number];
 
-export const GLOW_PATTERNS = ['steady', 'pulse', 'strobe', 'wave'] as const;
+export const GLOW_PATTERNS = ['steady', 'pulse', 'breathe', 'strobe', 'alternate', 'wave', 'chase'] as const;
 export type GlowPattern = (typeof GLOW_PATTERNS)[number];
 
 export const MAX_DECALS = 8;
@@ -44,7 +44,19 @@ export interface VisualBuild {
   decals: DecalLayer[];
   stance: { rideHeight: number; camberFront: number; camberRear: number; offset: number };
   tint: { darkness: number; color: string };
-  underglow: { enabled: boolean; color: string; pattern: GlowPattern };
+  underglow: {
+    enabled: boolean;
+    color: string;
+    /** Second color for alternate / chase patterns. */
+    color2: string;
+    pattern: GlowPattern;
+    /** 0.2..2 */
+    brightness: number;
+    /** Pattern speed multiplier, 0.25..3 */
+    speed: number;
+    /** Glow spread around the car, 0.6..1.6 */
+    size: number;
+  };
   headlightColor: string;
   taillightColor: string;
 }
@@ -72,13 +84,13 @@ export function defaultVisual(): VisualBuild {
     decals: [],
     stance: { rideHeight: 0, camberFront: 0, camberRear: 0, offset: 0 },
     tint: { darkness: 0.55, color: '#101820' },
-    underglow: { enabled: false, color: '#00e5ff', pattern: 'steady' },
+    underglow: { enabled: false, color: '#00e5ff', color2: '#ff3df2', pattern: 'steady', brightness: 1, speed: 1, size: 1 },
     headlightColor: '#eaf2ff',
     taillightColor: '#ff1a2a',
   };
 }
 
-export function defaultBuild(carId = CAR_IDS[0]): CarBuild {
+export function defaultBuild(carId = DEFAULT_CAR_ID): CarBuild {
   return { version: 1, name: 'My Ride', carId, visual: defaultVisual(), performance: stockPerformance() };
 }
 
@@ -180,7 +192,15 @@ export function validateVisual(v: unknown): VisualBuild {
       offset: num(stance.offset, -0.03, 0.08, 0),
     },
     tint: { darkness: num(tint.darkness, 0, 0.95, d.tint.darkness), color: color(tint.color, d.tint.color) },
-    underglow: { enabled: glow.enabled === true, color: color(glow.color, d.underglow.color), pattern: oneOf(glow.pattern, GLOW_PATTERNS, 'steady') },
+    underglow: {
+      enabled: glow.enabled === true,
+      color: color(glow.color, d.underglow.color),
+      color2: color(glow.color2, d.underglow.color2),
+      pattern: oneOf(glow.pattern, GLOW_PATTERNS, 'steady'),
+      brightness: num(glow.brightness, 0.2, 2, 1),
+      speed: num(glow.speed, 0.25, 3, 1),
+      size: num(glow.size, 0.6, 1.6, 1),
+    },
     headlightColor: color(o.headlightColor, d.headlightColor),
     taillightColor: color(o.taillightColor, d.taillightColor),
   };
@@ -188,7 +208,10 @@ export function validateVisual(v: unknown): VisualBuild {
 
 export function validateBuild(v: unknown): CarBuild {
   const o = obj(v);
-  const carId = typeof o.carId === 'string' && CAR_IDS.includes(o.carId) ? o.carId : CAR_IDS[0];
+  const carId = typeof o.carId === 'string' && SELECTABLE_CAR_IDS.includes(o.carId) ? o.carId : DEFAULT_CAR_ID;
   const name = typeof o.name === 'string' ? o.name.replace(/[<>]/g, '').slice(0, 24) || 'My Ride' : 'My Ride';
-  return { version: 1, name, carId, visual: validateVisual(o.visual), performance: validatePerformance(o.performance) };
+  const visual = validateVisual(o.visual);
+  // A build for a car that is no longer offered moves to the default car; its parts do not fit.
+  if (carId !== o.carId) visual.parts = visual.parts.wheels ? { wheels: visual.parts.wheels } : {};
+  return { version: 1, name, carId, visual, performance: validatePerformance(o.performance) };
 }

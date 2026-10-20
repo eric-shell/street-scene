@@ -6,7 +6,7 @@ import { CITY, ROUTE } from './config';
 import { RoadGraph, edgeBetween, otherNode } from './roadGraph';
 import { EdgeMouths, Wall, makeWall } from './blocks';
 import { Rng, deriveSeed } from '../sim/prng';
-import { DEG, Vec2, abs, atan2, sqrt, yawOf } from '../sim/math';
+import { DEG, Vec2, abs, atan2, lineIntersectT, sqrt, yawOf } from '../sim/math';
 
 export type RouteKind = 'circuit' | 'sprint';
 
@@ -367,6 +367,61 @@ export function routeBarriers(g: RoadGraph, mouths: EdgeMouths[], route: Route):
     const cz = node.z + dz * d;
     const w = makeWall({ x: cx - dz * half, z: cz + dx * half }, { x: cx + dz * half, z: cz - dx * half }, { x: node.x, z: node.z }, 'barrier');
     if (w) walls.push(w);
+  }
+  return walls;
+}
+
+/**
+ * Long smooth guard rails on the outside of every route corner: a curve from
+ * the outer curb of the incoming road, around the outer corner, to the outer
+ * curb of the outgoing road. Cars that run wide glance off and keep their
+ * momentum instead of nosing into a side street barrier.
+ */
+export function routeRails(g: RoadGraph, route: Route): Wall[] {
+  const walls: Wall[] = [];
+  const n = route.nodes.length;
+  const from = route.closed ? 0 : 1;
+  const to = route.closed ? n : n - 1;
+  for (let i = from; i < to; i++) {
+    const prevId = route.nodes[(i - 1 + n) % n];
+    const id = route.nodes[i];
+    const nextId = route.nodes[(i + 1) % n];
+    const P = g.nodes[id];
+    const A0 = g.nodes[prevId];
+    const B0 = g.nodes[nextId];
+    const lenIn = sqrt((P.x - A0.x) ** 2 + (P.z - A0.z) ** 2);
+    const lenOut = sqrt((B0.x - P.x) ** 2 + (B0.z - P.z) ** 2);
+    const din = { x: (P.x - A0.x) / lenIn, z: (P.z - A0.z) / lenIn };
+    const dout = { x: (B0.x - P.x) / lenOut, z: (B0.z - P.z) / lenOut };
+    const turn = atan2(din.x * dout.z - din.z * dout.x, din.x * dout.x + din.z * dout.z);
+    if (abs(turn) < ROUTE.railMinTurnDeg * DEG) continue;
+    // Left of a direction d is (dz, -dx). Turning left means the outside is on the right.
+    const leftTurn = dout.x * din.z - dout.z * din.x > 0;
+    const side = leftTurn ? -1 : 1;
+    const oin = { x: side * din.z, z: -side * din.x };
+    const oout = { x: side * dout.z, z: -side * dout.x };
+    const eIn = g.edges[edgeBetween(g, prevId, id)];
+    const eOut = g.edges[edgeBetween(g, id, nextId)];
+    const pin = { x: P.x + oin.x * (eIn.width / 2), z: P.z + oin.z * (eIn.width / 2) };
+    const pout = { x: P.x + oout.x * (eOut.width / 2), z: P.z + oout.z * (eOut.width / 2) };
+    const t = lineIntersectT(pin, din, pout, dout);
+    if (t === null) continue;
+    const C = { x: pin.x + din.x * t, z: pin.z + din.z * t };
+    const reach = Math.min(ROUTE.railReach + (eIn.width + eOut.width) * 0.4, lenIn * 0.42, lenOut * 0.42);
+    const A = { x: C.x - din.x * reach, z: C.z - din.z * reach };
+    const B = { x: C.x + dout.x * reach, z: C.z + dout.z * reach };
+    const steps = ROUTE.railSegments;
+    let prev = A;
+    for (let k = 1; k <= steps; k++) {
+      const u = k / steps;
+      const q = {
+        x: (1 - u) * (1 - u) * A.x + 2 * (1 - u) * u * C.x + u * u * B.x,
+        z: (1 - u) * (1 - u) * A.z + 2 * (1 - u) * u * C.z + u * u * B.z,
+      };
+      const w = makeWall(prev, q, { x: P.x, z: P.z }, 'rail');
+      if (w) walls.push(w);
+      prev = q;
+    }
   }
   return walls;
 }

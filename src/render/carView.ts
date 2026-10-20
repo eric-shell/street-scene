@@ -10,6 +10,7 @@ import { CarAssetLibrary, ManifestCar, manifestCar, partById, partsFor } from '.
 import { CarMaterialSet, applyVisualToMaterials, createCarMaterials, disposeCarMaterials, resolveMaterialName, setBrake } from './carMaterials';
 import { makeRadialGlow } from './textures';
 import { DecalLayerView } from './decals';
+import { FEATURES } from '../shared/features';
 
 export interface CarPose {
   x: number;
@@ -36,7 +37,7 @@ export class CarView {
   readonly root = new THREE.Group();
   readonly body = new THREE.Group();
   readonly model = new THREE.Group();
-  readonly materials: CarMaterialSet = createCarMaterials();
+  readonly materials: CarMaterialSet;
   readonly car: ManifestCar;
   private wheelPivots: THREE.Group[] = [];
   private wheelSpins: THREE.Group[] = [];
@@ -47,6 +48,7 @@ export class CarView {
   private visual: VisualBuild = defaultVisual();
   private headlights: THREE.SpotLight[] = [];
   private underglow: THREE.Mesh;
+  private underglowMat: THREE.ShaderMaterial;
   private underglowLight: THREE.PointLight | null = null;
   private flames: THREE.Mesh[] = [];
   private beam: THREE.Mesh;
@@ -56,8 +58,9 @@ export class CarView {
   constructor(
     carId: string,
     private readonly assets: CarAssetLibrary,
-    opts: { headlights?: boolean; underglowLight?: boolean } = {},
+    opts: { headlights?: boolean; underglowLight?: boolean; envMap?: THREE.Texture | null } = {},
   ) {
+    this.materials = createCarMaterials(opts.envMap ?? null);
     this.car = manifestCar(carId);
     this.root.name = `car:${carId}`;
     this.root.add(this.body);
@@ -73,11 +76,58 @@ export class CarView {
       this.wheelSpins.push(spin);
     }
 
-    // Underglow: emissive glow plane on the road plus an optional real light.
-    this.underglow = new THREE.Mesh(
-      new THREE.PlaneGeometry(dims.width * 1.9, dims.length * 1.5).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({ map: glow(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, color: 0x00e5ff }),
-    );
+    // Underglow: a shader glow on the road around the footprint, plus an optional real light.
+    this.underglowMat = new THREE.ShaderMaterial({
+      uniforms: {
+        color1: { value: new THREE.Color(0x00e5ff) },
+        color2: { value: new THREE.Color(0xff3df2) },
+        intensity: { value: 1 },
+        mode: { value: 0 },
+        time: { value: 0 },
+        halfSize: { value: new THREE.Vector2(dims.width / 2, dims.length / 2) },
+        planeHalf: { value: new THREE.Vector2(dims.width * 1.3, dims.length * 0.95) },
+      },
+      vertexShader: /* glsl */ `
+        varying vec2 vPos;
+        void main() {
+          vPos = position.xz;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform vec3 color1;
+        uniform vec3 color2;
+        uniform float intensity;
+        uniform float mode;
+        uniform float time;
+        uniform vec2 halfSize;
+        uniform vec2 planeHalf;
+        varying vec2 vPos;
+        void main() {
+          // Distance from the car's rounded footprint: brightest at the sills, fading outward.
+          vec2 q = abs(vPos) - halfSize * 0.82;
+          float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
+          float glow = exp(-max(d, 0.0) * 2.8) * smoothstep(-0.9, 0.05, d);
+          // Fade out well before the plane's border so no edge ever shows.
+          vec2 e = abs(vPos) / planeHalf;
+          glow *= 1.0 - smoothstep(0.6, 0.98, max(e.x, e.y));
+          vec3 c = color1;
+          if (mode > 3.5 && mode < 4.5) {
+            // alternate: whole car switches between the two colors
+            c = mix(color1, color2, step(0.5, fract(time * 0.5)));
+          } else if (mode > 5.5) {
+            // chase: the two colors run around the car
+            float a = atan(vPos.x, vPos.y) / 6.2831853 + 0.5;
+            c = mix(color1, color2, smoothstep(0.35, 0.65, fract(a * 2.0 - time * 0.6)));
+          }
+          gl_FragColor = vec4(c * glow * intensity, 1.0);
+        }
+      `,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    this.underglow = new THREE.Mesh(new THREE.PlaneGeometry(dims.width * 2.6, dims.length * 1.9).rotateX(-Math.PI / 2), this.underglowMat);
     this.underglow.position.y = 0.06;
     this.underglow.visible = false;
     this.underglow.renderOrder = 3;
@@ -193,7 +243,7 @@ export class CarView {
       this.setWheelModel(model);
     }
     this.applyStance();
-    this.decals.rebuild(v.decals);
+    this.decals.rebuild(FEATURES.vinyls ? v.decals : []);
   }
 
   private devEntry(id: string) {
@@ -291,16 +341,29 @@ export class CarView {
   private applyUnderglow(time: number): void {
     const g = this.visual.underglow;
     this.underglow.visible = g.enabled;
-    const mat = this.underglow.material as THREE.MeshBasicMaterial;
+    if (!g.enabled) {
+      if (this.underglowLight) this.underglowLight.intensity = 0;
+      return;
+    }
+    const t = time * g.speed;
+    const modes = ['steady', 'pulse', 'breathe', 'strobe', 'alternate', 'wave', 'chase'];
     let k = 1;
-    const color = new THREE.Color(g.color);
-    if (g.pattern === 'pulse') k = 0.55 + 0.45 * Math.sin(time * 4);
-    else if (g.pattern === 'strobe') k = Math.sin(time * 18) > 0 ? 1 : 0.15;
-    else if (g.pattern === 'wave') color.offsetHSL((time * 0.15) % 1, 0, 0);
-    mat.color.copy(color).multiplyScalar(1.6 * k);
+    const c1 = new THREE.Color(g.color);
+    if (g.pattern === 'pulse') k = 0.45 + 0.55 * Math.abs(Math.sin(t * 3));
+    else if (g.pattern === 'breathe') k = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(t * 1.3));
+    else if (g.pattern === 'strobe') k = Math.sin(t * 18) > 0.3 ? 1 : 0.08;
+    else if (g.pattern === 'wave') c1.offsetHSL((t * 0.12) % 1, 0, 0);
+    const u = this.underglowMat.uniforms;
+    u.color1.value.copy(c1);
+    u.color2.value.set(g.color2);
+    u.intensity.value = 1.5 * g.brightness * k;
+    u.mode.value = modes.indexOf(g.pattern);
+    u.time.value = t;
+    this.underglow.scale.set(g.size, 1, g.size);
     if (this.underglowLight) {
-      this.underglowLight.color.copy(color);
-      this.underglowLight.intensity = g.enabled ? 14 * k : 0;
+      this.underglowLight.color.copy(g.pattern === 'alternate' && Math.floor(t * 0.5 * 2) % 2 ? new THREE.Color(g.color2) : c1);
+      this.underglowLight.intensity = 14 * g.brightness * k;
+      this.underglowLight.distance = 6 * g.size;
     }
   }
 

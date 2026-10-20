@@ -10,6 +10,8 @@ export interface Settings {
   difficulty: Difficulty;
   opponents: number;
   showFps: boolean;
+  /** Engine sound volume 0..1 */
+  engineVolume: number;
 }
 
 const KEY = 'nightrun.settings.v1';
@@ -22,6 +24,7 @@ export const DEFAULT_SETTINGS: Settings = {
   difficulty: 'medium',
   opponents: 3,
   showFps: false,
+  engineVolume: 0.7,
 };
 
 export function loadSettings(): Settings {
@@ -33,6 +36,8 @@ export function loadSettings(): Settings {
     if (!['low', 'medium', 'high'].includes(s.quality)) s.quality = 'medium';
     if (!['easy', 'medium', 'hard'].includes(s.difficulty)) s.difficulty = 'medium';
     s.opponents = Math.max(0, Math.min(3, Math.round(Number(s.opponents) || 0)));
+    s.engineVolume = Math.max(0, Math.min(1, Number(s.engineVolume)));
+    if (!Number.isFinite(s.engineVolume)) s.engineVolume = DEFAULT_SETTINGS.engineVolume;
     return s;
   } catch {
     return defaultForDevice();

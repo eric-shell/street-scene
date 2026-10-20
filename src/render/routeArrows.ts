@@ -13,7 +13,8 @@
 import * as THREE from 'three';
 import type { World } from '../city/world';
 import type { Wall } from '../city/blocks';
-import { ArrowBigRight, ChevronsRight, drawIcon } from '../ui/icons';
+import { ChevronsRight, drawIcon } from '../ui/icons';
+import { GeoBuilder } from './geoBuilder';
 import { FOG_DENSITY } from './lighting';
 
 export interface BarrierInfo {
@@ -115,10 +116,8 @@ const boardFrag = /* glsl */ `
   }
 `;
 
-// ---------------------------------------------------------------------------
-// Giant translucent sweeping arrows above head-on barriers
-// ---------------------------------------------------------------------------
-
+// Giant translucent arrows: the same chevrons and animation as the boards, but
+// alpha blended with depth writes so overlapping instances never add up.
 const bigFrag = /* glsl */ `
   uniform sampler2D map;
   uniform float time;
@@ -129,19 +128,14 @@ const bigFrag = /* glsl */ `
   varying float vFog;
   void main() {
     vec2 uv = vec2(vFlip > 0.0 ? vUv.x : 1.0 - vUv.x, vUv.y);
-    // Two arrows sweep across the panel in the travel direction, fading at the edges.
-    float t = time * 0.55 + vPhase;
-    float a = 0.0;
-    for (int i = 0; i < 2; i++) {
-      float x = fract(uv.x * 0.5 - t + float(i) * 0.5) * 2.0 - 0.5;
-      if (x > 0.0 && x < 1.0) {
-        vec4 s = texture2D(map, vec2(x, uv.y));
-        float edge = smoothstep(0.0, 0.18, uv.x) * smoothstep(1.0, 0.82, uv.x);
-        a += (s.r * 0.55 + s.g * 1.2) * edge;
-      }
-    }
-    float pulse = 0.75 + 0.25 * sin(time * 3.0 + vPhase * 6.2831);
-    gl_FragColor = vec4(color * a * pulse * vFog, 1.0);
+    vec4 tex = texture2D(map, uv);
+    float w = fract(uv.x * 1.5 - time * 1.1 + vPhase);
+    float march = 0.3 + 0.7 * pow(1.0 - w, 2.5);
+    float pulse = 0.7 + 0.3 * sin(time * 4.0 + vPhase * 6.2831);
+    float glow = tex.r * march * pulse + tex.g * 0.35;
+    float alpha = clamp(0.12 + glow * 0.75, 0.0, 0.85) * vFog;
+    if (alpha < 0.02) discard;
+    gl_FragColor = vec4(color * (0.35 + glow * 2.2), alpha);
   }
 `;
 
@@ -165,34 +159,6 @@ function boardTexture(): THREE.CanvasTexture {
   return t;
 }
 
-/** R = translucent fill, G = bright outline of the Lucide big arrow. */
-function bigArrowTexture(): THREE.CanvasTexture {
-  const S = 512;
-  const c = document.createElement('canvas');
-  c.width = S;
-  c.height = S;
-  const ctx = c.getContext('2d')!;
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, S, S);
-  const scale = S / 24;
-  ctx.save();
-  ctx.scale(scale, scale);
-  for (const [tag, attrs] of ArrowBigRight) {
-    if (tag !== 'path') continue;
-    const p = new Path2D(String((attrs as Record<string, string>).d));
-    ctx.fillStyle = '#ff0000';
-    ctx.fill(p);
-  }
-  ctx.restore();
-  ctx.globalCompositeOperation = 'lighter';
-  ctx.shadowColor = '#00ff00';
-  ctx.shadowBlur = 24;
-  drawIcon(ctx, ArrowBigRight, 0, 0, S, '#00ff00', 1.2);
-  const t = new THREE.CanvasTexture(c);
-  t.anisotropy = 4;
-  return t;
-}
-
 export interface RouteArrows {
   group: THREE.Group;
   barriers: BarrierInfo[];
@@ -200,14 +166,50 @@ export interface RouteArrows {
   dispose(): void;
 }
 
+interface Board {
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  w: number;
+  h: number;
+  flip: number;
+  phase: number;
+  tilt: number;
+}
+
+/** Group consecutive rail segments into curves (each curve is drawn in travel order). */
+function railCurves(world: World): Wall[][] {
+  const curves: Wall[][] = [];
+  let cur: Wall[] = [];
+  for (const w of world.walls) {
+    if (w.kind !== 'rail') continue;
+    const last = cur[cur.length - 1];
+    if (last && Math.hypot(last.bx - w.ax, last.bz - w.az) > 1e-6) {
+      curves.push(cur);
+      cur = [];
+    }
+    cur.push(w);
+  }
+  if (cur.length) curves.push(cur);
+  return curves;
+}
+
+/** +1 if travelling a -> b runs to the right as seen from the drivable side, else -1. */
+function flipFor(w: Wall): number {
+  // viewer looks along -n; viewer right is (nz, -nx)
+  return (w.bx - w.ax) * w.nz - (w.bz - w.az) * w.nx > 0 ? 1 : -1;
+}
+
 export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classifyBarriers(world)): RouteArrows {
   const group = new THREE.Group();
   group.name = 'routeArrows';
   const disposables: { dispose(): void }[] = [];
   const mats: THREE.ShaderMaterial[] = [];
-  const guided = barriers.filter((b) => b.headOn && b.turn !== 0);
+  const tex = boardTexture();
+  disposables.push(tex);
 
-  const make = (frag: string, tex: THREE.Texture, items: { x: number; y: number; z: number; yaw: number; w: number; h: number; flip: number; phase: number; tilt: number }[], blending: THREE.Blending, name: string) => {
+  const make = (frag: string, items: Board[], translucent: boolean, name: string) => {
     if (!items.length) return;
     const geo = new THREE.PlaneGeometry(1, 1);
     const flip = new Float32Array(items.length);
@@ -217,9 +219,8 @@ export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classif
       fragmentShader: frag,
       uniforms: { map: { value: tex }, time: { value: 0 }, color: { value: new THREE.Color(0x19e6ff) }, fogDensity: { value: FOG_DENSITY } },
       side: THREE.DoubleSide,
-      blending,
-      transparent: blending !== THREE.NormalBlending,
-      depthWrite: blending === THREE.NormalBlending,
+      transparent: translucent,
+      depthWrite: true,
     });
     const mesh = new THREE.InstancedMesh(geo, mat, items.length);
     mesh.name = name;
@@ -236,26 +237,99 @@ export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classif
     });
     geo.setAttribute('aFlip', new THREE.InstancedBufferAttribute(flip, 1));
     geo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(phase, 1));
-    if (blending !== THREE.NormalBlending) mesh.renderOrder = 4;
+    if (translucent) mesh.renderOrder = 5;
     group.add(mesh);
     mats.push(mat);
-    disposables.push(geo, mat, tex);
+    disposables.push(geo, mat);
   };
 
-  const boards = guided.map((b, i) => {
-    const len = Math.hypot(b.wall.bx - b.wall.ax, b.wall.bz - b.wall.az);
-    const ground = Math.min(world.heightAt(b.wall.ax, b.wall.az), world.heightAt(b.wall.bx, b.wall.bz));
-    const w = Math.min(len * 0.85, 9);
-    return { x: b.x - b.sx * 0.35, y: ground + 2.15, z: b.z - b.sz * 0.35, yaw: Math.atan2(-b.sx, -b.sz), w, h: w / 4, flip: b.turn, phase: (i * 0.37) % 1, tilt: 0 };
+  const curves = railCurves(world);
+  const panels: Board[] = [];
+  const giants: Board[] = [];
+  const frame = new GeoBuilder(true);
+  const dark = new THREE.Color(0x101218);
+  const post = new THREE.Color(0x2a2d36);
+  curves.forEach((curve, ci) => {
+    curve.forEach((w, si) => {
+      const len = Math.hypot(w.bx - w.ax, w.bz - w.az);
+      const mx = (w.ax + w.bx) / 2;
+      const mz = (w.az + w.bz) / 2;
+      const ground = world.heightAt(mx, mz);
+      const yaw = Math.atan2(w.nx, w.nz);
+      // Chevron panel on the track side of the rail.
+      panels.push({ x: mx + w.nx * 0.2, y: ground + 0.75, z: mz + w.nz * 0.2, yaw, w: len + 0.02, h: 0.95, flip: flipFor(w), phase: (ci * 0.31 + si * 0.08) % 1, tilt: 0 });
+      // Backing wall and a post at each joint.
+      const v = [
+        [w.ax, ground + 0.15, w.az],
+        [w.bx, ground + 0.15, w.bz],
+        [w.bx, ground + 1.35, w.bz],
+        [w.ax, ground + 1.35, w.az],
+      ].map(([x, y, z]) => frame.vertex(x, y, z, w.nx, 0, w.nz, 0, 0, dark));
+      frame.quadFacing(v[0], v[1], v[2], v[3], w.nx, 0, w.nz);
+      frame.quadFacing(v[0], v[3], v[2], v[1], -w.nx, 0, -w.nz);
+      const top = [
+        [w.ax + w.nx * 0.3, w.az + w.nz * 0.3],
+        [w.bx + w.nx * 0.3, w.bz + w.nz * 0.3],
+        [w.bx - w.nx * 0.1, w.bz - w.nz * 0.1],
+        [w.ax - w.nx * 0.1, w.az - w.nz * 0.1],
+      ].map(([x, z]) => frame.vertex(x, ground + 1.35, z, 0, 1, 0, 0, 0, post));
+      frame.quadFacing(top[0], top[1], top[2], top[3], 0, 1, 0);
+      const px = w.ax + w.nx * 0.12;
+      const pz = w.az + w.nz * 0.12;
+      const pv = [
+        [px - 0.08, pz - 0.08],
+        [px + 0.08, pz - 0.08],
+        [px + 0.08, pz + 0.08],
+        [px - 0.08, pz + 0.08],
+      ];
+      for (let k = 0; k < 4; k++) {
+        const a = pv[k];
+        const b = pv[(k + 1) % 4];
+        const nx = (a[0] + b[0]) / 2 - px;
+        const nz = (a[1] + b[1]) / 2 - pz;
+        const l = Math.hypot(nx, nz) || 1;
+        const q = [
+          [a[0], ground, a[1]],
+          [b[0], ground, b[1]],
+          [b[0], ground + 1.45, b[1]],
+          [a[0], ground + 1.45, a[1]],
+        ].map(([x, y, z]) => frame.vertex(x, y, z, nx / l, 0, nz / l, 0, 0, post));
+        frame.quadFacing(q[0], q[1], q[2], q[3], nx / l, 0, nz / l);
+      }
+    });
+    // One giant arrow over the apex of each curve.
+    const mid = curve[Math.floor(curve.length / 2)];
+    const mx = (mid.ax + mid.bx) / 2;
+    const mz = (mid.az + mid.bz) / 2;
+    giants.push({ x: mx - mid.nx * 1.2, y: world.heightAt(mx, mz) + 6.2, z: mz - mid.nz * 1.2, yaw: Math.atan2(mid.nx, mid.nz), w: 16, h: 4, flip: flipFor(mid), phase: (ci * 0.29) % 1, tilt: -0.1 });
   });
-  make(boardFrag, boardTexture(), boards, THREE.NoBlending, 'directionBoards');
 
-  const big = guided.map((b, i) => {
-    const ground = Math.min(world.heightAt(b.wall.ax, b.wall.az), world.heightAt(b.wall.bx, b.wall.bz));
-    // Lean the giant arrow slightly toward approaching cars.
-    return { x: b.x - b.sx * 1.5, y: ground + 8.5, z: b.z - b.sz * 1.5, yaw: Math.atan2(-b.sx, -b.sz), w: 18, h: 9, flip: b.turn, phase: (i * 0.29) % 1, tilt: -0.12 };
+  // Head-on closures without a nearby rail keep a board and a giant arrow of their own.
+  const railMids = curves.map((c) => {
+    const w = c[Math.floor(c.length / 2)];
+    return { x: (w.ax + w.bx) / 2, z: (w.az + w.bz) / 2 };
   });
-  make(bigFrag, bigArrowTexture(), big, THREE.AdditiveBlending, 'giantArrows');
+  barriers
+    .filter((b) => b.headOn && b.turn !== 0 && !railMids.some((r) => Math.hypot(r.x - b.x, r.z - b.z) < 40))
+    .forEach((b, i) => {
+      const len = Math.hypot(b.wall.bx - b.wall.ax, b.wall.bz - b.wall.az);
+      const ground = Math.min(world.heightAt(b.wall.ax, b.wall.az), world.heightAt(b.wall.bx, b.wall.bz));
+      const w = Math.min(len * 0.85, 9);
+      const yaw = Math.atan2(-b.sx, -b.sz);
+      panels.push({ x: b.x - b.sx * 0.35, y: ground + 2.15, z: b.z - b.sz * 0.35, yaw, w, h: w / 4, flip: b.turn, phase: (i * 0.37) % 1, tilt: 0 });
+      giants.push({ x: b.x - b.sx * 1.5, y: ground + 7, z: b.z - b.sz * 1.5, yaw, w: 16, h: 4, flip: b.turn, phase: (i * 0.29) % 1, tilt: -0.1 });
+    });
+
+  make(boardFrag, panels, false, 'chevronPanels');
+  make(bigFrag, giants, true, 'giantArrows');
+  if (frame.vertexCount) {
+    const fg = frame.build();
+    const fm = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.4 });
+    const mesh = new THREE.Mesh(fg, fm);
+    mesh.name = 'railFrames';
+    group.add(mesh);
+    disposables.push(fg, fm);
+  }
 
   return {
     group,

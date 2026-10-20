@@ -4,6 +4,7 @@
  * fits in a URL parameter (?build=...). Imported builds are always validated.
  */
 import { CarBuild, defaultBuild, validateBuild } from '../sim/build';
+import { DEFAULT_CAR_ID } from '../sim/tuning';
 import { manifestCar } from '../render/carAssets';
 
 export const MAX_SLOTS = 6;
@@ -14,7 +15,7 @@ export interface GarageState {
   slots: CarBuild[];
 }
 
-export function freshBuild(carId = 'proto', name = 'My Ride'): CarBuild {
+export function freshBuild(carId = DEFAULT_CAR_ID, name = 'My Ride'): CarBuild {
   const b = defaultBuild(carId);
   b.name = name;
   b.visual.paint.color = manifestCar(carId).defaultPaint;
@@ -35,7 +36,7 @@ export function loadGarage(): GarageState {
   } catch {
     /* fall through to default */
   }
-  return { current: 0, slots: [freshBuild('proto', 'Proto RS')] };
+  return { current: 0, slots: [freshBuild(DEFAULT_CAR_ID, 'Night Runner')] };
 }
 
 export function saveGarage(g: GarageState): boolean {
@@ -83,6 +84,9 @@ const SHORT: Record<string, string> = {
   underglow: 'ug',
   enabled: 'en',
   pattern: 'pn',
+  color2: 'c2',
+  brightness: 'br',
+  speed: 'sp2',
   headlightColor: 'hl',
   taillightColor: 'tl',
   engine: 'e',

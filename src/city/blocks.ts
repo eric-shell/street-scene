@@ -10,7 +10,10 @@ import { Terrain } from './terrain';
 import { Rng, deriveSeed } from '../sim/prng';
 import { DEG, Vec2, atan2, clamp, cos, distToSegment, exp, lineIntersectT, sin, sqrt } from '../sim/math';
 
-export type WallKind = 'wall' | 'barrier';
+export type WallKind = 'wall' | 'barrier' | 'rail';
+
+/** Gap between the sidewalk wall line and building footprints (room for podium protrusions). */
+export const BUILDING_SETBACK = 1.3;
 
 /** A static collision segment. (nx, nz) points toward the drivable side. */
 export interface Wall {
@@ -309,7 +312,8 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain): Ci
         let bw = rng.range(12, 26 + 14 * f);
         let bd = rng.range(14, 26 + 18 * f);
         bw = Math.min(bw, len - s);
-        const o = add(add(side.from, u, s), side.out, 0.6);
+        // Set back from the sidewalk wall line so street level facades can protrude.
+        const o = add(add(side.from, u, s), side.out, BUILDING_SETBACK);
         let placed = false;
         for (let tryI = 0; tryI < 3 && !placed; tryI++) {
           if (bw >= 6 && footprintOk(o, u, side.out, bw, bd)) {
@@ -334,7 +338,7 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain): Ci
       const corner = s.outer[0];
       const out = { x: -dA.z, z: dA.x };
       const size = rng.range(14, 24);
-      const o = add(corner, out, 0.6);
+      const o = add(corner, out, BUILDING_SETBACK);
       if (footprintOk(o, dA, out, size, size)) pushBuilding(o, dA, out, size, size, eA.id);
     });
   });

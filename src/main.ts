@@ -13,19 +13,20 @@ import { dailySeed, initialSeed } from './seed';
 import { Settings, loadSettings, saveSettings, QUALITY } from './ui/settings';
 import { GameRenderer, NightScene, createNightScene } from './render/scene';
 import { FreeFlyCamera } from './render/freeFly';
-import { CarAssetLibrary, MANIFEST, manifestCar } from './render/carAssets';
+import { CarAssetLibrary, manifestCar } from './render/carAssets';
 import { InputManager } from './input/inputManager';
 import { RaceSession } from './game/session';
 import { DroneMode } from './game/drone';
 import { MusicPlayer } from './audio/musicPlayer';
+import { audioHub } from './audio/engineAudio';
 import { MusicWidget } from './ui/musicWidget';
-import { DevPanel } from './ui/devPanel';
+import { TuningPanel, applySavedTuning, loadSavedTuning } from './ui/tuningPanel';
 import { creditsScreen, loadingScreen, mainMenu, pauseMenu, resultsScreen, settingsScreen } from './ui/screens';
 import { toast } from './ui/dom';
 import { Check, Info } from './ui/icons';
 import { RaceConfig, RaceEntrant, RaceMode, standings, ticksToSeconds } from './sim/race';
 import { CarBuild, PerformanceBuild, VisualBuild, defaultVisual, PAINT_FINISHES } from './sim/build';
-import { PERFORMANCE_CATEGORIES, Tier } from './sim/tuning';
+import { DEFAULT_CAR_ID, PERFORMANCE_CATEGORIES, SELECTABLE_CAR_IDS, Tier } from './sim/tuning';
 import { GarageState, decodeShareCode, loadGarage, saveGarage } from './garage/storage';
 import { ReplayData, decodeLog, encodeLog, loadBest, loadGhost, loadLastReplay, saveGhost, saveLastReplay, submitBest } from './replay/replay';
 
@@ -40,7 +41,8 @@ if (qp === 'low' || qp === 'medium' || qp === 'high') settings.quality = qp;
 const gr = new GameRenderer(canvas, settings);
 const assets = new CarAssetLibrary();
 const input = new InputManager(uiRoot);
-const dev = new DevPanel(uiRoot);
+const dev = new TuningPanel(uiRoot);
+let testDriving = false;
 // One player for the whole app: music carries on across every screen.
 const music = new MusicPlayer();
 const musicWidget = new MusicWidget(document.body, music);
@@ -110,7 +112,8 @@ function renderBackdrop(dt: number): void {
 // ---------------------------------------------------------------------------
 function syncMusicMode(): void {
   const racing = state === 'race' && session && !session.paused && session.race.phase !== 'finished';
-  musicWidget.setMode(racing ? 'compact' : 'full');
+  const context = state === 'race' ? 'race' : state === 'garage' ? 'garage' : state === 'drone' || state === 'freefly' ? 'drone' : 'menu';
+  musicWidget.setMode(racing ? 'compact' : 'full', context);
   music.setDuck(state === 'race' && session?.paused ? 0.55 : 1);
 }
 
@@ -177,6 +180,7 @@ function openSettings(back: () => void): void {
           session?.night.lighting.setPoolSize(QUALITY[settings.quality].pointLights);
         }
         fpsEl.style.display = settings.showFps ? '' : 'none';
+        audioHub()?.setVolume(settings.engineVolume);
       },
       back,
       music,
@@ -212,7 +216,8 @@ const AI_NAMES = ['Kenji', 'Vex', 'Rook', 'Mira', 'Dash', 'Nova', 'Juno', 'Sato'
 
 function opponentEntrants(seed: number, count: number, player: PerformanceBuild): { entrants: RaceEntrant[]; visuals: VisualBuild[] } {
   const rng = new Rng(seed ^ 0x51ce);
-  const cars = MANIFEST.cars.map((c) => c.id).filter((id) => availability[id] || id === 'proto');
+  const cars = SELECTABLE_CAR_IDS.filter((id) => availability[id]);
+  if (!cars.length) cars.push(DEFAULT_CAR_ID);
   const avgTier = PERFORMANCE_CATEGORIES.reduce((s, c) => s + player[c], 0) / PERFORMANCE_CATEGORIES.length;
   const names = rng.shuffle(AI_NAMES.slice());
   const entrants: RaceEntrant[] = [];
@@ -225,7 +230,7 @@ function opponentEntrants(seed: number, count: number, player: PerformanceBuild)
     const v = defaultVisual();
     v.paint.color = '#' + new THREE.Color().setHSL(rng.next(), 0.8, 0.5).getHexString();
     v.paint.finish = rng.pick(PAINT_FINISHES);
-    v.underglow = { enabled: rng.chance(0.5), color: '#' + new THREE.Color().setHSL(rng.next(), 1, 0.55).getHexString(), pattern: 'steady' };
+    v.underglow = { ...v.underglow, enabled: rng.chance(0.6), color: '#' + new THREE.Color().setHSL(rng.next(), 1, 0.55).getHexString(), pattern: rng.pick(['steady', 'pulse', 'breathe'] as const) };
     v.stance.rideHeight = -rng.range(0, 0.05);
     visuals.push(v);
   }
@@ -242,7 +247,7 @@ function startRace(mode: RaceMode, testDrive = false): void {
   const config: RaceConfig = {
     seed,
     mode,
-    laps: mode === 'circuit' ? 3 : mode === 'drift' ? 2 : 1,
+    laps: testDrive ? 10 : mode === 'circuit' ? 3 : mode === 'drift' ? 2 : 1,
     player: { name: 'You', carId: build.carId, performance: build.performance },
     opponents: opp.entrants,
     difficulty: settings.difficulty,
@@ -269,8 +274,16 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
     ghost: ghost ? { config: ghost.config, log: decodeLog(ghost.log), visual: ghost.visuals[0] } : null,
   });
   state = 'race';
+  testDriving = testDrive;
   syncMusicMode();
   loop.resetAccumulator();
+  if (testDrive) {
+    // Test drive: apply this car's saved physics tuning and open the tuning panel.
+    const player = session.race.cars[0];
+    if (applySavedTuning(player.tuning, loadSavedTuning(player.carId)) > 0) session.tuned = true;
+    const sess = session;
+    dev.show(player.tuning, config.player.performance, () => (sess.tuned = true));
+  }
   const s = session;
   (window as unknown as Record<string, unknown>).__nr = { session: s, gr };
   s.onFinish = ({ race, tuned }) => {
@@ -336,7 +349,7 @@ function togglePause(): void {
         onResume: togglePause,
         onRestart: () => lastConfig && runSession(lastConfig, lastVisuals, null, lastConfig.opponents.length ? null : loadGhost(lastConfig.seed, lastConfig.mode), false),
         onSettings: () => openSettings(showPause),
-        onQuit: showMenu,
+        onQuit: () => (testDriving ? void openGarage() : showMenu()),
       }),
     );
   showPause();
@@ -346,7 +359,7 @@ input.on('pause', togglePause);
 input.on('dev', () => {
   if (state !== 'race' || !session || session.isReplay) return;
   const s = session;
-  dev.toggle(s.race.cars[0].tuning, () => (s.tuned = true));
+  dev.toggle(s.race.cars[0].tuning, s.race.config.player.performance, () => (s.tuned = true));
 });
 input.on('freecam', () => {
   if (state === 'freefly') {
@@ -365,7 +378,7 @@ input.on('freecam', () => {
 // Loop
 // ---------------------------------------------------------------------------
 const fpsEl = document.createElement('div');
-fpsEl.style.cssText = 'position:fixed;top:6px;right:8px;font:12px monospace;color:#8f8;z-index:100;pointer-events:none';
+fpsEl.className = 'fps-meter';
 fpsEl.style.display = settings.showFps || params.has('fps') ? '' : 'none';
 document.body.appendChild(fpsEl);
 let frames = 0;

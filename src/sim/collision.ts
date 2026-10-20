@@ -45,6 +45,8 @@ export function collideCarWithWorld(c: CarState, t: CarTuning, world: World): nu
       let best = contacts[0];
       for (let i = 1; i < n; i++) if (contacts[i].depth > best.depth) best = contacts[i];
       const { nx, nz, depth } = best;
+      const rail = best.kind === 'rail';
+      const angK = rail ? t.collision.railAngularScale : ang;
       c.x += nx * depth;
       c.z += nz * depth;
       const rx = cx - nx * circ.r - c.x;
@@ -54,16 +56,16 @@ export function collideCarWithWorld(c: CarState, t: CarTuning, world: World): nu
       const vn = vpx * nx + vpz * nz;
       if (vn >= 0) continue;
       const rn = rz * nx - rx * nz;
-      const invM = 1 / m + ((rn * rn) / I) * ang;
-      const j = (-(1 + t.collision.wallRestitution) * vn) / invM;
+      const invM = 1 / m + ((rn * rn) / I) * angK;
+      const j = (-(1 + (rail ? t.collision.railRestitution : t.collision.wallRestitution)) * vn) / invM;
       c.vx += (j * nx) / m;
       c.vz += (j * nz) / m;
-      c.yawRate += ((rn * j) / I) * ang;
+      c.yawRate += ((rn * j) / I) * angK;
       // Friction against the wall scrubs some tangential speed.
       const tx = -nz;
       const tz = nx;
       const vt = c.vx * tx + c.vz * tz;
-      const dv = Math.min(abs(vt), (t.collision.wallScrub * j) / m);
+      const dv = Math.min(abs(vt), ((rail ? t.collision.railScrub : t.collision.wallScrub) * j) / m);
       c.vx -= sign(vt) * dv * tx;
       c.vz -= sign(vt) * dv * tz;
       impact = Math.max(impact, -vn);

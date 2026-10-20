@@ -1,8 +1,23 @@
 import { defineConfig } from 'vitest/config';
+import { execSync } from 'node:child_process';
+import pkg from './package.json' with { type: 'json' };
+
+function gitHash(): string {
+  try {
+    return execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
+  } catch {
+    return 'dev';
+  }
+}
 
 export default defineConfig({
   server: { host: true, port: 5175, strictPort: true },
   build: { target: 'es2022', chunkSizeWarningLimit: 1500 },
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    __BUILD_HASH__: JSON.stringify(gitHash()),
+    __BUILD_DATE__: JSON.stringify(new Date().toISOString().slice(0, 10)),
+  },
   test: {
     include: ['tests/**/*.test.ts'],
     environment: 'node',

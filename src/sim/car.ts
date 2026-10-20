@@ -48,6 +48,8 @@ export interface CarState {
   /** 0..1 */
   nitro: number;
   nitroActive: boolean;
+  /** Drive pedal actually applied this tick (0..1), for engine sound and telemetry. */
+  throttle: number;
   rearGrip: number;
   clutchKick: number;
   throttleOffTime: number;
@@ -88,6 +90,7 @@ export function createCar(x: number, z: number, yaw: number, y: number): CarStat
     manualGearbox: false,
     nitro: 1,
     nitroActive: false,
+    throttle: 0,
     rearGrip: 1,
     clutchKick: 0,
     throttleOffTime: 10,
@@ -216,6 +219,7 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
   if (c.shiftTimer > 0) rpmTarget = Math.max(t.engine.idleRpm, wr);
   c.rpm = approach(c.rpm, Math.min(rpmTarget, t.engine.redline + 150), 24000 * dt);
 
+  c.throttle = drive;
   c.nitroActive = inp.nitrous && c.nitro > 0 && c.gear > 0 && drive > 0.2;
   if (c.nitroActive) c.nitro = Math.max(0, c.nitro - dt / t.nitrous.capacity);
 

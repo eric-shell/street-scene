@@ -94,7 +94,7 @@ export class GarageScene {
       return this.car;
     }
     const old = this.car;
-    const view = new CarView(carId, this.assets, { underglowLight: true });
+    const view = new CarView(carId, this.assets, { underglowLight: true, envMap: this.gr.envMap });
     view.setHeadlightsEnabled(false);
     this.car = view;
     await view.load(visual);

@@ -120,15 +120,19 @@ export class MusicPlayer {
     if (this.current) this.loadTrack(this.current, this.s.time);
     // Browsers only allow audio after a user gesture: start then if music was on.
     const unlock = () => {
-      if (this.unlocked) return;
-      this.unlocked = true;
       window.removeEventListener('pointerdown', unlock, true);
       window.removeEventListener('keydown', unlock, true);
+      window.removeEventListener('touchend', unlock, true);
+      this.audio.muted = false;
+      if (this.unlocked && this.playing) return;
+      this.unlocked = true;
       if (this.s.playing) void this.play();
     };
     window.addEventListener('pointerdown', unlock, true);
     window.addEventListener('keydown', unlock, true);
+    window.addEventListener('touchend', unlock, true);
     window.addEventListener('pagehide', () => this.save());
+    if (this.s.playing) void this.autoplay();
     this.setupMediaSession();
   }
 
@@ -198,6 +202,27 @@ export class MusicPlayer {
     this.updateMediaSession();
     this.emit('track');
     this.save();
+  }
+
+  /**
+   * Start music on load. Browsers allow audible autoplay only after the user
+   * has interacted with the site, so if that is refused we start muted (always
+   * allowed) and unmute on the first click, tap or key press.
+   */
+  private async autoplay(): Promise<void> {
+    if (!this.current) return;
+    try {
+      await this.audio.play();
+      this.unlocked = true;
+    } catch {
+      try {
+        this.audio.muted = true;
+        await this.audio.play();
+      } catch {
+        /* even muted autoplay refused: the first gesture starts it */
+      }
+    }
+    this.emit('state');
   }
 
   async play(): Promise<void> {

@@ -11,6 +11,9 @@ import { NEUTRAL_INPUT, unpackInput } from '../sim/input';
 import { VisualBuild } from '../sim/build';
 import { DT } from '../sim/constants';
 import { CarView, CarPose } from '../render/carView';
+import { LightTrails } from '../render/lightTrails';
+import { EngineType, EngineVoice, audioHub } from '../audio/engineAudio';
+import { manifestCar } from '../render/carAssets';
 import { CarAssetLibrary } from '../render/carAssets';
 import { ChaseCamera } from '../render/camera';
 import { GameRenderer, NightScene, createNightScene } from '../render/scene';
@@ -24,6 +27,8 @@ import { ReplayData } from '../replay/replay';
 interface Snap extends CarPose {
   vx: number;
   vz: number;
+  rpm: number;
+  throttle: number;
 }
 
 function snap(c: CarState): Snap {
@@ -42,6 +47,8 @@ function snap(c: CarState): Snap {
     speed: c.speed,
     vx: c.vx,
     vz: c.vz,
+    rpm: c.rpm,
+    throttle: c.throttle,
   };
 }
 
@@ -69,6 +76,8 @@ function lerpSnap(a: Snap, b: Snap, t: number): Snap {
     speed: l(a.speed, b.speed),
     vx: l(a.vx, b.vx),
     vz: l(a.vz, b.vz),
+    rpm: l(a.rpm, b.rpm),
+    throttle: l(a.throttle, b.throttle),
   };
 }
 
@@ -107,6 +116,7 @@ export class RaceSession {
   private eventIndex = 0;
   private finishedAt = -1;
   private time = 0;
+  private blur = 0;
   private replayCam: ReplayCamMode = 'chase';
   private freeCam: FreeFlyCamera | null = null;
   private tvPoint = new THREE.Vector3();
@@ -114,6 +124,9 @@ export class RaceSession {
   private tvSide = 1;
   private unsub: (() => void)[] = [];
   readonly isReplay: boolean;
+  private trails: LightTrails;
+  private carLight: THREE.PointLight;
+  private engines: EngineVoice[] = [];
   readyPromise: Promise<void>;
 
   constructor(
@@ -131,7 +144,7 @@ export class RaceSession {
     this.hud = new Hud(uiRoot, this.race.world);
     const loads: Promise<void>[] = [];
     this.race.cars.forEach((rc, i) => {
-      const view = new CarView(rc.carId, assets, { headlights: i === 0, underglowLight: i === 0 });
+      const view = new CarView(rc.carId, assets, { headlights: i === 0, underglowLight: i === 0, envMap: gr.envMap });
       this.night.scene.add(view.root);
       this.views.push(view);
       loads.push(view.load(opts.visuals[i] ?? opts.visuals[0]));
@@ -139,7 +152,7 @@ export class RaceSession {
     if (opts.ghost) {
       this.ghostRace = createRace(opts.ghost.config, this.race.world);
       this.ghostLog = opts.ghost.log;
-      const gv = new CarView(opts.ghost.config.player.carId, assets);
+      const gv = new CarView(opts.ghost.config.player.carId, assets, { envMap: gr.envMap });
       this.ghostView = gv;
       this.night.scene.add(gv.root);
       loads.push(
@@ -157,6 +170,23 @@ export class RaceSession {
       );
     }
     this.readyPromise = Promise.all(loads).then(() => undefined);
+    // Nitrous light trails from the player's taillights.
+    const pd = this.views[0].car.dimensions;
+    this.trails = new LightTrails(pd.width, pd.length);
+    this.trails.setColor(opts.visuals[0]?.taillightColor ?? '#ff1a2a');
+    this.night.scene.add(this.trails.mesh);
+    // A soft key light that rides above the player so cars read clearly at night.
+    this.carLight = new THREE.PointLight(0xdfe6ff, 9, 9, 1.6);
+    this.night.scene.add(this.carLight);
+    // Engine sound: the player's car loud and centered, rivals by distance.
+    const hub = audioHub();
+    if (hub) {
+      hub.setVolume(settings.engineVolume);
+      this.engines = this.race.cars.map((rc, i) => {
+        const type = ((manifestCar(rc.carId) as unknown as { engine?: { type?: EngineType } }).engine?.type ?? 'i4') as EngineType;
+        return new EngineVoice(type, i === 0 ? 0.26 : 0.2);
+      });
+    }
     this.curr = this.race.cars.map((c) => snap(c.state));
     this.prev = this.curr.map((s) => ({ ...s }));
     if (this.ghostRace) {
@@ -256,12 +286,37 @@ export class RaceSession {
     const player = r.cars[0];
     if (player.state.impact > 4) this.cam.bump(Math.min(1, player.state.impact / 20));
     const camera = this.updateCamera(p, dt);
+    this.trails.update(this.views[0].root, camera, p.nitro && !this.paused, dt);
+    this.carLight.position.set(p.x - Math.sin(p.yaw) * 1.5, p.y + 4.2, p.z - Math.cos(p.yaw) * 1.5);
     this.night.lighting.update(new THREE.Vector3(p.x, p.y, p.z));
     this.night.update(this.time);
-    const blur = this.settings.radialBlur && !this.paused ? Math.max(0, Math.min(1, (p.speed - 28) / 40)) * 0.55 + (p.nitro ? 0.45 : 0) : 0;
-    this.gr.post.setSpeedBlur(blur);
+    // Progressive edge blur: grows with speed, much stronger while boosting (eased in and out).
+    const target = this.settings.radialBlur && !this.paused ? Math.max(0, Math.min(1, (p.speed - 25) / 45)) * 0.4 + (p.nitro ? 0.75 : 0) : 0;
+    this.blur += (target - this.blur) * (1 - Math.exp(-dt * (target > this.blur ? 6 : 3)));
+    this.gr.post.setSpeedBlur(this.blur);
     this.updateHud(dt);
+    this.updateEngines(poses, camera);
     this.gr.render(this.night.scene, camera, dt);
+  }
+
+  private updateEngines(poses: Snap[], camera: THREE.PerspectiveCamera): void {
+    if (!this.engines.length) return;
+    if (this.paused) {
+      this.engines.forEach((e) => e.silence());
+      return;
+    }
+    const camPos = camera.position;
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    this.engines.forEach((voice, i) => {
+      const p = poses[i];
+      const rc = this.race.cars[i];
+      const dx = p.x - camPos.x;
+      const dz = p.z - camPos.z;
+      const d = Math.hypot(dx, dz);
+      const proximity = i === 0 ? 1 : 1 / (1 + (d / 14) ** 2);
+      const pan = i === 0 ? 0 : (dx * right.x + dz * right.z) / Math.max(1, d);
+      voice.update({ rpm: p.rpm, redline: rc.tuning.engine.redline, throttle: p.throttle, nitro: p.nitro, proximity, pan: pan * 0.8 });
+    });
   }
 
   private updateCamera(p: Snap, dt: number): THREE.PerspectiveCamera {
@@ -347,6 +402,10 @@ export class RaceSession {
     this.hud.dispose();
     this.views.forEach((v) => v.dispose());
     this.ghostView?.dispose();
+    this.trails.dispose();
+    this.engines.forEach((e) => e.dispose());
+    this.carLight.removeFromParent();
+    this.carLight.dispose();
     this.night.dispose();
     this.input.setTouchVisible(false);
   }

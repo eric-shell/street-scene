@@ -119,8 +119,9 @@ export class MusicWidget {
     this.onTrack(true);
   }
 
-  setMode(mode: MusicMode): void {
+  setMode(mode: MusicMode, context: 'menu' | 'garage' | 'drone' | 'race' = 'menu'): void {
     this.mode = mode;
+    this.root.dataset.context = context;
     this.render();
   }
 

@@ -9,7 +9,7 @@ import type { PaintFinish, VisualBuild } from '../sim/build';
 
 export type CarMaterialSet = Record<MaterialName, THREE.Material>;
 
-export function createCarMaterials(): CarMaterialSet {
+export function createCarMaterials(envMap: THREE.Texture | null = null): CarMaterialSet {
   const m = {} as CarMaterialSet;
   m.Paint = new THREE.MeshPhysicalMaterial({ name: 'Paint', color: 0xd11f3f, metalness: 0.7, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.05 });
   m.Trim = new THREE.MeshStandardMaterial({ name: 'Trim', color: 0x15161a, metalness: 0.3, roughness: 0.5 });
@@ -22,6 +22,15 @@ export function createCarMaterials(): CarMaterialSet {
   m.TailLight = new THREE.MeshStandardMaterial({ name: 'TailLight', color: 0x330000, emissive: 0xff1a2a, emissiveIntensity: 1.4 });
   m.Light = new THREE.MeshStandardMaterial({ name: 'Light', color: 0x332200, emissive: 0xffa040, emissiveIntensity: 0.8 });
   m.Interior = new THREE.MeshStandardMaterial({ name: 'Interior', color: 0x1a1a1e, roughness: 0.8 });
+  // Cars carry their own (stronger) environment reflections so they read clearly at night.
+  if (envMap) {
+    const boost: Partial<Record<MaterialName, number>> = { Paint: 1.9, Trim: 1.3, Black: 1, Chrome: 2.2, Glass: 1.7, Rim: 1.8, Tire: 0.8, Interior: 0.6 };
+    for (const k of MATERIAL_NAMES) {
+      const mat = m[k] as THREE.MeshStandardMaterial;
+      mat.envMap = envMap;
+      mat.envMapIntensity = boost[k] ?? 1;
+    }
+  }
   return m;
 }
 
@@ -44,11 +53,11 @@ export function applyVisualToMaterials(m: CarMaterialSet, v: VisualBuild, brakin
     // Deep clearcoat over a tinted base: darker body, colored reflections.
     paint.color.copy(base).multiplyScalar(0.55);
     paint.specularColor.copy(base).lerp(new THREE.Color(1, 1, 1), 0.25);
-    paint.envMapIntensity = 1.6;
+    paint.envMapIntensity = 2.5;
   } else {
     paint.color.copy(base);
     paint.specularColor.set(0xffffff);
-    paint.envMapIntensity = 1;
+    paint.envMapIntensity = 1.9;
   }
   paint.needsUpdate = true;
   (m.Trim as THREE.MeshStandardMaterial).color.set(v.trimColor);

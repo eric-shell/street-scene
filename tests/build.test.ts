@@ -28,7 +28,7 @@ describe('build validation', () => {
       },
       performance: { engine: 7, turbo: -2, tires: 1.6 },
     });
-    expect(b.carId).toBe('proto');
+    expect(b.carId).toBe('gc14');
     expect(b.name.length).toBeLessThanOrEqual(24);
     expect(b.name).not.toContain('<');
     expect(b.visual.paint.color).toMatch(/^#[0-9a-f]{6}$/);
@@ -39,7 +39,8 @@ describe('build validation', () => {
     expect(b.visual.decals.length).toBe(8);
     expect(b.visual.decals[0].pos[0]).toBe(4);
     expect(b.visual.decals[0].scale).toBe(3);
-    expect(b.visual.parts.spoiler).toBe('ok_id');
+    // carId was invalid, so per-car parts were dropped
+    expect(b.visual.parts.spoiler).toBeUndefined();
     expect(b.visual.parts.hood).toBeUndefined();
     expect(b.performance.engine).toBe(3);
     expect(b.performance.turbo).toBe(0);
@@ -52,7 +53,7 @@ describe('build validation', () => {
     b.visual.paint = { color: '#19e6ff', finish: 'pearl' };
     b.visual.parts = { spoiler: 'gc14_spoiler_1', body: 'gc14_body_kit2', wheels: 'wheel_s64_2' };
     b.visual.decals.push({ shape: 'number', color: '#ff3df2', pos: [0.9, 0.6, 0.2], normal: [1, 0, 0], rotation: 12, scale: 0.7, mirror: true, text: '42' });
-    b.visual.underglow = { enabled: true, color: '#ff00aa', pattern: 'wave' };
+    b.visual.underglow = { enabled: true, color: '#ff00aa', color2: '#00ffaa', pattern: 'chase', brightness: 1.4, speed: 2, size: 1.2 };
     b.performance.engine = 3;
     b.performance.nitrous = 2;
     const code = await encodeShareCode(b);
@@ -63,9 +64,9 @@ describe('build validation', () => {
   });
 
   it('visual choices never change the tuning the sim uses', () => {
-    const a = defaultBuild('proto');
-    const b = defaultBuild('proto');
-    b.visual.parts = { spoiler: 'proto_spoiler_gtwing', frontBumper: 'proto_frontBumper_widemouth' };
+    const a = defaultBuild('gc14');
+    const b = defaultBuild('gc14');
+    b.visual.parts = { spoiler: 'gc14_spoiler_1', body: 'gc14_body_kit3' };
     b.visual.stance.rideHeight = -0.08;
     expect(applyBuild(getBaseTuning(a.carId), a.performance)).toEqual(applyBuild(getBaseTuning(b.carId), b.performance));
   });

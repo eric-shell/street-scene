@@ -29,13 +29,20 @@ const FxShader = {
     void main() {
       vec4 c = texture2D(tDiffuse, vUv);
       if (blur > 0.001) {
+        // Zoom blur from the vanishing point: zero in the middle, growing
+        // progressively toward the edges, streaking along the travel direction.
         vec2 dir = vUv - center;
-        float w = smoothstep(0.15, 0.7, length(dir));
+        float r = length(dir * vec2(1.25, 1.0));
+        float w = pow(smoothstep(0.12, 0.85, r), 1.6);
         vec4 acc = c;
-        for (int i = 1; i < 8; i++) {
-          acc += texture2D(tDiffuse, vUv - dir * blur * w * float(i) * 0.018);
+        float total = 1.0;
+        for (int i = 1; i < 12; i++) {
+          float k = float(i) / 11.0;
+          float wt = 1.0 - k * 0.5;
+          acc += texture2D(tDiffuse, vUv - dir * blur * w * k * 0.16) * wt;
+          total += wt;
         }
-        c = acc / 8.0;
+        c = acc / total;
       }
       vec2 q = vUv - 0.5;
       float v = 1.0 - vignette * smoothstep(0.25, 0.85, length(q * vec2(1.1, 1.0)) * 1.25);

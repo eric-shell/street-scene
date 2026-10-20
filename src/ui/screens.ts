@@ -25,6 +25,7 @@ import {
   Smartphone,
   Drone,
   Music,
+  Gauge,
   icon,
 } from './icons';
 import { Difficulty, Quality, Settings } from './settings';
@@ -33,6 +34,7 @@ import type { RaceMode } from '../sim/race';
 import type { BestRecord } from '../replay/replay';
 import type { MusicPlayer } from '../audio/musicPlayer';
 import { musicCredits } from './musicWidget';
+import { BUILD_VERSION } from '../version';
 
 export interface MenuOptions {
   seed: string;
@@ -90,8 +92,8 @@ export function mainMenu(o: MenuOptions): HTMLElement {
     btn(Info, 'Credits', o.onCredits, 'big'),
   );
   if (!o.hasReplay) nav.children[1].setAttribute('disabled', '');
-  const menu = h('div', { class: 'menu' }, h('div', {}, h('h1', { class: 'logo' }, 'NIGHT RUN'), h('div', { class: 'tagline' }, 'Street racing after dark')), event, h('div', { class: 'label' }, icon(Flag, { size: 14 }), 'Race'), modes, nav);
-  root.append(menu, h('div', { class: 'footer-note' }, 'WASD / arrows drive · Space handbrake · Shift nitrous · C camera · R reset'));
+  const menu = h('div', { class: 'menu' }, h('div', {}, h('h1', { class: 'logo' }, 'NIGHT RUN'), h('div', { class: 'tagline' }, 'Street racing after dark'), h('div', { class: 'build-version muted' }, BUILD_VERSION)), event, h('div', { class: 'label' }, icon(Flag, { size: 14 }), 'Race'), modes, nav);
+  root.append(menu);
   return root;
 }
 
@@ -226,6 +228,15 @@ export function settingsScreen(s: Settings, onChange: (s: Settings) => void, onC
         ),
       ),
       row(Monitor, 'FPS counter', toggle('showFps')),
+      row(
+        Gauge,
+        'Engine volume',
+        (() => {
+          const r = h('input', { type: 'range', min: 0, max: 1, step: 0.01, value: s.engineVolume, style: 'width:160px', 'aria-label': 'Engine volume' }) as HTMLInputElement;
+          r.addEventListener('input', () => set('engineVolume', Number(r.value)));
+          return r;
+        })(),
+      ),
       music &&
         row(
           Music,

@@ -112,4 +112,28 @@ describe('city generation', () => {
     // every side street off the route is closed with a barrier
     expect(w.walls.filter((x) => x.kind === 'barrier').length).toBe(w.route.closedStreets.length);
   });
+
+  it('corner rails and barriers never cross the route across 100 seeds', () => {
+    const rng = new Rng(77);
+    const cross = (a: { x: number; z: number }, b: { x: number; z: number }, c: { x: number; z: number }, d: { x: number; z: number }) => {
+      const den = (b.x - a.x) * (d.z - c.z) - (b.z - a.z) * (d.x - c.x);
+      if (Math.abs(den) < 1e-9) return false;
+      const t = ((c.x - a.x) * (d.z - c.z) - (c.z - a.z) * (d.x - c.x)) / den;
+      const u = ((c.x - a.x) * (b.z - a.z) - (c.z - a.z) * (b.x - a.x)) / den;
+      return t > 0 && t < 1 && u > 0 && u < 1;
+    };
+    let rails = 0;
+    for (let i = 0; i < 100; i++) {
+      const w = createWorld(rng.int(0, 0x7fffffff), i % 2 ? 'sprint' : 'circuit');
+      const P = w.route.points;
+      for (const wall of w.walls) {
+        if (wall.kind === 'wall') continue;
+        if (wall.kind === 'rail') rails++;
+        for (let k = 0; k + 1 < P.length; k++) {
+          expect(cross(P[k], P[k + 1], { x: wall.ax, z: wall.az }, { x: wall.bx, z: wall.bz })).toBe(false);
+        }
+      }
+    }
+    expect(rails).toBeGreaterThan(500);
+  });
 });

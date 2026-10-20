@@ -12,6 +12,8 @@ import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PART_SLOTS, PartSlot, SLOT_LABELS } fr
 import { CarBuild, DecalLayer, GLOW_PATTERNS, MAX_DECALS, PAINT_FINISHES, VINYL_SHAPES, VinylShape, validateBuild } from '../sim/build';
 import { PERFORMANCE_CATEGORIES, PerformanceCategory, TIER_NAMES, Tier } from '../sim/tuning';
 import { tuningForBuild } from '../sim/build';
+import { FEATURES } from '../shared/features';
+import { SELECTABLE_CAR_IDS, DEFAULT_CAR_ID } from '../sim/tuning';
 import { measureStats, statBars } from '../sim/stats';
 import { SHAPE_LABELS } from '../render/decals';
 import { btn, h, iconBtn, segmented, toast } from '../ui/dom';
@@ -41,21 +43,23 @@ import {
   Wrench,
   Zap,
   Box,
+  Sparkles,
   Timer,
   icon,
   IconNode,
 } from '../ui/icons';
 
-type Tab = 'car' | 'body' | 'paint' | 'wheels' | 'vinyl' | 'stance' | 'tint' | 'lights' | 'perf' | 'share';
+type Tab = 'car' | 'body' | 'paint' | 'wheels' | 'vinyl' | 'stance' | 'tint' | 'glow' | 'lights' | 'perf' | 'share';
 
 const TABS: { id: Tab; label: string; icon: IconNode }[] = [
   { id: 'car', label: 'Car', icon: Car },
   { id: 'body', label: 'Body', icon: Hammer },
   { id: 'paint', label: 'Paint', icon: Paintbrush },
   { id: 'wheels', label: 'Wheels', icon: Disc3 },
-  { id: 'vinyl', label: 'Vinyls', icon: Layers },
+  ...(FEATURES.vinyls ? [{ id: 'vinyl' as Tab, label: 'Vinyls', icon: Layers }] : []),
   { id: 'stance', label: 'Stance', icon: ArrowUpDown },
   { id: 'tint', label: 'Tint', icon: Eye },
+  { id: 'glow', label: 'Neon', icon: Sparkles },
   { id: 'lights', label: 'Lights', icon: Lightbulb },
   { id: 'perf', label: 'Tune', icon: Gauge },
   { id: 'share', label: 'Save', icon: Share2 },
@@ -238,7 +242,7 @@ export class GarageScreen {
             'Car',
             Car,
             choiceList(
-              MANIFEST.cars.map((c) => ({ value: c.id, label: c.displayName, sub: this.availability[c.id] ? (c.source === 'placeholder' ? 'Placeholder' : 'IceMaan') : 'Model not imported yet' })),
+              MANIFEST.cars.filter((c) => SELECTABLE_CAR_IDS.includes(c.id)).map((c) => ({ value: c.id, label: c.displayName, sub: this.availability[c.id] ? 'IceMaan' : 'Model not imported yet' })),
               b.carId,
               (id) => {
                 if (id === b.carId) return;
@@ -403,12 +407,12 @@ export class GarageScreen {
         );
         break;
       }
-      case 'lights': {
+      case 'glow': {
         const g = v.underglow;
         this.body.append(
           section(
             'Underglow',
-            Lightbulb,
+            Sparkles,
             segmented(
               [
                 { value: 'off', label: 'Off' },
@@ -420,27 +424,77 @@ export class GarageScreen {
                 this.changed();
               },
             ),
+          ),
+          section(
+            'Colors',
+            null,
             h(
               'div',
               { class: 'row' },
-              h('span', {}, 'Color'),
+              h('span', {}, 'Primary'),
               color(g.color, (c) => {
                 g.color = c;
+                g.enabled = true;
+                this.changed();
+              }),
+              h('span', {}, 'Secondary'),
+              color(g.color2, (c) => {
+                g.color2 = c;
                 this.changed();
               }),
             ),
+            h(
+              'div',
+              { class: 'g-swatches' },
+              ...['#00e5ff', '#ff3df2', '#7cff4f', '#ffe14d', '#ff2e5b', '#7a5cff', '#ffffff', '#ff8a00'].map((p) => {
+                const b = h('button', { type: 'button', class: 'g-swatch', style: `background:${p}`, 'aria-label': p });
+                b.addEventListener('click', () => {
+                  g.color = p;
+                  g.enabled = true;
+                  this.changed(true);
+                });
+                return b;
+              }),
+            ),
+          ),
+          section(
+            'Pattern',
+            null,
             segmented(
               GLOW_PATTERNS.map((p) => ({ value: p, label: p })),
               g.pattern,
               (p) => {
                 g.pattern = p;
+                g.enabled = true;
                 this.changed();
               },
             ),
+            h('div', { class: 'muted g-note' }, 'Alternate and chase use both colors.'),
           ),
           section(
-            'Headlights',
+            'Glow',
             null,
+            slider('Brightness', g.brightness, 0.2, 2, 0.05, (x) => `${Math.round(x * 100)}%`, (x) => {
+              g.brightness = x;
+              this.changed();
+            }),
+            slider('Speed', g.speed, 0.25, 3, 0.05, (x) => `${x.toFixed(2)}x`, (x) => {
+              g.speed = x;
+              this.changed();
+            }),
+            slider('Spread', g.size, 0.6, 1.6, 0.05, (x) => `${Math.round(x * 100)}%`, (x) => {
+              g.size = x;
+              this.changed();
+            }),
+          ),
+        );
+        break;
+      }
+      case 'lights': {
+        this.body.append(
+          section(
+            'Headlights',
+            Lightbulb,
             color(v.headlightColor, (c) => {
               v.headlightColor = c;
               this.changed();
@@ -613,7 +667,7 @@ export class GarageScreen {
       { class: 'row' },
       btn(Plus, 'New', () => {
         if (g.slots.length >= MAX_SLOTS) return toast(`Up to ${MAX_SLOTS} builds`, Save);
-        g.slots.push(freshBuild('proto', `Build ${g.slots.length + 1}`));
+        g.slots.push(freshBuild(DEFAULT_CAR_ID, `Build ${g.slots.length + 1}`));
         g.current = g.slots.length - 1;
         this.changed(true);
       }, 'small'),

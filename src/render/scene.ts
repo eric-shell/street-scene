@@ -111,7 +111,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   scene.add(lighting.group);
   const arrows = buildRouteArrows(world, barriers);
   scene.add(arrows.group);
-  const roadblocks = buildRoadblocks(world, barriers, city.barrierLampMaterial);
+  const roadblocks = buildRoadblocks(world, barriers, city.barrierLampMaterial, { low: 2, medium: 3, high: 4 }[settings.quality]);
   scene.add(roadblocks.group);
   return {
     scene,

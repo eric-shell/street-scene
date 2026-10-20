@@ -7,6 +7,8 @@ A browser street racing proof of concept in the spirit of NFSU2. You race at nig
 - Three deterministic AI opponents with mild rubber banding
 - Garage with body kits and parts, paint finishes, vinyls, stance, tint, underglow and performance tiers
 - Replays and ghosts from input logs, plus a drone flyover mode
+- Synthesized engine sound (inline-4 turbo for the S64 Compact, V6 for the GC14 Coupe) and a persistent music player
+- Test drive with a live physics tuning panel and JSON export
 
 ## Run it
 
@@ -35,7 +37,7 @@ Useful URL parameters: `?seed=anything` (custom event), `?race=circuit|sprint|dr
 | Reset to road | R | Y | RST |
 | Camera (chase, close, bumper, hood) | C | Back | CAM |
 | Pause | Esc / P | Start | II |
-| Dev tuning panel | ` or F2 | | |
+| Physics tuning panel (auto opens in test drive) | ` or F2 | | |
 | Menu free camera | Shift+F | | |
 | Music: mute / previous / next | M / [ / ] | | Player card |
 
@@ -75,7 +77,15 @@ See [docs/partsAuthoring.md](docs/partsAuthoring.md). In short: model it in car 
 
 ## Tuning cars
 
-All physics constants live in `src/sim/tuning.ts`: base tuning, per car overrides, and the performance part tier tables that `applyBuild()` reads. During a race, press **`** (backtick) to open the dev panel. Its sliders edit the player car's tuning live, and **Copy JSON** gives you the values to paste back into `tuning.ts`. Runs with dev tuning changes aren't saved as best times or ghosts.
+All physics constants live in `src/sim/tuning.ts`: base tuning, per car overrides, and the performance part tier tables that `applyBuild()` reads.
+
+**Test drive** (garage > Test drive) opens the physics tuning panel automatically. It exposes every numeric driving parameter of the car (engine, torque curve, gear ratios, tires, suspension, brakes, steering, aero, nitrous, drift aids, surfaces, collisions) as a live slider, grouped by section, with a filter box. Changed values are highlighted. Your tuning is kept per car and re-applied on the next test drive.
+
+- **Copy JSON** / **Download** export `{ nightRunTuning, carId, performance, changed, tuning }`. The `changed` map lists only what you moved, so it's the part to paste into a prompt or into `tuning.ts`.
+- **Import** pastes such a JSON (or just a `changed` map) back in.
+- **Reset all** returns to the car's stock tuning with its performance parts.
+
+The same panel opens with **`** (backtick) in any race. Runs with changed tuning are never saved as best times or ghosts.
 
 ## Architecture
 
@@ -134,6 +144,12 @@ tests/
 - **Merged body kits.** The IceMaan kits are single meshes, so they're `body` variants. Bumper slots stay empty for those cars until they're split. The Proto RS placeholder has separate bumpers, skirts, hood, spoilers and wheels to show the full slot system.
 - **Buildings are one merged geometry** with world-scale UVs, rather than instanced boxes, so window grids keep their proportions on every building. The street-level podium (2 to 4 floors) uses a separate facade kit atlas with per-level random protrusions.
 - **Collision shapes.** Cars are three circles along their length. Walls are the outer sidewalk line of every road (one sided, which stops tunnelling). Closed side streets are barrier segments. Head-on closures look like barriers with arrows. Side closures look like a line of parked cars but use the same segment.
+- **Corner guard rails.** Every route corner has a long smooth rail on its outside, from the incoming road's outer curb, around the corner, to the outgoing road's outer curb. It's real collision geometry in the sim, with low scrub and spin so cars that run wide glance off and keep their momentum. Chevron panels on the rail and a matching giant translucent arrow above it point the way.
+- **Side street car meets.** Closed side streets the racers are unlikely to hit are lined with rows of parked cars, mostly nose toward the track like spectators. Density follows the graphics quality.
+- **Light color temperature.** Windows, doors and arches use blackbody colors between 2000 K and 8000 K. Only signs and rooftop trims are neon colored.
+- **Garage cars.** Only the S64 Compact and GC14 Coupe are offered (manifest `selectable`). The other entries stay loadable for tests and old saves; builds for them move to the GC14. Vinyls are hidden behind a feature flag (`src/shared/features.ts`).
+- **Music autoplay.** Browsers only allow audible autoplay after the user has interacted with the site. The player tries to start with sound, falls back to starting muted, and unmutes on the first click, tap or key press. Engine audio starts on the first gesture for the same reason.
+- **Build version** (`v<package version> · <git hash> · <date>`) is shown under the title on the main menu.
 - **Routes avoid hairpins.** Turns sharper than 112° through acute diagonal junctions are rejected because cars wedge there.
 - **AI safety net.** If an AI car makes no progress for 4 s, or is stopped for 2.5 s, the race resets it to the road. Finished cars stop colliding so they never block anyone.
 - **Car stats are measured, not formula based.** The garage drives the real sim in a flat test world to get top speed and 0 to 100 km/h.

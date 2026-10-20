@@ -51,4 +51,8 @@ export const ROUTE = {
   gridRowSpacing: 8,
   gridFirstRow: 9,
   maxAttempts: 400,
+  /** Corner guard rails: minimum turn, extra reach past the corner (m), segments per curve. */
+  railMinTurnDeg: 30,
+  railReach: 14,
+  railSegments: 10,
 } as const;

@@ -7,6 +7,28 @@
 import * as THREE from 'three';
 import { Rng } from '../sim/prng';
 
+/**
+ * Blackbody color for a color temperature in Kelvin (Tanner Helland's fit),
+ * as CSS hex. Used for every interior light so windows, doors and arches read
+ * as real lamps between 2000 K (sodium warm) and 8000 K (cold daylight).
+ */
+export function kelvin(k: number): string {
+  const t = Math.max(1000, Math.min(40000, k)) / 100;
+  const r = t <= 66 ? 255 : 329.698727446 * Math.pow(t - 60, -0.1332047592);
+  const g = t <= 66 ? 99.4708025861 * Math.log(t) - 161.1195681661 : 288.1221695283 * Math.pow(t - 60, -0.0755148492);
+  const b = t >= 66 ? 255 : t <= 19 ? 0 : 138.5177312231 * Math.log(t - 10) - 305.0447927307;
+  const c = (v: number) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0');
+  return `#${c(r)}${c(g)}${c(b)}`;
+}
+
+/** A plausible interior light temperature: mostly warm homes, some offices, a few extremes. */
+export function interiorKelvin(r: number): number {
+  if (r < 0.55) return 2600 + r * 2600; // 2600-4030 K homes
+  if (r < 0.88) return 4200 + (r - 0.55) * 7000; // 4200-6500 K offices
+  if (r < 0.95) return 2000 + (r - 0.88) * 7000; // 2000-2500 K sodium / candle
+  return 7000 + (r - 0.95) * 20000; // 7000-8000 K cold screens
+}
+
 function canvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
   const c = document.createElement('canvas');
   c.width = w;
@@ -109,9 +131,6 @@ export function makeFacade(seed: number): { map: THREE.Texture; emissive: THREE.
   ctx.fillRect(0, 0, W, H);
   ectx.fillStyle = '#000';
   ectx.fillRect(0, 0, W, H);
-  const warm = ['#ffd9a0', '#ffc46b', '#ffe8c2', '#ffb25a'];
-  const cool = ['#bfe3ff', '#9fd0ff', '#d8f0ff', '#a6fff1'];
-  const odd = ['#ff7ad9', '#7affd4', '#ffe066'];
   for (let row = 0; row < WINDOW_ROWS; row++) {
     // whole floors tend to be lit or dark together
     const floorLit = rng.next();
@@ -122,9 +141,7 @@ export function makeFacade(seed: number): { map: THREE.Texture; emissive: THREE.
       ctx.fillRect(x + 4, y + 4, cw - 8, ch - 7);
       const lit = rng.next() < 0.08 + floorLit * floorLit * 0.5;
       if (lit) {
-        const r = rng.next();
-        const pal = r < 0.6 ? warm : r < 0.95 ? cool : odd;
-        ectx.fillStyle = pal[Math.floor(rng.next() * pal.length)];
+        ectx.fillStyle = kelvin(interiorKelvin(rng.next()));
         ectx.globalAlpha = rng.range(0.35, 1);
         ectx.fillRect(x + 4, y + 4, cw - 8, ch - 7);
         // blinds
