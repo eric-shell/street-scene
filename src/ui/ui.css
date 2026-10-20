@@ -502,8 +502,19 @@ input[type='color'] {
   bottom: max(10px, env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-end;
   gap: 4px;
+}
+/* Boost gauge tucked against the lower left of the tachometer, like a twin dial cluster. */
+.hud-dials {
+  display: flex;
+  align-items: flex-end;
+}
+.hud-boost {
+  width: 116px;
+  height: 116px;
+  margin-right: -14px;
+  margin-bottom: -2px;
 }
 .hud-tach {
   width: 200px;
@@ -515,6 +526,7 @@ input[type='color'] {
   gap: 6px;
   color: #4fa8ff;
   width: 190px;
+  margin-right: 5px;
 }
 .hud-nitro .bar {
   flex: 1;
@@ -543,6 +555,11 @@ input[type='color'] {
   .hud-tach {
     width: 140px;
     height: 140px;
+  }
+  .hud-boost {
+    width: 82px;
+    height: 82px;
+    margin-right: -10px;
   }
   .hud-nitro {
     width: 130px;
@@ -888,6 +905,72 @@ input[type='color'] {
 }
 .garage.dev .garage-panel {
   border-color: rgba(255, 176, 46, 0.7);
+}
+/* Front / rear stance groups */
+.g-axle {
+  padding: 8px 10px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(20, 28, 60, 0.3);
+}
+.garage .btn.g-link {
+  align-self: flex-start;
+}
+/* "More models soon" tile: looks like a car tile, but inert */
+.g-item.g-soon {
+  border-style: dashed;
+  color: var(--muted);
+  background: rgba(20, 28, 60, 0.25);
+  cursor: default;
+}
+.g-item.g-soon:hover {
+  border-color: var(--line);
+}
+/* Presentation toggle and camera, over the 3D view */
+.garage-stage {
+  position: absolute;
+  top: 12px;
+  left: calc(max(12px, env(safe-area-inset-left)) + min(380px, calc(100vw - 24px)) + 12px);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 5px;
+  pointer-events: auto;
+}
+.garage-stage .seg button {
+  font-size: 12px;
+  padding: 6px 10px;
+}
+/* Hold-to-rev button */
+.garage-gas {
+  position: absolute;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  left: calc(max(12px, env(safe-area-inset-left)) + min(380px, calc(100vw - 24px)) + 12px);
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  min-width: 96px;
+  padding: 12px 18px;
+  border-radius: 999px;
+}
+.garage-gas.on {
+  color: var(--bg);
+  background: var(--magenta);
+  border-color: var(--magenta);
+  box-shadow: 0 0 22px rgba(255, 61, 242, 0.55);
+}
+@media (max-width: 720px) {
+  .garage-stage {
+    left: max(12px, env(safe-area-inset-left));
+    top: max(12px, env(safe-area-inset-top));
+  }
+  .garage-gas {
+    left: auto;
+    right: max(12px, env(safe-area-inset-right));
+    bottom: calc(52vh + 12px);
+  }
 }
 @media (max-width: 720px) {
   .garage-panel {

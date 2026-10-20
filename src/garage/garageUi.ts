@@ -7,9 +7,9 @@
 import type { GameRenderer } from '../render/scene';
 import { CarAssetLibrary, MANIFEST, manifestCar, partsFor } from '../render/carAssets';
 import { GarageScene } from './garageScene';
-import { GarageState, MAX_SLOTS, decodeShareCode, encodeShareCode, freshBuild, shareUrl } from './storage';
+import { GaragePrefs, GarageState, MAX_SLOTS, Presentation, decodeShareCode, encodeShareCode, freshBuild, loadGaragePrefs, saveGaragePrefs, shareUrl } from './storage';
 import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PART_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
-import { CarBuild, DecalLayer, GLOW_PATTERNS, MAX_DECALS, PAINT_FINISHES, VINYL_SHAPES, VinylShape, validateBuild } from '../sim/build';
+import { AXLES, Axle, AxleStance, CarBuild, DecalLayer, GLOW_PATTERNS, MAX_DECALS, PAINT_FINISHES, STANCE_LIMITS, VINYL_SHAPES, VinylShape, validateBuild } from '../sim/build';
 import { PERFORMANCE_CATEGORIES, PerformanceCategory, TIER_NAMES, Tier } from '../sim/tuning';
 import { tuningForBuild } from '../sim/build';
 import { FEATURES } from '../shared/features';
@@ -45,9 +45,13 @@ import {
   Box,
   Sparkles,
   Timer,
+  CircleDot,
+  Route,
+  Video,
   icon,
   IconNode,
 } from '../ui/icons';
+import { Link2, Link2Off } from 'lucide';
 
 type Tab = 'car' | 'body' | 'paint' | 'wheels' | 'vinyl' | 'stance' | 'tint' | 'glow' | 'lights' | 'perf' | 'share';
 
@@ -81,7 +85,12 @@ export interface GarageCallbacks {
   onChange(g: GarageState): void;
   onExit(): void;
   onTestDrive(): void;
+  /** Settings engine volume 0..1 (garage revs). */
+  engineVolume?(): number;
 }
+
+/** Keys that hold the gas in the garage. */
+const GAS_KEYS = ['KeyW', 'ArrowUp', 'Space'];
 
 export class GarageScreen {
   private scene: GarageScene;
@@ -96,6 +105,9 @@ export class GarageScreen {
   private devMode = new URLSearchParams(location.search).has('dev');
   private abort = new AbortController();
   private pointerDown: { x: number; y: number } | null = null;
+  private prefs: GaragePrefs = loadGaragePrefs();
+  private gasKeys = new Set<string>();
+  private gasPointer = false;
 
   constructor(
     gr: GameRenderer,
@@ -119,9 +131,14 @@ export class GarageScreen {
         this.tabBar,
         this.body,
       ),
-      h('div', { class: 'garage-hint muted' }, 'Drag to rotate · scroll or pinch to zoom'),
+      this.stageBar(),
+      this.gasButton(),
+      h('div', { class: 'garage-hint muted' }, 'Drag to rotate · scroll or pinch to zoom · hold W or Space to rev'),
     );
     uiRoot.append(this.root);
+    this.scene.setPresentation(this.prefs.presentation);
+    this.scene.setEngineVolume(cb.engineVolume?.() ?? 0.7);
+    this.configureEngine();
     for (const t of TABS) {
       const b = h('button', { class: 'garage-tab', type: 'button', role: 'tab', title: t.label, onclick: () => this.setTab(t.id) });
       b.append(icon(t.icon, { size: 18 }), h('span', {}, t.label));
@@ -143,6 +160,40 @@ export class GarageScreen {
         const hit = this.scene.pick(e.clientX, e.clientY);
         if (!hit) return toast('Click on the painted body', MousePointerClick);
         this.placeDecal(hit.pos, hit.normal);
+      },
+      o,
+    );
+    // Engine audio may only start after a user gesture.
+    const unlock = () => this.scene.unlockAudio();
+    window.addEventListener('pointerdown', unlock, { ...o, capture: true });
+    window.addEventListener('keydown', unlock, { ...o, capture: true });
+    // Hold W / Up / Space to rev (not while typing in a field).
+    const typing = (e: KeyboardEvent) => e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement;
+    window.addEventListener(
+      'keydown',
+      (e) => {
+        if (!GAS_KEYS.includes(e.code) || typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+        e.preventDefault();
+        this.gasKeys.add(e.code);
+        this.updateGas();
+      },
+      o,
+    );
+    window.addEventListener(
+      'keyup',
+      (e) => {
+        if (!this.gasKeys.delete(e.code)) return;
+        e.preventDefault();
+        this.updateGas();
+      },
+      o,
+    );
+    window.addEventListener(
+      'blur',
+      () => {
+        this.gasKeys.clear();
+        this.gasPointer = false;
+        this.updateGas();
       },
       o,
     );
@@ -177,6 +228,62 @@ export class GarageScreen {
     return this.garage.slots[this.garage.current];
   }
 
+  /** Presentation toggle (turntable showroom or tunnel cruise) and camera angles. */
+  private stageBar(): HTMLElement {
+    return h(
+      'div',
+      { class: 'garage-stage panel' },
+      segmented<Presentation>(
+        [
+          { value: 'garage', label: 'Garage', icon: CircleDot },
+          { value: 'street', label: 'Street', icon: Route },
+        ],
+        this.prefs.presentation,
+        (p) => {
+          this.prefs.presentation = p;
+          saveGaragePrefs(this.prefs);
+          this.scene.setPresentation(p);
+          this.configureEngine();
+        },
+      ),
+      iconBtn(Video, 'Next camera angle', () => toast(`Camera: ${this.scene.setCamera()}`, Video), 'small'),
+    );
+  }
+
+  /** Hold to rev. Pointer events so mouse, pen and touch all work; the key works too. */
+  private gasButton(): HTMLElement {
+    const b = h('button', { class: 'btn garage-gas', type: 'button', title: 'Hold to rev (W, Up or Space)', 'aria-label': 'Rev the engine' }, icon(Gauge, { size: 20 }), h('span', {}, 'Rev'));
+    const release = () => {
+      this.gasPointer = false;
+      this.updateGas();
+    };
+    b.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      b.setPointerCapture(e.pointerId);
+      this.scene.unlockAudio();
+      this.gasPointer = true;
+      this.updateGas();
+    });
+    for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(ev, release);
+    b.addEventListener('contextmenu', (e) => e.preventDefault());
+    this.gasEl = b;
+    return b;
+  }
+
+  private gasEl: HTMLElement | null = null;
+
+  private updateGas(): void {
+    const on = this.gasPointer || this.gasKeys.size > 0;
+    this.scene.setGas(on ? 1 : 0);
+    this.gasEl?.classList.toggle('on', on);
+  }
+
+  /** Idle and redline of the current build feed the garage rev model. */
+  private configureEngine(): void {
+    const e = tuningForBuild(this.build.carId, this.build.performance).engine;
+    this.scene.setEngine(e.idleRpm, e.redline);
+  }
+
   private setTab(t: Tab): void {
     this.tab = t;
     this.placing = null;
@@ -184,13 +291,15 @@ export class GarageScreen {
     this.renderTab();
   }
 
-  /** Apply the current build to the preview and save (debounced). */
-  private changed(rerender = false): void {
-    void this.scene.setCar(this.build.carId, this.build.visual);
+  /** Apply the current build to the preview and save (debounced). Resolves when the preview is up to date. */
+  private changed(rerender = false): Promise<unknown> {
+    const ready = this.scene.setCar(this.build.carId, this.build.visual);
+    this.configureEngine();
     clearTimeout(this.saveTimer);
     this.saveTimer = window.setTimeout(() => this.cb.onChange(this.garage), 250);
     if (rerender) this.renderTab();
     this.title.textContent = this.build.name;
+    return ready;
   }
 
   private renderTab(): void {
@@ -228,6 +337,40 @@ export class GarageScreen {
       }
       return list;
     };
+    const cm = (x: number) => `${Math.round(x * 100)} cm`;
+    // Per axle sliders. While front and rear are linked, moving one moves its partner too.
+    const partners = new Map<string, { el: HTMLInputElement; out: HTMLElement; fmt: (x: number) => string }>();
+    const axleSlider = (axle: Axle, key: keyof AxleStance, short = false) => {
+      const L = STANCE_LIMITS[key];
+      const spec = {
+        camber: { label: 'Camber', step: 0.5, fmt: (x: number) => `${x}°` },
+        offset: { label: 'Wheel offset', step: 0.005, fmt: cm },
+        wheelSize: {
+          label: 'Rim size',
+          step: 0.01,
+          fmt: (x: number) => {
+            const inch = this.scene.car?.rimInches(x);
+            return `${Math.round(x * 100)}%${inch ? ` · ${inch.toFixed(1)} in` : ''}`;
+          },
+        },
+      }[key];
+      const label = short ? spec.label : `${axle === 'front' ? 'Front' : 'Rear'}`;
+      const el = slider(label, v.stance[axle][key], L[0], L[1], spec.step, spec.fmt, (x) => {
+        v.stance[axle][key] = x;
+        if (this.prefs.linkAxles) {
+          const other: Axle = axle === 'front' ? 'rear' : 'front';
+          v.stance[other][key] = x;
+          const p = partners.get(`${other}.${key}`);
+          if (p) {
+            p.el.value = String(x);
+            p.out.textContent = p.fmt(x);
+          }
+        }
+        this.changed();
+      });
+      partners.set(`${axle}.${key}`, { el: el.querySelector('input') as HTMLInputElement, out: el.querySelector('.g-val') as HTMLElement, fmt: spec.fmt });
+      return el;
+    };
 
     switch (this.tab) {
       case 'car': {
@@ -236,26 +379,27 @@ export class GarageScreen {
           b.name = nameInput.value.slice(0, 24) || 'My Ride';
           this.changed();
         });
-        this.body.append(
-          section('Build name', null, nameInput),
-          section(
-            'Car',
-            Car,
-            choiceList(
-              MANIFEST.cars.filter((c) => SELECTABLE_CAR_IDS.includes(c.id)).map((c) => ({ value: c.id, label: c.displayName, sub: this.availability[c.id] ? 'IceMaan' : 'Model not imported yet' })),
-              b.carId,
-              (id) => {
-                if (id === b.carId) return;
-                b.carId = id;
-                // Parts are per car; wheels are universal and stay.
-                const wheels = v.parts.wheels;
-                v.parts = wheels ? { wheels } : {};
-                v.decals = [];
-                this.changed();
-              },
-            ),
-          ),
+        // Only real, imported cars; a disabled tile at the end promises more.
+        const imported = MANIFEST.cars.filter((c) => SELECTABLE_CAR_IDS.includes(c.id) && this.availability[c.id] !== false);
+        const cars = imported.length ? imported : MANIFEST.cars.filter((c) => SELECTABLE_CAR_IDS.includes(c.id));
+        const list = choiceList(
+          cars.map((c) => ({ value: c.id, label: c.displayName, sub: c.source === 'icemaan' ? 'IceMaan' : undefined })),
+          b.carId,
+          (id) => {
+            if (id === b.carId) return;
+            b.carId = id;
+            // Parts are per car; wheels are universal and stay.
+            const wheels = v.parts.wheels;
+            v.parts = wheels ? { wheels } : {};
+            v.decals = [];
+            // Say hello: a short blip of the new car's engine (and the body rocks with it).
+            void this.changed().then(() => this.scene.blip());
+          },
         );
+        const soon = h('div', { class: 'g-item g-soon', 'aria-disabled': 'true', title: 'More models coming soon' }, h('span', {}, 'More models soon'), h('span', { class: 'muted' }, 'Coming soon'));
+        soon.addEventListener('click', () => toast('More cars are on the way', Car));
+        list.append(soon);
+        this.body.append(section('Build name', null, nameInput), section('Car', Car, list));
         break;
       }
       case 'body': {
@@ -336,14 +480,7 @@ export class GarageScreen {
               },
             ),
           ),
-          section(
-            'Rim size',
-            null,
-            slider('Size', v.wheels.size, 0.85, 1.25, 0.01, (x) => `${Math.round(x * 100)}%`, (x) => {
-              v.wheels.size = x;
-              this.changed();
-            }),
-          ),
+          section('Rim size', null, this.linkToggle(), ...AXLES.map((a) => axleSlider(a, 'wheelSize')), h('div', { class: 'muted g-note' }, 'Bigger rims, thinner sidewalls: the tire keeps its outer size.')),
           section(
             'Rim color',
             null,
@@ -360,28 +497,18 @@ export class GarageScreen {
         break;
       case 'stance': {
         const s = v.stance;
-        const cm = (x: number) => `${Math.round(x * 100)} cm`;
+        const L = STANCE_LIMITS;
         this.body.append(
           section(
             'Stance (visual only)',
             ArrowUpDown,
-            slider('Ride height', s.rideHeight, -0.08, 0.06, 0.005, cm, (x) => {
+            slider('Ride height', s.rideHeight, L.rideHeight[0], L.rideHeight[1], 0.005, cm, (x) => {
               s.rideHeight = x;
               this.changed();
             }),
-            slider('Front camber', s.camberFront, -10, 2, 0.5, (x) => `${x}°`, (x) => {
-              s.camberFront = x;
-              this.changed();
-            }),
-            slider('Rear camber', s.camberRear, -10, 2, 0.5, (x) => `${x}°`, (x) => {
-              s.camberRear = x;
-              this.changed();
-            }),
-            slider('Wheel offset', s.offset, -0.03, 0.08, 0.005, cm, (x) => {
-              s.offset = x;
-              this.changed();
-            }),
+            this.linkToggle(),
           ),
+          ...AXLES.map((a) => h('div', { class: 'g-section g-axle' }, h('div', { class: 'label' }, a === 'front' ? 'Front' : 'Rear'), ...(['camber', 'offset', 'wheelSize'] as const).map((k) => axleSlider(a, k, true)))),
         );
         break;
       }
@@ -518,6 +645,28 @@ export class GarageScreen {
         this.renderShare(section);
         break;
     }
+  }
+
+  /** "Link front and rear" convenience toggle for the per axle sliders. */
+  private linkToggle(): HTMLElement {
+    const linked = this.prefs.linkAxles;
+    return btn(
+      linked ? Link2 : Link2Off,
+      linked ? 'Front and rear linked' : 'Front and rear separate',
+      () => {
+        this.prefs.linkAxles = !linked;
+        saveGaragePrefs(this.prefs);
+        if (this.prefs.linkAxles) {
+          // Linking starts from matching axles: the rear takes the front's settings.
+          const s = this.build.visual.stance;
+          s.rear = { ...s.front };
+          this.changed();
+          toast('Rear now matches front', Link2);
+        }
+        this.renderTab();
+      },
+      `small g-link${linked ? ' primary' : ''}`,
+    );
   }
 
   private renderVinyls(

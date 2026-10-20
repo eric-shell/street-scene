@@ -7,7 +7,7 @@ A browser street racing proof of concept in the spirit of NFSU2. You race at nig
 - Three deterministic AI opponents with mild rubber banding
 - Garage with body kits and parts, paint finishes, vinyls, stance, tint, underglow and performance tiers
 - Replays and ghosts from input logs, plus a drone flyover mode
-- Synthesized engine sound (inline-4 turbo for the S64 Compact, V6 for the GC14 Coupe) and a persistent music player
+- Synthesized engine sound (inline-4 turbo for the Proto Compact, V6 for the Proto Hatch) and a persistent music player
 - Test drive with a live physics tuning panel and JSON export
 
 ## Run it
@@ -35,13 +35,14 @@ Useful URL parameters: `?seed=anything` (custom event), `?race=circuit|sprint|dr
 | Nitrous | Shift or N | A / B | NOS |
 | Manual shift (when enabled) | Q / E | LB / RB | |
 | Reset to road | R | Y | RST |
+| Horn and headlight flash (hold for a long blast) | H | Right stick click | |
 | Camera (chase, close, bumper, hood) | C | Back | CAM |
 | Pause | Esc / P | Start | II |
-| Physics tuning panel (auto opens in test drive) | ` or F2 | | |
+| Physics tuning panel (always shown when enabled in Settings > Debug) | ` or F2 | | |
 | Menu free camera | Shift+F | | |
 | Music: mute / previous / next | M / [ / ] | | Player card |
 
-Drift by tapping the handbrake into a corner, or with a clutch kick (lift and stab the throttle while steering hard), then hold it with throttle and counter steer. Nitrous refills from drifting, near misses with walls and drafting behind opponents. In replays, **C** cycles chase, TV, orbit, close, hood and free cameras. Drone mode uses WASD + drag; Space/Ctrl move up and down, Shift boosts, T toggles the auto tour.
+Drift by tapping the handbrake into a corner, or with a clutch kick (lift and stab the throttle while steering hard), then hold it with throttle and counter steer. With **traction control** off (the default, Settings), the driven wheels can spin: launches at high revs, full throttle in low gears mid corner (power oversteer on the rear wheel drive Proto Compact), slippery sidewalks and dirt, crests and clutch kicks. Spinning wheels lose most of their sideways grip. Traction control caps drive at the grip limit and cuts power in slides; AI opponents always drive with it. Nitrous refills from drifting, near misses with walls and drafting behind opponents. In replays, **C** cycles chase, TV, orbit, close, hood and free cameras. Drone mode uses WASD + drag; Space/Ctrl move up and down, Shift boosts, T toggles the auto tour.
 
 ## Music
 
@@ -55,10 +56,8 @@ Unzip each download into `assets/source/icemaan/<folder>/`, where `<folder>` is 
 
 | Car | Folder names recognized |
 |---|---|
-| GC14 Coupe | `gc14`, `coupe` |
-| S64 Compact | `s64`, `hatch`, `compact` |
-| CC96 | `cc96` |
-| A R7 | `ar7`, `r7` |
+| GC14 (Proto Hatch, AWD 40/60) | `gc14`, `coupe` |
+| S64 (Proto Compact, RWD) | `s64`, `hatch`, `compact` |
 
 Then run `npm run assets`. It:
 
@@ -69,7 +68,7 @@ Then run `npm run assets`. It:
 5. Generates the **Proto RS** placeholder car and its parts procedurally.
 6. Updates `src/assets/carManifest.json` and `src/assets/partsCatalog.json`, writes `assets/inspect.md`, and runs validation. It fails loudly on errors.
 
-**Current status:** GC14 and S64 are imported. CC96 and A R7 aren't downloaded yet. They appear in the garage as "Model not imported yet" and render as a code-built placeholder (box body, cylinder wheels) behind the same `carView.ts` interface, using the provisional dimensions in the manifest.
+**Current status:** GC14 and S64 are imported. A car added to the manifest without source files renders as a code-built placeholder (box body, cylinder wheels) behind the same `carView.ts` interface, using the provisional dimensions in the manifest. The procedural Proto RS (`proto`) stays in the manifest for tests and the asset pipeline but isn't selectable.
 
 ## Adding a new part
 
@@ -77,15 +76,20 @@ See [docs/partsAuthoring.md](docs/partsAuthoring.md). In short: model it in car 
 
 ## Tuning cars
 
-All physics constants live in `src/sim/tuning.ts`: base tuning, per car overrides, and the performance part tier tables that `applyBuild()` reads.
+Every driving number lives in one hand editable file, **`src/sim/drivingParams.json`** (`src/sim/tuning.ts` only types, merges and validates it):
 
-**Test drive** (garage > Test drive) opens the physics tuning panel automatically. It exposes every numeric driving parameter of the car (engine, torque curve, gear ratios, tires, suspension, brakes, steering, aero, nitrous, drift aids, surfaces, collisions) as a live slider, grouped by section, with a filter box. Changed values are highlighted. Your tuning is kept per car and re-applied on the next test drive.
+- `base`: the tuning every car starts from. It is exactly the Proto Compact (`s64`).
+- `cars.<id>`: per car overrides merged over `base`, written as absolute values (`"mass": 2000`). Nested objects merge key by key; arrays (`torqueCurve`, `ratios`) replace whole. This is also where each car's `drivetrain` (`"rwd"`, `"awd"` or `"fwd"`, plus `awdFrontShare` for AWD) is set.
+- `performanceParts`: the garage upgrade tier tables that `applyBuild()` reads.
+- Keys starting with `_` are comments. Unknown keys and wrong types fail loudly at startup. Geometry comes from `src/assets/carManifest.json`.
 
-- **Copy JSON** / **Download** export `{ nightRunTuning, carId, performance, changed, tuning }`. The `changed` map lists only what you moved, so it's the part to paste into a prompt or into `tuning.ts`.
-- **Import** pastes such a JSON (or just a `changed` map) back in.
+The **physics tuning panel** shows every driving parameter of the car (drivetrain, engine, torque curve, gear ratios, tires, traction and wheelspin, suspension, brakes, steering, aero, nitrous, drift aids, surfaces, collisions) as a live slider, grouped by section, with a filter box that also searches descriptions. Hover a name for its one line description, or tap it to show the description inline. Changed values are highlighted. Turn it on in Settings > Debug, or toggle it with **`** / **F2** in any race. Test drive tuning is kept per car and re-applied on the next test drive. It's discarded automatically when `drivingParams.json` changes, so it never masks edits to the file.
+
+- **Copy JSON** / **Download** export `{ nightRunTuning, carId, performance, changed, fileOverride, tuning }`. `changed` lists only what you moved. `fileOverride` is the same change as a block to paste into `cars.<id>` in `drivingParams.json` (exported only with stock performance parts).
+- **Import** accepts that same export (it applies the full `tuning`), a `drivingParams.json` style car block, or a flat `"path": value` map.
 - **Reset all** returns to the car's stock tuning with its performance parts.
 
-The same panel opens with **`** (backtick) in any race. Runs with changed tuning are never saved as best times or ghosts.
+Runs with changed tuning are never saved as best times or ghosts.
 
 ## Architecture
 
@@ -122,7 +126,7 @@ tests/
 3. **Rendering only reads state.** `RaceSession` keeps the previous and current snapshots and interpolates with the loop's alpha. Nothing in `src/render/` writes to the sim.
 4. **Inputs are data.** Each tick consumes one frame `{ throttle, brake, steer, handbrake, nitrous, shift, reset }`. Frames are quantized and packed to 4 bytes before the sim reads them, so the recorded log replays bit for bit.
 5. **Visual and performance builds are separate.** `CarBuild = { visual, performance }`. Only the renderer reads `visual`. The sim reads `performance` through the pure `applyBuild(baseTuning, performance)`. A test confirms visual choices never change the tuning.
-6. **All tuning lives in `src/sim/tuning.ts`.**
+6. **All tuning lives in `src/sim/drivingParams.json`.**
 
 ### Tests
 
@@ -144,10 +148,10 @@ tests/
 - **Merged body kits.** The IceMaan kits are single meshes, so they're `body` variants. Bumper slots stay empty for those cars until they're split. The Proto RS placeholder has separate bumpers, skirts, hood, spoilers and wheels to show the full slot system.
 - **Buildings are one merged geometry** with world-scale UVs, rather than instanced boxes, so window grids keep their proportions on every building. The street-level podium (2 to 4 floors) uses a separate facade kit atlas with per-level random protrusions.
 - **Collision shapes.** Cars are three circles along their length. Walls are the outer sidewalk line of every road (one sided, which stops tunnelling). Closed side streets are barrier segments. Head-on closures look like barriers with arrows. Side closures look like a line of parked cars but use the same segment.
-- **Corner guard rails.** Every route corner has a long smooth rail on its outside, from the incoming road's outer curb, around the corner, to the outgoing road's outer curb. It's real collision geometry in the sim, with low scrub and spin so cars that run wide glance off and keep their momentum. Chevron panels on the rail and a matching giant translucent arrow above it point the way.
+- **Corner guard rails.** Every route corner has a long smooth rail on its outside, from the incoming road's outer curb, around the corner, to the outgoing road's outer curb. It's real collision geometry in the sim, with low bounce and spin so cars that run wide glance off without spinning, but scraping along a rail drags speed off for as long as the car stays in contact (`railDrag`, `railSpeedLoss`). Chevron panels on the rail and a matching giant translucent arrow above it point the way.
 - **Side street car meets.** Closed side streets the racers are unlikely to hit are lined with rows of parked cars, mostly nose toward the track like spectators. Density follows the graphics quality.
 - **Light color temperature.** Windows, doors and arches use blackbody colors between 2000 K and 8000 K. Only signs and rooftop trims are neon colored.
-- **Garage cars.** Only the S64 Compact and GC14 Coupe are offered (manifest `selectable`). The other entries stay loadable for tests and old saves; builds for them move to the GC14. Vinyls are hidden behind a feature flag (`src/shared/features.ts`).
+- **Garage cars.** Only the Proto Compact (`s64`) and Proto Hatch (`gc14`) are offered (manifest `selectable`). The Proto RS stays loadable for tests; saved builds for cars that are no longer offered move to the default car. Vinyls are hidden behind a feature flag (`src/shared/features.ts`).
 - **Music autoplay.** Browsers only allow audible autoplay after the user has interacted with the site. The player tries to start with sound, falls back to starting muted, and unmutes on the first click, tap or key press. Engine audio starts on the first gesture for the same reason.
 - **Build version** (`v<package version> · <git hash> · <date>`) is shown under the title on the main menu.
 - **Routes avoid hairpins.** Turns sharper than 112° through acute diagonal junctions are rejected because cars wedge there.

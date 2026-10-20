@@ -5,7 +5,7 @@
  */
 import { DT, SUBSTEPS } from './constants';
 import { InputFrame } from './input';
-import { CarTuning, GRAVITY } from './tuning';
+import { CarTuning, GRAVITY, driveSplit } from './tuning';
 import { DEG, abs, approach, atan2, clamp, cos, lerp, sign, sin, sqrt } from './math';
 import type { Surface, World } from '../city/world';
 
@@ -45,6 +45,13 @@ export interface CarState {
   shiftTimer: number;
   reverseHold: number;
   manualGearbox: boolean;
+  /** Driver aid: drive force is limited to what the driven tires can transmit. */
+  tractionControl: boolean;
+  /** Traction control cut the drive force this tick (for a HUD light). */
+  tcActive: boolean;
+  /** Wheelspin of the front / rear axle, 0 (gripping) .. 1 (fully spinning). Only driven axles spin. */
+  spinFront: number;
+  spinRear: number;
   /** 0..1 */
   nitro: number;
   nitroActive: boolean;
@@ -59,6 +66,7 @@ export interface CarState {
   speed: number;
   slipAngle: number;
   drifting: boolean;
+  /** A driven axle is spinning noticeably (spinFront / spinRear > 0.2). */
   wheelspin: boolean;
   surface: Surface;
   impact: number;
@@ -88,6 +96,10 @@ export function createCar(x: number, z: number, yaw: number, y: number): CarStat
     shiftTimer: 0,
     reverseHold: 0,
     manualGearbox: false,
+    tractionControl: false,
+    tcActive: false,
+    spinFront: 0,
+    spinRear: 0,
     nitro: 1,
     nitroActive: false,
     throttle: 0,
@@ -121,6 +133,7 @@ export function placeCar(c: CarState, x: number, z: number, yaw: number, world: 
   c.steerAngle = 0;
   c.rearGrip = 1;
   c.clutchKick = 0;
+  c.spinFront = c.spinRear = 0;
   c.gear = 1;
   c.shiftTimer = 0;
   for (const w of c.wheels) {
@@ -215,7 +228,13 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
   const wr = wheelRpm(t, c.gear, vLong);
   const lowGear = c.gear === 1 || c.gear === -1;
   const clutchRpm = t.engine.idleRpm + drive * (t.engine.launchRpm - t.engine.idleRpm);
-  let rpmTarget = Math.max(wr, lowGear ? clutchRpm : t.engine.idleRpm);
+  const split = driveSplit(t);
+  // Spinning driven wheels turn faster than the road: the engine flares above road speed rpm.
+  const spinNow = Math.max(split.front > 0 ? c.spinFront : 0, split.rear > 0 ? c.spinRear : 0);
+  const spinWr = wr + spinNow * t.traction.spinRpm;
+  // Clutch slip before this tick's rpm update: revs above the wheels (launch, clutch dump).
+  const clutchSlipRpm = Math.max(0, c.rpm - spinWr);
+  let rpmTarget = Math.max(spinWr, lowGear ? clutchRpm : t.engine.idleRpm);
   if (c.shiftTimer > 0) rpmTarget = Math.max(t.engine.idleRpm, wr);
   c.rpm = approach(c.rpm, Math.min(rpmTarget, t.engine.redline + 150), 24000 * dt);
 
@@ -227,6 +246,9 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
   if (c.shiftTimer === 0) {
     if (c.rpm < t.engine.redline) engineTorque = torqueAt(t, c.rpm) * t.engine.torqueMul * drive;
     if (c.nitroActive) engineTorque *= t.nitrous.torqueMul;
+    // Dumping the clutch at high revs (launch, clutch kick) adds the flywheel's energy on top.
+    const dump = c.clutchKick > 0 ? 1 : clamp(clutchSlipRpm / t.engine.redline, 0, 1);
+    if (engineTorque > 0) engineTorque *= 1 + t.traction.launchBoost * dump;
     if (drive < 0.05 && c.gear > 0) engineTorque -= t.engine.engineBraking * clamp(c.rpm / t.engine.redline, 0, 1) * sign(vLong);
   }
   let driveForce = (engineTorque * ratio * t.gearbox.finalDrive * t.gearbox.efficiency) / t.geometry.wheelRadius;
@@ -257,9 +279,15 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
   if (inp.handbrake) gripTarget = Math.min(gripTarget, t.drift.handbrakeRearGrip);
   if (c.clutchKick > 0) {
     gripTarget = Math.min(gripTarget, t.drift.clutchKickRearGrip);
+    // Kicking the clutch breaks the driven wheels loose (traction control would catch it).
+    if (c.clutchKick === t.drift.clutchKickTime && !c.tractionControl) {
+      if (split.front > 0) c.spinFront = Math.max(c.spinFront, t.traction.clutchKickSpin);
+      if (split.rear > 0) c.spinRear = Math.max(c.spinRear, t.traction.clutchKickSpin);
+    }
     c.clutchKick = Math.max(0, c.clutchKick - dt);
   }
-  if (abs(beta) > t.drift.powerOversteerMinSlipDeg * DEG && speed > 8 && drive > 0.5 && c.gear > 0) {
+  // Traction control also stops power oversteer.
+  if (!c.tractionControl && abs(beta) > t.drift.powerOversteerMinSlipDeg * DEG && speed > 8 && drive > 0.5 && c.gear > 0) {
     gripTarget = Math.min(gripTarget, lerp(1, t.drift.powerOversteerGrip, (drive - 0.5) / 0.5));
   }
   c.rearGrip = gripTarget < c.rearGrip ? approach(c.rearGrip, gripTarget, t.drift.gripDropRate * dt) : approach(c.rearGrip, gripTarget, t.drift.gripRecoverRate * dt);
@@ -267,12 +295,20 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
   const surfaceGrip = c.surface === 'road' ? 1 : c.surface === 'sidewalk' ? t.surface.sidewalkGrip : t.surface.offroadGrip;
   const dragMul = c.drafting ? t.nitrous.draftDragMul : 1;
 
+  // Traction control stability: cut the throttle once the body slides past a few degrees.
+  let tcCut = false;
+  const tcSlip = t.traction.tcMaxSlipDeg * DEG;
+  if (c.tractionControl && driveForce > 0 && speed > 6 && abs(beta) > tcSlip) {
+    driveForce *= Math.max(0.2, 1 - (abs(beta) - tcSlip) / (10 * DEG));
+    tcCut = true;
+  }
+
   const yawKick = inp.handbrake && c.gear > 0 ? -inp.steer * t.drift.handbrakeYawTorque * clamp(speed / 15, 0, 1) : 0;
-  const ctl: Controls = { driveForce, brake, handbrake: inp.handbrake ? 1 : 0, surfaceGrip, dragMul, drive, yawKick };
+  const ctl: Controls = { driveForce, brake, handbrake: inp.handbrake ? 1 : 0, surfaceGrip, dragMul, drive, yawKick, frontShare: split.front };
   const h = dt / SUBSTEPS;
-  let spun = false;
-  for (let s = 0; s < SUBSTEPS; s++) spun = integrate(c, t, ctl, world, h) || spun;
-  c.wheelspin = spun;
+  for (let s = 0; s < SUBSTEPS; s++) tcCut = integrate(c, t, ctl, world, h) || tcCut;
+  c.tcActive = tcCut;
+  c.wheelspin = c.spinFront > 0.2 || c.spinRear > 0.2;
 
   // ---- telemetry and wheel visuals ----
   const fx2 = sin(c.yaw);
@@ -285,14 +321,14 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
   const r = t.geometry.wheelRadius;
   for (let i = 0; i < 4; i++) {
     const w = c.wheels[i];
+    const axleSpin = i < 2 ? c.spinFront : c.spinRear;
     let rate = vLong2 / r;
-    if (i >= 2) {
-      if (inp.handbrake) rate = 0;
-      else if (spun) rate += sign(driveForce) * 25;
-    }
+    if (i >= 2 && inp.handbrake) rate = 0;
+    else rate += (c.gear < 0 ? -1 : 1) * axleSpin * 40;
     w.spinRate = rate;
     w.spin = (w.spin + rate * dt) % (Math.PI * 2);
-    w.skid = w.contact ? clamp((abs(w.slip) - 6 * DEG) / (20 * DEG), 0, 1) + (i >= 2 && (spun || inp.handbrake) && c.speed > 3 ? 0.6 : 0) : 0;
+    const smoke = (i >= 2 && inp.handbrake && c.speed > 3 ? 0.6 : 0) + axleSpin * 0.8;
+    w.skid = w.contact ? Math.min(1.6, clamp((abs(w.slip) - 6 * DEG) / (20 * DEG), 0, 1) + smoke) : 0;
   }
 }
 
@@ -304,9 +340,50 @@ interface Controls {
   dragMul: number;
   drive: number;
   yawKick: number;
+  /** Share of driveForce sent to the front axle. */
+  frontShare: number;
 }
 
-/** One physics substep. Returns true if the driven wheels are spinning. */
+const wFmax = [0, 0, 0, 0];
+const wLong = [0, 0, 0, 0];
+const wAlpha = [0, 0, 0, 0];
+const wLongAvail = [0, 0, 0, 0];
+const axleDrive = [0, 0];
+
+/**
+ * Driven axle wheelspin. Demand = axle drive force / what its tires can still
+ * transmit forward after cornering (friction circle). Above `breakaway` the
+ * wheels break loose; the spin level grows with the excess, and once spinning
+ * the threshold drops to breakaway * spinHold (a spinning tire grips less).
+ * Traction control instead caps demand just under the limit.
+ * Returns true when traction control cut the drive force.
+ */
+function updateWheelspin(c: CarState, t: CarTuning, ctl: Controls, h: number): boolean {
+  const tr = t.traction;
+  let cut = false;
+  for (let a = 0; a < 2; a++) {
+    const share = a === 0 ? ctl.frontShare : 1 - ctl.frontShare;
+    let F = ctl.driveForce * share;
+    let spin = a === 0 ? c.spinFront : c.spinRear;
+    const avail = wLongAvail[a * 2] + wLongAvail[a * 2 + 1];
+    const powered = share > 0 && ctl.drive > 0.05 && F * (c.gear < 0 ? -1 : 1) > 0;
+    let demand = powered ? abs(F) / Math.max(1, avail) : 0;
+    if (c.tractionControl && demand > tr.tcSlipTarget) {
+      F *= tr.tcSlipTarget / demand;
+      demand = tr.tcSlipTarget;
+      cut = true;
+    }
+    const threshold = tr.breakaway * (spin > 0.05 ? tr.spinHold : 1);
+    const target = a === 1 && ctl.handbrake > 0 ? 0 : clamp((demand - threshold) * tr.spinPerExcess, 0, 1);
+    spin = approach(spin, target, (target > spin ? tr.spinBuildRate : tr.spinRecoverRate) * h);
+    axleDrive[a] = F;
+    if (a === 0) c.spinFront = spin;
+    else c.spinRear = spin;
+  }
+  return cut;
+}
+
+/** One physics substep. Returns true if traction control cut the drive force. */
 function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: number): boolean {
   const m = t.mass;
   const geo = t.geometry;
@@ -366,16 +443,10 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
   const peak = t.tires.peakSlipDeg * DEG;
   const full = t.tires.fullSlideDeg * DEG;
   const down = (t.aero.downforce * speed * speed) / 4;
-  let Fu = 0;
-  let Fv = 0;
-  let torque = 0;
-  let spinning = false;
+  const gripAt = (a: number) => (a < peak ? a / peak : 1 - (1 - t.tires.slideGrip) * Math.min(1, (a - peak) / (full - peak)));
+  // Pass 1: grip, slip angle and how much forward grip each tire has left after cornering.
   for (let i = 0; i < 4; i++) {
     const w = c.wheels[i];
-    if (!w.contact) {
-      w.slip = 0;
-      continue;
-    }
     const front = i < 2;
     const [wv, , wu] = geo.wheels[i];
     const pl = vLong - c.yawRate * wv;
@@ -385,10 +456,38 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
     const wl = pl * cd + pt * sd;
     const wt = -pl * sd + pt * cd;
     const mu = (front ? t.tires.gripFront : t.tires.gripRear * c.rearGrip) * ctl.surfaceGrip;
-    const Fmax = mu * (loads[i] + down);
+    const alpha = atan2(wt, Math.max(abs(wl), 2.5));
+    const lat = gripAt(abs(alpha));
+    wFmax[i] = w.contact ? mu * (loads[i] + down) : 0;
+    wLong[i] = wl;
+    wAlpha[i] = alpha;
+    const used = lat * t.traction.cornerCoupling;
+    wLongAvail[i] = wFmax[i] * sqrt(Math.max(0.04, 1 - used * used));
+  }
+  const tcCut = updateWheelspin(c, t, ctl, h);
+  // Pass 2: forces.
+  let Fu = 0;
+  let Fv = 0;
+  let torque = 0;
+  for (let i = 0; i < 4; i++) {
+    const w = c.wheels[i];
+    if (!w.contact) {
+      w.slip = 0;
+      continue;
+    }
+    const front = i < 2;
+    const [wv, , wu] = geo.wheels[i];
+    const cd = front ? cosd : 1;
+    const sd = front ? sind : 0;
+    const wl = wLong[i];
+    const pt = vLat + c.yawRate * wu;
+    const wt = -(vLong - c.yawRate * wv) * sd + pt * cd;
+    const Fmax = wFmax[i];
+    const spin = front ? c.spinFront : c.spinRear;
 
-    let Fx = 0;
-    if (!front) Fx += ctl.driveForce / 2;
+    // Drive: half the axle force per wheel, limited to what the tire transmits (less while spinning).
+    const Fd = axleDrive[front ? 0 : 1] / 2;
+    let Fx = sign(Fd) * Math.min(abs(Fd), Math.max(wLongAvail[i], abs(Fd) > wLongAvail[i] ? Fmax * 0.2 : 0) * lerp(1, t.traction.spinLongGrip, spin));
     // Brake force split across the axle by load (EBD) so a light inside wheel does not lock.
     const axleLoad = front ? loads[0] + loads[1] : loads[2] + loads[3];
     const share = axleLoad > 1 ? loads[i] / axleLoad : 0.5;
@@ -398,16 +497,12 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
       const stop = (wl * (m / 4)) / h;
       Fx -= clamp(stop, -brakeF, brakeF);
     }
-    if (abs(Fx) > Fmax) {
-      if (!front && abs(ctl.driveForce / 2) > Fmax * 0.95 && ctl.drive > 0.3) spinning = true;
-      Fx = sign(Fx) * Fmax;
-    }
-    const latAvail = Math.max(t.tires.minLateralShare * Fmax, sqrt(Math.max(0, Fmax * Fmax - Fx * Fx)));
-    const alpha = atan2(wt, Math.max(abs(wl), 2.5));
+    if (abs(Fx) > Fmax) Fx = sign(Fx) * Fmax;
+    // A spinning axle loses most of its sideways grip: power oversteer (rear) or understeer (front).
+    const latAvail = Math.max(t.tires.minLateralShare * Fmax, sqrt(Math.max(0, Fmax * Fmax - Fx * Fx))) * lerp(1, t.traction.spinLateralGrip, spin);
+    const alpha = wAlpha[i];
     w.slip = alpha;
-    const a = abs(alpha);
-    const g = a < peak ? a / peak : 1 - (1 - t.tires.slideGrip) * Math.min(1, (a - peak) / (full - peak));
-    let Fy = -sign(alpha) * g * latAvail;
+    let Fy = -sign(alpha) * gripAt(abs(alpha)) * latAvail;
     const maxFy = ((m / 4) * abs(wt)) / h;
     if (abs(Fy) > maxFy) Fy = sign(Fy) * maxFy;
 
@@ -482,7 +577,7 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
     c.y = ground - 0.35;
     if (c.vy < 0) c.vy = 0;
   }
-  return spinning;
+  return tcCut;
 }
 
 /** Refill nitrous from style: drifting, near misses and drafting. Call once per tick after collisions. */

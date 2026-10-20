@@ -6,7 +6,8 @@
 import { CITY } from './config';
 import { CityBlocks, Wall, generateBlocks } from './blocks';
 import { RoadGraph, generateRoadGraph } from './roadGraph';
-import { Route, RouteKind, buildRoute, findCircuitNodes, findSprintNodes, routeBarriers, routeRails } from './route';
+import { BarrierGroup, Route, RouteKind, buildRoute, findCircuitNodes, findSprintNodes, routeBarrierGroups, routeBarriers, routeRails } from './route';
+import { Prop, buildPropGrid } from './props';
 import { SpatialGrid } from './spatial';
 import { Terrain, createTerrain } from './terrain';
 import { cos, distToSegment, segmentT, sin, sqrt } from '../sim/math';
@@ -47,6 +48,12 @@ export interface World extends City {
   /** City walls plus this route's barriers and corner rails. */
   walls: Wall[];
   wallGrid: SpatialGrid;
+  /** Closed side street barriers grouped per intersection (see route.ts). Barrier walls carry `group`. */
+  barrierGroups: BarrierGroup[];
+  /** Destructible props (same array as blocks.props). Broken state lives on RaceState.brokenProps. */
+  props: Prop[];
+  /** Broadphase over props by id (each prop inserted with its radius). */
+  propGrid: SpatialGrid;
   heightAt(x: number, z: number): number;
   slopeAt(x: number, z: number): { gx: number; gz: number };
   surfaceAt(x: number, z: number): Surface;
@@ -72,7 +79,11 @@ export function createRoute(city: City, kind: RouteKind): Route {
 export function createWorld(seed: number, kind: RouteKind, city: City = createCity(seed)): World {
   const route = createRoute(city, kind);
   const { graph, blocks, terrain } = city;
-  const walls = blocks.walls.concat(routeBarriers(graph, blocks.mouths, route), routeRails(graph, route));
+  const rails = routeRails(graph, route);
+  const barrierGroups = routeBarrierGroups(graph, blocks.mouths, route, rails);
+  const walls = blocks.walls.concat(routeBarriers(graph, blocks.mouths, route, barrierGroups), rails);
+  const props = blocks.props;
+  const propGrid = buildPropGrid(graph, props);
   const pad = 60;
   const wallGrid = SpatialGrid.forBounds(graph.bounds.minX - pad, graph.bounds.minZ - pad, graph.bounds.maxX + pad, graph.bounds.maxZ + pad, CITY.broadphaseCell);
   walls.forEach((w, i) => wallGrid.insertSegment(i, w.ax, w.az, w.bx, w.bz, 0.5));
@@ -202,6 +213,9 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     route,
     walls,
     wallGrid,
+    barrierGroups,
+    props,
+    propGrid,
     heightAt: terrain.heightAt,
     slopeAt: terrain.slopeAt,
     surfaceAt,

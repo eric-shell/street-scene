@@ -10,7 +10,7 @@ const STEER_RATE = 3.2; // per second toward full lock
 const STEER_RETURN = 6; // per second back to center
 const PEDAL_RATE = 9;
 
-type Action = 'camera' | 'pause' | 'dev' | 'freecam';
+type Action = 'camera' | 'pause' | 'dev' | 'freecam' | 'horn' | 'cameraPanel';
 
 export class InputManager {
   private keys = new Set<string>();
@@ -22,6 +22,8 @@ export class InputManager {
   private listeners = new Map<Action, Set<() => void>>();
   private abort = new AbortController();
   private gamepadPrev: boolean[] = [];
+  /** Horn on the gamepad (right stick click); visual/audio only, not part of the input frame. */
+  private padHorn = false;
   readonly touch: TouchControls | null;
   enabled = true;
 
@@ -48,6 +50,21 @@ export class InputManager {
 
   private onKey(e: KeyboardEvent, down: boolean): void {
     const target = e.target as HTMLElement | null;
+    // The tuning panel toggle also works while one of its sliders has focus (but not while typing).
+    if (down && !e.repeat && (e.code === 'F2' || e.code === 'Backquote')) {
+      const typing = target && (target.tagName === 'TEXTAREA' || (target.tagName === 'INPUT' && (target as HTMLInputElement).type !== 'range'));
+      if (e.code === 'F2' || !typing) {
+        e.preventDefault();
+        this.emit('dev');
+        return;
+      }
+    }
+    // F3: camera debug panel, also from inside its own sliders.
+    if (down && !e.repeat && e.code === 'F3') {
+      e.preventDefault();
+      this.emit('cameraPanel');
+      return;
+    }
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) return;
     if (down && !e.repeat) {
       switch (e.code) {
@@ -58,10 +75,6 @@ export class InputManager {
         case 'KeyP':
           this.emit('pause');
           break;
-        case 'Backquote':
-        case 'F2':
-          this.emit('dev');
-          break;
         case 'KeyF':
           if (e.shiftKey) this.emit('freecam');
           break;
@@ -70,6 +83,9 @@ export class InputManager {
           break;
         case 'KeyE':
           this.shiftLatch = 1;
+          break;
+        case 'KeyH':
+          this.emit('horn');
           break;
         case 'KeyR':
           this.resetLatch = true;
@@ -81,7 +97,13 @@ export class InputManager {
     else this.keys.delete(e.code);
   }
 
+  /** Horn held (H key or right stick click). Not recorded: replays never honk. */
+  hornHeld(): boolean {
+    return this.enabled && (this.keys.has('KeyH') || this.padHorn);
+  }
+
   releaseAll(): void {
+    this.padHorn = false;
     this.keys.clear();
     this.steer = 0;
     this.throttle = 0;
@@ -147,6 +169,8 @@ export class InputManager {
       if (edge(3)) frame.reset = true;
       if (edge(9)) this.emit('pause');
       if (edge(8)) this.emit('camera');
+      if (edge(11)) this.emit('horn');
+      this.padHorn = pressed(11);
       this.gamepadPrev = pad.buttons.map((x) => x.pressed);
       break;
     }

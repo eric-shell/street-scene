@@ -9,7 +9,43 @@ import { makeRadialGlow } from './textures';
 export interface LightFx {
   group: THREE.Group;
   setStrength(pool: number, streak: number): void;
+  /** Switch one streetlight's ground pool and reflection streak (broken lamps go dark). */
+  setLampOn(index: number, on: boolean): void;
   dispose(): void;
+}
+
+/**
+ * Small, very bright emitters (lamp lenses, roof neon, barrier lamps) shrink
+ * below a pixel in the distance. Without AA they are drawn on one frame and
+ * missed the next, and at 3-4x HDR each pop is a bright speck the bloom
+ * picks up. Scale their brightness by how many pixels they cover,
+ * estimated from the screen space derivatives of the view position, so they
+ * fade smoothly instead. `size` is the emitter's smallest dimension in meters;
+ * brightness never drops below `floor`. Works for Basic materials, instanced
+ * or not, and adapts to the render resolution by itself.
+ */
+export function fadeSubPixel(material: THREE.Material, size: number, floor = 0.2): void {
+  const s = size.toFixed(3);
+  const f = floor.toFixed(3);
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vSubPixelPos;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvSubPixelPos = mvPosition.xyz;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vSubPixelPos;')
+      .replace(
+        '#include <opaque_fragment>',
+        `#include <opaque_fragment>
+        {
+          // world size of one pixel here; full brightness from about 2 px up
+          float pxWorld = max(length(fwidth(vSubPixelPos)), 1e-5);
+          gl_FragColor.rgb *= clamp(${s} / (2.0 * pxWorld), ${f}, 1.0);
+        }`,
+      );
+  };
+  // The injected constants differ per call, so they must be part of the program key.
+  material.customProgramCacheKey = () => `subpx:${s}:${f}`;
+  material.needsUpdate = true;
 }
 
 const streakVert = /* glsl */ `
@@ -46,7 +82,10 @@ const streakFrag = /* glsl */ `
   varying float vFog;
   uniform float strength;
   void main() {
-    float across = exp(-pow(vUv.x * 3.2, 2.0));
+    // x * x, not pow(x, 2.0): pow of a negative base is undefined in GLSL and
+    // returns NaN on some GPUs, which the bloom then smears into flicker.
+    float ax = vUv.x * 3.2;
+    float across = exp(-ax * ax);
     float along = (1.0 - smoothstep(0.0, 1.0, vUv.y)) * smoothstep(-0.2, 0.05, vUv.y);
     float a = across * along * strength * vFog;
     gl_FragColor = vec4(vColor * a, 1.0);
@@ -118,6 +157,10 @@ export function buildLightFx(
     depthWrite: false,
     transparent: true,
     side: THREE.DoubleSide,
+    // Only 7 cm above the asphalt: without an offset distant streaks z-fight with it.
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
   });
   const streaks = new THREE.Mesh(geo, streakMat);
   streaks.frustumCulled = false;
@@ -129,6 +172,18 @@ export function buildLightFx(
     setStrength(pool, streak) {
       poolMat.opacity = pool;
       streakMat.uniforms.strength.value = streak;
+    },
+    setLampOn(i, on) {
+      if (i < 0 || i >= lamps.length) return;
+      const p = lamps[i];
+      if (on) m.makeScale(17, 1, 17).setPosition(p.x, heightAt(p.x, p.z) + 0.2, p.z);
+      else m.makeScale(0, 0, 0);
+      pools.setMatrixAt(i, m);
+      pools.instanceMatrix.needsUpdate = true;
+      const c = all[i].color;
+      const k = on ? 1 : 0;
+      iColor.set([c.r * k, c.g * k, c.b * k], i * 3);
+      (geo.getAttribute('iColor') as THREE.InstancedBufferAttribute).needsUpdate = true;
     },
     dispose() {
       glow.dispose();

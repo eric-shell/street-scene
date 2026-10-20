@@ -2,6 +2,10 @@
  * Night lighting: dark blue ambient, a faint moon, and a small pool of real
  * point lights that follows the focus point (the player's car), snapping to
  * the nearest streetlights. Everything else is emissive or faked in lightFx.
+ *
+ * Lights fade with their distance relative to the first lamp that missed the
+ * pool, so when the nearest set changes the light that hops from one lamp to
+ * another is already dark: no visible pop on the road or the cars.
  */
 import * as THREE from 'three';
 
@@ -12,7 +16,12 @@ export class NightLighting {
   readonly group = new THREE.Group();
   private pool: THREE.PointLight[] = [];
   private lamps: THREE.Vector3[] = [];
+  /** Lamp index lit by each pool light, -1 for none. */
+  private assigned: number[] = [];
+  /** Distance to the nearest lamp outside the pool. */
+  private cutoff = Infinity;
   private frame = 0;
+  private static readonly INTENSITY = 140;
 
   constructor() {
     this.group.name = 'lighting';
@@ -26,6 +35,11 @@ export class NightLighting {
   setLamps(lamps: THREE.Vector3[]): void {
     this.lamps = lamps;
     this.frame = 0;
+    this.assigned = this.pool.map(() => -1);
+  }
+
+  get poolSize(): number {
+    return this.pool.length;
   }
 
   /** Changing the light count recompiles shaders, so only do it on quality change. */
@@ -36,27 +50,59 @@ export class NightLighting {
       l.dispose();
     }
     while (this.pool.length < n) {
-      const l = new THREE.PointLight(0xffb36b, 140, 30, 1.7);
+      const l = new THREE.PointLight(0xffb36b, 0, 30, 1.7);
       this.pool.push(l);
       this.group.add(l);
     }
+    this.assigned = this.pool.map(() => -1);
+    this.frame = 0;
   }
 
   update(focus: THREE.Vector3): void {
-    if (this.pool.length === 0 || this.lamps.length === 0) return;
-    // Re-pick nearest lamps a few times per second; cheap linear scan.
-    if (this.frame++ % 8 !== 0) return;
+    if (this.pool.length === 0) return;
+    if (this.lamps.length === 0) {
+      for (const l of this.pool) l.intensity = 0;
+      return;
+    }
     const n = this.pool.length;
-    const best: { d: number; i: number }[] = [];
-    for (let i = 0; i < this.lamps.length; i++) {
-      const p = this.lamps[i];
-      const d = (p.x - focus.x) ** 2 + (p.z - focus.z) ** 2;
-      if (best.length < n || d < best[best.length - 1].d) {
-        best.push({ d, i });
-        best.sort((a, b) => a.d - b.d);
-        if (best.length > n) best.pop();
+    // Re-pick nearest lamps a few times per second; cheap linear scan.
+    if (this.frame++ % 8 === 0) {
+      const best: { d: number; i: number }[] = [];
+      for (let i = 0; i < this.lamps.length; i++) {
+        const p = this.lamps[i];
+        const d = (p.x - focus.x) ** 2 + (p.z - focus.z) ** 2;
+        if (best.length <= n || d < best[best.length - 1].d) {
+          best.push({ d, i });
+          best.sort((a, b) => a.d - b.d);
+          if (best.length > n + 1) best.pop();
+        }
+      }
+      this.cutoff = best.length > n ? Math.sqrt(best[n].d) : Infinity;
+      // Keep lights on lamps that stay in the set; hand the rest the newcomers.
+      const want = new Set(best.slice(0, n).map((b) => b.i));
+      const free: number[] = [];
+      this.assigned.forEach((lamp, k) => {
+        if (want.has(lamp)) want.delete(lamp);
+        else free.push(k);
+      });
+      const incoming = [...want];
+      for (const k of free) {
+        const lamp = incoming.pop() ?? -1;
+        this.assigned[k] = lamp;
+        if (lamp >= 0) this.pool[k].position.copy(this.lamps[lamp]);
       }
     }
-    best.forEach((b, k) => this.pool[k].position.copy(this.lamps[b.i]));
+    const band = Number.isFinite(this.cutoff) ? Math.max(4, this.cutoff * 0.3) : 1;
+    for (let k = 0; k < n; k++) {
+      const lamp = this.assigned[k];
+      if (lamp < 0) {
+        this.pool[k].intensity = 0;
+        continue;
+      }
+      const p = this.lamps[lamp];
+      const d = Math.hypot(p.x - focus.x, p.z - focus.z);
+      const w = Number.isFinite(this.cutoff) ? Math.max(0, Math.min(1, (this.cutoff - d) / band)) : 1;
+      this.pool[k].intensity = NightLighting.INTENSITY * w * w * (3 - 2 * w);
+    }
   }
 }

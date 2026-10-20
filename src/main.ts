@@ -10,7 +10,8 @@ import { FixedStepLoop } from './loop';
 import { createWorld, World } from './city/world';
 import { seedFromString, Rng } from './sim/prng';
 import { dailySeed, initialSeed } from './seed';
-import { Settings, loadSettings, saveSettings, QUALITY } from './ui/settings';
+import { Settings, loadSettings, saveSettings } from './ui/settings';
+import { AutoQualityController, MAX_LEVEL, QUALITY_LEVELS, autoLabel, deviceKey, guessLevel, loadRememberedLevel, readDeviceInfo, saveRememberedLevel } from './render/autoQuality';
 import { GameRenderer, NightScene, createNightScene } from './render/scene';
 import { FreeFlyCamera } from './render/freeFly';
 import { CarAssetLibrary, manifestCar } from './render/carAssets';
@@ -21,6 +22,7 @@ import { MusicPlayer } from './audio/musicPlayer';
 import { audioHub } from './audio/engineAudio';
 import { MusicWidget } from './ui/musicWidget';
 import { TuningPanel, applySavedTuning, loadSavedTuning } from './ui/tuningPanel';
+import { CameraPanel, applySavedCameraParams } from './ui/cameraPanel';
 import { creditsScreen, loadingScreen, mainMenu, pauseMenu, resultsScreen, settingsScreen } from './ui/screens';
 import { toast } from './ui/dom';
 import { Check, Info } from './ui/icons';
@@ -37,11 +39,43 @@ const uiRoot = document.getElementById('ui') as HTMLElement;
 const settings: Settings = loadSettings();
 const params = new URLSearchParams(location.search);
 const qp = params.get('quality');
-if (qp === 'low' || qp === 'medium' || qp === 'high') settings.quality = qp;
+// ?quality= overrides for this session only; it is not saved unless the player picks graphics in settings.
+const storedQuality = { quality: settings.quality, autoQuality: settings.autoQuality };
+let urlQualityOverride = qp === 'auto' || qp === 'low' || qp === 'medium' || qp === 'high';
+if (qp === 'low' || qp === 'medium' || qp === 'high') {
+  settings.quality = qp;
+  settings.autoQuality = false;
+} else if (qp === 'auto') settings.autoQuality = true;
 const gr = new GameRenderer(canvas, settings);
+
+// Auto graphics: start from this device's last good level, else a heuristic guess.
+const device = readDeviceInfo(gr.renderer.getContext());
+const deviceId = deviceKey(device);
+const guessedLevel = guessLevel(device);
+const autoStart = () => loadRememberedLevel(deviceId) ?? guessedLevel;
+const autoQ = new AutoQualityController(autoStart(), {
+  ceiling: Math.max(autoStart(), Math.min(MAX_LEVEL, guessedLevel + 3)),
+  onChange: () => applyAutoQuality(),
+  onStable: (level) => saveRememberedLevel(deviceId, level),
+});
+function applyAutoQuality(): void {
+  if (!settings.autoQuality) return;
+  const lv = QUALITY_LEVELS[autoQ.level];
+  settings.quality = lv.tier;
+  gr.setAutoProfile(lv);
+  // Fewer point lights right away (frames are slow); more wait for the next scene
+  // because a light count change recompiles every lit shader mid race.
+  for (const n of [backdrop?.night, session?.night]) if (n && n.lighting.poolSize > lv.pointLights) n.lighting.setPoolSize(lv.pointLights);
+}
+function persistSettings(): void {
+  saveSettings(urlQualityOverride ? { ...settings, ...storedQuality } : settings);
+}
 const assets = new CarAssetLibrary();
 const input = new InputManager(uiRoot);
 const dev = new TuningPanel(uiRoot);
+// Camera tuning (F3): saved tweaks apply to every race camera from boot.
+const camPanel = new CameraPanel(uiRoot);
+applySavedCameraParams();
 let testDriving = false;
 // One player for the whole app: music carries on across every screen.
 const music = new MusicPlayer();
@@ -135,7 +169,10 @@ function showMenu(): void {
   garageScreen?.dispose();
   garageScreen = null;
   dev.close();
+  camPanel.close();
   ensureBackdrop();
+  // Catch the menu city up with any point light increase auto quality deferred.
+  if (backdrop && backdrop.night.lighting.poolSize !== gr.profile.pointLights) backdrop.night.lighting.setPoolSize(gr.profile.pointLights);
   const seed = seedFromString(seedStr);
   setOverlay(
     mainMenu({
@@ -171,16 +208,22 @@ function openSettings(back: () => void): void {
     settingsScreen(
       { ...settings },
       (s) => {
-        const qualityChanged = s.quality !== settings.quality;
+        const qualityChanged = s.quality !== settings.quality || s.autoQuality !== settings.autoQuality;
+        const autoTurnedOn = s.autoQuality && !settings.autoQuality;
         Object.assign(settings, s);
-        saveSettings(settings);
+        if (qualityChanged) urlQualityOverride = false;
+        if (autoTurnedOn) autoQ.reset(autoStart());
+        if (settings.autoQuality) applyAutoQuality();
+        persistSettings();
         gr.applySettings(settings);
         if (qualityChanged) {
-          backdrop?.night.lighting.setPoolSize(QUALITY[settings.quality].pointLights);
-          session?.night.lighting.setPoolSize(QUALITY[settings.quality].pointLights);
+          backdrop?.night.lighting.setPoolSize(gr.profile.pointLights);
+          session?.night.lighting.setPoolSize(gr.profile.pointLights);
         }
         fpsEl.style.display = settings.showFps ? '' : 'none';
         audioHub()?.setVolume(settings.engineVolume);
+        if (state === 'race') toggleTuningPanel(settings.debugTuningPanel);
+        if (state === 'race') toggleCameraPanel(settings.debugCameraPanel);
       },
       back,
       music,
@@ -194,6 +237,7 @@ async function openGarage(): Promise<void> {
   session?.dispose();
   session = null;
   dev.close();
+  camPanel.close();
   setOverlay(null);
   garageScreen?.dispose();
   garageScreen = new GarageScreen(gr, assets, uiRoot, garage, availability, {
@@ -203,6 +247,7 @@ async function openGarage(): Promise<void> {
     },
     onExit: () => showMenu(),
     onTestDrive: () => startRace('circuit', true),
+    engineVolume: () => settings.engineVolume,
   });
   (window as unknown as Record<string, unknown>).__nr = { garageScreen, gr };
   state = 'garage';
@@ -252,6 +297,7 @@ function startRace(mode: RaceMode, testDrive = false): void {
     opponents: opp.entrants,
     difficulty: settings.difficulty,
     manualGearbox: settings.manualGearbox,
+    tractionControl: settings.tractionControl,
   };
   const ghostData = count === 0 && !testDrive ? loadGhost(seed, mode) : null;
   runSession(config, [build.visual, ...opp.visuals], null, ghostData, testDrive);
@@ -272,18 +318,21 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
     visuals,
     replay: replay ? { ...replay, decoded: decodeLog(replay.log) } : undefined,
     ghost: ghost ? { config: ghost.config, log: decodeLog(ghost.log), visual: ghost.visuals[0] } : null,
+    // Start / finish camera shots; test drives go straight to driving.
+    cinematics: !testDrive,
   });
   state = 'race';
   testDriving = testDrive;
   syncMusicMode();
   loop.resetAccumulator();
   if (testDrive) {
-    // Test drive: apply this car's saved physics tuning and open the tuning panel.
+    // Test drive: apply this car's saved physics tuning.
     const player = session.race.cars[0];
     if (applySavedTuning(player.tuning, loadSavedTuning(player.carId)) > 0) session.tuned = true;
-    const sess = session;
-    dev.show(player.tuning, config.player.performance, () => (sess.tuned = true));
   }
+  // The tuning panel shows when its debug setting is on (` / F2 toggles it anyway).
+  if (settings.debugTuningPanel && !replay) toggleTuningPanel(true);
+  if (settings.debugCameraPanel) toggleCameraPanel(true);
   const s = session;
   (window as unknown as Record<string, unknown>).__nr = { session: s, gr };
   s.onFinish = ({ race, tuned }) => {
@@ -356,11 +405,22 @@ function togglePause(): void {
 }
 
 input.on('pause', togglePause);
-input.on('dev', () => {
+/** Show or hide the physics tuning panel for the current race (no argument = toggle). */
+function toggleTuningPanel(show = !dev.open): void {
   if (state !== 'race' || !session || session.isReplay) return;
+  if (!show) return dev.close();
+  if (dev.open) return;
   const s = session;
-  dev.toggle(s.race.cars[0].tuning, s.race.config.player.performance, () => (s.tuned = true));
-});
+  dev.show(s.race.cars[0].tuning, s.race.config.player.performance, () => (s.tuned = true));
+}
+input.on('dev', () => toggleTuningPanel());
+/** Show or hide the camera tuning panel during a race, replays included (no argument = toggle). */
+function toggleCameraPanel(show = !camPanel.open): void {
+  if (state !== 'race' || !session) return;
+  if (!show) return camPanel.close();
+  if (!camPanel.open) camPanel.show();
+}
+input.on('cameraPanel', () => toggleCameraPanel());
 input.on('freecam', () => {
   if (state === 'freefly') {
     fly?.dispose();
@@ -399,10 +459,13 @@ const loop = new FixedStepLoop({
       backdrop.night.update((backdrop.t += dt));
       gr.render(backdrop.night.scene, fly.camera, dt);
     } else renderBackdrop(dt);
+    // Auto quality only measures real gameplay frames (not menus, pauses, results or loading).
+    const playing = (state === 'race' && !!session && !session.paused && session.race.phase !== 'finished') || state === 'drone' || state === 'freefly';
+    autoQ.frame(dt, settings.autoQuality && playing && !document.hidden);
     frames++;
     fpsAcc += dt;
     if (fpsAcc > 0.5) {
-      fpsEl.textContent = `${Math.round(frames / fpsAcc)} fps`;
+      fpsEl.textContent = `${Math.round(frames / fpsAcc)} fps` + (settings.autoQuality ? ` · ${autoLabel(autoQ.level)} ${autoQ.level + 1}/${QUALITY_LEVELS.length}` : '');
       frames = 0;
       fpsAcc = 0;
     }
@@ -410,6 +473,7 @@ const loop = new FixedStepLoop({
 });
 
 async function boot(): Promise<void> {
+  applyAutoQuality();
   const loading = loadingScreen('NIGHT RUN');
   uiRoot.append(loading);
   availability = await assets.availability();

@@ -3,6 +3,11 @@
  * back and widen FOV under nitrous, and never go through buildings: the line
  * from the car to the camera is tested against the static wall segments and
  * the camera is pushed in front of any hit. Render only.
+ *
+ * Every number lives in the CAMERA table (live, mutated by the camera debug
+ * panel) with CAMERA_DEFAULTS as the stock values and CAMERA_PARAM_META as the
+ * slider ranges and tooltips. The intro/outro sections are read by
+ * cinematics.ts and the session.
  */
 import * as THREE from 'three';
 import type { World } from '../city/world';
@@ -11,14 +16,246 @@ import type { CarPose } from './carView';
 export const CAMERA_MODES = ['chase', 'close', 'bumper', 'hood'] as const;
 export type CameraMode = (typeof CAMERA_MODES)[number];
 
-const PROFILE: Record<'chase' | 'close', { dist: number; height: number; look: number }> = {
-  chase: { dist: 6.4, height: 2.3, look: 1.1 },
-  close: { dist: 4.6, height: 1.7, look: 0.95 },
+export interface ChaseParams {
+  dist: number;
+  height: number;
+  lookHeight: number;
+  lookAhead: number;
+  speedPullback: number;
+  speedPullbackMax: number;
+  nitroPullback: number;
+  fov: number;
+  speedFovGain: number;
+  speedFovMax: number;
+  nitroFov: number;
+  followStiffness: number;
+  lookStiffness: number;
+  yawStiffness: number;
+  driftSwing: number;
+}
+
+export interface CockpitParams {
+  forward: number;
+  height: number;
+  lookDistance: number;
+  lookDrop: number;
+  fov: number;
+  speedFovGain: number;
+  speedFovMax: number;
+  nitroFov: number;
+  rollFollow: number;
+}
+
+export interface CameraParams {
+  chase: ChaseParams;
+  close: ChaseParams;
+  bumper: CockpitParams;
+  hood: CockpitParams;
+  common: {
+    fovStiffness: number;
+    driftSwingMinSpeed: number;
+    shakeX: number;
+    shakeY: number;
+    shakeDecay: number;
+    impactThreshold: number;
+    impactScale: number;
+    wallMinFraction: number;
+    wallMargin: number;
+    wallLift: number;
+    groundClearance: number;
+  };
+  /** Race start: a fly-in from ahead of the grid that lands on the chase camera at GO. */
+  intro: {
+    preRoll: number;
+    aheadDist: number;
+    startHeight: number;
+    startSide: number;
+    midHeight: number;
+    midSide: number;
+    startFov: number;
+    lookHeight: number;
+    lookAhead: number;
+    landPortion: number;
+    ease: number;
+  };
+  /** Finish: chase camera swings around to a low, wide hero shot in front of the car. */
+  outro: {
+    resultsDelay: number;
+    holdTime: number;
+    swingTime: number;
+    heroRadius: number;
+    heroHeight: number;
+    heroAngle: number;
+    heroLookHeight: number;
+    heroFov: number;
+    heroRoll: number;
+    orbitSpeed: number;
+    yawSmoothing: number;
+    groundMin: number;
+  };
+}
+
+export const CAMERA_DEFAULTS: CameraParams = {
+  chase: {
+    dist: 6.4,
+    height: 2.3,
+    lookHeight: 1.1,
+    lookAhead: 2.5,
+    speedPullback: 0.015,
+    speedPullbackMax: 1.2,
+    nitroPullback: 1.3,
+    fov: 62,
+    speedFovGain: 0.14,
+    speedFovMax: 12,
+    nitroFov: 11,
+    followStiffness: 7,
+    lookStiffness: 14,
+    yawStiffness: 5,
+    driftSwing: 0.45,
+  },
+  close: {
+    dist: 4.6,
+    height: 1.7,
+    lookHeight: 0.95,
+    lookAhead: 2.5,
+    speedPullback: 0.015,
+    speedPullbackMax: 1.2,
+    nitroPullback: 1.3,
+    fov: 62,
+    speedFovGain: 0.14,
+    speedFovMax: 12,
+    nitroFov: 11,
+    followStiffness: 7,
+    lookStiffness: 14,
+    yawStiffness: 5,
+    driftSwing: 0.45,
+  },
+  bumper: { forward: 0.05, height: 0.55, lookDistance: 20, lookDrop: 0.4, fov: 70, speedFovGain: 0.18, speedFovMax: 18, nitroFov: 8, rollFollow: 0.5 },
+  hood: { forward: 0.5, height: 1.18, lookDistance: 20, lookDrop: 0.4, fov: 70, speedFovGain: 0.18, speedFovMax: 18, nitroFov: 8, rollFollow: 0.5 },
+  common: {
+    fovStiffness: 4,
+    driftSwingMinSpeed: 4,
+    shakeX: 0.35,
+    shakeY: 0.25,
+    shakeDecay: 6,
+    impactThreshold: 4,
+    impactScale: 20,
+    wallMinFraction: 0.15,
+    wallMargin: 0.08,
+    wallLift: 1.5,
+    groundClearance: 0.6,
+  },
+  intro: {
+    preRoll: 2,
+    aheadDist: 62,
+    startHeight: 17,
+    startSide: 0.45,
+    midHeight: 7,
+    midSide: -0.7,
+    startFov: 46,
+    lookHeight: 2.5,
+    lookAhead: 14,
+    landPortion: 0.3,
+    ease: 2.2,
+  },
+  outro: {
+    resultsDelay: 5.8,
+    holdTime: 0.35,
+    swingTime: 3.4,
+    heroRadius: 4.3,
+    heroHeight: 0.28,
+    heroAngle: 32,
+    heroLookHeight: 0.85,
+    heroFov: 80,
+    heroRoll: 4,
+    orbitSpeed: 0.08,
+    yawSmoothing: 2.5,
+    groundMin: 0.2,
+  },
+};
+
+const clone = (p: CameraParams): CameraParams => JSON.parse(JSON.stringify(p)) as CameraParams;
+
+/** Live camera parameters. The debug panel edits these in place. */
+export const CAMERA: CameraParams = clone(CAMERA_DEFAULTS);
+
+const CHASE_META = (s: string): Record<string, [number, number, number, string]> => ({
+  [`${s}.dist`]: [2, 14, 0.05, 'Base distance behind the car (m).'],
+  [`${s}.height`]: [0.5, 6, 0.05, 'Camera height above the car (m).'],
+  [`${s}.lookHeight`]: [0, 3, 0.05, 'Height of the aim point above the car (m).'],
+  [`${s}.lookAhead`]: [0, 12, 0.1, 'How far ahead of the car the camera aims (m).'],
+  [`${s}.speedPullback`]: [0, 0.06, 0.001, 'Extra distance per m/s of speed.'],
+  [`${s}.speedPullbackMax`]: [0, 4, 0.05, 'Cap on the speed pull back (m).'],
+  [`${s}.nitroPullback`]: [0, 4, 0.05, 'Extra distance while nitrous fires (m).'],
+  [`${s}.fov`]: [35, 100, 0.5, 'Base vertical field of view (deg).'],
+  [`${s}.speedFovGain`]: [0, 0.5, 0.005, 'FOV added per m/s of speed.'],
+  [`${s}.speedFovMax`]: [0, 30, 0.5, 'Cap on the speed FOV widening (deg).'],
+  [`${s}.nitroFov`]: [0, 25, 0.5, 'FOV kick while nitrous fires (deg).'],
+  [`${s}.followStiffness`]: [1, 30, 0.1, 'How fast the camera position catches up (1/s).'],
+  [`${s}.lookStiffness`]: [1, 40, 0.1, 'How fast the aim point catches up (1/s).'],
+  [`${s}.yawStiffness`]: [0.5, 20, 0.1, 'How fast the camera swings around behind the car (1/s).'],
+  [`${s}.driftSwing`]: [0, 1, 0.01, 'How much the camera turns toward the slide direction.'],
+});
+
+const COCKPIT_META = (s: string): Record<string, [number, number, number, string]> => ({
+  [`${s}.forward`]: [-1, 2, 0.01, s === 'bumper' ? 'Offset forward of the nose (m).' : 'Offset forward of the car center (m).'],
+  [`${s}.height`]: [0.2, 2, 0.01, 'Eye height above the car origin (m).'],
+  [`${s}.lookDistance`]: [5, 60, 0.5, 'Distance of the aim point ahead (m).'],
+  [`${s}.lookDrop`]: [-1, 2, 0.01, 'How far below eye height the aim point sits (m).'],
+  [`${s}.fov`]: [40, 110, 0.5, 'Base vertical field of view (deg).'],
+  [`${s}.speedFovGain`]: [0, 0.5, 0.005, 'FOV added per m/s of speed.'],
+  [`${s}.speedFovMax`]: [0, 35, 0.5, 'Cap on the speed FOV widening (deg).'],
+  [`${s}.nitroFov`]: [0, 25, 0.5, 'FOV kick while nitrous fires (deg).'],
+  [`${s}.rollFollow`]: [0, 1.5, 0.01, 'How much of the body roll the view follows.'],
+});
+
+/** Slider range, step and a one line tooltip for every camera parameter. */
+export const CAMERA_PARAM_META: Record<string, [number, number, number, string]> = {
+  ...CHASE_META('chase'),
+  ...CHASE_META('close'),
+  ...COCKPIT_META('bumper'),
+  ...COCKPIT_META('hood'),
+  'common.fovStiffness': [0.5, 20, 0.1, 'How fast the FOV eases toward its target (1/s).'],
+  'common.driftSwingMinSpeed': [0, 20, 0.5, 'Speed above which the drift swing kicks in (m/s).'],
+  'common.shakeX': [0, 1.5, 0.01, 'Horizontal impact shake amplitude (m).'],
+  'common.shakeY': [0, 1.5, 0.01, 'Vertical impact shake amplitude (m).'],
+  'common.shakeDecay': [0.5, 20, 0.1, 'How fast impact shake dies out (1/s).'],
+  'common.impactThreshold': [0, 20, 0.5, 'Impact speed below which there is no shake (m/s).'],
+  'common.impactScale': [2, 60, 0.5, 'Impact speed that gives full shake (m/s).'],
+  'common.wallMinFraction': [0, 1, 0.01, 'Closest the wall push lets the camera get, as a fraction.'],
+  'common.wallMargin': [0, 0.5, 0.01, 'Gap kept in front of a wall hit, as a fraction.'],
+  'common.wallLift': [0, 5, 0.05, 'How much the camera rises when a wall pushes it in (m).'],
+  'common.groundClearance': [0.1, 3, 0.05, 'Minimum camera height above the ground (m).'],
+  'intro.preRoll': [0, 6, 0.1, 'Extra intro time before the countdown starts (s).'],
+  'intro.aheadDist': [10, 120, 1, 'How far ahead of the player the fly-in starts (m).'],
+  'intro.startHeight': [1, 50, 0.5, 'Height of the opening shot (m).'],
+  'intro.startSide': [-1, 1, 0.01, 'Opening shot offset across the road (fraction of half width).'],
+  'intro.midHeight': [0.5, 30, 0.5, 'Height of the curve as it passes over the grid (m).'],
+  'intro.midSide': [-1, 1, 0.01, 'Curve offset across the road over the grid (fraction of half width).'],
+  'intro.startFov': [20, 100, 0.5, 'FOV of the opening shot (deg).'],
+  'intro.lookHeight': [0, 10, 0.1, 'Aim height of the opening shot (m).'],
+  'intro.lookAhead': [-20, 60, 0.5, 'Aim point of the opening shot, ahead of the player (m).'],
+  'intro.landPortion': [0.05, 0.8, 0.01, 'Final share of the shot spent settling onto the chase camera.'],
+  'intro.ease': [1, 5, 0.05, 'Ease-in-out strength of the fly-in.'],
+  'outro.resultsDelay': [1, 15, 0.1, 'Time from crossing the line to the results screen (s).'],
+  'outro.holdTime': [0, 3, 0.05, 'Chase camera hold after crossing, before the swing (s).'],
+  'outro.swingTime': [0.5, 10, 0.1, 'Duration of the swing around to the hero shot (s).'],
+  'outro.heroRadius': [1.5, 15, 0.05, 'Hero shot distance from the car (m).'],
+  'outro.heroHeight': [0.05, 5, 0.01, 'Hero shot camera height above the ground (m).'],
+  'outro.heroAngle': [0, 90, 0.5, 'Hero shot angle off the car nose (deg).'],
+  'outro.heroLookHeight': [0, 3, 0.01, 'Hero shot aim height on the car (m).'],
+  'outro.heroFov': [30, 110, 0.5, 'Hero shot field of view (deg).'],
+  'outro.heroRoll': [-20, 20, 0.1, 'Dutch tilt of the hero shot (deg).'],
+  'outro.orbitSpeed': [-0.5, 0.5, 0.005, 'Slow orbit drift once the hero shot settles (rad/s).'],
+  'outro.yawSmoothing': [0.2, 15, 0.1, 'How fast the shot follows the car heading (1/s).'],
+  'outro.groundMin': [0.05, 1, 0.01, 'Minimum hero camera height above the ground (m).'],
 };
 
 export class ChaseCamera {
   readonly camera = new THREE.PerspectiveCamera(62, 1, 0.1, 2200);
   mode: CameraMode = 'chase';
+  /** Where the gameplay camera is aiming this frame (world space). */
+  readonly lookTarget = new THREE.Vector3();
   private pos = new THREE.Vector3();
   private look = new THREE.Vector3();
   private dirYaw = 0;
@@ -39,80 +276,103 @@ export class ChaseCamera {
     this.shake = Math.min(1, this.shake + amount);
   }
 
+  /** Shake from a sim impact speed (m/s), using the common thresholds. */
+  impact(speed: number): void {
+    const c = CAMERA.common;
+    if (speed > c.impactThreshold) this.bump(Math.min(1, speed / Math.max(0.1, c.impactScale)));
+  }
+
   update(p: CarPose, vx: number, vz: number, nitro: boolean, carLength: number, dt: number): void {
     const speed = Math.hypot(vx, vz);
     const fx = Math.sin(p.yaw);
     const fz = Math.cos(p.yaw);
     const cam = this.camera;
-    const k = 1 - Math.exp(-dt * 7);
+    const common = CAMERA.common;
 
     if (this.mode === 'bumper' || this.mode === 'hood') {
-      const forward = this.mode === 'bumper' ? carLength / 2 + 0.05 : 0.5;
-      const h = this.mode === 'bumper' ? 0.55 : 1.18;
+      const q = CAMERA[this.mode];
+      const forward = this.mode === 'bumper' ? carLength / 2 + q.forward : q.forward;
+      const h = q.height;
       cam.position.set(p.x + fx * forward, p.y + h - p.pitch * forward, p.z + fz * forward);
       cam.up.set(0, 1, 0);
-      cam.lookAt(p.x + fx * (forward + 20), p.y + h - 0.4, p.z + fz * (forward + 20));
-      cam.rotateZ(-p.roll * 0.5);
-      this.setFov(70 + Math.min(18, speed * 0.18) + (nitro ? 8 : 0), dt);
+      this.lookTarget.set(p.x + fx * (forward + q.lookDistance), p.y + h - q.lookDrop, p.z + fz * (forward + q.lookDistance));
+      cam.lookAt(this.lookTarget);
+      cam.rotateZ(-p.roll * q.rollFollow);
+      this.setFov(q.fov + Math.min(q.speedFovMax, speed * q.speedFovGain) + (nitro ? q.nitroFov : 0), dt);
       this.initialized = true;
       return;
     }
 
-    const prof = PROFILE[this.mode];
+    const prof = CAMERA[this.mode];
+    const k = 1 - Math.exp(-dt * prof.followStiffness);
     // Swing toward the direction of travel when drifting, so the slide stays in view.
     let targetYaw = p.yaw;
-    if (speed > 4) {
+    if (speed > common.driftSwingMinSpeed) {
       const velYaw = Math.atan2(vx, vz);
       let d = velYaw - p.yaw;
       while (d > Math.PI) d -= Math.PI * 2;
       while (d < -Math.PI) d += Math.PI * 2;
-      if (Math.abs(d) < 2) targetYaw = p.yaw + d * 0.45;
+      if (Math.abs(d) < 2) targetYaw = p.yaw + d * prof.driftSwing;
     }
     if (!this.initialized) this.dirYaw = targetYaw;
     let dy = targetYaw - this.dirYaw;
     while (dy > Math.PI) dy -= Math.PI * 2;
     while (dy < -Math.PI) dy += Math.PI * 2;
-    this.dirYaw += dy * (1 - Math.exp(-dt * 5));
+    this.dirYaw += dy * (1 - Math.exp(-dt * prof.yawStiffness));
 
-    const dist = prof.dist + (nitro ? 1.3 : 0) + Math.min(1.2, speed * 0.015);
+    const dist = prof.dist + (nitro ? prof.nitroPullback : 0) + Math.min(prof.speedPullbackMax, speed * prof.speedPullback);
     const bx = Math.sin(this.dirYaw);
     const bz = Math.cos(this.dirYaw);
     const target = new THREE.Vector3(p.x - bx * dist, p.y + prof.height, p.z - bz * dist);
-    const lookT = new THREE.Vector3(p.x + fx * 2.5, p.y + prof.look, p.z + fz * 2.5);
+    const lookT = new THREE.Vector3(p.x + fx * prof.lookAhead, p.y + prof.lookHeight, p.z + fz * prof.lookAhead);
     if (!this.initialized) {
       this.pos.copy(target);
       this.look.copy(lookT);
       this.initialized = true;
     } else {
       this.pos.lerp(target, k);
-      this.look.lerp(lookT, 1 - Math.exp(-dt * 14));
+      this.look.lerp(lookT, 1 - Math.exp(-dt * prof.lookStiffness));
     }
 
     // Keep the camera out of buildings.
     const out = this.pos.clone();
-    if (this.world) {
-      const hit = this.wallHit(p.x, p.z, out.x, out.z);
-      if (hit < 1) {
-        const t = Math.max(0.15, hit - 0.08);
-        out.x = p.x + (out.x - p.x) * t;
-        out.z = p.z + (out.z - p.z) * t;
-        out.y += (1 - t) * 1.5;
-      }
-      out.y = Math.max(out.y, this.world.heightAt(out.x, out.z) + 0.6);
-    }
+    this.keepOutOfWalls(p.x, p.z, out, common.groundClearance, common.wallLift);
     if (this.shake > 0.001) {
-      out.x += (Math.random() - 0.5) * this.shake * 0.35;
-      out.y += (Math.random() - 0.5) * this.shake * 0.25;
-      this.shake *= Math.exp(-dt * 6);
+      out.x += (Math.random() - 0.5) * this.shake * common.shakeX;
+      out.y += (Math.random() - 0.5) * this.shake * common.shakeY;
+      this.shake *= Math.exp(-dt * common.shakeDecay);
     }
     cam.position.copy(out);
     cam.up.set(0, 1, 0);
+    this.lookTarget.copy(this.look);
     cam.lookAt(this.look);
-    this.setFov(62 + Math.min(12, speed * 0.14) + (nitro ? 11 : 0), dt);
+    this.setFov(prof.fov + Math.min(prof.speedFovMax, speed * prof.speedFovGain) + (nitro ? prof.nitroFov : 0), dt);
+  }
+
+  /**
+   * Pull a camera position in toward (ax, az) if the line to it crosses a wall,
+   * lifting it by `lift` m at full pull, and keep it `clearance` m above the ground.
+   */
+  keepOutOfWalls(ax: number, az: number, out: THREE.Vector3, clearance: number, lift: number): void {
+    if (!this.world) return;
+    const c = CAMERA.common;
+    const hit = this.wallHit(ax, az, out.x, out.z);
+    if (hit < 1) {
+      const t = Math.max(c.wallMinFraction, hit - c.wallMargin);
+      out.x = ax + (out.x - ax) * t;
+      out.z = az + (out.z - az) * t;
+      out.y += (1 - t) * lift;
+    }
+    out.y = Math.max(out.y, this.world.heightAt(out.x, out.z) + clearance);
+  }
+
+  /** Drop smoothing state so the next update snaps to the target pose. */
+  snap(): void {
+    this.initialized = false;
   }
 
   private setFov(target: number, dt: number): void {
-    this.fov += (target - this.fov) * (1 - Math.exp(-dt * 4));
+    this.fov += (target - this.fov) * (1 - Math.exp(-dt * CAMERA.common.fovStiffness));
     if (Math.abs(this.camera.fov - this.fov) > 0.01) {
       this.camera.fov = this.fov;
       this.camera.updateProjectionMatrix();
@@ -120,8 +380,9 @@ export class ChaseCamera {
   }
 
   /** Fraction along (ax,az)->(bx,bz) of the first wall hit, or 1. */
-  private wallHit(ax: number, az: number, bx: number, bz: number): number {
-    const w = this.world!;
+  wallHit(ax: number, az: number, bx: number, bz: number): number {
+    if (!this.world) return 1;
+    const w = this.world;
     w.wallGrid.query(Math.min(ax, bx) - 1, Math.min(az, bz) - 1, Math.max(ax, bx) + 1, Math.max(az, bz) + 1, this.scratch);
     let best = 1;
     const dx = bx - ax;

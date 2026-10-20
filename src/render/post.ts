@@ -1,6 +1,16 @@
 /**
- * Post processing chain: scene -> bloom (neon) -> vignette + speed radial
- * blur -> tone mapping/sRGB output -> optional retro PS2 quantize + dither.
+ * Post processing chain: scene (optional MSAA) -> bloom (neon) -> vignette +
+ * speed radial blur -> tone mapping/sRGB output -> optional retro PS2
+ * quantize + dither.
+ *
+ * Bloom stability: the stock UnrealBloomPass extracts bright pixels with one
+ * bilinear tap per texel of a buffer 2x-8x smaller than the scene, with a hard
+ * threshold. Sub-pixel emitters (distant lamp lenses, window lights, neon
+ * edges) then land on a sampled texel one frame and between texels the next,
+ * so their glow pops on and off as the camera moves. StableBloomPass replaces
+ * that extraction with a prefilter that covers the whole footprint, weights
+ * taps with a Karis average, clamps fireflies, drops NaN/Inf and uses a soft
+ * knee, and keeps the bloom mip chain at exact halvings.
  */
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -8,6 +18,8 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
+import { CopyShader } from 'three/examples/jsm/shaders/CopyShader.js';
 
 const FxShader = {
   uniforms: {
@@ -80,23 +92,167 @@ const RetroShader = {
   `,
 };
 
+const PrefilterShader = {
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+  `,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform vec2 srcTexel;
+    uniform vec2 footprint;
+    uniform vec2 taps;
+    uniform float luminosityThreshold;
+    uniform float knee;
+    uniform float maxLuma;
+    varying vec2 vUv;
+    void main() {
+      vec3 acc = vec3(0.0);
+      float wsum = 0.0;
+      vec2 stepTx = footprint / taps;
+      // taps x taps bilinear fetches spread over the footprint of this bloom
+      // texel in the scene buffer, so every scene pixel is seen exactly once.
+      for (int y = 0; y < 6; y++) {
+        if (float(y) >= taps.y) break;
+        for (int x = 0; x < 6; x++) {
+          if (float(x) >= taps.x) break;
+          vec2 o = (vec2(float(x), float(y)) + 0.5) * stepTx - footprint * 0.5;
+          vec3 c = texture2D(tDiffuse, vUv + o * srcTexel).rgb;
+          float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+          // NaN / Inf from any shader would smear across the whole blur.
+          if (isnan(l) || isinf(l) || l > 6.0e4) { c = vec3(0.0); l = 0.0; }
+          c = max(c, vec3(0.0));
+          l = max(l, 0.0);
+          if (l > maxLuma) { c *= maxLuma / l; l = maxLuma; }
+          // Soft knee: brightness ramps into the bloom instead of snapping on.
+          float a = smoothstep(luminosityThreshold - knee * 0.25, luminosityThreshold + knee, l);
+          // Karis average: weight by inverse brightness so a lone hot pixel
+          // cannot dominate (or flicker) the whole bloom texel.
+          float w = 1.0 / (1.0 + l * a);
+          acc += c * a * w;
+          wsum += w;
+        }
+      }
+      gl_FragColor = vec4(acc / max(wsum, 1e-4), 1.0);
+    }
+  `,
+};
+
+/** Bloom mip chain sizes are kept at multiples of this so every mip is an exact half. */
+const BLOOM_ALIGN = 32;
+
+/** UnrealBloomPass with a flicker resistant bright pass and aligned mip sizes. */
+export class StableBloomPass extends UnrealBloomPass {
+  /** Bloom resolution relative to the scene buffer. */
+  scale = 0.5;
+  private readonly prefilter: {
+    tDiffuse: { value: THREE.Texture | null };
+    luminosityThreshold: { value: number };
+    srcTexel: { value: THREE.Vector2 };
+    footprint: { value: THREE.Vector2 };
+    taps: { value: THREE.Vector2 };
+    knee: { value: number };
+    maxLuma: { value: number };
+  };
+
+  constructor(resolution: THREE.Vector2, strength: number, radius: number, threshold: number) {
+    super(resolution, strength, radius, threshold);
+    this.prefilter = {
+      tDiffuse: { value: null },
+      luminosityThreshold: { value: threshold },
+      srcTexel: { value: new THREE.Vector2(1, 1) },
+      footprint: { value: new THREE.Vector2(2, 2) },
+      taps: { value: new THREE.Vector2(1, 1) },
+      knee: { value: 0.4 },
+      maxLuma: { value: 24 },
+    };
+    // UnrealBloomPass.render() writes tDiffuse / luminosityThreshold into
+    // highPassUniforms and draws materialHighPassFilter: swap both for ours.
+    this.materialHighPassFilter.dispose();
+    this.highPassUniforms = this.prefilter;
+    this.materialHighPassFilter = new THREE.ShaderMaterial({
+      uniforms: this.prefilter,
+      vertexShader: PrefilterShader.vertexShader,
+      fragmentShader: PrefilterShader.fragmentShader,
+      depthTest: false,
+      depthWrite: false,
+    });
+  }
+
+  /** Called by the composer with the scene buffer size. */
+  setSize(width: number, height: number): void {
+    const bw = Math.max(BLOOM_ALIGN, Math.ceil((width * this.scale) / BLOOM_ALIGN) * BLOOM_ALIGN);
+    const bh = Math.max(BLOOM_ALIGN, Math.ceil((height * this.scale) / BLOOM_ALIGN) * BLOOM_ALIGN);
+    super.setSize(bw, bh);
+    // The bright target is half the bloom resolution.
+    const fx = Math.max(1, width / (bw / 2));
+    const fy = Math.max(1, height / (bh / 2));
+    this.prefilter.srcTexel.value.set(1 / Math.max(1, width), 1 / Math.max(1, height));
+    this.prefilter.footprint.value.set(fx, fy);
+    this.prefilter.taps.value.set(Math.min(6, Math.ceil(fx / 2)), Math.min(6, Math.ceil(fy / 2)));
+  }
+}
+
+/** RenderPass that can render through a multisampled target and resolve into the chain. */
+class ScenePass extends RenderPass {
+  private msaa: THREE.WebGLRenderTarget | null = null;
+  private samples = 0;
+  private size = new THREE.Vector2(1, 1);
+  private copyMat = new THREE.ShaderMaterial({
+    uniforms: THREE.UniformsUtils.clone(CopyShader.uniforms),
+    vertexShader: CopyShader.vertexShader,
+    fragmentShader: CopyShader.fragmentShader,
+    blending: THREE.NoBlending,
+    depthTest: false,
+    depthWrite: false,
+  });
+  private copyQuad = new FullScreenQuad(this.copyMat);
+
+  setSamples(n: number): void {
+    if (n === this.samples) return;
+    this.samples = n;
+    this.msaa?.dispose();
+    this.msaa = n > 0 ? new THREE.WebGLRenderTarget(this.size.x, this.size.y, { type: THREE.HalfFloatType, samples: n }) : null;
+  }
+
+  setSize(w: number, h: number): void {
+    this.size.set(w, h);
+    this.msaa?.setSize(w, h);
+  }
+
+  render(renderer: THREE.WebGLRenderer, writeBuffer: THREE.WebGLRenderTarget, readBuffer: THREE.WebGLRenderTarget, deltaTime: number, maskActive: boolean): void {
+    if (!this.msaa) return super.render(renderer, writeBuffer, readBuffer, deltaTime, maskActive);
+    super.render(renderer, writeBuffer, this.msaa, deltaTime, maskActive);
+    // Rendering into the next target resolves the samples; copy into the chain.
+    this.copyMat.uniforms.tDiffuse.value = this.msaa.texture;
+    renderer.setRenderTarget(readBuffer);
+    this.copyQuad.render(renderer);
+  }
+
+  dispose(): void {
+    this.msaa?.dispose();
+    this.copyMat.dispose();
+    this.copyQuad.dispose();
+  }
+}
+
 export class PostFx {
   readonly composer: EffectComposer;
-  readonly renderPass: RenderPass;
-  readonly bloom: UnrealBloomPass;
+  readonly renderPass: ScenePass;
+  readonly bloom: StableBloomPass;
   readonly fx: ShaderPass;
   readonly output: OutputPass;
   readonly retro: ShaderPass;
-  private bloomScale = 0.5;
+  /** MSAA on a half float target needs EXT_color_buffer_float. */
+  readonly msaaSupported: boolean;
 
   constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {
     const size = renderer.getSize(new THREE.Vector2());
     const target = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType });
     this.composer = new EffectComposer(renderer, target);
-    this.renderPass = new RenderPass(scene, camera);
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.9, 0.4, 0.86);
-    const origSetSize = this.bloom.setSize.bind(this.bloom);
-    this.bloom.setSize = (w: number, h: number) => origSetSize(Math.max(1, Math.round(w * this.bloomScale)), Math.max(1, Math.round(h * this.bloomScale)));
+    this.renderPass = new ScenePass(scene, camera);
+    this.msaaSupported = renderer.capabilities.maxSamples > 0 && renderer.extensions.has('EXT_color_buffer_float');
+    this.bloom = new StableBloomPass(new THREE.Vector2(size.x, size.y), 0.9, 0.4, 0.86);
     this.fx = new ShaderPass(FxShader);
     this.output = new OutputPass();
     this.retro = new ShaderPass(RetroShader);
@@ -113,11 +269,14 @@ export class PostFx {
     this.renderPass.camera = camera;
   }
 
-  configure(opts: { bloom: boolean; bloomScale: number; bloomStrength: number; retro: boolean }): void {
+  /** Takes effect on the next setSize (GameRenderer always resizes after this). */
+  configure(opts: { bloom: boolean; bloomScale: number; bloomStrength: number; retro: boolean; msaa?: number }): void {
     this.bloom.enabled = opts.bloom;
-    this.bloomScale = opts.bloomScale;
+    this.bloom.scale = opts.bloomScale;
     this.bloom.strength = opts.bloomStrength;
     this.retro.enabled = opts.retro;
+    // Retro mode renders a few hundred pixels tall on purpose: no MSAA there.
+    this.renderPass.setSamples(this.msaaSupported && !opts.retro ? (opts.msaa ?? 0) : 0);
   }
 
   setSize(w: number, h: number, pixelRatio: number): void {

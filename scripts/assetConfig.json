@@ -2,9 +2,7 @@
   "notes": "Per car import settings for scripts/buildAssets.ts. folders: candidate folder names under assets/source/icemaan/. targetLength: overall body length in meters after scaling (the source models are roughly 3/4 scale). Offsets are in car space meters [x left, y up, z forward] and are added after automatic placement.",
   "cars": {
     "gc14": { "folders": ["gc14", "coupe", "GC14"], "targetLength": 4.45, "spoilerOffset": [0, 0, 0], "wheelOffset": [0, 0, 0] },
-    "s64": { "folders": ["s64", "hatch", "S64", "compact"], "targetLength": 3.95, "spoilerOffset": [0, 0, 0], "wheelOffset": [0, 0, 0] },
-    "cc96": { "folders": ["cc96", "CC96"], "targetLength": 4.35, "spoilerOffset": [0, 0, 0], "wheelOffset": [0, 0, 0] },
-    "ar7": { "folders": ["ar7", "AR7", "a_r7", "r7"], "targetLength": 4.3, "spoilerOffset": [0, 0, 0], "wheelOffset": [0, 0, 0] }
+    "s64": { "folders": ["s64", "hatch", "S64", "compact"], "targetLength": 3.95, "spoilerOffset": [0, 0, 0], "wheelOffset": [0, 0, 0] }
   },
   "materialMap": {
     "Car": "Paint",

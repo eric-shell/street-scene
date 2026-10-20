@@ -4,7 +4,7 @@
   "cars": [
     {
       "id": "gc14",
-      "displayName": "GC14 Coupe",
+      "displayName": "Proto Hatch",
       "source": "icemaan",
       "provisional": false,
       "file": "cars/gc14.glb",
@@ -53,7 +53,7 @@
     },
     {
       "id": "s64",
-      "displayName": "S64 Compact",
+      "displayName": "Proto Compact",
       "source": "icemaan",
       "provisional": false,
       "file": "cars/s64.glb",
@@ -143,104 +143,6 @@
       "materialMap": {},
       "defaultWheel": "wheel_proto_5spoke",
       "defaultPaint": "#d11f3f",
-      "selectable": false,
-      "engine": {
-        "type": "i4",
-        "cylinders": 4
-      }
-    },
-    {
-      "id": "cc96",
-      "displayName": "CC96",
-      "source": "icemaan",
-      "provisional": true,
-      "file": "cars/cc96.glb",
-      "baseBodyNode": "Body",
-      "wheelNodes": [],
-      "wheelRadius": 0.32,
-      "wheelWidth": 0.22,
-      "wheels": {
-        "FL": [
-          0.76,
-          0.32,
-          1.28
-        ],
-        "FR": [
-          -0.76,
-          0.32,
-          1.28
-        ],
-        "RL": [
-          0.76,
-          0.32,
-          -1.28
-        ],
-        "RR": [
-          -0.76,
-          0.32,
-          -1.28
-        ]
-      },
-      "wheelbase": 2.56,
-      "trackFront": 1.52,
-      "trackRear": 1.52,
-      "dimensions": {
-        "length": 4.3,
-        "width": 1.74,
-        "height": 1.3
-      },
-      "materialMap": {},
-      "defaultWheel": "wheel_proto_5spoke",
-      "defaultPaint": "#f2f2f2",
-      "selectable": false,
-      "engine": {
-        "type": "i4",
-        "cylinders": 4
-      }
-    },
-    {
-      "id": "ar7",
-      "displayName": "A R7",
-      "source": "icemaan",
-      "provisional": true,
-      "file": "cars/ar7.glb",
-      "baseBodyNode": "Body",
-      "wheelNodes": [],
-      "wheelRadius": 0.32,
-      "wheelWidth": 0.24,
-      "wheels": {
-        "FL": [
-          0.76,
-          0.32,
-          1.22
-        ],
-        "FR": [
-          -0.76,
-          0.32,
-          1.22
-        ],
-        "RL": [
-          0.76,
-          0.32,
-          -1.22
-        ],
-        "RR": [
-          -0.76,
-          0.32,
-          -1.22
-        ]
-      },
-      "wheelbase": 2.44,
-      "trackFront": 1.52,
-      "trackRear": 1.52,
-      "dimensions": {
-        "length": 4.3,
-        "width": 1.76,
-        "height": 1.24
-      },
-      "materialMap": {},
-      "defaultWheel": "wheel_proto_5spoke",
-      "defaultPaint": "#ff6a00",
       "selectable": false,
       "engine": {
         "type": "i4",

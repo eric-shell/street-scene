@@ -1,16 +1,17 @@
 /**
  * Turns the pure city description into three.js meshes: roads with markings,
- * curbs and sidewalks, buildings with procedural windows, streetlights, neon
- * signs, barriers and the start line. Built once per world; read only.
+ * curbs and sidewalks, buildings with procedural windows, streetlight lamp
+ * positions, neon signs, barriers and the start line. Built once per world; read only.
  */
 import * as THREE from 'three';
 import { CITY } from '../city/config';
 import { World } from '../city/world';
 import { Building } from '../city/blocks';
-import { routeSample } from '../city/route';
 import { Vec2 } from '../sim/math';
 import { Rng } from '../sim/prng';
 import { GeoBuilder } from './geoBuilder';
+import { buildFinishLines, FinishLines } from './finishLine';
+import { STREETLIGHT_ARM, STREETLIGHT_POLE_H } from './props';
 import { addPodiumFace, createPodiumOutput, makeFacadeKitTextures, podiumExtrusions, podiumFloors, podiumHeight } from './facadeKit';
 import { corridorClearance } from '../city/blocks';
 import {
@@ -22,7 +23,6 @@ import {
   WINDOW_ROWS,
   makeAsphalt,
   makeBarrierTexture,
-  makeCheckerTexture,
   makeFacade,
   makeSidewalk,
   makeSignAtlas,
@@ -35,6 +35,8 @@ export interface CityMeshes {
   /** Neon sign centers with their colors, for reflections. */
   signLights: { pos: THREE.Vector3; color: THREE.Color }[];
   barrierLampMaterial: THREE.MeshBasicMaterial;
+  /** Start / finish gantries: call update(time) per frame and burst() on the player's finish. */
+  finishLine: FinishLines;
   dispose(): void;
 }
 
@@ -364,38 +366,11 @@ export function buildCityMeshes(world: World, barrierWalls?: Set<unknown>): City
   }
 
   // ---------- Streetlights ----------
+  // Poles and lenses are destructible props (props.ts); only the lamp heads are kept here.
   const lampPositions: THREE.Vector3[] = [];
-  {
-    const lights = world.blocks.streetlights;
-    const poleH = 8.2;
-    const arm = 2.4;
-    const pole = new THREE.CylinderGeometry(0.09, 0.13, poleH, 6);
-    pole.translate(0, poleH / 2, 0);
-    const armGeo = new THREE.BoxGeometry(0.1, 0.1, arm);
-    armGeo.translate(0, poleH - 0.1, arm / 2);
-    const head = new THREE.BoxGeometry(0.45, 0.16, 0.9);
-    head.translate(0, poleH - 0.25, arm);
-    const lens = new THREE.BoxGeometry(0.36, 0.04, 0.75);
-    lens.translate(0, poleH - 0.34, arm);
-    const poleGeo = track(mergeGeometries([pole, armGeo, head]));
-    const poleMesh = new THREE.InstancedMesh(poleGeo, track(new THREE.MeshStandardMaterial({ color: 0x2a2c33, roughness: 0.6, metalness: 0.5 })), lights.length);
-    const lensMat = track(new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffc27a).multiplyScalar(4) }));
-    const lensMesh = new THREE.InstancedMesh(track(lens), lensMat, lights.length);
-    const m = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    const up = new THREE.Vector3(0, 1, 0);
-    lights.forEach((l, i) => {
-      const y = h(l.x, l.z) + curbH;
-      q.setFromAxisAngle(up, Math.atan2(l.dx, l.dz));
-      m.compose(new THREE.Vector3(l.x, y, l.z), q, new THREE.Vector3(1, 1, 1));
-      poleMesh.setMatrixAt(i, m);
-      lensMesh.setMatrixAt(i, m);
-      lampPositions.push(new THREE.Vector3(l.x + l.dx * arm, y + poleH - 0.4, l.z + l.dz * arm));
-    });
-    poleMesh.name = 'streetlightPoles';
-    lensMesh.name = 'streetlightLenses';
-    group.add(poleMesh, lensMesh);
-    [pole, armGeo, head].forEach((x) => x.dispose());
+  for (const l of world.blocks.streetlights) {
+    const y = h(l.x, l.z) + curbH;
+    lampPositions.push(new THREE.Vector3(l.x + l.dx * STREETLIGHT_ARM, y + STREETLIGHT_POLE_H - 0.4, l.z + l.dz * STREETLIGHT_ARM));
   }
 
   // ---------- Neon signs ----------
@@ -510,58 +485,19 @@ export function buildCityMeshes(world: World, barrierWalls?: Set<unknown>): City
   }
 
   // ---------- Start / finish line ----------
-  {
-    const route = world.route;
-    const lines = route.closed ? [route.startS] : [route.startS, route.finishS];
-    const gb = new GeoBuilder();
-    for (const s0 of lines) {
-      const p = routeSample(route, s0);
-      const half = route.segWidth[p.seg] / 2;
-      const lx = p.tz;
-      const lz = -p.tx;
-      const v: number[] = [];
-      for (const [along, lat, u, vv] of [
-        [-0.9, half, 0, 0],
-        [0.9, half, 0, 1],
-        [0.9, -half, half / 1.5, 1],
-        [-0.9, -half, half / 1.5, 0],
-      ]) {
-        const x = p.x + p.tx * along + lx * lat;
-        const z = p.z + p.tz * along + lz * lat;
-        v.push(gb.vertex(x, h(x, z) + MARK_Y + 0.005, z, 0, 1, 0, u, vv));
-      }
-      gb.quadFacing(v[0], v[1], v[2], v[3], 0, 1, 0);
-    }
-    const m = new THREE.Mesh(track(gb.build()), track(new THREE.MeshStandardMaterial({ map: track(makeCheckerTexture()), roughness: 0.5 })));
-    m.name = 'startLine';
-    group.add(m);
-  }
+  // Gantries, painted line and celebration effects live in finishLine.ts.
+  const finishLine = buildFinishLines(world);
+  disposables.push(finishLine);
+  group.add(finishLine.group);
 
   return {
     group,
     lampPositions,
     signLights,
     barrierLampMaterial,
+    finishLine,
     dispose() {
       for (const d of disposables) d.dispose();
     },
   };
-}
-
-/** Minimal non-indexed merge for static prop parts sharing one material. */
-function mergeGeometries(geos: THREE.BufferGeometry[]): THREE.BufferGeometry {
-  const parts = geos.map((g) => (g.index ? g.toNonIndexed() : g));
-  const total = parts.reduce((n, g) => n + g.attributes.position.count, 0);
-  const pos = new Float32Array(total * 3);
-  const nor = new Float32Array(total * 3);
-  let o = 0;
-  for (const g of parts) {
-    pos.set(g.attributes.position.array as Float32Array, o * 3);
-    nor.set(g.attributes.normal.array as Float32Array, o * 3);
-    o += g.attributes.position.count;
-  }
-  const out = new THREE.BufferGeometry();
-  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
-  return out;
 }

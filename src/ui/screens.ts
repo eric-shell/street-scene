@@ -26,6 +26,8 @@ import {
   Drone,
   Music,
   Gauge,
+  SlidersHorizontal,
+  Camera,
   icon,
 } from './icons';
 import { Difficulty, Quality, Settings } from './settings';
@@ -172,7 +174,7 @@ export function settingsScreen(s: Settings, onChange: (s: Settings) => void, onC
     s[k] = v;
     onChange(s);
   };
-  const toggle = (k: 'retro' | 'radialBlur' | 'manualGearbox' | 'showFps') =>
+  const toggle = (k: 'retro' | 'radialBlur' | 'manualGearbox' | 'showFps' | 'tractionControl' | 'debugTuningPanel' | 'debugCameraPanel') =>
     segmented(
       [
         { value: 'off', label: 'Off' },
@@ -192,19 +194,28 @@ export function settingsScreen(s: Settings, onChange: (s: Settings) => void, onC
       row(
         Monitor,
         'Graphics',
-        segmented<Quality>(
+        segmented<Quality | 'auto'>(
           [
+            // With Auto on, s.quality is the tier auto quality is running at.
+            { value: 'auto', label: s.autoQuality ? `Auto (${{ low: 'Low', medium: 'Med', high: 'High' }[s.quality]})` : 'Auto' },
             { value: 'low', label: 'Low' },
             { value: 'medium', label: 'Med' },
             { value: 'high', label: 'High' },
           ],
-          s.quality,
-          (v) => set('quality', v),
+          s.autoQuality ? 'auto' : s.quality,
+          (v) => {
+            if (v === 'auto') set('autoQuality', true);
+            else {
+              s.autoQuality = false;
+              set('quality', v);
+            }
+          },
         ),
       ),
       row(Monitor, 'Retro PS2 mode', toggle('retro')),
       row(Wind, 'Speed blur', toggle('radialBlur')),
       row(Car, 'Manual gearbox (Q/E)', toggle('manualGearbox')),
+      row(Gauge, 'Traction control', toggle('tractionControl')),
       row(
         Trophy,
         'AI difficulty',
@@ -247,11 +258,14 @@ export function settingsScreen(s: Settings, onChange: (s: Settings) => void, onC
             return r;
           })(),
         ),
+      h('div', { class: 'label', style: 'margin-top:4px' }, icon(Wrench, { size: 14 }), 'Debug'),
+      row(SlidersHorizontal, 'Physics tuning panel (` / F2)', toggle('debugTuningPanel')),
+      row(Camera, 'Camera tuning panel', toggle('debugCameraPanel')),
       h(
         'div',
         { class: 'muted', style: 'font-size:13px;line-height:1.5' },
         h('div', { class: 'label' }, icon(Keyboard, { size: 14 }), 'Keyboard'),
-        'W/Up throttle · S/Down brake & reverse · A/D steer · Space handbrake · Shift or N nitrous · Q/E shift (manual) · R reset · C camera · Esc pause · ` dev panel · M mute music · [ / ] previous / next track',
+        'W/Up throttle · S/Down brake & reverse · A/D steer · Space handbrake · Shift or N nitrous · Q/E shift (manual) · R reset · C camera · Esc pause · ` or F2 tuning panel · M mute music · [ / ] previous / next track',
         h('div', { class: 'label', style: 'margin-top:8px' }, icon(Gamepad2, { size: 14 }), 'Gamepad'),
         'Left stick steer · RT/LT throttle/brake · X handbrake · A/B nitrous · LB/RB shift · Y reset · Back camera · Start pause',
         h('div', { class: 'label', style: 'margin-top:8px' }, icon(Smartphone, { size: 14 }), 'Touch'),
@@ -274,7 +288,7 @@ export function creditsScreen(onClose: () => void): HTMLElement {
         'div',
         { style: 'line-height:1.6;font-size:16px' },
         h('p', {}, 'Car models by ', h('b', {}, 'IceMaan'), ' (icemaan.itch.io), released as CC0. Thank you for sharing them with the world!'),
-        h('p', { class: 'muted' }, 'CC96, S64 Compact, GC14 Coupe and A R7 low poly cars with body kits, spoilers and rims.'),
+        h('p', { class: 'muted' }, 'The S64 (Proto Compact) and GC14 (Proto Hatch) low poly cars with body kits, spoilers and rims.'),
         h('p', {}, 'Icons: ', h('b', {}, 'Lucide'), ' (lucide.dev), ISC license.'),
         musicCredits(),
         h('p', {}, 'Built with three.js, Vite and glTF Transform. City, signs, vinyls and the Proto RS are generated procedurally. All shop and sponsor names are fictional.'),

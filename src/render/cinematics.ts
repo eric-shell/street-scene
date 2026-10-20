@@ -1,0 +1,296 @@
+/**
+ * Race start and finish camera shots, layered on top of the chase camera.
+ * The chase camera keeps updating underneath every frame, so a shot can land
+ * exactly on it (intro) or start from wherever it was (outro).
+ *
+ * Intro: a fly-in that starts high above the road ahead of the grid, looking
+ * back through the start gantry, curves down over the grid and lands on the
+ * gameplay camera at the instant the race goes green.
+ * Outro: after the player crosses the line the camera swings around the car
+ * to a low, wide angle hero shot in front of it, then drifts in a slow orbit.
+ * Timing and framing come from CAMERA.intro / CAMERA.outro. Render only.
+ */
+import * as THREE from 'three';
+import type { World } from '../city/world';
+import { routeSample } from '../city/route';
+import { CAMERA, ChaseCamera } from './camera';
+import type { CarPose } from './carView';
+
+const DEG = Math.PI / 180;
+const UP = new THREE.Vector3(0, 1, 0);
+const SKIP_BLEND = 0.6;
+
+/** Symmetric ease in-out with adjustable steepness (k = 1 is linear). */
+function ease(u: number, k: number): number {
+  const a = Math.pow(Math.max(0, Math.min(1, u)), k);
+  const b = Math.pow(Math.max(0, Math.min(1, 1 - u)), k);
+  return a + b > 0 ? a / (a + b) : 0;
+}
+
+const smooth = (u: number) => {
+  const x = Math.max(0, Math.min(1, u));
+  return x * x * (3 - 2 * x);
+};
+
+const wrap = (a: number) => {
+  while (a > Math.PI) a -= Math.PI * 2;
+  while (a < -Math.PI) a += Math.PI * 2;
+  return a;
+};
+
+let styled = false;
+/** HUD hiding during shots, scoped to classes this module toggles. */
+function ensureStyles(): void {
+  if (styled || typeof document === 'undefined') return;
+  styled = true;
+  const st = document.createElement('style');
+  st.textContent = `
+.hud.cine-intro > * { opacity: 0 !important; transition: opacity .4s; }
+.hud.cine-outro > :not(.hud-msg) { opacity: 0 !important; transition: opacity .6s; }
+.cine-skip { position: fixed; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translateX(-50%);
+  z-index: 40; pointer-events: none; font: 600 13px var(--font, system-ui); letter-spacing: .12em; text-transform: uppercase;
+  color: rgba(255,255,255,.72); text-shadow: 0 1px 6px rgba(0,0,0,.8); opacity: 0; transition: opacity .5s; }
+.cine-skip.show { opacity: 1; }
+.cine-bars::before, .cine-bars::after { content: ''; position: fixed; left: 0; right: 0; height: 0; background: #000; z-index: 30;
+  pointer-events: none; transition: height .6s ease; }
+.cine-bars::before { top: 0; } .cine-bars::after { bottom: 0; }
+.cine-bars.on::before, .cine-bars.on::after { height: 7vh; }
+`;
+  document.head.append(st);
+}
+
+interface Pose {
+  pos: THREE.Vector3;
+  look: THREE.Vector3;
+  fov: number;
+  roll: number;
+}
+
+const newPose = (): Pose => ({ pos: new THREE.Vector3(), look: new THREE.Vector3(), fov: 60, roll: 0 });
+
+export class RaceCinematics {
+  /** 'intro' until the race goes green, 'outro' after the player finishes. */
+  phase: 'none' | 'intro' | 'outro' = 'none';
+  private shot = newPose();
+  private chase = newPose();
+  private skipFrom: Pose | null = null;
+  private skipT = 0;
+  // Intro geometry, fixed at the start.
+  private p0 = new THREE.Vector3();
+  private p1 = new THREE.Vector3();
+  private l0 = new THREE.Vector3();
+  // Outro state.
+  private outroT = 0;
+  private captured = false;
+  private theta0 = 0;
+  private radius0 = 0;
+  private height0 = 0;
+  private fov0 = 60;
+  private look0 = new THREE.Vector3();
+  private side = 1;
+  private yawS = 0;
+  readonly hint: HTMLElement | null = null;
+  private bars: HTMLElement | null = null;
+
+  constructor(
+    private readonly cam: ChaseCamera,
+    private readonly world: World,
+    hintParent?: HTMLElement | null,
+  ) {
+    ensureStyles();
+    if (hintParent) {
+      this.hint = document.createElement('div');
+      this.hint.className = 'cine-skip';
+      this.hint.textContent = 'Enter / tap to skip';
+      hintParent.append(this.hint);
+      this.bars = document.createElement('div');
+      this.bars.className = 'cine-bars';
+      hintParent.append(this.bars);
+    }
+  }
+
+  get active(): boolean {
+    return this.phase !== 'none';
+  }
+
+  /** Begin the fly-in for a car sitting on the grid at route distance s. */
+  startIntro(p: CarPose, s: number): void {
+    const q = CAMERA.intro;
+    const route = this.world.route;
+    const fx = Math.sin(p.yaw);
+    const fz = Math.cos(p.yaw);
+    // Left of the heading is (fz, -fx).
+    const ahead = routeSample(route, s + q.aheadDist);
+    const mid = routeSample(route, s + q.aheadDist * 0.35);
+    const hwA = route.segWidth[ahead.seg] / 2;
+    const hwM = route.segWidth[mid.seg] / 2;
+    this.p0.set(ahead.x + ahead.tz * q.startSide * hwA, p.y + q.startHeight, ahead.z - ahead.tx * q.startSide * hwA);
+    this.p1.set(mid.x + mid.tz * q.midSide * hwM, p.y + q.midHeight, mid.z - mid.tx * q.midSide * hwM);
+    this.l0.set(p.x + fx * q.lookAhead, p.y + q.lookHeight, p.z + fz * q.lookAhead);
+    this.phase = 'intro';
+    this.skipFrom = null;
+    this.hint?.classList.add('show');
+    this.bars?.classList.add('on');
+  }
+
+  /**
+   * Override the camera for the intro. u runs 0..1 over the whole shot and
+   * reaches 1 exactly at the green light. Call after the chase camera update.
+   */
+  applyIntro(u: number, dt: number): void {
+    if (this.phase !== 'intro') return;
+    this.readChase();
+    if (u >= 1) {
+      this.endIntro();
+      return;
+    }
+    const q = CAMERA.intro;
+    const e = ease(u, q.ease);
+    // Quadratic Bezier from the opening shot, over the grid, onto the chase camera.
+    const a = 1 - e;
+    const s = this.shot;
+    s.pos.set(0, 0, 0).addScaledVector(this.p0, a * a).addScaledVector(this.p1, 2 * a * e).addScaledVector(this.chase.pos, e * e);
+    const land = smooth((u - (1 - q.landPortion)) / Math.max(1e-3, q.landPortion));
+    const lookW = Math.max(land, e * e * 0.35);
+    s.look.copy(this.l0).lerp(this.chase.look, lookW);
+    s.fov = q.startFov + (this.chase.fov - q.startFov) * e;
+    s.roll = 0;
+    if (u > 1 - q.landPortion) {
+      // Settle onto the exact gameplay pose for a seamless hand off.
+      s.pos.lerp(this.chase.pos, land);
+      s.fov += (this.chase.fov - s.fov) * land;
+    }
+    this.cam.keepOutOfWalls(this.chase.pos.x, this.chase.pos.z, s.pos, CAMERA.common.groundClearance, 0);
+    this.write(this.blendSkip(s, dt));
+  }
+
+  /** Jump out of the current shot: blend quickly onto the chase camera. */
+  skip(): void {
+    if (this.phase === 'intro' && !this.skipFrom) {
+      this.skipFrom = { pos: this.cam.camera.position.clone(), look: this.shot.look.clone(), fov: this.cam.camera.fov, roll: 0 };
+      this.skipT = 0;
+      this.hint?.classList.remove('show');
+    }
+  }
+
+  get skipping(): boolean {
+    return !!this.skipFrom;
+  }
+
+  private endIntro(): void {
+    this.phase = 'none';
+    this.skipFrom = null;
+    this.hint?.classList.remove('show');
+    this.bars?.classList.remove('on');
+  }
+
+  /** Begin the finish shot from wherever the camera is now. */
+  startOutro(p: CarPose): void {
+    this.phase = 'outro';
+    this.outroT = 0;
+    this.captured = false;
+    this.yawS = p.yaw;
+    this.skipFrom = null;
+    // Swing around the side with the most room.
+    const fx = Math.sin(p.yaw);
+    const fz = Math.cos(p.yaw);
+    const r = 8;
+    const left = this.cam.wallHit(p.x, p.z, p.x + fz * r, p.z - fx * r);
+    const right = this.cam.wallHit(p.x, p.z, p.x - fz * r, p.z + fx * r);
+    this.side = left >= right ? 1 : -1;
+    this.bars?.classList.add('on');
+    this.hint?.classList.add('show');
+  }
+
+  /** Drop the skip hint and letterbox (results are up); the camera keeps orbiting. */
+  settle(): void {
+    this.hint?.classList.remove('show');
+    this.bars?.classList.remove('on');
+  }
+
+  /** Override the camera for the finish shot. Call after the chase camera update. */
+  applyOutro(p: CarPose, dt: number): void {
+    if (this.phase !== 'outro') return;
+    const q = CAMERA.outro;
+    this.outroT += dt;
+    this.yawS += wrap(p.yaw - this.yawS) * (1 - Math.exp(-dt * q.yawSmoothing));
+    if (this.outroT < q.holdTime) return;
+    const ground = this.world.heightAt(p.x, p.z);
+    const cam = this.cam.camera;
+    if (!this.captured) {
+      // Polar coordinates of the chase camera around the car, in the car's frame.
+      this.captured = true;
+      const dx = cam.position.x - p.x;
+      const dz = cam.position.z - p.z;
+      this.radius0 = Math.max(1, Math.hypot(dx, dz));
+      // theta = 0 is straight behind, positive toward the car's left.
+      this.theta0 = wrap(Math.atan2(-dx, -dz) - this.yawS);
+      this.height0 = cam.position.y - ground;
+      this.fov0 = cam.fov;
+      this.look0.copy(this.cam.lookTarget).sub(new THREE.Vector3(p.x, p.y, p.z));
+      this.look0.applyAxisAngle(UP, -this.yawS);
+    }
+    const t = this.outroT - q.holdTime;
+    const e = ease(t / Math.max(0.1, q.swingTime), 2);
+    const target = this.side * (Math.PI - q.heroAngle * DEG);
+    const drift = Math.max(0, t - q.swingTime) * q.orbitSpeed * this.side;
+    const theta = this.theta0 + (target - this.theta0) * e + drift;
+    const radius = this.radius0 + (q.heroRadius - this.radius0) * e;
+    const a = this.yawS + theta;
+    const s = this.shot;
+    s.pos.set(p.x - Math.sin(a) * radius, 0, p.z - Math.cos(a) * radius);
+    s.pos.y = this.world.heightAt(s.pos.x, s.pos.z) + this.height0 + (q.heroHeight - this.height0) * e;
+    const look0 = this.look0.clone().applyAxisAngle(UP, this.yawS).add(new THREE.Vector3(p.x, p.y, p.z));
+    s.look.set(p.x, p.y + q.heroLookHeight, p.z);
+    s.look.lerp(look0, 1 - e);
+    s.fov = this.fov0 + (q.heroFov - this.fov0) * e;
+    s.roll = q.heroRoll * DEG * e * this.side;
+    this.cam.keepOutOfWalls(p.x, p.z, s.pos, q.groundMin, 0);
+    this.write(s);
+  }
+
+  /** Seconds since the outro started (0 when not in the outro). */
+  get outroTime(): number {
+    return this.phase === 'outro' ? this.outroT : 0;
+  }
+
+  private readChase(): void {
+    this.chase.pos.copy(this.cam.camera.position);
+    this.chase.look.copy(this.cam.lookTarget);
+    this.chase.fov = this.cam.camera.fov;
+  }
+
+  private blendSkip(s: Pose, dt: number): Pose {
+    if (!this.skipFrom) return s;
+    this.skipT += dt;
+    const w = smooth(this.skipT / SKIP_BLEND);
+    s.pos.copy(this.skipFrom.pos).lerp(this.chase.pos, w);
+    s.look.copy(this.skipFrom.look).lerp(this.chase.look, w);
+    s.fov = this.skipFrom.fov + (this.chase.fov - this.skipFrom.fov) * w;
+    if (w >= 1) this.endIntro();
+    return s;
+  }
+
+  private write(s: Pose): void {
+    const cam = this.cam.camera;
+    cam.position.copy(s.pos);
+    cam.up.set(0, 1, 0);
+    cam.lookAt(s.look);
+    if (s.roll) cam.rotateZ(s.roll);
+    if (Math.abs(cam.fov - s.fov) > 0.01) {
+      cam.fov = s.fov;
+      cam.updateProjectionMatrix();
+    }
+  }
+
+  /** Toggle the HUD hiding classes for the current phase. */
+  syncHud(hud: HTMLElement, preRoll: boolean): void {
+    hud.classList.toggle('cine-intro', this.phase === 'intro' && preRoll && !this.skipFrom);
+    hud.classList.toggle('cine-outro', this.phase === 'outro');
+  }
+
+  dispose(): void {
+    this.hint?.remove();
+    this.bars?.remove();
+  }
+}

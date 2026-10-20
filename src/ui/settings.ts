@@ -3,7 +3,14 @@ export type Quality = 'low' | 'medium' | 'high';
 export type Difficulty = 'easy' | 'medium' | 'hard';
 
 export interface Settings {
+  /**
+   * Graphics preset. With autoQuality on, this follows the tier the auto
+   * controller picked (scene density reads it) and the renderer uses the
+   * finer auto level instead of the preset.
+   */
   quality: Quality;
+  /** Auto graphics: pick and adapt the quality level from measured frame times. */
+  autoQuality: boolean;
   retro: boolean;
   radialBlur: boolean;
   manualGearbox: boolean;
@@ -12,12 +19,19 @@ export interface Settings {
   showFps: boolean;
   /** Engine sound volume 0..1 */
   engineVolume: number;
+  /** Driver aid: cuts drive torque when the rear wheels spin. Off lets the rear step out. */
+  tractionControl: boolean;
+  /** Debug: show the live physics tuning panel (also toggled with ` / F2). */
+  debugTuningPanel: boolean;
+  /** Debug: show the live camera tuning panel (also toggled with F3). */
+  debugCameraPanel: boolean;
 }
 
 const KEY = 'nightrun.settings.v1';
 
 export const DEFAULT_SETTINGS: Settings = {
   quality: 'medium',
+  autoQuality: true,
   retro: false,
   radialBlur: true,
   manualGearbox: false,
@@ -25,6 +39,9 @@ export const DEFAULT_SETTINGS: Settings = {
   opponents: 3,
   showFps: false,
   engineVolume: 0.7,
+  tractionControl: false,
+  debugTuningPanel: false,
+  debugCameraPanel: false,
 };
 
 export function loadSettings(): Settings {
@@ -34,6 +51,8 @@ export function loadSettings(): Settings {
     const parsed = JSON.parse(raw) as Partial<Settings>;
     const s = { ...DEFAULT_SETTINGS, ...parsed };
     if (!['low', 'medium', 'high'].includes(s.quality)) s.quality = 'medium';
+    // Players from before Auto existed made an explicit choice (or got the old default): keep it.
+    if (typeof parsed.autoQuality !== 'boolean') s.autoQuality = false;
     if (!['easy', 'medium', 'hard'].includes(s.difficulty)) s.difficulty = 'medium';
     s.opponents = Math.max(0, Math.min(3, Math.round(Number(s.opponents) || 0)));
     s.engineVolume = Math.max(0, Math.min(1, Number(s.engineVolume)));
@@ -53,8 +72,10 @@ export function saveSettings(s: Settings): void {
 }
 
 function defaultForDevice(): Settings {
+  // New players get Auto; the tier here is only a placeholder until the auto
+  // controller makes its device guess at boot.
   const touch = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
-  return { ...DEFAULT_SETTINGS, quality: touch ? 'low' : 'medium' };
+  return { ...DEFAULT_SETTINGS, quality: touch ? 'low' : 'medium', autoQuality: true };
 }
 
 export interface QualityProfile {
@@ -64,6 +85,7 @@ export interface QualityProfile {
   bloomScale: number;
   bloomStrength: number;
   pointLights: number;
+  /** 4x MSAA on the scene pass (no renderer recreation needed). */
   antialias: boolean;
 }
 

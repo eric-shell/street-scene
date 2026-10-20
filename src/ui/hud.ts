@@ -1,5 +1,5 @@
 /**
- * Race HUD in plain DOM plus two small canvases (tachometer, minimap).
+ * Race HUD in plain DOM plus small canvases (tachometer, boost gauge, minimap).
  * Reads a snapshot each frame; never touches the sim.
  */
 import type { World } from '../city/world';
@@ -30,6 +30,8 @@ export interface HudData {
   manual: boolean;
   nitro: number;
   nitroActive: boolean;
+  /** Throttle 0..1, drives the boost gauge (vacuum off throttle). */
+  throttle?: number;
   countdown: number | null;
   wrongWay: boolean;
   progress: number;
@@ -50,6 +52,13 @@ export class Hud {
   private nitroFill: HTMLElement;
   private nitroBox: HTMLElement;
   private tach: HTMLCanvasElement;
+  private boostCv: HTMLCanvasElement;
+  /** Boost pressure in bar (negative = vacuum), simulated render side with spool lag. */
+  private boost = -0.6;
+  private boostNeedle = -0.6;
+  private lastThrottle = 0;
+  private bov = 0;
+  private nitroGlow = 0;
   private map: HTMLCanvasElement;
   private driftEl: HTMLElement;
   private progressFill: HTMLElement;
@@ -77,7 +86,10 @@ export class Hud {
       <div class="hud-wrong"><span class="ic"></span>WRONG WAY</div>
       <div class="hud-drift"></div>
       <div class="hud-br">
-        <canvas class="hud-tach" width="220" height="220"></canvas>
+        <div class="hud-dials">
+          <canvas class="hud-boost" width="132" height="132"></canvas>
+          <canvas class="hud-tach" width="220" height="220"></canvas>
+        </div>
         <div class="hud-nitro"><span class="ic"></span><div class="bar"><div class="fill"></div></div></div>
       </div>
       <canvas class="hud-map" width="200" height="200"></canvas>
@@ -104,6 +116,7 @@ export class Hud {
     this.driftEl = q('.hud-drift');
     this.progressFill = q('.hud-progress .fill');
     this.tach = q('.hud-tach') as HTMLCanvasElement;
+    this.boostCv = q('.hud-boost') as HTMLCanvasElement;
     this.map = q('.hud-map') as HTMLCanvasElement;
 
     const g = world.graph;
@@ -159,7 +172,125 @@ export class Hud {
       }`;
     } else this.driftEl.style.display = 'none';
     this.drawTach(d);
+    this.updateBoost(d, dt);
+    this.drawBoost();
     this.drawMap(d);
+  }
+
+  /**
+   * Turbo boost from rpm and throttle: manifold vacuum when off throttle,
+   * pressure building with rpm under load with spool lag, a blow-off dump when
+   * lifting at boost, and an extra spike while nitrous is on.
+   */
+  private updateBoost(d: HudData, dt: number): void {
+    const load = Math.max(0, Math.min(1, d.throttle ?? (d.rpm > d.redline * 0.3 ? 1 : 0)));
+    const r = Math.max(0, d.rpm / Math.max(1000, d.redline));
+    const spool = Math.max(0, Math.min(1, (r - 0.22) / 0.5));
+    const vacuum = -0.68 * (1 - load) ** 1.5;
+    let target = vacuum + load * (spool * spool * (3 - 2 * spool)) * 1.25 + (d.nitroActive ? 0.55 : 0);
+    if (d.countdown !== null && d.countdown > 0) target = vacuum + load * 0.35 * Math.min(1, r * 1.6);
+    // Blow-off valve: lifting sharply at boost dumps the pressure at once.
+    if (this.lastThrottle > 0.6 && load < 0.25 && this.boost > 0.35) this.bov = 0.35;
+    this.lastThrottle = load;
+    this.bov = Math.max(0, this.bov - dt);
+    const tau = this.bov > 0 ? 0.05 : target > this.boost ? 0.55 : 0.16;
+    this.boost += (target - this.boost) * (1 - Math.exp(-dt / tau));
+    this.boostNeedle += (this.boost - this.boostNeedle) * (1 - Math.exp(-dt / 0.05));
+    this.nitroGlow += ((d.nitroActive ? 1 : 0) - this.nitroGlow) * (1 - Math.exp(-dt / 0.12));
+  }
+
+  private drawBoost(): void {
+    const c = this.boostCv.getContext('2d')!;
+    const W = this.boostCv.width;
+    const cx = W / 2;
+    const cy = W / 2;
+    const R = W * 0.4;
+    const lo = -1;
+    const hi = 2;
+    const a0 = Math.PI * 0.75;
+    const a1 = Math.PI * 2.25;
+    const ang = (bar: number) => a0 + (a1 - a0) * Math.max(0, Math.min(1, (bar - lo) / (hi - lo)));
+    const v = this.boostNeedle;
+    const glow = this.nitroGlow;
+    const accent = glow > 0.05 ? '#ffffff' : '#19e6ff';
+    c.clearRect(0, 0, W, W);
+    c.lineCap = 'butt';
+    c.fillStyle = 'rgba(6,10,24,0.62)';
+    c.beginPath();
+    c.arc(cx, cy, R + 9, 0, Math.PI * 2);
+    c.fill();
+    if (glow > 0.01) {
+      c.strokeStyle = `rgba(79,168,255,${0.75 * glow})`;
+      c.lineWidth = 3;
+      c.shadowColor = '#4fa8ff';
+      c.shadowBlur = 16 * glow;
+      c.beginPath();
+      c.arc(cx, cy, R + 8, 0, Math.PI * 2);
+      c.stroke();
+      c.shadowBlur = 0;
+    }
+    // Track: vacuum side dim, boost side lit up to the needle, overboost red.
+    c.lineWidth = 6;
+    c.strokeStyle = 'rgba(120,200,255,0.18)';
+    c.beginPath();
+    c.arc(cx, cy, R, a0, a1);
+    c.stroke();
+    c.strokeStyle = '#ff2e5b';
+    c.beginPath();
+    c.arc(cx, cy, R, ang(1.6), a1);
+    c.stroke();
+    if (v > 0) {
+      c.strokeStyle = accent;
+      c.shadowColor = glow > 0.05 ? '#4fa8ff' : '#19e6ff';
+      c.shadowBlur = 8 + 10 * glow;
+      c.beginPath();
+      c.arc(cx, cy, R, ang(0), ang(v));
+      c.stroke();
+      c.shadowBlur = 0;
+    } else {
+      c.strokeStyle = 'rgba(143,179,255,0.55)';
+      c.beginPath();
+      c.arc(cx, cy, R, ang(v), ang(0));
+      c.stroke();
+    }
+    c.font = '600 10px Rajdhani, system-ui, sans-serif';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    for (let k = lo * 2; k <= hi * 2; k++) {
+      const a = ang(k / 2);
+      const major = k % 2 === 0;
+      c.strokeStyle = 'rgba(200,220,255,0.7)';
+      c.lineWidth = major ? 2 : 1;
+      c.beginPath();
+      c.moveTo(cx + Math.cos(a) * (R - (major ? 10 : 7)), cy + Math.sin(a) * (R - (major ? 10 : 7)));
+      c.lineTo(cx + Math.cos(a) * (R - 3), cy + Math.sin(a) * (R - 3));
+      c.stroke();
+      if (major) {
+        c.fillStyle = '#c7d6ff';
+        c.fillText(String(k / 2), cx + Math.cos(a) * (R - 19), cy + Math.sin(a) * (R - 19));
+      }
+    }
+    const na = ang(v);
+    c.strokeStyle = '#ff3df2';
+    c.lineWidth = 2.5;
+    c.shadowColor = '#ff3df2';
+    c.shadowBlur = 6;
+    c.beginPath();
+    c.moveTo(cx, cy);
+    c.lineTo(cx + Math.cos(na) * (R - 5), cy + Math.sin(na) * (R - 5));
+    c.stroke();
+    c.shadowBlur = 0;
+    c.fillStyle = '#ff3df2';
+    c.beginPath();
+    c.arc(cx, cy, 3.5, 0, Math.PI * 2);
+    c.fill();
+    c.font = '700 17px Orbitron, Rajdhani, system-ui, sans-serif';
+    c.fillStyle = v > 1.6 ? '#ff2e5b' : glow > 0.05 ? '#fff' : v > 0 ? '#19e6ff' : '#8fb3ff';
+    const shown = Math.abs(v) < 0.05 ? 0 : v;
+    c.fillText((shown > 0 ? '+' : '') + shown.toFixed(1), cx, cy + 26);
+    c.font = '600 9px Rajdhani, system-ui, sans-serif';
+    c.fillStyle = '#8fb3ff';
+    c.fillText(this.bov > 0.1 ? 'BLOW OFF' : 'BOOST BAR', cx, cy + 42);
   }
 
   private drawTach(d: HudData): void {

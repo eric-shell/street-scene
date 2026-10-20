@@ -6,12 +6,14 @@
  *    so racers must turn here. These get a real barrier, a direction board with
  *    pulsing cyan Lucide chevrons, and a very large translucent arrow above it
  *    that sweeps in the direction to go.
- *  - side: the closed street branches off to the side. These are blocked by a
- *    line of parked cars (see roadblocks.ts), movie style.
+ *  - side: the closed street branches off to the side. These are blocked by
+ *    rows of parked cars (see roadblocks.ts), movie style, with an in-air
+ *    arrow above each group of cars pointing the way the route goes.
  * Collision is the same wall segment either way. Render only.
  */
 import * as THREE from 'three';
 import type { World } from '../city/world';
+import type { CarGroup } from './roadblocks';
 import type { Wall } from '../city/blocks';
 import { ChevronsRight, drawIcon } from '../ui/icons';
 import { GeoBuilder } from './geoBuilder';
@@ -28,6 +30,13 @@ export interface BarrierInfo {
   /** Route turns left (-1) or right (+1) as seen from the intersection looking at the barrier. 0 = unknown. */
   turn: -1 | 0 | 1;
   headOn: boolean;
+  /** Graph node of the intersection the barrier faces. */
+  node: number;
+  /** Unit route directions into and out of that intersection. */
+  inX: number;
+  inZ: number;
+  outX: number;
+  outZ: number;
 }
 
 export function classifyBarriers(world: World): BarrierInfo[] {
@@ -41,12 +50,18 @@ export function classifyBarriers(world: World): BarrierInfo[] {
     const mz = (wall.az + wall.bz) / 2;
     let best = 0;
     let bestD = Infinity;
-    for (let i = 0; i < order.length; i++) {
-      const n = g.nodes[order[i]];
-      const d = (n.x - mx) ** 2 + (n.z - mz) ** 2;
-      if (d < bestD) {
-        bestD = d;
-        best = i;
+    // The barrier group knows its intersection; otherwise take the nearest route node.
+    const groupNode = wall.group !== undefined ? world.barrierGroups?.[wall.group]?.node : undefined;
+    const known = groupNode !== undefined ? order.indexOf(groupNode) : -1;
+    if (known >= 0) best = known;
+    else {
+      for (let i = 0; i < order.length; i++) {
+        const n = g.nodes[order[i]];
+        const d = (n.x - mx) ** 2 + (n.z - mz) ** 2;
+        if (d < bestD) {
+          bestD = d;
+          best = i;
+        }
       }
     }
     const node = g.nodes[order[best]];
@@ -62,13 +77,14 @@ export function classifyBarriers(world: World): BarrierInfo[] {
     const inDir = prevI >= 0 ? unit(g.nodes[order[prevI]], node) : nextI < order.length ? unit(node, g.nodes[order[nextI]]) : { x: sx, z: sz };
     const headOn = inDir.x * sx + inDir.z * sz > 0.55;
     let turn: -1 | 0 | 1 = 0;
+    const outDir = nextI >= 0 && nextI < order.length ? unit(node, g.nodes[order[nextI]]) : inDir;
     if (nextI >= 0 && nextI < order.length) {
-      const o = unit(node, g.nodes[order[nextI]]);
+      const o = outDir;
       // left of forward (sx, sz) is (sz, -sx)
       const leftDot = o.x * sz - o.z * sx;
       if (Math.abs(leftDot) > 0.2) turn = leftDot > 0 ? -1 : 1;
     }
-    out.push({ wall, x: mx, z: mz, sx, sz, turn, headOn });
+    out.push({ wall, x: mx, z: mz, sx, sz, turn, headOn, node: order[best], inX: inDir.x, inZ: inDir.z, outX: outDir.x, outZ: outDir.z });
   }
   return out;
 }
@@ -178,14 +194,14 @@ interface Board {
   tilt: number;
 }
 
-/** Group consecutive rail segments into curves (each curve is drawn in travel order). */
-function railCurves(world: World): Wall[][] {
+/** Group rail segments into curves (one per route corner, segments in chain order). */
+export function railCurves(world: World): Wall[][] {
   const curves: Wall[][] = [];
   let cur: Wall[] = [];
   for (const w of world.walls) {
     if (w.kind !== 'rail') continue;
     const last = cur[cur.length - 1];
-    if (last && Math.hypot(last.bx - w.ax, last.bz - w.az) > 1e-6) {
+    if (last && (last.group !== w.group || (w.group === undefined && Math.hypot(last.bx - w.ax, last.bz - w.az) > 1e-6))) {
       curves.push(cur);
       cur = [];
     }
@@ -201,7 +217,7 @@ function flipFor(w: Wall): number {
   return (w.bx - w.ax) * w.nz - (w.bz - w.az) * w.nx > 0 ? 1 : -1;
 }
 
-export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classifyBarriers(world)): RouteArrows {
+export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classifyBarriers(world), carGroups: CarGroup[] = []): RouteArrows {
   const group = new THREE.Group();
   group.name = 'routeArrows';
   const disposables: { dispose(): void }[] = [];
@@ -319,6 +335,26 @@ export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classif
       panels.push({ x: b.x - b.sx * 0.35, y: ground + 2.15, z: b.z - b.sz * 0.35, yaw, w, h: w / 4, flip: b.turn, phase: (i * 0.37) % 1, tilt: 0 });
       giants.push({ x: b.x - b.sx * 1.5, y: ground + 7, z: b.z - b.sz * 1.5, yaw, w: 16, h: 4, flip: b.turn, phase: (i * 0.29) % 1, tilt: -0.1 });
     });
+
+  // Side closures: an in-air arrow above each group of parked cars, pointing
+  // the way the route goes. It faces whichever way shows that direction best:
+  // toward the intersection (route crosses the street mouth) or toward the
+  // incoming racers (route turns away from the closed street).
+  carGroups.forEach((cg, i) => {
+    const b = cg.barrier;
+    if (!b || cg.cars === 0) return;
+    // Viewer looking into the street (along s), or along the incoming route: right = (-dz, dx).
+    const dotA = b.outX * -b.sz + b.outZ * b.sx;
+    const dotB = b.outX * -b.inZ + b.outZ * b.inX;
+    const useA = Math.abs(dotA) >= Math.abs(dotB);
+    const dot = useA ? dotA : dotB;
+    if (Math.abs(dot) < 0.3) return;
+    const yaw = useA ? Math.atan2(-b.sx, -b.sz) : Math.atan2(-b.inX, -b.inZ);
+    const x = cg.x;
+    const z = cg.z;
+    if (giants.some((gt) => Math.hypot(gt.x - x, gt.z - z) < 12)) return;
+    giants.push({ x, y: cg.y + 6.4, z, yaw, w: 12, h: 3, flip: dot > 0 ? 1 : -1, phase: (i * 0.23) % 1, tilt: -0.08 });
+  });
 
   make(boardFrag, panels, false, 'chevronPanels');
   make(bigFrag, giants, true, 'giantArrows');

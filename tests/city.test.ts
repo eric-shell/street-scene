@@ -3,7 +3,9 @@ import { Rng, hashString, seedFromString } from '../src/sim/prng';
 import { generateRoadGraph, graphIsConnected, edgeBetween } from '../src/city/roadGraph';
 import { buildRoute, findCircuitNodes, findSprintNodes } from '../src/city/route';
 import { createCity, createWorld } from '../src/city/world';
-import { ROUTE } from '../src/city/config';
+import { CITY, ROUTE } from '../src/city/config';
+import { createTerrain } from '../src/city/terrain';
+import { distToSegment, segmentT } from '../src/sim/math';
 
 describe('prng', () => {
   it('is deterministic and roughly uniform', () => {
@@ -86,6 +88,10 @@ describe('city generation', () => {
       }
       expect(new Set(sprint.edges).size).toBe(sprint.edges.length);
       expect(sprint.length).toBeGreaterThan(1000);
+      // Long runout past the finish, and the finish line clear of intersections.
+      expect(sprint.length - sprint.finishS).toBeGreaterThanOrEqual(ROUTE.sprintFinishOffset);
+      expect(sprint.finishS - sprint.startS).toBeGreaterThan(1000);
+      for (let k = 1; k + 1 < sprint.cum.length; k++) expect(Math.abs(sprint.finishS - sprint.cum[k])).toBeGreaterThanOrEqual(ROUTE.sprintFinishNodeClear - 1e-9);
 
       if (
         circuit.length >= ROUTE.circuitMinLength &&
@@ -108,8 +114,10 @@ describe('city generation', () => {
     expect(Math.abs(p.lateral)).toBeLessThan(4);
     expect(p.s).toBeGreaterThan(w.route.length - 40);
     const h = w.heightAt(0, 0);
-    expect(Math.abs(h)).toBeLessThan(6);
-    // every side street off the route is closed with a barrier
+    expect(Math.abs(h)).toBeLessThan(11);
+    // every side street off the route is closed by exactly one barrier group
+    const closedBy = w.route.closedStreets.map((cs) => w.barrierGroups.filter((g) => g.node === cs.node && g.edges.includes(cs.edge)).length);
+    expect(closedBy.every((k) => k === 1)).toBe(true);
     expect(w.walls.filter((x) => x.kind === 'barrier').length).toBe(w.route.closedStreets.length);
   });
 
@@ -135,5 +143,138 @@ describe('city generation', () => {
       }
     }
     expect(rails).toBeGreaterThan(500);
+  });
+
+  it('barrier groups never overlap and cover every barrier wall', () => {
+    const rng = new Rng(31);
+    const cross = (a: { x: number; z: number }, b: { x: number; z: number }, c: { x: number; z: number }, d: { x: number; z: number }) => {
+      const den = (b.x - a.x) * (d.z - c.z) - (b.z - a.z) * (d.x - c.x);
+      if (Math.abs(den) < 1e-9) return false;
+      const t = ((c.x - a.x) * (d.z - c.z) - (c.z - a.z) * (d.x - c.x)) / den;
+      const u = ((c.x - a.x) * (b.z - a.z) - (c.z - a.z) * (b.x - a.x)) / den;
+      return t > 1e-6 && t < 1 - 1e-6 && u > 1e-6 && u < 1 - 1e-6;
+    };
+    let merged = 0;
+    for (let i = 0; i < 40; i++) {
+      const w = createWorld(rng.int(0, 0x7fffffff), i % 2 ? 'sprint' : 'circuit');
+      const bars = w.walls.filter((x) => x.kind === 'barrier');
+      const rails = w.walls.filter((x) => x.kind === 'rail');
+      for (const b of bars) {
+        expect(w.barrierGroups[b.group!].walls).toContain(b);
+        for (const o of bars.concat(rails)) {
+          if (o === b) continue;
+          expect(cross({ x: b.ax, z: b.az }, { x: b.bx, z: b.bz }, { x: o.ax, z: o.az }, { x: o.bx, z: o.bz })).toBe(false);
+          // Ends of different groups never nearly touch: those would have been merged.
+          if (o.kind === 'barrier' && o.group !== b.group) {
+            for (const [x, z] of [[b.ax, b.az], [b.bx, b.bz]]) {
+              expect(Math.min(Math.hypot(x - o.ax, z - o.az), Math.hypot(x - o.bx, z - o.bz))).toBeGreaterThan(2.9);
+            }
+          }
+        }
+      }
+      for (const g of w.barrierGroups) {
+        expect(g.walls.length).toBe(g.edges.length);
+        expect(Math.hypot(g.nx, g.nz)).toBeCloseTo(1, 6);
+        expect(g.depth).toBeGreaterThanOrEqual(0);
+        if (g.walls.length > 1) merged++;
+      }
+    }
+    expect(merged).toBeGreaterThan(20);
+  });
+
+  it('corner rails run along the outer curb and leave the road drivable', () => {
+    const rng = new Rng(12);
+    for (let i = 0; i < 30; i++) {
+      const w = createWorld(rng.int(0, 0x7fffffff), i % 2 ? 'sprint' : 'circuit');
+      const rails = w.walls.filter((x) => x.kind === 'rail');
+      rails.forEach((r, k) => {
+        // One connected chain per rail.
+        const next = rails[k + 1];
+        if (next && next.group === r.group) expect(Math.hypot(next.ax - r.bx, next.az - r.bz)).toBeLessThan(1e-9);
+        for (const [x, z] of [[r.ax, r.az], [r.bx, r.bz]]) {
+          for (const eid of w.route.edges) {
+            const e = w.graph.edges[eid];
+            const a = w.graph.nodes[e.a];
+            const b = w.graph.nodes[e.b];
+            // Away from the corner itself, where the fillet may cut ROUTE.railCornerCut inside the curb corner.
+            const t = segmentT(x, z, a.x, a.z, b.x, b.z);
+            if (t * e.length < 15 || (1 - t) * e.length < 15) continue;
+            // Never on the route's lanes (beside the edge, not past its ends).
+            const d = distToSegment(x, z, a.x, a.z, b.x, b.z) - e.width / 2;
+            if (d < 3) expect(d).toBeGreaterThan(ROUTE.railInset - 0.05);
+          }
+        }
+      });
+    }
+  });
+
+  it('places street furniture on sidewalks without overlaps', () => {
+    for (const seed of [42, 20261019, 777]) {
+      const w = createWorld(seed, 'circuit');
+      const props = w.blocks.props;
+      expect(props).toBe(w.props);
+      // Streetlights come first and match blocks.streetlights.
+      w.blocks.streetlights.forEach((l, i) => {
+        expect(props[i].kind).toBe('streetlight');
+        expect(props[i].x).toBe(l.x);
+        expect(props[i].light).toBe(i);
+      });
+      const count = (k: string) => props.filter((p) => p.kind === k).length;
+      expect(count('trafficLight')).toBeGreaterThan(100);
+      expect(count('garbageCan')).toBeGreaterThan(300);
+      expect(count('bench')).toBeGreaterThan(80);
+      expect(count('busStop')).toBeGreaterThan(15);
+      expect(count('busStop')).toBeLessThan(count('bench'));
+      props.forEach((p, i) => {
+        expect(p.id).toBe(i);
+        expect(w.surfaceAt(p.x, p.z)).toBe('sidewalk');
+        if (p.kind === 'trafficLight') expect(w.graph.nodes[p.node!].edges.length).toBeGreaterThanOrEqual(3);
+      });
+      // Nothing but streetlights (kept as generated) overlaps anything else.
+      const scratch: number[] = [];
+      for (const p of props) {
+        if (p.kind === 'streetlight') continue;
+        w.propGrid.query(p.x - 3, p.z - 3, p.x + 3, p.z + 3, scratch);
+        for (const id of scratch) {
+          const q = props[id];
+          if (q !== p) expect(Math.hypot(p.x - q.x, p.z - q.z)).toBeGreaterThan(p.radius + q.radius);
+        }
+      }
+      // Off the drivable road with room for the prop's radius.
+      for (const p of props) {
+        for (const e of w.graph.edges) {
+          const a = w.graph.nodes[e.a];
+          const b = w.graph.nodes[e.b];
+          expect(distToSegment(p.x, p.z, a.x, a.z, b.x, b.z) - e.width / 2).toBeGreaterThan(p.radius);
+        }
+      }
+      // Clear of route barriers.
+      for (const b of w.walls.filter((x) => x.kind === 'barrier')) {
+        for (const p of props) if (p.kind !== 'streetlight') expect(distToSegment(p.x, p.z, b.ax, b.az, b.bx, b.bz)).toBeGreaterThan(p.radius);
+      }
+      expect(JSON.stringify(createWorld(seed, 'circuit').props)).toBe(JSON.stringify(props));
+    }
+  });
+
+  it('terrain rolls noticeably with gentle grades and an exact slope', () => {
+    const t = createTerrain(20261019);
+    let lo = Infinity;
+    let hi = -Infinity;
+    let maxGrade = 0;
+    const span = (CITY.gridW - 1) * CITY.spacing * 0.5;
+    for (let x = -span; x <= span; x += 20) {
+      for (let z = -span; z <= span; z += 20) {
+        const h = t.heightAt(x, z);
+        lo = Math.min(lo, h);
+        hi = Math.max(hi, h);
+        const s = t.slopeAt(x, z);
+        maxGrade = Math.max(maxGrade, Math.hypot(s.gx, s.gz));
+        const e = 0.01;
+        expect(s.gx).toBeCloseTo((t.heightAt(x + e, z) - t.heightAt(x - e, z)) / (2 * e), 5);
+        expect(s.gz).toBeCloseTo((t.heightAt(x, z + e) - t.heightAt(x, z - e)) / (2 * e), 5);
+      }
+    }
+    expect(hi - lo).toBeGreaterThan(8);
+    expect(maxGrade).toBeLessThan(0.056);
   });
 });

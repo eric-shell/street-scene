@@ -4,14 +4,15 @@
  */
 import * as THREE from 'three';
 import { World } from '../city/world';
-import { QUALITY, Settings } from '../ui/settings';
+import { QUALITY, QualityProfile, Settings } from '../ui/settings';
 import { buildCityMeshes, CityMeshes } from './cityMeshes';
-import { buildLightFx, LightFx } from './lightFx';
+import { buildLightFx, fadeSubPixel, LightFx } from './lightFx';
 import { FOG_COLOR, FOG_DENSITY, NightLighting } from './lighting';
 import { PostFx } from './post';
 import { makeNightEnvironment, makeSkyTexture } from './textures';
 import { buildRouteArrows, classifyBarriers, RouteArrows } from './routeArrows';
 import { buildRoadblocks } from './roadblocks';
+import { buildProps, PropRenderer } from './props';
 
 export const RETRO_HEIGHT = 240;
 
@@ -25,6 +26,7 @@ export class GameRenderer {
   private height = 1;
   private placeholderScene = new THREE.Scene();
   private placeholderCam = new THREE.PerspectiveCamera();
+  private autoProfile: QualityProfile | null = null;
 
   constructor(readonly canvas: HTMLCanvasElement, settings: Settings) {
     this.settings = settings;
@@ -47,15 +49,26 @@ export class GameRenderer {
 
   applySettings(s: Settings): void {
     this.settings = s;
-    const q = QUALITY[s.quality];
-    this.post.configure({ bloom: q.bloom, bloomScale: q.bloomScale, bloomStrength: q.bloomStrength, retro: s.retro });
+    const q = this.profile;
+    this.post.configure({ bloom: q.bloom, bloomScale: q.bloomScale, bloomStrength: q.bloomStrength, retro: s.retro, msaa: q.antialias ? 4 : 0 });
     this.canvas.style.imageRendering = s.retro ? 'pixelated' : 'auto';
     this.resize();
   }
 
+  /** Fine grained level picked by auto quality (used while settings.autoQuality is on). */
+  setAutoProfile(p: QualityProfile): void {
+    this.autoProfile = p;
+    this.applySettings(this.settings);
+  }
+
+  /** What is being rendered with: the auto level, or the chosen preset. */
+  get profile(): QualityProfile {
+    return this.settings.autoQuality && this.autoProfile ? this.autoProfile : QUALITY[this.settings.quality];
+  }
+
   get pixelRatio(): number {
     if (this.settings.retro) return RETRO_HEIGHT / Math.max(1, this.height);
-    const q = QUALITY[this.settings.quality];
+    const q = this.profile;
     return Math.min(window.devicePixelRatio || 1, q.pixelRatioCap) * q.renderScale;
   }
 
@@ -88,6 +101,8 @@ export interface NightScene {
   fx: LightFx;
   lighting: NightLighting;
   arrows: RouteArrows;
+  /** Street furniture; feed it RaceState.brokenProps every frame (props.update). */
+  props: PropRenderer;
   /** Animate time-based effects (barrier lamps, arrows). */
   update(time: number): void;
   dispose(): void;
@@ -107,21 +122,37 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   scene.add(fx.group);
   const lighting = new NightLighting();
   lighting.setLamps(city.lampPositions);
-  lighting.setPoolSize(QUALITY[settings.quality].pointLights);
+  lighting.setPoolSize(gr.profile.pointLights);
   scene.add(lighting.group);
-  const arrows = buildRouteArrows(world, barriers);
-  scene.add(arrows.group);
-  const roadblocks = buildRoadblocks(world, barriers, city.barrierLampMaterial, { low: 2, medium: 3, high: 4 }[settings.quality]);
+  const roadblocks = buildRoadblocks(world, barriers, city.barrierLampMaterial, { rows: { low: 2, medium: 3, high: 4 }[settings.quality], railRows: settings.quality === 'high' ? 2 : 1, drawDistance: { low: 170, medium: 240, high: 300 }[settings.quality] });
   scene.add(roadblocks.group);
+  const arrows = buildRouteArrows(world, barriers, roadblocks.groups);
+  scene.add(arrows.group);
+  // Parked cars cull per group against whatever camera renders the scene.
+  scene.onBeforeRender = (_r, _s, camera) => roadblocks.update(camera);
+  // Broken streetlights go dark: ground pool, reflection streak and the real light pool.
+  const lampOff = new Uint8Array(city.lampPositions.length);
+  const props = buildProps(world, {
+    onLamp(i, on) {
+      if (i < 0 || i >= lampOff.length || lampOff[i] === (on ? 0 : 1)) return;
+      lampOff[i] = on ? 0 : 1;
+      fx.setLampOn(i, on);
+      lighting.setLamps(city.lampPositions.filter((_, k) => !lampOff[k]));
+    },
+  });
+  scene.add(props.group);
+  stabilizeSmallEmitters(city);
   return {
     scene,
     city,
     fx,
     lighting,
     arrows,
+    props,
     update(time) {
       arrows.update(time);
-      const blink = Math.sin(time * 5) > 0 ? 3.2 : 0.6;
+      // Hazard blink with soft edges: a hard 3.2 / 0.6 square wave strobes the bloom.
+      const blink = 0.6 + 2.6 * THREE.MathUtils.smoothstep(Math.sin(time * 5), -0.35, 0.35);
       city.barrierLampMaterial.color.setRGB(1 * blink, 0.63 * blink, 0.12 * blink);
     },
     dispose() {
@@ -129,6 +160,34 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
       fx.dispose();
       arrows.dispose();
       roadblocks.dispose();
+      props.dispose();
     },
   };
+}
+
+/**
+ * Flicker fixes for city meshes that are built elsewhere: fade the tiny HDR
+ * emitters by pixel coverage (see fadeSubPixel), and push the road markings
+ * towards the camera so they stop z-fighting the asphalt 2.5 cm below them in
+ * the distance, where depth precision runs out.
+ */
+function stabilizeSmallEmitters(city: CityMeshes): void {
+  const mat = (name: string) => (city.group.getObjectByName(name) as THREE.Mesh | undefined)?.material as THREE.Material | undefined;
+  const lens = mat('streetlightLenses');
+  if (lens) fadeSubPixel(lens, 0.36, 0.25);
+  const neon = mat('roofNeon');
+  if (neon) fadeSubPixel(neon, 0.5, 0.3);
+  fadeSubPixel(city.barrierLampMaterial, 0.2, 0.3);
+  // The start line sits 5 mm above the markings, so it gets the larger offset.
+  for (const [name, offset] of [
+    ['markings', 1],
+    ['startLine', 2],
+  ] as const) {
+    const m = mat(name);
+    if (m && !m.polygonOffset) {
+      m.polygonOffset = true;
+      m.polygonOffsetFactor = -offset;
+      m.polygonOffsetUnits = -2 * offset;
+    }
+  }
 }

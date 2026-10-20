@@ -1,9 +1,11 @@
 /**
- * Every car physics constant lives here: the base tuning shared by all cars,
- * per car overrides, and the performance part tier tables that applyBuild()
- * uses. Nothing else in the sim should contain tuning magic numbers.
+ * Car physics types and lookups. Every number lives in drivingParams.json
+ * (base tuning, per car overrides, drivetrains, performance part tiers); this
+ * module only types, merges and validates it. Nothing else in the sim should
+ * contain tuning magic numbers.
  */
 import manifest from '../assets/carManifest.json';
+import params from './drivingParams.json';
 
 export interface CarGeometry {
   /** Wheel centers in car space: [left(+x), up(+y), forward(+z)], order FL, FR, RL, RR. */
@@ -16,6 +18,9 @@ export interface CarGeometry {
   halfWidth: number;
 }
 
+export type DrivetrainLayout = 'rwd' | 'awd' | 'fwd';
+export const DRIVETRAIN_LAYOUTS: readonly DrivetrainLayout[] = ['rwd', 'awd', 'fwd'];
+
 export interface CarTuning {
   carId: string;
   mass: number;
@@ -23,6 +28,11 @@ export interface CarTuning {
   yawInertiaScale: number;
   cgHeight: number;
   geometry: CarGeometry;
+  drivetrain: {
+    layout: DrivetrainLayout;
+    /** AWD only: share of drive torque sent to the front axle (0.4 = 40/60). */
+    awdFrontShare: number;
+  };
   engine: {
     idleRpm: number;
     redline: number;
@@ -54,6 +64,35 @@ export interface CarTuning {
     /** Lateral grip kept even when longitudinal force uses the whole friction circle. */
     minLateralShare: number;
     rollingResistance: number;
+  };
+  /** Driven wheel spin (slip ratio proxy per driven axle) and traction control. */
+  traction: {
+    /** Drive demand / available grip ratio where the driven wheels break loose. */
+    breakaway: number;
+    /** How much cornering eats into forward grip (friction circle). 0 = none, 1 = none left at peak slip. */
+    cornerCoupling: number;
+    /** Once spinning, the wheels keep spinning down to demand = breakaway * spinHold. */
+    spinHold: number;
+    /** Spin level per unit of demand above the threshold (2.5 = full spin at 40% over). */
+    spinPerExcess: number;
+    /** Wheelspin build rate (1/s at full excess). */
+    spinBuildRate: number;
+    /** Wheelspin recovery rate (1/s). */
+    spinRecoverRate: number;
+    /** Forward grip of a fully spinning axle, fraction of peak. */
+    spinLongGrip: number;
+    /** Sideways grip of a fully spinning axle, fraction of normal. */
+    spinLateralGrip: number;
+    /** Extra drive torque from dumping the clutch (launches, clutch kicks), at clutch slip = redline. */
+    launchBoost: number;
+    /** Wheelspin forced on the driven axles by a clutch kick. */
+    clutchKickSpin: number;
+    /** Engine rpm flare above road speed at full wheelspin. */
+    spinRpm: number;
+    /** Traction control: max drive demand as a fraction of available grip. */
+    tcSlipTarget: number;
+    /** Traction control: cuts throttle above this body slip angle (stops power oversteer). */
+    tcMaxSlipDeg: number;
   };
   suspension: {
     frequency: number;
@@ -114,10 +153,14 @@ export interface CarTuning {
   collision: {
     wallRestitution: number;
     wallScrub: number;
-    /** Corner guard rails are smooth: little scrub and spin so racers keep momentum. */
+    /** Corner guard rails: low bounce and spin, but scraping them costs speed. */
     railRestitution: number;
     railScrub: number;
     railAngularScale: number;
+    /** Sliding friction while touching a rail, m/s^2 of deceleration. */
+    railDrag: number;
+    /** Fraction of along-rail speed lost per second of contact. */
+    railSpeedLoss: number;
     carRestitution: number;
     angularScale: number;
   };
@@ -125,114 +168,12 @@ export interface CarTuning {
 
 export const GRAVITY = 9.81;
 
-const BASE: Omit<CarTuning, 'carId' | 'geometry'> = {
-  mass: 1250,
-  yawInertiaScale: 1.15,
-  cgHeight: 0.4,
-  engine: {
-    idleRpm: 900,
-    redline: 7600,
-    torqueCurve: [
-      [800, 150],
-      [2000, 215],
-      [3500, 262],
-      [5000, 285],
-      [6200, 278],
-      [7000, 255],
-      [7800, 220],
-    ],
-    torqueMul: 1,
-    engineBraking: 55,
-    launchRpm: 4200,
-  },
-  gearbox: {
-    ratios: [3.25, 2.15, 1.6, 1.25, 1.02, 0.85],
-    reverseRatio: 3.4,
-    finalDrive: 3.9,
-    efficiency: 0.86,
-    shiftTime: 0.22,
-    upshiftRpmFrac: 0.93,
-    downshiftRpmFrac: 0.48,
-    reverseMaxSpeed: 14,
-  },
-  tires: {
-    gripFront: 1.18,
-    gripRear: 1.12,
-    peakSlipDeg: 9,
-    fullSlideDeg: 35,
-    slideGrip: 0.86,
-    minLateralShare: 0.7,
-    rollingResistance: 14,
-  },
-  suspension: {
-    frequency: 1.55,
-    dampingRatio: 0.42,
-    travel: 0.12,
-  },
-  brakes: {
-    force: 14500,
-    frontBias: 0.66,
-    handbrakeForce: 4200,
-  },
-  steering: {
-    maxDeg: 32,
-    highSpeedDeg: 6.5,
-    fadeSpeed: 42,
-    rateDegPerSec: 150,
-    counterSteerAllowance: 0.75,
-  },
-  aero: {
-    drag: 0.4,
-    downforce: 0.9,
-  },
-  nitrous: {
-    capacity: 3.2,
-    force: 3600,
-    torqueMul: 1.25,
-    refillDrift: 0.09,
-    refillNearMiss: 0.18,
-    refillDraft: 0.07,
-    draftDragMul: 0.7,
-  },
-  drift: {
-    handbrakeRearGrip: 0.38,
-    handbrakeYawTorque: 7000,
-    clutchKickRearGrip: 0.55,
-    clutchKickTime: 0.45,
-    powerOversteerGrip: 0.76,
-    powerOversteerMinSlipDeg: 12,
-    gripDropRate: 6,
-    gripRecoverRate: 1.4,
-    maxSlipDeg: 44,
-    assistTorque: 30000,
-    yawDamping: 1800,
-    driftCarve: 0.55,
-    yawDampingLowSpeed: 4,
-  },
-  surface: {
-    sidewalkGrip: 0.92,
-    offroadGrip: 0.75,
-    offroadDrag: 900,
-  },
-  collision: {
-    wallRestitution: 0.12,
-    wallScrub: 0.22,
-    railRestitution: 0.04,
-    railScrub: 0.05,
-    railAngularScale: 0.18,
-    carRestitution: 0.3,
-    angularScale: 0.45,
-  },
-};
+type BaseTuning = Omit<CarTuning, 'carId' | 'geometry'>;
+type DeepPartial<T> = { [K in keyof T]?: T[K] extends unknown[] ? T[K] : T[K] extends object ? DeepPartial<T[K]> : T[K] };
 
-/** Per car differences, applied over BASE. Kept small so every car is competitive. */
-export const CAR_OVERRIDES: Record<string, { mass?: number; torqueMul?: number; gripMul?: number; redlineAdd?: number }> = {
-  proto: {},
-  cc96: { mass: 1180, torqueMul: 0.97, gripMul: 1.0, redlineAdd: 300 },
-  s64: { mass: 1040, torqueMul: 0.86, gripMul: 1.03, redlineAdd: 500 },
-  gc14: { mass: 1340, torqueMul: 1.1, gripMul: 0.99 },
-  ar7: { mass: 1220, torqueMul: 1.03, gripMul: 1.02, redlineAdd: 900 },
-};
+const BASE = params.base as unknown as BaseTuning;
+/** Per car deep-partial overrides from drivingParams.json (absolute values, `_` keys are comments). */
+export const CAR_OVERRIDES = params.cars as unknown as Record<string, DeepPartial<BaseTuning>>;
 
 // ---------------------------------------------------------------------------
 // Performance parts. Index = tier: 0 stock, 1 street, 2 pro, 3 extreme.
@@ -243,17 +184,19 @@ export type Tier = 0 | 1 | 2 | 3;
 export const PERFORMANCE_CATEGORIES = ['engine', 'turbo', 'exhaust', 'transmission', 'tires', 'suspension', 'brakes', 'weight', 'nitrous'] as const;
 export type PerformanceCategory = (typeof PERFORMANCE_CATEGORIES)[number];
 
-export const PART_TIERS = {
-  engine: { torqueMul: [1, 1.07, 1.15, 1.25], redlineAdd: [0, 200, 450, 700] },
-  turbo: { torqueMul: [1, 1.08, 1.17, 1.28], highRpmBoost: [0, 0.04, 0.08, 0.13] },
-  exhaust: { torqueMul: [1, 1.03, 1.05, 1.08] },
-  transmission: { shiftTime: [0.22, 0.16, 0.11, 0.07], finalDriveMul: [1, 0.98, 0.95, 0.92] },
-  tires: { gripMul: [1, 1.04, 1.08, 1.13] },
-  suspension: { frequencyMul: [1, 1.12, 1.25, 1.38], gripMul: [1, 1.015, 1.03, 1.045], steerRateMul: [1, 1.06, 1.12, 1.18] },
-  brakes: { forceMul: [1, 1.12, 1.25, 1.4] },
-  weight: { massMul: [1, 0.96, 0.92, 0.87] },
-  nitrous: { capacity: [3.2, 3.9, 4.7, 5.6], force: [3600, 4100, 4700, 5400] },
-} as const;
+type TierTable = readonly [number, number, number, number];
+export interface PartTiers {
+  engine: { torqueMul: TierTable; redlineAdd: TierTable };
+  turbo: { torqueMul: TierTable; highRpmBoost: TierTable };
+  exhaust: { torqueMul: TierTable };
+  transmission: { shiftTime: TierTable; finalDriveMul: TierTable };
+  tires: { gripMul: TierTable };
+  suspension: { frequencyMul: TierTable; gripMul: TierTable; steerRateMul: TierTable };
+  brakes: { forceMul: TierTable };
+  weight: { massMul: TierTable };
+  nitrous: { capacity: TierTable; force: TierTable };
+}
+export const PART_TIERS = params.performanceParts as unknown as PartTiers;
 
 interface ManifestCar {
   id: string;
@@ -266,7 +209,7 @@ interface ManifestCar {
 }
 
 export const CAR_IDS: string[] = (manifest.cars as ManifestCar[]).map((c) => c.id);
-/** Cars offered in the garage and to AI opponents. Others stay loadable (tests, old saves). */
+/** Cars offered in the garage and to AI opponents. Others stay loadable (tests, pipeline). */
 export const SELECTABLE_CAR_IDS: string[] = (manifest.cars as (ManifestCar & { selectable?: boolean })[]).filter((c) => c.selectable).map((c) => c.id);
 export const DEFAULT_CAR_ID = SELECTABLE_CAR_IDS[0] ?? CAR_IDS[0];
 
@@ -289,21 +232,70 @@ function deepClone<T>(x: T): T {
   return JSON.parse(JSON.stringify(x)) as T;
 }
 
-export function getBaseTuning(carId: string): CarTuning {
-  const id = CAR_IDS.includes(carId) ? carId : CAR_IDS[0];
-  const t: CarTuning = { ...deepClone(BASE), carId: id, geometry: geometryFromManifest(id) };
-  const o = CAR_OVERRIDES[id] ?? {};
-  if (o.mass) t.mass = o.mass;
-  if (o.torqueMul) t.engine.torqueMul *= o.torqueMul;
-  if (o.gripMul) {
-    t.tires.gripFront *= o.gripMul;
-    t.tires.gripRear *= o.gripMul;
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+
+/**
+ * Merge a per car override over the base, key by key. Arrays replace whole.
+ * Keys starting with `_` are comments. Unknown keys or wrong types throw, so
+ * a typo in drivingParams.json fails loudly instead of being ignored.
+ */
+function mergeOverride(target: Record<string, unknown>, over: Record<string, unknown>, path: string): void {
+  for (const [k, v] of Object.entries(over)) {
+    if (k.startsWith('_')) continue;
+    const p = path ? `${path}.${k}` : k;
+    if (!(k in target)) throw new Error(`drivingParams.json: unknown key "${p}"`);
+    const cur = target[k];
+    if (isObj(cur)) {
+      if (!isObj(v)) throw new Error(`drivingParams.json: "${p}" must be an object`);
+      mergeOverride(cur, v, p);
+    } else if (Array.isArray(cur) !== Array.isArray(v) || typeof cur !== typeof v) {
+      throw new Error(`drivingParams.json: "${p}" must be ${Array.isArray(cur) ? 'an array' : `a ${typeof cur}`}`);
+    } else target[k] = deepClone(v);
   }
-  if (o.redlineAdd) t.engine.redline += o.redlineAdd;
-  return t;
 }
 
-export function setByPath(obj: unknown, path: string, value: number): void {
+const resolved = new Map<string, CarTuning>();
+
+export function getBaseTuning(carId: string): CarTuning {
+  const id = CAR_IDS.includes(carId) ? carId : CAR_IDS[0];
+  let t = resolved.get(id);
+  if (!t) {
+    const base = deepClone(BASE) as unknown as Record<string, unknown>;
+    mergeOverride(base, (CAR_OVERRIDES[id] ?? {}) as Record<string, unknown>, `cars.${id}`);
+    t = { ...(base as unknown as BaseTuning), carId: id, geometry: geometryFromManifest(id) };
+    if (!DRIVETRAIN_LAYOUTS.includes(t.drivetrain.layout)) throw new Error(`drivingParams.json: cars.${id}.drivetrain.layout must be one of ${DRIVETRAIN_LAYOUTS.join(', ')}`);
+    resolved.set(id, t);
+  }
+  return deepClone(t);
+}
+
+/** Drive torque split per axle (fractions summing to 1). */
+export function driveSplit(t: CarTuning): { front: number; rear: number } {
+  const l = t.drivetrain.layout;
+  const front = l === 'fwd' ? 1 : l === 'awd' ? Math.min(1, Math.max(0, t.drivetrain.awdFrontShare)) : 0;
+  return { front, rear: 1 - front };
+}
+
+/** FNV-1a hash of a string, as 8 hex chars. */
+function hashString(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, '0');
+}
+
+/**
+ * Fingerprint of a car's stock tuning plus the part tiers. Saved test drive
+ * tuning stores it and is discarded when drivingParams.json changes, so stale
+ * browser overrides never mask edits to the file.
+ */
+export function tuningHash(carId: string): string {
+  return hashString(JSON.stringify(getBaseTuning(carId)) + JSON.stringify(PART_TIERS));
+}
+
+export function setByPath(obj: unknown, path: string, value: number | string): void {
   const keys = path.split('.');
   let o = obj as Record<string, unknown>;
   for (let i = 0; i < keys.length - 1; i++) o = o[keys[i]] as Record<string, unknown>;
@@ -315,34 +307,3 @@ export function getByPath(obj: unknown, path: string): number {
   for (const k of path.split('.')) o = o[k] as Record<string, unknown>;
   return o as unknown as number;
 }
-
-/** Tunables exposed in the dev panel: [path, min, max, step]. */
-export const DEV_PANEL_PARAMS: [string, number, number, number][] = [
-  ['mass', 700, 2000, 10],
-  ['yawInertiaScale', 0.5, 2, 0.05],
-  ['cgHeight', 0.2, 1, 0.01],
-  ['engine.torqueMul', 0.5, 2.5, 0.01],
-  ['gearbox.finalDrive', 2.5, 5.5, 0.05],
-  ['gearbox.shiftTime', 0.02, 0.5, 0.01],
-  ['tires.gripFront', 0.6, 1.8, 0.01],
-  ['tires.gripRear', 0.6, 1.8, 0.01],
-  ['tires.peakSlipDeg', 3, 15, 0.5],
-  ['tires.fullSlideDeg', 10, 60, 1],
-  ['tires.slideGrip', 0.4, 1, 0.01],
-  ['suspension.frequency', 0.8, 3, 0.05],
-  ['suspension.dampingRatio', 0.1, 1.2, 0.02],
-  ['brakes.force', 5000, 30000, 100],
-  ['steering.maxDeg', 15, 45, 0.5],
-  ['steering.highSpeedDeg', 2, 15, 0.25],
-  ['steering.rateDegPerSec', 40, 400, 5],
-  ['aero.drag', 0.1, 1, 0.01],
-  ['aero.downforce', 0, 3, 0.05],
-  ['nitrous.force', 0, 9000, 100],
-  ['drift.handbrakeRearGrip', 0.1, 1, 0.01],
-  ['drift.handbrakeYawTorque', 0, 20000, 250],
-  ['drift.powerOversteerGrip', 0.3, 1, 0.01],
-  ['drift.maxSlipDeg', 20, 80, 1],
-  ['drift.assistTorque', 0, 60000, 250],
-  ['drift.yawDamping', 0, 8000, 50],
-  ['drift.driftCarve', 0, 2, 0.05],
-];

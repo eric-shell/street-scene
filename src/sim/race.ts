@@ -7,13 +7,14 @@
 import { createCity, createWorld, World, City } from '../city/world';
 import { routeSample } from '../city/route';
 import { CarState, createCar, placeCar, refillNitrous, stepCar } from './car';
-import { collideCarWithWorld, collideCars, detectNearMiss } from './collision';
+import { WorldHit, collideCarWithWorld, collideCars, detectNearMiss } from './collision';
 import { DT, TICK_HZ } from './constants';
 import { InputFrame, NEUTRAL_INPUT, packInput, quantizeInput } from './input';
 import { CarTuning } from './tuning';
 import { PerformanceBuild, tuningForBuild, validatePerformance } from './build';
-import { DEG, abs, clamp, cos, sin, yawOf } from './math';
+import { DEG, abs, atan2, clamp, cos, lerp, sin, sqrt, yawOf } from './math';
 import { AiState, aiInput, buildRacingLine, createAi, RacingLine } from './ai';
+import { stepProps } from './props';
 
 export type RaceMode = 'circuit' | 'sprint' | 'drift';
 export type Difficulty = 'easy' | 'medium' | 'hard';
@@ -32,6 +33,8 @@ export interface RaceConfig {
   opponents: RaceEntrant[];
   difficulty: Difficulty;
   manualGearbox: boolean;
+  /** Player driver aid (AI cars always drive with it). Missing in old replays = off. */
+  tractionControl?: boolean;
 }
 
 export type RacePhase = 'countdown' | 'racing' | 'finished';
@@ -60,6 +63,8 @@ export interface RaceCar {
   resetCooldown: number;
   stuckTime: number;
   ai: AiState | null;
+  /** Post-finish runout autopilot (player only), created on the first tick after finishing. */
+  runout?: { lateral: number; startS: number };
 }
 
 export interface DriftScore {
@@ -86,11 +91,68 @@ export interface RaceState {
   drift: DriftScore;
   /** Player finish order snapshot, filled when the player finishes. */
   events: RaceEvent[];
+  /** Last tick a 'wall' event fired per car and a 'crash' event per car pair (i * n + j), for rate limiting. */
+  hitTicks: { wall: number[]; pair: number[] };
+  /** 1 = prop knocked down this race, indexed by prop id (world.props). Fresh per race. */
+  brokenProps: Uint8Array;
 }
 
-export type RaceEvent = { tick: number; type: 'lap' | 'checkpoint' | 'finish' | 'wrongWay' | 'reset' | 'driftBank'; car: number; value?: number };
+/** Impact sound events: minimum impact speed (m/s) and minimum gap between events (ticks). */
+const CRASH_EVENT_SPEED = 2;
+const WALL_EVENT_SPEED = 3;
+const HIT_EVENT_GAP = Math.round(0.25 * TICK_HZ);
+
+/**
+ * Sim events, consumed by the session for HUD messages, sounds and effects.
+ * 'prop': value = prop id broken. 'crash': value = impact speed (m/s), other = car index hit.
+ * 'wall': value = impact speed (m/s), kind = wall kind hit.
+ */
+export type RaceEvent = {
+  tick: number;
+  type: 'lap' | 'checkpoint' | 'finish' | 'wrongWay' | 'reset' | 'driftBank' | 'prop' | 'crash' | 'wall';
+  car: number;
+  value?: number;
+  other?: number;
+  kind?: 'wall' | 'barrier' | 'rail';
+};
 
 export const COUNTDOWN_SECONDS = 3;
+
+/**
+ * Post-finish runout: once the player crosses the line its input is replaced
+ * by a lane-keeping autopilot that brakes along a speed profile so the car
+ * stops smoothly further down the road, clear of the barriers.
+ */
+export const RUNOUT = {
+  /** Comfortable braking the speed profile aims for (m/s^2). */
+  decel: 6,
+  /** Circuits: distance past the line to stop in (m). */
+  circuitDistance: 110,
+  /** Sprints: stop this far before the end of the route (m). */
+  endMargin: 8,
+  /** Brake added per m/s over the profile speed. */
+  brakeGain: 0.25,
+  /** Light brake while on or under the profile, so the car always coasts down. */
+  coastBrake: 0.35,
+  /** Brake that holds the car once stopped (under the 0.5 that would engage reverse). */
+  holdBrake: 0.45,
+  /** Below this speed the car counts as stopped (m/s). */
+  stopSpeed: 0.8,
+  /** Route heading is sampled this many seconds ahead (s). */
+  lookTime: 0.4,
+  /** The car holds its lane at the line, kept this far inside the road edge (m). */
+  edgeMargin: 2.5,
+  /** Heading correction per m of lane error (rad/m) and its cap (rad). */
+  laneGain: 0.06,
+  laneMax: 0.18,
+  /** Yaw rate asked for per rad of heading error (1/s), and its cap (rad/s). */
+  headingGain: 1.6,
+  maxYawRate: 0.7,
+  /** Steer per rad/s of yaw rate error (damps weaving). */
+  yawDamping: 0.35,
+  /** Steering is capped to keep the runout calm. */
+  maxSteer: 0.7,
+} as const;
 const DIFFICULTY_PACE: Record<Difficulty, number> = { easy: 0.86, medium: 0.94, hard: 1.0 };
 
 /** Cached city per seed so restarting a race does not regenerate geometry. */
@@ -119,6 +181,8 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
     const tuning = tuningForBuild(e.carId, validatePerformance(e.performance));
     const state = createCar(slot.x, slot.z, slot.yaw, w.heightAt(slot.x, slot.z));
     state.manualGearbox = i === 0 && config.manualGearbox;
+    // AI drives with traction control: stable lines, no power oversteer surprises.
+    state.tractionControl = i === 0 ? config.tractionControl === true : true;
     const p = w.routeProgress(slot.x, slot.z);
     const startDist = route.closed ? p.s - route.length : p.s - route.startS;
     return {
@@ -159,6 +223,8 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
     inputLog: [],
     drift: { total: 0, current: 0, multiplier: 1, chainTime: 0, graceTime: 0, lastBank: 0 },
     events: [],
+    hitTicks: { wall: cars.map(() => -HIT_EVENT_GAP), pair: cars.flatMap(() => cars.map(() => -HIT_EVENT_GAP)) },
+    brokenProps: new Uint8Array(w.props?.length ?? 0),
   };
 }
 
@@ -186,6 +252,50 @@ export function resetToRoad(r: RaceState, rc: RaceCar): void {
   r.events.push({ tick: r.tick, type: 'reset', car: rc.index });
 }
 
+/** Deterministic input for a finished player: lane keeping steer and braking to a stop. */
+export function runoutInput(r: RaceState, rc: RaceCar): InputFrame {
+  const route = r.world.route;
+  const c = rc.state;
+  const t = rc.tuning;
+  if (!rc.runout) rc.runout = { lateral: rc.lateral, startS: rc.rawS };
+  const ro = rc.runout;
+  if (c.speed < RUNOUT.stopSpeed) return { ...NEUTRAL_INPUT, brake: RUNOUT.holdBrake };
+
+  // Steer: hold the lane the car crossed the line in, along the route heading a little ahead.
+  const ahead = routeSample(route, rc.rawS + c.speed * RUNOUT.lookTime);
+  const room = Math.max(0, route.segWidth[ahead.seg] / 2 - RUNOUT.edgeMargin);
+  const laneErr = clamp(ro.lateral, -room, room) - rc.lateral; // + = lane is to the left
+  const yawDes = yawOf(ahead.tx, ahead.tz) + clamp(laneErr * RUNOUT.laneGain, -RUNOUT.laneMax, RUNOUT.laneMax);
+  const velYaw = c.speed > 2 ? atan2(c.vx, c.vz) : c.yaw;
+  let err = yawDes - velYaw;
+  while (err > Math.PI) err -= Math.PI * 2;
+  while (err < -Math.PI) err += Math.PI * 2;
+  // Yaw rate is positive turning left; positive steer turns right.
+  const yrDes = clamp(err * RUNOUT.headingGain, -RUNOUT.maxYawRate, RUNOUT.maxYawRate);
+  const delta = atan2((yrDes * t.geometry.wheelbase) / Math.max(3, c.speed), 1);
+  const limit = lerp(t.steering.maxDeg, t.steering.highSpeedDeg, clamp(c.speed / t.steering.fadeSpeed, 0, 1)) * DEG;
+  const steer = clamp(-delta / limit + (c.yawRate - yrDes) * RUNOUT.yawDamping, -RUNOUT.maxSteer, RUNOUT.maxSteer);
+
+  // Brake: follow a speed profile that reaches zero at the stop point, slower for corners.
+  let remaining: number;
+  if (route.closed) {
+    let d = rc.rawS - ro.startS;
+    if (d < -route.length / 2) d += route.length;
+    else if (d > route.length / 2) d -= route.length;
+    remaining = RUNOUT.circuitDistance - d;
+  } else remaining = route.length - RUNOUT.endMargin - rc.rawS;
+  let vt = sqrt(2 * RUNOUT.decel * Math.max(0, remaining));
+  const line = r.line;
+  const step = line.n > 1 ? line.s[1] - line.s[0] : 1;
+  const i0 = Math.round(rc.rawS / step);
+  for (let k = 0; k <= 8; k++) {
+    const i = line.closed ? (((i0 + k) % line.n) + line.n) % line.n : clamp(i0 + k, 0, line.n - 1);
+    vt = Math.min(vt, line.speed[i]);
+  }
+  const brake = clamp(RUNOUT.coastBrake + (c.speed - vt) * RUNOUT.brakeGain, RUNOUT.coastBrake, 1);
+  return { ...NEUTRAL_INPUT, steer, brake };
+}
+
 /** Advance the race exactly one tick with the player's input frame. */
 export function stepRace(r: RaceState, rawInput: InputFrame): void {
   const input = quantizeInput(rawInput);
@@ -194,7 +304,8 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
 
   // Gather inputs first so AI decisions see a consistent snapshot.
   const inputs: InputFrame[] = r.cars.map((rc) => {
-    if (rc.isPlayer) return rc.finished ? { ...NEUTRAL_INPUT, brake: 0.4 } : input;
+    // After the finish the player's controls are ignored and the runout drives the car.
+    if (rc.isPlayer) return rc.finished ? runoutInput(r, rc) : input;
     return aiInput(r, rc);
   });
 
@@ -237,7 +348,16 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
     if (inp.reset && rc.resetCooldown <= 0) resetToRoad(r, rc);
     stepCar(rc.state, rc.tuning, inp, { world: r.world });
   }
-  for (const rc of r.cars) rc.state.impact = collideCarWithWorld(rc.state, rc.tuning, r.world);
+  const hit: WorldHit = { speed: 0, kind: 'wall' };
+  for (const rc of r.cars) {
+    rc.state.impact = collideCarWithWorld(rc.state, rc.tuning, r.world, hit);
+    if (hit.speed > WALL_EVENT_SPEED && r.tick - r.hitTicks.wall[rc.index] >= HIT_EVENT_GAP) {
+      r.hitTicks.wall[rc.index] = r.tick;
+      r.events.push({ tick: r.tick, type: 'wall', car: rc.index, kind: hit.kind, value: hit.speed });
+    }
+  }
+  // Destructible street furniture: knocks props down, slows cars, emits 'prop' events.
+  stepProps(r);
   for (let i = 0; i < r.cars.length; i++) {
     if (r.cars[i].finished) continue;
     for (let j = i + 1; j < r.cars.length; j++) {
@@ -247,6 +367,11 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
       if (imp > 0) {
         r.cars[i].state.impact = Math.max(r.cars[i].state.impact, imp);
         r.cars[j].state.impact = Math.max(r.cars[j].state.impact, imp);
+        const pair = i * r.cars.length + j;
+        if (imp > CRASH_EVENT_SPEED && r.tick - r.hitTicks.pair[pair] >= HIT_EVENT_GAP) {
+          r.hitTicks.pair[pair] = r.tick;
+          r.events.push({ tick: r.tick, type: 'crash', car: i, other: j, value: imp });
+        }
       }
     }
   }

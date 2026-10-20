@@ -49,6 +49,39 @@ export function saveGarage(g: GarageState): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Garage presentation preferences (not part of a build)
+// ---------------------------------------------------------------------------
+
+export type Presentation = 'garage' | 'street';
+
+export interface GaragePrefs {
+  /** Turntable showroom or the car cruising through a tunnel. */
+  presentation: Presentation;
+  /** Front and rear stance sliders move together. */
+  linkAxles: boolean;
+}
+
+const PREFS_KEY = 'nightrun.garage.prefs.v1';
+
+export function loadGaragePrefs(): GaragePrefs {
+  const d: GaragePrefs = { presentation: 'garage', linkAxles: true };
+  try {
+    const o = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') as Partial<GaragePrefs>;
+    return { presentation: o.presentation === 'street' ? 'street' : 'garage', linkAxles: o.linkAxles !== false };
+  } catch {
+    return d;
+  }
+}
+
+export function saveGaragePrefs(p: GaragePrefs): void {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(p));
+  } catch {
+    /* private mode: preferences just do not persist */
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Share codes
 // ---------------------------------------------------------------------------
 
@@ -76,9 +109,14 @@ const SHORT: Record<string, string> = {
   text: 'tx',
   stance: 'st',
   rideHeight: 'rh',
+  // Legacy (pre per axle) stance keys stay in the table so old codes decode.
   camberFront: 'cf',
   camberRear: 'cr',
   offset: 'of',
+  front: 'af',
+  rear: 'ar',
+  camber: 'cb',
+  wheelSize: 'ws',
   tint: 'ti',
   darkness: 'dk',
   underglow: 'ug',

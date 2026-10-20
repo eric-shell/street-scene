@@ -28,6 +28,10 @@ export interface ManifestCar {
   materialMap: Record<string, string>;
   defaultWheel: string;
   defaultPaint: string;
+  /** Offered in the garage. */
+  selectable?: boolean;
+  /** Engine sound profile (see audio/engineAudio.ts). */
+  engine?: { type: 'i4' | 'i4turbo' | 'v6'; cylinders?: number };
 }
 
 export const MANIFEST = manifestJson as unknown as { version: number; cars: ManifestCar[] };

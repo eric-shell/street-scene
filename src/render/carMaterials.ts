@@ -22,6 +22,11 @@ export function createCarMaterials(envMap: THREE.Texture | null = null): CarMate
   m.TailLight = new THREE.MeshStandardMaterial({ name: 'TailLight', color: 0x330000, emissive: 0xff1a2a, emissiveIntensity: 1.4 });
   m.Light = new THREE.MeshStandardMaterial({ name: 'Light', color: 0x332200, emissive: 0xffa040, emissiveIntensity: 0.8 });
   m.Interior = new THREE.MeshStandardMaterial({ name: 'Interior', color: 0x1a1a1e, roughness: 0.8 });
+  // The low poly bodies are hollow, single sided shells. Seen through the glass, the far
+  // side's panels face away and were culled, so the far wheels (and the floor) showed
+  // through the windows. Drawing the body's opaque materials double sided closes the
+  // shell: the inside of the far door now occludes what is behind it.
+  for (const k of ['Paint', 'Trim', 'Black', 'Chrome', 'Interior'] as const) m[k].side = THREE.DoubleSide;
   // Cars carry their own (stronger) environment reflections so they read clearly at night.
   if (envMap) {
     const boost: Partial<Record<MaterialName, number>> = { Paint: 1.9, Trim: 1.3, Black: 1, Chrome: 2.2, Glass: 1.7, Rim: 1.8, Tire: 0.8, Interior: 0.6 };

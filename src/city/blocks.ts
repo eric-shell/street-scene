@@ -7,6 +7,7 @@ import { CITY } from './config';
 import { RoadGraph, RoadEdge, edgeAngleFrom, otherNode, sectorAngle } from './roadGraph';
 import { SpatialGrid } from './spatial';
 import { Terrain } from './terrain';
+import { Prop, edgeSides, generateProps, lightStations } from './props';
 import { Rng, deriveSeed } from '../sim/prng';
 import { DEG, Vec2, atan2, clamp, cos, distToSegment, exp, lineIntersectT, sin, sqrt } from '../sim/math';
 
@@ -24,6 +25,12 @@ export interface Wall {
   nx: number;
   nz: number;
   kind: WallKind;
+  /**
+   * Barriers: index into World.barrierGroups. Rails: index of the route corner
+   * rail the segment belongs to (consecutive segments of one rail share it).
+   * Undefined for city walls.
+   */
+  group?: number;
 }
 
 export interface Sector {
@@ -91,7 +98,10 @@ export interface CityBlocks {
   mouths: EdgeMouths[];
   walls: Wall[];
   buildings: Building[];
+  /** Kept for the lighting code; every entry is also props[i] (kind 'streetlight'). */
   streetlights: Streetlight[];
+  /** Destructible street furniture, see props.ts. */
+  props: Prop[];
   signs: SignAnchor[];
   edgeGrid: SpatialGrid;
 }
@@ -345,26 +355,20 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain): Ci
 
   // Streetlights on the sidewalk just behind the curb, staggered per side.
   const streetlights: Streetlight[] = [];
-  g.edges.forEach((e, ei) => {
-    const m = mouths[ei];
-    const a = g.nodes[e.a];
-    const b = g.nodes[e.b];
-    const d = norm({ x: b.x - a.x, z: b.z - a.z });
-    const sides = [
-      { from: m.aP.curb, to: m.bP.curb, inward: { x: d.z, z: -d.x }, phase: 0 },
-      { from: m.aN.curb, to: m.bN.curb, inward: { x: -d.z, z: d.x }, phase: 0.5 },
-    ];
-    for (const side of sides) {
+  g.edges.forEach((_, ei) => {
+    for (const side of edgeSides(g, mouths, ei)) {
       const along = sub(side.to, side.from);
       const len = sqrt(along.x * along.x + along.z * along.z);
       const u = { x: along.x / len, z: along.z / len };
-      const spacing = CITY.streetlightSpacing;
-      for (let s = 10 + spacing * side.phase; s < len - 10; s += spacing) {
+      for (const s of lightStations(len, side.phase)) {
         const p = add(add(side.from, u, s), side.inward, -0.8);
         streetlights.push({ x: p.x, z: p.z, dx: side.inward.x, dz: side.inward.z, edge: ei });
       }
     }
   });
+
+  // Destructible street furniture (streetlights first, ids aligned with `streetlights`).
+  const props = generateProps(seed, g, sectors, mouths, streetlights, terrain, edgeGrid);
 
   // Neon sign anchors on building fronts, biased toward downtown.
   const signs: SignAnchor[] = [];
@@ -415,7 +419,7 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain): Ci
     });
   }
 
-  return { sectors, mouths, walls, buildings, streetlights, signs, edgeGrid };
+  return { sectors, mouths, walls, buildings, streetlights, props, signs, edgeGrid };
 }
 
 export function edgeAngle(g: RoadGraph, e: RoadEdge): number {

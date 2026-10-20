@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { createCar, stepCar } from '../src/sim/car';
-import { getBaseTuning } from '../src/sim/tuning';
+import { CAR_IDS, CarTuning, SELECTABLE_CAR_IDS, driveSplit, getBaseTuning, tuningHash } from '../src/sim/tuning';
+import { WorldHit, collideCarWithWorld } from '../src/sim/collision';
 import { DEG } from '../src/sim/math';
 import { packInput, quantizeInput, unpackInput } from '../src/sim/input';
+import { applySavedTuning, importValues, tuningParams } from '../src/ui/tuningPanel';
+import type { Contact, World } from '../src/city/world';
+import exported from './fixtures/s64-tuning-export.json';
 import { carSnapshot, flatWorld, input, raceConfig, replayLog, runAutopilot } from './helpers';
 
 describe('input frames', () => {
@@ -23,7 +27,7 @@ describe('car physics', () => {
   }
 
   it('settles on its suspension and accelerates', () => {
-    const c = accelerate(5, false);
+    const c = accelerate(6, false);
     expect(c.speed).toBeGreaterThan(25);
     expect(c.gear).toBeGreaterThanOrEqual(2);
     expect(Math.abs(c.x)).toBeLessThan(1);
@@ -65,6 +69,209 @@ describe('car physics', () => {
     for (let i = 0; i < 300; i++) stepCar(c, t, input({ brake: 1 }), { world });
     expect(c.gear).toBe(-1);
     expect(c.vz).toBeLessThan(-1);
+  });
+});
+
+describe('driving parameters file', () => {
+  it('s64 resolves to the latest exported tuning (plus deliberate edits since)', () => {
+    // Sidewalks were later set to road traction on purpose.
+    const expected = { ...exported.tuning, surface: { ...exported.tuning.surface, sidewalkGrip: 1 } };
+    expect(getBaseTuning('s64')).toMatchObject(expected);
+  });
+
+  it('every car resolves with finite numbers and a known drivetrain', () => {
+    for (const id of CAR_IDS) {
+      const t = getBaseTuning(id);
+      for (const p of tuningParams(t)) expect(Number.isFinite(p.min) && p.tip.length > 0).toBe(true);
+      expect(['rwd', 'awd', 'fwd']).toContain(t.drivetrain.layout);
+    }
+    expect(CAR_IDS).not.toContain('cc96');
+    expect(CAR_IDS).not.toContain('ar7');
+    expect(SELECTABLE_CAR_IDS.sort()).toEqual(['gc14', 's64']);
+  });
+
+  it('keeps each car\'s character: gc14 is a heavier, torquier AWD, s64 a rev happy RWD', () => {
+    const s64 = getBaseTuning('s64');
+    const gc14 = getBaseTuning('gc14');
+    expect(driveSplit(s64)).toEqual({ front: 0, rear: 1 });
+    expect(driveSplit(gc14).front).toBeCloseTo(0.4);
+    expect(gc14.mass).toBeGreaterThan(s64.mass);
+    expect(gc14.engine.torqueMul).toBeGreaterThan(s64.engine.torqueMul);
+    expect(gc14.engine.redline).toBeLessThan(s64.engine.redline);
+    expect(gc14.tires.gripRear).toBeLessThan(s64.tires.gripRear);
+  });
+
+  it('every tuning parameter in the panel has a tooltip', () => {
+    for (const p of tuningParams(getBaseTuning('s64'))) expect(p.tip, p.path).not.toMatch(/^No description/);
+  });
+
+  it('the panel imports its own export format exactly', () => {
+    const t = getBaseTuning('gc14');
+    applySavedTuning(t, importValues(exported, 'gc14'));
+    expect(t).toMatchObject({ ...exported.tuning, carId: 'gc14', geometry: getBaseTuning('gc14').geometry });
+    // drivingParams.json style nested blocks work too.
+    const u = getBaseTuning('s64');
+    expect(applySavedTuning(u, importValues({ tires: { gripRear: 1.1 }, drivetrain: { layout: 'awd' } }, 's64'))).toBe(2);
+    expect(u.tires.gripRear).toBe(1.1);
+    expect(u.drivetrain.layout).toBe('awd');
+  });
+
+  it('saved test drive tuning is fingerprinted per car', () => {
+    expect(tuningHash('s64')).toMatch(/^[0-9a-f]{8}$/);
+    expect(tuningHash('s64')).not.toBe(tuningHash('gc14'));
+    expect(tuningHash('s64')).toBe(tuningHash('s64'));
+  });
+});
+
+describe('wheelspin and traction control', () => {
+  const world = flatWorld();
+
+  /** Full throttle from a standstill with the revs up, like a race start. */
+  function launch(t: CarTuning, tc: boolean): { spinTicks: number; maxSpin: number } {
+    const c = createCar(0, 0, 0, 0);
+    c.tractionControl = tc;
+    for (let i = 0; i < 30; i++) stepCar(c, t, input({}), { world });
+    c.rpm = t.engine.redline * 0.85;
+    let spinTicks = 0;
+    let maxSpin = 0;
+    for (let i = 0; i < 180; i++) {
+      stepCar(c, t, input({ throttle: 1 }), { world });
+      if (c.wheelspin) spinTicks++;
+      maxSpin = Math.max(maxSpin, c.spinRear, c.spinFront);
+    }
+    return { spinTicks, maxSpin };
+  }
+
+  /** Mid corner in first gear, then full throttle while still turning. */
+  function cornerExit(t: CarTuning, tc: boolean): { spinTicks: number; maxSlip: number } {
+    const c = createCar(0, 0, 0, 0);
+    c.tractionControl = tc;
+    for (let i = 0; i < 600 && c.speed < 13; i++) stepCar(c, t, input({ throttle: 0.6 }), { world });
+    for (let i = 0; i < 60; i++) stepCar(c, t, input({ throttle: 0.2, steer: -0.8 }), { world });
+    let spinTicks = 0;
+    let maxSlip = 0;
+    for (let i = 0; i < 60; i++) {
+      stepCar(c, t, input({ throttle: 1, steer: -0.8 }), { world });
+      if (c.wheelspin) spinTicks++;
+      maxSlip = Math.max(maxSlip, Math.abs(c.slipAngle));
+    }
+    return { spinTicks, maxSlip };
+  }
+
+  it('a high rev launch spins the rear wheels without traction control, not with it', () => {
+    const t = getBaseTuning('s64');
+    const off = launch(t, false);
+    const on = launch(t, true);
+    expect(off.spinTicks).toBeGreaterThan(15);
+    expect(on.spinTicks).toBe(0);
+    expect(on.maxSpin).toBe(0);
+  });
+
+  it('full throttle mid corner gives power oversteer without traction control, not with it', () => {
+    const t = getBaseTuning('s64');
+    const off = cornerExit(t, false);
+    const on = cornerExit(t, true);
+    expect(off.spinTicks).toBeGreaterThan(20);
+    expect(off.maxSlip).toBeGreaterThan(20 * DEG);
+    expect(on.spinTicks).toBe(0);
+    expect(on.maxSlip).toBeLessThan(10 * DEG);
+  });
+
+  it('wheelspin happens on the driven axle only', () => {
+    const fwd = getBaseTuning('s64');
+    fwd.drivetrain.layout = 'fwd';
+    const c = createCar(0, 0, 0, 0);
+    for (let i = 0; i < 30; i++) stepCar(c, fwd, input({}), { world });
+    c.rpm = fwd.engine.redline * 0.85;
+    let front = 0;
+    for (let i = 0; i < 60; i++) {
+      stepCar(c, fwd, input({ throttle: 1 }), { world });
+      front = Math.max(front, c.spinFront);
+      expect(c.spinRear).toBe(0);
+    }
+    expect(front).toBeGreaterThan(0.2);
+  });
+
+  it('AWD launches with less wheelspin than RWD', () => {
+    const rwd = getBaseTuning('s64');
+    const awd = getBaseTuning('s64');
+    awd.drivetrain.layout = 'awd';
+    expect(launch(awd, false).spinTicks).toBeLessThan(launch(rwd, false).spinTicks);
+  });
+
+  it('AI cars drive with traction control, the player follows the config', () => {
+    const r = runAutopilot({ ...raceConfig(11, 'circuit', 2), tractionControl: false }, 1);
+    expect(r.cars.map((c) => c.state.tractionControl)).toEqual([false, true, true]);
+    const r2 = runAutopilot({ ...raceConfig(11, 'circuit', 0), tractionControl: true }, 1);
+    expect(r2.cars[0].state.tractionControl).toBe(true);
+  });
+});
+
+describe('collisions', () => {
+  /** Flat world with one straight wall of the given kind along x = 3 (drivable side x < 3). */
+  function wallWorld(kind: Contact['kind']): World {
+    return {
+      ...flatWorld(),
+      collideCircle: (cx: number, cz: number, r: number, out: Contact[]) => {
+        out.length = 0;
+        const depth = cx + r - 3;
+        if (depth > 0) out.push({ nx: -1, nz: 0, depth, px: 3, pz: cz, kind });
+        return out.length;
+      },
+    } as World;
+  }
+
+  function scrape(kind: Contact['kind'] | null) {
+    const world = kind ? wallWorld(kind) : flatWorld();
+    const t = getBaseTuning('s64');
+    const c = createCar(3 - t.geometry.halfWidth, 0, 0, 0);
+    c.vz = 35;
+    c.vx = 1.5;
+    const hit: WorldHit = { speed: 0, kind: 'wall' };
+    let maxHit = 0;
+    let kindSeen: Contact['kind'] | null = null;
+    let maxYaw = 0;
+    for (let i = 0; i < 60; i++) {
+      // Keep leaning into the wall like a car that ran wide.
+      stepCar(c, t, input({ throttle: 0.6, steer: -0.15 }), { world });
+      c.impact = collideCarWithWorld(c, t, world, hit);
+      if (hit.speed > maxHit) {
+        maxHit = hit.speed;
+        kindSeen = hit.kind;
+      }
+      maxYaw = Math.max(maxYaw, Math.abs(c.yawRate));
+    }
+    return { speed: c.speed, maxHit, kindSeen, maxYaw };
+  }
+
+  it('scraping a corner rail costs real speed without spinning the car', () => {
+    const free = scrape(null);
+    const rail = scrape('rail');
+    expect(rail.kindSeen).toBe('rail');
+    expect(rail.maxHit).toBeGreaterThan(0);
+    expect(rail.speed).toBeLessThan(free.speed - 6);
+    expect(rail.maxYaw).toBeLessThan(1.5);
+  });
+
+  it('a race reports rate limited wall and car crash events for sounds', () => {
+    const r = runAutopilot(raceConfig(424242, 'circuit', 3), 120);
+    const walls = r.events.filter((e) => e.type === 'wall');
+    const crashes = r.events.filter((e) => e.type === 'crash');
+    expect(walls.length + crashes.length).toBeGreaterThan(0);
+    for (const e of walls) {
+      expect(e.value).toBeGreaterThan(3);
+      expect(['wall', 'barrier', 'rail']).toContain(e.kind);
+    }
+    for (const e of crashes) {
+      expect(e.value).toBeGreaterThan(2);
+      expect(e.other).toBeGreaterThan(e.car);
+    }
+    const last = new Map<string, number>();
+    for (const e of [...walls, ...crashes]) {
+      const key = `${e.type}:${e.car}:${e.other ?? ''}`;
+      if (last.has(key)) expect(e.tick - last.get(key)!).toBeGreaterThanOrEqual(15);
+      last.set(key, e.tick);
+    }
   });
 });
 

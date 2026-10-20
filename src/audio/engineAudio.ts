@@ -2,9 +2,9 @@
  * Synthesized engine sound with Web Audio. Each car gets a voice whose pitch
  * follows the firing frequency (rpm / 60 * cylinders / 2) and whose tone opens
  * up with throttle. Profiles:
- *  - i4turbo (S64 Compact): raspy inline four, turbo spool whistle and a
+ *  - i4turbo (s64, Proto Compact): raspy inline four, turbo spool whistle and a
  *    blow-off valve chuff when you lift at boost
- *  - v6 (GC14 Coupe): deeper, smoother six with half-order growl
+ *  - v6 (gc14, Proto Hatch): deeper, smoother six with half-order growl
  * Render side only; reads interpolated car state.
  */
 export type EngineType = 'i4' | 'i4turbo' | 'v6';
@@ -23,6 +23,8 @@ export interface EngineInput {
 class AudioHub {
   readonly ctx: AudioContext;
   readonly engineBus: GainNode;
+  /** Sound effects (crashes, nitro, horn, beeps): same volume setting, same compressor. */
+  readonly sfxBus: GainNode;
   readonly noise: AudioBuffer;
   private volume = 0.7;
 
@@ -35,6 +37,8 @@ class AudioHub {
     comp.threshold.value = -18;
     comp.ratio.value = 4;
     this.engineBus.connect(comp).connect(this.ctx.destination);
+    this.sfxBus = this.ctx.createGain();
+    this.sfxBus.connect(comp);
     this.setVolume(this.volume);
     this.noise = this.ctx.createBuffer(1, this.ctx.sampleRate * 2, this.ctx.sampleRate);
     const d = this.noise.getChannelData(0);
@@ -48,6 +52,7 @@ class AudioHub {
   setVolume(v: number): void {
     this.volume = Math.max(0, Math.min(1, v));
     this.engineBus.gain.setTargetAtTime(this.volume * this.volume * 0.9, this.ctx.currentTime, 0.05);
+    this.sfxBus.gain.setTargetAtTime(this.volume * this.volume * 0.9, this.ctx.currentTime, 0.05);
   }
 }
 
@@ -217,5 +222,57 @@ export class EngineVoice {
     if (this.turbo) nodes.push(this.turbo);
     for (const n of nodes) n.stop(t + 0.2);
     setTimeout(() => this.pan.disconnect(), 400);
+  }
+}
+
+/**
+ * A free revving engine for the garage and menus: no car, no gearbox, just a
+ * flywheel that chases the throttle, falls back to idle and bounces off the
+ * rev limiter. Owns its EngineVoice (null when Web Audio is unavailable).
+ *
+ *   const eng = new FreeRevEngine('i4turbo', { idle: 900, redline: 7600 });
+ *   // every frame: eng.update(throttle01, dt);   eng.rpm for a tach
+ *   eng.dispose();
+ */
+export class FreeRevEngine {
+  rpm: number;
+  readonly voice: EngineVoice | null;
+  private cut = 0;
+  private readonly idle: number;
+  private readonly redline: number;
+
+  constructor(type: EngineType, opts: { idle?: number; redline?: number; volume?: number } = {}) {
+    this.idle = opts.idle ?? 900;
+    this.redline = opts.redline ?? 7200;
+    this.rpm = this.idle;
+    this.voice = audioHub() ? new EngineVoice(type, opts.volume ?? 0.24) : null;
+  }
+
+  /** Advance by dt seconds with throttle 0..1, then drive the voice. Returns rpm. */
+  update(throttle: number, dt: number, proximity = 1, pan = 0): number {
+    let load = Math.max(0, Math.min(1, throttle));
+    if (this.cut > 0) {
+      // Rev limiter: fuel cut for a moment, revs drop, then fire again.
+      this.cut -= dt;
+      load = 0;
+    }
+    const target = this.idle + (this.redline * 1.03 - this.idle) * load;
+    // Unloaded engines spin up fast and fall back a little slower.
+    const rate = target > this.rpm ? 3.5 + 5 * load : 2.2;
+    this.rpm += (target - this.rpm) * (1 - Math.exp(-rate * dt));
+    if (this.rpm >= this.redline) {
+      this.rpm = this.redline - 350;
+      this.cut = 0.07;
+    }
+    this.voice?.update({ rpm: this.rpm, redline: this.redline, throttle: load, nitro: false, proximity, pan });
+    return this.rpm;
+  }
+
+  silence(): void {
+    this.voice?.silence();
+  }
+
+  dispose(): void {
+    this.voice?.dispose();
   }
 }

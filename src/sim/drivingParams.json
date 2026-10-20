@@ -1,0 +1,159 @@
+{
+  "_readme": [
+    "Night Run driving parameters: the ONE file that holds every car physics number.",
+    "base: the shared tuning every car starts from (it is exactly the Proto Compact / s64).",
+    "cars.<id>: per car overrides, merged over base. Write absolute values (e.g. \"mass\": 2000), only the keys that differ. Nested objects merge key by key, arrays (torqueCurve, ratios) replace the whole array.",
+    "Keys starting with _ are comments and are ignored. Unknown keys fail loudly at startup, so typos never go unnoticed.",
+    "drivetrain.layout is \"rwd\", \"awd\" or \"fwd\". awdFrontShare is the AWD torque share sent to the front axle (0.4 = 40/60).",
+    "performanceParts: garage upgrade tiers, index 0 stock, 1 street, 2 pro, 3 extreme. applyBuild() in build.ts applies them over the car tuning.",
+    "Geometry (wheel positions, size) comes from src/assets/carManifest.json, not from here.",
+    "Test drive tuning panel: Copy JSON exports `fileOverride`, a block you can paste into cars.<id> here. Editing this file discards stale test drive tuning saved in the browser."
+  ],
+  "base": {
+    "mass": 1550,
+    "yawInertiaScale": 0.85,
+    "cgHeight": 0.4,
+    "drivetrain": {
+      "layout": "rwd",
+      "awdFrontShare": 0.4
+    },
+    "engine": {
+      "idleRpm": 900,
+      "redline": 8100,
+      "torqueCurve": [
+        [800, 150],
+        [2000, 215],
+        [3500, 262],
+        [5000, 285],
+        [6200, 278],
+        [7000, 255],
+        [7800, 220]
+      ],
+      "torqueMul": 0.86,
+      "engineBraking": 55,
+      "launchRpm": 4200
+    },
+    "gearbox": {
+      "ratios": [3.25, 2.15, 1.6, 1.25, 1.02, 0.85],
+      "reverseRatio": 3.4,
+      "finalDrive": 3.9,
+      "efficiency": 0.86,
+      "shiftTime": 0.22,
+      "upshiftRpmFrac": 0.93,
+      "downshiftRpmFrac": 0.48,
+      "reverseMaxSpeed": 14
+    },
+    "tires": {
+      "gripFront": 1.62,
+      "gripRear": 1.28,
+      "peakSlipDeg": 12,
+      "fullSlideDeg": 25,
+      "slideGrip": 0.53,
+      "minLateralShare": 0.74,
+      "rollingResistance": 5.8
+    },
+    "traction": {
+      "breakaway": 1,
+      "cornerCoupling": 0.85,
+      "spinHold": 0.9,
+      "spinPerExcess": 2,
+      "spinBuildRate": 7,
+      "spinRecoverRate": 2.5,
+      "spinLongGrip": 0.8,
+      "spinLateralGrip": 0.55,
+      "launchBoost": 1.2,
+      "clutchKickSpin": 0.7,
+      "spinRpm": 2200,
+      "tcSlipTarget": 0.94,
+      "tcMaxSlipDeg": 9
+    },
+    "suspension": {
+      "frequency": 1.55,
+      "dampingRatio": 0.42,
+      "travel": 0.12
+    },
+    "brakes": {
+      "force": 14500,
+      "frontBias": 0.66,
+      "handbrakeForce": 4200
+    },
+    "steering": {
+      "maxDeg": 22.5,
+      "highSpeedDeg": 4,
+      "fadeSpeed": 42,
+      "rateDegPerSec": 150,
+      "counterSteerAllowance": 0.75
+    },
+    "aero": {
+      "drag": 0.4,
+      "downforce": 0.5
+    },
+    "nitrous": {
+      "capacity": 3.2,
+      "force": 3600,
+      "torqueMul": 1.25,
+      "refillDrift": 0.09,
+      "refillNearMiss": 0.18,
+      "refillDraft": 0.07,
+      "draftDragMul": 0.7
+    },
+    "drift": {
+      "handbrakeRearGrip": 0.92,
+      "handbrakeYawTorque": 8000,
+      "clutchKickRearGrip": 0.44,
+      "clutchKickTime": 0.45,
+      "powerOversteerGrip": 0.76,
+      "powerOversteerMinSlipDeg": 12,
+      "gripDropRate": 14.1,
+      "gripRecoverRate": 2.44,
+      "maxSlipDeg": 55,
+      "assistTorque": 22750,
+      "yawDamping": 3250,
+      "driftCarve": 0.3,
+      "yawDampingLowSpeed": 4
+    },
+    "surface": {
+      "sidewalkGrip": 1,
+      "offroadGrip": 0.49,
+      "offroadDrag": 900
+    },
+    "collision": {
+      "wallRestitution": 0.12,
+      "wallScrub": 0.22,
+      "railRestitution": 0.04,
+      "railScrub": 0.05,
+      "railAngularScale": 0.18,
+      "railDrag": 4,
+      "railSpeedLoss": 0.4,
+      "carRestitution": 0.3,
+      "angularScale": 0.45
+    }
+  },
+  "cars": {
+    "s64": {
+      "_name": "Proto Compact: light, rev happy, rear wheel drive. Uses base as is.",
+      "drivetrain": { "layout": "rwd" }
+    },
+    "gc14": {
+      "_name": "Proto Hatch: heavier, more torque, slightly less grip, all wheel drive.",
+      "mass": 2000,
+      "drivetrain": { "layout": "awd", "awdFrontShare": 0.4 },
+      "engine": { "redline": 7600, "torqueMul": 1.1 },
+      "tires": { "gripFront": 1.56, "gripRear": 1.23 }
+    },
+    "proto": {
+      "_name": "Proto RS: procedural placeholder used by tests and the asset pipeline. Not selectable. Uses base as is."
+    }
+  },
+  "performanceParts": {
+    "engine": { "torqueMul": [1, 1.07, 1.15, 1.25], "redlineAdd": [0, 200, 450, 700] },
+    "turbo": { "torqueMul": [1, 1.08, 1.17, 1.28], "highRpmBoost": [0, 0.04, 0.08, 0.13] },
+    "exhaust": { "torqueMul": [1, 1.03, 1.05, 1.08] },
+    "transmission": { "shiftTime": [0.22, 0.16, 0.11, 0.07], "finalDriveMul": [1, 0.98, 0.95, 0.92] },
+    "tires": { "gripMul": [1, 1.04, 1.08, 1.13] },
+    "suspension": { "frequencyMul": [1, 1.12, 1.25, 1.38], "gripMul": [1, 1.015, 1.03, 1.045], "steerRateMul": [1, 1.06, 1.12, 1.18] },
+    "brakes": { "forceMul": [1, 1.12, 1.25, 1.4] },
+    "weight": { "massMul": [1, 0.96, 0.92, 0.87] },
+    "nitrous": { "capacity": [3.2, 3.9, 4.7, 5.6], "force": [3600, 4100, 4700, 5400] }
+  }
+}

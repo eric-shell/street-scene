@@ -2,12 +2,21 @@
  * Car collisions. Each car is approximated by three circles along its length.
  * Walls and barriers: positional correction plus an impulse at the contact
  * point; glancing hits mostly keep their speed and slide along, head on hits
- * lose almost all of it. Car vs car: equal-ish impulses. Fixed iteration order.
+ * lose almost all of it. Corner rails bounce and spin little, but scraping
+ * along them drags speed off for as long as the car stays in contact.
+ * Car vs car: equal-ish impulses. Fixed iteration order.
  */
 import { CarState } from './car';
 import { CarTuning } from './tuning';
+import { DT } from './constants';
 import { abs, cos, sign, sin, sqrt } from './math';
 import type { Contact, World } from '../city/world';
+
+/** Hardest static hit of a tick: normal impact speed (m/s) and what was hit. */
+export interface WorldHit {
+  speed: number;
+  kind: Contact['kind'];
+}
 
 const CIRCLES = 3;
 
@@ -27,14 +36,22 @@ function yawInertia(t: CarTuning): number {
 
 const contacts: Contact[] = [];
 
-/** Resolve a car against static walls. Returns the impact speed (m/s) of the hardest hit. */
-export function collideCarWithWorld(c: CarState, t: CarTuning, world: World): number {
+/**
+ * Resolve a car against static walls. Returns the impact speed (m/s) of the
+ * hardest hit; `hit`, when given, also receives the kind of wall it was.
+ */
+export function collideCarWithWorld(c: CarState, t: CarTuning, world: World, hit?: WorldHit): number {
   const fx = sin(c.yaw);
   const fz = cos(c.yaw);
   const m = t.mass;
   const I = yawInertia(t);
   const ang = t.collision.angularScale;
   let impact = 0;
+  let kind: Contact['kind'] = 'wall';
+  // Rail tangent of the deepest rail contact this tick, for sliding friction.
+  let railTx = 0;
+  let railTz = 0;
+  let railDepth = 0;
   for (const circ of circleOffsets(t)) {
     // Two passes handle corners where two walls meet.
     for (let pass = 0; pass < 2; pass++) {
@@ -49,6 +66,11 @@ export function collideCarWithWorld(c: CarState, t: CarTuning, world: World): nu
       const angK = rail ? t.collision.railAngularScale : ang;
       c.x += nx * depth;
       c.z += nz * depth;
+      if (rail && depth > railDepth) {
+        railDepth = depth;
+        railTx = -nz;
+        railTz = nx;
+      }
       const rx = cx - nx * circ.r - c.x;
       const rz = cz - nz * circ.r - c.z;
       const vpx = c.vx + c.yawRate * rz;
@@ -68,8 +90,23 @@ export function collideCarWithWorld(c: CarState, t: CarTuning, world: World): nu
       const dv = Math.min(abs(vt), ((rail ? t.collision.railScrub : t.collision.wallScrub) * j) / m);
       c.vx -= sign(vt) * dv * tx;
       c.vz -= sign(vt) * dv * tz;
-      impact = Math.max(impact, -vn);
+      if (-vn > impact) {
+        impact = -vn;
+        kind = best.kind;
+      }
     }
+  }
+  if (railDepth > 0) {
+    // Scraping a rail: sliding friction for every tick of contact, applied at the center of
+    // mass so it costs speed without spinning the car.
+    const vt = c.vx * railTx + c.vz * railTz;
+    const dv = Math.min(abs(vt), (t.collision.railDrag + t.collision.railSpeedLoss * abs(vt)) * DT);
+    c.vx -= sign(vt) * dv * railTx;
+    c.vz -= sign(vt) * dv * railTz;
+  }
+  if (hit) {
+    hit.speed = impact;
+    hit.kind = kind;
   }
   return impact;
 }

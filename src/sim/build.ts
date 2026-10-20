@@ -35,14 +35,35 @@ export interface DecalLayer {
   text?: string;
 }
 
+/** Per axle stance. Old builds had one offset and one wheel size for both axles; validation migrates them. */
+export interface AxleStance {
+  /** Degrees, negative = top of the wheel leans in. */
+  camber: number;
+  /** Meters the wheel moves outward from its stock track. */
+  offset: number;
+  /** Rim diameter multiplier. The tire's outer diameter never changes (rim grows, sidewall gets thinner). */
+  wheelSize: number;
+}
+
+export const AXLES = ['front', 'rear'] as const;
+export type Axle = (typeof AXLES)[number];
+
+/** Limits shared by validation and the garage sliders. */
+export const STANCE_LIMITS = {
+  rideHeight: [-0.08, 0.06],
+  camber: [-10, 2],
+  offset: [-0.03, 0.08],
+  wheelSize: [0.85, 1.25],
+} as const;
+
 export interface VisualBuild {
   paint: { color: string; finish: PaintFinish };
   trimColor: string;
   /** partId per slot; null means stock (base meshes) or none for optional slots. */
   parts: Partial<Record<PartSlot, string | null>>;
-  wheels: { size: number; color: string };
+  wheels: { color: string };
   decals: DecalLayer[];
-  stance: { rideHeight: number; camberFront: number; camberRear: number; offset: number };
+  stance: { rideHeight: number; front: AxleStance; rear: AxleStance };
   tint: { darkness: number; color: string };
   underglow: {
     enabled: boolean;
@@ -80,9 +101,9 @@ export function defaultVisual(): VisualBuild {
     paint: { color: '#d11f3f', finish: 'metallic' },
     trimColor: '#15161a',
     parts: {},
-    wheels: { size: 1, color: '#c9ced8' },
+    wheels: { color: '#c9ced8' },
     decals: [],
-    stance: { rideHeight: 0, camberFront: 0, camberRear: 0, offset: 0 },
+    stance: { rideHeight: 0, front: { camber: 0, offset: 0, wheelSize: 1 }, rear: { camber: 0, offset: 0, wheelSize: 1 } },
     tint: { darkness: 0.55, color: '#101820' },
     underglow: { enabled: false, color: '#00e5ff', color2: '#ff3df2', pattern: 'steady', brightness: 1, speed: 1, size: 1 },
     headlightColor: '#eaf2ff',
@@ -179,17 +200,29 @@ export function validateVisual(v: unknown): VisualBuild {
       });
     }
   }
+  // Stance per axle. Legacy builds (saves and share codes from before per axle stance) had
+  // stance.camberFront / camberRear, one stance.offset and wheels.size; they seed both axles.
+  const L = STANCE_LIMITS;
+  const legacySize = num(wheels.size, L.wheelSize[0], L.wheelSize[1], 1);
+  const legacyOffset = num(stance.offset, L.offset[0], L.offset[1], 0);
+  const axle = (raw: unknown, legacyCamber: unknown): AxleStance => {
+    const a = obj(raw);
+    return {
+      camber: num(a.camber, L.camber[0], L.camber[1], num(legacyCamber, L.camber[0], L.camber[1], 0)),
+      offset: num(a.offset, L.offset[0], L.offset[1], legacyOffset),
+      wheelSize: num(a.wheelSize, L.wheelSize[0], L.wheelSize[1], legacySize),
+    };
+  };
   return {
     paint: { color: color(paint.color, d.paint.color), finish: oneOf(paint.finish, PAINT_FINISHES, d.paint.finish) },
     trimColor: color(o.trimColor, d.trimColor),
     parts,
-    wheels: { size: num(wheels.size, 0.85, 1.25, 1), color: color(wheels.color, d.wheels.color) },
+    wheels: { color: color(wheels.color, d.wheels.color) },
     decals,
     stance: {
-      rideHeight: num(stance.rideHeight, -0.08, 0.06, 0),
-      camberFront: num(stance.camberFront, -10, 2, 0),
-      camberRear: num(stance.camberRear, -10, 2, 0),
-      offset: num(stance.offset, -0.03, 0.08, 0),
+      rideHeight: num(stance.rideHeight, L.rideHeight[0], L.rideHeight[1], 0),
+      front: axle(stance.front, stance.camberFront),
+      rear: axle(stance.rear, stance.camberRear),
     },
     tint: { darkness: num(tint.darkness, 0, 0.95, d.tint.darkness), color: color(tint.color, d.tint.color) },
     underglow: {
