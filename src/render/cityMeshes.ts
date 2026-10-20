@@ -1,8 +1,8 @@
 /**
- * Turns the pure city description into three.js meshes: roads with markings,
- * curbs and sidewalks, the buildings (regional architecture, buildings.ts),
- * streetlight lamp positions, neon signs and the start line. Built once per
- * world; read only.
+ * Turns the pure city description into three.js meshes: roads with markings
+ * (alleys cobbled and unmarked), curbs and sidewalks, the buildings (regional
+ * architecture, buildings.ts), streetlight lamp positions, neon signs and the
+ * start line. Built once per world; read only.
  */
 import * as THREE from 'three';
 import { CITY } from '../city/config';
@@ -18,7 +18,9 @@ import {
   SIGN_ATLAS_COLS,
   SIGN_ATLAS_ROWS,
   SIGN_NAMES,
+  COBBLE_TILE,
   makeAsphalt,
+  makeCobble,
   makeSidewalk,
   makeSignAtlas,
 } from './textures';
@@ -131,13 +133,50 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     }
   };
   const stepOf = (ei: number) => (g.edges[ei].kind === 'backAlley' ? 1 : 6);
+  // Alleys (raceway alleys, back alleys, route shortcuts) are cobbled curb to curb between their
+  // mouths, matching the sim's 'cobble' surface patches; the junction fans stay asphalt. Their UVs
+  // run along and across the strip so the stones follow the alley.
+  const cobbled = (ei: number) => g.edges[ei].kind === 'alley' || g.edges[ei].kind === 'backAlley';
+  const cobble = new GeoBuilder();
+  const alignedStrip = (gb: GeoBuilder, l0: Vec2, l1: Vec2, r0: Vec2, r1: Vec2, lift: number, uvScale: number, step: number) => {
+    const len = Math.max(Math.hypot(l1.x - l0.x, l1.z - l0.z), Math.hypot(r1.x - r0.x, r1.z - r0.z));
+    const across = Math.hypot(r0.x - l0.x, r0.z - l0.z) / uvScale;
+    const steps = Math.max(1, Math.ceil(len / step));
+    let prevL = -1;
+    let prevR = -1;
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const u = (t * len) / uvScale;
+      const lx = l0.x + (l1.x - l0.x) * t;
+      const lz = l0.z + (l1.z - l0.z) * t;
+      const rx = r0.x + (r1.x - r0.x) * t;
+      const rz = r0.z + (r1.z - r0.z) * t;
+      const [lnx, lny, lnz] = normalAt(lx, lz);
+      const [rnx, rny, rnz] = normalAt(rx, rz);
+      const vl = gb.vertex(lx, h(lx, lz) + lift, lz, lnx, lny, lnz, u, 0);
+      const vr = gb.vertex(rx, h(rx, rz) + lift, rz, rnx, rny, rnz, u, across);
+      if (i > 0) gb.quadFacing(prevL, prevR, vr, vl, 0, 1, 0);
+      prevL = vl;
+      prevR = vr;
+    }
+  };
   g.edges.forEach((_, ei) => {
     const m = mouths[ei];
-    strip(road, m.aP.curb, m.bP.curb, m.aN.curb, m.bN.curb, ROAD_Y, ROAD_Y, 10, stepOf(ei));
+    if (cobbled(ei)) alignedStrip(cobble, m.aP.curb, m.bP.curb, m.aN.curb, m.bN.curb, ROAD_Y, COBBLE_TILE, stepOf(ei));
+    else strip(road, m.aP.curb, m.bP.curb, m.aN.curb, m.bN.curb, ROAD_Y, ROAD_Y, 10, stepOf(ei));
   });
   const roadMesh = new THREE.Mesh(track(road.build()), roadMat);
   roadMesh.name = 'roads';
   group.add(roadMesh);
+  if (cobble.vertexCount) {
+    const stones = makeCobble(world.seed);
+    const cobbleMat = track(
+      new THREE.MeshStandardMaterial({ map: track(stones.map), roughnessMap: track(stones.roughness), roughness: 1, metalness: 0, color: 0xb0aea8, envMapIntensity: 1.2 }),
+    );
+    const cobbleMesh = new THREE.Mesh(track(cobble.build()), cobbleMat);
+    cobbleMesh.name = 'cobbles';
+    group.add(cobbleMesh);
+  }
 
   // ---------- Lane markings and crosswalks ----------
   const marks = new GeoBuilder(true);
@@ -169,6 +208,8 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     }
   };
   g.edges.forEach((e, ei) => {
+    // No lane lines or crosswalk stripes on cobbles.
+    if (cobbled(ei)) return;
     const m = mouths[ei];
     const a = { x: (m.aP.curb.x + m.aN.curb.x) / 2, z: (m.aP.curb.z + m.aN.curb.z) / 2 };
     const b = { x: (m.bP.curb.x + m.bN.curb.x) / 2, z: (m.bP.curb.z + m.bN.curb.z) / 2 };

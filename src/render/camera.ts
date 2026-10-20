@@ -7,7 +7,8 @@
  * after letting go the view eases back behind the car once it is moving
  * (ORBIT). Two shake layers ride on every follow camera: a heavy one for wall
  * and car crashes and sudden stops (crash()), a light one for knocking over
- * street furniture (knock()). Each is "trauma" that decays linearly, shown
+ * street furniture (knock()), plus a fine rumble on cobbles (rumble(), fed
+ * each frame). Each trauma layer decays linearly and is shown
  * squared through smooth noise as sway, bob and roll, so it is the same at
  * any frame rate and small hits stay subtle. Render only.
  *
@@ -74,6 +75,12 @@ export interface CameraParams {
     lightShake: number;
     lightRoll: number;
     lightDecay: number;
+    /** Cobble rumble: a fine, fast shake while rolling on cobbles, growing with speed between the two speeds (m/s), eased at rumbleEase (1/s). */
+    rumbleShake: number;
+    rumbleRoll: number;
+    rumbleMinSpeed: number;
+    rumbleFullSpeed: number;
+    rumbleEase: number;
     crashMin: number;
     crashFull: number;
     slowdownMin: number;
@@ -160,6 +167,11 @@ export const CAMERA_DEFAULTS: CameraParams = {
     lightShake: 0.09,
     lightRoll: 1.2,
     lightDecay: 3.5,
+    rumbleShake: 0.012,
+    rumbleRoll: 0.28,
+    rumbleMinSpeed: 3,
+    rumbleFullSpeed: 26,
+    rumbleEase: 7,
     crashMin: 3,
     crashFull: 16,
     slowdownMin: 0.45,
@@ -247,6 +259,11 @@ export const CAMERA_PARAM_META: Record<string, [number, number, number, string]>
   'common.lightShake': [0, 0.5, 0.005, 'Light shake (props knocked over): sway and bob at full trauma (m).'],
   'common.lightRoll': [0, 5, 0.05, 'Light shake roll at full trauma (deg).'],
   'common.lightDecay': [0.5, 20, 0.1, 'Light trauma lost per second.'],
+  'common.rumbleShake': [0, 0.1, 0.001, 'Cobble rumble: sway and bob at full speed on cobbles (m).'],
+  'common.rumbleRoll': [0, 2, 0.01, 'Cobble rumble roll at full speed (deg).'],
+  'common.rumbleMinSpeed': [0, 20, 0.5, 'Speed on cobbles where the rumble starts (m/s).'],
+  'common.rumbleFullSpeed': [5, 60, 0.5, 'Speed on cobbles that gives the full rumble (m/s).'],
+  'common.rumbleEase': [0.5, 30, 0.5, 'How fast the rumble fades in and out at an alley mouth (1/s).'],
   'common.crashMin': [0, 20, 0.5, 'Wall or car impact speed below which there is no heavy shake (m/s).'],
   'common.crashFull': [2, 60, 0.5, 'Wall or car impact speed that gives full heavy trauma (m/s).'],
   'common.slowdownMin': [0.1, 5, 0.05, 'Speed lost in one sim tick that counts as a crash (m/s; braking hard loses about 0.25).'],
@@ -293,6 +310,9 @@ export class ChaseCamera {
   /** Shake trauma 0..1 of the heavy and light layers, and the noise clock (s). */
   private heavy = 0;
   private light = 0;
+  /** Cobble rumble 0..1: what the surface asks for this frame, and the eased level shown. */
+  private rumbleTarget = 0;
+  private rumbleLevel = 0;
   private shakeT = 0;
   private readonly shakeOff = new THREE.Vector3();
   private scratch: number[] = [];
@@ -343,6 +363,12 @@ export class ChaseCamera {
     this.light = Math.min(1, Math.max(this.light, amount) + amount * 0.2);
   }
 
+  /** Rolling on cobbles at this speed (m/s; 0 = not on cobbles): a fine rumble that grows with speed, eased in and out. */
+  rumble(speed: number): void {
+    const c = CAMERA.common;
+    this.rumbleTarget = speed > 0 ? Math.max(0, Math.min(1, (speed - c.rumbleMinSpeed) / Math.max(0.1, c.rumbleFullSpeed - c.rumbleMinSpeed))) : 0;
+  }
+
   /** Heavy trauma from a wall or car impact speed (m/s). */
   crashAt(speed: number): void {
     const c = CAMERA.common;
@@ -357,24 +383,28 @@ export class ChaseCamera {
 
   /**
    * This frame's shake: an offset in camera space (x right, y up, m) and a
-   * roll (rad), from smooth noise at a low (heavy) and a high (light) band.
+   * roll (rad), from smooth noise at a low (heavy) and a high (light) band,
+   * plus the cobble rumble at a higher band still (eased, with a slow
+   * waver so it reads as stones rather than a buzz).
    */
   private shakeNow(dt: number): number {
     const c = CAMERA.common;
     this.shakeT += dt;
     this.heavy = Math.max(0, this.heavy - dt * c.heavyDecay);
     this.light = Math.max(0, this.light - dt * c.lightDecay);
+    this.rumbleLevel += (this.rumbleTarget - this.rumbleLevel) * (1 - Math.exp(-c.rumbleEase * dt));
     const h = this.heavy * this.heavy;
     const l = this.light * this.light;
     const t = this.shakeT;
+    const r = this.rumbleLevel * (0.75 + 0.25 * Math.sin(t * 9.7));
     // Sums of incommensurate sines: smooth, never repeating, zero mean.
     const n = (a: number, b: number, p: number) => 0.6 * Math.sin(t * a + p) + 0.4 * Math.sin(t * b + p * 1.7);
     this.shakeOff.set(
-      h * c.heavyShake * n(19, 31, 0.3) + l * c.lightShake * n(47, 61, 2.1),
-      h * c.heavyShake * 0.75 * n(23, 37, 1.1) + l * c.lightShake * 0.75 * n(53, 71, 4.2),
+      h * c.heavyShake * n(19, 31, 0.3) + l * c.lightShake * n(47, 61, 2.1) + r * c.rumbleShake * n(83, 127, 3.3),
+      h * c.heavyShake * 0.75 * n(23, 37, 1.1) + l * c.lightShake * 0.75 * n(53, 71, 4.2) + r * c.rumbleShake * 0.75 * n(97, 139, 0.9),
       0,
     );
-    return (h * c.heavyRoll * n(13, 29, 5.3) + l * c.lightRoll * n(41, 59, 0.7)) * (Math.PI / 180);
+    return (h * c.heavyRoll * n(13, 29, 5.3) + l * c.lightRoll * n(41, 59, 0.7) + r * c.rumbleRoll * n(79, 109, 2.4)) * (Math.PI / 180);
   }
 
   update(p: CarPose, vx: number, vz: number, nitro: boolean, carLength: number, dt: number): void {

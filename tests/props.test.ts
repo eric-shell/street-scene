@@ -6,8 +6,8 @@ import { Prop, PropKind } from '../src/city/props';
 import { routeSample } from '../src/city/route';
 import { carSnapshot, input, raceConfig, replayLog, runAutopilot } from './helpers';
 
-/** A prop of `kind` with a clear run up of `run` meters along the sidewalk (parallel to the curb). */
-function findTarget(r: RaceState, kind: PropKind, run: number): { prop: Prop; dx: number; dz: number } {
+/** A prop of `kind` with a clear run up of `run` meters along the sidewalk (parallel to the curb), or null. */
+function findTarget(r: RaceState, kind: PropKind, run: number): { prop: Prop; dx: number; dz: number } | null {
   const w = r.world;
   for (const p of w.props) {
     if (p.kind !== kind || w.surfaceAt(p.x, p.z) === 'road') continue;
@@ -31,24 +31,36 @@ function findTarget(r: RaceState, kind: PropKind, run: number): { prop: Prop; dx
     for (let s = -run; s <= 4 && ok; s += 1) {
       const x = p.x + dx * s;
       const z = p.z + dz * s;
+      // (The true distance to the projected route point: lateral alone misses points beyond a segment's end.)
       const rp = w.routeProgress(x, z);
       const q = routeSample(w.route, rp.s);
       ok = w.wallClearance(x, z, 2) >= 1.2 && w.surfaceAt(x, z) !== 'road' && Math.hypot(x - q.x, z - q.z) < w.route.segWidth[rp.seg] / 2 + 6;
     }
     if (ok) return { prop: p, dx, dz };
   }
-  throw new Error(`no clear ${kind}`);
+  return null;
 }
+
+/** Seeds tried in turn for a race with a clear target of the wanted kind. */
+const RAM_SEEDS = [20261019, 20261020, 20261021, 20261022, 20261023];
 
 /** Launch the player at `speed` toward the prop and report its speed just before and after the hit. */
 function ram(kind: PropKind, speed: number) {
-  const r = createRace(raceConfig(20261019, 'circuit', 0));
+  let r = createRace(raceConfig(RAM_SEEDS[0], 'circuit', 0));
+  let target = findTarget(r, kind, 9);
+  for (let i = 1; i < RAM_SEEDS.length && !target; i++) {
+    r = createRace(raceConfig(RAM_SEEDS[i], 'circuit', 0));
+    target = findTarget(r, kind, 9);
+  }
+  if (!target) throw new Error(`no clear ${kind}`);
   r.tick = r.countdownTicks;
   r.phase = 'racing';
-  const { prop, dx, dz } = findTarget(r, kind, 9);
+  const { prop, dx, dz } = target;
   const rc = r.cars[0];
   const c = rc.state;
   placeCar(c, prop.x - dx * 8, prop.z - dz * 8, yawOf(dx, dz), r.world);
+  // Anywhere on the map: forget the grid's route position so the lost check measures from here.
+  rc.seg = -1;
   c.vx = dx * speed;
   c.vz = dz * speed;
   for (const wh of c.wheels) wh.spinRate = speed / rc.tuning.geometry.wheelRadius;

@@ -2,7 +2,10 @@
  * Destructible props from CityBlocks.props: street furniture (streetlights,
  * traffic lights, garbage cans, benches, bus stops) and district clutter
  * (bushes, planter pots, cafe tables, barrels, crates, dumpsters, news boxes,
- * trash bags), instanced per kind and part, tinted per instance. Traffic
+ * trash bags, and the construction pieces in route shortcuts: fence panels
+ * with contractors' banners, cones, sawhorse barricades with a lamp, water
+ * filled barriers, sandbags, pallets), instanced per kind and part, tinted
+ * per instance. Traffic
  * signals cycle red / amber / green in a shader (per intersection offset,
  * crossing directions out of phase), so they cost nothing on the CPU.
  *
@@ -198,8 +201,104 @@ function trashBagsGeo(): THREE.BufferGeometry {
   return s.build();
 }
 
+// ---------- Construction site pieces (route shortcuts) ----------
+
+/** Temporary fence panel, local +X along the fence: feet, galvanized frame and a chain link grid (banner separate). */
+function fenceFrameGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const steel = col(0x9aa0a8);
+  const wire = col(0x6c727a);
+  const foot = col(0x7e8086);
+  for (const x of [-1.15, 1.15]) {
+    box(s, x, 0.07, 0, 0.26, 0.14, 0.62, foot);
+    box(s, x, 1.08, 0, 0.05, 1.96, 0.05, steel);
+  }
+  for (const y of [0.16, 2.04]) box(s, 0, y, 0, 2.36, 0.05, 0.05, steel);
+  for (let k = 1; k < 8; k++) box(s, -1.15 + (2.3 * k) / 8, 1.1, 0, 0.012, 1.86, 0.012, wire);
+  for (let k = 1; k < 7; k++) box(s, 0, 0.16 + (1.88 * k) / 7, 0, 2.3, 0.012, 0.012, wire);
+  // Contractor's livery on the banner (white bands and a dark logo block, both faces), not tinted.
+  for (const z of [0.04, -0.04]) {
+    box(s, 0, 1.36, z, 2.24, 0.1, 0.012, col(0xf2f2ee), false);
+    box(s, 0, 0.62, z, 2.24, 0.06, 0.012, col(0xf2f2ee), false);
+    box(s, -0.55, 0.98, z, 0.62, 0.42, 0.012, col(0x1a1c22), false);
+    box(s, 0.38, 0.98, z, 0.9, 0.12, 0.012, col(0xf2f2ee), false);
+  }
+  return s.build();
+}
+
+/** The fence banner (hoarding wrap), tinted per instance in a contractor's colour. */
+function fenceBannerGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  box(s, 0, 0.98, 0, 2.3, 0.96, 0.06, col(0xffffff), false);
+  return s.build();
+}
+
+function trafficConeGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const orange = col(0xff5a14);
+  box(s, 0, 0.02, 0, 0.44, 0.04, 0.44, col(0x1c1d22));
+  cyl(s, 0, 0, 0.04, 0.36, 0.17, 0.115, 8, orange);
+  cyl(s, 0, 0, 0.36, 0.48, 0.118, 0.092, 8, col(0xf4f4f0));
+  cyl(s, 0, 0, 0.48, 0.74, 0.09, 0.03, 8, orange);
+  return s.build();
+}
+
+/** Striped sawhorse barricade: two planks of orange and white on splayed legs (lamp separate). */
+function sawhorseGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const leg = col(0x3a3c42);
+  for (const x of [-0.62, 0.62]) for (const z of [-0.22, 0.22]) box(s, x, 0.48, z, 0.05, 0.96, 0.05, leg);
+  for (const x of [-0.62, 0.62]) box(s, x, 0.08, 0, 0.06, 0.05, 0.5, leg);
+  for (const y of [0.6, 0.92]) {
+    for (let k = 0; k < 7; k++) box(s, -0.7 + 0.2 * k + 0.1, y, 0, 0.2, 0.22, 0.035, col(k % 2 ? 0xf4f4f0 : 0xff6a1a));
+  }
+  return s.build();
+}
+
+function sawhorseLampGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  box(s, 0.55, 1.1, 0, 0.11, 0.13, 0.08, col(0xffa21a, 2.4), false);
+  return s.build();
+}
+
+/** Water filled plastic barrier, about 1.8 m long (tinted per instance). */
+function waterBarrierGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const body = col(0xf4f4f0);
+  box(s, 0, 0.17, 0, 1.8, 0.34, 0.6, body);
+  box(s, 0, 0.52, 0, 1.76, 0.36, 0.44, body);
+  box(s, 0, 0.78, 0, 1.72, 0.16, 0.3, body);
+  for (const x of [-0.55, 0.55]) cyl(s, x, 0, 0.86, 0.9, 0.08, 0.08, 6, col(0x2a2c32));
+  return s.build();
+}
+
+function sandbagsGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const rows: [number, number[]][] = [
+    [0.08, [-0.6, -0.2, 0.2, 0.6]],
+    [0.24, [-0.4, 0, 0.4]],
+    [0.4, [-0.2, 0.2]],
+  ];
+  rows.forEach(([y, xs], r) => xs.forEach((x, k) => box(s, x, y, ((r + k) % 2) * 0.05 - 0.025, 0.4, 0.16, 0.3, col(0xb09a6a, 0.85 + 0.15 * ((k + r) % 3)))));
+  return s.build();
+}
+
+/** A stack of pallets with a strapped load on top. */
+function palletsGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const wood = col(0xa8875a);
+  const dark = col(0x7a5e3a);
+  for (const y0 of [0, 0.14, 0.28]) {
+    for (const z of [-0.45, 0, 0.45]) box(s, 0, y0 + 0.045, z, 1.1, 0.09, 0.1, dark);
+    for (let k = 0; k < 6; k++) box(s, -0.5 + 0.2 * k, y0 + 0.11, 0, 0.13, 0.025, 1.0, wood);
+  }
+  box(s, 0.05, 0.6, 0, 0.9, 0.36, 0.8, col(0x8a6a44));
+  box(s, 0.05, 0.6, 0, 0.92, 0.04, 0.82, col(0x1c1d20));
+  return s.build();
+}
+
 /** Per kind: mesh parts (geometry, material slot, tinted per instance?) and the tints. */
-const CLUTTER: Record<DistrictPropKind, { parts: { geo: () => THREE.BufferGeometry; mat: 'matte' | 'solid' | 'canopy'; tint?: boolean }[]; tints: number[]; spin: boolean }> = {
+const CLUTTER: Record<DistrictPropKind, { parts: { geo: () => THREE.BufferGeometry; mat: 'matte' | 'solid' | 'canopy' | 'glow'; tint?: boolean }[]; tints: number[]; spin: boolean }> = {
   bush: { parts: [{ geo: bushGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xd8e8c8, 0xf0ffd8, 0xc8d8b0], spin: true },
   planterPot: { parts: [{ geo: planterPotGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xe8dcd0, 0xd0d8e0], spin: true },
   cafeTable: { parts: [{ geo: cafeFrameGeo, mat: 'solid' }, { geo: cafeCanopyGeo, mat: 'canopy', tint: true }], tints: [0xc81e2e, 0x1d55c4, 0xe8e8ea, 0x2a9d5a, 0xf2b81c, 0x15161a], spin: true },
@@ -208,6 +307,13 @@ const CLUTTER: Record<DistrictPropKind, { parts: { geo: () => THREE.BufferGeomet
   dumpster: { parts: [{ geo: dumpsterGeo, mat: 'solid', tint: true }], tints: [0xffffff, 0x6080ff, 0x9a9a9a, 0xd06030], spin: false },
   newsBox: { parts: [{ geo: newsBoxGeo, mat: 'solid', tint: true }], tints: [0x2050c0, 0xc02020, 0xe0b020, 0x20a050, 0xe0e0e0], spin: false },
   trashBags: { parts: [{ geo: trashBagsGeo, mat: 'solid' }], tints: [0xffffff], spin: true },
+  // Banners in contractors' colours: safety orange, navy, green, yellow, red, charcoal.
+  fencePanel: { parts: [{ geo: fenceFrameGeo, mat: 'solid' }, { geo: fenceBannerGeo, mat: 'canopy', tint: true }], tints: [0xff6a1a, 0x1d3f8a, 0x2a8a4a, 0xf2b81c, 0xc0202a, 0x2a2c32], spin: false },
+  trafficCone: { parts: [{ geo: trafficConeGeo, mat: 'matte' }], tints: [0xffffff], spin: true },
+  sawhorse: { parts: [{ geo: sawhorseGeo, mat: 'matte' }, { geo: sawhorseLampGeo, mat: 'glow' }], tints: [0xffffff], spin: false },
+  waterBarrier: { parts: [{ geo: waterBarrierGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xff6a1a, 0xe03030, 0xffffff, 0xff8a2a], spin: false },
+  sandbags: { parts: [{ geo: sandbagsGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xe8dcc0, 0xc8b890], spin: false },
+  pallets: { parts: [{ geo: palletsGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xd8c8b0, 0xb8a890], spin: true },
 };
 const CLUTTER_KINDS = Object.keys(CLUTTER) as DistrictPropKind[];
 
@@ -591,7 +697,8 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
     const list = byKind(kind);
     if (!list.length) continue;
     const def = CLUTTER[kind];
-    const ids = def.parts.map((part, k) => addMesh(`${kind}${k}`, part.geo(), part.mat === 'matte' ? matteMat : part.mat === 'canopy' ? canopyMat : solidMat, list.length));
+    const matOf = { matte: matteMat, canopy: canopyMat, solid: solidMat, glow: glowMat } as const;
+    const ids = def.parts.map((part, k) => addMesh(`${kind}${k}`, part.geo(), matOf[part.mat], list.length));
     list.forEach((p, i) => {
       const yaw = p.yaw + (def.spin ? hash01(p.id * 7) * 6.28 : 0);
       const tint = tmpTint.setHex(def.tints[(hash01(p.id * 17) * def.tints.length) | 0]).multiplyScalar(0.85 + 0.3 * hash01(p.id * 23));
@@ -871,6 +978,46 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
         spawn(D_GLASS, 0, 0.8, 0.23, p.yaw, 0.2, 0.16, 0.01, rnd(0.5, 0.8), rnd(2, 3.5), 8, col(0xbfe0ff), rnd(2.5, 4));
         for (let k = 0; k < 10; k++) spawn(D_BOX, rnd(-0.2, 0.2), rnd(0.5, 1), rnd(-0.2, 0.2), rnd(0, 6.28), rnd(0.1, 0.16), 0.004, rnd(0.12, 0.2), rnd(0.25, 0.6), rnd(2.5, 5), 4, col(0xeeeae0), rnd(3.5, 5));
         return;
+      case 'fencePanel': {
+        // The panel folds over and skates off; its feet stay near the line, wire and banner tear loose.
+        const steel = col(0x9aa0a8);
+        spawn(D_BOX, 0, 1.1, 0, p.yaw + rnd(-0.4, 0.4), 1.18, 0.98, 0.03, rnd(0.55, 0.85), rnd(1.5, 3) + speed * 0.06, 4, col(0x7a8088), rnd(4.5, 6), true);
+        spawn(D_BOX, rnd(-0.3, 0.3), 1.0, 0.05, p.yaw + rnd(-0.6, 0.6), 1.12, 0.46, 0.012, rnd(0.4, 0.7), rnd(2.5, 4.5) + speed * 0.08, 6, tint.clone(), rnd(4.5, 6));
+        for (const x of [-1.15, 1.15]) spawn(D_BOX, x, 0.07, 0, p.yaw + rnd(-0.5, 0.5), 0.13, 0.07, 0.31, rnd(0.15, 0.3), rnd(0.5, 1.2), 4, col(0x7e8086), rnd(5, 6.5));
+        for (let k = 0; k < 6; k++) spawn(D_CYL, rnd(-1, 1), rnd(0.3, 1.9), 0, rnd(0, 6.28), 0.012, rnd(0.2, 0.45), 0.012, rnd(0.4, 0.9), rnd(1.5, 4), 10, steel, rnd(3, 4.5), true);
+        return;
+      }
+      case 'trafficCone':
+        spawn(D_CYL, 0, 0.4, 0, yaw, 0.12, 0.36, 0.12, rnd(0.7, 1.1), rnd(2.5, 5) + speed * 0.12, 12, col(0xff5a14), rnd(4, 5.5));
+        spawn(D_BOX, 0, 0.02, 0, yaw, 0.22, 0.02, 0.22, rnd(0.4, 0.8), rnd(1, 2.5), 8, col(0x1c1d22), rnd(4, 5.5));
+        return;
+      case 'sawhorse': {
+        for (const y of [0.6, 0.92]) spawn(D_BOX, rnd(-0.1, 0.1), y, 0, p.yaw + rnd(-0.5, 0.5), 0.7, 0.11, 0.02, rnd(0.55, 0.95), rnd(2, 4) + speed * 0.09, 9, col(y > 0.8 ? 0xff6a1a : 0xf4f4f0), rnd(4.5, 6));
+        for (let k = 0; k < 4; k++) spawn(D_BOX, k < 2 ? -0.62 : 0.62, 0.5, k % 2 ? 0.22 : -0.22, rnd(0, 6.28), 0.025, 0.48, 0.025, rnd(0.4, 0.8), rnd(1.5, 3), 9, col(0x3a3c42), rnd(4, 5.5));
+        spawn(D_GLOW, 0.55, 1.1, 0, rnd(0, 6.28), 0.055, 0.065, 0.04, rnd(0.6, 1), rnd(2.5, 4.5), 12, col(0xffa21a, 2.4), rnd(2.5, 3.5));
+        return;
+      }
+      case 'waterBarrier': {
+        // The shell splits and the water goes everywhere.
+        for (let k = 0; k < 3; k++) spawn(D_BOX, -0.6 + 0.6 * k, 0.45, 0, p.yaw + rnd(-0.6, 0.6), 0.32, rnd(0.25, 0.4), 0.26, rnd(0.35, 0.65), rnd(1.5, 3.5) + speed * 0.06, 6, col(0xf4f4f0).multiply(tint), rnd(5, 6.5));
+        for (let k = 0; k < 18; k++) spawn(D_GLASS, rnd(-0.8, 0.8), rnd(0.3, 0.8), rnd(-0.25, 0.25), rnd(0, 6.28), rnd(0.05, 0.12), rnd(0.05, 0.12), 0.01, rnd(0.3, 0.8), rnd(2, 4.5), 8, col(0x9fc6e0), rnd(1.2, 2.2));
+        debris.burst(p.x, p.y + 0.5, p.z, dx, dz, speed * 0.25 + 2, 10);
+        return;
+      }
+      case 'sandbags':
+        for (let k = 0; k < 6; k++) spawn(D_BOX, rnd(-0.6, 0.6), rnd(0.1, 0.45), rnd(-0.1, 0.1), rnd(0, 6.28), 0.2, 0.08, 0.15, rnd(0.25, 0.55), rnd(0.8, 2) + speed * 0.04, 5, col(0xb09a6a, rnd(0.8, 1.05)).multiply(tint), rnd(5, 6.5));
+        for (let k = 0; k < 10; k++) {
+          const s = rnd(0.03, 0.07);
+          spawn(D_BOX, rnd(-0.5, 0.5), rnd(0.2, 0.5), rnd(-0.15, 0.15), rnd(0, 6.28), s, s, s, rnd(0.3, 0.7), rnd(1, 3), 8, col(0xc8b080), rnd(2, 3.5));
+        }
+        debris.burst(p.x, p.y + 0.3, p.z, dx, dz, speed * 0.15 + 1, 6);
+        return;
+      case 'pallets': {
+        const wood = col(0xa8875a).multiply(tint);
+        for (let k = 0; k < 10; k++) spawn(D_BOX, rnd(-0.5, 0.5), rnd(0.05, 0.4), rnd(-0.4, 0.4), rnd(0, 6.28), rnd(0.4, 0.55), 0.015, rnd(0.05, 0.07), rnd(0.45, 0.85), rnd(1.5, 3.5) + speed * 0.07, 9, wood.clone().multiplyScalar(rnd(0.75, 1.1)));
+        spawn(D_BOX, 0.05, 0.6, 0, yaw + rnd(-0.4, 0.4), 0.45, 0.18, 0.4, rnd(0.45, 0.75), rnd(2, 3.5) + speed * 0.08, 6, col(0x8a6a44).multiply(tint), rnd(5, 6.5), true);
+        return;
+      }
       case 'trashBags':
         for (let k = 0; k < 3; k++) spawn(D_BOX, rnd(-0.3, 0.3), 0.3, rnd(-0.3, 0.3), rnd(0, 6.28), rnd(0.22, 0.3), rnd(0.18, 0.25), rnd(0.22, 0.3), rnd(0.5, 0.9), rnd(1.5, 3.5) + speed * 0.06, 6, col(0x17191c), rnd(4, 5.5));
         for (let k = 0; k < 10; k++) {

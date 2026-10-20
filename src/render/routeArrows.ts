@@ -14,15 +14,12 @@
  * route past a side closure, toward the turn at a head-on one), hovering,
  * scanline shimmering, fading in from the distance and out again before it
  * would fill the screen. Behind the barriers stand the street meets
- * (meetPlan.ts). Over the entry of every route shortcut floats the same kind
- * of sign in hot pink, "SHORTCUT" with chevrons pointing into the alley.
- * Render only.
+ * (meetPlan.ts). Render only.
  */
 import * as THREE from 'three';
 import type { World } from '../city/world';
 import type { Wall } from '../city/blocks';
 import type { BarrierGroup, RailWall } from '../city/route';
-import { routeSample } from '../city/route';
 import { ChevronsRight, drawIcon } from '../ui/icons';
 import { GeoBuilder } from './geoBuilder';
 import { FOG_DENSITY } from './lighting';
@@ -216,67 +213,6 @@ function signTexture(): THREE.CanvasTexture {
   return t;
 }
 
-/** Shortcut sign colour (hot pink, apart from the cyan route guidance). */
-const SHORTCUT_COLOR = 0xff2bd6;
-
-/**
- * "SHORTCUT" and chevrons pointing toward the alley, in the sign channels (r
- * marching chevrons, g tube frame and lettering, b backplate). Two textures,
- * one per side, so the lettering never reads mirrored.
- */
-function shortcutTexture(right: boolean): THREE.CanvasTexture {
-  const W = 1024;
-  const H = 256;
-  const c = document.createElement('canvas');
-  c.width = W;
-  c.height = H;
-  const ctx = c.getContext('2d')!;
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, W, H);
-  ctx.globalCompositeOperation = 'lighter';
-  const rr = (x: number, y: number, w: number, h: number, r: number) => {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
-    ctx.closePath();
-  };
-  ctx.fillStyle = '#0000ff';
-  rr(14, 14, W - 28, H - 28, 46);
-  ctx.fill();
-  ctx.strokeStyle = '#00ff00';
-  ctx.shadowColor = '#00ff00';
-  ctx.shadowBlur = 16;
-  ctx.lineWidth = 11;
-  rr(20, 20, W - 40, H - 40, 40);
-  ctx.stroke();
-  // Lettering on the side away from the alley, chevrons on the side toward it.
-  const textX = right ? 345 : W - 345;
-  ctx.fillStyle = '#00ff00';
-  ctx.font = 'bold 118px "Arial Black", Impact, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.shadowBlur = 20;
-  ctx.fillText('SHORTCUT', textX, H / 2 + 6, 560);
-  ctx.shadowColor = '#ff0000';
-  ctx.shadowBlur = 20;
-  for (let i = 0; i < 2; i++) {
-    if (right) drawIcon(ctx, ChevronsRight, 660 + i * 150, 58, 140, '#ff0000', 3.4);
-    else {
-      ctx.save();
-      ctx.translate(W, 0);
-      ctx.scale(-1, 1);
-      drawIcon(ctx, ChevronsRight, 660 + i * 150, 58, 140, '#ff0000', 3.4);
-      ctx.restore();
-    }
-  }
-  const t = new THREE.CanvasTexture(c);
-  t.anisotropy = 8;
-  return t;
-}
-
 export interface RouteArrows {
   group: THREE.Group;
   barriers: BarrierInfo[];
@@ -367,23 +303,7 @@ export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classif
     if (signs.some((s) => Math.hypot(s.x - mx, s.z - mz) < 16)) return;
     signs.push({ x: mx - mid.nx * 1.2, y: world.heightAt(mx, mz) + SIGN.height + 0.4, z: mz - mid.nz * 1.2, yaw: Math.atan2(mid.nx, mid.nz), w: 15, h: 15 / SIGN.aspect, flip: flipFor(mid), phase: (ci * 0.37) % 1, tilt: -0.1 });
   });
-  // Route shortcuts: a pink sign just past each entry, over the alley side of the road, facing the
-  // traffic and pointing into the alley.
-  const shortcutSigns: { right: Board[]; left: Board[] } = { right: [], left: [] };
-  route.shortcuts.forEach((sc, i) => {
-    const at = routeSample(route, sc.sIn + 7);
-    const ax = sc.bx - sc.ax;
-    const az = sc.bz - sc.az;
-    // Left of travel (tx, tz) is (tz, -tx) in this route's convention (see buildRoute's grid).
-    const leftDot = at.tz * ax - at.tx * az;
-    const side = leftDot > 0 ? 1 : -1;
-    const half = route.segWidth[at.seg] / 2 + 2.2;
-    const x = at.x + at.tz * half * side;
-    const z = at.z - at.tx * half * side;
-    // Viewer looks along +t; the sign faces back at them. Seen by the driver, left of travel is on the left.
-    const board: Board = { x, y: world.heightAt(x, z) + SIGN.height - 0.4, z, yaw: Math.atan2(-at.tx, -at.tz), w: 11, h: 11 / SIGN.aspect, flip: 1, phase: (i * 0.41) % 1, tilt: -0.06 };
-    (side > 0 ? shortcutSigns.left : shortcutSigns.right).push(board);
-  });
+  void route;
 
   if (signs.length) {
     const geo = new THREE.PlaneGeometry(1, 1);
@@ -417,16 +337,6 @@ export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classif
     mats.push(mat);
     disposables.push(geo, mat);
   }
-  for (const right of [true, false]) {
-    const list = right ? shortcutSigns.right : shortcutSigns.left;
-    if (!list.length) continue;
-    const tex = shortcutTexture(right);
-    const mesh = signMesh(list, tex, SHORTCUT_COLOR);
-    mesh.name = 'shortcutSigns';
-    group.add(mesh);
-    mats.push(mesh.material as THREE.ShaderMaterial);
-    disposables.push(tex, mesh.geometry, mesh.material as THREE.ShaderMaterial);
-  }
 
   return {
     group,
@@ -441,37 +351,6 @@ export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classif
       for (const d of disposables) d.dispose();
     },
   };
-}
-
-/** One instanced sign mesh (signVert / signFrag) for boards sharing a texture and colour. */
-function signMesh(boards: Board[], tex: THREE.Texture, color: number): THREE.InstancedMesh {
-  const geo = new THREE.PlaneGeometry(1, 1);
-  const flip = new Float32Array(boards.length);
-  const phase = new Float32Array(boards.length);
-  const mat = new THREE.ShaderMaterial({
-    vertexShader: signVert,
-    fragmentShader: signFrag,
-    uniforms: { map: { value: tex }, time: { value: 0 }, color: { value: new THREE.Color(color) }, fogDensity: { value: FOG_DENSITY } },
-    side: THREE.DoubleSide,
-    transparent: true,
-    depthWrite: false,
-  });
-  const mesh = new THREE.InstancedMesh(geo, mat, boards.length);
-  const m = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
-  const e = new THREE.Euler();
-  boards.forEach((b, i) => {
-    e.set(b.tilt, b.yaw, 0, 'YXZ');
-    q.setFromEuler(e);
-    m.compose(new THREE.Vector3(b.x, b.y, b.z), q, new THREE.Vector3(b.w, b.h, 1));
-    mesh.setMatrixAt(i, m);
-    flip[i] = b.flip;
-    phase[i] = b.phase;
-  });
-  geo.setAttribute('aFlip', new THREE.InstancedBufferAttribute(flip, 1));
-  geo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(phase, 1));
-  mesh.renderOrder = 5;
-  return mesh;
 }
 
 // ---------------------------------------------------------------------------

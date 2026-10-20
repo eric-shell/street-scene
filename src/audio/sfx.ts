@@ -20,7 +20,7 @@
  */
 import { audioHub } from './engineAudio';
 import type { RaceEvent, RaceState } from '../sim/race';
-import type { PropKind } from '../city/props';
+import type { ConstructionPropKind, PropKind } from '../city/props';
 import type { Contact, World } from '../city/world';
 import { TICK_HZ } from '../sim/constants';
 
@@ -43,8 +43,8 @@ export interface SfxCar {
 }
 
 export type WallHitKind = 'wall' | 'barrier' | 'rail';
-/** Prop kinds with their own impact sound (news boxes sound like garbage cans). */
-type PropSound = Exclude<PropKind, 'newsBox'>;
+/** Prop kinds with their own impact sound (news boxes sound like garbage cans; construction pieces borrow the nearest material). */
+type PropSound = Exclude<PropKind, 'newsBox' | ConstructionPropKind>;
 export type SfxBank = 'crash' | WallHitKind | PropSound | 'firework';
 type Bank = SfxBank;
 const PROP_SOUND: Record<PropKind, PropSound> = {
@@ -61,6 +61,12 @@ const PROP_SOUND: Record<PropKind, PropSound> = {
   dumpster: 'dumpster',
   newsBox: 'garbageCan',
   trashBags: 'trashBags',
+  fencePanel: 'bench',
+  trafficCone: 'trashBags',
+  sawhorse: 'crate',
+  waterBarrier: 'barrel',
+  sandbags: 'trashBags',
+  pallets: 'crate',
 };
 
 const VARIANTS = 3;
@@ -1072,6 +1078,12 @@ export class Sfx {
       dumpster: 1,
       newsBox: 0.55,
       trashBags: 0.45,
+      fencePanel: 0.7,
+      trafficCone: 0.35,
+      sawhorse: 0.55,
+      waterBarrier: 0.75,
+      sandbags: 0.5,
+      pallets: 0.6,
     };
     const k = clamp01(speed / 25);
     // Props are distinct objects: a short gap only stops one hit playing twice.

@@ -115,7 +115,9 @@
     "surface": {
       "sidewalkGrip": 1,
       "offroadGrip": 0.49,
-      "offroadDrag": 900
+      "offroadDrag": 900,
+      "cobbleGrip": 0.92,
+      "cobbleDrag": 120
     },
     "collision": {
       "wallRestitution": 0.12,

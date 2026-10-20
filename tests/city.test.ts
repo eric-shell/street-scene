@@ -13,7 +13,8 @@ import { riverCenter } from '../src/city/districts/river';
 import { LOST, createRace, stepRace } from '../src/sim/race';
 import { NEUTRAL_INPUT } from '../src/sim/input';
 import { raceConfig } from './helpers';
-import { isStreetProp } from '../src/city/props';
+import { PROP_DEFS, isStreetProp } from '../src/city/props';
+import { LANE } from '../src/city/districts/alley';
 import type { RailWall } from '../src/city/route';
 import { createCar, stepCar } from '../src/sim/car';
 import { getBaseTuning } from '../src/sim/tuning';
@@ -250,14 +251,19 @@ describe('city generation', () => {
         // One connected chain per rail.
         const next = rails[k + 1];
         if (next && next.group === r.group) expect(Math.hypot(next.ax - r.bx, next.az - r.bz)).toBeLessThan(1e-9);
+        const heading = Math.atan2(r.bz - r.az, r.bx - r.ax);
         for (const [x, z] of [[r.ax, r.az], [r.bx, r.bz]]) {
           for (const eid of w.route.edges) {
             const e = w.graph.edges[eid];
             const a = w.graph.nodes[e.a];
             const b = w.graph.nodes[e.b];
-            // Away from the corner itself, where the fillet may cut ROUTE.railCornerCut inside the sidewalk corner.
+            // Away from the corner itself, where the fillet may cut ROUTE.railCornerCut inside the sidewalk corner,
+            // and on the straight runs only: a fillet widened to clear a wall curves in from well before the corner.
             const t = segmentT(x, z, a.x, a.z, b.x, b.z);
             if (t * e.length < 15 || (1 - t) * e.length < 15) continue;
+            let turn = Math.abs(heading - Math.atan2(b.z - a.z, b.x - a.x)) % Math.PI;
+            if (turn > Math.PI / 2) turn = Math.PI - turn;
+            if (turn > 1.5 * (Math.PI / 180)) continue;
             // Never on the route's lanes or sidewalk (beside the edge, not past its ends).
             const d = distToSegment(x, z, a.x, a.z, b.x, b.z) - e.width / 2;
             const walk = e.sidewalk ?? CITY.sidewalk;
@@ -308,9 +314,10 @@ describe('city generation', () => {
           if (q !== p) expect(Math.hypot(p.x - q.x, p.z - q.z)).toBeGreaterThan(p.radius + q.radius);
         }
       }
-      // Off the drivable road with room for the prop's radius (back alley dumpsters and bags are obstacles on purpose).
+      // Off the drivable road with room for the prop's radius (alley clutter is an obstacle on purpose: back alley
+      // dumpsters and bags, and the cones and sawhorses raceway alleys spill onto their cobbles).
       for (const p of props) {
-        if (p.area !== undefined && w.areas[p.area].kind === 'backAlley') continue;
+        if (p.area !== undefined && (w.areas[p.area].kind === 'backAlley' || w.areas[p.area].kind === 'alley')) continue;
         for (const e of w.graph.edges) {
           const a = w.graph.nodes[e.a];
           const b = w.graph.nodes[e.b];
@@ -546,8 +553,8 @@ describe('districts', () => {
         mine.forEach((p) => kinds.add(p.kind));
         if (a.kind === 'park') expect(mine.filter((p) => p.kind === 'bush').length).toBeGreaterThan(10);
         if (a.kind === 'alley') expect(mine.length).toBeGreaterThan(8);
-        // Route shortcuts are diagonal and short: a kicker can take the only stretch clear of both mouths.
-        if (a.kind === 'backAlley') expect(mine.some((p) => p.kind === 'dumpster') || (a.variant === 'routeShortcut' && a.params.jump === 1)).toBe(true);
+        // Plain back alleys have dumpsters; route shortcuts are construction sites (checked with the shortcuts).
+        if (a.kind === 'backAlley' && a.variant !== 'routeShortcut') expect(mine.some((p) => p.kind === 'dumpster')).toBe(true);
         if (a.kind !== 'backAlley' || !a.params.jump || jumps >= 2) continue;
         jumps++;
         // Launch along the alley toward the hump, from both ends.
@@ -649,6 +656,12 @@ describe('race progress and resets', () => {
       const uz = (a.z - b.z) / l1 + (c.z - b.z) / l2;
       const ul = Math.hypot(ux, uz);
       if (ul < 0.6) continue;
+      // How far outside the nearest route segment's road a point is (the segment can switch between a narrow
+      // alley and a wide street along the bisector, so the apex is checked with the same measure).
+      const off = (x: number, z: number) => {
+        const p = w.routeProgress(x, z);
+        return Math.abs(p.lateral) - r.segWidth[p.seg] / 2;
+      };
       let deepest = -1;
       let oldReset = -1;
       for (let d = 0; d < 60; d += 0.5) {
@@ -656,12 +669,13 @@ describe('race progress and resets', () => {
         const z = b.z + (uz / ul) * d;
         if (w.collideCircle(x, z, 1.4, contacts) || w.surfaceAt(x, z) === 'offroad') break;
         deepest = d;
-        const p = w.routeProgress(x, z);
-        if (oldReset < 0 && Math.abs(p.lateral) > r.segWidth[p.seg] / 2 + 10) oldReset = d;
+        if (oldReset < 0 && off(x, z) > 10) oldReset = d;
       }
       if (oldReset > 0 && deepest > oldReset + 1) {
         const d = Math.min(deepest - 1, oldReset + 3);
-        return { a, b, c, apex: { x: b.x + (ux / ul) * d, z: b.z + (uz / ul) * d }, l1, l2 };
+        const apex = { x: b.x + (ux / ul) * d, z: b.z + (uz / ul) * d };
+        if (off(apex.x, apex.z) <= 10) continue;
+        return { a, b, c, apex, l1, l2 };
       }
     }
     return null;
@@ -684,7 +698,9 @@ describe('race progress and resets', () => {
     let maxOff = 0;
     const hook = r.cars[0];
     const mid = { x: (before.x + apex.x) / 2, z: (before.z + apex.z) / 2 };
-    driveAlong(r, [r.cars[0].state, mid, apex, after], 22);
+    // A copy of the start: driveAlong moves the car state, so the live object cannot be a waypoint.
+    const start = { x: r.cars[0].state.x, z: r.cars[0].state.z };
+    driveAlong(r, [start, mid, apex, after], 22);
     for (const pt of [apex]) {
       const p = r.world.routeProgress(pt.x, pt.z);
       maxOff = Math.max(maxOff, Math.abs(p.lateral) - r.world.route.segWidth[p.seg] / 2);
@@ -772,7 +788,7 @@ describe('route shortcuts', () => {
       for (const sc of w.route.shortcuts) {
         const len = Math.hypot(sc.bx - sc.ax, sc.bz - sc.az);
         // Down the middle from route to route: no wall in the way (city frontage, corner rails,
-        // closures), drivable ground and nothing solid standing in it.
+        // closures) and drivable ground.
         for (const wall of w.walls) {
           if (Math.max(wall.ax, wall.bx) < Math.min(sc.ax, sc.bx) - 5 || Math.min(wall.ax, wall.bx) > Math.max(sc.ax, sc.bx) + 5) continue;
           if (Math.max(wall.az, wall.bz) < Math.min(sc.az, sc.bz) - 5 || Math.min(wall.az, wall.bz) > Math.max(sc.az, sc.bz) + 5) continue;
@@ -786,10 +802,78 @@ describe('route shortcuts', () => {
           const n = w.collideCircle(x, z, 1.2, contacts);
           for (let k = 0; k < n; k++) expect(Math.hypot(x - contacts[k].px, z - contacts[k].pz), `${seed} at ${s.toFixed(0)} m`).toBeGreaterThan(1.2);
         }
+        // A construction site: fenced at both mouths, walls lined with clutter, a clear line down the middle.
+        const area = w.areas.find((a) => a.kind === 'backAlley' && a.edges.includes(sc.edge))!;
+        const mine = w.props.filter((p) => p.area === area.id);
+        const ux = (sc.bx - sc.ax) / len;
+        const uz = (sc.bz - sc.az) / len;
+        const along = (p: { x: number; z: number }) => (p.x - sc.ax) * ux + (p.z - sc.az) * uz;
+        const lateral = (p: { x: number; z: number }) => (p.x - sc.ax) * -uz + (p.z - sc.az) * ux;
+        const fences = mine.filter((p) => p.kind === 'fencePanel');
+        const halfCar = 0.95;
+        const roadHalf = w.graph.edges[sc.edge].width / 2;
+        for (const end of [fences.filter((p) => along(p) < len / 2), fences.filter((p) => along(p) >= len / 2)]) {
+          // Panels about every 2 m across the alley width (its sidewalks too), the end ones inset a little.
+          expect(end.length, `${seed} fence panels`).toBeGreaterThanOrEqual(Math.floor((roadHalf * 2 + 2 * w.graph.edges[sc.edge].sidewalk - 0.7) / 2));
+          // No line down the alley a car fits on slips past the fence.
+          for (let lat = -(roadHalf - halfCar); lat <= roadHalf - halfCar; lat += 0.25) {
+            expect(end.some((p) => Math.abs(lateral(p) - lat) < halfCar + p.radius), `${seed} gap at ${lat}`).toBe(true);
+          }
+        }
+        // Dense: well over a piece every 2.5 m of alley, construction pieces among them.
+        expect(mine.length).toBeGreaterThan(len / 2.5);
+        for (const k of ['trafficCone', 'sawhorse']) expect(mine.some((p) => p.kind === k)).toBe(true);
+        // Nothing that can stop a car stands in the line down the middle (soft pieces may: they break).
+        for (const p of w.props) {
+          if (PROP_DEFS[p.kind].breakSpeed < 1) continue;
+          expect(distToSegment(p.x, p.z, sc.ax, sc.az, sc.bx, sc.bz), `${seed} ${p.kind}`).toBeGreaterThan(LANE + p.radius);
+        }
         checked++;
       }
     }
     expect(checked).toBeGreaterThanOrEqual(10);
+  });
+
+  it('fences go down at walking pace, cost a fast car little and never stop it', () => {
+    // Every construction piece a car meets at a mouth breaks below a crawl.
+    for (const k of ['fencePanel', 'trafficCone', 'sawhorse'] as const) expect(PROP_DEFS[k].breakSpeed).toBeLessThanOrEqual(0.1);
+    const rng = new Rng(4040);
+    let crawled = 0;
+    for (let i = 0; i < 4; i++) {
+      const seed = rng.int(0, 0x7fffffff);
+      const r = createRace(raceConfig(seed, 'circuit', 0));
+      while (r.tick < r.countdownTicks) stepRace(r, NEUTRAL_INPUT);
+      const w = r.world;
+      const sc = w.route.shortcuts[0];
+      const len = Math.hypot(sc.bx - sc.ax, sc.bz - sc.az);
+      const ux = (sc.bx - sc.ax) / len;
+      const uz = (sc.bz - sc.az) / len;
+      const area = w.areas.find((a) => a.kind === 'backAlley' && a.edges.includes(sc.edge))!;
+      // The entry fence panel nearest the middle line; roll into it from just short of it at 1 m/s.
+      const panel = w.props
+        .filter((p) => p.area === area.id && p.kind === 'fencePanel' && (p.x - sc.ax) * ux + (p.z - sc.az) * uz < len / 2)
+        .sort((a, b) => Math.abs((a.x - sc.ax) * -uz + (a.z - sc.az) * ux) - Math.abs((b.x - sc.ax) * -uz + (b.z - sc.az) * ux))[0];
+      const rc = r.cars[0];
+      const c = rc.state;
+      const back = rc.tuning.geometry.halfLength + panel.radius + 0.3;
+      c.x = panel.x - ux * back;
+      c.z = panel.z - uz * back;
+      c.y = w.heightAt(c.x, c.z);
+      c.yaw = Math.atan2(ux, uz);
+      c.vx = ux;
+      c.vz = uz;
+      c.yawRate = 0;
+      rc.seg = -1;
+      for (let k = 0; k < 180; k++) stepRace(r, { ...NEUTRAL_INPUT, throttle: 0.2 });
+      expect(r.brokenProps[panel.id], `${seed}`).toBe(1);
+      // Through, not stopped against it.
+      expect((c.x - panel.x) * ux + (c.z - panel.z) * uz).toBeGreaterThan(1);
+      crawled++;
+    }
+    expect(crawled).toBe(4);
+    // At speed a panel costs only a few percent: v' = v * m / (m + m_panel).
+    const m = getBaseTuning('s64').mass;
+    expect(m / (m + PROP_DEFS.fencePanel.mass * PROP_DEFS.fencePanel.anchor)).toBeGreaterThan(0.97);
   });
 
   /** A circuit shortcut that skips more than LOST.maxJump, so its credit cannot come from the plain rule. */
@@ -871,5 +955,85 @@ describe('route shortcuts', () => {
       stepRace(r, NEUTRAL_INPUT);
       expect(rc.dist - d0).toBeLessThan(LOST.maxJump);
     }
+  });
+});
+
+describe('alleys', () => {
+  it('are slim, cobbled curb to curb between their mouths, packed with clutter and clear down the middle', () => {
+    const rng = new Rng(2626);
+    let alleyEdges = 0;
+    let cobbleSamples = 0;
+    const length = { alley: 0, backAlley: 0, routeShortcut: 0 };
+    const clutter = { alley: 0, backAlley: 0, routeShortcut: 0 };
+    let works = 0;
+    for (let i = 0; i < 6; i++) {
+      const w = createWorld(rng.int(0, 0x7fffffff), i % 2 ? 'sprint' : 'circuit');
+      const g = w.graph;
+      for (const e of g.edges) {
+        const a = g.nodes[e.a];
+        const b = g.nodes[e.b];
+        const m = w.blocks.mouths[e.id];
+        const p0 = { x: (m.aP.curb.x + m.aN.curb.x) / 2, z: (m.aP.curb.z + m.aN.curb.z) / 2 };
+        const p1 = { x: (m.bP.curb.x + m.bN.curb.x) / 2, z: (m.bP.curb.z + m.bN.curb.z) / 2 };
+        const len = Math.hypot(p1.x - p0.x, p1.z - p0.z);
+        if (len < 6) continue;
+        const ux = (p1.x - p0.x) / len;
+        const uz = (p1.z - p0.z) / len;
+        if (e.kind === 'alley' || e.kind === 'backAlley') {
+          // (A random back alley adopted as a route shortcut keeps the plain back alley width.)
+          if (e.kind === 'alley') expect(e.width).toBe(CITY.width.alley);
+          else expect([CITY.width.backAlley, CITY.districts.backAlley.route.width]).toContain(e.width);
+          expect(e.sidewalk).toBe(CITY.sidewalkWidth[e.kind]);
+          alleyEdges++;
+          // Cobbles down the middle between the mouths, sidewalks either side, asphalt in the junctions.
+          for (let s = 1; s < len - 1; s += 2) {
+            const x = p0.x + ux * s;
+            const z = p0.z + uz * s;
+            expect(w.surfaceAt(x, z), `${e.kind} ${e.id} at ${s.toFixed(0)} m`).toBe('cobble');
+            // The sidewalks either side, clear of the mouths (an oblique mouth's sidewalk corner runs deep).
+            if (s > 10 && s < len - 10) {
+              for (const side of [1, -1]) {
+                const lat = side * (e.width / 2 + e.sidewalk / 2);
+                expect(w.surfaceAt(x - uz * lat, z + ux * lat)).toBe('sidewalk');
+              }
+            }
+            cobbleSamples++;
+          }
+          // (A bend between two alley edges has no fan: only junctions are checked.)
+          for (const n of [a, b]) if (!n.ring && n.edges.length >= 3) expect(w.surfaceAt(n.x, n.z)).toBe('road');
+        } else if (!e.bridge && !a.ring && !b.ring && (e.kind === 'street' || e.kind === 'avenue')) {
+          // Only alleys are cobbled.
+          expect(w.surfaceAt((p0.x + p1.x) / 2, (p0.z + p1.z) / 2)).toBe('road');
+        }
+      }
+      const covered = new Set(w.coveredProps);
+      for (const area of w.areas) {
+        if (area.kind !== 'alley' && area.kind !== 'backAlley') continue;
+        const key = area.kind === 'alley' ? 'alley' : area.variant === 'routeShortcut' ? 'routeShortcut' : 'backAlley';
+        const mine = w.props.filter((p) => p.area === area.id);
+        clutter[key] += mine.length;
+        for (const eid of area.edges) length[key] += g.edges[eid].length;
+        if (area.kind === 'alley') works += mine.filter((p) => p.kind === 'fencePanel' || p.kind === 'sawhorse' || p.kind === 'trafficCone').length;
+        // Nothing that can stop a car (bar what a rail removes at the start) stands in the line down the middle.
+        for (const eid of area.edges) {
+          const e = g.edges[eid];
+          const a = g.nodes[e.a];
+          const b = g.nodes[e.b];
+          for (const p of w.props) {
+            if (PROP_DEFS[p.kind].breakSpeed < 1 || covered.has(p.id)) continue;
+            const d = distToSegment(p.x, p.z, a.x, a.z, b.x, b.z);
+            if (d > e.width / 2 + e.sidewalk + 2) continue;
+            expect(d, `${area.kind} ${area.variant} ${p.kind}`).toBeGreaterThan(LANE + p.radius);
+          }
+        }
+      }
+    }
+    expect(alleyEdges).toBeGreaterThan(20);
+    expect(cobbleSamples).toBeGreaterThan(500);
+    // Dense: raceway alleys over a piece per 2 m, shortcuts per 2.5 m, plain back alleys per 4 m; street works in the raceways.
+    expect(clutter.alley).toBeGreaterThan(length.alley / 2);
+    expect(clutter.routeShortcut).toBeGreaterThan(length.routeShortcut / 2.5);
+    expect(clutter.backAlley).toBeGreaterThan(length.backAlley / 4);
+    expect(works).toBeGreaterThan(30);
   });
 });

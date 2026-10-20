@@ -16,11 +16,11 @@ export const CITY = {
 
   laneWidth: 3.6,
   /** Total road width by kind (curb to curb). */
-  width: { street: 13, avenue: 17, diagonal: 16, boulevard: 24, alley: 9, backAlley: 5.5 } as const,
+  width: { street: 13, avenue: 17, diagonal: 16, boulevard: 24, alley: 7.4, backAlley: 4.8 } as const,
   lanes: { street: 2, avenue: 4, diagonal: 4, boulevard: 4, alley: 2, backAlley: 2 } as const,
   /** Default sidewalk width (per edge: RoadEdge.sidewalk, from sidewalkWidth by kind). */
   sidewalk: 4,
-  sidewalkWidth: { street: 4, avenue: 4, diagonal: 4, boulevard: 4, alley: 1.8, backAlley: 0.9 } as const,
+  sidewalkWidth: { street: 4, avenue: 4, diagonal: 4, boulevard: 4, alley: 1.4, backAlley: 0.8 } as const,
   curbHeight: 0.15,
 
   /**
@@ -119,7 +119,7 @@ export const CITY = {
     },
     alley: {
       enabled: true,
-      count: [1, 2],
+      count: [2, 4],
       /** Consecutive straight street edges turned into one narrow raceway alley. */
       chain: [2, 3],
       /** Clutter keeps this far from each end of an alley edge (junction mouths), m. */
@@ -129,7 +129,7 @@ export const CITY = {
     },
     backAlley: {
       enabled: true,
-      count: [1, 3],
+      count: [2, 5],
       /** Both block sides the shortcut joins are at least this long. */
       minSide: 100,
       /** Chance of a kicker hump: up and down ramps (m), flat top (m) and height (m). */
@@ -140,7 +140,7 @@ export const CITY = {
       /** The hump fades to flat this far beyond the alley walls (m). */
       jumpFade: 1.5,
       /** Dumpster spacing along each wall (m). */
-      dumpsterSpacing: 16,
+      dumpsterSpacing: 11,
       /**
        * Route shortcuts (carveRouteShortcuts): every circuit and sprint gets at
        * least one back alley that both starts and ends on the route and saves
@@ -148,12 +148,14 @@ export const CITY = {
        */
       route: {
         perRoute: 2,
-        /** Curb to curb width of a route shortcut (m): wider than a plain back alley, it is raced through. */
-        width: 6.5,
+        /** Curb to curb width of a route shortcut (m): a little wider than a plain back alley, it is raced through. */
+        width: 5.2,
         /** Corner cuts across the inside block of a turn: entry and exit this far from the corner (m), longest that fits first. */
-        cornerReach: [52, 46, 40, 34, 30],
+        cornerReach: [116, 108, 100, 92, 84, 76, 68, 60, 52, 46, 40, 34, 30],
         /** U cuts across a block the route wraps on three sides: entry and exit this far before / after the corners (m). */
-        uReach: [44, 38, 32, 28],
+        uReach: [56, 50, 44, 38, 32, 28],
+        /** Length the pick favours (m): shorter or longer cuts score lower (they still guarantee a shortcut where nothing else fits). */
+        idealLength: [100, 165],
         /** |Turn| (deg) a corner of a cut may have. */
         turnDeg: [68, 116],
         /** Entries keep this far from the next route junction (m); from a turning junction whose corner rail runs along the cut's side, railClear. */

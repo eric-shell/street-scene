@@ -148,7 +148,11 @@ export interface CarTuning {
   surface: {
     sidewalkGrip: number;
     offroadGrip: number;
+    /** Constant drag force off road (N, full above 1 m/s). */
     offroadDrag: number;
+    /** Cobbled alleys: grip multiplier and the extra rolling drag of the stones (N, full above 1 m/s). */
+    cobbleGrip: number;
+    cobbleDrag: number;
   };
   collision: {
     wallRestitution: number;

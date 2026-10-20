@@ -782,7 +782,7 @@ function segmentsCross(a: Vec2, b: Vec2, c: Vec2, d: Vec2): boolean {
  * (pass the city's walls; without them the sidewalk lines are rebuilt), and
  * the rail eases around street furniture (`props`) it would otherwise touch.
  */
-export function routeRails(g: RoadGraph, route: Route, props: readonly { x: number; z: number; radius: number }[] = [], cityWallList?: readonly Wall[]): RailWall[] {
+export function routeRails(g: RoadGraph, route: Route, props: readonly { x: number; z: number; radius: number; kind?: string }[] = [], cityWallList?: readonly Wall[]): RailWall[] {
   const sectors = computeSectors(g);
   const mouths = computeMouths(g, sectors);
   const walls: RailWall[] = [];
@@ -902,6 +902,9 @@ export function routeRails(g: RoadGraph, route: Route, props: readonly { x: numb
       bent = false;
       for (const eid of bends ? outside : []) {
         const e = g.edges[eid];
+        // Alleys are cobbled with no crosswalk stripes, and their sidewalks are too narrow for a gentle
+        // bend to stay inside the corridor: the rail runs straight across a closed alley's mouth.
+        if (e.kind === 'alley' || e.kind === 'backAlley') continue;
         const m = mouths[eid];
         const ca = id === e.a ? m.aP.curb : m.bP.curb;
         const cb = id === e.a ? m.aN.curb : m.bN.curb;
@@ -1004,28 +1007,31 @@ export function routeRails(g: RoadGraph, route: Route, props: readonly { x: numb
             kBest = k;
           }
         }
-        const need = q.radius + ROUTE.railPropClear - sqrt(dBest);
+        const dist = sqrt(dBest);
+        const need = q.radius + ROUTE.railPropClear - dist;
         if (kBest < 0 || need <= 0) continue;
         const behind = (q.x - pts[kBest].x) * nrm[kBest].x + (q.z - pts[kBest].z) * nrm[kBest].z > 0;
-        const amount = behind ? -need - 0.05 : need + 0.05;
         const s0 = cum[kBest];
         const span = ROUTE.railPieceLength * 2.4;
-        const bentPts = pts.map((pt, k) => {
-          const w = 1 - cosStep(span * 0.25, span, abs(cum[k] - s0));
-          return w > 0 ? { x: pt.x + nrm[k].x * amount * w, z: pt.z + nrm[k].z * amount * w } : pt;
-        });
-        // Bending back must not take the rail near or past a city wall.
-        let clearOfWalls = true;
-        for (let k = 0; k < pts.length && clearOfWalls; k++) {
-          if (bentPts[k] === pts[k]) continue;
-          for (const [a, b] of cityWalls) {
-            if (distToSegment(bentPts[k].x, bentPts[k].z, a.x, a.z, b.x, b.z) < ROUTE.railInset * 0.5 || (k > 0 && segmentsCross(bentPts[k - 1], bentPts[k], a, b))) {
-              clearOfWalls = false;
-              break;
+        // The bent path, or null where it would come near or cross a city wall.
+        const bend = (amount: number): Vec2[] | null => {
+          const bentPts = pts.map((pt, k) => {
+            const w = 1 - cosStep(span * 0.25, span, abs(cum[k] - s0));
+            return w > 0 ? { x: pt.x + nrm[k].x * amount * w, z: pt.z + nrm[k].z * amount * w } : pt;
+          });
+          for (let k = 0; k < pts.length; k++) {
+            if (bentPts[k] === pts[k]) continue;
+            for (const [a, b] of cityWalls) {
+              if (distToSegment(bentPts[k].x, bentPts[k].z, a.x, a.z, b.x, b.z) < ROUTE.railInset * 0.5 || (k > 0 && segmentsCross(bentPts[k - 1], bentPts[k], a, b))) return null;
             }
           }
-        }
-        if (clearOfWalls) pts = bentPts;
+          return bentPts;
+        };
+        // Away from the prop: back toward the track if it is behind, outward if in front. A lamp post in front
+        // on a sidewalk too narrow to pass behind it (an alley's) is dodged on the track side instead, so it
+        // ends up behind the rail; anything else a rail cannot avoid starts the race removed (world.ts).
+        const bent = bend(behind ? -need - 0.05 : need + 0.05) ?? (!behind && q.kind === 'streetlight' ? bend(-(dist + q.radius + ROUTE.railPropClear + 0.05)) : null);
+        if (bent) pts = bent;
       }
       for (let k = 1; k < pts.length; k++) cum[k] = cum[k - 1] + sqrt((pts[k].x - pts[k - 1].x) ** 2 + (pts[k].z - pts[k - 1].z) ** 2);
     }

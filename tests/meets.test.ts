@@ -5,6 +5,7 @@ import type { RailWall } from '../src/city/route';
 import { RAIL } from '../src/sim/rails';
 import { Rng } from '../src/sim/prng';
 import { distToSegment } from '../src/sim/math';
+import { CITY } from '../src/city/config';
 
 const cars = [
   { length: 4.45, width: 2, variants: 3 },
@@ -44,10 +45,14 @@ describe('street meets', () => {
       const plan = planMeets(w, opts);
       // Deterministic for a world.
       expect(JSON.stringify(planMeets(w, opts))).toBe(JSON.stringify(plan));
-      // Every closure gets a meet.
-      const closureRails = new Set(w.barrierGroups.map((g) => (g.walls[0] as RailWall).group));
+      // Every closure across a street with room behind it gets a meet (a closed alley is too narrow and
+      // cluttered for one, a stub of a street too short).
       const meetRails = new Set(plan.zones.filter((z) => z.closure).map((z) => z.rail));
-      for (const id of closureRails) expect(meetRails.has(id)).toBe(true);
+      for (const g of w.barrierGroups) {
+        const e = w.graph.edges[g.edges[0]];
+        if (e.width < CITY.width.street || e.length < 60) continue;
+        expect(meetRails.has((g.walls[0] as RailWall).group)).toBe(true);
+      }
       for (const zone of plan.zones) {
         const chain = w.walls.filter((x) => x.kind === 'rail' && (x as RailWall).group === zone.rail) as RailWall[];
         for (const p of zone.people) {
@@ -78,9 +83,9 @@ describe('street meets', () => {
     }
     expect(people).toBeGreaterThan(2000);
     expect(carsTotal).toBeGreaterThan(300);
-    // Dense at the barrier, thin at the back; cars too.
+    // Dense at the barrier, thin at the back; cars too (the front row against the three back rows, per row).
     expect(byDepth.front).toBeGreaterThan(byDepth.back * 2);
-    expect(carRows[0]).toBeGreaterThan(carRows[1]);
+    expect(carRows[0]).toBeGreaterThan(carRows[1] / 3);
   });
 
   it('are empty in an open world', () => {

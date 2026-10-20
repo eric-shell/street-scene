@@ -105,6 +105,12 @@ describe('corner rails', () => {
         q = layout.prev[q];
         ok = q >= 0 && Math.abs(head(q) - head(p)) < 0.01;
       }
+      if (ok) {
+        // Beside a full width sidewalk (the car starts on it): an alley's rail sits a lane width from the road.
+        const wq = rs[layout.first[p]];
+        const l = Math.hypot(wq.bx - wq.ax, wq.bz - wq.az);
+        ok = w.surfaceAt(wq.ax - ((wq.bx - wq.ax) / l) * 10 + wq.nx * 2.4, wq.az - ((wq.bz - wq.az) / l) * 10 + wq.nz * 2.4) === 'sidewalk';
+      }
       if (ok) best = p;
     }
     expect(best).toBeGreaterThanOrEqual(0);
@@ -250,7 +256,7 @@ describe('open world test drive', () => {
     rc.state.z = r.world.graph.bounds.maxZ + 300;
     for (let i = 0; i < 60 * 3; i++) stepRace(r, input({}));
     expect(r.events.filter((e) => e.type === 'reset').length).toBe(1);
-    expect(r.world.surfaceAt(rc.state.x, rc.state.z)).toBe('road');
+    expect(['road', 'cobble']).toContain(r.world.surfaceAt(rc.state.x, rc.state.z));
   });
 
   it('a closed-route race keeps its barriers and rails', () => {

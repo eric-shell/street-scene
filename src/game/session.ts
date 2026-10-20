@@ -121,8 +121,13 @@ const PROP_SLOWDOWN_EXTRA = 1.6;
 const SPARK = {
   /** Only cars this close to the camera throw sparks (m). */
   range: 140,
-  /** Sparks keep this share of the car's speed along the contact, so they stream out behind it. */
-  carry: 0.75,
+  /**
+   * Sparks leave the contact backward at this share of the car's speed and outward from the
+   * wall. Real sparks shed forward with the car, but then the body hides them from every
+   * camera; a fan trailing behind is what the eye expects from a grinding car.
+   */
+  carry: 0.45,
+  outward: 2.4,
   /** Scraping: sliding speed (m/s) before it sparks, sparks per tick per m/s, cap per tick, height band above the road (m). */
   scrapeMin: 2,
   scrapePerMs: 0.22,
@@ -539,10 +544,9 @@ export class RaceSession {
   }
 
   /**
-   * Sparks from this tick's car telemetry, for cars near the camera: a stream
-   * from the contact while a car scrapes a wall or rail (carried along the
-   * slide, so it trails behind), and a spray off the underbody corner that
-   * bottomed out (landings, crests, kickers).
+   * Sparks from this tick's car telemetry, for cars near the camera: a fan
+   * trailing from the contact while a car scrapes a wall or rail, and a spray
+   * out from under the corner that bottomed out (landings, crests, kickers).
    */
   private emitSparks(): void {
     const cam = (this.lastCamera ?? this.cam.camera).position;
@@ -554,10 +558,10 @@ export class RaceSession {
         const g = w.heightAt(c.scrapeX, c.scrapeZ);
         const tx = -c.scrapeNz;
         const tz = c.scrapeNx;
-        const vt = (c.vx * tx + c.vz * tz) * SPARK.carry;
+        const back = -(c.vx * tx + c.vz * tz) * SPARK.carry;
         const n = Math.min(SPARK.scrapeMax, c.scrape * SPARK.scrapePerMs);
         const y = g + SPARK.scrapeHeight[0] + Math.random() * (SPARK.scrapeHeight[1] - SPARK.scrapeHeight[0]);
-        this.sparks.emit(this.time, c.scrapeX + c.scrapeNx * 0.06, y, c.scrapeZ + c.scrapeNz * 0.06, tx * vt + c.scrapeNx * 1.6, 1.4, tz * vt + c.scrapeNz * 1.6, 1.6, n, g);
+        this.sparks.emit(this.time, c.scrapeX + c.scrapeNx * 0.06, y, c.scrapeZ + c.scrapeNz * 0.06, tx * back + c.scrapeNx * SPARK.outward, 1.6, tz * back + c.scrapeNz * SPARK.outward, 2, n, g);
       }
       if (c.bottomOut > SPARK.bottomMin && c.speed > SPARK.bottomSpeed) {
         const fx = Math.sin(c.yaw);
@@ -565,16 +569,17 @@ export class RaceSession {
         let wu = 0;
         let wv = 0;
         if (c.bottomWheel >= 0) {
-          // Under the chassis just inboard of that wheel.
+          // Just outboard of that wheel, so the spray clears the body.
           const wh = rc.tuning.geometry.wheels[c.bottomWheel];
-          wv = wh[0] * 0.55;
+          wv = wh[0] * 1.15;
           wu = wh[2] * 0.8;
         }
         const x = c.x + fx * wu + fz * wv;
         const z = c.z + fz * wu - fx * wv;
         const g = w.heightAt(x, z);
         const n = Math.min(SPARK.bottomMax, 3 + c.bottomOut * SPARK.bottomPerM * Math.min(1, c.speed / 25));
-        this.sparks.emit(this.time, x, g + 0.04, z, c.vx * SPARK.carry * 0.75, 1.2, c.vz * SPARK.carry * 0.75, 2.2, n, g);
+        const side = wv < 0 ? -1 : wv > 0 ? 1 : 0;
+        this.sparks.emit(this.time, x, g + 0.04, z, -c.vx * SPARK.carry * 0.7 + fz * side * SPARK.outward, 1.5, -c.vz * SPARK.carry * 0.7 - fx * side * SPARK.outward, 2.2, n, g);
       }
     }
   }
@@ -828,6 +833,8 @@ export class RaceSession {
     // Cinematics always run on the follow camera; the number key views take over afterwards.
     const view: ReplayCamMode = this.isReplay ? this.replayCam : this.cine.active ? 'chase' : (this.liveView ?? 'chase');
     if (isFollowCam(view)) {
+      // Cobbled alleys: a fine rumble that grows with speed (camera.ts rumble).
+      this.cam.rumble(this.race.cars[0].state.surface === 'cobble' ? Math.hypot(p.vx, p.vz) : 0);
       this.cam.update(p, p.vx, p.vz, p.nitro, len, dt);
       this.applyCinematics(p, dt);
       return this.cam.camera;

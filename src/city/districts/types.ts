@@ -46,12 +46,13 @@ export type AreaKind =
 /**
  * Ground surface under a point. 'road' / 'sidewalk' / 'offroad' are the
  * original three; districts add concrete (plazas, channel floor), grass
- * (parks, planter islands) and water (the trickle in the river channel).
+ * (parks, planter islands), water (the trickle in the river channel) and
+ * cobble (the road strip of every alley, see districts/alley.ts).
  */
-export type Surface = 'road' | 'sidewalk' | 'offroad' | 'concrete' | 'grass' | 'water';
+export type Surface = 'road' | 'sidewalk' | 'offroad' | 'concrete' | 'grass' | 'water' | 'cobble';
 
 /** Which tuning entry (drivingParams.json `surface`) a surface drives with. */
-export type SurfacePhysics = 'road' | 'sidewalk' | 'offroad';
+export type SurfacePhysics = 'road' | 'sidewalk' | 'offroad' | 'cobble';
 export const SURFACE_PHYSICS: Record<Surface, SurfacePhysics> = {
   road: 'road',
   sidewalk: 'sidewalk',
@@ -59,7 +60,11 @@ export const SURFACE_PHYSICS: Record<Surface, SurfacePhysics> = {
   concrete: 'sidewalk',
   grass: 'offroad',
   water: 'offroad',
+  cobble: 'cobble',
 };
+
+/** Surface patch priority of an alley's cobbled road strip: above the plain street classification (road 5). */
+export const COBBLE_PRIORITY = 6;
 
 /**
  * What draws a wall (the renderer that owns the look):

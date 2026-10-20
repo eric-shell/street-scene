@@ -23,13 +23,18 @@
  * alley, kept clear of other streets and of the corner rails, and built like
  * any back alley (clutter, often a kicker).
  *
- * Raceway alleys are lined with restaurant fronts (cafe tables between
- * planter pots) and storage clutter (crates, barrels, trash bags) on their
- * sidewalks; back alleys with dumpsters, trash bags and crates against the
- * walls, and most get a kicker hump (a terrain height modifier, exact
- * gradient) that throws a fast car into the air in either direction. All
- * of it is destructible except the hump; a dumpster only goes flying when
- * hit hard.
+ * Every alley is cobbled curb to curb between its mouths (surface 'cobble':
+ * a little less grip and more rolling drag than asphalt, see
+ * drivingParams.json; the junction fans stay asphalt). Raceway alleys are
+ * lined, block after block, with restaurant fronts (cafe tables between
+ * planter pots), storage clutter (crates, barrels, pallets, trash bags) and
+ * street works (hoarding panels along the wall, sandbags, a water barrier,
+ * sawhorses and cones spilling off the curb); back alleys with dumpsters,
+ * trash bags and crates against the walls, and most get a kicker hump (a
+ * terrain height modifier, exact gradient) that throws a fast car into the
+ * air in either direction. All of it is destructible except the hump; a
+ * dumpster only goes flying when hit hard. Nothing that can stop a car ever
+ * stands in the line down the middle: a car's width plus a margin (LANE).
  *
  * Content to add (render/districts/alley.ts): fire escapes, graffiti, steam
  * vents, puddles and grime on back alleys.
@@ -41,8 +46,9 @@ import { Vec2, atan2, distToSegment, lineIntersectT } from '../../sim/math';
 import { Rng } from '../../sim/prng';
 import { pointInPolygon } from './geom';
 import type { PropKind } from '../props';
-import type { AreaBuild, DistrictModule, HeightSample, PlanContext } from './types';
-import { emptyBuild } from './types';
+import { PROP_DEFS } from '../props';
+import type { Area, AreaBuild, BuildContext, DistrictModule, HeightSample, PlanContext, SurfacePatch } from './types';
+import { COBBLE_PRIORITY, emptyBuild } from './types';
 import { smooth01 } from './geom';
 
 /** Hump height and its slope along the alley at distance s from the start (0 outside the hump). */
@@ -163,35 +169,52 @@ export const alleyModule: DistrictModule = {
     const cfg = CITY.districts.alley;
     const g = ctx.graph;
     const rng = new Rng(((area.params.seed ?? 0) >>> 0) || 1);
-    const push = (kind: PropKind, p: { x: number; z: number; yaw: number }, jitter = 0.2) =>
-      b.destructibles.push({ kind, x: p.x, z: p.z, yaw: p.yaw + rng.range(-jitter, jitter), lift: CITY.curbHeight, area: area.id });
+    const push = (kind: PropKind, p: { x: number; z: number; yaw: number }, jitter = 0.2, lift: number = CITY.curbHeight, yaw?: number) =>
+      b.destructibles.push({ kind, x: p.x, z: p.z, yaw: (yaw ?? p.yaw) + rng.range(-jitter, jitter), lift, area: area.id });
     for (const eid of area.edges) {
       const e = g.edges[eid];
       const A = g.nodes[e.a];
       const B = g.nodes[e.b];
       const len = Math.hypot(B.x - A.x, B.z - A.z);
       const walk = e.sidewalk;
-      const mid = e.width / 2 + walk / 2;
+      const half = e.width / 2;
+      const mid = half + walk / 2;
+      const ux = (B.x - A.x) / len;
+      const uz = (B.z - A.z) / len;
+      // Hoarding panels lie along the alley (local +X), their banners facing the road.
+      const along = Math.atan2(-uz, ux);
+      b.surfaces.push(cobblePatch(ctx, eid, area.id));
       for (const side of [1, -1]) {
-        let s = cfg.endClear + rng.range(0, 3);
-        while (s < len - cfg.endClear - 4) {
-          const block = rng.range(9, 15);
-          const end = Math.min(len - cfg.endClear, s + block);
+        // Clear of the crossing streets at both ends (their road, sidewalk and a corner rail's line).
+        const from = Math.max(cfg.endClear, mouthReach(g, e.a, area.edges, ux, uz, half + walk, side));
+        const to = len - Math.max(cfg.endClear, mouthReach(g, e.b, area.edges, -ux, -uz, half + walk, -side));
+        let s = from + rng.range(0, 2);
+        while (s < to - 3) {
+          const block = rng.range(7, 13);
+          const end = Math.min(to, s + block);
           const r = rng.next();
-          if (r < 0.5) {
+          if (r < 0.4) {
             // Restaurant front: pots at both ends, tables between.
             push('planterPot', sideSpot(A, B, s + 0.6, side * mid));
-            for (let t = s + 2.2; t < end - 1.6; t += cfg.tableSpacing) if (rng.chance(0.85)) push('cafeTable', sideSpot(A, B, t, side * mid), 0.5);
+            for (let t = s + 2.2; t < end - 1.6; t += cfg.tableSpacing) if (rng.chance(0.9)) push('cafeTable', sideSpot(A, B, t, side * mid), 0.5);
             push('planterPot', sideSpot(A, B, end - 0.6, side * mid));
-          } else if (r < 0.85) {
+          } else if (r < 0.72) {
             // Deliveries and trash out back of the kitchens.
-            for (let t = s + 0.8; t < end - 0.6; t += rng.range(1.3, 2.2)) {
+            for (let t = s + 0.8; t < end - 0.6; t += rng.range(1.1, 1.8)) {
               const k = rng.next();
-              const kind: PropKind = k < 0.35 ? 'crate' : k < 0.6 ? 'barrel' : k < 0.85 ? 'trashBags' : 'newsBox';
+              const kind: PropKind = k < 0.3 ? 'crate' : k < 0.5 ? 'barrel' : k < 0.72 ? 'trashBags' : k < 0.86 ? 'pallets' : 'newsBox';
               push(kind, sideSpot(A, B, t, side * (mid + rng.range(-0.2, 0.2))), 3);
             }
+          } else {
+            // Street works: hoarding along the wall (clear of the road), heavy pieces on the sidewalk and
+            // soft ones spilling off the curb onto the cobbles, where they break at a touch.
+            for (let t = s + 1.3; t < end - 1.2; t += 2.4) push('fencePanel', sideSpot(A, B, t, side * (half + walk - 0.45)), 0.08, CITY.curbHeight, along);
+            push(rng.chance(0.5) ? 'sandbags' : 'waterBarrier', sideSpot(A, B, s + rng.range(1, 3), side * mid), 0.1, CITY.curbHeight, along);
+            push('sawhorse', sideSpot(A, B, s + rng.range(3, block - 2), side * (half - 0.5)), 0.2, 0, along + Math.PI / 2);
+            for (let k = 0; k < 3; k++) push('trafficCone', sideSpot(A, B, s + rng.range(0.5, block - 0.5), side * (half - rng.range(0.3, 1.1))), 3, 0);
+            if (rng.chance(0.5)) push('pallets', sideSpot(A, B, end - 1, side * mid), 3);
           }
-          s = end + rng.range(2, 6);
+          s = end + rng.range(1, 3);
         }
       }
     }
@@ -267,28 +290,11 @@ export const backAlleyModule: DistrictModule = {
     const P = area.params;
     const hw = (P.width ?? CITY.width.backAlley) / 2 + CITY.sidewalkWidth.backAlley;
     if (P.jump) addJump(b, A, ux, uz, len, hw, P.jumpS);
-    // How far into the alley the street at each end reaches (its road, sidewalk and furniture), at the
-    // angle the alley leaves it: a diagonal shortcut's mouth runs much deeper than a square one.
-    // Per side of the alley (lateral sign), since the acute side of a diagonal mouth runs deepest.
+    b.surfaces.push(cobblePatch(ctx, area.edges[0], area.id));
     const g = ctx.graph;
-    const mouthDepth = (nid: number, tx: number, tz: number, side: number) => {
-      let depth = 12;
-      const n = g.nodes[nid];
-      for (const eid of n.edges) {
-        if (area.edges.includes(eid)) continue;
-        const e = g.edges[eid];
-        const d = unit(n, g.nodes[e.a === nid ? e.b : e.a]);
-        const sinA = Math.max(0.35, Math.abs(d.x * tz - d.z * tx));
-        // Left of travel (tx, tz) is (-tz, tx): a side toward the street's direction sits closer to it.
-        const toward = side * (-tz * d.x + tx * d.z) > 0 ? 1 : -1;
-        const cosA = Math.abs(d.x * tx + d.z * tz);
-        depth = Math.max(depth, (e.width / 2 + e.sidewalk + 2.5 + toward * hw * cosA) / sinA + 1);
-      }
-      return depth;
-    };
-    const lo = [1, -1].map((sd) => mouthDepth(area.nodes[0], ux, uz, sd));
+    const lo = [1, -1].map((sd) => mouthReach(g, area.nodes[0], area.edges, ux, uz, hw, sd));
     // Seen from B the alley runs backwards, so its left is our right.
-    const hi = [1, -1].map((sd) => len - mouthDepth(area.nodes[1], -ux, -uz, -sd));
+    const hi = [1, -1].map((sd) => len - mouthReach(g, area.nodes[1], area.edges, -ux, -uz, hw, -sd));
     const sLo = Math.min(lo[0], lo[1]);
     const sHi = Math.max(hi[0], hi[1]);
     // Dumpsters against the walls, alternating sides, with bags and crates around them.
@@ -299,19 +305,30 @@ export const backAlleyModule: DistrictModule = {
       const z = lateral === 0 ? Math.min(hi[0], hi[1]) : hi[k];
       return s >= a && s <= z && (!P.jump || Math.abs(s - P.jumpS) > cfg.jumpRamp + cfg.jumpTop / 2 + 4);
     };
-    const push = (kind: PropKind, s: number, lateral: number, jitter: number) => {
+    const push = (kind: PropKind, s: number, lateral: number, jitter: number, yaw?: number) => {
       if (!clear(s, lateral)) return;
       const p = sideSpot(A, B, s, lateral);
-      b.destructibles.push({ kind, x: p.x, z: p.z, yaw: p.yaw + rng.range(-jitter, jitter), lift: 0, area: area.id });
+      b.destructibles.push({ kind, x: p.x, z: p.z, yaw: (yaw ?? p.yaw) + rng.range(-jitter, jitter), lift: 0, area: area.id });
     };
+    if (area.variant === 'routeShortcut') {
+      const jumpClear = (s: number, r: number) => !P.jump || Math.abs(s - P.jumpS) > cfg.jumpRamp + cfg.jumpTop / 2 + 2 + r;
+      constructionSite(ctx, area, b, rng, len, hw, jumpClear);
+      return b;
+    }
     let side = rng.chance(0.5) ? 1 : -1;
     let dumpsters = 0;
     for (let s = sLo + rng.range(0, 6); s < sHi; s += cfg.dumpsterSpacing * rng.range(0.7, 1.3)) {
       if (clear(s, side)) dumpsters++;
       push('dumpster', s, side * (hw - 0.62), 0.05);
       push('trashBags', s + rng.pick([-1.9, 1.9]), side * (hw - 0.55), 3);
-      if (rng.chance(0.6)) push(rng.chance(0.5) ? 'crate' : 'barrel', s + rng.range(3.2, 4.5), side * (hw - 0.6), 3);
-      if (rng.chance(0.4)) push('trashBags', s + rng.range(5, 8), -side * (hw - 0.55), 3);
+      if (rng.chance(0.7)) push(rng.chance(0.5) ? 'crate' : 'barrel', s + rng.range(3.2, 4.5), side * (hw - 0.6), 3);
+      if (rng.chance(0.5)) push('trashBags', s + rng.range(5, 8), -side * (hw - 0.55), 3);
+      // The other wall: pallets, a crate, the odd sawhorse and some cones left behind by the works.
+      const other = rng.next();
+      if (other < 0.4) push('pallets', s + rng.range(1, 6), -side * (hw - 0.75), 3);
+      else if (other < 0.65) push('crate', s + rng.range(1, 6), -side * (hw - 0.75), 3);
+      else if (other < 0.8) push('sawhorse', s + rng.range(2, 6), -side * (hw - 0.95), 0.3);
+      if (rng.chance(0.35)) for (let k = 0; k < 2; k++) push('trafficCone', s + rng.range(-2, 7), -side * (hw - rng.range(0.5, 1.4)), 3);
       side = -side;
     }
     // Short alleys whose kicker took every slot still get one, clear of the ramps.
@@ -328,6 +345,187 @@ export const backAlleyModule: DistrictModule = {
     return b;
   },
 };
+
+/** Half width (m) of the line down the middle of every alley that nothing solid may stand in: a car plus a margin. */
+export const LANE = 1.3;
+
+/**
+ * How far (m) into an alley the streets at node nid reach (road, sidewalk,
+ * furniture and a corner rail's line), at the angle the alley (direction t,
+ * half width hw) leaves them: a diagonal mouth runs much deeper than a square
+ * one, and deepest on its acute side (side = +1 left of t, -1 right).
+ */
+function mouthReach(g: RoadGraph, nid: number, own: readonly number[], tx: number, tz: number, hw: number, side: number): number {
+  let depth = 12;
+  const n = g.nodes[nid];
+  for (const eid of n.edges) {
+    if (own.includes(eid)) continue;
+    const e = g.edges[eid];
+    const d = unit(n, g.nodes[e.a === nid ? e.b : e.a]);
+    const sinA = Math.max(0.35, Math.abs(d.x * tz - d.z * tx));
+    // Left of travel (tx, tz) is (-tz, tx): a side toward the street's direction sits closer to it.
+    const toward = side * (-tz * d.x + tx * d.z) > 0 ? 1 : -1;
+    const cosA = Math.abs(d.x * tx + d.z * tz);
+    depth = Math.max(depth, (e.width / 2 + e.sidewalk + 2.5 + toward * hw * cosA) / sinA + 1);
+  }
+  return depth;
+}
+
+/** An edge's road strip, curb to curb between its two mouths, as a cobble surface patch (the junction fans stay asphalt). */
+function cobblePatch(ctx: BuildContext, eid: number, area: number): SurfacePatch {
+  const m = ctx.mouths[eid];
+  return { surface: 'cobble', polygon: [m.aP.curb, m.bP.curb, m.bN.curb, m.aN.curb], priority: COBBLE_PRIORITY, area };
+}
+
+/** Construction site layout in a route shortcut (constructionSite). */
+const SITE = {
+  /** Fences stand this far behind the street's building line and stop this far inside the alley walls (m). */
+  fenceBack: 1,
+  fenceInset: 0.35,
+  /**
+   * Panel spacing never drops below this (m): two fence panel props closer than their radii plus
+   * half the prop gap would overlap and one would be dropped (city/props.ts). Panels overlap a
+   * little visually instead, like real clamped fencing.
+   */
+  panelMin: 1.96,
+  /** Barricades and cones stand this far inside each fence (m); wall clutter starts this far in. */
+  barricade: 3.8,
+  inside: 7,
+  /** Gap between wall pieces along the alley (m): their radii plus [min, max]. */
+  gap: [0.35, 1.7],
+  /** Chance a soft piece stands out from the wall into the alley (it may block the line: it breaks). */
+  intrude: 0.3,
+} as const;
+
+/** Wall clutter mix: kind and weight. Everything but the dumpster breaks before it can stop a car. */
+const SITE_MIX: [PropKind, number][] = [
+  ['crate', 17],
+  ['barrel', 13],
+  ['trashBags', 14],
+  ['pallets', 14],
+  ['sandbags', 10],
+  ['waterBarrier', 10],
+  ['trafficCone', 9],
+  ['sawhorse', 6],
+  ['dumpster', 7],
+];
+const SOFT = new Set<PropKind>(['crate', 'trashBags', 'pallets', 'trafficCone', 'sawhorse', 'barrel']);
+
+/**
+ * A route shortcut as a construction site: temporary fence panels across both
+ * mouths (just behind the street's building line, the whole alley width,
+ * contractors' banners on them) that a car smashes through on the way in and
+ * out, striped sawhorses and cones behind each fence, and both walls lined
+ * with site clutter (crates, barrels, bags, pallets, sandbags, water filled
+ * barriers, the odd dumpster). Only soft pieces stand out into the alley: the
+ * middle LANE each side of the centerline stays clear of anything that could
+ * stop a car (PROP_DEFS breakSpeed). Pieces skip the kicker.
+ */
+function constructionSite(ctx: BuildContext, area: Area, b: AreaBuild, rng: Rng, len: number, hw: number, jumpClear: (s: number, r: number) => boolean): void {
+  const g = ctx.graph;
+  const [A, B] = area.path;
+  const ux = (B.x - A.x) / len;
+  const uz = (B.z - A.z) / len;
+  // Yaws: local +X across the alley, or along it (fences, planks and barriers lie along local X).
+  const across = Math.atan2(-ux, -uz);
+  const along = Math.atan2(-uz, ux);
+  const edge = hw - SITE.fenceInset;
+  /** Fence across the mouth at node nid (t: into the alley); returns its alley position (s) at lateral -edge and +edge. */
+  const fence = (nid: number, tx: number, tz: number): [number, number] | null => {
+    const n = g.nodes[nid];
+    let H = 0;
+    let d: { x: number; z: number } | null = null;
+    for (const eid of n.edges) {
+      if (area.edges.includes(eid)) continue;
+      const e = g.edges[eid];
+      H = Math.max(H, e.width / 2 + e.sidewalk);
+      d ??= unit(n, g.nodes[e.a === nid ? e.b : e.a]);
+    }
+    if (!d) return null;
+    let mx = -d.z;
+    let mz = d.x;
+    if (mx * tx + mz * tz < 0) {
+      mx = -mx;
+      mz = -mz;
+    }
+    const ox = n.x + mx * (H + SITE.fenceBack);
+    const oz = n.z + mz * (H + SITE.fenceBack);
+    // Lateral offset (left of A -> B) along the fence line, and where it meets the alley walls.
+    const lat0 = (ox - A.x) * -uz + (oz - A.z) * ux;
+    const dl = d.x * -uz + d.z * ux;
+    if (Math.abs(dl) < 0.3) return null;
+    const u1 = (edge - lat0) / dl;
+    const u2 = (-edge - lat0) / dl;
+    const ua = Math.min(u1, u2);
+    const span = Math.abs(u2 - u1);
+    const count = Math.max(1, Math.floor(span / SITE.panelMin));
+    const step = span / count;
+    const yaw = Math.atan2(-d.z, d.x);
+    for (let k = 0; k < count; k++) {
+      const u = ua + step * (k + 0.5);
+      b.destructibles.push({ kind: 'fencePanel', x: ox + d.x * u, z: oz + d.z * u, yaw, lift: 0, area: area.id });
+    }
+    const sOf = (u: number) => (ox + d!.x * u - A.x) * ux + (oz + d!.z * u - A.z) * uz;
+    return [sOf(u2), sOf(u1)];
+  };
+  const inF = fence(area.nodes[0], ux, uz) ?? [12, 12];
+  const outF = fence(area.nodes[1], -ux, -uz) ?? [len - 12, len - 12];
+  // A fence across a diagonal mouth is oblique: where it stands depends on the lateral offset.
+  const fenceS = (f: [number, number], lat: number) => f[0] + ((Math.max(-edge, Math.min(edge, lat)) + edge) / (2 * edge)) * (f[1] - f[0]);
+  const s0 = Math.max(inF[0], inF[1]);
+  const s1 = Math.min(outF[0], outF[1]);
+  /** Place a piece at alley position s and lateral offset (left +), inside both fences and off the kicker. */
+  const push = (kind: PropKind, s: number, lateral: number, jitter: number, yaw?: number) => {
+    const r = PROP_DEFS[kind].radius;
+    if (s - r < fenceS(inF, lateral) + 0.9 || s + r > fenceS(outF, lateral) - 0.9 || !jumpClear(s, r)) return;
+    const p = sideSpot(A, B, s, lateral);
+    b.destructibles.push({ kind, x: p.x, z: p.z, yaw: (yaw ?? p.yaw) + rng.range(-jitter, jitter), lift: 0, area: area.id });
+  };
+  // Behind each fence: a sawhorse or two across the alley, cones scattered around them.
+  for (const [s, dir] of [
+    [s0 + SITE.barricade, 1],
+    [s1 - SITE.barricade, -1],
+  ] as const) {
+    const lat = rng.range(0.9, 2.1) * (rng.chance(0.5) ? 1 : -1);
+    push('sawhorse', s, lat, 0.15, across);
+    if (rng.chance(0.6)) push('sawhorse', s + dir * rng.range(1.6, 2.4), -lat * rng.range(0.6, 1.1), 0.15, across);
+    for (let k = 0; k < 4; k++) push('trafficCone', s + dir * rng.range(-0.8, 2.8), rng.range(-2.6, 2.6), 3);
+    push(rng.chance(0.5) ? 'waterBarrier' : 'sandbags', s + dir * rng.range(0, 1.5), (lat > 0 ? -1 : 1) * (hw - 1.05), 0.05, along);
+  }
+  // Both walls lined with site clutter from just inside the fences.
+  const total = SITE_MIX.reduce((t, [, w]) => t + w, 0);
+  const pick = (): PropKind => {
+    let x = rng.range(0, total);
+    for (const [k, w] of SITE_MIX) if ((x -= w) < 0) return k;
+    return 'crate';
+  };
+  for (const side of [1, -1]) {
+    let s = s0 + SITE.inside + rng.range(0, 2);
+    while (s < s1 - SITE.inside) {
+      let kind = pick();
+      let r = PROP_DEFS[kind].radius;
+      let lat = hw - r - 0.15;
+      if (SOFT.has(kind)) {
+        if (rng.chance(SITE.intrude)) lat = Math.max(0.4, lat - rng.range(0.6, 1.9));
+      } else {
+        // Heavy pieces stand flush to the wall, and out of the line down the middle or not at all.
+        lat = hw - r - 0.05;
+        if (lat - r < LANE) {
+          kind = 'crate';
+          r = PROP_DEFS[kind].radius;
+          lat = hw - r - 0.15;
+        }
+      }
+      const at = s + r;
+      if (at > s1 - SITE.inside) break;
+      const yaw = kind === 'waterBarrier' || kind === 'dumpster' ? along + (side > 0 ? 0 : Math.PI) : undefined;
+      if (kind === 'trafficCone') {
+        for (let k = 0; k < 3; k++) push('trafficCone', at + rng.range(-0.6, 0.6), side * (lat - rng.range(0, 1.2)), 3);
+      } else push(kind, at, side * lat, kind === 'dumpster' ? 0.05 : 0.6, yaw);
+      s = at + r + rng.range(SITE.gap[0], SITE.gap[1]);
+    }
+  }
+}
 
 /** The back alley kicker: a height modifier across the alley (fading out behind the walls) plus a render hint. */
 function addJump(b: AreaBuild, A: Vec2, ux: number, uz: number, len: number, hw: number, center: number): void {
@@ -478,6 +676,17 @@ function insertSplit(routes: CarveRoute[], u: number, v: number, m: number): voi
   }
 }
 
+/**
+ * How good a cut is: the distance it saves, minus a steep penalty outside the
+ * ideal length range (short alleys are over too soon, very long ones skip half
+ * the scenery). U cuts get a small handicap at the call site: they swap the
+ * route's corners for two square turns in a narrow alley, a corner cut flows.
+ */
+function cutScore(skip: number, length: number): number {
+  const [lo, hi] = CITY.districts.backAlley.route.idealLength;
+  return skip - length - 1.5 * Math.max(0, lo - length) - 1.5 * Math.max(0, length - hi);
+}
+
 /** Unit vector perpendicular to u, on the side of v. */
 function unitPerp(u: Vec2, v: Vec2): Vec2 {
   let px = -u.z;
@@ -588,6 +797,22 @@ export function carveRouteShortcuts(ctx: PlanContext, routes: CarveRoute[]): voi
       carve(ctx, routes, cut, ctx.rng);
       madeAt[ri].push(cut.at);
     });
+  }
+  // A random back alley (backAlleyModule) that happens to join two points of a route and save distance
+  // is a route shortcut too: it gets the construction site treatment, so every shortcut reads the same.
+  for (const r of routes) {
+    const { cum, total } = nodeCum(g, r);
+    const pos = new Map<number, number>();
+    r.nodes.forEach((id, i) => pos.set(id, cum[i]));
+    const lo = r.closed ? 0 : ROUTE.sprintStartOffset;
+    const hi = r.closed ? total : total - ROUTE.sprintFinishOffset;
+    for (const a of ctx.areas) {
+      if (a.kind !== 'backAlley' || a.variant === 'routeShortcut') continue;
+      const e = g.edges[a.edges[0]];
+      const sa = pos.get(e.a);
+      const sb = pos.get(e.b);
+      if (sa !== undefined && sb !== undefined && shortcutSpan(sa, sb, e.length, total, r.closed, lo, hi)) a.variant = 'routeShortcut';
+    }
   }
 }
 
@@ -725,7 +950,7 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
           const ab = unit(A, B);
           if (Math.min(mouthAngle(ab, uBack), mouthAngle(ab, uOut)) < 34 * RAD) continue;
           if (!sprintGuard(A, B) || !cornerClear(Cn, uBack, h1, uOut, h2, A, B) || !chordClear(A, B, [e1, e2])) continue;
-          out.push({ eA: e1, fromA: C, dA, eB: e2, fromB: C, dB, length, skip, at: cum[i] - dA, score: skip - length });
+          out.push({ eA: e1, fromA: C, dA, eB: e2, fromB: C, dB, length, skip, at: cum[i] - dA, score: cutScore(skip, length) });
           break corner;
         }
       }
@@ -758,7 +983,7 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
         if (Math.min(mouthAngle(ab, uBack), mouthAngle(ab, uOut2)) < 55 * RAD) continue;
         if (!cornerClear(Cn, uBack, h1, uOut, h2, A, B) || !cornerClear(Qn, uBack2, h2, uOut2, E3.width / 2 + E3.sidewalk, A, B)) continue;
         if (!sprintGuard(A, B) || !chordClear(A, B, [e1, e3])) continue;
-        out.push({ eA: e1, fromA: C, dA: d, eB: e3, fromB: Q, dB: d, length, skip, at: cum[i] - d, score: (skip - length) * 0.8 });
+        out.push({ eA: e1, fromA: C, dA: d, eB: e3, fromB: Q, dB: d, length, skip, at: cum[i] - d, score: cutScore(skip, length) - 4 });
         break;
       }
     }
@@ -816,7 +1041,7 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
         }
         // Tight cities (diagonals, the river) leave narrow blocks: a fallback chord may pass closer.
         if (!chordClear(a.p, b.p, [a.e, b.e], CHORD_CLEAR)) continue;
-        out.push({ eA: a.e, fromA: R[a.k], dA: a.d, eB: b.e, fromB: R[b.k], dB: b.d, length: ab.len, skip, at: cum[a.k] + a.d, score: skip - ab.len });
+        out.push({ eA: a.e, fromA: R[a.k], dA: a.d, eB: b.e, fromB: R[b.k], dB: b.d, length: ab.len, skip, at: cum[a.k] + a.d, score: cutScore(skip, ab.len) });
       }
     }
     return out;
