@@ -158,24 +158,7 @@ def cut_arches(o):
         bpy.data.objects.remove(c)
 
 
-def box(o, c0, c1, name):
-    (x0, y0, z0), (x1, y1, z1) = c0, c1
-    v = [(x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0), (x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)]
-    add_geom(o, v, [(0, 3, 2, 1), (4, 5, 6, 7), (0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)], name)
-
-
-def tube(o, center, axis_dir, r, length, name, n=10):
-    """A capped cylinder (exhaust tips)."""
-    d = Vector(axis_dir).normalized()
-    u = d.orthogonal().normalized()
-    w = d.cross(u)
-    c = Vector(center)
-    ring0 = [c + (u * math.cos(2 * math.pi * i / n) + w * math.sin(2 * math.pi * i / n)) * r for i in range(n)]
-    ring1 = [p + d * length for p in ring0]
-    verts = [tuple(p) for p in ring0 + ring1]
-    faces = [(i, (i + 1) % n, n + (i + 1) % n, n + i) for i in range(n)]
-    faces += [tuple(range(n))[::-1], tuple(range(n, 2 * n))]
-    add_geom(o, verts, faces, name)
+# box() and tube() live in carKit.py.
 
 
 def details(o):

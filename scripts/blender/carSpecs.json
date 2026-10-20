@@ -1,0 +1,432 @@
+{
+  "_readme": "Reference specs for the authored cars (docs/carDesign.md). Each car blends two real donors: their dimensions in mm (sourced; `estimates` lists the keys read off side profiles rather than spec sheets), blend weights, what to take from each, and the lamp signatures. Nothing here is a game dimension: targets are derived as blend(donor value / donor wheelbase) x the car's manifest wheelbase x the `house` multiplier, so the proportions come from the donors and the stylization lives in one place. Readers: scripts/auditCar.ts (npm run audit, headless on the shipped GLB) and scripts/blender/carRefs.py (spec_check in Blender); scripts/blender/carFeatures.py builds the shared features from `house.features`. A calibrated side photo in assets/refs/<carId>/refs.json overrides the estimated keys.",
+  "house": {
+    "wheelRadius": 0.28,
+    "_scale": "Street Scene proportions on top of the blended donors: one 0.28 m wheel for every car, wider (flares) and lower (chopped roof) than real. Measured off the Proto Hatch as shipped. Change here, re-audit every car, and say so: the manifest geometry feeds the sim.",
+    "scale": {
+      "length": 1,
+      "width": 1.06,
+      "height": 0.92,
+      "overhangFront": 1,
+      "overhangRear": 1,
+      "track": 1,
+      "beltLine": 0.92
+    },
+    "tolerance": {
+      "ratio": 0.05,
+      "angleDeg": 4
+    },
+    "features": {
+      "_": "Every number is car space meters at the house scale. Builders in scripts/blender/carFeatures.py read these, so one edit changes every car.",
+      "lamp": {
+        "housingOffset": 0.004,
+        "lensOffset": 0.012,
+        "elementOffset": 0.016,
+        "indicatorOffset": 0.014,
+        "lensInset": 0.006,
+        "heightRange": [
+          0.1,
+          0.15
+        ],
+        "frontInnerX": 0.32,
+        "frontOuterX": 0.95,
+        "rearInnerX": 0.2,
+        "rearOuterX": 0.96,
+        "aboveSeam": 0.02,
+        "belowEdge": 0.025,
+        "indicatorShare": 0.2,
+        "elementRadiusShare": 0.32
+      },
+      "mirror": {
+        "housing": [
+          0.14,
+          0.08,
+          0.07
+        ],
+        "stalk": [
+          0.035,
+          0.03,
+          0.03
+        ],
+        "glassDepth": 0.006,
+        "aboveBelt": 0.03,
+        "behindPillarFoot": 0.06,
+        "outboard": 0.015
+      },
+      "handle": {
+        "size": [
+          0.012,
+          0.12,
+          0.025
+        ],
+        "belowBelt": 0.07,
+        "behindPillar": 0.14,
+        "material": "Black"
+      },
+      "cowl": {
+        "length": 0.07,
+        "lift": 0.004,
+        "material": "Black",
+        "wipers": {
+          "lengths": [
+            0.5,
+            0.42
+          ],
+          "width": 0.025,
+          "thickness": 0.012,
+          "sweepDeg": 18
+        }
+      },
+      "pillars": {
+        "A": "Paint",
+        "B": "Black",
+        "C": "Paint",
+        "D": "Paint",
+        "bWidth": 0.11,
+        "cWidthHatch": 0.3,
+        "quarterGlass": "hatches only, behind the C pillar"
+      },
+      "interior": {
+        "topBelowBelt": 0.02,
+        "seatBacks": true,
+        "seatBackAboveBelt": 0.18
+      },
+      "arch": {
+        "clearance": 0.035,
+        "gap": [
+          0.01,
+          0.04
+        ]
+      },
+      "exhaust": {
+        "tipRadius": 0.04,
+        "length": 0.16,
+        "material": "Chrome",
+        "stock": "twin tips, one per side"
+      }
+    }
+  },
+  "cars": {
+    "protoHatch": {
+      "displayName": "Proto Hatch",
+      "brief": "Five door hot hatch: the WRX hatch's stance, tall arches and flares with the Golf R's squared-off, tidy surfacing and detailing.",
+      "donors": [
+        {
+          "name": "2010 Subaru Impreza WRX hatchback (GH)",
+          "weight": 0.5,
+          "mm": {
+            "length": 4415,
+            "width": 1740,
+            "height": 1475,
+            "wheelbase": 2620,
+            "trackFront": 1495,
+            "trackRear": 1495,
+            "overhangFront": 990,
+            "overhangRear": 805,
+            "beltLine": 1010,
+            "tireRadius": 317,
+            "windshieldDeg": 31,
+            "rearGlassDeg": 46
+          },
+          "estimates": [
+            "trackFront",
+            "trackRear",
+            "overhangFront",
+            "overhangRear",
+            "beltLine",
+            "windshieldDeg",
+            "rearGlassDeg"
+          ],
+          "sources": [
+            "https://www.carexpert.com.au/subaru/impreza/2010-wrx-2-5l-hatchback-4x4-petrol-manual-joo5gak520091207",
+            "https://vehiclescore.co.uk/car-dimensions-check/subaru/impreza"
+          ],
+          "take": [
+            "stance: tall arches and wide flares (the house flares come from here)",
+            "teardrop headlights sweeping back along the fender top",
+            "wide low trapezoid grille with a slim upper slot (stock keeps both small)",
+            "tall taillight units at the D pillar that wrap onto the tailgate",
+            "hood scoop is a part (Hayate hood); the stock hood stays plain"
+          ]
+        },
+        {
+          "name": "2012 Volkswagen Golf R (Mk6)",
+          "weight": 0.5,
+          "mm": {
+            "length": 4212,
+            "width": 1785,
+            "height": 1461,
+            "wheelbase": 2574,
+            "trackFront": 1534,
+            "trackRear": 1507,
+            "overhangFront": 880,
+            "overhangRear": 758,
+            "beltLine": 980,
+            "tireRadius": 324,
+            "windshieldDeg": 30,
+            "rearGlassDeg": 50
+          },
+          "estimates": [
+            "trackFront",
+            "trackRear",
+            "overhangFront",
+            "overhangRear",
+            "beltLine",
+            "windshieldDeg",
+            "rearGlassDeg"
+          ],
+          "sources": [
+            "https://www.carexpert.co.nz/volkswagen/golf/2012/r/exterior-and-dimensions",
+            "https://www.carexpert.com.au/volkswagen/golf/2012-r-2l-hatchback-4x4-petrol-manual-jowf5k5f20110901"
+          ],
+          "take": [
+            "squared-off surfacing: flat hood, upright tailgate, one crisp shoulder crease",
+            "LED strip along the bottom of the headlight (the Light indicator strip)",
+            "honeycomb lower intakes implied by Black patches, thin upper grille bar",
+            "thin horizontal taillight bar across the tailgate joining the quarter units",
+            "roof spoiler extending the roof line (a part)"
+          ]
+        }
+      ],
+      "body": {
+        "doors": 4,
+        "pillars": [
+          "A",
+          "B",
+          "C",
+          "D"
+        ],
+        "roofline": "flat roof to a steep tailgate; the D pillar carries a small quarter glass",
+        "exhaust": "twin, one tip each side"
+      },
+      "lights": {
+        "front": {
+          "cover": "teardrop",
+          "elements": "none",
+          "indicator": "bottomStrip",
+          "notes": "WRX teardrop in a Black housing, Golf R strip along the bottom"
+        },
+        "rear": {
+          "cover": "verticalUnit",
+          "elements": "none",
+          "indicator": "outerBlock",
+          "wrap": true,
+          "centerBar": true,
+          "notes": "WRX hatch tall units at the D pillar wrapping the corner, Golf R bar across the tailgate"
+        }
+      }
+    },
+    "protoCompact": {
+      "displayName": "Proto Compact",
+      "brief": "Three door hatchback coupe: the 318ti's long doors, quarter windows and chopped-off short tail with the RSX's long swept lamps and flatter fastback glass.",
+      "donors": [
+        {
+          "name": "1999 BMW 318ti Compact (E36/5)",
+          "weight": 0.5,
+          "mm": {
+            "length": 4210,
+            "width": 1698,
+            "height": 1393,
+            "wheelbase": 2700,
+            "trackFront": 1418,
+            "trackRear": 1431,
+            "overhangFront": 790,
+            "overhangRear": 720,
+            "beltLine": 940,
+            "tireRadius": 314,
+            "windshieldDeg": 34,
+            "rearGlassDeg": 52
+          },
+          "estimates": [
+            "trackFront",
+            "trackRear",
+            "overhangFront",
+            "overhangRear",
+            "beltLine",
+            "windshieldDeg",
+            "rearGlassDeg"
+          ],
+          "sources": [
+            "https://www.carsales.com.au/research/bmw/3-series/1999/318ti",
+            "https://australiancar.reviews/review-bmw-e36-3-series-compact-1995-00/"
+          ],
+          "take": [
+            "short tail: the hatch drops almost straight behind the rear axle",
+            "flat glass cover over twin round lamps",
+            "small twin kidney grilles",
+            "L shaped taillights wrapping from the quarter onto the tailgate",
+            "long doors with a quarter window behind the B pillar"
+          ]
+        },
+        {
+          "name": "2003 Acura RSX (DC5)",
+          "weight": 0.5,
+          "mm": {
+            "length": 4375,
+            "width": 1725,
+            "height": 1389,
+            "wheelbase": 2570,
+            "trackFront": 1485,
+            "trackRear": 1483,
+            "overhangFront": 950,
+            "overhangRear": 855,
+            "beltLine": 930,
+            "tireRadius": 313,
+            "windshieldDeg": 28,
+            "rearGlassDeg": 28
+          },
+          "estimates": [
+            "trackFront",
+            "trackRear",
+            "overhangFront",
+            "overhangRear",
+            "beltLine",
+            "windshieldDeg",
+            "rearGlassDeg"
+          ],
+          "sources": [
+            "https://hondanews.com/en-US/releases/release-213ecdccccb00457c01e65004c34c6a5-2003-acura-rsx-specifications"
+          ],
+          "take": [
+            "long swept headlight covers climbing the fender",
+            "fastback: the rear glass lies flatter than a hatch's",
+            "slim mouth under a body colour bumper bar, no big grille",
+            "clean sides with one shoulder crease",
+            "taillights with a clear inner element (the Light block)"
+          ]
+        }
+      ],
+      "body": {
+        "doors": 2,
+        "pillars": [
+          "A",
+          "B",
+          "C"
+        ],
+        "roofline": "roof falls into a flatter fastback glass, then the tail is cut short behind the axle",
+        "exhaust": "twin, one tip each side"
+      },
+      "lights": {
+        "front": {
+          "cover": "flatCover",
+          "elements": "twinRound",
+          "indicator": "bottomStrip",
+          "notes": "318ti twin rounds under an RSX-long cover that climbs the fender"
+        },
+        "rear": {
+          "cover": "lUnit",
+          "elements": "innerBlock",
+          "indicator": "none",
+          "wrap": true,
+          "centerBar": false,
+          "notes": "318ti L units wrapping onto the tailgate with the RSX's clear inner block"
+        }
+      }
+    },
+    "protoCoupe": {
+      "displayName": "Proto Coupe",
+      "brief": "Front engined coupe: the Supra's long hood, short deck and rounded greenhouse on the E46 M3's flared arches, kidneys and L line tail.",
+      "donors": [
+        {
+          "name": "1999 Toyota Supra twin turbo (JZA80)",
+          "weight": 0.5,
+          "mm": {
+            "length": 4520,
+            "width": 1810,
+            "height": 1275,
+            "wheelbase": 2550,
+            "trackFront": 1520,
+            "trackRear": 1525,
+            "overhangFront": 1050,
+            "overhangRear": 920,
+            "beltLine": 870,
+            "tireRadius": 321,
+            "windshieldDeg": 26,
+            "rearGlassDeg": 27
+          },
+          "estimates": [
+            "overhangFront",
+            "overhangRear",
+            "beltLine",
+            "windshieldDeg",
+            "rearGlassDeg"
+          ],
+          "sources": [
+            "https://www.carsales.com.au/research/toyota/supra/1999/rz-s/"
+          ],
+          "take": [
+            "long hood, short deck, rounded greenhouse",
+            "quad projectors under one swept cover",
+            "big open lower mouth (stock keeps it small)",
+            "twin round taillights per side on a dark panel",
+            "hoop wing (a part)"
+          ]
+        },
+        {
+          "name": "BMW M3 coupe (E46)",
+          "weight": 0.5,
+          "mm": {
+            "length": 4492,
+            "width": 1780,
+            "height": 1372,
+            "wheelbase": 2731,
+            "trackFront": 1508,
+            "trackRear": 1525,
+            "overhangFront": 830,
+            "overhangRear": 931,
+            "beltLine": 950,
+            "tireRadius": 330,
+            "windshieldDeg": 32,
+            "rearGlassDeg": 37
+          },
+          "estimates": [
+            "trackFront",
+            "trackRear",
+            "overhangFront",
+            "overhangRear",
+            "beltLine",
+            "windshieldDeg",
+            "rearGlassDeg"
+          ],
+          "sources": [
+            "https://fastcarcheck.uk/specs/make/bmw/m3/288168",
+            "https://www.lapmeta.com/en/vi/14947"
+          ],
+          "take": [
+            "flared arches with a side gill behind the front wheel",
+            "power dome hood is a part; the stock hood is flat",
+            "small kidneys and slim angular lamp covers",
+            "L line taillights",
+            "twin tips per side are a part; stock keeps one tip per side"
+          ]
+        }
+      ],
+      "body": {
+        "doors": 2,
+        "pillars": [
+          "A",
+          "B",
+          "C"
+        ],
+        "roofline": "low rounded cabin, fastback into a short trunk lid",
+        "exhaust": "twin, one tip each side"
+      },
+      "lights": {
+        "front": {
+          "cover": "slimWedge",
+          "elements": "twinRound",
+          "indicator": "outerBlock",
+          "notes": "E46 slim wedge cover with the Supra's twin projectors inside"
+        },
+        "rear": {
+          "cover": "panel",
+          "elements": "twinRound",
+          "indicator": "none",
+          "wrap": false,
+          "centerBar": false,
+          "notes": "Supra twin rounds on a dark panel set in the E46's L line"
+        }
+      }
+    }
+  }
+}

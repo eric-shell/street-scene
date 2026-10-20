@@ -13,6 +13,7 @@
     "assets": "tsx scripts/buildAssets.ts",
     "inspect": "tsx scripts/inspectAsset.ts",
     "validate": "tsx scripts/validateParts.ts",
+    "audit": "tsx scripts/auditCar.ts",
     "music": "tsx scripts/importMusic.ts"
   },
   "dependencies": {

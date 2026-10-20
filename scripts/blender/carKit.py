@@ -464,14 +464,18 @@ def surface_tree(objs):
 
 def projected_quad(o, corners, axis, toward, offset, name, nu=8, nv=3, target=None, max_jump=0.12):
     """Lay a patch on o's surface (lights, grilles, housings): corners are four (u, v) points
-    of a quad in the plane across `axis` ('y': (x, z), 'x': (y, z)), in order around the quad.
+    of a quad in the plane across `axis` ('y': (x, z), 'x': (y, z), 'z': (x, y) from above with
+    toward -1), in order around the quad.
     Rays travel along the axis in direction `toward` (+1 / -1) from outside the car; each grid
     point lands on the first hit, lifted `offset` meters back toward the ray origin. Cells with
     a corner that misses are skipped. target: objects to ray cast against (default [o]); the
     patch is still added to o, so lights on a body can follow a hood and bumper around them.
     Grid points whose hit is more than max_jump meters off the median depth are dropped."""
     tree = surface_tree(target or [o])
-    d = Vector((0, toward, 0)) if axis == 'y' else Vector((toward, 0, 0))
+    axes = {'x': (Vector((toward, 0, 0)), lambda u, v: Vector((-5 * toward, u, v))),
+            'y': (Vector((0, toward, 0)), lambda u, v: Vector((u, -5 * toward, v))),
+            'z': (Vector((0, 0, toward)), lambda u, v: Vector((u, v, -5 * toward)))}
+    d, origin_at = axes[axis]
     (a, b, c, e) = [Vector(p) for p in corners]
     grid = []
     for j in range(nv + 1):
@@ -480,7 +484,7 @@ def projected_quad(o, corners, axis, toward, offset, name, nu=8, nv=3, target=No
         for i in range(nu + 1):
             s = i / nu
             uv = (a * (1 - s) + b * s) * (1 - t) + (e * (1 - s) + c * s) * t
-            origin = Vector((uv.x, -5 * toward, uv.y)) if axis == 'y' else Vector((-5 * toward, uv.x, uv.y))
+            origin = origin_at(uv.x, uv.y)
             hit = tree.ray_cast(origin, d)
             row.append((hit[0] - d * offset, hit[3]) if hit[0] else None)
         grid.append(row)
@@ -505,6 +509,55 @@ def projected_quad(o, corners, axis, toward, offset, name, nu=8, nv=3, target=No
     if faces:
         add_geom(o, verts, faces, name, outward=-d)
     return len(faces)
+
+
+def project_polygon(o, pts, axis, toward, offset, name, target=None):
+    """Lay a convex polygon [(u, v)] on the surface as a fan of projected_quad cells around its
+    centroid (lamp covers, round lamps, indicator blocks). Concave shapes go in as several
+    convex polygons. Returns the number of cells made."""
+    n = len(pts)
+    cu = sum(p[0] for p in pts) / n
+    cv = sum(p[1] for p in pts) / n
+    made = 0
+    for i in range(n):
+        made += projected_quad(o, [pts[i], pts[(i + 1) % n], (cu, cv), (cu, cv)], axis, toward, offset, name, nu=1, nv=1, target=target)
+    return made
+
+
+def delete_faces(o, pred):
+    """Delete the faces for which pred(center, normal, material_name) is true. Returns how many."""
+    me = o.data
+    doomed = [p.index for p in me.polygons if pred(p.center, p.normal, me.materials[p.material_index].name.split('.')[0])]
+    if doomed:
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        bm.faces.ensure_lookup_table()
+        bmesh.ops.delete(bm, geom=[bm.faces[i] for i in doomed], context='FACES')
+        bm.to_mesh(me)
+        bm.free()
+        me.update()
+    return len(doomed)
+
+
+def box(o, c0, c1, name):
+    """An axis aligned box between two corners (mirrors, handles, interior blocks); corners in any order."""
+    (x0, y0, z0), (x1, y1, z1) = c0, c1
+    v = [(x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0), (x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)]
+    add_geom(o, v, [(0, 3, 2, 1), (4, 5, 6, 7), (0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)], name)
+
+
+def tube(o, center, axis_dir, r, length, name, n=10):
+    """A capped cylinder (exhaust tips)."""
+    d = Vector(axis_dir).normalized()
+    u = d.orthogonal().normalized()
+    w = d.cross(u)
+    c = Vector(center)
+    ring0 = [c + (u * math.cos(2 * math.pi * i / n) + w * math.sin(2 * math.pi * i / n)) * r for i in range(n)]
+    ring1 = [p + d * length for p in ring0]
+    verts = [tuple(p) for p in ring0 + ring1]
+    faces = [(i, (i + 1) % n, n + (i + 1) % n, n + i) for i in range(n)]
+    faces += [tuple(range(n))[::-1], tuple(range(n, 2 * n))]
+    add_geom(o, verts, faces, name)
 
 
 def mount_on_body(sp, body_objs, dys, foot=0.15, clear=0.01, glass_gap=0.025):

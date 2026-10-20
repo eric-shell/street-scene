@@ -133,7 +133,11 @@ It checks that the file exists, the slot and car are known, every material name 
 
 Dev parts aren't saved to the catalog. Add the catalog entry once you're happy.
 
-## 9. Splitting a merged body kit
+## 9. Designing a kit
+
+Sizes that read at game distance, where each piece sits, the tuner families and the rule that every piece is sized from a reference product and anchored to the car's own edges: `docs/carDesign.md` section 4. Product pages and extracted dimensions go in `assets/refs/parts/<kit>/notes.md` (template in `_template/`).
+
+## 10. Splitting a merged body kit
 
 FBX imports (IceMaan) ship each body kit as one merged mesh, so they're registered as `body` variants until split. The Proto Compact and Proto Hatch were split this way in Blender (the `/blender` project skill has the scripts and the gotchas):
 
