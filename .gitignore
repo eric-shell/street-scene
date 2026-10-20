@@ -4,3 +4,6 @@ dist
 *.log
 assets/converted/
 .vite
+
+# Claude Code personal settings (copy .claude/settings.local.json.example)
+.claude/settings.local.json
