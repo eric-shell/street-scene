@@ -378,8 +378,11 @@ describe('districts', () => {
     for (let i = 0; i < 24; i++) {
       const c = createCity(rng.int(0, 0x7fffffff));
       const blockArea = c.blocks.faces.reduce((s, f) => s + (f.outer ? 0 : f.area), 0);
+      // Downtown keeps the blocks nobody claimed (hills, parks and the monument claim about a fifth; the
+      // special share by streets, hill slopes included, is measured in hills.test.ts).
       const downtown = c.districts.areas.filter((x) => x.kind === 'downtown').reduce((s, x) => s + x.params.area, 0);
-      expect(downtown / blockArea).toBeGreaterThan(0.7);
+      expect(downtown / blockArea).toBeGreaterThan(0.5);
+      expect(downtown / blockArea).toBeLessThan(0.95);
       c.districts.areas.forEach((x, k) => {
         expect(x.id).toBe(k);
         seen.add(x.kind);
@@ -389,7 +392,7 @@ describe('districts', () => {
       expect(new Set(claimed).size).toBe(claimed.length);
       expect(claimed.length).toBe(c.blocks.faces.filter((f) => !f.outer).length);
     }
-    for (const k of ['downtown', 'park', 'river', 'roundabout', 'alley', 'backAlley', 'subway', 'infill']) expect(seen.has(k)).toBe(true);
+    for (const k of ['downtown', 'park', 'river', 'roundabout', 'alley', 'backAlley', 'subway', 'infill', 'hills', 'monument']) expect(seen.has(k)).toBe(true);
   });
 
   it('city walls always match visible geometry and never stand on a road', () => {
@@ -820,8 +823,9 @@ describe('route shortcuts', () => {
             expect(end.some((p) => Math.abs(lateral(p) - lat) < halfCar + p.radius), `${seed} gap at ${lat}`).toBe(true);
           }
         }
-        // Dense: well over a piece every 2.5 m of alley, construction pieces among them.
-        expect(mine.length).toBeGreaterThan(len / 2.5);
+        // Dense: well over a piece every 2.5 m of the alley between its mouth clearances (about 15 m
+        // each), construction pieces among them.
+        expect(mine.length, `${seed} ${len.toFixed(0)} m`).toBeGreaterThan((len - 30) / 2.5);
         for (const k of ['trafficCone', 'sawhorse']) expect(mine.some((p) => p.kind === k)).toBe(true);
         // Nothing that can stop a car stands in the line down the middle (soft pieces may: they break).
         for (const p of w.props) {

@@ -105,6 +105,10 @@ export class Minimap {
         p.arc(a.params.x, a.params.z, a.params.island, 0, Math.PI * 2);
       } else if (a.kind === 'subway') {
         a.path.forEach((q, i) => (i ? p.lineTo(q.x, q.z) : p.moveTo(q.x, q.z)));
+      } else if (a.kind === 'hills') {
+        // A contour around the rise.
+        a.polygon.forEach((q, i) => (i ? p.lineTo(q.x, q.z) : p.moveTo(q.x, q.z)));
+        p.closePath();
       } else {
         for (const eid of a.edges) {
           const e = g.edges[eid];
@@ -115,7 +119,7 @@ export class Minimap {
     }
     for (const [k, path] of fills) this.areaFills.push({ path, style: AREA_MAP_STYLE[k] });
     // Order: alleys and shortcuts under the subway and roundabout outlines.
-    const order: AreaKind[] = ['backAlley', 'alley', 'roundabout', 'subway'];
+    const order: AreaKind[] = ['hills', 'backAlley', 'alley', 'roundabout', 'subway'];
     for (const k of order) {
       const path = lines.get(k);
       if (path) this.areaLines.push({ path, style: AREA_MAP_STYLE[k] });

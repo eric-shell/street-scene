@@ -530,7 +530,7 @@ export function buildBuildings(world: World, podium: PodiumOutput, opts: { detai
   const g = world.graph;
   const scratch: number[] = [];
   const B = world.blocks.buildings;
-  for (let i = 0; i < B.length; i++) buildOne(o, B[i], plans[i], det, (x, z) => corridorClearance(g, world.blocks.edgeGrid, x, z, scratch) < 2);
+  for (let i = 0; i < B.length; i++) buildOne(o, B[i], plans[i], det, (x, z) => corridorClearance(g, world.blocks.edgeGrid, x, z, scratch) < 2, world.heightAt);
 
   const disposables: { dispose(): void }[] = [mats];
   const track = <T extends { dispose(): void }>(x: T): T => {
@@ -602,8 +602,55 @@ export function buildBuildings(world: World, podium: PodiumOutput, opts: { detai
   };
 }
 
+/**
+ * Dark concrete plinth where a building meets rising ground. The base sits at
+ * the lowest footprint corner, so on a hillside the uphill faces are buried;
+ * along each face the plinth climbs with the ground in short steps and stands
+ * a hair proud of the facade, so a buried storefront reads as a retaining
+ * wall with the shop glass above it, and the podium never floats where the
+ * ground dips between two corners. Flat ground gets nothing.
+ */
+function plinth(o: Out, F: Frame, base: Vec2[], street: number, groundAt: (x: number, z: number) => number): void {
+  const color = colorOf(0x34353b);
+  const out = 0.12;
+  const y0 = street - 0.6;
+  for (let i = 0; i < 4; i++) {
+    const p = base[i];
+    const q = base[(i + 1) % 4];
+    const n = edgeNormal(p, q);
+    const nx = F.NX(n.x, n.z);
+    const nz = F.NZ(n.x, n.z);
+    const len = Math.hypot(q.x - p.x, q.z - p.z);
+    const steps = Math.max(1, Math.ceil(len / 6));
+    for (let k = 0; k < steps; k++) {
+      const t0 = k / steps;
+      const t1 = (k + 1) / steps;
+      const ax = F.X(p.x + (q.x - p.x) * t0, p.z + (q.z - p.z) * t0);
+      const az = F.Z(p.x + (q.x - p.x) * t0, p.z + (q.z - p.z) * t0);
+      const bx = F.X(p.x + (q.x - p.x) * t1, p.z + (q.z - p.z) * t1);
+      const bz = F.Z(p.x + (q.x - p.x) * t1, p.z + (q.z - p.z) * t1);
+      const top = Math.max(groundAt(ax + nx * 0.6, az + nz * 0.6), groundAt(bx + nx * 0.6, bz + nz * 0.6)) + 0.32;
+      if (top < street + 0.4) continue;
+      const v = [
+        o.trim.vertex(ax + nx * out, y0, az + nz * out, nx, 0, nz, 0, 0, color),
+        o.trim.vertex(bx + nx * out, y0, bz + nz * out, nx, 0, nz, 1, 0, color),
+        o.trim.vertex(bx + nx * out, top, bz + nz * out, nx, 0, nz, 1, 1, color),
+        o.trim.vertex(ax + nx * out, top, az + nz * out, nx, 0, nz, 0, 1, color),
+      ];
+      o.trim.quadFacing(v[0], v[1], v[2], v[3], nx, 0, nz);
+      const lip = [
+        o.trim.vertex(ax, top, az, 0, 1, 0, 0, 0, color),
+        o.trim.vertex(bx, top, bz, 0, 1, 0, 1, 0, color),
+        o.trim.vertex(bx + nx * out, top, bz + nz * out, 0, 1, 0, 1, 1, color),
+        o.trim.vertex(ax + nx * out, top, az + nz * out, 0, 1, 0, 0, 1, color),
+      ];
+      o.trim.quadFacing(lip[0], lip[1], lip[2], lip[3], 0, 1, 0);
+    }
+  }
+}
+
 /** Everything for one building. */
-function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[Detail], streetAt: (x: number, z: number) => boolean): void {
+function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[Detail], streetAt: (x: number, z: number) => boolean, groundAt: (x: number, z: number) => number): void {
   const S = STYLES[plan.style];
   const rng = new Rng((plan.seed ^ 0x6b1d5) >>> 0 || 1);
   const F = new Frame(b.x, b.z, b.yaw);
@@ -618,6 +665,7 @@ function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[
     return streetAt(F.X(mx, mz), F.Z(mx, mz));
   });
   const street = b.baseY + 0.6;
+  plinth(o, F, base, street, groundAt);
   const m = MODULE[S.layer];
   const fh = m.floor;
   const maxKit = Math.max(0, Math.floor((plan.h - 0.6 - GROUND_H) / PODIUM_FLOOR_H) - 1);

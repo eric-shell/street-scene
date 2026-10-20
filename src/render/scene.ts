@@ -17,6 +17,7 @@ import { buildProps, PropRenderer } from './props';
 import { buildDistrictMeshes } from './districts';
 import { buildBackdrop } from './backdrop';
 import { buildCrowds, Crowds } from './crowds';
+import { buildStreetPolish } from './streetPolish';
 
 export const RETRO_HEIGHT = 240;
 
@@ -128,6 +129,9 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   scene.add(districts.group);
   const backdrop = buildBackdrop(world.seed);
   scene.add(backdrop.group);
+  // Street level polish: road decals, puddles, graffiti, blade signs, banners, steam (pasted onto the drawn podiums).
+  const polish = buildStreetPolish(world, { quality: settings.quality, facades: (city.group.getObjectByName('podiums') as THREE.Mesh | undefined)?.geometry });
+  scene.add(polish.group);
   const fx = buildLightFx(city.lampPositions, city.signLights, world.heightAt, FOG_DENSITY);
   fx.setStrength(0.32, 0.85);
   scene.add(fx.group);
@@ -188,6 +192,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
       arrows.update(time);
       districts.update(time);
       backdrop.update(time);
+      polish.update(time);
       // Hazard blink with soft edges: a hard 3.2 / 0.6 square wave strobes the bloom.
       const blink = 0.6 + 2.6 * THREE.MathUtils.smoothstep(Math.sin(time * 5), -0.35, 0.35);
       city.barrierLampMaterial.color.setRGB(1 * blink, 0.63 * blink, 0.12 * blink);
@@ -196,6 +201,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
       city.dispose();
       districts.dispose();
       backdrop.dispose();
+      polish.dispose();
       fx.dispose();
       arrows.dispose();
       roadblocks.dispose();

@@ -47,13 +47,15 @@ export const CITY = {
   signCount: 90,
 
   /**
-   * District planning (src/city/districts). About 80% of the city stays
-   * downtown blocks; the special areas below share the rest. `chance` is per
+   * District planning (src/city/districts). Roughly half the city stays plain
+   * downtown blocks; the special areas below (hills, parks, the river, the El,
+   * alleys, roundabouts, a monument plaza...) share the rest. `chance` is per
    * city, `count` a [min, max] range. Areas are skipped once their combined
-   * footprint would pass maxSpecialFraction of the block area.
+   * footprint would pass maxSpecialFraction of the block area (a cap, not a
+   * target: the counts below decide how much actually gets used).
    */
   districts: {
-    maxSpecialFraction: 0.2,
+    maxSpecialFraction: 0.45,
     river: {
       enabled: true,
       chance: 0.5,
@@ -104,7 +106,7 @@ export const CITY = {
     },
     roundabout: {
       enabled: true,
-      count: [1, 3],
+      count: [2, 4],
       /** Outer curb radius range (m) and ring road width (outer curb to island). */
       outerRadius: [19, 23],
       ringWidth: 10.5,
@@ -161,8 +163,8 @@ export const CITY = {
         /** Entries keep this far from the next route junction (m); from a turning junction whose corner rail runs along the cut's side, railClear. */
         nodeClear: 28,
         railClear: 50,
-        /** Shortest shortcut (m). */
-        minLength: 38,
+        /** Shortest shortcut (m): below this a cut is a stub with no room for clutter between its mouths. */
+        minLength: 80,
         /** It saves at least minSave of the route distance it skips, and skips at most maxSkip of the lap (or sprint). */
         minSave: 0.2,
         maxSkip: 0.34,
@@ -175,9 +177,9 @@ export const CITY = {
     },
     park: {
       enabled: true,
-      count: [1, 2],
+      count: [2, 3],
       minArea: 7000,
-      maxArea: 26000,
+      maxArea: 34000,
       /** Rolling hill height (m) and how far from the park edge it rises from flat (m). */
       hill: 2.6,
       hillEdge: 16,
@@ -225,7 +227,61 @@ export const CITY = {
       planterDepth: 2.4,
     },
     /** Reserved unique features, documented placeholders (plan nothing yet). */
-    monument: { enabled: false },
+    /**
+     * Hills: clusters of adjacent blocks lifted on a smooth dome or ridge with
+     * a flat top (a basin now and then), so the streets up its flanks climb,
+     * crest and drop (src/city/districts/hills.ts).
+     */
+    hills: {
+      enabled: true,
+      /** Hills asked for per city; fewer place when the river, the El and roundabouts leave no room. */
+      count: [2, 3],
+      /** Adjacent blocks per hill [min, max]. */
+      blocks: [2, 4],
+      /** Summit height above the surrounding ground (m), [min, max]; a hill that does not fit is lowered toward the minimum. */
+      height: [8, 16],
+      /** Steepest grade of the flanks (rise per m); the slope width follows from the height. */
+      maxGrade: 0.11,
+      /** The plateau stops this far inside the cluster's outline, so its boundary streets sit just past the crest (m). */
+      inset: 30,
+      /** A ridge plateau is this wide across (m); domes cover the whole cluster. */
+      ridgeHalfWidth: 26,
+      ridgeChance: 0.4,
+      /** Share of hills that are a basin (the same profile, sunk) instead of a dome. */
+      basinChance: 0.2,
+      /** The slopes keep this far from the river channel, roundabouts and the monument plaza (m). */
+      clearance: 15,
+      /** Two hills' slopes may overlap by this fraction of their widths, where both are nearly flat. */
+      overlap: 0.2,
+      /** The area polygon (minimap, areaAt) reaches this fraction of the slope width out from the plateau. */
+      reach: 0.85,
+    },
+    /**
+     * Monument: one plaza block near the center with a floodlit landmark on a
+     * solid base (src/city/districts/monument.ts).
+     */
+    monument: {
+      enabled: true,
+      chance: 0.6,
+      /** Plaza block area (m^2) and how far from the city center it may be (m). */
+      minArea: 8000,
+      maxArea: 24000,
+      reach: 380,
+      /** Base radius (m) and the width of the step rings around it (m): the outer step edge is the collision. */
+      base: 6.5,
+      steps: 3.4,
+      /** Landmark heights above the base (m). */
+      obelisk: 30,
+      column: 21,
+      arch: 15,
+      /** Arch: pier width across the opening and depth along it, and the drive through gap between the piers (m). */
+      pierWidth: 4.2,
+      pierDepth: 6.5,
+      archGap: 10,
+      /** Destructible planter pots ring the steps this far out (m), benches further out. */
+      potRing: 6,
+      benchRing: 12,
+    },
     waterfront: { enabled: false },
     lake: { enabled: false },
   },

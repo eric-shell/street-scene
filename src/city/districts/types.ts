@@ -1,9 +1,9 @@
 /**
  * District framework: the common vocabulary every area module speaks.
  *
- * About 80% of the city is plain downtown blocks; the rest is made of special
- * areas (alleys, parks, a river, an elevated subway, roundabouts, ...). Each
- * kind lives in its own module (src/city/districts/<kind>.ts) implementing
+ * Roughly half the city is plain downtown blocks; the rest is special areas
+ * (hills, parks, a river, an elevated subway, alleys, roundabouts, a monument
+ * plaza, ...). Each kind lives in its own module (src/city/districts/<kind>.ts) implementing
  * DistrictModule, with a matching renderer in src/render/districts/<kind>.ts.
  *
  * Lifecycle (all pure and deterministic, see index.ts):
@@ -38,8 +38,9 @@ export type AreaKind =
   | 'river'
   | 'roundabout'
   | 'infill'
-  // Reserved unique features (planned later, disabled in config).
+  | 'hills'
   | 'monument'
+  // Reserved unique features (planned later, disabled in config).
   | 'waterfront'
   | 'lake';
 
@@ -77,6 +78,7 @@ export const COBBLE_PRIORITY = 6;
  * parapet / culvert / fence / trench / channelEnd: bridge sides, bridge body seen from the
  *   channel, bank top fence, ramp retaining walls, channel tunnel ends (river).
  * tree: park tree trunk (park).
+ * monument: the step ring around a landmark's base, or an arch's piers (monument).
  */
 export type WallLook =
   | 'building'
@@ -91,9 +93,10 @@ export type WallLook =
   | 'fence'
   | 'trench'
   | 'channelEnd'
-  | 'tree';
+  | 'tree'
+  | 'monument';
 
-export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree'];
+export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument'];
 
 export interface Area {
   /** Index into CityDistricts.areas. */
@@ -289,6 +292,7 @@ export const AREA_MAP_STYLE: Record<AreaKind, AreaMapStyle> = {
   river: { fill: 'rgba(90,120,150,0.32)' },
   roundabout: { stroke: 'rgba(140,160,220,0.4)', width: 4 },
   infill: { fill: 'rgba(140,160,220,0.08)' },
+  hills: { fill: 'rgba(214,170,110,0.11)', stroke: 'rgba(230,190,130,0.3)', width: 2.5, dash: [6, 7] },
   monument: { fill: 'rgba(255,220,140,0.25)' },
   waterfront: { fill: 'rgba(70,110,160,0.3)' },
   lake: { fill: 'rgba(70,110,160,0.35)' },

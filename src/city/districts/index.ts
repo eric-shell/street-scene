@@ -12,8 +12,10 @@
  * Order matters and is fixed: the river first (it decides bridges), then the
  * subway (claims a street column), roundabouts, alleys, back alleys (the last
  * module allowed to change the graph topology, so face ids stay stable), parks
- * (claim faces), reserved features, and downtown (claims every face left).
- * The optional topology hook runs right after back alleys (route shortcuts).
+ * (claim faces), the monument plaza, hills (claim clusters of faces and keep
+ * their slopes clear of everything placed before them), reserved features,
+ * and downtown (claims every face left). The optional topology hook runs
+ * right after back alleys (route shortcuts).
  */
 import { CITY } from '../config';
 import type { RoadGraph } from '../roadGraph';
@@ -30,6 +32,7 @@ import { roundaboutModule } from './roundabout';
 import { alleyModule, backAlleyModule } from './alley';
 import { parkModule } from './park';
 import { monumentModule } from './monument';
+import { hillsModule } from './hills';
 import { waterfrontModule } from './waterfront';
 import { lakeModule } from './lake';
 import { downtownModule } from './downtown';
@@ -44,6 +47,7 @@ export const DISTRICT_MODULES: readonly DistrictModule[] = [
   backAlleyModule,
   parkModule,
   monumentModule,
+  hillsModule,
   waterfrontModule,
   lakeModule,
   downtownModule,
@@ -59,6 +63,7 @@ export function districtModule(kind: AreaKind): DistrictModule {
 /** areaAt priority: more specific kinds win where footprints overlap. */
 const AREA_PRIORITY: Record<AreaKind, number> = {
   downtown: 1,
+  hills: 2,
   park: 3,
   subway: 4,
   alley: 5,

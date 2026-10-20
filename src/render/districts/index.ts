@@ -9,8 +9,10 @@ import type { Wall } from '../../city/blocks';
 import type { WallLook } from '../../city/districts/types';
 import type { Quality } from '../../ui/settings';
 import { GeoBuilder } from '../geoBuilder';
+import { fadeSubPixel } from '../lightFx';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { alleyRenderer } from './alley';
+import { hillsRenderer } from './hills';
 import { downtownRenderer } from './downtown';
 import { infillRenderer } from './infill';
 import { lakeRenderer } from './lake';
@@ -29,6 +31,7 @@ export const DISTRICT_RENDERERS: readonly DistrictRenderer[] = [
   alleyRenderer,
   subwayRenderer,
   infillRenderer,
+  hillsRenderer,
   monumentRenderer,
   waterfrontRenderer,
   lakeRenderer,
@@ -91,6 +94,8 @@ export function buildDistrictMeshes(world: World, opts: { quality?: Quality } = 
   add(kit.foliage, 'districtFoliage', new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true }));
   const glow = new THREE.MeshBasicMaterial({ vertexColors: true });
   glow.color.setScalar(1.6);
+  // Small emitters (pavement lights, floods, lamps) fade with pixel coverage instead of flickering far away.
+  fadeSubPixel(glow, 0.35, 0.3);
   add(kit.glow, 'districtGlow', glow);
   return {
     group,

@@ -17,6 +17,7 @@
  * houses. Heights may move only where no neon sign would be left floating.
  */
 import type { World } from '../city/world';
+import { pointInPolygon } from '../city/districts/geom';
 import type { Building } from '../city/blocks';
 import { Rng } from '../sim/prng';
 import { CITY } from '../city/config';
@@ -274,7 +275,9 @@ export function planArchitecture(world: World): BuildingPlan[] {
       const x = ox + (i + 0.5 + (rng.next() - 0.5) * ARCH.jitter) * C;
       const z = oz + (j + 0.5 + (rng.next() - 0.5) * ARCH.jitter) * C;
       const f = downtown(x, z);
-      const hill = Math.max(0, Math.min(1, (world.heightAt(x, z) - hMin) / hSpan));
+      // "Up the hill": the city's own rolling ground counts for a little, a hills district's dome or ridge for everything.
+      const onHill = world.areas.some((a) => a.kind === 'hills' && a.params.h > 0 && pointInPolygon(x, z, a.polygon));
+      const hill = onHill ? 1 : Math.max(0, Math.min(1, (world.heightAt(x, z) - hMin) / hSpan)) * 0.6;
       const wet = nearWater(x, z);
       const edge = 1 - f;
       const w = REGIONS.map((r) => {
@@ -285,7 +288,7 @@ export function planArchitecture(world: World): BuildingPlan[] {
           case 'la':
             return b * (0.35 + 1.3 * edge * edge);
           case 'sf':
-            return b * (0.3 + 2.6 * hill ** 1.5);
+            return b * (0.3 + 2.6 * hill ** 1.5) * (onHill ? 1.8 : 1);
           case 'philly':
             return b * (0.55 + 1.0 * Math.max(0, 1 - Math.abs(f - 0.35) * 2.6));
           case 'miami':

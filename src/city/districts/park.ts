@@ -21,8 +21,8 @@ import { circlePolygon, distToPolygonEdge, pointInPolygon, polyWalls, polygonAre
 
 const CFG = CITY.districts.park;
 
-/** True when every ring turn goes the same way (the block is convex). */
-function convex(ring: { x: number; z: number }[]): boolean {
+/** True when every ring turn goes the same way (the block is convex). Shared with the monument plaza. */
+export function convexRing(ring: { x: number; z: number }[]): boolean {
   let sign = 0;
   for (let i = 0; i < ring.length; i++) {
     const a = ring[i];
@@ -80,7 +80,7 @@ export const parkModule: DistrictModule = {
         if (a.polygon.some((p) => pointInPolygon(p.x, p.z, f.ring))) return false;
         if (f.ring.some((p) => pointInPolygon(p.x, p.z, a.polygon))) return false;
       }
-      return convex(f.ring);
+      return convexRing(f.ring);
     });
     rng.shuffle(faces);
     let made = 0;

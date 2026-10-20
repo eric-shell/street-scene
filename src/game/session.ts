@@ -104,7 +104,8 @@ const AREA_NAMES: Partial<Record<Area['kind'], string>> = {
   subway: 'Under the El',
   river: 'River channel',
   roundabout: 'Roundabout',
-  monument: 'Monument',
+  hills: 'The hills',
+  monument: 'Monument plaza',
   waterfront: 'Waterfront',
   lake: 'Lake',
 };
