@@ -17,6 +17,8 @@ import { CarAssetLibrary, MANIFEST, manifestCar } from './render/carAssets';
 import { InputManager } from './input/inputManager';
 import { RaceSession } from './game/session';
 import { DroneMode } from './game/drone';
+import { MusicPlayer } from './audio/musicPlayer';
+import { MusicWidget } from './ui/musicWidget';
 import { DevPanel } from './ui/devPanel';
 import { creditsScreen, loadingScreen, mainMenu, pauseMenu, resultsScreen, settingsScreen } from './ui/screens';
 import { toast } from './ui/dom';
@@ -39,6 +41,9 @@ const gr = new GameRenderer(canvas, settings);
 const assets = new CarAssetLibrary();
 const input = new InputManager(uiRoot);
 const dev = new DevPanel(uiRoot);
+// One player for the whole app: music carries on across every screen.
+const music = new MusicPlayer();
+const musicWidget = new MusicWidget(document.body, music);
 let garage: GarageState = loadGarage();
 let seedStr = initialSeed();
 let isDaily = !params.get('seed');
@@ -68,6 +73,7 @@ function startDrone(): void {
     showMenu();
   });
   state = 'drone';
+  syncMusicMode();
 }
 
 function ensureBackdrop(): void {
@@ -102,10 +108,17 @@ function renderBackdrop(dt: number): void {
 // ---------------------------------------------------------------------------
 // Overlays
 // ---------------------------------------------------------------------------
+function syncMusicMode(): void {
+  const racing = state === 'race' && session && !session.paused && session.race.phase !== 'finished';
+  musicWidget.setMode(racing ? 'compact' : 'full');
+  music.setDuck(state === 'race' && session?.paused ? 0.55 : 1);
+}
+
 function setOverlay(el: HTMLElement | null): void {
   overlay?.remove();
   overlay = el;
   if (el) uiRoot.append(el);
+  queueMicrotask(syncMusicMode);
 }
 
 function currentBuild(): CarBuild {
@@ -166,6 +179,7 @@ function openSettings(back: () => void): void {
         fpsEl.style.display = settings.showFps ? '' : 'none';
       },
       back,
+      music,
     ),
   );
 }
@@ -188,6 +202,7 @@ async function openGarage(): Promise<void> {
   });
   (window as unknown as Record<string, unknown>).__nr = { garageScreen, gr };
   state = 'garage';
+  syncMusicMode();
 }
 
 // ---------------------------------------------------------------------------
@@ -254,12 +269,14 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
     ghost: ghost ? { config: ghost.config, log: decodeLog(ghost.log), visual: ghost.visuals[0] } : null,
   });
   state = 'race';
+  syncMusicMode();
   loop.resetAccumulator();
   const s = session;
   (window as unknown as Record<string, unknown>).__nr = { session: s, gr };
   s.onFinish = ({ race, tuned }) => {
     if (s !== session) return;
     if (testDrive) return void openGarage();
+    syncMusicMode();
     const st = standings(race);
     const me = st.find((x) => x.car.isPlayer)!;
     const data: ReplayData = {
@@ -307,6 +324,7 @@ function togglePause(): void {
   if (session.paused) {
     session.paused = false;
     setOverlay(null);
+    syncMusicMode();
     return;
   }
   if (session.race.phase === 'finished') return;

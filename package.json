@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "assets": "tsx scripts/buildAssets.ts",
     "inspect": "tsx scripts/inspectAsset.ts",
-    "validate": "tsx scripts/validateParts.ts"
+    "validate": "tsx scripts/validateParts.ts",
+    "music": "tsx scripts/importMusic.ts"
   },
   "dependencies": {
     "lucide": "^1.59.0",

@@ -18,6 +18,7 @@ npm run build      # typecheck + production build into dist/
 npm run assets     # convert source FBX cars, build parts, validate catalog
 npm run validate   # validate the parts catalog only
 npm run inspect    # print node/material/triangle info for GLB files
+npm run music      # import albums / rebuild the music catalog (see docs/music.md)
 ```
 
 Useful URL parameters: `?seed=anything` (custom event), `?race=circuit|sprint|drift` (jump into a race), `?garage`, `?drone`, `?quality=low|medium|high`, `?fps`, `?dev` (garage dev mode), `?build=<code>` (load a shared build).
@@ -36,8 +37,13 @@ Useful URL parameters: `?seed=anything` (custom event), `?race=circuit|sprint|dr
 | Pause | Esc / P | Start | II |
 | Dev tuning panel | ` or F2 | | |
 | Menu free camera | Shift+F | | |
+| Music: mute / previous / next | M / [ / ] | | Player card |
 
 Drift by tapping the handbrake into a corner, or with a clutch kick (lift and stab the throttle while steering hard), then hold it with throttle and counter steer. Nitrous refills from drifting, near misses with walls and drafting behind opponents. In replays, **C** cycles chase, TV, orbit, close, hood and free cameras. Drone mode uses WASD + drag; Space/Ctrl move up and down, Shift boosts, T toggles the auto tour.
+
+## Music
+
+A persistent music player runs across every screen and remembers where you left off. The soundtrack is **"CC BY: FREE TO USE - Electronic/Gaming Instrumentals" by 1000 Handz**, from the [Free Music Archive](https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Each track is credited (title, artist, album, source, license) in the player, the library, the "Now playing" banner and the credits screen. The library is organized by artist and album so more artists can be added; see [docs/music.md](docs/music.md).
 
 ## Car assets
 
@@ -90,10 +96,12 @@ src/
   input/             keyboard/gamepad manager, touch controls
   ui/                HUD, menus, dev panel, Lucide icon helpers
   replay/            replay and ghost storage
+  audio/             persistent music player
   shared/parts.ts    slot list, material vocabulary, triangle budgets
   assets/            carManifest.json, partsCatalog.json
 scripts/             buildAssets, inspectAsset, validateParts, placeholderCar, blender/fbxToGlb.py
-docs/partsAuthoring.md
+assets/music/       album.json credits per artist/album (audio goes to public/music/)
+docs/partsAuthoring.md docs/music.md
 tests/
 ```
 
@@ -132,6 +140,7 @@ tests/
 - **Share codes** are deflate-compressed JSON with short keys (base64url), loaded via `?build=`. Imported builds are always validated and clamped.
 - **Wet look is faked:** glossy puddled asphalt with an environment map, additive light pools, and camera-facing reflection streaks. Only a few real point lights follow the player.
 - **Ghosts** are saved for solo runs (0 opponents or drift) when they set a new best. The ghost is a second sim instance replaying the stored log.
+- **Music** is transcoded from 320 to 128 kbps with loudness normalization (about 119 MB for 42 tracks) and committed under `public/music/` so the game runs from a fresh clone. Move it to Git LFS or a CDN if the repo gets heavy.
 - **Icons** come from Lucide everywhere: menus, HUD, buttons, and the 3D route arrows, which are drawn from Lucide icon paths onto canvas textures.
 
 ## Out of scope for now (but designed for)

@@ -24,12 +24,15 @@ import {
   Gamepad2,
   Smartphone,
   Drone,
+  Music,
   icon,
 } from './icons';
 import { Difficulty, Quality, Settings } from './settings';
 import { formatTime, ordinal } from './format';
 import type { RaceMode } from '../sim/race';
 import type { BestRecord } from '../replay/replay';
+import type { MusicPlayer } from '../audio/musicPlayer';
+import { musicCredits } from './musicWidget';
 
 export interface MenuOptions {
   seed: string;
@@ -162,7 +165,7 @@ export function resultsScreen(o: {
   );
 }
 
-export function settingsScreen(s: Settings, onChange: (s: Settings) => void, onClose: () => void): HTMLElement {
+export function settingsScreen(s: Settings, onChange: (s: Settings) => void, onClose: () => void, music?: MusicPlayer): HTMLElement {
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => {
     s[k] = v;
     onChange(s);
@@ -223,11 +226,21 @@ export function settingsScreen(s: Settings, onChange: (s: Settings) => void, onC
         ),
       ),
       row(Monitor, 'FPS counter', toggle('showFps')),
+      music &&
+        row(
+          Music,
+          'Music volume',
+          (() => {
+            const r = h('input', { type: 'range', min: 0, max: 1, step: 0.01, value: music.muted ? 0 : music.volume, style: 'width:160px', 'aria-label': 'Music volume' }) as HTMLInputElement;
+            r.addEventListener('input', () => music.setVolume(Number(r.value)));
+            return r;
+          })(),
+        ),
       h(
         'div',
         { class: 'muted', style: 'font-size:13px;line-height:1.5' },
         h('div', { class: 'label' }, icon(Keyboard, { size: 14 }), 'Keyboard'),
-        'W/Up throttle · S/Down brake & reverse · A/D steer · Space handbrake · Shift or N nitrous · Q/E shift (manual) · R reset · C camera · Esc pause · ` dev panel',
+        'W/Up throttle · S/Down brake & reverse · A/D steer · Space handbrake · Shift or N nitrous · Q/E shift (manual) · R reset · C camera · Esc pause · ` dev panel · M mute music · [ / ] previous / next track',
         h('div', { class: 'label', style: 'margin-top:8px' }, icon(Gamepad2, { size: 14 }), 'Gamepad'),
         'Left stick steer · RT/LT throttle/brake · X handbrake · A/B nitrous · LB/RB shift · Y reset · Back camera · Start pause',
         h('div', { class: 'label', style: 'margin-top:8px' }, icon(Smartphone, { size: 14 }), 'Touch'),
@@ -252,6 +265,7 @@ export function creditsScreen(onClose: () => void): HTMLElement {
         h('p', {}, 'Car models by ', h('b', {}, 'IceMaan'), ' (icemaan.itch.io), released as CC0. Thank you for sharing them with the world!'),
         h('p', { class: 'muted' }, 'CC96, S64 Compact, GC14 Coupe and A R7 low poly cars with body kits, spoilers and rims.'),
         h('p', {}, 'Icons: ', h('b', {}, 'Lucide'), ' (lucide.dev), ISC license.'),
+        musicCredits(),
         h('p', {}, 'Built with three.js, Vite and glTF Transform. City, signs, vinyls and the Proto RS are generated procedurally. All shop and sponsor names are fictional.'),
       ),
       btn(X, 'Close', onClose, 'primary'),
