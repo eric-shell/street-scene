@@ -28,6 +28,7 @@
       "Bash(git rev-parse *)",
       "Bash(git remote -v)",
       "Bash(git fetch *)",
+      "Bash(git ls-remote *)",
       "Bash(git stash list)",
       "Bash(git add *)",
       "Bash(git commit *)",
