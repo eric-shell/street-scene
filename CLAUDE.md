@@ -41,6 +41,15 @@ Data flows one way: seed → city → world → sim → session → render.
 5. Every sim wall is drawn by something, and nothing drawn stops a car without a wall.
 6. Because of 1, any behaviour change in `sim/` or `city/` changes every existing replay, ghost and best time for that seed. Say so when it happens.
 
+## Frame-rate targets
+
+Aim for 120 fps, hold 60 fps on every supported device, never drop below 30 fps. In frame time: 8.3 ms is the goal, 16.7 ms is what everything per frame has to fit at Medium on a mid device, 33 ms is the failure line. `FRAME_BUDGET` in `src/render/autoQuality.ts` is the one place these numbers live; the auto quality controller, the FPS meter and these docs read them from there.
+
+- The sim ticks at 60 Hz whatever the frame rate: at 120 fps every other frame is pure interpolation (`alpha`), at 30 fps two ticks run per frame, so a tick's cost counts double at the floor. Anything per frame in `render/`, `game/`, `ui/` or `audio/` scales with `dt` (exponential smoothing, never a per-frame lerp factor) so 30, 60 and 120 fps look the same.
+- Auto graphics (`AutoQualityController`) buys quality only with headroom at the aim (120 fps capped at the display's refresh rate, which it learns from the fastest frames it has seen), steps down one level after a few seconds below 60, drops two levels on the first evaluation at 30, and holds anywhere in between. A probe that leaves the aim or slips below 60 is reverted and backed off.
+- New visual work fits the ladder: give it a knob in `QUALITY_LEVELS` / `QUALITY` or a tier gate rather than a fixed cost, and keep allocations and per-object draw calls off the per-frame path. A feature that cannot hold 60 at Medium belongs in High or needs a cheaper form.
+- Measure before and after with `?fps` (fps, frame time in ms, auto level and its aim; `/dev`); the controller's stats are on `window.__nr.autoQ`. When a change adds per-frame or per-tick work, say what it costs.
+
 ## Conventions
 
 - Strict TS, ES2022 modules, JSON imports, `import type` for type-only imports. Single quotes, semicolons, trailing commas, long lines are fine; match the surrounding file. Unused imports or locals fail the typecheck.

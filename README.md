@@ -23,7 +23,7 @@ npm run inspect    # print node/material/triangle info for GLB files
 npm run music      # import albums / rebuild the music catalog (see docs/music.md)
 ```
 
-Useful URL parameters: `?seed=anything` (custom event), `?race=circuit|sprint|drift` (jump into a race), `?garage`, `?drone`, `?quality=low|medium|high`, `?fps`, `?dev` (garage dev mode), `?build=<code>` (load a shared build).
+Useful URL parameters: `?seed=anything` (custom event), `?race=circuit|sprint|drift` (jump into a race), `?garage`, `?drone`, `?quality=low|medium|high|auto`, `?fps` (fps, frame time, auto graphics level), `?dev` (garage dev mode), `?build=<code>` (load a shared build).
 
 ## Controls
 
@@ -108,7 +108,7 @@ src/
   city/              pure procedural city: roadGraph, blocks, route, terrain, world
   render/            three.js only, reads state: scene, cityMeshes, facadeKit, lighting,
                      lightFx, post, carView, carAssets, carMaterials, decals, camera,
-                     routeArrows, roadblocks
+                     routeArrows, roadblocks, autoQuality (frame budget + auto graphics)
   garage/            garageScene, garageUi, storage (slots + share codes)
   game/              session (race on screen), drone
   input/             keyboard/gamepad manager, touch controls
@@ -131,6 +131,7 @@ tests/
 4. **Inputs are data.** Each tick consumes one frame `{ throttle, brake, steer, handbrake, nitrous, shift, reset }`. Frames are quantized and packed to 4 bytes before the sim reads them, so the recorded log replays bit for bit.
 5. **Visual and performance builds are separate.** `CarBuild = { visual, performance }`. Only the renderer reads `visual`. The sim reads `performance` through the pure `applyBuild(baseTuning, performance)`. A test confirms visual choices never change the tuning.
 6. **All tuning lives in `src/sim/drivingParams.json`.**
+7. **Frame-rate targets.** Aim for 120 fps, hold 60, never below 30 (`FRAME_BUDGET` in `src/render/autoQuality.ts`). Physics stays at 60 Hz and the renderer interpolates, so frame rate and tick rate are independent; per-frame work scales with `dt`. Auto graphics buys quality only with headroom at the aim and sells it as soon as 60 slips.
 
 ### Tests
 
@@ -167,6 +168,7 @@ tests/
 - **Ghosts** are saved for solo runs (0 opponents or drift) when they set a new best. The ghost is a second sim instance replaying the stored log.
 - **Music** is transcoded from 320 to 128 kbps with loudness normalization (about 119 MB for 42 tracks) and committed under `public/music/` so the game runs from a fresh clone. Move it to Git LFS or a CDN if the repo gets heavy.
 - **Icons** come from Lucide everywhere: menus, HUD, buttons, and the 3D route arrows, which are drawn from Lucide icon paths onto canvas textures.
+- **Frame-rate targets: 120 aim, 60 hold, 30 floor.** Auto graphics can only read the display's refresh rate from the fastest frames it sees (requestAnimationFrame never runs faster), so a 120 Hz screen counts as 60 Hz until the game has actually run at 120 on it, and a 60 Hz screen simply aims at 60. Between 60 and the aim it holds rather than trading quality for frames nobody asked for. Quality settings cannot buy frames the GPU is not spending: when dropping three levels does not help (CPU bound, throttled tab) the controller goes back up and stops trying for a while, so the 30 fps floor is only enforceable when rendering is the bottleneck.
 
 ## Out of scope for now (but designed for)
 

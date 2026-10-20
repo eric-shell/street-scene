@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AutoQualityController, guessLevel, MAX_LEVEL, PRESET_LEVEL, QUALITY_LEVELS, DeviceInfo } from '../src/render/autoQuality';
+import { AutoQualityController, FRAME_BUDGET, guessLevel, MAX_LEVEL, PRESET_LEVEL, QUALITY_LEVELS, DeviceInfo } from '../src/render/autoQuality';
 import { QUALITY } from '../src/ui/settings';
 
 /** Drive the controller for `seconds` of frames whose duration depends on the level. */
@@ -20,6 +20,10 @@ function run(c: AutoQualityController, seconds: number, dtAt: (level: number, fr
 const desktop: DeviceInfo = { touch: false, coarsePointer: false, dpr: 1, cores: 8, memoryGb: 8, gpu: '', screenW: 1920, screenH: 1080 };
 
 describe('auto quality', () => {
+  it('budgets 120 fps aim, 60 fps hold, 30 fps floor', () => {
+    expect(FRAME_BUDGET).toEqual({ aim: 1 / 120, hold: 1 / 60, floor: 1 / 30 });
+  });
+
   it('keeps the presets on the ladder', () => {
     for (const q of ['low', 'medium', 'high'] as const) {
       const { tier, ...profile } = QUALITY_LEVELS[PRESET_LEVEL[q]];
@@ -43,6 +47,34 @@ describe('auto quality', () => {
     expect(c.level).toBe(5);
     // 2->5 probes, then a handful of backed off retries of 6 in ten minutes.
     expect(changes).toBeLessThan(14);
+  });
+
+  it('on a 120 Hz display settles on the highest level that holds the aim', () => {
+    const c = new AutoQualityController(2);
+    // Levels up to 4 lock at 120 fps; 5 runs at 80 fps (holds 60, off the aim); 6+ at 55 fps.
+    const changes = run(c, 600, (l) => (l <= 4 ? 1 / 120 : l === 5 ? 1 / 80 : 1 / 55));
+    expect(c.aim).toBeCloseTo(1 / 120, 5);
+    expect(c.level).toBe(4);
+    // 2->4 probes, then backed off retries of 5 that each revert after two evaluations.
+    expect(changes).toBeLessThan(14);
+  });
+
+  it('holds a level between 60 fps and the aim instead of chasing either', () => {
+    const c = new AutoQualityController(3);
+    run(c, 10, () => 1 / 120); // a 120 fps stretch teaches it the display
+    expect(c.aim).toBeCloseTo(1 / 120, 5);
+    const changes = run(c, 120, () => 1 / 80);
+    expect(c.level).toBe(3);
+    expect(changes).toBe(0);
+  });
+
+  it('drops two levels at once at the 30 fps floor', () => {
+    const c = new AutoQualityController(MAX_LEVEL);
+    // 36 ms at the top (past the floor), 27 ms one level down, 19 ms two down.
+    const dtAt = (l: number) => (l === MAX_LEVEL ? 0.036 : l === MAX_LEVEL - 1 ? 0.027 : 0.019);
+    expect(run(c, 4, dtAt)).toBe(1);
+    expect(c.level).toBe(MAX_LEVEL - 2);
+    expect(run(c, 20, dtAt)).toBe(0);
   });
 
   it('steps down on slow frames and stays down', () => {

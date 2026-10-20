@@ -4,6 +4,11 @@
  * The simulation always advances in exact 1/60 s ticks. Wall clock time only
  * decides how many ticks to run this frame; the leftover fraction becomes the
  * interpolation alpha the renderer uses to blend previous and current state.
+ *
+ * Frame rate and tick rate are independent (FRAME_BUDGET in render/autoQuality):
+ * at the 120 fps aim every other frame runs no tick and is pure interpolation,
+ * at 60 fps it is one tick per frame, at the 30 fps floor two. Below 12 fps
+ * the catch-up cap drops time instead of spiralling.
  */
 export const SIM_HZ = 60;
 export const SIM_DT = 1 / SIM_HZ;

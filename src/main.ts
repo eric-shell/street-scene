@@ -118,7 +118,7 @@ function ensureBackdrop(): void {
   backdrop?.night.dispose();
   const world = createWorld(seed, 'circuit');
   backdrop = { night: createNightScene(world, gr, settings), world, cam: new THREE.PerspectiveCamera(55, 1, 0.1, 2500), t: 0, seed };
-  (window as unknown as Record<string, unknown>).__nr = { world, gr, backdrop };
+  (window as unknown as Record<string, unknown>).__nr = { world, gr, backdrop, autoQ };
 }
 
 function renderBackdrop(dt: number): void {
@@ -249,7 +249,7 @@ async function openGarage(): Promise<void> {
     onTestDrive: () => startRace('circuit', true),
     engineVolume: () => settings.engineVolume,
   });
-  (window as unknown as Record<string, unknown>).__nr = { garageScreen, gr };
+  (window as unknown as Record<string, unknown>).__nr = { garageScreen, gr, autoQ };
   state = 'garage';
   syncMusicMode();
 }
@@ -336,7 +336,7 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
   if (settings.debugTuningPanel && !replay) toggleTuningPanel(true);
   if (settings.debugCameraPanel) toggleCameraPanel(true);
   const s = session;
-  (window as unknown as Record<string, unknown>).__nr = { session: s, gr };
+  (window as unknown as Record<string, unknown>).__nr = { session: s, gr, autoQ };
   s.onFinish = ({ race, tuned }) => {
     if (s !== session) return;
     if (testDrive) return void openGarage();
@@ -467,7 +467,10 @@ const loop = new FixedStepLoop({
     frames++;
     fpsAcc += dt;
     if (fpsAcc > 0.5) {
-      fpsEl.textContent = `${Math.round(frames / fpsAcc)} fps` + (settings.autoQuality ? ` · ${autoLabel(autoQ.level)} ${autoQ.level + 1}/${QUALITY_LEVELS.length}` : '');
+      // fps, frame time against the 8.3 / 16.7 / 33 ms budget lines, and what auto quality is doing.
+      fpsEl.textContent =
+        `${Math.round(frames / fpsAcc)} fps · ${((fpsAcc / frames) * 1000).toFixed(1)} ms` +
+        (settings.autoQuality ? ` · ${autoLabel(autoQ.level)} ${autoQ.level + 1}/${QUALITY_LEVELS.length} aim ${Math.round(1 / autoQ.aim)}` : '');
       frames = 0;
       fpsAcc = 0;
     }

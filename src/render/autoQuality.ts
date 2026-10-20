@@ -9,8 +9,28 @@
  *
  * The controller itself is pure (time comes from the frame deltas it is fed)
  * so it can be unit tested; the DOM bits are the device probe and storage.
+ *
+ * Frame-rate policy (FRAME_BUDGET): aim for 120 fps, hold 60 fps, never sit
+ * below 30 fps. Quality is bought only with headroom at the aim (or at the
+ * display's refresh rate when that is lower), sold as soon as 60 slips, and
+ * dumped two levels at a time below 30. Between 60 and the aim the controller
+ * holds what it has: frames above 60 are nice, more quality is nicer.
  */
 import { QUALITY, Quality, QualityProfile } from '../ui/settings';
+
+/**
+ * Frame-rate targets in seconds per frame. Every per-frame cost in the game
+ * is budgeted against these three lines (CLAUDE.md says what they mean for
+ * new work); the controller, the FPS meter and the docs all read them here.
+ */
+export const FRAME_BUDGET = {
+  /** 120 fps (8.3 ms): the goal on capable hardware and a fast display. The controller probes for more quality only when frames sit here (or at the display's refresh when that is slower). */
+  aim: 1 / 120,
+  /** 60 fps (16.7 ms): what every supported device should hold. Below it the controller steps down. */
+  hold: 1 / 60,
+  /** 30 fps (33.3 ms): never acceptable. At it the controller drops two levels on the first bad evaluation. */
+  floor: 1 / 30,
+} as const;
 
 export interface QualityLevel extends QualityProfile {
   /** Preset tier this level belongs to: drives labels and scene density. */
@@ -151,8 +171,6 @@ export function saveRememberedLevel(key: string, level: number): void {
 export type AutoReason = 'slow' | 'headroom' | 'probe-failed' | 'no-gain';
 
 export interface AutoQualityOptions {
-  /** Target frame time in seconds (default 60 fps). */
-  target?: number;
   /** Highest level the controller may probe up to. */
   ceiling?: number;
   onChange?: (level: number, reason: AutoReason) => void;
@@ -160,13 +178,14 @@ export interface AutoQualityOptions {
   onStable?: (level: number) => void;
 }
 
-const WINDOW = 180; // frames kept (about 3 s at 60 fps)
+const WINDOW = 180; // frames kept: 1.5 s at the aim, 3 s at 60 fps, 6 s at the floor
 const EVAL_EVERY = 1; // seconds of active play between evaluations
 const SETTLE_CHANGE = 2.5; // ignore frames after a level change (allocations, shader compiles)
 const SETTLE_RESUME = 1.5; // ignore frames after loading / unpausing / tab switches
 const GOOD_TO_PROBE = 12; // seconds of clean frames before trying a higher level
 const COOLDOWN = 15; // minimum seconds between upward steps
 const PROBE_WINDOW = 20; // a higher level must survive this long to stick
+const PROBE_MISSES = 2; // consecutive evaluations off the aim that fail a probe
 const STABLE_SAVE = 8; // seconds of acceptable frames before a level is remembered
 const BACKOFF_START = 45;
 const BACKOFF_MAX = 600;
@@ -175,19 +194,28 @@ const NO_GAIN_FREEZE = 120;
 /**
  * Feed it every rendered frame with `frame(dt, active)`. Only active frames
  * (gameplay, not paused or loading) count, and its clock only advances on
- * them. Decisions:
- *  - down one level after ~3 s of slow frames (median > 1.2x target or more
- *    than 25% of frames missing the target), two levels if severe;
+ * them. Decisions, measured against FRAME_BUDGET:
+ *  - down one level after ~3 s below the hold line (median > 1.2x 16.7 ms, or
+ *    more than 25% of frames over 1.3x), two levels on the first evaluation
+ *    that finds the median at the floor;
  *  - if dropping three levels did not speed anything up (CPU bound, or the
- *    browser throttles rAF), go back up and stop dropping for two minutes;
- *  - up one level after 12 s of clean frames and a 15 s cooldown, as a probe:
- *    if it turns slow within 20 s it reverts and that level is blocked with
- *    exponential backoff (45 s, 90 s, ... 10 min).
- * Between the "slow" and "clean" thresholds it holds, which is the hysteresis.
+ *    browser throttles rAF), go back up and stop dropping for two minutes:
+ *    quality settings cannot buy frames the GPU is not spending, so the
+ *    floor is only enforceable when rendering is the bottleneck;
+ *  - up one level after 12 s of clean frames at the aim and a 15 s cooldown,
+ *    as a probe: it reverts as soon as it slips below the hold line, or after
+ *    two evaluations off the aim, and that level is blocked with exponential
+ *    backoff (45 s, 90 s, ... 10 min).
+ * The aim is 120 fps capped at the display. rAF never runs faster than the
+ * refresh rate, so the fastest frames seen (p10 of a window, kept as a running
+ * best within 60..120 Hz) are the display: a 60 Hz screen aims at 60, and a
+ * 120 Hz screen counts as 60 Hz until the game has actually run at 120 on it.
+ * Between the aim and the hold line it holds, which is the hysteresis.
  */
 export class AutoQualityController {
   private _level: number;
-  private readonly target: number;
+  /** Display-capped aim in Hz: starts at the hold line, rises when faster frames are seen. */
+  private aimHz = 1 / FRAME_BUDGET.hold;
   private readonly ceiling: number;
   private readonly samples = new Float32Array(WINDOW);
   private count = 0;
@@ -201,7 +229,7 @@ export class AutoQualityController {
   private okSince = -1;
   private lastUp = -Infinity;
   private savedLevel = -1;
-  private probe: { from: number; at: number } | null = null;
+  private probe: { from: number; at: number; misses: number } | null = null;
   /** Consecutive steps down and the mean frame time before the first one. */
   private downChain: { from: number; mean: number; at: number } | null = null;
   private downFreezeUntil = 0;
@@ -212,7 +240,6 @@ export class AutoQualityController {
   stats = { median: 0, p90: 0, slow: 0 };
 
   constructor(start: number, private readonly opts: AutoQualityOptions = {}) {
-    this.target = opts.target ?? 1 / 60;
     this.ceiling = Math.max(0, Math.min(MAX_LEVEL, opts.ceiling ?? MAX_LEVEL));
     this._level = Math.max(0, Math.min(MAX_LEVEL, Math.round(start)));
     this.savedLevel = this._level;
@@ -229,6 +256,11 @@ export class AutoQualityController {
   /** Seconds of active play seen so far (the controller's clock). */
   get time(): number {
     return this.t;
+  }
+
+  /** Frame time it is aiming at: the 120 fps aim, capped at the display's measured refresh rate. */
+  get aim(): number {
+    return 1 / this.aimHz;
   }
 
   /** Jump to a level from outside (e.g. the player re-enabling Auto). */
@@ -286,38 +318,48 @@ export class AutoQualityController {
     const n = this.count;
     const xs = Array.from(this.samples.subarray(0, n)).sort((a, b) => a - b);
     const rawMedian = xs[n >> 1];
+    const { hold, floor } = FRAME_BUDGET;
     // Drop isolated hitches (GC, asset uploads): far slower than the typical frame.
-    const kept = xs.filter((x) => x <= Math.max(rawMedian * 3, this.target * 2));
+    const kept = xs.filter((x) => x <= Math.max(rawMedian * 3, floor * 1.5));
     const m = kept.length;
     const median = kept[m >> 1];
     const p90 = kept[Math.min(m - 1, Math.floor(m * 0.9))];
+    // The fastest frames this device has produced are its refresh rate (rAF never
+    // runs faster): p10 of the window, kept as a running best between 60 and 120 Hz.
+    this.aimHz = Math.max(this.aimHz, Math.min(1 / FRAME_BUDGET.aim, Math.round(1 / kept[Math.floor(m * 0.1)])));
+    const aim = 1 / this.aimHz;
     let slowN = 0;
+    let offAimN = 0;
     let sum = 0;
     for (const x of kept) {
-      if (x > this.target * 1.3) slowN++;
+      if (x > hold * 1.3) slowN++;
+      if (x > aim * 1.3) offAimN++;
       sum += x;
     }
     const slow = slowN / m;
-    // The mean still moves when vsync quantizes frames to 16.7 / 33.3 ms.
+    // The mean still moves when vsync quantizes frames to 8.3 / 16.7 / 33.3 ms.
     const mean = sum / m;
     this.stats = { median, p90, slow };
     const t = this.t;
-    const tg = this.target;
-    const bad = median > tg * 1.2 || slow > 0.25;
-    const severe = median > tg * 1.8;
-    const good = median <= tg * 1.05 && p90 <= tg * 1.3 && slow < 0.04;
+    const bad = median > hold * 1.2 || slow > 0.25;
+    const severe = median > floor * 0.95;
+    const good = median <= aim * 1.05 && p90 <= aim * 1.3 && offAimN / m < 0.04;
 
-    // A probe that turned slow: back down and block that level for a while.
-    if (this.probe && bad) {
-      const failed = this._level;
-      this.rejectUntil[failed] = t + this.backoff[failed];
-      this.backoff[failed] = Math.min(BACKOFF_MAX, this.backoff[failed] * 2);
-      const from = this.probe.from;
-      this.probe = null;
-      this.setLevel(from, 'probe-failed');
-      return;
+    // A probe that slipped below the hold line, or sits off the aim for two
+    // evaluations, backs down and blocks that level for a while.
+    if (this.probe) {
+      this.probe.misses = good ? 0 : this.probe.misses + 1;
+      if (bad || this.probe.misses >= PROBE_MISSES) {
+        const failed = this._level;
+        this.rejectUntil[failed] = t + this.backoff[failed];
+        this.backoff[failed] = Math.min(BACKOFF_MAX, this.backoff[failed] * 2);
+        const from = this.probe.from;
+        this.probe = null;
+        this.setLevel(from, 'probe-failed');
+        return;
+      }
+      if (t - this.probe.at >= PROBE_WINDOW) this.probe = null;
     }
-    if (this.probe && t - this.probe.at >= PROBE_WINDOW) this.probe = null;
 
     // Did stepping down help? If three levels lower frames are just as slow,
     // our settings are not the bottleneck (CPU bound, or the browser throttles
@@ -339,7 +381,8 @@ export class AutoQualityController {
       this.badStreak++;
       this.goodSince = -1;
       this.okSince = -1;
-      if (this._level > 0 && t >= this.downFreezeUntil && this.badStreak >= (severe ? 2 : 3)) {
+      // At the floor every evaluation counts; above it three in a row, so a busy corner does not cost a level.
+      if (this._level > 0 && t >= this.downFreezeUntil && this.badStreak >= (severe ? 1 : 3)) {
         if (!this.downChain) this.downChain = { from: this._level, mean, at: t };
         else this.downChain.at = t;
         this.setLevel(this._level - (severe ? 2 : 1), 'slow');
@@ -369,7 +412,7 @@ export class AutoQualityController {
       t >= this.rejectUntil[up]
     ) {
       this.lastUp = t;
-      this.probe = { from: this._level, at: t };
+      this.probe = { from: this._level, at: t, misses: 0 };
       this.setLevel(up, 'headroom');
     }
   }
