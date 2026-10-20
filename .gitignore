@@ -1,9 +1,40 @@
+# Dependencies and build output
 node_modules
 dist
-.DS_Store
-*.log
-assets/converted/
+dist-ssr
+coverage
 .vite
+*.tsbuildinfo
 
-# Claude Code personal settings (copy .claude/settings.local.json.example)
+# Generated locally, never shipped
+assets/converted/
+/city.svg
+
+# Environment and logs
+.env
+.env.*
+!.env.example
+*.log
+
+# Editors and OS
+.DS_Store
+._*
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+*.swp
+
+# Blender backups next to the source models
+*.blend1
+*.blend2
+
+# Claude Code: personal and machine-specific files stay out of the repo.
+# Project settings (.claude/settings.json), skills, rules and hooks are committed;
+# copy .claude/settings.local.json.example to .claude/settings.local.json for your own.
 .claude/settings.local.json
+.claude/worktrees/
+CLAUDE.local.md
