@@ -5,7 +5,7 @@
  * musicAutoplay.spec.ts covers the returning visitor the browser trusts.
  */
 import { expect, test } from '@playwright/test';
-import { music } from './helpers';
+import { music, sampleSplash, splashLog } from './helpers';
 
 // The splash lives for a few seconds from the document being parsed, while the page's load event can
 // come much later (the music element and the car models keep loading), so every page load here waits
@@ -13,27 +13,13 @@ import { music } from './helpers';
 
 test.describe('boot splash', () => {
   test('flashes the title in, then lands it on the menu', async ({ page }) => {
+    await sampleSplash(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const splash = page.locator('.splash');
-    await expect(splash).toBeVisible();
-    await expect(splash.locator('.splash-logo')).toHaveText('STREET SCENE');
-    // The menu is laid out underneath, hidden until the title lands on it. Software WebGL keeps the page
-    // busy for seconds, so separate assertions can miss the 0.8 s landing: each poll reads the splash and
-    // the menu title in one go, and every reading taken while the splash is up must have the title hidden.
-    const head = page.locator('.menu-head');
-    const seen: { splash: boolean; head: string }[] = [];
-    await expect
-      .poll(async () => {
-        const s = await page.evaluate(() => {
-          const el = document.querySelector('.menu-head');
-          return { splash: !!document.querySelector('.splash'), head: el ? getComputedStyle(el).visibility : 'none' };
-        });
-        seen.push(s);
-        return s.splash;
-      }, { intervals: [50] })
-      .toBe(false);
-    expect(seen.filter((s) => s.splash && s.head === 'visible')).toEqual([]);
-    await expect(head).toBeVisible();
+    const log = await splashLog(page);
+    // The title was up on the splash, and the menu's title stayed hidden underneath it the whole time.
+    expect(log.some((s) => s.splash && s.logo === 'STREET SCENE')).toBe(true);
+    expect(log.filter((s) => s.splash && s.head === 'visible')).toEqual([]);
+    await expect(page.locator('.menu-head')).toBeVisible();
     await expect(page.locator('.menu .logo')).toHaveText('STREET SCENE');
     await expect(page.locator('.menu .tagline')).toHaveText('Street racing after dark');
     await expect(page.locator('.menu')).not.toHaveClass(/splash-/);
@@ -49,13 +35,18 @@ test.describe('boot splash', () => {
 
 test.describe('music', () => {
   test('opens on Astrology and starts on the first interaction when autoplay is refused, without a prompt', async ({ page }) => {
+    await sampleSplash(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.mw-title')).toHaveText('Astrology');
-    // Blocked by the browser: no "tap for sound" prompt, nothing plays until the player does anything at all.
-    await expect(page.locator('.splash')).toBeVisible();
-    await expect(page.locator('.splash-hint')).toHaveCount(0);
+    // Blocked by the browser: nothing plays until the player does anything at all, and the splash
+    // never showed a "tap for sound" prompt.
     expect((await music(page)).playing).toBe(false);
-    await page.mouse.click(640, 360);
+    const log = await splashLog(page);
+    expect(log.some((s) => s.splash)).toBe(true);
+    expect(log.filter((s) => s.splash && s.hints > 0)).toEqual([]);
+    expect((await music(page)).playing).toBe(false);
+    // Any key counts as the first gesture; Shift does nothing to the menu underneath.
+    await page.keyboard.press('Shift');
     await expect.poll(async () => (await music(page)).playing).toBe(true);
     expect((await music(page)).title).toBe('Astrology');
   });
