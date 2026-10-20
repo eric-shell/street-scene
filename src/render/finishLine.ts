@@ -135,10 +135,10 @@ function drawSign(ctx: CanvasRenderingContext2D, w: number, h: number, text: str
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   const size = Math.round(h * 0.62);
-  ctx.font = `900 ${size}px Orbitron, "Arial Black", Impact, sans-serif`;
+  ctx.font = `800 ${size}px "Barlow Condensed", "Arial Black", Impact, sans-serif`;
   const tw = ctx.measureText(text).width;
   const maxW = w - cell * 6 - 80;
-  if (tw > maxW) ctx.font = `900 ${Math.floor((size * maxW) / tw)}px Orbitron, "Arial Black", Impact, sans-serif`;
+  if (tw > maxW) ctx.font = `800 ${Math.floor((size * maxW) / tw)}px "Barlow Condensed", "Arial Black", Impact, sans-serif`;
   ctx.shadowBlur = 42;
   ctx.fillStyle = glow;
   ctx.fillText(text, w / 2, h * 0.47);
@@ -147,7 +147,7 @@ function drawSign(ctx: CanvasRenderingContext2D, w: number, h: number, text: str
   ctx.fillText(text, w / 2, h * 0.47);
   if (sub) {
     ctx.shadowBlur = 8;
-    ctx.font = `700 ${Math.round(h * 0.12)}px Orbitron, Rajdhani, sans-serif`;
+    ctx.font = `700 ${Math.round(h * 0.12)}px "Barlow Semi Condensed", sans-serif`;
     ctx.fillStyle = '#c9d4ff';
     ctx.fillText(sub, w / 2, h * 0.86);
   }
@@ -174,7 +174,7 @@ function signTexture(text: string, glow: string, sub: string): SignFace {
   };
   draw();
   // Redraw once the display font has loaded (it is usually ready by race time).
-  document.fonts?.load(`900 64px Orbitron`).then(draw, () => undefined);
+  document.fonts?.load(`800 64px "Barlow Condensed"`).then(draw, () => undefined);
   return {
     texture: t,
     set(text2, glow2, sub2) {

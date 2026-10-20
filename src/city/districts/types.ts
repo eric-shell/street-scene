@@ -276,15 +276,16 @@ export interface AreaMapStyle {
 }
 
 export const AREA_MAP_STYLE: Record<AreaKind, AreaMapStyle> = {
+  // Monokai Pro tints (ui/palette.ts) that stay clear of the orange route and yellow roadblocks.
   downtown: {},
-  alley: { stroke: 'rgba(200,150,255,0.35)', width: 5 },
-  backAlley: { stroke: 'rgba(140,160,220,0.12)', width: 4 },
-  park: { fill: 'rgba(60,170,90,0.22)' },
-  subway: { stroke: 'rgba(255,190,90,0.45)', width: 4, dash: [14, 10] },
-  river: { fill: 'rgba(90,120,150,0.32)' },
-  roundabout: { stroke: 'rgba(140,160,220,0.4)', width: 4 },
-  infill: { fill: 'rgba(140,160,220,0.08)' },
-  monument: { fill: 'rgba(255,220,140,0.25)' },
-  waterfront: { fill: 'rgba(70,110,160,0.3)' },
-  lake: { fill: 'rgba(70,110,160,0.35)' },
+  alley: { stroke: 'rgba(171,157,242,0.35)', width: 5 },
+  backAlley: { stroke: 'rgba(147,146,147,0.12)', width: 4 },
+  park: { fill: 'rgba(169,220,118,0.2)' },
+  subway: { stroke: 'rgba(120,220,232,0.45)', width: 4, dash: [14, 10] },
+  river: { fill: 'rgba(120,220,232,0.16)' },
+  roundabout: { stroke: 'rgba(147,146,147,0.4)', width: 4 },
+  infill: { fill: 'rgba(147,146,147,0.08)' },
+  monument: { fill: 'rgba(255,216,102,0.2)' },
+  waterfront: { fill: 'rgba(120,220,232,0.14)' },
+  lake: { fill: 'rgba(120,220,232,0.18)' },
 };

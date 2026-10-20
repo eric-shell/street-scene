@@ -9,6 +9,7 @@
  */
 import * as THREE from 'three';
 import { makeAsphalt } from '../render/textures';
+import { PALETTE } from '../ui/palette';
 
 /** Spacing of the light fixtures and lane dashes (m). */
 const PERIOD = 8;
@@ -119,7 +120,7 @@ export class Tunnel {
 
     // Raised walkways with a cyan LED line along the curb (continuous, so static).
     const walkMat = track(new THREE.MeshStandardMaterial({ color: 0x3a3d44, roughness: 0.85 }));
-    const ledMat = track(new THREE.MeshBasicMaterial({ color: new THREE.Color(0x19e6ff).multiplyScalar(2.4) }));
+    const ledMat = track(new THREE.MeshBasicMaterial({ color: new THREE.Color(PALETTE.orange).multiplyScalar(2.4) }));
     const lineMat = track(new THREE.MeshBasicMaterial({ color: 0x9a9480 }));
     const walkGeo = track(new THREE.BoxGeometry(WALL - ROAD, 0.22, LEN));
     const ledGeo = track(new THREE.BoxGeometry(0.03, 0.035, LEN));

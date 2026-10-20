@@ -18,9 +18,13 @@ import { CarAssetLibrary } from '../render/carAssets';
 import { EngineVoice, audioHub } from '../audio/engineAudio';
 import { BlipScript, RevModel } from './revModel';
 import { Tunnel } from './tunnel';
+import { PALETTE } from '../ui/palette';
 import type { Presentation } from './storage';
 
 /** Camera presets in car space, scaled by car length. [position, target]. */
+/** Turntable edge color; the ring's brightness pulses around it. */
+const RING = new THREE.Color(PALETTE.orange);
+
 const CAMERAS: { name: string; pos: [number, number, number]; target: [number, number, number] }[] = [
   { name: 'Three quarter', pos: [4.3, 1.55, 5.0], target: [0, 0.6, 0.1] },
   { name: 'Low side', pos: [4.6, 0.5, 0.5], target: [0, 0.55, 0] },
@@ -84,46 +88,46 @@ export class GarageScene {
     const room = this.showroom;
 
     // Floor: glossy dark concrete.
-    const floor = new THREE.Mesh(track(new THREE.CircleGeometry(30, 64).rotateX(-Math.PI / 2)), track(new THREE.MeshStandardMaterial({ color: 0x0b0c12, roughness: 0.55, metalness: 0.0 })));
+    const floor = new THREE.Mesh(track(new THREE.CircleGeometry(30, 64).rotateX(-Math.PI / 2)), track(new THREE.MeshStandardMaterial({ color: 0x0e0d0f, roughness: 0.55, metalness: 0.0 })));
     room.add(floor);
     // Turntable with a neon edge.
-    const table = new THREE.Mesh(track(new THREE.CylinderGeometry(3.4, 3.5, 0.12, 64)), track(new THREE.MeshStandardMaterial({ color: 0x15171f, roughness: 0.35, metalness: 0.6 })));
+    const table = new THREE.Mesh(track(new THREE.CylinderGeometry(3.4, 3.5, 0.12, 64)), track(new THREE.MeshStandardMaterial({ color: 0x1a181b, roughness: 0.35, metalness: 0.6 })));
     table.position.y = 0.06;
     this.turntable.add(table);
-    this.ring = track(new THREE.MeshBasicMaterial({ color: new THREE.Color(0x19e6ff).multiplyScalar(2.2) }));
+    this.ring = track(new THREE.MeshBasicMaterial({ color: new THREE.Color(PALETTE.orange).multiplyScalar(2.2) }));
     const ring = new THREE.Mesh(track(new THREE.TorusGeometry(3.45, 0.03, 8, 96).rotateX(Math.PI / 2)), this.ring);
     ring.position.y = 0.12;
     this.turntable.add(ring);
     room.add(this.turntable);
-    // Neon tubes on the back walls and ceiling.
-    const tube = (color: number, w: number, x: number, y: number, z: number, ry: number, rz = 0) => {
+    // Sodium orange and yellow tubes on the back walls and ceiling, matching the UI accents.
+    const tube = (color: THREE.ColorRepresentation, w: number, x: number, y: number, z: number, ry: number, rz = 0) => {
       const m = new THREE.Mesh(track(new THREE.BoxGeometry(w, 0.08, 0.08)), track(new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(1.6) })));
       m.position.set(x, y, z);
       m.rotation.set(0, ry, rz);
       room.add(m);
     };
-    tube(0xff3df2, 8, 0, 4.2, -9, 0);
-    tube(0x19e6ff, 8, 0, 3.6, -9, 0);
-    tube(0x19e6ff, 6, -9, 3.2, -2, Math.PI / 2);
-    tube(0xff3df2, 6, 9, 3.2, -2, Math.PI / 2);
-    tube(0x19e6ff, 4, -6, 1.2, -8, 0.6, 0.9);
-    tube(0xff3df2, 4, 6, 1.2, -8, -0.6, -0.9);
-    const wall = new THREE.Mesh(track(new THREE.CylinderGeometry(10, 10, 9, 48, 1, true, Math.PI * 0.6, Math.PI * 1.8)), track(new THREE.MeshStandardMaterial({ color: 0x07080f, roughness: 0.9, side: THREE.BackSide })));
+    tube(PALETTE.yellow, 8, 0, 4.2, -9, 0);
+    tube(PALETTE.orange, 8, 0, 3.6, -9, 0);
+    tube(PALETTE.orange, 6, -9, 3.2, -2, Math.PI / 2);
+    tube(PALETTE.yellow, 6, 9, 3.2, -2, Math.PI / 2);
+    tube(PALETTE.orange, 4, -6, 1.2, -8, 0.6, 0.9);
+    tube(PALETTE.yellow, 4, 6, 1.2, -8, -0.6, -0.9);
+    const wall = new THREE.Mesh(track(new THREE.CylinderGeometry(10, 10, 9, 48, 1, true, Math.PI * 0.6, Math.PI * 1.8)), track(new THREE.MeshStandardMaterial({ color: 0x0b0a0c, roughness: 0.9, side: THREE.BackSide })));
     wall.position.y = 4.5;
     room.add(wall);
 
     // Studio lights.
-    room.add(new THREE.HemisphereLight(0x8090ff, 0x05050a, 0.22));
+    room.add(new THREE.HemisphereLight(0xa09aa6, 0x070607, 0.22));
     const key = new THREE.SpotLight(0xffffff, 70, 30, 0.55, 0.6, 1.4);
     key.position.set(3, 8, 4);
     room.add(key, key.target);
-    const rimC = new THREE.SpotLight(0x19e6ff, 14, 30, 0.5, 0.7, 1.4);
+    const rimC = new THREE.SpotLight(PALETTE.orange, 14, 30, 0.5, 0.7, 1.4);
     rimC.position.set(-6, 6, -6);
     room.add(rimC, rimC.target);
-    const rimM = new THREE.SpotLight(0xff3df2, 14, 30, 0.5, 0.7, 1.4);
+    const rimM = new THREE.SpotLight(PALETTE.yellow, 12, 30, 0.5, 0.7, 1.4);
     rimM.position.set(6, 6, -6);
     room.add(rimM, rimM.target);
-    const fill = new THREE.PointLight(0xaab8ff, 4, 15, 1.5);
+    const fill = new THREE.PointLight(0xe0d8d0, 4, 15, 1.5);
     fill.position.set(0, 2.5, 6);
     room.add(fill);
     s.add(room);
@@ -168,8 +172,8 @@ export class GarageScene {
     }
     if (this.tunnel) this.tunnel.group.visible = street;
     this.showroom.visible = !street;
-    s.background = new THREE.Color(street ? 0x06060a : 0x04050c);
-    s.fog = street ? new THREE.Fog(0x06060a, 22, 70) : new THREE.Fog(0x04050c, 14, 40);
+    s.background = new THREE.Color(street ? 0x06060a : 0x0a090b);
+    s.fog = street ? new THREE.Fog(0x06060a, 22, 70) : new THREE.Fog(0x0a090b, 14, 40);
     s.environmentIntensity = street ? 0.35 : 0.5;
     const c = this.controls;
     // Street: stay inside the tunnel (walls at 6.5 m, ceiling at 5.8 m).
@@ -345,7 +349,7 @@ export class GarageScene {
     if (this.spin && !street) this.turntable.rotation.y += dt * 0.25;
     this.updateEngine(dt);
     this.updateCamera(dt);
-    this.ring.color.setRGB(0.1, 0.9, 1).multiplyScalar(1.2 + 0.3 * Math.sin(this.time * 2));
+    this.ring.color.copy(RING).multiplyScalar(1.2 + 0.3 * Math.sin(this.time * 2));
 
     const view = this.car;
     if (view) {
