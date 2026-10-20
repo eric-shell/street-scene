@@ -46,6 +46,12 @@ export interface CityMeshOptions {
 
 const ROAD_Y = 0.02;
 const MARK_Y = 0.045;
+/**
+ * Roads and cobbles glow faintly sodium orange, scaled by their own texture:
+ * the streetlights' spill between their pools, so no street goes black far
+ * from the few real lights that follow the car.
+ */
+const ROAD_GLOW = { color: 0xffb46a, intensity: 1.7 } as const;
 
 export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityMeshes {
   const group = new THREE.Group();
@@ -96,6 +102,9 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
       metalness: 0.0,
       color: 0x9a9eaa,
       envMapIntensity: 1.6,
+      emissive: ROAD_GLOW.color,
+      emissiveMap: asphalt.map,
+      emissiveIntensity: ROAD_GLOW.intensity,
     }),
   );
   const road = new GeoBuilder();
@@ -171,7 +180,17 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
   if (cobble.vertexCount) {
     const stones = makeCobble(world.seed);
     const cobbleMat = track(
-      new THREE.MeshStandardMaterial({ map: track(stones.map), roughnessMap: track(stones.roughness), roughness: 1, metalness: 0, color: 0xb0aea8, envMapIntensity: 1.2 }),
+      new THREE.MeshStandardMaterial({
+        map: track(stones.map),
+        roughnessMap: track(stones.roughness),
+        roughness: 1,
+        metalness: 0,
+        color: 0xb0aea8,
+        envMapIntensity: 1.2,
+        emissive: ROAD_GLOW.color,
+        emissiveMap: stones.map,
+        emissiveIntensity: ROAD_GLOW.intensity,
+      }),
     );
     const cobbleMesh = new THREE.Mesh(track(cobble.build()), cobbleMat);
     cobbleMesh.name = 'cobbles';

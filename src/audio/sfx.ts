@@ -43,8 +43,8 @@ export interface SfxCar {
 }
 
 export type WallHitKind = 'wall' | 'barrier' | 'rail';
-/** Prop kinds with their own impact sound (news boxes sound like garbage cans; construction pieces borrow the nearest material). */
-type PropSound = Exclude<PropKind, 'newsBox' | ConstructionPropKind>;
+/** Prop kinds with their own impact sound (news boxes sound like garbage cans, park lamps like streetlights; construction pieces borrow the nearest material). */
+type PropSound = Exclude<PropKind, 'newsBox' | 'parkLamp' | ConstructionPropKind>;
 export type SfxBank = 'crash' | WallHitKind | PropSound | 'firework';
 type Bank = SfxBank;
 const PROP_SOUND: Record<PropKind, PropSound> = {
@@ -61,6 +61,7 @@ const PROP_SOUND: Record<PropKind, PropSound> = {
   dumpster: 'dumpster',
   newsBox: 'garbageCan',
   trashBags: 'trashBags',
+  parkLamp: 'streetlight',
   fencePanel: 'bench',
   trafficCone: 'trashBags',
   sawhorse: 'crate',
@@ -1168,6 +1169,7 @@ export class Sfx {
       dumpster: 1,
       newsBox: 0.55,
       trashBags: 0.45,
+      parkLamp: 0.75,
       fencePanel: 0.7,
       trafficCone: 0.35,
       sawhorse: 0.55,

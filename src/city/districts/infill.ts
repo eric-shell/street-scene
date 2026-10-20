@@ -23,7 +23,8 @@
  *    drivable space and out of buildings and exclusions, and is walled on
  *    its back sides with low curbs (look 'lotEdge').
  *  - Every drivable pocket is furnished by theme (cafe, garden, market, lot
- *    clutter) with destructible props (AreaBuild.destructibles).
+ *    clutter) with destructible props (AreaBuild.destructibles); plazas and
+ *    corner pockets get lantern posts along their back (render/areaLights.ts).
  * Whatever is left is a low 'boundary' wall drawn by render/districts/infill.ts.
  */
 import { CITY } from '../config';
@@ -302,10 +303,34 @@ export const infillModule: DistrictModule = {
         b.hints.push({ kind: 'bay', points: [a, { x: a.x - wx * bayDepth, z: a.z - wz * bayDepth }], values: [] });
       }
     }
+    if (area.variant === 'plaza' || area.variant === 'cornerPlaza') lamps(b, area);
     furnish(b, area);
     return b;
   },
 };
+
+/**
+ * Lantern posts along the back of a plaza or corner pocket (the darkest part,
+ * furthest from the streetlights): one near each end of the back row, or one
+ * in the middle of a short pocket. Placed before the clutter, so a table or
+ * pot on the same spot is the one dropped. No rng draws, so the lamps never
+ * shift the clutter's layout.
+ */
+function lamps(b: AreaBuild, area: Area): void {
+  const P = area.params;
+  if (P.lu === undefined) return;
+  const inset = CFG.lampInset;
+  const v = P.lw < SHALLOW ? P.lw / 2 : P.lw - inset;
+  const us = P.lu >= CFG.lampPairLen ? [inset, P.lu - inset] : [P.lu / 2];
+  const r = PROP_DEFS.parkLamp.radius;
+  for (const u of us) {
+    const x = P.ox + P.ux * u + P.wx * v;
+    const z = P.oz + P.uz * u + P.wz * v;
+    if (!pointInPolygon(x, z, area.polygon) || distToPolygonEdge(x, z, area.polygon) < r + EDGE_CLEAR) continue;
+    if (P.fountain > 0 && Math.hypot(x - P.fx, z - P.fz) < P.fountain + r + 0.8) continue;
+    b.destructibles.push({ kind: 'parkLamp', x, z, yaw: Math.atan2(-P.wx, -P.wz), lift: CITY.curbHeight, area: area.id });
+  }
+}
 
 /**
  * Scatter the pocket's clutter on a jittered grid in its local frame (so

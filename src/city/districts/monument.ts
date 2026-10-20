@@ -7,8 +7,9 @@
  * is the collision (walls with look 'monument', drawn by
  * render/districts/monument.ts); for the triumphal arch the two piers are
  * the collision and the opening between them is wide enough to drive
- * through. Planter pots ring the steps and benches face the landmark, all
- * destructible. Three kinds, one per seed: an obelisk, a statue column or a
+ * through. Planter pots ring the steps, benches face the landmark and
+ * lantern posts line the plaza edge, all destructible. Three kinds, one per
+ * seed: an obelisk, a statue column or a
  * triumphal arch opening along the plaza's longest street side.
  */
 import { CITY } from '../config';
@@ -171,6 +172,25 @@ export const monumentModule: DistrictModule = {
       const l = sqrt(inward.x * inward.x + inward.z * inward.z) || 1;
       const s = { x: m.x + (inward.x / l) * 3, z: m.z + (inward.z / l) * 3 };
       if (rng.chance(0.6) && inside(s, 2)) b.destructibles.push({ kind: rng.chance(0.5) ? 'newsBox' : 'garbageCan', x: s.x, z: s.z, yaw: atan2(-inward.x, -inward.z), lift, area: id });
+    }
+    // Lantern posts just inside the plaza edge, an even count per side so none lands on the
+    // midpoint where a news box may stand.
+    for (let i = 0; i < ring.length; i++) {
+      const p = ring[i];
+      const q = ring[(i + 1) % ring.length];
+      const len = sqrt((q.x - p.x) ** 2 + (q.z - p.z) ** 2);
+      if (len < CFG.lampSpacing) continue;
+      const ux = (q.x - p.x) / len;
+      const uz = (q.z - p.z) / len;
+      // Inward normal: the side of the edge the landmark is on.
+      const sgn = (c.x - p.x) * uz - (c.z - p.z) * ux > 0 ? 1 : -1;
+      let n = Math.max(2, Math.round(len / CFG.lampSpacing));
+      if (n % 2) n++;
+      for (let k = 0; k < n; k++) {
+        const s = ((k + 0.5) / n) * len;
+        const l = { x: p.x + ux * s + uz * sgn * CFG.lampInset, z: p.z + uz * s - ux * sgn * CFG.lampInset };
+        if (inside(l, 1.5)) b.destructibles.push({ kind: 'parkLamp', x: l.x, z: l.z, yaw: atan2(c.x - l.x, c.z - l.z), lift, area: id });
+      }
     }
     return b;
   },

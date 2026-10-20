@@ -193,6 +193,8 @@ export const CITY = {
       /** Footpath loop this far inside the park edge (m), with a bench every benchSpacing m. */
       pathInset: 11,
       benchSpacing: 36,
+      /** Lantern posts along the footpath's outer side, about this far apart (m); one stands at every path corner. */
+      lampSpacing: 24,
     },
     infill: {
       enabled: true,
@@ -225,6 +227,12 @@ export const CITY = {
       solidChance: 0.14,
       fountainChance: 0.15,
       planterDepth: 2.4,
+      /**
+       * Lantern posts along the back of plazas and corner pockets, this far in from the back and the
+       * ends (m); pockets longer than lampPairLen get one at each end, shorter ones one in the middle.
+       */
+      lampInset: 1.1,
+      lampPairLen: 11,
     },
     /** Reserved unique features, documented placeholders (plan nothing yet). */
     /**
@@ -281,6 +289,9 @@ export const CITY = {
       /** Destructible planter pots ring the steps this far out (m), benches further out. */
       potRing: 6,
       benchRing: 12,
+      /** Lantern posts this far inside the plaza edge, about lampSpacing apart along each side (m). */
+      lampInset: 2.4,
+      lampSpacing: 20,
     },
     waterfront: { enabled: false },
     lake: { enabled: false },

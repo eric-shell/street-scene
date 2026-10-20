@@ -2,9 +2,10 @@
  * Destructible props: street furniture (streetlights, traffic lights, garbage
  * cans, benches, bus stops) and the clutter districts scatter where racers
  * cut through (bushes, planter pots, cafe tables, barrels, crates, dumpsters,
- * news boxes, trash bags, and the construction site pieces that fence off and
- * fill route shortcuts: fence panels, traffic cones, sawhorse barricades,
- * water filled barriers, sandbags and pallets). Generated once per city (deterministic, from the
+ * news boxes, trash bags, the lantern posts lighting parks and plazas, and
+ * the construction site pieces that fence off and fill route shortcuts:
+ * fence panels, traffic cones, sawhorse barricades, water filled barriers,
+ * sandbags and pallets). Generated once per city (deterministic, from the
  * seed) and stored on CityBlocks.props. The sim tracks which props are broken
  * per race (RaceState.brokenProps) so replays reproduce every hit; the
  * renderer hides a broken prop's intact instance and spawns debris.
@@ -28,8 +29,8 @@ import { DEG, Vec2, atan2, distToSegment, sin, sqrt } from '../sim/math';
 export type StreetPropKind = 'streetlight' | 'trafficLight' | 'garbageCan' | 'bench' | 'busStop';
 /** Construction site pieces fencing off and filling route shortcuts (districts/alley.ts). */
 export type ConstructionPropKind = 'fencePanel' | 'trafficCone' | 'sawhorse' | 'waterBarrier' | 'sandbags' | 'pallets';
-/** Clutter districts ask for (DistrictPropSpec): mostly soft, cheap to crash through. */
-export type DistrictPropKind = 'bush' | 'planterPot' | 'cafeTable' | 'barrel' | 'crate' | 'dumpster' | 'newsBox' | 'trashBags' | ConstructionPropKind;
+/** Clutter districts ask for (DistrictPropSpec): mostly soft, cheap to crash through. Park lamps light parks and plazas (render/areaLights.ts). */
+export type DistrictPropKind = 'bush' | 'planterPot' | 'cafeTable' | 'barrel' | 'crate' | 'dumpster' | 'newsBox' | 'trashBags' | 'parkLamp' | ConstructionPropKind;
 export type PropKind = StreetPropKind | DistrictPropKind;
 
 export interface Prop {
@@ -103,6 +104,8 @@ export const PROP_DEFS: Record<PropKind, PropDef> = {
   dumpster: { radius: 1.0, mass: 700, height: 1.4, anchor: 1, breakSpeed: 6 },
   newsBox: { radius: 0.32, mass: 55, height: 1.1, anchor: 1, breakSpeed: 0.5 },
   trashBags: { radius: 0.5, mass: 22, height: 0.6, anchor: 1, breakSpeed: 0.1 },
+  // A cast iron lantern post: a lighter hit than a streetlight, but still a pole that holds a crawling car.
+  parkLamp: { radius: 0.18, mass: 190, height: 4.4, anchor: 1.8, breakSpeed: 2 },
   // Construction pieces. A fence panel (2.4 m of chain link on two feet, a contractor's banner on it)
   // goes down at any closing speed and costs a fast car about 2% of its speed, so a fenced mouth
   // never stops anyone; cones and sawhorses are lighter still. Water filled barriers and sandbag

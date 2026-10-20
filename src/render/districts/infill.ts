@@ -5,7 +5,8 @@
  * walls that close every other gap in the street frontage. The clutter in
  * the pockets is destructible and drawn by render/props.ts; this only lays a
  * mulch bed under the greenery (it stays when a bush is ploughed through).
- * Content to add: parked cars, bollards, kiosks, lamp posts.
+ * Lantern posts are props too; their light is render/areaLights.ts.
+ * Content to add: parked cars, bollards, kiosks.
  */
 import { CITY } from '../../city/config';
 import type { DistrictRenderer } from './kit';

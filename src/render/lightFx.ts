@@ -6,6 +6,9 @@
 import * as THREE from 'three';
 import { makeRadialGlow } from './textures';
 
+/** Width of the light pool under a streetlight (m). */
+const POOL_SIZE = 19;
+
 export interface LightFx {
   group: THREE.Group;
   setStrength(pool: number, streak: number): void;
@@ -119,7 +122,7 @@ export function buildLightFx(
   const m = new THREE.Matrix4();
   lamps.forEach((p, i) => {
     const y = heightAt(p.x, p.z) + 0.2;
-    m.makeScale(17, 1, 17).setPosition(p.x, y, p.z);
+    m.makeScale(POOL_SIZE, 1, POOL_SIZE).setPosition(p.x, y, p.z);
     pools.setMatrixAt(i, m);
   });
   pools.frustumCulled = false;
@@ -176,7 +179,7 @@ export function buildLightFx(
     setLampOn(i, on) {
       if (i < 0 || i >= lamps.length) return;
       const p = lamps[i];
-      if (on) m.makeScale(17, 1, 17).setPosition(p.x, heightAt(p.x, p.z) + 0.2, p.z);
+      if (on) m.makeScale(POOL_SIZE, 1, POOL_SIZE).setPosition(p.x, heightAt(p.x, p.z) + 0.2, p.z);
       else m.makeScale(0, 0, 0);
       pools.setMatrixAt(i, m);
       pools.instanceMatrix.needsUpdate = true;

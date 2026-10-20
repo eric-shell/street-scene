@@ -1,0 +1,218 @@
+/**
+ * Park and plaza lighting. Parks and plazas are open ground the streetlights
+ * barely reach, so they get light of their own, faked like the street pools
+ * in lightFx (the only real lights are the few that follow the car):
+ *  - a wash over every park, plaza, corner pocket and the monument plaza: a
+ *    soft, even glow tinted by what it lies on (green over park grass, warm
+ *    over paving), fading in from a park's edge so the lawn reads as lit
+ *    rather than as a decal;
+ *  - a pool under every lantern post (props of kind 'parkLamp', placed by
+ *    the park, infill and monument modules), draped over the ground point by
+ *    point because park lawns roll: a flat disc would sink into a hill and
+ *    float over a dip.
+ * Both are additive vertex colors in one merged mesh, so all of it is a
+ * single draw call with no per-frame work. A broken lamp's pool goes dark
+ * (setLampOn); the wash stays. Additive light fades to black in fog instead
+ * of toward the fog color, so a far park never glows through the mist.
+ * Render only.
+ */
+import * as THREE from 'three';
+import { CITY } from '../city/config';
+import type { World } from '../city/world';
+import type { Area } from '../city/districts/types';
+import { distToPolygonEdge } from '../city/districts/geom';
+import type { Vec2 } from '../sim/math';
+import { GeoBuilder } from './geoBuilder';
+import { parkLamps } from './props';
+
+const AREA_LIGHT = {
+  /** Lantern pool radius (m), rings and segments of its disc (rings 2.5 m apart follow the lawn's rolls). */
+  poolR: 10,
+  rings: 4,
+  segs: 12,
+  /** Lantern light (linear, additive at the pool's middle). */
+  lamp: new THREE.Color(0xffc890).multiplyScalar(0.7),
+  /**
+   * The real light that follows the car (NightLighting) sits this high over a
+   * lantern's base (m): higher than the lantern, so its short post doesn't burn
+   * a hot spot into the lawn and the light still reaches across the path.
+   */
+  lightY: 6.5,
+  /**
+   * Wash per area: color (linear, additive), how far in from the edge it fades
+   * up (m) and the triangle size it drapes with (m). Corner pockets and small
+   * plazas are lit evenly; the big monument plaza only faintly, so its lantern
+   * pools give it shape instead of one flat bright floor.
+   */
+  wash: {
+    park: { color: new THREE.Color(0x3c6a34).multiplyScalar(0.11), fade: 9, edge: 5 },
+    plaza: { color: new THREE.Color(0xffd8a8).multiplyScalar(0.16), fade: 1.2, edge: 3 },
+    monument: { color: new THREE.Color(0xffd8a8).multiplyScalar(0.035), fade: 4, edge: 8 },
+  },
+  /** What light picks up from the ground it lands on: lawn takes it green, paving and asphalt warm. */
+  grassTint: new THREE.Color(0.7, 1, 0.55),
+  /** Lift over the drawn ground (m): grass and its gravel path, sidewalk level paving, the road. */
+  liftGrass: 0.12,
+  liftPaved: CITY.curbHeight + 0.06,
+  liftRoad: 0.06,
+} as const;
+
+/** Pool falloff: the radial glow profile of the street pools (textures.ts makeRadialGlow), t = r / radius. */
+function poolFalloff(t: number): number {
+  if (t >= 1) return 0;
+  if (t < 0.25) return 1 - (t / 0.25) * 0.45;
+  if (t < 0.6) return 0.55 - ((t - 0.25) / 0.35) * 0.4;
+  return 0.15 * (1 - (t - 0.6) / 0.4);
+}
+
+export interface AreaLights {
+  group: THREE.Group;
+  /** Where the real light of each park lamp goes (NightLighting), in parkLamps order. */
+  lamps: THREE.Vector3[];
+  /** Switch the k-th park lamp's pool (parkLamps order): broken lamps go dark. */
+  setLampOn(k: number, on: boolean): void;
+  dispose(): void;
+}
+
+export function buildAreaLights(world: World): AreaLights {
+  const group = new THREE.Group();
+  group.name = 'areaLights';
+  const h = world.heightAt;
+  const gb = new GeoBuilder(true);
+  const c = new THREE.Color();
+  const A = AREA_LIGHT;
+
+  const liftAt = (x: number, z: number): number => {
+    const s = world.surfaceAt(x, z);
+    return s === 'road' || s === 'cobble' ? A.liftRoad : s === 'sidewalk' || s === 'concrete' ? A.liftPaved : A.liftGrass;
+  };
+
+  // ---------- Washes ----------
+  const washed = (a: Area) => a.kind === 'park' || a.kind === 'monument' || (a.kind === 'infill' && (a.variant === 'plaza' || a.variant === 'cornerPlaza'));
+  for (const a of world.areas) {
+    if (!washed(a) || a.polygon.length < 3) continue;
+    const W = a.kind === 'park' || a.kind === 'monument' ? A.wash[a.kind] : A.wash.plaza;
+    const lift = a.kind === 'park' ? A.liftGrass : A.liftPaved;
+    const vertex = (x: number, z: number) => {
+      const k = Math.min(1, Math.max(0, distToPolygonEdge(x, z, a.polygon) / W.fade));
+      c.copy(W.color).multiplyScalar(k * k * (3 - 2 * k));
+      return gb.vertex(x, h(x, z) + lift, z, 0, 1, 0, 0, 0, c);
+    };
+    // A quad (every pocket, most parks) is one bilinear grid of about W.edge cells; any other
+    // convex shape is a fan of sectors from its middle, each a grid squeezed to a point there.
+    const grid = (p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) => {
+      const ns = Math.max(1, Math.ceil(Math.max(Math.hypot(p1.x - p0.x, p1.z - p0.z), Math.hypot(p2.x - p3.x, p2.z - p3.z)) / W.edge));
+      const nt = Math.max(1, Math.ceil(Math.max(Math.hypot(p3.x - p0.x, p3.z - p0.z), Math.hypot(p2.x - p1.x, p2.z - p1.z)) / W.edge));
+      const ids: number[] = [];
+      for (let j = 0; j <= nt; j++) {
+        const t = j / nt;
+        for (let i = 0; i <= ns; i++) {
+          const u = i / ns;
+          const ax = p0.x + (p1.x - p0.x) * u;
+          const az = p0.z + (p1.z - p0.z) * u;
+          const bx = p3.x + (p2.x - p3.x) * u;
+          const bz = p3.z + (p2.z - p3.z) * u;
+          ids.push(vertex(ax + (bx - ax) * t, az + (bz - az) * t));
+        }
+      }
+      for (let j = 0; j < nt; j++) {
+        for (let i = 0; i < ns; i++) {
+          const v = j * (ns + 1) + i;
+          gb.quadFacing(ids[v], ids[v + 1], ids[v + ns + 2], ids[v + ns + 1], 0, 1, 0);
+        }
+      }
+    };
+    const poly = a.polygon;
+    if (poly.length === 4) grid(poly[0], poly[1], poly[2], poly[3]);
+    else {
+      let cx = 0;
+      let cz = 0;
+      for (const p of poly) {
+        cx += p.x / poly.length;
+        cz += p.z / poly.length;
+      }
+      const mid = { x: cx, z: cz };
+      for (let i = 0; i < poly.length; i++) grid(mid, poly[i], poly[(i + 1) % poly.length], mid);
+    }
+  }
+
+  // ---------- Lantern pools ----------
+  const lanterns = parkLamps(world);
+  const poolStart = gb.vertexCount;
+  const perPool = 1 + A.rings * A.segs;
+  for (const p of lanterns) {
+    const at = (x: number, z: number, t: number) => {
+      c.copy(A.lamp).multiplyScalar(poolFalloff(t));
+      if (world.surfaceAt(x, z) === 'grass') c.multiply(A.grassTint);
+      return gb.vertex(x, h(x, z) + liftAt(x, z), z, 0, 1, 0, 0, 0, c);
+    };
+    const center = at(p.x, p.z, 0);
+    const rings: number[][] = [];
+    for (let r = 1; r <= A.rings; r++) {
+      const t = r / A.rings;
+      const ring: number[] = [];
+      for (let k = 0; k < A.segs; k++) {
+        const ang = (k / A.segs) * Math.PI * 2;
+        ring.push(at(p.x + Math.cos(ang) * A.poolR * t, p.z + Math.sin(ang) * A.poolR * t, t));
+      }
+      rings.push(ring);
+    }
+    for (let k = 0; k < A.segs; k++) gb.triFacing(center, rings[0][k], rings[0][(k + 1) % A.segs], 0, 1, 0);
+    for (let r = 1; r < A.rings; r++) {
+      for (let k = 0; k < A.segs; k++) {
+        const k1 = (k + 1) % A.segs;
+        gb.quadFacing(rings[r - 1][k], rings[r][k], rings[r][k1], rings[r - 1][k1], 0, 1, 0);
+      }
+    }
+  }
+
+  const geo = gb.build();
+  const colors = geo.getAttribute('color') as THREE.BufferAttribute;
+  const lit = (colors.array as Float32Array).slice();
+  const mat = new THREE.MeshBasicMaterial({
+    vertexColors: true,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  });
+  // Light added on top fades out with distance; mixing it toward the fog color would make far parks glow.
+  mat.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <fog_fragment>',
+      `#ifdef USE_FOG
+        #ifdef FOG_EXP2
+          float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth );
+        #else
+          float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
+        #endif
+        gl_FragColor.rgb *= 1.0 - fogFactor;
+      #endif`,
+    );
+  };
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.name = 'areaLights';
+  mesh.renderOrder = 1;
+  if (geo.getAttribute('position').count) group.add(mesh);
+
+  return {
+    group,
+    lamps: lanterns.map((p) => new THREE.Vector3(p.x, p.y + A.lightY, p.z)),
+    setLampOn(k, on) {
+      if (k < 0 || k >= lanterns.length) return;
+      const start = (poolStart + k * perPool) * 3;
+      const count = perPool * 3;
+      const arr = colors.array as Float32Array;
+      if (on) arr.set(lit.subarray(start, start + count), start);
+      else arr.fill(0, start, start + count);
+      colors.addUpdateRange(start, count);
+      colors.needsUpdate = true;
+    },
+    dispose() {
+      geo.dispose();
+      mat.dispose();
+    },
+  };
+}

@@ -300,6 +300,15 @@ describe('city generation', () => {
         } else expect(pointInPolygon(p.x, p.z, w.areas[p.area].polygon)).toBe(true);
         if (p.kind === 'trafficLight') expect(w.graph.nodes[p.node!].edges.length).toBeGreaterThanOrEqual(3);
       });
+      // Lantern posts light every park, plaza and corner pocket and the monument plaza (render/areaLights.ts).
+      const lanterns = props.filter((p) => p.kind === 'parkLamp');
+      for (const a of w.areas) {
+        const n = lanterns.filter((p) => p.area === a.id).length;
+        if (a.kind === 'park') expect(n, `${seed} park ${a.id}`).toBeGreaterThanOrEqual(8);
+        if (a.kind === 'monument') expect(n, `${seed} monument`).toBeGreaterThanOrEqual(12);
+      }
+      const pockets = w.areas.filter((a) => a.kind === 'infill' && (a.variant === 'plaza' || a.variant === 'cornerPlaza'));
+      expect(pockets.filter((a) => lanterns.some((p) => p.area === a.id)).length).toBeGreaterThanOrEqual(pockets.length * 0.95);
       // District props come after all street furniture.
       const firstDistrict = props.findIndex((p) => p.area !== undefined);
       expect(firstDistrict).toBeGreaterThan(0);

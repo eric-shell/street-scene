@@ -6,10 +6,11 @@
  * trunks (look 'tree') kept away from the edge so the shortcut stays open;
  * one small wood packs them tighter, with bushes underneath. Clusters of
  * bushes (destructible, a car ploughs straight through) dot the grass, and
- * a footpath loop inside the edge has benches and bins (destructible too).
+ * a footpath loop inside the edge has benches and bins (destructible too)
+ * and lantern posts (destructible, lighting the park: render/areaLights.ts).
  *
- * Content to add (render/districts/park.ts): lamps, hedges, a pond or
- * playground, better trees.
+ * Content to add (render/districts/park.ts): hedges, a pond or playground,
+ * better trees.
  */
 import { CITY } from '../config';
 import { cos, sin } from '../../sim/math';
@@ -234,6 +235,40 @@ export const parkModule: DistrictModule = {
             const cz = z + uz * 1.6;
             if (open(cx, cz, 0.4, 3)) clutter('garbageCan', cx, cz, 0);
           }
+        }
+      }
+      // Lantern posts just off the path's outer side (benches sit on the inner one): one at every
+      // corner, the rest spread evenly along each side. No rng draws, so the lamps never shift the
+      // benches and bins.
+      const off = 1.7;
+      for (let i = 0; i < path.length; i++) {
+        const o = path[(i - 1 + path.length) % path.length];
+        const p = path[i];
+        const q = path[(i + 1) % path.length];
+        const len = Math.hypot(q.x - p.x, q.z - p.z);
+        const lenIn = Math.hypot(p.x - o.x, p.z - o.z);
+        if (len < 1 || lenIn < 1) continue;
+        const ux = (q.x - p.x) / len;
+        const uz = (q.z - p.z) / len;
+        // Outward (toward the street): left of travel.
+        const ox = -uz;
+        const oz = ux;
+        const n = Math.max(1, Math.round(len / CFG.lampSpacing));
+        for (let k = 0; k < n; k++) {
+          let x = p.x + ux * (len * k) / n + ox * off;
+          let z = p.z + uz * (len * k) / n + oz * off;
+          if (k === 0) {
+            // The corner: off the path on the bisector of both sides' outward normals.
+            const bx = ox - (p.z - o.z) / lenIn;
+            const bz = oz + (p.x - o.x) / lenIn;
+            const bl = Math.hypot(bx, bz);
+            if (bl > 1e-6) {
+              const k2 = off / Math.max(0.5, (bx * ox + bz * oz) / bl);
+              x = p.x + (bx / bl) * k2;
+              z = p.z + (bz / bl) * k2;
+            }
+          }
+          if (open(x, z, 0.4, 2)) clutter('parkLamp', x, z, Math.atan2(-ox, -oz));
         }
       }
     }

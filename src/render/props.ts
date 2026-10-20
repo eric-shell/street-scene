@@ -2,7 +2,8 @@
  * Destructible props from CityBlocks.props: street furniture (streetlights,
  * traffic lights, garbage cans, benches, bus stops) and district clutter
  * (bushes, planter pots, cafe tables, barrels, crates, dumpsters, news boxes,
- * trash bags, and the construction pieces in route shortcuts: fence panels
+ * trash bags, the lantern posts of parks and plazas, and the construction
+ * pieces in route shortcuts: fence panels
  * with contractors' banners, cones, sawhorse barricades with a lamp, water
  * filled barriers, sandbags, pallets), instanced per kind and part, tinted
  * per instance. Traffic
@@ -26,6 +27,9 @@ import { D_BOX, D_CYL, D_GLASS, D_GLOW, Debris, DebrisType } from './debris';
 /** Streetlight pole height and arm reach (lamp heads sit at the arm end). Matches cityMeshes lampPositions. */
 export const STREETLIGHT_POLE_H = 8.2;
 export const STREETLIGHT_ARM = 2.4;
+/** Park lamp (lantern post) height and the height of its lantern's middle (m). */
+export const PARK_LAMP_H = 4.4;
+export const PARK_LANTERN_Y = 3.95;
 const STUMP_H = 0.55;
 const TRAFFIC_POLE_H = 5.6;
 const TRAFFIC_ARM_Y = 5.25;
@@ -50,8 +54,16 @@ export interface PropRenderer {
 }
 
 export interface PropRendererOptions {
-  /** Streetlight `light` index switched off (broken) or back on. */
+  /**
+   * A lamp switched off (broken) or back on: a streetlight's `light` index,
+   * or streetlights.length + k for the k-th park lamp (parkLamps order).
+   */
   onLamp?(light: number, on: boolean): void;
+}
+
+/** The lantern posts of parks and plazas in light order: their lights follow the streetlights'. */
+export function parkLamps(world: World): Prop[] {
+  return (world.blocks.props ?? []).filter((p) => p.kind === 'parkLamp');
 }
 
 // ---------------------------------------------------------------------------
@@ -297,8 +309,33 @@ function palletsGeo(): THREE.BufferGeometry {
   return s.build();
 }
 
+/** Cast iron lantern post: plinth, fluted shaft, collar and a hipped cap over the lantern. */
+function parkLampGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const iron = col(0x22252b);
+  const Y = PARK_LANTERN_Y;
+  cyl(s, 0, 0, 0, 0.55, 0.2, 0.15, 8, iron);
+  cyl(s, 0, 0, 0.55, Y - 0.42, 0.075, 0.055, 6, iron);
+  cyl(s, 0, 0, Y - 0.42, Y - 0.3, 0.13, 0.16, 8, iron);
+  // Corner bars of the lantern and the cap.
+  for (let k = 0; k < 4; k++) {
+    const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
+    box(s, Math.cos(a) * 0.2, Y, Math.sin(a) * 0.2, 0.03, 0.62, 0.03, iron);
+  }
+  cyl(s, 0, 0, Y + 0.31, Y + 0.36, 0.3, 0.3, 8, iron);
+  cyl(s, 0, 0, Y + 0.36, PARK_LAMP_H, 0.3, 0.04, 8, iron);
+  return s.build();
+}
+
+/** The lantern's glass: a warm bright cylinder between the collar and the cap (blooms). */
+function parkLanternGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  cyl(s, 0, 0, PARK_LANTERN_Y - 0.3, PARK_LANTERN_Y + 0.31, 0.17, 0.2, 8, col(0xffd6a0, 4));
+  return s.build();
+}
+
 /** Per kind: mesh parts (geometry, material slot, tinted per instance?) and the tints. */
-const CLUTTER: Record<DistrictPropKind, { parts: { geo: () => THREE.BufferGeometry; mat: 'matte' | 'solid' | 'canopy' | 'glow'; tint?: boolean }[]; tints: number[]; spin: boolean }> = {
+const CLUTTER: Record<DistrictPropKind, { parts: { geo: () => THREE.BufferGeometry; mat: 'matte' | 'solid' | 'canopy' | 'glow' | 'lamp'; tint?: boolean }[]; tints: number[]; spin: boolean }> = {
   bush: { parts: [{ geo: bushGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xd8e8c8, 0xf0ffd8, 0xc8d8b0], spin: true },
   planterPot: { parts: [{ geo: planterPotGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xe8dcd0, 0xd0d8e0], spin: true },
   cafeTable: { parts: [{ geo: cafeFrameGeo, mat: 'solid' }, { geo: cafeCanopyGeo, mat: 'canopy', tint: true }], tints: [0xc81e2e, 0x1d55c4, 0xe8e8ea, 0x2a9d5a, 0xf2b81c, 0x15161a], spin: true },
@@ -307,6 +344,7 @@ const CLUTTER: Record<DistrictPropKind, { parts: { geo: () => THREE.BufferGeomet
   dumpster: { parts: [{ geo: dumpsterGeo, mat: 'solid', tint: true }], tints: [0xffffff, 0x6080ff, 0x9a9a9a, 0xd06030], spin: false },
   newsBox: { parts: [{ geo: newsBoxGeo, mat: 'solid', tint: true }], tints: [0x2050c0, 0xc02020, 0xe0b020, 0x20a050, 0xe0e0e0], spin: false },
   trashBags: { parts: [{ geo: trashBagsGeo, mat: 'solid' }], tints: [0xffffff], spin: true },
+  parkLamp: { parts: [{ geo: parkLampGeo, mat: 'solid' }, { geo: parkLanternGeo, mat: 'lamp' }], tints: [0xffffff], spin: false },
   // Banners in contractors' colours: safety orange, navy, green, yellow, red, charcoal.
   fencePanel: { parts: [{ geo: fenceFrameGeo, mat: 'solid' }, { geo: fenceBannerGeo, mat: 'canopy', tint: true }], tints: [0xff6a1a, 0x1d3f8a, 0x2a8a4a, 0xf2b81c, 0xc0202a, 0x2a2c32], spin: false },
   trafficCone: { parts: [{ geo: trafficConeGeo, mat: 'matte' }], tints: [0xffffff], spin: true },
@@ -580,6 +618,11 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
   const cans = byKind('garbageCan');
   const benches = byKind('bench');
   const stops = byKind('busStop');
+  const lanterns = parkLamps(world);
+  // Light index of every lamp prop (-1 for the rest): streetlights by `light`, park lamps after them.
+  const lightOf = new Int32Array(props.length).fill(-1);
+  for (const p of lights) lightOf[p.id] = p.light ?? p.id;
+  lanterns.forEach((p, k) => (lightOf[p.id] = lights.length + k));
 
   const meshes: THREE.InstancedMesh[] = [];
   const parts: PartRef[][] = props.map(() => []);
@@ -656,7 +699,7 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
   }
 
   // Stumps left behind by broken poles (hidden until needed).
-  const poles = [...lights, ...traffic];
+  const poles = [...lights, ...traffic, ...lanterns];
   const stump = addMesh('propStumps', stumpGeo(), solidMat, poles.length);
   poles.forEach((p, i) => {
     stumpOf[p.id] = i;
@@ -697,7 +740,7 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
     const list = byKind(kind);
     if (!list.length) continue;
     const def = CLUTTER[kind];
-    const matOf = { matte: matteMat, canopy: canopyMat, solid: solidMat, glow: glowMat } as const;
+    const matOf = { matte: matteMat, canopy: canopyMat, solid: solidMat, glow: glowMat, lamp: lampLensMat } as const;
     const ids = def.parts.map((part, k) => addMesh(`${kind}${k}`, part.geo(), matOf[part.mat], list.length));
     list.forEach((p, i) => {
       const yaw = p.yaw + (def.spin ? hash01(p.id * 7) * 6.28 : 0);
@@ -739,7 +782,7 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
       else m.setMatrixAt(s, ZERO);
       m.instanceMatrix.needsUpdate = true;
     }
-    if (p.kind === 'streetlight') opts.onLamp?.(p.light ?? p.id, !broken);
+    if (lightOf[p.id] >= 0) opts.onLamp?.(lightOf[p.id], !broken);
   };
 
   // ---------- Debris ----------
@@ -799,9 +842,10 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
         bounce: type === D_GLASS ? 0.12 : 0.25,
       });
 
-    if (p.kind === 'streetlight' || p.kind === 'trafficLight') {
+    if (p.kind === 'streetlight' || p.kind === 'trafficLight' || p.kind === 'parkLamp') {
       const isLamp = p.kind === 'streetlight';
-      const H = isLamp ? STREETLIGHT_POLE_H : TRAFFIC_POLE_H;
+      const isLantern = p.kind === 'parkLamp';
+      const H = isLamp ? STREETLIGHT_POLE_H : isLantern ? PARK_LAMP_H : TRAFFIC_POLE_H;
       const len = H - STUMP_H;
       // The pole topples about its broken base, top falling along the hit direction.
       const ox = p.x;
@@ -814,8 +858,9 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
       const twx = dz * w;
       const twz = -dx * w;
       const twy = rnd(-0.4, 0.4);
-      const metal = col(isLamp ? 0x2a2c33 : 0x3a3d44);
-      debris.spawn({ type: D_CYL, x: ox, y: oy, z: oz, yaw: p.yaw, hx: 0.12, hy: len / 2, hz: 0.12, vx, vy, vz, wx: twx, wy: twy, wz: twz, color: metal, life: rnd(5.5, 6.5), sparky: true });
+      const metal = col(isLamp ? 0x2a2c33 : isLantern ? 0x22252b : 0x3a3d44);
+      const r = isLantern ? 0.07 : 0.12;
+      debris.spawn({ type: D_CYL, x: ox, y: oy, z: oz, yaw: p.yaw, hx: r, hy: len / 2, hz: r, vx, vy, vz, wx: twx, wy: twy, wz: twz, color: metal, life: rnd(5.5, 6.5), sparky: true });
       // Parts at the top start with the pole's rigid velocity, then fly loose.
       const attached = (type: DebrisType, x: number, y: number, z: number, yaw: number, hx: number, hy: number, hz: number, color: THREE.Color, life: number, kick = 0) => {
         const rx = x - ox;
@@ -851,6 +896,12 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
         attached(D_GLOW, p.x + fx * A, p.y + H - 0.36, p.z + fz * A, p.yaw, 0.17, 0.02, 0.33, col(0xffc27a, 3), rnd(4, 5), 1.5);
         for (let k = 0; k < 7; k++) attached(D_GLASS, p.x + fx * A + rnd(-0.2, 0.2), p.y + H - 0.36, p.z + fz * A + rnd(-0.3, 0.3), rnd(0, 6.28), rnd(0.04, 0.1), 0.008, rnd(0.04, 0.12), col(0xfff0d8), rnd(2.5, 4), 3);
         debris.burst(p.x + fx * A, p.y + H - 0.35, p.z + fz * A, dx, dz, 3, 14);
+      } else if (isLantern) {
+        const Y = PARK_LANTERN_Y;
+        attached(D_CYL, p.x, p.y + Y + 0.4, p.z, p.yaw, 0.28, 0.06, 0.28, metal, rnd(5, 6), 0.8);
+        attached(D_GLOW, p.x, p.y + Y, p.z, p.yaw, 0.15, 0.25, 0.15, col(0xffd6a0, 2.5), rnd(3.5, 4.5), 1.2);
+        for (let k = 0; k < 8; k++) attached(D_GLASS, p.x + rnd(-0.2, 0.2), p.y + Y + rnd(-0.25, 0.25), p.z + rnd(-0.2, 0.2), rnd(0, 6.28), rnd(0.04, 0.1), 0.008, rnd(0.04, 0.12), col(0xfff0d8), rnd(2.5, 4), 3);
+        debris.burst(p.x, p.y + Y, p.z, dx, dz, 2.5, 10);
       } else {
         const f = frames[traffic.indexOf(p)];
         if (f) {
