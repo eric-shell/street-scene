@@ -164,170 +164,115 @@
       "generated": true
     },
     {
-      "id": "gc14_body_kit2",
-      "displayName": "Body kit 2",
-      "carId": "gc14",
-      "slot": "body",
-      "file": "parts/gc14_body_kit2.glb",
+      "id": "protoCompact_frontBumper_kurogane",
+      "displayName": "Kurogane",
+      "carId": "protoCompact",
+      "slot": "frontBumper",
+      "file": "parts/protoCompact_frontBumper_kurogane.glb",
       "hides": [
-        "Body"
+        "Bumper_Front"
+      ],
+      "materialSlots": [
+        "Trim",
+        "Paint",
+        "Black",
+        "HeadLight"
+      ],
+      "tris": 590,
+      "generated": true
+    },
+    {
+      "id": "protoCompact_rearBumper_kurogane",
+      "displayName": "Kurogane",
+      "carId": "protoCompact",
+      "slot": "rearBumper",
+      "file": "parts/protoCompact_rearBumper_kurogane.glb",
+      "hides": [
+        "Bumper_Rear"
       ],
       "materialSlots": [
         "Paint",
         "Trim",
         "Black",
-        "Glass",
-        "TailLight",
-        "HeadLight",
         "Chrome"
       ],
-      "tris": 2148,
+      "tris": 722,
       "generated": true
     },
     {
-      "id": "gc14_body_kit3",
-      "displayName": "Body kit 3",
-      "carId": "gc14",
-      "slot": "body",
-      "file": "parts/gc14_body_kit3.glb",
+      "id": "protoCompact_sideSkirts_kurogane",
+      "displayName": "Kurogane",
+      "carId": "protoCompact",
+      "slot": "sideSkirts",
+      "file": "parts/protoCompact_sideSkirts_kurogane.glb",
       "hides": [
-        "Body"
+        "Skirts"
       ],
       "materialSlots": [
         "Paint",
         "Trim",
-        "Black",
-        "Glass",
-        "TailLight",
-        "HeadLight",
-        "Chrome"
-      ],
-      "tris": 2328,
-      "generated": true
-    },
-    {
-      "id": "gc14_spoiler_1",
-      "displayName": "Spoiler 1",
-      "carId": "gc14",
-      "slot": "spoiler",
-      "file": "parts/gc14_spoiler_1.glb",
-      "hides": [],
-      "materialSlots": [
-        "Paint"
-      ],
-      "tris": 272,
-      "generated": true
-    },
-    {
-      "id": "wheel_gc14_1",
-      "displayName": "GC14 rim 1",
-      "carId": "universal",
-      "slot": "wheels",
-      "file": "parts/wheel_gc14_1.glb",
-      "hides": [],
-      "materialSlots": [
-        "Tire",
-        "Rim",
         "Black"
       ],
-      "tris": 1656,
+      "tris": 340,
       "generated": true
     },
     {
-      "id": "wheel_gc14_2",
-      "displayName": "GC14 rim 2",
-      "carId": "universal",
-      "slot": "wheels",
-      "file": "parts/wheel_gc14_2.glb",
-      "hides": [],
+      "id": "protoCompact_frontBumper_hayate",
+      "displayName": "Hayate",
+      "carId": "protoCompact",
+      "slot": "frontBumper",
+      "file": "parts/protoCompact_frontBumper_hayate.glb",
+      "hides": [
+        "Bumper_Front"
+      ],
       "materialSlots": [
-        "Tire",
-        "Rim",
+        "Paint",
+        "Black",
+        "HeadLight",
+        "Trim"
+      ],
+      "tris": 586,
+      "generated": true
+    },
+    {
+      "id": "protoCompact_rearBumper_hayate",
+      "displayName": "Hayate",
+      "carId": "protoCompact",
+      "slot": "rearBumper",
+      "file": "parts/protoCompact_rearBumper_hayate.glb",
+      "hides": [
+        "Bumper_Rear"
+      ],
+      "materialSlots": [
+        "Paint",
         "Black",
         "Chrome"
       ],
-      "tris": 3152,
+      "tris": 538,
       "generated": true
     },
     {
-      "id": "wheel_gc14_3",
-      "displayName": "GC14 rim 3",
-      "carId": "universal",
-      "slot": "wheels",
-      "file": "parts/wheel_gc14_3.glb",
-      "hides": [],
+      "id": "protoCompact_sideSkirts_hayate",
+      "displayName": "Hayate",
+      "carId": "protoCompact",
+      "slot": "sideSkirts",
+      "file": "parts/protoCompact_sideSkirts_hayate.glb",
+      "hides": [
+        "Skirts"
+      ],
       "materialSlots": [
-        "Tire",
-        "Chrome",
-        "Rim",
+        "Paint",
         "Black"
       ],
-      "tris": 3152,
+      "tris": 316,
       "generated": true
     },
     {
-      "id": "wheel_gc14_4",
-      "displayName": "GC14 rim 4",
-      "carId": "universal",
-      "slot": "wheels",
-      "file": "parts/wheel_gc14_4.glb",
-      "hides": [],
-      "materialSlots": [
-        "Tire",
-        "Rim",
-        "Black",
-        "Chrome"
-      ],
-      "tris": 3136,
-      "generated": true
-    },
-    {
-      "id": "s64_body_kit2",
-      "displayName": "Body kit 2",
-      "carId": "s64",
-      "slot": "body",
-      "file": "parts/s64_body_kit2.glb",
-      "hides": [
-        "Body"
-      ],
-      "materialSlots": [
-        "TailLight",
-        "Paint",
-        "Black",
-        "HeadLight",
-        "Trim",
-        "Glass",
-        "Chrome"
-      ],
-      "tris": 1712,
-      "generated": true
-    },
-    {
-      "id": "s64_body_kit3",
-      "displayName": "Body kit 3",
-      "carId": "s64",
-      "slot": "body",
-      "file": "parts/s64_body_kit3.glb",
-      "hides": [
-        "Body"
-      ],
-      "materialSlots": [
-        "TailLight",
-        "Paint",
-        "Black",
-        "HeadLight",
-        "Trim",
-        "Glass"
-      ],
-      "tris": 1830,
-      "generated": true
-    },
-    {
-      "id": "s64_spoiler_1",
-      "displayName": "Spoiler 1",
-      "carId": "s64",
+      "id": "protoCompact_spoiler_1",
+      "displayName": "Tsubasa",
+      "carId": "protoCompact",
       "slot": "spoiler",
-      "file": "parts/s64_spoiler_1.glb",
+      "file": "parts/protoCompact_spoiler_1.glb",
       "hides": [],
       "materialSlots": [
         "Paint"
@@ -336,11 +281,11 @@
       "generated": true
     },
     {
-      "id": "s64_spoiler_2",
-      "displayName": "Spoiler 2",
-      "carId": "s64",
+      "id": "protoCompact_spoiler_2",
+      "displayName": "Shiden",
+      "carId": "protoCompact",
       "slot": "spoiler",
-      "file": "parts/s64_spoiler_2.glb",
+      "file": "parts/protoCompact_spoiler_2.glb",
       "hides": [],
       "materialSlots": [
         "Paint"
@@ -349,11 +294,123 @@
       "generated": true
     },
     {
-      "id": "wheel_s64_1",
-      "displayName": "S64 rim 1",
+      "id": "protoCompact_hood_kurogane",
+      "displayName": "Kurogane",
+      "carId": "protoCompact",
+      "slot": "hood",
+      "file": "parts/protoCompact_hood_kurogane.glb",
+      "hides": [
+        "Hood"
+      ],
+      "materialSlots": [
+        "Trim",
+        "Black"
+      ],
+      "tris": 466,
+      "generated": true
+    },
+    {
+      "id": "protoCompact_hood_hayate",
+      "displayName": "Hayate",
+      "carId": "protoCompact",
+      "slot": "hood",
+      "file": "parts/protoCompact_hood_hayate.glb",
+      "hides": [
+        "Hood"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 358,
+      "generated": true
+    },
+    {
+      "id": "protoCompact_hood_tsubame",
+      "displayName": "Tsubame",
+      "carId": "protoCompact",
+      "slot": "hood",
+      "file": "parts/protoCompact_hood_tsubame.glb",
+      "hides": [
+        "Hood"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black",
+        "Trim"
+      ],
+      "tris": 514,
+      "generated": true
+    },
+    {
+      "id": "protoCompact_roof_kurogane",
+      "displayName": "Kurogane",
+      "carId": "protoCompact",
+      "slot": "roof",
+      "file": "parts/protoCompact_roof_kurogane.glb",
+      "hides": [
+        "Roof"
+      ],
+      "materialSlots": [
+        "Trim",
+        "Black"
+      ],
+      "tris": 192,
+      "generated": true
+    },
+    {
+      "id": "protoCompact_roof_hayate",
+      "displayName": "Hayate",
+      "carId": "protoCompact",
+      "slot": "roof",
+      "file": "parts/protoCompact_roof_hayate.glb",
+      "hides": [
+        "Roof"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 108,
+      "generated": true
+    },
+    {
+      "id": "protoCompact_roof_tsubame",
+      "displayName": "Tsubame",
+      "carId": "protoCompact",
+      "slot": "roof",
+      "file": "parts/protoCompact_roof_tsubame.glb",
+      "hides": [
+        "Roof"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Trim"
+      ],
+      "tris": 156,
+      "generated": true
+    },
+    {
+      "id": "wheel_protoCompact_0",
+      "displayName": "Kiba",
       "carId": "universal",
       "slot": "wheels",
-      "file": "parts/wheel_s64_1.glb",
+      "file": "parts/wheel_protoCompact_0.glb",
+      "hides": [],
+      "materialSlots": [
+        "Tire",
+        "Rim",
+        "Black"
+      ],
+      "tris": 1412,
+      "generated": true
+    },
+    {
+      "id": "wheel_protoCompact_1",
+      "displayName": "Hoshi",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_protoCompact_1.glb",
       "hides": [],
       "materialSlots": [
         "Tire",
@@ -365,11 +422,11 @@
       "generated": true
     },
     {
-      "id": "wheel_s64_2",
-      "displayName": "S64 rim 2",
+      "id": "wheel_protoCompact_2",
+      "displayName": "Rensa",
       "carId": "universal",
       "slot": "wheels",
-      "file": "parts/wheel_s64_2.glb",
+      "file": "parts/wheel_protoCompact_2.glb",
       "hides": [],
       "materialSlots": [
         "Tire",
@@ -381,11 +438,11 @@
       "generated": true
     },
     {
-      "id": "wheel_s64_3",
-      "displayName": "S64 rim 3",
+      "id": "wheel_protoCompact_3",
+      "displayName": "Tsuki",
       "carId": "universal",
       "slot": "wheels",
-      "file": "parts/wheel_s64_3.glb",
+      "file": "parts/wheel_protoCompact_3.glb",
       "hides": [],
       "materialSlots": [
         "Tire",
@@ -397,18 +454,503 @@
       "generated": true
     },
     {
-      "id": "wheel_s64_0",
-      "displayName": "S64 rim 0",
+      "id": "protoCoupe_frontBumper_kurogane",
+      "displayName": "Kurogane",
+      "carId": "protoCoupe",
+      "slot": "frontBumper",
+      "file": "parts/protoCoupe_frontBumper_kurogane.glb",
+      "hides": [
+        "Bumper_Front"
+      ],
+      "materialSlots": [
+        "Trim",
+        "Paint",
+        "Black"
+      ],
+      "tris": 375,
+      "generated": true
+    },
+    {
+      "id": "protoCoupe_rearBumper_kurogane",
+      "displayName": "Kurogane",
+      "carId": "protoCoupe",
+      "slot": "rearBumper",
+      "file": "parts/protoCoupe_rearBumper_kurogane.glb",
+      "hides": [
+        "Bumper_Rear"
+      ],
+      "materialSlots": [
+        "Trim",
+        "Paint",
+        "Black",
+        "Chrome"
+      ],
+      "tris": 475,
+      "generated": true
+    },
+    {
+      "id": "protoCoupe_sideSkirts_kurogane",
+      "displayName": "Kurogane",
+      "carId": "protoCoupe",
+      "slot": "sideSkirts",
+      "file": "parts/protoCoupe_sideSkirts_kurogane.glb",
+      "hides": [
+        "Skirts"
+      ],
+      "materialSlots": [
+        "Trim",
+        "Paint"
+      ],
+      "tris": 320,
+      "generated": true
+    },
+    {
+      "id": "protoCoupe_frontBumper_hayate",
+      "displayName": "Hayate",
+      "carId": "protoCoupe",
+      "slot": "frontBumper",
+      "file": "parts/protoCoupe_frontBumper_hayate.glb",
+      "hides": [
+        "Bumper_Front"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 371,
+      "generated": true
+    },
+    {
+      "id": "protoCoupe_rearBumper_hayate",
+      "displayName": "Hayate",
+      "carId": "protoCoupe",
+      "slot": "rearBumper",
+      "file": "parts/protoCoupe_rearBumper_hayate.glb",
+      "hides": [
+        "Bumper_Rear"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black",
+        "Chrome"
+      ],
+      "tris": 279,
+      "generated": true
+    },
+    {
+      "id": "protoCoupe_sideSkirts_hayate",
+      "displayName": "Hayate",
+      "carId": "protoCoupe",
+      "slot": "sideSkirts",
+      "file": "parts/protoCoupe_sideSkirts_hayate.glb",
+      "hides": [
+        "Skirts"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 296,
+      "generated": true
+    },
+    {
+      "id": "protoCoupe_hood_kurogane",
+      "displayName": "Kurogane",
+      "carId": "protoCoupe",
+      "slot": "hood",
+      "file": "parts/protoCoupe_hood_kurogane.glb",
+      "hides": [
+        "Hood"
+      ],
+      "materialSlots": [
+        "Trim",
+        "Black"
+      ],
+      "tris": 319,
+      "generated": true
+    },
+    {
+      "id": "protoCoupe_hood_hayate",
+      "displayName": "Hayate",
+      "carId": "protoCoupe",
+      "slot": "hood",
+      "file": "parts/protoCoupe_hood_hayate.glb",
+      "hides": [
+        "Hood"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 211,
+      "generated": true
+    },
+    {
+      "id": "protoCoupe_hood_tsubame",
+      "displayName": "Tsubame",
+      "carId": "protoCoupe",
+      "slot": "hood",
+      "file": "parts/protoCoupe_hood_tsubame.glb",
+      "hides": [
+        "Hood"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Trim"
+      ],
+      "tris": 303,
+      "generated": true
+    },
+    {
+      "id": "protoCoupe_roof_kurogane",
+      "displayName": "Kurogane",
+      "carId": "protoCoupe",
+      "slot": "roof",
+      "file": "parts/protoCoupe_roof_kurogane.glb",
+      "hides": [
+        "Roof"
+      ],
+      "materialSlots": [
+        "Trim",
+        "Black"
+      ],
+      "tris": 148,
+      "generated": true
+    },
+    {
+      "id": "protoCoupe_roof_hayate",
+      "displayName": "Hayate",
+      "carId": "protoCoupe",
+      "slot": "roof",
+      "file": "parts/protoCoupe_roof_hayate.glb",
+      "hides": [
+        "Roof"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 64,
+      "generated": true
+    },
+    {
+      "id": "protoCoupe_roof_tsubame",
+      "displayName": "Tsubame",
+      "carId": "protoCoupe",
+      "slot": "roof",
+      "file": "parts/protoCoupe_roof_tsubame.glb",
+      "hides": [
+        "Roof"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Trim"
+      ],
+      "tris": 80,
+      "generated": true
+    },
+    {
+      "id": "protoCoupe_spoiler_hoop",
+      "displayName": "Shiden",
+      "carId": "protoCoupe",
+      "slot": "spoiler",
+      "file": "parts/protoCoupe_spoiler_hoop.glb",
+      "hides": [],
+      "materialSlots": [
+        "Paint"
+      ],
+      "tris": 36,
+      "generated": true
+    },
+    {
+      "id": "protoCoupe_spoiler_ducktail",
+      "displayName": "Hayate",
+      "carId": "protoCoupe",
+      "slot": "spoiler",
+      "file": "parts/protoCoupe_spoiler_ducktail.glb",
+      "hides": [],
+      "materialSlots": [
+        "Paint"
+      ],
+      "tris": 12,
+      "generated": true
+    },
+    {
+      "id": "protoHatch_frontBumper_kurogane",
+      "displayName": "Kurogane",
+      "carId": "protoHatch",
+      "slot": "frontBumper",
+      "file": "parts/protoHatch_frontBumper_kurogane.glb",
+      "hides": [
+        "Bumper_Front"
+      ],
+      "materialSlots": [
+        "Trim",
+        "Paint",
+        "HeadLight"
+      ],
+      "tris": 760,
+      "generated": true
+    },
+    {
+      "id": "protoHatch_rearBumper_kurogane",
+      "displayName": "Kurogane",
+      "carId": "protoHatch",
+      "slot": "rearBumper",
+      "file": "parts/protoHatch_rearBumper_kurogane.glb",
+      "hides": [
+        "Bumper_Rear"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Trim",
+        "Black",
+        "TailLight",
+        "Chrome"
+      ],
+      "tris": 1198,
+      "generated": true
+    },
+    {
+      "id": "protoHatch_sideSkirts_kurogane",
+      "displayName": "Kurogane",
+      "carId": "protoHatch",
+      "slot": "sideSkirts",
+      "file": "parts/protoHatch_sideSkirts_kurogane.glb",
+      "hides": [
+        "Skirts"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Trim",
+        "Black"
+      ],
+      "tris": 294,
+      "generated": true
+    },
+    {
+      "id": "protoHatch_frontBumper_hayate",
+      "displayName": "Hayate",
+      "carId": "protoHatch",
+      "slot": "frontBumper",
+      "file": "parts/protoHatch_frontBumper_hayate.glb",
+      "hides": [
+        "Bumper_Front"
+      ],
+      "materialSlots": [
+        "Paint",
+        "HeadLight",
+        "Trim",
+        "Black"
+      ],
+      "tris": 756,
+      "generated": true
+    },
+    {
+      "id": "protoHatch_rearBumper_hayate",
+      "displayName": "Hayate",
+      "carId": "protoHatch",
+      "slot": "rearBumper",
+      "file": "parts/protoHatch_rearBumper_hayate.glb",
+      "hides": [
+        "Bumper_Rear"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black",
+        "TailLight",
+        "Chrome"
+      ],
+      "tris": 1062,
+      "generated": true
+    },
+    {
+      "id": "protoHatch_sideSkirts_hayate",
+      "displayName": "Hayate",
+      "carId": "protoHatch",
+      "slot": "sideSkirts",
+      "file": "parts/protoHatch_sideSkirts_hayate.glb",
+      "hides": [
+        "Skirts"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 270,
+      "generated": true
+    },
+    {
+      "id": "protoHatch_spoiler_1",
+      "displayName": "Raijin",
+      "carId": "protoHatch",
+      "slot": "spoiler",
+      "file": "parts/protoHatch_spoiler_1.glb",
+      "hides": [],
+      "materialSlots": [
+        "Paint"
+      ],
+      "tris": 272,
+      "generated": true
+    },
+    {
+      "id": "protoHatch_hood_kurogane",
+      "displayName": "Kurogane",
+      "carId": "protoHatch",
+      "slot": "hood",
+      "file": "parts/protoHatch_hood_kurogane.glb",
+      "hides": [
+        "Hood"
+      ],
+      "materialSlots": [
+        "Trim",
+        "Black"
+      ],
+      "tris": 1020,
+      "generated": true
+    },
+    {
+      "id": "protoHatch_hood_hayate",
+      "displayName": "Hayate",
+      "carId": "protoHatch",
+      "slot": "hood",
+      "file": "parts/protoHatch_hood_hayate.glb",
+      "hides": [
+        "Hood"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 900,
+      "generated": true
+    },
+    {
+      "id": "protoHatch_hood_tsubame",
+      "displayName": "Tsubame",
+      "carId": "protoHatch",
+      "slot": "hood",
+      "file": "parts/protoHatch_hood_tsubame.glb",
+      "hides": [
+        "Hood"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Trim",
+        "Black"
+      ],
+      "tris": 1148,
+      "generated": true
+    },
+    {
+      "id": "protoHatch_roof_kurogane",
+      "displayName": "Kurogane",
+      "carId": "protoHatch",
+      "slot": "roof",
+      "file": "parts/protoHatch_roof_kurogane.glb",
+      "hides": [
+        "Roof"
+      ],
+      "materialSlots": [
+        "Trim",
+        "Black"
+      ],
+      "tris": 286,
+      "generated": true
+    },
+    {
+      "id": "protoHatch_roof_hayate",
+      "displayName": "Hayate",
+      "carId": "protoHatch",
+      "slot": "roof",
+      "file": "parts/protoHatch_roof_hayate.glb",
+      "hides": [
+        "Roof"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Black"
+      ],
+      "tris": 202,
+      "generated": true
+    },
+    {
+      "id": "protoHatch_roof_tsubame",
+      "displayName": "Tsubame",
+      "carId": "protoHatch",
+      "slot": "roof",
+      "file": "parts/protoHatch_roof_tsubame.glb",
+      "hides": [
+        "Roof"
+      ],
+      "materialSlots": [
+        "Paint",
+        "Trim"
+      ],
+      "tris": 298,
+      "generated": true
+    },
+    {
+      "id": "wheel_protoHatch_1",
+      "displayName": "Ginga",
       "carId": "universal",
       "slot": "wheels",
-      "file": "parts/wheel_s64_0.glb",
+      "file": "parts/wheel_protoHatch_1.glb",
       "hides": [],
       "materialSlots": [
         "Tire",
         "Rim",
         "Black"
       ],
-      "tris": 1412,
+      "tris": 1656,
+      "generated": true
+    },
+    {
+      "id": "wheel_protoHatch_2",
+      "displayName": "Hibana",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_protoHatch_2.glb",
+      "hides": [],
+      "materialSlots": [
+        "Tire",
+        "Rim",
+        "Black",
+        "Chrome"
+      ],
+      "tris": 3152,
+      "generated": true
+    },
+    {
+      "id": "wheel_protoHatch_3",
+      "displayName": "Senko",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_protoHatch_3.glb",
+      "hides": [],
+      "materialSlots": [
+        "Tire",
+        "Chrome",
+        "Rim",
+        "Black"
+      ],
+      "tris": 3152,
+      "generated": true
+    },
+    {
+      "id": "wheel_protoHatch_4",
+      "displayName": "Arashi",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_protoHatch_4.glb",
+      "hides": [],
+      "materialSlots": [
+        "Tire",
+        "Rim",
+        "Black",
+        "Chrome"
+      ],
+      "tris": 3136,
       "generated": true
     }
   ]

@@ -163,6 +163,20 @@ export function validatePerformance(v: unknown): PerformanceBuild {
   return p;
 }
 
+/**
+ * Cars renamed when they moved from IceMaan FBX imports to authored models,
+ * so saved builds and share codes made before the move still load.
+ */
+const RENAMED_CARS: Record<string, string> = { gc14: 'protoHatch', s64: 'protoCompact' };
+
+/** A part id under its current name; null for whole-body kits that were split into bumpers and skirts. */
+function renamedPart(id: string): string | null {
+  const m = /^(wheel_)?(gc14|s64)_(.+)$/.exec(id);
+  if (!m) return id;
+  if (m[3].startsWith('body_')) return null;
+  return `${m[1] ?? ''}${RENAMED_CARS[m[2]]}_${m[3]}`;
+}
+
 export function validateVisual(v: unknown): VisualBuild {
   const o = obj(v);
   const d = defaultVisual();
@@ -176,7 +190,10 @@ export function validateVisual(v: unknown): VisualBuild {
   for (const slot of PART_SLOTS) {
     const val = partsIn[slot];
     if (val === null) parts[slot] = null;
-    else if (typeof val === 'string' && PART_ID.test(val)) parts[slot] = val;
+    else if (typeof val === 'string' && PART_ID.test(val)) {
+      const id = renamedPart(val);
+      if (id) parts[slot] = id;
+    }
   }
   const decals: DecalLayer[] = [];
   if (Array.isArray(o.decals)) {
@@ -241,10 +258,11 @@ export function validateVisual(v: unknown): VisualBuild {
 
 export function validateBuild(v: unknown): CarBuild {
   const o = obj(v);
-  const carId = typeof o.carId === 'string' && SELECTABLE_CAR_IDS.includes(o.carId) ? o.carId : DEFAULT_CAR_ID;
+  const savedId = typeof o.carId === 'string' ? (RENAMED_CARS[o.carId] ?? o.carId) : undefined;
+  const carId = savedId && SELECTABLE_CAR_IDS.includes(savedId) ? savedId : DEFAULT_CAR_ID;
   const name = typeof o.name === 'string' ? o.name.replace(/[<>]/g, '').slice(0, 24) || 'My Ride' : 'My Ride';
   const visual = validateVisual(o.visual);
   // A build for a car that is no longer offered moves to the default car; its parts do not fit.
-  if (carId !== o.carId) visual.parts = visual.parts.wheels ? { wheels: visual.parts.wheels } : {};
+  if (carId !== savedId) visual.parts = visual.parts.wheels ? { wheels: visual.parts.wheels } : {};
   return { version: 1, name, carId, visual, performance: validatePerformance(o.performance) };
 }

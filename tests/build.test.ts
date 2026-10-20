@@ -30,7 +30,7 @@ describe('build validation', () => {
       },
       performance: { engine: 7, turbo: -2, tires: 1.6 },
     });
-    expect(b.carId).toBe('gc14');
+    expect(b.carId).toBe('protoHatch');
     expect(b.name.length).toBeLessThanOrEqual(24);
     expect(b.name).not.toContain('<');
     expect(b.visual.paint.color).toMatch(/^#[0-9a-f]{6}$/);
@@ -54,10 +54,10 @@ describe('build validation', () => {
   });
 
   it('share codes round trip to the same build', async () => {
-    const b = defaultBuild('gc14');
+    const b = defaultBuild('protoHatch');
     b.name = 'Midnight Club';
     b.visual.paint = { color: '#19e6ff', finish: 'pearl' };
-    b.visual.parts = { spoiler: 'gc14_spoiler_1', body: 'gc14_body_kit2', wheels: 'wheel_s64_2' };
+    b.visual.parts = { spoiler: 'protoHatch_spoiler_1', frontBumper: 'protoHatch_frontBumper_kurogane', wheels: 'wheel_protoCompact_2' };
     b.visual.decals.push({ shape: 'number', color: '#ff3df2', pos: [0.9, 0.6, 0.2], normal: [1, 0, 0], rotation: 12, scale: 0.7, mirror: true, text: '42' });
     b.visual.underglow = { enabled: true, color: '#ff00aa', color2: '#00ffaa', pattern: 'chase', brightness: 1.4, speed: 2, size: 1.2 };
     b.visual.stance = { rideHeight: -0.045, front: { camber: -3.5, offset: 0.015, wheelSize: 1.05 }, rear: { camber: -7, offset: 0.05, wheelSize: 1.2 } };
@@ -70,8 +70,16 @@ describe('build validation', () => {
     expect(await decodeShareCode('garbage!!')).toBeNull();
   });
 
+  it('moves builds of the renamed IceMaan cars to the authored ones', () => {
+    const b = validateBuild({ carId: 's64', visual: { parts: { body: 's64_body_kit2', spoiler: 's64_spoiler_2', wheels: 'wheel_gc14_3' } } });
+    expect(b.carId).toBe('protoCompact');
+    // Whole-body kits were split into bumpers and skirts, so they fall back to stock.
+    expect(b.visual.parts).toEqual({ spoiler: 'protoCompact_spoiler_2', wheels: 'wheel_protoHatch_3' });
+    expect(validateBuild({ carId: 'gc14' }).carId).toBe('protoHatch');
+  });
+
   it('migrates legacy stance from old saves', () => {
-    const b = validateBuild({ carId: 'gc14', visual: { wheels: { size: 1.1, color: '#ffffff' }, stance: { rideHeight: -0.02, camberFront: -4, camberRear: -6, offset: 0.02 } } });
+    const b = validateBuild({ carId: 'protoHatch', visual: { wheels: { size: 1.1, color: '#ffffff' }, stance: { rideHeight: -0.02, camberFront: -4, camberRear: -6, offset: 0.02 } } });
     expect(b.visual.stance.front).toEqual({ camber: -4, offset: 0.02, wheelSize: 1.1 });
     expect(b.visual.stance.rear).toEqual({ camber: -6, offset: 0.02, wheelSize: 1.1 });
     expect(b.visual.wheels).toEqual({ color: '#ffffff' });
@@ -92,14 +100,15 @@ describe('build validation', () => {
     expect(b!.visual.stance.front).toEqual({ camber: -6, offset: 0.04, wheelSize: 1.15 });
     expect(b!.visual.stance.rear).toEqual({ camber: -8.5, offset: 0.04, wheelSize: 1.15 });
     expect(b!.visual.wheels.color).toBe('#ffcc00');
-    expect(b!.visual.parts.wheels).toBe('wheel_s64_2');
+    // Saved before the cars were renamed: the wheel id follows the rename.
+    expect(b!.visual.parts.wheels).toBe('wheel_protoCompact_2');
     expect(b!.performance.engine).toBe(2);
   });
 
   it('visual choices never change the tuning the sim uses', () => {
-    const a = defaultBuild('gc14');
-    const b = defaultBuild('gc14');
-    b.visual.parts = { spoiler: 'gc14_spoiler_1', body: 'gc14_body_kit3' };
+    const a = defaultBuild('protoHatch');
+    const b = defaultBuild('protoHatch');
+    b.visual.parts = { spoiler: 'protoHatch_spoiler_1', rearBumper: 'protoHatch_rearBumper_hayate', sideSkirts: 'protoHatch_sideSkirts_kurogane' };
     b.visual.stance.rideHeight = -0.08;
     expect(applyBuild(getBaseTuning(a.carId), a.performance)).toEqual(applyBuild(getBaseTuning(b.carId), b.performance));
   });

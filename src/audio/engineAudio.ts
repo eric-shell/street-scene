@@ -3,10 +3,11 @@
  * follows the firing frequency (rpm / 60 * firings per revolution, from the
  * car's EngineSpec) and whose tone opens up with throttle. The spec picks the
  * voice:
- *  - under six cylinders (s64, Proto Compact: I4): raspy, with a second order
+ *  - under six cylinders (protoHatch, Proto Hatch: turbo I4): raspy, with a second order
  *    bite; a turbocharged spec adds a spool whistle and a blow-off valve chuff
  *    when you lift at boost
- *  - six and up (gc14, Proto Hatch: V6): deeper, smoother, half-order growl
+ *  - six and up (protoCompact, Proto Compact: I6; protoCoupe, Proto Coupe: turbo I6): deeper,
+ *    smoother, half-order growl
  * Most of an engine's energy sits below 300 Hz, which laptop and phone
  * speakers barely reproduce, so a presence peak that tracks the firing
  * frequency lifts the harmonics in the 0.5 to 2.5 kHz range where small
@@ -262,7 +263,7 @@ export class EngineVoice {
  * flywheel that chases the throttle, falls back to idle and bounces off the
  * rev limiter. Owns its EngineVoice (null when Web Audio is unavailable).
  *
- *   const eng = new FreeRevEngine(manifestCar('s64').engine, { idle: 900, redline: 7600 });
+ *   const eng = new FreeRevEngine(manifestCar('protoCompact').engine, { idle: 900, redline: 7600 });
  *   // every frame: eng.update(throttle01, dt);   eng.rpm for a tach
  *   eng.dispose();
  */

@@ -158,7 +158,7 @@ async function main() {
   const args = process.argv.slice(2);
   const files = args.length ? args : findGlbs('assets/converted');
   if (!files.length) {
-    console.log('No GLB files found. Run `npm run assets` first (it converts assets/source/icemaan/*).');
+    console.log('No GLB files found. Run `npm run assets` first (it exports assets/source/eshell/* and converts assets/source/icemaan/*).');
     return;
   }
   const infos = await inspectFiles(files);

@@ -36,7 +36,7 @@ export function loadGarage(): GarageState {
   } catch {
     /* fall through to default */
   }
-  return { current: 0, slots: [freshBuild(DEFAULT_CAR_ID, 'Street Scenener')] };
+  return { current: 0, slots: [freshBuild(DEFAULT_CAR_ID, 'Garage')] };
 }
 
 export function saveGarage(g: GarageState): boolean {
@@ -141,6 +141,7 @@ const SHORT: Record<string, string> = {
   sideSkirts: 'ss',
   spoiler: 'sp',
   hood: 'hd',
+  roof: 'rf',
   body: 'bd',
 };
 const LONG: Record<string, string> = Object.fromEntries(Object.entries(SHORT).map(([k, v]) => [v, k]));

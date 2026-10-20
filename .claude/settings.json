@@ -110,6 +110,19 @@
         ]
       }
     ],
+    "PreToolUse": [
+      {
+        "matcher": "mcp__blender__execute_blender_code",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/check-blender-code.sh",
+            "timeout": 10,
+            "statusMessage": "Checking Blender code for known crashers"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Edit|Write",

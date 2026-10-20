@@ -306,7 +306,7 @@ export function creditsScreen(onClose: () => void): HTMLElement {
         'div',
         { style: 'line-height:1.6;font-size:16px' },
         h('p', {}, 'Car models by ', h('b', {}, 'IceMaan'), ' (icemaan.itch.io), released as CC0. Thank you for sharing them with the world!'),
-        h('p', { class: 'muted' }, 'The S64 (Proto Compact) and GC14 (Proto Hatch) low poly cars with body kits, spoilers and rims.'),
+        h('p', { class: 'muted' }, 'The Proto Compact and Proto Hatch, with their bumpers, skirts, spoilers and rims, are reworked by eshell from IceMaan\'s S64 and GC14 low poly cars; the Proto Coupe is eshell\'s own.'),
         h('p', {}, 'Icons: ', h('b', {}, 'Lucide'), ' (lucide.dev), ISC license.'),
         musicCredits(),
         h('p', {}, 'Crowd sound effects from ', h('b', {}, 'freesound_community'), ' (Pixabay): "applause" (freesound_community-applause-70507.mp3) and "crowd cheering" (freesound_community-crowd-cheering-6229.mp3), Pixabay Content License.'),

@@ -1,16 +1,21 @@
 /**
  * Asset pipeline: `npm run assets`
  *
- *  1. Convert every FBX under assets/source/icemaan/<folder>/ to GLB
+ *  1. Authored cars: export every assets/source/eshell/<carId>/<carId>.blend
+ *     with scripts/blender/exportCar.py (Blender in background mode). These
+ *     are modelled in car space at the shared scale, so they are only
+ *     optimized and cataloged, never measured or rescaled.
+ *  2. Convert every FBX under assets/source/icemaan/<folder>/ to GLB
  *     (Blender in background mode if available, otherwise FBX2glTF).
- *  2. Normalize each car to car space: meters, Y up, origin on the ground
+ *  3. Normalize each FBX car to car space: meters, Y up, origin on the ground
  *     midway between the axles, facing +Z. Axles are found from the wheel
  *     arches in the body mesh; the front from the headlight material.
- *  3. Rename source materials to the shared vocabulary.
- *  4. Write cars to public/cars/ and parts (body kits, spoilers, wheels) to
- *     public/parts/, optimized with glTF Transform (dedup, weld, Meshopt).
- *  5. Generate the Proto RS placeholder car and parts.
- *  6. Update src/assets/carManifest.json and src/assets/partsCatalog.json,
+ *  4. Rename source materials to the shared vocabulary.
+ *  5. Write cars to public/cars/ and parts (body kits, bumpers, skirts,
+ *     spoilers, wheels) to public/parts/, optimized with glTF Transform
+ *     (dedup, weld, Meshopt).
+ *  6. Generate the Proto RS placeholder car and parts.
+ *  7. Update src/assets/carManifest.json and src/assets/partsCatalog.json,
  *     write assets/inspect.md, then run parts validation (fails loudly).
  */
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -28,12 +33,14 @@ import { validateCatalog } from './validateParts';
 
 const ROOT = process.cwd();
 const SRC = join(ROOT, 'assets/source/icemaan');
+const AUTHORED = join(ROOT, 'assets/source/eshell');
 const CONVERTED = join(ROOT, 'assets/converted');
 const PUBLIC = join(ROOT, 'public');
 const MANIFEST_PATH = join(ROOT, 'src/assets/carManifest.json');
 const CATALOG_PATH = join(ROOT, 'src/assets/partsCatalog.json');
 const config = JSON.parse(readFileSync(join(ROOT, 'scripts/assetConfig.json'), 'utf8')) as {
   cars: Record<string, { folders: string[]; targetLength: number; spoilerOffset: number[]; wheelOffset: number[] }>;
+  standardWheel: { radius: number; width: number };
   materialMap: Record<string, string>;
 };
 
@@ -48,12 +55,14 @@ const log = (s: string) => {
 
 type Converter = { kind: 'blender' | 'fbx2gltf'; bin: string } | null;
 
+function findBlender(): string | null {
+  const candidates = [process.env.BLENDER, 'blender', '/Applications/Blender.app/Contents/MacOS/Blender', 'C:/Program Files/Blender Foundation/Blender/blender.exe'].filter(Boolean) as string[];
+  return candidates.find((b) => spawnSync(b, ['--version'], { encoding: 'utf8' }).status === 0) ?? null;
+}
+
 function findConverter(): Converter {
-  const blenderCandidates = [process.env.BLENDER, 'blender', '/Applications/Blender.app/Contents/MacOS/Blender', 'C:/Program Files/Blender Foundation/Blender/blender.exe'].filter(Boolean) as string[];
-  for (const b of blenderCandidates) {
-    const r = spawnSync(b, ['--version'], { encoding: 'utf8' });
-    if (r.status === 0) return { kind: 'blender', bin: b };
-  }
+  const blender = findBlender();
+  if (blender) return { kind: 'blender', bin: blender };
   const platform = process.platform === 'darwin' ? 'Darwin' : process.platform === 'win32' ? 'Windows_NT' : 'Linux';
   const fbx = join(ROOT, 'node_modules/fbx2gltf/bin', platform, platform === 'Windows_NT' ? 'FBX2glTF.exe' : 'FBX2glTF');
   if (existsSync(fbx)) return { kind: 'fbx2gltf', bin: fbx };
@@ -367,6 +376,79 @@ async function main(): Promise<void> {
     log(`proto placeholder written (${(total / 1024).toFixed(1)} KB)`);
   }
 
+  // ----- Authored cars (assets/source/eshell) -----
+  const authored = existsSync(AUTHORED) ? readdirSync(AUTHORED).filter((d) => existsSync(join(AUTHORED, d, `${d}.blend`))) : [];
+  const blender = authored.length ? findBlender() : null;
+  if (authored.length && !blender) throw new Error('Authored .blend cars found but Blender is not available. Install Blender or set BLENDER=/path/to/blender.');
+  for (const carId of authored) {
+    const entry = manifest.cars.find((c) => c.id === carId);
+    if (!entry) throw new Error(`${carId}: add a carManifest.json entry (displayName, engine, defaultPaint, selectable) before building it`);
+    const blend = join(AUTHORED, carId, `${carId}.blend`);
+    const out = join(CONVERTED, carId);
+    const metaPath = join(out, 'car.json');
+    const exporter = join(ROOT, 'scripts/blender/exportCar.py');
+    const stale = !existsSync(metaPath) || statSync(metaPath).mtimeMs < Math.max(statSync(blend).mtimeMs, statSync(exporter).mtimeMs);
+    if (stale) execFileSync(blender as string, ['--background', blend, '--python', exporter, '--', out], { stdio: 'pipe' });
+    const meta = JSON.parse(readFileSync(metaPath, 'utf8')) as {
+      car: { node: string; tris: number }[];
+      parts: { slot: PartEntry['slot']; partId: string; displayName: string; hides: string[]; tris: number }[];
+      wheels: { name: string; displayName: string }[];
+      wheelCenters: Record<'FL' | 'FR' | 'RL' | 'RR', number[]>;
+    };
+    log(`\n== ${carId} (${relative(ROOT, blend)}) authored`);
+    const section: string[] = [`## ${carId}`, '', `Source: \`${relative(ROOT, blend)}\` (authored in car space, exported with scripts/blender/exportCar.py).`, ''];
+    let carBytes = 0;
+
+    const base = await io.read(join(out, 'car.glb'));
+    await bakeTransforms(base);
+    const b = bounds(positions(base));
+    const baseOut = await writeOptimized(io, base, join(PUBLIC, `cars/${carId}.glb`));
+    carBytes += baseOut.bytes;
+    section.push(`- Base car \`public/cars/${carId}.glb\`: ${(baseOut.bytes / 1024).toFixed(1)} KB, ${baseOut.tris} tris, nodes ${meta.car.map((c) => '`' + c.node + '`').join(', ')}.`);
+
+    for (const p of meta.parts) {
+      const doc = await io.read(join(out, 'parts', `${p.slot}_${p.partId}.glb`));
+      const file = `parts/${partFileName(carId, p.slot, p.partId)}`;
+      const w = await writeOptimized(io, doc, join(PUBLIC, file));
+      carBytes += w.bytes;
+      generated.push({ id: `${carId}_${p.slot}_${p.partId}`, displayName: p.displayName, carId, slot: p.slot, file, hides: p.hides, materialSlots: materialSlotsOf(doc), tris: w.tris, generated: true } as PartEntry);
+    }
+    section.push(`- Parts: ${meta.parts.map((p) => `${p.slot} ${p.partId}`).join(', ')}.`);
+
+    const wheelIds: string[] = [];
+    for (const wh of meta.wheels) {
+      const doc = await io.read(join(out, 'wheels', `wheel_${wh.name}.glb`));
+      const id = `wheel_${carId}_${wh.name}`;
+      const w = await writeOptimized(io, doc, join(PUBLIC, `parts/${id}.glb`), 'Wheel');
+      carBytes += w.bytes;
+      wheelIds.push(id);
+      generated.push({ id, displayName: wh.displayName || `${entry.displayName.replace(/^Proto /, '')} rim ${wh.name}`, carId: 'universal', slot: 'wheels', file: `parts/${id}.glb`, hides: [], materialSlots: materialSlotsOf(doc), tris: w.tris, generated: true } as PartEntry);
+    }
+
+    const c = meta.wheelCenters;
+    const radius = c.FL[1];
+    const std = config.standardWheel;
+    if (Math.abs(radius - std.radius) > 0.005) section.push(`- WARNING: wheel radius ${radius.toFixed(3)} m differs from the standard ${std.radius} m (assetConfig.json standardWheel). Every car shares one wheel size so scale reads the same.`);
+    entry.provisional = false;
+    entry.source = 'eshell';
+    entry.file = `cars/${carId}.glb`;
+    entry.baseBodyNode = 'Body';
+    entry.wheelNodes = [];
+    entry.wheelRadius = round(radius);
+    entry.wheelWidth = std.width;
+    entry.wheels = { FL: c.FL, FR: c.FR, RL: c.RL, RR: c.RR };
+    entry.wheelbase = round(c.FL[2] - c.RL[2]);
+    entry.trackFront = round(c.FL[0] - c.FR[0]);
+    entry.trackRear = round(c.RL[0] - c.RR[0]);
+    entry.dimensions = { length: round(b.max[2] - b.min[2], 2), width: round(b.max[0] - b.min[0], 2), height: round(b.max[1] - b.min[1], 2) };
+    entry.materialMap = {};
+    if (!wheelIds.includes(entry.defaultWheel) && wheelIds.length) entry.defaultWheel = wheelIds[0];
+    section.push(`- Wheel radius ${radius.toFixed(3)} m, width ${std.width} m, wheelbase ${entry.wheelbase} m, track ${entry.trackFront} m.`);
+    section.push(`- Car dimensions ${entry.dimensions.length} x ${entry.dimensions.width} x ${entry.dimensions.height} m.`, '');
+    sizeReport.push(`| ${carId} | ${(carBytes / 1024).toFixed(1)} KB |`);
+    inspectSections.push(section.join('\n'));
+  }
+
   // ----- IceMaan cars -----
   const conv = findConverter();
   const present: string[] = [];
@@ -513,9 +595,9 @@ async function main(): Promise<void> {
   const md: string[] = [
     '# Asset inspection',
     '',
-    'Generated by `npm run assets` (scripts/buildAssets.ts). Re-run after adding or changing files in `assets/source/icemaan/`.',
+    'Generated by `npm run assets` (scripts/buildAssets.ts). Re-run after changing files in `assets/source/eshell/` (authored .blend cars) or `assets/source/icemaan/` (FBX cars).',
     '',
-    `Cars with source files: ${present.join(', ') || 'none'}. Missing (rendered as code placeholders until added): ${missing.join(', ') || 'none'}.`,
+    `Authored cars: ${authored.join(', ') || 'none'}. FBX cars with source files: ${present.join(', ') || 'none'}. Missing (rendered as code placeholders until added): ${missing.join(', ') || 'none'}.`,
     '',
     '## Output sizes (car + all its parts, Meshopt compressed)',
     '',

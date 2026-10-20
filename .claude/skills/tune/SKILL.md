@@ -8,7 +8,7 @@ allowed-tools: Bash(npx tsx .claude/skills/tune/measure.ts *)
 
 Every number lives in `src/sim/drivingParams.json`; `src/sim/tuning.ts` only types, merges and validates it (unknown keys or wrong types throw at startup). Read the file's `_readme` first.
 
-- `base` is the Proto Compact (`s64`). `cars.<id>` holds absolute overrides merged key by key; arrays (`torqueCurve`, `ratios`) replace whole. `drivetrain.layout` is `rwd`, `awd` or `fwd` (`awdFrontShare` for AWD).
+- `base` is the Proto Compact (`protoCompact`). `cars.<id>` holds absolute overrides merged key by key; arrays (`torqueCurve`, `ratios`) replace whole. `drivetrain.layout` is `rwd`, `awd` or `fwd` (`awdFrontShare` for AWD).
 - `performanceParts.<category>[tier]` are the garage upgrades (0 stock, 1 street, 2 pro, 3 extreme) that `applyBuild()` in `build.ts` lays over the car tuning. Categories: engine, turbo, exhaust, transmission, tires, suspension, brakes, weight, nitrous.
 - Geometry (wheel positions, radius) comes from `src/assets/carManifest.json`, not from here.
 - A parameter's meaning and slider range is `PARAM_INFO` in `src/ui/tuningPanel.ts`; a new numeric key needs an entry there.

@@ -73,10 +73,12 @@ describe('car physics', () => {
 });
 
 describe('driving parameters file', () => {
-  it('s64 resolves to the latest exported tuning (plus deliberate edits since)', () => {
-    // Sidewalks were later set to road traction on purpose.
-    const expected = { ...exported.tuning, surface: { ...exported.tuning.surface, sidewalkGrip: 1 } };
-    expect(getBaseTuning('s64')).toMatchObject(expected);
+  it('protoCompact resolves to the latest exported tuning (plus deliberate edits since)', () => {
+    // Sidewalks were later set to road traction on purpose. The export predates the rename from
+    // s64 and the shared wheel size; geometry comes from the manifest, not from the tuning.
+    const t = getBaseTuning('protoCompact');
+    const expected = { ...exported.tuning, carId: t.carId, geometry: t.geometry, surface: { ...exported.tuning.surface, sidewalkGrip: 1 } };
+    expect(t).toMatchObject(expected);
   });
 
   it('every car resolves with finite numbers and a known drivetrain', () => {
@@ -87,39 +89,39 @@ describe('driving parameters file', () => {
     }
     expect(CAR_IDS).not.toContain('cc96');
     expect(CAR_IDS).not.toContain('ar7');
-    expect(SELECTABLE_CAR_IDS.sort()).toEqual(['gc14', 's64']);
+    expect(SELECTABLE_CAR_IDS.sort()).toEqual(['protoCompact', 'protoCoupe', 'protoHatch']);
   });
 
-  it('keeps each car\'s character: gc14 is a heavier, torquier AWD, s64 a rev happy RWD', () => {
-    const s64 = getBaseTuning('s64');
-    const gc14 = getBaseTuning('gc14');
-    expect(driveSplit(s64)).toEqual({ front: 0, rear: 1 });
-    expect(driveSplit(gc14).front).toBeCloseTo(0.4);
-    expect(gc14.mass).toBeGreaterThan(s64.mass);
-    expect(gc14.engine.torqueMul).toBeGreaterThan(s64.engine.torqueMul);
-    expect(gc14.engine.redline).toBeLessThan(s64.engine.redline);
-    expect(gc14.tires.gripRear).toBeLessThan(s64.tires.gripRear);
+  it('keeps each car\'s character: protoHatch is a light turbo FWD, protoCompact a rev happy RWD', () => {
+    const compact = getBaseTuning('protoCompact');
+    const hatch = getBaseTuning('protoHatch');
+    expect(driveSplit(compact)).toEqual({ front: 0, rear: 1 });
+    expect(driveSplit(hatch)).toEqual({ front: 1, rear: 0 });
+    expect(hatch.mass).toBeLessThan(compact.mass);
+    expect(hatch.engine.redline).toBeLessThan(compact.engine.redline);
+    // Both cars share one wheel size, so they read at the same scale side by side.
+    expect(hatch.geometry.wheelRadius).toBe(compact.geometry.wheelRadius);
   });
 
   it('every tuning parameter in the panel has a tooltip', () => {
-    for (const p of tuningParams(getBaseTuning('s64'))) expect(p.tip, p.path).not.toMatch(/^No description/);
+    for (const p of tuningParams(getBaseTuning('protoCompact'))) expect(p.tip, p.path).not.toMatch(/^No description/);
   });
 
   it('the panel imports its own export format exactly', () => {
-    const t = getBaseTuning('gc14');
-    applySavedTuning(t, importValues(exported, 'gc14'));
-    expect(t).toMatchObject({ ...exported.tuning, carId: 'gc14', geometry: getBaseTuning('gc14').geometry });
+    const t = getBaseTuning('protoHatch');
+    applySavedTuning(t, importValues(exported, 'protoHatch'));
+    expect(t).toMatchObject({ ...exported.tuning, carId: 'protoHatch', geometry: getBaseTuning('protoHatch').geometry });
     // drivingParams.json style nested blocks work too.
-    const u = getBaseTuning('s64');
-    expect(applySavedTuning(u, importValues({ tires: { gripRear: 1.1 }, drivetrain: { layout: 'awd' } }, 's64'))).toBe(2);
+    const u = getBaseTuning('protoCompact');
+    expect(applySavedTuning(u, importValues({ tires: { gripRear: 1.1 }, drivetrain: { layout: 'awd' } }, 'protoCompact'))).toBe(2);
     expect(u.tires.gripRear).toBe(1.1);
     expect(u.drivetrain.layout).toBe('awd');
   });
 
   it('saved test drive tuning is fingerprinted per car', () => {
-    expect(tuningHash('s64')).toMatch(/^[0-9a-f]{8}$/);
-    expect(tuningHash('s64')).not.toBe(tuningHash('gc14'));
-    expect(tuningHash('s64')).toBe(tuningHash('s64'));
+    expect(tuningHash('protoCompact')).toMatch(/^[0-9a-f]{8}$/);
+    expect(tuningHash('protoCompact')).not.toBe(tuningHash('protoHatch'));
+    expect(tuningHash('protoCompact')).toBe(tuningHash('protoCompact'));
   });
 });
 
@@ -159,7 +161,7 @@ describe('wheelspin and traction control', () => {
   }
 
   it('a high rev launch spins the rear wheels without traction control, not with it', () => {
-    const t = getBaseTuning('s64');
+    const t = getBaseTuning('protoCompact');
     const off = launch(t, false);
     const on = launch(t, true);
     expect(off.spinTicks).toBeGreaterThan(15);
@@ -168,7 +170,7 @@ describe('wheelspin and traction control', () => {
   });
 
   it('full throttle mid corner gives power oversteer without traction control, not with it', () => {
-    const t = getBaseTuning('s64');
+    const t = getBaseTuning('protoCompact');
     const off = cornerExit(t, false);
     const on = cornerExit(t, true);
     expect(off.spinTicks).toBeGreaterThan(20);
@@ -178,7 +180,7 @@ describe('wheelspin and traction control', () => {
   });
 
   it('wheelspin happens on the driven axle only', () => {
-    const fwd = getBaseTuning('s64');
+    const fwd = getBaseTuning('protoCompact');
     fwd.drivetrain.layout = 'fwd';
     const c = createCar(0, 0, 0, 0);
     for (let i = 0; i < 30; i++) stepCar(c, fwd, input({}), { world });
@@ -193,8 +195,8 @@ describe('wheelspin and traction control', () => {
   });
 
   it('AWD launches with less wheelspin than RWD', () => {
-    const rwd = getBaseTuning('s64');
-    const awd = getBaseTuning('s64');
+    const rwd = getBaseTuning('protoCompact');
+    const awd = getBaseTuning('protoCompact');
     awd.drivetrain.layout = 'awd';
     expect(launch(awd, false).spinTicks).toBeLessThan(launch(rwd, false).spinTicks);
   });
@@ -223,7 +225,7 @@ describe('collisions', () => {
 
   function scrape(kind: Contact['kind'] | null) {
     const world = kind ? wallWorld(kind) : flatWorld();
-    const t = getBaseTuning('s64');
+    const t = getBaseTuning('protoCompact');
     const c = createCar(3 - t.geometry.halfWidth, 0, 0, 0);
     c.vz = 35;
     c.vx = 1.5;

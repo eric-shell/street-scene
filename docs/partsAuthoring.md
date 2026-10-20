@@ -8,12 +8,13 @@ Every visible piece of a car lives in a slot. The slot list is `PART_SLOTS` in `
 
 | Slot | What it is | Notes |
 |---|---|---|
-| `body` | The whole shell (a full body kit) | Base car GLB node `Body`. Kits that are one merged mesh are registered here. |
-| `frontBumper` | Front bumper, splitter, lip | |
-| `rearBumper` | Rear bumper, diffuser | |
-| `sideSkirts` | Both side skirts in one file | |
+| `body` | The whole shell (a full body swap) | Base car GLB node `Body`. Reserved for whole-body variants; bumpers and skirts are their own slots. |
+| `frontBumper` | Front bumper, splitter, lip | Base car node `Bumper_Front` |
+| `rearBumper` | Rear bumper, diffuser | Base car node `Bumper_Rear` |
+| `sideSkirts` | Both side skirts in one file | Base car node `Skirts` on authored cars |
 | `spoiler` | Wing or ducktail | Garage offers "None" |
-| `hood` | Bonnet | |
+| `hood` | Bonnet | Base car node `Hood` on authored cars |
+| `roof` | Roof panel | Base car node `Roof` on authored cars |
 | `wheels` | One wheel (tire + rim) | Universal: fits every car |
 
 To add a new slot (canards, diffuser, mirrors, roof scoop), add it to `PART_SLOTS`, `SLOT_LABELS` and `TRI_BUDGETS` in `src/shared/parts.ts`. To show it in the garage body menu, also add it to `BODY_PART_SLOTS`.
@@ -27,13 +28,13 @@ Author every car and every car part in the same space:
 - Origin on the **ground**, at the **center between the axles**. The car's left side is +X in Blender and in glTF.
 - Parts use an **identity transform**. Model the bumper exactly where it sits on the car. Don't offset it to the origin.
 
-The easiest workflow: import the car (`public/cars/<carId>.glb`, or the source FBX if you re-run `npm run assets` afterwards), model the part on top of it, then export only the part.
+The easiest workflow for an authored car: open `assets/source/eshell/<carId>/<carId>.blend`, model the part on top of the car, put it in the `Parts` collection named `<slot>_<partId>` (with a `displayName` custom property) and run `npm run assets`: it exports, compresses and catalogs it for you (see README, Car assets). For any other car, import `public/cars/<carId>.glb`, model the part on top of it, then export only the part and catalog it by hand (below).
 
 **Wheels are the exception.** They use wheel space:
 
 - The wheel center is at the origin.
 - The axle runs along X, with the outer face (rim face) toward +X.
-- Real size in meters. The game scales every wheel to the car's wheel radius and mirrors it for the right side, so any wheel fits any car.
+- Real size in meters. The game scales every wheel to the car's wheel radius and mirrors it for the right side, so any wheel fits any car. Authored cars all use the standard wheel (`standardWheel` in `scripts/assetConfig.json`: 0.28 m radius, 0.24 m wide); author rims at that size.
 
 ## 3. Material names
 
@@ -62,21 +63,21 @@ Name the Blender material exactly that (e.g. `Paint`). Suffixes like `Paint.001`
 | Slot | Budget |
 |---|---|
 | frontBumper, rearBumper | 3000 |
-| sideSkirts, hood | 2000 |
+| sideSkirts, hood, roof | 2000 |
 | spoiler | 1500 |
 | wheels | 3500 |
 | body | 12000 |
 
-Keep it low poly. Flat shading with a few hundred triangles looks right next to the IceMaan cars.
+Keep it low poly. Flat shading with a few hundred triangles looks right next to the Proto cars.
 
 ## 5. File naming
 
 ```
-<carId>_<slot>_<partId>.glb      e.g.  gc14_frontBumper_vented.glb
+<carId>_<slot>_<partId>.glb      e.g.  protoHatch_frontBumper_tsurugi.glb
 wheel_<name>.glb                  e.g.  wheel_mesh_classic.glb
 ```
 
-Car ids are in `src/assets/carManifest.json`: `proto`, `s64`, `gc14`. Put the file in `public/parts/`.
+Car ids are in `src/assets/carManifest.json`: `proto`, `protoCompact`, `protoHatch`. Put the file in `public/parts/`.
 
 ## 6. Blender export settings (File > Export > glTF 2.0)
 
@@ -94,11 +95,11 @@ Add an object to `parts` in `src/assets/partsCatalog.json`:
 
 ```json
 {
-  "id": "gc14_frontBumper_vented",
-  "displayName": "Vented bumper",
-  "carId": "gc14",
+  "id": "protoHatch_frontBumper_tsurugi",
+  "displayName": "Tsurugi",
+  "carId": "protoHatch",
   "slot": "frontBumper",
-  "file": "parts/gc14_frontBumper_vented.glb",
+  "file": "parts/protoHatch_frontBumper_tsurugi.glb",
   "hides": ["Bumper_Front"],
   "materialSlots": ["Paint", "Black"],
   "tris": 1840
@@ -106,6 +107,7 @@ Add an object to `parts` in `src/assets/partsCatalog.json`:
 ```
 
 - `id`: unique, letters, digits, `_ - .` only.
+- `displayName`: a fictional tuner name (Kurogane, Hayate, Tsubasa), not a grade or a number; the garage lists styles, not a ranking.
 - `carId`: the car it fits, or `"universal"` for wheels.
 - `hides`: names of base car nodes to hide while this part is equipped (the stock bumper it replaces). Use `npm run inspect` to list node names.
 - `node` (optional): use when several parts live in one GLB. The part is that node inside `file`.
@@ -131,6 +133,11 @@ It checks that the file exists, the slot and car are known, every material name 
 
 Dev parts aren't saved to the catalog. Add the catalog entry once you're happy.
 
-## 9. Splitting the IceMaan body kits
+## 9. Splitting a merged body kit
 
-The IceMaan kits ship as one merged mesh per kit, so they're registered as `body` variants. `assets/inspect.md` lists which cars need splitting and the steps. In short: separate the bumper faces in Edit Mode (P > Selection), name the new object `Bumper_Front`, then either export it as its own part (above) or keep it in the FBX and re-run `npm run assets`. In the second case, reference it with `"node": "Bumper_Front"` and add `"Bumper_Front"` to the replacement parts' `hides`.
+FBX imports (IceMaan) ship each body kit as one merged mesh, so they're registered as `body` variants until split. The Proto Compact and Proto Hatch were split this way in Blender (the `/blender` project skill has the scripts and the gotchas):
+
+1. Bisect the body with axis planes so the seams are clean edges: the front bumper is everything ahead of the front arch line and below the headlights, the rear bumper everything behind the rear arch line and below the taillights, the skirts the sill strip between the arches outside the floor.
+2. Separate the faces on each side into `Bumper_Front`, `Bumper_Rear` and `Skirts`; the rest stays `Body`.
+3. Build aftermarket parts from the stock pieces rather than from other kits: donor pieces cut from other kits never quite match the body (we tried; they looked wrong). Copy the stock piece, reshape it with displacements weighted to zero at the seam, recolor panels, and append new geometry (splitters, canards, strakes, blades). `scripts/blender/carKit.py` has the helpers (`copy_part`, `displace`, `recolor`, `outline`, `slab`, `fin`).
+4. Put the base pieces in the `Car` collection and the donor pieces in `Parts`, then run `npm run assets`.
