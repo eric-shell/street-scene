@@ -135,7 +135,7 @@ describe('corner rails', () => {
     const wall = rs[k];
     const tx = (wall.bx - wall.ax) / Math.hypot(wall.bx - wall.ax, wall.bz - wall.az);
     const tz = (wall.bz - wall.az) / Math.hypot(wall.bx - wall.ax, wall.bz - wall.az);
-    const t = getBaseTuning('s64');
+    const t = getBaseTuning('protoCompact');
     const state = withRails ? createRailState(w) : undefined;
     // 10 degrees into the rail at 25 m/s, starting just off it.
     const ang = 10 * (Math.PI / 180);
@@ -184,7 +184,7 @@ describe('corner rails', () => {
 
   it('the step where a dented piece meets a straight one catches a car scraping along', () => {
     const w = createWorld(20261019, 'circuit');
-    const t = getBaseTuning('s64');
+    const t = getBaseTuning('protoCompact');
     const run = (dent: boolean) => {
       const s = createRailState(w);
       const l = s.layout;
@@ -238,7 +238,7 @@ describe('corner rails', () => {
       expect(maxRailGap(s)).toBeLessThanOrEqual(RAIL.maxGap + 1e-9);
     }
     for (let p = 0; p < l.count; p++) expect(Math.hypot(s.dx[p], s.dz[p])).toBeLessThanOrEqual(RAIL.maxOffset + 1e-9);
-    expect(RAIL.maxGap).toBeLessThanOrEqual(Math.min(...['s64', 'gc14'].map((id) => getBaseTuning(id).geometry.halfWidth * 2)) / 8);
+    expect(RAIL.maxGap).toBeLessThanOrEqual(Math.min(...['protoCompact', 'protoHatch'].map((id) => getBaseTuning(id).geometry.halfWidth * 2)) / 8);
   });
 
   it('a race that dents the rails replays identically', () => {

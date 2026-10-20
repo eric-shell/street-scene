@@ -71,6 +71,9 @@ const TABS: { id: Tab; label: string; icon: IconNode }[] = [
   { id: 'share', label: 'Save', icon: Share2 },
 ];
 
+/** Model author shown under a car's name, by manifest `source`. */
+const AUTHORS: Record<string, string | undefined> = { icemaan: 'IceMaan', eshell: 'eshell' };
+
 const PERF_ICONS: Record<PerformanceCategory, IconNode> = {
   engine: Wrench,
   turbo: Wind,
@@ -387,7 +390,7 @@ export class GarageScreen {
         const imported = MANIFEST.cars.filter((c) => SELECTABLE_CAR_IDS.includes(c.id) && this.availability[c.id] !== false);
         const cars = imported.length ? imported : MANIFEST.cars.filter((c) => SELECTABLE_CAR_IDS.includes(c.id));
         const list = choiceList(
-          cars.map((c) => ({ value: c.id, label: c.displayName, sub: c.source === 'icemaan' ? 'IceMaan' : undefined, tags: specBadges(c.engine, getBaseTuning(c.id).drivetrain.layout) })),
+          cars.map((c) => ({ value: c.id, label: c.displayName, sub: AUTHORS[c.source], tags: specBadges(c.engine, getBaseTuning(c.id).drivetrain.layout) })),
           b.carId,
           (id) => {
             if (id === b.carId) return;

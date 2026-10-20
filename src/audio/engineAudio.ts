@@ -3,13 +3,14 @@
  * follows the firing frequency (rpm / 60 * firings per revolution, from the
  * car's EngineSpec) and whose tone opens up with throttle. The layout picks
  * the voice's character (VOICE_CHARACTER):
- *  - inline fours (s64, Proto Compact: I4 turbo): raspy, with a second order
- *    bite; a turbocharged spec adds a spool whistle and a blow-off valve chuff
- *    when you lift at boost
- *  - an inline six: silky, a sixth order whine, almost no unevenness
- *  - a V6 (gc14, Proto Hatch): each bank is its own pulse train, so a per-bank
- *    order at half the firing frequency and a bank to bank beat give it the
- *    gruff growl an inline six never has
+ *  - inline fours (protoHatch, Proto Hatch: turbo I4): raspy, with a second
+ *    order bite; a turbocharged spec adds a spool whistle and a blow-off valve
+ *    chuff when you lift at boost
+ *  - an inline six (protoCompact, Proto Compact): silky, a sixth order whine,
+ *    almost no unevenness
+ *  - a V6 (protoCoupe, Proto Coupe: turbo V6): each bank is its own pulse
+ *    train, so a per-bank order at half the firing frequency and a bank to
+ *    bank beat give it the gruff growl an inline six never has
  *  - boxers rasp and burble, big vees (V8 and up) rumble with a cross-plane
  *    beat, rotaries buzz smooth and high
  * Most of an engine's energy sits below 300 Hz, which laptop and phone
@@ -330,7 +331,7 @@ export class EngineVoice {
  * flywheel that chases the throttle, falls back to idle and bounces off the
  * rev limiter. Owns its EngineVoice (null when Web Audio is unavailable).
  *
- *   const eng = new FreeRevEngine(manifestCar('s64').engine, { idle: 900, redline: 7600 });
+ *   const eng = new FreeRevEngine(manifestCar('protoCompact').engine, { idle: 900, redline: 7600 });
  *   // every frame: eng.update(throttle01, dt);   eng.rpm for a tach
  *   eng.dispose();
  */

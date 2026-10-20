@@ -7,7 +7,7 @@
  * which the real one is shown and the splash removed, so the swap is invisible.
  * Only a page load that lands on the menu shows it; deep links skip it. CSS
  * (`.splash*`, `.menu.splash-*`) does the flash-in, the impact flash and shake
- * and the neon rule under the title; splashFx.ts draws the night road, traffic,
+ * and the hazard tape under the title; splashFx.ts draws the night road, traffic,
  * skyline, bokeh and rain behind it on a canvas and floors it into a warp as
  * the title flies. This file times it all and computes the flight.
  */
@@ -44,7 +44,7 @@ const SPLASH = {
   horizonGap: 0.06,
   horizonMin: 0.55,
   horizonMax: 0.86,
-  /** The neon rule under the title fades this fast once the flight starts (s). */
+  /** The hazard tape under the title fades this fast once the flight starts (s). */
   ruleOut: 0.25,
 } as const;
 
@@ -54,7 +54,7 @@ const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 function fontsReady(): Promise<unknown> {
   const fonts = document.fonts;
   if (!fonts?.load) return Promise.resolve();
-  const load = Promise.all([fonts.load('900 16px Orbitron'), fonts.load('600 16px Rajdhani')]).catch(() => undefined);
+  const load = Promise.all([fonts.load('italic 900 16px "Google Sans Flex"'), fonts.load('900 16px "Google Sans Flex"'), fonts.load('600 16px "Google Sans Flex"')]).catch(() => undefined);
   return Promise.race([load, delay(SPLASH.fontWait * 1000)]);
 }
 

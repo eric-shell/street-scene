@@ -17,15 +17,15 @@ const STYLE = `
 .nr-touch.hidden { display: none; }
 .nr-steer { position: absolute; left: 0; top: 30%; bottom: 0; width: 50%; pointer-events: auto; touch-action: none; }
 .nr-knob { position: absolute; width: 84px; height: 84px; margin: -42px 0 0 -42px; border-radius: 50%;
-  border: 2px solid rgba(120,220,255,.6); background: rgba(20,40,70,.25); display: none; }
+  border: 2px solid rgba(252,152,103,.6); background: rgba(25,24,26,.3); display: none; }
 .nr-btn { position: absolute; pointer-events: auto; touch-action: none; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center; font: 700 13px system-ui, sans-serif; letter-spacing: .06em;
-  color: #e8f6ff; background: rgba(20,30,60,.45); border: 2px solid rgba(140,200,255,.55); user-select: none; -webkit-user-select: none; }
-.nr-btn.on { background: rgba(60,160,255,.55); }
-.nr-gas { right: 18px; bottom: 26px; width: 96px; height: 96px; border-color: rgba(120,255,170,.7); }
-.nr-brake { right: 128px; bottom: 18px; width: 74px; height: 74px; border-color: rgba(255,120,120,.7); }
+  display: flex; align-items: center; justify-content: center; font: 700 14px var(--display, system-ui), sans-serif; letter-spacing: .08em;
+  color: #fcfcfa; background: rgba(25,24,26,.55); border: 2px solid rgba(147,146,147,.55); user-select: none; -webkit-user-select: none; }
+.nr-btn.on { background: rgba(252,152,103,.5); }
+.nr-gas { right: 18px; bottom: 26px; width: 96px; height: 96px; border-color: rgba(169,220,118,.75); }
+.nr-brake { right: 128px; bottom: 18px; width: 74px; height: 74px; border-color: rgba(255,97,136,.75); }
 .nr-hb { right: 128px; bottom: 104px; width: 64px; height: 64px; }
-.nr-nos { right: 30px; bottom: 136px; width: 70px; height: 70px; border-color: rgba(80,180,255,.9); }
+.nr-nos { right: 30px; bottom: 136px; width: 70px; height: 70px; border-color: rgba(120,220,232,.9); }
 .nr-small { width: 44px; height: 44px; font-size: 11px; top: max(10px, env(safe-area-inset-top)); }
 .nr-pause { right: 12px; }
 .nr-cam { right: 64px; }

@@ -1,9 +1,10 @@
 {
-  "notes": "Per car import settings for scripts/buildAssets.ts. folders: candidate folder names under assets/source/icemaan/. targetLength: overall body length in meters after scaling (the source models are roughly 3/4 scale). Offsets are in car space meters [x left, y up, z forward] and are added after automatic placement.",
-  "cars": {
-    "gc14": { "folders": ["gc14", "coupe", "GC14"], "targetLength": 4.45, "spoilerOffset": [0, 0, 0], "wheelOffset": [0, 0, 0] },
-    "s64": { "folders": ["s64", "hatch", "S64", "compact"], "targetLength": 3.95, "spoilerOffset": [0, 0, 0], "wheelOffset": [0, 0, 0] }
+  "notes": "Import settings for scripts/buildAssets.ts. standardWheel: the one wheel size every car shares (meters), so cars read at the same scale next to each other; authored cars (assets/source/eshell/<carId>/<carId>.blend) place their Rig wheel empties at this radius and the manifest takes the width from here. cars: FBX imports under assets/source/icemaan/ (folders: candidate folder names; targetLength: overall body length in meters after scaling, the source models are roughly 3/4 scale; offsets in car space meters [x left, y up, z forward] added after automatic placement). The Proto Hatch and Proto Compact started as IceMaan FBX imports and are now authored .blend cars, so they are not listed here.",
+  "standardWheel": {
+    "radius": 0.28,
+    "width": 0.24
   },
+  "cars": {},
   "materialMap": {
     "Car": "Paint",
     "Body": "Paint",

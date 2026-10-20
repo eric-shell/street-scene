@@ -175,7 +175,40 @@ function currentBuild(): CarBuild {
   return garage.slots[garage.current];
 }
 
+// Cinematic mode on the menu: every piece of UI fades out and the city flyover plays on its own.
+// The first key, click or tap after that only brings the UI back (it never reaches a button).
+let cinematic = false;
+const cineHint = document.createElement('div');
+cineHint.className = 'cine-hint';
+cineHint.textContent = 'Press any key or click to show the menu';
+
+function setCinematic(on: boolean): void {
+  if (cinematic === on) return;
+  cinematic = on;
+  document.body.classList.toggle('cinematic', on);
+  if (on) {
+    document.body.append(cineHint);
+    // Restart the hint's fade each time.
+    cineHint.style.animation = 'none';
+    void cineHint.offsetWidth;
+    cineHint.style.animation = '';
+  } else cineHint.remove();
+}
+
+function wakeFromCinematic(e: Event): void {
+  if (!cinematic) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  setCinematic(false);
+}
+for (const type of ['keydown', 'pointerdown'] as const) window.addEventListener(type, wakeFromCinematic, { capture: true });
+window.addEventListener('keydown', (e) => {
+  const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement;
+  if (e.code === 'KeyH' && !e.repeat && !typing && state === 'menu' && !overlayBusy() && !e.ctrlKey && !e.metaKey && !e.altKey) setCinematic(true);
+});
+
 function showMenu(): void {
+  setCinematic(false);
   state = 'menu';
   session?.dispose();
   session = null;
@@ -213,6 +246,7 @@ function showMenu(): void {
         history.replaceState(null, '', u);
         showMenu();
       },
+      onHideUi: () => setCinematic(true),
     }),
   );
   menuEl = overlay;

@@ -16,12 +16,12 @@ describe('engine voice characters', () => {
     }
   });
 
-  it('tell a V6 from an inline six, and the garage cars from each other', () => {
+  it('tell a V6 from an inline six, and the Coupe from the Compact', () => {
     expect(VOICE_CHARACTER.V6.beat).toBeGreaterThan(VOICE_CHARACTER.I6.beat + 0.2);
     expect(VOICE_CHARACTER.V6.order.mul).toBe(0.5);
     expect(VOICE_CHARACTER.I6.order.mul).toBe(2);
-    const coupe = manifest.cars.find((c) => c.id === 'gc14')!;
-    const compact = manifest.cars.find((c) => c.id === 's64')!;
+    const coupe = manifest.cars.find((c) => c.id === 'protoCoupe')!;
+    const compact = manifest.cars.find((c) => c.id === 'protoCompact')!;
     expect(coupe.engine.layout).toBe('V6');
     expect(VOICE_CHARACTER[coupe.engine.layout as EngineLayout]).not.toBe(VOICE_CHARACTER[compact.engine.layout as EngineLayout]);
   });

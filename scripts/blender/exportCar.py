@@ -1,0 +1,158 @@
+"""
+Export one authored car .blend (assets/source/eshell/<carId>/<carId>.blend) to
+plain GLBs plus a JSON sidecar that scripts/buildAssets.ts optimizes and
+catalogs.
+
+    blender --background <carId>.blend --python scripts/blender/exportCar.py -- <outDir>
+
+Authored cars are modelled directly in car space (meters, Blender Z up, car
+facing -Y, origin on the ground midway between the axles, +X the car's left),
+so nothing is measured or rescaled afterwards. The .blend holds four
+collections:
+
+  Car     the base model: `Body` plus the stock pieces the part slots replace
+          (`Bumper_Front`, `Bumper_Rear`, `Skirts`, `Hood`, `Roof`), one node each.
+  Parts   one object per catalog part, named `<slot>_<partId>`
+          (`frontBumper_street`, `spoiler_1`); optional custom properties
+          `displayName` and `hides` (comma separated base node names).
+  Wheels  rims in wheel space (center at the origin, axle along X, rim face
+          toward +X), named `wheel_<n>`; universal parts.
+  Rig     empties `Wheel_FL`, `Wheel_FR`, `Wheel_RL`, `Wheel_RR` at the wheel
+          centers. Their height is the wheel radius.
+
+Object names may carry a `<carId>.` prefix (handy when several cars share
+one working file); it is stripped on export.
+"""
+import json
+import os
+import sys
+
+import bpy
+
+# Which base node a part replaces by default, per slot.
+DEFAULT_HIDES = {
+    "frontBumper": ["Bumper_Front"],
+    "rearBumper": ["Bumper_Rear"],
+    "sideSkirts": ["Skirts"],
+    "hood": ["Hood"],
+    "roof": ["Roof"],
+    "body": ["Body"],
+    "spoiler": [],
+}
+
+
+def short(name):
+    return name.split(".", 1)[1] if "." in name else name
+
+
+def to_gltf(v):
+    """Blender Z up, -Y forward -> glTF Y up, +Z forward."""
+    return [round(v[0], 4), round(v[2], 4), round(-v[1], 4)]
+
+
+def tris(obj):
+    return sum(len(p.vertices) - 2 for p in obj.data.polygons)
+
+
+def show_all():
+    """Selection only works on visible objects: a collection left hidden in the view layer (or an
+    object hidden or unselectable) would silently drop out of a use_selection export."""
+    def walk(lc):
+        lc.exclude = False
+        lc.hide_viewport = False
+        for c in lc.children:
+            walk(c)
+    walk(bpy.context.view_layer.layer_collection)
+    for c in bpy.data.collections:
+        c.hide_viewport = False
+        c.hide_select = False
+    for o in bpy.data.objects:
+        o.hide_viewport = False
+        o.hide_select = False
+        o.hide_set(False)
+
+
+def export(objects, path):
+    bpy.ops.object.select_all(action="DESELECT")
+    renamed = []
+    for o in objects:
+        o.hide_set(False)
+        o.select_set(True)
+    if sorted(o.name for o in bpy.context.selected_objects) != sorted(o.name for o in objects):
+        raise SystemExit(f"exportCar: could not select {[o.name for o in objects]} for {path}")
+    for o in objects:
+        renamed.append((o, o.name))
+    # Export under the short names (node names are what parts hide).
+    for o, n in renamed:
+        o.name = short(n)
+    bpy.context.view_layer.objects.active = objects[0]
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    try:
+        bpy.ops.export_scene.gltf(
+            filepath=path,
+            export_format="GLB",
+            export_yup=True,
+            export_apply=True,
+            export_materials="EXPORT",
+            export_texcoords=True,
+            export_normals=True,
+            use_selection=True,
+        )
+    finally:
+        for o, n in renamed:
+            o.name = n
+
+
+def collection(suffix):
+    for c in bpy.data.collections:
+        if c.name == suffix or c.name.endswith(":" + suffix):
+            return c
+    return None
+
+
+def run(out_dir, car_id=None):
+    prefix = (car_id + ":") if car_id else ""
+    get = (lambda s: bpy.data.collections.get(prefix + s)) if car_id else collection
+    car, parts, wheels, rig = get("Car"), get("Parts"), get("Wheels"), get("Rig")
+    if car is None or rig is None:
+        raise SystemExit("exportCar: the .blend needs Car and Rig collections")
+    show_all()
+    meta = {"car": [], "parts": [], "wheels": [], "wheelCenters": {}}
+
+    car_objs = [o for o in car.objects if o.type == "MESH"]
+    export(car_objs, os.path.join(out_dir, "car.glb"))
+    meta["car"] = [{"node": short(o.name), "tris": tris(o)} for o in car_objs]
+
+    # Collection order is the garage order, so the author decides how options are listed.
+    for o in (parts.objects if parts else []):
+        if o.type != "MESH":
+            continue
+        slot, _, part_id = short(o.name).partition("_")
+        hides = o.get("hides")
+        hides = [h.strip() for h in hides.split(",") if h.strip()] if isinstance(hides, str) else DEFAULT_HIDES.get(slot, [])
+        export([o], os.path.join(out_dir, "parts", f"{slot}_{part_id}.glb"))
+        meta["parts"].append({"slot": slot, "partId": part_id, "displayName": o.get("displayName", part_id), "hides": hides, "tris": tris(o)})
+
+    for o in sorted(wheels.objects if wheels else [], key=lambda o: o.name):
+        if o.type != "MESH":
+            continue
+        n = short(o.name).replace("wheel_", "")
+        export([o], os.path.join(out_dir, "wheels", f"wheel_{n}.glb"))
+        meta["wheels"].append({"name": n, "displayName": o.get("displayName", ""), "tris": tris(o)})
+
+    for o in rig.objects:
+        key = short(o.name).replace("Wheel_", "")
+        if key in ("FL", "FR", "RL", "RR"):
+            meta["wheelCenters"][key] = to_gltf(o.matrix_world.translation)
+    missing = {"FL", "FR", "RL", "RR"} - set(meta["wheelCenters"])
+    if missing:
+        raise SystemExit(f"exportCar: Rig is missing {sorted(missing)}")
+
+    with open(os.path.join(out_dir, "car.json"), "w") as f:
+        json.dump(meta, f, indent=2)
+    print("exportCar: wrote", out_dir)
+
+
+if __name__ == "__main__" and "--" in sys.argv:
+    args = sys.argv[sys.argv.index("--") + 1:]
+    run(args[0], args[1] if len(args) > 1 else None)

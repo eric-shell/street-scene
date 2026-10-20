@@ -13,6 +13,8 @@
  * time; it only runs while the splash is up. Reduced motion never starts it.
  */
 
+import { PALETTE, rgb } from './palette';
+
 export interface SplashFx {
   /** Floor it: speed everything up for the flight onto the menu. */
   warp(): void;
@@ -46,7 +48,13 @@ const FX = {
   cars: 9,
 } as const;
 
-const NEON = ['#19e6ff', '#ff3df2', '#ffb02e', '#9a7bff', '#ffe9c8'];
+/** Sign and bokeh colors: signs use the first three; taillights are [1], headlights [4]. */
+const NEON = [PALETTE.orange, PALETTE.red, PALETTE.yellow, PALETTE.cyan, '#fff4d6'];
+/** "r,g,b" triples for the gradients built per frame. */
+const ORANGE = rgb('orange');
+const YELLOW = rgb('yellow');
+const RED = rgb('red');
+const BG = rgb('bg0');
 const ease = (a: number, b: number, t: number) => {
   const x = Math.max(0, Math.min(1, (t - a) / (b - a)));
   return x * x * (3 - 2 * x);
@@ -119,7 +127,8 @@ export function startSplashFx(canvas: HTMLCanvasElement, layout: SplashFxLayout)
       // Taller toward the middle, like a downtown behind the road.
       const mid = 1 - Math.abs(x + bw / 2 - W / 2) / (W / 2);
       const bh = sh * (0.25 + Math.random() * 0.45 + mid * 0.3);
-      g.fillStyle = `rgb(${10 + Math.random() * 6}, ${13 + Math.random() * 6}, ${30 + Math.random() * 10})`;
+      const shade = Math.random() * 7;
+      g.fillStyle = `rgb(${22 + shade}, ${20 + shade}, ${23 + shade})`;
       g.fillRect(x, sh - bh, bw, bh);
       for (let wy = sh - bh + 5; wy < sh - 4; wy += 6) {
         for (let wx = x + 3; wx < x + bw - 4; wx += 5) {
@@ -138,7 +147,7 @@ export function startSplashFx(canvas: HTMLCanvasElement, layout: SplashFxLayout)
     skyline = c;
   }
   function drawWindow(g: CanvasRenderingContext2D, w: { x: number; y: number; w: number; h: number; on: boolean }): void {
-    g.fillStyle = w.on ? (Math.random() < 0.8 ? '#ffcf7a' : '#bfe8ff') : '#0c1024';
+    g.fillStyle = w.on ? (Math.random() < 0.8 ? PALETTE.yellow : '#e8e4d8') : '#1c1a1d';
     g.fillRect(w.x, w.y, w.w, w.h);
   }
 
@@ -225,8 +234,8 @@ export function startSplashFx(canvas: HTMLCanvasElement, layout: SplashFxLayout)
       const cy = title.top + title.height / 2;
       const r = Math.max(title.width, title.height) * 0.75;
       const plate = g.createRadialGradient(cx, cy, r * 0.2, cx, cy, r);
-      plate.addColorStop(0, 'rgba(5,6,15,0.78)');
-      plate.addColorStop(1, 'rgba(5,6,15,0)');
+      plate.addColorStop(0, `rgba(${BG},0.8)`);
+      plate.addColorStop(1, `rgba(${BG},0)`);
       g.fillStyle = plate;
       g.fillRect(cx - r, cy - r, r * 2, r * 2);
     }
@@ -235,16 +244,16 @@ export function startSplashFx(canvas: HTMLCanvasElement, layout: SplashFxLayout)
     const rd = ease(FX.roadIn[0], FX.roadIn[1], t);
     if (rd > 0) {
       const hg = g.createLinearGradient(0, horizon - 30, 0, horizon + 40);
-      hg.addColorStop(0, 'rgba(25,230,255,0)');
-      hg.addColorStop(0.45, `rgba(25,230,255,${0.16 * rd})`);
-      hg.addColorStop(1, 'rgba(154,123,255,0)');
+      hg.addColorStop(0, `rgba(${ORANGE},0)`);
+      hg.addColorStop(0.45, `rgba(${ORANGE},${0.16 * rd})`);
+      hg.addColorStop(1, `rgba(${RED},0)`);
       g.fillStyle = hg;
       g.fillRect(0, horizon - 30, W, 70);
       g.globalCompositeOperation = 'lighter';
       const pool = g.createRadialGradient(W / 2, horizon + (H - horizon) * 0.18, 0, W / 2, horizon + (H - horizon) * 0.18, W * 0.32);
-      pool.addColorStop(0, `rgba(255,61,242,${0.1 * rd})`);
-      pool.addColorStop(0.5, `rgba(25,230,255,${0.05 * rd})`);
-      pool.addColorStop(1, 'rgba(25,230,255,0)');
+      pool.addColorStop(0, `rgba(${YELLOW},${0.08 * rd})`);
+      pool.addColorStop(0.5, `rgba(${ORANGE},${0.05 * rd})`);
+      pool.addColorStop(1, `rgba(${ORANGE},0)`);
       g.fillStyle = pool;
       g.fillRect(0, horizon, W, H - horizon);
       g.globalCompositeOperation = 'source-over';
@@ -265,14 +274,14 @@ export function startSplashFx(canvas: HTMLCanvasElement, layout: SplashFxLayout)
       };
       g.lineCap = 'round';
       for (const side of [-2, 2]) {
-        line(side, 'rgba(25,230,255,0.14)', 6);
-        line(side, 'rgba(25,230,255,0.8)', 1.5);
+        line(side, `rgba(${ORANGE},0.14)`, 6);
+        line(side, `rgba(${ORANGE},0.8)`, 1.5);
       }
-      line(-0.06, 'rgba(255,176,46,0.7)', 1.2);
-      line(0.06, 'rgba(255,176,46,0.7)', 1.2);
+      line(-0.06, `rgba(${YELLOW},0.7)`, 1.2);
+      line(0.06, `rgba(${YELLOW},0.7)`, 1.2);
       // Dashes: their depth wraps as they rush in; the warp stretches them into streaks.
       const len = FX.dashLength * (warping ? 1 + (speed - 1) * 0.6 : 1);
-      g.strokeStyle = 'rgba(232,236,255,0.75)';
+      g.strokeStyle = 'rgba(252,252,250,0.7)';
       for (const x of [-1, 1]) {
         for (let k = 0; k < FX.far / FX.dashSpacing; k++) {
           const z = k * FX.dashSpacing - (travel % FX.dashSpacing) + 1;
@@ -306,7 +315,7 @@ export function startSplashFx(canvas: HTMLCanvasElement, layout: SplashFxLayout)
         continue;
       }
       const trail = c.speed * 0.09 * (warping ? speed * 0.6 : 1);
-      const head = c.dir < 0 ? '255,250,235' : '255,40,70';
+      const head = c.dir < 0 ? '255,250,235' : RED;
       const fade = Math.min(1, (FX.far - c.z) / 12) * rd;
       for (const off of [-0.17, 0.17]) {
         const a = proj(c.x + off, c.z);
@@ -340,7 +349,7 @@ export function startSplashFx(canvas: HTMLCanvasElement, layout: SplashFxLayout)
     // Rain across everything.
     const rn = ease(FX.rainIn[0], FX.rainIn[1], t) * 0.16;
     if (rn > 0) {
-      g.strokeStyle = `rgba(200,220,255,${rn})`;
+      g.strokeStyle = `rgba(193,192,192,${rn})`;
       g.lineWidth = 1;
       g.beginPath();
       for (const d of rain) {

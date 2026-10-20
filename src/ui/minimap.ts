@@ -1,13 +1,33 @@
 /**
  * Minimap: a round, heading-up map canvas centred on a viewpoint, drawing the
  * district layers (AREA_MAP_STYLE), the street network, the route with its
- * shortcuts (hot pink, like their entrance signs), closures and car markers. The race HUD centres it on the player's car; the drone
+ * shortcuts (purple dashes), closures and car markers. The race HUD centres it on the player's car; the drone
  * centres it on itself with a view cone and a north mark, and zooms out as it
  * climbs, so the same map serves both. The Path2D layers are built once per
  * world, so a frame is a handful of strokes. Render only.
  */
 import type { World } from '../city/world';
 import { AREA_MAP_STYLE, AreaKind, AreaMapStyle } from '../city/districts/types';
+import { PALETTE, rgba } from './palette';
+
+/** Map inks (Monokai Pro, ui/palette.ts), built once: orange is the route, yellow the closures. */
+const INK = {
+  face: rgba('bg0', 0.78),
+  road: rgba('muted', 0.24),
+  route: PALETTE.orange,
+  /** Route shortcuts: the back alleys the route opens. */
+  shortcut: PALETTE.purple,
+  closure: PALETTE.yellow,
+  rival: PALETTE.red,
+  ghost: rgba('purple', 0.85),
+  player: PALETTE.text,
+  rim: rgba('orange', 0.55),
+  /** The drone's view cone and its north mark. */
+  cone: rgba('cyan', 0.42),
+  coneEnd: rgba('cyan', 0),
+  north: PALETTE.yellow,
+  font: '700 13px "Google Sans Flex", system-ui, sans-serif',
+} as const;
 
 export interface MapCar {
   x: number;
@@ -137,7 +157,7 @@ export class Minimap {
     c.save();
     c.beginPath();
     c.arc(W / 2, W / 2, W / 2 - 2, 0, Math.PI * 2);
-    c.fillStyle = 'rgba(6,10,24,0.66)';
+    c.fillStyle = INK.face;
     c.fill();
     c.clip();
     c.save();
@@ -154,7 +174,7 @@ export class Minimap {
       c.fillStyle = f.style.fill!;
       c.fill(f.path);
     }
-    c.strokeStyle = 'rgba(140,160,220,0.22)';
+    c.strokeStyle = INK.road;
     c.lineWidth = Math.max(9, 1.2 * px);
     c.stroke(this.roads);
     for (const l of this.areaLines) {
@@ -164,21 +184,21 @@ export class Minimap {
       c.stroke(l.path);
     }
     // Shortcuts under the route line, so their dashes start where the alley leaves it.
-    c.strokeStyle = '#ff2bd6';
-    c.shadowColor = '#ff2bd6';
+    c.strokeStyle = INK.shortcut;
+    c.shadowColor = INK.shortcut;
     c.shadowBlur = 5;
     c.lineWidth = Math.max(6, 3.2 * px);
     c.setLineDash([4 * px, 3 * px]);
     c.stroke(this.shortcuts);
     c.setLineDash([]);
-    c.strokeStyle = '#19e6ff';
-    c.shadowColor = '#19e6ff';
-    c.shadowBlur = 6;
+    c.strokeStyle = INK.route;
+    c.shadowColor = INK.route;
+    c.shadowBlur = 4;
     // Keep the route a readable width when the drone zooms far out.
     c.lineWidth = Math.max(7, 2.6 / scale);
     c.stroke(this.routePath);
     c.shadowBlur = 0;
-    c.fillStyle = '#ff9d1a';
+    c.fillStyle = INK.closure;
     const box = 1.5 * px;
     for (const p of this.closed) c.fillRect(p.x - box, p.z - box, box * 2, box * 2);
     for (const car of cars) {
@@ -189,7 +209,7 @@ export class Minimap {
         const sz = Math.cos(car.yaw);
         const L = 9 * px;
         const B = 5 * px;
-        c.fillStyle = '#fff';
+        c.fillStyle = INK.player;
         c.beginPath();
         c.moveTo(car.x + sx * L, car.z + sz * L);
         c.lineTo(car.x - sx * L * 0.7 + sz * B, car.z - sz * L * 0.7 - sx * B);
@@ -198,7 +218,7 @@ export class Minimap {
         c.fill();
         continue;
       }
-      c.fillStyle = car.isGhost ? 'rgba(190,140,255,0.8)' : '#ff2e5b';
+      c.fillStyle = car.isGhost ? INK.ghost : INK.rival;
       c.beginPath();
       c.arc(car.x, car.z, 3.4 * px, 0, Math.PI * 2);
       c.fill();
@@ -206,7 +226,7 @@ export class Minimap {
     c.restore();
     if (drone) this.drawDrone(c, cx, cy, view.fov ?? 1.2, view.yaw);
     else {
-      c.fillStyle = '#fff';
+      c.fillStyle = INK.player;
       c.beginPath();
       c.moveTo(cx, cy - 12);
       c.lineTo(cx - 8, cy + 8);
@@ -215,7 +235,7 @@ export class Minimap {
       c.fill();
     }
     c.restore();
-    c.strokeStyle = 'rgba(25,230,255,0.5)';
+    c.strokeStyle = INK.rim;
     c.lineWidth = 2;
     c.beginPath();
     c.arc(W / 2, W / 2, W / 2 - 2, 0, Math.PI * 2);
@@ -226,15 +246,15 @@ export class Minimap {
   private drawDrone(c: CanvasRenderingContext2D, cx: number, cy: number, fov: number, yaw: number): void {
     const half = Math.min(1.3, fov / 2);
     const cone = c.createRadialGradient(cx, cy, 4, cx, cy, MAP.cone);
-    cone.addColorStop(0, 'rgba(25,230,255,0.42)');
-    cone.addColorStop(1, 'rgba(25,230,255,0)');
+    cone.addColorStop(0, INK.cone);
+    cone.addColorStop(1, INK.coneEnd);
     c.fillStyle = cone;
     c.beginPath();
     c.moveTo(cx, cy);
     c.arc(cx, cy, MAP.cone, -Math.PI / 2 - half, -Math.PI / 2 + half);
     c.closePath();
     c.fill();
-    c.strokeStyle = '#fff';
+    c.strokeStyle = INK.player;
     c.lineWidth = 2;
     c.beginPath();
     for (const [dx, dy] of [
@@ -247,7 +267,7 @@ export class Minimap {
       c.lineTo(cx + dx * 6, cy + dy * 6);
     }
     c.stroke();
-    c.fillStyle = '#fff';
+    c.fillStyle = INK.player;
     for (const [dx, dy] of [
       [-1, -1],
       [1, 1],
@@ -264,10 +284,10 @@ export class Minimap {
     const r = W / 2 - 13;
     const nx = W / 2 + Math.sin(yaw) * r;
     const ny = W / 2 - Math.cos(yaw) * r;
-    c.font = '700 13px Orbitron, Rajdhani, system-ui, sans-serif';
+    c.font = INK.font;
     c.textAlign = 'center';
     c.textBaseline = 'middle';
-    c.fillStyle = '#ff9d1a';
+    c.fillStyle = INK.north;
     c.fillText('N', nx, ny);
   }
 }

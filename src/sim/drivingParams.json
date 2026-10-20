@@ -1,7 +1,7 @@
 {
   "_readme": [
     "Street Scene driving parameters: the ONE file that holds every car physics number.",
-    "base: the shared tuning every car starts from (it is exactly the Proto Compact / s64).",
+    "base: the shared tuning every car starts from (it is exactly the Proto Compact / protoCompact).",
     "cars.<id>: per car overrides, merged over base. Write absolute values (e.g. \"mass\": 2000), only the keys that differ. Nested objects merge key by key, arrays (torqueCurve, ratios) replace the whole array.",
     "Keys starting with _ are comments and are ignored. Unknown keys fail loudly at startup, so typos never go unnoticed.",
     "drivetrain.layout is \"rwd\", \"awd\" or \"fwd\". awdFrontShare is the AWD torque share sent to the front axle (0.4 = 40/60).",
@@ -134,16 +134,49 @@
     }
   },
   "cars": {
-    "s64": {
-      "_name": "Proto Compact: light, rev happy, rear wheel drive. Uses base as is.",
+    "protoCompact": {
+      "_name": "Proto Compact: front inline 6, rev happy, rear wheel drive. Uses base as is.",
       "drivetrain": { "layout": "rwd" }
     },
-    "gc14": {
-      "_name": "Proto Hatch: heavier, more torque, slightly less grip, all wheel drive.",
-      "mass": 2000,
-      "drivetrain": { "layout": "awd", "awdFrontShare": 0.4 },
-      "engine": { "redline": 7600, "torqueMul": 1.1 },
-      "tires": { "gripFront": 1.56, "gripRear": 1.23 }
+    "protoHatch": {
+      "_name": "Proto Hatch: front turbo inline 4, front wheel drive. Lighter, a flat turbo torque plateau, shorter redline and a taller final drive; the front tires do all the work.",
+      "mass": 1400,
+      "drivetrain": { "layout": "fwd" },
+      "engine": {
+        "redline": 7200,
+        "torqueCurve": [
+          [800, 130],
+          [2000, 225],
+          [2800, 290],
+          [4500, 300],
+          [5800, 285],
+          [6600, 250],
+          [7200, 215]
+        ],
+        "torqueMul": 0.84
+      },
+      "gearbox": { "finalDrive": 3.55 },
+      "tires": { "gripFront": 1.66, "gripRear": 1.3 }
+    },
+    "protoCoupe": {
+      "_name": "Proto Coupe: front turbo V6, rear wheel drive. Heavier than the Compact, a big mid range turbo plateau that still revs out, longer gearing.",
+      "mass": 1560,
+      "drivetrain": { "layout": "rwd" },
+      "engine": {
+        "redline": 7600,
+        "torqueCurve": [
+          [800, 150],
+          [2000, 250],
+          [3000, 330],
+          [4500, 345],
+          [5800, 330],
+          [6800, 290],
+          [7600, 250]
+        ],
+        "torqueMul": 0.84
+      },
+      "gearbox": { "finalDrive": 3.6 },
+      "tires": { "gripFront": 1.64, "gripRear": 1.3 }
     },
     "proto": {
       "_name": "Proto RS: procedural placeholder used by tests and the asset pipeline. Not selectable. Uses base as is."

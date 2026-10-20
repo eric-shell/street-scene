@@ -4,11 +4,11 @@
  */
 
 /** Every swappable visible piece lives in one of these slots. Add new slots here. */
-export const PART_SLOTS = ['body', 'frontBumper', 'rearBumper', 'sideSkirts', 'spoiler', 'hood', 'wheels'] as const;
+export const PART_SLOTS = ['body', 'frontBumper', 'rearBumper', 'sideSkirts', 'spoiler', 'hood', 'roof', 'wheels'] as const;
 export type PartSlot = (typeof PART_SLOTS)[number];
 
 /** Slots shown as body part menus in the garage (body and wheels have their own menus). */
-export const BODY_PART_SLOTS: PartSlot[] = ['frontBumper', 'rearBumper', 'sideSkirts', 'spoiler', 'hood'];
+export const BODY_PART_SLOTS: PartSlot[] = ['frontBumper', 'rearBumper', 'sideSkirts', 'spoiler', 'hood', 'roof'];
 
 /** Slots where "none" is a valid choice (nothing rendered, base meshes still visible unless hidden). */
 export const OPTIONAL_SLOTS: PartSlot[] = ['spoiler'];
@@ -20,6 +20,7 @@ export const SLOT_LABELS: Record<PartSlot, string> = {
   sideSkirts: 'Side skirts',
   spoiler: 'Spoiler',
   hood: 'Hood',
+  roof: 'Roof',
   wheels: 'Wheels',
 };
 
@@ -38,6 +39,7 @@ export const TRI_BUDGETS: Record<PartSlot, number> = {
   sideSkirts: 2000,
   spoiler: 1500,
   hood: 2000,
+  roof: 2000,
   wheels: 3500,
 };
 
