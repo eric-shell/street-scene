@@ -18,6 +18,7 @@ import type { RailWall } from '../city/route';
 import type { Contact } from '../city/world';
 import { CITY } from '../city/config';
 import { Rng } from '../sim/prng';
+import { distToSegment } from '../sim/math';
 import { RAIL } from '../sim/rails';
 import { railCurves } from './routeArrows';
 
@@ -94,6 +95,8 @@ const MEET = {
   maxDepth: 34,
   /** Clearance beyond the route's road and sidewalk (m), and the people cap per meet at density 1. */
   routeClear: 1,
+  /** People and cars keep this far from a route shortcut's sidewalks (m). */
+  shortcutClear: 2.5,
   peopleCap: 340,
 } as const;
 
@@ -192,6 +195,11 @@ export function planMeets(world: World, opts: MeetOptions): MeetPlan {
     const rp = world.routeProgress(x, z);
     const beyondEnds = !route.closed && (rp.s < 0.5 || rp.s > route.length - 0.5);
     if (!beyondEnds && Math.abs(rp.lateral) < route.segWidth[rp.seg] / 2 + CITY.sidewalk + MEET.routeClear + r) return false;
+    // Shortcuts stay open: nobody stands or parks in the alley, its sidewalks or its mouths.
+    for (const sc of route.shortcuts) {
+      const half = world.graph.edges[sc.edge].width / 2 + world.graph.edges[sc.edge].sidewalk + MEET.shortcutClear + r;
+      if (distToSegment(x, z, sc.ax, sc.az, sc.bx, sc.bz) < half) return false;
+    }
     // collideCircle also reports walls up to 3 m in front of the point (its anti tunnelling band), and
     // standing right behind the barrier is the whole point: only a real overlap, or being behind a city
     // wall (inside a block), rules a spot out.

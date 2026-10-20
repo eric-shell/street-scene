@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { Rng, hashString, seedFromString } from '../src/sim/prng';
 import { generateRoadGraph, graphIsConnected, edgeBetween } from '../src/city/roadGraph';
-import { buildRoute, findCircuitNodes, findSprintNodes } from '../src/city/route';
-import { createCity, createWorld } from '../src/city/world';
+import { buildRoute, routeSample } from '../src/city/route';
+import { createCity, createWorld, planRoads } from '../src/city/world';
 import { CITY, ROUTE } from '../src/city/config';
 import { createTerrain } from '../src/city/terrain';
 import { distToSegment, segmentT } from '../src/sim/math';
-import { planDistricts } from '../src/city/districts';
 import { WALL_LOOKS } from '../src/city/districts/types';
 import { insideBuilding, BUILDING_SETBACK } from '../src/city/blocks';
 import { pointInPolygon, polygonCentroid } from '../src/city/districts/geom';
@@ -84,13 +83,13 @@ describe('city generation', () => {
     let meetsTargets = 0;
     for (let i = 0; i < 200; i++) {
       const seed = rng.int(0, 0x7fffffff);
-      // The graph as the game sees it: districts add alleys, shortcuts, roundabouts and bridges.
-      const g = generateRoadGraph(seed);
-      planDistricts(seed, g);
+      // The graph and routes as the game sees them: districts add alleys, shortcuts, roundabouts and
+      // bridges, then both routes are picked and their shortcuts carved.
+      const { graph: g, routeNodes } = planRoads(seed);
       expect(graphIsConnected(g)).toBe(true);
       for (const n of g.nodes) expect(n.edges.length).toBeLessThanOrEqual(CITY.maxNodeDegree);
 
-      const circuit = buildRoute(g, 'circuit', findCircuitNodes(g, seed));
+      const circuit = buildRoute(g, 'circuit', routeNodes.circuit);
       expect(circuit.closed).toBe(true);
       // consecutive nodes joined by an edge, including the wrap-around
       for (let k = 0; k < circuit.nodes.length; k++) {
@@ -100,10 +99,11 @@ describe('city generation', () => {
       }
       expect(new Set(circuit.edges).size).toBe(circuit.edges.length);
       expect(new Set(circuit.nodes).size).toBe(circuit.nodes.length);
-      // Never through a back alley shortcut; never barriers across one.
+      // Never through a back alley shortcut; never barriers across one of the route's own.
       for (const r of [circuit]) {
         for (const e of r.edges) expect(g.edges[e].shortcut).toBeFalsy();
-        for (const cs of r.closedStreets) expect(g.edges[cs.edge].shortcut).toBeFalsy();
+        const own = new Set(r.shortcuts.map((sc) => sc.edge));
+        for (const cs of r.closedStreets) expect(own.has(cs.edge)).toBe(false);
       }
       const first = circuit.points[0];
       const last = circuit.points[circuit.points.length - 1];
@@ -111,7 +111,7 @@ describe('city generation', () => {
       expect(first.z).toBe(last.z);
       expect(circuit.length).toBeGreaterThan(600);
 
-      const sprint = buildRoute(g, 'sprint', findSprintNodes(g, seed));
+      const sprint = buildRoute(g, 'sprint', routeNodes.sprint);
       expect(sprint.closed).toBe(false);
       for (let k = 0; k + 1 < sprint.nodes.length; k++) {
         expect(edgeBetween(g, sprint.nodes[k], sprint.nodes[k + 1])).toBeGreaterThanOrEqual(0);
@@ -546,7 +546,8 @@ describe('districts', () => {
         mine.forEach((p) => kinds.add(p.kind));
         if (a.kind === 'park') expect(mine.filter((p) => p.kind === 'bush').length).toBeGreaterThan(10);
         if (a.kind === 'alley') expect(mine.length).toBeGreaterThan(8);
-        if (a.kind === 'backAlley') expect(mine.some((p) => p.kind === 'dumpster')).toBe(true);
+        // Route shortcuts are diagonal and short: a kicker can take the only stretch clear of both mouths.
+        if (a.kind === 'backAlley') expect(mine.some((p) => p.kind === 'dumpster') || (a.variant === 'routeShortcut' && a.params.jump === 1)).toBe(true);
         if (a.kind !== 'backAlley' || !a.params.jump || jumps >= 2) continue;
         jumps++;
         // Launch along the alley toward the hump, from both ends.
@@ -584,10 +585,9 @@ describe('districts', () => {
     let alleys = 0;
     for (let i = 0; i < 60; i++) {
       const seed = rng.int(0, 0x7fffffff);
-      const g = generateRoadGraph(seed);
-      planDistricts(seed, g);
+      const { graph: g, routeNodes } = planRoads(seed);
       for (const kind of ['circuit', 'sprint'] as const) {
-        const route = buildRoute(g, kind, kind === 'circuit' ? findCircuitNodes(g, seed) : findSprintNodes(g, seed));
+        const route = buildRoute(g, kind, routeNodes[kind]);
         for (const id of route.nodes) {
           const n = g.nodes[id];
           if (!n.ring) continue;
@@ -720,5 +720,156 @@ describe('race progress and resets', () => {
     rc.state.z = far.z;
     stepRace(r, NEUTRAL_INPUT);
     expect(r.events.slice(events).some((e) => e.type === 'reset' && e.car === 0)).toBe(true);
+  });
+});
+
+describe('route shortcuts', () => {
+  /** Route distance a shortcut skips (wrapping on circuits). */
+  const skipOf = (route: World['route'], sc: World['route']['shortcuts'][number]) => (route.closed ? (((sc.sOut - sc.sIn) % route.length) + route.length) % route.length : sc.sOut - sc.sIn);
+
+  it('every circuit and sprint gets a real shortcut across 120 seeds', () => {
+    const rng = new Rng(31337);
+    const cfg = CITY.districts.backAlley.route;
+    let two = 0;
+    for (let i = 0; i < 120; i++) {
+      const seed = rng.int(0, 0x7fffffff);
+      const { graph: g, routeNodes } = planRoads(seed);
+      for (const kind of ['circuit', 'sprint'] as const) {
+        const route = buildRoute(g, kind, routeNodes[kind]);
+        expect(route.shortcuts.length, `${kind} ${seed}`).toBeGreaterThanOrEqual(1);
+        if (route.shortcuts.length >= 2) two++;
+        const onRoute = new Set(route.nodes);
+        const closed = new Set(route.closedStreets.map((c) => c.edge));
+        for (const sc of route.shortcuts) {
+          const e = g.edges[sc.edge];
+          expect(e.shortcut).toBe(true);
+          expect(onRoute.has(e.a) && onRoute.has(e.b)).toBe(true);
+          expect(closed.has(sc.edge)).toBe(false);
+          expect(route.edges.includes(sc.edge)).toBe(false);
+          // Saves a real share of what it skips, never a big chunk of the lap.
+          const skip = skipOf(route, sc);
+          expect(sc.length).toBeLessThanOrEqual(skip * (1 - cfg.minSave) + 1e-6);
+          expect(skip).toBeLessThanOrEqual(cfg.maxSkip * (route.closed ? route.length : route.finishS - route.startS) + 1e-6);
+          if (!route.closed) expect(sc.sIn >= route.startS && sc.sOut <= route.finishS).toBe(true);
+        }
+      }
+    }
+    // Most routes get a second one.
+    expect(two).toBeGreaterThan(160);
+  });
+
+  it('shortcuts are open, drivable and the same every time', () => {
+    const rng = new Rng(808);
+    let checked = 0;
+    for (let i = 0; i < 8; i++) {
+      const seed = rng.int(0, 0x7fffffff);
+      const kind = i % 2 ? 'sprint' : 'circuit';
+      const w = createWorld(seed, kind);
+      const again = createWorld(seed, kind);
+      expect(JSON.stringify(again.route.shortcuts)).toBe(JSON.stringify(w.route.shortcuts));
+      expect(w.route.shortcuts.length).toBeGreaterThanOrEqual(1);
+      const contacts: Parameters<World['collideCircle']>[3] = [];
+      for (const sc of w.route.shortcuts) {
+        const len = Math.hypot(sc.bx - sc.ax, sc.bz - sc.az);
+        // Down the middle from route to route: no wall in the way (city frontage, corner rails,
+        // closures), drivable ground and nothing solid standing in it.
+        for (const wall of w.walls) {
+          if (Math.max(wall.ax, wall.bx) < Math.min(sc.ax, sc.bx) - 5 || Math.min(wall.ax, wall.bx) > Math.max(sc.ax, sc.bx) + 5) continue;
+          if (Math.max(wall.az, wall.bz) < Math.min(sc.az, sc.bz) - 5 || Math.min(wall.az, wall.bz) > Math.max(sc.az, sc.bz) + 5) continue;
+          expect(segmentsCross({ x: sc.ax, z: sc.az }, { x: sc.bx, z: sc.bz }, { x: wall.ax, z: wall.az }, { x: wall.bx, z: wall.bz }), `${seed} wall ${wall.kind}`).toBe(false);
+        }
+        for (let s = 0; s <= len; s += 1) {
+          const x = sc.ax + ((sc.bx - sc.ax) * s) / len;
+          const z = sc.az + ((sc.bz - sc.az) * s) / len;
+          expect(w.surfaceAt(x, z)).not.toBe('offroad');
+          // A car's half width clear of every wall face (one sided walls also report a band behind them).
+          const n = w.collideCircle(x, z, 1.2, contacts);
+          for (let k = 0; k < n; k++) expect(Math.hypot(x - contacts[k].px, z - contacts[k].pz), `${seed} at ${s.toFixed(0)} m`).toBeGreaterThan(1.2);
+        }
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThanOrEqual(10);
+  });
+
+  /** A circuit shortcut that skips more than LOST.maxJump, so its credit cannot come from the plain rule. */
+  function longShortcut() {
+    const rng = new Rng(5150);
+    for (let i = 0; i < 60; i++) {
+      const seed = rng.int(0, 0x7fffffff);
+      const { graph, routeNodes } = planRoads(seed);
+      const route = buildRoute(graph, 'circuit', routeNodes.circuit);
+      const sc = route.shortcuts.find((x) => skipOf(route, x) > LOST.maxJump + 20);
+      if (sc) return { seed, sc };
+    }
+    return null;
+  }
+
+  it('credits the stretch a shortcut skips, and still caps any other jump', () => {
+    const found = longShortcut();
+    expect(found).not.toBeNull();
+    const { seed, sc } = found!;
+    const setup = () => {
+      const r = createRace(raceConfig(seed, 'circuit', 0));
+      while (r.tick < r.countdownTicks) stepRace(r, NEUTRAL_INPUT);
+      return r;
+    };
+    // Drive it: arrive on the route, take the alley, rejoin past the exit.
+    {
+      const r = setup();
+      const route = r.world.route;
+      const shortcut = route.shortcuts.find((x) => x.edge === sc.edge)!;
+      const skip = skipOf(route, shortcut);
+      const before = routeSample(route, shortcut.sIn - 30);
+      const after = routeSample(route, shortcut.sOut + 25);
+      r.cars[0].seg = -1;
+      driveAlong(r, [before, { x: before.x + before.tx * 0.5, z: before.z + before.tz * 0.5 }], 18);
+      const d0 = r.cars[0].dist;
+      const events = r.events.length;
+      const from = { x: r.cars[0].state.x, z: r.cars[0].state.z };
+      driveAlong(r, [from, { x: shortcut.ax, z: shortcut.az }, { x: shortcut.bx, z: shortcut.bz }, after], 18);
+      const gained = r.cars[0].dist - d0;
+      // Credited the route distance (30 m before + the skipped stretch + 25 m after), not the alley's length.
+      expect(gained).toBeGreaterThan(30 + skip + 25 - 6);
+      expect(gained).toBeLessThan(30 + skip + 25 + 6);
+      expect(r.events.slice(events).filter((e) => (e.type === 'reset' || e.type === 'wrongWay') && e.car === 0)).toEqual([]);
+    }
+    // One tick from the entry to the exit, inside the alley: the whole skip counts...
+    {
+      const r = setup();
+      const route = r.world.route;
+      const shortcut = route.shortcuts.find((x) => x.edge === sc.edge)!;
+      const rc = r.cars[0];
+      const near = { x: shortcut.ax + (shortcut.bx - shortcut.ax) * 0.05, z: shortcut.az + (shortcut.bz - shortcut.az) * 0.05 };
+      rc.state.x = near.x;
+      rc.state.z = near.z;
+      rc.seg = -1;
+      stepRace(r, NEUTRAL_INPUT);
+      const d0 = rc.dist;
+      const far = { x: shortcut.ax + (shortcut.bx - shortcut.ax) * 0.97, z: shortcut.az + (shortcut.bz - shortcut.az) * 0.97 };
+      rc.state.x = far.x;
+      rc.state.z = far.z;
+      stepRace(r, NEUTRAL_INPUT);
+      expect(rc.dist - d0).toBeGreaterThan(LOST.maxJump);
+    }
+    // ...while the same jump made along the route, nowhere near the alley, is cut to one tick's driving.
+    {
+      const r = setup();
+      const route = r.world.route;
+      const shortcut = route.shortcuts.find((x) => x.edge === sc.edge)!;
+      const rc = r.cars[0];
+      const s0 = shortcut.sOut + 120;
+      const a = routeSample(route, s0);
+      rc.state.x = a.x;
+      rc.state.z = a.z;
+      rc.seg = -1;
+      stepRace(r, NEUTRAL_INPUT);
+      const d0 = rc.dist;
+      const b = routeSample(route, s0 + skipOf(route, shortcut));
+      rc.state.x = b.x;
+      rc.state.z = b.z;
+      stepRace(r, NEUTRAL_INPUT);
+      expect(rc.dist - d0).toBeLessThan(LOST.maxJump);
+    }
   });
 });

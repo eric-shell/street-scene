@@ -12,6 +12,10 @@ import { SpatialGrid } from './spatial';
 import { Terrain, createTerrain } from './terrain';
 import { cos, distToSegment, segmentT, sin, sqrt } from '../sim/math';
 import { CityDistricts, planDistricts } from './districts';
+import { carveRouteShortcuts, hasShortcutSpot } from './districts/alley';
+
+/** Routes tried (the first pick, then alternatives) until one has room for a shortcut. */
+const ROUTE_TRIES = 12;
 import { pointInPolygon } from './districts/geom';
 import { Area, SURFACE_PHYSICS, Surface, SurfacePhysics } from './districts/types';
 
@@ -51,6 +55,47 @@ export interface City {
   blocks: CityBlocks;
   /** District areas (downtown blocks, parks, river, ...) and their builds. */
   districts: CityDistricts;
+  /**
+   * Both routes' graph nodes in driving order, picked while the city is
+   * planned (see planRoads) so their shortcuts could be carved into it.
+   */
+  routeNodes: Record<RouteKind, number[]>;
+}
+
+/**
+ * The street network as the game drives it: the road graph, every district
+ * planned, and both routes picked as soon as the street topology is final.
+ * Each route then gets its guaranteed shortcuts carved into the graph
+ * (carveRouteShortcuts), which splits some of its edges; the stored node
+ * lists include those split nodes, so routes stay on the same streets.
+ * Cheap (no blocks): tests use it to sweep many seeds.
+ */
+export function planRoads(seed: number): { graph: RoadGraph; districts: CityDistricts; routeNodes: Record<RouteKind, number[]> } {
+  const graph = generateRoadGraph(seed);
+  let routeNodes: Record<RouteKind, number[]> | null = null;
+  // Districts claim space and edit the graph (alleys, shortcuts, roundabouts, bridges) first.
+  const districts = planDistricts(seed, graph, {
+    topology(ctx) {
+      // A route with no room for a shortcut (one wrapped around the river, say) is swapped for the
+      // next alternative that has one; after ROUTE_TRIES the first pick stands.
+      const pick = (find: (variant: number) => number[], closed: boolean, others: { nodes: number[]; closed: boolean }[]) => {
+        const first = { nodes: find(0), closed };
+        for (let v = 1; v < ROUTE_TRIES && !hasShortcutSpot(ctx, first, others); v++) {
+          const alt = { nodes: find(v), closed };
+          if (hasShortcutSpot(ctx, alt, others)) return alt;
+        }
+        return first;
+      };
+      // The circuit is checked against the first sprint pick (whose start and finish it must keep clear).
+      const firstSprint = { nodes: findSprintNodes(ctx.graph, seed), closed: false };
+      const circuit = pick((v) => findCircuitNodes(ctx.graph, seed, v), true, [firstSprint]);
+      const sprint = pick((v) => (v ? findSprintNodes(ctx.graph, seed, v) : firstSprint.nodes), false, [circuit]);
+      carveRouteShortcuts(ctx, [circuit, sprint]);
+      routeNodes = { circuit: circuit.nodes, sprint: sprint.nodes };
+    },
+  });
+  if (!routeNodes) throw new Error('routes were not planned');
+  return { graph, districts, routeNodes };
 }
 
 export interface World extends City {
@@ -90,13 +135,11 @@ export interface World extends City {
 }
 
 export function createCity(seed: number): City {
-  const graph = generateRoadGraph(seed);
-  // Districts claim space and edit the graph (alleys, shortcuts, roundabouts, bridges) first.
-  const districts = planDistricts(seed, graph);
+  const { graph, districts, routeNodes } = planRoads(seed);
   const terrain = createTerrain(seed, districts.heightMods);
   const blocks = generateBlocks(seed, graph, terrain, districts.blocksInput);
   districts.finalize(blocks);
-  return { seed, graph, terrain, blocks, districts };
+  return { seed, graph, terrain, blocks, districts, routeNodes };
 }
 
 /** Rails are planned around node centers; roundabouts get none (their ring has its own outer walls). */
@@ -259,8 +302,7 @@ function closureRails(groups: BarrierGroup[], cornerRails: RailWall[]): RailWall
 }
 
 export function createRoute(city: City, kind: RouteKind): Route {
-  const nodes = kind === 'circuit' ? findCircuitNodes(city.graph, city.seed) : findSprintNodes(city.graph, city.seed);
-  return buildRoute(city.graph, kind, nodes);
+  return buildRoute(city.graph, kind, city.routeNodes[kind]);
 }
 
 export function createWorld(seed: number, kind: RouteKind, city: City = createCity(seed), opts: { openWorld?: boolean } = {}): World {
@@ -434,6 +476,9 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
 }
 
 /** Ids of non-streetlight props that a route wall (barrier or rail) passes through. */
+/** Props closer than this (m, beyond their radius) to a route barrier or rail start the race removed. */
+const COVER_CLEAR = 0.25;
+
 function propsUnderWalls(props: Prop[], grid: SpatialGrid, routeWalls: Wall[]): number[] {
   const out = new Set<number>();
   const scratch: number[] = [];
@@ -441,7 +486,8 @@ function propsUnderWalls(props: Prop[], grid: SpatialGrid, routeWalls: Wall[]): 
     grid.query(Math.min(w.ax, w.bx) - 3, Math.min(w.az, w.bz) - 3, Math.max(w.ax, w.bx) + 3, Math.max(w.az, w.bz) + 3, scratch);
     for (const id of scratch) {
       const p = props[id];
-      if (p.kind !== 'streetlight' && distToSegment(p.x, p.z, w.ax, w.az, w.bx, w.bz) <= p.radius + 0.1) out.add(id);
+      // Clutter a rail would clip (alley tables and crates at the back of a narrow sidewalk) goes too.
+      if (p.kind !== 'streetlight' && distToSegment(p.x, p.z, w.ax, w.az, w.bx, w.bz) <= p.radius + COVER_CLEAR) out.add(id);
     }
   }
   return [...out].sort((a, b) => a - b);

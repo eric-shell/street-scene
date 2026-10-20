@@ -253,6 +253,49 @@ describe('collisions', () => {
     expect(rail.maxYaw).toBeLessThan(1.5);
   });
 
+  it('reports spark telemetry (wall scrapes, bottoming out) that never feeds back into the physics', () => {
+    const t = getBaseTuning('s64');
+    const run = (world: World, garbage: boolean) => {
+      const c = createCar(3 - t.geometry.halfWidth, 0, 0, 0);
+      c.vz = 35;
+      c.vx = 1.5;
+      let maxScrape = 0;
+      let normal = 0;
+      for (let i = 0; i < 60; i++) {
+        if (garbage) {
+          // The sim must only write these: scrambling them changes nothing.
+          c.scrape = 999;
+          c.scrapeNx = c.scrapeNz = 7;
+          c.bottomOut = 5;
+          c.bottomWheel = 3;
+        }
+        stepCar(c, t, input({ throttle: 0.6, steer: -0.15 }), { world });
+        c.impact = collideCarWithWorld(c, t, world);
+        if (c.scrape > maxScrape) {
+          maxScrape = c.scrape;
+          normal = c.scrapeNx;
+        }
+      }
+      return { maxScrape, normal, end: [c.x, c.z, c.vx, c.vz, c.yaw] };
+    };
+    const wall = run(wallWorld('wall'), false);
+    expect(wall.maxScrape).toBeGreaterThan(20);
+    expect(wall.normal).toBe(-1);
+    expect(run(wallWorld('wall'), true).end).toEqual(wall.end);
+    const open = run(flatWorld(), false);
+    expect(open.maxScrape).toBe(0);
+    // Dropped onto the road from a jump: the suspension runs out of travel and the underbody hits.
+    const c = createCar(0, 0, 0, 1.2);
+    c.vz = 25;
+    c.vy = -5;
+    let bottom = 0;
+    for (let i = 0; i < 60; i++) {
+      stepCar(c, t, input({}), { world: flatWorld() });
+      bottom = Math.max(bottom, c.bottomOut);
+    }
+    expect(bottom).toBeGreaterThan(0.01);
+  });
+
   it('a race reports rate limited wall and car crash events for sounds', () => {
     const r = runAutopilot(raceConfig(424242, 'circuit', 3), 120);
     const walls = r.events.filter((e) => e.type === 'wall');

@@ -473,15 +473,17 @@ function updateProgress(r: RaceState, rc: RaceCar): void {
     if (delta < -L / 2) delta += L;
     else if (delta > L / 2) delta -= L;
   }
+  const prevS = rc.rawS;
   rc.rawS = p.s;
   rc.seg = p.seg;
   rc.lateral = p.lateral;
   if (r.config.openWorld) return updateOpenWorld(r, rc);
   if (rc.finished) return;
   // Progress never jumps: when the nearest route segment switches far ahead
-  // (a shortcut across a park, a lot or a back alley), only what the car could
-  // have driven this tick counts. Corner cuts stay well under the limit.
-  if (delta > LOST.maxJump) delta = Math.min(delta, c.speed * DT * 1.5 + 0.5);
+  // (a cut across a park or a lot), only what the car could have driven this
+  // tick counts. Corner cuts stay well under the limit. The route's own
+  // shortcuts are the exception: a car in one is credited the stretch it skips.
+  if (delta > LOST.maxJump && !inShortcut(route, prevS, p.s, c.x, c.z)) delta = Math.min(delta, c.speed * DT * 1.5 + 0.5);
   const prevDist = rc.dist;
   rc.dist += delta;
 
@@ -549,6 +551,35 @@ function updateProgress(r: RaceState, rc: RaceCar): void {
   else rc.stuckTime = Math.max(0, rc.stuckTime - DT);
   if (rc.stuckTime > (offroad ? LOST.offroadTime : LOST.time)) resetToRoad(r, rc);
 }
+
+/**
+ * A forward progress jump from s0 to s1 made inside one of the route's
+ * shortcuts: the car is within SHORTCUT.reach of the alley and the jump runs
+ * from around its entry to around its exit (positions relative to the entry,
+ * wrapped on circuits), so the skipped stretch is credited in full.
+ */
+function inShortcut(route: World['route'], s0: number, s1: number, x: number, z: number): boolean {
+  const L = route.length;
+  const rel = (s: number, from: number) => {
+    let d = s - from;
+    if (route.closed) {
+      d = ((d % L) + L) % L;
+      if (d > L / 2) d -= L;
+    }
+    return d;
+  };
+  for (const sc of route.shortcuts) {
+    if (distToSegment(x, z, sc.ax, sc.az, sc.bx, sc.bz) > SHORTCUT.reach) continue;
+    const span = rel(sc.sOut, sc.sIn);
+    const a = rel(s0, sc.sIn);
+    const b = rel(s1, sc.sIn);
+    if (a > -SHORTCUT.slack && a < span && b > a && b < span + SHORTCUT.slack) return true;
+  }
+  return false;
+}
+
+/** A shortcut jump counts within `reach` of the alley (m), its progress at most `slack` outside the shortcut's span (m). */
+const SHORTCUT = { reach: 14, slack: 40 } as const;
 
 /**
  * When a racing car counts as lost (race modes; see updateOpenWorld for test

@@ -1,13 +1,18 @@
 /**
  * Alley renderer: strings of warm bulbs sagging across raceway alleys from
- * wall to wall, a few dim lamps over back alley shortcuts (they stay dark on
+ * wall to wall, a few dim lamps over plain back alleys (they stay dark on
  * purpose), and a steel kicker deck over every back alley hump, following
  * the same height profile the sim drives on (hazard yellow at the toes and
- * the lip). Tables, crates, dumpsters and trash are destructible props drawn
+ * the lip). The route's own shortcuts are made to be seen: pink and amber
+ * string lights all the way through and glowing chevrons on the floor
+ * pointing from the entry to the exit (the sign over the entry is drawn by
+ * routeArrows.ts). Tables, crates, dumpsters and trash are destructible props drawn
  * by render/props.ts. Content to add: fire escapes, graffiti, steam vents,
  * puddles.
  */
 import { jumpProfile } from '../../city/districts/alley';
+import { CITY } from '../../city/config';
+import { routeSample } from '../../city/route';
 import type { DistrictRenderer, DistrictKit } from './kit';
 import { col, cylinder } from './kit';
 
@@ -21,15 +26,20 @@ const DECK_LIFT = 0.06;
 /** Deck rows every DECK_STEP m along the hump. */
 const DECK_STEP = 0.5;
 
-function stringLights(kit: DistrictKit, ax: number, az: number, bx: number, bz: number, half: number): void {
+const WARM = [col(0xffb35c, 2.4), col(0xffc98a, 2.2), col(0xff9a5c, 2.3), col(0xff7ab0, 1.8), col(0xfff0c8, 2)];
+/** Route shortcut bulbs: hot pink with amber, the shortcut sign's colours. */
+const SHORTCUT_BULBS = [col(0xff4fd8, 2.2), col(0xffb35c, 2.3), col(0xff2bd6, 2), col(0xffd08a, 2.1)];
+/** Floor chevrons along a route shortcut: spacing (m), size (m) and brightness. */
+const CHEVRON = { step: 7, length: 1.6, width: 2.4, bar: 0.45, color: col(0xff3bd8, 0.85) } as const;
+
+function stringLights(kit: DistrictKit, ax: number, az: number, bx: number, bz: number, half: number, warm = WARM, from = 10, to = 10): void {
   const len = Math.hypot(bx - ax, bz - az);
   const ux = (bx - ax) / len;
   const uz = (bz - az) / len;
   const nx = -uz;
   const nz = ux;
-  const warm = [col(0xffb35c, 2.4), col(0xffc98a, 2.2), col(0xff9a5c, 2.3), col(0xff7ab0, 1.8), col(0xfff0c8, 2)];
   const wire = col(0x101114);
-  for (let s = 10, k = 0; s < len - 10; s += STRING_STEP, k++) {
+  for (let s = from, k = 0; s < len - to; s += STRING_STEP, k++) {
     // Strings run a little diagonal, alternating, so they read as hand hung.
     const skew = (k % 2 ? 1 : -1) * 1.2;
     const x0 = ax + ux * (s - skew) - nx * half;
@@ -113,6 +123,39 @@ function kickerDeck(kit: DistrictKit, ax: number, az: number, ux: number, uz: nu
   }
 }
 
+/** Half the length of a back alley kicker (ramp + half the top), m. */
+const CITY_JUMP_HALF = CITY.districts.backAlley.jumpRamp + CITY.districts.backAlley.jumpTop / 2;
+
+/**
+ * Glowing chevrons on the floor of a route shortcut, every CHEVRON.step m from
+ * the entry (a) to the exit (b), skipping the mouths and the kicker (skip =
+ * [center, half length] of the hump along the alley).
+ */
+function floorChevrons(kit: DistrictKit, ax: number, az: number, bx: number, bz: number, mouth: number, skip: [number, number] | null): void {
+  const len = Math.hypot(bx - ax, bz - az);
+  const ux = (bx - ax) / len;
+  const uz = (bz - az) / len;
+  const lx = -uz;
+  const lz = ux;
+  const gb = kit.glow;
+  const at = (s: number, l: number) => {
+    const x = ax + ux * s + lx * l;
+    const z = az + uz * s + lz * l;
+    return gb.vertex(x, kit.h(x, z) + 0.06, z, 0, 1, 0, 0, 0, CHEVRON.color);
+  };
+  for (let s = mouth; s < len - mouth; s += CHEVRON.step) {
+    if (skip && Math.abs(s - skip[0]) < skip[1] + CHEVRON.length) continue;
+    // Two bars meeting at the tip, pointing toward b.
+    for (const side of [1, -1]) {
+      const tip0 = at(s + CHEVRON.length, 0);
+      const tip1 = at(s + CHEVRON.length - CHEVRON.bar, 0);
+      const out0 = at(s, side * CHEVRON.width / 2);
+      const out1 = at(s - CHEVRON.bar, side * CHEVRON.width / 2);
+      gb.quadFacing(tip1, tip0, out0, out1, 0, 1, 0);
+    }
+  }
+}
+
 export const alleyRenderer: DistrictRenderer = {
   kinds: ['alley', 'backAlley'],
   build(kit, areas) {
@@ -127,9 +170,31 @@ export const alleyRenderer: DistrictRenderer = {
         }
         continue;
       }
+      // Route shortcuts: lit up to be seen from the route, chevrons pointing the way through.
+      const sc = kit.world.route.shortcuts.find((x) => a.edges.includes(x.edge));
+      if (sc) {
+        const e = g.edges[sc.edge];
+        const half = e.width / 2 + e.sidewalk - 0.1;
+        // Keep the strings and chevrons inside the alley, clear of the streets at both ends: a diagonal
+        // mouth reaches further along the alley (the acute corner side).
+        const len = Math.hypot(sc.bx - sc.ax, sc.bz - sc.az);
+        const route = kit.world.route;
+        const mouthAt = (s: number) => {
+          const t = routeSample(route, s);
+          const ux = (sc.bx - sc.ax) / len;
+          const uz = (sc.bz - sc.az) / len;
+          const sinA = Math.max(0.35, Math.abs(t.tx * uz - t.tz * ux));
+          const cosA = Math.abs(t.tx * ux + t.tz * uz);
+          return Math.min(len * 0.4, (route.segWidth[t.seg] / 2 + CITY.sidewalk + half * cosA) / sinA + 1);
+        };
+        const m0 = mouthAt(sc.sIn);
+        const m1 = mouthAt(sc.sOut);
+        stringLights(kit, sc.ax, sc.az, sc.bx, sc.bz, half, SHORTCUT_BULBS, m0, m1);
+        floorChevrons(kit, sc.ax, sc.az, sc.bx, sc.bz, Math.min(m0, m1) - 2, a.params.jump ? [a.params.jumpS, CITY_JUMP_HALF + 1.5] : null);
+      }
       // Back alleys: a few dim lamps (low light on purpose) and the kicker.
       const dim = col(0xffb35c, 1.1);
-      for (const eid of a.edges) {
+      for (const eid of sc ? [] : a.edges) {
         const e = g.edges[eid];
         const p = g.nodes[e.a];
         const q = g.nodes[e.b];

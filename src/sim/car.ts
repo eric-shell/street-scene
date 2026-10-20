@@ -71,6 +71,21 @@ export interface CarState {
   wheelspin: boolean;
   surface: Surface;
   impact: number;
+  /**
+   * Telemetry for sparks, written by the sim and never read by it. Deepest
+   * bump stop overtravel of the tick (m past suspension travel, 0 when none):
+   * the underbody hitting the ground. bottomWheel is the wheel (geometry
+   * order) it happened at, -1 for the chassis itself scraping the ground.
+   */
+  bottomOut: number;
+  bottomWheel: number;
+  /** Sliding speed (m/s) along the deepest wall or rail contact of the tick, 0 when not touching. */
+  scrape: number;
+  /** That contact's point on the wall (m) and its unit normal into drivable space (0, 0 when not touching). */
+  scrapeX: number;
+  scrapeZ: number;
+  scrapeNx: number;
+  scrapeNz: number;
   nearMiss: boolean;
   drafting: boolean;
   aLong: number;
@@ -115,6 +130,13 @@ export function createCar(x: number, z: number, yaw: number, y: number): CarStat
     wheelspin: false,
     surface: 'road',
     impact: 0,
+    bottomOut: 0,
+    bottomWheel: 0,
+    scrape: 0,
+    scrapeX: 0,
+    scrapeZ: 0,
+    scrapeNx: 0,
+    scrapeNz: 0,
     nearMiss: false,
     drafting: false,
     aLong: 0,
@@ -309,6 +331,7 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
   const yawKick = inp.handbrake && c.gear > 0 ? -inp.steer * t.drift.handbrakeYawTorque * clamp(speed / 15, 0, 1) : 0;
   const ctl: Controls = { driveForce, brake, handbrake: inp.handbrake ? 1 : 0, surfaceGrip, dragMul, drive, yawKick, frontShare: split.front };
   const h = dt / SUBSTEPS;
+  c.bottomOut = 0;
   for (let s = 0; s < SUBSTEPS; s++) tcCut = integrate(c, t, ctl, world, h) || tcCut;
   c.tcActive = tcCut;
   c.wheelspin = c.spinFront > 0.2 || c.spinRear > 0.2;
@@ -428,7 +451,13 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
     let F = 0;
     if (comp + sag > 0) {
       F = k * (comp + sag) + damp * compVel;
-      if (comp > t.suspension.travel) F += k * 8 * (comp - t.suspension.travel);
+      if (comp > t.suspension.travel) {
+        F += k * 8 * (comp - t.suspension.travel);
+        if (comp - t.suspension.travel > c.bottomOut) {
+          c.bottomOut = comp - t.suspension.travel;
+          c.bottomWheel = i;
+        }
+      }
       if (F < 0) F = 0;
     }
     w.contact = comp + sag > 0;
@@ -577,6 +606,10 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
   c.roll = clamp(c.roll + c.rollRate * h, -0.15, 0.15);
   const ground = world.heightAt(c.x, c.z);
   if (c.y < ground - 0.35) {
+    if (c.vy < 0 && -c.vy * h > c.bottomOut) {
+      c.bottomOut = -c.vy * h;
+      c.bottomWheel = -1;
+    }
     c.y = ground - 0.35;
     if (c.vy < 0) c.vy = 0;
   }

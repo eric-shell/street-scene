@@ -6,7 +6,8 @@
  * Used on its own from the menu (it renders the backdrop city) and inside a
  * race or free roam as a photo mode (0 key): the session starts it from its
  * current camera, renders its own scene through the drone's camera and keeps
- * Escape for itself (DroneOptions).
+ * Escape for itself (DroneOptions). A heading-up minimap (ui/minimap.ts) rides
+ * along, centred on the drone with its view cone, zooming out as it climbs.
  */
 import * as THREE from 'three';
 import type { World } from '../city/world';
@@ -15,6 +16,7 @@ import type { GameRenderer } from '../render/scene';
 import { routeSample } from '../city/route';
 import { h, btn } from '../ui/dom';
 import { ArrowDown, ArrowUp, Compass, Drone, Gauge, Mountain, Route, X, icon } from '../ui/icons';
+import { MAP, MapCar, Minimap } from '../ui/minimap';
 
 export interface DroneOptions {
   /** Start pose (world position, yaw and pitch in rad); default behind and above the grid. */
@@ -23,12 +25,22 @@ export interface DroneOptions {
   escape?: boolean;
   /** Controls hint line. */
   hint?: string;
+  /** Cars to mark on the minimap (a race's field, frozen or replaying); none from the menu. */
+  cars?: () => readonly MapCar[];
 }
 
 const MAX_SPEED = 28;
 const BOOST = 3;
 const ACCEL = 4;
 const DAMP = 2.2;
+
+/**
+ * Minimap zoom (px per m) for a height above ground (m): street detail near the
+ * ground, a whole district at the 400 m ceiling.
+ */
+function mapScale(alt: number): number {
+  return Math.max(0.07, Math.min(MAP.scale, (MAP.scale * 70) / (alt + 40)));
+}
 
 export class DroneMode {
   readonly camera = new THREE.PerspectiveCamera(70, 1, 0.1, 2500);
@@ -51,6 +63,9 @@ export class DroneMode {
   private spdEl: HTMLElement;
   private hdgEl: HTMLElement;
   private tourBtn: HTMLButtonElement;
+  private map: Minimap;
+  private mapZoom: number = MAP.scale;
+  private cars: (() => readonly MapCar[]) | undefined;
   // touch
   private moveTouch: { id: number; x0: number; y0: number; x: number; y: number } | null = null;
   private lookTouch: { id: number; x: number; y: number } | null = null;
@@ -168,6 +183,9 @@ export class DroneMode {
       h('div', { class: 'drone-updown' }, hold(ArrowUp, 1), hold(ArrowDown, -1)),
       h('div', { class: 'drone-hint muted' }, opts.hint ?? 'WASD fly · drag to look · Space / Ctrl up / down · Shift boost · wheel speed · T tour · 0 or Esc exit'),
     );
+    this.map = new Minimap(world, 'hud-map drone-map');
+    this.root.append(this.map.canvas);
+    this.cars = opts.cars;
     uiRoot.append(this.root);
   }
 
@@ -258,6 +276,9 @@ export class DroneMode {
     this.spdEl.textContent = `${Math.round((this.tour ? 16 : this.vel.length()) * 3.6)} km/h`;
     const deg = ((((-this.yaw * 180) / Math.PI) % 360) + 360) % 360;
     this.hdgEl.textContent = `${['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8]} ${Math.round(deg)}°`;
+    this.mapZoom += (mapScale(alt) - this.mapZoom) * (1 - Math.exp(-dt * 3));
+    const fov = 2 * Math.atan(Math.tan((this.camera.fov * Math.PI) / 360) * this.gr.aspect);
+    this.map.draw({ x: this.pos.x, z: this.pos.z, yaw: this.yaw, scale: this.mapZoom, marker: 'drone', fov }, this.cars?.() ?? []);
   }
 
   render(dt: number): void {

@@ -1,11 +1,13 @@
 /**
  * Picks a closed circuit and a point to point sprint through the road graph,
- * places checkpoints and a start grid, and closes off side streets.
+ * places checkpoints and a start grid, lists the route's shortcuts (carved
+ * into the city for it, see districts/alley.ts) and closes off side streets.
  */
 import { CITY, ROUTE } from './config';
 import { RoadGraph, edgeBetween, otherNode } from './roadGraph';
 import { EdgeMouths, Sector, Wall, computeMouths, computeSectors, makeWall } from './blocks';
 import { Rng, deriveSeed } from '../sim/prng';
+import { shortcutSpan } from './districts/alley';
 import { DEG, Vec2, abs, atan2, clamp, cos, distToSegment, lineIntersectT, sign, sin, sqrt, wrapAngle, yawOf } from '../sim/math';
 
 export type RouteKind = 'circuit' | 'sprint';
@@ -36,8 +38,29 @@ export interface Route {
   checkpoints: number[];
   grid: GridSlot[];
   closedStreets: { edge: number; node: number }[];
+  /**
+   * Real shortcuts of this route: back alley edges with both ends on it that
+   * save distance (see shortcutSpan), entry (a) first in driving order. Every
+   * other shortcut edge at a route junction is closed off like a side street.
+   */
+  shortcuts: RouteShortcut[];
   tightCorners: number;
   sweepers: number;
+}
+
+export interface RouteShortcut {
+  /** Graph edge (a back alley flagged shortcut). */
+  edge: number;
+  /** Entry (on the route at sIn) and exit (at sOut) in world metres. */
+  ax: number;
+  az: number;
+  bx: number;
+  bz: number;
+  /** Route distance at the entry and the exit (m); on circuits sOut may wrap past the start (sOut < sIn). */
+  sIn: number;
+  sOut: number;
+  /** Length of the alley itself (m). */
+  length: number;
 }
 
 export interface RouteSample {
@@ -135,8 +158,9 @@ function pathLength(g: RoadGraph, nodes: number[], closed: boolean): number {
 function randomWeights(g: RoadGraph, rng: Rng): Float64Array {
   const w = new Float64Array(g.edges.length);
   g.edges.forEach((e, i) => {
-    // Favor the wide fast roads a little so routes have long straights.
-    const kindBias = e.kind === 'boulevard' ? 0.7 : e.kind === 'diagonal' ? 0.75 : e.kind === 'avenue' ? 0.85 : e.kind === 'alley' ? 0.9 : 1;
+    // Favor the wide fast roads a little so routes have long straights, and raceway alleys so
+    // more races squeeze through one.
+    const kindBias = e.kind === 'boulevard' ? 0.7 : e.kind === 'diagonal' ? 0.75 : e.kind === 'avenue' ? 0.85 : e.kind === 'alley' ? 0.78 : 1;
     const r = rng.range(0.45, 1.9);
     // Back alley shortcuts are never part of a route (Infinity is never relaxed).
     w[i] = e.shortcut ? Infinity : e.length * kindBias * r;
@@ -154,8 +178,9 @@ function score(stats: CornerStats, len: number, minLen: number, maxLen: number):
   return s;
 }
 
-export function findCircuitNodes(g: RoadGraph, seed: number): number[] {
-  const rng = new Rng(deriveSeed(seed, 'circuit'));
+/** `variant` > 0 draws an alternative circuit from its own random stream (planRoads uses it when a circuit has no room for a shortcut). */
+export function findCircuitNodes(g: RoadGraph, seed: number, variant = 0): number[] {
+  const rng = new Rng(deriveSeed(seed, variant ? `circuit:${variant}` : 'circuit'));
   let best: number[] | null = null;
   let bestScore = -Infinity;
   const n = g.nodes.length;
@@ -191,8 +216,9 @@ export function findCircuitNodes(g: RoadGraph, seed: number): number[] {
   return best;
 }
 
-export function findSprintNodes(g: RoadGraph, seed: number): number[] {
-  const rng = new Rng(deriveSeed(seed, 'sprint'));
+/** `variant` > 0 draws an alternative sprint from its own random stream (see findCircuitNodes). */
+export function findSprintNodes(g: RoadGraph, seed: number, variant = 0): number[] {
+  const rng = new Rng(deriveSeed(seed, variant ? `sprint:${variant}` : 'sprint'));
   const n = g.nodes.length;
   const span = sqrt((g.bounds.maxX - g.bounds.minX) ** 2 + (g.bounds.maxZ - g.bounds.minZ) ** 2);
   let best: number[] | null = null;
@@ -247,6 +273,8 @@ export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[]):
   let edges = polylineFrom(g, nodes, closed);
   let points: Vec2[];
   let segWidth: number[];
+  /** Polyline point of every plain (non roundabout) route node. */
+  const nodePoint = new Map<number, number>();
 
   if (closed) {
     // Start line in the middle of the longest straight.
@@ -266,6 +294,7 @@ export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[]):
     const n = nodes.length;
     nodes.forEach((id, i) => {
       const w = i === 0 ? longest.width : g.edges[edges[i - 1]].width;
+      if (!g.nodes[id].ring) nodePoint.set(id, points.length);
       appendNode(g, points, segWidth, w, nodes[(i - 1 + n) % n], id, nodes[(i + 1) % n]);
     });
     points.push({ x: mid.x, z: mid.z });
@@ -273,7 +302,10 @@ export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[]):
   } else {
     points = [];
     segWidth = [];
-    nodes.forEach((id, i) => appendNode(g, points, segWidth, i === 0 ? 0 : g.edges[edges[i - 1]].width, i > 0 ? nodes[i - 1] : -1, id, i + 1 < nodes.length ? nodes[i + 1] : -1));
+    nodes.forEach((id, i) => {
+      if (!g.nodes[id].ring || i === 0 || i === nodes.length - 1) nodePoint.set(id, points.length);
+      appendNode(g, points, segWidth, i === 0 ? 0 : g.edges[edges[i - 1]].width, i > 0 ? nodes[i - 1] : -1, id, i + 1 < nodes.length ? nodes[i + 1] : -1);
+    });
   }
 
   const cum = [0];
@@ -310,6 +342,7 @@ export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[]):
     checkpoints,
     grid: [],
     closedStreets: [],
+    shortcuts: [],
     tightCorners: stats.tight,
     sweepers: stats.sweepers,
   };
@@ -323,12 +356,26 @@ export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[]):
     route.grid.push({ x: p.x + p.tz * lateral, z: p.z - p.tx * lateral, yaw: yawOf(p.tx, p.tz), s });
   }
 
+  // Shortcuts: back alleys joining two points of the route that save distance stay open (both ends);
+  // any other back alley at a route junction is closed off like a side street.
+  const open = new Set<number>();
+  for (const e of g.edges) {
+    if (!e.shortcut) continue;
+    const ia = nodePoint.get(e.a);
+    const ib = nodePoint.get(e.b);
+    if (ia === undefined || ib === undefined) continue;
+    const span = shortcutSpan(cum[ia], cum[ib], e.length, length, closed, startS, finishS);
+    if (!span) continue;
+    const A = g.nodes[span.aFirst ? e.a : e.b];
+    const B = g.nodes[span.aFirst ? e.b : e.a];
+    route.shortcuts.push({ edge: e.id, ax: A.x, az: A.z, bx: B.x, bz: B.z, sIn: span.sIn, sOut: span.sOut, length: e.length });
+    open.add(e.id);
+  }
   const onRoute = new Set(edges);
   const routeNodeSet = new Set(nodes);
   for (const nid of routeNodeSet) {
     for (const eid of g.nodes[nid].edges) {
-      // Shortcut entrances stay open.
-      if (!onRoute.has(eid) && !g.edges[eid].shortcut) route.closedStreets.push({ edge: eid, node: nid });
+      if (!onRoute.has(eid) && !open.has(eid)) route.closedStreets.push({ edge: eid, node: nid });
     }
   }
   return route;
@@ -659,6 +706,48 @@ function localCityWalls(g: RoadGraph, sectors: Sector[][], mouths: EdgeMouths[],
   return out;
 }
 
+/** A corner rail reaching toward a route shortcut's T junction stops this far before it (m). */
+const TJUNCTION_CLEAR = 12;
+
+/**
+ * Road length beyond the neighbor of route node i (dir -1: before it, +1:
+ * after it) through straight-through T junctions whose only other road is a
+ * shortcut on the far side from `out` (a rail's outward side): those keep
+ * the straight going as far as a corner rail is concerned.
+ */
+function insideRun(g: RoadGraph, route: Route, i: number, dir: number, out: Vec2): number {
+  const n = route.nodes.length;
+  let extra = 0;
+  let j = i + dir;
+  for (let guard = 0; guard < n; guard++) {
+    if (route.closed) j = (j + n) % n;
+    else if (j <= 0 || j >= n - 1) break;
+    const id = route.nodes[j];
+    const node = g.nodes[id];
+    const prev = route.nodes[(j - dir + n) % n];
+    const next = route.nodes[(j + dir + n) % n];
+    if (node.edges.length !== 3 || node.ring) break;
+    const third = node.edges.find((eid) => {
+      const o = otherNode(g.edges[eid], id);
+      return o !== prev && o !== next;
+    });
+    if (third === undefined || !g.edges[third].shortcut) break;
+    const far = g.nodes[otherNode(g.edges[third], id)];
+    if ((far.x - node.x) * out.x + (far.z - node.z) * out.z >= 0) break;
+    const N = g.nodes[next];
+    const P = g.nodes[prev];
+    const ax = node.x - P.x;
+    const az = node.z - P.z;
+    const bx = N.x - node.x;
+    const bz = N.z - node.z;
+    // Straight through only.
+    if (abs(ax * bz - az * bx) > 0.02 * sqrt((ax * ax + az * az) * (bx * bx + bz * bz))) break;
+    extra += sqrt(bx * bx + bz * bz);
+    j += dir;
+  }
+  return extra;
+}
+
 /** 0 below e0, 1 above e1, a half cosine in between (C1, lowest peak curvature for the rise). */
 function cosStep(e0: number, e1: number, x: number): number {
   const t = clamp((x - e0) / (e1 - e0), 0, 1);
@@ -755,7 +844,11 @@ export function routeRails(g: RoadGraph, route: Route, props: readonly { x: numb
     // apex sits R(1/c - 1) inside V, at most railCornerCut.
     const c = cos(theta / 2);
     const tanHalf = sin(theta / 2) / c;
-    const maxReach = Math.min(lenIn, lenOut) * 0.42;
+    // A route shortcut's T junction on the inside of the turn does not end the straight the rail
+    // runs along (its mouth faces away from the rail), so the reach counts the road beyond it.
+    // It still stops TJUNCTION_CLEAR short of that junction (its traffic lights and crosswalk).
+    const reachOf = (len: number, extra: number) => (extra > 0 ? Math.max(len * 0.42, Math.min((len + extra) * 0.42, len - TJUNCTION_CLEAR)) : len * 0.42);
+    const maxReach = Math.min(reachOf(lenIn, insideRun(g, route, i, -1, oin)), reachOf(lenOut, insideRun(g, route, i, 1, oout)));
     const rMax = Math.max(1, (maxReach - 1) / tanHalf);
     let R = Math.min(rMax, outside.length ? (ROUTE.railCornerCut * c) / (1 - c) : Math.max(hIn, hOut) + 0.3);
     // The city's real walls around the corner when given (district features included), else the sidewalk lines.

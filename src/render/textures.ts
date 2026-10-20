@@ -1,6 +1,7 @@
 /**
- * Procedural canvas textures: asphalt, building facades and windows, neon
- * sign atlas, glow sprites, and the night environment map.
+ * Procedural canvas textures: asphalt, sidewalks, the neon sign atlas, glow
+ * sprites, and the night environment map. Building facades live in
+ * facadeAtlas.ts.
  * Render-side only, so plain Math.random is fine here, but we use a seeded
  * generator anyway so the city looks the same for the same seed.
  */
@@ -19,14 +20,6 @@ export function kelvin(k: number): string {
   const b = t >= 66 ? 255 : t <= 19 ? 0 : 138.5177312231 * Math.log(t - 10) - 305.0447927307;
   const c = (v: number) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0');
   return `#${c(r)}${c(g)}${c(b)}`;
-}
-
-/** A plausible interior light temperature: mostly warm homes, some offices, a few extremes. */
-export function interiorKelvin(r: number): number {
-  if (r < 0.55) return 2600 + r * 2600; // 2600-4030 K homes
-  if (r < 0.88) return 4200 + (r - 0.55) * 7000; // 4200-6500 K offices
-  if (r < 0.95) return 2000 + (r - 0.88) * 7000; // 2000-2500 K sodium / candle
-  return 7000 + (r - 0.95) * 20000; // 7000-8000 K cold screens
 }
 
 function canvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
@@ -116,50 +109,6 @@ export function makeSidewalk(): THREE.Texture {
 }
 
 /** Window grid layout shared by the facade color map and the lit window emissive map. */
-export const WINDOW_COLS = 32;
-export const WINDOW_ROWS = 64;
-
-export function makeFacade(seed: number): { map: THREE.Texture; emissive: THREE.Texture } {
-  const rng = new Rng(seed ^ 0x51de);
-  const cw = 16;
-  const ch = 16;
-  const W = WINDOW_COLS * cw;
-  const H = WINDOW_ROWS * ch;
-  const [c, ctx] = canvas(W, H);
-  const [e, ectx] = canvas(W, H);
-  ctx.fillStyle = '#3a3e4a';
-  ctx.fillRect(0, 0, W, H);
-  ectx.fillStyle = '#000';
-  ectx.fillRect(0, 0, W, H);
-  for (let row = 0; row < WINDOW_ROWS; row++) {
-    // whole floors tend to be lit or dark together
-    const floorLit = rng.next();
-    for (let col = 0; col < WINDOW_COLS; col++) {
-      const x = col * cw;
-      const y = row * ch;
-      ctx.fillStyle = '#10141f';
-      ctx.fillRect(x + 4, y + 4, cw - 8, ch - 7);
-      const lit = rng.next() < 0.08 + floorLit * floorLit * 0.5;
-      if (lit) {
-        ectx.fillStyle = kelvin(interiorKelvin(rng.next()));
-        ectx.globalAlpha = rng.range(0.35, 1);
-        ectx.fillRect(x + 4, y + 4, cw - 8, ch - 7);
-        // blinds
-        if (rng.next() < 0.3) {
-          ectx.fillStyle = '#000';
-          ectx.globalAlpha = 0.5;
-          ectx.fillRect(x + 4, y + 4, cw - 8, rng.range(2, ch - 8));
-        }
-        ectx.globalAlpha = 1;
-      }
-    }
-  }
-  const map = tex(c);
-  const emissive = tex(e);
-  map.magFilter = THREE.LinearFilter;
-  return { map, emissive };
-}
-
 export const SIGN_NAMES = [
   'NEON NOODLE', 'KAIJU KARAOKE', 'MIDNIGHT TUNE', 'ZERO AUTO', 'LUCKY 7', 'SAKURA BAR',
   'TURBO TACO', 'CYBER CAFE', 'VOLT MOTORS', 'NIGHT OWL', 'RAMEN 24H', 'HOTEL ORBIT',

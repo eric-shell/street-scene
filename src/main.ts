@@ -151,8 +151,10 @@ function renderBackdrop(dt: number): void {
 // Overlays
 // ---------------------------------------------------------------------------
 function syncMusicMode(): void {
-  const racing = state === 'race' && session && !session.paused && session.race.phase !== 'finished';
-  const context = state === 'race' ? 'race' : state === 'garage' ? 'garage' : state === 'drone' || state === 'freefly' ? 'drone' : 'menu';
+  // The photo mode drone lays the screen out like the drone flyover (its buttons sit where the race's compact player would).
+  const photo = state === 'race' && !!session?.droneActive;
+  const racing = state === 'race' && session && !session.paused && session.race.phase !== 'finished' && !photo;
+  const context = photo ? 'drone' : state === 'race' ? 'race' : state === 'garage' ? 'garage' : state === 'drone' || state === 'freefly' ? 'drone' : 'menu';
   musicWidget.setMode(racing ? 'compact' : 'full', context);
   music.setDuck(state === 'race' && session?.paused ? 0.55 : 1);
 }
@@ -494,6 +496,8 @@ fpsEl.style.display = settings.showFps || params.has('fps') ? '' : 'none';
 document.body.appendChild(fpsEl);
 let frames = 0;
 let fpsAcc = 0;
+/** Whether the session's photo mode drone was up last frame (it toggles inside the session, on its own keys). */
+let photoDrone = false;
 
 const loop = new FixedStepLoop({
   tick() {
@@ -501,8 +505,13 @@ const loop = new FixedStepLoop({
     else if (state === 'garage') garageScreen?.tick();
   },
   render(alpha, dt) {
-    if (state === 'race' && session) session.render(alpha, dt);
-    else if (state === 'garage' && garageScreen) garageScreen.render(dt);
+    if (state === 'race' && session) {
+      session.render(alpha, dt);
+      if (session.droneActive !== photoDrone) {
+        photoDrone = session.droneActive;
+        syncMusicMode();
+      }
+    } else if (state === 'garage' && garageScreen) garageScreen.render(dt);
     else if (state === 'drone' && drone) drone.render(dt);
     else if (state === 'freefly' && fly && backdrop) {
       fly.update(dt);

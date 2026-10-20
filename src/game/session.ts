@@ -12,6 +12,7 @@ import { VisualBuild } from '../sim/build';
 import { DT } from '../sim/constants';
 import { CarView, CarPose } from '../render/carView';
 import { LightTrails } from '../render/lightTrails';
+import { Sparks } from '../render/sparks';
 import { EngineVoice, audioHub } from '../audio/engineAudio';
 import { Sfx } from '../audio/sfx';
 import { manifestCar } from '../render/carAssets';
@@ -24,7 +25,7 @@ import { FreeFlyCamera } from '../render/freeFly';
 import { DroneMode } from './drone';
 import type { CameraMode } from '../render/camera';
 import { InputManager } from '../input/inputManager';
-import { Hud, HudData } from '../ui/hud';
+import { Hud, HudCar, HudData } from '../ui/hud';
 import { Settings } from '../ui/settings';
 import { formatTime } from '../ui/format';
 import { ReplayData } from '../replay/replay';
@@ -115,6 +116,27 @@ const NITRO_IN = 5;
 const NITRO_OUT = 2.5;
 /** On a tick where the player only hit props, the speed drop must exceed slowdownMin by this many times over to count as a crash. */
 const PROP_SLOWDOWN_EXTRA = 1.6;
+
+/** Car sparks (render/sparks.ts): when, where and how many, from the sim's contact telemetry. */
+const SPARK = {
+  /** Only cars this close to the camera throw sparks (m). */
+  range: 140,
+  /** Sparks keep this share of the car's speed along the contact, so they stream out behind it. */
+  carry: 0.75,
+  /** Scraping: sliding speed (m/s) before it sparks, sparks per tick per m/s, cap per tick, height band above the road (m). */
+  scrapeMin: 2,
+  scrapePerMs: 0.22,
+  scrapeMax: 6,
+  scrapeHeight: [0.2, 0.6],
+  /** Bottoming out: overtravel (m) and speed (m/s) before it sparks, sparks per m of overtravel at 25 m/s, cap per tick. */
+  bottomMin: 0.004,
+  bottomSpeed: 5,
+  bottomPerM: 260,
+  bottomMax: 14,
+  /** A hard wall hit: sparks per m/s of impact on top of 8, cap. */
+  burstPerMs: 2.2,
+  burstMax: 46,
+} as const;
 /** A crowd section's heard excitement crossing this cheers out loud, at most every SECTION_CHEER_GAP s. */
 const SECTION_CHEER_LEVEL = 0.7;
 const SECTION_CHEER_GAP = 8;
@@ -192,6 +214,8 @@ export class RaceSession {
   private unsub: (() => void)[] = [];
   readonly isReplay: boolean;
   private trails: LightTrails;
+  /** Underbody and wall sparks for every car near the camera (render/sparks.ts). */
+  private sparks: Sparks;
   private carLight: THREE.PointLight;
   private engines: EngineVoice[] = [];
   private sfx: Sfx | null = null;
@@ -229,6 +253,8 @@ export class RaceSession {
     this.night.crowds.setEnabled(!this.openWorld);
     this.crowdCars = this.race.cars.map(() => ({ x: 0, z: 0, speed: 0 }));
     this.hud = new Hud(uiRoot, this.race.world);
+    this.sparks = new Sparks(settings.quality);
+    this.night.scene.add(this.sparks.mesh);
     const loads: Promise<void>[] = [];
     this.race.cars.forEach((rc, i) => {
       const view = new CarView(rc.carId, assets, { headlights: i === 0, underglowLight: i === 0, envMap: gr.envMap });
@@ -403,6 +429,7 @@ export class RaceSession {
       start: { x: cam.position.x, y: cam.position.y, z: cam.position.z, yaw: Math.atan2(dir.x, dir.z), pitch: Math.asin(Math.max(-1, Math.min(1, dir.y))) },
       escape: false,
       hint: 'WASD fly · drag to look · Space / Ctrl up / down · Shift boost · wheel speed · T tour · 0 or Esc back to the car',
+      cars: () => this.mapCars(),
     });
     this.droneResume = !this.isReplay;
     if (this.droneResume) {
@@ -492,6 +519,7 @@ export class RaceSession {
     }
     this.sfx?.syncCountdown(r);
     this.handleEvents();
+    this.emitSparks();
     // A sudden loss of speed (a hard hit on anything, a dumpster) shakes the camera hard; resets do not count.
     // Ploughing through soft props (bushes, tables, bags) costs a little speed too: that stays a light knock.
     const drop = speedBefore - r.cars[0].state.speed;
@@ -508,6 +536,60 @@ export class RaceSession {
       this.cine.settle();
       this.onFinish({ race: r, tuned: this.tuned });
     }
+  }
+
+  /**
+   * Sparks from this tick's car telemetry, for cars near the camera: a stream
+   * from the contact while a car scrapes a wall or rail (carried along the
+   * slide, so it trails behind), and a spray off the underbody corner that
+   * bottomed out (landings, crests, kickers).
+   */
+  private emitSparks(): void {
+    const cam = (this.lastCamera ?? this.cam.camera).position;
+    const w = this.race.world;
+    for (const rc of this.race.cars) {
+      const c = rc.state;
+      if ((c.x - cam.x) ** 2 + (c.z - cam.z) ** 2 > SPARK.range * SPARK.range) continue;
+      if ((c.scrapeNx || c.scrapeNz) && c.scrape > SPARK.scrapeMin) {
+        const g = w.heightAt(c.scrapeX, c.scrapeZ);
+        const tx = -c.scrapeNz;
+        const tz = c.scrapeNx;
+        const vt = (c.vx * tx + c.vz * tz) * SPARK.carry;
+        const n = Math.min(SPARK.scrapeMax, c.scrape * SPARK.scrapePerMs);
+        const y = g + SPARK.scrapeHeight[0] + Math.random() * (SPARK.scrapeHeight[1] - SPARK.scrapeHeight[0]);
+        this.sparks.emit(this.time, c.scrapeX + c.scrapeNx * 0.06, y, c.scrapeZ + c.scrapeNz * 0.06, tx * vt + c.scrapeNx * 1.6, 1.4, tz * vt + c.scrapeNz * 1.6, 1.6, n, g);
+      }
+      if (c.bottomOut > SPARK.bottomMin && c.speed > SPARK.bottomSpeed) {
+        const fx = Math.sin(c.yaw);
+        const fz = Math.cos(c.yaw);
+        let wu = 0;
+        let wv = 0;
+        if (c.bottomWheel >= 0) {
+          // Under the chassis just inboard of that wheel.
+          const wh = rc.tuning.geometry.wheels[c.bottomWheel];
+          wv = wh[0] * 0.55;
+          wu = wh[2] * 0.8;
+        }
+        const x = c.x + fx * wu + fz * wv;
+        const z = c.z + fz * wu - fx * wv;
+        const g = w.heightAt(x, z);
+        const n = Math.min(SPARK.bottomMax, 3 + c.bottomOut * SPARK.bottomPerM * Math.min(1, c.speed / 25));
+        this.sparks.emit(this.time, x, g + 0.04, z, c.vx * SPARK.carry * 0.75, 1.2, c.vz * SPARK.carry * 0.75, 2.2, n, g);
+      }
+    }
+  }
+
+  /** A hard hit on a wall or rail: one burst off the contact, bigger the harder the hit (impact m/s). */
+  private sparkBurst(car: number, impact: number): void {
+    const rc = this.race.cars[car];
+    const c = rc?.state;
+    if (!c || !(c.scrapeNx || c.scrapeNz)) return;
+    const cam = (this.lastCamera ?? this.cam.camera).position;
+    if ((c.x - cam.x) ** 2 + (c.z - cam.z) ** 2 > SPARK.range * SPARK.range) return;
+    const g = this.race.world.heightAt(c.scrapeX, c.scrapeZ);
+    const out = 1 + impact * 0.25;
+    const n = Math.min(SPARK.burstMax, 8 + impact * SPARK.burstPerMs);
+    this.sparks.emit(this.time, c.scrapeX + c.scrapeNx * 0.08, g + 0.45, c.scrapeZ + c.scrapeNz * 0.08, c.vx * 0.4 + c.scrapeNx * out, 2, c.vz * 0.4 + c.scrapeNz * out, 3.2, n, g);
   }
 
   /** Gate position for crowd sounds: the start line or the finish line (the same gate on circuits). */
@@ -565,6 +647,7 @@ export class RaceSession {
     for (; this.eventIndex < r.events.length; this.eventIndex++) {
       const e = r.events[this.eventIndex];
       this.sfx?.raceEvent(e, r);
+      if (e.type === 'wall') this.sparkBurst(e.car, e.value ?? 0);
       // Rivals crossing the finish get a smaller cheer.
       if (e.type === 'finish' && e.car !== 0 && !this.openWorld) this.night.crowds.cheer('finish', 0.8);
       // A rival slamming into the player shakes the player's camera too.
@@ -619,6 +702,11 @@ export class RaceSession {
 
   render(alpha: number, dt: number): void {
     this.time += dt;
+    {
+      const cam = this.lastCamera ?? this.cam.camera;
+      const px = this.gr.renderer.domElement.clientHeight || window.innerHeight;
+      this.sparks.update(this.time, (2 * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, px));
+    }
     this.alpha = alpha;
     const r = this.race;
     const poses = this.curr.map((c, i) => lerpSnap(this.prev[i], c, this.paused ? 1 : alpha));
@@ -789,6 +877,14 @@ export class RaceSession {
     return cam;
   }
 
+  /** Car markers for the minimap: the field, then the ghost. */
+  private mapCars(): HudCar[] {
+    return [
+      ...this.curr.map((s, i) => ({ x: s.x, z: s.z, yaw: s.yaw, isPlayer: i === 0 })),
+      ...(this.ghostCurr ? [{ x: this.ghostCurr.x, z: this.ghostCurr.z, yaw: this.ghostCurr.yaw, isPlayer: false, isGhost: true }] : []),
+    ];
+  }
+
   private updateHud(dt: number): void {
     const r = this.race;
     const rc = r.cars[0];
@@ -817,10 +913,7 @@ export class RaceSession {
       wrongWay: rc.wrongWay,
       progress: Math.max(0, rc.dist) / r.distance,
       drift: r.config.mode === 'drift' ? { total: r.drift.total, current: r.drift.current, multiplier: r.drift.multiplier } : undefined,
-      cars: [
-        ...this.curr.map((s, i) => ({ x: s.x, z: s.z, yaw: s.yaw, isPlayer: i === 0 })),
-        ...(this.ghostCurr ? [{ x: this.ghostCurr.x, z: this.ghostCurr.z, yaw: this.ghostCurr.yaw, isPlayer: false, isGhost: true }] : []),
-      ],
+      cars: this.mapCars(),
       ghost: !!this.ghostRace,
     };
     if (this.openWorld) {
@@ -861,6 +954,7 @@ export class RaceSession {
     this.views.forEach((v) => v.dispose());
     this.ghostView?.dispose();
     this.trails.dispose();
+    this.sparks.dispose();
     this.engines.forEach((e) => e.dispose());
     this.night.city.finishLine.onFirework = null;
     this.sfx?.dispose();

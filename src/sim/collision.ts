@@ -78,6 +78,11 @@ export function collideCarWithWorld(c: CarState, t: CarTuning, world: World, hit
   let railTx = 0;
   let railTz = 0;
   let railDepth = 0;
+  // Spark telemetry: the deepest contact of the tick and the speed sliding along it.
+  let scrapeDepth = 0;
+  c.scrape = 0;
+  c.scrapeNx = 0;
+  c.scrapeNz = 0;
   for (const circ of circleOffsets(t)) {
     // Two passes handle corners where two walls meet.
     for (let pass = 0; pass < 2; pass++) {
@@ -112,6 +117,14 @@ export function collideCarWithWorld(c: CarState, t: CarTuning, world: World, hit
       const vpx = c.vx + c.yawRate * rz;
       const vpz = c.vz - c.yawRate * rx;
       const vn = vpx * nx + vpz * nz;
+      if (depth > scrapeDepth) {
+        scrapeDepth = depth;
+        c.scrape = abs(vpz * nx - vpx * nz);
+        c.scrapeX = best.px;
+        c.scrapeZ = best.pz;
+        c.scrapeNx = nx;
+        c.scrapeNz = nz;
+      }
       if (vn >= 0) continue;
       const rn = rz * nx - rx * nz;
       const invM = 1 / m + ((rn * rn) / I) * angK;

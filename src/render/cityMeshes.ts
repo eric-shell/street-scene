@@ -1,28 +1,24 @@
 /**
  * Turns the pure city description into three.js meshes: roads with markings,
- * curbs and sidewalks, buildings with procedural windows, streetlight lamp
- * positions, neon signs and the start line. Built once per world; read only.
+ * curbs and sidewalks, the buildings (regional architecture, buildings.ts),
+ * streetlight lamp positions, neon signs and the start line. Built once per
+ * world; read only.
  */
 import * as THREE from 'three';
 import { CITY } from '../city/config';
 import { World } from '../city/world';
-import { Building } from '../city/blocks';
 import { Vec2 } from '../sim/math';
-import { Rng } from '../sim/prng';
 import { GeoBuilder } from './geoBuilder';
 import { buildFinishLines, FinishLines } from './finishLine';
 import { STREETLIGHT_ARM, STREETLIGHT_POLE_H } from './props';
-import { addPodiumFace, createPodiumOutput, makeFacadeKitTextures, podiumExtrusions, podiumFloors, podiumHeight } from './facadeKit';
-import { corridorClearance } from '../city/blocks';
+import { createPodiumOutput, makeFacadeKitTextures } from './facadeKit';
+import { buildBuildings, Detail } from './buildings';
 import {
   NEON_COLORS,
   SIGN_ATLAS_COLS,
   SIGN_ATLAS_ROWS,
   SIGN_NAMES,
-  WINDOW_COLS,
-  WINDOW_ROWS,
   makeAsphalt,
-  makeFacade,
   makeSidewalk,
   makeSignAtlas,
 } from './textures';
@@ -36,13 +32,20 @@ export interface CityMeshes {
   barrierLampMaterial: THREE.MeshBasicMaterial;
   /** Start / finish gantries: call update(time) per frame and burst() on the player's finish. */
   finishLine: FinishLines;
+  /** Animated building windows and aviation lights (s). */
+  update(time: number): void;
   dispose(): void;
+}
+
+export interface CityMeshOptions {
+  /** Architectural detail tier (fire escapes, clutter, animated windows); default medium. */
+  detail?: Detail;
 }
 
 const ROAD_Y = 0.02;
 const MARK_Y = 0.045;
 
-export function buildCityMeshes(world: World): CityMeshes {
+export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityMeshes {
   const group = new THREE.Group();
   group.name = 'city';
   const h = world.heightAt;
@@ -244,104 +247,16 @@ export function buildCityMeshes(world: World): CityMeshes {
   group.add(walkMesh);
 
   // ---------- Buildings ----------
-  const facade = makeFacade(world.seed);
-  const walls = new GeoBuilder(true);
-  const roofs = new GeoBuilder(true);
-  const trims = new GeoBuilder(true);
-  const rng = new Rng(world.seed ^ 0xb1d);
-  const facadeTints = [0x4a4f5e, 0x564c44, 0x3e4858, 0x5c6270, 0x4a4252, 0x36404c].map((c) => new THREE.Color(c));
+  // Regional architecture (architecture.ts plans the styles, buildings.ts builds them) over facade kit podiums.
   const neon = NEON_COLORS.map((c) => new THREE.Color(c));
   const podium = createPodiumOutput();
-  const scratch: number[] = [];
-  const addBuilding = (b: Building) => {
-    const ux = Math.cos(b.yaw);
-    const uz = -Math.sin(b.yaw);
-    const wx = Math.sin(b.yaw);
-    const wz = Math.cos(b.yaw);
-    const hw = b.w / 2;
-    const hd = b.d / 2;
-    const corner = (su: number, sw: number): Vec2 => ({ x: b.x + ux * hw * su + wx * hd * sw, z: b.z + uz * hw * su + wz * hd * sw });
-    const cs = [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)];
-    const y1 = b.baseY + b.h;
-    // Street level podium (2-4 floors) gets the facade kit; the tower starts above it.
-    const street = b.baseY + 0.6;
-    const floors = podiumFloors(rng, b.h - 0.6);
-    const y0 = street + podiumHeight(floors);
-    const ext = podiumExtrusions(rng, floors);
-    const tint = facadeTints[b.style % facadeTints.length].clone().multiplyScalar(rng.range(0.7, 1.1));
-    const offU = rng.int(0, WINDOW_COLS - 1) / WINDOW_COLS;
-    const offV = rng.int(0, WINDOW_ROWS - 1) / WINDOW_ROWS;
-    const floorsV = 1 / WINDOW_ROWS / 3.2;
-    const colsU = 1 / WINDOW_COLS / 2.1;
-    let uAcc = 0;
-    for (let i = 0; i < 4; i++) {
-      const p = cs[i];
-      const q = cs[(i + 1) % 4];
-      const len = Math.hypot(q.x - p.x, q.z - p.z);
-      const mx = (p.x + q.x) / 2 - b.x;
-      const mz = (p.z + q.z) / 2 - b.z;
-      const ml = Math.hypot(mx, mz) || 1;
-      const nx = mx / ml;
-      const nz = mz / ml;
-      // Faces that look onto a street get storefronts; the rest get plain masonry.
-      const front = corridorClearance(g, world.blocks.edgeGrid, (p.x + q.x) / 2 + nx * 1.5, (p.z + q.z) / 2 + nz * 1.5, scratch) < 2;
-      addPodiumFace(podium, { ax: p.x, az: p.z, bx: q.x, bz: q.z, nx, nz, y0: street, yBase: b.baseY, front }, floors, rng, ext);
-      if (y1 - y0 < 0.5) continue;
-      const u0 = offU + uAcc * colsU;
-      const u1 = offU + (uAcc + len) * colsU;
-      uAcc += Math.round(len / 2.1) * 2.1 + 2.1;
-      const v0 = offV;
-      const v1 = offV + (y1 - y0) * floorsV;
-      const a = walls.vertex(p.x, y0, p.z, nx, 0, nz, u0, v0, tint);
-      const bb = walls.vertex(q.x, y0, q.z, nx, 0, nz, u1, v0, tint);
-      const c = walls.vertex(q.x, y1, q.z, nx, 0, nz, u1, v1, tint);
-      const d = walls.vertex(p.x, y1, p.z, nx, 0, nz, u0, v1, tint);
-      walls.quadFacing(a, bb, c, d, nx, 0, nz);
-    }
-    const roofTint = new THREE.Color(0x15161c).multiplyScalar(rng.range(0.8, 1.4));
-    const r = cs.map((p) => roofs.vertex(p.x, y1, p.z, 0, 1, 0, 0, 0, roofTint));
-    roofs.quadFacing(r[0], r[1], r[2], r[3], 0, 1, 0);
-    // neon roof trim on some buildings
-    if (rng.chance(0.16) || (b.h > 50 && rng.chance(0.5))) {
-      const col = neon[rng.int(0, neon.length - 1)];
-      const ty0 = y1 - 0.5;
-      for (let i = 0; i < 4; i++) {
-        const p = cs[i];
-        const q = cs[(i + 1) % 4];
-        const mx = (p.x + q.x) / 2 - b.x;
-        const mz = (p.z + q.z) / 2 - b.z;
-        const ml = Math.hypot(mx, mz) || 1;
-        const nx = mx / ml;
-        const nz = mz / ml;
-        const o = 0.06;
-        const a = trims.vertex(p.x + nx * o, ty0, p.z + nz * o, nx, 0, nz, 0, 0, col);
-        const bb = trims.vertex(q.x + nx * o, ty0, q.z + nz * o, nx, 0, nz, 0, 0, col);
-        const c = trims.vertex(q.x + nx * o, y1, q.z + nz * o, nx, 0, nz, 0, 0, col);
-        const d = trims.vertex(p.x + nx * o, y1, p.z + nz * o, nx, 0, nz, 0, 0, col);
-        trims.quadFacing(a, bb, c, d, nx, 0, nz);
-      }
-    }
-  };
-  world.blocks.buildings.forEach(addBuilding);
-  const buildingMat = track(
-    new THREE.MeshStandardMaterial({
-      map: track(facade.map),
-      emissiveMap: track(facade.emissive),
-      emissive: 0xffffff,
-      emissiveIntensity: 1.1,
-      vertexColors: true,
-      roughness: 0.55,
-      metalness: 0.1,
-      envMapIntensity: 0.6,
-    }),
-  );
-  const bMesh = new THREE.Mesh(track(walls.build()), buildingMat);
-  bMesh.name = 'buildings';
-  group.add(bMesh);
+  const buildings = buildBuildings(world, podium, { detail: opts.detail ?? 'medium' });
+  disposables.push(buildings);
+  for (const m of buildings.meshes) group.add(m);
   {
     const kit = makeFacadeKitTextures(world.seed);
     const podiumMat = track(
-      new THREE.MeshStandardMaterial({ map: track(kit.map), emissiveMap: track(kit.emissive), emissive: 0xffffff, emissiveIntensity: 1.05, roughness: 0.6, metalness: 0.05, envMapIntensity: 0.7 }),
+      new THREE.MeshStandardMaterial({ map: track(kit.map), emissiveMap: track(kit.emissive), emissive: 0xffffff, emissiveIntensity: 1.05, vertexColors: true, roughness: 0.6, metalness: 0.05, envMapIntensity: 0.7 }),
     );
     const pm = new THREE.Mesh(track(podium.walls.build()), podiumMat);
     pm.name = 'podiums';
@@ -363,16 +278,6 @@ export function buildCityMeshes(world: World): CityMeshes {
       sm.renderOrder = 1;
       group.add(sm);
     }
-  }
-  const roofMesh = new THREE.Mesh(track(roofs.build()), track(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 })));
-  roofMesh.name = 'roofs';
-  group.add(roofMesh);
-  if (trims.vertexCount > 0) {
-    const trimMat = track(new THREE.MeshBasicMaterial({ vertexColors: true }));
-    trimMat.color.setScalar(1.5);
-    const tm = new THREE.Mesh(track(trims.build()), trimMat);
-    tm.name = 'roofNeon';
-    group.add(tm);
   }
 
   // ---------- Streetlights ----------
@@ -451,6 +356,9 @@ export function buildCityMeshes(world: World): CityMeshes {
     signLights,
     barrierLampMaterial,
     finishLine,
+    update(time) {
+      buildings.update(time);
+    },
     dispose() {
       for (const d of disposables) d.dispose();
     },

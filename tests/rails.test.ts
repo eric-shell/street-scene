@@ -68,8 +68,9 @@ describe('corner rails', () => {
       }
       for (const r of all) if (closures.has(r.group)) expect(len.get(r.piece)!).toBeLessThan(ROUTE.railPieceLength * 1.5);
       pieces += len.size;
-      // Never through a city wall, and corner rails clear of every prop.
+      // Never through a city wall, and corner rails clear of every prop left standing.
       const others = w.walls.filter((x) => x.kind !== 'rail');
+      const covered = new Set(w.coveredProps);
       for (const r of all) {
         for (const o of others) {
           if (Math.abs(o.ax - r.ax) > 80 || Math.abs(o.az - r.az) > 80) continue;
@@ -77,8 +78,9 @@ describe('corner rails', () => {
         }
         for (const p of w.props) {
           if (Math.abs(p.x - r.ax) > 6 || Math.abs(p.z - r.az) > 6) continue;
-          // A closure may stand right beside street furniture (and takes away whatever it stands on).
-          if (closures.has(r.group)) continue;
+          // A closure may stand right beside street furniture (and takes away whatever it stands on);
+          // clutter a rail would clip starts the race removed.
+          if (closures.has(r.group) || covered.has(p.id)) continue;
           expect(distToSegment(p.x, p.z, r.ax, r.az, r.bx, r.bz)).toBeGreaterThan(p.radius + 0.2);
         }
       }

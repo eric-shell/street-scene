@@ -121,10 +121,10 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   scene.environmentIntensity = 0.55;
   scene.fog = new THREE.FogExp2(FOG_COLOR, FOG_DENSITY);
   const barriers = classifyBarriers(world);
-  const city = buildCityMeshes(world);
+  const city = buildCityMeshes(world, { detail: settings.quality });
   scene.add(city.group);
   // District dressing (lots, plazas, parks, river, roundabouts, subway) and the distant mountains.
-  const districts = buildDistrictMeshes(world);
+  const districts = buildDistrictMeshes(world, { quality: settings.quality });
   scene.add(districts.group);
   const backdrop = buildBackdrop(world.seed);
   scene.add(backdrop.group);
@@ -157,6 +157,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   scene.onBeforeRender = (_r, _s, camera) => {
     roadblocks.update(camera);
     backdrop.follow(camera);
+    districts.view(camera);
   };
   // Broken streetlights go dark: ground pool, reflection streak and the real light pool.
   const lampOff = new Uint8Array(city.lampPositions.length);
@@ -183,6 +184,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     props,
     crowds,
     update(time) {
+      city.update(time);
       arrows.update(time);
       districts.update(time);
       backdrop.update(time);

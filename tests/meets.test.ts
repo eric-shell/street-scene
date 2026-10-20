@@ -4,6 +4,7 @@ import { planMeets } from '../src/render/meetPlan';
 import type { RailWall } from '../src/city/route';
 import { RAIL } from '../src/sim/rails';
 import { Rng } from '../src/sim/prng';
+import { distToSegment } from '../src/sim/math';
 
 const cars = [
   { length: 4.45, width: 2, variants: 3 },
@@ -58,6 +59,8 @@ describe('street meets', () => {
           const rp = w.routeProgress(p.x, p.z);
           const beyondEnds = !w.route.closed && (rp.s < 0.5 || rp.s > w.route.length - 0.5);
           if (!beyondEnds) expect(Math.abs(rp.lateral)).toBeGreaterThan(w.route.segWidth[rp.seg] / 2);
+          // Never in one of the route's shortcuts (alley, sidewalks or mouths).
+          for (const sc of w.route.shortcuts) expect(distToSegment(p.x, p.z, sc.ax, sc.az, sc.bx, sc.bz)).toBeGreaterThan(w.graph.edges[sc.edge].width / 2 + w.graph.edges[sc.edge].sidewalk);
           if (d < RAIL.maxOffset + 2.5) byDepth.front++;
           else if (d > RAIL.maxOffset + 5) byDepth.back++;
         }
@@ -65,8 +68,9 @@ describe('street meets', () => {
           carsTotal++;
           const c = plan.cars[ci];
           const d = depthBehind(chain, c.x, c.z);
-          // Behind the packed crowd.
+          // Behind the packed crowd, and never parked in a shortcut.
           expect(d).toBeGreaterThan(RAIL.maxOffset + 2.4);
+          for (const sc of w.route.shortcuts) expect(distToSegment(c.x, c.z, sc.ax, sc.az, sc.bx, sc.bz)).toBeGreaterThan(w.graph.edges[sc.edge].width / 2 + w.graph.edges[sc.edge].sidewalk);
           if (d < RAIL.maxOffset + 8) carRows[0]++;
           else if (d > RAIL.maxOffset + 14) carRows[1]++;
         }

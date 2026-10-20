@@ -1,13 +1,18 @@
 /**
  * Shared geometry kit for district renderers. Every renderer appends into a
  * handful of merged builders (one draw call per material for all districts,
- * which keeps phones happy) and may add its own objects to `group`.
+ * which keeps phones happy) and may add its own objects to `group`. Moving
+ * parts (the elevated railway's trains) register per build animation and
+ * camera hooks on the kit rather than keeping state in the renderer module,
+ * so the menu backdrop and a race scene never share or steal each other's
+ * trains.
  */
 import * as THREE from 'three';
 import type { World } from '../../city/world';
 import type { Wall } from '../../city/blocks';
 import type { Area, AreaBuild, WallLook } from '../../city/districts/types';
 import type { Vec2 } from '../../sim/math';
+import type { Quality } from '../../ui/settings';
 import { GeoBuilder } from '../geoBuilder';
 
 export interface DistrictKit {
@@ -30,7 +35,13 @@ export interface DistrictKit {
   walls: Map<WallLook, Wall[]>;
   /** Builds by area id. */
   builds: AreaBuild[];
+  /** Graphics preset the scene is built for: detail knobs (ties, sparks, light wash). */
+  quality: Quality;
   track<T extends { dispose(): void }>(x: T): T;
+  /** Run `fn(time)` every frame for this build (time in s, the scene's clock). */
+  animate(fn: (time: number) => void): void;
+  /** Run `fn(camera)` before every render of the scene, with the camera rendering it (audio, culling). */
+  view(fn: (camera: THREE.Camera) => void): void;
 }
 
 /** What each district renderer module exports. */

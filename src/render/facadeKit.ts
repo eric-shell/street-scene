@@ -1,18 +1,22 @@
 /**
  * Facade kit: procedural street level architecture for building podiums.
- * The bottom 2-4 floors of every building get a different treatment from the
+ * The bottom 1-4 floors of every building get a different treatment from the
  * office/apartment grid above: storefronts, lobbies, arched entries, shutters
- * and restaurants on the ground floor; offices, karaoke bars and arched
+ * and restaurants on the ground floor, plus the regional ones (rowhouse
+ * stoops, San Francisco garages, Spanish arcades, bodegas, Miami deco shops)
+ * that the architecture styles pick from; offices, karaoke bars and arched
  * windows on the mezzanine floors; plus 3D trim (cornice, pilasters, awnings,
- * canopies) and light spill on the sidewalk. Render only.
+ * canopies) and light spill on the sidewalk. Walls take the building's
+ * palette as a vertex tint. Render only.
  */
 import * as THREE from 'three';
 import { Rng } from '../sim/prng';
 import { GeoBuilder } from './geoBuilder';
 import { kelvin } from './textures';
 
-/** Ground floor bay variants (atlas row 0). */
-export const GROUND_BAYS = ['shopWarm', 'shopCool', 'arch', 'lobby', 'shutter', 'restaurant', 'masonry', 'neonShop'] as const;
+/** Ground floor bay variants: the first eight in atlas row 0, the residential and regional ones in row 2. */
+export const GROUND_BAYS = ['shopWarm', 'shopCool', 'arch', 'lobby', 'shutter', 'restaurant', 'masonry', 'neonShop', 'stoop', 'garage', 'arcade', 'bodega', 'decoShop'] as const;
+export type GroundBay = (typeof GROUND_BAYS)[number];
 /** Upper podium floor variants (atlas row 1). */
 export const PODIUM_FLOORS = ['office', 'archWindows', 'karaoke', 'brick'] as const;
 
@@ -22,7 +26,7 @@ const BAY_W = 5;
 
 const CELL = 256;
 const ATLAS_W = CELL * 8;
-const ATLAS_H = CELL * 2;
+const ATLAS_H = CELL * 3;
 /** Cell heights in pixels: ground cells are 5m x 4.4m, podium floor cells 5m x 3.3m. */
 const GROUND_PX = Math.round((CELL * GROUND_H) / BAY_W);
 const FLOOR_PX = Math.round((CELL * PODIUM_FLOOR_H) / BAY_W);
@@ -100,10 +104,10 @@ export function makeFacadeKitTextures(seed: number): FacadeKitTextures {
     ctx.closePath();
   };
 
-  // ----- Row 0: ground floor bays -----
+  // ----- Rows 0 and 2: ground floor bays -----
   GROUND_BAYS.forEach((variant, i) => {
-    const x = i * CELL;
-    const y = 0;
+    const x = (i % 8) * CELL;
+    const y = i < 8 ? 0 : 2 * CELL;
     const H = GROUND_PX;
     const W = CELL;
     // Base wall and plinth
@@ -229,6 +233,138 @@ export function makeFacadeKitTextures(seed: number): FacadeKitTextures {
         e.strokeRect(x + 24, y + 62, W - 48, H - 90);
         break;
       }
+      case 'stoop': {
+        // Rowhouse / brownstone entry: stone stoop up to a door with a lit transom, one parlor window.
+        masonry(x, y, W, H, '#6a4438', 'rgba(0,0,0,0.3)', true);
+        c.fillStyle = '#d8d2c6';
+        c.fillRect(x + 150, y + 30, 84, 10);
+        c.fillStyle = '#2a1c14';
+        c.fillRect(x + 160, y + 58, 64, H - 92);
+        c.fillStyle = '#c9c2b8';
+        c.fillRect(x + 154, y + 40, 76, 16);
+        glass(x + 162, y + 42, 60, 12, kelvin(2600), 0.9);
+        for (let k = 0; k < 4; k++) {
+          c.fillStyle = k % 2 ? '#9a958c' : '#b4aea4';
+          c.fillRect(x + 140 - k * 8, y + H - 42 + k * 8, 104 + k * 16, 8);
+        }
+        c.strokeStyle = '#141414';
+        c.lineWidth = 3;
+        c.beginPath();
+        c.moveTo(x + 130, y + H - 14);
+        c.lineTo(x + 152, y + H - 44);
+        c.moveTo(x + 254, y + H - 14);
+        c.lineTo(x + 232, y + H - 44);
+        c.stroke();
+        c.fillStyle = '#c9c2b8';
+        c.fillRect(x + 24, y + 44, 96, 8);
+        glass(x + 30, y + 52, 84, 96, rng.chance(0.6) ? kelvin(rng.range(2500, 3300)) : null, 0.7);
+        mullions(x + 30, y + 52, 84, 96, 2, '#c9c2b8');
+        e.fillStyle = kelvin(2400);
+        e.globalAlpha = 0.8;
+        e.fillRect(x + 236, y + 70, 8, 10);
+        e.globalAlpha = 1;
+        break;
+      }
+      case 'garage': {
+        // San Francisco: a garage door under the bay windows, a side door and a porch light.
+        c.fillStyle = '#5a5652';
+        c.fillRect(x, y, W, H - 14);
+        c.fillStyle = '#b4b6ba';
+        c.fillRect(x + 18, y + 40, 160, H - 54);
+        c.fillStyle = 'rgba(0,0,0,0.28)';
+        for (let yy = y + 40; yy < y + H - 14; yy += 22) c.fillRect(x + 18, yy, 160, 3);
+        for (let k = 1; k < 4; k++) c.fillRect(x + 18 + k * 40, y + 40, 2, H - 54);
+        c.fillStyle = '#2c2420';
+        c.fillRect(x + 196, y + 56, 44, H - 70);
+        glass(x + 202, y + 62, 32, 28, rng.chance(0.5) ? kelvin(2700) : null, 0.7);
+        e.fillStyle = kelvin(2600);
+        e.fillRect(x + 186, y + 50, 8, 10);
+        break;
+      }
+      case 'arcade': {
+        // Spanish / Miami arcade: stucco piers, deep arches, warm light within.
+        c.fillStyle = '#d8c8b0';
+        c.fillRect(x, y, W, H - 14);
+        for (let k = 0; k < 2; k++) {
+          const ax = x + 18 + k * 120;
+          archPath(c, ax, y + 26, 100, H - 40);
+          c.fillStyle = '#120d0a';
+          c.fill();
+          archPath(e, ax + 6, y + 32, 88, H - 46);
+          const g = e.createRadialGradient(ax + 50, y + H - 30, 6, ax + 50, y + H - 30, H * 0.9);
+          g.addColorStop(0, kelvin(2600));
+          g.addColorStop(1, '#2a1404');
+          e.fillStyle = g;
+          e.fill();
+          c.strokeStyle = '#efe4d0';
+          c.lineWidth = 5;
+          archPath(c, ax - 3, y + 23, 106, H - 37);
+          c.stroke();
+        }
+        break;
+      }
+      case 'bodega': {
+        // NYC bodega: busy sign band, bright cool fluorescent interior, the gate half down.
+        c.fillStyle = '#26282e';
+        c.fillRect(x, y, W, H - 14);
+        c.fillStyle = '#0e1630';
+        c.fillRect(x + 6, y + 8, W - 12, 36);
+        const cols = ['#ffd400', '#ff3b3b', '#22e6ff', '#7cff4f'];
+        for (let k = 0; k < 7; k++) {
+          e.fillStyle = cols[(k + rng.int(0, 3)) % cols.length];
+          e.globalAlpha = 0.95;
+          e.fillRect(x + 14 + k * 33, y + 16, 24, 20);
+        }
+        e.globalAlpha = 1;
+        glass(x + 10, y + 52, W - 20, H - 70, kelvin(5200), 1);
+        for (let k = 0; k < 3; k++) {
+          for (let m = 0; m < 14; m++) {
+            e.fillStyle = cols[(k * 3 + m) % cols.length];
+            e.globalAlpha = 0.35;
+            e.fillRect(x + 16 + m * 16, y + 96 + k * 26, 10, 12);
+          }
+        }
+        e.globalAlpha = 1;
+        c.fillStyle = '#6a6e76';
+        c.fillRect(x + 10, y + 52, 110, 60);
+        e.fillStyle = '#000';
+        e.fillRect(x + 10, y + 52, 110, 60);
+        c.fillStyle = 'rgba(0,0,0,0.35)';
+        for (let yy = y + 54; yy < y + 112; yy += 6) c.fillRect(x + 10, yy, 110, 2);
+        mullions(x + 10, y + 52, W - 20, H - 70, 2);
+        break;
+      }
+      case 'decoShop': {
+        // Miami deco storefront: pale stucco frame, rounded glass, neon outline.
+        c.fillStyle = '#e8e0d8';
+        c.fillRect(x, y, W, H - 14);
+        c.fillStyle = '#0d121c';
+        c.beginPath();
+        c.roundRect(x + 22, y + 44, W - 44, H - 66, 26);
+        c.fill();
+        e.fillStyle = kelvin(3800);
+        e.globalAlpha = 0.8;
+        e.beginPath();
+        e.roundRect(x + 26, y + 48, W - 52, H - 74, 22);
+        e.fill();
+        e.globalAlpha = 1;
+        const neon = rng.pick(['#ff4fd8', '#3ff0ff', '#b070ff', '#50ffb0']);
+        e.strokeStyle = neon;
+        e.lineWidth = 5;
+        e.beginPath();
+        e.roundRect(x + 16, y + 38, W - 32, H - 54, 30);
+        e.stroke();
+        c.strokeStyle = '#ffffff';
+        c.lineWidth = 3;
+        c.beginPath();
+        c.roundRect(x + 16, y + 38, W - 32, H - 54, 30);
+        c.stroke();
+        for (let k = 0; k < 3; k++) {
+          c.fillStyle = '#ffffff';
+          c.fillRect(x + 20, y + 14 + k * 7, W - 40, 3);
+        }
+        break;
+      }
     }
   });
 
@@ -297,9 +433,12 @@ export function makeFacadeKitTextures(seed: number): FacadeKitTextures {
 }
 
 function cellUv(row: 0 | 1, variant: number): { u0: number; u1: number; v0: number; v1: number } {
-  const u0 = (variant * CELL) / ATLAS_W;
-  const u1 = ((variant + 1) * CELL) / ATLAS_W;
-  const topPx = row * CELL;
+  // Ground variants past the first eight live in row 2.
+  const col = variant % 8;
+  const atlasRow = row === 0 && variant >= 8 ? 2 : row;
+  const u0 = (col * CELL) / ATLAS_W;
+  const u1 = ((col + 1) * CELL) / ATLAS_W;
+  const topPx = atlasRow * CELL;
   const hPx = row === 0 ? GROUND_PX : FLOOR_PX;
   // canvas y down -> uv v up (flipY)
   return { u0, u1, v1: 1 - topPx / ATLAS_H, v0: 1 - (topPx + hPx) / ATLAS_H };
@@ -318,10 +457,14 @@ export interface PodiumFace {
   yBase: number;
   /** Faces toward a street get the full storefront treatment. */
   front: boolean;
+  /** Ground floor variants (GROUND_BAYS indices) a street face picks from; default the eight of row 0. */
+  bays?: readonly number[];
+  /** Multiplies the podium walls (the building's palette); default white. */
+  tint?: THREE.Color;
 }
 
 export interface PodiumOutput {
-  /** Atlas mapped podium surfaces. */
+  /** Atlas mapped podium surfaces (vertex colors tint them per building). */
   walls: GeoBuilder;
   /** Dark stone trim: cornices, pilasters, canopies. */
   trim: GeoBuilder;
@@ -332,11 +475,23 @@ export interface PodiumOutput {
 }
 
 export function createPodiumOutput(): PodiumOutput {
-  return { walls: new GeoBuilder(), trim: new GeoBuilder(true), awnings: new GeoBuilder(true), spill: new GeoBuilder(true) };
+  return { walls: new GeoBuilder(true), trim: new GeoBuilder(true), awnings: new GeoBuilder(true), spill: new GeoBuilder(true) };
 }
 
 const AWNING_COLORS = [0x8a1c2b, 0x1c4a8a, 0x1f6b3a, 0x7a5a12, 0x5a1f7a, 0x222222].map((c) => new THREE.Color(c));
-const SPILL: Record<string, string> = { shopWarm: kelvin(3000), shopCool: kelvin(5600), arch: kelvin(2700), lobby: kelvin(4600), restaurant: kelvin(2700), neonShop: kelvin(4000) };
+const SPILL: Record<string, string> = {
+  shopWarm: kelvin(3000),
+  shopCool: kelvin(5600),
+  arch: kelvin(2700),
+  lobby: kelvin(4600),
+  restaurant: kelvin(2700),
+  neonShop: kelvin(4000),
+  bodega: kelvin(5200),
+  arcade: kelvin(2600),
+  decoShop: kelvin(3800),
+};
+const ROW0: readonly number[] = [0, 1, 2, 3, 4, 5, 6, 7];
+const WHITE = new THREE.Color(1, 1, 1);
 
 /** Pick how many podium floors a building gets (ground + 1..3). */
 export function podiumFloors(rng: Rng, height: number): number {
@@ -411,16 +566,20 @@ export function addPodiumFace(out: PodiumOutput, f: PodiumFace, floors: number, 
   const trimColor = new THREE.Color(0x24252c).multiplyScalar(rng.range(0.8, 1.3));
   const floorVariant = rng.int(0, PODIUM_FLOORS.length - 1);
   const bays = Math.max(1, Math.round(baseLen / BAY_W));
-  // A building tends to repeat one storefront type with an occasional entrance.
-  const mainBay = f.front ? rng.int(0, GROUND_BAYS.length - 1) : 6;
+  const set = f.bays && f.bays.length ? f.bays : ROW0;
+  // A building tends to repeat one storefront type with an occasional entrance (a lobby or an arch
+  // where its set has one).
+  const mainBay = f.front ? rng.pick(set) : 6;
   const entranceBay = f.front ? rng.int(0, bays - 1) : -1;
-  const entranceType = rng.pick([2, 3]);
+  const entrances = set.filter((v) => v === 2 || v === 3);
+  const entranceType = entrances.length ? rng.pick(entrances) : rng.pick(set);
   const variants: number[] = [];
   for (let b = 0; b < bays; b++) {
     let v = b === entranceBay ? entranceType : mainBay;
-    if (f.front && v !== entranceType && rng.chance(0.18)) v = rng.int(0, GROUND_BAYS.length - 1);
+    if (f.front && v !== entranceType && rng.chance(0.18)) v = rng.pick(set);
     variants.push(v);
   }
+  const tint = f.tint ?? WHITE;
   const extAt = (level: number) => ext[Math.min(level, ext.length - 1)] ?? 0;
   /** Face line for a level, pushed out by e and lengthened by e at both ends so corners meet. */
   const lineFor = (e: number) => ({
@@ -433,10 +592,10 @@ export function addPodiumFace(out: PodiumOutput, f: PodiumFace, floors: number, 
   const quad = (gb: GeoBuilder, l: ReturnType<typeof lineFor>, s0: number, s1: number, y0: number, y1: number, uv: ReturnType<typeof cellUv>) => {
     const p0 = { x: l.ax + ux * s0, z: l.az + uz * s0 };
     const p1 = { x: l.ax + ux * s1, z: l.az + uz * s1 };
-    const a = gb.vertex(p0.x, y0, p0.z, f.nx, 0, f.nz, uv.u0, uv.v0);
-    const b = gb.vertex(p1.x, y0, p1.z, f.nx, 0, f.nz, uv.u1, uv.v0);
-    const c = gb.vertex(p1.x, y1, p1.z, f.nx, 0, f.nz, uv.u1, uv.v1);
-    const d = gb.vertex(p0.x, y1, p0.z, f.nx, 0, f.nz, uv.u0, uv.v1);
+    const a = gb.vertex(p0.x, y0, p0.z, f.nx, 0, f.nz, uv.u0, uv.v0, tint);
+    const b = gb.vertex(p1.x, y0, p1.z, f.nx, 0, f.nz, uv.u1, uv.v0, tint);
+    const c = gb.vertex(p1.x, y1, p1.z, f.nx, 0, f.nz, uv.u1, uv.v1, tint);
+    const d = gb.vertex(p0.x, y1, p0.z, f.nx, 0, f.nz, uv.u0, uv.v1, tint);
     gb.quadFacing(a, b, c, d, f.nx, 0, f.nz);
   };
   /** Horizontal strip between offsets e0 and e1 at height y (a ledge or a soffit). */

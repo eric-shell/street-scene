@@ -3,6 +3,7 @@ import { createRace, RaceState, stepRace } from '../src/sim/race';
 import { placeCar } from '../src/sim/car';
 import { cos, sin, yawOf } from '../src/sim/math';
 import { Prop, PropKind } from '../src/city/props';
+import { routeSample } from '../src/city/route';
 import { carSnapshot, input, raceConfig, replayLog, runAutopilot } from './helpers';
 
 /** A prop of `kind` with a clear run up of `run` meters along the sidewalk (parallel to the curb). */
@@ -24,12 +25,15 @@ function findTarget(r: RaceState, kind: PropKind, run: number): { prop: Prop; dx
     if (!clear) continue;
     // Run up and run out stay on the sidewalk, away from walls.
     let ok = true;
-    // and next to the route (the race resets cars that stray far from it).
+    // and next to the route (the race resets cars that stray far from it). True distance to the
+    // projected point, as the race measures it: a point out on a segment's extension has a small
+    // lateral offset but can be hundreds of meters from the route.
     for (let s = -run; s <= 4 && ok; s += 1) {
       const x = p.x + dx * s;
       const z = p.z + dz * s;
       const rp = w.routeProgress(x, z);
-      ok = w.wallClearance(x, z, 2) >= 1.2 && w.surfaceAt(x, z) !== 'road' && Math.abs(rp.lateral) < w.route.segWidth[rp.seg] / 2 + 6;
+      const q = routeSample(w.route, rp.s);
+      ok = w.wallClearance(x, z, 2) >= 1.2 && w.surfaceAt(x, z) !== 'road' && Math.hypot(x - q.x, z - q.z) < w.route.segWidth[rp.seg] / 2 + 6;
     }
     if (ok) return { prop: p, dx, dz };
   }

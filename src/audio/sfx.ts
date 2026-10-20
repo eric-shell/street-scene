@@ -839,6 +839,99 @@ function wallContact(world: World, c: SfxCar): { vt: number; kind: WallHitKind }
   return best;
 }
 
+/** Train rumble mix: overall level, deck boom and joint rattle gains, rattle pulse depth. */
+const RUMBLE = { level: 0.5, boom: 4, boomHz: 120, rattle: 1.1, rattleHz: 700, pulse: 0.8, jointSpacing: 7.7 } as const;
+
+/**
+ * Elevated train rumble (render/trains.ts): low filtered noise for the deck
+ * booming plus a mid band rattle pulsed at the rate the trucks cross rail
+ * joints, panned and scaled by the nearest train's distance and speed. It
+ * fades out by itself shortly after the last update, so when the scene stops
+ * being drawn (garage, a menu over a finished race) it never keeps droning.
+ * Only created after the page has had a user gesture: browsers refuse audio
+ * before that, and creating the context early only earns a console warning.
+ */
+export class TrainRumble {
+  private ctx: AudioContext;
+  private out: GainNode;
+  private pan: StereoPannerNode;
+  private src: AudioBufferSourceNode;
+  private lfo: OscillatorNode;
+
+  /** True while the browser still waits for the first user gesture. */
+  static blocked(): boolean {
+    const ua = (navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation;
+    return !!ua && !ua.hasBeenActive;
+  }
+
+  static create(): TrainRumble | null {
+    if (typeof window === 'undefined' || TrainRumble.blocked()) return null;
+    const h = audioHub();
+    if (!h) return null;
+    try {
+      return new TrainRumble(h);
+    } catch {
+      return null;
+    }
+  }
+
+  private constructor(h: NonNullable<ReturnType<typeof audioHub>>) {
+    const ctx = (this.ctx = h.ctx);
+    this.out = ctx.createGain();
+    this.out.gain.value = 0;
+    this.pan = ctx.createStereoPanner();
+    this.out.connect(this.pan).connect(h.sfxBus);
+    this.src = ctx.createBufferSource();
+    this.src.buffer = h.noise;
+    this.src.loop = true;
+    const boom = ctx.createBiquadFilter();
+    boom.type = 'lowpass';
+    boom.frequency.value = RUMBLE.boomHz;
+    boom.Q.value = 0.9;
+    const boomGain = ctx.createGain();
+    boomGain.gain.value = RUMBLE.boom;
+    const rattle = ctx.createBiquadFilter();
+    rattle.type = 'bandpass';
+    rattle.frequency.value = RUMBLE.rattleHz;
+    rattle.Q.value = 1.4;
+    const rattleGain = ctx.createGain();
+    rattleGain.gain.value = RUMBLE.rattle;
+    this.lfo = ctx.createOscillator();
+    this.lfo.type = 'square';
+    this.lfo.frequency.value = 2;
+    const depth = ctx.createGain();
+    depth.gain.value = RUMBLE.rattle * RUMBLE.pulse;
+    this.lfo.connect(depth).connect(rattleGain.gain);
+    this.src.connect(boom).connect(boomGain).connect(this.out);
+    this.src.connect(rattle).connect(rattleGain).connect(this.out);
+    this.src.start();
+    this.lfo.start();
+  }
+
+  /** proximity 0..1 (1 = right overhead), speed of that train (m/s), pan -1..1. */
+  update(proximity: number, speed: number, pan: number): void {
+    const now = this.ctx.currentTime;
+    const target = RUMBLE.level * Math.pow(Math.max(0, proximity), 1.3) * (0.35 + 0.65 * Math.min(1, speed / 17));
+    const g = this.out.gain;
+    g.cancelScheduledValues(now);
+    g.setTargetAtTime(target, now, 0.1);
+    // Dead man's switch: silence unless the next frame renews it.
+    g.setTargetAtTime(0, now + 0.35, 0.2);
+    this.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan)) * 0.8, now, 0.1);
+    this.lfo.frequency.setTargetAtTime(Math.max(0.3, speed / RUMBLE.jointSpacing), now, 0.2);
+  }
+
+  dispose(): void {
+    try {
+      this.src.stop();
+      this.lfo.stop();
+    } catch {
+      /* already stopped */
+    }
+    this.out.disconnect();
+  }
+}
+
 export class Sfx {
   private readonly ctx: AudioContext;
   private readonly bus: GainNode;

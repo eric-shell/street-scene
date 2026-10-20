@@ -13,6 +13,7 @@
  * subway (claims a street column), roundabouts, alleys, back alleys (the last
  * module allowed to change the graph topology, so face ids stay stable), parks
  * (claim faces), reserved features, and downtown (claims every face left).
+ * The optional topology hook runs right after back alleys (route shortcuts).
  */
 import { CITY } from '../config';
 import type { RoadGraph } from '../roadGraph';
@@ -88,12 +89,12 @@ export interface CityDistricts {
   finalize(blocks: CityBlocks): void;
 }
 
-function makeContext(seed: number, g: RoadGraph, areas: Area[], claims: Claims, budget: { total: number; used: number }, kind: AreaKind): PlanContext {
+function makeContext(seed: number, g: RoadGraph, areas: Area[], claims: Claims, budget: { total: number; used: number }, kind: AreaKind, stream = `district:${kind}`): PlanContext {
   let faces: BlockFace[] | null = null;
   let sectors: Sector[][] | null = null;
   return {
     seed,
-    rng: new Rng(deriveSeed(seed, `district:${kind}`)),
+    rng: new Rng(deriveSeed(seed, stream)),
     graph: g,
     areas,
     claims,
@@ -124,7 +125,17 @@ function makeContext(seed: number, g: RoadGraph, areas: Area[], claims: Claims, 
   };
 }
 
-export function planDistricts(seed: number, g: RoadGraph): CityDistricts {
+export interface PlanHooks {
+  /**
+   * Runs once the street topology is final (right after back alleys, before
+   * any module claims faces), with a context of its own random stream that
+   * may still edit the graph and add areas: world.ts picks both routes here
+   * and carves their shortcuts.
+   */
+  topology?(ctx: PlanContext): void;
+}
+
+export function planDistricts(seed: number, g: RoadGraph, hooks: PlanHooks = {}): CityDistricts {
   const areas: Area[] = [];
   const claims: Claims = { node: new Map(), edge: new Map(), face: new Map() };
   const blockArea = computeFaces(g, computeSectors(g)).reduce((s, f) => s + (f.outer ? 0 : f.area), 0);
@@ -135,6 +146,11 @@ export function planDistricts(seed: number, g: RoadGraph): CityDistricts {
     const ctx = makeContext(seed, g, areas, claims, budget, m.kind);
     m.plan(ctx);
     lastCtx = ctx;
+    if (m === backAlleyModule && hooks.topology) {
+      const hctx = makeContext(seed, g, areas, claims, budget, 'backAlley', 'routeShortcuts');
+      hooks.topology(hctx);
+      lastCtx = hctx;
+    }
   }
   const sectors = lastCtx ? lastCtx.sectors() : computeSectors(g);
   const faces = lastCtx ? lastCtx.faces() : computeFaces(g, sectors);

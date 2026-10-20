@@ -1115,7 +1115,14 @@ input[type='color'] {
   bottom: max(10px, env(safe-area-inset-bottom));
   text-align: center;
   font-size: 13px;
-  padding: 0 12px;
+  /* Clear of the minimap in the bottom left corner (and balanced on the right). */
+  padding: 0 190px;
+}
+@media (max-width: 720px), (max-height: 500px) {
+  .drone-hint {
+    padding: 0 12px 0 130px;
+    text-align: left;
+  }
 }
 
 /* ---------- garage ---------- */

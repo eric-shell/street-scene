@@ -76,15 +76,31 @@ export const CITY = {
     },
     subway: {
       enabled: true,
-      chance: 0.45,
+      chance: 0.75,
       pillarSpacing: 26,
+      /** Concrete footing under each steel column: the collision circle (m). */
       pillarRadius: 0.55,
       /** Pillar center behind the curb, on the sidewalk. */
       pillarSetback: 2.3,
-      /** Deck centerline sits this far inside the curb on the pillar side (m). */
-      deckInset: 1,
+      /**
+       * Deck centerline sits this far inside the curb on the pillar side (m). With the 9 m
+       * deck its outer edge stays over the sidewalk, clear of the podium facades behind it.
+       */
+      deckInset: 0.8,
       deckHeight: 8.5,
-      deckWidth: 7,
+      /** Two tracks (centers 4 m apart) between riveted plate girders. */
+      deckWidth: 9,
+      /** Stations per railway [min, max], each on a long street block under the deck. */
+      stations: [1, 2],
+      /** A station's street block is at least this long, node to node (m). */
+      stationMinEdge: 118,
+      /** Station house (mezzanine) hung under the deck at the platform center: length along the deck (m). */
+      mezzanine: 14,
+      /** Mezzanine floor sits this far below the deck top: the stairs climb deckHeight minus this (m). */
+      mezzanineDrop: 3.6,
+      /** Street stairs on the pillar side sidewalk, in line with the pillars: run and width (m). */
+      stairRun: 7.4,
+      stairWidth: 1.5,
     },
     roundabout: {
       enabled: true,
@@ -125,6 +141,35 @@ export const CITY = {
       jumpFade: 1.5,
       /** Dumpster spacing along each wall (m). */
       dumpsterSpacing: 16,
+      /**
+       * Route shortcuts (carveRouteShortcuts): every circuit and sprint gets at
+       * least one back alley that both starts and ends on the route and saves
+       * real distance, and a second one where a good spot exists.
+       */
+      route: {
+        perRoute: 2,
+        /** Curb to curb width of a route shortcut (m): wider than a plain back alley, it is raced through. */
+        width: 6.5,
+        /** Corner cuts across the inside block of a turn: entry and exit this far from the corner (m), longest that fits first. */
+        cornerReach: [52, 46, 40, 34, 30],
+        /** U cuts across a block the route wraps on three sides: entry and exit this far before / after the corners (m). */
+        uReach: [44, 38, 32, 28],
+        /** |Turn| (deg) a corner of a cut may have. */
+        turnDeg: [68, 116],
+        /** Entries keep this far from the next route junction (m); from a turning junction whose corner rail runs along the cut's side, railClear. */
+        nodeClear: 28,
+        railClear: 50,
+        /** Shortest shortcut (m). */
+        minLength: 38,
+        /** It saves at least minSave of the route distance it skips, and skips at most maxSkip of the lap (or sprint). */
+        minSave: 0.2,
+        maxSkip: 0.34,
+        /** Room kept between the cut's sidewalks and any other street's sidewalk or inside corner (m). */
+        clear: 4,
+        /** A second shortcut on the same route starts at least this far along the route from the first (m). */
+        spacing: 320,
+        jumpChance: 0.6,
+      },
     },
     park: {
       enabled: true,

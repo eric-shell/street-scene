@@ -1,19 +1,14 @@
 /**
- * Race HUD in plain DOM plus small canvases (tachometer, boost gauge, minimap).
+ * Race HUD in plain DOM plus small canvases (tachometer, boost gauge, and the
+ * minimap from minimap.ts, which the drone shares).
  * Reads a snapshot each frame; never touches the sim.
  */
 import type { World } from '../city/world';
-import { AREA_MAP_STYLE, AreaKind, AreaMapStyle } from '../city/districts/types';
 import { FlagTriangleRight, Timer, Trophy, TriangleAlert, Zap, Award, Ghost, icon, Compass, Hammer } from './icons';
 import { formatTime } from './format';
+import { MapCar, Minimap } from './minimap';
 
-export interface HudCar {
-  x: number;
-  z: number;
-  yaw: number;
-  isPlayer: boolean;
-  isGhost?: boolean;
-}
+export type HudCar = MapCar;
 
 export interface HudData {
   mode: 'circuit' | 'sprint' | 'drift';
@@ -62,7 +57,7 @@ export class Hud {
   private lastThrottle = 0;
   private bov = 0;
   private nitroGlow = 0;
-  private map: HTMLCanvasElement;
+  private map: Minimap;
   private driftEl: HTMLElement;
   private progressFill: HTMLElement;
   private ghostEl: HTMLElement;
@@ -70,12 +65,6 @@ export class Hud {
   private smashEl: HTMLElement;
   private msgTimer = 0;
   private lastCountdown: number | null = null;
-  private roads: Path2D;
-  private routePath: Path2D;
-  private closed: { x: number; z: number }[];
-  /** District layers: polygon fills and line strokes, in draw order. */
-  private areaFills: { path: Path2D; style: AreaMapStyle }[] = [];
-  private areaLines: { path: Path2D; style: AreaMapStyle }[] = [];
 
   constructor(parent: HTMLElement, world: World) {
     this.root = document.createElement('div');
@@ -102,7 +91,6 @@ export class Hud {
         </div>
         <div class="hud-nitro"><span class="ic"></span><div class="bar"><div class="fill"></div></div></div>
       </div>
-      <canvas class="hud-map" width="200" height="200"></canvas>
     `;
     parent.appendChild(this.root);
     const q = (s: string) => this.root.querySelector(s) as HTMLElement;
@@ -131,66 +119,9 @@ export class Hud {
     this.progressFill = q('.hud-progress .fill');
     this.tach = q('.hud-tach') as HTMLCanvasElement;
     this.boostCv = q('.hud-boost') as HTMLCanvasElement;
-    this.map = q('.hud-map') as HTMLCanvasElement;
+    this.map = new Minimap(world);
+    this.root.append(this.map.canvas);
 
-    const g = world.graph;
-    this.roads = new Path2D();
-    for (const e of g.edges) {
-      // Alleys and shortcuts are drawn by their district layers (narrow, dimmed).
-      if (e.shortcut || e.kind === 'alley') continue;
-      const a = g.nodes[e.a];
-      const b = g.nodes[e.b];
-      this.roads.moveTo(a.x, a.z);
-      this.roads.lineTo(b.x, b.z);
-    }
-    this.buildAreaLayers(world);
-    this.routePath = new Path2D();
-    world.route.points.forEach((p, i) => (i ? this.routePath.lineTo(p.x, p.z) : this.routePath.moveTo(p.x, p.z)));
-    // Closures: one marker per closure group (they are cyan rail pieces now, like the corner rails).
-    this.closed = (world.barrierGroups ?? []).map((g) => ({ x: g.x, z: g.z }));
-  }
-
-  /** Minimap layers per district kind (styles from AREA_MAP_STYLE). */
-  private buildAreaLayers(world: World): void {
-    const g = world.graph;
-    const fills = new Map<AreaKind, Path2D>();
-    const lines = new Map<AreaKind, Path2D>();
-    const get = (m: Map<AreaKind, Path2D>, k: AreaKind) => {
-      let p = m.get(k);
-      if (!p) m.set(k, (p = new Path2D()));
-      return p;
-    };
-    for (const a of world.areas) {
-      const st = AREA_MAP_STYLE[a.kind];
-      if (st.fill && a.polygon.length > 2 && a.kind !== 'roundabout') {
-        const p = get(fills, a.kind);
-        a.polygon.forEach((q, i) => (i ? p.lineTo(q.x, q.z) : p.moveTo(q.x, q.z)));
-        p.closePath();
-      }
-      if (!st.stroke) continue;
-      const p = get(lines, a.kind);
-      if (a.kind === 'roundabout') {
-        p.moveTo(a.params.x + a.params.outer, a.params.z);
-        p.arc(a.params.x, a.params.z, a.params.outer, 0, Math.PI * 2);
-        p.moveTo(a.params.x + a.params.island, a.params.z);
-        p.arc(a.params.x, a.params.z, a.params.island, 0, Math.PI * 2);
-      } else if (a.kind === 'subway') {
-        a.path.forEach((q, i) => (i ? p.lineTo(q.x, q.z) : p.moveTo(q.x, q.z)));
-      } else {
-        for (const eid of a.edges) {
-          const e = g.edges[eid];
-          p.moveTo(g.nodes[e.a].x, g.nodes[e.a].z);
-          p.lineTo(g.nodes[e.b].x, g.nodes[e.b].z);
-        }
-      }
-    }
-    for (const [k, path] of fills) this.areaFills.push({ path, style: AREA_MAP_STYLE[k] });
-    // Order: alleys and shortcuts under the subway and roundabout outlines.
-    const order: AreaKind[] = ['backAlley', 'alley', 'roundabout', 'subway'];
-    for (const k of order) {
-      const path = lines.get(k);
-      if (path) this.areaLines.push({ path, style: AREA_MAP_STYLE[k] });
-    }
   }
 
   message(text: string, seconds = 2.2): void {
@@ -433,69 +364,8 @@ export class Hud {
   }
 
   private drawMap(d: HudData): void {
-    const c = this.map.getContext('2d')!;
-    const W = this.map.width;
     const player = d.cars.find((x) => x.isPlayer);
-    c.clearRect(0, 0, W, W);
-    c.save();
-    c.beginPath();
-    c.arc(W / 2, W / 2, W / 2 - 2, 0, Math.PI * 2);
-    c.fillStyle = 'rgba(6,10,24,0.66)';
-    c.fill();
-    c.clip();
-    if (player) {
-      const scale = 0.38;
-      c.translate(W / 2, W / 2 + 26);
-      // Heading up: forward (sin yaw, cos yaw) maps to screen up.
-      c.rotate(player.yaw - Math.PI);
-      c.scale(scale, scale);
-      c.translate(-player.x, -player.z);
-      c.lineCap = 'round';
-      c.lineJoin = 'round';
-      for (const f of this.areaFills) {
-        c.fillStyle = f.style.fill!;
-        c.fill(f.path);
-      }
-      c.strokeStyle = 'rgba(140,160,220,0.22)';
-      c.lineWidth = 9;
-      c.stroke(this.roads);
-      for (const l of this.areaLines) {
-        c.strokeStyle = l.style.stroke!;
-        c.lineWidth = l.style.width ?? 4;
-        c.setLineDash(l.style.dash ?? []);
-        c.stroke(l.path);
-      }
-      c.setLineDash([]);
-      c.strokeStyle = '#19e6ff';
-      c.shadowColor = '#19e6ff';
-      c.shadowBlur = 6;
-      c.lineWidth = 7;
-      c.stroke(this.routePath);
-      c.shadowBlur = 0;
-      c.fillStyle = '#ff9d1a';
-      for (const p of this.closed) c.fillRect(p.x - 4, p.z - 4, 8, 8);
-      for (const car of d.cars) {
-        if (car.isPlayer) continue;
-        c.fillStyle = car.isGhost ? 'rgba(190,140,255,0.8)' : '#ff2e5b';
-        c.beginPath();
-        c.arc(car.x, car.z, 9, 0, Math.PI * 2);
-        c.fill();
-      }
-    }
-    c.restore();
-    // player arrow
-    c.fillStyle = '#fff';
-    c.beginPath();
-    c.moveTo(W / 2, W / 2 + 14);
-    c.lineTo(W / 2 - 8, W / 2 + 34);
-    c.lineTo(W / 2 + 8, W / 2 + 34);
-    c.closePath();
-    c.fill();
-    c.strokeStyle = 'rgba(25,230,255,0.5)';
-    c.lineWidth = 2;
-    c.beginPath();
-    c.arc(W / 2, W / 2, W / 2 - 2, 0, Math.PI * 2);
-    c.stroke();
+    if (player) this.map.draw({ x: player.x, z: player.z, yaw: player.yaw }, d.cars);
   }
 
   dispose(): void {
