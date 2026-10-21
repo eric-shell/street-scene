@@ -26,7 +26,8 @@ import type { World } from '../city/world';
 import type { CarPose } from '../render/carView';
 import { wallHit } from '../render/camera';
 import { clampCeiling } from '../render/ceilings';
-import type { PathSample, StreetStage } from './streetStage';
+import type { PathSample } from './cruise';
+import type { StreetStage } from './streetStage';
 
 /** A point in the car's frame: forward, left, up (m). */
 type Local = [number, number, number];
@@ -169,6 +170,11 @@ export class ShowreelCamera {
     this.blendDur = mode === 'reel' ? 1.6 : MOVES[mode].blend;
     if (mode === 'reel') this.t = Infinity;
     else if (this.stage) this.pickSide(this.stage, MOVES[mode].cam);
+  }
+
+  /** The point the camera is aimed at this frame (world space), for a camera taking over from this one. */
+  get lookTarget(): THREE.Vector3 {
+    return this.look;
   }
 
   /** Where the camera is and looks, as the drone wants a start pose (yaw and pitch, forward = (sin yaw, cos yaw)). */

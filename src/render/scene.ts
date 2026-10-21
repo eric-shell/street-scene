@@ -11,7 +11,7 @@ import { NightLighting } from './lighting';
 import { PostFx } from './post';
 import { makeNightEnvironment, makeSkyTexture } from './textures';
 import { buildRouteArrows, classifyBarriers, RouteArrows } from './routeArrows';
-import { MEET_VARIANTS, buildRoadblocks, parkedCars } from './roadblocks';
+import { MEET_VARIANTS, buildRoadblocks, parkedCars, type Roadblocks } from './roadblocks';
 import { planMeets } from './meetPlan';
 import { buildProps, PropRenderer } from './props';
 import { buildDistrictMeshes } from './districts';
@@ -137,6 +137,8 @@ export interface NightScene {
   fx: LightFx;
   lighting: NightLighting;
   arrows: RouteArrows;
+  /** The route's barriers and the street meets behind them (none in an open world). */
+  roadblocks: Roadblocks;
   /** Street furniture; feed it RaceState.brokenProps every frame (props.update). */
   props: PropRenderer;
   /** Spectators at the start / finish (empty in open world); feed it car poses every frame (crowds.update). */
@@ -260,6 +262,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     fx,
     lighting,
     arrows,
+    roadblocks,
     props,
     crowds,
     weather,
