@@ -8,6 +8,7 @@
  */
 import type { World } from '../city/world';
 import { AREA_MAP_STYLE, AreaKind, AreaMapStyle } from '../city/districts/types';
+import { ROUTE_INDEX, carParks } from '../city/districts/carPark';
 import { PALETTE, rgba } from './palette';
 
 /** Map inks (Monokai Pro, ui/palette.ts), built once: orange is the route, yellow the closures. */
@@ -94,6 +95,12 @@ export class Minimap {
     for (const sc of world.route.shortcuts) {
       this.shortcuts.moveTo(sc.ax, sc.az);
       this.shortcuts.lineTo(sc.bx, sc.bz);
+    }
+    // Car park shortcuts: up the ramp, across the roof and the jump down onto the route (the route's own only).
+    for (const cp of carParks(world.areas)) {
+      if (!world.openWorld && cp.owner !== ROUTE_INDEX[world.route.kind]) continue;
+      cp.path.forEach((p, i) => (i ? this.shortcuts.lineTo(p.x, p.z) : this.shortcuts.moveTo(p.x, p.z)));
+      this.shortcuts.lineTo(cp.ox - cp.ux * (cp.lipBack + cp.landMax * 0.6), cp.oz - cp.uz * (cp.lipBack + cp.landMax * 0.6));
     }
     // Closures: one marker per closure group (they are cyan rail pieces, like the corner rails).
     this.closed = (world.barrierGroups ?? []).map((gr) => ({ x: gr.x, z: gr.z }));

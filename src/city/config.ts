@@ -244,6 +244,76 @@ export const CITY = {
         jumpChance: 0.6,
       },
     },
+    /**
+     * Multi-storey car park shortcut (src/city/districts/carPark.ts): where a
+     * route turns at a junction with no street straight behind it, a car park
+     * in the block behind the junction lets racers turn off an earlier street
+     * of the route, climb a ramp to the roof, cross it and leave over a kicker
+     * at the end of a walled launch chute that points straight down the street
+     * the route turns into. Sizes in m.
+     */
+    carPark: {
+      enabled: true,
+      /** Car parks per route at most (most seeds have a site for at most one). */
+      perRoute: 1,
+      /** Roof deck height above the street: a ground floor and one level, 3.2 m each. */
+      deckHeight: 6.4,
+      /** Ramp grade range (rise per m): the ramp is as long as the site allows between them. */
+      rampGrade: [0.065, 0.15],
+      /**
+       * The ramp's grade plus the ground's own rise along it stays under this: steeper, a car's pitch
+       * sits at its clamp (car.ts) and its front wheels leave the deck over the crest.
+       */
+      maxClimb: 0.12,
+      /** Each end of the ramp eases in over this length (vertical curves: no launch at the top). */
+      rampEase: 7,
+      rampWidth: 7,
+      /**
+       * Launch chute: width between its walls and length up to the lip. A car (1.9 m wide) can cross
+       * it corner to corner at atan((width - 1.9) / length), the worst launch heading error.
+       */
+      chuteWidth: 5.8,
+      chuteLength: 38,
+      /** The chute's mouth on the roof splays out into a funnel this long, this much wider each side (m). */
+      chuteFunnel: [7, 2.6],
+      /** Kicker over the last kickLength of the chute, rising kickHeight, steepest at the lip (~10 deg). */
+      kickLength: 8,
+      kickHeight: 0.75,
+      /** Turn radius on the roof between the ramp and the chute (side entries), [min, target]. */
+      turnRadius: [14, 18],
+      /** Straight roof run between the ramp top and the chute (back entries), [min, target]. */
+      deckRun: [8, 16],
+      /** Roof margin beside the chute and the ramp (m). */
+      deckMargin: 4,
+      /** Parapets and chute walls (thin two sided solids) are this thick. */
+      wall: 0.4,
+      /** The deck and ramp stop this far inside the building line, so the sidewalk never samples their height. */
+      inset: 0.25,
+      /** The structure keeps this far inside the block from every building line it does not front. */
+      clear: 2,
+      /** Junction turn at the landing street (deg) and the cone behind it that must be free of streets (deg). */
+      minTurnDeg: 50,
+      behindDeg: 30,
+      /** The entry keeps this far from the entry street's junctions (m), railClear from one whose corner rail is on its side. */
+      entryNodeClear: 32,
+      railClear: 50,
+      /** Rolling room past the furthest landing, on a straight free of junctions (m). */
+      rollout: 30,
+      /**
+       * Launch speed bound for the landing zone: the roof turn taken at turnGrip g on a radius turnSlack
+       * wider than planned (side entries) or entrySpeed at the ramp's foot (back entries), then
+       * launchAccel (full throttle and nitrous, measured: 14.6 m/s at the chute's mouth leaves the lip
+       * at 26 m/s and lands 45 m out) along the run-up. m/s, m, m/s^2.
+       */
+      turnGrip: 1.2,
+      turnSlack: 6,
+      launchAccel: 6,
+      entrySpeed: 25,
+      /** It saves at least this share of the route distance it skips (an L through the block: 3-15%). */
+      minSave: 0.03,
+      /** Clearance (m) from the flight corridor to closures, corners and props. */
+      flightClear: 1.5,
+    },
     park: {
       enabled: true,
       count: [2, 3],

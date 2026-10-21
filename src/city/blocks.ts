@@ -63,6 +63,13 @@ export interface Wall {
    * the far side, then back, every tick.
    */
   solid?: Solid;
+  /**
+   * World height (m) of a low wall's top: a car whose body is above it (CarState.y > top) passes
+   * over it, the only case where collision looks at height. Unset: a full height wall. Used by the
+   * face under a car park's launch lip, which stops cars in the street while a car launching off
+   * the roof flies over it (districts/carPark.ts).
+   */
+  top?: number;
 }
 
 /** A small convex solid: its faces with outward unit normals, in order around it. */

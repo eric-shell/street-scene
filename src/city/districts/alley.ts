@@ -981,6 +981,10 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
     for (const a of blocked) {
       for (let k = 0; k <= steps; k++) if (pointInPolygon(A.x + ((B.x - A.x) * k) / steps, A.z + ((B.z - A.z) * k) / steps, a.polygon)) return false;
     }
+    // Sites held for a car park (its block, frontage, driveway and flight).
+    for (const poly of ctx.keepOut ?? []) {
+      for (let k = 0; k <= steps; k++) if (pointInPolygon(A.x + ((B.x - A.x) * k) / steps, A.z + ((B.z - A.z) * k) / steps, poly)) return false;
+    }
     return true;
   };
   /** The inside sidewalk corner at C between the roads leaving along u1 and u2 stays clear of the cut, on C's side of it. */

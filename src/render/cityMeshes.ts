@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { CITY } from '../city/config';
 import { World } from '../city/world';
 import { isRiverEdge } from '../city/roadGraph';
+import { groundHeight } from '../city/districts/carPark';
 import { Vec2 } from '../sim/math';
 import { GeoBuilder } from './geoBuilder';
 import { buildFinishLines, FinishLines } from './finishLine';
@@ -84,11 +85,13 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     // Lowest height around each vertex, so the coarse ground never pokes through
     // dips finer than its grid (the river channel, ramps).
     const r = size / 96;
+    // Car park roofs are structures, not ground (their own renderer draws them).
+    const hg = groundHeight(world);
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
       const z = pos.getZ(i);
-      let y = h(x, z);
-      for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) if (dx || dz) y = Math.min(y, h(x + dx * r * 0.5, z + dz * r * 0.5));
+      let y = hg(x, z);
+      for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) if (dx || dz) y = Math.min(y, hg(x + dx * r * 0.5, z + dz * r * 0.5));
       pos.setY(i, y - 0.4);
     }
     geo.computeVertexNormals();

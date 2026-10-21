@@ -44,8 +44,8 @@ const contacts: Contact[] = [];
 const contactPiece: number[] = [];
 
 /** World contacts for a circle; with rail bodies, static rail walls are replaced by the displaced pieces. */
-function gatherContacts(world: World, rails: RailState | undefined, x: number, z: number, r: number): number {
-  const n = world.collideCircle(x, z, r, contacts);
+function gatherContacts(world: World, rails: RailState | undefined, x: number, z: number, r: number, y: number): number {
+  const n = world.collideCircle(x, z, r, contacts, y);
   contactPiece.length = 0;
   if (!rails || !rails.layout.subCount) {
     for (let i = 0; i < n; i++) contactPiece.push(-1);
@@ -88,7 +88,7 @@ export function collideCarWithWorld(c: CarState, t: CarTuning, world: World, hit
     for (let pass = 0; pass < 2; pass++) {
       const cx = c.x + fx * circ.u;
       const cz = c.z + fz * circ.u;
-      const n = gatherContacts(world, rails, cx, cz, circ.r);
+      const n = gatherContacts(world, rails, cx, cz, circ.r, c.y);
       if (n === 0) break;
       let bi = 0;
       for (let i = 1; i < n; i++) if (contacts[i].depth > contacts[bi].depth) bi = i;

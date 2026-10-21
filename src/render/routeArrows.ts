@@ -24,6 +24,7 @@ import { ChevronsRight, drawIcon } from '../ui/icons';
 import { GeoBuilder } from './geoBuilder';
 import { FOG_DENSITY } from './lighting';
 import { RailState, railLayout } from '../sim/rails';
+import { nearCarParkFlight } from '../city/districts/carPark';
 
 /** A closure as the renderer sees it: its group, where it faces and which way the route goes past it. */
 export interface BarrierInfo {
@@ -301,6 +302,8 @@ export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classif
     const mx = (mid.ax + mid.bx) / 2;
     const mz = (mid.az + mid.bz) / 2;
     if (signs.some((s) => Math.hypot(s.x - mx, s.z - mz) < 16)) return;
+    // Nor where a car launches off a car park's roof right over it (the rail is cut there, districts/carPark.ts).
+    if (nearCarParkFlight(world, mx, mz, 9)) return;
     signs.push({ x: mx - mid.nx * 1.2, y: world.heightAt(mx, mz) + SIGN.height + 0.4, z: mz - mid.nz * 1.2, yaw: Math.atan2(mid.nx, mid.nz), w: 15, h: 15 / SIGN.aspect, flip: flipFor(mid), phase: (ci * 0.37) % 1, tilt: -0.1 });
   });
   void route;

@@ -10,9 +10,10 @@ import { BarrierGroup, RailWall, Route, RouteKind, buildRoute, findCircuitNodes,
 import { Prop, buildPropGrid } from './props';
 import { SpatialGrid } from './spatial';
 import { Terrain, createTerrain } from './terrain';
-import { cos, distToSegment, segmentT, sin, sqrt } from '../sim/math';
+import { Vec2, cos, distToSegment, segmentT, sin, sqrt } from '../sim/math';
 import { CityDistricts, planDistricts } from './districts';
 import { carveRouteShortcuts, hasShortcutSpot, qualifiedCount } from './districts/alley';
+import { ROUTE_INDEX, carParkGates, carParkRails, carParkSites, planCarParks, settleCarParks } from './districts/carPark';
 
 /** Routes tried (the first pick, then alternatives) until one has room for a shortcut. */
 const ROUTE_TRIES = 12;
@@ -111,7 +112,16 @@ export function planRoads(seed: number): { graph: RoadGraph; districts: CityDist
       const firstSprint = { nodes: findSprintNodes(g, seed, 0, preferSprint), closed: false };
       const circuit = pick((v, p) => findCircuitNodes(g, seed, v, p ? preferCircuit : undefined), true, [firstSprint]);
       const sprint = pick((v, p) => (v ? findSprintNodes(g, seed, v, p ? preferSprint : undefined) : firstSprint.nodes), false, [circuit]);
+      // Car park sites are held while the alleys are carved (a corner cut would take their block), each
+      // only while both routes keep a spot for an alley of their own.
+      const keep: Vec2[][] = [];
+      for (const site of carParkSites(ctx, [circuit, sprint])) {
+        ctx.keepOut = keep.concat(site);
+        if (hasShortcutSpot(ctx, circuit, [sprint]) && hasShortcutSpot(ctx, sprint, [circuit])) keep.push(...site);
+      }
+      ctx.keepOut = keep;
       carveRouteShortcuts(ctx, [circuit, sprint]);
+      ctx.keepOut = undefined;
       // A route left without a cut (the other route's cuts took its only spot) is re-picked on the
       // carved graph and carved again, the other route kept clear as before.
       let sprint2 = sprint;
@@ -124,6 +134,8 @@ export function planRoads(seed: number): { graph: RoadGraph; districts: CityDist
         circuit2 = pick((v, p) => findCircuitNodes(g, seed, v, p ? preferCircuit : undefined), true, [sprint2]);
         carveRouteShortcuts(ctx, [circuit2, sprint2]);
       }
+      // Car park shortcuts last: they claim a block face, and nothing may edit the graph after that.
+      planCarParks(ctx, [circuit2, sprint2]);
       routeNodes = { circuit: circuit2.nodes, sprint: sprint2.nodes };
     },
   });
@@ -164,7 +176,8 @@ export interface World extends City {
   driveHeightAt(x: number, z: number): number;
   slopeAt(x: number, z: number): { gx: number; gz: number };
   surfaceAt(x: number, z: number): Surface;
-  collideCircle(x: number, z: number, r: number, out: Contact[]): number;
+  /** Walls touching a circle; `y` (the car body's height, m) lets it pass over low walls (Wall.top). */
+  collideCircle(x: number, z: number, r: number, out: Contact[], y?: number): number;
   collideBox(cx: number, cz: number, yaw: number, halfLength: number, halfWidth: number, out: Contact[]): number;
   /** Distance to the nearest wall, capped at maxDist. */
   wallClearance(x: number, z: number, maxDist: number): number;
@@ -179,6 +192,7 @@ export function createCity(seed: number): City {
   const { graph, districts, routeNodes } = planRoads(seed);
   const terrain = createTerrain(seed, districts.heightMods);
   const blocks = generateBlocks(seed, graph, terrain, districts.blocksInput);
+  settleCarParks(districts.areas, districts.builds, terrain);
   districts.finalize(blocks);
   return { seed, graph, terrain, blocks, districts, routeNodes };
 }
@@ -350,11 +364,13 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
   const route = createRoute(city, kind);
   const { graph, blocks, terrain } = city;
   const openWorld = opts.openWorld === true;
-  const rails = openWorld ? [] : awayFromRoundabouts(graph, routeRails(graph, route, blocks.props, blocks.walls));
+  const rails = openWorld ? [] : carParkRails(city.districts.areas, ROUTE_INDEX[kind], awayFromRoundabouts(graph, routeRails(graph, route, blocks.props, blocks.walls)));
   const barrierGroups = openWorld ? [] : routeBarrierGroups(graph, blocks.mouths, route, rails);
   sealBarriers(city, barrierGroups);
   const closures = closureRails(barrierGroups, rails);
-  const walls = blocks.walls.concat(rails, closures);
+  // A car park that is the other route's shortcut has its ramp shuttered (open world: all open).
+  const gates = openWorld ? [] : carParkGates(city.districts.areas, ROUTE_INDEX[kind]);
+  const walls = blocks.walls.concat(rails, closures, gates);
   const props = blocks.props;
   const propGrid = buildPropGrid(graph, props);
   const coveredProps = propsUnderWalls(props, propGrid, walls.slice(blocks.walls.length));
@@ -404,7 +420,7 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     out.push({ nx: (x - px) / d, nz: (z - pz) / d, depth: r - d, px, pz, kind });
   }
 
-  function collideCircle(x: number, z: number, r: number, out: Contact[]): number {
+  function collideCircle(x: number, z: number, r: number, out: Contact[], y = -Infinity): number {
     out.length = 0;
     wallGrid.query(x - r - 3, z - r - 3, x + r + 3, z + r + 3, scratch);
     // A solid's faces are consecutive walls and the query is in ascending id order, so they come
@@ -412,6 +428,8 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     let lastSolid: Solid | undefined;
     for (const id of scratch) {
       const w = walls[id];
+      // A low wall (a car park's lip face) is flown over by a car above its top.
+      if (w.top !== undefined && y > w.top) continue;
       if (w.solid) {
         if (w.solid !== lastSolid) collideSolid(w.solid, w.kind, x, z, r, out);
         lastSolid = w.solid;
@@ -464,6 +482,8 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     let best = maxDist;
     for (const id of scratch) {
       const w = walls[id];
+      // Low walls (car park lips) are launched over, not skimmed.
+      if (w.top !== undefined) continue;
       const d = distToSegment(x, z, w.ax, w.az, w.bx, w.bz);
       if (d < best) best = d;
     }

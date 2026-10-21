@@ -6,6 +6,7 @@
  */
 import { createCity, createWorld, World, City } from '../city/world';
 import { GridSlot, routeSample } from '../city/route';
+import { carParkProgress, onCarPark } from '../city/districts/carPark';
 import { CarState, createCar, placeCar, refillNitrous, stepCar } from './car';
 import { WorldHit, collideCarWithWorld, collideCars, detectNearMiss } from './collision';
 import { DT, TICK_HZ } from './constants';
@@ -478,7 +479,8 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
 function updateProgress(r: RaceState, rc: RaceCar): void {
   const route = r.world.route;
   const c = rc.state;
-  const p = r.world.routeProgress(c.x, c.z, rc.seg);
+  // Up in one of the route's car parks, progress follows the car park's own line (districts/carPark.ts).
+  const p = carParkProgress(r.world, c.x, c.z) ?? r.world.routeProgress(c.x, c.z, rc.seg);
   let delta = p.s - rc.rawS;
   if (route.closed) {
     const L = route.length;
@@ -559,7 +561,8 @@ function updateProgress(r: RaceState, rc: RaceCar): void {
   if (off > LOST.lateral) off = offFrom(r.world.routeProgress(c.x, c.z));
   const offroad = c.surface === 'offroad';
   if (off > LOST.farLateral) return resetToRoad(r, rc);
-  if (off > LOST.lateral || offroad) rc.stuckTime += DT;
+  // Up in one of the route's car parks a car is far from the streets but not lost.
+  if ((off > LOST.lateral && !onCarPark(r.world, c.x, c.z)) || offroad) rc.stuckTime += DT;
   else rc.stuckTime = Math.max(0, rc.stuckTime - DT);
   if (rc.stuckTime > (offroad ? LOST.offroadTime : LOST.time)) resetToRoad(r, rc);
 }

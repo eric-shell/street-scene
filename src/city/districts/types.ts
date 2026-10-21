@@ -40,6 +40,7 @@ export type AreaKind =
   | 'infill'
   | 'hills'
   | 'monument'
+  | 'carPark'
   // Reserved unique features (planned later, disabled in config).
   | 'waterfront'
   | 'lake';
@@ -79,6 +80,7 @@ export const COBBLE_PRIORITY = 6;
  *   channel, bank top fence, ramp retaining walls, channel tunnel ends (river).
  * tree: park tree trunk (park).
  * monument: the step ring around a landmark's base, or an arch's piers (monument).
+ * carPark: a multi-storey car park's parapets, facades, chute and ramp walls, and the low face under its lip (carPark).
  */
 export type WallLook =
   | 'building'
@@ -94,9 +96,10 @@ export type WallLook =
   | 'trench'
   | 'channelEnd'
   | 'tree'
-  | 'monument';
+  | 'monument'
+  | 'carPark';
 
-export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument'];
+export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'carPark'];
 
 export interface Area {
   /** Index into CityDistricts.areas. */
@@ -253,6 +256,8 @@ export interface PlanContext {
   graphChanged(): void;
   /** Present for 'late' modules only. */
   late?: LateContext;
+  /** Polygons route shortcuts must not cut through (car park sites held while the alleys are carved, see world.ts). */
+  keepOut?: Vec2[][];
 }
 
 export interface BuildContext {
@@ -295,6 +300,7 @@ export const AREA_MAP_STYLE: Record<AreaKind, AreaMapStyle> = {
   infill: { fill: 'rgba(147,146,147,0.08)' },
   hills: { fill: 'rgba(147,146,147,0.07)', stroke: 'rgba(147,146,147,0.34)', width: 2.5, dash: [6, 7] },
   monument: { fill: 'rgba(255,216,102,0.2)' },
+  carPark: { fill: 'rgba(147,146,147,0.22)', stroke: 'rgba(255,97,136,0.4)', width: 1.5 },
   waterfront: { fill: 'rgba(120,220,232,0.14)' },
   lake: { fill: 'rgba(120,220,232,0.18)' },
 };
