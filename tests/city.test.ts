@@ -385,8 +385,56 @@ describe('city generation', () => {
         expect(s.gz).toBeCloseTo((t.heightAt(x, z + e) - t.heightAt(x, z - e)) / (2 * e), 5);
       }
     }
-    expect(hi - lo).toBeGreaterThan(8);
-    expect(maxGrade).toBeLessThan(0.056);
+    expect(hi - lo).toBeGreaterThan(12);
+    expect(maxGrade).toBeLessThan(0.066);
+  });
+
+  it('sits the city on a landscape: macro relief across the map on every seed, grades still gentle', () => {
+    // The base alone (no district modifiers), sampled every 20 m over the grid's extent. The macro terms
+    // (CITY.hillAmp4/5) show as a spread between the mean heights of 350 m boxes, which the rolling terms
+    // (570-1500 m wavelengths) mostly average out of: without them the spread is 4-8 m, with them 12 m+.
+    const rng = new Rng(20261021);
+    const span = (CITY.gridW - 1) * CITY.spacing * 0.5;
+    const boxSize = 350;
+    let leastRange = Infinity;
+    let leastSpread = Infinity;
+    let maxGrade = 0;
+    for (let i = 0; i < 50; i++) {
+      const seed = rng.int(0, 0x7fffffff);
+      const t = createTerrain(seed);
+      const again = createTerrain(seed);
+      let lo = Infinity;
+      let hi = -Infinity;
+      let mismatches = 0;
+      const boxes = new Map<string, { sum: number; n: number }>();
+      for (let x = -span; x <= span; x += 20) {
+        for (let z = -span; z <= span; z += 20) {
+          const h = t.heightAt(x, z);
+          if (again.heightAt(x, z) !== h) mismatches++;
+          lo = Math.min(lo, h);
+          hi = Math.max(hi, h);
+          const s = t.slopeAt(x, z);
+          maxGrade = Math.max(maxGrade, Math.hypot(s.gx, s.gz));
+          const key = `${Math.floor((x + span) / boxSize)},${Math.floor((z + span) / boxSize)}`;
+          const b = boxes.get(key) ?? { sum: 0, n: 0 };
+          b.sum += h;
+          b.n++;
+          boxes.set(key, b);
+        }
+      }
+      let boxLo = Infinity;
+      let boxHi = -Infinity;
+      for (const b of boxes.values()) {
+        boxLo = Math.min(boxLo, b.sum / b.n);
+        boxHi = Math.max(boxHi, b.sum / b.n);
+      }
+      expect(mismatches, `seed ${seed} base terrain deterministic`).toBe(0);
+      leastRange = Math.min(leastRange, hi - lo);
+      leastSpread = Math.min(leastSpread, boxHi - boxLo);
+    }
+    expect(leastRange).toBeGreaterThan(12);
+    expect(leastSpread).toBeGreaterThan(9);
+    expect(maxGrade).toBeLessThan(0.066);
   });
 });
 
