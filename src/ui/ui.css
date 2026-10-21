@@ -1247,24 +1247,55 @@ body > .mw {
 .event-map:focus-visible .ov-plane {
   transform: translateY(-4%) rotateX(44deg) scale(1.05);
 }
+/* The race step's table is sized by the well's height (which follows the viewport) and lifted a little,
+   so the city's near corners stay in the well through the whole turn and every course reads to its end. */
+.course-map .ov-plane {
+  width: auto;
+  max-width: 70%;
+  height: 96%;
+  transform: translateY(-7%) rotateX(55deg);
+}
+.course-map.opens:is(:hover, :focus-visible) .ov-plane {
+  transform: translateY(-7%) rotateX(44deg) scale(1.05);
+}
 .ov-spin {
   position: relative;
   display: block;
   width: 100%;
   height: 100%;
   animation: ov-turn 34s ease-in-out infinite alternate;
-  /* The table's faint grid, fading out toward its edges with the city. */
-  background:
-    repeating-linear-gradient(0deg, rgba(252, 252, 250, 0.045) 0 1px, transparent 1px 22px),
-    repeating-linear-gradient(90deg, rgba(252, 252, 250, 0.045) 0 1px, transparent 1px 22px);
-  -webkit-mask-image: radial-gradient(closest-side, #000 72%, transparent);
-  mask-image: radial-gradient(closest-side, #000 72%, transparent);
 }
-.ov-spin > canvas {
+/* The table's faint grid and the city fade out toward its edges; what lies on them (the course, the car,
+   the pin) does not, so a course reaching the city's corner still reads to its end; free roam's streets
+   are the city itself, so they fade with it. The city zooms inside its lens (CityOverview.focus), so the
+   fade stays on the table's edge. */
+.ov-spin::before,
+.ov-lens,
+.ov-zoom,
+.ov-zoom > canvas {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+}
+.ov-spin::before,
+.ov-lens,
+.course-map[data-mode='roam'] .course-svg {
+  -webkit-mask-image: radial-gradient(closest-side, #000 72%, transparent);
+  mask-image: radial-gradient(closest-side, #000 72%, transparent);
+}
+.ov-lens {
+  overflow: hidden;
+}
+.ov-zoom {
+  transform-origin: 0 0;
+  will-change: transform;
+}
+.ov-spin::before {
+  content: '';
+  background:
+    repeating-linear-gradient(0deg, rgba(252, 252, 250, 0.045) 0 1px, transparent 1px 22px),
+    repeating-linear-gradient(90deg, rgba(252, 252, 250, 0.045) 0 1px, transparent 1px 22px);
 }
 /* The event's own district breathes on its layer (the river for River Run, the roundabouts for Ring Rush). */
 .ov-glow {
@@ -1314,6 +1345,10 @@ body > .mw {
   width: 0;
   height: 0;
   will-change: transform;
+  transition: opacity 0.3s;
+}
+.map-car.off {
+  opacity: 0;
 }
 .map-arrow {
   position: absolute;
@@ -1679,25 +1714,38 @@ body > .mw {
     transform: translateY(8px);
   }
 }
+/* The race step's map: the home card's well and table (CityOverview), lit from below in the type's color,
+   with the course lying on the plane. */
 .course-map {
   position: relative;
   height: clamp(124px, 22vh, 206px);
   overflow: hidden;
   background:
-    radial-gradient(80% 90% at 50% 50%, rgba(var(--mode-rgb), 0.07), transparent 70%),
-    linear-gradient(180deg, rgba(13, 12, 14, 0.94), rgba(28, 27, 30, 0.94));
+    radial-gradient(70% 100% at 50% 110%, rgba(var(--mode-rgb), 0.16), transparent 70%),
+    linear-gradient(180deg, rgba(13, 12, 14, 0.94), rgba(31, 29, 32, 0.94));
+  border: 1px solid var(--line);
   clip-path: var(--chamfer-sm);
+  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.5);
   transition: background 0.3s;
 }
-.course-city,
 .course-svg {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-}
-.course-svg {
   overflow: visible;
+}
+/* Under a course the event's district breathes quieter, so the course in its color stays the brightest line. */
+.course-map .ov-glow {
+  animation-name: ov-breathe-quiet;
+}
+@keyframes ov-breathe-quiet {
+  from {
+    opacity: 0.15;
+  }
+  to {
+    opacity: 0.5;
+  }
 }
 /* The course: a soft road of its color under the line, which draws on from the start; then a pulse runs
    the course in its driving direction, a white head on a trail. */
@@ -1782,15 +1830,8 @@ body > .mw {
 .course.leave {
   animation: course-leave 0.26s ease-in both;
 }
-/* The car only shows where it matters: free roam starts where you are. */
-.course-map .map-car {
-  transition: opacity 0.3s;
-}
-.course-map:not([data-mode='roam']) .map-car {
-  opacity: 0;
-}
 .course-map .map-ping {
-  border-color: var(--green);
+  border-color: var(--mode);
 }
 @keyframes course-draw {
   to {
@@ -1851,13 +1892,14 @@ body > .mw {
 .course-map.opens {
   cursor: pointer;
   outline: none;
-  transition: box-shadow var(--t-fast);
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
 }
 .course-map.opens:hover,
 .course-map.opens:focus-visible {
-  box-shadow: inset 0 0 0 1px rgba(var(--mode-rgb), 0.7);
+  border-color: rgba(var(--mode-rgb), 0.7);
 }
 .course-map.opens:focus-visible {
+  border-color: var(--accent-2);
   box-shadow: inset 0 0 0 1px var(--accent-2);
 }
 .course-map.opens:is(:hover, :focus-visible) > .sheen::before {
