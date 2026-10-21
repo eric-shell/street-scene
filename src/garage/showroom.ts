@@ -1,58 +1,97 @@
 /**
- * The garage showroom: a detailing garage at night. The car turns on a brushed
- * steel turntable with an LED rim and a hazard ring painted round it, under a
- * ceiling of hexagon light tubes, on an epoxy floor that mirrors the car and
- * the lights (a low resolution reflection pass seen through a translucent
- * floor, Medium and High). Around it: block walls over a dark wainscot with
- * the orange LED line at waist height, a roller door, the Street Scene sign in
- * neon, a red tool chest under a pegboard, stacked tires, shelving, a workbench
- * with spare rims on the wall and posters for the game's fictional tuners. The
- * car's paint reflects a studio environment made of the same lights (a PMREM
- * of a stand-in room, built once per visit), so the hexagons and the LED line
- * slide over the bodywork as it turns.
+ * The garage: a tuner's workshop at night where cars are being built. The
+ * player's car turns on a scuffed diamond-plate turntable in the middle of a
+ * stained concrete floor, under a cluster of fluorescent battens; round it
+ * four two-post lifts hold other cars mid-build (one high, one at working
+ * height with its front wheels off, a lamp hung under it and the jack beside
+ * it, one just off its wheels), among workbenches, rolling tool chests,
+ * shelving, tire racks, drums, a compressor and an engine on the hoist. The
+ * Street Scene logo is a neon sign on the back wall with a failing letter, one
+ * of the battens is dying, and the light is mostly what the work throws: cool
+ * tubes, a warm lamp under a car, the neon's spill on grimy block walls.
  *
- * Built from merged primitives (one mesh per material) and small canvas
- * textures; render only. The garage scene (garageScene.ts) owns the camera,
- * the spin and the car; this owns the room.
+ * The room is merged primitives (one mesh per material, garage/showroomProps.ts)
+ * and canvas textures (garage/showroomTextures.ts); the signs are
+ * garage/neonSign.ts. The car paint reflects a stand-in of the same lights (a
+ * PMREM built once per visit) and the floor a low resolution mirror pass
+ * (Medium and High). The lift cars are ordinary car views, posed once. Render
+ * only: the garage scene (garageScene.ts) owns the camera, the spin and the
+ * player's car; this owns the room.
  */
 import * as THREE from 'three';
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import type { CarView } from '../render/carView';
+import { CarView } from '../render/carView';
+import type { CarPose } from '../render/carView';
+import { MANIFEST, partsFor } from '../render/carAssets';
+import type { CarAssetLibrary } from '../render/carAssets';
+import { defaultVisual } from '../sim/build';
+import type { PaintFinish } from '../sim/build';
+import type { PartSlot } from '../shared/parts';
 import type { Quality } from '../ui/settings';
 import { PALETTE } from '../ui/palette';
+import { concreteTextures, hazardTexture, noise, plateTexture, shadowTexture, wallTexture } from './showroomTextures';
+import { GLOW, Kit, batten, compressor, createMaterials, drum, engineHoist, extinguisher, jackAndStands, lift, panels, roof, shelving, tire, tireRack, toolChest, workbench } from './showroomProps';
+import type { LiftFit } from './showroomProps';
+import { MAIN_SIGN, NEON, NeonSign, OPEN_SIGN } from './neonSign';
 
-/** Per quality tier: the floor's reflection pass (render scale of the screen, 0 = off) and the dust in the light. */
-export const SHOWROOM_QUALITY: Record<Quality, { reflection: number; dust: boolean }> = {
-  low: { reflection: 0, dust: false },
-  medium: { reflection: 0.35, dust: true },
-  high: { reflection: 0.4, dust: true },
+/**
+ * Per quality tier: the floor's reflection pass (render scale of the screen,
+ * 0 = off), the dust in the light, how many lifts have a car on them (each is
+ * a full car view, about 20 draw calls and 20k triangles) and the work lights
+ * (the dying batten's, the lamp under a car, the bench's).
+ */
+export const SHOWROOM_QUALITY: Record<Quality, { reflection: number; dust: boolean; liftCars: number; workLights: boolean }> = {
+  low: { reflection: 0, dust: false, liftCars: 2, workLights: false },
+  medium: { reflection: 0.35, dust: true, liftCars: 4, workLights: true },
+  high: { reflection: 0.45, dust: true, liftCars: 4, workLights: true },
 };
 
-/** The room (m): half its width and depth, the ceiling, the turntable and the waist-high LED line. */
+/** The room (m): half its width and depth, the roof, the turntable, the painted band on the walls, the battens' height. */
 const ROOM = {
-  half: 9,
-  height: 5,
+  half: 12,
+  height: 6.6,
   /** Turntable radius and top (the car's ground). */
   table: 3,
   tableTop: 0.08,
   /** Hazard ring painted round the turntable: inner and outer radius. */
   ring: [3.2, 3.42],
-  /** Dark wainscot up to here, with the LED line along its top. */
-  wainscot: 1.25,
-  /** Hexagon light grid: cell circumradius, how far it reaches (x, z half extents) and its height. */
-  hexR: 0.68,
-  hexHalf: [3.3, 4.3],
-  hexY: 4.78,
+  band: 1.3,
+  battenY: 4.7,
 } as const;
 
-/** Light and glow colors: the hexagons' warm white and the UI's accents, pushed past 1 so the bloom catches them. */
-const GLOW = {
-  hex: new THREE.Color(0xf2f5ff).multiplyScalar(2.6),
-  led: new THREE.Color(PALETTE.orange).multiplyScalar(2.3),
-  ring: new THREE.Color(PALETTE.orange),
-  lamp: new THREE.Color(0xffe2b8).multiplyScalar(2.2),
-} as const;
+/**
+ * The lifts, in the order their cars appear as the quality allows: where (m),
+ * which way the car faces (rad), how high its ground is (m), and the build on
+ * it (paint, finish, a seed for the parts it wears). The second has its front
+ * wheels off with the work lamp under it.
+ */
+const LIFTS: { x: number; z: number; yaw: number; h: number; paint: string; finish: PaintFinish; trim: string; seed: number; wheelsOff?: boolean }[] = [
+  { x: -5.4, z: -8.7, yaw: 0, h: 1.85, paint: '#5f6266', finish: 'matte', trim: '#111215', seed: 1 },
+  { x: 1.4, z: -8.7, yaw: Math.PI, h: 0.95, paint: '#3b1f6e', finish: 'candy', trim: '#0d0d10', seed: 2, wheelsOff: true },
+  { x: -8.7, z: -1.6, yaw: Math.PI / 2, h: 1.7, paint: '#e6e3dc', finish: 'pearl', trim: '#16171a', seed: 3 },
+  { x: -8.7, z: 4.6, yaw: Math.PI / 2, h: 0.4, paint: '#0f1012', finish: 'matte', trim: '#c9a227', seed: 4 },
+];
+
+/** Battens: position (m), yaw, length and state. The cluster over the turntable, then the work areas. */
+const BATTENS: { x: number; y: number; z: number; yaw: number; len: number; state: 'lit' | 'off' | 'flicker' }[] = [
+  { x: -1.1, y: ROOM.battenY, z: 0, yaw: Math.PI / 2, len: 2.4, state: 'lit' },
+  { x: 0, y: ROOM.battenY, z: 0, yaw: Math.PI / 2, len: 2.4, state: 'lit' },
+  { x: 1.1, y: ROOM.battenY, z: 0, yaw: Math.PI / 2, len: 2.4, state: 'lit' },
+  // Over the back lifts, hung high and forward so they stay under the sign from the default view.
+  { x: -5.4, y: 5.75, z: -6.4, yaw: 0, len: 2.4, state: 'lit' },
+  { x: 1.4, y: 5.75, z: -6.4, yaw: 0, len: 2.4, state: 'flicker' },
+  { x: -8.7, y: 5.0, z: -1.6, yaw: 0, len: 2.4, state: 'lit' },
+  { x: -8.7, y: 5.0, z: 4.6, yaw: 0, len: 2.4, state: 'off' },
+  { x: 10.4, y: 4.6, z: -2.5, yaw: Math.PI / 2, len: 2.4, state: 'lit' },
+  { x: 2.5, y: 5.0, z: 8, yaw: 0, len: 2.4, state: 'lit' },
+  { x: -5, y: 5.0, z: 9, yaw: 0, len: 2.4, state: 'off' },
+];
+
+/** Where the neon signs hang: center (m) and facing yaw. */
+const SIGNS = { main: { x: -2, y: 5.0, z: -ROOM.half + 0.02, yaw: 0 }, open: { x: ROOM.half - 0.02, y: 3.35, z: -2.5, yaw: -Math.PI / 2 } } as const;
+
+/** The car's ground on the turntable and how far the lift cars' wheels hang when lifted (m). */
+const DROOP = -0.06;
 
 type Disposable = { dispose(): void };
 
@@ -63,131 +102,94 @@ export class Showroom {
   /** The studio reflections for the car's paint. */
   readonly envMap: THREE.Texture;
   private readonly ringMat: THREE.MeshBasicMaterial;
+  private readonly flickerMat: THREE.MeshBasicMaterial;
+  private readonly flickerLight: THREE.PointLight | null = null;
   private readonly shadow: THREE.Mesh;
   private readonly reflector: Reflector | null = null;
   private readonly dust: THREE.Points | null = null;
   private readonly dustTime: { value: number } = { value: 0 };
+  private readonly signs: NeonSign[] = [];
+  private readonly liftCars: CarView[] = [];
+  /** What the orbit camera must not pass through: the lifts and their cars, as room-space boxes. */
+  private readonly obstacles: THREE.Box3[] = [];
   private readonly disposables: Disposable[] = [];
   private readonly offset = new THREE.Vector3();
+  private disposed = false;
   private time = 0;
 
-  constructor(renderer: THREE.WebGLRenderer, quality: Quality) {
+  constructor(renderer: THREE.WebGLRenderer, quality: Quality, assets: CarAssetLibrary) {
     const q = SHOWROOM_QUALITY[quality];
     const track = <T extends Disposable>(x: T): T => (this.disposables.push(x), x);
     const s = this.scene;
-    s.background = new THREE.Color(0x08070a);
-    s.fog = new THREE.Fog(0x08070a, 13, 30);
-
-    // ---------- the room ----------
+    s.background = new THREE.Color(0x070709);
+    s.fog = new THREE.Fog(0x09090d, 14, 36);
     const H = ROOM.half;
-    const mats = {
-      wall: track(new THREE.MeshStandardMaterial({ map: track(blockTexture()), roughness: 0.92, metalness: 0 })),
-      wainscot: track(new THREE.MeshStandardMaterial({ color: 0x141317, roughness: 0.55, metalness: 0.1 })),
-      ceiling: track(new THREE.MeshStandardMaterial({ color: 0x0b0a0d, roughness: 1 })),
-      door: track(new THREE.MeshStandardMaterial({ map: track(doorTexture()), roughness: 0.45, metalness: 0.55 })),
-      steel: track(new THREE.MeshStandardMaterial({ color: 0x2b2c31, roughness: 0.4, metalness: 0.65 })),
-      chest: track(new THREE.MeshStandardMaterial({ color: 0xa61d2b, roughness: 0.3, metalness: 0.25 })),
-      rubber: track(new THREE.MeshStandardMaterial({ color: 0x111113, roughness: 0.88 })),
-      chrome: track(new THREE.MeshStandardMaterial({ color: 0xb8bcc6, roughness: 0.22, metalness: 0.95 })),
-      cardboard: track(new THREE.MeshStandardMaterial({ color: 0x7d6142, roughness: 0.95 })),
-      wood: track(new THREE.MeshStandardMaterial({ color: 0x3b2f27, roughness: 0.8 })),
-      led: track(new THREE.MeshBasicMaterial({ color: GLOW.led })),
-      lamp: track(new THREE.MeshBasicMaterial({ color: GLOW.lamp })),
-    };
-    const parts = new Map<THREE.Material, THREE.BufferGeometry[]>();
-    const add = (mat: THREE.Material, geo: THREE.BufferGeometry, x = 0, y = 0, z = 0, ry = 0, rx = 0) => {
-      geo.rotateX(rx).rotateY(ry).translate(x, y, z);
-      const list = parts.get(mat) ?? [];
-      list.push(geo);
-      parts.set(mat, list);
-    };
-    const box = (mat: THREE.Material, w: number, h: number, d: number, x: number, y: number, z: number, ry = 0) => add(mat, new THREE.BoxGeometry(w, h, d), x, y, z, ry);
-    // Walls: the block wall above the wainscot, on all four sides, facing in.
-    const wallH = ROOM.height - ROOM.wainscot;
+
+    // ---------- walls, roof, battens ----------
+    const m = createMaterials(track, track(wallTexture(ROOM.height, ROOM.band)));
+    this.flickerMat = m.tubeFlicker;
+    const k = new Kit(m);
     for (const [x, z, ry] of [
       [0, -H, 0],
       [-H, 0, Math.PI / 2],
       [H, 0, -Math.PI / 2],
       [0, H, Math.PI],
     ] as const) {
-      const upper = new THREE.PlaneGeometry(2 * H, wallH);
-      scaleUv(upper, (2 * H) / 3.2, wallH / 3.2);
-      add(mats.wall, upper, x, ROOM.wainscot + wallH / 2, z, ry);
-      add(mats.wainscot, new THREE.PlaneGeometry(2 * H, ROOM.wainscot), x, ROOM.wainscot / 2, z, ry);
-      // The LED line along the top of the wainscot, a hand's width off the wall.
-      const lx = x === 0 ? 0 : x - Math.sign(x) * 0.04;
-      const lz = z === 0 ? 0 : z - Math.sign(z) * 0.04;
-      add(mats.led, new THREE.BoxGeometry(2 * H, 0.035, 0.03), lx, ROOM.wainscot, lz, ry);
+      const wall = new THREE.PlaneGeometry(2 * H, ROOM.height);
+      scaleUv(wall, (2 * H) / 6.4, 1);
+      k.place().add(m.wall, wall, x, ROOM.height / 2, z, ry);
     }
-    add(mats.ceiling, new THREE.PlaneGeometry(2 * H, 2 * H), 0, ROOM.height, 0, 0, Math.PI / 2);
+    roof(k, H, ROOM.height);
+    for (const b of BATTENS) batten(k, b.x, b.y, b.z, b.yaw, b.len, b.state, ROOM.height - 0.1);
+    // Roller doors: the way in on the front wall, a smaller one at the back.
+    rollerDoor(k, 5.5, H - 0.03, Math.PI, 4.8, 4.2);
+    rollerDoor(k, 8.6, -H + 0.03, 0, 3.6, 3.6);
 
-    // Back wall: a roller door on the right, the sign over the car's side of it, shelving in the corner.
-    const door = new THREE.PlaneGeometry(5, 3.8);
-    add(mats.door, door, 3.7, 1.9, -H + 0.03);
-    box(mats.steel, 5.3, 0.22, 0.25, 3.7, 3.88, -H + 0.12);
-    box(mats.steel, 0.14, 3.8, 0.12, 1.12, 1.9, -H + 0.06);
-    box(mats.steel, 0.14, 3.8, 0.12, 6.28, 1.9, -H + 0.06);
-    shelving(box, mats, -7.1, -H + 0.32);
-    // Left wall: tire stacks in the corner, the tool chest under the pegboard, posters further along.
-    for (const [z, n] of [
-      [-6.9, 4],
-      [-6.0, 3],
-    ] as const)
-      for (let i = 0; i < n; i++) tire(add, mats, -H + 0.42, 0.13 + i * 0.25, z);
-    toolChest(box, mats, -H + 0.3, -2.1);
-    // Right wall: the workbench under a strip lamp, spare rims hung above it.
-    workbench(box, add, mats, H - 0.45, -2.6);
-    for (const [z, y] of [
-      [-4.2, 2.6],
-      [-3.2, 2.9],
-      [-2.2, 2.6],
-    ] as const)
-      rim(add, mats, H - 0.08, y, z);
-    // A strip lamp over each work area.
-    box(mats.lamp, 0.08, 0.04, 2.6, -H + 1.2, ROOM.height - 0.25, -2.1);
-    box(mats.lamp, 0.08, 0.04, 2.6, H - 1.2, ROOM.height - 0.25, -2.6);
-    for (const [mat, list] of parts) {
-      const mesh = new THREE.Mesh(track(mergeGeometries(list)), mat);
-      list.forEach((g) => g.dispose());
-      s.add(mesh);
+    // ---------- the lifts and their cars ----------
+    LIFTS.forEach((l, i) => {
+      const carId = liftCarId(i);
+      const car = MANIFEST.cars.find((c) => c.id === carId)!;
+      const fit: LiftFit = { width: car.dimensions.width, length: car.dimensions.length, wheelbase: car.wheelbase };
+      const loaded = i < q.liftCars;
+      const h = loaded ? l.h : 0.3;
+      const [ax, az] = lift(k, l.x, l.z, l.yaw, h, fit);
+      this.obstacle(l.x, l.z, l.yaw, ax, az, 4.0);
+      // Oil stains under every lift; a drain pan under the one being worked on.
+      k.place().plane(m.stain, 2.2, 2.2, l.x + 0.3, 0.006, l.z - 0.4, i * 1.3, -Math.PI / 2);
+      if (!loaded) return;
+      if (l.wheelsOff) hubs(k, l.x, h + DROOP, l.z, l.yaw, car.wheels.FL, car.wheels.FR);
+      void this.loadLiftCar(assets, carId, i, h);
+    });
+    for (const [x, z, hx, hz, h] of workArea(k, m)) this.obstacle(x, z, 0, hx, hz, h);
+    k.build(s, track);
+
+    // ---------- signs ----------
+    for (const [spec, at] of [
+      [MAIN_SIGN, SIGNS.main],
+      [OPEN_SIGN, SIGNS.open],
+    ] as const) {
+      const sign = new NeonSign(spec);
+      sign.group.position.set(at.x, at.y, at.z);
+      sign.group.rotation.y = at.yaw;
+      s.add(sign.group);
+      this.signs.push(sign);
     }
-    // Textured pieces stay meshes of their own: the pegboard, the chest's drawers, posters and the sign.
-    const decal = (tex: THREE.Texture, w: number, h: number, x: number, y: number, z: number, ry: number, emissive = false) => {
-      const mat = emissive
-        ? new THREE.MeshBasicMaterial({ map: tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, color: new THREE.Color(1.6, 1.6, 1.6) })
-        : new THREE.MeshStandardMaterial({ map: tex, roughness: 0.75 });
-      const m = new THREE.Mesh(track(new THREE.PlaneGeometry(w, h)), track(mat));
-      m.position.set(x, y, z);
-      m.rotation.y = ry;
-      s.add(m);
-      track(tex);
-      return m;
-    };
-    decal(pegboardTexture(), 2.6, 1.4, -H + 0.02, 2.15, -2.1, Math.PI / 2);
-    decal(drawerTexture(), 1.6, 1.0, -H + 0.61, 0.62, -2.1, Math.PI / 2);
-    decal(posterTexture('KUROGANE', 'AERO WORKS', PALETTE.orange, 0), 1.0, 1.4, -H + 0.02, 2.3, 1.6, Math.PI / 2);
-    decal(posterTexture('HAYATE', 'NIGHT SERIES', PALETTE.cyan, 1), 1.0, 1.4, -H + 0.02, 2.3, 3.0, Math.PI / 2);
-    decal(posterTexture('KIBA', 'FORGED WHEELS', PALETTE.yellow, 2), 1.0, 1.4, H - 0.02, 2.3, 1.2, -Math.PI / 2);
-    // The sign: a dark board on the back wall with the logo in neon over it.
-    const board = new THREE.Mesh(track(new THREE.BoxGeometry(4.6, 1.6, 0.08)), mats.wainscot);
-    board.position.set(-3.2, 3.15, -H + 0.06);
-    s.add(board);
-    decal(signTexture(), 4.3, 1.45, -3.2, 3.15, -H + 0.11, 0, true);
 
     // ---------- floor ----------
-    const floorTex = track(epoxyTexture());
-    floorTex.repeat.set((2 * H) / 6, (2 * H) / 6);
+    const concrete = concreteTextures();
+    for (const t of [concrete.color, concrete.rough]) track(t).repeat.set((2 * H) / 8, (2 * H) / 8);
     const reflective = q.reflection > 0;
     const floor = new THREE.Mesh(
       track(new THREE.PlaneGeometry(2 * H, 2 * H).rotateX(-Math.PI / 2)),
       track(
         new THREE.MeshStandardMaterial({
-          map: floorTex,
-          roughness: 0.46,
+          map: concrete.color,
+          roughnessMap: concrete.rough,
+          roughness: 1,
           metalness: 0,
-          // Over the reflection pass, the floor lets some of the mirror image through.
+          // Over the reflection pass, the sealed concrete lets a little of the mirror image through.
           transparent: reflective,
-          opacity: reflective ? 0.8 : 1,
+          opacity: reflective ? 0.86 : 1,
           polygonOffset: reflective,
           polygonOffsetFactor: -1,
           polygonOffsetUnits: -2,
@@ -201,20 +203,30 @@ export class Showroom {
       r.rotation.x = -Math.PI / 2;
       r.position.y = -0.002;
       (r.material as THREE.ShaderMaterial).uniforms.texel.value.set(1 / Math.max(1, size.x), 1 / Math.max(1, size.y));
+      // The lift cars stay out of the mirror: up on the arms, their image would land far out where the
+      // reflection has faded, and each is some 35 draw calls the pass would repeat.
+      const mirror = r.onBeforeRender.bind(r);
+      r.onBeforeRender = (...args) => {
+        for (const v of this.liftCars) v.root.visible = false;
+        mirror(...args);
+        for (const v of this.liftCars) v.root.visible = true;
+      };
       s.add(r);
       this.reflector = r;
     }
-    // The hazard ring round the turntable.
-    const hazard = new THREE.Mesh(track(ringGeometry(ROOM.ring[0], ROOM.ring[1], 96)), track(new THREE.MeshStandardMaterial({ map: track(hazardTexture()), roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 })));
+    const hazard = new THREE.Mesh(track(ringGeometry(ROOM.ring[0], ROOM.ring[1], 96)), track(new THREE.MeshStandardMaterial({ map: track(hazardTexture()), roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 })));
     hazard.position.y = 0.004;
+    hazard.renderOrder = 1;
     s.add(hazard);
 
     // ---------- turntable ----------
     const top = ROOM.tableTop;
-    const table = new THREE.Mesh(track(new THREE.CylinderGeometry(ROOM.table, ROOM.table + 0.04, top, 96)), track(new THREE.MeshStandardMaterial({ map: track(brushedTexture()), color: 0x1c1b20, roughness: 0.5, metalness: 0.6 })));
+    const plate = track(new THREE.MeshStandardMaterial({ map: track(plateTexture()), color: 0x8a8a90, roughness: 0.45, metalness: 0.75 }));
+    const side = track(new THREE.MeshStandardMaterial({ color: 0x1b1b1f, roughness: 0.6, metalness: 0.5 }));
+    const table = new THREE.Mesh(track(new THREE.CylinderGeometry(ROOM.table, ROOM.table + 0.04, top, 96)), [side, plate, side]);
     table.position.y = top / 2;
     this.turntable.add(table);
-    this.ringMat = track(new THREE.MeshBasicMaterial({ color: GLOW.ring.clone().multiplyScalar(2.2) }));
+    this.ringMat = track(new THREE.MeshBasicMaterial({ color: new THREE.Color(PALETTE.orange).multiplyScalar(2.2) }));
     const ring = new THREE.Mesh(track(new THREE.TorusGeometry(ROOM.table + 0.03, 0.016, 8, 128).rotateX(Math.PI / 2)), this.ringMat);
     ring.position.y = top;
     this.turntable.add(ring);
@@ -225,47 +237,35 @@ export class Showroom {
     this.turntable.add(this.shadow);
     s.add(this.turntable);
 
-    // ---------- hexagon ceiling ----------
-    const hex = hexGrid(ROOM.hexR, ROOM.hexHalf[0], ROOM.hexHalf[1]);
-    const tube = track(new THREE.BoxGeometry(1, 0.035, 0.065));
-    const hexMat = track(new THREE.MeshBasicMaterial({ color: GLOW.hex }));
-    const hexMesh = new THREE.InstancedMesh(tube, hexMat, hex.length);
-    const m4 = new THREE.Matrix4();
-    const quat = new THREE.Quaternion();
-    const up = new THREE.Vector3(0, 1, 0);
-    hex.forEach((e, i) => hexMesh.setMatrixAt(i, m4.compose(new THREE.Vector3(e.x, ROOM.hexY, e.z), quat.setFromAxisAngle(up, -e.angle), new THREE.Vector3(e.length - 0.05, 1, 1))));
-    hexMesh.instanceMatrix.needsUpdate = true;
-    s.add(hexMesh);
-
     // ---------- lights ----------
-    s.add(new THREE.HemisphereLight(0xb4acc4, 0x0b0a0c, 0.3));
-    // The hexagons light the car from above: one wide, soft spot pooling under them (their shape is in the
-    // paint's reflections; a true area light would bring 100 kB of lookup tables to the garage).
-    const panel = new THREE.SpotLight(0xeef2ff, 24, 14, 1.0, 1, 1.2);
-    panel.position.set(0, ROOM.hexY - 0.05, 0);
-    s.add(panel, panel.target);
-    // Rim lights in the accents from behind, a cool fill from the front.
-    // Narrow enough to edge the car without flooding the floor.
+    // Low and moody: a dim sky fill, the battens over the car as one soft spot, rim lights in the
+    // garage's two accents (the neon's orange and cyan), a fill from the front, a cool wash over the
+    // left bays, the signs' own light.
+    s.add(new THREE.HemisphereLight(0x9aa2c0, 0x1a1714, 0.55));
+    const key = new THREE.SpotLight(0xe8eeff, 24, 14, 1.0, 1, 1.2);
+    key.position.set(0, ROOM.battenY - 0.05, 0);
+    s.add(key, key.target);
     const spot = (color: THREE.ColorRepresentation, intensity: number, x: number, y: number, z: number) => {
       const l = new THREE.SpotLight(color, intensity, 26, 0.32, 0.8, 1.4);
       l.position.set(x, y, z);
       s.add(l, l.target);
     };
     spot(PALETTE.orange, 18, -6.5, 4.4, -6.5);
-    spot(PALETTE.yellow, 12, 6.5, 4.4, -6.5);
-    const fill = new THREE.PointLight(0xc8d2ff, 5, 14, 1.4);
-    fill.position.set(0, 2.2, 7);
-    s.add(fill);
-    // Warm wash on the back wall and over the work areas, so the room reads past the car.
-    for (const [x, y, z, i] of [
-      [-3.2, 4.4, -7.4, 7],
-      [3.7, 4.4, -7.6, 5],
-      [-7.6, 4.2, -2.1, 6],
-      [7.6, 4.2, -2.6, 6],
-    ] as const) {
-      const l = new THREE.PointLight(0xffc89a, i, 7, 1.5);
-      l.position.set(x, y, z);
-      s.add(l);
+    spot(NEON.cyan, 10, 6.5, 4.4, -6.5);
+    const fill = new THREE.PointLight(0xc8d2ff, 7, 16, 1.2);
+    fill.position.set(1.5, 3.2, 8);
+    const bays = new THREE.PointLight(0xdfe8ff, 10, 12, 1.3);
+    bays.position.set(-8.2, 4.5, 1.5);
+    s.add(fill, bays);
+    if (q.workLights) {
+      // The dying batten over the second lift, the lamp hung under its car, the bench's strip.
+      this.flickerLight = new THREE.PointLight(0xe8eeff, 6, 8, 1.4);
+      this.flickerLight.position.set(LIFTS[1].x, 5.4, -6.6);
+      const lamp = new THREE.PointLight(0xffb36a, 4, 4.5, 1.6);
+      lamp.position.set(LIFTS[1].x - 0.4, 0.75, LIFTS[1].z + 0.9);
+      const bench = new THREE.PointLight(0xfff0dc, 6, 7, 1.5);
+      bench.position.set(10.4, 4.1, -2.5);
+      s.add(this.flickerLight, lamp, bench);
     }
 
     // ---------- dust in the light ----------
@@ -277,21 +277,62 @@ export class Showroom {
     }
 
     // ---------- the studio reflections for the paint ----------
-    this.envMap = track(studioEnvironment(renderer, hex)).texture;
-    // The room's own surfaces only take a little of it; the car's paint carries its own, stronger.
+    this.envMap = track(studioEnvironment(renderer)).texture;
+    // The room's own surfaces only take a little of it; the cars' paint carries its own, stronger.
     s.environment = this.envMap;
-    s.environmentIntensity = 0.3;
+    s.environmentIntensity = 0.6;
+  }
+
+  /** A lift's room-space box (center, yaw, half extents across and along, height) for the camera to stay out of. */
+  private obstacle(x: number, z: number, yaw: number, across: number, along: number, height: number): void {
+    const c = Math.abs(Math.cos(yaw));
+    const s = Math.abs(Math.sin(yaw));
+    const hx = across * c + along * s;
+    const hz = across * s + along * c;
+    this.obstacles.push(new THREE.Box3(new THREE.Vector3(x - hx, 0, z - hz), new THREE.Vector3(x + hx, height, z + hz)));
+  }
+
+  /** Load a lift's car, dress it in its build and pose it once on the arms (wheels hanging). */
+  private async loadLiftCar(assets: CarAssetLibrary, carId: string, index: number, h: number): Promise<void> {
+    const l = LIFTS[index];
+    const view = new CarView(carId, assets, { envMap: this.envMap });
+    view.setHeadlightsEnabled(false);
+    await view.load(liftVisual(carId, l.paint, l.finish, l.trim, l.seed));
+    if (this.disposed) {
+      view.dispose();
+      return;
+    }
+    if (l.wheelsOff) {
+      view.setWheelVisible(0, false);
+      view.setWheelVisible(1, false);
+    }
+    const pose: CarPose = { x: l.x, y: h, z: l.z, yaw: l.yaw, pitch: 0, roll: 0, steer: 0, comp: [DROOP, DROOP, DROOP, DROOP], spin: [0, 0, 0, 0], braking: false, nitro: false, speed: 0 };
+    view.update(pose, 0);
+    // Parked with the ignition off: dark lenses, no glow (posed once, nothing sets them again).
+    const lamps = view.materials as Record<string, THREE.Material>;
+    for (const [name, color] of [
+      ['HeadLight', 0x3a3d42],
+      ['TailLight', 0x1c0407],
+      ['Light', 0x241a08],
+    ] as const) {
+      const lens = lamps[name] as THREE.MeshStandardMaterial;
+      lens.color.setHex(color);
+      lens.emissiveIntensity = 0;
+    }
+    this.scene.add(view.root);
+    this.liftCars.push(view);
   }
 
   /**
-   * Keep an orbit camera inside the room: a camera rising past the lights tips
-   * down to their height at the same distance (so dragging up never ends in a
-   * close-up through the roof), and one past a wall comes in toward the target.
+   * Keep an orbit camera inside the room and out of the lifts: a camera rising
+   * past the lights tips down to their height at the same distance (so
+   * dragging up never ends in a close-up through the roof), and one past a
+   * wall or behind a lift comes in along its line to the target.
    */
   contain(camera: THREE.Vector3, target: THREE.Vector3): void {
     const o = this.offset.subVectors(camera, target);
     const r = o.length();
-    const hmax = ROOM.hexY - 0.45 - target.y;
+    const hmax = ROOM.battenY - 0.4 - target.y;
     if (o.y > hmax && r > hmax) {
       const horiz = Math.hypot(o.x, o.z) || 1e-3;
       const k = Math.sqrt(r * r - hmax * hmax) / horiz;
@@ -303,6 +344,11 @@ export class Showroom {
     let t = 1;
     if (Math.abs(cx) > lim) t = Math.min(t, (Math.sign(cx) * lim - target.x) / (cx - target.x));
     if (Math.abs(cz) > lim) t = Math.min(t, (Math.sign(cz) * lim - target.z) / (cz - target.z));
+    const len = o.length() || 1;
+    for (const b of this.obstacles) {
+      const hit = rayBox(target, o, b);
+      if (hit !== null) t = Math.min(t, hit - 0.25 / len);
+    }
     camera.copy(target).addScaledVector(o, Math.max(0.05, t));
   }
 
@@ -323,102 +369,248 @@ export class Showroom {
     (this.reflector.material as THREE.ShaderMaterial).uniforms.texel.value.set(1 / w, 1 / h);
   }
 
-  /** Animate the LED rim's breathing and the dust. */
+  /** Animate the turntable's LED rim, the dying batten, the failing neon letter and the dust (a few uniforms, no allocation). */
   update(dt: number): void {
     this.time += dt;
-    this.ringMat.color.copy(GLOW.ring).multiplyScalar(1.45 + 0.3 * Math.sin(this.time * 1.6));
-    this.dustTime.value = this.time;
+    const t = this.time;
+    this.ringMat.color.copy(RING).multiplyScalar(1.45 + 0.3 * Math.sin(t * 1.6));
+    const f = battenFlicker(t);
+    this.flickerMat.color.copy(GLOW.tube).multiplyScalar(f);
+    if (this.flickerLight) this.flickerLight.intensity = 6 * f;
+    for (const sign of this.signs) sign.update(t);
+    this.dustTime.value = t;
   }
 
   dispose(): void {
+    this.disposed = true;
     this.reflector?.dispose();
+    for (const v of this.liftCars) v.dispose();
+    for (const sign of this.signs) sign.dispose();
     for (const d of this.disposables) d.dispose();
   }
 }
 
 // ---------------------------------------------------------------------------
-// Props, each a few primitives added to the per-material lists.
+// Layout helpers
 // ---------------------------------------------------------------------------
 
-type BoxFn = (mat: THREE.Material, w: number, h: number, d: number, x: number, y: number, z: number, ry?: number) => void;
-type AddFn = (mat: THREE.Material, geo: THREE.BufferGeometry, x?: number, y?: number, z?: number, ry?: number, rx?: number) => void;
-type Mats = Record<'steel' | 'chest' | 'rubber' | 'chrome' | 'cardboard' | 'wood' | 'lamp', THREE.Material>;
+/** The LED rim's base color, and the axes the camera's box test walks (module constants: nothing allocated per frame). */
+const RING = new THREE.Color(PALETTE.orange);
+const AXES = ['x', 'y', 'z'] as const;
 
-/** Steel shelving against the back wall: four shelves of boxes and cans. */
-function shelving(box: BoxFn, m: Mats, x: number, z: number): void {
-  const w = 2.4;
-  for (const sx of [-w / 2, w / 2]) box(m.steel, 0.05, 2.5, 0.05, x + sx, 1.25, z - 0.25), box(m.steel, 0.05, 2.5, 0.05, x + sx, 1.25, z + 0.25);
-  for (let i = 0; i < 4; i++) {
-    const y = 0.25 + i * 0.68;
-    box(m.steel, w, 0.04, 0.56, x, y, z);
-    // Boxes and cans, a different arrangement on each shelf.
-    let px = x - w / 2 + 0.2;
-    for (let k = 0; px < x + w / 2 - 0.25; k++) {
-      const big = (i + k) % 3 !== 1;
-      const bw = big ? 0.42 + ((i * 7 + k * 3) % 3) * 0.06 : 0.16;
-      const bh = big ? 0.3 + ((i + k * 5) % 3) * 0.06 : 0.24;
-      box(big ? m.cardboard : m.chest, bw, bh, big ? 0.42 : 0.16, px + bw / 2, y + 0.02 + bh / 2, z);
-      px += bw + 0.08;
-    }
+/** Which car sits on lift i: the garage's cars in turn, starting a little way into the list so the first lift differs from the default pick. */
+function liftCarId(i: number): string {
+  const ids = MANIFEST.cars.filter((c) => c.selectable).map((c) => c.id);
+  return ids[(i + 2) % ids.length];
+}
+
+/** A lift car's build: its paint and trim, and a kit picked from the catalog by seed (some slots left stock), sat a little low. */
+function liftVisual(carId: string, paint: string, finish: PaintFinish, trim: string, seed: number): ReturnType<typeof defaultVisual> {
+  const v = defaultVisual();
+  v.paint = { color: paint, finish };
+  v.trimColor = trim;
+  v.tint.darkness = 0.75;
+  const slots: PartSlot[] = ['frontBumper', 'rearBumper', 'sideSkirts', 'spoiler', 'hood', 'wheels'];
+  slots.forEach((slot, j) => {
+    const list = partsFor(carId, slot);
+    const pick = Math.floor(noise(seed * 17 + j * 5) * (list.length + 1));
+    v.parts[slot] = pick < list.length ? list[pick].id : null;
+  });
+  v.wheels.color = seed % 2 ? '#1a1b1f' : '#c9ced8';
+  v.stance.rideHeight = -0.03;
+  return v;
+}
+
+/** Where a car's front wheels came off: brake discs, hubs and calipers at the wheel centers (car space, posed like the car). */
+function hubs(k: Kit, x: number, y: number, z: number, yaw: number, ...wheels: number[][]): void {
+  const m = k.m;
+  k.place(x, y, z, yaw);
+  for (const [px, py, pz] of wheels) {
+    k.cyl(m.cast, 0.16, 0.028, px * 0.93, py, pz, 'x', 20);
+    k.cyl(m.steel, 0.07, 0.09, px * 0.97, py, pz, 'x', 10);
+    k.box(m.red, 0.08, 0.17, 0.11, px * 0.89, py + 0.07, pz - 0.1);
   }
 }
 
-/** A tire lying flat at (x, y, z). */
-function tire(add: AddFn, m: Mats, x: number, y: number, z: number): void {
-  add(m.rubber, new THREE.TorusGeometry(0.27, 0.11, 10, 24), x, y, z, 0, Math.PI / 2);
+/** A roller door on a wall: the curtain, its guides, the drum housing over it, and the street's light under it. */
+function rollerDoor(k: Kit, x: number, z: number, yaw: number, w: number, h: number): void {
+  const m = k.m;
+  k.place(x, 0, z, yaw);
+  k.plane(m.door, w, h, 0, h / 2 + 0.025, 0);
+  k.box(m.leakEdge, w - 0.1, 0.02, 0.01, 0, 0.012, -0.005);
+  // Centered on the threshold: brightest at the gap, fading a meter into the room (the half outside is behind the wall).
+  k.plane(m.leak, w * 1.2, 2.6, 0, 0.007, 0.02, 0, -Math.PI / 2);
+  k.box(m.steel, w + 0.4, 0.34, 0.34, 0, h + 0.17, 0.15);
+  for (const s of [-1, 1]) k.box(m.steel, 0.12, h, 0.12, s * (w / 2 + 0.08), h / 2, 0.06);
 }
 
-/** A red rolling tool chest against the left wall: base cabinet, top box, chrome handle rails, casters. */
-function toolChest(box: BoxFn, m: Mats, x: number, z: number): void {
-  box(m.chest, 0.58, 1.02, 1.6, x, 0.62, z);
-  box(m.chest, 0.52, 0.42, 1.56, x - 0.02, 1.36, z);
-  box(m.steel, 0.6, 0.04, 1.62, x, 1.15, z);
-  box(m.chrome, 0.04, 0.04, 1.3, x + 0.33, 1.25, z);
-  for (const dz of [-0.7, 0.7]) for (const dx of [-0.22, 0.22]) box(m.rubber, 0.08, 0.1, 0.08, x + dx, 0.06, z + dz);
+/** A worn yellow floor line from (x0, z0) to (x1, z1), 10 cm wide. */
+function floorLine(k: Kit, x0: number, z0: number, x1: number, z1: number): void {
+  const len = Math.hypot(x1 - x0, z1 - z0);
+  const g = new THREE.PlaneGeometry(len, 0.1);
+  scaleUv(g, len / 4, 1);
+  k.place().add(k.m.line, g, (x0 + x1) / 2, 0.005, (z0 + z1) / 2, -Math.atan2(z1 - z0, x1 - x0), -Math.PI / 2);
 }
 
-/** A workbench against the right wall with a vise, a strip lamp over it and a pegboard rail. */
-function workbench(box: BoxFn, add: AddFn, m: Mats, x: number, z: number): void {
-  box(m.wood, 0.8, 0.06, 2.6, x, 0.92, z);
-  for (const dz of [-1.2, 1.2]) for (const dx of [-0.32, 0.32]) box(m.steel, 0.05, 0.9, 0.05, x + dx, 0.45, z + dz);
-  box(m.steel, 0.7, 0.04, 2.4, x, 0.3, z);
-  box(m.steel, 0.2, 0.16, 0.24, x - 0.2, 1.03, z - 0.8);
-  // A toolbox and a lamp on the bench.
-  box(m.chest, 0.3, 0.2, 0.5, x - 0.1, 1.05, z + 0.6);
-  add(m.lamp, new THREE.CylinderGeometry(0.06, 0.1, 0.12, 12), x - 0.15, 1.5, z + 0.1);
-  box(m.steel, 0.03, 0.55, 0.03, x - 0.15, 1.2, z + 0.1);
-}
-
-/** A spare rim hung on the right wall: tire, rim face and hub. */
-function rim(add: AddFn, m: Mats, x: number, y: number, z: number): void {
-  add(m.rubber, new THREE.TorusGeometry(0.3, 0.09, 10, 28), x - 0.1, y, z, Math.PI / 2);
-  // Discs stood on edge facing into the room: the cylinder's axis turned from up to across (x).
-  add(m.chrome, new THREE.CylinderGeometry(0.24, 0.24, 0.05, 20), x - 0.08, y, z, Math.PI / 2, Math.PI / 2);
-  add(m.steel, new THREE.CylinderGeometry(0.06, 0.06, 0.08, 10), x - 0.12, y, z, Math.PI / 2, Math.PI / 2);
-}
-
-/** Every edge of the pointy-top hexagon grid whose cells fit inside ±hx, ±hz, once each: midpoint, angle and length. */
-function hexGrid(r: number, hx: number, hz: number): { x: number; z: number; angle: number; length: number; ax: number; az: number; bx: number; bz: number }[] {
-  const edges = new Map<string, { x: number; z: number; angle: number; length: number; ax: number; az: number; bx: number; bz: number }>();
-  const w = Math.sqrt(3) * r;
-  for (let row = -12; row <= 12; row++) {
-    for (let col = -12; col <= 12; col++) {
-      const cx = w * (col + (row & 1 ? 0.5 : 0));
-      const cz = 1.5 * r * row;
-      if (Math.abs(cx) + w / 2 > hx || Math.abs(cz) + r > hz) continue;
-      for (let i = 0; i < 6; i++) {
-        const a0 = Math.PI / 6 + (i * Math.PI) / 3;
-        const a1 = a0 + Math.PI / 3;
-        const ax = cx + r * Math.cos(a0);
-        const az = cz + r * Math.sin(a0);
-        const bx = cx + r * Math.cos(a1);
-        const bz = cz + r * Math.sin(a1);
-        const key = `${Math.round((ax + bx) * 50)},${Math.round((az + bz) * 50)}`;
-        if (!edges.has(key)) edges.set(key, { x: (ax + bx) / 2, z: (az + bz) / 2, angle: Math.atan2(bz - az, bx - ax), length: Math.hypot(bx - ax, bz - az), ax, az, bx, bz });
-      }
-    }
+/**
+ * Everything round the lifts: the walls' benches, chests, shelving, racks,
+ * drums and the compressor, the hoist out on the floor, the work in progress
+ * by the lifts, bay lines, stains, and the cords and air line across the floor.
+ * Returns boxes the camera keeps out of: [x, z, half x, half z, height].
+ */
+function workArea(k: Kit, m: Kit['m']): [number, number, number, number, number][] {
+  const H = ROOM.half;
+  const Y = Math.PI / 2;
+  // Back wall: chests and posters right of the lifts, drums, shelving in the corner.
+  toolChest(k, 4.9, -H + 0.3, 0, 1.5, m.red, m.drawersRed);
+  toolChest(k, 6.6, -H + 0.3, 0, 1.1, m.black, m.drawersBlack);
+  k.place().plane(m.poster0, 1.0, 1.4, 4.9, 2.7, -H + 0.02);
+  k.place().plane(m.poster1, 1.0, 1.4, 6.6, 2.7, -H + 0.02);
+  drum(k, 3.7, -11.35, m.blue);
+  drum(k, 3.75, -10.7, m.red);
+  shelving(k, -9.8, -H + 0.32, 0, 2.4, 1);
+  // Left wall: tire stacks in the back corner, a chest under a pegboard between the lifts.
+  for (const [x, z, n] of [
+    [-11.3, -5.3, 5],
+    [-10.6, -5.0, 3],
+    [-11.3, -9.2, 4],
+  ] as const)
+    for (let i = 0; i < n; i++) tire(k, x, 0.1 + i * 0.2, z);
+  toolChest(k, -H + 0.3, 1.5, Y, 1.5, m.red, m.drawersRed);
+  k.place().plane(m.pegboard, 2.2, 1.1, -H + 0.02, 2.45, 1.5, Y);
+  // Front wall: shelving, drums in the corner, the compressor and its reel, the extinguisher by the door.
+  shelving(k, -3.6, H - 0.32, Math.PI, 2.4, 2);
+  shelving(k, -6.8, H - 0.32, Math.PI, 2.4, 3);
+  drum(k, -10.9, 10.6, m.red);
+  drum(k, -10.2, 11.25, m.blue);
+  drum(k, -11.2, 11.3, m.red);
+  compressor(k, 9.3, H - 0.4, Math.PI);
+  for (let i = 0; i < 4; i++) tire(k, 10.7, 0.1 + i * 0.2, 11.2);
+  for (let i = 0; i < 3; i++) tire(k, 1.9, 0.1 + i * 0.2, 11.3);
+  extinguisher(k, 2.6, H, Math.PI);
+  // Right wall: the bench under its pegboard and the small sign, a tool cart pulled out, the tire rack, panels.
+  workbench(k, H - 0.45, -2.5, -Y, 3.2);
+  k.place().plane(m.pegboard, 3.0, 1.5, H - 0.02, 1.95, -2.5, -Y);
+  k.place().plane(m.poster2, 1.0, 1.4, H - 0.02, 2.6, 1.9, -Y);
+  toolChest(k, 11.1, 0.7, -Y + 0.35, 1.0, m.blue, m.drawersBlue, false);
+  tireRack(k, H - 0.25, 4.4, -Y, 8);
+  panels(k, H - 0.45, 8.4, -Y);
+  extinguisher(k, H, -6.2, -Y);
+  k.place().cyl(m.red, 0.24, 0.7, 11.4, 0.35, -5.0, 'y', 14);
+  k.place().cyl(m.black, 0.18, 0.06, 9.9, 0.66, -1.5, 'y', 14);
+  for (const a of [0, 2.1, 4.2]) k.place().bar(m.steel, [9.9, 0.64, -1.5], [9.9 + Math.cos(a) * 0.2, 0, -1.5 + Math.sin(a) * 0.2], 0.025);
+  // The hoist out on the floor with an engine on the chain.
+  engineHoist(k, 7.6, -4.6, Math.PI * 0.8);
+  // The second lift's work: its wheels stacked on the floor, the jack, stands and creeper, a drain pan, the lamp.
+  const l2 = LIFTS[1];
+  tire(k, l2.x + 2.4, 0.1, l2.z + 0.6, true);
+  tire(k, l2.x + 2.42, 0.3, l2.z + 0.6, true);
+  jackAndStands(k, l2.x + 1.6, l2.z + 2.8, -0.3);
+  k.place().cyl(m.black, 0.36, 0.06, l2.x, 0.03, l2.z - 1.6, 'y', 18);
+  const lamp: [number, number, number] = [l2.x - 0.4, 0.75, l2.z + 0.9];
+  k.place().cyl(m.lamp, 0.035, 0.18, lamp[0], lamp[1], lamp[2], 'y', 10);
+  for (const a of [0, 1.57, 3.14, 4.71]) k.place().box(m.galv, 0.008, 0.2, 0.008, lamp[0] + Math.cos(a) * 0.05, lamp[1], lamp[2] + Math.sin(a) * 0.05);
+  k.place().cyl(m.rubber, 0.03, 0.14, lamp[0], lamp[1] - 0.16, lamp[2], 'y', 10);
+  k.place().bar(m.galv, [lamp[0], lamp[1] + 0.1, lamp[2]], [lamp[0], l2.h + 0.12, lamp[2]], 0.006);
+  // The lamp's cord from the bench's socket across the floor, and the air line from the compressor to an impact gun.
+  k.place().hose(
+    m.orange,
+    [
+      [H - 0.05, 0.45, -1.0],
+      [H - 0.35, 0.015, -1.4],
+      [9.0, 0.015, -3.6],
+      [6.0, 0.015, -5.4],
+      [3.6, 0.015, -6.3],
+      [lamp[0] + 0.5, 0.015, lamp[2] + 0.2],
+      [lamp[0] + 0.1, 0.25, lamp[2] + 0.05],
+      [lamp[0], lamp[1] - 0.22, lamp[2]],
+    ],
+    0.012,
+    80,
+  );
+  k.place().hose(
+    m.yellow,
+    [
+      [9.3, 0.62, H - 0.45],
+      [8.9, 0.015, 10.6],
+      [5.0, 0.015, 9.2],
+      [1.0, 0.015, 9.7],
+      [-3.0, 0.015, 8.7],
+      [-5.5, 0.015, 7.3],
+      [-6.3, 0.03, 6.0],
+    ],
+    0.014,
+    80,
+  );
+  k.place().box(m.black, 0.12, 0.1, 0.28, -6.3, 0.06, 5.75, 0.5);
+  // The first lift: a new exhaust laid out under it.
+  const l1 = LIFTS[0];
+  k.place().bar(m.chrome, [l1.x - 0.3, 0.06, l1.z - 1.9], [l1.x + 0.1, 0.06, l1.z + 1.2], 0.08);
+  k.place().cyl(m.chrome, 0.14, 0.6, l1.x + 0.15, 0.14, l1.z + 1.6, 'z', 14);
+  // The third: an oil drainer under the engine. The fourth: coilovers and boxed parts waiting to go in.
+  const l3 = LIFTS[2];
+  k.place().cyl(m.yellow, 0.22, 0.4, l3.x + 1.4, 0.22, l3.z, 'y', 14);
+  k.place().cyl(m.galv, 0.025, 1.0, l3.x + 1.4, 0.9, l3.z, 'y', 8);
+  k.place().cyl(m.yellow, 0.3, 0.14, l3.x + 1.4, 1.42, l3.z, 'y', 16, 0.06);
+  const l4 = LIFTS[3];
+  for (const [dx, dz] of [
+    [2.5, -1.4],
+    [2.75, -1.2],
+  ] as const) {
+    k.place().cyl(m.galv, 0.03, 0.55, l4.x + dx, 0.3, l4.z + dz, 'y', 8);
+    for (let i = 0; i < 6; i++) k.place().add(m.yellow, new THREE.TorusGeometry(0.06, 0.012, 6, 14), l4.x + dx, 0.1 + i * 0.065, l4.z + dz, 0, Math.PI / 2);
   }
-  return [...edges.values()];
+  k.place().box(m.cardboard, 0.6, 0.4, 0.45, l4.x + 2.6, 0.2, l4.z + 1.9, 0.2);
+  k.place().box(m.cardboard, 0.45, 0.3, 0.4, l4.x + 2.6, 0.55, l4.z + 1.9, 0.5);
+  // Bay lines round the lifts.
+  floorLine(k, -8.1, -H, -8.1, -5.4);
+  floorLine(k, -1.95, -H, -1.95, -5.4);
+  floorLine(k, 4.2, -H, 4.2, -5.4);
+  floorLine(k, -8.1, -5.4, 4.2, -5.4);
+  floorLine(k, -H, -4.2, -5.9, -4.2);
+  floorLine(k, -H, 1.5, -5.9, 1.5);
+  floorLine(k, -H, 7.4, -5.9, 7.4);
+  floorLine(k, -5.9, -4.2, -5.9, 7.4);
+  // Stains where the work happens.
+  for (const [x, z, r] of [
+    [8.3, -5.5, 1.6],
+    [-10.6, 10.9, 1.8],
+    [9.3, 10.9, 1.2],
+    [10.6, -2.4, 1.3],
+    [-3.6, 3.8, 0.9],
+    [4.8, 5.4, 1.1],
+    [l2.x + 1.0, l2.z + 2.4, 1.4],
+  ] as const)
+    k.place().plane(m.stain, r, r, x, 0.006, z, x * 0.7, -Math.PI / 2);
+  return [[7.9, -5.0, 1.0, 1.0, 2.2]];
+}
+
+/** The dying batten's level (0..1) at time t (s): a few seconds lit, a moment out, then a stutter as the starter tries again. */
+function battenFlicker(t: number): number {
+  const c = t % 6.3;
+  if (c > 4.9) return noise(Math.floor(t * 23) + 3) > 0.5 ? 1 : 0.05;
+  if (c > 4.6) return 0.05;
+  return 1;
+}
+
+/** Where the segment from o along d (t 0..1) enters box b, or null when it misses (or starts inside). */
+function rayBox(o: THREE.Vector3, d: THREE.Vector3, b: THREE.Box3): number | null {
+  let t0 = 0;
+  let t1 = 1;
+  for (const a of AXES) {
+    const inv = 1 / d[a];
+    let ta = (b.min[a] - o[a]) * inv;
+    let tb = (b.max[a] - o[a]) * inv;
+    if (ta > tb) {
+      const s = ta;
+      ta = tb;
+      tb = s;
+    }
+    t0 = Math.max(t0, ta);
+    t1 = Math.min(t1, tb);
+    if (t0 > t1) return null;
+  }
+  return t0 > 0 ? t0 : null;
 }
 
 /** A flat ring with polar UVs (u round the ring, v across it), facing up. */
@@ -452,17 +644,61 @@ function scaleUv(g: THREE.BufferGeometry, su: number, sv: number): void {
   for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * su, uv.getY(i) * sv);
 }
 
-/** Dust motes drifting in the light over the car: points moved in the shader, so nothing per frame on the CPU. */
+/**
+ * The environment the paint reflects: a dark stand-in room with the lit
+ * battens as hot strips, the neon's orange and pink and the cyan of the small
+ * sign on the walls, the rim lights' patches, the doors and a dim panel in
+ * front, rendered into a PMREM from the car's height.
+ */
+function studioEnvironment(renderer: THREE.WebGLRenderer): THREE.WebGLRenderTarget {
+  const env = new THREE.Scene();
+  const disposables: Disposable[] = [];
+  const track = <T extends Disposable>(x: T): T => (disposables.push(x), x);
+  const basic = (color: THREE.ColorRepresentation, k = 1, side: THREE.Side = THREE.FrontSide) => track(new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(k), side }));
+  const H = ROOM.half;
+  const room = new THREE.Mesh(track(new THREE.BoxGeometry(2 * H, ROOM.height, 2 * H)), basic(0x0c0c0f, 1, THREE.BackSide));
+  room.position.y = ROOM.height / 2;
+  env.add(room);
+  const floor = new THREE.Mesh(track(new THREE.PlaneGeometry(2 * H, 2 * H).rotateX(-Math.PI / 2)), basic(0x121214));
+  floor.position.y = 0.01;
+  env.add(floor);
+  const panel = (mat: THREE.Material, w: number, h: number, x: number, y: number, z: number, ry: number, rx = 0) => {
+    const p = new THREE.Mesh(track(new THREE.PlaneGeometry(w, h)), mat);
+    p.position.set(x, y, z);
+    p.rotation.set(rx, ry, 0, 'YXZ');
+    env.add(p);
+  };
+  const tube = basic(0xeef3ff, 2.4, THREE.DoubleSide);
+  for (const b of BATTENS) if (b.state !== 'off') panel(tube, b.len, 0.14, b.x, b.y, b.z, b.yaw, Math.PI / 2);
+  const sz = -H + 0.05;
+  panel(basic(NEON.orange, 1.1), 2.6, 0.9, SIGNS.main.x - 1.4, SIGNS.main.y + 0.2, sz, 0);
+  panel(basic(NEON.pink, 1.1), 2.3, 0.9, SIGNS.main.x + 1.5, SIGNS.main.y + 0.2, sz, 0);
+  panel(basic(NEON.cyan, 0.8), 4.4, 0.08, SIGNS.main.x, SIGNS.main.y - 0.4, sz, 0);
+  panel(basic(NEON.cyan, 0.9), 1.6, 0.6, H - 0.05, SIGNS.open.y, SIGNS.open.z, -Math.PI / 2);
+  panel(basic(PALETTE.orange, 0.5), 2.4, 1.6, -H + 0.05, 4.2, -7, Math.PI / 2);
+  panel(basic(NEON.cyan, 0.35), 2.4, 1.6, H - 0.05, 4.2, -7, -Math.PI / 2);
+  panel(basic(0x2a2d33), 4.8, 4.2, 5.5, 2.1, H - 0.05, Math.PI);
+  panel(basic(0x24272c), 3.6, 3.6, 8.6, 1.8, sz, 0);
+  // A dim panel in front, so the nose and the windscreen have something to reflect.
+  panel(basic(0xd8dcff, 0.18), 8, 2.4, 0, 2.6, H - 0.05, Math.PI);
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const rt = pmrem.fromScene(env, 0.035, 0.1, 40, { position: new THREE.Vector3(0, 0.8, 0) });
+  pmrem.dispose();
+  for (const d of disposables) d.dispose();
+  return rt;
+}
+
+/** Dust drifting in the light round the car: points moved in the shader, so nothing per frame on the CPU. */
 function dustMotes(time: { value: number }): THREE.Points {
-  const n = 220;
+  const n = 320;
   const pos = new Float32Array(n * 3);
   const seed = new Float32Array(n);
   let h = 7;
   const rnd = () => ((h = (h * 16807) % 2147483647) / 2147483647);
   for (let i = 0; i < n; i++) {
-    pos[i * 3] = (rnd() - 0.5) * 9;
+    pos[i * 3] = (rnd() - 0.5) * 13;
     pos[i * 3 + 1] = 0.3 + rnd() * 4.2;
-    pos[i * 3 + 2] = (rnd() - 0.5) * 9;
+    pos[i * 3 + 2] = (rnd() - 0.5) * 13;
     seed[i] = rnd();
   }
   const g = new THREE.BufferGeometry();
@@ -507,8 +743,8 @@ function dustMotes(time: { value: number }): THREE.Points {
 
 /**
  * The floor's mirror image as the Reflector draws it: a few taps of blur for
- * epoxy rather than glass, strongest round the turntable and fading toward the
- * walls. The translucent floor over it decides how much shows.
+ * sealed concrete rather than glass, strongest round the turntable and fading
+ * toward the walls. The translucent floor over it decides how much shows.
  */
 const REFLECTION_SHADER = {
   name: 'ShowroomReflection',
@@ -541,381 +777,10 @@ const REFLECTION_SHADER = {
       c += texture2D(tDiffuse, uv + vec2(-o.x, o.y)).rgb * 0.16;
       c += texture2D(tDiffuse, uv + vec2(o.x, -o.y)).rgb * 0.16;
       c += texture2D(tDiffuse, uv + vec2(-o.x, -o.y)).rgb * 0.16;
-      float fade = 1.0 - smoothstep(3.5, 9.0, length(vWorld.xz));
+      float fade = 1.0 - smoothstep(4.0, 12.0, length(vWorld.xz));
       gl_FragColor = vec4(c * mix(0.3, 1.0, fade), 1.0);
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
     }
   `,
 };
-
-/**
- * The studio environment the paint reflects: a stand-in room with the hexagon
- * grid overhead, the orange LED line round the walls, the roller door, the
- * sign and a soft panel in front, rendered into a PMREM from the car's height.
- */
-function studioEnvironment(renderer: THREE.WebGLRenderer, hex: ReturnType<typeof hexGrid>): THREE.WebGLRenderTarget {
-  const env = new THREE.Scene();
-  const disposables: Disposable[] = [];
-  const track = <T extends Disposable>(x: T): T => (disposables.push(x), x);
-  const basic = (color: THREE.ColorRepresentation, k = 1) => track(new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(k), side: THREE.BackSide }));
-  const H = ROOM.half;
-  const room = new THREE.Mesh(track(new THREE.BoxGeometry(2 * H, ROOM.height, 2 * H)), basic(0x0e0d11));
-  room.position.y = ROOM.height / 2;
-  env.add(room);
-  const floor = new THREE.Mesh(track(new THREE.PlaneGeometry(2 * H, 2 * H).rotateX(-Math.PI / 2)), track(new THREE.MeshBasicMaterial({ color: 0x0d0c10 })));
-  floor.position.y = 0.01;
-  env.add(floor);
-  const tube = track(new THREE.BoxGeometry(1, 0.05, 0.09));
-  const hot = track(new THREE.MeshBasicMaterial({ color: new THREE.Color(0xf2f5ff).multiplyScalar(2.4) }));
-  const hexMesh = new THREE.InstancedMesh(tube, hot, hex.length);
-  const m4 = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
-  const up = new THREE.Vector3(0, 1, 0);
-  hex.forEach((e, i) => hexMesh.setMatrixAt(i, m4.compose(new THREE.Vector3(e.x, ROOM.hexY, e.z), q.setFromAxisAngle(up, -e.angle), new THREE.Vector3(e.length, 1, 1))));
-  env.add(hexMesh);
-  const strip = (mat: THREE.Material, w: number, h: number, x: number, y: number, z: number, ry: number) => {
-    const m = new THREE.Mesh(track(new THREE.PlaneGeometry(w, h)), mat);
-    m.position.set(x, y, z);
-    m.rotation.y = ry;
-    env.add(m);
-  };
-  const led = track(new THREE.MeshBasicMaterial({ color: new THREE.Color(PALETTE.orange).multiplyScalar(1.6) }));
-  for (const [x, z, ry] of [
-    [0, -H + 0.05, 0],
-    [-H + 0.05, 0, Math.PI / 2],
-    [H - 0.05, 0, -Math.PI / 2],
-    [0, H - 0.05, Math.PI],
-  ] as const)
-    strip(led, 2 * H, 0.06, x, ROOM.wainscot, z, ry);
-  strip(track(new THREE.MeshBasicMaterial({ color: 0x3a3e47 })), 5, 3.8, 3.7, 1.9, -H + 0.05, 0);
-  strip(track(new THREE.MeshBasicMaterial({ color: new THREE.Color(PALETTE.orange).multiplyScalar(0.9) })), 4.3, 1.2, -3.2, 3.15, -H + 0.05, 0);
-  // A big soft panel in front, so the nose and the windscreen have something to reflect.
-  strip(track(new THREE.MeshBasicMaterial({ color: new THREE.Color(0xd8dcff).multiplyScalar(0.28) })), 8, 2.4, 0, 2.6, H - 0.05, Math.PI);
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const rt = pmrem.fromScene(env, 0.035, 0.1, 40, { position: new THREE.Vector3(0, 0.8, 0) });
-  pmrem.dispose();
-  hexMesh.dispose();
-  for (const d of disposables) d.dispose();
-  return rt;
-}
-
-// ---------------------------------------------------------------------------
-// Canvas textures (drawn once per visit, a few milliseconds).
-// ---------------------------------------------------------------------------
-
-function canvasTexture(w: number, h: number, draw: (g: CanvasRenderingContext2D) => void, srgb = true): THREE.CanvasTexture {
-  const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
-  draw(c.getContext('2d')!);
-  const t = new THREE.CanvasTexture(c);
-  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.anisotropy = 4;
-  return t;
-}
-
-/** A small deterministic hash noise in 0..1 for texture speckle. */
-function noise(i: number): number {
-  const x = Math.sin(i * 127.1 + 311.7) * 43758.5453;
-  return x - Math.floor(x);
-}
-
-/** Painted concrete block, running bond, 3.2 m square: 8 blocks across, 16 courses. */
-function blockTexture(): THREE.CanvasTexture {
-  return canvasTexture(512, 512, (g) => {
-    g.fillStyle = '#18171b';
-    g.fillRect(0, 0, 512, 512);
-    const bw = 64;
-    const bh = 32;
-    for (let row = 0; row < 16; row++) {
-      const off = row & 1 ? bw / 2 : 0;
-      for (let col = -1; col < 9; col++) {
-        const v = 34 + Math.floor(noise(row * 31 + col) * 9);
-        g.fillStyle = `rgb(${v},${v - 1},${v + 3})`;
-        g.fillRect(col * bw + off + 2, row * bh + 2, bw - 4, bh - 4);
-        // A faint top light on each block face.
-        g.fillStyle = 'rgba(255,255,255,0.025)';
-        g.fillRect(col * bw + off + 2, row * bh + 2, bw - 4, 3);
-      }
-    }
-    for (let i = 0; i < 2600; i++) {
-      g.fillStyle = noise(i) > 0.5 ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.08)';
-      g.fillRect(noise(i * 3.1) * 512, noise(i * 7.7) * 512, 2, 2);
-    }
-  });
-}
-
-/** A roller door: horizontal slats with a light catching each rib. */
-function doorTexture(): THREE.CanvasTexture {
-  return canvasTexture(256, 512, (g) => {
-    for (let y = 0; y < 512; y += 12) {
-      const grad = g.createLinearGradient(0, y, 0, y + 12);
-      grad.addColorStop(0, '#5a606b');
-      grad.addColorStop(0.45, '#3c414a');
-      grad.addColorStop(0.55, '#2c3037');
-      grad.addColorStop(1, '#4a505a');
-      g.fillStyle = grad;
-      g.fillRect(0, y, 256, 12);
-    }
-    g.fillStyle = '#1d1f24';
-    g.fillRect(0, 488, 256, 24);
-    // A hazard band along the bottom rail.
-    for (let x = -24; x < 256; x += 24) {
-      g.fillStyle = PALETTE.yellow;
-      g.beginPath();
-      g.moveTo(x, 512);
-      g.lineTo(x + 12, 496);
-      g.lineTo(x + 24, 496);
-      g.lineTo(x + 12, 512);
-      g.fill();
-    }
-  });
-}
-
-/** Dark epoxy, 6 m square: fine speckle and saw-cut joints every 3 m. */
-function epoxyTexture(): THREE.CanvasTexture {
-  return canvasTexture(512, 512, (g) => {
-    g.fillStyle = '#141317';
-    g.fillRect(0, 0, 512, 512);
-    for (let i = 0; i < 9000; i++) {
-      const n = noise(i * 1.31);
-      g.fillStyle = n > 0.6 ? 'rgba(255,255,255,0.05)' : n > 0.3 ? 'rgba(0,0,0,0.12)' : 'rgba(120,110,140,0.05)';
-      g.fillRect(noise(i * 2.7) * 512, noise(i * 5.3) * 512, 1.5, 1.5);
-    }
-    g.fillStyle = 'rgba(0,0,0,0.55)';
-    for (const p of [0, 256]) {
-      g.fillRect(p, 0, 2, 512);
-      g.fillRect(0, p, 512, 2);
-    }
-  });
-}
-
-/** Yellow and black chevrons for the ring round the turntable. */
-function hazardTexture(): THREE.CanvasTexture {
-  return canvasTexture(64, 32, (g) => {
-    g.fillStyle = '#16151a';
-    g.fillRect(0, 0, 64, 32);
-    // Worn paint: a dimmer yellow than the UI's, so the ring frames the car without shouting.
-    g.fillStyle = '#a88a36';
-    g.beginPath();
-    g.moveTo(0, 0);
-    g.lineTo(32, 0);
-    g.lineTo(64, 32);
-    g.lineTo(32, 32);
-    g.fill();
-  });
-}
-
-/** Brushed metal: fine concentric grain for the turntable's top (planar UVs make the rings). */
-function brushedTexture(): THREE.CanvasTexture {
-  return canvasTexture(512, 512, (g) => {
-    g.fillStyle = '#7a7880';
-    g.fillRect(0, 0, 512, 512);
-    for (let r = 4; r < 256; r += 1.5) {
-      const v = 112 + Math.floor((noise(r * 3.3) - 0.5) * 44);
-      g.strokeStyle = `rgba(${v},${v},${v + 6},0.55)`;
-      g.lineWidth = 1;
-      g.beginPath();
-      g.arc(256, 256, r, 0, Math.PI * 2);
-      g.stroke();
-    }
-    // Spokes of the turntable's plates.
-    g.strokeStyle = 'rgba(20,20,24,0.8)';
-    g.lineWidth = 3;
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2;
-      g.beginPath();
-      g.moveTo(256 + Math.cos(a) * 60, 256 + Math.sin(a) * 60);
-      g.lineTo(256 + Math.cos(a) * 250, 256 + Math.sin(a) * 250);
-      g.stroke();
-    }
-    g.beginPath();
-    g.arc(256, 256, 60, 0, Math.PI * 2);
-    g.stroke();
-  });
-}
-
-/** Pegboard with a few tools hung on it. */
-function pegboardTexture(): THREE.CanvasTexture {
-  return canvasTexture(512, 276, (g) => {
-    g.fillStyle = '#26252b';
-    g.fillRect(0, 0, 512, 276);
-    g.fillStyle = '#121115';
-    for (let y = 10; y < 276; y += 18) for (let x = 10; x < 512; x += 18) g.fillRect(x, y, 4, 4);
-    g.fillStyle = '#8e939c';
-    // Wrenches in a row, getting bigger, then a hammer and pliers.
-    for (let i = 0; i < 7; i++) {
-      const x = 30 + i * 30;
-      const len = 70 + i * 10;
-      g.fillRect(x, 40, 8, len);
-      g.beginPath();
-      g.arc(x + 4, 40, 11, 0, Math.PI * 2);
-      g.fill();
-    }
-    g.fillStyle = '#a61d2b';
-    g.fillRect(300, 40, 14, 110);
-    g.fillStyle = '#8e939c';
-    g.fillRect(282, 34, 50, 22);
-    g.fillStyle = PALETTE.orange;
-    g.fillRect(370, 50, 12, 90);
-    g.fillRect(392, 50, 12, 90);
-    g.fillStyle = '#8e939c';
-    g.fillRect(372, 130, 30, 40);
-    // A coiled air line.
-    g.strokeStyle = '#d9b44a';
-    g.lineWidth = 6;
-    for (let r = 20; r < 46; r += 8) {
-      g.beginPath();
-      g.arc(460, 110, r, 0, Math.PI * 2);
-      g.stroke();
-    }
-  });
-}
-
-/** The tool chest's drawer fronts: seams, chrome pulls and a label. */
-function drawerTexture(): THREE.CanvasTexture {
-  return canvasTexture(256, 160, (g) => {
-    g.fillStyle = '#a61d2b';
-    g.fillRect(0, 0, 256, 160);
-    const rows = [0, 22, 44, 66, 96, 126, 160];
-    for (let i = 0; i < rows.length - 1; i++) {
-      g.fillStyle = 'rgba(0,0,0,0.55)';
-      g.fillRect(0, rows[i + 1] - 2, 256, 2);
-      g.fillStyle = '#d9dde5';
-      g.fillRect(28, rows[i] + 6, 200, 3);
-    }
-    g.fillStyle = 'rgba(255,255,255,0.12)';
-    g.fillRect(0, 0, 256, 3);
-  });
-}
-
-/** A poster for one of the game's fictional tuners: a name, a line and a bold shape in an accent. */
-function posterTexture(name: string, line: string, accent: string, variant: number): THREE.CanvasTexture {
-  return canvasTexture(256, 360, (g) => {
-    g.fillStyle = '#1b1a1f';
-    g.fillRect(0, 0, 256, 360);
-    g.fillStyle = accent;
-    if (variant === 0) {
-      // A wing: a slanted blade over a stand.
-      g.beginPath();
-      g.moveTo(30, 150);
-      g.lineTo(226, 120);
-      g.lineTo(226, 140);
-      g.lineTo(30, 172);
-      g.fill();
-      g.fillRect(80, 160, 10, 60);
-      g.fillRect(170, 146, 10, 60);
-    } else if (variant === 1) {
-      // Speed lines.
-      for (let i = 0; i < 9; i++) g.fillRect(20 + i * 6, 70 + i * 18, 216 - i * 18, 7);
-    } else {
-      // A five spoke rim.
-      g.lineWidth = 14;
-      g.strokeStyle = accent;
-      g.beginPath();
-      g.arc(128, 150, 80, 0, Math.PI * 2);
-      g.stroke();
-      for (let i = 0; i < 5; i++) {
-        const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
-        g.beginPath();
-        g.moveTo(128, 150);
-        g.lineTo(128 + Math.cos(a) * 76, 150 + Math.sin(a) * 76);
-        g.stroke();
-      }
-    }
-    g.fillStyle = '#f2efe8';
-    g.font = 'italic 900 40px "Google Sans Flex", system-ui, sans-serif';
-    g.fillText(name, 20, 290);
-    g.fillStyle = accent;
-    g.font = '700 17px "Google Sans Flex", system-ui, sans-serif';
-    g.fillText(line, 22, 318);
-    g.fillRect(22, 330, 60, 4);
-  });
-}
-
-/**
- * The Street Scene sign: the logo's italic in the title's yellow to red sweep,
- * with a glow round each letter like a lit tube. Drawn again once the display
- * font is in (the first draw may use the fallback).
- */
-function signTexture(): THREE.CanvasTexture {
-  const W = 1024;
-  const Hh = 346;
-  const draw = (g: CanvasRenderingContext2D) => {
-    g.clearRect(0, 0, W, Hh);
-    g.font = 'italic 900 150px "Google Sans Flex", system-ui, sans-serif';
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    const grad = g.createLinearGradient(80, 0, W - 80, 0);
-    grad.addColorStop(0, PALETTE.yellow);
-    grad.addColorStop(0.55, PALETTE.orange);
-    grad.addColorStop(1, PALETTE.red);
-    // Glow passes, wide to tight, then the tube itself in near white over the color.
-    for (const [blur, alpha] of [
-      [40, 0.55],
-      [18, 0.8],
-    ] as const) {
-      g.shadowColor = PALETTE.orange;
-      g.shadowBlur = blur;
-      g.globalAlpha = alpha;
-      g.fillStyle = grad;
-      g.fillText('STREET SCENE', W / 2, Hh / 2 - 10);
-    }
-    g.shadowBlur = 0;
-    g.globalAlpha = 1;
-    g.fillStyle = grad;
-    g.fillText('STREET SCENE', W / 2, Hh / 2 - 10);
-    g.fillStyle = 'rgba(255,244,214,0.55)';
-    g.font = 'italic 900 150px "Google Sans Flex", system-ui, sans-serif';
-    g.fillText('STREET SCENE', W / 2 - 2, Hh / 2 - 12);
-    // The rule under it.
-    g.fillStyle = grad;
-    g.shadowColor = PALETTE.orange;
-    g.shadowBlur = 16;
-    g.fillRect(130, Hh / 2 + 78, W - 260, 9);
-    g.shadowBlur = 0;
-  };
-  const texture = canvasTexture(W, Hh, draw);
-  texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
-  void document.fonts
-    ?.load('italic 900 150px "Google Sans Flex"')
-    .then(() => {
-      draw((texture.image as HTMLCanvasElement).getContext('2d')!);
-      texture.needsUpdate = true;
-    })
-    .catch(() => undefined);
-  return texture;
-}
-
-/** The contact shadow: a soft rounded rectangle, darkest under the car's middle. */
-function shadowTexture(): THREE.CanvasTexture {
-  const w = 128;
-  const h = 256;
-  const t = canvasTexture(
-    w,
-    h,
-    (g) => {
-      const img = g.createImageData(w, h);
-      for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-          // Rounded box distance in a unit footprint, inner box 0.62 x 0.74 of the plane.
-          const px = Math.abs((x + 0.5) / w - 0.5) * 2;
-          const py = Math.abs((y + 0.5) / h - 0.5) * 2;
-          const qx = Math.max(px - 0.6, 0);
-          const qy = Math.max(py - 0.72, 0);
-          const d = Math.hypot(qx / 0.4, qy / 0.28);
-          const a = Math.max(0, 1 - d) ** 1.8 * (0.75 + 0.25 * (1 - py));
-          const i = (y * w + x) * 4;
-          img.data[i] = img.data[i + 1] = img.data[i + 2] = 255;
-          img.data[i + 3] = Math.round(a * 255);
-        }
-      }
-      g.putImageData(img, 0, 0);
-    },
-    false,
-  );
-  t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
-  return t;
-}

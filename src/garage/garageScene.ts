@@ -1,7 +1,8 @@
 /**
  * The garage's 3D view, with two presentations:
- *  - Garage: the car on the showroom's turntable (garage/showroom.ts), turning
- *    slowly under the hexagon lights.
+ *  - Garage: the car on the turntable in the middle of the workshop
+ *    (garage/showroom.ts), turning slowly under the fluorescent battens among
+ *    the lifts and the other builds.
  *  - Street: the car cruising the event city (game/streetStage.ts, the same
  *    street and car the main menu shows); revving lifts the cruise toward a
  *    sprint, and the orbit camera rides along (game/streetCameras.ts).
@@ -79,7 +80,7 @@ export class GarageScene {
     private readonly street: StreetStage,
     private readonly quality: Quality,
   ) {
-    this.showroom = new Showroom(gr.renderer, quality);
+    this.showroom = new Showroom(gr.renderer, quality, assets);
     this.controls = new OrbitControls(this.camera, gr.canvas);
     this.controls.enableDamping = true;
     this.controls.enablePan = false;

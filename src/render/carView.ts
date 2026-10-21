@@ -529,6 +529,12 @@ export class CarView {
     this.beam.visible = on;
   }
 
+  /** Show or hide one wheel (0 FL, 1 FR, 2 RL, 3 RR), e.g. a car on a garage lift with its wheels off. Kept across reloads. */
+  setWheelVisible(index: number, on: boolean): void {
+    const pivot = this.wheelPivots[index];
+    if (pivot) pivot.visible = on;
+  }
+
   private flashBase: { spot: number; spotDist: number; beam: THREE.Color; lens: number } | null = null;
 
   /** Flash to pass: 0 = normal beams, 1 = full high beam flash (spots, road pool and lenses). Driven by the session's horn. */
