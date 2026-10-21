@@ -33,8 +33,11 @@ export const CITY = {
   curbRamp: { road: 0.22, walk: 0.12 },
 
   /**
-   * Rolling hills: amplitudes in meters, frequencies in rad/m. Worst case grade is
-   * about a1*f1 + a2*f2*sqrt(2) + a3*f3 = 5.2%, typical grades 1-3%.
+   * Rolling hills: amplitudes in meters, frequencies in rad/m. The three rolling terms' grades
+   * add to at most a1*f1 + a2*f2*sqrt(2) + a3*f3 = 5.2%; with the macro relief below the maxima
+   * sum to 7.7%, but the two long waves run roughly across each other and their steepest points
+   * rarely meet the short waves', so the worst grade measured over 100 seeds is 6.1% and the
+   * typical (median) grade 2-3% (tests/city.test.ts holds the base under 6.6%).
    */
   hillAmp1: 5.5,
   hillAmp2: 3.0,
@@ -43,6 +46,17 @@ export const CITY = {
   hillFreq2: 0.0026,
   /** Medium wavelength (~570 m) crests and dips, a few per lap. */
   hillFreq3: 0.011,
+  /**
+   * Macro relief, the landscape the city sits on: a broad ridge or tilt (one side of the map
+   * higher by 12-20 m) at a 2.4 km wavelength in a seed-random heading, and a gentler valley or
+   * swell at 3 km roughly across it (hillValleySkewDeg either side of perpendicular, degrees).
+   * Grades a4*f4 = 1.8% and a5*f5 = 0.7%; their curvature is far too slight to launch a car.
+   */
+  hillAmp4: 7.0,
+  hillAmp5: 3.5,
+  hillFreq4: 0.0026,
+  hillFreq5: 0.0021,
+  hillValleySkewDeg: 22,
 
   downtownRadius: 420,
   broadphaseCell: 32,
