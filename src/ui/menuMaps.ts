@@ -264,30 +264,16 @@ export class CourseMap {
   }
 
   /**
-   * Where the racing is: the box around both courses and the drift zones, so
-   * every type's course shows as large as the card allows while the city
-   * behind stays put when the type changes (free roam's streets run on past
-   * the edges, as the city does).
+   * The whole city, fitted to the card, so every street of free roam and every
+   * course shows without running past the edges; the city behind stays put when
+   * the type changes. The margin is in pixels, so the start and finish discs
+   * (8.5 px) never sit on the edge whatever the scale.
    */
   private frame(w: number, hgt: number): MapView {
-    let minX = Infinity;
-    let maxX = -Infinity;
-    let minZ = Infinity;
-    let maxZ = -Infinity;
-    const add = (p: Vec2) => {
-      minX = Math.min(minX, p.x);
-      maxX = Math.max(maxX, p.x);
-      minZ = Math.min(minZ, p.z);
-      maxZ = Math.max(maxZ, p.z);
-    };
-    coursePoints(this.routes.circuit).forEach(add);
-    coursePoints(this.routes.sprint).forEach(add);
-    for (const z of driftZones(this.world)) z.polygon.forEach(add);
-    if (!Number.isFinite(minX)) return fitCity(this.world, w, hgt, 24);
-    // The margin is in pixels, so the start and finish discs (8.5 px) never sit on the edge whatever the scale.
-    const pad = 20;
-    const scale = Math.min((w - 2 * pad) / Math.max(1, maxX - minX), (hgt - 2 * pad) / Math.max(1, maxZ - minZ));
-    return { cx: (minX + maxX) / 2, cz: (minZ + maxZ) / 2, scale, w, h: hgt };
+    const b = this.world.graph.bounds;
+    const pad = 12;
+    const scale = Math.min((w - 2 * pad) / Math.max(1, b.maxX - b.minX), (hgt - 2 * pad) / Math.max(1, b.maxZ - b.minZ));
+    return { cx: (b.minX + b.maxX) / 2, cz: (b.minZ + b.maxZ) / 2, scale, w, h: hgt };
   }
 
   /** Rasterize the city and rebuild the course for the box's current size. */
