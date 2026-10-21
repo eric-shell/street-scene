@@ -7,7 +7,7 @@ import { validateCatalog } from '../scripts/validateParts';
 import { createRace, stepRace } from '../src/sim/race';
 import { raceConfig } from './helpers';
 import { createAi, autopilotInput } from '../src/sim/ai';
-import { MAX_BEAD, beadForSize, detectProfile, remapWheel } from '../src/render/wheelFit';
+import { MAX_BEAD, beadForSize, detectProfile, remapWheel, sizeForBead } from '../src/render/wheelFit';
 import { BlipScript, RevModel } from '../src/garage/revModel';
 
 const allTier = (t: 0 | 1 | 2 | 3): PerformanceBuild => {
@@ -185,6 +185,10 @@ describe('rim size keeps the tire outer diameter', () => {
     expect(beadForSize(profile, 1)).toBeCloseTo(profile.bead, 9);
     expect(beadForSize(profile, 1.25)).toBeGreaterThan(beadForSize(profile, 1.1));
     expect(beadForSize(profile, 0.85)).toBeLessThan(profile.bead);
+    // The garage's whole inch rim slider inverts the size curve on both sides of stock.
+    for (const size of [0.85, 0.93, 1, 1.07, 1.25]) expect(sizeForBead(profile, beadForSize(profile, size))).toBeCloseTo(size, 9);
+    expect(sizeForBead(profile, 0)).toBe(0.85);
+    expect(sizeForBead(profile, 2)).toBe(1.25);
   });
 
   it('keeps normals unit length and pointing the same way at size 1', () => {

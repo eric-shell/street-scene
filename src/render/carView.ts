@@ -11,7 +11,7 @@ import { CarMaterialSet, applyVisualToMaterials, createCarMaterials, disposeCarM
 import { makeRadialGlow } from './textures';
 import { DecalLayerView } from './decals';
 import { FEATURES } from '../shared/features';
-import { WheelProfile, beadForSize, detectProfile, remapWheel } from './wheelFit';
+import { WheelProfile, beadForSize, detectProfile, remapWheel, sizeForBead } from './wheelFit';
 import { maskVehicleMesh, underVehicles } from './vehicleMask';
 
 export interface CarPose {
@@ -434,6 +434,17 @@ export class CarView {
   rimInches(size: number): number {
     const scale = this.car.wheelRadius / (this.wheelProfile.outer || 1);
     return (2 * beadForSize(this.wheelProfile, size) * scale) / 0.0254;
+  }
+
+  /** Inverse of rimInches: the wheel size that gives this rim diameter (in) on this car and wheel. */
+  rimSizeForInches(inches: number): number {
+    const scale = this.car.wheelRadius / (this.wheelProfile.outer || 1);
+    return sizeForBead(this.wheelProfile, (inches * 0.0254) / 2 / scale);
+  }
+
+  /** True once a wheel is baked, so rimInches measures the real profile rather than the placeholder one. */
+  get wheelsReady(): boolean {
+    return this.wheelModels.length > 0;
   }
 
   private applyStance(): void {

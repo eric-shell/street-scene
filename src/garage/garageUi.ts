@@ -543,37 +543,41 @@ export class GarageScreen {
       return list;
     };
     const cm = (x: number) => `${Math.round(x * 100)} cm`;
+    // Rim size steps in whole inches once the wheel is measured; the build keeps the size factor, so the
+    // slider converts both ways (the inches a factor gives depend on the car and the wheel model).
+    const car = this.scene.car?.wheelsReady ? this.scene.car : null;
+    const id = (x: number) => x;
     // Per axle sliders. While front and rear are linked, moving one moves its partner too.
-    const partners = new Map<string, { el: HTMLInputElement; out: HTMLElement; fmt: (x: number) => string }>();
+    const partners = new Map<string, { el: HTMLInputElement; out: HTMLElement; fmt: (x: number) => string; toUi: (x: number) => number }>();
     const axleSlider = (axle: Axle, key: keyof AxleStance, short = false) => {
       const L = STANCE_LIMITS[key];
       const spec = {
-        camber: { label: 'Camber', step: 0.5, fmt: (x: number) => `${x}°` },
-        offset: { label: 'Wheel offset', step: 0.005, fmt: cm },
-        wheelSize: {
-          label: 'Rim size',
-          step: 0.01,
-          fmt: (x: number) => {
-            const inch = this.scene.car?.rimInches(x);
-            return `${Math.round(x * 100)}%${inch ? ` · ${inch.toFixed(1)} in` : ''}`;
-          },
-        },
+        camber: { label: 'Camber', min: L[0], max: L[1], step: 0.5, fmt: (x: number) => `${x}°`, toUi: id, fromUi: id },
+        offset: { label: 'Wheel offset', min: L[0], max: L[1], step: 0.005, fmt: cm, toUi: id, fromUi: id },
+        wheelSize: car
+          ? (() => {
+              const min = Math.ceil(car.rimInches(L[0]) - 1e-6);
+              const max = Math.floor(car.rimInches(L[1]) + 1e-6);
+              return { label: 'Rim size', min, max, step: 1, fmt: (x: number) => `${x} in`, toUi: (x: number) => Math.max(min, Math.min(max, Math.round(car.rimInches(x)))), fromUi: (x: number) => car.rimSizeForInches(x) };
+            })()
+          : { label: 'Rim size', min: L[0], max: L[1], step: 0.01, fmt: (x: number) => `${Math.round(x * 100)}%`, toUi: id, fromUi: id },
       }[key];
       const label = short ? spec.label : `${axle === 'front' ? 'Front' : 'Rear'}`;
-      const el = slider(label, v.stance[axle][key], L[0], L[1], spec.step, spec.fmt, (x) => {
+      const el = slider(label, spec.toUi(v.stance[axle][key]), spec.min, spec.max, spec.step, spec.fmt, (ui) => {
+        const x = spec.fromUi(ui);
         v.stance[axle][key] = x;
         if (this.prefs.linkAxles) {
           const other: Axle = axle === 'front' ? 'rear' : 'front';
           v.stance[other][key] = x;
           const p = partners.get(`${other}.${key}`);
           if (p) {
-            p.el.value = String(x);
-            p.out.textContent = p.fmt(x);
+            p.el.value = String(p.toUi(x));
+            p.out.textContent = p.fmt(p.toUi(x));
           }
         }
         this.changed();
       });
-      partners.set(`${axle}.${key}`, { el: el.querySelector('input') as HTMLInputElement, out: el.querySelector('.g-val') as HTMLElement, fmt: spec.fmt });
+      partners.set(`${axle}.${key}`, { el: el.querySelector('input') as HTMLInputElement, out: el.querySelector('.g-val') as HTMLElement, fmt: spec.fmt, toUi: spec.toUi });
       return el;
     };
 
@@ -684,16 +688,18 @@ export class GarageScreen {
               v.parts.wheels ?? manifestCar(b.carId).defaultWheel,
               (id) => {
                 v.parts.wheels = id;
-                this.changed();
+                // Each wheel model has its own rim profile: re-render so the inch range fits the new one.
+                void this.changed().then(() => this.tab === 'wheels' && this.renderTab());
               },
             ),
           ),
           section('Rim size', null, this.linkToggle(), ...AXLES.map((a) => axleSlider(a, 'wheelSize')), h('div', { class: 'muted g-note' }, 'Bigger rims, thinner sidewalls: the tire keeps its outer size.')),
-          // Linked axles share one picker; unlinked, front and rear get their own.
-          this.prefs.linkAxles
+          // Wheel color has its own link: one picker while linked, front and rear pickers when not.
+          this.prefs.linkWheelColor
             ? section(
                 'Wheel color',
                 null,
+                this.colorLinkToggle(),
                 color(v.wheels.color, (c) => {
                   v.wheels.color = v.wheels.rearColor = c;
                   this.changed();
@@ -702,6 +708,7 @@ export class GarageScreen {
             : section(
                 'Wheel color',
                 null,
+                this.colorLinkToggle(),
                 field(
                   'Front',
                   color(v.wheels.color, (c) => {
@@ -883,12 +890,32 @@ export class GarageScreen {
         this.prefs.linkAxles = !linked;
         saveGaragePrefs(this.prefs);
         if (this.prefs.linkAxles) {
-          // Linking starts from matching axles: the rear takes the front's settings and wheel color.
-          const v = this.build.visual;
-          v.stance.rear = { ...v.stance.front };
-          v.wheels.rearColor = v.wheels.color;
+          // Linking starts from matching axles: the rear takes the front's settings.
+          const s = this.build.visual.stance;
+          s.rear = { ...s.front };
           this.changed();
           toast('Rear now matches front', Link2);
+        }
+        this.renderTab();
+      },
+      `small g-link${linked ? ' primary' : ''}`,
+    );
+  }
+
+  /** Link toggle for the wheel color, separate from the stance link so sizes and colors can split independently. */
+  private colorLinkToggle(): HTMLElement {
+    const linked = this.prefs.linkWheelColor;
+    return btn(
+      linked ? Link2 : Link2Off,
+      linked ? 'Front and rear same color' : 'Front and rear colors separate',
+      () => {
+        this.prefs.linkWheelColor = !linked;
+        saveGaragePrefs(this.prefs);
+        if (this.prefs.linkWheelColor) {
+          const w = this.build.visual.wheels;
+          w.rearColor = w.color;
+          this.changed();
+          toast('Rear wheels now match front', Link2);
         }
         this.renderTab();
       },
