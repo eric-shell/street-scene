@@ -22,9 +22,9 @@ import * as THREE from 'three';
 import { TrainRumble } from '../audio/sfx';
 import type { Quality } from '../ui/settings';
 import { GeoBuilder } from './geoBuilder';
-import { CurvePoint, RailCurve, curvePoint, deckSlope, sampleCurve, trackFor, trackLateral } from './railCurve';
+import { CurvePoint, RailCurve, curvePoint, deckSlope, sampleCurve, trackLateral } from '../city/railCurve';
 import { Band, CAR_SIDE, TRAIN_BANDS, makeTrainAtlas, makeWashTexture } from './railTextures';
-import { Service, TRAIN, TripState, hash01, makeService, runAt, trackS, tripsAt } from './railTimetable';
+import { Service, TRAIN, TripState, hash01, lineServices, runAt, trackS, tripsAt } from '../city/railTimetable';
 
 /** Car body cross section (m, from the rail top) and detail per quality. */
 const CAR = {
@@ -197,13 +197,8 @@ function carGeometry(): THREE.BufferGeometry {
 
 export function createTrains(group: THREE.Group, curve: RailCurve, seed: number, quality: Quality, track: <T extends { dispose(): void }>(x: T) => T): Trains {
   const detail = DETAIL[quality];
-  const stations = curve.stations.map((s) => s.s);
-  const phase0 = hash01(seed, 11, 3) * TRAIN.headway;
-  const services: { sv: Service; track: 0 | 1; salt: number }[] = ([1, -1] as const).map((dir, k) => ({
-    sv: makeService(dir, curve.length, stations, phase0 + k * TRAIN.headway * 0.47),
-    track: trackFor(curve, dir),
-    salt: k * 977 + 13,
-  }));
+  // The timetable the sim's level crossings close their gates for (city/railTimetable.ts).
+  const services: { sv: Service; track: 0 | 1; salt: number }[] = lineServices(curve, seed).map((l, k) => ({ ...l, salt: k * 977 + 13 }));
   const maxTrains = services.reduce((n, s) => n + Math.ceil(s.sv.run.duration / s.sv.headway) + 1, 0);
   const maxCars = maxTrains * TRAIN.cars;
 

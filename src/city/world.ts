@@ -17,6 +17,7 @@ import { bayRoadDistance, baysByEdge } from './busBays';
 import { CityEvent, EventFlavourId, eventOffer, eventRoutePreference, pickEventFlavour, resolveEvent, routeEdges } from './events';
 import { Drawbridge, buildTimedGates, markDrawbridge } from './drawbridge';
 import type { GateSet } from '../sim/gates';
+import { LevelCrossing, addLevelCrossings } from './levelCrossings';
 
 /** Routes tried (the first pick, then alternatives) until one has room for a shortcut. */
 const ROUTE_TRIES = 12;
@@ -185,6 +186,8 @@ export interface World extends City {
   timedGates?: GateSet;
   /** The river's drawbridge (city/drawbridge.ts), or null when the city has none. */
   drawbridge?: Drawbridge | null;
+  /** Level crossings over the El at grade (city/levelCrossings.ts); their gates are in timedGates. */
+  levelCrossings?: LevelCrossing[];
 }
 
 export function createCity(seed: number): City {
@@ -371,6 +374,7 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
   const propGrid = buildPropGrid(graph, props);
   const coveredProps = propsUnderWalls(props, propGrid, walls.slice(blocks.walls.length));
   const { timedGates, drawbridge } = buildTimedGates(seed, graph, city.districts.areas);
+  const levelCrossings = addLevelCrossings(city, timedGates);
   const pad = 60;
   const wallGrid = SpatialGrid.forBounds(graph.bounds.minX - pad, graph.bounds.minZ - pad, graph.bounds.maxX + pad, graph.bounds.maxZ + pad, CITY.broadphaseCell);
   walls.forEach((w, i) => wallGrid.insertSegment(i, w.ax, w.az, w.bx, w.bz, 0.5));
@@ -658,6 +662,7 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     areas: city.districts.areas,
     areaAt: city.districts.areaAt,
     timedGates,
+    levelCrossings,
     drawbridge,
   };
 }

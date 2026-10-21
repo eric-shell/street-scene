@@ -15,7 +15,14 @@
  *    sidewalk (solid to the ground: they are the sim's 'pillar' walls) with
  *    green globe lamps and a SUBWAY sign;
  *  - signals along the line and, past both map ends, the viaduct running on
- *    into the fog on render-only columns and down a ramp into a tunnel portal.
+ *    into the fog on render-only columns and down a ramp into a tunnel portal;
+ *  - across a bluff (city/districts/bluff.ts) the line holds its level while
+ *    the ground comes up: banks where the deck is low, then the track at
+ *    grade on ballast between fences (no steel), and over the level
+ *    crossing's street only the rails, flush with the road (the gates and
+ *    signals are render/districts/bluff.ts).
+ * The trains run on the sim clock in a race (kit.simTick), so the gates the
+ * sim closes for them come down for the train you see.
  * Two merged meshes (textured steel atlas, alpha tested ties) plus lamps in
  * the kit's shared glow builder; the trains are their own instanced meshes
  * (render/trains.ts). Quality trims detail: Low draws a solid deck instead of
@@ -26,7 +33,9 @@ import { CITY } from '../../city/config';
 import { riverCenter } from '../../city/districts/river';
 import type { Area } from '../../city/districts/types';
 import { GeoBuilder } from '../geoBuilder';
-import { CurvePoint, RAIL, RailCurve, buildRailCurve, curvePoint, dirOn, projectOnCurve, sampleCurve, stationSwing, trackLateral } from '../railCurve';
+import { CurvePoint, RAIL, RailCurve, curvePoint, dirOn, projectOnCurve, sampleCurve, stationSwing, trackLateral } from '../../city/railCurve';
+import { elCurve } from '../../city/districts/subway';
+import { TICK_HZ } from '../../sim/constants';
 import { Band, STATION_NAMES, SUBWAY_SIGN, makeSteelAtlas, makeTieTexture, signBand, steelBand } from '../railTextures';
 import { createTrains } from '../trains';
 import type { DistrictKit, DistrictRenderer } from './kit';
@@ -54,6 +63,7 @@ const TINT = {
   board: col(0x8a6a4c, 0.7),
   concrete: col(0xffffff),
   yellow: col(0xffd23a, 1.5),
+  ballast: col(0x6a645c, 0.55),
   roofUnder: col(0xffffff, 0.55),
 } as const;
 
@@ -92,6 +102,14 @@ const EL = {
   houseHalf: CITY.districts.subway.mezzanine / 2,
   houseBottom: -4.35,
   truss: 4.6,
+  /** Below this tie top clearance over the ground the track runs at grade: ballast, no deck steel (m). */
+  atGrade: 1.6,
+  /** At grade: ballast shoulder beyond the deck edges and the fence beyond that (m), fence height (m). */
+  shoulder: 0.5,
+  fenceOut: 1.4,
+  fenceHeight: 1.9,
+  /** Signals keep this far along the track from a level crossing (m). */
+  signalClear: 40,
 } as const;
 
 /** Band-mapped oriented cuboid from a to b (end face centers): hw across (horizontal), hh up. */
@@ -200,14 +218,13 @@ export const subwayRenderer: DistrictRenderer = {
     const bed = new GeoBuilder(false);
     for (const a of areas) {
       const b = kit.builds[a.id];
-      const H = a.params.deckHeight;
-      const stationHints = b.hints.filter((hh) => hh.kind === 'station');
-      const curve = buildRailCurve(a.path, a.params.side, H, kit.h, stationHints.map((hh) => hh.points[0]));
+      // The same curve the sim's level crossings time their gates on.
+      const curve = elCurve(a, b, kit.h);
       curve.stations.forEach((st, i) => (st.name = ((a.params.seed ?? 0) + i) % STATION_NAMES.length));
       buildLine(kit, a, curve, steel, open ? bed : null);
       const trains = createTrains(kit.group, curve, a.params.seed ?? 1, kit.quality, kit.track);
       kit.track(trains);
-      kit.animate(trains.update);
+      kit.animate((time) => trains.update(kit.simTick(time) / TICK_HZ));
       kit.view(trains.view);
       // Debug handle (headless screenshots, the console): the curve and timetable of this line.
       const handle = new THREE.Object3D();
@@ -247,15 +264,44 @@ function buildLine(kit: DistrictKit, area: Area, c: RailCurve, steel: GeoBuilder
   const edgeOut = RAIL.trackHalf + RAIL.edgeOut;
   const piece = low ? 8 : 6;
   const near = (s: number) => s > c.cityA - 60 && s < c.cityB + 60;
+  // Level crossings on this line: their street corridors along the track (s, half reach).
+  const xings = (kit.world.levelCrossings ?? []).map((lc) => ({ s: lc.s, reach: lc.half / Math.max(0.3, Math.abs(lc.rx * lc.tz - lc.rz * lc.tx)) + 0.3 }));
+  const inXing = (s: number) => xings.some((x) => Math.abs(s - x.s) < x.reach);
+  const PX: CurvePoint = curvePoint();
+  const clearAt = (s: number) => {
+    sampleCurve(c, s, PX);
+    return PX.y - PX.ground;
+  };
+  // Piece ends: every `piece` m, cut at the crossings' corridor edges.
+  const ends: number[] = [];
+  for (let s = c.portalA; s < c.portalB - 0.01; s += piece) ends.push(s);
+  for (const x of xings) ends.push(x.s - x.reach, x.s + x.reach);
+  ends.push(c.portalB);
+  ends.sort((p, q) => p - q);
 
   // ----- Deck: girders, floor beams, stringers, rails, ties, handrails, lamps.
-  for (let s = c.portalA; s < c.portalB - 0.01; s += piece) {
-    const s1 = Math.min(c.portalB, s + piece);
+  for (let i = 0; i + 1 < ends.length; i++) {
+    const s = ends[i];
+    const s1 = ends[i + 1];
+    if (s1 - s < 0.05) continue;
     sampleCurve(c, s, P0);
     sampleCurve(c, s1, P1);
     const ein0 = edgeIn(s);
     const ein1 = edgeIn(s1);
     const detail = near(s);
+    // Over a level crossing's street: the running rails alone, their heads flush with the road.
+    if (inXing((s + s1) / 2)) {
+      for (const tr of [0, 1] as const) {
+        const l0 = trackLateral(c, tr, s);
+        const l1 = trackLateral(c, tr, s1);
+        for (const r of [-EL.railGauge, EL.railGauge]) strut(steel, at(P0, l0 + r, 0.08), at(P1, l1 + r, 0.08), 0.035, 0.08, STEEL, TINT.rail, { caps: false, bottom: false });
+      }
+      continue;
+    }
+    if (clearAt(s) < EL.atGrade && clearAt(s1) < EL.atGrade) {
+      atGrade(s, s1, ein0, ein1, detail);
+      continue;
+    }
     const gy = (EL.girderTop + EL.girderBottom) / 2;
     const gh = (EL.girderTop - EL.girderBottom) / 2;
     strut(steel, at(P0, ein0 + EL.girderHalf, gy), at(P1, ein1 + EL.girderHalf, gy), EL.girderHalf, gh, GIRDER, TINT.steel, { caps: false });
@@ -286,7 +332,7 @@ function buildLine(kit: DistrictKit, area: Area, c: RailCurve, steel: GeoBuilder
     }
     if (!bed) {
       // Low: a solid deck plate instead of open ties.
-      quad(steel, [at(P0, ein0 + 0.3, -0.06), at(P0, edgeOut - 0.3, -0.06), at(P1, edgeOut - 0.3, -0.06), at(P1, ein1 + 0.3, -0.06)], [0, 1, 0], STEEL, piece / STEEL.tile, TINT.dark);
+      quad(steel, [at(P0, ein0 + 0.3, -0.06), at(P0, edgeOut - 0.3, -0.06), at(P1, edgeOut - 0.3, -0.06), at(P1, ein1 + 0.3, -0.06)], [0, 1, 0], STEEL, (s1 - s) / STEEL.tile, TINT.dark);
     }
     // Catwalk handrails along both girders.
     if (detail) {
@@ -296,7 +342,7 @@ function buildLine(kit: DistrictKit, area: Area, c: RailCurve, steel: GeoBuilder
       ]) {
         const posts = low ? [0] : [0, 0.5];
         for (const f of posts) {
-          sampleCurve(c, s + piece * f, P1);
+          sampleCurve(c, s + (s1 - s) * f, P1);
           const l = l0 + (l1 - l0) * f;
           strut(steel, at(P1, l, EL.girderTop), at(P1, l, EL.handrail), 0.03, 0.03, STEEL, TINT.dark, { caps: false, side: { x: P1.tx, z: P1.tz } });
         }
@@ -306,10 +352,57 @@ function buildLine(kit: DistrictKit, area: Area, c: RailCurve, steel: GeoBuilder
       }
     }
     sampleCurve(c, s1, P1);
-    // Sodium lamps under the deck, alternating over the sidewalk and the street.
-    if (detail && Math.floor(s / EL.lampEvery) !== Math.floor(s1 / EL.lampEvery)) {
+    // Sodium lamps under the deck, alternating over the sidewalk and the street (not under a low deck).
+    if (detail && Math.floor(s / EL.lampEvery) !== Math.floor(s1 / EL.lampEvery) && P1.y - P1.ground > 3) {
       const k = Math.floor(s1 / EL.lampEvery);
       lamp(glow, at(P1, k % 2 ? edgeOut - 1.2 : -RAIL.trackHalf, -1.12), 0.18, 0.05, { x: P1.tx, z: P1.tz }, 0.35, LAMP.sodium);
+    }
+  }
+
+  /** A stretch at grade: a ballast bed with shoulders down (or up) to the ground, ties, rails, the fences either side. */
+  function atGrade(s: number, s1: number, ein0: number, ein1: number, detail: boolean): void {
+    const yb = -0.22;
+    const lIn0 = ein0 - EL.shoulder;
+    const lIn1 = ein1 - EL.shoulder;
+    const lOut = edgeOut + EL.shoulder;
+    quad(steel, [at(P0, lIn0, yb), at(P0, lOut, yb), at(P1, lOut, yb), at(P1, lIn1, yb)], [0, 1, 0], CONCRETE, (s1 - s) / CONCRETE.tile, TINT.ballast);
+    const ground = (p: CurvePoint, l: number): V3 => {
+      const x = p.x + p.px * l;
+      const z = p.z + p.pz * l;
+      return { x, y: kit.h(x, z) - 0.05, z };
+    };
+    // Shoulders: from the bed's edges to the ground 1.6 m out, sloping down onto a bank or up out of a cutting.
+    quad(steel, [ground(P0, lIn0 - 1.6), at(P0, lIn0, yb), at(P1, lIn1, yb), ground(P1, lIn1 - 1.6)], [0, 1, 0], CONCRETE, (s1 - s) / CONCRETE.tile, TINT.ballast);
+    quad(steel, [at(P0, lOut, yb), ground(P0, lOut + 1.6), ground(P1, lOut + 1.6), at(P1, lOut, yb)], [0, 1, 0], CONCRETE, (s1 - s) / CONCRETE.tile, TINT.ballast);
+    for (const tr of [0, 1] as const) {
+      const l0 = trackLateral(c, tr, s);
+      const l1 = trackLateral(c, tr, s1);
+      for (const r of [-EL.railGauge, EL.railGauge]) strut(steel, at(P0, l0 + r, 0.08), at(P1, l1 + r, 0.08), 0.035, 0.08, STEEL, TINT.rail, { caps: false, bottom: false });
+      if (detail) {
+        const out = l0 < 0 ? -1 : 1;
+        strut(steel, at(P0, l0 + out * EL.thirdRail, 0.12), at(P1, l1 + out * EL.thirdRail, 0.12), 0.045, 0.06, STEEL, TINT.third, { caps: false, bottom: false });
+        strut(steel, at(P0, l0 + out * EL.thirdRail, 0.26), at(P1, l1 + out * EL.thirdRail, 0.26), 0.14, 0.015, CONCRETE, TINT.board, { caps: false });
+      }
+      // Sleepers on the ballast: the alpha tested tie strip, or a dark plate on Low.
+      if (bed) {
+        const A = at(P0, l0 - 1.3, -0.02);
+        const B = at(P0, l0 + 1.3, -0.02);
+        const C = at(P1, l1 + 1.3, -0.02);
+        const D = at(P1, l1 - 1.3, -0.02);
+        const ids = [bed.vertex(A.x, A.y, A.z, 0, 1, 0, 0, s / 5), bed.vertex(B.x, B.y, B.z, 0, 1, 0, 1, s / 5), bed.vertex(C.x, C.y, C.z, 0, 1, 0, 1, s1 / 5), bed.vertex(D.x, D.y, D.z, 0, 1, 0, 0, s1 / 5)];
+        bed.quadFacing(ids[0], ids[1], ids[2], ids[3], 0, 1, 0);
+      } else quad(steel, [at(P0, l0 - 1.3, -0.1), at(P0, l0 + 1.3, -0.1), at(P1, l1 + 1.3, -0.1), at(P1, l1 - 1.3, -0.1)], [0, 1, 0], STEEL, (s1 - s) / STEEL.tile, TINT.dark);
+    }
+    // Fences either side of the right of way: posts and three wires, standing on the ground.
+    if (!detail) return;
+    for (const [l0, l1] of [
+      [lIn0 - EL.fenceOut, lIn1 - EL.fenceOut],
+      [lOut + EL.fenceOut, lOut + EL.fenceOut],
+    ]) {
+      const a = ground(P0, l0);
+      const b = ground(P1, l1);
+      strut(steel, a, { x: a.x, y: a.y + EL.fenceHeight, z: a.z }, 0.04, 0.04, STEEL, TINT.dark, { side: { x: P0.tx, z: P0.tz } });
+      for (const f of low ? [0.95] : [0.35, 0.65, 0.95]) strut(steel, { x: a.x, y: a.y + EL.fenceHeight * f, z: a.z }, { x: b.x, y: b.y + EL.fenceHeight * f, z: b.z }, 0.012, 0.012, STEEL, TINT.dark, { caps: false });
     }
   }
 
@@ -397,6 +490,7 @@ function buildLine(kit: DistrictKit, area: Area, c: RailCurve, steel: GeoBuilder
   for (let s = c.cityA + 120; s < c.cityB - 60; s += EL.signalEvery) {
     for (const tr of [0, 1] as const) {
       const ss = s + tr * 40;
+      if (xings.some((x) => Math.abs(ss - x.s) < x.reach + EL.signalClear)) continue;
       sampleCurve(c, ss, P0);
       const l = trackLateral(c, tr, ss);
       const out = l < 0 ? -1 : 1;
@@ -557,6 +651,8 @@ function buildLine(kit: DistrictKit, area: Area, c: RailCurve, steel: GeoBuilder
     const c0 = P0.y - P0.ground;
     const c1 = P1.y - P1.ground;
     if (Math.min(c0, c1) > 3.6) continue;
+    // At grade there is nothing under the deck to wall in; over a crossing's street, the road.
+    if (Math.max(c0, c1) < EL.atGrade || inXing((s + s1) / 2)) continue;
     for (const [l0, l1, k] of [
       [edgeIn(s), edgeIn(s1), -1],
       [edgeOut, edgeOut, 1],

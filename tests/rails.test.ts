@@ -97,6 +97,25 @@ describe('corner rails', () => {
   /** Slide a car along the middle of a long rail, leaning into it. */
   function scrape(seed: number, withRails: boolean) {
     const w = createWorld(seed, 'circuit');
+    const { best } = scrapePiece(w);
+    const rs = rails(w);
+    const layout = railLayout(w);
+    expect(best).toBeGreaterThanOrEqual(0);
+    const k = layout.first[best];
+    return scrapeFrom(w, rs[k], withRails);
+  }
+
+  /**
+   * The first seed from `from` on whose circuit has a long straight rail run (a dozen pieces) beside a
+   * clear sidewalk to slide along: where the routes run changes with everything planned in the city.
+   */
+  function scrapeSeed(from: number): number {
+    for (let seed = from; seed < from + 40; seed++) if (scrapePiece(createWorld(seed, 'circuit')).ahead >= 11) return seed;
+    throw new Error('no seed with a long straight rail run');
+  }
+
+  /** The rail piece to slide along: the one with the longest straight, level run ahead beside a clear sidewalk. */
+  function scrapePiece(w: ReturnType<typeof createWorld>): { best: number; ahead: number } {
     const rs = rails(w);
     const layout = railLayout(w);
     // A piece on a straight, level run (it and the four before it in line, no hill under them so gravity
@@ -116,6 +135,25 @@ describe('corner rails', () => {
       const wq = rs[layout.first[p]];
       const l = Math.hypot(wq.bx - wq.ax, wq.bz - wq.az);
       if (w.surfaceAt(wq.ax - ((wq.bx - wq.ax) / l) * 10 + wq.nx * 2.4, wq.az - ((wq.bz - wq.az) / l) * 10 + wq.nz * 2.4) !== 'sidewalk') continue;
+      // Nothing but the rail on the car's side of it along the run up (a planter strip standing out on the
+      // sidewalk would take the hit instead).
+      const ux = (wq.bx - wq.ax) / l;
+      const uz = (wq.bz - wq.az) / l;
+      let clear = true;
+      for (let t = -10; t <= 20 && clear; t += 2) {
+        const x = wq.ax + ux * t + wq.nx * 1.2;
+        const z = wq.az + uz * t + wq.nz * 1.2;
+        for (const o of w.walls) {
+          if (o.kind !== 'wall' || distToSegment(x, z, o.ax, o.az, o.bx, o.bz) > 2.2) continue;
+          const k = segmentT(x, z, o.ax, o.az, o.bx, o.bz);
+          const cx = o.ax + (o.bx - o.ax) * k;
+          const cz = o.az + (o.bz - o.az) * k;
+          if ((cx - (wq.ax + ux * t)) * wq.nx + (cz - (wq.az + uz * t)) * wq.nz > 0.2) clear = false;
+        }
+      }
+      // And the car starts clear of everything (it first touches the rail a few meters on).
+      if (w.wallClearance(wq.ax - ux * 10 + wq.nx * 2.4, wq.az - uz * 10 + wq.nz * 2.4, 3) < 1.9) clear = false;
+      if (!clear) continue;
       // The car slides on past it: take the piece with the longest straight run ahead, so the two runs
       // never part at a corner, and keep the run level so gravity cannot tip the speed comparison.
       let n = p;
@@ -130,9 +168,10 @@ describe('corner rails', () => {
         best = p;
       }
     }
-    expect(best).toBeGreaterThanOrEqual(0);
-    const k = layout.first[best];
-    const wall = rs[k];
+    return { best, ahead: bestAhead };
+  }
+
+  function scrapeFrom(w: ReturnType<typeof createWorld>, wall: RailWall, withRails: boolean) {
     const tx = (wall.bx - wall.ax) / Math.hypot(wall.bx - wall.ax, wall.bz - wall.az);
     const tz = (wall.bz - wall.az) / Math.hypot(wall.bx - wall.ax, wall.bz - wall.az);
     const t = getBaseTuning('protoCompact');
@@ -157,8 +196,9 @@ describe('corner rails', () => {
   }
 
   it('heavy pieces give a little when a car slides along them, and the joints stay closed', () => {
-    const fixed = scrape(20261019, false);
-    const moving = scrape(20261019, true);
+    const seed = scrapeSeed(20261019);
+    const fixed = scrape(seed, false);
+    const moving = scrape(seed, true);
     const s = moving.state!;
     let moved = 0;
     let maxOff = 0;

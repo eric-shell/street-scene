@@ -304,7 +304,9 @@ export function findSprintNodes(g: RoadGraph, seed: number, variant = 0, want?: 
     // The first edge hosts the start grid, so it has to be long and straight enough; grid and
     // finish stay on streets, never in the river channel or on a ramp.
     const first = g.edges[edgeBetween(g, p[0], p[1])];
-    if (first.length < 90 || isRiverEdge(first) || isRiverEdge(g.edges[edgeBetween(g, p[p.length - 2], p[p.length - 1])])) continue;
+    const last = g.edges[edgeBetween(g, p[p.length - 2], p[p.length - 1])];
+    // Nor across a level crossing's tracks (districts/bluff.ts).
+    if (first.length < 90 || isRiverEdge(first) || isRiverEdge(last) || first.crossing !== undefined || last.crossing !== undefined) continue;
     const len = pathLength(g, p, false);
     const stats = cornerStats(g, p, false);
     if (stats.maxTurn > ROUTE.maxTurnDeg && best) continue;
@@ -344,8 +346,9 @@ export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[]):
     // crowds belong on one, not on the river's floor or a ramp).
     let li = 0;
     edges.forEach((e, i) => {
-      const river = isRiverEdge(g.edges[e]);
-      const riverBest = isRiverEdge(g.edges[edges[li]]);
+      // Nor across a level crossing's tracks (districts/bluff.ts).
+      const river = isRiverEdge(g.edges[e]) || g.edges[e].crossing !== undefined;
+      const riverBest = isRiverEdge(g.edges[edges[li]]) || g.edges[edges[li]].crossing !== undefined;
       if ((!river && riverBest) || (river === riverBest && g.edges[e].length > g.edges[edges[li]].length)) li = i;
     });
     nodes = nodes.slice(li + 1).concat(nodes.slice(0, li + 1));
@@ -385,6 +388,23 @@ export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[]):
     // Keep the finish line on a straight, out of intersections (move it earlier, never shorten the runout).
     for (let i = points.length - 2; i > 0; i--) {
       if (abs(finishS - cum[i]) < ROUTE.sprintFinishNodeClear) finishS = cum[i] - ROUTE.sprintFinishNodeClear;
+    }
+    // ... and short of a level crossing's tracks (districts/bluff.ts), never on them.
+    for (let i = 0; i + 1 < nodes.length; i++) {
+      const e = g.edges[edges[i]];
+      if (e.crossing === undefined) continue;
+      const a = g.nodes[e.a];
+      const t = e.crossing / (e.length || 1);
+      const px = a.x + (g.nodes[e.b].x - a.x) * t;
+      const pz = a.z + (g.nodes[e.b].z - a.z) * t;
+      for (let k = 0; k + 1 < points.length; k++) {
+        const q0 = points[k];
+        const q1 = points[k + 1];
+        const sl = cum[k + 1] - cum[k];
+        if (sl < 1e-6 || distToSegment(px, pz, q0.x, q0.z, q1.x, q1.z) > 1) continue;
+        const cs = cum[k] + ((px - q0.x) * (q1.x - q0.x) + (pz - q0.z) * (q1.z - q0.z)) / sl;
+        if (abs(finishS - cs) < ROUTE.sprintFinishNodeClear + 20) finishS = cs - ROUTE.sprintFinishNodeClear - 20;
+      }
     }
   }
 
@@ -1099,6 +1119,9 @@ export function routeRails(g: RoadGraph, route: Route, props: readonly { x: numb
         R = Math.max(3, R * 0.75);
       }
     }
+    // No fillet clear of the city walls around the corner (a planter strip right at the back of the
+    // sidewalk, say): no rail rather than one through a wall.
+    if (best!.score >= 1e6) continue;
     pts = best!.pts;
     nrm = best!.nrm;
     // A fillet widened past the sidewalk line (an opened corner pocket on the outside of the turn

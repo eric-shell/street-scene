@@ -42,6 +42,14 @@ export interface DistrictKit {
   animate(fn: (time: number) => void): void;
   /** Run `fn(camera)` before every render of the scene, with the camera rendering it (audio, culling). */
   view(fn: (camera: THREE.Camera) => void): void;
+  /**
+   * The sim tick to pose sim-timed parts at (the El's trains, level crossing gates): the session's
+   * interpolated tick once it syncs (DistrictMeshes.sync), else the scene clock `time` (s) in ticks,
+   * so the menu backdrop's trains run on as before.
+   */
+  simTick(time: number): number;
+  /** False unless a live, unpaused session syncs this scene (bells stay quiet otherwise). */
+  audible(): boolean;
 }
 
 /** What each district renderer module exports. */

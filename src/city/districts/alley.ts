@@ -957,7 +957,7 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
   };
   // The corner itself must be a plain junction (subway column nodes are fine: pillars keep off every
   // road and junction); the far ends of the cut's edges may be anything, roundabouts kept at a distance.
-  const cornerOk = (id: number) => !g.nodes[id].ring && (!ctx.claims.node.has(id) || ['subway', 'hills'].includes(ctx.areas[ctx.claims.node.get(id)!].kind));
+  const cornerOk = (id: number) => !g.nodes[id].ring && (!ctx.claims.node.has(id) || ['subway', 'hills', 'bluff'].includes(ctx.areas[ctx.claims.node.get(id)!].kind));
   /** Other streets' corridors, rivers, roundabouts and other alleys stay clear of the cut's sidewalks. */
   const chordClear = (A: Vec2, B: Vec2, skip: number[], clear: number = cfg.clear): boolean => {
     const len = Math.hypot(B.x - A.x, B.z - A.z);

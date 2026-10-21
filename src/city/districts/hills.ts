@@ -34,8 +34,9 @@ import type { BlockFace } from '../blocks';
 import { Vec2, atan2, cos, sin, sqrt } from '../../sim/math';
 import type { Area, DistrictModule, HeightSample } from './types';
 import { emptyBuild } from './types';
-import { polygonCentroid, smooth01 } from './geom';
+import { pointInPolygon, polygonCentroid, smooth01 } from './geom';
 import { riverCenter } from './river';
+import { bluffFootprint } from './bluff';
 
 const CFG = CITY.districts.hills;
 
@@ -146,6 +147,13 @@ export const hillsModule: DistrictModule = {
     const rivers = ctx.areas.filter((a) => a.kind === 'river');
     const subways = ctx.areas.filter((a) => a.kind === 'subway').map((a) => samplePath(a.path, 10));
     const monuments = ctx.areas.filter((a) => a.kind === 'monument');
+    // A bluff (bluff.ts) shapes its own ground: slopes keep off its outline and out of it.
+    const bluffs = ctx.areas
+      .filter((a) => a.kind === 'bluff')
+      .map((a) => {
+        const poly = bluffFootprint(a);
+        return { poly, rim: samplePath([...poly, poly[0]], 10) };
+      });
     const rings = g.nodes.filter((n) => n.ring);
     const byEdge = new Map<number, number[]>();
     for (const f of faces) {
@@ -167,6 +175,10 @@ export const hillsModule: DistrictModule = {
         for (let x = r.params.x0; x <= r.params.x1; x += 12) if (plateauDistance(s, x, riverCenter(r.params, x)).d < reach + r.params.top) return false;
       }
       for (const path of subways) for (const p of path) if (plateauDistance(s, p.x, p.z).d < reach) return false;
+      for (const bl of bluffs) {
+        if (pointInPolygon(s.cx, s.cz, bl.poly)) return false;
+        for (const p of bl.rim) if (plateauDistance(s, p.x, p.z).d < reach) return false;
+      }
       for (const n of rings) {
         const q = plateauDistance(s, n.x, n.z);
         const R = n.ring!.outer + CITY.sidewalk;

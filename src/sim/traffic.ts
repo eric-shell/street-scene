@@ -73,6 +73,7 @@ import { DEG, TAU, abs, approach, atan2, cos, distToSegment, exp, segmentT, sin,
 import type { RaceCar, RaceEvent, RaceState } from './race';
 import { GatePhase, gatePhase } from './gates';
 import { leafAngle, onSpan } from '../city/drawbridge';
+import { trainAt } from './levelCrossing';
 
 /** Network layout, counts and spawning (not physics: those are TRAFFIC in drivingParams.json). */
 export const TRAFFIC_LAYOUT = {
@@ -769,6 +770,8 @@ function trySpawn(t: TrafficState, world: World, c: TrafficCar, cars: readonly R
     const d = sqrt((pose.x - fx) ** 2 + (pose.z - fz) ** 2);
     if (d < minD || d > maxD) continue;
     if (world.drawbridge && onSpan(world.drawbridge, pose.x, pose.z, L.gateSpawnClear)) continue;
+    // Nor on a level crossing's tracks (city/levelCrossings.ts).
+    if (world.levelCrossings?.some((lc) => (lc.x - pose.x) ** 2 + (lc.z - pose.z) ** 2 < (lc.gate + L.gateSpawnClear) ** 2)) continue;
     let ok = true;
     for (const rc of cars) {
       if ((rc.state.x - pose.x) ** 2 + (rc.state.z - pose.z) ** 2 < clear * clear) {
@@ -1182,6 +1185,11 @@ export function stepTraffic(r: RaceState): void {
   let spawns = 0;
   for (const c of cars) {
     if (lifting && c.mode !== 'gone' && onSpan(db!, c.body.x, c.body.z, 1)) {
+      release(c);
+      c.mode = 'gone';
+    }
+    // A car a train meets on a level crossing (struck there, say) goes too (sim/levelCrossing.ts).
+    if (c.mode !== 'gone' && trainAt(r.world, r.tick, c.body.x, c.body.z, 1)) {
       release(c);
       c.mode = 'gone';
     }

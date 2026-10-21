@@ -74,6 +74,8 @@ export interface RoadEdge {
   shortcut?: boolean;
   /** Crosses the river channel at street level. */
   bridge?: boolean;
+  /** Crosses the El's tracks at grade (a bluff's level crossing, districts/bluff.ts) this far from node a (m). */
+  crossing?: number;
 }
 
 export interface RoadGraph {

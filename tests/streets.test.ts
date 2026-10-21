@@ -57,6 +57,10 @@ describe('small solids', () => {
     for (const s of trunks.slice(0, 6)) {
       const cx = s.faces.reduce((t, f) => t + f.ax, 0) / s.faces.length;
       const cz = s.faces.reduce((t, f) => t + f.az, 0) / s.faces.length;
+      // Trunks on level ground: on a park mound's steep flank a car slides around the trunk or rolls
+      // back short (which trunks the first parks have depends on everything planned before them).
+      const sl = w.slopeAt(cx, cz);
+      if (Math.hypot(sl.gx, sl.gz) > 0.08) continue;
       for (let k = 0; k < 16; k++) {
         const d = { x: Math.cos((k * Math.PI) / 8), z: Math.sin((k * Math.PI) / 8) };
         // A clear run up of 10 m toward the trunk: no wall, and no lamp post or bench to turn the car aside first.

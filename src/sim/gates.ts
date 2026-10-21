@@ -11,6 +11,10 @@
  * A cycle runs: open, then warn (lights and bell, arms still up), lowering
  * (arms coming down), closed (arms down) and raising (arms going back up).
  * Gates block from the start of `closed` until the arms are half way back up.
+ * A cycle may close more than once a period (`more`): a level crossing
+ * (city/levelCrossings.ts) closes for the trains of both directions, which
+ * share one headway at different phases. Without `more` it is the single
+ * closure above, unchanged.
  *
  * Collision (collideGates, called from sim/collision.ts for every car circle):
  * a blocking gate holds back a car whose center is on its holding side (the
@@ -47,6 +51,12 @@ export interface GateCycle {
   closed: number;
   /** Arms going back up (ticks). */
   raise: number;
+  /**
+   * More closures each period: each starts its warning `at` ticks after the cycle's own, stays
+   * down `closed` ticks and shares warn, lower and raise. Sorted by `at`; no two closures' warn to
+   * raise windows overlap, nor wrap into the next period's first one (merge them when they would).
+   */
+  more?: { at: number; closed: number }[];
 }
 
 export type GatePhaseName = 'open' | 'warn' | 'lowering' | 'closed' | 'raising';
@@ -112,6 +122,7 @@ function cycleTime(c: GateCycle, tick: number): number {
 
 /** True while the gates of cycle `c` stop cars at `tick` (the sim's cheap test). */
 export function gateBlocking(c: GateCycle, tick: number): boolean {
+  if (c.more) return gatePhase(c, tick, moreScratch).blocking;
   const u = cycleTime(c, tick);
   if (u < 0) return false;
   const b0 = c.warn + c.lower;
@@ -121,6 +132,7 @@ export function gateBlocking(c: GateCycle, tick: number): boolean {
 /** Full state of cycle `c` at a tick (fractional ticks for render times). Writes into `out` when given. */
 export function gatePhase(c: GateCycle, tick: number, out?: GatePhase): GatePhase {
   const p: GatePhase = out ?? { name: 'open', t: 0, len: 0, arm: 0, blocking: false, untilBlock: 0, untilClear: 0, cycleT: -1 };
+  if (c.more) return morePhase(c, tick, p);
   const u = cycleTime(c, tick);
   const b0 = c.warn + c.lower;
   const b1 = b0 + blockTicks(c);
@@ -166,6 +178,104 @@ export function gatePhase(c: GateCycle, tick: number, out?: GatePhase): GatePhas
     p.len = c.period - raiseEnd;
     p.arm = 0;
   }
+  return p;
+}
+
+const moreScratch: GatePhase = { name: 'open', t: 0, len: 0, arm: 0, blocking: false, untilBlock: 0, untilClear: 0, cycleT: -1 };
+
+/** Closure k of a cycle with `more`: warning start offset in the period and its closed length (k = 0 is the cycle's own). */
+function closureAt(c: GateCycle, k: number): number {
+  return k === 0 ? 0 : c.more![k - 1].at;
+}
+function closureClosed(c: GateCycle, k: number): number {
+  return k === 0 ? c.closed : c.more![k - 1].closed;
+}
+
+/**
+ * gatePhase for a cycle with several closures a period: the phase of the one
+ * whose warn to raise window holds the tick, else open, with the times to the
+ * next block counted to whichever closure blocks next.
+ */
+function morePhase(c: GateCycle, tick: number, p: GatePhase): GatePhase {
+  const n = 1 + c.more!.length;
+  const g = tick - c.start;
+  const b0 = c.warn + c.lower;
+  p.cycleT = g < 0 ? -1 : g - Math.floor(g / c.period) * c.period;
+  // Ticks until closure k next starts blocking (its next occurrence, or the first one).
+  const untilBlockOf = (k: number) => {
+    const s = closureAt(c, k) + b0 - g;
+    if (s >= 0) return s;
+    const m = -s - Math.floor(-s / c.period) * c.period;
+    return m === 0 ? 0 : c.period - m;
+  };
+  for (let k = 0; k < n; k++) {
+    const u0 = g - closureAt(c, k);
+    if (u0 < 0) continue;
+    const u = u0 - Math.floor(u0 / c.period) * c.period;
+    const closed = closureClosed(c, k);
+    const block = closed + c.raise * BLOCK_RAISE_SHARE;
+    const closeEnd = b0 + closed;
+    const raiseEnd = closeEnd + c.raise;
+    if (u >= raiseEnd) continue;
+    p.blocking = u >= b0 && u < b0 + block;
+    if (p.blocking) {
+      p.untilBlock = 0;
+      p.untilClear = b0 + block - u;
+    } else {
+      let next = u < b0 ? b0 - u : Infinity;
+      let nextK = k;
+      if (u >= b0) {
+        for (let j = 0; j < n; j++) {
+          const d = untilBlockOf(j);
+          if (d > 0 && d < next) {
+            next = d;
+            nextK = j;
+          }
+        }
+      }
+      p.untilBlock = next;
+      p.untilClear = next + closureClosed(c, nextK) + c.raise * BLOCK_RAISE_SHARE;
+    }
+    if (u < c.warn) {
+      p.name = 'warn';
+      p.t = u;
+      p.len = c.warn;
+      p.arm = 0;
+    } else if (u < b0) {
+      p.name = 'lowering';
+      p.t = u - c.warn;
+      p.len = c.lower;
+      p.arm = c.lower > 0 ? p.t / c.lower : 1;
+    } else if (u < closeEnd) {
+      p.name = 'closed';
+      p.t = u - b0;
+      p.len = closed;
+      p.arm = 1;
+    } else {
+      p.name = 'raising';
+      p.t = u - closeEnd;
+      p.len = c.raise;
+      p.arm = c.raise > 0 ? 1 - p.t / c.raise : 0;
+    }
+    return p;
+  }
+  // Open: until the nearest closure's next block.
+  let next = Infinity;
+  let nextK = 0;
+  for (let k = 0; k < n; k++) {
+    const d = untilBlockOf(k);
+    if (d < next) {
+      next = d;
+      nextK = k;
+    }
+  }
+  p.name = 'open';
+  p.blocking = false;
+  p.arm = 0;
+  p.t = 0;
+  p.len = next - b0;
+  p.untilBlock = next;
+  p.untilClear = next + closureClosed(c, nextK) + c.raise * BLOCK_RAISE_SHARE;
   return p;
 }
 

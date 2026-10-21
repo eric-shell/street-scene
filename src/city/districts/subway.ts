@@ -17,6 +17,14 @@
  * The planner claims the column's nodes and edges (no roundabouts there).
  * The deck, stations and stairs reach the renderer as hints and props
  * ('deck', 'station', 'stair'); render/districts/subway.ts draws the steel.
+ *
+ * A bluff (districts/bluff.ts, planned right after) may move a stretch of the
+ * line off its street onto a right of way through the blocks and hold it
+ * level there: params.bluff names it and dj0..dj1 the column's node rows the
+ * detour spans. There the street keeps no columns; the deck line gets them
+ * where the deck stands high enough above the bluff's ground (lower is bank
+ * or at grade), stations keep away, and a 'level' hint carries the track
+ * level to the curve (elCurve, the one place the line's curve is built).
  */
 import { CITY, ROUTE } from '../config';
 import { edgeBetween } from '../roadGraph';
@@ -27,6 +35,9 @@ import type { Area } from './types';
 import { emptyBuild } from './types';
 import { circlePolygon, solidWalls } from './geom';
 import { riverCenter } from './river';
+import { bluffGround, bluffOf, bluffShape } from './bluff';
+import { createTerrain } from '../terrain';
+import { RailCurve, buildRailCurve } from '../railCurve';
 
 const CFG = CITY.districts.subway;
 /** Pillars keep at least this far from intersections (m). */
@@ -41,6 +52,8 @@ const CLOSURE_GAP = 3.5;
 const SIDEWALK_GAP = 0.6;
 /** Stairs keep this far from the crossing streets at the block ends (m, beyond their curbs). */
 const STAIR_NODE_CLEAR = 22;
+/** Station platforms keep this far from a bluff's level crossing, so trains cross it at speed (m). */
+const STATION_CROSSING_CLEAR = 250;
 
 /** A station on one street block under the deck (render reads it from the 'station' hint). */
 export interface StationPlan {
@@ -173,10 +186,15 @@ export const subwayModule: DistrictModule = {
     // Pillars on the sidewalk of every street the deck follows; a station's stairs take the
     // middle of its block, so the columns there step out to just beyond the stairs.
     const zone = CFG.mezzanine / 2 + CFG.stairRun + 1.5;
+    const dj0 = area.params.dj0 ?? Infinity;
+    const dj1 = area.params.dj1 ?? -Infinity;
+    const detoured = (gj: number) => gj >= dj0 && gj <= dj1;
     for (const eid of area.edges) {
       const e = g.edges[eid];
       const a = g.nodes[e.a];
       const c = g.nodes[e.b];
+      // On a bluff's detour the deck is off this street.
+      if (detoured(a.gj) && detoured(c.gj)) continue;
       const len = sqrt((c.x - a.x) ** 2 + (c.z - a.z) ** 2) || 1;
       const dx = (c.x - a.x) / len;
       const dz = (c.z - a.z) / len;
@@ -196,7 +214,7 @@ export const subwayModule: DistrictModule = {
     const nodes = area.nodes.map((id) => g.nodes[id]);
     const path = area.path;
     for (let j = 0; j + 1 < nodes.length; j++) {
-      if (edgeBetween(g, nodes[j].id, nodes[j + 1].id) >= 0) continue;
+      if (edgeBetween(g, nodes[j].id, nodes[j + 1].id) >= 0 || (detoured(j) && detoured(j + 1))) continue;
       const p = path[j + 1];
       const q = path[j + 2];
       const len = Math.hypot(q.x - p.x, q.z - p.z) || 1;
@@ -210,6 +228,38 @@ export const subwayModule: DistrictModule = {
         { x: p.x + uz * w, z: p.z - ux * w },
       ]);
       for (const s of spread(len, NODE_CLEAR + 4)) pillar(p.x + ux * s, p.z + uz * s);
+    }
+    // A bluff's detour: deck line columns where the deck stands high enough, buildings out of the way.
+    const bluff = bluffOf(ctx.areas, area);
+    if (bluff) {
+      const bs = bluffShape(bluff);
+      const ground = bluffGround(bs, createTerrain(ctx.seed));
+      const levelA = { x: bluff.params.rowAx, z: bluff.params.rowAz };
+      const levelB = { x: bluff.params.rowBx, z: bluff.params.rowBz };
+      for (let j = dj0; j < dj1; j++) {
+        const p = path[j + 1];
+        const q = path[j + 2];
+        const len = Math.hypot(q.x - p.x, q.z - p.z) || 1;
+        const ux = (q.x - p.x) / len;
+        const uz = (q.z - p.z) / len;
+        const w = CFG.deckWidth / 2 + 2;
+        b.exclusions.push([
+          { x: p.x - uz * w, z: p.z + ux * w },
+          { x: q.x - uz * w, z: q.z + ux * w },
+          { x: q.x + uz * w, z: q.z - ux * w },
+          { x: p.x + uz * w, z: p.z - ux * w },
+        ]);
+        // On the level stretch the deck is at the bluff's track level; the S curves either side
+        // run from the street's height down to it, never lower over the low ground.
+        const level = (j === dj0 + 1 || j === dj0 + 2) as boolean;
+        for (const s of spread(len, 12)) {
+          const x = p.x + ux * s;
+          const z = p.z + uz * s;
+          if (level && bs.y - ground(x, z) < CITY.districts.bluff.pillarMin) continue;
+          pillar(x, z);
+        }
+      }
+      b.hints.push({ kind: 'level', points: [levelA, levelB], values: [bs.y, CITY.districts.bluff.levelBlend] });
     }
     b.hints.push({ kind: 'deck', points: area.path, values: [area.params.deckHeight, area.params.deckWidth] });
     for (const s of stations) b.hints.push({ kind: 'station', points: [s.mid], values: [s.deckS, s.edge] });
@@ -239,9 +289,20 @@ function planStations(
   const nodes = area.nodes;
   // Node pairs j (deck segment path[j + 1] -> path[j + 2]) with a street below.
   const cands: { j: number; edge: number }[] = [];
+  // A bluff's detour has no stations (its S curves carry the deck off the street and down to the
+  // level), and the trains pass its level crossing at speed: platforms keep STATION_CROSSING_CLEAR from it.
+  const dj0 = area.params.dj0 ?? Infinity;
+  const dj1 = area.params.dj1 ?? -Infinity;
+  const bluff = bluffOf(ctx.areas, area);
   for (let j = 1; j + 2 < nodes.length; j++) {
     const e = edgeBetween(g, nodes[j], nodes[j + 1]);
     if (e < 0 || g.edges[e].bridge || g.edges[e].length < CFG.stationMinEdge) continue;
+    if (j >= dj0 && j + 1 <= dj1) continue;
+    if (bluff) {
+      const A = g.nodes[nodes[j]];
+      const B = g.nodes[nodes[j + 1]];
+      if (Math.hypot((A.x + B.x) / 2 - bluff.params.cx, (A.z + B.z) / 2 - bluff.params.cz) < STATION_CROSSING_CLEAR) continue;
+    }
     cands.push({ j, edge: e });
   }
   rng.shuffle(cands);
@@ -301,4 +362,17 @@ function planStations(
     used.push(c.j);
   }
   return out;
+}
+
+/**
+ * The line's track curve, built the one way every consumer needs it: the
+ * renderer (steel, trains), the sim's level crossings (gate timing) and the
+ * tests. Stations from the build's 'station' hints, a bluff's level stretch
+ * from its 'level' hint.
+ */
+export function elCurve(area: Area, build: AreaBuild, heightAt: (x: number, z: number) => number): RailCurve {
+  const stations = build.hints.filter((h) => h.kind === 'station').map((h) => h.points[0]);
+  const lv = build.hints.find((h) => h.kind === 'level');
+  const level = lv ? { a: lv.points[0], b: lv.points[1], y: lv.values[0], blend: lv.values[1] } : undefined;
+  return buildRailCurve(area.path, area.params.side, area.params.deckHeight, heightAt, stations, level);
 }

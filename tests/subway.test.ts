@@ -3,9 +3,10 @@ import { CITY } from '../src/city/config';
 import { createCity } from '../src/city/world';
 import { distToSegment } from '../src/sim/math';
 import { riverCenter } from '../src/city/districts/river';
-import { RAIL, buildRailCurve, dirOn, sampleCurve, curvePoint, trackFor, trackLateral } from '../src/render/railCurve';
-import { TRAIN, buildRun, makeService, runAt, trackS, trainLength, tripsAt } from '../src/render/railTimetable';
-import type { TripState } from '../src/render/railTimetable';
+import { RAIL, buildRailCurve, dirOn, sampleCurve, curvePoint, trackFor, trackLateral } from '../src/city/railCurve';
+import { TRAIN, buildRun, makeService, runAt, trackS, trainLength, tripsAt } from '../src/city/railTimetable';
+import type { TripState } from '../src/city/railTimetable';
+import { elCurve } from '../src/city/districts/subway';
 
 const CFG = CITY.districts.subway;
 /** Seeds with a railway (chance 0.75), found once. */
@@ -79,8 +80,11 @@ describe('elevated railway (track curve)', () => {
   it('keeps the deck at full height over the city, smooth, over the river too', () => {
     for (const c of cities.slice(0, 5)) {
       const area = c.districts.areas.find((a) => a.kind === 'subway')!;
-      const curve = buildRailCurve(area.path, area.params.side, area.params.deckHeight, c.terrain.heightAt);
+      const curve = elCurve(area, c.districts.builds[area.id], c.terrain.heightAt);
+      // A bluff's level stretch (and its blends) is tests/bluff.test.ts's business.
+      const blend = CITY.districts.bluff.levelBlend;
       for (let s = curve.cityA; s <= curve.cityB; s += 2) {
+        if (s > curve.levelA - blend && s < curve.levelB + blend) continue;
         const p = sampleCurve(curve, s, curvePoint());
         expect(p.y - p.ground).toBeGreaterThan(area.params.deckHeight - 0.6);
       }

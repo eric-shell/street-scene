@@ -243,7 +243,8 @@ describe('ambient traffic', () => {
             const sd = gateSide(g, c.body.x, c.body.z);
             const u = ((c.body.x - g.ax) * (g.bx - g.ax) + (c.body.z - g.az) * (g.bz - g.az)) / ((g.bx - g.ax) ** 2 + (g.bz - g.az) ** 2);
             const within = u > -0.1 && u < 1.1;
-            if (within && side[k][gi] > 0 && sd <= 0) {
+            // (A car recycled and respawned within one tick jumps; only a car at the line crosses it.)
+            if (within && side[k][gi] > 0 && sd <= 0 && sd > -10) {
               crossings++;
               if (gateBlocking(set.cycles[g.cycle], tick)) blockedCrossings++;
             }
