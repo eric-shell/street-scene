@@ -198,6 +198,9 @@ function suitable(e: RoadEdge, f: BridgeFrame | null): f is BridgeFrame {
   return f.toA >= room && f.toB >= room;
 }
 
+/** The square kept free of buildings and pockets behind each gate end: half length along the street, depth behind the building line (m). */
+const GATE_END = { along: 3, depth: 4 } as const;
+
 /**
  * Pick the city's drawbridge once both routes are planned (planRoads): record
  * its edge in the river area's params (`drawbridge`) and keep street
@@ -252,6 +255,18 @@ export function markDrawbridge(seed: number, g: RoadGraph, areas: Area[], builds
   const reserved = builds[river.id].reserved;
   for (let u = -span; u <= span + 1e-6; u += DRAWBRIDGE.reserveStep) {
     for (const s of [-1, 1]) reserved.push({ x: f.cx + f.dx * u + f.nx * s * walkMid, z: f.cz + f.dz * u + f.nz * s * walkMid, r: e.sidewalk / 2 + 1.3 });
+  }
+  // Each gate end meets the building line: keep a plaza, lot or verge from opening right there (a car
+  // could slip round a closed gate through it). With no building or pocket allowed in a small square
+  // behind each end, the frontage there stays a wall (the parapet, or a low boundary wall).
+  const exclusions = builds[river.id].exclusions;
+  for (const s of [-1, 1]) {
+    for (const side of [-1, 1]) {
+      const ex = f.cx + f.dx * s * f.gate + f.nx * side * f.half;
+      const ez = f.cz + f.dz * s * f.gate + f.nz * side * f.half;
+      const square = (a: number, b: number) => ({ x: ex + f.dx * a + f.nx * side * b, z: ez + f.dz * a + f.nz * side * b });
+      exclusions.push([square(-GATE_END.along, -0.5), square(GATE_END.along, -0.5), square(GATE_END.along, GATE_END.depth), square(-GATE_END.along, GATE_END.depth)]);
+    }
   }
 }
 

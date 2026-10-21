@@ -22,6 +22,8 @@ import { parkRenderer } from './park';
 import { riverRenderer } from './river';
 import { roundaboutRenderer } from './roundabout';
 import { subwayRenderer } from './subway';
+import { tunnelRenderer } from './tunnel';
+import { overpassRenderer } from './overpass';
 import { waterfrontRenderer } from './waterfront';
 import { roadworksRenderer } from './roadworks';
 import { driftZoneRenderer } from './driftZones';
@@ -36,6 +38,8 @@ export const DISTRICT_RENDERERS: readonly DistrictRenderer[] = [
   infillRenderer,
   hillsRenderer,
   monumentRenderer,
+  tunnelRenderer,
+  overpassRenderer,
   waterfrontRenderer,
   lakeRenderer,
   marketRenderer,

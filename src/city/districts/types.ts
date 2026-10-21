@@ -41,6 +41,8 @@ export type AreaKind =
   | 'infill'
   | 'hills'
   | 'monument'
+  | 'tunnel'
+  | 'overpass'
   | 'market'
   | 'roadworks'
   // Reserved unique features (planned later, disabled in config).
@@ -82,6 +84,9 @@ export const COBBLE_PRIORITY = 6;
  *   channel, bank top fence, ramp retaining walls, channel tunnel ends (river).
  * tree: park tree trunk (park).
  * monument: the step ring around a landmark's base, or an arch's piers (monument).
+ * tunnel / rock: tunnel walls, portal wingwalls and the shut in building line behind them;
+ *   the rock face along a ridge's cutting (tunnel).
+ * pier: overpass piers and abutments, sign gantry legs (overpass).
  * marketRail: the night market's crowd rail along a pen and its end caps back to the building line;
  *   marketFront: the frontage behind a pen, a facade or the market's shuttered back wall (market).
  * gate: a timed gate's arms across the deck (sim/gates.ts; drawn by render/drawbridge.ts).
@@ -103,12 +108,15 @@ export type WallLook =
   | 'channelEnd'
   | 'tree'
   | 'monument'
+  | 'tunnel'
+  | 'rock'
+  | 'pier'
   | 'marketRail'
   | 'marketFront'
   | 'gate'
   | 'roadworks';
 
-export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'marketRail', 'marketFront', 'gate', 'roadworks'];
+export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks'];
 
 export interface Area {
   /** Index into CityDistricts.areas. */
@@ -320,6 +328,8 @@ export const AREA_MAP_STYLE: Record<AreaKind, AreaMapStyle> = {
   infill: { fill: 'rgba(147,146,147,0.08)' },
   hills: { fill: 'rgba(147,146,147,0.07)', stroke: 'rgba(147,146,147,0.34)', width: 2.5, dash: [6, 7] },
   monument: { fill: 'rgba(255,216,102,0.2)' },
+  tunnel: { fill: 'rgba(147,146,147,0.16)', stroke: 'rgba(25,24,26,0.8)', width: 6, dash: [7, 4] },
+  overpass: { fill: 'rgba(193,192,192,0.22)', stroke: 'rgba(193,192,192,0.5)', width: 5, dash: [3, 3] },
   market: { fill: 'rgba(255,97,136,0.3)' },
   roadworks: { fill: 'rgba(255,97,136,0.5)' },
   waterfront: { fill: 'rgba(120,220,232,0.14)' },
