@@ -158,10 +158,10 @@ export const RUNOUT = {
   circuitDistance: 110,
   /** Sprints: stop this far before the end of the route (m). */
   endMargin: 8,
-  /** Brake added per m/s over the profile speed (full brake is about 2.8 g with the assist). */
-  brakeGain: 0.09,
+  /** Brake added per m/s over the profile speed (full brake is about 2 g with the assist). */
+  brakeGain: 0.13,
   /** Light brake while on or under the profile, so the car always coasts down (about 0.35 g). */
-  coastBrake: 0.12,
+  coastBrake: 0.17,
   /** Brake that holds the car once stopped (under the 0.5 that would engage reverse). */
   holdBrake: 0.45,
   /** Below this speed the car counts as stopped (m/s). */

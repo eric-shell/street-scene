@@ -75,10 +75,10 @@
       "airLevel": 5
     },
     "brakes": {
-      "force": 18000,
+      "force": 16250,
       "frontBias": 0.68,
       "handbrakeTorque": 6000,
-      "assistDecel": 16
+      "assistDecel": 8
     },
     "steering": {
       "maxDeg": 22.5,
@@ -200,7 +200,7 @@
         "shiftTime": 0.18
       },
       "tires": { "gripFront": 1.6, "gripRear": 1.36 },
-      "brakes": { "force": 17000 },
+      "brakes": { "force": 15350 },
       "steering": { "maxDeg": 21.5 },
       "aero": { "drag": 0.43 }
     },
