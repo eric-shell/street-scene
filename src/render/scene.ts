@@ -21,6 +21,7 @@ import { buildStreetPolish } from './streetPolish';
 import { createWeather, Weather } from './weather';
 import { AirTraffic, buildAirTraffic } from './airTraffic';
 import { buildAreaLights } from './areaLights';
+import { buildDrawbridge, DrawbridgeView } from './drawbridge';
 
 export const RETRO_HEIGHT = 240;
 
@@ -119,6 +120,8 @@ export interface NightScene {
   air: AirTraffic;
   /** Mountains, masts and the sky sprites (backdrop.ts). */
   backdrop: Backdrop;
+  /** The drawbridge (drawbridge.ts): a session poses it at sim time with sync(); otherwise it runs on the scene clock. */
+  drawbridge: DrawbridgeView;
   /** Animate time-based effects (barrier lamps, arrows). */
   update(time: number): void;
   dispose(): void;
@@ -138,6 +141,10 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   // District dressing (lots, plazas, parks, river, roundabouts, subway) and the distant mountains.
   const districts = buildDistrictMeshes(world, { quality: settings.quality });
   scene.add(districts.group);
+  // The drawbridge's leaves and gates, its leaves dressed in the street's own materials.
+  const cityMat = (name: string) => (city.group.getObjectByName(name) as THREE.Mesh | undefined)?.material as THREE.Material | undefined;
+  const drawbridge = buildDrawbridge(world, { quality: settings.quality, road: cityMat('roads'), walk: cityMat('sidewalks'), marks: cityMat('markings') });
+  scene.add(drawbridge.group);
   const bounds = world.graph.bounds;
   const backdrop = buildBackdrop(world.seed, {
     fogColor: weather.def.fogColor,
@@ -194,6 +201,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     weather.view(camera, viewportHeight);
     air.view(camera);
     districts.view(camera);
+    drawbridge.view(camera);
   };
   // Broken lamps go dark: ground pool, reflection streak (streetlights) and the real light pool.
   const lampOff = new Uint8Array(lamps.length);
@@ -226,6 +234,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     weather,
     air,
     backdrop,
+    drawbridge,
     update(time) {
       city.update(time);
       arrows.update(time);
@@ -234,6 +243,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
       polish.update(time);
       weather.update(time);
       air.update(time);
+      drawbridge.clock(time);
       // Hazard blink with soft edges: a hard 3.2 / 0.6 square wave strobes the bloom.
       const blink = 0.6 + 2.6 * THREE.MathUtils.smoothstep(Math.sin(time * 5), -0.35, 0.35);
       city.barrierLampMaterial.color.setRGB(1 * blink, 0.63 * blink, 0.12 * blink);
@@ -251,6 +261,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
       crowds.dispose();
       weather.dispose();
       air.dispose();
+      drawbridge.dispose();
     },
   };
 }
