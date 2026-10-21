@@ -1,22 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <!-- "SS" as the logo draws Street Scene: heavy italic, yellow sweeping into orange and red on a crisp shadow, the rule under it. Paths, not text: a favicon cannot load the web font. -->
+  <!-- "SS" in the logo's colors, pushed harder: heavy, skewed past italic, tilted up to the right and set so close the letters nearly touch; the second S carves a hairline out of the first so they still read as two. Paths, not text: a favicon cannot load the web font. -->
   <defs>
-    <path id="ss" d="M9.2 4.4C8.2 2.8 6.9 2 5.4 2 3.4 2 2 3.3 2 5.2c0 4.2 7 3.4 7 7.6 0 2-1.4 3.2-3.4 3.2-1.6 0-2.9-.8-3.8-2.4M21.2 4.4C20.2 2.8 18.9 2 17.4 2 15.4 2 14 3.3 14 5.2c0 4.2 7 3.4 7 7.6 0 2-1.4 3.2-3.4 3.2-1.6 0-2.9-.8-3.8-2.4" fill="none" stroke-width="4.2"/>
-    <linearGradient id="g" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="24" y2="4">
+    <path id="s1" d="M9.2 4.4C8.2 2.8 6.9 2 5.4 2 3.4 2 2 3.3 2 5.2c0 4.2 7 3.4 7 7.6 0 2-1.4 3.2-3.4 3.2-1.6 0-2.9-.8-3.8-2.4" fill="none"/>
+    <path id="s2" d="M19.2 4.4C18.2 2.8 16.9 2 15.4 2 13.4 2 12 3.3 12 5.2c0 4.2 7 3.4 7 7.6 0 2-1.4 3.2-3.4 3.2-1.6 0-2.9-.8-3.8-2.4" fill="none"/>
+    <linearGradient id="g" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="22" y2="4">
       <stop offset=".05" stop-color="#ffd866"/>
       <stop offset=".55" stop-color="#fc9867"/>
       <stop offset="1" stop-color="#ff6188"/>
     </linearGradient>
-    <linearGradient id="r" x1="0" x2="1">
-      <stop offset="0" stop-color="#ffd866"/>
-      <stop offset=".6" stop-color="#fc9867"/>
-      <stop offset="1" stop-color="#ff6188"/>
-    </linearGradient>
   </defs>
   <rect width="32" height="32" rx="7" fill="#19181a"/>
-  <g transform="translate(6.1 5.5) skewX(-10)">
-    <use href="#ss" y="1" stroke="#000" stroke-opacity=".55"/>
-    <use href="#ss" stroke="url(#g)"/>
+  <g transform="translate(16 16) rotate(-9) skewX(-16) scale(1.25) translate(-10.5 -9)" stroke-width="4.4">
+    <use href="#s1" y=".8" stroke="#000" stroke-opacity=".55"/>
+    <use href="#s1" stroke="url(#g)"/>
+    <use href="#s2" stroke="#19181a" stroke-width="6.6"/>
+    <use href="#s2" y=".8" stroke="#000" stroke-opacity=".55"/>
+    <use href="#s2" stroke="url(#g)"/>
   </g>
-  <rect x="4" y="25.5" width="24" height="2" rx=".6" fill="url(#r)"/>
 </svg>
