@@ -14,7 +14,9 @@
  * and on the cross streets. In an open world every street is open. Lanes
  * stop short of each junction where its curbs start; connectors (cubic
  * curves, or an arc around the island at a roundabout) join each incoming
- * lane to every outgoing one except the U-turn. Lanes and connectors that
+ * lane to every outgoing one except the U-turn. Where roadworks shut the curb
+ * lane (districts/roadworks.ts laneClosures), the lane on that side merges
+ * out past the cones and barriers and back in. Lanes and connectors that
  * would rub a wall or leave the paving are dropped, then dead ends pruned,
  * so every lane always has a way on. That also keeps anything a district
  * builds in a street (now or later) out of the traffic's way.
@@ -59,13 +61,14 @@
  */
 import type { World, Contact } from '../city/world';
 import type { RoadKind } from '../city/roadGraph';
+import { ROADWORKS, laneClosures } from '../city/districts/roadworks';
 import { CITY } from '../city/config';
 import { CarState, createCar } from './car';
 import { CarTuning, DEFAULT_CAR_ID, TRAFFIC, getBaseTuning } from './tuning';
 import { collideCarWithWorld, collideCars } from './collision';
 import { DT, TICK_HZ } from './constants';
 import { Rng, deriveSeed } from './prng';
-import { DEG, TAU, abs, approach, atan2, cos, distToSegment, exp, sin, sqrt, wrapAngle, yawOf } from './math';
+import { DEG, TAU, abs, approach, atan2, cos, distToSegment, exp, segmentT, sin, smoothstep, sqrt, wrapAngle, yawOf } from './math';
 import type { RaceCar, RaceEvent, RaceState } from './race';
 import { GatePhase, gatePhase } from './gates';
 import { leafAngle, onSpan } from '../city/drawbridge';
@@ -85,6 +88,10 @@ export const TRAFFIC_LAYOUT = {
   minLaneLength: 8,
   /** Sharper turns than this (deg) are never taken (hairpins). */
   maxTurnDeg: 140,
+  /** Roadworks: a lane merges out to keep the widest car this clear (m) of the barriers' reach, over rampLength (m) each way, sampled rampSteps times. */
+  closurePad: 0.4,
+  rampLength: 14,
+  rampSteps: 5,
   /** Junction curves: Bezier handle length as a share of the chord, and the points sampled. */
   handle: 0.42,
   curveSteps: 10,
@@ -287,6 +294,36 @@ function polyPath(xs: number[], zs: number[], yaws: number[], lane: boolean, edg
   return { lane, x: xs, z: zs, yaw: yaws, cum, length: cum[cum.length - 1], edge, from, to, out: [], in: [], locked: false, conflicts: [], clearAt: [], vmax: Infinity, factor: 1, weight: 1, gates: [], gateS: [] };
 }
 
+/**
+ * A lane's polyline from its start (x0, z0) along (fx, fz) for `len` m, kept
+ * `off` m right of the street's centerline, merging left by `shift` over each
+ * squeeze's [a, b] stretch (lane m), easing out and back over rampLength.
+ */
+function lanePolyline(x0: number, z0: number, fx: number, fz: number, len: number, off: number, squeeze: { a: number; b: number; shift: number }[]): { xs: number[]; zs: number[]; yaws: number[] } {
+  const ss = [0, len];
+  for (const q of squeeze) {
+    for (let k = 0; k <= L.rampSteps; k++) {
+      ss.push(q.a - L.rampLength + (L.rampLength * k) / L.rampSteps);
+      ss.push(q.b + (L.rampLength * k) / L.rampSteps);
+    }
+  }
+  const at = ss.filter((v) => v >= 0 && v <= len).sort((u, v) => u - v);
+  const uniq = at.filter((v, i) => i === 0 || v - at[i - 1] > 1e-6);
+  const offAt = (v: number) => {
+    let o = off;
+    for (const q of squeeze) o = Math.min(o, off - q.shift * smoothstep(q.a - L.rampLength, q.a, v) * (1 - smoothstep(q.b, q.b + L.rampLength, v)));
+    return o;
+  };
+  const xs = uniq.map((v) => x0 + fx * v - fz * offAt(v));
+  const zs = uniq.map((v) => z0 + fz * v + fx * offAt(v));
+  const yaws = uniq.map((_, i) => {
+    const i0 = Math.max(0, i - 1);
+    const i1 = Math.min(uniq.length - 1, i + 1);
+    return yawOf(xs[i1] - xs[i0], zs[i1] - zs[i0]);
+  });
+  return { xs, zs, yaws };
+}
+
 /** Tightest radius along a polyline (m) from the heading change between its segments. */
 function minRadius(p: TrafficPath): number {
   let r = Infinity;
@@ -310,6 +347,17 @@ function buildNet(w: World): TrafficNet {
   /** Lane path id per edge and direction (2 * edge + 0 for a -> b, + 1 for b -> a), -1 for none. */
   const laneOf = new Int32Array(g.edges.length * 2).fill(-1);
   const mouths = w.blocks.mouths;
+  // Roadworks closures per edge: the closure in its street frame (laneClosures runs in area order, as this filter does).
+  const works = (w.areas ?? []).filter((a) => a.kind === 'roadworks');
+  const closures = laneClosures(w.areas ?? [], g);
+  const closuresOf = new Map<number, typeof closures>();
+  works.forEach((a, i) => {
+    const c = closures[i];
+    if (!c) return;
+    const list = closuresOf.get(a.params.edge);
+    if (list) list.push(c);
+    else closuresOf.set(a.params.edge, [c]);
+  });
 
   // Lanes: keep right, stopping short of each junction where its curbs start.
   for (const e of g.edges) {
@@ -339,13 +387,22 @@ function buildNet(w: World): TrafficNet {
       const s0 = dir === 0 ? sa : sb;
       const s1 = dir === 0 ? sb : sa;
       // Right of travel is (-fz, fx).
-      const rx = -fz * off;
-      const rz = fx * off;
-      const xs = [S.x + fx * s0 + rx, T.x - fx * s1 + rx];
-      const zs = [S.z + fz * s0 + rz, T.z - fz * s1 + rz];
+      const rx = -fz;
+      const rz = fx;
+      const laneLen = len - s0 - s1;
+      // Roadworks on this side: merge out to clear the barriers, in lane distance (m) from the lane's start.
+      const squeeze: { a: number; b: number; shift: number }[] = [];
+      for (const c of closuresOf.get(e.id) ?? []) {
+        if (c.nx * rx + c.nz * rz < 0.5) continue;
+        const clear = c.keep + ROADWORKS.aiMargin - maxHalfWidth() - L.closurePad;
+        if (clear >= off) continue;
+        const a = dir === 0 ? c.s0 - s0 : len - c.s1 - s0;
+        const b = dir === 0 ? c.s1 - s0 : len - c.s0 - s0;
+        squeeze.push({ a, b, shift: off - clear });
+      }
+      const { xs, zs, yaws } = lanePolyline(S.x + fx * s0, S.z + fz * s0, fx, fz, laneLen, off, squeeze);
       if (pathBlocked(w, xs, zs, probe, contacts)) continue;
-      const yaw = yawOf(fx, fz);
-      const p = polyPath(xs, zs, [yaw, yaw], true, e.id, S.id, T.id);
+      const p = polyPath(xs, zs, yaws, true, e.id, S.id, T.id);
       p.factor = factor;
       laneOf[2 * e.id + dir] = paths.length;
       paths.push(p);
@@ -370,10 +427,11 @@ function buildNet(w: World): TrafficNet {
         const a = paths[li];
         const b = paths[lo];
         if (a.edge === b.edge) continue;
-        const turn = wrapAngle(b.yaw[0] - a.yaw[1]);
+        const ai = a.x.length - 1;
+        const turn = wrapAngle(b.yaw[0] - a.yaw[ai]);
         if (abs(turn) > maxTurn) continue;
-        const p0x = a.x[1];
-        const p0z = a.z[1];
+        const p0x = a.x[ai];
+        const p0z = a.z[ai];
         const p3x = b.x[0];
         const p3z = b.z[0];
         const xs: number[] = [];
@@ -392,7 +450,7 @@ function buildNet(w: World): TrafficNet {
           const steps = Math.max(2, Math.ceil(arc / (L.ringStepDeg * DEG)));
           xs.push(p0x);
           zs.push(p0z);
-          ys.push(a.yaw[1]);
+          ys.push(a.yaw[ai]);
           for (let k = 0; k <= steps; k++) {
             const ang = aE - lead - (arc * k) / steps;
             xs.push(n.x + cos(ang) * R);
@@ -403,8 +461,8 @@ function buildNet(w: World): TrafficNet {
           zs.push(p3z);
           ys.push(b.yaw[0]);
         } else {
-          const t0x = sin(a.yaw[1]);
-          const t0z = cos(a.yaw[1]);
+          const t0x = sin(a.yaw[ai]);
+          const t0z = cos(a.yaw[ai]);
           const t3x = sin(b.yaw[0]);
           const t3z = cos(b.yaw[0]);
           const h = sqrt((p3x - p0x) ** 2 + (p3z - p0z) ** 2) * L.handle;
@@ -419,7 +477,7 @@ function buildNet(w: World): TrafficNet {
             zs.push(u * u * u * p0z + 3 * u * u * t * p1z + 3 * u * t * t * p2z + t * t * t * p3z);
             const dx = 3 * u * u * (p1x - p0x) + 6 * u * t * (p2x - p1x) + 3 * t * t * (p3x - p2x);
             const dz = 3 * u * u * (p1z - p0z) + 6 * u * t * (p2z - p1z) + 3 * t * t * (p3z - p2z);
-            ys.push(dx * dx + dz * dz > 1e-12 ? yawOf(dx, dz) : a.yaw[1]);
+            ys.push(dx * dx + dz * dz > 1e-12 ? yawOf(dx, dz) : a.yaw[ai]);
           }
         }
         if (pathBlocked(w, xs, zs, probe, contacts)) continue;
@@ -1178,17 +1236,24 @@ function tryRejoin(t: TrafficState, c: TrafficCar): void {
   const p = net.paths[c.path];
   if (!p.lane) return;
   const bd = c.body;
-  const dx = p.x[1] - p.x[0];
-  const dz = p.z[1] - p.z[0];
-  const len = p.length || 1;
-  const u = ((bd.x - p.x[0]) * dx + (bd.z - p.z[0]) * dz) / (len * len);
-  const s = u * len;
+  // Nearest point of the lane's polyline (lanes bend round roadworks).
+  let s = 0;
+  let best = Infinity;
+  for (let i = 0; i + 1 < p.x.length; i++) {
+    const u = segmentT(bd.x, bd.z, p.x[i], p.z[i], p.x[i + 1], p.z[i + 1]);
+    const d2 = (bd.x - p.x[i] - (p.x[i + 1] - p.x[i]) * u) ** 2 + (bd.z - p.z[i] - (p.z[i + 1] - p.z[i]) * u) ** 2;
+    if (d2 < best) {
+      best = d2;
+      s = p.cum[i] + (p.cum[i + 1] - p.cum[i]) * u;
+    }
+  }
   // Past the stop line is fine: the car then waits there for its turn like any other.
-  if (s < hl(c) + 0.5 || s > len - 0.3) return;
-  const px = p.x[0] + dx * u;
-  const pz = p.z[0] + dz * u;
+  if (s < hl(c) + 0.5 || s > p.length - 0.3) return;
+  samplePath(p, s, pose);
+  const px = pose.x;
+  const pz = pose.z;
   const off = sqrt((bd.x - px) ** 2 + (bd.z - pz) ** 2);
-  const dyaw = wrapAngle(bd.yaw - p.yaw[0]);
+  const dyaw = wrapAngle(bd.yaw - pose.yaw);
   if (off > P.rejoinDistance || abs(dyaw) > P.rejoinYawDeg * DEG) return;
   for (const o of t.cars) {
     if (o === c || o.mode !== 'drive' || o.path !== c.path) continue;

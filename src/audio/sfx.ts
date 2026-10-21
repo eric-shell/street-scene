@@ -1,7 +1,7 @@
 /**
  * Sound effects with Web Audio. Synthesized (no asset files):
  *  - impacts: car vs car crunch, wall/barrier thud, guard rail clang, and prop
- *    breaks by kind (pole clang + glass, hollow can bang, bench crunch, big
+ *    breaks by kind (pole clang + glass, hollow can bang, bench crunch, a hydrant's gush, big
  *    bus stop shatter, leafy bush swish, pot crack, cafe chair clatter, plastic
  *    barrel thunk, crate splinter, dumpster boom, trash bag thump). Each is
  *    rendered once into a few AudioBuffer variants
@@ -11,6 +11,8 @@
  *  - loops: nitrous jet whoosh (sweeping filtered noise + turbine whine) and
  *    a wall/rail scrape while a car grinds along a wall.
  *  - the horn (dual tone), the countdown beeps and firework booms.
+ *  - standalone voices a scene owns: the train rumble, the helicopter
+ *    rotors and the thunder of the lightning on rain nights.
  * Crowd recordings (public/sfx, loaded lazily and decoded once per app):
  *  - a looped cheering bed per crowd stand, positioned on the stand's
  *    nearest point to the listener and swelling with the stand's excitement
@@ -43,8 +45,11 @@ export interface SfxCar {
 }
 
 export type WallHitKind = 'wall' | 'barrier' | 'rail';
-/** Prop kinds with their own impact sound (news boxes sound like garbage cans, park lamps like streetlights; construction pieces borrow the nearest material). */
-type PropSound = Exclude<PropKind, 'newsBox' | 'parkLamp' | ConstructionPropKind>;
+/**
+ * Prop kinds with their own impact sound (news boxes sound like garbage cans, park lamps like
+ * streetlights; construction pieces and most neighbourhood furniture borrow the nearest material).
+ */
+type PropSound = Exclude<PropKind, 'newsBox' | 'parkLamp' | ConstructionPropKind | 'mailbox' | 'parkingMeter' | 'phoneBooth' | 'vendingMachine'>;
 export type SfxBank = 'crash' | WallHitKind | PropSound | 'firework';
 type Bank = SfxBank;
 const PROP_SOUND: Record<PropKind, PropSound> = {
@@ -68,6 +73,11 @@ const PROP_SOUND: Record<PropKind, PropSound> = {
   waterBarrier: 'barrel',
   sandbags: 'trashBags',
   pallets: 'crate',
+  hydrant: 'hydrant',
+  parkingMeter: 'trafficLight',
+  mailbox: 'garbageCan',
+  phoneBooth: 'busStop',
+  vendingMachine: 'dumpster',
 };
 
 const VARIANTS = 3;
@@ -441,6 +451,18 @@ const RECIPES: Record<Bank, { seconds: number; make(t: Tape): void }> = {
         [b * 4.1, 0.2, 0.1],
       ]);
       t.grains(0.05, 0.9, 25, 0.25, 1200, 4000, 2);
+    },
+  },
+  // Fire hydrant: a dull cast iron clunk as it shears off, then the water main letting go.
+  hydrant: {
+    seconds: 1.8,
+    make(t) {
+      t.thud(0, rnd(95, 115), 40, 0.04, 0.9, 0.12);
+      const b = rnd(380, 450);
+      t.modes(0, BAR.map((r, i) => [b * r, 0.32 / (1 + i), 0.06 - i * 0.01] as [number, number, number]));
+      t.noise(0.04, 1.7, 0.55, 0.9, [['bp', rnd(1300, 1700), 0.45]], 0.06, 0.5);
+      t.noise(0.04, 1.7, 0.3, 0.7, [['lp', 500, 0.7]], 0.08, 0.6);
+      t.grains(0.1, 1.4, 40, 0.15, 2500, 6500, 1.5, 0.006);
     },
   },
   // Trash bags: a soft thump, plastic rustle and a bottle or two.
@@ -941,6 +963,8 @@ export class TrainRumble {
 
 /** Helicopter rotor mix: level, blade pass rate (Hz) and thump depth, the low body of the sound and the turbine whine. */
 const ROTOR = { level: 0.34, bladeHz: 10.5, thump: 0.85, bodyHz: 220, body: 3.2, whineHz: 1700, whine: 0.08 } as const;
+/** A rotor's voice: ROTOR's numbers, any of which a second helicopter (the police one) can change. */
+export type RotorVoice = { [K in keyof typeof ROTOR]: number };
 
 /**
  * News helicopter rotor (render/airTraffic.ts): low filtered noise chopped at
@@ -955,24 +979,26 @@ export class HeliRotor {
   private pan: StereoPannerNode;
   private src: AudioBufferSourceNode;
   private lfo: OscillatorNode;
+  private readonly level: number;
 
   /** True while the browser still waits for the first user gesture. */
   static blocked(): boolean {
     return TrainRumble.blocked();
   }
 
-  static create(): HeliRotor | null {
+  static create(voice: Partial<RotorVoice> = {}): HeliRotor | null {
     if (typeof window === 'undefined' || HeliRotor.blocked()) return null;
     const h = audioHub();
     if (!h) return null;
     try {
-      return new HeliRotor(h);
+      return new HeliRotor(h, { ...ROTOR, ...voice });
     } catch {
       return null;
     }
   }
 
-  private constructor(h: NonNullable<ReturnType<typeof audioHub>>) {
+  private constructor(h: NonNullable<ReturnType<typeof audioHub>>, voice: RotorVoice) {
+    this.level = voice.level;
     const ctx = (this.ctx = h.ctx);
     this.out = ctx.createGain();
     this.out.gain.value = 0;
@@ -983,23 +1009,23 @@ export class HeliRotor {
     this.src.loop = true;
     const body = ctx.createBiquadFilter();
     body.type = 'lowpass';
-    body.frequency.value = ROTOR.bodyHz;
+    body.frequency.value = voice.bodyHz;
     body.Q.value = 1.1;
     const bodyGain = ctx.createGain();
-    bodyGain.gain.value = ROTOR.body * (1 - ROTOR.thump);
+    bodyGain.gain.value = voice.body * (1 - voice.thump);
     // The chop: a square wave at the blade pass rate opens and closes the body gain.
     this.lfo = ctx.createOscillator();
     this.lfo.type = 'square';
-    this.lfo.frequency.value = ROTOR.bladeHz;
+    this.lfo.frequency.value = voice.bladeHz;
     const depth = ctx.createGain();
-    depth.gain.value = ROTOR.body * ROTOR.thump;
+    depth.gain.value = voice.body * voice.thump;
     this.lfo.connect(depth).connect(bodyGain.gain);
     const whine = ctx.createBiquadFilter();
     whine.type = 'bandpass';
-    whine.frequency.value = ROTOR.whineHz;
+    whine.frequency.value = voice.whineHz;
     whine.Q.value = 9;
     const whineGain = ctx.createGain();
-    whineGain.gain.value = ROTOR.whine;
+    whineGain.gain.value = voice.whine;
     this.src.connect(body).connect(bodyGain).connect(this.out);
     this.src.connect(whine).connect(whineGain).connect(this.out);
     this.src.start();
@@ -1009,7 +1035,7 @@ export class HeliRotor {
   /** proximity 0..1 (1 = right overhead), pan -1..1. */
   update(proximity: number, pan: number): void {
     const now = this.ctx.currentTime;
-    const target = ROTOR.level * Math.pow(Math.max(0, proximity), 1.2);
+    const target = this.level * Math.pow(Math.max(0, proximity), 1.2);
     const g = this.out.gain;
     g.cancelScheduledValues(now);
     g.setTargetAtTime(target, now, 0.12);
@@ -1026,6 +1052,138 @@ export class HeliRotor {
       /* already stopped */
     }
     this.out.disconnect();
+  }
+}
+
+/**
+ * Thunder mix: overall level, the distance (m) a strike is still heard at full
+ * weight, the rumble's low pass (Hz) near and far, how long it rolls (s) near
+ * and far, and the crack of a close strike: the distance it fades out by (m),
+ * its level and its band (Hz).
+ */
+const THUNDER = { level: 0.62, near: 1800, lowNear: 420, lowFar: 150, rollNear: 4, rollFar: 8.5, crackUnder: 2400, crack: 0.9, crackHz: 2600 } as const;
+
+/**
+ * Thunder for the lightning on rain nights (render/lightning.ts calls strike()
+ * once the sound of a bolt has travelled to the camera). A rumble of looped
+ * hub noise through two low passes, darker and longer the further the strike,
+ * swelling in and rolling through a few random surges before it dies; a close
+ * strike opens with a bright crack and a deep thump. Panned toward the bolt.
+ * Nodes are made per strike (one every 15 s or more) and stopped and
+ * disconnected when it ends. Created after the first user gesture, like the
+ * rotors.
+ */
+export class Thunder {
+  private ctx: AudioContext;
+  private bus: GainNode;
+  private noise: AudioBuffer;
+  private live = new Set<AudioScheduledSourceNode>();
+
+  static create(): Thunder | null {
+    if (typeof window === 'undefined' || TrainRumble.blocked()) return null;
+    const h = audioHub();
+    if (!h) return null;
+    try {
+      return new Thunder(h);
+    } catch {
+      return null;
+    }
+  }
+
+  private constructor(h: NonNullable<ReturnType<typeof audioHub>>) {
+    this.ctx = h.ctx;
+    this.bus = h.sfxBus;
+    this.noise = h.noise;
+  }
+
+  /** One strike `distance` m away, power 0..1, pan -1..1 (left to right). */
+  strike(distance: number, power: number, pan: number): void {
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const T = THUNDER;
+    const far = clamp01((distance - 600) / 5500);
+    const level = T.level * power * (0.25 + 0.75 / (1 + (distance / T.near) ** 2));
+    const out = ctx.createStereoPanner();
+    out.pan.value = Math.max(-1, Math.min(1, pan)) * 0.7;
+    out.connect(this.bus);
+    let open = 0;
+    const track = (src: AudioScheduledSourceNode, end: number) => {
+      this.live.add(src);
+      open++;
+      src.onended = () => {
+        this.live.delete(src);
+        src.disconnect();
+        if (--open === 0) out.disconnect();
+      };
+      src.stop(end);
+    };
+    // Rumble: slow noise (about half rate) through two low passes, swelling in and rolling.
+    const roll = T.rollNear + (T.rollFar - T.rollNear) * far;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    src.loop = true;
+    src.playbackRate.value = rnd(0.45, 0.6);
+    const lp1 = ctx.createBiquadFilter();
+    lp1.type = 'lowpass';
+    lp1.frequency.value = T.lowNear + (T.lowFar - T.lowNear) * far;
+    lp1.Q.value = 0.6;
+    const lp2 = ctx.createBiquadFilter();
+    lp2.type = 'lowpass';
+    lp2.frequency.value = lp1.frequency.value * 1.4;
+    lp2.Q.value = 0.5;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, now);
+    const attack = 0.05 + 0.5 * far;
+    g.gain.linearRampToValueAtTime(level * 2.2, now + attack);
+    let t = now + attack;
+    const surges = 2 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < surges; i++) {
+      t += rnd(0.35, 0.9) * (0.8 + far);
+      g.gain.setTargetAtTime(level * 2.2 * rnd(0.3, 0.95), t, 0.18);
+    }
+    g.gain.setTargetAtTime(0, t + 0.3, roll * 0.22);
+    src.connect(lp1).connect(lp2).connect(g).connect(out);
+    src.start(now, Math.random() * this.noise.duration);
+    track(src, t + 0.3 + roll);
+    if (distance >= T.crackUnder) return;
+    // Close: a crack (bright noise, fast decay) and a deep thump under it.
+    const near = 1 - distance / T.crackUnder;
+    const crack = ctx.createBufferSource();
+    crack.buffer = this.noise;
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.value = T.crackHz;
+    band.Q.value = 0.4;
+    const cg = ctx.createGain();
+    cg.gain.setValueAtTime(0, now);
+    cg.gain.linearRampToValueAtTime(level * T.crack * near, now + 0.006);
+    cg.gain.setTargetAtTime(0, now + 0.02, 0.09);
+    crack.connect(band).connect(cg).connect(out);
+    crack.start(now, Math.random() * Math.max(0, this.noise.duration - 1));
+    track(crack, now + 0.9);
+    const thump = ctx.createOscillator();
+    thump.type = 'sine';
+    thump.frequency.setValueAtTime(70, now);
+    thump.frequency.exponentialRampToValueAtTime(32, now + 0.6);
+    const tg = ctx.createGain();
+    tg.gain.setValueAtTime(0, now);
+    tg.gain.linearRampToValueAtTime(level * 1.4 * near, now + 0.03);
+    tg.gain.setTargetAtTime(0, now + 0.05, 0.35);
+    thump.connect(tg).connect(out);
+    thump.start(now);
+    track(thump, now + 2);
+  }
+
+  /** Stop whatever is still rolling (the scene went away). */
+  dispose(): void {
+    for (const s of Array.from(this.live)) {
+      try {
+        s.stop();
+      } catch {
+        /* already stopped */
+      }
+    }
+    this.live.clear();
   }
 }
 
@@ -1176,6 +1334,11 @@ export class Sfx {
       waterBarrier: 0.75,
       sandbags: 0.5,
       pallets: 0.6,
+      hydrant: 0.85,
+      parkingMeter: 0.5,
+      mailbox: 0.65,
+      phoneBooth: 0.9,
+      vendingMachine: 0.95,
     };
     const k = clamp01(speed / 25);
     // Props are distinct objects: a short gap only stops one hit playing twice.

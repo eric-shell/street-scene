@@ -131,7 +131,9 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   const scene = new THREE.Scene();
   scene.environment = gr.envMap;
   // The seed's mood first: it sets the fog every other build fogs itself with, the sky and the haze.
-  const weather = createWeather(world, { quality: settings.quality });
+  // Flash effects (lightning, the police light bar) follow the live setting; off softens them.
+  const flashes = () => settings.flashEffects !== false;
+  const weather = createWeather(world, { quality: settings.quality, flashes });
   const fogDensity = weather.def.fogDensity;
   const barriers = classifyBarriers(world);
   const city = buildCityMeshes(world, { detail: settings.quality });
@@ -171,7 +173,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   scene.add(lighting.group);
   weather.apply(scene, lighting);
   scene.add(weather.group);
-  const air = buildAirTraffic(world, { quality: settings.quality, fogDensity });
+  const air = buildAirTraffic(world, { quality: settings.quality, fogDensity, flashes });
   scene.add(air.group);
   // Street meets behind every cyan barrier: a crowd against the barrier, thinning back among parked
   // cars. Denser, deeper and drawn further at higher quality.

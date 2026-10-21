@@ -17,6 +17,7 @@ import { AiState, aiInput, buildRacingLine, createAi, RacingLine } from './ai';
 import { stepProps } from './props';
 import { RailState, createRailState } from './rails';
 import { TrafficState, createTraffic, stepTraffic } from './traffic';
+import { DriftZoneState, createDriftZoneState, stepDriftZones } from './driftZones';
 import { waitingAtGate } from './gates';
 import { stepHazards } from './hazards';
 
@@ -87,6 +88,8 @@ export interface DriftScore {
   chainTime: number;
   graceTime: number;
   lastBank: number;
+  /** Of `current`, the points the drift zone multiplier added (before the chain multiplier). */
+  zoneBonus: number;
 }
 
 export interface RaceState {
@@ -112,6 +115,8 @@ export interface RaceState {
   rails: RailState;
   /** Ambient traffic (src/sim/traffic.ts), null when the config has it off. */
   traffic: TrafficState | null;
+  /** Drift zone visits per car (src/sim/driftZones.ts). Fresh per race. */
+  driftZones: DriftZoneState;
 }
 
 /** Impact sound events: minimum impact speed (m/s) and minimum gap between events (ticks). */
@@ -124,6 +129,7 @@ const HIT_EVENT_GAP = Math.round(0.25 * TICK_HZ);
  * 'prop': value = prop id broken. 'crash': value = impact speed (m/s), other = car index hit.
  * 'wall': value = impact speed (m/s), kind = wall kind hit.
  * A 'crash' with `traffic` set hit that traffic car (r.traffic.cars index); car is -1 when traffic hit traffic.
+ * 'driftBank': value = points banked, other = of those, the drift zone bonus (when there was one).
  */
 export type RaceEvent = {
   tick: number;
@@ -257,12 +263,13 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
     cars,
     distance,
     inputLog: [],
-    drift: { total: 0, current: 0, multiplier: 1, chainTime: 0, graceTime: 0, lastBank: 0 },
+    drift: { total: 0, current: 0, multiplier: 1, chainTime: 0, graceTime: 0, lastBank: 0, zoneBonus: 0 },
     events: [],
     hitTicks: { wall: cars.map(() => -HIT_EVENT_GAP), pair: cars.flatMap(() => cars.map(() => -HIT_EVENT_GAP)) },
     brokenProps: coveredPropsRemoved(w),
     rails: createRailState(w),
     traffic,
+    driftZones: createDriftZoneState(w, cars.length),
   };
 }
 
@@ -487,6 +494,8 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
     if (rc.resetCooldown > 0) rc.resetCooldown -= DT;
     updateProgress(r, rc);
   }
+  // Drift zones: the extra refill for drifting on the plaza and the lots, and the score multiplier updateDrift reads.
+  stepDriftZones(r);
   if (r.config.mode === 'drift') updateDrift(r);
 
   r.tick++;
@@ -644,11 +653,15 @@ function updateDrift(r: RaceState): void {
     d.current = 0;
     d.multiplier = 1;
     d.chainTime = 0;
+    d.zoneBonus = 0;
     return;
   }
   if (c.drifting && c.speed > 12 && !rc.wrongWay) {
     const angle = Math.min(abs(c.slipAngle) / DEG, 60);
-    d.current += angle * c.speed * DT * 0.6;
+    const gain = angle * c.speed * DT * 0.6;
+    const zoneMul = r.driftZones.cars[0]?.scoreMul ?? 1;
+    d.current += gain * zoneMul;
+    d.zoneBonus += gain * (zoneMul - 1);
     d.chainTime += DT;
     d.graceTime = 0.7;
     d.multiplier = Math.min(5, 1 + Math.floor(d.chainTime / 2));
@@ -656,12 +669,14 @@ function updateDrift(r: RaceState): void {
     d.graceTime -= DT;
     if (d.graceTime <= 0) {
       const banked = Math.round(d.current * d.multiplier);
+      const zone = Math.round(d.zoneBonus * d.multiplier);
       d.total += banked;
       d.lastBank = banked;
-      r.events.push({ tick: r.tick, type: 'driftBank', car: 0, value: banked });
+      r.events.push({ tick: r.tick, type: 'driftBank', car: 0, value: banked, ...(zone > 0 ? { other: zone } : {}) });
       d.current = 0;
       d.multiplier = 1;
       d.chainTime = 0;
+      d.zoneBonus = 0;
     }
   }
 }

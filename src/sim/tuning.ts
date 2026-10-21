@@ -206,6 +206,45 @@ export interface PartTiers {
 }
 export const PART_TIERS = params.performanceParts as unknown as PartTiers;
 
+// ---------------------------------------------------------------------------
+// Drift zones (src/sim/driftZones.ts): race rules, not car tuning, so not in tuningHash.
+// ---------------------------------------------------------------------------
+export interface DriftZoneTuning {
+  /** Drift points multiplier while drifting inside a zone (drift mode). */
+  scoreMul: number;
+  /** Multiplier on the nitrous a drift refills inside a zone (every mode, every car). */
+  refillMul: number;
+  /** Drifting per visit that earns the bonus (s). */
+  bonusTime: number;
+  /** Most extra nitrous one visit refills (tank fraction). */
+  refillCap: number;
+  /** A visit lasts this long after the car leaves the zone (s), so a slide over the edge keeps it. */
+  exitGrace: number;
+  /** Once a paying visit ends, the zone pays that car again only after this long (s). */
+  cooldown: number;
+  /** Parking lots count as zones from this depth into the block (m), frontage length (m) and area (m^2). */
+  minLotDepth: number;
+  minLotLength: number;
+  minLotArea: number;
+}
+
+const DRIFT_ZONE_KEYS = ['scoreMul', 'refillMul', 'bonusTime', 'refillCap', 'exitGrace', 'cooldown', 'minLotDepth', 'minLotLength', 'minLotArea'] as const satisfies readonly (keyof DriftZoneTuning)[];
+
+/** The `driftZones` section, checked like the car tuning: unknown or missing keys and non-numbers throw. */
+function driftZoneTuning(raw: Record<string, unknown>): DriftZoneTuning {
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (k.startsWith('_')) continue;
+    if (!(DRIFT_ZONE_KEYS as readonly string[]).includes(k)) throw new Error(`drivingParams.json: unknown key "driftZones.${k}"`);
+    if (typeof v !== 'number') throw new Error(`drivingParams.json: "driftZones.${k}" must be a number`);
+    out[k] = v;
+  }
+  for (const k of DRIFT_ZONE_KEYS) if (!(k in out)) throw new Error(`drivingParams.json: missing "driftZones.${k}"`);
+  return out as unknown as DriftZoneTuning;
+}
+
+export const DRIFT_ZONES: DriftZoneTuning = driftZoneTuning(params.driftZones as unknown as Record<string, unknown>);
+
 interface ManifestCar {
   id: string;
   wheels: Record<'FL' | 'FR' | 'RL' | 'RR', number[]>;

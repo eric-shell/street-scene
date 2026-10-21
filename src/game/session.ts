@@ -33,6 +33,9 @@ import { formatTime } from '../ui/format';
 import { ReplayData } from '../replay/replay';
 import { PROP_DEFS } from '../city/props';
 import { TRAFFIC_SNAP, TrafficView, snapTraffic } from '../render/traffic';
+import { driftZoneStatus } from '../sim/driftZones';
+import { DRIFT_ZONES } from '../sim/tuning';
+import { ChaseCall, policeChaseCall } from '../render/policeChase';
 import { HazardFx } from './hazardFx';
 
 interface Snap extends CarPose {
@@ -232,6 +235,8 @@ export class RaceSession {
   private signAt = -1;
   /** Player lap whose line approach fireworks were launched. */
   private fireworksLap = -1;
+  /** The police helicopter's brief from the last tick (render/policeChase.ts): patrol, or chase which car. */
+  private chaseCall: ChaseCall = { phase: 'patrol', car: -1 };
   /** The drawbridge posed at sim time, its bell and the HUD warning (game/hazardFx.ts). */
   private readonly hazards: HazardFx;
   /** Racer poses for the crowd (reused every frame). */
@@ -581,6 +586,7 @@ export class RaceSession {
       stepRace(this.ghostRace, gt < this.ghostLog.length ? unpackInput(this.ghostLog[gt]) : { ...NEUTRAL_INPUT, brake: 1 });
       this.ghostCurr = snap(this.ghostRace.cars[0].state);
     }
+    this.chaseCall = policeChaseCall(r);
     this.sfx?.syncCountdown(r);
     this.handleEvents();
     this.emitSparks();
@@ -758,7 +764,8 @@ export class RaceSession {
           this.hud.message('Back on track', 1);
           break;
         case 'driftBank':
-          this.hud.message(`+${(e.value ?? 0).toLocaleString()}`, 1.2);
+          // A drift that ran through a zone shows what the zone added.
+          this.hud.message(`+${(e.value ?? 0).toLocaleString()}${e.other ? `  ·  zone +${e.other.toLocaleString()}` : ''}`, 1.2);
           break;
       }
     }
@@ -787,6 +794,9 @@ export class RaceSession {
     this.carLight.position.set(p.x - Math.sin(p.yaw) * 1.5, p.y + 4.2, p.z - Math.cos(p.yaw) * 1.5);
     // The few real point lights follow the action, or the drone when it flies off.
     this.night.lighting.update(this.drone ? camera.position : new THREE.Vector3(p.x, p.y, p.z));
+    // Last lap: the police helicopter follows the leader's interpolated pose.
+    const chase = this.chaseCall;
+    this.night.air.chase(chase.phase === 'chase' ? (poses[chase.car] ?? null) : null);
     this.night.update(this.time);
     // Timed hazards (the drawbridge) at the interpolated sim time, so replays look the same.
     this.hazards.update(r, this.paused ? 1 : alpha, !this.paused);
@@ -995,10 +1005,12 @@ export class RaceSession {
       countdown,
       wrongWay: rc.wrongWay,
       progress: Math.max(0, rc.dist) / r.distance,
-      drift: r.config.mode === 'drift' ? { total: r.drift.total, current: r.drift.current, multiplier: r.drift.multiplier } : undefined,
+      drift: r.config.mode === 'drift' ? { total: r.drift.total, current: r.drift.current, multiplier: r.drift.multiplier, zoneBonus: r.drift.zoneBonus } : undefined,
       cars: this.mapCars(),
       ghost: !!this.ghostRace,
     };
+    const zone = driftZoneStatus(r, 0);
+    if (zone) data.zone = { mul: r.config.mode === 'drift' ? DRIFT_ZONES.scoreMul : DRIFT_ZONES.refillMul, nitro: r.config.mode !== 'drift', left: zone.left, resting: zone.resting };
     if (this.openWorld) {
       this.topKmh = Math.max(this.topKmh, c.speed * 3.6);
       this.updateArea(c.x, c.z, dt);

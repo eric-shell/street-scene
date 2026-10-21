@@ -63,15 +63,27 @@ describe('traffic network', () => {
           for (const wall of g.walls) {
             for (const id of net.lanes) {
               const p = net.paths[id];
-              expect(distToSegment(wall.ax, wall.az, p.x[0], p.z[0], p.x[1], p.z[1])).toBeGreaterThan(5);
+              for (let i = 0; i + 1 < p.x.length; i++) expect(distToSegment(wall.ax, wall.az, p.x[i], p.z[i], p.x[i + 1], p.z[i + 1])).toBeGreaterThan(5);
             }
           }
         }
       }
       // An open world opens every street, the route's included.
-      const open = trafficNet(createWorld(seed, 'circuit', city, { openWorld: true }));
+      const ow = createWorld(seed, 'circuit', city, { openWorld: true });
+      const open = trafficNet(ow);
       const routeEdges = new Set(createWorld(seed, 'circuit', city).route.edges);
       expect(open.paths.some((p) => p.lane && routeEdges.has(p.edge))).toBe(true);
+      // Roadworks: the lane on the closed side merges out round the plant and stays clear of every cone and barrier.
+      const works = ow.areas.filter((a) => a.kind === 'roadworks');
+      const props = ow.props.filter((p) => works.some((a) => a.id === p.area));
+      expect(props.length).toBeGreaterThan(10);
+      const hw = Math.max(...TRAFFIC.kinds.map((k) => k.halfWidth));
+      for (const p of open.paths) {
+        for (const pr of props) {
+          for (let i = 0; i + 1 < p.x.length; i++) expect(distToSegment(pr.x, pr.z, p.x[i], p.z[i], p.x[i + 1], p.z[i + 1]) - pr.radius - hw).toBeGreaterThan(0.2);
+        }
+      }
+      expect(works.some((a) => open.paths.filter((p) => p.lane && p.edge === a.params.edge && p.x.length > 2).length > 0)).toBe(true);
     }
   });
 });
