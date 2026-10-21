@@ -38,6 +38,13 @@
  * Positions are also clamped so a driving car never advances into its
  * leader, which keeps driving cars from ever overlapping.
  *
+ * Timed gates (sim/gates.ts: the drawbridge's arms): every lane or connector
+ * crossing a gate line from its holding side knows where. A driver stops
+ * short of it whenever the gate is not open, or would close before the car
+ * has cleared the bridge beyond it, unless it is already too close to stop;
+ * so nobody is on the span when the leaves go up (and any car that still is,
+ * after a crash say, is taken off it).
+ *
  * Contact: race cars collide with traffic as solid bodies (collideCars). A
  * struck car turns loose: a passive body that slides, spins and scrapes off
  * walls to a stop, then, if it is close to its lane and roughly facing along
@@ -56,10 +63,12 @@ import { CITY } from '../city/config';
 import { CarState, createCar } from './car';
 import { CarTuning, DEFAULT_CAR_ID, TRAFFIC, getBaseTuning } from './tuning';
 import { collideCarWithWorld, collideCars } from './collision';
-import { DT } from './constants';
+import { DT, TICK_HZ } from './constants';
 import { Rng, deriveSeed } from './prng';
 import { DEG, TAU, abs, approach, atan2, cos, distToSegment, exp, sin, sqrt, wrapAngle, yawOf } from './math';
 import type { RaceCar, RaceEvent, RaceState } from './race';
+import { GatePhase, gatePhase } from './gates';
+import { leafAngle, onSpan } from '../city/drawbridge';
 
 /** Network layout, counts and spawning (not physics: those are TRAFFIC in drivingParams.json). */
 export const TRAFFIC_LAYOUT = {
@@ -127,6 +136,19 @@ export const TRAFFIC_LAYOUT = {
   /** Hit events: minimum impact speed (m/s) and minimum gap per traffic car (ticks). */
   hitSpeed: 2,
   hitGap: 15,
+  /**
+   * Timed gates: the nose stops this far short of the line (m); a driver goes
+   * on when the gate stays open until it is this long (s) past the bridge
+   * beyond, judged at no less than gateMinSpeed (m/s); nothing spawns within
+   * gateSpawnClear (m) of a drawbridge span.
+   */
+  gateStop: 1.6,
+  gateMargin: 1.5,
+  gateMinSpeed: 6,
+  gateSpawnClear: 15,
+  /** Within this long (s) of a closing, a driver waits at the gate rather than start across behind a car slower than gateQueueSpeed (m/s). */
+  gateHorizon: 20,
+  gateQueueSpeed: 3,
 } as const;
 
 const L = TRAFFIC_LAYOUT;
@@ -163,6 +185,9 @@ export interface TrafficPath {
   vmax: number;
   /** Cruise speed factor of the street. */
   factor: number;
+  /** Timed gates this path crosses from their holding side (World.timedGates.gates ids), and where along it (m). */
+  gates: number[];
+  gateS: number[];
   /** Choice weight among the turns of the lane it leaves (connectors). */
   weight: number;
 }
@@ -172,6 +197,8 @@ export interface TrafficNet {
   /** Lane path ids (where cars spawn) and their cumulative lengths (m), for length weighted picks. */
   lanes: number[];
   laneCum: number[];
+  /** Per timed gate: the length of the crossing it guards (m, to the far gate of its cycle), which a car must clear before it closes. */
+  gateSpan: number[];
 }
 
 export type TrafficMode = 'drive' | 'loose' | 'gone';
@@ -257,7 +284,7 @@ function pathBlocked(w: World, xs: number[], zs: number[], r: number, contacts: 
 function polyPath(xs: number[], zs: number[], yaws: number[], lane: boolean, edge: number, from: number, to: number): TrafficPath {
   const cum = [0];
   for (let i = 1; i < xs.length; i++) cum.push(cum[i - 1] + sqrt((xs[i] - xs[i - 1]) ** 2 + (zs[i] - zs[i - 1]) ** 2));
-  return { lane, x: xs, z: zs, yaw: yaws, cum, length: cum[cum.length - 1], edge, from, to, out: [], in: [], locked: false, conflicts: [], clearAt: [], vmax: Infinity, factor: 1, weight: 1 };
+  return { lane, x: xs, z: zs, yaw: yaws, cum, length: cum[cum.length - 1], edge, from, to, out: [], in: [], locked: false, conflicts: [], clearAt: [], vmax: Infinity, factor: 1, weight: 1, gates: [], gateS: [] };
 }
 
 /** Tightest radius along a polyline (m) from the heading change between its segments. */
@@ -483,7 +510,38 @@ function buildNet(w: World): TrafficNet {
     total += p.length;
     laneCum.push(total);
   });
-  return { paths: kept, lanes, laneCum };
+  // Timed gates: where each path crosses a gate line coming from its holding side.
+  const set = w.timedGates;
+  const gateSpan: number[] = [];
+  if (set) {
+    set.gates.forEach((g, gi) => {
+      let span = 0;
+      for (const o of set.gates) if (o.cycle === g.cycle) span = Math.max(span, sqrt((o.cx - g.cx) ** 2 + (o.cz - g.cz) ** 2));
+      gateSpan.push(span);
+      for (const p of kept) {
+        for (let i = 0; i + 1 < p.x.length; i++) {
+          const sx = p.x[i + 1] - p.x[i];
+          const sz = p.z[i + 1] - p.z[i];
+          if (sx * g.nx + sz * g.nz >= 0) continue;
+          const t = crossAt(p.x[i], p.z[i], p.x[i + 1], p.z[i + 1], g.ax, g.az, g.bx, g.bz);
+          if (t < 0) continue;
+          p.gates.push(gi);
+          p.gateS.push(p.cum[i] + (p.cum[i + 1] - p.cum[i]) * t);
+          break;
+        }
+      }
+    });
+  }
+  return { paths: kept, lanes, laneCum, gateSpan };
+}
+
+/** Where segment a-b crosses segment c-d, as a share of a-b (-1 when they do not cross). */
+function crossAt(ax: number, az: number, bx: number, bz: number, cx: number, cz: number, dx: number, dz: number): number {
+  const den = (bx - ax) * (dz - cz) - (bz - az) * (dx - cx);
+  if (abs(den) < 1e-12) return -1;
+  const t = ((cx - ax) * (dz - cz) - (cz - az) * (dx - cx)) / den;
+  const u = ((cx - ax) * (bz - az) - (cz - az) * (bx - ax)) / den;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1 ? t : -1;
 }
 
 /** Distance between two segments (0 when they cross). */
@@ -628,7 +686,7 @@ function place(net: TrafficNet, c: TrafficCar, lane: number, s: number, tick: nu
  * between minD and maxD from (fx, fz), at least `clear` from every race car
  * and spawnClear from every other traffic car. Bounded tries.
  */
-function trySpawn(t: TrafficState, c: TrafficCar, cars: readonly RaceCar[], fx: number, fz: number, minD: number, maxD: number, clear: number, tick: number, tries: number): boolean {
+function trySpawn(t: TrafficState, world: World, c: TrafficCar, cars: readonly RaceCar[], fx: number, fz: number, minD: number, maxD: number, clear: number, tick: number, tries: number): boolean {
   const net = t.net;
   if (!net.lanes.length) return false;
   const total = net.laneCum[net.laneCum.length - 1];
@@ -648,6 +706,7 @@ function trySpawn(t: TrafficState, c: TrafficCar, cars: readonly RaceCar[], fx: 
     samplePath(p, s, pose);
     const d = sqrt((pose.x - fx) ** 2 + (pose.z - fz) ** 2);
     if (d < minD || d > maxD) continue;
+    if (world.drawbridge && onSpan(world.drawbridge, pose.x, pose.z, L.gateSpawnClear)) continue;
     let ok = true;
     for (const rc of cars) {
       if ((rc.state.x - pose.x) ** 2 + (rc.state.z - pose.z) ** 2 < clear * clear) {
@@ -681,7 +740,7 @@ export function createTraffic(world: World, cars: readonly RaceCar[], seed: numb
     const body = createCar(0, 0, 0, 0);
     const c: TrafficCar = { id: i, kind: 0, mode: 'gone', path: -1, next: -1, after: -1, s: 0, v: 0, cruise: 0, hold: -1, wait: 0, still: 0, ox: 0, oz: 0, oyaw: 0, born: 0, hitTick: -L.hitGap, braking: false, body };
     t.cars.push(c);
-    if (focus) trySpawn(t, c, cars, focus.x, focus.z, 0, L.bubble * 0.9, L.startClear, 0, 60);
+    if (focus) trySpawn(t, world, c, cars, focus.x, focus.z, 0, L.bubble * 0.9, L.startClear, 0, 60);
   }
   t.rng = rng.getState();
   return t;
@@ -744,6 +803,9 @@ function turnLoose(t: TrafficState, c: TrafficCar): void {
 /** Driving speed limit from the profile to a point `gap` m ahead moving at vAhead. */
 const profile = (vAhead: number, gap: number, b: number): number => sqrt(Math.max(0, vAhead * vAhead + 2 * b * Math.max(0, gap)));
 
+/** Gate phase scratch (gatePhase writes into it). */
+const gatePh: GatePhase = { name: 'open', t: 0, len: 0, arm: 0, blocking: false, untilBlock: 0, untilClear: 0, cycleT: -1 };
+
 /** The obstacle scan's working values for the car being planned (no per-car allocations). */
 const seen = { va: 0, room: 0, fx: 0, fz: 1, look: 0 };
 
@@ -787,6 +849,7 @@ export function stepTraffic(r: RaceState): void {
   }
   foreign.reverse();
 
+  const gates = r.world.timedGates && r.world.timedGates.gates.length ? r.world.timedGates : null;
   // 1. Speed limits for every driving car, from the state at the start of the tick.
   vAllow.length = n;
   advance.length = n;
@@ -872,6 +935,31 @@ export function stepTraffic(r: RaceState): void {
     }
     va = seen.va;
     room = seen.room;
+    // Timed gates on this path or the next two: stop short unless the bridge beyond stays open long enough.
+    if (gates) {
+      const d0 = -c.s;
+      for (let k = 0; k < 3; k++) {
+        const gp = k === 0 ? p0 : k === 1 ? p1 : p2;
+        const base = k === 0 ? d0 : k === 1 ? d1 : d2;
+        for (let gi = 0; gi < gp.gates.length; gi++) {
+          const dist = base + gp.gateS[gi];
+          if (dist < hl(c) || dist > 200) continue;
+          const g = gates.gates[gp.gates[gi]];
+          const ph = gatePhase(gates.cycles[g.cycle], r.tick, gatePh);
+          const dStop = dist - hl(c) - L.gateStop;
+          const across = dist + net.gateSpan[gp.gates[gi]] + hl(c);
+          let stop = ph.name !== 'open';
+          if (!stop) stop = ph.untilBlock / TICK_HZ < across / Math.max(c.v, L.gateMinSpeed) + L.gateMargin;
+          // With a closing coming, nobody starts across behind a queue they might not clear the bridge with.
+          if (!stop && ph.untilBlock / TICK_HZ < L.gateHorizon && gap < across && vLead < L.gateQueueSpeed) stop = true;
+          // Too close to stop before the line while the arms are still up: carry on across.
+          if (stop && !ph.blocking && (c.v * c.v) / (2 * P.hardBrake) > dist - hl(c)) stop = false;
+          if (!stop) continue;
+          va = Math.min(va, profile(0, dStop, b));
+          room = Math.min(room, Math.max(0, dStop));
+        }
+      }
+    }
     // A busy junction: stop at its line unless this car holds the connector; ask for it in time.
     if (p1.locked && c.hold !== c.next) {
       const dStop = d1 - hl(c) - L.stopMargin;
@@ -998,7 +1086,7 @@ export function stepTraffic(r: RaceState): void {
     bd.x += bd.vx * DT;
     bd.z += bd.vz * DT;
     bd.yaw = wrapAngle(bd.yaw + bd.yawRate * DT);
-    collideCarWithWorld(bd, trafficTuning(c.kind), r.world);
+    collideCarWithWorld(bd, trafficTuning(c.kind), r.world, undefined, undefined, r.tick);
     bd.speed = sqrt(bd.vx * bd.vx + bd.vz * bd.vz);
     c.still = bd.speed < P.restSpeed && abs(bd.yawRate) < 0.15 ? c.still + DT : 0;
     if (c.still >= P.recoverDelay) tryRejoin(t, c);
@@ -1025,10 +1113,16 @@ export function stepTraffic(r: RaceState): void {
     }
   }
 
-  // 6. Recycling: out of the bubble, or struck / stuck for good with nobody near; then respawns.
+  // 6. Recycling: out of the bubble, or struck / stuck for good with nobody near, or on a rising drawbridge leaf; then respawns.
   const focus = r.cars[0]?.state;
+  const db = r.world.drawbridge;
+  const lifting = !!db && !!r.world.timedGates && leafAngle(db, r.world.timedGates, r.tick) > 0;
   let spawns = 0;
   for (const c of cars) {
+    if (lifting && c.mode !== 'gone' && onSpan(db!, c.body.x, c.body.z, 1)) {
+      release(c);
+      c.mode = 'gone';
+    }
     if (focus && c.mode !== 'gone') {
       const far = (c.body.x - focus.x) ** 2 + (c.body.z - focus.z) ** 2 > L.bubble * L.bubble;
       const stuck = (c.mode === 'loose' && c.still >= P.recoverDelay) || (c.mode === 'drive' && c.still > L.stuckRecycle);
@@ -1039,7 +1133,7 @@ export function stepTraffic(r: RaceState): void {
     }
     if (c.mode === 'gone' && focus && spawns < L.spawnsPerTick) {
       spawns++;
-      trySpawn(t, c, r.cars, focus.x, focus.z, L.spawnMin, L.spawnMax, L.spawnMin, r.tick, L.spawnTries);
+      trySpawn(t, r.world, c, r.cars, focus.x, focus.z, L.spawnMin, L.spawnMax, L.spawnMin, r.tick, L.spawnTries);
     }
   }
   t.rng = rng.getState();
