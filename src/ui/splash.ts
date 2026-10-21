@@ -2,8 +2,9 @@
  * Boot splash. The title and tagline flash in over black while the assets are
  * checked, then fly into their place on the main menu as the black fades out to
  * reveal the city. The splash block is a copy of the menu's title block (same
- * classes and structure: the title one word a line over its accent rule, then
- * the tagline, all shrink-wrapped, so it measures the same at any width) scaled
+ * classes and structure: the title on one line sized to the menu's column over
+ * its accent rule, then the tagline, all shrink-wrapped, so it measures the same
+ * at any width) scaled
  * up and centered; landing is a FLIP transform to the real block's rectangle,
  * after which the real one is shown and the splash removed, so the swap is
  * invisible. The rule pulses on the splash and settles as it lands on the
@@ -16,7 +17,7 @@
  */
 import { h } from './dom';
 import { SplashFx, startSplashFx } from './splashFx';
-import { TAGLINE, TITLE_LINES, titleLines } from './menu';
+import { TAGLINE, TITLE_WORDS, titleWords } from './menu';
 
 export interface Splash {
   /** Resolves once the flash-in has played and the minimum hold is over. */
@@ -27,7 +28,7 @@ export interface Splash {
   land(menuRoot: HTMLElement | null): Promise<void>;
 }
 
-const TITLE = TITLE_LINES.join(' ');
+const TITLE = TITLE_WORDS.join(' ');
 
 const SPLASH = {
   /** Shortest time the splash stays up after the fonts arrive (s): the flash-in plus a beat of the night road. */
@@ -67,18 +68,18 @@ function fontsReady(): Promise<unknown> {
  */
 export function showSplash(parent: HTMLElement): Splash {
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  // Three copies of the title share the logo's metrics and lines: the gradient one
-  // that stays, a per-letter neon layer that flickers on, and a shine that sweeps.
+  // Three copies of the title share the logo's metrics: the gradient one that
+  // stays, a per-letter neon layer that flickers on, and a shine that sweeps.
   let n = 0;
-  const letters = titleLines((t) => t.split('').map((ch) => h('span', { style: `--i:${n++}` }, ch)));
-  const logo = h('h1', { class: 'logo splash-logo', 'data-text': TITLE }, ...titleLines());
+  const letters = titleWords((t) => t.split('').map((ch) => h('span', { style: `--i:${n++}` }, ch)));
+  const logo = h('h1', { class: 'logo splash-logo', 'data-text': TITLE }, ...titleWords());
   const rule = h('div', { class: 'title-rule splash-rule', 'aria-hidden': 'true' });
   const title = h(
     'div',
     { class: 'head-title splash-title' },
     logo,
     h('div', { class: 'logo splash-copy splash-neon', 'aria-hidden': 'true' }, ...letters),
-    h('div', { class: 'logo splash-copy splash-shine', 'aria-hidden': 'true' }, ...titleLines()),
+    h('div', { class: 'logo splash-copy splash-shine', 'aria-hidden': 'true' }, ...titleWords()),
     rule,
   );
   const block = h('div', { class: 'splash-block' }, title, h('div', { class: 'tagline' }, TAGLINE));
