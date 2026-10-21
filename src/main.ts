@@ -476,7 +476,7 @@ async function enterGarage(): Promise<void> {
         garage = g;
         saveGarage(garage);
       },
-      onExit: () => void door('Street', () => showMenu()),
+      onExit: () => void door('Race', () => showMenu()),
       engineVolume: () => settings.engineVolume,
     },
     { street, quality: settings.quality },
