@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createCar, placeCar, stepCar } from '../src/sim/car';
+import type { CarState } from '../src/sim/car';
 import { applyBuild, stockPerformance } from '../src/sim/build';
 import { CAR_IDS, CarTuning, SELECTABLE_CAR_IDS, driveSplit, getBaseTuning, tuningHash } from '../src/sim/tuning';
 import { WorldHit, collideCarWithWorld } from '../src/sim/collision';
@@ -79,6 +80,8 @@ describe('driving parameters file', () => {
     // tire force, a touch more front bias, plus the arcade assist the export predates). The export
     // predates the rename from s64 and the shared wheel size; geometry comes from the manifest, and the
     // final drive is shortened to match the true size tire (0.31 / 0.28 m), keeping the exported gearing.
+    // Counter steer lock was later allowed to reach the direction of travel at any slip angle; the drift
+    // aids and the handbrake were remodelled on real wheel speed (the fixture carries the surviving keys).
     const t = getBaseTuning('protoCompact');
     const expected = {
       ...exported.tuning,
@@ -87,6 +90,7 @@ describe('driving parameters file', () => {
       surface: { ...exported.tuning.surface, sidewalkGrip: 1 },
       brakes: { ...exported.tuning.brakes, force: 18000, frontBias: 0.68 },
       gearbox: { ...exported.tuning.gearbox, finalDrive: 4.32 },
+      steering: { ...exported.tuning.steering, counterSteerAllowance: 1 },
     };
     expect(t).toMatchObject(expected);
   });
@@ -218,6 +222,93 @@ describe('wheelspin and traction control', () => {
     expect(r.cars.map((c) => c.state.tractionControl)).toEqual([false, true, true]);
     const r2 = runAutopilot({ ...raceConfig(11, 'circuit', 0), tractionControl: true }, 1);
     expect(r2.cars[0].state.tractionControl).toBe(true);
+  });
+});
+
+describe('drifting and the handbrake', () => {
+  const world = flatWorld();
+  const forwardSpeed = (c: CarState) => c.vx * Math.sin(c.yaw) + c.vz * Math.cos(c.yaw);
+
+  /** First gear flick, then a scripted hold: throttle with a little counter steer. Returns the car. */
+  function flickAndHold(throttle: number, holdTicks: number): CarState {
+    const t = getBaseTuning('protoCompact');
+    const c = createCar(0, 0, 0, 0);
+    for (let i = 0; i < 150; i++) stepCar(c, t, input({ throttle: 1 }), { world });
+    c.manualGearbox = true;
+    for (let i = 0; i < 24; i++) stepCar(c, t, input({ throttle: 0.6, steer: -1, handbrake: true }), { world });
+    for (let i = 0; i < holdTicks; i++) stepCar(c, t, input({ throttle, steer: 0.3 }), { world });
+    return c;
+  }
+
+  it('throttle in a slide spins the rear wheels up to the limiter, and lifting hooks them back up', () => {
+    const t = getBaseTuning('protoCompact');
+    const c = createCar(0, 0, 0, 0);
+    for (let i = 0; i < 150; i++) stepCar(c, t, input({ throttle: 1 }), { world });
+    c.manualGearbox = true;
+    for (let i = 0; i < 24; i++) stepCar(c, t, input({ throttle: 0.6, steer: -1, handbrake: true }), { world });
+    let maxRpm = 0;
+    let maxRatio = 0;
+    let maxSpin = 0;
+    for (let i = 0; i < 90; i++) {
+      stepCar(c, t, input({ throttle: 1, steer: 0.3 }), { world });
+      maxRpm = Math.max(maxRpm, c.rpm);
+      maxRatio = Math.max(maxRatio, c.wheelSpeedRear / Math.max(1, forwardSpeed(c)));
+      maxSpin = Math.max(maxSpin, c.spinRear);
+    }
+    // The engine is locked to the spinning wheels: it climbs to the limiter (the stock car settles torque
+    // limited just under it in first) with the tread well ahead of the road.
+    expect(maxRpm).toBeGreaterThan(t.engine.redline * 0.9);
+    expect(maxRatio).toBeGreaterThan(1.5);
+    expect(maxSpin).toBe(1);
+    expect(Math.abs(c.slipAngle)).toBeGreaterThan(30 * DEG);
+    // Lift: the tires pull the wheels back to road speed within 0.6 s, even against first gear's inertia.
+    for (let i = 0; i < 36; i++) stepCar(c, t, input({ steer: 0.3 }), { world });
+    expect(c.spinRear).toBe(0);
+    expect(c.wheelSpeedRear / Math.max(1, forwardSpeed(c))).toBeLessThan(1.15);
+    // Undriven front wheels never spin.
+    expect(c.spinFront).toBe(0);
+  });
+
+  it('the handbrake locks the rear wheels, turns the car in with the steering, and revs the engine free', () => {
+    const t = getBaseTuning('protoCompact');
+    const c = createCar(0, 0, 0, 0);
+    for (let i = 0; i < 240; i++) stepCar(c, t, input({ throttle: 1 }), { world });
+    for (let i = 0; i < 30; i++) {
+      stepCar(c, t, input({ throttle: 1, steer: -1, handbrake: true }), { world });
+      if (i >= 6) {
+        expect(c.wheels[2].spinRate).toBe(0);
+        expect(c.wheels[3].spinRate).toBe(0);
+      }
+    }
+    expect(Math.abs(c.slipAngle)).toBeGreaterThan(15 * DEG);
+    // Clutch out while the locked rear is the driven axle: the throttle revs the engine to the limiter.
+    expect(c.rpm).toBeGreaterThan(t.engine.redline * 0.9);
+    expect(c.wheels[0].spinRate).toBeGreaterThan(20);
+  });
+
+  it('handbrake and brake together stop the car along its path: no reverse, no swivel', () => {
+    const t = getBaseTuning('protoCompact');
+    const c = createCar(0, 0, 0, 0);
+    for (let i = 0; i < 300; i++) stepCar(c, t, input({ throttle: 1 }), { world });
+    let minYawRate = Infinity;
+    let maxYawRate = -Infinity;
+    for (let i = 0; i < 240; i++) {
+      stepCar(c, t, input({ brake: 1, steer: -1, handbrake: true }), { world });
+      minYawRate = Math.min(minYawRate, c.yawRate);
+      maxYawRate = Math.max(maxYawRate, c.yawRate);
+      expect(c.gear).toBeGreaterThan(0);
+    }
+    // It rotated one way under the handbrake and never got whipped back the other.
+    expect(maxYawRate).toBeGreaterThan(0.5);
+    expect(minYawRate).toBeGreaterThan(-0.3);
+    expect(c.speed).toBeLessThan(0.5);
+    expect(Math.abs(c.slipAngle)).toBeLessThan(5 * DEG);
+  });
+
+  it('a drift replays bit for bit', () => {
+    const a = JSON.stringify(flickAndHold(0.8, 120));
+    const b = JSON.stringify(flickAndHold(0.8, 120));
+    expect(a).toBe(b);
   });
 });
 

@@ -31,7 +31,8 @@
       ],
       "torqueMul": 0.86,
       "engineBraking": 55,
-      "launchRpm": 4200
+      "launchRpm": 4200,
+      "inertia": 0.15
     },
     "gearbox": {
       "ratios": [3.25, 2.15, 1.6, 1.25, 1.02, 0.85],
@@ -47,25 +48,20 @@
       "gripFront": 1.62,
       "gripRear": 1.28,
       "peakSlipDeg": 12,
+      "peakSlipRatio": 0.12,
       "fullSlideDeg": 25,
       "slideGrip": 0.53,
+      "slideGripLong": 0.7,
       "minLateralShare": 0.74,
       "rollingResistance": 5.8,
       "loadCap": 2.2
     },
     "traction": {
-      "breakaway": 1,
-      "cornerCoupling": 0.85,
-      "spinHold": 0.9,
-      "spinPerExcess": 2,
-      "spinBuildRate": 7,
-      "spinRecoverRate": 2.5,
-      "spinLongGrip": 0.8,
-      "spinLateralGrip": 0.55,
+      "wheelInertia": 1.2,
       "launchBoost": 1.2,
-      "clutchKickSpin": 0.7,
-      "spinRpm": 2200,
+      "clutchKickSpeed": 6,
       "tcSlipTarget": 0.94,
+      "tcMinDrive": 0.2,
       "tcMaxSlipDeg": 9
     },
     "suspension": {
@@ -81,7 +77,7 @@
     "brakes": {
       "force": 18000,
       "frontBias": 0.68,
-      "handbrakeForce": 4200,
+      "handbrakeTorque": 6000,
       "assistDecel": 16
     },
     "steering": {
@@ -89,7 +85,7 @@
       "highSpeedDeg": 4,
       "fadeSpeed": 42,
       "rateDegPerSec": 150,
-      "counterSteerAllowance": 0.75
+      "counterSteerAllowance": 1
     },
     "aero": {
       "drag": 0.4,
@@ -105,18 +101,10 @@
       "draftDragMul": 0.7
     },
     "drift": {
-      "handbrakeRearGrip": 0.92,
-      "handbrakeYawTorque": 8000,
-      "clutchKickRearGrip": 0.44,
       "clutchKickTime": 0.45,
-      "powerOversteerGrip": 0.76,
-      "powerOversteerMinSlipDeg": 12,
-      "gripDropRate": 14.1,
-      "gripRecoverRate": 2.44,
       "maxSlipDeg": 55,
       "assistTorque": 22750,
       "yawDamping": 3250,
-      "driftCarve": 0.3,
       "yawDampingLowSpeed": 4
     },
     "surface": {
