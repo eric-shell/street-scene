@@ -968,7 +968,11 @@ export class RaceSession {
     if (isFollowCam(view)) {
       // Cobbled alleys: a fine rumble that grows with speed (camera.ts rumble).
       this.cam.rumble(this.race.cars[0].state.surface === 'cobble' ? Math.hypot(p.vx, p.vz) : 0);
-      this.cam.update(p, p.vx, p.vz, p.nitro, len, dt);
+      // Gear share for the chase pull back: 0 in first or reverse, 1 in top.
+      const rc = this.race.cars[0];
+      const gears = rc.tuning.gearbox.ratios.length;
+      const gear = gears > 1 ? Math.max(0, rc.state.gear - 1) / (gears - 1) : 0;
+      this.cam.update(p, p.vx, p.vz, p.nitro, gear, len, dt);
       this.applyCinematics(p, dt);
       return this.cam.camera;
     }
