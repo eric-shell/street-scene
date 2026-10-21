@@ -13,6 +13,8 @@ import { Terrain, createTerrain } from './terrain';
 import { cos, distToSegment, segmentT, sin, sqrt } from '../sim/math';
 import { CityDistricts, planDistricts } from './districts';
 import { carveRouteShortcuts, hasShortcutSpot, qualifiedCount } from './districts/alley';
+import { Drawbridge, buildTimedGates, markDrawbridge } from './drawbridge';
+import type { GateSet } from '../sim/gates';
 
 /** Routes tried (the first pick, then alternatives) until one has room for a shortcut. */
 const ROUTE_TRIES = 12;
@@ -128,6 +130,8 @@ export function planRoads(seed: number): { graph: RoadGraph; districts: CityDist
     },
   });
   if (!routeNodes) throw new Error('routes were not planned');
+  // One bridge becomes the drawbridge, its span kept clear of street furniture (city/drawbridge.ts).
+  markDrawbridge(seed, graph, districts.areas, districts.builds, routeNodes);
   return { graph, districts, routeNodes };
 }
 
@@ -173,6 +177,10 @@ export interface World extends City {
   areas: Area[];
   /** Area at a point (4 m raster): the block, park, plaza, channel... or null on plain streets. */
   areaAt(x: number, z: number): Area | null;
+  /** Timed gates and their schedules (sim/gates.ts): the drawbridge's. Absent on hand-built test worlds. */
+  timedGates?: GateSet;
+  /** The river's drawbridge (city/drawbridge.ts), or null when the city has none. */
+  drawbridge?: Drawbridge | null;
 }
 
 export function createCity(seed: number): City {
@@ -358,6 +366,7 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
   const props = blocks.props;
   const propGrid = buildPropGrid(graph, props);
   const coveredProps = propsUnderWalls(props, propGrid, walls.slice(blocks.walls.length));
+  const { timedGates, drawbridge } = buildTimedGates(seed, graph, city.districts.areas);
   const pad = 60;
   const wallGrid = SpatialGrid.forBounds(graph.bounds.minX - pad, graph.bounds.minZ - pad, graph.bounds.maxX + pad, graph.bounds.maxZ + pad, CITY.broadphaseCell);
   walls.forEach((w, i) => wallGrid.insertSegment(i, w.ax, w.az, w.bx, w.bz, 0.5));
@@ -631,6 +640,8 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     routeProgress,
     areas: city.districts.areas,
     areaAt: city.districts.areaAt,
+    timedGates,
+    drawbridge,
   };
 }
 
