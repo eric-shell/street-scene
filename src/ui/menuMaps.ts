@@ -25,8 +25,8 @@ import { routeSample, type Route } from '../city/route';
 import { driftZones } from '../sim/driftZones';
 import type { Vec2 } from '../sim/math';
 import { fitCity, layersOf, mapHeading, mapX, mapY, type CityLayers, type MapView } from './cityMap';
-import { h } from './dom';
-import { Flag, FlagTriangleRight, icon } from './icons';
+import { h, sheen } from './dom';
+import { Flag, FlagTriangleRight, MapIcon, icon } from './icons';
 import { PALETTE } from './palette';
 import type { RaceType } from './settings';
 
@@ -76,6 +76,20 @@ class CarMarker {
   }
 }
 
+/** The waypoint free roam will steer to: a pin, hidden while there is none. */
+class PinMarker {
+  readonly el = h('span', { class: 'map-pin', 'aria-hidden': 'true' }, h('i'));
+  private key = '';
+
+  place(x: number | null, y = 0): void {
+    const key = x === null ? 'off' : `${x.toFixed(1)},${y.toFixed(1)}`;
+    if (key === this.key) return;
+    this.key = key;
+    this.el.classList.toggle('on', x !== null);
+    if (x !== null) this.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+  }
+}
+
 /** The home card's tilted city with the cruising car on it. */
 export class CityOverview {
   readonly el: HTMLElement;
@@ -83,6 +97,7 @@ export class CityOverview {
   private readonly base: HTMLCanvasElement;
   private readonly glow: HTMLCanvasElement;
   private readonly car = new CarMarker();
+  private readonly pin = new PinMarker();
   private readonly layers: CityLayers;
   /** The plane's view in CSS px, for the marker. */
   private view: MapView | null = null;
@@ -94,7 +109,7 @@ export class CityOverview {
     this.glow = h('canvas', { class: 'ov-glow' });
     // The plane tilts (and flattens on hover); the map turns slowly on it, so each is one transform.
     // Spans: the overview sits inside the event card's map button, where only phrasing content belongs.
-    this.plane = h('span', { class: 'ov-spin' }, this.base, this.glow, this.car.el);
+    this.plane = h('span', { class: 'ov-spin' }, this.base, this.glow, this.pin.el, this.car.el);
     this.el = h('span', { class: 'city-overview', 'aria-hidden': 'true' }, h('span', { class: 'ov-stage' }, h('span', { class: 'ov-plane' }, this.plane)), h('i', { class: 'ov-scan' }));
     this.ro = new ResizeObserver(() => this.draw());
     this.ro.observe(this.el);
@@ -165,10 +180,12 @@ export class CityOverview {
     c.restore();
   }
 
-  /** Move the car marker to the cruising car (every frame the menu shows). */
-  update(p: MapPose): void {
+  /** Move the car marker to the cruising car and the pin to the waypoint (every frame the menu shows). */
+  update(p: MapPose, wp: Vec2 | null = null): void {
     const v = this.view;
-    if (v) this.car.place(mapX(v, p.x), mapY(v, p.z), mapHeading(p.yaw));
+    if (!v) return;
+    this.car.place(mapX(v, p.x), mapY(v, p.z), mapHeading(p.yaw));
+    this.pin.place(wp && mapX(v, wp.x), wp ? mapY(v, wp.z) : 0);
   }
 
   dispose(): void {
@@ -193,6 +210,7 @@ export class CourseMap {
   private readonly canvas: HTMLCanvasElement;
   private readonly overlay: SVGSVGElement;
   private readonly car = new CarMarker();
+  private readonly pin = new PinMarker();
   private readonly layers: CityLayers;
   private view: MapView | null = null;
   private type: RaceType | null = null;
@@ -200,14 +218,31 @@ export class CourseMap {
   private readonly ro: ResizeObserver;
   private lastPose: MapPose | null = null;
 
+  /** `onOpen`: the map is a button that opens the full city map on this course. */
   constructor(
     private readonly world: World,
     private readonly routes: CourseRoutes,
+    onOpen?: () => void,
   ) {
     this.layers = layersOf(world);
     this.canvas = h('canvas', { class: 'course-city' });
     this.overlay = svg('svg', { class: 'course-svg', 'aria-hidden': 'true' });
-    this.el = h('div', { class: 'course-map' }, this.canvas, this.overlay, this.car.el);
+    this.el = h('div', { class: 'course-map' }, this.canvas, this.overlay, this.pin.el, this.car.el);
+    if (onOpen) {
+      this.el.classList.add('opens');
+      this.el.setAttribute('role', 'button');
+      this.el.setAttribute('tabindex', '0');
+      this.el.setAttribute('aria-label', 'Open the city map on this course');
+      this.el.title = 'Open the city map on this course';
+      this.el.append(h('span', { class: 'event-map-hint' }, icon(MapIcon, { size: 13 }), 'City map'), sheen());
+      this.el.addEventListener('click', onOpen);
+      this.el.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        e.stopPropagation();
+        onOpen();
+      });
+    }
     this.ro = new ResizeObserver(() => this.draw());
     this.ro.observe(this.el);
   }
@@ -249,8 +284,9 @@ export class CourseMap {
     coursePoints(this.routes.sprint).forEach(add);
     for (const z of driftZones(this.world)) z.polygon.forEach(add);
     if (!Number.isFinite(minX)) return fitCity(this.world, w, hgt, 24);
-    const pad = 45;
-    const scale = Math.min(w / (maxX - minX + 2 * pad), hgt / (maxZ - minZ + 2 * pad));
+    // The margin is in pixels, so the start and finish discs (8.5 px) never sit on the edge whatever the scale.
+    const pad = 20;
+    const scale = Math.min((w - 2 * pad) / Math.max(1, maxX - minX), (hgt - 2 * pad) / Math.max(1, maxZ - minZ));
     return { cx: (minX + maxX) / 2, cz: (minZ + maxZ) / 2, scale, w, h: hgt };
   }
 
@@ -331,11 +367,13 @@ export class CourseMap {
     return g;
   }
 
-  /** Follow the cruising car (free roam shows where you are). */
-  update(p: MapPose): void {
+  /** Follow the cruising car and the waypoint (free roam shows where you are and where you are headed). */
+  update(p: MapPose, wp: Vec2 | null = null): void {
     this.lastPose = p;
     const v = this.view;
-    if (v) this.car.place(mapX(v, p.x), mapY(v, p.z), mapHeading(p.yaw));
+    if (!v) return;
+    this.car.place(mapX(v, p.x), mapY(v, p.z), mapHeading(p.yaw));
+    this.pin.place(wp && mapX(v, wp.x), wp ? mapY(v, wp.z) : 0);
   }
 
   dispose(): void {

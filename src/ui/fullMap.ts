@@ -38,15 +38,21 @@
 import type { World } from '../city/world';
 import type { Area, AreaKind } from '../city/districts/types';
 import { polygonBounds } from '../city/districts/geom';
-import { routeSample, type RouteSample } from '../city/route';
+import { routeSample, type Route as RaceRoute, type RouteSample } from '../city/route';
 import { driftZones } from '../sim/driftZones';
 import type { Vec2 } from '../sim/math';
 import { CityLayers, KINDS, MAP_INK, MAP_PAD, fitCity, layersOf, mapHeading, mapToWorld, mapX, mapY, nearestOnArea, shownOnMap, tagAnchor, tagWeight, type CityDrawOptions, type MapView } from './cityMap';
 import { btn, h, iconBtn } from './dom';
 import { Disc3, Eye, EyeOff, Flag, FlagTriangleRight, Hash, Landmark, Layers, LocateFixed, MapIcon, MapPin, MapPinOff, MapPinned, Maximize2, Navigation, Navigation2, Route, X, ZoomIn, ZoomOut, drawIcon, icon, type IconNode } from './icons';
 import type { MapCar } from './minimap';
-import { PALETTE, rgba } from './palette';
+import { PALETTE, rgba, type PaletteColor } from './palette';
 import { bearingDeg, compassPoint, distanceLabel, placeName } from './places';
+
+/** Where a waypoint is kept: by whoever owns the map's city (main.ts keeps one per event city, so one set on the menu carries into free roam). */
+export interface WaypointStore {
+  get(): Vec2 | null;
+  set(p: Vec2 | null): void;
+}
 
 export interface FullMapOptions {
   /** Close request: the close button, the backdrop, Tab or Escape. The owner then calls dispose(). */
@@ -54,14 +60,22 @@ export interface FullMapOptions {
   /** The player's pose now, read every frame (the menu's cruising car); without it the marker stays where `player` put it. */
   livePlayer?: () => MapCar;
   /**
-   * Where the waypoint is kept (free roam): a click on the map or a place's pin
-   * button sets it, a click on the pin or Clear removes it. Without it the map
-   * sets no waypoint (the menu).
+   * Where the waypoint is kept: a click on the map or a place's pin button
+   * sets it, a click on the pin or Clear removes it. Free roam and the menu
+   * share one per event city; without it the map sets none.
    */
-  waypoint?: { get(): Vec2 | null; set(p: Vec2 | null): void };
+  waypoint?: WaypointStore;
   /** Header chips: the event's name and the seed. */
   event?: string;
   seed?: string;
+  /**
+   * The course to draw: a route in its race type's color under that type's
+   * name, with the drift zones lit for drift (the menu's race step), or none
+   * (free roam picked on the menu: the whole city is the course). Without it
+   * the world's own route shows in orange, as free roam shows it to find your
+   * way.
+   */
+  course?: { route: RaceRoute | null; ink: PaletteColor; label: string; zones?: boolean };
 }
 
 /** Motion, interaction and drawing tuning. Lengths in CSS px, times in s, rates in 1/s. */
@@ -138,7 +152,6 @@ const INK = {
   gridMinor: 'rgba(252, 252, 250, 0.035)',
   band: 'rgba(25, 24, 26, 0.82)',
   label: PALETTE.muted,
-  routeRoad: rgba('orange', 0.18),
   routeDash: 'rgba(255, 238, 220, 0.95)',
   ping: PALETTE.orange,
   pin: PALETTE.yellow,
@@ -483,6 +496,19 @@ interface PlaceRow {
 /** What the pointer is over. */
 type Hover = { kind: 'area'; area: Area | null } | { kind: 'me' } | { kind: 'pin' } | { kind: 'mark'; finish: boolean };
 
+/**
+ * Open the city map over `parent`: the one way every screen opens it (free
+ * roam's minimap and Tab, the menu's event card and its race step's course
+ * map), so it looks and works the same everywhere and an enrichment lands in
+ * all of them at once. The caller disposes it when onClose fires.
+ */
+export function openFullMap(parent: HTMLElement, world: World, player: MapCar, opts: FullMapOptions): FullMap {
+  const map = new FullMap(world, player, opts);
+  parent.append(map.root);
+  map.draw();
+  return map;
+}
+
 export class FullMap {
   readonly root: HTMLDivElement;
   private readonly layers: CityLayers;
@@ -542,7 +568,12 @@ export class FullMap {
   private placedN = 0;
   private readonly kindPaths = new Map<AreaKind | 'shortcut', Path2D>();
   private readonly driftAreas: Set<number>;
-  private readonly start: RouteSample;
+  /** The course drawn (none for free roam's whole city), its color and its name in the legend and cards. */
+  private readonly route: RaceRoute | null;
+  private readonly routeInk: PaletteColor;
+  private readonly routeLabel: string;
+  private readonly zonePaths: Path2D | null;
+  private readonly start: RouteSample | null;
   private readonly finish: RouteSample | null;
   private sprites: { dpr: number; start: HTMLCanvasElement; finish: HTMLCanvasElement | null; pin: HTMLCanvasElement } | null = null;
   private bandTop: CanvasGradient | null = null;
@@ -601,9 +632,19 @@ export class FullMap {
     this.me = { ...player };
     this.wp = opts.waypoint?.get() ?? null;
     this.driftAreas = new Set(driftZones(world).map((z) => z.area));
-    const route = world.route;
-    this.start = routeSample(route, route.startS);
-    this.finish = route.closed ? null : routeSample(route, route.finishS);
+    const course = opts.course ?? { route: world.route, ink: 'orange' as const, label: world.route.closed ? 'Race circuit' : 'Race route' };
+    const route = (this.route = course.route && course.route.points.length > 1 ? course.route : null);
+    this.routeInk = course.ink;
+    this.routeLabel = course.label;
+    this.start = route ? routeSample(route, route.startS) : null;
+    this.finish = route && !route.closed ? routeSample(route, route.finishS) : null;
+    // Drift: the zones where a slide pays, lit in the course's color (world meters, drawn through the view).
+    let zones: Path2D | null = null;
+    if (course.zones) {
+      zones = new Path2D();
+      for (const z of driftZones(world)) z.polygon.forEach((q, i) => (i ? zones!.lineTo(q.x, q.z) : zones!.moveTo(q.x, q.z)));
+    }
+    this.zonePaths = zones;
     this.buildTags();
 
     this.canvas = h('canvas', { class: 'fullmap-cv', role: 'img', 'aria-label': 'City map' });
@@ -668,6 +709,8 @@ export class FullMap {
     const chips: HTMLElement[] = [];
     if (opts.event) chips.push(h('span', { class: 'chip accent fullmap-chip' }, icon(Flag, { size: 13 }), h('span', {}, opts.event)));
     if (opts.seed) chips.push(h('span', { class: 'chip fullmap-chip seed' }, icon(Hash, { size: 13 }), h('span', {}, opts.seed)));
+    // The course shown, in its race type's color (the race step opens the map on the type it has picked).
+    if (opts.course) chips.push(h('span', { class: 'chip fullmap-chip course', style: `--ink:${PALETTE[opts.course.ink]}` }, icon(Route, { size: 13 }), h('span', {}, opts.course.label)));
     const head = h(
       'header',
       { class: 'fullmap-top' },
@@ -799,13 +842,13 @@ export class FullMap {
       const c = cv.getContext('2d')!;
       const m = cv.width / 2;
       c.fillStyle = PALETTE.bg0;
-      c.strokeStyle = PALETTE.orange;
+      c.strokeStyle = PALETTE[this.routeInk];
       c.lineWidth = 2 * dpr;
       c.beginPath();
       c.arc(m, m, r, 0, Math.PI * 2);
       c.fill();
       c.stroke();
-      drawIcon(c, ico, m - 5.5 * dpr, m - 5.5 * dpr, 11 * dpr, PALETTE.orange, 2.6);
+      drawIcon(c, ico, m - 5.5 * dpr, m - 5.5 * dpr, 11 * dpr, PALETTE[this.routeInk], 2.6);
       return cv;
     };
     const pin = document.createElement('canvas');
@@ -824,7 +867,7 @@ export class FullMap {
     c.beginPath();
     c.arc(PIN.w / 2, PIN.tip - PIN.head, 2.8, 0, Math.PI * 2);
     c.fill();
-    return { dpr, start: disc(this.world.route.closed ? Flag : FlagTriangleRight), finish: this.finish ? disc(Flag) : null, pin };
+    return { dpr, start: disc(this.route?.closed === false ? FlagTriangleRight : Flag), finish: this.finish ? disc(Flag) : null, pin };
   }
 
   // ---------- the loop ----------
@@ -1194,22 +1237,31 @@ export class FullMap {
 
   /** The race route: a soft road, the line, and dashes marching in its driving direction. */
   private drawRoute(c: CanvasRenderingContext2D, v: MapView): void {
-    const route = this.world.route;
+    const route = this.route;
+    if (!route) return;
     const pts = route.points;
-    if (pts.length < 2) return;
     const dpr = this.dpr;
     const lit = this.legendShown === 'route' ? this.legendAmt : 0;
-    c.setTransform(1, 0, 0, 1, 0, 0);
     c.globalAlpha = this.legendShown && !lit ? 1 - 0.7 * this.legendAmt : 1;
+    if (this.zonePaths) {
+      // Drift zones under the lap, in its color.
+      c.setTransform(-v.scale, 0, 0, -v.scale, v.w / 2 + v.cx * v.scale, v.h / 2 + v.cz * v.scale);
+      c.fillStyle = rgba(this.routeInk, 0.22 + 0.15 * lit);
+      c.fill(this.zonePaths);
+      c.strokeStyle = PALETTE[this.routeInk];
+      c.lineWidth = (1.2 * dpr) / v.scale;
+      c.stroke(this.zonePaths);
+    }
+    c.setTransform(1, 0, 0, 1, 0, 0);
     c.beginPath();
     for (let i = 0; i < pts.length; i++) (i ? c.lineTo(mapX(v, pts[i].x), mapY(v, pts[i].z)) : c.moveTo(mapX(v, pts[i].x), mapY(v, pts[i].z)));
     if (route.closed) c.closePath();
     c.lineCap = 'round';
     c.lineJoin = 'round';
-    c.strokeStyle = INK.routeRoad;
+    c.strokeStyle = rgba(this.routeInk, 0.18);
     c.lineWidth = (7 + 5 * lit) * dpr;
     c.stroke();
-    c.strokeStyle = lit > 0 ? PALETTE.orange : MAP_INK.route;
+    c.strokeStyle = lit > 0 ? PALETTE[this.routeInk] : rgba(this.routeInk, 0.75);
     c.lineWidth = (2.2 + 0.8 * lit) * dpr;
     c.stroke();
     if (!this.reduced) {
@@ -1226,7 +1278,7 @@ export class FullMap {
   /** The start line (and a sprint's finish): the menu course map's flag in a disc. */
   private drawMarks(c: CanvasRenderingContext2D, v: MapView): void {
     const sp = this.sprites;
-    if (!sp) return;
+    if (!sp || !this.start) return;
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.globalAlpha = this.legendShown && this.legendShown !== 'route' ? 1 - 0.7 * this.legendAmt : 1;
     const hm = this.hover.kind === 'mark' ? (this.hover.finish ? 1 : 0) : -1;
@@ -1452,7 +1504,7 @@ export class FullMap {
       const py = mapY(v, this.wp.z);
       this.reserve(px - 12 * dpr, py - 30 * dpr, px + 12 * dpr, py + 4 * dpr);
     }
-    if (this.showRoute) {
+    if (this.showRoute && this.start) {
       this.reserveMark(v, this.start);
       if (this.finish) this.reserveMark(v, this.finish);
     }
@@ -1585,7 +1637,7 @@ export class FullMap {
       const py = mapY(v, this.wp.z) - (PIN.head - 1) * dpr;
       if (Math.hypot(sx - px, sy - py) < UI.pinHit * dpr) return { kind: 'pin' };
     }
-    if (this.showRoute) {
+    if (this.showRoute && this.start) {
       if (Math.hypot(sx - mapX(v, this.start.x), sy - mapY(v, this.start.z)) < UI.markHit * dpr) return { kind: 'mark', finish: false };
       if (this.finish && Math.hypot(sx - mapX(v, this.finish.x), sy - mapY(v, this.finish.z)) < UI.markHit * dpr) return { kind: 'mark', finish: true };
     }
@@ -1614,10 +1666,10 @@ export class FullMap {
       ink = INK.pin;
       at = this.wp;
     } else if (hv.kind === 'mark') {
-      const p = hv.finish ? this.finish! : this.start;
-      name = this.world.route.closed ? 'Start / finish line' : hv.finish ? 'Finish line' : 'Start line';
-      ink = PALETTE.orange;
-      kind = this.world.route.closed ? 'Race circuit' : 'Sprint';
+      const p = hv.finish ? this.finish! : this.start!;
+      name = this.route?.closed ? 'Start / finish line' : hv.finish ? 'Finish line' : 'Start line';
+      ink = PALETTE[this.routeInk];
+      kind = this.routeLabel;
       at = p;
     } else {
       area = hv.kind === 'area' ? hv.area : null;
@@ -2076,7 +2128,7 @@ export class FullMap {
     };
     row('you', swatch('icon', PALETTE.text, undefined, Navigation), 'You', '', 'find');
     row('waypoint', swatch('icon', INK.pin, undefined, MapPin), 'Waypoint', '', 'fly');
-    if (this.world.route.points.length > 1) row('route', swatch('line', PALETTE.orange), this.world.route.closed ? 'Race circuit' : 'Race route', '', 'toggle');
+    if (this.route) row('route', swatch('line', PALETTE[this.routeInk]), this.routeLabel, '', 'toggle');
     if (shortcuts) row('shortcut', swatch('line', MAP_INK.shortcut), 'Race shortcuts', shortcuts > 1 ? String(shortcuts) : '', 'toggle');
     for (const k of LEGEND_ORDER) {
       const n = counts.get(k) ?? 0;

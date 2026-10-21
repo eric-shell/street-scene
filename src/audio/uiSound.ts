@@ -174,7 +174,7 @@ export function uiDoorUp(dur: number): void {
 }
 
 /** Controls that tick under the pointer and click when pressed. */
-const CONTROLS = '.btn, .nav-item, .mode-tile, .event-map, .tab, .seg button, .key-action, .g-item, .garage-tab, .fullmap button';
+const CONTROLS = '.btn, .nav-item, .mode-tile, .event-map, .course-map.opens, .tab, .seg button, .key-action, .g-item, .g-swatch, .garage-tab, .fullmap button';
 
 /**
  * Wire ticks and clicks to every control in the document, once: a tick when

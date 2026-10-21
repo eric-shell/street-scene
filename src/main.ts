@@ -33,7 +33,8 @@ import { mainMenu, type MainMenu, type MenuStep } from './ui/menu';
 import { showSplash } from './ui/splash';
 import { toast } from './ui/dom';
 import { Check, Info, Shuffle } from './ui/icons';
-import { FullMap } from './ui/fullMap';
+import { openFullMap, type FullMap, type FullMapOptions, type WaypointStore } from './ui/fullMap';
+import type { Vec2 } from './sim/math';
 import { door, transitioning, wipe, type WipeCard } from './ui/transitions';
 import { courseArt } from './ui/menuMaps';
 import type { RaceType } from './ui/settings';
@@ -178,16 +179,59 @@ function renderStage(dt: number): void {
   if (menu && overlay === menuEl && !cinematic) menu.frame(stage.pose);
 }
 
-/** The full city map over the menu, following the cruising car (it closes itself on Escape, Tab or its backdrop). */
+/**
+ * The free roam waypoint for one city: set on the map from the menu or in
+ * free roam, kept until it is reached, cleared or the city changes, so a pin
+ * dropped on the menu is waiting when free roam starts. Render only.
+ */
+const waypoint: { seed: number; pos: Vec2 | null } = { seed: -1, pos: null };
+function waypointFor(seed: number): WaypointStore {
+  if (waypoint.seed !== seed) {
+    waypoint.seed = seed;
+    waypoint.pos = null;
+  }
+  return {
+    get: () => (waypoint.seed === seed ? waypoint.pos : null),
+    set: (p) => {
+      waypoint.seed = seed;
+      waypoint.pos = p ? { x: p.x, z: p.z } : null;
+    },
+  };
+}
+
+/** What the map shows for each race type picked on the menu: its course in the type's color, or the whole city for free roam. */
+function courseFor(t: RaceType, st: StreetStage): FullMapOptions['course'] {
+  switch (t) {
+    case 'circuit':
+      return { route: st.world.route, ink: 'orange', label: 'Circuit' };
+    case 'sprint':
+      return { route: stageSprint, ink: 'yellow', label: 'Sprint' };
+    case 'drift':
+      return { route: st.world.route, ink: 'red', label: 'Drift', zones: true };
+    case 'roam':
+      return { route: null, ink: 'green', label: 'Free roam' };
+  }
+}
+
+/**
+ * The full city map over the menu (the same map free roam opens, through
+ * openFullMap), following the cruising car, on a race type's course when the
+ * race step opened it. It closes itself on Escape, Tab or its backdrop.
+ */
 let menuMap: FullMap | null = null;
 
-function openMenuMap(): void {
+function openMenuMap(type?: RaceType): void {
   const st = stage;
   if (!st || menuMap || state !== 'menu' || transitioning()) return;
   const car = () => ({ x: st.pose.x, z: st.pose.z, yaw: st.pose.yaw, isPlayer: true });
-  menuMap = new FullMap(st.world, car(), { onClose: closeMenuMap, livePlayer: car, event: st.world.event?.name, seed: seedStr });
-  uiRoot.append(menuMap.root);
-  menuMap.draw();
+  menuMap = openFullMap(uiRoot, st.world, car(), {
+    onClose: closeMenuMap,
+    livePlayer: car,
+    event: st.world.event?.name,
+    seed: seedStr,
+    waypoint: waypointFor(st.world.seed),
+    course: type ? courseFor(type, st) : undefined,
+  });
 }
 
 function closeMenuMap(): void {
@@ -277,8 +321,8 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyH' && !e.repeat && !typing && state === 'menu' && !overlayBusy() && !menuMap && !liftoff && !e.ctrlKey && !e.metaKey && !e.altKey) setCinematic(true);
 });
 
-/** The camera behind each menu step: the shot loop behind home, the hero shot for the race, a calm orbit for settings. */
-const STEP_CAMERA = { home: 'reel', race: 'hero', settings: 'calm' } as const;
+/** The camera behind each menu step: the shot loop behind home, the hero shot for the race, lining up for the setup, a calm orbit for settings. */
+const STEP_CAMERA = { home: 'reel', race: 'hero', setup: 'grid', settings: 'calm' } as const;
 
 /** Open the menu (on `step`), from wherever the game was: the camera cuts straight to that step's shot. */
 function showMenu(step: MenuStep = 'home'): void {
@@ -325,6 +369,7 @@ function showMenu(step: MenuStep = 'home'): void {
     },
     onDrone: exploreFromMenu,
     onMap: openMenuMap,
+    waypoint: () => waypointFor(st.world.seed).get(),
     onSeed: (s) => {
       isDaily = s === null;
       seedStr = s ?? dailySeed();
@@ -532,6 +577,9 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
     ghost: ghost ? { config: ghost.config, log: decodeLog(ghost.log), visual: ghost.visuals[0] } : null,
     // Start / finish camera shots; test drives and free roam go straight to driving.
     cinematics: kind === 'race',
+    // Free roam steers to the city's waypoint, which the menu's map may already have set.
+    waypoint: kind === 'roam' ? waypointFor(config.seed) : undefined,
+    seedText: config.seed === seedFromString(seedStr) ? seedStr : undefined,
   });
   state = 'race';
   sessionKind = kind;

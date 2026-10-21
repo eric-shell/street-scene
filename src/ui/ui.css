@@ -319,7 +319,12 @@ body {
 .chip,
 .seg,
 .race-setup,
-.home .settings {
+.home .settings,
+.g-item,
+.garage-tab,
+.g-section,
+.garage-car,
+.race-ticket {
   position: relative;
   clip-path: polygon(0 0, calc(100% - var(--cut, 9px)) 0, 100% var(--cut, 9px), 100% 100%, var(--cut, 9px) 100%, 0 calc(100% - var(--cut, 9px)));
 }
@@ -332,7 +337,10 @@ body {
 .event-card,
 .course-card,
 .race-setup,
-.home .settings {
+.home .settings,
+.g-section,
+.garage-car,
+.race-ticket {
   --cut: 12px;
 }
 .btn::before,
@@ -345,6 +353,11 @@ body {
 .seg::before,
 .race-setup::before,
 .home .settings::before,
+.g-item::before,
+.garage-tab::before,
+.g-section::before,
+.garage-car::before,
+.race-ticket::before,
 .btn::after,
 .nav-item::after,
 .mode-tile::after,
@@ -354,7 +367,12 @@ body {
 .chip::after,
 .seg::after,
 .race-setup::after,
-.home .settings::after {
+.home .settings::after,
+.g-item::after,
+.garage-tab::after,
+.g-section::after,
+.garage-car::after,
+.race-ticket::after {
   content: '';
   position: absolute;
   width: calc(var(--cut, 9px) * 1.4142);
@@ -373,7 +391,12 @@ body {
 .chip::before,
 .seg::before,
 .race-setup::before,
-.home .settings::before {
+.home .settings::before,
+.g-item::before,
+.garage-tab::before,
+.g-section::before,
+.garage-car::before,
+.race-ticket::before {
   left: calc(100% + 1px - var(--cut, 9px));
   top: -1px;
   transform: rotate(45deg);
@@ -388,7 +411,12 @@ body {
 .chip::after,
 .seg::after,
 .race-setup::after,
-.home .settings::after {
+.home .settings::after,
+.g-item::after,
+.garage-tab::after,
+.g-section::after,
+.garage-car::after,
+.race-ticket::after {
   left: -1px;
   top: calc(100% + 1px - var(--cut, 9px));
   transform: rotate(45deg) translateY(-1px);
@@ -422,7 +450,7 @@ body {
 .btn.icon-only > .sheen::before {
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.09) 50%, transparent);
 }
-:is(.btn, .nav-item, .mode-tile, .event-map, .g-item):is(:hover, :focus-visible) > .sheen::before {
+:is(.btn, .nav-item, .mode-tile, .event-map, .g-item, .garage-tab, .g-swatch):is(:hover, :focus-visible) > .sheen::before {
   animation: sheen 0.7s var(--ease-out) both;
 }
 .btn.primary:is(:hover, :focus-visible) > .sheen::before {
@@ -799,6 +827,19 @@ kbd {
 .rail-col > * {
   flex-shrink: 0;
 }
+/* The main menu's column does not scroll: every step is short enough to fit (the race takes three steps for
+   that), so nothing is clipped at the column's edge, neither a halo nor a card sliding in between steps.
+   The settings pane scrolls inside its card instead; only very short screens fall back to a scrolling column. */
+.menu.rail-col {
+  max-height: none;
+  overflow: visible;
+}
+@media (max-height: 600px) {
+  .menu.rail-col {
+    max-height: calc(100% - var(--col-top) - 58px);
+    overflow-y: auto;
+  }
+}
 /* The main menu: a scrim darkest at the left edge, enough for the title, tagline and key legend over a bright street. */
 .rail-screen.home .rail-bg {
   background: linear-gradient(90deg, rgba(25, 24, 26, 0.62), rgba(25, 24, 26, 0.38) 70%, rgba(25, 24, 26, 0));
@@ -966,6 +1007,11 @@ body > .mw {
 }
 .menu-step > * {
   flex-shrink: 0;
+}
+/* One shadow for everything a step stands on the city: chamfered plates clip their own box shadows, so the
+   step casts it as a drop shadow that follows every cut corner, the same under cards, rows, tiles and buttons. */
+.home .menu-step {
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.42));
 }
 .menu-step.leave {
   position: absolute;
@@ -1778,6 +1824,139 @@ body > .mw {
     transform: scale(0);
   }
 }
+/* On the setup step the rivals and driving card takes the race type's hairline, like the ticket above it. */
+.home[data-step='setup'] .race-setup {
+  background: linear-gradient(90deg, var(--mode) 0 64px, var(--line-strong) 64px) top left / 100% 2px no-repeat, var(--plate);
+}
+/* The race step's map opens the full city map on its course: it lights like the home card's map. */
+.course-map.opens {
+  cursor: pointer;
+  outline: none;
+  transition: box-shadow var(--t-fast);
+}
+.course-map.opens:hover,
+.course-map.opens:focus-visible {
+  box-shadow: inset 0 0 0 1px rgba(var(--mode-rgb), 0.7);
+}
+.course-map.opens:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--accent-2);
+}
+.course-map.opens:is(:hover, :focus-visible) > .sheen::before {
+  animation: sheen 0.7s var(--ease-out) both;
+}
+.course-map .event-map-hint {
+  z-index: 3;
+}
+.course-map.opens:is(:hover, :focus-visible) .event-map-hint {
+  color: var(--on-accent);
+  background: var(--accent-grad);
+}
+.course-map.opens:is(:hover, :focus-visible) .event-map-hint > svg {
+  color: var(--on-accent);
+}
+/* The waypoint free roam will steer to, pinned on the menu's maps in the pin's yellow. */
+.map-pin {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  display: none;
+}
+.map-pin.on {
+  display: block;
+}
+.map-pin > i {
+  position: absolute;
+  left: -6px;
+  top: -16px;
+  width: 12px;
+  height: 12px;
+  background: var(--accent-2);
+  border: 2px solid var(--bg0);
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+}
+.city-overview .map-pin > i {
+  transform: rotate(-45deg) scale(1.4);
+}
+/* Where a step stands in the race flow: three pips beside the header's chip, the current one in the rule. */
+.head-aside {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.stepper {
+  display: flex;
+  gap: 3px;
+}
+.stepper > i {
+  width: 14px;
+  height: 4px;
+  background: rgba(252, 252, 250, 0.18);
+  clip-path: polygon(0 0, calc(100% - 2px) 0, 100% 2px, 100% 100%, 2px 100%, 0 calc(100% - 2px));
+}
+.stepper > i.done {
+  background: var(--accent-line);
+}
+.stepper > i.on {
+  width: 22px;
+  background: var(--rule);
+}
+/* A race type's chip in its color (the setup step's header). */
+.chip.mode-chip {
+  color: var(--mode);
+  border-color: rgba(var(--mode-rgb), 0.45);
+  background: linear-gradient(rgba(var(--mode-rgb), 0.13), rgba(var(--mode-rgb), 0.13)), rgba(25, 24, 26, 0.85);
+}
+.chip.mode-chip > svg {
+  color: var(--mode);
+}
+/* The setup step's ticket: what is about to start, its course drawn small in its color, its facts and the
+   best on this event, on a plate with the type's hairline. */
+.race-ticket {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px 10px 10px;
+  background:
+    linear-gradient(90deg, var(--mode) 0 64px, var(--line-strong) 64px) top left / 100% 2px no-repeat,
+    radial-gradient(100% 120% at 0% 0%, rgba(var(--mode-rgb), 0.14), transparent 60%),
+    var(--plate);
+  border: 1px solid var(--line);
+  box-shadow: var(--edge);
+}
+.ticket-art {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 112px;
+  height: 60px;
+  color: var(--mode);
+  background: linear-gradient(180deg, rgba(13, 12, 14, 0.9), rgba(28, 27, 30, 0.9));
+  clip-path: var(--chamfer-sm);
+}
+.ticket-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.race-ticket .course-best {
+  align-self: flex-start;
+}
+/* A solo type's rivals: a line saying why there are none. */
+.solo-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.solo-note > svg {
+  flex: none;
+  color: var(--purple);
+}
 .race-group {
   display: flex;
   flex-direction: column;
@@ -1810,6 +1989,15 @@ body > .mw {
 }
 .home .settings-tabs .tab {
   padding-inline: 6px;
+}
+/* The menu's column does not scroll, so a long page (credits, controls) scrolls inside the card. */
+.home .settings-pane {
+  min-height: min(240px, calc(100vh - 400px));
+  max-height: max(160px, calc(100vh - 400px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding-right: 4px;
 }
 /* Rivals off (drift, free roam): the controls dim, the hint saying why stays readable. */
 .race-group.off .seg,
@@ -1878,11 +2066,19 @@ body > .mw {
 .step-foot .start .grow {
   flex: none;
 }
-/* With no rail behind it the foot fades in its own dark, a short band that reads as the buttons' shadow
-   and hides what scrolls under them on short screens. */
+/* The main menu's column does not scroll, so its foot needs no band to hide content under it: it stands
+   like any other row. On very short screens the column scrolls again and the foot sticks with its band. */
 .home .step-foot {
-  padding-top: 10px;
-  background: linear-gradient(180deg, rgba(25, 24, 26, 0), rgba(25, 24, 26, 0.92) 10px);
+  position: static;
+  padding-top: 4px;
+  background: none;
+}
+@media (max-height: 600px) {
+  .home .step-foot {
+    position: sticky;
+    padding-top: 10px;
+    background: linear-gradient(180deg, rgba(25, 24, 26, 0), rgba(25, 24, 26, 0.92) 10px);
+  }
 }
 @media (max-height: 820px) {
   .nav-item {
@@ -1896,6 +2092,32 @@ body > .mw {
 @media (pointer: coarse) {
   .mode-key {
     display: none;
+  }
+}
+/* Short screens: home tightens (a lower map well, slimmer rows) so it fits above the key legend without a
+   scrolling column (1440 x 800 down to 1280 x 720). */
+@media (max-height: 820px) {
+  .event-map {
+    height: clamp(100px, 16.5vh, 168px);
+  }
+}
+@media (max-height: 780px) {
+  .event-map {
+    height: clamp(92px, 14vh, 168px);
+  }
+  .event-card {
+    gap: 4px;
+    padding: 10px 14px 12px;
+  }
+  .event-name {
+    font-size: 28px;
+  }
+  .event-go {
+    margin-top: 4px;
+  }
+  .nav-item {
+    min-height: 46px;
+    padding-block: 6px;
   }
 }
 /* Phones: four tiles across leave room for short names only, so a long one takes two lines. */
@@ -3429,9 +3651,15 @@ body.garage-open .toast {
 /* ---------- garage (garage/garageUi.ts) ----------
    The garage's rail: header, tabs and the open tab down the left, narrower
    than the menu's so the car has room; beside it the 3D view with the car card
-   (top left, an accent plate like a picked row), the Garage / Street switch
+   (top left, a plate like the menu's event card), the Garage / Street switch
    (top right) and the rev button in the middle of the free space at the
-   bottom. Phones get the rail as a sheet over the lower half. */
+   bottom. Phones get the rail as a sheet over the lower half.
+   It speaks the main menu's language: everything pressable or carded is
+   chamfered, the open tab's groups are plates with the accent hairline, and
+   each category has a hue (like the home menu's rows) that its tab wears at
+   rest and the open tab's picks, sliders and hairlines take on. Values stay
+   yellow, primary actions orange. The rail's parts rise in as the roller door
+   rolls up (.arrive, held paused while it is down). */
 .garage {
   position: fixed;
   inset: 0;
@@ -3443,6 +3671,35 @@ body.garage-open .toast {
   --rail-w: calc(var(--rail-pad) * 2 + var(--rail-content));
   /* The middle of the free space beside the rail. */
   --free-mid: calc((var(--rail-w) + 100vw) / 2);
+  --hue: var(--accent);
+  --hue-rgb: 252, 152, 103;
+}
+/* Each category's hue, on its tab and, while it is open, on the body (garageUi.ts sets data-tab on the
+   root). Neighbours differ across both rows: Car orange like the menu's Garage row, Body and Lights yellow,
+   Paint and Tune red, Wheels and Neon cyan, Stance and Tint purple, Save green. */
+:is(.garage-tab[data-tab='car'], .garage[data-tab='car'] .garage-body) {
+  --hue: var(--accent);
+  --hue-rgb: 252, 152, 103;
+}
+:is(.garage-tab:is([data-tab='body'], [data-tab='lights']), .garage:is([data-tab='body'], [data-tab='lights']) .garage-body) {
+  --hue: var(--accent-2);
+  --hue-rgb: 255, 216, 102;
+}
+:is(.garage-tab:is([data-tab='paint'], [data-tab='perf']), .garage:is([data-tab='paint'], [data-tab='perf']) .garage-body) {
+  --hue: var(--red);
+  --hue-rgb: 255, 97, 136;
+}
+:is(.garage-tab:is([data-tab='wheels'], [data-tab='glow']), .garage:is([data-tab='wheels'], [data-tab='glow']) .garage-body) {
+  --hue: var(--cyan);
+  --hue-rgb: 120, 220, 232;
+}
+:is(.garage-tab:is([data-tab='stance'], [data-tab='tint']), .garage:is([data-tab='stance'], [data-tab='tint']) .garage-body) {
+  --hue: var(--purple);
+  --hue-rgb: 171, 157, 242;
+}
+:is(.garage-tab:is([data-tab='share'], [data-tab='vinyl']), .garage:is([data-tab='share'], [data-tab='vinyl']) .garage-body) {
+  --hue: var(--green);
+  --hue-rgb: 169, 220, 118;
 }
 .garage.dev .rail-edge {
   background: var(--accent-2);
@@ -3462,23 +3719,82 @@ body.garage-open .toast {
 .garage-panel > * {
   flex-shrink: 0;
 }
-/* Ten categories in two rows of icon tabs, the open one underlined with the rule. */
+/* Ten categories in two rows of tiles like the race types: the icon on a dim badge of the category's hue at
+   rest, lit with the tile's edge on hover; the open one fills with the hue's wash over a bar of it along the
+   bottom, its badge lit. */
 .garage-tabs {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  overflow: visible;
+  gap: 5px;
 }
 .garage-tab {
+  display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 8px 2px 9px;
-  font: 700 11px var(--font);
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 62px;
+  padding: 8px 2px 7px;
+  font: 800 11px var(--font);
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  color: var(--muted);
+  cursor: pointer;
+  background: var(--plate);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--edge);
+  transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast), box-shadow var(--t-fast), transform var(--t-fast);
 }
-.garage-tab::after {
-  left: 14px;
-  right: 14px;
+.gt-badge {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 26px;
+  color: var(--hue);
+  background: rgba(var(--hue-rgb), 0.13);
+  clip-path: var(--chamfer-sm);
+  transition: background var(--t-fast), color var(--t-fast), transform var(--t-med) var(--ease-out);
+}
+.gt-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.garage-tab:hover,
+.garage-tab:focus-visible {
+  color: var(--text);
+  border-color: rgba(var(--hue-rgb), 0.6);
+  background: linear-gradient(180deg, rgba(var(--hue-rgb), 0.12), transparent 70%), var(--plate-hover);
+  outline: none;
+}
+.garage-tab:hover .gt-badge,
+.garage-tab:focus-visible .gt-badge {
+  color: var(--on-accent);
+  background: var(--hue);
+}
+.garage-tab:focus-visible {
+  box-shadow: var(--edge), inset 0 0 0 1px var(--accent-2);
+}
+.garage-tab.on {
+  color: var(--text);
+  border-color: rgba(var(--hue-rgb), 0.7);
+  background: linear-gradient(180deg, rgba(var(--hue-rgb), 0.28), rgba(var(--hue-rgb), 0.06)), var(--plate);
+  box-shadow: var(--edge), inset 0 -3px 0 var(--hue);
+}
+.garage-tab.on:focus-visible {
+  box-shadow: var(--edge), inset 0 -3px 0 var(--hue), inset 0 0 0 1px var(--accent-2);
+}
+.garage-tab.on .gt-badge {
+  color: var(--on-accent);
+  background: var(--hue);
+  transform: scale(1.08);
+}
+.garage-tab:active {
+  transform: translateY(1px);
 }
 .garage-body {
   flex: 1 1 auto;
@@ -3488,7 +3804,7 @@ body.garage-open .toast {
   padding: 2px 6px 12px 0;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 10px;
   scrollbar-width: thin;
 }
 /* A new tab's sections cascade in (garageUi.ts setTab adds .tab-in for the switch only). */
@@ -3504,33 +3820,141 @@ body.garage-open .toast {
 .garage-body.tab-in > :nth-child(n + 4) {
   animation-delay: 120ms;
 }
+/* The garage opens behind the roller door: its parts hold on their first frame while the door is down
+   (.hold) and, once it starts rolling up (0.72 s, uncovering the screen from the bottom), rise in as it
+   clears them: the rev button and key legend first, the groups from the lowest up, the tabs and header as
+   the door leaves the top. The car card slides in from the rail and the switch drops in. `translate`
+   rather than `transform`, so the rev button keeps its centering. */
+.garage.arrive :is(.garage-panel > :not(.garage-body), .garage-body > *, .garage-car, .garage-stage, .garage-gas, .keybar) {
+  animation: garage-rise 0.5s var(--ease-out) var(--d, 0.3s) both;
+}
+.garage.arrive.hold :is(.garage-panel > :not(.garage-body), .garage-body > *, .garage-car, .garage-stage, .garage-gas, .keybar) {
+  animation-play-state: paused;
+}
+.garage.arrive :is(.garage-gas, .keybar) {
+  --d: 0.14s;
+}
+.garage.arrive .garage-body > :nth-child(n + 4) {
+  --d: 0.26s;
+}
+.garage.arrive .garage-body > :nth-child(3) {
+  --d: 0.32s;
+}
+.garage.arrive .garage-body > :nth-child(2) {
+  --d: 0.38s;
+}
+.garage.arrive .garage-body > :nth-child(1) {
+  --d: 0.45s;
+}
+.garage.arrive .garage-panel > :nth-child(2) {
+  --d: 0.52s;
+}
+.garage.arrive .garage-panel > :nth-child(1) {
+  --d: 0.58s;
+}
+.garage.arrive .garage-car {
+  --d: 0.5s;
+  animation-name: garage-slide;
+}
+.garage.arrive .garage-stage {
+  --d: 0.58s;
+  animation-name: garage-drop;
+}
+@keyframes garage-rise {
+  from {
+    opacity: 0;
+    translate: 0 16px;
+  }
+}
+@keyframes garage-slide {
+  from {
+    opacity: 0;
+    translate: -28px 0;
+  }
+}
+@keyframes garage-drop {
+  from {
+    opacity: 0;
+    translate: 0 -14px;
+  }
+}
+/* An open tab's group: a plate with the accent hairline in the tab's hue and a faint wash of it from the
+   top left, its title in the menu cards' yellow caps over a hairline that leads in with the hue. */
 .g-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+  padding: 10px 14px 14px;
+  background:
+    linear-gradient(90deg, var(--hue) 0 48px, var(--line-strong) 48px) top left / 100% 2px no-repeat,
+    radial-gradient(100% 60% at 0% 0%, rgba(var(--hue-rgb), 0.08), transparent 60%),
+    var(--plate);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--edge);
 }
 .g-section > .section-title {
-  margin-top: 0;
+  margin-top: 2px;
+}
+.g-section > .section-title::after {
+  background: linear-gradient(90deg, rgba(var(--hue-rgb), 0.45), var(--line) 56px);
+}
+.garage-body input[type='range'] {
+  accent-color: var(--hue);
+}
+/* Picks in a segmented control and toggles that are on (front and rear linked, mirrored) take the tab's
+   hue; the screen's actions (Test drive, Export) stay orange. */
+.garage-body .seg button.on,
+.garage-body .btn.primary:is(.g-link, .g-toggle) {
+  background: linear-gradient(100deg, var(--hue) 55%, color-mix(in srgb, var(--hue), #fff 22%));
+}
+.g-section > .btn {
+  align-self: flex-start;
+}
+/* A row in a group: its name on the left, the control on the right (the menu's setting rows). */
+.g-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 34px;
+}
+.g-row-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--soft);
+}
+.g-row-name > svg {
+  color: var(--hue);
+}
+.g-row + .g-row {
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
 }
 .g-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
 }
 .g-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 4px;
+  gap: 5px;
 }
-/* A choice in a list: lit from the left edge when picked, like the menu's rows. */
+/* A choice in a list: a chamfered row like the menu's, its edge and a wash of the tab's hue on hover; the
+   picked one lit from the left edge in the hue. Focus is the yellow ring inside the cut (the chamfer clips
+   outlines, so the shared outline rule is turned off here). */
 .g-item {
-  position: relative;
   overflow: hidden;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  padding: 9px 12px;
+  min-height: 40px;
+  padding: 9px 12px 9px 13px;
   font: 600 15px var(--font);
   color: var(--text);
   text-align: left;
@@ -3539,21 +3963,35 @@ body.garage-open .toast {
   border-radius: var(--radius-sm);
   box-shadow: var(--edge);
   cursor: pointer;
-  transition: background var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast);
+  transition: background var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast), transform var(--t-fast);
 }
 .g-item .muted {
   font-size: 12px;
   font-weight: 500;
 }
-.g-item:hover {
-  border-color: var(--accent-line);
-  background: var(--surface-hover);
+.g-item:hover,
+.g-item:focus-visible {
+  border-color: rgba(var(--hue-rgb), 0.6);
+  background: linear-gradient(90deg, rgba(var(--hue-rgb), 0.12), transparent 65%), var(--surface-hover);
+  outline: none;
+}
+.g-item:focus-visible {
+  box-shadow: var(--edge), inset 0 0 0 1px var(--accent-2);
 }
 .g-item.on {
-  border-color: var(--accent-line);
-  background: linear-gradient(90deg, rgba(252, 152, 103, 0.17), rgba(252, 152, 103, 0.05));
-  box-shadow: var(--edge), inset 3px 0 0 var(--accent);
+  border-color: rgba(var(--hue-rgb), 0.7);
+  background: linear-gradient(90deg, rgba(var(--hue-rgb), 0.24), rgba(var(--hue-rgb), 0.05) 75%), var(--surface);
+  box-shadow: var(--edge), inset 3px 0 0 var(--hue);
   color: var(--text);
+}
+.g-item.on:focus-visible {
+  box-shadow: var(--edge), inset 3px 0 0 var(--hue), inset 0 0 0 1px var(--accent-2);
+}
+.g-item.on > span:first-child {
+  font-weight: 700;
+}
+.g-item:active {
+  transform: translateY(1px);
 }
 .g-item[disabled] {
   opacity: 0.4;
@@ -3570,23 +4008,24 @@ body.garage-open .toast {
 .g-tags {
   flex-basis: 100%;
   display: flex;
-  gap: 6px;
+  gap: 5px;
 }
-.g-tag {
-  font: 600 10px var(--mono);
-  letter-spacing: 0.04em;
-  line-height: 1;
-  padding: 3px 7px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  color: var(--muted);
-  background: var(--bg0);
+/* Spec tags are the menu's district chips (.chip.feat) in the spec's ink: how it drives cyan, the engine
+   yellow, forced induction red. Smaller on a car tile than on the car card. */
+.t-drive {
+  --ink: var(--cyan);
 }
-.g-item.on .g-tag {
-  color: var(--accent);
-  border-color: var(--accent-line);
+.t-engine {
+  --ink: var(--accent-2);
 }
-/* "More models soon": looks like a car tile, but inert. */
+.t-boost {
+  --ink: var(--red);
+}
+.chip.g-tag {
+  padding: 2px 7px;
+  font-size: 11px;
+}
+/* "More models soon": looks like a car tile, but inert; its cuts dashed like its edges. */
 .g-item.g-soon {
   border-style: dashed;
   color: var(--muted);
@@ -3594,8 +4033,13 @@ body.garage-open .toast {
   box-shadow: none;
   cursor: default;
 }
+.g-item.g-soon::before,
+.g-item.g-soon::after {
+  border-top-style: dashed;
+}
 .g-item.g-soon:hover {
   border-color: var(--line);
+  background: rgba(45, 42, 46, 0.25);
 }
 .g-empty,
 .g-note {
@@ -3610,26 +4054,72 @@ body.garage-open .toast {
   gap: 5px;
   flex: 1;
 }
+/* A swatch: a chamfered chip of the color with a faint inner edge (so black and white read on the plate),
+   lifting and ringed on hover; the color in use keeps a ring and a dark core. */
 .g-swatch {
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-sm);
-  border: 2px solid rgba(252, 252, 250, 0.2);
-  cursor: pointer;
+  position: relative;
+  width: 26px;
+  height: 26px;
   padding: 0;
-  transition: transform var(--t-fast), border-color var(--t-fast);
+  cursor: pointer;
+  background: var(--swatch);
+  border: 0;
+  border-radius: 0;
+  clip-path: var(--chamfer-sm);
+  box-shadow: inset 0 0 0 1px rgba(252, 252, 250, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transition: transform var(--t-fast), box-shadow var(--t-fast);
 }
 .g-swatch:hover,
 .g-swatch:focus-visible {
-  transform: translateY(-1px);
-  border-color: var(--text);
+  transform: translateY(-2px);
+  box-shadow: inset 0 0 0 2px var(--text);
   outline: none;
+}
+.g-swatch:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent-2);
+}
+.g-swatch.on {
+  box-shadow: inset 0 0 0 2px var(--text), inset 0 0 0 4px rgba(25, 24, 26, 0.85);
+}
+/* The color picker beside them: a chamfered well holding a chamfered chip of the color. */
+.garage input[type='color'] {
+  width: 46px;
+  height: 34px;
+  padding: 4px;
+  cursor: pointer;
+  background: rgba(25, 24, 26, 0.85);
+  border: 1px solid var(--line-control);
+  border-radius: 0;
+  clip-path: var(--chamfer-sm);
+  transition: border-color var(--t-fast);
+}
+.garage input[type='color']:hover,
+.garage input[type='color']:focus-visible {
+  border-color: rgba(var(--hue-rgb), 0.8);
+  outline: none;
+}
+.garage input[type='color']:focus-visible {
+  border-color: var(--accent-2);
+  box-shadow: inset 0 0 0 1px var(--accent-2);
+}
+.garage input[type='color']::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.garage input[type='color']::-webkit-color-swatch {
+  border: 0;
+  border-radius: 0;
+  clip-path: polygon(0 0, calc(100% - 4px) 0, 100% 4px, 100% 100%, 4px 100%, 0 calc(100% - 4px));
+}
+.garage input[type='color']::-moz-color-swatch {
+  border: 0;
+  border-radius: 0;
 }
 .g-dot {
   width: 14px;
   height: 14px;
   border-radius: var(--radius-sm);
   border: 1px solid rgba(252, 252, 250, 0.35);
+  clip-path: polygon(0 0, calc(100% - 4px) 0, 100% 4px, 100% 100%, 4px 100%, 0 calc(100% - 4px));
 }
 .g-slider {
   display: flex;
@@ -3648,18 +4138,43 @@ body.garage-open .toast {
   flex-direction: column;
   gap: 4px;
 }
+/* Each stat in its ink (car card and Tune tab alike): speed orange, acceleration yellow, grip green,
+   nitrous its own cyan. */
+.s-speed {
+  --ink: var(--accent);
+}
+.s-accel {
+  --ink: var(--accent-2);
+}
+.s-grip {
+  --ink: var(--green);
+}
+.s-nitrous {
+  --ink: var(--cyan);
+}
+.g-stat .label > svg {
+  color: var(--ink, var(--accent));
+}
+/* A stat bar reads like a segmented meter: the fill in its ink brightening toward its end, cut into ten
+   by dark notches, on a faint track. */
 .g-bar {
+  position: relative;
   display: block;
   height: 6px;
-  border-radius: var(--radius-sm);
   background: rgba(252, 252, 250, 0.08);
   overflow: hidden;
+}
+.g-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 2px), rgba(25, 24, 26, 0.9) calc(10% - 2px) 10%);
 }
 .g-bar .fill {
   display: block;
   height: 100%;
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
-  transition: width 0.3s;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--ink, var(--accent)) 45%, transparent), var(--ink, var(--accent)));
+  transition: width 0.3s var(--ease-out);
 }
 .garage .seg {
   flex-wrap: wrap;
@@ -3668,17 +4183,18 @@ body.garage-open .toast {
   font-size: 12px;
   padding: 6px 9px;
 }
-/* Front / rear stance groups */
-.g-axle {
-  padding: 10px 12px 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: rgba(25, 24, 26, 0.4);
+/* An upgrade row: the part's name beside its tiers, which keep to one line. */
+.g-tier .seg {
+  flex: none;
+  flex-wrap: nowrap;
 }
 .garage .btn.g-link {
   align-self: flex-start;
 }
-/* The car card over the 3D view: what is on the turntable, as a plate lit from its left edge. */
+/* The car card over the 3D view: what is on the turntable, a plate like the menu's event card (the accent
+   hairline, warm light from the top corners, near opaque so its text holds over a bright street): who made
+   it as the kicker, the name in the event's white-to-peach, the build, the spec chips and the stats. A new
+   car deals it in again (.swap). */
 .garage-car {
   position: absolute;
   /* Clear of the rail's edge by its top margin, so its accent and the rail's do not read as a double line. */
@@ -3687,17 +4203,28 @@ body.garage-open .toast {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px 28px 12px 16px;
-  background: linear-gradient(90deg, rgba(25, 24, 26, 0.78), rgba(25, 24, 26, 0.5) 70%, rgba(25, 24, 26, 0));
-  border-left: 2px solid var(--accent);
+  padding: 11px 18px 14px 16px;
+  background:
+    var(--card-top),
+    radial-gradient(120% 60% at 100% 0%, rgba(255, 97, 136, 0.07), transparent 60%),
+    radial-gradient(90% 55% at 0% 0%, rgba(252, 152, 103, 0.1), transparent 65%),
+    var(--plate);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--edge);
   pointer-events: none;
 }
 .garage-car-name {
   margin: 0;
-  font: 900 32px/1 var(--display);
-  letter-spacing: 0.03em;
+  padding-right: 0.06em;
+  font: 900 30px/1.02 var(--display);
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   white-space: nowrap;
+  background: linear-gradient(180deg, #fff 35%, #ffd9c2);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 .garage-car-build {
   font: 600 14px var(--font);
@@ -3708,11 +4235,25 @@ body.garage-open .toast {
   gap: 6px;
   margin-top: 2px;
 }
+.garage-car.swap > * {
+  animation: garage-rise 0.42s var(--ease-out) both;
+}
+.garage-car.swap > :nth-child(2) {
+  animation-delay: 30ms;
+}
+.garage-car.swap > :nth-child(3) {
+  animation-delay: 60ms;
+}
+.garage-car.swap > :nth-child(n + 4) {
+  animation-delay: 90ms;
+}
 .garage-stats {
   display: grid;
-  gap: 6px;
-  width: 272px;
-  margin-top: 8px;
+  gap: 7px;
+  width: 280px;
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
 }
 .garage-stat {
   display: grid;
@@ -3725,7 +4266,7 @@ body.garage-open .toast {
   color: var(--muted);
 }
 .garage-stat .g-bar {
-  height: 4px;
+  height: 5px;
 }
 .garage-stat .value {
   font: 700 12px var(--mono);
@@ -3734,7 +4275,8 @@ body.garage-open .toast {
   text-align: right;
   color: var(--accent-2);
 }
-/* Presentation switch and camera, top right of the view. */
+/* Presentation switch and camera, top right of the view: plates over the scene like the menu's cards, the
+   switch's pick in the accent like every segmented control. */
 .garage-stage {
   position: absolute;
   top: max(14px, env(safe-area-inset-top));
@@ -3745,46 +4287,82 @@ body.garage-open .toast {
   pointer-events: auto;
 }
 .garage-stage .seg {
-  background: var(--panel);
+  padding: 3px;
+  background: var(--plate);
+  border-color: var(--line-strong);
+  box-shadow: var(--edge);
   flex-wrap: nowrap;
 }
 .garage-stage .seg button {
   font-size: 13px;
-  padding: 7px 12px;
+  font-weight: 700;
+  padding: 7px 13px;
 }
 .garage-stage .btn {
-  background: var(--panel);
+  padding: 9px;
+  background: var(--plate);
 }
-/* Hold to rev: in the middle of the free space, chamfered like the primary actions. */
+.garage-stage .btn:hover,
+.garage-stage .btn:focus-visible {
+  background: var(--plate-hover);
+}
+/* Hold to rev: in the middle of the free space, the view's main action. At rest a plate lit from its left
+   edge in the accent; held, it fills with the accent sweep while the bright sheen runs across it again and
+   again like a needle swinging. The chamfer comes with .btn. */
 .garage-gas {
   position: absolute;
   left: var(--free-mid);
   bottom: max(18px, env(safe-area-inset-bottom));
   transform: translateX(-50%);
-  min-width: 190px;
+  min-width: 200px;
   justify-content: center;
-  padding: 13px 22px;
+  padding: 14px 24px;
+  font-size: 15px;
   font-weight: 800;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  background: var(--panel);
-  clip-path: var(--chamfer);
+  background: linear-gradient(90deg, rgba(252, 152, 103, 0.16), rgba(252, 152, 103, 0.03) 70%), var(--plate);
+  border-color: var(--accent-line);
+  box-shadow: var(--edge), inset 3px 0 0 var(--accent);
   pointer-events: auto;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
 }
+.garage-gas > svg {
+  color: var(--accent);
+}
+.garage-gas:hover,
+.garage-gas:focus-visible {
+  background: linear-gradient(90deg, rgba(252, 152, 103, 0.24), rgba(252, 152, 103, 0.06) 70%), var(--plate-hover);
+}
+.garage-gas:focus-visible {
+  box-shadow: var(--edge), inset 3px 0 0 var(--accent), inset 0 0 0 1px var(--accent-2);
+}
 .garage-gas:active {
   transform: translateX(-50%) translateY(1px);
 }
-.garage-gas.on {
+.garage-gas.on,
+.garage-gas.on:hover {
   color: var(--on-accent);
   background: var(--accent-grad);
   border-color: transparent;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 .garage-gas.on > svg {
   color: var(--on-accent);
+}
+.garage-gas > .sheen::before {
+  width: 58%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.28) 30%, var(--sheen-bright) 50%, rgba(255, 255, 255, 0.28) 70%, transparent);
+}
+.garage-gas:not(.on) > .sheen::before {
+  opacity: 0.45;
+}
+.garage-gas.on > .sheen::before {
+  mix-blend-mode: overlay;
+  animation: sheen 0.5s linear infinite;
 }
 /* Short screens: the car card keeps its name and tags, the stats go. */
 @media (max-height: 640px) {
@@ -3822,14 +4400,20 @@ body.garage-open .toast {
     display: none;
   }
   .garage-tabs {
-    grid-template-columns: repeat(10, minmax(56px, 1fr));
+    grid-template-columns: repeat(10, minmax(60px, 1fr));
     overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .garage-tab {
+    min-height: 56px;
+    padding: 6px 2px 5px;
   }
   .garage-car {
-    left: 0;
+    left: 10px;
     top: max(10px, env(safe-area-inset-top));
     max-width: calc(100vw - 150px);
-    padding: 6px 20px 8px 12px;
+    padding: 8px 14px 10px 12px;
+    --cut: 9px;
   }
   .garage-car-name {
     font-size: 20px;
@@ -3858,6 +4442,28 @@ body.garage-open .toast {
   }
   .garage-gas:active {
     transform: translateY(1px);
+  }
+}
+/* Upgrade rows on a narrow phone: the longest names leave no room beside the tiers, so every row puts its
+   tiers under the name, across the group's width. */
+@media (max-width: 420px) {
+  .g-tier {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .g-tier .seg {
+    display: flex;
+  }
+  .g-tier .seg button {
+    flex: 1;
+    justify-content: center;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .garage.arrive *,
+  .garage-car.swap > * {
+    animation: none !important;
   }
 }
 
@@ -4339,6 +4945,15 @@ body.fullmap-open .mw {
 }
 .fullmap-chip {
   flex: none;
+}
+/* The course shown, in its race type's color. */
+.fullmap-chip.course {
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--ink) 45%, transparent);
+  background: linear-gradient(color-mix(in srgb, var(--ink) 13%, transparent), color-mix(in srgb, var(--ink) 13%, transparent)), rgba(25, 24, 26, 0.85);
+}
+.fullmap-chip.course > svg {
+  color: var(--ink);
 }
 .fullmap-where {
   flex: 1;

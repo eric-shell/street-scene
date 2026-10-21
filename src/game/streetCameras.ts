@@ -7,6 +7,7 @@
  *    side of the car that has room and alternate sides from shot to shot.
  *    The menu's steps and transitions move it instead of cutting (setMode):
  *    the race step swings round to a low hero shot of the car's nose, the
+ *    setup step drops behind its rear corner as if on the grid, the
  *    settings step drifts into a slow wide orbit, the garage pushes in close
  *    as its door comes down, Explore cranes up for the drone to take over and
  *    a race start drops in low behind the car. Every move eases over from
@@ -64,7 +65,7 @@ function orbit(a: number, r: number, y: number, o: Local): Local {
 }
 
 /** What the showreel shoots: its loop of cut shots, or one held move for a menu step or a transition. */
-export type ReelMode = 'reel' | 'hero' | 'calm' | 'push' | 'lift' | 'launch';
+export type ReelMode = 'reel' | 'hero' | 'grid' | 'calm' | 'push' | 'lift' | 'launch';
 
 /** A held move: camera and look-at in the car's frame t seconds into it, favouring `side`, and its lens. */
 interface Move {
@@ -78,6 +79,8 @@ interface Move {
 const MOVES: Record<Exclude<ReelMode, 'reel'>, Move> = {
   // The race step: low off the front corner on a long lens, breathing a little closer and back.
   hero: { fov: 32, blend: 1.5, cam: (t, s, o) => at(o, 6.6 + 0.6 * Math.sin(t * 0.21), (2.7 + 0.5 * Math.sin(t * 0.13)) * s, 0.62 + 0.08 * Math.sin(t * 0.17)), look: (_t, s, o) => at(o, -0.2, 0.25 * s, 0.62) },
+  // The setup step: low off the rear corner, easing forward along the flank, as if lining up on the grid.
+  grid: { fov: 34, blend: 1.3, cam: (t, s, o) => at(o, -6.2 + 0.7 * Math.sin(t * 0.18), (2.9 + 0.3 * Math.sin(t * 0.11)) * s, 0.7), look: (_t, s, o) => at(o, 1.2, 0.2 * s, 0.55) },
   // Settings: a slow, wide orbit while the player reads.
   calm: { fov: 44, blend: 1.8, cam: (t, s, o) => orbit(s * (2.2 + t * 0.045), 9.5, 2.9, o), look: (_t, _s, o) => at(o, 0, 0, 0.5) },
   // Into the garage: a push in close on the flank as the door comes down.

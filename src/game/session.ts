@@ -28,7 +28,7 @@ import { DroneMode } from './drone';
 import type { CameraMode } from '../render/camera';
 import { InputManager } from '../input/inputManager';
 import { Hud, HudCar, HudData } from '../ui/hud';
-import { FullMap } from '../ui/fullMap';
+import { openFullMap, type FullMap, type WaypointStore } from '../ui/fullMap';
 import { placeName } from '../ui/places';
 import { toast } from '../ui/dom';
 import { MapPinned } from '../ui/icons';
@@ -164,6 +164,10 @@ export interface SessionOptions {
   ghost?: { config: RaceConfig; log: number[]; visual: VisualBuild } | null;
   /** Start / finish camera shots (default on; off for test drives). Replays never play them. */
   cinematics?: boolean;
+  /** Free roam: where the waypoint is kept (main.ts shares one with the menu's map); the session keeps its own without it. */
+  waypoint?: WaypointStore;
+  /** The seed as the player knows it, for the map's header. */
+  seedText?: string;
 }
 
 export interface FinishInfo {
@@ -221,8 +225,8 @@ export class RaceSession {
   private drone: DroneMode | null = null;
   /** Free roam city map (Tab or a click on the minimap); the session holds still while it is open. */
   private fullMap: FullMap | null = null;
-  /** The waypoint set on the city map (render only, never RaceState; nothing persists it), and whether it can be reached yet. */
-  private waypoint: Vec2 | null = null;
+  /** The waypoint set on the city map (render only, never RaceState), and whether it can be reached yet. */
+  private readonly wp: WaypointStore;
   private waypointArmed = false;
   private droneResume = false;
   private readonly uiRoot: HTMLElement;
@@ -274,6 +278,8 @@ export class RaceSession {
   ) {
     this.isReplay = !!opts.replay;
     this.uiRoot = uiRoot;
+    let own: Vec2 | null = null;
+    this.wp = opts.waypoint ?? { get: () => own, set: (p) => (own = p) };
     this.race = createRace(opts.config);
     this.night = createNightScene(this.race.world, gr, settings);
     this.cam = new ChaseCamera(this.race.world);
@@ -472,30 +478,24 @@ export class RaceSession {
     this.input.releaseAll();
     this.input.setTouchVisible(false);
     const world = this.race.world;
-    this.fullMap = new FullMap(
-      world,
-      { x: p.x, z: p.z, yaw: p.yaw, isPlayer: true },
-      {
-        onClose: () => this.closeMap(),
-        waypoint: { get: () => this.waypoint, set: (w) => this.setWaypoint(w) },
-        event: world.event?.name,
-        seed: String(this.opts.config.seed),
-      },
-    );
-    this.uiRoot.append(this.fullMap.root);
-    this.fullMap.draw();
+    this.fullMap = openFullMap(this.uiRoot, world, { x: p.x, z: p.z, yaw: p.yaw, isPlayer: true }, {
+      onClose: () => this.closeMap(),
+      waypoint: { get: () => this.wp.get(), set: (w) => this.setWaypoint(w) },
+      event: world.event?.name,
+      seed: this.opts.seedText ?? String(this.opts.config.seed),
+    });
   }
 
   /** Set or clear the free roam waypoint (render only). */
   private setWaypoint(w: Vec2 | null): void {
-    this.waypoint = w ? { x: w.x, z: w.z } : null;
+    this.wp.set(w ? { x: w.x, z: w.z } : null);
     const p = this.curr[0];
     this.waypointArmed = !!w && Math.hypot(w.x - p.x, w.z - p.z) > WAYPOINT.reach;
   }
 
   /** Driving up to the waypoint clears it, with a toast. */
   private checkWaypoint(x: number, z: number): void {
-    const w = this.waypoint;
+    const w = this.wp.get();
     if (!w || this.paused) return;
     const d = Math.hypot(w.x - x, w.z - z);
     if (!this.waypointArmed) {
@@ -503,7 +503,7 @@ export class RaceSession {
       return;
     }
     if (d > WAYPOINT.reach) return;
-    this.waypoint = null;
+    this.wp.set(null);
     toast('Waypoint reached', MapPinned);
   }
 
@@ -1073,7 +1073,8 @@ export class RaceSession {
       this.updateArea(c.x, c.z, dt);
       data.openWorld = { area: this.areaName, smashed: this.smashed, topKmh: this.topKmh };
       this.checkWaypoint(c.x, c.z);
-      if (this.waypoint) data.waypoint = this.waypoint;
+      const wp = this.wp.get();
+      if (wp) data.waypoint = wp;
     }
     this.hud.update(data, dt);
   }
