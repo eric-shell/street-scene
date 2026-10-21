@@ -21,6 +21,7 @@ import { buildStreetPolish } from './streetPolish';
 import { createWeather, Weather } from './weather';
 import { AirTraffic, buildAirTraffic } from './airTraffic';
 import { buildAreaLights } from './areaLights';
+import { marketLightPoints, planMarketCrowd } from './marketPlan';
 import { buildDrawbridge, DrawbridgeView } from './drawbridge';
 
 export const RETRO_HEIGHT = 240;
@@ -131,7 +132,9 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   const scene = new THREE.Scene();
   scene.environment = gr.envMap;
   // The seed's mood first: it sets the fog every other build fogs itself with, the sky and the haze.
-  const weather = createWeather(world, { quality: settings.quality });
+  // Flash effects (lightning, the police light bar) follow the live setting; off softens them.
+  const flashes = () => settings.flashEffects !== false;
+  const weather = createWeather(world, { quality: settings.quality, flashes });
   const fogDensity = weather.def.fogDensity;
   const barriers = classifyBarriers(world);
   const city = buildCityMeshes(world, { detail: settings.quality });
@@ -163,15 +166,16 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   // Parks and plazas: a wash over the whole area and a pool under every lantern post.
   const areaLights = buildAreaLights(world);
   scene.add(areaLights.group);
-  // Every lamp the real light pool may pick: streetlights, then the park lamps (the props' light order).
-  const lamps = [...city.lampPositions, ...areaLights.lamps];
+  // Every lamp the real light pool may pick: streetlights, then the park lamps (the props' light order),
+  // then the night market's lantern strings (never switched off, so they come last).
+  const lamps = [...city.lampPositions, ...areaLights.lamps, ...marketLightPoints(world).map((p) => new THREE.Vector3(p.x, p.y, p.z))];
   const lighting = new NightLighting();
   lighting.setLamps(lamps);
   lighting.setPoolSize(gr.profile.pointLights);
   scene.add(lighting.group);
   weather.apply(scene, lighting);
   scene.add(weather.group);
-  const air = buildAirTraffic(world, { quality: settings.quality, fogDensity });
+  const air = buildAirTraffic(world, { quality: settings.quality, fogDensity, flashes });
   scene.add(air.group);
   // Street meets behind every cyan barrier: a crowd against the barrier, thinning back among parked
   // cars. Denser, deeper and drawn further at higher quality.
@@ -216,7 +220,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   scene.add(props.group);
   // Spectators on the sidewalks by the start / finish gantries, and every meet's crowd (none in an open world).
   const crowdQ = { low: { density: 0.55, rows: 2 }, medium: { density: 0.8, rows: 2 }, high: { density: 1, rows: 3 } }[settings.quality] ?? { density: 0.8, rows: 2 };
-  const crowds = buildCrowds(world, world.openWorld ? [] : city.finishLine.gates, { ...crowdQ, drawDistance: meetQ.crowdDraw, meet });
+  const crowds = buildCrowds(world, world.openWorld ? [] : city.finishLine.gates, { ...crowdQ, drawDistance: meetQ.crowdDraw, meet, sections: planMarketCrowd(world, crowdQ.density) });
   scene.add(crowds.group);
   stabilizeSmallEmitters(city);
   // Every material that fogs itself in a shader now gets the mood's fog.

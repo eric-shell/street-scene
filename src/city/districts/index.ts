@@ -17,7 +17,8 @@
  * overpasses (they keep clear of every slope and claim the blocks a ridge
  * stands in, so they come after the hills and before downtown), reserved
  * features, and downtown (claims every face left). The optional topology hook runs
- * right after back alleys (route shortcuts).
+ * right after back alleys (route shortcuts); the night market, which goes on
+ * the routes it picked (PlanContext.event), is planned right after it.
  */
 import { CITY } from '../config';
 import type { RoadGraph } from '../roadGraph';
@@ -41,6 +42,7 @@ import { waterfrontModule } from './waterfront';
 import { lakeModule } from './lake';
 import { downtownModule } from './downtown';
 import { infillModule } from './infill';
+import { marketModule } from './market';
 import { roadworksModule } from './roadworks';
 
 /** Every module, in planning order. */
@@ -50,6 +52,7 @@ export const DISTRICT_MODULES: readonly DistrictModule[] = [
   roundaboutModule,
   alleyModule,
   backAlleyModule,
+  marketModule,
   parkModule,
   monumentModule,
   hillsModule,
@@ -82,6 +85,7 @@ const AREA_PRIORITY: Record<AreaKind, number> = {
   monument: 10,
   tunnel: 11,
   overpass: 4,
+  market: 11,
   roadworks: 11,
   waterfront: 2,
   lake: 2,

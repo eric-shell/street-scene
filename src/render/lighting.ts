@@ -36,6 +36,11 @@ export class NightLighting {
   private static readonly INTENSITY = 140;
   private readonly hemi: THREE.HemisphereLight;
   private readonly moon: THREE.DirectionalLight;
+  /** The mood a lightning flash adds on top of, and where the moon light sits outside a flash. */
+  private mood: MoodLighting = { hemi: 0x3a4a9a, hemiIntensity: 0.4, moonLight: 0.35 };
+  private readonly moonHome = new THREE.Vector3(-200, 400, 120);
+  private readonly flashSky = new THREE.Color(0xc4d0ff);
+  private flashing = false;
 
   constructor() {
     this.group.name = 'lighting';
@@ -48,9 +53,32 @@ export class NightLighting {
 
   /** The weather mood: an overcast sky lights everything a little flatter and the moon fades. */
   setMood(m: MoodLighting): void {
+    this.mood = { ...m };
     this.hemi.color.setHex(m.hemi);
     this.hemi.intensity = m.hemiIntensity;
     this.moon.intensity = m.moonLight;
+  }
+
+  /**
+   * Lightning (render/lightning.ts): `level` 0..1 lifts the sky light by
+   * `hemi` (intensity) toward a cold white and swings the moon light round
+   * to come from the strike's direction (unit x, z) at `key` extra
+   * intensity. Light intensities only, so no shader recompiles; level 0
+   * puts the mood back exactly.
+   */
+  flash(level: number, dirX: number, dirZ: number, hemi: number, key: number): void {
+    if (level <= 0) {
+      if (!this.flashing) return;
+      this.flashing = false;
+      this.setMood(this.mood);
+      this.moon.position.copy(this.moonHome);
+      return;
+    }
+    this.flashing = true;
+    this.hemi.color.setHex(this.mood.hemi).lerp(this.flashSky, Math.min(1, level) * 0.6);
+    this.hemi.intensity = this.mood.hemiIntensity + hemi * level;
+    this.moon.intensity = this.mood.moonLight + key * level;
+    this.moon.position.set(dirX * 400, 520, dirZ * 400);
   }
 
   setLamps(lamps: THREE.Vector3[]): void {

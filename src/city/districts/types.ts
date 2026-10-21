@@ -43,6 +43,7 @@ export type AreaKind =
   | 'monument'
   | 'tunnel'
   | 'overpass'
+  | 'market'
   | 'roadworks'
   // Reserved unique features (planned later, disabled in config).
   | 'waterfront'
@@ -86,6 +87,8 @@ export const COBBLE_PRIORITY = 6;
  * tunnel / rock: tunnel walls, portal wingwalls and the shut in building line behind them;
  *   the rock face along a ridge's cutting (tunnel).
  * pier: overpass piers and abutments, sign gantry legs (overpass).
+ * marketRail: the night market's crowd rail along a pen and its end caps back to the building line;
+ *   marketFront: the frontage behind a pen, a facade or the market's shuttered back wall (market).
  * gate: a timed gate's arms across the deck (sim/gates.ts; drawn by render/drawbridge.ts).
  *   Timed gates are not in World.walls: they block only while their schedule says so.
  * roadworks: the plant of a lane closure (arrow board, excavator, skip, light tower) (roadworks).
@@ -108,10 +111,12 @@ export type WallLook =
   | 'tunnel'
   | 'rock'
   | 'pier'
+  | 'marketRail'
+  | 'marketFront'
   | 'gate'
   | 'roadworks';
 
-export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'gate', 'roadworks'];
+export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks'];
 
 export interface Area {
   /** Index into CityDistricts.areas. */
@@ -325,6 +330,7 @@ export const AREA_MAP_STYLE: Record<AreaKind, AreaMapStyle> = {
   monument: { fill: 'rgba(255,216,102,0.2)' },
   tunnel: { fill: 'rgba(147,146,147,0.16)', stroke: 'rgba(25,24,26,0.8)', width: 6, dash: [7, 4] },
   overpass: { fill: 'rgba(193,192,192,0.22)', stroke: 'rgba(193,192,192,0.5)', width: 5, dash: [3, 3] },
+  market: { fill: 'rgba(255,97,136,0.3)' },
   roadworks: { fill: 'rgba(255,97,136,0.5)' },
   waterfront: { fill: 'rgba(120,220,232,0.14)' },
   lake: { fill: 'rgba(120,220,232,0.18)' },

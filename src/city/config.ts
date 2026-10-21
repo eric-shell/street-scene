@@ -434,6 +434,64 @@ export const CITY = {
       /** Abutment block at each end, along the deck (m). */
       abutment: 9,
     },
+    /**
+     * Night market: a straight run of route street closed to traffic for race
+     * night, lantern lit stalls along both curbs and a crowd packed behind a
+     * rail (src/city/districts/market.ts). Planned on the routes themselves
+     * (planMarkets, from the topology hook in world.ts planRoads).
+     */
+    market: {
+      enabled: true,
+      /** Chance a city has a market; up to `max` per city, a second one only for the route the first misses. */
+      chance: 0.85,
+      max: 2,
+      /** Consecutive route street edges per market, each at least minEdge long, the run minLength to maxLength (m). */
+      chain: [1, 3],
+      minEdge: 80,
+      minLength: 110,
+      maxLength: 320,
+      /** The run bends at most this much at a junction (deg). */
+      maxBendDeg: 10,
+      /** A route's start and finish keep this far (m along the route) from a market: grid, gantries, the gate crowds. */
+      startClear: 120,
+      finishClear: 90,
+      /**
+       * Carriageway curb to curb (m): the street's corridor stays as it was, so its sidewalks widen
+       * into the market floor ((13 - 9) / 2 = 2 m each). Route segWidth and the racing line follow.
+       */
+      width: 9,
+      /** Half width of the clear lane down the middle (m): nothing of the market reaches into it. */
+      clearHalf: 3.3,
+      /**
+       * Stalls start this far past where the streets at a junction reach into the market (the alley
+       * mouth rule); the pens (rail and crowd) further still, past the corner rails of a turning
+       * route (ROUTE.railReach past the building corner) and any corner pocket (infill.cornerReach).
+       */
+      stallClear: 8,
+      penClear: 16,
+      /**
+       * Pens also start this far past where the building lines start at a junction (m): when the
+       * other route crosses the market there, its closure stands up to 1.5 m plus
+       * ROUTE.barrierSetbackHeadOn past that line (route.ts mouthBarrier), deep at a five way junction.
+       */
+      closureClear: 11,
+      /** A pen shorter than this (m) is left out: a short block gets stalls and no crowd. */
+      penMin: 18,
+      /** Crowd rail this far behind the curb (m); the pen behind it reaches to the building line. */
+      railSetback: 3,
+      /** Stall pitch along the curb [min, max] (m); stall and cart centers this far behind the curb (m). */
+      stallPitch: [2.6, 3.3],
+      stallSetback: 1.55,
+      cartSetback: 1.15,
+      /** Stalls in a row before an aisle [min, max], and the aisle width [min, max] (m). */
+      row: [3, 6],
+      aisle: [1.6, 3.2],
+      /** A slot is a food cart instead of a stall; fruit crates spill onto the road edge in front of a stall. */
+      cartChance: 0.14,
+      spillChance: 0.4,
+      /** Lantern masts on the rail every mastStep m, alternating sides (render/districts/market.ts strings). */
+      mastStep: 9,
+    },
     waterfront: { enabled: false },
     lake: { enabled: false },
   },

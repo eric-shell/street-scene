@@ -192,5 +192,18 @@
     "brakes": { "forceMul": [1, 1.12, 1.25, 1.4] },
     "weight": { "massMul": [1, 0.96, 0.92, 0.87] },
     "nitrous": { "capacity": [3.2, 3.9, 4.7, 5.6], "force": [3600, 4100, 4700, 5400] }
+  },
+  "driftZones": {
+    "_readme": "Drift zones (src/sim/driftZones.ts): the monument plaza and the bigger parking lots. Drifting inside one counts drift points scoreMul times (drift mode) and refills nitrous refillMul times as fast (every mode, every car), for at most bonusTime s of drifting and refillCap of a tank per visit. A visit survives exitGrace s outside; once it ends the zone rests cooldown s before it pays that car again.",
+    "scoreMul": 2,
+    "refillMul": 3,
+    "bonusTime": 8,
+    "refillCap": 0.4,
+    "exitGrace": 1,
+    "cooldown": 25,
+    "_lots": "Parking lots count as zones from this size: depth into the block and frontage length (m), and area (m^2). Smaller lots are too tight to hold a slide.",
+    "minLotDepth": 8,
+    "minLotLength": 12,
+    "minLotArea": 240
   }
 }
