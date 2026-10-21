@@ -17,6 +17,7 @@ import type { World } from '../city/world';
 import { routeSample, type Route } from '../city/route';
 import { createNightScene, type GameRenderer, type NightScene } from '../render/scene';
 import { CarView, type CarPose } from '../render/carView';
+import { ROAD_Y } from '../render/cityMeshes';
 import type { CarAssetLibrary } from '../render/carAssets';
 import type { CarBuild } from '../sim/build';
 import { gatePhase, type GatePhase } from '../sim/gates';
@@ -271,7 +272,7 @@ export class StreetStage {
     const first = !this.view;
     // No headlight spots or underglow light: every lit pixel of the city pays for each real light, and the
     // menu is drawn on every device. The beams' glow on the road, the underglow and the key light above stay.
-    const view = new CarView(build.carId, this.assets, { envMap: this.night.scene.environment });
+    const view = new CarView(build.carId, this.assets, { envMap: this.night.scene.environment, roadLift: ROAD_Y });
     // The first car joins at once, so the city's shaders compile with it from the first frame.
     if (first) {
       this.view = view;

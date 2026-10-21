@@ -12,6 +12,7 @@ import { makeRadialGlow } from './textures';
 import { DecalLayerView } from './decals';
 import { FEATURES } from '../shared/features';
 import { WheelProfile, beadForSize, detectProfile, remapWheel } from './wheelFit';
+import { maskVehicleMesh, underVehicles } from './vehicleMask';
 
 export interface CarPose {
   x: number;
@@ -30,6 +31,16 @@ export interface CarPose {
 
 const WHEEL_KEYS = ['FL', 'FR', 'RL', 'RR'] as const;
 const DEG = Math.PI / 180;
+
+/** The glows a car throws on the road (underglow, headlight pool), laid on the ground under its wheels. */
+const GROUND_FX = {
+  /** Underglow over the ground (m): just above the lane markings (cityMeshes MARK_Y over ROAD_Y), so they light too. */
+  glowY: 0.06,
+  /** Headlight pool over the ground (m). */
+  beamY: 0.07,
+  /** Body height over its rest (m) at which the underglow on the road has faded to half: it spreads and dims on a jump. */
+  airHalf: 0.5,
+} as const;
 
 let glowTex: THREE.Texture | null = null;
 const glow = () => (glowTex ??= makeRadialGlow());
@@ -55,6 +66,11 @@ export class CarView {
   private underglow: THREE.Mesh;
   private underglowMat: THREE.ShaderMaterial;
   private underglowLight: THREE.PointLight | null = null;
+  /** Underglow and headlight pool, posed on the road plane through the four wheels' contact points. */
+  private readonly groundFx = new THREE.Group();
+  /** Underglow brightness left after the body's height over the road (1 on the ground). */
+  private airFade = 1;
+  private readonly roadLift: number;
   private flames: THREE.Mesh[] = [];
   private beam: THREE.Mesh;
   readonly decals: DecalLayerView;
@@ -63,12 +79,18 @@ export class CarView {
   constructor(
     carId: string,
     private readonly assets: CarAssetLibrary,
-    opts: { headlights?: boolean; underglowLight?: boolean; envMap?: THREE.Texture | null } = {},
+    /**
+     * roadLift: how far the drawn road surface is above the sim's ground (m, cityMeshes ROAD_Y).
+     * The sim rests the tires on the ground; on the city's asphalt they would sink that far into it.
+     * 0 (the garage floor) by default.
+     */
+    opts: { headlights?: boolean; underglowLight?: boolean; envMap?: THREE.Texture | null; roadLift?: number } = {},
   ) {
     this.materials = createCarMaterials(opts.envMap ?? null);
     this.car = manifestCar(carId);
+    this.roadLift = opts.roadLift ?? 0;
     this.root.name = `car:${carId}`;
-    this.root.add(this.body);
+    this.root.add(this.body, this.groundFx);
     this.body.add(this.model);
     const dims = this.car.dimensions;
 
@@ -132,11 +154,12 @@ export class CarView {
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
+    underVehicles(this.underglowMat);
     this.underglow = new THREE.Mesh(new THREE.PlaneGeometry(dims.width * 2.6, dims.length * 1.9).rotateX(-Math.PI / 2), this.underglowMat);
-    this.underglow.position.y = 0.06;
+    this.underglow.position.y = GROUND_FX.glowY;
     this.underglow.visible = false;
     this.underglow.renderOrder = 3;
-    this.root.add(this.underglow);
+    this.groundFx.add(this.underglow);
     if (opts.underglowLight) {
       this.underglowLight = new THREE.PointLight(0x00e5ff, 0, 6, 1.5);
       this.underglowLight.position.set(0, 0.25, 0);
@@ -144,12 +167,11 @@ export class CarView {
     }
 
     // Headlight beams: a soft additive pool on the road ahead (cheap), plus real spots for the player.
-    this.beam = new THREE.Mesh(
-      new THREE.PlaneGeometry(9, 22).rotateX(-Math.PI / 2).translate(0, 0.07, dims.length / 2 + 10),
-      new THREE.MeshBasicMaterial({ map: glow(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, color: 0x6f7a8a }),
-    );
+    const beamMat = new THREE.MeshBasicMaterial({ map: glow(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, color: 0x6f7a8a });
+    underVehicles(beamMat);
+    this.beam = new THREE.Mesh(new THREE.PlaneGeometry(9, 22).rotateX(-Math.PI / 2).translate(0, GROUND_FX.beamY, dims.length / 2 + 10), beamMat);
     this.beam.renderOrder = 3;
-    this.root.add(this.beam);
+    this.groundFx.add(this.beam);
     if (opts.headlights) {
       for (const side of [1, -1]) {
         const spot = new THREE.SpotLight(0xeaf2ff, 90, 70, 0.42, 0.55, 1.3);
@@ -350,6 +372,7 @@ export class CarView {
       for (let k = 0; k < pos.count; k++) radii.push(Math.hypot(pos.getY(k), pos.getZ(k)));
       const baked = new THREE.Mesh(geo, mesh.material);
       baked.name = mesh.name;
+      maskVehicleMesh(baked);
       front.add(baked);
     });
     this.wheelProfile = detectProfile(tireR, otherR);
@@ -439,7 +462,7 @@ export class CarView {
     const u = this.underglowMat.uniforms;
     u.color1.value.copy(c1);
     u.color2.value.set(g.color2);
-    u.intensity.value = 1.5 * g.brightness * k;
+    u.intensity.value = 1.5 * g.brightness * k * this.airFade;
     u.mode.value = modes.indexOf(g.pattern);
     u.time.value = t;
     this.underglow.scale.set(g.size, 1, g.size);
@@ -465,29 +488,63 @@ export class CarView {
       };
       mesh.material = Array.isArray(mesh.material) ? mesh.material.map(swap) : swap(mesh.material);
       mesh.castShadow = false;
+      maskVehicleMesh(mesh);
     });
   }
 
   update(pose: CarPose, time: number): void {
-    this.root.position.set(pose.x, pose.y, pose.z);
+    this.root.position.set(pose.x, pose.y + this.roadLift, pose.z);
     this.root.rotation.set(0, pose.yaw, 0);
     this.body.rotation.set(pose.pitch, 0, pose.roll, 'YXZ');
+    const tRoll = Math.tan(pose.roll);
+    const tPitch = Math.tan(pose.pitch);
+    const g = this.groundY;
     for (let i = 0; i < 4; i++) {
       const pivot = this.wheelPivots[i];
       const p = this.car.wheels[WHEEL_KEYS[i]];
+      // The body plane over the wheel as the sim measures it (car.ts: tan, so the wheels stay on a bank);
+      // the compression is how far the ground under the wheel is above that plane.
+      const plane = p[0] * tRoll - p[2] * tPitch;
+      g[i] = pose.comp[i] + plane;
       const comp = Math.max(-0.12, Math.min(0.12, pose.comp[i]));
-      // The body plane over the wheel as the sim measures it (car.ts: tan, so the wheels stay on a bank).
-      pivot.position.y = (pivot.userData.restY as number) + comp + p[0] * Math.tan(pose.roll) - p[2] * Math.tan(pose.pitch);
+      pivot.position.y = (pivot.userData.restY as number) + comp + plane;
       pivot.rotation.y = i < 2 ? pose.steer : 0;
       this.wheelSpins[i].rotation.x = pose.spin[i];
       this.wheelSpins[i].rotation.order = 'ZXY';
     }
+    this.poseGroundFx(pose);
     setBrake(this.materials, this.visual.taillightColor, pose.braking);
     this.applyUnderglow(time);
     for (const f of this.flames) {
       f.visible = pose.nitro;
       if (pose.nitro) f.scale.set(1, 1, 0.7 + Math.random() * 0.6);
     }
+  }
+
+  /** Ground height under each wheel, in the root's frame (m); scratch for update(). */
+  private readonly groundY = [0, 0, 0, 0];
+
+  /**
+   * Lay the underglow and the headlight pool on the road: the plane through the four ground points
+   * the sim found under the wheels, so on a slope, a crown or a bank they neither sink into it at one
+   * end nor float at the other. Up in the air they stay on the road and the underglow fades.
+   */
+  private poseGroundFx(pose: CarPose): void {
+    const g = this.groundY;
+    const w = this.car.wheels;
+    const front = (g[0] + g[1]) / 2;
+    const rear = (g[2] + g[3]) / 2;
+    const left = (g[0] + g[2]) / 2;
+    const right = (g[1] + g[3]) / 2;
+    const slopeZ = (front - rear) / (w.FL[2] - w.RL[2] || 1);
+    const slopeX = (left - right) / (w.FL[0] - w.FR[0] || 1);
+    const midX = (w.FL[0] + w.FR[0]) / 2;
+    const midZ = (w.FL[2] + w.RL[2]) / 2;
+    this.groundFx.position.y = (front + rear) / 2 - slopeX * midX - slopeZ * midZ;
+    // +X rotation tips +z down, +Z rotation tips +x up.
+    this.groundFx.rotation.set(-Math.atan(slopeZ), 0, Math.atan(slopeX));
+    const air = Math.max(0, -(pose.comp[0] + pose.comp[1] + pose.comp[2] + pose.comp[3]) / 4) / GROUND_FX.airHalf;
+    this.airFade = 1 / (1 + air * air);
   }
 
   setHeadlightsEnabled(on: boolean): void {

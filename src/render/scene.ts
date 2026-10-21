@@ -23,6 +23,7 @@ import { AirTraffic, buildAirTraffic } from './airTraffic';
 import { buildAreaLights } from './areaLights';
 import { marketLightPoints, planMarketCrowd } from './marketPlan';
 import { buildDrawbridge, DrawbridgeView } from './drawbridge';
+import { GROUND_PAINT_ORDER, underVehicles } from './vehicleMask';
 
 export const RETRO_HEIGHT = 240;
 
@@ -250,6 +251,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   const crowds = buildCrowds(world, world.openWorld ? [] : city.finishLine.gates, { ...crowdQ, drawDistance: meetQ.crowdDraw, meet, sections: planMarketCrowd(world, crowdQ.density) });
   scene.add(crowds.group);
   stabilizeSmallEmitters(city);
+  keepGroundLayersUnderVehicles(scene);
   // Every material that fogs itself in a shader now gets the mood's fog.
   weather.retuneFog(scene);
   return {
@@ -296,6 +298,44 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
       drawbridge.dispose();
     },
   };
+}
+
+/** Ground light that cars drive through: additive pools and washes, and decals on the road (vehicleMask.ts). */
+const GROUND_LIGHT_LAYERS = new Set([
+  'streetPools',
+  'streetStreaks',
+  'lightSpill',
+  'areaLights',
+  'riverLightPools',
+  'riverDecals',
+  'shortcutLightPools',
+  'marketLight',
+  'roadworksLightPools',
+  'driftZoneWash',
+  'tunnelWash',
+  'overpassWash',
+  'drawbridgeLightPools',
+  'drawbridgeRedWashA',
+  'drawbridgeRedWashB',
+  'roadDecals',
+  'puddles',
+]);
+/** Opaque paint on the road: drawn after the cars so it can skip them too. */
+const GROUND_PAINT_LAYERS = new Set(['markings', 'districtPaint']);
+
+/**
+ * Lay every ground layer under the cars: each sits a few cm over the road and
+ * would otherwise draw over the bottom of every tire in it (vehicleMask.ts).
+ * A new pool, wash or road decal joins the lists above.
+ */
+function keepGroundLayersUnderVehicles(scene: THREE.Scene): void {
+  scene.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    const paint = GROUND_PAINT_LAYERS.has(o.name);
+    if (!mesh.isMesh || !(paint || GROUND_LIGHT_LAYERS.has(o.name))) return;
+    for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) underVehicles(m);
+    if (paint) mesh.renderOrder = GROUND_PAINT_ORDER;
+  });
 }
 
 /**

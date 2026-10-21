@@ -50,7 +50,8 @@ export interface CityMeshOptions {
   detail?: Detail;
 }
 
-const ROAD_Y = 0.02;
+/** Asphalt over the sim's ground (m): cars are drawn this much higher so their tires stand on it (CarView roadLift). */
+export const ROAD_Y = 0.02;
 const MARK_Y = 0.045;
 /** Curb faces reach this far below the ground (m), under the road's edge. */
 const CURB_FOOT = 0.08;
