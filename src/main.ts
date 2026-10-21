@@ -34,6 +34,7 @@ import { toast } from './ui/dom';
 import { Check, Info, Shuffle } from './ui/icons';
 import { RaceConfig, RaceEntrant, RaceMode, positionOf, standings, ticksToSeconds } from './sim/race';
 import { routeSample } from './city/route';
+import { loadTrafficAssets } from './render/traffic';
 import { CarBuild, PerformanceBuild, VisualBuild, defaultVisual, PAINT_FINISHES } from './sim/build';
 import { DEFAULT_CAR_ID, PERFORMANCE_CATEGORIES, SELECTABLE_CAR_IDS, Tier } from './sim/tuning';
 import { GarageState, decodeShareCode, loadGarage, saveGarage } from './garage/storage';
@@ -634,7 +635,8 @@ async function boot(): Promise<void> {
   const splash = deepLink ? null : showSplash(document.body);
   const loading = splash ? null : loadingScreen();
   if (loading) uiRoot.append(loading);
-  availability = await assets.availability();
+  // Traffic models load beside the cars so no session draws its traffic late.
+  [availability] = await Promise.all([assets.availability(), loadTrafficAssets()]);
   const code = params.get('build');
   let notice: (() => void) | null = null;
   if (code) {
