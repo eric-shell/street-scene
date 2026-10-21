@@ -467,6 +467,11 @@ export const CITY = {
        */
       lampInset: 1.1,
       lampPairLen: 11,
+      /**
+       * Parking lots: lamp posts along the back row (the far side from the street's lights), about this
+       * far apart (m), lampInset in from the back and the ends; every lot gets at least two.
+       */
+      lotLampSpacing: 17,
     },
     /** Reserved unique features, documented placeholders (plan nothing yet). */
     /**

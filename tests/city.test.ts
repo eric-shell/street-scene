@@ -329,6 +329,14 @@ describe('city generation', () => {
       }
       const pockets = w.areas.filter((a) => a.kind === 'infill' && (a.variant === 'plaza' || a.variant === 'cornerPlaza'));
       expect(pockets.filter((a) => lanterns.some((p) => p.area === a.id)).length).toBeGreaterThanOrEqual(pockets.length * 0.95);
+      // Parking lots are lit too: a row of posts along the back, about one per lotLampSpacing, at least two.
+      const lots = w.areas.filter((a) => a.kind === 'infill' && a.variant === 'lot');
+      expect(lots.length).toBeGreaterThan(0);
+      for (const a of lots) {
+        const n = lanterns.filter((p) => p.area === a.id).length;
+        expect(n, `${seed} lot ${a.id}`).toBeGreaterThanOrEqual(Math.max(2, Math.floor(a.params.lu / CITY.districts.infill.lotLampSpacing)));
+        expect(n).toBeLessThanOrEqual(2 + Math.ceil(a.params.lu / CITY.districts.infill.lotLampSpacing));
+      }
       // District props come after all street furniture.
       const firstDistrict = props.findIndex((p) => p.area !== undefined);
       expect(firstDistrict).toBeGreaterThan(0);
