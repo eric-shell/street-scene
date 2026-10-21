@@ -87,6 +87,19 @@ const PROP_SOUND: Record<PropKind, PropSound> = {
 
 const VARIANTS = 3;
 const MAX_VOICES = 14;
+/**
+ * Levels of the drive's effects, set against the player's engine at full
+ * throttle (about -17 dBFS RMS at the defaults; docs/audioMix.md has the
+ * measurements): a hard crash peaks 10 dB over the engine's RMS, nitrous sits
+ * just under the engine, the horn and the countdown beeps cut through it, a
+ * firework pops like a distant crash. A centred mono source loses 3 dB in its
+ * panner, which these allow for.
+ */
+const IMPACT_LEVEL = 2;
+const NITRO_LEVEL = 1.2;
+const HORN_LEVEL = 0.6;
+const BEEP_LEVEL = 0.45;
+const FIREWORK_LEVEL = 1.1;
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 
@@ -683,7 +696,7 @@ class HornVoice {
     const g = this.out.gain;
     if (on) {
       g.cancelScheduledValues(t);
-      g.setTargetAtTime(0.3, t, 0.008);
+      g.setTargetAtTime(HORN_LEVEL, t, 0.008);
       this.downAt = t;
     } else {
       // A tap still gives a proper honk.
@@ -750,8 +763,8 @@ function loadClip(ctx: AudioContext, name: CrowdClip): Promise<AudioBuffer | nul
  */
 const CROWD_TARGET_DB: Record<CrowdClip, number> = { cheer: -17, applause: -19 };
 /** Crowd mix on top of that: stand loops and the cheer / applause one-shots. */
-const CROWD_LOOP_GAIN = 3.2;
-const CROWD_SHOT_GAIN = 3;
+const CROWD_LOOP_GAIN = 0.8;
+const CROWD_SHOT_GAIN = 1.2;
 
 /** A copy of `buf` at the target RMS, peaks soft limited (tanh) below full scale. */
 function loudEnough(ctx: AudioContext, buf: AudioBuffer, targetDb: number): AudioBuffer {
@@ -914,7 +927,7 @@ export class TrainRumble {
     this.out = ctx.createGain();
     this.out.gain.value = 0;
     this.pan = ctx.createStereoPanner();
-    this.out.connect(this.pan).connect(h.sfxBus);
+    this.out.connect(this.pan).connect(h.ambienceBus);
     this.src = ctx.createBufferSource();
     this.src.buffer = h.noise;
     this.src.loop = true;
@@ -967,7 +980,7 @@ export class TrainRumble {
 }
 
 /** Helicopter rotor mix: level, blade pass rate (Hz) and thump depth, the low body of the sound and the turbine whine. */
-const ROTOR = { level: 0.34, bladeHz: 10.5, thump: 0.85, bodyHz: 220, body: 3.2, whineHz: 1700, whine: 0.08 } as const;
+const ROTOR = { level: 0.48, bladeHz: 10.5, thump: 0.85, bodyHz: 220, body: 3.2, whineHz: 1700, whine: 0.08 } as const;
 /** A rotor's voice: ROTOR's numbers, any of which a second helicopter (the police one) can change. */
 export type RotorVoice = { [K in keyof typeof ROTOR]: number };
 
@@ -1008,7 +1021,7 @@ export class HeliRotor {
     this.out = ctx.createGain();
     this.out.gain.value = 0;
     this.pan = ctx.createStereoPanner();
-    this.out.connect(this.pan).connect(h.sfxBus);
+    this.out.connect(this.pan).connect(h.ambienceBus);
     this.src = ctx.createBufferSource();
     this.src.buffer = h.noise;
     this.src.loop = true;
@@ -1066,7 +1079,7 @@ export class HeliRotor {
  * and far, and the crack of a close strike: the distance it fades out by (m),
  * its level and its band (Hz).
  */
-const THUNDER = { level: 0.62, near: 1800, lowNear: 420, lowFar: 150, rollNear: 4, rollFar: 8.5, crackUnder: 2400, crack: 0.9, crackHz: 2600 } as const;
+const THUNDER = { level: 0.4, near: 1800, lowNear: 420, lowFar: 150, rollNear: 4, rollFar: 8.5, crackUnder: 2400, crack: 0.9, crackHz: 2600 } as const;
 
 /**
  * Thunder for the lightning on rain nights (render/lightning.ts calls strike()
@@ -1097,7 +1110,7 @@ export class Thunder {
 
   private constructor(h: NonNullable<ReturnType<typeof audioHub>>) {
     this.ctx = h.ctx;
-    this.bus = h.sfxBus;
+    this.bus = h.ambienceBus;
     this.noise = h.noise;
   }
 
@@ -1107,7 +1120,8 @@ export class Thunder {
     const now = ctx.currentTime;
     const T = THUNDER;
     const far = clamp01((distance - 600) / 5500);
-    const level = T.level * power * (0.25 + 0.75 / (1 + (distance / T.near) ** 2));
+    // Far strikes fall away properly: at `near` m half, at three times that a tenth.
+    const level = T.level * power * (0.06 + 0.94 / (1 + (distance / T.near) ** 2));
     const out = ctx.createStereoPanner();
     out.pan.value = Math.max(-1, Math.min(1, pan)) * 0.7;
     out.connect(this.bus);
@@ -1195,6 +1209,8 @@ export class Thunder {
 export class Sfx {
   private readonly ctx: AudioContext;
   private readonly bus: GainNode;
+  /** The crowds play on the ambience bus; everything else here on the effects bus. */
+  private readonly ambience: GainNode;
   private readonly noise: AudioBuffer;
   private readonly banks = new Map<Bank, AudioBuffer[]>();
   private voices: { end: number; level: number; out: GainNode }[] = [];
@@ -1217,7 +1233,8 @@ export class Sfx {
   constructor() {
     const h = audioHub()!;
     this.ctx = h.ctx;
-    this.bus = h.sfxBus;
+    this.bus = h.effectsBus;
+    this.ambience = h.ambienceBus;
     this.noise = h.noise;
     // Render the impact variants in the background, one per slice, so the first crash has no hitch.
     const pending: Bank[] = [];
@@ -1270,7 +1287,7 @@ export class Sfx {
    * capped at MAX_VOICES (the quietest voice is stolen), far sounds low passed.
    */
   private play(b: Bank, level: number, rate: number, pos: SfxPos, key: string, minGap = 0.09): void {
-    const gain = level * pos.proximity;
+    const gain = level * pos.proximity * IMPACT_LEVEL;
     if (this.disposed || gain < 0.015) return;
     const now = this.ctx.currentTime;
     const last = this.recent.get(key);
@@ -1363,9 +1380,9 @@ export class Sfx {
     const dur = go ? 0.8 : 0.17;
     const g = ctx.createGain();
     g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.22, t + 0.006);
-    if (go) g.gain.setTargetAtTime(0.12, t + 0.1, 0.25);
-    else g.gain.setValueAtTime(0.22, t + dur - 0.03);
+    g.gain.linearRampToValueAtTime(BEEP_LEVEL, t + 0.006);
+    if (go) g.gain.setTargetAtTime(BEEP_LEVEL * 0.55, t + 0.1, 0.25);
+    else g.gain.setValueAtTime(BEEP_LEVEL, t + dur - 0.03);
     g.gain.linearRampToValueAtTime(0, t + dur);
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
@@ -1472,7 +1489,7 @@ export class Sfx {
       if (!loop) {
         // Far stands stay silent until the listener comes near.
         if (pos.proximity < CROWD_ON[kind] || playing >= MAX_CROWD_LOOPS) continue;
-        loop = this.crowdLoops[i] = new CrowdLoop(this.ctx, this.bus, this.cheerBuf);
+        loop = this.crowdLoops[i] = new CrowdLoop(this.ctx, this.ambience, this.cheerBuf);
         playing++;
       } else if (pos.proximity < CROWD_OFF[kind]) {
         // Left behind: free the voice for the stands ahead.
@@ -1508,7 +1525,7 @@ export class Sfx {
       g.gain.setTargetAtTime(0, t + hold, 0.8);
       const pan = ctx.createStereoPanner();
       pan.pan.value = pos.pan;
-      src.connect(g).connect(pan).connect(this.bus);
+      src.connect(g).connect(pan).connect(this.ambience);
       const start = Math.min(offset, Math.max(0, buf.duration - hold - 4));
       src.start(t, start);
       src.stop(t + hold + 4);
@@ -1529,7 +1546,7 @@ export class Sfx {
     const d = Math.hypot(x - l.x, y - 2, z - l.z);
     const pos: SfxPos = { proximity: 1 / (1 + (d / 60) ** 2), pan: Math.max(-1, Math.min(1, (((x - l.x) * l.rx + (z - l.z) * l.rz) / Math.max(1, d)) * 0.7)) };
     const delay = Math.min(0.6, d / 343);
-    const level = (0.35 + 0.35 * Math.min(1.3, size)) * 0.8;
+    const level = (0.35 + 0.35 * Math.min(1.3, size)) * FIREWORK_LEVEL;
     this.later(() => this.play('firework', level, rnd(0.85, 1.1) / Math.max(0.7, Math.min(1.3, size)) ** 0.3, pos, `fw:${Math.floor(Math.random() * 6)}`, 0), delay);
   }
 
@@ -1554,7 +1571,7 @@ export class Sfx {
       const pos = this.at(c.x, c.z, i === 0);
       const nitroOn = c.nitro && !paused && pos.proximity > 0.01;
       if (nitroOn && !this.nitro[i]) this.nitro[i] = new NitroVoice(this.ctx, this.bus, this.noise);
-      this.nitro[i]?.update(nitroOn, pos, i === 0 ? 0.42 : 0.3, dt);
+      this.nitro[i]?.update(nitroOn, pos, i === 0 ? NITRO_LEVEL : NITRO_LEVEL * 0.7, dt);
 
       let target = 0;
       let metal = 0;

@@ -68,7 +68,7 @@ export class WarningBell {
     this.out = ctx.createGain();
     this.out.gain.value = 0;
     this.pan = ctx.createStereoPanner();
-    this.out.connect(this.pan).connect(h.sfxBus);
+    this.out.connect(this.pan).connect(h.ambienceBus);
     const data = renderBellStrike(ctx.sampleRate);
     const buf = ctx.createBuffer(1, data.length, ctx.sampleRate);
     buf.copyToChannel(data, 0);

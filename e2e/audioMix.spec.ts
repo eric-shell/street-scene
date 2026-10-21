@@ -1,0 +1,143 @@
+/**
+ * The mix as the player hears it: every kind of sound on its own, right at
+ * the listener, with every level at its default, measured in dBFS at the
+ * output and held against TARGETS (docs/audioMix.md explains the balance).
+ * Nothing here needs the game's screens: a synthetic page imports the audio
+ * modules straight from Vite, so a broken menu cannot hide a broken mix, and
+ * each tap sits on the node a source really feeds (a dynamic import can get
+ * its own module instance and hub, so taps on an imported hub would be silent).
+ */
+import { expect, test } from '@playwright/test';
+
+const PAGE = '<!doctype html><html><head><meta charset="utf-8"><title>audio mix</title></head><body><button id="go">go</button></body></html>';
+
+/** Target RMS (dBFS at the output) with a tolerance (dB), each source alone and close; peaks are reported, not bounded. */
+const TARGETS: Record<string, [rms: number, tolerance: number]> = {
+  engineMid: [-19, 3],
+  engineIdle: [-25, 4],
+  crash20: [-13, 3],
+  crash8: [-18, 4],
+  wall15: [-11, 3],
+  rail10: [-17, 4],
+  dumpster15: [-16, 4],
+  garbageCan12: [-20, 4],
+  bush12: [-25, 5],
+  beep: [-15, 3],
+  go: [-15, 3],
+  firework: [-14, 3],
+  horn: [-18, 3],
+  nitro: [-21, 3],
+  crowdLoop: [-24, 3],
+  crowdCheer: [-21, 3],
+  train: [-24, 3],
+  heli: [-28, 4],
+  thunderNear: [-18, 3],
+  thunderFar: [-25, 4],
+  bell: [-24, 3],
+};
+
+interface Level {
+  rms: number;
+  peak: number;
+}
+
+const db = (x: number) => 20 * Math.log10(Math.max(x, 1e-6));
+
+test('every sound sits where the mix puts it', async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
+  await page.route('**/__audio-mix.html', (route) => route.fulfill({ body: PAGE, contentType: 'text/html' }));
+  await page.goto('/__audio-mix.html');
+  await page.click('#go');
+  // Plain JS as a string: a test transform must not inject helpers into the page.
+  const levels = (await page.evaluate(`(async () => {
+    const audio = await import('/src/audio/engineAudio.ts');
+    const sfxMod = await import('/src/audio/sfx.ts');
+    const bellMod = await import('/src/audio/warningBell.ts');
+    const manifest = (await import('/src/assets/carManifest.json')).default;
+    const hub = audio.audioHub();
+    await hub.ctx.resume();
+    await hub.worklet;
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const buf = new Float32Array(4096);
+    const analysers = new Map();
+    const tapOf = (node) => { let an = analysers.get(node); if (!an) { an = node.context.createAnalyser(); an.fftSize = 4096; node.connect(an); analysers.set(node, an); } return an; };
+    // The hub's defaults: master 0.7 squared, buses times 0.9. A bus tap still needs the master; a voice's own out needs both.
+    const MASTER = 0.49, BUS = 0.9;
+    let tap = null, scale = MASTER;
+    const measure = async (ms) => {
+      let rms = 0, peak = 0;
+      const t0 = performance.now();
+      while (performance.now() - t0 < ms) {
+        const an = tapOf(tap);
+        an.getFloatTimeDomainData(buf);
+        let sq = 0, pk = 0;
+        for (const v of buf) { sq += v * v; pk = Math.max(pk, Math.abs(v)); }
+        rms = Math.max(rms, Math.sqrt(sq / buf.length));
+        peak = Math.max(peak, pk);
+        await sleep(40);
+      }
+      return { rms: rms * scale, peak: peak * scale };
+    };
+    const results = {};
+    const pos = { proximity: 1, pan: 0 };
+    const sfx = new sfxMod.Sfx();
+    sfx.setListener(0, 0, 1, 0);
+    tap = sfx.bus;
+    await sleep(1500);
+    const shots = {
+      crash20: () => sfx.crash(20, pos), crash8: () => sfx.crash(8, pos), wall15: () => sfx.wall(15, 'wall', pos), rail10: () => sfx.wall(10, 'rail', pos),
+      dumpster15: () => sfx.prop('dumpster', 15, pos), garbageCan12: () => sfx.prop('garbageCan', 12, pos), bush12: () => sfx.prop('bush', 12, pos),
+      beep: () => sfx.beep(false), go: () => sfx.beep(true), firework: () => sfx.firework(0, 20, 0, 1),
+    };
+    for (const [name, fire] of Object.entries(shots)) { fire(); results[name] = await measure(900); await sleep(600); }
+    sfx.horn(true); results.horn = await measure(800); sfx.horn(false); await sleep(500);
+    const car = { x: 0, z: 0, yaw: 0, vx: 0, vz: 30, nitro: true, halfLength: 2, halfWidth: 0.9 };
+    let t = performance.now();
+    const nitroRun = (async () => { const end = performance.now() + 2000; while (performance.now() < end) { const now = performance.now(); sfx.updateCars([car], null, (now - t) / 1000, false); t = now; await sleep(16); } car.nitro = false; sfx.updateCars([car], null, 0.016, false); })();
+    await sleep(1200); results.nitro = await measure(700); await nitroRun; await sleep(500);
+    tap = sfx.ambience;
+    const spot = { ax: -3, az: 2, bx: 3, bz: 2, level: 1.2, kind: 'section' };
+    const crowdRun = (async () => { const end = performance.now() + 3500; while (performance.now() < end) { sfx.updateCrowds([spot], false); await sleep(50); } sfx.updateCrowds([], false); })();
+    await sleep(2500); results.crowdLoop = await measure(900); await crowdRun; await sleep(800);
+    sfx.crowdCheer(0, 2, 1.6, true); await sleep(400); results.crowdCheer = await measure(1200); await sleep(2500);
+    const train = sfxMod.TrainRumble.create(); tap = train.out; scale = MASTER * BUS;
+    const trainRun = (async () => { const end = performance.now() + 1800; while (performance.now() < end) { train.update(1, 17, 0); await sleep(30); } })();
+    await sleep(600); results.train = await measure(900); await trainRun; await sleep(900);
+    const heli = sfxMod.HeliRotor.create(); tap = heli.out;
+    const heliRun = (async () => { const end = performance.now() + 1800; while (performance.now() < end) { heli.update(1, 0); await sleep(30); } })();
+    await sleep(600); results.heli = await measure(900); await heliRun; await sleep(900);
+    const thunder = sfxMod.Thunder.create(); tap = thunder.bus; scale = MASTER;
+    thunder.strike(200, 1, 0); results.thunderNear = await measure(1500); await sleep(2500);
+    thunder.strike(1800, 1, 0); results.thunderFar = await measure(1500); await sleep(2500);
+    const bell = bellMod.WarningBell.create(); tap = bell.out; scale = MASTER * BUS;
+    const bellRun = (async () => { const end = performance.now() + 1800; while (performance.now() < end) { bell.update(1, 0); await sleep(30); } })();
+    await sleep(600); results.bell = await measure(900); await bellRun; await sleep(900);
+    const voice = new audio.EngineVoice(manifest.cars.find((c) => c.id === 'protoCompact').engine, 0.26);
+    tap = voice.pan; scale = MASTER * BUS;
+    const drive = async (rpm, load, ms) => { const end = performance.now() + ms; let last = performance.now(); while (performance.now() < end) { const now = performance.now(); voice.update({ rpm, redline: 7200, throttle: load, nitro: false, proximity: 1, pan: 0, dt: (now - last) / 1000 }); last = now; await sleep(16); } };
+    await drive(3500, 1, 1200); const engRun = drive(3500, 1, 1000); results.engineMid = await measure(900); await engRun;
+    const idleRun = drive(850, 0, 1800); await sleep(800); results.engineIdle = await measure(900); await idleRun;
+    voice.dispose();
+    return results;
+  })()`)) as Record<string, Level>;
+
+  const rows = Object.entries(TARGETS).map(([name, [target, tol]]) => {
+    const l = levels[name];
+    return { name, rms: +db(l.rms).toFixed(1), peak: +db(l.peak).toFixed(1), target, tol };
+  });
+  console.log(rows.map((r) => `${r.name.padEnd(12)} rms ${String(r.rms).padStart(6)}  peak ${String(r.peak).padStart(6)}  target ${r.target} ±${r.tol}`).join('\n'));
+  for (const r of rows) expect(Math.abs(r.rms - r.target), `${r.name} rms ${r.rms} dBFS, target ${r.target} ±${r.tol}`).toBeLessThanOrEqual(r.tol);
+  // The relations that matter more than any one number.
+  const rms = (n: string) => db(levels[n].rms);
+  expect(rms('crowdLoop'), 'a crowd bed stays under the engine').toBeLessThan(rms('engineMid') - 3);
+  expect(rms('train'), 'a train bed stays under the engine').toBeLessThan(rms('engineMid') - 3);
+  expect(db(levels.crash20.peak), 'a hard crash tops the engine').toBeGreaterThan(db(levels.engineMid.peak));
+  expect(rms('thunderFar'), 'far thunder is far').toBeLessThan(rms('thunderNear') - 5);
+  expect(rms('beep'), 'the countdown is heard over an idling engine').toBeGreaterThan(rms('engineIdle') + 6);
+  expect(errors).toEqual([]);
+});

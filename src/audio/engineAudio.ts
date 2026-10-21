@@ -65,28 +65,70 @@ const OVERRUN = {
   turboFuel: 1.3,
 } as const;
 
+/** User levels 0..1 per bus (a slider maps to gain by its square), as the Sound settings hold them. */
+export interface AudioLevels {
+  masterVolume: number;
+  engineVolume: number;
+  effectsVolume: number;
+  ambienceVolume: number;
+  interfaceVolume: number;
+}
+
+/**
+ * The mix. Four buses under one master, each with a calibration that sets
+ * where the bus sits with every slider at its default (so the defaults are the
+ * intended balance and a slider only moves away from it), then the user's
+ * levels on top. The master ends in a safety limiter, not a musical
+ * compressor: with sources gain staged against each other nothing should need
+ * glue, and the old 4:1 compressor at -18 dB let a loud engine duck every
+ * effect. Targets at the defaults, at the destination: the player's engine
+ * about -17 dBFS RMS at full throttle (9 dB over the music's -26), impacts
+ * peaking near -8, ambience beds (crowds, trains, weather) 6 to 10 dB under
+ * the engine, menu sounds under everything.
+ */
+const MIX = {
+  calibration: { engine: 0.9, effects: 0.9, ambience: 0.9, interface: 0.5 },
+  limiter: { threshold: -3, knee: 2, ratio: 20, attack: 0.002, release: 0.12 },
+  defaults: { masterVolume: 0.7, engineVolume: 1, effectsVolume: 1, ambienceVolume: 1, interfaceVolume: 1 } as AudioLevels,
+} as const;
+
 class AudioHub {
   readonly ctx: AudioContext;
+  /** Engine voices. */
   readonly engineBus: GainNode;
-  /** Sound effects (crashes, nitro, horn, beeps): same volume setting, same compressor. */
-  readonly sfxBus: GainNode;
+  /** Effects of the drive: impacts, scrapes, nitrous, horn, beeps, fireworks. */
+  readonly effectsBus: GainNode;
+  /** The world around it: crowds, trains, helicopters, thunder, the crossing bell. */
+  readonly ambienceBus: GainNode;
+  /** Menu sounds. */
+  readonly uiBus: GainNode;
+  readonly master: GainNode;
   readonly noise: AudioBuffer;
   /** True once the engine worklet is registered; false when the browser has none or the module failed, and voices stay silent. */
   readonly worklet: Promise<boolean>;
-  private volume = 0.7;
+  private levels: AudioLevels = { ...MIX.defaults };
 
   constructor() {
     const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     this.ctx = new Ctx({ latencyHint: 'interactive' });
-    this.engineBus = this.ctx.createGain();
-    // Gentle bus compression keeps four engines from clipping.
-    const comp = this.ctx.createDynamicsCompressor();
-    comp.threshold.value = -18;
-    comp.ratio.value = 4;
-    this.engineBus.connect(comp).connect(this.ctx.destination);
-    this.sfxBus = this.ctx.createGain();
-    this.sfxBus.connect(comp);
-    this.setVolume(this.volume);
+    this.master = this.ctx.createGain();
+    const limiter = this.ctx.createDynamicsCompressor();
+    limiter.threshold.value = MIX.limiter.threshold;
+    limiter.knee.value = MIX.limiter.knee;
+    limiter.ratio.value = MIX.limiter.ratio;
+    limiter.attack.value = MIX.limiter.attack;
+    limiter.release.value = MIX.limiter.release;
+    this.master.connect(limiter).connect(this.ctx.destination);
+    const bus = () => {
+      const g = this.ctx.createGain();
+      g.connect(this.master);
+      return g;
+    };
+    this.engineBus = bus();
+    this.effectsBus = bus();
+    this.ambienceBus = bus();
+    this.uiBus = bus();
+    this.applyLevels(this.levels);
     this.noise = this.ctx.createBuffer(1, this.ctx.sampleRate * 2, this.ctx.sampleRate);
     const d = this.noise.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -95,6 +137,11 @@ class AudioHub {
     };
     for (const ev of ['pointerdown', 'keydown', 'touchend']) window.addEventListener(ev, resume, true);
     this.worklet = this.loadWorklet();
+  }
+
+  /** The effects bus under its old name (sound effects were the only other bus once). */
+  get sfxBus(): GainNode {
+    return this.effectsBus;
   }
 
   private async loadWorklet(): Promise<boolean> {
@@ -108,10 +155,27 @@ class AudioHub {
     }
   }
 
+  /** Set every bus from the user's levels (any missing one keeps its value). */
+  applyLevels(levels: Partial<AudioLevels>): void {
+    const clamp = (v: number | undefined, prev: number) => (Number.isFinite(v) ? Math.max(0, Math.min(1, v as number)) : prev);
+    const l = this.levels;
+    l.masterVolume = clamp(levels.masterVolume, l.masterVolume);
+    l.engineVolume = clamp(levels.engineVolume, l.engineVolume);
+    l.effectsVolume = clamp(levels.effectsVolume, l.effectsVolume);
+    l.ambienceVolume = clamp(levels.ambienceVolume, l.ambienceVolume);
+    l.interfaceVolume = clamp(levels.interfaceVolume, l.interfaceVolume);
+    const t = this.ctx.currentTime;
+    const gain = (v: number) => v * v;
+    this.master.gain.setTargetAtTime(gain(l.masterVolume), t, 0.05);
+    this.engineBus.gain.setTargetAtTime(gain(l.engineVolume) * MIX.calibration.engine, t, 0.05);
+    this.effectsBus.gain.setTargetAtTime(gain(l.effectsVolume) * MIX.calibration.effects, t, 0.05);
+    this.ambienceBus.gain.setTargetAtTime(gain(l.ambienceVolume) * MIX.calibration.ambience, t, 0.05);
+    this.uiBus.gain.setTargetAtTime(gain(l.interfaceVolume) * MIX.calibration.interface, t, 0.05);
+  }
+
+  /** The engine level alone (the garage's volume control). */
   setVolume(v: number): void {
-    this.volume = Math.max(0, Math.min(1, v));
-    this.engineBus.gain.setTargetAtTime(this.volume * this.volume * 0.9, this.ctx.currentTime, 0.05);
-    this.sfxBus.gain.setTargetAtTime(this.volume * this.volume * 0.9, this.ctx.currentTime, 0.05);
+    this.applyLevels({ engineVolume: v });
   }
 }
 

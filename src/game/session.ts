@@ -334,7 +334,7 @@ export class RaceSession {
     // Engine sound: the player's car loud and centered, rivals by distance.
     const hub = audioHub();
     if (hub) {
-      hub.setVolume(settings.engineVolume);
+      hub.applyLevels(settings);
       this.engines = this.race.cars.map((rc, i) => {
         const voice = new EngineVoice(manifestCar(rc.carId).engine, i === 0 ? 0.26 : 0.2, { lite: i > 0 });
         // An overrun pop flashes a flame at the car's tailpipe when it sounds.

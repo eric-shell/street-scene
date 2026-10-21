@@ -287,7 +287,7 @@ function applySettings(s: Settings): void {
     session?.night.lighting.setPoolSize(gr.profile.pointLights);
   }
   fpsEl.style.display = settings.showFps ? '' : 'none';
-  audioHub()?.setVolume(settings.engineVolume);
+  audioHub()?.applyLevels(settings);
   if (state === 'race') toggleTuningPanel(settings.debugTuningPanel);
   if (state === 'race') toggleCameraPanel(settings.debugCameraPanel);
 }

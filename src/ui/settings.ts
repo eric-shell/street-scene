@@ -26,8 +26,12 @@ export interface Settings {
   /** The race type last picked on the menu's race step. */
   raceType: RaceType;
   showFps: boolean;
-  /** Engine sound volume 0..1 */
+  /** Sound levels 0..1 (gain is the square): the master over everything, then the engine voices, the drive's effects (impacts, nitrous, horn), the world's ambience (crowds, trains, weather) and the menu sounds. Music has its own slider in the player. */
+  masterVolume: number;
   engineVolume: number;
+  effectsVolume: number;
+  ambienceVolume: number;
+  interfaceVolume: number;
   /** Driver aid: cuts drive torque when the rear wheels spin. Off lets the rear step out. */
   tractionControl: boolean;
   /** Flash effects: lightning flashes and the police light bar's strobes. Off keeps the sky still and the light bar a soft glow. */
@@ -50,7 +54,11 @@ export const DEFAULT_SETTINGS: Settings = {
   opponents: 3,
   raceType: 'circuit',
   showFps: false,
-  engineVolume: 0.7,
+  masterVolume: 0.7,
+  engineVolume: 1,
+  effectsVolume: 1,
+  ambienceVolume: 1,
+  interfaceVolume: 1,
   tractionControl: false,
   flashEffects: true,
   debugTuningPanel: false,
@@ -69,8 +77,15 @@ export function loadSettings(): Settings {
     if (!['easy', 'medium', 'hard'].includes(s.difficulty)) s.difficulty = 'medium';
     s.opponents = Math.max(0, Math.min(MAX_OPPONENTS, Math.round(Number(s.opponents) || 0)));
     if (!RACE_TYPES.includes(s.raceType)) s.raceType = 'circuit';
-    s.engineVolume = Math.max(0, Math.min(1, Number(s.engineVolume)));
-    if (!Number.isFinite(s.engineVolume)) s.engineVolume = DEFAULT_SETTINGS.engineVolume;
+    // Before the mixer one "engine volume" slider scaled every sound: it becomes the master, the engine itself stays full.
+    if (typeof parsed.masterVolume !== 'number' && typeof parsed.engineVolume === 'number') {
+      s.masterVolume = parsed.engineVolume;
+      s.engineVolume = DEFAULT_SETTINGS.engineVolume;
+    }
+    for (const k of ['masterVolume', 'engineVolume', 'effectsVolume', 'ambienceVolume', 'interfaceVolume'] as const) {
+      s[k] = Math.max(0, Math.min(1, Number(s[k])));
+      if (!Number.isFinite(s[k])) s[k] = DEFAULT_SETTINGS[k];
+    }
     return s;
   } catch {
     return defaultForDevice();
