@@ -32,6 +32,7 @@ import { Settings } from '../ui/settings';
 import { formatTime } from '../ui/format';
 import { ReplayData } from '../replay/replay';
 import { PROP_DEFS } from '../city/props';
+import { TRAFFIC_SNAP, TrafficView, snapTraffic } from '../render/traffic';
 
 interface Snap extends CarPose {
   vx: number;
@@ -105,6 +106,8 @@ const NITRO_IN = 5;
 const NITRO_OUT = 2.5;
 /** On a tick where the player only hit props, the speed drop must exceed slowdownMin by this many times over to count as a crash. */
 const PROP_SLOWDOWN_EXTRA = 1.6;
+/** Free roam minimap: traffic this close to the player shows as dots (m; the map spans about 260 m to its edge). */
+const TRAFFIC_DOT_RANGE = 280;
 
 /** Car sparks (render/sparks.ts): when, where and how many, from the sim's contact telemetry. */
 const SPARK = {
@@ -212,6 +215,10 @@ export class RaceSession {
   private trails: LightTrails;
   /** Underbody and wall sparks for every car near the camera (render/sparks.ts). */
   private sparks: Sparks;
+  /** Ambient traffic (render/traffic.ts) and its last two snapshots (TRAFFIC_SNAP floats per car), swapped every tick. */
+  private traffic: TrafficView | null = null;
+  private trafficPrev = new Float32Array(0);
+  private trafficCurr = new Float32Array(0);
   private carLight: THREE.PointLight;
   private engines: EngineVoice[] = [];
   private sfx: Sfx | null = null;
@@ -263,6 +270,14 @@ export class RaceSession {
     }
     this.sparks = new Sparks(settings.quality);
     this.night.scene.add(this.sparks.mesh);
+    const traffic = this.race.traffic;
+    if (traffic) {
+      this.traffic = new TrafficView(this.race.world, traffic.cars.length);
+      this.night.scene.add(this.traffic.group);
+      this.trafficCurr = new Float32Array(traffic.cars.length * TRAFFIC_SNAP);
+      snapTraffic(traffic, this.trafficCurr);
+      this.trafficPrev = this.trafficCurr.slice();
+    }
     const loads: Promise<void>[] = [];
     this.race.cars.forEach((rc, i) => {
       const view = new CarView(rc.carId, assets, { headlights: i === 0, underglowLight: i === 0, envMap: gr.envMap });
@@ -550,6 +565,12 @@ export class RaceSession {
     this.hardHitTick = false;
     stepRace(r, frame);
     this.curr = r.cars.map((c) => snap(c.state));
+    if (r.traffic) {
+      const t = this.trafficPrev;
+      this.trafficPrev = this.trafficCurr;
+      this.trafficCurr = t;
+      snapTraffic(r.traffic, t);
+    }
     if (this.ghostRace) {
       this.ghostPrev = this.ghostCurr;
       const gt = this.ghostRace.tick;
@@ -768,6 +789,7 @@ export class RaceSession {
     this.night.city.finishLine.update(this.time);
     // Props mirror the sim's broken flags; fresh breaks come apart pushed by the nearest car.
     this.night.props.update(this.paused ? 0 : dt, this.time, r.brokenProps, this.curr);
+    this.traffic?.update(this.trafficPrev, this.trafficCurr, this.paused ? 1 : alpha, camera, this.time, this.settings.quality, r.tick);
     // Progressive edge blur: grows with speed, much stronger while boosting (eased in and out).
     const target = this.settings.radialBlur && !this.paused ? Math.max(0, Math.min(1, (p.speed - 25) / 45)) * 0.4 + (p.nitro ? 1 : 0) : 0;
     this.blur += (target - this.blur) * (1 - Math.exp(-dt * (target > this.blur ? 6 : 3)));
@@ -922,8 +944,22 @@ export class RaceSession {
   private mapCars(): HudCar[] {
     return [
       ...this.curr.map((s, i) => ({ x: s.x, z: s.z, yaw: s.yaw, isPlayer: i === 0 })),
+      ...this.trafficDots(),
       ...(this.ghostCurr ? [{ x: this.ghostCurr.x, z: this.ghostCurr.z, yaw: this.ghostCurr.yaw, isPlayer: false, isGhost: true }] : []),
     ];
+  }
+
+  /** Free roam minimap: the traffic near the player as small dots (races keep the map to the field). */
+  private trafficDots(): HudCar[] {
+    if (!this.openWorld || !this.race.traffic) return [];
+    const p = this.curr[0];
+    const out: HudCar[] = [];
+    const t = this.trafficCurr;
+    for (let o = 0; o < t.length; o += TRAFFIC_SNAP) {
+      if (t[o + 3] < 0 || (t[o] - p.x) ** 2 + (t[o + 1] - p.z) ** 2 > TRAFFIC_DOT_RANGE ** 2) continue;
+      out.push({ x: t[o], z: t[o + 1], yaw: t[o + 2], isPlayer: false, isTraffic: true });
+    }
+    return out;
   }
 
   private updateHud(dt: number): void {
@@ -998,6 +1034,7 @@ export class RaceSession {
     this.ghostView?.dispose();
     this.trails.dispose();
     this.sparks.dispose();
+    this.traffic?.dispose();
     this.engines.forEach((e) => e.dispose());
     this.night.city.finishLine.onFirework = null;
     this.sfx?.dispose();

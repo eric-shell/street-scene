@@ -15,6 +15,7 @@ import { DEG, abs, approach, atan2, clamp, cos, lerp, sign, sin, sqrt } from './
 import { GRAVITY } from './tuning';
 import { DT } from './constants';
 import { routeSample } from '../city/route';
+import { trafficAhead } from './traffic';
 
 export const AI = {
   spacing: 4,
@@ -243,6 +244,11 @@ export function aiInput(r: RaceState, rc: RaceCar): InputFrame {
       break;
     }
   }
+  // Ambient traffic keeps off the route, but a car pushed out among it dodges it the same way.
+  if (dodgeTarget === 0) {
+    const side = trafficAhead(r, c.x, c.z, fx, fz, 22, 1.7);
+    if (side) dodgeTarget = side > 0 ? -AI.dodgeOffset : AI.dodgeOffset;
+  }
   ai.dodge = approach(ai.dodge, dodgeTarget, AI.dodgeRate * DT);
 
   const look = AI.lookaheadBase + speed * AI.lookaheadPerSpeed;
@@ -364,7 +370,8 @@ function noseBlocked(r: RaceState, rc: RaceCar): boolean {
     const ahead = dx * fx + dz * fz;
     if (ahead > 0 && ahead < g.halfLength + o.tuning.geometry.halfLength + 0.6 && abs(dx * fz - dz * fx) < g.halfWidth + o.tuning.geometry.halfWidth) return true;
   }
-  return false;
+  // A traffic car at the nose pins it just the same.
+  return trafficAhead(r, c.x, c.z, fx, fz, g.halfLength + 3, g.halfWidth) !== 0;
 }
 
 function pursuitSteer(rc: RaceCar, tx: number, tz: number): number {

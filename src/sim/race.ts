@@ -16,6 +16,7 @@ import { DEG, abs, atan2, clamp, cos, distToSegment, lerp, sin, sqrt, yawOf } fr
 import { AiState, aiInput, buildRacingLine, createAi, RacingLine } from './ai';
 import { stepProps } from './props';
 import { RailState, createRailState } from './rails';
+import { TrafficState, createTraffic, stepTraffic } from './traffic';
 
 export type RaceMode = 'circuit' | 'sprint' | 'drift';
 export type Difficulty = 'easy' | 'medium' | 'hard';
@@ -43,6 +44,8 @@ export interface RaceConfig {
    * road network gets put back, on the nearest street.
    */
   openWorld?: boolean;
+  /** Ambient traffic on the streets the race does not use (src/sim/traffic.ts). Missing in old replays = off. */
+  traffic?: boolean;
 }
 
 export type RacePhase = 'countdown' | 'racing' | 'finished';
@@ -105,6 +108,8 @@ export interface RaceState {
   brokenProps: Uint8Array;
   /** Corner rail pieces displaced by hits this race (src/sim/rails.ts). Fresh per race. */
   rails: RailState;
+  /** Ambient traffic (src/sim/traffic.ts), null when the config has it off. */
+  traffic: TrafficState | null;
 }
 
 /** Impact sound events: minimum impact speed (m/s) and minimum gap between events (ticks). */
@@ -116,6 +121,7 @@ const HIT_EVENT_GAP = Math.round(0.25 * TICK_HZ);
  * Sim events, consumed by the session for HUD messages, sounds and effects.
  * 'prop': value = prop id broken. 'crash': value = impact speed (m/s), other = car index hit.
  * 'wall': value = impact speed (m/s), kind = wall kind hit.
+ * A 'crash' with `traffic` set hit that traffic car (r.traffic.cars index); car is -1 when traffic hit traffic.
  */
 export type RaceEvent = {
   tick: number;
@@ -124,6 +130,7 @@ export type RaceEvent = {
   value?: number;
   other?: number;
   kind?: 'wall' | 'barrier' | 'rail';
+  traffic?: number;
 };
 
 export const COUNTDOWN_SECONDS = 3;
@@ -237,6 +244,7 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
     };
   });
   const distance = route.closed ? route.length * config.laps : route.finishS - route.startS;
+  const traffic = config.traffic ? createTraffic(w, cars, config.seed, open) : null;
   return {
     config,
     world: w,
@@ -252,6 +260,7 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
     hitTicks: { wall: cars.map(() => -HIT_EVENT_GAP), pair: cars.flatMap(() => cars.map(() => -HIT_EVENT_GAP)) },
     brokenProps: coveredPropsRemoved(w),
     rails: createRailState(w),
+    traffic,
   };
 }
 
@@ -406,6 +415,8 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
       const target = t.engine.idleRpm + inputs[i].throttle * (t.engine.redline * 0.85 - t.engine.idleRpm);
       c.rpm += (target - c.rpm) * 0.15;
     }
+    // The city keeps moving while the grid waits.
+    stepTraffic(r);
     r.tick++;
     if (r.tick === r.countdownTicks) r.phase = r.phase === 'countdown' ? 'racing' : r.phase;
     return;
@@ -464,6 +475,8 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
       }
     }
   }
+  // Ambient traffic drives on, then meets the race cars where they are now.
+  stepTraffic(r);
   for (const rc of r.cars) {
     rc.state.nearMiss = detectNearMiss(rc.state, rc.tuning, r.world);
     refillNitrous(rc.state, rc.tuning);

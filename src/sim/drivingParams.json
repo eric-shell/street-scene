@@ -192,5 +192,34 @@
     "brakes": { "forceMul": [1, 1.12, 1.25, 1.4] },
     "weight": { "massMul": [1, 0.96, 0.92, 0.87] },
     "nitrous": { "capacity": [3.2, 3.9, 4.7, 5.6], "force": [3600, 4100, 4700, 5400] }
+  },
+  "traffic": {
+    "_": "Ambient traffic (src/sim/traffic.ts): civilian cars driven kinematically along street lanes, keeping right, and solid passive bodies once struck. Speeds m/s, accelerations m/s^2, lengths m, masses kg.",
+    "cruiseSpeed": 11.5,
+    "cruiseJitter": 0.15,
+    "accel": 2.2,
+    "brake": 3,
+    "hardBrake": 8,
+    "turnLatAccel": 2.4,
+    "minTurnSpeed": 4,
+    "standGap": 2.6,
+    "headway": 1.1,
+    "_loose": "A struck car slides: lateral speed bleeds off at slideDecel, rolling speed at rollDecel, spin at spinDecel (rad/s^2). Stopped (under restSpeed) for recoverDelay s, it rejoins its lane when within rejoinDistance of it and rejoinYawDeg of its heading, blending the offset out over rejoinLength of driving.",
+    "slideDecel": 7.5,
+    "rollDecel": 3.5,
+    "spinDecel": 1.6,
+    "restSpeed": 0.3,
+    "recoverDelay": 1.6,
+    "rejoinDistance": 5.5,
+    "rejoinYawDeg": 50,
+    "rejoinLength": 9,
+    "yawInertiaScale": 1,
+    "_kinds": "Vehicle kinds: collision size (half length, half width) and mass; share is the spawn mix. The renderer draws a silhouette per name (render/traffic.ts).",
+    "kinds": [
+      { "name": "sedan", "share": 0.4, "mass": 1350, "halfLength": 2.4, "halfWidth": 0.92 },
+      { "name": "hatch", "share": 0.22, "mass": 1100, "halfLength": 2.02, "halfWidth": 0.88 },
+      { "name": "van", "share": 0.18, "mass": 1900, "halfLength": 2.55, "halfWidth": 1.0 },
+      { "name": "taxi", "share": 0.2, "mass": 1400, "halfLength": 2.45, "halfWidth": 0.93 }
+    ]
   }
 }
