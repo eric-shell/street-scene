@@ -153,7 +153,15 @@ export interface World extends City {
    * (RaceState.brokenProps = 2): no collision, not rendered, no debris.
    */
   coveredProps: number[];
+  /** Terrain height (m): the ground everything is draped on, road level. */
   heightAt(x: number, z: number): number;
+  /**
+   * Height a wheel stands at (m): the terrain plus CITY.curbHeight on the
+   * paving the city draws at curb height (sidewalks, roundabout rings,
+   * plazas), eased across the curb so a car rolls up onto a sidewalk instead
+   * of sinking into it.
+   */
+  driveHeightAt(x: number, z: number): number;
   slopeAt(x: number, z: number): { gx: number; gz: number };
   surfaceAt(x: number, z: number): Surface;
   collideCircle(x: number, z: number, r: number, out: Contact[]): number;
@@ -481,6 +489,75 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     return base === 5 ? 'road' : base === 3 ? 'sidewalk' : 'offroad';
   }
 
+  const rings = graph.nodes.filter((n) => n.ring);
+  /** Flared shortcut mouths: the junction fan out to the curved curbs, and how far it reaches from the node. */
+  const fans = graph.nodes.flatMap((n, i) => {
+    const secs = blocks.sectors[i];
+    if (!secs.some((s) => s.flared)) return [];
+    const ring = secs.flatMap((s) => s.curb);
+    let reach = 0;
+    for (const p of ring) reach = Math.max(reach, sqrt((p.x - n.x) ** 2 + (p.z - n.z) ** 2));
+    return [{ x: n.x, z: n.z, ring, reach }];
+  });
+  const liftScratch: number[] = [];
+  const CURB_IN = CITY.curbRamp.road;
+  const CURB_SPAN = CITY.curbRamp.road + CITY.curbRamp.walk;
+  /** Paving a district draws at curb height: plazas, corner pockets and verges, the monument plaza. */
+  const raisedPatch = (area: number): boolean => {
+    const a = city.districts.areas[area];
+    return a.kind === 'monument' || (a.kind === 'infill' && a.variant !== 'lot' && a.variant !== 'planter');
+  };
+  /**
+   * Curb lift under a point (m). The street classification is surfaceAt's
+   * (road strips and their sidewalks, by distance to the edges) plus the
+   * roundabout rings (road inside the outer curb, sidewalk around it). A
+   * district patch over the sidewalk's priority that is not sidewalk (alley
+   * cobbles, the river) keeps the ground flat; plazas at curb height lift.
+   * The lift eases in from curbRamp.road out on the road to curbRamp.walk
+   * onto the paving.
+   */
+  function curbLift(x: number, z: number): number {
+    edgeGrid.query(x - 1, z - 1, x + 1, z + 1, liftScratch);
+    let road = Infinity;
+    let walk = Infinity;
+    for (const id of liftScratch) {
+      const e = graph.edges[id];
+      const a = graph.nodes[e.a];
+      const b = graph.nodes[e.b];
+      const d = distToSegment(x, z, a.x, a.z, b.x, b.z) - e.width / 2;
+      if (d < road) road = d;
+      if (d - e.sidewalk < walk) walk = d - e.sidewalk;
+    }
+    for (const n of rings) {
+      const d = sqrt((x - n.x) ** 2 + (z - n.z) ** 2) - n.ring!.outer;
+      if (d < road) road = d;
+      if (d - CITY.sidewalk < walk) walk = d - CITY.sidewalk;
+    }
+    // A flared mouth's curved curbs: distance outside its fan (the fan itself is a road patch).
+    for (const f of fans) {
+      if ((x - f.x) ** 2 + (z - f.z) ** 2 > (f.reach + CITY.sidewalk) ** 2) continue;
+      let d = Infinity;
+      for (let i = 0; i < f.ring.length; i++) {
+        const p = f.ring[i];
+        const q = f.ring[(i + 1) % f.ring.length];
+        d = Math.min(d, distToSegment(x, z, p.x, p.z, q.x, q.z));
+      }
+      if (pointInPolygon(x, z, f.ring)) d = -d;
+      if (d < road) road = d;
+    }
+    if (road <= -CURB_IN) return 0;
+    const patch = city.districts.surfaceAt(x, z);
+    if (patch && patch.priority > 3 && patch.surface !== 'sidewalk') return 0;
+    if (walk > 0 && !(patch && (patch.surface === 'sidewalk' || raisedPatch(patch.area)))) return 0;
+    const t = (road + CURB_IN) / CURB_SPAN;
+    if (t >= 1) return CITY.curbHeight;
+    return CITY.curbHeight * t * t * (3 - 2 * t);
+  }
+
+  function driveHeightAt(x: number, z: number): number {
+    return terrain.heightAt(x, z) + curbLift(x, z);
+  }
+
   const pts = route.points;
   const nseg = pts.length - 1;
   const HINT_REACH = 40;
@@ -545,6 +622,7 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     coveredProps,
     propGrid,
     heightAt: terrain.heightAt,
+    driveHeightAt,
     slopeAt: terrain.slopeAt,
     surfaceAt,
     collideCircle,

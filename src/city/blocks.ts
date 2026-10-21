@@ -27,6 +27,8 @@ import { PolygonIndex } from './districts/geom';
 
 export type WallKind = 'wall' | 'barrier' | 'rail';
 
+const FLARE = CITY.districts.backAlley.mouth;
+
 /** Gap between the sidewalk wall line and building footprints (room for podium protrusions). */
 export const BUILDING_SETBACK = 1.3;
 /** Frontage sampling step (m) and probe depths behind the sidewalk line. */
@@ -75,6 +77,8 @@ export interface Sector {
   curb: Vec2[];
   /** Same corner on the outer sidewalk (building) line. Same point count as curb. */
   outer: Vec2[];
+  /** A shortcut's mouth corner, rounded off into a funnel (flaredCorner); its asphalt is the junction fan's. */
+  flared?: boolean;
 }
 
 export interface MouthPoint {
@@ -234,6 +238,37 @@ function ringArc(p: Vec2, dA: Vec2, oA: number, dB: Vec2, oB: number, R: number,
   return pts;
 }
 
+/** Pieces of a flared shortcut corner. */
+const FLARE_STEPS = 6;
+
+/**
+ * A shortcut's mouth corner as a funnel: where edge A's offset line (CCW
+ * side) crosses edge B's (CW side), the sharp corner is replaced by a
+ * quadratic curve from reachA along A's line past the crossing to reachB along
+ * B's, the crossing its control point. The curb and building lines use the
+ * same reaches, so the sidewalk between them keeps its width at both ends.
+ * Null when the lines do not cross.
+ */
+function flaredCorner(p: Vec2, dA: Vec2, oA: number, dB: Vec2, oB: number, reachA: number, reachB: number): Vec2[] | null {
+  const na: Vec2 = { x: -dA.z, z: dA.x };
+  const nb: Vec2 = { x: dB.z, z: -dB.x };
+  const pa = add(p, na, oA);
+  const t = lineIntersectT(pa, dA, add(p, nb, oB), dB);
+  if (t === null) return null;
+  const K = add(pa, dA, t);
+  const P0 = add(K, dA, reachA);
+  const P2 = add(K, dB, reachB);
+  const pts: Vec2[] = [];
+  for (let i = 0; i <= FLARE_STEPS; i++) {
+    const u = i / FLARE_STEPS;
+    const a = (1 - u) * (1 - u);
+    const b = 2 * u * (1 - u);
+    const c = u * u;
+    pts.push({ x: a * P0.x + b * K.x + c * P2.x, z: a * P0.z + b * K.z + c * P2.z });
+  }
+  return pts;
+}
+
 /** Arc pieces per roundabout corner: about one per 15 degrees of the sector. */
 function ringSteps(angle: number): number {
   return Math.max(2, Math.ceil(angle / (15 * DEG)));
@@ -259,6 +294,26 @@ export function computeSectors(g: RoadGraph): Sector[][] {
         if (curb && outer) {
           out.push({ angle, curb, outer });
           continue;
+        }
+      }
+      // Where a shortcut meets its street the corner flares into a funnel that draws cars in. Each
+      // reach stops short of its edge's middle (measured from where the building lines cross), so a
+      // flare never runs into the next junction's corner.
+      if (eA.shortcut !== eB.shortcut && angle < 170 * DEG) {
+        const OA = oA + eA.sidewalk;
+        const OB = oB + eB.sidewalk;
+        const k = lineIntersectT(add(p, { x: -dA.z, z: dA.x }, OA), dA, add(p, { x: dB.z, z: -dB.x }, OB), dB);
+        if (k !== null) {
+          const K = add(add(p, { x: -dA.z, z: dA.x }, OA), dA, k);
+          const room = (e: RoadEdge, d: Vec2) => Math.max(0, e.length / 2 - 2 - ((K.x - p.x) * d.x + (K.z - p.z) * d.z));
+          const reachA = Math.min(eA.shortcut ? FLARE.alley : FLARE.street, room(eA, dA));
+          const reachB = Math.min(eB.shortcut ? FLARE.alley : FLARE.street, room(eB, dB));
+          const curb = reachA > 0.5 || reachB > 0.5 ? flaredCorner(p, dA, oA, dB, oB, reachA, reachB) : null;
+          const outer = curb && flaredCorner(p, dA, OA, dB, OB, reachA, reachB);
+          if (curb && outer) {
+            out.push({ angle, curb, outer, flared: true });
+            continue;
+          }
         }
       }
       out.push({

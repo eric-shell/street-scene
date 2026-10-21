@@ -87,6 +87,8 @@ export class Hud {
   private smashEl: HTMLElement;
   private msgTimer = 0;
   private lastCountdown: number | null = null;
+  /** Free roam: a click on the minimap opens the full city map (the session sets this). */
+  onMapClick: (() => void) | null = null;
 
   constructor(parent: HTMLElement, world: World) {
     this.root = document.createElement('div');
@@ -143,6 +145,15 @@ export class Hud {
     this.boostCv = q('.hud-boost') as HTMLCanvasElement;
     this.map = new Minimap(world);
     this.root.append(this.map.canvas);
+    // Only in the open world (CSS makes the map clickable there), with a hint that it opens.
+    this.map.canvas.title = 'City map (Tab)';
+    this.map.canvas.addEventListener('click', () => {
+      if (this.root.classList.contains('open-world')) this.onMapClick?.();
+    });
+    const hint = document.createElement('div');
+    hint.className = 'hud-map-hint';
+    hint.append(icon(Compass, { size: 13 }), 'Map · Tab');
+    this.root.append(hint);
 
   }
 

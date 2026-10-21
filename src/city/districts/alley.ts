@@ -268,10 +268,11 @@ export const backAlleyModule: DistrictModule = {
       f.edges.forEach((e) => touched.add(e));
       touched.add(g.edges.length - 2).add(g.edges.length - 3);
       const path = [A, B];
-      // A kicker hump in the middle or two thirds of the way along, clear of both ends.
-      const jump = rng.chance(cfg.jumpChance) ? 1 : 0;
+      // A kicker hump in the middle or two thirds of the way along, clear of both (flared) mouths.
       const half = cfg.jumpRamp + cfg.jumpTop / 2;
-      const jumpS = Math.max(half + 15, Math.min(length - half - 15, length * rng.pick([0.5, 0.35, 0.65])));
+      const end = half + 15 + cfg.mouth.alley;
+      const jump = rng.chance(cfg.jumpChance) && length > 2 * end ? 1 : 0;
+      const jumpS = Math.max(end, Math.min(length - end, length * rng.pick([0.5, 0.35, 0.65])));
       ctx.addArea(
         { kind: 'backAlley', variant: 'shortcut', polygon: corridor(path, CITY.width.backAlley / 2 + CITY.sidewalkWidth.backAlley), path, nodes: [na, nb], edges: [id], faces: [], params: { length, jump, jumpS, seed: rng.int(1, 0x7ffffffe) } },
         footprint,
@@ -291,10 +292,13 @@ export const backAlleyModule: DistrictModule = {
     const hw = (P.width ?? CITY.width.backAlley) / 2 + CITY.sidewalkWidth.backAlley;
     if (P.jump) addJump(b, A, ux, uz, len, hw, P.jumpS);
     b.surfaces.push(cobblePatch(ctx, area.edges[0], area.id));
+    for (const nid of area.nodes) b.surfaces.push(...mouthPatches(ctx, nid, area.id));
     const g = ctx.graph;
-    const lo = [1, -1].map((sd) => mouthReach(g, area.nodes[0], area.edges, ux, uz, hw, sd));
+    // A shortcut's corners flare (blocks.ts computeSectors): its mouths reach further in.
+    const flare = cfg.mouth.alley;
+    const lo = [1, -1].map((sd) => mouthReach(g, area.nodes[0], area.edges, ux, uz, hw, sd) + flare);
     // Seen from B the alley runs backwards, so its left is our right.
-    const hi = [1, -1].map((sd) => len - mouthReach(g, area.nodes[1], area.edges, -ux, -uz, hw, -sd));
+    const hi = [1, -1].map((sd) => len - mouthReach(g, area.nodes[1], area.edges, -ux, -uz, hw, -sd) - flare);
     const sLo = Math.min(lo[0], lo[1]);
     const sHi = Math.max(hi[0], hi[1]);
     // Dumpsters against the walls, alternating sides, with bags and crates around them.
@@ -315,6 +319,7 @@ export const backAlleyModule: DistrictModule = {
       constructionSite(ctx, area, b, rng, len, hw, jumpClear);
       return b;
     }
+    funnelClutter(ctx, area, b, () => rng.pick(FUNNEL_MIX), rng);
     let side = rng.chance(0.5) ? 1 : -1;
     let dumpsters = 0;
     for (let s = sLo + rng.range(0, 6); s < sHi; s += cfg.dumpsterSpacing * rng.range(0.7, 1.3)) {
@@ -371,6 +376,25 @@ function mouthReach(g: RoadGraph, nid: number, own: readonly number[], tx: numbe
   return depth;
 }
 
+/** Surface patch priorities of a flared shortcut mouth: its junction fan over the street classification, its corners' sidewalks over offroad. */
+const MOUTH_ROAD = 5.5;
+const MOUTH_WALK = 3.5;
+
+/**
+ * A shortcut mouth's surfaces at node nid (blocks.ts flares its corners): the
+ * whole junction fan out to the curved curbs is asphalt, and each flared
+ * corner's curved sidewalk is sidewalk.
+ */
+function mouthPatches(ctx: BuildContext, nid: number, area: number): SurfacePatch[] {
+  const secs = ctx.sectors[nid];
+  if (!secs.some((s) => s.flared)) return [];
+  const fan: Vec2[] = [];
+  for (const s of secs) for (const p of s.curb) fan.push(p);
+  const out: SurfacePatch[] = [{ surface: 'road', polygon: fan, priority: MOUTH_ROAD, area }];
+  for (const s of secs) if (s.flared) out.push({ surface: 'sidewalk', polygon: [...s.curb, ...s.outer.slice().reverse()], priority: MOUTH_WALK, area });
+  return out;
+}
+
 /** An edge's road strip, curb to curb between its two mouths, as a cobble surface patch (the junction fans stay asphalt). */
 function cobblePatch(ctx: BuildContext, eid: number, area: number): SurfacePatch {
   const m = ctx.mouths[eid];
@@ -379,8 +403,8 @@ function cobblePatch(ctx: BuildContext, eid: number, area: number): SurfacePatch
 
 /** Construction site layout in a route shortcut (constructionSite). */
 const SITE = {
-  /** Fences stand this far behind the street's building line and stop this far inside the alley walls (m). */
-  fenceBack: 1,
+  /** Fences stand this far inside the alley's mouth (past the flared corners) and stop this far inside its walls (m). */
+  fenceBack: 0.6,
   fenceInset: 0.35,
   /**
    * Panel spacing never drops below this (m): two fence panel props closer than their radii plus
@@ -393,6 +417,9 @@ const SITE = {
   inside: 7,
   /** Gap between wall pieces along the alley (m): their radii plus [min, max]. */
   gap: [0.35, 1.7],
+  /** Cones of the taper along each flared mouth corner stand this far out from the curb (m), and this far off the street's own road strip. */
+  taper: 0.6,
+  taperClear: 1.2,
   /** Chance a soft piece stands out from the wall into the alley (it may block the line: it breaks). */
   intrude: 0.3,
 } as const;
@@ -422,7 +449,6 @@ const SOFT = new Set<PropKind>(['crate', 'trashBags', 'pallets', 'trafficCone', 
  * stop a car (PROP_DEFS breakSpeed). Pieces skip the kicker.
  */
 function constructionSite(ctx: BuildContext, area: Area, b: AreaBuild, rng: Rng, len: number, hw: number, jumpClear: (s: number, r: number) => boolean): void {
-  const g = ctx.graph;
   const [A, B] = area.path;
   const ux = (B.x - A.x) / len;
   const uz = (B.z - A.z) / len;
@@ -430,46 +456,43 @@ function constructionSite(ctx: BuildContext, area: Area, b: AreaBuild, rng: Rng,
   const across = Math.atan2(-ux, -uz);
   const along = Math.atan2(-uz, ux);
   const edge = hw - SITE.fenceInset;
-  /** Fence across the mouth at node nid (t: into the alley); returns its alley position (s) at lateral -edge and +edge. */
-  const fence = (nid: number, tx: number, tz: number): [number, number] | null => {
-    const n = g.nodes[nid];
-    let H = 0;
-    let d: { x: number; z: number } | null = null;
-    for (const eid of n.edges) {
-      if (area.edges.includes(eid)) continue;
-      const e = g.edges[eid];
-      H = Math.max(H, e.width / 2 + e.sidewalk);
-      d ??= unit(n, g.nodes[e.a === nid ? e.b : e.a]);
-    }
-    if (!d) return null;
-    let mx = -d.z;
-    let mz = d.x;
-    if (mx * tx + mz * tz < 0) {
-      mx = -mx;
-      mz = -mz;
-    }
-    const ox = n.x + mx * (H + SITE.fenceBack);
-    const oz = n.z + mz * (H + SITE.fenceBack);
-    // Lateral offset (left of A -> B) along the fence line, and where it meets the alley walls.
-    const lat0 = (ox - A.x) * -uz + (oz - A.z) * ux;
-    const dl = d.x * -uz + d.z * ux;
-    if (Math.abs(dl) < 0.3) return null;
-    const u1 = (edge - lat0) / dl;
-    const u2 = (-edge - lat0) / dl;
-    const ua = Math.min(u1, u2);
-    const span = Math.abs(u2 - u1);
+  const m = ctx.mouths[area.edges[0]];
+  /**
+   * Fence across the mouth at the A end (or B), wall to wall where the alley's
+   * straight walls start past the flared corners, fenceBack inside; returns its
+   * alley position (s) at lateral -edge and +edge.
+   */
+  const fence = (atA: boolean): [number, number] | null => {
+    const into = atA ? 1 : -1;
+    // P is the left wall seen from A (lateral +), N the right.
+    const Pw = atA ? m.aP.outer : m.bP.outer;
+    const Nw = atA ? m.aN.outer : m.bN.outer;
+    const lat = (p: Vec2) => (p.x - A.x) * -uz + (p.z - A.z) * ux;
+    const lN = lat(Nw);
+    const lP = lat(Pw);
+    if (lP - lN < 1) return null;
+    const at = (l: number): Vec2 => {
+      const u = (l - lN) / (lP - lN);
+      return { x: Nw.x + (Pw.x - Nw.x) * u + ux * into * SITE.fenceBack, z: Nw.z + (Pw.z - Nw.z) * u + uz * into * SITE.fenceBack };
+    };
+    const p0 = at(-edge);
+    const p1 = at(edge);
+    const span = Math.hypot(p1.x - p0.x, p1.z - p0.z);
+    const dx = (p1.x - p0.x) / span;
+    const dz = (p1.z - p0.z) / span;
     const count = Math.max(1, Math.floor(span / SITE.panelMin));
-    const step = span / count;
-    const yaw = Math.atan2(-d.z, d.x);
+    const yaw = Math.atan2(-dz, dx);
     for (let k = 0; k < count; k++) {
-      const u = ua + step * (k + 0.5);
-      b.destructibles.push({ kind: 'fencePanel', x: ox + d.x * u, z: oz + d.z * u, yaw, lift: 0, area: area.id });
+      const u = (span * (k + 0.5)) / count;
+      b.destructibles.push({ kind: 'fencePanel', x: p0.x + dx * u, z: p0.z + dz * u, yaw, lift: 0, area: area.id });
     }
-    const sOf = (u: number) => (ox + d!.x * u - A.x) * ux + (oz + d!.z * u - A.z) * uz;
-    return [sOf(u2), sOf(u1)];
+    const sOf = (p: Vec2) => (p.x - A.x) * ux + (p.z - A.z) * uz;
+    return [sOf(p0), sOf(p1)];
   };
-  const inF = fence(area.nodes[0], ux, uz) ?? [12, 12];
-  const outF = fence(area.nodes[1], -ux, -uz) ?? [len - 12, len - 12];
+  const inF = fence(true) ?? [12, 12];
+  const outF = fence(false) ?? [len - 12, len - 12];
+  // The flared mouths: a taper of cones along each curved curb, lining the funnel into the fence.
+  funnelClutter(ctx, area, b, () => 'trafficCone', rng);
   // A fence across a diagonal mouth is oblique: where it stands depends on the lateral offset.
   const fenceS = (f: [number, number], lat: number) => f[0] + ((Math.max(-edge, Math.min(edge, lat)) + edge) / (2 * edge)) * (f[1] - f[0]);
   const s0 = Math.max(inF[0], inF[1]);
@@ -526,6 +549,39 @@ function constructionSite(ctx: BuildContext, area: Area, b: AreaBuild, rng: Rng,
     }
   }
 }
+
+/**
+ * Dress a back alley's flared mouths: a piece from pick() at every inner point
+ * of each curved curb, SITE.taper out on the asphalt, none on the street's own
+ * road strip. Soft pieces only: they line the funnel, they never close it.
+ */
+function funnelClutter(ctx: BuildContext, area: Area, b: AreaBuild, pick: () => PropKind, rng: Rng): void {
+  const g = ctx.graph;
+  for (const nid of area.nodes) {
+    const n = g.nodes[nid];
+    ctx.sectors[nid].forEach((sec, k) => {
+      if (!sec.flared) return;
+      const eA = g.edges[n.edges[k]];
+      const street = eA.shortcut ? g.edges[n.edges[(k + 1) % n.edges.length]] : eA;
+      const sa = g.nodes[street.a];
+      const sb = g.nodes[street.b];
+      for (let i = 1; i + 1 < sec.curb.length; i++) {
+        const c = sec.curb[i];
+        // The building line lies behind the curb, so away from it is out onto the road.
+        const ox = c.x - sec.outer[i].x;
+        const oz = c.z - sec.outer[i].z;
+        const ol = Math.hypot(ox, oz) || 1;
+        const x = c.x + (ox / ol) * SITE.taper;
+        const z = c.z + (oz / ol) * SITE.taper;
+        if (distToSegment(x, z, sa.x, sa.z, sb.x, sb.z) - street.width / 2 < SITE.taperClear) continue;
+        b.destructibles.push({ kind: pick(), x, z, yaw: rng.range(0, Math.PI * 2), lift: 0, area: area.id });
+      }
+    });
+  }
+}
+
+/** Plain back alley mouths: what spills out of a back alley onto the funnel's asphalt. */
+const FUNNEL_MIX: PropKind[] = ['trashBags', 'crate', 'trashBags', 'barrel', 'trafficCone'];
 
 /** The back alley kicker: a height modifier across the alley (fading out behind the walls) plus a render hint. */
 function addJump(b: AreaBuild, A: Vec2, ux: number, uz: number, len: number, hw: number, center: number): void {
@@ -828,6 +884,30 @@ export function carveRouteShortcuts(ctx: PlanContext, routes: CarveRoute[]): voi
       if (sa !== undefined && sb !== undefined && shortcutSpan(sa, sb, e.length, total, r.closed, lo, hi)) a.variant = 'routeShortcut';
     }
   }
+  // Every back alley's area takes in its flared mouths, now that no more edges will be split.
+  for (const a of ctx.areas) if (a.kind === 'backAlley') a.polygon = alleyOutline(ctx, a.edges[0]);
+}
+
+/**
+ * A back alley's outline with both flared mouths (blocks.ts computeSectors):
+ * along its building lines, round each mouth's curved corners and across its
+ * opening on the street's curb line, so the area takes in its funnels and the
+ * cones that line them (and the HUD names the funnel the alley's).
+ */
+function alleyOutline(ctx: PlanContext, eid: number): Vec2[] {
+  const g = ctx.graph;
+  const sectors = ctx.sectors();
+  const e = g.edges[eid];
+  const funnel = (nid: number): Vec2[] => {
+    const n = g.nodes[nid];
+    const m = n.edges.length;
+    const k = n.edges.indexOf(eid);
+    // The corner before the alley ends on its clockwise side, the one after starts on its counterclockwise side.
+    const cw = sectors[nid][(k - 1 + m) % m];
+    const ccw = sectors[nid][k];
+    return [...cw.outer.slice().reverse(), cw.curb[0], ccw.curb[ccw.curb.length - 1], ...ccw.outer.slice().reverse()];
+  };
+  return [...funnel(e.a), ...funnel(e.b)];
 }
 
 /** Whether a route has room for at least one shortcut, the other routes' start, grid and finish kept clear (dry run: nothing is carved). */
@@ -1101,8 +1181,9 @@ function carve(ctx: PlanContext, routes: CarveRoute[], cut: Cut, rng: Rng): void
   const B = { x: g.nodes[nb].x, z: g.nodes[nb].z };
   const length = edge.length;
   const half = bcfg.jumpRamp + bcfg.jumpTop / 2;
-  const jump = length > 2 * (half + 15) && rng.chance(cfg.jumpChance) ? 1 : 0;
-  const jumpS = Math.max(half + 15, Math.min(length - half - 15, length * rng.pick([0.5, 0.42, 0.58])));
+  const end = half + 15 + bcfg.mouth.alley;
+  const jump = length > 2 * end && rng.chance(cfg.jumpChance) ? 1 : 0;
+  const jumpS = Math.max(end, Math.min(length - end, length * rng.pick([0.5, 0.42, 0.58])));
   ctx.addArea(
     {
       kind: 'backAlley',

@@ -26,10 +26,11 @@ import { DroneMode } from './drone';
 import type { CameraMode } from '../render/camera';
 import { InputManager } from '../input/inputManager';
 import { Hud, HudCar, HudData } from '../ui/hud';
+import { FullMap } from '../ui/fullMap';
+import { placeName } from '../ui/places';
 import { Settings } from '../ui/settings';
 import { formatTime } from '../ui/format';
 import { ReplayData } from '../replay/replay';
-import type { Area } from '../city/districts/types';
 import { PROP_DEFS } from '../city/props';
 
 interface Snap extends CarPose {
@@ -97,19 +98,6 @@ const isFollowCam = (v: ReplayCamMode): v is CameraMode => v === 'chase' || v ==
 /** The circuit gantry sign switches to the next label this many ticks after the player passes under it. */
 const SIGN_DELAY = 70;
 /** District names for the open world HUD; plain streets and filler pockets read as the city. */
-const AREA_NAMES: Partial<Record<Area['kind'], string>> = {
-  alley: 'Raceway alley',
-  backAlley: 'Back alley',
-  park: 'Park',
-  subway: 'Under the El',
-  river: 'River channel',
-  roundabout: 'Roundabout',
-  hills: 'The hills',
-  monument: 'Monument plaza',
-  waterfront: 'Waterfront',
-  lake: 'Lake',
-};
-const INFILL_NAMES: Record<string, string> = { lot: 'Parking lot', plaza: 'Plaza', cornerPlaza: 'Corner plaza', verge: 'Downtown' };
 /** A new district name shows as a HUD message once the car has been in it this long (s). */
 const AREA_SETTLE = 0.6;
 /** Nitrous screen warp easing rates in and out (1/s). */
@@ -209,6 +197,8 @@ export class RaceSession {
   private liveView: 'tv' | 'orbit' | null = null;
   /** Photo mode drone (0 key) and whether it paused the sim (live sessions hold still while it flies). */
   private drone: DroneMode | null = null;
+  /** Free roam city map (Tab or a click on the minimap); the session holds still while it is open. */
+  private fullMap: FullMap | null = null;
   private droneResume = false;
   private readonly uiRoot: HTMLElement;
   /** The camera rendered last frame (the drone starts from it). */
@@ -259,6 +249,18 @@ export class RaceSession {
     this.night.crowds.setEnabled(!this.openWorld);
     this.crowdCars = this.race.cars.map(() => ({ x: 0, z: 0, speed: 0 }));
     this.hud = new Hud(uiRoot, this.race.world);
+    this.hud.onMapClick = () => this.toggleMap();
+    if (this.openWorld) {
+      // Tab opens the city map while driving and closes it again; in menus (paused) it keeps moving focus.
+      const onTab = (e: KeyboardEvent) => {
+        if (e.code !== 'Tab' || e.repeat || e.altKey || e.ctrlKey || e.metaKey) return;
+        if (!this.fullMap && (this.paused || this.drone || this.cine.active)) return;
+        e.preventDefault();
+        this.toggleMap();
+      };
+      window.addEventListener('keydown', onTab);
+      this.unsub.push(() => window.removeEventListener('keydown', onTab));
+    }
     this.sparks = new Sparks(settings.quality);
     this.night.scene.add(this.sparks.mesh);
     const loads: Promise<void>[] = [];
@@ -403,6 +405,37 @@ export class RaceSession {
       }
       this.cine.skip();
     } else if (this.finishedAt >= 0 && !this.resultsShown) this.skipFinish = true;
+  }
+
+  /** True while the free roam city map is open (Escape closes it). */
+  get mapOpen(): boolean {
+    return !!this.fullMap;
+  }
+
+  /**
+   * Free roam: Tab or a click on the minimap opens the full city map over the
+   * paused session; Tab, Escape, its close button or the backdrop close it.
+   */
+  toggleMap(): void {
+    if (this.fullMap) return this.closeMap();
+    if (!this.openWorld || this.isReplay || this.drone || this.cine.active || this.paused) return;
+    const p = this.curr[0];
+    this.paused = true;
+    this.input.releaseAll();
+    this.input.setTouchVisible(false);
+    this.fullMap = new FullMap(this.race.world, { x: p.x, z: p.z, yaw: p.yaw, isPlayer: true }, { onClose: () => this.closeMap() });
+    this.uiRoot.append(this.fullMap.root);
+    this.fullMap.draw();
+  }
+
+  closeMap(): void {
+    if (!this.fullMap) return;
+    this.fullMap.dispose();
+    this.fullMap = null;
+    // Keys pressed on the map must not reach the car as driving input.
+    this.input.releaseAll();
+    this.paused = false;
+    this.input.setTouchVisible(true);
   }
 
   /** True while the photo mode drone flies (Escape brings the camera back to the car). */
@@ -935,7 +968,7 @@ export class RaceSession {
   /** Track the district under the player; a new one is announced once the car settles in it. */
   private updateArea(x: number, z: number, dt: number): void {
     const a = this.race.world.areaAt(x, z);
-    const name = !a ? 'Downtown' : a.kind === 'infill' ? (INFILL_NAMES[a.variant] ?? 'Downtown') : (AREA_NAMES[a.kind] ?? 'Downtown');
+    const name = placeName(a);
     if (name === this.areaName) {
       this.areaNext = '';
       return;
@@ -954,6 +987,8 @@ export class RaceSession {
 
   dispose(): void {
     this.gr.post.setNitroFx(0, 0);
+    this.fullMap?.dispose();
+    this.fullMap = null;
     this.drone?.dispose();
     this.drone = null;
     this.unsub.forEach((u) => u());

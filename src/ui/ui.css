@@ -2401,3 +2401,193 @@ body > .mw {
     width: min(300px, 46vw);
   }
 }
+
+/* ---------- free roam city map ---------- */
+/* In the open world the minimap opens the full map (click or Tab); a small hint sits above it. */
+.hud.open-world .hud-map {
+  pointer-events: auto;
+  cursor: pointer;
+}
+.hud.open-world .hud-map:hover {
+  filter: brightness(1.15);
+}
+.hud-map-hint {
+  display: none;
+  position: absolute;
+  left: max(10px, env(safe-area-inset-left));
+  bottom: calc(max(10px, env(safe-area-inset-bottom)) + 176px);
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--soft);
+  background: rgba(25, 24, 26, 0.72);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.hud.open-world .hud-map-hint {
+  display: flex;
+}
+.hud-map-hint svg {
+  color: var(--accent);
+}
+@media (max-width: 720px), (max-height: 500px) {
+  .hud-map-hint {
+    bottom: calc(max(10px, env(safe-area-inset-bottom)) + 116px);
+  }
+}
+.fullmap-screen {
+  padding: 16px;
+  box-sizing: border-box;
+}
+.fullmap {
+  width: min(1180px, 100%);
+  height: min(880px, 100%);
+  box-sizing: border-box;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 14px 16px;
+  background: linear-gradient(90deg, var(--accent) 0 64px, var(--line-strong) 64px) top left / 100% 2px no-repeat, var(--panel);
+}
+.fullmap-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.fullmap-head h2 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 22px;
+}
+.fullmap-head h2 > svg {
+  color: var(--accent);
+}
+.fullmap-here {
+  flex: 1;
+  color: var(--muted);
+  font-size: 14px;
+}
+.fullmap-here b {
+  color: var(--accent-2);
+  font-weight: 800;
+}
+.fullmap-body {
+  display: flex;
+  gap: 16px;
+  min-height: 0;
+}
+.fullmap-map {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.fullmap-canvas {
+  display: block;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: crosshair;
+}
+.fullmap-legend {
+  width: 210px;
+  flex: none;
+  overflow: auto;
+}
+.fullmap-legend h3 {
+  margin: 0 0 10px;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.fullmap-legend ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fullmap-legend li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.fullmap-legend .grow {
+  flex: 1;
+}
+.fullmap-count {
+  color: var(--accent-2);
+  font-weight: 800;
+  font-size: 13px;
+}
+.fullmap-swatch {
+  width: 22px;
+  height: 14px;
+  flex: none;
+  box-sizing: border-box;
+}
+.fullmap-swatch.fill {
+  border: 1.5px solid;
+  border-radius: 2px;
+}
+.fullmap-swatch.line {
+  height: 0;
+  border-top: 4px solid;
+  border-radius: 2px;
+}
+.fullmap-swatch.dash {
+  height: 0;
+  border-top: 4px dashed;
+}
+.fullmap-swatch.ring {
+  width: 14px;
+  margin: 0 4px;
+  border: 3px solid;
+  border-radius: 50%;
+}
+.fullmap-swatch.icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+}
+.fullmap-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.fullmap-pointer {
+  color: var(--soft);
+  font-weight: 600;
+}
+@media (max-width: 760px) {
+  .fullmap-body {
+    flex-direction: column;
+  }
+  .fullmap-legend {
+    width: auto;
+    max-height: 32%;
+  }
+  .fullmap-legend ul {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+  }
+  .fullmap-keys,
+  .fullmap-here {
+    display: none;
+  }
+}

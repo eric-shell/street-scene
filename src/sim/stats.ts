@@ -10,6 +10,7 @@ import { TICK_HZ } from './constants';
 
 const flatWorld = {
   heightAt: () => 0,
+  driveHeightAt: () => 0,
   slopeAt: () => ({ gx: 0, gz: 0 }),
   surfaceAt: () => 'road',
 } as unknown as World;

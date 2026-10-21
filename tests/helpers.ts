@@ -8,6 +8,7 @@ import { InputFrame, unpackInput } from '../src/sim/input';
 export function flatWorld(): World {
   return {
     heightAt: () => 0,
+    driveHeightAt: () => 0,
     slopeAt: () => ({ gx: 0, gz: 0 }),
     surfaceAt: () => 'road',
     collideCircle: (_x: number, _z: number, _r: number, out: unknown[]) => ((out.length = 0), 0),

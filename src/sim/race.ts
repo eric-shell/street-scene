@@ -205,7 +205,7 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
   const cars: RaceCar[] = entrants.map((e, i) => {
     const slot = slots[i];
     const tuning = tuningForBuild(e.carId, validatePerformance(e.performance));
-    const state = createCar(slot.x, slot.z, slot.yaw, w.heightAt(slot.x, slot.z));
+    const state = createCar(slot.x, slot.z, slot.yaw, w.driveHeightAt(slot.x, slot.z));
     state.manualGearbox = i === 0 && config.manualGearbox;
     // AI drives with traction control: stable lines, no power oversteer surprises.
     state.tractionControl = i === 0 ? config.tractionControl === true : true;

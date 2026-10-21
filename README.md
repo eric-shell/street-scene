@@ -56,6 +56,7 @@ Useful URL parameters: `?seed=anything` (custom event), `?race=circuit|sprint|dr
 | Physics tuning panel (always shown when enabled in Settings > Debug) | ` or F2 | | |
 | Menu free camera | Shift+F | | |
 | Music: mute / previous / next | M / [ / ] | | Player card |
+| City map (free roam): districts, names and a legend; again or Esc to close | Tab or click the minimap | | Tap the minimap |
 
 Drift by tapping the handbrake into a corner, or with a clutch kick (lift and stab the throttle while steering hard), then hold it with throttle and counter steer. With **traction control** off (the default, Settings), the driven wheels can spin: launches at high revs, full throttle in low gears mid corner (power oversteer on the rear wheel drive Proto Compact), slippery sidewalks and dirt, crests and clutch kicks. Spinning wheels lose most of their sideways grip. Traction control caps drive at the grip limit and cuts power in slides; AI opponents always drive with it. Nitrous refills from drifting, near misses with walls and drafting behind opponents. In replays, **C** cycles chase, TV, orbit, close, hood and free cameras. Drone mode uses WASD + drag; Space/Ctrl move up and down, Shift boosts, T toggles the auto tour. In a race or free roam, **0** freezes the action and hands the camera to the drone from where it is; 0 or Esc flies back to the car.
 

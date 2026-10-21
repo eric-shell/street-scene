@@ -460,6 +460,8 @@ function togglePause(): void {
   if (state !== 'race' || !session) return;
   // Escape in the photo mode drone flies back to the car instead of pausing.
   if (session.droneActive) return session.toggleDrone();
+  // Escape on the free roam city map closes the map instead of pausing.
+  if (session.mapOpen) return session.closeMap();
   if (session.paused) {
     session.paused = false;
     setOverlay(null);

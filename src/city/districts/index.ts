@@ -206,7 +206,25 @@ export function planDistricts(seed: number, g: RoadGraph, hooks: PlanHooks = {})
       const j = Math.floor((z - rz0) / RASTER_CELL);
       if (i < 0 || j < 0 || i >= rcols || j >= rrows) return null;
       const id = raster[j * rcols + i];
-      return id >= 0 ? areas[id] : null;
+      // The raster samples cell centers, so an area thinner than a cell (a 5 m lot on a diagonal)
+      // can be missed: test the areas of this cell and its neighbours against their outlines,
+      // highest priority first, and keep the raster's answer only when none contains the point.
+      let best: Area | null = null;
+      for (let dj = -1; dj <= 1; dj++) {
+        for (let di = -1; di <= 1; di++) {
+          const ii = i + di;
+          const jj = j + dj;
+          if (ii < 0 || jj < 0 || ii >= rcols || jj >= rrows) continue;
+          const c = raster[jj * rcols + ii];
+          if (c < 0 || c === best?.id) continue;
+          const a: Area = areas[c];
+          const pa = AREA_PRIORITY[a.kind];
+          const pb = best ? AREA_PRIORITY[best.kind] : -1;
+          if (best && (pa < pb || (pa === pb && a.id < best.id))) continue;
+          if (pointInPolygon(x, z, a.polygon)) best = a;
+        }
+      }
+      return best ?? (id >= 0 ? areas[id] : null);
     },
     surfaceAt(x, z) {
       if (!surfaces) return null;

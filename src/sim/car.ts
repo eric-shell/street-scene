@@ -149,7 +149,7 @@ export function placeCar(c: CarState, x: number, z: number, yaw: number, world: 
   c.x = x;
   c.z = z;
   c.yaw = yaw;
-  c.y = world.heightAt(x, z);
+  c.y = world.driveHeightAt(x, z);
   c.vx = c.vy = c.vz = 0;
   c.yawRate = c.pitchRate = c.rollRate = 0;
   c.pitch = c.roll = 0;
@@ -444,7 +444,8 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
     const w = c.wheels[i];
     const wx = c.x + fx * wu + lx * wv;
     const wz = c.z + fz * wu + lz * wv;
-    const ground = world.heightAt(wx, wz);
+    // Wheels ride the paving: up onto a sidewalk over its curb, not through it.
+    const ground = world.driveHeightAt(wx, wz);
     const comp = ground - (c.y + wv * c.roll - wu * c.pitch);
     const compVel = (comp - w.compression) / h;
     w.compression = comp;
@@ -605,7 +606,7 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
   c.rollRate += ((rollTorque + m * c.aLat * t.cgHeight) / Ir) * h;
   c.pitch = clamp(c.pitch + c.pitchRate * h, -0.15, 0.15);
   c.roll = clamp(c.roll + c.rollRate * h, -0.15, 0.15);
-  const ground = world.heightAt(c.x, c.z);
+  const ground = world.driveHeightAt(c.x, c.z);
   if (c.y < ground - 0.35) {
     if (c.vy < 0 && -c.vy * h > c.bottomOut) {
       c.bottomOut = -c.vy * h;

@@ -21,7 +21,16 @@ export const CITY = {
   /** Default sidewalk width (per edge: RoadEdge.sidewalk, from sidewalkWidth by kind). */
   sidewalk: 4,
   sidewalkWidth: { street: 4, avenue: 4, diagonal: 4, boulevard: 4, alley: 1.4, backAlley: 0.8 } as const,
-  curbHeight: 0.15,
+  /**
+   * Sidewalk and plaza paving above the road (m): a low, rolled curb that cars drive up onto
+   * (World.driveHeightAt) without being thrown about.
+   */
+  curbHeight: 0.09,
+  /**
+   * The sim's curb: a wheel climbs curbHeight across this span (m), starting `road` out on the road
+   * (a tire meets the curb's edge before its contact point does) and topping out `walk` onto the paving.
+   */
+  curbRamp: { road: 0.22, walk: 0.12 },
 
   /**
    * Rolling hills: amplitudes in meters, frequencies in rad/m. Worst case grade is
@@ -197,6 +206,12 @@ export const CITY = {
       jumpFade: 1.5,
       /** Dumpster spacing along each wall (m). */
       dumpsterSpacing: 11,
+      /**
+       * Shortcut mouths flare into funnels (blocks.ts computeSectors): the corners where a back alley
+       * meets its street are rounded off this far along the street and along the alley (m), so a
+       * racer can turn in late or early and still make it. Shorter where the next junction is close.
+       */
+      mouth: { street: 9, alley: 7 },
       /**
        * Route shortcuts (carveRouteShortcuts): every circuit and sprint gets at
        * least one back alley that both starts and ends on the route and saves
