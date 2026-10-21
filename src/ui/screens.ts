@@ -354,17 +354,19 @@ export function onOff(value: boolean, onChange: (v: boolean) => void): HTMLEleme
   );
 }
 
-/** Bindings per device for the settings dialog: keys (alternatives) and what they do. */
-const CONTROLS: Record<'keyboard' | 'gamepad' | 'touch', [string[], string][]> = {
+/** Bindings per device for the settings dialog (and free roam's controls, game/session.ts): keys (alternatives) and what they do. */
+export const CONTROLS: Record<'keyboard' | 'gamepad' | 'touch', [string[], string][]> = {
   keyboard: [
     [['W', '↑'], 'Throttle'],
     [['S', '↓'], 'Brake, reverse'],
     [['A', 'D'], 'Steer'],
     [['Space'], 'Handbrake'],
-    [['Shift', 'N'], 'Nitrous'],
+    [['N'], 'Nitrous'],
+    [['Shift'], 'Horn (hold for a long blast)'],
     [['Q', 'E'], 'Shift down, up (manual)'],
     [['R'], 'Reset car'],
     [['C'], 'Camera'],
+    [['H'], 'Hide the HUD (free roam, drone)'],
     [['Esc'], 'Pause'],
     [['M'], 'Mute music'],
     [['[', ']'], 'Previous, next track'],

@@ -15,7 +15,8 @@ import type { NightScene } from '../render/scene';
 import type { GameRenderer } from '../render/scene';
 import { routeSample } from '../city/route';
 import { h, btn } from '../ui/dom';
-import { ArrowDown, ArrowUp, Compass, Drone, Gauge, Mountain, Route, X, icon } from '../ui/icons';
+import { HudCard, hudControlsOpen } from '../ui/hudCard';
+import { ArrowDown, ArrowUp, Drone, Route, icon } from '../ui/icons';
 import { MAP, MapCar, Minimap } from '../ui/minimap';
 
 export interface DroneOptions {
@@ -23,8 +24,10 @@ export interface DroneOptions {
   start?: { x: number; y: number; z: number; yaw: number; pitch: number };
   /** Escape exits (default true); a session handles Escape itself. */
   escape?: boolean;
-  /** Controls hint line. */
-  hint?: string;
+  /** The card's title (default Explore, the menu's name for it). */
+  title?: string;
+  /** What the exit keys do, for the controls dialog (default Exit). */
+  exitLabel?: string;
   /** Cars to mark on the minimap (a race's field, frozen or replaying); none from the menu. */
   cars?: () => readonly MapCar[];
   /**
@@ -66,9 +69,7 @@ export class DroneMode {
   private tourS = 0;
   private time = 0;
   private root: HTMLElement;
-  private altEl: HTMLElement;
-  private spdEl: HTMLElement;
-  private hdgEl: HTMLElement;
+  private card: HudCard;
   private tourBtn: HTMLButtonElement;
   private map: Minimap;
   private mapZoom: number = MAP.scale;
@@ -100,6 +101,8 @@ export class DroneMode {
     window.addEventListener(
       'keydown',
       (e) => {
+        // Nothing flies under the controls dialog (its card closes it on Escape).
+        if (hudControlsOpen()) return;
         if (e.code === 'Escape' && opts.escape !== false) onExit();
         if (e.code === 'KeyT' && !e.repeat) this.setTour(!this.tour);
         this.keys.add(e.code);
@@ -159,9 +162,6 @@ export class DroneMode {
     );
 
     // HUD
-    this.altEl = h('b', {}, '0 m');
-    this.spdEl = h('b', {}, '0');
-    this.hdgEl = h('b', {}, 'N');
     this.tourBtn = btn(Route, 'Tour', () => this.setTour(!this.tour), 'small');
     const hold = (iconNode: typeof ArrowUp, dir: number) => {
       const b = h('button', { class: 'btn icon-only drone-touch', type: 'button', 'aria-label': dir > 0 ? 'Up' : 'Down' });
@@ -176,21 +176,31 @@ export class DroneMode {
       b.addEventListener('pointerleave', stop);
       return b;
     };
-    this.root = h(
-      'div',
-      { class: 'drone-ui' },
-      h(
-        'div',
-        { class: 'drone-top' },
-        h('div', { class: 'hud-chip' }, h('span', { class: 'ic' }, icon(Drone, { size: 16 })), h('b', {}, 'DRONE')),
-        h('div', { class: 'hud-chip' }, h('span', { class: 'ic' }, icon(Mountain, { size: 16 })), this.altEl),
-        h('div', { class: 'hud-chip' }, h('span', { class: 'ic' }, icon(Gauge, { size: 16 })), this.spdEl),
-        h('div', { class: 'hud-chip' }, h('span', { class: 'ic' }, icon(Compass, { size: 16 })), this.hdgEl),
-      ),
-      h('div', { class: 'drone-actions' }, this.tourBtn, btn(X, 'Exit', onExit, 'small')),
-      h('div', { class: 'drone-updown' }, hold(ArrowUp, 1), hold(ArrowDown, -1)),
-      h('div', { class: 'drone-hint muted' }, opts.hint ?? 'WASD fly · drag to look · Space / Ctrl up / down · Shift boost · wheel speed · T tour · 0 or Esc exit'),
-    );
+    // The HUD card free roam shares (ui/hudCard.ts), in the Explore row's cyan.
+    const exitLabel = opts.exitLabel ?? 'Exit';
+    this.card = new HudCard({
+      hue: 'cyan',
+      icon: Drone,
+      title: opts.title ?? 'Explore',
+      status: 'Free flight',
+      stats: ['Altitude', 'Speed', 'Heading'],
+      actions: [this.tourBtn],
+      onExit,
+      exitTitle: exitLabel,
+      controls: [
+        [['W', 'A', 'S', 'D'], 'Fly (or the arrow keys)'],
+        [['Drag'], 'Look around'],
+        [['Space', 'Ctrl'], 'Climb / descend (or E, Q)'],
+        [['Shift'], 'Boost'],
+        [['Wheel'], 'Cruise speed'],
+        [['T'], 'Tour the route'],
+        [['H'], 'Hide the HUD'],
+        [['0', 'Esc'], exitLabel],
+        [['Left stick'], 'Gamepad: fly; right stick looks, triggers climb and descend'],
+        [['Touch'], 'Left half drags to fly, right half to look; the arrows climb and descend'],
+      ],
+    });
+    this.root = h('div', { class: 'drone-ui' }, this.card.el, h('div', { class: 'drone-updown' }, hold(ArrowUp, 1), hold(ArrowDown, -1)));
     this.map = new Minimap(world, 'hud-map drone-map');
     this.root.append(this.map.canvas);
     this.cars = opts.cars;
@@ -206,6 +216,7 @@ export class DroneMode {
   private setTour(on: boolean): void {
     this.tour = on;
     this.tourBtn.classList.toggle('primary', on);
+    this.card.setStatus(on ? 'Touring the route' : 'Free flight');
     if (on) {
       const p = this.world.routeProgress(this.pos.x, this.pos.z);
       this.tourS = p.s;
@@ -281,10 +292,10 @@ export class DroneMode {
     this.camera.rotateZ(-this.roll);
 
     const alt = this.pos.y - this.world.heightAt(this.pos.x, this.pos.z);
-    this.altEl.textContent = `${Math.round(alt)} m`;
-    this.spdEl.textContent = `${Math.round((this.tour ? 16 : this.vel.length()) * 3.6)} km/h`;
+    this.card.setStat(0, `${Math.round(alt)} m`);
+    this.card.setStat(1, `${Math.round((this.tour ? 16 : this.vel.length()) * 3.6)} km/h`);
     const deg = ((((-this.yaw * 180) / Math.PI) % 360) + 360) % 360;
-    this.hdgEl.textContent = `${['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8]} ${Math.round(deg)}°`;
+    this.card.setStat(2, `${['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8]} ${Math.round(deg)}°`);
     this.mapZoom += (mapScale(alt) - this.mapZoom) * (1 - Math.exp(-dt * 3));
     const fov = 2 * Math.atan(Math.tan((this.camera.fov * Math.PI) / 360) * this.gr.aspect);
     this.map.draw({ x: this.pos.x, z: this.pos.z, yaw: this.yaw, scale: this.mapZoom, marker: 'drone', fov }, this.cars?.() ?? []);
@@ -303,6 +314,7 @@ export class DroneMode {
 
   dispose(): void {
     this.abort.abort();
+    this.card.dispose();
     this.root.remove();
   }
 }

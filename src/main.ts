@@ -582,6 +582,7 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
     // Free roam steers to the city's waypoint, which the menu's map may already have set.
     waypoint: kind === 'roam' ? waypointFor(config.seed) : undefined,
     seedText: config.seed === seedFromString(seedStr) ? seedStr : undefined,
+    onQuit: wipeToMenu,
   });
   state = 'race';
   sessionKind = kind;

@@ -4,8 +4,9 @@
  * Reads a snapshot each frame; never touches the sim.
  */
 import type { World } from '../city/world';
-import { FlagTriangleRight, Timer, Trophy, TriangleAlert, Zap, Award, Ghost, icon, Compass, Hammer, Disc3, MapPin, Navigation2 } from './icons';
+import { FlagTriangleRight, Timer, Trophy, TriangleAlert, Zap, Award, Ghost, icon, Compass, Disc3, MapPin, Navigation2 } from './icons';
 import { formatTime } from './format';
+import type { HudCard } from './hudCard';
 import { MapCar, Minimap } from './minimap';
 import { PALETTE, rgb, rgba } from './palette';
 import { formatDistance } from './places';
@@ -91,8 +92,8 @@ export class Hud {
   private driftEl: HTMLElement;
   private progressFill: HTMLElement;
   private ghostEl: HTMLElement;
-  private areaEl: HTMLElement;
-  private smashEl: HTMLElement;
+  /** Free roam: the HUD card the drone shares (ui/hudCard.ts) on top of the chips, with the district and readouts. */
+  private card: HudCard | null = null;
   private zoneEl: HTMLElement;
   private zoneText: HTMLElement;
   private zoneLeft: HTMLElement;
@@ -116,8 +117,6 @@ export class Hud {
         <div class="hud-chip hud-time"><span class="ic"></span><b class="v"></b></div>
         <div class="hud-chip hud-best"><span class="ic"></span><b class="v"></b></div>
         <div class="hud-chip hud-ghost"><span class="ic"></span><b class="v">Ghost</b></div>
-        <div class="hud-chip hud-area"><span class="ic"></span><b class="v"></b></div>
-        <div class="hud-chip hud-smash"><span class="ic"></span><b class="v"></b></div>
         <div class="hud-chip hud-zone"><span class="ic"></span><b class="v"></b><span class="left"><i></i></span></div>
         <div class="hud-chip hud-waypoint"><span class="ic"></span><b class="v"></b><span class="dir"></span></div>
       </div>
@@ -141,8 +140,6 @@ export class Hud {
     q('.hud-time .ic').appendChild(icon(Timer, { size: 16 }));
     q('.hud-best .ic').appendChild(icon(Award, { size: 16 }));
     q('.hud-ghost .ic').appendChild(icon(Ghost, { size: 16 }));
-    q('.hud-area .ic').appendChild(icon(Compass, { size: 16 }));
-    q('.hud-smash .ic').appendChild(icon(Hammer, { size: 16 }));
     q('.hud-zone .ic').appendChild(icon(Disc3, { size: 16 }));
     this.zoneEl = q('.hud-zone');
     this.zoneText = q('.hud-zone .v');
@@ -152,8 +149,6 @@ export class Hud {
     this.wpEl = q('.hud-waypoint');
     this.wpText = q('.hud-waypoint .v');
     this.wpDir = q('.hud-waypoint .dir');
-    this.areaEl = q('.hud-area .v');
-    this.smashEl = q('.hud-smash .v');
     q('.hud-wrong .ic').appendChild(icon(TriangleAlert, { size: 28 }));
     q('.hud-nitro .ic').appendChild(icon(Zap, { size: 18 }));
     this.posEl = q('.hud-pos .v');
@@ -184,6 +179,12 @@ export class Hud {
 
   }
 
+  /** Puts the HUD card (free roam's) on top of the chips; update() fills it while the world is open. */
+  setCard(card: HudCard): void {
+    this.card = card;
+    this.root.querySelector('.hud-tl')?.prepend(card.el);
+  }
+
   message(text: string, seconds = 2.2): void {
     this.msgEl.textContent = text;
     this.msgEl.classList.add('show');
@@ -192,10 +193,11 @@ export class Hud {
 
   update(d: HudData, dt: number): void {
     this.root.classList.toggle('open-world', !!d.openWorld);
-    if (d.openWorld) {
-      if (this.areaEl.textContent !== d.openWorld.area) this.areaEl.textContent = d.openWorld.area;
-      const smash = `${d.openWorld.smashed} smashed · top ${Math.round(d.openWorld.topKmh)}`;
-      if (this.smashEl.textContent !== smash) this.smashEl.textContent = smash;
+    if (d.openWorld && this.card) {
+      this.card.setStatus(d.openWorld.area);
+      this.card.setStat(0, formatTime(d.raceTime));
+      this.card.setStat(1, String(d.openWorld.smashed));
+      this.card.setStat(2, `${Math.round(d.openWorld.topKmh)} km/h`);
     }
     const racingMode = d.mode !== 'drift';
     this.posEl.textContent = racingMode ? `${d.position}/${d.carCount}` : 'Drift';

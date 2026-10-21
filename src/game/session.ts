@@ -31,7 +31,10 @@ import { Hud, HudCar, HudData } from '../ui/hud';
 import { openFullMap, type FullMap, type WaypointStore } from '../ui/fullMap';
 import { placeName } from '../ui/places';
 import { toast } from '../ui/dom';
-import { MapPinned } from '../ui/icons';
+import { Compass, MapIcon, MapPinned } from '../ui/icons';
+import { HudCard } from '../ui/hudCard';
+import { CONTROLS } from '../ui/screens';
+import { btn } from '../ui/dom';
 import type { Vec2 } from '../sim/math';
 import { Settings } from '../ui/settings';
 import { formatTime } from '../ui/format';
@@ -168,6 +171,8 @@ export interface SessionOptions {
   waypoint?: WaypointStore;
   /** The seed as the player knows it, for the map's header. */
   seedText?: string;
+  /** Free roam: the HUD card's Exit, back to the menu. */
+  onQuit?: () => void;
 }
 
 export interface FinishInfo {
@@ -252,6 +257,10 @@ export class RaceSession {
   private flash = 0;
   /** Open world (free roam): no crowds, fireworks or line celebrations. */
   private readonly openWorld: boolean;
+  /** Free roam: the HUD card the drone shares (ui/hudCard.ts), on top of the HUD's chips. */
+  private card: HudCard | null = null;
+  /** The controls dialog paused the drive (and so unpauses it when it closes). */
+  private controlsPaused = false;
   /** Text on the circuit gantry sign, and the tick a pending change is applied (-1 = none). */
   private signText = '';
   private signAt = -1;
@@ -291,6 +300,21 @@ export class RaceSession {
     this.hud.onMapClick = () => this.toggleMap();
     this.hazards = new HazardFx(this.night.drawbridge, this.hud.root);
     if (this.openWorld) {
+      // The same card as the drone's, in free roam's green from the menu: the district, time, smashes and top speed.
+      this.card = new HudCard({
+        hue: 'green',
+        icon: Compass,
+        title: 'Free roam',
+        status: '',
+        stats: ['Time', 'Smashed', 'Top speed'],
+        actions: [btn(MapIcon, 'Map', () => this.toggleMap(), 'small')],
+        onExit: () => opts.onQuit?.(),
+        exitTitle: 'Back to the menu',
+        controls: [...CONTROLS.keyboard, [['Tab'], 'City map'], [['0'], 'Drone photo mode']],
+        canHide: () => !this.paused && !this.fullMap && !this.cine.active,
+        onControls: (open) => this.pauseForControls(open),
+      });
+      this.hud.setCard(this.card);
       // Tab opens the city map while driving and closes it again; in menus (paused) it keeps moving focus.
       const onTab = (e: KeyboardEvent) => {
         if (e.code !== 'Tab' || e.repeat || e.altKey || e.ctrlKey || e.metaKey) return;
@@ -486,6 +510,15 @@ export class RaceSession {
     });
   }
 
+  /** Free roam: the drive pauses under the HUD card's controls dialog, as under the map (keys there never reach the car). */
+  private pauseForControls(open: boolean): void {
+    if (open === this.controlsPaused || (open && this.paused)) return;
+    this.controlsPaused = open;
+    this.paused = open;
+    this.input.releaseAll();
+    this.input.setTouchVisible(!open);
+  }
+
   /** Set or clear the free roam waypoint (render only). */
   private setWaypoint(w: Vec2 | null): void {
     this.wp.set(w ? { x: w.x, z: w.z } : null);
@@ -546,7 +579,8 @@ export class RaceSession {
     this.drone = new DroneMode(this.gr, this.night, this.race.world, this.uiRoot, () => this.toggleDrone(), {
       start: { x: cam.position.x, y: cam.position.y, z: cam.position.z, yaw: Math.atan2(dir.x, dir.z), pitch: Math.asin(Math.max(-1, Math.min(1, dir.y))) },
       escape: false,
-      hint: 'WASD fly · drag to look · Space / Ctrl up / down · Shift boost · wheel speed · T tour · 0 or Esc back to the car',
+      title: 'Drone',
+      exitLabel: 'Back to the car',
       cars: () => this.mapCars(),
     });
     this.droneResume = !this.isReplay;
@@ -1113,6 +1147,7 @@ export class RaceSession {
     this.fullMap = null;
     this.drone?.dispose();
     this.drone = null;
+    this.card?.dispose();
     this.unsub.forEach((u) => u());
     this.freeCam?.dispose();
     this.hazards.dispose();
