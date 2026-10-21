@@ -1,7 +1,7 @@
 /**
  * Sound effects with Web Audio. Synthesized (no asset files):
  *  - impacts: car vs car crunch, wall/barrier thud, guard rail clang, and prop
- *    breaks by kind (pole clang + glass, hollow can bang, bench crunch, big
+ *    breaks by kind (pole clang + glass, hollow can bang, bench crunch, a hydrant's gush, big
  *    bus stop shatter, leafy bush swish, pot crack, cafe chair clatter, plastic
  *    barrel thunk, crate splinter, dumpster boom, trash bag thump). Each is
  *    rendered once into a few AudioBuffer variants
@@ -43,8 +43,12 @@ export interface SfxCar {
 }
 
 export type WallHitKind = 'wall' | 'barrier' | 'rail';
-/** Prop kinds with their own impact sound (news boxes sound like garbage cans, park lamps like streetlights; construction and night market pieces borrow the nearest material). */
-type PropSound = Exclude<PropKind, 'newsBox' | 'parkLamp' | ConstructionPropKind | MarketPropKind>;
+/**
+ * Prop kinds with their own impact sound (news boxes sound like garbage cans, park lamps like
+ * streetlights; construction pieces, most neighbourhood furniture and the night market's pieces
+ * borrow the nearest material).
+ */
+type PropSound = Exclude<PropKind, 'newsBox' | 'parkLamp' | ConstructionPropKind | MarketPropKind | 'mailbox' | 'parkingMeter' | 'phoneBooth' | 'vendingMachine'>;
 export type SfxBank = 'crash' | WallHitKind | PropSound | 'firework';
 type Bank = SfxBank;
 const PROP_SOUND: Record<PropKind, PropSound> = {
@@ -71,6 +75,11 @@ const PROP_SOUND: Record<PropKind, PropSound> = {
   marketStall: 'cafeTable',
   fruitCrates: 'crate',
   foodCart: 'garbageCan',
+  hydrant: 'hydrant',
+  parkingMeter: 'trafficLight',
+  mailbox: 'garbageCan',
+  phoneBooth: 'busStop',
+  vendingMachine: 'dumpster',
 };
 
 const VARIANTS = 3;
@@ -444,6 +453,18 @@ const RECIPES: Record<Bank, { seconds: number; make(t: Tape): void }> = {
         [b * 4.1, 0.2, 0.1],
       ]);
       t.grains(0.05, 0.9, 25, 0.25, 1200, 4000, 2);
+    },
+  },
+  // Fire hydrant: a dull cast iron clunk as it shears off, then the water main letting go.
+  hydrant: {
+    seconds: 1.8,
+    make(t) {
+      t.thud(0, rnd(95, 115), 40, 0.04, 0.9, 0.12);
+      const b = rnd(380, 450);
+      t.modes(0, BAR.map((r, i) => [b * r, 0.32 / (1 + i), 0.06 - i * 0.01] as [number, number, number]));
+      t.noise(0.04, 1.7, 0.55, 0.9, [['bp', rnd(1300, 1700), 0.45]], 0.06, 0.5);
+      t.noise(0.04, 1.7, 0.3, 0.7, [['lp', 500, 0.7]], 0.08, 0.6);
+      t.grains(0.1, 1.4, 40, 0.15, 2500, 6500, 1.5, 0.006);
     },
   },
   // Trash bags: a soft thump, plastic rustle and a bottle or two.
@@ -1182,6 +1203,11 @@ export class Sfx {
       marketStall: 0.7,
       fruitCrates: 0.55,
       foodCart: 0.8,
+      hydrant: 0.85,
+      parkingMeter: 0.5,
+      mailbox: 0.65,
+      phoneBooth: 0.9,
+      vendingMachine: 0.95,
     };
     const k = clamp01(speed / 25);
     // Props are distinct objects: a short gap only stops one hit playing twice.

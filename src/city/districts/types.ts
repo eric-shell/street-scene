@@ -42,6 +42,7 @@ export type AreaKind =
   | 'hills'
   | 'monument'
   | 'market'
+  | 'roadworks'
   // Reserved unique features (planned later, disabled in config).
   | 'waterfront'
   | 'lake';
@@ -85,6 +86,7 @@ export const COBBLE_PRIORITY = 6;
  *   marketFront: the frontage behind a pen, a facade or the market's shuttered back wall (market).
  * gate: a timed gate's arms across the deck (sim/gates.ts; drawn by render/drawbridge.ts).
  *   Timed gates are not in World.walls: they block only while their schedule says so.
+ * roadworks: the plant of a lane closure (arrow board, excavator, skip, light tower) (roadworks).
  */
 export type WallLook =
   | 'building'
@@ -103,9 +105,10 @@ export type WallLook =
   | 'monument'
   | 'marketRail'
   | 'marketFront'
-  | 'gate';
+  | 'gate'
+  | 'roadworks';
 
-export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'marketRail', 'marketFront', 'gate'];
+export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'marketRail', 'marketFront', 'gate', 'roadworks'];
 
 export interface Area {
   /** Index into CityDistricts.areas. */
@@ -318,6 +321,7 @@ export const AREA_MAP_STYLE: Record<AreaKind, AreaMapStyle> = {
   hills: { fill: 'rgba(147,146,147,0.07)', stroke: 'rgba(147,146,147,0.34)', width: 2.5, dash: [6, 7] },
   monument: { fill: 'rgba(255,216,102,0.2)' },
   market: { fill: 'rgba(255,97,136,0.3)' },
+  roadworks: { fill: 'rgba(255,97,136,0.5)' },
   waterfront: { fill: 'rgba(120,220,232,0.14)' },
   lake: { fill: 'rgba(120,220,232,0.18)' },
 };
