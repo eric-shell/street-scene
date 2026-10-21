@@ -1,28 +1,33 @@
 /**
  * Level crossings: where a street crosses the El's tracks at grade (the crest
- * street of a bluff, districts/bluff.ts), two timed gates (sim/gates.ts) hold
- * the traffic back while a train goes over. Static data built with the world
+ * street of a bluff, districts/bluff.ts), two timed gates (sim/gates.ts) come
+ * down while a train goes over. Static data built with the world
  * (createWorld), appended to World.timedGates after the drawbridge's, so the
- * shared machinery does the rest: collision while blocking, AI braking and
- * waiting, the lost timer leaving held cars alone, the HUD warning and the
- * bell.
+ * shared machinery does the rest: ambient traffic stopping, the lost timer
+ * leaving held cars alone, the HUD warning and the bell. Unlike the
+ * drawbridge's, these gates are no wall: their arms snap off when a car
+ * drives through them (sim/levelCrossing.ts), and the only hard thing on the
+ * crossing is the train itself. Racers time their run over the tracks by the
+ * trains, not the arms (TimedGate.train, a second cycle that blocks only
+ * while a train is there, padded by CROSSING.aiLead and aiAfter).
  *
  * The schedule comes from the trains themselves. The track curve and both
  * services are built exactly as the renderer builds them (subway.ts elCurve,
- * railTimetable.ts lineServices), and for each direction the run profile is
+ * railTimetable.ts lineServices), and for each running trip the run profile is
  * inverted for when the head reaches the crossing's corridor and when the
- * tail has cleared it. Both directions share one headway, so the crossing is
- * one gate cycle of that period with two closures (GateCycle.more), merged
- * into one when two trains come close together: the arms are down from
+ * tail has cleared it. Only a few trip slots of each direction's pattern run
+ * (TRAIN.runs of TRAIN.pattern, picked from the seed), so the crossing is one
+ * gate cycle of the pattern's period with a handful of irregular closures
+ * (GateCycle.more), merged when two trains come close together: the arms are down from
  * CROSSING.downBefore s before a head arrives until CROSSING.upAfter s after
  * the last tail has gone, with the lights and bell starting CROSSING.warn s
  * before they start down. Nothing about the trains is guessed: a train is on
  * the crossing exactly when the timetable puts it there.
  *
- * A car that sits on the tracks when a train arrives (the gates trap nobody,
- * a car past a gate line drives out freely) is towed off behind the nearer
- * gate, like a car left on the drawbridge (sim/levelCrossing.ts, from
- * sim/hazards.ts): `trains` lists when each track's strip is occupied.
+ * A car that sits on the tracks when a train arrives is towed off behind the
+ * nearer gate, like a car left on the drawbridge (sim/levelCrossing.ts, from
+ * sim/hazards.ts), and a car that comes at the train stops against it:
+ * `trains` lists when each track's strip is occupied.
  */
 import type { City } from './world';
 import type { GateCycle, GateSet } from '../sim/gates';
@@ -31,7 +36,7 @@ import { TICK_HZ } from '../sim/constants';
 import { sqrt } from '../sim/math';
 import { elCurve } from './districts/subway';
 import { projectOnCurve, sampleCurve, curvePoint, trackLateral } from './railCurve';
-import { lineServices, runAt, trainLength } from './railTimetable';
+import { TRAIN, lineServices, runAt, trainLength, tripRuns } from './railTimetable';
 import type { RunProfile } from './railTimetable';
 
 /** Crossing timing (s) and layout (m). */
@@ -50,6 +55,11 @@ export const CROSSING = {
   gateClear: 2.4,
   /** The corridor a train occupies along the track runs this far past the street's frontage lines (m). */
   margin: 1,
+  /** Racers count a train as there this long before its head reaches the street and after its tail has left (s): time to get over both tracks. */
+  aiLead: 2.5,
+  aiAfter: 0.5,
+  /** A gate arm's mass (kg): a car through it loses the momentum it takes to snap it. */
+  armMass: 30,
 } as const;
 
 /** One level crossing: geometry for the renderer and the tow, its gates and when trains are on it. */
@@ -78,6 +88,8 @@ export interface LevelCrossing {
   /** Its cycle in World.timedGates and its two gates there (the -street-direction side first). */
   cycle: number;
   gates: number[];
+  /** The cycle racers time their crossing by (World.timedGates): blocking only while a train is on the street, give or take CROSSING.aiLead and aiAfter. */
+  trainCycle: number;
   /** Ticks a train is on the street, per closure of the cycle: start (ticks after the cycle start, mod its period), length and track. */
   trains: { at: number; len: number; track: 0 | 1 }[];
 }
@@ -137,17 +149,22 @@ export function addLevelCrossings(city: City, set: GateSet): LevelCrossing[] {
     // The corridor a train fills along its track, and when each direction's trains are in it.
     const wT = half / sinX + CROSSING.margin;
     const L = trainLength();
-    const period = Math.round(services[0].sv.headway * TICK_HZ);
+    const period = Math.round(services[0].sv.headway * TRAIN.pattern * TICK_HZ);
     const T = (s: number) => Math.round(s * TICK_HZ);
     const wins: { start: number; closed: number; at: number; len: number; track: 0 | 1 }[] = [];
     for (const { sv, track } of services) {
       const st = sv.dir === 1 ? pr.s : sv.length - pr.s;
-      const tA = sv.phase + tauAt(sv.run, st - wT);
-      const tD = sv.phase + tauAt(sv.run, st + wT + L);
-      const down = tA - CROSSING.downBefore;
-      const start = down - CROSSING.lower - CROSSING.warn;
-      const closed = tD + CROSSING.upAfter - down;
-      wins.push({ start: T(start), closed: T(closed), at: T(tA), len: Math.max(1, T(tD - tA)), track });
+      const tA0 = tauAt(sv.run, st - wT);
+      const tD0 = tauAt(sv.run, st + wT + L);
+      // One closure per running trip of the pattern (the pattern repeats every period).
+      for (let k = 0; k < TRAIN.pattern; k++) {
+        if (!tripRuns(sv, k)) continue;
+        const t0 = sv.phase + k * sv.headway;
+        const down = t0 + tA0 - CROSSING.downBefore;
+        const start = down - CROSSING.lower - CROSSING.warn;
+        const closed = t0 + tD0 + CROSSING.upAfter - down;
+        wins.push({ start: T(start), closed: T(closed), at: T(t0 + tA0), len: Math.max(1, T(tD0 - tA0)), track });
+      }
     }
     // Order the closures around the period from the earliest, merge any that overlap or nearly do.
     const mod = (t: number) => ((t % period) + period) % period;
@@ -201,9 +218,38 @@ export function addLevelCrossings(city: City, set: GateSet): LevelCrossing[] {
       set.gates.push(makeGate(gx - nx * half, gz - nz * half, gx + nx * half, gz + nz * half, rx * s, rz * s, 'gate', ci));
     }
     const trains = wins.map((w) => ({ at: mod(w.start + w.at - base), len: w.len, track: w.track }));
-    out.push({ area: bl.id, edge: e.id, x: cx, z: cz, rx, rz, tx: P.tx, tz: P.tz, half, gate, tracks, y: bl.params.y, s: pr.s, cycle: ci, gates, trains });
+    const trainCycle = set.cycles.length;
+    set.cycles.push(passCycle(trains, cycle, T(CROSSING.aiLead), T(CROSSING.aiAfter)));
+    for (const k of gates) set.gates[k].train = trainCycle;
+    out.push({ area: bl.id, edge: e.id, x: cx, z: cz, rx, rz, tx: P.tx, tz: P.tz, half, gate, tracks, y: bl.params.y, s: pr.s, cycle: ci, gates, trainCycle, trains });
   }
   return out;
+}
+
+/**
+ * The cycle racers time a crossing by: no warning and no arms, blocking from
+ * `lead` ticks before each train is on the street until `after` ticks after
+ * it has gone, with trains that close up (or wrap round the period into the
+ * first) merged, as GateCycle.more requires. Starts `lead` ticks before the
+ * gate cycle, so each train's `at` is its window's start.
+ */
+function passCycle(trains: LevelCrossing['trains'], gate: GateCycle, lead: number, after: number): GateCycle {
+  const period = gate.period;
+  const wins = trains.map((t) => ({ at: t.at, end: t.at + lead + t.len + after })).sort((p, q) => p.at - q.at);
+  const merged: { at: number; end: number }[] = [];
+  for (const w of wins) {
+    const last = merged[merged.length - 1];
+    if (last && w.at <= last.end) last.end = Math.max(last.end, w.end);
+    else merged.push({ ...w });
+  }
+  while (merged.length > 1 && merged[merged.length - 1].end >= merged[0].at + period) {
+    const last = merged.pop()!;
+    merged[0] = { at: last.at - period, end: Math.max(merged[0].end, last.end - period) };
+  }
+  const first = merged[0];
+  const c: GateCycle = { period, start: gate.start - lead + first.at, warn: 0, lower: 0, closed: first.end - first.at, raise: 0 };
+  if (merged.length > 1) c.more = merged.slice(1).map((m) => ({ at: m.at - first.at, closed: m.end - m.at }));
+  return c;
 }
 
 /** The track (0 or 1) a train occupies the crossing on at `tick`, or -1 (2 when both are). */

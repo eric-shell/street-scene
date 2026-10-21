@@ -16,7 +16,7 @@ import { stepLevelCrossings } from './levelCrossing';
 import { clamp, cos, sin, yawOf } from './math';
 
 export function stepHazards(r: RaceState): void {
-  // Level crossings (sim/levelCrossing.ts): a car left on the tracks when a train comes is towed off.
+  // Level crossings (sim/levelCrossing.ts): arms snap under cars, a car left on the tracks when a train comes is towed off.
   stepLevelCrossings(r);
   const db = r.world.drawbridge;
   const set = r.world.timedGates;

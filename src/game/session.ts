@@ -787,8 +787,12 @@ export class RaceSession {
         const prop = r.world.props[e.value ?? -1];
         const def = prop ? PROP_DEFS[prop.kind] : null;
         if (def) this.cam.knock(Math.min(1, 0.35 + (def.mass * def.anchor) / 900));
+      } else if (e.type === 'arm') {
+        // A level crossing's gate arm snapping: a light knock, like a sawhorse.
+        this.propOnlyTick = true;
+        this.cam.knock(0.4);
       } else if (e.type === 'reset') this.resetThisTick = true;
-      if (e.type === 'prop') this.smashed++;
+      if (e.type === 'prop' || e.type === 'arm') this.smashed++;
       const rc = r.cars[0];
       switch (e.type) {
         case 'lap': {
@@ -853,7 +857,7 @@ export class RaceSession {
     const chase = this.chaseCall;
     this.night.air.chase(chase.phase === 'chase' ? (poses[chase.car] ?? null) : null);
     // The El's trains and level crossings at the interpolated sim time: the gates close for these trains.
-    this.night.syncDistricts(Math.max(0, r.tick - 1 + (this.paused ? 1 : alpha)), !this.paused);
+    this.night.syncDistricts(Math.max(0, r.tick - 1 + (this.paused ? 1 : alpha)), !this.paused, r.brokenArms);
     this.night.update(this.time);
     // Timed hazards (the drawbridge) at the interpolated sim time, so replays look the same.
     this.hazards.update(r, this.paused ? 1 : alpha, !this.paused);

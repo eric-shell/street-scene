@@ -112,6 +112,8 @@ export interface RaceState {
   hitTicks: { wall: number[]; pair: number[] };
   /** 1 = prop knocked down this race, indexed by prop id (world.props). Fresh per race. */
   brokenProps: Uint8Array;
+  /** 1 = level crossing gate arm snapped off this race, indexed gate * 2 + half (src/sim/levelCrossing.ts). Fresh per race. */
+  brokenArms: Uint8Array;
   /** Corner rail pieces displaced by hits this race (src/sim/rails.ts). Fresh per race. */
   rails: RailState;
   /** Ambient traffic (src/sim/traffic.ts), null when the config has it off. */
@@ -127,14 +129,14 @@ const HIT_EVENT_GAP = Math.round(0.25 * TICK_HZ);
 
 /**
  * Sim events, consumed by the session for HUD messages, sounds and effects.
- * 'prop': value = prop id broken. 'crash': value = impact speed (m/s), other = car index hit.
+ * 'prop': value = prop id broken. 'arm': value = level crossing arm snapped off (RaceState.brokenArms index). 'crash': value = impact speed (m/s), other = car index hit.
  * 'wall': value = impact speed (m/s), kind = wall kind hit.
  * A 'crash' with `traffic` set hit that traffic car (r.traffic.cars index); car is -1 when traffic hit traffic.
  * 'driftBank': value = points banked, other = of those, the drift zone bonus (when there was one).
  */
 export type RaceEvent = {
   tick: number;
-  type: 'lap' | 'checkpoint' | 'finish' | 'wrongWay' | 'reset' | 'driftBank' | 'prop' | 'crash' | 'wall';
+  type: 'lap' | 'checkpoint' | 'finish' | 'wrongWay' | 'reset' | 'driftBank' | 'prop' | 'arm' | 'crash' | 'wall';
   car: number;
   value?: number;
   other?: number;
@@ -268,6 +270,7 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
     events: [],
     hitTicks: { wall: cars.map(() => -HIT_EVENT_GAP), pair: cars.flatMap(() => cars.map(() => -HIT_EVENT_GAP)) },
     brokenProps: coveredPropsRemoved(w),
+    brokenArms: new Uint8Array((w.timedGates?.gates.length ?? 0) * 2),
     rails: createRailState(w),
     traffic,
     driftZones: createDriftZoneState(w, cars.length),
@@ -468,7 +471,7 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
   }
   // Destructible street furniture: knocks props down, slows cars, emits 'prop' events.
   stepProps(r);
-  // Timed hazards: cars left on a rising drawbridge are towed off it (sim/hazards.ts).
+  // Timed hazards: cars left on a rising drawbridge or on the tracks are towed off, level crossing arms snap (sim/hazards.ts).
   stepHazards(r);
   for (let i = 0; i < r.cars.length; i++) {
     if (r.cars[i].finished) continue;

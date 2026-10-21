@@ -16,12 +16,13 @@
  *    the rails and stop lines, posed every frame from the sim's gate cycle
  *    (sim/gates.ts gatePhase) at the session's interpolated tick
  *    (kit.simTick), so the arms come down for the train the trains renderer
- *    shows at that tick; and the bell (audio/warningBell.ts) while the
- *    signals warn and the arms move.
+ *    shows at that tick; an arm a car has snapped off (RaceState.brokenArms,
+ *    sim/levelCrossing.ts) is a stub at its pivot from then on; and the bell
+ *    (audio/warningBell.ts) while the signals warn and the arms move.
  * Static parts go into the kit's merged builders; the arms and lamps are two
  * instanced meshes for every crossing together. Per frame: one gate phase per
- * crossing, four arm and twelve lamp matrices only while the arms move, lamp
- * colors only when the flash flips. Low drops the arm lamps and the ivy.
+ * crossing, four arm and twelve lamp matrices only while the arms move or one
+ * breaks, lamp colors only when the flash flips. Low drops the arm lamps and the ivy.
  */
 import * as THREE from 'three';
 import { CITY } from '../../city/config';
@@ -65,6 +66,8 @@ const BL = {
   raised: 84 * (Math.PI / 180),
   armHalf: 0.065,
   stripe: 0.9,
+  /** What is left of a snapped arm: this share of its length. */
+  stub: 0.18,
   armGap: 0.3,
   flashHz: 1.1,
   /** Bell: heard out to this far, half as loud at bellHalf (m). */
@@ -428,7 +431,10 @@ function crossingMotion(kit: DistrictKit, list: LevelCrossing[]): void {
   });
   const lastArm = list.map(() => -1);
   const lastFlash = list.map(() => -1);
-  /** Arm k of crossing ci down by `down` (0 up, 1 down): its matrix and its lamps'. */
+  // Snapped arms per crossing as a bit per mast (mast mi is arm lc.gates[mi >> 1] * 2 + (mi & 1)).
+  const broken = list.map(() => 0);
+  const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+  /** The arms of crossing ci down by `down` (0 up, 1 down): their matrices and their lamps'. */
   const poseArms = (ci: number, down: number) => {
     const lc = list[ci];
     const e = down * down * (3 - 2 * down);
@@ -442,9 +448,16 @@ function crossingMotion(kit: DistrictKit, list: LevelCrossing[]): void {
       by.set(-dx * Math.sin(ang), Math.cos(ang), -dz * Math.sin(ang));
       bz.crossVectors(bx, by);
       pos.set(m.x + dx * BL.pivotIn, y + BL.pivot, m.z + dz * BL.pivotIn);
-      m4.makeBasis(bx, by, bz).setPosition(pos);
+      const snapped = (broken[ci] >> mi) & 1;
+      // A snapped arm keeps a stub (the counterweight stub behind the pivot shrinks with it, which reads fine).
+      if (snapped) tmp.copy(bx).multiplyScalar(BL.stub);
+      m4.makeBasis(snapped ? tmp : bx, by, bz).setPosition(pos);
       arms.setMatrixAt(ci * 4 + mi, m4);
       for (let k = 0; k < perArm; k++) {
+        if (snapped) {
+          lamps.setMatrixAt(((ci * 4 + mi) * (2 + perArm)) + 2 + k, zero);
+          continue;
+        }
         const f = (k + 1) / perArm;
         tmp.copy(pos).addScaledVector(bx, armLen[ci] * f - 0.15).addScaledVector(by, BL.armHalf + 0.1);
         // Facing the traffic this gate holds back.
@@ -465,8 +478,11 @@ function crossingMotion(kit: DistrictKit, list: LevelCrossing[]): void {
     for (let ci = 0; ci < list.length; ci++) {
       const lc = list[ci];
       gatePhase(set.cycles[lc.cycle], tick, phase);
-      if (phase.arm !== lastArm[ci]) {
+      let snapped = 0;
+      for (let mi = 0; mi < 4; mi++) if (kit.armBroken(lc.gates[mi >> 1] * 2 + (mi & 1))) snapped |= 1 << mi;
+      if (phase.arm !== lastArm[ci] || snapped !== broken[ci]) {
         lastArm[ci] = phase.arm;
+        broken[ci] = snapped;
         poseArms(ci, phase.arm);
       }
       const active = phase.name !== 'open';

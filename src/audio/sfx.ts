@@ -1418,7 +1418,7 @@ export class Sfx {
    * call it from the tick that consumed the event.
    */
   raceEvent(e: RaceEvent, r: RaceState): void {
-    if (e.type !== 'crash' && e.type !== 'wall' && e.type !== 'prop') return;
+    if (e.type !== 'crash' && e.type !== 'wall' && e.type !== 'prop' && e.type !== 'arm') return;
     if (e.type === 'crash' && e.traffic !== undefined) {
       // A traffic car hit by a racer (or by a struck traffic car: car -1), heard where they met.
       const t = r.traffic?.cars[e.traffic]?.body;
@@ -1439,6 +1439,9 @@ export class Sfx {
       this.crash(e.value ?? 0, this.at(x, z, isPlayer || o === 0), `crash:${Math.min(e.car, o)}-${Math.max(e.car, o)}`);
     } else if (e.type === 'wall') {
       this.wall(e.value ?? 0, e.kind ?? 'wall', this.at(car.x, car.z, isPlayer), `wall:${e.car}`);
+    } else if (e.type === 'arm') {
+      // A level crossing's gate arm snapping (sim/levelCrossing.ts): the crack of a sawhorse.
+      this.prop('sawhorse', car.speed, this.at(car.x, car.z, isPlayer), `arm:${e.value}`);
     } else {
       const props = (r.world as unknown as { blocks?: { props?: { kind: PropKind; x: number; z: number }[] } }).blocks?.props;
       const p = props?.[e.value ?? -1];

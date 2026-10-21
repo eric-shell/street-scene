@@ -212,13 +212,14 @@ describe('bluff (city)', () => {
 });
 
 describe('level crossing', () => {
-  it('closes its gates exactly while the timetable has a train on the street, and not for long', () => {
+  it('closes its gates exactly while the timetable has a train on the street, seldom and at no fixed rhythm', () => {
     for (const seed of bluffSeeds(31, 4)) {
       const w = createWorld(seed, 'circuit');
       const lc = w.levelCrossings![0];
       const set = w.timedGates!;
       const c = set.cycles[lc.cycle];
-      expect(c.period).toBe(TRAIN.headway * TICK_HZ);
+      expect(c.period).toBe(TRAIN.headway * TRAIN.pattern * TICK_HZ);
+      const pass = set.cycles[lc.trainCycle];
       // The timetable itself (the same curve and services the renderer draws): a train's body over the street.
       const sub = w.areas.find((a) => a.kind === 'subway')!;
       const curve = elCurve(sub, w.districts.builds[sub.id], w.heightAt);
@@ -243,14 +244,21 @@ describe('level crossing', () => {
           onStreet++;
           expect(blocking, `train on the street at tick ${t} with the gates up`).toBe(true);
           expect(crossingTrain(lc, c, t)).toBeGreaterThanOrEqual(0);
+          // Racers count the train as there too.
+          expect(gateBlocking(pass, t)).toBe(true);
         }
         if (blocking) blocked++;
         expect(gatePhase(c, t).blocking).toBe(blocking);
       }
       expect(onStreet).toBeGreaterThan(0);
       const share = blocked / ((2 * c.period) / 3);
-      expect(share).toBeGreaterThan(0.12);
-      expect(share).toBeLessThan(0.5);
+      expect(share).toBeGreaterThan(0.01);
+      expect(share).toBeLessThan(0.12);
+      // A train in each direction for TRAIN.runs of every TRAIN.pattern slots, a few minutes apart on average and never evenly.
+      expect(lc.trains.length).toBe(2 * TRAIN.runs);
+      const at = lc.trains.map((tr) => tr.at).sort((p, q) => p - q);
+      const gaps = at.map((a, i) => (i ? a - at[i - 1] : a + c.period - at[at.length - 1]));
+      expect(new Set(gaps.map((g) => Math.round(g / TICK_HZ))).size).toBeGreaterThan(2);
       // Down a moment before the head arrives, never more than a train's passage plus the margins at a time.
       expect(blockTicks(c)).toBeLessThan(Math.round((CROSSING.downBefore + CROSSING.upAfter + CROSSING.raise + 20) * TICK_HZ) * 2);
       // Two gates across the street, from frontage to frontage, holding traffic back on both sides.
@@ -261,19 +269,21 @@ describe('level crossing', () => {
     }
   });
 
-  it('an AI racer stops for the gates, waits without being reset, then crosses', () => {
+  it('an AI racer stops for the train, not the arms: waits without being reset, then crosses', () => {
     const seed = crossingSeed(41, 'circuit');
     const r = createRace(raceConfig(seed, 'circuit', 0));
     const w = r.world;
     const lc = w.levelCrossings![0];
     const set = w.timedGates!;
     const c = set.cycles[lc.cycle];
+    const pass = set.cycles[lc.trainCycle];
     const mid = routeSample(w.route, w.routeProgress(lc.x, lc.z).s);
     const gi = lc.gates.find((k) => set.gates[k].nx * mid.tx + set.gates[k].nz * mid.tz < 0)!;
     const gate = set.gates[gi];
     const sGate = w.routeProgress(gate.cx, gate.cz).s;
     const start = routeSample(w.route, sGate - 70);
-    const block = nextBlock(c, 20 * TICK_HZ);
+    // The train comes a second after the car sets off 70 m short of the gate: too soon to beat it.
+    const block = nextBlock(pass, 20 * TICK_HZ);
     r.tick = block - TICK_HZ;
     r.phase = 'racing';
     const rc = r.cars[0];
@@ -288,15 +298,101 @@ describe('level crossing', () => {
       stepRace(r, autopilotInput(r, rc, pilot));
       const sd = gateSide(gate, rc.state.x, rc.state.z);
       if (sd <= 0 && distToSegment(rc.state.x, rc.state.z, gate.ax, gate.az, gate.bx, gate.bz) < 5) {
-        expect(gateBlocking(c, tick), `crossed while blocking at tick ${tick}`).toBe(false);
+        expect(gateBlocking(pass, tick), `crossed with the train coming at tick ${tick}`).toBe(false);
         crossedAt = tick;
       }
       if (waitingAtGate(set, tick, rc.state.x, rc.state.z, rc.state.speed)) waiting++;
     }
-    expect(r.events.filter((e) => e.type === 'reset')).toEqual([]);
-    expect(waiting).toBeGreaterThan(3 * TICK_HZ);
+    expect(r.events.filter((e) => e.type === 'reset' || e.type === 'wall')).toEqual([]);
+    expect(waiting).toBeGreaterThan(2 * TICK_HZ);
     expect(crossedAt).toBeGreaterThan(block);
-    expect(crossedAt - (block + gatePhase(c, block).untilClear)).toBeLessThan(6 * TICK_HZ);
+    // Off once the train has gone, not when the arms are all the way up.
+    const clear = block + gatePhase(pass, block).untilClear;
+    expect(crossedAt - clear).toBeLessThan(4 * TICK_HZ);
+    expect(gatePhase(c, clear).name).not.toBe('open');
+  });
+
+  it('a car drives through the lowered arms, snapping them, and keeps nearly all its speed', () => {
+    const seed = crossingSeed(41, 'circuit');
+    const run = () => {
+      const r = createRace({ ...raceConfig(seed, 'circuit', 0), openWorld: true });
+      const w = r.world;
+      const lc = w.levelCrossings![0];
+      const set = w.timedGates!;
+      const c = set.cycles[lc.cycle];
+      // The moment the arms are all the way down, with the train still seconds off.
+      const t = nextBlock(c, 20 * TICK_HZ);
+      expect(gatePhase(c, t).name).toBe('closed');
+      expect(crossingTrain(lc, c, t + Math.round(CROSSING.downBefore * TICK_HZ) - 10)).toBe(-1);
+      r.tick = t;
+      r.phase = 'racing';
+      const rc = r.cars[0];
+      const g = set.gates[lc.gates[0]];
+      // 12 m out on the gate's holding side, a meter right of the middle, at 25 m/s across the tracks.
+      const nx = -lc.rz;
+      const nz = lc.rx;
+      const x = g.cx + g.nx * 12 + nx;
+      const z = g.cz + g.nz * 12 + nz;
+      placeCar(rc.state, x, z, yawOf(-g.nx, -g.nz), w);
+      rc.state.vx = -g.nx * 25;
+      rc.state.vz = -g.nz * 25;
+      let v0 = 0;
+      for (let i = 0; i < 75; i++) {
+        if (i === 5) v0 = rc.state.speed;
+        stepRace(r, input({ throttle: 0.6 }));
+      }
+      return { r, lc, g, v0 };
+    };
+    const { r, lc, g, v0 } = run();
+    const rc = r.cars[0];
+    // Through both gates (arm half 1: the meter right of the middle along a to b), neither stopping it.
+    expect(gateSide(r.world.timedGates!.gates[lc.gates[1]], rc.state.x, rc.state.z)).toBeGreaterThan(0);
+    expect(gateSide(g, rc.state.x, rc.state.z)).toBeLessThan(0);
+    const arms = r.events.filter((e) => e.type === 'arm');
+    expect(arms.map((e) => e.value)).toEqual([lc.gates[0] * 2 + 1, lc.gates[1] * 2 + 1]);
+    expect([...r.brokenArms].reduce((a, b) => a + b, 0)).toBe(2);
+    expect(r.events.filter((e) => e.type === 'wall' || e.type === 'reset')).toEqual([]);
+    expect(rc.state.speed).toBeGreaterThan(v0 * 0.9);
+    // The same run snaps the same arms the same way.
+    expect(carSnapshot(run().r)).toBe(carSnapshot(r));
+  });
+
+  it('a train on the street is a wall: a car coming at it stops against its side', () => {
+    const seed = crossingSeed(41, 'circuit');
+    const r = createRace({ ...raceConfig(seed, 'circuit', 0), openWorld: true });
+    const w = r.world;
+    const lc = w.levelCrossings![0];
+    const set = w.timedGates!;
+    const c = set.cycles[lc.cycle];
+    // A train well onto the street.
+    let t = nextBlock(c, 20 * TICK_HZ);
+    while (crossingTrain(lc, c, t) < 0) t++;
+    t += 30;
+    const on = crossingTrain(lc, c, t);
+    expect(on).toBeGreaterThanOrEqual(0);
+    r.tick = t;
+    r.phase = 'racing';
+    const rc = r.cars[0];
+    // Head on at the near side of that train's track, from beyond the gate on that side, at 20 m/s.
+    const track = on === 1 ? 1 : 0;
+    const end = lc.tracks[track] >= 0 ? 1 : -1;
+    const x = lc.x + lc.rx * end * (lc.gate + 6);
+    const z = lc.z + lc.rz * end * (lc.gate + 6);
+    placeCar(rc.state, x, z, yawOf(-lc.rx * end, -lc.rz * end), w);
+    rc.state.vx = -lc.rx * end * 20;
+    rc.state.vz = -lc.rz * end * 20;
+    const along = () => (rc.state.x - lc.x) * lc.rx + (rc.state.z - lc.z) * lc.rz;
+    let minAlong = Infinity;
+    for (let i = 0; i < 60; i++) {
+      stepRace(r, input({ throttle: 1 }));
+      minAlong = Math.min(minAlong, along() * end);
+    }
+    expect(crossingTrain(lc, c, r.tick)).toBeGreaterThanOrEqual(0);
+    expect(r.events.some((e) => e.type === 'wall')).toBe(true);
+    expect(r.events.filter((e) => e.type === 'reset')).toEqual([]);
+    // Never into the train's body on that track.
+    const sinX = Math.abs(lc.rx * lc.tz - lc.rz * lc.tx);
+    expect(minAlong).toBeGreaterThan(Math.abs(lc.tracks[track]) + CROSSING.trainHalf / sinX);
   });
 
   it('tows a car left on the tracks off them when the train comes, behind the nearer gate', () => {
