@@ -7,6 +7,9 @@
  * brakes ease off with steering lock so they never trail brake into a spin,
  * and a car pinned nose in against a wall, rail, barrier or car reverses out
  * with the nose swinging toward the line before the stuck reset kicks in.
+ * Timed gates (a drawbridge going up, sim/gates.ts): they brake to a stop
+ * short of one that will be down when they get there, queue behind the cars
+ * already waiting and hold still, with the stuck and reverse-out logic off.
  */
 import type { World } from '../city/world';
 import type { RaceCar, RaceState } from './race';
@@ -16,6 +19,7 @@ import { GRAVITY } from './tuning';
 import { DT } from './constants';
 import { routeSample } from '../city/route';
 import { trafficAhead } from './traffic';
+import { GATE_AI, GateWait, gateSpeedCap } from './gates';
 
 export const AI = {
   spacing: 4,
@@ -88,6 +92,9 @@ export interface AiState {
   reversed: number;
   reverseSteer: number;
 }
+
+/** Scratch for gateSpeedCap (one AI car at a time). */
+const gateWait: GateWait = { cap: Infinity, waiting: false };
 
 export function createAi(index: number, pace: number): AiState {
   // Small fixed personality per grid slot, no randomness needed.
@@ -265,6 +272,9 @@ export function aiInput(r: RaceState, rc: RaceCar): InputFrame {
   let vt = Infinity;
   for (let k = 0; k <= 3; k++) vt = Math.min(vt, line.speed[wrapIdx(line, ai.idx + k)]);
   vt *= pace;
+  // Timed gates: stop short of one that will be down on arrival, behind any queue.
+  const gate = gateSpeedCap(r, rc, gateWait);
+  vt = Math.min(vt, gate.cap);
   const err = vt - speed;
   let throttle = 0;
   let brake = 0;
@@ -275,6 +285,11 @@ export function aiInput(r: RaceState, rc: RaceCar): InputFrame {
   if (sliding) {
     throttle *= 0.45;
     brake = Math.min(brake, 0.35);
+  }
+  // Waiting at a closed gate: hold the car still.
+  if (gate.waiting && gate.cap < 0.5 && speed < 1.5) {
+    throttle = 0;
+    brake = Math.max(brake, GATE_AI.holdBrake);
   }
 
   // Nitrous on straights.
@@ -289,7 +304,7 @@ export function aiInput(r: RaceState, rc: RaceCar): InputFrame {
   }
 
   // Nose in against something: back out, steering so the nose swings toward the line.
-  const recover = recoverInput(r, rc, steer, throttle, tx, tz);
+  const recover = gate.waiting ? null : recoverInput(r, rc, steer, throttle, tx, tz);
   if (recover) {
     throttle = recover.throttle;
     brake = recover.brake;
@@ -306,6 +321,14 @@ export function aiInput(r: RaceState, rc: RaceCar): InputFrame {
     noProgress = rc.dist - ai.watchDist < AI.progressMin;
     ai.watchDist = rc.dist;
     ai.watchTime = 0;
+  }
+  if (gate.waiting) {
+    // Held at a gate: not stuck, not pinned, no progress expected.
+    ai.stuckTime = 0;
+    ai.watchTime = 0;
+    ai.watchDist = rc.dist;
+    ai.blocked = 0;
+    noProgress = false;
   }
   const reset = ai.stuckTime > AI.stuckTime || rc.wrongWayTime > 3 || noProgress;
   if (reset) {

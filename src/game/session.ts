@@ -33,6 +33,7 @@ import { formatTime } from '../ui/format';
 import { ReplayData } from '../replay/replay';
 import { PROP_DEFS } from '../city/props';
 import { TRAFFIC_SNAP, TrafficView, snapTraffic } from '../render/traffic';
+import { HazardFx } from './hazardFx';
 
 interface Snap extends CarPose {
   vx: number;
@@ -231,6 +232,8 @@ export class RaceSession {
   private signAt = -1;
   /** Player lap whose line approach fireworks were launched. */
   private fireworksLap = -1;
+  /** The drawbridge posed at sim time, its bell and the HUD warning (game/hazardFx.ts). */
+  private readonly hazards: HazardFx;
   /** Racer poses for the crowd (reused every frame). */
   private readonly crowdCars: CrowdCar[];
   /** Last heard excitement and last cheer time (s) per crowd section spot. */
@@ -257,6 +260,7 @@ export class RaceSession {
     this.crowdCars = this.race.cars.map(() => ({ x: 0, z: 0, speed: 0 }));
     this.hud = new Hud(uiRoot, this.race.world);
     this.hud.onMapClick = () => this.toggleMap();
+    this.hazards = new HazardFx(this.night.drawbridge, this.hud.root);
     if (this.openWorld) {
       // Tab opens the city map while driving and closes it again; in menus (paused) it keeps moving focus.
       const onTab = (e: KeyboardEvent) => {
@@ -784,6 +788,8 @@ export class RaceSession {
     // The few real point lights follow the action, or the drone when it flies off.
     this.night.lighting.update(this.drone ? camera.position : new THREE.Vector3(p.x, p.y, p.z));
     this.night.update(this.time);
+    // Timed hazards (the drawbridge) at the interpolated sim time, so replays look the same.
+    this.hazards.update(r, this.paused ? 1 : alpha, !this.paused);
     // Corner rail pieces shoved by hits this race.
     this.night.arrows.syncRails(r.rails);
     this.night.city.finishLine.update(this.time);
@@ -1029,6 +1035,7 @@ export class RaceSession {
     this.drone = null;
     this.unsub.forEach((u) => u());
     this.freeCam?.dispose();
+    this.hazards.dispose();
     this.hud.dispose();
     this.views.forEach((v) => v.dispose());
     this.ghostView?.dispose();

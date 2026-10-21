@@ -17,6 +17,8 @@ import { AiState, aiInput, buildRacingLine, createAi, RacingLine } from './ai';
 import { stepProps } from './props';
 import { RailState, createRailState } from './rails';
 import { TrafficState, createTraffic, stepTraffic } from './traffic';
+import { waitingAtGate } from './gates';
+import { stepHazards } from './hazards';
 
 export type RaceMode = 'circuit' | 'sprint' | 'drift';
 export type Difficulty = 'easy' | 'medium' | 'hard';
@@ -458,6 +460,8 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
   }
   // Destructible street furniture: knocks props down, slows cars, emits 'prop' events.
   stepProps(r);
+  // Timed hazards: cars left on a rising drawbridge are towed off it (sim/hazards.ts).
+  stepHazards(r);
   for (let i = 0; i < r.cars.length; i++) {
     if (r.cars[i].finished) continue;
     for (let j = i + 1; j < r.cars.length; j++) {
@@ -571,8 +575,10 @@ function updateProgress(r: RaceState, rc: RaceCar): void {
   let off = offFrom(p);
   if (off > LOST.lateral) off = offFrom(r.world.routeProgress(c.x, c.z));
   const offroad = c.surface === 'offroad';
-  if (off > LOST.farLateral) return resetToRoad(r, rc);
-  if (off > LOST.lateral || offroad) rc.stuckTime += DT;
+  // A car held at a timed gate (the drawbridge going up) is waiting, not lost.
+  const held = (off > LOST.lateral || offroad) && waitingAtGate(r.world.timedGates, r.tick, c.x, c.z, c.speed);
+  if (off > LOST.farLateral && !held) return resetToRoad(r, rc);
+  if ((off > LOST.lateral || offroad) && !held) rc.stuckTime += DT;
   else rc.stuckTime = Math.max(0, rc.stuckTime - DT);
   if (rc.stuckTime > (offroad ? LOST.offroadTime : LOST.time)) resetToRoad(r, rc);
 }
