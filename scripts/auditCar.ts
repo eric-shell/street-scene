@@ -18,6 +18,9 @@ import { bakeTransforms } from './gltfUtil';
 
 type V3 = [number, number, number];
 
+/** Lamp covers that stand taller than the house band (carFeatures.py TALL_COVERS). */
+const TALL_COVERS = ['verticalUnit'];
+
 interface Face {
   mat: string;
   v: [V3, V3, V3];
@@ -255,8 +258,10 @@ export function measure(fs: Face[], car: ManifestCar): Measure {
   const deck = fs.filter((f) => f.c[2] < all.min[2] + 0.3 && f.mat !== 'Glass');
   const cabinFront = sg ? sg.max[2] : null;
   const cabinRear = sg ? sg.min[2] : null;
-  // Windshield and backlight face up more than sideways; a fastback can lie at 20 degrees, so split them by position, not by normal.
-  const topGlass = glass.filter((f) => f.n[1] > 0.25 && !side(f));
+  // Windshield and backlight face up and along the car more than sideways (tumblehomed side glass on a real body faces up a lot
+  // too); a fastback can lie at 20 degrees, so split them by position, not by normal.
+  // Only the central band (|x| < 0.45 m) sets the rake: the window corners of a real body add stray faces.
+  const topGlass = glass.filter((f) => f.n[1] > 0.25 && Math.abs(f.n[0]) < Math.abs(f.n[2]) && Math.abs(f.c[0]) < 0.45);
   const cabinMid = sg ? (sg.min[2] + sg.max[2]) / 2 : 0;
 
   const isl = islands(fs);
@@ -274,7 +279,10 @@ export function measure(fs: Face[], car: ManifestCar): Measure {
     const ox = Math.max(Math.abs(i.min[0]), Math.abs(i.max[0]));
     return e[0] < 0.05 && e[1] > 0.008 && e[1] < 0.06 && e[2] > 0.06 && e[2] < 0.22 && cy > belt - 0.18 && cy < belt + 0.01 && ox > all.max[0] - 0.2;
   }).length;
-  const bFaces = belt === null || sg === null ? [] : fs.filter((f) => f.mat === 'Black' && side(f) && f.c[1] > belt && f.c[1] < sg.max[1] && f.c[2] > sg.min[2] && f.c[2] < sg.max[2]);
+  // On the glass band only: the mirror's Black pane sits in the same height band outboard of it, the wiper ends inboard.
+  const gx = sideGlass.flatMap((f) => f.v.map((p) => Math.abs(p[0])));
+  const [gx0, gx1] = gx.length ? [Math.min(...gx) - 0.02, Math.max(...gx) + 0.02] : [0, 0];
+  const bFaces = belt === null || sg === null ? [] : fs.filter((f) => f.mat === 'Black' && side(f) && f.c[1] > belt && f.c[1] < sg.max[1] && f.c[2] > sg.min[2] && f.c[2] < sg.max[2] && Math.abs(f.c[0]) > gx0 && Math.abs(f.c[0]) < gx1);
   const bPillar = bFaces.length ? { zMin: bounds(bFaces).min[2], zMax: bounds(bFaces).max[2] } : null;
   const cowl = belt !== null && cabinFront !== null && fs.some((f) => f.mat === 'Black' && f.n[1] > 0.5 && f.c[2] > cabinFront - 0.02 && f.c[2] < cabinFront + 0.25 && f.c[1] > belt - 0.25 && f.c[1] < belt + 0.05);
 
@@ -408,12 +416,14 @@ export function checks(m: Measure, t: Targets, spec: CarSpec, house: House): Che
   info('cabin (side glass)', `z ${m3(m.cabinRear)} .. ${m3(m.cabinFront)}`, `window top ${m3(m.windowTop)}`);
 
   const [lo, hi] = house.features.lamp.heightRange;
-  const lampRow = (label: string, l: Lamp | null) => {
+  const lampRow = (label: string, l: Lamp | null, cover: string) => {
     if (!l) return feat(label, false, 'missing');
-    feat(label, l.height >= lo && l.height <= hi, `|x| ${m3(l.xInner)}..${m3(l.xOuter)}, y ${m3(l.yMin)}..${m3(l.yMax)}, z ${m3(l.zMin)}..${m3(l.zMax)}`, `height ${m3(l.height)} (house ${lo}..${hi})`);
+    // Tall covers (a unit climbing the D pillar) get twice the band, as carFeatures.py builds them.
+    const top = TALL_COVERS.includes(cover) ? 2 * hi : hi;
+    feat(label, l.height >= lo && l.height <= top, `|x| ${m3(l.xInner)}..${m3(l.xOuter)}, y ${m3(l.yMin)}..${m3(l.yMax)}, z ${m3(l.zMin)}..${m3(l.zMax)}`, `height ${m3(l.height)} (house ${lo}..${top})`);
   };
-  lampRow('headlights', m.head);
-  lampRow('taillights', m.tail);
+  lampRow('headlights', m.head, spec.lights.front.cover);
+  lampRow('taillights', m.tail, spec.lights.rear.cover);
   feat('indicators (Light)', m.indicator, m.indicator ? 'found' : 'missing');
   feat('glass', m.glassPieces > 0 && m.windshieldDeg !== null && m.rearGlassDeg !== null && m.beltLine !== null, `${m.glassPieces} piece(s)`, 'one band per side plus windshield and rear glass');
   const bw = m.bPillar ? m.bPillar.zMax - m.bPillar.zMin : 0;

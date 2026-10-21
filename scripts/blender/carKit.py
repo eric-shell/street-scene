@@ -20,7 +20,7 @@ from mathutils.bvhtree import BVHTree
 from mathutils.geometry import intersect_point_line
 
 REPO = globals().get('REPO') or os.getcwd()
-SHARED = ['Paint', 'Trim', 'Black', 'Chrome', 'Glass', 'Rim', 'Tire', 'HeadLight', 'TailLight', 'Light', 'Interior']
+SHARED = ['Paint', 'Trim', 'Black', 'Chrome', 'Glass', 'Rim', 'Tire', 'HeadLight', 'TailLight', 'Light', 'Interior', 'Grille']
 
 
 # ----- scene ---------------------------------------------------------------
@@ -147,11 +147,19 @@ def material_regions(o):
 # ----- splitting -----------------------------------------------------------
 
 def cut(o, planes):
-    """Bisect o's mesh with planes [(co, no)], keeping both sides, so later splits follow clean seams."""
+    """Bisect o's mesh with planes [(co, no)] or [(co, no, within)], keeping both sides, so later
+    splits follow clean seams. `within(face center)` limits a plane to the faces it should cut: a
+    plane is infinite, and on a dense donor mesh a hood seam would otherwise slice the whole car."""
     bm = bmesh.new()
     bm.from_mesh(o.data)
-    for co, no in planes:
-        geom = bm.verts[:] + bm.edges[:] + bm.faces[:]
+    for plane in planes:
+        co, no = plane[:2]
+        within = plane[2] if len(plane) > 2 else None
+        if within is None:
+            geom = bm.verts[:] + bm.edges[:] + bm.faces[:]
+        else:
+            faces = [f for f in bm.faces if within(f.calc_center_median())]
+            geom = list({v for f in faces for v in f.verts}) + list({e for f in faces for e in f.edges}) + faces
         bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-5, plane_co=Vector(co), plane_no=Vector(no))
     bm.to_mesh(o.data)
     bm.free()
@@ -365,6 +373,28 @@ def displace(o, fn, on_seam, radius=0.12):
     o.data.update()
 
 
+def shrink_arches(objs, axles, center_z, radius, by, reach=0.12, min_x=0.5):
+    """Pull the wheel arches of a donor body in toward the wheel by `by` meters: outboard vertices
+    (|x| > min_x) in the upper half of each arch move radially toward (axle_y, center_z), fully
+    within the arch lip (`radius` from the center) and fading out `reach` beyond it, so a body made for a bigger tire fits the
+    house wheel without moving its sills. Apply the same call to every mesh so seams stay closed."""
+    for o in objs:
+        me = o.data
+        for v in me.vertices:
+            c = v.co
+            if abs(c.x) < min_x or c.z < center_z - 0.1:
+                continue
+            for ay in axles:
+                d = math.hypot(c.y - ay, c.z - center_z)
+                lip = max(d - radius, 0)
+                w = max(0.0, 1 - lip / reach) * min(1.0, (c.z - (center_z - 0.1)) / 0.1)
+                if w > 0 and d > 1e-6:
+                    k = by * w / d
+                    c.y -= (c.y - ay) * k
+                    c.z -= (c.z - center_z) * k
+        me.update()
+
+
 def boundary_seam(o, tol=1e-4):
     """Seam predicate from o's own open edges: for panels cut out by selection (hood, roof) rather
     than by axis planes. Pass the stock piece; copies keep the same boundary coordinates."""
@@ -462,7 +492,7 @@ def surface_tree(objs):
     return BVHTree.FromPolygons(verts, polys)
 
 
-def projected_quad(o, corners, axis, toward, offset, name, nu=8, nv=3, target=None, max_jump=0.12):
+def projected_quad(o, corners, axis, toward, offset, name, nu=8, nv=3, target=None, max_jump=0.12, tree=None):
     """Lay a patch on o's surface (lights, grilles, housings): corners are four (u, v) points
     of a quad in the plane across `axis` ('y': (x, z), 'x': (y, z), 'z': (x, y) from above with
     toward -1), in order around the quad.
@@ -470,8 +500,10 @@ def projected_quad(o, corners, axis, toward, offset, name, nu=8, nv=3, target=No
     point lands on the first hit, lifted `offset` meters back toward the ray origin. Cells with
     a corner that misses are skipped. target: objects to ray cast against (default [o]); the
     patch is still added to o, so lights on a body can follow a hood and bumper around them.
-    Grid points whose hit is more than max_jump meters off the median depth are dropped."""
-    tree = surface_tree(target or [o])
+    Grid points whose hit is more than max_jump meters off the median depth are dropped.
+    tree: a prebuilt surface_tree, so layers laid in one pass (housing, lens) all measure their
+    offset from the bare surface instead of landing on each other."""
+    tree = tree or surface_tree(target or [o])
     axes = {'x': (Vector((toward, 0, 0)), lambda u, v: Vector((-5 * toward, u, v))),
             'y': (Vector((0, toward, 0)), lambda u, v: Vector((u, -5 * toward, v))),
             'z': (Vector((0, 0, toward)), lambda u, v: Vector((u, v, -5 * toward)))}
@@ -511,16 +543,23 @@ def projected_quad(o, corners, axis, toward, offset, name, nu=8, nv=3, target=No
     return len(faces)
 
 
-def project_polygon(o, pts, axis, toward, offset, name, target=None):
+def project_polygon(o, pts, axis, toward, offset, name, target=None, tree=None, max_jump=0.12, cell=0.06):
     """Lay a convex polygon [(u, v)] on the surface as a fan of projected_quad cells around its
     centroid (lamp covers, round lamps, indicator blocks). Concave shapes go in as several
-    convex polygons. Returns the number of cells made."""
+    convex polygons. Returns the number of cells made. Every cell casts against one tree built
+    before the first is added (or `tree`); otherwise each cell lands on the last one's offset.
+    max_jump as in projected_quad; a lamp whose outer end wraps onto the fender needs more.
+    Each fan cell is cut into a grid of about `cell` meters, or a flat cell sinks into a curved panel."""
+    tree = tree or surface_tree(target or [o])
     n = len(pts)
     cu = sum(p[0] for p in pts) / n
     cv = sum(p[1] for p in pts) / n
     made = 0
     for i in range(n):
-        made += projected_quad(o, [pts[i], pts[(i + 1) % n], (cu, cv), (cu, cv)], axis, toward, offset, name, nu=1, nv=1, target=target)
+        a, b = pts[i], pts[(i + 1) % n]
+        nu = max(1, math.ceil(math.dist(a, b) / cell))
+        nv = max(1, math.ceil(max(math.dist(a, (cu, cv)), math.dist(b, (cu, cv))) / cell))
+        made += projected_quad(o, [a, b, (cu, cv), (cu, cv)], axis, toward, offset, name, nu=nu, nv=nv, tree=tree, max_jump=max_jump)
     return made
 
 

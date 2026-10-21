@@ -28,7 +28,7 @@ export const SLOT_LABELS: Record<PartSlot, string> = {
  * Shared material names. Source assets are renamed to these during import and
  * new parts must use them, so paint, trim and light colors apply automatically.
  */
-export const MATERIAL_NAMES = ['Paint', 'Trim', 'Black', 'Chrome', 'Glass', 'Rim', 'Tire', 'HeadLight', 'TailLight', 'Light', 'Interior'] as const;
+export const MATERIAL_NAMES = ['Paint', 'Trim', 'Black', 'Chrome', 'Glass', 'Rim', 'Tire', 'HeadLight', 'TailLight', 'Light', 'Interior', 'Grille'] as const;
 export type MaterialName = (typeof MATERIAL_NAMES)[number];
 
 /** Triangle budgets per slot used by validation. */

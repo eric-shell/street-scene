@@ -170,12 +170,24 @@ export function validatePerformance(v: unknown): PerformanceBuild {
  */
 const RENAMED_CARS: Record<string, string> = { gc14: 'protoHatch', s64: 'protoCompact' };
 
+/**
+ * Wheels retired for the shared wheel set (docs/carWheels.md). The new wheels took the old ones'
+ * names, so a saved build keeps the name it showed.
+ */
+const RENAMED_WHEELS: Record<string, string> = {
+  wheel_protoCompact_0: 'wheel_kiba', wheel_protoCompact_1: 'wheel_hoshi', wheel_protoCompact_2: 'wheel_rensa', wheel_protoCompact_3: 'wheel_tsuki',
+  wheel_protoHatch_1: 'wheel_ginga', wheel_protoHatch_2: 'wheel_hibana', wheel_protoHatch_3: 'wheel_senko', wheel_protoHatch_4: 'wheel_arashi',
+  wheel_proto_5spoke: 'wheel_arashi', wheel_proto_deepdish: 'wheel_rensa',
+};
+
 /** A part id under its current name; null for whole-body kits that were split into bumpers and skirts. */
-function renamedPart(id: string): string | null {
+function renamedPart(raw: string): string | null {
+  const id = RENAMED_WHEELS[raw] ?? raw;
   const m = /^(wheel_)?(gc14|s64)_(.+)$/.exec(id);
   if (!m) return id;
   if (m[3].startsWith('body_')) return null;
-  return `${m[1] ?? ''}${RENAMED_CARS[m[2]]}_${m[3]}`;
+  const renamed = `${m[1] ?? ''}${RENAMED_CARS[m[2]]}_${m[3]}`;
+  return RENAMED_WHEELS[renamed] ?? renamed;
 }
 
 export function validateVisual(v: unknown): VisualBuild {

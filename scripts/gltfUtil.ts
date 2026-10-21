@@ -35,7 +35,8 @@ export async function bakeTransforms(doc: Document): Promise<void> {
       if (!child.getMesh() && child.listChildren().length === 0) child.dispose();
     }
   }
-  await doc.transform(prune());
+  // Keep vertex attributes: the Grille UVs feed a runtime texture the file itself does not carry.
+  await doc.transform(prune({ keepAttributes: true }));
 }
 
 export function meshNodes(doc: Document): Node[] {

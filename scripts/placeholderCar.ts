@@ -62,46 +62,8 @@ function box(doc: Document, buffer: Buffer, mat: Material, c: V3, s: V3, taper: 
   return prim;
 }
 
-/** Cylinder along X (wheel axle), centered at origin. */
-function cylinderX(doc: Document, buffer: Buffer, mat: Material, r: number, w: number, x0: number, seg: number, open = false): Primitive {
-  const pos: number[] = [];
-  const nor: number[] = [];
-  const idx: number[] = [];
-  for (let i = 0; i <= seg; i++) {
-    const a = (i / seg) * Math.PI * 2;
-    const y = Math.cos(a) * r;
-    const z = Math.sin(a) * r;
-    pos.push(x0 - w / 2, y, z, x0 + w / 2, y, z);
-    nor.push(0, Math.cos(a), Math.sin(a), 0, Math.cos(a), Math.sin(a));
-    if (i < seg) {
-      const k = i * 2;
-      idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3);
-    }
-  }
-  if (!open) {
-    for (const side of [1, -1]) {
-      const c = pos.length / 3;
-      pos.push(x0 + (side * w) / 2, 0, 0);
-      nor.push(side, 0, 0);
-      for (let i = 0; i <= seg; i++) {
-        const a = (i / seg) * Math.PI * 2;
-        pos.push(x0 + (side * w) / 2, Math.cos(a) * r, Math.sin(a) * r);
-        nor.push(side, 0, 0);
-        if (i < seg) side > 0 ? idx.push(c, c + 1 + i, c + 2 + i) : idx.push(c, c + 2 + i, c + 1 + i);
-      }
-    }
-  }
-  return doc
-    .createPrimitive()
-    .setAttribute('POSITION', doc.createAccessor().setType(Accessor.Type.VEC3).setArray(new Float32Array(pos)).setBuffer(buffer))
-    .setAttribute('NORMAL', doc.createAccessor().setType(Accessor.Type.VEC3).setArray(new Float32Array(nor)).setBuffer(buffer))
-    .setIndices(doc.createAccessor().setType(Accessor.Type.SCALAR).setArray(new Uint16Array(idx)).setBuffer(buffer))
-    .setMaterial(mat);
-}
-
 const L = 4.36;
 const W = 1.82;
-const R = 0.33;
 const SILL = 0.24;
 const BODY_H = 0.5;
 const WB = 1.32;
@@ -262,34 +224,6 @@ export function protoParts(): ProtoPart[] {
       box(d, b, m('Black'), [-0.45, top + 0.18, -L / 2 + 0.34], [0.04, 0.36, 0.1]),
     ]),
   });
-  // Universal wheels, in wheel space (center at origin, axle along X, outer face +X).
-  const wheel = (id: string, name: string, spokes: number, dish: number): ProtoPart => ({
-    id,
-    name,
-    slot: 'wheels',
-    hides: [],
-    doc: single(name.replace(/\s/g, ''), (d, b, m) => [
-      cylinderX(d, b, m('Tire'), R, 0.24, 0, 28, false),
-      cylinderX(d, b, m('Rim'), R * 0.7, 0.03, 0.115 - dish, 24, false),
-      cylinderX(d, b, m('Black'), R * 0.69, 0.2, 0, 18, true),
-      ...Array.from({ length: spokes }, (_, i) => {
-        const a = (i / spokes) * Math.PI;
-        const p = box(d, b, m('Rim'), [0.12 - dish / 2, 0, 0], [0.03, R * 1.36, 0.05]);
-        // rotate the spoke about X by baking positions
-        const pos = p.getAttribute('POSITION')!;
-        const nor = p.getAttribute('NORMAL')!;
-        for (let k = 0; k < pos.getCount(); k++) {
-          const v = pos.getElement(k, [0, 0, 0]);
-          pos.setElement(k, [v[0], v[1] * Math.cos(a) - v[2] * Math.sin(a), v[1] * Math.sin(a) + v[2] * Math.cos(a)]);
-          const n = nor.getElement(k, [0, 0, 0]);
-          nor.setElement(k, [n[0], n[1] * Math.cos(a) - n[2] * Math.sin(a), n[1] * Math.sin(a) + n[2] * Math.cos(a)]);
-        }
-        return p;
-      }),
-      cylinderX(d, b, m('Chrome'), R * 0.14, 0.05, 0.12, 12, false),
-    ]),
-  });
-  parts.push(wheel('wheel_proto_5spoke', 'Proto 5 spoke', 5, 0));
-  parts.push(wheel('wheel_proto_deepdish', 'Proto deep dish', 8, 0.06));
+  // The placeholder's own wheels were retired for the shared wheel set (docs/carWheels.md).
   return parts;
 }

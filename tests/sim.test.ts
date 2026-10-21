@@ -97,7 +97,7 @@ describe('driving parameters file', () => {
     }
     expect(CAR_IDS).not.toContain('cc96');
     expect(CAR_IDS).not.toContain('ar7');
-    expect(SELECTABLE_CAR_IDS.sort()).toEqual(['protoCompact', 'protoCoupe', 'protoHatch']);
+    expect(SELECTABLE_CAR_IDS.sort()).toEqual(['protoCompact', 'protoCoupe', 'protoHatch', 'protoWagon']);
   });
 
   it('keeps each car\'s character: protoHatch is a light turbo FWD, protoCompact a rev happy RWD', () => {
