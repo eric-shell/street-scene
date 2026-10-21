@@ -23,7 +23,8 @@ describe('small solids', () => {
       const done = new Set<Solid>();
       for (const wall of w.blocks.walls) {
         const s = wall.solid;
-        if (!s || done.has(s)) continue;
+        // Car park parapets are long slabs meeting at their corners (a probe there touches both): carPark.test.ts covers them.
+        if (!s || done.has(s) || wall.look === 'carPark') continue;
         done.add(s);
         looks.add(wall.look!);
         const cx = s.faces.reduce((t, f) => t + f.ax, 0) / s.faces.length;

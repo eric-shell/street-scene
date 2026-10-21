@@ -154,6 +154,7 @@ export const hillsModule: DistrictModule = {
         const poly = bluffFootprint(a);
         return { poly, rim: samplePath([...poly, poly[0]], 10) };
       });
+    const carParks = ctx.areas.filter((a) => a.kind === 'carPark');
     const rings = g.nodes.filter((n) => n.ring);
     const byEdge = new Map<number, number[]>();
     for (const f of faces) {
@@ -188,6 +189,8 @@ export const hillsModule: DistrictModule = {
         const q = plateauDistance(s, m.params.cx, m.params.cz);
         if (q.d > 0 ? q.d < reach + 30 : q.inner < 40) return false;
       }
+      // A car park's ramp climbs a fixed height to a roof at a fixed height over the ground: no slope under it.
+      for (const c of carParks) for (const p of c.polygon) if (plateauDistance(s, p.x, p.z).d < reach) return false;
       for (const o of made) {
         const apart = (1 - CFG.overlap) * (s.w + o.w);
         for (const p of hillOutline(o, 0)) if (plateauDistance(s, p.x, p.z).d < apart) return false;

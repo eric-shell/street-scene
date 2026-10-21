@@ -43,6 +43,7 @@ const KINDS: Partial<Record<AreaKind, KindStyle>> = {
   waterfront: { label: 'Waterfront', ink: PALETTE.cyan, fill: rgba('cyan', 0.22), width: 1.5, tag: true },
   monument: { label: 'Monument plaza', ink: PALETTE.yellow, fill: rgba('yellow', 0.3), width: 1.5, tag: true },
   market: { label: 'Night market', ink: PALETTE.red, fill: rgba('red', 0.34), width: 1.5, tag: true },
+  carPark: { label: 'Car parks', ink: rgba('red', 0.6), fill: rgba('soft', 0.24), width: 1.5, tag: true },
   hills: { label: 'The hills', ink: PALETTE.soft, fill: rgba('soft', 0.07), width: 1.5, dash: [6, 5], tag: true },
   subway: { label: 'Under the El', ink: PALETTE.cyan, width: 4, dash: [9, 6], tag: true },
   bluff: { label: 'The bluff', ink: PALETTE.orange, fill: rgba('orange', 0.08), width: 1.5, dash: [4, 4], tag: true },
@@ -76,7 +77,7 @@ const INK = {
 } as const;
 
 /** Legend order; kinds missing from the city are left out. */
-const LEGEND_ORDER: AreaKind[] = ['park', 'river', 'lake', 'waterfront', 'subway', 'alley', 'backAlley', 'roundabout', 'hills', 'monument', 'tunnel', 'overpass', 'infill', 'roadworks', 'bluff'];
+const LEGEND_ORDER: AreaKind[] = ['park', 'river', 'lake', 'waterfront', 'subway', 'alley', 'backAlley', 'roundabout', 'hills', 'monument', 'tunnel', 'overpass', 'carPark', 'infill', 'roadworks', 'bluff'];
 
 /** Margin around the city (m), and the scale bar lengths it picks from (m). */
 const PAD = 40;

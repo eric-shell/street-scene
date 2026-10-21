@@ -46,6 +46,7 @@ export type AreaKind =
   | 'market'
   | 'roadworks'
   | 'bluff'
+  | 'carPark'
   // Reserved unique features (planned later, disabled in config).
   | 'waterfront'
   | 'lake';
@@ -95,6 +96,7 @@ export const COBBLE_PRIORITY = 6;
  * roadworks: the plant of a lane closure (arrow board, excavator, skip, light tower) (roadworks).
  * bluff: retaining wall where a street ramps or dips through the escarpment (bluff).
  * railFence: the El's fence across its right of way where it meets a street at grade (bluff).
+ * carPark: a multi-storey car park's parapets, facades, chute and ramp walls, and the low face under its lip (carPark).
  */
 export type WallLook =
   | 'building'
@@ -119,9 +121,10 @@ export type WallLook =
   | 'gate'
   | 'roadworks'
   | 'bluff'
-  | 'railFence';
+  | 'railFence'
+  | 'carPark';
 
-export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence'];
+export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark'];
 
 export interface Area {
   /** Index into CityDistricts.areas. */
@@ -291,6 +294,8 @@ export interface PlanContext {
   late?: LateContext;
   /** Present for the modules planned after the topology hook, when it returned one. */
   event?: PlannedEvent;
+  /** Polygons route shortcuts must not cut through (car park sites held while the alleys are carved, see world.ts). */
+  keepOut?: Vec2[][];
 }
 
 export interface BuildContext {
@@ -339,6 +344,7 @@ export const AREA_MAP_STYLE: Record<AreaKind, AreaMapStyle> = {
   roadworks: { fill: 'rgba(255,97,136,0.5)' },
   // The escarpment: its face line, a solid edge (the minimap strokes area.path).
   bluff: { stroke: 'rgba(252,152,103,0.5)', width: 5 },
+  carPark: { fill: 'rgba(147,146,147,0.22)', stroke: 'rgba(255,97,136,0.4)', width: 1.5 },
   waterfront: { fill: 'rgba(120,220,232,0.14)' },
   lake: { fill: 'rgba(120,220,232,0.18)' },
 };

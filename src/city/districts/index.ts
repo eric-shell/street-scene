@@ -20,7 +20,9 @@
  * stands in, so they come after the hills and before downtown), reserved
  * features, and downtown (claims every face left). The optional topology hook runs
  * right after back alleys (route shortcuts); the night market, which goes on
- * the routes it picked (PlanContext.event), is planned right after it.
+ * the routes it picked (PlanContext.event), is planned right after it. Car
+ * parks are planned in the hook too (they need both routes); they claim their
+ * block only after the night market's graph edit, in carParkModule's plan.
  */
 import { CITY } from '../config';
 import type { RoadGraph } from '../roadGraph';
@@ -47,6 +49,7 @@ import { downtownModule } from './downtown';
 import { infillModule } from './infill';
 import { marketModule } from './market';
 import { roadworksModule } from './roadworks';
+import { carParkModule } from './carPark';
 
 /** Every module, in planning order. */
 export const DISTRICT_MODULES: readonly DistrictModule[] = [
@@ -57,6 +60,7 @@ export const DISTRICT_MODULES: readonly DistrictModule[] = [
   bluffModule,
   backAlleyModule,
   marketModule,
+  carParkModule,
   parkModule,
   monumentModule,
   hillsModule,
@@ -92,6 +96,7 @@ const AREA_PRIORITY: Record<AreaKind, number> = {
   market: 11,
   roadworks: 11,
   bluff: 3,
+  carPark: 11,
   waterfront: 2,
   lake: 2,
 };

@@ -48,10 +48,11 @@ const contactPiece: number[] = [];
 
 /**
  * World contacts for a circle; with rail bodies, static rail walls are replaced by the displaced pieces.
- * Timed gates blocking at `tick` are added for the car whose center is (carX, carZ).
+ * Timed gates blocking at `tick` are added for the car whose center is (carX, carZ). A car body at
+ * height y passes over low walls (Wall.top: a car park's lip face).
  */
-function gatherContacts(world: World, rails: RailState | undefined, x: number, z: number, r: number, tick = 0, carX = x, carZ = z): number {
-  const n = world.collideCircle(x, z, r, contacts);
+function gatherContacts(world: World, rails: RailState | undefined, x: number, z: number, r: number, tick = 0, carX = x, carZ = z, y = -Infinity): number {
+  const n = world.collideCircle(x, z, r, contacts, y);
   contactPiece.length = 0;
   if (!rails || !rails.layout.subCount) {
     for (let i = 0; i < n; i++) contactPiece.push(-1);
@@ -95,7 +96,7 @@ export function collideCarWithWorld(c: CarState, t: CarTuning, world: World, hit
     for (let pass = 0; pass < 2; pass++) {
       const cx = c.x + fx * circ.u;
       const cz = c.z + fz * circ.u;
-      const n = gatherContacts(world, rails, cx, cz, circ.r, tick, c.x, c.z);
+      const n = gatherContacts(world, rails, cx, cz, circ.r, tick, c.x, c.z, c.y);
       if (n === 0) break;
       let bi = 0;
       for (let i = 1; i < n; i++) if (contacts[i].depth > contacts[bi].depth) bi = i;

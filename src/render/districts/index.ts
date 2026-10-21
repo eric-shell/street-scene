@@ -29,6 +29,7 @@ import { overpassRenderer } from './overpass';
 import { waterfrontRenderer } from './waterfront';
 import { roadworksRenderer } from './roadworks';
 import { driftZoneRenderer } from './driftZones';
+import { carParkRenderer } from './carPark';
 
 export const DISTRICT_RENDERERS: readonly DistrictRenderer[] = [
   downtownRenderer,
@@ -43,6 +44,7 @@ export const DISTRICT_RENDERERS: readonly DistrictRenderer[] = [
   monumentRenderer,
   tunnelRenderer,
   overpassRenderer,
+  carParkRenderer,
   waterfrontRenderer,
   lakeRenderer,
   marketRenderer,

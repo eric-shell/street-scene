@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import { CITY } from '../city/config';
 import { World } from '../city/world';
 import { isRiverEdge } from '../city/roadGraph';
+import { groundHeight } from '../city/districts/carPark';
 import { Vec2 } from '../sim/math';
 import { GeoBuilder } from './geoBuilder';
 import { buildFinishLines, FinishLines } from './finishLine';
@@ -91,7 +92,8 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     // tunnel renderer drapes its own rock over it (render/districts/tunnel.ts).
     const r = size / 96;
     const ridges = ridgeLift(world);
-    const gh = ridges ? (x: number, z: number) => h(x, z) - ridges(x, z) : h;
+    // Car park roofs are structures, not ground either (render/districts/carPark.ts draws them).
+    const gh = groundHeight({ areas: world.areas, heightAt: ridges ? (x: number, z: number) => h(x, z) - ridges(x, z) : h });
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
       const z = pos.getZ(i);
