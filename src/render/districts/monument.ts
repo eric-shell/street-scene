@@ -242,7 +242,8 @@ function archLandmark(kit: DistrictKit, P: Record<string, number>, piers: Vec2[]
     prism(kit, kit.solid, poly, 1.2, DARK, STONE, 0.4);
     washPrism(kit.glow, poly, hi + 1.2, pierTop, MONUMENT.foot, MONUMENT.top * 1.4);
   }
-  const span = P.size;
+  // Half span across both piers' outer faces (the sim's clear radius, monument.ts).
+  const span = CITY.districts.monument.archGap / 2 + CITY.districts.monument.pierWidth;
   const depth = CITY.districts.monument.pierDepth / 2;
   // Lintel across both piers, an attic block on top, and the inscription band on the attic's long faces.
   prismAt(kit.glow, cx, cz, P.yaw, depth + 0.2, span + 0.2, pierTop, pierTop + H * 0.22, WARM.clone().multiplyScalar(MONUMENT.top * 1.5));
