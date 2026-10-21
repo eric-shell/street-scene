@@ -597,8 +597,8 @@ function updateProgress(r: RaceState, rc: RaceCar): void {
 
 /**
  * A forward progress jump from s0 to s1 made inside one of the route's
- * shortcuts: the car is within SHORTCUT.reach of the alley and the jump runs
- * from around its entry to around its exit (positions relative to the entry,
+ * shortcuts: the car is within SHORTCUT.reach of the alley's path and the jump
+ * runs from around its entry to around its exit (positions relative to the entry,
  * wrapped on circuits), so the skipped stretch is credited in full.
  */
 function inShortcut(route: World['route'], s0: number, s1: number, x: number, z: number): boolean {
@@ -612,7 +612,9 @@ function inShortcut(route: World['route'], s0: number, s1: number, x: number, z:
     return d;
   };
   for (const sc of route.shortcuts) {
-    if (distToSegment(x, z, sc.ax, sc.az, sc.bx, sc.bz) > SHORTCUT.reach) continue;
+    let d = Infinity;
+    for (let i = 0; i + 1 < sc.points.length; i++) d = Math.min(d, distToSegment(x, z, sc.points[i].x, sc.points[i].z, sc.points[i + 1].x, sc.points[i + 1].z));
+    if (d > SHORTCUT.reach) continue;
     const span = rel(sc.sOut, sc.sIn);
     const a = rel(s0, sc.sIn);
     const b = rel(s1, sc.sIn);
