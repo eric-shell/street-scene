@@ -1809,13 +1809,22 @@ body > .mw {
 .course.enter .reveal {
   animation: course-reveal 1.4s var(--ease-out) both;
 }
-.course .c-mark circle {
-  fill: var(--bg0);
-  stroke: var(--mode);
-  stroke-width: 2;
+/* The start is green and the finish checkered whatever the type's color, each on a dark halo so it reads
+   over the city and the course line. */
+.course .c-halo {
+  fill: rgba(18, 17, 19, 0.85);
 }
-.course .c-mark svg {
-  color: var(--mode);
+.course .c-start .c-disc {
+  fill: var(--green);
+  stroke: #fcfcfa;
+  stroke-width: 1.5;
+}
+.course .c-start svg {
+  color: var(--bg0);
+}
+.course .c-finish .c-disc {
+  stroke: #fcfcfa;
+  stroke-width: 2;
 }
 .course .c-mark-in {
   transform-box: fill-box;

@@ -30,7 +30,7 @@ import { driftZones } from '../sim/driftZones';
 import type { Vec2 } from '../sim/math';
 import { fitCity, layersOf, mapHeading, mapX, mapY, type CityLayers, type MapView } from './cityMap';
 import { h, sheen } from './dom';
-import { Flag, FlagTriangleRight, MapIcon, icon } from './icons';
+import { FlagTriangleRight, MapIcon, icon } from './icons';
 import { PALETTE } from './palette';
 import type { RaceType } from './settings';
 
@@ -468,11 +468,12 @@ export class CourseMap {
       svg('path', { class: 'c-pulse', d: line, pathLength: 1 }),
     );
     const start = routeSample(route, route.startS);
-    g.append(marker(mapX(v, start.x), mapY(v, start.z), route.closed ? Flag : FlagTriangleRight, 'c-start'));
+    // A lap starts and ends on one line: its marker is the start, green, where the grid lines up.
     if (!route.closed) {
       const end = routeSample(route, route.finishS);
-      g.append(marker(mapX(v, end.x), mapY(v, end.z), Flag, 'c-finish'));
+      g.append(finishMarker(mapX(v, end.x), mapY(v, end.z)));
     }
+    g.append(startMarker(mapX(v, start.x), mapY(v, start.z)));
     return g;
   }
 
@@ -487,17 +488,35 @@ export class CourseMap {
   }
 }
 
-/** A start or finish marker: a flag in a disc, popping in once the line has been drawn to it. */
-function marker(x: number, y: number, ico: typeof Flag, cls: string): SVGGElement {
+/**
+ * A course marker: a disc on a dark halo, so it reads on the tilted city
+ * whatever is under it, popping in once the line has been drawn to it.
+ */
+function markerDisc(x: number, y: number, cls: string, ...face: SVGElement[]): SVGGElement {
   const g = svg('g', { class: `c-mark ${cls}`, transform: `translate(${x.toFixed(1)} ${y.toFixed(1)})` });
   const inner = svg('g', { class: 'c-mark-in' });
-  inner.append(svg('circle', { r: 8.5 }));
-  const fl = icon(ico, { size: 11, strokeWidth: 2.6 });
-  fl.setAttribute('x', '-5.5');
-  fl.setAttribute('y', '-5.5');
-  inner.append(fl);
+  inner.append(svg('circle', { class: 'c-halo', r: 12.5 }), ...face);
   g.append(inner);
   return g;
+}
+
+/** The start: a dark flag on a green disc, green for go whatever the type's color. */
+function startMarker(x: number, y: number): SVGGElement {
+  const fl = icon(FlagTriangleRight, { size: 12, strokeWidth: 2.8 });
+  fl.setAttribute('x', '-5.5');
+  fl.setAttribute('y', '-6');
+  return markerDisc(x, y, 'c-start', svg('circle', { class: 'c-disc', r: 10 }), fl);
+}
+
+/** The finish: a checkered disc in a white ring, the flag itself. */
+function finishMarker(x: number, y: number): SVGGElement {
+  const id = `course-checks-${++maskIds}`;
+  // Checks of 4 px, on the disc's own axes so a square sits on its center.
+  const pattern = svg('pattern', { id, width: 8, height: 8, patternUnits: 'userSpaceOnUse' });
+  pattern.append(svg('rect', { width: 8, height: 8, fill: '#fcfcfa' }), svg('rect', { width: 4, height: 4, fill: '#19181a' }), svg('rect', { x: 4, y: 4, width: 4, height: 4, fill: '#19181a' }));
+  const defs = svg('defs');
+  defs.append(pattern);
+  return markerDisc(x, y, 'c-finish', defs, svg('circle', { class: 'c-disc', r: 10, fill: `url(#${id})` }));
 }
 
 /** A car marked on a course drawing: where it is (m), and whether it is the player's. */
