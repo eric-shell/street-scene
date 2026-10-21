@@ -26,7 +26,8 @@ describe('hills', () => {
       expect(hs.length).toBeGreaterThanOrEqual(HILLS.count[0]);
       expect(hs.length).toBeLessThanOrEqual(HILLS.count[1]);
       for (const h of hs) {
-        expect(h.faces.length).toBeGreaterThanOrEqual(HILLS.blocks[0]);
+        // A Hill Climb's hill that does not fit as a cluster stands on its route block alone (hills.ts).
+        expect(h.faces.length).toBeGreaterThanOrEqual(c.event.drawn === 'hillClimb' ? 1 : HILLS.blocks[0]);
         expect(h.faces.length).toBeLessThanOrEqual(HILLS.blocks[1]);
         sizes.add(h.faces.length);
         variants.add(h.variant);
