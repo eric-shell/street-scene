@@ -3,14 +3,15 @@
  * night and turned into a market, lantern lit stalls along both curbs and a
  * crowd packed behind a rail.
  *
- * Planned on the routes, not in the registry pass: districts plan before the
- * routes are picked, and a market off the route is scenery nobody races
- * through. planMarkets runs from the topology hook (world.ts planRoads) once
- * both routes and their shortcuts are final, and takes a straight chain of
- * 1-3 street edges a route drives: one both routes drive when there is one,
- * else a second market for the route the first one misses. It keeps clear of
- * the grid, the start / finish gantries and their crowds, roundabouts,
- * bridges, the El and every alley or shortcut mouth.
+ * Planned on the routes: a market off the route is scenery nobody races
+ * through. The module is registered right after back alleys, so it plans
+ * just after the topology hook (world.ts planRoads) has picked both routes
+ * and carved their shortcuts, and reads them from PlanContext.event. It takes
+ * a straight chain of 1-3 street edges a route drives: one both routes drive
+ * when there is one, else a second market for the route the first one
+ * misses. It keeps clear of the grid, the start / finish gantries and their
+ * crowds, roundabouts, bridges, the El, every alley or shortcut mouth, and on
+ * a Grand Tour the block the monument is coming to (events.ts).
  *
  * The street's corridor stays as it was (building lines unchanged), but its
  * carriageway narrows to CFG.width and the sidewalks widen into the market
@@ -39,13 +40,14 @@ import { CITY, ROUTE } from '../config';
 import type { RoadGraph } from '../roadGraph';
 import { edgeBetween, isRiverEdge } from '../roadGraph';
 import { DEG, Vec2, abs, atan2 } from '../../sim/math';
-import { Rng, deriveSeed } from '../../sim/prng';
+import { Rng } from '../../sim/prng';
 import type { PropKind } from '../props';
 import { PROP_DEFS } from '../props';
 import type { DistrictModule, PlanContext } from './types';
 import { emptyBuild } from './types';
 import { corridor } from './alley';
 import type { CarveRoute } from './alley';
+import { TOUR_REACH, monumentSites } from './monument';
 
 const CFG = CITY.districts.market;
 
@@ -116,20 +118,37 @@ function routeView(g: RoadGraph, r: CarveRoute): RouteView {
 }
 
 /**
- * Put the city's night markets on its routes (called from the topology hook,
- * world.ts planRoads, after the route shortcuts are carved). Narrows the
- * chosen edges' carriageways (widths only, no topology change) and adds one
- * 'market' area per market.
+ * The block a Grand Tour's monument is coming to (monument.ts picks the block
+ * nearest the center on the most routes, among the sites that can hold it):
+ * its streets stay unclaimed, or the market would push the landmark off the
+ * route and the event would fall back to Downtown Dash.
  */
-export function planMarkets(ctx: PlanContext, routes: CarveRoute[]): void {
+function tourBlockEdges(ctx: PlanContext): Set<number> {
+  const out = new Set<number>();
+  if (ctx.event?.flavour !== 'grandTour') return out;
+  const tour = ctx.event.routes.map((r) => new Set(r.edges));
+  const sites = monumentSites(ctx, TOUR_REACH);
+  const on = (edges: number[]) => tour.filter((r) => edges.some((e) => r.has(e))).length;
+  const best = sites.map((p) => ({ f: p.f, n: on(p.f.edges) })).sort((p, q) => q.n - p.n)[0];
+  if (best && best.n > 0) for (const e of best.f.edges) out.add(e);
+  return out;
+}
+
+/**
+ * Put the city's night markets on its routes (marketModule.plan, from the
+ * routes in PlanContext.event). Narrows the chosen edges' carriageways
+ * (widths only, no topology change) and adds one 'market' area per market.
+ */
+export function planMarkets(ctx: PlanContext, routes: readonly CarveRoute[]): void {
   if (!CFG.enabled || !routes.length) return;
   const g = ctx.graph;
-  const rng = new Rng(deriveSeed(ctx.seed, 'district:market'));
+  const rng = ctx.rng;
   if (!rng.chance(CFG.chance)) return;
   const views = routes.map((r) => routeView(g, r));
+  const tourBlock = tourBlockEdges(ctx);
   const edgeOk = (eid: number) => {
     const e = g.edges[eid];
-    return e.kind === 'street' && !e.bridge && !e.shortcut && !ctx.claims.edge.has(eid) && e.length >= CFG.minEdge;
+    return e.kind === 'street' && !e.bridge && !e.shortcut && !ctx.claims.edge.has(eid) && !tourBlock.has(eid) && e.length >= CFG.minEdge;
   };
   // No roundabout, and no node another area claimed (alley and shortcut mouths, the El's column).
   const nodeOk = (nid: number) => !g.nodes[nid].ring && !ctx.claims.node.has(nid);
@@ -207,8 +226,8 @@ export function planMarkets(ctx: PlanContext, routes: CarveRoute[]): void {
     if (!best) break;
     const first = g.edges[best.edges[0]];
     const half = first.width / 2 + first.sidewalk;
-    const footprint = best.length * 2 * half;
-    if (ctx.budget.used + footprint > ctx.budget.total) break;
+    // A market is street space dressed for the night: it claims no block, so it takes nothing from
+    // the special area budget the parks, hills and monument share (planned after it).
     for (const eid of best.edges) {
       const e = g.edges[eid];
       const corridorHalf = e.width / 2 + e.sidewalk;
@@ -218,7 +237,7 @@ export function planMarkets(ctx: PlanContext, routes: CarveRoute[]): void {
     const path = best.nodes.map((id) => ({ x: g.nodes[id].x, z: g.nodes[id].z }));
     ctx.addArea(
       { kind: 'market', variant: 'street', polygon: corridor(path, half), path, nodes: best.nodes.slice(1, -1), edges: best.edges, faces: [], params: { length: best.length, routes: best.mask, seed: rng.int(1, 0x7ffffffe) } },
-      footprint,
+      0,
     );
     for (const id of best.nodes) used.add(id);
     covered |= best.mask;
@@ -267,8 +286,10 @@ function mouthReach(g: RoadGraph, nid: number, own: readonly number[], tx: numbe
 export const marketModule: DistrictModule = {
   kind: 'market',
   phase: 'graph',
-  // Planned on the routes by planMarkets (topology hook), once they exist.
-  plan(_ctx) {},
+  // Right after the topology hook: the routes are picked and their shortcuts carved.
+  plan(ctx) {
+    if (ctx.event) planMarkets(ctx, ctx.event.routes);
+  },
   build(ctx, area) {
     const b = emptyBuild();
     const g = ctx.graph;
@@ -293,14 +314,18 @@ export const marketModule: DistrictModule = {
       let penLo = -Infinity;
       let penHi = Infinity;
       const sides: number[] = [];
+      // Where the building lines start at each end (the junction's corners), as a closure measures it.
+      const m = ctx.mouths[eid];
+      const wallA = Math.max((m.aP.outer.x - A.x) * ux + (m.aP.outer.z - A.z) * uz, (m.aN.outer.x - A.x) * ux + (m.aN.outer.z - A.z) * uz);
+      const wallB = Math.max((B.x - m.bP.outer.x) * ux + (B.z - m.bP.outer.z) * uz, (B.x - m.bN.outer.x) * ux + (B.z - m.bN.outer.z) * uz);
       for (const side of [1, -1]) {
         const reachA = mouthReach(g, e.a, area.edges, ux, uz, outer, side);
         // Seen from b the edge runs backwards, so its left is our right.
         const reachB = mouthReach(g, e.b, area.edges, -ux, -uz, outer, -side);
         const s0 = reachA + CFG.stallClear;
         const s1 = len - reachB - CFG.stallClear;
-        const p0 = reachA + CFG.penClear;
-        const p1 = len - reachB - CFG.penClear;
+        const p0 = Math.max(reachA + CFG.penClear, wallA + CFG.closureClear);
+        const p1 = len - Math.max(reachB + CFG.penClear, wallB + CFG.closureClear);
         if (p1 - p0 >= CFG.penMin) {
           penLo = Math.max(penLo, p0);
           penHi = Math.min(penHi, p1);

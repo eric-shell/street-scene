@@ -397,6 +397,12 @@ export const CITY = {
        */
       stallClear: 8,
       penClear: 16,
+      /**
+       * Pens also start this far past where the building lines start at a junction (m): when the
+       * other route crosses the market there, its closure stands up to 1.5 m plus
+       * ROUTE.barrierSetbackHeadOn past that line (route.ts mouthBarrier), deep at a five way junction.
+       */
+      closureClear: 11,
       /** A pen shorter than this (m) is left out: a short block gets stalls and no crowd. */
       penMin: 18,
       /** Crowd rail this far behind the curb (m); the pen behind it reaches to the building line. */

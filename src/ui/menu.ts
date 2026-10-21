@@ -1,6 +1,6 @@
 /**
  * The main menu, in steps so no pane tries to do everything. Home is the event
- * seed across the top and a row of four tiles: Race, Garage, Settings and
+ * (seed, name) across the top and a row of four tiles: Race, Garage, Settings and
  * Explore. Race opens a second step (race type, rivals, difficulty, driving
  * aids, then Start); Settings opens the sidebar settings panel as a step;
  * Garage and Explore (the drone flyover) go straight to their screens. Every
@@ -31,6 +31,8 @@ export type MenuStep = 'home' | 'race' | 'settings';
 export interface MenuOptions {
   seed: string;
   isDaily: boolean;
+  /** The seed's named event (city/events.ts), shown under the seed. */
+  event?: { name: string; tagline: string };
   bests: Record<RaceMode, BestRecord | null>;
   /** The current build's car, for the Garage tile. */
   carName: string;
@@ -100,6 +102,7 @@ export function mainMenu(o: MenuOptions): HTMLElement {
       'div',
       { class: 'event panel' },
       h('div', { class: 'event-head' }, h('span', { class: 'label' }, icon(Calendar, { size: 14 }), o.isDaily ? 'Event of the day' : 'Custom event'), seedChip()),
+      o.event && h('div', { class: 'event-title' }, h('span', { class: 'event-name' }, o.event.name), h('span', { class: 'event-tagline' }, o.event.tagline)),
       h(
         'div',
         { class: 'event-row' },
