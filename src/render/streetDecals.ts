@@ -18,6 +18,8 @@ import { Vec2 } from '../sim/math';
 import { Rng } from '../sim/prng';
 import { GeoBuilder } from './geoBuilder';
 import { DECAL_ATLAS_SIZE, DECAL_CELLS, DecalKind, AtlasCell } from './textures';
+import { baysByEdge } from '../city/busBays';
+import { bayMouth } from './busBays';
 
 export interface DecalOptions {
   /** Multiplies every density (graphics tier). */
@@ -166,8 +168,9 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
   const dark = (k: number) => new THREE.Color(k, k, k);
   const D = opts.density;
 
-  // Bus stops: yellow curbs and a stencil in the curb lane next to each.
-  const busStops = world.props.filter((p) => p.kind === 'busStop');
+  // Bus stops: yellow curbs and a stencil in the curb lane next to each (a bus bay paints its own, render/busBays.ts).
+  const busStops = world.props.filter((p) => p.kind === 'busStop' && p.bay === undefined);
+  const bayOf = baysByEdge(world.blocks.bays ?? [], g.edges.length);
 
   // ---------- per edge ----------
   g.edges.forEach((e, ei) => {
@@ -186,6 +189,10 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
     const yawAB = Math.atan2(dx, dz);
     const yawBA = yawAB + Math.PI;
     const at = (s: number, lat: number): Vec2 => ({ x: a.x + dx * s + nx * lat, z: a.z + dz * s + nz * lat });
+    // A bus bay's stretch of curb (m along a -> b, a little margin), on its side (1 = left): no gutter decals there.
+    const bay = bayOf[ei];
+    const bayAt = bay ? bayMouth(bay, a, dx, dz) : null;
+    const inBay = (side: number, s0: number, s1: number) => !!bay && bay.side === side && s1 > bayAt![0] - 1 && s0 < bayAt![1] + 1;
     // Lanes: offset (left +), heading of the traffic in it (right hand traffic: negative offsets run a -> b).
     const lanes: { lat: number; yaw: number; outer: boolean }[] = [];
     if (e.lanes === 2) {
@@ -249,6 +256,7 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
     for (const side of [1, -1]) {
       if (!rng.chance(DECAL.gutterChance * D)) continue;
       const s = rng.range(10, len - 10 - DECAL.gutterLen);
+      if (inBay(side, s, s + DECAL.gutterLen)) continue;
       // The cell fades across its height: lay it with the dark edge on the curb.
       const p = at(s + DECAL.gutterLen / 2, side * (half - DECAL.gutterW / 2 + 0.05));
       quad(gb, 'gutter', p.x, p.z, yawAB + (side > 0 ? Math.PI / 2 : -Math.PI / 2), DECAL.gutterLen, DECAL.gutterW, WHITE);
@@ -306,6 +314,7 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
         const p = at(t, side * (half - 1.3));
         quad(gb, 'busStop', p.x, p.z, laneYaw, 1.1, 3.2, WHITE);
       }
+      if (bay?.side === side) continue;
       if (stops.length === 0 && clen > 40 && rng.chance(DECAL.redZoneChance * D)) {
         const zl = rng.range(DECAL.redZoneLen[0], DECAL.redZoneLen[1]);
         const s0 = rng.range(8, clen - 8 - zl);
@@ -330,7 +339,9 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
           const dip = h(p1.x, p1.z) < h(p0.x, p0.z) && h(p1.x, p1.z) < h(p2.x, p2.z);
           if (!dip && !rng.chance(DECAL.puddleRandom * D)) continue;
           const w = rng.range(0.9, 1.6);
-          const p = at(s + rng.range(-3, 3), side * (half - w / 2 - 0.05));
+          const ps = s + rng.range(-3, 3);
+          if (inBay(side, ps - 3, ps + 3)) continue;
+          const p = at(ps, side * (half - w / 2 - 0.05));
           quad(pb, 'puddle', p.x, p.z, yawAB + rng.range(-0.1, 0.1), w, rng.range(2.5, 6), PUDDLE, DECAL.puddleLift);
         }
       }

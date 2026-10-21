@@ -225,6 +225,7 @@ function showMenu(): void {
     mainMenu({
       seed: seedStr,
       isDaily,
+      event: backdrop?.world.event,
       bests: { circuit: loadBest(seed, 'circuit'), sprint: loadBest(seed, 'sprint'), drift: loadBest(seed, 'drift') },
       carName: manifestCar(currentBuild().carId).displayName,
       hasReplay: !!loadLastReplay(),
@@ -347,6 +348,8 @@ function startRace(mode: RaceMode, testDrive = false): void {
     tractionControl: settings.tractionControl,
     // Test drive: free roam on the open seed map (no barriers, rails, parked cars, crowds or rivals).
     openWorld: testDrive || undefined,
+    // Ambient traffic on the side streets (every street in a test drive). Replays carry the flag.
+    traffic: true,
   };
   const ghostData = count === 0 && !testDrive ? loadGhost(seed, mode) : null;
   runSession(config, [build.visual, ...opp.visuals], null, ghostData, testDrive ? 'testDrive' : 'race');
@@ -372,6 +375,7 @@ function startFreeRoam(seedText: string): void {
     manualGearbox: settings.manualGearbox,
     tractionControl: settings.tractionControl,
     openWorld: true,
+    traffic: true,
   };
   runSession(config, [build.visual], null, null, 'roam');
 }
@@ -435,6 +439,7 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
     setOverlay(
       resultsScreen({
         mode: race.config.mode,
+        event: race.world.event?.name,
         rows: st.map((x) => ({
           name: x.car.name,
           car: manifestCar(x.car.carId).displayName,

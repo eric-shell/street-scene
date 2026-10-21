@@ -1,6 +1,7 @@
 /**
  * Turns the pure city description into three.js meshes: roads with markings
- * (alleys cobbled and unmarked), curbs and sidewalks, the buildings (regional
+ * (alleys cobbled and unmarked), curbs and sidewalks (stepping back at bus
+ * bays, busBays.ts), the buildings (regional
  * architecture, buildings.ts), streetlight lamp positions, neon signs and the
  * start line. Built once per world; read only.
  */
@@ -14,6 +15,9 @@ import { buildFinishLines, FinishLines } from './finishLine';
 import { STREETLIGHT_ARM, STREETLIGHT_POLE_H } from './props';
 import { createPodiumOutput, makeFacadeKitTextures } from './facadeKit';
 import { buildBuildings, Detail } from './buildings';
+import { ridgeLift } from './districts/structureShapes';
+import { baysByEdge } from '../city/busBays';
+import { BAY_DASH, BayDraw, bayMouth, drawBayAsphalt, drawBayPaint, drawBaySidewalk } from './busBays';
 import {
   NEON_COLORS,
   SIGN_ATLAS_COLS,
@@ -82,13 +86,17 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position as THREE.BufferAttribute;
     // Lowest height around each vertex, so the coarse ground never pokes through
-    // dips finer than its grid (the river channel, ramps).
+    // dips finer than its grid (the river channel, ramps). A tunnel's ridge is left
+    // out: it rises too steeply beside its street for a grid this coarse, and the
+    // tunnel renderer drapes its own rock over it (render/districts/tunnel.ts).
     const r = size / 96;
+    const ridges = ridgeLift(world);
+    const gh = ridges ? (x: number, z: number) => h(x, z) - ridges(x, z) : h;
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
       const z = pos.getZ(i);
-      let y = h(x, z);
-      for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) if (dx || dz) y = Math.min(y, h(x + dx * r * 0.5, z + dz * r * 0.5));
+      let y = gh(x, z);
+      for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) if (dx || dz) y = Math.min(y, gh(x + dx * r * 0.5, z + dz * r * 0.5));
       pos.setY(i, y - 0.4);
     }
     geo.computeVertexNormals();
@@ -209,6 +217,16 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     if (cobbled(ei)) alignedStrip(cobble, m.aP.curb, m.bP.curb, m.aN.curb, m.bN.curb, ROAD_Y, COBBLE_TILE, edgeSteps(ei));
     else strip(road, m.aP.curb, m.bP.curb, m.aN.curb, m.bN.curb, ROAD_Y, ROAD_Y, 10, 6, edgeSteps(ei));
   });
+  // Bus bays (busBays.ts): asphalt where the curb steps back; their sidewalks and paint follow below.
+  const bays = world.blocks.bays ?? [];
+  const bayOf = baysByEdge(bays, g.edges.length);
+  const bayDraw: BayDraw = {
+    ground: (gb, x, z, lift, uvScale) => addGroundVertex(gb, x, z, lift, uvScale),
+    h,
+    normalAt,
+    curbFace: (p, q, steps) => curbFace(p, q, steps),
+  };
+  for (const bay of bays) drawBayAsphalt(bay, road, bayDraw, ROAD_Y);
   const roadMesh = new THREE.Mesh(track(road.build()), roadMat);
   roadMesh.name = 'roads';
   group.add(roadMesh);
@@ -284,8 +302,19 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
       addLine(a2, b2, half / 2, 0.14, 3, 6, white);
       addLine(a2, b2, -half / 2, 0.14, 3, 6, white);
     }
-    addLine(a2, b2, half - 0.45, 0.14, 0, 0, white);
-    addLine(a2, b2, -(half - 0.45), 0.14, 0, 0, white);
+    for (const side of [1, -1]) {
+      // The edge line: broken into dashes across a bus bay's mouth.
+      const bay = bayOf[ei]?.side === side ? bayOf[ei] : undefined;
+      if (!bay) {
+        addLine(a2, b2, side * (half - 0.45), 0.14, 0, 0, white);
+        continue;
+      }
+      const [s0, s1] = bayMouth(bay, a, dx, dz);
+      const at = (s: number) => ({ x: a.x + dx * s, z: a.z + dz * s });
+      addLine(a2, at(s0), side * (half - 0.45), 0.14, 0, 0, white);
+      addLine(at(s0), at(s1), side * (half - 0.45), 0.14, BAY_DASH, BAY_DASH, white);
+      addLine(at(s1), b2, side * (half - 0.45), 0.14, 0, 0, white);
+    }
     // crosswalk stripes near each end
     for (const [from, dir] of [
       [a, 1],
@@ -298,6 +327,7 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
       }
     }
   });
+  for (const bay of bays) drawBayPaint(bay, marks, bayDraw);
   const markMat = track(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, emissive: 0x15161a }));
   const markMesh = new THREE.Mesh(track(marks.build()), markMat);
   markMesh.name = 'markings';
@@ -339,10 +369,17 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     if (isRiverEdge(e)) return;
     const m = mouths[ei];
     const n = edgeSteps(ei);
-    strip(walk, m.aP.curb, m.bP.curb, m.aP.outer, m.bP.outer, curbH, curbH, 4, 6, n);
-    strip(walk, m.aN.curb, m.bN.curb, m.aN.outer, m.bN.outer, curbH, curbH, 4, 6, n);
-    curbFace(m.aP.curb, m.bP.curb, n);
-    curbFace(m.aN.curb, m.bN.curb, n);
+    const bay = bayOf[ei];
+    if (bay?.side === 1) drawBaySidewalk(bay, walk, bayDraw, m.aP.curb, m.bP.curb, m.aP.outer, m.bP.outer, n);
+    else {
+      strip(walk, m.aP.curb, m.bP.curb, m.aP.outer, m.bP.outer, curbH, curbH, 4, 6, n);
+      curbFace(m.aP.curb, m.bP.curb, n);
+    }
+    if (bay?.side === -1) drawBaySidewalk(bay, walk, bayDraw, m.aN.curb, m.bN.curb, m.aN.outer, m.bN.outer, n);
+    else {
+      strip(walk, m.aN.curb, m.bN.curb, m.aN.outer, m.bN.outer, curbH, curbH, 4, 6, n);
+      curbFace(m.aN.curb, m.bN.curb, n);
+    }
   });
   g.nodes.forEach((_, ni) => {
     if (riverOnly[ni]) return;

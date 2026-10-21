@@ -206,6 +206,45 @@ export interface PartTiers {
 }
 export const PART_TIERS = params.performanceParts as unknown as PartTiers;
 
+// ---------------------------------------------------------------------------
+// Drift zones (src/sim/driftZones.ts): race rules, not car tuning, so not in tuningHash.
+// ---------------------------------------------------------------------------
+export interface DriftZoneTuning {
+  /** Drift points multiplier while drifting inside a zone (drift mode). */
+  scoreMul: number;
+  /** Multiplier on the nitrous a drift refills inside a zone (every mode, every car). */
+  refillMul: number;
+  /** Drifting per visit that earns the bonus (s). */
+  bonusTime: number;
+  /** Most extra nitrous one visit refills (tank fraction). */
+  refillCap: number;
+  /** A visit lasts this long after the car leaves the zone (s), so a slide over the edge keeps it. */
+  exitGrace: number;
+  /** Once a paying visit ends, the zone pays that car again only after this long (s). */
+  cooldown: number;
+  /** Parking lots count as zones from this depth into the block (m), frontage length (m) and area (m^2). */
+  minLotDepth: number;
+  minLotLength: number;
+  minLotArea: number;
+}
+
+const DRIFT_ZONE_KEYS = ['scoreMul', 'refillMul', 'bonusTime', 'refillCap', 'exitGrace', 'cooldown', 'minLotDepth', 'minLotLength', 'minLotArea'] as const satisfies readonly (keyof DriftZoneTuning)[];
+
+/** The `driftZones` section, checked like the car tuning: unknown or missing keys and non-numbers throw. */
+function driftZoneTuning(raw: Record<string, unknown>): DriftZoneTuning {
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (k.startsWith('_')) continue;
+    if (!(DRIFT_ZONE_KEYS as readonly string[]).includes(k)) throw new Error(`drivingParams.json: unknown key "driftZones.${k}"`);
+    if (typeof v !== 'number') throw new Error(`drivingParams.json: "driftZones.${k}" must be a number`);
+    out[k] = v;
+  }
+  for (const k of DRIFT_ZONE_KEYS) if (!(k in out)) throw new Error(`drivingParams.json: missing "driftZones.${k}"`);
+  return out as unknown as DriftZoneTuning;
+}
+
+export const DRIFT_ZONES: DriftZoneTuning = driftZoneTuning(params.driftZones as unknown as Record<string, unknown>);
+
 interface ManifestCar {
   id: string;
   wheels: Record<'FL' | 'FR' | 'RL' | 'RR', number[]>;
@@ -302,6 +341,87 @@ function hashString(s: string): string {
 export function tuningHash(carId: string): string {
   return hashString(JSON.stringify(getBaseTuning(carId)) + JSON.stringify(PART_TIERS));
 }
+
+// ---------------------------------------------------------------------------
+// Ambient traffic (src/sim/traffic.ts): the civilian cars' numbers.
+// ---------------------------------------------------------------------------
+
+/** One civilian vehicle kind: its collision box and mass. */
+export interface TrafficKind {
+  /** Silhouette the renderer draws (render/traffic.ts): sedan, hatch, van, taxi. */
+  name: string;
+  /** Share of the spawn mix (weights, normalized over the kinds). */
+  share: number;
+  /** kg */
+  mass: number;
+  /** m */
+  halfLength: number;
+  /** m */
+  halfWidth: number;
+}
+
+export interface TrafficParams {
+  /** Typical driver's cruising speed on a plain street (m/s). */
+  cruiseSpeed: number;
+  /** Each driver's cruise speed varies by up to this fraction either way. */
+  cruiseJitter: number;
+  /** Acceleration (m/s^2). */
+  accel: number;
+  /** Comfortable deceleration the speed profiles plan with (m/s^2). */
+  brake: number;
+  /** Hardest deceleration, for surprises (m/s^2). */
+  hardBrake: number;
+  /** Lateral acceleration a junction turn is taken at, which sets its speed limit (m/s^2). */
+  turnLatAccel: number;
+  /** No turn is taken slower than this (m/s). */
+  minTurnSpeed: number;
+  /** Bumper to bumper gap kept at a standstill (m). */
+  standGap: number;
+  /** Time gap kept to the car ahead on top of standGap (s). */
+  headway: number;
+  /** Struck cars: sideways slide deceleration (m/s^2). */
+  slideDecel: number;
+  /** Struck cars: rolling deceleration along the heading (m/s^2). */
+  rollDecel: number;
+  /** Struck cars: spin deceleration (rad/s^2). */
+  spinDecel: number;
+  /** Below this a struck car counts as stopped (m/s). */
+  restSpeed: number;
+  /** Seconds stopped before a struck car tries to drive on. */
+  recoverDelay: number;
+  /** A stopped car rejoins its lane when its center is within this of it (m). */
+  rejoinDistance: number;
+  /** ...and its heading within this of the lane's (deg). */
+  rejoinYawDeg: number;
+  /** The rejoin offset blends out over about this much driving (m). */
+  rejoinLength: number;
+  /** Multiplies the box approximation of yaw inertia (as CarTuning.yawInertiaScale). */
+  yawInertiaScale: number;
+  kinds: TrafficKind[];
+}
+
+const TRAFFIC_KIND_KEYS: Record<keyof TrafficKind, 'string' | 'number'> = { name: 'string', share: 'number', mass: 'number', halfLength: 'number', halfWidth: 'number' };
+
+/** Type and key check of the `traffic` block: unknown or missing keys and wrong types throw, like the car tuning. */
+function validateTraffic(raw: unknown): TrafficParams {
+  if (!isObj(raw)) throw new Error('drivingParams.json: "traffic" must be an object');
+  const scalars: (keyof TrafficParams)[] = ['cruiseSpeed', 'cruiseJitter', 'accel', 'brake', 'hardBrake', 'turnLatAccel', 'minTurnSpeed', 'standGap', 'headway', 'slideDecel', 'rollDecel', 'spinDecel', 'restSpeed', 'recoverDelay', 'rejoinDistance', 'rejoinYawDeg', 'rejoinLength', 'yawInertiaScale'];
+  for (const k of Object.keys(raw)) {
+    if (!k.startsWith('_') && k !== 'kinds' && !scalars.includes(k as keyof TrafficParams)) throw new Error(`drivingParams.json: unknown key "traffic.${k}"`);
+  }
+  for (const k of scalars) if (typeof raw[k] !== 'number') throw new Error(`drivingParams.json: "traffic.${k}" must be a number`);
+  const kinds = raw.kinds;
+  if (!Array.isArray(kinds) || !kinds.length) throw new Error('drivingParams.json: "traffic.kinds" must be a non-empty array');
+  kinds.forEach((kind: unknown, i) => {
+    if (!isObj(kind)) throw new Error(`drivingParams.json: "traffic.kinds[${i}]" must be an object`);
+    for (const k of Object.keys(kind)) if (!k.startsWith('_') && !(k in TRAFFIC_KIND_KEYS)) throw new Error(`drivingParams.json: unknown key "traffic.kinds[${i}].${k}"`);
+    for (const [k, type] of Object.entries(TRAFFIC_KIND_KEYS)) if (typeof kind[k] !== type) throw new Error(`drivingParams.json: "traffic.kinds[${i}].${k}" must be a ${type}`);
+  });
+  return raw as unknown as TrafficParams;
+}
+
+/** Ambient traffic numbers (drivingParams.json `traffic`), validated at startup. */
+export const TRAFFIC: TrafficParams = validateTraffic((params as Record<string, unknown>).traffic);
 
 export function setByPath(obj: unknown, path: string, value: number | string): void {
   const keys = path.split('.');
