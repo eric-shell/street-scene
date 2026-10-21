@@ -5,8 +5,10 @@
  * trash bags, the lantern posts of parks and plazas, and the construction
  * pieces in route shortcuts: fence panels
  * with contractors' banners, cones, sawhorse barricades with a lamp, water
- * filled barriers, sandbags, pallets), instanced per kind and part, tinted
- * per instance. Traffic
+ * filled barriers, sandbags, pallets), and the neighbourhood furniture of
+ * streetFurniture.ts (hydrants that gush when broken, hydrantSpray.ts, meters,
+ * mailboxes, phone booths, vending machines), instanced per kind and part,
+ * tinted per instance. Traffic
  * signals cycle red / amber / green in a shader (per intersection offset,
  * crossing directions out of phase), so they cost nothing on the CPU.
  *
@@ -18,11 +20,14 @@
  */
 import * as THREE from 'three';
 import type { World } from '../city/world';
-import type { DistrictPropKind, Prop } from '../city/props';
+import type { DistrictPropKind, FurnitureKind, Prop } from '../city/props';
+import { FURNITURE_KINDS } from '../city/props';
 import { GeoBuilder } from './geoBuilder';
 import { FOG_DENSITY } from './lighting';
 import { fadeSubPixel } from './lightFx';
 import { D_BOX, D_CYL, D_GLASS, D_GLOW, Debris, DebrisType } from './debris';
+import { FURNITURE_PARTS, PropPartsDef, shatterFurniture } from './streetFurniture';
+import { buildHydrantSpray } from './hydrantSpray';
 
 /** Streetlight pole height and arm reach (lamp heads sit at the arm end). Matches cityMeshes lampPositions. */
 export const STREETLIGHT_POLE_H = 8.2;
@@ -353,7 +358,10 @@ const CLUTTER: Record<DistrictPropKind, { parts: { geo: () => THREE.BufferGeomet
   sandbags: { parts: [{ geo: sandbagsGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xe8dcc0, 0xc8b890], spin: false },
   pallets: { parts: [{ geo: palletsGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xd8c8b0, 0xb8a890], spin: true },
 };
-const CLUTTER_KINDS = Object.keys(CLUTTER) as DistrictPropKind[];
+/** Every kind drawn from a parts table: district clutter and the neighbourhood furniture. */
+const PARTS: Partial<Record<Prop['kind'], PropPartsDef>> = { ...CLUTTER, ...FURNITURE_PARTS };
+const PART_KINDS = Object.keys(PARTS) as Prop['kind'][];
+const isFurniture = (k: Prop['kind']): k is FurnitureKind => (FURNITURE_KINDS as readonly string[]).includes(k);
 
 function streetlightGeo(): { solid: THREE.BufferGeometry; lens: THREE.BufferGeometry } {
   const s = new GeoBuilder(true);
@@ -734,14 +742,16 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
     });
   }
 
-  // District clutter, tinted per instance; most kinds get a random spin so rows never look stamped.
+  // District clutter and neighbourhood furniture, tinted per instance; most clutter gets a random spin so rows never look stamped.
   const tintOf: THREE.Color[] = [];
-  for (const kind of CLUTTER_KINDS) {
+  for (const kind of PART_KINDS) {
     const list = byKind(kind);
     if (!list.length) continue;
-    const def = CLUTTER[kind];
-    const matOf = { matte: matteMat, canopy: canopyMat, solid: solidMat, glow: glowMat, lamp: lampLensMat } as const;
+    const def = PARTS[kind]!;
+    const matOf = { matte: matteMat, canopy: canopyMat, solid: solidMat, glow: glowMat, lamp: lampLensMat, glass: glassMat } as const;
     const ids = def.parts.map((part, k) => addMesh(`${kind}${k}`, part.geo(), matOf[part.mat], list.length));
+    // Glass after the opaque pass, like the bus shelters'.
+    def.parts.forEach((part, k) => part.mat === 'glass' && (meshes[ids[k]].renderOrder = 4));
     list.forEach((p, i) => {
       const yaw = p.yaw + (def.spin ? hash01(p.id * 7) * 6.28 : 0);
       const tint = tmpTint.setHex(def.tints[(hash01(p.id * 17) * def.tints.length) | 0]).multiplyScalar(0.85 + 0.3 * hash01(p.id * 23));
@@ -763,8 +773,11 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
   });
 
   const debris = new Debris(world.heightAt);
-  const clutterYaw = (p: Prop) => p.yaw + (CLUTTER[p.kind as DistrictPropKind]?.spin ? hash01(p.id * 7) * 6.28 : 0);
+  const clutterYaw = (p: Prop) => p.yaw + (PARTS[p.kind]?.spin ? hash01(p.id * 7) * 6.28 : 0);
   group.add(debris.group);
+  // Broken hydrants gush for the rest of the race.
+  const spray = buildHydrantSpray();
+  group.add(spray.mesh);
   const shown = new Uint8Array(props.length);
   const tmpC = new THREE.Color();
 
@@ -945,6 +958,10 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
       return;
     }
 
+    if (isFurniture(p.kind)) {
+      shatterFurniture(p.kind, spawn, speed, p.yaw, tintOf[p.id] ?? col(0xffffff), (ly, sp, n) => debris.burst(p.x, p.y + ly, p.z, dx, dz, sp, n));
+      return;
+    }
     if (p.kind !== 'busStop') {
       shatterClutter(p, spawn, speed, dx, dz);
       return;
@@ -1092,6 +1109,10 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
           shown[i] = b;
           const p = props[i];
           setBroken(p, b === 1);
+          if (p.kind === 'hydrant') {
+            if (broken[i] === 1) spray.start(p.id, p.x, p.y, p.z, time);
+            else spray.stop(p.id);
+          }
           // A bulk change (e.g. a state jump) just hides; a few fresh hits come apart.
           // 2 = removed for this route (under a barrier/rail): just hidden.
           if (b && broken[i] === 1 && fresh <= 6) {
@@ -1111,9 +1132,11 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
         }
       }
       debris.update(dt);
+      spray.update(time);
     },
     dispose() {
       debris.dispose();
+      spray.dispose();
       for (const m of meshes) m.dispose();
       for (const d of disposables) d.dispose();
     },
