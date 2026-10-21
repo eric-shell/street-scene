@@ -46,7 +46,7 @@ let glowTex: THREE.Texture | null = null;
 const glow = () => (glowTex ??= makeRadialGlow());
 
 /** Overrun pop flash: lifetime (s) and tongue length (m) from a crackle to a bang. */
-const POP_FLASH = { life: [0.05, 0.11], length: [0.35, 1.1] } as const;
+const POP_FLASH = { life: [0.07, 0.16], length: [0.4, 1.3] } as const;
 
 export class CarView {
   readonly root = new THREE.Group();

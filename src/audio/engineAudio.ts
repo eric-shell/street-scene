@@ -46,15 +46,19 @@ export interface EngineInput {
  */
 const OVERRUN = {
   /** Time constants (s): heat rising under load at revs, cooling when not. */
-  heatUp: 6,
-  coolDown: 25,
-  /** Revs (fraction of the redline) a lift needs to leave fuel. */
-  minRevs: 0.5,
+  heatUp: 4,
+  coolDown: 20,
+  /** Revs (fraction of the redline) a lift needs to leave fuel; from the top it leaves the most. */
+  minRevs: 0.45,
   /** Fuel burn off (s), and how fast the pedal takes it back. */
   burnOff: 1.2,
   onThrottle: 0.15,
-  /** Chance per second at full fuel, full heat, pops 1 (sport). */
-  rate: 0.15,
+  /** Chance per second on the overrun at full fuel, full heat, pops 1 (sport). */
+  rate: 0.3,
+  /** Events per second while bouncing off the limiter: the cut dumps mixture every few firings. */
+  limiterRate: 4,
+  /** Chance that a high rev upshift's cut pops (times the silencer's freedom and the heat). */
+  shiftChance: 0.35,
   /** Share of events that are a single bang rather than a crackle burst. */
   bangShare: 0.45,
   /** Turbo cars run richer under boost and leave more fuel on a lift. */
@@ -130,8 +134,12 @@ export function audioHub(): AudioHub | null {
  */
 const VOICE = {
   presence: { harmonic: 6, min: 550, max: 2400, q: 0.8, gain: 6 },
-  gain: 3,
-  bodyHz: 1500,
+  gain: 16,
+  /** The valvetrain tick's band (Hz) and width: a tick, not a hiss. */
+  bodyHz: 2200,
+  bodyQ: 1.2,
+  /** Roll off above this (Hz): the voice has nothing but grain up there. */
+  top: 6500,
 } as const;
 
 const PARAM_NAMES = ['rpm', 'redline', 'load', 'cut', 'limiter', 'nitro'] as const;
@@ -185,7 +193,11 @@ export class EngineVoice {
     this.presence.type = 'peaking';
     this.presence.Q.value = VOICE.presence.q;
     this.presence.gain.value = VOICE.presence.gain;
-    this.presence.connect(this.out);
+    const top = ctx.createBiquadFilter();
+    top.type = 'lowpass';
+    top.frequency.value = VOICE.top;
+    top.Q.value = 0.7;
+    this.presence.connect(top).connect(this.out);
     // Exhaust: the silencer and pipe column as a convolution with a rendered impulse response.
     this.exhaust = ctx.createConvolver();
     // The response is peak normalized already; Web Audio's equal power normalization would bury a long one.
@@ -195,15 +207,16 @@ export class EngineVoice {
     buf.copyToChannel(ir, 0);
     this.exhaust.buffer = buf;
     this.exhaust.connect(this.presence);
-    // Intake through its trumpet resonance; the valvetrain tick above the exhaust's band.
+    // Intake through its trumpet resonance; the valvetrain tick in its own narrow band.
     this.intake = ctx.createBiquadFilter();
     this.intake.type = 'bandpass';
     this.intake.frequency.value = this.program.intake.hz;
     this.intake.Q.value = this.program.intake.q;
     this.intake.connect(this.out);
     this.body = ctx.createBiquadFilter();
-    this.body.type = 'highpass';
+    this.body.type = 'bandpass';
     this.body.frequency.value = VOICE.bodyHz;
+    this.body.Q.value = VOICE.bodyQ;
     this.body.connect(this.out);
 
     if (spec.aspiration === 'turbo') {
@@ -260,8 +273,8 @@ export class EngineVoice {
     const load = Math.max(0, Math.min(1, e.throttle));
     const r = Math.min(1.05, rpm / e.redline);
     const f = (rpm / 60) * (this.program.cylinders.length / this.program.revsPerCycle);
-    // The sim holds rpm at the redline by cutting torque; the voice bounces off a limiter instead.
-    const limiter = rpm >= e.redline - 40 && load > 0.5;
+    // The sim holds rpm at the redline by cutting torque, a free revving garage engine dips under it between cuts; either way the pedal is down near the top.
+    const limiter = rpm >= e.redline - 150 && Math.max(load, this.lastThrottle) > 0.5;
     const p = this.params;
     if (p) {
       p.rpm.setTargetAtTime(rpm, t, tc);
@@ -273,10 +286,11 @@ export class EngineVoice {
     }
     const pr = VOICE.presence;
     this.presence.frequency.setTargetAtTime(Math.max(pr.min, Math.min(pr.max, f * pr.harmonic)), t, tc);
-    const level = this.base * VOICE.gain * this.program.trim * e.proximity * (0.45 + 0.55 * load) * (0.7 + 0.3 * r) * (e.shifting ? 0.75 : 1);
+    // Closed throttle is only a little quieter: the overrun is where the pops and the silencer's character are heard.
+    const level = this.base * VOICE.gain * this.program.trim * e.proximity * (0.7 + 0.3 * load) * (0.7 + 0.3 * r) * (e.shifting ? 0.8 : 1);
     this.out.gain.setTargetAtTime(level, t, 0.05);
     this.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, e.pan)), t, 0.05);
-    this.overrun(load, r, e.shifting === true, Math.min(0.1, e.dt ?? 1 / 60));
+    this.overrun(load, r, e.shifting === true, limiter, Math.min(0.1, e.dt ?? 1 / 60));
 
     if (this.turbo && this.gTurbo && this.bov) {
       // Boost builds with load and rpm and spools up with lag.
@@ -295,26 +309,41 @@ export class EngineVoice {
     this.lastThrottle = load;
   }
 
-  /** The rich overrun model (OVERRUN): decides the pops, then fires them in the worklet and tells the owner. */
-  private overrun(load: number, r: number, shifting: boolean, dt: number): void {
+  /**
+   * The rich overrun model (OVERRUN): decides the pops, then fires them in the
+   * worklet and tells the owner. Three ways in: bouncing off the limiter (a
+   * stream of crackles, the cut dumps mixture every few firings), a high rev
+   * upshift's cut (sometimes), and the overrun after a lift from revs (the
+   * hotter the exhaust and the higher the lift, the likelier).
+   */
+  private overrun(load: number, r: number, shifting: boolean, limiter: boolean, dt: number): void {
     const P = this.program;
     if (P.pops <= 0) return;
+    const free = Math.min(1.5, P.pops);
     const drive = (load * Math.max(0, r - 0.2)) / 0.8;
     this.heat += (drive - this.heat) * (1 - Math.exp(-dt / (drive > this.heat ? OVERRUN.heatUp : OVERRUN.coolDown)));
-    if (this.lastThrottle > 0.6 && load < 0.2 && r > OVERRUN.minRevs) this.fuel = Math.min(1, this.fuel + (0.4 + 0.6 * r) * (this.turbocharged ? OVERRUN.turboFuel : 1));
-    // A downshift blip at revs dumps a little too.
-    if (shifting && !this.wasShifting && r > 0.6) this.fuel = Math.min(1, this.fuel + 0.25);
+    if (this.lastThrottle > 0.6 && load < 0.2 && r > OVERRUN.minRevs) {
+      const lift = Math.min(1, (r - OVERRUN.minRevs) / (1 - OVERRUN.minRevs)) ** 1.2;
+      this.fuel = Math.min(1, this.fuel + lift * (this.turbocharged ? OVERRUN.turboFuel : 1));
+    }
+    const upshift = shifting && !this.wasShifting && r > 0.8;
     this.wasShifting = shifting;
     this.fuel *= Math.exp(-dt / OVERRUN.burnOff);
-    if (load > 0.3) this.fuel *= Math.exp(-dt / OVERRUN.onThrottle);
-    if (this.fuel < 0.1 || Math.random() >= P.pops * OVERRUN.rate * this.fuel * this.heat * dt) return;
-    this.fuel *= 0.45;
-    if (Math.random() < OVERRUN.bangShare) this.pop(0, 1, 2.2 + Math.random());
+    if (load > 0.3 && !limiter) this.fuel *= Math.exp(-dt / OVERRUN.onThrottle);
+    let chance = 0;
+    if (limiter) {
+      chance = OVERRUN.limiterRate * (0.4 + 0.6 * free) * dt;
+      this.heat = Math.min(1, this.heat + dt / 2);
+    } else if (upshift) chance = OVERRUN.shiftChance * free * (0.3 + 0.7 * this.heat);
+    else if (this.fuel > 0.1) chance = P.pops * OVERRUN.rate * this.fuel * this.heat * dt;
+    if (Math.random() >= chance) return;
+    this.fuel *= limiter ? 0.9 : 0.45;
+    if (Math.random() < (limiter ? 0.2 : OVERRUN.bangShare)) this.pop(0, 1, 0.45 + 0.2 * Math.random());
     else {
-      const n = 2 + Math.floor(Math.random() * 3);
+      const n = limiter ? 1 + Math.floor(Math.random() * 2) : 2 + Math.floor(Math.random() * 3);
       let at = 0;
       for (let i = 0; i < n; i++) {
-        this.pop(at, 0, 0.9 + Math.random() * 0.6);
+        this.pop(at, 0.3 * Math.random(), 0.2 + 0.15 * Math.random());
         at += 0.03 + Math.random() * 0.05;
       }
     }

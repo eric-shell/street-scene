@@ -33,8 +33,6 @@ import { ENGINE_LAYOUTS } from '../shared/carSpec';
 const SOUND = 343;
 /** How much further the second of two tailpipes runs (m). */
 const CROSSOVER = 0.05;
-/** Ringing of the silencer response against its direct path. */
-const IR_COLOUR = 0.35;
 
 export interface CylinderProgram {
   /** When this cylinder fires, as a fraction of the combustion cycle (720° for a four stroke, 360° for a rotor). */
@@ -59,10 +57,14 @@ export interface PulseShape {
 export interface ImpulseSpec {
   /** Impulse response length (s). */
   seconds: number;
-  /** Decaying sines, [Hz, decay s, gain]: pipe column modes, the silencer chamber, the tailpipe ring. */
+  /**
+   * Resonances as decaying sines, [Hz, Q, boost]: pipe column modes, the silencer chamber, the tailpipe ring.
+   * `boost` is the linear gain at resonance over the direct path (2 is +6 dB); the sine's amplitude follows from it
+   * and the Q, which is what keeps a 60 ms ring from being a +40 dB peak.
+   */
   modes: [number, number, number][];
-  /** Diffuse tail: decay (s), gain, low pass (Hz). */
-  tail: { decay: number; gain: number; lowpass: number };
+  /** Diffuse tail: decay (s), its energy relative to the direct path (0.5 is half), low pass (Hz). */
+  tail: { decay: number; energy: number; lowpass: number };
   seed: number;
 }
 
@@ -89,7 +91,7 @@ export interface EngineProgram {
   /** Per-firing amplitude variance at idle (fraction); the lope. */
   rough: number;
   ir: ImpulseSpec;
-  /** Level trim: derivative heavy trains come through the silencer response quieter than bass heavy ones (measured at the bus), so bright voices get more. */
+  /** Level trim against the other layouts (the layout's `level`; measured at the bus, a V8 through two pipes comes out hot). */
   trim: number;
   /** Noise seed; every voice gets its own so rivals never phase lock. */
   seed: number;
@@ -188,11 +190,15 @@ export const LAYOUT_VOICE: Record<EngineLayout, LayoutVoice> = {
   R3: ROTARY,
 };
 
-/** Silencers: exhaust system length (m), band limit (Hz), pops per lift, and the impulse response recipe. */
+/**
+ * Silencers: exhaust system length (m), band limit (Hz), how freely pops get through, and the response recipe:
+ * the pipe column's first three modes (Q and boost of the first, the rest fall off), the chamber [Hz, Q, boost],
+ * the tailpipe ring [Hz, Q, boost] (none for a quiet box) and the diffuse tail.
+ */
 const MUFFLER = {
-  quiet: { system: 2.8, lowpass: 1800, pops: 0.3, chamber: 110, chamberDecay: 0.12, modeDecay: 0.1, ring: 0, seconds: 0.35, tail: { decay: 0.12, gain: 0.5, lowpass: 900 } },
-  sport: { system: 2.3, lowpass: 2000, pops: 1.2, chamber: 140, chamberDecay: 0.07, modeDecay: 0.06, ring: 0.25, seconds: 0.25, tail: { decay: 0.07, gain: 0.6, lowpass: 2600 } },
-  straight: { system: 1.7, lowpass: 2600, pops: 2.5, chamber: 180, chamberDecay: 0.04, modeDecay: 0.035, ring: 0.45, seconds: 0.18, tail: { decay: 0.04, gain: 0.7, lowpass: 5000 } },
+  quiet: { system: 2.8, lowpass: 1800, pops: 0.3, pipeQ: 8, pipeBoost: 3, chamber: [110, 5, 2.5], ring: null, seconds: 0.3, tail: { decay: 0.12, energy: 0.6, lowpass: 900 } },
+  sport: { system: 2.3, lowpass: 2000, pops: 1.2, pipeQ: 7, pipeBoost: 2.2, chamber: [140, 4, 1.8], ring: [1800, 12, 1.5], seconds: 0.2, tail: { decay: 0.07, energy: 0.4, lowpass: 2600 } },
+  straight: { system: 1.7, lowpass: 2600, pops: 2.5, pipeQ: 6, pipeBoost: 1.8, chamber: [180, 3, 1.4], ring: [2100, 15, 2.2], seconds: 0.15, tail: { decay: 0.04, energy: 0.3, lowpass: 5000 } },
 } as const;
 
 /** Header primary from the valve to the collector (m): tubular headers, or the short log manifold feeding a turbine. */
@@ -206,10 +212,10 @@ function primaryLength(v: LayoutVoice & EngineVoiceSpec, turbo: boolean, bank: n
   return len;
 }
 
-/** Pipe column modes of an open pipe `system` m long, half wave spaced. */
-function pipeModes(system: number, decay: number, count: number): [number, number, number][] {
+/** Pipe column modes of an open pipe `system` m long, half wave spaced; higher modes are damped more and boost less. */
+function pipeModes(system: number, q: number, boost: number, count: number): [number, number, number][] {
   const f1 = SOUND / (2 * system);
-  return Array.from({ length: count }, (_, n) => [f1 * (n + 1), decay / (1 + 0.5 * n), 1 / (1 + 0.8 * n)]);
+  return Array.from({ length: count }, (_, n) => [f1 * (n + 1), q / (1 + 0.3 * n), 1 + (boost - 1) / (1 + 0.8 * n)]);
 }
 
 /** Build the program for a car's engine. `lite` is for rivals: shorter response, no intake or body detail. */
@@ -240,16 +246,9 @@ export function buildProgram(spec: EngineSpec, opts: { seed?: number; lite?: boo
   const pulse: PulseShape = { rise: v.pulse.rise * (1 + 1.5 * smear), decay: v.pulse.decay * (1 + 0.5 * smear), dip: v.pulse.dip * (1 - 0.3 * smear) };
   const itb = v.intake === 'itb';
   const edge = v.edge * (1 - 0.4 * smear);
-  // The direct path dominates the response (IR_COLOUR scales the ringing), so the convolution's gain stays within a few
-  // dB whatever the train's spectrum: a bass heavy turbo and a derivative bright six then come out at one loudness.
-  const modes: [number, number, number][] = [...pipeModes(muffler.system, muffler.modeDecay, 3), [muffler.chamber, muffler.chamberDecay, 0.6]];
-  if (muffler.ring > 0) modes.push([1700 + 400 * muffler.ring, 0.012, muffler.ring]);
-  const ir: ImpulseSpec = {
-    seconds: muffler.seconds * (opts.lite ? 0.5 : 1),
-    modes: modes.map(([hz, decay, gain]) => [hz, decay, gain * IR_COLOUR]),
-    tail: { ...muffler.tail, gain: muffler.tail.gain * IR_COLOUR },
-    seed,
-  };
+  const modes: [number, number, number][] = [...pipeModes(muffler.system, muffler.pipeQ, muffler.pipeBoost, 3), [...muffler.chamber]];
+  if (muffler.ring) modes.push([...muffler.ring]);
+  const ir: ImpulseSpec = { seconds: muffler.seconds * (opts.lite ? 0.5 : 1), modes, tail: muffler.tail, seed };
   return {
     revsPerCycle: layout.rotary ? 1 : 2,
     cylinders,
@@ -260,11 +259,11 @@ export function buildProgram(spec: EngineSpec, opts: { seed?: number; lite?: boo
     edge,
     air: Math.min(1, v.air + 0.1 * smear),
     intake: { gain: opts.lite ? 0 : itb ? 0.55 : 0.15, hz: v.intakeHz, q: itb ? 2.5 : 1.4 },
-    mech: opts.lite ? 0 : v.mech,
+    mech: opts.lite ? 0 : v.mech * 0.7,
     pops: muffler.pops * (turbo ? 0.6 : 1),
     rough: v.rough,
     ir,
-    trim: (edge / 0.6) ** 0.8 * v.level,
+    trim: v.level,
     seed,
   };
 }
@@ -273,12 +272,19 @@ export function buildProgram(spec: EngineSpec, opts: { seed?: number; lite?: boo
 // Rendering
 // ---------------------------------------------------------------------------
 
-const TABLE = 2048;
+/** Pulse wavetable entries per cycle: fine enough that the derivative of its linear interpolation never steps audibly at idle. */
+const TABLE = 8192;
 const RING = 32;
 /** Derivative weight per sample at 44.1 kHz, so the mix does not depend on the sample rate. */
 const DERIV = 30;
-/** Makes the 2 kHz noise's modulation about unit depth. */
-const AIR = 3;
+/** Makes the low passed noise's modulation about half depth at full `air`. */
+const AIR = 3.5;
+/** Turbulence noise band (Hz): above this it is hiss, not breathing. */
+const AIR_HZ = 1200;
+/** Jitter wander band (Hz): slow enough to read as the pipe moving, not as grain. */
+const JITTER_HZ = 600;
+/** Pop noise band (Hz). */
+const POP_HZ = 3500;
 /** Leveler target (RMS); peaks land around 0.4 to 0.8 and the soft clip after it keeps them bounded. */
 const TARGET = 0.1;
 const MAX_POPS = 8;
@@ -314,23 +320,31 @@ function nextRand(s: { v: number }): number {
   return (x >>> 0) / 4294967296;
 }
 
-/** The silencer and pipe column as an impulse response, peak normalized. */
+/**
+ * The silencer and pipe column as an impulse response: a unit direct path, resonances sized so each peaks `boost`
+ * above it (a decaying sine of amplitude A and time constant τ samples has gain A τ / 2 at its frequency), and a
+ * diffuse tail sized by its energy against the direct path. Peak normalized, which the direct path keeps near 1.
+ */
 export function renderImpulse(spec: ImpulseSpec, sampleRate: number): Float32Array<ArrayBuffer> {
   const n = Math.max(1, Math.round(spec.seconds * sampleRate));
   const out = new Float32Array(n);
   out[0] = 1;
-  for (const [hz, decay, gain] of spec.modes) {
+  for (const [hz, q, boost] of spec.modes) {
     const w = (2 * Math.PI * hz) / sampleRate;
-    const k = -1 / (decay * sampleRate);
-    for (let t = 0; t < n; t++) out[t] += gain * Math.sin(w * t) * Math.exp(k * t);
+    const tau = (q / (Math.PI * hz)) * sampleRate;
+    const amp = (2 * boost) / tau;
+    for (let t = 0; t < n; t++) out[t] += amp * Math.sin(w * t) * Math.exp(-t / tau);
   }
   const rng = { v: spec.seed | 0 || 1 };
   const coef = 1 - Math.exp((-2 * Math.PI * spec.tail.lowpass) / sampleRate);
-  const k = -1 / (spec.tail.decay * sampleRate);
+  // Uniform noise through the one pole has variance (1 / 3) coef / (2 - coef); the decaying tail's energy is that times τ / 2.
+  const tau = spec.tail.decay * sampleRate;
+  const variance = (coef / (2 - coef)) / 3;
+  const gain = Math.sqrt((2 * spec.tail.energy) / (variance * tau));
   let nz = 0;
   for (let t = 0; t < n; t++) {
     nz += (nextRand(rng) * 2 - 1 - nz) * coef;
-    out[t] += nz * spec.tail.gain * 3 * Math.exp(k * t);
+    out[t] += nz * gain * Math.exp(-t / tau);
   }
   let peak = 0;
   for (let t = 0; t < n; t++) peak = Math.max(peak, Math.abs(out[t]));
@@ -363,7 +377,12 @@ export class EngineSynth {
   private readonly popPipe = new Int32Array(MAX_POPS);
   private readonly popGain = new Float64Array(MAX_POPS);
   private readonly popSize = new Float64Array(MAX_POPS);
+  /** Pops per pipe this sample, and low passed; they join after the leveler so it cannot duck them. */
+  private readonly popMix: Float64Array;
+  private readonly popLp: Float64Array;
+  private readonly popCoef: number;
   private readonly tickLen: number;
+  private lastTick = -1e9;
   private readonly rng: { v: number };
   private readonly dcCoef: number;
   private readonly airCoef: number;
@@ -398,18 +417,23 @@ export class EngineSynth {
     this.dc = new Float64Array(p);
     this.prevY = new Float64Array(p);
     this.airNz = new Float64Array(p);
+    this.popMix = new Float64Array(p);
+    this.popLp = new Float64Array(p);
     this.tickLen = Math.round(0.0015 * sampleRate);
     this.rng = { v: program.seed | 0 || 1 };
     this.dcCoef = 1 - Math.exp((-2 * Math.PI * 10) / sampleRate);
-    this.airCoef = 1 - Math.exp((-2 * Math.PI * 2000) / sampleRate);
-    this.jitCoef = 1 - Math.exp((-2 * Math.PI * 10000) / sampleRate);
+    this.airCoef = 1 - Math.exp((-2 * Math.PI * AIR_HZ) / sampleRate);
+    this.jitCoef = 1 - Math.exp((-2 * Math.PI * JITTER_HZ) / sampleRate);
+    this.popCoef = 1 - Math.exp((-2 * Math.PI * POP_HZ) / sampleRate);
     this.derivK = (DERIV * sampleRate) / 44100;
   }
 
   /**
    * Fire an overrun pop `at` seconds from now through `pipe`: size 1 is a bang
-   * with the low thump of the silencer taking it, 0 a crackle. The voice decides
-   * when (its rich overrun model), so the sound and the exhaust flash are one event.
+   * with the low thump of the silencer taking it, 0 a crackle; `gain` is its
+   * peak before the soft clip (0.3 a crackle, 1 a big bang), independent of the
+   * engine's level. The voice decides when (its rich overrun model), so the
+   * sound and the exhaust flash are one event.
    */
   pop(at: number, pipe: number, gain: number, size: number): void {
     for (let k = 0; k < MAX_POPS; k++) {
@@ -434,6 +458,7 @@ export class EngineSynth {
     const nc = this.fire.length;
     const sr = this.sr;
     const rpm = Math.max(300, q.rpm);
+    const r = Math.min(1.05, rpm / Math.max(1000, q.redline));
     const cycleHz = rpm / 60 / P.revsPerCycle;
     const dTheta = cycleHz / sr;
     const cut = q.cut > 0.5;
@@ -442,7 +467,7 @@ export class EngineSynth {
     const load = cut ? 0 : Math.max(0, Math.min(1, q.load));
     const amp = (0.12 + 0.88 * load ** 0.8) * (nitro ? 1.2 : 1);
     const intakeAmp = (P.intake.gain * load ** 1.5 * (0.3 + 0.7 * Math.min(1, rpm / 6000))) / nc;
-    const lowpass = Math.min(sr * 0.45, P.lowpass * (nitro ? 1.3 : 1) * (0.75 + 0.25 * load));
+    const lowpass = Math.min(sr * 0.45, P.lowpass * (nitro ? 1.3 : 1) * (0.85 + 0.15 * load));
     const lpCoef = 1 - Math.exp((-2 * Math.PI * lowpass) / sr);
     const jitter = (P.jitter * sr) / 44100;
     const rough = P.rough * (0.3 + 0.7 * (1 - load));
@@ -450,8 +475,9 @@ export class EngineSynth {
     const air = P.air;
     const envAtk = 1 - Math.exp(-1 / (0.01 * sr));
     const envRel = 1 - Math.exp(-1 / (0.25 * sr));
-    const agcUp = 1 - Math.exp(-1 / (0.3 * sr));
+    const agcUp = 1 - Math.exp(-1 / (0.15 * sr));
     const agcDown = 1 - Math.exp(-1 / (0.005 * sr));
+    const tickGap = Math.round(0.025 * sr);
 
     const T = this.exhaustTable;
     const TI = this.intakeTable;
@@ -460,6 +486,7 @@ export class EngineSynth {
       if (theta >= 1) theta -= 1;
       this.theta = theta;
       this.pipeSum.fill(0);
+      this.popMix.fill(0);
       let inSum = 0;
       for (let c = 0; c < nc; c++) {
         let u = theta - this.fire[c] - this.delay[c] * cycleHz;
@@ -469,9 +496,11 @@ export class EngineSynth {
           let g = amp * (1 + rough * (nextRand(this.rng) * 2 - 1));
           if (limiter && nextRand(this.rng) < 0.45) g = 0;
           this.fireGain[c] = g * this.cgain[c];
-          if (P.mech > 0) {
+          // Valvetrain tick: audible at idle and on a closed throttle, never a hiss at speed (one burst per 25 ms at most, gone by three quarters of the redline).
+          if (P.mech > 0 && r < 0.75 && this.samples - this.lastTick > tickGap) {
+            this.lastTick = this.samples;
             this.tickLeft = this.tickLen;
-            this.tickGain = P.mech * (0.3 + 0.7 * (1 - load)) * (0.7 + 0.6 * nextRand(this.rng));
+            this.tickGain = P.mech * (0.3 + 0.7 * (1 - load)) * (1 - r / 0.75) * (0.7 + 0.6 * nextRand(this.rng));
           }
         }
         this.lastU[c] = u;
@@ -498,10 +527,11 @@ export class EngineSynth {
           const size = this.popSize[k];
           let v = Math.exp(-t / (0.003 + 0.004 * size)) + (0.3 + 0.3 * size) * (nextRand(this.rng) * 2 - 1) * Math.exp(-t / (0.006 + 0.01 * size));
           if (size > 0.5) v += 0.8 * Math.sin(2 * Math.PI * 90 * t) * Math.exp(-t / 0.025);
-          this.pipeSum[this.popPipe[k]] += (this.popGain[k] * v) / nc;
+          this.popMix[this.popPipe[k]] += this.popGain[k] * v;
           this.popLeft[k]--;
         }
       }
+      for (let p = 0; p < this.popLp.length; p++) this.popLp[p] += (this.popMix[p] - this.popLp[p]) * this.popCoef;
 
       let sum = 0;
       const pos = this.ringPos;
@@ -540,11 +570,14 @@ export class EngineSynth {
       this.agc += (want - this.agc) * (want < this.agc ? agcDown : agcUp);
       if (channels > 1) {
         for (let ch = 0; ch < channels; ch++) {
-          const out = this.pipeSum[Math.min(ch, this.pipeSum.length - 1)] * this.agc;
+          const p = Math.min(ch, this.pipeSum.length - 1);
+          const out = this.pipeSum[p] * this.agc + this.popLp[p];
           exhaust[ch][i] = out / (1 + Math.abs(out) * 0.5);
         }
       } else {
-        const out = sum * this.agc;
+        let pops = 0;
+        for (let p = 0; p < this.popLp.length; p++) pops += this.popLp[p];
+        const out = sum * this.agc + pops;
         exhaust[0][i] = out / (1 + Math.abs(out) * 0.5);
       }
       intake[i] = inSum * intakeAmp;
