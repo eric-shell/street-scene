@@ -147,7 +147,7 @@ export function planRoads(seed: number, forceFlavour?: EventFlavourId): { graph:
   const nodes: Record<PlannedRouteKind, number[]> = routeNodes;
   // One bridge becomes the drawbridge, its span kept clear of street furniture (city/drawbridge.ts).
   markDrawbridge(seed, graph, districts.areas, districts.builds, nodes);
-  const event = resolveEvent(flavour, graph, districts.areas, [
+  const event = resolveEvent(seed, flavour, graph, districts.areas, [
     { nodes: nodes.circuit, closed: true },
     { nodes: nodes.sprint, closed: false },
   ]);

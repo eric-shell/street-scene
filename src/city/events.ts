@@ -25,7 +25,16 @@
  * really deliver the flavour by its own measure; a seed whose routes do not
  * (no hill fitted on them, no alley within reach) falls back to Downtown
  * Dash, which every city has, so the name never promises what the race does
- * not have. Pure and deterministic.
+ * not have.
+ *
+ * Every seed then titles its event from the flavour's words: a lead from a
+ * shared night street list and one of the flavour's own nouns (Cobalt
+ * Ascent, Last Call Backstreet Run, Sodium Rail Run), and one of its
+ * taglines, on a stream of their own (deriveSeed(seed, 'eventTitle')) so the
+ * words never move the flavour draw or the city. The noun always says the
+ * flavour, so the title still promises what the race has; with about a
+ * hundred leads and a dozen nouns a flavour has over a thousand titles, so
+ * neighbouring seeds rarely share one. Pure and deterministic.
  */
 import { CITY } from './config';
 import type { RoadGraph } from './roadGraph';
@@ -41,24 +50,144 @@ import { type Vec2, distToSegment, sqrt } from '../sim/math';
 export type EventFlavourId = 'hillClimb' | 'riverRun' | 'alleySprint' | 'underTheEl' | 'ringRush' | 'grandTour' | 'downtownDash';
 
 export interface EventFlavour {
-  /** Player facing name (menu, intro card, start gantry, results). */
+  /** The flavour's own name (docs, tests, debugging); players see a seed's title built from `nouns`. */
   name: string;
-  /** One line under the name. */
-  tagline: string;
+  /** Title nouns that each say the flavour; a seed's title is a lead (EVENT_LEADS) and one of these. */
+  nouns: readonly string[];
+  /** One line under the title, one drawn per seed. */
+  taglines: readonly string[];
   /** Relative weight of the draw among the flavours a city offers. */
   weight: number;
 }
 
 /** Every flavour, in draw order (the order is part of the pick: keep it fixed). */
 export const EVENT_FLAVOURS: Readonly<Record<EventFlavourId, EventFlavour>> = {
-  hillClimb: { name: 'Hill Climb', tagline: 'Up the heights and light over the crests', weight: 3 },
-  riverRun: { name: 'River Run', tagline: 'Down the ramps and flat out along the channel', weight: 3 },
-  alleySprint: { name: 'Alley Sprint', tagline: 'Wall to wall through the cobbled alleys', weight: 2.5 },
-  underTheEl: { name: 'Under the El', tagline: 'Pillar to pillar beneath the trains', weight: 2.5 },
-  ringRush: { name: 'Ring Rush', tagline: 'Roundabout to roundabout, never lift', weight: 2 },
-  grandTour: { name: 'Grand Tour', tagline: 'Downtown and past the floodlit monument', weight: 1.5 },
-  downtownDash: { name: 'Downtown Dash', tagline: 'Long straights through the heart of the city', weight: 1.5 },
+  hillClimb: {
+    name: 'Hill Climb',
+    nouns: ['Hill Climb', 'Ascent', 'Crest Run', 'Heights', 'Summit Run', 'Ridge Run', 'Hill Run', 'Switchbacks', 'Uphill', 'High Road', 'Climb', 'Peak Chase', 'Gradient', 'Rise'],
+    taglines: [
+      'Up the heights and light over the crests',
+      'Every crest a blind one, every landing a hard one',
+      'Climb the ridges, fly the tops, brake for the dips',
+      'The city tilts and the throttle stays pinned',
+      'Air over the summits, grip on the way down',
+      'Steep streets and short sightlines',
+    ],
+    weight: 3,
+  },
+  riverRun: {
+    name: 'River Run',
+    nouns: ['River Run', 'Channel Run', 'Flood Run', 'Riverbed Dash', 'Spillway', 'Floodway', 'Canal Run', 'Low Water', 'Storm Drain', 'Dry Bed Dash', 'Undertow', 'Embankment', 'Waterline', 'Culvert Run'],
+    taglines: [
+      'Down the ramps and flat out along the channel',
+      'Drop into the concrete river and keep it pinned',
+      'Below the bridges, between the walls, no way out but forward',
+      'The channel runs dry tonight and so does the grip',
+      'Down the banks and under every bridge in town',
+      'Floor it along the floodway before the tide turns',
+    ],
+    weight: 3,
+  },
+  alleySprint: {
+    name: 'Alley Sprint',
+    nouns: ['Alley Sprint', 'Backstreet Run', 'Back Alley', 'Cobble Dash', 'Narrows', 'Gauntlet', 'Alleyway', 'Lane Run', 'Brick Run', 'Squeeze', 'Side Streets', 'Cutthrough', 'Bottleneck', 'Back Lanes'],
+    taglines: [
+      'Wall to wall through the cobbled alleys',
+      'Mirrors folded, inches either side',
+      'Brick on the left, brick on the right, nothing in between',
+      'The shortcuts nobody else dares',
+      'Cobbles, bins and fire escapes at full tilt',
+      'Thread the back lanes the cabs avoid',
+    ],
+    weight: 2.5,
+  },
+  underTheEl: {
+    name: 'Under the El',
+    nouns: ['El Run', 'Rail Run', 'Pillar Run', 'Elevated', 'Trestle Run', 'Underline', 'Girder Run', 'Line Chase', 'Third Rail', 'Train Chase', 'Overpass', 'Viaduct', 'Steel Canopy', 'Last Train'],
+    taglines: [
+      'Pillar to pillar beneath the trains',
+      'Race the last train along the line',
+      'Under the girders where the sparks come down',
+      'Steel overhead and pillars on every side',
+      'Follow the tracks and dodge the columns',
+      'The trains run on time, and so do you',
+    ],
+    weight: 2.5,
+  },
+  ringRush: {
+    name: 'Ring Rush',
+    nouns: ['Ring Rush', 'Roundabout', 'Rotary Run', 'Circle Rush', 'Spin Cycle', 'Carousel', 'Whirl', 'Round Robin', 'Ring Road', 'Merry-Go-Round', 'Orbit', 'Loop', 'Gyre', 'Circus'],
+    taglines: [
+      'Roundabout to roundabout, never lift',
+      'Round and round and out the other side',
+      'Every circle taken flat, every exit a gamble',
+      'Lean on the curbs and slingshot out',
+      'The city spins and you spin with it',
+      'Ring after ring, keep it on the edge',
+    ],
+    weight: 2,
+  },
+  grandTour: {
+    name: 'Grand Tour',
+    nouns: ['Grand Tour', 'Monument Run', 'Landmark Loop', 'City Tour', 'Grand Prix', 'Plaza Run', 'Memorial Run', 'Statue Run', 'Victory Lap', 'Promenade', 'Postcard Run', 'Pageant', 'Parade', 'Sightseer'],
+    taglines: [
+      'Downtown and past the floodlit monument',
+      'The landmark tour, at three times the speed limit',
+      'Past the statue and through the square',
+      'All the sights, none of the stops',
+      'Floodlights, flagstones and a monument to beat',
+      'The postcard route, driven like a getaway',
+    ],
+    weight: 1.5,
+  },
+  downtownDash: {
+    name: 'Downtown Dash',
+    nouns: ['Downtown Dash', 'City Sprint', 'Boulevard Run', 'Avenue Blitz', 'Main Street', 'Uptown Run', 'Skyline Run', 'Midtown Rush', 'Express', 'Blitz', 'Fast Lane', 'Crosstown', 'Gridlock', 'Straightaway'],
+    taglines: [
+      'Long straights through the heart of the city',
+      'Boulevards wide open and every light green',
+      'Top gear down the avenues',
+      'Through the towers, flat out',
+      'Crosstown at full chat',
+      'Wide roads, tall buildings, no brakes',
+    ],
+    weight: 1.5,
+  },
 };
+
+/**
+ * Title leads every flavour shares: night, light, weather, metal and the hours of a night out.
+ * One word or two, so a title stays short enough for the gantry sign and the menu.
+ */
+export const EVENT_LEADS: readonly string[] = [
+  'Midnight', 'Neon', 'Chrome', 'Sodium', 'Afterglow', 'Static', 'Velvet', 'Redline', 'Graveyard', 'Cobalt',
+  'Amber', 'Crimson', 'Violet', 'Indigo', 'Electric', 'Phantom', 'Ghost', 'Shadow', 'Silver', 'Golden',
+  'Iron', 'Steel', 'Copper', 'Mercury', 'Nitro', 'Turbo', 'Hyper', 'Rogue', 'Outlaw', 'Wildcard',
+  'Lucky', 'Last Call', 'Moonlit', 'Starlit', 'Blackout', 'Full Moon', 'Witching Hour', 'Late Shift', 'Night Owl', 'Sundown',
+  'Twilight', 'Dusk', 'After Hours', 'Small Hours', 'Zero Hour', 'Overtime', 'Overdrive', 'Full Throttle', 'Flat Out', 'Wide Open',
+  'Hot Lap', 'Blue Light', 'Red Light', 'Green Light', 'Tail Light', 'High Beam', 'Smoke', 'Thunder', 'Lightning', 'Storm',
+  'Rain Slick', 'Asphalt', 'Concrete', 'Rubber', 'Burnout', 'Backfire', 'Boost', 'Apex', 'Slipstream', 'Vapor',
+  'Plasma', 'Laser', 'Pulse', 'Voltage', 'Dynamo', 'Comet', 'Meteor', 'Nova', 'Eclipse', 'Cyclone',
+  'Wildfire', 'Inferno', 'Ember', 'Frost', 'Black Ice', 'Northside', 'Southside', 'Eastside', 'Westside', 'Harbor',
+  'Dockside', 'Old Town', 'Rooftop', 'Saturday Night', 'Friday Night', 'Neon Noir', 'Jackpot', 'Diamond', 'Obsidian', 'Onyx',
+  'Scarlet', 'Ultraviolet', 'Infrared', 'Gasoline', 'Octane', 'Hot Wire', 'Getaway', 'Wanted', 'Renegade', 'Vandal',
+];
+
+/** Whole words of a title part, lower case, for keeping a word from appearing twice (Neon Noir Neon ...). */
+const wordsOf = (s: string): string[] => s.toLowerCase().split(/[\s-]+/);
+
+/** A seed's title and tagline for a flavour, on their own stream so they never move anything else. */
+export function eventTitle(seed: number, id: EventFlavourId): { name: string; tagline: string } {
+  const rng = new Rng(deriveSeed(seed, 'eventTitle'));
+  const f = EVENT_FLAVOURS[id];
+  const noun = f.nouns[Math.floor(rng.next() * f.nouns.length)];
+  const nounWords = wordsOf(noun);
+  // Ghost + Ghost Train: redraw a lead that repeats a word of the noun (bounded: few leads clash with any noun).
+  let lead = EVENT_LEADS[Math.floor(rng.next() * EVENT_LEADS.length)];
+  for (let i = 0; i < 8 && wordsOf(lead).some((w) => nounWords.includes(w)); i++) lead = EVENT_LEADS[Math.floor(rng.next() * EVENT_LEADS.length)];
+  const tagline = f.taglines[Math.floor(rng.next() * f.taglines.length)];
+  return { name: `${lead} ${noun}`, tagline };
+}
 
 const ORDER = Object.keys(EVENT_FLAVOURS) as EventFlavourId[];
 
@@ -98,7 +227,9 @@ export const EVENTS = {
 
 export interface CityEvent {
   id: EventFlavourId;
+  /** The seed's title (menu, intro card, start gantry, results): a lead and one of the flavour's nouns. */
   name: string;
+  /** One of the flavour's taglines. */
   tagline: string;
   /** The flavour the seed drew (differs from id when its routes could not deliver it). */
   drawn: EventFlavourId;
@@ -390,8 +521,8 @@ export function eventRating(id: EventFlavourId, g: RoadGraph, areas: readonly Ar
 }
 
 /** The event a fully planned city runs: the drawn flavour when every route delivers it, else Downtown Dash. */
-export function resolveEvent(drawn: EventFlavourId, g: RoadGraph, areas: readonly Area[], routes: readonly EventRoute[]): CityEvent {
+export function resolveEvent(seed: number, drawn: EventFlavourId, g: RoadGraph, areas: readonly Area[], routes: readonly EventRoute[]): CityEvent {
   const ok = routes.every((r) => eventRating(drawn, g, areas, r) >= 1);
   const id: EventFlavourId = ok ? drawn : 'downtownDash';
-  return { id, name: EVENT_FLAVOURS[id].name, tagline: EVENT_FLAVOURS[id].tagline, drawn };
+  return { id, ...eventTitle(seed, id), drawn };
 }
