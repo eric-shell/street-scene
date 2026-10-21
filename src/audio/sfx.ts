@@ -1400,6 +1400,14 @@ export class Sfx {
    */
   raceEvent(e: RaceEvent, r: RaceState): void {
     if (e.type !== 'crash' && e.type !== 'wall' && e.type !== 'prop') return;
+    if (e.type === 'crash' && e.traffic !== undefined) {
+      // A traffic car hit by a racer (or by a struck traffic car: car -1), heard where they met.
+      const t = r.traffic?.cars[e.traffic]?.body;
+      if (!t) return;
+      const by = r.cars[e.car]?.state;
+      this.crash(e.value ?? 0, this.at(by ? (by.x + t.x) / 2 : t.x, by ? (by.z + t.z) / 2 : t.z, e.car === 0), `traffic:${e.traffic}`);
+      return;
+    }
     const car = r.cars[e.car]?.state;
     if (!car) return;
     const isPlayer = e.car === 0;

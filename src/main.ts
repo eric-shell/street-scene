@@ -348,6 +348,8 @@ function startRace(mode: RaceMode, testDrive = false): void {
     tractionControl: settings.tractionControl,
     // Test drive: free roam on the open seed map (no barriers, rails, parked cars, crowds or rivals).
     openWorld: testDrive || undefined,
+    // Ambient traffic on the side streets (every street in a test drive). Replays carry the flag.
+    traffic: true,
   };
   const ghostData = count === 0 && !testDrive ? loadGhost(seed, mode) : null;
   runSession(config, [build.visual, ...opp.visuals], null, ghostData, testDrive ? 'testDrive' : 'race');
@@ -373,6 +375,7 @@ function startFreeRoam(seedText: string): void {
     manualGearbox: settings.manualGearbox,
     tractionControl: settings.tractionControl,
     openWorld: true,
+    traffic: true,
   };
   runSession(config, [build.visual], null, null, 'roam');
 }
