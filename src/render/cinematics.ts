@@ -11,6 +11,11 @@
  * Timing and framing come from CAMERA.intro / CAMERA.outro. Render only.
  * The fly-in carries a title card with the seed's event (Hill Climb, River
  * Run, ...; city/events.ts), shown while the HUD is hidden for the shot.
+ * Handoff: free roam taken over from the menu starts on the showreel's shot
+ * (game/streetCameras.ts) and swings round the car onto the chase camera; the
+ * shot is carried in the car's frame and blended in polar coordinates around
+ * the car, so it rides along with the car and never passes through it. The
+ * HUD stays hidden until the swing settles, then fades in.
  */
 import * as THREE from 'three';
 import type { World } from '../city/world';
@@ -49,6 +54,8 @@ function ensureStyles(): void {
   st.textContent = `
 .hud.cine-intro > * { opacity: 0 !important; transition: opacity .4s; }
 .hud.cine-outro > :not(.hud-msg) { opacity: 0 !important; transition: opacity .6s; }
+.hud.cine-handoff > * { opacity: 0 !important; }
+.hud.cine-reveal > * { transition: opacity .9s ease; }
 .cine-skip { position: fixed; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translateX(-50%);
   z-index: 40; pointer-events: none; font: 600 13px var(--font, system-ui); letter-spacing: .12em; text-transform: uppercase;
   color: rgba(255,255,255,.72); text-shadow: 0 1px 6px rgba(0,0,0,.8); opacity: 0; transition: opacity .5s; }
@@ -77,13 +84,47 @@ interface Pose {
 
 const newPose = (): Pose => ({ pos: new THREE.Vector3(), look: new THREE.Vector3(), fov: 60, roll: 0 });
 
+/** Smootherstep: starts and lands with no jolt. */
+const smoother = (u: number) => {
+  const x = Math.max(0, Math.min(1, u));
+  return x * x * x * (x * (x * 6 - 15) + 10);
+};
+
+/** A camera pose in the car's frame: around the car (rad, 0 straight ahead, + to its left), out from it and up (m), and the look point (forward, left, up). */
+interface CarFramePose {
+  theta: number;
+  radius: number;
+  height: number;
+  look: THREE.Vector3;
+  fov: number;
+}
+
+/** How long the HUD's fade in keeps its transition after the handoff settles (s), and the most one frame advances the swing (s). */
+const REVEAL = 1.2;
+const MAX_STEP = 0.1;
+
+/** The showreel's shot, where it must be on screen a few seconds before the player gets a HUD. */
+export interface HandoffShot {
+  position: THREE.Vector3;
+  look: THREE.Vector3;
+  fov: number;
+}
+
 export class RaceCinematics {
-  /** 'intro' until the race goes green, 'outro' after the player finishes. */
-  phase: 'none' | 'intro' | 'outro' = 'none';
+  /** 'intro' until the race goes green, 'outro' after the player finishes, 'handoff' while the menu's shot swings onto the chase camera. */
+  phase: 'none' | 'intro' | 'outro' | 'handoff' = 'none';
   private shot = newPose();
   private chase = newPose();
   private skipFrom: Pose | null = null;
   private skipT = 0;
+  // Handoff: the shot it starts from in the car's frame, the chase camera read into the same frame, progress.
+  private handFrom: CarFramePose = { theta: 0, radius: 1, height: 1, look: new THREE.Vector3(), fov: 60 };
+  private handTo: CarFramePose = { theta: Math.PI, radius: 1, height: 1, look: new THREE.Vector3(), fov: 60 };
+  private handT = 0;
+  private handDur = 1;
+  private readonly tmp = new THREE.Vector3();
+  /** Seconds left of the HUD's fade in after the handoff. */
+  private reveal = 0;
   // Intro geometry, fixed at the start.
   private p0 = new THREE.Vector3();
   private p1 = new THREE.Vector3();
@@ -183,6 +224,54 @@ export class RaceCinematics {
     }
     this.cam.keepOutOfWalls(this.chase.pos.x, this.chase.pos.z, s.pos, CAMERA.common.groundClearance, 0);
     this.write(this.blendSkip(s, dt));
+  }
+
+  /**
+   * Take over from the menu: the camera is on `shot` now and swings round the
+   * car onto the chase camera over `duration` s, carried along in the car's
+   * frame meanwhile. Call before the first frame is rendered.
+   */
+  startHandoff(shot: HandoffShot, p: CarPose, duration: number): void {
+    this.phase = 'handoff';
+    this.skipFrom = null;
+    this.handT = 0;
+    this.handDur = Math.max(0.1, duration);
+    this.reveal = 0;
+    toCarFrame(p, shot.position, shot.look, shot.fov, this.handFrom);
+    // The first frame is the shot itself: written now, before the chase camera has had a frame to move.
+    this.shot.pos.copy(shot.position);
+    this.shot.look.copy(shot.look);
+    this.shot.fov = shot.fov;
+    this.shot.roll = 0;
+    this.write(this.shot);
+  }
+
+  /** Override the camera during the handoff. Call after the chase camera update. */
+  applyHandoff(p: CarPose, dt: number): void {
+    if (this.phase !== 'handoff') return;
+    this.readChase();
+    // A stalled frame (the session's first, after its build) must not swallow the swing.
+    this.handT += Math.min(dt, MAX_STEP);
+    const u = Math.min(1, this.handT / this.handDur);
+    const e = smoother(u);
+    const a = this.handFrom;
+    const b = toCarFrame(p, this.chase.pos, this.chase.look, this.chase.fov, this.handTo);
+    // Round the car the short way, in and down (or up) to the chase camera's range and height.
+    const theta = a.theta + wrap(b.theta - a.theta) * e;
+    const radius = a.radius + (b.radius - a.radius) * e;
+    const height = a.height + (b.height - a.height) * e;
+    const s = this.shot;
+    const yaw = p.yaw + theta;
+    s.pos.set(p.x + Math.sin(yaw) * radius, p.y + height, p.z + Math.cos(yaw) * radius);
+    fromCarFrame(p, a.look, s.look).lerp(fromCarFrame(p, b.look, this.tmp), e);
+    s.fov = a.fov + (b.fov - a.fov) * e;
+    s.roll = 0;
+    this.cam.keepOutOfWalls(p.x, p.z, s.pos, CAMERA.common.groundClearance, 0);
+    this.write(s);
+    if (u >= 1) {
+      this.phase = 'none';
+      this.reveal = REVEAL;
+    }
   }
 
   /** Jump out of the current shot: blend quickly onto the chase camera. */
@@ -304,12 +393,17 @@ export class RaceCinematics {
     }
   }
 
-  /** Toggle the HUD hiding classes for the current phase. */
-  syncHud(hud: HTMLElement, preRoll: boolean): void {
+  /** Toggle the HUD hiding classes for the current phase; `dt` times the fade in after a handoff. */
+  syncHud(hud: HTMLElement, preRoll: boolean, dt = 0): void {
     const intro = this.phase === 'intro' && preRoll && !this.skipFrom;
     if (this.title && this.title.classList.contains('show') !== intro) this.title.classList.toggle('show', intro);
     hud.classList.toggle('cine-intro', intro);
     hud.classList.toggle('cine-outro', this.phase === 'outro');
+    const handoff = this.phase === 'handoff';
+    hud.classList.toggle('cine-handoff', handoff);
+    // The fade in: the transition only while it runs, so the HUD's own transitions (messages, warnings) come back after.
+    if (!handoff && this.reveal > 0) this.reveal = Math.max(0, this.reveal - Math.min(dt, MAX_STEP));
+    hud.classList.toggle('cine-reveal', handoff || this.reveal > 0);
   }
 
   dispose(): void {
@@ -317,4 +411,28 @@ export class RaceCinematics {
     this.bars?.remove();
     this.title?.remove();
   }
+}
+
+/** A world camera pose into the car's frame: polar around the car for the position, forward/left/up for the look point. */
+function toCarFrame(p: CarPose, pos: THREE.Vector3, look: THREE.Vector3, fov: number, out: CarFramePose): CarFramePose {
+  const s = Math.sin(p.yaw);
+  const c = Math.cos(p.yaw);
+  const dx = pos.x - p.x;
+  const dz = pos.z - p.z;
+  // Forward is (s, c), left is (c, -s).
+  out.theta = Math.atan2(dx * c - dz * s, dx * s + dz * c);
+  out.radius = Math.max(0.5, Math.hypot(dx, dz));
+  out.height = pos.y - p.y;
+  const lx = look.x - p.x;
+  const lz = look.z - p.z;
+  out.look.set(lx * s + lz * c, lx * c - lz * s, look.y - p.y);
+  out.fov = fov;
+  return out;
+}
+
+/** A point in the car's frame (forward, left, up) back into the world. */
+function fromCarFrame(p: CarPose, l: THREE.Vector3, out: THREE.Vector3): THREE.Vector3 {
+  const s = Math.sin(p.yaw);
+  const c = Math.cos(p.yaw);
+  return out.set(p.x + l.x * s + l.y * c, p.y + l.z, p.z + l.x * c - l.y * s);
 }
