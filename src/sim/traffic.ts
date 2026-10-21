@@ -111,6 +111,8 @@ export const TRAFFIC_LAYOUT = {
   holdGiveUp: 6,
   /** A request waiting longer than this (s) holds back later requests that conflict with it. */
   starve: 3,
+  /** A driver whose way out of a junction stays backed up this long (s) picks another turn. */
+  reroute: 2.5,
   /** Two connectors of a junction conflict when they pass closer than the longest half length plus the widest half width plus this (m). */
   conflictPad: 0.4,
   /** Sample spacing when measuring where two connectors stop being in each other's way (m). */
@@ -701,6 +703,25 @@ const asking: number[] = [];
 const holders: number[] = [];
 const pending: number[] = [];
 
+/** Pick another turn out of the lane than the planned one (by weight), when there is one. */
+function reroute(net: TrafficNet, c: TrafficCar): void {
+  const p = net.paths[c.path];
+  if (!p.lane || p.out.length < 2) return;
+  let total = 0;
+  for (const o of p.out) if (o !== c.next) total += net.paths[o].weight;
+  let u = rng.next() * total;
+  let pick = -1;
+  for (const o of p.out) {
+    if (o === c.next) continue;
+    pick = o;
+    u -= net.paths[o].weight;
+    if (u < 0) break;
+  }
+  c.next = pick;
+  c.after = choose(net, pick);
+  c.wait = 0;
+}
+
 function release(c: TrafficCar): void {
   c.hold = -1;
 }
@@ -910,7 +931,11 @@ export function stepTraffic(r: RaceState): void {
     for (let j = bucketFirst[exit]; j >= 0; j = bucketNext[j]) free = Math.min(free, cars[j].s - hl(cars[j]));
     let claimed = 1;
     for (const h of holders) if (cars[h].hold === want && cars[h].path !== exit) claimed++;
-    if (free < claimed * CAR_SPAN) continue;
+    if (free < claimed * CAR_SPAN) {
+      // The street beyond is backed up: after a while the driver takes another way out of the junction.
+      if (c.wait > L.reroute / DT) reroute(net, c);
+      continue;
+    }
     c.hold = want;
     c.wait = 0;
     // A fresh grant gets the full give-up time to get going.
