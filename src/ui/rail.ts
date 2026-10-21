@@ -8,11 +8,14 @@
  *  - screenHead: back button, the screen's icon and title, an aside on the right.
  *  - keybar: the key legend along the bottom of the rail. Plain hints only show
  *    with a keyboard; hints with an action stay as buttons on touch screens.
+ *  - navRow: a row in a list of places or actions (the menu's Garage, Explore
+ *    and Settings, the pause screen's actions), each in its own hue.
+ *  - swapStep: a screen's steps slide (the menu's, the pause screen's).
  * Sizes live in ui.css (`--rail-*`); on narrow screens the rail
  * turns into a sheet over the bottom of the screen.
  */
-import { h, iconBtn } from './dom';
-import { ArrowLeft, icon, type IconNode } from './icons';
+import { h, iconBtn, sheen } from './dom';
+import { ArrowLeft, ChevronRight, icon, type IconNode } from './icons';
 
 type Child = Node | null | false | undefined;
 
@@ -63,6 +66,52 @@ export function keybar(items: KeyHint[]): HTMLElement {
         : h('span', { class: 'key' }, ...caps, h('span', {}, k.label));
     }),
   );
+}
+
+/** The hues a row can wear (ui.css `.hue-*`): the palette's accents. */
+export type Hue = 'orange' | 'yellow' | 'red' | 'green' | 'cyan' | 'purple';
+
+/**
+ * A row in a list of places or actions: a badge in its hue with the icon, the
+ * label over a one-line sub, and a chevron. The badge is dim at rest and
+ * lights, with the row's edge and wash, on hover and focus.
+ */
+export function navRow(ico: IconNode, label: string, sub: string, hue: Hue, onClick: () => void, cls = ''): HTMLButtonElement {
+  return h(
+    'button',
+    { class: `nav-item hue-${hue} ${cls}`.trim(), type: 'button', onclick: onClick },
+    h('span', { class: 'nav-badge' }, icon(ico, { size: 20 })),
+    h('span', { class: 'nav-text' }, h('span', { class: 'nav-label' }, label), h('span', { class: 'nav-sub' }, sub)),
+    icon(ChevronRight, { size: 18 }),
+    sheen(),
+  );
+}
+
+/** How long a step takes to slide away (ms; ui.css `.menu-step.leave`). */
+export const STEP_LEAVE_MS = 260;
+
+/**
+ * Swap a screen's step in its column: the old step leaves from where it
+ * stands, out of the flow, toward the side it came from, while the new one
+ * cascades in from the other (ui.css `.menu-step`). `dir` null, no old step or
+ * reduced motion swap at once. Returns whether it slid.
+ */
+export function swapStep(col: HTMLElement, old: HTMLElement | null, next: HTMLElement, dir: 'fwd' | 'back' | null): boolean {
+  const slide = !!old && !!dir && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (old && dir && slide) {
+    old.style.top = `${old.offsetTop}px`;
+    old.classList.add('leave', dir);
+    old.setAttribute('aria-hidden', 'true');
+    old.inert = true;
+    next.classList.add('enter', dir);
+    col.append(next);
+    col.scrollTop = 0;
+    setTimeout(() => old.remove(), STEP_LEAVE_MS);
+  } else {
+    old?.remove();
+    col.append(next);
+  }
+  return slide;
 }
 
 /** A small label chip: an optional icon and a short text. */

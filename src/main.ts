@@ -27,7 +27,8 @@ import { audioHub } from './audio/engineAudio';
 import { MusicWidget } from './ui/musicWidget';
 import { TuningPanel, applySavedTuning, loadSavedTuning } from './ui/tuningPanel';
 import { CameraPanel, applySavedCameraParams } from './ui/cameraPanel';
-import { loadingScreen, pauseMenu, resultsScreen, type PauseScreen } from './ui/screens';
+import { loadingScreen, pauseMenu, resultsScreen, type PauseScreen, type PauseTicket } from './ui/screens';
+import { placeName } from './ui/places';
 import { railInset } from './ui/rail';
 import { mainMenu, type MainMenu, type MenuStep } from './ui/menu';
 import { showSplash } from './ui/splash';
@@ -651,16 +652,24 @@ let pauseScreen: PauseScreen | null = null;
 
 const MODE_NAME: Record<RaceMode, string> = { circuit: 'Circuit', sprint: 'Sprint', drift: 'Drift' };
 
-/** What the pause screen says is paused: the event, mode, lap and place (or just the kind of session). */
-function pauseStatus(s: RaceSession): string[] {
-  if (sessionKind === 'roam') return ['Free roam'];
-  if (sessionKind === 'testDrive') return ['Test drive'];
+/**
+ * What the pause screen's ticket says is paused: the event, the type in its
+ * color, lap, place or score, and the course with every car where it stands
+ * (free roam: where in the city you are; a test drive: the car on the circuit).
+ */
+function pauseTicket(s: RaceSession): PauseTicket {
   const r = s.race;
-  const out = [r.world.event?.name ?? 'Street race', MODE_NAME[r.config.mode]];
-  if (r.config.mode === 'circuit') out.push(`Lap ${Math.min(r.config.laps, Math.max(1, r.cars[0].lap))}/${r.config.laps}`);
-  if (r.cars.length > 1) out.push(`P${positionOf(r, 0)} of ${r.cars.length}`);
-  if (s.isReplay) out.push('Replay');
-  return out;
+  const event = r.world.event?.name;
+  const me = r.cars[0].state;
+  if (sessionKind === 'roam') return { event, title: 'Free roam', mode: 'roam', facts: ['The whole city', `In ${placeName(r.world.areaAt(me.x, me.z))}`] };
+  if (sessionKind === 'testDrive') return { event, title: 'Test drive', mode: 'circuit', facts: [manifestCar(r.config.player.carId).displayName, 'Open city'], route: r.world.route, cars: [{ x: me.x, z: me.z, me: true }] };
+  const mode = r.config.mode;
+  const facts: string[] = [];
+  if (mode !== 'sprint') facts.push(`Lap ${Math.min(r.config.laps, Math.max(1, r.cars[0].lap))}/${r.config.laps}`);
+  if (r.cars.length > 1) facts.push(`P${positionOf(r, 0)} of ${r.cars.length}`);
+  if (mode === 'drift') facts.push(`${Math.round(r.drift.total).toLocaleString()} pts`);
+  if (s.isReplay) facts.push('Replay');
+  return { event, title: MODE_NAME[mode], mode, facts, route: r.world.route, cars: r.cars.map((c) => ({ x: c.state.x, z: c.state.z, me: c.isPlayer })) };
 }
 
 function togglePause(): void {
@@ -682,7 +691,7 @@ function togglePause(): void {
   session.paused = true;
   input.releaseAll();
   pauseScreen = pauseMenu({
-    status: pauseStatus(session),
+    ticket: pauseTicket(session),
     onResume: togglePause,
     onRestart: () => {
       const cfg = lastConfig;
@@ -693,7 +702,13 @@ function togglePause(): void {
       );
     },
     restartLabel: sessionKind === 'race' ? undefined : 'Back to the start',
-    extra: sessionKind === 'roam' ? [{ icon: Shuffle, label: 'New city', onClick: () => void wipe({ title: 'New city', sub: 'Free roam · a city never seen' }, () => startFreeRoam(String(Math.floor(Math.random() * 1e8)))) }] : undefined,
+    restartSub: sessionKind === 'race' ? undefined : sessionKind === 'roam' ? 'Where free roam began' : 'Back on the grid',
+    quitLabel: sessionKind === 'testDrive' ? 'Back to the garage' : undefined,
+    quitSub: sessionKind === 'testDrive' ? 'Keep building' : sessionKind === 'roam' ? 'Leave free roam' : undefined,
+    extra:
+      sessionKind === 'roam'
+        ? [{ icon: Shuffle, label: 'New city', sub: 'Free roam in a city never seen', hue: 'green', onClick: () => void wipe({ title: 'New city', sub: 'Free roam · a city never seen' }, () => startFreeRoam(String(Math.floor(Math.random() * 1e8)))) }]
+        : undefined,
     settings: { ...settings },
     onSettings: applySettings,
     music,

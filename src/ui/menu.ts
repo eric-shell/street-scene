@@ -62,7 +62,7 @@ import {
 } from './icons';
 import { RACE_TYPES, type Difficulty, type RaceType, type Settings } from './settings';
 import { onOff, settingRow, settingsPanel } from './screens';
-import { chip, keybar, railScreen, screenHead, type KeyHint } from './rail';
+import { chip, keybar, navRow, railScreen, screenHead, swapStep, type KeyHint } from './rail';
 import { formatTime } from './format';
 import { CityOverview, CourseMap, courseArt, type CourseRoutes, type MapPose } from './menuMaps';
 import { KINDS, layersOf } from './cityMap';
@@ -158,33 +158,22 @@ const FEATURES: { kind: AreaKind; icon: IconNode; one: string; many?: (n: number
   { kind: 'carPark', icon: SquareParking, one: 'Car park', many: (n) => `${n} car parks` },
 ];
 
-/** The other places on home: each row has its own hue, lit on hover (ui.css `.nav-*`). */
+/** The other places on home, each in its own hue (rail.ts navRow). */
 const PLACES_INFO = {
-  garage: { icon: Wrench, label: 'Garage' },
-  explore: { icon: Drone, label: 'Explore' },
-  settings: { icon: SettingsIcon, label: 'Settings' },
+  garage: { icon: Wrench, label: 'Garage', hue: 'orange' },
+  explore: { icon: Drone, label: 'Explore', hue: 'cyan' },
+  settings: { icon: SettingsIcon, label: 'Settings', hue: 'purple' },
 } as const;
-
-/** How long the outgoing step takes to slide away (ms; ui.css `.menu-step.leave`). */
-const STEP_LEAVE_MS = 260;
 
 /** How deep each step sits, so a move deeper slides forward (left) and a move out slides back. */
 const STEP_DEPTH: Record<MenuStep, number> = { home: 0, race: 1, settings: 1, setup: 2 };
 
 const km = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m / 10) * 10} m`);
-const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/** A row of the home menu's list: its hue badge with the icon, label over a one-line sub, and a chevron. */
+/** A row of the home menu's list (its class names the place, for focus). */
 function navItem(kind: keyof typeof PLACES_INFO, sub: string, onClick: () => void): HTMLButtonElement {
   const info = PLACES_INFO[kind];
-  return h(
-    'button',
-    { class: `nav-item nav-${kind}`, type: 'button', onclick: onClick },
-    h('span', { class: 'nav-badge' }, icon(info.icon, { size: 20 })),
-    h('span', { class: 'nav-text' }, h('span', { class: 'nav-label' }, info.label), h('span', { class: 'nav-sub' }, sub)),
-    icon(ChevronRight, { size: 18 }),
-    sheen(),
-  );
+  return navRow(info.icon, info.label, sub, info.hue, onClick, `nav-${kind}`);
 }
 
 /** A race type in the race step's row: icon over its name, the number key that picks it, its color when picked. */
@@ -485,24 +474,9 @@ export function mainMenu(o: MenuOptions): MainMenu {
     overview = course = null;
     pickType = null;
     const el = h('div', { class: 'menu-step' }, ...steps[next]());
-    const old = current;
+    const fwd = STEP_DEPTH[next] > STEP_DEPTH[from];
+    if (swapStep(menu, current, el, animate ? (fwd ? 'fwd' : 'back') : null)) uiWhoosh(fwd);
     current = el;
-    if (old && animate && !reducedMotion()) {
-      // The old step leaves from where it stands, out of the flow, while the new one takes its place.
-      const fwd = STEP_DEPTH[next] > STEP_DEPTH[from];
-      old.style.top = `${old.offsetTop}px`;
-      old.classList.add('leave', fwd ? 'fwd' : 'back');
-      old.setAttribute('aria-hidden', 'true');
-      old.inert = true;
-      el.classList.add('enter', fwd ? 'fwd' : 'back');
-      menu.append(el);
-      menu.scrollTop = 0;
-      setTimeout(() => old.remove(), STEP_LEAVE_MS);
-      uiWhoosh(fwd);
-    } else {
-      old?.remove();
-      menu.append(el);
-    }
     const nextBar = keybar(KEYS[next]);
     bar.replaceWith(nextBar);
     bar = nextBar;

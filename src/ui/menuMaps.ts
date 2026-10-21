@@ -394,12 +394,21 @@ function marker(x: number, y: number, ico: typeof Flag, cls: string): SVGGElemen
   return g;
 }
 
+/** A car marked on a course drawing: where it is (m), and whether it is the player's. */
+export interface ArtCar {
+  x: number;
+  z: number;
+  me?: boolean;
+}
+
 /**
  * A course on its own as a line drawing fitted to a w x h box (north up, as
- * on the maps), for the race wipe's title card: a soft road under the line,
- * which CSS draws on from the start, and the start as a dot.
+ * on the maps), for the race wipe's title card, the setup step's ticket and
+ * the pause screen: a soft road under the line, which CSS draws on from the
+ * start, the start as a dot, and the cars where they are (the player's with a
+ * ping, last so it sits on top).
  */
-export function courseArt(route: Route, type: RaceType, w = 300, hgt = 130): SVGSVGElement {
+export function courseArt(route: Route, type: RaceType, w = 300, hgt = 130, cars: readonly ArtCar[] = []): SVGSVGElement {
   const pts = coursePoints(route);
   let minX = Infinity;
   let maxX = -Infinity;
@@ -417,6 +426,12 @@ export function courseArt(route: Route, type: RaceType, w = 300, hgt = 130): SVG
   const art = svg('svg', { class: `course-art mode-${type}`, viewBox: `0 0 ${w} ${hgt}`, width: w, height: hgt, 'aria-hidden': 'true' });
   art.append(svg('path', { class: 'a-road', d }), svg('path', { class: 'a-line', d, pathLength: 1 }));
   art.append(svg('circle', { class: 'a-start', cx: mapX(view, pts[0].x).toFixed(1), cy: mapY(view, pts[0].z).toFixed(1), r: 4 }));
+  for (const c of [...cars].sort((a, b) => Number(!!a.me) - Number(!!b.me))) {
+    const cx = mapX(view, c.x).toFixed(1);
+    const cy = mapY(view, c.z).toFixed(1);
+    if (c.me) art.append(svg('circle', { class: 'a-ping', cx, cy, r: 9 }));
+    art.append(svg('circle', { class: c.me ? 'a-car me' : 'a-car', cx, cy, r: c.me ? 4.5 : 3 }));
+  }
   return art;
 }
 

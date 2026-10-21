@@ -320,6 +320,7 @@ body {
 .seg,
 .race-setup,
 .home .settings,
+.pause .settings,
 .g-item,
 .garage-tab,
 .g-section,
@@ -338,6 +339,7 @@ body {
 .course-card,
 .race-setup,
 .home .settings,
+.pause .settings,
 .g-section,
 .garage-car,
 .race-ticket {
@@ -353,6 +355,7 @@ body {
 .seg::before,
 .race-setup::before,
 .home .settings::before,
+.pause .settings::before,
 .g-item::before,
 .garage-tab::before,
 .g-section::before,
@@ -368,6 +371,7 @@ body {
 .seg::after,
 .race-setup::after,
 .home .settings::after,
+.pause .settings::after,
 .g-item::after,
 .garage-tab::after,
 .g-section::after,
@@ -392,6 +396,7 @@ body {
 .seg::before,
 .race-setup::before,
 .home .settings::before,
+.pause .settings::before,
 .g-item::before,
 .garage-tab::before,
 .g-section::before,
@@ -412,6 +417,7 @@ body {
 .seg::after,
 .race-setup::after,
 .home .settings::after,
+.pause .settings::after,
 .g-item::after,
 .garage-tab::after,
 .g-section::after,
@@ -1402,15 +1408,28 @@ body > .mw {
   flex-direction: column;
   gap: 6px;
 }
-.nav-garage {
+/* A row's hue (rail.ts navRow): the palette's accents. */
+.hue-orange {
   --hue: var(--accent);
   --hue-rgb: 252, 152, 103;
 }
-.nav-explore {
+.hue-yellow {
+  --hue: var(--accent-2);
+  --hue-rgb: 255, 216, 102;
+}
+.hue-red {
+  --hue: var(--red);
+  --hue-rgb: 255, 97, 136;
+}
+.hue-green {
+  --hue: var(--green);
+  --hue-rgb: 169, 220, 118;
+}
+.hue-cyan {
   --hue: var(--cyan);
   --hue-rgb: 120, 220, 232;
 }
-.nav-settings {
+.hue-purple {
   --hue: var(--purple);
   --hue-rgb: 171, 157, 242;
 }
@@ -1963,9 +1982,10 @@ body > .mw {
   gap: 10px;
   transition: opacity 0.15s;
 }
-/* Rivals and driving share one card over the city; the settings step is a card too. */
+/* Rivals and driving share one card over the city; the settings step is a card too (on the pause screen's too). */
 .race-setup,
-.home .settings {
+.home .settings,
+.pause .settings {
   background: var(--card-top), var(--plate);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -1981,17 +2001,21 @@ body > .mw {
   margin-top: 2px;
 }
 /* The settings tabs run wider than the card's padding so all five still fit across the column. */
-.home .settings {
+.home .settings,
+.pause .settings {
   padding: 2px 16px 14px;
 }
-.home .settings-tabs {
+.home .settings-tabs,
+.pause .settings-tabs {
   margin: 0 -10px;
 }
-.home .settings-tabs .tab {
+.home .settings-tabs .tab,
+.pause .settings-tabs .tab {
   padding-inline: 6px;
 }
-/* The menu's column does not scroll, so a long page (credits, controls) scrolls inside the card. */
-.home .settings-pane {
+/* The menu's and the pause screen's columns do not scroll, so a long page (credits, controls) scrolls inside the card. */
+.home .settings-pane,
+.pause .settings-pane {
   min-height: min(240px, calc(100vh - 400px));
   max-height: max(160px, calc(100vh - 400px));
   overflow-y: auto;
@@ -2147,20 +2171,29 @@ body > .mw {
 }
 
 /* ---------- pause and results (ui/screens.ts), rails over the race ---------- */
-/* What is paused or finished: the event and mode, and where the player stands. */
-.status-line {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+/* The pause screen stands in the main menu's language (ui/screens.ts pauseMenu): the type's chip, the
+   ticket of what is paused, Resume, then rows in their hues. Its column does not scroll (the settings page
+   scrolls inside its card), so a step sliding in is never clipped at the column's edge; very short screens
+   fall back to a scrolling column. */
+.pause .rail-col {
+  max-height: none;
+  overflow: visible;
 }
-/* The pause actions, one per row like the menus of old. */
-.menu-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+@media (max-height: 600px) {
+  .pause .rail-col {
+    max-height: calc(100% - var(--col-top) - 58px);
+    overflow-y: auto;
+  }
 }
-.menu-list .btn {
-  width: 100%;
+.pause .menu-step {
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.42));
+}
+/* The event over a ticket's title, in the secondary color. */
+.ticket-kicker {
+  font: 800 11px var(--font);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent-2);
 }
 .result-head {
   display: flex;
@@ -2308,11 +2341,9 @@ body > .mw {
   transform: translateX(-130%) skewX(-20deg);
   animation: sheen-idle 3.2s var(--ease-in-out) 1s infinite;
 }
-.pause .resume > .sheen::before,
 .result-actions .primary > .sheen::before {
   animation: sheen-idle 6s var(--ease-in-out) 1.6s infinite;
 }
-.pause .resume:is(:hover, :focus-visible) > .sheen::before,
 .result-actions .primary:is(:hover, :focus-visible) > .sheen::before {
   animation: sheen 0.85s var(--ease-out) both;
 }
@@ -2353,7 +2384,6 @@ body > .mw {
   .results-table tr,
   .badge,
   .badge::after,
-  .pause .resume > .sheen::before,
   .result-actions .primary > .sheen::before {
     animation: none !important;
   }
@@ -3332,7 +3362,8 @@ body.garage-open .toast {
   .course-head .swap,
   .settings-pane > *,
   .garage-body.tab-in > *,
-  .event-map-live > i {
+  .event-map-live > i,
+  .course-art .a-ping {
     animation: none !important;
   }
   .menu-step.leave {
@@ -3454,6 +3485,35 @@ body.garage-open .toast {
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
   animation: course-draw 0.75s var(--ease-out) 0.2s forwards;
+}
+/* The cars on a course drawing (the pause screen's ticket): rivals small, the player white with a ping. */
+.course-art .a-car {
+  fill: var(--soft);
+  stroke: var(--bg0);
+  stroke-width: 1.5;
+}
+.course-art .a-car.me {
+  fill: #fff;
+  stroke: var(--mode);
+  stroke-width: 2;
+}
+.course-art .a-ping {
+  fill: none;
+  stroke: var(--mode);
+  stroke-width: 1.5;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: art-ping 2s var(--ease-out) infinite;
+}
+@keyframes art-ping {
+  from {
+    opacity: 1;
+    transform: scale(0.3);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.4);
+  }
 }
 .course-art .a-start {
   fill: var(--accent-2);
