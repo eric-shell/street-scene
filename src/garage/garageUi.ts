@@ -1,5 +1,5 @@
 /**
- * Garage UI on the rail (ui/rail.ts): the header (back, Test drive), tabs of
+ * Garage UI on the rail (ui/rail.ts): the header (back), tabs of
  * live-preview categories and the open tab's controls down the left; beside it
  * the 3D view framed to the free space, with the car card (model, build, spec
  * tags and measured stats) top left, the Garage / Street switch and camera top
@@ -48,7 +48,6 @@ import {
   Lightbulb,
   MousePointerClick,
   Paintbrush,
-  Play,
   Plus,
   Save,
   Share2,
@@ -112,7 +111,6 @@ const PERF_ICONS: Record<PerformanceCategory, IconNode> = {
 export interface GarageCallbacks {
   onChange(g: GarageState): void;
   onExit(): void;
-  onTestDrive(): void;
   /** Settings engine volume 0..1 (garage revs). */
   engineVolume?(): number;
 }
@@ -182,8 +180,7 @@ export class GarageScreen {
       h(
         'div',
         { class: 'garage-panel' },
-        // Test drive is the screen's main action: it glints now and then, like the menu's Race.
-        screenHead({ icon: Wrench, title: 'Garage', back: () => this.exit(), backLabel: 'Back to menu (Esc)', aside: btn(Play, 'Test drive', () => this.testDrive(), 'small primary cta') }),
+        screenHead({ icon: Wrench, title: 'Garage', back: () => this.exit(), backLabel: 'Back to menu (Esc)' }),
         this.tabBar,
         this.body,
       ),
@@ -1153,11 +1150,6 @@ export class GarageScreen {
   private exit(): void {
     this.cb.onChange(this.garage);
     this.cb.onExit();
-  }
-
-  private testDrive(): void {
-    this.cb.onChange(this.garage);
-    this.cb.onTestDrive();
   }
 
   tick(): void {}

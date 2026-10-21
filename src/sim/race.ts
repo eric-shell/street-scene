@@ -42,7 +42,7 @@ export interface RaceConfig {
   /** Player driver aid (AI cars always drive with it). Missing in old replays = off. */
   tractionControl?: boolean;
   /**
-   * Open world (test drive): no opponents, no route barriers, rails, parked
+   * Open world (free roam): no opponents, no route barriers, rails, parked
    * cars or crowds (World.openWorld), no countdown, laps, wrong way or route
    * resets. Free roam on any street; only a car that is truly lost off the
    * road network gets put back, on the nearest street.

@@ -134,7 +134,7 @@ describe('driving parameters file', () => {
     expect(u.drivetrain.layout).toBe('awd');
   });
 
-  it('saved test drive tuning is fingerprinted per car', () => {
+  it('saved tuning panel values are fingerprinted per car', () => {
     expect(tuningHash('protoCompact')).toMatch(/^[0-9a-f]{8}$/);
     expect(tuningHash('protoCompact')).not.toBe(tuningHash('protoHatch'));
     expect(tuningHash('protoCompact')).toBe(tuningHash('protoCompact'));

@@ -62,7 +62,7 @@ export interface HudData {
   zone?: { mul: number; nitro: boolean; left: number; resting: boolean };
   cars: HudCar[];
   ghost: boolean;
-  /** Open world (free roam, test drive): the district under the car and how much the player smashed. */
+  /** Open world (free roam): the district under the car and how much the player smashed. */
   openWorld?: { area: string; smashed: number; topKmh: number };
   /** Free roam waypoint set on the city map (render only, m): the chip and the minimap point to it. */
   waypoint?: { x: number; z: number };

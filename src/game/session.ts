@@ -162,7 +162,7 @@ export interface SessionOptions {
   visuals: VisualBuild[];
   replay?: ReplayData & { decoded: number[] };
   ghost?: { config: RaceConfig; log: number[]; visual: VisualBuild } | null;
-  /** Start / finish camera shots (default on; off for test drives). Replays never play them. */
+  /** Start / finish camera shots (default on; off for free roam). Replays never play them. */
   cinematics?: boolean;
   /** Free roam: where the waypoint is kept (main.ts shares one with the menu's map); the session keeps its own without it. */
   waypoint?: WaypointStore;
@@ -250,7 +250,7 @@ export class RaceSession {
   private sfx: Sfx | null = null;
   /** Headlight flash level driven by the horn (render side only). */
   private flash = 0;
-  /** Open world test drive: no crowds, fireworks or line celebrations. */
+  /** Open world (free roam): no crowds, fireworks or line celebrations. */
   private readonly openWorld: boolean;
   /** Text on the circuit gantry sign, and the tick a pending change is applied (-1 = none). */
   private signText = '';

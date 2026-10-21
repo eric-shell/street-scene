@@ -36,10 +36,8 @@ export interface Settings {
   tractionControl: boolean;
   /** Flash effects: lightning flashes and the police light bar's strobes. Off keeps the sky still and the light bar a soft glow. */
   flashEffects: boolean;
-  /** Debug: show the live physics tuning panel (also toggled with ` / F2). */
-  debugTuningPanel: boolean;
-  /** Debug: show the live camera tuning panel (also toggled with F3). */
-  debugCameraPanel: boolean;
+  /** Debug mode: the live physics (` / F2) and camera (F3) tuning panels in races and free roam, and free roam drives on the saved physics tuning. */
+  debugMode: boolean;
 }
 
 const KEY = 'nightrun.settings.v1';
@@ -61,8 +59,7 @@ export const DEFAULT_SETTINGS: Settings = {
   interfaceVolume: 1,
   tractionControl: false,
   flashEffects: true,
-  debugTuningPanel: false,
-  debugCameraPanel: false,
+  debugMode: false,
 };
 
 export function loadSettings(): Settings {
@@ -82,6 +79,11 @@ export function loadSettings(): Settings {
       s.masterVolume = parsed.engineVolume;
       s.engineVolume = DEFAULT_SETTINGS.engineVolume;
     }
+    // Before debug mode each tuning panel had its own setting: either one on turns debug mode on.
+    const legacy = parsed as { debugTuningPanel?: boolean; debugCameraPanel?: boolean };
+    if (typeof parsed.debugMode !== 'boolean') s.debugMode = !!(legacy.debugTuningPanel || legacy.debugCameraPanel);
+    delete (s as Partial<typeof legacy>).debugTuningPanel;
+    delete (s as Partial<typeof legacy>).debugCameraPanel;
     for (const k of ['masterVolume', 'engineVolume', 'effectsVolume', 'ambienceVolume', 'interfaceVolume'] as const) {
       s[k] = Math.max(0, Math.min(1, Number(s[k])));
       if (!Number.isFinite(s[k])) s[k] = DEFAULT_SETTINGS[k];

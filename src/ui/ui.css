@@ -2621,7 +2621,7 @@ body > .mw {
   font-size: 24px;
   color: var(--accent-2);
 }
-/* Open world (free roam, test drive): district and smash count instead of position, lap and best. */
+/* Open world (free roam): district and smash count instead of position, lap and best. */
 .hud-area,
 .hud-smash {
   display: none;
@@ -3963,7 +3963,7 @@ body.garage-open .toast {
   accent-color: var(--hue);
 }
 /* Picks in a segmented control and toggles that are on (front and rear linked, mirrored) take the tab's
-   hue; the screen's actions (Test drive, Export) stay orange. */
+   hue; the screen's actions (Export) stay orange. */
 .garage-body .seg button.on,
 .garage-body .btn.primary:is(.g-link, .g-toggle) {
   background: linear-gradient(100deg, var(--hue) 55%, color-mix(in srgb, var(--hue), #fff 22%));

@@ -161,7 +161,7 @@ export interface World extends City {
   /** Closed side street barriers grouped per intersection (see route.ts). Barrier walls carry `group`. */
   barrierGroups: BarrierGroup[];
   /**
-   * Open world (test drive): no route barriers, corner rails, parked cars or
+   * Open world (free roam): no route barriers, corner rails, parked cars or
    * crowds; every street is drivable. The route still exists for the grid.
    */
   openWorld?: boolean;

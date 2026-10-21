@@ -346,8 +346,8 @@ function hashString(s: string): string {
 }
 
 /**
- * Fingerprint of a car's stock tuning plus the part tiers. Saved test drive
- * tuning stores it and is discarded when drivingParams.json changes, so stale
+ * Fingerprint of a car's stock tuning plus the part tiers. Saved tuning panel
+ * values store it and is discarded when drivingParams.json changes, so stale
  * browser overrides never mask edits to the file.
  */
 export function tuningHash(carId: string): string {

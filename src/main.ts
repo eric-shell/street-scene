@@ -1,7 +1,7 @@
 /**
  * Boot, game loop and top level state machine:
  *   menu -> race -> results -> (retry | replay | garage | menu)
- *   menu -> garage -> menu / test drive
+ *   menu -> garage -> menu
  *   menu -> free roam (open world on the event seed, or a new city from the pause menu) -> menu
  */
 import './style.css';
@@ -91,8 +91,8 @@ const dev = new TuningPanel(uiRoot);
 // Camera tuning (F3): saved tweaks apply to every race camera from boot.
 const camPanel = new CameraPanel(uiRoot);
 applySavedCameraParams();
-/** What the running session is: a race (or replay), a garage test drive, or free roam. */
-type SessionKind = 'race' | 'testDrive' | 'roam';
+/** What the running session is: a race (or replay) or free roam. */
+type SessionKind = 'race' | 'roam';
 let sessionKind: SessionKind = 'race';
 // One player for the whole app: music carries on across every screen.
 const music = new MusicPlayer();
@@ -421,6 +421,7 @@ function wipeToMenu(): void {
 function applySettings(s: Settings): void {
   const qualityChanged = s.quality !== settings.quality || s.autoQuality !== settings.autoQuality;
   const autoTurnedOn = s.autoQuality && !settings.autoQuality;
+  const debugChanged = s.debugMode !== settings.debugMode;
   Object.assign(settings, s);
   if (qualityChanged) urlQualityOverride = false;
   if (autoTurnedOn) autoQ.reset(autoStart());
@@ -433,8 +434,11 @@ function applySettings(s: Settings): void {
   }
   fpsEl.style.display = settings.showFps ? '' : 'none';
   audioHub()?.applyLevels(settings);
-  if (state === 'race') toggleTuningPanel(settings.debugTuningPanel);
-  if (state === 'race') toggleCameraPanel(settings.debugCameraPanel);
+  // Debug mode shows both tuning panels in the running session, or takes them away.
+  if (debugChanged) {
+    toggleTuningPanel(settings.debugMode);
+    toggleCameraPanel(settings.debugMode);
+  }
 }
 
 /**
@@ -473,7 +477,6 @@ async function enterGarage(): Promise<void> {
         saveGarage(garage);
       },
       onExit: () => void door('Street', () => showMenu()),
-      onTestDrive: () => void door('Test drive', () => startRace('circuit', true)),
       engineVolume: () => settings.engineVolume,
     },
     { street, quality: settings.quality },
@@ -510,36 +513,35 @@ function opponentEntrants(seed: number, count: number, player: PerformanceBuild)
   return { entrants, visuals };
 }
 
-function startRace(mode: RaceMode, testDrive = false): void {
+function startRace(mode: RaceMode): void {
   garageScreen?.dispose();
   garageScreen = null;
   const seed = seedFromString(seedStr);
   const build = currentBuild();
-  const count = mode === 'drift' || testDrive ? 0 : settings.opponents;
+  const count = mode === 'drift' ? 0 : settings.opponents;
   const opp = opponentEntrants(seed, count, build.performance);
   const config: RaceConfig = {
     seed,
     mode,
-    laps: testDrive ? 10 : mode === 'circuit' ? 3 : mode === 'drift' ? 2 : 1,
+    laps: mode === 'circuit' ? 3 : mode === 'drift' ? 2 : 1,
     player: { name: 'You', carId: build.carId, performance: build.performance },
     opponents: opp.entrants,
     difficulty: settings.difficulty,
     manualGearbox: settings.manualGearbox,
     tractionControl: settings.tractionControl,
-    // Test drive: free roam on the open seed map (no barriers, rails, parked cars, crowds or rivals).
-    openWorld: testDrive || undefined,
-    // Ambient traffic on the side streets (every street in a test drive). Replays carry the flag.
+    // Ambient traffic on the side streets. Replays carry the flag.
     traffic: true,
   };
-  const ghostData = count === 0 && !testDrive ? loadGhost(seed, mode) : null;
-  runSession(config, [build.visual, ...opp.visuals], null, ghostData, testDrive ? 'testDrive' : 'race');
+  const ghostData = count === 0 ? loadGhost(seed, mode) : null;
+  runSession(config, [build.visual, ...opp.visuals], null, ghostData, 'race');
 }
 
 /**
  * Free roam: the whole city of a seed as an open world (no route, barriers,
- * rails, parked cars, crowds or rivals), with the player's build and none of
- * the test drive tuning. It never finishes; the pause menu goes back to the
- * start, to a new random city, or to the menu.
+ * rails, parked cars, crowds or rivals), with the player's build and, in debug
+ * mode, the car's saved physics tuning from the tuning panel. It never
+ * finishes; the pause menu goes back to the start, to a new random city, or to
+ * the menu.
  */
 function startFreeRoam(seedText: string): void {
   garageScreen?.dispose();
@@ -565,7 +567,6 @@ function startReplay(r: ReplayData): void {
 }
 
 function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayData | null, ghost: ReplayData | null, kind: SessionKind): void {
-  const testDrive = kind === 'testDrive';
   session?.dispose();
   dev.close();
   setOverlay(null);
@@ -576,7 +577,7 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
     visuals,
     replay: replay ? { ...replay, decoded: decodeLog(replay.log) } : undefined,
     ghost: ghost ? { config: ghost.config, log: decodeLog(ghost.log), visual: ghost.visuals[0] } : null,
-    // Start / finish camera shots; test drives and free roam go straight to driving.
+    // Start / finish camera shots; free roam goes straight to driving.
     cinematics: kind === 'race',
     // Free roam steers to the city's waypoint, which the menu's map may already have set.
     waypoint: kind === 'roam' ? waypointFor(config.seed) : undefined,
@@ -586,19 +587,20 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
   sessionKind = kind;
   syncMusicMode();
   loop.resetAccumulator();
-  if (testDrive) {
-    // Test drive: apply this car's saved physics tuning.
+  if (kind === 'roam' && settings.debugMode) {
+    // Free roam in debug mode is the tuning ground: apply this car's saved physics tuning.
     const player = session.race.cars[0];
     if (applySavedTuning(player.tuning, loadSavedTuning(player.carId)) > 0) session.tuned = true;
   }
-  // The tuning panel shows when its debug setting is on (` / F2 toggles it anyway).
-  if (settings.debugTuningPanel && !replay) toggleTuningPanel(true);
-  if (settings.debugCameraPanel) toggleCameraPanel(true);
+  // Debug mode opens both tuning panels (` / F2 and F3 hide and show them).
+  if (settings.debugMode) {
+    toggleTuningPanel(true);
+    toggleCameraPanel(true);
+  }
   const s = session;
   (window as unknown as Record<string, unknown>).__nr = { session: s, gr, autoQ };
   s.onFinish = ({ race, tuned }) => {
     if (s !== session) return;
-    if (testDrive) return void openGarage();
     if (kind === 'roam') return wipeToMenu();
     syncMusicMode();
     const st = standings(race);
@@ -655,14 +657,13 @@ const MODE_NAME: Record<RaceMode, string> = { circuit: 'Circuit', sprint: 'Sprin
 /**
  * What the pause screen's ticket says is paused: the event, the type in its
  * color, lap, place or score, and the course with every car where it stands
- * (free roam: where in the city you are; a test drive: the car on the circuit).
+ * (free roam: where in the city you are).
  */
 function pauseTicket(s: RaceSession): PauseTicket {
   const r = s.race;
   const event = r.world.event?.name;
   const me = r.cars[0].state;
   if (sessionKind === 'roam') return { event, title: 'Free roam', mode: 'roam', facts: ['The whole city', `In ${placeName(r.world.areaAt(me.x, me.z))}`] };
-  if (sessionKind === 'testDrive') return { event, title: 'Test drive', mode: 'circuit', facts: [manifestCar(r.config.player.carId).displayName, 'Open city'], route: r.world.route, cars: [{ x: me.x, z: me.z, me: true }] };
   const mode = r.config.mode;
   const facts: string[] = [];
   if (mode !== 'sprint') facts.push(`Lap ${Math.min(r.config.laps, Math.max(1, r.cars[0].lap))}/${r.config.laps}`);
@@ -696,15 +697,14 @@ function togglePause(): void {
     onRestart: () => {
       const cfg = lastConfig;
       if (!cfg) return;
-      const title = sessionKind === 'race' ? 'Restart' : sessionKind === 'roam' ? 'Free roam' : 'Test drive';
+      const title = sessionKind === 'race' ? 'Restart' : 'Free roam';
       void wipe({ kicker: session?.race.world.event?.name, title, sub: sessionKind === 'race' ? MODE_NAME[cfg.mode] : 'Back to the start' }, () =>
         runSession(cfg, lastVisuals, null, cfg.opponents.length || cfg.openWorld ? null : loadGhost(cfg.seed, cfg.mode), sessionKind),
       );
     },
     restartLabel: sessionKind === 'race' ? undefined : 'Back to the start',
-    restartSub: sessionKind === 'race' ? undefined : sessionKind === 'roam' ? 'Where free roam began' : 'Back on the grid',
-    quitLabel: sessionKind === 'testDrive' ? 'Back to the garage' : undefined,
-    quitSub: sessionKind === 'testDrive' ? 'Keep building' : sessionKind === 'roam' ? 'Leave free roam' : undefined,
+    restartSub: sessionKind === 'race' ? undefined : 'Where free roam began',
+    quitSub: sessionKind === 'roam' ? 'Leave free roam' : undefined,
     extra:
       sessionKind === 'roam'
         ? [{ icon: Shuffle, label: 'New city', sub: 'Free roam in a city never seen', hue: 'green', onClick: () => void wipe({ title: 'New city', sub: 'Free roam · a city never seen' }, () => startFreeRoam(String(Math.floor(Math.random() * 1e8)))) }]
@@ -712,7 +712,7 @@ function togglePause(): void {
     settings: { ...settings },
     onSettings: applySettings,
     music,
-    onQuit: () => (sessionKind === 'testDrive' ? void openGarage() : wipeToMenu()),
+    onQuit: wipeToMenu,
   });
   setOverlay(pauseScreen.el);
 }
@@ -724,7 +724,7 @@ input.onView((n) => {
   if (state === 'menu' && !overlayBusy() && !menuMap) exploreFromMenu();
   else if (state === 'drone') exitDrone();
 });
-/** Show or hide the physics tuning panel for the current race (no argument = toggle). */
+/** Show or hide the physics tuning panel for the current race or free roam (no argument = toggle). */
 function toggleTuningPanel(show = !dev.open): void {
   if (state !== 'race' || !session || session.isReplay) return;
   if (!show) return dev.close();
@@ -732,14 +732,15 @@ function toggleTuningPanel(show = !dev.open): void {
   const s = session;
   dev.show(s.race.cars[0].tuning, s.race.config.player.performance, () => (s.tuned = true));
 }
-input.on('dev', () => toggleTuningPanel());
+// The panel keys only work in debug mode.
+input.on('dev', () => settings.debugMode && toggleTuningPanel());
 /** Show or hide the camera tuning panel during a race, replays included (no argument = toggle). */
 function toggleCameraPanel(show = !camPanel.open): void {
   if (state !== 'race' || !session) return;
   if (!show) return camPanel.close();
   if (!camPanel.open) camPanel.show();
 }
-input.on('cameraPanel', () => toggleCameraPanel());
+input.on('cameraPanel', () => settings.debugMode && toggleCameraPanel());
 input.on('freecam', () => {
   if (state === 'freefly') {
     fly?.dispose();

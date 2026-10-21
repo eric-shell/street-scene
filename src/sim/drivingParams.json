@@ -7,7 +7,7 @@
     "drivetrain.layout is \"rwd\", \"awd\" or \"fwd\". awdFrontShare is the AWD torque share sent to the front axle (0.4 = 40/60).",
     "performanceParts: garage upgrade tiers, index 0 stock, 1 street, 2 pro, 3 extreme. applyBuild() in build.ts applies them over the car tuning.",
     "Geometry (wheel positions, size) comes from src/assets/carManifest.json, not from here.",
-    "Test drive tuning panel: Copy JSON exports `fileOverride`, a block you can paste into cars.<id> here. Editing this file discards stale test drive tuning saved in the browser."
+    "Physics tuning panel (Settings > Developer > Debug mode): Copy JSON exports `fileOverride`, a block you can paste into cars.<id> here. Editing this file discards stale tuning saved in the browser."
   ],
   "base": {
     "mass": 1550,

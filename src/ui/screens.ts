@@ -51,7 +51,7 @@ export interface PauseScreen {
 export interface PauseTicket {
   /** The event's name, over the title. */
   event?: string;
-  /** Circuit, Sprint, Drift, Free roam, Test drive. */
+  /** Circuit, Sprint, Drift, Free roam. */
   title: string;
   /** The race type whose color it wears. */
   mode: RaceType;
@@ -236,7 +236,7 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
     s[k] = v;
     onChange(s);
   };
-  const toggle = (k: 'retro' | 'radialBlur' | 'showFps' | 'flashEffects' | 'debugTuningPanel' | 'debugCameraPanel') => onOff(s[k], (v) => set(k, v));
+  const toggle = (k: 'retro' | 'radialBlur' | 'showFps' | 'flashEffects' | 'debugMode') => onOff(s[k], (v) => set(k, v));
   const slider = (label: string, value: number, onInput: (v: number) => void) => {
     const r = h('input', { type: 'range', min: 0, max: 1, step: 0.01, value, class: 'setting-slider', 'aria-label': label }) as HTMLInputElement;
     r.addEventListener('input', () => onInput(Number(r.value)));
@@ -317,7 +317,7 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
       id: 'developer',
       label: 'Developer',
       icon: Code,
-      rows: () => [settingRow('Physics tuning panel', toggle('debugTuningPanel'), '` or F2 in a race'), settingRow('Camera tuning panel', toggle('debugCameraPanel'), 'F3 in a race')],
+      rows: () => [settingRow('Debug mode', toggle('debugMode'), 'Physics (` or F2) and camera (F3) tuning panels in races and free roam')],
     },
     { id: 'credits', label: 'Credits', icon: Heart, rows: credits },
   ];
@@ -368,7 +368,8 @@ const CONTROLS: Record<'keyboard' | 'gamepad' | 'touch', [string[], string][]> =
     [['Esc'], 'Pause'],
     [['M'], 'Mute music'],
     [['[', ']'], 'Previous, next track'],
-    [['`', 'F2'], 'Tuning panel'],
+    [['`', 'F2'], 'Physics panel (debug mode)'],
+    [['F3'], 'Camera panel (debug mode)'],
   ],
   gamepad: [
     [['Left stick'], 'Steer'],
