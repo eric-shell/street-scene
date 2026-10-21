@@ -1,8 +1,8 @@
 /*
  * Street Scene UI: Monokai Pro on near black, sharp and crisp. The city is the
  * gritty part; the UI is clear and precise over it: near opaque panels with a
- * faint top-down gradient, 1px hairlines, 2-3px corners, chamfered (cut corner)
- * primary actions and badges, flat accent fills and no soft glows. Orange is the
+ * faint top-down gradient, 1px hairlines, chamfered (cut corner) buttons, chips,
+ * segments and menu cards, flat accent fills and no soft glows. Orange is the
  * primary accent (primary actions, active and selected states), yellow the
  * secondary (values, records, highlights); red, green, cyan and purple keep their
  * meanings (danger, success, nitrous, ghost). Canvas code reads the same colors
@@ -11,14 +11,16 @@
  * figures so they never jitter. The film grain is only for the splash's night
  * road (environment, not UI).
  *
- * One layout for every full screen menu: the rail (ui/rail.ts). Main menu,
- * pause, results and garage all put their content on an opaque column down the
- * left with a straight edge and the title rule's gradient down it, a screen
- * header (back, icon, title, aside) on top and a key legend along the bottom;
- * the 3D scene is framed in the space beside it. Three motifs repeat so every
- * screen reads as one game: the chamfer (cut corners on primary actions and
- * badges), the rule (the yellow-orange-red gradient under the logo, on the active tab and the
- * loading bar) and the accent hairline across the top of every card and dialog.
+ * One layout for every full screen menu: the rail (ui/rail.ts). Pause, results
+ * and garage put their content on an opaque column down the left with a
+ * straight edge and the title rule's gradient down it; the main menu drops the
+ * column for a light scrim so the city comes through between its cards. Each
+ * has a screen header (back, icon, title, aside) on top and a key legend along
+ * the bottom; the 3D scene is framed in the space beside it. Three motifs repeat
+ * so every screen reads as one game: the chamfer (top right and bottom left cut
+ * off every button, chip, segment and menu card), the rule (the yellow-orange-red
+ * gradient under the logo, on the active tab and the loading bar) and the accent
+ * hairline across the top of every card and dialog.
  */
 :root {
   --bg0: #19181a;
@@ -49,9 +51,15 @@
   /* Primary actions: a hard, short sweep from orange into yellow. */
   --accent-grad: linear-gradient(100deg, #fc9867 0%, #fc9867 55%, #ffb36b 100%);
   --accent-glow: 0 0 0 1px rgba(252, 152, 103, 0.35);
-  /* Cut corners (top right, bottom left) for primary actions and badges. */
+  /* Cut corners (top right, bottom left) for fills without a border (badges, selected segments);
+     bordered things use the .btn / .nav-item ... chamfer rule below, which also draws the border along the cuts. */
   --chamfer: polygon(0 0, calc(100% - 9px) 0, 100% 9px, 100% 100%, 9px 100%, 0 calc(100% - 9px));
   --chamfer-sm: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px));
+  /* Menu cards and rows standing over the city with no rail behind them: near opaque, so text keeps its contrast. */
+  --plate: linear-gradient(180deg, rgba(47, 44, 48, 0.95), rgba(30, 29, 31, 0.95));
+  --plate-hover: linear-gradient(180deg, rgba(60, 56, 61, 0.96), rgba(38, 36, 39, 0.96));
+  /* The main menu's column width, shared by the rail and the splash's copy of the title so both size the title alike. */
+  --menu-w: min(480px, calc(100vw - 32px));
   --accent-2: #ffd866;
   --accent-2-soft: rgba(255, 216, 102, 0.12);
   --on-accent: #19181a;
@@ -182,17 +190,21 @@ body {
 .btn:focus-visible > svg {
   color: var(--accent);
 }
-/* Keyboard and gamepad focus gets a ring on top of the hover look, so it is never ambiguous. */
-.btn.primary:focus-visible {
+/* Keyboard and gamepad focus gets a ring on top of the hover look, so it is never ambiguous. The chamfer
+   clips anything outside the box, so a button's ring is its yellow border plus an inset line, cuts included. */
+.btn:focus-visible {
   outline: none;
-  box-shadow: inset 0 0 0 2px var(--accent-2);
+  border-color: var(--accent-2);
+  box-shadow: var(--edge), inset 0 0 0 1px var(--accent-2);
 }
-.btn:focus-visible,
 .g-item:focus-visible,
-.garage-tab:focus-visible,
-.seg button:focus-visible {
+.garage-tab:focus-visible {
   outline: 2px solid var(--accent-2);
   outline-offset: 2px;
+}
+.seg button:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: -2px;
 }
 .btn:active {
   transform: translateY(1px);
@@ -202,7 +214,6 @@ body {
   background: var(--accent-grad);
   border-color: transparent;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
-  clip-path: var(--chamfer);
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -218,6 +229,10 @@ body {
   border-color: transparent;
   filter: brightness(1.08);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+.btn.primary:focus-visible {
+  border-color: var(--accent-2);
+  box-shadow: inset 0 0 0 1px var(--accent-2);
 }
 .btn.primary .sub {
   color: rgba(25, 24, 26, 0.72);
@@ -260,6 +275,83 @@ body {
 }
 .btn.big .grow {
   flex: 1;
+}
+/* The chamfer on everything pressable or carded: the box loses its top right and bottom left corners
+   (--cut, 9px; 6px on small things, 12px on cards), and ::before / ::after draw the border along the two
+   cuts. They inherit the border color, so hover, focus and the border's transitions follow along, and a
+   borderless fill (a primary action) shows no lines. Clipping removes outlines and outer shadows, so
+   these mark focus with the border and inset shadows. */
+.btn,
+.nav-item,
+.tile,
+.event-card,
+.chip,
+.seg,
+.race-setup,
+.home .settings {
+  position: relative;
+  clip-path: polygon(0 0, calc(100% - var(--cut, 9px)) 0, 100% var(--cut, 9px), 100% 100%, var(--cut, 9px) 100%, 0 calc(100% - var(--cut, 9px)));
+}
+.btn.small,
+.btn.icon-only,
+.chip,
+.seg {
+  --cut: 6px;
+}
+.event-card,
+.race-setup,
+.home .settings {
+  --cut: 12px;
+}
+.btn::before,
+.nav-item::before,
+.tile::before,
+.event-card::before,
+.chip::before,
+.seg::before,
+.race-setup::before,
+.home .settings::before,
+.btn::after,
+.nav-item::after,
+.tile::after,
+.event-card::after,
+.chip::after,
+.seg::after,
+.race-setup::after,
+.home .settings::after {
+  content: '';
+  position: absolute;
+  width: calc(var(--cut, 9px) * 1.4142);
+  border-top: 1px solid;
+  border-color: inherit;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+/* From the start of the top edge's cut down to the right edge; the line falls inside the cut. */
+.btn::before,
+.nav-item::before,
+.tile::before,
+.event-card::before,
+.chip::before,
+.seg::before,
+.race-setup::before,
+.home .settings::before {
+  left: calc(100% + 1px - var(--cut, 9px));
+  top: -1px;
+  transform: rotate(45deg);
+}
+/* From the left edge's cut down to the bottom edge, lifted by its width so it stays inside. */
+.btn::after,
+.nav-item::after,
+.tile::after,
+.event-card::after,
+.chip::after,
+.seg::after,
+.race-setup::after,
+.home .settings::after {
+  left: -1px;
+  top: calc(100% + 1px - var(--cut, 9px));
+  transform: rotate(45deg) translateY(-1px);
 }
 .row {
   display: flex;
@@ -340,7 +432,8 @@ input[type='color'] {
   border: 1px solid var(--line-control);
   border-radius: var(--radius-sm);
   background: rgba(25, 24, 26, 0.55);
-  overflow: hidden;
+  /* Shrinks in a row like a clipped box would; the chamfer clips what overflows. */
+  min-width: 0;
 }
 .seg button {
   white-space: nowrap;
@@ -365,6 +458,7 @@ input[type='color'] {
   color: var(--on-accent);
   background: var(--accent-grad);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  clip-path: var(--chamfer-sm);
   font-weight: 700;
 }
 kbd {
@@ -391,7 +485,7 @@ kbd {
   letter-spacing: 0.03em;
   white-space: nowrap;
   color: var(--soft);
-  background: rgba(25, 24, 26, 0.6);
+  background: rgba(25, 24, 26, 0.85);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
 }
@@ -404,7 +498,7 @@ kbd {
 }
 .chip.accent {
   color: var(--accent-2);
-  background: var(--accent-2-soft);
+  background: linear-gradient(var(--accent-2-soft), var(--accent-2-soft)), rgba(25, 24, 26, 0.85);
   border-color: rgba(255, 216, 102, 0.35);
 }
 .chip.accent > svg {
@@ -559,10 +653,12 @@ kbd {
    on the scene behind it, and the 3D view framed in the space beside it
    (GameRenderer.setFraming). The column keeps one width on every step of a
    screen, so nothing jumps; the key legend sits along the bottom. Narrow
-   screens get a full width rail without the edge. */
+   screens get a full width rail without the edge. The main menu (.home) keeps
+   the rail's box for framing but draws only a scrim in it: its cards are
+   plates of their own, and the city shows between them. */
 .rail-screen {
   --rail-pad: max(16px, 4.5vw);
-  --rail-content: min(480px, calc(100vw - 32px));
+  --rail-content: var(--menu-w);
   /* The content's margin on both sides of the column. */
   --rail-w: calc(var(--rail-pad) * 2 + var(--rail-content));
 }
@@ -604,6 +700,34 @@ kbd {
 .rail-col > * {
   flex-shrink: 0;
 }
+/* The main menu: a scrim darkest at the left edge, enough for the title, tagline and key legend over a bright street. */
+.rail-screen.home .rail-bg {
+  background: linear-gradient(90deg, rgba(25, 24, 26, 0.62), rgba(25, 24, 26, 0.38) 70%, rgba(25, 24, 26, 0));
+}
+.rail-screen.home .rail-edge {
+  display: none;
+}
+/* Buttons outside the cards (back, replay) are plates like the cards. */
+.home .btn:not(.primary):not(.ghost) {
+  background: var(--plate);
+}
+.home .btn:not(.primary):not(.ghost):hover,
+.home .btn:not(.primary):not(.ghost):focus-visible {
+  background: var(--plate-hover);
+}
+/* A disabled plate stays opaque (a faded one would show the city, or the content under the sticky foot); its contents fade. */
+.home .btn[disabled] {
+  opacity: 1;
+}
+.home .btn[disabled] > * {
+  opacity: 0.4;
+}
+/* What stands straight on the city keeps a dark halo under it. */
+.home .tagline,
+.home .keybar,
+.home .screen-title {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 14px rgba(0, 0, 0, 0.7);
+}
 /* A paused race stays visible beside the rail, dimmed. */
 .rail-screen.scrim {
   background: linear-gradient(90deg, rgba(25, 24, 26, 0.3), rgba(25, 24, 26, 0.6));
@@ -626,10 +750,11 @@ kbd {
 
 /* ---------- main menu (ui/menu.ts) ----------
    Home is the title block, the event card (the seed's event with its route and
-   the way into the race) and a row of three tiles; the race step picks the type,
-   rivals and aids above a sticky Start; the settings step is the settings panel.
-   Every step keeps the title block on top: the boot splash lands on .menu-head,
-   which is shrink-wrapped so the column never changes how the title wraps. */
+   the way into the race) and the list of places; the race step picks the type
+   (a column of rows), rivals and aids on a card above a sticky Start; the
+   settings step is the settings panel on a card. Every step keeps the title
+   block on top: the boot splash lands on .menu-head, which is shrink-wrapped
+   like the splash's copy so both measure the same. */
 .menu-head,
 .head-title {
   width: max-content;
@@ -641,8 +766,15 @@ kbd {
 .head-title {
   position: relative;
 }
-.logo-line {
-  display: block;
+/* The title on one line, exactly the column's width (the splash's copy too, scaled up from there).
+   "STREET SCENE" advances 7.12em at the display optical size, pinned so the width per em holds at
+   every size, and the italic's last T overhangs 0.26em past that: the padding keeps the overhang
+   inside the box the gradient is clipped to, and 7.38em is the whole. */
+.head-title .logo {
+  font-size: calc(var(--menu-w) / 7.38);
+  font-variation-settings: 'opsz' 144;
+  padding-right: 0.26em;
+  white-space: nowrap;
 }
 .title-rule {
   height: 3px;
@@ -692,7 +824,7 @@ body > .mw {
   align-items: start;
   gap: 6px 16px;
   padding: 12px 16px 16px;
-  background: var(--card-top), linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.025));
+  background: var(--card-top), var(--plate);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--edge);
@@ -822,7 +954,7 @@ body > .mw {
   text-align: left;
   color: var(--text);
   cursor: pointer;
-  background: var(--surface);
+  background: var(--plate);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   box-shadow: var(--edge);
@@ -858,7 +990,7 @@ body > .mw {
 .nav-item:hover,
 .nav-item:focus-visible {
   border-color: var(--accent-line);
-  background: var(--surface-hover);
+  background: var(--plate-hover);
   box-shadow: var(--edge), inset 3px 0 0 var(--accent);
   outline: none;
 }
@@ -876,29 +1008,25 @@ body > .mw {
 .nav-item:active {
   transform: translateY(1px);
 }
-/* Tiles: the race types, four in a row. Lit by an accent bar and edge. */
+/* Tiles: the race types, a column of rows (icon, name, then its sub or record on the right), lit from
+   the left edge like the home list. */
 .tiles {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-}
-@media (max-width: 420px) {
-  .race-types {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-.tile {
-  position: relative;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
+  gap: 6px;
+}
+.tile {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
   min-width: 0;
-  padding: 14px 12px 12px;
+  min-height: 46px;
+  padding: 8px 16px;
   cursor: pointer;
   text-align: left;
   color: var(--text);
-  background: var(--surface);
+  background: var(--plate);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   box-shadow: var(--edge);
@@ -906,55 +1034,54 @@ body > .mw {
 }
 .tile > svg {
   color: var(--muted);
-  margin-bottom: auto;
-  transition: color var(--t-fast), transform var(--t-fast);
+  transition: color var(--t-fast);
 }
 .tile-label {
-  margin-top: 10px;
   font: 900 16px var(--display);
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  white-space: nowrap;
-}
-.tile-sub {
-  max-width: 100%;
-  font: 500 12px var(--font);
-  color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.tile-sub {
+  font: 500 12px var(--font);
+  color: var(--muted);
+  white-space: nowrap;
+}
 /* A set record reads as a value, in the secondary color. */
 .tile-sub.record {
-  font: 700 12px var(--mono);
+  font: 700 13px var(--mono);
   color: var(--accent-2);
 }
 .tile:hover,
 .tile:focus-visible {
   border-color: var(--accent-line);
-  background: var(--surface-hover);
-  box-shadow: var(--edge), inset 0 -3px 0 var(--accent);
+  background: var(--plate-hover);
+  box-shadow: var(--edge), inset 3px 0 0 var(--accent);
   outline: none;
 }
 .tile:focus-visible {
-  box-shadow: var(--edge), inset 0 -3px 0 var(--accent), inset 0 0 0 1px var(--accent-2);
+  box-shadow: var(--edge), inset 3px 0 0 var(--accent), inset 0 0 0 1px var(--accent-2);
 }
 .tile:hover > svg,
 .tile:focus-visible > svg {
   color: var(--accent);
-  transform: translateY(-2px);
 }
 .tile:active {
   transform: translateY(1px);
 }
-/* The picked race type: the orange fill of a selected segment, softened. */
+/* The picked race type: the accent bar of a hovered row, over an orange wash fading to the right. */
 .tile.on {
   border-color: var(--accent-line);
-  background: linear-gradient(180deg, rgba(252, 152, 103, 0.2), rgba(252, 152, 103, 0.08));
-  box-shadow: var(--edge), inset 0 -3px 0 var(--accent);
+  background: linear-gradient(90deg, rgba(252, 152, 103, 0.24), rgba(252, 152, 103, 0.06) 70%), var(--plate);
+  box-shadow: var(--edge), inset 3px 0 0 var(--accent);
 }
 .tile.on > svg {
   color: var(--accent);
+}
+.tile.on:focus-visible {
+  box-shadow: var(--edge), inset 3px 0 0 var(--accent), inset 0 0 0 1px var(--accent-2);
 }
 /* Free roam is the open ended one: yellow instead of orange. */
 .tile.roam > svg {
@@ -964,19 +1091,43 @@ body > .mw {
 .tile.roam:hover,
 .tile.roam:focus-visible {
   border-color: rgba(255, 216, 102, 0.55);
-  box-shadow: var(--edge), inset 0 -3px 0 var(--accent-2);
+  box-shadow: var(--edge), inset 3px 0 0 var(--accent-2);
 }
 .tile.roam.on {
-  background: linear-gradient(180deg, rgba(255, 216, 102, 0.16), rgba(255, 216, 102, 0.06));
-}
-.race-types .tile {
-  min-height: 92px;
+  background: linear-gradient(90deg, rgba(255, 216, 102, 0.18), rgba(255, 216, 102, 0.05) 70%), var(--plate);
 }
 .race-group {
   display: flex;
   flex-direction: column;
   gap: 10px;
   transition: opacity 0.15s;
+}
+/* Rivals and driving share one card over the city; the settings step is a card too. */
+.race-setup,
+.home .settings {
+  background: var(--card-top), var(--plate);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--edge);
+}
+.race-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 10px 16px 14px;
+}
+.race-setup .section-title {
+  margin-top: 2px;
+}
+/* The settings tabs run wider than the card's padding so all five still fit across the column. */
+.home .settings {
+  padding: 2px 16px 14px;
+}
+.home .settings-tabs {
+  margin: 0 -10px;
+}
+.home .settings-tabs .tab {
+  padding-inline: 6px;
 }
 /* Rivals off (drift, free roam): the controls dim, the hint saying why stays readable. */
 .race-group.off .seg,
@@ -1039,13 +1190,16 @@ body > .mw {
 .step-foot .start .grow {
   flex: none;
 }
+/* With no rail behind it the foot fades in its own dark, a short band that reads as the buttons' shadow
+   and hides what scrolls under them on short screens. */
+.home .step-foot {
+  padding-top: 10px;
+  background: linear-gradient(180deg, rgba(25, 24, 26, 0), rgba(25, 24, 26, 0.92) 10px);
+}
 @media (max-height: 820px) {
   .race-types .tile {
-    min-height: 0;
-    padding: 10px 12px;
-  }
-  .race-types .tile-label {
-    margin-top: 6px;
+    min-height: 42px;
+    padding: 6px 16px;
   }
   .nav-item {
     min-height: 54px;

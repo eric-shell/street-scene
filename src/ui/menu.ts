@@ -6,7 +6,8 @@
  * edit, shuffle and back-to-today, and the way into the race) over a list of
  * the other places: Garage, Explore (the drone flyover) and Settings; arrow keys
  * move between them. Race opens the
- * race step (type, rivals, difficulty, driving aids, then Start); Settings
+ * race step (the types as a column of rows, rivals, difficulty, driving aids,
+ * then Start); Settings
  * opens the settings panel as a step. Every step keeps the title block on top
  * (the boot splash lands on `.menu-head`, see ui/splash.ts) and Escape or the
  * back button returns home. The key legend along the bottom carries Hide UI
@@ -22,13 +23,13 @@ import { MAX_OPPONENTS, type RaceMode } from '../sim/race';
 import type { BestRecord } from '../replay/replay';
 import type { MusicPlayer } from '../audio/musicPlayer';
 
-/** The title, one word a line in the menu and on the splash alike, so both wrap the same at any width. */
-export const TITLE_LINES = ['STREET', 'SCENE'] as const;
+/** The title's words: one line, sized to the menu's column in the menu and on the splash alike (ui.css `.head-title .logo`). */
+export const TITLE_WORDS = ['STREET', 'SCENE'] as const;
 export const TAGLINE = 'Street racing after dark';
 
-/** The title's lines as block spans, with a space between so its text still reads "STREET SCENE". */
-export function titleLines(line: (text: string) => (Node | string)[] = (t) => [t]): (Node | string)[] {
-  return TITLE_LINES.flatMap((t, i) => [...(i ? [' '] : []), h('span', { class: 'logo-line' }, ...line(t))]);
+/** The title's words as spans, with a space between so its text reads "STREET SCENE"; the splash fills them letter by letter. */
+export function titleWords(word: (text: string) => (Node | string)[] = (t) => [t]): (Node | string)[] {
+  return TITLE_WORDS.flatMap((t, i) => [...(i ? [' '] : []), h('span', { class: 'logo-word' }, ...word(t))]);
 }
 
 export type MenuStep = 'home' | 'race' | 'settings';
@@ -72,7 +73,7 @@ const TYPE_INFO: Record<RaceType, { label: string; icon: IconNode; sub: string; 
   roam: { label: 'Free roam', icon: Compass, sub: 'No rules', start: 'Start free roam' },
 };
 
-/** A menu tile: icon, label and a one-line sub (a record reads as a value in the secondary color). */
+/** A race type's row: icon, label and a short sub on the right (a record reads as a value in the secondary color). */
 function tile(ico: IconNode, label: string, sub: string, onClick: () => void, opts: { cls?: string; record?: boolean; radio?: boolean } = {}): HTMLButtonElement {
   return h(
     'button',
@@ -146,7 +147,7 @@ export function mainMenu(o: MenuOptions): HTMLElement {
   const head = h(
     'div',
     { class: 'menu-head' },
-    h('div', { class: 'head-title' }, h('h1', { class: 'logo' }, ...titleLines()), h('div', { class: 'title-rule', 'aria-hidden': 'true' })),
+    h('div', { class: 'head-title' }, h('h1', { class: 'logo' }, ...titleWords()), h('div', { class: 'title-rule', 'aria-hidden': 'true' })),
     h('div', { class: 'tagline' }, TAGLINE),
   );
   let step: MenuStep = 'home';
@@ -295,7 +296,12 @@ export function mainMenu(o: MenuOptions): HTMLElement {
       refresh();
     };
     refresh();
-    return [screenHead({ icon: Flag, title: 'Race', back: () => go('home'), aside: chip(o.event?.name ?? `#${o.seed}`, undefined, 'accent') }), types, rivals, driving, h('div', { class: 'step-foot' }, replay, start)];
+    return [
+      screenHead({ icon: Flag, title: 'Race', back: () => go('home'), aside: chip(o.event?.name ?? `#${o.seed}`, undefined, 'accent') }),
+      types,
+      h('div', { class: 'race-setup' }, rivals, driving),
+      h('div', { class: 'step-foot' }, replay, start),
+    ];
   };
 
   const settings = (): HTMLElement[] => [screenHead({ icon: SettingsIcon, title: 'Settings', back: () => go('home') }), settingsPanel(s, o.onSettings, o.music)];
