@@ -346,9 +346,10 @@ describe('city generation', () => {
       // Off the drivable road with room for the prop's radius (back alley dumpsters and bags, and the
       // barrels along the river channel's floor edges, are obstacles on purpose; raceway alley clutter
       // sits on the alley's own sidewalk, which a diagonal avenue leaving the alley's end junction can
-      // overlap: the alley module keeps its clutter clear of the alley's ends only).
+      // overlap: the alley module keeps its clutter clear of the alley's ends only). Lane closures stand
+      // in the curb lane on purpose (roadworks.ts; their own test keeps the rest of the street open).
       for (const p of props) {
-        if (p.area !== undefined && ['backAlley', 'river', 'alley'].includes(w.areas[p.area].kind)) continue;
+        if (p.area !== undefined && ['backAlley', 'river', 'alley', 'roadworks'].includes(w.areas[p.area].kind)) continue;
         for (const e of w.graph.edges) {
           const a = w.graph.nodes[e.a];
           const b = w.graph.nodes[e.b];
@@ -450,7 +451,8 @@ describe('districts', () => {
           // (Neighbouring buildings may leave a gap under a meter: a 0.7 m margin covers it.)
           expect(w.blocks.buildings.some((b) => insideBuilding(b, px, pz, 0.7))).toBe(true);
         }
-        if (wall.look === 'island') continue;
+        // Islands stand in their ring road; a lane closure's plant in its closed curb lane.
+        if (wall.look === 'island' || wall.look === 'roadworks') continue;
         // Not on any road (sampled along the wall).
         for (const t of [0.1, 0.5, 0.9]) {
           const x = wall.ax + (wall.bx - wall.ax) * t;

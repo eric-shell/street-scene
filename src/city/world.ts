@@ -13,6 +13,7 @@ import { Terrain, createTerrain } from './terrain';
 import { cos, distToSegment, segmentT, sin, sqrt } from '../sim/math';
 import { CityDistricts, planDistricts } from './districts';
 import { carveRouteShortcuts, hasShortcutSpot, qualifiedCount } from './districts/alley';
+import { bayRoadDistance, baysByEdge } from './busBays';
 import { CityEvent, EventFlavourId, eventOffer, eventRoutePreference, pickEventFlavour, resolveEvent, routeEdges } from './events';
 import { Drawbridge, buildTimedGates, markDrawbridge } from './drawbridge';
 import type { GateSet } from '../sim/gates';
@@ -123,7 +124,7 @@ export function planRoads(seed: number, forceFlavour?: EventFlavourId): { graph:
         carveRouteShortcuts(ctx, [circuit2, sprint2]);
       }
       routeNodes = { circuit: circuit2.nodes, sprint: sprint2.nodes };
-      // Hills and the monument are planned after this: they read the routes to come to the race.
+      // Hills, the monument and the roadworks are planned after this: they read the routes to come to the race.
       return { flavour, routes: [circuit2, sprint2].map((r) => ({ nodes: r.nodes, edges: routeEdges(g, r.nodes, r.closed), closed: r.closed })) };
     },
   });
@@ -482,6 +483,8 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     return best;
   }
 
+  /** Bus bays by edge (busBays.ts): their stretch of sidewalk is road, with a curb of its own. */
+  const bayOf = baysByEdge(blocks.bays ?? [], graph.edges.length);
   function surfaceAt(x: number, z: number): Surface {
     edgeGrid.query(x - 1, z - 1, x + 1, z + 1, scratch);
     let best = Infinity;
@@ -493,6 +496,11 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
       const d = distToSegment(x, z, a.x, a.z, b.x, b.z) - e.width / 2;
       if (d < best) best = d;
       if (d - e.sidewalk < walk) walk = d - e.sidewalk;
+      const bay = bayOf[id];
+      if (bay) {
+        const bd = bayRoadDistance(bay, x, z);
+        if (bd < best) best = bd;
+      }
     }
     // District surface patches win over the street classification by priority (road 5, sidewalk 3).
     const patch = city.districts.surfaceAt(x, z);
@@ -539,6 +547,12 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
       const d = distToSegment(x, z, a.x, a.z, b.x, b.z) - e.width / 2;
       if (d < road) road = d;
       if (d - e.sidewalk < walk) walk = d - e.sidewalk;
+      // A bus bay's indented curb is a curb like any other.
+      const bay = bayOf[id];
+      if (bay) {
+        const bd = bayRoadDistance(bay, x, z);
+        if (bd < road) road = bd;
+      }
     }
     for (const n of rings) {
       const d = sqrt((x - n.x) ** 2 + (z - n.z) ** 2) - n.ring!.outer;

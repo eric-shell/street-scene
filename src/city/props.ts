@@ -1,6 +1,8 @@
 /**
  * Destructible props: street furniture (streetlights, traffic lights, garbage
- * cans, benches, bus stops) and the clutter districts scatter where racers
+ * cans, benches, bus stops, and by neighbourhood fire hydrants, mailboxes,
+ * parking meters, phone booths and vending machines, see streetFurniture.ts)
+ * and the clutter districts scatter where racers
  * cut through (bushes, planter pots, cafe tables, barrels, crates, dumpsters,
  * news boxes, trash bags, the lantern posts lighting parks and plazas, and
  * the construction site pieces that fence off and fill route shortcuts:
@@ -19,6 +21,8 @@
  */
 import { CITY } from './config';
 import type { EdgeMouths, Sector, Streetlight } from './blocks';
+import { BUS_BAY, BusBay, bayHitsCircle, baysByEdge, bayPoint } from './busBays';
+import { furnishStreets } from './streetFurniture';
 import type { RoadGraph } from './roadGraph';
 import { SpatialGrid } from './spatial';
 import type { Terrain } from './terrain';
@@ -26,7 +30,9 @@ import { Rng, deriveSeed } from '../sim/prng';
 import { DEG, Vec2, atan2, distToSegment, sin, sqrt } from '../sim/math';
 
 /** Sidewalk furniture placed by generateProps itself. */
-export type StreetPropKind = 'streetlight' | 'trafficLight' | 'garbageCan' | 'bench' | 'busStop';
+export type StreetPropKind = 'streetlight' | 'trafficLight' | 'garbageCan' | 'bench' | 'busStop' | FurnitureKind;
+/** Neighbourhood street furniture (streetFurniture.ts): what makes one street read different from the next. */
+export type FurnitureKind = 'hydrant' | 'parkingMeter' | 'mailbox' | 'phoneBooth' | 'vendingMachine';
 /** Construction site pieces fencing off and filling route shortcuts (districts/alley.ts). */
 export type ConstructionPropKind = 'fencePanel' | 'trafficCone' | 'sawhorse' | 'waterBarrier' | 'sandbags' | 'pallets';
 /** Clutter districts ask for (DistrictPropSpec): mostly soft, cheap to crash through. Park lamps light parks and plazas (render/areaLights.ts). */
@@ -57,6 +63,14 @@ export interface Prop {
   light?: number;
   /** District props: the area (CityDistricts.areas id) that placed it. */
   area?: number;
+  /**
+   * Long props (bus shelters): half thickness (m) along the facing. The
+   * collision shape is then a capsule of this radius whose ends reach
+   * `radius` each way along local X; `radius` stays the bounding circle.
+   */
+  depth?: number;
+  /** A bus stop in a bus bay: index into CityBlocks.bays. */
+  bay?: number;
 }
 
 /** A destructible a district module asks for (AreaBuild.destructibles); generateProps places it last. */
@@ -116,24 +130,47 @@ export const PROP_DEFS: Record<PropKind, PropDef> = {
   waterBarrier: { radius: 0.9, mass: 120, height: 0.85, anchor: 1, breakSpeed: 0.8 },
   sandbags: { radius: 0.55, mass: 70, height: 0.55, anchor: 1, breakSpeed: 0.6 },
   pallets: { radius: 0.62, mass: 36, height: 0.75, anchor: 1, breakSpeed: 0.2 },
+  // Neighbourhood furniture. A cast iron hydrant is a stubby, bolted lump: it holds a crawling car
+  // and costs a fast one about a seventh of its speed (then gushes, render/hydrantSpray.ts). Parking
+  // meters and mailboxes are light knocks; a phone booth or a vending machine is a real hit.
+  hydrant: { radius: 0.24, mass: 110, height: 0.85, anchor: 2, breakSpeed: 2.5 },
+  parkingMeter: { radius: 0.14, mass: 28, height: 1.45, anchor: 1.6, breakSpeed: 0.6 },
+  mailbox: { radius: 0.36, mass: 85, height: 1.25, anchor: 1.2, breakSpeed: 1 },
+  phoneBooth: { radius: 0.6, mass: 240, height: 2.4, anchor: 1.3, breakSpeed: 2.5 },
+  vendingMachine: { radius: 0.52, mass: 330, height: 1.9, anchor: 1, breakSpeed: 3 },
 };
 
 /** Construction kinds, for the shortcut builder and tests. */
 export const CONSTRUCTION_PROP_KINDS: readonly ConstructionPropKind[] = ['fencePanel', 'trafficCone', 'sawhorse', 'waterBarrier', 'sandbags', 'pallets'];
 
+/** Neighbourhood furniture kinds (streetFurniture.ts). */
+export const FURNITURE_KINDS: readonly FurnitureKind[] = ['hydrant', 'parkingMeter', 'mailbox', 'phoneBooth', 'vendingMachine'];
+
 /** Street furniture kinds (sidewalk only), in the order generateProps places them. */
-export const STREET_PROP_KINDS: readonly StreetPropKind[] = ['streetlight', 'trafficLight', 'garbageCan', 'bench', 'busStop'];
+export const STREET_PROP_KINDS: readonly StreetPropKind[] = ['streetlight', 'trafficLight', 'garbageCan', 'bench', 'busStop', ...FURNITURE_KINDS];
 export const isStreetProp = (k: PropKind): k is StreetPropKind => (STREET_PROP_KINDS as readonly PropKind[]).includes(k);
 
 /** Emitted as RaceEvent { type: 'prop', car, value: propId } when a car breaks a prop. */
 export const PROP_EVENT = 'prop' as const;
 
 /** Distance behind the curb line (into the sidewalk) of each kind's center. */
-const SETBACK: Record<StreetPropKind, number> = { streetlight: 0.8, trafficLight: 0.9, garbageCan: 0.9, bench: 2.0, busStop: 2.0 };
+export const SETBACK: Record<StreetPropKind, number> = {
+  streetlight: 0.8,
+  trafficLight: 0.9,
+  garbageCan: 0.9,
+  bench: 2.0,
+  busStop: 2.0,
+  // Hydrants, meters and mailboxes stand at the curb, booths a step back, vending machines against the frontage.
+  hydrant: 0.6,
+  parkingMeter: 0.55,
+  mailbox: 0.75,
+  phoneBooth: 1.1,
+  vendingMachine: 3.38,
+};
 /** Furniture keeps this far (along the curb) from each end of an edge: crosswalks, barriers, corners. */
-const MOUTH_CLEAR = 12;
+export const MOUTH_CLEAR = 12;
 /** Clear distance (along the curb) kept around each streetlight pole. */
-const POLE_CLEAR = 1.5;
+export const POLE_CLEAR = 1.5;
 /** Minimum gap between any two props. */
 const PROP_GAP = 0.5;
 
@@ -143,6 +180,18 @@ export function lightStations(len: number, phase: number): number[] {
   const spacing = CITY.streetlightSpacing;
   for (let s = 10 + spacing * phase; s < len - 10; s += spacing) out.push(s);
   return out;
+}
+
+/** Furniture gaps along one block side (m from its start): between the mouth margins and the streetlight poles, in order. */
+export function sidewalkGaps(len: number, phase: number): { lo: number; hi: number }[] {
+  const cuts = [MOUTH_CLEAR - POLE_CLEAR, ...lightStations(len, phase), len - MOUTH_CLEAR + POLE_CLEAR];
+  const gaps: { lo: number; hi: number }[] = [];
+  for (let k = 0; k + 1 < cuts.length; k++) {
+    const lo = Math.max(MOUTH_CLEAR, cuts[k] + POLE_CLEAR);
+    const hi = Math.min(len - MOUTH_CLEAR, cuts[k + 1] - POLE_CLEAR);
+    if (hi - lo > 2) gaps.push({ lo, hi });
+  }
+  return gaps;
 }
 
 /** Curb line of each edge side, as used for streetlights. P side has phase 0, N side 0.5. */
@@ -169,12 +218,14 @@ export function generateProps(
   edgeGrid: SpatialGrid,
   reserved: { x: number; z: number; r: number }[] = [],
   districtProps: readonly DistrictPropSpec[] = [],
+  bays: readonly BusBay[] = [],
 ): Prop[] {
   const rng = new Rng(deriveSeed(seed, 'props'));
   const props: Prop[] = [];
   const pad = 40;
   const grid = SpatialGrid.forBounds(g.bounds.minX - pad, g.bounds.minZ - pad, g.bounds.maxX + pad, g.bounds.maxZ + pad, CITY.broadphaseCell);
   const scratch: number[] = [];
+  const bayOf = baysByEdge(bays, g.edges.length);
 
   /** Min distance to any road surface (negative = on the road) and to the outer sidewalk line. */
   const clearances = (x: number, z: number) => {
@@ -192,10 +243,16 @@ export function generateProps(
     return { road, corridor };
   };
 
-  const fits = (x: number, z: number, r: number): boolean => {
+  /** `across`: the prop's half size toward the road and the frontage (a shelter's half depth), `r` its bounding radius. */
+  const fits = (x: number, z: number, r: number, across = r): boolean => {
     const c = clearances(x, z);
     // On a sidewalk: off every road, inside some road's sidewalk band.
-    if (c.road < r + 0.2 || c.corridor > -r - 0.1) return false;
+    if (c.road < across + 0.2 || c.corridor > -across - 0.1) return false;
+    // Out of the bus bays (their asphalt was sidewalk to the edge distances above).
+    for (const id of scratch) {
+      const b = bayOf[id];
+      if (b && bayHitsCircle(b, x, z, across, 0.08)) return false;
+    }
     // District structures on the sidewalk (subway pillars...).
     for (const q of reserved) if ((q.x - x) ** 2 + (q.z - z) ** 2 < (q.r + r + PROP_GAP) ** 2) return false;
     const reach = r + 2 + PROP_GAP;
@@ -271,7 +328,10 @@ export function generateProps(
   g.edges.forEach((e, ei) => {
     if (e.kind === 'backAlley') return;
     const sides = edgeSides(g, mouths, ei);
-    const busSide = e.length >= CITY.propBusStopMinEdge && rng.chance(CITY.propBusStopChance) ? rng.int(0, 1) : -1;
+    const roll = e.length >= CITY.propBusStopMinEdge && rng.chance(CITY.propBusStopChance) ? rng.int(0, 1) : -1;
+    // A bus bay always has its stop (busBays.ts): the shelter at the back of the narrowed sidewalk.
+    const bay = bayOf[ei];
+    const busSide = bay ? (bay.side === 1 ? 0 : 1) : roll;
     sides.forEach((side, si) => {
       const ax = side.to.x - side.from.x;
       const az = side.to.z - side.from.z;
@@ -294,17 +354,28 @@ export function generateProps(
         return true;
       };
       // Gaps between mouth margins and streetlight poles, in order along the curb.
-      const cuts = [MOUTH_CLEAR - POLE_CLEAR, ...lightStations(len, side.phase), len - MOUTH_CLEAR + POLE_CLEAR];
-      const gaps: { lo: number; hi: number }[] = [];
-      for (let k = 0; k + 1 < cuts.length; k++) {
-        const lo = Math.max(MOUTH_CLEAR, cuts[k] + POLE_CLEAR);
-        const hi = Math.min(len - MOUTH_CLEAR, cuts[k + 1] - POLE_CLEAR);
-        if (hi - lo > 2) gaps.push({ lo, hi });
-      }
+      const gaps = sidewalkGaps(len, side.phase);
       if (!gaps.length) return;
+      // A bay's stop stands in the bay's own gap; nothing else does.
+      if (bay && busSide === si) {
+        const k = gaps.findIndex((gp) => gp.lo <= bay.s0 + 1e-6 && gp.hi >= bay.s1 - 1e-6);
+        const mid = (bay.s0 + bay.s1) / 2 + rng.range(-1.5, 1.5);
+        const v = bay.depth + (e.sidewalk - bay.depth) / 2;
+        const at2 = (s: number, back: number) => bayPoint(bay, s, back);
+        const p = at2(mid, v);
+        if (k >= 0 && fits(p.x, p.z, PROP_DEFS.busStop.radius, BUS_BAY.shelterDepth)) {
+          push('busStop', p.x, p.z, yaw, ei, { depth: BUS_BAY.shelterDepth, bay: bay.id });
+          // A can on the narrow sidewalk beside the shelter.
+          if (rng.chance(0.7)) {
+            const q = at2(mid + PROP_DEFS.busStop.radius + rng.range(1.1, 2.4), bay.depth + 0.75);
+            if (fits(q.x, q.z, PROP_DEFS.garbageCan.radius)) push('garbageCan', q.x, q.z, yaw, ei);
+          }
+          gaps.splice(k, 1);
+        }
+      }
       // The bus stop takes the widest gap nearest the middle of the block.
       let busGap = -1;
-      if (busSide === si) {
+      if (busSide === si && !bay) {
         let best = Infinity;
         gaps.forEach((gp, k) => {
           if (gp.hi - gp.lo < 2 * PROP_DEFS.busStop.radius + 4) return;
@@ -320,8 +391,8 @@ export function generateProps(
         if (k === busGap) {
           const r = PROP_DEFS.busStop.radius;
           const p = at(mid + rng.range(-1, 1), 'busStop');
-          if (fits(p.x, p.z, r)) {
-            push('busStop', p.x, p.z, yaw, ei);
+          if (fits(p.x, p.z, r, BUS_BAY.shelterDepth)) {
+            push('busStop', p.x, p.z, yaw, ei, { depth: BUS_BAY.shelterDepth });
             // A can beside the shelter.
             if (rng.chance(0.7)) place('garbageCan', mid + r + 1.2, Math.min(gp.hi, mid + r + 3.5));
             return;
@@ -342,6 +413,13 @@ export function generateProps(
         else if (can) place('garbageCan', gp.lo, gp.hi);
       });
     });
+  });
+
+  // 3b. Neighbourhood furniture (streetFurniture.ts): hydrants, mailboxes, meters, booths, vending machines.
+  furnishStreets(seed, g, mouths, (kind, x, z, yaw, edge) => {
+    if (!fits(x, z, PROP_DEFS[kind].radius)) return false;
+    push(kind, x, z, yaw, edge);
+    return true;
   });
 
   // 4. District clutter, in area order. A spec that would overlap anything already placed is dropped.
