@@ -33,6 +33,10 @@ Measured at the output with every level at its default, each source alone and ri
 |---|---|---|---|---|
 | engine, full throttle | −19 | −19 | −19 | the reference, 8 dB over the music |
 | engine, idle | −25 | −25 | −25 | |
+| garage engine, showroom idle | −26 | −36 | −36 | a burble under the menus, 10 dB under the music |
+| garage engine, showroom rev to 6800 | −16 | −16 | −16 | the swell is the point |
+| garage engine, Street view cruise | −21 | −30 | −30 | a hum under the music, not a drone over it |
+| garage engine, Street view rev to 6800 | −18 | −17 | −17 | swells 13 dB over the cruise |
 | music (player default 0.6) | −26 | −26 | −26 | sits under the engine, the player's slider moves it |
 | car crash 20 m/s | −19 (peak −13) | −14 (peak −5) | −13 | the hardest hit tops the engine's peaks |
 | car crash 8 m/s | −24 | −19 | −18 | a tap stays under the engine |
@@ -62,4 +66,5 @@ Two things to know when setting a level: a centred mono source loses 3 dB in its
 
 - A new sound goes on the bus that matches what it is, with its level set against the engine's −19 dBFS RMS using the table, then gets a line in `TARGETS` in `e2e/audioMix.spec.ts` so the next change cannot move it unnoticed. Run `npm run e2e -- e2e/audioMix.spec.ts` (about a minute; it prints the table).
 - The spec plays each source on a synthetic page that imports the audio modules straight from Vite, so it works even when a screen is broken. It taps the node a source really feeds: a dynamic `import()` in the page can get its own module instance with its own `AudioContext`, and a tap on that hub hears nothing.
+- The garage's engine (showroom and Street view) gets its level from `revVoice` in `src/garage/revModel.ts`: quiet at the engine's rest rpm, swelling with the revs (and a little ahead of them with the pedal) to full at the redline. The table in `REV_LEVEL` sets the rest and top levels per presentation; the spec measures all four through that same function.
 - The engine voices are matched to each other separately (every program is trimmed to one K-weighted loudness, see engineSound.md); this table only sets where the engine bus sits.

@@ -19,7 +19,7 @@ import type { GameRenderer } from '../render/scene';
 import { CarPose, CarView } from '../render/carView';
 import { CarAssetLibrary } from '../render/carAssets';
 import { EngineVoice, audioHub } from '../audio/engineAudio';
-import { BlipScript, RevModel } from './revModel';
+import { BlipScript, REV_LEVEL, RevModel, revVoice } from './revModel';
 import { Showroom } from './showroom';
 import { FollowOrbit } from '../game/streetCameras';
 import type { StreetStage } from '../game/streetStage';
@@ -249,7 +249,7 @@ export class GarageScene {
     this.voice?.dispose();
     this.voice = null;
     try {
-      this.voice = new EngineVoice(this.car.car.engine, 0.3);
+      this.voice = new EngineVoice(this.car.car.engine, REV_LEVEL.base);
       this.voiceCar = this.car.car.id;
       this.voice.onPop = (pipe, size, delay) => this.car?.popFlash(pipe, size, delay);
     } catch {
@@ -271,13 +271,14 @@ export class GarageScene {
       return;
     }
     const voice = this.ensureVoice();
+    // Quiet at rest (a burble in the showroom, a low hum on the Street view's cruise), swelling with the revs.
+    const level = revVoice(this.mode, this.rev.rpm, this.rev.rest, this.rev.redline, this.rev.throttle);
     voice?.update({
       rpm: this.rev.rpm,
       redline: this.rev.redline,
-      throttle: street ? Math.max(0.22, this.rev.throttle) : this.rev.throttle,
+      throttle: level.throttle,
       nitro: false,
-      // Idling in the showroom stays a quiet burble.
-      proximity: street ? 0.8 : 0.6 + 0.4 * Math.min(1, this.rev.throttle * 2 + (this.rev.rpm - this.rev.idle) / 3000),
+      proximity: level.proximity,
       pan: 0,
       dt,
     });

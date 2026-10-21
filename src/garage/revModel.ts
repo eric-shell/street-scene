@@ -119,3 +119,27 @@ export class BlipScript {
     return 0;
   }
 }
+
+/**
+ * How the garage's engine plays, so it never drones under the menus: the
+ * EngineVoice's base level, and per presentation the proximity at the
+ * engine's rest rpm (`rest`), at the redline (`top`) and how late the swell
+ * comes between them (`curve`; above 1 the first revs add little). The
+ * Street view cruises with a little throttle (`floor`) so it sounds driven,
+ * but low; a rev swells to full either way. The levels at the output are in
+ * docs/audioMix.md and held by e2e/audioMix.spec.ts.
+ */
+export const REV_LEVEL = {
+  base: 0.3,
+  garage: { rest: 0.18, top: 1, curve: 1.2, floor: 0 },
+  street: { rest: 0.28, top: 0.85, curve: 1.3, floor: 0.22 },
+} as const;
+
+/** The garage engine voice's throttle and proximity for the rev model's state; the pedal leads the revs a little. */
+export function revVoice(mode: 'garage' | 'street', rpm: number, rest: number, redline: number, pedal: number): { throttle: number; proximity: number } {
+  const l = REV_LEVEL[mode];
+  const p = Math.max(0, Math.min(1, pedal));
+  const revs = Math.max(0, Math.min(1, (rpm - rest) / Math.max(1, redline - rest)));
+  const amount = Math.max(revs, 0.5 * p);
+  return { throttle: Math.max(l.floor, p), proximity: l.rest + (l.top - l.rest) * amount ** l.curve };
+}

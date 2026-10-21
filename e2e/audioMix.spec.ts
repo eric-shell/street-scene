@@ -15,6 +15,10 @@ const PAGE = '<!doctype html><html><head><meta charset="utf-8"><title>audio mix<
 const TARGETS: Record<string, [rms: number, tolerance: number]> = {
   engineMid: [-19, 3],
   engineIdle: [-25, 4],
+  garageIdle: [-36, 3],
+  garageRev: [-16, 3],
+  streetCruise: [-30, 3],
+  streetRev: [-17, 3],
   crash20: [-13, 3],
   crash8: [-18, 4],
   wall15: [-11, 3],
@@ -101,6 +105,9 @@ test('every sound sits where the mix puts it', async ({ page }) => {
     const nitroRun = (async () => { const end = performance.now() + 2000; while (performance.now() < end) { const now = performance.now(); sfx.updateCars([car], null, (now - t) / 1000, false); t = now; await sleep(16); } car.nitro = false; sfx.updateCars([car], null, 0.016, false); })();
     await sleep(1200); results.nitro = await measure(700); await nitroRun; await sleep(500);
     tap = sfx.ambience;
+    // The crowd recordings load lazily: on a cold cache the fetch and decode outlast the loop's warm up, so wait for them.
+    sfx.loadCrowd();
+    for (const t0 = performance.now(); !(sfx.cheerBuf && sfx.applauseBuf) && performance.now() - t0 < 20000; ) await sleep(100);
     const spot = { ax: -3, az: 2, bx: 3, bz: 2, level: 1.2, kind: 'section' };
     const crowdRun = (async () => { const end = performance.now() + 3500; while (performance.now() < end) { sfx.updateCrowds([spot], false); await sleep(50); } sfx.updateCrowds([], false); })();
     await sleep(2500); results.crowdLoop = await measure(900); await crowdRun; await sleep(800);
@@ -123,6 +130,15 @@ test('every sound sits where the mix puts it', async ({ page }) => {
     await drive(3500, 1, 1200); const engRun = drive(3500, 1, 1000); results.engineMid = await measure(900); await engRun;
     const idleRun = drive(850, 0, 1800); await sleep(800); results.engineIdle = await measure(900); await idleRun;
     voice.dispose();
+    // The garage's engine, through the same level curve the garage scene uses (src/garage/revModel.ts).
+    const revMod = await import('/src/garage/revModel.ts');
+    const gv = new audio.EngineVoice(manifest.cars.find((c) => c.id === 'protoCompact').engine, revMod.REV_LEVEL.base);
+    tap = gv.pan;
+    const rev = async (mode, rpm, rest, pedal, ms) => { const end = performance.now() + ms; let last = performance.now(); while (performance.now() < end) { const now = performance.now(); const l = revMod.revVoice(mode, rpm, rest, 7200, pedal); gv.update({ rpm, redline: 7200, throttle: l.throttle, nitro: false, proximity: l.proximity, pan: 0, dt: (now - last) / 1000 }); last = now; await sleep(16); } };
+    const cruise = 900 + 0.28 * (7200 - 900);
+    const shots2 = [['garageIdle', 'garage', 900, 900, 0], ['garageRev', 'garage', 6800, 900, 1], ['streetCruise', 'street', cruise, cruise, 0], ['streetRev', 'street', 6800, cruise, 1]];
+    for (const [name, mode, rpm, rest, pedal] of shots2) { await rev(mode, rpm, rest, pedal, 1000); const run = rev(mode, rpm, rest, pedal, 1000); results[name] = await measure(900); await run; }
+    gv.dispose();
     return results;
   })()`)) as Record<string, Level>;
 
@@ -139,5 +155,8 @@ test('every sound sits where the mix puts it', async ({ page }) => {
   expect(db(levels.crash20.peak), 'a hard crash tops the engine').toBeGreaterThan(db(levels.engineMid.peak));
   expect(rms('thunderFar'), 'far thunder is far').toBeLessThan(rms('thunderNear') - 5);
   expect(rms('beep'), 'the countdown is heard over an idling engine').toBeGreaterThan(rms('engineIdle') + 6);
+  expect(rms('garageIdle'), 'the garage idles under the music').toBeLessThan(-26 - 8);
+  expect(rms('streetCruise'), 'the Street view cruises under the music').toBeLessThan(-26 - 3);
+  expect(rms('streetRev') - rms('streetCruise'), 'a rev swells over the cruise').toBeGreaterThan(9);
   expect(errors).toEqual([]);
 });
