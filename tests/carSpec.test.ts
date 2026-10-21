@@ -16,7 +16,7 @@ describe('car spec labels', () => {
 
   it('the selectable cars carry a drivetrain code and an engine layout', () => {
     const badges = Object.fromEntries(SELECTABLE_CAR_IDS.map((id) => [id, specBadges(cars.find((c) => c.id === id)!.engine, getBaseTuning(id).drivetrain.layout).map((b) => b.text)]));
-    expect(badges).toEqual({ protoHatch: ['FF', 'I4', 'Turbo'], protoCompact: ['FR', 'I6'], protoCoupe: ['FR', 'V6', 'Turbo'] });
+    expect(badges).toEqual({ protoHatch: ['FF', 'B4', 'Turbo'], protoCompact: ['FR', 'I6'], protoCoupe: ['FR', 'V6', 'Turbo'], protoWagon: ['FA', 'V8', 'Turbo'] });
   });
 
   it('drivetrain codes are the standard two letters: engine position then driven wheels', () => {

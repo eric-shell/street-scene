@@ -9,6 +9,60 @@ import type { PaintFinish, VisualBuild } from '../sim/build';
 
 export type CarMaterialSet = Record<MaterialName, THREE.Material>;
 
+/** Car space meters per UV unit on Grille faces (GRILLE_UV in scripts/blender/carDonors.py). */
+const GRILLE_UV_SPAN = 3;
+
+/** Grille patterns, drawn as a texture on every car's flattened grille surfaces: no triangles. */
+export type GrillePattern = 'ribs' | 'mesh' | 'honeycomb';
+export const GRILLE_PATTERN: GrillePattern = 'mesh';
+/** Cell size of each pattern, meters: the same on every car. */
+const GRILLE_CELL: Record<GrillePattern, number> = { ribs: 0.022, mesh: 0.018, honeycomb: 0.05 };
+
+/**
+ * One cell of a grille pattern as a small repeating texture: 1 on the bars, low in the holes. It is
+ * the color map (dark holes) and the bump map (raised bars), so the bars catch the headlights of
+ * the car behind. Built from bytes, not a canvas, so it
+ * also works where there is no DOM.
+ */
+function grilleTexture(pattern: GrillePattern): THREE.DataTexture {
+  const n = 32;
+  const bar = (u: number, v: number): number => {
+    if (pattern === 'ribs') return 0.5 - 0.5 * Math.cos(2 * Math.PI * v);
+    if (pattern === 'mesh') {
+      // Diamond mesh: two diagonal bar families.
+      const d1 = Math.abs(((u + v) % 1) - 0.5) * 2;
+      const d2 = Math.abs((((u - v) % 1) + 1) % 1 - 0.5) * 2;
+      return Math.max(0, 1 - Math.min(d1, d2) / 0.28);
+    }
+    // Honeycomb: distance to the nearest hexagon center on a pointy-top lattice (cell 1 x sqrt(3)).
+    const y = v * Math.sqrt(3);
+    let best = 9;
+    for (const [cx, cy] of [[0, 0], [1, 0], [0.5, Math.sqrt(3) / 2], [0, Math.sqrt(3)], [1, Math.sqrt(3)]]) {
+      const dx = Math.abs(u - cx);
+      const dy = Math.abs(y - cy);
+      best = Math.min(best, Math.max(dx, dx * 0.5 + dy * (Math.sqrt(3) / 2)));
+    }
+    return Math.min(1, Math.max(0, (best - 0.36) / 0.08));
+  };
+  const data = new Uint8Array(n * n * 4);
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const b = bar((i + 0.5) / n, (j + 0.5) / n);
+      const c = Math.round(255 * (0.12 + 0.88 * b));
+      data.set([c, c, c, 255], (j * n + i) * 4);
+    }
+  }
+  const tex = new THREE.DataTexture(data, n, n);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.generateMipmaps = true;
+  const k = GRILLE_UV_SPAN / GRILLE_CELL[pattern];
+  tex.repeat.set(k, pattern === 'honeycomb' ? k / Math.sqrt(3) : k);
+  tex.needsUpdate = true;
+  return tex;
+}
+
 export function createCarMaterials(envMap: THREE.Texture | null = null): CarMaterialSet {
   const m = {} as CarMaterialSet;
   m.Paint = new THREE.MeshPhysicalMaterial({ name: 'Paint', color: 0xd11f3f, metalness: 0.7, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.05 });
@@ -22,11 +76,14 @@ export function createCarMaterials(envMap: THREE.Texture | null = null): CarMate
   m.TailLight = new THREE.MeshStandardMaterial({ name: 'TailLight', color: 0x330000, emissive: 0xff1a2a, emissiveIntensity: 1.4 });
   m.Light = new THREE.MeshStandardMaterial({ name: 'Light', color: 0x332200, emissive: 0xffa040, emissiveIntensity: 0.8 });
   m.Interior = new THREE.MeshStandardMaterial({ name: 'Interior', color: 0x1a1a1e, roughness: 0.8 });
+  const grille = grilleTexture(GRILLE_PATTERN);
+  // Bright metal bars on dark holes: the map darkens the holes, the bump map raises the bars.
+  m.Grille = new THREE.MeshStandardMaterial({ name: 'Grille', color: 0x9a9ea8, metalness: 0.7, roughness: 0.35, map: grille, bumpMap: grille, bumpScale: 2 });
   // The low poly bodies are hollow, single sided shells. Seen through the glass, the far
   // side's panels face away and were culled, so the far wheels (and the floor) showed
   // through the windows. Drawing the body's opaque materials double sided closes the
   // shell: the inside of the far door now occludes what is behind it.
-  for (const k of ['Paint', 'Trim', 'Black', 'Chrome', 'Interior'] as const) m[k].side = THREE.DoubleSide;
+  for (const k of ['Paint', 'Trim', 'Black', 'Chrome', 'Interior', 'Grille'] as const) m[k].side = THREE.DoubleSide;
   // Cars carry their own (stronger) environment reflections so they read clearly at night.
   if (envMap) {
     const boost: Partial<Record<MaterialName, number>> = { Paint: 1.9, Trim: 1.3, Black: 1, Chrome: 2.2, Glass: 1.7, Rim: 1.8, Tire: 0.8, Interior: 0.6 };
@@ -90,5 +147,6 @@ export function resolveMaterialName(name: string, map: Record<string, string> = 
 }
 
 export function disposeCarMaterials(m: CarMaterialSet): void {
+  (m.Grille as THREE.MeshStandardMaterial).map?.dispose();
   for (const k of MATERIAL_NAMES) m[k].dispose();
 }

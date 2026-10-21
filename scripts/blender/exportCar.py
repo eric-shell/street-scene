@@ -20,6 +20,10 @@ collections:
   Rig     empties `Wheel_FL`, `Wheel_FR`, `Wheel_RL`, `Wheel_RR` at the wheel
           centers. Their height is the wheel radius.
 
+The shared wheel set (assets/source/eshell/wheels/wheels.blend, built by
+scripts/blender/carWheels.py) is a file with a Wheels collection only; it
+exports just the wheels.
+
 Object names may carry a `<carId>.` prefix (handy when several cars share
 one working file); it is stripped on export.
 """
@@ -103,6 +107,15 @@ def export(objects, path):
             o.name = n
 
 
+def export_wheels(wheels, out_dir, meta):
+    for o in sorted(wheels.objects if wheels else [], key=lambda o: o.name):
+        if o.type != "MESH":
+            continue
+        n = short(o.name).replace("wheel_", "")
+        export([o], os.path.join(out_dir, "wheels", f"wheel_{n}.glb"))
+        meta["wheels"].append({"name": n, "displayName": o.get("displayName", ""), "tris": tris(o)})
+
+
 def collection(suffix):
     for c in bpy.data.collections:
         if c.name == suffix or c.name.endswith(":" + suffix):
@@ -114,10 +127,17 @@ def run(out_dir, car_id=None):
     prefix = (car_id + ":") if car_id else ""
     get = (lambda s: bpy.data.collections.get(prefix + s)) if car_id else collection
     car, parts, wheels, rig = get("Car"), get("Parts"), get("Wheels"), get("Rig")
-    if car is None or rig is None:
-        raise SystemExit("exportCar: the .blend needs Car and Rig collections")
+    wheels_only = car is None and rig is None and wheels is not None
+    if not wheels_only and (car is None or rig is None):
+        raise SystemExit("exportCar: the .blend needs Car and Rig collections (or only Wheels)")
     show_all()
     meta = {"car": [], "parts": [], "wheels": [], "wheelCenters": {}}
+    if wheels_only:
+        export_wheels(wheels, out_dir, meta)
+        with open(os.path.join(out_dir, "car.json"), "w") as f:
+            json.dump(meta, f, indent=2)
+        print("exportCar: wrote wheels", out_dir)
+        return
 
     car_objs = [o for o in car.objects if o.type == "MESH"]
     export(car_objs, os.path.join(out_dir, "car.glb"))
@@ -133,12 +153,7 @@ def run(out_dir, car_id=None):
         export([o], os.path.join(out_dir, "parts", f"{slot}_{part_id}.glb"))
         meta["parts"].append({"slot": slot, "partId": part_id, "displayName": o.get("displayName", part_id), "hides": hides, "tris": tris(o)})
 
-    for o in sorted(wheels.objects if wheels else [], key=lambda o: o.name):
-        if o.type != "MESH":
-            continue
-        n = short(o.name).replace("wheel_", "")
-        export([o], os.path.join(out_dir, "wheels", f"wheel_{n}.glb"))
-        meta["wheels"].append({"name": n, "displayName": o.get("displayName", ""), "tris": tris(o)})
+    export_wheels(wheels, out_dir, meta)
 
     for o in rig.objects:
         key = short(o.name).replace("Wheel_", "")

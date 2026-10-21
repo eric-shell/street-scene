@@ -132,38 +132,6 @@
       "generated": true
     },
     {
-      "id": "wheel_proto_5spoke",
-      "displayName": "Proto 5 spoke",
-      "carId": "universal",
-      "slot": "wheels",
-      "file": "parts/wheel_proto_5spoke.glb",
-      "hides": [],
-      "materialSlots": [
-        "Tire",
-        "Rim",
-        "Black",
-        "Chrome"
-      ],
-      "tris": 352,
-      "generated": true
-    },
-    {
-      "id": "wheel_proto_deepdish",
-      "displayName": "Proto deep dish",
-      "carId": "universal",
-      "slot": "wheels",
-      "file": "parts/wheel_proto_deepdish.glb",
-      "hides": [],
-      "materialSlots": [
-        "Tire",
-        "Rim",
-        "Black",
-        "Chrome"
-      ],
-      "tris": 388,
-      "generated": true
-    },
-    {
       "id": "protoCompact_frontBumper_kurogane",
       "displayName": "Kurogane",
       "carId": "protoCompact",
@@ -388,69 +356,6 @@
         "Trim"
       ],
       "tris": 156,
-      "generated": true
-    },
-    {
-      "id": "wheel_protoCompact_0",
-      "displayName": "Kiba",
-      "carId": "universal",
-      "slot": "wheels",
-      "file": "parts/wheel_protoCompact_0.glb",
-      "hides": [],
-      "materialSlots": [
-        "Tire",
-        "Rim",
-        "Black"
-      ],
-      "tris": 1412,
-      "generated": true
-    },
-    {
-      "id": "wheel_protoCompact_1",
-      "displayName": "Hoshi",
-      "carId": "universal",
-      "slot": "wheels",
-      "file": "parts/wheel_protoCompact_1.glb",
-      "hides": [],
-      "materialSlots": [
-        "Tire",
-        "Rim",
-        "Black",
-        "Chrome"
-      ],
-      "tris": 1308,
-      "generated": true
-    },
-    {
-      "id": "wheel_protoCompact_2",
-      "displayName": "Rensa",
-      "carId": "universal",
-      "slot": "wheels",
-      "file": "parts/wheel_protoCompact_2.glb",
-      "hides": [],
-      "materialSlots": [
-        "Tire",
-        "Rim",
-        "Black",
-        "Chrome"
-      ],
-      "tris": 1464,
-      "generated": true
-    },
-    {
-      "id": "wheel_protoCompact_3",
-      "displayName": "Tsuki",
-      "carId": "universal",
-      "slot": "wheels",
-      "file": "parts/wheel_protoCompact_3.glb",
-      "hides": [],
-      "materialSlots": [
-        "Tire",
-        "Rim",
-        "Black",
-        "Chrome"
-      ],
-      "tris": 1136,
       "generated": true
     },
     {
@@ -891,66 +796,123 @@
       "generated": true
     },
     {
-      "id": "wheel_protoHatch_1",
-      "displayName": "Ginga",
-      "carId": "universal",
-      "slot": "wheels",
-      "file": "parts/wheel_protoHatch_1.glb",
-      "hides": [],
-      "materialSlots": [
-        "Tire",
-        "Rim",
-        "Black"
-      ],
-      "tris": 1656,
-      "generated": true
-    },
-    {
-      "id": "wheel_protoHatch_2",
-      "displayName": "Hibana",
-      "carId": "universal",
-      "slot": "wheels",
-      "file": "parts/wheel_protoHatch_2.glb",
-      "hides": [],
-      "materialSlots": [
-        "Tire",
-        "Rim",
-        "Black",
-        "Chrome"
-      ],
-      "tris": 3152,
-      "generated": true
-    },
-    {
-      "id": "wheel_protoHatch_3",
-      "displayName": "Senko",
-      "carId": "universal",
-      "slot": "wheels",
-      "file": "parts/wheel_protoHatch_3.glb",
-      "hides": [],
-      "materialSlots": [
-        "Tire",
-        "Chrome",
-        "Rim",
-        "Black"
-      ],
-      "tris": 3152,
-      "generated": true
-    },
-    {
-      "id": "wheel_protoHatch_4",
+      "id": "wheel_arashi",
       "displayName": "Arashi",
       "carId": "universal",
       "slot": "wheels",
-      "file": "parts/wheel_protoHatch_4.glb",
+      "file": "parts/wheel_arashi.glb",
       "hides": [],
       "materialSlots": [
-        "Tire",
         "Rim",
-        "Black",
-        "Chrome"
+        "Chrome",
+        "Tire"
       ],
-      "tris": 3136,
+      "tris": 2820,
+      "generated": true
+    },
+    {
+      "id": "wheel_ginga",
+      "displayName": "Ginga",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_ginga.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 2740,
+      "generated": true
+    },
+    {
+      "id": "wheel_hibana",
+      "displayName": "Hibana",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_hibana.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 2820,
+      "generated": true
+    },
+    {
+      "id": "wheel_hoshi",
+      "displayName": "Hoshi",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_hoshi.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 2820,
+      "generated": true
+    },
+    {
+      "id": "wheel_kiba",
+      "displayName": "Kiba",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_kiba.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 2820,
+      "generated": true
+    },
+    {
+      "id": "wheel_rensa",
+      "displayName": "Rensa",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_rensa.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 2819,
+      "generated": true
+    },
+    {
+      "id": "wheel_senko",
+      "displayName": "Senko",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_senko.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 2740,
+      "generated": true
+    },
+    {
+      "id": "wheel_tsuki",
+      "displayName": "Tsuki",
+      "carId": "universal",
+      "slot": "wheels",
+      "file": "parts/wheel_tsuki.glb",
+      "hides": [],
+      "materialSlots": [
+        "Rim",
+        "Chrome",
+        "Tire"
+      ],
+      "tris": 2820,
       "generated": true
     }
   ]

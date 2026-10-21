@@ -10,44 +10,44 @@
       "file": "cars/protoHatch.glb",
       "baseBodyNode": "Body",
       "wheelNodes": [],
-      "wheelRadius": 0.28,
+      "wheelRadius": 0.328,
       "wheelWidth": 0.24,
       "wheels": {
         "FL": [
-          0.72,
-          0.28,
-          1.208
+          0.743,
+          0.3284,
+          1.3125
         ],
         "FR": [
-          -0.72,
-          0.28,
-          1.208
+          -0.743,
+          0.3284,
+          1.3125
         ],
         "RL": [
-          0.72,
-          0.28,
-          -1.208
+          0.743,
+          0.3284,
+          -1.3125
         ],
         "RR": [
-          -0.72,
-          0.28,
-          -1.208
+          -0.743,
+          0.3284,
+          -1.3125
         ]
       },
-      "wheelbase": 2.416,
-      "trackFront": 1.44,
-      "trackRear": 1.44,
+      "wheelbase": 2.625,
+      "trackFront": 1.486,
+      "trackRear": 1.486,
       "dimensions": {
-        "length": 3.94,
-        "width": 1.74,
-        "height": 1.25
+        "length": 4.41,
+        "width": 1.99,
+        "height": 1.39
       },
       "materialMap": {},
-      "defaultWheel": "wheel_protoHatch_1",
+      "defaultWheel": "wheel_kiba",
       "defaultPaint": "#1f6bff",
       "selectable": true,
       "engine": {
-        "layout": "I4",
+        "layout": "B4",
         "aspiration": "turbo",
         "position": "front"
       }
@@ -60,40 +60,40 @@
       "file": "cars/protoCompact.glb",
       "baseBodyNode": "Body",
       "wheelNodes": [],
-      "wheelRadius": 0.28,
+      "wheelRadius": 0.31,
       "wheelWidth": 0.24,
       "wheels": {
         "FL": [
-          0.67,
-          0.28,
-          1.26
+          0.7291,
+          0.3098,
+          1.285
         ],
         "FR": [
-          -0.67,
-          0.28,
-          1.26
+          -0.7291,
+          0.3098,
+          1.285
         ],
         "RL": [
-          0.67,
-          0.28,
-          -1.26
+          0.7291,
+          0.3098,
+          -1.285
         ],
         "RR": [
-          -0.67,
-          0.28,
-          -1.26
+          -0.7291,
+          0.3098,
+          -1.285
         ]
       },
-      "wheelbase": 2.52,
-      "trackFront": 1.34,
-      "trackRear": 1.34,
+      "wheelbase": 2.57,
+      "trackFront": 1.458,
+      "trackRear": 1.458,
       "dimensions": {
-        "length": 3.95,
-        "width": 1.64,
-        "height": 1.25
+        "length": 4.31,
+        "width": 1.93,
+        "height": 1.28
       },
       "materialMap": {},
-      "defaultWheel": "wheel_protoCompact_1",
+      "defaultWheel": "wheel_arashi",
       "defaultPaint": "#ffcc1f",
       "selectable": true,
       "engine": {
@@ -110,44 +110,94 @@
       "file": "cars/protoCoupe.glb",
       "baseBodyNode": "Body",
       "wheelNodes": [],
-      "wheelRadius": 0.28,
+      "wheelRadius": 0.311,
       "wheelWidth": 0.24,
       "wheels": {
         "FL": [
-          0.71,
-          0.28,
-          1.28
+          0.7836,
+          0.3109,
+          1.275
         ],
         "FR": [
-          -0.71,
-          0.28,
-          1.28
+          -0.7836,
+          0.3109,
+          1.275
         ],
         "RL": [
-          0.71,
-          0.28,
-          -1.28
+          0.7836,
+          0.3109,
+          -1.275
         ],
         "RR": [
-          -0.71,
-          0.28,
-          -1.28
+          -0.7836,
+          0.3109,
+          -1.275
         ]
       },
-      "wheelbase": 2.56,
-      "trackFront": 1.42,
-      "trackRear": 1.42,
+      "wheelbase": 2.55,
+      "trackFront": 1.567,
+      "trackRear": 1.567,
       "dimensions": {
-        "length": 4.26,
-        "width": 1.78,
-        "height": 1.05
+        "length": 4.5,
+        "width": 1.97,
+        "height": 1.13
       },
       "materialMap": {},
-      "defaultWheel": "wheel_protoCompact_2",
+      "defaultWheel": "wheel_hoshi",
       "defaultPaint": "#ff6a00",
       "selectable": true,
       "engine": {
         "layout": "V6",
+        "aspiration": "turbo",
+        "position": "front"
+      }
+    },
+    {
+      "id": "protoWagon",
+      "displayName": "Proto Wagon",
+      "source": "eshell",
+      "provisional": false,
+      "file": "cars/protoWagon.glb",
+      "baseBodyNode": "Body",
+      "wheelNodes": [],
+      "wheelRadius": 0.369,
+      "wheelWidth": 0.24,
+      "wheels": {
+        "FL": [
+          0.8277,
+          0.369,
+          1.4645
+        ],
+        "FR": [
+          -0.8277,
+          0.369,
+          1.4645
+        ],
+        "RL": [
+          0.8277,
+          0.369,
+          -1.4645
+        ],
+        "RR": [
+          -0.8277,
+          0.369,
+          -1.4645
+        ]
+      },
+      "wheelbase": 2.929,
+      "trackFront": 1.655,
+      "trackRear": 1.655,
+      "dimensions": {
+        "length": 5,
+        "width": 2.12,
+        "height": 1.32
+      },
+      "materialMap": {},
+      "defaultWheel": "wheel_senko",
+      "defaultPaint": "#7d8186",
+      "selectable": true,
+      "engine": {
+        "layout": "V8",
         "aspiration": "turbo",
         "position": "front"
       }
@@ -193,7 +243,7 @@
         "height": 1.3
       },
       "materialMap": {},
-      "defaultWheel": "wheel_proto_5spoke",
+      "defaultWheel": "wheel_arashi",
       "defaultPaint": "#d11f3f",
       "selectable": false,
       "engine": {

@@ -3,16 +3,16 @@
  * follows the firing frequency (rpm / 60 * firings per revolution, from the
  * car's EngineSpec) and whose tone opens up with throttle. The layout picks
  * the voice's character (VOICE_CHARACTER):
- *  - inline fours (protoHatch, Proto Hatch: turbo I4): raspy, with a second
- *    order bite; a turbocharged spec adds a spool whistle and a blow-off valve
- *    chuff when you lift at boost
+ *  - inline fours: raspy, with a second order bite; a turbocharged spec adds
+ *    a spool whistle and a blow-off valve chuff when you lift at boost
  *  - an inline six (protoCompact, Proto Compact): silky, a sixth order whine,
  *    almost no unevenness
  *  - a V6 (protoCoupe, Proto Coupe: turbo V6): each bank is its own pulse
  *    train, so a per-bank order at half the firing frequency and a bank to
  *    bank beat give it the gruff growl an inline six never has
- *  - boxers rasp and burble, big vees (V8 and up) rumble with a cross-plane
- *    beat, rotaries buzz smooth and high
+ *  - big vees (V8 and up; protoWagon, Proto Wagon: twin turbo V8) rumble
+ *    with a cross-plane beat; boxers (protoHatch, Proto Hatch: turbo flat 4)
+ *    rasp and burble, rotaries buzz smooth and high
  * Most of an engine's energy sits below 300 Hz, which laptop and phone
  * speakers barely reproduce, so a presence peak that tracks the firing
  * frequency lifts the harmonics in the 0.5 to 2.5 kHz range where small

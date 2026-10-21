@@ -1,6 +1,6 @@
 """
 The Kurogane and Hayate kits: front bumpers, rear bumpers and side skirts for the
-Proto Compact and Proto Hatch, generated from each car's stock pieces so they fit
+authored Proto cars, generated from each car's stock pieces so they fit
 the body opening exactly like stock.
 
 Run inside a session that has both cars' collections (append them from
@@ -10,6 +10,7 @@ assets/source/eshell/*/*.blend, see the /blender skill), after carKit.py:
     exec(open(REPO + '/scripts/blender/tunerKits.py').read())
     build_kits()        # bumpers and skirts
     build_hood_roof()   # hoods and roofs
+    build_kits(['protoWagon'])   # one car; the others need not be in the session
 
 Each replaces its slots' parts in `<carId>:Parts` and keeps the others. SEAMS are the planes the stock pieces were cut with; displacements are
 pinned to them. Kurogane: carbon (Trim) lower apron, deep splitter with end plates,
@@ -22,6 +23,7 @@ SEAMS = {
     'protoCompact': dict(YF=-1.56, YR=1.56, ZF=0.505, ZR=0.595, ZS=0.285, YS=0.93, XS=0.70),
     'protoHatch': dict(YF=-1.54, YR=1.54, ZF=0.49, ZR=0.60, ZS=0.26, YS=0.86, XS=0.68),
     'protoCoupe': dict(YF=-1.6, YR=1.6, ZF=0.47, ZR=0.64, ZS=0.26, YS=0.95, XS=0.74),
+    'protoWagon': dict(YF=-1.66, YR=1.66, ZF=0.48, ZR=0.62, ZS=0.27, YS=0.98, XS=0.8),
 }
 
 def lin(a, b, n):
@@ -91,15 +93,18 @@ def rear(cid, style):
         recolor(o, lambda c, n, m: c.z < z0 + 0.08 and m in ('Black', 'Trim'), 'Paint')
     z0 = zmin(o)
     xs = lin(-hw * 0.8, hw * 0.8, 13)
-    yr = outline(o, 1, max, 0, xs, lambda c: c.z < z0 + 0.08)
+    # The bumper's own bottom edge: the exhaust tips hang lower than z0 + 0.08 on some cars.
+    band = lambda c: c.z < z0 + 0.05
+    yr = outline(o, 1, max, 0, xs, band)
     if style == 'kurogane':
-        slab(o, [(x, y + 0.08) for x, y in zip(xs, yr)], [(x, y - 0.26) for x, y in zip(xs, yr)], z0 - 0.002, z0 + 0.012, 'Trim')
-        # Strakes stay clear of the exhaust tips.
+        # Strakes stay clear of the exhaust tips, placed from the bumper edge before the plate exists.
         me = o.data
         tips = [me.vertices[i].co.x for p in me.polygons if me.materials[p.material_index].name.split('.')[0] == 'Chrome' for i in p.vertices]
         clear = lambda x: not tips or all(abs(x - t) > 0.06 for t in tips)
-        for x in [x for x in lin(-0.5, 0.5, 11) if clear(x)][:8]:
-            y = outline(o, 1, max, 0, [x, x + 0.05], lambda c: c.z < z0 + 0.08)[0]
+        edge = lambda x: yr[min(range(len(xs)), key=lambda i: abs(xs[i] - x))]
+        strakes = [(x, edge(x)) for x in [x for x in lin(-0.5, 0.5, 11) if clear(x)][:8]]
+        slab(o, [(x, y + 0.08) for x, y in zip(xs, yr)], [(x, y - 0.26) for x, y in zip(xs, yr)], z0 - 0.002, z0 + 0.012, 'Trim')
+        for x, y in strakes:
             fin(o, (x, y - 0.24, z0 + 0.012), (0, 1, 0), 0.32, 0.12, 0.012, 'Black')
     return o
 
@@ -126,9 +131,9 @@ def skirts(cid, style):
             fin(o, (xo[-1] + sx * ext * taper[-1] * 0.6, ys[-1] - 0.02, z0 - 0.003), (0, 1, 0), 0.06, 0.06, 0.012, 'Trim')
     return o
 
-def build_kits():
+def build_kits(cids=None):
     made = []
-    for cid in SEAMS:
+    for cid in cids or SEAMS:
         parts = bpy.data.collections[f'{cid}:Parts']
         for o in list(parts.objects):
             if o.name.split('.', 1)[1].split('_')[0] in ('frontBumper', 'rearBumper', 'sideSkirts'):
@@ -211,9 +216,9 @@ def roof(cid, style):
         stripes(o, 'Trim')
     return o
 
-def build_hood_roof():
+def build_hood_roof(cids=None):
     made = []
-    for cid in SEAMS:
+    for cid in cids or SEAMS:
         parts = bpy.data.collections[f'{cid}:Parts']
         for o in list(parts.objects):
             if o.name.split('.', 1)[1].split('_')[0] in ('hood', 'roof'):
