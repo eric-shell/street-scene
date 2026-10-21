@@ -2,6 +2,7 @@
 import { btn, h, iconBtn, segmented } from './dom';
 import {
   Code,
+  Flag,
   Gamepad2,
   Heart,
   Keyboard,
@@ -63,8 +64,12 @@ export interface ResultRow {
   bestLap: number | null;
 }
 
+const MODE_LABEL: Record<RaceMode, string> = { circuit: 'Circuit', sprint: 'Sprint', drift: 'Drift' };
+
 export function resultsScreen(o: {
   mode: RaceMode;
+  /** The seed's event name (Hill Climb, River Run, ...), over the headline. */
+  event?: string;
   rows: ResultRow[];
   position: number;
   driftScore?: number;
@@ -99,6 +104,7 @@ export function resultsScreen(o: {
     h(
       'div',
       { class: 'dialog panel', role: 'dialog', 'aria-label': 'Results' },
+      o.event && h('div', { class: 'label' }, icon(Flag, { size: 14 }), `${o.event} · ${MODE_LABEL[o.mode]}`),
       h('h2', { class: 'title' }, icon(o.position === 1 || o.mode === 'drift' ? Trophy : Medal, { size: 24 }), headline),
       o.newBest && h('div', {}, h('span', { class: 'badge' }, icon(Sparkles, { size: 14 }), 'New best')),
       o.tuned && h('div', { class: 'muted' }, 'Dev tuning was changed during this run, so it was not saved.'),
