@@ -47,9 +47,14 @@ function crossingSeed(stream: number, kind: 'circuit' | 'sprint'): number {
   throw new Error('no seed whose route crosses its level crossing');
 }
 
-/** First tick at or after `after` the crossing's gates start blocking. */
+/**
+ * First tick at or after `after` a block of the crossing's gates starts. Mid-block at `after`
+ * (untilBlock is 0 then) it skips to the next block, so a scenario timed from it gets a whole block.
+ */
 function nextBlock(c: GateCycle, after: number): number {
-  return after + gatePhase(c, after).untilBlock;
+  const p = gatePhase(c, after);
+  const t = p.blocking ? after + p.untilClear : after;
+  return t + gatePhase(c, t).untilBlock;
 }
 
 describe('bluff (city)', () => {
