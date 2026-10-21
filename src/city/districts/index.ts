@@ -13,8 +13,10 @@
  * subway (claims a street column), roundabouts, alleys, back alleys (the last
  * module allowed to change the graph topology, so face ids stay stable), parks
  * (claim faces), the monument plaza, hills (claim clusters of faces and keep
- * their slopes clear of everything placed before them), reserved features,
- * and downtown (claims every face left). The optional topology hook runs
+ * their slopes clear of everything placed before them), tunnels and
+ * overpasses (they keep clear of every slope and claim the blocks a ridge
+ * stands in, so they come after the hills and before downtown), reserved
+ * features, and downtown (claims every face left). The optional topology hook runs
  * right after back alleys (route shortcuts).
  */
 import { CITY } from '../config';
@@ -33,6 +35,8 @@ import { alleyModule, backAlleyModule } from './alley';
 import { parkModule } from './park';
 import { monumentModule } from './monument';
 import { hillsModule } from './hills';
+import { tunnelModule } from './tunnel';
+import { overpassModule } from './overpass';
 import { waterfrontModule } from './waterfront';
 import { lakeModule } from './lake';
 import { downtownModule } from './downtown';
@@ -48,6 +52,8 @@ export const DISTRICT_MODULES: readonly DistrictModule[] = [
   parkModule,
   monumentModule,
   hillsModule,
+  tunnelModule,
+  overpassModule,
   waterfrontModule,
   lakeModule,
   downtownModule,
@@ -72,6 +78,8 @@ const AREA_PRIORITY: Record<AreaKind, number> = {
   roundabout: 8,
   infill: 9,
   monument: 10,
+  tunnel: 11,
+  overpass: 4,
   waterfront: 2,
   lake: 2,
 };

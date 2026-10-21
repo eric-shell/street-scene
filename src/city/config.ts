@@ -362,6 +362,78 @@ export const CITY = {
       lampInset: 2.4,
       lampSpacing: 20,
     },
+    /**
+     * Tunnels (src/city/districts/tunnel.ts): a street runs for part of one
+     * block through a lit bore, under an "air rights" building that straddles
+     * it or under a rocky ridge raised across it. Inside, a raised walkway
+     * runs from each curb to the tunnel wall; outside, wingwalls flare from
+     * the walkway back out to the building line.
+     */
+    tunnel: {
+      enabled: true,
+      /** Tunnels under a building per city [min, max], and the chance of one under a ridge. */
+      buildings: [1, 2],
+      ridgeChance: 0.65,
+      /** Bore length along the street (m), [min, max]. */
+      buildingLength: [36, 58],
+      ridgeLength: [46, 64],
+      /** Ceiling above the road (m), and the slab or rock shell above it at the portals (m). */
+      clearance: 6.2,
+      slab: 0.8,
+      /** Raised walkway inside, curb to tunnel wall (m). */
+      walkway: 1.1,
+      /** Portal wingwalls flare from the walkway out to the building line over this run along the street (m). */
+      wing: 6.5,
+      /** The wingwalls end at least this far beyond a junction's reach (closures, corner rails) (m). */
+      nodeGap: 3,
+      /** Air rights building: how deep each leg reaches behind the building line (m) and storeys above the ceiling. */
+      legDepth: [13, 19],
+      floors: [3, 8],
+      /** Ridge: summit above the road (m), flank width (m), plateau half width across the street (m), rock over the portals (m). */
+      ridgeHeight: [17, 25],
+      ridgeFlank: 24,
+      ridgeHalfWidth: [22, 40],
+      portalCover: 2.6,
+      /** The ridge rises behind the street's building line over this run (m), hidden by the rock face. */
+      maskRamp: 4.5,
+      /** The ridge's flanks keep this far from other streets' sidewalks (m). */
+      ridgeClear: 6,
+      /** Bores and ridges keep this far from the river channel, the El, hill slopes and roundabouts (m). */
+      siteClear: 14,
+    },
+    /**
+     * Overpasses (src/city/districts/overpass.ts): structures you drive
+     * under. Sign gantries straddle the wide streets on two legs; a short
+     * freeway viaduct crosses one to three streets mid-block on hammerhead
+     * piers standing on the sidewalks, its ends buried in abutments inside
+     * the blocks.
+     */
+    overpass: {
+      enabled: true,
+      /** Sign gantries per city [min, max]. */
+      gantries: [3, 5],
+      /** Truss underside above the road (m), legs behind the curb (m) and their square size (m). */
+      gantryClearance: 6,
+      legSetback: 0.9,
+      legSize: 0.7,
+      /** Chance of a viaduct per city, and how many streets it crosses [min, max]. */
+      viaductChance: 0.85,
+      crossings: [2, 3],
+      /** Deck width (m), underside above the road (m) and girder depth (m). */
+      deckWidth: 13,
+      deckClearance: 7.2,
+      deckDepth: 1.8,
+      /** Street piers: center behind the curb (m), size along the street and across it (m). */
+      pierSetback: 1.8,
+      pierLength: 2.6,
+      pierThick: 1.3,
+      /** Piers inside blocks, about this far apart along the deck (m). */
+      pierSpacing: 24,
+      /** A viaduct crosses a street at least this steeply (deg from parallel). */
+      minCrossDeg: 58,
+      /** Abutment block at each end, along the deck (m). */
+      abutment: 9,
+    },
     waterfront: { enabled: false },
     lake: { enabled: false },
   },

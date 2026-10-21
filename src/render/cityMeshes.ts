@@ -14,6 +14,7 @@ import { buildFinishLines, FinishLines } from './finishLine';
 import { STREETLIGHT_ARM, STREETLIGHT_POLE_H } from './props';
 import { createPodiumOutput, makeFacadeKitTextures } from './facadeKit';
 import { buildBuildings, Detail } from './buildings';
+import { ridgeLift } from './districts/structureShapes';
 import {
   NEON_COLORS,
   SIGN_ATLAS_COLS,
@@ -82,13 +83,17 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position as THREE.BufferAttribute;
     // Lowest height around each vertex, so the coarse ground never pokes through
-    // dips finer than its grid (the river channel, ramps).
+    // dips finer than its grid (the river channel, ramps). A tunnel's ridge is left
+    // out: it rises too steeply beside its street for a grid this coarse, and the
+    // tunnel renderer drapes its own rock over it (render/districts/tunnel.ts).
     const r = size / 96;
+    const ridges = ridgeLift(world);
+    const gh = ridges ? (x: number, z: number) => h(x, z) - ridges(x, z) : h;
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
       const z = pos.getZ(i);
-      let y = h(x, z);
-      for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) if (dx || dz) y = Math.min(y, h(x + dx * r * 0.5, z + dz * r * 0.5));
+      let y = gh(x, z);
+      for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) if (dx || dz) y = Math.min(y, gh(x + dx * r * 0.5, z + dz * r * 0.5));
       pos.setY(i, y - 0.4);
     }
     geo.computeVertexNormals();
