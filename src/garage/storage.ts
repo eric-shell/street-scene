@@ -98,6 +98,7 @@ const SHORT: Record<string, string> = {
   trimColor: 'tc',
   parts: 'pt',
   wheels: 'wh',
+  rearColor: 'rc',
   size: 'sz',
   decals: 'dc',
   shape: 'sh',

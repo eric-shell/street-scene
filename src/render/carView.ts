@@ -391,9 +391,13 @@ export class CarView {
     this.wheelProfile = detectProfile(tireR, otherR);
     if (model.userData.ownGeometry) model.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
     const rear = front.clone(true);
+    // The rear axle gets its own geometry (rim size) and its own rim material (wheel color).
+    const rearMat = (m: THREE.Material) => (m === this.materials.Rim ? this.materials.RimRear : m);
     rear.traverse((o) => {
       const mesh = o as THREE.Mesh;
-      if (mesh.isMesh) mesh.geometry = mesh.geometry.clone();
+      if (!mesh.isMesh) return;
+      mesh.geometry = mesh.geometry.clone();
+      mesh.material = Array.isArray(mesh.material) ? mesh.material.map(rearMat) : rearMat(mesh.material);
     });
     const collect = (g: THREE.Object3D) => g.children.filter((c): c is THREE.Mesh => (c as THREE.Mesh).isMesh);
     this.axleMeshes = [collect(front), collect(rear)];

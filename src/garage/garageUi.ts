@@ -689,14 +689,34 @@ export class GarageScreen {
             ),
           ),
           section('Rim size', null, this.linkToggle(), ...AXLES.map((a) => axleSlider(a, 'wheelSize')), h('div', { class: 'muted g-note' }, 'Bigger rims, thinner sidewalls: the tire keeps its outer size.')),
-          section(
-            'Rim color',
-            null,
-            color(v.wheels.color, (c) => {
-              v.wheels.color = c;
-              this.changed();
-            }),
-          ),
+          // Linked axles share one picker; unlinked, front and rear get their own.
+          this.prefs.linkAxles
+            ? section(
+                'Wheel color',
+                null,
+                color(v.wheels.color, (c) => {
+                  v.wheels.color = v.wheels.rearColor = c;
+                  this.changed();
+                }),
+              )
+            : section(
+                'Wheel color',
+                null,
+                field(
+                  'Front',
+                  color(v.wheels.color, (c) => {
+                    v.wheels.color = c;
+                    this.changed();
+                  }),
+                ),
+                field(
+                  'Rear',
+                  color(v.wheels.rearColor, (c) => {
+                    v.wheels.rearColor = c;
+                    this.changed();
+                  }),
+                ),
+              ),
         );
         break;
       }
@@ -863,9 +883,10 @@ export class GarageScreen {
         this.prefs.linkAxles = !linked;
         saveGaragePrefs(this.prefs);
         if (this.prefs.linkAxles) {
-          // Linking starts from matching axles: the rear takes the front's settings.
-          const s = this.build.visual.stance;
-          s.rear = { ...s.front };
+          // Linking starts from matching axles: the rear takes the front's settings and wheel color.
+          const v = this.build.visual;
+          v.stance.rear = { ...v.stance.front };
+          v.wheels.rearColor = v.wheels.color;
           this.changed();
           toast('Rear now matches front', Link2);
         }
