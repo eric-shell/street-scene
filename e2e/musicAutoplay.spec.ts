@@ -4,7 +4,7 @@
  * by itself, with no sound hint on the splash.
  */
 import { expect, test } from '@playwright/test';
-import { music } from './helpers';
+import { ignoreHeadlessPause, music } from './helpers';
 
 test.use({ launchOptions: { args: ['--autoplay-policy=no-user-gesture-required'] } });
 
@@ -12,6 +12,7 @@ test.use({ launchOptions: { args: ['--autoplay-policy=no-user-gesture-required']
 type SplashGone = { playing: boolean; hint: number };
 
 test('plays Astrology by itself under the splash', async ({ page }) => {
+  await ignoreHeadlessPause(page);
   // Software WebGL keeps the page busy for seconds and the landing takes 0.8 s, so polling from the test
   // can miss the splash entirely. The page records the player's state itself, in the same task that
   // removes the splash: the music must already be playing then, and the splash must have had no hint.

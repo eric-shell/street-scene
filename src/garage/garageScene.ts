@@ -1,14 +1,16 @@
 /**
- * The garage showroom, with two presentations:
- *  - Garage: car on a slowly rotating turntable, moody studio lighting with
- *    neon tubes, glossy floor.
- *  - Street: the car cruises through a road tunnel (see tunnel.ts); it stays
- *    put while the tunnel streams past, wheels spinning, lights on.
+ * The garage's 3D view, with two presentations:
+ *  - Garage: the car on the showroom's turntable (garage/showroom.ts), turning
+ *    slowly under the hexagon lights.
+ *  - Street: the car cruising the event city (game/streetStage.ts, the same
+ *    street and car the main menu shows); revving lifts the cruise toward a
+ *    sprint, and the orbit camera rides along (game/streetCameras.ts).
  * Both share the orbit camera (drag to rotate, pinch or scroll to zoom) and a
- * few camera presets. The engine can be revved in either: a free-rev model
- * drives the synthesized engine voice and rocks the body on its springs.
- * Also turns a pointer position into a decal hit in car space for vinyl
- * placement. Render only.
+ * few camera presets in car space; the garage UI frames the view beside its
+ * rail. The engine can be revved in either: a free-rev model drives the
+ * synthesized engine voice and rocks the body on its springs. Also turns a
+ * pointer position into a decal hit in car space for vinyl placement. Render
+ * only.
  */
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -17,56 +19,50 @@ import { CarPose, CarView } from '../render/carView';
 import { CarAssetLibrary } from '../render/carAssets';
 import { EngineVoice, audioHub } from '../audio/engineAudio';
 import { BlipScript, RevModel } from './revModel';
-import { Tunnel } from './tunnel';
-import { PALETTE } from '../ui/palette';
+import { Showroom } from './showroom';
+import { FollowOrbit } from '../game/streetCameras';
+import type { StreetStage } from '../game/streetStage';
 import type { Presentation } from './storage';
+import type { Quality } from '../ui/settings';
 
-/** Camera presets in car space, scaled by car length. [position, target]. */
-/** Turntable edge color; the ring's brightness pulses around it. */
-const RING = new THREE.Color(PALETTE.orange);
-
+/** Camera presets in car space (x left, y up, z forward; m for a 4.45 m car, scaled by length): position and target. */
 const CAMERAS: { name: string; pos: [number, number, number]; target: [number, number, number] }[] = [
-  { name: 'Three quarter', pos: [4.3, 1.55, 5.0], target: [0, 0.6, 0.1] },
-  { name: 'Low side', pos: [4.6, 0.5, 0.5], target: [0, 0.55, 0] },
+  { name: 'Three quarter', pos: [4.6, 1.5, 5.6], target: [0, 0.6, 0.1] },
+  { name: 'Low side', pos: [4.7, 0.55, 0.5], target: [0, 0.55, 0] },
   { name: 'Wheel', pos: [2.5, 0.42, 2.7], target: [0.6, 0.38, 1.2] },
   { name: 'Rear', pos: [-3.5, 1.45, -4.6], target: [0, 0.65, 0] },
   { name: 'Front', pos: [0.6, 1.1, 5.4], target: [0, 0.6, 0] },
 ];
 
 const WHEEL_KEYS = ['FL', 'FR', 'RL', 'RR'] as const;
-/** Street: cruise speed and the speed full throttle builds up to (m/s). */
-const CRUISE = 17;
-const SPRINT = 30;
-/** Expansion joints in the tunnel road (m apart) and their height (m). */
-const JOINT_GAP = 24;
-const JOINT_H = 0.012;
+/** The turntable's top, where the car stands in the showroom (m), and how fast it turns (rad/s). */
+const TABLE_TOP = 0.08;
+const SPIN = 0.22;
+/** The street view's auto tour: the next angle after this long without a touch (s). */
+const TOUR = 10;
+/**
+ * Lens: the vertical field of view (deg) on a landscape screen, widened on a
+ * portrait one (a phone) so the car still fits across, up to `max`.
+ */
+const LENS = { fov: 40, minAcross: 36, max: 66 } as const;
 
 export class GarageScene {
-  readonly scene = new THREE.Scene();
-  readonly camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
+  readonly camera = new THREE.PerspectiveCamera(40, 1, 0.1, 2500);
   readonly controls: OrbitControls;
-  readonly turntable = new THREE.Group();
+  /** The car on the turntable (the street has its own, kept in step by setCar). */
   car: CarView | null = null;
   spin = true;
   private time = 0;
-  private disposables: { dispose(): void }[] = [];
-  private ring: THREE.MeshBasicMaterial;
-  private raycaster = new THREE.Raycaster();
-  private showroom = new THREE.Group();
-  private tunnel: Tunnel | null = null;
+  private readonly showroom: Showroom;
+  private readonly follow = new FollowOrbit();
+  private readonly raycaster = new THREE.Raycaster();
   private mode: Presentation = 'garage';
-  // Street motion.
-  private distance = 0;
-  private speed = CRUISE;
-  private wheelSpin = 0;
-  private heave = 0;
-  private heaveVel = 0;
-  private bodyPitch = 0;
-  private bodyPitchVel = 0;
-  // Camera presets and the tween between them.
+  private readonly pose: CarPose = { x: 0, y: TABLE_TOP, z: 0, yaw: 0, pitch: 0, roll: 0, steer: 0.18, comp: [0, 0, 0, 0], spin: [0, 0, 0, 0], braking: false, nitro: false, speed: 0 };
+  // Camera presets and the tween between them (in car space on the street, world space in the showroom).
   private camIndex = 0;
-  private camTween: { from: THREE.Vector3; fromT: THREE.Vector3; to: THREE.Vector3; toT: THREE.Vector3; t: number } | null = null;
+  private camTween: { from: THREE.Vector3; fromT: THREE.Vector3; to: THREE.Vector3; toT: THREE.Vector3; t: number; local: boolean } | null = null;
   private lastInteraction = -100;
+  private readonly onResize = () => this.showroom.resize(this.gr.renderer, this.quality);
   // Engine.
   private rev = new RevModel({ idle: 900, redline: 7200 });
   private blipScript = new BlipScript();
@@ -80,61 +76,11 @@ export class GarageScene {
   constructor(
     private readonly gr: GameRenderer,
     private readonly assets: CarAssetLibrary,
+    private readonly street: StreetStage,
+    private readonly quality: Quality,
   ) {
-    const s = this.scene;
-    s.environment = gr.envMap;
-    s.environmentIntensity = 0.5;
-    const track = <T extends { dispose(): void }>(x: T) => (this.disposables.push(x), x);
-    const room = this.showroom;
-
-    // Floor: glossy dark concrete.
-    const floor = new THREE.Mesh(track(new THREE.CircleGeometry(30, 64).rotateX(-Math.PI / 2)), track(new THREE.MeshStandardMaterial({ color: 0x0e0d0f, roughness: 0.55, metalness: 0.0 })));
-    room.add(floor);
-    // Turntable with a neon edge.
-    const table = new THREE.Mesh(track(new THREE.CylinderGeometry(3.4, 3.5, 0.12, 64)), track(new THREE.MeshStandardMaterial({ color: 0x1a181b, roughness: 0.35, metalness: 0.6 })));
-    table.position.y = 0.06;
-    this.turntable.add(table);
-    this.ring = track(new THREE.MeshBasicMaterial({ color: new THREE.Color(PALETTE.orange).multiplyScalar(2.2) }));
-    const ring = new THREE.Mesh(track(new THREE.TorusGeometry(3.45, 0.03, 8, 96).rotateX(Math.PI / 2)), this.ring);
-    ring.position.y = 0.12;
-    this.turntable.add(ring);
-    room.add(this.turntable);
-    // Sodium orange and yellow tubes on the back walls and ceiling, matching the UI accents.
-    const tube = (color: THREE.ColorRepresentation, w: number, x: number, y: number, z: number, ry: number, rz = 0) => {
-      const m = new THREE.Mesh(track(new THREE.BoxGeometry(w, 0.08, 0.08)), track(new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(1.6) })));
-      m.position.set(x, y, z);
-      m.rotation.set(0, ry, rz);
-      room.add(m);
-    };
-    tube(PALETTE.yellow, 8, 0, 4.2, -9, 0);
-    tube(PALETTE.orange, 8, 0, 3.6, -9, 0);
-    tube(PALETTE.orange, 6, -9, 3.2, -2, Math.PI / 2);
-    tube(PALETTE.yellow, 6, 9, 3.2, -2, Math.PI / 2);
-    tube(PALETTE.orange, 4, -6, 1.2, -8, 0.6, 0.9);
-    tube(PALETTE.yellow, 4, 6, 1.2, -8, -0.6, -0.9);
-    const wall = new THREE.Mesh(track(new THREE.CylinderGeometry(10, 10, 9, 48, 1, true, Math.PI * 0.6, Math.PI * 1.8)), track(new THREE.MeshStandardMaterial({ color: 0x0b0a0c, roughness: 0.9, side: THREE.BackSide })));
-    wall.position.y = 4.5;
-    room.add(wall);
-
-    // Studio lights.
-    room.add(new THREE.HemisphereLight(0xa09aa6, 0x070607, 0.22));
-    const key = new THREE.SpotLight(0xffffff, 70, 30, 0.55, 0.6, 1.4);
-    key.position.set(3, 8, 4);
-    room.add(key, key.target);
-    const rimC = new THREE.SpotLight(PALETTE.orange, 14, 30, 0.5, 0.7, 1.4);
-    rimC.position.set(-6, 6, -6);
-    room.add(rimC, rimC.target);
-    const rimM = new THREE.SpotLight(PALETTE.yellow, 12, 30, 0.5, 0.7, 1.4);
-    rimM.position.set(6, 6, -6);
-    room.add(rimM, rimM.target);
-    const fill = new THREE.PointLight(0xe0d8d0, 4, 15, 1.5);
-    fill.position.set(0, 2.5, 6);
-    room.add(fill);
-    s.add(room);
-
-    this.camera.position.set(5.6, 2.1, 6.4);
+    this.showroom = new Showroom(gr.renderer, quality);
     this.controls = new OrbitControls(this.camera, gr.canvas);
-    this.controls.target.set(0, 0.65, 0);
     this.controls.enableDamping = true;
     this.controls.enablePan = false;
     this.controls.addEventListener('start', () => {
@@ -142,81 +88,108 @@ export class GarageScene {
       this.camTween = null;
       this.lastInteraction = this.time;
     });
+    window.addEventListener('resize', this.onResize);
     this.applyMode();
+    this.homeCamera();
   }
 
   get presentation(): Presentation {
     return this.mode;
   }
 
-  /** Switch between the turntable showroom and the tunnel cruise. */
+  /** Switch between the turntable showroom and the street. */
   setPresentation(p: Presentation): void {
     if (p === this.mode) return;
     this.mode = p;
     this.applyMode();
-    if (p === 'street') this.setCamera(0);
-    else {
-      this.camTween = null;
-      this.camera.position.set(5.6, 2.1, 6.4);
-      this.controls.target.set(0, 0.65, 0);
-      this.spin = true;
-    }
+    this.homeCamera();
   }
 
   private applyMode(): void {
     const street = this.mode === 'street';
-    const s = this.scene;
-    if (street && !this.tunnel) {
-      this.tunnel = new Tunnel();
-      s.add(this.tunnel.group);
-    }
-    if (this.tunnel) this.tunnel.group.visible = street;
-    this.showroom.visible = !street;
-    s.background = new THREE.Color(street ? 0x06060a : 0x0a090b);
-    s.fog = street ? new THREE.Fog(0x06060a, 22, 70) : new THREE.Fog(0x0a090b, 14, 40);
-    s.environmentIntensity = street ? 0.35 : 0.5;
     const c = this.controls;
-    // Street: stay inside the tunnel (walls at 6.5 m, ceiling at 5.8 m).
-    c.minDistance = street ? 1.8 : 3.2;
-    c.maxDistance = street ? 5.6 : 11;
-    c.minPolarAngle = street ? 0.62 : 0;
-    c.maxPolarAngle = street ? 1.52 : 1.48;
-    if (this.car) this.mountCar(this.car);
+    c.minDistance = street ? 2.2 : 3.2;
+    c.maxDistance = street ? 7 : 8.4;
+    c.minPolarAngle = street ? 0.45 : 0.35;
+    c.maxPolarAngle = street ? 1.5 : 1.47;
+    this.follow.reset();
   }
 
-  private mountCar(view: CarView): void {
-    view.setHeadlightsEnabled(this.mode === 'street');
-    if (this.mode === 'street') this.scene.add(view.root);
-    else this.turntable.add(view.root);
+  /** Each presentation opens on the three quarter view; the showroom spins again. */
+  private homeCamera(): void {
+    this.camTween = null;
+    this.camIndex = 0;
+    const c = CAMERAS[0];
+    const k = this.lengthScale();
+    const pos = new THREE.Vector3(...c.pos).multiplyScalar(k);
+    const target = new THREE.Vector3(...c.target).multiplyScalar(k);
+    if (this.mode === 'street') {
+      this.toWorld(pos);
+      this.toWorld(target);
+    } else this.spin = true;
+    this.camera.position.copy(pos);
+    this.controls.target.copy(target);
+    this.lastInteraction = this.time;
+  }
+
+  private lengthScale(): number {
+    return this.car ? this.car.car.dimensions.length / 4.45 : 1;
+  }
+
+  /** Car space to world on the street (in place). */
+  private toWorld(v: THREE.Vector3): THREE.Vector3 {
+    const p = this.street.pose;
+    const s = Math.sin(p.yaw);
+    const c = Math.cos(p.yaw);
+    return v.set(p.x + v.x * c + v.z * s, p.y + v.y, p.z - v.x * s + v.z * c);
+  }
+
+  /** World to car space on the street (in place). */
+  private toLocal(v: THREE.Vector3): THREE.Vector3 {
+    const p = this.street.pose;
+    const s = Math.sin(p.yaw);
+    const c = Math.cos(p.yaw);
+    const dx = v.x - p.x;
+    const dz = v.z - p.z;
+    return v.set(dx * c - dz * s, v.y - p.y, dx * s + dz * c);
   }
 
   /** Cycle (or pick) a camera preset; returns its name. */
   setCamera(index = this.camIndex + 1): string {
     this.camIndex = ((index % CAMERAS.length) + CAMERAS.length) % CAMERAS.length;
     const c = CAMERAS[this.camIndex];
-    const k = this.car ? this.car.car.dimensions.length / 4.45 : 1;
+    const k = this.lengthScale();
     const to = new THREE.Vector3(...c.pos).multiplyScalar(k);
     const toT = new THREE.Vector3(...c.target).multiplyScalar(k);
-    if (this.mode === 'garage') {
-      // Presets are in car space; the turntable rotates the car.
-      this.turntable.updateMatrixWorld();
-      to.applyMatrix4(this.turntable.matrixWorld);
-      toT.applyMatrix4(this.turntable.matrixWorld);
+    if (this.mode === 'street') {
+      this.camTween = { from: this.toLocal(this.camera.position.clone()), fromT: this.toLocal(this.controls.target.clone()), to, toT, t: 0, local: true };
+    } else {
+      // Presets are in car space; the turntable turns the car.
+      this.showroom.turntable.updateMatrixWorld();
+      to.applyMatrix4(this.showroom.turntable.matrixWorld);
+      toT.applyMatrix4(this.showroom.turntable.matrixWorld);
       to.y = Math.max(to.y, 0.6);
       to.setLength(Math.max(to.length(), this.controls.minDistance + 0.3));
+      this.camTween = { from: this.camera.position.clone(), fromT: this.controls.target.clone(), to, toT, t: 0, local: false };
     }
-    this.camTween = { from: this.camera.position.clone(), fromT: this.controls.target.clone(), to, toT, t: 0 };
     this.lastInteraction = this.time;
     return c.name;
   }
 
+  /**
+   * Show a build: the turntable's car (swapped when the car changes, otherwise
+   * repainted and re-parted in place) and the street's.
+   */
   async setCar(carId: string, visual: Parameters<CarView['load']>[0]): Promise<CarView> {
+    void this.street.setBuild({ carId, visual });
     if (this.car && this.car.car.id === carId) {
-      await this.car.applyVisual(visual);
+      // load(), not applyVisual(): it also finishes the first load if that one is still running.
+      await this.car.load(visual);
       return this.car;
     }
     const old = this.car;
-    const view = new CarView(carId, this.assets, { underglowLight: true, headlights: true, envMap: this.gr.envMap });
+    const view = new CarView(carId, this.assets, { underglowLight: true, envMap: this.showroom.envMap });
+    view.setHeadlightsEnabled(false);
     this.car = view;
     await view.load(visual);
     if (this.car !== view) {
@@ -224,7 +197,7 @@ export class GarageScene {
       return this.car!;
     }
     old?.dispose();
-    this.mountCar(view);
+    this.showroom.mount(view);
     return view;
   }
 
@@ -309,9 +282,9 @@ export class GarageScene {
 
   // -------------------------------------------------------------------------
 
-  /** Raycast the painted body; returns hit position and normal in model (car) space. */
+  /** Raycast the painted body of the turntable's car; returns hit position and normal in model (car) space. */
   pick(clientX: number, clientY: number): { pos: [number, number, number]; normal: [number, number, number] } | null {
-    if (!this.car) return null;
+    if (!this.car || this.mode !== 'garage') return null;
     const rect = this.gr.canvas.getBoundingClientRect();
     const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(ndc, this.camera);
@@ -334,89 +307,76 @@ export class GarageScene {
       const e = tw.t * tw.t * (3 - 2 * tw.t);
       this.camera.position.lerpVectors(tw.from, tw.to, e);
       this.controls.target.lerpVectors(tw.fromT, tw.toT, e);
+      if (tw.local) {
+        this.toWorld(this.camera.position);
+        this.toWorld(this.controls.target);
+      }
       if (tw.t >= 1) this.camTween = null;
-    } else if (this.mode === 'street' && this.time - this.lastInteraction > 10) {
+    } else if (this.mode === 'street' && this.time - this.lastInteraction > TOUR) {
       // Slow auto tour of the angles while nobody is touching the camera.
       this.setCamera();
     }
     this.controls.update();
   }
 
+  /** Widen the lens on a portrait screen: keep at least LENS.minAcross degrees across. */
+  private fitLens(): void {
+    const aspect = this.gr.aspect;
+    const across = (2 * Math.atan(aspect * Math.tan((LENS.fov * Math.PI) / 360)) * 180) / Math.PI;
+    const fov = across >= LENS.minAcross ? LENS.fov : Math.min(LENS.max, (2 * Math.atan(Math.tan((LENS.minAcross * Math.PI) / 360) / aspect) * 180) / Math.PI);
+    if (Math.abs(this.camera.fov - fov) > 0.01) {
+      this.camera.fov = fov;
+      this.camera.updateProjectionMatrix();
+    }
+  }
+
   render(dt: number): void {
     dt = Math.min(dt, 0.1);
     this.time += dt;
-    const street = this.mode === 'street';
-    if (this.spin && !street) this.turntable.rotation.y += dt * 0.25;
+    this.fitLens();
     this.updateEngine(dt);
-    this.updateCamera(dt);
-    this.ring.color.copy(RING).multiplyScalar(1.2 + 0.3 * Math.sin(this.time * 2));
-
+    const rev = this.rev;
+    if (this.mode === 'street') {
+      // Revving lifts the cruise toward a sprint, and the body rocks with the engine as in the showroom.
+      const throttle = Math.max(0, Math.min(1, (rev.rpm - rev.rest) / Math.max(1, rev.redline - rev.rest)));
+      this.street.step(dt, { throttle, lean: { pitch: rev.pitch, roll: rev.roll } });
+      this.follow.follow(this.camera, this.controls, this.street.pose);
+      this.updateCamera(dt);
+      this.street.render(this.gr, this.follow.resolve(this.camera, this.controls.target, this.street.world), dt);
+      return;
+    }
+    if (this.spin) this.showroom.turntable.rotation.y += dt * SPIN;
+    this.showroom.update(dt);
     const view = this.car;
     if (view) {
-      const car = view.car;
-      // Road under each wheel (street only): expansion joints and a faint ripple.
-      const road = WHEEL_KEYS.map((k) => {
-        if (!street) return 0;
-        const z = this.distance + car.wheels[k][2];
-        const j = (((z % JOINT_GAP) + JOINT_GAP) % JOINT_GAP) - JOINT_GAP / 2;
-        return JOINT_H * Math.exp(-((j / 0.18) ** 2)) + 0.0015 * Math.sin(z * 2.3 + car.wheels[k][0] * 3);
-      });
-      if (street) {
-        // Gas builds speed a little; lift and it settles back to the cruise.
-        const target = CRUISE + (SPRINT - CRUISE) * Math.max(0, (this.rev.rpm - this.rev.rest) / (this.rev.redline - this.rev.rest));
-        this.speed += (target - this.speed) * Math.min(1, dt * 0.6);
-        this.distance += this.speed * dt;
-        this.wheelSpin = (this.wheelSpin + (this.speed / car.wheelRadius) * dt) % (Math.PI * 2);
-        this.tunnel?.update(this.distance);
+      // Parked in neutral: the wheels stay on the turntable while the body rocks with the revs.
+      const p = this.pose;
+      p.pitch = rev.pitch;
+      p.roll = rev.roll;
+      for (let i = 0; i < 4; i++) {
+        const w = view.car.wheels[WHEEL_KEYS[i]];
+        p.comp[i] = -(w[0] * p.roll - w[2] * p.pitch);
       }
-      // Body on its springs: heave and pitch follow the road, roll and squat come from the engine.
-      const front = (road[0] + road[1]) / 2;
-      const rear = (road[2] + road[3]) / 2;
-      const w = 2 * Math.PI * 1.8;
-      this.heaveVel += (w * w * ((front + rear) / 2 - this.heave) - 2 * 0.35 * w * this.heaveVel) * dt;
-      this.heave += this.heaveVel * dt;
-      const pitchTarget = -(front - rear) / Math.max(1, car.wheelbase);
-      this.bodyPitchVel += (w * w * (pitchTarget - this.bodyPitch) - 2 * 0.35 * w * this.bodyPitchVel) * dt;
-      this.bodyPitch += this.bodyPitchVel * dt;
-      const roll = this.rev.roll;
-      const pitch = this.rev.pitch + this.bodyPitch;
-      const base = street ? 0 : 0.12;
-      // Wheels stay on the road: cancel the body motion CarView would carry them along with.
-      const comp = WHEEL_KEYS.map((k, i) => {
-        const p = car.wheels[k];
-        return road[i] - this.heave - (p[0] * roll - p[2] * pitch);
-      });
-      const pose: CarPose = {
-        x: 0,
-        y: base + this.heave,
-        z: 0,
-        yaw: 0,
-        pitch,
-        roll,
-        steer: street ? 0 : 0.18,
-        comp,
-        spin: [this.wheelSpin, this.wheelSpin, this.wheelSpin, this.wheelSpin],
-        braking: false,
-        nitro: false,
-        speed: street ? this.speed : 0,
-      };
-      view.update(pose, this.time);
+      view.update(p, this.time);
     }
+    this.updateCamera(dt);
+    // The orbit stays inside the room (it would otherwise rise through the ceiling looking down).
+    this.showroom.contain(this.camera.position, this.controls.target);
     this.gr.post.setSpeedBlur(0);
-    // The studio is small and bright: tame the bloom while we are here.
+    // The showroom is small and full of lights: tame the bloom while we are here.
     const bloom = this.gr.post.bloom;
     const saved = bloom.strength;
-    bloom.strength = saved * (street ? 0.7 : 0.45);
-    this.gr.render(this.scene, this.camera, dt);
+    bloom.strength = saved * 0.42;
+    this.gr.render(this.showroom.scene, this.camera, dt);
     bloom.strength = saved;
   }
 
   dispose(): void {
+    window.removeEventListener('resize', this.onResize);
     this.controls.dispose();
     this.voice?.dispose();
     this.voice = null;
     this.car?.dispose();
-    this.tunnel?.dispose();
-    for (const d of this.disposables) d.dispose();
+    this.showroom.dispose();
   }
 }

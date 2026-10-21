@@ -27,6 +27,13 @@ export interface DroneOptions {
   hint?: string;
   /** Cars to mark on the minimap (a race's field, frozen or replaying); none from the menu. */
   cars?: () => readonly MapCar[];
+  /**
+   * Advances the scene the drone flies over (render() calls it with dt and the
+   * drone's position for the real lights to follow): the menu's street stage,
+   * whose clock the car, the gates and the trains share. Without it render()
+   * runs the scene on the drone's own clock.
+   */
+  drive?: (dt: number, focus: THREE.Vector3) => void;
 }
 
 const MAX_SPEED = 28;
@@ -66,6 +73,7 @@ export class DroneMode {
   private map: Minimap;
   private mapZoom: number = MAP.scale;
   private cars: (() => readonly MapCar[]) | undefined;
+  private drive: DroneOptions['drive'];
   // touch
   private moveTouch: { id: number; x0: number; y0: number; x: number; y: number } | null = null;
   private lookTouch: { id: number; x: number; y: number } | null = null;
@@ -186,6 +194,7 @@ export class DroneMode {
     this.map = new Minimap(world, 'hud-map drone-map');
     this.root.append(this.map.canvas);
     this.cars = opts.cars;
+    this.drive = opts.drive;
     uiRoot.append(this.root);
   }
 
@@ -283,8 +292,11 @@ export class DroneMode {
 
   render(dt: number): void {
     this.update(dt);
-    this.night.lighting.update(this.camera.position);
-    this.night.update(this.time);
+    if (this.drive) this.drive(dt, this.camera.position);
+    else {
+      this.night.lighting.update(this.camera.position);
+      this.night.update(this.time);
+    }
     this.gr.post.setSpeedBlur(0);
     this.gr.render(this.night.scene, this.camera, dt);
   }

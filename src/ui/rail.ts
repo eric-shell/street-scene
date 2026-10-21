@@ -1,0 +1,97 @@
+/**
+ * The rail: the one layout every full screen menu shares (main menu, pause,
+ * results, garage). An opaque column down the left edge with a slashed right
+ * side and the accent rule along the slash, so the text never depends on the
+ * 3D scene behind it; the scene keeps the rest of the screen and is framed to
+ * the free area beside the rail (railInset, GameRenderer.setFraming). Parts:
+ *  - railScreen: the screen root with the rail's background and edge.
+ *  - screenHead: back button, the screen's icon and title, an aside on the right.
+ *  - keybar: the key legend along the bottom of the rail. Plain hints only show
+ *    with a keyboard; hints with an action stay as buttons on touch screens.
+ * Sizes live in ui.css (`--rail-*`, `--slash`); on narrow screens the rail
+ * turns into a sheet over the bottom of the screen.
+ */
+import { h, iconBtn } from './dom';
+import { ArrowLeft, icon, type IconNode } from './icons';
+
+type Child = Node | null | false | undefined;
+
+/** A full screen with the rail down its left side; `cls` names the screen (home, pause, results). */
+export function railScreen(cls: string, ...children: Child[]): HTMLElement {
+  return h('div', { class: `screen rail-screen ${cls}`.trim() }, h('div', { class: 'rail-bg', 'aria-hidden': 'true' }), h('div', { class: 'rail-edge', 'aria-hidden': 'true' }), ...children);
+}
+
+export interface ScreenHeadOptions {
+  icon: IconNode;
+  title: string;
+  /** Shows a back button (Escape does the same wherever the screen handles it). */
+  back?: () => void;
+  backLabel?: string;
+  /** Anything on the right: a chip, a value, an action. */
+  aside?: Child;
+}
+
+/** A screen's header: back, its icon and title, and an aside. Every rail screen opens with one (the home step has the logo instead). */
+export function screenHead(o: ScreenHeadOptions): HTMLElement {
+  return h(
+    'div',
+    { class: 'screen-head' },
+    o.back && iconBtn(ArrowLeft, o.backLabel ?? 'Back (Esc)', o.back, 'small back'),
+    h('h2', { class: 'screen-title' }, icon(o.icon, { size: 20 }), h('span', {}, o.title)),
+    o.aside ?? null,
+  );
+}
+
+export interface KeyHint {
+  /** Key caps, alternatives shown side by side (e.g. ['W', 'Space']). */
+  keys: string[];
+  label: string;
+  /** Makes the hint a button that does the same as the key (kept on touch screens). */
+  action?: () => void;
+  title?: string;
+}
+
+/** The key legend along the bottom of a rail. */
+export function keybar(items: KeyHint[]): HTMLElement {
+  return h(
+    'div',
+    { class: 'keybar' },
+    ...items.map((k) => {
+      const caps = k.keys.map((key) => h('kbd', {}, key));
+      return k.action
+        ? h('button', { class: 'key key-action', type: 'button', title: k.title ?? k.label, onclick: k.action }, ...caps, h('span', {}, k.label))
+        : h('span', { class: 'key' }, ...caps, h('span', {}, k.label));
+    }),
+  );
+}
+
+/** A small label chip: an optional icon and a short text. */
+export function chip(text: string, ico?: IconNode, cls = ''): HTMLElement {
+  return h('span', { class: `chip ${cls}`.trim() }, ico && icon(ico, { size: 13 }), h('span', {}, text));
+}
+
+export interface Inset {
+  /** Screen covered from the left (CSS px): where the rail's slashed edge is at mid height. */
+  left: number;
+  /** Screen covered from the bottom (CSS px): a rail turned bottom sheet on a narrow screen. */
+  bottom: number;
+}
+
+/**
+ * How much of the screen the rail inside `root` covers, for framing the 3D
+ * view beside it: from the left on wide screens, from the bottom where it is a
+ * sheet. Zero when there is no rail, it is hidden, or it covers everything.
+ * Reads layout, so call it when the screen changes or resizes, not per frame.
+ */
+export function railInset(root: ParentNode | null = document): Inset {
+  const bg = root?.querySelector<HTMLElement>('.rail-bg') ?? null;
+  if (!bg || document.body.classList.contains('cinematic')) return { left: 0, bottom: 0 };
+  const r = bg.getBoundingClientRect();
+  const w = window.innerWidth;
+  const hgt = window.innerHeight;
+  if (r.width === 0 || r.height === 0) return { left: 0, bottom: 0 };
+  // A sheet: full width, starting part way down.
+  if (r.width >= w - 1) return { left: 0, bottom: r.top > 1 && r.top < hgt ? hgt - r.top : 0 };
+  const slash = parseFloat(getComputedStyle(bg).getPropertyValue('--slash')) || 0;
+  return { left: Math.max(0, r.right - slash / 2), bottom: 0 };
+}

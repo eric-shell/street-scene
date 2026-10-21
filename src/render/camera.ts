@@ -537,22 +537,30 @@ export class ChaseCamera {
 
   /** Fraction along (ax,az)->(bx,bz) of the first wall hit, or 1. */
   wallHit(ax: number, az: number, bx: number, bz: number): number {
-    if (!this.world) return 1;
-    const w = this.world;
-    w.wallGrid.query(Math.min(ax, bx) - 1, Math.min(az, bz) - 1, Math.max(ax, bx) + 1, Math.max(az, bz) + 1, this.scratch);
-    let best = 1;
-    const dx = bx - ax;
-    const dz = bz - az;
-    for (const id of this.scratch) {
-      const s = w.walls[id];
-      const ex = s.bx - s.ax;
-      const ez = s.bz - s.az;
-      const den = dx * ez - dz * ex;
-      if (Math.abs(den) < 1e-9) continue;
-      const t = ((s.ax - ax) * ez - (s.az - az) * ex) / den;
-      const u = ((s.ax - ax) * dz - (s.az - az) * dx) / den;
-      if (t >= 0 && t < best && u >= 0 && u <= 1) best = t;
-    }
-    return best;
+    return this.world ? wallHit(this.world, ax, az, bx, bz, this.scratch) : 1;
   }
+}
+
+/**
+ * Fraction along (ax,az)->(bx,bz) of the first static wall the line crosses,
+ * or 1 when it is clear: how every camera stays out of the buildings (the race
+ * cameras here, the menu and garage street cameras in game/streetCameras.ts).
+ * `scratch` is reused for the grid query.
+ */
+export function wallHit(w: World, ax: number, az: number, bx: number, bz: number, scratch: number[]): number {
+  w.wallGrid.query(Math.min(ax, bx) - 1, Math.min(az, bz) - 1, Math.max(ax, bx) + 1, Math.max(az, bz) + 1, scratch);
+  let best = 1;
+  const dx = bx - ax;
+  const dz = bz - az;
+  for (const id of scratch) {
+    const s = w.walls[id];
+    const ex = s.bx - s.ax;
+    const ez = s.bz - s.az;
+    const den = dx * ez - dz * ex;
+    if (Math.abs(den) < 1e-9) continue;
+    const t = ((s.ax - ax) * ez - (s.az - az) * ex) / den;
+    const u = ((s.ax - ax) * dz - (s.az - az) * dx) / den;
+    if (t >= 0 && t < best && u >= 0 && u <= 1) best = t;
+  }
+  return best;
 }

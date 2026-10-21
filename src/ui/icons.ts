@@ -86,6 +86,8 @@ export {
   Undo2,
   Users,
   Code,
+  Pencil,
+  Warehouse,
 } from 'lucide';
 export type { IconNode };
 

@@ -1,5 +1,10 @@
-/** Dialogs (pause, results, settings) and the settings panel. Every screen returns its root element; callers remove it. The main menu is ui/menu.ts. */
-import { btn, h, iconBtn, segmented } from './dom';
+/**
+ * The screens over a race (pause and results, rails beside the race; see
+ * ui/rail.ts), the settings panel the main menu and the pause screen share, and
+ * the loading card. Every screen returns its root element; callers remove it.
+ * The main menu is ui/menu.ts.
+ */
+import { btn, h, segmented } from './dom';
 import {
   Code,
   Flag,
@@ -24,35 +29,77 @@ import {
 } from './icons';
 import type { Quality, Settings } from './settings';
 import { formatTime, ordinal } from './format';
+import { chip, keybar, railScreen, screenHead } from './rail';
 import type { RaceMode } from '../sim/race';
 import type { MusicPlayer } from '../audio/musicPlayer';
 import { musicCredits } from './musicWidget';
 import { BUILD_VERSION } from '../version';
 
+export interface PauseScreen {
+  readonly el: HTMLElement;
+  /** Escape on the pause screen: true when it went back from its settings step, false when there is nothing to go back from. */
+  back(): boolean;
+}
+
+/**
+ * Pause: a rail over the dimmed race with what is paused (event, mode, lap and
+ * place) and the actions one per row; Settings is a step of its own on the same
+ * rail, so Escape there comes back to the pause list instead of resuming.
+ */
 export function pauseMenu(o: {
+  /** What is paused, as chips under the title: the event first, then mode, lap, place. */
+  status?: string[];
   onResume(): void;
   onRestart(): void;
-  onSettings(): void;
   onQuit(): void;
   /** Restart button label (default "Restart race"). */
   restartLabel?: string;
   /** Extra buttons under Restart (free roam: a new city). */
   extra?: { icon: IconNode; label: string; onClick(): void }[];
-}): HTMLElement {
-  return h(
-    'div',
-    { class: 'screen center dim' },
-    h(
-      'div',
-      { class: 'dialog panel', role: 'dialog', 'aria-label': 'Paused' },
-      h('h2', { class: 'title' }, icon(Pause, { size: 22 }), 'Paused'),
-      btn(Play, 'Resume', o.onResume, 'big primary'),
-      btn(RotateCcw, o.restartLabel ?? 'Restart race', o.onRestart, 'big'),
-      ...(o.extra ?? []).map((x) => btn(x.icon, x.label, x.onClick, 'big')),
-      btn(SettingsIcon, 'Settings', o.onSettings, 'big'),
-      btn(X, 'Quit to menu', o.onQuit, 'big'),
-    ),
-  );
+  /** The settings step works on this copy and reports every change. */
+  settings: Settings;
+  onSettings(s: Settings): void;
+  music?: MusicPlayer;
+}): PauseScreen {
+  const col = h('div', { class: 'rail-col' });
+  let bar = keybar([]);
+  const root = railScreen('pause scrim', col, bar);
+  root.setAttribute('role', 'dialog');
+  root.setAttribute('aria-label', 'Paused');
+  let step: 'pause' | 'settings' = 'pause';
+  const show = (next: 'pause' | 'settings', animate = true) => {
+    step = next;
+    col.classList.toggle('step-enter', animate);
+    if (next === 'pause') {
+      col.replaceChildren(
+        screenHead({ icon: Pause, title: 'Paused' }),
+        ...(o.status?.length ? [h('div', { class: 'status-line' }, ...o.status.map((t, i) => chip(t, i === 0 ? Flag : undefined, i === 0 ? 'accent' : '')))] : []),
+        h(
+          'div',
+          { class: 'menu-list' },
+          btn(Play, 'Resume', o.onResume, 'big primary resume'),
+          btn(RotateCcw, o.restartLabel ?? 'Restart race', o.onRestart, 'big'),
+          ...(o.extra ?? []).map((x) => btn(x.icon, x.label, x.onClick, 'big')),
+          btn(SettingsIcon, 'Settings', () => show('settings'), 'big open-settings'),
+          btn(X, 'Quit to menu', o.onQuit, 'big'),
+        ),
+      );
+    } else col.replaceChildren(screenHead({ icon: SettingsIcon, title: 'Settings', back: () => show('pause') }), settingsPanel(o.settings, o.onSettings, o.music));
+    const nextBar = keybar([{ keys: ['Esc'], label: next === 'pause' ? 'Resume' : 'Back' }]);
+    bar.replaceWith(nextBar);
+    bar = nextBar;
+    // Keyboard and gamepad focus stays on the rail: Resume, the open settings tab, or Settings when coming back.
+    requestAnimationFrame(() => col.querySelector<HTMLElement>(next === 'settings' ? '.settings-tab.on' : animate ? '.open-settings' : '.resume')?.focus({ preventScroll: true }));
+  };
+  show('pause', false);
+  return {
+    el: root,
+    back: () => {
+      if (step !== 'settings') return false;
+      show('pause');
+      return true;
+    },
+  };
 }
 
 export interface ResultRow {
@@ -66,6 +113,7 @@ export interface ResultRow {
 
 const MODE_LABEL: Record<RaceMode, string> = { circuit: 'Circuit', sprint: 'Sprint', drift: 'Drift' };
 
+/** Results: a rail beside the finish shots with the headline (place or score), a new best, the standings and what next. */
 export function resultsScreen(o: {
   mode: RaceMode;
   /** The seed's event name (Hill Climb, River Run, ...), over the headline. */
@@ -87,34 +135,37 @@ export function resultsScreen(o: {
         'tr',
         { class: r.me ? 'me' : '' },
         h('td', { class: 'pos' }, String(i + 1)),
-        h('td', {}, r.name, h('div', { class: 'muted', style: 'font-size:12px' }, r.car + (r.bestLap ? ` · best lap ${formatTime(r.bestLap)}` : ''))),
+        h('td', {}, r.name, h('span', { class: 'car' }, r.car + (r.bestLap ? ` · best lap ${formatTime(r.bestLap)}` : ''))),
         h('td', { class: 'time' }, (r.estimated ? '~' : '') + formatTime(r.time)),
       ),
     ),
   );
-  const headline =
-    o.mode === 'drift'
-      ? `${Math.round(o.driftScore ?? 0).toLocaleString()} pts`
-      : o.position === 1
-        ? 'You win!'
-        : `${ordinal(o.position)} place`;
-  return h(
+  const drift = o.mode === 'drift';
+  const headline = drift ? `${Math.round(o.driftScore ?? 0).toLocaleString()} pts` : o.position === 1 ? 'You win!' : `${ordinal(o.position)} place`;
+  const retry = btn(RotateCcw, 'Retry', o.onRetry, 'big primary');
+  const col = h(
     'div',
-    { class: 'screen center dim' },
+    { class: 'rail-col step-enter' },
     h(
       'div',
-      { class: 'dialog panel', role: 'dialog', 'aria-label': 'Results' },
-      o.event && h('div', { class: 'label' }, icon(Flag, { size: 14 }), `${o.event} · ${MODE_LABEL[o.mode]}`),
-      h('h2', { class: 'title' }, icon(o.position === 1 || o.mode === 'drift' ? Trophy : Medal, { size: 24 }), headline),
+      { class: 'result-head' },
+      h('div', { class: 'label' }, icon(Flag, { size: 14 }), o.event ? `${o.event} · ${MODE_LABEL[o.mode]}` : MODE_LABEL[o.mode]),
+      h('h2', { class: 'result-title' }, icon(o.position === 1 || drift ? Trophy : Medal, { size: 34 }), h('span', { class: 'result-score' }, headline)),
       o.newBest && h('div', {}, h('span', { class: 'badge' }, icon(Sparkles, { size: 14 }), 'New best')),
-      o.tuned && h('div', { class: 'muted' }, 'Dev tuning was changed during this run, so it was not saved.'),
-      o.mode !== 'drift' && table,
-      h('div', { class: 'row' }, btn(RotateCcw, 'Retry', o.onRetry, 'primary'), btn(Video, 'Replay', o.onReplay), btn(Wrench, 'Garage', o.onGarage), btn(X, 'Menu', o.onMenu)),
+      o.tuned && h('p', { class: 'result-note' }, 'Dev tuning was changed during this run, so it was not saved.'),
     ),
+    !drift && h('div', { class: 'section-title' }, 'Standings'),
+    !drift && table,
+    h('div', { class: 'result-actions' }, retry, btn(Video, 'Replay', o.onReplay), btn(Wrench, 'Garage', o.onGarage), btn(X, 'Menu', o.onMenu)),
   );
+  const root = railScreen('results', col, keybar([{ keys: ['Enter'], label: 'Retry' }]));
+  root.setAttribute('role', 'dialog');
+  root.setAttribute('aria-label', 'Results');
+  requestAnimationFrame(() => retry.focus({ preventScroll: true }));
+  return root;
 }
 
-/** A settings page in the sidebar: its tab and the rows it shows. */
+/** A settings page: its tab and the rows it shows. */
 interface SettingsPage {
   id: string;
   label: string;
@@ -126,10 +177,11 @@ interface SettingsPage {
 let lastPage = 'display';
 
 /**
- * Settings: a sidebar of pages (display, sound, controls, developer, credits)
- * beside the page itself, so nothing needs a long scroll. Race options
- * (rivals, difficulty, gearbox, traction control) live on the menu's race
- * step instead. Used on the menu's settings step and in the pause dialog.
+ * Settings: a row of tabs (display, sound, controls, developer, credits) over
+ * the open page, so nothing needs a long scroll and the panel fits the rail's
+ * column. Race options (rivals, difficulty, gearbox, traction control) live on
+ * the menu's race step instead. Used on the menu's settings step and on the
+ * pause screen's.
  */
 export function settingsPanel(s: Settings, onChange: (s: Settings) => void, music?: MusicPlayer): HTMLElement {
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => {
@@ -218,10 +270,7 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
     { id: 'credits', label: 'Credits', icon: Heart, rows: credits },
   ];
   const pane = h('div', { class: 'settings-pane', role: 'tabpanel' });
-  const tabs = pages.map((p) => {
-    const b = h('button', { class: 'settings-tab', type: 'button', role: 'tab', onclick: () => open(p) }, icon(p.icon, { size: 17 }), h('span', {}, p.label));
-    return b;
-  });
+  const tabs = pages.map((p) => h('button', { class: 'tab settings-tab', type: 'button', role: 'tab', onclick: () => open(p) }, icon(p.icon, { size: 15 }), h('span', {}, p.label)));
   const open = (p: SettingsPage) => {
     lastPage = p.id;
     tabs.forEach((t, i) => {
@@ -229,25 +278,11 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
       t.classList.toggle('on', on);
       t.setAttribute('aria-selected', String(on));
     });
-    pane.replaceChildren(h('h3', { class: 'section-title' }, p.label), ...p.rows().filter((r): r is HTMLElement => !!r));
+    pane.replaceChildren(...p.rows().filter((r): r is HTMLElement => !!r));
     pane.setAttribute('aria-label', p.label);
   };
   open(pages.find((p) => p.id === lastPage) ?? pages[0]);
-  return h('div', { class: 'settings' }, h('nav', { class: 'settings-nav', role: 'tablist', 'aria-label': 'Settings pages' }, ...tabs), pane);
-}
-
-/** The pause menu's settings: the same panel in a dialog. */
-export function settingsScreen(s: Settings, onChange: (s: Settings) => void, onClose: () => void, music?: MusicPlayer): HTMLElement {
-  return h(
-    'div',
-    { class: 'screen center dim' },
-    h(
-      'div',
-      { class: 'dialog settings-dialog panel', role: 'dialog', 'aria-label': 'Settings' },
-      h('h2', { class: 'title' }, icon(SettingsIcon, { size: 22 }), h('span', { class: 'grow' }, 'Settings'), iconBtn(X, 'Close', onClose, 'small')),
-      settingsPanel(s, onChange, music),
-    ),
-  );
+  return h('div', { class: 'settings' }, h('nav', { class: 'tabs settings-tabs', role: 'tablist', 'aria-label': 'Settings pages' }, ...tabs), pane);
 }
 
 /** One labelled setting: the name (and an optional hint under it) on the left, its control on the right. */
@@ -317,6 +352,13 @@ function credits(): HTMLElement[] {
   ];
 }
 
-export function loadingScreen(text = 'LOADING'): HTMLElement {
-  return h('div', { class: 'loading' }, text);
+/** The loading card: the logo, what is loading and a sweeping bar in the rule's colors. */
+export function loadingScreen(what?: string): HTMLElement {
+  return h(
+    'div',
+    { class: 'loading', role: 'status' },
+    h('div', { class: 'logo' }, 'STREET SCENE'),
+    h('div', { class: 'loading-label' }, what ? `Loading ${what}` : 'Loading'),
+    h('div', { class: 'loading-bar', 'aria-hidden': 'true' }, h('i')),
+  );
 }

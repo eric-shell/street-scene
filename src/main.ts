@@ -8,28 +8,32 @@ import './style.css';
 import './ui/ui.css';
 import * as THREE from 'three';
 import { FixedStepLoop } from './loop';
-import { createWorld, World } from './city/world';
+import { createWorld } from './city/world';
 import { seedFromString, Rng } from './sim/prng';
 import { dailySeed, initialSeed } from './seed';
 import { Settings, loadSettings, saveSettings } from './ui/settings';
 import { AutoQualityController, MAX_LEVEL, QUALITY_LEVELS, autoLabel, deviceKey, guessLevel, loadRememberedLevel, readDeviceInfo, saveRememberedLevel } from './render/autoQuality';
-import { GameRenderer, NightScene, createNightScene } from './render/scene';
+import { GameRenderer } from './render/scene';
 import { FreeFlyCamera } from './render/freeFly';
 import { CarAssetLibrary, manifestCar } from './render/carAssets';
 import { InputManager } from './input/inputManager';
 import { RaceSession } from './game/session';
 import { DroneMode } from './game/drone';
+import { StreetStage } from './game/streetStage';
+import { ShowreelCamera } from './game/streetCameras';
 import { MusicPlayer } from './audio/musicPlayer';
 import { audioHub } from './audio/engineAudio';
 import { MusicWidget } from './ui/musicWidget';
 import { TuningPanel, applySavedTuning, loadSavedTuning } from './ui/tuningPanel';
 import { CameraPanel, applySavedCameraParams } from './ui/cameraPanel';
-import { loadingScreen, pauseMenu, resultsScreen, settingsScreen } from './ui/screens';
+import { loadingScreen, pauseMenu, resultsScreen, type PauseScreen } from './ui/screens';
+import { railInset } from './ui/rail';
 import { mainMenu } from './ui/menu';
 import { showSplash } from './ui/splash';
 import { toast } from './ui/dom';
 import { Check, Info, Shuffle } from './ui/icons';
-import { RaceConfig, RaceEntrant, RaceMode, standings, ticksToSeconds } from './sim/race';
+import { RaceConfig, RaceEntrant, RaceMode, positionOf, standings, ticksToSeconds } from './sim/race';
+import { routeSample } from './city/route';
 import { CarBuild, PerformanceBuild, VisualBuild, defaultVisual, PAINT_FINISHES } from './sim/build';
 import { DEFAULT_CAR_ID, PERFORMANCE_CATEGORIES, SELECTABLE_CAR_IDS, Tier } from './sim/tuning';
 import { GarageState, decodeShareCode, loadGarage, saveGarage } from './garage/storage';
@@ -68,7 +72,7 @@ function applyAutoQuality(): void {
   gr.setAutoProfile(lv);
   // Fewer point lights right away (frames are slow); more wait for the next scene
   // because a light count change recompiles every lit shader mid race.
-  for (const n of [backdrop?.night, session?.night]) if (n && n.lighting.poolSize > lv.pointLights) n.lighting.setPoolSize(lv.pointLights);
+  for (const n of [stage?.night, session?.night]) if (n && n.lighting.poolSize > lv.pointLights) n.lighting.setPoolSize(lv.pointLights);
 }
 function persistSettings(): void {
   saveSettings(urlQualityOverride ? { ...settings, ...storedQuality } : settings);
@@ -98,17 +102,20 @@ let availability: Record<string, boolean> = {};
 let garageScreen: { tick(): void; render(dt: number): void; dispose(): void } | null = null;
 
 // ---------------------------------------------------------------------------
-// Menu backdrop: the event city with a slow cinematic camera.
+// The menu city: the event city with the player's car cruising its route
+// (game/streetStage.ts). The showreel shoots it behind the menu, the drone and
+// the free camera fly over it, and the garage's Street view drives it.
 // ---------------------------------------------------------------------------
-let backdrop: { night: NightScene; world: World; cam: THREE.PerspectiveCamera; t: number; seed: number } | null = null;
+let stage: StreetStage | null = null;
+const showreel = new ShowreelCamera();
 let fly: FreeFlyCamera | null = null;
 let drone: DroneMode | null = null;
 
 function startDrone(): void {
-  ensureBackdrop();
+  const st = ensureStage();
   setOverlay(null);
   drone?.dispose();
-  drone = new DroneMode(gr, backdrop!.night, backdrop!.world, uiRoot, exitDrone);
+  drone = new DroneMode(gr, st.night, st.world, uiRoot, exitDrone, { drive: (dt, focus) => st.step(dt, { focus }) });
   state = 'drone';
   syncMusicMode();
 }
@@ -119,33 +126,24 @@ function exitDrone(): void {
   showMenu();
 }
 
-function ensureBackdrop(): void {
+/** The street stage for the current seed, built (with the current build on it) when the seed changes. */
+function ensureStage(): StreetStage {
   const seed = seedFromString(seedStr);
-  if (backdrop && backdrop.seed === seed) return;
-  backdrop?.night.dispose();
-  const world = createWorld(seed, 'circuit');
-  backdrop = { night: createNightScene(world, gr, settings), world, cam: new THREE.PerspectiveCamera(55, 1, 0.1, 2500), t: 0, seed };
-  (window as unknown as Record<string, unknown>).__nr = { world, gr, backdrop, autoQ };
+  if (stage && stage.world.seed === seed) return stage;
+  stage?.dispose();
+  stage = new StreetStage(gr, assets, createWorld(seed, 'circuit'), settings);
+  void stage.setBuild(currentBuild());
+  showreel.cut();
+  (window as unknown as Record<string, unknown>).__nr = { world: stage.world, gr, stage, showreel, autoQ };
+  return stage;
 }
 
-function renderBackdrop(dt: number): void {
-  if (!backdrop) return;
-  backdrop.t += dt;
-  const route = backdrop.world.route;
-  const s = (backdrop.t * 9) % route.length;
-  let i = route.cum.findIndex((c) => c > s);
-  if (i < 1) i = 1;
-  const a = route.points[i - 1];
-  const b = route.points[i];
-  const t = (s - route.cum[i - 1]) / Math.max(1, route.cum[i] - route.cum[i - 1]);
-  const x = a.x + (b.x - a.x) * t;
-  const z = a.z + (b.z - a.z) * t;
-  backdrop.cam.position.set(x, 22 + Math.sin(backdrop.t * 0.2) * 6, z);
-  backdrop.cam.lookAt(x + (b.x - a.x) * 0.5 + 30 * Math.sin(backdrop.t * 0.05), 4, z + (b.z - a.z) * 0.5 + 30 * Math.cos(backdrop.t * 0.05));
-  backdrop.night.lighting.update(backdrop.cam.position);
-  backdrop.night.update(backdrop.t);
-  gr.post.setSpeedBlur(0);
-  gr.render(backdrop.night.scene, backdrop.cam, dt);
+/** The menu: the car cruises on and the showreel films it. */
+function renderStage(dt: number): void {
+  if (!stage) return;
+  stage.step(dt);
+  showreel.update(stage, dt);
+  stage.render(gr, showreel.camera, dt);
 }
 
 // ---------------------------------------------------------------------------
@@ -170,7 +168,21 @@ function setOverlay(el: HTMLElement | null): void {
   overlay = el;
   if (el) uiRoot.append(el);
   queueMicrotask(syncMusicMode);
+  queueMicrotask(updateFraming);
 }
+
+/**
+ * Frame the menu city in the space beside the menu's rail (GameRenderer.setFraming);
+ * everything else gets the whole screen, races at once. The garage frames its own view.
+ */
+function updateFraming(): void {
+  if (state === 'garage') return;
+  if (state === 'menu' && overlay === menuEl) {
+    const inset = railInset(overlay);
+    gr.setFraming(inset.left, inset.bottom);
+  } else gr.setFraming(0, 0, state === 'race');
+}
+window.addEventListener('resize', () => queueMicrotask(updateFraming));
 
 function currentBuild(): CarBuild {
   return garage.slots[garage.current];
@@ -187,6 +199,7 @@ function setCinematic(on: boolean): void {
   if (cinematic === on) return;
   cinematic = on;
   document.body.classList.toggle('cinematic', on);
+  updateFraming();
   if (on) {
     document.body.append(cineHint);
     // Restart the hint's fade each time.
@@ -217,15 +230,19 @@ function showMenu(): void {
   garageScreen = null;
   dev.close();
   camPanel.close();
-  ensureBackdrop();
+  const st = ensureStage();
+  // The car on the street shows the build as the garage left it (paint and parts in place, a new car swapped in).
+  void st.setBuild(currentBuild());
   // Catch the menu city up with any point light increase auto quality deferred.
-  if (backdrop && backdrop.night.lighting.poolSize !== gr.profile.pointLights) backdrop.night.lighting.setPoolSize(gr.profile.pointLights);
+  if (st.night.lighting.poolSize !== gr.profile.pointLights) st.night.lighting.setPoolSize(gr.profile.pointLights);
   const seed = seedFromString(seedStr);
+  const route = st.world.route;
   setOverlay(
     mainMenu({
       seed: seedStr,
       isDaily,
-      event: backdrop?.world.event,
+      event: st.world.event,
+      route: { points: route.points, start: routeSample(route, route.startS) },
       bests: { circuit: loadBest(seed, 'circuit'), sprint: loadBest(seed, 'sprint'), drift: loadBest(seed, 'drift') },
       carName: manifestCar(currentBuild().carId).displayName,
       hasReplay: !!loadLastReplay(),
@@ -265,7 +282,7 @@ function applySettings(s: Settings): void {
   persistSettings();
   gr.applySettings(settings);
   if (qualityChanged) {
-    backdrop?.night.lighting.setPoolSize(gr.profile.pointLights);
+    stage?.night.lighting.setPoolSize(gr.profile.pointLights);
     session?.night.lighting.setPoolSize(gr.profile.pointLights);
   }
   fpsEl.style.display = settings.showFps ? '' : 'none';
@@ -274,31 +291,36 @@ function applySettings(s: Settings): void {
   if (state === 'race') toggleCameraPanel(settings.debugCameraPanel);
 }
 
-/** Settings over the pause menu (the main menu has them as a step of its own). */
-function openSettings(back: () => void): void {
-  setOverlay(settingsScreen({ ...settings }, applySettings, back, music));
-}
-
 async function openGarage(): Promise<void> {
-  setOverlay(loadingScreen('GARAGE'));
+  setOverlay(loadingScreen('garage'));
   const { GarageScreen } = await import('./garage/garageUi');
   session?.dispose();
   session = null;
   dev.close();
   camPanel.close();
+  // The Street view drives the menu's city: build it first when the garage is the first screen.
+  const street = ensureStage();
   setOverlay(null);
   garageScreen?.dispose();
-  garageScreen = new GarageScreen(gr, assets, uiRoot, garage, availability, {
-    onChange: (g) => {
-      garage = g;
-      saveGarage(garage);
-    },
-    onExit: () => showMenu(),
-    onTestDrive: () => startRace('circuit', true),
-    engineVolume: () => settings.engineVolume,
-  });
-  (window as unknown as Record<string, unknown>).__nr = { garageScreen, gr, autoQ };
   state = 'garage';
+  garageScreen = new GarageScreen(
+    gr,
+    assets,
+    uiRoot,
+    garage,
+    availability,
+    {
+      onChange: (g) => {
+        garage = g;
+        saveGarage(garage);
+      },
+      onExit: () => showMenu(),
+      onTestDrive: () => startRace('circuit', true),
+      engineVolume: () => settings.engineVolume,
+    },
+    { street, quality: settings.quality },
+  );
+  (window as unknown as Record<string, unknown>).__nr = { garageScreen, gr, stage, autoQ };
   syncMusicMode();
 }
 
@@ -461,6 +483,23 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
   };
 }
 
+/** The pause screen while a race is paused (it has a settings step Escape comes back from). */
+let pauseScreen: PauseScreen | null = null;
+
+const MODE_NAME: Record<RaceMode, string> = { circuit: 'Circuit', sprint: 'Sprint', drift: 'Drift' };
+
+/** What the pause screen says is paused: the event, mode, lap and place (or just the kind of session). */
+function pauseStatus(s: RaceSession): string[] {
+  if (sessionKind === 'roam') return ['Free roam'];
+  if (sessionKind === 'testDrive') return ['Test drive'];
+  const r = s.race;
+  const out = [r.world.event?.name ?? 'Street race', MODE_NAME[r.config.mode]];
+  if (r.config.mode === 'circuit') out.push(`Lap ${Math.min(r.config.laps, Math.max(1, r.cars[0].lap))}/${r.config.laps}`);
+  if (r.cars.length > 1) out.push(`P${positionOf(r, 0)} of ${r.cars.length}`);
+  if (s.isReplay) out.push('Replay');
+  return out;
+}
+
 function togglePause(): void {
   if (state !== 'race' || !session) return;
   // Escape in the photo mode drone flies back to the car instead of pausing.
@@ -468,7 +507,10 @@ function togglePause(): void {
   // Escape on the free roam city map closes the map instead of pausing.
   if (session.mapOpen) return session.closeMap();
   if (session.paused) {
+    // Escape in the pause screen's settings comes back to the pause list.
+    if (pauseScreen?.el.isConnected && pauseScreen.back()) return;
     session.paused = false;
+    pauseScreen = null;
     setOverlay(null);
     syncMusicMode();
     return;
@@ -476,18 +518,18 @@ function togglePause(): void {
   if (session.race.phase === 'finished') return;
   session.paused = true;
   input.releaseAll();
-  const showPause = () =>
-    setOverlay(
-      pauseMenu({
-        onResume: togglePause,
-        onRestart: () => lastConfig && runSession(lastConfig, lastVisuals, null, lastConfig.opponents.length || lastConfig.openWorld ? null : loadGhost(lastConfig.seed, lastConfig.mode), sessionKind),
-        restartLabel: sessionKind === 'race' ? undefined : 'Back to the start',
-        extra: sessionKind === 'roam' ? [{ icon: Shuffle, label: 'New city', onClick: () => startFreeRoam(String(Math.floor(Math.random() * 1e8))) }] : undefined,
-        onSettings: () => openSettings(showPause),
-        onQuit: () => (sessionKind === 'testDrive' ? void openGarage() : showMenu()),
-      }),
-    );
-  showPause();
+  pauseScreen = pauseMenu({
+    status: pauseStatus(session),
+    onResume: togglePause,
+    onRestart: () => lastConfig && runSession(lastConfig, lastVisuals, null, lastConfig.opponents.length || lastConfig.openWorld ? null : loadGhost(lastConfig.seed, lastConfig.mode), sessionKind),
+    restartLabel: sessionKind === 'race' ? undefined : 'Back to the start',
+    extra: sessionKind === 'roam' ? [{ icon: Shuffle, label: 'New city', onClick: () => startFreeRoam(String(Math.floor(Math.random() * 1e8))) }] : undefined,
+    settings: { ...settings },
+    onSettings: applySettings,
+    music,
+    onQuit: () => (sessionKind === 'testDrive' ? void openGarage() : showMenu()),
+  });
+  setOverlay(pauseScreen.el);
 }
 
 input.on('pause', togglePause);
@@ -518,11 +560,11 @@ input.on('freecam', () => {
     fly?.dispose();
     fly = null;
     showMenu();
-  } else if (state === 'menu' && backdrop) {
+  } else if (state === 'menu' && stage) {
     state = 'freefly';
     setOverlay(null);
     fly = new FreeFlyCamera(canvas);
-    fly.set(backdrop.cam.position.clone(), 0, -0.3);
+    fly.set(showreel.camera.position.clone(), 0, -0.3);
   }
 });
 
@@ -537,6 +579,14 @@ let frames = 0;
 let fpsAcc = 0;
 /** Whether the session's photo mode drone was up last frame (it toggles inside the session, on its own keys). */
 let photoDrone = false;
+/**
+ * While the boot splash covers the screen: how many more frames to draw the
+ * menu city for (to compile its shaders unseen), or null once the title starts
+ * to land. The rest of the time behind the splash only the stage's clock and
+ * car move, so the splash's animation and the opening track get the main
+ * thread (on slow GPUs a street level frame of the city takes long).
+ */
+let splashWarmup: number | null = null;
 
 const loop = new FixedStepLoop({
   tick() {
@@ -552,12 +602,12 @@ const loop = new FixedStepLoop({
       }
     } else if (state === 'garage' && garageScreen) garageScreen.render(dt);
     else if (state === 'drone' && drone) drone.render(dt);
-    else if (state === 'freefly' && fly && backdrop) {
+    else if (state === 'freefly' && fly && stage) {
       fly.update(dt);
-      backdrop.night.lighting.update(fly.camera.position);
-      backdrop.night.update((backdrop.t += dt));
-      gr.render(backdrop.night.scene, fly.camera, dt);
-    } else renderBackdrop(dt);
+      stage.step(dt, { focus: fly.camera.position });
+      stage.render(gr, fly.camera, dt);
+    } else if (splashWarmup === null || splashWarmup-- > 0) renderStage(dt);
+    else stage?.step(dt);
     // Auto quality only measures real gameplay frames (not menus, pauses, results or loading).
     const playing = (state === 'race' && !!session && !session.paused && session.race.phase !== 'finished') || state === 'drone' || state === 'freefly';
     autoQ.frame(dt, settings.autoQuality && playing && !document.hidden);
@@ -582,7 +632,7 @@ async function boot(): Promise<void> {
   // menu; deep links go straight to their screen behind a plain loading card.
   // On document.body, not #ui: it has to cover the music widget, which lives there too.
   const splash = deepLink ? null : showSplash(document.body);
-  const loading = splash ? null : loadingScreen('STREET SCENE');
+  const loading = splash ? null : loadingScreen();
   if (loading) uiRoot.append(loading);
   availability = await assets.availability();
   const code = params.get('build');
@@ -606,11 +656,17 @@ async function boot(): Promise<void> {
   else if (params.has('drone')) startDrone();
   else if (params.has('freeroam')) startFreeRoam(seedStr);
   else showMenu();
+  if (splash) {
+    splashWarmup = 2;
+    // The car arrives a moment later: one more frame for its materials.
+    void stage?.ready.then(() => splashWarmup !== null && (splashWarmup = Math.max(splashWarmup, 1)));
+  }
   loop.start();
   if (splash) {
-    // The city renders under the black meanwhile, so its first (slow) frames are spent unseen.
+    // The city's first (slow) frames compile its shaders unseen under the black (splashWarmup).
     splash.hold(overlay);
     await splash.intro;
+    splashWarmup = null;
     await splash.land(overlay);
   }
   notice?.();

@@ -54,3 +54,20 @@ export async function splashLog(page: Page): Promise<SplashSample[]> {
   await page.waitForFunction(() => (window as unknown as { __splashLog?: { done: boolean } }).__splashLog?.done === true, undefined, { timeout: 30_000 });
   return page.evaluate(() => (window as unknown as { __splashLog: { samples: SplashSample[] } }).__splashLog.samples);
 }
+
+/**
+ * Headless Chromium has no audio focus to give a page: a second or two after
+ * audio starts it sends the media session 'pause' action (a bare page with one
+ * audio element gets it too), and the music player obeys it as it would a
+ * pause key. Swallow that action so the music tests measure the game, not the
+ * headless browser (a no-op handler, since with none at all the browser pauses
+ * the media itself). Call before goto.
+ */
+export async function ignoreHeadlessPause(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const ms = navigator.mediaSession;
+    if (!ms) return;
+    const set = ms.setActionHandler.bind(ms);
+    ms.setActionHandler = (action: MediaSessionAction, handler: MediaSessionActionHandler | null) => set(action, action === 'pause' ? () => {} : handler);
+  });
+}

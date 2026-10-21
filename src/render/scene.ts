@@ -37,6 +37,9 @@ export class GameRenderer {
   private placeholderScene = new THREE.Scene();
   private placeholderCam = new THREE.PerspectiveCamera();
   private autoProfile: QualityProfile | null = null;
+  /** Screen a menu rail covers (CSS px from the left and the bottom), eased toward frameTarget. */
+  private frame = { left: 0, bottom: 0 };
+  private frameTarget = { left: 0, bottom: 0 };
 
   constructor(readonly canvas: HTMLCanvasElement, settings: Settings) {
     this.settings = settings;
@@ -95,11 +98,33 @@ export class GameRenderer {
     return this.width / Math.max(1, this.height);
   }
 
+  /**
+   * Center the view on the part of the screen a menu leaves free: `left` and
+   * `bottom` are the CSS px its rail covers (ui/rail.ts railInset). The view
+   * eases there over a few tenths of a second unless `snap`; zeros give the
+   * camera the whole screen again. Races snap to zero: their view never shifts.
+   */
+  setFraming(left: number, bottom: number, snap = false): void {
+    this.frameTarget.left = left;
+    this.frameTarget.bottom = bottom;
+    if (snap) {
+      this.frame.left = left;
+      this.frame.bottom = bottom;
+    }
+  }
+
   render(scene: THREE.Scene, camera: THREE.PerspectiveCamera, dt: number): void {
     if (Math.abs(camera.aspect - this.aspect) > 1e-4) {
       camera.aspect = this.aspect;
       camera.updateProjectionMatrix();
     }
+    // The subject stays centered in the free area: shift the projection by half of what the rail covers.
+    const f = this.frame;
+    const k = 1 - Math.exp(-dt * 7);
+    f.left += (this.frameTarget.left - f.left) * k;
+    f.bottom += (this.frameTarget.bottom - f.bottom) * k;
+    if (Math.abs(f.left) > 0.5 || Math.abs(f.bottom) > 0.5) camera.setViewOffset(this.width, this.height, -f.left / 2, f.bottom / 2, this.width, this.height);
+    else if (camera.view?.enabled) camera.clearViewOffset();
     this.post.setScene(scene, camera);
     this.post.render(dt);
   }

@@ -5,7 +5,7 @@
  * musicAutoplay.spec.ts covers the returning visitor the browser trusts.
  */
 import { expect, test } from '@playwright/test';
-import { music, sampleSplash, splashLog } from './helpers';
+import { ignoreHeadlessPause, music, sampleSplash, splashLog } from './helpers';
 
 // The splash lives for a few seconds from the document being parsed, while the page's load event can
 // come much later (the music element and the car models keep loading), so every page load here waits
@@ -34,6 +34,8 @@ test.describe('boot splash', () => {
 });
 
 test.describe('music', () => {
+  test.beforeEach(({ page }) => ignoreHeadlessPause(page));
+
   test('opens on Astrology and starts on the first interaction when autoplay is refused, without a prompt', async ({ page }) => {
     await sampleSplash(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });

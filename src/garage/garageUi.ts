@@ -1,12 +1,19 @@
 /**
- * Garage UI: side panel with live-preview categories. Body part menus are
- * populated entirely from partsCatalog.json. Builds save to localStorage
- * slots and export as share codes. Hidden dev mode (Ctrl+Shift+D or ?dev)
- * accepts a dropped GLB and equips it live in a chosen slot.
+ * Garage UI on the rail (ui/rail.ts): the header (back, Test drive), tabs of
+ * live-preview categories and the open tab's controls down the left; beside it
+ * the 3D view framed to the free space, with the car card (model, build, spec
+ * tags and measured stats) top left, the Garage / Street switch and camera top
+ * right and the hold-to-rev button at the bottom. Body part menus are populated
+ * entirely from partsCatalog.json. Builds save to localStorage slots and export
+ * as share codes. Hidden dev mode (Ctrl+Shift+D or ?dev) accepts a dropped GLB
+ * and equips it live in a chosen slot.
  */
 import type { GameRenderer } from '../render/scene';
 import { CarAssetLibrary, MANIFEST, manifestCar, partsFor } from '../render/carAssets';
 import { GarageScene } from './garageScene';
+import type { StreetStage } from '../game/streetStage';
+import type { Quality } from '../ui/settings';
+import { chip, keybar, railInset, screenHead } from '../ui/rail';
 import { GaragePrefs, GarageState, MAX_SLOTS, Presentation, decodeShareCode, encodeShareCode, freshBuild, loadGaragePrefs, saveGaragePrefs, shareUrl } from './storage';
 import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PART_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
 import { AXLES, Axle, AxleStance, CarBuild, DecalLayer, GLOW_PATTERNS, MAX_DECALS, PAINT_FINISHES, STANCE_LIMITS, VINYL_SHAPES, VinylShape, validateBuild } from '../sim/build';
@@ -16,14 +23,13 @@ import { FEATURES } from '../shared/features';
 import { SELECTABLE_CAR_IDS, DEFAULT_CAR_ID, getBaseTuning } from '../sim/tuning';
 import type { SpecBadge } from '../shared/carSpec';
 import { specBadges } from '../shared/carSpec';
-import { measureStats, statBars } from '../sim/stats';
+import { measureStats, statBars, type CarStats } from '../sim/stats';
 import { SHAPE_LABELS } from '../render/decals';
 import { btn, h, iconBtn, segmented, toast } from '../ui/dom';
 import {
   ArrowUpDown,
   Car,
   Check,
-  ChevronLeft,
   Copy,
   Disc3,
   Download,
@@ -47,9 +53,9 @@ import {
   Box,
   Sparkles,
   Timer,
-  CircleDot,
   Route,
   Video,
+  Warehouse,
   icon,
   IconNode,
 } from '../ui/icons';
@@ -94,6 +100,24 @@ export interface GarageCallbacks {
   engineVolume?(): number;
 }
 
+/** What the garage shows the car in: the menu's street stage (the Street view) and the graphics tier (the showroom's extras). */
+export interface GarageStage {
+  street: StreetStage;
+  quality: Quality;
+}
+
+/** A label from a lower case id: "metallic" reads "Metallic". */
+const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** Measured stats per car and performance build: measuring drives the sim for up to a minute of game time. */
+const statsCache = new Map<string, CarStats>();
+function statsFor(b: CarBuild): CarStats {
+  const key = `${b.carId}:${PERFORMANCE_CATEGORIES.map((c) => b.performance[c]).join('')}`;
+  let st = statsCache.get(key);
+  if (!st) statsCache.set(key, (st = measureStats(tuningForBuild(b.carId, b.performance))));
+  return st;
+}
+
 /** Keys that hold the gas in the garage. */
 const GAS_KEYS = ['KeyW', 'ArrowUp', 'Space'];
 
@@ -102,7 +126,6 @@ export class GarageScreen {
   private root: HTMLElement;
   private body: HTMLElement;
   private tabBar: HTMLElement;
-  private title: HTMLElement;
   private tab: Tab = 'car';
   private saveTimer = 0;
   private selectedDecal = -1;
@@ -121,40 +144,71 @@ export class GarageScreen {
     private garage: GarageState,
     private readonly availability: Record<string, boolean>,
     private readonly cb: GarageCallbacks,
+    stage: GarageStage,
   ) {
-    this.scene = new GarageScene(gr, assets);
-    this.title = h('div', { class: 'garage-title title' });
-    this.tabBar = h('div', { class: 'garage-tabs', role: 'tablist' });
+    this.scene = new GarageScene(gr, assets, stage.street, stage.quality);
+    this.tabBar = h('div', { class: 'tabs garage-tabs', role: 'tablist' });
     this.body = h('div', { class: 'garage-body' });
     this.root = h(
       'div',
-      { class: 'garage' },
+      { class: 'garage rail-screen' },
+      h('div', { class: 'rail-bg', 'aria-hidden': 'true' }),
+      h('div', { class: 'rail-edge', 'aria-hidden': 'true' }),
       h(
         'div',
-        { class: 'garage-panel panel' },
-        h('div', { class: 'garage-head' }, iconBtn(ChevronLeft, 'Back to menu', () => this.exit(), 'small'), this.title, btn(Play, 'Test drive', () => this.testDrive(), 'small primary')),
+        { class: 'garage-panel' },
+        screenHead({ icon: Wrench, title: 'Garage', back: () => this.exit(), backLabel: 'Back to menu (Esc)', aside: btn(Play, 'Test drive', () => this.testDrive(), 'small primary') }),
         this.tabBar,
         this.body,
       ),
+      keybar([
+        { keys: ['Drag'], label: 'Orbit' },
+        { keys: ['W'], label: 'Hold to rev' },
+        { keys: ['C'], label: 'Camera', action: () => this.nextCamera() },
+        { keys: ['Esc'], label: 'Back' },
+      ]),
+      this.carCard,
       this.stageBar(),
       this.gasButton(),
-      h('div', { class: 'garage-hint muted' }, 'Drag to rotate · scroll or pinch to zoom · hold W or Space to rev'),
     );
     uiRoot.append(this.root);
+    // Toasts (camera angle, saved builds) rise above the rev button while the garage is open.
+    document.body.classList.add('garage-open');
+    // The 3D view centers on the space beside the rail (or above the sheet on a phone).
+    const frame = () => {
+      const inset = railInset(this.root);
+      gr.setFraming(inset.left, inset.bottom);
+    };
+    frame();
     this.scene.setPresentation(this.prefs.presentation);
     this.scene.setEngineVolume(cb.engineVolume?.() ?? 0.7);
     this.configureEngine();
     for (const t of TABS) {
-      const b = h('button', { class: 'garage-tab', type: 'button', role: 'tab', title: t.label, onclick: () => this.setTab(t.id) });
+      const b = h('button', { class: 'tab garage-tab', type: 'button', role: 'tab', title: t.label, onclick: () => this.setTab(t.id) });
       b.append(icon(t.icon, { size: 18 }), h('span', {}, t.label));
       b.dataset.tab = t.id;
       this.tabBar.append(b);
     }
     this.setTab('car');
+    this.updateCarCard();
     void this.scene.setCar(this.build.carId, this.build.visual);
 
-    // Vinyl placement by clicking on the car (a click, not a drag).
     const o = { signal: this.abort.signal };
+    window.addEventListener('resize', frame, o);
+    // Escape goes back to the menu and C cycles the camera (not while typing or with a dialog up).
+    window.addEventListener(
+      'keydown',
+      (e) => {
+        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement || e.repeat) return;
+        if (this.uiRoot.querySelector('.screen')) return;
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          this.exit();
+        } else if (e.code === 'KeyC' && !e.ctrlKey && !e.metaKey && !e.altKey) this.nextCamera();
+      },
+      o,
+    );
+    // Vinyl placement by clicking on the car (a click, not a drag).
     gr.canvas.addEventListener('pointerdown', (e) => (this.pointerDown = { x: e.clientX, y: e.clientY }), o);
     gr.canvas.addEventListener(
       'pointerup',
@@ -233,14 +287,44 @@ export class GarageScreen {
     return this.garage.slots[this.garage.current];
   }
 
-  /** Presentation toggle (turntable showroom or tunnel cruise) and camera angles. */
+  /** The car card over the 3D view: model, build name, spec tags and the measured stats. */
+  private readonly carCard = h('div', { class: 'garage-car', 'aria-live': 'polite' });
+
+  private updateCarCard(): void {
+    const b = this.build;
+    const car = manifestCar(b.carId);
+    const st = statsFor(b);
+    const bars = statBars(st);
+    const stat = (label: string, value: number, text: string) =>
+      h('div', { class: 'garage-stat' }, h('span', { class: 'name' }, label), h('span', { class: 'g-bar' }, h('span', { class: 'fill', style: `width:${value * 100}%` })), h('span', { class: 'value' }, text));
+    this.carCard.replaceChildren(
+      h('div', { class: 'label' }, AUTHORS[car.source] ? `By ${AUTHORS[car.source]}` : 'Car'),
+      h('h2', { class: 'garage-car-name' }, car.displayName),
+      h('div', { class: 'garage-car-build' }, `"${b.name}"`),
+      h('div', { class: 'garage-car-tags' }, ...specBadges(car.engine, getBaseTuning(b.carId).drivetrain.layout).map((t) => chip(t.text, undefined, 'accent'))),
+      h(
+        'div',
+        { class: 'garage-stats' },
+        stat('Top speed', bars.topSpeed, `${Math.round(st.topSpeed)} km/h`),
+        stat('0-100', bars.acceleration, `${st.zeroTo100.toFixed(2)} s`),
+        stat('Grip', bars.handling, `${st.grip.toFixed(2)} g`),
+        stat('Nitrous', bars.nitrous, `${st.nitrous.toFixed(1)} kN·s`),
+      ),
+    );
+  }
+
+  private nextCamera(): void {
+    toast(`Camera: ${this.scene.setCamera()}`, Video);
+  }
+
+  /** Presentation toggle (the showroom's turntable or the street) and camera angles. */
   private stageBar(): HTMLElement {
     return h(
       'div',
-      { class: 'garage-stage panel' },
+      { class: 'garage-stage' },
       segmented<Presentation>(
         [
-          { value: 'garage', label: 'Garage', icon: CircleDot },
+          { value: 'garage', label: 'Garage', icon: Warehouse },
           { value: 'street', label: 'Street', icon: Route },
         ],
         this.prefs.presentation,
@@ -251,13 +335,13 @@ export class GarageScreen {
           this.configureEngine();
         },
       ),
-      iconBtn(Video, 'Next camera angle', () => toast(`Camera: ${this.scene.setCamera()}`, Video), 'small'),
+      iconBtn(Video, 'Next camera angle (C)', () => this.nextCamera(), 'small'),
     );
   }
 
   /** Hold to rev. Pointer events so mouse, pen and touch all work; the key works too. */
   private gasButton(): HTMLElement {
-    const b = h('button', { class: 'btn garage-gas', type: 'button', title: 'Hold to rev (W, Up or Space)', 'aria-label': 'Rev the engine' }, icon(Gauge, { size: 20 }), h('span', {}, 'Rev'));
+    const b = h('button', { class: 'btn garage-gas', type: 'button', title: 'Hold to rev (W, Up or Space)', 'aria-label': 'Rev the engine' }, icon(Gauge, { size: 20 }), h('span', {}, 'Hold to rev'));
     const release = () => {
       this.gasPointer = false;
       this.updateGas();
@@ -303,17 +387,16 @@ export class GarageScreen {
     clearTimeout(this.saveTimer);
     this.saveTimer = window.setTimeout(() => this.cb.onChange(this.garage), 250);
     if (rerender) this.renderTab();
-    this.title.textContent = this.build.name;
+    this.updateCarCard();
     return ready;
   }
 
   private renderTab(): void {
-    this.title.textContent = this.build.name;
     this.body.replaceChildren();
     const b = this.build;
     const v = b.visual;
-    const section = (label: string, ic: IconNode | null, ...children: (Node | false | null)[]) =>
-      h('div', { class: 'g-section' }, h('div', { class: 'label' }, ic && icon(ic, { size: 14 }), label), ...children);
+    // A group: a section title (the rails' yellow caps over a hairline) and its controls. Icons are for the tabs only.
+    const section = (label: string, _ic: IconNode | null, ...children: (Node | false | null)[]) => h('div', { class: 'g-section' }, h('div', { class: 'section-title' }, label), ...children);
     const color = (value: string, onInput: (c: string) => void) => {
       const el = h('input', { type: 'color', value }) as HTMLInputElement;
       el.addEventListener('input', () => onInput(el.value));
@@ -453,7 +536,7 @@ export class GarageScreen {
             'Finish',
             null,
             segmented(
-              PAINT_FINISHES.map((f) => ({ value: f, label: f })),
+              PAINT_FINISHES.map((f) => ({ value: f, label: capital(f) })),
               v.paint.finish,
               (f) => {
                 v.paint.finish = f;
@@ -595,7 +678,7 @@ export class GarageScreen {
             'Pattern',
             null,
             segmented(
-              GLOW_PATTERNS.map((p) => ({ value: p, label: p })),
+              GLOW_PATTERNS.map((p) => ({ value: p, label: capital(p) })),
               g.pattern,
               (p) => {
                 g.pattern = p;
@@ -774,7 +857,7 @@ export class GarageScreen {
 
   private renderPerformance(section: (label: string, ic: IconNode | null, ...c: (Node | false | null)[]) => HTMLElement): void {
     const b = this.build;
-    const stats = measureStats(tuningForBuild(b.carId, b.performance));
+    const stats = statsFor(b);
     const bars = statBars(stats);
     const bar = (label: string, value: number, text: string, ic: IconNode) =>
       h('div', { class: 'g-stat' }, h('div', { class: 'row', style: 'justify-content:space-between' }, h('span', { class: 'label' }, icon(ic, { size: 14 }), label), h('span', { class: 'g-val' }, text)), h('div', { class: 'g-bar' }, h('div', { class: 'fill', style: `width:${value * 100}%` })));
@@ -961,6 +1044,7 @@ export class GarageScreen {
     clearTimeout(this.saveTimer);
     this.cb.onChange(this.garage);
     this.abort.abort();
+    document.body.classList.remove('garage-open');
     this.root.remove();
     this.scene.dispose();
   }
