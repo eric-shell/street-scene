@@ -16,6 +16,7 @@ import { hillsRenderer } from './hills';
 import { downtownRenderer } from './downtown';
 import { infillRenderer } from './infill';
 import { lakeRenderer } from './lake';
+import { marketRenderer } from './market';
 import { monumentRenderer } from './monument';
 import { parkRenderer } from './park';
 import { riverRenderer } from './river';
@@ -35,6 +36,7 @@ export const DISTRICT_RENDERERS: readonly DistrictRenderer[] = [
   monumentRenderer,
   waterfrontRenderer,
   lakeRenderer,
+  marketRenderer,
 ];
 
 export interface DistrictMeshes {

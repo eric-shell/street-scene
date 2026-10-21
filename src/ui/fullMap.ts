@@ -42,6 +42,7 @@ const KINDS: Partial<Record<AreaKind, KindStyle>> = {
   lake: { label: 'Lake', ink: PALETTE.cyan, fill: rgba('cyan', 0.3), width: 1.5, tag: true },
   waterfront: { label: 'Waterfront', ink: PALETTE.cyan, fill: rgba('cyan', 0.22), width: 1.5, tag: true },
   monument: { label: 'Monument plaza', ink: PALETTE.yellow, fill: rgba('yellow', 0.3), width: 1.5, tag: true },
+  market: { label: 'Night market', ink: PALETTE.red, fill: rgba('red', 0.34), width: 1.5, tag: true },
   hills: { label: 'The hills', ink: PALETTE.soft, fill: rgba('soft', 0.07), width: 1.5, dash: [6, 5], tag: true },
   subway: { label: 'Under the El', ink: PALETTE.cyan, width: 4, dash: [9, 6], tag: true },
   alley: { label: 'Raceway alleys', ink: PALETTE.purple, tag: true },

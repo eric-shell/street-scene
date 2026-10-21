@@ -346,9 +346,10 @@ describe('city generation', () => {
       // Off the drivable road with room for the prop's radius (back alley dumpsters and bags, and the
       // barrels along the river channel's floor edges, are obstacles on purpose; raceway alley clutter
       // sits on the alley's own sidewalk, which a diagonal avenue leaving the alley's end junction can
-      // overlap: the alley module keeps its clutter clear of the alley's ends only).
+      // overlap: the alley module keeps its clutter clear of the alley's ends only; the night market's
+      // fruit crates spill off the curb onto the road edge on purpose, checked in the market tests).
       for (const p of props) {
-        if (p.area !== undefined && ['backAlley', 'river', 'alley'].includes(w.areas[p.area].kind)) continue;
+        if (p.area !== undefined && ['backAlley', 'river', 'alley', 'market'].includes(w.areas[p.area].kind)) continue;
         for (const e of w.graph.edges) {
           const a = w.graph.nodes[e.a];
           const b = w.graph.nodes[e.b];

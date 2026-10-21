@@ -13,6 +13,7 @@ import { Terrain, createTerrain } from './terrain';
 import { cos, distToSegment, segmentT, sin, sqrt } from '../sim/math';
 import { CityDistricts, planDistricts } from './districts';
 import { carveRouteShortcuts, hasShortcutSpot, qualifiedCount } from './districts/alley';
+import { planMarkets } from './districts/market';
 
 /** Routes tried (the first pick, then alternatives) until one has room for a shortcut. */
 const ROUTE_TRIES = 12;
@@ -124,6 +125,8 @@ export function planRoads(seed: number): { graph: RoadGraph; districts: CityDist
         circuit2 = pick((v, p) => findCircuitNodes(g, seed, v, p ? preferCircuit : undefined), true, [sprint2]);
         carveRouteShortcuts(ctx, [circuit2, sprint2]);
       }
+      // The night market goes on a straight run the routes drive, now that they and their cuts are final.
+      planMarkets(ctx, [circuit2, sprint2]);
       routeNodes = { circuit: circuit2.nodes, sprint: sprint2.nodes };
     },
   });

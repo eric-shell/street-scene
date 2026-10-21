@@ -15,7 +15,9 @@
  * (claim faces), the monument plaza, hills (claim clusters of faces and keep
  * their slopes clear of everything placed before them), reserved features,
  * and downtown (claims every face left). The optional topology hook runs
- * right after back alleys (route shortcuts).
+ * right after back alleys (route shortcuts and the night market, which is
+ * planned on the routes there and so listed right after back alleys; its own
+ * plan pass is empty).
  */
 import { CITY } from '../config';
 import type { RoadGraph } from '../roadGraph';
@@ -37,6 +39,7 @@ import { waterfrontModule } from './waterfront';
 import { lakeModule } from './lake';
 import { downtownModule } from './downtown';
 import { infillModule } from './infill';
+import { marketModule } from './market';
 
 /** Every module, in planning order. */
 export const DISTRICT_MODULES: readonly DistrictModule[] = [
@@ -45,6 +48,7 @@ export const DISTRICT_MODULES: readonly DistrictModule[] = [
   roundaboutModule,
   alleyModule,
   backAlleyModule,
+  marketModule,
   parkModule,
   monumentModule,
   hillsModule,
@@ -72,6 +76,7 @@ const AREA_PRIORITY: Record<AreaKind, number> = {
   roundabout: 8,
   infill: 9,
   monument: 10,
+  market: 11,
   waterfront: 2,
   lake: 2,
 };

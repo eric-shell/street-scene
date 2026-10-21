@@ -29,8 +29,10 @@ import { DEG, Vec2, atan2, distToSegment, sin, sqrt } from '../sim/math';
 export type StreetPropKind = 'streetlight' | 'trafficLight' | 'garbageCan' | 'bench' | 'busStop';
 /** Construction site pieces fencing off and filling route shortcuts (districts/alley.ts). */
 export type ConstructionPropKind = 'fencePanel' | 'trafficCone' | 'sawhorse' | 'waterBarrier' | 'sandbags' | 'pallets';
+/** Night market pieces (districts/market.ts): lantern lit awning stalls, fruit crates spilling off the curb, food carts. */
+export type MarketPropKind = 'marketStall' | 'fruitCrates' | 'foodCart';
 /** Clutter districts ask for (DistrictPropSpec): mostly soft, cheap to crash through. Park lamps light parks and plazas (render/areaLights.ts). */
-export type DistrictPropKind = 'bush' | 'planterPot' | 'cafeTable' | 'barrel' | 'crate' | 'dumpster' | 'newsBox' | 'trashBags' | 'parkLamp' | ConstructionPropKind;
+export type DistrictPropKind = 'bush' | 'planterPot' | 'cafeTable' | 'barrel' | 'crate' | 'dumpster' | 'newsBox' | 'trashBags' | 'parkLamp' | ConstructionPropKind | MarketPropKind;
 export type PropKind = StreetPropKind | DistrictPropKind;
 
 export interface Prop {
@@ -116,6 +118,11 @@ export const PROP_DEFS: Record<PropKind, PropDef> = {
   waterBarrier: { radius: 0.9, mass: 120, height: 0.85, anchor: 1, breakSpeed: 0.8 },
   sandbags: { radius: 0.55, mass: 70, height: 0.55, anchor: 1, breakSpeed: 0.6 },
   pallets: { radius: 0.62, mass: 36, height: 0.75, anchor: 1, breakSpeed: 0.2 },
+  // Night market: an awning stall on its table of goods costs a 1.5 t car about 3.5% of its speed, a
+  // food cart 5%, a stack of fruit crates under 2%; all go down at any closing speed worth the name.
+  marketStall: { radius: 1.1, mass: 55, height: 2.6, anchor: 1, breakSpeed: 0.3 },
+  fruitCrates: { radius: 0.5, mass: 26, height: 0.85, anchor: 1, breakSpeed: 0.1 },
+  foodCart: { radius: 0.75, mass: 85, height: 2.3, anchor: 1, breakSpeed: 0.5 },
 };
 
 /** Construction kinds, for the shortcut builder and tests. */

@@ -40,6 +40,7 @@ export type AreaKind =
   | 'infill'
   | 'hills'
   | 'monument'
+  | 'market'
   // Reserved unique features (planned later, disabled in config).
   | 'waterfront'
   | 'lake';
@@ -79,6 +80,8 @@ export const COBBLE_PRIORITY = 6;
  *   channel, bank top fence, ramp retaining walls, channel tunnel ends (river).
  * tree: park tree trunk (park).
  * monument: the step ring around a landmark's base, or an arch's piers (monument).
+ * marketRail: the night market's crowd rail along a pen and its end caps back to the building line;
+ *   marketFront: the frontage behind a pen, a facade or the market's shuttered back wall (market).
  */
 export type WallLook =
   | 'building'
@@ -94,9 +97,11 @@ export type WallLook =
   | 'trench'
   | 'channelEnd'
   | 'tree'
-  | 'monument';
+  | 'monument'
+  | 'marketRail'
+  | 'marketFront';
 
-export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument'];
+export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'marketRail', 'marketFront'];
 
 export interface Area {
   /** Index into CityDistricts.areas. */
@@ -295,6 +300,7 @@ export const AREA_MAP_STYLE: Record<AreaKind, AreaMapStyle> = {
   infill: { fill: 'rgba(147,146,147,0.08)' },
   hills: { fill: 'rgba(147,146,147,0.07)', stroke: 'rgba(147,146,147,0.34)', width: 2.5, dash: [6, 7] },
   monument: { fill: 'rgba(255,216,102,0.2)' },
+  market: { fill: 'rgba(255,97,136,0.3)' },
   waterfront: { fill: 'rgba(120,220,232,0.14)' },
   lake: { fill: 'rgba(120,220,232,0.18)' },
 };
