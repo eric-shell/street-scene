@@ -4,7 +4,7 @@
  * Reads a snapshot each frame; never touches the sim.
  */
 import type { World } from '../city/world';
-import { FlagTriangleRight, Timer, Trophy, TriangleAlert, Zap, Award, Ghost, icon, Compass, Hammer } from './icons';
+import { FlagTriangleRight, Timer, Trophy, TriangleAlert, Zap, Award, Ghost, icon, Compass, Hammer, Disc3 } from './icons';
 import { formatTime } from './format';
 import { MapCar, Minimap } from './minimap';
 import { PALETTE, rgb, rgba } from './palette';
@@ -53,7 +53,12 @@ export interface HudData {
   countdown: number | null;
   wrongWay: boolean;
   progress: number;
-  drift?: { total: number; current: number; multiplier: number };
+  drift?: { total: number; current: number; multiplier: number; zoneBonus?: number };
+  /**
+   * Inside a drift zone (sim/driftZones.ts): the multiplier it pays (drift points in drift mode,
+   * the nitrous refill otherwise), the share of the visit's bonus left (0..1) and whether it rests.
+   */
+  zone?: { mul: number; nitro: boolean; left: number; resting: boolean };
   cars: HudCar[];
   ghost: boolean;
   /** Open world (free roam, test drive): the district under the car and how much the player smashed. */
@@ -85,6 +90,9 @@ export class Hud {
   private ghostEl: HTMLElement;
   private areaEl: HTMLElement;
   private smashEl: HTMLElement;
+  private zoneEl: HTMLElement;
+  private zoneText: HTMLElement;
+  private zoneLeft: HTMLElement;
   private msgTimer = 0;
   private lastCountdown: number | null = null;
   /** Free roam: a click on the minimap opens the full city map (the session sets this). */
@@ -102,6 +110,7 @@ export class Hud {
         <div class="hud-chip hud-ghost"><span class="ic"></span><b class="v">Ghost</b></div>
         <div class="hud-chip hud-area"><span class="ic"></span><b class="v"></b></div>
         <div class="hud-chip hud-smash"><span class="ic"></span><b class="v"></b></div>
+        <div class="hud-chip hud-zone"><span class="ic"></span><b class="v"></b><span class="left"><i></i></span></div>
       </div>
       <div class="hud-progress"><div class="fill"></div></div>
       <div class="hud-center"></div>
@@ -125,6 +134,10 @@ export class Hud {
     q('.hud-ghost .ic').appendChild(icon(Ghost, { size: 16 }));
     q('.hud-area .ic').appendChild(icon(Compass, { size: 16 }));
     q('.hud-smash .ic').appendChild(icon(Hammer, { size: 16 }));
+    q('.hud-zone .ic').appendChild(icon(Disc3, { size: 16 }));
+    this.zoneEl = q('.hud-zone');
+    this.zoneText = q('.hud-zone .v');
+    this.zoneLeft = q('.hud-zone .left i');
     this.areaEl = q('.hud-area .v');
     this.smashEl = q('.hud-smash .v');
     q('.hud-wrong .ic').appendChild(icon(TriangleAlert, { size: 28 }));
@@ -196,16 +209,28 @@ export class Hud {
       this.msgTimer -= dt;
       if (this.msgTimer <= 0) this.msgEl.classList.remove('show');
     }
+    this.updateZone(d);
     if (d.drift) {
       this.driftEl.style.display = '';
       this.driftEl.innerHTML = `<div class="total">${Math.round(d.drift.total).toLocaleString()}</div>${
-        d.drift.current > 0 ? `<div class="cur">+${Math.round(d.drift.current).toLocaleString()} <span>x${d.drift.multiplier}</span></div>` : ''
+        d.drift.current > 0 ? `<div class="cur">+${Math.round(d.drift.current).toLocaleString()} <span>x${d.drift.multiplier}</span>${(d.drift.zoneBonus ?? 0) > 0 ? ' <em>ZONE</em>' : ''}</div>` : ''
       }`;
     } else this.driftEl.style.display = 'none';
     this.drawTach(d);
     this.updateBoost(d, dt);
     this.drawBoost();
     this.drawMap(d);
+  }
+
+  /** The drift zone chip: shown while inside one, the bar is the visit's bonus left; a resting zone reads dim. */
+  private updateZone(d: HudData): void {
+    const z = d.zone;
+    this.zoneEl.classList.toggle('show', !!z);
+    if (!z) return;
+    const text = z.resting ? 'Drift zone · resting' : `Drift zone x${z.mul}${z.nitro ? ' nitro' : ''}`;
+    if (this.zoneText.textContent !== text) this.zoneText.textContent = text;
+    this.zoneEl.classList.toggle('resting', z.resting || z.left <= 0);
+    this.zoneLeft.style.width = `${Math.round(Math.max(0, Math.min(1, z.left)) * 100)}%`;
   }
 
   /**

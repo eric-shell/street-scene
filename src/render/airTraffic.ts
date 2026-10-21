@@ -8,10 +8,15 @@
  *    thump near the camera (audio/sfx.ts HeliRotor);
  *  - a blimp drifting round downtown with an LED band scrolling event and
  *    sponsor words along both flanks;
- * (airliners and meteors are sky sprites in backdrop.ts). Three draw calls:
- * the helicopter, its searchlight, the blimp. Both bodies share one lit
- * material whose shader spins the rotor blades and lights the lamps and the
- * LED band from the clock, so nothing is moved per frame but two matrices.
+ *  - a police helicopter (black and white, red and blue light bar) that
+ *    patrols high and, on the last lap, comes in low to chase the leader with
+ *    a strong white searchlight (policeChase.ts says when and whom; the
+ *    follow is integrated with frame time, see buildPoliceHeli);
+ * (airliners and meteors are sky sprites in backdrop.ts). Five draw calls:
+ * the two helicopters, their searchlights, the blimp. The bodies share one
+ * lit material whose shader spins the rotor blades and lights the lamps, the
+ * light bar and the LED band from the clock, so nothing is moved per frame
+ * but a few matrices.
  */
 import * as THREE from 'three';
 import type { World } from '../city/world';
@@ -22,6 +27,7 @@ import { HeliRotor } from '../audio/sfx';
 import { GeoBuilder } from './geoBuilder';
 import { makeLedTextTexture } from './skyTextures';
 import { makeRadialGlow } from './textures';
+import { ChaseTarget, POLICE, policeWaypoints } from './policeChase';
 
 export const AIR = {
   heli: {
@@ -181,9 +187,9 @@ export interface HeliPose {
 const scratchAhead: P3 = { x: 0, y: 0, z: 0 };
 const scratchTangent: P3 = { x: 0, y: 0, z: 0 };
 
-/** Where the helicopter is at `time` (s): a pure function of the loop and the clock. */
-export function heliPoseAt(loop: Loop, time: number, out: HeliPose): HeliPose {
-  const s = time * AIR.heli.speed;
+/** Where the helicopter is at `time` (s): a pure function of the loop and the clock (and its cruise speed, m/s). */
+export function heliPoseAt(loop: Loop, time: number, out: HeliPose, speed: number = AIR.heli.speed): HeliPose {
+  const s = time * speed;
   loopAt(loop, s, out.pos, out.fwd);
   // Bank into the turn: compare the heading a little ahead.
   const t2 = scratchTangent;
@@ -225,8 +231,11 @@ export function blimpPoseAt(p: BlimpParams, time: number, out: { pos: P3; yaw: n
   out.yaw = Math.atan2(tx, tz);
 }
 
-/** Lamp kinds baked into the body geometry (attribute aGlow), lit by the shader from the clock. */
-const GLOW = { none: 0, steady: 1, navRed: 2, navGreen: 3, strobe: 4, beacon: 5, led: 6, cabin: 7 } as const;
+/**
+ * Lamp kinds baked into the body geometry (attribute aGlow), lit by the shader from the clock;
+ * the police light bar (buildPoliceHeli) flashes red and blue while uPolice is up.
+ */
+const GLOW = { none: 0, steady: 1, navRed: 2, navGreen: 3, strobe: 4, beacon: 5, led: 6, cabin: 7, policeRed: 8, policeBlue: 9 } as const;
 /** Moving parts (attribute aPart). */
 const PART = { body: 0, rotor: 1, tailRotor: 2 } as const;
 
@@ -284,6 +293,7 @@ class AirBuilder {
   }
 }
 
+/** Rotor hubs in body space: both helicopters put their rotors here (the shader spins about them). */
 const HELI_HUB = new THREE.Vector3(0, 1.95, -0.2);
 const HELI_TAIL_HUB = new THREE.Vector3(0.42, 1.05, -6.45);
 
@@ -408,6 +418,9 @@ function airMaterial(led: THREE.Texture): { material: THREE.MeshStandardMaterial
     uTailHub: { value: HELI_TAIL_HUB },
     uLed: { value: led },
     uScroll: { value: AIR.blimp.scroll },
+    /** Police light bar 0..1 (off on patrol), and 1 for a soft alternating glow instead of strobes (flash effects off). */
+    uPolice: { value: 0 },
+    uPoliceSoft: { value: 0 },
   };
   const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.3, envMapIntensity: 0.6 });
   material.onBeforeCompile = (shader) => {
@@ -447,6 +460,8 @@ function airMaterial(led: THREE.Texture): { material: THREE.MeshStandardMaterial
         uniform float uTime;
         uniform sampler2D uLed;
         uniform float uScroll;
+        uniform float uPolice;
+        uniform float uPoliceSoft;
         varying float vGlow;
         varying vec2 vUv2;`,
       )
@@ -466,13 +481,47 @@ function airMaterial(led: THREE.Texture): { material: THREE.MeshStandardMaterial
             em = vColor.rgb * ((ph < 0.05 || (ph > 0.11 && ph < 0.16)) ? 7.0 : 0.0) * cover;
           } else if (g > 4.5 && g < 5.5) em = vColor.rgb * (fract(uTime / 1.3) < 0.2 ? 5.0 : 0.15) * cover;
           else if (g > 5.5 && g < 6.5) em = texture2D(uLed, vec2(vUv2.x + uTime * uScroll, vUv2.y)).rgb * 3.2;
-          else if (g > 6.5) em = vColor.rgb * 0.45;
+          else if (g > 6.5 && g < 7.5) em = vColor.rgb * 0.45;
+          else if (g > 7.5) {
+            // Light bar: red double flash, then blue, on a 0.8 s cycle (or a slow soft swap).
+            float ph = fract(uTime / 0.8 + (g > 8.5 ? 0.5 : 0.0));
+            float strobe = (ph < 0.07 || (ph > 0.13 && ph < 0.2)) ? 1.0 : 0.04;
+            float soft = 0.5 + 0.5 * sin(uTime * 3.9 + (g > 8.5 ? 3.14159 : 0.0));
+            em = vColor.rgb * mix(strobe * 6.0, soft * 2.2, uPoliceSoft) * uPolice * cover;
+          }
           totalEmissiveRadiance += em;
         }`,
       );
   };
   material.customProgramCacheKey = () => 'airbody';
   return { material, uniforms };
+}
+
+/** Segments round the searchlight cone and spot, and the index count of the cone part of beamGeometry(). */
+const BEAM_SEGS = 28;
+const CONE_INDICES = BEAM_SEGS * 6;
+
+/** The searchlight material: an additive cone and ground pool between uApex and uTarget, faded by fog. */
+function beamMaterial(opts: { radius: number; spotR: number; color: THREE.Color; intensity: number; fogDensity: number; glow: THREE.Texture }): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    vertexShader: beamVert,
+    fragmentShader: beamFrag,
+    uniforms: {
+      uApex: { value: new THREE.Vector3() },
+      uTarget: { value: new THREE.Vector3() },
+      uRadius: { value: opts.radius },
+      uSpotR: { value: opts.spotR },
+      uGlow: { value: opts.glow },
+      uColor: { value: opts.color },
+      uIntensity: { value: opts.intensity },
+      uFogDensity: { value: opts.fogDensity },
+    },
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+    fog: false,
+  });
 }
 
 const beamVert = /* glsl */ `
@@ -541,8 +590,9 @@ const beamFrag = /* glsl */ `
   }
 `;
 
+/** Searchlight cone and ground spot as one mesh; the cone is the first CONE_INDICES indices (a pool only mesh draws the rest). */
 function beamGeometry(): THREE.BufferGeometry {
-  const segs = 28;
+  const segs = BEAM_SEGS;
   const ring: number[] = [];
   const t: number[] = [];
   const part: number[] = [];
@@ -581,18 +631,327 @@ function beamGeometry(): THREE.BufferGeometry {
   return geo;
 }
 
+/** The police livery on the shared helicopter shape: black body, white doors and boom band, light bar, searchlight pod. */
+function policeGeometry(): THREE.BufferGeometry {
+  const b = new AirBuilder();
+  const paint = 0x111318;
+  const white = 0xe4e6ec;
+  const dark = 0x0a0b10;
+  b.box(0, 0, 0.4, 2.0, 1.5, 4.4, paint);
+  // White doors on both flanks and a white nose band.
+  for (const sx of [-1, 1]) b.box(sx * 1.01, -0.05, 0.6, 0.04, 1.0, 2.2, white);
+  b.box(0, -0.15, 2.9, 1.5, 1.1, 1.4, paint);
+  b.box(0, -0.2, 3.25, 1.52, 0.35, 0.6, white);
+  b.box(0, 0.45, 2.7, 1.3, 0.5, 1.3, 0x2a3a52, GLOW.cabin);
+  b.box(0, 1.05, -0.2, 1.4, 0.55, 2.2, dark);
+  b.box(0, 1.55, -0.2, 0.3, 0.5, 0.3, dark);
+  b.box(0, 0.45, -4.0, 0.55, 0.55, 4.6, paint);
+  b.box(0, 0.45, -3.2, 0.57, 0.57, 1.2, white);
+  b.box(0, 1.25, -6.4, 0.18, 1.5, 1.1, paint);
+  b.box(0, 0.7, -5.6, 1.9, 0.12, 0.6, white);
+  for (const sx of [-1, 1]) {
+    b.box(sx * 1.0, -1.2, 0.3, 0.12, 0.12, 3.8, dark);
+    b.box(sx * 0.85, -0.85, 1.3, 0.1, 0.6, 0.1, dark);
+    b.box(sx * 0.85, -0.85, -0.7, 0.1, 0.6, 0.1, dark);
+  }
+  for (const [sx, sz] of [
+    [11.2, 0.3],
+    [0.3, 11.2],
+  ])
+    b.box(HELI_HUB.x, HELI_HUB.y, HELI_HUB.z, sx, 0.06, sz, dark, GLOW.none, PART.rotor);
+  b.box(HELI_TAIL_HUB.x, HELI_TAIL_HUB.y, HELI_TAIL_HUB.z, 0.06, 1.8, 0.24, dark, GLOW.none, PART.tailRotor);
+  b.box(HELI_TAIL_HUB.x, HELI_TAIL_HUB.y, HELI_TAIL_HUB.z, 0.06, 0.24, 1.8, dark, GLOW.none, PART.tailRotor);
+  // Light bar across the top of the cabin and a pair low on the tail boom: red one side, blue the other.
+  b.box(0.5, 0.82, 1.2, 0.7, 0.14, 0.22, 0xff2030, GLOW.policeRed);
+  b.box(-0.5, 0.82, 1.2, 0.7, 0.14, 0.22, 0x2050ff, GLOW.policeBlue);
+  b.box(0.3, 0.1, -5.0, 0.12, 0.14, 0.3, 0xff2030, GLOW.policeRed);
+  b.box(-0.3, 0.1, -5.0, 0.12, 0.14, 0.3, 0x2050ff, GLOW.policeBlue);
+  // Nav lights, tail strobe, belly beacon, and the searchlight pod under the nose with its lens.
+  b.box(-1.08, 0.2, 0.6, 0.16, 0.16, 0.24, 0xff1a10, GLOW.navRed);
+  b.box(1.08, 0.2, 0.6, 0.16, 0.16, 0.24, 0x1aff40, GLOW.navGreen);
+  b.box(0, 2.05, -6.4, 0.16, 0.16, 0.16, 0xffffff, GLOW.strobe);
+  b.box(0, -0.8, 0.2, 0.2, 0.12, 0.2, 0xff2010, GLOW.beacon);
+  b.box(0.75, -0.9, 2.4, 0.5, 0.45, 0.6, dark);
+  b.box(0.75, -1.0, 2.72, 0.36, 0.3, 0.06, 0xf4f6ff, GLOW.steady);
+  return b.build();
+}
+
+/** The police helicopter and its searchlight (policeChase.ts has its brief). */
+export interface PoliceHeli {
+  mesh: THREE.Mesh;
+  beam: THREE.Mesh;
+  /** The leader to follow this frame (null: patrol or leave). */
+  chase(target: ChaseTarget | null): void;
+  /** Per frame with the scene clock (s): the follow, the pose, the lights and the beam. */
+  update(time: number): void;
+  /** Per render: the rotor sound follows the camera. */
+  view(camera: THREE.Camera): void;
+  position(): [number, number, number];
+  dispose(): void;
+}
+
+/**
+ * The police helicopter. On patrol it flies its seeded loop (a pure function
+ * of the scene clock), lights off. Handed a leader, it peels off the loop
+ * where it is and flies a critically damped follow toward a station behind
+ * and beside the leader, acceleration and speed capped, integrated in 60 Hz
+ * substeps of the frame time (the same at 30, 60 and 120 fps): it eases in,
+ * trails with lag and banks into the acceleration across its nose, light bar
+ * flashing; the searchlight cone and pool lock onto the leader once in reach.
+ * Handed null again it flies the same follow back onto its loop and rejoins
+ * it. Low quality draws only the searchlight's ground pool. No real light: a
+ * SpotLight would add a light to every lit shader in the city (and recompile
+ * them all when it appears) for a pool the additive spot already fakes. Per
+ * frame: one loop lookup, a few spring substeps, two matrices, no allocation.
+ */
+/**
+ * The lowest the police helicopter may fly at a point (m): over the tallest
+ * roof (spires and crowns allowed for) within a cell of it, plus clearance.
+ * A coarse max raster of the buildings, made once per scene.
+ */
+function roofline(world: World): (x: number, z: number) => number {
+  const P = POLICE;
+  const cell = P.roofCell;
+  const b = world.graph.bounds;
+  const pad = 200;
+  const x0 = b.minX - pad;
+  const z0 = b.minZ - pad;
+  const cols = Math.ceil((b.maxX + pad - x0) / cell);
+  const rows = Math.ceil((b.maxZ + pad - z0) / cell);
+  const top = new Float32Array(cols * rows).fill(-1e9);
+  for (const bd of world.blocks.buildings) {
+    const r = Math.hypot(bd.w, bd.d) / 2;
+    const roof = bd.baseY + bd.h * P.roofSpire + P.roofClear;
+    const i0 = Math.max(0, Math.floor((bd.x - r - x0) / cell));
+    const i1 = Math.min(cols - 1, Math.floor((bd.x + r - x0) / cell));
+    const j0 = Math.max(0, Math.floor((bd.z - r - z0) / cell));
+    const j1 = Math.min(rows - 1, Math.floor((bd.z + r - z0) / cell));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) top[j * cols + i] = Math.max(top[j * cols + i], roof);
+  }
+  return (x, z) => {
+    const i = Math.floor((x - x0) / cell);
+    const j = Math.floor((z - z0) / cell);
+    let h = -1e9;
+    for (let dj = -1; dj <= 1; dj++) {
+      const jj = j + dj;
+      if (jj < 0 || jj >= rows) continue;
+      for (let di = -1; di <= 1; di++) {
+        const ii = i + di;
+        if (ii >= 0 && ii < cols) h = Math.max(h, top[jj * cols + ii]);
+      }
+    }
+    return h;
+  };
+}
+
+export function buildPoliceHeli(
+  world: World,
+  opts: { quality: Quality; fogDensity: number; material: THREE.Material; uniforms: Record<string, THREE.IUniform>; glow: THREE.Texture; flashes?: () => boolean },
+): PoliceHeli {
+  const P = POLICE;
+  const geo = policeGeometry();
+  const mesh = new THREE.Mesh(geo, opts.material);
+  mesh.name = 'policeHelicopter';
+  const beamMat = beamMaterial({ radius: P.beamRadius, spotR: P.spotR, color: new THREE.Color(0.92, 0.96, 1.0), intensity: 0, fogDensity: opts.fogDensity, glow: opts.glow });
+  const beamGeo = beamGeometry();
+  // Low: only the pool on the ground (the cone is a big transparent overdraw when the camera is under it).
+  if (opts.quality === 'low') beamGeo.setDrawRange(CONE_INDICES, Infinity);
+  const beam = new THREE.Mesh(beamGeo, beamMat);
+  beam.name = 'policeSearchlight';
+  beam.frustumCulled = false;
+  beam.renderOrder = 3;
+  beam.visible = false;
+  const apex = beamMat.uniforms.uApex.value as THREE.Vector3;
+  const aim = beamMat.uniforms.uTarget.value as THREE.Vector3;
+
+  const loop: Loop = buildLoop(policeWaypoints(world, world.seed));
+  const floorAt = roofline(world);
+  const side = new Rng(deriveSeed(world.seed, 'policeSide')).chance(0.5) ? 1 : -1;
+  const loopPose: HeliPose = { pos: { x: 0, y: 0, z: 0 }, fwd: { x: 0, y: 0, z: 1 }, bank: 0 };
+  // Follow state (engaged: off the loop, flying the spring), the leader, the smoothed attitude and lights.
+  let engaged = false;
+  const pos = new THREE.Vector3();
+  const vel = new THREE.Vector3();
+  const acc = new THREE.Vector3();
+  const want = new THREE.Vector3();
+  const wantV = new THREE.Vector3();
+  const dv = new THREE.Vector3();
+  let target: ChaseTarget | null = null;
+  let dirX = 0;
+  let dirZ = 1;
+  let yaw = 0;
+  let bank = 0;
+  let pitch = 0;
+  let lights = 0;
+  let beamOn = 0;
+  let aimed = false;
+  let last = -1;
+  const e = new THREE.Euler();
+
+  const step = (h: number): void => {
+    const w = P.omega;
+    acc.copy(want).sub(pos).multiplyScalar(w * w);
+    acc.addScaledVector(dv.copy(wantV).sub(vel), 2 * w);
+    // Height on its own stiffer spring and cap, so a hard turn never starves a climb over a roof.
+    const wy = P.omegaY;
+    acc.y = Math.max(-P.climb, Math.min(P.climb, wy * wy * (want.y - pos.y) + 2 * wy * (wantV.y - vel.y)));
+    const a = Math.hypot(acc.x, acc.z);
+    if (a > P.accel) {
+      acc.x *= P.accel / a;
+      acc.z *= P.accel / a;
+    }
+    vel.addScaledVector(acc, h);
+    const v = vel.length();
+    if (v > P.vMax) vel.multiplyScalar(P.vMax / v);
+    pos.addScaledVector(vel, h);
+  };
+
+  const update = (time: number): void => {
+    const dt = last < 0 ? 0 : Math.max(0, Math.min(0.1, time - last));
+    last = time;
+    heliPoseAt(loop, time, loopPose, P.patrolSpeed);
+    const lp = loopPose.pos;
+    const lf = loopPose.fwd;
+    if (target && !engaged) {
+      // Peel off the loop where the helicopter is, at its loop velocity.
+      engaged = true;
+      pos.set(lp.x, lp.y, lp.z);
+      vel.set(lf.x, lf.y, lf.z).multiplyScalar(P.patrolSpeed);
+      yaw = Math.atan2(lf.x, lf.z);
+    }
+    acc.set(0, 0, 0);
+    if (engaged) {
+      if (target) {
+        const sp = Math.hypot(target.vx, target.vz);
+        if (sp > 2) {
+          dirX = target.vx / sp;
+          dirZ = target.vz / sp;
+        }
+        // Behind the leader along its travel, off to one side (right = (-dirZ, dirX)), up above the ground.
+        const x = target.x - dirX * P.behind - dirZ * P.side * side;
+        const z = target.z - dirZ * P.behind + dirX * P.side * side;
+        want.set(x, Math.max(world.heightAt(x, z), target.y) + P.alt, z);
+        // Over the rooftops on the way: the station, and where the follow will be a moment from now.
+        want.y = Math.max(want.y, floorAt(x, z), floorAt(pos.x, pos.z));
+        for (const ahead of P.roofLook) want.y = Math.max(want.y, floorAt(pos.x + vel.x * ahead, pos.z + vel.z * ahead));
+        wantV.set(target.vx, 0, target.vz);
+      } else {
+        want.set(lp.x, lp.y, lp.z);
+        wantV.set(lf.x, lf.y, lf.z).multiplyScalar(P.patrolSpeed);
+      }
+      const n = Math.max(1, Math.ceil(dt * 60));
+      for (let i = 0; i < n; i++) step(dt / n);
+      // Backstop for a roof the lookahead missed: ease back up inside the clearance (no pop), and
+      // never closer than half the clearance to the roof.
+      const floor = floorAt(pos.x, pos.z);
+      if (pos.y < floor) {
+        pos.y = Math.max(pos.y + (floor - pos.y) * (1 - Math.exp(-dt / 0.2)), floor - P.roofClear / 2);
+        vel.y = Math.max(0, vel.y);
+      }
+      // Leaving: back on the loop once it has caught it up.
+      if (!target && pos.distanceTo(want) < P.rejoin && vel.distanceTo(wantV) < P.rejoin * 1.5) engaged = false;
+    }
+    const k = 1 - Math.exp(-dt / P.turnLag);
+    if (engaged) {
+      mesh.position.copy(pos);
+      const sp = Math.hypot(vel.x, vel.z);
+      // Nose along the travel when moving; hovering, it turns to face the leader.
+      const ty = sp > 5 ? Math.atan2(vel.x, vel.z) : target ? Math.atan2(target.x - pos.x, target.z - pos.z) : yaw;
+      let d = ty - yaw;
+      d -= Math.round(d / (Math.PI * 2)) * Math.PI * 2;
+      yaw += d * k;
+      const fx = Math.sin(yaw);
+      const fz = Math.cos(yaw);
+      // Bank into the acceleration across the nose (right = (-fz, fx)), nose down with speed and forward pull.
+      const aRight = acc.x * -fz + acc.z * fx;
+      const aFwd = acc.x * fx + acc.z * fz;
+      bank += (Math.max(-P.maxBank, Math.min(P.maxBank, (aRight / 9.81) * P.bankGain)) - bank) * k;
+      pitch += (Math.max(-0.2, Math.min(P.maxPitch, 0.04 + (sp / P.vMax) * 0.16 + (aFwd / 9.81) * 0.35)) - pitch) * k;
+    } else {
+      mesh.position.set(lp.x, lp.y, lp.z);
+      yaw = Math.atan2(lf.x, lf.z);
+      bank += (loopPose.bank - bank) * k;
+      pitch += (-Math.asin(Math.max(-1, Math.min(1, lf.y))) * 0.6 - pitch) * k;
+    }
+    mesh.quaternion.setFromEuler(e.set(pitch, yaw, bank, 'YXZ'));
+    // Lights while engaged on a chase; the beam once the leader is in reach.
+    const fade = 1 - Math.exp(-dt / P.fade);
+    lights += ((engaged && target ? 1 : 0) - lights) * fade;
+    opts.uniforms.uPolice.value = lights;
+    opts.uniforms.uPoliceSoft.value = opts.flashes && !opts.flashes() ? 1 : 0;
+    const reach = target ? Math.hypot(target.x - mesh.position.x, target.z - mesh.position.z) : Infinity;
+    beamOn += ((target && engaged && reach < P.reach ? 1 : 0) - beamOn) * fade;
+    if (target) {
+      // The aim trails the leader a little: an operator tracking by hand.
+      const ka = aimed ? 1 - Math.exp(-dt / P.aimLag) : 1;
+      aim.x += (target.x - aim.x) * ka;
+      aim.z += (target.z - aim.z) * ka;
+      aimed = true;
+    }
+    aim.y = world.heightAt(aim.x, aim.z);
+    apex.set(mesh.position.x, mesh.position.y - 1.1, mesh.position.z);
+    beamMat.uniforms.uIntensity.value = P.intensity * beamOn;
+    beam.visible = beamOn > 0.01;
+    if (!beam.visible && !target) aimed = false;
+  };
+  update(0);
+
+  // Rotor chop near the camera, created on first approach once the page has had a gesture.
+  let rotor: HeliRotor | null = null;
+  let rotorTried = false;
+  const camPos = new THREE.Vector3();
+  const camRight = new THREE.Vector3();
+  const view = (camera: THREE.Camera): void => {
+    camera.getWorldPosition(camPos);
+    const p = mesh.position;
+    const dist = Math.hypot(p.x - camPos.x, p.y - camPos.y, p.z - camPos.z);
+    const proximity = dist > P.hear ? 0 : 1 / (1 + (dist / P.near) ** 2);
+    if (!rotor && !rotorTried && proximity > 0.02) {
+      rotor = HeliRotor.create(P.rotor);
+      rotorTried = rotor !== null || !HeliRotor.blocked();
+    }
+    if (!rotor) return;
+    camRight.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+    const dx = p.x - camPos.x;
+    const dz = p.z - camPos.z;
+    const l = Math.hypot(dx, dz) || 1;
+    rotor.update(proximity, (dx * camRight.x + dz * camRight.z) / l);
+  };
+
+  return {
+    mesh,
+    beam,
+    chase(t) {
+      target = t;
+    },
+    update,
+    view,
+    position: () => [mesh.position.x, mesh.position.y, mesh.position.z],
+    dispose() {
+      rotor?.dispose();
+      rotor = null;
+      geo.dispose();
+      beamGeo.dispose();
+      beamMat.dispose();
+    },
+  };
+}
+
 export interface AirTraffic {
   group: THREE.Group;
+  /** The race leader the police helicopter chases this frame (interpolated pose), or null to patrol / leave. */
+  chase(target: ChaseTarget | null): void;
   update(time: number): void;
   /** Per render: the rotor sound follows the camera. */
   view(camera: THREE.Camera): void;
   heliPosition(): [number, number, number];
+  policePosition(): [number, number, number];
   spotPosition(): [number, number, number];
   blimpPosition(): [number, number, number];
   dispose(): void;
 }
 
-export function buildAirTraffic(world: World, opts: { quality: Quality; fogDensity: number; eventName?: string }): AirTraffic {
+export function buildAirTraffic(world: World, opts: { quality: Quality; fogDensity: number; eventName?: string; flashes?: () => boolean }): AirTraffic {
   const seed = world.seed;
   const group = new THREE.Group();
   group.name = 'airTraffic';
@@ -608,31 +967,16 @@ export function buildAirTraffic(world: World, opts: { quality: Quality; fogDensi
   group.add(heli, blimp);
 
   const glow = makeRadialGlow();
-  const beamMat = new THREE.ShaderMaterial({
-    vertexShader: beamVert,
-    fragmentShader: beamFrag,
-    uniforms: {
-      uApex: { value: new THREE.Vector3() },
-      uTarget: { value: new THREE.Vector3() },
-      uRadius: { value: AIR.heli.beamRadius },
-      uSpotR: { value: AIR.heli.beamRadius * 1.7 },
-      uGlow: { value: glow },
-      uColor: { value: new THREE.Color(1.0, 0.95, 0.82) },
-      uIntensity: { value: 1 },
-      uFogDensity: { value: opts.fogDensity },
-    },
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    side: THREE.DoubleSide,
-    fog: false,
-  });
+  const beamMat = beamMaterial({ radius: AIR.heli.beamRadius, spotR: AIR.heli.beamRadius * 1.7, color: new THREE.Color(1.0, 0.95, 0.82), intensity: 1, fogDensity: opts.fogDensity, glow });
   const beamGeo = beamGeometry();
   const beam = new THREE.Mesh(beamGeo, beamMat);
   beam.name = 'searchlight';
   beam.frustumCulled = false;
   beam.renderOrder = 3;
   group.add(beam);
+  // The police helicopter: patrols high, chases the leader on the last lap.
+  const police = buildPoliceHeli(world, { quality: opts.quality, fogDensity: opts.fogDensity, material, uniforms, glow, flashes: opts.flashes });
+  group.add(police.mesh, police.beam);
 
   const loop = buildLoop(heliWaypoints(world, seed));
   const pose: HeliPose = { pos: { x: 0, y: 0, z: 0 }, fwd: { x: 0, y: 0, z: 1 }, bank: 0 };
@@ -651,7 +995,8 @@ export function buildAirTraffic(world: World, opts: { quality: Quality; fogDensi
     heli.position.set(pose.pos.x, pose.pos.y, pose.pos.z);
     const yaw = Math.atan2(pose.fwd.x, pose.fwd.z);
     const pitch = -Math.asin(Math.max(-1, Math.min(1, pose.fwd.y))) * 0.6;
-    heli.quaternion.setFromEuler(e.set(pitch, yaw, -pose.bank, 'YXZ'));
+    // Nose +z, so body +x is the left side: a positive bank (right side down) is a positive roll about z.
+    heli.quaternion.setFromEuler(e.set(pitch, yaw, pose.bank, 'YXZ'));
     // Searchlight: the course ahead of the helicopter's ground track, swept side to side; when it
     // roams far from the route the beam settles on the ground below instead of stretching out.
     const rp = world.routeProgress(pose.pos.x, pose.pos.z);
@@ -672,6 +1017,7 @@ export function buildAirTraffic(world: World, opts: { quality: Quality; fogDensi
     blimpPoseAt(bp, time, blimpPose);
     blimp.position.set(blimpPose.pos.x, blimpPose.pos.y, blimpPose.pos.z);
     blimp.quaternion.copy(q.setFromEuler(e.set(0, blimpPose.yaw, 0, 'YXZ')));
+    police.update(time);
   };
   update(0);
 
@@ -681,6 +1027,7 @@ export function buildAirTraffic(world: World, opts: { quality: Quality; fogDensi
   const camPos = new THREE.Vector3();
   const camRight = new THREE.Vector3();
   const view = (camera: THREE.Camera): void => {
+    police.view(camera);
     camera.getWorldPosition(camPos);
     const dist = Math.hypot(pose.pos.x - camPos.x, pose.pos.y - camPos.y, pose.pos.z - camPos.z);
     const proximity = dist > AIR.sound.hear ? 0 : 1 / (1 + (dist / AIR.sound.near) ** 2);
@@ -698,14 +1045,17 @@ export function buildAirTraffic(world: World, opts: { quality: Quality; fogDensi
 
   return {
     group,
+    chase: police.chase,
     update,
     view,
     heliPosition: () => [pose.pos.x, pose.pos.y, pose.pos.z],
+    policePosition: police.position,
     spotPosition: () => [target.x, target.y, target.z],
     blimpPosition: () => [blimpPose.pos.x, blimpPose.pos.y, blimpPose.pos.z],
     dispose() {
       rotor?.dispose();
       rotor = null;
+      police.dispose();
       group.removeFromParent();
       heliGeo.dispose();
       blimpGeo.dispose();
