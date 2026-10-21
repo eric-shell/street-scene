@@ -5,6 +5,7 @@ import { Rng } from '../src/sim/prng';
 import { distToPolygonEdge, pointInPolygon } from '../src/city/districts/geom';
 import { distToSegment } from '../src/sim/math';
 import { hillAt, hillOutline, plateauDistance, shapeOf } from '../src/city/districts/hills';
+import { TOUR_REACH } from '../src/city/districts/monument';
 import { riverCenter } from '../src/city/districts/river';
 import { WALL_LOOKS } from '../src/city/districts/types';
 import type { Contact } from '../src/city/world';
@@ -149,7 +150,8 @@ describe('monument', () => {
       const g = w.graph;
       const cx0 = (g.bounds.minX + g.bounds.maxX) / 2;
       const cz0 = (g.bounds.minZ + g.bounds.maxZ) / 2;
-      expect(Math.hypot(m.params.cx - cx0, m.params.cz - cz0)).toBeLessThanOrEqual(MON.reach + 1);
+      // A Grand Tour puts the plaza on a block its routes pass, further out (monument.ts TOUR_REACH).
+      expect(Math.hypot(m.params.cx - cx0, m.params.cz - cz0)).toBeLessThanOrEqual((w.event.drawn === 'grandTour' ? TOUR_REACH : MON.reach) + 1);
       const walls = w.walls.filter((x) => x.kind === 'wall' && x.look === 'monument' && x.area === m.id);
       expect(walls.length).toBeGreaterThan(3);
       for (const wall of walls) {

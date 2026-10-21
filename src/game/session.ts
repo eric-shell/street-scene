@@ -797,6 +797,8 @@ export class RaceSession {
     // Last lap: the police helicopter follows the leader's interpolated pose.
     const chase = this.chaseCall;
     this.night.air.chase(chase.phase === 'chase' ? (poses[chase.car] ?? null) : null);
+    // The El's trains and level crossings at the interpolated sim time: the gates close for these trains.
+    this.night.syncDistricts(Math.max(0, r.tick - 1 + (this.paused ? 1 : alpha)), !this.paused);
     this.night.update(this.time);
     // Timed hazards (the drawbridge) at the interpolated sim time, so replays look the same.
     this.hazards.update(r, this.paused ? 1 : alpha, !this.paused);

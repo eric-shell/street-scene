@@ -12,9 +12,12 @@
 import type { RaceState } from './race';
 import { DRAWBRIDGE, leafAngle, onSpan, spanCoords } from '../city/drawbridge';
 import { placeCar } from './car';
+import { stepLevelCrossings } from './levelCrossing';
 import { clamp, cos, sin, yawOf } from './math';
 
 export function stepHazards(r: RaceState): void {
+  // Level crossings (sim/levelCrossing.ts): a car left on the tracks when a train comes is towed off.
+  stepLevelCrossings(r);
   const db = r.world.drawbridge;
   const set = r.world.timedGates;
   if (!db || !set) return;

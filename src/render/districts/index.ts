@@ -8,6 +8,7 @@ import type { World } from '../../city/world';
 import type { Wall } from '../../city/blocks';
 import type { WallLook } from '../../city/districts/types';
 import type { Quality } from '../../ui/settings';
+import { TICK_HZ } from '../../sim/constants';
 import { GeoBuilder } from '../geoBuilder';
 import { fadeSubPixel } from '../lightFx';
 import type { DistrictKit, DistrictRenderer } from './kit';
@@ -22,6 +23,7 @@ import { parkRenderer } from './park';
 import { riverRenderer } from './river';
 import { roundaboutRenderer } from './roundabout';
 import { subwayRenderer } from './subway';
+import { bluffRenderer } from './bluff';
 import { tunnelRenderer } from './tunnel';
 import { overpassRenderer } from './overpass';
 import { waterfrontRenderer } from './waterfront';
@@ -35,6 +37,7 @@ export const DISTRICT_RENDERERS: readonly DistrictRenderer[] = [
   roundaboutRenderer,
   alleyRenderer,
   subwayRenderer,
+  bluffRenderer,
   infillRenderer,
   hillsRenderer,
   monumentRenderer,
@@ -53,6 +56,8 @@ export interface DistrictMeshes {
   update(time: number): void;
   /** Call before each render with the camera rendering the scene. */
   view(camera: THREE.Camera): void;
+  /** Pose sim-timed parts (trains, level crossings) at a fractional sim tick from now on; `audible` lets bells ring. */
+  sync(tick: number, audible: boolean): void;
   dispose(): void;
 }
 
@@ -62,6 +67,9 @@ export function buildDistrictMeshes(world: World, opts: { quality?: Quality } = 
   const disposables: { dispose(): void }[] = [];
   const animations: ((time: number) => void)[] = [];
   const views: ((camera: THREE.Camera) => void)[] = [];
+  // The session's interpolated sim tick, once it drives this scene (NaN: the scene clock).
+  let syncTick = NaN;
+  let canHear = false;
   const walls = new Map<WallLook, Wall[]>();
   for (const w of world.walls) {
     if (w.kind !== 'wall' || !w.look) continue;
@@ -87,6 +95,8 @@ export function buildDistrictMeshes(world: World, opts: { quality?: Quality } = 
     },
     animate: (fn) => animations.push(fn),
     view: (fn) => views.push(fn),
+    simTick: (time) => (Number.isNaN(syncTick) ? time * TICK_HZ : syncTick),
+    audible: () => canHear,
   };
   for (const r of DISTRICT_RENDERERS) {
     const areas = world.areas.filter((a) => r.kinds.includes(a.kind));
@@ -116,6 +126,10 @@ export function buildDistrictMeshes(world: World, opts: { quality?: Quality } = 
     },
     view(camera) {
       for (const fn of views) fn(camera);
+    },
+    sync(tick, audible) {
+      syncTick = tick;
+      canHear = audible;
     },
     dispose() {
       for (const d of disposables) d.dispose();

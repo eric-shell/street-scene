@@ -164,6 +164,48 @@ export const CITY = {
       stairRun: 7.4,
       stairWidth: 1.5,
     },
+    /**
+     * Bluff: an escarpment the El crosses level (src/city/districts/bluff.ts).
+     * The El leaves its street for a right of way through the blocks, the
+     * ground steps up under it, and on the bluff top the track runs at grade
+     * with a gated level crossing on the crest street.
+     */
+    bluff: {
+      enabled: true,
+      /** Chance per city with an El. */
+      chance: 0.85,
+      /** Height of the step (m), [min, max]: the tallest that keeps the El clear of the low side streets wins. */
+      height: [5.5, 7.5],
+      /** Steepest grade of a street ramp up the face (the hills' cap) and of the gentle back and end slopes. */
+      rampGrade: 0.11,
+      sideGrade: 0.095,
+      /** Quadratic lip at each end of a ramp's constant grade (m). */
+      rampLip: 14,
+      /** The rock face between streets: its smoothstep span across (m). */
+      face: 7,
+      /** Behind a ramp's frontage the ramp profile blends into the rock face over this band (m). */
+      blend: 3,
+      /** The plateau runs on this far past the crossing before the back slope falls away (m). */
+      plateauPast: 34,
+      /** The El's right of way runs this far from its street's centerline, through the blocks (m). */
+      rowOffset: 52,
+      /** Tie top above the road the El keeps over a street it crosses on the low side, else the street dips (m). */
+      clearance: 6.4,
+      /** Deepest underpass dip (m); its grade is rampGrade. Past that the crossing humps up to `hump` (m). */
+      sagMax: 2.4,
+      hump: 1,
+      /** Streets climb the face this square to it at most (cosine of the angle off its normal): grid streets and diagonals. */
+      rampSkew: 0.6,
+      /** Pillars stand only where the deck is this high above the ground; lower is embankment (m). */
+      pillarMin: 3.4,
+      /** The crossing's ground is flattened to the rail level within padIn of it, blending out by padOut (m). */
+      padIn: 14,
+      padOut: 30,
+      /** The deck eases from its level back into the normal profile over this distance (m). */
+      levelBlend: 120,
+      /** Streets and nodes keep this far from a ramp or dip's ends (m). */
+      nodeClear: 17,
+    },
     roundabout: {
       enabled: true,
       count: [2, 4],

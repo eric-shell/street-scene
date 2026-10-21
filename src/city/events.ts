@@ -92,6 +92,8 @@ export const EVENTS = {
   downtownDash: { some: 0.3, long: 0.45, bias: 0.85 },
   /** Hill sample spacing along a route (m). */
   sampleStep: 5,
+  /** Dijkstra weight factor of the level crossing's street (districts/bluff.ts), for every flavour. */
+  crossingBias: 0.5,
 } as const;
 
 export interface CityEvent {
@@ -133,6 +135,9 @@ interface Venue {
   rivers: Area[];
   elPaths: Vec2[][];
   rings: number[];
+  /** The bluff's level crossing streets (districts/bluff.ts): every flavour wishes its routes over the tracks. */
+  crossings: Set<number>;
+  crossingNodes: number[];
   cx: number;
   cz: number;
 }
@@ -164,6 +169,8 @@ function venue(g: RoadGraph, areas: readonly Area[], ctx?: SiteContext): Venue {
     rivers: areas.filter((a) => a.kind === 'river'),
     elPaths: areas.filter((a) => a.kind === 'subway').map((a) => a.path),
     rings: g.nodes.filter((n) => n.ring).map((n) => n.id),
+    crossings: new Set(areas.filter((a) => a.kind === 'bluff').map((a) => a.params.crestEdge)),
+    crossingNodes: areas.filter((a) => a.kind === 'bluff').flatMap((a) => [g.edges[a.params.crestEdge].a, g.edges[a.params.crestEdge].b]),
     cx: (g.bounds.minX + g.bounds.maxX) / 2,
     cz: (g.bounds.minZ + g.bounds.maxZ) / 2,
   };
@@ -293,9 +300,11 @@ function openGround(v: Venue): boolean[] {
 
 /**
  * The route finders' preference for a flavour on this graph (findCircuitNodes /
- * findSprintNodes). Ratings: the flavour's own wish counts double, the river
- * dive (every flavour but River Run, where the channel exists) adds one, so a
- * route with both wins, then the flavour alone, then the dive alone.
+ * findSprintNodes). Ratings: the flavour's own wish counts most, the river
+ * dive (every flavour but River Run, where the channel exists) and a run over
+ * the bluff's level crossing (where there is one, districts/bluff.ts) add one
+ * each, so a route with everything wins, then the flavour alone, then the
+ * side wishes alone. Without a level crossing the ratings are as before.
  */
 export function eventRoutePreference(id: EventFlavourId, ctx: SiteContext, closed: boolean): RoutePreference {
   const g = ctx.graph;
@@ -303,20 +312,26 @@ export function eventRoutePreference(id: EventFlavourId, ctx: SiteContext, close
   const wish = wishOf(id, v);
   const dive = v.channel && id !== 'riverRun';
   const dives = (edges: number[]) => edges.some((e) => e >= 0 && g.edges[e].kind === 'channel');
+  const cross = v.crossings.size > 0;
+  const crosses = (edges: number[]) => edges.some((e) => v.crossings.has(e));
+  const sides = (dive ? 1 : 0) + (cross ? 1 : 0);
   const rate = (nodes: number[]) => {
     const edges = routeEdges(g, nodes, closed);
     const own = wish.rate(edges, nodes);
-    return dive ? own * 2 + (dives(edges) ? 1 : 0) : own;
+    return sides ? own * (sides + 1) + (dive && dives(edges) ? 1 : 0) + (cross && crosses(edges) ? 1 : 0) : own;
   };
   const anchors = wish.anchors.length ? wish.anchors : v.feet;
+  // The other end of a circuit (or every other sprint waypoint) from the ramp feet, or from the flavour's own anchors again.
+  const via0 = dive && wish.anchors.length ? v.feet : anchors;
+  const bias0 = wish.bias;
   return {
     prefer: (nodes) => rate(nodes) > 0,
     rate,
-    goal: dive ? 5 : 2,
+    goal: sides ? 2 * (sides + 1) + sides : 2,
     anchors,
-    // The other end of a circuit (or every other sprint waypoint) from the ramp feet, or from the flavour's own anchors again.
-    via: dive && wish.anchors.length ? v.feet : anchors,
-    bias: wish.bias,
+    // ... and the level crossing's street ends, its street a little cheaper to run along.
+    via: cross ? [...via0, ...v.crossingNodes] : via0,
+    bias: cross ? (e) => (bias0 ? bias0(e) : 1) * (v.crossings.has(e) ? EVENTS.crossingBias : 1) : bias0,
   };
 }
 

@@ -45,6 +45,7 @@ export type AreaKind =
   | 'overpass'
   | 'market'
   | 'roadworks'
+  | 'bluff'
   // Reserved unique features (planned later, disabled in config).
   | 'waterfront'
   | 'lake';
@@ -92,6 +93,8 @@ export const COBBLE_PRIORITY = 6;
  * gate: a timed gate's arms across the deck (sim/gates.ts; drawn by render/drawbridge.ts).
  *   Timed gates are not in World.walls: they block only while their schedule says so.
  * roadworks: the plant of a lane closure (arrow board, excavator, skip, light tower) (roadworks).
+ * bluff: retaining wall where a street ramps or dips through the escarpment (bluff).
+ * railFence: the El's fence across its right of way where it meets a street at grade (bluff).
  */
 export type WallLook =
   | 'building'
@@ -114,9 +117,11 @@ export type WallLook =
   | 'marketRail'
   | 'marketFront'
   | 'gate'
-  | 'roadworks';
+  | 'roadworks'
+  | 'bluff'
+  | 'railFence';
 
-export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks'];
+export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence'];
 
 export interface Area {
   /** Index into CityDistricts.areas. */
@@ -332,6 +337,8 @@ export const AREA_MAP_STYLE: Record<AreaKind, AreaMapStyle> = {
   overpass: { fill: 'rgba(193,192,192,0.22)', stroke: 'rgba(193,192,192,0.5)', width: 5, dash: [3, 3] },
   market: { fill: 'rgba(255,97,136,0.3)' },
   roadworks: { fill: 'rgba(255,97,136,0.5)' },
+  // The escarpment: its face line, a solid edge (the minimap strokes area.path).
+  bluff: { stroke: 'rgba(252,152,103,0.5)', width: 5 },
   waterfront: { fill: 'rgba(120,220,232,0.14)' },
   lake: { fill: 'rgba(120,220,232,0.18)' },
 };

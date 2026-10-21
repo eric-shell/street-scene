@@ -10,7 +10,9 @@
  * rasterizes areas for fast areaAt queries.
  *
  * Order matters and is fixed: the river first (it decides bridges), then the
- * subway (claims a street column), roundabouts, alleys, back alleys (the last
+ * subway (claims a street column), roundabouts, alleys, the bluff (moves part
+ * of the El off its street; before the routes, which run over its level
+ * crossing), back alleys (the last
  * module allowed to change the graph topology, so face ids stay stable), parks
  * (claim faces), the monument plaza, hills (claim clusters of faces and keep
  * their slopes clear of everything placed before them), tunnels and
@@ -31,6 +33,7 @@ import type { Area, AreaBuild, AreaKind, BuildContext, Claims, DistrictModule, H
 import { emptyBuild } from './types';
 import { riverModule } from './river';
 import { subwayModule } from './subway';
+import { bluffModule } from './bluff';
 import { roundaboutModule } from './roundabout';
 import { alleyModule, backAlleyModule } from './alley';
 import { parkModule } from './park';
@@ -51,6 +54,7 @@ export const DISTRICT_MODULES: readonly DistrictModule[] = [
   subwayModule,
   roundaboutModule,
   alleyModule,
+  bluffModule,
   backAlleyModule,
   marketModule,
   parkModule,
@@ -87,6 +91,7 @@ const AREA_PRIORITY: Record<AreaKind, number> = {
   overpass: 4,
   market: 11,
   roadworks: 11,
+  bluff: 3,
   waterfront: 2,
   lake: 2,
 };

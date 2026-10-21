@@ -25,6 +25,8 @@ import { Rng, deriveSeed } from '../../sim/prng';
 import type { Area, PlanContext } from './types';
 import { HillShape, plateauDistance, shapeOf } from './hills';
 import { riverCenter } from './river';
+import { bluffFootprint } from './bluff';
+import { distToPolygonEdge, pointInPolygon } from './geom';
 
 /** Street local frame: origin on the centerline, u along the street (unit), v across it along (-uz, ux) (the right of travel along +u, yaw convention of sim/math). */
 export interface Frame {
@@ -106,6 +108,8 @@ export interface SiteHazards {
   rings: RoadNode[];
   /** Footprints of the structures planned so far (tunnels and overpasses): circles. */
   taken: { x: number; z: number; r: number }[];
+  /** Bluffs' whole footprints (bluff.ts): their own ground, ramps and the El at grade. */
+  bluffs?: Vec2[][];
 }
 
 export function siteHazards(ctx: PlanContext): SiteHazards {
@@ -131,6 +135,7 @@ export function siteHazards(ctx: PlanContext): SiteHazards {
     hills: ctx.areas.filter((a) => a.kind === 'hills').map(shapeOf),
     rings: ctx.graph.nodes.filter((n) => n.ring),
     taken,
+    bluffs: ctx.areas.filter((a) => a.kind === 'bluff').map((a) => bluffFootprint(a)),
   };
 }
 
@@ -160,6 +165,7 @@ export function siteClear(hz: SiteHazards, x: number, z: number, margin: number)
   for (const s of hz.hills) if (plateauDistance(s, x, z).d < s.w + margin) return false;
   for (const n of hz.rings) if ((n.x - x) ** 2 + (n.z - z) ** 2 < (n.ring!.outer + CITY.sidewalk + margin) ** 2) return false;
   for (const t of hz.taken) if ((t.x - x) ** 2 + (t.z - z) ** 2 < (t.r + margin) ** 2) return false;
+  for (const p of hz.bluffs ?? []) if (pointInPolygon(x, z, p) || distToPolygonEdge(x, z, p) < margin) return false;
   return true;
 }
 

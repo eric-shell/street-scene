@@ -45,6 +45,7 @@ const KINDS: Partial<Record<AreaKind, KindStyle>> = {
   market: { label: 'Night market', ink: PALETTE.red, fill: rgba('red', 0.34), width: 1.5, tag: true },
   hills: { label: 'The hills', ink: PALETTE.soft, fill: rgba('soft', 0.07), width: 1.5, dash: [6, 5], tag: true },
   subway: { label: 'Under the El', ink: PALETTE.cyan, width: 4, dash: [9, 6], tag: true },
+  bluff: { label: 'The bluff', ink: PALETTE.orange, fill: rgba('orange', 0.08), width: 1.5, dash: [4, 4], tag: true },
   alley: { label: 'Raceway alleys', ink: PALETTE.purple, tag: true },
   backAlley: { label: 'Back alleys', ink: rgba('soft', 0.55), tag: false },
   roundabout: { label: 'Roundabouts', ink: PALETTE.soft, tag: false },
@@ -75,7 +76,7 @@ const INK = {
 } as const;
 
 /** Legend order; kinds missing from the city are left out. */
-const LEGEND_ORDER: AreaKind[] = ['park', 'river', 'lake', 'waterfront', 'subway', 'alley', 'backAlley', 'roundabout', 'hills', 'monument', 'tunnel', 'overpass', 'infill', 'roadworks'];
+const LEGEND_ORDER: AreaKind[] = ['park', 'river', 'lake', 'waterfront', 'subway', 'alley', 'backAlley', 'roundabout', 'hills', 'monument', 'tunnel', 'overpass', 'infill', 'roadworks', 'bluff'];
 
 /** Margin around the city (m), and the scale bar lengths it picks from (m). */
 const PAD = 40;
@@ -244,6 +245,15 @@ export class FullMap {
       c.beginPath();
       c.arc(x, z, island, 0, Math.PI * 2);
       c.fill();
+    }
+    // The bluff's face: a solid line along the escarpment.
+    c.strokeStyle = PALETTE.orange;
+    c.lineWidth = 3 * px;
+    for (const a of world.areas) {
+      if (a.kind !== 'bluff' || a.path.length < 2) continue;
+      c.beginPath();
+      a.path.forEach((p, i) => (i ? c.lineTo(p.x, p.z) : c.moveTo(p.x, p.z)));
+      c.stroke();
     }
     // The El: a dashed line over its street.
     const el = KINDS.subway!;
