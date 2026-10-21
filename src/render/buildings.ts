@@ -27,6 +27,7 @@ import type { Building } from '../city/blocks';
 import { corridorClearance } from '../city/blocks';
 import { Vec2 } from '../sim/math';
 import { Rng } from '../sim/prng';
+import { SpatialGrid } from '../city/spatial';
 import { GeoBuilder } from './geoBuilder';
 import { GROUND_BAYS, GROUND_H, PODIUM_FLOOR_H, PodiumOutput, addPodiumFace, podiumExtrusions, podiumHeight } from './facadeKit';
 import { BILLBOARD_COLS, BILLBOARD_ROWS, LAYER, MODULE, facadeAtlas } from './facadeAtlas';
@@ -56,6 +57,10 @@ const BLD = {
   billboardAspect: 4,
   /** Aviation lights above this roof height (m above street). */
   aviationAbove: 78,
+  /** Walls of overlapping buildings closer than this (m) share a plane and would z-fight. */
+  coplanarTol: 0.1,
+  /** How far the lower building's shared wall steps back behind the taller one (m), several depth steps at 600 m. */
+  recess: 0.3,
 } as const;
 
 /** Clutter density and optional details per graphics tier. */
@@ -512,6 +517,108 @@ function boxW(gb: GeoBuilder, x: number, z: number, r: number, y0: number, y1: n
 // The city
 // ---------------------------------------------------------------------------
 
+/**
+ * Footprints may overlap (a corner building over the street building on the
+ * same street sits on the same setback line), and two overlapping walls in
+ * one plane z-fight: patches of both buildings' window light flicker through
+ * each other. Where two walls face the same way in the same plane, the lower
+ * building's wall steps back so the taller one wins (ties go to the later,
+ * a corner building over the street row). A recessed wall can land in the
+ * plane of a third building's, so the pass repeats until none share a plane.
+ * Render only: the city keeps its footprints, so replays and the frontage
+ * never notice.
+ */
+export function recessCoplanar(B: readonly Building[], plans: readonly BuildingPlan[]): Building[] {
+  let out = B as Building[];
+  for (let pass = 0; pass < 4; pass++) {
+    const next = recessPass(out, plans);
+    if (next === out) break;
+    out = next;
+  }
+  return out;
+}
+
+/** One recess pass; returns the same array when no two walls share a plane. */
+function recessPass(B: Building[], plans: readonly BuildingPlan[]): Building[] {
+  // Local frame of a footprint: u along local +X, w along local +Z; walls 0..3 face -w, +u, +w, -u.
+  const frame = (b: Building) => ({ ux: Math.cos(b.yaw), uz: -Math.sin(b.yaw), wx: Math.sin(b.yaw), wz: Math.cos(b.yaw) });
+  const walls = (b: Building) => {
+    const { ux, uz, wx, wz } = frame(b);
+    const hw = b.w / 2;
+    const hd = b.d / 2;
+    const c = (a: number, s: number) => ({ x: b.x + ux * a + wx * s, z: b.z + uz * a + wz * s });
+    const P = [c(-hw, -hd), c(hw, -hd), c(hw, hd), c(-hw, hd)];
+    return P.map((p, k) => ({ p, q: P[(k + 1) % 4] }));
+  };
+  let minX = Infinity;
+  let minZ = Infinity;
+  let maxX = -Infinity;
+  let maxZ = -Infinity;
+  for (const b of B) {
+    minX = Math.min(minX, b.x);
+    minZ = Math.min(minZ, b.z);
+    maxX = Math.max(maxX, b.x);
+    maxZ = Math.max(maxZ, b.z);
+  }
+  const grid = SpatialGrid.forBounds(minX, minZ, maxX + 1, maxZ + 1, 64);
+  const radius = B.map((b) => Math.hypot(b.w, b.d) / 2);
+  B.forEach((b, i) => grid.insertBox(i, b.x - radius[i], b.z - radius[i], b.x + radius[i], b.z + radius[i]));
+  const recess = B.map(() => [false, false, false, false]);
+  const near: number[] = [];
+  for (let i = 0; i < B.length; i++) {
+    const a = B[i];
+    grid.query(a.x - radius[i], a.z - radius[i], a.x + radius[i], a.z + radius[i], near);
+    const wa = walls(a);
+    for (const j of near) {
+      if (j <= i) continue;
+      const b = B[j];
+      if (Math.hypot(a.x - b.x, a.z - b.z) > radius[i] + radius[j]) continue;
+      const wb = walls(b);
+      const lower = plans[i].h < plans[j].h ? i : j;
+      for (let ka = 0; ka < 4; ka++) {
+        const { p, q } = wa[ka];
+        const dx = q.x - p.x;
+        const dz = q.z - p.z;
+        const len = Math.hypot(dx, dz);
+        for (let kb = 0; kb < 4; kb++) {
+          const f = wb[kb];
+          const ex = f.q.x - f.p.x;
+          const ez = f.q.z - f.p.z;
+          if ((dx * ex + dz * ez) / (len * Math.hypot(ex, ez)) < 0.9998) continue;
+          const t0 = ((f.p.x - p.x) * dx + (f.p.z - p.z) * dz) / len;
+          const t1 = ((f.q.x - p.x) * dx + (f.q.z - p.z) * dz) / len;
+          const lo = Math.max(0, Math.min(t0, t1));
+          const hi = Math.min(len, Math.max(t0, t1));
+          if (hi - lo < 0.5) continue;
+          // Plane gap at the middle of the shared stretch (the walls may be a hair off parallel).
+          const mx = f.p.x + (ex * ((lo + hi) / 2 - t0)) / (t1 - t0);
+          const mz = f.p.z + (ez * ((lo + hi) / 2 - t0)) / (t1 - t0);
+          if (Math.abs(((mx - p.x) * dz - (mz - p.z) * dx) / len) > BLD.coplanarTol) continue;
+          recess[lower][lower === i ? ka : kb] = true;
+        }
+      }
+    }
+  }
+  if (!recess.some((r) => r.some(Boolean))) return B;
+  return B.map((b, i) => {
+    const r = recess[i];
+    if (!r.some(Boolean)) return b;
+    const { ux, uz, wx, wz } = frame(b);
+    const du = Math.min(BLD.recess, b.w * 0.05);
+    const dw = Math.min(BLD.recess, b.d * 0.05);
+    // Shift of the center along u and w: each recessed wall pulls its side in by its depth.
+    const cu = ((r[3] ? du : 0) - (r[1] ? du : 0)) / 2;
+    const cw = ((r[0] ? dw : 0) - (r[2] ? dw : 0)) / 2;
+    return {
+      ...b,
+      x: b.x + ux * cu + wx * cw,
+      z: b.z + uz * cu + wz * cw,
+      w: b.w - (r[1] ? du : 0) - (r[3] ? du : 0),
+      d: b.d - (r[0] ? dw : 0) - (r[2] ? dw : 0),
+    };
+  });
+}
+
 export function buildBuildings(world: World, podium: PodiumOutput, opts: { detail: Detail }): BuildingMeshes {
   const det = DETAIL[opts.detail];
   const atlas = facadeAtlas();
@@ -529,7 +636,7 @@ export function buildBuildings(world: World, podium: PodiumOutput, opts: { detai
   };
   const g = world.graph;
   const scratch: number[] = [];
-  const B = world.blocks.buildings;
+  const B = recessCoplanar(world.blocks.buildings, plans);
   for (let i = 0; i < B.length; i++) buildOne(o, B[i], plans[i], det, (x, z) => corridorClearance(g, world.blocks.edgeGrid, x, z, scratch) < 2, world.heightAt);
 
   const disposables: { dispose(): void }[] = [mats];
