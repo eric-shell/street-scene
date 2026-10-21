@@ -84,6 +84,9 @@ describe('traffic network', () => {
         }
       }
       expect(works.some((a) => open.paths.filter((p) => p.lane && p.edge === a.params.edge && p.x.length > 2).length > 0)).toBe(true);
+      // A night market's street stays closed to traffic.
+      const market = new Set(ow.areas.filter((a) => a.kind === 'market').flatMap((a) => a.edges));
+      expect(open.paths.some((p) => p.lane && market.has(p.edge))).toBe(false);
     }
   });
 });

@@ -6,12 +6,13 @@
  *
  * Where they drive (the network, built once per World and cached): one lane
  * per direction on every plain street kind (street, avenue, diagonal,
- * boulevard), keeping right; never alleys, back alley shortcuts or the
- * river's channel and ramps. In a race nothing touches a route node either,
- * so the route's edges, its shortcuts and every closed side street (whose
- * cyan closure and street meet stand at the route end) are out: traffic
- * loops in the off-route network and is seen crossing beyond the barriers
- * and on the cross streets. In an open world every street is open. Lanes
+ * boulevard), keeping right; never alleys, back alley shortcuts, the
+ * river's channel and ramps or a night market's street. In a race nothing
+ * touches a route node either, so the route's edges, its shortcuts and every
+ * closed side street (whose cyan closure and street meet stand at the route
+ * end) are out: traffic loops in the off-route network and is seen crossing
+ * beyond the barriers and on the cross streets. In an open world every other
+ * street is open. Lanes
  * stop short of each junction where its curbs start; connectors (cubic
  * curves, or an arc around the island at a roundabout) join each incoming
  * lane to every outgoing one except the U-turn. Where roadworks shut the curb
@@ -359,9 +360,12 @@ function buildNet(w: World): TrafficNet {
     else closuresOf.set(a.params.edge, [c]);
   });
 
+  // Night markets (districts/market.ts) close their street to traffic, in an open world too.
+  const market = new Set((w.areas ?? []).filter((a) => a.kind === 'market').flatMap((a) => a.edges));
+
   // Lanes: keep right, stopping short of each junction where its curbs start.
   for (const e of g.edges) {
-    if (!kinds.has(e.kind) || e.shortcut || routeNodes.has(e.a) || routeNodes.has(e.b)) continue;
+    if (!kinds.has(e.kind) || e.shortcut || market.has(e.id) || routeNodes.has(e.a) || routeNodes.has(e.b)) continue;
     const A = g.nodes[e.a];
     const B = g.nodes[e.b];
     const len = e.length || 1;
