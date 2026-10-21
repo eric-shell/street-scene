@@ -24,6 +24,7 @@ import { roundaboutRenderer } from './roundabout';
 import { subwayRenderer } from './subway';
 import { waterfrontRenderer } from './waterfront';
 import { roadworksRenderer } from './roadworks';
+import { driftZoneRenderer } from './driftZones';
 
 export const DISTRICT_RENDERERS: readonly DistrictRenderer[] = [
   downtownRenderer,
@@ -39,6 +40,8 @@ export const DISTRICT_RENDERERS: readonly DistrictRenderer[] = [
   lakeRenderer,
   marketRenderer,
   roadworksRenderer,
+  // Markings over the lots and the plaza that pay a drift bonus (sim/driftZones.ts).
+  driftZoneRenderer,
 ];
 
 export interface DistrictMeshes {

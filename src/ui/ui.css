@@ -1189,6 +1189,50 @@ body > .mw {
 .hud-drift .cur span {
   color: var(--text);
 }
+.hud-drift .cur em {
+  font: 900 13px var(--display);
+  font-style: normal;
+  letter-spacing: 0.08em;
+  color: var(--accent-2);
+  vertical-align: middle;
+}
+/* Drift zone chip (sim/driftZones.ts): yellow while the zone pays, its bar the bonus left in this visit. */
+.hud-zone {
+  display: none;
+  position: relative;
+  overflow: hidden;
+  border-left-color: var(--accent-2);
+}
+.hud-zone.show {
+  display: flex;
+}
+.hud-zone .ic {
+  color: var(--accent-2);
+}
+.hud-zone b {
+  font: 900 15px var(--display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+}
+.hud-zone .left {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: rgba(255, 216, 102, 0.15);
+}
+.hud-zone .left i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--accent-2);
+}
+.hud-zone.resting .ic,
+.hud-zone.resting b {
+  color: var(--muted);
+}
 .hud-br {
   position: absolute;
   right: max(10px, env(safe-area-inset-right));
