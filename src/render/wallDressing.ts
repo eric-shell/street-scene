@@ -1,7 +1,8 @@
 /**
  * Everything pasted on, bolted to or strung between the walls: graffiti
- * (murals, throw-ups, tags, stencils) and pasted posters and flyers down the
- * alleys and on the exposed side walls of buildings, a grime line along the
+ * (murals, throw-ups, tags, stencils: dark spray paint, lit by the scene like
+ * the wall, textures.ts makeGraffitiAtlas) and pasted posters and flyers down
+ * the alleys and on the exposed side walls of buildings, a grime line along the
  * base of every facade, air conditioning units and drainpipes on the side
  * walls, neon blade signs hanging off the shopfronts over the sidewalk, and
  * event banners strung across the route near the closures and the start.
@@ -483,12 +484,13 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { g
 
   const meshes: THREE.Mesh[] = [];
   if (paint.vertexCount) {
-    // A little self lit (fresh paint and posters read in unlit alleys), the rest from the street lamps.
+    // Paint is lit by the street like the wall it is on; a trace of self light keeps the paper of a
+    // poster readable in an unlit alley without turning any of it into backlit signage.
     const mat = new THREE.MeshStandardMaterial({
       map: atlases.graffiti,
       emissiveMap: atlases.graffiti,
       emissive: 0xffffff,
-      emissiveIntensity: 0.28,
+      emissiveIntensity: 0.04,
       roughness: 0.85,
       metalness: 0,
       vertexColors: true,
