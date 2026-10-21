@@ -14,8 +14,8 @@
  * ROADWORKS.aiMargin clear of the barriers' reach, so the AI swings round it
  * while the player may dive through the cones and take the barriers with them.
  *
- * Planned once the routes are known (world.ts calls planRoadworks from the
- * topology hook): one closure on each route's own streets where it fits,
+ * Planned once the routes are known (after world.ts's topology hook, from
+ * PlanContext.event): one closure on each route's own streets where it fits,
  * away from the start, the grid and the finish, plus a few elsewhere. Never
  * on a route's closed side street (the street meets stand there), never near
  * a junction (crosswalks, traffic lights, shortcut mouths and closures all sit
@@ -161,10 +161,10 @@ function routeS(route: Route, p: Vec2): number {
 }
 
 /**
- * Plan the closures (graph phase, from world.ts's topology hook, once both
- * routes are picked and carved) and register one 'roadworks' area each.
+ * Plan the closures (graph phase, once both routes are picked and carved:
+ * PlanContext.event) and register one 'roadworks' area each.
  */
-export function planRoadworks(ctx: PlanContext, routes: CarveRoute[]): void {
+export function planRoadworks(ctx: PlanContext, routes: readonly CarveRoute[]): void {
   const C = ROADWORKS;
   if (!C.enabled) return;
   const g = ctx.graph;
@@ -325,10 +325,12 @@ function buildRoadworks(ctx: BuildContext, area: Area): AreaBuild {
   return b;
 }
 
-/** Areas come from planRoadworks (the routes must be known), so the module's own plan does nothing. */
+/** Planned after the routes (registered after the topology hook); without them (tools planning bare districts) there are none. */
 export const roadworksModule: DistrictModule = {
   kind: 'roadworks',
   phase: 'graph',
-  plan() {},
+  plan(ctx) {
+    if (ctx.event) planRoadworks(ctx, ctx.event.routes);
+  },
   build: buildRoadworks,
 };

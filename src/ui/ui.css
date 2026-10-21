@@ -515,6 +515,24 @@ body > .mw {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* The seed's named event (city/events.ts): display name, tagline under it. */
+.menu .event-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.menu .event-name {
+  font: 900 22px var(--display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text);
+  line-height: 1.1;
+}
+.menu .event-tagline {
+  font-size: 13px;
+  color: var(--muted);
+}
 /* A row of four tiles: the home menu and the race types. Lit like the mode rows they replace: an accent bar and edge. */
 .tiles {
   display: grid;

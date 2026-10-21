@@ -19,6 +19,15 @@
  * level), the monument plaza and each other; they may run on past the city
  * edge. The area polygon covers the plateau and most of the slope, so
  * areaAt and the minimap report the whole rise, not just the claimed blocks.
+ *
+ * Hill Climb events (src/city/events.ts): the routes are picked before the
+ * hills exist, so the hills come to them. Blocks the routes run along are
+ * tried first (most frontage on a route still without a hill first, so both
+ * routes get one), the most hills asked for, clusters grow across route
+ * streets so a route runs up onto the plateau rather than past a corner,
+ * a cluster that does not fit is tried again as its route block alone
+ * (a smaller plateau whose slopes reach less far), and each starts from the
+ * tallest height before lowering to fit.
  */
 import { CITY } from '../config';
 import type { BlockFace } from '../blocks';
@@ -130,7 +139,9 @@ export const hillsModule: DistrictModule = {
     if (!CFG.enabled) return;
     const g = ctx.graph;
     const rng = ctx.rng;
-    const count = rng.int(CFG.count[0], CFG.count[1]);
+    const drawn = rng.int(CFG.count[0], CFG.count[1]);
+    // A Hill Climb asks for the most hills (see the header).
+    const count = ctx.event?.flavour === 'hillClimb' ? CFG.count[1] : drawn;
     const faces = ctx.faces();
     const rivers = ctx.areas.filter((a) => a.kind === 'river');
     const subways = ctx.areas.filter((a) => a.kind === 'subway').map((a) => samplePath(a.path, 10));
@@ -175,7 +186,21 @@ export const hillsModule: DistrictModule = {
 
     const order = faces.filter(eligible).map((f) => f.id);
     rng.shuffle(order);
-    for (const seedId of order) {
+    // Hill Climb: each block's frontage on each route (m). The next block tried is the one with the
+    // most frontage on routes that have no hill yet (then on any route), so both routes get one.
+    const routes = ctx.event?.flavour === 'hillClimb' ? ctx.event.routes.map((r) => new Set(r.edges)) : null;
+    const routeEdges = routes ? new Set(routes.flatMap((r) => [...r])) : null;
+    const front = new Map<number, number[]>();
+    if (routes) for (const id of order) front.set(id, routes.map((r) => faces[id].edges.reduce((m, e) => m + (r.has(e) ? g.edges[e].length : 0), 0)));
+    const served = routes ? routes.map(() => false) : [];
+    const want = (id: number) => front.get(id)!.reduce((k, m, r) => k + m * (served[r] ? 1 : 1000), 0);
+    for (let oi = 0; oi < order.length; oi++) {
+      if (routes) {
+        let bi = oi;
+        for (let j = oi + 1; j < order.length; j++) if (want(order[j]) > want(order[bi])) bi = j;
+        [order[oi], order[bi]] = [order[bi], order[oi]];
+      }
+      const seedId = order[oi];
       if (made.length >= count) break;
       const seed = faces[seedId];
       if (!eligible(seed)) continue;
@@ -194,62 +219,72 @@ export const hillsModule: DistrictModule = {
           }
         }
         if (!nb.length) break;
-        const pick = nb[rng.int(0, nb.length - 1)];
+        // Hill Climb grows across route streets first: the route then climbs onto the plateau.
+        const k = rng.int(0, nb.length - 1);
+        const across = routeEdges ? nb.filter((n) => n.edges.some((e) => routeEdges.has(e) && cluster.some((f) => f.edges.includes(e)))) : [];
+        const pick = across.length ? across[k % across.length] : nb[k];
         cluster.push(pick);
         inCluster.add(pick.id);
       }
       if (cluster.length < CFG.blocks[0]) continue;
-      // Frame along the seed block's longest street side, centred on the cluster.
-      const u = longestSide(seed);
-      let cx = 0;
-      let cz = 0;
-      let total = 0;
-      for (const f of cluster) {
-        const c = polygonCentroid(f.ring);
-        cx += c.x * f.area;
-        cz += c.z * f.area;
-        total += f.area;
-      }
-      cx /= total;
-      cz /= total;
-      let eu = 0;
-      let ev = 0;
-      for (const f of cluster) {
-        for (const p of f.ring) {
-          eu = Math.max(eu, Math.abs((p.x - cx) * u.x + (p.z - cz) * u.z));
-          ev = Math.max(ev, Math.abs(-(p.x - cx) * u.z + (p.z - cz) * u.x));
+      // A Hill Climb hill that does not fit as a cluster is tried again on its route block alone (a
+      // smaller plateau whose slopes reach less far): every route gets its climb.
+      for (const blocks of routeEdges && cluster.length > 1 ? [cluster, [seed]] : [cluster]) {
+        // Frame along the seed block's longest street side, centred on the cluster.
+        const u = longestSide(seed);
+        let cx = 0;
+        let cz = 0;
+        let total = 0;
+        for (const f of blocks) {
+          const c = polygonCentroid(f.ring);
+          cx += c.x * f.area;
+          cz += c.z * f.area;
+          total += f.area;
         }
-      }
-      const ridge = rng.chance(CFG.ridgeChance);
-      const basin = rng.chance(CFG.basinChance);
-      const a = Math.max(25, eu - CFG.inset);
-      const b = ridge ? CFG.ridgeHalfWidth : Math.max(25, ev - CFG.inset);
-      // Tallest hill that fits, from a random height down to the minimum.
-      let shape: HillShape | null = null;
-      for (let h = rng.range(CFG.height[0], CFG.height[1]); h >= CFG.height[0] - 1e-9; h -= 1) {
-        const s: HillShape = { cx, cz, ux: u.x, uz: u.z, a, b, h: basin ? -h : h, w: (1.5 * h) / CFG.maxGrade };
-        if (fits(s)) {
-          shape = s;
-          break;
+        cx /= total;
+        cz /= total;
+        let eu = 0;
+        let ev = 0;
+        for (const f of blocks) {
+          for (const p of f.ring) {
+            eu = Math.max(eu, Math.abs((p.x - cx) * u.x + (p.z - cz) * u.z));
+            ev = Math.max(ev, Math.abs(-(p.x - cx) * u.z + (p.z - cz) * u.x));
+          }
         }
+        const ridge = rng.chance(CFG.ridgeChance);
+        const basin = rng.chance(CFG.basinChance);
+        const a = Math.max(25, eu - CFG.inset);
+        const b = ridge ? CFG.ridgeHalfWidth : Math.max(25, ev - CFG.inset);
+        // Tallest hill that fits, from a random height down to the minimum.
+        let shape: HillShape | null = null;
+        const h0 = rng.range(CFG.height[0], CFG.height[1]);
+        for (let h = routeEdges ? CFG.height[1] : h0; h >= CFG.height[0] - 1e-9; h -= 1) {
+          const s: HillShape = { cx, cz, ux: u.x, uz: u.z, a, b, h: basin ? -h : h, w: (1.5 * h) / CFG.maxGrade };
+          if (fits(s)) {
+            shape = s;
+            break;
+          }
+        }
+        if (!shape) continue;
+        if (ctx.budget.used + total > ctx.budget.total) break;
+        for (const f of blocks) taken.add(f.id);
+        made.push(shape);
+        routes?.forEach((r, i) => (served[i] ||= blocks.some((f) => f.edges.some((e) => r.has(e)))));
+        ctx.addArea(
+          {
+            kind: 'hills',
+            variant: basin ? 'basin' : ridge ? 'ridge' : 'dome',
+            polygon: hillOutline(shape, shape.w * CFG.reach),
+            path: [],
+            nodes: [],
+            edges: [],
+            faces: blocks.map((f) => f.id),
+            params: { cx, cz, ux: u.x, uz: u.z, a, b, h: shape.h, w: shape.w, yaw: atan2(u.x, u.z), blocks: blocks.length },
+          },
+          total,
+        );
+        break;
       }
-      if (!shape) continue;
-      if (ctx.budget.used + total > ctx.budget.total) continue;
-      for (const f of cluster) taken.add(f.id);
-      made.push(shape);
-      ctx.addArea(
-        {
-          kind: 'hills',
-          variant: basin ? 'basin' : ridge ? 'ridge' : 'dome',
-          polygon: hillOutline(shape, shape.w * CFG.reach),
-          path: [],
-          nodes: [],
-          edges: [],
-          faces: cluster.map((f) => f.id),
-          params: { cx, cz, ux: u.x, uz: u.z, a, b, h: shape.h, w: shape.w, yaw: atan2(u.x, u.z), blocks: cluster.length },
-        },
-        total,
-      );
     }
   },
 

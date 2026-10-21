@@ -11,17 +11,25 @@
  * lantern posts line the plaza edge, all destructible. Three kinds, one per
  * seed: an obelisk, a statue column or a
  * triumphal arch opening along the plaza's longest street side.
+ *
+ * Grand Tour events (src/city/events.ts) always get one, on the block
+ * nearest the center that both routes run along (or either one), searched
+ * further out than usual: the monument is planned after the routes and
+ * comes to the race.
  */
 import { CITY } from '../config';
 import { Vec2, atan2, cos, sin, sqrt } from '../../sim/math';
 import { Rng } from '../../sim/prng';
-import type { DistrictModule } from './types';
+import type { DistrictModule, PlanContext } from './types';
+import type { BlockFace } from '../blocks';
 import { emptyBuild } from './types';
 import { circlePolygon, distToPolygonEdge, pointInPolygon, polyWalls, polygonCentroid } from './geom';
 import { convexRing } from './park';
 import { riverCenter } from './river';
 
 const CFG = CITY.districts.monument;
+/** A Grand Tour's monument may stand this far from the center (m), wherever both routes pass a block that can hold it. */
+export const TOUR_REACH = 650;
 const KINDS = ['obelisk', 'column', 'arch'] as const;
 
 /** Rectangle centred on c: `len` along u, `wide` across. */
@@ -37,37 +45,55 @@ function centredRect(c: Vec2, u: Vec2, len: number, wide: number): Vec2[] {
   ];
 }
 
+/**
+ * Blocks that can hold the plaza, nearest the center first, with their
+ * centroid's distance from it (m): unclaimed, convex, sized for it, no
+ * bridge, shortcut, claimed street or roundabout on their ring, clear of the
+ * river and within `reach` of the center. Event flavours (events.ts) ask it
+ * before the monument is planned.
+ */
+export function monumentSites(ctx: Pick<PlanContext, 'graph' | 'areas' | 'claims' | 'faces'>, reach: number): { f: BlockFace; d: number }[] {
+  const g = ctx.graph;
+  const cx0 = (g.bounds.minX + g.bounds.maxX) / 2;
+  const cz0 = (g.bounds.minZ + g.bounds.maxZ) / 2;
+  const rivers = ctx.areas.filter((a) => a.kind === 'river');
+  return ctx
+    .faces()
+    .filter((f) => {
+      if (f.outer || f.area < CFG.minArea || f.area > CFG.maxArea || ctx.claims.face.has(f.id)) return false;
+      if (f.edges.some((e) => g.edges[e].shortcut || g.edges[e].bridge || ctx.claims.edge.has(e))) return false;
+      if (f.corners.some((c) => g.nodes[c.node].ring)) return false;
+      if (!convexRing(f.ring)) return false;
+      const c = polygonCentroid(f.ring);
+      if (sqrt((c.x - cx0) ** 2 + (c.z - cz0) ** 2) > reach) return false;
+      for (const r of rivers) if (f.ring.some((p) => Math.abs(p.z - riverCenter(r.params, p.x)) < r.params.top + CITY.districts.river.clearance + 4)) return false;
+      return true;
+    })
+    .map((f) => ({ f, d: (() => {
+      const c = polygonCentroid(f.ring);
+      return sqrt((c.x - cx0) ** 2 + (c.z - cz0) ** 2);
+    })() }))
+    .sort((p, q) => p.d - q.d || p.f.id - q.f.id);
+}
+
 export const monumentModule: DistrictModule = {
   kind: 'monument',
   phase: 'graph',
   plan(ctx) {
     if (!CFG.enabled) return;
     const rng = ctx.rng;
-    if (!rng.chance(CFG.chance)) return;
-    const g = ctx.graph;
-    const cx0 = (g.bounds.minX + g.bounds.maxX) / 2;
-    const cz0 = (g.bounds.minZ + g.bounds.maxZ) / 2;
-    const rivers = ctx.areas.filter((a) => a.kind === 'river');
-    const faces = ctx
-      .faces()
-      .filter((f) => {
-        if (f.outer || f.area < CFG.minArea || f.area > CFG.maxArea || ctx.claims.face.has(f.id)) return false;
-        if (f.edges.some((e) => g.edges[e].shortcut || g.edges[e].bridge || ctx.claims.edge.has(e))) return false;
-        if (f.corners.some((c) => g.nodes[c.node].ring)) return false;
-        if (!convexRing(f.ring)) return false;
-        const c = polygonCentroid(f.ring);
-        if (sqrt((c.x - cx0) ** 2 + (c.z - cz0) ** 2) > CFG.reach) return false;
-        for (const r of rivers) if (f.ring.some((p) => Math.abs(p.z - riverCenter(r.params, p.x)) < r.params.top + CITY.districts.river.clearance + 4)) return false;
-        return true;
-      })
-      .map((f) => ({ f, d: (() => {
-        const c = polygonCentroid(f.ring);
-        return sqrt((c.x - cx0) ** 2 + (c.z - cz0) ** 2);
-      })() }))
-      .sort((p, q) => p.d - q.d || p.f.id - q.f.id);
+    const tour = ctx.event?.flavour === 'grandTour' ? ctx.event.routes.map((r) => new Set(r.edges)) : null;
+    if (!rng.chance(CFG.chance) && !tour) return;
+    const faces = monumentSites(ctx, tour ? TOUR_REACH : CFG.reach);
     if (!faces.length) return;
     // One of the three blocks nearest the center: the landmark anchors downtown without always taking the same block.
-    const f = faces[rng.int(0, Math.min(2, faces.length - 1))].f;
+    let f = faces[rng.int(0, Math.min(2, faces.length - 1))].f;
+    if (tour) {
+      // Grand Tour: the nearest block on the most routes (stable sort: nearest first among equals).
+      const on = (b: BlockFace) => tour.filter((r) => b.edges.some((e) => r.has(e))).length;
+      const best = faces.map((p) => ({ f: p.f, n: on(p.f) })).sort((p, q) => q.n - p.n)[0];
+      if (best.n > 0) f = best.f;
+    }
     if (ctx.budget.used + f.area > ctx.budget.total) return;
     const c = polygonCentroid(f.ring);
     // The plaza's axis runs along its longest street side (an arch opens along it).

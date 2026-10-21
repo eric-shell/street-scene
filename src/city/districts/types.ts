@@ -28,6 +28,7 @@ import type { RoadGraph } from '../roadGraph';
 import type { BlockFace, Building, EdgeMouths, Sector, Wall } from '../blocks';
 import type { Terrain } from '../terrain';
 import type { DistrictPropSpec } from '../props';
+import type { EventFlavourId } from '../events';
 
 export type AreaKind =
   | 'downtown'
@@ -237,6 +238,17 @@ export interface Claims {
   face: Map<number, number>;
 }
 
+/**
+ * The seed's event flavour (src/city/events.ts) and both routes, as the
+ * topology hook picked them: modules planned after the routes (hills, the
+ * monument) read it to put their feature where the race goes.
+ */
+export interface PlannedEvent {
+  flavour: EventFlavourId;
+  /** Circuit then sprint: graph nodes in driving order and the edges between them. */
+  routes: { nodes: number[]; edges: number[]; closed: boolean }[];
+}
+
 export interface PlanContext {
   seed: number;
   /** This module's own random stream (deriveSeed(seed, 'district:' + kind)). */
@@ -256,6 +268,8 @@ export interface PlanContext {
   graphChanged(): void;
   /** Present for 'late' modules only. */
   late?: LateContext;
+  /** Present for the modules planned after the topology hook, when it returned one. */
+  event?: PlannedEvent;
 }
 
 export interface BuildContext {

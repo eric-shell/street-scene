@@ -156,7 +156,7 @@ function pathLength(g: RoadGraph, nodes: number[], closed: boolean): number {
   return len;
 }
 
-function randomWeights(g: RoadGraph, rng: Rng): Float64Array {
+function randomWeights(g: RoadGraph, rng: Rng, bias?: (edge: number) => number): Float64Array {
   const w = new Float64Array(g.edges.length);
   g.edges.forEach((e, i) => {
     // Favor the wide fast roads a little so routes have long straights, raceway alleys so more races
@@ -164,7 +164,7 @@ function randomWeights(g: RoadGraph, rng: Rng): Float64Array {
     const kindBias = e.kind === 'boulevard' ? 0.7 : e.kind === 'diagonal' ? 0.75 : e.kind === 'avenue' ? 0.85 : e.kind === 'alley' ? 0.78 : e.kind === 'channel' ? ROUTE.channelBias : 1;
     const r = rng.range(0.45, 1.9);
     // Back alley shortcuts are never part of a route (Infinity is never relaxed).
-    w[i] = e.shortcut ? Infinity : e.length * kindBias * r;
+    w[i] = e.shortcut ? Infinity : e.length * kindBias * r * (bias ? bias(i) : 1);
   });
   return w;
 }
@@ -180,16 +180,41 @@ function score(stats: CornerStats, len: number, minLen: number, maxLen: number):
 }
 
 /**
- * What the finders would rather pick (planRoads: a route that dives into the
- * river channel). The search goes on past acceptable routes until it finds
- * one `prefer` likes, and settles for the best plain route only when none
- * liked comes within ROUTE.preferSlack of it. Every other attempt starts
- * from one of the `anchors` (the feet of the river's side ramps): a path
- * leaving a foot by its ramp can only come back along the channel.
+ * What the finders would rather pick (planRoads: what the seed's event
+ * flavour wants, see events.ts, and a dive into the river channel). The
+ * search goes on past acceptable routes until it finds one `prefer` likes
+ * (one rated `goal` when `rate` grades them), and settles for the best plain
+ * route only when none liked comes within ROUTE.preferSlack of it; among
+ * liked ones the highest rated within that slack wins. Two in three attempts
+ * start from one of the `anchors` (the feet of the river's side ramps, say:
+ * a path leaving a foot by its ramp can only come back along the channel).
  */
 export interface RoutePreference {
   prefer: (nodes: number[]) => boolean;
   anchors: number[];
+  /** Graded liking: 0 = not liked, higher = liked more (stands in for `prefer` when given). */
+  rate?: (nodes: number[]) => number;
+  /** The rating that ends the search once a route is also acceptable (default 1). */
+  goal?: number;
+  /** A second anchor set: circuits take one far end in three from it, sprints alternate their waypoint between both sets. */
+  via?: number[];
+  /** Dijkstra weight factor per edge id (below 1 draws routes along it), on top of the kind biases. */
+  bias?: (edge: number) => number;
+}
+
+/** A preference's grading: `rate`, or `prefer` as 0 / 1. */
+function rater(want: RoutePreference | undefined): ((nodes: number[]) => number) | undefined {
+  if (!want) return undefined;
+  return want.rate ?? ((nodes) => (want.prefer(nodes) ? 1 : 0));
+}
+
+/** The highest rated liked route within ROUTE.preferSlack of the best plain score, if any. */
+function bestRated(rated: ({ nodes: number[]; score: number } | undefined)[], bestScore: number): number[] | null {
+  for (let l = rated.length - 1; l > 0; l--) {
+    const r = rated[l];
+    if (r && r.score >= bestScore - ROUTE.preferSlack) return r.nodes;
+  }
+  return null;
 }
 
 /** `variant` > 0 draws an alternative circuit from its own random stream (planRoads uses it when a circuit has no room for a shortcut). */
@@ -197,17 +222,19 @@ export function findCircuitNodes(g: RoadGraph, seed: number, variant = 0, want?:
   const rng = new Rng(deriveSeed(seed, variant ? `circuit:${variant}` : 'circuit'));
   let best: number[] | null = null;
   let bestScore = -Infinity;
-  let preferred: number[] | null = null;
-  let preferredScore = -Infinity;
-  const prefer = want?.prefer;
+  // Best liked route per rating (index = rating, 1 up to the goal).
+  const rated: ({ nodes: number[]; score: number } | undefined)[] = [];
+  const rate = rater(want);
+  const goal = want?.goal ?? 1;
   const anchors = want?.anchors ?? [];
+  const via = want?.via ?? [];
   const n = g.nodes.length;
   // Looking for a liked route takes more tries: two in three start from an anchor.
-  const attempts = prefer ? ROUTE.maxAttempts * 2 : ROUTE.maxAttempts;
+  const attempts = rate ? ROUTE.maxAttempts * 2 : ROUTE.maxAttempts;
   for (let attempt = 0; attempt < attempts; attempt++) {
-    const w = randomWeights(g, rng);
+    const w = randomWeights(g, rng, want?.bias);
     const a = anchors.length && attempt % 3 ? anchors[rng.int(0, anchors.length - 1)] : rng.int(0, n - 1);
-    const b = rng.int(0, n - 1);
+    const b = via.length && attempt % 3 === 2 ? via[rng.int(0, via.length - 1)] : rng.int(0, n - 1);
     const A = g.nodes[a];
     const B = g.nodes[b];
     const sep = sqrt((A.x - B.x) ** 2 + (A.z - B.z) ** 2);
@@ -230,14 +257,12 @@ export function findCircuitNodes(g: RoadGraph, seed: number, variant = 0, want?:
       bestScore = sc;
       best = cycle;
     }
-    const liked = !!prefer && prefer(cycle);
-    if (liked && sc > preferredScore) {
-      preferredScore = sc;
-      preferred = cycle;
-    }
-    if (sc >= 0 && (!prefer || liked)) break;
+    const level = rate ? Math.min(goal, rate(cycle)) : 0;
+    if (level > 0 && !(rated[level] && rated[level]!.score >= sc)) rated[level] = { nodes: cycle, score: sc };
+    if (sc >= 0 && (!rate || level >= goal)) break;
   }
-  if (preferred && preferredScore >= bestScore - ROUTE.preferSlack) return preferred;
+  const preferred = bestRated(rated, bestScore);
+  if (preferred) return preferred;
   if (!best) throw new Error('could not find a circuit');
   return best;
 }
@@ -249,16 +274,17 @@ export function findSprintNodes(g: RoadGraph, seed: number, variant = 0, want?: 
   const span = sqrt((g.bounds.maxX - g.bounds.minX) ** 2 + (g.bounds.maxZ - g.bounds.minZ) ** 2);
   let best: number[] | null = null;
   let bestScore = -Infinity;
-  let preferred: number[] | null = null;
-  let preferredScore = -Infinity;
-  const prefer = want?.prefer;
-  const anchors = want?.anchors ?? [];
-  const attempts = prefer ? ROUTE.maxAttempts * 2 : ROUTE.maxAttempts;
+  const rated: ({ nodes: number[]; score: number } | undefined)[] = [];
+  const rate = rater(want);
+  const goal = want?.goal ?? 1;
+  const second = want?.via ?? [];
+  const attempts = rate ? ROUTE.maxAttempts * 2 : ROUTE.maxAttempts;
   for (let attempt = 0; attempt < attempts; attempt++) {
-    const w = randomWeights(g, rng);
+    const w = randomWeights(g, rng, want?.bias);
     const a = rng.int(0, n - 1);
     const b = rng.int(0, n - 1);
     // Through a ramp foot: the leg in by the ramp forces the leg out along the channel, or vice versa.
+    const anchors = second.length && attempt % 3 === 2 ? second : (want?.anchors ?? []);
     const via = anchors.length && attempt % 3 ? anchors[rng.int(0, anchors.length - 1)] : rng.int(0, n - 1);
     const A = g.nodes[a];
     const B = g.nodes[b];
@@ -287,14 +313,12 @@ export function findSprintNodes(g: RoadGraph, seed: number, variant = 0, want?: 
       bestScore = sc;
       best = p;
     }
-    const liked = !!prefer && prefer(p);
-    if (liked && sc > preferredScore) {
-      preferredScore = sc;
-      preferred = p;
-    }
-    if (sc >= 0 && (!prefer || liked)) break;
+    const level = rate ? Math.min(goal, rate(p)) : 0;
+    if (level > 0 && !(rated[level] && rated[level]!.score >= sc)) rated[level] = { nodes: p, score: sc };
+    if (sc >= 0 && (!rate || level >= goal)) break;
   }
-  if (preferred && preferredScore >= bestScore - ROUTE.preferSlack) return preferred;
+  const preferred = bestRated(rated, bestScore);
+  if (preferred) return preferred;
   if (!best) throw new Error('could not find a sprint');
   return best;
 }

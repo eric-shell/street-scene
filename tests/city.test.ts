@@ -893,7 +893,7 @@ describe('route shortcuts', () => {
     for (const k of ['fencePanel', 'trafficCone', 'sawhorse'] as const) expect(PROP_DEFS[k].breakSpeed).toBeLessThanOrEqual(0.1);
     const rng = new Rng(4040);
     let crawled = 0;
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; crawled < 4 && i < 12; i++) {
       const seed = rng.int(0, 0x7fffffff);
       const r = createRace(raceConfig(seed, 'circuit', 0));
       while (r.tick < r.countdownTicks) stepRace(r, NEUTRAL_INPUT);
@@ -907,6 +907,9 @@ describe('route shortcuts', () => {
       const panel = w.props
         .filter((p) => p.area === area.id && p.kind === 'fencePanel' && (p.x - sc.ax) * ux + (p.z - sc.az) * uz < len / 2)
         .sort((a, b) => Math.abs((a.x - sc.ax) * -uz + (a.z - sc.az) * ux) - Math.abs((b.x - sc.ax) * -uz + (b.z - sc.az) * ux))[0];
+      // A crawl at this throttle stalls on a hill's grade alone (hills often sit on the routes): test on the flat.
+      const sl = w.slopeAt(panel.x, panel.z);
+      if (Math.abs(sl.gx * ux + sl.gz * uz) > 0.03) continue;
       const rc = r.cars[0];
       const c = rc.state;
       const back = rc.tuning.geometry.halfLength + panel.radius + 0.3;
