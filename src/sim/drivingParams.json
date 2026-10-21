@@ -142,8 +142,9 @@
   },
   "cars": {
     "protoCompact": {
-      "_name": "Proto Compact: front inline 6, rev happy, rear wheel drive. Uses base as is.",
-      "drivetrain": { "layout": "rwd" }
+      "_name": "Proto Compact: front inline 6, rev happy, rear wheel drive. Base engine; the final drive is shortened by its true size tire over the old shared 0.28 m one (0.31 / 0.28), so it keeps the gear speeds and the launch it was tuned with.",
+      "drivetrain": { "layout": "rwd" },
+      "gearbox": { "finalDrive": 4.32 }
     },
     "protoHatch": {
       "_name": "Proto Hatch: front turbo flat 4, front wheel drive. Lighter, a flat turbo torque plateau, shorter redline and a taller final drive; the front tires do all the work.",
