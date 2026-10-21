@@ -5,7 +5,7 @@
  */
 import { CITY, ROUTE } from './config';
 import { CityBlocks, Solid, Wall, generateBlocks } from './blocks';
-import { RoadGraph, edgeBetween, generateRoadGraph } from './roadGraph';
+import { RoadGraph, generateRoadGraph } from './roadGraph';
 import { BarrierGroup, RailWall, Route, RouteKind, buildRoute, findCircuitNodes, findSprintNodes, routeBarrierGroups, routeRails } from './route';
 import { Prop, buildPropGrid } from './props';
 import { SpatialGrid } from './spatial';
@@ -13,6 +13,7 @@ import { Terrain, createTerrain } from './terrain';
 import { cos, distToSegment, segmentT, sin, sqrt } from '../sim/math';
 import { CityDistricts, planDistricts } from './districts';
 import { carveRouteShortcuts, hasShortcutSpot, qualifiedCount } from './districts/alley';
+import { CityEvent, EventFlavourId, eventOffer, eventRoutePreference, pickEventFlavour, resolveEvent, routeEdges } from './events';
 import { Drawbridge, buildTimedGates, markDrawbridge } from './drawbridge';
 import type { GateSet } from '../sim/gates';
 
@@ -62,6 +63,8 @@ export interface City {
    * planned (see planRoads) so their shortcuts could be carved into it.
    */
   routeNodes: Record<RouteKind, number[]>;
+  /** The seed's named event (Hill Climb, River Run, ...; see events.ts), which the routes were picked to match. */
+  event: CityEvent;
 }
 
 /**
@@ -70,18 +73,21 @@ export interface City {
  * Each route then gets its guaranteed shortcuts carved into the graph
  * (carveRouteShortcuts), which splits some of its edges; the stored node
  * lists include those split nodes, so routes stay on the same streets.
- * Cheap (no blocks): tests use it to sweep many seeds.
+ * Cheap (no blocks): tests use it to sweep many seeds. `forceFlavour`
+ * overrides the seed's drawn event flavour (tests and tools comparing them).
  */
-export function planRoads(seed: number): { graph: RoadGraph; districts: CityDistricts; routeNodes: Record<RouteKind, number[]> } {
+export function planRoads(seed: number, forceFlavour?: EventFlavourId): { graph: RoadGraph; districts: CityDistricts; routeNodes: Record<RouteKind, number[]>; event: CityEvent } {
   const graph = generateRoadGraph(seed);
   let routeNodes: Record<RouteKind, number[]> | null = null;
+  let flavour: EventFlavourId = 'downtownDash';
   // Districts claim space and edit the graph (alleys, shortcuts, roundabouts, bridges) first.
   const districts = planDistricts(seed, graph, {
     topology(ctx) {
       // A route with no room for a shortcut (one wrapped around the river, say) is swapped for the
-      // next alternative that has one: alternatives that still dive into the channel first, then
-      // routes picked without the river preference, since on the rare seed that cannot have both a
-      // shortcut on every route outranks the dive; after ROUTE_TRIES each way the first pick stands.
+      // next alternative that has one: alternatives that still match the event (and dive into the
+      // channel) first, then routes picked without the preference, since on the rare seed that cannot
+      // have both a shortcut on every route outranks the flavour; after ROUTE_TRIES each way the first
+      // pick stands.
       const pick = (find: (variant: number, prefer: boolean) => number[], closed: boolean, others: { nodes: number[]; closed: boolean }[]) => {
         const first = { nodes: find(0, true), closed };
         if (hasShortcutSpot(ctx, first, others)) return first;
@@ -93,22 +99,12 @@ export function planRoads(seed: number): { graph: RoadGraph; districts: CityDist
         }
         return first;
       };
-      // With a river, routes that dive into the channel are preferred (see findCircuitNodes).
+      // The seed's event flavour, drawn from what this city can deliver, says what the routes should
+      // have (events.ts); every flavour but River Run also keeps the river dive as a second wish.
       const g = ctx.graph;
-      const hasChannel = g.edges.some((e) => e.kind === 'channel');
-      const dives = (nodes: number[], closed: boolean) => {
-        const m = closed ? nodes.length : nodes.length - 1;
-        for (let i = 0; i < m; i++) {
-          const e = edgeBetween(g, nodes[i], nodes[(i + 1) % nodes.length]);
-          if (e >= 0 && g.edges[e].kind === 'channel') return true;
-        }
-        return false;
-      };
-      // Anchors: feet of side ramps (one ramp and the channel both ways), ford feet when there are none.
-      const feet = (ford: boolean) => g.nodes.filter((nd) => nd.edges.some((e) => g.edges[e].kind === 'channel') && nd.edges.filter((e) => g.edges[e].kind === 'ramp').length === (ford ? 2 : 1)).map((nd) => nd.id);
-      const anchors = feet(false).length ? feet(false) : feet(true);
-      const preferCircuit = hasChannel ? { prefer: (nodes: number[]) => dives(nodes, true), anchors } : undefined;
-      const preferSprint = hasChannel ? { prefer: (nodes: number[]) => dives(nodes, false), anchors } : undefined;
+      flavour = forceFlavour ?? pickEventFlavour(seed, eventOffer(g, ctx.areas));
+      const preferCircuit = eventRoutePreference(flavour, ctx, true);
+      const preferSprint = eventRoutePreference(flavour, ctx, false);
       // The circuit is checked against the first sprint pick (whose start and finish it must keep clear).
       const firstSprint = { nodes: findSprintNodes(g, seed, 0, preferSprint), closed: false };
       const circuit = pick((v, p) => findCircuitNodes(g, seed, v, p ? preferCircuit : undefined), true, [firstSprint]);
@@ -127,12 +123,19 @@ export function planRoads(seed: number): { graph: RoadGraph; districts: CityDist
         carveRouteShortcuts(ctx, [circuit2, sprint2]);
       }
       routeNodes = { circuit: circuit2.nodes, sprint: sprint2.nodes };
+      // Hills and the monument are planned after this: they read the routes to come to the race.
+      return { flavour, routes: [circuit2, sprint2].map((r) => ({ nodes: r.nodes, edges: routeEdges(g, r.nodes, r.closed), closed: r.closed })) };
     },
   });
   if (!routeNodes) throw new Error('routes were not planned');
+  const nodes: Record<RouteKind, number[]> = routeNodes;
   // One bridge becomes the drawbridge, its span kept clear of street furniture (city/drawbridge.ts).
-  markDrawbridge(seed, graph, districts.areas, districts.builds, routeNodes);
-  return { graph, districts, routeNodes };
+  markDrawbridge(seed, graph, districts.areas, districts.builds, nodes);
+  const event = resolveEvent(flavour, graph, districts.areas, [
+    { nodes: nodes.circuit, closed: true },
+    { nodes: nodes.sprint, closed: false },
+  ]);
+  return { graph, districts, routeNodes: nodes, event };
 }
 
 export interface World extends City {
@@ -184,11 +187,11 @@ export interface World extends City {
 }
 
 export function createCity(seed: number): City {
-  const { graph, districts, routeNodes } = planRoads(seed);
+  const { graph, districts, routeNodes, event } = planRoads(seed);
   const terrain = createTerrain(seed, districts.heightMods);
   const blocks = generateBlocks(seed, graph, terrain, districts.blocksInput);
   districts.finalize(blocks);
-  return { seed, graph, terrain, blocks, districts, routeNodes };
+  return { seed, graph, terrain, blocks, districts, routeNodes, event };
 }
 
 /** Rails are planned around node centers; roundabouts get none (their ring has its own outer walls). */
