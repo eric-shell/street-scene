@@ -8,7 +8,7 @@ import { bluffShape, bluffUV, envelope, terraceAt } from '../src/city/districts/
 import { elCurve } from '../src/city/districts/subway';
 import { WALL_LOOKS } from '../src/city/districts/types';
 import { pointInPolygon } from '../src/city/districts/geom';
-import { curvePoint, sampleCurve } from '../src/city/railCurve';
+import { RAIL, curvePoint, sampleCurve } from '../src/city/railCurve';
 import { TRAIN, lineServices, trackS, trainLength, tripsAt } from '../src/city/railTimetable';
 import type { TripState } from '../src/city/railTimetable';
 import { CROSSING, crossingTrain } from '../src/city/levelCrossings';
@@ -85,9 +85,10 @@ describe('bluff (city)', () => {
         expect(JSON.stringify(again)).toBe(JSON.stringify(b));
       }
     }
-    // The El exists on about three seeds in four; the bluff fits on most of them, and a route runs over its
-    // level crossing on most of those (see README: the share is measured here).
-    expect(bluffs / el).toBeGreaterThan(0.5);
+    // The El exists on about three seeds in four; the bluff fits on about half of them (it needs the line
+    // straight on one column across five rows, and the line swings columns once or twice per seed), and a
+    // route runs over its level crossing on most of those (see README: the share is measured here).
+    expect(bluffs / el).toBeGreaterThan(0.42);
     expect(crossed / bluffs).toBeGreaterThan(0.6);
   });
 
@@ -205,8 +206,12 @@ describe('bluff (city)', () => {
           else expect(P.y - ground, `deck over edge ${ed.id} at s ${s}`).toBeGreaterThan(CFG.clearance - 0.5);
         }
       }
-      // Grades the trains ride over the city stay gentle.
-      for (let i = Math.ceil(curve.cityA / 2) + 1; i < curve.cityB / 2; i++) expect(Math.abs(curve.deck[i] - curve.deck[i - 1]) / 2).toBeLessThan(0.06);
+      // Grades the trains ride over the city stay gentle, the blends back from the level included: each grows
+      // (RailCurve.blendA/B, from CFG.levelBlend) until its grade is under RAIL.levelGrade, however far the
+      // level sits from the deck's normal height.
+      expect(curve.blendA).toBeGreaterThanOrEqual(CFG.levelBlend);
+      expect(curve.blendB).toBeGreaterThanOrEqual(CFG.levelBlend);
+      for (let i = Math.ceil(curve.cityA / 2) + 1; i < curve.cityB / 2; i++) expect(Math.abs(curve.deck[i] - curve.deck[i - 1]) / 2).toBeLessThan(RAIL.levelGrade + 0.005);
     }
   });
 });

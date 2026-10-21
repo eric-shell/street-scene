@@ -163,6 +163,23 @@ export const CITY = {
       /** Street stairs on the pillar side sidewalk, in line with the pillars: run and width (m). */
       stairRun: 7.4,
       stairWidth: 1.5,
+      /**
+       * Swings: the line leaves its street column for the neighbouring one through the blocks, on an
+       * S curve, this many times per seed [min, max] (one that does not fit is dropped: a diagonal
+       * avenue or the river in its blocks, a curve too tight). One spans [min, max] street rows: over
+       * two rows it crosses the street between them about 40 degrees off square, over three the two
+       * streets about 25.
+       */
+      swings: [1, 2],
+      swingRows: [2, 3],
+      /** The S curve starts and ends this far past the junction it leaves or joins (m): the deck is straight over the junction. */
+      swingLead: 26,
+      /** A swing is dropped when its curve radius falls under this anywhere (m): well above what the trains need (RAIL.minRadius). */
+      swingRadius: 75,
+      /** The S curve's path points are this far apart (m). */
+      swingStep: 10,
+      /** Through a block, buildings and infill keep this far beyond the deck's edges (m). */
+      blockMargin: 2,
     },
     /**
      * Bluff: an escarpment the El crosses level (src/city/districts/bluff.ts).
