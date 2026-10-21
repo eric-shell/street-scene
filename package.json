@@ -14,7 +14,8 @@
     "inspect": "tsx scripts/inspectAsset.ts",
     "validate": "tsx scripts/validateParts.ts",
     "audit": "tsx scripts/auditCar.ts",
-    "music": "tsx scripts/importMusic.ts"
+    "music": "tsx scripts/importMusic.ts",
+    "traffic": "tsx scripts/buildTraffic.ts"
   },
   "dependencies": {
     "lucide": "^1.59.0",

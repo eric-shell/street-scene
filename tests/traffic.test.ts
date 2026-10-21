@@ -7,7 +7,7 @@ import { TRAFFIC } from '../src/sim/tuning';
 import { placeCar } from '../src/sim/car';
 import { createAi, autopilotInput } from '../src/sim/ai';
 import { cos, distToSegment, sin } from '../src/sim/math';
-import { buildKit } from '../src/render/traffic';
+import { TRAFFIC_MODELS } from '../src/render/traffic';
 import { gateBlocking, gateSide } from '../src/sim/gates';
 import { leafAngle, onSpan } from '../src/city/drawbridge';
 import { carSnapshot, input, raceConfig, replayLog } from './helpers';
@@ -271,17 +271,20 @@ describe('ambient traffic', () => {
     expect(carSnapshot(replayLog({ ...cfg, traffic: false }, r.inputLog))).toBe(carSnapshot(r));
   });
 
-  it('draws every kind about the size it collides with', () => {
-    TRAFFIC.kinds.forEach((k, i) => {
-      const kit = buildKit(i);
-      kit.paint.computeBoundingBox();
-      const bb = kit.paint.boundingBox!;
-      expect(Math.abs(bb.max.z - k.halfLength)).toBeLessThan(0.15);
-      expect(Math.abs(bb.min.z + k.halfLength)).toBeLessThan(0.15);
-      expect(Math.abs(bb.max.x - k.halfWidth)).toBeLessThan(0.15);
-      expect(bb.min.y).toBeGreaterThan(0.1);
-      expect(kit.lamps.filter((l) => l.role === 'head').length).toBe(2);
-      expect(kit.lamps.filter((l) => l.role === 'tail').length).toBe(2);
-    });
+  it('collides every kind at the size of its model', () => {
+    // trafficModels.json is what `npm run traffic` measured; nothing stale on either side.
+    expect(Object.keys(TRAFFIC_MODELS.kinds).sort()).toEqual(TRAFFIC.kinds.map((k) => k.name).sort());
+    for (const k of TRAFFIC.kinds) {
+      const m = TRAFFIC_MODELS.kinds[k.name];
+      expect(Math.abs(m.halfLength - k.halfLength)).toBeLessThan(0.02);
+      expect(Math.abs(m.halfWidth - k.halfWidth)).toBeLessThan(0.02);
+      expect(m.lamps.filter((l) => l.role === 'head').length).toBeGreaterThanOrEqual(2);
+      expect(m.lamps.filter((l) => l.role === 'tail').length).toBeGreaterThanOrEqual(2);
+      for (const l of m.lamps) {
+        expect(Math.abs(l.p[2])).toBeLessThan(m.halfLength + 0.1);
+        expect(l.p[1]).toBeLessThan(m.height + 0.1);
+      }
+    }
+    expect(TRAFFIC_MODELS.credits.flatMap((c) => c.kinds).sort()).toEqual(TRAFFIC.kinds.map((k) => k.name).sort());
   });
 });

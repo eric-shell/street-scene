@@ -18,6 +18,7 @@ import { kelvin } from './textures';
 import type { PartEntry } from '../shared/parts';
 import { partsFor } from './carAssets';
 import type { MeetPlan } from './meetPlan';
+import { maskVehicleMesh, underVehicles } from './vehicleMask';
 
 /** Street paint: classics plus the loud colours a meet is full of. */
 const PAINTS = [0xc81e2e, 0x1d55c4, 0xe8e8ea, 0x15161a, 0xf2b81c, 0x2a9d5a, 0x6b2fc2, 0x9aa3ad, 0xff6a00, 0x101a3a, 0x7a0f1a, 0x7cff3a, 0xff2d9a, 0x19c8ff, 0xffe14a, 0x9a3cff].map((c) => new THREE.Color(c));
@@ -312,6 +313,7 @@ export function buildRoadblocks(world: World, plan: MeetPlan, hazardMaterial: TH
   const lightMat = new THREE.MeshBasicMaterial({ vertexColors: true });
   const glowTex = glowTexture();
   const glowMat = new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  underVehicles(glowMat);
   const partMats = [paintMat, darkMat, glassMat, lightMat];
   const disposables: { dispose(): void }[] = [...partMats, glowTex, glowMat];
   const kitMeshes: (THREE.InstancedMesh | null)[][] = Array.from({ length: kitCount }, () => [null, null, null, null]);
@@ -391,6 +393,7 @@ export function buildRoadblocks(world: World, plan: MeetPlan, hazardMaterial: TH
         mesh.frustumCulled = false;
         mesh.name = `carMeet:${car.id}:${k % MEET_VARIANTS}:${part}`;
         if (part === PART_PAINT) mesh.setColorAt(0, new THREE.Color(1, 1, 1));
+        maskVehicleMesh(mesh);
         if (part === PART_GLASS) mesh.renderOrder = 3;
         kitMeshes[k][part] = mesh;
         group.add(mesh);

@@ -33,6 +33,7 @@ import { chip, keybar, railScreen, screenHead } from './rail';
 import type { RaceMode } from '../sim/race';
 import type { MusicPlayer } from '../audio/musicPlayer';
 import { musicCredits } from './musicWidget';
+import trafficModels from '../assets/trafficModels.json';
 import { BUILD_VERSION } from '../version';
 
 export interface PauseScreen {
@@ -343,6 +344,9 @@ function credits(): HTMLElement[] {
       { class: 'credits' },
       h('p', {}, 'Car models by ', h('b', {}, 'IceMaan'), ' (icemaan.itch.io), released as CC0. Thank you for sharing them with the world!'),
       h('p', { class: 'muted' }, 'The Proto Compact and Proto Hatch, with their bumpers, skirts, spoilers and rims, are reworked by eshell from IceMaan\'s S64 and GC14 low poly cars; the Proto Coupe is eshell\'s own.'),
+      ...trafficModels.credits.map((c) =>
+        h('p', {}, 'Traffic: ', h('a', { href: c.url, target: '_blank', rel: 'noopener' }, `"${c.title}"`), ' by ', h('a', { href: c.creatorUrl, target: '_blank', rel: 'noopener' }, h('b', {}, c.creator)), ', ', h('a', { href: c.licenseUrl, target: '_blank', rel: 'noopener' }, c.license), `. ${c.changes}.`),
+      ),
       h('p', {}, 'Icons: ', h('b', {}, 'Lucide'), ' (lucide.dev), ISC license.'),
       musicCredits(),
       h('p', {}, 'Crowd sound effects from ', h('b', {}, 'freesound_community'), ' (Pixabay): "applause" (freesound_community-applause-70507.mp3) and "crowd cheering" (freesound_community-crowd-cheering-6229.mp3), Pixabay Content License.'),

@@ -11,6 +11,8 @@ import { NEUTRAL_INPUT, unpackInput } from '../sim/input';
 import { VisualBuild } from '../sim/build';
 import { DT } from '../sim/constants';
 import { CarView, CarPose } from '../render/carView';
+import { ROAD_Y } from '../render/cityMeshes';
+import { unmaskVehicle } from '../render/vehicleMask';
 import { LightTrails } from '../render/lightTrails';
 import { Sparks } from '../render/sparks';
 import { EngineVoice, audioHub } from '../audio/engineAudio';
@@ -293,7 +295,7 @@ export class RaceSession {
     }
     const loads: Promise<void>[] = [];
     this.race.cars.forEach((rc, i) => {
-      const view = new CarView(rc.carId, assets, { headlights: i === 0, underglowLight: i === 0, envMap: gr.envMap });
+      const view = new CarView(rc.carId, assets, { headlights: i === 0, underglowLight: i === 0, envMap: gr.envMap, roadLift: ROAD_Y });
       this.night.scene.add(view.root);
       this.views.push(view);
       loads.push(view.load(opts.visuals[i] ?? opts.visuals[0]));
@@ -301,7 +303,7 @@ export class RaceSession {
     if (opts.ghost) {
       this.ghostRace = createRace(opts.ghost.config, this.race.world);
       this.ghostLog = opts.ghost.log;
-      const gv = new CarView(opts.ghost.config.player.carId, assets, { envMap: gr.envMap });
+      const gv = new CarView(opts.ghost.config.player.carId, assets, { envMap: gr.envMap, roadLift: ROAD_Y });
       this.ghostView = gv;
       this.night.scene.add(gv.root);
       loads.push(
@@ -312,6 +314,8 @@ export class RaceSession {
               mat.transparent = true;
               mat.opacity = 0.32;
               mat.depthWrite = false;
+              // See-through: the road and its light show through a ghost.
+              unmaskVehicle(mat);
             }
           });
           gv.setHeadlightsEnabled(false);

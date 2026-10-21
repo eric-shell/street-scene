@@ -3,28 +3,43 @@
  * it reads the session's two traffic snapshots and interpolates them with
  * the loop's alpha, like the race cars.
  *
+ * The vehicles are Comrade1280's passenger and civil service packs (CC BY
+ * 4.0), cut, simplified and atlased by `npm run traffic` into
+ * public/traffic/traffic.glb (one node per kind, named as in
+ * drivingParams.json traffic.kinds), public/traffic/trafficAtlas.webp and
+ * src/assets/trafficModels.json (lamps, sizes, credits). They load once per
+ * page (loadTrafficAssets, started at boot); a view built before they land
+ * draws nothing until they do.
+ *
  * Cheap by construction, whatever the count:
- *  - one low poly civilian silhouette per vehicle kind (sedan, hatch, van,
- *    taxi), code-built and merged into two instanced parts per kind: the
- *    paint (per instance colour, a muted street palette; taxis yellow) and
- *    the dark parts (glass, tyres, trim) in vertex colours;
- *  - every lamp of every car (head, tail, taxi roof sign) in one instanced
- *    box mesh with HDR instance colours for the bloom: brake lights flare,
- *    struck cars blink their hazards, fresh spawns fade their lamps in;
+ *  - every body in one BatchedMesh (one draw call, per car frustum culling)
+ *    and every decal (lettering, stripes; alpha tested) in a second one. The
+ *    atlas alpha marks paint on the passenger cars, stored grey, so the
+ *    instance colour tints only the paint (a muted street palette); the
+ *    civil service liveries keep their colours;
+ *  - every lamp of every car (head, tail, beacon, taxi sign) in one
+ *    instanced box mesh with HDR instance colours for the bloom: brake
+ *    lights flare, struck cars blink their hazards and beacons, fresh spawns
+ *    fade their lamps in;
  *  - one instanced additive pool of headlight on the road ahead of each car
  *    (Medium and High).
- * That is ten draw calls at most. Cars beyond the tier's draw distance are
- * dropped, and only the nearest `cars` of the rest are filled in, so the
- * per frame cost is a few dozen matrix composes and terrain samples.
+ * Four draw calls. Cars beyond the tier's draw distance are dropped, and only
+ * the nearest `cars` of the rest are filled in, so the per frame cost is a
+ * few dozen matrix composes and terrain samples. Triangles: 2.2k per
+ * passenger car up to 3.4k per truck or bus, so about 60k at Medium.
  */
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import type { World } from '../city/world';
 import type { TrafficState } from '../sim/traffic';
 import { TRAFFIC } from '../sim/tuning';
 import type { Quality } from '../ui/settings';
-import { GeoBuilder } from './geoBuilder';
+import modelsJson from '../assets/trafficModels.json';
 import { kelvin, makeRadialGlow } from './textures';
 import { fadeSubPixel } from './lightFx';
+import { ROAD_Y } from './cityMeshes';
+import { maskVehicleMesh, underVehicles } from './vehicleMask';
 
 /** Per tier: most cars drawn, draw distance (m), headlight pools on the road. */
 export const TRAFFIC_QUALITY: Record<Quality, { cars: number; drawDistance: number; beams: boolean }> = {
@@ -50,201 +65,162 @@ export function snapTraffic(t: TrafficState, out: Float32Array): void {
   }
 }
 
-/** Muted street paint; vans run white and silver, taxis are always yellow. */
-const PAINTS = [0x9aa0a6, 0x3a3d42, 0x16171a, 0xd8d8d4, 0x1e2a44, 0x5a1a1f, 0x223a2c, 0x9c8b6e, 0x3f5468, 0xb8a98a, 0x6d7276, 0x2b2f3a].map((c) => new THREE.Color(c));
-const VAN_PAINTS = [0xe6e6e2, 0xd0d2d4, 0x9aa0a6, 0x2b3a52].map((c) => new THREE.Color(c));
-const TAXI = new THREE.Color(0xe2ae1c);
+/** A lamp of a model: a box in car space (+z forward, y up, m) and what kind of lamp. */
+export interface TrafficLamp {
+  role: 'head' | 'tail' | 'beacon' | 'sign';
+  /** Beacon lens colour. */
+  color?: 'red' | 'blue' | 'amber';
+  /** Centre and size (m). */
+  p: [number, number, number];
+  s: [number, number, number];
+}
 
-/** Lamp colours (HDR, for the bloom). */
+/** What `npm run traffic` measured of one model. */
+export interface TrafficModel {
+  /** Collision footprint of the body below the mirrors (m); drivingParams.json traffic.kinds matches it. */
+  halfLength: number;
+  halfWidth: number;
+  /** m */
+  height: number;
+  triangles: number;
+  /** Paint marked in the atlas alpha and tinted per car. */
+  tinted: boolean;
+  lamps: TrafficLamp[];
+}
+
+/** One source pack, as credited in the README. */
+export interface TrafficCredit {
+  title: string;
+  creator: string;
+  creatorUrl: string;
+  url: string;
+  license: string;
+  licenseUrl: string;
+  changes: string;
+  kinds: string[];
+}
+
+export const TRAFFIC_MODELS = modelsJson as unknown as { paintRef: number; credits: TrafficCredit[]; kinds: Record<string, TrafficModel> };
+
+/** The model of a traffic kind (index into TRAFFIC.kinds). */
+export function trafficModel(kind: number): TrafficModel {
+  return TRAFFIC_MODELS.kinds[TRAFFIC.kinds[kind].name];
+}
+
+/** Per kind (TRAFFIC.kinds order) its body and decal geometry in car space, and the shared atlas. */
+interface TrafficAssets {
+  body: THREE.BufferGeometry[];
+  decal: (THREE.BufferGeometry | null)[];
+  atlas: THREE.Texture;
+}
+
+const base = import.meta.env.BASE_URL ?? '/';
+let loading: Promise<TrafficAssets | null> | null = null;
+
+/**
+ * Load the traffic GLB and atlas once per page (null if either is missing).
+ * Geometry comes back in float attributes with the node transform baked in:
+ * Meshopt quantizes positions into the node scale, and a BatchedMesh needs
+ * every geometry in one attribute layout.
+ */
+export function loadTrafficAssets(): Promise<TrafficAssets | null> {
+  if (loading) return loading;
+  const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+  const gltf = loader.loadAsync(`${base}traffic/traffic.glb`);
+  const atlas = new THREE.TextureLoader().loadAsync(`${base}traffic/trafficAtlas.webp`);
+  loading = Promise.all([gltf, atlas])
+    .then(([g, tex]) => {
+      tex.flipY = false; // glTF UVs
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 4;
+      g.scene.updateMatrixWorld(true);
+      const body: THREE.BufferGeometry[] = [];
+      const decal: (THREE.BufferGeometry | null)[] = [];
+      for (const k of TRAFFIC.kinds) {
+        const node = g.scene.getObjectByName(k.name);
+        if (!node) throw new Error(`traffic.glb has no ${k.name}`);
+        const parts: Record<string, THREE.BufferGeometry> = {};
+        node.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (m.isMesh) parts[(m.material as THREE.Material).name] = floatGeometry(m.geometry, m.matrixWorld);
+        });
+        body.push(parts.Traffic);
+        decal.push(parts.TrafficDecal ?? null);
+      }
+      return { body, decal, atlas: tex };
+    })
+    .catch((e) => {
+      console.warn('traffic models unavailable', e);
+      return null;
+    });
+  return loading;
+}
+
+/** A copy of a (possibly quantized) glTF geometry with float position, normal and uv, transformed by `m`. */
+function floatGeometry(src: THREE.BufferGeometry, m: THREE.Matrix4): THREE.BufferGeometry {
+  const g = new THREE.BufferGeometry();
+  for (const [name, size] of [
+    ['position', 3],
+    ['normal', 3],
+    ['uv', 2],
+  ] as const) {
+    const a = src.getAttribute(name);
+    const out = new Float32Array(a.count * size);
+    for (let i = 0; i < a.count; i++) {
+      out[i * size] = a.getX(i);
+      out[i * size + 1] = a.getY(i);
+      if (size === 3) out[i * size + 2] = a.getZ(i);
+    }
+    g.setAttribute(name, new THREE.BufferAttribute(out, size));
+  }
+  const idx = src.getIndex();
+  g.setIndex(idx ? Array.from(idx.array as ArrayLike<number>) : [...Array(src.getAttribute('position').count).keys()]);
+  g.applyMatrix4(m);
+  g.computeBoundingBox();
+  g.computeBoundingSphere();
+  return g;
+}
+
+/** Muted street paint for the tinted cars (the atlas holds their paint as grey). */
+const PAINTS = [0x9aa0a6, 0x3a3d42, 0x16171a, 0xd8d8d4, 0x1e2a44, 0x5a1a1f, 0x223a2c, 0x9c8b6e, 0x3f5468, 0xb8a98a, 0x6d7276, 0x2b2f3a, 0x7a2a22, 0x2f4a5a].map((c) => new THREE.Color(c));
+const WHITE = new THREE.Color(1, 1, 1);
+
+/** Lamp colours (HDR, for the bloom). Beacons glow dim, under the bloom, until a struck car flashes them. */
 const HEAD = new THREE.Color(kelvin(5200)).multiplyScalar(2.4);
 const TAIL = new THREE.Color(0xff1a24).multiplyScalar(1.1);
 const BRAKE = new THREE.Color(0xff1a24).multiplyScalar(2.8);
 const HAZARD = new THREE.Color(0xffa030).multiplyScalar(2.2);
 const SIGN = new THREE.Color(0xfff2c0).multiplyScalar(1.8);
-
-/** Silhouette proportions per kind name (m): body height, cabin span and height, wheel radius, glazing. */
-interface Shape {
-  /** Top of the lower body (hood / belt line) and of the roof (m). */
-  belt: number;
-  roof: number;
-  /** Cabin along the car as shares of the half length: rear and front of its base, rear and front of the roof. */
-  cabin: [number, number, number, number];
-  /** m */
-  wheel: number;
-  /** Side windows as spans along the cabin side (0 rear .. 1 front), pillars between them. */
-  side: [number, number][];
-  /** Rear window from this share of the cabin height up (1: none). */
-  rear: number;
-  /** Roof sign (taxi). */
-  sign?: boolean;
-}
-const SEDAN: Shape = { belt: 0.82, roof: 1.44, cabin: [-0.58, 0.42, -0.4, 0.14], wheel: 0.33, side: [[0.07, 0.47], [0.53, 0.93]], rear: 0.1 };
-const SHAPES: Record<string, Shape> = {
-  sedan: SEDAN,
-  hatch: { belt: 0.8, roof: 1.46, cabin: [-0.84, 0.36, -0.72, 0.06], wheel: 0.31, side: [[0.05, 0.36], [0.42, 0.93]], rear: 0.12 },
-  // A delivery van: glass only in the cab, a small pair of windows in the back doors.
-  van: { belt: 1.02, roof: 1.98, cabin: [-0.97, 0.62, -0.97, 0.4], wheel: 0.35, side: [[0.74, 0.95]], rear: 0.45 },
-  taxi: { ...SEDAN, roof: 1.45, sign: true },
+const BEACON: Record<NonNullable<TrafficLamp['color']>, THREE.Color> = {
+  red: new THREE.Color(0xff2030),
+  blue: new THREE.Color(0x2a50ff),
+  amber: new THREE.Color(0xffa030),
 };
+const BEACON_DIM = 0.35;
+const BEACON_FLASH = 3;
 
-const GLASS = new THREE.Color(0x0d121b);
-const TYRE = new THREE.Color(0x111214);
-const TRIM = new THREE.Color(0x1d1e22);
-const RIM = new THREE.Color(0x6a6e75);
+/** The atlas stores paint at this sRGB grey (trafficPack.py PAINT_REF), here in linear. */
+const PAINT_REF_LINEAR = new THREE.Color().setRGB(TRAFFIC_MODELS.paintRef, 0, 0, THREE.SRGBColorSpace).r;
 
-type V3 = [number, number, number];
-
-/**
- * A convex block from its bottom and top rectangles: [x0, x1, z0, z1] each,
- * faces wound outward. Returns its eight corners: bottom (-x -z, +x -z, +x +z,
- * -x +z), then the top in the same order.
- */
-function block(b: GeoBuilder, y0: number, bot: [number, number, number, number], y1: number, top: [number, number, number, number], color?: THREE.Color): V3[] {
-  const P = [
-    [bot[0], y0, bot[2]],
-    [bot[1], y0, bot[2]],
-    [bot[1], y0, bot[3]],
-    [bot[0], y0, bot[3]],
-    [top[0], y1, top[2]],
-    [top[1], y1, top[2]],
-    [top[1], y1, top[3]],
-    [top[0], y1, top[3]],
-  ];
-  const face = (ids: number[], nx: number, ny: number, nz: number) => {
-    const v = ids.map((i) => b.vertex(P[i][0], P[i][1], P[i][2], nx, ny, nz, 0, 0, color));
-    b.quadFacing(v[0], v[1], v[2], v[3], nx, ny, nz);
+/** Body material: the atlas alpha is the paint mask the instance colour tints, never transparency. */
+function bodyMaterial(atlas: THREE.Texture): THREE.MeshStandardMaterial {
+  const m = new THREE.MeshStandardMaterial({ map: atlas, metalness: 0.3, roughness: 0.5, envMapIntensity: 1.1 });
+  m.onBeforeCompile = (s) => {
+    s.fragmentShader = s.fragmentShader.replace(
+      '#include <color_fragment>',
+      `#if defined( USE_COLOR ) || defined( USE_COLOR_ALPHA )
+        diffuseColor.rgb = mix( diffuseColor.rgb, diffuseColor.rgb * vColor.rgb / ${PAINT_REF_LINEAR.toFixed(5)}, diffuseColor.a );
+      #endif
+      diffuseColor.a = 1.0;`,
+    );
   };
-  const n = (ax: number, ay: number, az: number) => {
-    const l = Math.hypot(ax, ay, az) || 1;
-    return [ax / l, ay / l, az / l] as const;
-  };
-  face([0, 1, 2, 3], 0, -1, 0);
-  face([4, 5, 6, 7], 0, 1, 0);
-  // Sides lean by how far the top is inset from the bottom.
-  face([0, 3, 7, 4], ...n(-(y1 - y0), top[0] - bot[0], 0));
-  face([1, 2, 6, 5], ...n(y1 - y0, bot[1] - top[1], 0));
-  face([0, 1, 5, 4], ...n(0, top[2] - bot[2], -(y1 - y0)));
-  face([3, 2, 6, 7], ...n(0, bot[3] - top[3], y1 - y0));
-  return P as V3[];
+  m.customProgramCacheKey = () => 'trafficBody';
+  return m;
 }
 
-/**
- * A glass panel on a face given by its corners (bottom start, bottom end, top
- * end, top start): the (u0..u1, v0..v1) part of it, lifted 1 cm off the face
- * along its outward normal (nx, ny, nz) so the paint around it is the pillars.
- */
-function panel(b: GeoBuilder, q: V3[], u0: number, u1: number, v0: number, v1: number, nx: number, ny: number, nz: number): void {
-  const at = (u: number, v: number) => {
-    const p = [0, 1, 2].map((k) => {
-      const lo = q[0][k] + (q[1][k] - q[0][k]) * u;
-      const hi = q[3][k] + (q[2][k] - q[3][k]) * u;
-      return lo + (hi - lo) * v;
-    });
-    return b.vertex(p[0] + nx * 0.012, p[1] + ny * 0.012, p[2] + nz * 0.012, nx, ny, nz, 0, 0, GLASS);
-  };
-  b.quadFacing(at(u0, v0), at(u1, v0), at(u1, v1), at(u0, v1), nx, ny, nz);
-}
-
-/** Unit outward normal of a quad face (corners in perimeter order) of a convex shape centred at (0, cy, cz). */
-function faceNormal(q: V3[], cy: number, cz: number): V3 {
-  const ux = q[1][0] - q[0][0];
-  const uy = q[1][1] - q[0][1];
-  const uz = q[1][2] - q[0][2];
-  const vx = q[3][0] - q[0][0];
-  const vy = q[3][1] - q[0][1];
-  const vz = q[3][2] - q[0][2];
-  let nx = uy * vz - uz * vy;
-  let ny = uz * vx - ux * vz;
-  let nz = ux * vy - uy * vx;
-  const mx = (q[0][0] + q[2][0]) / 2;
-  const my = (q[0][1] + q[2][1]) / 2 - cy;
-  const mz = (q[0][2] + q[2][2]) / 2 - cz;
-  if (nx * mx + ny * my + nz * mz < 0) {
-    nx = -nx;
-    ny = -ny;
-    nz = -nz;
-  }
-  const l = Math.hypot(nx, ny, nz) || 1;
-  return [nx / l, ny / l, nz / l];
-}
-
-/** An eight sided tyre across the car at (x, y, z), its outer face a grey rim. */
-function wheel(b: GeoBuilder, x: number, y: number, z: number, r: number, w: number): void {
-  const out = x > 0 ? 1 : -1;
-  const xi = x - (out * w) / 2;
-  const xo = x + (out * w) / 2;
-  const seg = 8;
-  for (let k = 0; k < seg; k++) {
-    const a0 = (k / seg) * Math.PI * 2;
-    const a1 = ((k + 1) / seg) * Math.PI * 2;
-    const am = (a0 + a1) / 2;
-    const p = (xx: number, a: number, nx: number, ny: number, nz: number, c: THREE.Color) => b.vertex(xx, y + Math.cos(a) * r, z + Math.sin(a) * r, nx, ny, nz, 0, 0, c);
-    const ny = Math.cos(am);
-    const nz = Math.sin(am);
-    const t = [p(xi, a0, 0, ny, nz, TYRE), p(xo, a0, 0, ny, nz, TYRE), p(xo, a1, 0, ny, nz, TYRE), p(xi, a1, 0, ny, nz, TYRE)];
-    b.quadFacing(t[0], t[1], t[2], t[3], 0, ny, nz);
-    const c = b.vertex(xo, y, z, out, 0, 0, 0, 0, RIM);
-    b.triFacing(c, p(xo, a0, out, 0, 0, RIM), p(xo, a1, out, 0, 0, RIM), out, 0, 0);
-  }
-}
-
-/** A lamp of a silhouette: a unit box placed and sized in car space, and what kind of lamp. */
-export interface Lamp {
-  m: THREE.Matrix4;
-  role: 'head' | 'tail' | 'sign';
-}
-
-/** One kind's merged parts: paint (instance coloured), dark parts (vertex coloured), lamps. */
-export interface KindKit {
-  paint: THREE.BufferGeometry;
-  dark: THREE.BufferGeometry;
-  lamps: Lamp[];
-  /** m */
-  halfLength: number;
-}
-
-/** The silhouette of a traffic kind (index into TRAFFIC.kinds), in car space: +z forward, y up, wheels on y = 0. */
-export function buildKit(kind: number): KindKit {
-  const k = TRAFFIC.kinds[kind];
-  const sh = SHAPES[k.name] ?? SHAPES.sedan;
-  const L = k.halfLength;
-  const W = k.halfWidth;
-  const paint = new GeoBuilder(false);
-  const dark = new GeoBuilder(true);
-  const floor = sh.wheel * 0.9;
-  // Lower body: hood and trunk lines slightly rounded in.
-  block(paint, floor, [-W, W, -L, L], sh.belt, [-W + 0.04, W - 0.04, -L + 0.12, L - 0.16]);
-  // Cabin in paint, with glass panels on its faces: side windows between pillars, windscreen, rear window.
-  const [cr0, cf0, cr1, cf1] = sh.cabin;
-  const inset = sh.roof - sh.belt > 0.8 ? 0.06 : 0.14;
-  const C = block(paint, sh.belt, [-W + 0.08, W - 0.08, cr0 * L, cf0 * L], sh.roof, [-W + inset, W - inset, cr1 * L, cf1 * L]);
-  const cy = (sh.belt + sh.roof) / 2;
-  const cz = ((cr0 + cf0) / 2) * L;
-  for (const q of [
-    [C[0], C[3], C[7], C[4]],
-    [C[1], C[2], C[6], C[5]],
-  ]) {
-    const [nx, ny, nz] = faceNormal(q, cy, cz);
-    for (const [u0, u1] of sh.side) panel(dark, q, u0, u1, 0.1, 0.86, nx, ny, nz);
-  }
-  const front = [C[3], C[2], C[6], C[7]];
-  panel(dark, front, 0.06, 0.94, 0.06, 0.9, ...faceNormal(front, cy, cz));
-  const back = [C[1], C[0], C[4], C[5]];
-  if (sh.rear < 1) panel(dark, back, 0.08, 0.92, sh.rear, 0.88, ...faceNormal(back, cy, cz));
-  // Bumpers and sills.
-  block(dark, floor - 0.02, [-W + 0.02, W - 0.02, L - 0.1, L + 0.04], floor + 0.22, [-W + 0.02, W - 0.02, L - 0.1, L + 0.04], TRIM);
-  block(dark, floor - 0.02, [-W + 0.02, W - 0.02, -L - 0.04, -L + 0.1], floor + 0.22, [-W + 0.02, W - 0.02, -L - 0.04, -L + 0.1], TRIM);
-  const axle = L * 0.62;
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) wheel(dark, sx * (W - 0.14), sh.wheel, sz * axle, sh.wheel, 0.24);
-  const lamps: Lamp[] = [];
-  const box = (x: number, y: number, z: number, sx: number, sy: number, sz: number, role: Lamp['role']) => lamps.push({ m: new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion(), new THREE.Vector3(sx, sy, sz)), role });
-  const lampY = (floor + sh.belt) / 2 + 0.06;
-  for (const s of [-1, 1]) {
-    box(s * (W - 0.24), lampY, L - 0.06, 0.34, 0.12, 0.1, 'head');
-    box(s * (W - 0.2), lampY + 0.04, -L + 0.05, 0.3, 0.13, 0.1, 'tail');
-  }
-  if (sh.sign) box(0, sh.roof + 0.11, (cr1 + cf1) * 0.5 * L, 0.62, 0.2, 0.26, 'sign');
-  return { paint: paint.build(), dark: dark.build(), lamps, halfLength: L };
+/** Lamps of each kind as boxes in car space. */
+function lampMatrices(kind: number): { m: THREE.Matrix4; lamp: TrafficLamp }[] {
+  return trafficModel(kind).lamps.map((lamp) => ({ m: new THREE.Matrix4().compose(new THREE.Vector3(...lamp.p), new THREE.Quaternion(), new THREE.Vector3(...lamp.s)), lamp }));
 }
 
 /** Deterministic 0..1 hash of a car slot and its spawn tick (paint stays put for one spawn). */
@@ -265,12 +241,16 @@ const lerpAngle = (a: number, b: number, t: number) => {
 
 export class TrafficView {
   readonly group = new THREE.Group();
-  private readonly kits: KindKit[];
-  private readonly paintMeshes: THREE.InstancedMesh[] = [];
-  private readonly darkMeshes: THREE.InstancedMesh[] = [];
+  /** Built once the models load; null until then (and when they are missing). */
+  private bodies: THREE.BatchedMesh | null = null;
+  private decals: THREE.BatchedMesh | null = null;
+  private bodyIds: number[] = [];
+  private decalIds: (number | null)[] = [];
+  private readonly lamps = TRAFFIC.kinds.map((_, i) => lampMatrices(i));
   private readonly lampMesh: THREE.InstancedMesh;
   private readonly beamMesh: THREE.InstancedMesh;
   private readonly disposables: { dispose(): void }[] = [];
+  private disposed = false;
   /** Per frame scratch: picked car indices and their squared distances, nearest first. */
   private readonly pick: number[] = [];
   private readonly pickD: number[] = [];
@@ -281,41 +261,22 @@ export class TrafficView {
   private readonly p = new THREE.Vector3();
   private readonly s = new THREE.Vector3(1, 1, 1);
   private readonly c = new THREE.Color();
-  private readonly perKind: number[];
 
   constructor(
     private readonly world: World,
-    count: number,
+    private readonly count: number,
   ) {
     this.group.name = 'traffic';
-    this.kits = TRAFFIC.kinds.map((_, i) => buildKit(i));
-    this.perKind = this.kits.map(() => 0);
-    const paintMat = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.45, roughness: 0.38, envMapIntensity: 1.2 });
-    const darkMat = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.3, roughness: 0.42, envMapIntensity: 1.3 });
     const lampMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     // Tiny HDR emitters flicker in the distance without this (see lightFx.ts).
     fadeSubPixel(lampMat, 0.12, 0.3);
     const glowTex = makeRadialGlow();
     const beamMat = new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, color: 0x5d6676 });
+    underVehicles(beamMat);
     const lampGeo = new THREE.BoxGeometry(1, 1, 1);
     const beamGeo = new THREE.PlaneGeometry(7, 17).rotateX(-Math.PI / 2);
-    this.disposables.push(paintMat, darkMat, lampMat, glowTex, beamMat, lampGeo, beamGeo);
-    this.kits.forEach((kit, i) => {
-      this.disposables.push(kit.paint, kit.dark);
-      const pm = new THREE.InstancedMesh(kit.paint, paintMat, count);
-      const dm = new THREE.InstancedMesh(kit.dark, darkMat, count);
-      pm.setColorAt(0, this.c.setRGB(1, 1, 1));
-      for (const mesh of [pm, dm]) {
-        mesh.count = 0;
-        mesh.frustumCulled = false;
-        mesh.name = `traffic:${TRAFFIC.kinds[i].name}`;
-        this.group.add(mesh);
-        this.disposables.push(mesh);
-      }
-      this.paintMeshes.push(pm);
-      this.darkMeshes.push(dm);
-    });
-    const maxLamps = Math.max(...this.kits.map((k) => k.lamps.length));
+    this.disposables.push(lampMat, glowTex, beamMat, lampGeo, beamGeo);
+    const maxLamps = Math.max(...this.lamps.map((l) => l.length));
     this.lampMesh = new THREE.InstancedMesh(lampGeo, lampMat, Math.max(1, count * maxLamps));
     this.lampMesh.setColorAt(0, this.c.setRGB(1, 1, 1));
     this.beamMesh = new THREE.InstancedMesh(beamGeo, beamMat, Math.max(1, count));
@@ -328,6 +289,42 @@ export class TrafficView {
     }
     this.lampMesh.name = 'trafficLamps';
     this.beamMesh.name = 'trafficBeams';
+    void loadTrafficAssets().then((a) => a && !this.disposed && this.build(a));
+  }
+
+  /** The two batched meshes, one instance slot per traffic car, all hidden until placed. */
+  private build(a: TrafficAssets): void {
+    const sum = (gs: (THREE.BufferGeometry | null)[], f: (g: THREE.BufferGeometry) => number) => gs.reduce((n, g) => n + (g ? f(g) : 0), 0);
+    const verts = (g: THREE.BufferGeometry) => g.getAttribute('position').count;
+    const idx = (g: THREE.BufferGeometry) => g.getIndex()!.count;
+    const n = Math.max(1, this.count);
+    const bodyMat = bodyMaterial(a.atlas);
+    const decalMat = new THREE.MeshStandardMaterial({ map: a.atlas, alphaTest: 0.5, metalness: 0.2, roughness: 0.5, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
+    this.disposables.push(bodyMat, decalMat);
+    const bodies = new THREE.BatchedMesh(n, sum(a.body, verts), sum(a.body, idx), bodyMat);
+    this.bodyIds = a.body.map((g) => bodies.addGeometry(g));
+    const decalGeos = a.decal.filter((g): g is THREE.BufferGeometry => g !== null);
+    const decals = new THREE.BatchedMesh(n, Math.max(1, sum(decalGeos, verts)), Math.max(1, sum(decalGeos, idx)), decalMat);
+    this.decalIds = a.decal.map((g) => (g ? decals.addGeometry(g) : null));
+    const firstDecal = this.decalIds.find((id) => id !== null) ?? null;
+    for (let i = 0; i < n; i++) {
+      bodies.setVisibleAt(bodies.addInstance(this.bodyIds[0]), false);
+      if (firstDecal !== null) decals.setVisibleAt(decals.addInstance(firstDecal), false);
+    }
+    for (const [mesh, name] of [
+      [bodies, 'trafficBodies'],
+      [decals, 'trafficDecals'],
+    ] as const) {
+      // Instances move every frame, so the whole mesh's bounds are never current; each car is culled on its own.
+      mesh.frustumCulled = false;
+      mesh.name = name;
+      maskVehicleMesh(mesh);
+      this.group.add(mesh);
+      this.disposables.push(mesh);
+    }
+    bodies.setColorAt(0, WHITE);
+    this.bodies = bodies;
+    this.decals = firstDecal !== null ? decals : null;
   }
 
   /**
@@ -336,6 +333,9 @@ export class TrafficView {
    * quality tier for count, distance and pools.
    */
   update(prev: Float32Array, curr: Float32Array, alpha: number, camera: THREE.Camera, time: number, tier: Quality, tick: number): void {
+    const bodies = this.bodies;
+    if (!bodies) return;
+    const decals = this.decals;
     const q = TRAFFIC_QUALITY[tier] ?? TRAFFIC_QUALITY.medium;
     const cam = camera.position;
     const n = Math.floor(curr.length / TRAFFIC_SNAP);
@@ -364,18 +364,23 @@ export class TrafficView {
       pick[k] = i;
       pickD[k] = d2;
     }
-    const perKind = this.perKind;
-    perKind.fill(0);
     let lamps = 0;
     let beams = 0;
     const blink = Math.sin(time * 6.5) > 0;
     const lampArr = this.lampMesh.instanceMatrix.array as Float32Array;
     const lampCol = this.lampMesh.instanceColor!.array as Float32Array;
     const beamArr = this.beamMesh.instanceMatrix.array as Float32Array;
-    for (const i of pick) {
+    const slots = Math.max(1, this.count);
+    for (let slot = 0; slot < slots; slot++) {
+      const i = slot < pick.length ? pick[slot] : -1;
+      if (i < 0) {
+        bodies.setVisibleAt(slot, false);
+        decals?.setVisibleAt(slot, false);
+        continue;
+      }
       const o = i * TRAFFIC_SNAP;
       const kind = curr[o + 3];
-      const kit = this.kits[kind];
+      const model = trafficModel(kind);
       // A fresh spawn (or a car that just vanished and reappeared) is not interpolated.
       const same = prev[o + 3] === kind && prev[o + 4] === curr[o + 4];
       const t = same ? alpha : 1;
@@ -384,45 +389,51 @@ export class TrafficView {
       const yaw = same ? lerpAngle(prev[o + 2], curr[o + 2], t) : curr[o + 2];
       const fx = Math.sin(yaw);
       const fz = Math.cos(yaw);
-      const hl = kit.halfLength * 0.8;
+      const hl = model.halfLength * 0.8;
       const hf = this.world.heightAt(x + fx * hl, z + fz * hl);
       const hb = this.world.heightAt(x - fx * hl, z - fz * hl);
       this.e.set(Math.atan2(hb - hf, 2 * hl), yaw, 0);
       this.q.setFromEuler(this.e);
-      this.m.compose(this.p.set(x, (hf + hb) / 2 + 0.01, z), this.q, this.s);
-      const slot = perKind[kind]++;
-      const pm = this.paintMeshes[kind];
-      this.m.toArray(pm.instanceMatrix.array as Float32Array, slot * 16);
-      this.m.toArray(this.darkMeshes[kind].instanceMatrix.array as Float32Array, slot * 16);
-      const name = TRAFFIC.kinds[kind].name;
-      const h = hash01(i, curr[o + 4]);
-      const paint = name === 'taxi' ? TAXI : name === 'van' ? VAN_PAINTS[Math.floor(h * VAN_PAINTS.length)] : PAINTS[Math.floor(h * PAINTS.length)];
-      this.c.copy(paint).multiplyScalar(0.85 + 0.3 * hash01(curr[o + 4], i));
-      this.c.toArray(pm.instanceColor!.array as Float32Array, slot * 3);
-      // Lamps: fade in over the first second of a spawn; brake lights, hazards when struck.
+      this.m.compose(this.p.set(x, (hf + hb) / 2 + ROAD_Y, z), this.q, this.s);
+      bodies.setGeometryIdAt(slot, this.bodyIds[kind]);
+      bodies.setMatrixAt(slot, this.m);
+      bodies.setVisibleAt(slot, true);
+      if (model.tinted) {
+        const h = hash01(i, curr[o + 4]);
+        this.c.copy(PAINTS[Math.floor(h * PAINTS.length)]).multiplyScalar(0.85 + 0.3 * hash01(curr[o + 4], i));
+        bodies.setColorAt(slot, this.c);
+      } else bodies.setColorAt(slot, WHITE);
+      if (decals) {
+        const id = this.decalIds[kind];
+        if (id !== null) {
+          decals.setGeometryIdAt(slot, id);
+          decals.setMatrixAt(slot, this.m);
+        }
+        decals.setVisibleAt(slot, id !== null);
+      }
+      // Lamps: fade in over the first second of a spawn; brake lights, hazards and beacons when struck.
       const flags = curr[o + 5];
       const fade = Math.min(1, Math.max(0, (tick - curr[o + 4]) / 60));
       const struck = (flags & 2) !== 0;
-      for (const lamp of kit.lamps) {
-        this.lm.multiplyMatrices(this.m, lamp.m);
+      for (const { m, lamp } of this.lamps[kind]) {
+        this.lm.multiplyMatrices(this.m, m);
         this.lm.toArray(lampArr, lamps * 16);
-        const col = lamp.role === 'head' ? HEAD : lamp.role === 'sign' ? SIGN : struck ? (blink ? HAZARD : TAIL) : flags & 1 ? BRAKE : TAIL;
-        this.c.copy(col).multiplyScalar(lamp.role === 'head' && struck ? 0.4 * fade : fade);
+        if (lamp.role === 'beacon') {
+          // Alternate sides of the car flash in turn.
+          const on = struck && (lamp.p[0] < 0) === blink;
+          this.c.copy(BEACON[lamp.color ?? 'amber']).multiplyScalar(on ? BEACON_FLASH : BEACON_DIM);
+        } else {
+          const col = lamp.role === 'head' ? HEAD : lamp.role === 'sign' ? SIGN : struck ? (blink ? HAZARD : TAIL) : flags & 1 ? BRAKE : TAIL;
+          this.c.copy(col).multiplyScalar(lamp.role === 'head' && struck ? 0.4 * fade : fade);
+        }
         this.c.toArray(lampCol, lamps * 3);
         lamps++;
       }
       if (q.beams && !struck) {
-        this.lm.makeRotationY(yaw).setPosition(x + fx * (kit.halfLength + 8.2), (hf + hb) / 2 + 0.07, z + fz * (kit.halfLength + 8.2));
+        this.lm.makeRotationY(yaw).setPosition(x + fx * (model.halfLength + 8.2), (hf + hb) / 2 + 0.07, z + fz * (model.halfLength + 8.2));
         this.lm.toArray(beamArr, beams * 16);
         beams++;
       }
-    }
-    for (let k = 0; k < this.kits.length; k++) {
-      const pm = this.paintMeshes[k];
-      const dm = this.darkMeshes[k];
-      pm.count = dm.count = perKind[k];
-      pm.instanceMatrix.needsUpdate = dm.instanceMatrix.needsUpdate = true;
-      if (pm.instanceColor) pm.instanceColor.needsUpdate = true;
     }
     this.lampMesh.count = lamps;
     this.lampMesh.instanceMatrix.needsUpdate = true;
@@ -432,6 +443,7 @@ export class TrafficView {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.group.removeFromParent();
     for (const d of this.disposables) d.dispose();
   }

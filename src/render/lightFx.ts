@@ -125,6 +125,7 @@ export function buildLightFx(
     m.makeScale(POOL_SIZE, 1, POOL_SIZE).setPosition(p.x, y, p.z);
     pools.setMatrixAt(i, m);
   });
+  pools.name = 'streetPools';
   pools.frustumCulled = false;
   pools.renderOrder = 1;
   group.add(pools);
@@ -166,6 +167,7 @@ export function buildLightFx(
     polygonOffsetUnits: -2,
   });
   const streaks = new THREE.Mesh(geo, streakMat);
+  streaks.name = 'streetStreaks';
   streaks.frustumCulled = false;
   streaks.renderOrder = 2;
   group.add(streaks);

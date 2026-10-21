@@ -77,7 +77,8 @@ describe('driving parameters file', () => {
   it('protoCompact resolves to the latest exported tuning (plus deliberate edits since)', () => {
     // Sidewalks were later set to road traction on purpose, and the brakes made much stronger (more
     // tire force, a touch more front bias, plus the arcade assist the export predates). The export
-    // predates the rename from s64 and the shared wheel size; geometry comes from the manifest.
+    // predates the rename from s64 and the shared wheel size; geometry comes from the manifest, and the
+    // final drive is shortened to match the true size tire (0.31 / 0.28 m), keeping the exported gearing.
     const t = getBaseTuning('protoCompact');
     const expected = {
       ...exported.tuning,
@@ -85,6 +86,7 @@ describe('driving parameters file', () => {
       geometry: t.geometry,
       surface: { ...exported.tuning.surface, sidewalkGrip: 1 },
       brakes: { ...exported.tuning.brakes, force: 18000, frontBias: 0.68 },
+      gearbox: { ...exported.tuning.gearbox, finalDrive: 4.32 },
     };
     expect(t).toMatchObject(expected);
   });
@@ -107,8 +109,10 @@ describe('driving parameters file', () => {
     expect(driveSplit(hatch)).toEqual({ front: 1, rear: 0 });
     expect(hatch.mass).toBeLessThan(compact.mass);
     expect(hatch.engine.redline).toBeLessThan(compact.engine.redline);
-    // Both cars share one wheel size, so they read at the same scale side by side.
-    expect(hatch.geometry.wheelRadius).toBe(compact.geometry.wheelRadius);
+    // Each car stands on its true size tires; gearing is per car, and the Hatch's is the taller one
+    // (road speed per engine turn: wheel radius over final drive).
+    const gearing = (t: CarTuning) => t.geometry.wheelRadius / t.gearbox.finalDrive;
+    expect(gearing(hatch)).toBeGreaterThan(gearing(compact));
   });
 
   it('every tuning parameter in the panel has a tooltip', () => {

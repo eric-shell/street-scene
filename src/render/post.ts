@@ -283,7 +283,7 @@ class ScenePass extends RenderPass {
     if (n === this.samples) return;
     this.samples = n;
     this.msaa?.dispose();
-    this.msaa = n > 0 ? new THREE.WebGLRenderTarget(this.size.x, this.size.y, { type: THREE.HalfFloatType, samples: n }) : null;
+    this.msaa = n > 0 ? new THREE.WebGLRenderTarget(this.size.x, this.size.y, { type: THREE.HalfFloatType, samples: n, stencilBuffer: true }) : null;
   }
 
   setSize(w: number, h: number): void {
@@ -322,7 +322,8 @@ export class PostFx {
 
   constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {
     const size = renderer.getSize(new THREE.Vector2());
-    const target = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType });
+    // The stencil lets ground light skip the cars standing in it (vehicleMask.ts).
+    const target = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, stencilBuffer: true });
     this.composer = new EffectComposer(renderer, target);
     this.renderPass = new ScenePass(scene, camera);
     this.msaaSupported = renderer.capabilities.maxSamples > 0 && renderer.extensions.has('EXT_color_buffer_float');
