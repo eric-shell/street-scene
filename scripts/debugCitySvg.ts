@@ -35,4 +35,4 @@ for (const l of city.blocks.streetlights) parts.push(`<circle cx="${l.x}" cy="${
 for (const s of city.blocks.signs) parts.push(`<circle cx="${s.x}" cy="${s.z}" r="3" fill="#0ff"/>`);
 parts.push('</svg>');
 writeFileSync(out, parts.join('\n'));
-console.log(`circuit ${circuit.route.length.toFixed(0)} m, sprint ${sprint.route.length.toFixed(0)} m, buildings ${city.blocks.buildings.length}, walls ${circuit.walls.length}`);
+console.log(`${city.event.name} (drew ${city.event.drawn}): circuit ${circuit.route.length.toFixed(0)} m, sprint ${sprint.route.length.toFixed(0)} m, buildings ${city.blocks.buildings.length}, walls ${circuit.walls.length}`);

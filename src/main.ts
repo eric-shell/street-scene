@@ -225,6 +225,7 @@ function showMenu(): void {
     mainMenu({
       seed: seedStr,
       isDaily,
+      event: backdrop?.world.event,
       bests: { circuit: loadBest(seed, 'circuit'), sprint: loadBest(seed, 'sprint'), drift: loadBest(seed, 'drift') },
       carName: manifestCar(currentBuild().carId).displayName,
       hasReplay: !!loadLastReplay(),
@@ -438,6 +439,7 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
     setOverlay(
       resultsScreen({
         mode: race.config.mode,
+        event: race.world.event?.name,
         rows: st.map((x) => ({
           name: x.car.name,
           car: manifestCar(x.car.carId).displayName,

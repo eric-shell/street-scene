@@ -397,7 +397,7 @@ export class RaceSession {
         window.removeEventListener('keydown', onKey);
         gr.canvas.removeEventListener('pointerdown', onTap);
       });
-    }
+    } else if (!this.openWorld && this.race.world.event) this.hud.message(this.race.world.event.name, 2.6);
   }
 
   /** True while the player's controls do nothing: intro, countdown and after the finish (runout). */
