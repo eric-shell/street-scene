@@ -40,6 +40,7 @@ export type AreaKind =
   | 'infill'
   | 'hills'
   | 'monument'
+  | 'roadworks'
   // Reserved unique features (planned later, disabled in config).
   | 'waterfront'
   | 'lake';
@@ -79,6 +80,7 @@ export const COBBLE_PRIORITY = 6;
  *   channel, bank top fence, ramp retaining walls, channel tunnel ends (river).
  * tree: park tree trunk (park).
  * monument: the step ring around a landmark's base, or an arch's piers (monument).
+ * roadworks: the plant of a lane closure (arrow board, excavator, skip, light tower) (roadworks).
  */
 export type WallLook =
   | 'building'
@@ -94,9 +96,10 @@ export type WallLook =
   | 'trench'
   | 'channelEnd'
   | 'tree'
-  | 'monument';
+  | 'monument'
+  | 'roadworks';
 
-export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument'];
+export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'roadworks'];
 
 export interface Area {
   /** Index into CityDistricts.areas. */
@@ -295,6 +298,7 @@ export const AREA_MAP_STYLE: Record<AreaKind, AreaMapStyle> = {
   infill: { fill: 'rgba(147,146,147,0.08)' },
   hills: { fill: 'rgba(147,146,147,0.07)', stroke: 'rgba(147,146,147,0.34)', width: 2.5, dash: [6, 7] },
   monument: { fill: 'rgba(255,216,102,0.2)' },
+  roadworks: { fill: 'rgba(255,97,136,0.5)' },
   waterfront: { fill: 'rgba(120,220,232,0.14)' },
   lake: { fill: 'rgba(120,220,232,0.18)' },
 };

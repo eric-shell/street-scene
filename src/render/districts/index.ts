@@ -22,6 +22,7 @@ import { riverRenderer } from './river';
 import { roundaboutRenderer } from './roundabout';
 import { subwayRenderer } from './subway';
 import { waterfrontRenderer } from './waterfront';
+import { roadworksRenderer } from './roadworks';
 
 export const DISTRICT_RENDERERS: readonly DistrictRenderer[] = [
   downtownRenderer,
@@ -35,6 +36,7 @@ export const DISTRICT_RENDERERS: readonly DistrictRenderer[] = [
   monumentRenderer,
   waterfrontRenderer,
   lakeRenderer,
+  roadworksRenderer,
 ];
 
 export interface DistrictMeshes {
