@@ -30,6 +30,9 @@ import { InputManager } from '../input/inputManager';
 import { Hud, HudCar, HudData } from '../ui/hud';
 import { FullMap } from '../ui/fullMap';
 import { placeName } from '../ui/places';
+import { toast } from '../ui/dom';
+import { MapPinned } from '../ui/icons';
+import type { Vec2 } from '../sim/math';
 import { Settings } from '../ui/settings';
 import { formatTime } from '../ui/format';
 import { ReplayData } from '../replay/replay';
@@ -118,6 +121,12 @@ const NITRO_OUT = 2.5;
 const PROP_SLOWDOWN_EXTRA = 1.6;
 /** Free roam minimap: traffic this close to the player shows as dots (m; the map spans about 260 m to its edge). */
 const TRAFFIC_DOT_RANGE = 280;
+/**
+ * Free roam waypoint (set on the city map, render only): driving this close
+ * (m) reaches it. One set within reach of the car only counts once the car has
+ * been `arm` m away, so it is not reached the moment the map closes.
+ */
+const WAYPOINT = { reach: 25, arm: 35 } as const;
 
 /** Car sparks (render/sparks.ts): when, where and how many, from the sim's contact telemetry. */
 const SPARK = {
@@ -212,6 +221,9 @@ export class RaceSession {
   private drone: DroneMode | null = null;
   /** Free roam city map (Tab or a click on the minimap); the session holds still while it is open. */
   private fullMap: FullMap | null = null;
+  /** The waypoint set on the city map (render only, never RaceState; nothing persists it), and whether it can be reached yet. */
+  private waypoint: Vec2 | null = null;
+  private waypointArmed = false;
   private droneResume = false;
   private readonly uiRoot: HTMLElement;
   /** The camera rendered last frame (the drone starts from it). */
@@ -450,6 +462,7 @@ export class RaceSession {
   /**
    * Free roam: Tab or a click on the minimap opens the full city map over the
    * paused session; Tab, Escape, its close button or the backdrop close it.
+   * A click on the map sets the waypoint the HUD then points to.
    */
   toggleMap(): void {
     if (this.fullMap) return this.closeMap();
@@ -458,9 +471,40 @@ export class RaceSession {
     this.paused = true;
     this.input.releaseAll();
     this.input.setTouchVisible(false);
-    this.fullMap = new FullMap(this.race.world, { x: p.x, z: p.z, yaw: p.yaw, isPlayer: true }, { onClose: () => this.closeMap() });
+    const world = this.race.world;
+    this.fullMap = new FullMap(
+      world,
+      { x: p.x, z: p.z, yaw: p.yaw, isPlayer: true },
+      {
+        onClose: () => this.closeMap(),
+        waypoint: { get: () => this.waypoint, set: (w) => this.setWaypoint(w) },
+        event: world.event?.name,
+        seed: String(this.opts.config.seed),
+      },
+    );
     this.uiRoot.append(this.fullMap.root);
     this.fullMap.draw();
+  }
+
+  /** Set or clear the free roam waypoint (render only). */
+  private setWaypoint(w: Vec2 | null): void {
+    this.waypoint = w ? { x: w.x, z: w.z } : null;
+    const p = this.curr[0];
+    this.waypointArmed = !!w && Math.hypot(w.x - p.x, w.z - p.z) > WAYPOINT.reach;
+  }
+
+  /** Driving up to the waypoint clears it, with a toast. */
+  private checkWaypoint(x: number, z: number): void {
+    const w = this.waypoint;
+    if (!w || this.paused) return;
+    const d = Math.hypot(w.x - x, w.z - z);
+    if (!this.waypointArmed) {
+      this.waypointArmed = d > WAYPOINT.arm;
+      return;
+    }
+    if (d > WAYPOINT.reach) return;
+    this.waypoint = null;
+    toast('Waypoint reached', MapPinned);
   }
 
   closeMap(): void {
@@ -1028,6 +1072,8 @@ export class RaceSession {
       this.topKmh = Math.max(this.topKmh, c.speed * 3.6);
       this.updateArea(c.x, c.z, dt);
       data.openWorld = { area: this.areaName, smashed: this.smashed, topKmh: this.topKmh };
+      this.checkWaypoint(c.x, c.z);
+      if (this.waypoint) data.waypoint = this.waypoint;
     }
     this.hud.update(data, dt);
   }

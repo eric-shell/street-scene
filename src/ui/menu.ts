@@ -1,27 +1,74 @@
 /**
  * The main menu, in steps so no pane tries to do everything, on the rail
  * (ui/rail.ts) beside the event city, where the player's car cruises the
- * route. Home is the title block over the event card (tonight's event: name,
- * tagline and its route drawn small, the race setup at a glance, the seed with
- * edit, shuffle and back-to-today, and the way into the race) over a list of
- * the other places: Garage, Explore (the drone flyover) and Settings; arrow keys
- * move between them. Race opens the
- * race step (the types as a column of rows, rivals, difficulty, driving aids,
- * then Start); Settings
- * opens the settings panel as a step. Every step keeps the title block on top
- * (the boot splash lands on `.menu-head`, see ui/splash.ts) and Escape or the
- * back button returns home. The key legend along the bottom carries Hide UI
- * (H), which stays a button on touch screens.
+ * route. Home is the title block over the event card (tonight's event: its
+ * name and tagline, the seed with edit, shuffle and back-to-today, the city as
+ * a tilted live map with what makes it this city, and the way into the race)
+ * over a list of the other places: Garage, Explore (the drone flyover) and
+ * Settings. Home says nothing about the race itself, so no type is implied
+ * before the player picks one: Race opens the race step, where the types sit
+ * in a row over the course card (each type's course drawn on in its own color
+ * as it is picked, ui/menuMaps.ts), then rivals, difficulty and driving aids,
+ * then Start. Settings opens the settings panel as a step.
+ *
+ * Steps slide: forward pushes the old step out to the left as the new one
+ * cascades in from the right, back reverses it, and the camera behind the menu
+ * moves with them (onStep; game/streetCameras.ts). Every step keeps the title
+ * block on top (the boot splash lands on `.menu-head`, see ui/splash.ts);
+ * Escape or the back button returns home. Arrow keys walk the home list and
+ * switch race types (1 to 4 pick one); the key legend along the bottom carries
+ * Hide UI (H), which stays a button on touch screens. The caller feeds the
+ * cruising car's pose every frame (MainMenu.frame) for the maps' car markers.
  */
-import { btn, h, iconBtn, segmented } from './dom';
-import { Calendar, Check, ChevronRight, Compass, Drone, Flag, Ghost, Pencil, Play, RotateCcw, Route, Settings as SettingsIcon, Shuffle, Trophy, Undo2, Users, Video, Wind, Wrench, X, type IconNode, icon } from './icons';
+import { btn, h, iconBtn, segmented, sheen } from './dom';
+import {
+  Anchor,
+  Calendar,
+  Check,
+  ChevronRight,
+  CircleDot,
+  Compass,
+  Drone,
+  Flag,
+  Ghost,
+  Landmark,
+  MapIcon,
+  Mountain,
+  MountainSnow,
+  Pencil,
+  Play,
+  RotateCcw,
+  Route,
+  Settings as SettingsIcon,
+  Shuffle,
+  SquareParking,
+  Store,
+  TrainFront,
+  Trees,
+  Trophy,
+  Undo2,
+  Users,
+  Video,
+  Waves,
+  Wind,
+  Wrench,
+  X,
+  type IconNode,
+  icon,
+} from './icons';
 import { RACE_TYPES, type Difficulty, type RaceType, type Settings } from './settings';
 import { onOff, settingRow, settingsPanel } from './screens';
 import { chip, keybar, railScreen, screenHead, type KeyHint } from './rail';
 import { formatTime } from './format';
+import { CityOverview, CourseMap, type CourseRoutes, type MapPose } from './menuMaps';
+import { KINDS, layersOf } from './cityMap';
 import { MAX_OPPONENTS, type RaceMode } from '../sim/race';
+import { driftZones } from '../sim/driftZones';
+import type { World } from '../city/world';
+import type { AreaKind } from '../city/districts/types';
 import type { BestRecord } from '../replay/replay';
 import type { MusicPlayer } from '../audio/musicPlayer';
+import { uiBlip, uiWhoosh } from '../audio/uiSound';
 
 /** The title's words: one line, sized to the menu's column in the menu and on the splash alike (ui.css `.head-title .logo`). */
 export const TITLE_WORDS = ['STREET', 'SCENE'] as const;
@@ -34,26 +81,24 @@ export function titleWords(word: (text: string) => (Node | string)[] = (t) => [t
 
 export type MenuStep = 'home' | 'race' | 'settings';
 
-/** A point in world meters (x east, z south), as the route sketch reads it. */
-export interface MapPoint {
-  x: number;
-  z: number;
-}
-
 export interface MenuOptions {
   seed: string;
   isDaily: boolean;
   /** The seed's named event (city/events.ts), the event card's headline. */
   event?: { name: string; tagline: string };
-  /** The event's route in driving order and its start line, drawn small on the event card. */
-  route?: { points: readonly MapPoint[]; start: MapPoint };
+  /** The event city: the home map, the courses' backdrop and what the city has. */
+  world: World;
+  /** The event's courses (the drift lap runs the circuit). */
+  routes: CourseRoutes;
   bests: Record<RaceMode, BestRecord | null>;
-  /** The current build's car, for the Garage tile. */
+  /** The current build's car, for the Garage row. */
   carName: string;
   hasReplay: boolean;
   /** A copy of the settings: the race and settings steps change it and report each change through onSettings. */
   settings: Settings;
   music?: MusicPlayer;
+  /** The step to open on (default home), without the slide. */
+  step?: MenuStep;
   onSettings(s: Settings): void;
   /** Start the picked race type with the race options in `settings`. */
   onRace(type: RaceType): void;
@@ -61,84 +106,106 @@ export interface MenuOptions {
   onReplay(): void;
   /** Explore: the drone flyover of the event city. */
   onDrone(): void;
+  /** Open the full city map over the menu. */
+  onMap(): void;
   onSeed(seed: string | null): void;
   /** Hide every piece of UI to watch the menu city (H); any key or click brings it back. */
   onHideUi(): void;
+  /** The step changed: the camera behind the menu moves with it. */
+  onStep?(step: MenuStep): void;
 }
 
-const TYPE_INFO: Record<RaceType, { label: string; icon: IconNode; sub: string; start: string }> = {
-  circuit: { label: 'Circuit', icon: RotateCcw, sub: '3 laps', start: 'Start circuit' },
+export interface MainMenu {
+  readonly root: HTMLElement;
+  readonly step: MenuStep;
+  /** Every frame the menu is up: the cruising car's pose, for the maps' car markers. */
+  frame(pose: MapPose): void;
+  dispose(): void;
+}
+
+/** Each race type: name, icon, laps, what Start says and its row's sub (the record replaces it once set). */
+const TYPE_INFO: Record<RaceType, { label: string; icon: IconNode; sub: string; start: string; laps?: number }> = {
+  circuit: { label: 'Circuit', icon: RotateCcw, sub: '3 laps', start: 'Start circuit', laps: 3 },
   sprint: { label: 'Sprint', icon: Route, sub: 'A to B', start: 'Start sprint' },
-  drift: { label: 'Drift', icon: Wind, sub: 'Score attack', start: 'Start drift' },
+  drift: { label: 'Drift', icon: Wind, sub: 'Score attack', start: 'Start drift', laps: 2 },
   roam: { label: 'Free roam', icon: Compass, sub: 'No rules', start: 'Start free roam' },
 };
 
-/** A race type's row: icon, label and a short sub on the right (a record reads as a value in the secondary color). */
-function tile(ico: IconNode, label: string, sub: string, onClick: () => void, opts: { cls?: string; record?: boolean; radio?: boolean } = {}): HTMLButtonElement {
-  return h(
-    'button',
-    { class: `tile ${opts.cls ?? ''}`.trim(), type: 'button', role: opts.radio ? 'radio' : undefined, title: `${label}: ${sub}`, onclick: onClick },
-    icon(ico, { size: 24 }),
-    h('span', { class: 'tile-label' }, label),
-    h('span', { class: opts.record ? 'tile-sub record' : 'tile-sub' }, sub),
-  );
-}
+/**
+ * What makes a city this city, for the event card's chips, in the order they
+ * are worth naming (the first three present are shown). Each chip takes its
+ * district's map ink, so the chips read as a legend of the map above them.
+ */
+const FEATURES: { kind: AreaKind; icon: IconNode; one: string; many?: (n: number) => string }[] = [
+  { kind: 'river', icon: Waves, one: 'River channel' },
+  { kind: 'lake', icon: Waves, one: 'Lake' },
+  { kind: 'subway', icon: TrainFront, one: 'The El' },
+  { kind: 'market', icon: Store, one: 'Night market' },
+  { kind: 'monument', icon: Landmark, one: 'Monument' },
+  { kind: 'hills', icon: Mountain, one: 'The hills' },
+  { kind: 'bluff', icon: MountainSnow, one: 'The bluff' },
+  { kind: 'waterfront', icon: Anchor, one: 'Waterfront' },
+  { kind: 'alley', icon: Route, one: 'Raceway alley', many: (n) => `${n} raceway alleys` },
+  { kind: 'roundabout', icon: CircleDot, one: 'Roundabout', many: (n) => `${n} roundabouts` },
+  { kind: 'park', icon: Trees, one: 'Park', many: (n) => `${n} parks` },
+  { kind: 'carPark', icon: SquareParking, one: 'Car park', many: (n) => `${n} car parks` },
+];
 
-/** A row of the home menu's list: icon, label over a one-line sub, and a chevron. */
-function navItem(ico: IconNode, label: string, sub: string, onClick: () => void): HTMLButtonElement {
+/** The other places on home: each row has its own hue, lit on hover (ui.css `.nav-*`). */
+const PLACES_INFO = {
+  garage: { icon: Wrench, label: 'Garage' },
+  explore: { icon: Drone, label: 'Explore' },
+  settings: { icon: SettingsIcon, label: 'Settings' },
+} as const;
+
+/** How long the outgoing step takes to slide away (ms; ui.css `.menu-step.leave`). */
+const STEP_LEAVE_MS = 260;
+
+const km = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m / 10) * 10} m`);
+const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/** A row of the home menu's list: its hue badge with the icon, label over a one-line sub, and a chevron. */
+function navItem(kind: keyof typeof PLACES_INFO, sub: string, onClick: () => void): HTMLButtonElement {
+  const info = PLACES_INFO[kind];
   return h(
     'button',
-    { class: 'nav-item', type: 'button', onclick: onClick },
-    icon(ico, { size: 22 }),
-    h('span', { class: 'nav-text' }, h('span', { class: 'nav-label' }, label), h('span', { class: 'nav-sub' }, sub)),
+    { class: `nav-item nav-${kind}`, type: 'button', onclick: onClick },
+    h('span', { class: 'nav-badge' }, icon(info.icon, { size: 20 })),
+    h('span', { class: 'nav-text' }, h('span', { class: 'nav-label' }, info.label), h('span', { class: 'nav-sub' }, sub)),
     icon(ChevronRight, { size: 18 }),
+    sheen(),
   );
 }
 
-const SVG = 'http://www.w3.org/2000/svg';
-
-/** The event's route as a small line drawing fitted to the card's side (x east, z south, so north is up), its start marked. */
-function routeSketch(route: NonNullable<MenuOptions['route']>): SVGSVGElement {
-  const W = 112;
-  const H = 84;
-  const pad = 6;
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minZ = Infinity;
-  let maxZ = -Infinity;
-  for (const p of route.points) {
-    minX = Math.min(minX, p.x);
-    maxX = Math.max(maxX, p.x);
-    minZ = Math.min(minZ, p.z);
-    maxZ = Math.max(maxZ, p.z);
-  }
-  const k = Math.min((W - 2 * pad) / Math.max(1, maxX - minX), (H - 2 * pad) / Math.max(1, maxZ - minZ));
-  const ox = (W - (maxX - minX) * k) / 2;
-  const oz = (H - (maxZ - minZ) * k) / 2;
-  const px = (p: MapPoint) => `${(ox + (p.x - minX) * k).toFixed(1)} ${(oz + (p.z - minZ) * k).toFixed(1)}`;
-  const d = route.points.map((p, i) => `${i ? 'L' : 'M'}${px(p)}`).join('');
-  const svg = document.createElementNS(SVG, 'svg');
-  svg.setAttribute('class', 'event-route');
-  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-  svg.setAttribute('aria-hidden', 'true');
-  for (const cls of ['route-road', 'route-line']) {
-    const path = document.createElementNS(SVG, 'path');
-    path.setAttribute('class', cls);
-    path.setAttribute('d', d);
-    // A unit path length lets CSS draw the line on with one dash.
-    path.setAttribute('pathLength', '1');
-    svg.append(path);
-  }
-  const [sx, sz] = px(route.start).split(' ');
-  const start = document.createElementNS(SVG, 'circle');
-  start.setAttribute('cx', sx);
-  start.setAttribute('cy', sz);
-  start.setAttribute('r', '4');
-  svg.append(start);
-  return svg;
+/** A race type in the race step's row: icon over its name, the number key that picks it, its color when picked. */
+function modeTile(t: RaceType, n: number, onClick: () => void): HTMLButtonElement {
+  const info = TYPE_INFO[t];
+  return h(
+    'button',
+    { class: `mode-tile mode-${t}`, type: 'button', role: 'radio', title: `${info.label} (${n + 1})`, onclick: onClick },
+    icon(info.icon, { size: 22 }),
+    h('span', { class: 'mode-label' }, info.label),
+    h('kbd', { class: 'mode-key', 'aria-hidden': 'true' }, String(n + 1)),
+    sheen(),
+  );
 }
 
-export function mainMenu(o: MenuOptions): HTMLElement {
+/** The city's notable districts as chips in their map inks (at most three). */
+function cityFeatures(world: World): HTMLElement | null {
+  const counts = new Map<AreaKind, number>();
+  for (const a of world.areas) counts.set(a.kind, (counts.get(a.kind) ?? 0) + 1);
+  const chips = FEATURES.filter((f) => counts.get(f.kind))
+    .slice(0, 3)
+    .map((f) => {
+      const n = counts.get(f.kind)!;
+      const c = chip(n > 1 && f.many ? f.many(n) : f.one, f.icon, 'feat');
+      c.style.setProperty('--ink', KINDS[f.kind]?.ink ?? 'var(--soft)');
+      return c;
+    });
+  return chips.length ? h('div', { class: 'event-feats', 'aria-label': 'In this city' }, ...chips) : null;
+}
+
+export function mainMenu(o: MenuOptions): MainMenu {
   const s = o.settings;
   const menu = h('div', { class: 'menu rail-col' });
   let bar = keybar([]);
@@ -150,11 +217,18 @@ export function mainMenu(o: MenuOptions): HTMLElement {
     h('div', { class: 'head-title' }, h('h1', { class: 'logo' }, ...titleWords()), h('div', { class: 'title-rule', 'aria-hidden': 'true' })),
     h('div', { class: 'tagline' }, TAGLINE),
   );
+  menu.append(head);
   let step: MenuStep = 'home';
+  let current: HTMLElement | null = null;
+  // The maps of the step on screen; frame() moves their car markers.
+  let overview: CityOverview | null = null;
+  let course: CourseMap | null = null;
+  // Build the map layers now, while the boot splash is still up, not on the first visit to a map.
+  layersOf(o.world);
 
   const best = (m: RaceMode) => {
     const b = o.bests[m];
-    return b ? (m === 'drift' ? `Best ${Math.round(b.score ?? 0).toLocaleString()}` : `Best ${formatTime(b.time)}`) : null;
+    return b ? (m === 'drift' ? `${Math.round(b.score ?? 0).toLocaleString()} pts` : formatTime(b.time)) : null;
   };
 
   /** The seed: a chip with quiet actions; editing swaps the chip for a field (Enter applies, Escape cancels). */
@@ -187,29 +261,29 @@ export function mainMenu(o: MenuOptions): HTMLElement {
     return box;
   };
 
-  /** Tonight's event: what it is, where it runs, how the race is set up, and the way in. */
+  /** Tonight's event: what it is, the city it runs in (live map and its districts), and the way in. */
   const eventCard = (): HTMLElement => {
-    const t = s.raceType;
-    const info = TYPE_INFO[t];
-    const solo = t === 'drift' || t === 'roam';
-    const record = t === 'roam' ? null : best(t);
-    const enter = btn(Flag, 'Race', () => go('race'), 'big primary event-go');
+    const enter = btn(Flag, 'Race', () => go('race'), 'big primary event-go cta');
     enter.title = 'Pick the race type and rivals, then start';
     enter.append(icon(ChevronRight, { size: 20 }));
+    overview = new CityOverview(o.world);
+    const map = h(
+      'button',
+      { class: 'event-map', type: 'button', title: 'Open the city map', 'aria-label': 'Open the city map', onclick: o.onMap },
+      overview.el,
+      // The arrow on the map is the car on screen, cruising the city right now.
+      h('span', { class: 'event-map-live' }, h('i'), 'Live'),
+      h('span', { class: 'event-map-hint' }, icon(MapIcon, { size: 13 }), 'City map'),
+      sheen(),
+    );
     return h(
       'section',
       { class: 'event-card', 'aria-label': 'Event' },
-      h('div', { class: 'event-top' }, h('span', { class: 'label' }, icon(Calendar, { size: 14 }), o.isDaily ? 'Event of the day' : 'Custom event'), seedControl()),
+      h('div', { class: 'event-top' }, h('span', { class: 'label kicker' }, icon(Calendar, { size: 14 }), o.isDaily ? 'Event of the day' : 'Custom event'), seedControl()),
       h('h2', { class: 'event-name' }, o.event?.name ?? 'Street race'),
       o.event && h('p', { class: 'event-tagline' }, o.event.tagline),
-      o.route && o.route.points.length > 2 && routeSketch(o.route),
-      h(
-        'div',
-        { class: 'event-meta' },
-        chip(t === 'circuit' ? `${info.label} · ${info.sub}` : info.label, info.icon),
-        !solo && chip(s.opponents ? `${s.opponents} rival${s.opponents > 1 ? 's' : ''}` : 'Ghost race', s.opponents ? Users : Ghost),
-        record && chip(record, Trophy, 'accent'),
-      ),
+      map,
+      cityFeatures(o.world),
       enter,
     );
   };
@@ -219,21 +293,40 @@ export function mainMenu(o: MenuOptions): HTMLElement {
     h(
       'nav',
       { class: 'nav-list', 'aria-label': 'Main menu' },
-      navItem(Wrench, 'Garage', `${o.carName} · paint, parts, tuning`, o.onGarage),
-      navItem(Drone, 'Explore', 'Fly a drone over the event city', o.onDrone),
-      navItem(SettingsIcon, 'Settings', 'Display, sound, controls', () => go('settings')),
+      navItem('garage', `${o.carName} · paint, parts, tuning`, o.onGarage),
+      navItem('explore', 'Fly a drone over the event city', o.onDrone),
+      navItem('settings', 'Display, sound, controls', () => go('settings')),
     ),
   ];
 
+  /** What a type's course is, in a few facts: laps and length, A to B, the zones, the streets. */
+  const courseFacts = (t: RaceType): string[] => {
+    const r = o.routes;
+    switch (t) {
+      case 'circuit':
+        return [`${TYPE_INFO.circuit.laps} laps`, `${km(r.circuit.length)} lap`, `${r.circuit.tightCorners} tight turns`];
+      case 'sprint':
+        return ['A to B', km(r.sprint.finishS - r.sprint.startS), `${r.sprint.tightCorners} tight turns`];
+      case 'drift': {
+        const zones = driftZones(o.world).length;
+        return [`${TYPE_INFO.drift.laps} laps`, zones === 1 ? '1 drift zone' : `${zones} drift zones`, 'Solo'];
+      }
+      case 'roam':
+        return ['Whole city', `${km(layersOf(o.world).streetLength)} of streets`, 'Traffic'];
+    }
+  };
+
   const race = (): HTMLElement[] => {
-    const types = h('div', { class: 'tiles race-types', role: 'radiogroup', 'aria-label': 'Race type' });
-    const typeTiles = RACE_TYPES.map((t) => {
-      const info = TYPE_INFO[t];
-      const record = t === 'roam' ? null : best(t);
-      const b = tile(info.icon, info.label, record ?? info.sub, () => pick(t), { radio: true, record: !!record, cls: t === 'roam' ? 'roam' : '' });
+    const types = h('div', { class: 'mode-row', role: 'radiogroup', 'aria-label': 'Race type' });
+    const typeTiles = RACE_TYPES.map((t, i) => {
+      const b = modeTile(t, i, () => pick(t));
       types.append(b);
       return b;
     });
+    course = new CourseMap(o.world, o.routes);
+    // Announced when the type changes, so the course's facts reach a screen reader too.
+    const courseHead = h('div', { class: 'course-head', 'aria-live': 'polite' });
+    const courseCard = h('section', { class: 'course-card', 'aria-label': 'Course' }, courseHead, course.el);
     const oppHint = h('span', { class: 'hint' });
     const opponents = segmented(
       Array.from({ length: MAX_OPPONENTS + 1 }, (_, i) => ({ value: String(i), label: String(i) })),
@@ -241,7 +334,7 @@ export function mainMenu(o: MenuOptions): HTMLElement {
       (v) => {
         s.opponents = Number(v);
         o.onSettings(s);
-        refresh();
+        refresh(false);
       },
     );
     opponents.classList.add('wide');
@@ -272,44 +365,67 @@ export function mainMenu(o: MenuOptions): HTMLElement {
       settingRow('Manual gearbox', onOff(s.manualGearbox, (v) => ((s.manualGearbox = v), o.onSettings(s))), 'Q / E to shift'),
       settingRow('Traction control', onOff(s.tractionControl, (v) => ((s.tractionControl = v), o.onSettings(s))), 'Off lets the rear step out'),
     );
-    const start = btn(Play, '', () => o.onRace(s.raceType), 'big primary start');
+    const start = btn(Play, '', () => o.onRace(s.raceType), 'big primary start cta');
     const replay = btn(Video, 'Replay', o.onReplay, 'replay', o.hasReplay ? 'Last race' : 'No race yet');
     if (!o.hasReplay) replay.setAttribute('disabled', '');
-    const refresh = () => {
+    const refresh = (animate: boolean) => {
       const t = s.raceType;
+      root.dataset.mode = t;
       typeTiles.forEach((b, i) => {
         const on = RACE_TYPES[i] === t;
         b.classList.toggle('on', on);
         b.setAttribute('aria-checked', String(on));
       });
+      course!.show(t, animate);
+      const info = TYPE_INFO[t];
+      const record = t === 'roam' ? null : best(t);
+      const swap = animate ? ' swap' : '';
+      courseHead.replaceChildren(
+        h(
+          'div',
+          { class: `course-title${swap}` },
+          h('span', { class: 'course-name' }, icon(info.icon, { size: 18 }), info.label),
+          h('span', { class: 'course-facts' }, ...courseFacts(t).map((f) => h('span', {}, f))),
+        ),
+        // Free roam keeps no records.
+        ...(record ? [h('span', { class: `course-best${swap}`, title: 'Your best on this event' }, icon(Trophy, { size: 14 }), record)] : t === 'roam' ? [] : [h('span', { class: `course-best none${swap}` }, 'No time yet')]),
+      );
       // Drift is a solo score attack and free roam has no rules, so rivals do not apply to them.
       const solo = t === 'drift' || t === 'roam';
       rivals.classList.toggle('off', solo);
       rivals.querySelectorAll('button').forEach((b) => (b.disabled = solo));
       // The hint says why when rivals are off, so switching types never moves the layout.
-      oppHint.textContent = t === 'drift' ? 'Drift is a solo score attack' : t === 'roam' ? 'Free roam has no rivals' : s.opponents ? `${s.opponents} on the grid` : 'Solo: race your best ghost';
-      start.querySelector('.grow')!.textContent = TYPE_INFO[t].start;
+      oppHint.replaceChildren(
+        ...(t === 'drift' ? ['Drift is a solo score attack'] : t === 'roam' ? ['Free roam has no rivals'] : s.opponents ? [icon(Users, { size: 12 }), ` ${s.opponents} on the grid`] : [icon(Ghost, { size: 12 }), ' Solo: race your best ghost']),
+      );
+      start.querySelector('.grow')!.textContent = info.start;
     };
     const pick = (t: RaceType) => {
+      if (t === s.raceType) return;
       s.raceType = t;
       o.onSettings(s);
-      refresh();
+      uiBlip();
+      refresh(true);
     };
-    refresh();
+    pickType = (t) => pick(t);
+    refresh(false);
     return [
       screenHead({ icon: Flag, title: 'Race', back: () => go('home'), aside: chip(o.event?.name ?? `#${o.seed}`, undefined, 'accent') }),
       types,
+      courseCard,
       h('div', { class: 'race-setup' }, rivals, driving),
       h('div', { class: 'step-foot' }, replay, start),
     ];
   };
+  /** Pick a race type on the race step (arrow and number keys). */
+  let pickType: ((t: RaceType) => void) | null = null;
 
   const settings = (): HTMLElement[] => [screenHead({ icon: SettingsIcon, title: 'Settings', back: () => go('home') }), settingsPanel(s, o.onSettings, o.music)];
 
   const hideUi: KeyHint = { keys: ['H'], label: 'Hide UI', action: () => o.onHideUi(), title: 'Hide the menu and watch the city (H)' };
   const KEYS: Record<MenuStep, KeyHint[]> = {
     home: [{ keys: ['↑', '↓'], label: 'Select' }, { keys: ['0'], label: 'Explore' }, { keys: ['M'], label: 'Mute music' }, hideUi],
-    race: [{ keys: ['Esc'], label: 'Back' }, hideUi],
+    race: [{ keys: ['←', '→'], label: 'Race type' }, { keys: ['Enter'], label: 'Start' }, { keys: ['Esc'], label: 'Back' }, hideUi],
     settings: [{ keys: ['Esc'], label: 'Back' }, hideUi],
   };
 
@@ -318,39 +434,86 @@ export function mainMenu(o: MenuOptions): HTMLElement {
     const from = step;
     step = next;
     root.dataset.step = next;
-    // Each step's parts rise in, staggered, like the menu does under the boot splash.
-    menu.classList.toggle('step-enter', animate);
-    menu.replaceChildren(head, ...steps[next]());
+    if (next !== 'race') delete root.dataset.mode;
+    overview?.dispose();
+    course?.dispose();
+    overview = course = null;
+    pickType = null;
+    const el = h('div', { class: 'menu-step' }, ...steps[next]());
+    const old = current;
+    current = el;
+    if (old && animate && !reducedMotion()) {
+      // The old step leaves from where it stands, out of the flow, while the new one takes its place.
+      const fwd = next !== 'home';
+      old.style.top = `${old.offsetTop}px`;
+      old.classList.add('leave', fwd ? 'fwd' : 'back');
+      old.setAttribute('aria-hidden', 'true');
+      old.inert = true;
+      el.classList.add('enter', fwd ? 'fwd' : 'back');
+      menu.append(el);
+      menu.scrollTop = 0;
+      setTimeout(() => old.remove(), STEP_LEAVE_MS);
+      uiWhoosh(fwd);
+    } else {
+      old?.remove();
+      menu.append(el);
+    }
     const nextBar = keybar(KEYS[next]);
     bar.replaceWith(nextBar);
     bar = nextBar;
+    if (next !== from || !animate) o.onStep?.(next);
     if (!animate) return;
     // Keep keyboard and gamepad focus on the menu: the step's main action, or where the player came back from.
     const focus =
       next === 'race'
-        ? menu.querySelector<HTMLElement>('.start')
+        ? el.querySelector<HTMLElement>('.start')
         : next === 'home'
-          ? menu.querySelector<HTMLElement>(from === 'settings' ? '.nav-item:last-child' : '.event-go')
-          : menu.querySelector<HTMLElement>('.settings-tab.on');
+          ? el.querySelector<HTMLElement>(from === 'settings' ? '.nav-settings' : '.event-go')
+          : el.querySelector<HTMLElement>('.settings-tab.on');
     focus?.focus({ preventScroll: true });
   }
-  go('home', false);
+  go(o.step ?? 'home', false);
 
   const onKey = (e: KeyboardEvent) => {
     if (!root.isConnected) return window.removeEventListener('keydown', onKey);
-    if (document.body.classList.contains('cinematic')) return;
+    if (document.body.classList.contains('cinematic') || e.ctrlKey || e.metaKey || e.altKey) return;
+    const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement;
+    // The full map over the menu keeps the keys to itself.
+    if (typing || root.parentElement?.querySelector('.fullmap-modal')) return;
     if (e.key === 'Escape' && step !== 'home') {
       e.preventDefault();
       go('home');
-    } else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && step === 'home' && !(e.target instanceof HTMLInputElement)) {
-      // Up and down walk the home menu: the race button, then the list.
-      const items = [...menu.querySelectorAll<HTMLElement>('.event-go, .nav-item')];
+    } else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && step === 'home') {
+      // Up and down walk the home menu: the map, the race button, then the list.
+      const items = [...(current?.querySelectorAll<HTMLElement>('.event-map, .event-go, .nav-item') ?? [])];
       const at = items.indexOf(document.activeElement as HTMLElement);
-      const next = at < 0 ? 0 : (at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+      const next = at < 0 ? items.findIndex((x) => x.classList.contains('event-go')) : (at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
       e.preventDefault();
       items[next]?.focus();
+    } else if (step === 'race' && pickType && !e.repeat) {
+      // Left and right step through the race types; 1 to 4 pick one. Inside a segmented control the arrows stay its own.
+      const inSeg = e.target instanceof Element && !!e.target.closest('.seg');
+      const at = RACE_TYPES.indexOf(s.raceType);
+      if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && !inSeg) {
+        e.preventDefault();
+        pickType(RACE_TYPES[(at + (e.key === 'ArrowRight' ? 1 : -1) + RACE_TYPES.length) % RACE_TYPES.length]);
+      } else if (/^[1-4]$/.test(e.key)) pickType(RACE_TYPES[Number(e.key) - 1]);
     }
   };
   window.addEventListener('keydown', onKey);
-  return root;
+  return {
+    root,
+    get step() {
+      return step;
+    },
+    frame(pose) {
+      overview?.update(pose);
+      course?.update(pose);
+    },
+    dispose() {
+      window.removeEventListener('keydown', onKey);
+      overview?.dispose();
+      course?.dispose();
+    },
+  };
 }

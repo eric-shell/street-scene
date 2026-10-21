@@ -21,6 +21,14 @@
  * off every button, chip, segment and menu card), the rule (the yellow-orange-red
  * gradient under the logo, on the active tab and the loading bar) and the accent
  * hairline across the top of every card and dialog.
+ *
+ * Motion carries the same voice: a sheen of light sweeps across whatever is
+ * hovered or focused (bright on primary actions), menu steps slide and cascade,
+ * the race types wear the rule's colors (circuit orange, sprint yellow, drift
+ * red, free roam green), and screens change behind the rule's colors as a
+ * wipe or behind the garage's roller door (ui/transitions.ts). Motion is
+ * transform and opacity wherever it can be (the course lines' dashes are the
+ * exception, on small SVGs), and reduced motion turns it off.
  */
 :root {
   --bg0: #19181a;
@@ -86,6 +94,27 @@
   --ease-in-out: cubic-bezier(0.7, 0, 0.25, 1);
   --t-fast: 0.12s;
   --t-med: 0.25s;
+  /* The sheen across a hovered control (.sheen): its peak on plates, and on the accent sweep of a primary action. */
+  --sheen-soft: rgba(255, 255, 255, 0.2);
+  --sheen-bright: rgba(255, 252, 240, 0.85);
+}
+/* Each race type's color: the rule's three stops for the races (circuit orange, sprint yellow, drift red)
+   and green for the open city. --mode-rgb feeds the washes; the course drawings (ui/menuMaps.ts) read --mode. */
+.mode-circuit {
+  --mode: var(--accent);
+  --mode-rgb: 252, 152, 103;
+}
+.mode-sprint {
+  --mode: var(--accent-2);
+  --mode-rgb: 255, 216, 102;
+}
+.mode-drift {
+  --mode: var(--red);
+  --mode-rgb: 255, 97, 136;
+}
+.mode-roam {
+  --mode: var(--green);
+  --mode-rgb: 169, 220, 118;
 }
 
 body {
@@ -283,8 +312,10 @@ body {
    these mark focus with the border and inset shadows. */
 .btn,
 .nav-item,
-.tile,
+.mode-tile,
 .event-card,
+.event-map,
+.course-card,
 .chip,
 .seg,
 .race-setup,
@@ -299,22 +330,27 @@ body {
   --cut: 6px;
 }
 .event-card,
+.course-card,
 .race-setup,
 .home .settings {
   --cut: 12px;
 }
 .btn::before,
 .nav-item::before,
-.tile::before,
+.mode-tile::before,
 .event-card::before,
+.event-map::before,
+.course-card::before,
 .chip::before,
 .seg::before,
 .race-setup::before,
 .home .settings::before,
 .btn::after,
 .nav-item::after,
-.tile::after,
+.mode-tile::after,
 .event-card::after,
+.event-map::after,
+.course-card::after,
 .chip::after,
 .seg::after,
 .race-setup::after,
@@ -330,8 +366,10 @@ body {
 /* From the start of the top edge's cut down to the right edge; the line falls inside the cut. */
 .btn::before,
 .nav-item::before,
-.tile::before,
+.mode-tile::before,
 .event-card::before,
+.event-map::before,
+.course-card::before,
 .chip::before,
 .seg::before,
 .race-setup::before,
@@ -343,8 +381,10 @@ body {
 /* From the left edge's cut down to the bottom edge, lifted by its width so it stays inside. */
 .btn::after,
 .nav-item::after,
-.tile::after,
+.mode-tile::after,
 .event-card::after,
+.event-map::after,
+.course-card::after,
 .chip::after,
 .seg::after,
 .race-setup::after,
@@ -352,6 +392,65 @@ body {
   left: -1px;
   top: calc(100% + 1px - var(--cut, 9px));
   transform: rotate(45deg) translateY(-1px);
+}
+/* The sheen (ui/dom.ts sheen): a skewed band of light that sweeps once across a control as it is hovered or
+   focused, like a streetlight passing over paint. The control's chamfer clips it. Plates get a faint band,
+   primary actions a bright, wider one, and the screen's main action (.cta) also glints on its own every few
+   seconds so the eye finds it. Transform only, so it runs on the compositor. */
+.sheen {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.sheen::before {
+  content: '';
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: 0;
+  width: 36%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.04) 30%, var(--sheen-soft) 50%, rgba(255, 255, 255, 0.04) 70%, transparent);
+  transform: translateX(-130%) skewX(-20deg);
+}
+.btn.primary > .sheen::before {
+  width: 58%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.28) 30%, var(--sheen-bright) 50%, rgba(255, 255, 255, 0.28) 70%, transparent);
+  mix-blend-mode: overlay;
+}
+.btn.ghost > .sheen::before,
+.btn.icon-only > .sheen::before {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.09) 50%, transparent);
+}
+:is(.btn, .nav-item, .mode-tile, .event-map, .g-item):is(:hover, :focus-visible) > .sheen::before {
+  animation: sheen 0.7s var(--ease-out) both;
+}
+.btn.primary:is(:hover, :focus-visible) > .sheen::before {
+  animation-duration: 0.85s;
+}
+.btn.primary.cta > .sheen::before {
+  animation: sheen-idle 6s var(--ease-in-out) 2.4s infinite;
+}
+.btn.primary.cta:is(:hover, :focus-visible) > .sheen::before {
+  animation: sheen 0.85s var(--ease-out) both;
+}
+@keyframes sheen {
+  from {
+    transform: translateX(-130%) skewX(-20deg);
+  }
+  to {
+    transform: translateX(260%) skewX(-20deg);
+  }
+}
+/* One slow pass, then a long wait off the far edge. */
+@keyframes sheen-idle {
+  0% {
+    transform: translateX(-130%) skewX(-20deg);
+  }
+  18%,
+  100% {
+    transform: translateX(260%) skewX(-20deg);
+  }
 }
 .row {
   display: flex;
@@ -749,12 +848,15 @@ kbd {
 }
 
 /* ---------- main menu (ui/menu.ts) ----------
-   Home is the title block, the event card (the seed's event with its route and
-   the way into the race) and the list of places; the race step picks the type
-   (a column of rows), rivals and aids on a card above a sticky Start; the
+   Home is the title block, the event card (the seed's event, the city as a
+   tilted live map with its notable districts, and the way into the race) and
+   the list of places, each in its own hue. The race step puts the race types in
+   a row over the course card (the picked type's course drawn on in its color,
+   ui/menuMaps.ts), then rivals and aids on a card above a sticky Start; the
    settings step is the settings panel on a card. Every step keeps the title
    block on top: the boot splash lands on .menu-head, which is shrink-wrapped
-   like the splash's copy so both measure the same. */
+   like the splash's copy so both measure the same. The steps slide in and out
+   under it (.menu-step). */
 .menu-head,
 .head-title {
   width: max-content;
@@ -781,6 +883,35 @@ kbd {
   margin-top: 10px;
   border-radius: var(--radius-sm);
   background: var(--rule);
+}
+/* The tagline centered under the title between two hairlines that fade in from the edges; the splash's
+   copy has the same lockup, so the flight lands on it exactly. Letter spacing leaves a space after the
+   last letter: the left line gives up as much, so the words sit in the true middle. */
+.menu-head .tagline,
+.splash .tagline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: center;
+}
+.menu-head .tagline::before,
+.menu-head .tagline::after,
+.splash .tagline::before,
+.splash .tagline::after {
+  content: '';
+  flex: 1 1 0;
+  min-width: 12px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(252, 252, 250, 0.32));
+}
+.menu-head .tagline::before,
+.splash .tagline::before {
+  margin-right: 0.32em;
+}
+.menu-head .tagline::after,
+.splash .tagline::after {
+  background: linear-gradient(270deg, transparent, rgba(252, 252, 250, 0.32));
 }
 /* Cinematic mode: all UI fades out, the menu city keeps playing; a hint fades in and out once. */
 body.cinematic #ui > *,
@@ -816,21 +947,98 @@ body > .mw {
     opacity: 1;
   }
 }
-/* The event card: what tonight's race is (name, tagline, its route), the race setup at a glance and the way in. */
+/* Explore: the menu slides away to the left while the camera cranes up off the street for the drone. */
+.rail-screen.menu-out {
+  pointer-events: none;
+}
+.rail-screen.menu-out > :is(.menu, .keybar, .rail-bg) {
+  opacity: 0;
+  transform: translateX(-40px);
+  transition: opacity 0.35s ease, transform 0.5s var(--ease-in-out);
+}
+/* A step's content under the title block. Between steps the old one leaves from where it stands (out of
+   the flow) toward the side it came from while the new one cascades in from the other side, its parts a
+   beat apart: forward (home to a step) moves left, back moves right. */
+.menu-step {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.menu-step > * {
+  flex-shrink: 0;
+}
+.menu-step.leave {
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  animation: step-out 0.26s var(--ease-in-out) both;
+}
+.menu-step.leave.back {
+  animation-name: step-out-back;
+}
+.menu-step.enter > * {
+  animation: step-in 0.5s var(--ease-out) calc(60ms + var(--i, 0) * 45ms) both;
+}
+.menu-step.enter.back > * {
+  animation-name: step-in-back;
+}
+.menu-step > :nth-child(2) {
+  --i: 1;
+}
+.menu-step > :nth-child(3) {
+  --i: 2;
+}
+.menu-step > :nth-child(4) {
+  --i: 3;
+}
+.menu-step > :nth-child(5) {
+  --i: 4;
+}
+.menu-step > :nth-child(6) {
+  --i: 5;
+}
+@keyframes step-out {
+  to {
+    opacity: 0;
+    transform: translateX(-48px);
+  }
+}
+@keyframes step-out-back {
+  to {
+    opacity: 0;
+    transform: translateX(48px);
+  }
+}
+@keyframes step-in {
+  from {
+    opacity: 0;
+    transform: translateX(72px);
+  }
+}
+@keyframes step-in-back {
+  from {
+    opacity: 0;
+    transform: translateX(-72px);
+  }
+}
+/* The event card: what tonight's event is, the city it runs in (a live map and its notable districts) and
+   the way in. It names no race type; the race step does. Warm light falls on it from the top corners. */
 .event-card {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 6px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   padding: 12px 16px 16px;
-  background: var(--card-top), var(--plate);
+  background:
+    var(--card-top),
+    radial-gradient(120% 60% at 100% 0%, rgba(255, 97, 136, 0.07), transparent 60%),
+    radial-gradient(90% 55% at 0% 0%, rgba(252, 152, 103, 0.1), transparent 65%),
+    var(--plate);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--edge);
 }
 .event-top {
-  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -840,71 +1048,276 @@ body > .mw {
 .event-top .label {
   flex: none;
 }
+.label.kicker {
+  color: var(--accent-2);
+}
+.label.kicker > svg {
+  color: var(--accent);
+}
 .event-name {
-  grid-column: 1;
   margin: 2px 0 0;
-  font: 900 30px/1.05 var(--display);
+  font: 900 32px/1.02 var(--display);
   letter-spacing: 0.05em;
   text-transform: uppercase;
   overflow-wrap: anywhere;
+  background: linear-gradient(180deg, #fff 35%, #ffd9c2);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 .event-tagline {
-  grid-column: 1;
   margin: 0;
   font-size: 14px;
   line-height: 1.4;
   color: var(--muted);
 }
-.event-meta {
-  grid-column: 1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 6px;
-}
 .event-go {
-  grid-column: 1 / -1;
-  margin-top: 8px;
+  margin-top: 6px;
 }
 .event-go > svg:last-child {
   margin-left: auto;
+  transition: transform var(--t-med) var(--ease-out);
 }
-/* The event's route, drawn on as the card arrives: a faint road under an orange line, the start a yellow dot. */
-.event-route {
-  grid-column: 2;
-  grid-row: 2 / span 3;
-  align-self: center;
-  width: 112px;
-  height: 84px;
-  overflow: visible;
+.event-go:hover > svg:last-child,
+.event-go:focus-visible > svg:last-child {
+  transform: translateX(4px);
 }
-.event-route path {
-  fill: none;
-  stroke-linejoin: round;
-  stroke-linecap: round;
-  vector-effect: non-scaling-stroke;
+/* The city map: a well in the card where the city stands tilted like a model on a table, turning slowly,
+   with the cruising car moving on it (ui/menuMaps.ts CityOverview). It is a button: the full map. */
+.event-map {
+  display: block;
+  height: clamp(116px, 19vh, 168px);
+  margin: 8px 0 2px;
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  background:
+    radial-gradient(70% 100% at 50% 110%, rgba(252, 152, 103, 0.14), transparent 70%),
+    linear-gradient(180deg, rgba(13, 12, 14, 0.94), rgba(31, 29, 32, 0.94));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.5);
+  transition: border-color var(--t-fast);
 }
-.event-route .route-road {
-  stroke: rgba(252, 252, 250, 0.1);
-  stroke-width: 7;
+.event-map:hover,
+.event-map:focus-visible {
+  border-color: var(--accent-line);
+  outline: none;
 }
-.event-route .route-line {
-  stroke: var(--accent);
-  stroke-width: 2;
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  animation: route-draw 1.6s var(--ease-out) 0.25s forwards;
+.event-map:focus-visible {
+  border-color: var(--accent-2);
+  box-shadow: inset 0 0 0 1px var(--accent-2);
 }
-.event-route circle {
-  fill: var(--accent-2);
-  stroke: var(--bg0);
-  stroke-width: 2;
-  vector-effect: non-scaling-stroke;
+.event-map-hint {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  font: 700 11px var(--font);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--soft);
+  background: rgba(25, 24, 26, 0.82);
+  clip-path: var(--chamfer-sm);
+  transition: color var(--t-fast), background var(--t-fast);
 }
-@keyframes route-draw {
-  to {
-    stroke-dashoffset: 0;
+.event-map-hint > svg {
+  color: var(--accent);
+}
+.event-map:hover .event-map-hint,
+.event-map:focus-visible .event-map-hint {
+  color: var(--on-accent);
+  background: var(--accent-grad);
+}
+.event-map:hover .event-map-hint > svg,
+.event-map:focus-visible .event-map-hint > svg {
+  color: var(--on-accent);
+}
+/* The arrow on the map is the car on screen right now. */
+.event-map-live {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 2px 7px;
+  font: 800 10px var(--font);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--soft);
+  background: rgba(25, 24, 26, 0.75);
+  clip-path: var(--chamfer-sm);
+}
+.event-map-live > i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--red);
+  animation: live-dot 1.6s ease-in-out infinite;
+}
+@keyframes live-dot {
+  50% {
+    opacity: 0.25;
   }
+}
+.city-overview {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+/* The table: perspective from above the near edge, the plane tilted back on it (flatter on hover), and the
+   map turning slowly on the plane. Two nested transforms, so the turn stays a compositor animation. */
+.ov-stage {
+  position: absolute;
+  inset: -16% 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  perspective: 620px;
+  perspective-origin: 50% 35%;
+}
+.ov-plane {
+  display: block;
+  width: 66%;
+  aspect-ratio: 1.15;
+  transform: translateY(-4%) rotateX(55deg);
+  transition: transform 0.7s var(--ease-out);
+}
+.event-map:hover .ov-plane,
+.event-map:focus-visible .ov-plane {
+  transform: translateY(-4%) rotateX(44deg) scale(1.05);
+}
+.ov-spin {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  animation: ov-turn 34s ease-in-out infinite alternate;
+  /* The table's faint grid, fading out toward its edges with the city. */
+  background:
+    repeating-linear-gradient(0deg, rgba(252, 252, 250, 0.045) 0 1px, transparent 1px 22px),
+    repeating-linear-gradient(90deg, rgba(252, 252, 250, 0.045) 0 1px, transparent 1px 22px);
+  -webkit-mask-image: radial-gradient(closest-side, #000 72%, transparent);
+  mask-image: radial-gradient(closest-side, #000 72%, transparent);
+}
+.ov-spin > canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+/* The event's own district breathes on its layer (the river for River Run, the roundabouts for Ring Rush). */
+.ov-glow {
+  animation: ov-breathe 2.6s ease-in-out infinite alternate;
+}
+@keyframes ov-turn {
+  from {
+    transform: rotate(-16deg);
+  }
+  to {
+    transform: rotate(16deg);
+  }
+}
+@keyframes ov-breathe {
+  from {
+    opacity: 0.2;
+  }
+  to {
+    opacity: 1;
+  }
+}
+/* A faint scan line crossing the well now and then, like a radar sweep over the table. */
+.ov-scan {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 28%;
+  background: linear-gradient(90deg, transparent, rgba(252, 152, 103, 0.08) 70%, rgba(255, 216, 102, 0.16));
+  transform: translateX(-110%);
+  animation: ov-scan 7s var(--ease-in-out) 1.5s infinite;
+}
+@keyframes ov-scan {
+  0% {
+    transform: translateX(-110%);
+  }
+  40%,
+  100% {
+    transform: translateX(380%);
+  }
+}
+/* A car on a menu map (ui/menuMaps.ts CarMarker): a heading arrow over two radar pings a beat apart. */
+.map-car {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  will-change: transform;
+}
+.map-arrow {
+  position: absolute;
+  left: -6px;
+  top: -8px;
+  width: 12px;
+  height: 15px;
+  background: var(--text);
+  clip-path: polygon(50% 0, 100% 100%, 50% 72%, 0 100%);
+}
+.map-ping {
+  position: absolute;
+  left: -13px;
+  top: -13px;
+  width: 26px;
+  height: 26px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  opacity: 0;
+  animation: map-ping 2.4s var(--ease-out) infinite;
+}
+.map-ping.late {
+  animation-delay: 1.2s;
+}
+@keyframes map-ping {
+  from {
+    opacity: 1;
+    transform: scale(0.15);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+/* On the tilted table the car lies flat with the map, so it is drawn larger to read. */
+.city-overview .map-arrow {
+  transform: scale(1.5);
+}
+.city-overview .map-ping {
+  border-width: 2.5px;
+  transform-origin: center;
+}
+/* What makes this city: chips in their districts' map inks, a legend of the map above them. */
+.event-feats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.chip.feat {
+  color: var(--soft);
+  border-color: color-mix(in srgb, var(--ink) 45%, transparent);
+  background: linear-gradient(color-mix(in srgb, var(--ink) 13%, transparent), color-mix(in srgb, var(--ink) 13%, transparent)), rgba(25, 24, 26, 0.85);
+}
+.chip.feat > svg {
+  color: var(--ink);
 }
 /* The seed: a chip with quiet edit, shuffle and back-to-today actions; editing swaps the chip for a field. */
 .seed-ctl {
@@ -932,25 +1345,35 @@ body > .mw {
   padding: 6px;
 }
 @media (max-width: 480px) {
-  .event-route {
-    display: none;
-  }
   .event-name {
     font-size: 26px;
   }
 }
-/* The home menu's list under the event card: one row per place, lit from the left edge like a picked tab. */
+/* The home menu's list under the event card: one row per place, each with its hue (Garage orange, Explore
+   cyan, Settings purple): a dim badge at rest that lights up, with the row's edge and wash, on hover. */
 .nav-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+.nav-garage {
+  --hue: var(--accent);
+  --hue-rgb: 252, 152, 103;
+}
+.nav-explore {
+  --hue: var(--cyan);
+  --hue-rgb: 120, 220, 232;
+}
+.nav-settings {
+  --hue: var(--purple);
+  --hue-rgb: 171, 157, 242;
 }
 .nav-item {
   display: flex;
   align-items: center;
   gap: 14px;
   min-height: 60px;
-  padding: 10px 14px 10px 16px;
+  padding: 10px 14px 10px 12px;
   text-align: left;
   color: var(--text);
   cursor: pointer;
@@ -960,14 +1383,22 @@ body > .mw {
   box-shadow: var(--edge);
   transition: background var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast), transform var(--t-fast);
 }
+.nav-badge {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  color: var(--hue);
+  background: rgba(var(--hue-rgb), 0.13);
+  clip-path: var(--chamfer-sm);
+  transition: background var(--t-fast), color var(--t-fast), transform var(--t-med) var(--ease-out);
+}
 .nav-item > svg {
   flex: none;
-  color: var(--muted);
-  transition: color var(--t-fast), transform var(--t-fast);
-}
-.nav-item > svg:last-child {
   margin-left: auto;
   color: var(--dim);
+  transition: color var(--t-fast), transform var(--t-fast);
 }
 .nav-text {
   display: flex;
@@ -989,112 +1420,363 @@ body > .mw {
 }
 .nav-item:hover,
 .nav-item:focus-visible {
-  border-color: var(--accent-line);
-  background: var(--plate-hover);
-  box-shadow: var(--edge), inset 3px 0 0 var(--accent);
+  border-color: rgba(var(--hue-rgb), 0.6);
+  background: linear-gradient(90deg, rgba(var(--hue-rgb), 0.13), transparent 65%), var(--plate-hover);
+  box-shadow: var(--edge), inset 3px 0 0 var(--hue);
   outline: none;
 }
 .nav-item:focus-visible {
-  box-shadow: var(--edge), inset 3px 0 0 var(--accent), inset 0 0 0 1px var(--accent-2);
+  box-shadow: var(--edge), inset 3px 0 0 var(--hue), inset 0 0 0 1px var(--accent-2);
+}
+.nav-item:hover .nav-badge,
+.nav-item:focus-visible .nav-badge {
+  color: var(--on-accent);
+  background: var(--hue);
+  transform: scale(1.06);
 }
 .nav-item:hover > svg,
 .nav-item:focus-visible > svg {
-  color: var(--accent);
-}
-.nav-item:hover > svg:last-child,
-.nav-item:focus-visible > svg:last-child {
+  color: var(--hue);
   transform: translateX(3px);
 }
 .nav-item:active {
   transform: translateY(1px);
 }
-/* Tiles: the race types, a column of rows (icon, name, then its sub or record on the right), lit from
-   the left edge like the home list. */
-.tiles {
-  display: flex;
-  flex-direction: column;
+/* The race types in a row: icon over name, the number key that picks it in the corner. The picked one
+   fills with its color's wash over a bar of it along the bottom (.mode-* carries --mode). */
+.mode-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
 }
-.tile {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+.mode-tile {
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 14px;
+  justify-content: center;
+  gap: 6px;
   min-width: 0;
-  min-height: 46px;
-  padding: 8px 16px;
+  min-height: 68px;
+  padding: 11px 6px 10px;
   cursor: pointer;
-  text-align: left;
-  color: var(--text);
+  color: var(--soft);
+  font: inherit;
   background: var(--plate);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   box-shadow: var(--edge);
-  transition: background var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast), transform var(--t-fast);
+  transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast), box-shadow var(--t-fast), transform var(--t-fast);
 }
-.tile > svg {
+.mode-tile > svg {
   color: var(--muted);
-  transition: color var(--t-fast);
+  transition: color var(--t-fast), transform var(--t-med) var(--ease-out);
 }
-.tile-label {
-  font: 900 16px var(--display);
-  letter-spacing: 0.04em;
+.mode-label {
+  max-width: 100%;
+  overflow: hidden;
+  font: 900 13px var(--display);
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   white-space: nowrap;
-  overflow: hidden;
   text-overflow: ellipsis;
 }
-.tile-sub {
-  font: 500 12px var(--font);
-  color: var(--muted);
-  white-space: nowrap;
+.mode-key {
+  position: absolute;
+  top: 5px;
+  left: 6px;
+  min-width: 0;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 14px;
+  opacity: 0.5;
 }
-/* A set record reads as a value, in the secondary color. */
-.tile-sub.record {
-  font: 700 13px var(--mono);
-  color: var(--accent-2);
-}
-.tile:hover,
-.tile:focus-visible {
-  border-color: var(--accent-line);
+.mode-tile:hover,
+.mode-tile:focus-visible {
+  color: var(--text);
+  border-color: rgba(var(--mode-rgb), 0.6);
   background: var(--plate-hover);
-  box-shadow: var(--edge), inset 3px 0 0 var(--accent);
   outline: none;
 }
-.tile:focus-visible {
-  box-shadow: var(--edge), inset 3px 0 0 var(--accent), inset 0 0 0 1px var(--accent-2);
+.mode-tile:hover > svg,
+.mode-tile:focus-visible > svg {
+  color: var(--mode);
 }
-.tile:hover > svg,
-.tile:focus-visible > svg {
-  color: var(--accent);
+.mode-tile:focus-visible {
+  box-shadow: var(--edge), inset 0 0 0 1px var(--accent-2);
 }
-.tile:active {
+.mode-tile.on {
+  color: var(--text);
+  border-color: rgba(var(--mode-rgb), 0.7);
+  background: linear-gradient(180deg, rgba(var(--mode-rgb), 0.28), rgba(var(--mode-rgb), 0.07)), var(--plate);
+  box-shadow: var(--edge), inset 0 -3px 0 var(--mode);
+}
+.mode-tile.on > svg {
+  color: var(--mode);
+  transform: scale(1.14);
+}
+.mode-tile.on .mode-key {
+  opacity: 0.85;
+}
+.mode-tile:active {
   transform: translateY(1px);
 }
-/* The picked race type: the accent bar of a hovered row, over an orange wash fading to the right. */
-.tile.on {
-  border-color: var(--accent-line);
-  background: linear-gradient(90deg, rgba(252, 152, 103, 0.24), rgba(252, 152, 103, 0.06) 70%), var(--plate);
-  box-shadow: var(--edge), inset 3px 0 0 var(--accent);
+/* The course card: the picked type's name in its color, a few facts and the best on this event, over the
+   city with the course drawn on. The card's accent hairline takes the type's color too. */
+.home[data-mode='circuit'] {
+  --mode: var(--accent);
+  --mode-rgb: 252, 152, 103;
 }
-.tile.on > svg {
-  color: var(--accent);
+.home[data-mode='sprint'] {
+  --mode: var(--accent-2);
+  --mode-rgb: 255, 216, 102;
 }
-.tile.on:focus-visible {
-  box-shadow: var(--edge), inset 3px 0 0 var(--accent), inset 0 0 0 1px var(--accent-2);
+.home[data-mode='drift'] {
+  --mode: var(--red);
+  --mode-rgb: 255, 97, 136;
 }
-/* Free roam is the open ended one: yellow instead of orange. */
-.tile.roam > svg {
+.home[data-mode='roam'] {
+  --mode: var(--green);
+  --mode-rgb: 169, 220, 118;
+}
+.course-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 11px 12px 12px;
+  background:
+    linear-gradient(90deg, var(--mode) 0 64px, var(--line-strong) 64px) top left / 100% 2px no-repeat,
+    radial-gradient(100% 80% at 0% 0%, rgba(var(--mode-rgb), 0.12), transparent 60%),
+    var(--plate);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--edge);
+  transition: background 0.3s;
+}
+.course-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 42px;
+  padding: 0 2px;
+}
+.course-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.course-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 900 20px/1 var(--display);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--mode);
+}
+.course-facts {
+  display: flex;
+  flex-wrap: wrap;
+  font: 600 12px var(--font);
+  color: var(--soft);
+}
+.course-facts > span + span::before {
+  content: '·';
+  margin: 0 7px;
+  color: var(--dim);
+}
+.course-best {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font: 800 14px var(--mono);
   color: var(--accent-2);
+  background: linear-gradient(var(--accent-2-soft), var(--accent-2-soft)), rgba(25, 24, 26, 0.85);
+  clip-path: var(--chamfer-sm);
 }
-.tile.roam.on,
-.tile.roam:hover,
-.tile.roam:focus-visible {
-  border-color: rgba(255, 216, 102, 0.55);
-  box-shadow: var(--edge), inset 3px 0 0 var(--accent-2);
+.course-best.none {
+  font: 600 12px var(--font);
+  color: var(--muted);
+  background: rgba(25, 24, 26, 0.6);
 }
-.tile.roam.on {
-  background: linear-gradient(90deg, rgba(255, 216, 102, 0.18), rgba(255, 216, 102, 0.05) 70%), var(--plate);
+.course-head .swap {
+  animation: course-swap 0.42s var(--ease-out) both;
+}
+.course-head .course-best.swap {
+  animation-delay: 0.06s;
+}
+@keyframes course-swap {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+.course-map {
+  position: relative;
+  height: clamp(124px, 22vh, 206px);
+  overflow: hidden;
+  background:
+    radial-gradient(80% 90% at 50% 50%, rgba(var(--mode-rgb), 0.07), transparent 70%),
+    linear-gradient(180deg, rgba(13, 12, 14, 0.94), rgba(28, 27, 30, 0.94));
+  clip-path: var(--chamfer-sm);
+  transition: background 0.3s;
+}
+.course-city,
+.course-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.course-svg {
+  overflow: visible;
+}
+/* The course: a soft road of its color under the line, which draws on from the start; then a pulse runs
+   the course in its driving direction, a white head on a trail. */
+.course > path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.course .c-road {
+  stroke: rgba(var(--mode-rgb), 0.2);
+  stroke-width: 7;
+}
+.course .c-line {
+  stroke: var(--mode);
+  stroke-width: 2.4;
+}
+.course.enter .c-road {
+  animation: course-appear 0.5s ease 0.15s backwards;
+}
+.course.enter .c-line {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: course-draw 1.1s var(--ease-out) 0.1s forwards;
+}
+.course .c-trail {
+  stroke: rgba(var(--mode-rgb), 0.6);
+  stroke-width: 5;
+  stroke-dasharray: 0.12 0.88;
+  animation: course-trail 3.8s linear infinite;
+}
+.course .c-pulse {
+  stroke: #fff;
+  stroke-width: 2.8;
+  stroke-dasharray: 0.03 0.97;
+  animation: course-head 3.8s linear infinite;
+}
+.course.enter .c-trail {
+  animation: course-trail 3.8s linear 1.2s infinite backwards, course-appear 0.4s ease 1.2s backwards;
+}
+.course.enter .c-pulse {
+  animation: course-head 3.8s linear 1.2s infinite backwards, course-appear 0.4s ease 1.2s backwards;
+}
+.course .c-zones {
+  fill: rgba(var(--mode-rgb), 0.24);
+  stroke: var(--mode);
+  stroke-width: 1.2;
+  animation: course-zones 1.8s ease-in-out infinite alternate;
+}
+.course.enter .c-zones {
+  animation: course-appear 0.6s ease 0.5s backwards, course-zones 1.8s ease-in-out 1.1s infinite alternate;
+}
+.course .c-streets {
+  stroke: rgba(var(--mode-rgb), 0.78);
+  stroke-width: 1.3;
+}
+.course .reveal {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.course.enter .reveal {
+  animation: course-reveal 1.4s var(--ease-out) both;
+}
+.course .c-mark circle {
+  fill: var(--bg0);
+  stroke: var(--mode);
+  stroke-width: 2;
+}
+.course .c-mark svg {
+  color: var(--mode);
+}
+.course .c-mark-in {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.course.enter .c-start .c-mark-in {
+  animation: course-mark 0.5s cubic-bezier(0.3, 1.7, 0.5, 1) backwards;
+}
+.course.enter .c-finish .c-mark-in {
+  animation: course-mark 0.5s cubic-bezier(0.3, 1.7, 0.5, 1) 1s backwards;
+}
+.course.leave {
+  animation: course-leave 0.26s ease-in both;
+}
+/* The car only shows where it matters: free roam starts where you are. */
+.course-map .map-car {
+  transition: opacity 0.3s;
+}
+.course-map:not([data-mode='roam']) .map-car {
+  opacity: 0;
+}
+.course-map .map-ping {
+  border-color: var(--green);
+}
+@keyframes course-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes course-appear {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes course-leave {
+  to {
+    opacity: 0;
+  }
+}
+/* The trail's and the head's dashes end at the same point: the head rides the trail's front. */
+@keyframes course-trail {
+  from {
+    stroke-dashoffset: 0.12;
+  }
+  to {
+    stroke-dashoffset: -0.88;
+  }
+}
+@keyframes course-head {
+  from {
+    stroke-dashoffset: 0.03;
+  }
+  to {
+    stroke-dashoffset: -0.97;
+  }
+}
+@keyframes course-zones {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.5;
+  }
+}
+@keyframes course-reveal {
+  from {
+    transform: scale(0);
+  }
+}
+@keyframes course-mark {
+  from {
+    opacity: 0;
+    transform: scale(0);
+  }
 }
 .race-group {
   display: flex;
@@ -1154,8 +1836,14 @@ body > .mw {
   color: var(--soft);
 }
 .field-head > .hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   font-size: 12px;
   color: var(--muted);
+}
+.field-head > .hint > svg {
+  color: var(--accent-2);
 }
 .seg.wide {
   display: flex;
@@ -1197,12 +1885,26 @@ body > .mw {
   background: linear-gradient(180deg, rgba(25, 24, 26, 0), rgba(25, 24, 26, 0.92) 10px);
 }
 @media (max-height: 820px) {
-  .race-types .tile {
-    min-height: 42px;
-    padding: 6px 16px;
-  }
   .nav-item {
     min-height: 54px;
+  }
+  .mode-tile {
+    min-height: 60px;
+    padding: 9px 6px 8px;
+  }
+}
+@media (pointer: coarse) {
+  .mode-key {
+    display: none;
+  }
+}
+/* Phones: four tiles across leave room for short names only, so a long one takes two lines. */
+@media (max-width: 480px) {
+  .mode-label {
+    font-size: 12px;
+    line-height: 1.05;
+    white-space: normal;
+    text-align: center;
   }
 }
 .build-version {
@@ -1325,6 +2027,116 @@ body > .mw {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
+/* Arrivals: the pause and results rails slide in from the left edge over the race; the results headline
+   strikes in, the standings deal in a row at a time and the new best badge glints. The main action of
+   each (Resume, Retry) glints on its own every few seconds, like the menu's. */
+.rail-screen.pause > .rail-bg,
+.rail-screen.pause > .rail-edge,
+.rail-screen.results > .rail-bg,
+.rail-screen.results > .rail-edge {
+  animation: rail-in 0.42s var(--ease-out) both;
+}
+.result-title {
+  animation: result-strike 0.6s var(--ease-out) 0.12s both;
+}
+.results-table tr {
+  animation: row-in 0.42s var(--ease-out) calc(0.3s + var(--row, 0) * 55ms) both;
+}
+.results-table tr:nth-child(2) {
+  --row: 1;
+}
+.results-table tr:nth-child(3) {
+  --row: 2;
+}
+.results-table tr:nth-child(4) {
+  --row: 3;
+}
+.results-table tr:nth-child(5) {
+  --row: 4;
+}
+.results-table tr:nth-child(6) {
+  --row: 5;
+}
+.results-table tr:nth-child(7) {
+  --row: 6;
+}
+.results-table tr:nth-child(8) {
+  --row: 7;
+}
+.results-table tr:nth-child(9) {
+  --row: 8;
+}
+.results-table tr:nth-child(10) {
+  --row: 9;
+}
+.badge {
+  position: relative;
+  overflow: hidden;
+  animation: badge-pop 0.5s cubic-bezier(0.3, 1.6, 0.5, 1) 0.5s both;
+}
+.badge::after {
+  content: '';
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgba(255, 252, 240, 0.85), transparent);
+  mix-blend-mode: overlay;
+  transform: translateX(-130%) skewX(-20deg);
+  animation: sheen-idle 3.2s var(--ease-in-out) 1s infinite;
+}
+.pause .resume > .sheen::before,
+.result-actions .primary > .sheen::before {
+  animation: sheen-idle 6s var(--ease-in-out) 1.6s infinite;
+}
+.pause .resume:is(:hover, :focus-visible) > .sheen::before,
+.result-actions .primary:is(:hover, :focus-visible) > .sheen::before {
+  animation: sheen 0.85s var(--ease-out) both;
+}
+@keyframes rail-in {
+  from {
+    transform: translateX(-100%);
+  }
+}
+@keyframes result-strike {
+  0% {
+    opacity: 0;
+    transform: scale(1.25);
+    letter-spacing: 0.16em;
+  }
+  45% {
+    opacity: 1;
+  }
+  100% {
+    transform: none;
+  }
+}
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+}
+@keyframes badge-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.4) rotate(-6deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rail-screen > .rail-bg,
+  .rail-screen > .rail-edge,
+  .result-title,
+  .results-table tr,
+  .badge,
+  .badge::after,
+  .pause .resume > .sheen::before,
+  .result-actions .primary > .sheen::before {
+    animation: none !important;
+  }
+}
+
 /* ---------- dialogs (music library, dev part preview) ---------- */
 /* Every dialog: the card's accent hairline across the top, title row with its icon, then the body. */
 .dialog {
@@ -1413,6 +2225,26 @@ body > .mw {
 }
 .settings-pane > * {
   flex-shrink: 0;
+  /* A page's rows rise in when its tab opens (the pane is rebuilt only then). */
+  animation: pane-in 0.34s var(--ease-out) both;
+}
+.settings-pane > :nth-child(2) {
+  animation-delay: 30ms;
+}
+.settings-pane > :nth-child(3) {
+  animation-delay: 60ms;
+}
+.settings-pane > :nth-child(4) {
+  animation-delay: 90ms;
+}
+.settings-pane > :nth-child(n + 5) {
+  animation-delay: 120ms;
+}
+@keyframes pane-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
 }
 .settings-pane > .seg {
   align-self: flex-start;
@@ -1491,10 +2323,6 @@ body > .mw {
   .loading-bar i {
     animation: none;
     width: 100%;
-  }
-  .event-route .route-line {
-    animation: none;
-    stroke-dashoffset: 0;
   }
 }
 
@@ -2237,8 +3065,8 @@ body.garage-open .toast {
 .menu.splash-arrive > .menu-head {
   visibility: hidden;
 }
-.menu.splash-arrive > :not(.menu-head) {
-  animation: splash-menu-in 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--i, 0) * 50ms) both;
+.menu.splash-arrive > .menu-step > * {
+  animation: splash-menu-in 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--i, 0) * 60ms) both;
 }
 /* A rail's parts rise in the same way when the player moves between steps or a rail screen opens (menu, pause, results). */
 .rail-col.step-enter > :not(.menu-head) {
@@ -2269,11 +3097,270 @@ body.garage-open .toast {
   .splash *,
   .splash *::before,
   .splash *::after,
-  .menu.splash-arrive > *,
-  .rail-col.step-enter > * {
+  .menu.splash-arrive > .menu-step > *,
+  .rail-col.step-enter > *,
+  .menu-step.enter > *,
+  .menu-step.leave,
+  .sheen::before,
+  .ov-spin,
+  .ov-glow,
+  .ov-scan,
+  .map-ping,
+  .course *,
+  .course-head .swap,
+  .settings-pane > *,
+  .garage-body.tab-in > *,
+  .event-map-live > i {
     animation: none !important;
   }
+  .menu-step.leave {
+    display: none;
+  }
+  .course .c-trail,
+  .course .c-pulse,
+  .ov-scan {
+    display: none;
+  }
   .splash .tagline {
+    opacity: 1;
+  }
+}
+
+/* ---------- screen transitions (ui/transitions.ts) ----------
+   The wipe: the rule's colors as slanted bands leading a dark title card across
+   the screen and trailing it off the far side. The door: the garage's roller
+   door, ribbed steel with a hazard striped bottom rail and a neon sign of the
+   place behind it. Both sit over everything, the music widget included. */
+.wipe,
+.door,
+.transition-fade {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  overflow: hidden;
+  pointer-events: auto;
+}
+.transition-fade {
+  background: var(--bg0);
+  opacity: 0;
+}
+.wipe-rig {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  will-change: transform;
+}
+.wipe-band {
+  flex: none;
+  width: 26px;
+  height: 100%;
+}
+.wb-y {
+  background: var(--accent-2);
+}
+.wb-o {
+  background: var(--accent);
+}
+.wb-r {
+  background: var(--red);
+}
+.wipe-panel {
+  position: relative;
+  flex: none;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(50% 45% at 50% 50%, rgba(252, 152, 103, 0.12), transparent 70%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 2px, transparent 2px 46px),
+    var(--bg0);
+}
+/* The card's text stands upright inside the slanted panel. */
+.wipe-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  transform: skewX(12deg);
+  text-align: center;
+}
+.wipe-kicker {
+  font: 800 14px var(--font);
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+}
+.wipe-title {
+  font: italic 900 clamp(44px, 9vw, 108px) / 0.95 var(--logo);
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  padding: 0 0.12em;
+  background: linear-gradient(100deg, var(--accent-2) 5%, var(--accent) 55%, var(--red) 110%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.wipe-rule {
+  width: min(420px, 60vw);
+  height: 3px;
+  background: var(--rule);
+  transform: scaleX(0);
+}
+/* The course on the card, drawing itself on in its type's color. */
+.wipe-art {
+  margin: 4px 0 2px;
+}
+.course-art {
+  display: block;
+  overflow: visible;
+}
+.course-art path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.course-art .a-road {
+  stroke: rgba(var(--mode-rgb), 0.18);
+  stroke-width: 9;
+}
+.course-art .a-line {
+  stroke: var(--mode);
+  stroke-width: 3;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: course-draw 0.75s var(--ease-out) 0.2s forwards;
+}
+.course-art .a-start {
+  fill: var(--accent-2);
+  stroke: var(--bg0);
+  stroke-width: 2;
+}
+.wipe-sub {
+  font: 600 13px var(--font);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--soft);
+}
+.wipe-card.in > * {
+  animation: wipe-text-in 0.5s var(--ease-out) 0.18s backwards;
+}
+.wipe-card.in > .wipe-title {
+  animation-delay: 0.24s;
+}
+.wipe-card.in > .wipe-rule {
+  animation: wipe-rule 0.55s var(--ease-out) 0.32s forwards;
+}
+.wipe-card.in > .wipe-sub {
+  animation-delay: 0.36s;
+}
+.wipe-card.out {
+  animation: wipe-text-out 0.3s ease-in forwards;
+}
+@keyframes wipe-text-in {
+  from {
+    opacity: 0;
+    transform: translateX(-40px);
+  }
+}
+@keyframes wipe-text-out {
+  to {
+    opacity: 0;
+    transform: skewX(12deg) translateX(60px);
+  }
+}
+@keyframes wipe-rule {
+  to {
+    transform: none;
+  }
+}
+/* The roller door: horizontal ribs of brushed steel catching a light from above, grain over them, the
+   hazard striped bottom rail with a handle, and the place's name in neon tubes on the slats. */
+.door-curtain {
+  position: absolute;
+  inset: 0;
+  transform: translateY(-102%);
+  will-change: transform;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.55), transparent 30%, transparent 70%, rgba(0, 0, 0, 0.45)),
+    var(--grain),
+    repeating-linear-gradient(
+      180deg,
+      #3a373d 0,
+      #4a474e 3px,
+      #3a373d 9px,
+      #2a282d 22px,
+      #1b1a1d 25px,
+      #4f4c53 26px,
+      #3a373d 28px
+    );
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+.door-rail {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 34px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 3px, transparent 26px, rgba(0, 0, 0, 0.5)),
+    repeating-linear-gradient(-45deg, var(--accent-2) 0 16px, #1b1a1d 16px 32px);
+  border-top: 3px solid #5a575e;
+  box-shadow: 0 -2px 0 rgba(0, 0, 0, 0.5);
+}
+.door-handle {
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  width: 120px;
+  height: 12px;
+  margin-left: -60px;
+  background: linear-gradient(180deg, #8a878f, #403d43);
+  border-radius: 2px;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.6);
+}
+.door-sign {
+  position: absolute;
+  inset: 0 0 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* The sign is dark glass tubes until the door is shut, then strikes like the splash's neon. */
+.door-sign > span {
+  font: italic 900 clamp(48px, 10vw, 120px) / 1 var(--logo);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: rgba(255, 216, 102, 0.12);
+  -webkit-text-stroke: 1.5px rgba(255, 216, 102, 0.25);
+}
+.door.shut .door-sign > span,
+.door.opening .door-sign > span {
+  color: #fff1d6;
+  -webkit-text-stroke: 0;
+  text-shadow: 0 0 6px #fff1d6, 0 0 18px var(--accent-2), 0 0 44px rgba(252, 152, 103, 0.75), 0 0 90px rgba(255, 97, 136, 0.35);
+  animation: door-neon 0.5s steps(1, end) both;
+}
+@keyframes door-neon {
+  0% {
+    opacity: 0.3;
+  }
+  14% {
+    opacity: 1;
+  }
+  24% {
+    opacity: 0.35;
+  }
+  38% {
+    opacity: 1;
+  }
+  48% {
+    opacity: 0.6;
+  }
+  60%,
+  100% {
     opacity: 1;
   }
 }
@@ -2404,6 +3491,19 @@ body.garage-open .toast {
   gap: 18px;
   scrollbar-width: thin;
 }
+/* A new tab's sections cascade in (garageUi.ts setTab adds .tab-in for the switch only). */
+.garage-body.tab-in > * {
+  animation: pane-in 0.36s var(--ease-out) both;
+}
+.garage-body.tab-in > :nth-child(2) {
+  animation-delay: 40ms;
+}
+.garage-body.tab-in > :nth-child(3) {
+  animation-delay: 80ms;
+}
+.garage-body.tab-in > :nth-child(n + 4) {
+  animation-delay: 120ms;
+}
 .g-section {
   display: flex;
   flex-direction: column;
@@ -2424,6 +3524,8 @@ body.garage-open .toast {
 }
 /* A choice in a list: lit from the left edge when picked, like the menu's rows. */
 .g-item {
+  position: relative;
+  overflow: hidden;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -3158,155 +4260,765 @@ body.garage-open .toast {
     bottom: calc(max(10px, env(safe-area-inset-bottom)) + 116px);
   }
 }
-.fullmap-screen {
+/* The full city map (ui/fullMap.ts) and the HUD's waypoint chip: the map in a chamfered frame like every card,
+   the accent hairline across the dialog, plates for everything over the map, and the game's tabs, chips and
+   kbd caps in the side panel and footer. The panel lands, the legend rows step in, the hover card fades in by
+   the pointer; none of it under reduced motion. */
+.fullmap-modal {
   padding: 16px;
   box-sizing: border-box;
+  animation: fullmap-fade 0.2s ease backwards;
 }
-.fullmap {
-  width: min(1180px, 100%);
-  height: min(880px, 100%);
+/* The music player sits over the whole UI layer and would cover the map's close button wherever the panel
+   reaches the top of the screen: it steps aside while the map is open (the music plays on, M still mutes). */
+body.fullmap-open .mw {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.16s, visibility 0s linear 0.16s;
+}
+.fullmap-modal.out {
+  pointer-events: none;
+  animation: fullmap-fade-out 0.16s ease forwards;
+}
+.fullmap-panel {
+  width: min(1280px, 100%);
+  height: min(900px, 100%);
   box-sizing: border-box;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 10px;
-  padding: 14px 16px;
-  background: linear-gradient(90deg, var(--accent) 0 64px, var(--line-strong) 64px) top left / 100% 2px no-repeat, var(--panel);
+  gap: 12px;
+  padding: 14px 16px 12px;
+  background: var(--card-top), var(--panel);
+  /* Near opaque already: a blur behind it would cost a pass over the live city every frame for nothing. */
+  backdrop-filter: none;
+  animation: fullmap-in 0.28s var(--ease-out) backwards;
 }
-.fullmap-head {
+.fullmap-modal.out .fullmap-panel {
+  animation: fullmap-out 0.16s ease forwards;
+}
+@keyframes fullmap-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes fullmap-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes fullmap-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.975);
+  }
+}
+@keyframes fullmap-out {
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+}
+
+/* ---- header ---- */
+.fullmap-top {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
+  min-width: 0;
 }
-.fullmap-head h2 {
-  margin: 0;
+.fullmap-title {
+  margin: 0 6px 0 0;
   display: flex;
   align-items: center;
   gap: 10px;
   font-size: 22px;
+  white-space: nowrap;
 }
-.fullmap-head h2 > svg {
+.fullmap-title > svg {
   color: var(--accent);
 }
-.fullmap-here {
+.fullmap-chip {
+  flex: none;
+}
+.fullmap-where {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
   color: var(--muted);
   font-size: 14px;
 }
-.fullmap-here b {
+.fullmap-where b {
   color: var(--accent-2);
   font-weight: 800;
 }
-.fullmap-body {
-  display: flex;
-  gap: 16px;
+.fullmap-close {
+  flex: none;
+}
+
+/* ---- body: the map beside the side panel ---- */
+.fullmap-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 272px;
+  gap: 14px;
   min-height: 0;
 }
-.fullmap-map {
-  flex: 1;
+/* The map's frame: chamfered, its border drawn along the cuts like a card's. */
+.fullmap-stage {
+  --cut: 14px;
+  position: relative;
   min-width: 0;
   min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  overflow: hidden;
+  background: #141315;
+  border: 1px solid var(--line-strong);
+  clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, var(--cut) 100%, 0 calc(100% - var(--cut)));
+  outline: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
-.fullmap-canvas {
+.fullmap-stage::before,
+.fullmap-stage::after {
+  content: '';
+  position: absolute;
+  z-index: 3;
+  width: calc(var(--cut) * 1.4142);
+  border-top: 1px solid var(--line-strong);
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+.fullmap-stage::before {
+  left: calc(100% - var(--cut));
+  top: -1px;
+  transform: rotate(45deg);
+}
+.fullmap-stage::after {
+  left: -1px;
+  top: calc(100% - var(--cut));
+  transform: rotate(45deg) translateY(-1px);
+}
+.fullmap-cv {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   display: block;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
   cursor: crosshair;
 }
-.fullmap-legend {
-  width: 210px;
-  flex: none;
-  overflow: auto;
+/* The map's edges sink into the frame. */
+.fullmap-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(130% 110% at 50% 50%, transparent 62%, rgba(10, 9, 11, 0.5));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03), inset 0 0 36px rgba(0, 0, 0, 0.4);
 }
-.fullmap-legend h3 {
-  margin: 0 0 10px;
-  font-size: 12px;
-  letter-spacing: 0.14em;
+/* Viewfinder ticks in the two corners the chamfer leaves square. */
+.fullmap-corner {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+  border-color: var(--accent);
+  opacity: 0.85;
+}
+.fullmap-corner.tl {
+  left: 6px;
+  top: 6px;
+  border-left: 2px solid;
+  border-top: 2px solid;
+}
+.fullmap-corner.br {
+  right: 6px;
+  bottom: 6px;
+  border-right: 2px solid;
+  border-bottom: 2px solid;
+}
+.fullmap-rose {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 52px;
+  height: 56px;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+}
+.fullmap-rose svg {
+  display: block;
+  font-family: var(--font);
+}
+
+/* Zoom, find me and fit: a column of chamfered plates at the bottom right. */
+.fullmap-tools {
+  position: absolute;
+  right: 14px;
+  bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.fullmap-tools .btn {
+  background: var(--plate);
+  box-shadow: var(--edge), 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+.fullmap-tools .btn:hover,
+.fullmap-tools .btn:focus-visible {
+  background: var(--plate-hover);
+}
+.fullmap-tools .btn.on {
+  border-color: var(--accent-line);
+}
+.fullmap-tools .btn.on > svg {
+  color: var(--accent);
+}
+.fullmap-tools-gap {
+  height: 4px;
+}
+.fullmap-zoom {
+  min-width: 34px;
+  padding: 1px 4px;
+  font: 800 11px var(--mono);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--accent-2);
+  background: rgba(25, 24, 26, 0.8);
+  clip-path: var(--chamfer-sm);
+}
+
+/* ---- the card by the pointer ---- */
+.fullmap-tip {
+  --ink: var(--soft);
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 4;
+  min-width: 168px;
+  max-width: 264px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 12px 10px;
+  background: linear-gradient(90deg, var(--ink) 0 40px, var(--line-strong) 40px) top left / 100% 2px no-repeat, var(--plate);
+  border: 1px solid var(--line);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+  clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 9px, 100% 100%, 9px 100%, 0 calc(100% - 9px));
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--t-fast), visibility 0s linear var(--t-fast);
+  will-change: transform;
+}
+.fullmap-tip.on {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity var(--t-fast);
+}
+/* A tapped card (touch) stays and can be pressed. */
+.fullmap-tip.pinned {
+  pointer-events: auto;
+}
+.fullmap-tip-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.fullmap-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow: 0 0 0 2px rgba(25, 24, 26, 0.9);
+}
+.fullmap-tip-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 900 14px var(--display);
+  letter-spacing: 0.04em;
   text-transform: uppercase;
+  color: var(--text);
+}
+.fullmap-tip-cell {
+  flex: none;
+  padding: 0 5px;
+  font: 700 11px var(--mono);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.fullmap-tip-cell:empty {
+  display: none;
+}
+.fullmap-tip-kind {
+  font: 600 12px var(--font);
   color: var(--muted);
 }
-.fullmap-legend ul {
+.fullmap-tip-far {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 800 13px var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-2);
+}
+.fullmap-tip-arrow {
+  display: flex;
+  color: var(--accent-2);
+}
+.fullmap-tip-arrow svg {
+  fill: currentColor;
+}
+.fullmap-tip-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.fullmap-tip-badges:not(:has(> :not([hidden]))) {
+  display: none;
+}
+.fullmap-badge {
+  padding: 2px 7px;
+  font-size: 11px;
+}
+.fullmap-badge.drift,
+.fullmap-badge.drift > svg {
+  color: var(--accent-2);
+}
+.fullmap-badge.drift {
+  border-color: rgba(255, 216, 102, 0.35);
+}
+.fullmap-badge.short,
+.fullmap-badge.short > svg {
+  color: var(--red);
+}
+.fullmap-badge.short {
+  border-color: rgba(255, 97, 136, 0.4);
+}
+.fullmap-badge.here,
+.fullmap-badge.here > svg {
+  color: var(--accent);
+}
+.fullmap-badge.here {
+  border-color: var(--accent-line);
+}
+.fullmap-tip-act {
+  margin-top: 2px;
+  font: 600 11px var(--font);
+  letter-spacing: 0.03em;
+  color: var(--dim);
+}
+.fullmap-tip-btn {
+  margin-top: 4px;
+  justify-content: center;
+}
+.fullmap-tip [hidden] {
+  display: none !important;
+}
+
+/* ---- side panel: tabs, the legend, the places ---- */
+.fullmap-side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  min-width: 0;
+}
+.fullmap-side > .tabs {
+  flex: none;
+}
+.fullmap-pane {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  margin-right: -6px;
+  padding-right: 6px;
+}
+.fullmap-pane[hidden] {
+  display: none;
+}
+.fullmap-rows,
+.fullmap-places {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 2px;
 }
-.fullmap-legend li {
+.fullmap-row[hidden] {
+  display: none;
+}
+.fullmap-row {
+  animation: fullmap-row-in 0.34s var(--ease-out) backwards;
+  animation-delay: calc(0.16s + var(--i, 0) * 0.028s);
+}
+@keyframes fullmap-row-in {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+}
+.fullmap-row-btn,
+.fullmap-place-btn {
+  position: relative;
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 14px;
-  font-weight: 600;
+  padding: 6px 8px;
+  font: 600 14px var(--font);
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  clip-path: var(--chamfer-sm);
+  transition: background var(--t-fast), border-color var(--t-fast), opacity var(--t-fast);
 }
-.fullmap-legend .grow {
+.fullmap-row-btn:hover,
+.fullmap-row-btn:focus-visible,
+.fullmap-place-btn:hover,
+.fullmap-place-btn:focus-visible {
+  background: var(--surface-hover);
+  border-color: var(--line-strong);
+  outline: none;
+}
+.fullmap-row-btn:focus-visible,
+.fullmap-place-btn:focus-visible {
+  border-color: var(--accent-2);
+}
+.fullmap-label {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.fullmap-count {
+.fullmap-num {
+  font: 800 13px var(--mono);
+  font-variant-numeric: tabular-nums;
   color: var(--accent-2);
-  font-weight: 800;
-  font-size: 13px;
 }
-.fullmap-swatch {
+.fullmap-state {
+  display: flex;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity var(--t-fast), color var(--t-fast);
+}
+.fullmap-row-btn:hover .fullmap-state,
+.fullmap-row-btn:focus-visible .fullmap-state {
+  opacity: 1;
+  color: var(--accent);
+}
+.fullmap-state .off {
+  display: none;
+}
+/* A hidden layer: the row fades, its eye shut and always showing. */
+.fullmap-row.off .fullmap-row-btn {
+  opacity: 0.5;
+}
+.fullmap-row.off .fullmap-sw {
+  filter: grayscale(1);
+}
+.fullmap-row.off .fullmap-state {
+  opacity: 1;
+}
+.fullmap-row.off .fullmap-state .on {
+  display: none;
+}
+.fullmap-row.off .fullmap-state .off {
+  display: block;
+}
+.fullmap-sw {
   width: 22px;
   height: 14px;
   flex: none;
   box-sizing: border-box;
 }
-.fullmap-swatch.fill {
+.fullmap-sw.fill {
   border: 1.5px solid;
   border-radius: 2px;
 }
-.fullmap-swatch.line {
+.fullmap-sw.line {
   height: 0;
   border-top: 4px solid;
   border-radius: 2px;
 }
-.fullmap-swatch.dash {
+.fullmap-sw.dash {
   height: 0;
   border-top: 4px dashed;
 }
-.fullmap-swatch.ring {
+.fullmap-sw.ring {
   width: 14px;
   margin: 0 4px;
   border: 3px solid;
   border-radius: 50%;
 }
-.fullmap-swatch.icon {
+.fullmap-sw.icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text);
 }
-.fullmap-foot {
+.fullmap-sw.icon svg {
+  fill: currentColor;
+  fill-opacity: 0.25;
+}
+
+/* Places: nearest first, the distance as a value. */
+.fullmap-place {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
+  align-items: center;
+  gap: 2px;
+}
+.fullmap-place-btn {
+  flex: 1;
+  min-width: 0;
+}
+.fullmap-place-btn .fullmap-dot {
+  box-shadow: none;
+}
+.fullmap-place-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.fullmap-place-name small {
+  font: 600 11px var(--font);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fullmap-place-name small.drift {
+  color: var(--accent-2);
+}
+.fullmap-place-far {
+  flex: none;
+  font: 800 12px var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-2);
+}
+.fullmap-place-far.here {
+  color: var(--accent);
+}
+.fullmap-place-pin {
+  flex: none;
+}
+.fullmap-empty {
+  padding: 10px 8px;
   color: var(--muted);
   font-size: 13px;
 }
-.fullmap-pointer {
-  color: var(--soft);
-  font-weight: 600;
+
+/* The waypoint, while there is one: under either tab. */
+.fullmap-wp {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 10px;
+  background: linear-gradient(var(--accent-2-soft), var(--accent-2-soft)), var(--plate);
+  border: 1px solid rgba(255, 216, 102, 0.35);
+  clip-path: var(--chamfer);
+  animation: fullmap-row-in 0.3s var(--ease-out) backwards;
 }
+.fullmap-wp[hidden] {
+  display: none;
+}
+.fullmap-wp-ic {
+  display: flex;
+  color: var(--accent-2);
+}
+.fullmap-wp-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+}
+.fullmap-wp-text b {
+  font: 900 12px var(--display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+}
+.fullmap-wp-far {
+  font: 700 13px var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+/* ---- footer: the key legend ---- */
+.fullmap-bottom {
+  display: flex;
+  align-items: center;
+  min-height: 22px;
+}
+.fullmap-hints {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 18px;
+  font: 600 12px var(--font);
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.fullmap-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.fullmap-key kbd + kbd {
+  margin-left: -2px;
+}
+.fullmap-hints.touch {
+  display: none;
+}
+@media (pointer: coarse) {
+  .fullmap-hints {
+    display: none;
+  }
+  .fullmap-hints.touch {
+    display: flex;
+  }
+  .fullmap-hints.touch kbd {
+    font-family: var(--font);
+  }
+}
+
+/* ---- narrow screens: the panel takes the screen, the side panel stacks under the map ---- */
 @media (max-width: 760px) {
-  .fullmap-body {
-    flex-direction: column;
+  .fullmap-modal {
+    padding: max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
   }
-  .fullmap-legend {
-    width: auto;
-    max-height: 32%;
+  .fullmap-panel {
+    width: 100%;
+    height: 100%;
+    gap: 8px;
+    padding: 10px;
   }
-  .fullmap-legend ul {
+  .fullmap-title {
+    font-size: 18px;
+  }
+  .fullmap-chip.seed {
+    display: none;
+  }
+  .fullmap-where {
+    font-size: 12px;
+  }
+  .fullmap-main {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+  .fullmap-side {
+    max-height: 36vh;
+    gap: 6px;
+  }
+  .fullmap-rows {
     flex-direction: row;
     flex-wrap: wrap;
-    gap: 6px 14px;
   }
-  .fullmap-keys,
-  .fullmap-here {
+  .fullmap-row {
+    flex: 1 1 46%;
+    min-width: 0;
+  }
+  .fullmap-row-btn {
+    padding: 5px 6px;
+    font-size: 13px;
+    gap: 8px;
+  }
+  .fullmap-state {
+    opacity: 1;
+  }
+  .fullmap-tools .btn.icon-only {
+    padding: 10px;
+  }
+  .fullmap-rose {
+    transform: scale(0.85);
+    transform-origin: top right;
+  }
+  .fullmap-bottom {
     display: none;
+  }
+  /* The waypoint card under the legend says how far; the row keeps to its name. */
+  .fullmap-row[data-key='waypoint'] .fullmap-num {
+    display: none;
+  }
+}
+@media (max-width: 480px) {
+  .fullmap-where-pre {
+    display: none;
+  }
+}
+@media (max-width: 760px) and (max-height: 560px), (max-height: 460px) {
+  /* Landscape phones: the side panel goes back beside the map, slim. */
+  .fullmap-main {
+    grid-template-columns: minmax(0, 1fr) 200px;
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .fullmap-side {
+    max-height: none;
+  }
+  .fullmap-rows {
+    flex-direction: column;
+  }
+  .fullmap-where {
+    display: none;
+  }
+}
+
+/* ---- the HUD's waypoint chip (ui/hud.ts): where the waypoint is, an arrow turned like the minimap ---- */
+.hud-waypoint {
+  display: none;
+  border-color: rgba(255, 216, 102, 0.35);
+}
+.hud.open-world .hud-waypoint.show {
+  display: flex;
+}
+.hud-waypoint .ic {
+  color: var(--accent-2);
+}
+.hud-waypoint b {
+  font: 800 15px var(--mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+.hud-waypoint .dir {
+  display: flex;
+  margin-left: auto;
+  color: var(--accent-2);
+}
+.hud-waypoint .dir svg {
+  fill: currentColor;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fullmap-modal,
+  .fullmap-modal.out,
+  .fullmap-panel,
+  .fullmap-modal.out .fullmap-panel,
+  .fullmap-row,
+  .fullmap-wp {
+    animation: none !important;
+  }
+  .fullmap-tip {
+    transition: none;
   }
 }

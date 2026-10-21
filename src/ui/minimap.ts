@@ -3,7 +3,9 @@
  * district layers (AREA_MAP_STYLE), the street network, the route with its
  * shortcuts (dim pink dashes), closures and car markers. The race HUD centres it on the player's car; the drone
  * centres it on itself with a view cone and a north mark, and zooms out as it
- * climbs, so the same map serves both. The Path2D layers are built once per
+ * climbs, so the same map serves both. In free roam it also shows the waypoint
+ * set on the full map: a pin where it is, or an arrow on the rim pointing to
+ * it while it is off the map. The Path2D layers are built once per
  * world, so a frame is a handful of strokes. Render only.
  */
 import type { World } from '../city/world';
@@ -29,6 +31,9 @@ const INK = {
   cone: rgba('cyan', 0.42),
   coneEnd: rgba('cyan', 0),
   north: PALETTE.yellow,
+  /** The free roam waypoint (ui/fullMap.ts): a yellow pin, outlined dark. */
+  waypoint: PALETTE.yellow,
+  waypointEdge: PALETTE.bg0,
   font: '700 13px "Google Sans Flex", system-ui, sans-serif',
 } as const;
 
@@ -65,6 +70,8 @@ export const MAP = {
   ahead: 26,
   /** Drone view cone length (px). */
   cone: 74,
+  /** The waypoint shows as a pin while this far inside the rim (px), else as an arrow on the rim. */
+  pinInset: 14,
 } as const;
 
 export class Minimap {
@@ -160,7 +167,7 @@ export class Minimap {
     }
   }
 
-  draw(view: MapView, cars: readonly MapCar[]): void {
+  draw(view: MapView, cars: readonly MapCar[], waypoint?: { x: number; z: number } | null): void {
     const c = this.canvas.getContext('2d')!;
     const W = MAP.size;
     const scale = view.scale ?? MAP.scale;
@@ -236,6 +243,22 @@ export class Minimap {
       c.fill();
     }
     c.restore();
+    // The waypoint in screen space (the pin stays upright as the map turns): (dx, dz) turned by yaw - pi, as the map is.
+    let wpIn = false;
+    let wpAngle = 0;
+    if (waypoint) {
+      const dx = (waypoint.x - view.x) * scale;
+      const dz = (waypoint.z - view.z) * scale;
+      const cs = Math.cos(view.yaw - Math.PI);
+      const sn = Math.sin(view.yaw - Math.PI);
+      const sx = cx + dx * cs - dz * sn;
+      const sy = cy + dx * sn + dz * cs;
+      const ox = sx - W / 2;
+      const oy = sy - W / 2;
+      wpIn = ox * ox + oy * oy < (W / 2 - MAP.pinInset) ** 2;
+      wpAngle = Math.atan2(oy, ox);
+      if (wpIn) this.drawPin(c, sx, sy);
+    }
     if (drone) this.drawDrone(c, cx, cy, view.fov ?? 1.2, view.yaw);
     else {
       c.fillStyle = INK.player;
@@ -252,6 +275,49 @@ export class Minimap {
     c.beginPath();
     c.arc(W / 2, W / 2, W / 2 - 2, 0, Math.PI * 2);
     c.stroke();
+    if (waypoint && !wpIn) this.drawRimArrow(c, wpAngle);
+  }
+
+  /** The waypoint's pin, its point at (x, y): a round head over a point, like the full map's. */
+  private drawPin(c: CanvasRenderingContext2D, x: number, y: number): void {
+    const head = 10;
+    const r = 5.5;
+    const a = Math.acos(r / head);
+    c.beginPath();
+    c.moveTo(x, y);
+    c.arc(x, y - head, r, Math.PI / 2 + a, Math.PI / 2 - a + Math.PI * 2);
+    c.closePath();
+    c.fillStyle = INK.waypoint;
+    c.strokeStyle = INK.waypointEdge;
+    c.lineWidth = 2;
+    c.lineJoin = 'round';
+    c.stroke();
+    c.fill();
+    c.fillStyle = INK.waypointEdge;
+    c.beginPath();
+    c.arc(x, y - head, 2, 0, Math.PI * 2);
+    c.fill();
+  }
+
+  /** The waypoint off the map: a yellow arrow on the rim, pointing out toward it. */
+  private drawRimArrow(c: CanvasRenderingContext2D, angle: number): void {
+    const R = MAP.size / 2;
+    const ux = Math.cos(angle);
+    const uy = Math.sin(angle);
+    const tip = R - 3;
+    const base = R - 15;
+    c.beginPath();
+    c.moveTo(R + ux * tip, R + uy * tip);
+    c.lineTo(R + ux * base - uy * 7, R + uy * base + ux * 7);
+    c.lineTo(R + ux * (base + 4), R + uy * (base + 4));
+    c.lineTo(R + ux * base + uy * 7, R + uy * base - ux * 7);
+    c.closePath();
+    c.fillStyle = INK.waypoint;
+    c.strokeStyle = INK.waypointEdge;
+    c.lineWidth = 2;
+    c.lineJoin = 'round';
+    c.stroke();
+    c.fill();
   }
 
   /** The drone at the viewpoint: a view cone up the screen, a quad glyph, and north on the rim. */

@@ -88,6 +88,25 @@ export {
   Code,
   Pencil,
   Warehouse,
+  // The menu's city features and maps.
+  Map as MapIcon,
+  Waves,
+  Anchor,
+  TrainFront,
+  Store,
+  Landmark,
+  MountainSnow,
+  Trees,
+  SquareParking,
+  // The full city map: zoom and find-me controls, the waypoint.
+  LocateFixed,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  MapPin,
+  MapPinned,
+  MapPinOff,
+  Navigation2,
 } from 'lucide';
 export type { IconNode };
 

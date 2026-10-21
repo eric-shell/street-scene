@@ -25,7 +25,8 @@ import type { SpecBadge } from '../shared/carSpec';
 import { specBadges } from '../shared/carSpec';
 import { measureStats, statBars, type CarStats } from '../sim/stats';
 import { SHAPE_LABELS } from '../render/decals';
-import { btn, h, iconBtn, segmented, toast } from '../ui/dom';
+import { btn, h, iconBtn, segmented, sheen, toast } from '../ui/dom';
+import { door, transitioning } from '../ui/transitions';
 import {
   ArrowUpDown,
   Car,
@@ -136,6 +137,9 @@ export class GarageScreen {
   private prefs: GaragePrefs = loadGaragePrefs();
   private gasKeys = new Set<string>();
   private gasPointer = false;
+  private tabInTimer = 0;
+  /** The roller door is running for a Garage / Street switch. */
+  private switching = false;
 
   constructor(
     gr: GameRenderer,
@@ -331,12 +335,28 @@ export class GarageScreen {
         (p) => {
           this.prefs.presentation = p;
           saveGaragePrefs(this.prefs);
-          this.scene.setPresentation(p);
-          this.configureEngine();
+          this.applyPresentation();
         },
       ),
       iconBtn(Video, 'Next camera angle (C)', () => this.nextCamera(), 'small'),
     );
+  }
+
+  /**
+   * Show the picked presentation behind the roller door: it comes down on one
+   * view and rolls up on the other. A pick made while the door runs is shown
+   * by one more pass once it is up, so the switch and the view always agree.
+   */
+  private applyPresentation(): void {
+    if (this.switching || transitioning() || this.scene.presentation === this.prefs.presentation) return;
+    this.switching = true;
+    void door(this.prefs.presentation === 'street' ? 'Street' : 'Garage', () => {
+      this.scene.setPresentation(this.prefs.presentation);
+      this.configureEngine();
+    }).finally(() => {
+      this.switching = false;
+      this.applyPresentation();
+    });
   }
 
   /** Hold to rev. Pointer events so mouse, pen and touch all work; the key works too. */
@@ -374,10 +394,18 @@ export class GarageScreen {
   }
 
   private setTab(t: Tab): void {
+    const switched = t !== this.tab;
     this.tab = t;
     this.placing = null;
     this.tabBar.querySelectorAll('.garage-tab').forEach((b) => b.classList.toggle('on', (b as HTMLElement).dataset.tab === t));
     this.renderTab();
+    if (!switched) return;
+    // A new tab's controls cascade in; the class goes again so re-renders within the tab stay still.
+    this.body.classList.remove('tab-in');
+    void this.body.offsetWidth;
+    this.body.classList.add('tab-in');
+    clearTimeout(this.tabInTimer);
+    this.tabInTimer = window.setTimeout(() => this.body.classList.remove('tab-in'), 600);
   }
 
   /** Apply the current build to the preview and save (debounced). Resolves when the preview is up to date. */
@@ -417,7 +445,7 @@ export class GarageScreen {
       for (const it of items) {
         // Spec tags (drivetrain code, engine) get their own row under the name; hover for the long form.
         const tags = it.tags?.length ? h('span', { class: 'g-tags' }, ...it.tags.map((t) => h('span', { class: 'g-tag', title: t.title }, t.text))) : null;
-        const el = h('button', { type: 'button', class: `g-item${it.value === current ? ' on' : ''}${tags ? ' g-spec' : ''}` }, h('span', {}, it.label), it.sub ? h('span', { class: 'muted' }, it.sub) : null, tags);
+        const el = h('button', { type: 'button', class: `g-item${it.value === current ? ' on' : ''}${tags ? ' g-spec' : ''}` }, h('span', {}, it.label), it.sub ? h('span', { class: 'muted' }, it.sub) : null, tags, sheen());
         el.addEventListener('click', () => {
           list.querySelectorAll('.g-item').forEach((x) => x.classList.remove('on'));
           el.classList.add('on');

@@ -4,10 +4,11 @@
  * Reads a snapshot each frame; never touches the sim.
  */
 import type { World } from '../city/world';
-import { FlagTriangleRight, Timer, Trophy, TriangleAlert, Zap, Award, Ghost, icon, Compass, Hammer, Disc3 } from './icons';
+import { FlagTriangleRight, Timer, Trophy, TriangleAlert, Zap, Award, Ghost, icon, Compass, Hammer, Disc3, MapPin, Navigation2 } from './icons';
 import { formatTime } from './format';
 import { MapCar, Minimap } from './minimap';
 import { PALETTE, rgb, rgba } from './palette';
+import { formatDistance } from './places';
 
 /** Canvas inks for the dials, built once (they redraw every frame); the minimap has its own in minimap.ts. */
 const INK = {
@@ -63,6 +64,8 @@ export interface HudData {
   ghost: boolean;
   /** Open world (free roam, test drive): the district under the car and how much the player smashed. */
   openWorld?: { area: string; smashed: number; topKmh: number };
+  /** Free roam waypoint set on the city map (render only, m): the chip and the minimap point to it. */
+  waypoint?: { x: number; z: number };
 }
 
 export class Hud {
@@ -93,6 +96,11 @@ export class Hud {
   private zoneEl: HTMLElement;
   private zoneText: HTMLElement;
   private zoneLeft: HTMLElement;
+  /** The waypoint chip, its text and its arrow, and the arrow's last angle (rad). */
+  private wpEl: HTMLElement;
+  private wpText: HTMLElement;
+  private wpDir: HTMLElement;
+  private wpAngle = NaN;
   private msgTimer = 0;
   private lastCountdown: number | null = null;
   /** Free roam: a click on the minimap opens the full city map (the session sets this). */
@@ -111,6 +119,7 @@ export class Hud {
         <div class="hud-chip hud-area"><span class="ic"></span><b class="v"></b></div>
         <div class="hud-chip hud-smash"><span class="ic"></span><b class="v"></b></div>
         <div class="hud-chip hud-zone"><span class="ic"></span><b class="v"></b><span class="left"><i></i></span></div>
+        <div class="hud-chip hud-waypoint"><span class="ic"></span><b class="v"></b><span class="dir"></span></div>
       </div>
       <div class="hud-progress"><div class="fill"></div></div>
       <div class="hud-center"></div>
@@ -138,6 +147,11 @@ export class Hud {
     this.zoneEl = q('.hud-zone');
     this.zoneText = q('.hud-zone .v');
     this.zoneLeft = q('.hud-zone .left i');
+    q('.hud-waypoint .ic').appendChild(icon(MapPin, { size: 16 }));
+    q('.hud-waypoint .dir').appendChild(icon(Navigation2, { size: 15 }));
+    this.wpEl = q('.hud-waypoint');
+    this.wpText = q('.hud-waypoint .v');
+    this.wpDir = q('.hud-waypoint .dir');
     this.areaEl = q('.hud-area .v');
     this.smashEl = q('.hud-smash .v');
     q('.hud-wrong .ic').appendChild(icon(TriangleAlert, { size: 28 }));
@@ -210,6 +224,7 @@ export class Hud {
       if (this.msgTimer <= 0) this.msgEl.classList.remove('show');
     }
     this.updateZone(d);
+    this.updateWaypoint(d);
     if (d.drift) {
       this.driftEl.style.display = '';
       this.driftEl.innerHTML = `<div class="total">${Math.round(d.drift.total).toLocaleString()}</div>${
@@ -231,6 +246,27 @@ export class Hud {
     if (this.zoneText.textContent !== text) this.zoneText.textContent = text;
     this.zoneEl.classList.toggle('resting', z.resting || z.left <= 0);
     this.zoneLeft.style.width = `${Math.round(Math.max(0, Math.min(1, z.left)) * 100)}%`;
+  }
+
+  /**
+   * The waypoint chip: how far, and an arrow turned heading up like the
+   * minimap (the waypoint's bearing less the car's heading). Writes the DOM
+   * only when the text or the angle changes.
+   */
+  private updateWaypoint(d: HudData): void {
+    const w = d.waypoint;
+    const me = w ? d.cars.find((c) => c.isPlayer) : undefined;
+    this.wpEl.classList.toggle('show', !!me);
+    if (!w || !me) return;
+    const dx = w.x - me.x;
+    const dz = w.z - me.z;
+    const text = `Waypoint · ${formatDistance(Math.hypot(dx, dz))}`;
+    if (this.wpText.textContent !== text) this.wpText.textContent = text;
+    const a = Math.atan2(-dx, dz) + me.yaw;
+    if (!(Math.abs(Math.atan2(Math.sin(a - this.wpAngle), Math.cos(a - this.wpAngle))) < 0.01)) {
+      this.wpAngle = a;
+      this.wpDir.style.transform = `rotate(${a.toFixed(3)}rad)`;
+    }
   }
 
   /**
@@ -423,7 +459,7 @@ export class Hud {
 
   private drawMap(d: HudData): void {
     const player = d.cars.find((x) => x.isPlayer);
-    if (player) this.map.draw({ x: player.x, z: player.z, yaw: player.yaw }, d.cars);
+    if (player) this.map.draw({ x: player.x, z: player.z, yaw: player.yaw }, d.cars, d.waypoint);
   }
 
   dispose(): void {

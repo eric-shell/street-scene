@@ -8,7 +8,8 @@ import './style.css';
 import './ui/ui.css';
 import * as THREE from 'three';
 import { FixedStepLoop } from './loop';
-import { createWorld } from './city/world';
+import { createCity, createRoute, createWorld } from './city/world';
+import type { Route } from './city/route';
 import { seedFromString, Rng } from './sim/prng';
 import { dailySeed, initialSeed } from './seed';
 import { Settings, loadSettings, saveSettings } from './ui/settings';
@@ -28,12 +29,16 @@ import { TuningPanel, applySavedTuning, loadSavedTuning } from './ui/tuningPanel
 import { CameraPanel, applySavedCameraParams } from './ui/cameraPanel';
 import { loadingScreen, pauseMenu, resultsScreen, type PauseScreen } from './ui/screens';
 import { railInset } from './ui/rail';
-import { mainMenu } from './ui/menu';
+import { mainMenu, type MainMenu, type MenuStep } from './ui/menu';
 import { showSplash } from './ui/splash';
 import { toast } from './ui/dom';
 import { Check, Info, Shuffle } from './ui/icons';
+import { FullMap } from './ui/fullMap';
+import { door, transitioning, wipe, type WipeCard } from './ui/transitions';
+import { courseArt } from './ui/menuMaps';
+import type { RaceType } from './ui/settings';
+import { installUiSounds } from './audio/uiSound';
 import { RaceConfig, RaceEntrant, RaceMode, positionOf, standings, ticksToSeconds } from './sim/race';
-import { routeSample } from './city/route';
 import { loadTrafficAssets } from './render/traffic';
 import { CarBuild, PerformanceBuild, VisualBuild, defaultVisual, PAINT_FINISHES } from './sim/build';
 import { DEFAULT_CAR_ID, PERFORMANCE_CATEGORIES, SELECTABLE_CAR_IDS, Tier } from './sim/tuning';
@@ -108,17 +113,39 @@ let garageScreen: { tick(): void; render(dt: number): void; dispose(): void } | 
 // the free camera fly over it, and the garage's Street view drives it.
 // ---------------------------------------------------------------------------
 let stage: StreetStage | null = null;
+/** The event's sprint, planned with the stage's city (the stage drives the circuit); the menu's race step draws both. */
+let stageSprint: Route | null = null;
 const showreel = new ShowreelCamera();
 let fly: FreeFlyCamera | null = null;
 let drone: DroneMode | null = null;
 
-function startDrone(): void {
+/** The drone flyover, from `start` (the menu's camera, so it lifts off from the shot) or behind the grid. */
+function startDrone(start?: { x: number; y: number; z: number; yaw: number; pitch: number }): void {
   const st = ensureStage();
+  closeMenuMap();
   setOverlay(null);
   drone?.dispose();
-  drone = new DroneMode(gr, st.night, st.world, uiRoot, exitDrone, { drive: (dt, focus) => st.step(dt, { focus }) });
+  drone = new DroneMode(gr, st.night, st.world, uiRoot, exitDrone, { drive: (dt, focus) => st.step(dt, { focus }), start });
   state = 'drone';
   syncMusicMode();
+}
+
+/** How long the menu's camera cranes up before the drone takes over (s). */
+const LIFTOFF = 0.95;
+let liftoff = 0;
+
+/** Explore from the menu: the menu slides away as the camera cranes up off the street, then the drone flies on from there. */
+function exploreFromMenu(): void {
+  if (state !== 'menu' || liftoff || transitioning()) return;
+  closeMenuMap();
+  showreel.setMode('lift');
+  menuEl?.classList.add('menu-out');
+  // Nothing on the sliding menu takes a key press on the way out.
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  liftoff = window.setTimeout(() => {
+    liftoff = 0;
+    if (state === 'menu') startDrone(showreel.pose());
+  }, LIFTOFF * 1000);
 }
 
 function exitDrone(): void {
@@ -132,19 +159,40 @@ function ensureStage(): StreetStage {
   const seed = seedFromString(seedStr);
   if (stage && stage.world.seed === seed) return stage;
   stage?.dispose();
-  stage = new StreetStage(gr, assets, createWorld(seed, 'circuit'), settings);
+  // The same world createWorld builds on its own, with the city kept for the sprint's route.
+  const city = createCity(seed);
+  stage = new StreetStage(gr, assets, createWorld(seed, 'circuit', city), settings);
+  stageSprint = createRoute(city, 'sprint');
   void stage.setBuild(currentBuild());
   showreel.cut();
   (window as unknown as Record<string, unknown>).__nr = { world: stage.world, gr, stage, showreel, autoQ };
   return stage;
 }
 
-/** The menu: the car cruises on and the showreel films it. */
+/** The menu: the car cruises on, the showreel films it and the menu's maps follow it. */
 function renderStage(dt: number): void {
   if (!stage) return;
   stage.step(dt);
   showreel.update(stage, dt);
   stage.render(gr, showreel.camera, dt);
+  if (menu && overlay === menuEl && !cinematic) menu.frame(stage.pose);
+}
+
+/** The full city map over the menu, following the cruising car (it closes itself on Escape, Tab or its backdrop). */
+let menuMap: FullMap | null = null;
+
+function openMenuMap(): void {
+  const st = stage;
+  if (!st || menuMap || state !== 'menu' || transitioning()) return;
+  const car = () => ({ x: st.pose.x, z: st.pose.z, yaw: st.pose.yaw, isPlayer: true });
+  menuMap = new FullMap(st.world, car(), { onClose: closeMenuMap, livePlayer: car, event: st.world.event?.name, seed: seedStr });
+  uiRoot.append(menuMap.root);
+  menuMap.draw();
+}
+
+function closeMenuMap(): void {
+  menuMap?.dispose();
+  menuMap = null;
 }
 
 // ---------------------------------------------------------------------------
@@ -159,12 +207,19 @@ function syncMusicMode(): void {
   music.setDuck(state === 'race' && session?.paused ? 0.55 : 1);
 }
 
-/** The main menu's own overlay (settings, credits and dialogs replace it). */
+/** The main menu, and its own overlay (settings, credits and dialogs replace it). */
+let menu: MainMenu | null = null;
 let menuEl: HTMLElement | null = null;
 /** Something other than the main menu is open on top of the menu city. */
 const overlayBusy = () => overlay !== menuEl;
 
 function setOverlay(el: HTMLElement | null): void {
+  // Leaving the menu: its maps stop watching their boxes and its keys stop listening (showMenu builds a new one).
+  if (menu && overlay === menuEl && el !== menuEl) {
+    menu.dispose();
+    menu = null;
+    menuEl = null;
+  }
   overlay?.remove();
   overlay = el;
   if (el) uiRoot.append(el);
@@ -219,57 +274,101 @@ function wakeFromCinematic(e: Event): void {
 for (const type of ['keydown', 'pointerdown'] as const) window.addEventListener(type, wakeFromCinematic, { capture: true });
 window.addEventListener('keydown', (e) => {
   const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement;
-  if (e.code === 'KeyH' && !e.repeat && !typing && state === 'menu' && !overlayBusy() && !e.ctrlKey && !e.metaKey && !e.altKey) setCinematic(true);
+  if (e.code === 'KeyH' && !e.repeat && !typing && state === 'menu' && !overlayBusy() && !menuMap && !liftoff && !e.ctrlKey && !e.metaKey && !e.altKey) setCinematic(true);
 });
 
-function showMenu(): void {
+/** The camera behind each menu step: the shot loop behind home, the hero shot for the race, a calm orbit for settings. */
+const STEP_CAMERA = { home: 'reel', race: 'hero', settings: 'calm' } as const;
+
+/** Open the menu (on `step`), from wherever the game was: the camera cuts straight to that step's shot. */
+function showMenu(step: MenuStep = 'home'): void {
   setCinematic(false);
   state = 'menu';
+  clearTimeout(liftoff);
+  liftoff = 0;
   session?.dispose();
   session = null;
   garageScreen?.dispose();
   garageScreen = null;
   dev.close();
   camPanel.close();
+  closeMenuMap();
   const st = ensureStage();
   // The car on the street shows the build as the garage left it (paint and parts in place, a new car swapped in).
   void st.setBuild(currentBuild());
   // Catch the menu city up with any point light increase auto quality deferred.
   if (st.night.lighting.poolSize !== gr.profile.pointLights) st.night.lighting.setPoolSize(gr.profile.pointLights);
+  showreel.setMode(STEP_CAMERA[step], false);
   const seed = seedFromString(seedStr);
-  const route = st.world.route;
-  setOverlay(
-    mainMenu({
-      seed: seedStr,
-      isDaily,
-      event: st.world.event,
-      route: { points: route.points, start: routeSample(route, route.startS) },
-      bests: { circuit: loadBest(seed, 'circuit'), sprint: loadBest(seed, 'sprint'), drift: loadBest(seed, 'drift') },
-      carName: manifestCar(currentBuild().carId).displayName,
-      hasReplay: !!loadLastReplay(),
-      settings: { ...settings },
-      music,
-      onSettings: applySettings,
-      onRace: (t) => (t === 'roam' ? startFreeRoam(seedStr) : startRace(t)),
-      onGarage: () => void openGarage(),
-      onReplay: () => {
-        const r = loadLastReplay();
-        if (r) startReplay(r);
-      },
-      onDrone: startDrone,
-      onSeed: (s) => {
-        isDaily = s === null;
-        seedStr = s ?? dailySeed();
-        const u = new URL(location.href);
-        if (isDaily) u.searchParams.delete('seed');
-        else u.searchParams.set('seed', seedStr);
-        history.replaceState(null, '', u);
-        showMenu();
-      },
-      onHideUi: () => setCinematic(true),
-    }),
-  );
+  // The old menu goes first, so setOverlay below sees nothing of the menu left to dispose.
+  menu?.dispose();
+  menu = null;
+  menuEl = null;
+  const next = mainMenu({
+    seed: seedStr,
+    isDaily,
+    event: st.world.event,
+    world: st.world,
+    routes: { circuit: st.world.route, sprint: stageSprint ?? st.world.route },
+    bests: { circuit: loadBest(seed, 'circuit'), sprint: loadBest(seed, 'sprint'), drift: loadBest(seed, 'drift') },
+    carName: manifestCar(currentBuild().carId).displayName,
+    hasReplay: !!loadLastReplay(),
+    settings: { ...settings },
+    music,
+    step,
+    onSettings: applySettings,
+    onRace: launch,
+    onGarage: () => void openGarage(),
+    onReplay: () => {
+      const r = loadLastReplay();
+      if (r) void wipe({ kicker: MODE_NAME[r.config.mode], title: 'Replay', sub: 'Your last race' }, () => startReplay(r));
+    },
+    onDrone: exploreFromMenu,
+    onMap: openMenuMap,
+    onSeed: (s) => {
+      isDaily = s === null;
+      seedStr = s ?? dailySeed();
+      const u = new URL(location.href);
+      if (isDaily) u.searchParams.delete('seed');
+      else u.searchParams.set('seed', seedStr);
+      history.replaceState(null, '', u);
+      showMenu();
+    },
+    onHideUi: () => setCinematic(true),
+    onStep: (s) => showreel.setMode(STEP_CAMERA[s]),
+  });
+  setOverlay(next.root);
+  menu = next;
   menuEl = overlay;
+}
+
+/** What the wipe into a race says: the event over the type, and its laps and field. */
+function raceCard(t: RaceType): WipeCard {
+  const event = stage?.world.event?.name;
+  const field = settings.opponents ? `${settings.opponents} rival${settings.opponents > 1 ? 's' : ''}` : 'Your ghost';
+  // The course draws itself on the card while the race builds behind it (free roam has the whole city instead).
+  const route = t === 'sprint' ? stageSprint : stage?.world.route;
+  const art = route && t !== 'roam' ? courseArt(route, t) : undefined;
+  const hold = art ? 700 : 0;
+  const card: Record<RaceType, WipeCard> = {
+    circuit: { kicker: event, title: 'Circuit', art, hold, sub: `3 laps · ${field}` },
+    sprint: { kicker: event, title: 'Sprint', art, hold, sub: `A to B · ${field}` },
+    drift: { kicker: event, title: 'Drift', art, hold, sub: '2 laps · score attack' },
+    roam: { kicker: event, title: 'Free roam', sub: 'The whole city · no rules' },
+  };
+  return card[t];
+}
+
+/** Start the race type picked on the menu: the camera drops in behind the car as the wipe covers the screen. */
+function launch(t: RaceType): void {
+  if (transitioning()) return;
+  showreel.setMode('launch');
+  void wipe(raceCard(t), () => (t === 'roam' ? startFreeRoam(seedStr) : startRace(t)));
+}
+
+/** Back to the menu from a race or the pause screen, behind the wipe. */
+function wipeToMenu(): void {
+  void wipe({ title: 'Street Scene', sub: 'Street racing after dark' }, () => showMenu());
 }
 
 /** Take a changed copy of the settings: save them and apply what changed to the renderer, audio and panels. */
@@ -292,8 +391,20 @@ function applySettings(s: Settings): void {
   if (state === 'race') toggleCameraPanel(settings.debugCameraPanel);
 }
 
-async function openGarage(): Promise<void> {
-  setOverlay(loadingScreen('garage'));
+/**
+ * The garage, behind its roller door: from the menu the camera pushes in on the car as the door comes
+ * down, and it rolls up on the workshop. A deep link opens it behind the loading card instead.
+ */
+function openGarage(viaDoor = true): Promise<void> {
+  if (!viaDoor) return enterGarage();
+  if (state === 'menu') {
+    closeMenuMap();
+    showreel.setMode('push');
+  }
+  return door('Garage', enterGarage);
+}
+
+async function enterGarage(): Promise<void> {
   const { GarageScreen } = await import('./garage/garageUi');
   session?.dispose();
   session = null;
@@ -315,8 +426,8 @@ async function openGarage(): Promise<void> {
         garage = g;
         saveGarage(garage);
       },
-      onExit: () => showMenu(),
-      onTestDrive: () => startRace('circuit', true),
+      onExit: () => void door('Street', () => showMenu()),
+      onTestDrive: () => void door('Test drive', () => startRace('circuit', true)),
       engineVolume: () => settings.engineVolume,
     },
     { street, quality: settings.quality },
@@ -439,7 +550,7 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
   s.onFinish = ({ race, tuned }) => {
     if (s !== session) return;
     if (testDrive) return void openGarage();
-    if (kind === 'roam') return showMenu();
+    if (kind === 'roam') return wipeToMenu();
     syncMusicMode();
     const st = standings(race);
     const me = st.find((x) => x.car.isPlayer)!;
@@ -475,10 +586,13 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
         driftScore: race.drift.total,
         newBest,
         tuned,
-        onRetry: () => (replay ? startReplay(replay) : runSession(race.config, visuals, null, race.config.opponents.length ? null : loadGhost(race.config.seed, race.config.mode), 'race')),
-        onReplay: () => startReplay(replay ?? data),
+        onRetry: () =>
+          void wipe({ kicker: race.world.event?.name, title: 'Retry', sub: MODE_NAME[race.config.mode] }, () =>
+            replay ? startReplay(replay) : runSession(race.config, visuals, null, race.config.opponents.length ? null : loadGhost(race.config.seed, race.config.mode), 'race'),
+          ),
+        onReplay: () => void wipe({ kicker: race.world.event?.name, title: 'Replay', sub: MODE_NAME[race.config.mode] }, () => startReplay(replay ?? data)),
         onGarage: () => void openGarage(),
-        onMenu: showMenu,
+        onMenu: wipeToMenu,
       }),
     );
   };
@@ -522,13 +636,20 @@ function togglePause(): void {
   pauseScreen = pauseMenu({
     status: pauseStatus(session),
     onResume: togglePause,
-    onRestart: () => lastConfig && runSession(lastConfig, lastVisuals, null, lastConfig.opponents.length || lastConfig.openWorld ? null : loadGhost(lastConfig.seed, lastConfig.mode), sessionKind),
+    onRestart: () => {
+      const cfg = lastConfig;
+      if (!cfg) return;
+      const title = sessionKind === 'race' ? 'Restart' : sessionKind === 'roam' ? 'Free roam' : 'Test drive';
+      void wipe({ kicker: session?.race.world.event?.name, title, sub: sessionKind === 'race' ? MODE_NAME[cfg.mode] : 'Back to the start' }, () =>
+        runSession(cfg, lastVisuals, null, cfg.opponents.length || cfg.openWorld ? null : loadGhost(cfg.seed, cfg.mode), sessionKind),
+      );
+    },
     restartLabel: sessionKind === 'race' ? undefined : 'Back to the start',
-    extra: sessionKind === 'roam' ? [{ icon: Shuffle, label: 'New city', onClick: () => startFreeRoam(String(Math.floor(Math.random() * 1e8))) }] : undefined,
+    extra: sessionKind === 'roam' ? [{ icon: Shuffle, label: 'New city', onClick: () => void wipe({ title: 'New city', sub: 'Free roam · a city never seen' }, () => startFreeRoam(String(Math.floor(Math.random() * 1e8)))) }] : undefined,
     settings: { ...settings },
     onSettings: applySettings,
     music,
-    onQuit: () => (sessionKind === 'testDrive' ? void openGarage() : showMenu()),
+    onQuit: () => (sessionKind === 'testDrive' ? void openGarage() : wipeToMenu()),
   });
   setOverlay(pauseScreen.el);
 }
@@ -537,7 +658,7 @@ input.on('pause', togglePause);
 // 0: the drone flyover from the menu (and back); in a race the session flies its own photo mode drone.
 input.onView((n) => {
   if (n !== 0) return;
-  if (state === 'menu' && !overlayBusy()) startDrone();
+  if (state === 'menu' && !overlayBusy() && !menuMap) exploreFromMenu();
   else if (state === 'drone') exitDrone();
 });
 /** Show or hide the physics tuning panel for the current race (no argument = toggle). */
@@ -627,6 +748,8 @@ const loop = new FixedStepLoop({
 
 async function boot(): Promise<void> {
   applyAutoQuality();
+  // Every control ticks under the pointer and clicks when pressed, on every screen.
+  installUiSounds();
   const direct = params.get('race');
   const deepLink = direct === 'circuit' || direct === 'sprint' || direct === 'drift' || params.has('garage') || params.has('drone') || params.has('freeroam');
   // A normal start flashes the title in over the asset check and lands it on the
@@ -654,7 +777,7 @@ async function boot(): Promise<void> {
   }
   loading?.remove();
   if (direct === 'circuit' || direct === 'sprint' || direct === 'drift') startRace(direct);
-  else if (params.has('garage')) void openGarage();
+  else if (params.has('garage')) void openGarage(false);
   else if (params.has('drone')) startDrone();
   else if (params.has('freeroam')) startFreeRoam(seedStr);
   else showMenu();

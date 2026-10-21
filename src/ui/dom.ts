@@ -18,19 +18,28 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<s
   return el;
 }
 
+/**
+ * The band of light that sweeps across a control when it is hovered or
+ * focused, like a streetlight passing over paint (ui.css `.sheen`): bright on
+ * primary actions, faint on the rest. Clipped by the control's chamfer.
+ */
+export function sheen(): HTMLElement {
+  return h('span', { class: 'sheen', 'aria-hidden': 'true' });
+}
+
 /** Button with a Lucide icon and label. */
 export function btn(iconNode: IconNode | null, label: string, onClick: () => void, cls = '', sub?: string): HTMLButtonElement {
   const b = h('button', { class: `btn ${cls}`.trim(), type: 'button', onclick: onClick });
   if (iconNode) b.append(icon(iconNode, { size: 18 }));
   const text = h('span', { class: 'grow' }, label);
   if (sub) text.append(h('span', { class: 'sub' }, sub));
-  b.append(text);
+  b.append(text, sheen());
   return b;
 }
 
 export function iconBtn(iconNode: IconNode, label: string, onClick: () => void, cls = ''): HTMLButtonElement {
   const b = h('button', { class: `btn icon-only ${cls}`.trim(), type: 'button', title: label, 'aria-label': label, onclick: onClick });
-  b.append(icon(iconNode, { size: 18 }));
+  b.append(icon(iconNode, { size: 18 }), sheen());
   return b;
 }
 

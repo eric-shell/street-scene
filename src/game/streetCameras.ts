@@ -5,6 +5,13 @@
  *    alongside, chasing, leading it, a roadside camera it drives past, a slow
  *    orbit, a low wheel shot and a high crane over the street. Shots pick the
  *    side of the car that has room and alternate sides from shot to shot.
+ *    The menu's steps and transitions move it instead of cutting (setMode):
+ *    the race step swings round to a low hero shot of the car's nose, the
+ *    settings step drifts into a slow wide orbit, the garage pushes in close
+ *    as its door comes down, Explore cranes up for the drone to take over and
+ *    a race start drops in low behind the car. Every move eases over from
+ *    wherever the camera was, carried along in the car's frame, so it never
+ *    jumps however the car moves meanwhile.
  *  - FollowOrbit: the garage's Street presentation. Carries the orbit
  *    camera's offset round with the car, so a turn carries the view with it,
  *    and renders through a copy pulled in front of walls and under roofs, so
@@ -56,12 +63,49 @@ function orbit(a: number, r: number, y: number, o: Local): Local {
   return at(o, Math.cos(a) * r, Math.sin(a) * r, y);
 }
 
+/** What the showreel shoots: its loop of cut shots, or one held move for a menu step or a transition. */
+export type ReelMode = 'reel' | 'hero' | 'calm' | 'push' | 'lift' | 'launch';
+
+/** A held move: camera and look-at in the car's frame t seconds into it, favouring `side`, and its lens. */
+interface Move {
+  fov: number;
+  /** How long the ease over from the previous camera takes (s). */
+  blend: number;
+  cam(t: number, side: number, o: Local): Local;
+  look(t: number, side: number, o: Local): Local;
+}
+
+const MOVES: Record<Exclude<ReelMode, 'reel'>, Move> = {
+  // The race step: low off the front corner on a long lens, breathing a little closer and back.
+  hero: { fov: 32, blend: 1.5, cam: (t, s, o) => at(o, 6.6 + 0.6 * Math.sin(t * 0.21), (2.7 + 0.5 * Math.sin(t * 0.13)) * s, 0.62 + 0.08 * Math.sin(t * 0.17)), look: (_t, s, o) => at(o, -0.2, 0.25 * s, 0.62) },
+  // Settings: a slow, wide orbit while the player reads.
+  calm: { fov: 44, blend: 1.8, cam: (t, s, o) => orbit(s * (2.2 + t * 0.045), 9.5, 2.9, o), look: (_t, _s, o) => at(o, 0, 0, 0.5) },
+  // Into the garage: a push in close on the flank as the door comes down.
+  push: { fov: 30, blend: 0.6, cam: (t, s, o) => at(o, 1.6 - t * 0.6, 2.3 * s, 0.85), look: (_t, _s, o) => at(o, 0.2, 0, 0.6) },
+  // Explore: up off the street, looking down the road ahead, where the drone takes over.
+  lift: { fov: 50, blend: 0.9, cam: (_t, s, o) => at(o, -13, 2.5 * s, 15), look: (_t, _s, o) => at(o, 14, 0, 0) },
+  // A race start: down low behind the car, as if lining up on the grid.
+  launch: { fov: 56, blend: 0.45, cam: (_t, s, o) => at(o, -4.6, 0.7 * s, 0.6), look: (_t, _s, o) => at(o, 8, 0, 0.55) },
+};
+
 /** Car frame to world: forward is (sin yaw, cos yaw), left is (cos yaw, -sin yaw). */
 function toWorld(p: CarPose, l: Local, out: THREE.Vector3): THREE.Vector3 {
   const s = Math.sin(p.yaw);
   const c = Math.cos(p.yaw);
   return out.set(p.x + l[0] * s + l[1] * c, p.y + l[2], p.z + l[0] * c - l[1] * s);
 }
+
+/** World to the car frame (forward, left, up), the inverse of toWorld. */
+function toLocal(p: CarPose, v: THREE.Vector3, o: Local): Local {
+  const s = Math.sin(p.yaw);
+  const c = Math.cos(p.yaw);
+  const dx = v.x - p.x;
+  const dz = v.z - p.z;
+  return at(o, dx * s + dz * c, dx * c - dz * s, v.y - p.y);
+}
+
+/** Smootherstep: starts and lands with no jolt. */
+const smoother = (u: number) => u * u * u * (u * (u * 6 - 15) + 10);
 
 export class ShowreelCamera {
   readonly camera = new THREE.PerspectiveCamera(40, 1, 0.1, 2500);
@@ -76,40 +120,123 @@ export class ShowreelCamera {
   private readonly scratch: number[] = [];
   private readonly sample: PathSample = { x: 0, z: 0, tx: 0, tz: 1, yaw: 0, k: 0 };
   private clock = 0;
+  private mode: ReelMode = 'reel';
+  /** Seconds into the current move. */
+  private moveT = 0;
+  /** The ease from the camera as it was when the mode changed (car frame), 0..1 over `blendDur` s. */
+  private blend = 1;
+  private blendDur = 1;
+  private readonly fromCam: Local = [0, 0, 0];
+  private readonly fromLook: Local = [0, 0, 0];
+  private fromFov = 40;
+  private readonly goal = new THREE.Vector3();
+  private readonly goalLook = new THREE.Vector3();
+  private readonly tmp = new THREE.Vector3();
+  /** The stage last shot, to capture the camera in its car's frame when the mode changes. */
+  private stage: StreetStage | null = null;
 
   /** Move on to the next shot now. */
   cut(): void {
     this.t = Infinity;
+    this.blend = 1;
+  }
+
+  /** The current mode: the shot loop or a held move. */
+  get current(): ReelMode {
+    return this.mode;
+  }
+
+  /**
+   * Ease over to a mode from wherever the camera is now (or cut to it, with
+   * `blend` false): a held move, or back to the shot loop, which starts on its
+   * next shot.
+   */
+  setMode(mode: ReelMode, blend = true): void {
+    if (mode === this.mode && blend) return;
+    const p = this.stage?.pose;
+    this.blend = 1;
+    if (p && blend) {
+      toLocal(p, this.camera.position, this.fromCam);
+      toLocal(p, this.look, this.fromLook);
+      this.fromFov = this.camera.fov;
+      this.blend = 0;
+    }
+    this.mode = mode;
+    this.moveT = 0;
+    this.blendDur = mode === 'reel' ? 1.6 : MOVES[mode].blend;
+    if (mode === 'reel') this.t = Infinity;
+    else if (this.stage) this.pickSide(this.stage, MOVES[mode].cam);
+  }
+
+  /** Where the camera is and looks, as the drone wants a start pose (yaw and pitch, forward = (sin yaw, cos yaw)). */
+  pose(): { x: number; y: number; z: number; yaw: number; pitch: number } {
+    const d = this.camera.getWorldDirection(this.tmp);
+    return { x: this.camera.position.x, y: this.camera.position.y, z: this.camera.position.z, yaw: Math.atan2(d.x, d.z), pitch: Math.asin(Math.max(-1, Math.min(1, d.y))) };
   }
 
   update(stage: StreetStage, dt: number): void {
+    this.stage = stage;
     this.clock += dt;
     this.t += dt;
-    const shot = SHOTS[this.index];
+    this.moveT += dt;
     const p = stage.pose;
-    const done = !shot || this.t >= shot.dur || (shot.name === 'roadside' && stage.path.wrap(stage.s - this.fixedS) > 24 && stage.path.wrap(stage.s - this.fixedS) < stage.path.length / 2);
-    if (done) this.next(stage);
-    const s = SHOTS[this.index];
-    const u = Math.min(1, this.t / s.dur);
-    const cam = this.camera;
-    if (s.name === 'roadside') {
-      cam.position.copy(this.fixed);
-      // Aim a little ahead of the car, so it drives into the frame and past.
-      this.look.set(p.x + Math.sin(p.yaw) * 1.5, p.y + 0.6, p.z + Math.cos(p.yaw) * 1.5);
+    const pos = this.goal;
+    const look = this.goalLook;
+    let fov: number;
+    if (this.mode === 'reel') {
+      const shot = SHOTS[this.index];
+      const done = !shot || this.t >= shot.dur || (shot.name === 'roadside' && stage.path.wrap(stage.s - this.fixedS) > 24 && stage.path.wrap(stage.s - this.fixedS) < stage.path.length / 2);
+      if (done) this.next(stage);
+      const s = SHOTS[this.index];
+      const u = Math.min(1, this.t / s.dur);
+      fov = s.fov;
+      if (s.name === 'roadside') {
+        pos.copy(this.fixed);
+        // Aim a little ahead of the car, so it drives into the frame and past.
+        look.set(p.x + Math.sin(p.yaw) * 1.5, p.y + 0.6, p.z + Math.cos(p.yaw) * 1.5);
+      } else {
+        toWorld(p, s.cam(u, this.side, this.local), pos);
+        toWorld(p, s.look(u, this.side, this.local), look);
+        this.keepClear(stage.world, p, pos);
+      }
     } else {
-      toWorld(p, s.cam(u, this.side, this.local), cam.position);
-      toWorld(p, s.look(u, this.side, this.local), this.look);
-      this.keepClear(stage.world, p, cam.position);
+      const m = MOVES[this.mode];
+      fov = m.fov;
+      toWorld(p, m.cam(this.moveT, this.side, this.local), pos);
+      toWorld(p, m.look(this.moveT, this.side, this.local), look);
+      this.keepClear(stage.world, p, pos);
     }
+    const cam = this.camera;
+    if (this.blend < 1) {
+      // Ease from where the camera was, carried along with the car, so the move never jumps.
+      this.blend = Math.min(1, this.blend + dt / this.blendDur);
+      const e = smoother(this.blend);
+      pos.lerpVectors(toWorld(p, this.fromCam, this.tmp), pos, e);
+      look.lerpVectors(toWorld(p, this.fromLook, this.tmp), look, e);
+      fov = this.fromFov + (fov - this.fromFov) * e;
+      this.keepClear(stage.world, p, pos);
+    }
+    cam.position.copy(pos);
+    this.look.copy(look);
     // A breath of handheld sway, the same at any frame rate.
     const k = this.clock;
     cam.position.x += Math.sin(k * 0.71) * 0.025 + Math.sin(k * 1.93) * 0.012;
     cam.position.y += Math.sin(k * 0.53 + 1.3) * 0.02;
     cam.lookAt(this.look);
-    if (cam.fov !== s.fov) {
-      cam.fov = s.fov;
+    if (Math.abs(cam.fov - fov) > 0.01) {
+      cam.fov = fov;
       cam.updateProjectionMatrix();
     }
+  }
+
+  /** Take the side of the car with room for a move's camera. */
+  private pickSide(stage: StreetStage, cam: Move['cam']): void {
+    const p = stage.pose;
+    const room = (side: number) => {
+      const c = toWorld(p, cam(0, side, this.local), this.tmp);
+      return wallHit(stage.world, p.x, p.z, c.x, c.z, this.scratch);
+    };
+    if (room(this.side) < 0.9 && room(-this.side) > room(this.side)) this.side = -this.side;
   }
 
   /** Cut to the next shot: alternate sides, and take the side with room when the shot has one. */
