@@ -91,7 +91,7 @@ export interface EngineProgram {
   /** Per-firing amplitude variance at idle (fraction); the lope. */
   rough: number;
   ir: ImpulseSpec;
-  /** Level trim against the other layouts (the layout's `level`; measured at the bus, a V8 through two pipes comes out hot). */
+  /** Level trim that brings this program to LOUDNESS_REF through the chain model (estimateLoudness). */
   trim: number;
   /** Noise seed; every voice gets its own so rivals never phase lock. */
   seed: number;
@@ -163,13 +163,11 @@ interface LayoutVoice {
   pulse: PulseShape;
   /** Intake trumpet resonance (Hz). */
   intakeHz: number;
-  /** Level against the other layouts (measured at the bus: eight big pulses through two pipes come out hot). */
-  level: number;
 }
 
-const BASE: LayoutVoice = { pipes: 1, headers: 'equal', edge: 0.9, air: 0.75, jitter: 5, rough: 0.08, mech: 0.5, stagger: 0, pulse: { rise: 0.012, decay: 0.07, dip: 0.35 }, intakeHz: 520, level: 1 };
+const BASE: LayoutVoice = { pipes: 1, headers: 'equal', edge: 0.9, air: 0.75, jitter: 5, rough: 0.08, mech: 0.5, stagger: 0, pulse: { rise: 0.012, decay: 0.07, dip: 0.35 }, intakeHz: 520 };
 const ROTARY: LayoutVoice = { ...BASE, edge: 1.1, air: 0.9, rough: 0.05, mech: 0.3, pulse: { rise: 0.03, decay: 0.12, dip: 0.3 }, intakeHz: 600 };
-const TWELVE: LayoutVoice = { ...BASE, pipes: 2, edge: 1.0, air: 0.65, rough: 0.04, intakeHz: 720, level: 0.8 };
+const TWELVE: LayoutVoice = { ...BASE, pipes: 2, edge: 1.0, air: 0.65, rough: 0.04, intakeHz: 720 };
 
 /** The character each layout starts from before the car's own voice spec. */
 export const LAYOUT_VOICE: Record<EngineLayout, LayoutVoice> = {
@@ -181,8 +179,8 @@ export const LAYOUT_VOICE: Record<EngineLayout, LayoutVoice> = {
   B6: { ...BASE, pipes: 2, edge: 1.0, rough: 0.06, intakeHz: 650 },
   V6: { ...BASE, edge: 0.85, air: 0.8 },
   VR6: { ...BASE, stagger: 0.07 },
-  V8: { ...BASE, pipes: 2, edge: 0.7, air: 0.85, rough: 0.1, mech: 0.4, pulse: { rise: 0.012, decay: 0.08, dip: 0.35 }, level: 0.7 },
-  V10: { ...BASE, pipes: 2, edge: 0.95, rough: 0.06, intakeHz: 700, level: 0.8 },
+  V8: { ...BASE, pipes: 2, edge: 0.7, air: 0.85, rough: 0.1, mech: 0.4, pulse: { rise: 0.012, decay: 0.08, dip: 0.35 } },
+  V10: { ...BASE, pipes: 2, edge: 0.95, rough: 0.06, intakeHz: 700 },
   V12: TWELVE,
   W12: TWELVE,
   W16: { ...TWELVE, edge: 0.9, air: 0.7 },
@@ -196,7 +194,8 @@ export const LAYOUT_VOICE: Record<EngineLayout, LayoutVoice> = {
  * the tailpipe ring [Hz, Q, boost] (none for a quiet box) and the diffuse tail.
  */
 const MUFFLER = {
-  quiet: { system: 2.8, lowpass: 1800, pops: 0.3, pipeQ: 8, pipeBoost: 3, chamber: [110, 5, 2.5], ring: null, seconds: 0.3, tail: { decay: 0.12, energy: 0.6, lowpass: 900 } },
+  // A big box rounds the top off and adds body, but not a hallway: its diffuse tail stays short.
+  quiet: { system: 2.8, lowpass: 1800, pops: 0.3, pipeQ: 8, pipeBoost: 2.2, chamber: [110, 5, 2.2], ring: null, seconds: 0.2, tail: { decay: 0.06, energy: 0.3, lowpass: 1600 } },
   sport: { system: 2.3, lowpass: 2000, pops: 1.2, pipeQ: 7, pipeBoost: 2.2, chamber: [140, 4, 1.8], ring: [1800, 12, 1.5], seconds: 0.2, tail: { decay: 0.07, energy: 0.4, lowpass: 2600 } },
   straight: { system: 1.7, lowpass: 2600, pops: 2.5, pipeQ: 6, pipeBoost: 1.8, chamber: [180, 3, 1.4], ring: [2100, 15, 2.2], seconds: 0.15, tail: { decay: 0.04, energy: 0.3, lowpass: 5000 } },
 } as const;
@@ -245,16 +244,16 @@ export function buildProgram(spec: EngineSpec, opts: { seed?: number; lite?: boo
   const smear = turbo ? 1 : 0;
   const pulse: PulseShape = { rise: v.pulse.rise * (1 + 1.5 * smear), decay: v.pulse.decay * (1 + 0.5 * smear), dip: v.pulse.dip * (1 - 0.3 * smear) };
   const itb = v.intake === 'itb';
-  const edge = v.edge * (1 - 0.4 * smear);
+  const edge = v.edge * (1 - 0.3 * smear);
   const modes: [number, number, number][] = [...pipeModes(muffler.system, muffler.pipeQ, muffler.pipeBoost, 3), [...muffler.chamber]];
   if (muffler.ring) modes.push([...muffler.ring]);
   const ir: ImpulseSpec = { seconds: muffler.seconds * (opts.lite ? 0.5 : 1), modes, tail: muffler.tail, seed };
-  return {
+  const program: EngineProgram = {
     revsPerCycle: layout.rotary ? 1 : 2,
     cylinders,
     pipes: v.pipes,
     pulse,
-    lowpass: muffler.lowpass * (1 - 0.2 * smear),
+    lowpass: muffler.lowpass * (1 - 0.12 * smear),
     jitter: v.jitter,
     edge,
     air: Math.min(1, v.air + 0.1 * smear),
@@ -263,9 +262,13 @@ export function buildProgram(spec: EngineSpec, opts: { seed?: number; lite?: boo
     pops: muffler.pops * (turbo ? 0.6 : 1),
     rough: v.rough,
     ir,
-    trim: v.level,
+    trim: 1,
     seed,
   };
+  // Every program lands on one A-weighted loudness through a model of the voice's chain, whatever its spectrum,
+  // pipes or intake: the trim is measured, never hand set, so new layouts and silencers stay matched.
+  program.trim = Math.max(0.25, Math.min(4, LOUDNESS_REF / estimateLoudness(program)));
+  return program;
 }
 
 // ---------------------------------------------------------------------------
@@ -274,7 +277,13 @@ export function buildProgram(spec: EngineSpec, opts: { seed?: number; lite?: boo
 
 /** Pulse wavetable entries per cycle: fine enough that the derivative of its linear interpolation never steps audibly at idle. */
 const TABLE = 8192;
-const RING = 32;
+const RING = 64;
+/**
+ * Every voice renders two tailpipe tips, left and right: a twin pipe car one bank each, a single exhaust the same
+ * train through two tips with their own turbulence and jitter and this much path difference (s), so it is as wide.
+ */
+const TIPS = 2;
+const TWIN_TIP = 0.0003;
 /** Derivative weight per sample at 44.1 kHz, so the mix does not depend on the sample rate. */
 const DERIV = 30;
 /** Makes the low passed noise's modulation about half depth at full `air`. */
@@ -364,6 +373,9 @@ export class EngineSynth {
   private readonly lastU: Float64Array;
   private readonly fireGain: Float64Array;
   private readonly pipeSum: Float64Array;
+  /** Each tip's output after its post chain (TIPS entries, or one per pipe). */
+  private readonly post: Float64Array;
+  private readonly twin: number;
   private readonly lpA: Float64Array;
   private readonly lpB: Float64Array;
   private readonly ring: Float32Array;
@@ -408,8 +420,9 @@ export class EngineSynth {
     this.cgain = new Float64Array(program.cylinders.map((c) => c.gain / n));
     this.lastU = new Float64Array(n);
     this.fireGain = new Float64Array(n).fill(0.5 / n);
-    const p = program.pipes;
-    this.pipeSum = new Float64Array(p);
+    const p = Math.max(program.pipes, TIPS);
+    this.pipeSum = new Float64Array(program.pipes);
+    this.post = new Float64Array(p);
     this.lpA = new Float64Array(p);
     this.lpB = new Float64Array(p);
     this.ring = new Float32Array(p * RING);
@@ -419,6 +432,7 @@ export class EngineSynth {
     this.airNz = new Float64Array(p);
     this.popMix = new Float64Array(p);
     this.popLp = new Float64Array(p);
+    this.twin = Math.round(TWIN_TIP * sampleRate);
     this.tickLen = Math.round(0.0015 * sampleRate);
     this.rng = { v: program.seed | 0 || 1 };
     this.dcCoef = 1 - Math.exp((-2 * Math.PI * 10) / sampleRate);
@@ -431,8 +445,8 @@ export class EngineSynth {
   /**
    * Fire an overrun pop `at` seconds from now through `pipe`: size 1 is a bang
    * with the low thump of the silencer taking it, 0 a crackle; `gain` is its
-   * peak before the soft clip (0.3 a crackle, 1 a big bang), independent of the
-   * engine's level. The voice decides when (its rich overrun model), so the
+   * peak before the soft clip, independent of the engine's level (a levelled
+   * tip peaks near 0.3, so 0.1 is a crackle and 0.3 a big bang). The voice decides when (its rich overrun model), so the
    * sound and the exhaust flash are one event.
    */
   pop(at: number, pipe: number, gain: number, size: number): void {
@@ -526,8 +540,11 @@ export class EngineSynth {
           const t = (this.popLen[k] - this.popLeft[k]) / sr;
           const size = this.popSize[k];
           let v = Math.exp(-t / (0.003 + 0.004 * size)) + (0.3 + 0.3 * size) * (nextRand(this.rng) * 2 - 1) * Math.exp(-t / (0.006 + 0.01 * size));
-          if (size > 0.5) v += 0.8 * Math.sin(2 * Math.PI * 90 * t) * Math.exp(-t / 0.025);
-          this.popMix[this.popPipe[k]] += this.popGain[k] * v;
+          if (size > 0.5) v += 0.5 * Math.sin(2 * Math.PI * 90 * t) * Math.exp(-t / 0.025);
+          const g = this.popGain[k] * v;
+          this.popMix[this.popPipe[k]] += g;
+          // One silencer, two tips: the pop leaves both.
+          if (P.pipes === 1) this.popMix[1] += g;
           this.popLeft[k]--;
         }
       }
@@ -535,14 +552,17 @@ export class EngineSynth {
 
       let sum = 0;
       const pos = this.ringPos;
-      for (let p = 0; p < this.pipeSum.length; p++) {
-        // Band limit (two poles), then read the train back through a wandering delay: the jitter.
-        this.lpA[p] += (this.pipeSum[p] - this.lpA[p]) * lpCoef;
+      const tips = this.post.length;
+      for (let p = 0; p < tips; p++) {
+        // Band limit (two poles), then read the train back through a wandering delay: the jitter. A single
+        // exhaust's second tip reads the same train a little later, through its own wander and turbulence.
+        const src = this.pipeSum[Math.min(p, this.pipeSum.length - 1)];
+        this.lpA[p] += (src - this.lpA[p]) * lpCoef;
         this.lpB[p] += (this.lpA[p] - this.lpB[p]) * lpCoef;
         const base = p * RING;
         this.ring[base + pos] = this.lpB[p];
         this.jit[p] += (nextRand(this.rng) - this.jit[p]) * this.jitCoef;
-        const back = this.jit[p] * jitter;
+        const back = this.jit[p] * jitter + (p >= this.pipeSum.length ? this.twin : 0);
         const bi = back | 0;
         const bf = back - bi;
         const i0 = (pos - bi + RING) & (RING - 1);
@@ -555,28 +575,28 @@ export class EngineSynth {
         this.prevY[p] = y;
         this.airNz[p] += (nextRand(this.rng) * 2 - 1 - this.airNz[p]) * this.airCoef;
         const v = edge * d + y * (air * this.airNz[p] * AIR + (1 - air));
-        this.pipeSum[p] = v;
-        sum += v;
+        this.post[p] = v;
+        if (p < this.pipeSum.length) sum += v;
       }
       this.ringPos = (pos + 1) & (RING - 1);
 
-      // Leveler: a power follower sets one slow gain for every pipe, so the voice sits at one loudness whatever the
+      // Leveler: a power follower sets one slow gain for every tip, so the voice sits at one loudness whatever the
       // rpm or how peaky its train is (a derivative heavy six and a smeared turbo differ by 10 dB in crest factor).
-      // Twin pipes are levelled on what both tips add up to, as a listener behind the car hears them.
-      const mix = channels > 1 ? 0.5 * sum : sum;
+      // Levelled on what both tips add up to, as a listener behind the car hears them.
+      const mix = channels > 1 ? 0.5 * (this.post[0] + this.post[1]) : sum;
       const a = mix * mix;
       this.env = a > this.env ? this.env + (a - this.env) * envAtk : this.env + (a - this.env) * envRel;
       const want = Math.max(0.05, Math.min(30, TARGET / Math.sqrt(Math.max(1e-8, this.env))));
       this.agc += (want - this.agc) * (want < this.agc ? agcDown : agcUp);
       if (channels > 1) {
         for (let ch = 0; ch < channels; ch++) {
-          const p = Math.min(ch, this.pipeSum.length - 1);
-          const out = this.pipeSum[p] * this.agc + this.popLp[p];
+          const p = Math.min(ch, tips - 1);
+          const out = this.post[p] * this.agc + this.popLp[p];
           exhaust[ch][i] = out / (1 + Math.abs(out) * 0.5);
         }
       } else {
         let pops = 0;
-        for (let p = 0; p < this.popLp.length; p++) pops += this.popLp[p];
+        for (let p = 0; p < this.pipeSum.length; p++) pops += this.popLp[p];
         const out = sum * this.agc + pops;
         exhaust[0][i] = out / (1 + Math.abs(out) * 0.5);
       }
@@ -593,3 +613,192 @@ export class EngineSynth {
 
 /** Name the worklet registers its processor under; shared with the main thread so the two never drift. */
 export const ENGINE_PROCESSOR = 'street-scene-engine';
+
+// ---------------------------------------------------------------------------
+// Loudness: every program is trimmed to one A-weighted loudness through a model of the voice's chain
+// ---------------------------------------------------------------------------
+
+/**
+ * The main thread chain around the worklet (engineAudio.ts builds these nodes, the loudness model and the tests
+ * run the same numbers): the presence peak that tracks the firing frequency, the top roll-off, the valvetrain band.
+ */
+export const CHAIN = {
+  presence: { harmonic: 6, min: 550, max: 2400, q: 0.8, gain: 6 },
+  /** Roll off above this (Hz): the voice has nothing but grain up there. */
+  top: 6500,
+  /** The valvetrain tick's band (Hz) and width: a tick, not a hiss. */
+  bodyHz: 2200,
+  bodyQ: 1.2,
+} as const;
+
+/** A direct form biquad (the cookbook formulas BiquadFilterNode uses), for the chain model and the tests. */
+export class Biquad {
+  private x1 = 0;
+  private x2 = 0;
+  private y1 = 0;
+  private y2 = 0;
+
+  private constructor(
+    private readonly b0: number,
+    private readonly b1: number,
+    private readonly b2: number,
+    private readonly a1: number,
+    private readonly a2: number,
+  ) {}
+
+  private static make(b0: number, b1: number, b2: number, a0: number, a1: number, a2: number): Biquad {
+    return new Biquad(b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0);
+  }
+
+  /** From normalized coefficients (a0 = 1). */
+  static coefficients(b0: number, b1: number, b2: number, a1: number, a2: number): Biquad {
+    return new Biquad(b0, b1, b2, a1, a2);
+  }
+
+  static peaking(sr: number, hz: number, q: number, dbGain: number): Biquad {
+    const A = 10 ** (dbGain / 40);
+    const w = (2 * Math.PI * hz) / sr;
+    const alpha = Math.sin(w) / (2 * q);
+    return Biquad.make(1 + alpha * A, -2 * Math.cos(w), 1 - alpha * A, 1 + alpha / A, -2 * Math.cos(w), 1 - alpha / A);
+  }
+
+  static lowpass(sr: number, hz: number, q: number): Biquad {
+    const w = (2 * Math.PI * hz) / sr;
+    const alpha = Math.sin(w) / (2 * q);
+    const c = Math.cos(w);
+    return Biquad.make((1 - c) / 2, 1 - c, (1 - c) / 2, 1 + alpha, -2 * c, 1 - alpha);
+  }
+
+  /** Constant 0 dB peak gain band pass. */
+  static bandpass(sr: number, hz: number, q: number): Biquad {
+    const w = (2 * Math.PI * hz) / sr;
+    const alpha = Math.sin(w) / (2 * q);
+    return Biquad.make(alpha, 0, -alpha, 1 + alpha, -2 * Math.cos(w), 1 - alpha);
+  }
+
+  /** |H| at `hz`. */
+  magnitude(sr: number, hz: number): number {
+    const w = (2 * Math.PI * hz) / sr;
+    const c1 = Math.cos(w);
+    const s1 = Math.sin(w);
+    const c2 = Math.cos(2 * w);
+    const s2 = Math.sin(2 * w);
+    const nr = this.b0 + this.b1 * c1 + this.b2 * c2;
+    const ni = -(this.b1 * s1 + this.b2 * s2);
+    const dr = 1 + this.a1 * c1 + this.a2 * c2;
+    const di = -(this.a1 * s1 + this.a2 * s2);
+    return Math.hypot(nr, ni) / Math.hypot(dr, di);
+  }
+
+  process(x: number): number {
+    const y = this.b0 * x + this.b1 * this.x1 + this.b2 * this.x2 - this.a1 * this.y1 - this.a2 * this.y2;
+    this.x2 = this.x1;
+    this.x1 = x;
+    this.y2 = this.y1;
+    this.y1 = y;
+    return y;
+  }
+}
+
+/**
+ * K-weighting (ITU-R BS.1770, the LUFS pre-filter) at 48 kHz: a +4 dB high shelf above 1.5 kHz and a 38 Hz high
+ * pass. Nearly flat through the bass an engine lives in, unlike A-weighting, which would call a V8 quiet and have
+ * it trimmed up until its peaks fought the bus compressor.
+ */
+export function kWeighting(): [Biquad, Biquad] {
+  return [Biquad.coefficients(1.53512485958697, -2.69169618940638, 1.19839281085285, -1.69065929318241, 0.73248077421585), Biquad.coefficients(1, -2, 1, -1.99004745483398, 0.99007225036621)];
+}
+
+/** In-place radix-2 FFT; lengths are powers of two. */
+function fft(re: Float64Array, im: Float64Array): void {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) {
+      [re[i], re[j]] = [re[j], re[i]];
+      [im[i], im[j]] = [im[j], im[i]];
+    }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = (-2 * Math.PI) / len;
+    const wr = Math.cos(ang);
+    const wi = Math.sin(ang);
+    for (let i = 0; i < n; i += len) {
+      let cr = 1;
+      let ci = 0;
+      for (let k = 0; k < len / 2; k++) {
+        const a = i + k;
+        const b = a + len / 2;
+        const tr = re[b] * cr - im[b] * ci;
+        const ti = re[b] * ci + im[b] * cr;
+        re[b] = re[a] - tr;
+        im[b] = im[a] - ti;
+        re[a] += tr;
+        im[a] += ti;
+        const ncr = cr * wr - ci * wi;
+        ci = cr * wi + ci * wr;
+        cr = ncr;
+      }
+    }
+  }
+}
+
+/** One sided power spectrum |X_k|² of a real signal zero padded to `size`. */
+function powerSpectrum(x: ArrayLike<number>, from: number, size: number): Float64Array {
+  const re = new Float64Array(size);
+  const im = new Float64Array(size);
+  for (let i = from; i < x.length; i++) re[i - from] = x[i];
+  fft(re, im);
+  const out = new Float64Array(size / 2 + 1);
+  for (let k = 0; k <= size / 2; k++) out[k] = re[k] * re[k] + im[k] * im[k];
+  return out;
+}
+
+/** The loudness every program is trimmed to (K-weighted RMS of the modelled chain at 3500 rpm, full throttle). */
+export const LOUDNESS_REF = 0.107;
+
+/**
+ * K-weighted RMS of the voice at 3500 rpm, full throttle, through the main thread chain: both tips convolved with
+ * the silencer response, the presence peak and the top roll-off, the intake through its trumpet, the body through
+ * its band. Done in the frequency domain (the spectra of 0.12 s of each output times the responses), which is the
+ * real convolution's loudness for about ten milliseconds. Deterministic from the program's seed, always at 48 kHz.
+ */
+export function estimateLoudness(program: EngineProgram): number {
+  const sr = 48000;
+  const synth = new EngineSynth(program, sr);
+  const n = Math.round(0.27 * sr);
+  const skip = Math.round(0.15 * sr);
+  const ex = [new Float32Array(n), new Float32Array(n)];
+  const intake = new Float32Array(n);
+  const body = new Float32Array(n);
+  const q: SynthParams = { rpm: 3500, redline: 7500, load: 1, cut: 0, limiter: 0, nitro: 0 };
+  for (let i = 0; i < n; i += 128) synth.render([ex[0].subarray(i, i + 128), ex[1].subarray(i, i + 128)], intake.subarray(i, i + 128), body.subarray(i, i + 128), q);
+  // 0.12 s of signal plus the response fits without wrapping.
+  const size = 16384;
+  const m = n - skip;
+  const ir = renderImpulse(program.ir, sr);
+  const irPow = powerSpectrum(ir, 0, size);
+  const f = (3500 / 60) * (program.cylinders.length / program.revsPerCycle);
+  const pr = CHAIN.presence;
+  const presence = Biquad.peaking(sr, Math.max(pr.min, Math.min(pr.max, f * pr.harmonic)), pr.q, pr.gain);
+  const top = Biquad.lowpass(sr, CHAIN.top, 0.707);
+  const intakeBp = Biquad.bandpass(sr, program.intake.hz, program.intake.q);
+  const bodyBp = Biquad.bandpass(sr, CHAIN.bodyHz, CHAIN.bodyQ);
+  const [kShelf, kHigh] = kWeighting();
+  const inPow = powerSpectrum(intake, skip, size);
+  const bodyPow = powerSpectrum(body, skip, size);
+  const exPow = ex.map((x) => powerSpectrum(x, skip, size));
+  let total = 0;
+  for (let k = 0; k <= size / 2; k++) {
+    const hz = (k * sr) / size;
+    const w = k === 0 || k === size / 2 ? 1 : 2;
+    const a = (kShelf.magnitude(sr, hz) * kHigh.magnitude(sr, hz)) ** 2;
+    const chainGain = presence.magnitude(sr, hz) ** 2 * top.magnitude(sr, hz) ** 2 * irPow[k];
+    const side = inPow[k] * intakeBp.magnitude(sr, hz) ** 2 + bodyPow[k] * bodyBp.magnitude(sr, hz) ** 2;
+    for (let ch = 0; ch < 2; ch++) total += w * a * (exPow[ch][k] * chainGain + side);
+  }
+  // Parseval over both tips: mean square = Σ|X|² / (samples × size).
+  return Math.sqrt(total / (2 * m * size));
+}

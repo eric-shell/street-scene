@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LAYOUT_VOICE, buildProgram, EngineSynth, renderImpulse, type EngineProgram } from '../src/audio/engineSynth';
+import { Biquad, CHAIN, LAYOUT_VOICE, buildProgram, EngineSynth, kWeighting, renderImpulse, type EngineProgram } from '../src/audio/engineSynth';
 import { ENGINE_LAYOUTS, type EngineLayout, type EngineSpec } from '../src/shared/carSpec';
 import manifest from '../src/assets/carManifest.json';
 
@@ -192,6 +192,61 @@ describe('overrun pops', () => {
     expect(rms(bang.subarray(SR * 0.3, SR * 0.4))).toBeLessThan(win(bang, 1));
     expect(Math.max(...Array.from(bang, Math.abs))).toBeLessThan(1);
     expect(JSON.stringify(Array.from(take(1, 0.9).subarray(4800, 6000)))).toBe(JSON.stringify(Array.from(bang.subarray(4800, 6000))));
+  });
+});
+
+describe('loudness and width across the cars', () => {
+  /**
+   * The whole voice as the browser hears it, in Node: both tips convolved with the full silencer response, the
+   * presence peak, the top roll-off, the intake and body bands, the program's trim, then K-weighted. The program's
+   * own trim comes from a spectral model, so this checks that model holds up in the time domain.
+   */
+  const loudness = (program: EngineProgram): { rms: number; correlation: number } => {
+    const synth = new EngineSynth(program, SR);
+    const n = Math.round(0.45 * SR);
+    const skip = Math.round(0.15 * SR);
+    const ex = [new Float32Array(n), new Float32Array(n)];
+    const intake = new Float32Array(n);
+    const body = new Float32Array(n);
+    for (let i = 0; i < n; i += 128) synth.render([ex[0].subarray(i, i + 128), ex[1].subarray(i, i + 128)], intake.subarray(i, i + 128), body.subarray(i, i + 128), { rpm: 3500, redline: 7500, load: 1, cut: 0, limiter: 0, nitro: 0 });
+    const ir = renderImpulse(program.ir, SR);
+    const f = (3500 / 60) * (program.cylinders.length / program.revsPerCycle);
+    const pr = CHAIN.presence;
+    const presenceHz = Math.max(pr.min, Math.min(pr.max, f * pr.harmonic));
+    const intakeBp = Biquad.bandpass(SR, program.intake.hz, program.intake.q);
+    const bodyBp = Biquad.bandpass(SR, CHAIN.bodyHz, CHAIN.bodyQ);
+    const inn = new Float32Array(n);
+    for (let i = 0; i < n; i++) inn[i] = intakeBp.process(intake[i]) + bodyBp.process(body[i]);
+    const out = ex.map((x) => {
+      const presence = Biquad.peaking(SR, presenceHz, pr.q, pr.gain);
+      const top = Biquad.lowpass(SR, CHAIN.top, 0.707);
+      const [kShelf, kHigh] = kWeighting();
+      const y = new Float32Array(n);
+      for (let i = skip; i < n; i++) {
+        let conv = 0;
+        const m = Math.min(ir.length, i + 1);
+        for (let k = 0; k < m; k++) conv += x[i - k] * ir[k];
+        y[i] = kHigh.process(kShelf.process((top.process(presence.process(conv)) + inn[i]) * program.trim));
+      }
+      return y;
+    });
+    let ll = 0;
+    let rr = 0;
+    let lr = 0;
+    for (let i = skip; i < n; i++) {
+      ll += out[0][i] * out[0][i];
+      rr += out[1][i] * out[1][i];
+      lr += out[0][i] * out[1][i];
+    }
+    return { rms: Math.sqrt((ll + rr) / (2 * (n - skip))), correlation: lr / Math.sqrt(ll * rr) };
+  };
+
+  it('the manifest cars land within 2 dB of each other and none is mono', () => {
+    const results = (manifest.cars as { id: string; engine: EngineSpec }[]).map((c) => ({ id: c.id, ...loudness(buildProgram(c.engine, { seed: 5 })) }));
+    const values = results.map((r) => r.rms);
+    const spread = 20 * Math.log10(Math.max(...values) / Math.min(...values));
+    expect(spread, JSON.stringify(results)).toBeLessThan(2);
+    for (const r of results) expect(r.correlation, r.id).toBeLessThan(0.9);
   });
 });
 

@@ -19,7 +19,7 @@
  * Render side only; reads interpolated car state.
  */
 import type { EngineSpec } from '../shared/carSpec';
-import { ENGINE_PROCESSOR, buildProgram, renderImpulse, type EngineProgram } from './engineSynth';
+import { CHAIN, ENGINE_PROCESSOR, buildProgram, renderImpulse, type EngineProgram } from './engineSynth';
 import workletUrl from './engineWorklet?worker&url';
 
 export interface EngineInput {
@@ -128,19 +128,11 @@ export function audioHub(): AudioHub | null {
 }
 
 /**
- * Voice tone and level. PRESENCE: peak at the firing frequency times `harmonic`,
- * clamped to [min, max] Hz, `gain` dB. GAIN scales every voice (the bus
- * compressor keeps a full grid in check). BODY is the valvetrain's band.
+ * Voice level: GAIN scales every voice (the bus compressor keeps a full grid in
+ * check); the tone shaping around the worklet is CHAIN in engineSynth.ts, shared
+ * with the loudness model that trims every program to one loudness.
  */
-const VOICE = {
-  presence: { harmonic: 6, min: 550, max: 2400, q: 0.8, gain: 6 },
-  gain: 16,
-  /** The valvetrain tick's band (Hz) and width: a tick, not a hiss. */
-  bodyHz: 2200,
-  bodyQ: 1.2,
-  /** Roll off above this (Hz): the voice has nothing but grain up there. */
-  top: 6500,
-} as const;
+const VOICE = { gain: 16 } as const;
 
 const PARAM_NAMES = ['rpm', 'redline', 'load', 'cut', 'limiter', 'nitro'] as const;
 type ParamName = (typeof PARAM_NAMES)[number];
@@ -191,11 +183,11 @@ export class EngineVoice {
 
     this.presence = ctx.createBiquadFilter();
     this.presence.type = 'peaking';
-    this.presence.Q.value = VOICE.presence.q;
-    this.presence.gain.value = VOICE.presence.gain;
+    this.presence.Q.value = CHAIN.presence.q;
+    this.presence.gain.value = CHAIN.presence.gain;
     const top = ctx.createBiquadFilter();
     top.type = 'lowpass';
-    top.frequency.value = VOICE.top;
+    top.frequency.value = CHAIN.top;
     top.Q.value = 0.7;
     this.presence.connect(top).connect(this.out);
     // Exhaust: the silencer and pipe column as a convolution with a rendered impulse response.
@@ -215,8 +207,8 @@ export class EngineVoice {
     this.intake.connect(this.out);
     this.body = ctx.createBiquadFilter();
     this.body.type = 'bandpass';
-    this.body.frequency.value = VOICE.bodyHz;
-    this.body.Q.value = VOICE.bodyQ;
+    this.body.frequency.value = CHAIN.bodyHz;
+    this.body.Q.value = CHAIN.bodyQ;
     this.body.connect(this.out);
 
     if (spec.aspiration === 'turbo') {
@@ -248,9 +240,10 @@ export class EngineVoice {
     try {
       const node = new AudioWorkletNode(this.ctx, ENGINE_PROCESSOR, {
         numberOfInputs: 0,
-        // Twin tailpipes come out left and right, so a bank's uneven train is heard on its own, not cancelled by the other's.
+        // Two tips, left and right: a bank each on a twin pipe car (so a bank's uneven train is heard on its own, not
+        // cancelled by the other's), the one exhaust through two tips otherwise, so every car is as wide.
         numberOfOutputs: 3,
-        outputChannelCount: [this.program.pipes, 1, 1],
+        outputChannelCount: [2, 1, 1],
         processorOptions: { program: this.program },
       });
       node.connect(this.exhaust, 0);
@@ -284,7 +277,7 @@ export class EngineVoice {
       p.limiter.setValueAtTime(limiter ? 1 : 0, t);
       p.nitro.setValueAtTime(e.nitro ? 1 : 0, t);
     }
-    const pr = VOICE.presence;
+    const pr = CHAIN.presence;
     this.presence.frequency.setTargetAtTime(Math.max(pr.min, Math.min(pr.max, f * pr.harmonic)), t, tc);
     // Closed throttle is only a little quieter: the overrun is where the pops and the silencer's character are heard.
     const level = this.base * VOICE.gain * this.program.trim * e.proximity * (0.7 + 0.3 * load) * (0.7 + 0.3 * r) * (e.shifting ? 0.8 : 1);
@@ -338,12 +331,12 @@ export class EngineVoice {
     else if (this.fuel > 0.1) chance = P.pops * OVERRUN.rate * this.fuel * this.heat * dt;
     if (Math.random() >= chance) return;
     this.fuel *= limiter ? 0.9 : 0.45;
-    if (Math.random() < (limiter ? 0.2 : OVERRUN.bangShare)) this.pop(0, 1, 0.45 + 0.2 * Math.random());
+    if (Math.random() < (limiter ? 0.2 : OVERRUN.bangShare)) this.pop(0, 1, 0.22 + 0.1 * Math.random());
     else {
       const n = limiter ? 1 + Math.floor(Math.random() * 2) : 2 + Math.floor(Math.random() * 3);
       let at = 0;
       for (let i = 0; i < n; i++) {
-        this.pop(at, 0.3 * Math.random(), 0.2 + 0.15 * Math.random());
+        this.pop(at, 0.3 * Math.random(), 0.09 + 0.06 * Math.random());
         at += 0.03 + Math.random() * 0.05;
       }
     }
