@@ -80,6 +80,8 @@ export const COBBLE_PRIORITY = 6;
  *   channel, bank top fence, ramp retaining walls, channel tunnel ends (river).
  * tree: park tree trunk (park).
  * monument: the step ring around a landmark's base, or an arch's piers (monument).
+ * gate: a timed gate's arms across the deck (sim/gates.ts; drawn by render/drawbridge.ts).
+ *   Timed gates are not in World.walls: they block only while their schedule says so.
  */
 export type WallLook =
   | 'building'
@@ -95,9 +97,10 @@ export type WallLook =
   | 'trench'
   | 'channelEnd'
   | 'tree'
-  | 'monument';
+  | 'monument'
+  | 'gate';
 
-export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument'];
+export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'gate'];
 
 export interface Area {
   /** Index into CityDistricts.areas. */
