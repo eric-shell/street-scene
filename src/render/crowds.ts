@@ -83,7 +83,10 @@ export interface Crowds {
   dispose(): void;
 }
 
-/** Cars the shader steps away from (player + three opponents). */
+/**
+ * Cars the shader steps away from. A full field is ten cars; the four nearest the camera are the
+ * only ones whose dodge anyone sees, and a longer uniform loop runs for every crowd vertex.
+ */
 const MAX_CARS = 4;
 /** Stands further than this from the camera (m, from their edge) draw the few-box stand-in instead. */
 const LOD_NEAR = 70;
@@ -599,10 +602,24 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
     now = time;
     uniforms.uTime.value = time;
     const uc = uniforms.uCars.value;
+    // Nearest MAX_CARS to the camera by repeated selection (ten cars at most, no allocation).
+    let taken = 0;
     for (let i = 0; i < MAX_CARS; i++) {
-      const c = cars[i];
-      if (c) uc[i].set(c.x, c.z, c.speed, 0);
-      else uc[i].set(1e6, 1e6, 0, 0);
+      let best = -1;
+      let bestD = Infinity;
+      for (let k = 0; k < cars.length && k < 31; k++) {
+        if (taken & (1 << k)) continue;
+        const d = (cars[k].x - lx) ** 2 + (cars[k].z - lz) ** 2;
+        if (d < bestD) {
+          bestD = d;
+          best = k;
+        }
+      }
+      if (best >= 0) {
+        taken |= 1 << best;
+        const c = cars[best];
+        uc[i].set(c.x, c.z, c.speed, 0);
+      } else uc[i].set(1e6, 1e6, 0, 0);
     }
     levelSum.fill(0);
     levelW.fill(0);

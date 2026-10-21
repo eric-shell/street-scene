@@ -24,7 +24,8 @@ import { audioHub } from './audio/engineAudio';
 import { MusicWidget } from './ui/musicWidget';
 import { TuningPanel, applySavedTuning, loadSavedTuning } from './ui/tuningPanel';
 import { CameraPanel, applySavedCameraParams } from './ui/cameraPanel';
-import { creditsScreen, loadingScreen, mainMenu, pauseMenu, resultsScreen, settingsScreen } from './ui/screens';
+import { loadingScreen, pauseMenu, resultsScreen, settingsScreen } from './ui/screens';
+import { mainMenu } from './ui/menu';
 import { showSplash } from './ui/splash';
 import { toast } from './ui/dom';
 import { Check, Info, Shuffle } from './ui/icons';
@@ -225,18 +226,18 @@ function showMenu(): void {
       seed: seedStr,
       isDaily,
       bests: { circuit: loadBest(seed, 'circuit'), sprint: loadBest(seed, 'sprint'), drift: loadBest(seed, 'drift') },
-      carName: `${currentBuild().name} · ${manifestCar(currentBuild().carId).displayName}`,
+      carName: manifestCar(currentBuild().carId).displayName,
       hasReplay: !!loadLastReplay(),
-      onRace: (m) => startRace(m),
-      onFreeRoam: () => startFreeRoam(seedStr),
+      settings: { ...settings },
+      music,
+      onSettings: applySettings,
+      onRace: (t) => (t === 'roam' ? startFreeRoam(seedStr) : startRace(t)),
       onGarage: () => void openGarage(),
       onReplay: () => {
         const r = loadLastReplay();
         if (r) startReplay(r);
       },
       onDrone: startDrone,
-      onSettings: () => openSettings(showMenu),
-      onCredits: () => setOverlay(creditsScreen(showMenu)),
       onSeed: (s) => {
         isDaily = s === null;
         seedStr = s ?? dailySeed();
@@ -252,32 +253,29 @@ function showMenu(): void {
   menuEl = overlay;
 }
 
+/** Take a changed copy of the settings: save them and apply what changed to the renderer, audio and panels. */
+function applySettings(s: Settings): void {
+  const qualityChanged = s.quality !== settings.quality || s.autoQuality !== settings.autoQuality;
+  const autoTurnedOn = s.autoQuality && !settings.autoQuality;
+  Object.assign(settings, s);
+  if (qualityChanged) urlQualityOverride = false;
+  if (autoTurnedOn) autoQ.reset(autoStart());
+  if (settings.autoQuality) applyAutoQuality();
+  persistSettings();
+  gr.applySettings(settings);
+  if (qualityChanged) {
+    backdrop?.night.lighting.setPoolSize(gr.profile.pointLights);
+    session?.night.lighting.setPoolSize(gr.profile.pointLights);
+  }
+  fpsEl.style.display = settings.showFps ? '' : 'none';
+  audioHub()?.setVolume(settings.engineVolume);
+  if (state === 'race') toggleTuningPanel(settings.debugTuningPanel);
+  if (state === 'race') toggleCameraPanel(settings.debugCameraPanel);
+}
+
+/** Settings over the pause menu (the main menu has them as a step of its own). */
 function openSettings(back: () => void): void {
-  setOverlay(
-    settingsScreen(
-      { ...settings },
-      (s) => {
-        const qualityChanged = s.quality !== settings.quality || s.autoQuality !== settings.autoQuality;
-        const autoTurnedOn = s.autoQuality && !settings.autoQuality;
-        Object.assign(settings, s);
-        if (qualityChanged) urlQualityOverride = false;
-        if (autoTurnedOn) autoQ.reset(autoStart());
-        if (settings.autoQuality) applyAutoQuality();
-        persistSettings();
-        gr.applySettings(settings);
-        if (qualityChanged) {
-          backdrop?.night.lighting.setPoolSize(gr.profile.pointLights);
-          session?.night.lighting.setPoolSize(gr.profile.pointLights);
-        }
-        fpsEl.style.display = settings.showFps ? '' : 'none';
-        audioHub()?.setVolume(settings.engineVolume);
-        if (state === 'race') toggleTuningPanel(settings.debugTuningPanel);
-        if (state === 'race') toggleCameraPanel(settings.debugCameraPanel);
-      },
-      back,
-      music,
-    ),
-  );
+  setOverlay(settingsScreen({ ...settings }, applySettings, back, music));
 }
 
 async function openGarage(): Promise<void> {

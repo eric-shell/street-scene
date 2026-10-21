@@ -2,9 +2,12 @@
  * Boot splash. The title and tagline flash in over black while the assets are
  * checked, then fly into their place on the main menu as the black fades out to
  * reveal the city. The splash block is a copy of the menu's title block (same
- * classes, same column width, so the title wraps the same way) scaled up and
- * centered; landing is a FLIP transform to the real block's rectangle, after
- * which the real one is shown and the splash removed, so the swap is invisible.
+ * classes and structure: the title one word a line over its accent rule, then
+ * the tagline, all shrink-wrapped, so it measures the same at any width) scaled
+ * up and centered; landing is a FLIP transform to the real block's rectangle,
+ * after which the real one is shown and the splash removed, so the swap is
+ * invisible. The rule pulses on the splash and settles as it lands on the
+ * menu's own rule.
  * Only a page load that lands on the menu shows it; deep links skip it. CSS
  * (`.splash*`, `.menu.splash-*`) does the flash-in, the impact flash and shake
  * and the hazard tape under the title; splashFx.ts draws the night road, traffic,
@@ -13,6 +16,7 @@
  */
 import { h } from './dom';
 import { SplashFx, startSplashFx } from './splashFx';
+import { TAGLINE, TITLE_LINES, titleLines } from './menu';
 
 export interface Splash {
   /** Resolves once the flash-in has played and the minimum hold is over. */
@@ -23,9 +27,7 @@ export interface Splash {
   land(menuRoot: HTMLElement | null): Promise<void>;
 }
 
-
-const TITLE = 'STREET SCENE';
-const TAGLINE = 'Street racing after dark';
+const TITLE = TITLE_LINES.join(' ');
 
 const SPLASH = {
   /** Shortest time the splash stays up after the fonts arrive (s): the flash-in plus a beat of the night road. */
@@ -44,8 +46,8 @@ const SPLASH = {
   horizonGap: 0.06,
   horizonMin: 0.55,
   horizonMax: 0.86,
-  /** The hazard tape under the title fades this fast once the flight starts (s). */
-  ruleOut: 0.25,
+  /** The rule under the title stops pulsing and settles to full strength this fast once the flight starts (s). */
+  ruleSettle: 0.25,
 } as const;
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -65,18 +67,18 @@ function fontsReady(): Promise<unknown> {
  */
 export function showSplash(parent: HTMLElement): Splash {
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  // Three copies of the title share the logo's metrics: the gradient one that
-  // stays, a per-letter neon layer that flickers on, and a shine that sweeps.
-  const letters = TITLE.split('').map((ch, i) => (ch === ' ' ? ' ' : h('span', { style: `--i:${i}` }, ch)));
-  const logo = h('h1', { class: 'logo splash-logo', 'data-text': TITLE }, TITLE);
-  // The rule is out of the layout flow, so the block keeps the menu head's exact size for the landing.
-  const rule = h('div', { class: 'splash-rule', 'aria-hidden': 'true' });
+  // Three copies of the title share the logo's metrics and lines: the gradient one
+  // that stays, a per-letter neon layer that flickers on, and a shine that sweeps.
+  let n = 0;
+  const letters = titleLines((t) => t.split('').map((ch) => h('span', { style: `--i:${n++}` }, ch)));
+  const logo = h('h1', { class: 'logo splash-logo', 'data-text': TITLE }, ...titleLines());
+  const rule = h('div', { class: 'title-rule splash-rule', 'aria-hidden': 'true' });
   const title = h(
     'div',
-    { class: 'splash-title' },
+    { class: 'head-title splash-title' },
     logo,
     h('div', { class: 'logo splash-copy splash-neon', 'aria-hidden': 'true' }, ...letters),
-    h('div', { class: 'logo splash-copy splash-shine', 'aria-hidden': 'true' }, TITLE),
+    h('div', { class: 'logo splash-copy splash-shine', 'aria-hidden': 'true' }, ...titleLines()),
     rule,
   );
   const block = h('div', { class: 'splash-block' }, title, h('div', { class: 'tagline' }, TAGLINE));
@@ -131,7 +133,10 @@ export function showSplash(parent: HTMLElement): Splash {
         // The road floors it into a warp and fades with the black; the rule is gone before the title lands.
         fx?.warp();
         anims.push(canvas.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms * 0.7, easing: 'ease-in-out', fill: 'forwards' }));
-        anims.push(rule.animate([{ opacity: 1 }, { opacity: 0 }], { duration: SPLASH.ruleOut * 1000, easing: 'ease-out', fill: 'forwards' }));
+        // The rule stops pulsing and lands as the menu's own (full strength, full width).
+        const ruleFrom = getComputedStyle(rule).opacity;
+        rule.style.animation = 'none';
+        anims.push(rule.animate([{ opacity: ruleFrom, transform: 'none' }, { opacity: 1, transform: 'none' }], { duration: SPLASH.ruleSettle * 1000, easing: 'ease-out', fill: 'forwards' }));
       } else {
         anims.push(root.animate([{ opacity: 1 }, { opacity: 0 }], { duration: reduced ? 300 : ms, easing: 'ease-in-out', fill: 'forwards' }));
       }

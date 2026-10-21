@@ -389,11 +389,16 @@ export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[]):
     sweepers: stats.sweepers,
   };
 
-  for (let i = 0; i < 4; i++) {
-    const s = startS - ROUTE.gridFirstRow - i * ROUTE.gridRowSpacing;
+  // Slots 0-3 are the original staggered grid (one car a row, sides alternating), so races of up to
+  // four cars keep their replays. Slots 4-7 fill the empty side of those rows and 8-9 add a fifth row:
+  // a two-wide grid for the full field that stays short enough for a sprint's first straight.
+  for (let i = 0; i < ROUTE.gridSlots; i++) {
+    const row = i < 8 ? i % 4 : 4;
+    const right = i < 4 ? i % 2 === 0 : i < 8 ? i % 2 === 1 : i === 8;
+    const s = startS - ROUTE.gridFirstRow - row * ROUTE.gridRowSpacing;
     const p = routeSample(route, s);
     const half = route.segWidth[p.seg] / 2;
-    const lateral = (i % 2 === 0 ? 1 : -1) * Math.min(2.6, half - 1.7);
+    const lateral = (right ? 1 : -1) * Math.min(2.6, half - 1.7);
     // left normal of tangent (tx, tz) is (tz, -tx)
     route.grid.push({ x: p.x + p.tz * lateral, z: p.z - p.tx * lateral, yaw: yawOf(p.tx, p.tz), s });
   }

@@ -165,6 +165,25 @@ describe('city generation', () => {
     for (const g of w.barrierGroups) for (const r of g.walls) expect(r.kind).toBe('rail');
   });
 
+  it('puts every start grid slot on clear road, a car apart, across 40 seeds', () => {
+    const rng = new Rng(99);
+    const failures: string[] = [];
+    for (let i = 0; i < 40; i++) {
+      const seed = rng.int(0, 0x7fffffff);
+      for (const mode of ['circuit', 'sprint'] as const) {
+        const w = createWorld(seed, mode);
+        expect(w.route.grid.length).toBe(ROUTE.gridSlots);
+        w.route.grid.forEach((g, k) => {
+          const surf = w.surfaceAt(g.x, g.z);
+          if (surf !== 'road' && surf !== 'cobble') failures.push(`seed ${seed} ${mode} slot ${k}: on ${surf}`);
+          if (w.collideCircle(g.x, g.z, 1.2, [])) failures.push(`seed ${seed} ${mode} slot ${k}: touches a wall`);
+          for (const o of w.route.grid.slice(k + 1)) if (Math.hypot(o.x - g.x, o.z - g.z) < 3.4) failures.push(`seed ${seed} ${mode} slot ${k}: overlaps another`);
+        });
+      }
+    }
+    expect(failures).toEqual([]);
+  });
+
   it('corner rails and barriers never cross the route across 100 seeds', () => {
     const rng = new Rng(77);
     const cross = (a: { x: number; z: number }, b: { x: number; z: number }, c: { x: number; z: number }, d: { x: number; z: number }) => {

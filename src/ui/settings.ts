@@ -1,6 +1,12 @@
 /** Player settings persisted in localStorage. */
+import type { RaceMode } from '../sim/race';
+import { MAX_OPPONENTS } from '../sim/race';
+
 export type Quality = 'low' | 'medium' | 'high';
 export type Difficulty = 'easy' | 'medium' | 'hard';
+/** What the menu's race step starts: a race mode, or free roam. */
+export type RaceType = RaceMode | 'roam';
+export const RACE_TYPES: readonly RaceType[] = ['circuit', 'sprint', 'drift', 'roam'];
 
 export interface Settings {
   /**
@@ -15,7 +21,10 @@ export interface Settings {
   radialBlur: boolean;
   manualGearbox: boolean;
   difficulty: Difficulty;
+  /** AI rivals in a circuit or sprint, 0 (race your ghost) to MAX_OPPONENTS. */
   opponents: number;
+  /** The race type last picked on the menu's race step. */
+  raceType: RaceType;
   showFps: boolean;
   /** Engine sound volume 0..1 */
   engineVolume: number;
@@ -37,6 +46,7 @@ export const DEFAULT_SETTINGS: Settings = {
   manualGearbox: false,
   difficulty: 'medium',
   opponents: 3,
+  raceType: 'circuit',
   showFps: false,
   engineVolume: 0.7,
   tractionControl: false,
@@ -54,7 +64,8 @@ export function loadSettings(): Settings {
     // Players from before Auto existed made an explicit choice (or got the old default): keep it.
     if (typeof parsed.autoQuality !== 'boolean') s.autoQuality = false;
     if (!['easy', 'medium', 'hard'].includes(s.difficulty)) s.difficulty = 'medium';
-    s.opponents = Math.max(0, Math.min(3, Math.round(Number(s.opponents) || 0)));
+    s.opponents = Math.max(0, Math.min(MAX_OPPONENTS, Math.round(Number(s.opponents) || 0)));
+    if (!RACE_TYPES.includes(s.raceType)) s.raceType = 'circuit';
     s.engineVolume = Math.max(0, Math.min(1, Number(s.engineVolume)));
     if (!Number.isFinite(s.engineVolume)) s.engineVolume = DEFAULT_SETTINGS.engineVolume;
     return s;

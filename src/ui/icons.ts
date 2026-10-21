@@ -84,6 +84,8 @@ export {
   ArrowDown,
   MousePointerClick,
   Undo2,
+  Users,
+  Code,
 } from 'lucide';
 export type { IconNode };
 

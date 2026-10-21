@@ -373,6 +373,8 @@ export const ROUTE = {
   sprintFinishNodeClear: 22,
   gridRowSpacing: 8,
   gridFirstRow: 9,
+  /** Start grid slots: the player and up to nine rivals (see the grid in route.ts). */
+  gridSlots: 10,
   maxAttempts: 400,
   /**
    * Dijkstra weight factor of the river channel's edges (0.55: strongly preferred) and how much worse

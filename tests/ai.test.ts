@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Rng } from '../src/sim/prng';
 import { carSnapshot, raceConfig, replayLog, runAutopilot } from './helpers';
-import { standings } from '../src/sim/race';
+import { MAX_OPPONENTS, standings } from '../src/sim/race';
 
 describe('AI opponents', () => {
   it('complete every route for 50 random seeds without getting stuck', () => {
@@ -18,6 +18,30 @@ describe('AI opponents', () => {
       }
     }
     expect(failures).toEqual([]);
+  });
+
+  it('a full field of nine rivals gets off the two-wide grid and finishes', () => {
+    const rng = new Rng(909);
+    const failures: string[] = [];
+    for (let i = 0; i < 6; i++) {
+      const seed = rng.int(0, 0x7fffffff);
+      const mode = i % 2 === 0 ? 'circuit' : 'sprint';
+      const r = runAutopilot(raceConfig(seed, mode, MAX_OPPONENTS, undefined, 1), 480, true);
+      expect(r.cars.length).toBe(MAX_OPPONENTS + 1);
+      for (const car of r.cars.slice(1)) {
+        const resets = r.events.filter((e) => e.type === 'reset' && e.car === car.index).length;
+        if (!car.finished) failures.push(`seed ${seed} ${mode}: ${car.name} did not finish (dist ${car.dist.toFixed(0)}/${r.distance.toFixed(0)})`);
+        else if (resets > 4) failures.push(`seed ${seed} ${mode}: ${car.name} needed ${resets} resets`);
+      }
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it('a full field replays identically from the input log', () => {
+    const cfg = raceConfig(4242, 'circuit', MAX_OPPONENTS);
+    const r = runAutopilot(cfg, 60);
+    const again = replayLog(cfg, r.inputLog);
+    expect(carSnapshot(again)).toBe(carSnapshot(r));
   });
 });
 

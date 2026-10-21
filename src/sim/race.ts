@@ -5,7 +5,7 @@
  * the same config and the same input frames, every tick is identical.
  */
 import { createCity, createWorld, World, City } from '../city/world';
-import { routeSample } from '../city/route';
+import { GridSlot, routeSample } from '../city/route';
 import { CarState, createCar, placeCar, refillNitrous, stepCar } from './car';
 import { WorldHit, collideCarWithWorld, collideCars, detectNearMiss } from './collision';
 import { DT, TICK_HZ } from './constants';
@@ -172,11 +172,24 @@ export function cityForSeed(seed: number): City {
   return cityCache;
 }
 
+/** Most AI rivals in one race (the start grid has a slot for each, plus the player). */
+export const MAX_OPPONENTS = 9;
+
+/**
+ * Start slots for `count` entrants, player first. The player starts at the back of the grid,
+ * like a street race challenger. Up to four cars take the original staggered slots in order (so
+ * their replays hold); a bigger field fills the two-wide grid front to back.
+ */
+function gridSlots(grid: GridSlot[], count: number): GridSlot[] {
+  const order = count <= 4 ? grid.slice(0, count) : grid.slice().sort((a, b) => b.s - a.s).slice(0, count);
+  return order.map((_, i) => order[count - 1 - i]);
+}
+
 export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
   const config: RaceConfig = {
     ...cfgIn,
     laps: cfgIn.mode === 'sprint' ? 1 : Math.max(1, Math.min(10, Math.round(cfgIn.laps))),
-    opponents: cfgIn.mode === 'drift' || cfgIn.openWorld ? [] : cfgIn.opponents.slice(0, 3),
+    opponents: cfgIn.mode === 'drift' || cfgIn.openWorld ? [] : cfgIn.opponents.slice(0, MAX_OPPONENTS),
     player: { ...cfgIn.player, performance: validatePerformance(cfgIn.player.performance) },
   };
   const kind = config.mode === 'sprint' ? 'sprint' : 'circuit';
@@ -188,8 +201,7 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
   const route = w.route;
   const entrants = [config.player, ...config.opponents];
   const line = buildRacingLine(w);
-  // Player starts at the back of the grid, like a street race challenger.
-  const slots = entrants.map((_, i) => route.grid[(entrants.length - 1 - i) % route.grid.length]);
+  const slots = gridSlots(route.grid, entrants.length);
   const cars: RaceCar[] = entrants.map((e, i) => {
     const slot = slots[i];
     const tuning = tuningForBuild(e.carId, validatePerformance(e.performance));

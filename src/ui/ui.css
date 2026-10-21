@@ -170,7 +170,6 @@ body {
   box-shadow: inset 0 0 0 2px var(--accent-2);
 }
 .btn:focus-visible,
-.mode-card:focus-visible,
 .g-item:focus-visible,
 .garage-tab:focus-visible,
 .seg button:focus-visible {
@@ -319,6 +318,7 @@ input[type='color'] {
   overflow: hidden;
 }
 .seg button {
+  white-space: nowrap;
   font: 600 14px var(--font);
   letter-spacing: 0.03em;
   color: var(--muted);
@@ -356,16 +356,21 @@ kbd {
 }
 
 /* ---------- main menu ----------
-   The home screen: an opaque rail down the left with a slashed right edge and an
-   orange accent along the slash; the city stays visible to its right. The menu
-   column keeps its position and width (the boot splash lands the title on
-   .menu-head), and the rail is sized from the same numbers. Race modes are a
-   numbered list: a row per mode with an arrow cue, lit by a left accent bar. */
+   The home screen (ui/menu.ts): an opaque rail down the left with a slashed right
+   edge and an orange accent along the slash; the city stays visible to its right.
+   The menu column keeps the title block on top of every step (the boot splash
+   lands on .menu-head, which is shrink-wrapped so the column width never changes
+   how the title wraps) and the rail is sized from the column. Home is the seed
+   panel over a row of four tiles; the race step reuses the tiles for race types;
+   the settings step widens the column for its sidebar. */
 .home {
   --menu-left: max(16px, 5vw);
-  --menu-w: min(420px, calc(100vw - 32px));
+  --menu-w: min(500px, calc(100vw - 32px));
   --rail-w: calc(var(--menu-left) + var(--menu-w) + 120px);
   --slash: 110px;
+}
+.home[data-step='settings'] {
+  --menu-w: min(680px, calc(100vw - 32px));
 }
 .home-rail,
 .home-slash {
@@ -397,24 +402,50 @@ kbd {
     display: none;
   }
 }
+/* A fixed top, so the title stays put from step to step; the bottom leaves room for the Hide UI button. */
 .menu {
+  --menu-top: clamp(16px, 10vh, 110px);
   position: absolute;
   left: var(--menu-left, max(16px, 5vw));
-  top: 50%;
-  transform: translateY(-50%);
+  top: var(--menu-top);
   padding: 4px 0;
-  width: var(--menu-w, min(420px, calc(100vw - 32px)));
+  width: var(--menu-w, min(500px, calc(100vw - 32px)));
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  max-height: calc(100vh - 24px);
+  gap: 12px;
+  max-height: calc(100% - var(--menu-top) - 64px);
   overflow-y: auto;
+  scrollbar-width: thin;
 }
-/* Hide UI: bottom left of the home screen, under the menu column (the menu leaves room for it). */
+.menu > * {
+  flex-shrink: 0;
+}
+/* The title block, here and on the splash: the title one word a line over its rule, then the tagline. */
+.menu-head,
+.head-title {
+  width: max-content;
+  max-width: 100%;
+}
+.menu-head {
+  margin-bottom: 4px;
+}
+.head-title {
+  position: relative;
+}
+.logo-line {
+  display: block;
+}
+.title-rule {
+  height: 3px;
+  margin-top: 10px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--accent-2), var(--accent) 60%, var(--red));
+}
+/* Hide UI: the very bottom left of the viewport, under the menu column (the menu leaves room for it). */
 .home-watch {
   position: absolute;
-  bottom: max(16px, env(safe-area-inset-bottom));
-  left: var(--menu-left);
+  left: max(12px, env(safe-area-inset-left));
+  bottom: max(12px, env(safe-area-inset-bottom));
   background: var(--panel);
   backdrop-filter: blur(6px);
 }
@@ -434,8 +465,8 @@ body > .mw {
 }
 .cine-hint {
   position: fixed;
-  left: max(16px, env(safe-area-inset-left));
-  bottom: max(16px, env(safe-area-inset-bottom));
+  left: max(12px, env(safe-area-inset-left));
+  bottom: max(12px, env(safe-area-inset-bottom));
   z-index: 80;
   padding: 8px 14px;
   font: 600 13px var(--font);
@@ -455,36 +486,7 @@ body > .mw {
     opacity: 1;
   }
 }
-/* Centered in the space above the Hide UI button. */
-.home .menu {
-  top: calc(50% - 32px);
-  max-height: calc(100vh - 80px);
-}
-.menu .nav {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-/* Everything that is not a race or the garage: one compact row, so the menu fits a laptop screen. */
-.menu .nav-more {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
-}
-.menu .nav-more .btn {
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-  gap: 4px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  padding: 9px 4px;
-}
-.menu .nav-more .btn .sub {
-  display: none;
-}
+/* The event seed: full width over the tiles. */
 .menu .event {
   padding: 10px 12px;
   display: flex;
@@ -497,112 +499,230 @@ body > .mw {
   justify-content: space-between;
   gap: 10px;
 }
-.menu .event .seed {
+.menu .event-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.menu .event-row input {
+  flex: 1;
+  min-width: 0;
+}
+.menu .seed {
   font: 700 14px var(--mono);
   color: var(--accent-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.menu .modes {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  counter-reset: mode;
+/* A row of four tiles: the home menu and the race types. Lit like the mode rows they replace: an accent bar and edge. */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
 }
-.mode-card {
+@media (max-width: 420px) {
+  .tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.tile {
   position: relative;
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px 10px 14px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  padding: 14px 12px 12px;
   cursor: pointer;
-  counter-increment: mode;
   text-align: left;
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   box-shadow: var(--edge);
-  transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
+  transition: background 0.12s, border-color 0.12s, box-shadow 0.12s, transform 0.12s;
 }
-/* The row number: 01, 02, ... */
-.mode-card::before {
-  content: counter(mode, decimal-leading-zero);
-  font: 700 12px var(--mono);
-  letter-spacing: 0.04em;
+.home-tiles .tile {
+  min-height: 124px;
+}
+/* Race is the main action: its edge is lit before the pointer gets there. */
+.tile.primary {
+  box-shadow: var(--edge), inset 0 -3px 0 var(--accent);
+}
+.tile > svg {
   color: var(--muted);
-  width: 18px;
+  margin-bottom: auto;
+  transition: color 0.12s, transform 0.12s;
 }
-.mode-card:hover,
-.mode-card:focus-visible {
-  border-color: var(--accent-line);
-  background: var(--surface-hover);
-  box-shadow: var(--edge), inset 3px 0 0 var(--accent);
-}
-.mode-card:hover::before,
-.mode-card:focus-visible::before {
+.tile.primary > svg {
   color: var(--accent);
 }
-.mode-card .mc-text {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-}
-.mode-card .mc-label {
-  font: 900 17px var(--display);
+.tile-label {
+  margin-top: 10px;
+  font: 900 16px var(--display);
   letter-spacing: 0.03em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
-.mode-card .best {
-  font: 500 13px var(--font);
+.tile-sub {
+  max-width: 100%;
+  font: 500 12px var(--font);
   color: var(--muted);
-  letter-spacing: 0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 /* A set record reads as a value, in the secondary color. */
-.mode-card .best.record {
-  font: 700 13px var(--mono);
+.tile-sub.record {
+  font: 700 12px var(--mono);
   color: var(--accent-2);
 }
-.mode-card > svg {
-  color: var(--accent);
-  flex: none;
+.tile:hover,
+.tile:focus-visible {
+  border-color: var(--accent-line);
+  background: var(--surface-hover);
+  box-shadow: var(--edge), inset 0 -3px 0 var(--accent);
+  outline: none;
 }
-.mode-card .mc-go {
-  display: inline-flex;
-  color: var(--muted);
-  transition: transform 0.12s, color 0.12s;
+.tile:focus-visible {
+  box-shadow: var(--edge), inset 0 -3px 0 var(--accent), inset 0 0 0 1px var(--accent-2);
 }
-.mode-card:hover .mc-go,
-.mode-card:focus-visible .mc-go {
+.tile:hover > svg,
+.tile:focus-visible > svg {
   color: var(--accent);
-  transform: translateX(3px);
+  transform: translateY(-2px);
+}
+.tile:active {
+  transform: translateY(1px);
+}
+/* The picked race type: the orange fill of a selected segment, softened. */
+.tile.on {
+  border-color: var(--accent-line);
+  background: linear-gradient(180deg, rgba(252, 152, 103, 0.2), rgba(252, 152, 103, 0.08));
+  box-shadow: var(--edge), inset 0 -3px 0 var(--accent);
+}
+.tile.on > svg {
+  color: var(--accent);
 }
 /* Free roam is the open ended one: yellow instead of orange. */
-.mode-card.roam > svg {
+.tile.roam > svg {
   color: var(--accent-2);
 }
-.mode-card.roam:hover,
-.mode-card.roam:focus-visible {
+.tile.roam.on,
+.tile.roam:hover,
+.tile.roam:focus-visible {
   border-color: rgba(255, 216, 102, 0.55);
-  box-shadow: var(--edge), inset 3px 0 0 var(--accent-2);
+  box-shadow: var(--edge), inset 0 -3px 0 var(--accent-2);
 }
-.mode-card.roam:hover::before,
-.mode-card.roam:focus-visible::before,
-.mode-card.roam:hover .mc-go,
-.mode-card.roam:focus-visible .mc-go {
+.tile.roam.on {
+  background: linear-gradient(180deg, rgba(255, 216, 102, 0.16), rgba(255, 216, 102, 0.06));
+}
+.race-types .tile {
+  min-height: 92px;
+}
+/* A sub step's header: back, the step's name, and a value on the right. */
+.step-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.step-title {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font: 900 22px var(--display);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.step-title > svg {
+  color: var(--accent);
+}
+.race-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: opacity 0.15s;
+}
+/* Rivals off (drift, free roam): the controls dim, the hint saying why stays readable. */
+.race-group.off .seg,
+.race-group.off .setting-row,
+.race-group.off .field-head > .name {
+  opacity: 0.35;
+}
+.race-group.off .field-head > .hint {
   color: var(--accent-2);
 }
-.menu-foot {
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.field-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 15px;
+}
+.field-head > .name {
+  color: var(--soft);
+}
+.field-head > .hint {
   font-size: 12px;
-  line-height: 1.5;
-  padding: 2px 2px 0;
+  color: var(--muted);
+}
+.seg.wide {
+  display: flex;
+}
+.seg.wide button {
+  flex: 1;
+  justify-content: center;
+  padding: 6px 0;
+  font-variant-numeric: tabular-nums;
+}
+.seg button:disabled {
+  cursor: default;
+}
+/* Start stays on screen however far the step scrolls: the foot sticks to the bottom of the column. */
+.step-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+  padding: 12px 0 2px;
+  background: linear-gradient(180deg, transparent, var(--bg0) 12px);
+}
+/* Short screens (laptops, phones on their side): smaller race type tiles so the whole step fits. */
+@media (max-height: 820px) {
+  .menu {
+    --menu-top: clamp(12px, 6vh, 48px);
+    gap: 10px;
+  }
+  .race-types .tile {
+    min-height: 0;
+    padding: 10px 12px;
+  }
+  .race-types .tile-label {
+    margin-top: 6px;
+  }
+  .home-tiles .tile {
+    min-height: 108px;
+  }
+}
+.step-foot .replay {
+  flex: none;
+}
+.step-foot .start {
+  flex: 1;
+  justify-content: center;
+}
+.step-foot .start .grow {
+  flex: none;
 }
 .build-version {
   font: 500 10px var(--mono);
@@ -685,13 +805,138 @@ body > .mw {
 }
 .setting-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px 12px;
   font-size: 15px;
 }
+.setting-row > :last-child {
+  margin-left: auto;
+}
 .setting-row > .name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
   color: var(--soft);
+}
+.setting-row .hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+.setting-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.setting-slider {
+  width: min(200px, 45%);
+}
+
+/* ---------- settings: a sidebar of pages beside the page (ui/screens.ts settingsPanel) ---------- */
+.settings {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 14px;
+  border-right: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+}
+.settings-tab {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  font: 700 14px var(--font);
+  letter-spacing: 0.03em;
+  text-align: left;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, box-shadow 0.12s;
+}
+.settings-tab:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+.settings-tab:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: -2px;
+}
+/* The open page: lit like a picked tile, an accent bar on the side facing the page. */
+.settings-tab.on {
+  color: var(--text);
+  background: linear-gradient(90deg, rgba(252, 152, 103, 0.06), rgba(252, 152, 103, 0.18));
+  box-shadow: inset -3px 0 0 var(--accent);
+}
+.settings-tab > svg {
+  color: inherit;
+}
+.settings-tab.on > svg {
+  color: var(--accent);
+}
+.settings-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 300px;
+  min-width: 0;
+}
+.settings-pane > * {
+  flex-shrink: 0;
+}
+.settings-pane > .section-title {
+  margin: 4px 0 2px;
+}
+.settings-pane > .seg {
+  align-self: flex-start;
+}
+.settings-pane .credits {
+  line-height: 1.6;
+  font-size: 14px;
+  color: var(--soft);
+}
+.settings-pane .credits p {
+  margin: 0 0 10px;
+}
+.settings-dialog {
+  width: min(720px, calc(100vw - 32px));
+}
+/* Narrow screens: the pages become a scrolling row of tabs over the page. */
+@media (max-width: 600px) {
+  .settings {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  .settings-nav {
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 0 0 6px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    position: static;
+  }
+  .settings-tab {
+    flex: none;
+    padding: 8px 10px;
+  }
+  .settings-tab.on {
+    box-shadow: inset 0 -3px 0 var(--accent);
+  }
+  .settings-pane {
+    min-height: 0;
+  }
 }
 /* The dialog scrolls, so its rows keep their height instead of shrinking (overflow: hidden children would collapse to nothing). */
 .dialog > * {
@@ -1122,34 +1367,23 @@ body > .mw {
   opacity: 0;
   pointer-events: none;
 }
-/* A light line drawn out under the title (out of the layout flow; fades before the landing). */
+/* The menu's title rule, drawn out from the left on the splash; it pulses there and settles as it lands. */
 .splash-rule {
-  position: absolute;
-  left: 2%;
-  right: 2%;
-  top: 100%;
-  height: 3px;
-  margin-top: 6px;
-  border-radius: var(--radius-sm);
-  background: linear-gradient(90deg, var(--accent-2), var(--accent) 60%, var(--red));
-  box-shadow: none;
   transform: scaleX(0);
+  transform-origin: 0 50%;
   opacity: 0;
 }
-/* Same column as .menu, so the title wraps onto the same lines; JS centers and scales it. */
+/* Shrink-wrapped like .menu-head, so the title wraps onto the same lines; JS centers and scales it. */
 .splash-block {
   position: absolute;
   left: 0;
   top: 0;
-  width: min(420px, calc(100vw - 32px));
+  width: max-content;
   transform-origin: 0 0;
   will-change: transform;
 }
 .splash:not(.go) .splash-block {
   visibility: hidden;
-}
-.splash-title {
-  position: relative;
 }
 .splash-logo {
   position: relative;
@@ -1410,19 +1644,23 @@ body > .mw {
 .menu.splash-arrive > :not(.menu-head) {
   animation: splash-menu-in 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--i, 0) * 50ms) both;
 }
-.menu.splash-arrive > :nth-child(2) {
+/* A menu step's parts rise in the same way when the player moves between steps (ui/menu.ts). */
+.menu.step-enter > :not(.menu-head) {
+  animation: splash-menu-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--i, 0) * 35ms) both;
+}
+.menu > :nth-child(2) {
   --i: 1;
 }
-.menu.splash-arrive > :nth-child(3) {
+.menu > :nth-child(3) {
   --i: 2;
 }
-.menu.splash-arrive > :nth-child(4) {
+.menu > :nth-child(4) {
   --i: 3;
 }
-.menu.splash-arrive > :nth-child(5) {
+.menu > :nth-child(5) {
   --i: 4;
 }
-.menu.splash-arrive > :nth-child(6) {
+.menu > :nth-child(6) {
   --i: 5;
 }
 @keyframes splash-menu-in {
@@ -1435,7 +1673,8 @@ body > .mw {
   .splash *,
   .splash *::before,
   .splash *::after,
-  .menu.splash-arrive > * {
+  .menu.splash-arrive > *,
+  .menu.step-enter > * {
     animation: none !important;
   }
   .splash .tagline {
@@ -1639,7 +1878,7 @@ body > .mw {
   border-color: var(--accent-line);
   background: var(--surface-hover);
 }
-/* Selected: the same orange edge as a menu mode card. */
+/* Selected: the same orange edge as a menu tile. */
 .g-item.on {
   border-color: var(--accent-line);
   background: var(--accent-soft);
