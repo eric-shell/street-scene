@@ -32,7 +32,7 @@ import { DEG, Vec2, abs, distToSegment, sin, yawOf } from '../../sim/math';
 import type { Area, AreaBuild, DistrictModule, PlanContext } from './types';
 import { emptyBuild } from './types';
 import { circlePolygon, pointInPolygon, polygonBounds, solidWalls } from './geom';
-import { Frame, SiteHazards, TRAFFIC_FLOOR, corridorGap, edgeFrame, junctionReach, routeTraffic, siteClear, siteHazards, takePath, toWorld, weightedOrder } from './structures';
+import { Frame, ON_ROUTE, SiteHazards, TRAFFIC_FLOOR, corridorGap, raceStreets, edgeFrame, junctionReach, routeTraffic, siteClear, siteHazards, takePath, toWorld, weightedOrder } from './structures';
 
 const CFG = CITY.districts.overpass;
 
@@ -140,12 +140,13 @@ export const overpassModule: DistrictModule = {
     const rng = ctx.rng;
     const mouths = computeMouths(g, ctx.sectors());
     const hz = siteHazards(ctx);
-    // Busy streets first: an overpass only matters when races run under it.
+    // The race's own streets first, then busy ones: an overpass only matters when races run under it.
     const traffic = routeTraffic(g, ctx.seed);
-    if (rng.chance(CFG.viaductChance)) planViaduct(ctx, hz, mouths, traffic);
+    const race = raceStreets(ctx);
+    if (rng.chance(CFG.viaductChance)) planViaduct(ctx, hz, mouths, traffic, race);
     const order = weightedOrder(
-      g.edges.filter((e) => KINDS.has(e.kind) && !e.bridge && !e.shortcut && !ctx.claims.edge.has(e.id) && !g.nodes[e.a].ring && !g.nodes[e.b].ring).map((e) => e.id),
-      (id) => (GANTRY_WEIGHT[g.edges[id].kind] ?? 0) * (TRAFFIC_FLOOR + traffic[id]),
+      g.edges.filter((e) => KINDS.has(e.kind) && !e.bridge && !e.shortcut && !ctx.claims.edge.has(e.id) && !race.ends.has(e.id) && !g.nodes[e.a].ring && !g.nodes[e.b].ring).map((e) => e.id),
+      (id) => (GANTRY_WEIGHT[g.edges[id].kind] ?? 0) * (TRAFFIC_FLOOR + traffic[id] + (race.route.has(id) ? ON_ROUTE : 0)),
       rng,
     );
     const want = rng.int(CFG.gantries[0], CFG.gantries[1]);
@@ -188,7 +189,8 @@ function planGantry(ctx: PlanContext, hz: SiteHazards, mouths: EdgeMouths[], e: 
     polygon: [],
     path,
     nodes: [],
-    edges: [e.id],
+    // The street stays unclaimed (params.edge names it): a gantry leaves room for a lane closure or a bus bay.
+    edges: [],
     faces: [],
     params: { cx: f.cx, cz: f.cz, ux: f.ux, uz: f.uz, road, legV, clearance: CFG.gantryClearance, edge: e.id, reach: GANTRY_REACH, seed: rng.int(1, 0x7ffffffe) },
   });
@@ -209,7 +211,7 @@ function buildGantry(area: Area): AreaBuild {
 }
 
 /** Plan one viaduct along the middle of a row or column of blocks, if a line fits. */
-function planViaduct(ctx: PlanContext, hz: SiteHazards, mouths: EdgeMouths[], traffic: Float64Array): void {
+function planViaduct(ctx: PlanContext, hz: SiteHazards, mouths: EdgeMouths[], traffic: Float64Array, race: { route: Set<number>; ends: Set<number> }): void {
   const g = ctx.graph;
   const rng = ctx.rng;
   const W = CITY.gridW;
@@ -263,7 +265,7 @@ function planViaduct(ctx: PlanContext, hz: SiteHazards, mouths: EdgeMouths[], tr
         const along = half / Math.max(sn, 1e-3) + CFG.pierLength / 2 + 2;
         if (hit.s * e.length < junctionReach(g, mouths, e, e.a) + along) ok = false;
         if ((1 - hit.s) * e.length < junctionReach(g, mouths, e, e.b) + along) ok = false;
-        if (ctx.claims.edge.has(e.id)) ok = false;
+        if (ctx.claims.edge.has(e.id) || race.ends.has(e.id)) ok = false;
         crossings.push({ edge: e.id, x: p0.x + (p1.x - p0.x) * hit.t, z: p0.z + (p1.z - p0.z) * hit.t, s: hit.t * length, sin: sn });
       }
       if (!ok) break;
@@ -292,7 +294,7 @@ function planViaduct(ctx: PlanContext, hz: SiteHazards, mouths: EdgeMouths[], tr
     if (ctx.budget.used + footprint > ctx.budget.total) continue;
     // Score: the traffic of the streets it crosses, jittered so the best line is not always the same kind.
     let score = 0;
-    for (const c of crossings) score += TRAFFIC_FLOOR + traffic[c.edge];
+    for (const c of crossings) score += TRAFFIC_FLOOR + traffic[c.edge] + (race.route.has(c.edge) ? ON_ROUTE : 0);
     score *= 0.7 + 0.6 * rng.next();
     if (!best || score > best.score) best = { p0, p1, crossings, score, footprint };
   }

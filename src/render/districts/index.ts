@@ -24,6 +24,7 @@ import { subwayRenderer } from './subway';
 import { tunnelRenderer } from './tunnel';
 import { overpassRenderer } from './overpass';
 import { waterfrontRenderer } from './waterfront';
+import { roadworksRenderer } from './roadworks';
 
 export const DISTRICT_RENDERERS: readonly DistrictRenderer[] = [
   downtownRenderer,
@@ -39,6 +40,7 @@ export const DISTRICT_RENDERERS: readonly DistrictRenderer[] = [
   overpassRenderer,
   waterfrontRenderer,
   lakeRenderer,
+  roadworksRenderer,
 ];
 
 export interface DistrictMeshes {

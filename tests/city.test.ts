@@ -346,9 +346,10 @@ describe('city generation', () => {
       // Off the drivable road with room for the prop's radius (back alley dumpsters and bags, and the
       // barrels along the river channel's floor edges, are obstacles on purpose; raceway alley clutter
       // sits on the alley's own sidewalk, which a diagonal avenue leaving the alley's end junction can
-      // overlap: the alley module keeps its clutter clear of the alley's ends only).
+      // overlap: the alley module keeps its clutter clear of the alley's ends only). Lane closures stand
+      // in the curb lane on purpose (roadworks.ts; their own test keeps the rest of the street open).
       for (const p of props) {
-        if (p.area !== undefined && ['backAlley', 'river', 'alley'].includes(w.areas[p.area].kind)) continue;
+        if (p.area !== undefined && ['backAlley', 'river', 'alley', 'roadworks'].includes(w.areas[p.area].kind)) continue;
         for (const e of w.graph.edges) {
           const a = w.graph.nodes[e.a];
           const b = w.graph.nodes[e.b];
@@ -450,7 +451,8 @@ describe('districts', () => {
           // (Neighbouring buildings may leave a gap under a meter: a 0.7 m margin covers it.)
           expect(w.blocks.buildings.some((b) => insideBuilding(b, px, pz, 0.7))).toBe(true);
         }
-        if (wall.look === 'island') continue;
+        // Islands stand in their ring road; a lane closure's plant in its closed curb lane.
+        if (wall.look === 'island' || wall.look === 'roadworks') continue;
         // Not on any road (sampled along the wall).
         for (const t of [0.1, 0.5, 0.9]) {
           const x = wall.ax + (wall.bx - wall.ax) * t;
@@ -891,7 +893,7 @@ describe('route shortcuts', () => {
     for (const k of ['fencePanel', 'trafficCone', 'sawhorse'] as const) expect(PROP_DEFS[k].breakSpeed).toBeLessThanOrEqual(0.1);
     const rng = new Rng(4040);
     let crawled = 0;
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; crawled < 4 && i < 12; i++) {
       const seed = rng.int(0, 0x7fffffff);
       const r = createRace(raceConfig(seed, 'circuit', 0));
       while (r.tick < r.countdownTicks) stepRace(r, NEUTRAL_INPUT);
@@ -905,6 +907,9 @@ describe('route shortcuts', () => {
       const panel = w.props
         .filter((p) => p.area === area.id && p.kind === 'fencePanel' && (p.x - sc.ax) * ux + (p.z - sc.az) * uz < len / 2)
         .sort((a, b) => Math.abs((a.x - sc.ax) * -uz + (a.z - sc.az) * ux) - Math.abs((b.x - sc.ax) * -uz + (b.z - sc.az) * ux))[0];
+      // A crawl at this throttle stalls on a hill's grade alone (hills often sit on the routes): test on the flat.
+      const sl = w.slopeAt(panel.x, panel.z);
+      if (Math.abs(sl.gx * ux + sl.gz * uz) > 0.03) continue;
       const rc = r.cars[0];
       const c = rc.state;
       const back = rc.tuning.geometry.halfLength + panel.radius + 0.3;

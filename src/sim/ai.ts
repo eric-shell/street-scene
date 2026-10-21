@@ -1,12 +1,16 @@
 /**
  * Deterministic AI drivers. They follow a racing line smoothed from the route
- * centerline within the road width, aim for curvature based target speeds with
+ * centerline within the road width (narrowed past lane closures, so they
+ * swing round the roadworks), aim for curvature based target speeds with
  * a braking lookahead, use nitrous on straights, dodge each other with lateral
  * offsets and get mild rubber banding computed purely from race state.
  * Steering counter steers body slip (wheels toward the direction of travel),
  * brakes ease off with steering lock so they never trail brake into a spin,
  * and a car pinned nose in against a wall, rail, barrier or car reverses out
  * with the nose swinging toward the line before the stuck reset kicks in.
+ * Timed gates (a drawbridge going up, sim/gates.ts): they brake to a stop
+ * short of one that will be down when they get there, queue behind the cars
+ * already waiting and hold still, with the stuck and reverse-out logic off.
  */
 import type { World } from '../city/world';
 import type { RaceCar, RaceState } from './race';
@@ -15,6 +19,8 @@ import { DEG, abs, approach, atan2, clamp, cos, lerp, sign, sin, sqrt } from './
 import { GRAVITY } from './tuning';
 import { DT } from './constants';
 import { routeSample } from '../city/route';
+import { GATE_AI, GateWait, gateSpeedCap } from './gates';
+import { laneClosures } from '../city/districts/roadworks';
 
 export const AI = {
   spacing: 4,
@@ -65,6 +71,9 @@ export interface RacingLine {
   nz: Float64Array;
   /** Max lateral offset allowed from the line (to stay in the road). */
   room: Float64Array;
+  /** Offset bounds from the centerline (m): -room and room, narrowed on the closed side past a lane closure. */
+  lo: Float64Array;
+  hi: Float64Array;
   /** Lateral offset of the line from the centerline. */
   offset: Float64Array;
   speed: Float64Array;
@@ -87,6 +96,9 @@ export interface AiState {
   reversed: number;
   reverseSteer: number;
 }
+
+/** Scratch for gateSpeedCap (one AI car at a time). */
+const gateWait: GateWait = { cap: Infinity, waiting: false };
 
 export function createAi(index: number, pace: number): AiState {
   // Small fixed personality per grid slot, no randomness needed.
@@ -132,6 +144,22 @@ export function buildRacingLine(world: World): RacingLine {
       roomMin[i] = Math.min(roomMin[i], room[j]);
     }
   }
+  // Lane closures (roadworks) take the closed side's room away along their stretch.
+  const lo = roomMin.map((v) => -v);
+  const hi = Float64Array.from(roomMin);
+  for (const c of laneClosures(world.areas ?? [], world.graph)) {
+    for (let i = 0; i < n; i++) {
+      const rx = cx[i] - c.ax;
+      const rz = cz[i] - c.az;
+      const along = rx * c.dx + rz * c.dz;
+      const lat = rx * c.nx + rz * c.nz;
+      // On that street's carriageway, within the stretch; the line's normal says which offset side is closed.
+      if (along < c.s0 || along > c.s1 || abs(lat) > c.half) continue;
+      const dot = c.nx * nx[i] + c.nz * nz[i];
+      if (dot > 0.7) hi[i] = Math.min(hi[i], c.keep);
+      else if (dot < -0.7) lo[i] = Math.max(lo[i], -c.keep);
+    }
+  }
   // Relax toward a smooth line, constrained to the road.
   const off = new Float64Array(n);
   const px = Float64Array.from(cx);
@@ -143,7 +171,7 @@ export function buildRacingLine(world: World): RacingLine {
       const b = (i + 1) % n;
       const mx = (px[a] + px[b]) / 2;
       const mz = (pz[a] + pz[b]) / 2;
-      const o = clamp((mx - cx[i]) * nx[i] + (mz - cz[i]) * nz[i], -roomMin[i], roomMin[i]);
+      const o = clamp((mx - cx[i]) * nx[i] + (mz - cz[i]) * nz[i], lo[i], hi[i]);
       off[i] = o;
       px[i] = cx[i] + nx[i] * o;
       pz[i] = cz[i] + nz[i] * o;
@@ -166,7 +194,7 @@ export function buildRacingLine(world: World): RacingLine {
       speed[i] = Math.min(speed[i], sqrt(speed[nextI] * speed[nextI] + 2 * AI.brakeDecel * ds));
     }
   }
-  return { n, closed: route.closed, x: px, z: pz, s, nx, nz, room: roomMin, offset: off, speed };
+  return { n, closed: route.closed, x: px, z: pz, s, nx, nz, room: roomMin, lo, hi, offset: off, speed };
 }
 
 function curvature(ax: number, az: number, bx: number, bz: number, cx: number, cz: number): number {
@@ -247,7 +275,7 @@ export function aiInput(r: RaceState, rc: RaceCar): InputFrame {
 
   const look = AI.lookaheadBase + speed * AI.lookaheadPerSpeed;
   const ti = wrapIdx(line, ai.idx + Math.round(look / AI.spacing));
-  const extra = clamp(ai.bias + ai.dodge, -line.room[ti] - line.offset[ti], line.room[ti] - line.offset[ti]);
+  const extra = clamp(ai.bias + ai.dodge, line.lo[ti] - line.offset[ti], line.hi[ti] - line.offset[ti]);
   const tx = line.x[ti] + line.nx[ti] * extra;
   const tz = line.z[ti] + line.nz[ti] * extra;
   let steer = pursuitSteer(rc, tx, tz);
@@ -259,6 +287,9 @@ export function aiInput(r: RaceState, rc: RaceCar): InputFrame {
   let vt = Infinity;
   for (let k = 0; k <= 3; k++) vt = Math.min(vt, line.speed[wrapIdx(line, ai.idx + k)]);
   vt *= pace;
+  // Timed gates: stop short of one that will be down on arrival, behind any queue.
+  const gate = gateSpeedCap(r, rc, gateWait);
+  vt = Math.min(vt, gate.cap);
   const err = vt - speed;
   let throttle = 0;
   let brake = 0;
@@ -269,6 +300,11 @@ export function aiInput(r: RaceState, rc: RaceCar): InputFrame {
   if (sliding) {
     throttle *= 0.45;
     brake = Math.min(brake, 0.35);
+  }
+  // Waiting at a closed gate: hold the car still.
+  if (gate.waiting && gate.cap < 0.5 && speed < 1.5) {
+    throttle = 0;
+    brake = Math.max(brake, GATE_AI.holdBrake);
   }
 
   // Nitrous on straights.
@@ -283,7 +319,7 @@ export function aiInput(r: RaceState, rc: RaceCar): InputFrame {
   }
 
   // Nose in against something: back out, steering so the nose swings toward the line.
-  const recover = recoverInput(r, rc, steer, throttle, tx, tz);
+  const recover = gate.waiting ? null : recoverInput(r, rc, steer, throttle, tx, tz);
   if (recover) {
     throttle = recover.throttle;
     brake = recover.brake;
@@ -300,6 +336,14 @@ export function aiInput(r: RaceState, rc: RaceCar): InputFrame {
     noProgress = rc.dist - ai.watchDist < AI.progressMin;
     ai.watchDist = rc.dist;
     ai.watchTime = 0;
+  }
+  if (gate.waiting) {
+    // Held at a gate: not stuck, not pinned, no progress expected.
+    ai.stuckTime = 0;
+    ai.watchTime = 0;
+    ai.watchDist = rc.dist;
+    ai.blocked = 0;
+    noProgress = false;
   }
   const reset = ai.stuckTime > AI.stuckTime || rc.wrongWayTime > 3 || noProgress;
   if (reset) {

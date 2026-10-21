@@ -9,6 +9,8 @@
  * Outro: after the player crosses the line the camera swings around the car
  * to a low, wide angle hero shot in front of it, then drifts in a slow orbit.
  * Timing and framing come from CAMERA.intro / CAMERA.outro. Render only.
+ * The fly-in carries a title card with the seed's event (Hill Climb, River
+ * Run, ...; city/events.ts), shown while the HUD is hidden for the shot.
  */
 import * as THREE from 'three';
 import type { World } from '../city/world';
@@ -55,6 +57,13 @@ function ensureStyles(): void {
   pointer-events: none; transition: height .6s ease; }
 .cine-bars::before { top: 0; } .cine-bars::after { bottom: 0; }
 .cine-bars.on::before, .cine-bars.on::after { height: 7vh; }
+.cine-title { position: fixed; left: 0; right: 0; top: 16vh; z-index: 35; padding: 0 16px; pointer-events: none; text-align: center;
+  opacity: 0; transform: translateY(10px); transition: opacity .6s, transform .6s ease; }
+.cine-title.show { opacity: 1; transform: none; }
+.cine-title b { display: block; font: 900 clamp(30px, 7vw, 76px) var(--display, system-ui); letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent-2, #ffd866); text-shadow: 0 3px 0 rgba(0,0,0,.55), 0 0 28px rgba(0,0,0,.6); }
+.cine-title span { display: block; margin-top: 6px; font: 600 clamp(11px, 1.6vw, 16px) var(--font, system-ui); letter-spacing: .26em;
+  text-transform: uppercase; color: rgba(252,252,250,.85); text-shadow: 0 1px 6px rgba(0,0,0,.85); }
 `;
   document.head.append(st);
 }
@@ -91,6 +100,8 @@ export class RaceCinematics {
   private yawS = 0;
   readonly hint: HTMLElement | null = null;
   private bars: HTMLElement | null = null;
+  /** The event title card over the fly-in (absent in the open world). */
+  private title: HTMLElement | null = null;
 
   constructor(
     private readonly cam: ChaseCamera,
@@ -106,6 +117,16 @@ export class RaceCinematics {
       this.bars = document.createElement('div');
       this.bars.className = 'cine-bars';
       hintParent.append(this.bars);
+      if (world.event && !world.openWorld) {
+        this.title = document.createElement('div');
+        this.title.className = 'cine-title';
+        const name = document.createElement('b');
+        name.textContent = world.event.name;
+        const tag = document.createElement('span');
+        tag.textContent = world.event.tagline;
+        this.title.append(name, tag);
+        hintParent.append(this.title);
+      }
     }
   }
 
@@ -285,12 +306,15 @@ export class RaceCinematics {
 
   /** Toggle the HUD hiding classes for the current phase. */
   syncHud(hud: HTMLElement, preRoll: boolean): void {
-    hud.classList.toggle('cine-intro', this.phase === 'intro' && preRoll && !this.skipFrom);
+    const intro = this.phase === 'intro' && preRoll && !this.skipFrom;
+    if (this.title && this.title.classList.contains('show') !== intro) this.title.classList.toggle('show', intro);
+    hud.classList.toggle('cine-intro', intro);
     hud.classList.toggle('cine-outro', this.phase === 'outro');
   }
 
   dispose(): void {
     this.hint?.remove();
     this.bars?.remove();
+    this.title?.remove();
   }
 }

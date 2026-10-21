@@ -13,6 +13,7 @@ import { riverCenter } from '../src/city/districts/river';
 import type { Area } from '../src/city/districts/types';
 import type { City } from '../src/city/world';
 import { createRace, stepRace } from '../src/sim/race';
+import { routeSample } from '../src/city/route';
 import { createAi, autopilotInput } from '../src/sim/ai';
 import { carSnapshot, raceConfig } from './helpers';
 
@@ -248,9 +249,39 @@ describe('tunnels and overpasses (routes)', () => {
       if (s.some((a) => a.kind === 'tunnel' && through(a))) tunnel++;
       if (s.some((a) => a.variant !== 'gantry' && through(a))) covered++;
     }
-    // Either race of a seed: through a tunnel on about half the seeds, under a tunnel or viaduct on more.
-    expect(tunnel / n).toBeGreaterThan(0.35);
-    expect(covered / n).toBeGreaterThan(0.45);
+    // Placed on the race routes when they are known (PlanContext.event): one race or the other runs through
+    // a tunnel on nearly every seed.
+    expect(tunnel / n).toBeGreaterThan(0.75);
+    expect(covered / n).toBeGreaterThan(0.8);
+  });
+
+  it('starts, grids and finishes stay in the open, away from bores, decks and gantries', () => {
+    const rng = new Rng(515);
+    for (let i = 0; i < 16; i++) {
+      const seed = rng.int(0, 0x7fffffff);
+      const city = createCity(seed);
+      for (const kind of ['circuit', 'sprint'] as const) {
+        const w = createWorld(seed, kind, city);
+        const spots = [routeSample(w.route, w.route.startS), routeSample(w.route, w.route.finishS), ...w.route.grid];
+        for (const a of structures(city)) {
+          for (const p of spots) {
+            if (a.kind === 'tunnel') {
+              const t = tunnelShape(a);
+              const l = toLocal(t, p.x, p.z);
+              const inside = Math.abs(l.u) < t.half + t.wing + 25 && Math.abs(l.v) < t.front + 5;
+              expect(inside).toBe(false);
+            } else if (a.variant === 'viaduct') {
+              const v = viaductShape(a);
+              const along = (p.x - v.x0) * v.ux + (p.z - v.z0) * v.uz;
+              const lat = -(p.x - v.x0) * v.uz + (p.z - v.z0) * v.ux;
+              expect(along > -5 && along < v.length + 5 && Math.abs(lat) < v.half + 20).toBe(false);
+            } else {
+              expect(Math.hypot(p.x - a.params.cx, p.z - a.params.cz)).toBeGreaterThan(20);
+            }
+          }
+        }
+      }
+    }
   });
 
   it('the AI drives through a tunnel on its route, the same way twice', () => {

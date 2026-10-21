@@ -28,8 +28,10 @@
  *
  * Both keep their ends clear of the junctions' reach (closures, corner rails;
  * structures.ts), and both keep away from the river channel, the El, hill
- * slopes, roundabouts and the other structures. Streets races are likely to
- * use (routeTraffic: busy, fast, central) are tried first.
+ * slopes, roundabouts and the other structures. The race routes' streets
+ * are tried first (PlanContext.event; never where a race starts or
+ * finishes), then the ones races are likely to use (routeTraffic: busy,
+ * fast, central).
  */
 import { CITY } from '../config';
 import type { RoadEdge, RoadGraph } from '../roadGraph';
@@ -41,7 +43,7 @@ import type { Area, DistrictModule, HeightSample, PlanContext } from './types';
 import { emptyBuild } from './types';
 import { HillShape, hillAt, hillOutline, plateauDistance } from './hills';
 import { smooth01 } from './geom';
-import { Frame, SiteHazards, TRAFFIC_FLOOR, corridorGap, edgeFaces, edgeFrame, junctionReach, routeTraffic, siteClear, siteHazards, toWorld, weightedOrder } from './structures';
+import { Frame, ON_ROUTE, SiteHazards, TRAFFIC_FLOOR, corridorGap, raceStreets, edgeFaces, edgeFrame, junctionReach, routeTraffic, siteClear, siteHazards, toWorld, weightedOrder } from './structures';
 
 const CFG = CITY.districts.tunnel;
 
@@ -177,17 +179,18 @@ export const tunnelModule: DistrictModule = {
     const mouths = computeMouths(g, ctx.sectors());
     const hz = siteHazards(ctx);
     /** Both blocks beside the street unclaimed (no park, plaza or hill opening its frontage). */
+    const race = raceStreets(ctx);
     const eligible = (e: RoadEdge): boolean => {
-      if (!KINDS.has(e.kind) || e.bridge || e.shortcut || ctx.claims.edge.has(e.id)) return false;
+      if (!KINDS.has(e.kind) || e.bridge || e.shortcut || ctx.claims.edge.has(e.id) || race.ends.has(e.id)) return false;
       if (g.nodes[e.a].ring || g.nodes[e.b].ring) return false;
       const fs = sides.get(e.id);
       return !!fs && fs.length === 2 && fs[0] !== fs[1] && fs.every((f) => !ctx.claims.face.has(f));
     };
-    // Busy streets first: a tunnel only matters when races run through it.
+    // The race's own streets first, then busy ones: a tunnel only matters when races run through it.
     const traffic = routeTraffic(g, ctx.seed);
     const order = weightedOrder(
       g.edges.filter(eligible).map((e) => e.id),
-      (id) => (TRAFFIC_FLOOR + traffic[id]) ** 2,
+      (id) => (TRAFFIC_FLOOR + traffic[id]) ** 2 + (race.route.has(id) ? ON_ROUTE : 0),
       rng,
     );
     const ridge = rng.chance(CFG.ridgeChance);

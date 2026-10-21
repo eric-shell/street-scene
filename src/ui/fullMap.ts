@@ -50,6 +50,7 @@ const KINDS: Partial<Record<AreaKind, KindStyle>> = {
   infill: { label: 'Plazas and lots', ink: PALETTE.soft, fill: rgba('soft', 0.2), tag: false },
   tunnel: { label: 'Tunnels', ink: PALETTE.soft, fill: rgba('muted', 0.22), width: 1.5, dash: [4, 3], tag: true },
   overpass: { label: 'Overpasses', ink: PALETTE.muted, width: 3, dash: [3, 3], tag: false },
+  roadworks: { label: 'Roadworks', ink: PALETTE.red, fill: rgba('red', 0.55), width: 1, tag: false },
 };
 
 /** Infill drawn and counted as places; verges and planters are frontage dressing, too small to read on the map. */
@@ -73,7 +74,7 @@ const INK = {
 } as const;
 
 /** Legend order; kinds missing from the city are left out. */
-const LEGEND_ORDER: AreaKind[] = ['park', 'river', 'lake', 'waterfront', 'subway', 'alley', 'backAlley', 'roundabout', 'hills', 'monument', 'tunnel', 'overpass', 'infill'];
+const LEGEND_ORDER: AreaKind[] = ['park', 'river', 'lake', 'waterfront', 'subway', 'alley', 'backAlley', 'roundabout', 'hills', 'monument', 'tunnel', 'overpass', 'infill', 'roadworks'];
 
 /** Margin around the city (m), and the scale bar lengths it picks from (m). */
 const PAD = 40;

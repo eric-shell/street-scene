@@ -1,6 +1,8 @@
 /**
  * Car vs destructible props (streetlights, traffic lights, cans, benches, bus
- * stops). Each car is its oriented box; each intact prop a circle. A hit above
+ * stops). Each car is its oriented box; each intact prop a circle, or for a
+ * long one (a bus shelter, Prop.depth) a capsule: the circle of radius depth
+ * at the point of its core nearest the car. A hit above
  * the prop's break speed knocks it down: the car loses speed along the impact
  * normal by momentum exchange with the prop's anchored mass, gets a small yaw
  * nudge from an off center hit, and the prop is marked broken for the rest of
@@ -16,6 +18,8 @@ import { sin, cos, sqrt } from './math';
 const YAW_NUDGE = 0.35;
 /** Car impact (m/s, for camera shake and drift chains) per m/s of speed lost. */
 const IMPACT_PER_DV = 1.25;
+/** Points sampled along a capsule prop's core (odd, so the middle is one): closer than its radius apart. */
+const CORE_SAMPLES = 5;
 
 const scratch: number[] = [];
 
@@ -49,15 +53,43 @@ export function collideCarWithProps(r: RaceState, rc: RaceCar): number {
     const p = world.props[id];
     const dx = p.x - c.x;
     const dz = p.z - c.z;
-    const u = dx * fx + dz * fz;
-    const v = dx * lx + dz * lz;
+    let u = dx * fx + dz * fz;
+    let v = dx * lx + dz * lz;
     // Closest point of the box to the prop center, in car space.
-    const cu = u < -hl ? -hl : u > hl ? hl : u;
-    const cv = v < -hw ? -hw : v > hw ? hw : v;
-    const qu = u - cu;
-    const qv = v - cv;
-    const d2 = qu * qu + qv * qv;
-    if (d2 >= p.radius * p.radius) continue;
+    let cu = u < -hl ? -hl : u > hl ? hl : u;
+    let cv = v < -hw ? -hw : v > hw ? hw : v;
+    let qu = u - cu;
+    let qv = v - cv;
+    let d2 = qu * qu + qv * qv;
+    let radius = p.radius;
+    if (p.depth !== undefined) {
+      // Capsule: the core runs along the prop's local X (cos yaw, -sin yaw), `radius - depth` each way.
+      // Keep the core sample nearest the box; the hit is then a circle of radius `depth` there.
+      radius = p.depth;
+      const half = p.radius - p.depth;
+      const ax = cos(p.yaw);
+      const az = -sin(p.yaw);
+      for (let k = 0; k < CORE_SAMPLES; k++) {
+        const o = half * ((2 * k) / (CORE_SAMPLES - 1) - 1);
+        const sx = p.x + ax * o - c.x;
+        const sz = p.z + az * o - c.z;
+        const su = sx * fx + sz * fz;
+        const sv = sx * lx + sz * lz;
+        const scu = su < -hl ? -hl : su > hl ? hl : su;
+        const scv = sv < -hw ? -hw : sv > hw ? hw : sv;
+        const e2 = (su - scu) * (su - scu) + (sv - scv) * (sv - scv);
+        if (k === 0 || e2 < d2) {
+          u = su;
+          v = sv;
+          cu = scu;
+          cv = scv;
+          qu = su - scu;
+          qv = sv - scv;
+          d2 = e2;
+        }
+      }
+    }
+    if (d2 >= radius * radius) continue;
     // Contact normal from the prop toward the car, and penetration depth.
     let nx: number;
     let nz: number;
@@ -66,7 +98,7 @@ export function collideCarWithProps(r: RaceState, rc: RaceCar): number {
       const d = sqrt(d2);
       nx = -(qu * fx + qv * lx) / d;
       nz = -(qu * fz + qv * lz) / d;
-      depth = p.radius - d;
+      depth = radius - d;
     } else {
       // Prop center inside the box: push out through the nearest face.
       const pu = hl - (u < 0 ? -u : u);
@@ -75,12 +107,12 @@ export function collideCarWithProps(r: RaceState, rc: RaceCar): number {
         const s = u < 0 ? 1 : -1;
         nx = fx * s;
         nz = fz * s;
-        depth = pu + p.radius;
+        depth = pu + radius;
       } else {
         const s = v < 0 ? 1 : -1;
         nx = lx * s;
         nz = lz * s;
-        depth = pv + p.radius;
+        depth = pv + radius;
       }
     }
     // Contact point (on the box surface) relative to the car center.

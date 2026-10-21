@@ -28,6 +28,7 @@ import type { RoadGraph } from '../roadGraph';
 import type { BlockFace, Building, EdgeMouths, Sector, Wall } from '../blocks';
 import type { Terrain } from '../terrain';
 import type { DistrictPropSpec } from '../props';
+import type { EventFlavourId } from '../events';
 
 export type AreaKind =
   | 'downtown'
@@ -42,6 +43,7 @@ export type AreaKind =
   | 'monument'
   | 'tunnel'
   | 'overpass'
+  | 'roadworks'
   // Reserved unique features (planned later, disabled in config).
   | 'waterfront'
   | 'lake';
@@ -84,6 +86,9 @@ export const COBBLE_PRIORITY = 6;
  * tunnel / rock: tunnel walls, portal wingwalls and the shut in building line behind them;
  *   the rock face along a ridge's cutting (tunnel).
  * pier: overpass piers and abutments, sign gantry legs (overpass).
+ * gate: a timed gate's arms across the deck (sim/gates.ts; drawn by render/drawbridge.ts).
+ *   Timed gates are not in World.walls: they block only while their schedule says so.
+ * roadworks: the plant of a lane closure (arrow board, excavator, skip, light tower) (roadworks).
  */
 export type WallLook =
   | 'building'
@@ -102,9 +107,11 @@ export type WallLook =
   | 'monument'
   | 'tunnel'
   | 'rock'
-  | 'pier';
+  | 'pier'
+  | 'gate'
+  | 'roadworks';
 
-export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier'];
+export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'gate', 'roadworks'];
 
 export interface Area {
   /** Index into CityDistricts.areas. */
@@ -242,6 +249,17 @@ export interface Claims {
   face: Map<number, number>;
 }
 
+/**
+ * The seed's event flavour (src/city/events.ts) and both routes, as the
+ * topology hook picked them: modules planned after the routes (hills, the
+ * monument) read it to put their feature where the race goes.
+ */
+export interface PlannedEvent {
+  flavour: EventFlavourId;
+  /** Circuit then sprint: graph nodes in driving order and the edges between them. */
+  routes: { nodes: number[]; edges: number[]; closed: boolean }[];
+}
+
 export interface PlanContext {
   seed: number;
   /** This module's own random stream (deriveSeed(seed, 'district:' + kind)). */
@@ -261,6 +279,8 @@ export interface PlanContext {
   graphChanged(): void;
   /** Present for 'late' modules only. */
   late?: LateContext;
+  /** Present for the modules planned after the topology hook, when it returned one. */
+  event?: PlannedEvent;
 }
 
 export interface BuildContext {
@@ -305,6 +325,7 @@ export const AREA_MAP_STYLE: Record<AreaKind, AreaMapStyle> = {
   monument: { fill: 'rgba(255,216,102,0.2)' },
   tunnel: { fill: 'rgba(147,146,147,0.16)', stroke: 'rgba(25,24,26,0.8)', width: 6, dash: [7, 4] },
   overpass: { fill: 'rgba(193,192,192,0.22)', stroke: 'rgba(193,192,192,0.5)', width: 5, dash: [3, 3] },
+  roadworks: { fill: 'rgba(255,97,136,0.5)' },
   waterfront: { fill: 'rgba(120,220,232,0.14)' },
   lake: { fill: 'rgba(120,220,232,0.18)' },
 };

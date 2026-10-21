@@ -18,6 +18,7 @@
  */
 import { CITY, ROUTE } from '../config';
 import type { RoadEdge, RoadGraph, RoadNode } from '../roadGraph';
+import { isRiverEdge } from '../roadGraph';
 import type { EdgeMouths } from '../blocks';
 import { Vec2, distToSegment, sqrt } from '../../sim/math';
 import { Rng, deriveSeed } from '../../sim/prng';
@@ -182,6 +183,51 @@ export function corridorGap(g: RoadGraph, x: number, z: number, skip = -1): numb
 
 /** Ordering weight every candidate street keeps on top of its traffic share, so quiet streets still get a structure now and then. */
 export const TRAFFIC_FLOOR = 0.015;
+/** Ordering weight a street of one of the seed's race routes gets on top (PlanContext.event): it outranks any traffic share. */
+export const ON_ROUTE = 1;
+
+/**
+ * The race routes as the planners see them, when they run after the topology
+ * hook (PlanContext.event): the edges both routes use, and the edges where a
+ * race starts or finishes. Structures keep off the latter: a start gantry,
+ * its grid and spectators belong in the open, not in a bore or under a deck.
+ * Without an event (a planner run on its own) both sets are empty and the
+ * traffic estimate alone guides placement.
+ */
+export function raceStreets(ctx: PlanContext): { route: Set<number>; ends: Set<number> } {
+  const route = new Set<number>();
+  const ends = new Set<number>();
+  const g = ctx.graph;
+  for (const r of ctx.event?.routes ?? []) {
+    const edges = r.edges.filter((e) => e >= 0);
+    for (const e of edges) route.add(e);
+    if (!edges.length) continue;
+    if (r.closed) {
+      // The circuit starts and finishes mid-way along its longest street (route.ts buildRoute).
+      let li = 0;
+      edges.forEach((e, i) => {
+        const river = isRiverEdge(g.edges[e]);
+        const riverBest = isRiverEdge(g.edges[edges[li]]);
+        if ((!river && riverBest) || (river === riverBest && g.edges[e].length > g.edges[edges[li]].length)) li = i;
+      });
+      ends.add(edges[li]);
+    } else {
+      // A sprint's grid is on its first street; its finish line ROUTE.sprintFinishOffset before the end.
+      ends.add(edges[0]);
+      let total = 0;
+      for (const e of edges) total += g.edges[e].length;
+      const lo = total - ROUTE.sprintFinishOffset - 2 * ROUTE.sprintFinishNodeClear - 20;
+      const hi = total - ROUTE.sprintFinishOffset + 20;
+      let s = 0;
+      for (const e of edges) {
+        const s1 = s + g.edges[e].length;
+        if (s1 > lo && s < hi) ends.add(e);
+        s = s1;
+      }
+    }
+  }
+  return { route, ends };
+}
 
 /** Route finder's kind bias on edge weights (route.ts randomWeights), mirrored for the traffic estimate. */
 const KIND_BIAS: Partial<Record<RoadEdge['kind'], number>> = { boulevard: 0.7, diagonal: 0.75, avenue: 0.85, alley: 0.78, channel: ROUTE.channelBias };
