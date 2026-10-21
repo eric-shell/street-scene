@@ -4,6 +4,7 @@
  * Reads a snapshot each frame; never touches the sim.
  */
 import type { World } from '../city/world';
+import type { RaceMode } from '../sim/race';
 import { FlagTriangleRight, Timer, Trophy, TriangleAlert, Zap, Award, Ghost, icon, Compass, Disc3, MapPin, Navigation2 } from './icons';
 import { formatTime } from './format';
 import type { HudCard } from './hudCard';
@@ -35,7 +36,7 @@ const INK = {
 export type HudCar = MapCar;
 
 export interface HudData {
-  mode: 'circuit' | 'sprint' | 'drift';
+  mode: RaceMode;
   position: number;
   carCount: number;
   lap: number;
@@ -65,8 +66,10 @@ export interface HudData {
   ghost: boolean;
   /** Open world (free roam): the district under the car and how much the player smashed. */
   openWorld?: { area: string; smashed: number; topKmh: number };
-  /** Free roam waypoint set on the city map (render only, m): the chip and the minimap point to it. */
+  /** Free roam waypoint set on the city map (render only, m), or the waypoint race's next target: the chip and the minimap point to it. */
   waypoint?: { x: number; z: number };
+  /** What the waypoint chip calls it (default Waypoint): the waypoint race says which of how many. */
+  waypointLabel?: string;
 }
 
 export class Hud {
@@ -193,6 +196,7 @@ export class Hud {
 
   update(d: HudData, dt: number): void {
     this.root.classList.toggle('open-world', !!d.openWorld);
+    this.root.classList.toggle('waypoint-race', d.mode === 'waypoint' && !d.openWorld);
     if (d.openWorld && this.card) {
       this.card.setStatus(d.openWorld.area);
       this.card.setStat(0, formatTime(d.raceTime));
@@ -201,7 +205,7 @@ export class Hud {
     }
     const racingMode = d.mode !== 'drift';
     this.posEl.textContent = racingMode ? `${d.position}/${d.carCount}` : 'Drift';
-    this.lapEl.textContent = d.mode === 'sprint' ? `${Math.round(d.progress * 100)}%` : `${Math.max(1, Math.min(d.lap, d.laps))}/${d.laps}`;
+    this.lapEl.textContent = d.mode === 'sprint' || d.mode === 'drag' || d.mode === 'waypoint' ? `${Math.round(d.progress * 100)}%` : `${Math.max(1, Math.min(d.lap, d.laps))}/${d.laps}`;
     this.timeEl.textContent = formatTime(d.raceTime);
     this.bestEl.textContent = d.bestLap ? formatTime(d.bestLap) : '--:--.--';
     this.ghostEl.style.display = d.ghost ? '' : 'none';
@@ -262,7 +266,7 @@ export class Hud {
     if (!w || !me) return;
     const dx = w.x - me.x;
     const dz = w.z - me.z;
-    const text = `Waypoint · ${formatDistance(Math.hypot(dx, dz))}`;
+    const text = `${d.waypointLabel ?? 'Waypoint'} · ${formatDistance(Math.hypot(dx, dz))}`;
     if (this.wpText.textContent !== text) this.wpText.textContent = text;
     const a = Math.atan2(-dx, dz) + me.yaw;
     if (!(Math.abs(Math.atan2(Math.sin(a - this.wpAngle), Math.cos(a - this.wpAngle))) < 0.01)) {

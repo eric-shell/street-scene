@@ -27,7 +27,7 @@
  * the same pure functions at the interpolated sim time.
  */
 import type { RoadGraph, RoadEdge } from './roadGraph';
-import type { RouteKind } from './route';
+import type { PlannedRouteKind } from './route';
 import { buildRoute, routeSample } from './route';
 import { riverCenter } from './districts/river';
 import type { Area, AreaBuild } from './districts/types';
@@ -208,10 +208,10 @@ const GATE_END = { along: 3, depth: 4 } as const;
  * read when the blocks are generated). No river, or no bridge that fits: no
  * drawbridge.
  */
-export function markDrawbridge(seed: number, g: RoadGraph, areas: Area[], builds: AreaBuild[], routeNodes: Record<RouteKind, number[]>): void {
+export function markDrawbridge(seed: number, g: RoadGraph, areas: Area[], builds: AreaBuild[], routeNodes: Record<PlannedRouteKind, number[]>): void {
   const river = areas.find((a) => a.kind === 'river');
   if (!river) return;
-  const routes = (['circuit', 'sprint'] as RouteKind[]).map((kind) => buildRoute(g, kind, routeNodes[kind]));
+  const routes = (['circuit', 'sprint'] as PlannedRouteKind[]).map((kind) => buildRoute(g, kind, routeNodes[kind]));
   // Start lines, finishes and grids: none of them on or near a drawbridge.
   const keepClear: { x: number; z: number }[] = [];
   for (const r of routes) {

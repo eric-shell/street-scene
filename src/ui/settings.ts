@@ -6,7 +6,8 @@ export type Quality = 'low' | 'medium' | 'high';
 export type Difficulty = 'easy' | 'medium' | 'hard';
 /** What the menu's race step starts: a race mode, or free roam. */
 export type RaceType = RaceMode | 'roam';
-export const RACE_TYPES: readonly RaceType[] = ['circuit', 'sprint', 'drift', 'roam'];
+/** In the race step's grid order (two rows of three, read left to right); the number keys pick them in this order. */
+export const RACE_TYPES: readonly RaceType[] = ['circuit', 'sprint', 'waypoint', 'drift', 'drag', 'roam'];
 
 export interface Settings {
   /**

@@ -2,6 +2,9 @@
  * Picks a closed circuit and a point to point sprint through the road graph,
  * places checkpoints and a start grid, lists the route's shortcuts (carved
  * into the city for it, see districts/alley.ts) and closes off side streets.
+ * The drag strip and the waypoint race's suggested route are picked from the
+ * finished city instead (findDragNodes, findWaypointNodes): nothing is planned
+ * around them, so adding them changed no city.
  */
 import { CITY, ROUTE } from './config';
 import { RoadGraph, edgeBetween, isRiverEdge, otherNode } from './roadGraph';
@@ -11,7 +14,10 @@ import { shortcutSpan } from './districts/alley';
 import { isChannelNode } from './districts/river';
 import { DEG, Vec2, abs, atan2, clamp, cos, distToSegment, lineIntersectT, sign, sin, sqrt, wrapAngle, yawOf } from '../sim/math';
 
-export type RouteKind = 'circuit' | 'sprint';
+/** The routes planned with the city (planRoads carves their shortcuts and car parks into it). */
+export type PlannedRouteKind = 'circuit' | 'sprint';
+/** Every route a race runs on: the planned two, the drag strip and the waypoint race's suggested route. */
+export type RouteKind = PlannedRouteKind | 'drag' | 'waypoint';
 
 export interface GridSlot {
   x: number;
@@ -47,6 +53,23 @@ export interface Route {
   shortcuts: RouteShortcut[];
   tightCorners: number;
   sweepers: number;
+  /** Waypoint races: the waypoints in order, the finish line last (their s are the checkpoints). */
+  waypoints?: RouteWaypoint[];
+}
+
+/** A waypoint race target: an intersection the race must pass through, or the finish line. */
+export interface RouteWaypoint {
+  x: number;
+  z: number;
+  /** Route distance of the target along the suggested route (m). */
+  s: number;
+  /** Driving within this of (x, z) reaches it (m). */
+  radius: number;
+  /** Distance by road from every graph node to the target (m, any street, shortcuts too): the race's progress measure. */
+  field: Float64Array;
+  /** The finish line: the graph edge it stands on and how far along it from the edge's node a (m); -1 for an intersection. */
+  edge: number;
+  along: number;
 }
 
 export interface RouteShortcut {
@@ -106,6 +129,31 @@ function dijkstra(g: RoadGraph, from: number, to: number, weight: Float64Array, 
   for (let v = to; v !== -1; v = prev[v]) path.push(v);
   path.reverse();
   return path[0] === from ? path : null;
+}
+
+/** Distance by road (m) from every node to the nearest seed, each seed a node and its distance to go (Dijkstra on edge lengths). */
+function distanceField(g: RoadGraph, seeds: readonly [number, number][]): Float64Array {
+  const n = g.nodes.length;
+  const dist = new Float64Array(n).fill(Infinity);
+  const done = new Uint8Array(n);
+  for (const [id, d] of seeds) dist[id] = Math.min(dist[id], d);
+  for (;;) {
+    let u = -1;
+    let best = Infinity;
+    for (let i = 0; i < n; i++) {
+      if (!done[i] && dist[i] < best) {
+        best = dist[i];
+        u = i;
+      }
+    }
+    if (u < 0) return dist;
+    done[u] = 1;
+    for (const eid of g.nodes[u].edges) {
+      const v = otherNode(g.edges[eid], u);
+      const nd = dist[u] + g.edges[eid].length;
+      if (nd < dist[v]) dist[v] = nd;
+    }
+  }
 }
 
 /** Signed turn angle at b for the path a -> b -> c. */
@@ -325,6 +373,145 @@ export function findSprintNodes(g: RoadGraph, seed: number, variant = 0, want?: 
   return best;
 }
 
+/** Through streets a drag strip may run along: no alley, river floor, ramp or level crossing (bridges: world.ts keeps it off the drawbridge). */
+const DRAG_KINDS = new Set(['street', 'avenue', 'boulevard', 'diagonal']);
+
+/** A drag's race distance (m): ROUTE.dragBlocks city blocks. */
+export const DRAG_DISTANCE = ROUTE.dragBlocks * CITY.spacing;
+
+/**
+ * The drag strip: the widest run of streets straight enough (no node on it
+ * bending more than the first of ROUTE.dragBendDeg, no roundabout) and long
+ * enough for the start, DRAG_DISTANCE and the runout, cut to just that.
+ * `edgeOk` rules out streets the city has put something on (roadworks, the
+ * night market, ...); world.ts knows the districts, this module does not. A
+ * city with no straight that long allows the next gentler bends, and with
+ * none at all the longest run wins (buildRoute then races it to the runout).
+ * The seed only breaks ties, so the strip moves between the city's best.
+ */
+export function findDragNodes(g: RoadGraph, seed: number, edgeOk: (edge: number) => boolean = () => true): number[] {
+  let longest: { nodes: number[]; len: number } | null = null;
+  for (const bend of ROUTE.dragBendDeg) {
+    const best = straightestRun(g, seed, edgeOk, bend);
+    if (best && best.len >= DRAG_NEED) return best.nodes;
+    if (best && (!longest || best.len > longest.len)) longest = best;
+  }
+  if (!longest) throw new Error('could not find a drag strip');
+  return longest.nodes;
+}
+
+/** Straight a drag strip needs (m): the start, the race and the runout. */
+const DRAG_NEED = ROUTE.dragStartOffset + DRAG_DISTANCE + ROUTE.dragRunout;
+
+/** The best run of drag streets bending at most `bendDeg` at each node: long enough first, then widest; its nodes and length (m). */
+function straightestRun(g: RoadGraph, seed: number, edgeOk: (edge: number) => boolean, bendDeg: number): { nodes: number[]; len: number } | null {
+  const rng = new Rng(deriveSeed(seed, 'drag'));
+  const need = DRAG_NEED;
+  const ok = (eid: number) => {
+    const e = g.edges[eid];
+    return DRAG_KINDS.has(e.kind) && !e.shortcut && e.crossing === undefined && edgeOk(eid);
+  };
+  let best: { nodes: number[]; len: number } | null = null;
+  let bestScore = -Infinity;
+  for (const start of g.nodes) {
+    if (start.ring) continue;
+    for (const e0 of start.edges) {
+      // The grid stands on the first street, clear of the intersection behind it.
+      if (!ok(e0) || g.edges[e0].length < ROUTE.dragStartOffset + 20) continue;
+      const nodes = [start.id, otherNode(g.edges[e0], start.id)];
+      let len = g.edges[e0].length;
+      let width = g.edges[e0].width;
+      while (len < need && !g.nodes[nodes[nodes.length - 1]].ring) {
+        const a = nodes[nodes.length - 2];
+        const b = nodes[nodes.length - 1];
+        let next = -1;
+        for (const eid of g.nodes[b].edges) {
+          const c = otherNode(g.edges[eid], b);
+          if (c === a || !ok(eid) || nodes.includes(c)) continue;
+          if (abs(turnAngle(g, a, b, c)) <= bendDeg * DEG) next = eid;
+        }
+        if (next < 0) break;
+        nodes.push(otherNode(g.edges[next], b));
+        len += g.edges[next].length;
+        width = Math.min(width, g.edges[next].width);
+      }
+      // The strip ends on a street, not in a roundabout.
+      if (g.nodes[nodes[nodes.length - 1]].ring) {
+        len -= g.edges[edgeBetween(g, nodes[nodes.length - 2], nodes[nodes.length - 1])].length;
+        nodes.pop();
+      }
+      if (nodes.length < 2) continue;
+      // Long enough beats everything, then the widest street; the seed's jitter picks among equals.
+      const sc = (len >= need ? 1e4 : len) + width * 20 + rng.range(0, 10);
+      if (sc > bestScore) {
+        bestScore = sc;
+        best = { nodes, len };
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * The waypoint race: ROUTE.waypointCount waypoints (plain intersections, off
+ * the river and the roundabouts) strung across town between a start and a
+ * finish, and the suggested route through them, the shortest way leg by leg
+ * that never crosses itself. The AI drives the suggestion; the player may take
+ * any street (the world is open, see createWorld). Returns the route's nodes
+ * and, of those, the waypoints in order.
+ */
+export function findWaypointNodes(g: RoadGraph, seed: number): { nodes: number[]; waypoints: number[] } {
+  const rng = new Rng(deriveSeed(seed, 'waypoint'));
+  const n = g.nodes.length;
+  // Plain distances: the suggestion is the quick way, not the scenic one.
+  const w = new Float64Array(g.edges.length);
+  g.edges.forEach((e, i) => (w[i] = e.shortcut ? Infinity : e.length));
+  const plain = (id: number) => !g.nodes[id].ring && !isChannelNode(g, id);
+  const far = (a: number, b: number, lo: number, hi: number) => {
+    const d = sqrt((g.nodes[a].x - g.nodes[b].x) ** 2 + (g.nodes[a].z - g.nodes[b].z) ** 2);
+    return d >= lo && d <= hi;
+  };
+  let best: { nodes: number[]; waypoints: number[] } | null = null;
+  let bestScore = -Infinity;
+  for (let attempt = 0; attempt < ROUTE.maxAttempts; attempt++) {
+    const stops = [rng.int(0, n - 1)];
+    // Waypoints, then the finish's node, each a leg away from the last and clear of the earlier ones.
+    for (let k = 0; k <= ROUTE.waypointCount && stops.length === k + 1; k++) {
+      for (let tries = 0; tries < 30; tries++) {
+        const c = rng.int(0, n - 1);
+        if (!plain(c) || !far(stops[k], c, ROUTE.waypointLegMin, ROUTE.waypointLegMax)) continue;
+        if (stops.slice(0, -1).some((s) => far(s, c, 0, ROUTE.waypointLegMin * 0.7))) continue;
+        stops.push(c);
+        break;
+      }
+    }
+    if (stops.length !== ROUTE.waypointCount + 2 || !plain(stops[0])) continue;
+    const used = new Uint8Array(n);
+    let path: number[] = [stops[0]];
+    for (let k = 1; k < stops.length && path.length; k++) {
+      for (const id of path) used[id] = 1;
+      used[stops[k - 1]] = 0;
+      const leg = dijkstra(g, stops[k - 1], stops[k], w, used, new Uint8Array(g.edges.length));
+      if (!leg || leg.slice(1).some((id) => used[id])) path = [];
+      else path = path.concat(leg.slice(1));
+    }
+    if (path.length < 3) continue;
+    // Grid and finish on streets: a long enough first street, never on the river or across the tracks.
+    const first = g.edges[edgeBetween(g, path[0], path[1])];
+    const last = g.edges[edgeBetween(g, path[path.length - 2], path[path.length - 1])];
+    if (first.length < 90 || isRiverEdge(first) || isRiverEdge(last) || first.crossing !== undefined || last.crossing !== undefined || last.length < 60) continue;
+    const len = pathLength(g, path, false);
+    const sc = score(cornerStats(g, path, false), len, ROUTE.waypointMinLength, ROUTE.waypointMaxLength);
+    if (sc > bestScore) {
+      bestScore = sc;
+      best = { nodes: path, waypoints: stops.slice(1, -1) };
+    }
+    if (sc >= 0) break;
+  }
+  if (!best) throw new Error('could not find a waypoint race');
+  return best;
+}
+
 function polylineFrom(g: RoadGraph, nodes: number[], closed: boolean) {
   const edges: number[] = [];
   const m = closed ? nodes.length : nodes.length - 1;
@@ -332,8 +519,10 @@ function polylineFrom(g: RoadGraph, nodes: number[], closed: boolean) {
   return edges;
 }
 
-export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[]): Route {
+/** `waypointNodes`: a waypoint race's waypoints (findWaypointNodes), all on `routeNodes`. */
+export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[], waypointNodes: readonly number[] = []): Route {
   const closed = kind === 'circuit';
+  const drag = kind === 'drag';
   let nodes = routeNodes.slice();
   let edges = polylineFrom(g, nodes, closed);
   let points: Vec2[];
@@ -382,9 +571,11 @@ export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[]):
     cum.push(cum[i - 1] + sqrt((points[i].x - points[i - 1].x) ** 2 + (points[i].z - points[i - 1].z) ** 2));
   }
   const length = cum[cum.length - 1];
-  const startS = closed ? 0 : ROUTE.sprintStartOffset;
+  const startS = closed ? 0 : drag ? ROUTE.dragStartOffset : ROUTE.sprintStartOffset;
   let finishS = closed ? length : length - ROUTE.sprintFinishOffset;
-  if (!closed) {
+  // A drag runs DRAG_DISTANCE, or on a city without a straight that long, as far as the runout leaves room for.
+  if (drag) finishS = startS + Math.min(DRAG_DISTANCE, length - startS - ROUTE.dragRunout);
+  else if (!closed) {
     // Keep the finish line on a straight, out of intersections (move it earlier, never shorten the runout).
     for (let i = points.length - 2; i > 0; i--) {
       if (abs(finishS - cum[i]) < ROUTE.sprintFinishNodeClear) finishS = cum[i] - ROUTE.sprintFinishNodeClear;
@@ -432,17 +623,49 @@ export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[]):
     tightCorners: stats.tight,
     sweepers: stats.sweepers,
   };
+  // A waypoint race's checkpoints are its waypoints, at their intersections, then the finish line.
+  if (waypointNodes.length) {
+    const waypoints: RouteWaypoint[] = waypointNodes.map((id) => {
+      const P = g.nodes[id];
+      const wide = Math.max(...P.edges.map((e) => g.edges[e].width));
+      return { x: P.x, z: P.z, s: cum[nodePoint.get(id) ?? 0], radius: wide / 2 + ROUTE.waypointSlack, field: distanceField(g, [[id, 0]]), edge: -1, along: 0 };
+    });
+    // The finish stands on the route's street between the last node before it and the next one.
+    let k = 0;
+    while (k + 2 < nodes.length && cum[nodePoint.get(nodes[k + 1]) ?? 0] <= finishS) k++;
+    const fe = g.edges[edges[k]];
+    const sA = cum[nodePoint.get(nodes[k]) ?? 0];
+    const sB = cum[nodePoint.get(nodes[k + 1]) ?? points.length - 1];
+    const fromA = clamp(fe.a === nodes[k] ? finishS - sA : sB - finishS, 0, fe.length);
+    const f = routeSample(route, finishS);
+    waypoints.push({
+      x: f.x,
+      z: f.z,
+      s: finishS,
+      radius: segWidth[f.seg] / 2 + ROUTE.waypointFinishSlack,
+      field: distanceField(g, [
+        [fe.a, fromA],
+        [fe.b, fe.length - fromA],
+      ]),
+      edge: fe.id,
+      along: fromA,
+    });
+    route.waypoints = waypoints;
+    route.checkpoints = waypoints.map((wp) => wp.s);
+  }
 
   // Slots 0-3 are the original staggered grid (one car a row, sides alternating), so races of up to
   // four cars keep their replays. Slots 4-7 fill the empty side of those rows and 8-9 add a fifth row:
   // a two-wide grid for the full field that stays short enough for a sprint's first straight.
+  // A drag lines its two cars up side by side, the rest behind; slot 1 (the player's) takes the right hand
+  // lane, a negative lateral offset.
   for (let i = 0; i < ROUTE.gridSlots; i++) {
-    const row = i < 8 ? i % 4 : 4;
-    const right = i < 4 ? i % 2 === 0 : i < 8 ? i % 2 === 1 : i === 8;
+    const row = drag ? Math.floor(i / 2) : i < 8 ? i % 4 : 4;
+    const right = drag ? i % 2 === 0 : i < 4 ? i % 2 === 0 : i < 8 ? i % 2 === 1 : i === 8;
     const s = startS - ROUTE.gridFirstRow - row * ROUTE.gridRowSpacing;
     const p = routeSample(route, s);
     const half = route.segWidth[p.seg] / 2;
-    const lateral = (right ? 1 : -1) * Math.min(2.6, half - 1.7);
+    const lateral = (right ? 1 : -1) * Math.min(drag ? ROUTE.dragLaneOffset : 2.6, half - 1.7);
     // left normal of tangent (tx, tz) is (tz, -tx)
     route.grid.push({ x: p.x + p.tz * lateral, z: p.z - p.tx * lateral, yaw: yawOf(p.tx, p.tz), s });
   }

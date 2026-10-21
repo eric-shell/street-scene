@@ -98,8 +98,9 @@
   --sheen-soft: rgba(255, 255, 255, 0.2);
   --sheen-bright: rgba(255, 252, 240, 0.85);
 }
-/* Each race type's color: the rule's three stops for the races (circuit orange, sprint yellow, drift red)
-   and green for the open city. --mode-rgb feeds the washes; the course drawings (ui/menuMaps.ts) read --mode. */
+/* Each race type's color: the rule's three stops for the races (circuit orange, sprint yellow, drift red),
+   purple for the drag, cyan for the waypoint race and green for the open city. --mode-rgb feeds the washes;
+   the course drawings (ui/menuMaps.ts) read --mode. */
 .mode-circuit {
   --mode: var(--accent);
   --mode-rgb: 252, 152, 103;
@@ -111,6 +112,14 @@
 .mode-drift {
   --mode: var(--red);
   --mode-rgb: 255, 97, 136;
+}
+.mode-drag {
+  --mode: var(--purple);
+  --mode-rgb: 171, 157, 242;
+}
+.mode-waypoint {
+  --mode: var(--cyan);
+  --mode-rgb: 120, 220, 232;
 }
 .mode-roam {
   --mode: var(--green);
@@ -1548,11 +1557,12 @@ body > .mw {
 .nav-item:active {
   transform: translateY(1px);
 }
-/* The race types in a row: icon over name, the number key that picks it in the corner. The picked one
-   fills with its color's wash over a bar of it along the bottom (.mode-* carries --mode). */
-.mode-row {
+/* The race types in a grid of two rows of three (menu.ts MODE_COLUMNS): icon over name, the number key that
+   picks it in the corner. The picked one fills with its color's wash over a bar of it along the bottom
+   (.mode-* carries --mode). */
+.mode-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
 }
 .mode-tile {
@@ -1639,6 +1649,14 @@ body > .mw {
 .home[data-mode='drift'] {
   --mode: var(--red);
   --mode-rgb: 255, 97, 136;
+}
+.home[data-mode='drag'] {
+  --mode: var(--purple);
+  --mode-rgb: 171, 157, 242;
+}
+.home[data-mode='waypoint'] {
+  --mode: var(--cyan);
+  --mode-rgb: 120, 220, 232;
 }
 .home[data-mode='roam'] {
   --mode: var(--green);
@@ -1831,6 +1849,19 @@ body > .mw {
 .course .c-finish .c-disc {
   stroke: #fcfcfa;
   stroke-width: 2;
+}
+/* Waypoints: numbered discs in the type's color, each popping in as the line is drawn to it (--at, 0..1). */
+.course .c-wp .c-disc {
+  fill: var(--mode);
+  stroke: #fcfcfa;
+  stroke-width: 1.2;
+}
+.course .c-wp-n {
+  fill: var(--bg0);
+  font: 900 10px var(--display);
+}
+.course.enter .c-wp .c-mark-in {
+  animation: course-mark 0.45s cubic-bezier(0.3, 1.7, 0.5, 1) calc(0.15s + var(--at, 0) * 0.75s) backwards;
 }
 .course .c-mark-in {
   transform-box: fill-box;
@@ -5888,8 +5919,16 @@ body.fullmap-open .mw {
   display: none;
   border-color: rgba(255, 216, 102, 0.35);
 }
-.hud.open-world .hud-waypoint.show {
+.hud.open-world .hud-waypoint.show,
+.hud.waypoint-race .hud-waypoint.show {
   display: flex;
+}
+/* The waypoint race's next target wears the type's cyan (free roam's own pin stays yellow). */
+.hud.waypoint-race .hud-waypoint {
+  border-color: rgba(120, 220, 232, 0.4);
+}
+.hud.waypoint-race .hud-waypoint :is(.ic, .dir) {
+  color: var(--cyan);
 }
 .hud-waypoint .ic {
   color: var(--accent-2);

@@ -3,7 +3,7 @@ import { Rng } from '../src/sim/prng';
 import { createWorld, planRoads } from '../src/city/world';
 import type { World } from '../src/city/world';
 import { buildRoute } from '../src/city/route';
-import type { Route, RouteKind } from '../src/city/route';
+import type { Route, PlannedRouteKind } from '../src/city/route';
 import { edgeBetween } from '../src/city/roadGraph';
 import type { RoadGraph } from '../src/city/roadGraph';
 import { CITY } from '../src/city/config';
@@ -30,7 +30,7 @@ function routeEdgeSet(g: RoadGraph, nodes: number[], closed: boolean): Set<numbe
 }
 
 /** The first `count` seeds of a seeded stream whose `mode` route drives a market. */
-function marketSeeds(stream: number, count: number, mode: RouteKind): number[] {
+function marketSeeds(stream: number, count: number, mode: PlannedRouteKind): number[] {
   const rng = new Rng(stream);
   const out: number[] = [];
   for (let i = 0; i < 80 && out.length < count; i++) {
@@ -280,7 +280,7 @@ describe('night market', () => {
   });
 
   it('AI fields race through the market without getting stuck, and replay identically', () => {
-    const runs: [number, RouteKind][] = [
+    const runs: [number, PlannedRouteKind][] = [
       [marketSeeds(1212, 1, 'circuit')[0], 'circuit'],
       [marketSeeds(1313, 1, 'sprint')[0], 'sprint'],
     ];

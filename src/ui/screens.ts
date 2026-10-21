@@ -6,12 +6,14 @@
  */
 import { btn, h, segmented } from './dom';
 import {
+  ChevronsRight,
   Code,
   Compass,
   Flag,
   Gamepad2,
   Heart,
   Keyboard,
+  MapPinned,
   Medal,
   Monitor,
   Pause,
@@ -51,7 +53,7 @@ export interface PauseScreen {
 export interface PauseTicket {
   /** The event's name, over the title. */
   event?: string;
-  /** Circuit, Sprint, Drift, Free roam. */
+  /** Circuit, Sprint, Drag, Waypoint, Drift, Free roam. */
   title: string;
   /** The race type whose color it wears. */
   mode: RaceType;
@@ -71,7 +73,7 @@ export interface PauseAction {
   onClick(): void;
 }
 
-const TYPE_ICON: Record<RaceType, IconNode> = { circuit: RotateCcw, sprint: Route, drift: Wind, roam: Compass };
+const TYPE_ICON: Record<RaceType, IconNode> = { circuit: RotateCcw, sprint: Route, drag: ChevronsRight, waypoint: MapPinned, drift: Wind, roam: Compass };
 
 /**
  * Pause: a rail over the dimmed race in the main menu's language. The header
@@ -159,7 +161,7 @@ export interface ResultRow {
   bestLap: number | null;
 }
 
-const MODE_LABEL: Record<RaceMode, string> = { circuit: 'Circuit', sprint: 'Sprint', drift: 'Drift' };
+const MODE_LABEL: Record<RaceMode, string> = { circuit: 'Circuit', sprint: 'Sprint', drag: 'Drag', waypoint: 'Waypoint', drift: 'Drift' };
 
 /** Results: a rail beside the finish shots with the headline (place or score), a new best, the standings and what next. */
 export function resultsScreen(o: {

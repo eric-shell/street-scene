@@ -6,7 +6,7 @@
 import { CITY, ROUTE } from './config';
 import { CityBlocks, Solid, Wall, generateBlocks } from './blocks';
 import { RoadGraph, generateRoadGraph } from './roadGraph';
-import { BarrierGroup, RailWall, Route, RouteKind, buildRoute, findCircuitNodes, findSprintNodes, routeBarrierGroups, routeRails } from './route';
+import { BarrierGroup, PlannedRouteKind, RailWall, Route, RouteKind, buildRoute, findCircuitNodes, findDragNodes, findSprintNodes, findWaypointNodes, routeBarrierGroups, routeRails } from './route';
 import { Prop, buildPropGrid } from './props';
 import { SpatialGrid } from './spatial';
 import { Terrain, createTerrain } from './terrain';
@@ -23,6 +23,7 @@ import { LevelCrossing, addLevelCrossings } from './levelCrossings';
 /** Routes tried (the first pick, then alternatives) until one has room for a shortcut. */
 const ROUTE_TRIES = 12;
 import { pointInPolygon } from './districts/geom';
+import { ROADWORKS } from './districts/roadworks';
 import { Area, SURFACE_PHYSICS, Surface, SurfacePhysics } from './districts/types';
 
 export type { Surface, SurfacePhysics } from './districts/types';
@@ -65,7 +66,7 @@ export interface City {
    * Both routes' graph nodes in driving order, picked while the city is
    * planned (see planRoads) so their shortcuts could be carved into it.
    */
-  routeNodes: Record<RouteKind, number[]>;
+  routeNodes: Record<PlannedRouteKind, number[]>;
   /** The seed's named event (Hill Climb, River Run, ...; see events.ts), which the routes were picked to match. */
   event: CityEvent;
 }
@@ -79,9 +80,9 @@ export interface City {
  * Cheap (no blocks): tests use it to sweep many seeds. `forceFlavour`
  * overrides the seed's drawn event flavour (tests and tools comparing them).
  */
-export function planRoads(seed: number, forceFlavour?: EventFlavourId): { graph: RoadGraph; districts: CityDistricts; routeNodes: Record<RouteKind, number[]>; event: CityEvent } {
+export function planRoads(seed: number, forceFlavour?: EventFlavourId): { graph: RoadGraph; districts: CityDistricts; routeNodes: Record<PlannedRouteKind, number[]>; event: CityEvent } {
   const graph = generateRoadGraph(seed);
-  let routeNodes: Record<RouteKind, number[]> | null = null;
+  let routeNodes: Record<PlannedRouteKind, number[]> | null = null;
   let flavour: EventFlavourId = 'downtownDash';
   // Districts claim space and edit the graph (alleys, shortcuts, roundabouts, bridges) first.
   const districts = planDistricts(seed, graph, {
@@ -143,7 +144,7 @@ export function planRoads(seed: number, forceFlavour?: EventFlavourId): { graph:
     },
   });
   if (!routeNodes) throw new Error('routes were not planned');
-  const nodes: Record<RouteKind, number[]> = routeNodes;
+  const nodes: Record<PlannedRouteKind, number[]> = routeNodes;
   // One bridge becomes the drawbridge, its span kept clear of street furniture (city/drawbridge.ts).
   markDrawbridge(seed, graph, districts.areas, districts.builds, nodes);
   const event = resolveEvent(flavour, graph, districts.areas, [
@@ -161,8 +162,9 @@ export interface World extends City {
   /** Closed side street barriers grouped per intersection (see route.ts). Barrier walls carry `group`. */
   barrierGroups: BarrierGroup[];
   /**
-   * Open world (free roam): no route barriers, corner rails, parked cars or
-   * crowds; every street is drivable. The route still exists for the grid.
+   * Open world (free roam, and the waypoint race's city): no route barriers,
+   * corner rails, parked cars or crowds; every street is drivable. The route
+   * still exists for the grid (and the waypoint race's suggestion).
    */
   openWorld?: boolean;
   /** Destructible props (same array as blocks.props). Broken state lives on RaceState.brokenProps. */
@@ -372,7 +374,47 @@ function closureRails(groups: BarrierGroup[], cornerRails: RailWall[]): RailWall
   return out;
 }
 
+/**
+ * Districts a drag strip keeps off: whatever stands in the street, narrows it or takes it off grade.
+ * The El (columns on the sidewalk) and tunnels (full width bores) may stand over a strip; roadworks
+ * may close a curb lane beside it (stripStreet).
+ */
+const OFF_STRIP = new Set<Area['kind']>(['market', 'river', 'roundabout', 'overpass', 'carPark', 'monument', 'bluff']);
+/** Room a drag car needs from the centerline out to a roadworks closure's barriers (m): its lane plus half a car and a margin. */
+const STRIP_CLEAR = ROUTE.dragLaneOffset + 1.5;
+
+/**
+ * Whether a street can be part of the drag strip: no district on its
+ * carriageway, sampled every 8 m along it. A street bridge over the river
+ * stands in the river's area and is fine, the drawbridge (a timed gate) never.
+ */
+function stripStreet(city: City, edge: number): boolean {
+  const g = city.graph;
+  const e = g.edges[edge];
+  if (e.bridge && city.districts.areas.some((a) => a.kind === 'river' && a.params.drawbridge === edge)) return false;
+  const A = g.nodes[e.a];
+  const B = g.nodes[e.b];
+  const steps = Math.max(1, Math.ceil(e.length / 8));
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const a = city.districts.areaAt(A.x + (B.x - A.x) * t, A.z + (B.z - A.z) * t);
+    if (a && OFF_STRIP.has(a.kind) && !(e.bridge && a.kind === 'river')) return false;
+  }
+  // A lane closure is fine where its barriers stand clear of the drag lane on their side.
+  return !city.districts.areas.some((a) => a.kind === 'roadworks' && a.params.edge === edge && e.width / 2 - a.params.close - ROADWORKS.barrierReach < STRIP_CLEAR);
+}
+
+/**
+ * A route of the city: the planned circuit and sprint as planRoads picked
+ * them, the drag strip and the waypoint race picked from the finished city
+ * (nothing was carved for them, so they changed no city).
+ */
 export function createRoute(city: City, kind: RouteKind): Route {
+  if (kind === 'drag') return buildRoute(city.graph, kind, findDragNodes(city.graph, city.seed, (e) => stripStreet(city, e)));
+  if (kind === 'waypoint') {
+    const { nodes, waypoints } = findWaypointNodes(city.graph, city.seed);
+    return buildRoute(city.graph, kind, nodes, waypoints);
+  }
   return buildRoute(city.graph, kind, city.routeNodes[kind]);
 }
 

@@ -15,6 +15,7 @@ import { ROAD_Y } from '../render/cityMeshes';
 import { unmaskVehicle } from '../render/vehicleMask';
 import { LightTrails } from '../render/lightTrails';
 import { Sparks } from '../render/sparks';
+import { WaypointBeacons } from '../render/waypointBeacons';
 import { EngineVoice, audioHub } from '../audio/engineAudio';
 import { Sfx } from '../audio/sfx';
 import { manifestCar } from '../render/carAssets';
@@ -246,6 +247,8 @@ export class RaceSession {
   private trails: LightTrails;
   /** Underbody and wall sparks for every car near the camera (render/sparks.ts). */
   private sparks: Sparks;
+  /** The waypoint race's columns of light over its waypoints (null in the other modes). */
+  private readonly beacons: WaypointBeacons | null = null;
   /** Ambient traffic (render/traffic.ts) and its last two snapshots (TRAFFIC_SNAP floats per car), swapped every tick. */
   private traffic: TrafficView | null = null;
   private trafficPrev = new Float32Array(0);
@@ -293,7 +296,8 @@ export class RaceSession {
     this.night = createNightScene(this.race.world, gr, settings);
     this.cam = new ChaseCamera(this.race.world);
     this.cine = new RaceCinematics(this.cam, this.race.world, uiRoot);
-    this.openWorld = opts.config.openWorld === true || this.race.world.openWorld === true;
+    // Free roam (the waypoint race's world is open too, but it is a race: grid, rivals, finish).
+    this.openWorld = opts.config.openWorld === true;
     this.night.crowds.setEnabled(!this.openWorld);
     this.crowdCars = this.race.cars.map(() => ({ x: 0, z: 0, speed: 0 }));
     this.hud = new Hud(uiRoot, this.race.world);
@@ -327,6 +331,10 @@ export class RaceSession {
     }
     this.sparks = new Sparks(settings.quality);
     this.night.scene.add(this.sparks.mesh);
+    if (this.race.config.mode === 'waypoint' && this.race.world.route.waypoints) {
+      this.beacons = new WaypointBeacons(this.race.world);
+      this.night.scene.add(this.beacons.group);
+    }
     const traffic = this.race.traffic;
     if (traffic) {
       this.traffic = new TrafficView(this.race.world, traffic.cars.length);
@@ -856,6 +864,13 @@ export class RaceSession {
         case 'reset':
           this.hud.message('Back on track', 1);
           break;
+        case 'checkpoint': {
+          // The waypoint race's waypoints (its last target is the finish line, which says FINISH itself).
+          const n = (r.world.route.waypoints?.length ?? 0) - 1;
+          const k = e.value ?? 0;
+          if (r.config.mode === 'waypoint' && k <= n) this.hud.message(k < n ? `Waypoint ${k}/${n}  ${formatTime(raceTime(r))}` : `Waypoint ${k}/${n}  ·  TO THE FINISH`, 2);
+          break;
+        }
         case 'driftBank':
           // A drift that ran through a zone shows what the zone added.
           this.hud.message(`+${(e.value ?? 0).toLocaleString()}${e.other ? `  ·  zone +${e.other.toLocaleString()}` : ''}`, 1.2);
@@ -871,6 +886,7 @@ export class RaceSession {
       const px = this.gr.renderer.domElement.clientHeight || window.innerHeight;
       this.sparks.update(this.time, (2 * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, px));
     }
+    this.beacons?.update(this.race.cars[0].nextCheckpoint, this.time);
     this.alpha = alpha;
     const r = this.race;
     const poses = this.curr.map((c, i) => lerpSnap(this.prev[i], c, this.paused ? 1 : alpha));
@@ -1110,6 +1126,13 @@ export class RaceSession {
     };
     const zone = driftZoneStatus(r, 0);
     if (zone) data.zone = { mul: r.config.mode === 'drift' ? DRIFT_ZONES.scoreMul : DRIFT_ZONES.refillMul, nitro: r.config.mode !== 'drift', left: zone.left, resting: zone.resting };
+    // The waypoint race points the waypoint chip and the minimap at the next target.
+    const target = r.config.mode === 'waypoint' && !rc.finished ? r.world.route.waypoints?.[rc.nextCheckpoint] : undefined;
+    if (target) {
+      const n = r.world.route.waypoints!.length - 1;
+      data.waypoint = target;
+      data.waypointLabel = rc.nextCheckpoint < n ? `Waypoint ${rc.nextCheckpoint + 1}/${n}` : 'Finish';
+    }
     if (this.openWorld) {
       this.topKmh = Math.max(this.topKmh, c.speed * 3.6);
       this.updateArea(c.x, c.z, dt);
@@ -1156,6 +1179,7 @@ export class RaceSession {
     this.ghostView?.dispose();
     this.trails.dispose();
     this.sparks.dispose();
+    this.beacons?.dispose();
     this.traffic?.dispose();
     this.engines.forEach((e) => e.dispose());
     this.night.city.finishLine.onFirework = null;

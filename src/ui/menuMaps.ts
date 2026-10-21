@@ -10,7 +10,8 @@
  *    tonight's event is without saying which race. A click opens the full map.
  *  - CourseMap: the race step's map, the same table zoomed in on the picked
  *    race type's course, drawn on the plane in its color: the circuit's lap
- *    from the start line, the sprint from A to B, the drift lap with its
+ *    from the start line, the sprint from A to B, the drag strip, the waypoint
+ *    race's suggested route with its numbered waypoints, the drift lap with its
  *    zones; free roam zooms back out to the whole city and lights every
  *    street outward from the car. The signature district breathes quieter
  *    there so the course is the brightest thing. Switching types fades the
@@ -340,6 +341,13 @@ export class CityOverview {
 export interface CourseRoutes {
   circuit: Route;
   sprint: Route;
+  drag: Route;
+  waypoint: Route;
+}
+
+/** The route a race type's course is drawn from (drift laps the circuit; free roam's stand-in is the circuit too). */
+export function courseRoute(routes: CourseRoutes, type: RaceType): Route {
+  return type === 'sprint' || type === 'drag' || type === 'waypoint' ? routes[type] : routes.circuit;
 }
 
 /** How long the outgoing course takes to fade (ms; matches `.course.leave` in ui.css). */
@@ -408,7 +416,7 @@ export class CourseMap {
   /** What a type frames: its course with the start and finish discs clear of it, the zones too for drift; free roam the whole city. */
   private frameOf(type: RaceType): Frame | null {
     if (type === 'roam') return null;
-    const pts: Vec2[] = coursePoints(type === 'sprint' ? this.routes.sprint : this.routes.circuit);
+    const pts: Vec2[] = coursePoints(courseRoute(this.routes, type));
     if (type === 'drift') for (const z of driftZones(this.world)) pts.push(...z.polygon);
     const f: Frame = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
     for (const p of pts) {
@@ -453,7 +461,7 @@ export class CourseMap {
       g.append(defs, svg('path', { class: 'c-streets', d: streets, mask: `url(#${id})` }));
       return g;
     }
-    const route = type === 'sprint' ? this.routes.sprint : this.routes.circuit;
+    const route = courseRoute(this.routes, type);
     if (type === 'drift') {
       // The zones where a slide pays: the plaza and the bigger lots.
       let zones = '';
@@ -468,6 +476,9 @@ export class CourseMap {
       svg('path', { class: 'c-pulse', d: line, pathLength: 1 }),
     );
     const start = routeSample(route, route.startS);
+    // The waypoints in order, each popping in as the line is drawn to it (the last target is the finish line itself).
+    const wps = route.waypoints ?? [];
+    wps.slice(0, -1).forEach((wp, i) => g.append(waypointMarker(mapX(v, wp.x), mapY(v, wp.z), i + 1, (wp.s - route.startS) / (route.finishS - route.startS))));
     // A lap starts and ends on one line: its marker is the start, green, where the grid lines up.
     if (!route.closed) {
       const end = routeSample(route, route.finishS);
@@ -517,6 +528,15 @@ function finishMarker(x: number, y: number): SVGGElement {
   const defs = svg('defs');
   defs.append(pattern);
   return markerDisc(x, y, 'c-finish', defs, svg('circle', { class: 'c-disc', r: 10, fill: `url(#${id})` }));
+}
+
+/** A waypoint: its number on a disc in the type's color, popping in when the line drawn on reaches it (`at`, 0..1 of the course). */
+function waypointMarker(x: number, y: number, n: number, at: number): SVGGElement {
+  const label = svg('text', { class: 'c-wp-n', 'text-anchor': 'middle', 'dominant-baseline': 'central' });
+  label.textContent = String(n);
+  const g = markerDisc(x, y, 'c-wp', svg('circle', { class: 'c-disc', r: 8.5 }), label);
+  g.style.setProperty('--at', at.toFixed(3));
+  return g;
 }
 
 /** A car marked on a course drawing: where it is (m), and whether it is the player's. */

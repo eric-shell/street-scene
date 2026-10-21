@@ -3,9 +3,12 @@
  * checkpoints, positions, wrong way, reset to road, drafting, drift scoring,
  * and the player input log. Everything here is pure and deterministic: given
  * the same config and the same input frames, every tick is identical.
+ * Five modes: circuit laps, the A to B sprint, drift (score attack on the
+ * circuit), drag (one rival side by side down a straight) and waypoint (the
+ * city is open, the race is to reach its waypoints in order by any streets).
  */
-import { createCity, createWorld, World, City } from '../city/world';
-import { GridSlot, routeSample } from '../city/route';
+import { createCity, createWorld, World, City, RouteProgress } from '../city/world';
+import { GridSlot, RouteKind, RouteWaypoint, routeSample } from '../city/route';
 import { carParkProgress, onCarPark } from '../city/districts/carPark';
 import { CarState, createCar, placeCar, refillNitrous, stepCar } from './car';
 import { WorldHit, collideCarWithWorld, collideCars, detectNearMiss } from './collision';
@@ -13,7 +16,7 @@ import { DT, TICK_HZ } from './constants';
 import { InputFrame, NEUTRAL_INPUT, packInput, quantizeInput } from './input';
 import { CarTuning } from './tuning';
 import { PerformanceBuild, tuningForBuild, validatePerformance } from './build';
-import { DEG, abs, atan2, clamp, cos, distToSegment, lerp, sin, sqrt, yawOf } from './math';
+import { DEG, abs, atan2, clamp, cos, distToSegment, lerp, segmentT, sin, sqrt, yawOf } from './math';
 import { AiState, aiInput, buildRacingLine, createAi, RacingLine } from './ai';
 import { stepProps } from './props';
 import { RailState, createRailState } from './rails';
@@ -22,7 +25,13 @@ import { DriftZoneState, createDriftZoneState, stepDriftZones } from './driftZon
 import { waitingAtGate } from './gates';
 import { stepHazards } from './hazards';
 
-export type RaceMode = 'circuit' | 'sprint' | 'drift';
+export type RaceMode = 'circuit' | 'sprint' | 'drift' | 'drag' | 'waypoint';
+
+/** The route each mode runs on (drift laps the circuit). */
+export const MODE_ROUTE: Record<RaceMode, RouteKind> = { circuit: 'circuit', sprint: 'sprint', drift: 'circuit', drag: 'drag', waypoint: 'waypoint' };
+
+/** Modes run once from A to B: one lap, finished on the line. */
+export const POINT_TO_POINT: ReadonlySet<RaceMode> = new Set(['sprint', 'drag', 'waypoint']);
 export type Difficulty = 'easy' | 'medium' | 'hard';
 
 export interface RaceEntrant {
@@ -180,6 +189,8 @@ export const RUNOUT = {
   yawDamping: 0.35,
   /** Steering is capped to keep the runout calm. */
   maxSteer: 0.7,
+  /** Waypoint races: the player may finish off the route's line, so the runout just brakes straight with this. */
+  freeBrake: 0.4,
 } as const;
 const DIFFICULTY_PACE: Record<Difficulty, number> = { easy: 0.86, medium: 0.94, hard: 1.0 };
 
@@ -192,6 +203,8 @@ export function cityForSeed(seed: number): City {
 
 /** Most AI rivals in one race (the start grid has a slot for each, plus the player). */
 export const MAX_OPPONENTS = 9;
+/** A drag is head to head: the player and one rival. */
+export const DRAG_OPPONENTS = 1;
 
 /**
  * Start slots for `count` entrants, player first. The player starts at the back of the grid,
@@ -206,12 +219,13 @@ function gridSlots(grid: GridSlot[], count: number): GridSlot[] {
 export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
   const config: RaceConfig = {
     ...cfgIn,
-    laps: cfgIn.mode === 'sprint' ? 1 : Math.max(1, Math.min(10, Math.round(cfgIn.laps))),
-    opponents: cfgIn.mode === 'drift' || cfgIn.openWorld ? [] : cfgIn.opponents.slice(0, MAX_OPPONENTS),
+    laps: POINT_TO_POINT.has(cfgIn.mode) ? 1 : Math.max(1, Math.min(10, Math.round(cfgIn.laps))),
+    opponents: cfgIn.mode === 'drift' || cfgIn.openWorld ? [] : cfgIn.opponents.slice(0, cfgIn.mode === 'drag' ? DRAG_OPPONENTS : MAX_OPPONENTS),
     player: { ...cfgIn.player, performance: validatePerformance(cfgIn.player.performance) },
   };
-  const kind = config.mode === 'sprint' ? 'sprint' : 'circuit';
-  const open = config.openWorld === true;
+  const kind = MODE_ROUTE[config.mode];
+  // A waypoint race runs in the open city: no barriers between the waypoints, any street goes.
+  const open = config.openWorld === true || config.mode === 'waypoint';
   const w =
     world && world.seed === config.seed && world.route.kind === kind && (world.openWorld === true) === open
       ? world
@@ -255,14 +269,14 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
     };
   });
   const distance = route.closed ? route.length * config.laps : route.finishS - route.startS;
-  const traffic = config.traffic ? createTraffic(w, cars, config.seed, open) : null;
+  const traffic = config.traffic ? createTraffic(w, cars, config.seed, config.openWorld === true) : null;
   return {
     config,
     world: w,
     line,
     tick: 0,
     phase: 'countdown',
-    countdownTicks: open ? 0 : COUNTDOWN_SECONDS * TICK_HZ,
+    countdownTicks: config.openWorld ? 0 : COUNTDOWN_SECONDS * TICK_HZ,
     cars,
     distance,
     inputLog: [],
@@ -293,9 +307,9 @@ export function ticksToSeconds(ticks: number): number {
   return ticks / TICK_HZ;
 }
 
-/** Reset a car to the road centerline at its current progress. */
+/** Reset a car to the road centerline at its current progress (the waypoint race's player: onto the nearest street). */
 export function resetToRoad(r: RaceState, rc: RaceCar): void {
-  if (r.config.openWorld) return resetToStreet(r, rc);
+  if (r.config.openWorld || (rc.isPlayer && r.config.mode === 'waypoint')) return resetToStreet(r, rc);
   const route = r.world.route;
   const s = route.closed ? rc.rawS : clamp(rc.rawS, 0, route.length);
   const p = routeSample(route, s);
@@ -371,6 +385,8 @@ export function runoutInput(r: RaceState, rc: RaceCar): InputFrame {
   if (!rc.runout) rc.runout = { lateral: rc.lateral, startS: rc.rawS };
   const ro = rc.runout;
   if (c.speed < RUNOUT.stopSpeed) return { ...NEUTRAL_INPUT, brake: RUNOUT.holdBrake };
+  // The waypoint race's player may come in down any street: hold the heading (yaw rate damped) and stop.
+  if (rc.isPlayer && r.config.mode === 'waypoint') return { ...NEUTRAL_INPUT, steer: clamp(c.yawRate * RUNOUT.yawDamping, -RUNOUT.maxSteer, RUNOUT.maxSteer), brake: RUNOUT.freeBrake };
 
   // Steer: hold the lane the car crossed the line in, along the route heading a little ahead.
   const ahead = routeSample(route, rc.rawS + c.speed * RUNOUT.lookTime);
@@ -417,6 +433,8 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
   const inputs: InputFrame[] = r.cars.map((rc) => {
     // After the finish the player's controls are ignored and the runout drives the car.
     if (rc.isPlayer) return rc.finished ? runoutInput(r, rc) : input;
+    // A drag's rival or a waypoint racer that finished brakes down the runout too (the older modes keep their AI rolling on, as their replays have it).
+    if (rc.finished && (r.config.mode === 'drag' || r.config.mode === 'waypoint')) return runoutInput(r, rc);
     return aiInput(r, rc);
   });
 
@@ -522,6 +540,7 @@ function updateProgress(r: RaceState, rc: RaceCar): void {
   rc.lateral = p.lateral;
   if (r.config.openWorld) return updateOpenWorld(r, rc);
   if (rc.finished) return;
+  if (r.config.mode === 'waypoint') return updateWaypoints(r, rc, p);
   // Progress never jumps: when the nearest route segment switches far ahead
   // (a cut across a park or a lot), only what the car could have driven this
   // tick counts. Corner cuts stay well under the limit. The route's own
@@ -559,18 +578,95 @@ function updateProgress(r: RaceState, rc: RaceCar): void {
     rc.lap = 1;
     rc.lapStartTick = raceStartTick;
   }
-  if (rc.dist >= r.distance && rc.nextCheckpoint >= total) {
-    rc.finished = true;
-    rc.finishTick = r.tick + 1;
-    if (!route.closed) {
-      rc.lapTimes.push(rc.finishTick - raceStartTick);
-      rc.bestLap = rc.finishTick - raceStartTick;
-    }
-    r.events.push({ tick: r.tick, type: 'finish', car: rc.index });
-    if (rc.isPlayer) r.phase = 'finished';
-  }
+  if (rc.dist >= r.distance && rc.nextCheckpoint >= total) finishCar(r, rc);
+  updateLost(r, rc, p);
+}
 
-  // Wrong way and stuck detection.
+/** A car crossed the line: its finish tick, an A to B race's time as its one lap, the finish event. */
+function finishCar(r: RaceState, rc: RaceCar): void {
+  const raceStartTick = r.countdownTicks;
+  rc.finished = true;
+  rc.finishTick = r.tick + 1;
+  if (!r.world.route.closed) {
+    rc.lapTimes.push(rc.finishTick - raceStartTick);
+    rc.bestLap = rc.finishTick - raceStartTick;
+  }
+  r.events.push({ tick: r.tick, type: 'finish', car: rc.index });
+  if (rc.isPlayer) r.phase = 'finished';
+}
+
+/** Scratch for the edges near a car (roadDistance). */
+const nearEdges: number[] = [];
+
+/**
+ * Distance by road (m) from a point to a waypoint race target: along the
+ * nearest street to either of its ends, then the target's distance field on
+ * from there (straight along it when the target is the finish on that street).
+ */
+export function roadDistance(w: World, t: RouteWaypoint, x: number, z: number): number {
+  const g = w.graph;
+  w.blocks.edgeGrid.query(x - 1, z - 1, x + 1, z + 1, nearEdges);
+  // Off every street's corridor (deep in a park, say): all of them.
+  const n = nearEdges.length || g.edges.length;
+  let best = -1;
+  let bestD = Infinity;
+  for (let i = 0; i < n; i++) {
+    const e = g.edges[nearEdges.length ? nearEdges[i] : i];
+    const a = g.nodes[e.a];
+    const b = g.nodes[e.b];
+    const d = distToSegment(x, z, a.x, a.z, b.x, b.z);
+    if (d < bestD || (d === bestD && e.id < best)) {
+      bestD = d;
+      best = e.id;
+    }
+  }
+  const e = g.edges[best];
+  const a = g.nodes[e.a];
+  const b = g.nodes[e.b];
+  const u = segmentT(x, z, a.x, a.z, b.x, b.z) * e.length;
+  const via = Math.min(u + t.field[e.a], e.length - u + t.field[e.b]);
+  return e.id === t.edge ? Math.min(via, abs(u - t.along)) : via;
+}
+
+/**
+ * Waypoint race progress: the targets (route.waypoints, the finish line last)
+ * count in order once a car drives within their radius, down whatever streets
+ * it took ('checkpoint' events, value = targets reached). The distance the
+ * standings and the HUD read is the route distance of the next target less
+ * the distance by road still to go to it (roadDistance), never behind the
+ * target last reached: the AI's progress watch and the standings both need it
+ * to grow as a car closes in, whichever way it goes.
+ * The player is free of the route (lost only off every street, as in free
+ * roam); the AI drives the suggested route and keeps the route's checks.
+ */
+function updateWaypoints(r: RaceState, rc: RaceCar, p: RouteProgress): void {
+  const route = r.world.route;
+  const targets = route.waypoints ?? [];
+  const c = rc.state;
+  if (rc.lap === 0) {
+    rc.lap = 1;
+    rc.lapStartTick = r.countdownTicks;
+  }
+  let t = targets[rc.nextCheckpoint];
+  while (t && (c.x - t.x) ** 2 + (c.z - t.z) ** 2 <= t.radius * t.radius) {
+    rc.nextCheckpoint++;
+    r.events.push({ tick: r.tick, type: 'checkpoint', car: rc.index, value: rc.nextCheckpoint });
+    t = targets[rc.nextCheckpoint];
+  }
+  if (!t) {
+    rc.dist = r.distance;
+    return finishCar(r, rc);
+  }
+  const reached = rc.nextCheckpoint > 0 ? targets[rc.nextCheckpoint - 1].s - route.startS : -Infinity;
+  rc.dist = Math.max(reached, t.s - route.startS - roadDistance(r.world, t, c.x, c.z));
+  if (rc.isPlayer) updateOpenWorld(r, rc);
+  else updateLost(r, rc, p);
+}
+
+/** Wrong way and stuck detection against the route (race modes; open world cars see updateOpenWorld). */
+function updateLost(r: RaceState, rc: RaceCar, p: RouteProgress): void {
+  const route = r.world.route;
+  const c = rc.state;
   const vAlong = c.vx * p.tx + c.vz * p.tz;
   if (vAlong < -3) rc.wrongWayTime += DT;
   else rc.wrongWayTime = Math.max(0, rc.wrongWayTime - DT * 2);

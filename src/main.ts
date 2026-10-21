@@ -9,7 +9,7 @@ import './ui/ui.css';
 import * as THREE from 'three';
 import { FixedStepLoop } from './loop';
 import { createCity, createRoute, createWorld } from './city/world';
-import type { Route } from './city/route';
+import { CITY } from './city/config';
 import { seedFromString, Rng } from './sim/prng';
 import { dailySeed, initialSeed } from './seed';
 import { Settings, loadSettings, saveSettings } from './ui/settings';
@@ -37,10 +37,10 @@ import { Check, Info, Shuffle } from './ui/icons';
 import { openFullMap, type FullMap, type FullMapOptions, type WaypointStore } from './ui/fullMap';
 import type { Vec2 } from './sim/math';
 import { door, transitioning, wipe, type WipeCard } from './ui/transitions';
-import { courseArt } from './ui/menuMaps';
+import { courseArt, courseRoute, type CourseRoutes } from './ui/menuMaps';
 import type { RaceType } from './ui/settings';
 import { installUiSounds } from './audio/uiSound';
-import { RaceConfig, RaceEntrant, RaceMode, positionOf, standings, ticksToSeconds } from './sim/race';
+import { DRAG_OPPONENTS, POINT_TO_POINT, RaceConfig, RaceEntrant, RaceMode, positionOf, standings, ticksToSeconds } from './sim/race';
 import { loadTrafficAssets } from './render/traffic';
 import { CarBuild, PerformanceBuild, VisualBuild, defaultVisual, PAINT_FINISHES } from './sim/build';
 import { DEFAULT_CAR_ID, PERFORMANCE_CATEGORIES, SELECTABLE_CAR_IDS, Tier } from './sim/tuning';
@@ -115,8 +115,8 @@ let garageScreen: { tick(): void; render(dt: number): void; dispose(): void } | 
 // the free camera fly over it, and the garage's Street view drives it.
 // ---------------------------------------------------------------------------
 let stage: StreetStage | null = null;
-/** The event's sprint, planned with the stage's city (the stage drives the circuit); the menu's race step draws both. */
-let stageSprint: Route | null = null;
+/** The event's courses, built from the stage's city (the stage drives the circuit); the menu's race step draws them all. */
+let stageCourses: CourseRoutes | null = null;
 const showreel = new ShowreelCamera();
 let fly: FreeFlyCamera | null = null;
 let drone: DroneMode | null = null;
@@ -161,10 +161,10 @@ function ensureStage(): StreetStage {
   const seed = seedFromString(seedStr);
   if (stage && stage.world.seed === seed) return stage;
   stage?.dispose();
-  // The same world createWorld builds on its own, with the city kept for the sprint's route.
+  // The same world createWorld builds on its own, with the city kept for the other courses' routes.
   const city = createCity(seed);
   stage = new StreetStage(gr, assets, createWorld(seed, 'circuit', city), settings);
-  stageSprint = createRoute(city, 'sprint');
+  stageCourses = { circuit: stage.world.route, sprint: createRoute(city, 'sprint'), drag: createRoute(city, 'drag'), waypoint: createRoute(city, 'waypoint') };
   void stage.setBuild(currentBuild());
   showreel.cut();
   (window as unknown as Record<string, unknown>).__nr = { world: stage.world, gr, stage, showreel, autoQ };
@@ -206,7 +206,11 @@ function courseFor(t: RaceType, st: StreetStage): FullMapOptions['course'] {
     case 'circuit':
       return { route: st.world.route, ink: 'orange', label: 'Circuit' };
     case 'sprint':
-      return { route: stageSprint, ink: 'yellow', label: 'Sprint' };
+      return { route: stageCourses?.sprint ?? null, ink: 'yellow', label: 'Sprint' };
+    case 'drag':
+      return { route: stageCourses?.drag ?? null, ink: 'purple', label: 'Drag strip' };
+    case 'waypoint':
+      return { route: stageCourses?.waypoint ?? null, ink: 'cyan', label: 'Waypoint race' };
     case 'drift':
       return { route: st.world.route, ink: 'red', label: 'Drift', zones: true };
     case 'roam':
@@ -354,8 +358,8 @@ function showMenu(step: MenuStep = 'home'): void {
     isDaily,
     event: st.world.event,
     world: st.world,
-    routes: { circuit: st.world.route, sprint: stageSprint ?? st.world.route },
-    bests: { circuit: loadBest(seed, 'circuit'), sprint: loadBest(seed, 'sprint'), drift: loadBest(seed, 'drift') },
+    routes: stageCourses ?? { circuit: st.world.route, sprint: st.world.route, drag: st.world.route, waypoint: st.world.route },
+    bests: { circuit: loadBest(seed, 'circuit'), sprint: loadBest(seed, 'sprint'), drag: loadBest(seed, 'drag'), waypoint: loadBest(seed, 'waypoint'), drift: loadBest(seed, 'drift') },
     carName: manifestCar(currentBuild().carId).displayName,
     hasReplay: !!loadLastReplay(),
     settings: { ...settings },
@@ -393,12 +397,13 @@ function raceCard(t: RaceType): WipeCard {
   const event = stage?.world.event?.name;
   const field = settings.opponents ? `${settings.opponents} rival${settings.opponents > 1 ? 's' : ''}` : 'Your ghost';
   // The course draws itself on the card while the race builds behind it (free roam has the whole city instead).
-  const route = t === 'sprint' ? stageSprint : stage?.world.route;
-  const art = route && t !== 'roam' ? courseArt(route, t) : undefined;
+  const art = stageCourses && t !== 'roam' ? courseArt(courseRoute(stageCourses, t), t) : undefined;
   const hold = art ? 700 : 0;
   const card: Record<RaceType, WipeCard> = {
     circuit: { kicker: event, title: 'Circuit', art, hold, sub: `3 laps · ${field}` },
     sprint: { kicker: event, title: 'Sprint', art, hold, sub: `A to B · ${field}` },
+    drag: { kicker: event, title: 'Drag', art, hold, sub: `${Math.round(((stageCourses?.drag.finishS ?? 0) - (stageCourses?.drag.startS ?? 0)) / CITY.spacing)} blocks straight · head to head` },
+    waypoint: { kicker: event, title: 'Waypoint', art, hold, sub: `${(stageCourses?.waypoint.waypoints?.length ?? 1) - 1} waypoints · any streets · ${field}` },
     drift: { kicker: event, title: 'Drift', art, hold, sub: '2 laps · score attack' },
     roam: { kicker: event, title: 'Free roam', sub: 'The whole city · no rules' },
   };
@@ -518,7 +523,8 @@ function startRace(mode: RaceMode): void {
   garageScreen = null;
   const seed = seedFromString(seedStr);
   const build = currentBuild();
-  const count = mode === 'drift' ? 0 : settings.opponents;
+  // A drag is always head to head.
+  const count = mode === 'drift' ? 0 : mode === 'drag' ? DRAG_OPPONENTS : settings.opponents;
   const opp = opponentEntrants(seed, count, build.performance);
   const config: RaceConfig = {
     seed,
@@ -653,7 +659,9 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
 /** The pause screen while a race is paused (it has a settings step Escape comes back from). */
 let pauseScreen: PauseScreen | null = null;
 
-const MODE_NAME: Record<RaceMode, string> = { circuit: 'Circuit', sprint: 'Sprint', drift: 'Drift' };
+const MODE_NAME: Record<RaceMode, string> = { circuit: 'Circuit', sprint: 'Sprint', drag: 'Drag', waypoint: 'Waypoint', drift: 'Drift' };
+/** Every race mode, for ?race=<mode> deep links. */
+const RACE_MODES = Object.keys(MODE_NAME) as RaceMode[];
 
 /**
  * What the pause screen's ticket says is paused: the event, the type in its
@@ -667,7 +675,9 @@ function pauseTicket(s: RaceSession): PauseTicket {
   if (sessionKind === 'roam') return { event, title: 'Free roam', mode: 'roam', facts: ['The whole city', `In ${placeName(r.world.areaAt(me.x, me.z))}`] };
   const mode = r.config.mode;
   const facts: string[] = [];
-  if (mode !== 'sprint') facts.push(`Lap ${Math.min(r.config.laps, Math.max(1, r.cars[0].lap))}/${r.config.laps}`);
+  if (!POINT_TO_POINT.has(mode)) facts.push(`Lap ${Math.min(r.config.laps, Math.max(1, r.cars[0].lap))}/${r.config.laps}`);
+  const targets = r.world.route.waypoints;
+  if (mode === 'waypoint' && targets) facts.push(`Waypoint ${Math.min(targets.length - 1, r.cars[0].nextCheckpoint + 1)}/${targets.length - 1}`);
   if (r.cars.length > 1) facts.push(`P${positionOf(r, 0)} of ${r.cars.length}`);
   if (mode === 'drift') facts.push(`${Math.round(r.drift.total).toLocaleString()} pts`);
   if (s.isReplay) facts.push('Replay');
@@ -816,7 +826,8 @@ async function boot(): Promise<void> {
   // Every control ticks under the pointer and clicks when pressed, on every screen.
   installUiSounds();
   const direct = params.get('race');
-  const deepLink = direct === 'circuit' || direct === 'sprint' || direct === 'drift' || params.has('garage') || params.has('drone') || params.has('freeroam');
+  const directMode = RACE_MODES.find((m) => m === direct);
+  const deepLink = !!directMode || params.has('garage') || params.has('drone') || params.has('freeroam');
   // A normal start flashes the title in over the asset check and lands it on the
   // menu; deep links go straight to their screen behind a plain loading card.
   // On document.body, not #ui: it has to cover the music widget, which lives there too.
@@ -841,7 +852,7 @@ async function boot(): Promise<void> {
     history.replaceState(null, '', u);
   }
   loading?.remove();
-  if (direct === 'circuit' || direct === 'sprint' || direct === 'drift') startRace(direct);
+  if (directMode) startRace(directMode);
   else if (params.has('garage')) void openGarage(false);
   else if (params.has('drone')) startDrone();
   else if (params.has('freeroam')) startFreeRoam(seedStr);
