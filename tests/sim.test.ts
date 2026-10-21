@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createCar, stepCar } from '../src/sim/car';
+import { createCar, placeCar, stepCar } from '../src/sim/car';
+import { applyBuild, stockPerformance } from '../src/sim/build';
 import { CAR_IDS, CarTuning, SELECTABLE_CAR_IDS, driveSplit, getBaseTuning, tuningHash } from '../src/sim/tuning';
 import { WorldHit, collideCarWithWorld } from '../src/sim/collision';
 import { DEG } from '../src/sim/math';
@@ -74,10 +75,17 @@ describe('car physics', () => {
 
 describe('driving parameters file', () => {
   it('protoCompact resolves to the latest exported tuning (plus deliberate edits since)', () => {
-    // Sidewalks were later set to road traction on purpose. The export predates the rename from
-    // s64 and the shared wheel size; geometry comes from the manifest, not from the tuning.
+    // Sidewalks were later set to road traction on purpose, and the brakes made much stronger (more
+    // tire force, a touch more front bias, plus the arcade assist the export predates). The export
+    // predates the rename from s64 and the shared wheel size; geometry comes from the manifest.
     const t = getBaseTuning('protoCompact');
-    const expected = { ...exported.tuning, carId: t.carId, geometry: t.geometry, surface: { ...exported.tuning.surface, sidewalkGrip: 1 } };
+    const expected = {
+      ...exported.tuning,
+      carId: t.carId,
+      geometry: t.geometry,
+      surface: { ...exported.tuning.surface, sidewalkGrip: 1 },
+      brakes: { ...exported.tuning.brakes, force: 18000, frontBias: 0.68 },
+    };
     expect(t).toMatchObject(expected);
   });
 
@@ -316,6 +324,98 @@ describe('collisions', () => {
       const key = `${e.type}:${e.car}:${e.other ?? ''}`;
       if (last.has(key)) expect(e.tick - last.get(key)!).toBeGreaterThanOrEqual(15);
       last.set(key, e.tick);
+    }
+  });
+});
+
+describe('landings, banks and brakes', () => {
+  /** A river style channel: floor at -4.2 m for |z| < 11, a smoothstep bank up to the street at |z| = 19. */
+  function bankWorld(): World {
+    const F = 11;
+    const W = 8;
+    const D = 4.2;
+    const u = (z: number) => Math.min(1, Math.max(0, (Math.abs(z) - F) / W));
+    return {
+      ...flatWorld(),
+      heightAt: (_x: number, z: number) => -D * (1 - u(z) * u(z) * (3 - 2 * u(z))),
+      driveHeightAt: (_x: number, z: number) => -D * (1 - u(z) * u(z) * (3 - 2 * u(z))),
+      slopeAt: (_x: number, z: number) => ({ gx: 0, gz: Math.abs(z) < F + W ? (D * 6 * u(z) * (1 - u(z)) * Math.sign(z)) / W : 0 }),
+    } as World;
+  }
+
+  it('a hard landing squats, rebounds a little and settles without leaving the ground', () => {
+    for (const id of SELECTABLE_CAR_IDS) {
+      const t = getBaseTuning(id);
+      const world = flatWorld();
+      const c = createCar(0, 0, 0, 0);
+      for (let i = 0; i < 120; i++) stepCar(c, t, input({}), { world });
+      const rest = c.y;
+      c.y = rest + 7;
+      c.vz = 25;
+      let landed = -1;
+      let low = 0;
+      let high = -Infinity;
+      for (let i = 0; i < 240; i++) {
+        stepCar(c, t, input({}), { world });
+        const down = c.wheels.some((w) => w.contact);
+        if (landed < 0) {
+          if (down) landed = i;
+          continue;
+        }
+        expect(down, `${id}: off the ground ${i - landed} ticks after landing`).toBe(true);
+        low = Math.min(low, c.y - rest);
+        if (i > landed + 6) high = Math.max(high, c.y - rest);
+      }
+      // Into the bump stops but well clear of the chassis (0.35 m), then a small rebound over rest.
+      expect(low, id).toBeLessThan(-0.12);
+      expect(low, id).toBeGreaterThan(-0.3);
+      expect(high, id).toBeGreaterThan(0.01);
+      expect(high, id).toBeLessThan(0.1);
+      expect(Math.abs(c.y - rest), id).toBeLessThan(0.01);
+    }
+  });
+
+  it('lies over on a steep bank and holds a line along it with all four wheels down', () => {
+    const t = getBaseTuning('protoCompact');
+    const world = bankWorld();
+    // Lanes on the bank (|z| m) and speeds (m/s): 31 degrees and the steepest 38.
+    for (const [lane, v] of [
+      [13, 17],
+      [15, 25],
+      [15, 36],
+      [17, 25],
+    ]) {
+      const c = createCar(0, 0, 0, 0);
+      placeCar(c, -300, lane, Math.PI / 2, world);
+      c.vx = v;
+      let worst = 0;
+      for (let i = 0; i < 240; i++) {
+        // Pursuit along +x: aim at the lane a lookahead ahead (headings from +x grow toward +z, the car's right).
+        const want = Math.atan2(lane - c.z, 8 + c.speed * 0.6);
+        const steer = Math.max(-1, Math.min(1, (want - Math.atan2(Math.cos(c.yaw), Math.sin(c.yaw))) * 3));
+        stepCar(c, t, input({ throttle: c.speed < v ? 0.7 : 0.2, steer }), { world });
+        if (i < 30) continue;
+        expect(c.wheels.every((w) => w.contact), `lane ${lane} at ${v} m/s, tick ${i}`).toBe(true);
+        const sl = world.slopeAt(c.x, c.z);
+        const groundRoll = Math.atan2(sl.gx * Math.cos(c.yaw) - sl.gz * Math.sin(c.yaw), 1);
+        worst = Math.max(worst, Math.abs(c.roll - groundRoll));
+      }
+      expect(Math.abs(c.z - lane), `lane ${lane} at ${v} m/s`).toBeLessThan(3);
+      expect(worst, `lane ${lane} at ${v} m/s`).toBeLessThan(9 * DEG);
+    }
+  });
+
+  it('brakes hard: 160 km/h to a stop in under 45 m, shorter with upgraded brakes', () => {
+    const stop = (t: CarTuning) => {
+      const c = createCar(0, 0, 0, 0);
+      c.vz = 160 / 3.6;
+      for (let i = 0; i < 600 && c.vz > 0.3; i++) stepCar(c, t, input({ brake: 1 }), { world: flatWorld() });
+      return c.z;
+    };
+    for (const id of SELECTABLE_CAR_IDS) {
+      const stock = stop(getBaseTuning(id));
+      expect(stock, id).toBeLessThan(45);
+      expect(stop(applyBuild(getBaseTuning(id), { ...stockPerformance(), brakes: 3 })), id).toBeLessThan(stock - 5);
     }
   });
 });

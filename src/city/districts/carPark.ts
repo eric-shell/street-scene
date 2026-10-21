@@ -1,18 +1,25 @@
 /**
- * Multi-storey car park: a shortcut variant that goes up and over a block.
+ * Multi-storey car park: a shortcut variant that goes up through a garage.
  *
  * Where a route turns at a junction C with no street straight behind it, the
  * line of the street it turns into (E) runs on backwards into the block
- * behind C. A car park in that block lets racers leave the route on an
- * earlier street of the same block, climb a ramp to the roof, cross it and
- * leave over a kicker at the end of a walled launch chute that lies exactly
- * on E's line: the jump carries them over the sidewalk and the junction and
+ * behind C. A rectangular multi-storey garage in that block lets racers
+ * leave the route on an earlier street of the same block, climb its covered
+ * ramp to the first parking floor (the deck, deckHeight up, with more levels
+ * drawn over it), cross that floor and leave over a kicker at the end of a
+ * walled exit lane (the chute) that lies exactly on E's line, out through the
+ * front facade: the jump carries them over the sidewalk and the junction and
  * drops them onto E heading down it. Two layouts, both found by the planner:
  *  - side entry: the route reaches C along the block's side (an S bend: it
  *    turned at the block's corner before C); the ramp climbs from that street
- *    toward E's line and a turn on the roof lines the car up with the chute;
- *  - back entry: the route passes the block's far side first; ramp, roof and
+ *    toward E's line and a turn on the deck lines the car up with the chute;
+ *  - back entry: the route passes the block's far side first; ramp, deck and
  *    chute are one straight run across the block.
+ * The deck is a garage floor, not an empty roof: stalls nose in along its
+ * parapets, with parked cars, columns and a stair core (carParkFloor), all
+ * kept an open aisle's width off the racing line, the exit lane and the
+ * ramp's mouth; the chute's funnel flares wider on the side the turn arrives
+ * from.
  * Back entries need the far street's frontage free right on E's line, which
  * is where its junction usually sits, so nearly every car park is a side
  * entry; about a quarter of the seeds get one.
@@ -28,24 +35,24 @@
  *
  * The sim is 2.5D (World.heightAt is single valued), so the drivable path is
  * a raised surface with an exact gradient (one height modifier: the ramp's
- * eased profile, the roof deckHeight above the ground, the kicker's parabola)
- * and the lower storeys are render only. Every edge of the path is a thin two
- * sided solid (Wall.solid): one body stops cars on the roof at the parapet
- * and cars in the street at the facade under it, with no one sided band
- * reaching through to the other side. The exception is the lip: the face
- * under it is a low wall (Wall.top) that stops cars in the street but lets a
- * car launching off the roof fly over it; its height is set once the terrain
- * exists (settleCarParks). Hills keep their slopes off car parks (hills.ts)
- * and a ramp is long enough that its climb, with the ground's own rise, stays
- * under maxClimb (steeper, a car's pitch sits at its clamp and the front
- * wheels leave the deck over the crest). On the other route, which the car
- * park is not a shortcut of, a shutter closes the ramp (carParkGates).
+ * eased profile, the deck deckHeight above the ground, the kicker's parabola)
+ * and the storeys under and over it are render only. Every edge of the path
+ * is a thin two sided solid (Wall.solid): one body stops cars on the deck at
+ * the parapet and cars in the street at the facade under it, with no one
+ * sided band reaching through to the other side. The exception is the lip:
+ * the face under it is a low wall (Wall.top) that stops cars in the street
+ * but lets a car launching off the deck fly over it; its height is set once
+ * the terrain exists (settleCarParks). Hills keep their slopes off car parks
+ * (hills.ts) and a ramp is long enough that its climb, with the ground's own
+ * rise, stays under maxClimb (a crest a fast car keeps its wheels on). On the
+ * other route, which the car park is not a shortcut of, a shutter closes the
+ * ramp (carParkGates).
  *
  * Planning: the best sites of both routes are held while the alley shortcuts
  * are carved (carParkSites, PlanContext.keepOut: a corner cut would take
  * their block), as long as each route keeps a spot for an alley of its own;
  * once the graph is final the car parks are planned for real (planCarParks).
- * Race progress on the ramp and the roof follows the car park's own line,
+ * Race progress on the ramp and the deck follows the car park's own line,
  * mapped onto the route stretch it skips (carParkProgress), so it runs on
  * smoothly and is credited in full; a car up there is never counted lost.
  * AI never takes it, like every shortcut. render/districts/carPark.ts draws it.
@@ -372,13 +379,205 @@ function cutSpans(a: number, b: number, open: [number, number][]): [number, numb
   return pieces;
 }
 
+/** The funnel's extra half width at its mouth on side s (sign of v, m): wider on the side a side entry's turn arrives from. */
+export function funnelFlare(g: Pick<CarParkGeo, 'cw' | 'side'>, s: number): number {
+  return g.cw + (g.side === s ? CFG.funnelArrive : 0);
+}
+
+/** A parking stall on the drivable floor: center, the unit heading of a car parked nose in (toward the parapet), its car. */
+export interface Stall {
+  x: number;
+  z: number;
+  dx: number;
+  dz: number;
+  /** A parked car's paint pick (0..1), or -1 for an empty stall. */
+  car: number;
+}
+
+/** What stands on the drivable floor: stalls, the columns at the inner end of their runs, the stair core (null when no corner is free). */
+export interface CarParkFloor {
+  stalls: Stall[];
+  /** Column centers (square, aligned to the frame; side CFG.wall * 1.5). */
+  columns: Vec2[];
+  /** The stair core's corners (a square of side CFG.core in the frame), or null. */
+  core: Vec2[] | null;
+}
+
+/** A parked car's footprint (m): the box carParkWalls makes solid and the renderer draws. */
+export const PARKED_CAR = { length: 4.3, width: 1.8 } as const;
+/** Interior column side (m). */
+export const COLUMN = 0.6;
+
+/** Two convex polygons overlap (separating axis test). */
+function convexOverlap(a: Vec2[], b: Vec2[]): boolean {
+  for (const poly of [a, b]) {
+    for (let i = 0; i < poly.length; i++) {
+      const p = poly[i];
+      const q = poly[(i + 1) % poly.length];
+      const nx = q.z - p.z;
+      const nz = p.x - q.x;
+      let a0 = Infinity;
+      let a1 = -Infinity;
+      let b0 = Infinity;
+      let b1 = -Infinity;
+      for (const r of a) {
+        const d = r.x * nx + r.z * nz;
+        a0 = Math.min(a0, d);
+        a1 = Math.max(a1, d);
+      }
+      for (const r of b) {
+        const d = r.x * nx + r.z * nz;
+        b0 = Math.min(b0, d);
+        b1 = Math.max(b1, d);
+      }
+      if (a1 < b0 || b1 < a0) return false;
+    }
+  }
+  return true;
+}
+
+/** Distance (m) from a point to a polyline. */
+function distToPath(path: Vec2[], x: number, z: number): number {
+  let d = Infinity;
+  for (let i = 0; i + 1 < path.length; i++) d = Math.min(d, distToSegment(x, z, path[i].x, path[i].z, path[i + 1].x, path[i + 1].z));
+  return d;
+}
+
+/**
+ * The drivable floor's fittings, the same for the sim (carParkWalls makes
+ * the cars, columns and core solid) and the renderer (which draws them):
+ * stalls nose in along the parapets, a car parked in some, a column at the
+ * inner end of every few stalls and a stair core in a free corner. All of it
+ * keeps aisleClear from the racing line, off the exit lane and its funnel
+ * and out of the ramp's mouth, so the drive itself is an open aisle and
+ * nothing a car is meant to cross is in the way. Deterministic per seed.
+ */
+export function carParkFloor(g: CarParkGeo, seed: number): CarParkFloor {
+  const t = CFG.wall;
+  const [P, D] = CFG.stall;
+  const W = (u: number, v: number) => toWorld(g, u, v);
+  const rng = new Rng(((seed ^ 0x5ca1ab1e) >>> 0) || 1);
+  // The exit lane and its funnel, a margin round them (convex, frame order).
+  const m = t + 0.6;
+  const fMin = Math.min(...g.front.map((f) => f.u));
+  const lane = [W(fMin - 1, -(g.hc + m)), W(g.lc, -(g.hc + m)), W(g.lc + g.cf + 1, -(g.hc + funnelFlare(g, -1) + m)), W(g.lc + g.cf + 1, g.hc + funnelFlare(g, 1) + m), W(g.lc, g.hc + m), W(fMin - 1, g.hc + m)];
+  const mouth = rampPoint(g, g.rend, 0);
+  const mouthClear = g.rhw + CFG.aisleClear;
+  // Straight on across the deck from the ramp's mouth: where a car that misses the turn ends up.
+  const reach = 2 * (g.u1 - fMin + g.v1 - g.v0);
+  const sw = g.rhw + 1.5;
+  const straight = [rampPoint(g, g.rend - 1, -sw), rampPoint(g, g.rend + reach, -sw), rampPoint(g, g.rend + reach, sw), rampPoint(g, g.rend - 1, sw)];
+  const clear = (poly: Vec2[]): boolean => {
+    if (convexOverlap(poly, lane) || convexOverlap(poly, straight)) return false;
+    let cx = 0;
+    let cz = 0;
+    for (const p of poly) {
+      if (distToPath(g.path, p.x, p.z) < CFG.aisleClear) return false;
+      if ((p.x - mouth.x) ** 2 + (p.z - mouth.z) ** 2 < mouthClear * mouthClear) return false;
+      cx += p.x / poly.length;
+      cz += p.z / poly.length;
+    }
+    return distToPath(g.path, cx, cz) >= CFG.aisleClear;
+  };
+  const rect = (u0: number, u1: number, v0: number, v1: number) => [W(u0, v0), W(u1, v0), W(u1, v1), W(u0, v1)];
+
+  // Stair core: the free deck corner furthest from the racing line (never where a car runs wide).
+  let core: Vec2[] | null = null;
+  let coreRect: Vec2[] | null = null;
+  let coreFar = 0;
+  const S = CFG.core;
+  for (const [atBack, sv] of [
+    [true, -1],
+    [true, 1],
+    [false, -1],
+    [false, 1],
+  ] as const) {
+    const v0 = sv < 0 ? g.v0 + t : g.v1 - t - S;
+    const fu = Math.max(frontU(g, v0), frontU(g, v0 + S));
+    const u0 = atBack ? g.u1 - t - S : fu;
+    const r = rect(u0, u0 + S, v0, v0 + S);
+    if (!clear(r)) continue;
+    const far = Math.min(...r.map((p) => distToPath(g.path, p.x, p.z)));
+    if (far <= coreFar) continue;
+    coreFar = far;
+    core = r;
+    coreRect = rect(u0 - 0.3, u0 + S + 0.3, v0 - 0.3, v0 + S + 0.3);
+  }
+
+  // Stall runs along the four edges: [stall center (u, v) at index k, nose heading (u, v)].
+  type Run = { n: number; at: (k: number) => [number, number]; nu: number; nv: number };
+  const runs: Run[] = [];
+  const across = (a: number, b: number) => Math.max(0, Math.floor((b - a) / P));
+  const nf = across(g.v0 + t, g.v1 - t);
+  runs.push({ n: nf, at: (k) => [frontU(g, g.v0 + t + P * (k + 0.5)) + t + D / 2, g.v0 + t + P * (k + 0.5)], nu: -1, nv: 0 });
+  runs.push({ n: nf, at: (k) => [g.u1 - t - D / 2, g.v0 + t + P * (k + 0.5)], nu: 1, nv: 0 });
+  for (const sv of [-1, 1]) {
+    const edge = sv < 0 ? g.v0 : g.v1;
+    const ua = frontU(g, edge) + t + D;
+    const n = across(ua, g.u1 - t - D);
+    runs.push({ n, at: (k) => [ua + P * (k + 0.5), edge - sv * (t + D / 2)], nu: 0, nv: sv });
+  }
+  const stalls: Stall[] = [];
+  const columns: Vec2[] = [];
+  for (const run of runs) {
+    const ok: boolean[] = [];
+    for (let k = 0; k < run.n; k++) {
+      const [u, v] = run.at(k);
+      // Half widths along u and v: a stall is D deep along its nose, P wide across it.
+      const hu = run.nu !== 0 ? D / 2 : P / 2;
+      const hv = run.nu !== 0 ? P / 2 : D / 2;
+      const r = rect(u - hu, u + hu, v - hv, v + hv);
+      ok.push(clear(r) && !(coreRect && convexOverlap(r, coreRect)));
+    }
+    for (let k = 0; k < run.n; k++) {
+      if (!ok[k]) continue;
+      const [u, v] = run.at(k);
+      const p = W(u, v);
+      const dir = W(run.nu, run.nv);
+      stalls.push({ x: p.x, z: p.z, dx: dir.x - g.ox, dz: dir.z - g.oz, car: rng.chance(CFG.parkedShare) ? rng.next() : -1 });
+      // A column between this stall and the next, at the run's inner (aisle) end, inside a run of stalls.
+      if ((k + 1) % CFG.columnEvery !== 0 || k + 1 >= run.n || !ok[k + 1]) continue;
+      const [un, vn] = run.at(k + 1);
+      const inner = D / 2 - COLUMN / 2;
+      const cu = (u + un) / 2 - run.nu * inner;
+      const cv = (v + vn) / 2 - run.nv * inner;
+      columns.push(W(cu, cv));
+    }
+  }
+  return { stalls, columns, core };
+}
+
+/** The parked car in a stall as a world polygon (the body's footprint, nose toward the parapet). */
+export function parkedCarBox(s: Stall): Vec2[] {
+  const hl = PARKED_CAR.length / 2;
+  const hw = PARKED_CAR.width / 2;
+  const lx = -s.dz;
+  const lz = s.dx;
+  return [
+    { x: s.x - s.dx * hl - lx * hw, z: s.z - s.dz * hl - lz * hw },
+    { x: s.x + s.dx * hl - lx * hw, z: s.z + s.dz * hl - lz * hw },
+    { x: s.x + s.dx * hl + lx * hw, z: s.z + s.dz * hl + lz * hw },
+    { x: s.x - s.dx * hl + lx * hw, z: s.z - s.dz * hl + lz * hw },
+  ];
+}
+
+/** A column as a world polygon (square, aligned to the car park's frame). */
+export function columnBox(g: Frame, c: Vec2): Vec2[] {
+  const h = COLUMN / 2;
+  return [-1, 1, 1, -1].map((su, i) => {
+    const sv = i < 2 ? -1 : 1;
+    return { x: c.x + g.ux * su * h + g.vx * sv * h, z: c.z + g.uz * su * h + g.vz * sv * h };
+  });
+}
+
 /**
  * Every wall of a car park: thin solids (look 'carPark') along the deck's
  * edges (open across the lip and where the ramp joins), both chute walls,
- * the apron's flared sides and the ramp's sides; then the one sided low face
+ * the apron's flared sides and the ramp's sides; the drivable floor's parked
+ * cars, columns and stair core (carParkFloor); then the one sided low face
  * under the lip (Wall.top, settled later).
  */
-export function carParkWalls(g: CarParkGeo): Wall[] {
+export function carParkWalls(g: CarParkGeo, seed: number): Wall[] {
   const out: Wall[] = [];
   const t = CFG.wall;
   const W = (u: number, v: number) => toWorld(g, u, v);
@@ -401,9 +600,15 @@ export function carParkWalls(g: CarParkGeo): Wall[] {
   }
   // Chute walls: parallel from the front line, then splaying out into the mouth's funnel.
   for (const s of [-1, 1]) {
+    const cw = funnelFlare(g, s);
     out.push(...slab(W(frontU(g, g.hc * s), g.hc * s), W(g.lc, g.hc * s), W(g.lc / 2, g.hc * s * 3), t, g.area));
-    out.push(...slab(W(g.lc, g.hc * s), W(g.lc + g.cf, (g.hc + g.cw) * s), W(g.lc + g.cf / 2, (g.hc + g.cw) * s * 3), t, g.area));
+    out.push(...slab(W(g.lc, g.hc * s), W(g.lc + g.cf, (g.hc + cw) * s), W(g.lc + g.cf / 2, (g.hc + cw) * s * 3), t, g.area));
   }
+  // The drivable floor's parked cars, columns and stair core.
+  const floor = carParkFloor(g, seed);
+  for (const s of floor.stalls) if (s.car >= 0) out.push(...solidWalls(parkedCarBox(s), 'carPark', g.area));
+  for (const c of floor.columns) out.push(...solidWalls(columnBox(g, c), 'carPark', g.area));
+  if (floor.core) out.push(...solidWalls(floor.core, 'carPark', g.area));
   const r = g.ramp;
   const mid = rampPoint(g, (g.apron1 + g.rend) / 2, 0);
   const away = (p: Vec2) => ({ x: 2 * p.x - mid.x, z: 2 * p.z - mid.z });
@@ -489,7 +694,7 @@ export const carParkModule: DistrictModule = {
     });
     b.surfaces.push({ surface: 'road', polygon: g.deck, priority: DECK_PRIORITY, area: area.id });
     b.surfaces.push({ surface: 'road', polygon: g.ramp, priority: DECK_PRIORITY, area: area.id });
-    b.walls.push(...carParkWalls(g));
+    b.walls.push(...carParkWalls(g, area.params.seed ?? 0));
     // Buildings keep out (room for the facades); the frontage it stands on opens (its parapets and the
     // facade under them are the walls), reaching out past the building line so every probe falls in.
     b.exclusions.push(...footprint(g, 1.5));
@@ -511,25 +716,14 @@ export const carParkModule: DistrictModule = {
       const c = rampPoint(g, g.apron0 - 3, k * (g.rhw + (k < 0 ? g.fl : g.fr) * 0.6));
       b.reserved.push({ x: c.x, z: c.z, r: g.rhw + 1 });
     }
-    // A sawhorse and cones at the ramp's foot (smashed on the way in), lamp posts in the roof's corners.
+    // A sawhorse and cones at the ramp's foot (smashed on the way in). Inside, the ceiling's strip lights
+    // light the floor (render/districts/carPark.ts): no lamp posts under a ceiling.
     const rng = new Rng(((area.params.seed ?? 0) >>> 0) || 1);
     const across = Math.atan2(-g.rax, -g.raz);
     b.destructibles.push({ kind: 'sawhorse', ...rampPoint(g, g.apron1 + 1.5, rng.range(-1.4, 1.4)), yaw: across + rng.range(-0.15, 0.15), lift: 0, area: area.id });
     for (let k = 0; k < 4; k++) {
       const p = rampPoint(g, g.apron0 + 1 + rng.range(0, 4), (k < 2 ? -1 : 1) * (g.rhw + (k < 2 ? g.fl : g.fr) * 0.4 - rng.range(0, 1.2)));
       b.destructibles.push({ kind: 'trafficCone', ...p, yaw: rng.range(0, Math.PI * 2), lift: 0, area: area.id });
-    }
-    for (const [u, v] of [
-      [g.u1 - 1.4, g.v0 + 1.4],
-      [g.u1 - 1.4, g.v1 - 1.4],
-      [frontU(g, g.v0) + 1.6, g.v0 + 1.4],
-      [frontU(g, g.v1) + 1.6, g.v1 - 1.4],
-    ] as const) {
-      // Not in the chute or the ramp's mouth.
-      if (Math.abs(v) < g.hc + 2) continue;
-      const p = W(u, v);
-      if (pointInPolygon(p.x, p.z, g.ramp) || distToPolygonEdge(p.x, p.z, g.ramp) < 2) continue;
-      b.destructibles.push({ kind: 'parkLamp', x: p.x, z: p.z, yaw: 0, lift: 0, area: area.id });
     }
     return b;
   },

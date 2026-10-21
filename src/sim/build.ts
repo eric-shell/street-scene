@@ -132,6 +132,7 @@ export function applyBuild(base: CarTuning, perf: PerformanceBuild): CarTuning {
   t.suspension.frequency *= PART_TIERS.suspension.frequencyMul[p.suspension];
   t.steering.rateDegPerSec *= PART_TIERS.suspension.steerRateMul[p.suspension];
   t.brakes.force *= PART_TIERS.brakes.forceMul[p.brakes];
+  t.brakes.assistDecel *= PART_TIERS.brakes.forceMul[p.brakes];
   t.mass *= PART_TIERS.weight.massMul[p.weight];
   t.nitrous.capacity = PART_TIERS.nitrous.capacity[p.nitrous];
   t.nitrous.force = PART_TIERS.nitrous.force[p.nitrous];

@@ -344,7 +344,7 @@ export const GATE_AI = {
   /** The nose stops this far short of the gate line. */
   stopGap: 1.6,
   /** Braking the stop is planned with (m/s^2), a little under AI.brakeDecel so it never overshoots. */
-  decel: 6.4,
+  decel: 11.5,
   /** A car carries on when it reaches the line at least this long before the gates block. */
   commit: 0.6,
   /** Arrival time estimates never assume less speed than this (m/s). */

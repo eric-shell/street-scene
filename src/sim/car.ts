@@ -2,11 +2,20 @@
  * Arcade street car model. 2.5D rigid body: planar dynamics (x, z, yaw) from
  * four tire forces, plus heave, pitch and roll from four raycast suspension
  * springs against the terrain. Deterministic: fixed dt, no globals.
+ *
+ * The body leans at most BODY_LEAN away from the ground under it, not from
+ * level, so it lies over on a river bank and pitches up a ramp with all four
+ * wheels loaded. The ground pushes back along its normal: the springs' load
+ * times the slope is the force down a grade at rest and what slows a car
+ * climbing a bank. Landings are absorbed by a stiff, lossy bump stop and a
+ * rebound damper stronger than the bump damper, so the car settles with a
+ * small rebound instead of bouncing. Braking is the tires plus an arcade
+ * assist deceleration that does not use up cornering grip.
  */
 import { DT, SUBSTEPS } from './constants';
 import { InputFrame } from './input';
 import { CarTuning, GRAVITY, driveSplit } from './tuning';
-import { DEG, abs, approach, atan2, clamp, cos, lerp, sign, sin, sqrt } from './math';
+import { DEG, abs, approach, atan2, clamp, cos, lerp, sign, sin, sqrt, tan } from './math';
 import type { Surface, World } from '../city/world';
 import { SURFACE_PHYSICS } from '../city/districts/types';
 
@@ -88,6 +97,7 @@ export interface CarState {
   scrapeNz: number;
   nearMiss: boolean;
   drafting: boolean;
+  /** Acceleration from the tires and the air (m/s^2), which loads the springs: the brake assist is not in it. */
   aLong: number;
   aLat: number;
 }
@@ -152,7 +162,10 @@ export function placeCar(c: CarState, x: number, z: number, yaw: number, world: 
   c.y = world.driveHeightAt(x, z);
   c.vx = c.vy = c.vz = 0;
   c.yawRate = c.pitchRate = c.rollRate = 0;
-  c.pitch = c.roll = 0;
+  // Lying on the ground at its own angle (a reset on a bank or a ramp sits flat on it).
+  const sl = world.slopeAt(x, z);
+  c.pitch = -atan2(sl.gx * sin(yaw) + sl.gz * cos(yaw), 1);
+  c.roll = atan2(sl.gx * cos(yaw) - sl.gz * sin(yaw), 1);
   c.steerAngle = 0;
   c.rearGrip = 1;
   c.clutchKick = 0;
@@ -166,6 +179,8 @@ export function placeCar(c: CarState, x: number, z: number, yaw: number, world: 
 }
 
 const RPM_PER_RADS = 60 / (2 * Math.PI);
+/** Most the body pitches or rolls away from the ground's own angle (rad): suspension geometry, not tuning. */
+const BODY_LEAN = 0.15;
 
 export function torqueAt(t: CarTuning, rpm: number): number {
   const curve = t.engine.torqueCurve;
@@ -430,10 +445,17 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
   const Ir = (m * (W * W + Hh * Hh)) / 12;
 
   // ---- suspension ----
-  const omega = 2 * Math.PI * t.suspension.frequency;
+  const sus = t.suspension;
+  const omega = 2 * Math.PI * sus.frequency;
   const k = (m / 4) * omega * omega;
-  const damp = 2 * t.suspension.dampingRatio * sqrt(k * (m / 4));
+  const crit = 2 * sqrt(k * (m / 4));
+  const kStop = k * sus.bumpStopRate;
+  const dampStop = sus.bumpStopDamping * 2 * sqrt(kStop * (m / 4));
   const sag = (m * GRAVITY) / (4 * k);
+  // The body over each wheel: the plane through c.y tilted by pitch and roll. tan, so a body lying
+  // on a plane at the plane's own angle has the same compression at every wheel.
+  const tPitch = tan(c.pitch);
+  const tRoll = tan(c.roll);
   let sumF = 0;
   let pitchTorque = 0;
   let rollTorque = 0;
@@ -446,16 +468,20 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
     const wz = c.z + fz * wu + lz * wv;
     // Wheels ride the paving: up onto a sidewalk over its curb, not through it.
     const ground = world.driveHeightAt(wx, wz);
-    const comp = ground - (c.y + wv * c.roll - wu * c.pitch);
+    const comp = ground - (c.y + wv * tRoll - wu * tPitch);
     const compVel = (comp - w.compression) / h;
     w.compression = comp;
     let F = 0;
     if (comp + sag > 0) {
-      F = k * (comp + sag) + damp * compVel;
-      if (comp > t.suspension.travel) {
-        F += k * 8 * (comp - t.suspension.travel);
-        if (comp - t.suspension.travel > c.bottomOut) {
-          c.bottomOut = comp - t.suspension.travel;
+      // Rebound damped harder than bump: the spring cannot fling the body back up after a hit.
+      F = k * (comp + sag) + (compVel > 0 ? sus.dampingRatio : sus.reboundRatio) * crit * compVel;
+      const over = comp - sus.travel;
+      if (over > 0) {
+        // Bump stop: stiff and lossy. It soaks up a landing while it compresses and gives back only
+        // bumpStopReturn of its force as it unloads, so the car settles instead of bouncing.
+        F += compVel > 0 ? kStop * over + dampStop * compVel : kStop * over * sus.bumpStopReturn;
+        if (over > c.bottomOut) {
+          c.bottomOut = over;
           c.bottomWheel = i;
         }
       }
@@ -476,6 +502,7 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
   const peak = t.tires.peakSlipDeg * DEG;
   const full = t.tires.fullSlideDeg * DEG;
   const down = (t.aero.downforce * speed * speed) / 4;
+  const loadCap = (t.tires.loadCap * m * GRAVITY) / 4;
   const gripAt = (a: number) => (a < peak ? a / peak : 1 - (1 - t.tires.slideGrip) * Math.min(1, (a - peak) / (full - peak)));
   // Pass 1: grip, slip angle and how much forward grip each tire has left after cornering.
   for (let i = 0; i < 4; i++) {
@@ -491,7 +518,9 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
     const mu = (front ? t.tires.gripFront : t.tires.gripRear * c.rearGrip) * ctl.surfaceGrip;
     const alpha = atan2(wt, Math.max(abs(wl), 2.5));
     const lat = gripAt(abs(alpha));
-    wFmax[i] = w.contact ? mu * (loads[i] + down) : 0;
+    // Grip stops growing past loadCap times the static wheel load: a landing or a bump stop hit on one
+    // wheel loads the spring, not the tire, so it cannot turn into a sideways kick that spins the car.
+    wFmax[i] = w.contact ? mu * (Math.min(loads[i], loadCap) + down) : 0;
     wLong[i] = wl;
     wAlpha[i] = alpha;
     const used = lat * t.traction.cornerCoupling;
@@ -555,20 +584,27 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
   const surfaceDrag = sp === 'offroad' ? t.surface.offroadDrag : sp === 'cobble' ? t.surface.cobbleDrag : 0;
   if (surfaceDrag > 0) Fu -= surfaceDrag * sign(vLong) * Math.min(1, abs(vLong));
   if (c.nitroActive && contacts > 0) Fu += t.nitrous.force;
+  // The ground pushes back along its normal: the springs' vertical load times the slope, sideways. At
+  // rest that is gravity's pull down a grade; climbing a bank, the extra load is what slows the car.
+  const sl = world.slopeAt(c.x, c.z);
+  Fu -= sumF * (sl.gx * fx + sl.gz * fz);
+  Fv -= sumF * (sl.gx * lx + sl.gz * lz);
+  // Load transfer (pitch and roll below) follows the body's actual acceleration, slope included, so a
+  // bank or a grade alone does not unload the uphill wheels: a car holding a line along a river bank
+  // sits on it as it would on the flat.
+  c.aLong = Fu / m;
+  c.aLat = Fv / m;
+  // Brake assist: an arcade deceleration on top of the tires, shared over the wheels on the ground and
+  // never reversing the car within a step. It leaves the tires' cornering grip alone and stays out of
+  // aLong, so the load transfer is the tires' and a hard stop never lifts the rear light.
+  if (ctl.brake > 0 && contacts > 0) Fu -= sign(vLong) * Math.min((t.brakes.assistDecel * ctl.brake * contacts * m) / 4, (abs(vLong) * m) / h);
 
-  let Fwx = Fu * fx + Fv * lx;
-  let Fwz = Fu * fz + Fv * lz;
-  if (contacts > 0) {
-    const sl = world.slopeAt(c.x, c.z);
-    Fwx -= m * GRAVITY * sl.gx;
-    Fwz -= m * GRAVITY * sl.gz;
-  }
+  const Fwx = Fu * fx + Fv * lx;
+  const Fwz = Fu * fz + Fv * lz;
 
   c.vx += (Fwx / m) * h;
   c.vz += (Fwz / m) * h;
   c.yawRate += ((torque + (contacts > 0 ? ctl.yawKick : 0) - t.drift.yawDamping * c.yawRate) / Iz) * h;
-  c.aLong = Fu / m;
-  c.aLat = Fv / m;
 
   // ---- drift aids ----
   const vLongN = c.vx * fx + c.vz * fz;
@@ -604,8 +640,34 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
   c.y += c.vy * h;
   c.pitchRate += ((pitchTorque - m * c.aLong * t.cgHeight) / Ip) * h;
   c.rollRate += ((rollTorque + m * c.aLat * t.cgHeight) / Ir) * h;
-  c.pitch = clamp(c.pitch + c.pitchRate * h, -0.15, 0.15);
-  c.roll = clamp(c.roll + c.rollRate * h, -0.15, 0.15);
+  // The body leans at most BODY_LEAN from the ground's own angle in the car's frame: level on a street,
+  // laid over on a bank, pitched up a ramp (and in the air, over whatever it flies across). A rate
+  // pushing past the limit stops there.
+  const groundPitch = -atan2(sl.gx * fx + sl.gz * fz, 1);
+  const groundRoll = atan2(sl.gx * lx + sl.gz * lz, 1);
+  if (contacts === 0) {
+    // In the air the body levels out over the ground below (arcade air control, critically damped at
+    // airLevel rad/s), so a jump comes down flat on all four wheels instead of on its nose.
+    const w = sus.airLevel;
+    c.pitchRate += (w * w * (groundPitch - c.pitch) - 2 * w * c.pitchRate) * h;
+    c.rollRate += (w * w * (groundRoll - c.roll) - 2 * w * c.rollRate) * h;
+  }
+  c.pitch += c.pitchRate * h;
+  c.roll += c.rollRate * h;
+  if (c.pitch > groundPitch + BODY_LEAN) {
+    c.pitch = groundPitch + BODY_LEAN;
+    if (c.pitchRate > 0) c.pitchRate = 0;
+  } else if (c.pitch < groundPitch - BODY_LEAN) {
+    c.pitch = groundPitch - BODY_LEAN;
+    if (c.pitchRate < 0) c.pitchRate = 0;
+  }
+  if (c.roll > groundRoll + BODY_LEAN) {
+    c.roll = groundRoll + BODY_LEAN;
+    if (c.rollRate > 0) c.rollRate = 0;
+  } else if (c.roll < groundRoll - BODY_LEAN) {
+    c.roll = groundRoll - BODY_LEAN;
+    if (c.rollRate < 0) c.rollRate = 0;
+  }
   const ground = world.driveHeightAt(c.x, c.z);
   if (c.y < ground - 0.35) {
     if (c.vy < 0 && -c.vy * h > c.bottomOut) {

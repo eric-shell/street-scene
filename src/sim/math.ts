@@ -11,6 +11,7 @@ export const DEG = Math.PI / 180;
 
 export const sin = (x: number): number => Math.sin(x);
 export const cos = (x: number): number => Math.cos(x);
+export const tan = (x: number): number => Math.tan(x);
 export const atan2 = (y: number, x: number): number => Math.atan2(y, x);
 export const sqrt = (x: number): number => Math.sqrt(x);
 export const abs = (x: number): number => (x < 0 ? -x : x);

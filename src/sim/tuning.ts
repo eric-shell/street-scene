@@ -64,6 +64,8 @@ export interface CarTuning {
     /** Lateral grip kept even when longitudinal force uses the whole friction circle. */
     minLateralShare: number;
     rollingResistance: number;
+    /** Wheel load past which grip stops growing, as a multiple of the static wheel load (mg/4). */
+    loadCap: number;
   };
   /** Driven wheel spin (slip ratio proxy per driven axle) and traction control. */
   traction: {
@@ -95,14 +97,30 @@ export interface CarTuning {
     tcMaxSlipDeg: number;
   };
   suspension: {
+    /** Ride frequency of each corner (Hz). */
     frequency: number;
+    /** Bump (compression) damping as a share of critical. */
     dampingRatio: number;
+    /** Rebound (extension) damping as a share of critical: above dampingRatio, so a hit settles instead of springing back. */
+    reboundRatio: number;
+    /** Travel from rest to the bump stop (m). */
     travel: number;
+    /** Bump stop stiffness as a multiple of the spring rate. */
+    bumpStopRate: number;
+    /** Bump stop damping while compressing, as a share of its own critical damping. */
+    bumpStopDamping: number;
+    /** Share of the bump stop's force it gives back while unloading (0 = dead, 1 = elastic). */
+    bumpStopReturn: number;
+    /** In the air the body levels out over the ground below at this rate (rad/s, critically damped). */
+    airLevel: number;
   };
   brakes: {
+    /** Total tire brake force (N), split by frontBias. */
     force: number;
     frontBias: number;
     handbrakeForce: number;
+    /** Arcade deceleration on top of the tires at full brake (m/s^2); it does not use up cornering grip. */
+    assistDecel: number;
   };
   steering: {
     maxDeg: number;

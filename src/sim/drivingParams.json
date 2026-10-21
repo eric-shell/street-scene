@@ -50,7 +50,8 @@
       "fullSlideDeg": 25,
       "slideGrip": 0.53,
       "minLateralShare": 0.74,
-      "rollingResistance": 5.8
+      "rollingResistance": 5.8,
+      "loadCap": 2.2
     },
     "traction": {
       "breakaway": 1,
@@ -70,12 +71,18 @@
     "suspension": {
       "frequency": 1.55,
       "dampingRatio": 0.42,
-      "travel": 0.12
+      "reboundRatio": 0.7,
+      "travel": 0.12,
+      "bumpStopRate": 15,
+      "bumpStopDamping": 0.6,
+      "bumpStopReturn": 0.2,
+      "airLevel": 5
     },
     "brakes": {
-      "force": 14500,
-      "frontBias": 0.66,
-      "handbrakeForce": 4200
+      "force": 18000,
+      "frontBias": 0.68,
+      "handbrakeForce": 4200,
+      "assistDecel": 16
     },
     "steering": {
       "maxDeg": 22.5,

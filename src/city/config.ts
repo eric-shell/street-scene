@@ -298,26 +298,35 @@ export const CITY = {
       enabled: true,
       /** Car parks per route at most (most seeds have a site for at most one). */
       perRoute: 1,
-      /** Roof deck height above the street: a ground floor and one level, 3.2 m each. */
+      /**
+       * Height of the drivable floor above the street (m): the garage's first parking floor, over a
+       * tall street level podium; the levels above it are drawn only (render/districts/carPark.ts).
+       */
       deckHeight: 6.4,
       /** Ramp grade range (rise per m): the ramp is as long as the site allows between them. */
       rampGrade: [0.065, 0.15],
       /**
-       * The ramp's grade plus the ground's own rise along it stays under this: steeper, a car's pitch
-       * sits at its clamp (car.ts) and its front wheels leave the deck over the crest.
+       * The ramp's grade plus the ground's own rise along it stays under this: a climb taken flat out,
+       * whose crest at the top (eased over rampEase) does not throw a fast car's front wheels off the deck.
        */
       maxClimb: 0.12,
       /** Each end of the ramp eases in over this length (vertical curves: no launch at the top). */
       rampEase: 7,
-      rampWidth: 7,
+      /** Between the ramp's walls (m): two cars wide and then some, so it is taken at speed. */
+      rampWidth: 9,
       /**
        * Launch chute: width between its walls and length up to the lip. A car (1.9 m wide) can cross
        * it corner to corner at atan((width - 1.9) / length), the worst launch heading error.
        */
       chuteWidth: 5.8,
       chuteLength: 38,
-      /** The chute's mouth on the roof splays out into a funnel this long, this much wider each side (m). */
+      /** The chute's mouth on the deck splays out into a funnel this long, this much wider each side (m). */
       chuteFunnel: [7, 2.6],
+      /**
+       * Side entries: the funnel flares this much more (m) on the side the turn arrives from, so a car
+       * cutting in early is caught and steered in rather than stopped by the wall's end.
+       */
+      funnelArrive: 2.2,
       /** Kicker over the last kickLength of the chute, rising kickHeight, steepest at the lip (~10 deg). */
       kickLength: 8,
       kickHeight: 0.75,
@@ -355,6 +364,17 @@ export const CITY = {
       minSave: 0.03,
       /** Clearance (m) from the flight corridor to closures, corners and props. */
       flightClear: 1.5,
+      /**
+       * The drivable floor's fittings (carParkFloor): stalls (width, depth m) nose in along the
+       * parapets, a parked car in parkedShare of them, a column at the inner end of every
+       * columnEvery stalls, a stair core (side m) in a free corner; all keep aisleClear (m) from the
+       * racing line, off the exit lane and the ramp's mouth, so the drive is an open aisle.
+       */
+      stall: [2.6, 5],
+      parkedShare: 0.55,
+      columnEvery: 3,
+      core: 5.2,
+      aisleClear: 6,
     },
     park: {
       enabled: true,

@@ -476,7 +476,8 @@ export class CarView {
       const pivot = this.wheelPivots[i];
       const p = this.car.wheels[WHEEL_KEYS[i]];
       const comp = Math.max(-0.12, Math.min(0.12, pose.comp[i]));
-      pivot.position.y = (pivot.userData.restY as number) + comp + p[0] * pose.roll - p[2] * pose.pitch;
+      // The body plane over the wheel as the sim measures it (car.ts: tan, so the wheels stay on a bank).
+      pivot.position.y = (pivot.userData.restY as number) + comp + p[0] * Math.tan(pose.roll) - p[2] * Math.tan(pose.pitch);
       pivot.rotation.y = i < 2 ? pose.steer : 0;
       this.wheelSpins[i].rotation.x = pose.spin[i];
       this.wheelSpins[i].rotation.order = 'ZXY';

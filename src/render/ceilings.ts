@@ -1,9 +1,10 @@
 /**
  * What hangs over the streets, for the cameras: tunnel ceilings and the mass
- * above them (an air rights building, a ridge's rock), viaduct decks and
- * gantry trusses. The chase camera rides 2-4 m over the car, but an orbit
- * drag or a wall pull-in (camera.ts wallLift) can lift it into a deck or a
- * tunnel's roof, and the intro fly-in can pass through one: keepOutOfWalls
+ * above them (an air rights building, a ridge's rock), viaduct decks, gantry
+ * trusses and a car park garage's levels over its drivable floor and ramp.
+ * The chase camera rides 2-4 m over the car, but an orbit drag or a wall
+ * pull-in (camera.ts wallLift) can lift it into a deck or a tunnel's roof,
+ * and the intro fly-in can pass through one: keepOutOfWalls
  * calls clampCeiling, which moves a camera caught inside one of these solids
  * out through the nearer of its underside or its top.
  *
@@ -17,6 +18,8 @@ import { toLocal } from '../city/districts/structures';
 import { gantryShape } from '../city/districts/overpass';
 import { CITY } from '../city/config';
 import { boreRoad, bridgeTop, ceilingAbove, coverOf, deckLine, ridgeShape, rockAt, tunnelShape, viaductShape } from './districts/structureShapes';
+import { carParkGeo } from '../city/districts/carPark';
+import { garageSpan } from './districts/carPark';
 
 /** Room kept between the camera and a ceiling or a deck (m): the near plane and a little air. */
 export const CEILING_MARGIN = 0.45;
@@ -86,6 +89,10 @@ function build(world: World): Overhead[] {
           return true;
         },
       });
+    } else if (a.kind === 'carPark') {
+      // The garage's levels over its drivable floor and the covered ramp's roof (render/districts/carPark.ts).
+      const g = carParkGeo(a);
+      out.push({ ...bbox([...g.deck, ...g.ramp], 1), at: (x, z, s) => garageSpan(g, world.heightAt, x, z, s) });
     } else if (a.kind === 'overpass' && a.variant === 'gantry') {
       const g = gantryShape(a);
       out.push({

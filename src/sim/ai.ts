@@ -28,7 +28,10 @@ export const AI = {
   edgeMargin: 2.3,
   smoothIterations: 80,
   lateralGrip: 0.9,
-  brakeDecel: 7.2,
+  /** Braking the speed profile plans with (m/s^2): about half what full brake (tires plus assist) does. */
+  brakeDecel: 13,
+  /** m/s over the profile speed that asks for full brake. */
+  brakeSpan: 7,
   maxSpeed: 95,
   lookaheadBase: 7,
   lookaheadPerSpeed: 0.42,
@@ -300,7 +303,7 @@ export function aiInput(r: RaceState, rc: RaceCar): InputFrame {
   let throttle = 0;
   let brake = 0;
   if (err > 0) throttle = clamp(0.35 + err / 4, 0, 1) * (1 - 0.45 * abs(steer));
-  else brake = clamp(-err / 2.5, 0, 1) * (1 - AI.brakeSteerRelief * abs(steer));
+  else brake = clamp(-err / AI.brakeSpan, 0, 1) * (1 - AI.brakeSteerRelief * abs(steer));
   if (brake > 0.15) throttle = 0;
   // Ease off when sliding: feather the throttle, never stamp on the brakes mid slide.
   if (sliding) {
