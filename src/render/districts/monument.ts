@@ -6,12 +6,15 @@
  * from the floods at its foot, so it blooms and reads from across the city
  * without a single real light; the dark stone (steps, base, the piers' lower
  * courses) is lit normally. Flags on poles stand on the base, pavement
- * lights ring it, and the floods themselves are small bright pads. All of
- * it merges into the district kit, so the monument costs no extra draw call.
+ * lights ring it, and the floods themselves are small bright pads. The
+ * paving pattern (rings and radials), the flower beds' mulch and edging and
+ * the border band stop short of the plaza's edge, never on the sidewalk or
+ * the road. All of it merges into the district kit, so the monument costs no
+ * extra draw call.
  */
 import * as THREE from 'three';
 import { CITY } from '../../city/config';
-import { circlePolygon } from '../../city/districts/geom';
+import { circlePolygon, distToPolygonEdge, pointInPolygon } from '../../city/districts/geom';
 import type { Vec2 } from '../../sim/math';
 import { Rng } from '../../sim/prng';
 import type { GeoBuilder } from '../geoBuilder';
@@ -37,6 +40,13 @@ const MONUMENT = {
   floodGlow: 1.4,
   /** Flag poles: height (m), count scaled by the plan's `flags`. */
   flagH: 6.5,
+  /** Paving pattern: ring spacing (m), radial pieces (m) and how far in from the plaza edge it stops (m). */
+  ringStep: 9,
+  radialPiece: 3,
+  pavingInset: 1.2,
+  /** Border band just inside the plaza edge: inset and width (m). */
+  borderInset: 0.7,
+  borderWidth: 0.4,
 } as const;
 
 const STONE = col(0x4a4b53);
@@ -128,6 +138,7 @@ export const monumentRenderer: DistrictRenderer = {
   build(kit, areas) {
     const concrete = col(0x6d6f78);
     const paving = col(0x7d7f88, 0.9);
+    const mulch = col(0x2e2419);
     const lift = CITY.curbHeight;
     for (const a of areas) {
       const b = kit.builds[a.id];
@@ -135,17 +146,53 @@ export const monumentRenderer: DistrictRenderer = {
       const cx = P.cx;
       const cz = P.cz;
       const rng = new Rng((P.seed ^ 0x3a9) >>> 0 || 1);
-      // Plaza paving with concentric rings and radial lines.
-      drapeConvex(kit, kit.ground, a.polygon, lift, concrete);
+      // Plaza paving (draped over the dome) with concentric rings and radial lines, every piece of
+      // them clipped to the plaza: the rings reach into the corners but never cross the edge.
+      drapeConvex(kit, kit.ground, a.polygon, lift, concrete, 4);
       const plazaY = kit.h(cx, cz) + lift;
-      const ringMax = Math.min(...a.polygon.map((p) => Math.hypot(p.x - cx, p.z - cz))) - 4;
-      for (let r = 10; r < ringMax; r += 9) {
-        const pts = circlePolygon(cx, cz, r, 36);
-        for (let i = 0; i < pts.length; i++) groundLine(kit, kit.paint, pts[i], pts[(i + 1) % pts.length], 0.25, lift + 0.03, paving);
+      const inPlaza = (p: Vec2) => pointInPolygon(p.x, p.z, a.polygon) && distToPolygonEdge(p.x, p.z, a.polygon) > MONUMENT.pavingInset;
+      const reach = Math.max(...a.polygon.map((p) => Math.hypot(p.x - cx, p.z - cz)));
+      for (let r = 10; r < reach; r += MONUMENT.ringStep) {
+        const pts = circlePolygon(cx, cz, r, Math.max(36, Math.round(r * 1.5)));
+        for (let i = 0; i < pts.length; i++) {
+          const p = pts[i];
+          const q = pts[(i + 1) % pts.length];
+          if (inPlaza(p) && inPlaza(q)) groundLine(kit, kit.paint, p, q, 0.25, lift + 0.03, paving);
+        }
       }
       for (let k = 0; k < 8; k++) {
         const ang = P.yaw + (k * Math.PI) / 4;
-        groundLine(kit, kit.paint, { x: cx + Math.sin(ang) * 10, z: cz + Math.cos(ang) * 10 }, { x: cx + Math.sin(ang) * ringMax, z: cz + Math.cos(ang) * ringMax }, 0.25, lift + 0.03, paving);
+        for (let r = 10; r < reach; r += MONUMENT.radialPiece) {
+          const p = { x: cx + Math.sin(ang) * r, z: cz + Math.cos(ang) * r };
+          const q = { x: cx + Math.sin(ang) * (r + MONUMENT.radialPiece), z: cz + Math.cos(ang) * (r + MONUMENT.radialPiece) };
+          if (inPlaza(p) && inPlaza(q)) groundLine(kit, kit.paint, p, q, 0.25, lift + 0.03, paving);
+        }
+      }
+      // A light band along the plaza's edge, and the flower beds: a stone edging ring around a mulch disc.
+      for (let i = 0; i < a.polygon.length; i++) {
+        const p = a.polygon[i];
+        const q = a.polygon[(i + 1) % a.polygon.length];
+        const len = Math.hypot(q.x - p.x, q.z - p.z);
+        if (len < 1) continue;
+        let nx = (q.z - p.z) / len;
+        let nz = -(q.x - p.x) / len;
+        if (((p.x + q.x) / 2 - cx) * nx + ((p.z + q.z) / 2 - cz) * nz > 0) {
+          nx = -nx;
+          nz = -nz;
+        }
+        const n = Math.max(1, Math.ceil(len / 6));
+        for (let k = 0; k < n; k++) {
+          const t0 = k / n;
+          const t1 = (k + 1) / n;
+          groundLine(kit, kit.paint, { x: p.x + (q.x - p.x) * t0 + nx * MONUMENT.borderInset, z: p.z + (q.z - p.z) * t0 + nz * MONUMENT.borderInset }, { x: p.x + (q.x - p.x) * t1 + nx * MONUMENT.borderInset, z: p.z + (q.z - p.z) * t1 + nz * MONUMENT.borderInset }, MONUMENT.borderWidth, lift + 0.03, paving);
+        }
+      }
+      for (const h of b.hints) {
+        if (h.kind !== 'bed') continue;
+        const bc = h.points[0];
+        const y = kit.h(bc.x, bc.z) + lift;
+        cylinder(kit.ground, bc.x, bc.z, h.values[0] + 0.45, y - 0.02, y + 0.06, 16, STONE_TOP);
+        cylinder(kit.ground, bc.x, bc.z, h.values[0], y + 0.06, y + 0.08, 16, mulch);
       }
       // Pavement lights.
       for (const h of b.hints) {

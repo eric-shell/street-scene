@@ -50,7 +50,7 @@ export type WallHitKind = 'wall' | 'barrier' | 'rail';
  * streetlights; construction pieces, most neighbourhood furniture and the night market's pieces
  * borrow the nearest material).
  */
-type PropSound = Exclude<PropKind, 'newsBox' | 'parkLamp' | ConstructionPropKind | MarketPropKind | 'mailbox' | 'parkingMeter' | 'phoneBooth' | 'vendingMachine'>;
+type PropSound = Exclude<PropKind, 'newsBox' | 'parkLamp' | 'bollard' | ConstructionPropKind | MarketPropKind | 'mailbox' | 'parkingMeter' | 'phoneBooth' | 'vendingMachine'>;
 export type SfxBank = 'crash' | WallHitKind | PropSound | 'firework';
 type Bank = SfxBank;
 const PROP_SOUND: Record<PropKind, PropSound> = {
@@ -68,6 +68,7 @@ const PROP_SOUND: Record<PropKind, PropSound> = {
   newsBox: 'garbageCan',
   trashBags: 'trashBags',
   parkLamp: 'streetlight',
+  bollard: 'streetlight',
   fencePanel: 'bench',
   trafficCone: 'trashBags',
   sawhorse: 'crate',
@@ -1332,6 +1333,7 @@ export class Sfx {
       newsBox: 0.55,
       trashBags: 0.45,
       parkLamp: 0.75,
+      bollard: 0.8,
       fencePanel: 0.7,
       trafficCone: 0.35,
       sawhorse: 0.55,

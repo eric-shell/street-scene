@@ -56,6 +56,8 @@ const MARK_Y = 0.045;
 const CURB_FOOT = 0.08;
 /** Junction fans wider than this (m, roundabouts, flared shortcut mouths) are cut into rings about this far apart, so they drape. */
 const FAN_STEP = 7;
+/** Under a roundabout the fan drapes over the island's mound or bowl (a meter up or down over a few meters), so its rings are this close. */
+const FAN_STEP_RING = 2;
 /**
  * Roads and cobbles glow faintly sodium orange, scaled by their own texture:
  * the streetlights' spill between their pools, so no street goes black far
@@ -140,7 +142,7 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     let reach = 0;
     for (const p of ring) reach = Math.max(reach, Math.hypot(p.x - n.x, p.z - n.z));
     // Concentric rings out to the curb (the last one is the curb ring itself), so a wide fan drapes.
-    const bands = Math.max(1, Math.ceil(reach / FAN_STEP));
+    const bands = Math.max(1, Math.ceil(reach / (n.ring ? FAN_STEP_RING : FAN_STEP)));
     let inner: number[] = [];
     for (let j = 1; j <= bands; j++) {
       const t = j / bands;

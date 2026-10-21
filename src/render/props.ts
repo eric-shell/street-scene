@@ -2,7 +2,8 @@
  * Destructible props from CityBlocks.props: street furniture (streetlights,
  * traffic lights, garbage cans, benches, bus stops) and district clutter
  * (bushes, planter pots, cafe tables, barrels, crates, dumpsters, news boxes,
- * trash bags, the lantern posts of parks and plazas, and the construction
+ * trash bags, the lantern posts of parks and plazas, the bollards fencing a
+ * roundabout island's middle, and the construction
  * pieces in route shortcuts: fence panels
  * with contractors' banners, cones, sawhorse barricades with a lamp, water
  * filled barriers, sandbags, pallets), and the neighbourhood furniture of
@@ -136,6 +137,22 @@ function planterPotGeo(): THREE.BufferGeometry {
   cyl(s, 0, 0, 0, 0.62, 0.42, 0.53, 10, col(0x8a8c94));
   cyl(s, 0, 0, 0.62, 0.635, 0.47, 0.47, 10, col(0x2a1d14));
   shrub(s, 0, 0, 0.6, 0.9, 0.5, col(0x3a6e34));
+  return s.build();
+}
+
+/** Steel bollard: collar, post and a domed cap; the reflective band is a separate glow part. */
+function bollardGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const steel = col(0x3c4048);
+  cyl(s, 0, 0, 0, 0.1, 0.2, 0.2, 10, col(0x2a2c32));
+  cyl(s, 0, 0, 0.1, 0.9, 0.14, 0.14, 10, steel);
+  cyl(s, 0, 0, 0.9, 1.0, 0.14, 0.09, 10, steel);
+  return s.build();
+}
+
+function bollardBandGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  cyl(s, 0, 0, 0.7, 0.8, 0.145, 0.145, 10, col(0xfff0c0));
   return s.build();
 }
 
@@ -475,6 +492,7 @@ const CLUTTER: Record<DistrictPropKind, { parts: { geo: () => THREE.BufferGeomet
   newsBox: { parts: [{ geo: newsBoxGeo, mat: 'solid', tint: true }], tints: [0x2050c0, 0xc02020, 0xe0b020, 0x20a050, 0xe0e0e0], spin: false },
   trashBags: { parts: [{ geo: trashBagsGeo, mat: 'solid' }], tints: [0xffffff], spin: true },
   parkLamp: { parts: [{ geo: parkLampGeo, mat: 'solid' }, { geo: parkLanternGeo, mat: 'lamp' }], tints: [0xffffff], spin: false },
+  bollard: { parts: [{ geo: bollardGeo, mat: 'solid' }, { geo: bollardBandGeo, mat: 'glow' }], tints: [0xffffff], spin: false },
   // Banners in contractors' colours: safety orange, navy, green, yellow, red, charcoal.
   fencePanel: { parts: [{ geo: fenceFrameGeo, mat: 'solid' }, { geo: fenceBannerGeo, mat: 'canopy', tint: true }], tints: [0xff6a1a, 0x1d3f8a, 0x2a8a4a, 0xf2b81c, 0xc0202a, 0x2a2c32], spin: false },
   trafficCone: { parts: [{ geo: trafficConeGeo, mat: 'matte' }], tints: [0xffffff], spin: true },
@@ -1145,6 +1163,12 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
         spawn(D_BOX, 0, 1.0, 0, rnd(0, 6.28), 0.32, 0.3, 0.32, rnd(0.5, 0.8), 2 + speed * 0.08, 6, col(0x3a6e34).multiply(tint));
         leaves(8, 0.8, 1.4, 0.4, 0x3a6e34);
         debris.burst(p.x, p.y + 0.3, p.z, dx, dz, speed * 0.2 + 1, 6);
+        return;
+      case 'bollard':
+        // The post shears off its collar and tumbles; the collar stays put.
+        spawn(D_CYL, 0, 0.55, 0, yaw, 0.14, 0.45, 0.14, rnd(0.5, 0.8), 2 + speed * 0.09, 7, col(0x3c4048), rnd(4.5, 6), true);
+        spawn(D_CYL, 0, 0.05, 0, yaw, 0.2, 0.05, 0.2, rnd(0.1, 0.2), rnd(0.3, 0.8), 2, col(0x2a2c32), rnd(4, 5));
+        debris.burst(p.x, p.y + 0.4, p.z, dx, dz, speed * 0.2 + 1, 5);
         return;
       case 'cafeTable': {
         const alu = col(0xb4b8c0);

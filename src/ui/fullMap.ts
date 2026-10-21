@@ -234,7 +234,7 @@ export class FullMap {
       c.lineTo(B.x, B.z);
       c.stroke();
     }
-    // Roundabouts: the ring road and its island (a fountain basin or a grassy planter).
+    // Roundabouts: the ring road and its island (a sunken plaza's paving, or a lawn: mound, knoll, bowl or garden).
     for (const a of world.areas) {
       if (a.kind !== 'roundabout') continue;
       const { x, z, outer, island } = a.params;
@@ -242,7 +242,7 @@ export class FullMap {
       c.beginPath();
       c.arc(x, z, outer, 0, Math.PI * 2);
       c.fill();
-      c.fillStyle = a.params.solid ? INK.fountain : INK.planter;
+      c.fillStyle = a.params.paved ? INK.fountain : INK.planter;
       c.beginPath();
       c.arc(x, z, island, 0, Math.PI * 2);
       c.fill();

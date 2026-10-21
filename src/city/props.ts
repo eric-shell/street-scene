@@ -37,8 +37,11 @@ export type FurnitureKind = 'hydrant' | 'parkingMeter' | 'mailbox' | 'phoneBooth
 export type ConstructionPropKind = 'fencePanel' | 'trafficCone' | 'sawhorse' | 'waterBarrier' | 'sandbags' | 'pallets';
 /** Night market pieces (districts/market.ts): lantern lit awning stalls, fruit crates spilling off the curb, food carts. */
 export type MarketPropKind = 'marketStall' | 'fruitCrates' | 'foodCart';
-/** Clutter districts ask for (DistrictPropSpec): mostly soft, cheap to crash through. Park lamps light parks and plazas (render/areaLights.ts). */
-export type DistrictPropKind = 'bush' | 'planterPot' | 'cafeTable' | 'barrel' | 'crate' | 'dumpster' | 'newsBox' | 'trashBags' | 'parkLamp' | ConstructionPropKind | MarketPropKind;
+/**
+ * Clutter districts ask for (DistrictPropSpec): mostly soft, cheap to crash through. Park lamps light parks and
+ * plazas (render/areaLights.ts); bollards fence the middle of a roundabout island (districts/roundabout.ts).
+ */
+export type DistrictPropKind = 'bush' | 'planterPot' | 'cafeTable' | 'barrel' | 'crate' | 'dumpster' | 'newsBox' | 'trashBags' | 'parkLamp' | 'bollard' | ConstructionPropKind | MarketPropKind;
 export type PropKind = StreetPropKind | DistrictPropKind;
 
 export interface Prop {
@@ -122,6 +125,8 @@ export const PROP_DEFS: Record<PropKind, PropDef> = {
   trashBags: { radius: 0.5, mass: 22, height: 0.6, anchor: 1, breakSpeed: 0.1 },
   // A cast iron lantern post: a lighter hit than a streetlight, but still a pole that holds a crawling car.
   parkLamp: { radius: 0.18, mass: 190, height: 4.4, anchor: 1.8, breakSpeed: 2 },
+  // A steel bollard bolted into the paving: it holds a crawling car and costs a fast one about a fifth of its speed.
+  bollard: { radius: 0.17, mass: 60, height: 1.0, anchor: 7, breakSpeed: 4 },
   // Construction pieces. A fence panel (2.4 m of chain link on two feet, a contractor's banner on it)
   // goes down at any closing speed and costs a fast car about 2% of its speed, so a fenced mouth
   // never stops anyone; cones and sawhorses are lighter still. Water filled barriers and sandbag

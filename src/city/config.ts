@@ -215,14 +215,47 @@ export const CITY = {
        */
       outerRadius: [29, 35],
       ringWidth: 15,
-      /** Chance a roundabout gets a solid fountain island instead of a jumpable planter. */
-      fountainChance: 0.5,
       /** Every road leaving a roundabout is at least this long, and sectors at least minSectorDeg wide. */
       minEdge: 105,
       minSectorDeg: 75,
-      /** Low planter island: mound height (m) and beveled edge width (m). */
-      planterHeight: 0.75,
-      planterBevel: 2.6,
+      /**
+       * Island variants, dealt shuffled per seed so no two roundabouts of a city match. Every island
+       * is driven through (the ring is the long way round); what the shortcut costs is the clutter on
+       * it and the few solid pieces to thread between, while its profile unsettles the car. `rise` is
+       * the island's height at its middle over the ring road (m, negative sunken), `bevel` the width of
+       * the slope from the rim in to the flat middle (m; a bevel wider than the island makes a dome or a
+       * bowl). A car leaves a crest at its speed times the steepest slope, so slopes stay near 6% (a
+       * hop of about half a second at 40 m/s); the knoll is the exception, a kicker that overshoots the
+       * ring unless the driver lifts.
+       */
+      variants: ['mound', 'knoll', 'bowl', 'plaza', 'garden'],
+      island: {
+        /** A grassy dome with a few trees in it: the hop over the crest is gentle, the trunks are not. */
+        mound: { rise: 0.6, bevel: 99, trees: [3, 4], bushes: [12, 16], benches: 3 },
+        /** A flat topped hill that launches a fast car off its far edge; a sculpture plinth and the fence on top. */
+        knoll: { rise: 0.7, bevel: 9, benches: 4, bushes: [4, 6] },
+        /** A sunken lawn with a ring of trees and posts on its floor. */
+        bowl: { rise: -0.6, bevel: 99, trees: [3, 4], treeRing: 7, bushes: [8, 12], benches: 3 },
+        /** A sunken paved square around a dry fountain basin: cafe tables between bollards, a fence of pots at the foot of its lip. */
+        plaza: { rise: -0.4, bevel: 7, basin: [2.8, 3.6], tables: [8, 10], benches: 4, carts: [1, 2] },
+        /** A low raised bed cut by two cobbled paths between hedges, an urn at the crossing, bollard gateposts along the paths. */
+        garden: { rise: 0.3, bevel: 7, pathWidth: 4, hedgeSpacing: 2.2, gatepost: 6.5, benches: 2 },
+      },
+      /**
+       * The fence: a ring of planter pots and bollards round the island's middle at this radius (m) with
+       * their edges this far apart (m). A car fits through a gap at a crawl; any straight line through
+       * the middle at speed takes two of them, which is what the shortcut costs.
+       */
+      fenceRadius: 6.5,
+      fenceGap: 2.6,
+      /** Tree trunk radius (m, a solid the sim collides with) and the least gap between two trunks (m). */
+      treeRadius: 0.4,
+      treeGap: 7,
+      /** Lantern posts per island (lit by render/areaLights), standing this far inside the rim (m). */
+      lamps: 6,
+      lampInset: 1.6,
+      /** Radius of a sculpture plinth or urn base (m). */
+      plinth: 1.5,
     },
     alley: {
       enabled: true,
@@ -493,6 +526,16 @@ export const CITY = {
       /** Lantern posts this far inside the plaza edge, about lampSpacing apart along each side (m). */
       lampInset: 2.4,
       lampSpacing: 20,
+      /** The plaza rises this much (m) toward the landmark from a circle inscribed in it, domeInset (m) in from its edge: paving that pitches the car a little. */
+      rise: 0.5,
+      domeInset: 3,
+      /** Flower beds (bush clusters) per plaza [min, max], this far out from the steps (m); a pot where each of the paving's radial lines ends, potInset in from the edge (m). */
+      beds: [5, 7],
+      bedRing: 9,
+      potInset: 7,
+      /** A cafe in one corner: its cart stands cafeInset (m) in from the corner with cafeTables [min, max] around it. */
+      cafeInset: 9,
+      cafeTables: [4, 6],
     },
     /**
      * Tunnels (src/city/districts/tunnel.ts): a street runs for part of one

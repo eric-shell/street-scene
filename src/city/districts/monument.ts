@@ -7,10 +7,13 @@
  * is the collision (walls with look 'monument', drawn by
  * render/districts/monument.ts); for the triumphal arch the two piers are
  * the collision and the opening between them is wide enough to drive
- * through. Planter pots ring the steps, benches face the landmark and
- * lantern posts line the plaza edge, all destructible. Three kinds, one per
- * seed: an obelisk, a statue column or a
- * triumphal arch opening along the plaza's longest street side.
+ * through. The paving rises in a gentle dome toward the landmark (a terrain
+ * height modifier, flat from the steps in, fading out before the plaza edge)
+ * so a car cutting across pitches a little. Planter pots ring the steps,
+ * benches face the landmark, flower beds and a cafe corner fill the paving
+ * and lantern posts line the plaza edge, all destructible. Three kinds, one
+ * per seed: an obelisk, a statue column or a triumphal arch opening along
+ * the plaza's longest street side.
  *
  * Grand Tour events (src/city/events.ts) always get one, on the block
  * nearest the center that both routes run along (or either one), searched
@@ -23,7 +26,7 @@ import { Rng } from '../../sim/prng';
 import type { DistrictModule, PlanContext } from './types';
 import type { BlockFace } from '../blocks';
 import { emptyBuild } from './types';
-import { circlePolygon, distToPolygonEdge, pointInPolygon, polyWalls, polygonCentroid } from './geom';
+import { circlePolygon, distToPolygonEdge, pointInPolygon, polyWalls, polygonCentroid, smooth01 } from './geom';
 import { convexRing } from './park';
 import { riverCenter } from './river';
 
@@ -158,6 +161,32 @@ export const monumentModule: DistrictModule = {
       clearR = Rs;
     }
     b.reserved.push({ x: c.x, z: c.z, r: clearR + 1 });
+    // The dome: flat from just past the steps (or piers), falling CFG.rise to the plaza level on a circle
+    // inscribed in the plaza, so the slope never reaches the sidewalk. Exact gradient for the car.
+    const inscribed = distToPolygonEdge(c.x, c.z, ring);
+    const domeR = inscribed - CFG.domeInset;
+    const flatR = clearR + 2;
+    if (domeR > flatR + 4) {
+      const rise = CFG.rise;
+      b.heightMods.push({
+        minX: c.x - domeR,
+        minZ: c.z - domeR,
+        maxX: c.x + domeR,
+        maxZ: c.z + domeR,
+        add(px, pz, out) {
+          const dx = px - c.x;
+          const dz = pz - c.z;
+          const r = sqrt(dx * dx + dz * dz);
+          if (r >= domeR) return;
+          const s = smooth01(flatR, domeR, r);
+          out.h += rise * (1 - s.v);
+          if (r > 1e-6 && s.d) {
+            out.gx -= (rise * s.d * dx) / r;
+            out.gz -= (rise * s.d * dz) / r;
+          }
+        },
+      });
+    }
     // Pavement lights in a ring around the landmark (render only).
     const lamps: Vec2[] = [];
     for (let i = 0; i < 12; i++) {
@@ -188,6 +217,46 @@ export const monumentModule: DistrictModule = {
       b.destructibles.push({ kind: 'bench', x: p.x, z: p.z, yaw, lift, area: id });
       const q = { x: p.x + cos(yaw) * 1.6, z: p.z - sin(yaw) * 1.6 };
       if (inside(q, 3)) b.destructibles.push({ kind: 'garbageCan', x: q.x, z: q.z, yaw, lift, area: id });
+    }
+    // Flower beds between the benches: a cluster of bushes on a mulch disc (hint 'bed' for the renderer).
+    const beds = rng.int(CFG.beds[0], CFG.beds[1]);
+    for (let i = 0; i < beds; i++) {
+      const ang = P.yaw + ((i + 0.5) / beds) * Math.PI * 2 + rng.range(-0.2, 0.2);
+      if (area.variant === 'arch' && Math.abs(sin(ang - P.yaw)) < 0.4) continue;
+      const bc = { x: c.x + sin(ang) * (clearR + CFG.bedRing), z: c.z + cos(ang) * (clearR + CFG.bedRing) };
+      if (!inside(bc, 4)) continue;
+      const bedR = rng.range(1.6, 2.4);
+      b.hints.push({ kind: 'bed', points: [bc], values: [bedR] });
+      const n = rng.int(3, 5);
+      for (let k = 0; k < n; k++) {
+        const a2 = rng.range(0, Math.PI * 2);
+        const rr = rng.range(0, bedR - 0.7);
+        b.destructibles.push({ kind: 'bush', x: bc.x + sin(a2) * rr, z: bc.z + cos(a2) * rr, yaw: rng.range(0, 6.28), lift, area: id });
+      }
+    }
+    // A pot where each of the paving's radial lines ends, short of the plaza edge and clear of the benches.
+    for (let k = 0; k < 8; k++) {
+      const ang = P.yaw + (k * Math.PI) / 4;
+      const r = inscribed - CFG.potInset;
+      const p = { x: c.x + sin(ang) * r, z: c.z + cos(ang) * r };
+      if (r > clearR + CFG.benchRing + 3 && inside(p, 2)) b.destructibles.push({ kind: 'planterPot', x: p.x, z: p.z, yaw: ang, lift, area: id });
+    }
+    // A cafe in one of the plaza's corners: a food cart with its tables fanned out toward the landmark.
+    const corners = ring.map((p, i) => ({ i, d: sqrt((p.x - c.x) ** 2 + (p.z - c.z) ** 2) })).sort((p, q) => q.d - p.d || p.i - q.i);
+    const corner = ring[corners[rng.int(0, Math.min(3, corners.length - 1))].i];
+    const toMid = { x: c.x - corner.x, z: c.z - corner.z };
+    const lm = sqrt(toMid.x * toMid.x + toMid.z * toMid.z) || 1;
+    const cafe = { x: corner.x + (toMid.x / lm) * CFG.cafeInset, z: corner.z + (toMid.z / lm) * CFG.cafeInset };
+    if (inside(cafe, 3)) {
+      const face = atan2(toMid.x, toMid.z);
+      b.destructibles.push({ kind: 'foodCart', x: cafe.x, z: cafe.z, yaw: face + Math.PI / 2, lift, area: id });
+      const tables = rng.int(CFG.cafeTables[0], CFG.cafeTables[1]);
+      for (let k = 0; k < tables; k++) {
+        const a2 = face + rng.range(-1.1, 1.1);
+        const d = rng.range(3.2, 6);
+        const p = { x: cafe.x + sin(a2) * d, z: cafe.z + cos(a2) * d };
+        if (inside(p, 2.5)) b.destructibles.push({ kind: 'cafeTable', x: p.x, z: p.z, yaw: rng.range(0, 6.28), lift, area: id });
+      }
     }
     for (let i = 0; i < ring.length; i++) {
       const p = ring[i];

@@ -79,12 +79,12 @@ export const COBBLE_PRIORITY = 6;
  * building: a building facade right behind the sidewalk line (cityMeshes).
  * boundary: low concrete wall closing a gap in the street frontage (render/districts/infill).
  * lotEdge: low curb wall around a parking lot or plaza (infill).
- * planter / fountain: raised planter box, fountain basin (infill, roundabout).
- * island: solid roundabout island (roundabout).
+ * planter / fountain: raised planter box, fountain basin (infill).
+ * island: a roundabout island's solid pieces, the plaza's dry basin and a sculpture plinth (roundabout).
  * pillar: elevated railway support (subway).
  * parapet / culvert / fence / trench / channelEnd: bridge sides, bridge body seen from the
  *   channel, bank top fence, ramp retaining walls, channel tunnel ends (river).
- * tree: park tree trunk (park).
+ * tree: a tree trunk (park, roundabout).
  * monument: the step ring around a landmark's base, or an arch's piers (monument).
  * tunnel / rock: tunnel walls, portal wingwalls and the shut in building line behind them;
  *   the rock face along a ridge's cutting (tunnel).

@@ -41,10 +41,8 @@ export const isRiverEdge = (e: { kind: RoadKind }): boolean => e.kind === 'chann
 export interface RoundaboutRing {
   /** Outer curb radius of the ring road. */
   outer: number;
-  /** Island radius (curb of the center island). */
+  /** Island radius (curb of the center island, always drivable: see districts/roundabout.ts). */
   island: number;
-  /** Solid island (fountain, walls) or a low beveled planter you can jump. */
-  solid: boolean;
 }
 
 export interface RoadNode {

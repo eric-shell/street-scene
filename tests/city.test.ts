@@ -349,8 +349,10 @@ describe('city generation', () => {
       // overlap: the alley module keeps its clutter clear of the alley's ends only). Lane closures stand
       // in the curb lane on purpose (roadworks.ts; their own test keeps the rest of the street open), and
       // the night market's fruit crates spill off the curb onto the road edge (checked in market.test.ts).
+      // A roundabout island's clutter stands where its spokes' edges run on to the node (the island test
+      // keeps it off the ring road).
       for (const p of props) {
-        if (p.area !== undefined && ['backAlley', 'river', 'alley', 'roadworks', 'market'].includes(w.areas[p.area].kind)) continue;
+        if (p.area !== undefined && ['backAlley', 'river', 'alley', 'roadworks', 'market', 'roundabout'].includes(w.areas[p.area].kind)) continue;
         for (const e of w.graph.edges) {
           const a = w.graph.nodes[e.a];
           const b = w.graph.nodes[e.b];
@@ -452,12 +454,14 @@ describe('districts', () => {
           // (Neighbouring buildings may leave a gap under a meter: a 0.7 m margin covers it.)
           expect(w.blocks.buildings.some((b) => insideBuilding(b, px, pz, 0.7))).toBe(true);
         }
-        // Islands stand in their ring road; a lane closure's plant in its closed curb lane.
-        if (wall.look === 'island' || wall.look === 'roadworks') continue;
+        // A lane closure's plant stands in its closed curb lane.
+        if (wall.look === 'roadworks') continue;
         // Not on any road (sampled along the wall).
         for (const t of [0.1, 0.5, 0.9]) {
           const x = wall.ax + (wall.bx - wall.ax) * t;
           const z = wall.az + (wall.bz - wall.az) * t;
+          // Inside a roundabout island anything goes (trunks, a basin): the spokes' edges run on under it to the node.
+          if (g.nodes.some((n) => n.ring && Math.hypot(x - n.x, z - n.z) < n.ring.island - 0.05)) continue;
           w.blocks.edgeGrid.query(x - 1, z - 1, x + 1, z + 1, scratch);
           for (const id of scratch) {
             const e = g.edges[id];
@@ -658,6 +662,62 @@ describe('districts', () => {
     }
     expect(rings).toBeGreaterThan(5);
     expect(alleys).toBeGreaterThan(5);
+  });
+
+  it('roundabout islands rise or sink, can be driven through, and are lit and furnished in five variants', () => {
+    const rng = new Rng(21);
+    const seen = new Map<string, number>();
+    const cross = (ax: number, az: number, bx: number, bz: number, cx: number, cz: number, dx: number, dz: number) => {
+      const o = (px: number, pz: number, qx: number, qz: number, rx: number, rz: number) => Math.sign((qx - px) * (rz - pz) - (qz - pz) * (rx - px));
+      return o(ax, az, bx, bz, cx, cz) !== o(ax, az, bx, bz, dx, dz) && o(cx, cz, dx, dz, ax, az) !== o(cx, cz, dx, dz, bx, bz);
+    };
+    for (let i = 0; i < 14; i++) {
+      const w = createWorld(rng.int(0, 0x7fffffff), i % 2 ? 'sprint' : 'circuit');
+      const rings = w.areas.filter((a) => a.kind === 'roundabout');
+      // No two islands of a city alike.
+      expect(new Set(rings.map((a) => a.variant)).size).toBe(rings.length);
+      for (const a of rings) {
+        seen.set(a.variant, (seen.get(a.variant) ?? 0) + 1);
+        const { x, z, island, rise } = a.params;
+        // The middle stands `rise` over the ring road, the rim meets it, and every slope on the island is drivable.
+        let rim = 0;
+        for (let k = 0; k < 8; k++) rim += w.heightAt(x + Math.cos((k * Math.PI) / 4) * (island + 2), z + Math.sin((k * Math.PI) / 4) * (island + 2)) / 8;
+        expect(Math.abs(w.heightAt(x, z) - rim - rise)).toBeLessThan(0.15);
+        for (let r = 0.5; r < island; r += 1) {
+          for (let k = 0; k < 8; k++) {
+            const s = w.slopeAt(x + Math.cos((k * Math.PI) / 4) * r, z + Math.sin((k * Math.PI) / 4) * r);
+            expect(Math.hypot(s.gx, s.gz)).toBeLessThan(0.35);
+          }
+        }
+        expect(w.surfaceAt(x, z)).not.toBe('road');
+        // Its walls stay well inside the island, and a good share of the straight lines through its middle (the
+        // middle line and one 6 m either side, past the widest basin) miss them all: no island is fenced in.
+        const walls = w.walls.filter((wl) => wl.kind === 'wall' && wl.area === a.id);
+        for (const wl of walls) expect(Math.hypot(wl.ax - x, wl.az - z)).toBeLessThan(island - 2);
+        let clear = 0;
+        const lines = 36;
+        for (let k = 0; k < lines; k++) {
+          const ang = ((k % 12) / 12) * Math.PI;
+          const off = (Math.floor(k / 12) - 1) * 6;
+          const ux = Math.cos(ang);
+          const uz = Math.sin(ang);
+          // The line and a car's half width each side of it.
+          const blocked = [-1.1, 0, 1.1].some((d) => {
+            const ox = -uz * (off + d);
+            const oz = ux * (off + d);
+            return walls.some((wl) => cross(x + ox - ux * island, z + oz - uz * island, x + ox + ux * island, z + oz + uz * island, wl.ax, wl.az, wl.bx, wl.bz));
+          });
+          if (!blocked) clear++;
+        }
+        expect(clear / lines).toBeGreaterThan(0.3);
+        // Lit and full of clutter, none of it on the ring road.
+        const mine = w.props.filter((p) => p.area === a.id);
+        expect(mine.filter((p) => p.kind === 'parkLamp').length).toBeGreaterThanOrEqual(4);
+        expect(mine.length).toBeGreaterThanOrEqual(14);
+        for (const p of mine) expect(Math.hypot(p.x - x, p.z - z)).toBeLessThan(island - 0.5);
+      }
+    }
+    expect([...seen.keys()].sort()).toEqual(['bowl', 'garden', 'knoll', 'mound', 'plaza']);
   });
 });
 

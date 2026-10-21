@@ -2,10 +2,10 @@
  * Park and plaza lighting. Parks and plazas are open ground the streetlights
  * barely reach, so they get light of their own, faked like the street pools
  * in lightFx (the only real lights are the few that follow the car):
- *  - a wash over every park, plaza, corner pocket and the monument plaza: a
- *    soft, even glow tinted by what it lies on (green over park grass, warm
- *    over paving), fading in from a park's edge so the lawn reads as lit
- *    rather than as a decal;
+ *  - a wash over every park, plaza, corner pocket, roundabout island and the
+ *    monument plaza: a soft, even glow tinted by what it lies on (green over
+ *    grass, warm over paving), fading in from a park's edge so the lawn reads
+ *    as lit rather than as a decal;
  *  - a pool under every lantern post (props of kind 'parkLamp', placed by
  *    the park, infill and monument modules), draped over the ground point by
  *    point because park lawns roll: a flat disc would sink into a hill and
@@ -20,7 +20,7 @@ import * as THREE from 'three';
 import { CITY } from '../city/config';
 import type { World } from '../city/world';
 import type { Area } from '../city/districts/types';
-import { distToPolygonEdge } from '../city/districts/geom';
+import { circlePolygon, distToPolygonEdge } from '../city/districts/geom';
 import type { Vec2 } from '../sim/math';
 import { GeoBuilder } from './geoBuilder';
 import { parkLamps } from './props';
@@ -48,6 +48,8 @@ const AREA_LIGHT = {
     park: { color: new THREE.Color(0x3c6a34).multiplyScalar(0.11), fade: 9, edge: 5 },
     plaza: { color: new THREE.Color(0xffd8a8).multiplyScalar(0.16), fade: 1.2, edge: 3 },
     monument: { color: new THREE.Color(0xffd8a8).multiplyScalar(0.035), fade: 4, edge: 8 },
+    /** A roundabout's lawn island: lit like a park but evenly, its lanterns stand right at the rim. */
+    island: { color: new THREE.Color(0x3c6a34).multiplyScalar(0.13), fade: 4, edge: 2.5 },
   },
   /** What light picks up from the ground it lands on: lawn takes it green, paving and asphalt warm. */
   grassTint: new THREE.Color(0.7, 1, 0.55),
@@ -88,13 +90,18 @@ export function buildAreaLights(world: World): AreaLights {
   };
 
   // ---------- Washes ----------
-  const washed = (a: Area) => a.kind === 'park' || a.kind === 'monument' || (a.kind === 'infill' && (a.variant === 'plaza' || a.variant === 'cornerPlaza'));
+  const washed = (a: Area) => a.kind === 'park' || a.kind === 'monument' || a.kind === 'roundabout' || (a.kind === 'infill' && (a.variant === 'plaza' || a.variant === 'cornerPlaza'));
   for (const a of world.areas) {
-    if (!washed(a) || a.polygon.length < 3) continue;
-    const W = a.kind === 'park' || a.kind === 'monument' ? A.wash[a.kind] : A.wash.plaza;
-    const lift = a.kind === 'park' ? A.liftGrass : A.liftPaved;
+    if (!washed(a)) continue;
+    // A roundabout's area is the whole junction; its wash covers the island only.
+    const poly = a.kind === 'roundabout' ? circlePolygon(a.params.x, a.params.z, a.params.island, 32) : a.polygon;
+    if (poly.length < 3) continue;
+    const lawn = a.kind === 'park' || (a.kind === 'roundabout' && !a.params.paved);
+    const W = a.kind === 'park' || a.kind === 'monument' ? A.wash[a.kind] : a.kind === 'roundabout' ? (lawn ? A.wash.island : A.wash.plaza) : A.wash.plaza;
+    // Islands are drawn at ground level, not at curb height like a plaza's paving.
+    const lift = lawn ? A.liftGrass : a.kind === 'roundabout' ? A.liftGrass : A.liftPaved;
     const vertex = (x: number, z: number) => {
-      const k = Math.min(1, Math.max(0, distToPolygonEdge(x, z, a.polygon) / W.fade));
+      const k = Math.min(1, Math.max(0, distToPolygonEdge(x, z, poly) / W.fade));
       c.copy(W.color).multiplyScalar(k * k * (3 - 2 * k));
       return gb.vertex(x, h(x, z) + lift, z, 0, 1, 0, 0, 0, c);
     };
@@ -122,7 +129,6 @@ export function buildAreaLights(world: World): AreaLights {
         }
       }
     };
-    const poly = a.polygon;
     if (poly.length === 4) grid(poly[0], poly[1], poly[2], poly[3]);
     else {
       let cx = 0;
