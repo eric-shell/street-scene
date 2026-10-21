@@ -43,6 +43,8 @@ interface Snap extends CarPose {
   vz: number;
   rpm: number;
   throttle: number;
+  /** A gear change is cutting the drive (engine voice). */
+  shifting: boolean;
 }
 
 function snap(c: CarState): Snap {
@@ -63,6 +65,7 @@ function snap(c: CarState): Snap {
     vz: c.vz,
     rpm: c.rpm,
     throttle: c.throttle,
+    shifting: c.shiftTimer > 0,
   };
 }
 
@@ -92,6 +95,7 @@ function lerpSnap(a: Snap, b: Snap, t: number): Snap {
     vz: l(a.vz, b.vz),
     rpm: l(a.rpm, b.rpm),
     throttle: l(a.throttle, b.throttle),
+    shifting: b.shifting,
   };
 }
 
@@ -328,7 +332,10 @@ export class RaceSession {
     if (hub) {
       hub.setVolume(settings.engineVolume);
       this.engines = this.race.cars.map((rc, i) => {
-        return new EngineVoice(manifestCar(rc.carId).engine, i === 0 ? 0.26 : 0.2);
+        const voice = new EngineVoice(manifestCar(rc.carId).engine, i === 0 ? 0.26 : 0.2, { lite: i > 0 });
+        // An overrun pop flashes a flame at the car's tailpipe when it sounds.
+        voice.onPop = (pipe, size, delay) => this.views[i]?.popFlash(pipe, size, delay);
+        return voice;
       });
       // Crashes, nitrous, scrapes, horn and countdown beeps (src/audio/sfx.ts).
       this.sfx = new Sfx();
@@ -818,7 +825,7 @@ export class RaceSession {
     if (warpTarget === 0 && this.nitroFx < 0.002) this.nitroFx = 0;
     this.gr.post.setNitroFx(this.nitroFx, this.time);
     this.updateHud(dt);
-    this.updateEngines(poses, camera);
+    this.updateEngines(poses, camera, dt);
     this.updateSfx(poses, camera, dt);
     this.gr.render(this.night.scene, camera, dt);
   }
@@ -863,7 +870,7 @@ export class RaceSession {
     this.views[0].flashHeadlights(this.flash);
   }
 
-  private updateEngines(poses: Snap[], camera: THREE.PerspectiveCamera): void {
+  private updateEngines(poses: Snap[], camera: THREE.PerspectiveCamera, dt: number): void {
     if (!this.engines.length) return;
     if (this.paused) {
       this.engines.forEach((e) => e.silence());
@@ -879,7 +886,7 @@ export class RaceSession {
       const d = Math.hypot(dx, dz);
       const proximity = i === 0 ? 1 : 1 / (1 + (d / 14) ** 2);
       const pan = i === 0 ? 0 : (dx * right.x + dz * right.z) / Math.max(1, d);
-      voice.update({ rpm: p.rpm, redline: rc.tuning.engine.redline, throttle: p.throttle, nitro: p.nitro, proximity, pan: pan * 0.8 });
+      voice.update({ rpm: p.rpm, redline: rc.tuning.engine.redline, throttle: p.throttle, nitro: p.nitro, proximity, pan: pan * 0.8, shifting: p.shifting, dt });
     });
   }
 

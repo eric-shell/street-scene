@@ -250,6 +250,7 @@ export class GarageScene {
     try {
       this.voice = new EngineVoice(this.car.car.engine, 0.3);
       this.voiceCar = this.car.car.id;
+      this.voice.onPop = (pipe, size, delay) => this.car?.popFlash(pipe, size, delay);
     } catch {
       this.audioOk = false;
     }
@@ -277,6 +278,7 @@ export class GarageScene {
       // Idling in the showroom stays a quiet burble.
       proximity: street ? 0.8 : 0.6 + 0.4 * Math.min(1, this.rev.throttle * 2 + (this.rev.rpm - this.rev.idle) / 3000),
       pan: 0,
+      dt,
     });
   }
 

@@ -49,7 +49,8 @@
       "engine": {
         "layout": "B4",
         "aspiration": "turbo",
-        "position": "front"
+        "position": "front",
+        "voice": { "headers": "unequal", "muffler": "sport" }
       }
     },
     {
@@ -99,7 +100,8 @@
       "engine": {
         "layout": "I6",
         "aspiration": "na",
-        "position": "front"
+        "position": "front",
+        "voice": { "pipes": 2, "muffler": "sport", "intake": "itb" }
       }
     },
     {
@@ -147,9 +149,10 @@
       "defaultPaint": "#ff6a00",
       "selectable": true,
       "engine": {
-        "layout": "V6",
+        "layout": "I6",
         "aspiration": "turbo",
-        "position": "front"
+        "position": "front",
+        "voice": { "pipes": 1, "muffler": "quiet" }
       }
     },
     {
@@ -199,7 +202,8 @@
       "engine": {
         "layout": "V8",
         "aspiration": "turbo",
-        "position": "front"
+        "position": "front",
+        "voice": { "pipes": 2, "muffler": "sport", "crank": "cross" }
       }
     },
     {

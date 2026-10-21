@@ -166,7 +166,7 @@
       "tires": { "gripFront": 1.66, "gripRear": 1.3 }
     },
     "protoCoupe": {
-      "_name": "Proto Coupe: front turbo V6, rear wheel drive. Heavier than the Compact, a big mid range turbo plateau that still revs out, longer gearing.",
+      "_name": "Proto Coupe: front twin turbo inline 6, rear wheel drive. Heavier than the Compact, a big mid range turbo plateau that still revs out, longer gearing.",
       "mass": 1560,
       "drivetrain": { "layout": "rwd" },
       "engine": {

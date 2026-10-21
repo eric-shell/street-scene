@@ -34,6 +34,9 @@ const DEG = Math.PI / 180;
 let glowTex: THREE.Texture | null = null;
 const glow = () => (glowTex ??= makeRadialGlow());
 
+/** Overrun pop flash: lifetime (s) and tongue length (m) from a crackle to a bang. */
+const POP_FLASH = { life: [0.05, 0.11], length: [0.35, 1.1] } as const;
+
 export class CarView {
   readonly root = new THREE.Group();
   readonly body = new THREE.Group();
@@ -56,6 +59,11 @@ export class CarView {
   private underglowMat: THREE.ShaderMaterial;
   private underglowLight: THREE.PointLight | null = null;
   private flames: THREE.Mesh[] = [];
+  /** Overrun pop flames per tailpipe (0 left, 1 right): when each starts and how big it is (1 bang, 0 crackle). */
+  private pops: THREE.Mesh[] = [];
+  private popAt = [-1, -1];
+  private popSize = [0, 0];
+  private lastTime = 0;
   private beam: THREE.Mesh;
   readonly decals: DecalLayerView;
   private loadToken = 0;
@@ -160,7 +168,7 @@ export class CarView {
       }
     }
 
-    // Nitrous exhaust flames.
+    // Nitrous exhaust flames, and the orange flash of an overrun pop at the same tailpipes.
     const flameGeo = new THREE.ConeGeometry(0.11, 0.9, 10, 1, true).rotateX(-Math.PI / 2).translate(0, 0, -0.45);
     for (const side of [1, -1]) {
       const flame = new THREE.Mesh(flameGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color(0x4fa8ff).multiplyScalar(3), transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
@@ -168,6 +176,11 @@ export class CarView {
       flame.visible = false;
       this.root.add(flame);
       this.flames.push(flame);
+      const pop = new THREE.Mesh(flameGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff8a2a).multiplyScalar(3.5), transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
+      pop.position.copy(flame.position);
+      pop.visible = false;
+      this.root.add(pop);
+      this.pops.push(pop);
     }
 
     this.decals = new DecalLayerView(this);
@@ -488,6 +501,27 @@ export class CarView {
       f.visible = pose.nitro;
       if (pose.nitro) f.scale.set(1, 1, 0.7 + Math.random() * 0.6);
     }
+    this.lastTime = time;
+    for (const [i, p] of this.pops.entries()) {
+      const age = time - this.popAt[i];
+      const size = this.popSize[i];
+      const life = POP_FLASH.life[0] + (POP_FLASH.life[1] - POP_FLASH.life[0]) * size;
+      p.visible = age >= 0 && age < life;
+      if (!p.visible) continue;
+      // Bursts out in the first moments, then shrinks and dims; a bang is a fatter, longer tongue than a crackle.
+      const k = age / life;
+      const grow = Math.min(1, k * 4) * (1 - k * k);
+      const length = POP_FLASH.length[0] + (POP_FLASH.length[1] - POP_FLASH.length[0]) * size;
+      p.scale.set(0.8 + 0.9 * size * grow, 0.8 + 0.9 * size * grow, length * grow + 0.05);
+      (p.material as THREE.MeshBasicMaterial).opacity = 0.95 * (1 - k);
+    }
+  }
+
+  /** An overrun pop: flash a flame at a tailpipe (0 left, 1 right) `delay` seconds from the last update; size 1 a bang, 0 a crackle. */
+  popFlash(pipe: number, size: number, delay = 0): void {
+    const i = pipe === 1 && this.pops.length > 1 ? 1 : 0;
+    this.popAt[i] = this.lastTime + delay;
+    this.popSize[i] = Math.max(0, Math.min(1, size));
   }
 
   setHeadlightsEnabled(on: boolean): void {

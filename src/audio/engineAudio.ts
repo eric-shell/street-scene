@@ -1,26 +1,26 @@
 /**
- * Synthesized engine sound with Web Audio. Each car gets a voice whose pitch
- * follows the firing frequency (rpm / 60 * firings per revolution, from the
- * car's EngineSpec) and whose tone opens up with throttle. The layout picks
- * the voice's character (VOICE_CHARACTER):
- *  - inline fours: raspy, with a second order bite; a turbocharged spec adds
- *    a spool whistle and a blow-off valve chuff when you lift at boost
- *  - an inline six (protoCompact, Proto Compact): silky, a sixth order whine,
- *    almost no unevenness
- *  - a V6 (protoCoupe, Proto Coupe: turbo V6): each bank is its own pulse
- *    train, so a per-bank order at half the firing frequency and a bank to
- *    bank beat give it the gruff growl an inline six never has
- *  - big vees (V8 and up; protoWagon, Proto Wagon: twin turbo V8) rumble
- *    with a cross-plane beat; boxers (protoHatch, Proto Hatch: turbo flat 4)
- *    rasp and burble, rotaries buzz smooth and high
+ * Engine sound with Web Audio. Each car gets an EngineVoice: an AudioWorklet
+ * running the pulse-train synth of engineSynth.ts (the car's firing order,
+ * its exhaust path delays, engine-sim's jitter / derivative / turbulence
+ * chain) whose exhaust output is convolved with a synthesized silencer
+ * impulse response; beside it the intake through its trumpet resonance, the
+ * valvetrain tick, and for turbo cars a spool whistle and a blow-off chuff
+ * when you lift at boost. What the voice is told comes from the car's
+ * EngineSpec (layout, aspiration and the optional `voice` block), so the
+ * Proto Hatch burbles like a boxer on unequal headers, the Compact honks
+ * through its throttle bodies and the Coupe whooshes through its turbo.
+ *
  * Most of an engine's energy sits below 300 Hz, which laptop and phone
  * speakers barely reproduce, so a presence peak that tracks the firing
  * frequency lifts the harmonics in the 0.5 to 2.5 kHz range where small
  * speakers work, and the voice runs hot enough to sit above the music.
+ * The worklet module loads once per AudioContext; until it is in, or when
+ * the browser has no AudioWorklet, voices stay silent rather than fall back.
  * Render side only; reads interpolated car state.
  */
-import type { EngineLayout, EngineSpec } from '../shared/carSpec';
-import { firingsPerRev } from '../shared/carSpec';
+import type { EngineSpec } from '../shared/carSpec';
+import { ENGINE_PROCESSOR, buildProgram, renderImpulse, type EngineProgram } from './engineSynth';
+import workletUrl from './engineWorklet?worker&url';
 
 export interface EngineInput {
   rpm: number;
@@ -31,7 +31,35 @@ export interface EngineInput {
   proximity: number;
   /** -1..1 stereo position. */
   pan: number;
+  /** A gear change is cutting the drive this frame. */
+  shifting?: boolean;
+  /** Seconds since the last update, for the overrun model (a 60 Hz frame when missing). */
+  dt?: number;
 }
+
+/**
+ * Rich overrun: when a sport silencer pops. Heat builds over seconds of hard
+ * driving and cools slowly; a lift from high revs leaves fuel in the pipe that
+ * burns off in about a second; while both are high there is a small chance per
+ * second of a bang or a crackle burst, each using up fuel. Tuned to be rare:
+ * most lifts stay silent, and a cold engine never pops.
+ */
+const OVERRUN = {
+  /** Time constants (s): heat rising under load at revs, cooling when not. */
+  heatUp: 6,
+  coolDown: 25,
+  /** Revs (fraction of the redline) a lift needs to leave fuel. */
+  minRevs: 0.5,
+  /** Fuel burn off (s), and how fast the pedal takes it back. */
+  burnOff: 1.2,
+  onThrottle: 0.15,
+  /** Chance per second at full fuel, full heat, pops 1 (sport). */
+  rate: 0.15,
+  /** Share of events that are a single bang rather than a crackle burst. */
+  bangShare: 0.45,
+  /** Turbo cars run richer under boost and leave more fuel on a lift. */
+  turboFuel: 1.3,
+} as const;
 
 class AudioHub {
   readonly ctx: AudioContext;
@@ -39,6 +67,8 @@ class AudioHub {
   /** Sound effects (crashes, nitro, horn, beeps): same volume setting, same compressor. */
   readonly sfxBus: GainNode;
   readonly noise: AudioBuffer;
+  /** True once the engine worklet is registered; false when the browser has none or the module failed, and voices stay silent. */
+  readonly worklet: Promise<boolean>;
   private volume = 0.7;
 
   constructor() {
@@ -60,6 +90,18 @@ class AudioHub {
       if (this.ctx.state !== 'running') void this.ctx.resume();
     };
     for (const ev of ['pointerdown', 'keydown', 'touchend']) window.addEventListener(ev, resume, true);
+    this.worklet = this.loadWorklet();
+  }
+
+  private async loadWorklet(): Promise<boolean> {
+    if (!this.ctx.audioWorklet) return false;
+    try {
+      await this.ctx.audioWorklet.addModule(workletUrl);
+      return true;
+    } catch (err) {
+      console.warn('Engine sound: the worklet module failed to load', err);
+      return false;
+    }
   }
 
   setVolume(v: number): void {
@@ -81,168 +123,91 @@ export function audioHub(): AudioHub | null {
   }
 }
 
-function softClip(amount: number): Float32Array<ArrayBuffer> {
-  const n = 1024;
-  const curve = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    const x = (i / (n - 1)) * 2 - 1;
-    curve[i] = Math.tanh(x * amount) / Math.tanh(amount);
-  }
-  return curve;
-}
-
 /**
  * Voice tone and level. PRESENCE: peak at the firing frequency times `harmonic`,
  * clamped to [min, max] Hz, `gain` dB. GAIN scales every voice (the bus
- * compressor keeps a full grid in check).
+ * compressor keeps a full grid in check). BODY is the valvetrain's band.
  */
 const VOICE = {
-  presence: { harmonic: 6, min: 550, max: 2400, q: 0.8, gain: 9 },
-  gain: 1.9,
+  presence: { harmonic: 6, min: 550, max: 2400, q: 0.8, gain: 6 },
+  gain: 3,
+  bodyHz: 1500,
 } as const;
 
-/** What makes one layout sound unlike another, all relative to the firing frequency f. */
-interface VoiceCharacter {
-  /** Wave shaper drive: higher is rougher. */
-  drive: number;
-  /** Resonance of the tone filter. */
-  filterQ: number;
-  /** Fundamental (sawtooth at f) gain. */
-  main: number;
-  /** Second oscillator: multiple of f, wave, gain and detune (cents). 0.5 is the per-bank order of a vee, 2 a whine. */
-  order: { mul: number; wave: OscillatorType; gain: number; detune: number };
-  /** Sub rumble (sine at f / 2) gain. */
-  sub: number;
-  /** Amplitude modulation of the fundamental at f / 2: bank to bank unevenness, the growl (0 none). */
-  beat: number;
-  /** Exhaust rasp: band centre as a multiple of f, and gain. */
-  noise: { harmonic: number; gain: number };
-  /** Tone filter opening (Hz) at idle, plus per unit of rpm fraction and of throttle. */
-  lowpass: readonly [number, number, number];
-}
+const PARAM_NAMES = ['rpm', 'redline', 'load', 'cut', 'limiter', 'nitro'] as const;
+type ParamName = (typeof PARAM_NAMES)[number];
 
-const INLINE4: VoiceCharacter = { drive: 2.4, filterQ: 1.2, main: 0.55, order: { mul: 2, wave: 'square', gain: 0.16, detune: 4 }, sub: 0.3, beat: 0, noise: { harmonic: 3.5, gain: 0.16 }, lowpass: [650, 3400, 2300] };
-/** Odd fire inline threes and fives: the four's voice with a little lumpiness. */
-const INLINE_ODD: VoiceCharacter = { ...INLINE4, beat: 0.14 };
-const INLINE6: VoiceCharacter = { drive: 1.35, filterQ: 2.0, main: 0.5, order: { mul: 2, wave: 'triangle', gain: 0.22, detune: -3 }, sub: 0.45, beat: 0.04, noise: { harmonic: 3, gain: 0.08 }, lowpass: [480, 2400, 1700] };
-const VEE6: VoiceCharacter = { drive: 1.9, filterQ: 2.2, main: 0.5, order: { mul: 0.5, wave: 'sawtooth', gain: 0.42, detune: -6 }, sub: 0.6, beat: 0.32, noise: { harmonic: 2.5, gain: 0.12 }, lowpass: [480, 2400, 1700] };
-/** The narrow angle V6 shares one head: half way between a vee and an inline six. */
-const VR6: VoiceCharacter = { ...VEE6, drive: 1.6, order: { ...VEE6.order, gain: 0.34 }, beat: 0.18 };
-const BOXER4: VoiceCharacter = { drive: 2.2, filterQ: 1.3, main: 0.55, order: { mul: 0.5, wave: 'sawtooth', gain: 0.3, detune: 5 }, sub: 0.35, beat: 0.22, noise: { harmonic: 3, gain: 0.17 }, lowpass: [650, 3400, 2300] };
-const BOXER6: VoiceCharacter = { ...BOXER4, drive: 1.8, filterQ: 2.0, sub: 0.5, beat: 0.16, lowpass: [480, 2400, 1700] };
-/** Cross-plane eights and the bigger vees: per-bank pulses with a heavy, uneven beat. */
-const BIG_VEE: VoiceCharacter = { drive: 2.0, filterQ: 2.4, main: 0.5, order: { mul: 0.5, wave: 'sawtooth', gain: 0.45, detune: -8 }, sub: 0.7, beat: 0.4, noise: { harmonic: 2, gain: 0.12 }, lowpass: [420, 2100, 1500] };
-const ROTARY: VoiceCharacter = { drive: 1.3, filterQ: 1.4, main: 0.55, order: { mul: 2, wave: 'sine', gain: 0.3, detune: 0 }, sub: 0.2, beat: 0, noise: { harmonic: 4, gain: 0.14 }, lowpass: [700, 3800, 2600] };
-
-export const VOICE_CHARACTER: Record<EngineLayout, VoiceCharacter> = {
-  I3: INLINE_ODD,
-  I4: INLINE4,
-  I5: INLINE_ODD,
-  I6: INLINE6,
-  B4: BOXER4,
-  B6: BOXER6,
-  V6: VEE6,
-  VR6,
-  V8: BIG_VEE,
-  V10: BIG_VEE,
-  V12: { ...BIG_VEE, beat: 0.12, drive: 1.6 },
-  W12: { ...BIG_VEE, beat: 0.12, drive: 1.6 },
-  W16: { ...BIG_VEE, beat: 0.1, drive: 1.6 },
-  R2: ROTARY,
-  R3: ROTARY,
-};
+/** Each voice gets its own noise seed so rivals never phase lock with the player. */
+let voiceCount = 0;
 
 export class EngineVoice {
+  readonly program: EngineProgram;
+  /** Called when the overrun pops: which tailpipe (0 left, 1 right), size (1 bang, 0 crackle) and seconds until it fires. The owner draws the flame. */
+  onPop: ((pipe: number, size: number, delay: number) => void) | null = null;
   private ctx: AudioContext;
   private out: GainNode;
   private pan: StereoPannerNode;
-  private filter: BiquadFilterNode;
   private presence: BiquadFilterNode;
-  private oscMain: OscillatorNode;
-  private oscOrder: OscillatorNode;
-  private oscSub: OscillatorNode;
-  private gMain: GainNode;
-  private gOrder: GainNode;
-  private gSub: GainNode;
-  private noiseSrc: AudioBufferSourceNode;
-  private noiseBand: BiquadFilterNode;
-  private gNoise: GainNode;
-  /** Bank beat: a sine at f / 2 modulating the fundamental's gain (null when the layout has none). */
-  private beat: OscillatorNode | null = null;
+  private exhaust: ConvolverNode;
+  private intake: BiquadFilterNode;
+  private body: BiquadFilterNode;
+  private node: AudioWorkletNode | null = null;
+  private params: Record<ParamName, AudioParam> | null = null;
   private turbo: OscillatorNode | null = null;
   private gTurbo: GainNode | null = null;
   private bov: GainNode | null = null;
   private boost = 0;
   private lastThrottle = 0;
+  private last: EngineInput | null = null;
   private stopped = false;
-  /** Combustion events per revolution: the fundamental is rpm / 60 times this. */
-  private readonly firings: number;
-  private readonly ch: VoiceCharacter;
+  private readonly turbocharged: boolean;
+  /** Overrun state: exhaust heat and unburnt fuel, both 0..1. */
+  private heat = 0;
+  private fuel = 0;
+  private wasShifting = false;
 
+  /** `lite` (rivals): a shorter silencer response, no intake or valvetrain detail. */
   constructor(
     spec: EngineSpec,
     private readonly base = 0.24,
+    opts: { lite?: boolean } = {},
   ) {
     const h = audioHub()!;
     const ctx = (this.ctx = h.ctx);
-    this.firings = firingsPerRev(spec);
-    const ch = (this.ch = VOICE_CHARACTER[spec.layout]);
-    const turbo = spec.aspiration === 'turbo';
+    this.turbocharged = spec.aspiration === 'turbo';
+    this.program = buildProgram(spec, { seed: 7919 * ++voiceCount, lite: opts.lite });
     this.out = ctx.createGain();
     this.out.gain.value = 0;
     this.pan = ctx.createStereoPanner();
     this.out.connect(this.pan).connect(h.engineBus);
 
-    const shaper = ctx.createWaveShaper();
-    shaper.curve = softClip(ch.drive);
-    this.filter = ctx.createBiquadFilter();
-    this.filter.type = 'lowpass';
-    this.filter.Q.value = ch.filterQ;
     this.presence = ctx.createBiquadFilter();
     this.presence.type = 'peaking';
     this.presence.Q.value = VOICE.presence.q;
     this.presence.gain.value = VOICE.presence.gain;
-    shaper.connect(this.filter).connect(this.presence).connect(this.out);
+    this.presence.connect(this.out);
+    // Exhaust: the silencer and pipe column as a convolution with a rendered impulse response.
+    this.exhaust = ctx.createConvolver();
+    // The response is peak normalized already; Web Audio's equal power normalization would bury a long one.
+    this.exhaust.normalize = false;
+    const ir = renderImpulse(this.program.ir, ctx.sampleRate);
+    const buf = ctx.createBuffer(1, ir.length, ctx.sampleRate);
+    buf.copyToChannel(ir, 0);
+    this.exhaust.buffer = buf;
+    this.exhaust.connect(this.presence);
+    // Intake through its trumpet resonance; the valvetrain tick above the exhaust's band.
+    this.intake = ctx.createBiquadFilter();
+    this.intake.type = 'bandpass';
+    this.intake.frequency.value = this.program.intake.hz;
+    this.intake.Q.value = this.program.intake.q;
+    this.intake.connect(this.out);
+    this.body = ctx.createBiquadFilter();
+    this.body.type = 'highpass';
+    this.body.frequency.value = VOICE.bodyHz;
+    this.body.connect(this.out);
 
-    const osc = (wave: OscillatorType, gain: number): [OscillatorNode, GainNode] => {
-      const o = ctx.createOscillator();
-      o.type = wave;
-      const g = ctx.createGain();
-      g.gain.value = gain;
-      o.connect(g).connect(shaper);
-      o.start();
-      return [o, g];
-    };
-    // Fundamental firing order, the layout's second component, and a sub rumble.
-    [this.oscMain, this.gMain] = osc('sawtooth', ch.main);
-    [this.oscOrder, this.gOrder] = osc(ch.order.wave, ch.order.gain);
-    [this.oscSub, this.gSub] = osc('sine', ch.sub);
-    this.oscOrder.detune.value = ch.order.detune;
-    if (ch.beat > 0) {
-      // Bank to bank unevenness: the fundamental's gain swings at half the firing order, which
-      // puts growling sidebands at a half and one and a half times f.
-      this.beat = ctx.createOscillator();
-      this.beat.type = 'sine';
-      const depth = ctx.createGain();
-      depth.gain.value = ch.main * ch.beat;
-      this.beat.connect(depth).connect(this.gMain.gain);
-      this.beat.start();
-    }
-
-    // Exhaust / intake rasp from filtered noise.
-    this.noiseSrc = ctx.createBufferSource();
-    this.noiseSrc.buffer = h.noise;
-    this.noiseSrc.loop = true;
-    this.noiseBand = ctx.createBiquadFilter();
-    this.noiseBand.type = 'bandpass';
-    this.noiseBand.Q.value = 1.4;
-    this.gNoise = ctx.createGain();
-    this.gNoise.gain.value = 0;
-    this.noiseSrc.connect(this.noiseBand).connect(this.gNoise).connect(shaper);
-    this.noiseSrc.start();
-
-    if (turbo) {
-      // Turbo spool whistle, straight to the output (not through the low pass).
+    if (spec.aspiration === 'turbo') {
+      // Turbo spool whistle, straight to the output (not through the silencer).
       this.turbo = ctx.createOscillator();
       this.turbo.type = 'sine';
       this.gTurbo = ctx.createGain();
@@ -262,35 +227,56 @@ export class EngineVoice {
       bovSrc.connect(hp).connect(this.bov).connect(this.out);
       bovSrc.start();
     }
+    void h.worklet.then((ok) => this.attach(ok));
+  }
+
+  private attach(ok: boolean): void {
+    if (!ok || this.stopped) return;
+    try {
+      const node = new AudioWorkletNode(this.ctx, ENGINE_PROCESSOR, {
+        numberOfInputs: 0,
+        // Twin tailpipes come out left and right, so a bank's uneven train is heard on its own, not cancelled by the other's.
+        numberOfOutputs: 3,
+        outputChannelCount: [this.program.pipes, 1, 1],
+        processorOptions: { program: this.program },
+      });
+      node.connect(this.exhaust, 0);
+      node.connect(this.intake, 1);
+      node.connect(this.body, 2);
+      this.node = node;
+      this.params = Object.fromEntries(PARAM_NAMES.map((n) => [n, node.parameters.get(n)!])) as Record<ParamName, AudioParam>;
+      if (this.last) this.update(this.last);
+    } catch (err) {
+      console.warn('Engine sound: could not start a voice', err);
+    }
   }
 
   update(e: EngineInput): void {
     if (this.stopped) return;
+    this.last = e;
     const t = this.ctx.currentTime;
-    const tc = 0.035;
-    const rpm = Math.max(600, e.rpm);
-    const f = (rpm / 60) * this.firings;
+    const tc = 0.03;
+    const rpm = Math.max(500, e.rpm);
     const load = Math.max(0, Math.min(1, e.throttle));
     const r = Math.min(1.05, rpm / e.redline);
-    const ch = this.ch;
-    this.oscMain.frequency.setTargetAtTime(f, t, tc);
-    this.oscOrder.frequency.setTargetAtTime(f * ch.order.mul, t, tc);
-    this.oscSub.frequency.setTargetAtTime(f * 0.5, t, tc);
-    this.beat?.frequency.setTargetAtTime(f * 0.5, t, tc);
-    this.noiseBand.frequency.setTargetAtTime(f * ch.noise.harmonic, t, tc);
-    const lp = ch.lowpass;
-    const open = lp[0] + r * lp[1] + load * lp[2];
-    this.filter.frequency.setTargetAtTime(open * (e.nitro ? 1.3 : 1), t, tc);
+    const f = (rpm / 60) * (this.program.cylinders.length / this.program.revsPerCycle);
+    // The sim holds rpm at the redline by cutting torque; the voice bounces off a limiter instead.
+    const limiter = rpm >= e.redline - 40 && load > 0.5;
+    const p = this.params;
+    if (p) {
+      p.rpm.setTargetAtTime(rpm, t, tc);
+      p.redline.setValueAtTime(e.redline, t);
+      p.load.setTargetAtTime(load, t, tc);
+      p.cut.setValueAtTime(e.shifting ? 1 : 0, t);
+      p.limiter.setValueAtTime(limiter ? 1 : 0, t);
+      p.nitro.setValueAtTime(e.nitro ? 1 : 0, t);
+    }
     const pr = VOICE.presence;
     this.presence.frequency.setTargetAtTime(Math.max(pr.min, Math.min(pr.max, f * pr.harmonic)), t, tc);
-    this.gNoise.gain.setTargetAtTime(ch.noise.gain * (0.3 + load) * (0.4 + r), t, tc);
-    this.gMain.gain.setTargetAtTime(ch.main * (0.6 + 0.4 * load), t, tc);
-    // Low rpm rumble fades as revs climb; the second component bites under load.
-    this.gSub.gain.setTargetAtTime(ch.sub * (1.1 - 0.6 * r), t, tc);
-    this.gOrder.gain.setTargetAtTime(ch.order.gain * (0.5 + 0.7 * load), t, tc);
-    const level = this.base * VOICE.gain * e.proximity * (0.45 + 0.55 * load) * (0.7 + 0.3 * r);
+    const level = this.base * VOICE.gain * this.program.trim * e.proximity * (0.45 + 0.55 * load) * (0.7 + 0.3 * r) * (e.shifting ? 0.75 : 1);
     this.out.gain.setTargetAtTime(level, t, 0.05);
     this.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, e.pan)), t, 0.05);
+    this.overrun(load, r, e.shifting === true, Math.min(0.1, e.dt ?? 1 / 60));
 
     if (this.turbo && this.gTurbo && this.bov) {
       // Boost builds with load and rpm and spools up with lag.
@@ -309,6 +295,37 @@ export class EngineVoice {
     this.lastThrottle = load;
   }
 
+  /** The rich overrun model (OVERRUN): decides the pops, then fires them in the worklet and tells the owner. */
+  private overrun(load: number, r: number, shifting: boolean, dt: number): void {
+    const P = this.program;
+    if (P.pops <= 0) return;
+    const drive = (load * Math.max(0, r - 0.2)) / 0.8;
+    this.heat += (drive - this.heat) * (1 - Math.exp(-dt / (drive > this.heat ? OVERRUN.heatUp : OVERRUN.coolDown)));
+    if (this.lastThrottle > 0.6 && load < 0.2 && r > OVERRUN.minRevs) this.fuel = Math.min(1, this.fuel + (0.4 + 0.6 * r) * (this.turbocharged ? OVERRUN.turboFuel : 1));
+    // A downshift blip at revs dumps a little too.
+    if (shifting && !this.wasShifting && r > 0.6) this.fuel = Math.min(1, this.fuel + 0.25);
+    this.wasShifting = shifting;
+    this.fuel *= Math.exp(-dt / OVERRUN.burnOff);
+    if (load > 0.3) this.fuel *= Math.exp(-dt / OVERRUN.onThrottle);
+    if (this.fuel < 0.1 || Math.random() >= P.pops * OVERRUN.rate * this.fuel * this.heat * dt) return;
+    this.fuel *= 0.45;
+    if (Math.random() < OVERRUN.bangShare) this.pop(0, 1, 2.2 + Math.random());
+    else {
+      const n = 2 + Math.floor(Math.random() * 3);
+      let at = 0;
+      for (let i = 0; i < n; i++) {
+        this.pop(at, 0, 0.9 + Math.random() * 0.6);
+        at += 0.03 + Math.random() * 0.05;
+      }
+    }
+  }
+
+  private pop(delay: number, size: number, gain: number): void {
+    const pipe = this.program.pipes > 1 && Math.random() < 0.5 ? 1 : 0;
+    this.node?.port.postMessage({ pop: { at: delay, pipe, gain, size } });
+    this.onPop?.(pipe, size, delay);
+  }
+
   silence(): void {
     if (!this.stopped) this.out.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);
   }
@@ -318,11 +335,13 @@ export class EngineVoice {
     this.stopped = true;
     const t = this.ctx.currentTime;
     this.out.gain.setTargetAtTime(0, t, 0.03);
-    const nodes: AudioScheduledSourceNode[] = [this.oscMain, this.oscOrder, this.oscSub, this.noiseSrc];
-    if (this.turbo) nodes.push(this.turbo);
-    if (this.beat) nodes.push(this.beat);
-    for (const n of nodes) n.stop(t + 0.2);
-    setTimeout(() => this.pan.disconnect(), 400);
+    this.turbo?.stop(t + 0.2);
+    const node = this.node;
+    setTimeout(() => {
+      node?.port.postMessage('stop');
+      node?.disconnect();
+      this.pan.disconnect();
+    }, 400);
   }
 }
 
