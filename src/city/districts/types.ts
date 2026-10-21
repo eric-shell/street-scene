@@ -341,7 +341,8 @@ export const AREA_MAP_STYLE: Record<AreaKind, AreaMapStyle> = {
   tunnel: { fill: 'rgba(147,146,147,0.16)', stroke: 'rgba(25,24,26,0.8)', width: 6, dash: [7, 4] },
   overpass: { fill: 'rgba(193,192,192,0.22)', stroke: 'rgba(193,192,192,0.5)', width: 5, dash: [3, 3] },
   market: { fill: 'rgba(255,97,136,0.3)' },
-  roadworks: { fill: 'rgba(255,97,136,0.5)' },
+  // A lane closure: the closures' yellow (ui/minimap.ts), not the market's pink.
+  roadworks: { fill: 'rgba(255,216,102,0.55)' },
   // The escarpment: its face line, a solid edge (the minimap strokes area.path).
   bluff: { stroke: 'rgba(252,152,103,0.5)', width: 5 },
   carPark: { fill: 'rgba(147,146,147,0.22)', stroke: 'rgba(255,97,136,0.4)', width: 1.5 },

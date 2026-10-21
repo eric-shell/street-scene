@@ -53,7 +53,7 @@ const KINDS: Partial<Record<AreaKind, KindStyle>> = {
   infill: { label: 'Plazas and lots', ink: PALETTE.soft, fill: rgba('soft', 0.2), tag: false },
   tunnel: { label: 'Tunnels', ink: PALETTE.soft, fill: rgba('muted', 0.22), width: 1.5, dash: [4, 3], tag: true },
   overpass: { label: 'Overpasses', ink: PALETTE.muted, width: 3, dash: [3, 3], tag: false },
-  roadworks: { label: 'Roadworks', ink: PALETTE.red, fill: rgba('red', 0.55), width: 1, tag: false },
+  roadworks: { label: 'Roadworks', ink: PALETTE.yellow, fill: rgba('yellow', 0.55), width: 1, tag: false },
 };
 
 /** Infill drawn and counted as places; verges and planters are frontage dressing, too small to read on the map. */
