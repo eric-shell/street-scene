@@ -130,7 +130,7 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
     s[k] = v;
     onChange(s);
   };
-  const toggle = (k: 'retro' | 'radialBlur' | 'showFps' | 'debugTuningPanel' | 'debugCameraPanel') => onOff(s[k], (v) => set(k, v));
+  const toggle = (k: 'retro' | 'radialBlur' | 'showFps' | 'flashEffects' | 'debugTuningPanel' | 'debugCameraPanel') => onOff(s[k], (v) => set(k, v));
   const slider = (label: string, value: number, onInput: (v: number) => void) => {
     const r = h('input', { type: 'range', min: 0, max: 1, step: 0.01, value, class: 'setting-slider', 'aria-label': label }) as HTMLInputElement;
     r.addEventListener('input', () => onInput(Number(r.value)));
@@ -165,6 +165,7 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
         ),
         settingRow('Retro PS2 mode', toggle('retro')),
         settingRow('Speed blur', toggle('radialBlur')),
+        settingRow('Flash effects', toggle('flashEffects'), 'Lightning and police strobes'),
         settingRow('FPS counter', toggle('showFps')),
       ],
     },

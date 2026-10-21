@@ -14,7 +14,9 @@
  *    and nearly invisible except where the headlights would catch it;
  *  - splashes: a few short lived rings on the road right around the camera;
  *  - mist (High only): a low layer draped over the terrain around the camera,
- *    two scrolling noise octaves for the wisps, faded close to the lens.
+ *    two scrolling noise octaves for the wisps, faded close to the lens;
+ *  - lightning on rain nights (lightning.ts): soft flashes of the sky, the
+ *    lights and the rain, a bolt beyond the skyline and thunder after it.
  * Clear stays the most common mood: the neon night is the default look.
  */
 import * as THREE from 'three';
@@ -23,6 +25,7 @@ import { Rng, deriveSeed } from '../sim/prng';
 import type { Quality } from '../ui/settings';
 import type { NightLighting } from './lighting';
 import { makeMoodSky, makeNoiseTexture, MoodSkyParams } from './skyTextures';
+import { LIGHTNING, Lightning, buildLightning } from './lightning';
 
 export type MoodId = 'clear' | 'hazy' | 'misty' | 'drizzle' | 'rain';
 
@@ -323,8 +326,10 @@ export interface Weather {
   readonly windHeading: number;
   readonly sky: THREE.Texture;
   readonly fog: THREE.FogExp2;
-  /** Rain, splash and mist layers; add to the scene. */
+  /** Rain, splash and mist layers (and the lightning on rain nights); add to the scene. */
   readonly group: THREE.Group;
+  /** Rain nights only: the strikes, their flashes and thunder. */
+  readonly lightning: Lightning | null;
   /** Fog, background, environment intensity and the lights. */
   apply(scene: THREE.Scene, lighting: NightLighting): void;
   /** Materials that fog themselves (shader uniforms fogDensity / fogColor) get the mood's fog; call once the scene is built. */
@@ -335,7 +340,7 @@ export interface Weather {
   dispose(): void;
 }
 
-export function createWeather(world: World, opts: { quality: Quality }): Weather {
+export function createWeather(world: World, opts: { quality: Quality; flashes?: () => boolean }): Weather {
   const seed = world.seed;
   const mood = pickMood(seed);
   const def = MOODS[mood];
@@ -467,6 +472,10 @@ export function createWeather(world: World, opts: { quality: Quality }): Weather
     disposables.push(geo, mistMat, noise);
   }
 
+  // ----- Lightning (rain nights): the flash lifts the sky, the lights and the streaks below.
+  const lightning = mood === 'rain' ? buildLightning(seed, { quality: opts.quality, flashes: opts.flashes }) : null;
+  if (lightning) group.add(lightning.group);
+
   const recentreMist = (x: number, z: number): void => {
     if (!mistPos || !mist) return;
     mistCentre.set(x, z);
@@ -519,11 +528,13 @@ export function createWeather(world: World, opts: { quality: Quality }): Weather
     sky,
     fog,
     group,
+    lightning,
     apply(scene, lighting) {
       scene.fog = fog;
       scene.background = sky;
       scene.environmentIntensity = WEATHER.envDry + WEATHER.envWet * def.wet;
       lighting.setMood({ hemi: def.hemi, hemiIntensity: def.hemiIntensity, moonLight: def.moonLight });
+      lightning?.attach(scene, lighting);
     },
     retuneFog(scene) {
       scene.traverse((o) => {
@@ -538,6 +549,7 @@ export function createWeather(world: World, opts: { quality: Quality }): Weather
       });
     },
     view(camera, viewportHeight) {
+      lightning?.view(camera);
       camera.getWorldPosition(camPos);
       if (rainMat) {
         const cam = camera as THREE.PerspectiveCamera;
@@ -562,11 +574,17 @@ export function createWeather(world: World, opts: { quality: Quality }): Weather
     },
     update(t) {
       time = t;
-      if (rainMat) rainMat.uniforms.uTime.value = t;
+      const flash = lightning ? lightning.update(t) : 0;
+      if (rainMat) {
+        rainMat.uniforms.uTime.value = t;
+        // The streaks catch a lightning flash.
+        rainMat.uniforms.uAlpha.value = (def.rain?.alpha ?? 0) * (1 + LIGHTNING.rain * flash);
+      }
       if (splashMat) splashMat.uniforms.uTime.value = t;
       if (mistMat) mistMat.uniforms.uTime.value = t;
     },
     dispose() {
+      lightning?.dispose();
       for (const d of disposables) d.dispose();
       group.removeFromParent();
     },
