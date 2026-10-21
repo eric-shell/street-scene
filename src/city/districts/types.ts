@@ -83,6 +83,8 @@ export const COBBLE_PRIORITY = 6;
  * monument: the step ring around a landmark's base, or an arch's piers (monument).
  * marketRail: the night market's crowd rail along a pen and its end caps back to the building line;
  *   marketFront: the frontage behind a pen, a facade or the market's shuttered back wall (market).
+ * gate: a timed gate's arms across the deck (sim/gates.ts; drawn by render/drawbridge.ts).
+ *   Timed gates are not in World.walls: they block only while their schedule says so.
  */
 export type WallLook =
   | 'building'
@@ -100,9 +102,10 @@ export type WallLook =
   | 'tree'
   | 'monument'
   | 'marketRail'
-  | 'marketFront';
+  | 'marketFront'
+  | 'gate';
 
-export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'marketRail', 'marketFront'];
+export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'marketRail', 'marketFront', 'gate'];
 
 export interface Area {
   /** Index into CityDistricts.areas. */

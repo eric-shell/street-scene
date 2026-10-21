@@ -1143,6 +1143,32 @@ body > .mw {
     opacity: 0.25;
   }
 }
+/* Timed hazard warning (ui/hazardBanner.ts): the drawbridge ahead rising, or up. */
+.hud-hazard {
+  position: absolute;
+  top: 24%;
+  left: 0;
+  right: 0;
+  display: none;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  font: 900 clamp(18px, 2.8vw, 28px) var(--display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.7), 0 0 12px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+.hud-hazard.show {
+  display: flex;
+}
+.hud-hazard.warn {
+  color: var(--accent-2);
+  animation: blink 0.8s steps(2) infinite;
+}
+.hud-hazard.stop {
+  color: var(--red);
+}
 .hud-drift {
   position: absolute;
   top: 12%;
