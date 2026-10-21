@@ -58,7 +58,7 @@ export const POLICE = {
   /** Searchlight: cone radius at the target (m), ground pool radius (m), brightness, reach (m), aim lag (s). */
   beamRadius: 4.2,
   spotR: 7.8,
-  intensity: 1.9,
+  intensity: 1.3,
   reach: 240,
   aimLag: 0.12,
   /** Lights and beam fade on and off over about this long (s). */

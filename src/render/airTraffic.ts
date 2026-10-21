@@ -39,8 +39,9 @@ export const AIR = {
     roamPoints: 4,
     /** Main rotor turns per second (the tail rotor spins four times faster). */
     rotorRps: 5.5,
-    /** Searchlight: pool radius on the road (m), how far ahead on the course it aims (m), sweep (m), furthest reach (m). */
+    /** Searchlight: pool radius on the road (m), brightness, how far ahead on the course it aims (m), sweep (m), furthest reach (m). */
     beamRadius: 9,
+    intensity: 0.75,
     ahead: 55,
     sweep: 16,
     reach: 170,
@@ -967,7 +968,7 @@ export function buildAirTraffic(world: World, opts: { quality: Quality; fogDensi
   group.add(heli, blimp);
 
   const glow = makeRadialGlow();
-  const beamMat = beamMaterial({ radius: AIR.heli.beamRadius, spotR: AIR.heli.beamRadius * 1.7, color: new THREE.Color(1.0, 0.95, 0.82), intensity: 1, fogDensity: opts.fogDensity, glow });
+  const beamMat = beamMaterial({ radius: AIR.heli.beamRadius, spotR: AIR.heli.beamRadius * 1.7, color: new THREE.Color(1.0, 0.95, 0.82), intensity: AIR.heli.intensity, fogDensity: opts.fogDensity, glow });
   const beamGeo = beamGeometry();
   const beam = new THREE.Mesh(beamGeo, beamMat);
   beam.name = 'searchlight';
