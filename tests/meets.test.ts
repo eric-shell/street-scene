@@ -33,6 +33,13 @@ function depthBehind(chain: RailWall[], x: number, z: number): number {
   return depth;
 }
 
+/** Distance from a point to a polyline (a shortcut's path). */
+function distToPath(path: { x: number; z: number }[], x: number, z: number): number {
+  let best = Infinity;
+  for (let i = 0; i + 1 < path.length; i++) best = Math.min(best, distToSegment(x, z, path[i].x, path[i].z, path[i + 1].x, path[i + 1].z));
+  return best;
+}
+
 describe('street meets', () => {
   it('pack a crowd against every cyan barrier, thinning back among parked cars, off the course', () => {
     const rng = new Rng(21);
@@ -65,7 +72,7 @@ describe('street meets', () => {
           const beyondEnds = !w.route.closed && (rp.s < 0.5 || rp.s > w.route.length - 0.5);
           if (!beyondEnds) expect(Math.abs(rp.lateral)).toBeGreaterThan(w.route.segWidth[rp.seg] / 2);
           // Never in one of the route's shortcuts (alley, sidewalks or mouths).
-          for (const sc of w.route.shortcuts) expect(distToSegment(p.x, p.z, sc.ax, sc.az, sc.bx, sc.bz)).toBeGreaterThan(w.graph.edges[sc.edge].width / 2 + w.graph.edges[sc.edge].sidewalk);
+          for (const sc of w.route.shortcuts) expect(distToPath(sc.points, p.x, p.z)).toBeGreaterThan(w.graph.edges[sc.edges[0]].width / 2 + w.graph.edges[sc.edges[0]].sidewalk);
           if (d < RAIL.maxOffset + 2.5) byDepth.front++;
           else if (d > RAIL.maxOffset + 5) byDepth.back++;
         }
@@ -75,7 +82,7 @@ describe('street meets', () => {
           const d = depthBehind(chain, c.x, c.z);
           // Behind the packed crowd, and never parked in a shortcut.
           expect(d).toBeGreaterThan(RAIL.maxOffset + 2.4);
-          for (const sc of w.route.shortcuts) expect(distToSegment(c.x, c.z, sc.ax, sc.az, sc.bx, sc.bz)).toBeGreaterThan(w.graph.edges[sc.edge].width / 2 + w.graph.edges[sc.edge].sidewalk);
+          for (const sc of w.route.shortcuts) expect(distToPath(sc.points, c.x, c.z)).toBeGreaterThan(w.graph.edges[sc.edges[0]].width / 2 + w.graph.edges[sc.edges[0]].sidewalk);
           if (d < RAIL.maxOffset + 8) carRows[0]++;
           else if (d > RAIL.maxOffset + 14) carRows[1]++;
         }

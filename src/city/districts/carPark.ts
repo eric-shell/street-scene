@@ -806,6 +806,15 @@ export function carParkRails<T extends Wall>(areas: readonly Area[], route: numb
   const zones = carParks(areas)
     .filter((g) => g.owner === route)
     .map((g) => flightCorridor(g, g.lipBack + 14, CAR_HALF + CFG.flightClear));
+  return railsClearOf(zones, rails);
+}
+
+/**
+ * `rails` with every piece touching one of the `zones` (convex polygons, a
+ * flight corridor) taken out; the rest of each rail stays, its ends at the
+ * gap. Shared with the alleys' jump exits (districts/alley.ts).
+ */
+export function railsClearOf<T extends Wall>(zones: readonly Vec2[][], rails: T[]): T[] {
   if (!zones.length) return rails;
   const cut = new Set<string>();
   const key = (w: Wall & { piece?: number }) => `${w.group ?? -1}:${w.piece ?? -1}`;

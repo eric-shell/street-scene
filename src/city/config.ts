@@ -317,6 +317,42 @@ export const CITY = {
         /** A second shortcut on the same route starts at least this far along the route from the first (m). */
         spacing: 320,
         jumpChance: 0.6,
+        /**
+         * A shortcut's path through its block is a dogleg (one bend) or a gentle arc (two bends)
+         * when the block has room, never a straight shot: it bends away from the corner it cuts.
+         * Bend angles tried per node (deg, the first that fits), the sharpest bend a jump exit's
+         * run-up may follow, and the shortest leg (m): a bend close to a mouth or the kicker leaves
+         * no straight to settle on.
+         */
+        bend: { tryDeg: [32, 24, 16], maxDeg: 45, minLeg: 24 },
+        /**
+         * Jump exits: at the exit end the alley climbs a ramp to a lip and the car flies over the
+         * mouth onto the route's street, landing on it heading down it. The last leg meets the
+         * street at exitDeg (shallow, so the landing heading is nearly the street's; the alley's
+         * walls then run on obliquely, the acute one furthest). The ramp is a parabola `length` m
+         * long rising `rise` m, steepest at the lip (2 rise / length, about 11 deg), its lip
+         * `lipBack` m inside the last point where both alley walls still stand; the face under the
+         * lip (Wall.top) stops street cars up to `drop` m below the lip. `lead` m of straight run
+         * the last bend and the ramp's toe. Landing zone: the run-up speed bound is the last bend
+         * taken at bendSpeed then launchAccel to the lip (full throttle and nitrous, as measured
+         * on the car park), its flight reach plus `rollout` m of road, all landingClear m short of
+         * the next junction; the flight corridor spreads spreadDeg each side of the leg. `chance`
+         * is the share of cuts planned as jumps (a jump only happens where its landing fits).
+         */
+        jump: {
+          chance: 0.62,
+          exitDeg: 28,
+          rise: 2.2,
+          length: 22,
+          lipBack: 2,
+          drop: 1.0,
+          lead: 8,
+          bendSpeed: 20,
+          launchAccel: 6,
+          rollout: 25,
+          landingClear: 15,
+          spreadDeg: 6,
+        },
       },
     },
     /**
