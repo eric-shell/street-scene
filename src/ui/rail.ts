@@ -1,14 +1,14 @@
 /**
  * The rail: the one layout every full screen menu shares (main menu, pause,
- * results, garage). An opaque column down the left edge with a slashed right
- * side and the accent rule along the slash, so the text never depends on the
- * 3D scene behind it; the scene keeps the rest of the screen and is framed to
+ * results, garage). An opaque column down the left edge with a straight right
+ * side and the accent rule down it, so the text never depends on the 3D scene
+ * behind it; the scene keeps the rest of the screen and is framed to
  * the free area beside the rail (railInset, GameRenderer.setFraming). Parts:
  *  - railScreen: the screen root with the rail's background and edge.
  *  - screenHead: back button, the screen's icon and title, an aside on the right.
  *  - keybar: the key legend along the bottom of the rail. Plain hints only show
  *    with a keyboard; hints with an action stay as buttons on touch screens.
- * Sizes live in ui.css (`--rail-*`, `--slash`); on narrow screens the rail
+ * Sizes live in ui.css (`--rail-*`); on narrow screens the rail
  * turns into a sheet over the bottom of the screen.
  */
 import { h, iconBtn } from './dom';
@@ -71,7 +71,7 @@ export function chip(text: string, ico?: IconNode, cls = ''): HTMLElement {
 }
 
 export interface Inset {
-  /** Screen covered from the left (CSS px): where the rail's slashed edge is at mid height. */
+  /** Screen covered from the left (CSS px): the rail's right edge. */
   left: number;
   /** Screen covered from the bottom (CSS px): a rail turned bottom sheet on a narrow screen. */
   bottom: number;
@@ -92,6 +92,5 @@ export function railInset(root: ParentNode | null = document): Inset {
   if (r.width === 0 || r.height === 0) return { left: 0, bottom: 0 };
   // A sheet: full width, starting part way down.
   if (r.width >= w - 1) return { left: 0, bottom: r.top > 1 && r.top < hgt ? hgt - r.top : 0 };
-  const slash = parseFloat(getComputedStyle(bg).getPropertyValue('--slash')) || 0;
-  return { left: Math.max(0, r.right - slash / 2), bottom: 0 };
+  return { left: Math.max(0, r.right), bottom: 0 };
 }

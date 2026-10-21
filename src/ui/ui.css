@@ -13,11 +13,11 @@
  *
  * One layout for every full screen menu: the rail (ui/rail.ts). Main menu,
  * pause, results and garage all put their content on an opaque column down the
- * left with a slashed edge and the title rule's gradient along the slash, a
- * screen header (back, icon, title, aside) on top and a key legend along the
- * bottom; the 3D scene is framed in the space beside it. Three motifs repeat so
- * every screen reads as one game: the slash (rail edge, chamfered actions), the
- * rule (the yellow-orange-red gradient under the logo, on the active tab and the
+ * left with a straight edge and the title rule's gradient down it, a screen
+ * header (back, icon, title, aside) on top and a key legend along the bottom;
+ * the 3D scene is framed in the space beside it. Three motifs repeat so every
+ * screen reads as one game: the chamfer (cut corners on primary actions and
+ * badges), the rule (the yellow-orange-red gradient under the logo, on the active tab and the
  * loading bar) and the accent hairline across the top of every card and dialog.
  */
 :root {
@@ -555,16 +555,16 @@ kbd {
 
 /* ---------- the rail (ui/rail.ts) ----------
    Every full screen menu stands on a rail: an opaque column down the left with
-   a slashed right edge and the accent along the slash, so its contrast never
-   depends on the scene behind it, and the 3D view framed in the space beside it
+   a straight right edge and the accent down it, so its contrast never depends
+   on the scene behind it, and the 3D view framed in the space beside it
    (GameRenderer.setFraming). The column keeps one width on every step of a
    screen, so nothing jumps; the key legend sits along the bottom. Narrow
-   screens get a full width rail without the slash. */
+   screens get a full width rail without the edge. */
 .rail-screen {
   --rail-pad: max(16px, 4.5vw);
   --rail-content: min(480px, calc(100vw - 32px));
-  --slash: 96px;
-  --rail-w: calc(var(--rail-pad) + var(--rail-content) + 40px + var(--slash));
+  /* The content's margin on both sides of the column. */
+  --rail-w: calc(var(--rail-pad) * 2 + var(--rail-content));
 }
 .rail-bg,
 .rail-edge {
@@ -579,12 +579,11 @@ kbd {
   background:
     radial-gradient(90% 38% at 0% 0%, rgba(252, 152, 103, 0.07), transparent 70%),
     linear-gradient(90deg, rgba(25, 24, 26, 0.985) 55%, rgba(25, 24, 26, 0.96));
-  clip-path: polygon(0 0, 100% 0, calc(100% - var(--slash)) 100%, 0 100%);
 }
-/* The accent along the slash: a 2px band clipped to the same edge. */
+/* The accent down the edge: the rail's width clipped to its last 2px, so a sheet can unclip it into a full width bar. */
 .rail-edge {
   background: linear-gradient(180deg, var(--accent-2), var(--accent) 45%, rgba(255, 97, 136, 0.7));
-  clip-path: polygon(calc(100% - 2px) 0, 100% 0, calc(100% - var(--slash)) 100%, calc(100% - var(--slash) - 2px) 100%);
+  clip-path: inset(0 0 0 calc(100% - 2px));
 }
 /* The column: a fixed top so the title stays put from step to step, room for the key legend at the bottom. */
 .rail-col {
@@ -612,7 +611,6 @@ kbd {
 @media (max-width: 720px) {
   .rail-screen {
     --rail-w: 100%;
-    --slash: 0px;
   }
   .rail-edge {
     display: none;
@@ -2201,10 +2199,9 @@ body.garage-open .toast {
   color: var(--text);
   --rail-pad: max(12px, 2vw);
   --rail-content: min(392px, calc(100vw - 24px));
-  --slash: 64px;
-  --rail-w: calc(var(--rail-pad) + var(--rail-content) + 20px + var(--slash));
-  /* Where the free space beside the rail is centered along the bottom, where the slash ends. */
-  --free-mid: calc((var(--rail-w) - var(--slash) + 100vw) / 2);
+  --rail-w: calc(var(--rail-pad) * 2 + var(--rail-content));
+  /* The middle of the free space beside the rail. */
+  --free-mid: calc((var(--rail-w) + 100vw) / 2);
 }
 .garage.dev .rail-edge {
   background: var(--accent-2);
@@ -2428,7 +2425,8 @@ body.garage-open .toast {
 /* The car card over the 3D view: what is on the turntable, as a plate lit from its left edge. */
 .garage-car {
   position: absolute;
-  left: calc(var(--rail-w) + 4px);
+  /* Clear of the rail's edge by its top margin, so its accent and the rail's do not read as a double line. */
+  left: calc(var(--rail-w) + 16px);
   top: max(16px, env(safe-area-inset-top));
   display: flex;
   flex-direction: column;
@@ -2543,7 +2541,6 @@ body.garage-open .toast {
   .garage {
     --rail-pad: 0px;
     --rail-content: 100vw;
-    --slash: 0px;
     --rail-w: 100%;
     --sheet: 52vh;
   }
