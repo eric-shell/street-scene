@@ -515,6 +515,24 @@ body > .mw {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* The seed's named event (city/events.ts): display name, tagline under it. */
+.menu .event-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.menu .event-name {
+  font: 900 22px var(--display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text);
+  line-height: 1.1;
+}
+.menu .event-tagline {
+  font-size: 13px;
+  color: var(--muted);
+}
 /* A row of four tiles: the home menu and the race types. Lit like the mode rows they replace: an accent bar and edge. */
 .tiles {
   display: grid;
@@ -1125,6 +1143,32 @@ body > .mw {
     opacity: 0.25;
   }
 }
+/* Timed hazard warning (ui/hazardBanner.ts): the drawbridge ahead rising, or up. */
+.hud-hazard {
+  position: absolute;
+  top: 24%;
+  left: 0;
+  right: 0;
+  display: none;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  font: 900 clamp(18px, 2.8vw, 28px) var(--display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.7), 0 0 12px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+.hud-hazard.show {
+  display: flex;
+}
+.hud-hazard.warn {
+  color: var(--accent-2);
+  animation: blink 0.8s steps(2) infinite;
+}
+.hud-hazard.stop {
+  color: var(--red);
+}
 .hud-drift {
   position: absolute;
   top: 12%;
@@ -1144,6 +1188,50 @@ body > .mw {
 }
 .hud-drift .cur span {
   color: var(--text);
+}
+.hud-drift .cur em {
+  font: 900 13px var(--display);
+  font-style: normal;
+  letter-spacing: 0.08em;
+  color: var(--accent-2);
+  vertical-align: middle;
+}
+/* Drift zone chip (sim/driftZones.ts): yellow while the zone pays, its bar the bonus left in this visit. */
+.hud-zone {
+  display: none;
+  position: relative;
+  overflow: hidden;
+  border-left-color: var(--accent-2);
+}
+.hud-zone.show {
+  display: flex;
+}
+.hud-zone .ic {
+  color: var(--accent-2);
+}
+.hud-zone b {
+  font: 900 15px var(--display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+}
+.hud-zone .left {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: rgba(255, 216, 102, 0.15);
+}
+.hud-zone .left i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--accent-2);
+}
+.hud-zone.resting .ic,
+.hud-zone.resting b {
+  color: var(--muted);
 }
 .hud-br {
   position: absolute;

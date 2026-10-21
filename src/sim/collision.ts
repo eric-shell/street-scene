@@ -8,6 +8,8 @@
  * src/sim/rails.ts at their displaced positions instead of the static rail
  * walls: hits shove pieces back a little and cost speed for the dent, and the
  * steps between dented and straight pieces catch cars scraping along.
+ * Timed gates (sim/gates.ts: the drawbridge's arms) join the static walls
+ * while they block, for cars coming at them.
  * Car vs car: equal-ish impulses. Fixed iteration order.
  */
 import { CarState } from './car';
@@ -16,6 +18,7 @@ import { DT } from './constants';
 import { abs, cos, sign, sin, sqrt } from './math';
 import type { Contact, World } from '../city/world';
 import { RailState, collideRails, pushRailPiece, railStepAhead } from './rails';
+import { collideGates } from './gates';
 
 /** Hardest static hit of a tick: normal impact speed (m/s) and what was hit. */
 export interface WorldHit {
@@ -43,13 +46,17 @@ const contacts: Contact[] = [];
 /** Rail piece of each contact (-1 for static walls), parallel to `contacts`. */
 const contactPiece: number[] = [];
 
-/** World contacts for a circle; with rail bodies, static rail walls are replaced by the displaced pieces. */
-function gatherContacts(world: World, rails: RailState | undefined, x: number, z: number, r: number, y: number): number {
+/**
+ * World contacts for a circle; with rail bodies, static rail walls are replaced by the displaced pieces.
+ * Timed gates blocking at `tick` are added for the car whose center is (carX, carZ). A car body at
+ * height y passes over low walls (Wall.top: a car park's lip face).
+ */
+function gatherContacts(world: World, rails: RailState | undefined, x: number, z: number, r: number, tick = 0, carX = x, carZ = z, y = -Infinity): number {
   const n = world.collideCircle(x, z, r, contacts, y);
   contactPiece.length = 0;
   if (!rails || !rails.layout.subCount) {
     for (let i = 0; i < n; i++) contactPiece.push(-1);
-    return n;
+    return world.timedGates ? n + collideGates(world.timedGates, tick, carX, carZ, x, z, r, contacts, contactPiece) : n;
   }
   let w = 0;
   for (let i = 0; i < n; i++) {
@@ -58,7 +65,8 @@ function gatherContacts(world: World, rails: RailState | undefined, x: number, z
     contactPiece.push(-1);
   }
   contacts.length = w;
-  return w + collideRails(rails, x, z, r, contacts, contactPiece);
+  const nr = w + collideRails(rails, x, z, r, contacts, contactPiece);
+  return world.timedGates ? nr + collideGates(world.timedGates, tick, carX, carZ, x, z, r, contacts, contactPiece) : nr;
 }
 
 /**
@@ -88,7 +96,7 @@ export function collideCarWithWorld(c: CarState, t: CarTuning, world: World, hit
     for (let pass = 0; pass < 2; pass++) {
       const cx = c.x + fx * circ.u;
       const cz = c.z + fz * circ.u;
-      const n = gatherContacts(world, rails, cx, cz, circ.r, c.y);
+      const n = gatherContacts(world, rails, cx, cz, circ.r, tick, c.x, c.z, c.y);
       if (n === 0) break;
       let bi = 0;
       for (let i = 1; i < n; i++) if (contacts[i].depth > contacts[bi].depth) bi = i;

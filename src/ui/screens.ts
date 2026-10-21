@@ -2,6 +2,7 @@
 import { btn, h, iconBtn, segmented } from './dom';
 import {
   Code,
+  Flag,
   Gamepad2,
   Heart,
   Keyboard,
@@ -63,8 +64,12 @@ export interface ResultRow {
   bestLap: number | null;
 }
 
+const MODE_LABEL: Record<RaceMode, string> = { circuit: 'Circuit', sprint: 'Sprint', drift: 'Drift' };
+
 export function resultsScreen(o: {
   mode: RaceMode;
+  /** The seed's event name (Hill Climb, River Run, ...), over the headline. */
+  event?: string;
   rows: ResultRow[];
   position: number;
   driftScore?: number;
@@ -99,6 +104,7 @@ export function resultsScreen(o: {
     h(
       'div',
       { class: 'dialog panel', role: 'dialog', 'aria-label': 'Results' },
+      o.event && h('div', { class: 'label' }, icon(Flag, { size: 14 }), `${o.event} · ${MODE_LABEL[o.mode]}`),
       h('h2', { class: 'title' }, icon(o.position === 1 || o.mode === 'drift' ? Trophy : Medal, { size: 24 }), headline),
       o.newBest && h('div', {}, h('span', { class: 'badge' }, icon(Sparkles, { size: 14 }), 'New best')),
       o.tuned && h('div', { class: 'muted' }, 'Dev tuning was changed during this run, so it was not saved.'),
@@ -130,7 +136,7 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
     s[k] = v;
     onChange(s);
   };
-  const toggle = (k: 'retro' | 'radialBlur' | 'showFps' | 'debugTuningPanel' | 'debugCameraPanel') => onOff(s[k], (v) => set(k, v));
+  const toggle = (k: 'retro' | 'radialBlur' | 'showFps' | 'flashEffects' | 'debugTuningPanel' | 'debugCameraPanel') => onOff(s[k], (v) => set(k, v));
   const slider = (label: string, value: number, onInput: (v: number) => void) => {
     const r = h('input', { type: 'range', min: 0, max: 1, step: 0.01, value, class: 'setting-slider', 'aria-label': label }) as HTMLInputElement;
     r.addEventListener('input', () => onInput(Number(r.value)));
@@ -165,6 +171,7 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
         ),
         settingRow('Retro PS2 mode', toggle('retro')),
         settingRow('Speed blur', toggle('radialBlur')),
+        settingRow('Flash effects', toggle('flashEffects'), 'Lightning and police strobes'),
         settingRow('FPS counter', toggle('showFps')),
       ],
     },

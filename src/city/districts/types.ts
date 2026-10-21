@@ -28,6 +28,7 @@ import type { RoadGraph } from '../roadGraph';
 import type { BlockFace, Building, EdgeMouths, Sector, Wall } from '../blocks';
 import type { Terrain } from '../terrain';
 import type { DistrictPropSpec } from '../props';
+import type { EventFlavourId } from '../events';
 
 export type AreaKind =
   | 'downtown'
@@ -40,6 +41,10 @@ export type AreaKind =
   | 'infill'
   | 'hills'
   | 'monument'
+  | 'tunnel'
+  | 'overpass'
+  | 'market'
+  | 'roadworks'
   | 'carPark'
   // Reserved unique features (planned later, disabled in config).
   | 'waterfront'
@@ -80,6 +85,14 @@ export const COBBLE_PRIORITY = 6;
  *   channel, bank top fence, ramp retaining walls, channel tunnel ends (river).
  * tree: park tree trunk (park).
  * monument: the step ring around a landmark's base, or an arch's piers (monument).
+ * tunnel / rock: tunnel walls, portal wingwalls and the shut in building line behind them;
+ *   the rock face along a ridge's cutting (tunnel).
+ * pier: overpass piers and abutments, sign gantry legs (overpass).
+ * marketRail: the night market's crowd rail along a pen and its end caps back to the building line;
+ *   marketFront: the frontage behind a pen, a facade or the market's shuttered back wall (market).
+ * gate: a timed gate's arms across the deck (sim/gates.ts; drawn by render/drawbridge.ts).
+ *   Timed gates are not in World.walls: they block only while their schedule says so.
+ * roadworks: the plant of a lane closure (arrow board, excavator, skip, light tower) (roadworks).
  * carPark: a multi-storey car park's parapets, facades, chute and ramp walls, and the low face under its lip (carPark).
  */
 export type WallLook =
@@ -97,9 +110,16 @@ export type WallLook =
   | 'channelEnd'
   | 'tree'
   | 'monument'
+  | 'tunnel'
+  | 'rock'
+  | 'pier'
+  | 'marketRail'
+  | 'marketFront'
+  | 'gate'
+  | 'roadworks'
   | 'carPark';
 
-export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'carPark'];
+export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'carPark'];
 
 export interface Area {
   /** Index into CityDistricts.areas. */
@@ -237,6 +257,17 @@ export interface Claims {
   face: Map<number, number>;
 }
 
+/**
+ * The seed's event flavour (src/city/events.ts) and both routes, as the
+ * topology hook picked them: modules planned after the routes (hills, the
+ * monument) read it to put their feature where the race goes.
+ */
+export interface PlannedEvent {
+  flavour: EventFlavourId;
+  /** Circuit then sprint: graph nodes in driving order and the edges between them. */
+  routes: { nodes: number[]; edges: number[]; closed: boolean }[];
+}
+
 export interface PlanContext {
   seed: number;
   /** This module's own random stream (deriveSeed(seed, 'district:' + kind)). */
@@ -256,6 +287,8 @@ export interface PlanContext {
   graphChanged(): void;
   /** Present for 'late' modules only. */
   late?: LateContext;
+  /** Present for the modules planned after the topology hook, when it returned one. */
+  event?: PlannedEvent;
   /** Polygons route shortcuts must not cut through (car park sites held while the alleys are carved, see world.ts). */
   keepOut?: Vec2[][];
 }
@@ -300,6 +333,10 @@ export const AREA_MAP_STYLE: Record<AreaKind, AreaMapStyle> = {
   infill: { fill: 'rgba(147,146,147,0.08)' },
   hills: { fill: 'rgba(147,146,147,0.07)', stroke: 'rgba(147,146,147,0.34)', width: 2.5, dash: [6, 7] },
   monument: { fill: 'rgba(255,216,102,0.2)' },
+  tunnel: { fill: 'rgba(147,146,147,0.16)', stroke: 'rgba(25,24,26,0.8)', width: 6, dash: [7, 4] },
+  overpass: { fill: 'rgba(193,192,192,0.22)', stroke: 'rgba(193,192,192,0.5)', width: 5, dash: [3, 3] },
+  market: { fill: 'rgba(255,97,136,0.3)' },
+  roadworks: { fill: 'rgba(255,97,136,0.5)' },
   carPark: { fill: 'rgba(147,146,147,0.22)', stroke: 'rgba(255,97,136,0.4)', width: 1.5 },
   waterfront: { fill: 'rgba(120,220,232,0.14)' },
   lake: { fill: 'rgba(120,220,232,0.18)' },

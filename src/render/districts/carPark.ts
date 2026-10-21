@@ -320,10 +320,13 @@ function buildOne(kit: DistrictKit, g: CarParkGeo, open: boolean): void {
   }
   // Pay booth beside the apron on its narrow side, its barrier arm raised (or a shutter down when closed).
   const narrow = g.fl < g.fr ? -1 : 1;
-  const boothAt = rampPoint(g, g.apron1 + 2.5, narrow * (g.rhw + CFG.wall + 1.6));
+  // Behind the apron's narrow flared wall, inside the plot the buildings keep off.
+  const boothA = g.apron1 - 3;
+  const boothL = narrow * (rampHalf(g, boothA, narrow) + CFG.wall + 1.1);
+  const boothAt = rampPoint(g, boothA, boothL);
   const by = ground(boothAt.x, boothAt.z);
   orientedBox(kit.solid, boothAt.x - g.rax * 1.2 + g.raz * 1, boothAt.z - g.raz * 1.2 - g.rax * 1, boothAt.x + g.rax * 1.2 + g.raz * 1, boothAt.z + g.raz * 1.2 - g.rax * 1, -g.raz * 2, g.rax * 2, by, by + 2.5, CONCRETE_DARK);
-  strip(kit.glow, rampPoint(g, g.apron1 + 1.6, narrow * (g.rhw + CFG.wall + 0.55)), rampPoint(g, g.apron1 + 3.4, narrow * (g.rhw + CFG.wall + 0.55)), by + 2.6, 0.3, col(0xffd9a0, 1.6));
+  strip(kit.glow, rampPoint(g, boothA - 0.9, boothL - narrow * 1.05), rampPoint(g, boothA + 0.9, boothL - narrow * 1.05), by + 1.6, 0.5, col(0xffd9a0, 1.6));
   const armBase = rampPoint(g, g.apron1 - 0.3, narrow * (g.rhw + 0.1));
   const ay = kit.h(armBase.x, armBase.z);
   for (let k = 0; k < 6; k++) cylinder(kit.solid, armBase.x, armBase.z, 0.06, ay + 1 + k * 0.6, ay + 1.6 + k * 0.6, 4, k % 2 ? col(0xd92b2b) : col(0xeeeeee), false);

@@ -5,8 +5,10 @@
  * trash bags, the lantern posts of parks and plazas, and the construction
  * pieces in route shortcuts: fence panels
  * with contractors' banners, cones, sawhorse barricades with a lamp, water
- * filled barriers, sandbags, pallets), instanced per kind and part, tinted
- * per instance. Traffic
+ * filled barriers, sandbags, pallets), and the neighbourhood furniture of
+ * streetFurniture.ts (hydrants that gush when broken, hydrantSpray.ts, meters,
+ * mailboxes, phone booths, vending machines), instanced per kind and part,
+ * tinted per instance. Traffic
  * signals cycle red / amber / green in a shader (per intersection offset,
  * crossing directions out of phase), so they cost nothing on the CPU.
  *
@@ -18,11 +20,14 @@
  */
 import * as THREE from 'three';
 import type { World } from '../city/world';
-import type { DistrictPropKind, Prop } from '../city/props';
+import type { DistrictPropKind, FurnitureKind, Prop } from '../city/props';
+import { FURNITURE_KINDS } from '../city/props';
 import { GeoBuilder } from './geoBuilder';
 import { FOG_DENSITY } from './lighting';
 import { fadeSubPixel } from './lightFx';
 import { D_BOX, D_CYL, D_GLASS, D_GLOW, Debris, DebrisType } from './debris';
+import { FURNITURE_PARTS, PropPartsDef, shatterFurniture } from './streetFurniture';
+import { buildHydrantSpray } from './hydrantSpray';
 
 /** Streetlight pole height and arm reach (lamp heads sit at the arm end). Matches cityMeshes lampPositions. */
 export const STREETLIGHT_POLE_H = 8.2;
@@ -334,6 +339,131 @@ function parkLanternGeo(): THREE.BufferGeometry {
   return s.build();
 }
 
+// ---------- Night market (districts/market.ts) ----------
+
+/** A flat quad from its four corners (perimeter order), facing along n. */
+function quad4(gb: GeoBuilder, p: [number, number, number][], n: [number, number, number], color: THREE.Color): void {
+  const v = p.map(([x, y, z]) => gb.vertex(x, y, z, n[0], n[1], n[2], 0, 0, color));
+  gb.quadFacing(v[0], v[1], v[2], v[3], n[0], n[1], n[2]);
+}
+
+/** Market stall frame, local +Z toward the road (m): pole half spacing, front and back pole lines and heights, lantern middle. */
+const STALL = { halfW: 0.95, front: 0.62, back: -0.75, frontH: 2.1, backH: 2.45, lanternY: 1.72 } as const;
+
+/** Four bamboo poles and their cross bars (the awning, goods and lanterns are separate parts). */
+function stallFrameGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const pole = col(0x6a4a2c);
+  for (const x of [-STALL.halfW, STALL.halfW]) {
+    box(s, x, STALL.frontH / 2, STALL.front, 0.06, STALL.frontH, 0.06, pole);
+    box(s, x, STALL.backH / 2, STALL.back, 0.06, STALL.backH, 0.06, pole);
+  }
+  box(s, 0, STALL.frontH, STALL.front, 2 * STALL.halfW + 0.06, 0.05, 0.05, pole);
+  box(s, 0, STALL.backH, STALL.back, 2 * STALL.halfW + 0.06, 0.05, 0.05, pole);
+  return s.build();
+}
+
+/** The goods: a table in a cloth skirt piled with baskets of fruit, crates and a shelf of jars behind. */
+function stallGoodsGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  box(s, 0, 0.8, 0.42, 1.96, 0.06, 0.66, col(0x6a4a30));
+  box(s, 0, 0.42, 0.76, 1.96, 0.74, 0.02, col(0x8a1f22), false);
+  for (const x of [-0.97, 0.97]) box(s, x, 0.4, 0.42, 0.02, 0.72, 0.64, col(0x7a1a1e), false);
+  const fruit = [0xff7a1a, 0xd8202a, 0x6ab82a, 0xf2c81c, 0x8a2a6a];
+  for (let k = 0; k < 5; k++) {
+    const x = -0.74 + k * 0.37;
+    const z = 0.42 + (k % 2 ? 0.14 : -0.12);
+    cyl(s, x, z, 0.83, 0.93, 0.15, 0.18, 6, col(0x8a6436));
+    cyl(s, x, z, 0.93, 1.03, 0.16, 0.05, 6, col(fruit[k]));
+  }
+  box(s, -0.6, 0.25, -0.5, 0.55, 0.5, 0.45, col(0x9a7444));
+  box(s, -0.55, 0.7, -0.52, 0.5, 0.4, 0.4, col(0xa88250));
+  box(s, 0.5, 0.55, -0.6, 0.9, 1.1, 0.3, col(0x4a3424));
+  for (let k = 0; k < 4; k++) box(s, 0.2 + k * 0.2, 1.18, -0.6, 0.12, 0.16, 0.12, col([0xd8a040, 0xb83a2a, 0x6a8a3a, 0xe0c080][k]));
+  return s.build();
+}
+
+/** The awning sloping down toward the road with a valance along its front edge (tinted: stripes in two shades of it). */
+function stallAwningGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const z0 = STALL.back - 0.18;
+  const z1 = STALL.front + 0.38;
+  const y0 = STALL.backH + 0.05;
+  const y1 = STALL.frontH - 0.02;
+  const l = Math.hypot(z1 - z0, y0 - y1);
+  const ny = (z1 - z0) / l;
+  const nz = (y0 - y1) / l;
+  const N = 6;
+  const w = STALL.halfW + 0.22;
+  for (let k = 0; k < N; k++) {
+    const xa = -w + (2 * w * k) / N;
+    const xb = -w + (2 * w * (k + 1)) / N;
+    const c = col(0xffffff, k % 2 ? 0.55 : 1);
+    quad4(s, [[xa, y0, z0], [xb, y0, z0], [xb, y1, z1], [xa, y1, z1]], [0, ny, nz], c);
+    quad4(s, [[xa, y1, z1], [xb, y1, z1], [xb, y1 - 0.26, z1], [xa, y1 - 0.26, z1]], [0, 0, 1], c);
+  }
+  return s.build();
+}
+
+/** Paper lanterns hung under the awning's front edge: warm and bright, so they bloom. */
+function stallLanternGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const Y = STALL.lanternY;
+  [-0.7, 0, 0.7].forEach((x, k) => {
+    const c = col(k === 1 ? 0xffa040 : 0xff4a2a, k === 1 ? 3 : 3.4);
+    cyl(s, x, STALL.front + 0.22, Y - 0.16, Y, 0.09, 0.16, 6, c);
+    cyl(s, x, STALL.front + 0.22, Y, Y + 0.16, 0.16, 0.08, 6, c);
+  });
+  return s.build();
+}
+
+/** Two crates of fruit side by side and one stacked on them (tinted: wood and fruit shift a little per stack). */
+function fruitCratesGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const wood = col(0xa07a48);
+  const slat = col(0x6a4c2a);
+  const crates: [number, number, number, number][] = [
+    [-0.27, 0, 0.02, 0xff7a1a],
+    [0.29, 0, -0.04, 0x6ab82a],
+    [0.02, 0.33, 0, 0xd8202a],
+  ];
+  for (const [x, y, z, fruit] of crates) {
+    box(s, x, y + 0.15, z, 0.54, 0.3, 0.42, wood);
+    box(s, x, y + 0.08, z, 0.56, 0.05, 0.44, slat);
+    box(s, x, y + 0.31, z, 0.48, 0.05, 0.36, col(fruit));
+  }
+  return s.build();
+}
+
+/** Food cart, long side to the road: body and roof (tinted enamel). */
+function foodCartBodyGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  box(s, 0, 0.8, 0, 1.5, 0.9, 0.8, col(0xffffff));
+  box(s, 0, 2.18, 0.05, 1.8, 0.06, 1.15, col(0xffffff));
+  box(s, 0, 2.1, 0.62, 1.8, 0.16, 0.03, col(0xd8d8d8), false);
+  return s.build();
+}
+
+/** The cart's wheels, steel counter, roof posts and a pot and bowls on the counter. */
+function foodCartDetailGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const dark = col(0x17181c);
+  for (const x of [-0.5, 0.5]) for (const z of [-0.43, 0.43]) box(s, x, 0.24, z, 0.44, 0.44, 0.06, dark, false);
+  box(s, 0, 1.27, 0.12, 1.56, 0.04, 1.0, col(0xb4b8c0));
+  for (const x of [-0.82, 0.82]) box(s, x, 1.7, -0.42, 0.05, 0.95, 0.05, col(0x9a9ea6));
+  cyl(s, -0.4, 0.05, 1.29, 1.5, 0.17, 0.17, 7, col(0x5a5c62));
+  cyl(s, 0.35, 0.2, 1.29, 1.38, 0.11, 0.14, 7, col(0xe8e4dc));
+  return s.build();
+}
+
+/** The cart's lit menu board and the bulbs along its roof edge. */
+function foodCartGlowGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  box(s, 0, 0.98, 0.41, 1.1, 0.32, 0.02, col(0xffe0a0, 2.2), false);
+  for (let k = 0; k < 6; k++) box(s, -0.75 + k * 0.3, 2.0, 0.64, 0.07, 0.07, 0.07, col(k % 2 ? 0xff7a3a : 0xffc070, 2.6), false);
+  return s.build();
+}
+
 /** Per kind: mesh parts (geometry, material slot, tinted per instance?) and the tints. */
 const CLUTTER: Record<DistrictPropKind, { parts: { geo: () => THREE.BufferGeometry; mat: 'matte' | 'solid' | 'canopy' | 'glow' | 'lamp'; tint?: boolean }[]; tints: number[]; spin: boolean }> = {
   bush: { parts: [{ geo: bushGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xd8e8c8, 0xf0ffd8, 0xc8d8b0], spin: true },
@@ -352,8 +482,23 @@ const CLUTTER: Record<DistrictPropKind, { parts: { geo: () => THREE.BufferGeomet
   waterBarrier: { parts: [{ geo: waterBarrierGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xff6a1a, 0xe03030, 0xffffff, 0xff8a2a], spin: false },
   sandbags: { parts: [{ geo: sandbagsGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xe8dcc0, 0xc8b890], spin: false },
   pallets: { parts: [{ geo: palletsGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xd8c8b0, 0xb8a890], spin: true },
+  // Market awnings in festival colours, food carts in enamel paint; stalls and carts square up with the curb.
+  marketStall: {
+    parts: [{ geo: stallFrameGeo, mat: 'solid' }, { geo: stallGoodsGeo, mat: 'matte' }, { geo: stallAwningGeo, mat: 'canopy', tint: true }, { geo: stallLanternGeo, mat: 'lamp' }],
+    tints: [0xc8202a, 0xe86a1a, 0xf2b81c, 0x2a8a4a, 0x1d55c4, 0xe8e8ea, 0x8a2a9a, 0xd83a6a],
+    spin: false,
+  },
+  fruitCrates: { parts: [{ geo: fruitCratesGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xf0e2cc, 0xe6eed8], spin: true },
+  foodCart: {
+    parts: [{ geo: foodCartBodyGeo, mat: 'solid', tint: true }, { geo: foodCartDetailGeo, mat: 'matte' }, { geo: foodCartGlowGeo, mat: 'glow' }],
+    tints: [0xc8202a, 0x2a8a8a, 0xf2b81c, 0xe8e8ea, 0x1d3f8a],
+    spin: false,
+  },
 };
-const CLUTTER_KINDS = Object.keys(CLUTTER) as DistrictPropKind[];
+/** Every kind drawn from a parts table: district clutter and the neighbourhood furniture. */
+const PARTS: Partial<Record<Prop['kind'], PropPartsDef>> = { ...CLUTTER, ...FURNITURE_PARTS };
+const PART_KINDS = Object.keys(PARTS) as Prop['kind'][];
+const isFurniture = (k: Prop['kind']): k is FurnitureKind => (FURNITURE_KINDS as readonly string[]).includes(k);
 
 function streetlightGeo(): { solid: THREE.BufferGeometry; lens: THREE.BufferGeometry } {
   const s = new GeoBuilder(true);
@@ -734,14 +879,16 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
     });
   }
 
-  // District clutter, tinted per instance; most kinds get a random spin so rows never look stamped.
+  // District clutter and neighbourhood furniture, tinted per instance; most clutter gets a random spin so rows never look stamped.
   const tintOf: THREE.Color[] = [];
-  for (const kind of CLUTTER_KINDS) {
+  for (const kind of PART_KINDS) {
     const list = byKind(kind);
     if (!list.length) continue;
-    const def = CLUTTER[kind];
-    const matOf = { matte: matteMat, canopy: canopyMat, solid: solidMat, glow: glowMat, lamp: lampLensMat } as const;
+    const def = PARTS[kind]!;
+    const matOf = { matte: matteMat, canopy: canopyMat, solid: solidMat, glow: glowMat, lamp: lampLensMat, glass: glassMat } as const;
     const ids = def.parts.map((part, k) => addMesh(`${kind}${k}`, part.geo(), matOf[part.mat], list.length));
+    // Glass after the opaque pass, like the bus shelters'.
+    def.parts.forEach((part, k) => part.mat === 'glass' && (meshes[ids[k]].renderOrder = 4));
     list.forEach((p, i) => {
       const yaw = p.yaw + (def.spin ? hash01(p.id * 7) * 6.28 : 0);
       const tint = tmpTint.setHex(def.tints[(hash01(p.id * 17) * def.tints.length) | 0]).multiplyScalar(0.85 + 0.3 * hash01(p.id * 23));
@@ -763,8 +910,11 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
   });
 
   const debris = new Debris(world.heightAt);
-  const clutterYaw = (p: Prop) => p.yaw + (CLUTTER[p.kind as DistrictPropKind]?.spin ? hash01(p.id * 7) * 6.28 : 0);
+  const clutterYaw = (p: Prop) => p.yaw + (PARTS[p.kind]?.spin ? hash01(p.id * 7) * 6.28 : 0);
   group.add(debris.group);
+  // Broken hydrants gush for the rest of the race.
+  const spray = buildHydrantSpray();
+  group.add(spray.mesh);
   const shown = new Uint8Array(props.length);
   const tmpC = new THREE.Color();
 
@@ -945,6 +1095,10 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
       return;
     }
 
+    if (isFurniture(p.kind)) {
+      shatterFurniture(p.kind, spawn, speed, p.yaw, tintOf[p.id] ?? col(0xffffff), (ly, sp, n) => debris.burst(p.x, p.y + ly, p.z, dx, dz, sp, n));
+      return;
+    }
     if (p.kind !== 'busStop') {
       shatterClutter(p, spawn, speed, dx, dz);
       return;
@@ -1076,6 +1230,40 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
           spawn(D_BOX, rnd(-0.3, 0.3), rnd(0.2, 0.6), rnd(-0.3, 0.3), rnd(0, 6.28), s, s * rnd(0.3, 1), s, rnd(0.4, 0.9), rnd(1.5, 4) + speed * 0.05, 10, col([0xd8d4c8, 0x8a6a40, 0xc0302a, 0x3a7a4a][k % 4]), rnd(3, 4.5));
         }
         return;
+      case 'marketStall': {
+        // The awning sails off over the car, the poles scatter, the goods go everywhere and the lanterns tumble, still lit.
+        spawn(D_BOX, 0, 2.3, 0, p.yaw + rnd(-0.3, 0.3), 1.25, 0.02, 1.1, rnd(0.25, 0.45), rnd(3, 5) + speed * 0.1, 4, tint.clone(), rnd(4.5, 6));
+        for (const x of [-STALL.halfW, STALL.halfW]) for (const z of [STALL.front, STALL.back]) spawn(D_CYL, x, 1.1, z, rnd(0, 6.28), 0.03, 1.1, 0.03, rnd(0.4, 0.8), rnd(1.5, 3.5), 6, col(0x6a4a2c), rnd(4, 5.5));
+        spawn(D_BOX, 0, 0.82, 0.42, p.yaw + rnd(-0.4, 0.4), 0.98, 0.03, 0.33, rnd(0.45, 0.75), rnd(2, 3.5) + speed * 0.08, 5, col(0x6a4a30), rnd(4.5, 6));
+        spawn(D_BOX, 0, 0.45, 0.76, p.yaw + rnd(-0.5, 0.5), 0.98, 0.36, 0.01, rnd(0.5, 0.85), rnd(1.5, 3) + speed * 0.06, 6, col(0x8a1f22), rnd(4, 5.5));
+        const goods = [0xff7a1a, 0xd8202a, 0x6ab82a, 0xf2c81c, 0x8a2a6a, 0xa07a48];
+        for (let k = 0; k < 16; k++) {
+          const sz = rnd(0.05, 0.1);
+          spawn(D_BOX, rnd(-0.85, 0.85), rnd(0.85, 1.1), rnd(0.15, 0.7), rnd(0, 6.28), sz, sz, sz, rnd(0.55, 1.05), rnd(2, 5) + speed * 0.07, 12, col(goods[k % goods.length]), rnd(3, 4.5));
+        }
+        for (const x of [-0.7, 0, 0.7]) spawn(D_GLOW, x, STALL.lanternY, STALL.front + 0.22, rnd(0, 6.28), 0.13, 0.15, 0.13, rnd(0.4, 0.8), rnd(2, 4) + speed * 0.06, 6, col(x ? 0xff4a2a : 0xffa040, 2.6), rnd(3, 4.5));
+        return;
+      }
+      case 'fruitCrates': {
+        const wood = col(0xa07a48).multiply(tint);
+        for (let k = 0; k < 9; k++) spawn(D_BOX, rnd(-0.4, 0.4), rnd(0.1, 0.6), rnd(-0.2, 0.2), rnd(0, 6.28), rnd(0.2, 0.28), 0.015, rnd(0.04, 0.06), rnd(0.45, 0.85), rnd(1.5, 3.5) + speed * 0.07, 9, wood.clone().multiplyScalar(rnd(0.7, 1.1)));
+        const fruit = [0xff7a1a, 0x6ab82a, 0xd8202a, 0xf2c81c];
+        for (let k = 0; k < 18; k++) {
+          const sz = rnd(0.045, 0.07);
+          spawn(D_BOX, rnd(-0.45, 0.45), rnd(0.3, 0.7), rnd(-0.2, 0.2), rnd(0, 6.28), sz, sz, sz, rnd(0.6, 1.1), rnd(1.5, 4) + speed * 0.06, 14, col(fruit[k % fruit.length]), rnd(3.5, 5));
+        }
+        return;
+      }
+      case 'foodCart': {
+        spawn(D_BOX, 0, 0.8, 0, p.yaw + rnd(-0.3, 0.3), 0.75, 0.45, 0.4, rnd(0.3, 0.5), rnd(1.5, 3) + speed * 0.06, 3, tint.clone(), rnd(5.5, 6.5), true);
+        spawn(D_BOX, 0, 2.18, 0.05, p.yaw + rnd(-0.6, 0.6), 0.9, 0.03, 0.58, rnd(0.25, 0.45), rnd(3, 4.5) + speed * 0.1, 5, tint.clone(), rnd(4.5, 6), true);
+        for (const x of [-0.5, 0.5]) spawn(D_CYL, x, 0.24, 0.45, rnd(0, 6.28), 0.22, 0.03, 0.22, rnd(0.5, 0.9), rnd(1.5, 3), 8, col(0x17181c), rnd(4.5, 6));
+        spawn(D_GLOW, 0, 0.98, 0.41, p.yaw + rnd(-0.4, 0.4), 0.55, 0.16, 0.01, rnd(0.5, 0.85), rnd(2, 3.5) + speed * 0.08, 6, col(0xffe0a0, 2), rnd(3, 4.5));
+        spawn(D_CYL, -0.4, 1.4, 0.05, rnd(0, 6.28), 0.17, 0.1, 0.17, rnd(0.5, 0.9), rnd(2.5, 4.5) + speed * 0.08, 9, col(0x5a5c62), rnd(4, 5.5), true);
+        for (let k = 0; k < 8; k++) spawn(D_BOX, rnd(-0.6, 0.6), rnd(1.2, 1.4), rnd(-0.3, 0.4), rnd(0, 6.28), rnd(0.04, 0.09), 0.02, rnd(0.04, 0.09), rnd(0.5, 1), rnd(2, 4.5) + speed * 0.06, 10, col(0xe8e4dc), rnd(3, 4.5));
+        debris.burst(p.x, p.y + 0.8, p.z, dx, dz, speed * 0.25 + 2, 10);
+        return;
+      }
     }
   }
 
@@ -1092,6 +1280,10 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
           shown[i] = b;
           const p = props[i];
           setBroken(p, b === 1);
+          if (p.kind === 'hydrant') {
+            if (broken[i] === 1) spray.start(p.id, p.x, p.y, p.z, time);
+            else spray.stop(p.id);
+          }
           // A bulk change (e.g. a state jump) just hides; a few fresh hits come apart.
           // 2 = removed for this route (under a barrier/rail): just hidden.
           if (b && broken[i] === 1 && fresh <= 6) {
@@ -1111,9 +1303,11 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
         }
       }
       debris.update(dt);
+      spray.update(time);
     },
     dispose() {
       debris.dispose();
+      spray.dispose();
       for (const m of meshes) m.dispose();
       for (const d of disposables) d.dispose();
     },

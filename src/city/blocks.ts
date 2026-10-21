@@ -20,6 +20,7 @@ import { RoadGraph, RoadEdge, RoadNode, edgeAngleFrom, isRiverEdge, otherNode, s
 import { SpatialGrid } from './spatial';
 import { Terrain } from './terrain';
 import { Prop, edgeSides, generateProps, lightStations } from './props';
+import { BusBay, planBusBays } from './busBays';
 import { Rng, deriveSeed } from '../sim/prng';
 import { DEG, Vec2, atan2, clamp, cos, distToSegment, exp, lineIntersectT, sin, sqrt, TAU } from '../sim/math';
 import type { AreaBuild, Circle, FrontageRun, FrontLook, LateContext, WallLook } from './districts/types';
@@ -171,6 +172,8 @@ export interface CityBlocks {
   streetlights: Streetlight[];
   /** Destructible street furniture, see props.ts. */
   props: Prop[];
+  /** Bus bays: stretches where the curb steps back into the sidewalk for a bus stop (busBays.ts). */
+  bays: BusBay[];
   signs: SignAnchor[];
   edgeGrid: SpatialGrid;
 }
@@ -862,9 +865,12 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
     }
   });
 
+  // Bus bays between two streetlights, clear of district structures, paving and lane closures.
+  const bays = planBusBays(seed, g, mouths, reserved, [...districts.builds, ...lateBuilds]);
+
   // Destructible street furniture (streetlights first, ids aligned with `streetlights`), then district clutter.
   const clutter = [...districts.builds, ...lateBuilds].flatMap((b) => b.destructibles);
-  const props = generateProps(seed, g, sectors, mouths, streetlights, terrain, edgeGrid, reserved, clutter);
+  const props = generateProps(seed, g, sectors, mouths, streetlights, terrain, edgeGrid, reserved, clutter, bays);
 
   // Neon sign anchors on building fronts, biased toward downtown.
   const signs: SignAnchor[] = [];
@@ -915,7 +921,7 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
     });
   }
 
-  return { sectors, mouths, faces, walls, buildings, streetlights, props, signs, edgeGrid };
+  return { sectors, mouths, faces, walls, buildings, streetlights, props, bays, signs, edgeGrid };
 }
 
 export function edgeAngle(g: RoadGraph, e: RoadEdge): number {

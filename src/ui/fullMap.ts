@@ -42,6 +42,7 @@ const KINDS: Partial<Record<AreaKind, KindStyle>> = {
   lake: { label: 'Lake', ink: PALETTE.cyan, fill: rgba('cyan', 0.3), width: 1.5, tag: true },
   waterfront: { label: 'Waterfront', ink: PALETTE.cyan, fill: rgba('cyan', 0.22), width: 1.5, tag: true },
   monument: { label: 'Monument plaza', ink: PALETTE.yellow, fill: rgba('yellow', 0.3), width: 1.5, tag: true },
+  market: { label: 'Night market', ink: PALETTE.red, fill: rgba('red', 0.34), width: 1.5, tag: true },
   carPark: { label: 'Car parks', ink: rgba('red', 0.6), fill: rgba('soft', 0.24), width: 1.5, tag: true },
   hills: { label: 'The hills', ink: PALETTE.soft, fill: rgba('soft', 0.07), width: 1.5, dash: [6, 5], tag: true },
   subway: { label: 'Under the El', ink: PALETTE.cyan, width: 4, dash: [9, 6], tag: true },
@@ -49,6 +50,9 @@ const KINDS: Partial<Record<AreaKind, KindStyle>> = {
   backAlley: { label: 'Back alleys', ink: rgba('soft', 0.55), tag: false },
   roundabout: { label: 'Roundabouts', ink: PALETTE.soft, tag: false },
   infill: { label: 'Plazas and lots', ink: PALETTE.soft, fill: rgba('soft', 0.2), tag: false },
+  tunnel: { label: 'Tunnels', ink: PALETTE.soft, fill: rgba('muted', 0.22), width: 1.5, dash: [4, 3], tag: true },
+  overpass: { label: 'Overpasses', ink: PALETTE.muted, width: 3, dash: [3, 3], tag: false },
+  roadworks: { label: 'Roadworks', ink: PALETTE.red, fill: rgba('red', 0.55), width: 1, tag: false },
 };
 
 /** Infill drawn and counted as places; verges and planters are frontage dressing, too small to read on the map. */
@@ -72,7 +76,7 @@ const INK = {
 } as const;
 
 /** Legend order; kinds missing from the city are left out. */
-const LEGEND_ORDER: AreaKind[] = ['park', 'river', 'lake', 'waterfront', 'subway', 'alley', 'backAlley', 'roundabout', 'hills', 'monument', 'carPark', 'infill'];
+const LEGEND_ORDER: AreaKind[] = ['park', 'river', 'lake', 'waterfront', 'subway', 'alley', 'backAlley', 'roundabout', 'hills', 'monument', 'tunnel', 'overpass', 'carPark', 'infill', 'roadworks'];
 
 /** Margin around the city (m), and the scale bar lengths it picks from (m). */
 const PAD = 40;
@@ -254,6 +258,26 @@ export class FullMap {
       c.stroke();
     }
     c.setLineDash([]);
+    // Tunnels: the bore darkened over its street, its outline dashed; overpasses dashed across what they span.
+    for (const a of world.areas) {
+      if ((a.kind !== 'tunnel' && a.kind !== 'overpass') || a.path.length < 2) continue;
+      const st = KINDS[a.kind]!;
+      if (a.kind === 'tunnel') {
+        const e = g.edges[a.params.edge];
+        c.strokeStyle = INK.tagBg;
+        c.lineWidth = Math.max(e ? e.width : 10, 2.2 * px);
+        c.beginPath();
+        a.path.forEach((p, i) => (i ? c.lineTo(p.x, p.z) : c.moveTo(p.x, p.z)));
+        c.stroke();
+      }
+      c.strokeStyle = st.ink;
+      c.lineWidth = st.width! * px;
+      c.setLineDash(st.dash!.map((d) => d * px));
+      c.beginPath();
+      a.path.forEach((p, i) => (i ? c.lineTo(p.x, p.z) : c.moveTo(p.x, p.z)));
+      c.stroke();
+      c.setLineDash([]);
+    }
     // The seed's race circuit, thin, for orientation.
     const pts = world.route.points;
     if (pts.length > 1) {

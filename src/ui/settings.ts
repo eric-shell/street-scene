@@ -30,6 +30,8 @@ export interface Settings {
   engineVolume: number;
   /** Driver aid: cuts drive torque when the rear wheels spin. Off lets the rear step out. */
   tractionControl: boolean;
+  /** Flash effects: lightning flashes and the police light bar's strobes. Off keeps the sky still and the light bar a soft glow. */
+  flashEffects: boolean;
   /** Debug: show the live physics tuning panel (also toggled with ` / F2). */
   debugTuningPanel: boolean;
   /** Debug: show the live camera tuning panel (also toggled with F3). */
@@ -50,6 +52,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showFps: false,
   engineVolume: 0.7,
   tractionControl: false,
+  flashEffects: true,
   debugTuningPanel: false,
   debugCameraPanel: false,
 };

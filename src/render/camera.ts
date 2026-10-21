@@ -20,6 +20,7 @@
 import * as THREE from 'three';
 import type { World } from '../city/world';
 import type { CarPose } from './carView';
+import { clampCeiling } from './ceilings';
 
 export const CAMERA_MODES = ['chase', 'close', 'bumper', 'hood'] as const;
 export type CameraMode = (typeof CAMERA_MODES)[number];
@@ -503,7 +504,8 @@ export class ChaseCamera {
 
   /**
    * Pull a camera position in toward (ax, az) if the line to it crosses a wall,
-   * lifting it by `lift` m at full pull, and keep it `clearance` m above the ground.
+   * lifting it by `lift` m at full pull, and keep it `clearance` m above the ground
+   * and out of anything overhead (render/ceilings.ts).
    */
   keepOutOfWalls(ax: number, az: number, out: THREE.Vector3, clearance: number, lift: number): void {
     if (!this.world) return;
@@ -516,6 +518,8 @@ export class ChaseCamera {
       out.y += (1 - t) * lift;
     }
     out.y = Math.max(out.y, this.world.heightAt(out.x, out.z) + clearance);
+    // Never inside a tunnel's roof, a viaduct's deck or a gantry's truss.
+    clampCeiling(this.world, out);
   }
 
   /** Drop smoothing state so the next update snaps to the target pose. */

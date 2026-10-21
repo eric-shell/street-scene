@@ -23,7 +23,8 @@ describe('small solids', () => {
       const done = new Set<Solid>();
       for (const wall of w.blocks.walls) {
         const s = wall.solid;
-        if (!s || done.has(s)) continue;
+        // Car park parapets are long slabs meeting at their corners (a probe there touches both): carPark.test.ts covers them.
+        if (!s || done.has(s) || wall.look === 'carPark') continue;
         done.add(s);
         looks.add(wall.look!);
         const cx = s.faces.reduce((t, f) => t + f.ax, 0) / s.faces.length;
@@ -59,8 +60,9 @@ describe('small solids', () => {
       const cz = s.faces.reduce((t, f) => t + f.az, 0) / s.faces.length;
       for (let k = 0; k < 16; k++) {
         const d = { x: Math.cos((k * Math.PI) / 8), z: Math.sin((k * Math.PI) / 8) };
-        // A clear run up of 10 m toward the trunk.
-        if (![3.5, 5, 7, 9, 11, 13].every((o) => w.wallClearance(cx + d.x * o, cz + d.z * o, 2.2) >= 2.2)) continue;
+        // A clear run up of 10 m toward the trunk: no wall, and no lamp post or bench to turn the car aside first.
+        const clear = (x: number, z: number) => w.wallClearance(x, z, 2.2) >= 2.2 && !w.props.some((p) => Math.hypot(p.x - x, p.z - z) < p.radius + 2.2);
+        if (![3.5, 5, 7, 9, 11, 13].every((o) => clear(cx + d.x * o, cz + d.z * o))) continue;
         runs++;
         const r = createRace({ ...raceConfig(1, 'circuit', 0), openWorld: true }, w);
         r.tick = r.countdownTicks;

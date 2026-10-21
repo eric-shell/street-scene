@@ -432,13 +432,15 @@ export function buildFinishLines(world: World): FinishLines {
     root.add(sm, dm);
 
     // ---------- Signs (front faces approaching cars, back says STREET SCENE) ----------
+    // The start gantry's back carries the event's name (city/events.ts): the intro opens on it, looking back at the grid.
+    const event = kind !== 'finish' ? world.event : undefined;
     const signGeo = track(new THREE.PlaneGeometry(signW - 0.1, signH));
     const sign = signTexture(theme.text, signGlow(theme.text, theme.glow), kind === 'startFinish' ? 'START  ·  FINISH' : '');
     track(sign.texture);
     const front = new THREE.Mesh(signGeo, track(new THREE.MeshBasicMaterial({ map: sign.texture, color: new THREE.Color(1.35, 1.35, 1.35) })));
     front.position.set(0, signY + signH / 2, -0.36);
     front.rotation.y = Math.PI;
-    const back = new THREE.Mesh(signGeo, track(new THREE.MeshBasicMaterial({ map: track(signTexture('STREET SCENE', '#2de2ff', '').texture), color: new THREE.Color(1.2, 1.2, 1.2) })));
+    const back = new THREE.Mesh(signGeo, track(new THREE.MeshBasicMaterial({ map: track(signTexture(event ? event.name.toUpperCase() : 'STREET SCENE', '#2de2ff', event ? 'STREET SCENE' : '').texture), color: new THREE.Color(1.2, 1.2, 1.2) })));
     back.position.set(0, signY + signH / 2, 0.36);
     root.add(front, back);
 

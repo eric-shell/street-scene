@@ -460,8 +460,20 @@ export function carParkOutline(g: CarParkGeo): Vec2[] {
 export const carParkModule: DistrictModule = {
   kind: 'carPark',
   phase: 'graph',
-  // Planned by planCarParks from world.ts's topology hook: it needs both routes.
-  plan() {},
+  // Planned by planCarParks from world.ts's topology hook (it needs both routes). Here, registered right
+  // after the night market (whose carriageway edit forbids claimed faces), each claims its block.
+  plan(ctx) {
+    const faces = ctx.faces();
+    for (const a of ctx.areas) {
+      if (a.kind !== 'carPark' || a.faces.length) continue;
+      const g = carParkGeo(a);
+      const p = toWorld(g, (frontU(g, 0) + g.u1) / 2, (g.v0 + g.v1) / 2);
+      const f = faces.find((x) => !x.outer && pointInPolygon(p.x, p.z, x.ring));
+      if (!f || ctx.claims.face.has(f.id)) continue;
+      a.faces = [f.id];
+      ctx.claims.face.set(f.id, a.id);
+    }
+  },
   build(_ctx, area) {
     const b = emptyBuild();
     const g = carParkGeo(area);
@@ -775,6 +787,8 @@ export function carParkProgress(world: ProgressWorld, x: number, z: number): Rou
 
 interface Candidate {
   face: number;
+  /** Streets it claims: the entry's, the one into C, every one at C and the landing straight's. */
+  edges: number[];
   params: Record<string, number>;
   outline: Vec2[];
   path: Vec2[];
@@ -857,7 +871,9 @@ export function planCarParks(ctx: PlanContext, routes: CarveRoute[]): void {
       const c = list.find((x) => ctx.budget.used + x.footprint <= ctx.budget.total);
       if (!c) return;
       c.params.seed = ctx.rng.int(1, 0x7ffffffe);
-          ctx.addArea({ kind: 'carPark', variant: c.params.side === 0 ? 'back' : 'side', polygon: c.outline, path: c.path, nodes: [], edges: [], faces: [c.face], params: c.params }, c.footprint);
+      // Its streets and junction now (markets, roadworks, tunnels and overpasses keep off them), its block
+      // once the night market's graph edit is done (carParkModule.plan).
+      ctx.addArea({ kind: 'carPark', variant: c.params.side === 0 ? 'back' : 'side', polygon: c.outline, path: c.path, nodes: [c.params.node], edges: c.edges, faces: [], params: c.params }, c.footprint);
     }
   });
 }
@@ -977,6 +993,7 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
     // corridor, where closures, crosswalks and rails start).
     let run = 0;
     let end = Q;
+    const runEdges: number[] = [];
     for (let k = 0; k < 6; k++) {
       if (!r.closed && j + k + 1 > n - 1) break;
       const A = g.nodes[R[(j + k) % n]];
@@ -985,6 +1002,7 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
       if (d.x * t.x + d.z * t.z < cos(3 * DEG)) break;
       run += d.len;
       end = B;
+      runEdges.push(edgeBetween(g, A.id, B.id));
       if (B.edges.length > 2 || B.ring) break;
     }
     const endCorr = end.ring ? end.ring.outer + CITY.sidewalk : end.edges.reduce((m, eid) => Math.max(m, g.edges[eid].width / 2 + g.edges[eid].sidewalk), 0);
@@ -994,7 +1012,8 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
     const corrIn = g.edges[eIn].width / 2 + g.edges[eIn].sidewalk;
     const probe = { x: C.x + back.x * (corrIn + 3), z: C.z + back.z * (corrIn + 3) };
     const fi = faces.findIndex((f) => !f.outer && pointInPolygon(probe.x, probe.z, f.ring));
-    if (fi < 0 || ctx.claims.face.has(fi)) continue;
+    // A block claimed, or held by a car park planned earlier in this hook (it claims its block later).
+    if (fi < 0 || ctx.claims.face.has(fi) || ctx.areas.some((a) => a.kind === 'carPark' && a.params.face === fi)) continue;
     const F = faces[fi];
     const sLip = rayHit(C, back, F.ring, corrIn + 6);
     if (sLip === null) continue;
@@ -1166,6 +1185,7 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
           side,
           turn: turnR,
           node: C.id,
+          face: fi,
           landEdge: eE,
           entryEdge: eY,
           lipBack,
@@ -1236,7 +1256,8 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
         let path = lipBack + SCORE_LAND;
         for (let i = 1; i < geo.path.length; i++) path += unit(geo.path[i - 1], geo.path[i]).len;
         if (path > skip * (1 - CFG.minSave)) return null;
-        return { face: fi, params, outline: carParkOutline(geo), path: geo.path, footprint: Math.abs(polygonArea(geo.deck)) + Math.abs(polygonArea(geo.ramp)), score: skip - path };
+        const edges = [...new Set([eY, eIn, ...C.edges, ...runEdges])];
+        return { face: fi, edges, params, outline: carParkOutline(geo), path: geo.path, footprint: Math.abs(polygonArea(geo.deck)) + Math.abs(polygonArea(geo.ramp)), score: skip - path };
       }
     }
   }

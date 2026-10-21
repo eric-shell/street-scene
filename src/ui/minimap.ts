@@ -21,6 +21,8 @@ const INK = {
   closure: PALETTE.yellow,
   rival: PALETTE.red,
   ghost: rgba('purple', 0.85),
+  /** Ambient traffic (free roam): small quiet dots that never read as rivals. */
+  traffic: rgba('muted', 0.75),
   player: PALETTE.text,
   rim: rgba('orange', 0.55),
   /** The drone's view cone and its north mark. */
@@ -37,6 +39,8 @@ export interface MapCar {
   yaw: number;
   isPlayer: boolean;
   isGhost?: boolean;
+  /** Ambient traffic car: drawn as a small dot. */
+  isTraffic?: boolean;
 }
 
 export interface MapView {
@@ -130,7 +134,7 @@ export class Minimap {
         p.arc(a.params.x, a.params.z, a.params.outer, 0, Math.PI * 2);
         p.moveTo(a.params.x + a.params.island, a.params.z);
         p.arc(a.params.x, a.params.z, a.params.island, 0, Math.PI * 2);
-      } else if (a.kind === 'subway') {
+      } else if (a.kind === 'subway' || a.kind === 'tunnel' || a.kind === 'overpass') {
         a.path.forEach((q, i) => (i ? p.lineTo(q.x, q.z) : p.moveTo(q.x, q.z)));
       } else if (a.kind === 'hills') {
         // A contour around the rise.
@@ -146,7 +150,7 @@ export class Minimap {
     }
     for (const [k, path] of fills) this.areaFills.push({ path, style: AREA_MAP_STYLE[k] });
     // Order: alleys and shortcuts under the subway and roundabout outlines.
-    const order: AreaKind[] = ['hills', 'backAlley', 'alley', 'roundabout', 'subway'];
+    const order: AreaKind[] = ['hills', 'backAlley', 'alley', 'roundabout', 'subway', 'overpass', 'tunnel'];
     for (const k of order) {
       const path = lines.get(k);
       if (path) this.areaLines.push({ path, style: AREA_MAP_STYLE[k] });
@@ -223,9 +227,9 @@ export class Minimap {
         c.fill();
         continue;
       }
-      c.fillStyle = car.isGhost ? INK.ghost : INK.rival;
+      c.fillStyle = car.isGhost ? INK.ghost : car.isTraffic ? INK.traffic : INK.rival;
       c.beginPath();
-      c.arc(car.x, car.z, 3.4 * px, 0, Math.PI * 2);
+      c.arc(car.x, car.z, (car.isTraffic ? 2.2 : 3.4) * px, 0, Math.PI * 2);
       c.fill();
     }
     c.restore();

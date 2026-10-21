@@ -32,6 +32,11 @@ import { Settings } from '../ui/settings';
 import { formatTime } from '../ui/format';
 import { ReplayData } from '../replay/replay';
 import { PROP_DEFS } from '../city/props';
+import { TRAFFIC_SNAP, TrafficView, snapTraffic } from '../render/traffic';
+import { driftZoneStatus } from '../sim/driftZones';
+import { DRIFT_ZONES } from '../sim/tuning';
+import { ChaseCall, policeChaseCall } from '../render/policeChase';
+import { HazardFx } from './hazardFx';
 
 interface Snap extends CarPose {
   vx: number;
@@ -105,6 +110,8 @@ const NITRO_IN = 5;
 const NITRO_OUT = 2.5;
 /** On a tick where the player only hit props, the speed drop must exceed slowdownMin by this many times over to count as a crash. */
 const PROP_SLOWDOWN_EXTRA = 1.6;
+/** Free roam minimap: traffic this close to the player shows as dots (m; the map spans about 260 m to its edge). */
+const TRAFFIC_DOT_RANGE = 280;
 
 /** Car sparks (render/sparks.ts): when, where and how many, from the sim's contact telemetry. */
 const SPARK = {
@@ -212,6 +219,10 @@ export class RaceSession {
   private trails: LightTrails;
   /** Underbody and wall sparks for every car near the camera (render/sparks.ts). */
   private sparks: Sparks;
+  /** Ambient traffic (render/traffic.ts) and its last two snapshots (TRAFFIC_SNAP floats per car), swapped every tick. */
+  private traffic: TrafficView | null = null;
+  private trafficPrev = new Float32Array(0);
+  private trafficCurr = new Float32Array(0);
   private carLight: THREE.PointLight;
   private engines: EngineVoice[] = [];
   private sfx: Sfx | null = null;
@@ -224,6 +235,10 @@ export class RaceSession {
   private signAt = -1;
   /** Player lap whose line approach fireworks were launched. */
   private fireworksLap = -1;
+  /** The police helicopter's brief from the last tick (render/policeChase.ts): patrol, or chase which car. */
+  private chaseCall: ChaseCall = { phase: 'patrol', car: -1 };
+  /** The drawbridge posed at sim time, its bell and the HUD warning (game/hazardFx.ts). */
+  private readonly hazards: HazardFx;
   /** Racer poses for the crowd (reused every frame). */
   private readonly crowdCars: CrowdCar[];
   /** Last heard excitement and last cheer time (s) per crowd section spot. */
@@ -250,6 +265,7 @@ export class RaceSession {
     this.crowdCars = this.race.cars.map(() => ({ x: 0, z: 0, speed: 0 }));
     this.hud = new Hud(uiRoot, this.race.world);
     this.hud.onMapClick = () => this.toggleMap();
+    this.hazards = new HazardFx(this.night.drawbridge, this.hud.root);
     if (this.openWorld) {
       // Tab opens the city map while driving and closes it again; in menus (paused) it keeps moving focus.
       const onTab = (e: KeyboardEvent) => {
@@ -263,6 +279,14 @@ export class RaceSession {
     }
     this.sparks = new Sparks(settings.quality);
     this.night.scene.add(this.sparks.mesh);
+    const traffic = this.race.traffic;
+    if (traffic) {
+      this.traffic = new TrafficView(this.race.world, traffic.cars.length);
+      this.night.scene.add(this.traffic.group);
+      this.trafficCurr = new Float32Array(traffic.cars.length * TRAFFIC_SNAP);
+      snapTraffic(traffic, this.trafficCurr);
+      this.trafficPrev = this.trafficCurr.slice();
+    }
     const loads: Promise<void>[] = [];
     this.race.cars.forEach((rc, i) => {
       const view = new CarView(rc.carId, assets, { headlights: i === 0, underglowLight: i === 0, envMap: gr.envMap });
@@ -382,7 +406,7 @@ export class RaceSession {
         window.removeEventListener('keydown', onKey);
         gr.canvas.removeEventListener('pointerdown', onTap);
       });
-    }
+    } else if (!this.openWorld && this.race.world.event) this.hud.message(this.race.world.event.name, 2.6);
   }
 
   /** True while the player's controls do nothing: intro, countdown and after the finish (runout). */
@@ -550,12 +574,19 @@ export class RaceSession {
     this.hardHitTick = false;
     stepRace(r, frame);
     this.curr = r.cars.map((c) => snap(c.state));
+    if (r.traffic) {
+      const t = this.trafficPrev;
+      this.trafficPrev = this.trafficCurr;
+      this.trafficCurr = t;
+      snapTraffic(r.traffic, t);
+    }
     if (this.ghostRace) {
       this.ghostPrev = this.ghostCurr;
       const gt = this.ghostRace.tick;
       stepRace(this.ghostRace, gt < this.ghostLog.length ? unpackInput(this.ghostLog[gt]) : { ...NEUTRAL_INPUT, brake: 1 });
       this.ghostCurr = snap(this.ghostRace.cars[0].state);
     }
+    this.chaseCall = policeChaseCall(r);
     this.sfx?.syncCountdown(r);
     this.handleEvents();
     this.emitSparks();
@@ -733,7 +764,8 @@ export class RaceSession {
           this.hud.message('Back on track', 1);
           break;
         case 'driftBank':
-          this.hud.message(`+${(e.value ?? 0).toLocaleString()}`, 1.2);
+          // A drift that ran through a zone shows what the zone added.
+          this.hud.message(`+${(e.value ?? 0).toLocaleString()}${e.other ? `  ·  zone +${e.other.toLocaleString()}` : ''}`, 1.2);
           break;
       }
     }
@@ -762,12 +794,18 @@ export class RaceSession {
     this.carLight.position.set(p.x - Math.sin(p.yaw) * 1.5, p.y + 4.2, p.z - Math.cos(p.yaw) * 1.5);
     // The few real point lights follow the action, or the drone when it flies off.
     this.night.lighting.update(this.drone ? camera.position : new THREE.Vector3(p.x, p.y, p.z));
+    // Last lap: the police helicopter follows the leader's interpolated pose.
+    const chase = this.chaseCall;
+    this.night.air.chase(chase.phase === 'chase' ? (poses[chase.car] ?? null) : null);
     this.night.update(this.time);
+    // Timed hazards (the drawbridge) at the interpolated sim time, so replays look the same.
+    this.hazards.update(r, this.paused ? 1 : alpha, !this.paused);
     // Corner rail pieces shoved by hits this race.
     this.night.arrows.syncRails(r.rails);
     this.night.city.finishLine.update(this.time);
     // Props mirror the sim's broken flags; fresh breaks come apart pushed by the nearest car.
     this.night.props.update(this.paused ? 0 : dt, this.time, r.brokenProps, this.curr);
+    this.traffic?.update(this.trafficPrev, this.trafficCurr, this.paused ? 1 : alpha, camera, this.time, this.settings.quality, r.tick);
     // Progressive edge blur: grows with speed, much stronger while boosting (eased in and out).
     const target = this.settings.radialBlur && !this.paused ? Math.max(0, Math.min(1, (p.speed - 25) / 45)) * 0.4 + (p.nitro ? 1 : 0) : 0;
     this.blur += (target - this.blur) * (1 - Math.exp(-dt * (target > this.blur ? 6 : 3)));
@@ -922,8 +960,22 @@ export class RaceSession {
   private mapCars(): HudCar[] {
     return [
       ...this.curr.map((s, i) => ({ x: s.x, z: s.z, yaw: s.yaw, isPlayer: i === 0 })),
+      ...this.trafficDots(),
       ...(this.ghostCurr ? [{ x: this.ghostCurr.x, z: this.ghostCurr.z, yaw: this.ghostCurr.yaw, isPlayer: false, isGhost: true }] : []),
     ];
+  }
+
+  /** Free roam minimap: the traffic near the player as small dots (races keep the map to the field). */
+  private trafficDots(): HudCar[] {
+    if (!this.openWorld || !this.race.traffic) return [];
+    const p = this.curr[0];
+    const out: HudCar[] = [];
+    const t = this.trafficCurr;
+    for (let o = 0; o < t.length; o += TRAFFIC_SNAP) {
+      if (t[o + 3] < 0 || (t[o] - p.x) ** 2 + (t[o + 1] - p.z) ** 2 > TRAFFIC_DOT_RANGE ** 2) continue;
+      out.push({ x: t[o], z: t[o + 1], yaw: t[o + 2], isPlayer: false, isTraffic: true });
+    }
+    return out;
   }
 
   private updateHud(dt: number): void {
@@ -953,10 +1005,12 @@ export class RaceSession {
       countdown,
       wrongWay: rc.wrongWay,
       progress: Math.max(0, rc.dist) / r.distance,
-      drift: r.config.mode === 'drift' ? { total: r.drift.total, current: r.drift.current, multiplier: r.drift.multiplier } : undefined,
+      drift: r.config.mode === 'drift' ? { total: r.drift.total, current: r.drift.current, multiplier: r.drift.multiplier, zoneBonus: r.drift.zoneBonus } : undefined,
       cars: this.mapCars(),
       ghost: !!this.ghostRace,
     };
+    const zone = driftZoneStatus(r, 0);
+    if (zone) data.zone = { mul: r.config.mode === 'drift' ? DRIFT_ZONES.scoreMul : DRIFT_ZONES.refillMul, nitro: r.config.mode !== 'drift', left: zone.left, resting: zone.resting };
     if (this.openWorld) {
       this.topKmh = Math.max(this.topKmh, c.speed * 3.6);
       this.updateArea(c.x, c.z, dt);
@@ -993,11 +1047,13 @@ export class RaceSession {
     this.drone = null;
     this.unsub.forEach((u) => u());
     this.freeCam?.dispose();
+    this.hazards.dispose();
     this.hud.dispose();
     this.views.forEach((v) => v.dispose());
     this.ghostView?.dispose();
     this.trails.dispose();
     this.sparks.dispose();
+    this.traffic?.dispose();
     this.engines.forEach((e) => e.dispose());
     this.night.city.finishLine.onFirework = null;
     this.sfx?.dispose();

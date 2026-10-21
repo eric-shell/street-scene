@@ -104,6 +104,16 @@ describe('destructible props', () => {
     expect(1 - bus.after / bus.before).toBeGreaterThan(poleLoss);
   });
 
+  it('a hydrant is a solid knock between a can and a pole', () => {
+    const can = ram('garbageCan', 20);
+    const pole = ram('streetlight', 20);
+    const hydrant = ram('hydrant', 20);
+    expect(hydrant.r.brokenProps[hydrant.prop.id]).toBe(1);
+    const loss = (x: { before: number; after: number }) => 1 - x.after / x.before;
+    expect(loss(hydrant)).toBeGreaterThan(loss(can) * 1.5);
+    expect(loss(hydrant)).toBeLessThan(loss(pole));
+  });
+
   it('broken props stay down and are tracked per race', () => {
     const { r, prop } = ram('streetlight', 15);
     const fresh = createRace(raceConfig(20261019, 'circuit', 0), r.world);

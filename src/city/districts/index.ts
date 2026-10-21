@@ -13,9 +13,14 @@
  * subway (claims a street column), roundabouts, alleys, back alleys (the last
  * module allowed to change the graph topology, so face ids stay stable), parks
  * (claim faces), the monument plaza, hills (claim clusters of faces and keep
- * their slopes clear of everything placed before them), reserved features,
- * and downtown (claims every face left). The optional topology hook runs
- * right after back alleys (route shortcuts).
+ * their slopes clear of everything placed before them), tunnels and
+ * overpasses (they keep clear of every slope and claim the blocks a ridge
+ * stands in, so they come after the hills and before downtown), reserved
+ * features, and downtown (claims every face left). The optional topology hook runs
+ * right after back alleys (route shortcuts); the night market, which goes on
+ * the routes it picked (PlanContext.event), is planned right after it. Car
+ * parks are planned in the hook too (they need both routes); they claim their
+ * block only after the night market's graph edit, in carParkModule's plan.
  */
 import { CITY } from '../config';
 import type { RoadGraph } from '../roadGraph';
@@ -24,7 +29,7 @@ import { BlockFace, CityBlocks, Sector, computeFaces, computeMouths, computeSect
 import { Rng, deriveSeed } from '../../sim/prng';
 import type { Vec2 } from '../../sim/math';
 import { PolygonIndex, pointInPolygon, polygonBounds } from './geom';
-import type { Area, AreaBuild, AreaKind, BuildContext, Claims, DistrictModule, HeightMod, LateContext, PlanContext, Surface, SurfacePatch } from './types';
+import type { Area, AreaBuild, AreaKind, BuildContext, Claims, DistrictModule, HeightMod, LateContext, PlanContext, PlannedEvent, Surface, SurfacePatch } from './types';
 import { emptyBuild } from './types';
 import { riverModule } from './river';
 import { subwayModule } from './subway';
@@ -33,10 +38,14 @@ import { alleyModule, backAlleyModule } from './alley';
 import { parkModule } from './park';
 import { monumentModule } from './monument';
 import { hillsModule } from './hills';
+import { tunnelModule } from './tunnel';
+import { overpassModule } from './overpass';
 import { waterfrontModule } from './waterfront';
 import { lakeModule } from './lake';
 import { downtownModule } from './downtown';
 import { infillModule } from './infill';
+import { marketModule } from './market';
+import { roadworksModule } from './roadworks';
 import { carParkModule } from './carPark';
 
 /** Every module, in planning order. */
@@ -46,14 +55,18 @@ export const DISTRICT_MODULES: readonly DistrictModule[] = [
   roundaboutModule,
   alleyModule,
   backAlleyModule,
+  marketModule,
   carParkModule,
   parkModule,
   monumentModule,
   hillsModule,
+  tunnelModule,
+  overpassModule,
   waterfrontModule,
   lakeModule,
   downtownModule,
   infillModule,
+  roadworksModule,
 ];
 
 export function districtModule(kind: AreaKind): DistrictModule {
@@ -74,6 +87,10 @@ const AREA_PRIORITY: Record<AreaKind, number> = {
   roundabout: 8,
   infill: 9,
   monument: 10,
+  tunnel: 11,
+  overpass: 4,
+  market: 11,
+  roadworks: 11,
   carPark: 11,
   waterfront: 2,
   lake: 2,
@@ -138,9 +155,10 @@ export interface PlanHooks {
    * Runs once the street topology is final (right after back alleys, before
    * any module claims faces), with a context of its own random stream that
    * may still edit the graph and add areas: world.ts picks both routes here
-   * and carves their shortcuts.
+   * and carves their shortcuts. What it returns (the event flavour and both
+   * routes) reaches every module planned after it as PlanContext.event.
    */
-  topology?(ctx: PlanContext): void;
+  topology?(ctx: PlanContext): PlannedEvent | void;
 }
 
 export function planDistricts(seed: number, g: RoadGraph, hooks: PlanHooks = {}): CityDistricts {
@@ -149,14 +167,16 @@ export function planDistricts(seed: number, g: RoadGraph, hooks: PlanHooks = {})
   const blockArea = computeFaces(g, computeSectors(g)).reduce((s, f) => s + (f.outer ? 0 : f.area), 0);
   const budget = { total: blockArea * CITY.districts.maxSpecialFraction, used: 0 };
   let lastCtx: PlanContext | null = null;
+  let event: PlannedEvent | undefined;
   for (const m of DISTRICT_MODULES) {
     if (m.phase !== 'graph') continue;
     const ctx = makeContext(seed, g, areas, claims, budget, m.kind);
+    if (event) ctx.event = event;
     m.plan(ctx);
     lastCtx = ctx;
     if (m === backAlleyModule && hooks.topology) {
       const hctx = makeContext(seed, g, areas, claims, budget, 'backAlley', 'routeShortcuts');
-      hooks.topology(hctx);
+      event = hooks.topology(hctx) ?? undefined;
       lastCtx = hctx;
     }
   }
@@ -174,6 +194,7 @@ export function planDistricts(seed: number, g: RoadGraph, hooks: PlanHooks = {})
       if (m.phase !== 'late') continue;
       const ctx = makeContext(seed, g, areas, claims, budget, m.kind);
       ctx.late = lc;
+      if (event) ctx.event = event;
       // Late modules see the final faces and sectors.
       ctx.faces = () => faces;
       ctx.sectors = () => sectors;
