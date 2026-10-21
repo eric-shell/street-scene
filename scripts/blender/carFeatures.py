@@ -64,36 +64,85 @@ def _b_pillar(m):
 
 # ----- pillars and glass -------------------------------------------------------
 
+def _donor_pillar(cid, m, step=0.04):
+    """A donor body's own B pillar: the longest run without side glass 25 to 70 % back along the
+    cabin, 0.06 to 0.3 m long, as (rear fwd, front fwd) of a house width pillar centered in it.
+    None on a lofted car, whose glass band is continuous there."""
+    w = _house()['pillars']['bWidth']
+    have = {round(-f[1].y / step) for f in faces_of(car_meshes(cid)) if f[0] == 'Glass' and abs(f[2].x) > 0.6}
+    cf, cr = m['cabinFront'], m['cabinRear']
+    lo, hi = cf - 0.7 * (cf - cr), cf - 0.25 * (cf - cr)
+    best, run = [], []
+    for k in range(math.ceil(lo / step), math.floor(hi / step) + 1):
+        run = run + [k] if k not in have else []
+        if len(run) > len(best):
+            best = run
+    if not 0.06 <= len(best) * step <= 0.3:
+        return None
+    mid = (best[0] + best[-1]) / 2 * step
+    return mid - w / 2, mid + w / 2
+
+
 def pillars(cid, m, frames='Glass'):
     """Side glass band: the B pillar Black, every other Black (window frames) to `frames`,
-    Paint (C pillar, quarter panels) untouched. Cuts the body at the pillar edges first when
-    no pillar was measured, so the edges are clean."""
+    Paint (C pillar, quarter panels) untouched. Frames go first, repeated until the band stops
+    growing (a donor's frames sit past its last glass, so the cabin lengthens as they turn);
+    then the B pillar is placed on the final cabin, the body cut at its edges, and painted."""
     if m['beltLine'] is None:
         print(f'{cid}: no side glass, nothing to do')
         return
-    belt, top, cf, cr = m['beltLine'], m['windowTop'], m['cabinFront'], m['cabinRear']
-    b0, b1 = _b_pillar(m)
     measured = m['bPillar'] and 0.06 <= m['bPillar']['zMax'] - m['bPillar']['zMin'] <= 0.2
+    keep = _b_pillar(m) if measured else None
+    donor = None if measured else _donor_pillar(cid, m)
+
+    def cut_at(b0, b1, m):
+        """Split the band at the pillar edges so no face straddles them."""
+        band = lambda c: m['beltLine'] - 0.02 < c.z < m['windowTop'] + 0.02 and abs(-c.y - (b0 + b1) / 2) < 0.3
+        for o in car_meshes(cid):
+            cut(o, [((0, -b1, 0), (0, 1, 0), band), ((0, -b0, 0), (0, 1, 0), band)])
+    if donor:
+        cut_at(*donor, m)
+
+    def band_faces(m, mats=('Glass', 'Black')):
+        """(object, polygon, material) on the side glass band (as measure() finds it)."""
+        belt, top, cf, cr = m['beltLine'], m['windowTop'], m['cabinFront'], m['cabinRear']
+        # Only faces on the band itself: mirror panes and wiper ends share its height.
+        gx = [abs(v.x) for f in faces_of(car_meshes(cid)) if f[0] == 'Glass' and abs(f[2].x) > 0.6 for v in f[3]]
+        gx0, gx1 = min(gx) - 0.02, max(gx) + 0.02
+        for o in car_meshes(cid):
+            me = o.data
+            for p in (me.polygons if me.materials else ()):
+                c = p.center
+                if abs(p.normal.x) < 0.6 or not (belt - 0.005 < c.z < top + 0.005) or not (cr - 0.01 < -c.y < cf + 0.01) or not (gx0 < abs(c.x) < gx1):
+                    continue
+                name = me.materials[p.material_index].name.split('.')[0]
+                if name in mats:
+                    yield o, p, name
+
     changed = 0
-    for o in car_meshes(cid):
-        if not measured and o is car_part(cid, 'Body'):
-            cut(o, [((0, -b1, 0), (0, 1, 0)), ((0, -b0, 0), (0, 1, 0))])
-        me = o.data
-        if not me.materials:
-            continue
-        for p in me.polygons:
-            c = p.center
-            if abs(p.normal.x) < 0.6 or not (belt - 0.005 < c.z < top + 0.005) or not (cr - 0.01 < -c.y < cf + 0.01):
-                continue
-            name = me.materials[p.material_index].name.split('.')[0]
-            if name not in ('Glass', 'Black'):
-                continue
-            want = 'Black' if b0 <= -c.y <= b1 else (frames if name == 'Black' else name)
-            if want != name:
-                p.material_index = mat_index(o, want)
+    for _ in range(12):
+        step = 0
+        for o, p, name in list(band_faces(m)):
+            hold = keep or donor
+            if name == 'Black' and not (hold and hold[0] <= -p.center.y <= hold[1]) and frames != 'Black':
+                p.material_index = mat_index(o, frames)
+                step += 1
+        changed += step
+        if not step:
+            break
+        m = measure(cid, quiet=True)
+    b0, b1 = keep or donor or _b_pillar(m)
+    if not keep:
+        if not donor:
+            cut_at(b0, b1, m)
+        # The pillar is Black across the band, over glass or a donor's body colour pillar alike.
+        for o, p, name in list(band_faces(m, ('Glass', 'Black', 'Paint'))):
+            if b0 <= -p.center.y <= b1 and name != 'Black':
+                p.material_index = mat_index(o, 'Black')
                 changed += 1
-        me.update()
-    print(f'{cid}: B pillar fwd {b0:.3f}..{b1:.3f} ({"measured" if measured else "placed"}), {changed} faces recolored')
+    for o in car_meshes(cid):
+        o.data.update()
+    print(f'{cid}: B pillar fwd {b0:.3f}..{b1:.3f} ({"measured" if keep else "donor" if donor else "placed"}), {changed} faces recolored')
 
 
 # ----- mirrors and handles -----------------------------------------------------
@@ -102,18 +151,24 @@ def mirrors(cid, m):
     """One each side at the A pillar foot: Paint housing on a stalk, Black pane on the rear face."""
     H = _house()['mirror']
     body = car_part(cid, 'Body')
-    strip_islands(cid, lambda k, a, b, mats: _is_mirror(m, a, b))
-    tree = surface_tree(car_meshes(cid))
     hw, hd, hh = H['housing']
     sw, sd, sh = H['stalk']
     yc = -(m['cabinFront'] - H['behindPillarFoot'])
     z0 = m['beltLine'] + H['aboveBelt']
+    # The housing is what measure() calls a mirror; the stalk and pane are their own small boxes at the station.
+    piece = lambda k, a, b, mats: (k <= 6 and set(mats) <= {'Paint', 'Black'} and abs((a.y + b.y) / 2 - yc) < 0.08
+                                   and m['beltLine'] - 0.03 < (a.z + b.z) / 2 < z0 + hh + 0.02 and min(abs(a.x), abs(b.x)) > 0.4)
+    strip_islands(cid, lambda k, a, b, mats: _is_mirror(m, a, b) or piece(k, a, b, mats))
+    tree = surface_tree(car_meshes(cid))
     for sx in (1, -1):
-        xb = _side_x(tree, sx, yc, z0 + sh / 2)
+        # The stalk stands on the door top just under the glass: above the belt the band can be a
+        # thin wedge at the A pillar foot, and a ray there lands on the windshield edge.
+        zd = m['beltLine'] - 0.01
+        xb = _side_x(tree, sx, yc, zd)
         if xb is None:
-            print(f'{cid}: no side surface for a mirror at y {yc:.2f} z {z0:.2f}')
+            print(f'{cid}: no side surface for a mirror at y {yc:.2f} z {zd:.2f}')
             continue
-        box(body, (xb - sx * 0.01, yc - sd / 2, z0), (xb + sx * sw, yc + sd / 2, z0 + sh), 'Paint')
+        box(body, (xb - sx * 0.01, yc - sd / 2, zd), (xb + sx * sw, yc + sd / 2, z0 + sh), 'Paint')
         xi = xb + sx * (sw - 0.005 + H['outboard'])
         box(body, (xi, yc - hd / 2, z0 - 0.005), (xi + sx * hw, yc + hd / 2, z0 - 0.005 + hh), 'Paint')
         box(body, (xi + sx * 0.008, yc + hd / 2 - H['glassDepth'], z0 + 0.002), (xi + sx * (hw - 0.008), yc + hd / 2 + 0.001, z0 - 0.005 + hh - 0.007), 'Black')
@@ -182,7 +237,10 @@ def interior(cid, m):
     belt = m['beltLine']
     hw = m['width'] / 2 - 0.12
     y0, y1 = -m['cabinFront'] + 0.05, -m['cabinRear'] - 0.1
-    box(body, (-hw, y0, belt - 0.25), (hw, y1, belt - I['topBelowBelt']), 'Interior')
+    # Above the arches: on a low belt with the cabin over the rear axle (a wagon), 0.25 m under
+    # the belt reaches into the wheel wells.
+    z0 = max(belt - 0.25, 2 * m['wheelRadius'] + _house()['arch']['gap'][1] + 0.02)
+    box(body, (-hw, y0, z0), (hw, y1, belt - I['topBelowBelt']), 'Interior')
     if I.get('seatBacks'):
         _, b_front = _b_pillar(m)
         yb = -b_front
@@ -193,9 +251,26 @@ def interior(cid, m):
 
 # ----- lamps -------------------------------------------------------------------
 
+def _body_end(cid, end):
+    """Blender y of the nose ('front') or tail ('rear') without the Chrome tips, so builders that
+    pin to the tail do not creep outward each time they run after the exhaust."""
+    ys = [(o.matrix_world @ o.data.vertices[i].co).y for o in car_meshes(cid) if o.data.materials
+          for p in o.data.polygons if o.data.materials[p.material_index].name.split('.')[0] != 'Chrome' for i in p.vertices]
+    return min(ys) if end == 'front' else max(ys)
+
+
+def _deck_edge(cid, m):
+    """Top of the tail panel: the deck, or the tailgate glass base when that sits lower (on a
+    wagon the rear 0.3 m reach the roof, so the deck station is the roof, not the tailgate)."""
+    tail = -_body_end(cid, 'rear')
+    zs = [v.z for f in faces_of(car_meshes(cid)) if f[0] == 'Glass' and abs(f[2].x) < 0.6 and f[2].y > 0.3 and -f[1].y < tail + 0.6 for v in f[3]]
+    return min([m['deckHeight']] + zs)
+
+
 def _lamp_zone(cid, m, end, cover):
     """(inner |x|, outer |x|, bottom z, top z, height): between the bumper seam and the hood or
-    deck edge, anchored at the top, height clamped to the house band (tall covers get twice)."""
+    deck edge, anchored at the top, height clamped to the house band (tall covers get twice).
+    Rear lamps stop under the tailgate glass, except tall covers that climb the D pillar."""
     L = _house()['lamp']
     hw = m['width'] / 2
     if end == 'front':
@@ -205,7 +280,7 @@ def _lamp_zone(cid, m, end, cover):
         bottom = (bb(seam)[1].z if seam else m['noseHeight'] - 0.25) + L['aboveSeam']
     else:
         seam = car_part(cid, 'Bumper_Rear')
-        top = m['deckHeight'] - L['belowEdge']
+        top = (m['deckHeight'] if cover in TALL_COVERS else _deck_edge(cid, m)) - L['belowEdge']
         x0, x1 = L['rearInnerX'] * hw, L['rearOuterX'] * hw
         bottom = (bb(seam)[1].z if seam else m['deckHeight'] - 0.25) + L['aboveSeam']
     lo, hi = L['heightRange']
@@ -231,7 +306,7 @@ def strip_lamps(cid, m, end):
     x0, x1, zb, zt, _ = _lamp_zone(cid, m, end, None)
     for o in car_meshes(cid):
         recolor(o, lambda c, n, mat: mat in ('HeadLight', 'TailLight', 'Light') and -c.y * sign > 0, 'Paint')
-    end_fwd = m['overhangFront'] + m['wheelbase'] / 2 if end == 'front' else -(m['overhangRear'] + m['wheelbase'] / 2)
+    end_fwd = -_body_end(cid, end)
     return strip_islands(cid, lambda k, a, b, mats: k < 400 and set(mats) <= {'Black', 'Paint'} and (b - a).x < 0.7 and (b - a).z < 0.4
                          and abs(-(a.y + b.y) / 2 - end_fwd) < 0.45 and zb - 0.05 < (a.z + b.z) / 2 < zt + 0.1 and max(abs(a.x), abs(b.x)) > x0 - 0.05)
 
@@ -250,38 +325,39 @@ def lamps(cid, m, end, **over):
     lens = 'HeadLight' if end == 'front' else 'TailLight'
     toward = 1 if end == 'front' else -1
     strip_lamps(cid, m, end)
+    tree = surface_tree(objs)  # every layer offsets from the bare panel, not from the layer under it
     x0, x1, zb, zt, h = _lamp_zone(cid, m, end, sig['cover'])
     share = L['indicatorShare']
     n = 0
     for sx in (1, -1):
         for poly in COVERS[sig['cover']]:
-            n += project_polygon(body, _poly_xz(poly, sx, x0, x1, zb, h), 'y', toward, L['housingOffset'], 'Black', objs)
-            n += project_polygon(body, _poly_xz(poly, sx, x0, x1, zb, h, L['lensInset']), 'y', toward, L['lensOffset'], lens, objs)
+            n += project_polygon(body, _poly_xz(poly, sx, x0, x1, zb, h), 'y', toward, L['housingOffset'], 'Black', objs, tree=tree, max_jump=L['maxJump'])
+            n += project_polygon(body, _poly_xz(poly, sx, x0, x1, zb, h, L['lensInset']), 'y', toward, L['lensOffset'], lens, objs, tree=tree, max_jump=L['maxJump'])
         ind = sig.get('indicator', 'none')
         if ind == 'bottomStrip':
-            n += project_polygon(body, _poly_xz([(0.06, 0.05), (0.94, 0.05), (0.94, 0.05 + share), (0.06, 0.05 + share)], sx, x0, x1, zb, h), 'y', toward, L['indicatorOffset'], 'Light', objs)
+            n += project_polygon(body, _poly_xz([(0.06, 0.05), (0.94, 0.05), (0.94, 0.05 + share), (0.06, 0.05 + share)], sx, x0, x1, zb, h), 'y', toward, L['indicatorOffset'], 'Light', objs, tree=tree, max_jump=L['maxJump'])
         elif ind == 'outerBlock':
-            n += project_polygon(body, _poly_xz([(0.97 - share, 0.08), (0.97, 0.08), (0.97, 0.92), (0.97 - share, 0.92)], sx, x0, x1, zb, h), 'y', toward, L['indicatorOffset'], 'Light', objs)
+            n += project_polygon(body, _poly_xz([(0.97 - share, 0.08), (0.97, 0.08), (0.97, 0.92), (0.97 - share, 0.92)], sx, x0, x1, zb, h), 'y', toward, L['indicatorOffset'], 'Light', objs, tree=tree, max_jump=L['maxJump'])
         el = sig.get('elements', 'none')
         if el == 'twinRound':
             rr = L['elementRadiusShare'] * h
             for cu in (0.3, 0.72):
                 cx, cz = sx * (x0 + cu * (x1 - x0)), zb + 0.5 * h
                 circle = [(cx + rr * math.cos(2 * math.pi * i / 10), cz + rr * math.sin(2 * math.pi * i / 10)) for i in range(10)]
-                n += project_polygon(body, circle, 'y', toward, L['elementOffset'], lens, objs)
+                n += project_polygon(body, circle, 'y', toward, L['elementOffset'], lens, objs, tree=tree, max_jump=L['maxJump'])
         elif el == 'bar':
-            n += project_polygon(body, _poly_xz([(0.1, 0.42), (0.9, 0.42), (0.9, 0.58), (0.1, 0.58)], sx, x0, x1, zb, h), 'y', toward, L['elementOffset'], lens, objs)
+            n += project_polygon(body, _poly_xz([(0.1, 0.42), (0.9, 0.42), (0.9, 0.58), (0.1, 0.58)], sx, x0, x1, zb, h), 'y', toward, L['elementOffset'], lens, objs, tree=tree, max_jump=L['maxJump'])
         elif el == 'innerBlock':
-            n += project_polygon(body, _poly_xz([(0.05, 0.1), (0.33, 0.1), (0.33, 0.9), (0.05, 0.9)], sx, x0, x1, zb, h), 'y', toward, L['elementOffset'], 'Light', objs)
+            n += project_polygon(body, _poly_xz([(0.05, 0.1), (0.33, 0.1), (0.33, 0.9), (0.05, 0.9)], sx, x0, x1, zb, h), 'y', toward, L['elementOffset'], 'Light', objs, tree=tree, max_jump=L['maxJump'])
         if end == 'rear' and sig.get('wrap'):
             # The unit continues 0.12 m onto the quarter panel: a patch projected along x from outside.
-            y_end = m['overhangRear'] + m['wheelbase'] / 2
-            n += projected_quad(body, [(y_end - 0.14, zb), (y_end - 0.01, zb), (y_end - 0.01, zt), (y_end - 0.14, zt)], 'x', -sx, L['housingOffset'], 'Black', nu=3, nv=2, target=objs)
-            n += projected_quad(body, [(y_end - 0.134, zb + 0.006), (y_end - 0.016, zb + 0.006), (y_end - 0.016, zt - 0.006), (y_end - 0.134, zt - 0.006)], 'x', -sx, L['lensOffset'], lens, nu=3, nv=2, target=objs)
+            y_end = _body_end(cid, 'rear')
+            n += projected_quad(body, [(y_end - 0.14, zb), (y_end - 0.01, zb), (y_end - 0.01, zt), (y_end - 0.14, zt)], 'x', -sx, L['housingOffset'], 'Black', nu=3, nv=2, target=objs, tree=tree, max_jump=L['maxJump'])
+            n += projected_quad(body, [(y_end - 0.134, zb + 0.006), (y_end - 0.016, zb + 0.006), (y_end - 0.016, zt - 0.006), (y_end - 0.134, zt - 0.006)], 'x', -sx, L['lensOffset'], lens, nu=3, nv=2, target=objs, tree=tree, max_jump=L['maxJump'])
     if end == 'rear' and sig.get('centerBar'):
         zc = zb + 0.5 * h
-        n += projected_quad(body, [(-x0 + 0.02, zc - 0.02), (x0 - 0.02, zc - 0.02), (x0 - 0.02, zc + 0.02), (-x0 + 0.02, zc + 0.02)], 'y', -1, L['housingOffset'], 'Black', nu=6, nv=1, target=objs)
-        n += projected_quad(body, [(-x0 + 0.025, zc - 0.014), (x0 - 0.025, zc - 0.014), (x0 - 0.025, zc + 0.014), (-x0 + 0.025, zc + 0.014)], 'y', -1, L['lensOffset'], lens, nu=6, nv=1, target=objs)
+        n += projected_quad(body, [(-x0 + 0.02, zc - 0.02), (x0 - 0.02, zc - 0.02), (x0 - 0.02, zc + 0.02), (-x0 + 0.02, zc + 0.02)], 'y', -1, L['housingOffset'], 'Black', nu=6, nv=1, target=objs, tree=tree, max_jump=L['maxJump'])
+        n += projected_quad(body, [(-x0 + 0.025, zc - 0.014), (x0 - 0.025, zc - 0.014), (x0 - 0.025, zc + 0.014), (-x0 + 0.025, zc + 0.014)], 'y', -1, L['lensOffset'], lens, nu=6, nv=1, target=objs, tree=tree, max_jump=L['maxJump'])
     print(f"{cid} {end} lamps: {sig['cover']} + {sig.get('elements', 'none')}, indicator {sig.get('indicator', 'none')}: {n} cells, |x| {x0:.2f}..{x1:.2f}, z {zb:.3f}..{zt:.3f}")
     return n
 
@@ -294,7 +370,7 @@ def exhaust(cid, m):
     target = car_part(cid, 'Bumper_Rear') or car_part(cid, 'Body')
     for o in car_meshes(cid):
         delete_islands(o, lambda k, a, b, mats: set(mats) == {'Chrome'} and (a.y + b.y) / 2 > m['wheelbase'] / 2)
-    y_end = m['overhangRear'] + m['wheelbase'] / 2
+    y_end = _body_end(cid, 'rear')
     hw = m['width'] / 2
     for sx in (1, -1):
         tube(target, (sx * 0.55 * hw, y_end - E['length'] + 0.03, m['groundClearance'] + 0.1), (0, 1, 0), E['tipRadius'], E['length'], E['material'])

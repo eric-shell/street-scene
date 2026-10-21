@@ -34,6 +34,8 @@ import { validateCatalog } from './validateParts';
 const ROOT = process.cwd();
 const SRC = join(ROOT, 'assets/source/icemaan');
 const AUTHORED = join(ROOT, 'assets/source/eshell');
+/** The folder of the shared wheel set under AUTHORED. */
+const WHEEL_SET = 'wheels';
 const CONVERTED = join(ROOT, 'assets/converted');
 const PUBLIC = join(ROOT, 'public');
 const MANIFEST_PATH = join(ROOT, 'src/assets/carManifest.json');
@@ -307,8 +309,17 @@ async function writeOptimized(io: Awaited<ReturnType<typeof createIO>>, doc: Doc
     const nodes = doc.getRoot().listNodes().filter((n) => n.getMesh());
     if (nodes.length === 1) nodes[0].setName(nodeName);
   }
+  // UVs only where the game textures a surface: the Grille pattern is a runtime texture
+  // (src/render/carMaterials.ts), so prune would drop its coordinates as unused; every other
+  // material is flat colored and its UVs are only bytes.
+  for (const mesh of doc.getRoot().listMeshes()) {
+    for (const prim of mesh.listPrimitives()) {
+      if (prim.getMaterial()?.getName() === 'Grille') continue;
+      for (const sem of prim.listSemantics()) if (sem.startsWith('TEXCOORD_')) prim.setAttribute(sem, null);
+    }
+  }
   // Materials are not deduplicated: identical looking materials can carry different shared names.
-  await doc.transform(dedup({ propertyTypes: [PropertyType.ACCESSOR, PropertyType.MESH, PropertyType.TEXTURE] }), weld(), prune());
+  await doc.transform(dedup({ propertyTypes: [PropertyType.ACCESSOR, PropertyType.MESH, PropertyType.TEXTURE] }), weld(), prune({ keepAttributes: true }));
   await MeshoptEncoder.ready;
   doc.createExtension(EXTMeshoptCompression);
   await doc.transform(meshopt({ encoder: MeshoptEncoder, level: 'medium' }));
@@ -377,7 +388,8 @@ async function main(): Promise<void> {
   }
 
   // ----- Authored cars (assets/source/eshell) -----
-  const authored = existsSync(AUTHORED) ? readdirSync(AUTHORED).filter((d) => existsSync(join(AUTHORED, d, `${d}.blend`))) : [];
+  // `wheels/wheels.blend` is the shared wheel set, not a car (below).
+  const authored = existsSync(AUTHORED) ? readdirSync(AUTHORED).filter((d) => d !== WHEEL_SET && existsSync(join(AUTHORED, d, `${d}.blend`))) : [];
   const blender = authored.length ? findBlender() : null;
   if (authored.length && !blender) throw new Error('Authored .blend cars found but Blender is not available. Install Blender or set BLENDER=/path/to/blender.');
   for (const carId of authored) {
@@ -576,6 +588,30 @@ async function main(): Promise<void> {
     }
     section.push('</details>', '');
     inspectSections.push(section.join('\n'));
+  }
+
+  // ----- The shared wheel set (assets/source/eshell/wheels/wheels.blend, docs/carWheels.md) -----
+  // Universal wheels from donor rims on the house tire; ids are wheel_<name>.
+  const wheelBlend = join(AUTHORED, WHEEL_SET, `${WHEEL_SET}.blend`);
+  if (existsSync(wheelBlend)) {
+    const blenderW = findBlender();
+    if (!blenderW) throw new Error('The wheel set needs Blender. Install Blender or set BLENDER=/path/to/blender.');
+    const out = join(CONVERTED, WHEEL_SET);
+    const metaPath = join(out, 'car.json');
+    const exporter = join(ROOT, 'scripts/blender/exportCar.py');
+    const stale = !existsSync(metaPath) || statSync(metaPath).mtimeMs < Math.max(statSync(wheelBlend).mtimeMs, statSync(exporter).mtimeMs);
+    if (stale) execFileSync(blenderW, ['--background', wheelBlend, '--python', exporter, '--', out], { stdio: 'pipe' });
+    const meta = JSON.parse(readFileSync(metaPath, 'utf8')) as { wheels: { name: string; displayName: string }[] };
+    const section: string[] = ['## Wheel set', '', `Source: \`${relative(ROOT, wheelBlend)}\` (scripts/blender/carWheels.py).`, ''];
+    for (const wh of meta.wheels) {
+      const doc = await io.read(join(out, 'wheels', `wheel_${wh.name}.glb`));
+      const id = `wheel_${wh.name}`;
+      const w = await writeOptimized(io, doc, join(PUBLIC, `parts/${id}.glb`), 'Wheel');
+      generated.push({ id, displayName: wh.displayName || wh.name, carId: 'universal', slot: 'wheels', file: `parts/${id}.glb`, hides: [], materialSlots: materialSlotsOf(doc), tris: w.tris, generated: true } as PartEntry);
+      section.push(`- \`${id}\` ${wh.displayName}: ${(w.bytes / 1024).toFixed(1)} KB, ${w.tris} tris.`);
+    }
+    inspectSections.push(section.join('\n') + '\n');
+    log(`wheel set: ${meta.wheels.length} wheels`);
   }
 
   // Cars without source files keep provisional geometry and render as code placeholders.

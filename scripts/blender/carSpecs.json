@@ -35,7 +35,8 @@
         "aboveSeam": 0.02,
         "belowEdge": 0.025,
         "indicatorShare": 0.2,
-        "elementRadiusShare": 0.32
+        "elementRadiusShare": 0.32,
+        "maxJump": 0.15
       },
       "mirror": {
         "housing": [
@@ -425,6 +426,127 @@
           "wrap": false,
           "centerBar": false,
           "notes": "Supra twin rounds on a dark panel set in the E46's L line"
+        }
+      }
+    },
+    "protoWagon": {
+      "displayName": "Proto Wagon",
+      "brief": "Five door super wagon, the longest car in the garage: the RS 6 Avant's reduced donor body (long low roof, blistered arches, big intakes, diffuser with oval tips) wearing the V60 Polestar's hammer headlight graphics and C-shaped tail lamps climbing the D pillars. Front twin turbo V8, all wheel drive.",
+      "donors": [
+        {
+          "name": "2020 Audi RS 6 Avant (C8)",
+          "weight": 0.7,
+          "model": {
+            "source": "sketchfab",
+            "uid": "aa5b94cc007c4c8a9b558f98d634c8d0",
+            "author": "Brahekoss123",
+            "license": "CC Attribution",
+            "url": "https://sketchfab.com/3d-models/aa5b94cc007c4c8a9b558f98d634c8d0"
+          },
+          "mm": {
+            "length": 4995,
+            "width": 1951,
+            "height": 1486,
+            "wheelbase": 2929,
+            "trackFront": 1668,
+            "trackRear": 1650,
+            "overhangFront": 956,
+            "overhangRear": 1111,
+            "beltLine": 953,
+            "tireRadius": 363,
+            "windshieldDeg": 26.6,
+            "rearGlassDeg": 26.8
+          },
+          "estimates": [],
+          "measured": [
+            "overhangFront",
+            "overhangRear",
+            "beltLine",
+            "windshieldDeg",
+            "rearGlassDeg"
+          ],
+          "sources": [
+            "https://autotijd.be/en/dimensions/audi/a6-avant/rs-6-performance-4633",
+            "https://www.iseecars.com/car/audi-rs-6-avant-performance-dimensions"
+          ],
+          "take": [
+            "the whole body: reduced to the budget, widened x1.06, dropped onto the house wheel, arches pulled in, roof chopped to 1.25 m",
+            "front and rear bumpers: big side intakes, single frame grille backing, diffuser with oval tips",
+            "its lamp lenses as the dark housings the V60 graphics sit in"
+          ]
+        },
+        {
+          "name": "2020 Volvo V60 T8 Polestar Engineered",
+          "weight": 0.3,
+          "model": {
+            "source": "sketchfab",
+            "uid": "7b28b4fbea4b490b816ba1b75d4fe50a",
+            "author": "Streetsraker",
+            "license": "CC Attribution",
+            "url": "https://sketchfab.com/3d-models/7b28b4fbea4b490b816ba1b75d4fe50a"
+          },
+          "mm": {
+            "length": 4761,
+            "width": 1850,
+            "height": 1427,
+            "wheelbase": 2872,
+            "trackFront": 1610,
+            "trackRear": 1610,
+            "overhangFront": 837,
+            "overhangRear": 999,
+            "beltLine": 920,
+            "tireRadius": 340,
+            "windshieldDeg": 25.0,
+            "rearGlassDeg": 40.7
+          },
+          "estimates": [
+            "tireRadius"
+          ],
+          "measured": [
+            "overhangFront",
+            "overhangRear",
+            "beltLine",
+            "windshieldDeg",
+            "rearGlassDeg"
+          ],
+          "sources": [
+            "https://www.truedelta.com/Volvo-V60/specs-1075-2020&r=4",
+            "https://autotijd.be/en/specs/volvo/v60/t8-polestar-engineered-405-hp-awd"
+          ],
+          "take": [
+            "headlight graphics: the hammer DRL and lens, laid into the RS 6 housings",
+            "tail lamps: the C shape climbing the D pillar, laid onto the RS 6 tail",
+            "the amber blinker at the outer end of each headlight"
+          ]
+        }
+      ],
+      "body": {
+        "doors": 4,
+        "pillars": [
+          "A",
+          "B",
+          "C",
+          "D"
+        ],
+        "roofline": "long roof falling to a raked tailgate glass; quarter glass behind the rear door",
+        "exhaust": "twin, one tip each side"
+      },
+      "lights": {
+        "front": {
+          "cover": "slab",
+          "elements": "bar",
+          "indicator": "outerBlock",
+          "source": "donor",
+          "notes": "V60 hammer DRL graphic in the RS 6 housing, grafted from the donor model (carDonors.graft), not built by carFeatures.lamps"
+        },
+        "rear": {
+          "cover": "verticalUnit",
+          "elements": "none",
+          "indicator": "none",
+          "wrap": true,
+          "centerBar": false,
+          "source": "donor",
+          "notes": "V60 C lamps climbing the D pillar on the RS 6 tail, grafted from the donor model"
         }
       }
     }

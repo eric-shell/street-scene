@@ -57,7 +57,7 @@ describe('build validation', () => {
     const b = defaultBuild('protoHatch');
     b.name = 'Midnight Club';
     b.visual.paint = { color: '#19e6ff', finish: 'pearl' };
-    b.visual.parts = { spoiler: 'protoHatch_spoiler_1', frontBumper: 'protoHatch_frontBumper_kurogane', wheels: 'wheel_protoCompact_2' };
+    b.visual.parts = { spoiler: 'protoHatch_spoiler_1', frontBumper: 'protoHatch_frontBumper_kurogane', wheels: 'wheel_rensa' };
     b.visual.decals.push({ shape: 'number', color: '#ff3df2', pos: [0.9, 0.6, 0.2], normal: [1, 0, 0], rotation: 12, scale: 0.7, mirror: true, text: '42' });
     b.visual.underglow = { enabled: true, color: '#ff00aa', color2: '#00ffaa', pattern: 'chase', brightness: 1.4, speed: 2, size: 1.2 };
     b.visual.stance = { rideHeight: -0.045, front: { camber: -3.5, offset: 0.015, wheelSize: 1.05 }, rear: { camber: -7, offset: 0.05, wheelSize: 1.2 } };
@@ -74,7 +74,7 @@ describe('build validation', () => {
     const b = validateBuild({ carId: 's64', visual: { parts: { body: 's64_body_kit2', spoiler: 's64_spoiler_2', wheels: 'wheel_gc14_3' } } });
     expect(b.carId).toBe('protoCompact');
     // Whole-body kits were split into bumpers and skirts, so they fall back to stock.
-    expect(b.visual.parts).toEqual({ spoiler: 'protoCompact_spoiler_2', wheels: 'wheel_protoHatch_3' });
+    expect(b.visual.parts).toEqual({ spoiler: 'protoCompact_spoiler_2', wheels: 'wheel_senko' });
     expect(validateBuild({ carId: 'gc14' }).carId).toBe('protoHatch');
   });
 
@@ -101,7 +101,7 @@ describe('build validation', () => {
     expect(b!.visual.stance.rear).toEqual({ camber: -8.5, offset: 0.04, wheelSize: 1.15 });
     expect(b!.visual.wheels.color).toBe('#ffcc00');
     // Saved before the cars were renamed: the wheel id follows the rename.
-    expect(b!.visual.parts.wheels).toBe('wheel_protoCompact_2');
+    expect(b!.visual.parts.wheels).toBe('wheel_rensa');
     expect(b!.performance.engine).toBe(2);
   });
 

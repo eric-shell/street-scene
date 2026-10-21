@@ -16,11 +16,11 @@ import bpy
 
 cid, out = sys.argv[sys.argv.index('--') + 1:][:2]
 scene = bpy.context.scene
-subs = ('Car', 'Parts', 'Wheels', 'Rig')
+# A car has all four; the shared wheel set (`wheels`) has only Wheels.
+subs = tuple(s for s in ('Car', 'Parts', 'Wheels', 'Rig') if f'{cid}:{s}' in bpy.data.collections)
+if not subs or (cid != 'wheels' and len(subs) < 4):
+    raise SystemExit(f'saveCar: {cid} needs collections Car, Parts, Wheels and Rig (found {list(subs)})')
 keep = {f'{cid}:{s}' for s in subs}
-missing = [k for k in keep if k not in bpy.data.collections]
-if missing:
-    raise SystemExit(f'saveCar: missing collections {sorted(missing)}')
 keep_objs = set()
 for name in keep:
     keep_objs |= set(bpy.data.collections[name].all_objects)

@@ -25,7 +25,8 @@ REPO = globals().get('REPO') or os.getcwd()
 VIEWS = ('side', 'front', 'rear', 'top')
 VIEW_COLORS = {'Paint': (0.15, 0.35, 0.9, 1), 'Trim': (0.2, 0.2, 0.22, 1), 'Black': (0.03, 0.03, 0.03, 1), 'Chrome': (0.85, 0.85, 0.9, 1),
                'Glass': (0.1, 0.14, 0.2, 1), 'Rim': (0.7, 0.7, 0.72, 1), 'Tire': (0.06, 0.06, 0.06, 1), 'HeadLight': (1, 1, 0.95, 1),
-               'TailLight': (0.9, 0.05, 0.08, 1), 'Light': (1, 0.6, 0.15, 1), 'Interior': (0.12, 0.12, 0.13, 1)}
+               'TailLight': (0.9, 0.05, 0.08, 1), 'Light': (1, 0.6, 0.15, 1), 'Interior': (0.12, 0.12, 0.13, 1),
+               'Grille': (0.07, 0.07, 0.08, 1)}
 
 
 # ----- data ------------------------------------------------------------------
@@ -66,6 +67,7 @@ def car_part(cid, short):
 def rig(cid):
     """(half wheelbase, half track front, half track rear, wheel radius) from the Rig empties, else the manifest."""
     c = car_coll(cid, 'Rig')
+    bpy.context.view_layer.update()  # empties made in this call keep an identity matrix_world until then
     pos = {}
     for o in (c.objects if c else []):
         key = o.name.split('.')[-1].replace('Wheel_', '')
@@ -146,8 +148,10 @@ def measure(cid, quiet=False):
         b0, b1 = _bounds(sglass)
         belt, window_top, cab_f, cab_r = b0.z, b1.z, -b0.y, -b1.y
     cab_mid = (cab_f + cab_r) / 2 if sglass else 0.0
-    # Windshield and backlight face up more than sideways; a fastback can lie at 20 degrees, so split by position.
-    top_glass = [f for f in glass if f[2].z > 0.25 and not side(f)]
+    # Windshield and backlight face up and along the car more than sideways (tumblehomed side glass on a
+    # real body faces up a lot too); a fastback can lie at 20 degrees, so split by position.
+    # Only the central band (|x| < 0.45 m) sets the rake: the window corners of a real body add stray faces.
+    top_glass = [f for f in glass if f[2].z > 0.25 and abs(f[2].x) < abs(f[2].y) and abs(f[1].x) < 0.45]
 
     def rake(g):
         if not g:
@@ -182,7 +186,10 @@ def measure(cid, quiet=False):
     isl = [(k, a, b, mats) for o in objs for (k, a, b, mats) in islands(o)]
     m['mirrors'] = sum(1 for k, a, b, mats in isl if _is_mirror(m, a, b))
     m['handles'] = sum(1 for k, a, b, mats in isl if _is_handle(m, a, b))
-    bfaces = [f for f in fs if f[0] == 'Black' and side(f) and belt < f[1].z < window_top and cab_r < fwd(f[1]) < cab_f] if sglass else []
+    # On the glass band only: the mirror's Black pane sits in the same height band outboard of it, the wiper ends inboard.
+    gx = [abs(v.x) for f in sglass for v in f[3]]
+    gx0, gx1 = (min(gx) - 0.02, max(gx) + 0.02) if sglass else (0, 0)
+    bfaces = [f for f in fs if f[0] == 'Black' and side(f) and belt < f[1].z < window_top and cab_r < fwd(f[1]) < cab_f and gx0 < abs(f[1].x) < gx1] if sglass else []
     m['bPillar'] = None
     if bfaces:
         b0, b1 = _bounds(bfaces)
@@ -259,12 +266,14 @@ def checks(m, t, spec, house):
     info('cabin (side glass)', f"fwd {f3(m['cabinRear'])} .. {f3(m['cabinFront'])}", f"window top {f3(m['windowTop'])}")
     lo, hi = house['features']['lamp']['heightRange']
 
-    def lamp_row(label, l):
+    def lamp_row(label, l, cover):
         if not l:
             return feat(label, False, 'missing')
-        feat(label, lo <= l['height'] <= hi, f"|x| {f3(l['xInner'])}..{f3(l['xOuter'])}, z {f3(l['yMin'])}..{f3(l['yMax'])}, fwd {f3(l['zMin'])}..{f3(l['zMax'])}", f"height {f3(l['height'])} (house {lo}..{hi})")
-    lamp_row('headlights', m['head'])
-    lamp_row('taillights', m['tail'])
+        # Tall covers (a unit climbing the D pillar) get twice the band, as carFeatures.py builds them.
+        top = 2 * hi if cover in ('verticalUnit',) else hi
+        feat(label, lo <= l['height'] <= top, f"|x| {f3(l['xInner'])}..{f3(l['xOuter'])}, z {f3(l['yMin'])}..{f3(l['yMax'])}, fwd {f3(l['zMin'])}..{f3(l['zMax'])}", f"height {f3(l['height'])} (house {lo}..{top})")
+    lamp_row('headlights', m['head'], spec['lights']['front']['cover'])
+    lamp_row('taillights', m['tail'], spec['lights']['rear']['cover'])
     feat('indicators (Light)', m['indicator'], 'found' if m['indicator'] else 'missing')
     feat('glass', m['beltLine'] is not None and m['windshieldDeg'] is not None and m['rearGlassDeg'] is not None, 'side band, windshield, rear glass' if m['beltLine'] is not None else 'missing')
     b = m['bPillar']
