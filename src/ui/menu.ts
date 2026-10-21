@@ -19,8 +19,9 @@
  * moves with them (onStep; game/streetCameras.ts). Every step keeps the title
  * block on top (the boot splash lands on `.menu-head`, see ui/splash.ts);
  * Escape or the back button goes back a step. Arrow keys walk the home list and
- * the race type grid (1 to 6 pick one); the key legend along the bottom carries
- * Hide UI (H), which stays a button on touch screens. The caller feeds the
+ * the race type grid (1 to 6 pick one); the key legend along the bottom of the
+ * deeper steps carries Hide UI (H), which stays a button on touch screens; home
+ * has no legend. The caller feeds the
  * cruising car's pose every frame (MainMenu.frame) for the maps' car markers.
  */
 import { btn, h, iconBtn, segmented, sheen } from './dom';
@@ -485,7 +486,7 @@ export function mainMenu(o: MenuOptions): MainMenu {
 
   const hideUi: KeyHint = { keys: ['H'], label: 'Hide UI', action: () => o.onHideUi(), title: 'Hide the menu and watch the city (H)' };
   const KEYS: Record<MenuStep, KeyHint[]> = {
-    home: [{ keys: ['↑', '↓'], label: 'Select' }, { keys: ['0'], label: 'Explore' }, { keys: ['M'], label: 'Mute music' }, hideUi],
+    home: [],
     race: [{ keys: ['←', '→', '↑', '↓'], label: 'Race type' }, { keys: ['Enter'], label: 'Next' }, { keys: ['Esc'], label: 'Back' }, hideUi],
     setup: [{ keys: ['Enter'], label: 'Start' }, { keys: ['Esc'], label: 'Back' }, hideUi],
     settings: [{ keys: ['Esc'], label: 'Back' }, hideUi],
