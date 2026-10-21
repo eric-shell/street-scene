@@ -347,9 +347,10 @@ describe('city generation', () => {
       // barrels along the river channel's floor edges, are obstacles on purpose; raceway alley clutter
       // sits on the alley's own sidewalk, which a diagonal avenue leaving the alley's end junction can
       // overlap: the alley module keeps its clutter clear of the alley's ends only). Lane closures stand
-      // in the curb lane on purpose (roadworks.ts; their own test keeps the rest of the street open).
+      // in the curb lane on purpose (roadworks.ts; their own test keeps the rest of the street open), and
+      // the night market's fruit crates spill off the curb onto the road edge (checked in market.test.ts).
       for (const p of props) {
-        if (p.area !== undefined && ['backAlley', 'river', 'alley', 'roadworks'].includes(w.areas[p.area].kind)) continue;
+        if (p.area !== undefined && ['backAlley', 'river', 'alley', 'roadworks', 'market'].includes(w.areas[p.area].kind)) continue;
         for (const e of w.graph.edges) {
           const a = w.graph.nodes[e.a];
           const b = w.graph.nodes[e.b];

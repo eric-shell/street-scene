@@ -35,8 +35,10 @@ export type StreetPropKind = 'streetlight' | 'trafficLight' | 'garbageCan' | 'be
 export type FurnitureKind = 'hydrant' | 'parkingMeter' | 'mailbox' | 'phoneBooth' | 'vendingMachine';
 /** Construction site pieces fencing off and filling route shortcuts (districts/alley.ts). */
 export type ConstructionPropKind = 'fencePanel' | 'trafficCone' | 'sawhorse' | 'waterBarrier' | 'sandbags' | 'pallets';
+/** Night market pieces (districts/market.ts): lantern lit awning stalls, fruit crates spilling off the curb, food carts. */
+export type MarketPropKind = 'marketStall' | 'fruitCrates' | 'foodCart';
 /** Clutter districts ask for (DistrictPropSpec): mostly soft, cheap to crash through. Park lamps light parks and plazas (render/areaLights.ts). */
-export type DistrictPropKind = 'bush' | 'planterPot' | 'cafeTable' | 'barrel' | 'crate' | 'dumpster' | 'newsBox' | 'trashBags' | 'parkLamp' | ConstructionPropKind;
+export type DistrictPropKind = 'bush' | 'planterPot' | 'cafeTable' | 'barrel' | 'crate' | 'dumpster' | 'newsBox' | 'trashBags' | 'parkLamp' | ConstructionPropKind | MarketPropKind;
 export type PropKind = StreetPropKind | DistrictPropKind;
 
 export interface Prop {
@@ -130,6 +132,11 @@ export const PROP_DEFS: Record<PropKind, PropDef> = {
   waterBarrier: { radius: 0.9, mass: 120, height: 0.85, anchor: 1, breakSpeed: 0.8 },
   sandbags: { radius: 0.55, mass: 70, height: 0.55, anchor: 1, breakSpeed: 0.6 },
   pallets: { radius: 0.62, mass: 36, height: 0.75, anchor: 1, breakSpeed: 0.2 },
+  // Night market: an awning stall on its table of goods costs a 1.5 t car about 3.5% of its speed, a
+  // food cart 5%, a stack of fruit crates under 2%; all go down at any closing speed worth the name.
+  marketStall: { radius: 1.1, mass: 55, height: 2.6, anchor: 1, breakSpeed: 0.3 },
+  fruitCrates: { radius: 0.5, mass: 26, height: 0.85, anchor: 1, breakSpeed: 0.1 },
+  foodCart: { radius: 0.75, mass: 85, height: 2.3, anchor: 1, breakSpeed: 0.5 },
   // Neighbourhood furniture. A cast iron hydrant is a stubby, bolted lump: it holds a crawling car
   // and costs a fast one about a seventh of its speed (then gushes, render/hydrantSpray.ts). Parking
   // meters and mailboxes are light knocks; a phone booth or a vending machine is a real hit.

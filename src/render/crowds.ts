@@ -19,7 +19,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { World } from '../city/world';
-import type { MeetPlan } from './meetPlan';
+import type { MeetPerson, MeetPlan } from './meetPlan';
 import { CITY } from '../city/config';
 import { Rng } from '../sim/prng';
 import { routeSample } from '../city/route';
@@ -63,6 +63,8 @@ export interface CrowdOptions {
   meet?: MeetPlan;
   /** Sections further than this from the camera are not drawn (m). */
   drawDistance?: number;
+  /** More sections that belong to the city rather than to a meet (the night market's pens, marketPlan.ts), drawn like a meet's. */
+  sections?: readonly (readonly MeetPerson[])[];
 }
 
 export interface Crowds {
@@ -577,6 +579,9 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
       null,
       zone.people.map((p) => ({ x: p.x, y: p.y, z: p.z, yaw: p.yaw, ds: 0, side: 0 })),
     );
+  }
+  for (const people of world.openWorld ? [] : (opts.sections ?? [])) {
+    if (people.length >= SECTION_MIN) addStand(null, people.map((p) => ({ x: p.x, y: p.y, z: p.z, yaw: p.yaw, ds: 0, side: 0 })));
   }
 
   // The menu backdrop never calls update(): keep the idle animation going from the render clock.

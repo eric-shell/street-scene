@@ -22,7 +22,7 @@
  */
 import { audioHub } from './engineAudio';
 import type { RaceEvent, RaceState } from '../sim/race';
-import type { ConstructionPropKind, PropKind } from '../city/props';
+import type { ConstructionPropKind, MarketPropKind, PropKind } from '../city/props';
 import type { Contact, World } from '../city/world';
 import { TICK_HZ } from '../sim/constants';
 
@@ -47,9 +47,10 @@ export interface SfxCar {
 export type WallHitKind = 'wall' | 'barrier' | 'rail';
 /**
  * Prop kinds with their own impact sound (news boxes sound like garbage cans, park lamps like
- * streetlights; construction pieces and most neighbourhood furniture borrow the nearest material).
+ * streetlights; construction pieces, most neighbourhood furniture and the night market's pieces
+ * borrow the nearest material).
  */
-type PropSound = Exclude<PropKind, 'newsBox' | 'parkLamp' | ConstructionPropKind | 'mailbox' | 'parkingMeter' | 'phoneBooth' | 'vendingMachine'>;
+type PropSound = Exclude<PropKind, 'newsBox' | 'parkLamp' | ConstructionPropKind | MarketPropKind | 'mailbox' | 'parkingMeter' | 'phoneBooth' | 'vendingMachine'>;
 export type SfxBank = 'crash' | WallHitKind | PropSound | 'firework';
 type Bank = SfxBank;
 const PROP_SOUND: Record<PropKind, PropSound> = {
@@ -73,6 +74,9 @@ const PROP_SOUND: Record<PropKind, PropSound> = {
   waterBarrier: 'barrel',
   sandbags: 'trashBags',
   pallets: 'crate',
+  marketStall: 'cafeTable',
+  fruitCrates: 'crate',
+  foodCart: 'garbageCan',
   hydrant: 'hydrant',
   parkingMeter: 'trafficLight',
   mailbox: 'garbageCan',
@@ -1334,6 +1338,9 @@ export class Sfx {
       waterBarrier: 0.75,
       sandbags: 0.5,
       pallets: 0.6,
+      marketStall: 0.7,
+      fruitCrates: 0.55,
+      foodCart: 0.8,
       hydrant: 0.85,
       parkingMeter: 0.5,
       mailbox: 0.65,
