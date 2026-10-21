@@ -55,6 +55,32 @@ export const DRIVE_WHEELS: Record<DrivetrainLayout, { code: string; name: string
   awd: { code: 'A', name: 'all-wheel drive' },
 };
 
+/**
+ * What the engine voice can be told beyond layout and aspiration: the parts of
+ * a real car's exhaust and intake that change how it sounds. Every field is
+ * optional; the synth picks the layout's usual answer (src/audio/engineSynth.ts).
+ */
+export const VOICE_OPTIONS = {
+  /** Header primaries: equal length, or a boxer's short and long bank pairs (the Subaru rumble). */
+  headers: ['equal', 'unequal'],
+  /** Separate tailpipes: 1 merges every cylinder, 2 keeps each bank (or half of an inline six) on its own pipe. */
+  pipes: [1, 2],
+  /** How much the silencer lets through. */
+  muffler: ['quiet', 'sport', 'straight'],
+  /** One throttle on a plenum, or individual throttle bodies that honk when opened. */
+  intake: ['plenum', 'itb'],
+  /** V8 crankshaft: cross-plane banks fire unevenly (the burble), flat-plane evenly (the scream). */
+  crank: ['cross', 'flat'],
+} as const;
+
+export interface EngineVoiceSpec {
+  headers?: (typeof VOICE_OPTIONS.headers)[number];
+  pipes?: (typeof VOICE_OPTIONS.pipes)[number];
+  muffler?: (typeof VOICE_OPTIONS.muffler)[number];
+  intake?: (typeof VOICE_OPTIONS.intake)[number];
+  crank?: (typeof VOICE_OPTIONS.crank)[number];
+}
+
 /** The `engine` block of a car in carManifest.json. */
 export interface EngineSpec {
   /** Cylinder layout code (I4, V6, B4, ...), a key of ENGINE_LAYOUTS. */
@@ -63,6 +89,8 @@ export interface EngineSpec {
   aspiration: Aspiration;
   /** Where the engine sits in the chassis; first letter of the drivetrain code. */
   position: EnginePosition;
+  /** Exhaust and intake details for the engine voice (optional, see VOICE_OPTIONS). */
+  voice?: EngineVoiceSpec;
 }
 
 export function cylinderCount(spec: EngineSpec): number {
@@ -126,6 +154,17 @@ export function engineSpecErrors(spec: unknown): string[] {
   check('layout', ENGINE_LAYOUTS);
   check('aspiration', ASPIRATIONS);
   check('position', ENGINE_POSITIONS);
-  for (const k of Object.keys(s)) if (!(SPEC_FIELDS as readonly string[]).includes(k)) errors.push(`engine.${k} is not a known field (${SPEC_FIELDS.join(', ')})`);
+  for (const k of Object.keys(s)) if (!(SPEC_FIELDS as readonly string[]).includes(k) && k !== 'voice') errors.push(`engine.${k} is not a known field (${SPEC_FIELDS.join(', ')}, voice)`);
+  if ('voice' in s) {
+    const v = s.voice;
+    if (!v || typeof v !== 'object' || Array.isArray(v)) errors.push('engine.voice must be an object');
+    else {
+      for (const [k, value] of Object.entries(v as Record<string, unknown>)) {
+        const allowed = (VOICE_OPTIONS as Record<string, readonly (string | number)[]>)[k];
+        if (!allowed) errors.push(`engine.voice.${k} is not a known field (${Object.keys(VOICE_OPTIONS).join(', ')})`);
+        else if (!allowed.includes(value as string | number)) errors.push(`engine.voice.${k} ${JSON.stringify(value)} is not one of ${allowed.join(', ')}`);
+      }
+    }
+  }
   return errors;
 }

@@ -14,9 +14,19 @@ describe('car spec labels', () => {
     expect(engineSpecErrors({ layout: 'V7', aspiration: 'na', position: 'front' })).toEqual([expect.stringContaining('engine.layout "V7"')]);
   });
 
+  it('the optional voice block is checked field by field', () => {
+    const base = { layout: 'B4', aspiration: 'turbo', position: 'front' };
+    expect(engineSpecErrors({ ...base, voice: { headers: 'unequal', pipes: 2, muffler: 'sport', intake: 'itb', crank: 'flat' } })).toEqual([]);
+    expect(engineSpecErrors({ ...base, voice: {} })).toEqual([]);
+    expect(engineSpecErrors({ ...base, voice: 'loud' })).toEqual(['engine.voice must be an object']);
+    expect(engineSpecErrors({ ...base, voice: { muffler: 'loud' } })).toEqual([expect.stringContaining('engine.voice.muffler "loud"')]);
+    expect(engineSpecErrors({ ...base, voice: { pipes: 3 } })).toEqual([expect.stringContaining('engine.voice.pipes 3')]);
+    expect(engineSpecErrors({ ...base, voice: { exhaust: 'dual' } })).toEqual([expect.stringContaining('engine.voice.exhaust is not a known field')]);
+  });
+
   it('the selectable cars carry a drivetrain code and an engine layout', () => {
     const badges = Object.fromEntries(SELECTABLE_CAR_IDS.map((id) => [id, specBadges(cars.find((c) => c.id === id)!.engine, getBaseTuning(id).drivetrain.layout).map((b) => b.text)]));
-    expect(badges).toEqual({ protoHatch: ['FF', 'B4', 'Turbo'], protoCompact: ['FR', 'I6'], protoCoupe: ['FR', 'V6', 'Turbo'], protoWagon: ['FA', 'V8', 'Turbo'] });
+    expect(badges).toEqual({ protoHatch: ['FF', 'B4', 'Turbo'], protoCompact: ['FR', 'I6'], protoCoupe: ['FR', 'I6', 'Turbo'], protoWagon: ['FA', 'V8', 'Turbo'] });
   });
 
   it('drivetrain codes are the standard two letters: engine position then driven wheels', () => {
