@@ -49,8 +49,8 @@ Parts must use the shared material names. The game swaps each one for a runtime 
 | `Glass` | Windows | Window tint |
 | `Rim` | Wheel rim | Wheel color (front and rear can differ) |
 | `Tire` | Tire rubber | fixed |
-| `HeadLight` | Headlight lenses | Headlight color (emissive) |
-| `TailLight` | Taillight lenses | Taillight color (emissive, brighter when braking) |
+| `HeadLight` | Headlight lenses | fixed cool white glow |
+| `TailLight` | Taillight lenses | fixed red glow, brighter when braking |
 | `Light` | Indicators, fog lights | fixed amber glow |
 | `Interior` | Seats, dash | fixed |
 

@@ -424,7 +424,6 @@ export class RaceSession {
     // Nitrous light trails from the player's taillights.
     const pd = this.views[0].car.dimensions;
     this.trails = new LightTrails(pd.width, pd.length);
-    this.trails.setColor(opts.visuals[0]?.taillightColor ?? '#ff1a2a');
     this.night.scene.add(this.trails.mesh);
     // A soft key light that rides above the player so cars read clearly at night.
     this.carLight = new THREE.PointLight(0xdfe6ff, 9, 9, 1.6);

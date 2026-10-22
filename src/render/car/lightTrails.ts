@@ -15,7 +15,8 @@ export class LightTrails {
   private geo: THREE.BufferGeometry;
   private strength = 0;
   private local: THREE.Vector3[];
-  private color = new THREE.Color(0xff1a2a);
+  /** The taillight red (carMaterials' TailLight emissive). */
+  private readonly color = new THREE.Color(0xff1a2a);
 
   constructor(width: number, length: number) {
     this.local = [new THREE.Vector3(width * 0.32, 0.55, -length / 2 - 0.05), new THREE.Vector3(-width * 0.32, 0.55, -length / 2 - 0.05)];
@@ -38,10 +39,6 @@ export class LightTrails {
     );
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 6;
-  }
-
-  setColor(c: string): void {
-    this.color.set(c);
   }
 
   update(carRoot: THREE.Object3D, camera: THREE.Camera, active: boolean, dt: number): void {

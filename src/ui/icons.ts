@@ -21,7 +21,6 @@ export {
   Heart,
   Info,
   Layers,
-  Lightbulb,
   Monitor,
   Paintbrush,
   Pause,

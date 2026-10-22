@@ -26,12 +26,12 @@
   @include palette.tint(hue, orange);
 }
 /* Each category's hue, on its tab and, while it is open, on the body (garageUi.ts sets data-tab on the
-   root). Neighbours differ across both rows: Car orange like the menu's Garage row, Body and Lights yellow,
-   Paint and Tune red, Wheels and Neon cyan, Stance and Tint purple, Save green. */
+   root). Neighbours differ across both rows: Car orange like the menu's Garage row, Body and Tune yellow,
+   Paint red, Wheels and Neon cyan, Stance and Tint purple, Save green. */
 $tab-hues: (
   'orange': (car),
-  'yellow': (body, lights),
-  'red': (paint, perf),
+  'yellow': (body, perf),
+  'red': (paint),
   'cyan': (wheels, glow),
   'purple': (stance, tint),
   'green': (share, vinyl),
@@ -67,7 +67,7 @@ $tab-hues: (
 .garage-panel > * {
   flex-shrink: 0;
 }
-/* Ten categories in two rows of tiles like the race types: the icon on a dim badge of the category's hue at
+/* Nine categories in two rows of tiles like the race types: the icon on a dim badge of the category's hue at
    rest, lit with the tile's edge on hover; the open one fills with the hue's wash over a bar of it along the
    bottom, its badge lit. */
 .garage-tabs {

@@ -46,7 +46,6 @@ import {
   Gauge,
   Hammer,
   Layers,
-  Lightbulb,
   MousePointerClick,
   Paintbrush,
   Plus,
@@ -68,7 +67,7 @@ import {
 } from '../ui/icons';
 import { Link2, Link2Off } from 'lucide';
 
-type Tab = 'car' | 'body' | 'paint' | 'wheels' | 'vinyl' | 'stance' | 'tint' | 'glow' | 'lights' | 'perf' | 'share';
+type Tab = 'car' | 'body' | 'paint' | 'wheels' | 'vinyl' | 'stance' | 'tint' | 'glow' | 'perf' | 'share';
 
 const TABS: { id: Tab; label: string; icon: IconNode }[] = [
   { id: 'car', label: 'Car', icon: Car },
@@ -79,7 +78,6 @@ const TABS: { id: Tab; label: string; icon: IconNode }[] = [
   { id: 'stance', label: 'Stance', icon: ArrowUpDown },
   { id: 'tint', label: 'Tint', icon: Eye },
   { id: 'glow', label: 'Neon', icon: Sparkles },
-  { id: 'lights', label: 'Lights', icon: Lightbulb },
   { id: 'perf', label: 'Tune', icon: Gauge },
   { id: 'share', label: 'Save', icon: Share2 },
 ];
@@ -845,29 +843,6 @@ export class GarageScreen {
               g.size = x;
               this.changed();
             }),
-          ),
-        );
-        break;
-      }
-      case 'lights': {
-        this.body.append(
-          section(
-            'Lamp colors',
-            Lightbulb,
-            field(
-              'Headlights',
-              color(v.headlightColor, (c) => {
-                v.headlightColor = c;
-                this.changed();
-              }),
-            ),
-            field(
-              'Taillights',
-              color(v.taillightColor, (c) => {
-                v.taillightColor = c;
-                this.changed();
-              }),
-            ),
           ),
         );
         break;

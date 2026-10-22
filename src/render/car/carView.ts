@@ -552,7 +552,7 @@ export class CarView {
       this.wheelSpins[i].rotation.order = 'ZXY';
     }
     this.poseGroundFx(pose);
-    setBrake(this.materials, this.visual.taillightColor, pose.braking);
+    setBrake(this.materials, pose.braking);
     this.applyUnderglow(time);
     for (const f of this.flames) {
       f.visible = pose.nitro;

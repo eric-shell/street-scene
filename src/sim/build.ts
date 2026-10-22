@@ -83,8 +83,6 @@ export interface VisualBuild {
     /** Glow spread around the car, 0.6..1.6 */
     size: number;
   };
-  headlightColor: string;
-  taillightColor: string;
 }
 
 export interface CarBuild {
@@ -111,8 +109,6 @@ export function defaultVisual(): VisualBuild {
     stance: { rideHeight: 0, front: { camber: 0, offset: 0, wheelSize: 1 }, rear: { camber: 0, offset: 0, wheelSize: 1 } },
     tint: { darkness: 0.55, color: '#101820' },
     underglow: { enabled: false, color: '#00e5ff', color2: '#ff3df2', pattern: 'steady', brightness: 1, speed: 1, size: 1 },
-    headlightColor: '#eaf2ff',
-    taillightColor: '#ff1a2a',
   };
 }
 
@@ -270,8 +266,6 @@ export function validateVisual(v: unknown): VisualBuild {
       speed: num(glow.speed, 0.25, 3, 1),
       size: num(glow.size, 0.6, 1.6, 1),
     },
-    headlightColor: color(o.headlightColor, d.headlightColor),
-    taillightColor: color(o.taillightColor, d.taillightColor),
   };
 }
 

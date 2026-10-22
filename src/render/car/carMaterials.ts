@@ -1,7 +1,7 @@
 /**
  * Runtime materials for the shared material vocabulary. Any mesh whose source
  * material is named e.g. "Paint" gets the player's paint, so new parts pick up
- * paint, trim, glass tint and light colors automatically.
+ * paint, trim and glass tint automatically. Lamp colors are fixed, not a build choice.
  */
 import * as THREE from 'three';
 import { MATERIAL_NAMES, MaterialName } from '../../shared/parts';
@@ -130,13 +130,11 @@ export function applyVisualToMaterials(m: CarMaterialSet, v: VisualBuild, brakin
   const glass = m.Glass as THREE.MeshPhysicalMaterial;
   glass.color.set(v.tint.color).lerp(new THREE.Color(0x8fa0b0), 1 - v.tint.darkness);
   glass.opacity = 0.35 + v.tint.darkness * 0.62;
-  (m.HeadLight as THREE.MeshStandardMaterial).emissive.set(v.headlightColor);
-  setBrake(m, v.taillightColor, braking);
+  setBrake(m, braking);
 }
 
-export function setBrake(m: CarMaterialSet, color: string, braking: boolean): void {
+export function setBrake(m: CarMaterialSet, braking: boolean): void {
   const tl = m.TailLight as THREE.MeshStandardMaterial;
-  tl.emissive.set(color);
   tl.emissiveIntensity = braking ? 4.5 : 1.4;
 }
 
