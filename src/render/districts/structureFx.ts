@@ -297,8 +297,8 @@ export function makeStructureSigns(): THREE.CanvasTexture {
       g.lineTo(x + k * 22 - 40, y + CELL_H);
       g.fill();
     }
-    fit('CLEARANCE 6.2 m', CELL_W - 170, 60);
-    g.fillText('CLEARANCE 6.2 m', x + CELL_W / 2 + 40, y + CELL_H / 2 + 3);
+    fit(`CLEARANCE 20'-4"`, CELL_W - 170, 60);
+    g.fillText(`CLEARANCE 20'-4"`, x + CELL_W / 2 + 40, y + CELL_H / 2 + 3);
   }
   // Road closed plate: red and white stripes with lettering.
   {

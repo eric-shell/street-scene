@@ -1,6 +1,6 @@
 /**
  * Elevated railway renderer, New York / Chicago "El" style, built on the
- * smoothed track curve (render/railCurve.ts) so steel and trains agree:
+ * smoothed track curve (city/railCurve.ts) so steel and trains agree:
  *  - a riveted plate girder at each deck edge, floor beams every few meters,
  *    stringers under the rails, open deck ties you can see the sky between
  *    (alpha tested), running rails, a third rail with its cover board per

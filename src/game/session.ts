@@ -36,6 +36,7 @@ import { FreeFlyCamera } from '../render/freeFly';
 import { DroneMode } from './drone';
 import type { CameraMode } from '../render/camera';
 import { InputManager } from '../input/inputManager';
+import { Rumble } from '../input/rumble';
 import { Hud, HudCar, HudData } from '../ui/hud';
 import { openFullMap, type FullMap, type WaypointStore } from '../ui/fullMap';
 import { placeName } from '../ui/places';
@@ -47,6 +48,7 @@ import { btn } from '../ui/dom';
 import type { Vec2 } from '../sim/math';
 import { Settings } from '../ui/settings';
 import { formatTime } from '../ui/format';
+import { mph } from '../ui/units';
 import { ReplayData } from '../replay/replay';
 import { PROP_DEFS } from '../city/props';
 import { TRAFFIC_SNAP, TrafficView, snapTraffic } from '../render/traffic';
@@ -242,9 +244,9 @@ export class RaceSession {
   private hardHitTick = false;
   /** Nitrous screen warp, eased in and out (0..1). */
   private nitroFx = 0;
-  /** Open world HUD: props the player broke, top speed (km/h), the district shown and the one being entered. */
+  /** Open world HUD: props the player broke, top speed (mph), the district shown and the one being entered. */
   private smashed = 0;
-  private topKmh = 0;
+  private topMph = 0;
   private areaName = 'Downtown';
   private areaNext = '';
   private areaFor = 0;
@@ -281,6 +283,8 @@ export class RaceSession {
   private carLight: THREE.PointLight;
   private engines: EngineVoice[] = [];
   private sfx: Sfx | null = null;
+  /** Gamepad rumble for the player's car; none in a replay. */
+  private readonly rumble: Rumble | null;
   /** Headlight flash level driven by the horn (render side only). */
   private flash = 0;
   /** Open world (free roam): no crowds, fireworks or line celebrations. */
@@ -322,6 +326,7 @@ export class RaceSession {
     private readonly opts: SessionOptions,
   ) {
     this.isReplay = !!opts.replay;
+    this.rumble = opts.replay ? null : new Rumble();
     this.uiRoot = uiRoot;
     let own: Vec2 | null = null;
     this.wp = opts.waypoint ?? { get: () => own, set: (p) => (own = p) };
@@ -698,7 +703,7 @@ export class RaceSession {
 
   /** One fixed sim step. */
   tick(): void {
-    if (this.paused) return;
+    if (this.paused) return this.rumble?.stop();
     const r = this.race;
     if (this.preRoll > 0) {
       // Pre-countdown intro shot: hold the sim (and ghost) at tick 0.
@@ -737,6 +742,10 @@ export class RaceSession {
     this.chaseCall = policeChaseCall(r);
     this.sfx?.syncCountdown(r);
     this.handleEvents();
+    if (this.rumble) {
+      if (this.settings.rumble && r.phase !== 'finished') this.rumble.tick(r);
+      else this.rumble.stop();
+    }
     this.emitSparks();
     // A sudden loss of speed (a hard hit on anything, a dumpster) shakes the camera hard; resets do not count.
     // Ploughing through soft props (bushes, tables, bags) costs a little speed too: that stays a light knock.
@@ -891,6 +900,7 @@ export class RaceSession {
     for (; this.eventIndex < r.events.length; this.eventIndex++) {
       const e = r.events[this.eventIndex];
       this.sfx?.raceEvent(e, r);
+      this.rumble?.event(e);
       if (e.type === 'wall') this.sparkBurst(e.car, e.value ?? 0);
       // Rivals crossing the finish get a smaller cheer.
       if (e.type === 'finish' && e.car !== 0 && !this.openWorld) this.night.crowds.cheer('finish', 0.8);
@@ -1188,7 +1198,7 @@ export class RaceSession {
       raceTime: rc.finished ? ticksToSeconds(rc.finishTick - r.countdownTicks) : raceTime(r),
       bestLap: rc.bestLap ? ticksToSeconds(rc.bestLap) : null,
       lastLap: rc.lapTimes.length ? ticksToSeconds(rc.lapTimes[rc.lapTimes.length - 1]) : null,
-      speedKmh: c.speed * 3.6,
+      speedMph: mph(c.speed),
       rpm: c.rpm,
       redline: rc.tuning.engine.redline,
       gear: c.gear,
@@ -1213,9 +1223,9 @@ export class RaceSession {
       data.waypointLabel = rc.nextCheckpoint < n ? `Waypoint ${rc.nextCheckpoint + 1}/${n}` : 'Finish';
     }
     if (this.openWorld) {
-      this.topKmh = Math.max(this.topKmh, c.speed * 3.6);
+      this.topMph = Math.max(this.topMph, mph(c.speed));
       this.updateArea(c.x, c.z, dt);
-      data.openWorld = { area: this.areaName, smashed: this.smashed, topKmh: this.topKmh };
+      data.openWorld = { area: this.areaName, smashed: this.smashed, topMph: this.topMph };
       this.checkWaypoint(c.x, c.z);
       const wp = this.wp.get();
       if (wp) data.waypoint = wp;
@@ -1263,6 +1273,7 @@ export class RaceSession {
     this.engines.forEach((e) => e.dispose());
     this.night.city.finishLine.onFirework = null;
     this.sfx?.dispose();
+    this.rumble?.stop();
     this.cine.dispose();
     this.carLight.removeFromParent();
     this.carLight.dispose();

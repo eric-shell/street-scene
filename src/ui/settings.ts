@@ -37,6 +37,8 @@ export interface Settings {
   tractionControl: boolean;
   /** Flash effects: lightning flashes and the police light bar's strobes. Off keeps the sky still and the light bar a soft glow. */
   flashEffects: boolean;
+  /** Gamepad rumble for the player's car (pads and browsers that support it). */
+  rumble: boolean;
   /** Debug mode: the live physics (` / F2) and camera (F3) tuning panels in races and free roam, and free roam drives on the saved physics tuning. */
   debugMode: boolean;
 }
@@ -60,6 +62,7 @@ export const DEFAULT_SETTINGS: Settings = {
   interfaceVolume: 1,
   tractionControl: false,
   flashEffects: true,
+  rumble: true,
   debugMode: false,
 };
 

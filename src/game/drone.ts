@@ -18,6 +18,7 @@ import { h, btn } from '../ui/dom';
 import { HudCard, hudControlsOpen } from '../ui/hudCard';
 import { ArrowDown, ArrowUp, Drone, Route, icon } from '../ui/icons';
 import { MAP, MapCar, Minimap } from '../ui/minimap';
+import { feetLabel, speedLabel } from '../ui/units';
 
 export interface DroneOptions {
   /** Start pose (world position, yaw and pitch in rad); default behind and above the grid. */
@@ -292,8 +293,8 @@ export class DroneMode {
     this.camera.rotateZ(-this.roll);
 
     const alt = this.pos.y - this.world.heightAt(this.pos.x, this.pos.z);
-    this.card.setStat(0, `${Math.round(alt)} m`);
-    this.card.setStat(1, `${Math.round((this.tour ? 16 : this.vel.length()) * 3.6)} km/h`);
+    this.card.setStat(0, feetLabel(alt));
+    this.card.setStat(1, speedLabel(this.tour ? 16 : this.vel.length()));
     const deg = ((((-this.yaw * 180) / Math.PI) % 360) + 360) % 360;
     this.card.setStat(2, `${['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8]} ${Math.round(deg)}°`);
     this.mapZoom += (mapScale(alt) - this.mapZoom) * (1 - Math.exp(-dt * 3));

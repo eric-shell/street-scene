@@ -67,6 +67,7 @@ import { RACE_TYPES, type Difficulty, type RaceType, type Settings } from './set
 import { onOff, settingRow, settingsPanel } from './screens';
 import { chip, keybar, navRow, railScreen, screenHead, swapStep, type KeyHint } from './rail';
 import { formatTime } from './format';
+import { roadDistance } from './units';
 import { CityOverview, CourseMap, courseArt, courseRoute, type CourseRoutes, type MapPose } from './menuMaps';
 import { KINDS, layersOf } from './cityMap';
 import { DRAG_OPPONENTS, MAX_OPPONENTS, type RaceMode } from '../sim/race';
@@ -177,8 +178,6 @@ const GRID_MOVES: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, Arrow
 
 /** How deep each step sits, so a move deeper slides forward (left) and a move out slides back. */
 const STEP_DEPTH: Record<MenuStep, number> = { home: 0, race: 1, settings: 1, setup: 2 };
-
-const km = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m / 10) * 10} m`);
 
 /** A row of the home menu's list (its class names the place, for focus). */
 function navItem(kind: keyof typeof PLACES_INFO, sub: string, onClick: () => void): HTMLButtonElement {
@@ -313,21 +312,21 @@ export function mainMenu(o: MenuOptions): MainMenu {
     const r = o.routes;
     switch (t) {
       case 'circuit':
-        return [`${TYPE_INFO.circuit.laps} laps`, `${km(r.circuit.length)} lap`, `${r.circuit.tightCorners} tight turns`];
+        return [`${TYPE_INFO.circuit.laps} laps`, `${roadDistance(r.circuit.length)} lap`, `${r.circuit.tightCorners} tight turns`];
       case 'sprint':
-        return ['A to B', km(r.sprint.finishS - r.sprint.startS), `${r.sprint.tightCorners} tight turns`];
+        return ['A to B', roadDistance(r.sprint.finishS - r.sprint.startS), `${r.sprint.tightCorners} tight turns`];
       case 'drag':
-        return [`${Math.round((r.drag.finishS - r.drag.startS) / CITY.spacing)} blocks`, km(r.drag.finishS - r.drag.startS), 'Head to head'];
+        return [`${Math.round((r.drag.finishS - r.drag.startS) / CITY.spacing)} blocks`, roadDistance(r.drag.finishS - r.drag.startS), 'Head to head'];
       case 'waypoint': {
         const n = (r.waypoint.waypoints?.length ?? 1) - 1;
-        return [`${n} waypoints`, `${km(r.waypoint.finishS - r.waypoint.startS)} suggested`, 'Any streets'];
+        return [`${n} waypoints`, `${roadDistance(r.waypoint.finishS - r.waypoint.startS)} suggested`, 'Any streets'];
       }
       case 'drift': {
         const zones = driftZones(o.world).length;
         return [`${TYPE_INFO.drift.laps} laps`, zones === 1 ? '1 drift zone' : `${zones} drift zones`, 'Solo'];
       }
       case 'roam':
-        return ['Whole city', `${km(layersOf(o.world).streetLength)} of streets`, 'Traffic'];
+        return ['Whole city', `${roadDistance(layersOf(o.world).streetLength)} of streets`, 'Traffic'];
     }
   };
 

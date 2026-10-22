@@ -47,6 +47,7 @@ import { Disc3, Eye, EyeOff, Flag, FlagTriangleRight, Hash, Landmark, Layers, Lo
 import type { MapCar } from './minimap';
 import { PALETTE, rgba, type PaletteColor } from './palette';
 import { CITY_NAME, bearingDeg, compassPoint, distanceLabel, placeName } from './places';
+import { M_PER_FT, M_PER_MI } from './units';
 
 /** Where a waypoint is kept: by whoever owns the map's city (main.ts keeps one per event city, so one set on the menu carries into free roam). */
 export interface WaypointStore {
@@ -1427,12 +1428,12 @@ export class FullMap {
     }
     // Scale bar, bottom left: the longest step under 110 px, in two tones like a surveyor's bar.
     const cssScale = v.scale / dpr;
-    let step: number = SCALE_STEPS[0];
-    for (const s of SCALE_STEPS) if (s * cssScale <= 110) step = s;
-    const len = step * v.scale;
+    let step: (typeof SCALE_STEPS)[number] = SCALE_STEPS[0];
+    for (const s of SCALE_STEPS) if (s.m * cssScale <= 110) step = s;
+    const len = step.m * v.scale;
     const m = 14 * dpr;
     const y = v.h - m;
-    const label = step >= 1000 ? `${step / 1000} km` : `${step} m`;
+    const label = step.label;
     c.font = this.font.scale;
     const tw = c.measureText(label).width;
     c.fillStyle = INK.plate;
@@ -2243,7 +2244,11 @@ const PULSE_RINGS = [0, 0.45] as const;
 const RECT = { x: 0, y: 0, w: 0, h: 0 };
 const NO_DASH: number[] = [];
 /** Scale bar lengths (m) it picks from. */
-const SCALE_STEPS = [10, 25, 50, 100, 200, 250, 500, 1000] as const;
+/** Scale bar lengths in round US units (ui/units.ts), shortest first. */
+const SCALE_STEPS = [
+  ...[50, 100, 250, 500, 1000].map((ft) => ({ m: ft * M_PER_FT, label: `${ft} ft` })),
+  ...[0.25, 0.5, 1].map((mi) => ({ m: mi * M_PER_MI, label: `${mi} mi` })),
+] as const;
 /** Keys that pass through while the map is open: music (M, [ and ]), the dev panels and the function keys. */
 const PASS_KEYS = /^(KeyM|BracketLeft|BracketRight|Backquote|F\d+)$/;
 /** The waypoint pin (CSS px): its canvas, the tip's height in it, the head's center above the tip and its radius. */

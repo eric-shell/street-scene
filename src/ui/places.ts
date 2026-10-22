@@ -2,11 +2,12 @@
  * Player facing names for the district areas, shared by the free roam area
  * chip and callouts (game/session.ts) and the full map's tags and readouts
  * (ui/fullMap.ts), so a place is called the same thing everywhere; and how
- * far and which way a place is ("620 m · NE"), as the full map, its places
+ * far and which way a place is ("0.4 mi · NE"), as the full map, its places
  * list and the HUD's waypoint chip say it.
  */
 import type { Area } from '../city/districts/types';
 import { tunnelName } from '../city/districts/tunnel';
+import { roadDistance } from './units';
 
 /** The city every seed is a night in (working title), as the full map's header names it. */
 export const CITY_NAME = 'New San Delphia';
@@ -57,14 +58,12 @@ export function compassPoint(dx: number, dz: number): string {
   return COMPASS[Math.round(bearingDeg(dx, dz) / 45) % 8];
 }
 
-/** A distance as the maps and the HUD say it: "Here" within a car length or two, tens of meters, then km. */
+/** A distance as the maps and the HUD say it: "Here" within a car length or two, then feet and miles (ui/units.ts). */
 export function formatDistance(m: number): string {
-  if (m < 10) return 'Here';
-  if (m < 995) return `${Math.round(m / 10) * 10} m`;
-  return `${(m / 1000).toFixed(m < 9950 ? 1 : 0)} km`;
+  return m < 10 ? 'Here' : roadDistance(m);
 }
 
-/** How far and which way an offset from the player is: "620 m · NE", or just "Here". */
+/** How far and which way an offset from the player is: "0.4 mi · NE", or just "Here". */
 export function distanceLabel(dx: number, dz: number): string {
   const d = Math.hypot(dx, dz);
   return d < 10 ? 'Here' : `${formatDistance(d)} · ${compassPoint(dx, dz)}`;

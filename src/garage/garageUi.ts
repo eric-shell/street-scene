@@ -33,6 +33,7 @@ import { measureStats, statBars, type CarStats } from '../sim/stats';
 import { SHAPE_LABELS } from '../render/decals';
 import { btn, h, iconBtn, segmented, sheen, toast } from '../ui/dom';
 import { door, transitioning } from '../ui/transitions';
+import { KMH_PER_MPH, M_PER_FT } from '../ui/units';
 import {
   ArrowUpDown,
   Car,
@@ -256,12 +257,12 @@ export class GarageScreen {
     const unlock = () => this.scene.unlockAudio();
     window.addEventListener('pointerdown', unlock, { ...o, capture: true });
     window.addEventListener('keydown', unlock, { ...o, capture: true });
-    // Hold W / Up / Space to rev (not while typing in a field).
+    // Hold W / Up / Space to rev (not while typing in a field, and not the arrows the pad sends to move around the screen: input/padNav.ts).
     const typing = (e: KeyboardEvent) => e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement;
     window.addEventListener(
       'keydown',
       (e) => {
-        if (!GAS_KEYS.includes(e.code) || typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+        if (!e.isTrusted || !GAS_KEYS.includes(e.code) || typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
         e.preventDefault();
         this.gasKeys.add(e.code);
         this.updateGas();
@@ -364,8 +365,8 @@ export class GarageScreen {
       h(
         'div',
         { class: 'garage-stats' },
-        stat('speed', 'Top speed', bars.topSpeed, `${Math.round(st.topSpeed)} km/h`),
-        stat('accel', '0-100', bars.acceleration, `${st.zeroTo100.toFixed(2)} s`),
+        stat('speed', 'Top speed', bars.topSpeed, `${Math.round(st.topSpeed / KMH_PER_MPH)} mph`),
+        stat('accel', '0-60', bars.acceleration, `${st.zeroTo60.toFixed(2)} s`),
         stat('grip', 'Grip', bars.handling, `${st.grip.toFixed(2)} g`),
         stat('nitrous', 'Nitrous', bars.nitrous, `${st.nitrous.toFixed(1)} kN·s`),
       ),
@@ -982,7 +983,7 @@ export class GarageScreen {
             this.changed(true);
           }, 'small'),
         ),
-        slider('Scale', d.scale, 0.2, 3, 0.05, (x) => `${x.toFixed(2)} m`, (x) => {
+        slider('Scale', d.scale, 0.2, 3, 0.05, (x) => `${(x / M_PER_FT).toFixed(1)} ft`, (x) => {
           d.scale = x;
           update();
         }),
@@ -1030,8 +1031,8 @@ export class GarageScreen {
       section(
         'Stats',
         Gauge,
-        bar('speed', 'Top speed', bars.topSpeed, `${Math.round(stats.topSpeed)} km/h`, Gauge),
-        bar('accel', 'Acceleration', bars.acceleration, `0-100 ${stats.zeroTo100.toFixed(2)} s`, Timer),
+        bar('speed', 'Top speed', bars.topSpeed, `${Math.round(stats.topSpeed / KMH_PER_MPH)} mph`, Gauge),
+        bar('accel', 'Acceleration', bars.acceleration, `0-60 ${stats.zeroTo60.toFixed(2)} s`, Timer),
         bar('grip', 'Handling', bars.handling, `${stats.grip.toFixed(2)} g`, Disc3),
         bar('nitrous', 'Nitrous', bars.nitrous, `${stats.nitrous.toFixed(1)} kN·s`, Zap),
       ),

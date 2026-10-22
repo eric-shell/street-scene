@@ -238,7 +238,7 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
     s[k] = v;
     onChange(s);
   };
-  const toggle = (k: 'retro' | 'radialBlur' | 'showFps' | 'flashEffects' | 'debugMode') => onOff(s[k], (v) => set(k, v));
+  const toggle = (k: 'retro' | 'radialBlur' | 'showFps' | 'flashEffects' | 'rumble' | 'debugMode') => onOff(s[k], (v) => set(k, v));
   const slider = (label: string, value: number, onInput: (v: number) => void) => {
     const r = h('input', { type: 'range', min: 0, max: 1, step: 0.01, value, class: 'setting-slider', 'aria-label': label }) as HTMLInputElement;
     r.addEventListener('input', () => onInput(Number(r.value)));
@@ -302,6 +302,7 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
           list.replaceChildren(...CONTROLS[device].flatMap(([keys, action]) => [h('span', { class: 'keys' }, ...keys.flatMap((k, i) => (i ? [' / ', h('kbd', {}, k)] : [h('kbd', {}, k)]))), h('span', {}, action)]));
         show('keyboard');
         return [
+          settingRow('Gamepad rumble', toggle('rumble'), 'Hits, landings, rough ground, nitrous'),
           segmented<keyof typeof CONTROLS>(
             [
               { value: 'keyboard', label: 'Keyboard', icon: Keyboard },
@@ -384,6 +385,9 @@ export const CONTROLS: Record<'keyboard' | 'gamepad' | 'touch', [string[], strin
     [['Y'], 'Reset car'],
     [['Back'], 'Camera'],
     [['Start'], 'Pause'],
+    [['D-pad', 'Left stick'], 'Move around menus'],
+    [['A'], 'Press'],
+    [['B', 'Start'], 'Back, resume'],
   ],
   touch: [
     [['Left half'], 'Drag to steer'],

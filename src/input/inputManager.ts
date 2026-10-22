@@ -25,6 +25,8 @@ export class InputManager {
   private viewListeners = new Set<(n: number) => void>();
   private abort = new AbortController();
   private gamepadPrev: boolean[] = [];
+  /** Pad buttons still held from the menus (padNav.ts), ignored until released: the A that pressed Resume is not nitrous. */
+  private padSwallowed = new Set<number>();
   /** Horn on the gamepad (right stick click); visual/audio only, not part of the input frame. */
   private padHorn = false;
   readonly touch: TouchControls | null;
@@ -107,7 +109,8 @@ export class InputManager {
           break;
       }
     }
-    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
+    // Real keys only: the arrows padNav.ts sends have no scrolling to stop, and a screen that takes one says so by preventing it.
+    if (e.isTrusted && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
     if (down) this.keys.add(e.code);
     else this.keys.delete(e.code);
   }
@@ -171,8 +174,9 @@ export class InputManager {
       if (!pad || !pad.connected) continue;
       const ax = pad.axes[0] ?? 0;
       const steer = Math.abs(ax) > 0.12 ? Math.sign(ax) * ((Math.abs(ax) - 0.12) / 0.88) : 0;
-      const b = (i: number) => pad.buttons[i]?.value ?? 0;
-      const pressed = (i: number) => !!pad.buttons[i]?.pressed;
+      for (const i of this.padSwallowed) if (!pad.buttons[i]?.pressed) this.padSwallowed.delete(i);
+      const b = (i: number) => (this.padSwallowed.has(i) ? 0 : (pad.buttons[i]?.value ?? 0));
+      const pressed = (i: number) => !this.padSwallowed.has(i) && !!pad.buttons[i]?.pressed;
       if (Math.abs(steer) > Math.abs(frame.steer)) frame.steer = steer;
       frame.throttle = Math.max(frame.throttle, b(7));
       frame.brake = Math.max(frame.brake, b(6));
@@ -190,6 +194,13 @@ export class InputManager {
       break;
     }
     return frame;
+  }
+
+  /** The pad belongs to the menus this frame: whatever it holds now is ignored by the race until released. */
+  swallowPad(): void {
+    const pads = typeof navigator.getGamepads === 'function' ? navigator.getGamepads() : [];
+    const pad = pads.find((p) => p?.connected);
+    pad?.buttons.forEach((x, i) => x.pressed && this.padSwallowed.add(i));
   }
 
   setTouchVisible(v: boolean): void {

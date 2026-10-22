@@ -22,6 +22,7 @@ import { GameRenderer } from './render/scene';
 import { FreeFlyCamera } from './render/freeFly';
 import { CarAssetLibrary, manifestCar } from './render/carAssets';
 import { InputManager } from './input/inputManager';
+import { PadNav } from './input/padNav';
 import { RaceSession, type SessionOptions } from './game/session';
 import { DroneMode } from './game/drone';
 import { TICK_HZ } from './sim/constants';
@@ -92,6 +93,8 @@ function persistSettings(): void {
 }
 const assets = new CarAssetLibrary();
 const input = new InputManager(uiRoot);
+// The gamepad on every screen that is not driving: menus, pause, results, garage.
+const padNav = new PadNav();
 const dev = new TuningPanel(uiRoot);
 // Camera tuning (F3): saved tweaks apply to every race camera from boot.
 const camPanel = new CameraPanel(uiRoot);
@@ -790,6 +793,19 @@ function togglePause(): void {
 }
 
 input.on('pause', togglePause);
+/**
+ * Leaving the window or losing the pad mid race pauses it: the input manager
+ * releases every key on blur, so the car would coast while the rivals drive
+ * on. Replays, photo mode and the open map are left as they are.
+ */
+function autoPause(): void {
+  if (state !== 'race' || !session || session.paused || session.isReplay || session.droneActive || session.mapOpen) return;
+  if (session.race.phase === 'finished') return;
+  togglePause();
+}
+window.addEventListener('blur', autoPause);
+document.addEventListener('visibilitychange', () => document.hidden && autoPause());
+window.addEventListener('gamepaddisconnected', autoPause);
 // 0: the drone flyover from the menu (and back); in a race the session flies its own photo mode drone.
 input.onView((n) => {
   if (n !== 0) return;
@@ -852,6 +868,10 @@ const loop = new FixedStepLoop({
     else if (state === 'garage') garageScreen?.tick();
   },
   render(alpha, dt) {
+    // The pad works the screens whenever no car (or drone) is reading it.
+    const padUi = state === 'menu' || state === 'garage' || (state === 'race' && !!session && (session.paused || session.race.phase === 'finished') && !session.droneActive);
+    padNav.poll(dt, padUi);
+    if (padUi) input.swallowPad();
     if (state === 'race' && session) {
       session.render(alpha, dt);
       if (session.droneActive !== photoDrone) {

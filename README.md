@@ -65,7 +65,8 @@ Useful URL parameters: `?seed=anything` (custom event), `?race=circuit|sprint|dr
 | Camera tuning panel (debug mode) | F3 | | |
 | Menu free camera | Shift+F | | |
 | Music: mute / previous / next | M / [ / ] | | Player card |
-| Menu: walk the home list / pick the race type on the race step / next step, start / back a step / hide the menu to watch the car | Up / Down; Left / Right or 1 to 4; Enter; Esc; H | | Tap; Hide UI button |
+| Menu: walk the home list / pick the race type on the race step / next step, start / back a step / hide the menu to watch the car | Up / Down; arrows or 1 to 6; Enter; Esc; H | | Tap; Hide UI button |
+| Screens off the road (menu, pause, results, settings, garage): move / press / back | Arrows, Tab; Enter; Esc | D-pad or left stick; A; B or Start | Tap |
 | Garage: rev the engine / next camera angle / back to the menu | Hold W, Up or Space / C / Esc | | Hold to rev; camera button |
 | City map (free roam, or the map on the menu's event card): zoom / pan / whole city / find me / set a waypoint (free roam); again or Esc to close | Tab or click the minimap; wheel or + / -, drag or arrows, F, C, click | | Tap the minimap; pinch, drag, tap |
 
@@ -255,7 +256,9 @@ tests/
 - **Build version** (`v<package version> · <git hash> · <date>`) is shown at the foot of the credits page in Settings.
 - **Routes avoid hairpins.** Turns sharper than 112° through acute diagonal junctions are rejected because cars wedge there.
 - **AI safety net.** If an AI car makes no progress for 4 s, or is stopped for 2.5 s, the race resets it to the road. Finished cars stop colliding so they never block anyone.
-- **Car stats are measured, not formula based.** The garage drives the real sim in a flat test world to get top speed and 0 to 100 km/h.
+- **Car stats are measured, not formula based.** The garage drives the real sim in a flat test world to get top speed and 0 to 60 mph (0 to 100 km/h too, for the tuning tools and the stat bars).
+- **Gamepad rumble from telemetry.** `src/input/rumble.ts` reads the player's car once per sim tick (wall, rail and car hits, landings off the bump stops, rough ground, wheelspin, wall scrapes, the limiter, nitrous) and drives the pad's two motors with short re-armed effects, so a pause or a closed tab goes quiet on its own. Never recorded and off in replays; a Controls setting turns it off.
+- **US units on screen, SI underneath.** Everything the player reads is mph, feet and miles (`src/ui/units.ts`, the one place that converts and rounds); the sim, the city and `drivingParams.json` stay in meters, m/s and km/h, and so do the debug tuning panels, which edit those numbers as written.
 - **Cars lie on the ground and land with weight.** The body pitches and rolls within 8.6 degrees of the ground's own angle rather than of level, so a car lies over on a 38 degree river bank or climbs a ramp with all four wheels loaded, and load transfer follows the body's actual acceleration, slope included, so a bank alone never lifts the uphill wheels. The ground pushes back along its normal, so climbing a bank costs speed. In the air the body levels out over the ground below; a landing is soaked up by a stiff, lossy bump stop and rebound damping stronger than bump, so the car squats about 20 cm off the car park jump, rises a few centimetres past ride height and settles in half a second (it used to bounce over a metre). Tire grip stops growing past 2.2 times the static wheel load, so a bump stop hit on one wheel cannot spin the car. Braking is the tires (about 1.1 g) plus an arcade assist of 8 m/s² that leaves cornering grip alone: 160 km/h to a stop in about 52 m, down from 99 m (an earlier 16 m/s² assist stopped in 35 m and felt too grabby). Brake upgrades scale both, and the AI plans its braking zones at 10 m/s².
 - **Share codes** are deflate-compressed JSON with short keys (base64url), loaded via `?build=`. Imported builds are always validated and clamped.
 - **Wet look is faked:** glossy puddled asphalt with an environment map, additive light pools, and camera-facing reflection streaks. Only a few real point lights follow the player.
@@ -277,5 +280,4 @@ tests/
 ## Out of scope for now (but designed for)
 
 - **Leaderboard.** The client would upload seed, mode, performance build and input log (`ReplayData`), and a server function reruns the pure sim to verify the time.
-- **Audio.** Car state already exposes rpm, slip, nitrous and impacts.
 - **Career, currency and unlocks.** Performance tiers are already data driven.

@@ -162,7 +162,7 @@ export class CityLayers {
   readonly tunnels = new Path2D();
   readonly overpasses = new Path2D();
   readonly route = new Path2D();
-  /** Total street length (m), for the menu's "km of streets". */
+  /** Total street length (m), for the menu's "miles of streets". */
   readonly streetLength: number;
   private readonly areaPaths = new Map<number, Path2D>();
 

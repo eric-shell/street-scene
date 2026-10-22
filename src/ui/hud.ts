@@ -44,7 +44,7 @@ export interface HudData {
   raceTime: number;
   bestLap: number | null;
   lastLap: number | null;
-  speedKmh: number;
+  speedMph: number;
   rpm: number;
   redline: number;
   gear: number;
@@ -65,7 +65,7 @@ export interface HudData {
   cars: HudCar[];
   ghost: boolean;
   /** Open world (free roam): the district under the car and how much the player smashed. */
-  openWorld?: { area: string; smashed: number; topKmh: number };
+  openWorld?: { area: string; smashed: number; topMph: number };
   /** Free roam waypoint set on the city map (render only, m), or the waypoint race's next target: the chip and the minimap point to it. */
   waypoint?: { x: number; z: number };
   /** What the waypoint chip calls it (default Waypoint): the waypoint race says which of how many. */
@@ -201,7 +201,7 @@ export class Hud {
       this.card.setStatus(d.openWorld.area);
       this.card.setStat(0, formatTime(d.raceTime));
       this.card.setStat(1, String(d.openWorld.smashed));
-      this.card.setStat(2, `${Math.round(d.openWorld.topKmh)} km/h`);
+      this.card.setStat(2, `${Math.round(d.openWorld.topMph)} mph`);
     }
     const racingMode = d.mode !== 'drift';
     this.posEl.textContent = racingMode ? `${d.position}/${d.carCount}` : 'Drift';
@@ -449,10 +449,10 @@ export class Hud {
     c.shadowBlur = 0;
     c.fillStyle = INK.text;
     c.font = `900 52px ${INK.digits}`;
-    c.fillText(String(Math.round(d.speedKmh)), cx, cy + 40);
+    c.fillText(String(Math.round(d.speedMph)), cx, cy + 40);
     c.font = `600 12px ${INK.font}`;
     c.fillStyle = INK.caption;
-    c.fillText('KM/H', cx, cy + 66);
+    c.fillText('MPH', cx, cy + 66);
     c.font = `900 30px ${INK.digits}`;
     c.fillStyle = d.rpm > d.redline * 0.95 ? INK.red : INK.needle;
     c.fillText(d.gear < 0 ? 'R' : String(d.gear), cx, cy - 6);

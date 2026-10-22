@@ -18,8 +18,10 @@ const flatWorld = {
 export interface CarStats {
   /** km/h reached after a long full throttle run (no nitrous). */
   topSpeed: number;
-  /** Seconds from 0 to 100 km/h. */
+  /** Seconds from 0 to 100 km/h (the tuning tools and the stat bars). */
   zeroTo100: number;
+  /** Seconds from 0 to 60 mph (26.8 m/s), the figure the garage shows. */
+  zeroTo60: number;
   /** Peak lateral grip in g. */
   grip: number;
   /** Seconds of boost times boost force, in kN*s. */
@@ -30,12 +32,14 @@ export function measureStats(t: CarTuning): CarStats {
   const c = createCar(0, 0, 0, 0);
   const inp = { ...NEUTRAL_INPUT, throttle: 1 };
   let zeroTo100 = 99;
+  let zeroTo60 = 99;
   let top = 0;
   let still = 0;
   for (let i = 0; i < 60 * TICK_HZ; i++) {
     stepCar(c, t, inp, { world: flatWorld });
     const kmh = c.speed * 3.6;
     if (zeroTo100 === 99 && kmh >= 100) zeroTo100 = (i + 1) / TICK_HZ;
+    if (zeroTo60 === 99 && kmh >= 60 * 1.609344) zeroTo60 = (i + 1) / TICK_HZ;
     if (kmh > top + 0.05) {
       top = kmh;
       still = 0;
@@ -44,6 +48,7 @@ export function measureStats(t: CarTuning): CarStats {
   return {
     topSpeed: top,
     zeroTo100,
+    zeroTo60,
     grip: ((t.tires.gripFront + t.tires.gripRear) / 2) * (1 + t.aero.downforce * 0.02),
     nitrous: (t.nitrous.capacity * t.nitrous.force) / 1000,
   };
