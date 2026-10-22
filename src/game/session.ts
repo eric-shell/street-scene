@@ -13,7 +13,7 @@ import { routeSample } from '../city/route';
 import { createRace, RaceConfig, RaceState, raceTime, standings, stepRace, ticksToSeconds } from '../sim/race';
 import { InputFrame, NEUTRAL_INPUT, unpackInput } from '../sim/input';
 import { VisualBuild } from '../sim/build';
-import { DT } from '../sim/constants';
+import { DT, TICK_HZ } from '../sim/constants';
 import { DEG } from '../sim/math';
 import { CarView, CarPose } from '../render/car/carView';
 import { ROAD_Y } from '../render/street/cityMeshes';
@@ -173,6 +173,11 @@ const CRUISE_STOPPED = 0.3;
 /** A crowd section's heard excitement crossing this cheers out loud, at most every SECTION_CHEER_GAP s. */
 const SECTION_CHEER_LEVEL = 0.7;
 const SECTION_CHEER_GAP = 8;
+/**
+ * The start crowd builds through the countdown: a wave this strong at each count (GO is 1).
+ * A waiting grid alone only stirs a murmur, which an idling engine buried.
+ */
+const COUNTDOWN_CHEER: Record<number, number> = { 3: 0.45, 2: 0.6, 1: 0.8 };
 
 export interface SessionOptions {
   config: RaceConfig;
@@ -756,6 +761,12 @@ export class RaceSession {
     if (!this.resetThisTick) this.cam.slowdown(this.propOnlyTick && !this.hardHitTick ? drop - CAMERA.common.slowdownMin * PROP_SLOWDOWN_EXTRA : drop);
     if (r.phase === 'finished' && this.finishedAt < 0) this.finishedAt = r.tick;
     if (!this.openWorld) {
+      // Each count shows on its first tick, as the beep does (sfx.syncCountdown): the first tick, then whole seconds.
+      const left = r.countdownTicks - r.tick;
+      if (left > 0 && (r.tick === 1 || left % TICK_HZ === 0)) {
+        const hype = COUNTDOWN_CHEER[Math.ceil(left / TICK_HZ)];
+        if (hype) this.night.crowds.cheer('start', hype);
+      }
       if (r.tick === r.countdownTicks) this.celebrateStart();
       this.updateCelebrations();
     }

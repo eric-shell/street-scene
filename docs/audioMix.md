@@ -49,7 +49,7 @@ Measured at the output with every level at its default, each source alone and ri
 | firework (close) | −21 | −15 | −14 | a distant crash |
 | horn | −24 | −18 | −18 | cuts through the engine |
 | nitrous | −30 | −21 | −21 | just under the engine, it was buried |
-| crowd bed (adjacent stand, full) | −14 | −26 | −24 | it was louder than the engine |
+| crowd bed (adjacent stand, full) | −14 | −25 | −24 | it was louder than the engine; the recording is now ridden to a steady level, since a loop fell 15 dB into its fading tail |
 | crowd cheer (finish, beside you) | −12.5 (peak −1) | −20 | −21 | it drowned the finish |
 | train rumble (at the tracks) | −24 | −24 | −24 | a bed |
 | helicopter (overhead) | −30 | −27 | −28 | a bed |
@@ -62,6 +62,8 @@ Measured at the output with every level at its default, each source alone and ri
 | garage door up / down (peak) | −38 / −20 | −17 / −9 | −32 (up) | the rattle was 18 dB under the clunk and lost under the music |
 
 What was wrong before: the crowds and thunder were set hotter than the player's own engine, nitrous and the horn were set so low the engine covered them, the countdown beeps barely cleared an idle, and the shared compressor let whichever source was loudest duck the rest. Every number had been chosen on its own; none against the engine.
+
+On the grid the table's lines meet: the player's idle reads about −22 in a race, and a waiting grid only stirs the start crowd to a murmur (−35 to −43), so the crowd builds through the countdown instead (`COUNTDOWN_CHEER` in `session.ts`, a wave at 3, 2 and 1), from about −30 to −26, before it erupts at GO.
 
 Two things to know when setting a level: a centred mono source loses 3 dB in its `StereoPannerNode` (equal power), while the engine voices and the stereo crowd clips do not, so mono effects need that much more; and the impact banks are rendered to a 0.95 peak, so their loudness differs by material (a wall slam's 50 ms hit is twice a bush's), which is the intent.
 

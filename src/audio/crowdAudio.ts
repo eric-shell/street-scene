@@ -40,7 +40,7 @@ export function loadClip(ctx: AudioContext, name: CrowdClip): Promise<AudioBuffe
     p = fetch(`${base}${CROWD_FILES[name]}`)
       .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`${r.status}`))))
       .then((b) => ctx.decodeAudioData(b))
-      .then((buf) => loudEnough(ctx, buf, CROWD_TARGET_DB[name]))
+      .then((buf) => loudEnough(ctx, buf, CROWD_TARGET_DB[name], name === 'cheer'))
       .then((buf) => (name === 'cheer' ? seamless(ctx, buf, 1.2) : buf))
       .catch(() => null);
     clipCache.set(name, p);
@@ -51,35 +51,58 @@ export function loadClip(ctx: AudioContext, name: CrowdClip): Promise<AudioBuffe
 /**
  * The recordings are quiet (cheer about -28 dB RMS, applause -32 dB with -3 dB
  * clap peaks), so on decode each is brought up to a target RMS (dB) and its
- * peaks rounded off by a soft limiter instead of clipping.
+ * peaks rounded off by a soft limiter instead of clipping. The cheer is the
+ * stands' bed, but the recording is a swell that dies away (-24 dB for its
+ * first 4 s, -32 to -38 for the last 6), so a loop wandered 15 dB with where
+ * it was and spent half its time buried under an idling engine: it is ridden
+ * to its target in CROWD_RIDE windows instead, at the level of its loudest stretch.
  */
-const CROWD_TARGET_DB: Record<CrowdClip, number> = { cheer: -17, applause: -19 };
+const CROWD_TARGET_DB: Record<CrowdClip, number> = { cheer: -13, applause: -19 };
+/** The cheer's level ride: RMS window (s, gain updated every quarter window) and the most it lifts a quiet stretch. */
+const CROWD_RIDE = { window: 0.8, maxGain: 30 } as const;
 /** Crowd mix on top of that: stand loops and the cheer / applause one-shots. */
 const CROWD_LOOP_GAIN = 0.8;
 export const CROWD_SHOT_GAIN = 1.2;
 
-/** A copy of `buf` at the target RMS, peaks soft limited (tanh) below full scale. */
-function loudEnough(ctx: AudioContext, buf: AudioBuffer, targetDb: number): AudioBuffer {
-  let e = 0;
-  let n = 0;
-  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
-    const d = buf.getChannelData(ch);
-    for (let i = 0; i < d.length; i++) e += d[i] * d[i];
-    n += d.length;
+/**
+ * A copy of `buf` at the target RMS, peaks soft limited (tanh) below full
+ * scale: one gain for the whole clip, or with `ride` a gain per CROWD_RIDE
+ * window (interpolated between them) so every stretch sits at the target.
+ */
+function loudEnough(ctx: AudioContext, buf: AudioBuffer, targetDb: number, ride: boolean): AudioBuffer {
+  const chans = Array.from({ length: buf.numberOfChannels }, (_, ch) => buf.getChannelData(ch));
+  const rms = (a: number, b: number) => {
+    let e = 0;
+    for (const d of chans) for (let i = a; i < b; i++) e += d[i] * d[i];
+    return Math.sqrt(e / Math.max(1, (b - a) * chans.length));
+  };
+  const target = 10 ** (targetDb / 20);
+  const gains: number[] = [];
+  let hop = buf.length;
+  if (ride) {
+    const w = Math.max(4, Math.floor(CROWD_RIDE.window * buf.sampleRate));
+    const half = Math.floor(w / 2);
+    hop = Math.floor(w / 4);
+    for (let c = 0; c < buf.length; c += hop) gains.push(Math.min(CROWD_RIDE.maxGain, target / Math.max(1e-6, rms(Math.max(0, c - half), Math.min(buf.length, c + half)))));
+  } else {
+    const r = rms(0, buf.length);
+    if (r < 1e-6) return buf;
+    gains.push(Math.min(30, target / r));
+    if (gains[0] <= 1) return buf;
   }
-  const rms = Math.sqrt(e / Math.max(1, n));
-  if (rms < 1e-6) return buf;
-  const gain = Math.min(30, 10 ** (targetDb / 20) / rms);
-  if (gain <= 1) return buf;
+  const last = gains.length - 1;
   const out = ctx.createBuffer(buf.numberOfChannels, buf.length, buf.sampleRate);
   // Linear up to the knee, then tanh rounds the peaks off toward 0.98.
   const knee = 0.6;
   const room = 0.98 - knee;
-  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
-    const src = buf.getChannelData(ch);
+  for (let ch = 0; ch < chans.length; ch++) {
+    const src = chans[ch];
     const dst = out.getChannelData(ch);
     for (let i = 0; i < src.length; i++) {
-      const x = src[i] * gain;
+      const f = i / hop;
+      const k = Math.min(last, Math.floor(f));
+      const g = gains[k] + (gains[Math.min(last, k + 1)] - gains[k]) * (f - k);
+      const x = src[i] * g;
       const a = Math.abs(x);
       dst[i] = a <= knee ? x : Math.sign(x) * (knee + room * Math.tanh((a - knee) / room));
     }
