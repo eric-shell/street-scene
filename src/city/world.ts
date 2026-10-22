@@ -381,7 +381,7 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
   const { graph, blocks, terrain } = city;
   const openWorld = opts.openWorld === true;
   const rails = openWorld ? [] : carParkRails(city.districts.areas, ROUTE_INDEX[kind], awayFromRoundabouts(graph, routeRails(graph, route, blocks.props, blocks.walls)));
-  const barrierGroups = openWorld ? [] : routeBarrierGroups(graph, blocks.mouths, route, rails);
+  const barrierGroups = openWorld ? [] : routeBarrierGroups(graph, blocks.mouths, route, rails, blocks.walls);
   sealBarriers(city, barrierGroups);
   const closures = closureRails(barrierGroups, rails);
   // A car park that is the other route's shortcut has its ramp shuttered (open world: all open).

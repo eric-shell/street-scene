@@ -58,8 +58,9 @@
  * AI never takes it, like every shortcut. render/districts/carPark.ts draws it.
  */
 import { CITY, ROUTE } from '../config';
-import { edgeBetween, otherNode } from '../roadGraph';
+import { edgeBetween, isBendNode, otherNode } from '../roadGraph';
 import type { RoadGraph } from '../roadGraph';
+import { circuitStart, routeRuns } from '../route';
 import type { Wall } from '../blocks';
 import type { Terrain } from '../terrain';
 import { createTerrain } from '../terrain';
@@ -1119,6 +1120,10 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
   const faces = ctx.faces();
   const { cum, total, lo, hi } = routeFrame(g, r);
   const out: Candidate[] = [];
+  const dbg = (globalThis as unknown as { __dbg?: Record<string, number> }).__dbg;
+  const bump = (k: string) => {
+    if (dbg) dbg[k] = (dbg[k] ?? 0) + 1;
+  };
   // The ground the car park will stand on (hills keep their slopes off car parks, see hills.ts).
   const ground = createTerrain(ctx.seed);
   /**
@@ -1135,19 +1140,15 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
     }
     return Infinity;
   };
-  // The circuit's start line and grid sit in the middle of its longest street (route.ts buildRoute).
-  let longest = -1;
-  if (r.closed) {
-    let best = -1;
-    for (let i = 0; i < n; i++) {
-      const e = edgeBetween(g, R[i], R[(i + 1) % n]);
-      const E = g.edges[e];
-      if (E.kind !== 'channel' && E.kind !== 'ramp' && E.length > best) {
-        best = E.length;
-        longest = e;
-      }
-    }
-  }
+  // The circuit's start line and grid sit in the middle of its longest street (route.ts circuitStart:
+  // a run of pieces through bend nodes, roadGraph.ts); none of that run hosts the chute or the entry.
+  const startEdges = new Set<number>(r.closed ? circuitStart(g, R).run.edges : []);
+  // The route's edges and their streets (runs): the entry street is a whole street back from C.
+  const routeEdgeList: number[] = [];
+  for (let i = 0; i + (r.closed ? 0 : 1) < n; i++) routeEdgeList.push(edgeBetween(g, R[i], R[(i + 1) % n]));
+  const runs = routeRuns(g, R, routeEdgeList, r.closed);
+  const runOf = new Int32Array(routeEdgeList.length).fill(-1);
+  runs.forEach((run, ri) => run.edges.forEach((_, k) => (runOf[(run.from + k) % routeEdgeList.length] = ri)));
   // The route's alley shortcuts: a car park keeps its span clear of theirs.
   const pos = new Map<number, number>();
   R.forEach((id, i) => pos.set(id, cum[i]));
@@ -1176,24 +1177,29 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
     if (!okStreet(eE) || !okStreet(eIn)) continue;
     const turn = turnAt(g, r, j);
     if (Math.abs(turn) < CFG.minTurnDeg * DEG || Math.abs(turn) > ROUTE.maxTurnDeg * DEG) continue;
+    bump('corners');
     const t = unit(C, Q);
     let behind = false;
     for (const eid of C.edges) {
       const d = unit(C, g.nodes[otherNode(g.edges[eid], C.id)]);
       if (-(d.x * t.x + d.z * t.z) > cos(CFG.behindDeg * DEG)) behind = true;
     }
-    if (behind) continue;
-    // The landing straight: E and any straight continuation, up to the first junction or bend (its
-    // corridor, where closures, crosswalks and rails start).
+    if (behind) {
+      bump('behind');
+      continue;
+    }
+    // The landing straight: E and any straight continuation, up to the first junction or turn (its
+    // corridor, where closures, crosswalks and rails start). E's own bend nodes are no such thing:
+    // the street goes on through them a few degrees at a time, the landing with it.
     let run = 0;
     let end = Q;
     const runEdges: number[] = [];
-    for (let k = 0; k < 6; k++) {
+    for (let k = 0; k < 6 * CITY.bendSegments; k++) {
       if (!r.closed && j + k + 1 > n - 1) break;
       const A = g.nodes[R[(j + k) % n]];
       const B = g.nodes[R[(j + k + 1) % n]];
       const d = unit(A, B);
-      if (d.x * t.x + d.z * t.z < cos(3 * DEG)) break;
+      if (!isBendNode(g, A.id) && d.x * t.x + d.z * t.z < cos(3 * DEG)) break;
       run += d.len;
       end = B;
       runEdges.push(edgeBetween(g, A.id, B.id));
@@ -1207,10 +1213,17 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
     const probe = { x: C.x + back.x * (corrIn + 3), z: C.z + back.z * (corrIn + 3) };
     const fi = faces.findIndex((f) => !f.outer && pointInPolygon(probe.x, probe.z, f.ring));
     // A block claimed, or held by a car park planned earlier in this hook (it claims its block later).
-    if (fi < 0 || ctx.claims.face.has(fi) || ctx.areas.some((a) => a.kind === 'carPark' && a.params.face === fi)) continue;
+    if (fi < 0 || ctx.claims.face.has(fi) || ctx.areas.some((a) => a.kind === 'carPark' && a.params.face === fi)) {
+      bump('face');
+      continue;
+    }
     const F = faces[fi];
     const sLip = rayHit(C, back, F.ring, corrIn + 6);
-    if (sLip === null) continue;
+    if (sLip === null) {
+      bump('lip');
+      continue;
+    }
+    bump('sites');
     const lipBack = sLip + CFG.inset;
     const frame: Frame = { ox: C.x + back.x * lipBack, oz: C.z + back.z * lipBack, ux: back.x, uz: back.z, vx: -back.z, vz: back.x };
     /** The deck's front line (building line + inset) at lateral v, as frame u, or null. */
@@ -1218,12 +1231,26 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
       const hit = rayHit(toWorld(frame, -30, v), back, F.ring, 60);
       return hit === null ? null : hit - 30 + CFG.inset;
     };
+    // Entry streets: the route's streets ENTRY_BACK[0] - 1 .. ENTRY_BACK[last] - 1 streets before the
+    // one arriving at C, each of their pieces that fronts the block in turn.
+    const inRun = runOf[(j - 1 + n) % n];
+    const entries: { ia: number; ib: number }[] = [];
     for (const k of ENTRY_BACK) {
-      if (!r.closed && j - k < 0) break;
-      const ia = (j - k + n) % n;
-      const ib = (j - k + 1 + n) % n;
+      const back = k - 1;
+      if (inRun < 0 || (r.closed ? back >= runs.length : inRun - back < 0)) break;
+      const run = runs[(inRun - back + runs.length) % runs.length];
+      for (let q = 0; q < run.edges.length; q++) {
+        const idx = (run.from + q) % routeEdgeList.length;
+        entries.push({ ia: idx, ib: (idx + 1) % n });
+      }
+    }
+    for (const { ia, ib } of entries) {
       const eY = edgeBetween(g, R[ia], R[ib]);
-      if (eY === eIn || !F.edges.includes(eY) || !okStreet(eY)) continue;
+      if (eY === eIn || !F.edges.includes(eY) || !okStreet(eY)) {
+        bump(!F.edges.includes(eY) ? 'entryNotOnF' : 'entryStreet');
+        continue;
+      }
+      bump('entries');
       const Ya = g.nodes[R[ia]];
       const Yb = g.nodes[R[ib]];
       const dY = unit(Ya, Yb);
@@ -1241,11 +1268,20 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
       const N = { x: fl.z, z: -fl.x };
       const base = { x: seg[0].x + N.x * CFG.inset, z: seg[0].z + N.z * CFG.inset };
       const dotU = dY.x * frame.ux + dY.z * frame.uz;
-      const side = Math.abs(dotU) > 0.9 ? (toV(frame, seg[0]) > 0 ? 1 : -1) : Math.abs(dotU) < 0.42 ? 0 : NaN;
-      if (Number.isNaN(side)) continue;
+      // Side entry when the entry street runs along the chute (within about 40 degrees, the warp
+      // tilting streets, roadGraph.ts), back entry when it runs across it; layout checks the skew
+      // the ramp can take (an >= 0.85) either way.
+      const side = Math.abs(dotU) > 0.75 ? (toV(frame, seg[0]) > 0 ? 1 : -1) : Math.abs(dotU) < 0.6 ? 0 : NaN;
+      if (Number.isNaN(side)) {
+        bump('sideNaN');
+        continue;
+      }
+      bump(side === 0 ? 'back' : 'side');
       // Entry clearance from each end of its street: a turning junction's corner rail runs along the
       // outside of the turn, so where the block is on the outside the entry keeps railClear from it.
       const clearAt = (idx: number, other: Vec2) => {
+        // A bend node is no junction: the street (and the block's front) goes on past it.
+        if (isBendNode(g, R[idx])) return 0;
         if (Math.abs(turnAt(g, r, idx)) < ROUTE.railMinTurnDeg * DEG) return CFG.entryNodeClear;
         const o = g.nodes[R[idx]];
         return (other.x - o.x) * N.x + (other.z - o.z) * N.z > 0 ? CFG.entryNodeClear : CFG.railClear;
@@ -1265,20 +1301,33 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
       const edgeRoom = CFG.rampWidth / 2 + APRON.flareIn + 2;
       for (const foot of feet) {
         const s = (foot.x - base.x) * fl.x + (foot.z - base.z) * fl.z;
-        if (s < edgeRoom || s > fl.len - edgeRoom) continue;
+        if (s < edgeRoom || s > fl.len - edgeRoom) {
+          bump('footRoom');
+          continue;
+        }
         const at = (foot.x - Ya.x) * dY.x + (foot.z - Ya.z) * dY.z;
-        if (at < clearA || at > dY.len - clearB) continue;
+        if (at < clearA || at > dY.len - clearB) {
+          bump('footClear');
+          continue;
+        }
         const params = layout(side, foot, N);
-        if (!params) continue;
+        if (!params) {
+          bump('layoutNull');
+          continue;
+        }
         const cand = validate(params, cum[ia] + at);
         if (cand) out.push(cand);
+        else bump('validateNull');
       }
 
       /** Ramp, deck and chute for a ramp foot on the entry line; params, or null when the site has no room. */
       function layout(side: number, foot: Vec2, N: Vec2): Record<string, number> | null {
         const A = side !== 0 ? { x: -side * frame.vx, z: -side * frame.vz } : { x: -frame.ux, z: -frame.uz };
         const an = A.x * N.x + A.z * N.z;
-        if (an < 0.85) return null;
+        if (an < 0.85) {
+          bump('layout:an');
+          return null;
+        }
         const rhw = CFG.rampWidth / 2;
         // The apron starts at the deepest point of the building line across its flared width.
         // The wide flare on the side racers come from: they arrive along the entry street (dY).
@@ -1327,20 +1376,35 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
         const f0 = frontAt(0);
         const fa = frontAt(v0);
         const fb = frontAt(v1);
-        if (f0 === null || fa === null || fb === null || Math.abs(f0) > 0.05) return null;
+        if (f0 === null || fa === null || fb === null || Math.abs(f0) > 0.05) {
+          bump('layout:front0');
+          return null;
+        }
         const front = [{ u: fa, v: v0 }];
         const corners = F.ring.map((q) => ({ u: toU(frame, q) + CFG.inset, v: toV(frame, q) })).filter((q) => q.v > v0 + 0.5 && q.v < v1 - 0.5 && Math.abs(q.u) < 10);
         corners.sort((a, b) => a.v - b.v);
         for (const q of corners) front.push(q);
         front.push({ u: fb, v: v1 });
-        if (front.length > 6) return null;
+        if (front.length > 6) {
+          bump('layout:frontPts');
+          return null;
+        }
         const geoF = { front };
         for (let v = v0; v <= v1; v += SAMPLE / 2) {
           const f = frontAt(v);
-          if (f === null || Math.abs(f - frontU(geoF, v)) > STRAIGHT_TOL) return null;
+          if (f === null || Math.abs(f - frontU(geoF, v)) > STRAIGHT_TOL) {
+            bump('layout:straight');
+            return null;
+          }
         }
-        if (Math.abs(frontU(geoF, -hc) - frontU(geoF, hc)) > 1.2) return null;
-        if (u1 - Math.max(...front.map((f) => f.u)) < CFG.chuteLength + CFG.chuteFunnel[0] + 4) return null;
+        if (Math.abs(frontU(geoF, -hc) - frontU(geoF, hc)) > 1.2) {
+          bump('layout:frontTilt');
+          return null;
+        }
+        if (u1 - Math.max(...front.map((f) => f.u)) < CFG.chuteLength + CFG.chuteFunnel[0] + 4) {
+          bump('layout:chuteRoom');
+          return null;
+        }
         const fp: Record<string, number> = { fn: front.length };
         front.forEach((f, i) => {
           fp[`fu${i}`] = f.u;
@@ -1399,7 +1463,10 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
         const vMax = sqrt(Math.max(0, vIn * vIn - climb + 2 * CFG.launchAccel * runUp));
         const landMax = flightReach(vMax);
         const zone = landMax - lipBack + CFG.rollout;
-        if (zone > clearRun) return null;
+        if (zone > clearRun) {
+          bump('validate:zone');
+          return null;
+        }
         params.landMax = landMax;
         params.landZone = zone;
         // Inside the block: every outline sample in F, clear of F's other building lines (the deck's
@@ -1444,7 +1511,7 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
         if (r.closed && sC < sEntry) sC += total;
         const sOut = sC + zone;
         if (!r.closed && (sEntry < lo || sOut > hi)) return null;
-        if (r.closed && (eE === longest || eY === longest)) return null;
+        if (r.closed && (startEdges.has(eE) || startEdges.has(eY))) return null;
         // The car park against the route, both from the entry to SCORE_LAND m down E.
         const skip = sC + SCORE_LAND - sEntry;
         let path = lipBack + SCORE_LAND;

@@ -25,7 +25,8 @@
  * island.
  */
 import { CITY } from '../config';
-import { edgeAngleFrom, otherNode, sectorAngle } from '../roadGraph';
+import { chainFrom, edgeAngleFrom, sectorAngle } from '../roadGraph';
+import { riverCenter } from './river';
 import { DEG, Vec2, atan2, cos, sin, sqrt } from '../../sim/math';
 import { Rng } from '../../sim/prng';
 import { PROP_DEFS, PropKind } from '../props';
@@ -54,15 +55,19 @@ export const roundaboutModule: DistrictModule = {
         const m = n.edges.length;
         if (m < 3 || m > 4 || n.gi < 0 || ctx.claims.node.has(n.id)) return false;
         for (let k = 0; k < m; k++) {
-          const e = g.edges[n.edges[k]];
-          if (e.length < CFG.minEdge || e.bridge || e.kind === 'alley' || e.kind === 'backAlley' || ctx.claims.edge.has(e.id)) return false;
-          if (g.nodes[otherNode(e, n.id)].ring) return false;
+          // Every road leaving: the whole street to the next junction (its pieces through bend nodes, roadGraph.ts).
+          const street = chainFrom(g, n.id, n.edges[k]);
+          if (street.length < CFG.minEdge) return false;
+          for (const id of street.edges) {
+            const e = g.edges[id];
+            if (e.bridge || e.kind === 'alley' || e.kind === 'backAlley' || ctx.claims.edge.has(e.id)) return false;
+          }
+          if (g.nodes[street.nodes[street.nodes.length - 1]].ring) return false;
           if (sectorAngle(g, n, k) < CFG.minSectorDeg * DEG) return false;
         }
         // Keep clear of the river channel.
         for (const r of rivers) {
-          const zc = r.params.zMid + r.params.amp * Math.sin(r.params.k * n.x + r.params.phase);
-          if (Math.abs(n.z - zc) < r.params.top + CFG.outerRadius[1] + CITY.sidewalk + 12) return false;
+          if (Math.abs(n.z - riverCenter(r.params, n.x)) < r.params.top + CFG.outerRadius[1] + CITY.sidewalk + 12) return false;
         }
         return true;
       })

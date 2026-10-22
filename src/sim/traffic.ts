@@ -62,6 +62,7 @@
  */
 import type { World, Contact } from '../city/world';
 import type { RoadKind } from '../city/roadGraph';
+import { isBendNode } from '../city/roadGraph';
 import { ROADWORKS, laneClosures } from '../city/districts/roadworks';
 import { CITY } from '../city/config';
 import { CarState, createCar } from './car';
@@ -86,6 +87,8 @@ export const TRAFFIC_LAYOUT = {
   /** Lanes end this far beyond where the curbs of a junction start (m), and at least setbackMin from its node (m). */
   setbackMargin: 1.2,
   setbackMin: 4,
+  /** At a bend node (a street's own kink, roadGraph.ts: no junction) lanes end this far from it (m), joined by a short connector. */
+  bendSetback: 1.5,
   /** Streets whose lane would be shorter than this are left out (m). */
   minLaneLength: 8,
   /** Sharper turns than this (deg) are never taken (hairpins). */
@@ -374,6 +377,7 @@ function buildNet(w: World): TrafficNet {
     const dz = (B.z - A.z) / len;
     const m = mouths[e.id];
     const reach = (N: typeof A, pts: { x: number; z: number }[], sx: number, sz: number) => {
+      if (isBendNode(g, N.id)) return L.bendSetback;
       let t = 0;
       for (const p of pts) t = Math.max(t, (p.x - N.x) * sx + (p.z - N.z) * sz);
       if (N.ring) t = Math.max(t, N.ring.outer);

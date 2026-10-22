@@ -22,18 +22,40 @@ import { circlePolygon, distToPolygonEdge, pointInPolygon, polygonArea, polygonB
 
 const CFG = CITY.districts.park;
 
-/** True when every ring turn goes the same way (the block is convex). Shared with the monument plaza. */
+/**
+ * Ring turns against the block's way round may add up to this much in a row (rad) and the block
+ * still counts as convex: the few degrees a street bends at its bend nodes (roadGraph.ts), never
+ * a roundabout's arc (many such steps one after the other).
+ */
+const CONVEX_SLACK = (12 * Math.PI) / 180;
+
+/** True when every ring turn goes the same way (the block is convex), gentle bends excepted. Shared with the monument plaza. */
 export function convexRing(ring: { x: number; z: number }[]): boolean {
-  let sign = 0;
-  for (let i = 0; i < ring.length; i++) {
+  const n = ring.length;
+  let a2 = 0;
+  for (let i = 0; i < n; i++) {
+    const p = ring[i];
+    const q = ring[(i + 1) % n];
+    a2 += p.x * q.z - q.x * p.z;
+  }
+  const way = a2 > 0 ? 1 : -1;
+  let against = 0;
+  for (let i = 0; i < n; i++) {
     const a = ring[i];
-    const b = ring[(i + 1) % ring.length];
-    const c = ring[(i + 2) % ring.length];
+    const b = ring[(i + 1) % n];
+    const c = ring[(i + 2) % n];
+    const l1 = Math.hypot(b.x - a.x, b.z - a.z);
+    const l2 = Math.hypot(c.x - b.x, c.z - b.z);
+    if (l1 < 1e-6 || l2 < 1e-6) continue;
     const cr = (b.x - a.x) * (c.z - b.z) - (b.z - a.z) * (c.x - b.x);
-    if (Math.abs(cr) < 1e-3) continue;
-    const s = cr > 0 ? 1 : -1;
-    if (sign && s !== sign) return false;
-    sign = s;
+    const dot = (b.x - a.x) * (c.x - b.x) + (b.z - a.z) * (c.z - b.z);
+    const turn = Math.atan2(cr, dot);
+    if (turn * way >= 0) {
+      against = 0;
+      continue;
+    }
+    against += Math.abs(turn);
+    if (against > CONVEX_SLACK) return false;
   }
   return true;
 }

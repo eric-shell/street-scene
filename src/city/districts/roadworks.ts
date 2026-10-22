@@ -24,6 +24,7 @@
  * streams. Pure and deterministic.
  */
 import type { RoadGraph, RoadKind } from '../roadGraph';
+import { chainOf, isBendNode } from '../roadGraph';
 import { buildRoute, Route } from '../route';
 import { computeMouths } from '../blocks';
 import type { CarveRoute } from './alley';
@@ -178,8 +179,13 @@ export function planRoadworks(ctx: PlanContext, routes: readonly CarveRoute[]): 
   // Plain streets nobody claimed, long enough, never a closed side street of either route.
   const candidates: number[] = [];
   for (const e of g.edges) {
-    if (!C.close[e.kind] || e.shortcut || e.bridge || e.length < C.minEdge || ctx.claims.edge.has(e.id)) continue;
-    if (built.some((b, i) => !onRoute(i, e.id) && (b.nodes.has(e.a) || b.nodes.has(e.b)))) continue;
+    if (!C.close[e.kind] || e.shortcut || e.bridge || ctx.claims.edge.has(e.id)) continue;
+    // A street is a chain of pieces through bend nodes (roadGraph.ts): its length qualifies it, and
+    // a closed side street (one that meets a route at either junction) is out whole.
+    const street = chainOf(g, e.id);
+    if (street.length < C.minEdge) continue;
+    const ends = [street.nodes[0], street.nodes[street.nodes.length - 1]];
+    if (built.some((b, i) => !onRoute(i, e.id) && ends.some((n) => b.nodes.has(n)))) continue;
     candidates.push(e.id);
   }
   const placed: { x: number; z: number; edge: number }[] = [];
@@ -197,8 +203,11 @@ export function planRoadworks(ctx: PlanContext, routes: readonly CarveRoute[]): 
     // Room between the two junctions' curb corners (the mouth points, measured along the street).
     const m = mouths[ei];
     const along = (p: Vec2) => (p.x - g.nodes[e.a].x) * f.d.x + (p.z - g.nodes[e.a].z) * f.d.z;
-    const lo = Math.max(along(m.aP.curb), along(m.aN.curb)) + C.mouthClear;
-    const hi = Math.min(along(m.bP.curb), along(m.bN.curb)) - C.mouthClear;
+    // A bend node is no junction: the closure may run right up to the piece's end there (its frame is
+    // this piece's, so it never crosses onto the next; the racing line and the traffic lanes clamp
+    // their lead-ins to the piece).
+    const lo = isBendNode(g, e.a) ? 0 : Math.max(along(m.aP.curb), along(m.aN.curb)) + C.mouthClear;
+    const hi = isBendNode(g, e.b) ? f.len : Math.min(along(m.bP.curb), along(m.bN.curb)) - C.mouthClear;
     const room = hi - lo - 2 * taper;
     if (room < C.work[0]) return false;
     work = Math.min(work, room);

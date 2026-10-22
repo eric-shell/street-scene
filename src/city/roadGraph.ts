@@ -1,13 +1,23 @@
 /**
  * Procedural road network: a jittered grid with some edges removed, a couple
- * of diagonal avenues and one wide straight boulevard. Pure and deterministic.
- * Intersections join at most CITY.maxNodeDegree roads. District planning
- * (districts/index.ts) edits the graph afterwards: narrow alleys, back alley
- * shortcuts (splitEdge + addEdge), bridges and roundabout nodes.
+ * of diagonal avenues and one wide boulevard, the whole grid then warped by a
+ * smooth field (CITY.warp) so streets sweep and junction angles vary, and every
+ * grid street cut into CITY.bendSegments straight pieces through degree-2 bend
+ * nodes that lie on the warped line (so a street is a chain of short edges
+ * that reads as a curve, the way the river channel chains its nodes). Pure and
+ * deterministic. Intersections join at most CITY.maxNodeDegree roads. District
+ * planning (districts/index.ts) edits the graph afterwards: narrow alleys, back
+ * alley shortcuts (splitEdge + addEdge), bridges and roundabout nodes.
+ *
+ * Consumers see a plain straight-edged planar graph. Those that reason about a
+ * street between two junctions (its length, a structure along it, a route's
+ * start straight) walk the chain through its bend nodes with chainFrom /
+ * chainOf / gridChain / chains below; a bend node (RoadNode.bend) is never a
+ * junction: no corner, closure, crosswalk or junction reach belongs there.
  */
 import { CITY } from './config';
 import { Rng, deriveSeed } from '../sim/prng';
-import { atan2, DEG, sqrt, TAU } from '../sim/math';
+import { atan2, DEG, sin, sqrt, TAU } from '../sim/math';
 
 /**
  * 'alley': narrow raceway street. 'backAlley': skinny shortcut through a block
@@ -49,12 +59,20 @@ export interface RoadNode {
   id: number;
   x: number;
   z: number;
+  /** Grid column and row of a grid junction; -1 for every node added later (bends, splits, free nodes). */
   gi: number;
   gj: number;
   /** Incident edge ids sorted by outgoing angle (ascending atan2(dz, dx)). */
   edges: number[];
   /** Set when the intersection is a roundabout. */
   ring?: RoundaboutRing;
+  /**
+   * Interior node of a subdivided grid street (subdivideEdges): degree 2, the street bends a few
+   * degrees here to follow the warp. Not a junction: nothing that belongs to one (corners, mouths,
+   * closures, crosswalks, junction reach) is made at it. Stays set if a later split or shortcut
+   * joins here (then it is a junction after all, and the walk helpers stop at it).
+   */
+  bend?: true;
 }
 
 export interface RoadEdge {
@@ -68,6 +86,11 @@ export interface RoadEdge {
   /** Sidewalk width on each side (curb to the outer sidewalk / wall line). */
   sidewalk: number;
   length: number;
+  /**
+   * The grid street this edge is a piece of (subdivideEdges numbers the streets in grid order);
+   * pieces split later keep it. Missing on edges districts add (shortcuts, channels, ramps).
+   */
+  chain?: number;
   /** Back alley shortcut: drivable, never part of a route, never closed off by barriers. */
   shortcut?: boolean;
   /** Crosses the river channel at street level. */
@@ -93,6 +116,46 @@ export function edgeAngleFrom(g: RoadGraph, e: RoadEdge, n: number): number {
   return atan2(q.z - p.z, q.x - p.x);
 }
 
+/**
+ * The warp (CITY.warp): a smooth displacement of the plane, x by waves of z and z by waves of x,
+ * phases from their own stream so the 'roads' draws keep their order. Applied to the jittered grid
+ * before any edge is judged, so sectors and degrees are decided on the streets as they will be.
+ */
+export interface WarpTerm {
+  /** Amplitude (m) and wave number (rad/m) of one sine of CITY.warp. */
+  amp: number;
+  k: number;
+  /** Phases (rad) of the x displacement (a wave of z) and of the z displacement (a wave of x). */
+  px: number;
+  pz: number;
+}
+
+/** The seed's warp terms (phases from the 'warp' stream): what warpField sums, for anything that must follow the rows (the river channel). */
+export function warpTerms(seed: number): WarpTerm[] {
+  const rng = new Rng(deriveSeed(seed, 'warp'));
+  return CITY.warp.map((t) => ({ amp: t.amp, k: TAU / t.wavelength, px: rng.range(0, TAU), pz: rng.range(0, TAU) }));
+}
+
+/** The warp's z displacement at x (m): every row of the grid moves by this much, the same for all rows. */
+export function warpZ(terms: readonly WarpTerm[], x: number): number {
+  let dz = 0;
+  for (const t of terms) dz += t.amp * sin(x * t.k + t.pz);
+  return dz;
+}
+
+export function warpField(seed: number): (x: number, z: number) => { x: number; z: number } {
+  const terms = warpTerms(seed);
+  return (x, z) => {
+    let dx = 0;
+    let dz = 0;
+    for (const t of terms) {
+      dx += t.amp * sin(z * t.k + t.px);
+      dz += t.amp * sin(x * t.k + t.pz);
+    }
+    return { x: x + dx, z: z + dz };
+  };
+}
+
 export function generateRoadGraph(seed: number): RoadGraph {
   const rng = new Rng(deriveSeed(seed, 'roads'));
   const W = CITY.gridW;
@@ -104,16 +167,22 @@ export function generateRoadGraph(seed: number): RoadGraph {
 
   const nodes: RoadNode[] = [];
   const nodeAt = (i: number, j: number) => j * W + i;
+  const warp = warpField(seed);
+  /** Jittered grid position of every grid node, before the warp: bend nodes are laid out on the straight line between these. */
+  const flat: { x: number; z: number }[] = [];
   for (let j = 0; j < H; j++) {
     for (let i = 0; i < W; i++) {
       let jx = rng.range(-CITY.jitter, CITY.jitter);
       let jz = rng.range(-CITY.jitter, CITY.jitter);
-      if (j === boulevardRow) jz = 0; // the boulevard is dead straight
+      if (j === boulevardRow) jz = 0; // the boulevard and the avenues only sweep with the warp
       if (avenueCols.has(i)) jx = 0;
+      const p = { x: (i - (W - 1) / 2) * S + jx, z: (j - (H - 1) / 2) * S + jz };
+      flat.push(p);
+      const w = warp(p.x, p.z);
       nodes.push({
         id: nodes.length,
-        x: (i - (W - 1) / 2) * S + jx,
-        z: (j - (H - 1) / 2) * S + jz,
+        x: w.x,
+        z: w.z,
         gi: i,
         gj: j,
         edges: [],
@@ -210,6 +279,7 @@ export function generateRoadGraph(seed: number): RoadGraph {
   }
   graph.edges = graph.edges.filter((e) => alive[e.id]);
   graph.edges.forEach((e, i) => (e.id = i));
+  subdivideEdges(graph, flat, warp, CITY.bendSegments);
   sortNodeEdges(graph);
 
   let minX = Infinity;
@@ -224,6 +294,40 @@ export function generateRoadGraph(seed: number): RoadGraph {
   }
   graph.bounds = { minX, maxX, minZ, maxZ };
   return graph;
+}
+
+/**
+ * Cut every street into `segments` pieces through bend nodes on the warped image of the straight
+ * line between its junctions' flat (pre-warp) positions, so the chain follows the warp as the
+ * junctions do and the pieces meet at a few degrees. Pieces of a street get consecutive ids
+ * (street i becomes edges i * segments .. i * segments + segments - 1) and carry the street's id as
+ * `chain`; bend nodes are appended after the grid nodes, so grid node ids stay j * W + i.
+ */
+function subdivideEdges(g: RoadGraph, flat: { x: number; z: number }[], warp: (x: number, z: number) => { x: number; z: number }, segments: number): void {
+  if (segments < 2) {
+    g.edges.forEach((e) => (e.chain = e.id));
+    return;
+  }
+  const pieces: RoadEdge[] = [];
+  for (const e of g.edges) {
+    const fa = flat[e.a];
+    const fb = flat[e.b];
+    let prev = e.a;
+    for (let k = 1; k <= segments; k++) {
+      let next = e.b;
+      if (k < segments) {
+        const t = k / segments;
+        const w = warp(fa.x + (fb.x - fa.x) * t, fa.z + (fb.z - fa.z) * t);
+        next = g.nodes.length;
+        g.nodes.push({ id: next, x: w.x, z: w.z, gi: -1, gj: -1, edges: [], bend: true });
+      }
+      const A = g.nodes[prev];
+      const B = g.nodes[next];
+      pieces.push({ ...e, id: pieces.length, a: prev, b: next, chain: e.id, length: sqrt((A.x - B.x) ** 2 + (A.z - B.z) ** 2) });
+      prev = next;
+    }
+  }
+  g.edges = pieces;
 }
 
 /**
@@ -386,5 +490,215 @@ export function edgeBetween(g: RoadGraph, a: number, b: number): number {
     if ((e.a === a && e.b === b) || (e.a === b && e.b === a)) return eid;
   }
   return -1;
+}
+
+/** A bend node (RoadNode.bend) that still only joins its two pieces: the walks below pass through it. */
+export function isBendNode(g: RoadGraph, id: number): boolean {
+  const n = g.nodes[id];
+  return n.bend === true && n.edges.length === 2;
+}
+
+/**
+ * A street between two junctions as the walks below return it: its nodes from one junction to
+ * the other through the bend nodes between them, the pieces joining them (edges[i] joins nodes[i]
+ * and nodes[i + 1]) and its length along them (m). A street with no bends is one node pair and one
+ * edge.
+ */
+export interface Chain {
+  nodes: number[];
+  edges: number[];
+  length: number;
+}
+
+/**
+ * Walk from `node` along its edge `eid` through bend nodes to the next junction (any node that is
+ * not a pass-through bend: a grid junction, a shortcut mouth, a ramp top, a free node). Returns the
+ * chain from `node` to that junction.
+ */
+export function chainFrom(g: RoadGraph, node: number, eid: number): Chain {
+  const nodes = [node];
+  const edges = [eid];
+  let length = g.edges[eid].length;
+  let cur = otherNode(g.edges[eid], node);
+  let e = eid;
+  nodes.push(cur);
+  for (let guard = 0; guard < g.nodes.length && isBendNode(g, cur) && cur !== node; guard++) {
+    const n = g.nodes[cur];
+    e = n.edges[0] === e ? n.edges[1] : n.edges[0];
+    cur = otherNode(g.edges[e], cur);
+    edges.push(e);
+    nodes.push(cur);
+    length += g.edges[e].length;
+  }
+  return { nodes, edges, length };
+}
+
+/** The chain between junctions a and b (a street with a and b as its ends), or null when no street joins them. */
+export function gridChain(g: RoadGraph, a: number, b: number): Chain | null {
+  for (const eid of g.nodes[a].edges) {
+    const c = chainFrom(g, a, eid);
+    if (c.nodes[c.nodes.length - 1] === b) return c;
+  }
+  return null;
+}
+
+/** The chain the edge `eid` is a piece of, walked from its junction on the a side (so the pieces run a to b). */
+export function chainOf(g: RoadGraph, eid: number): Chain {
+  let e = eid;
+  let start = g.edges[e].a;
+  for (let guard = 0; guard < g.nodes.length && isBendNode(g, start); guard++) {
+    const n = g.nodes[start];
+    e = n.edges[0] === e ? n.edges[1] : n.edges[0];
+    start = otherNode(g.edges[e], start);
+    if (start === g.edges[eid].a) break; // a ring of bends with no junction: start anywhere
+  }
+  return chainFrom(g, start, e);
+}
+
+/**
+ * Every chain of the graph once, in order of its first junction's id and the edge order there,
+ * so each edge is in exactly one chain. Districts that pick a street by its length or want a
+ * structure along it iterate these instead of g.edges.
+ */
+export function chains(g: RoadGraph): Chain[] {
+  const seen = new Uint8Array(g.edges.length);
+  const out: Chain[] = [];
+  for (const n of g.nodes) {
+    if (isBendNode(g, n.id)) continue;
+    for (const eid of n.edges) {
+      if (seen[eid]) continue;
+      const c = chainFrom(g, n.id, eid);
+      for (const e of c.edges) seen[e] = 1;
+      out.push(c);
+    }
+  }
+  return out;
+}
+
+/** The point at distance s (m, clamped) along a chain from its first node. */
+export function chainPoint(g: RoadGraph, c: Chain, s: number): { x: number; z: number } {
+  let rest = s < 0 ? 0 : s;
+  for (let i = 0; i < c.edges.length; i++) {
+    const len = g.edges[c.edges[i]].length;
+    if (rest <= len || i === c.edges.length - 1) {
+      const a = g.nodes[c.nodes[i]];
+      const b = g.nodes[c.nodes[i + 1]];
+      const t = len > 0 ? Math.min(1, rest / len) : 0;
+      return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t };
+    }
+    rest -= len;
+  }
+  const n = g.nodes[c.nodes[0]];
+  return { x: n.x, z: n.z };
+}
+
+/**
+ * Distance s (m) along a chain, moved onto the nearest of its bend nodes when one lies within
+ * `snap` (the chain's first node too, when it is a bend). Where a mouth due at s goes
+ * (splitChainAt): a mouth right by a bend node would reach its corners past the node's own,
+ * so it takes the node instead and turns the bend into a junction.
+ */
+export function chainSnap(g: RoadGraph, c: Chain, s: number, snap: number): number {
+  if (snap <= 0) return s;
+  const cum = chainCum(g, c);
+  let best = s;
+  let bestD = snap;
+  for (let i = 0; i + 1 < c.nodes.length; i++) {
+    if (i === 0 && !g.nodes[c.nodes[0]].bend) continue;
+    const d = cum[i] - s < 0 ? s - cum[i] : cum[i] - s;
+    if (d <= bestD) {
+      bestD = d;
+      best = cum[i];
+    }
+  }
+  return best;
+}
+
+/**
+ * Split a chain at distance s (m) along it from its first node (snapped onto a bend node within
+ * `snap` m, chainSnap): the piece holding s is split there (splitEdge, so every id stays valid and
+ * the new piece is appended), or the snapped-to node is returned as is. Returns the node id. Call
+ * sortNodeEdges when done editing.
+ */
+export function splitChainAt(g: RoadGraph, c: Chain, s: number, snap = 0): number {
+  const cum = chainCum(g, c);
+  const at = chainSnap(g, c, s, snap);
+  if (snap > 0) for (let i = 0; i + 1 < c.nodes.length; i++) if (cum[i] === at && (i > 0 || g.nodes[c.nodes[0]].bend)) return c.nodes[i];
+  for (let i = 0; i < c.edges.length; i++) {
+    const e = g.edges[c.edges[i]];
+    if (at <= cum[i + 1] || i === c.edges.length - 1) {
+      const t = e.length > 0 ? Math.max(0.01, Math.min(0.99, (at - cum[i]) / e.length)) : 0.5;
+      return splitEdge(g, e.id, e.a === c.nodes[i] ? t : 1 - t);
+    }
+  }
+  return splitEdge(g, c.edges[0], 0.5);
+}
+
+/** Distance (m) along a chain at each of its nodes: cum[i] is where nodes[i] is, cum[last] the chain's length. */
+export function chainCum(g: RoadGraph, c: Chain): number[] {
+  const cum = [0];
+  for (let i = 0; i < c.edges.length; i++) cum.push(cum[i] + g.edges[c.edges[i]].length);
+  return cum;
+}
+
+/**
+ * Merge chains back into single straight edges from junction to junction: the first piece of each
+ * keeps its kind and widths and now runs the whole way, the other pieces and the bend nodes between
+ * go, and every id is compacted (edges and nodes renumbered in order). Only safe while nothing holds
+ * node or edge ids: the river planner, first of the districts, straightens its crossing streets
+ * this way so its ford ramps can split them the way they always did. Sorts the node edges.
+ */
+export function mergeChains(g: RoadGraph, list: readonly Chain[]): void {
+  const deadEdge = new Uint8Array(g.edges.length);
+  const deadNode = new Uint8Array(g.nodes.length);
+  for (const c of list) {
+    if (c.edges.length < 2) continue;
+    const first = g.edges[c.edges[0]];
+    const a = c.nodes[0];
+    const b = c.nodes[c.nodes.length - 1];
+    if (first.a !== a) {
+      // The first piece runs against the chain: turn it round so the merged edge runs a to b.
+      first.b = first.a;
+      first.a = a;
+    }
+    first.b = b;
+    const A = g.nodes[a];
+    const B = g.nodes[b];
+    first.length = sqrt((A.x - B.x) ** 2 + (A.z - B.z) ** 2);
+    for (let i = 1; i < c.edges.length; i++) deadEdge[c.edges[i]] = 1;
+    for (let i = 1; i + 1 < c.nodes.length; i++) deadNode[c.nodes[i]] = 1;
+  }
+  const nodeMap = new Int32Array(g.nodes.length).fill(-1);
+  const nodes: RoadNode[] = [];
+  for (const n of g.nodes) {
+    if (deadNode[n.id]) continue;
+    nodeMap[n.id] = nodes.length;
+    n.id = nodes.length;
+    nodes.push(n);
+  }
+  const edges: RoadEdge[] = [];
+  for (const e of g.edges) {
+    if (deadEdge[e.id]) continue;
+    e.id = edges.length;
+    e.a = nodeMap[e.a];
+    e.b = nodeMap[e.b];
+    edges.push(e);
+  }
+  g.nodes = nodes;
+  g.edges = edges;
+  sortNodeEdges(g);
+}
+
+/** Heading change (rad, 0..pi) a route makes at `node` coming from `prev` and leaving for `next`; 0 when the three are collinear. */
+export function turnAt(g: RoadGraph, prev: number, node: number, next: number): number {
+  const P = g.nodes[prev];
+  const N = g.nodes[node];
+  const Q = g.nodes[next];
+  const a0 = atan2(N.z - P.z, N.x - P.x);
+  const a1 = atan2(Q.z - N.z, Q.x - N.x);
+  let d = a1 - a0;
+  while (d > Math.PI) d -= TAU;
+  while (d < -Math.PI) d += TAU;
+  return d < 0 ? -d : d;
 }
 

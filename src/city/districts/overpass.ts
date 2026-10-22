@@ -32,7 +32,8 @@ import { DEG, Vec2, abs, distToSegment, sin, yawOf } from '../../sim/math';
 import type { Area, AreaBuild, DistrictModule, PlanContext } from './types';
 import { emptyBuild } from './types';
 import { circlePolygon, pointInPolygon, polygonBounds, solidWalls } from './geom';
-import { Frame, ON_ROUTE, SiteHazards, TRAFFIC_FLOOR, corridorGap, raceStreets, edgeFrame, junctionReach, routeTraffic, siteClear, siteHazards, takePath, toWorld, weightedOrder } from './structures';
+import { Frame, ON_ROUTE, SiteHazards, StreetRun, TRAFFIC_FLOOR, corridorGap, raceStreets, edgeFrame, junctionReach, routeTraffic, runPiece, siteClear, siteHazards, streetEdges, streetRun, takePath, toWorld, weightedOrder } from './structures';
+import { chainCum, chainOf, chains } from '../roadGraph';
 
 const CFG = CITY.districts.overpass;
 
@@ -107,14 +108,14 @@ function crossT(p0: Vec2, p1: Vec2, a: Vec2, b: Vec2): { t: number; s: number } 
   return t > 0 && t < 1 && s > 0 && s < 1 ? { t, s } : null;
 }
 
-/** Off every road by `margin` beyond its curb, and off every sidewalk but edge `own`'s (as the El's columns, subway.ts). */
-function offRoads(g: RoadGraph, x: number, z: number, margin: number, own = -1): boolean {
+/** Off every road by `margin` beyond its curb, and off every sidewalk but those of the `own` edges (a street's pieces, roadGraph.ts), as the El's columns (subway.ts). */
+function offRoads(g: RoadGraph, x: number, z: number, margin: number, own: ReadonlySet<number> = new Set()): boolean {
   for (const e of g.edges) {
     const a = g.nodes[e.a];
     const b = g.nodes[e.b];
     const d = distToSegment(x, z, a.x, a.z, b.x, b.z);
     if (d < e.width / 2 + margin) return false;
-    if (e.id !== own && d < e.width / 2 + e.sidewalk + margin + 0.6) return false;
+    if (!own.has(e.id) && d < e.width / 2 + e.sidewalk + margin + 0.6) return false;
   }
   return true;
 }
@@ -144,16 +145,26 @@ export const overpassModule: DistrictModule = {
     const traffic = routeTraffic(g, ctx.seed);
     const race = raceStreets(ctx);
     if (rng.chance(CFG.viaductChance)) planViaduct(ctx, hz, mouths, traffic, race);
+    // Streets (chains of pieces between junctions, roadGraph.ts) whose every piece qualifies.
+    const pieceOk = (e: RoadEdge) => KINDS.has(e.kind) && !e.bridge && !e.shortcut && !ctx.claims.edge.has(e.id) && !race.ends.has(e.id) && !g.nodes[e.a].ring && !g.nodes[e.b].ring;
+    const runs = chains(g)
+      .filter((c) => c.edges.every((id) => pieceOk(g.edges[id])))
+      .map((c) => streetRun(g, c));
     const order = weightedOrder(
-      g.edges.filter((e) => KINDS.has(e.kind) && !e.bridge && !e.shortcut && !ctx.claims.edge.has(e.id) && !race.ends.has(e.id) && !g.nodes[e.a].ring && !g.nodes[e.b].ring).map((e) => e.id),
-      (id) => (GANTRY_WEIGHT[g.edges[id].kind] ?? 0) * (TRAFFIC_FLOOR + traffic[id] + (race.route.has(id) ? ON_ROUTE : 0)),
+      runs.map((_, i) => i),
+      (i) => {
+        const ids = runs[i].chain.edges;
+        let t = 0;
+        for (const id of ids) t += traffic[id];
+        return (GANTRY_WEIGHT[g.edges[ids[0]].kind] ?? 0) * (TRAFFIC_FLOOR + t / ids.length + (ids.some((id) => race.route.has(id)) ? ON_ROUTE : 0));
+      },
       rng,
     );
     const want = rng.int(CFG.gantries[0], CFG.gantries[1]);
     const gantries: Vec2[] = [];
-    for (const id of order) {
+    for (const i of order) {
       if (gantries.length >= want) break;
-      planGantry(ctx, hz, mouths, g.edges[id], gantries);
+      planGantry(ctx, hz, mouths, runs[i], gantries);
     }
   },
 
@@ -162,21 +173,27 @@ export const overpassModule: DistrictModule = {
   },
 };
 
-function planGantry(ctx: PlanContext, hz: SiteHazards, mouths: EdgeMouths[], e: RoadEdge, gantries: Vec2[]): void {
+function planGantry(ctx: PlanContext, hz: SiteHazards, mouths: EdgeMouths[], run: StreetRun, gantries: Vec2[]): void {
   const g = ctx.graph;
   const rng = ctx.rng;
-  const lo = junctionReach(g, mouths, e, e.a) + 4;
-  const hi = e.length - junctionReach(g, mouths, e, e.b) - 4;
+  // Somewhere along the street between its junctions' reach; the gantry stands square on the piece there.
+  const c = run.chain;
+  const lo = junctionReach(g, mouths, g.edges[c.edges[0]], c.nodes[0]) + 4;
+  const hi = run.length - junctionReach(g, mouths, g.edges[c.edges[c.edges.length - 1]], c.nodes[c.nodes.length - 1]) - 4;
   const t = rng.next();
   if (lo > hi) return;
-  const f = edgeFrame(g, e, lo + (hi - lo) * t);
+  const s = lo + (hi - lo) * t;
+  const i = runPiece(run, s);
+  const e = g.edges[c.edges[i]];
+  const f = edgeFrame(g, e, e.a === c.nodes[i] ? s - run.cum[i] : e.length - (s - run.cum[i]));
   // One gantry per stretch of road: a run of them reads as a freeway, not a city street.
   if (gantries.some((q) => (q.x - f.cx) ** 2 + (q.z - f.cz) ** 2 < GANTRY_SPACING ** 2)) return;
   const road = e.width / 2;
   const legV = road + CFG.legSetback + CFG.legSize / 2;
+  const own = new Set(c.edges);
   for (const v of [-legV, legV]) {
     const p = toWorld(f, 0, v);
-    if (!offRoads(g, p.x, p.z, CFG.legSize, e.id)) return;
+    if (!offRoads(g, p.x, p.z, CFG.legSize, own)) return;
   }
   for (const v of [-legV, 0, legV]) {
     const p = toWorld(f, 0, v);
@@ -249,26 +266,41 @@ function planViaduct(ctx: PlanContext, hz: SiteHazards, mouths: EdgeMouths[], tr
     const uz = (p1.z - p0.z) / length;
     const crossings: Crossing[] = [];
     let ok = true;
+    // The streets it crosses: a street is a chain of pieces through bend nodes (roadGraph.ts), so
+    // the junction reach is measured along the whole street, and the street's other pieces are not
+    // "streets beside the deck".
+    const crossed = new Set<number>();
     for (const e of g.edges) {
       const A = g.nodes[e.a];
       const B = g.nodes[e.b];
       const hit = crossT(p0, p1, A, B);
-      if (!hit) {
-        // Not crossed: the deck and its abutments keep clear of this street's corridor.
-        const d = Math.min(distToSegment(p0.x, p0.z, A.x, A.z, B.x, B.z), distToSegment(p1.x, p1.z, A.x, A.z, B.x, B.z), distToSegment(A.x, A.z, p0.x, p0.z, p1.x, p1.z), distToSegment(B.x, B.z, p0.x, p0.z, p1.x, p1.z));
-        if (d < e.width / 2 + e.sidewalk + half + 4) ok = false;
-      } else {
-        if (!KINDS.has(e.kind) || e.bridge || e.shortcut) ok = false;
-        const sn = abs(ux * (B.z - A.z) - uz * (B.x - A.x)) / (e.length || 1);
-        if (sn < minSin) ok = false;
-        // The deck and the piers under it stay clear of both junctions' reach.
-        const along = half / Math.max(sn, 1e-3) + CFG.pierLength / 2 + 2;
-        if (hit.s * e.length < junctionReach(g, mouths, e, e.a) + along) ok = false;
-        if ((1 - hit.s) * e.length < junctionReach(g, mouths, e, e.b) + along) ok = false;
-        if (ctx.claims.edge.has(e.id) || race.ends.has(e.id)) ok = false;
-        crossings.push({ edge: e.id, x: p0.x + (p1.x - p0.x) * hit.t, z: p0.z + (p1.z - p0.z) * hit.t, s: hit.t * length, sin: sn });
-      }
+      if (!hit) continue;
+      if (!KINDS.has(e.kind) || e.bridge || e.shortcut) ok = false;
+      const sn = abs(ux * (B.z - A.z) - uz * (B.x - A.x)) / (e.length || 1);
+      if (sn < minSin) ok = false;
+      // The deck and the piers under it stay clear of both junctions' reach.
+      const along = half / Math.max(sn, 1e-3) + CFG.pierLength / 2 + 2;
+      const street = chainOf(g, e.id);
+      const cum = chainCum(g, street);
+      const k = street.edges.indexOf(e.id);
+      const sAlong = cum[k] + (e.a === street.nodes[k] ? hit.s : 1 - hit.s) * e.length;
+      if (sAlong < junctionReach(g, mouths, g.edges[street.edges[0]], street.nodes[0]) + along) ok = false;
+      if (street.length - sAlong < junctionReach(g, mouths, g.edges[street.edges[street.edges.length - 1]], street.nodes[street.nodes.length - 1]) + along) ok = false;
+      if (ctx.claims.edge.has(e.id) || race.ends.has(e.id)) ok = false;
+      for (const id of street.edges) crossed.add(id);
+      crossings.push({ edge: e.id, x: p0.x + (p1.x - p0.x) * hit.t, z: p0.z + (p1.z - p0.z) * hit.t, s: hit.t * length, sin: sn });
       if (!ok) break;
+    }
+    for (const e of ok ? g.edges : []) {
+      if (crossed.has(e.id)) continue;
+      // Not crossed: the deck and its abutments keep clear of this street's corridor.
+      const A = g.nodes[e.a];
+      const B = g.nodes[e.b];
+      const d = Math.min(distToSegment(p0.x, p0.z, A.x, A.z, B.x, B.z), distToSegment(p1.x, p1.z, A.x, A.z, B.x, B.z), distToSegment(A.x, A.z, p0.x, p0.z, p1.x, p1.z), distToSegment(B.x, B.z, p0.x, p0.z, p1.x, p1.z));
+      if (d < e.width / 2 + e.sidewalk + half + 4) {
+        ok = false;
+        break;
+      }
     }
     if (!ok || !crossings.length) continue;
     // Clear of the river, the El, hills, roundabouts and the other structures; only unclaimed blocks.
@@ -347,7 +379,7 @@ function buildViaduct(g: RoadGraph, area: Area): AreaBuild {
     const off = (e.width / 2 + CFG.pierSetback) / Math.max(sn, 1e-3);
     for (const k of [-1, 1]) {
       const c = at(hit.t * v.length + k * off);
-      if (!offRoads(g, c.x, c.z, CFG.pierThick / 2 + 0.3, eid)) continue;
+      if (!offRoads(g, c.x, c.z, CFG.pierThick / 2 + 0.3, streetEdges(g, eid))) continue;
       b.walls.push(...solidWalls(centeredRect(c, ex, ez, CFG.pierLength, CFG.pierThick), 'pier', area.id));
       b.reserved.push({ x: c.x, z: c.z, r: CFG.pierLength / 2 + 0.6 });
       b.props.push({ kind: 'pier', x: c.x, z: c.z, yaw: yawOf(ex, ez), size: CFG.pierLength / 2, height: CFG.pierThick / 2, area: area.id });

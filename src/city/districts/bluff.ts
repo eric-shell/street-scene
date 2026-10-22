@@ -40,8 +40,9 @@
  * box.
  */
 import { CITY } from '../config';
-import { edgeBetween } from '../roadGraph';
-import type { RoadEdge, RoadGraph } from '../roadGraph';
+import { chainCum, chainOf, gridChain } from '../roadGraph';
+import type { Chain, RoadEdge, RoadGraph } from '../roadGraph';
+import { nodeRow } from './subway';
 import { Vec2, distToSegment, segmentT, sqrt } from '../../sim/math';
 import { createTerrain } from '../terrain';
 import type { Terrain } from '../terrain';
@@ -354,6 +355,8 @@ function outline(s: BluffShape): Vec2[] {
 }
 
 const nodeAt = (g: RoadGraph, i: number, j: number) => g.nodes[j * CITY.gridW + i];
+/** The level crossing keeps this far (m) along the crest street from its bend nodes (roadGraph.ts): the pad and gates stay in one piece's frame. */
+const CROSSING_BEND_CLEAR = 20;
 
 /** Point where segment a-b crosses the line through p with unit direction d (t along a-b), or null. */
 function crossLine(ax: number, az: number, bx: number, bz: number, px: number, pz: number, dx: number, dz: number): { t: number; x: number; z: number } | null {
@@ -496,14 +499,27 @@ function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | 
   const c1 = c0 + side;
   if (c1 < 0 || c1 >= CITY.gridW) return null;
   const rows = { leg0: r - 2 * o, low: r - o, crest: r, dip: r + o, leg1: r + 2 * o };
-  // The crest street between the El's column and the next must exist, plain and straight across.
+  // The crest street between the El's column and the next must exist, plain and straight across:
+  // every piece of it (a street is a chain of pieces through bend nodes, roadGraph.ts).
   const crestA = nodeAt(g, c0, r);
   const crestB = nodeAt(g, c1, r);
-  const crestEdge = edgeBetween(g, crestA.id, crestB.id);
-  if (crestEdge < 0) return null;
-  const ce = g.edges[crestEdge];
-  if (ce.kind !== 'street' && ce.kind !== 'avenue' && ce.kind !== 'boulevard') return null;
-  if (ce.bridge || ctx.claims.edge.has(crestEdge)) return null;
+  const crestChain = gridChain(g, crestA.id, crestB.id);
+  if (!crestChain) return null;
+  const crestPieces = new Set(crestChain.edges);
+  for (const id of crestChain.edges) {
+    const ce = g.edges[id];
+    if (ce.kind !== 'street' && ce.kind !== 'avenue' && ce.kind !== 'boulevard') return null;
+    if (ce.bridge || ctx.claims.edge.has(id)) return null;
+  }
+  /** Distance (m) along a street (chain) of a point on one of its pieces. */
+  const alongStreet = (street: Chain, piece: number, p: Vec2): number => {
+    const k = street.edges.indexOf(piece);
+    const e = g.edges[piece];
+    const A = g.nodes[e.a];
+    const B = g.nodes[e.b];
+    const local = segmentT(p.x, p.z, A.x, A.z, B.x, B.z) * e.length;
+    return chainCum(g, street)[k] + (e.a === street.nodes[k] ? local : e.length - local);
+  };
   // Face line: through the middles of the two column streets' blocks between the low row and the crest.
   const mid = (c: number) => {
     const a = nodeAt(g, c, rows.low);
@@ -534,25 +550,35 @@ function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | 
   const rl = sqrt((rb.x - ra.x) ** 2 + (rb.z - ra.z) ** 2) || 1;
   const rdx = (rb.x - ra.x) / rl;
   const rdz = (rb.z - ra.z) / rl;
-  // Where the right of way line crosses a row street (or the row's mean z when the street is missing there).
-  const onRow = (j: number): { p: Vec2; edge: number } => {
+  // Where the right of way line crosses a row street (the piece of it that it crosses, and every
+  // piece of that street), or the row's mean z when the street is missing there.
+  const onRow = (j: number): { p: Vec2; edge: number; pieces: number[] } => {
     const a = nodeAt(g, c0, j);
     const b = nodeAt(g, c1, j);
-    const e = edgeBetween(g, a.id, b.id);
-    const hit = crossLine(a.x, a.z, b.x, b.z, ra.x, ra.z, rdx, rdz);
-    if (e >= 0 && hit) return { p: { x: hit.x, z: hit.z }, edge: e };
+    const street = gridChain(g, a.id, b.id);
+    for (const id of street?.edges ?? []) {
+      const e = g.edges[id];
+      const A = g.nodes[e.a];
+      const B = g.nodes[e.b];
+      const hit = crossLine(A.x, A.z, B.x, B.z, ra.x, ra.z, rdx, rdz);
+      if (hit) return { p: { x: hit.x, z: hit.z }, edge: id, pieces: street!.edges };
+    }
     const zm = (a.z + b.z) / 2;
     const t = (zm - ra.z) / (rdz || 1e-9);
-    return { p: { x: ra.x + rdx * t, z: ra.z + rdz * t }, edge: -1 };
+    return { p: { x: ra.x + rdx * t, z: ra.z + rdz * t }, edge: -1, pieces: [] };
   };
   const low = onRow(rows.low);
   const crest = onRow(r);
   const dip = onRow(rows.dip);
-  if (crest.edge !== crestEdge) return null;
+  if (!crestPieces.has(crest.edge)) return null;
+  const crestEdge = crest.edge;
   const C = crest.p;
-  // The crossing keeps well clear of both junctions of its street.
-  const ta = segmentT(C.x, C.z, crestA.x, crestA.z, crestB.x, crestB.z) * ce.length;
-  if (ta < 36 || ce.length - ta < 36) return null;
+  // The crossing keeps well clear of both junctions of its street, and off its bend nodes (its
+  // gates and pad are built in its piece's frame).
+  const ta = alongStreet(crestChain, crestEdge, C);
+  if (ta < 36 || crestChain.length - ta < 36) return null;
+  const crestCum = chainCum(g, crestChain);
+  for (let i = 1; i + 1 < crestChain.nodes.length; i++) if (Math.abs(crestCum[i] - ta) < CROSSING_BEND_CLEAR) return null;
   const vC = uv(C.x, C.z).v;
   if (vC < 40) return null;
   // The plateau runs on past the crossing's pad before the back slope falls away.
@@ -609,8 +635,10 @@ function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | 
       }
       const Lk = (H * Ek) / CFG.rampGrade + CFG.rampLip;
       const half = Lk / 2 / cosA;
-      const tf = hitFace!.t * e.length;
-      if (tf < half + CFG.nodeClear || e.length - tf < half + CFG.nodeClear) {
+      // Room before both junctions of the whole street (its pieces through bend nodes).
+      const street = chainOf(g, e.id);
+      const tf = alongStreet(street, e.id, hitFace!);
+      if (tf < half + CFG.nodeClear || street.length - tf < half + CFG.nodeClear) {
         ok = false;
         break;
       }
@@ -669,8 +697,9 @@ function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | 
       const flat = SUB.deckWidth / 2 + 2;
       const A2 = g.nodes[e.a];
       const B2 = g.nodes[e.b];
-      const t = segmentT(pt.p.x, pt.p.z, A2.x, A2.z, B2.x, B2.z) * e.length;
-      if (t < flat + w + CFG.nodeClear || e.length - t < flat + w + CFG.nodeClear) {
+      const street = chainOf(g, e.id);
+      const t = alongStreet(street, e.id, pt.p);
+      if (t < flat + w + CFG.nodeClear || street.length - t < flat + w + CFG.nodeClear) {
         ok = false;
         break;
       }
@@ -678,19 +707,26 @@ function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | 
     }
     if (!ok) continue;
     shape.sags = sags;
-    // The El's new path: the right of way points replace the low, crest and dip rows' points.
-    const moved = new Map<number, Vec2>([
-      [rows.low, low.p],
-      [r, C],
-      [rows.dip, dip.p],
-    ]);
-    const path = sub.path.map((p, k) => {
-      const j = k - 1;
-      return moved.get(j) ?? p;
-    });
+    // The El's new path: between the leg rows every one of its nodes (the column streets' bend
+    // nodes included, roadGraph.ts) moves onto the polyline leg0 -> low -> crest -> dip -> leg1, so
+    // the S curves still take a whole block each. Keyed by the El's node index (path[k + 1]).
+    const kOf = (j: number) => sub.nodes.findIndex((id) => g.nodes[id].gi === c0 && g.nodes[id].gj === j);
+    const legKs = [rows.leg0, rows.low, r, rows.dip, rows.leg1].map(kOf);
+    if (legKs.some((k) => k < 0)) continue;
+    const legs: Vec2[] = [sub.path[legKs[0] + 1], low.p, C, dip.p, sub.path[legKs[4] + 1]];
+    const moved = new Map<number, Vec2>();
+    for (let s = 0; s + 1 < legKs.length; s++) {
+      const ka = legKs[s];
+      const kb = legKs[s + 1];
+      for (let k = Math.min(ka, kb); k <= Math.max(ka, kb); k++) {
+        if (k === legKs[0] || k === legKs[4]) continue;
+        const t = (k - ka) / (kb - ka);
+        moved.set(k, { x: legs[s].x + (legs[s + 1].x - legs[s].x) * t, z: legs[s].z + (legs[s + 1].z - legs[s].z) * t });
+      }
+    }
+    const path = sub.path.map((p, k) => moved.get(k - 1) ?? p);
     // Nothing else crosses the right of way or its S curves (a diagonal, a stray street).
-    const legs: Vec2[] = [sub.path[rows.leg0 + 1], low.p, C, dip.p, sub.path[rows.leg1 + 1]];
-    const allowed = new Set<number>([crestEdge, low.edge, dip.edge]);
+    const allowed = new Set<number>([...crestChain.edges, ...low.pieces, ...dip.pieces]);
     for (const n of detourNodes) for (const eid of n.edges) allowed.add(eid);
     for (const e of g.edges) {
       if (allowed.has(e.id) || e.kind === 'channel' || e.kind === 'ramp') continue;
@@ -739,7 +775,7 @@ function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | 
       const x = curve.x[i];
       const z = curve.z[i];
       for (const e of g.edges) {
-        if (e.id === crestEdge) continue;
+        if (crestPieces.has(e.id)) continue;
         const a = g.nodes[e.a];
         const b = g.nodes[e.b];
         if (distToSegment(x, z, a.x, a.z, b.x, b.z) > e.width / 2 + e.sidewalk) continue;
@@ -778,11 +814,12 @@ function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | 
       faces.push(f.id);
       area += f.area;
     }
-    // Edges it reshapes: the ramps, the dipped streets and the crest street (their width and line must stay).
+    // Edges it reshapes: the ramps, the dipped streets and the crest street (their width and line must
+    // stay), every piece of each (a ramp or a dip reaches past its piece's bend nodes).
     const edges = new Set<number>();
-    for (const rp of ramps) edges.add(rp.edge);
-    for (const sg of sags) edges.add(sg.edge);
-    edges.add(crestEdge);
+    for (const rp of ramps) for (const id of chainOf(g, rp.edge).edges) edges.add(id);
+    for (const sg of sags) for (const id of chainOf(g, sg.edge).edges) edges.add(id);
+    for (const id of crestChain.edges) edges.add(id);
     // Streets another district claimed first (the El's own, a bridge) stay theirs.
     const free = [...edges].filter((id) => !ctx.claims.edge.has(id)).sort((p, q) => p - q);
     return { shape, moved, rowA: low.p, rowB: dip.p, crestEdge, rows, faces, nodes, edges: free, poly: outline(shape), area };
@@ -859,7 +896,11 @@ function commit(ctx: PlanContext, sub: Area, pl: Placement, r: number, o: number
   sub.params.dj1 = Math.max(pl.rows.leg0, pl.rows.leg1);
   // Its street on the detour is no longer under the El (the claim stays: nobody else reshapes it).
   const g = ctx.graph;
-  const off = (id: number) => g.nodes[id].gj >= sub.params.dj0 && g.nodes[id].gj <= sub.params.dj1;
+  // Rows as the El counts them (subway.ts nodeRow): a bend node's row is a fraction between its street's junctions.
+  const off = (id: number) => {
+    const row = nodeRow(g, id);
+    return row >= sub.params.dj0 && row <= sub.params.dj1;
+  };
   sub.edges = sub.edges.filter((eid) => !(off(g.edges[eid].a) && off(g.edges[eid].b)));
 }
 

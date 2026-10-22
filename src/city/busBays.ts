@@ -19,7 +19,7 @@
  * deterministic, on its own random stream.
  */
 import type { RoadGraph } from './roadGraph';
-import { isRiverEdge } from './roadGraph';
+import { chainOf, isRiverEdge } from './roadGraph';
 import type { EdgeMouths } from './blocks';
 import { edgeSides, lightStations } from './props';
 import { Rng, deriveSeed } from '../sim/prng';
@@ -165,7 +165,8 @@ export function planBusBays(seed: number, g: RoadGraph, mouths: EdgeMouths[], re
   const paving = builds.flatMap((b) => b.surfaces.filter((s) => s.priority >= 3));
   const bays: BusBay[] = [];
   g.edges.forEach((e, ei) => {
-    if (!BAY_KINDS.has(e.kind) || e.shortcut || e.bridge || isRiverEdge(e) || e.length < C.minEdge) return;
+    // A street is a chain of pieces through bend nodes (roadGraph.ts): the length that qualifies it is the street's.
+    if (!BAY_KINDS.has(e.kind) || e.shortcut || e.bridge || isRiverEdge(e) || chainOf(g, ei).length < C.minEdge) return;
     // Draw first so the stream does not depend on which edges qualify further down.
     const want = rng.chance(C.chance);
     const first = rng.int(0, 1);
@@ -179,17 +180,26 @@ export function planBusBays(seed: number, g: RoadGraph, mouths: EdgeMouths[], re
       const ax = side.to.x - side.from.x;
       const az = side.to.z - side.from.z;
       const len = sqrt(ax * ax + az * az);
-      if (len < 2 * C.endClear + 2 * taper + C.minStraight) continue;
+      // The end room belongs to the street's junction ends; at a bend node the piece's end is a free
+      // cut (the bay has to lie within one straight piece, as its curb frame is straight).
+      const bendStart = side.span.before > 1e-6;
+      const bendEnd = side.span.before + len < side.span.total - 1e-6;
+      const loEnd = bendStart ? 0 : C.endClear;
+      const hiEnd = bendEnd ? len : len - C.endClear;
+      if (hiEnd - loEnd < 2 * taper + C.minStraight) continue;
       const u = { x: ax / len, z: az / len };
-      // Streetlight gaps away from both ends, the one nearest the middle first.
-      const st = lightStations(len, side.phase);
+      // Streetlight gaps away from both ends, the one nearest the middle of the street first.
+      const st = lightStations(len, side.phase, side.span);
+      const starts = [...(bendStart ? [0] : []), ...st.map((s) => s + C.poleClear + C.margin)];
+      const ends = [...st.slice(bendStart ? 0 : 1).map((s) => s - C.poleClear - C.margin), ...(bendEnd ? [len] : [])];
+      const middle = side.span.total / 2 - side.span.before;
       let best: { s0: number; s1: number } | null = null;
       let score = Infinity;
-      for (let j = 0; j + 1 < st.length; j++) {
-        const s0 = st[j] + C.poleClear + C.margin;
-        const s1 = st[j + 1] - C.poleClear - C.margin;
-        if (s0 < C.endClear || s1 > len - C.endClear || s1 - s0 < 2 * taper + C.minStraight) continue;
-        const sc = Math.abs((s0 + s1) / 2 - len / 2);
+      for (let j = 0; j < starts.length && j < ends.length; j++) {
+        const s0 = starts[j];
+        const s1 = ends[j];
+        if (s0 < loEnd || s1 > hiEnd || s1 - s0 < 2 * taper + C.minStraight) continue;
+        const sc = Math.abs((s0 + s1) / 2 - middle);
         if (sc < score) {
           score = sc;
           best = { s0, s1 };

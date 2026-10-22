@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import { CITY } from '../city/config';
 import { World } from '../city/world';
-import { isRiverEdge } from '../city/roadGraph';
+import { isBendNode, isRiverEdge } from '../city/roadGraph';
 import { groundHeight } from '../city/districts/carPark';
 import { Vec2 } from '../sim/math';
 import { GeoBuilder } from './geoBuilder';
@@ -295,9 +295,12 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     if (len < 8) return;
     const dx = (b.x - a.x) / len;
     const dz = (b.z - a.z) / len;
-    // keep markings clear of the crosswalks
-    const a2 = { x: a.x + dx * 5, z: a.z + dz * 5 };
-    const b2 = { x: b.x - dx * 5, z: b.z - dz * 5 };
+    // Keep markings clear of the crosswalks: a junction end has one, a bend node (where the street
+    // goes on, roadGraph.ts) none, so the lines run right up to it and meet the next piece's.
+    const clearA = isBendNode(g, e.a) ? 0 : 5;
+    const clearB = isBendNode(g, e.b) ? 0 : 5;
+    const a2 = { x: a.x + dx * clearA, z: a.z + dz * clearA };
+    const b2 = { x: b.x - dx * clearB, z: b.z - dz * clearB };
     const half = e.width / 2;
     if (e.lanes === 2) {
       addLine(a2, b2, 0, 0.16, 3, 5, white);
@@ -320,11 +323,12 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
       addLine(at(s0), at(s1), side * (half - 0.45), 0.14, BAY_DASH, BAY_DASH, white);
       addLine(at(s1), b2, side * (half - 0.45), 0.14, 0, 0, white);
     }
-    // crosswalk stripes near each end
+    // crosswalk stripes near each junction end
     for (const [from, dir] of [
       [a, 1],
       [b, -1],
     ] as [Vec2, number][]) {
+      if (isBendNode(g, dir > 0 ? e.a : e.b)) continue;
       for (let o = -half + 0.8; o < half - 0.6; o += 1.1) {
         const p0 = { x: from.x + dx * dir * 1.2, z: from.z + dz * dir * 1.2 };
         const p1 = { x: from.x + dx * dir * 4.2, z: from.z + dz * dir * 4.2 };

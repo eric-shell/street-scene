@@ -20,6 +20,7 @@ import { GeoBuilder } from './geoBuilder';
 import { DECAL_ATLAS_SIZE, DECAL_CELLS, DecalKind, AtlasCell } from './textures';
 import { baysByEdge } from '../city/busBays';
 import { bayMouth } from './busBays';
+import { isBendNode } from '../city/roadGraph';
 
 export interface DecalOptions {
   /** Multiplies every density (graphics tier). */
@@ -229,11 +230,14 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
       }
       return;
     }
-    // Storm drains at both ends of each curb.
+    // Storm drains at both ends of each curb (junction ends: a bend node is no corner, roadGraph.ts).
+    const bendA = isBendNode(g, e.a);
+    const bendB = isBendNode(g, e.b);
     for (const [s, dir] of [
       [6, 1],
       [len - 6, -1],
     ] as const) {
+      if (dir > 0 ? bendA : bendB) continue;
       for (const side of [1, -1]) {
         const p = at(s, side * (half - 0.5));
         quad(gb, 'drain', p.x, p.z, yawAB + (dir < 0 ? Math.PI : 0), DECAL.drainW, DECAL.drainH, WHITE);
@@ -261,11 +265,12 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
       const p = at(s + DECAL.gutterLen / 2, side * (half - DECAL.gutterW / 2 + 0.05));
       quad(gb, 'gutter', p.x, p.z, yawAB + (side > 0 ? Math.PI / 2 : -Math.PI / 2), DECAL.gutterLen, DECAL.gutterW, WHITE);
     }
-    // Worn crosswalk paint under the wheel tracks of every lane, at both ends.
+    // Worn crosswalk paint under the wheel tracks of every lane, at both junction ends.
     for (const [from, dir] of [
       [0, 1],
       [len, -1],
     ] as const) {
+      if (dir > 0 ? bendA : bendB) continue;
       for (const lane of lanes) {
         const p = at(from + dir * 2.7, lane.lat);
         quad(gb, 'wear', p.x, p.z, yawAB, DECAL.wearW, DECAL.wearL, ASPHALT);
@@ -275,6 +280,7 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
     for (const lane of lanes) {
       const toB = Math.abs(lane.yaw - yawAB) < 1e-6;
       if (e.lanes === 2 && !rng.chance(DECAL.arrow2Lane * D)) continue;
+      if (toB ? bendB : bendA) continue;
       const s = toB ? len - DECAL.arrowBack : DECAL.arrowBack;
       const p = at(s, lane.lat);
       let kind: DecalKind = 'arrowStraight';

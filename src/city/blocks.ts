@@ -16,7 +16,7 @@
  * river's own trench and bank walls are the collision there).
  */
 import { CITY } from './config';
-import { RoadGraph, RoadEdge, RoadNode, edgeAngleFrom, isRiverEdge, otherNode, sectorAngle } from './roadGraph';
+import { Chain, RoadGraph, RoadEdge, RoadNode, edgeAngleFrom, isBendNode, isRiverEdge, otherNode, sectorAngle } from './roadGraph';
 import { SpatialGrid } from './spatial';
 import { Terrain } from './terrain';
 import { Prop, edgeSides, generateProps, lightStations } from './props';
@@ -199,14 +199,23 @@ export function edgeDir(g: RoadGraph, e: RoadEdge, from: number): Vec2 {
   return norm({ x: q.x - p.x, z: q.z - p.z });
 }
 
+/** A corner between 170 and 190 degrees is mitered only when its offset lines cross within this far (m) of the node along the first edge (a bend node: a few degrees, equal widths). */
+const MITER_REACH = 1.5;
+
 function sectorPoints(p: Vec2, dA: Vec2, oA: number, dB: Vec2, oB: number, angle: number): Vec2[] {
   const na: Vec2 = { x: -dA.z, z: dA.x };
   const nb: Vec2 = { x: dB.z, z: -dB.x };
   const pa = add(p, na, oA);
   const pb = add(p, nb, oB);
-  if (angle < 170 * DEG) {
+  // One sharp corner where the offset lines cross. Past 170 degrees only when the crossing sits
+  // right by the node (MITER_REACH): a bend node's few degrees between two pieces of one street,
+  // where two square-cut points would overlap on the inside and leave a wedge on the outside. A
+  // street running straight on into a narrower one has nearly parallel lines that cross far down
+  // the street: it keeps the square cut and its curb step at the node. Sharper outside corners are
+  // rounded below; parallel lines (a ford's straight-through node) give two coincident points.
+  if (angle < 190 * DEG) {
     const t = lineIntersectT(pa, dA, pb, dB);
-    if (t !== null) return [add(pa, dA, t)];
+    if (t !== null && (angle < 170 * DEG || (t > -MITER_REACH && t < MITER_REACH))) return [add(pa, dA, t)];
   }
   const pts: Vec2[] = [pa];
   if (angle > 190 * DEG) {
@@ -407,6 +416,34 @@ export function computeFaces(g: RoadGraph, sectors: Sector[][]): BlockFace[] {
     }
   }
   return faces;
+}
+
+/**
+ * A block's sides: its edges grouped between junction corners, each side one street along the
+ * block (its pieces through bend nodes, roadGraph.ts) as a chain from its first corner, in ring
+ * order starting at a junction corner. A four sided block of three-piece streets has four sides
+ * and twelve corners.
+ */
+export function faceSides(g: RoadGraph, f: BlockFace): Chain[] {
+  const m = f.corners.length;
+  let start = 0;
+  while (start < m && isBendNode(g, f.corners[start].node)) start++;
+  if (start >= m) start = 0;
+  const sides: Chain[] = [];
+  let cur: Chain | null = null;
+  for (let k = 0; k < m; k++) {
+    const i = (start + k) % m;
+    const c = f.corners[i];
+    if (!cur || !isBendNode(g, c.node)) {
+      cur = { nodes: [c.node], edges: [], length: 0 };
+      sides.push(cur);
+    }
+    const eid = f.edges[i];
+    cur.edges.push(eid);
+    cur.length += g.edges[eid].length;
+    cur.nodes.push(f.corners[(i + 1) % m].node);
+  }
+  return sides;
 }
 
 export function makeWall(a: Vec2, b: Vec2, inside: Vec2, kind: WallKind): Wall | null {
@@ -849,17 +886,32 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
   });
   for (const w of districtWalls) walls.push(w);
 
-  // Streetlights on the sidewalk just behind the curb, staggered per side.
+  // Streetlights on the sidewalk just behind the curb, staggered per side. Off every road: at an
+  // oblique junction (the warp makes them, roadGraph.ts) a wide street's carriageway reaches along
+  // the sidewalk of a narrow one well past the curb corner.
   const streetlights: Streetlight[] = [];
+  const lightScratch: number[] = [];
+  const onRoad = (x: number, z: number): boolean => {
+    edgeGrid.query(x - 1, z - 1, x + 1, z + 1, lightScratch);
+    for (const id of lightScratch) {
+      const e = g.edges[id];
+      if (isRiverEdge(e)) continue;
+      const a = g.nodes[e.a];
+      const b = g.nodes[e.b];
+      if (distToSegment(x, z, a.x, a.z, b.x, b.z) < e.width / 2 + 0.3) return true;
+    }
+    return false;
+  };
   g.edges.forEach((e, ei) => {
     if (e.kind === 'backAlley' || isRiverEdge(e)) return;
     for (const side of edgeSides(g, mouths, ei)) {
       const along = sub(side.to, side.from);
       const len = sqrt(along.x * along.x + along.z * along.z);
       const u = { x: along.x / len, z: along.z / len };
-      for (const s of lightStations(len, side.phase)) {
+      for (const s of lightStations(len, side.phase, side.span)) {
         const p = add(add(side.from, u, s), side.inward, -0.8);
         if (reserved.some((c) => (c.x - p.x) ** 2 + (c.z - p.z) ** 2 < (c.r + 0.8) ** 2)) continue;
+        if (onRoad(p.x, p.z)) continue;
         streetlights.push({ x: p.x, z: p.z, dx: side.inward.x, dz: side.inward.z, edge: ei });
       }
     }

@@ -24,6 +24,7 @@ import type { EdgeMouths, Sector, Streetlight } from './blocks';
 import { BUS_BAY, BusBay, bayHitsCircle, baysByEdge, bayPoint } from './busBays';
 import { furnishStreets } from './streetFurniture';
 import type { RoadGraph } from './roadGraph';
+import { chainOf } from './roadGraph';
 import { SpatialGrid } from './spatial';
 import type { Terrain } from './terrain';
 import { Rng, deriveSeed } from '../sim/prng';
@@ -186,27 +187,88 @@ export const POLE_CLEAR = 1.5;
 /** Minimum gap between any two props. */
 const PROP_GAP = 0.5;
 
-/** Streetlight stations (distance along the curb from the edge's start mouth) for one side. */
-export function lightStations(len: number, phase: number): number[] {
+/**
+ * Where one side of an edge sits along its street's side: a street is a chain of pieces through
+ * bend nodes (roadGraph.ts), and the poles, gaps and bus stops are laid out along the whole street,
+ * not restarted at every piece. Curb length of the pieces before this one (m) and the street side's
+ * total (m); a street of one piece has before 0 and total its own length.
+ */
+export interface SideSpan {
+  before: number;
+  total: number;
+}
+
+/** Streetlight stations (distance along the curb from the edge's start mouth) for one side: every CITY.streetlightSpacing along the street side, 10 m clear of its junctions. */
+export function lightStations(len: number, phase: number, span: SideSpan = { before: 0, total: len }): number[] {
   const out: number[] = [];
   const spacing = CITY.streetlightSpacing;
-  for (let s = 10 + spacing * phase; s < len - 10; s += spacing) out.push(s);
+  for (let s = 10 + spacing * phase; s < span.total - 10; s += spacing) {
+    const local = s - span.before;
+    if (local >= 0 && local < len) out.push(local);
+  }
   return out;
 }
 
-/** Furniture gaps along one block side (m from its start): between the mouth margins and the streetlight poles, in order. */
-export function sidewalkGaps(len: number, phase: number): { lo: number; hi: number }[] {
-  const cuts = [MOUTH_CLEAR - POLE_CLEAR, ...lightStations(len, phase), len - MOUTH_CLEAR + POLE_CLEAR];
+/**
+ * Furniture gaps along one block side (m from its start): between the mouth margins and the
+ * streetlight poles, in order. The mouth margin belongs to the street's junction ends only: at a
+ * bend node the sidewalk simply goes on.
+ */
+export function sidewalkGaps(len: number, phase: number, span: SideSpan = { before: 0, total: len }): { lo: number; hi: number }[] {
+  const startClear = span.before > 1e-6 ? 0 : MOUTH_CLEAR;
+  const endClear = span.before + len < span.total - 1e-6 ? 0 : MOUTH_CLEAR;
+  const cuts = [startClear - POLE_CLEAR, ...lightStations(len, phase, span), len - endClear + POLE_CLEAR];
   const gaps: { lo: number; hi: number }[] = [];
   for (let k = 0; k + 1 < cuts.length; k++) {
-    const lo = Math.max(MOUTH_CLEAR, cuts[k] + POLE_CLEAR);
-    const hi = Math.min(len - MOUTH_CLEAR, cuts[k + 1] - POLE_CLEAR);
+    const lo = Math.max(startClear, cuts[k] + POLE_CLEAR);
+    const hi = Math.min(len - endClear, cuts[k + 1] - POLE_CLEAR);
     if (hi - lo > 2) gaps.push({ lo, hi });
   }
   return gaps;
 }
 
-/** Curb line of each edge side, as used for streetlights. P side has phase 0, N side 0.5. */
+/** Curb lengths of an edge's P and N sides (m). */
+function curbLengths(mouths: EdgeMouths[], ei: number): [number, number] {
+  const m = mouths[ei];
+  return [sqrt((m.bP.curb.x - m.aP.curb.x) ** 2 + (m.bP.curb.z - m.aP.curb.z) ** 2), sqrt((m.bN.curb.x - m.aN.curb.x) ** 2 + (m.bN.curb.z - m.aN.curb.z) ** 2)];
+}
+
+/** The spans (SideSpan) of an edge's P and N sides along its street. */
+function sideSpans(g: RoadGraph, mouths: EdgeMouths[], ei: number): [SideSpan, SideSpan] {
+  const own = curbLengths(mouths, ei);
+  const c = chainOf(g, ei);
+  if (c.edges.length === 1) return [{ before: 0, total: own[0] }, { before: 0, total: own[1] }];
+  // Walk the street piece by piece, each piece's sides in the walk's orientation (a piece running
+  // against the walk swaps them), summing the curb lengths before this piece and overall.
+  const before = [0, 0];
+  const total = [0, 0];
+  let seen = false;
+  let forward = true;
+  for (let k = 0; k < c.edges.length; k++) {
+    const id = c.edges[k];
+    const fwd = g.edges[id].a === c.nodes[k];
+    const lens = curbLengths(mouths, id);
+    const p = fwd ? lens[0] : lens[1];
+    const n = fwd ? lens[1] : lens[0];
+    if (id === ei) {
+      seen = true;
+      forward = fwd;
+    } else if (!seen) {
+      before[0] += p;
+      before[1] += n;
+    }
+    total[0] += p;
+    total[1] += n;
+  }
+  if (forward) return [{ before: before[0], total: total[0] }, { before: before[1], total: total[1] }];
+  // Our P side is the walk's N side, measured from the other end.
+  return [
+    { before: total[1] - before[1] - own[0], total: total[1] },
+    { before: total[0] - before[0] - own[1], total: total[0] },
+  ];
+}
+
+/** Curb line of each edge side, as used for streetlights. P side has phase 0, N side 0.5; `span` places the side along its street. */
 export function edgeSides(g: RoadGraph, mouths: EdgeMouths[], ei: number) {
   const e = g.edges[ei];
   const m = mouths[ei];
@@ -214,9 +276,10 @@ export function edgeSides(g: RoadGraph, mouths: EdgeMouths[], ei: number) {
   const b = g.nodes[e.b];
   const dl = sqrt((b.x - a.x) ** 2 + (b.z - a.z) ** 2) || 1;
   const d = { x: (b.x - a.x) / dl, z: (b.z - a.z) / dl };
+  const spans = sideSpans(g, mouths, ei);
   return [
-    { from: m.aP.curb, to: m.bP.curb, inward: { x: d.z, z: -d.x }, phase: 0 },
-    { from: m.aN.curb, to: m.bN.curb, inward: { x: -d.z, z: d.x }, phase: 0.5 },
+    { from: m.aP.curb, to: m.bP.curb, inward: { x: d.z, z: -d.x }, phase: 0, span: spans[0] },
+    { from: m.aN.curb, to: m.bN.curb, inward: { x: -d.z, z: d.x }, phase: 0.5, span: spans[1] },
   ];
 }
 
@@ -340,7 +403,14 @@ export function generateProps(
   g.edges.forEach((e, ei) => {
     if (e.kind === 'backAlley') return;
     const sides = edgeSides(g, mouths, ei);
-    const roll = e.length >= CITY.propBusStopMinEdge && rng.chance(CITY.propBusStopChance) ? rng.int(0, 1) : -1;
+    // One stop per street at most, on the piece that holds the street's middle (a street is a chain
+    // of pieces through bend nodes; the stop goes to the gap nearest its middle below).
+    const hostsMiddle = sides.some((s) => {
+      const len = sqrt((s.to.x - s.from.x) ** 2 + (s.to.z - s.from.z) ** 2);
+      return s.span.before <= s.span.total / 2 && s.span.total / 2 < s.span.before + len;
+    });
+    const streetLength = Math.max(sides[0].span.total, sides[1].span.total);
+    const roll = hostsMiddle && streetLength >= CITY.propBusStopMinEdge && rng.chance(CITY.propBusStopChance) ? rng.int(0, 1) : -1;
     // A bus bay always has its stop (busBays.ts): the shelter at the back of the narrowed sidewalk.
     const bay = bayOf[ei];
     const busSide = bay ? (bay.side === 1 ? 0 : 1) : roll;
@@ -366,7 +436,7 @@ export function generateProps(
         return true;
       };
       // Gaps between mouth margins and streetlight poles, in order along the curb.
-      const gaps = sidewalkGaps(len, side.phase);
+      const gaps = sidewalkGaps(len, side.phase, side.span);
       if (!gaps.length) return;
       // A bay's stop stands in the bay's own gap; nothing else does.
       if (bay && busSide === si) {
@@ -391,7 +461,7 @@ export function generateProps(
         let best = Infinity;
         gaps.forEach((gp, k) => {
           if (gp.hi - gp.lo < 2 * PROP_DEFS.busStop.radius + 4) return;
-          const score = Math.abs((gp.lo + gp.hi) / 2 - len / 2);
+          const score = Math.abs((gp.lo + gp.hi) / 2 - (side.span.total / 2 - side.span.before));
           if (score < best) {
             best = score;
             busGap = k;

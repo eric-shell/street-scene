@@ -27,7 +27,8 @@
  * level to the curve (elCurve, the one place the line's curve is built).
  */
 import { CITY, ROUTE } from '../config';
-import { edgeBetween } from '../roadGraph';
+import { chainOf, edgeBetween, gridChain, isBendNode } from '../roadGraph';
+import type { RoadGraph, RoadNode } from '../roadGraph';
 import { Vec2, distToSegment, sqrt, yawOf } from '../../sim/math';
 import { Rng } from '../../sim/prng';
 import type { AreaBuild, BuildContext, DistrictModule } from './types';
@@ -65,6 +66,23 @@ export interface StationPlan {
   mid: Vec2;
 }
 
+/**
+ * Grid row of a node on the El's column: a grid junction's gj, a bend node's place between its
+ * street's two junctions as a fraction (so a bluff's detour rows dj0..dj1 take in the bend nodes of
+ * the streets between them), -1 for a node of a street that ends at no grid junction.
+ */
+export function nodeRow(g: RoadGraph, id: number): number {
+  const n = g.nodes[id];
+  if (n.gi >= 0) return n.gj;
+  if (!n.bend || !n.edges.length) return -1;
+  const c = chainOf(g, n.edges[0]);
+  const r0 = g.nodes[c.nodes[0]].gj;
+  const r1 = g.nodes[c.nodes[c.nodes.length - 1]].gj;
+  const k = c.nodes.indexOf(id);
+  if (r0 < 0 || r1 < 0 || k < 0) return -1;
+  return r0 + ((r1 - r0) * k) / (c.nodes.length - 1);
+}
+
 export const subwayModule: DistrictModule = {
   kind: 'subway',
   phase: 'graph',
@@ -78,14 +96,23 @@ export const subwayModule: DistrictModule = {
     rng.shuffle(cols);
     const side = rng.chance(0.5) ? 1 : -1;
     for (const i of cols) {
-      const nodes = g.nodes.filter((n) => n.gi === i).sort((a, b) => a.gj - b.gj);
-      if (nodes.some((n) => ctx.claims.node.has(n.id))) continue;
+      const grid = g.nodes.filter((n) => n.gi === i).sort((a, b) => a.gj - b.gj);
+      // The column's streets are chains of pieces through bend nodes (roadGraph.ts): the deck follows
+      // every node of them, and the pillars every piece.
       const edges: number[] = [];
-      for (let j = 0; j + 1 < nodes.length; j++) {
-        const e = edgeBetween(g, nodes[j].id, nodes[j + 1].id);
-        if (e >= 0) edges.push(e);
+      const nodes: RoadNode[] = [grid[0]];
+      let streets = 0;
+      for (let j = 0; j + 1 < grid.length; j++) {
+        const c = gridChain(g, grid[j].id, grid[j + 1].id);
+        if (c) {
+          streets++;
+          edges.push(...c.edges);
+          for (let k = 1; k + 1 < c.nodes.length; k++) nodes.push(g.nodes[c.nodes[k]]);
+        }
+        nodes.push(grid[j + 1]);
       }
-      if (edges.length < nodes.length - 3) continue;
+      if (nodes.some((n) => ctx.claims.node.has(n.id))) continue;
+      if (streets < grid.length - 3) continue;
       // Deck over the curb lane on the pillar side.
       const offs = nodes.map((n) => {
         let half = 0;
@@ -96,8 +123,13 @@ export const subwayModule: DistrictModule = {
         return side * Math.max(2, (half || CITY.width.street / 2) - CFG.deckInset);
       });
       const path: Vec2[] = nodes.map((n, j) => ({ x: n.x + offs[j], z: n.z }));
-      path.unshift({ x: path[0].x, z: path[0].z - 70 });
-      path.push({ x: path[path.length - 1].x, z: path[path.length - 1].z + 70 });
+      // The run-offs carry on in the line of the end pieces (a column sweeps with the warp, roadGraph.ts).
+      const ext = (p: Vec2, q: Vec2): Vec2 => {
+        const l = Math.hypot(p.x - q.x, p.z - q.z) || 1;
+        return { x: p.x + ((p.x - q.x) / l) * 70, z: p.z + ((p.z - q.z) / l) * 70 };
+      };
+      path.unshift(ext(path[0], path[1]));
+      path.push(ext(path[path.length - 1], path[path.length - 2]));
       let length = 0;
       for (let j = 1; j < path.length; j++) length += Math.hypot(path[j].x - path[j - 1].x, path[j].z - path[j - 1].z);
       const footprint = length * CFG.deckWidth;
@@ -188,13 +220,13 @@ export const subwayModule: DistrictModule = {
     const zone = CFG.mezzanine / 2 + CFG.stairRun + 1.5;
     const dj0 = area.params.dj0 ?? Infinity;
     const dj1 = area.params.dj1 ?? -Infinity;
-    const detoured = (gj: number) => gj >= dj0 && gj <= dj1;
+    const detoured = (row: number) => row >= dj0 && row <= dj1;
     for (const eid of area.edges) {
       const e = g.edges[eid];
       const a = g.nodes[e.a];
       const c = g.nodes[e.b];
       // On a bluff's detour the deck is off this street.
-      if (detoured(a.gj) && detoured(c.gj)) continue;
+      if (detoured(nodeRow(g, e.a)) && detoured(nodeRow(g, e.b))) continue;
       const len = sqrt((c.x - a.x) ** 2 + (c.z - a.z) ** 2) || 1;
       const dx = (c.x - a.x) / len;
       const dz = (c.z - a.z) / len;
@@ -207,14 +239,17 @@ export const subwayModule: DistrictModule = {
       const lat = e.width / 2 + CFG.pillarSetback;
       const st = stations.find((s) => s.edge === eid);
       const at = (s: number) => pillar(a.x + dx * s + nx * lat, a.z + dz * s + nz * lat, eid);
-      for (const s of spread(len, clearOf[e.a] + 2, clearOf[e.b] + 2)) if (!st || Math.abs(s - len / 2) > zone) at(s);
+      // At a bend node (no junction) the pillars of the two pieces keep half a spacing from it each.
+      const m0 = isBendNode(g, e.a) ? CFG.pillarSpacing / 2 : clearOf[e.a] + 2;
+      const m1 = isBendNode(g, e.b) ? CFG.pillarSpacing / 2 : clearOf[e.b] + 2;
+      for (const s of spread(len, m0, m1)) if (!st || Math.abs(s - len / 2) > zone) at(s);
       if (st) for (const k of [-1, 1]) at(len / 2 + k * (zone + 1.2));
     }
     // Over blocks without a street below: pillars on the deck line, buildings kept out.
     const nodes = area.nodes.map((id) => g.nodes[id]);
     const path = area.path;
     for (let j = 0; j + 1 < nodes.length; j++) {
-      if (edgeBetween(g, nodes[j].id, nodes[j + 1].id) >= 0 || (detoured(j) && detoured(j + 1))) continue;
+      if (edgeBetween(g, nodes[j].id, nodes[j + 1].id) >= 0 || (detoured(nodeRow(g, nodes[j].id)) && detoured(nodeRow(g, nodes[j + 1].id)))) continue;
       const p = path[j + 1];
       const q = path[j + 2];
       const len = Math.hypot(q.x - p.x, q.z - p.z) || 1;
@@ -287,8 +322,9 @@ function planStations(
   const cum = [0];
   for (let i = 1; i < path.length; i++) cum.push(cum[i - 1] + Math.hypot(path[i].x - path[i - 1].x, path[i].z - path[i - 1].z));
   const nodes = area.nodes;
-  // Node pairs j (deck segment path[j + 1] -> path[j + 2]) with a street below.
-  const cands: { j: number; edge: number }[] = [];
+  // Node pairs j (deck segment path[j + 1] -> path[j + 2]) with a street below: the middle piece of
+  // a street long enough, its length (junction to junction) what the stairs keep clear within.
+  const cands: { j: number; edge: number; streetLen: number }[] = [];
   // A bluff's detour has no stations (its S curves carry the deck off the street and down to the
   // level), and the trains pass its level crossing at speed: platforms keep STATION_CROSSING_CLEAR from it.
   const dj0 = area.params.dj0 ?? Infinity;
@@ -296,14 +332,21 @@ function planStations(
   const bluff = bluffOf(ctx.areas, area);
   for (let j = 1; j + 2 < nodes.length; j++) {
     const e = edgeBetween(g, nodes[j], nodes[j + 1]);
-    if (e < 0 || g.edges[e].bridge || g.edges[e].length < CFG.stationMinEdge) continue;
-    if (j >= dj0 && j + 1 <= dj1) continue;
+    if (e < 0 || g.edges[e].bridge) continue;
+    // A station takes the middle piece of a long enough street (its pieces through bend nodes, roadGraph.ts).
+    const street = chainOf(g, e);
+    if (street.length < CFG.stationMinEdge || street.edges[street.edges.length >> 1] !== e) continue;
+    const r0 = nodeRow(g, nodes[j]);
+    const r1 = nodeRow(g, nodes[j + 1]);
+    if (r0 >= dj0 && r0 <= dj1 && r1 >= dj0 && r1 <= dj1) continue;
+    // Away from the map ends: not the first or last row's street.
+    if (Math.min(r0, r1) < 1 || Math.max(r0, r1) > CITY.gridH - 2) continue;
     if (bluff) {
       const A = g.nodes[nodes[j]];
       const B = g.nodes[nodes[j + 1]];
       if (Math.hypot((A.x + B.x) / 2 - bluff.params.cx, (A.z + B.z) / 2 - bluff.params.cz) < STATION_CROSSING_CLEAR) continue;
     }
-    cands.push({ j, edge: e });
+    cands.push({ j, edge: e, streetLen: street.length });
   }
   rng.shuffle(cands);
   const out: StationPlan[] = [];
@@ -311,7 +354,8 @@ function planStations(
   const half = CFG.mezzanine / 2;
   for (const c of cands) {
     if (out.length >= want) break;
-    if (used.some((j) => Math.abs(j - c.j) < 3)) continue;
+    // Stations at least three rows apart.
+    if (used.some((j) => Math.abs(nodeRow(g, nodes[j]) - nodeRow(g, nodes[c.j])) < 3)) continue;
     const e = g.edges[c.edge];
     const A = g.nodes[nodes[c.j]];
     const B = g.nodes[nodes[c.j + 1]];
@@ -332,7 +376,8 @@ function planStations(
     const lat = e.width / 2 + CFG.pillarSetback;
     const hw = CFG.stairWidth / 2;
     const stairs: { poly: Vec2[]; bottom: Vec2; up: Vec2 }[] = [];
-    let ok = len / 2 - half - CFG.stairRun > STAIR_NODE_CLEAR;
+    // The stairs keep clear of the street's junctions (the piece's own ends are its bend nodes).
+    let ok = c.streetLen / 2 - half - CFG.stairRun > STAIR_NODE_CLEAR;
     for (const k of [-1, 1]) {
       if (!ok) break;
       const top = { x: mid.x + dx * k * half + nx * lat, z: mid.z + dz * k * half + nz * lat };

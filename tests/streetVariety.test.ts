@@ -3,6 +3,7 @@ import { createCity, createWorld } from '../src/city/world';
 import type { City } from '../src/city/world';
 import { BUS_BAY, bayFrame, bayHitsCircle, bayInset, bayPoint } from '../src/city/busBays';
 import { CITY } from '../src/city/config';
+import { isBendNode } from '../src/city/roadGraph';
 import { FURNITURE_KINDS, PROP_DEFS } from '../src/city/props';
 import { ROADWORKS, laneClosures } from '../src/city/districts/roadworks';
 import type { Area } from '../src/city/districts/types';
@@ -45,10 +46,12 @@ describe('bus bays', () => {
         expect(['street', 'avenue', 'diagonal', 'boulevard']).toContain(e.kind);
         expect(e.shortcut || e.bridge).toBeFalsy();
         expect(closed.has(b.edge)).toBe(false);
-        // Away from both ends of its block side: crosswalks, corners, traffic lights, alley and shortcut mouths.
-        expect(b.s0).toBeGreaterThanOrEqual(BUS_BAY.endClear);
-        expect(b.s1).toBeLessThanOrEqual(b.len - BUS_BAY.endClear);
-        for (const n of c.graph.nodes) for (const p of b.polygon) expect(Math.hypot(p.x - n.x, p.z - n.z)).toBeGreaterThan(BUS_BAY.endClear);
+        // Away from both junction ends of its block side: crosswalks, corners, traffic lights, alley and
+        // shortcut mouths (a bend node between two pieces of the street has none of those).
+        if (!isBendNode(c.graph, e.a)) expect(b.s0).toBeGreaterThanOrEqual(BUS_BAY.endClear);
+        if (!isBendNode(c.graph, e.b)) expect(b.s1).toBeLessThanOrEqual(b.len - BUS_BAY.endClear);
+        // (A bend node, where a street goes on through its kink, is no junction: no crosswalk, corner or light there.)
+        for (const n of c.graph.nodes) if (!isBendNode(c.graph, n.id)) for (const p of b.polygon) expect(Math.hypot(p.x - n.x, p.z - n.z)).toBeGreaterThan(BUS_BAY.endClear);
         // No El pillar or stair on its stretch of sidewalk.
         for (const q of reserved) {
           const f = bayFrame(b, q.x, q.z);
@@ -191,8 +194,9 @@ describe('roadworks', () => {
           if (r.edges.includes(P.edge)) continue;
           expect(r.nodes.includes(e.a) || r.nodes.includes(e.b)).toBe(false);
         }
-        // Clear of the junctions at both ends.
+        // Clear of the junctions at both ends (a bend node between two pieces of the street is none).
         for (const n of [e.a, e.b]) {
+          if (isBendNode(c.graph, n)) continue;
           const N = c.graph.nodes[n];
           for (const p of a.polygon) expect(Math.hypot(p.x - N.x, p.z - N.z)).toBeGreaterThan(ROADWORKS.mouthClear);
         }

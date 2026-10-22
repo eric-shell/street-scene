@@ -40,8 +40,10 @@
  * vents, puddles and grime on back alleys.
  */
 import { CITY, ROUTE } from '../config';
-import { addEdge, edgeBetween, splitEdge } from '../roadGraph';
-import type { RoadGraph } from '../roadGraph';
+import { addEdge, chainCum, chainFrom, chainOf, chainPoint, chainSnap, edgeBetween, gridChain, isBendNode, splitChainAt } from '../roadGraph';
+import type { Chain, RoadGraph } from '../roadGraph';
+import { faceSides } from '../blocks';
+import { circuitStart } from '../route';
 import { Vec2, atan2, distToSegment, lineIntersectT } from '../../sim/math';
 import { Rng } from '../../sim/prng';
 import { pointInPolygon } from './geom';
@@ -125,10 +127,15 @@ export const alleyModule: DistrictModule = {
             ok = false;
             break;
           }
-          const e = edgeBetween(g, nodes[nodes.length - 1], next);
-          if (e < 0 || g.edges[e].kind !== 'street' || g.edges[e].bridge || ctx.claims.edge.has(e)) ok = false;
-          nodes.push(next);
-          edges.push(e);
+          // Grid neighbours are joined by a chain of pieces through bend nodes (roadGraph.ts): the
+          // alley takes the whole street, pieces and bends.
+          const chain = gridChain(g, nodes[nodes.length - 1], next);
+          if (!chain || chain.edges.some((e) => g.edges[e].kind !== 'street' || g.edges[e].bridge || ctx.claims.edge.has(e))) {
+            ok = false;
+            break;
+          }
+          nodes.push(...chain.nodes.slice(1));
+          edges.push(...chain.edges);
         }
         if (!ok) continue;
         if (nodes.some((id) => ctx.claims.node.has(id) || g.nodes[id].ring)) continue;
@@ -185,9 +192,10 @@ export const alleyModule: DistrictModule = {
       const along = Math.atan2(-uz, ux);
       b.surfaces.push(cobblePatch(ctx, eid, area.id));
       for (const side of [1, -1]) {
-        // Clear of the crossing streets at both ends (their road, sidewalk and a corner rail's line).
-        const from = Math.max(cfg.endClear, mouthReach(g, e.a, area.edges, ux, uz, half + walk, side));
-        const to = len - Math.max(cfg.endClear, mouthReach(g, e.b, area.edges, -ux, -uz, half + walk, -side));
+        // Clear of the crossing streets at both ends (their road, sidewalk and a corner rail's line);
+        // a bend node between two of the alley's pieces is no crossing (roadGraph.ts).
+        const from = isBendNode(g, e.a) ? 0 : Math.max(cfg.endClear, mouthReach(g, e.a, area.edges, ux, uz, half + walk, side));
+        const to = len - (isBendNode(g, e.b) ? 0 : Math.max(cfg.endClear, mouthReach(g, e.b, area.edges, -ux, -uz, half + walk, -side)));
         let s = from + rng.range(0, 2);
         while (s < to - 3) {
           const block = rng.range(7, 13);
@@ -231,8 +239,13 @@ export const backAlleyModule: DistrictModule = {
     const g = ctx.graph;
     const rng = ctx.rng;
     const count = rng.int(cfg.count[0], cfg.count[1]);
+    // Four sided blocks: a side is one street, its pieces through bend nodes (blocks.ts faceSides).
+    const sidesOf = new Map<number, ReturnType<typeof faceSides>>();
     const faces = ctx.faces().filter((f) => {
-      if (f.outer || f.corners.length !== 4 || f.edges.length !== 4 || f.area < 9000 || f.area > 26000) return false;
+      if (f.outer || f.area < 9000 || f.area > 26000) return false;
+      const sides = faceSides(g, f);
+      if (sides.length !== 4) return false;
+      sidesOf.set(f.id, sides);
       if (f.corners.some((c) => g.nodes[c.node].ring)) return false;
       return f.edges.every((e) => {
         const k = g.edges[e].kind;
@@ -245,29 +258,34 @@ export const backAlleyModule: DistrictModule = {
     for (const f of faces) {
       if (made >= count) break;
       if (f.edges.some((e) => touched.has(e))) continue;
+      const sides = sidesOf.get(f.id)!;
       const pairs = [
-        [f.edges[0], f.edges[2]],
-        [f.edges[1], f.edges[3]],
-      ].filter(([a, b]) => g.edges[a].length >= cfg.minSide && g.edges[b].length >= cfg.minSide);
+        [sides[0], sides[2]],
+        [sides[1], sides[3]],
+      ].filter(([a, b]) => a.length >= cfg.minSide && b.length >= cfg.minSide);
       if (!pairs.length) continue;
-      const [ea, eb] = pairs[rng.int(0, pairs.length - 1)];
-      const ta = 0.5 + rng.range(-0.1, 0.1);
-      const tb = 0.5 + rng.range(-0.1, 0.1);
-      const pa = g.edges[ea];
-      const pb = g.edges[eb];
-      const A = { x: g.nodes[pa.a].x + (g.nodes[pa.b].x - g.nodes[pa.a].x) * ta, z: g.nodes[pa.a].z + (g.nodes[pa.b].z - g.nodes[pa.a].z) * ta };
-      const B = { x: g.nodes[pb.a].x + (g.nodes[pb.b].x - g.nodes[pb.a].x) * tb, z: g.nodes[pb.a].z + (g.nodes[pb.b].z - g.nodes[pb.a].z) * tb };
+      const [sa, sb] = pairs[rng.int(0, pairs.length - 1)];
+      // Mouths near the middle of each side, a mouth within BEND_CLEAR of a bend node taking the bend node.
+      const sA = chainSnap(g, sa, (0.5 + rng.range(-0.1, 0.1)) * sa.length, BEND_CLEAR);
+      const sB = chainSnap(g, sb, (0.5 + rng.range(-0.1, 0.1)) * sb.length, BEND_CLEAR);
+      const A = chainPoint(g, sa, sA);
+      const B = chainPoint(g, sb, sB);
       const length = Math.hypot(B.x - A.x, B.z - A.z);
       if (length < 50) continue;
       const footprint = length * (CITY.width.backAlley + 2 * CITY.sidewalkWidth.backAlley);
       if (ctx.budget.used + footprint > ctx.budget.total) break;
-      const na = splitEdge(g, ea, ta);
-      const nb = splitEdge(g, eb, tb);
+      const edgesBefore = g.edges.length;
+      const na = splitChainAt(g, sa, sA, BEND_CLEAR);
+      const nb = splitChainAt(g, sb, sB, BEND_CLEAR);
       const id = addEdge(g, na, nb, 'backAlley');
       g.edges[id].shortcut = true;
       f.edges.forEach((e) => touched.add(e));
-      touched.add(g.edges.length - 2).add(g.edges.length - 3);
-      const path = [A, B];
+      for (let e = edgesBefore; e < id; e++) touched.add(e);
+      // The mouths as placed (a split within MOUTH_SNAP of a bend node lands on the bend node).
+      const path = [
+        { x: g.nodes[na].x, z: g.nodes[na].z },
+        { x: g.nodes[nb].x, z: g.nodes[nb].z },
+      ];
       // A kicker hump in the middle or two thirds of the way along, clear of both (flared) mouths.
       const half = cfg.jumpRamp + cfg.jumpTop / 2;
       const end = half + 15 + cfg.mouth.alley;
@@ -626,6 +644,15 @@ function addJump(b: AreaBuild, A: Vec2, ux: number, uz: number, len: number, hw:
 
 /** Corner rails go on route turns at least this sharp (rad). */
 const ROUTE_RAIL_MIN_TURN = (ROUTE.railMinTurnDeg * Math.PI) / 180;
+/**
+ * A shortcut mouth due within MOUTH_SNAP (m) of a bend node of its street lands on the bend node
+ * (roadGraph.ts chainSnap), which becomes its junction; otherwise it keeps BEND_CLEAR (m) from every
+ * bend node: the building line crossing of a mouth at the narrowest angle a cut allows (34 degrees)
+ * lies about 22 m along the street, and a mouth whose corners reach past a bend node's own would
+ * fold the block's ring back over the alley.
+ */
+const MOUTH_SNAP = 10;
+const BEND_CLEAR = 22;
 const RAD = Math.PI / 180;
 /** Spacing of the entry and exit points the fallback chord search tries along each route edge (m). */
 const CHORD_STEP = 6;
@@ -720,14 +747,8 @@ function turnAt(g: RoadGraph, r: CarveRoute, i: number): number {
  */
 function protectedEdges(g: RoadGraph, r: CarveRoute): number[] {
   if (!r.closed) return [];
-  const n = r.nodes.length;
-  const edges: number[] = [];
-  for (let i = 0; i < n; i++) edges.push(edgeBetween(g, r.nodes[i], r.nodes[(i + 1) % n]));
-  let li = 0;
-  edges.forEach((e, i) => {
-    if (g.edges[e].length > g.edges[edges[li]].length) li = i;
-  });
-  return [edges[li]];
+  // The start straight as route.ts circuitStart picks it: a run of pieces through bend nodes.
+  return circuitStart(g, r.nodes).run.edges;
 }
 
 /** Insert node m between u and v wherever a route drives the edge u-v (either way, wrapping for circuits). */
@@ -1010,7 +1031,19 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
     return Math.abs(t) >= ROUTE_RAIL_MIN_TURN && Math.sign(t) !== Math.sign(cutTurn) ? cfg.railClear : cfg.nodeClear;
   };
   const mouthAngle = (ab: Vec2, u: Vec2) => Math.acos(Math.min(1, Math.abs(ab.x * u.x + ab.z * u.z)));
+  /** Where a mouth due at s along a street goes: on a bend node within MOUTH_SNAP, else s when BEND_CLEAR from every bend node, else nowhere (NaN). */
+  const mouthAt = (c: Chain, s0: number): number => {
+    const s = chainSnap(g, c, s0, MOUTH_SNAP);
+    if (s !== s0) return s;
+    const cum = chainCum(g, c);
+    for (let i = 1; i + 1 < c.nodes.length; i++) if (Math.abs(cum[i] - s) < BEND_CLEAR) return NaN;
+    return s;
+  };
 
+  const dbg = (globalThis as unknown as { __dbg?: Record<string, number> }).__dbg;
+  const bump = (k: string) => {
+    if (dbg) dbg[k] = (dbg[k] ?? 0) + 1;
+  };
   const candidates = (r: CarveRoute): Cut[] => {
     const R = r.nodes;
     const n = R.length;
@@ -1024,6 +1057,9 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
       const turn = turnAt(g, r, i);
       const deg = Math.abs(turn) / RAD;
       if (deg < turnMin || deg > turnMax) continue;
+      // A corner is a junction: a bend node (the route's street going on through its kink, roadGraph.ts)
+      // turns too little to pass the turn test above, so i is one. The streets leaving it run on through
+      // their bend nodes to the previous and the next junction (chains), the cut's reaches along them.
       const P = R[idx(i - 1)];
       const C = R[i];
       const Q = R[idx(i + 1)];
@@ -1031,64 +1067,110 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
       const e1 = edgeBetween(g, P, C);
       const e2 = edgeBetween(g, C, Q);
       if (!edgeOk(e1) || !edgeOk(e2)) continue;
+      const back = chainFrom(g, C, e1);
+      const fwd = chainFrom(g, C, e2);
+      if (!back.edges.every(edgeOk) || !fwd.edges.every(edgeOk)) {
+        bump('chainEdgeOk');
+        continue;
+      }
       const Cn = g.nodes[C];
-      const uBack = unit(Cn, g.nodes[P]);
-      const uOut = unit(Cn, g.nodes[Q]);
-      if (!wedgeFree(g, C, [e1, e2], uBack, uOut)) continue;
+      const uBack = { ...unit(Cn, g.nodes[P]), len: back.length };
+      const uOut = { ...unit(Cn, g.nodes[Q]), len: fwd.length };
+      if (!wedgeFree(g, C, [e1, e2], uBack, uOut)) {
+        bump('wedge');
+        continue;
+      }
+      bump('corners');
       const E1 = g.edges[e1];
       const E2 = g.edges[e2];
-      const clrP = endClear(r, idx(i - 1), turn);
-      const clrQ = endClear(r, idx(i + 1), turn);
+      // Route indices of the far junctions: the route follows each street through its bend nodes.
+      const iP = idx(i - back.edges.length);
+      const iQ = idx(i + fwd.edges.length);
+      const clrP = endClear(r, iP, turn);
+      const clrQ = endClear(r, iQ, turn);
       const h1 = E1.width / 2 + E1.sidewalk;
       const h2 = E2.width / 2 + E2.sidewalk;
 
-      // Corner cut across the inside block: the longest that fits.
-      corner: for (const dA of cfg.cornerReach) {
-        if (uBack.len - dA < clrP) continue;
-        for (const dB of cfg.cornerReach) {
-          if (Math.abs(dA - dB) > 10 || uOut.len - dB < clrQ) continue;
-          const A = { x: Cn.x + uBack.x * dA, z: Cn.z + uBack.z * dA };
-          const B = { x: Cn.x + uOut.x * dB, z: Cn.z + uOut.z * dB };
+      // Corner cut across the inside block: the longest that fits. A reach near a bend node takes the
+      // bend node (MOUTH_SNAP), so the cut is judged where its mouths will be.
+      corner: for (const dA0 of cfg.cornerReach) {
+        const dA = mouthAt(back, dA0);
+        if (Number.isNaN(dA) || uBack.len - dA < clrP) {
+          bump(Number.isNaN(dA) ? 'dA:nan' : 'dA:clrP');
+          continue;
+        }
+        for (const dB0 of cfg.cornerReach) {
+          const dB = mouthAt(fwd, dB0);
+          // (The reaches need not match: the bend nodes decide where a mouth may go.)
+          if (Number.isNaN(dB) || Math.abs(dA - dB) > cfg.cornerReach[0] - cfg.cornerReach[cfg.cornerReach.length - 1] || uOut.len - dB < clrQ) {
+            bump(Number.isNaN(dB) ? 'dB:nan' : uOut.len - dB < clrQ ? 'dB:clrQ' : 'dB:diff');
+            continue;
+          }
+          const A = chainPoint(g, back, dA);
+          const B = chainPoint(g, fwd, dB);
           const length = Math.hypot(B.x - A.x, B.z - A.z);
           const skip = dA + dB;
-          if (length < cfg.minLength || length > skip * (1 - cfg.minSave)) continue;
+          if (length < cfg.minLength || length > skip * (1 - cfg.minSave)) {
+            bump(length < cfg.minLength ? 'len:short' : 'len:save');
+            continue;
+          }
           const ab = unit(A, B);
-          if (Math.min(mouthAngle(ab, uBack), mouthAngle(ab, uOut)) < 34 * RAD) continue;
-          if (!sprintGuard(A, B) || !cornerClear(Cn, uBack, h1, uOut, h2, A, B) || !chordClear(A, B, [e1, e2])) continue;
+          if (Math.min(mouthAngle(ab, uBack), mouthAngle(ab, uOut)) < 34 * RAD) {
+            bump('mouthAngle');
+            continue;
+          }
+          if (!sprintGuard(A, B)) {
+            bump('sprintGuard');
+            continue;
+          }
+          if (!cornerClear(Cn, uBack, h1, uOut, h2, A, B)) {
+            bump('cornerClear');
+            continue;
+          }
+          if (!chordClear(A, B, [...back.edges, ...fwd.edges])) {
+            bump('chordClear');
+            continue;
+          }
+          bump('cornerCuts');
           out.push({ eA: e1, fromA: C, dA, eB: e2, fromB: C, dB, length, skip, at: cum[i] - dA, score: cutScore(skip, length) });
           break corner;
         }
       }
 
-      // U cut: this corner and the next turn the same way around one block.
-      if (!inner(idx(i + 1)) || (!r.closed && i + 2 > n - 1)) continue;
-      const turn2 = turnAt(g, r, idx(i + 1));
+      // U cut: this corner and the next (the junction at the end of the street ahead) turn the same way around one block.
+      if (!inner(iQ) || (!r.closed && iQ + 1 > n - 1) || (r.closed && fwd.edges.length >= n - 1)) continue;
+      const turn2 = turnAt(g, r, iQ);
       const deg2 = Math.abs(turn2) / RAD;
       if (deg2 < turnMin || deg2 > turnMax || Math.sign(turn2) !== Math.sign(turn)) continue;
-      const Q2 = R[idx(i + 2)];
-      if (!cornerOk(Q)) continue;
-      const e3 = edgeBetween(g, Q, Q2);
+      const Q1 = R[iQ];
+      const Q2 = R[idx(iQ + 1)];
+      if (!cornerOk(Q1)) continue;
+      const e3 = edgeBetween(g, Q1, Q2);
       if (!edgeOk(e3)) continue;
-      const Qn = g.nodes[Q];
-      const uBack2 = unit(Qn, Cn);
-      const uOut2 = unit(Qn, g.nodes[Q2]);
-      if (!wedgeFree(g, Q, [e2, e3], uBack2, uOut2)) continue;
+      const out2 = chainFrom(g, Q1, e3);
+      if (!out2.edges.every(edgeOk)) continue;
+      const Qn = g.nodes[Q1];
+      const uBack2 = { ...unit(Qn, g.nodes[R[idx(iQ - 1)]]), len: fwd.length };
+      const uOut2 = { ...unit(Qn, g.nodes[Q2]), len: out2.length };
+      if (!wedgeFree(g, Q1, [fwd.edges[fwd.edges.length - 1], e3], uBack2, uOut2)) continue;
       const E3 = g.edges[e3];
       const L1 = uOut.len;
       if (L1 < 50 || L1 > 180) continue;
-      const clrQ2 = endClear(r, idx(i + 2), turn);
-      for (const d of cfg.uReach) {
-        if (uBack.len - d < clrP || uOut2.len - d < clrQ2) continue;
-        const A = { x: Cn.x + uBack.x * d, z: Cn.z + uBack.z * d };
-        const B = { x: Qn.x + uOut2.x * d, z: Qn.z + uOut2.z * d };
+      const clrQ2 = endClear(r, idx(iQ + out2.edges.length), turn);
+      for (const d0 of cfg.uReach) {
+        const d = mouthAt(back, d0);
+        const d2 = mouthAt(out2, d0);
+        if (Number.isNaN(d) || Number.isNaN(d2) || uBack.len - d < clrP || uOut2.len - d2 < clrQ2) continue;
+        const A = chainPoint(g, back, d);
+        const B = chainPoint(g, out2, d2);
         const length = Math.hypot(B.x - A.x, B.z - A.z);
-        const skip = d + L1 + d;
+        const skip = d + L1 + d2;
         if (length < cfg.minLength || length > skip * (1 - cfg.minSave)) continue;
         const ab = unit(A, B);
         if (Math.min(mouthAngle(ab, uBack), mouthAngle(ab, uOut2)) < 55 * RAD) continue;
         if (!cornerClear(Cn, uBack, h1, uOut, h2, A, B) || !cornerClear(Qn, uBack2, h2, uOut2, E3.width / 2 + E3.sidewalk, A, B)) continue;
-        if (!sprintGuard(A, B) || !chordClear(A, B, [e1, e3])) continue;
-        out.push({ eA: e1, fromA: C, dA: d, eB: e3, fromB: Q, dB: d, length, skip, at: cum[i] - d, score: cutScore(skip, length) - 4 });
+        if (!sprintGuard(A, B) || !chordClear(A, B, [...back.edges, ...fwd.edges, ...out2.edges])) continue;
+        out.push({ eA: e1, fromA: C, dA: d, eB: e3, fromB: Q1, dB: d2, length, skip, at: cum[i] - d, score: cutScore(skip, length) - 4 });
         break;
       }
     }
@@ -1111,22 +1193,29 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
       if (!edgeOk(e)) continue;
       const a = g.nodes[R[k]];
       const u = unit(a, g.nodes[R[(k + 1) % n]]);
-      for (let d = cfg.nodeClear; d <= u.len - cfg.nodeClear; d += CHORD_STEP) spots.push({ k, d, p: { x: a.x + u.x * d, z: a.z + u.z * d }, u, e });
+      // A bend node (roadGraph.ts) is a spot itself (the mouth takes the node), and the rest of the
+      // piece keeps MOUTH_SNAP from it; a junction end keeps nodeClear as ever.
+      const bendA = isBendNode(g, R[k]);
+      if (bendA) spots.push({ k, d: 0, p: { x: a.x, z: a.z }, u, e });
+      const d0 = bendA ? BEND_CLEAR : cfg.nodeClear;
+      const d1 = isBendNode(g, R[(k + 1) % n]) ? BEND_CLEAR : cfg.nodeClear;
+      for (let d = d0; d <= u.len - d1; d += CHORD_STEP) spots.push({ k, d, p: { x: a.x + u.x * d, z: a.z + u.z * d }, u, e });
     }
     const out: Cut[] = [];
-    // A mouth on the outside of a turning junction's corner rail keeps railClear from it.
+    // A mouth on the outside of a turning junction's corner rail keeps railClear from it; a bend node is no junction.
     const clearOk = (k: number, d: number, len: number, side: number) => {
       const t0 = turnAt(g, r, k);
       const t1 = turnAt(g, r, (k + 1) % n);
-      const need0 = g.nodes[R[k]].ring ? g.nodes[R[k]].ring!.outer + cfg.railClear * 0.6 : Math.abs(t0) >= ROUTE_RAIL_MIN_TURN && Math.sign(t0) === -side ? cfg.railClear : cfg.nodeClear;
-      const need1 = g.nodes[R[(k + 1) % n]].ring ? g.nodes[R[(k + 1) % n]].ring!.outer + cfg.railClear * 0.6 : Math.abs(t1) >= ROUTE_RAIL_MIN_TURN && Math.sign(t1) === -side ? cfg.railClear : cfg.nodeClear;
+      const need0 = isBendNode(g, R[k]) ? 0 : g.nodes[R[k]].ring ? g.nodes[R[k]].ring!.outer + cfg.railClear * 0.6 : Math.abs(t0) >= ROUTE_RAIL_MIN_TURN && Math.sign(t0) === -side ? cfg.railClear : cfg.nodeClear;
+      const need1 = isBendNode(g, R[(k + 1) % n]) ? 0 : g.nodes[R[(k + 1) % n]].ring ? g.nodes[R[(k + 1) % n]].ring!.outer + cfg.railClear * 0.6 : Math.abs(t1) >= ROUTE_RAIL_MIN_TURN && Math.sign(t1) === -side ? cfg.railClear : cfg.nodeClear;
       return d >= need0 && len - d >= need1;
     };
     for (const a of spots) {
       for (const b of spots) {
         let gap = b.k - a.k;
         if (r.closed) gap = (gap + n) % n;
-        if (gap < 1 || gap > 4) continue;
+        // Up to four streets apart: the route's edges are pieces of streets (CITY.bendSegments each).
+        if (gap < 1 || gap > 4 * CITY.bendSegments) continue;
         let skip = cum[b.k] + b.d - (cum[a.k] + a.d);
         if (r.closed && skip < 0) skip += total;
         if (skip <= 0 || skip > cfg.maxSkip * total) continue;
@@ -1138,14 +1227,15 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
         const sideB = Math.sign(b.u.x * -ab.z - b.u.z * -ab.x);
         if (!clearOk(a.k, a.d, a.u.len, sideA) || !clearOk(b.k, b.d, b.u.len, sideB)) continue;
         if (!sprintGuard(a.p, b.p)) continue;
-        if (gap === 1) {
+        if (gap === 1 && !isBendNode(g, R[(a.k + 1) % n])) {
           const C = g.nodes[R[(a.k + 1) % n]];
           const E1 = g.edges[a.e];
           const E2 = g.edges[b.e];
           if (!cornerClear(C, { x: -a.u.x, z: -a.u.z }, E1.width / 2 + E1.sidewalk, b.u, E2.width / 2 + E2.sidewalk, a.p, b.p)) continue;
         }
         // Tight cities (diagonals, the river) leave narrow blocks: a fallback chord may pass closer.
-        if (!chordClear(a.p, b.p, [a.e, b.e], CHORD_CLEAR)) continue;
+        // The mouths' own streets (every piece of them) are not in the way.
+        if (!chordClear(a.p, b.p, [...chainOf(g, a.e).edges, ...chainOf(g, b.e).edges], CHORD_CLEAR)) continue;
         out.push({ eA: a.e, fromA: R[a.k], dA: a.d, eB: b.e, fromB: R[b.k], dB: b.d, length: ab.len, skip, at: cum[a.k] + a.d, score: cutScore(skip, ab.len) });
       }
     }
@@ -1167,11 +1257,17 @@ function carve(ctx: PlanContext, routes: CarveRoute[], cut: Cut, rng: Rng): void
   const bcfg = CITY.districts.backAlley;
   const g = ctx.graph;
   const split = (eid: number, from: number, d: number): number => {
-    const e = g.edges[eid];
-    const u = e.a;
-    const v = e.b;
-    const m = splitEdge(g, eid, u === from ? d / e.length : 1 - d / e.length);
-    insertSplit(routes, u, v, m);
+    // d is measured along the street from `from`: on through its bend nodes (roadGraph.ts) to the
+    // piece that holds it, which is the one split; a mouth due within MOUTH_SNAP of a bend node takes
+    // the bend node itself (already a route node, so nothing to insert).
+    const street = chainFrom(g, from, eid);
+    const before = g.nodes.length;
+    const m = splitChainAt(g, street, d, MOUTH_SNAP);
+    if (m < before) return m;
+    const piece = g.edges[g.edges.length - 1];
+    // The new piece runs from the mouth to the old far end: the split edge ran from its other end to the mouth.
+    const first = g.edges.find((x) => x.b === m && x.id !== piece.id)!;
+    insertSplit(routes, first.a, piece.b, m);
     return m;
   };
   const na = split(cut.eA, cut.fromA, cut.dA);

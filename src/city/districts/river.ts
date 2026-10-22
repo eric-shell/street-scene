@@ -32,7 +32,8 @@
  */
 import { CITY } from '../config';
 import type { RoadGraph, RoadEdge, RoadNode } from '../roadGraph';
-import { addEdge, addNode, isRiverEdge, otherNode, splitEdge } from '../roadGraph';
+import { addEdge, addNode, chains, isBendNode, isRiverEdge, mergeChains, otherNode, splitEdge, warpTerms, warpZ } from '../roadGraph';
+import type { WarpTerm } from '../roadGraph';
 import { Vec2, cos, distToSegment, segmentT, sin, sqrt } from '../../sim/math';
 import { Rng } from '../../sim/prng';
 import type { Wall } from '../blocks';
@@ -44,8 +45,33 @@ import { polyWalls, smooth01 } from './geom';
 const CFG = CITY.districts.river;
 
 /** Centerline helpers from an area's params. */
+/** Param keys of the warp terms a river carries (warpParams), one set per CITY.warp term, so riverCenter builds no strings. */
+const WARP_KEYS = CITY.warp.map((_, i) => ({ amp: `warpAmp${i}`, k: `warpK${i}`, phase: `warpPhase${i}` }));
+
+/** The seed's warp terms as river params: the channel runs between two rows of the grid, which sweep with the warp (roadGraph.ts warpZ), so the channel sweeps with them. */
+function warpParams(terms: readonly WarpTerm[]): Record<string, number> {
+  const out: Record<string, number> = { warpTerms: terms.length };
+  terms.forEach((t, i) => {
+    out[WARP_KEYS[i].amp] = t.amp;
+    out[WARP_KEYS[i].k] = t.k;
+    out[WARP_KEYS[i].phase] = t.pz;
+  });
+  return out;
+}
+
 export function riverCenter(p: Record<string, number>, x: number): number {
-  return p.zMid + p.amp * sin(p.k * x + p.phase);
+  let z = p.zMid + p.amp * sin(p.k * x + p.phase);
+  const n = p.warpTerms ?? 0;
+  for (let i = 0; i < n; i++) z += p[WARP_KEYS[i].amp] * sin(x * p[WARP_KEYS[i].k] + p[WARP_KEYS[i].phase]);
+  return z;
+}
+
+/** Slope of the centerline, dz/dx at x (the meander's and the warp terms'): what the channel's height field needs for its x gradient. */
+export function riverSlope(p: Record<string, number>, x: number): number {
+  let s = p.amp * p.k * cos(p.k * x + p.phase);
+  const n = p.warpTerms ?? 0;
+  for (let i = 0; i < n; i++) s += p[WARP_KEYS[i].amp] * p[WARP_KEYS[i].k] * cos(x * p[WARP_KEYS[i].k] + p[WARP_KEYS[i].phase]);
+  return s;
 }
 
 /** Width of the channel edges as the route sees them (the floor less the chord margin on each side). */
@@ -114,6 +140,8 @@ interface Bridge {
   len: number;
   /** Half width to the outer sidewalk line. */
   dk: number;
+  /** The deck's half extent along the river's x axis (m): dk over the sine of the crossing angle, wider for an oblique bridge (a diagonal). */
+  dkx: number;
   /** x where the edge crosses the centerline. */
   cx: number;
 }
@@ -144,7 +172,8 @@ function bridgesOf(g: RoadGraph, area: Area): Bridge[] {
       const dx = (b.x - a.x) / len;
       const dz = (b.z - a.z) / len;
       const t = crossingT(p, a, b, 0);
-      return { edge: eid, ax: a.x, az: a.z, bx: b.x, bz: b.z, dx, dz, nx: -dz, nz: dx, len, dk: e.width / 2 + e.sidewalk, cx: a.x + (b.x - a.x) * t };
+      const dk = e.width / 2 + e.sidewalk;
+      return { edge: eid, ax: a.x, az: a.z, bx: b.x, bz: b.z, dx, dz, nx: -dz, nz: dx, len, dk, dkx: dk / Math.max(0.5, Math.abs(dz)), cx: a.x + (b.x - a.x) * t };
     });
 }
 
@@ -202,7 +231,12 @@ interface RampPlan {
   /** Side ramps: the parallel street edge to split and where. Fords: the crossing edge. */
   edge: number;
   t?: number;
+  /** Side ramps: the bend node of that street the T takes instead of a split, when one lies within RAMP_SNAP (m). */
+  node?: number;
 }
+
+/** A side ramp's T node due within this far (m) of a bend node of its street lands on the bend node: a piece a few meters long has no room for the ramp's corners. */
+const RAMP_SNAP = 10;
 
 export const riverModule: DistrictModule = {
   kind: 'river',
@@ -215,10 +249,14 @@ export const riverModule: DistrictModule = {
     const F = CFG.floorHalf;
     const T = F + CFG.bankWidth;
     const H = CITY.gridH;
+    // The rows sweep with the city's warp (roadGraph.ts): their flat z (the warp's z displacement
+    // taken out) places the channel, and riverCenter puts the sweep back in, so the channel keeps
+    // its distance from both rows everywhere.
+    const warp = warpTerms(ctx.seed);
     const rowZ: number[] = [];
     for (let j = 0; j < H; j++) {
       const ns = g.nodes.filter((n) => n.gj === j);
-      rowZ.push(ns.reduce((s, n) => s + n.z, 0) / Math.max(1, ns.length));
+      rowZ.push(ns.reduce((s, n) => s + n.z - warpZ(warp, n.x), 0) / Math.max(1, ns.length));
     }
     const rows: number[] = [];
     for (let j = 2; j <= H - 4; j++) rows.push(j);
@@ -228,8 +266,9 @@ export const riverModule: DistrictModule = {
     let params: Record<string, number> | null = null;
     for (const j of rows) {
       for (const amp of [CFG.meander, 0]) {
-        const p = { zMid: (rowZ[j] + rowZ[j + 1]) / 2, amp, k, phase };
-        if (g.nodes.every((n) => Math.abs(n.z - riverCenter(p, n.x)) >= T + 20)) {
+        const p = { zMid: (rowZ[j] + rowZ[j + 1]) / 2, amp, k, phase, ...warpParams(warp) };
+        // Junctions keep clear of the channel; the crossing streets' bend nodes are straightened away below.
+        if (g.nodes.every((n) => isBendNode(g, n.id) || Math.abs(n.z - riverCenter(p, n.x)) >= T + 20)) {
           params = p;
           break;
         }
@@ -241,6 +280,18 @@ export const riverModule: DistrictModule = {
     const x1 = g.bounds.maxX + 160;
     const footprint = (g.bounds.maxX - g.bounds.minX) * 2 * T;
     if (ctx.budget.used + footprint > ctx.budget.total) return;
+    // Every street crossing the channel is straightened back into one edge from junction to junction
+    // (roadGraph.ts mergeChains): a ford splits it at ramp tops up to rampMaxRun from the channel,
+    // past its first bend node. Safe here: the river plans first, so no id is held yet.
+    {
+      const pc = params;
+      const bank = (id: number) => g.nodes[id].z - riverCenter(pc, g.nodes[id].x);
+      mergeChains(
+        g,
+        chains(g).filter((c) => bank(c.nodes[0]) * bank(c.nodes[c.nodes.length - 1]) < 0),
+      );
+      ctx.graphChanged();
+    }
     const p: Record<string, number> = { ...params, floor: F, top: T, depth: CFG.depth, x0, x1, ramps: 0, seed: rng.int(1, 0x7ffffffe) };
     const lOf = (x: number, z: number) => z - riverCenter(p, x);
     const crossing = g.edges.filter((e) => lOf(g.nodes[e.a].x, g.nodes[e.a].z) * lOf(g.nodes[e.b].x, g.nodes[e.b].z) < 0);
@@ -284,7 +335,8 @@ export const riverModule: DistrictModule = {
       if ((e.kind !== 'street' && e.kind !== 'avenue') || e.shortcut) return false;
       const a = g.nodes[e.a];
       const b = g.nodes[e.b];
-      if (Math.abs(b.x - a.x) > 0.25 * e.length) return false;
+      // Nearly square to the channel: the columns sweep with the warp (roadGraph.ts), up to about 20 degrees off.
+      if (Math.abs(b.x - a.x) > 0.35 * e.length) return false;
       if (![a, b].every((n) => Math.abs(lOf(n.x, n.z)) - F - setbackOf(n, e) >= CFG.rampMinRun)) return false;
       // No other road (a diagonal leaving the same junction, say) runs through the dip's trench or
       // plinths: no point of another road's corridor inside the ramp's rectangle on either bank.
@@ -381,8 +433,10 @@ export const riverModule: DistrictModule = {
         const b = g.nodes[e.b];
         if (Math.abs(b.x - a.x) < 0.9 * e.length) continue;
         const t = (xr - a.x) / (b.x - a.x);
-        // The T node keeps clear of the street's own junctions.
-        if (t * e.length < 18 || (1 - t) * e.length < 18) continue;
+        if (t < 0 || t > 1) continue;
+        // The T node keeps clear of the street's own junctions; a bend node (the street going on
+        // through its kink, roadGraph.ts) is none, and a T due within RAMP_SNAP of one takes it.
+        if ((!isBendNode(g, e.a) && t * e.length < 18) || (!isBendNode(g, e.b) && (1 - t) * e.length < 18)) continue;
         const la = lOf(a.x, a.z);
         const lb = lOf(b.x, b.z);
         if (la * side <= 0 || lb * side <= 0) continue;
@@ -413,7 +467,9 @@ export const riverModule: DistrictModule = {
         return false;
       });
       if (crosses) return null;
-      return { ford: false, x: xr, side, hw, body, topL: bestFront - 0.5, curbL: bestFront + best.sidewalk, edge: best.id, t: bestT };
+      const along = bestT * best.length;
+      const node = isBendNode(g, best.a) && along < RAMP_SNAP ? best.a : isBendNode(g, best.b) && best.length - along < RAMP_SNAP ? best.b : undefined;
+      return { ford: false, x: xr, side, hw, body, topL: bestFront - 0.5, curbL: bestFront + best.sidewalk, edge: best.id, t: bestT, node };
     };
     for (const xr of gaps.concat(spare).flat()) {
       if (plans.length >= want) break;
@@ -506,8 +562,13 @@ export const riverModule: DistrictModule = {
       if (piece === undefined) continue;
       const pe = g.edges[piece];
       const t = (q.x - g.nodes[pe.a].x) / (g.nodes[pe.b].x - g.nodes[pe.a].x);
-      const node = splitEdge(g, piece, t);
-      list.push(g.edges.length - 1);
+      // A T due by a bend node of its street takes the bend node (sideRamp); the ramp tilts a little toward it.
+      let node: number;
+      if (q.node !== undefined && (pe.a === q.node || pe.b === q.node)) node = q.node;
+      else {
+        node = splitEdge(g, piece, t);
+        list.push(g.edges.length - 1);
+      }
       pieces.set(q.edge, list);
       const N = g.nodes[node];
       const dims = { width: 2 * q.hw, lanes: 2 as const, sidewalk: 0 };
@@ -519,7 +580,7 @@ export const riverModule: DistrictModule = {
       pushRamp(p, q, Fp, { x: (N.x - Fp.x) / len, z: (N.z - Fp.z) / len }, edge, node, foot);
     }
     // Channel chains: feet sorted by x, grouped by the bridge gap they sit in.
-    const bridgeXs = bridgesOf(g, { ...tmp, edges }).map((b) => ({ x: b.cx, half: b.dk + CFG.bridgeBody + 2 }));
+    const bridgeXs = bridgesOf(g, { ...tmp, edges }).map((b) => ({ x: b.cx, half: b.dkx + CFG.bridgeBody + 2 }));
     const footList = [...feet.values()].sort((u, v) => g.nodes[u].x - g.nodes[v].x);
     const gapOf = (x: number) => bridgeXs.filter((b) => b.x < x).length;
     const chain = (a: number, b: number) => {
@@ -621,15 +682,17 @@ export const riverModule: DistrictModule = {
     // Height: channel profile, ramp trenches (the lower of the two wins), flattened under bridge decks.
     let lMax = T + 1;
     for (const r of ramps) lMax = Math.max(lMax, r.topL + 1);
+    // The channel sweeps with the rows (riverCenter's warp terms): the box takes in that reach too.
+    let sweep = 0;
+    for (let i = 0; i < (p.warpTerms ?? 0); i++) sweep += Math.abs(p[WARP_KEYS[i].amp]);
     b.heightMods.push({
       minX: p.x0 - 2,
       maxX: p.x1 + 2,
-      minZ: p.zMid - p.amp - lMax,
-      maxZ: p.zMid + p.amp + lMax,
+      minZ: p.zMid - p.amp - sweep - lMax,
+      maxZ: p.zMid + p.amp + sweep + lMax,
       add(x, z, out: HeightSample) {
-        const s = sin(p.k * x + p.phase);
-        const c = cos(p.k * x + p.phase);
-        const l = z - (p.zMid + p.amp * s);
+        // The centerline and its slope, meander and warp terms alike (riverCenter / riverSlope).
+        const l = z - riverCenter(p, x);
         const sg = l >= 0 ? 1 : -1;
         const al = l * sg;
         let h = 0;
@@ -652,7 +715,7 @@ export const riverModule: DistrictModule = {
           }
         }
         if (h === 0) return;
-        let gx = -gl * p.amp * p.k * c;
+        let gx = -gl * riverSlope(p, x);
         let gz = gl;
         for (const br of bridges) {
           if (Math.abs(x - br.cx) > 90) continue;
@@ -680,7 +743,8 @@ export const riverModule: DistrictModule = {
     // The trickle outranks the road classification of the channel edges, so it stays slippery; it
     // stops at every bridge body, where the deck road runs over it at street level.
     {
-      const cuts = bridges.map((br) => [br.cx - (br.dk + body + 2), br.cx + (br.dk + body + 2)]).sort((u, v) => u[0] - v[0]);
+      // Gaps along x where the decks are (an oblique bridge covers more of the strip: dkx).
+      const cuts = bridges.map((br) => [br.cx - (br.dkx + body + 2), br.cx + (br.dkx + body + 2)]).sort((u, v) => u[0] - v[0]);
       let x = p.x0;
       for (const [c0, c1] of cuts) {
         if (c0 > x + 2) b.surfaces.push({ surface: 'water', polygon: band(x, c0, CFG.waterOffset - CFG.waterHalf, CFG.waterOffset + CFG.waterHalf), priority: 6, area: id });
@@ -781,7 +845,7 @@ export const riverModule: DistrictModule = {
 
     // Clutter along the floor edges, clear of feet (closures and meets stand there) and bridge bodies.
     const rng = new Rng(p.seed >>> 0 || 1);
-    const busy = (x: number) => ramps.some((r) => Math.abs(x - r.ax) < r.hw + r.body + 14) || bridges.some((br) => Math.abs(x - br.cx) < br.dk + body + 8);
+    const busy = (x: number) => ramps.some((r) => Math.abs(x - r.ax) < r.hw + r.body + 14) || bridges.some((br) => Math.abs(x - br.cx) < br.dkx + body + 8);
     const kinds: PropKind[] = ['barrel', 'barrel', 'crate', 'trashBags', 'trashBags'];
     for (let x = p.x0 + 40; x < p.x1 - 40; x += CFG.clutterSpacing * rng.range(0.6, 1.4)) {
       if (busy(x)) continue;

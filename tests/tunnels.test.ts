@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Rng } from '../src/sim/prng';
 import { CITY } from '../src/city/config';
 import { createCity, createWorld, planRoads } from '../src/city/world';
-import { edgeBetween } from '../src/city/roadGraph';
+import { chainOf, edgeBetween } from '../src/city/roadGraph';
 import { computeMouths } from '../src/city/blocks';
 import { distToSegment } from '../src/sim/math';
 import { ridgeAt, ridgeRawAt, ridgeShape, tunnelShape } from '../src/city/districts/tunnel';
@@ -128,11 +128,27 @@ describe('tunnels and overpasses (city)', () => {
       for (const a of structures(c)) {
         if (a.kind === 'tunnel') {
           const s = tunnelShape(a);
-          const e = c.graph.edges[a.params.edge];
-          const A = c.graph.nodes[e.a];
-          const along = (s.cx - A.x) * s.ux + (s.cz - A.z) * s.uz;
-          expect(along - s.half - s.wing).toBeGreaterThanOrEqual(junctionReach(c.graph, mouths, e, e.a) - 1e-6);
-          expect(e.length - along - s.half - s.wing).toBeGreaterThanOrEqual(junctionReach(c.graph, mouths, e, e.b) - 1e-6);
+          // The bore sits on a street: a chain of pieces through bend nodes (roadGraph.ts), its
+          // junctions at the chain's ends; params.edge is the piece under the bore's middle.
+          const street = chainOf(c.graph, a.params.edge);
+          const first = c.graph.edges[street.edges[0]];
+          const last = c.graph.edges[street.edges[street.edges.length - 1]];
+          const A = c.graph.nodes[street.nodes[0]];
+          const B = c.graph.nodes[street.nodes[street.nodes.length - 1]];
+          const ux = (B.x - A.x) / Math.hypot(B.x - A.x, B.z - A.z);
+          const uz = (B.z - A.z) / Math.hypot(B.x - A.x, B.z - A.z);
+          const along = (s.cx - A.x) * ux + (s.cz - A.z) * uz;
+          expect(along - s.half - s.wing).toBeGreaterThanOrEqual(junctionReach(c.graph, mouths, first, street.nodes[0]) - 1e-6);
+          expect(street.length - along - s.half - s.wing).toBeGreaterThanOrEqual(junctionReach(c.graph, mouths, last, street.nodes[street.nodes.length - 1]) - 1e-6);
+          // Every piece it reaches over is the tunnel's.
+          for (const id of street.edges) {
+            const E = c.graph.edges[id];
+            const P = c.graph.nodes[E.a];
+            const Q = c.graph.nodes[E.b];
+            const lo = Math.min((P.x - A.x) * ux + (P.z - A.z) * uz, (Q.x - A.x) * ux + (Q.z - A.z) * uz);
+            const hi = Math.max((P.x - A.x) * ux + (P.z - A.z) * uz, (Q.x - A.x) * ux + (Q.z - A.z) * uz);
+            if (hi > along - s.half - s.wing && lo < along + s.half + s.wing) expect(a.edges).toContain(id);
+          }
           // Clear of the river channel.
           for (const r of c.districts.areas.filter((x) => x.kind === 'river')) {
             if (s.cx < r.params.x0 || s.cx > r.params.x1) continue;
@@ -177,19 +193,26 @@ describe('tunnels and overpasses (city)', () => {
         seen++;
         const r = ridgeShape(a);
         const t = tunnelShape(a);
-        // The street's corridor (road and sidewalks) gets nothing, the whole length of its edge.
-        const e = c.graph.edges[a.params.edge];
-        const A = c.graph.nodes[e.a];
-        for (let s = 0; s <= e.length; s += 2) {
-          for (const v of [-t.front - 0.2, -t.wall, 0, t.road, t.front + 0.2]) {
-            const x = A.x + t.ux * s - t.uz * v;
-            const z = A.z + t.uz * s + t.ux * v;
-            expect(at(r, x, z).h).toBe(0);
+        // The street's corridor (road and sidewalks) gets nothing, the whole length of its street
+        // (every piece of the chain through its bend nodes, roadGraph.ts; the bore stands on its chord).
+        const street = chainOf(c.graph, a.params.edge);
+        for (const id of street.edges) {
+          const e = c.graph.edges[id];
+          const A = c.graph.nodes[e.a];
+          const B = c.graph.nodes[e.b];
+          const ux = (B.x - A.x) / (e.length || 1);
+          const uz = (B.z - A.z) / (e.length || 1);
+          for (let s = 0; s <= e.length; s += 2) {
+            for (const v of [-t.front - 0.2, -t.wall, 0, t.road, t.front + 0.2]) {
+              const x = A.x + ux * s - uz * v;
+              const z = A.z + uz * s + ux * v;
+              expect(at(r, x, z).h).toBe(0);
+            }
           }
         }
         // Every other street's corridor too: nothing else crosses the ridge.
         for (const o of c.graph.edges) {
-          if (o.id === e.id) continue;
+          if (street.edges.includes(o.id)) continue;
           const P = c.graph.nodes[o.a];
           const Q = c.graph.nodes[o.b];
           for (let k = 0; k <= 20; k++) {

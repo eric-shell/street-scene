@@ -67,7 +67,7 @@ export function furnishStreets(seed: number, g: RoadGraph, mouths: EdgeMouths[],
       const ax = side.to.x - side.from.x;
       const az = side.to.z - side.from.z;
       const len = sqrt(ax * ax + az * az);
-      const gaps = sidewalkGaps(len, side.phase);
+      const gaps = sidewalkGaps(len, side.phase, side.span);
       if (gaps.length < 2) return;
       const u = { x: ax / len, z: az / len };
       const yaw = atan2(side.inward.x, side.inward.z);
@@ -79,11 +79,14 @@ export function furnishStreets(seed: number, g: RoadGraph, mouths: EdgeMouths[],
       };
       const roll = (k: Single) => rng.chance(F.chance[k][tier]);
       // Corner pieces: a hydrant at one end of the side, a mailbox at the other (either may be missing).
+      // Only an end at a junction is a corner: a piece that goes on through a bend node has none there.
       const flip = rng.chance(0.5);
       const first = gaps[0];
       const last = gaps[gaps.length - 1];
-      const atStart = (kind: FurnitureKind) => near(kind, first.lo + 0.4, Math.min(first.hi - 0.4, first.lo + F.cornerReach));
-      const atEnd = (kind: FurnitureKind) => near(kind, Math.max(last.lo + 0.4, last.hi - F.cornerReach), last.hi - 0.4);
+      const cornerStart = side.span.before <= 1e-6;
+      const cornerEnd = side.span.before + len >= side.span.total - 1e-6;
+      const atStart = (kind: FurnitureKind) => cornerStart && near(kind, first.lo + 0.4, Math.min(first.hi - 0.4, first.lo + F.cornerReach));
+      const atEnd = (kind: FurnitureKind) => cornerEnd && near(kind, Math.max(last.lo + 0.4, last.hi - F.cornerReach), last.hi - 0.4);
       if (roll('hydrant')) (flip ? atStart : atEnd)('hydrant');
       if (roll('mailbox')) (flip ? atEnd : atStart)('mailbox');
       // Mid block pieces in a random gap.

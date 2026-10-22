@@ -4,7 +4,7 @@
  * into the city for it, see districts/alley.ts) and closes off side streets.
  */
 import { CITY, ROUTE } from './config';
-import { RoadGraph, edgeBetween, isRiverEdge, otherNode } from './roadGraph';
+import { RoadGraph, chainFrom, edgeBetween, isBendNode, isRiverEdge, otherNode } from './roadGraph';
 import { EdgeMouths, Sector, Wall, buildEdgeGrid, computeMouths, computeSectors, corridorClearance, makeWall } from './blocks';
 import { Rng, deriveSeed } from '../sim/prng';
 import { shortcutSpan } from './districts/alley';
@@ -73,19 +73,77 @@ export interface RouteSample {
   seg: number;
 }
 
+/**
+ * Binary min heap of (key, node) pairs for the path searches: with the bend nodes the graph has
+ * about 500 nodes and the finders run hundreds of attempts, so a linear scan per step is too slow.
+ * Stale entries are skipped by the caller (lazy deletion). Deterministic: same pushes, same pops.
+ */
+class NodeHeap {
+  private keys: number[] = [];
+  private ids: number[] = [];
+  get size(): number {
+    return this.ids.length;
+  }
+  push(key: number, id: number): void {
+    const keys = this.keys;
+    const ids = this.ids;
+    let i = ids.length;
+    keys.push(key);
+    ids.push(id);
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (keys[p] <= key) break;
+      keys[i] = keys[p];
+      ids[i] = ids[p];
+      i = p;
+    }
+    keys[i] = key;
+    ids[i] = id;
+  }
+  /** Removes and returns the node with the smallest key (and the key through `out`). */
+  pop(out: { key: number }): number {
+    const keys = this.keys;
+    const ids = this.ids;
+    const top = ids[0];
+    out.key = keys[0];
+    const lastKey = keys.pop()!;
+    const lastId = ids.pop()!;
+    const n = ids.length;
+    if (n > 0) {
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1;
+        if (l >= n) break;
+        const r = l + 1;
+        const c = r < n && keys[r] < keys[l] ? r : l;
+        if (keys[c] >= lastKey) break;
+        keys[i] = keys[c];
+        ids[i] = ids[c];
+        i = c;
+      }
+      keys[i] = lastKey;
+      ids[i] = lastId;
+    }
+    return top;
+  }
+}
+
 function dijkstra(g: RoadGraph, from: number, to: number, weight: Float64Array, blockedNode: Uint8Array, blockedEdge: Uint8Array): number[] | null {
   const n = g.nodes.length;
   const dist = new Float64Array(n).fill(Infinity);
   const prev = new Int32Array(n).fill(-1);
   const done = new Uint8Array(n);
   dist[from] = 0;
+  const heap = new NodeHeap();
+  const popped = { key: 0 };
+  heap.push(0, from);
   for (;;) {
     let u = -1;
-    let best = Infinity;
-    for (let i = 0; i < n; i++) {
-      if (!done[i] && dist[i] < best) {
-        best = dist[i];
-        u = i;
+    while (heap.size) {
+      const v = heap.pop(popped);
+      if (!done[v] && popped.key <= dist[v]) {
+        u = v;
+        break;
       }
     }
     if (u < 0) return null;
@@ -99,6 +157,7 @@ function dijkstra(g: RoadGraph, from: number, to: number, weight: Float64Array, 
       if (nd < dist[v]) {
         dist[v] = nd;
         prev[v] = u;
+        heap.push(nd, v);
       }
     }
   }
@@ -272,6 +331,9 @@ export function findSprintNodes(g: RoadGraph, seed: number, variant = 0, want?: 
   const rng = new Rng(deriveSeed(seed, variant ? `sprint:${variant}` : 'sprint'));
   const n = g.nodes.length;
   const span = sqrt((g.bounds.maxX - g.bounds.minX) ** 2 + (g.bounds.maxZ - g.bounds.minZ) ** 2);
+  // A sprint starts and ends at a junction (its closures seal the start, and the end has a cross street
+  // to brake toward), never mid-street at a bend node.
+  const junctions = g.nodes.filter((nd) => !isBendNode(g, nd.id)).map((nd) => nd.id);
   let best: number[] | null = null;
   let bestScore = -Infinity;
   const rated: ({ nodes: number[]; score: number } | undefined)[] = [];
@@ -281,8 +343,8 @@ export function findSprintNodes(g: RoadGraph, seed: number, variant = 0, want?: 
   const attempts = rate ? ROUTE.maxAttempts * 2 : ROUTE.maxAttempts;
   for (let attempt = 0; attempt < attempts; attempt++) {
     const w = randomWeights(g, rng, want?.bias);
-    const a = rng.int(0, n - 1);
-    const b = rng.int(0, n - 1);
+    const a = junctions[rng.int(0, junctions.length - 1)];
+    const b = junctions[rng.int(0, junctions.length - 1)];
     // Through a ramp foot: the leg in by the ramp forces the leg out along the channel, or vice versa.
     const anchors = second.length && attempt % 3 === 2 ? second : (want?.anchors ?? []);
     const via = anchors.length && attempt % 3 ? anchors[rng.int(0, anchors.length - 1)] : rng.int(0, n - 1);
@@ -301,12 +363,15 @@ export function findSprintNodes(g: RoadGraph, seed: number, variant = 0, want?: 
     const p2 = dijkstra(g, via, b, w, blocked, new Uint8Array(g.edges.length));
     if (!p2) continue;
     const p = p1.concat(p2.slice(1));
-    // The first edge hosts the start grid, so it has to be long and straight enough; grid and
-    // finish stay on streets, never in the river channel or on a ramp.
-    const first = g.edges[edgeBetween(g, p[0], p[1])];
-    const last = g.edges[edgeBetween(g, p[p.length - 2], p[p.length - 1])];
+    // The first street (its pieces through bend nodes, up to the first junction) hosts the start grid,
+    // so it has to be long and straight enough; grid and finish stay on streets, never in the river
+    // channel or on a ramp.
+    const edges = polylineFrom(g, p, false);
+    const firstRun = routeRuns(g, p, edges, false)[0];
+    const first = firstRun.edges.map((e) => g.edges[e]);
+    const last = g.edges[edges[edges.length - 1]];
     // Nor across a level crossing's tracks (districts/bluff.ts).
-    if (first.length < 90 || isRiverEdge(first) || isRiverEdge(last) || first.crossing !== undefined || last.crossing !== undefined) continue;
+    if (firstRun.length < 90 || first.some((e) => isRiverEdge(e) || e.crossing !== undefined) || isRiverEdge(last) || last.crossing !== undefined) continue;
     const len = pathLength(g, p, false);
     const stats = cornerStats(g, p, false);
     if (stats.maxTurn > ROUTE.maxTurnDeg && best) continue;
@@ -332,6 +397,67 @@ function polylineFrom(g: RoadGraph, nodes: number[], closed: boolean) {
   return edges;
 }
 
+/** A straight of a route: consecutive route edges joined at bend nodes (a street between junctions, or the part of one the route uses). */
+export interface RouteRun {
+  /** Index into the route's edge list of the run's first edge. */
+  from: number;
+  /** Its edges in route order (wrapping past the end on a circuit) and their total length (m). */
+  edges: number[];
+  length: number;
+}
+
+/**
+ * The route's edges grouped into runs (RouteRun): `edges[i]` joins `nodes[i]` and `nodes[i + 1]`,
+ * and a run ends at every node that is not a pass-through bend. A circuit's runs wrap, so the run
+ * through nodes[0] starts before the end of the list. The start grid and anything that wants a
+ * route's longest straight measure these, not single edges.
+ */
+export function routeRuns(g: RoadGraph, nodes: number[], edges: number[], closed: boolean): RouteRun[] {
+  const m = edges.length;
+  const runs: RouteRun[] = [];
+  if (!m) return runs;
+  // The node before edges[i] is nodes[i]; a run starts at an edge whose start node is a junction.
+  let start = 0;
+  if (closed) while (start < m && isBendNode(g, nodes[start])) start++;
+  if (start >= m) start = 0; // a loop of bends alone (never on a real route)
+  let run: RouteRun | null = null;
+  for (let k = 0; k < m; k++) {
+    const i = (start + k) % m;
+    if (!run || !isBendNode(g, nodes[i]) || (!closed && i === 0)) {
+      run = { from: i, edges: [], length: 0 };
+      runs.push(run);
+    }
+    run.edges.push(edges[i]);
+    run.length += g.edges[edges[i]].length;
+  }
+  return runs;
+}
+
+/**
+ * Where a circuit's start line goes: the middle of its longest run that is a street (not the river's
+ * floor or a ramp, nor across a level crossing's tracks), as the index of the edge it is on in the
+ * circuit's edge list (polylineFrom order on `nodes`) and the parameter along that edge from
+ * nodes[index]. The planners that keep the start straight clear mirror buildRoute through this.
+ */
+export function circuitStart(g: RoadGraph, nodes: number[]): { index: number; t: number; run: RouteRun } {
+  const edges = polylineFrom(g, nodes, true);
+  const runs = routeRuns(g, nodes, edges, true);
+  const river = (r: RouteRun) => r.edges.some((e) => isRiverEdge(g.edges[e]) || g.edges[e].crossing !== undefined);
+  let best = runs[0];
+  for (const r of runs) {
+    const rb = river(r);
+    const bb = river(best);
+    if ((!rb && bb) || (rb === bb && r.length > best.length)) best = r;
+  }
+  let s = best.length / 2;
+  for (let k = 0; k < best.edges.length; k++) {
+    const len = g.edges[best.edges[k]].length;
+    if (s <= len || k === best.edges.length - 1) return { index: (best.from + k) % edges.length, t: clamp(len > 0 ? s / len : 0.5, 0, 1), run: best };
+    s -= len;
+  }
+  return { index: best.from, t: 0.5, run: best };
+}
+
 export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[]): Route {
   const closed = kind === 'circuit';
   let nodes = routeNodes.slice();
@@ -343,20 +469,16 @@ export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[]):
 
   if (closed) {
     // Start line in the middle of the longest straight that is a street (the grid, gantries and
-    // crowds belong on one, not on the river's floor or a ramp).
-    let li = 0;
-    edges.forEach((e, i) => {
-      // Nor across a level crossing's tracks (districts/bluff.ts).
-      const river = isRiverEdge(g.edges[e]) || g.edges[e].crossing !== undefined;
-      const riverBest = isRiverEdge(g.edges[edges[li]]) || g.edges[edges[li]].crossing !== undefined;
-      if ((!river && riverBest) || (river === riverBest && g.edges[e].length > g.edges[edges[li]].length)) li = i;
-    });
+    // crowds belong on one, not on the river's floor or a ramp): a run of pieces through bend nodes
+    // (circuitStart), so a curving street counts whole.
+    const start = circuitStart(g, nodes);
+    const li = start.index;
     nodes = nodes.slice(li + 1).concat(nodes.slice(0, li + 1));
     edges = polylineFrom(g, nodes, true);
-    // edges[last] is now the longest edge (from nodes[last] to nodes[0]).
+    // edges[last] is now the start edge (from nodes[last] to nodes[0]), the start line start.t along it.
     const A = g.nodes[nodes[nodes.length - 1]];
     const B = g.nodes[nodes[0]];
-    const mid = { x: (A.x + B.x) / 2, z: (A.z + B.z) / 2 };
+    const mid = { x: A.x + (B.x - A.x) * start.t, z: A.z + (B.z - A.z) * start.t };
     const longest = g.edges[edges[edges.length - 1]];
     points = [mid];
     segWidth = [];
@@ -647,8 +769,23 @@ function mouthBarrier(g: RoadGraph, mouths: EdgeMouths[], edge: number, node: nu
   // Across a channel the closure runs fence to fence (the banks are drivable), a hair short of the
   // fence walls; across a ramp, a hair short of its trench walls.
   const half = e.kind === 'channel' ? e.width / 2 + CITY.districts.river.channelMargin + CITY.districts.river.bankWidth + 0.2 : e.kind === 'ramp' ? e.width / 2 - 0.3 : e.width / 2 + e.sidewalk;
-  // Past the plinths of the ramps meeting at a foot, so the closure never cuts a plinth face.
-  if (e.kind === 'channel' && n.edges.some((id) => g.edges[id].kind === 'ramp')) d = Math.max(d, CITY.districts.river.closureFootClear);
+  // Past the plinths of the ramps meeting at a foot, so the closure never cuts a plinth face: a ramp
+  // tilted along the channel (one whose top took a bend node of its street, districts/river.ts)
+  // carries its trench walls further along it than a square one.
+  if (e.kind === 'channel') {
+    for (const id of n.edges) {
+      const r = g.edges[id];
+      if (r.kind !== 'ramp') continue;
+      const top = g.nodes[otherNode(r, node)];
+      const rl = sqrt((top.x - n.x) ** 2 + (top.z - n.z) ** 2) || 1;
+      const rdx = (top.x - n.x) / rl;
+      const rdz = (top.z - n.z) / rl;
+      const along = abs(rdx * dx + rdz * dz);
+      const across = abs(rdx * dz - rdz * dx);
+      const plinth = r.width / 2 + CITY.districts.river.rampBody;
+      d = Math.max(d, CITY.districts.river.closureFootClear, rl * along + plinth * across + 3.5);
+    }
+  }
   // Stay behind any corner rail that crosses this mouth (a side street leaving
   // right at the outside of a corner), so the barrier never pokes through it.
   // A rail spanning the whole mouth closes the street by itself.
@@ -697,9 +834,11 @@ function segCross(p0: Vec2, p1: Vec2, q0: Vec2, q1: Vec2): number | null {
  * Barrier groups for every closed side street of the route, in route node
  * order. Pass the route's corner rails so barriers stay behind them.
  */
-export function routeBarrierGroups(g: RoadGraph, mouths: EdgeMouths[], route: Route, rails: Wall[] = []): BarrierGroup[] {
+export function routeBarrierGroups(g: RoadGraph, mouths: EdgeMouths[], route: Route, rails: Wall[] = [], cityWalls: readonly Wall[] = []): BarrierGroup[] {
   const byNode = new Map<number, MouthBarrier[]>();
   const order = route.nodes;
+  /** A barrier line crossing a city wall (a bridge body's culvert face right where a wide junction's corners end). */
+  const crossesWall = (mb: MouthBarrier) => cityWalls.some((w) => abs(w.ax - mb.a.x) < 60 && abs(w.az - mb.a.z) < 60 && segCross(mb.a, mb.b, { x: w.ax, z: w.az }, { x: w.bx, z: w.bz }) !== null);
   for (const cs of route.closedStreets) {
     let list = byNode.get(cs.node);
     if (!list) byNode.set(cs.node, (list = []));
@@ -716,7 +855,9 @@ export function routeBarrierGroups(g: RoadGraph, mouths: EdgeMouths[], route: Ro
     const far = g.nodes[otherNode(g.edges[cs.edge], cs.node)];
     const fl = sqrt((far.x - n.x) ** 2 + (far.z - n.z) ** 2) || 1;
     const headOn = !!to && ((to.x - base.x) * (far.x - n.x) + (to.z - base.z) * (far.z - n.z)) / (il * fl) > 0.55;
-    const mb = mouthBarrier(g, mouths, cs.edge, cs.node, near, headOn ? ROUTE.barrierSetbackHeadOn : ROUTE.barrierSetbackSide);
+    let mb = mouthBarrier(g, mouths, cs.edge, cs.node, near, headOn ? ROUTE.barrierSetbackHeadOn : ROUTE.barrierSetbackSide);
+    // Set back into a wall (a bridge body starting where the corners end): stand at the mouth instead.
+    if (crossesWall(mb)) mb = mouthBarrier(g, mouths, cs.edge, cs.node, near, 0);
     mb.headOn = headOn;
     if (!mb.railed) list.push(mb);
   }
@@ -780,20 +921,21 @@ export function routeBarrierGroups(g: RoadGraph, mouths: EdgeMouths[], route: Ro
         snx += w.nx * len;
         snz += w.nz * len;
         length += len;
-        // Room behind this barrier before the far end of the side street. A ford's street piece
-        // carries straight on down its ramp (a two-way node): the room runs onto the ramp's eased
-        // lip, where a crowd can still stand.
-        const e = g.edges[b.edge];
-        const farId = otherNode(e, b.node);
+        // Room behind this barrier before the far end of the side street: the whole street through
+        // its bend nodes to the next junction. A ford's street piece carries straight on down its
+        // ramp (a two-way node): the room runs onto the ramp's eased lip, where a crowd can still stand.
+        const chain = chainFrom(g, b.node, b.edge);
+        const lastEdge = chain.edges[chain.edges.length - 1];
+        const farId = chain.nodes[chain.nodes.length - 1];
         const far = g.nodes[farId];
-        const onto = far.edges.length === 2 ? g.edges[far.edges[0] === b.edge ? far.edges[1] : far.edges[0]] : undefined;
+        const onto = far.edges.length === 2 ? g.edges[far.edges[0] === lastEdge ? far.edges[1] : far.edges[0]] : undefined;
         let room: number;
         if (onto?.kind === 'ramp') {
-          room = e.length - b.d + onto.length * CITY.districts.river.rampLip;
+          room = chain.length - b.d + onto.length * CITY.districts.river.rampLip;
         } else {
-          const other = barrierAt(b.edge, farId);
-          const farMouth = other ? other.d : mouthBarrier(g, mouths, b.edge, farId).d - 1.5;
-          room = e.length - b.d - farMouth;
+          const other = barrierAt(lastEdge, farId);
+          const farMouth = other ? other.d : mouthBarrier(g, mouths, lastEdge, farId).d - 1.5;
+          room = chain.length - b.d - farMouth;
           if (other) room /= 2;
         }
         depth = Math.min(depth, room);
@@ -846,6 +988,13 @@ function insideRun(g: RoadGraph, route: Route, i: number, dir: number, out: Vec2
     const node = g.nodes[id];
     const prev = route.nodes[(j - dir + n) % n];
     const next = route.nodes[(j + dir + n) % n];
+    if (isBendNode(g, id)) {
+      // The street goes on through its bend: the rest of it counts as the straight.
+      const N = g.nodes[next];
+      extra += sqrt((N.x - node.x) ** 2 + (N.z - node.z) ** 2);
+      j += dir;
+      continue;
+    }
     if (node.edges.length !== 3 || node.ring) break;
     const third = node.edges.find((eid) => {
       const o = otherNode(g.edges[eid], id);

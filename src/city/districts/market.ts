@@ -38,7 +38,8 @@
  */
 import { CITY, ROUTE } from '../config';
 import type { RoadGraph } from '../roadGraph';
-import { edgeBetween, isRiverEdge } from '../roadGraph';
+import { chainOf, edgeBetween, isBendNode } from '../roadGraph';
+import { circuitStart } from '../route';
 import { DEG, Vec2, abs, atan2 } from '../../sim/math';
 import { Rng } from '../../sim/prng';
 import type { PropKind } from '../props';
@@ -99,14 +100,10 @@ function routeView(g: RoadGraph, r: CarveRoute): RouteView {
   }
   const banned = new Set<number>();
   if (r.closed) {
-    // buildRoute puts the start line in the middle of the longest street edge (same rule, same order).
-    let li = 0;
-    edges.forEach((e, i) => {
-      const river = isRiverEdge(g.edges[e]);
-      const riverBest = isRiverEdge(g.edges[edges[li]]);
-      if ((!river && riverBest) || (river === riverBest && g.edges[e].length > g.edges[edges[li]].length)) li = i;
-    });
-    for (const k of [-1, 0, 1]) banned.add(edges[(li + k + m) % m]);
+    // buildRoute puts the start line in the middle of the longest street (route.ts circuitStart: a run
+    // of pieces through bend nodes); that run and the edges either side of it are out.
+    const start = circuitStart(g, r.nodes);
+    for (let k = -1; k <= start.run.edges.length; k++) banned.add(edges[(start.run.from + k + m) % m]);
   } else {
     // The finish line as buildRoute places it (on the node polyline, close enough with the margins).
     const total = cum[m];
@@ -148,7 +145,8 @@ export function planMarkets(ctx: PlanContext, routes: readonly CarveRoute[]): vo
   const tourBlock = tourBlockEdges(ctx);
   const edgeOk = (eid: number) => {
     const e = g.edges[eid];
-    return e.kind === 'street' && !e.bridge && !e.shortcut && !ctx.claims.edge.has(eid) && !tourBlock.has(eid) && e.length >= CFG.minEdge;
+    // A street is a chain of pieces through bend nodes (roadGraph.ts): its whole length qualifies it.
+    return e.kind === 'street' && !e.bridge && !e.shortcut && !ctx.claims.edge.has(eid) && !tourBlock.has(eid) && chainOf(g, eid).length >= CFG.minEdge;
   };
   // No roundabout, and no node another area claimed (alley and shortcut mouths, the El's column).
   const nodeOk = (nid: number) => !g.nodes[nid].ring && !ctx.claims.node.has(nid);
@@ -163,7 +161,8 @@ export function planMarkets(ctx: PlanContext, routes: readonly CarveRoute[]): vo
     return abs(atan2(d1x * d2z - d1z * d2x, d1x * d2x + d1z * d2z));
   };
 
-  // Every straight run of good street edges along either route, each edge set once.
+  // Every straight run of good streets along either route, junction to junction (a street's pieces
+  // through its bend nodes count as one, CFG.chain counts streets), each edge set once.
   const chains: Chain[] = [];
   const seen = new Set<string>();
   routes.forEach((r, ri) => {
@@ -174,8 +173,9 @@ export function planMarkets(ctx: PlanContext, routes: readonly CarveRoute[]): vo
       const nodes = [r.nodes[i]];
       const edges: number[] = [];
       let length = 0;
-      if (!nodeOk(nodes[0])) continue;
-      for (let k = 0; k < CFG.chain[1] && k < m; k++) {
+      let streets = 0;
+      if (!nodeOk(nodes[0]) || isBendNode(g, nodes[0])) continue;
+      for (let k = 0; streets < CFG.chain[1] && k < m; k++) {
         const idx = i + k;
         if (!r.closed && idx >= m) break;
         const eid = v.edges[idx % m];
@@ -186,7 +186,9 @@ export function planMarkets(ctx: PlanContext, routes: readonly CarveRoute[]): vo
         edges.push(eid);
         length += g.edges[eid].length;
         if (length > CFG.maxLength) break;
-        if (k + 1 < CFG.chain[0] || length < CFG.minLength) continue;
+        if (isBendNode(g, next)) continue;
+        streets++;
+        if (streets < CFG.chain[0] || length < CFG.minLength) continue;
         const key = edges.slice().sort((a, b) => a - b).join(',');
         if (seen.has(key)) continue;
         seen.add(key);
@@ -318,14 +320,17 @@ export const marketModule: DistrictModule = {
       const m = ctx.mouths[eid];
       const wallA = Math.max((m.aP.outer.x - A.x) * ux + (m.aP.outer.z - A.z) * uz, (m.aN.outer.x - A.x) * ux + (m.aN.outer.z - A.z) * uz);
       const wallB = Math.max((B.x - m.bP.outer.x) * ux + (B.z - m.bP.outer.z) * uz, (B.x - m.bN.outer.x) * ux + (B.z - m.bN.outer.z) * uz);
+      // A bend node between two of the market's pieces is no junction: stalls and pens run through it.
+      const bendA = isBendNode(g, e.a);
+      const bendB = isBendNode(g, e.b);
       for (const side of [1, -1]) {
-        const reachA = mouthReach(g, e.a, area.edges, ux, uz, outer, side);
+        const reachA = bendA ? 0 : mouthReach(g, e.a, area.edges, ux, uz, outer, side);
         // Seen from b the edge runs backwards, so its left is our right.
-        const reachB = mouthReach(g, e.b, area.edges, -ux, -uz, outer, -side);
-        const s0 = reachA + CFG.stallClear;
-        const s1 = len - reachB - CFG.stallClear;
-        const p0 = Math.max(reachA + CFG.penClear, wallA + CFG.closureClear);
-        const p1 = len - Math.max(reachB + CFG.penClear, wallB + CFG.closureClear);
+        const reachB = bendB ? 0 : mouthReach(g, e.b, area.edges, -ux, -uz, outer, -side);
+        const s0 = bendA ? 0 : reachA + CFG.stallClear;
+        const s1 = len - (bendB ? 0 : reachB + CFG.stallClear);
+        const p0 = bendA ? 0 : Math.max(reachA + CFG.penClear, wallA + CFG.closureClear);
+        const p1 = len - (bendB ? 0 : Math.max(reachB + CFG.penClear, wallB + CFG.closureClear));
         if (p1 - p0 >= CFG.penMin) {
           penLo = Math.max(penLo, p0);
           penHi = Math.min(penHi, p1);
@@ -384,6 +389,8 @@ export const marketModule: DistrictModule = {
         const rnz = -side * nz;
         const wall = (a: Vec2, c: Vec2, wx: number, wz: number) => b.walls.push({ ax: a.x, az: a.z, bx: c.x, bz: c.z, nx: wx, nz: wz, kind: 'wall', look: 'marketRail', area: area.id });
         wall(r0, r1, rnx, rnz);
+        // (At a bend node the next piece's pen starts with a cap of its own beside this one: both
+        // stand on the sidewalk behind the rail, where no car goes.)
         wall(r0, o0, -ux, -uz);
         wall(r1, o1, ux, uz);
         b.frontLooks.push({

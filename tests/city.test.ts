@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { Rng, hashString, seedFromString } from '../src/sim/prng';
-import { generateRoadGraph, graphIsConnected, edgeBetween } from '../src/city/roadGraph';
+import { generateRoadGraph, graphIsConnected, edgeBetween, chains, isBendNode, otherNode, sectorAngle, turnAt } from '../src/city/roadGraph';
 import { buildRoute, routeSample } from '../src/city/route';
 import { createCity, createWorld, planRoads } from '../src/city/world';
 import { CITY, ROUTE } from '../src/city/config';
 import { createTerrain } from '../src/city/terrain';
-import { distToSegment, segmentT } from '../src/sim/math';
+import { DEG, distToSegment, segmentT } from '../src/sim/math';
 import { WALL_LOOKS } from '../src/city/districts/types';
 import { insideBuilding, BUILDING_SETBACK } from '../src/city/blocks';
 import { pointInPolygon, polygonCentroid } from '../src/city/districts/geom';
@@ -123,7 +123,12 @@ describe('city generation', () => {
       // Long runout past the finish, and the finish line clear of intersections.
       expect(sprint.length - sprint.finishS).toBeGreaterThanOrEqual(ROUTE.sprintFinishOffset);
       expect(sprint.finishS - sprint.startS).toBeGreaterThan(1000);
-      for (let k = 1; k + 1 < sprint.cum.length; k++) expect(Math.abs(sprint.finishS - sprint.cum[k])).toBeGreaterThanOrEqual(ROUTE.sprintFinishNodeClear - 1e-9);
+      // (A bend node, where a street goes on through its kink, is no intersection: the route passes it as a point.)
+      const bendAt = new Set(g.nodes.filter((n) => isBendNode(g, n.id)).map((n) => `${n.x},${n.z}`));
+      for (let k = 1; k + 1 < sprint.cum.length; k++) {
+        if (bendAt.has(`${sprint.points[k].x},${sprint.points[k].z}`)) continue;
+        expect(Math.abs(sprint.finishS - sprint.cum[k])).toBeGreaterThanOrEqual(ROUTE.sprintFinishNodeClear - 1e-9);
+      }
 
       if (
         circuit.length >= ROUTE.circuitMinLength &&
@@ -1153,5 +1158,89 @@ describe('alleys', () => {
     expect(clutter.routeShortcut).toBeGreaterThan(length.routeShortcut / 2.5);
     expect(clutter.backAlley).toBeGreaterThan(length.backAlley / 4);
     expect(works).toBeGreaterThan(30);
+  });
+});
+
+describe('street curves', () => {
+  it('warps the grid into sweeping streets: junction angles vary, bend nodes turn gently, sectors stay wide', () => {
+    let near90 = 0;
+    let junctionSectors = 0;
+    let bends = 0;
+    let maxBend = 0;
+    let minSector = Infinity;
+    for (let s = 1; s <= 60; s++) {
+      const g = generateRoadGraph(s * 7919 + 13);
+      expect(graphIsConnected(g)).toBe(true);
+      // Grid junctions keep their ids (j * W + i); every bend node comes after them.
+      for (let i = 0; i < CITY.gridW * CITY.gridH; i++) expect(g.nodes[i].gi).toBe(i % CITY.gridW);
+      // Every street between two junctions is CITY.bendSegments pieces of one chain through bend nodes.
+      for (const c of chains(g)) {
+        expect(c.edges.length).toBe(CITY.bendSegments);
+        expect(c.edges.every((e) => g.edges[e].chain === g.edges[c.edges[0]].chain)).toBe(true);
+      }
+      for (const n of g.nodes) {
+        if (n.bend) {
+          expect(n.edges.length).toBe(2);
+          expect(n.gi).toBe(-1);
+          const a = otherNode(g.edges[n.edges[0]], n.id);
+          const b = otherNode(g.edges[n.edges[1]], n.id);
+          maxBend = Math.max(maxBend, turnAt(g, a, n.id, b) / DEG);
+          bends++;
+          continue;
+        }
+        for (let k = 0; k < n.edges.length; k++) {
+          const angle = sectorAngle(g, n, k) / DEG;
+          if (n.edges.length >= 2) minSector = Math.min(minSector, angle);
+          if (n.edges.length >= 3 && angle < 180) {
+            junctionSectors++;
+            if (Math.abs(angle - 90) <= 5) near90++;
+          }
+        }
+      }
+    }
+    expect(bends).toBeGreaterThan(60 * 300);
+    // A square grid has nearly every junction angle at 90 degrees; the warp spreads them out.
+    expect(near90 / junctionSectors).toBeLessThan(0.45);
+    expect(maxBend).toBeLessThan(12);
+    expect(minSector).toBeGreaterThanOrEqual(CITY.minSectorDeg - 1e-6);
+    // Same seed, same graph.
+    expect(JSON.stringify(generateRoadGraph(99))).toBe(JSON.stringify(generateRoadGraph(99)));
+  });
+
+  it('routes run through the bends: both routes build with their stats in range, clean miters at bend nodes, nothing of a junction at one', () => {
+    const rng = new Rng(2929);
+    for (let i = 0; i < 8; i++) {
+      const seed = rng.int(0, 0x7fffffff);
+      const city = createCity(seed);
+      const g = city.graph;
+      for (const n of g.nodes) {
+        if (!isBendNode(g, n.id)) continue;
+        // A bend node's two corners are single miter points, within a hair of the half width.
+        for (const s of city.blocks.sectors[n.id]) {
+          expect(s.curb.length).toBe(1);
+          const e = g.edges[n.edges[0]];
+          expect(Math.abs(Math.hypot(s.curb[0].x - n.x, s.curb[0].z - n.z) - e.width / 2)).toBeLessThan(0.1);
+        }
+      }
+      for (const kind of ['circuit', 'sprint'] as const) {
+        const w = createWorld(seed, kind, city);
+        const r = w.route;
+        expect(r.nodes.some((id) => isBendNode(g, id))).toBe(true);
+        if (kind === 'circuit') {
+          expect(r.length).toBeGreaterThan(ROUTE.circuitMinLength * 0.7);
+          expect(r.length).toBeLessThan(ROUTE.circuitMaxLength * 1.3);
+        } else {
+          expect(r.length).toBeGreaterThan(ROUTE.sprintMinLength * 0.7);
+          expect(r.length).toBeLessThan(ROUTE.sprintMaxLength * 1.3);
+        }
+        expect(r.checkpoints.length).toBeGreaterThanOrEqual(8);
+        expect(r.checkpoints.length).toBeLessThanOrEqual(40);
+        // Nothing of a junction's at a bend node: no closure, no traffic light.
+        for (const b of w.barrierGroups) expect(isBendNode(g, b.node)).toBe(false);
+        for (const p of w.props) if (p.kind === 'trafficLight') expect(isBendNode(g, p.node!)).toBe(false);
+        // The start straight is long enough for the grid whatever the pieces: every slot on the road (cobbled in a raceway alley).
+        for (const slot of r.grid) expect(['road', 'cobble']).toContain(w.surfaceAt(slot.x, slot.z));
+      }
+    }
   });
 });

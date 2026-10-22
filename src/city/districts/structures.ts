@@ -17,8 +17,8 @@
  *    streets) and the other structures.
  */
 import { CITY, ROUTE } from '../config';
-import type { RoadEdge, RoadGraph, RoadNode } from '../roadGraph';
-import { isRiverEdge } from '../roadGraph';
+import type { Chain, RoadEdge, RoadGraph, RoadNode } from '../roadGraph';
+import { chainCum, chainOf, isBendNode } from '../roadGraph';
 import type { EdgeMouths } from '../blocks';
 import { Vec2, distToSegment, sqrt } from '../../sim/math';
 import { Rng, deriveSeed } from '../../sim/prng';
@@ -27,6 +27,7 @@ import { HillShape, plateauDistance, shapeOf } from './hills';
 import { riverCenter } from './river';
 import { bluffFootprint } from './bluff';
 import { distToPolygonEdge, pointInPolygon } from './geom';
+import { circuitStart, routeRuns } from '../route';
 
 /** Street local frame: origin on the centerline, u along the street (unit), v across it along (-uz, ux) (the right of travel along +u, yaw convention of sim/math). */
 export interface Frame {
@@ -58,6 +59,61 @@ export function edgeFrame(g: RoadGraph, e: RoadEdge, s: number): Frame {
   return { cx: a.x + ux * s, cz: a.z + uz * s, ux, uz };
 }
 
+/**
+ * A street between two junctions as a run: its chain (roadGraph.ts), the polyline of its nodes
+ * and the distance along it at each (m). Structures that need a stretch of street longer than one
+ * piece (a bore, a lane closure) measure along the run and stand on a straight chord of it.
+ */
+export interface StreetRun {
+  chain: Chain;
+  pts: Vec2[];
+  cum: number[];
+  length: number;
+}
+
+export function streetRun(g: RoadGraph, chain: Chain): StreetRun {
+  return { chain, pts: chain.nodes.map((id) => ({ x: g.nodes[id].x, z: g.nodes[id].z })), cum: chainCum(g, chain), length: chain.length };
+}
+
+/** Index of the piece of a run that holds distance s along it. */
+export function runPiece(run: StreetRun, s: number): number {
+  let i = 0;
+  while (i + 1 < run.chain.edges.length && run.cum[i + 1] <= s) i++;
+  return i;
+}
+
+/** Point at distance s along a run. */
+export function runPoint(run: StreetRun, s: number): Vec2 {
+  const i = runPiece(run, s);
+  const a = run.pts[i];
+  const b = run.pts[i + 1];
+  const len = run.cum[i + 1] - run.cum[i] || 1;
+  const t = Math.max(0, Math.min(1, (s - run.cum[i]) / len));
+  return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t };
+}
+
+/**
+ * A straight frame on the chord of a run between distances s0 and s1 along it (origin at the
+ * chord's middle, u along the chord), and how far the street strays from that chord between them
+ * (m): the most any bend node in the span is off the chord. A structure built in the frame is
+ * straight; its site is good when the stray is within what its walkways and walls allow.
+ */
+export function chordFrame(run: StreetRun, s0: number, s1: number): { f: Frame; stray: number } {
+  const p0 = runPoint(run, s0);
+  const p1 = runPoint(run, s1);
+  const len = sqrt((p1.x - p0.x) ** 2 + (p1.z - p0.z) ** 2) || 1;
+  const ux = (p1.x - p0.x) / len;
+  const uz = (p1.z - p0.z) / len;
+  let stray = 0;
+  for (let i = 1; i + 1 < run.pts.length; i++) {
+    if (run.cum[i] <= s0 || run.cum[i] >= s1) continue;
+    const p = run.pts[i];
+    const d = (p.x - p0.x) * -uz + (p.z - p0.z) * ux;
+    if (d < 0 ? -d > stray : d > stray) stray = d < 0 ? -d : d;
+  }
+  return { f: { cx: (p0.x + p1.x) / 2, cz: (p0.z + p1.z) / 2, ux, uz }, stray };
+}
+
 /** Extra room kept past a junction's closure line (m), as for the El's columns. */
 const CLOSURE_GAP = 3.5;
 /** Extra room kept past the end of a corner rail (m): its rounded corner and fillet. */
@@ -69,6 +125,8 @@ const RAIL_GAP = 3;
  * head-on closure or a corner rail reaches further into the street.
  */
 export function junctionReach(g: RoadGraph, mouths: EdgeMouths[], e: RoadEdge, at: number): number {
+  // A bend node is not a junction: the street simply goes on through it (roadGraph.ts).
+  if (isBendNode(g, at)) return 0;
   const n = g.nodes[at];
   const o = g.nodes[at === e.a ? e.b : e.a];
   const len = sqrt((o.x - n.x) ** 2 + (o.z - n.z) ** 2) || 1;
@@ -169,11 +227,16 @@ export function siteClear(hz: SiteHazards, x: number, z: number, margin: number)
   return true;
 }
 
-/** Least distance (m) from (x, z) to the corridor (road plus sidewalks) of any edge but `skip`, negative inside one. */
-export function corridorGap(g: RoadGraph, x: number, z: number, skip = -1): number {
+/** The pieces of edge `eid`'s street (every edge of its chain through the bend nodes, roadGraph.ts), as a set: what a structure on that street skips when it checks the other streets. */
+export function streetEdges(g: RoadGraph, eid: number): Set<number> {
+  return new Set(chainOf(g, eid).edges);
+}
+
+/** Least distance (m) from (x, z) to the corridor (road plus sidewalks) of any edge but those in `skip` (an edge id or a set of them), negative inside one. */
+export function corridorGap(g: RoadGraph, x: number, z: number, skip: number | ReadonlySet<number> = -1): number {
   let best = Infinity;
   for (const e of g.edges) {
-    if (e.id === skip) continue;
+    if (typeof skip === 'number' ? e.id === skip : skip.has(e.id)) continue;
     const a = g.nodes[e.a];
     const b = g.nodes[e.b];
     const d = distToSegment(x, z, a.x, a.z, b.x, b.z) - (e.width / 2 + e.sidewalk);
@@ -209,17 +272,13 @@ export function raceStreets(ctx: PlanContext): { route: Set<number>; ends: Set<n
     for (const e of edges) route.add(e);
     if (!edges.length) continue;
     if (r.closed) {
-      // The circuit starts and finishes mid-way along its longest street (route.ts buildRoute).
-      let li = 0;
-      edges.forEach((e, i) => {
-        const river = isRiverEdge(g.edges[e]);
-        const riverBest = isRiverEdge(g.edges[edges[li]]);
-        if ((!river && riverBest) || (river === riverBest && g.edges[e].length > g.edges[edges[li]].length)) li = i;
-      });
-      ends.add(edges[li]);
+      // The circuit starts and finishes mid-way along its longest street (route.ts circuitStart): the
+      // whole run of pieces through bend nodes is the start straight.
+      for (const e of circuitStart(g, r.nodes).run.edges) ends.add(e);
     } else {
-      // A sprint's grid is on its first street; its finish line ROUTE.sprintFinishOffset before the end.
-      ends.add(edges[0]);
+      // A sprint's grid is on its first street (its first run of pieces); its finish line
+      // ROUTE.sprintFinishOffset before the end.
+      for (const e of routeRuns(g, r.nodes, edges, false)[0].edges) ends.add(e);
       let total = 0;
       for (const e of edges) total += g.edges[e].length;
       const lo = total - ROUTE.sprintFinishOffset - 2 * ROUTE.sprintFinishNodeClear - 20;

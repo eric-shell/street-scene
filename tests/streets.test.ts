@@ -98,7 +98,8 @@ describe('curbs', () => {
     const g = w.graph;
     let streets = 0;
     for (const e of g.edges) {
-      if (e.kind !== 'street' || e.length < 100 || e.bridge || e.shortcut || streets >= 20) continue;
+      // (Streets are pieces of about 47 m through bend nodes, roadGraph.ts: any plain piece will do.)
+      if (e.kind !== 'street' || e.length < 40 || e.bridge || e.shortcut || streets >= 20) continue;
       const A = g.nodes[e.a];
       const B = g.nodes[e.b];
       const ux = (B.x - A.x) / e.length;
@@ -138,7 +139,8 @@ describe('curbs', () => {
   it('carry a car up onto the sidewalk, the same way every time', () => {
     const w = createWorld(11, 'circuit', undefined, { openWorld: true });
     const g = w.graph;
-    const e = g.edges.filter((x) => x.kind === 'street' && x.length > 130 && !x.bridge && !x.shortcut).sort((a, b) => b.length - a.length)[3];
+    // The fourth longest plain street piece (pieces run about 47 m between bend nodes, roadGraph.ts).
+    const e = g.edges.filter((x) => x.kind === 'street' && x.length > 40 && !x.bridge && !x.shortcut).sort((a, b) => b.length - a.length)[3];
     const A = g.nodes[e.a];
     const B = g.nodes[e.b];
     const ux = (B.x - A.x) / e.length;

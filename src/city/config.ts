@@ -5,6 +5,26 @@ export const CITY = {
   spacing: 140,
   /** Max random offset of grid nodes. Kept small so sectors stay wider than MIN_SECTOR_DEG. */
   jitter: 12,
+  /**
+   * Smooth warp of the whole grid (roadGraph.ts warpField): every point moves by a sum of sine
+   * waves of the other axis, x += amp * sin(z * 2pi / wavelength + phase) and z likewise of x, with
+   * phases from the seed. Rows and columns sweep instead of running straight, junction angles vary
+   * and blocks are no longer rectangles. A term swings a street's heading by up to amp * 2pi /
+   * wavelength (rad) and bends it by up to amp * (2pi / wavelength)^2 (rad/m): the long term is the
+   * sweep across the map (about 10 degrees of heading, one slow arc), the short one the local
+   * wobble that makes junction angles range about 65-115 degrees and puts most of the curvature in
+   * (about 2.5 degrees per 47 m piece at its steepest). amp in m, wavelength in m.
+   */
+  warp: [
+    { amp: 34, wavelength: 1250 },
+    { amp: 7, wavelength: 500 },
+  ],
+  /**
+   * Pieces every grid street is cut into (roadGraph.ts subdivideEdges), through degree-2 bend nodes
+   * on the warped line between its junctions, so the street follows the warp as a curve instead of
+   * a straight chord: 3 makes about 47 m pieces, bending about 1-3 degrees at each node.
+   */
+  bendSegments: 3,
   /** Fraction of ordinary grid edges we try to remove. */
   removeFraction: 0.14,
   diagonalCount: 2,
