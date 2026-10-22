@@ -71,13 +71,15 @@ export interface GaragePrefs {
   linkAxles: boolean;
   /** Front and rear wheels share one color. */
   linkWheelColor: boolean;
+  /** Front and rear wear the same wheel and tire. */
+  linkWheels: boolean;
 }
 
 const PREFS_KEY = 'garage.prefs.v1';
 
 export function loadGaragePrefs(): GaragePrefs {
   const o = loadJson<Partial<GaragePrefs> | null>(PREFS_KEY, null) ?? {};
-  return { presentation: o.presentation === 'street' ? 'street' : 'garage', linkAxles: o.linkAxles !== false, linkWheelColor: o.linkWheelColor !== false };
+  return { presentation: o.presentation === 'street' ? 'street' : 'garage', linkAxles: o.linkAxles !== false, linkWheelColor: o.linkWheelColor !== false, linkWheels: o.linkWheels !== false };
 }
 
 /** Private mode or a full store: the preferences just do not persist. */
@@ -103,6 +105,9 @@ const SHORT: Record<string, string> = {
   parts: 'pt',
   wheels: 'wh',
   rearColor: 'rc',
+  rearPart: 'rp',
+  tire: 'ty',
+  rearTire: 'rt',
   size: 'sz',
   decals: 'dc',
   shape: 'sh',

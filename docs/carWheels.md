@@ -48,7 +48,7 @@ Material names on wheel models carry no meaning (`Material.026`, `blinn1`, `Main
 
    Both are smooth shaded about the axle.
 
-Materials: wheel face and ring `Rim` (the player's wheel colour), cap `Chrome`, tire `Tire`. The game finds the bead where the `Tire` mesh meets the rest, so the size slider works on every wheel (`src/render/car/wheelFit.ts`).
+Materials: wheel face and ring `Rim` (the player's wheel colour), cap `Chrome`, tire `Tire`. The game finds the bead where the `Tire` mesh meets the rest, so the size slider works on every wheel (`src/render/car/wheelFit.ts`). The house tire is the garage's Standard tire; Meaty, Mild stretch and Aggressive stretch are lathed at runtime in its place, fitted to its bead and tread (`src/render/car/tireShapes.ts`), so every wheel wears every shape.
 
 ## 4. Recipe overrides
 

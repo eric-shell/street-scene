@@ -60,7 +60,7 @@ describe('build validation', () => {
     b.visual.paint = { color: '#19e6ff', finish: 'pearl' };
     b.visual.parts = { spoiler: 'protoHatch_spoiler_1', frontBumper: 'protoHatch_frontBumper_kurogane', wheels: 'wheel_rensa' };
     b.visual.decals.push({ shape: 'number', color: '#ff3df2', pos: [0.9, 0.6, 0.2], normal: [1, 0, 0], rotation: 12, scale: 0.7, mirror: true, text: '42' });
-    b.visual.wheels = { color: '#ffcc00', rearColor: '#1a1b1f' };
+    b.visual.wheels = { color: '#ffcc00', rearColor: '#1a1b1f', rearPart: 'wheel_kiba', tire: 'meaty', rearTire: 'aggressiveStretch' };
     b.visual.underglow = { enabled: true, color: '#ff00aa', color2: '#00ffaa', pattern: 'chase', brightness: 1.4, speed: 2, size: 1.2 };
     b.visual.stance = { rideHeight: -0.045, front: { camber: -3.5, offset: 0.015, wheelSize: 1.05 }, rear: { camber: -7, offset: 0.05, wheelSize: 1.2 } };
     b.performance.engine = 3;
@@ -87,8 +87,13 @@ describe('build validation', () => {
     expect(b.visual.stance.front).toEqual({ camber: -4, offset: 0.02, wheelSize: 1.1 });
     expect(b.visual.stance.rear).toEqual({ camber: -6, offset: 0.02, wheelSize: 1.1 });
     // A legacy single wheel color paints both axles; a rear color of its own is kept.
-    expect(b.visual.wheels).toEqual({ color: '#ffffff', rearColor: '#ffffff' });
-    expect(validateBuild({ visual: { wheels: { color: '#ffffff', rearColor: '#1a1b1f' } } }).visual.wheels).toEqual({ color: '#ffffff', rearColor: '#1a1b1f' });
+    expect(b.visual.wheels).toMatchObject({ color: '#ffffff', rearColor: '#ffffff' });
+    expect(validateBuild({ visual: { wheels: { color: '#ffffff', rearColor: '#1a1b1f' } } }).visual.wheels).toMatchObject({ color: '#ffffff', rearColor: '#1a1b1f' });
+    // Builds from before per axle wheels and tires wear the front's wheel and the standard tire all round.
+    expect(b.visual.wheels).toMatchObject({ rearPart: null, tire: 'standard', rearTire: 'standard' });
+    // A rear tire of its own is kept; a missing one follows the front, an unknown one falls back.
+    expect(validateBuild({ visual: { wheels: { tire: 'mildStretch' } } }).visual.wheels).toMatchObject({ tire: 'mildStretch', rearTire: 'mildStretch' });
+    expect(validateBuild({ visual: { wheels: { tire: 'meaty', rearTire: 'bald', rearPart: 'wheel_protoHatch_1' } } }).visual.wheels).toMatchObject({ tire: 'meaty', rearTire: 'meaty', rearPart: 'wheel_ginga' });
     // New per axle values win over legacy ones and are clamped independently.
     const n = validateBuild({ visual: { stance: { camberFront: -4, front: { camber: -2, offset: 0.5, wheelSize: 0.9 }, rear: { wheelSize: 2 } } } });
     expect(n.visual.stance.front).toEqual({ camber: -2, offset: 0.08, wheelSize: 0.9 });
@@ -105,7 +110,7 @@ describe('build validation', () => {
     expect(b!.visual.stance.rideHeight).toBe(-0.03);
     expect(b!.visual.stance.front).toEqual({ camber: -6, offset: 0.04, wheelSize: 1.15 });
     expect(b!.visual.stance.rear).toEqual({ camber: -8.5, offset: 0.04, wheelSize: 1.15 });
-    expect(b!.visual.wheels).toEqual({ color: '#ffcc00', rearColor: '#ffcc00' });
+    expect(b!.visual.wheels).toEqual({ color: '#ffcc00', rearColor: '#ffcc00', rearPart: null, tire: 'standard', rearTire: 'standard' });
     // Saved before the cars were renamed: the wheel id follows the rename.
     expect(b!.visual.parts.wheels).toBe('wheel_rensa');
     expect(b!.performance.engine).toBe(2);

@@ -36,7 +36,7 @@ import { Help, MUSIC_KEYS, type HelpKey } from '../ui/panels/help';
 import { uiWhoosh } from '../audio/uiSound';
 import { GaragePrefs, GarageState, MAX_SLOTS, Presentation, addSlot, decodeShareCode, encodeShareCode, freshBuild, importBuild, loadGaragePrefs, saveGaragePrefs, shareUrl } from './storage';
 import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PART_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
-import { AXLES, Axle, AxleStance, BUILD_NAME_MAX, CarBuild, DEFAULT_BUILD_NAME, DecalLayer, GLOW_PATTERNS, MAX_DECALS, PAINT_FINISHES, STANCE_LIMITS, VINYL_SHAPES, VinylShape, validateBuild } from '../shared/carBuild';
+import { AXLES, Axle, AxleStance, BUILD_NAME_MAX, CarBuild, DEFAULT_BUILD_NAME, DecalLayer, GLOW_PATTERNS, MAX_DECALS, PAINT_FINISHES, STANCE_LIMITS, TireShape, VINYL_SHAPES, VinylShape, validateBuild } from '../shared/carBuild';
 import { DEFAULT_CAR_ID, PERFORMANCE_CATEGORIES, PerformanceCategory, SELECTABLE_CAR_IDS, TIER_NAMES, Tier, getBaseTuning } from '../sim/tuning';
 import { tuningForBuild } from '../sim/build';
 import { FEATURES } from '../shared/features';
@@ -82,21 +82,21 @@ import {
 } from '../ui/kit/icons';
 import { Link2, Link2Off } from 'lucide';
 
-type Tab = 'car' | 'body' | 'paint' | 'wheels' | 'vinyl' | 'stance' | 'tint' | 'glow' | 'perf';
+type Tab = 'model' | 'stance' | 'wheels' | 'body' | 'paint' | 'vinyl' | 'tint' | 'neon' | 'tune';
 
 /** The garage's steps: pick a build, then customize it. */
 type Step = 'builds' | 'build';
 
 const TABS: { id: Tab; label: string; icon: IconNode }[] = [
-  { id: 'car', label: 'Car', icon: Car },
+  { id: 'model', label: 'Model', icon: Car },
+  { id: 'stance', label: 'Stance', icon: ArrowUpDown },
+  { id: 'wheels', label: 'Wheels', icon: Disc3 },
   { id: 'body', label: 'Body', icon: Hammer },
   { id: 'paint', label: 'Paint', icon: Paintbrush },
-  { id: 'wheels', label: 'Wheels', icon: Disc3 },
   ...(FEATURES.vinyls ? [{ id: 'vinyl' as Tab, label: 'Vinyls', icon: Layers }] : []),
-  { id: 'stance', label: 'Stance', icon: ArrowUpDown },
   { id: 'tint', label: 'Tint', icon: Eye },
-  { id: 'glow', label: 'Neon', icon: Sparkles },
-  { id: 'perf', label: 'Tune', icon: Gauge },
+  { id: 'neon', label: 'Neon', icon: Sparkles },
+  { id: 'tune', label: 'Tune', icon: Gauge },
 ];
 
 /** Each spec tag's ink by its place in specBadges (drivetrain cyan, engine yellow, forced induction red): `.ink-*` in _tune-stat.scss. */
@@ -249,6 +249,14 @@ function choiceList<T extends string | number | null>(items: Choice<T>[], curren
   return list;
 }
 
+/** The tire shapes as the Wheels tab lists them (TIRE_SHAPES' order, render/car/tireShapes.ts draws them). */
+const TIRE_CHOICES: Choice<TireShape>[] = [
+  { value: 'meaty', label: 'Meaty', sub: 'Bulky square race tire' },
+  { value: 'standard', label: 'Standard', sub: 'Everyday sidewall' },
+  { value: 'mildStretch', label: 'Mild stretch', sub: 'Slightly angled sidewall' },
+  { value: 'aggressiveStretch', label: 'Aggressive stretch', sub: 'Steeply angled sidewall' },
+];
+
 /** Slider readouts: a length (m) in cm, a factor as a percent. */
 const cm = (x: number) => `${Math.round(x * 100)} cm`;
 const percent = (x: number) => `${Math.round(x * 100)}%`;
@@ -267,12 +275,14 @@ export class GarageScreen {
   private root: HTMLElement;
   private body: HTMLElement;
   private tabBar: HTMLElement;
-  private tab: Tab = 'car';
+  private tab: Tab = 'model';
   private step: Step = 'builds';
   /** The steps, sliding in the rail's column above the Save button. */
   private readonly steps: RailSteps;
   /** The Body tab's part slot on show: one at a time, so the tab never scrolls through all of them. */
   private bodySlot: PartSlot = 'body';
+  /** The axle the Wheels tab's wheel and tire picks dress while front and rear are unlinked. */
+  private wheelAxle: Axle = 'front';
   /** The current slot as last saved (JSON): the build differs from it while it has unsaved changes. */
   private savedJson: string;
   /** The Save button and the discard button beside it, under both steps. */
@@ -905,9 +915,11 @@ export class GarageScreen {
         offset: { label: 'Wheel offset', min: L[0], max: L[1], step: 0.005, fmt: cm, toUi: id, fromUi: id },
         wheelSize: car
           ? (() => {
-              const min = Math.ceil(car.wheelInches(L[0]) - 1e-6);
-              const max = Math.floor(car.wheelInches(L[1]) + 1e-6);
-              return { label: 'Wheel size', min, max, step: 1, fmt: (x: number) => `${x} in`, toUi: (x: number) => Math.max(min, Math.min(max, Math.round(car.wheelInches(x)))), fromUi: (x: number) => car.wheelSizeForInches(x) };
+              // Front and rear may wear different wheels, so each axle measures its own.
+              const ax = axle === 'front' ? 0 : 1;
+              const min = Math.ceil(car.wheelInches(L[0], ax) - 1e-6);
+              const max = Math.floor(car.wheelInches(L[1], ax) + 1e-6);
+              return { label: 'Wheel size', min, max, step: 1, fmt: (x: number) => `${x} in`, toUi: (x: number) => Math.max(min, Math.min(max, Math.round(car.wheelInches(x, ax)))), fromUi: (x: number) => car.wheelSizeForInches(x, ax) };
             })()
           : { label: 'Wheel size', min: L[0], max: L[1], step: 0.01, fmt: percent, toUi: id, fromUi: id },
       }[key];
@@ -931,7 +943,7 @@ export class GarageScreen {
     };
 
     switch (this.tab) {
-      case 'car': {
+      case 'model': {
         // Only real, imported cars; a disabled tile at the end promises more.
         const imported = MANIFEST.cars.filter((c) => SELECTABLE_CAR_IDS.includes(c.id) && this.availability[c.id] !== false);
         const cars = imported.length ? imported : MANIFEST.cars.filter((c) => SELECTABLE_CAR_IDS.includes(c.id));
@@ -1030,16 +1042,58 @@ export class GarageScreen {
       }
       case 'wheels': {
         const wheels = partsFor(b.carId, 'wheels');
+        const w = v.wheels;
+        // Linked, a pick dresses all four; unlinked, the axle switch says which pair the picks dress.
+        const linked = this.prefs.linkWheels;
+        const rear = !linked && this.wheelAxle === 'rear';
+        const front = v.parts.wheels ?? manifestCar(b.carId).defaultWheel;
+        const axleName = linked ? '' : rear ? 'Rear ' : 'Front ';
         this.body.append(
           section(
-            'Wheels',
+            linked ? 'Wheels' : `${axleName}wheels`,
+            linked
+              ? this.wheelLinkToggle()
+              : h(
+                  'div',
+                  { class: 'row' },
+                  segmented(
+                    AXLES.map((a) => ({ value: a, label: a === 'front' ? 'Front' : 'Rear' })),
+                    this.wheelAxle,
+                    (a) => {
+                      this.wheelAxle = a;
+                      this.renderTab();
+                    },
+                  ),
+                  this.wheelLinkToggle(),
+                ),
             choiceList(
               wheels.map((p) => ({ value: p.id, label: p.displayName })),
-              v.parts.wheels ?? manifestCar(b.carId).defaultWheel,
+              rear ? (w.rearPart ?? front) : front,
               (id) => {
-                v.parts.wheels = id;
+                if (rear) w.rearPart = id;
+                else {
+                  // Linked, the rear follows the front; unlinked, it keeps the wheel it wore.
+                  w.rearPart = linked ? null : (w.rearPart ?? front);
+                  v.parts.wheels = id;
+                }
                 // Each wheel model has its own profile: re-render so the inch range fits the new one.
                 void this.changed().then(() => this.tab === 'wheels' && this.renderTab());
+              },
+              true,
+            ),
+          ),
+          section(
+            linked ? 'Tires' : `${axleName}tires`,
+            choiceList(
+              TIRE_CHOICES,
+              rear ? w.rearTire : w.tire,
+              (t) => {
+                if (rear) w.rearTire = t;
+                else {
+                  w.tire = t;
+                  if (linked) w.rearTire = t;
+                }
+                this.changed();
               },
               true,
             ),
@@ -1118,7 +1172,7 @@ export class GarageScreen {
         );
         break;
       }
-      case 'glow': {
+      case 'neon': {
         const g = v.underglow;
         this.body.append(
           section(
@@ -1195,7 +1249,7 @@ export class GarageScreen {
         );
         break;
       }
-      case 'perf':
+      case 'tune':
         this.renderPerformance();
         break;
     }
@@ -1217,6 +1271,29 @@ export class GarageScreen {
           this.changed();
           toast('Rear now matches front', Link2);
         }
+        this.renderTab();
+      },
+      `--small garage-link${linked ? ' --primary' : ''}`,
+    );
+  }
+
+  /** Link toggle for the wheel and tire picks: linked, front and rear wear the same; unlinked, each axle picks its own. */
+  private wheelLinkToggle(): HTMLElement {
+    const linked = this.prefs.linkWheels;
+    return btn(
+      linked ? Link2 : Link2Off,
+      linked ? 'Front and rear same wheels' : 'Front and rear wheels separate',
+      () => {
+        this.prefs.linkWheels = !linked;
+        saveGaragePrefs(this.prefs);
+        const w = this.build.visual.wheels;
+        if (this.prefs.linkWheels) {
+          // Linking starts from matching axles: the rear takes the front's wheel and tire.
+          w.rearPart = null;
+          w.rearTire = w.tire;
+          void this.changed().then(() => this.tab === 'wheels' && this.renderTab());
+          toast('Rear wheels and tires now match front', Link2);
+        } else this.wheelAxle = 'front';
         this.renderTab();
       },
       `--small garage-link${linked ? ' --primary' : ''}`,

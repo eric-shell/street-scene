@@ -22,6 +22,10 @@ export type VinylShape = (typeof VINYL_SHAPES)[number];
 export const GLOW_PATTERNS = ['steady', 'pulse', 'breathe', 'strobe', 'alternate', 'wave', 'chase'] as const;
 export type GlowPattern = (typeof GLOW_PATTERNS)[number];
 
+/** Tire shapes, from the bulkiest to the most stretched (render/car/tireShapes.ts draws each). */
+export const TIRE_SHAPES = ['meaty', 'standard', 'mildStretch', 'aggressiveStretch'] as const;
+export type TireShape = (typeof TIRE_SHAPES)[number];
+
 export const MAX_DECALS = 8;
 
 export interface DecalLayer {
@@ -70,6 +74,12 @@ export interface VisualBuild {
     color: string;
     /** Rear wheel color; matches the front unless the garage's axles are unlinked. */
     rearColor: string;
+    /** Rear wheel part id; null wears the front's (parts.wheels), so a car change keeps them matched. */
+    rearPart: string | null;
+    /** Front tire shape. */
+    tire: TireShape;
+    /** Rear tire shape; matches the front unless the garage's wheels are unlinked. */
+    rearTire: TireShape;
   };
   decals: DecalLayer[];
   stance: { rideHeight: number; front: AxleStance; rear: AxleStance };
@@ -102,7 +112,7 @@ export function defaultVisual(): VisualBuild {
     paint: { color: '#d11f3f', finish: 'metallic' },
     trimColor: '#15161a',
     parts: {},
-    wheels: { color: '#c9ced8', rearColor: '#c9ced8' },
+    wheels: { color: '#c9ced8', rearColor: '#c9ced8', rearPart: null, tire: 'standard', rearTire: 'standard' },
     decals: [],
     stance: { rideHeight: 0, front: { camber: 0, offset: 0, wheelSize: 1 }, rear: { camber: 0, offset: 0, wheelSize: 1 } },
     tint: { darkness: 0.55, color: '#101820' },
@@ -190,6 +200,8 @@ export function validateVisual(v: unknown): VisualBuild {
   // Stance per axle. Legacy builds (saves and share codes from before per axle stance) had
   // stance.camberFront / camberRear, one stance.offset and wheels.size; they seed both axles.
   const wheelColor = hexColor(wheels.color, d.wheels.color);
+  const tire = oneOf(wheels.tire, TIRE_SHAPES, d.wheels.tire);
+  const rearPart = typeof wheels.rearPart === 'string' && PART_ID.test(wheels.rearPart) ? renamedPart(wheels.rearPart) : null;
   const L = STANCE_LIMITS;
   const legacySize = num(wheels.size, L.wheelSize[0], L.wheelSize[1], 1);
   const legacyOffset = num(stance.offset, L.offset[0], L.offset[1], 0);
@@ -205,7 +217,7 @@ export function validateVisual(v: unknown): VisualBuild {
     paint: { color: hexColor(paint.color, d.paint.color), finish: oneOf(paint.finish, PAINT_FINISHES, d.paint.finish) },
     trimColor: hexColor(o.trimColor, d.trimColor),
     parts,
-    wheels: { color: wheelColor, rearColor: hexColor(wheels.rearColor, wheelColor) },
+    wheels: { color: wheelColor, rearColor: hexColor(wheels.rearColor, wheelColor), rearPart, tire, rearTire: oneOf(wheels.rearTire, TIRE_SHAPES, tire) },
     decals,
     stance: {
       rideHeight: num(stance.rideHeight, L.rideHeight[0], L.rideHeight[1], 0),

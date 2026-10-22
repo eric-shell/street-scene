@@ -5,13 +5,14 @@
  */
 import * as THREE from 'three';
 import { BODY_PART_SLOTS, PartSlot } from '../../shared/parts';
-import { GLOW_PATTERNS, VisualBuild, defaultVisual } from '../../shared/carBuild';
+import { GLOW_PATTERNS, TireShape, VisualBuild, defaultVisual } from '../../shared/carBuild';
 import { CarAssetLibrary, ManifestCar, manifestCar, partById, partsFor } from './carAssets';
 import { CarMaterialSet, applyVisualToMaterials, createCarMaterials, disposeCarMaterials, resolveMaterialName, setBrake } from './carMaterials';
 import { makeRadialGlow } from '../textures/textures';
 import { DecalLayerView } from './decals';
 import { FEATURES } from '../../shared/features';
 import { WheelProfile, beadForSize, detectProfile, remapWheel, sizeForBead } from './wheelFit';
+import { latheTire, measureTire } from './tireShapes';
 import { maskVehicleMesh, underVehicles } from '../vehicleMask';
 import { Disposer } from '../disposer';
 
@@ -76,11 +77,18 @@ export class CarView {
   readonly car: ManifestCar;
   private wheelPivots: THREE.Group[] = [];
   private wheelSpins: THREE.Group[] = [];
-  private wheelModels: THREE.Object3D[] = [];
+  /** The four wheels' holders (FL, FR, RL, RR), null until their axle is baked. */
+  private wheelModels: (THREE.Object3D | null)[] = [null, null, null, null];
   /** Baked wheel meshes per axle (front, rear); the two wheels of an axle share geometry. */
   private axleMeshes: THREE.Mesh[][] = [[], []];
   private axleSize = [NaN, NaN];
-  private wheelProfile: WheelProfile = { outer: 1, bead: 0.75 };
+  /** Each axle's wheel profile: front and rear may wear different wheels. */
+  private wheelProfiles: WheelProfile[] = [
+    { outer: 1, bead: 0.75 },
+    { outer: 1, bead: 0.75 },
+  ];
+  /** What each axle wears ("wheel id:tire shape"), so an unchanged axle is not baked again. */
+  private axleWear = ['', ''];
   private slotObjects = new Map<PartSlot, THREE.Object3D>();
   private baseModel: THREE.Object3D | null = null;
   private placeholder = false;
@@ -293,17 +301,23 @@ export class CarView {
     }
     this.updateHiddenBaseMeshes();
 
-    // Wheels.
-    const wheelId = v.parts.wheels ?? this.car.defaultWheel;
-    const currentWheel = this.wheelModels[0]?.userData.partId;
-    if (currentWheel !== wheelId || this.wheelModels.length === 0) {
+    // Wheels, per axle: the rear wears the front's wheel unless it has one of its own.
+    const frontWheel = v.parts.wheels ?? this.car.defaultWheel;
+    const wear: [string, TireShape][] = [
+      [frontWheel, v.wheels.tire],
+      [v.wheels.rearPart ?? frontWheel, v.wheels.rearTire],
+    ];
+    for (const axle of [0, 1] as const) {
+      const [wheelId, tire] = wear[axle];
+      if (this.axleWear[axle] === `${wheelId}:${tire}`) continue;
       const entry = partById(wheelId) ?? partsFor(this.car.id, 'wheels')[0] ?? this.devEntry(wheelId);
       let model: THREE.Object3D | null = entry ? await this.assets.part(entry) : null;
       if (token !== this.loadToken) return;
       if (!model) model = buildPlaceholderWheel(wheelId);
       model.userData.partId = wheelId;
       this.bindMaterials(model);
-      this.setWheelModel(model);
+      this.bakeAxle(axle, model, tire);
+      this.axleWear[axle] = `${wheelId}:${tire}`;
     }
     this.applyStance();
     this.decals.rebuild(FEATURES.vinyls ? v.decals : []);
@@ -360,27 +374,30 @@ export class CarView {
   }
 
   /**
-   * Bake the wheel into flat wheel space meshes (center at the origin, axle
-   * along X), one copy per axle so front and rear wheel sizes can differ, and
-   * find where the tire meets the wheel (see wheelFit.ts).
+   * Bake one axle's wheel into flat wheel space meshes (center at the origin,
+   * axle along X), its own copy so front and rear wheels, tires and sizes can
+   * differ, swap in the tire shape (tireShapes.ts) and find where the tire
+   * meets the wheel (see wheelFit.ts).
    */
-  private setWheelModel(model: THREE.Object3D): void {
-    for (const old of this.wheelModels) old.parent?.remove(old);
-    for (const m of this.axleMeshes.flat()) m.geometry.dispose();
-    this.wheelModels = [];
-    this.axleMeshes = [[], []];
-    this.axleSize = [NaN, NaN];
+  private bakeAxle(axle: 0 | 1, model: THREE.Object3D, tire: TireShape): void {
+    for (const i of [axle * 2, axle * 2 + 1]) {
+      const old = this.wheelModels[i];
+      old?.parent?.remove(old);
+    }
+    for (const m of this.axleMeshes[axle]) m.geometry.dispose();
+    this.axleMeshes[axle] = [];
+    this.axleSize[axle] = NaN;
     model.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(model);
     const center = box.getCenter(new THREE.Vector3());
     const toWheel = new THREE.Matrix4().makeTranslation(-center.x, -center.y, -center.z);
-    const front = new THREE.Group();
+    const baked = new THREE.Group();
     const tireR: number[] = [];
     const otherR: number[] = [];
     model.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh || !visibleInTree(mesh, model)) return;
-      const geo = mesh.geometry.clone();
+      let geo = mesh.geometry.clone();
       // Part GLBs are Meshopt compressed: position and normal arrive as interleaved,
       // normalized Int16 attributes. Unpack them to plain floats so they can be baked
       // and remapped in place (writing floats into the int arrays zeroed the normals,
@@ -397,45 +414,48 @@ export class CarView {
         geo.setAttribute(name, new THREE.BufferAttribute(f, 3));
       }
       geo.applyMatrix4(new THREE.Matrix4().multiplyMatrices(toWheel, mesh.matrixWorld));
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      const isTire = mats.length > 0 && mats.every((m) => m === this.materials.Tire);
+      // Another tire shape: lathed where the wheel's own tire sat (not on the placeholder, whose tire has no sidewall).
+      const fit = isTire && tire !== 'standard' && !model.userData.ownGeometry ? measureTire(geo.getAttribute('position').array) : null;
+      if (fit && tire !== 'standard') {
+        const t = latheTire(tire, fit);
+        geo.dispose();
+        geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(t.position, 3));
+        geo.setAttribute('normal', new THREE.BufferAttribute(t.normal, 3));
+        geo.setIndex(new THREE.BufferAttribute(t.index, 1));
+      }
       const pos = geo.getAttribute('position') as THREE.BufferAttribute;
       const nrm = geo.getAttribute('normal') as THREE.BufferAttribute | undefined;
       // Keep the unscaled shape; every size change remaps from it.
       geo.userData.basePos = Float32Array.from(pos.array as ArrayLike<number>);
       geo.userData.baseNrm = nrm ? Float32Array.from(nrm.array as ArrayLike<number>) : null;
-      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      const isTire = mats.length > 0 && mats.every((m) => m === this.materials.Tire);
       const radii = isTire ? tireR : otherR;
       for (let k = 0; k < pos.count; k++) radii.push(Math.hypot(pos.getY(k), pos.getZ(k)));
-      const baked = new THREE.Mesh(geo, mesh.material);
-      baked.name = mesh.name;
-      maskVehicleMesh(baked);
-      front.add(baked);
+      // The rear axle wears its own wheel material (wheel color).
+      const material = axle === 1 ? (Array.isArray(mesh.material) ? mesh.material.map(this.rearMat) : this.rearMat(mesh.material)) : mesh.material;
+      const out = new THREE.Mesh(geo, material);
+      out.name = mesh.name;
+      maskVehicleMesh(out);
+      baked.add(out);
     });
-    this.wheelProfile = detectProfile(tireR, otherR);
+    const profile = detectProfile(tireR, otherR);
+    this.wheelProfiles[axle] = profile;
     if (model.userData.ownGeometry) model.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
-    const rear = front.clone(true);
-    // The rear axle gets its own geometry (wheel size) and its own wheel material (wheel color).
-    const rearMat = (m: THREE.Material) => (m === this.materials.Rim ? this.materials.RimRear : m);
-    rear.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      mesh.geometry = mesh.geometry.clone();
-      mesh.material = Array.isArray(mesh.material) ? mesh.material.map(rearMat) : rearMat(mesh.material);
-    });
-    const collect = (g: THREE.Object3D) => g.children.filter((c): c is THREE.Mesh => (c as THREE.Mesh).isMesh);
-    this.axleMeshes = [collect(front), collect(rear)];
-    const baseScale = this.car.wheelRadius / (this.wheelProfile.outer || this.car.wheelRadius);
-    for (let i = 0; i < 4; i++) {
+    this.axleMeshes[axle] = baked.children.filter((c): c is THREE.Mesh => (c as THREE.Mesh).isMesh);
+    const baseScale = this.car.wheelRadius / (profile.outer || this.car.wheelRadius);
+    for (const i of [axle * 2, axle * 2 + 1]) {
       const holder = new THREE.Group();
-      const template = i < 2 ? front : rear;
       // Mesh clones share geometry, so both wheels of an axle follow one remap.
-      holder.add(i % 2 === 0 ? template : template.clone(true));
-      holder.userData.partId = model.userData.partId;
+      holder.add(i % 2 === 0 ? baked : baked.clone(true));
       holder.userData.baseScale = baseScale;
       this.wheelSpins[i].add(holder);
-      this.wheelModels.push(holder);
+      this.wheelModels[i] = holder;
     }
   }
+
+  private readonly rearMat = (m: THREE.Material) => (m === this.materials.Rim ? this.materials.RimRear : m);
 
   /** Remap one axle's wheel meshes for a wheel size (tire outer diameter stays). */
   private applyWheelSize(axle: 0 | 1, size: number): void {
@@ -445,7 +465,7 @@ export class CarView {
       const geo = mesh.geometry;
       const pos = geo.getAttribute('position') as THREE.BufferAttribute;
       const nrm = geo.getAttribute('normal') as THREE.BufferAttribute | undefined;
-      remapWheel(geo.userData.basePos as Float32Array, (geo.userData.baseNrm as Float32Array | null) ?? null, pos.array as Float32Array, nrm ? (nrm.array as Float32Array) : null, this.wheelProfile, size);
+      remapWheel(geo.userData.basePos as Float32Array, (geo.userData.baseNrm as Float32Array | null) ?? null, pos.array as Float32Array, nrm ? (nrm.array as Float32Array) : null, this.wheelProfiles[axle], size);
       pos.needsUpdate = true;
       if (nrm) nrm.needsUpdate = true;
       geo.computeBoundingSphere();
@@ -453,21 +473,23 @@ export class CarView {
     }
   }
 
-  /** Wheel diameter in inches for a size factor on this car (for the garage readout). */
-  wheelInches(size: number): number {
-    const scale = this.car.wheelRadius / (this.wheelProfile.outer || 1);
-    return (2 * beadForSize(this.wheelProfile, size) * scale) / 0.0254;
+  /** Wheel diameter in inches for a size factor on this car and one axle's wheel (for the garage readout). */
+  wheelInches(size: number, axle: 0 | 1 = 0): number {
+    const p = this.wheelProfiles[axle];
+    const scale = this.car.wheelRadius / (p.outer || 1);
+    return (2 * beadForSize(p, size) * scale) / 0.0254;
   }
 
-  /** Inverse of wheelInches: the wheel size that gives this wheel diameter (in) on this car and wheel. */
-  wheelSizeForInches(inches: number): number {
-    const scale = this.car.wheelRadius / (this.wheelProfile.outer || 1);
-    return sizeForBead(this.wheelProfile, (inches * 0.0254) / 2 / scale);
+  /** Inverse of wheelInches: the wheel size that gives this wheel diameter (in) on this car and one axle's wheel. */
+  wheelSizeForInches(inches: number, axle: 0 | 1 = 0): number {
+    const p = this.wheelProfiles[axle];
+    const scale = this.car.wheelRadius / (p.outer || 1);
+    return sizeForBead(p, (inches * 0.0254) / 2 / scale);
   }
 
-  /** True once a wheel is baked, so wheelInches measures the real profile rather than the placeholder one. */
+  /** True once both axles are baked, so wheelInches measures the real profiles rather than the placeholder one. */
   get wheelsReady(): boolean {
-    return this.wheelModels.length > 0;
+    return this.wheelModels.every(Boolean);
   }
 
   private applyStance(): void {
