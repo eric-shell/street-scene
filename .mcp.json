@@ -2,7 +2,24 @@
   "mcpServers": {
     "blender": {
       "command": "uvx",
-      "args": ["blender-mcp"]
+      "args": [
+        "mcp-for-blender@2.2.2"
+      ],
+      "env": {
+        "DISABLE_TELEMETRY": "true"
+      }
+    },
+    "blender-lab": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://projects.blender.org/lab/blender_mcp.git@dbbf836ad4b1025f14a2b3b504c43903f39e0b04#subdirectory=mcp",
+        "blender-mcp"
+      ],
+      "env": {
+        "BLENDER_MCP_PORT": "9877",
+        "BLENDER_PATH": "/Applications/Blender.app/Contents/MacOS/Blender"
+      }
     }
   }
 }

@@ -9,5 +9,5 @@
       "Bash(git commit *)"
     ]
   },
-  "enabledMcpjsonServers": ["blender"]
+  "enabledMcpjsonServers": ["blender", "blender-lab"]
 }

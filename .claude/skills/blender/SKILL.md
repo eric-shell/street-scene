@@ -51,4 +51,11 @@ Authored cars are `assets/source/eshell/<carId>/<carId>.blend` (collections `Car
 
 ## Blender
 
-`/Applications/Blender.app/Contents/MacOS/Blender` (5.2); `npm run assets` also honors `BLENDER`. If the MCP addon reports an old protocol, `uvx mcp-for-blender install-addon`, then re-enable the addon and Start MCP Server.
+`/Applications/Blender.app/Contents/MacOS/Blender` (5.2); `npm run assets` also honors `BLENDER`.
+
+Two MCP servers in `.mcp.json`, each paired with a Blender add-on at the same pinned version:
+
+- `blender` (MCP for Blender, port 9876): `execute_blender_code`, `look`, asset search and import. Everything in this skill goes through it, and the crash hook screens it.
+- `blender-lab` (Blender Lab's official server, port 9877): `search_api_docs`, `get_python_api_docs`, `search_manual_docs` before guessing a `bpy` call or enum. Never write scene code through its `execute_blender_code`; the hook does not screen it.
+
+A call that cannot connect: run `.claude/skills/blender/mcp.sh` (status) and follow what it prints. Setup, upgrades (`mcp.sh upgrade`), the Sketchfab switch and the traps are in [mcp.md](mcp.md); read it before changing either server or add-on.

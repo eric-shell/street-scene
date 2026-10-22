@@ -88,4 +88,4 @@ Aim for 120 fps, hold 60 fps on every supported device, never drop below 30 fps.
 - Checks follow the budget in **Checks** above; don't run them out of habit.
 - Headless beats the browser: `npx tsx` imports any `src/sim` or `src/city` module directly (`/tune` measures a car that way, `scripts/debugCitySvg.ts <seed> out.svg` draws a city).
 - `node_modules` must exist (`npm ci`). `npm run assets`, `npm run music` and `npm run traffic` rewrite generated files and need external tools; run them only when the task is about assets, music or traffic.
-- The Blender MCP server in `.mcp.json` needs `uv` installed (`brew install uv`); it is only for modelling work and its connection failure is otherwise harmless. Read `/blender` before driving it.
+- The Blender MCP servers in `.mcp.json` (`blender` drives the scene, `blender-lab` searches the Blender API docs and manual) need `uv` installed (`brew install uv`); they are only for modelling work and their connection failures are otherwise harmless. Read `/blender` before driving them; `.claude/skills/blender/mcp.sh` checks, installs and upgrades both with their Blender add-ons (runbook: `.claude/skills/blender/mcp.md`).
