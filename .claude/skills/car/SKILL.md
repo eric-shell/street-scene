@@ -29,7 +29,7 @@ Every call: `exec` carKit.py, then carRefs.py, then carFeatures.py (`/blender`, 
 
 10. `remap_materials` on every mesh, `show()`, save a working copy, `saveCar.py` headless (`/blender`, "Assemble and save").
 11. `npm run assets` (ask first: slow, rewrites generated files), `npm run validate`, `npm run audit -- $ARGUMENTS`: the off spec list should be shorter than the baseline; say what is still off and why (house style, donor estimate, left for later).
-12. A changed manifest (wheelbase, track, dimensions) changes the sim: say that replays, ghosts and bests for the car are invalid. New car: manifest entry, `cars.<id>` in `drivingParams.json` (`/tune`), the car lists in `tests/sim.test.ts` and `tests/carSpec.test.ts`, then the full suite.
+12. A changed manifest (wheelbase, track, dimensions) changes the sim: say that replays, ghosts and bests for the car are invalid. New car: manifest entry, `cars.<id>` in `drivingParams.json` (`/tune`), the car lists in `tests/sim.test.ts` and `tests/carSpec.test.ts`, then the full suite once. Shape and detail work on an existing car needs no tests (CLAUDE.md, Checks).
 13. `/dev` garage for a real look; the README decisions log gets a line when the brief or the house style changed.
 
 ## New feature kinds

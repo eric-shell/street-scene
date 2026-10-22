@@ -1,6 +1,6 @@
 ---
 name: check
-description: Verify the code - typecheck, then the Vitest suite - printing only failures and a one-line summary. Use when CLAUDE.md's Testing guidance calls for it (sim or city changes, a module with tests) or when asked whether things pass. Arguments narrow the tests (a file, -t "name") or "tsc" for typecheck only.
+description: Verify the code - typecheck, then the Vitest suite - printing only failures and a one-line summary. Use only when CLAUDE.md's Checks table calls for it (sim or city changes, a module with tests) or when asked whether things pass; most prompts need none. Arguments narrow the tests (a file, -t "name") or "tsc" for typecheck only.
 argument-hint: [tests/file.test.ts] [-t name] | tsc
 allowed-tools: Bash(.claude/skills/check/check.sh *)
 ---

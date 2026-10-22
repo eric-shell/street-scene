@@ -23,6 +23,25 @@ Street Scene is a browser street racer (TypeScript, three.js, Vite, Vitest, SCSS
 
 Project skills wrap these: `/check [file] [-t name]` runs typecheck + tests and prints only failures; `/map [dir]` prints a one-line-per-module map of the source (`/map .scss` lists the style partials); `/dev` runs the game in a browser; `/district`, `/tune`, `/assets`, `/car` (a car or kit from reference vehicles) and `/blender` are step-by-step guides for those jobs; `/refactor` moves files with their imports, finds dead exports, and proves a refactor changed nothing (golden sim/city hashes, the CSS cascade, the three.js scene, the UI's computed styles). `.claude/rules/` adds path-scoped guidance when you edit sim, render, style, test or data files. Hooks check edits as they land: a `.json` data file must parse and validate, a `.scss` edit must compile without Sass warnings, and Blender MCP code is screened for known crashers.
 
+## Checks: run only what the change justifies
+
+Typecheck, Vitest, e2e, `/dev` and `/refactor`'s proofs cost minutes and many tokens, and most prompts need none of them. The default is to run nothing. Each check must be earned by what this prompt changed, never run as a habit, a closing ritual or "to be safe".
+
+| What changed | What to run |
+|---|---|
+| Docs, comments, copy, README, `.claude/`, questions and exploration | Nothing |
+| A `.json` data file or a `.scss` partial | Nothing: the hooks already validate and compile it |
+| Car, part or Blender assets | `npm run audit` / `inspect` when the task is about the asset; no tests |
+| TS outside `src/sim/` and `src/city/` (render, ui, game, garage, audio, input, scripts) | Typecheck once after the edits (`/check tsc`, 1 s), not after each edit. Add a Vitest file only if `grep -ln <module> tests/` finds one and the change could alter what it asserts |
+| `src/sim/` or `src/city/` | The one covering test file (`/check tests/x.test.ts -t name`) |
+| Sim or city behaviour actually changed | The full suite (`/check`, 35 s), once, at the end of the task. Not for renames, comments, refactors proven by `/refactor`'s golden hashes, or tuning already measured with `/tune` |
+| A flow only a real page can show | One e2e spec (`npm run e2e -- e2e/<spec>`, 50 s, 180000 ms timeout, never piped through `tail`): `splash` (boot, deep links, opening track), `musicAutoplay`, `audioMix` (levels), `engine` (engine worklet), `gamepad` (pad menus, rumble, auto pause), `freeRoam` (menu-to-roam handoff), `raceMap` (the race's city map). The whole e2e suite only when the user asks |
+
+- Never re-run a check that passed on code you haven't touched since, and never run a broader check than the table calls for because a narrower one passed.
+- `/dev` and screenshots only when the user asks or a visual change cannot be judged from the code.
+- Add a new test only when asked, or when a fix has no other coverage and is likely to regress.
+- When you skip a check the user might expect, say so in one line (what and why) so they can ask for it.
+
 ## Architecture
 
 Data flows one way: seed → city → world → sim → session → render.
@@ -66,12 +85,7 @@ Aim for 120 fps, hold 60 fps on every supported device, never drop below 30 fps.
 
 - Orient with `/map` or `grep -rn "export .* <name>" src` instead of reading files to find things. Largest files: `render/buildings/buildings.ts` 1.6k lines, `city/districts/carPark.ts` and `river.ts` 1.5k, `render/textures/textures.ts` and `render/street/props.ts` 1.4k, `sim/traffic.ts`, `game/session.ts` and `ui/map/fullMap.ts` 1.3k, `city/districts/alleyShortcuts.ts` 1k (one 530-line planner); read those in ranges. Style partials are one block each, a few hundred lines at most (`/map .scss`).
 - Never read `public/` media, `assets/source/` FBX or `package-lock.json` (denied in settings). For a GLB use `npm run inspect -- <file>`; `assets/inspect.md` is the last asset report; `npm ls <pkg>` gives versions.
-- Test only what the change could break. Time and tokens matter more than running everything just in case, and a small change usually needs little or nothing:
-  - Docs, comments, copy, README, `.claude/`: nothing. A `.json` or `.scss` edit: nothing beyond the hooks, which already validate and compile it.
-  - Code outside `src/sim/` and `src/city/` (render, ui, game, garage, audio, input, scripts): typecheck (`/check tsc`, 1 s). Run a Vitest file only if one covers the module you changed (`grep -ln <module> tests/`).
-  - `src/sim/` or `src/city/`: the covering test file while iterating. Run the full suite (`/check`, 35 s) once at the end only when behaviour may have changed (replay determinism, many-seed AI and rail sweeps); a pure rename or comment does not need it.
-  - `npm run e2e` (Playwright, `e2e/`) runs real pages and costs about 50 s per spec. Run one spec only when the change touches the flow it covers in a way typecheck cannot see: `splash` (boot, deep links, opening track), `musicAutoplay`, `audioMix` (levels), `engine` (engine worklet), `gamepad` (pad menus, rumble, auto pause), `freeRoam` (the menu-to-roam handoff), `raceMap` (the race's city map). Run the whole suite only when asked or after a broad change to boot or `main.ts`'s state machine. Give it a 180000 ms timeout and never pipe it through `tail` (the list reporter's progress is lost until it ends).
-  - Add a new test only when asked, or when a fix has no other coverage and is likely to regress. Don't re-run checks that already passed on unchanged code.
+- Checks follow the budget in **Checks** above; don't run them out of habit.
 - Headless beats the browser: `npx tsx` imports any `src/sim` or `src/city` module directly (`/tune` measures a car that way, `scripts/debugCitySvg.ts <seed> out.svg` draws a city).
 - `node_modules` must exist (`npm ci`). `npm run assets`, `npm run music` and `npm run traffic` rewrite generated files and need external tools; run them only when the task is about assets, music or traffic.
 - The Blender MCP server in `.mcp.json` needs `uv` installed (`brew install uv`); it is only for modelling work and its connection failure is otherwise harmless. Read `/blender` before driving it.
