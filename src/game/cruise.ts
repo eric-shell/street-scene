@@ -16,7 +16,7 @@ import type { InputFrame } from '../sim/input';
 
 /** How the car drives: speeds (m/s), accelerations (m/s²), its lane and how the line is smoothed. */
 export const CRUISE = {
-  /** Cruising speed, and the speed full throttle (the garage's rev button) builds up to. */
+  /** Cruising speed, and the speed full throttle (revving in the garage) builds up to. */
   speed: 15,
   sprint: 27,
   /** Sideways acceleration it takes corners at, and how hard it speeds up and brakes. */

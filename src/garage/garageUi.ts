@@ -1,13 +1,24 @@
 /**
  * Garage UI on the rail (ui/rail/rail.ts), drawn like the main menu's: no column,
- * only a scrim, with the header (back), tabs of live-preview categories and the
- * open tab's groups standing on the scene as plates of their own down the
- * left; beside it the 3D view framed to the free space, with the car card
- * (model, build, spec tags, measured stats, and the Garage / Street switch and
- * camera on its foot) top left and the hold-to-rev button at the bottom. Body part menus are populated
- * entirely from partsCatalog.json. Builds save to localStorage slots and export
- * as share codes. Hidden dev mode (Ctrl+Shift+D or ?dev) accepts a dropped GLB
- * and equips it live in a chosen slot.
+ * only a scrim, with plates of their own standing on the scene down the left,
+ * and in steps like the menu's so no pane tries to do everything. Builds (step
+ * one) is the build card (the build's name with quiet rename, share, duplicate
+ * and delete actions, its car, spec tags and measured stats, and Customize)
+ * over the garage's slots, one build to a row. Customize (step two) is the tabs of
+ * live-preview categories over the open tab's groups, each tab laid out to fit
+ * the column without scrolling where it can (one line sliders, wheels in a grid,
+ * the Body tab one part slot at a time). Under both steps the Save button;
+ * beside the rail the 3D view framed to the free space, with the Garage /
+ * Street switch and the camera at the bottom. Steps slide like the menu's and
+ * Escape or the back button goes back one. Body part menus are populated
+ * entirely from partsCatalog.json. Hidden dev mode (Ctrl+Shift+D or ?dev)
+ * accepts a dropped GLB and equips it live in a chosen slot.
+ *
+ * Saving is explicit: edits show live and drive the races, but the slot in
+ * localStorage only changes on Save. Anything that leaves the build (another
+ * slot, a new one, an import, the menu) asks first while it has unsaved
+ * changes, so only the slot in use is ever a draft. Share and import live in a
+ * dialog off the build card and the Builds header.
  *
  * It speaks the main menu's language (the partials beside this file): chamfered
  * plates, a hue per category (the tab's badge, and the open tab's picks, sliders
@@ -20,8 +31,9 @@ import { CarAssetLibrary, MANIFEST, manifestCar, partsFor } from '../render/car/
 import { GarageScene } from './garageScene';
 import type { StreetStage } from '../game/streetStage';
 import type { Quality } from '../ui/settings';
-import { railInset, screenHead } from '../ui/rail/rail';
-import { Help, MUSIC_KEYS } from '../ui/panels/help';
+import { RailSteps, railInset, screenHead } from '../ui/rail/rail';
+import { Help, MUSIC_KEYS, type HelpKey } from '../ui/panels/help';
+import { uiWhoosh } from '../audio/uiSound';
 import { GaragePrefs, GarageState, MAX_SLOTS, Presentation, addSlot, decodeShareCode, encodeShareCode, freshBuild, importBuild, loadGaragePrefs, saveGaragePrefs, shareUrl } from './storage';
 import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PART_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
 import { AXLES, Axle, AxleStance, BUILD_NAME_MAX, CarBuild, DEFAULT_BUILD_NAME, DecalLayer, GLOW_PATTERNS, MAX_DECALS, PAINT_FINISHES, STANCE_LIMITS, VINYL_SHAPES, VinylShape, validateBuild } from '../shared/carBuild';
@@ -38,6 +50,7 @@ import {
   ArrowUpDown,
   Car,
   Check,
+  ChevronRight,
   Copy,
   Disc3,
   Download,
@@ -48,17 +61,19 @@ import {
   Layers,
   MousePointerClick,
   Paintbrush,
+  Pencil,
   Plus,
   Save,
   Share2,
   Trash2,
+  Undo2,
   Upload,
   Wind,
   Wrench,
+  X,
   Zap,
   Box,
   Sparkles,
-  Timer,
   Route,
   Video,
   Warehouse,
@@ -67,7 +82,10 @@ import {
 } from '../ui/kit/icons';
 import { Link2, Link2Off } from 'lucide';
 
-type Tab = 'car' | 'body' | 'paint' | 'wheels' | 'vinyl' | 'stance' | 'tint' | 'glow' | 'perf' | 'share';
+type Tab = 'car' | 'body' | 'paint' | 'wheels' | 'vinyl' | 'stance' | 'tint' | 'glow' | 'perf';
+
+/** The garage's steps: pick a build, then customize it. */
+type Step = 'builds' | 'build';
 
 const TABS: { id: Tab; label: string; icon: IconNode }[] = [
   { id: 'car', label: 'Car', icon: Car },
@@ -79,13 +97,12 @@ const TABS: { id: Tab; label: string; icon: IconNode }[] = [
   { id: 'tint', label: 'Tint', icon: Eye },
   { id: 'glow', label: 'Neon', icon: Sparkles },
   { id: 'perf', label: 'Tune', icon: Gauge },
-  { id: 'share', label: 'Save', icon: Share2 },
 ];
 
 /** Each spec tag's ink by its place in specBadges (drivetrain cyan, engine yellow, forced induction red): `.ink-*` in _tune-stat.scss. */
 const SPEC_INKS = ['ink-drive', 'ink-engine', 'ink-boost'] as const;
 
-/** A spec tag as a chip in its ink, the long form on hover (car tiles and the car card alike). */
+/** A spec tag as a chip in its ink, the long form on hover (car tiles and the build card alike). */
 const specChip = (t: SpecBadge, i: number, cls = '') => {
   const c = chip(t.text, undefined, `--ink ${SPEC_INKS[i] ?? ''} ${cls}`);
   c.title = t.title;
@@ -132,19 +149,28 @@ function statsFor(b: CarBuild): CarStats {
   return st;
 }
 
-/**
- * The measured stats the car card and the Tune tab show, in order, each bar in
- * its ink (`.ink-*` in _tune-stat.scss). The card names the measure, the Tune
- * tab the quality (with an icon), so its acceleration value says what was timed.
- */
-const STATS: readonly { ink: string; bar: keyof ReturnType<typeof statBars>; card: string; tune: string; icon: IconNode; value: (s: CarStats, onTune: boolean) => string }[] = [
-  { ink: 'speed', bar: 'topSpeed', card: 'Top speed', tune: 'Top speed', icon: Gauge, value: (s) => `${Math.round(s.topSpeed / KMH_PER_MPH)} mph` },
-  { ink: 'accel', bar: 'acceleration', card: '0-60', tune: 'Acceleration', icon: Timer, value: (s, onTune) => `${onTune ? '0-60 ' : ''}${s.zeroTo60.toFixed(2)} s` },
-  { ink: 'grip', bar: 'handling', card: 'Grip', tune: 'Handling', icon: Disc3, value: (s) => `${s.grip.toFixed(2)} g` },
-  { ink: 'nitrous', bar: 'nitrous', card: 'Nitrous', tune: 'Nitrous', icon: Zap, value: (s) => `${s.nitrous.toFixed(1)} kN·s` },
+/** The measured stats the build card and the Tune tab show, in order, each bar in its ink (`.ink-*` in _tune-stat.scss). */
+const STATS: readonly { ink: string; bar: keyof ReturnType<typeof statBars>; name: string; value: (s: CarStats) => string }[] = [
+  { ink: 'speed', bar: 'topSpeed', name: 'Top speed', value: (s) => `${Math.round(s.topSpeed / KMH_PER_MPH)} mph` },
+  { ink: 'accel', bar: 'acceleration', name: '0-60', value: (s) => `${s.zeroTo60.toFixed(2)} s` },
+  { ink: 'grip', bar: 'handling', name: 'Grip', value: (s) => `${s.grip.toFixed(2)} g` },
+  { ink: 'nitrous', bar: 'nitrous', name: 'Nitrous', value: (s) => `${s.nitrous.toFixed(1)} kN·s` },
 ];
 
-/** Keys that hold the gas in the garage. */
+/** A build's measured stats: a line each, the measure, its bar in its ink and the value in yellow. */
+function statLines(b: CarBuild): HTMLElement {
+  const st = statsFor(b);
+  const bars = statBars(st);
+  return h(
+    'div',
+    { class: 'car-card__stats' },
+    ...STATS.map((t) =>
+      h('div', { class: `car-card__stat ink-${t.ink}` }, h('span', { class: 'car-card__stat-name' }, t.name), h('span', { class: 'stat-bar' }, h('span', { class: 'stat-bar__fill', style: `width:${bars[t.bar] * 100}%` })), h('span', { class: 'car-card__stat-value' }, t.value(st))),
+    ),
+  );
+}
+
+/** Keys that hold the gas in the garage (W, Up or Space; the help lists them). */
 const GAS_KEYS = ['KeyW', 'ArrowUp', 'Space'];
 
 // ---------------------------------------------------------------------------
@@ -176,15 +202,16 @@ function color(value: string, onInput: (c: string) => void): HTMLInputElement {
 /** A row in a group: the name on the left, its control on the right (the settings' rows). */
 const field = (label: string, control: Node) => h('div', { class: 'garage-row' }, h('span', { class: 'garage-row__name' }, label), control);
 
+/** A slider on one line: its name, the track and the value in yellow, so a group of them stays short. */
 function slider(label: string, value: number, min: number, max: number, step: number, fmt: (x: number) => string, onInput: (x: number) => void): HTMLElement {
   const out = h('span', { class: 'garage-value' }, fmt(value));
-  const el = h('input', { type: 'range', min, max, step, value }) as HTMLInputElement;
+  const el = h('input', { type: 'range', min, max, step, value, 'aria-label': label }) as HTMLInputElement;
   el.addEventListener('input', () => {
     const x = Number(el.value);
     out.textContent = fmt(x);
     onInput(x);
   });
-  return h('div', { class: 'garage-slider' }, h('div', { class: 'row', style: 'justify-content:space-between' }, h('span', {}, label), out), el);
+  return h('label', { class: 'garage-slider' }, h('span', { class: 'garage-slider__name' }, label), el, out);
 }
 
 /** One pick in a list: its name, a sub line, and spec tags (drivetrain code, engine) on their own row, each in its ink. */
@@ -197,9 +224,9 @@ interface Choice<T> {
   extra?: Node;
 }
 
-/** A list of picks, the current one marked; a click marks it and calls onPick. */
-function choiceList<T extends string | number | null>(items: Choice<T>[], current: T, onPick: (x: T) => void): HTMLElement {
-  const list = h('div', { class: 'garage-list' });
+/** A list of picks (`grid`: two to a row), the current one marked; a click marks it and calls onPick. */
+function choiceList<T extends string | number | null>(items: Choice<T>[], current: T, onPick: (x: T) => void, grid = false): HTMLElement {
+  const list = h('div', { class: grid ? 'garage-grid' : 'garage-list' });
   for (const it of items) {
     // Hover a spec tag for its long form.
     const tags = it.tags?.length ? h('span', { class: 'garage-item__tags' }, ...it.tags.map((t, i) => specChip(t, i, '--small'))) : null;
@@ -223,8 +250,17 @@ function choiceList<T extends string | number | null>(items: Choice<T>[], curren
 }
 
 /** Slider readouts: a length (m) in cm, a factor as a percent. */
-const cm =(x: number) => `${Math.round(x * 100)} cm`;
+const cm = (x: number) => `${Math.round(x * 100)} cm`;
 const percent = (x: number) => `${Math.round(x * 100)}%`;
+
+/** Where a step stands (pips like the menu's race flow), then anything else for the header's right. */
+const progress = (at: number, ...aside: Child[]) =>
+  h(
+    'span',
+    { class: 'screen-head__aside' },
+    h('span', { class: 'stepper', role: 'img', 'aria-label': `Step ${at} of 2` }, ...[1, 2].map((i) => h('i', { class: i < at ? 'stepper__pip is-done' : i === at ? 'stepper__pip is-current' : 'stepper__pip' }))),
+    ...aside,
+  );
 
 export class GarageScreen {
   private scene: GarageScene;
@@ -232,7 +268,20 @@ export class GarageScreen {
   private body: HTMLElement;
   private tabBar: HTMLElement;
   private tab: Tab = 'car';
-  private saveTimer = 0;
+  private step: Step = 'builds';
+  /** The steps, sliding in the rail's column above the Save button. */
+  private readonly steps: RailSteps;
+  /** The Body tab's part slot on show: one at a time, so the tab never scrolls through all of them. */
+  private bodySlot: PartSlot = 'body';
+  /** The current slot as last saved (JSON): the build differs from it while it has unsaved changes. */
+  private savedJson: string;
+  /** The Save button and the discard button beside it, under both steps. */
+  private readonly saveBtn: HTMLButtonElement;
+  private readonly revertBtn: HTMLButtonElement;
+  /** Whether the Save button shows unsaved changes, so it only changes look when that flips. */
+  private shownDirty: boolean | null = null;
+  /** The garage's dialog while one is up (unsaved changes, share, delete). */
+  private dialog: HTMLElement | null = null;
   private selectedDecal = -1;
   private placing: { shape: VinylShape; index: number } | null = null;
   private devMode = new URLSearchParams(location.search).has('dev');
@@ -240,33 +289,38 @@ export class GarageScreen {
   private pointerDown: { x: number; y: number } | null = null;
   private prefs: GaragePrefs = loadGaragePrefs();
   private gasKeys = new Set<string>();
-  private gasPointer = false;
   private tabInTimer = 0;
   /** The roller door is running for a Garage / Street switch. */
   private switching = false;
-  /** The car the card last showed, so only a new car (not every slider step) animates the card. */
-  private cardCar = '';
-  /** The Garage / Street switch and camera on the car card's foot, built once so its pick survives the card's rebuilds. */
-  private readonly stageEl: HTMLElement;
-  /** The garage's keys and tips behind the ? in the corner (C is a button there too, for touch screens). */
+  /** The slot and car the card last showed, so only another build (not every edit) deals the card in again. */
+  private cardKey = '';
+  /** The build card on the Builds step and the slots under it, refilled in place as the garage changes. */
+  private readonly carCard = h('section', { class: 'car-card', 'aria-label': 'Build', 'aria-live': 'polite' });
+  private readonly slotsEl = h('div', { class: 'garage-list', role: 'radiogroup', 'aria-label': 'Builds' });
+  /** The garage's keys and tips behind the ? in the corner (the rev, C and Save are buttons there too, for touch screens). */
   private readonly help = new Help({
     title: 'Garage',
-    sections: () => [
-      {
-        title: 'Keys',
-        keys: [
-          { keys: ['Drag'], label: 'Orbit the car' },
-          { keys: ['W', '↑', 'Space'], label: 'Hold to rev' },
-          { keys: ['C'], label: 'Next camera angle', action: () => this.nextCamera() },
-          { keys: ['Esc'], label: 'Back to the menu' },
-        ],
-      },
-      { title: 'Music', keys: MUSIC_KEYS },
-      {
-        title: 'Tips',
-        tips: ['Every change saves to this build as you go; Save keeps builds in slots and shares them as a code.', 'Garage / Street on the car card shows the car on the turntable or out on the event street.'],
-      },
-    ],
+    sections: () => {
+      const keys: HelpKey[] = [
+        { keys: ['Drag'], label: 'Orbit the car' },
+        { keys: ['W', '↑', 'Space'], label: 'Hold to rev', action: () => this.scene.blip() },
+        { keys: ['C'], label: 'Next camera angle', action: () => this.nextCamera() },
+        { keys: ['Ctrl S'], label: 'Save the build', action: () => this.save() },
+      ];
+      const builds = this.step === 'builds';
+      if (builds) keys.push({ keys: [`1–${MAX_SLOTS}`], label: 'Switch to a build by its slot' }, { keys: ['Esc'], label: 'Back to the menu' });
+      else keys.push({ keys: ['Esc'], label: 'Back to your builds' });
+      return [
+        { title: 'Keys', keys },
+        { title: 'Music', keys: MUSIC_KEYS },
+        {
+          title: 'Tips',
+          tips: builds
+            ? ['Each slot holds a build: pick one, then Customize. The pencil renames it, share turns it into a code or link.', 'Changes show at once; Save keeps them in the build\'s slot.']
+            : ['Changes show at once; Save keeps them in the build\'s slot.', 'Garage / Street at the bottom shows the car on the turntable or out on the event street.'],
+        },
+      ];
+    },
   });
   /** Watches the roller door for the moment it starts rolling up (arrive). */
   private doorWatch: MutationObserver | null = null;
@@ -282,27 +336,24 @@ export class GarageScreen {
     stage: GarageStage,
   ) {
     this.scene = new GarageScene(gr, assets, stage.street, stage.quality);
-    this.tabBar = h('div', { class: 'garage__tabs', role: 'tablist', 'aria-label': 'Categories' });
+    this.tabBar = h('div', { class: 'garage__tabs', role: 'tablist', 'aria-label': 'Categories', style: `--tabs:${Math.ceil(TABS.length / 2)};--tab-count:${TABS.length}` });
     this.body = h('div', { class: 'garage__body' });
-    this.stageEl = this.stageBar();
+    this.savedJson = JSON.stringify(this.build);
+    this.saveBtn = btn(Check, 'Saved', () => this.save(), 'garage__save');
+    this.revertBtn = iconBtn(Undo2, 'Discard changes', () => this.revert());
+    const stepsEl = h('div', { class: 'garage__steps' });
+    this.steps = new RailSteps(stepsEl);
     this.root = h(
       'div',
       { class: 'garage rail' },
       h('div', { class: 'rail__bg', 'aria-hidden': 'true' }),
       h('div', { class: 'rail__edge', 'aria-hidden': 'true' }),
-      h(
-        'div',
-        { class: 'garage__panel' },
-        screenHead({ icon: Wrench, title: 'Garage', back: () => this.exit(), backLabel: 'Back to menu (Esc)' }),
-        this.tabBar,
-        this.body,
-      ),
+      h('div', { class: 'garage__panel' }, stepsEl, h('div', { class: 'garage__foot' }, this.saveBtn, this.revertBtn)),
       this.help.el,
-      this.carCard,
-      this.gasButton(),
+      this.stageBar(),
     );
     uiRoot.append(this.root);
-    // Toasts (camera angle, saved builds) rise above the rev button while the garage is open.
+    // Toasts (camera angle, saved builds) rise above the Garage / Street switch while the garage is open.
     document.body.classList.add('is-garage-open');
     // The 3D view centers on the space beside the rail (or above the sheet on a phone).
     const frame = () => {
@@ -325,23 +376,38 @@ export class GarageScreen {
       b.dataset.tab = t.id;
       this.tabBar.append(b);
     }
-    this.setTab('car');
-    this.updateCarCard();
+    this.go('builds', false);
     void this.scene.setCar(this.build.carId, this.build.visual);
     this.arrive();
 
     const o = { signal: this.abort.signal };
     window.addEventListener('resize', frame, o);
-    // Escape goes back to the menu and C cycles the camera (not while typing or with a dialog up).
+    // Escape goes back a step (or closes a dialog), C cycles the camera, 1 to 6 switch builds on the Builds step
+    // and Ctrl+S saves (also while typing; not with a dialog up).
     window.addEventListener(
       'keydown',
       (e) => {
-        if (isTyping(e) || e.repeat) return;
+        if (e.repeat) return;
+        if (this.dialog) {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            this.closeDialog();
+          }
+          return;
+        }
         if (this.uiRoot.querySelector('.screen')) return;
+        if (e.code === 'KeyS' && (e.ctrlKey || e.metaKey) && !e.altKey) {
+          e.preventDefault();
+          this.save();
+          return;
+        }
+        if (isTyping(e) || e.ctrlKey || e.metaKey || e.altKey) return;
         if (e.key === 'Escape') {
           e.preventDefault();
-          this.exit();
-        } else if (e.code === 'KeyC' && !e.ctrlKey && !e.metaKey && !e.altKey) this.nextCamera();
+          if (this.step === 'build') this.go('builds');
+          else this.exit();
+        } else if (e.code === 'KeyC') this.nextCamera();
+        else if (this.step === 'builds' && /^[1-9]$/.test(e.key) && this.garage.slots[Number(e.key) - 1]) this.pickSlot(Number(e.key) - 1);
       },
       o,
     );
@@ -387,7 +453,6 @@ export class GarageScreen {
       'blur',
       () => {
         this.gasKeys.clear();
-        this.gasPointer = false;
         this.updateGas();
       },
       o,
@@ -451,48 +516,154 @@ export class GarageScreen {
     this.arriveTimer = window.setTimeout(go, 6000);
   }
 
-  /** The car card over the 3D view: model, build name, spec tags, the measured stats and the stage switch. */
-  private readonly carCard = h('div', { class: 'car-card', 'aria-live': 'polite' });
+  // -------------------------------------------------------------------------
+  // Steps
+  // -------------------------------------------------------------------------
 
+  /**
+   * Show a step: deeper slides the old one out to the left as the new one
+   * cascades in from the right, back reverses it (the menu's RailSteps).
+   * Keyboard and gamepad focus lands on the step's main control.
+   */
+  private go(next: Step, animate = true): void {
+    const from = this.step;
+    this.step = next;
+    this.root.dataset.step = next;
+    this.placing = null;
+    const fwd = next === 'build' && from === 'builds';
+    if (this.steps.show(next === 'builds' ? this.buildsStep() : this.buildStep(), animate ? (fwd ? 'fwd' : 'back') : null)) uiWhoosh(fwd);
+    this.help.close();
+    if (!animate) return;
+    this.steps.current?.querySelector<HTMLElement>(next === 'builds' ? '.car-card__go' : '.garage-tab.is-selected')?.focus({ preventScroll: true });
+  }
+
+  /** Step one: the build card over the slots. Import sits in the header: it fills a slot. */
+  private buildsStep(): HTMLElement[] {
+    this.updateCarCard();
+    this.updateSlots();
+    return [
+      screenHead({ icon: Wrench, title: 'Garage', back: () => this.exit(), backLabel: 'Back to menu (Esc)', aside: progress(1, iconBtn(Upload, 'Import a build code', () => this.openShare(true), '--small --ghost')) }),
+      this.carCard,
+      section(`Builds · ${this.garage.slots.length} of ${MAX_SLOTS}`, this.slotsEl),
+    ];
+  }
+
+  /** Step two: the build's name, the tabs and the open tab's groups. */
+  private buildStep(): HTMLElement[] {
+    this.setTab(this.tab);
+    return [screenHead({ icon: Hammer, title: 'Customize', back: () => this.go('builds'), backLabel: 'Back to your builds (Esc)', aside: progress(2, chip(this.build.name, undefined, '--accent garage__build-chip')) }), this.tabBar, this.body];
+  }
+
+  /**
+   * The build card: the slot as the kicker with quiet rename, share,
+   * duplicate and delete beside it, the build's name, its car and who made
+   * it, the spec tags, the measured stats and Customize (the event card's
+   * shape on the menu's home).
+   */
   private updateCarCard(): void {
     const b = this.build;
     const car = manifestCar(b.carId);
-    const st = statsFor(b);
-    const bars = statBars(st);
+    const go = btn(Paintbrush, 'Customize', () => this.go('build'), '--large --primary --cta car-card__go');
+    go.title = 'Body, paint, wheels, stance, neon and tuning';
+    go.append(icon(ChevronRight, { size: 20 }));
+    const del = iconBtn(Trash2, 'Delete this build', () => this.confirmDelete(), '--small --ghost');
+    del.disabled = this.garage.slots.length <= 1;
+    const dup = iconBtn(Copy, 'Duplicate into a new slot', () => this.duplicate(), '--small --ghost');
+    dup.disabled = this.garage.slots.length >= MAX_SLOTS;
     this.carCard.replaceChildren(
-      h('div', { class: 'label label--kicker' }, icon(Car, { size: 14 }), AUTHORS[car.source] ? `By ${AUTHORS[car.source]}` : 'Car'),
-      h('h2', { class: 'car-card__name' }, car.displayName),
-      h('div', { class: 'car-card__build' }, `"${b.name}"`),
-      h('div', { class: 'car-card__tags' }, ...specBadges(car.engine, getBaseTuning(b.carId).drivetrain.layout).map((t, i) => specChip(t, i))),
-      // The values stay yellow; each bar takes its stat's ink.
       h(
         'div',
-        { class: 'car-card__stats' },
-        ...STATS.map((t) =>
-          h('div', { class: `car-card__stat ink-${t.ink}` }, h('span', { class: 'car-card__stat-name' }, t.card), h('span', { class: 'stat-bar' }, h('span', { class: 'stat-bar__fill', style: `width:${bars[t.bar] * 100}%` })), h('span', { class: 'car-card__stat-value' }, t.value(st, false))),
-        ),
+        { class: 'car-card__top' },
+        h('span', { class: 'label label--kicker' }, icon(Car, { size: 14 }), `Slot ${this.garage.current + 1}`),
+        h('span', { class: 'car-card__actions' }, iconBtn(Pencil, 'Rename', () => this.rename(), '--small --ghost'), iconBtn(Share2, 'Share as a code or link', () => this.openShare(false), '--small --ghost'), dup, del),
       ),
-      this.stageEl,
+      h('h2', { class: 'car-card__name' }, b.name),
+      h('div', { class: 'car-card__car' }, car.displayName, AUTHORS[car.source] ? h('span', { class: 'muted' }, ` · by ${AUTHORS[car.source]}`) : null),
+      h('div', { class: 'car-card__tags' }, ...specBadges(car.engine, getBaseTuning(b.carId).drivetrain.layout).map((t, i) => specChip(t, i))),
+      statLines(b),
+      go,
     );
-    // A new car on the turntable deals its card in again; edits to the same car (names, sliders) rebuild
-    // the card still, so the class only stays for the render that brought the new car.
-    const fresh = this.cardCar !== '' && this.cardCar !== b.carId;
-    this.cardCar = b.carId;
+    // Another build deals the card in again; edits to the same one rebuild it still, so the class only stays
+    // for the render that brought the new build.
+    const key = `${this.garage.current}:${b.carId}`;
+    const fresh = this.cardKey !== '' && this.cardKey !== key;
+    this.cardKey = key;
     this.carCard.classList.remove('is-swapping');
     if (!fresh) return;
     void this.carCard.offsetWidth;
     this.carCard.classList.add('is-swapping');
   }
 
+  /** Rename in place, like the menu's seed: the name becomes a field (Enter keeps it, Escape cancels). */
+  private rename(): void {
+    const b = this.build;
+    const input = h('input', { type: 'text', class: 'car-card__input', value: b.name, maxlength: BUILD_NAME_MAX, placeholder: DEFAULT_BUILD_NAME, 'aria-label': 'Build name' }) as HTMLInputElement;
+    const apply = () => {
+      const name = input.value.trim().slice(0, BUILD_NAME_MAX) || DEFAULT_BUILD_NAME;
+      if (name === b.name) return this.updateCarCard();
+      b.name = name;
+      this.updateSlots();
+      void this.changed();
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') apply();
+      else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        this.updateCarCard();
+      }
+    });
+    this.carCard.querySelector('.car-card__name')?.replaceWith(h('div', { class: 'car-card__rename' }, input, iconBtn(Check, 'Keep the name', apply, '--small'), iconBtn(X, 'Cancel', () => this.updateCarCard(), '--small --ghost')));
+    input.focus();
+    input.select();
+  }
+
+  /**
+   * The slots, one build to a row: its number, name and car (the one in use
+   * marked, with a dot while it has unsaved changes). Slots fill in order, so
+   * one New build row stands for every empty slot, numbered for the next.
+   */
+  private updateSlots(): void {
+    const g = this.garage;
+    const dirty = this.isDirty();
+    this.slotsEl.replaceChildren();
+    for (let i = 0; i < Math.min(MAX_SLOTS, g.slots.length + 1); i++) {
+      const s = g.slots[i];
+      const on = i === g.current;
+      const tile = s
+        ? h(
+            'button',
+            { type: 'button', role: 'radio', 'aria-checked': String(on), class: `garage-item garage-item--slot${on ? ' is-selected' : ''}${on && dirty ? ' is-dirty' : ''}`, title: on ? 'The build in use' : `Switch to "${s.name}" (${i + 1})` },
+            h('span', { class: 'garage-item__slot' }, String(i + 1)),
+            h('span', { class: 'garage-item__label' }, s.name),
+            h('span', { class: 'garage-item__sub muted' }, manifestCar(s.carId).displayName),
+            h('span', { class: 'garage-item__unsaved', title: 'Unsaved changes' }),
+            sheen(),
+          )
+        : h(
+            'button',
+            { type: 'button', class: 'garage-item garage-item--slot garage-item--empty', title: 'Start a new build here' },
+            h('span', { class: 'garage-item__slot' }, String(i + 1)),
+            h('span', { class: 'garage-item__label' }, icon(Plus, { size: 14 }), 'New build'),
+            h('span', { class: 'garage-item__sub muted' }, `${MAX_SLOTS - g.slots.length} free`),
+            sheen(),
+          );
+      tile.addEventListener('click', () => (s ? this.pickSlot(i) : this.addBuild(() => freshBuild(DEFAULT_CAR_ID, `Build ${g.slots.length + 1}`))));
+      this.slotsEl.append(tile);
+    }
+    const title = this.slotsEl.parentElement?.querySelector('.section-title');
+    if (title) title.textContent = `Builds · ${g.slots.length} of ${MAX_SLOTS}`;
+  }
+
   private nextCamera(): void {
     toast(`Camera: ${this.scene.setCamera()}`, Video);
   }
 
-  /** Presentation toggle (the showroom's turntable or the street) and camera angles: the car card's foot. */
+  /** Presentation toggle (the showroom's turntable or the street) and camera angles, at the bottom of the view. */
   private stageBar(): HTMLElement {
     return h(
       'div',
-      { class: 'car-card__stage' },
+      { class: 'garage-stage' },
       segmented<Presentation>(
         [
           { value: 'garage', label: 'Garage', icon: Warehouse },
@@ -526,33 +697,8 @@ export class GarageScreen {
     });
   }
 
-  /** Hold to rev. Pointer events so mouse, pen and touch all work; the key works too. */
-  private gasButton(): HTMLElement {
-    // A primary action: the bright sheen on hover, and a sweep after sweep while it is held (_rev-button.scss).
-    const b = h('button', { class: 'btn rev-button', type: 'button', title: 'Hold to rev (W, Up or Space)', 'aria-label': 'Rev the engine' }, icon(Gauge, { size: 20 }), h('span', {}, 'Hold to rev'), sheen());
-    const release = () => {
-      this.gasPointer = false;
-      this.updateGas();
-    };
-    b.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      b.setPointerCapture(e.pointerId);
-      this.scene.unlockAudio();
-      this.gasPointer = true;
-      this.updateGas();
-    });
-    for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(ev, release);
-    b.addEventListener('contextmenu', (e) => e.preventDefault());
-    this.gasEl = b;
-    return b;
-  }
-
-  private gasEl: HTMLElement | null = null;
-
   private updateGas(): void {
-    const on = this.gasPointer || this.gasKeys.size > 0;
-    this.scene.setGas(on ? 1 : 0);
-    this.gasEl?.classList.toggle('is-revving', on);
+    this.scene.setGas(this.gasKeys.size > 0 ? 1 : 0);
   }
 
   /** Idle and redline of the current build feed the garage rev model. */
@@ -583,15 +729,156 @@ export class GarageScreen {
     this.tabInTimer = window.setTimeout(() => this.body.classList.remove('is-switching'), 600);
   }
 
-  /** Apply the current build to the preview and save (debounced). Resolves when the preview is up to date. */
+  /** Apply the current build to the preview and mark it unsaved. Resolves when the preview is up to date. */
   private changed(rerender = false): Promise<unknown> {
     const ready = this.scene.setCar(this.build.carId, this.build.visual);
     this.configureEngine();
-    clearTimeout(this.saveTimer);
-    this.saveTimer = window.setTimeout(() => this.cb.onChange(this.garage), 250);
-    if (rerender) this.renderTab();
-    this.updateCarCard();
+    // The card and slots are the Builds step's; the tabs are Customize's.
+    if (this.step === 'builds') {
+      this.updateCarCard();
+      if (rerender) this.updateSlots();
+    } else if (rerender) this.renderTab();
+    this.updateSaveState();
     return ready;
+  }
+
+  // -------------------------------------------------------------------------
+  // Saving and slots
+  // -------------------------------------------------------------------------
+
+  private isDirty(): boolean {
+    return JSON.stringify(this.build) !== this.savedJson;
+  }
+
+  /** Write the garage (every slot, the current one as it is now) to storage; the build is clean after. */
+  private persist(): void {
+    this.savedJson = JSON.stringify(this.build);
+    this.cb.onChange(this.garage);
+    this.updateSaveState();
+  }
+
+  private save(): void {
+    if (!this.isDirty()) return;
+    this.persist();
+    toast(`Saved "${this.build.name}" to slot ${this.garage.current + 1}`, Check);
+  }
+
+  /** Back to the build as last saved. */
+  private revert(): void {
+    if (!this.isDirty()) return;
+    this.garage.slots[this.garage.current] = JSON.parse(this.savedJson) as CarBuild;
+    this.selectedDecal = -1;
+    this.placing = null;
+    void this.changed(true);
+  }
+
+  /**
+   * The Save button (lit with unsaved changes, a quiet "Saved" without) and the
+   * current slot's unsaved mark. Runs on every edit, so the button only
+   * changes when the state flips.
+   */
+  private updateSaveState(): void {
+    const dirty = this.isDirty();
+    this.slotsEl.querySelector('.garage-item--slot.is-selected')?.classList.toggle('is-dirty', dirty);
+    if (dirty === this.shownDirty) return;
+    this.shownDirty = dirty;
+    const b = this.saveBtn;
+    b.querySelector('svg')?.replaceWith(icon(dirty ? Save : Check, { size: 18 }));
+    b.querySelector('.btn__label')!.textContent = dirty ? 'Save build' : 'Saved';
+    b.classList.toggle('btn--primary', dirty);
+    b.disabled = !dirty;
+    b.title = dirty ? `Save to slot ${this.garage.current + 1} (Ctrl+S)` : 'Every change is saved';
+    this.revertBtn.disabled = !dirty;
+  }
+
+  /** A dialog over the garage: its icon and title with a close button, then the content. Escape or a click outside closes it. */
+  private openDialog(ico: IconNode, title: string, ...children: Child[]): void {
+    this.closeDialog();
+    this.dialog = h(
+      'div',
+      { class: 'screen screen--center screen--dim', onclick: (e: Event) => e.target === this.dialog && this.closeDialog() },
+      h(
+        'div',
+        { class: 'dialog panel', role: 'dialog', 'aria-label': title },
+        h('h2', { class: 'title dialog__title' }, icon(ico, { size: 22 }), title, h('span', { class: 'dialog__spacer' }), iconBtn(X, 'Close', () => this.closeDialog(), '--small')),
+        ...children,
+      ),
+    );
+    this.uiRoot.append(this.dialog);
+  }
+
+  private closeDialog(): void {
+    this.dialog?.remove();
+    this.dialog = null;
+  }
+
+  /**
+   * Run `then` once the build has no unsaved changes: at once when it has
+   * none, else after the player saves or discards them in a dialog (or never,
+   * if they keep editing).
+   */
+  private whenSaved(then: () => void): void {
+    if (!this.isDirty()) return then();
+    const act = (fn: () => void) => () => {
+      this.closeDialog();
+      fn();
+      then();
+    };
+    const save = btn(Save, 'Save', act(() => this.persist()), '--primary');
+    this.openDialog(
+      Save,
+      'Unsaved changes',
+      h('div', { class: 'muted' }, `"${this.build.name}" has changes that are not in its slot yet.`),
+      h('div', { class: 'row' }, save, btn(Undo2, 'Discard', act(() => this.revert())), btn(null, 'Keep editing', () => this.closeDialog())),
+    );
+    save.focus();
+  }
+
+  /** Switch to slot i (after its unsaved changes are dealt with). */
+  private pickSlot(i: number): void {
+    if (i === this.garage.current) return;
+    this.whenSaved(() => {
+      this.garage.current = i;
+      this.selectedDecal = -1;
+      this.persist();
+      void this.changed(true);
+    });
+  }
+
+  /** Add a build in the next empty slot and switch to it; with every slot taken nothing changes but the toast. */
+  private addBuild(make: () => CarBuild): void {
+    this.whenSaved(() => {
+      if (!addSlot(this.garage, make())) return toast(`Up to ${MAX_SLOTS} builds`, Save);
+      this.selectedDecal = -1;
+      this.persist();
+      void this.changed(true);
+    });
+  }
+
+  private duplicate(): void {
+    this.addBuild(() => {
+      const copy = validateBuild(JSON.parse(JSON.stringify(this.build)));
+      copy.name = `${copy.name} copy`.slice(0, BUILD_NAME_MAX);
+      return copy;
+    });
+  }
+
+  /** Delete the build in use, once confirmed (its unsaved changes with it); the slot before it takes over. */
+  private confirmDelete(): void {
+    const g = this.garage;
+    if (g.slots.length <= 1) return toast('Keep at least one build', Save);
+    const name = this.build.name;
+    const del = btn(Trash2, 'Delete', () => {
+      this.closeDialog();
+      g.slots.splice(g.current, 1);
+      g.current = Math.max(0, g.current - 1);
+      this.selectedDecal = -1;
+      this.persist();
+      void this.changed(true);
+      toast(`Deleted "${name}"`, Trash2);
+    }, '--primary');
+    this.openDialog(Trash2, 'Delete build', h('div', { class: 'muted' }, `"${name}" leaves slot ${g.current + 1} for good. Share it first to keep a copy.`), h('div', { class: 'row' }, del, btn(null, 'Cancel', () => this.closeDialog())));
+    del.focus();
   }
 
   private renderTab(): void {
@@ -645,11 +932,6 @@ export class GarageScreen {
 
     switch (this.tab) {
       case 'car': {
-        const nameInput = h('input', { type: 'text', value: b.name, maxlength: BUILD_NAME_MAX, style: 'width:100%' }) as HTMLInputElement;
-        nameInput.addEventListener('input', () => {
-          b.name = nameInput.value.slice(0, BUILD_NAME_MAX) || DEFAULT_BUILD_NAME;
-          this.changed();
-        });
         // Only real, imported cars; a disabled tile at the end promises more.
         const imported = MANIFEST.cars.filter((c) => SELECTABLE_CAR_IDS.includes(c.id) && this.availability[c.id] !== false);
         const cars = imported.length ? imported : MANIFEST.cars.filter((c) => SELECTABLE_CAR_IDS.includes(c.id));
@@ -670,28 +952,38 @@ export class GarageScreen {
         const soon = h('div', { class: 'garage-item garage-item--soon', 'aria-disabled': 'true', title: 'More models coming soon' }, h('span', { class: 'garage-item__label' }, 'More models soon'), h('span', { class: 'garage-item__sub muted' }, 'Coming soon'));
         soon.addEventListener('click', () => toast('More cars are on the way', Car));
         list.append(soon);
-        this.body.append(section('Build name', nameInput), section('Car', list));
+        this.body.append(section('Car', list, h('div', { class: 'muted garage-note' }, 'A new car starts from its stock body; the wheels stay.')));
         break;
       }
       case 'body': {
-        for (const slot of ['body' as PartSlot, ...BODY_PART_SLOTS]) {
-          const parts = partsFor(b.carId, slot);
-          const optional = OPTIONAL_SLOTS.includes(slot);
-          const items: { value: string | null; label: string; sub?: string }[] = [{ value: null, label: optional ? 'None' : 'Stock' }, ...parts.map((p) => ({ value: p.id, label: p.displayName, sub: `${p.tris} tris` }))];
-          const dev = [...this.assets.devParts.entries()].filter(([, d]) => d.slot === slot).map(([id, d]) => ({ value: id, label: d.name, sub: 'Dev preview' }));
-          items.push(...dev);
-          this.body.append(
-            section(
-              SLOT_LABELS[slot],
-              items.length > 1
-                ? choiceList(items, v.parts[slot] ?? null, (id) => {
-                    v.parts[slot] = id;
-                    this.changed();
-                  })
-                : h('div', { class: 'muted garage-note garage-note--empty' }, slot === 'body' ? 'Only the stock body for this car.' : 'No parts for this slot yet. See docs/partsAuthoring.md to add one.'),
-            ),
-          );
-        }
+        // One part slot at a time: the slots as a segmented pick (a dot on those with a part fitted), then its parts.
+        const slots: PartSlot[] = ['body', ...BODY_PART_SLOTS];
+        const slot = this.bodySlot;
+        const parts = partsFor(b.carId, slot);
+        const optional = OPTIONAL_SLOTS.includes(slot);
+        const items: { value: string | null; label: string; sub?: string }[] = [{ value: null, label: optional ? 'None' : 'Stock' }, ...parts.map((p) => ({ value: p.id, label: p.displayName, sub: `${p.tris} tris` }))];
+        const dev = [...this.assets.devParts.entries()].filter(([, d]) => d.slot === slot).map(([id, d]) => ({ value: id, label: d.name, sub: 'Dev preview' }));
+        items.push(...dev);
+        const pick = segmented(
+          slots.map((s) => ({ value: s, label: `${SLOT_LABELS[s]}${v.parts[s] ? ' •' : ''}` })),
+          slot,
+          (s) => {
+            this.bodySlot = s;
+            this.renderTab();
+          },
+        );
+        this.body.append(
+          section('Part', pick),
+          section(
+            SLOT_LABELS[slot],
+            items.length > 1
+              ? choiceList(items, v.parts[slot] ?? null, (id) => {
+                  v.parts[slot] = id;
+                  void this.changed(true);
+                })
+              : h('div', { class: 'muted garage-note garage-note--empty' }, slot === 'body' ? 'Only the stock body for this car.' : 'No parts for this slot yet. See docs/partsAuthoring.md to add one.'),
+          ),
+        );
         break;
       }
       case 'paint': {
@@ -742,25 +1034,30 @@ export class GarageScreen {
           section(
             'Wheels',
             choiceList(
-              wheels.map((p) => ({ value: p.id, label: p.displayName, sub: `${p.tris} tris` })),
+              wheels.map((p) => ({ value: p.id, label: p.displayName })),
               v.parts.wheels ?? manifestCar(b.carId).defaultWheel,
               (id) => {
                 v.parts.wheels = id;
                 // Each wheel model has its own profile: re-render so the inch range fits the new one.
                 void this.changed().then(() => this.tab === 'wheels' && this.renderTab());
               },
+              true,
             ),
           ),
-          section('Wheel size', this.linkToggle(), ...AXLES.map((a) => axleSlider(a, 'wheelSize')), h('div', { class: 'muted garage-note' }, 'Bigger wheels, thinner sidewalls: the tire keeps its outer size.')),
+          section('Wheel size', this.linkToggle(), ...AXLES.map((a) => axleSlider(a, 'wheelSize')), h('div', { class: 'muted garage-note' }, 'Bigger wheels, thinner sidewalls.')),
           // Wheel color has its own link: one picker while linked, front and rear pickers when not.
           this.prefs.linkWheelColor
             ? section(
                 'Wheel color',
-                this.colorLinkToggle(),
-                color(v.wheels.color, (c) => {
-                  v.wheels.color = v.wheels.rearColor = c;
-                  this.changed();
-                }),
+                h(
+                  'div',
+                  { class: 'row' },
+                  color(v.wheels.color, (c) => {
+                    v.wheels.color = v.wheels.rearColor = c;
+                    this.changed();
+                  }),
+                  this.colorLinkToggle(),
+                ),
               )
             : section(
                 'Wheel color',
@@ -826,17 +1123,30 @@ export class GarageScreen {
         this.body.append(
           section(
             'Underglow',
+            field(
+              'Lights',
+              segmented(
+                [
+                  { value: 'off', label: 'Off' },
+                  { value: 'on', label: 'On' },
+                ],
+                g.enabled ? 'on' : 'off',
+                (x) => {
+                  g.enabled = x === 'on';
+                  this.changed();
+                },
+              ),
+            ),
             segmented(
-              [
-                { value: 'off', label: 'Off' },
-                { value: 'on', label: 'On' },
-              ],
-              g.enabled ? 'on' : 'off',
-              (x) => {
-                g.enabled = x === 'on';
+              GLOW_PATTERNS.map((p) => ({ value: p, label: capital(p) })),
+              g.pattern,
+              (p) => {
+                g.pattern = p;
+                g.enabled = true;
                 this.changed();
               },
             ),
+            h('div', { class: 'muted garage-note' }, 'Alternate and chase use both colors.'),
           ),
           section(
             'Colors',
@@ -868,19 +1178,6 @@ export class GarageScreen {
             ),
           ),
           section(
-            'Pattern',
-            segmented(
-              GLOW_PATTERNS.map((p) => ({ value: p, label: capital(p) })),
-              g.pattern,
-              (p) => {
-                g.pattern = p;
-                g.enabled = true;
-                this.changed();
-              },
-            ),
-            h('div', { class: 'muted garage-note' }, 'Alternate and chase use both colors.'),
-          ),
-          section(
             'Glow',
             slider('Brightness', g.brightness, 0.2, 2, 0.05, percent, (x) => {
               g.brightness = x;
@@ -900,9 +1197,6 @@ export class GarageScreen {
       }
       case 'perf':
         this.renderPerformance();
-        break;
-      case 'share':
-        this.renderShare();
         break;
     }
   }
@@ -1042,21 +1336,8 @@ export class GarageScreen {
 
   private renderPerformance(): void {
     const b = this.build;
-    const stats = statsFor(b);
-    const bars = statBars(stats);
-    this.body.append(
-      section(
-        'Stats',
-        ...STATS.map((t) =>
-          h(
-            'div',
-            { class: `tune-stat ink-${t.ink}` },
-            h('div', { class: 'row', style: 'justify-content:space-between' }, h('span', { class: 'label' }, icon(t.icon, { size: 14 }), t.tune), h('span', { class: 'garage-value' }, t.value(stats, true))),
-            h('div', { class: 'stat-bar' }, h('div', { class: 'stat-bar__fill', style: `width:${bars[t.bar] * 100}%` })),
-          ),
-        ),
-      ),
-    );
+    // The build card's stat lines, so the stats and every upgrade fit the column together.
+    this.body.append(section('Stats', statLines(b)));
     // One group of upgrades, a row per part: its icon and name, then the tiers.
     this.body.append(
       section(
@@ -1081,66 +1362,43 @@ export class GarageScreen {
     this.body.append(h('div', { class: 'muted garage-note' }, 'Everything is unlocked in this proof of concept. Visual parts never change performance.'));
   }
 
-  private renderShare(): void {
-    const g = this.garage;
-    const list = choiceList(
-      g.slots.map((s, i) => ({ value: i, label: s.name, sub: manifestCar(s.carId).displayName })),
-      g.current,
-      (i) => {
-        g.current = i;
-        this.changed(true);
-      },
-    );
-    // A new slot is selected at once; with every slot taken nothing changes but the toast.
-    const add = (b: CarBuild) => {
-      if (!addSlot(g, b)) return toast(`Up to ${MAX_SLOTS} builds`, Save);
-      this.changed(true);
-    };
-    const slotActions = h(
-      'div',
-      { class: 'row' },
-      btn(Plus, 'New', () => add(freshBuild(DEFAULT_CAR_ID, `Build ${g.slots.length + 1}`)), '--small'),
-      btn(Copy, 'Duplicate', () => {
-        const copy = validateBuild(JSON.parse(JSON.stringify(this.build)));
-        copy.name = `${copy.name} copy`.slice(0, BUILD_NAME_MAX);
-        add(copy);
-      }, '--small'),
-      btn(Trash2, 'Delete', () => {
-        if (g.slots.length <= 1) return toast('Keep at least one build', Save);
-        g.slots.splice(g.current, 1);
-        g.current = Math.max(0, g.current - 1);
-        this.changed(true);
-      }, '--small'),
-    );
+  /**
+   * Share the build in use as a code or link, and load one into a slot: one
+   * dialog, opened from the build card (share) or the Builds header (import,
+   * its field focused).
+   */
+  private openShare(focusImport: boolean): void {
     const codeOut = h('input', { type: 'text', readonly: true, placeholder: 'Press Export to create a code', style: 'width:100%' }) as HTMLInputElement;
     const importIn = h('input', { type: 'text', placeholder: 'Paste a build code or link', style: 'width:100%' }) as HTMLInputElement;
-    this.body.append(
-      section('Garage slots', list, slotActions, h('div', { class: 'muted garage-note' }, 'Builds save automatically in this browser.')),
-      section(
-        'Share',
-        codeOut,
-        h(
-          'div',
-          { class: 'row' },
-          btn(Download, 'Export', async () => {
-            codeOut.value = await encodeShareCode(this.build);
-          }, '--small --primary'),
-          btn(Copy, 'Copy link', async () => {
-            const code = codeOut.value || (await encodeShareCode(this.build));
-            codeOut.value = code;
-            try {
-              await navigator.clipboard.writeText(shareUrl(code));
-              toast('Share link copied', Check);
-            } catch {
-              codeOut.select();
-              toast('Copy the code from the box', Copy);
-            }
-          }, '--small'),
-        ),
+    this.openDialog(
+      Share2,
+      'Share',
+      h('div', { class: 'section-title' }, `Share "${this.build.name}"`),
+      h('div', { class: 'muted garage-note' }, 'As it looks now, saved or not.'),
+      codeOut,
+      h(
+        'div',
+        { class: 'row' },
+        btn(Download, 'Export', async () => {
+          codeOut.value = await encodeShareCode(this.build);
+        }, '--small --primary'),
+        btn(Copy, 'Copy link', async () => {
+          const code = codeOut.value || (await encodeShareCode(this.build));
+          codeOut.value = code;
+          try {
+            await navigator.clipboard.writeText(shareUrl(code));
+            toast('Share link copied', Check);
+          } catch {
+            codeOut.select();
+            toast('Copy the code from the box', Copy);
+          }
+        }, '--small'),
       ),
-      section(
-        'Import',
-        importIn,
+      h('div', { class: 'section-title' }, 'Import'),
+      importIn,
+      h(
+        'div',
+        { class: 'row' },
         btn(Upload, 'Load code', async () => {
           let code = importIn.value.trim();
           try {
@@ -1151,12 +1409,20 @@ export class GarageScreen {
           }
           const imported = await decodeShareCode(code);
           if (!imported) return toast('That code could not be read', Upload);
-          importBuild(g, imported);
-          this.changed(true);
-          toast(`Loaded "${imported.name}"`, Check);
+          this.closeDialog();
+          // A new slot while there is room, else it replaces the build in use: either way the build in use is left.
+          this.whenSaved(() => {
+            importBuild(this.garage, imported);
+            this.selectedDecal = -1;
+            this.persist();
+            void this.changed(true);
+            toast(`Loaded "${imported.name}" into slot ${this.garage.current + 1}`, Check);
+          });
         }, '--small'),
       ),
+      h('div', { class: 'muted garage-note' }, `It goes in a new slot, or over the build in use when all ${MAX_SLOTS} are taken.`),
     );
+    if (focusImport) importIn.focus();
   }
 
   private async devDrop(file: File): Promise<void> {
@@ -1197,7 +1463,11 @@ export class GarageScreen {
             const hides = hideBoxes.map((l) => l.querySelector('input') as HTMLInputElement).filter((c) => c.checked).map((c) => c.value);
             void this.scene.setCar(this.build.carId, v).then((view) => view.setDevHides(slot, hides));
             dialog.remove();
-            this.setTab(slot === 'wheels' ? 'wheels' : 'body');
+            if (slot !== 'wheels') this.bodySlot = slot;
+            if (this.step !== 'build') {
+              this.tab = slot === 'wheels' ? 'wheels' : 'body';
+              this.go('build');
+            } else this.setTab(slot === 'wheels' ? 'wheels' : 'body');
             toast('Dev part equipped (not saved to the catalog)', Check);
           }, '--primary'),
           btn(Trash2, 'Cancel', () => dialog.remove()),
@@ -1207,20 +1477,21 @@ export class GarageScreen {
     this.uiRoot.append(dialog);
   }
 
-  /** Back to the menu; dispose() saves the garage once on the way out. */
+  /** Back to the menu, once the build's unsaved changes are saved or discarded. */
   private exit(): void {
-    this.cb.onExit();
+    this.whenSaved(() => this.cb.onExit());
   }
 
   render(dt: number): void {
     this.scene.render(dt);
   }
 
+  /** Closed some other way than Back with unsaved changes: they go, so the races drive what the slot holds. */
   dispose(): void {
-    clearTimeout(this.saveTimer);
     clearTimeout(this.arriveTimer);
     this.doorWatch?.disconnect();
-    this.cb.onChange(this.garage);
+    if (this.isDirty()) this.garage.slots[this.garage.current] = JSON.parse(this.savedJson) as CarBuild;
+    this.closeDialog();
     this.abort.abort();
     document.body.classList.remove('is-garage-open');
     this.help.dispose();

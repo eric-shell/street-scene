@@ -39,7 +39,10 @@ body > .music-player {
     opacity: 1;
   }
 }
+/* The FPS meter (main.ts; ?fps or the setting): a line at the bottom center while body.is-fps, which the
+   garage's switch stands above. */
 .fps-meter {
+  display: none;
   position: fixed;
   left: 50%;
   bottom: 6px;
@@ -48,4 +51,7 @@ body > .music-player {
   color: var(--green);
   z-index: 100;
   pointer-events: none;
+  body.is-fps & {
+    display: block;
+  }
 }

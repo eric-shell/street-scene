@@ -7,8 +7,8 @@
  * framed to the free area beside the rail (railInset, GameRenderer.setFraming). Parts:
  *  - railScreen: the screen root with the rail's background and edge.
  *  - screenHead: back button, the screen's icon and title, an aside on the right.
- *  - The help button (ui/panels/help.ts) stands in the rail's bottom left corner,
- *    where every screen keeps its keys and tips.
+ *  - The help button (ui/panels/help.ts) holds every screen's keys and tips; it
+ *    stands beside the music player, off the rail.
  *  - navRow: a row in a list of places or actions (the menu's Garage, Explore
  *    and Settings, the pause screen's actions), each in its own hue.
  *  - RailSteps: a screen's steps, sliding (the menu's, the pause screen's).

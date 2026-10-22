@@ -1,7 +1,8 @@
 /**
- * The help button: one small "?" in the bottom left of every screen (the
- * menu's and the garage's rails, pause and results, the HUD beside the
- * minimap) that opens a small panel of that screen's keys and tips above it.
+ * The help button: one small "?" on every screen (the menu's and the
+ * garage's rails, pause and results, the HUD, the drone), always just left of
+ * the music player (panels/_help.scss), that opens a small panel of that
+ * screen's keys and tips beside it.
  * It replaces the key legends along the bottom of the rails and the HUD card's
  * Controls dialog, so the screens stay clean and every hint lives in one
  * place with one look. A key row with an action is a button too, so what a

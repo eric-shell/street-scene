@@ -1,21 +1,17 @@
-/* The car card over the 3D view (garageUi.ts updateCarCard): what is on the turntable, a plate like the menu's
-   event card (the accent hairline, warm light from the top corners, near opaque so its text holds over a bright
-   street): who made it as the kicker, the name in the event's white-to-peach, the build, the spec chips, the
-   stats and, on its foot, the Garage / Street switch and the camera. A new car deals it in again (.is-swapping).
-   Short screens drop the stats; phones keep a small card of the name and the switch's icons. */
+/* The build card on the Builds step (garageUi.ts updateCarCard), shaped like the menu's event card: the slot as
+   the kicker with quiet rename, share, duplicate and delete actions (the seed's quiet actions), the build's name
+   in the event's white-to-peach, its car and who made it, the spec chips, the measured stats and Customize.
+   Renaming swaps the name for a field. Warm light falls on it from the top corners; another build deals it in
+   again (.is-swapping). The stat lines are shared with the Tune tab (garageUi.ts statLines). */
 @use '../ui/styles/abstracts/media';
 @use '../ui/styles/abstracts/mixins';
 @use '../ui/styles/abstracts/palette';
 .car-card {
   @include mixins.chamfer(12px);
-  position: absolute;
-  /* One gutter from the rail's plates and from the top. */
-  left: calc(var(--rail-pad) + var(--rail-content) + var(--gutter));
-  top: mixins.safe(top, var(--gutter));
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 11px 18px 14px 16px;
+  padding: 10px 16px 16px;
   @include mixins.plate(
     (
       var(--card-top),
@@ -24,58 +20,93 @@
       var(--plate)
     )
   );
-  pointer-events: none;
+  @include media.short {
+    gap: 4px;
+    padding: 8px 14px 12px;
+  }
+  &__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 32px;
+  }
+  &__actions {
+    display: flex;
+    gap: 2px;
+    .btn--small.btn--icon {
+      padding: 6px;
+    }
+  }
   &__name {
     margin: 0;
     padding-right: 0.06em;
-    font: 900 30px/1.02 var(--display);
+    font: 900 30px/1.04 var(--display);
     letter-spacing: 0.05em;
     text-transform: uppercase;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
     @include mixins.gradient-text(var(--title-ink));
-    @include media.narrow {
-      font-size: 20px;
-      white-space: normal;
+    @include media.short {
+      font-size: 26px;
     }
   }
-  &__build {
+  /* The name being renamed: the field where the name stood, keep and cancel beside it. */
+  &__rename {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 32px;
+  }
+  /* Under the block, so it outweighs the kit's input[type='text'] padding. */
+  .car-card__input {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 9px;
+    font: 700 16px var(--font);
+  }
+  &__car {
     font: 600 14px var(--font);
     color: var(--soft);
   }
   &__tags {
     display: flex;
+    flex-wrap: wrap;
     gap: 6px;
     margin-top: 2px;
-    @include media.narrow {
-      display: none;
+  }
+  &__go {
+    margin-top: 8px;
+    > svg:last-child {
+      margin-left: auto;
+      transition: transform var(--t-med) var(--ease-out);
+    }
+    &:hover > svg:last-child,
+    &:focus-visible > svg:last-child {
+      transform: translateX(4px);
+    }
+    @include media.short {
+      margin-top: 4px;
     }
   }
   &.is-swapping {
     @include media.motion {
-      > :not(.car-card__stage) {
+      > * {
         animation: garage-rise 0.42s var(--ease-out) both;
       }
-      @include mixins.stagger(2, 3) using ($i) {
+      @include mixins.stagger(2, 5) using ($i) {
         animation-delay: ($i - 1) * 30ms;
       }
-      > :nth-child(n + 4) {
-        animation-delay: 90ms;
+      > :nth-child(n + 6) {
+        animation-delay: 150ms;
       }
     }
   }
   &__stats {
     display: grid;
     gap: 7px;
-    width: 280px;
     margin-top: 6px;
     padding-top: 10px;
     border-top: 1px solid var(--line);
-    @media (max-height: 640px) {
-      display: none;
-    }
-    @include media.narrow {
-      display: none;
-    }
   }
   &__stat {
     display: grid;
@@ -96,47 +127,5 @@
     text-transform: none;
     text-align: right;
     color: var(--accent-2);
-  }
-  /* The foot, over a hairline like the HUD card's actions: the switch across the card's width, its pick in the
-     accent like every segmented control, the camera on the right. The card is a plate already, so these are
-     the controls the menus use inside their cards. On a phone, icons only. */
-  &__stage {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-    margin-top: 6px;
-    padding-top: 10px;
-    border-top: 1px solid var(--line);
-    pointer-events: auto;
-    .segmented {
-      flex: 1;
-      flex-wrap: nowrap;
-    }
-    .segmented__option {
-      flex: 1;
-      justify-content: center;
-      font-size: 13px;
-      font-weight: 700;
-      padding: 6px 12px;
-    }
-    .btn {
-      padding: 7px;
-    }
-    @include media.narrow {
-      margin-top: 2px;
-      padding-top: 8px;
-      .segmented__option {
-        font-size: 0;
-        gap: 0;
-        padding: 7px 10px;
-      }
-    }
-  }
-  @include media.narrow {
-    left: var(--gutter);
-    top: mixins.safe(top, var(--gutter));
-    max-width: calc(100vw - var(--gutter) * 2);
-    padding: 8px 14px 10px 12px;
-    --cut: 9px;
   }
 }

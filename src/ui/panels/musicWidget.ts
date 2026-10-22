@@ -6,6 +6,13 @@
  *  - hidden
  * A "now playing" banner with full credit appears whenever the track changes.
  * Styled by _music-player.scss and, for the library dialog, _music-library.scss.
+ *
+ * Every screen's help button stands just left of whichever piece is on show
+ * (card, pill or chip), so the two persistent corners read as one: the widget
+ * publishes that piece's place as `--help-right` and `--help-bottom` (or
+ * `--help-top` with `body.is-music-top` for the race's chip up top) on the
+ * document, read by panels/_help.scss. Only on changes (mode, track, size,
+ * resize), never per frame.
  */
 import { MUSIC_CATALOG, type MusicPlayer, type MusicTrack } from '../../audio/musicPlayer';
 import { btn, h, iconBtn, isTyping, link } from '../kit/dom';
@@ -102,6 +109,10 @@ export class MusicWidget {
     this.banner = h('div', { class: 'music-player__banner panel', 'aria-live': 'polite' });
     this.root = h('div', { class: 'music-player' }, this.card, this.pill, this.chip, this.banner);
     parent.append(this.root);
+    // Sizes change with the title and the media queries; places with the viewport.
+    const ro = new ResizeObserver(() => this.dock());
+    for (const el of [this.card, this.pill, this.chip]) ro.observe(el);
+    window.addEventListener('resize', () => this.dock());
 
     player.on('track', () => this.onTrack());
     player.on('state', () => this.render());
@@ -122,6 +133,22 @@ export class MusicWidget {
     this.mode = mode;
     this.root.dataset.context = context;
     this.render();
+  }
+
+  /** Publish where the piece on show stands, for the help buttons beside it; nothing on show leaves them their corner. */
+  private dock(): void {
+    const style = document.documentElement.style;
+    const el = [this.card, this.pill, this.chip].find((x) => x.getClientRects().length > 0);
+    const r = el?.getBoundingClientRect();
+    const top = !!r && r.top + r.height / 2 < window.innerHeight / 2;
+    document.body.classList.toggle('is-music-top', top);
+    if (!r) {
+      for (const k of ['--help-right', '--help-bottom', '--help-top']) style.removeProperty(k);
+      return;
+    }
+    style.setProperty('--help-right', `${Math.round(window.innerWidth - r.left + 8)}px`);
+    style.setProperty('--help-bottom', `${Math.round(window.innerHeight - r.bottom)}px`);
+    style.setProperty('--help-top', `${Math.round(r.top)}px`);
   }
 
   private onTrack(initial = false): void {
@@ -158,6 +185,8 @@ export class MusicWidget {
     this.card.style.display = full && !p.minimized ? '' : 'none';
     this.pill.style.display = full && p.minimized ? '' : 'none';
     this.chip.style.display = this.mode === 'compact' && t ? '' : 'none';
+    // A mode or screen can move the piece on show without resizing it (the observer catches the rest).
+    this.dock();
     if (!t) {
       this.titleEl.textContent = 'No music installed';
       this.artistEl.textContent = 'Run npm run music';

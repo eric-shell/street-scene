@@ -1,4 +1,4 @@
-/* The garage (garageUi.ts): its rail, tabs and groups, the rows inside them, the car card and the rev button. In cascade order. */
+/* The garage (garageUi.ts): its rail, tabs and groups, the rows inside them, the car card and the Garage / Street switch. In cascade order. */
 @use 'garage';
 @use 'garage-tab';
 @use 'garage-section';
@@ -6,4 +6,4 @@
 @use 'garage-swatch';
 @use 'tune-stat';
 @use 'car-card';
-@use 'rev-button';
+@use 'garage-stage';

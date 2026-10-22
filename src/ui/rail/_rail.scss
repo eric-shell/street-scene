@@ -1,8 +1,7 @@
 /* The rail (ui/rail/rail.ts): every full screen menu stands on one. An opaque column down the left
    (.rail__bg) with a straight right edge and the accent down it (.rail__edge), so its contrast never
    depends on the scene behind it, and the 3D view framed in the space beside it (GameRenderer.setFraming).
-   The column (.rail__col) keeps one width on every step of a screen, so nothing jumps; the help button sits
-   in the bottom left. Narrow screens get a full width rail without the edge. The main menu (.menu-screen)
+   The column (.rail__col) keeps one width on every step of a screen, so nothing jumps. Narrow screens get a full width rail without the edge. The main menu (.menu-screen)
    and the garage keep the rail's box for framing but draw only a scrim in it: their cards are plates of
    their own, and the city shows between them (ui/menu/_menu.scss, garage/_garage.scss).
    A screen's content changes in steps (.rail__step, swapStep): the old step leaves from where it stands
@@ -42,7 +41,7 @@
       display: none;
     }
   }
-  /* The column: a fixed top (the gutter) so the title stays put from step to step, room for the help button at the bottom.
+  /* The column: a fixed top (the gutter) so the title stays put from step to step, a little room at the bottom.
      Its parts rise in when a rail screen opens or the player moves between its steps (.is-entering). */
   &__col {
     --col-top: #{mixins.safe(top, var(--gutter))};

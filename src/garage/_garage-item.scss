@@ -63,6 +63,66 @@
     display: flex;
     gap: 5px;
   }
+  /* A build slot, one to a row: its number in the tab's hue, the name, the car on the right, and a yellow dot
+     in the top right corner while the build in use has unsaved changes (.is-dirty). The New build row (--empty)
+     is dashed like the "More models soon" tile, but pressable. */
+  &--slot {
+    display: grid;
+    grid-template-columns: 22px minmax(0, 1fr) auto;
+    column-gap: 10px;
+    .garage-item__label,
+    .garage-item__sub {
+      @include mixins.ellipsis;
+    }
+    .garage-item__label {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .garage-item__sub {
+      max-width: 150px;
+      text-align: right;
+    }
+  }
+  &__slot {
+    font: 900 18px var(--display);
+    text-align: center;
+    color: var(--hue);
+    opacity: 0.55;
+    .is-selected > & {
+      opacity: 1;
+    }
+  }
+  &__unsaved {
+    position: absolute;
+    top: 5px;
+    right: 6px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent-2);
+    display: none;
+    .is-dirty > & {
+      display: block;
+    }
+  }
+  &--empty {
+    border-style: dashed;
+    color: var(--muted);
+    background: rgba(45, 42, 46, 0.25);
+    box-shadow: none;
+    &::before,
+    &::after {
+      border-top-style: dashed;
+    }
+    .garage-item__slot {
+      color: var(--muted);
+    }
+    &:hover,
+    &:focus-visible {
+      color: var(--text);
+    }
+  }
   &--soon {
     border-style: dashed;
     color: var(--muted);

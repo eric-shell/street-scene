@@ -484,7 +484,7 @@ function applySettings(s: Settings): void {
     stage?.night.lighting.setPoolSize(gr.profile.pointLights);
     session?.night.lighting.setPoolSize(gr.profile.pointLights);
   }
-  fpsEl.style.display = settings.showFps ? '' : 'none';
+  document.body.classList.toggle('is-fps', settings.showFps);
   audioHub()?.applyLevels(settings);
   // Debug mode shows both tuning panels in the running session, or takes them away.
   if (debugChanged) {
@@ -837,7 +837,7 @@ input.on('freecam', () => {
 // ---------------------------------------------------------------------------
 const fpsEl = document.createElement('div');
 fpsEl.className = 'fps-meter';
-fpsEl.style.display = settings.showFps || params.has('fps') ? '' : 'none';
+document.body.classList.toggle('is-fps', settings.showFps || params.has('fps'));
 document.body.appendChild(fpsEl);
 let frames = 0;
 let fpsAcc = 0;

@@ -11,7 +11,7 @@
   align-items: center;
   pointer-events: none;
   animation: toast 2.6s ease forwards;
-  /* In the garage the rev button holds the bottom of the view: toasts rise above it. */
+  /* In the garage the Garage / Street switch holds the bottom of the view: toasts rise above it. */
   body.is-garage-open & {
     bottom: max(86px, calc(env(safe-area-inset-bottom) + 74px));
   }

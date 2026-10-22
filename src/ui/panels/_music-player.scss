@@ -198,7 +198,7 @@
   }
 
   /* Banner placement per screen: under the HUD's top in a race and the drone, and beside a rail in the top
-     right corner of the scene (the garage's switch and camera sit in its car card, top left). */
+     right corner of the scene (the garage's switch and camera sit at the bottom of the view). */
   &[data-context='race'],
   &[data-context='drone'] {
     .music-player__banner {
@@ -215,6 +215,14 @@
       right: mixins.safe(right, var(--gutter));
       max-width: min(460px, calc(100vw - 560px));
       transform: translate(0, -16px);
+    }
+  }
+  /* A phone's garage keeps the bottom for its sheet (the Save button along its foot): the pill waits in the
+     top right corner of the view instead. */
+  &[data-context='garage'] .music-player__pill {
+    @include media.narrow {
+      top: mixins.safe(top, var(--gutter));
+      bottom: auto;
     }
   }
   /* After that top: narrow screens center it under the top edge on both. */

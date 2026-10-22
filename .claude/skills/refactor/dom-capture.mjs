@@ -598,6 +598,9 @@ const FLOWS = [
       await f.capture('loading', { settle: 300 });
       f.releaseTraffic();
       await f.page.waitForFunction(() => !!window.__nr?.garageScreen, null, { timeout: 60_000 });
+      // The garage opens on its Builds step; the tabs are on Customize.
+      await f.capture('garage-builds');
+      await f.page.locator('.car-card__go').click();
       const tabs = f.page.locator('[role="tablist"][aria-label="Categories"] [role="tab"]');
       const n = await tabs.count();
       for (let i = 0; i < n; i++) {

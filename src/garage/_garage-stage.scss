@@ -1,0 +1,48 @@
+/* The Garage / Street switch and the camera (garageUi.ts stageBar): one plate at the bottom center of the
+   screen, on the gutter line like the Save button, where it stays on both steps and every tab. With the FPS
+   meter on (body.is-fps, its line at the bottom center) it stands just above it. It never reaches over the
+   rail: on screens too narrow to center it beside the rail it keeps its half width clear of it. On a phone,
+   above the sheet's right corner with icons only. Its pick takes the accent like every segmented control. */
+@use '../ui/styles/abstracts/media';
+@use '../ui/styles/abstracts/mixins';
+.garage-stage {
+  @include mixins.chamfer(10px);
+  position: absolute;
+  left: max(50%, calc(var(--rail-w) + 140px));
+  bottom: mixins.safe(bottom, var(--gutter));
+  transform: translateX(-50%);
+  body.is-fps & {
+    bottom: max(#{mixins.safe(bottom, var(--gutter))}, 28px);
+  }
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px;
+  @include mixins.plate(var(--plate), var(--radius-sm));
+  pointer-events: auto;
+  .segmented {
+    flex-wrap: nowrap;
+  }
+  .segmented__option {
+    justify-content: center;
+    min-width: 96px;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 7px 14px;
+  }
+  .btn {
+    padding: 7px;
+  }
+  @include media.narrow {
+    left: auto;
+    right: var(--gutter);
+    bottom: calc(var(--sheet) + var(--gutter));
+    transform: none;
+    .segmented__option {
+      min-width: 0;
+      font-size: 0;
+      gap: 0;
+      padding: 7px 10px;
+    }
+  }
+}

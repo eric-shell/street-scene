@@ -19,6 +19,12 @@
   > .btn {
     align-self: flex-start;
   }
+  /* The Tune tab's stats: the build card's stat lines, the section's own hairline above them. */
+  > .car-card__stats {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
 }
 .garage-row {
   display: flex;
@@ -44,6 +50,10 @@
   /* An upgrade row: the part's name beside its tiers, which keep to one line. On a narrow phone the longest
      names leave no room beside them, so every row puts its tiers under the name, across the group's width. */
   &--tier {
+    min-height: 30px;
+    & + & {
+      padding-top: 5px;
+    }
     .segmented {
       flex: none;
       flex-wrap: nowrap;
@@ -69,8 +79,15 @@
 }
 .garage-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 5px;
+  /* A pick two to a row (wheels) puts its sub line under the name. */
+  > .garage-item:not(.garage-item--slot) {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 1px;
+  }
 }
 /* A line of help under a group's controls, or in place of a list with nothing in it (--empty). */
 .garage-note {
