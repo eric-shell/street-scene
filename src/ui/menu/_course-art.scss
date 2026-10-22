@@ -37,9 +37,8 @@
     stroke-width: 1.5;
     transform-box: fill-box;
     transform-origin: center;
-    animation: course-art-ping 2s var(--ease-out) infinite;
-    @include media.reduced-motion {
-      animation: none !important;
+    @include media.motion {
+      animation: course-art-ping 2s var(--ease-out) infinite;
     }
   }
   &__start {

@@ -57,7 +57,9 @@
   }
   &.is-revving > .sheen::before {
     mix-blend-mode: overlay;
-    animation: sheen 0.5s linear infinite;
+    @include media.motion {
+      animation: sheen 0.5s linear infinite;
+    }
   }
   @include media.narrow {
     left: auto;

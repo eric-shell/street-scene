@@ -28,7 +28,9 @@
   align-items: baseline;
   gap: 8px;
   text-shadow: var(--hud-halo);
-  animation: boost-callout-in 0.24s ease-out;
+  @include media.motion {
+    animation: boost-callout-in 0.24s ease-out;
+  }
   transition: opacity 0.35s, transform 0.35s;
   @for $i from 1 through list.length(nitro-gauge.$stages) {
     &[data-stage='#{$i}'] {
@@ -73,8 +75,8 @@
       font-size: 16px;
     }
   }
+  /* Reduced motion: the callout fades out without the lift. */
   @include media.reduced-motion {
-    animation: none;
     transition: opacity 0.35s;
     &.is-leaving {
       transform: none;

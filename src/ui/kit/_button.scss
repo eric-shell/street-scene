@@ -5,6 +5,7 @@
    Modifiers: --primary (the accent sweep, a bright sheen), --cta (the screen's main action, which also glints
    on its own every few seconds so the eye finds it), --ghost (no fill or edge until hovered), --small,
    --icon (icon only) and --large (full width). */
+@use '../styles/abstracts/media';
 @use '../styles/abstracts/mixins';
 @use '../styles/abstracts/palette';
 .btn {
@@ -129,13 +130,15 @@
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.09) 50%, transparent);
   }
   @include mixins.sheen-on-hover;
-  &--primary:is(:hover, :focus-visible) > .sheen::before {
-    animation-duration: 0.85s;
-  }
-  &--primary.btn--cta > .sheen::before {
-    animation: sheen-idle 6s var(--ease-in-out) 2.4s infinite;
-  }
-  &--primary.btn--cta:is(:hover, :focus-visible) > .sheen::before {
-    animation: sheen 0.85s var(--ease-out) both;
+  @include media.motion {
+    &--primary:is(:hover, :focus-visible) > .sheen::before {
+      animation-duration: 0.85s;
+    }
+    &--primary.btn--cta > .sheen::before {
+      animation: sheen-idle 6s var(--ease-in-out) 2.4s infinite;
+    }
+    &--primary.btn--cta:is(:hover, :focus-visible) > .sheen::before {
+      animation: sheen 0.85s var(--ease-out) both;
+    }
   }
 }

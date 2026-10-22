@@ -43,9 +43,8 @@
     height: 6px;
     border-radius: 50%;
     background: var(--red);
-    animation: map-live-dot 1.6s ease-in-out infinite;
-    @include media.reduced-motion {
-      animation: none !important;
+    @include media.motion {
+      animation: map-live-dot 1.6s ease-in-out infinite;
     }
   }
 }

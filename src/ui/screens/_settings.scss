@@ -25,16 +25,17 @@
     min-width: 0;
     > * {
       flex-shrink: 0;
-      animation: pane-in 0.34s var(--ease-out) both;
-      @include media.reduced-motion {
-        animation: none !important;
+    }
+    @include media.motion {
+      > * {
+        animation: pane-in 0.34s var(--ease-out) both;
       }
-    }
-    @include mixins.stagger(2, 4) using ($i) {
-      animation-delay: #{($i - 1) * 30}ms;
-    }
-    > :nth-child(n + 5) {
-      animation-delay: 120ms;
+      @include mixins.stagger(2, 4) using ($i) {
+        animation-delay: #{($i - 1) * 30}ms;
+      }
+      > :nth-child(n + 5) {
+        animation-delay: 120ms;
+      }
     }
     > .segmented {
       align-self: flex-start;

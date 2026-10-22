@@ -39,8 +39,9 @@
   &.is-pinned {
     pointer-events: auto;
   }
+  /* Parts the card does not need for what is under the pointer; beats their own display. */
   [hidden] {
-    display: none !important;
+    display: none;
   }
 
   &__head {

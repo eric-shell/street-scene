@@ -168,23 +168,26 @@
     }
   }
 }
+/* The HUD's own animations fade with filter: opacity(), never the opacity property: the race's cinematic
+   shots (render/camera/_cinematics.scss) fade the HUD's parts out with opacity, which an animation of the
+   same property would override. */
 @keyframes hud-countdown-pop {
   0% {
     transform: scale(1.6);
-    opacity: 0;
+    filter: opacity(0);
   }
   20% {
     transform: scale(1);
-    opacity: 1;
+    filter: opacity(1);
   }
   100% {
     transform: scale(0.9);
-    opacity: 0;
+    filter: opacity(0);
   }
 }
 /* The wrong way warning and a timed hazard's warning (_hazard-banner.scss) blink on it. */
 @keyframes hud-blink {
   50% {
-    opacity: 0.25;
+    filter: opacity(0.25);
   }
 }

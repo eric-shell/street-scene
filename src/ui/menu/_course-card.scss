@@ -21,8 +21,10 @@
     min-height: 42px;
     padding: 0 2px;
     .course-best.is-swapping {
-      animation: course-card-swap 0.42s var(--ease-out) both;
-      animation-delay: 0.06s;
+      @include media.motion {
+        animation: course-card-swap 0.42s var(--ease-out) both;
+        animation-delay: 0.06s;
+      }
     }
   }
   &__title {
@@ -31,7 +33,9 @@
     gap: 4px;
     min-width: 0;
     &.is-swapping {
-      animation: course-card-swap 0.42s var(--ease-out) both;
+      @include media.motion {
+        animation: course-card-swap 0.42s var(--ease-out) both;
+      }
     }
   }
 }
@@ -39,12 +43,6 @@
   from {
     opacity: 0;
     transform: translateY(8px);
-  }
-}
-@include media.reduced-motion {
-  .course-card__title.is-swapping,
-  .course-card__head .course-best.is-swapping {
-    animation: none !important;
   }
 }
 .course-name {

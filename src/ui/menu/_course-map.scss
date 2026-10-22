@@ -4,6 +4,7 @@
    the well through the whole turn and every course reads to its end. Under a course the event's district
    breathes quieter, so the course in its color stays the brightest line. With --link it opens the full city
    map on its course and lights like the home card's map. */
+@use '../styles/abstracts/media';
 @use '../styles/abstracts/mixins';
 @use 'table';
 .course-map {
@@ -33,7 +34,9 @@
     transform: translateY(-7%) rotateX(55deg);
   }
   .city-overview__glow {
-    animation-name: city-overview-breathe-quiet;
+    @include media.motion {
+      animation-name: city-overview-breathe-quiet;
+    }
   }
   .map-car__ping {
     border-color: var(--mode);

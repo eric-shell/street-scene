@@ -64,7 +64,9 @@
       gap: 10px;
     }
     &.is-entering > :not(.title-lockup) {
-      animation: rise-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--i, 0) * 35ms) both;
+      @include media.motion {
+        animation: rise-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--i, 0) * 35ms) both;
+      }
     }
     @include mixins.stagger(2, 6) using ($i) {
       --i: #{$i - 1};
@@ -86,16 +88,24 @@
       left: 0;
       right: 0;
       pointer-events: none;
-      animation: step-out 0.26s var(--ease-in-out) both;
-      &.is-back {
-        animation-name: step-out-back;
+      @include media.motion {
+        animation: step-out 0.26s var(--ease-in-out) both;
+        &.is-back {
+          animation-name: step-out-back;
+        }
+      }
+      /* Without the slide the old step goes at once. */
+      @include media.reduced-motion {
+        display: none;
       }
     }
-    &.is-entering > * {
-      animation: step-in 0.5s var(--ease-out) calc(60ms + var(--i, 0) * 45ms) both;
-    }
-    &.is-entering.is-back > * {
-      animation-name: step-in-back;
+    @include media.motion {
+      &.is-entering > * {
+        animation: step-in 0.5s var(--ease-out) calc(60ms + var(--i, 0) * 45ms) both;
+      }
+      &.is-entering.is-back > * {
+        animation-name: step-in-back;
+      }
     }
     @include mixins.stagger(2, 6) using ($i) {
       --i: #{$i - 1};
@@ -124,15 +134,5 @@
   from {
     opacity: 0;
     transform: translateX(-72px);
-  }
-}
-@include media.reduced-motion {
-  .rail__col.is-entering > *,
-  .rail__step.is-entering > *,
-  .rail__step.is-leaving {
-    animation: none !important;
-  }
-  .rail__step.is-leaving {
-    display: none;
   }
 }

@@ -34,7 +34,9 @@
     display: block;
     width: 100%;
     height: 100%;
-    animation: city-overview-turn 34s ease-in-out infinite alternate;
+    @include media.motion {
+      animation: city-overview-turn 34s ease-in-out infinite alternate;
+    }
     &::before {
       @include table.cover;
       @include table.fade-edge;
@@ -58,7 +60,9 @@
     }
   }
   &__glow {
-    animation: city-overview-breathe 2.6s ease-in-out infinite alternate;
+    @include media.motion {
+      animation: city-overview-breathe 2.6s ease-in-out infinite alternate;
+    }
   }
   &__scan {
     position: absolute;
@@ -68,7 +72,12 @@
     width: 28%;
     background: linear-gradient(90deg, transparent, palette.alpha(orange, 0.08) 70%, palette.alpha(yellow, 0.16));
     transform: translateX(-110%);
-    animation: city-overview-scan 7s var(--ease-in-out) 1.5s infinite;
+    @include media.motion {
+      animation: city-overview-scan 7s var(--ease-in-out) 1.5s infinite;
+    }
+    @include media.reduced-motion {
+      display: none;
+    }
   }
   /* On the tilted table the car and the pin lie flat with the map, so they are drawn larger to read. */
   .map-car__arrow {
@@ -105,15 +114,5 @@
   40%,
   100% {
     transform: translateX(380%);
-  }
-}
-@include media.reduced-motion {
-  .city-overview__spin,
-  .city-overview__glow,
-  .city-overview__scan {
-    animation: none !important;
-  }
-  .city-overview__scan {
-    display: none;
   }
 }

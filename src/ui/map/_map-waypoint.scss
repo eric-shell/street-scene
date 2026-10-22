@@ -10,12 +10,11 @@
   background: linear-gradient(var(--accent-2-soft), var(--accent-2-soft)), var(--plate);
   border: 1px solid palette.alpha(yellow, 0.35);
   clip-path: var(--chamfer);
-  animation: map-side-row-in 0.3s var(--ease-out) backwards;
+  @include media.motion {
+    animation: map-side-row-in 0.3s var(--ease-out) backwards;
+  }
   &[hidden] {
     display: none;
-  }
-  @include media.reduced-motion {
-    animation: none !important;
   }
   &__icon {
     display: flex;

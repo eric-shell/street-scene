@@ -8,9 +8,8 @@
 .pause-screen {
   > .rail__bg,
   > .rail__edge {
-    animation: rail-in 0.42s var(--ease-out) both;
-    @include media.reduced-motion {
-      animation: none !important;
+    @include media.motion {
+      animation: rail-in 0.42s var(--ease-out) both;
     }
   }
   .rail__col {

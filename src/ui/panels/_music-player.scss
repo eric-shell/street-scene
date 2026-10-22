@@ -146,7 +146,7 @@
   }
   &[data-mode='compact'] .music-player__chip {
     @include media.touch {
-      display: none !important;
+      display: none;
     }
   }
 

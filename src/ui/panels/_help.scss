@@ -72,12 +72,11 @@
     padding: 10px 14px 14px;
     /* Solid under the plate: it opens over cards and bright buttons, which would show through. */
     @include mixins.plate((var(--card-top), var(--plate), var(--bg1)), null);
-    animation: help-panel-in 0.22s var(--ease-out) both;
+    @include media.motion {
+      animation: help-panel-in 0.22s var(--ease-out) both;
+    }
     &[hidden] {
       display: none;
-    }
-    @include media.reduced-motion {
-      animation: none;
     }
   }
   &__head {

@@ -47,6 +47,14 @@ $very-short: 600px;
     @content;
   }
 }
+/* Motion the player has not asked to reduce: entrance, idle and hover animations are declared only inside it,
+   so reduced motion never starts them and nothing has to override them. */
+@mixin motion {
+  @media (prefers-reduced-motion: no-preference) {
+    @content;
+  }
+}
+/* Reduced motion: only what changes besides the animations (a trail hidden, a bar shown whole). */
 @mixin reduced-motion {
   @media (prefers-reduced-motion: reduce) {
     @content;

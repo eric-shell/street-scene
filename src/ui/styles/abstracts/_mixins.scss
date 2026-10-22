@@ -2,6 +2,7 @@
    hairline, plates, gradient type, single-line text, scrolling panes, entrance cascades and safe-area
    insets. Emits no CSS. */
 @use 'sass:string';
+@use 'media';
 
 /* A polygon with the top right and bottom left corners cut off by $cut: the chamfer's clip-path, for
    borderless fills (--chamfer and --chamfer-sm are the 9px and 6px ones) and small one-off cuts. */
@@ -109,9 +110,11 @@
   @return max(#{$min}, env(safe-area-inset-#{$side}));
 }
 
-/* The sweep of light across a control (ui/kit/dom.ts sheen) as it is hovered or focused. */
+/* The sweep of light across a control (ui/kit/dom.ts sheen) as it is hovered or focused; none under reduced motion. */
 @mixin sheen-on-hover($duration: 0.7s) {
-  &:is(:hover, :focus-visible) > .sheen::before {
-    animation: sheen $duration var(--ease-out) both;
+  @include media.motion {
+    &:is(:hover, :focus-visible) > .sheen::before {
+      animation: sheen $duration var(--ease-out) both;
+    }
   }
 }

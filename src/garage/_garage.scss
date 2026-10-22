@@ -136,14 +136,16 @@ $head-rise: 0.58s, 0.52s;
     gap: 10px;
     @include mixins.scroll-y;
     &.is-switching {
-      > * {
-        animation: pane-in 0.36s var(--ease-out) both;
-      }
-      @include mixins.stagger(2, 3) using ($i) {
-        animation-delay: ($i - 1) * 40ms;
-      }
-      > :nth-child(n + 4) {
-        animation-delay: 120ms;
+      @include media.motion {
+        > * {
+          animation: pane-in 0.36s var(--ease-out) both;
+        }
+        @include mixins.stagger(2, 3) using ($i) {
+          animation-delay: ($i - 1) * 40ms;
+        }
+        > :nth-child(n + 4) {
+          animation-delay: 120ms;
+        }
       }
     }
     input[type='range'] {
@@ -163,11 +165,16 @@ $head-rise: 0.58s, 0.52s;
      door leaves the top. The car card slides in from the rail with its switch. `translate` rather than
      `transform`, so the rev button keeps its centering. */
   &.is-arriving {
-    :is(#{$arriving}) {
-      animation: garage-rise 0.5s var(--ease-out) var(--d, 0.3s) both;
-    }
-    &.is-held :is(#{$arriving}) {
-      animation-play-state: paused;
+    @include media.motion {
+      :is(#{$arriving}) {
+        animation: garage-rise 0.5s var(--ease-out) var(--d, 0.3s) both;
+      }
+      &.is-held :is(#{$arriving}) {
+        animation-play-state: paused;
+      }
+      .car-card {
+        animation-name: garage-slide;
+      }
     }
     :is(.rev-button, .help) {
       --d: 0.14s;
@@ -183,13 +190,6 @@ $head-rise: 0.58s, 0.52s;
     }
     .car-card {
       --d: 0.5s;
-      animation-name: garage-slide;
-    }
-  }
-  @include media.reduced-motion {
-    &.is-arriving *,
-    &__body.is-switching > * {
-      animation: none !important;
     }
   }
 }

@@ -35,9 +35,11 @@
     width: 40%;
     height: 100%;
     background: var(--rule);
-    animation: loading-sweep 1.1s var(--ease-in-out) infinite;
+    @include media.motion {
+      animation: loading-sweep 1.1s var(--ease-in-out) infinite;
+    }
+    /* Without the sweep the bar stands whole. */
     @include media.reduced-motion {
-      animation: none;
       width: 100%;
     }
   }

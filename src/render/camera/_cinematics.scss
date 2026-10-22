@@ -2,17 +2,19 @@
    for its message, .is-handoff; .is-revealing times the fade back in), the letterbox bars slide in, the
    fly-in's title card names the seed's event, and a hint says how to skip. */
 @use '../../ui/styles/abstracts/mixins';
+/* Each part's opacity is the shot's alone: the HUD's own animations fade with filter: opacity() (_hud.scss),
+   and these rules come after every HUD rule that sets one. */
 .hud {
   &.is-intro > * {
-    opacity: 0 !important;
+    opacity: 0;
     transition: opacity 0.4s;
   }
   &.is-outro > :not(.hud__message) {
-    opacity: 0 !important;
+    opacity: 0;
     transition: opacity 0.6s;
   }
   &.is-handoff > * {
-    opacity: 0 !important;
+    opacity: 0;
   }
   &.is-revealing > * {
     transition: opacity 0.9s ease;

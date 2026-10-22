@@ -56,6 +56,12 @@
  * class, or a block and a state) and nest at most three levels. A block restyled inside another is
  * written in the context's partial (.garage .segmented__option, in the garage's).
  *
+ * No !important. Specificity and cascade order decide (the kit first, then the rail and the areas; context
+ * rules in the context's partial). Reduced motion overrides nothing: entrance, idle and hover animations are
+ * declared only inside @include media.motion { ... } (prefers-reduced-motion: no-preference), so with
+ * reduced motion they never start; media.reduced-motion holds only what else changes (a trail hidden, a bar
+ * shown whole). The HUD's own animations fade with filter: opacity(), leaving opacity to the cinematic shots.
+ *
  * Shared patterns are mixins and tokens, never copies: mixins.chamfer (every chamfered box), rule-line
  * (a card's accent hairline in any color), plate, gradient-text, ellipsis, scroll-y, stagger (entrance
  * cascades), safe (safe-area insets) and sheen-on-hover; tokens for repeated values (--ring for focus

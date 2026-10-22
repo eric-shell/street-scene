@@ -51,14 +51,16 @@
     }
   }
   &.is-swapping {
-    > :not(.car-card__stage) {
-      animation: garage-rise 0.42s var(--ease-out) both;
-    }
-    @include mixins.stagger(2, 3) using ($i) {
-      animation-delay: ($i - 1) * 30ms;
-    }
-    > :nth-child(n + 4) {
-      animation-delay: 90ms;
+    @include media.motion {
+      > :not(.car-card__stage) {
+        animation: garage-rise 0.42s var(--ease-out) both;
+      }
+      @include mixins.stagger(2, 3) using ($i) {
+        animation-delay: ($i - 1) * 30ms;
+      }
+      > :nth-child(n + 4) {
+        animation-delay: 90ms;
+      }
     }
   }
   &__stats {
@@ -136,10 +138,5 @@
     max-width: calc(100vw - 20px);
     padding: 8px 14px 10px 12px;
     --cut: 9px;
-  }
-  @include media.reduced-motion {
-    &.is-swapping > * {
-      animation: none !important;
-    }
   }
 }

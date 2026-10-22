@@ -31,12 +31,11 @@
     border: 2px solid var(--accent);
     border-radius: 50%;
     opacity: 0;
-    animation: map-car-ping 2.4s var(--ease-out) infinite;
-    &--late {
-      animation-delay: 1.2s;
-    }
-    @include media.reduced-motion {
-      animation: none !important;
+    @include media.motion {
+      animation: map-car-ping 2.4s var(--ease-out) infinite;
+      &--late {
+        animation-delay: 1.2s;
+      }
     }
   }
 }

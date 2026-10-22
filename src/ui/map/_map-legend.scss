@@ -14,17 +14,16 @@
     flex-direction: column;
   }
   &__row {
-    animation: map-side-row-in 0.34s var(--ease-out) backwards;
-    animation-delay: calc(0.16s + var(--i, 0) * 0.028s);
+    @include media.motion {
+      animation: map-side-row-in 0.34s var(--ease-out) backwards;
+      animation-delay: calc(0.16s + var(--i, 0) * 0.028s);
+    }
     &[hidden] {
       display: none;
     }
     @include map-media.narrow {
       flex: 1 1 46%;
       min-width: 0;
-    }
-    @include media.reduced-motion {
-      animation: none !important;
     }
   }
   &__button {
