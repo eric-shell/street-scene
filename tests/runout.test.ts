@@ -6,7 +6,7 @@ import { carSnapshot, input, raceConfig } from './helpers';
 /** Drive the player on autopilot until it crosses the line. */
 function toFinish(seed: number): RaceState {
   const r = createRace(raceConfig(seed, 'circuit', 0));
-  const pilot = createAi(7, 0.97);
+  const pilot = createAi(0.97);
   while (r.phase !== 'finished' && r.tick < 60 * 300) stepRace(r, autopilotInput(r, r.cars[0], pilot));
   expect(r.phase).toBe('finished');
   return r;

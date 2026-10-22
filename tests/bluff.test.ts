@@ -311,7 +311,7 @@ describe('level crossing', () => {
     placeCar(rc.state, start.x, start.z, yawOf(start.tx, start.tz), w);
     rc.rawS = w.routeProgress(start.x, start.z).s;
     rc.seg = start.seg;
-    const pilot = createAi(3, 0.95);
+    const pilot = createAi(0.95);
     let crossedAt = -1;
     let waiting = 0;
     for (let i = 0; i < 45 * TICK_HZ && crossedAt < 0; i++) {

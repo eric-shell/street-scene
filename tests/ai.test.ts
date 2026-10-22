@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { Rng } from '../src/sim/prng';
 import { carSnapshot, raceConfig, replayLog, runAutopilot } from './helpers';
-import { MAX_OPPONENTS, standings } from '../src/sim/race';
+import { MAX_OPPONENTS, createRace, standings, stepRace } from '../src/sim/race';
+import { autopilotInput, createAi } from '../src/sim/ai';
 
 describe('AI opponents', () => {
   it('complete every route for 50 random seeds without getting stuck', () => {
@@ -42,6 +43,51 @@ describe('AI opponents', () => {
     const r = runAutopilot(cfg, 60);
     const again = replayLog(cfg, r.inputLog);
     expect(carSnapshot(again)).toBe(carSnapshot(r));
+  });
+});
+
+describe('rival personalities', () => {
+  it('each race rolls its own field from aiSeed (the same seed, the same field), every rival on its own line', () => {
+    const drivers = (aiSeed: number) => JSON.stringify(createRace({ ...raceConfig(4242, 'circuit', 4), aiSeed }).cars.slice(1).map((c) => c.ai!.driver));
+    expect(drivers(1)).toBe(drivers(1));
+    expect(drivers(1)).not.toBe(drivers(2));
+    const r = createRace({ ...raceConfig(4242, 'circuit', 4), aiSeed: 1 });
+    const lines = r.cars.slice(1).map((c) => c.ai!.line!);
+    for (let i = 0; i < lines.length; i++) {
+      for (let j = i + 1; j < lines.length; j++) {
+        let apart = 0;
+        for (let k = 0; k < lines[i].n; k++) apart += Math.abs(lines[i].offset[k] - lines[j].offset[k]);
+        expect(apart / lines[i].n, `rivals ${i + 1} and ${j + 1}`).toBeGreaterThan(0.5);
+      }
+    }
+  });
+
+  it('rivals that take every shortcut get down the alleys and over the jumps', () => {
+    const failures: string[] = [];
+    for (const [seed, mode] of [[31337, 'circuit'], [4242, 'sprint'], [2024, 'circuit']] as const) {
+      const r = createRace({ ...raceConfig(seed, mode, 3), aiSeed: 3 });
+      for (const c of r.cars.slice(1)) c.ai!.takes.fill(1);
+      const pilot = createAi(0.97);
+      const was = r.cars.map(() => -1);
+      let started = 0;
+      let through = 0;
+      while (r.tick < 420 * 60 && !r.cars.every((c) => c.finished)) {
+        stepRace(r, autopilotInput(r, r.cars[0], pilot));
+        for (const c of r.cars.slice(1)) {
+          const ai = c.ai!;
+          if (was[c.index] < 0 && ai.detour >= 0) started++;
+          if (was[c.index] >= 0 && ai.detour < 0 && ai.didx >= ai.detours[was[c.index]].line.n - 4) through++;
+          was[c.index] = ai.detour;
+        }
+      }
+      for (const c of r.cars.slice(1)) {
+        const resets = r.events.filter((e) => e.type === 'reset' && e.car === c.index).length;
+        if (!c.finished) failures.push(`${seed} ${mode}: ${c.name} did not finish`);
+        else if (resets > 2) failures.push(`${seed} ${mode}: ${c.name} needed ${resets} resets`);
+      }
+      if (started < 3 || through < started * 0.75) failures.push(`${seed} ${mode}: ${through} of ${started} detours driven through`);
+    }
+    expect(failures).toEqual([]);
   });
 });
 

@@ -228,7 +228,7 @@ describe('drawbridge', () => {
     placeCar(rc.state, start.x, start.z, yawOf(start.tx, start.tz), w);
     rc.rawS = w.routeProgress(start.x, start.z).s;
     rc.seg = start.seg;
-    const pilot = createAi(3, 0.95);
+    const pilot = createAi(0.95);
     let stillFor = 0;
     let longestStill = 0;
     let crossedAt = -1;

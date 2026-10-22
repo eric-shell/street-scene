@@ -32,7 +32,7 @@ export function raceConfig(seed: number, mode: RaceConfig['mode'], opponents = 3
 /** Run a race with the player on autopilot. */
 export function runAutopilot(cfg: RaceConfig, maxSeconds: number, untilAllFinished = false): RaceState {
   const r = createRace(cfg);
-  const pilot = createAi(7, 0.97);
+  const pilot = createAi(0.97);
   const maxTicks = maxSeconds * 60;
   while (r.tick < maxTicks) {
     if (untilAllFinished ? r.cars.every((c) => c.finished) : r.phase === 'finished') break;

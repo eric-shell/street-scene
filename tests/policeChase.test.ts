@@ -9,7 +9,7 @@ import { input, raceConfig } from './helpers';
 describe('police helicopter brief', () => {
   it('follows the leader from the last lap to a few seconds past the finish, then leaves', () => {
     const r = createRace(raceConfig(1234, 'circuit', 3, undefined, 2));
-    const pilot = createAi(7, 0.97);
+    const pilot = createAi(0.97);
     const seen: string[] = [];
     let firstChase = -1;
     while (r.tick < 60 * 400) {

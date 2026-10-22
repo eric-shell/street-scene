@@ -96,7 +96,7 @@ describe('ambient traffic', () => {
     const cfg = raceConfig(20261019, 'circuit', 3);
     const run = (c: RaceConfig) => {
       const r = createRace(c);
-      const pilot = createAi(7, 0.97);
+      const pilot = createAi(0.97);
       for (let i = 0; i < 60 * 35; i++) stepRace(r, autopilotInput(r, r.cars[0], pilot));
       return r;
     };
@@ -123,7 +123,7 @@ describe('ambient traffic', () => {
       const t = r.traffic!;
       const routeNodes = new Set(r.world.route.nodes);
       const closures = r.world.barrierGroups.flatMap((g) => g.walls);
-      const pilot = createAi(7, 0.97);
+      const pilot = createAi(0.97);
       let samples = 0;
       for (let i = 0; i < 60 * 40; i++) {
         stepRace(r, autopilotInput(r, r.cars[0], pilot));
@@ -266,7 +266,7 @@ describe('ambient traffic', () => {
     expect(cfg.traffic).toBeUndefined();
     const r = createRace(cfg);
     expect(r.traffic).toBeNull();
-    const pilot = createAi(7, 0.97);
+    const pilot = createAi(0.97);
     for (let i = 0; i < 60 * 10; i++) stepRace(r, autopilotInput(r, r.cars[0], pilot));
     expect(carSnapshot(replayLog({ ...cfg, traffic: false }, r.inputLog))).toBe(carSnapshot(r));
   });

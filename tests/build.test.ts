@@ -141,7 +141,7 @@ describe('performance upgrades', () => {
     // hundred meters of a sprint can be corner after corner, where the autopilot's cornering speed rules).
     const run = (perf: PerformanceBuild) => {
       const r = createRace(raceConfig(5150, 'sprint', 0, perf));
-      const pilot = createAi(7, 1);
+      const pilot = createAi(1);
       for (let i = 0; i < 60 * 60; i++) stepRace(r, autopilotInput(r, r.cars[0], pilot));
       return r.cars[0].dist;
     };

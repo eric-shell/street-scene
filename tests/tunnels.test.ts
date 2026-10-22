@@ -334,7 +334,7 @@ describe('tunnels and overpasses (routes)', () => {
     const run = () => {
       const cfg = raceConfig(seed, 'circuit', 2);
       const r = createRace(cfg, createWorld(seed, 'circuit'));
-      const pilot = createAi(7, 0.97);
+      const pilot = createAi(0.97);
       const inside = r.cars.map(() => false);
       while (r.tick < 420 * 60 && !r.cars.every((c) => c.finished)) {
         stepRace(r, autopilotInput(r, r.cars[0], pilot));

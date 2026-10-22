@@ -539,6 +539,9 @@ async function enterGarage(): Promise<void> {
 // ---------------------------------------------------------------------------
 const AI_NAMES = ['Kenji', 'Vex', 'Rook', 'Mira', 'Dash', 'Nova', 'Juno', 'Sato', 'Riot', 'Lux'];
 
+/** A fresh seed for the rivals' personalities (RaceConfig.aiSeed): every race start, retry and restart drives differently. */
+const rivalSeed = (): number => Math.floor(Math.random() * 0x7fffffff);
+
 function opponentEntrants(seed: number, count: number, player: PerformanceBuild): { entrants: RaceEntrant[]; visuals: VisualBuild[] } {
   const rng = new Rng(seed ^ 0x51ce);
   const cars = SELECTABLE_CAR_IDS.filter((id) => availability[id]);
@@ -581,6 +584,7 @@ function startRace(mode: RaceMode): void {
     tractionControl: settings.tractionControl,
     // Ambient traffic on the side streets. Replays carry the flag.
     traffic: true,
+    aiSeed: rivalSeed(),
   };
   const ghostData = count === 0 ? loadGhost(seed, mode) : null;
   runSession(config, [build.visual, ...opp.visuals], null, ghostData, 'race');
@@ -692,7 +696,7 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
         tuned,
         onRetry: () =>
           void wipe({ kicker: race.world.event?.name, title: 'Retry', sub: MODE_NAME[race.config.mode] }, () =>
-            replay ? startReplay(replay) : runSession(race.config, visuals, null, race.config.opponents.length ? null : loadGhost(race.config.seed, race.config.mode), 'race'),
+            replay ? startReplay(replay) : runSession({ ...race.config, aiSeed: rivalSeed() }, visuals, null, race.config.opponents.length ? null : loadGhost(race.config.seed, race.config.mode), 'race'),
           ),
         onReplay: () => void wipe({ kicker: race.world.event?.name, title: 'Replay', sub: MODE_NAME[race.config.mode] }, () => startReplay(replay ?? data)),
         onGarage: () => void openGarage(),
@@ -756,7 +760,7 @@ function togglePause(): void {
       if (!cfg) return;
       const title = sessionKind === 'race' ? 'Restart' : 'Free roam';
       void wipe({ kicker: session?.race.world.event?.name, title, sub: sessionKind === 'race' ? MODE_NAME[cfg.mode] : 'Back to the start' }, () =>
-        runSession(cfg, lastVisuals, null, cfg.opponents.length || cfg.openWorld ? null : loadGhost(cfg.seed, cfg.mode), sessionKind),
+        runSession(cfg.opponents.length ? { ...cfg, aiSeed: rivalSeed() } : cfg, lastVisuals, null, cfg.opponents.length || cfg.openWorld ? null : loadGhost(cfg.seed, cfg.mode), sessionKind),
       );
     },
     restartLabel: sessionKind === 'race' ? undefined : 'Back to the start',

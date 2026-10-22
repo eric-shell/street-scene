@@ -17,7 +17,8 @@ import { InputFrame, NEUTRAL_INPUT, packInput, quantizeInput } from './input';
 import { CarTuning } from './tuning';
 import { PerformanceBuild, tuningForBuild, validatePerformance } from './build';
 import { DEG, abs, atan2, clamp, cos, distToSegment, lerp, segmentT, sin, sqrt, yawOf } from './math';
-import { AiState, aiInput, buildRacingLine, createAi, RacingLine } from './ai';
+import { AiState, Course, aiInput, buildRacingLine, createAi, driverDetours, driverLine, RacingLine, rollDrivers, sweepFrame } from './ai';
+import { deriveSeed } from './prng';
 import { stepProps } from './props';
 import { RailState, createRailState } from './rails';
 import { TrafficState, createTraffic, stepTraffic } from './traffic';
@@ -59,6 +60,12 @@ export interface RaceConfig {
   openWorld?: boolean;
   /** Ambient traffic on the streets the race does not use (src/sim/traffic.ts). Missing in old replays = off. */
   traffic?: boolean;
+  /**
+   * Seed of the rivals' personalities (src/sim/ai.ts rollDrivers): rolled fresh
+   * for every race start, so each race's field drives its own lines its own
+   * way; replays carry it. Missing (older replays, tests) = derived from `seed`.
+   */
+  aiSeed?: number;
   /**
    * Open world only: the player starts here, rolling, instead of on the grid
    * (free roam from the menu carries on from the car cruising behind it,
@@ -257,6 +264,14 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
   const route = w.route;
   const entrants = [config.player, ...config.opponents];
   const line = buildRacingLine(w);
+  const distance = route.closed ? route.length * config.laps : route.finishS - route.startS;
+  // Every rival drives its own way: a personality rolled per race, its own line through the sweep frame, and its shortcut detours.
+  const drivers = rollDrivers(deriveSeed(config.aiSeed ?? config.seed, 'drivers'), config.opponents.length);
+  const frame = drivers.length ? sweepFrame(line) : null;
+  const courses: Course[] = drivers.map((d) => {
+    const own = driverLine(frame!, d);
+    return { line: own, distance, laps: config.laps, detours: driverDetours(own, route, w.graph, d) };
+  });
   const slots = gridSlots(route.grid, entrants.length);
   // Off the grid (open world only): the player's start pose and the tick the clock starts on.
   const start = open ? config.start : undefined;
@@ -293,10 +308,9 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
       wrongWay: false,
       resetCooldown: 0,
       stuckTime: 0,
-      ai: i === 0 ? null : createAi(i, DIFFICULTY_PACE[config.difficulty]),
+      ai: i === 0 ? null : createAi(DIFFICULTY_PACE[config.difficulty], drivers[i - 1], courses[i - 1]),
     };
   });
-  const distance = route.closed ? route.length * config.laps : route.finishS - route.startS;
   // A start off the grid is a car already on screen: its traffic spawns out of sight, as respawns do.
   const traffic = config.traffic ? createTraffic(w, cars, config.seed, config.openWorld === true, !!start) : null;
   return {
