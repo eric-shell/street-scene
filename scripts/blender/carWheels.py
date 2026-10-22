@@ -1,7 +1,7 @@
 """
-Wheels from donor models: one real rim per Street Scene wheel (Sketchfab, CC BY), made generic
+Wheels from donor models: one real wheel model per Street Scene wheel (Sketchfab, CC BY), made generic
 and fitted to one house tire, so every wheel shares a tire, a size and a construction and
-differs only in its rim (docs/carWheels.md).
+differs only in its face (docs/carWheels.md).
 
     exec(open(REPO + '/scripts/blender/carKit.py').read())
     exec(open(REPO + '/scripts/blender/carRefs.py').read())
@@ -15,7 +15,7 @@ Material names on wheel models are useless (`Material.026`, `blinn1`, `MainColor
 pipeline works from geometry: the axle is the axis the other two are round about; the scene
 junk (display stands, logo planes, backdrops) goes by name or by being far from round; the
 source tire, if any, is the island whose tread covers the middle of its width at the outer
-radius; everything else is rim. The rim is scaled so its lip sits on the house tire's bead,
+radius; everything else is wheel. The wheel is scaled so its lip sits on the house tire's bead,
 squeezed to fit the tire's width and turned to face +X; its barrel and lip are replaced by one
 turned house ring, the hub gets a house center cap (covering any logo), and what is left of the
 donor (the spokes and hub) is reduced to RIM_BUDGET and shaded from its own authored normals.
@@ -25,22 +25,22 @@ out exactly what makes it that wheel, and a collapsed donor lip comes out polygo
 rivets stay, and its spokes get LIP_BUDGET.
 
 Wheel space (exportCar.py): center at the origin, axle along X, the face toward +X. The game
-scales a wheel so the tire's outer radius meets the car's wheel radius and remaps the rim for
+scales a wheel so the tire's outer radius meets the car's wheel radius and remaps the wheel for
 the size slider from where the Tire mesh meets the rest (src/render/car/wheelFit.ts).
 """
 import re
 
 TIRE_R = 0.28        # m, house tire outer radius (standardWheel)
 TIRE_W = 0.24        # m, house tire width
-BEAD = 0.74          # rim lip radius / tire radius: a 16 inch rim on a 0.28 m tire
+BEAD = 0.74          # wheel lip radius / tire radius: a 16 inch wheel on a 0.28 m tire
 TIRE_SEG = 40        # segments around the house tire
 RIM_BUDGET = 1300    # triangles for the donor face (spokes, hub); the house ring adds TIRE_SEG * 12, the tire TIRE_SEG * 24
 LIP_BUDGET = 2000    # triangles for the donor face of a `lip: 'donor'` wheel: mesh and multi-spoke faces shard at RIM_BUDGET
 LIP_BANDS = 10       # radial bands sampled for a donor lip profile; the turned lip adds TIRE_SEG * (LIP_BANDS + 4) * 2
-CAP = 0.2            # house center cap radius / rim lip radius
+CAP = 0.2            # house center cap radius / wheel lip radius
 
 # Dropped from every wheel by material or object name: display scenes, branding, brakes.
-# Whole words only: `MaterialStandart` is a rim, `GLTF_SceneRootNode` holds everything.
+# Whole words only: `MaterialStandart` is a wheel, `GLTF_SceneRootNode` holds everything.
 JUNK = r'(?i)(?<![a-z])(stand|ground|plane|shadow|floor|backdrop|logo|badge|emblem|decal|brake|caliper|calliper|disc|disk|rotor)(?![a-z])'
 
 WHEELS = {
@@ -145,10 +145,10 @@ def _rad(co):
 
 def _split_tire(bm, R):
     """Delete the source tire: islands reaching the outer radius whose tread (faces past 96 % of
-    it) covers the middle of the island's width. A rim lip reaches the outer radius only at its
+    it) covers the middle of the island's width. A wheel's lip reaches the outer radius only at its
     edges. Then the rest of that tire: sidewalls modelled as their own islands, in the tread's
-    source material and outside half the radius (a bead sits near 0.75, a rim's spokes reach far
-    inside half). Left in place they set the lip radius and shrink the rim (Kiba's did by 13 %,
+    source material and outside half the radius (a bead sits near 0.75, a wheel's spokes reach far
+    inside half). Left in place they set the lip radius and shrink the wheel (Kiba's did by 13 %,
     Rensa's by 20 %). Returns the faces deleted."""
     doomed = []
     islands = _islands(bm)
@@ -173,7 +173,7 @@ def _split_tire(bm, R):
 
 
 def _face_sign(bm, L):
-    """+1 when the rim's face already points +X: the hub and spokes (inside 80 % of the lip) are
+    """+1 when the wheel's face already points +X: the hub and spokes (inside 80 % of the lip) are
     seen from the face, so their area weighted normals lean toward it; ties go to where the hub
     sits relative to the barrel."""
     s = sum(f.normal.x * f.calc_area() for f in bm.faces if _rad(f.calc_center_median()) < 0.8 * L)
@@ -215,11 +215,11 @@ def house_tire(bm, mat, seg=TIRE_SEG):
     return made
 
 
-LIP = 0.86          # the donor rim inside this share of the lip radius is kept; the rest is house ring
+LIP = 0.86          # the donor wheel inside this share of the lip radius is kept; the rest is house ring
 
 
 def dish_start(bm, L, sectors=36, band=0.02, share=None):
-    """Where the rim stops being a spoked pattern and becomes a full ring (dish and lip), as a
+    """Where the wheel stops being a spoked pattern and becomes a full ring (dish and lip), as a
     share of the lip radius: walking in from the lip, the first radial band whose face-side
     surfaces do not cover every angular sector, or `share` when the recipe sets it (a stepped or
     curved dish breaks the coverage test). Returns (share, depth x of the ring's inner edge)."""
@@ -268,7 +268,7 @@ def lip_profile(bm, L, share, bands=LIP_BANDS):
 
 def house_ring(bm, mat, x_face, x_back, L, share=LIP, x_dish=None, seg=TIRE_SEG, profile=None, x_lip=None):
     """The barrel and lip every wheel shares: a turned ring from LIP x L at the face out over a
-    rounded lip edge at L and back along the barrel to the rim's back. With a donor `profile`
+    rounded lip edge at L and back along the barrel to the wheel's back. With a donor `profile`
     (lip_profile), the face side follows the donor's own steps instead and the lip edge sits at
     the donor's lip depth `x_lip`. Faces are marked `own_normals` and smooth shaded about the axle; the
     donor profile's faces are tagged 2 in `house_ring` (their normals are the lathe's own).
@@ -354,7 +354,7 @@ def wheel(name, root):
         raise ValueError(f'{name}: nothing left after dropping scene junk')
     R = _frame(bm)
     tire_faces = _split_tire(bm, R) if R0.get('tire', 'auto') == 'auto' else 0
-    # Stray bits left floating off the wheel (a lone screw from a scene) go: the rim is round.
+    # Stray bits left floating off the wheel (a lone screw from a scene) go: the wheel is round.
     L = max(_rad(v.co) for v in bm.verts)
     sign = R0.get('face') or _face_sign(bm, L)
     k = TIRE_R * BEAD / L
@@ -377,7 +377,7 @@ def wheel(name, root):
                 l[sn] = Vector((l[sn].x / sq, l[sn].y, l[sn].z)).normalized()
     bm.normal_update()
     lip = TIRE_R * BEAD
-    # The donor's dish, barrel and lip go: faces entirely outside where the rim becomes a full ring.
+    # The donor's dish, barrel and lip go: faces entirely outside where the wheel becomes a full ring.
     share, x_dish = dish_start(bm, lip, share=R0.get('dish'))
     own_lip = R0.get('lip') == 'donor'
     profile, x_lip = lip_profile(bm, lip, share) if own_lip else (None, None)
@@ -405,7 +405,7 @@ def wheel(name, root):
     c.objects.link(o)
     src_tris = tris(o)
     # Hidden faces go (from the face side and around: nobody sees a wheel from inside the car),
-    # then the rim is reduced; the tire is added after, so the collapse never touches it.
+    # then the wheel is reduced; the tire is added after, so the collapse never touches it.
     gone, _ = cull_hidden(o, [d for d in _view_dirs() if d.x > -0.3])
     skin = _copy(o, oname + '.skin')
     _collapse(o, LIP_BUDGET if own_lip else RIM_BUDGET)
@@ -419,7 +419,7 @@ def wheel(name, root):
     bm.free()
     me = o.data
     tire_idx = SHARED.index('Tire')
-    # The tire's own smooth normals (custom normals were set for the rim only).
+    # The tire's own smooth normals (custom normals were set for the wheel only).
     cn = [cv.vector.copy() for cv in me.corner_normals]
     out = []
     hr = me.attributes.get('house_ring')
@@ -450,12 +450,12 @@ def wheel(name, root):
     remap_materials(o)
     o['displayName'] = name.capitalize()
     print(f'wheel_{name}: {R0["name"]} ({R0["author"]}); source tire {"removed (" + str(tire_faces) + " faces)" if tire_faces else "none"}, '
-          f'face {"+" if sign > 0 else "-"}X, rim scaled x{k:.3f}, width squeezed x{sq:.2f}, ' + (f'lip turned from its own profile ({len(profile)} bands)' if own_lip else f'house ring from {share:.2f}{" (dish)" if x_dish is not None and x_dish < TIRE_W * 0.46 - 0.012 else ""}') + f'; {src_tris} -> {tris(o)} tris ({gone} hidden culled)')
+          f'face {"+" if sign > 0 else "-"}X, wheel scaled x{k:.3f}, width squeezed x{sq:.2f}, ' + (f'lip turned from its own profile ({len(profile)} bands)' if own_lip else f'house ring from {share:.2f}{" (dish)" if x_dish is not None and x_dish < TIRE_W * 0.46 - 0.012 else ""}') + f'; {src_tris} -> {tris(o)} tris ({gone} hidden culled)')
     return o
 
 
 def wheel_report(names):
-    """One line per wheel: triangles by material, rim depth and lip, so the set compares at a glance."""
+    """One line per wheel: triangles by material, wheel depth and lip, so the set compares at a glance."""
     for n in names:
         o = bpy.data.objects.get(f'wheels.wheel_{n}')
         if not o:
@@ -466,5 +466,5 @@ def wheel_report(names):
         for p in me.polygons:
             k = me.materials[p.material_index].name
             by[k] = by.get(k, 0) + len(p.vertices) - 2
-        rim = [v.co for p in me.polygons if me.materials[p.material_index].name != 'Tire' for i in p.vertices for v in [me.vertices[i]]]
-        print(f"wheel_{n:8} {tris(o):5} tris {by}  rim x {min(v.x for v in rim):+.3f}..{max(v.x for v in rim):+.3f}, lip {max(_rad(v) for v in rim):.3f}")
+        face = [v.co for p in me.polygons if me.materials[p.material_index].name != 'Tire' for i in p.vertices for v in [me.vertices[i]]]
+        print(f"wheel_{n:8} {tris(o):5} tris {by}  face x {min(v.x for v in face):+.3f}..{max(v.x for v in face):+.3f}, lip {max(_rad(v) for v in face):.3f}")

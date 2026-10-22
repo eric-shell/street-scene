@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { MATERIAL_NAMES, MaterialName } from '../../shared/parts';
 import type { PaintFinish, VisualBuild } from '../../shared/carBuild';
 
-/** The shared runtime materials, plus the rear axle's own rim so front and rear wheel colors can differ. */
+/** The shared runtime materials, plus the rear axle's own wheel material so front and rear wheel colors can differ. */
 export type CarMaterialSet = Record<MaterialName, THREE.Material> & { RimRear: THREE.Material };
 
 /** Car space meters per UV unit on Grille faces (GRILLE_UV in scripts/blender/carDonors.py). */

@@ -1,11 +1,11 @@
 /**
- * Rim size without changing the tire's outer diameter. Pure math on vertex
+ * Wheel size without changing the tire's outer diameter. Pure math on vertex
  * arrays in wheel space (center at the origin, axle along X), no three.js.
  *
  * Every vertex is remapped radially (distance from the axle) by one
  * continuous, monotonic function:
- *  - inside the bead (where the tire meets the rim) everything scales by the
- *    rim factor, so spokes, barrel, lip and caps grow together;
+ *  - inside the bead (where the tire meets the wheel) everything scales by the
+ *    wheel's size factor, so spokes, barrel, lip and caps grow together;
  *  - between the bead and the tread the sidewall is squeezed (or stretched)
  *    so the outer radius stays exactly where it was.
  * The axial (X) coordinate never changes, so wheel width and dish stay.
@@ -14,7 +14,7 @@
 export interface WheelProfile {
   /** Tread radius (outer diameter / 2). */
   outer: number;
-  /** Radius where the tire meets the rim. */
+  /** Radius where the tire meets the wheel. */
   bead: number;
 }
 
@@ -26,10 +26,10 @@ const SIZE_MAX = 1.25;
 
 /**
  * Find the bead radius from vertex radii. `tire` are the radii of vertices
- * using the Tire material, `other` everything else (rim, chrome, black).
+ * using the Tire material, `other` everything else (wheel face, chrome, black).
  * IceMaan wheels: the tire's innermost ring in the outer band is the bead.
  * Wheels whose tire is a closed cylinder (tire verts only at the center
- * and the tread, e.g. Proto RS and the placeholder) use the rim's edge.
+ * and the tread, e.g. Proto RS and the placeholder) use the wheel's edge.
  */
 export function detectProfile(tire: ArrayLike<number>, other: ArrayLike<number>): WheelProfile {
   let outer = 0;
@@ -53,7 +53,7 @@ export function detectProfile(tire: ArrayLike<number>, other: ArrayLike<number>)
 }
 
 /**
- * Bead radius for a wheel size. 1 = stock. Below 1 the rim shrinks
+ * Bead radius for a wheel size. 1 = stock. Below 1 the wheel shrinks
  * proportionally; above 1 it grows toward MAX_BEAD so 125% is the thinnest
  * believable sidewall on every wheel, whatever its stock profile.
  */

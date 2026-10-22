@@ -12,7 +12,7 @@ when there is one) so shading features survive, keeps every attribute seam (mate
 face attributes) and collapses only along it, and moves the kept vertices to fit the surface they
 replace. What it lacks is the modifier's mirror symmetry (the collapse is deterministic but not
 mirrored), and on meshes of many loose open pieces it would reach the budget by eating whatever is
-closed (a rim of 300 loose pieces lost its tire): so it stops at MESHOPT['max_error'] and the
+closed (a wheel of 300 loose pieces lost its tire): so it stops at MESHOPT['max_error'] and the
 callers finish with Decimate. On a shipped hatch cut from 8k to 3k that pairing beat Decimate alone
 on every measure (reduce_donor's drift p95 9 against 15 mm, lost p95 18 against 30 mm and max 60
 against 104 mm); on a wheel the two came out even.
@@ -44,7 +44,7 @@ MESHOPT = {
     'crease_cos': math.cos(math.radians(25)),   # corner normals turning more than this at a vertex are a seam
     'update': True,         # move kept vertices to fit the removed surface (simplifyWithUpdate)
     'max_error': 0.01,      # relative error (of the mesh's extent) to stop at short of the budget: past it, the
-                            # only collapses left tear off whole parts held by open borders (a rim of 300 loose
+                            # only collapses left tear off whole parts held by open borders (a wheel of 300 loose
                             # pieces kept its spokes and ate its tire); the caller finishes with Decimate
 }
 

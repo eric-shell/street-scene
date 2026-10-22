@@ -335,12 +335,12 @@ export function shelving(k: Kit, x: number, z: number, yaw: number, w: number, s
   }
 }
 
-/** A tire lying flat at (x, y, z) in room space, optionally on a rim (a wheel taken off a car). */
-export function tire(k: Kit, x: number, y: number, z: number, rim = false): void {
+/** A tire lying flat at (x, y, z) in room space, optionally on a wheel (one taken off a car). */
+export function tire(k: Kit, x: number, y: number, z: number, wheel = false): void {
   const m = k.m;
   k.place();
   k.add(m.rubber, new THREE.TorusGeometry(0.26, 0.1, 10, 24), x, y, z, 0, Math.PI / 2);
-  if (rim) {
+  if (wheel) {
     k.cyl(m.chrome, 0.2, 0.17, x, y, z, 'y', 20);
     k.cyl(m.steel, 0.07, 0.19, x, y, z, 'y', 10);
   }

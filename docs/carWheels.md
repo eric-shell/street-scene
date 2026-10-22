@@ -1,6 +1,6 @@
 # Wheels from donor models
 
-How a Street Scene wheel is made from one real rim model. The rim comes from the donor; the tire, the barrel and lip, the center cap, the size and the construction are the house's. So every wheel fits every car the same way and differs only in its face. The mechanics are `scripts/blender/carWheels.py`; the car body process this follows is `docs/carDonors.md`.
+How a Street Scene wheel is made from one real wheel model. The wheel face comes from the donor; the tire, the barrel and lip, the center cap, the size and the construction are the house's. So every wheel fits every car the same way and differs only in its face. The mechanics are `scripts/blender/carWheels.py`; the car body process this follows is `docs/carDonors.md`.
 
 ## 1. Pick a donor
 
@@ -33,10 +33,10 @@ Material names on wheel models carry no meaning (`Material.026`, `blinn1`, `Main
 
 1. **Gather:** joins every mesh in world space. It drops scene junk by whole-word names below the import root (stand, ground, plane, shadow, logo, badge, decal, brake, caliper, disc, rotor), plus anything in the recipe's `drop`. It keeps the authored normals.
 2. **Frame:** the axle is the axis the other two are round about. The wheel is turned so the axle is X and centered.
-3. **Tire out:** an island reaching the outer radius whose tread covers the middle of its width is the source tire, and it goes. A rim lip reaches the outer radius only at its edges. Sidewalls modelled as their own islands in the tread's material go with it: left in place they set the lip radius and shrink the rim (Kiba's did by 13 %, Rensa's by 20 %).
+3. **Tire out:** an island reaching the outer radius whose tread covers the middle of its width is the source tire, and it goes. A wheel's lip reaches the outer radius only at its edges. Sidewalls modelled as their own islands in the tread's material go with it: left in place they set the lip radius and shrink the wheel (Kiba's did by 13 %, Rensa's by 20 %).
 4. **Face +X:** the hub and spokes lean their normals toward the face side; the wheel is flipped if needed.
 5. **Fit:**
-   - scaled so the rim lip sits on the house tire's bead (lip radius = 0.74 × tire radius, a 16 inch rim on the 0.28 m tire);
+   - scaled so the wheel's lip sits on the house tire's bead (lip radius = 0.74 × tire radius, a 16 inch wheel on the 0.28 m tire);
    - squeezed along the axle to fit the tire's 0.24 m width;
    - the face set just inside the sidewall.
 6. **Dish, barrel and lip out:** walking in from the lip, the first radius where the face no longer covers every angle is where the spokes begin (`dish_start`). Everything outside it goes, because a collapse crumples round surfaces. With `lip: 'donor'` the donor's lip is measured first (`lip_profile`: the frontmost surface per radial band, and the lip edge's own depth) so the ring can be turned from it, and its rivets (small loose islands out there) stay.
@@ -48,7 +48,7 @@ Material names on wheel models carry no meaning (`Material.026`, `blinn1`, `Main
 
    Both are smooth shaded about the axle.
 
-Materials: rim and ring `Rim` (the player's wheel colour), cap `Chrome`, tire `Tire`. The game finds the bead where the `Tire` mesh meets the rest, so the size slider works on every wheel (`src/render/car/wheelFit.ts`).
+Materials: wheel face and ring `Rim` (the player's wheel colour), cap `Chrome`, tire `Tire`. The game finds the bead where the `Tire` mesh meets the rest, so the size slider works on every wheel (`src/render/car/wheelFit.ts`).
 
 ## 4. Recipe overrides
 
@@ -64,7 +64,7 @@ Most wheels need none. The fields:
 
 ## 5. Check
 
-`wheel_report()` prints triangles per material, the rim's depth and the lip radius; every lip should read 0.207. Look at the set face on, side by side. Look for:
+`wheel_report()` prints triangles per material, the wheel's depth and the lip radius; every lip should read 0.207. Look at the set face on, side by side. Look for:
 - a crumpled ring between spokes and lip (set `dish`);
 - spokes floating in front of or behind the ring;
 - a face pointing inward;
@@ -97,14 +97,14 @@ Rebuilt 2026-10-22: the first set's Kiba framed a backdrop (its `drop` matched o
 
 Learnings:
 - **Material names cannot be trusted on wheels.** Geometry (round axes, radial bands, tread coverage) classifies every wheel the same way.
-- **Scenes come along.** Three of eight files carried a display stand, a logo plane or a backdrop, which set the import's size. Junk words must match whole words only: `MaterialStandart` is a rim and `GLTF_SceneRootNode` holds everything.
+- **Scenes come along.** Three of eight files carried a display stand, a logo plane or a backdrop, which set the import's size. Junk words must match whole words only: `MaterialStandart` is a wheel and `GLTF_SceneRootNode` holds everything.
 - **Round surfaces do not survive a collapse.** Replacing the tire, barrel and lip with turned house parts made the biggest visual difference, and gives every wheel the same tire and lip.
 - **Deep dishes need the step.** The house ring starts where the face stops covering every angle and steps down to the spokes' depth. Three wheels with stepped or curved dishes needed a `dish` override.
 - The 18-wheel pack originally proposed is a picture on Sketchfab; its files are sold separately, so it was not used.
 
 Open:
 - Hoshi's outer step still crumples.
-- Lug nuts and the cap read the same colour as the rim; a `Chrome` or `Black` detail pass on the hub would add depth.
+- Lug nuts and the cap read the same colour as the wheel; a `Chrome` or `Black` detail pass on the hub would add depth.
 - A lower-detail version for traffic: the house parts scale down by segment count.
 
 ## Credits

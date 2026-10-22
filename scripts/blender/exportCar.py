@@ -15,7 +15,7 @@ collections:
   Parts   one object per catalog part, named `<slot>_<partId>`
           (`frontBumper_street`, `spoiler_1`); optional custom properties
           `displayName` and `hides` (comma separated base node names).
-  Wheels  rims in wheel space (center at the origin, axle along X, rim face
+  Wheels  wheels in wheel space (center at the origin, axle along X, outer face
           toward +X), named `wheel_<n>`; universal parts.
   Rig     empties `Wheel_FL`, `Wheel_FR`, `Wheel_RL`, `Wheel_RR` at the wheel
           centers. Their height is the wheel radius.

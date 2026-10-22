@@ -361,8 +361,8 @@ export class CarView {
 
   /**
    * Bake the wheel into flat wheel space meshes (center at the origin, axle
-   * along X), one copy per axle so front and rear rim sizes can differ, and
-   * find where the tire meets the rim (see wheelFit.ts).
+   * along X), one copy per axle so front and rear wheel sizes can differ, and
+   * find where the tire meets the wheel (see wheelFit.ts).
    */
   private setWheelModel(model: THREE.Object3D): void {
     for (const old of this.wheelModels) old.parent?.remove(old);
@@ -384,7 +384,7 @@ export class CarView {
       // Part GLBs are Meshopt compressed: position and normal arrive as interleaved,
       // normalized Int16 attributes. Unpack them to plain floats so they can be baked
       // and remapped in place (writing floats into the int arrays zeroed the normals,
-      // which turned rims black whatever their color).
+      // which turned wheels black whatever their color).
       for (const name of ['position', 'normal']) {
         const a = geo.getAttribute(name);
         if (!a) continue;
@@ -414,7 +414,7 @@ export class CarView {
     this.wheelProfile = detectProfile(tireR, otherR);
     if (model.userData.ownGeometry) model.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
     const rear = front.clone(true);
-    // The rear axle gets its own geometry (rim size) and its own rim material (wheel color).
+    // The rear axle gets its own geometry (wheel size) and its own wheel material (wheel color).
     const rearMat = (m: THREE.Material) => (m === this.materials.Rim ? this.materials.RimRear : m);
     rear.traverse((o) => {
       const mesh = o as THREE.Mesh;
@@ -437,7 +437,7 @@ export class CarView {
     }
   }
 
-  /** Remap one axle's wheel meshes for a rim size (tire outer diameter stays). */
+  /** Remap one axle's wheel meshes for a wheel size (tire outer diameter stays). */
   private applyWheelSize(axle: 0 | 1, size: number): void {
     if (this.axleSize[axle] === size) return;
     this.axleSize[axle] = size;
@@ -453,19 +453,19 @@ export class CarView {
     }
   }
 
-  /** Rim diameter in inches for a wheel size on this car (for the garage readout). */
-  rimInches(size: number): number {
+  /** Wheel diameter in inches for a size factor on this car (for the garage readout). */
+  wheelInches(size: number): number {
     const scale = this.car.wheelRadius / (this.wheelProfile.outer || 1);
     return (2 * beadForSize(this.wheelProfile, size) * scale) / 0.0254;
   }
 
-  /** Inverse of rimInches: the wheel size that gives this rim diameter (in) on this car and wheel. */
-  rimSizeForInches(inches: number): number {
+  /** Inverse of wheelInches: the wheel size that gives this wheel diameter (in) on this car and wheel. */
+  wheelSizeForInches(inches: number): number {
     const scale = this.car.wheelRadius / (this.wheelProfile.outer || 1);
     return sizeForBead(this.wheelProfile, (inches * 0.0254) / 2 / scale);
   }
 
-  /** True once a wheel is baked, so rimInches measures the real profile rather than the placeholder one. */
+  /** True once a wheel is baked, so wheelInches measures the real profile rather than the placeholder one. */
   get wheelsReady(): boolean {
     return this.wheelModels.length > 0;
   }
@@ -800,9 +800,9 @@ export function buildPlaceholderWheel(id: string): THREE.Object3D {
   tire.name = 'Tire';
   g.add(tire);
   const spokes = 4 + (id.length % 4);
-  const rim = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.72, r * 0.72, 0.04, spokes * 2).rotateZ(Math.PI / 2).translate(w * 0.42, 0, 0), new THREE.MeshStandardMaterial({ name: 'Rim' }));
-  rim.name = 'Rim';
-  g.add(rim);
+  const face = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.72, r * 0.72, 0.04, spokes * 2).rotateZ(Math.PI / 2).translate(w * 0.42, 0, 0), new THREE.MeshStandardMaterial({ name: 'Rim' }));
+  face.name = 'Rim';
+  g.add(face);
   for (let i = 0; i < spokes; i++) {
     const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.03, r * 1.3, 0.05).translate(w * 0.46, 0, 0), new THREE.MeshStandardMaterial({ name: 'Chrome' }));
     spoke.rotation.x = (i / spokes) * Math.PI;

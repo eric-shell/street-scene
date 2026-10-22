@@ -275,9 +275,9 @@ function wheelToWheelSpace(doc: Document, scale: number): void {
   const axle = ext.indexOf(Math.min(...ext));
   const c = [0, 1, 2].map((k) => (b.max[k] + b.min[k]) / 2);
   let m = translate(-c[0], -c[1], -c[2]);
-  // Outer face: the rim material sits toward the outside of the wheel.
-  const rim = centroid(positions(doc, 'Rim')) ?? c;
-  const outerSign = Math.sign(rim[axle] - c[axle]) || 1;
+  // Outer face: the Rim material sits toward the outside of the wheel.
+  const face = centroid(positions(doc, 'Rim')) ?? c;
+  const outerSign = Math.sign(face[axle] - c[axle]) || 1;
   if (axle === 2) m = mul(rotY(outerSign > 0 ? Math.PI / 2 : -Math.PI / 2), m);
   else if (axle === 0 && outerSign < 0) m = mul(rotY(Math.PI), m);
   else if (axle === 1) throw new Error('wheel axle along Y is not supported');
@@ -434,7 +434,7 @@ async function main(): Promise<void> {
       const w = await writeOptimized(io, doc, join(PUBLIC, `parts/${id}.glb`), 'Wheel');
       carBytes += w.bytes;
       wheelIds.push(id);
-      generated.push({ id, displayName: wh.displayName || `${entry.displayName.replace(/^Proto /, '')} rim ${wh.name}`, carId: 'universal', slot: 'wheels', file: `parts/${id}.glb`, hides: [], materialSlots: materialSlotsOf(doc), tris: w.tris, generated: true } as PartEntry);
+      generated.push({ id, displayName: wh.displayName || `${entry.displayName.replace(/^Proto /, '')} wheel ${wh.name}`, carId: 'universal', slot: 'wheels', file: `parts/${id}.glb`, hides: [], materialSlots: materialSlotsOf(doc), tris: w.tris, generated: true } as PartEntry);
     }
 
     const c = meta.wheelCenters;
@@ -557,7 +557,7 @@ async function main(): Promise<void> {
       const out = await writeOptimized(io, d.doc, join(PUBLIC, file), 'Wheel');
       carBytes += out.bytes;
       if (!defaultWheel) defaultWheel = id;
-      generated.push({ id, displayName: `${carId.toUpperCase()} rim ${idx || 0}`, carId: 'universal', slot: 'wheels', file, hides: [], materialSlots: materialSlotsOf(d.doc), tris: out.tris, generated: true } as PartEntry);
+      generated.push({ id, displayName: `${carId.toUpperCase()} wheel ${idx || 0}`, carId: 'universal', slot: 'wheels', file, hides: [], materialSlots: materialSlotsOf(d.doc), tris: out.tris, generated: true } as PartEntry);
     }
     if (unknownMats.size) section.push(`- WARNING: unmapped source materials: ${[...unknownMats].map((m) => '`' + m + '`').join(', ')}. Add them to \`materialMap\` in scripts/assetConfig.json.`);
     sizeReport.push(`| ${carId} | ${(carBytes / 1024).toFixed(1)} KB |`);
@@ -591,7 +591,7 @@ async function main(): Promise<void> {
   }
 
   // ----- The shared wheel set (assets/source/eshell/wheels/wheels.blend, docs/carWheels.md) -----
-  // Universal wheels from donor rims on the house tire; ids are wheel_<name>.
+  // Universal wheels from donor wheels on the house tire; ids are wheel_<name>.
   const wheelBlend = join(AUTHORED, WHEEL_SET, `${WHEEL_SET}.blend`);
   if (existsSync(wheelBlend)) {
     const blenderW = findBlender();

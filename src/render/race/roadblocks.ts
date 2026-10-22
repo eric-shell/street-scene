@@ -3,7 +3,7 @@
  * (placed by meetPlan.ts, nose to the course as if they pulled in to watch).
  * Each is a real garage model (manifest `selectable`) in one of a few
  * customization variants (stock, or a body kit with a spoiler and coloured
- * rims), baked once into four instanced parts per variant (paint, dark details
+ * wheels), baked once into four instanced parts per variant (paint, dark details
  * + wheels, glass, lights), with random paint per instance, underglow on many
  * and hazards blinking on some front row cars. Meets outside the view frustum
  * or the draw distance are dropped from the instance buffers. Nothing here
@@ -25,8 +25,8 @@ import { maskVehicleMesh, underVehicles } from '../vehicleMask';
 const PAINTS = [0xc81e2e, 0x1d55c4, 0xe8e8ea, 0x15161a, 0xf2b81c, 0x2a9d5a, 0x6b2fc2, 0x9aa3ad, 0xff6a00, 0x101a3a, 0x7a0f1a, 0x7cff3a, 0xff2d9a, 0x19c8ff, 0xffe14a, 0x9a3cff].map((c) => new THREE.Color(c));
 /** Underglow colours. */
 const GLOWS = [0x19e6ff, 0xff3df2, 0x9a7bff, 0x3dff9a, 0xff2e5b, 0xffb02e].map((c) => new THREE.Color(c).multiplyScalar(2.2));
-/** Rim colours per variant: stock silver, black, gold. */
-const RIMS = [0x8a8f99, 0x1a1b1f, 0xc9a227].map((c) => new THREE.Color(c));
+/** Wheel colours per variant: stock silver, black, gold. */
+const WHEEL_COLORS = [0x8a8f99, 0x1a1b1f, 0xc9a227].map((c) => new THREE.Color(c));
 /** Variants per model: stock, then body kits with spoilers. */
 export const MEET_VARIANTS = 3;
 
@@ -95,7 +95,7 @@ function loadKit(car: ManifestCar, variant: number): Promise<CarKit> {
         if (o) o.visible = false;
       }
       for (const part of parts) if (part) root.add(part);
-      return bakeKit(car, root, RIMS[variant % RIMS.length]);
+      return bakeKit(car, root, WHEEL_COLORS[variant % WHEEL_COLORS.length]);
     });
     kitCache.set(key, p);
   }
@@ -120,7 +120,7 @@ class Bucket {
 }
 
 /** Flatten every visible mesh of the model into car space, bucketed by material. */
-function bakeKit(car: ManifestCar, model: THREE.Object3D, rimColor: THREE.Color): CarKit {
+function bakeKit(car: ManifestCar, model: THREE.Object3D, wheelColor: THREE.Color): CarKit {
   const buckets = [new Bucket(), new Bucket(), new Bucket(), new Bucket()];
   const v = new THREE.Vector3();
   const n = new THREE.Vector3();
@@ -173,7 +173,6 @@ function bakeKit(car: ManifestCar, model: THREE.Object3D, rimColor: THREE.Color)
   // Low poly wheels (parked cars' wheels sit mostly inside the arches).
   const dark = buckets[PART_DARK];
   const tire = new THREE.Color(0x141414);
-  const rim = rimColor;
   const seg = 12;
   for (const key of ['FL', 'FR', 'RL', 'RR'] as const) {
     const [wx, wy, wz] = car.wheels[key];
@@ -204,11 +203,11 @@ function bakeKit(car: ManifestCar, model: THREE.Object3D, rimColor: THREE.Color)
       // wind so the outward normal faces out: flip for the right side
       const order = out > 0 ? [0, 2, 1, 3, 5, 4] : [0, 1, 2, 3, 4, 5];
       for (const o of order) push(tread[o][0], tread[o][1], tread[o][2], tread[o][3], tread[o][4], tread[o][5], tire);
-      // outer face: rim disc
+      // outer face: wheel disc
       const fy = wy + Math.cos(a0) * r * 0.72, fz = wz + Math.sin(a0) * r * 0.72;
       const gy = wy + Math.cos(a1) * r * 0.72, gz = wz + Math.sin(a1) * r * 0.72;
       const face = out > 0 ? [[x1, wy, wz], [x1, fy, fz], [x1, gy, gz]] : [[x1, wy, wz], [x1, gy, gz], [x1, fy, fz]];
-      for (const [x, y, z] of face) push(x, y, z, out, 0, 0, rim);
+      for (const [x, y, z] of face) push(x, y, z, out, 0, 0, wheelColor);
       const ring = out > 0 ? [[x1, fy, fz], [x1, y0, z0], [x1, y1, z1], [x1, fy, fz], [x1, y1, z1], [x1, gy, gz]] : [[x1, fy, fz], [x1, y1, z1], [x1, y0, z0], [x1, fy, fz], [x1, gy, gz], [x1, y1, z1]];
       for (const [x, y, z] of ring) push(x, y, z, out, 0, 0, tire);
     }

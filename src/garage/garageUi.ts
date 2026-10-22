@@ -605,7 +605,7 @@ export class GarageScreen {
     this.body.replaceChildren();
     const b = this.build;
     const v = b.visual;
-    // Rim size steps in whole inches once the wheel is measured; the build keeps the size factor, so the
+    // Wheel size steps in whole inches once the wheel is measured; the build keeps the size factor, so the
     // slider converts both ways (the inches a factor gives depend on the car and the wheel model).
     const car = this.scene.car?.wheelsReady ? this.scene.car : null;
     const id = (x: number) => x;
@@ -618,11 +618,11 @@ export class GarageScreen {
         offset: { label: 'Wheel offset', min: L[0], max: L[1], step: 0.005, fmt: cm, toUi: id, fromUi: id },
         wheelSize: car
           ? (() => {
-              const min = Math.ceil(car.rimInches(L[0]) - 1e-6);
-              const max = Math.floor(car.rimInches(L[1]) + 1e-6);
-              return { label: 'Rim size', min, max, step: 1, fmt: (x: number) => `${x} in`, toUi: (x: number) => Math.max(min, Math.min(max, Math.round(car.rimInches(x)))), fromUi: (x: number) => car.rimSizeForInches(x) };
+              const min = Math.ceil(car.wheelInches(L[0]) - 1e-6);
+              const max = Math.floor(car.wheelInches(L[1]) + 1e-6);
+              return { label: 'Wheel size', min, max, step: 1, fmt: (x: number) => `${x} in`, toUi: (x: number) => Math.max(min, Math.min(max, Math.round(car.wheelInches(x)))), fromUi: (x: number) => car.wheelSizeForInches(x) };
             })()
-          : { label: 'Rim size', min: L[0], max: L[1], step: 0.01, fmt: percent, toUi: id, fromUi: id },
+          : { label: 'Wheel size', min: L[0], max: L[1], step: 0.01, fmt: percent, toUi: id, fromUi: id },
       }[key];
       const label = short ? spec.label : `${axle === 'front' ? 'Front' : 'Rear'}`;
       const el = slider(label, spec.toUi(v.stance[axle][key]), spec.min, spec.max, spec.step, spec.fmt, (ui) => {
@@ -740,18 +740,18 @@ export class GarageScreen {
         const wheels = partsFor(b.carId, 'wheels');
         this.body.append(
           section(
-            'Rims',
+            'Wheels',
             choiceList(
               wheels.map((p) => ({ value: p.id, label: p.displayName, sub: `${p.tris} tris` })),
               v.parts.wheels ?? manifestCar(b.carId).defaultWheel,
               (id) => {
                 v.parts.wheels = id;
-                // Each wheel model has its own rim profile: re-render so the inch range fits the new one.
+                // Each wheel model has its own profile: re-render so the inch range fits the new one.
                 void this.changed().then(() => this.tab === 'wheels' && this.renderTab());
               },
             ),
           ),
-          section('Rim size', this.linkToggle(), ...AXLES.map((a) => axleSlider(a, 'wheelSize')), h('div', { class: 'muted garage-note' }, 'Bigger rims, thinner sidewalls: the tire keeps its outer size.')),
+          section('Wheel size', this.linkToggle(), ...AXLES.map((a) => axleSlider(a, 'wheelSize')), h('div', { class: 'muted garage-note' }, 'Bigger wheels, thinner sidewalls: the tire keeps its outer size.')),
           // Wheel color has its own link: one picker while linked, front and rear pickers when not.
           this.prefs.linkWheelColor
             ? section(

@@ -37,7 +37,7 @@ export interface MeetCar {
   yaw: number;
   /** Index into MeetOptions.cars (the parked models). */
   model: number;
-  /** Customization variant of that model (roadblocks.ts: body kit, spoiler, rims). */
+  /** Customization variant of that model (roadblocks.ts: body kit, spoiler, wheels). */
   variant: number;
   /** Random 0..1 picks for the paint and the underglow colour (glow < 0: none). */
   paint: number;

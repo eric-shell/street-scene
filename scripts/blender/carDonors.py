@@ -82,7 +82,7 @@ DONORS = {
         'license': 'CC Attribution',
         'mm': {'length': 4285, 'wheelbase': 2425},
         'turn': (-90, 0, 0),   # -Y up, nose at -Z
-        # `material` is the rims, Material__1..4 the number plates; clear and orange glass are the
+        # `material` is the wheels, Material__1..4 the number plates; clear and orange glass are the
         # lamp lenses (pop-ups modelled raised, bumper lamps, indicators), not windows.
         'materials': {r'^material$': None, r'^Material__\d$': None, r'^(clearglass|orangeglass)$': 'Lamp', r'^redglass$': 'TailLight',
                       r'^windowglass$': 'Glass', r'^carpaint$': 'Paint', r'^black$': 'Black', r'^chrome$': 'Chrome', r'^mirror$': 'Black'},

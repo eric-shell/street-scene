@@ -45,7 +45,7 @@ export interface AxleStance {
   camber: number;
   /** Meters the wheel moves outward from its stock track. */
   offset: number;
-  /** Rim diameter multiplier. The tire's outer diameter never changes (rim grows, sidewall gets thinner). */
+  /** Wheel diameter multiplier. The tire's outer diameter never changes (the wheel grows, sidewall gets thinner). */
   wheelSize: number;
 }
 

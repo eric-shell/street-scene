@@ -152,32 +152,32 @@ describe('performance upgrades', () => {
   });
 });
 
-describe('rim size keeps the tire outer diameter', () => {
-  // A ring of tire verts (bead 0.79 .. tread 1.0) and rim verts inside, in wheel space (axle = X).
+describe('wheel size keeps the tire outer diameter', () => {
+  // A ring of tire verts (bead 0.79 .. tread 1.0) and wheel verts inside, in wheel space (axle = X).
   const ring = (r: number, x: number, n = 16) => Array.from({ length: n }, (_, i) => [x, r * Math.cos((i / n) * Math.PI * 2), r * Math.sin((i / n) * Math.PI * 2)]).flat();
   const tire = [...ring(0.792, 0.4), ...ring(0.88, 0.43), ...ring(1, 0.4), ...ring(1, -0.4), ...ring(0.792, -0.4)];
-  const rim = [...ring(0.2, 0.3), ...ring(0.55, 0.2), ...ring(0.792, 0.42)];
+  const wheel = [...ring(0.2, 0.3), ...ring(0.55, 0.2), ...ring(0.792, 0.42)];
   const radii = (a: number[]) => a.filter((_, i) => i % 3 === 1).map((y, k) => Math.hypot(y, a[k * 3 + 2]));
-  const profile = detectProfile(radii(tire), radii(rim));
+  const profile = detectProfile(radii(tire), radii(wheel));
   const remapped = (a: number[], size: number) => {
     const out = new Float32Array(a.length);
     remapWheel(a, null, out, null, profile, size);
     return Array.from(out);
   };
 
-  it('finds the bead where the tire meets the rim', () => {
+  it('finds the bead where the tire meets the wheel', () => {
     expect(profile.outer).toBeCloseTo(1, 5);
     expect(profile.bead).toBeCloseTo(0.792, 3);
-    // Closed cylinder tires (Proto RS, placeholder) fall back to the rim edge.
+    // Closed cylinder tires (Proto RS, placeholder) fall back to the wheel's edge.
     expect(detectProfile([0, 1, 1, 1], [0.7, 0.69, 0.14]).bead).toBeCloseTo(0.7, 5);
   });
 
-  it('grows the rim, thins the sidewall, never moves the tread or the width', () => {
+  it('grows the wheel, thins the sidewall, never moves the tread or the width', () => {
     for (const size of [0.85, 1, 1.12, 1.25]) {
       const t = remapped(tire, size);
-      const r = remapped(rim, size);
+      const r = remapped(wheel, size);
       expect(Math.max(...radii(t))).toBeCloseTo(1, 5);
-      // Rim edge and tire bead stay together.
+      // Wheel edge and tire bead stay together.
       const bead = beadForSize(profile, size);
       expect(Math.max(...radii(r))).toBeCloseTo(bead, 5);
       expect(Math.min(...radii(t))).toBeCloseTo(bead, 5);
@@ -188,7 +188,7 @@ describe('rim size keeps the tire outer diameter', () => {
     expect(beadForSize(profile, 1)).toBeCloseTo(profile.bead, 9);
     expect(beadForSize(profile, 1.25)).toBeGreaterThan(beadForSize(profile, 1.1));
     expect(beadForSize(profile, 0.85)).toBeLessThan(profile.bead);
-    // The garage's whole inch rim slider inverts the size curve on both sides of stock.
+    // The garage's whole inch wheel size slider inverts the size curve on both sides of stock.
     for (const size of [0.85, 0.93, 1, 1.07, 1.25]) expect(sizeForBead(profile, beadForSize(profile, size))).toBeCloseTo(size, 9);
     expect(sizeForBead(profile, 0)).toBe(0.85);
     expect(sizeForBead(profile, 2)).toBe(1.25);

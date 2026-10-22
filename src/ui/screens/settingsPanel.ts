@@ -192,20 +192,20 @@ const CONTROLS: Record<'keyboard' | 'gamepad' | 'touch', [string[], string][]> =
 
 const CC_BY = 'https://creativecommons.org/licenses/by/4.0/';
 
-/** The donor models (Sketchfab, CC BY 4.0) the garage cars and rims are made from: each credit names
+/** The donor models (Sketchfab, CC BY 4.0) the garage cars and wheels are made from: each credit names
  * the model, its author and the licence, as CC BY asks (docs/carDonors.md, docs/carWheels.md). */
 const DONOR_CREDITS: { use: string; title: string; uid: string; author: string }[] = [
   { use: 'Proto Hatch', title: '2002_volkswagen_golf_r32_mk4', uid: '98e6828648084ae3b877ad69e8ad36dc', author: 'tangwang920' },
   { use: 'Proto Coupe', title: 'Mazda RX7 FD 1999', uid: '06986b70c65b44c5a7315ed467b621a6', author: 'niev' },
   { use: 'Proto Wagon', title: '1992 Audi S2 Avant', uid: '939dc6336dfe4fbd99fdb3608d58de56', author: 'tonielpro520' },
-  { use: 'Kiba rims', title: 'BBS RS16 Tuner Car Wheel', uid: '4e50d45e5ff04d00927a50c150e088c1', author: 'TinoD2' },
-  { use: 'Hoshi rims', title: 'Mugen M7 Tuner Car Wheel', uid: '3efc6a0cb9cc44d9adf24e226991a261', author: 'TinoD2' },
-  { use: 'Rensa rims', title: 'Work Equip 03 Car Wheel', uid: '58330f40b725444e8c00bdbbfd88cc98', author: 'TinoD2' },
-  { use: 'Tsuki rims', title: 'Work Meister S1 3P Wheel', uid: '7205c04f3cb24a7dbdaf6a304fb31f21', author: 'alexanderlyreo' },
-  { use: 'Ginga rims', title: 'Stance Wheel R13x10"', uid: '6c8a9dc226b64454a3af8dc37f7359ec', author: 'terllok' },
-  { use: 'Hibana rims', title: 'Wire rim', uid: 'bda093957f8e47a7b27270de6c3e0d14', author: '3dpeter' },
-  { use: 'Senko rims', title: 'Concept car Rim', uid: 'e36860f9f8de4d8e8429cb07007142f2', author: 'LagzDesign' },
-  { use: 'Arashi rims', title: 'Car Wheel / rim', uid: '232904121fff4e558b55ce724df7e47f', author: 'UnforgettableName' },
+  { use: 'Kiba wheels', title: 'BBS RS16 Tuner Car Wheel', uid: '4e50d45e5ff04d00927a50c150e088c1', author: 'TinoD2' },
+  { use: 'Hoshi wheels', title: 'Mugen M7 Tuner Car Wheel', uid: '3efc6a0cb9cc44d9adf24e226991a261', author: 'TinoD2' },
+  { use: 'Rensa wheels', title: 'Work Equip 03 Car Wheel', uid: '58330f40b725444e8c00bdbbfd88cc98', author: 'TinoD2' },
+  { use: 'Tsuki wheels', title: 'Work Meister S1 3P Wheel', uid: '7205c04f3cb24a7dbdaf6a304fb31f21', author: 'alexanderlyreo' },
+  { use: 'Ginga wheels', title: 'Stance Wheel R13x10"', uid: '6c8a9dc226b64454a3af8dc37f7359ec', author: 'terllok' },
+  { use: 'Hibana wheels', title: 'Wire rim', uid: 'bda093957f8e47a7b27270de6c3e0d14', author: '3dpeter' },
+  { use: 'Senko wheels', title: 'Concept car Rim', uid: 'e36860f9f8de4d8e8429cb07007142f2', author: 'LagzDesign' },
+  { use: 'Arashi wheels', title: 'Car Wheel / rim', uid: '232904121fff4e558b55ce724df7e47f', author: 'UnforgettableName' },
 ];
 
 /** The credits page of the settings, with the build version at the foot. */
@@ -217,7 +217,7 @@ function credits(): HTMLElement[] {
       ...DONOR_CREDITS.map((c) =>
         h('p', {}, `${c.use}: `, link(`https://sketchfab.com/3d-models/${c.uid}`, `"${c.title}"`), ' by ', link(`https://sketchfab.com/${c.author}`, h('b', {}, c.author)), ', ', link(CC_BY, 'CC BY 4.0'), '.'),
       ),
-      h('p', { class: 'muted' }, 'Changes: the cars are reduced to about 8,000 triangles at their true size, with badges, antennas, wipers and interiors removed and their materials remapped; the rims are reduced, fitted to one shared tire and center cap, and some wear a turned lip. Every car and rim ships under a fictional name.'),
+      h('p', { class: 'muted' }, 'Changes: the cars are reduced to about 8,000 triangles at their true size, with badges, antennas, wipers and interiors removed and their materials remapped; the wheels are reduced, fitted to one shared tire and center cap, and some wear a turned lip. Every car and wheel ships under a fictional name.'),
       ...trafficModels.credits.map((c) =>
         h('p', {}, 'Traffic: ', link(c.url, `"${c.title}"`), ' by ', link(c.creatorUrl, h('b', {}, c.creator)), ', ', link(c.licenseUrl, c.license), `. ${c.changes}.`),
       ),

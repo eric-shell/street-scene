@@ -15,7 +15,7 @@ Every visible piece of a car lives in a slot. The slot list is `PART_SLOTS` in `
 | `spoiler` | Wing or ducktail | Garage offers "None" |
 | `hood` | Bonnet | Base car node `Hood` on authored cars |
 | `roof` | Roof panel | Base car node `Roof` on authored cars |
-| `wheels` | One wheel (tire + rim) | Universal: fits every car |
+| `wheels` | One wheel on its tire | Universal: fits every car |
 
 To add a new slot (canards, diffuser, mirrors, roof scoop), add it to `PART_SLOTS`, `SLOT_LABELS` and `TRI_BUDGETS` in `src/shared/parts.ts`. To show it in the garage body menu, also add it to `BODY_PART_SLOTS`.
 
@@ -33,8 +33,8 @@ The easiest workflow for an authored car: open `assets/source/eshell/<carId>/<ca
 **Wheels are the exception.** They use wheel space:
 
 - The wheel center is at the origin.
-- The axle runs along X, with the outer face (rim face) toward +X.
-- Real size in meters. The game scales every wheel to the car's wheel radius and mirrors it for the right side, so any wheel fits any car. Authored cars all use the standard wheel (`standardWheel` in `scripts/assetConfig.json`: 0.28 m radius, 0.24 m wide); author rims at that size.
+- The axle runs along X, with the outer face toward +X.
+- Real size in meters. The game scales every wheel to the car's wheel radius and mirrors it for the right side, so any wheel fits any car. Authored cars all use the standard wheel (`standardWheel` in `scripts/assetConfig.json`: 0.28 m radius, 0.24 m wide); author wheels at that size.
 
 ## 3. Material names
 
@@ -47,7 +47,7 @@ Parts must use the shared material names. The game swaps each one for a runtime 
 | `Black` | Grilles, vents, undertray | fixed |
 | `Chrome` | Exhaust tips, badges | fixed |
 | `Glass` | Windows | Window tint |
-| `Rim` | Wheel rim | Wheel color (front and rear can differ) |
+| `Rim` | The wheel (everything but the tire) | Wheel color (front and rear can differ) |
 | `Tire` | Tire rubber | fixed |
 | `HeadLight` | Headlight lenses | fixed cool white glow |
 | `TailLight` | Taillight lenses | fixed red glow, brighter when braking |
