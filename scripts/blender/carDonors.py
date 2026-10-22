@@ -27,7 +27,10 @@ measured wheelbase against the published one is the scale check.
 """
 import re
 
+exec(open(os.path.join(REPO, 'scripts/blender/meshopt.py')).read())   # meshopt_reduce
+
 BUDGET = 8000   # triangles per car for the reduced donor shell, the same for every car
+REDUCER = 'meshopt'   # _collapse: 'meshopt' (meshopt.py) or 'blender' (the Decimate modifier, mirror-symmetric)
 
 DONORS = {
     'protoWagon': {
@@ -570,7 +573,10 @@ def cull_hidden(o, dirs=None):
 
 
 def _collapse(o, budget):
-    """Planar dissolve then a mirror-symmetric collapse to about `budget` triangles."""
+    """Planar dissolve then a collapse to about `budget` triangles: meshoptimizer's, which weighs
+    the `src_normal` shading and keeps material edges, as far as it goes without tearing parts
+    off; the Decimate modifier's mirror-symmetric collapse finishes the rest (all of it with
+    REDUCER = 'blender')."""
     bm = bmesh.new()
     bm.from_mesh(o.data)
     bmesh.ops.dissolve_limit(bm, angle_limit=math.radians(2.0), verts=bm.verts, edges=bm.edges, delimit={'MATERIAL'})
@@ -578,6 +584,8 @@ def _collapse(o, budget):
     bm.to_mesh(o.data)
     bm.free()
     have = tris(o)
+    if have > budget and REDUCER == 'meshopt':
+        have = meshopt_reduce(o, budget, uv=False)[0]
     if have > budget:
         mod = o.modifiers.new('reduce', 'DECIMATE')
         mod.decimate_type = 'COLLAPSE'
@@ -869,8 +877,13 @@ def reduce_donor(cid, budget=BUDGET, mid=60000):
     turned = shade_from_source(low, skin)
     tree = surface_tree([full])
     d = sorted((tree.find_nearest(v.co)[3] or 0) for v in low.data.vertices)
+    # Drift only sees the low vertices: a part collapsed away leaves none behind to measure. Lost
+    # is the other way, the skin's vertices to the low surface.
+    low_tree = surface_tree([low])
+    lost = sorted((low_tree.find_nearest(v.co)[3] or 0) for v in skin.data.vertices)
     print(f'{cid}: {tris(full)} -> skin {tris(skin)} ({gone} hidden faces culled, {flipped} flipped) -> {tris(low)} tris ({turned} turned; grille {recolored} faces + {quads} quads); '
-          f'drift mean {sum(d) / len(d) * 1000:.1f} mm, p95 {d[int(len(d) * 0.95)] * 1000:.1f} mm')
+          f'drift mean {sum(d) / len(d) * 1000:.1f} mm, p95 {d[int(len(d) * 0.95)] * 1000:.1f} mm; '
+          f'lost p95 {lost[int(len(lost) * 0.95)] * 1000:.1f} mm, max {lost[-1] * 1000:.0f} mm')
     return low
 
 

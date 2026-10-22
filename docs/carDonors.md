@@ -78,9 +78,9 @@ compare_donors([cid], OUT)         # side / front / rear PNGs to Read
 - removes badges on the nose and tail, thin decals anywhere on the body, wipers and antennas, and applies the recipe's patches.
 
 `reduce_donor()` does this:
-1. Collapses to 60k triangles.
+1. Collapses to 60k triangles. Both collapses are meshoptimizer's simplifier (`scripts/blender/meshopt.py`, run in Node from the npm package by `scripts/meshoptSimplify.ts`; nothing to install, but `node` must be findable: PATH, `$NODE`, or nvm/Homebrew). It weighs the authored normals and keeps material edges. It stops at 1 % of the car's size rather than tear a part off, and the Decimate modifier's mirror-symmetric collapse finishes the rest. `REDUCER = 'blender'` in `carDonors.py` goes back to Decimate alone.
 2. Culls every face that cannot be seen from outside: jambs, flanges, double layers and inner glass.
-3. Collapses mirror-symmetrically to `BUDGET`.
+3. Collapses to `BUDGET`.
 4. Sets the authored normals back on the reduced faces, matched within the same material.
 5. Turns the front grilles into the shared `Grille` material:
    - each grille patch is pressed flat onto its own plane;
@@ -98,7 +98,7 @@ compare_donors([cid], OUT)         # side / front / rear PNGs to Read
   - holes;
   - lamps missing or on the wrong end;
   - leftover wipers, plates or antennas.
-- **Budget:** about 8,000 triangles; drift p95 under 3 mm.
+- **Budget:** about 8,000 triangles; drift p95 under 3 mm. Drift only measures the kept vertices, so also read **lost** (the skin's vertices to the reduced surface): a high lost max is a part collapsed away, such as a mirror or a lip.
 
 ## 6. Ship
 

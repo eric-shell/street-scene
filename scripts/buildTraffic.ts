@@ -19,7 +19,7 @@
  * each, imported into Blender and exported to GLB. The packs are not
  * re-downloadable without a Sketchfab account, so keep them.
  */
-import { copyFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -67,9 +67,12 @@ function findBlender(): string {
 }
 
 async function main(): Promise<void> {
+  // Blender's own message for a missing file is "Please select a file", which names nothing.
+  const missing = ['passengerCarPack.glb', 'civilServicePack.glb'].filter((f) => !existsSync(join(PACKS, f)));
+  if (missing.length) throw new Error(`missing ${missing.join(' and ')} in ${PACKS}: the Comrade1280 packs exported to GLB (README, "Traffic"); pass another folder with npm run traffic -- <packDir>`);
   const work = join(tmpdir(), 'street-scene-traffic');
   mkdirSync(work, { recursive: true });
-  const run = spawnSync(findBlender(), ['-b', '--factory-startup', '--python', join(ROOT, 'scripts/blender/trafficPack.py'), '--', PACKS, work], { encoding: 'utf8', maxBuffer: 1 << 26 });
+  const run = spawnSync(findBlender(), ['-b', '--factory-startup', '--python', join(ROOT, 'scripts/blender/trafficPack.py'), '--', PACKS, work], { encoding: 'utf8', maxBuffer: 1 << 26, env: { ...process.env, NODE: process.execPath } });
   const out = `${run.stdout}\n${run.stderr}`;
   for (const line of out.split('\n')) if (/tris|atlas|paint|Error|Traceback/.test(line) && !/INFO/.test(line)) console.log(line);
   if (run.status !== 0 || /Traceback/.test(out)) throw new Error('trafficPack.py failed');

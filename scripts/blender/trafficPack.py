@@ -31,8 +31,8 @@ its texture, only its sliver.
 Each pack places its vehicles in a ring in millimetre node frames (up is -y);
 VEHICLES says which node is which kind and which local axis is the front.
 Meshes are joined per vehicle (the passenger pack's wheels are separate
-nodes, matched by position), simplified with a collapse decimate to the
-kind's triangle budget, then measured.
+nodes, matched by position), simplified to the kind's triangle budget
+(Decimate; REDUCER says why not meshoptimizer), then measured.
 """
 import json
 import math
@@ -43,6 +43,15 @@ import bmesh
 import bpy
 import numpy as np
 from mathutils import Matrix, Vector
+
+REPO = globals().get('REPO') or (os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) if '__file__' in globals() else os.getcwd())
+exec(open(os.path.join(REPO, 'scripts/blender/meshopt.py')).read())   # meshopt_reduce
+
+# decimate: 'blender' (the Decimate modifier) or 'meshopt' (meshopt.py, Decimate finishing). Blender's:
+# meshoptimizer keeps every UV seam of these textured packs, and at 2.2k to 3.4k triangles that
+# costs shape (surface lost p95 up on 17 of 19 kinds, 9.9 -> 17.5 mm on the taxi) for no visible
+# texture gain at street distance.
+REDUCER = 'blender'
 
 # kind: (pack, node, front axis in the node frame, triangle budget, tinted per car)
 VEHICLES = {
@@ -156,17 +165,21 @@ def extract(kind, pack_objs, spec):
 
 
 def decimate(o, budget):
-    """Weld coincident vertices (the glTF import splits them at every seam), then collapse to the budget."""
+    """Weld coincident vertices (the glTF import splits them at every seam), then collapse to the
+    budget with the Decimate modifier, or with REDUCER = 'meshopt' meshoptimizer's collapse first
+    (it keeps the UV islands whole) and the modifier finishing."""
     bm = bmesh.new()
     bm.from_mesh(o.data)
     bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0005)
     bm.to_mesh(o.data)
     bm.free()
-    before = tris(o)
-    if before > budget:
+    before = have = tris(o)
+    if have > budget and REDUCER == 'meshopt':
+        have = meshopt_reduce(o, budget)[0]
+    if have > budget:
         mod = o.modifiers.new('decimate', 'DECIMATE')
         mod.decimate_type = 'COLLAPSE'
-        mod.ratio = budget / before
+        mod.ratio = budget / have
         mod.use_collapse_triangulate = True
         bpy.context.view_layer.objects.active = o
         bpy.ops.object.modifier_apply(modifier=mod.name)
