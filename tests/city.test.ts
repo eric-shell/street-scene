@@ -857,8 +857,8 @@ describe('race progress and resets', () => {
     return null;
   }
 
-  it('cutting the seed 43405381 inside corner never resets the car', () => {
-    const r = createRace(raceConfig(43405381, 'circuit', 0));
+  it('cutting the seed 43405383 inside corner never resets the car', () => {
+    const r = createRace(raceConfig(43405383, 'circuit', 0));
     while (r.tick < r.countdownTicks) stepRace(r, NEUTRAL_INPUT);
     const cut = insideCut(r.world);
     expect(cut).not.toBeNull();

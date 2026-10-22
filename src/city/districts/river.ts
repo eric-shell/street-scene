@@ -33,9 +33,13 @@
  * edge of kind 'ramp' between its street node and its foot, every foot a node
  * of the channel chain. Ramp trenches have 'trench' retaining walls and a
  * solid plinth either side; the profile has a rounded lip at the top (a crest
- * you launch over) and a hard kink at the floor edge. Every ramp top gets the
- * shortcut treatment: fences and clutter funnelling from the street into the
- * mouth and string lights across it, never a sign.
+ * you launch over) and a hard kink at the floor edge. A side ramp's trench
+ * opens into a bell mouth over the last stretch of its run (rampHalf), as
+ * wide as the room to the next street on each side allows, so the plinths
+ * meet the street with angled faces instead of square caps. Every ramp top
+ * gets the shortcut treatment: fences and clutter funnelling into the mouth
+ * (a side ramp's on the sidewalk, the bank street's lanes left clear, its
+ * street furniture kept out) and string lights across it, never a sign.
  *
  * The floor is drivable concrete; a wet 'water' trickle (offroad grip) runs
  * to one side of the racing line; barrels, crates and bags litter the floor
@@ -62,6 +66,19 @@ const STREET_KINDS = new Set<RoadEdge['kind']>(['street', 'avenue', 'boulevard',
 const DECK_REACH = 8;
 /** The parapets, deck openings and span footprints reach this far beyond the band's top edge (m). */
 const DECK_END = 2.5;
+/** Straight pieces of a side ramp's bell mouth, each side. */
+const MOUTH_STEPS = 8;
+/** A bell mouth's plinth keeps this far (m) inside the room to the next corridor; the room is capped at MOUTH_ROOM (m). */
+const MOUTH_MARGIN = 2;
+const MOUTH_ROOM = 40;
+
+/** Where a side ramp's bell mouth is sampled along its axis (m from the foot), up to the top; none for a ford. */
+export function mouthAlongs(r: Ramp, aTop: number): number[] {
+  if (!r.flareL && !r.flareR) return [aTop];
+  const out: number[] = [];
+  for (let k = 0; k <= MOUTH_STEPS; k++) out.push(aTop - CFG.mouthLength + (CFG.mouthLength * k) / MOUTH_STEPS);
+  return out;
+}
 
 // ---------------------------------------------------------------------------
 // Centerline
@@ -155,6 +172,14 @@ export interface Ramp {
   edge: number;
   node: number;
   foot: number;
+  /** Distance along the axis from the foot to the top (m). */
+  aTop: number;
+  /** How far the trench widens at the top on its left (+lat) and right side (m): a side ramp's bell mouth, 0 for a ford. */
+  flareL: number;
+  flareR: number;
+  /** Room along the bank street from the axis to the next corridor, left and right (m; 0 for a ford). */
+  roomL: number;
+  roomR: number;
 }
 
 export function rampsOf(area: Area): Ramp[] {
@@ -162,9 +187,30 @@ export function rampsOf(area: Area): Ramp[] {
   const out: Ramp[] = [];
   for (let i = 0; i < p.ramps; i++) {
     const r = (k: string) => p[`r${i}${k}`];
-    out.push({ ax: r('ax'), az: r('az'), ux: r('ux'), uz: r('uz'), side: r('side'), hw: r('hw'), body: r('body'), topL: r('topL'), curbL: r('curbL'), ford: r('ford'), edge: r('edge'), node: r('node'), foot: r('foot') });
+    const ramp: Ramp = { ax: r('ax'), az: r('az'), ux: r('ux'), uz: r('uz'), side: r('side'), hw: r('hw'), body: r('body'), topL: r('topL'), curbL: r('curbL'), ford: r('ford'), edge: r('edge'), node: r('node'), foot: r('foot'), aTop: 0, flareL: r('flL'), flareR: r('flR'), roomL: r('rmL'), roomR: r('rmR') };
+    ramp.aTop = rampAlong(p, ramp, ramp.topL);
+    out.push(ramp);
   }
   return out;
+}
+
+/**
+ * Trench half width (m) on side `sd` (1 left of the axis, -1 right) at
+ * `along` from the foot: hw down the run, then a side ramp's bell mouth over
+ * the last CFG.mouthLength before the top, easing out (quadratic, so tangent
+ * to the straight trench below) by that side's flare. Held at the mouth's
+ * width past the top, across the sidewalk.
+ */
+export function rampHalf(r: Ramp, along: number, sd: number): number {
+  const flare = sd > 0 ? r.flareL : r.flareR;
+  if (!flare) return r.hw;
+  const t = Math.min(1, Math.max(0, (along - (r.aTop - CFG.mouthLength)) / CFG.mouthLength));
+  return r.hw + flare * t * t;
+}
+
+/** The plinth's outer face on side `sd` at `along` (m from the axis): body wide, thinning to CFG.mouthBody where the bell mouth eats into it, pushed out with it beyond. */
+export function rampOuter(r: Ramp, along: number, sd: number): number {
+  return Math.max(r.hw + r.body, rampHalf(r, along, sd) + CFG.mouthBody);
 }
 
 /**
@@ -844,6 +890,7 @@ export const riverModule: DistrictModule = {
       const len = sqrt((N.x - Fp.x) ** 2 + (N.z - Fp.z) ** 2) || 1;
       pushRamp(p, q, Fp, { x: (N.x - Fp.x) / len, z: (N.z - Fp.z) / len }, edge, node, foot);
     }
+    sizeMouths(g, p);
     // The chain: portal to portal through every foot, a node at least every nodeSpacing, none under a deck.
     {
       const tmp: Area = { id: -1, kind: 'river', variant: '', polygon: [], path: [], nodes, edges, faces: [], params: p };
@@ -967,7 +1014,7 @@ export const riverModule: DistrictModule = {
       for (const r of ramps) {
         if (r.side !== sg || al <= F || al >= r.topL) continue;
         const fr = frame(r, x, z);
-        if (Math.abs(fr.lat) > r.hw) continue;
+        if (Math.abs(fr.lat) > rampHalf(r, fr.along, fr.lat >= 0 ? 1 : -1)) continue;
         const u = (r.topL - al) / (r.topL - F);
         const pr = rampProfile(u);
         const hr = -D * pr.f;
@@ -1124,24 +1171,56 @@ export const riverModule: DistrictModule = {
         // different distances along it), so no wall pokes into the channel edge's corridor.
         const fIn = rampAlong(p, r, F, inner);
         const fOut = rampAlong(p, r, F, outer);
-        // Inner trench face, normal into the trench; plinth outer face, normal away from it.
-        wall(P(fIn, inner), P(aTop, inner), -sd * lx, -sd * lz);
-        wall(P(fOut, outer), P(aTop, outer), sd * lx, sd * lz);
+        // Inner trench face, normal into the trench: straight up the run, then out along the bell
+        // mouth (rampHalf). Plinth outer face, normal away from it: straight, then pushed out with
+        // the mouth where it would leave less than mouthBody of plinth (rampOuter).
+        const inFace = [P(fIn, inner)];
+        const outFace = [P(fOut, outer)];
+        for (const a of mouthAlongs(r, aTop)) {
+          if (a > fIn + 0.5) inFace.push(P(a, sd * rampHalf(r, a, sd)));
+          if (a > fOut + 0.5) outFace.push(P(a, sd * rampOuter(r, a, sd)));
+        }
+        // Each piece's normal is its perpendicular on the side `toward` points to.
+        const face = (pts: Vec2[], tx: number, tz: number) => {
+          for (let k = 0; k + 1 < pts.length; k++) {
+            const q0 = pts[k];
+            const q1 = pts[k + 1];
+            const len = sqrt((q1.x - q0.x) ** 2 + (q1.z - q0.z) ** 2) || 1;
+            const nx = (q1.z - q0.z) / len;
+            const nz = -(q1.x - q0.x) / len;
+            const k1 = nx * tx + nz * tz >= 0 ? 1 : -1;
+            wall(q0, q1, k1 * nx, k1 * nz);
+          }
+        };
+        face(inFace, -sd * lx, -sd * lz);
+        face(outFace, sd * lx, sd * lz);
         // Plinth caps: at the floor edge facing the floor, at the top facing the street.
         wall(P(fIn, inner), P(fOut, outer), -r.ux, -r.uz);
-        wall(P(aTop, inner), P(aTop, outer), r.ux, r.uz);
+        wall(P(aTop, sd * rampHalf(r, aTop, sd)), P(aTop, sd * rampOuter(r, aTop, sd)), r.ux, r.uz);
       }
       const gx = r.ax + r.ux * aFence;
       gapsBySide[s].push([gx - (r.hw + r.body) - 0.3, gx + (r.hw + r.body) + 0.3]);
-      const trench = [P(aF - 0.5, -r.hw), P(aF - 0.5, r.hw), P(aCurb, r.hw), P(aCurb, -r.hw)];
+      // Up the left edge (the bell mouth included) to the curb and back down the right.
+      const edgeAt = [aF - 0.5, ...mouthAlongs(r, aTop), aCurb];
+      const trench = [...edgeAt.map((a) => P(a, rampHalf(r, a, 1))), ...edgeAt.reverse().map((a) => P(a, -rampHalf(r, a, -1)))];
       b.surfaces.push({ surface: 'concrete', polygon: trench, priority: 2, area: id });
       const m = CITY.districts.infill.gap;
-      const reach = r.hw + r.body + m;
-      b.exclusions.push([P(aF - 2, -reach), P(aF - 2, reach), P(aTop + 2, reach), P(aTop + 2, -reach)]);
+      const oL = rampOuter(r, aTop, 1);
+      const oR = rampOuter(r, aTop, -1);
+      b.exclusions.push([P(aF - 2, -oR - m), P(aF - 2, oL + m), P(aTop + 2, oL + m), P(aTop + 2, -oR - m)]);
       if (!r.ford) {
         // The bank street's frontage line crosses the trench mouth and the plinth tops: no wall there.
-        const w = r.hw + r.body + 0.1;
-        b.openings.push([P(aTop - 2, -w), P(aTop - 2, w), P(aTop + 1.5, w), P(aTop + 1.5, -w)]);
+        b.openings.push([P(aTop - 2, -oR - 0.1), P(aTop - 2, oL + 0.1), P(aTop + 1.5, oL + 0.1), P(aTop + 1.5, -oR - 0.1)]);
+        // The sidewalk across the mouth and its funnel belongs to the funnel: no streetlight, hydrant
+        // or bench in the way of a car turning in.
+        const mid = (aTop + aCurb) / 2;
+        const rad = (aCurb - aTop) / 2 + 0.5;
+        const lo = -Math.min(oR + CFG.funnelFlare + 2, r.roomR - 1);
+        const hi = Math.min(oL + CFG.funnelFlare + 2, r.roomL - 1);
+        for (let lat = lo; lat <= hi + 1e-6; lat += rad) {
+          const q = P(mid, lat);
+          b.reserved.push({ x: q.x, z: q.z, r: rad });
+        }
       }
       b.hints.push({ kind: 'ramp', points: [P(0, 0), P(aTop, 0)], values: [s, r.hw, r.body, aF, aTop, r.ford, aFence, aCurb] });
       funnel(ctx.graph, b, rng, r, aTop, aCurb, id);
@@ -1190,25 +1269,42 @@ export const riverModule: DistrictModule = {
 
 /**
  * The funnel at a ramp top, in the shortcut language (see districts/alley.ts
- * constructionSite): two lines of fence panels splaying from the plinth caps
- * out across the sidewalk onto the street (cones where they stand on the
- * road), a sawhorse and a water barrier at each line's street end, cones
- * scattered along, and two strings of lights across the mouth and across the
- * street edge in front of it. Everything breaks before it can stop a car.
+ * constructionSite): two lines of fence panels splaying from the plinths out
+ * toward the street, a sawhorse and a water barrier at each line's street
+ * end, cones scattered along, and two strings of lights across the mouth and
+ * across the street edge in front of it. Everything breaks before it can
+ * stop a car. A ford's lines narrow its own road into the dip (cones where
+ * they stand on the road); a side ramp's stay on the sidewalk, from the
+ * plinths' tips out to the curb, so the bank street's lanes stay clear and a
+ * car turning in has the whole flare leading into the bell mouth.
  */
 function funnel(g: RoadGraph, b: AreaBuild, rng: Rng, r: Ramp, aTop: number, aCurb: number, area: number): void {
-  const P = (along: number, lat: number) => rampPoint(r, along, lat);
+  // Side ramps: the bank street's pieces at the T. It runs along the river, not always square to the
+  // ramp's axis, so a point is pulled back toward the mouth until it stands behind the curb.
+  const street: { a: Vec2; b: Vec2; half: number }[] = [];
+  if (!r.ford)
+    for (const eid of g.nodes[r.node].edges) {
+      const e = g.edges[eid];
+      if (eid !== r.edge) street.push({ a: g.nodes[e.a], b: g.nodes[e.b], half: e.width / 2 + 0.6 });
+    }
+  const offStreet = (q: Vec2): Vec2 => {
+    for (let k = 0; k < 40 && street.some((s) => distToSegment(q.x, q.z, s.a.x, s.a.z, s.b.x, s.b.z) < s.half); k++) q = { x: q.x - r.ux * 0.25, z: q.z - r.uz * 0.25 };
+    return q;
+  };
+  const P = (along: number, lat: number): Vec2 => offStreet(rampPoint(r, along, lat));
   const push = (kind: PropKind, q: Vec2, yaw: number, lift = 0) => b.destructibles.push({ kind, x: q.x, z: q.z, yaw, lift, area });
   // A ford's plinths cover the street's sidewalks and the outer road edge: the road ends inside them.
   const roadHalf = r.ford ? r.hw + r.body - CITY.sidewalk : g.edges[r.edge].width / 2;
   // Fords: the street's own road continues into the dip; the funnel narrows it from the sidewalk corners
-  // to the trench. Side ramps: from the plinths' outer corners out onto the bank street.
-  const latIn = r.ford ? r.hw + 0.3 : r.hw + r.body;
-  const latOut = r.ford ? r.hw + r.body - 0.6 : r.hw + r.body + CFG.funnelFlare;
+  // to the trench. Side ramps, per side: from the plinth's tip out to the curb, short of the next corridor.
+  const latInOf = (sd: number) => (r.ford ? r.hw + 0.3 : rampOuter(r, aTop, sd));
+  const latOutOf = (sd: number) => (r.ford ? r.hw + r.body - 0.6 : Math.max(latInOf(sd), Math.min(latInOf(sd) + CFG.funnelFlare, (sd > 0 ? r.roomL : r.roomR) - 2.5)));
   const aStart = r.ford ? aTop + 1.5 : aTop + 1.2;
-  const aEnd = r.ford ? aTop + 1.5 + CFG.funnelReach + 3 : aCurb + CFG.funnelReach;
+  const aEnd = r.ford ? aTop + 1.5 + CFG.funnelReach + 3 : aCurb - 0.6;
   const onRoad = (along: number, lat: number) => (r.ford ? Math.abs(lat) < roadHalf - 0.2 : along > aCurb - 0.3);
   for (const sd of [1, -1]) {
+    const latIn = latInOf(sd);
+    const latOut = latOutOf(sd);
     const A = P(aStart, sd * latIn);
     const B = P(aEnd, sd * latOut);
     const len = sqrt((B.x - A.x) ** 2 + (B.z - A.z) ** 2);
@@ -1223,23 +1319,34 @@ function funnel(g: RoadGraph, b: AreaBuild, rng: Rng, r: Ramp, aTop: number, aCu
       const lat = latIn + (latOut - latIn) * t;
       push(onRoad(along, lat) ? 'trafficCone' : 'fencePanel', q, yaw + rng.range(-0.1, 0.1));
     }
-    // Cones scattered inside the line (clear of the panels: generateProps drops overlaps), a sawhorse
-    // across the line's street end and a water barrier or sandbags beyond it.
+    // Cones scattered inside the line (clear of the panels: generateProps drops overlaps; light enough
+    // that a car through them barely notices).
+    // Square off the line toward the axis (a side ramp's line runs steeply across the short sidewalk).
+    const inX = sd * r.uz;
+    const inZ = -sd * r.ux;
+    const k0 = uz * inX - ux * inZ >= 0 ? 1 : -1;
     for (let k = 0; k < 3; k++) {
       const t = 0.2 + k * 0.28 + rng.range(0, 0.1);
-      const q = P(aStart + (aEnd - aStart) * t, sd * (latIn + (latOut - latIn) * t - rng.range(1.6, 2.4)));
+      const off = rng.range(1.6, 2.4);
+      const q = offStreet({ x: A.x + (B.x - A.x) * t + k0 * uz * off, z: A.z + (B.z - A.z) * t - k0 * ux * off });
       push('trafficCone', q, rng.range(0, Math.PI * 2));
     }
-    push('sawhorse', P(aEnd + 2.4, sd * (latOut + 0.4)), yaw + Math.PI / 2 + rng.range(-0.15, 0.15));
-    push(rng.chance(0.5) ? 'waterBarrier' : 'sandbags', P(aEnd + 2.2, sd * (latOut + 3.2)), yaw);
+    if (r.ford) {
+      // A sawhorse across the line's street end and a water barrier or sandbags beyond it.
+      push('sawhorse', P(aEnd + 2.4, sd * (latOut + 0.4)), yaw + Math.PI / 2 + rng.range(-0.15, 0.15));
+      push(rng.chance(0.5) ? 'waterBarrier' : 'sandbags', P(aEnd + 2.2, sd * (latOut + 3.2)), yaw);
+    } else {
+      // A sawhorse along the curb past the line's end; nothing heavy where a car running wide lands.
+      push('sawhorse', P(aEnd - 0.4, sd * (latOut + 2.2)), Math.atan2(-r.ux, -r.uz) + rng.range(-0.15, 0.15));
+    }
   }
   // String lights: across the mouth between the plinths' tops, and across the street edge in front.
   const mouthA = r.ford ? aTop + 1.2 : aTop + 1.0;
-  const mouthL = r.ford ? r.hw + r.body - 0.4 : r.hw + r.body + 0.6;
-  b.hints.push({ kind: 'stringLights', points: [P(mouthA, -mouthL), P(mouthA, mouthL)], values: [] });
+  const mouthAt = (sd: number) => (r.ford ? r.hw + r.body - 0.4 : latInOf(sd) + 0.6);
+  b.hints.push({ kind: 'stringLights', points: [P(mouthA, -mouthAt(-1)), P(mouthA, mouthAt(1))], values: [] });
   const frontA = r.ford ? aTop + 8 : aCurb - 0.6;
-  const frontL = r.ford ? r.hw + r.body - 0.4 : r.hw + r.body + CFG.funnelFlare;
-  b.hints.push({ kind: 'stringLights', points: [P(frontA, -frontL), P(frontA, frontL)], values: [] });
+  const frontAt = (sd: number) => (r.ford ? r.hw + r.body - 0.4 : latOutOf(sd));
+  b.hints.push({ kind: 'stringLights', points: [P(frontA, -frontAt(-1)), P(frontA, frontAt(1))], values: [] });
 }
 
 /** Record a ramp in the area params (see rampsOf). */
@@ -1259,6 +1366,55 @@ function pushRamp(p: Record<string, number>, q: RampPlan, foot: Vec2, u: Vec2, e
   set('edge', edge);
   set('node', node);
   set('foot', footId);
+  set('flL', 0);
+  set('flR', 0);
+  set('rmL', 0);
+  set('rmR', 0);
+}
+
+/**
+ * A side ramp's bell mouth, each side: the room along the bank street from
+ * the ramp's axis to the next corridor on that side (a cross street's curb
+ * and sidewalk at the next junction, or half way to another ramp's T), and
+ * the flare that leaves the plinth and a margin inside it.
+ */
+function sizeMouths(g: RoadGraph, p: Record<string, number>): void {
+  const ts = new Set<number>();
+  for (let i = 0; i < p.ramps; i++) if (!p[`r${i}ford`]) ts.add(p[`r${i}node`]);
+  for (let i = 0; i < p.ramps; i++) {
+    if (p[`r${i}ford`]) continue;
+    const ax = p[`r${i}ax`];
+    const az = p[`r${i}az`];
+    const ux = p[`r${i}ux`];
+    const uz = p[`r${i}uz`];
+    const T = g.nodes[p[`r${i}node`]];
+    const room: Record<number, number> = { 1: MOUTH_ROOM, [-1]: MOUTH_ROOM };
+    for (const eid of T.edges) {
+      const e = g.edges[eid];
+      if (isRiverEdge(e)) continue;
+      const n = g.nodes[otherNode(e, T.id)];
+      const lat = -(n.x - ax) * uz + (n.z - az) * ux;
+      const sd = lat >= 0 ? 1 : -1;
+      const len = sqrt((n.x - T.x) ** 2 + (n.z - T.z) ** 2) || 1;
+      let corridor = 0;
+      if (ts.has(n.id)) corridor = Math.abs(lat) / 2;
+      else
+        for (const oid of n.edges) {
+          if (oid === eid) continue;
+          const o = g.edges[oid];
+          const m = g.nodes[otherNode(o, n.id)];
+          const ol = sqrt((m.x - n.x) ** 2 + (m.z - n.z) ** 2) || 1;
+          // A street across the bank street (not its continuation) takes its half width and sidewalk.
+          if (Math.abs(((m.x - n.x) * (n.x - T.x) + (m.z - n.z) * (n.z - T.z)) / (ol * len)) < 0.7) corridor = Math.max(corridor, o.width / 2 + o.sidewalk);
+        }
+      room[sd] = Math.min(room[sd], Math.abs(lat) - corridor);
+    }
+    const hw = p[`r${i}hw`];
+    p[`r${i}rmL`] = room[1];
+    p[`r${i}rmR`] = room[-1];
+    p[`r${i}flL`] = Math.min(CFG.mouthFlare, Math.max(0, room[1] - hw - CFG.mouthBody - MOUTH_MARGIN));
+    p[`r${i}flR`] = Math.min(CFG.mouthFlare, Math.max(0, room[-1] - hw - CFG.mouthBody - MOUTH_MARGIN));
+  }
 }
 
 /**

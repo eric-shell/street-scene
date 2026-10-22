@@ -31,6 +31,10 @@ export interface CarPose {
 
 const WHEEL_KEYS = ['FL', 'FR', 'RL', 'RR'] as const;
 const DEG = Math.PI / 180;
+/** Scratch for CarView.update's wheel placement. */
+const WHEEL_POS = new THREE.Vector3();
+const WHEEL_STEER = new THREE.Quaternion();
+const Y_AXIS = new THREE.Vector3(0, 1, 0);
 
 /** The glows a car throws on the road (underglow, headlight pool), laid on the ground under its wheels. */
 const GROUND_FX = {
@@ -527,6 +531,11 @@ export class CarView {
     const tRoll = Math.tan(pose.roll);
     const tPitch = Math.tan(pose.pitch);
     const g = this.groundY;
+    // The wheels hang off the body's own frame: its pitch and roll carry them, so on a steep bank they
+    // lean with the body and stay in their arches. (The sim's sheared plane, tan below, only matches a
+    // rotation at small angles: at 30 degrees of roll an upright wheel stands well clear of its arch.)
+    const bq = this.body.quaternion;
+    const rideHeight = this.body.position.y;
     for (let i = 0; i < 4; i++) {
       const pivot = this.wheelPivots[i];
       const p = this.car.wheels[WHEEL_KEYS[i]];
@@ -535,8 +544,10 @@ export class CarView {
       const plane = p[0] * tRoll - p[2] * tPitch;
       g[i] = pose.comp[i] + plane;
       const comp = Math.max(-0.12, Math.min(0.12, pose.comp[i]));
-      pivot.position.y = (pivot.userData.restY as number) + comp + plane;
-      pivot.rotation.y = i < 2 ? pose.steer : 0;
+      WHEEL_POS.set(pivot.userData.restX as number, (pivot.userData.restY as number) - rideHeight + comp, pivot.userData.restZ as number).applyQuaternion(bq);
+      pivot.position.set(WHEEL_POS.x, WHEEL_POS.y + rideHeight, WHEEL_POS.z);
+      pivot.quaternion.copy(bq);
+      if (i < 2) pivot.quaternion.multiply(WHEEL_STEER.setFromAxisAngle(Y_AXIS, pose.steer));
       this.wheelSpins[i].rotation.x = pose.spin[i];
       this.wheelSpins[i].rotation.order = 'ZXY';
     }

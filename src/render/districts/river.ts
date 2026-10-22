@@ -25,7 +25,7 @@
 import * as THREE from 'three';
 import { CITY } from '../../city/config';
 import type { Bridge, Ramp } from '../../city/districts/river';
-import { bridgePoint, bridgesOf, rampAlong, rampPoint, rampsOf, riverCenter, riverFrame, riverL } from '../../city/districts/river';
+import { bridgePoint, bridgesOf, mouthAlongs, rampAlong, rampHalf, rampOuter, rampPoint, rampsOf, riverCenter, riverFrame, riverL } from '../../city/districts/river';
 import type { Area } from '../../city/districts/types';
 import type { Wall } from '../../city/blocks';
 import { onSpan } from '../../city/drawbridge';
@@ -242,8 +242,17 @@ function buildChannel(kit: DistrictKit, a: Area): void {
       prevL = l;
     }
   }
-  /** The ten columns of a ramp zone row: outside, plinth outer face (ground / top), plinth top to the trench face, the trench, and back. */
-  const LATS = (r: Ramp) => [-(r.hw + r.body + 0.02), -(r.hw + r.body - 0.02), -(r.hw + 0.02), -(r.hw - 0.02), r.hw - 0.02, r.hw + 0.02, r.hw + r.body - 0.02, r.hw + r.body + 0.02];
+  /**
+   * The ten columns of a ramp zone row at `along`: outside, plinth outer face (ground / top), plinth
+   * top to the trench face, the trench, and back (wider up a side ramp's bell mouth: rampHalf, rampOuter).
+   */
+  const LATS = (r: Ramp, along = 0) => {
+    const iL = rampHalf(r, along, 1);
+    const iR = rampHalf(r, along, -1);
+    const oL = rampOuter(r, along, 1);
+    const oR = rampOuter(r, along, -1);
+    return [-(oR + 0.02), -(oR - 0.02), -(iR + 0.02), -(iR - 0.02), iL - 0.02, iL + 0.02, oL - 0.02, oL + 0.02];
+  };
   /** Lift and tint per column (index into LATS) while the plinths stand. */
   const colLift = (i: number, plinth: boolean): number => (plinth && i >= 1 && i <= 2) || (plinth && i >= 5 && i <= 6) ? DRESS.plinth : 0.02;
   const colTint = (i: number, plinth: boolean, l: number): THREE.Color => (!plinth ? tintAt(l) : i === 3 || i === 4 ? TINT.trench : i === 0 || i === 7 ? tintAt(l) : TINT.plinth);
@@ -288,17 +297,19 @@ function buildChannel(kit: DistrictKit, a: Area): void {
     const aFence = rampAlong(p, r, fenceL);
     const aTop = rampAlong(p, r, r.topL);
     const aEnd = r.ford ? aTop : rampAlong(p, r, r.curbL);
-    const lats = LATS(r);
     const rowAt = (along: number, plinth: boolean): V3[] =>
-      lats.map((lat, i) => {
+      LATS(r, along).map((lat, i) => {
         // Past the top the plinths are gone: every column collapses onto the trench edges.
-        const q = plinth ? lat : Math.sign(lat) * (r.hw - 0.02);
+        const q = plinth ? lat : Math.sign(lat) * (rampHalf(r, along, Math.sign(lat)) - 0.02);
         const w = rampPoint(r, along, q);
         return { x: w.x, y: h(w.x, w.z) + colLift(i, plinth), z: w.z };
       });
+    // Every 2 m, then the bell mouth at the points its walls bend at, so the faces stand on them.
+    const mouth = mouthAlongs(r, aTop);
     const alongs: [number, boolean][] = [];
-    for (let s = aFence; s < aTop - 0.05; s += 2) alongs.push([s, true]);
-    alongs.push([aTop, true], [aTop + 1e-4, false]);
+    for (let s = aFence; s < mouth[0] - 0.05; s += 2) alongs.push([s, true]);
+    for (const s of mouth) alongs.push([s, true]);
+    alongs.push([aTop + 1e-4, false]);
     if (aEnd > aTop + 0.5) {
       for (let s = aTop + 2; s < aEnd - 0.05; s += 2) alongs.push([s, false]);
       alongs.push([aEnd, false]);

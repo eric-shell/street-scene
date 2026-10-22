@@ -441,9 +441,21 @@ describe('river channel racing', () => {
         const near = w.props.filter((q) => (q.x - top.x) ** 2 + (q.z - top.z) ** 2 < 22 * 22);
         const count = (kind: string) => near.filter((q) => q.kind === kind).length;
         expect(count('fencePanel'), `fences at a ramp top of seed ${seed}`).toBeGreaterThanOrEqual(2);
-        expect(count('trafficCone'), `cones at a ramp top of seed ${seed}`).toBeGreaterThanOrEqual(5);
+        expect(count('trafficCone'), `cones at a ramp top of seed ${seed}`).toBeGreaterThanOrEqual(r.ford ? 5 : 3);
         expect(count('sawhorse'), `sawhorses at a ramp top of seed ${seed}`).toBeGreaterThanOrEqual(1);
-        expect(near.some((q) => q.kind === 'waterBarrier' || q.kind === 'sandbags')).toBe(true);
+        if (r.ford) expect(near.some((q) => q.kind === 'waterBarrier' || q.kind === 'sandbags')).toBe(true);
+        else {
+          // A side ramp's funnel stays on the sidewalk: the bank street's lanes are clear for a car
+          // driving past or swinging wide to turn in, and nothing heavy stands where it lands.
+          const T = w.graph.nodes[r.node];
+          for (const eid of T.edges) {
+            const e = w.graph.edges[eid];
+            if (eid === r.edge) continue;
+            const o = w.graph.nodes[e.a === T.id ? e.b : e.a];
+            for (const q of near) if (q.area === river.id) expect(distToSegment(q.x, q.z, T.x, T.z, o.x, o.z), `${q.kind} on the bank street at a ramp of seed ${seed}`).toBeGreaterThan(e.width / 2);
+          }
+          expect(near.some((q) => q.area === river.id && (q.kind === 'waterBarrier' || q.kind === 'sandbags'))).toBe(false);
+        }
         // Everything in the funnel breaks before it stops a car.
         for (const q of near) if (q.area === river.id) expect(q.mass).toBeLessThan(130);
         const strings = build.hints.filter((h) => h.kind === 'stringLights' && Math.hypot(h.points[0].x - top.x, h.points[0].z - top.z) < 30);

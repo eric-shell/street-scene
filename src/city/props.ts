@@ -24,7 +24,7 @@ import type { EdgeMouths, Sector, Streetlight } from './blocks';
 import { BUS_BAY, BusBay, bayHitsCircle, baysByEdge, bayPoint } from './busBays';
 import { furnishStreets } from './streetFurniture';
 import type { RoadGraph } from './roadGraph';
-import { chainOf } from './roadGraph';
+import { chainOf, isRiverEdge } from './roadGraph';
 import { SpatialGrid } from './spatial';
 import type { Terrain } from './terrain';
 import { Rng, deriveSeed } from '../sim/prng';
@@ -368,7 +368,9 @@ export function generateProps(
     const m = n.edges.length;
     if (m < 3) return;
     const secs = sectors[ni];
-    const eligible = secs.map((s) => s.angle < 170 * DEG && s.curb.length === 1);
+    // Never on a corner beside a river ramp or channel edge: a side ramp's T is no intersection, and a
+    // pole there stands in the mouth a racer turns into.
+    const eligible = secs.map((s, k) => s.angle < 170 * DEG && s.curb.length === 1 && !isRiverEdge(g.edges[n.edges[k]]) && !isRiverEdge(g.edges[n.edges[(k + 1) % m]]));
     const pick: number[] = [];
     if (m >= 4) {
       // Diagonal corners.

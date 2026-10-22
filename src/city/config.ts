@@ -184,6 +184,16 @@ export const CITY = {
       /** Solid retaining plinth beside each trench (m): keeps cars on the bank 4 m from the drop. */
       rampBody: 4,
       /**
+       * A side ramp's trench opens into a bell mouth over the last mouthLength m of its run, up to
+       * mouthFlare m wider each side at the top (less where the next street is close), so the
+       * plinths meet the street at an angle instead of with square caps a car turning in clips.
+       * Short on purpose: a longer bell converges on a car that crosses the axis and pins it nose
+       * first. The plinth keeps at least mouthBody m where the bell eats into it (m).
+       */
+      mouthLength: 12,
+      mouthFlare: 4,
+      mouthBody: 1.5,
+      /**
        * A closure across the channel stands at least this far from a foot (m): past the widest plinth
        * (an avenue ford's, 12.5 m) plus the skew the meander gives the closure line across the banks.
        */
