@@ -12,7 +12,7 @@ Street Scene is a browser street racer (TypeScript, three.js, Vite, Vitest, SCSS
 | Typecheck, about 1 s (`noUnusedLocals`/`Parameters` are errors) | `npm run typecheck` |
 | Tests, about 35 s (Vitest, node env, 120 s per test) | `npm test` |
 | One file, one test | `npx vitest run tests/sim.test.ts -t "nitrous"` |
-| Browser tests, about 1 min (Playwright, Chromium; starts the dev server if needed) | `npm run e2e` (`-- e2e/splash.spec.ts -g "music"` narrows) |
+| Browser tests, about 50 s per spec and 5+ min for all (Playwright, Chromium, software WebGL; starts the dev server if needed) | `npm run e2e -- e2e/raceMap.spec.ts` (`-g "music"` narrows further) |
 | Production build (typecheck + vite build) | `npm run build` |
 | Validate the parts catalog against `public/` | `npm run validate` |
 | Inspect a GLB (nodes, materials, triangles) | `npm run inspect -- public/cars/protoCompact.glb` |
@@ -65,6 +65,12 @@ Aim for 120 fps, hold 60 fps on every supported device, never drop below 30 fps.
 
 - Orient with `/map` or `grep -rn "export .* <name>" src` instead of reading files to find things. Largest files: `render/buildings/buildings.ts` 1.6k lines, `city/districts/carPark.ts` and `river.ts` 1.5k, `render/textures/textures.ts` and `render/street/props.ts` 1.4k, `sim/traffic.ts`, `game/session.ts` and `ui/fullMap/fullMap.ts` 1.3k, `city/districts/alleyShortcuts.ts` 1k (one 530-line planner); read those in ranges. Styles are partials of 400 lines at most (`/map styles`).
 - Never read `public/` media, `assets/source/` FBX or `package-lock.json` (denied in settings). For a GLB use `npm run inspect -- <file>`; `assets/inspect.md` is the last asset report; `npm ls <pkg>` gives versions.
-- Verify with `/check`: typecheck after every edit, the full suite after touching `src/sim/` or `src/city/` (replay determinism, many-seed AI and rail sweeps). `npm run e2e` (Playwright, `e2e/`) covers what needs a real page: boot splash, menu, music; run it after touching `main.ts`, `ui/` (styles included) or `audio/`, and give it a 180000 ms timeout. Headless beats the browser: `npx tsx` imports any `src/sim` or `src/city` module directly (`/tune` measures a car that way, `scripts/debugCitySvg.ts <seed> out.svg` draws a city).
+- Test only what the change could break. Time and tokens matter more than running everything just in case, and a small change usually needs little or nothing:
+  - Docs, comments, copy, README, `.claude/`: nothing. A `.json` or `.scss` edit: nothing beyond the hooks, which already validate and compile it.
+  - Code outside `src/sim/` and `src/city/` (render, ui, game, garage, audio, input, scripts): typecheck (`/check tsc`, 1 s). Run a Vitest file only if one covers the module you changed (`grep -ln <module> tests/`).
+  - `src/sim/` or `src/city/`: the covering test file while iterating. Run the full suite (`/check`, 35 s) once at the end only when behaviour may have changed (replay determinism, many-seed AI and rail sweeps); a pure rename or comment does not need it.
+  - `npm run e2e` (Playwright, `e2e/`) runs real pages and costs about 50 s per spec. Run one spec only when the change touches the flow it covers in a way typecheck cannot see: `splash` (boot, deep links, opening track), `musicAutoplay`, `audioMix` (levels), `engine` (engine worklet), `gamepad` (pad menus, rumble, auto pause), `freeRoam` (the menu-to-roam handoff), `raceMap` (the race's city map). Run the whole suite only when asked or after a broad change to boot or `main.ts`'s state machine. Give it a 180000 ms timeout and never pipe it through `tail` (the list reporter's progress is lost until it ends).
+  - Add a new test only when asked, or when a fix has no other coverage and is likely to regress. Don't re-run checks that already passed on unchanged code.
+- Headless beats the browser: `npx tsx` imports any `src/sim` or `src/city` module directly (`/tune` measures a car that way, `scripts/debugCitySvg.ts <seed> out.svg` draws a city).
 - `node_modules` must exist (`npm ci`). `npm run assets`, `npm run music` and `npm run traffic` rewrite generated files and need external tools; run them only when the task is about assets, music or traffic.
 - The Blender MCP server in `.mcp.json` needs `uv` installed (`brew install uv`); it is only for modelling work and its connection failure is otherwise harmless. Read `/blender` before driving it.
