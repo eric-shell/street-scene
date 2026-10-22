@@ -463,7 +463,7 @@ function handoffToFreeRoam(): void {
 
 /** Back to the menu from a race or the pause screen, behind the wipe. */
 function wipeToMenu(): void {
-  void wipe({ title: 'Street Scene', sub: 'Street racing after dark' }, () => showMenu());
+  void wipe({ title: 'Street Scene', sub: 'midnight street racing club' }, () => showMenu());
 }
 
 /** Take a changed copy of the settings: save them and apply what changed to the renderer, audio and panels. */
@@ -639,6 +639,7 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
     seedText: config.seed === seedFromString(seedStr) ? seedStr : undefined,
     ...extra,
     onQuit: wipeToMenu,
+    onPause: togglePause,
   });
   state = 'race';
   sessionKind = kind;

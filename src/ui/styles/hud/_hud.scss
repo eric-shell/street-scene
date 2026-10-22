@@ -9,6 +9,9 @@
   color: var(--text);
   font-family: var(--font);
 }
+/* The top left column: the HUD card (ui/hudCard.ts; the drone's stands in one too) with the ghost, drift
+   zone and waypoint chips under it, as wide as the card. Chamfered plates clip their own box shadows, so
+   the column casts the menu's drop shadow for all of them. */
 .hud-tl {
   position: absolute;
   top: max(12px, env(safe-area-inset-top));
@@ -16,17 +19,17 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.42));
 }
+/* A chip is a small plate like the card: the chamfer, the hairline border and the lit top edge. */
 .hud-chip {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: palette.alpha(bg0, 0.72);
+  background: var(--plate);
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
   box-shadow: var(--edge);
-  backdrop-filter: blur(6px);
-  padding: 5px 10px;
+  padding: 6px 12px;
   min-width: 120px;
 }
 .hud-chip .ic {
@@ -39,17 +42,7 @@
   font-size: 17px;
   letter-spacing: 0;
 }
-.hud-pos b {
-  font-size: 24px;
-  color: var(--accent-2);
-}
-/* Open world (free roam): the HUD card (ui/hudCard.ts) holds the district, time and smashes instead of
-   position, lap and best; the drift zone and waypoint chips stay under it. */
-.hud.open-world .hud-pos,
-.hud.open-world .hud-lap,
-.hud.open-world .hud-time,
-.hud.open-world .hud-best,
-.hud.open-world .hud-ghost,
+/* Free roam shows no race progress. */
 .hud.open-world .hud-progress {
   display: none;
 }
@@ -287,15 +280,17 @@
     width: 110px;
     height: 110px;
   }
+  /* The card takes most of the top on a small screen: the race's progress runs along the bottom instead. */
+  .hud-progress {
+    top: auto;
+    bottom: max(12px, env(safe-area-inset-bottom));
+  }
   .hud-chip {
     min-width: 0;
     padding: 3px 8px;
   }
   .hud-chip b {
     font-size: 14px;
-  }
-  .hud-pos b {
-    font-size: 18px;
   }
 }
 /* On touch devices the right side belongs to the pedals. */

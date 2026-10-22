@@ -1,9 +1,10 @@
 /**
- * Garage UI on the rail (ui/rail.ts): the header (back), tabs of
- * live-preview categories and the open tab's controls down the left; beside it
- * the 3D view framed to the free space, with the car card (model, build, spec
- * tags and measured stats) top left, the Garage / Street switch and camera top
- * right and the hold-to-rev button at the bottom. Body part menus are populated
+ * Garage UI on the rail (ui/rail.ts), drawn like the main menu's: no column,
+ * only a scrim, with the header (back), tabs of live-preview categories and the
+ * open tab's groups standing on the scene as plates of their own down the
+ * left; beside it the 3D view framed to the free space, with the car card
+ * (model, build, spec tags, measured stats, and the Garage / Street switch and
+ * camera on its foot) top left and the hold-to-rev button at the bottom. Body part menus are populated
  * entirely from partsCatalog.json. Builds save to localStorage slots and export
  * as share codes. Hidden dev mode (Ctrl+Shift+D or ?dev) accepts a dropped GLB
  * and equips it live in a chosen slot.
@@ -155,6 +156,8 @@ export class GarageScreen {
   private switching = false;
   /** The car the card last showed, so only a new car (not every slider step) animates the card. */
   private cardCar = '';
+  /** The Garage / Street switch and camera on the car card's foot, built once so its pick survives the card's rebuilds. */
+  private readonly stageEl: HTMLElement;
   /** Watches the roller door for the moment it starts rolling up (arrive). */
   private doorWatch: MutationObserver | null = null;
   private arriveTimer = 0;
@@ -171,6 +174,7 @@ export class GarageScreen {
     this.scene = new GarageScene(gr, assets, stage.street, stage.quality);
     this.tabBar = h('div', { class: 'garage-tabs', role: 'tablist', 'aria-label': 'Categories' });
     this.body = h('div', { class: 'garage-body' });
+    this.stageEl = this.stageBar();
     this.root = h(
       'div',
       { class: 'garage rail-screen' },
@@ -190,7 +194,6 @@ export class GarageScreen {
         { keys: ['Esc'], label: 'Back' },
       ]),
       this.carCard,
-      this.stageBar(),
       this.gasButton(),
     );
     uiRoot.append(this.root);
@@ -344,7 +347,7 @@ export class GarageScreen {
     this.arriveTimer = window.setTimeout(go, 6000);
   }
 
-  /** The car card over the 3D view: model, build name, spec tags and the measured stats. */
+  /** The car card over the 3D view: model, build name, spec tags, the measured stats and the stage switch. */
   private readonly carCard = h('div', { class: 'garage-car', 'aria-live': 'polite' });
 
   private updateCarCard(): void {
@@ -368,6 +371,7 @@ export class GarageScreen {
         stat('grip', 'Grip', bars.handling, `${st.grip.toFixed(2)} g`),
         stat('nitrous', 'Nitrous', bars.nitrous, `${st.nitrous.toFixed(1)} kN·s`),
       ),
+      this.stageEl,
     );
     // A new car on the turntable deals its card in again; edits to the same car (names, sliders) rebuild
     // the card still, so the class only stays for the render that brought the new car.
@@ -383,7 +387,7 @@ export class GarageScreen {
     toast(`Camera: ${this.scene.setCamera()}`, Video);
   }
 
-  /** Presentation toggle (the showroom's turntable or the street) and camera angles. */
+  /** Presentation toggle (the showroom's turntable or the street) and camera angles: the car card's foot. */
   private stageBar(): HTMLElement {
     return h(
       'div',

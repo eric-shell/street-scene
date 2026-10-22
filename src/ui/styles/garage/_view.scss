@@ -3,11 +3,11 @@
 @use '../abstracts/palette';
 /* The car card over the 3D view: what is on the turntable, a plate like the menu's event card (the accent
    hairline, warm light from the top corners, near opaque so its text holds over a bright street): who made
-   it as the kicker, the name in the event's white-to-peach, the build, the spec chips and the stats. A new
-   car deals it in again (.swap). */
+   it as the kicker, the name in the event's white-to-peach, the build, the spec chips, the stats and the
+   stage switch on its foot. A new car deals it in again (.swap). */
 .garage-car {
   position: absolute;
-  /* Clear of the rail's edge by its top margin, so its accent and the rail's do not read as a double line. */
+  /* A gap from the rail's plates as wide as its top margin. */
   left: calc(var(--rail-w) + 16px);
   top: max(16px, env(safe-area-inset-top));
   display: flex;
@@ -45,7 +45,7 @@
   gap: 6px;
   margin-top: 2px;
 }
-.garage-car.swap > * {
+.garage-car.swap > :not(.garage-stage) {
   animation: garage-rise 0.42s var(--ease-out) both;
 }
 .garage-car.swap > :nth-child(2) {
@@ -85,36 +85,31 @@
   text-align: right;
   color: var(--accent-2);
 }
-/* Presentation switch and camera, top right of the view: plates over the scene like the menu's cards, the
-   switch's pick in the accent like every segmented control. */
+/* Presentation switch and camera on the car card's foot, over a hairline like the HUD card's actions: the
+   switch across the card's width, its pick in the accent like every segmented control, the camera on the
+   right. The card is a plate already, so these are the controls the menus use inside their cards. */
 .garage-stage {
-  position: absolute;
-  top: max(14px, env(safe-area-inset-top));
-  right: max(14px, env(safe-area-inset-right));
   display: flex;
   gap: 6px;
   align-items: center;
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
   pointer-events: auto;
 }
 .garage-stage .seg {
-  padding: 3px;
-  background: var(--plate);
-  border-color: var(--line-strong);
-  box-shadow: var(--edge);
+  flex: 1;
   flex-wrap: nowrap;
 }
 .garage-stage .seg button {
+  flex: 1;
+  justify-content: center;
   font-size: 13px;
   font-weight: 700;
-  padding: 7px 13px;
+  padding: 6px 12px;
 }
 .garage-stage .btn {
-  padding: 9px;
-  background: var(--plate);
-}
-.garage-stage .btn:hover,
-.garage-stage .btn:focus-visible {
-  background: var(--plate-hover);
+  padding: 7px;
 }
 /* Hold to rev: in the middle of the free space, the view's main action. At rest a plate lit from its left
    edge in the accent; held, it fills with the accent sweep while the bright sheen runs across it again and
@@ -188,18 +183,18 @@
     --rail-w: 100%;
     --sheet: 52vh;
   }
+  /* The scrim rises from the bottom under the sheet's plates (dev mode's edge runs along its top). */
   .garage .rail-bg {
     top: auto;
     height: var(--sheet);
     clip-path: none;
+    background: linear-gradient(0deg, palette.alpha(bg0, 0.7), palette.alpha(bg0, 0.45) 75%, palette.alpha(bg0, 0));
   }
   .garage .rail-edge {
-    display: block;
     top: auto;
     bottom: var(--sheet);
     height: 2px;
     clip-path: none;
-    background: var(--rule);
   }
   .garage-panel {
     top: auto;
@@ -221,7 +216,7 @@
   .garage-car {
     left: 10px;
     top: max(10px, env(safe-area-inset-top));
-    max-width: calc(100vw - 150px);
+    max-width: calc(100vw - 20px);
     padding: 8px 14px 10px 12px;
     --cut: 9px;
   }
@@ -233,15 +228,15 @@
   .garage-car-tags {
     display: none;
   }
+  /* Icons only: the card stays small over the car. */
   .garage-stage {
-    top: max(10px, env(safe-area-inset-top));
-    right: 10px;
+    margin-top: 2px;
+    padding-top: 8px;
   }
-  /* Icons only: the switch's words would cover the car card. */
   .garage-stage .seg button {
     font-size: 0;
     gap: 0;
-    padding: 8px 10px;
+    padding: 7px 10px;
   }
   .garage-gas {
     left: auto;

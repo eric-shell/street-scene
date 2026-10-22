@@ -369,7 +369,7 @@ export const CONTROLS: Record<'keyboard' | 'gamepad' | 'touch', [string[], strin
     [['Q', 'E'], 'Shift down, up (manual)'],
     [['R'], 'Reset car'],
     [['C'], 'Camera'],
-    [['H'], 'Hide the HUD (free roam, drone)'],
+    [['H'], 'Hide the HUD'],
     [['Esc'], 'Pause'],
     [['M'], 'Mute music'],
     [['[', ']'], 'Previous, next track'],

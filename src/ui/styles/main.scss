@@ -11,10 +11,10 @@
  * figures so they never jitter. The film grain is only for the splash's night
  * road (environment, not UI).
  *
- * One layout for every full screen menu: the rail (ui/rail.ts). Pause, results
- * and garage put their content on an opaque column down the left with a
- * straight edge and the title rule's gradient down it; the main menu drops the
- * column for a light scrim so the city comes through between its cards. Each
+ * One layout for every full screen menu: the rail (ui/rail.ts). Pause and
+ * results put their content on an opaque column down the left with a straight
+ * edge and the title rule's gradient down it; the main menu and the garage drop
+ * the column for a light scrim so the scene comes through between their cards. Each
  * has a screen header (back, icon, title, aside) on top and a key legend along
  * the bottom; the 3D scene is framed in the space beside it. Three motifs repeat
  * so every screen reads as one game: the chamfer (top right and bottom left cut

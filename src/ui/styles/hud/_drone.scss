@@ -5,9 +5,3 @@
   pointer-events: none;
   z-index: 15;
 }
-/* The drone's card stands in the top left corner (free roam's leads the HUD's column of chips). */
-.drone-ui > .hud-card {
-  position: absolute;
-  top: max(12px, env(safe-area-inset-top));
-  left: max(12px, env(safe-area-inset-left));
-}

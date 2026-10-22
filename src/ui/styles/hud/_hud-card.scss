@@ -1,5 +1,6 @@
-/* ---------- HUD card (ui/hudCard.ts): the drone's and free roam's, one look for both ----------
-   A plate like the menu's, its rule in the place's hue, the badge and title over the readouts. */
+/* ---------- HUD card (ui/hudCard.ts): the drone's, free roam's and every race's, one look for all ----------
+   A plate like the menu's, its rule in the place's hue, the badge and title over the readouts. A race's
+   four readouts widen it a little so each keeps the room three have. */
 @use '../abstracts/media';
 .hud-card {
   display: flex;
@@ -43,12 +44,16 @@
   letter-spacing: 0.04em;
   color: var(--muted);
 }
-/* Three readouts over the card's width, a hairline between them. */
+/* The readouts in equal columns over the card's width, a hairline between them. */
 .hud-card-stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   padding-top: 10px;
   border-top: 1px solid var(--line);
+}
+.hud-card:has(.hud-card-stat:nth-child(4)) {
+  width: min(420px, calc(100vw - 24px));
 }
 .hud-card-stat {
   display: flex;
@@ -68,6 +73,9 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .hud-card-stat b {
   font: 700 17px var(--mono);
@@ -93,10 +101,6 @@
 .hud-card-actions .grow {
   flex: 1;
 }
-/* The card stands on the city like the menu's plates, with the menu's drop shadow. */
-.hud-card {
-  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.42));
-}
 .drone-updown {
   position: absolute;
   right: max(16px, env(safe-area-inset-right));
@@ -115,6 +119,36 @@
 @include media.touch {
   .drone-updown {
     display: flex;
+  }
+}
+/* Phones and short screens: the same card, tighter, so the road keeps the screen. */
+@include media.compact-hud {
+  .hud-card,
+  .hud-card:has(.hud-card-stat:nth-child(4)) {
+    gap: 8px;
+    width: min(340px, calc(100vw - 24px));
+    padding: 8px 10px;
+  }
+  .hud-card-stat {
+    padding: 0 8px;
+  }
+  .hud-card-stat span {
+    font-size: 9.5px;
+    letter-spacing: 0.1em;
+  }
+  .hud-card-badge {
+    width: 30px;
+    height: 30px;
+  }
+  .hud-card-title b {
+    font-size: 16px;
+  }
+  .hud-card-stats,
+  .hud-card-actions {
+    padding-top: 7px;
+  }
+  .hud-card-stat b {
+    font-size: 14px;
   }
 }
 /* A card's controls dialog lists them in the settings page's key list. */

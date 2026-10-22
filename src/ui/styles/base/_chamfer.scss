@@ -23,6 +23,12 @@ $chamfered: (
   '.garage-car',
   '.race-ticket',
   '.hud-card',
+  '.hud-chip',
+  '.hud-map-hint',
+  '.mw-card',
+  '.mw-pill',
+  '.mw-chip',
+  '.mw-banner',
 );
 /* The list with a pseudo element on each selector. */
 @function on-each($pseudo) {
@@ -39,7 +45,10 @@ $chamfered: (
 .btn.small,
 .btn.icon-only,
 .chip,
-.seg {
+.seg,
+.hud-chip,
+.hud-map-hint,
+.mw-chip {
   --cut: 6px;
 }
 .event-card,
@@ -50,7 +59,9 @@ $chamfered: (
 .g-section,
 .garage-car,
 .race-ticket,
-.hud-card {
+.hud-card,
+.mw-card,
+.mw-banner {
   --cut: 12px;
 }
 #{on-each('::before')},

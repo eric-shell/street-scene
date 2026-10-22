@@ -135,12 +135,12 @@
   align-items: center;
   gap: 6px;
   max-width: min(320px, 40vw);
-  padding: 5px 10px;
+  padding: 6px 12px;
   font-size: 13px;
   color: var(--muted);
-  background: palette.alpha(bg0, 0.72);
+  background: var(--plate);
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  box-shadow: var(--edge);
 }
 .mw-chip svg {
   color: var(--accent);
@@ -262,7 +262,8 @@
   top: auto;
   bottom: max(48px, env(safe-area-inset-bottom));
 }
-/* Beside a rail the banner keeps to the top right of the scene (in the garage, under the Garage / Street switch). */
+/* Beside a rail the banner keeps to the top right corner of the scene (the garage's switch and camera sit
+   in its car card, top left). */
 .mw[data-context='garage'] .mw-banner,
 .mw[data-context='menu'] .mw-banner {
   left: auto;
@@ -271,7 +272,7 @@
   transform: translate(0, -16px);
 }
 .mw[data-context='garage'] .mw-banner {
-  top: 64px;
+  top: max(12px, env(safe-area-inset-top));
 }
 .mw[data-context='garage'] .mw-banner.show,
 .mw[data-context='menu'] .mw-banner.show {

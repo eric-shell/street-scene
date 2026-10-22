@@ -201,7 +201,8 @@ export class DroneMode {
         [['Touch'], 'Left half drags to fly, right half to look; the arrows climb and descend'],
       ],
     });
-    this.root = h('div', { class: 'drone-ui' }, this.card.el, h('div', { class: 'drone-updown' }, hold(ArrowUp, 1), hold(ArrowDown, -1)));
+    // The card stands in the race HUD's top left column (ui/styles/hud/_hud.scss .hud-tl), which casts its shadow.
+    this.root = h('div', { class: 'drone-ui' }, h('div', { class: 'hud-tl' }, this.card.el), h('div', { class: 'drone-updown' }, hold(ArrowUp, 1), hold(ArrowDown, -1)));
     this.map = new Minimap(world, 'hud-map drone-map');
     this.root.append(this.map.canvas);
     this.cars = opts.cars;

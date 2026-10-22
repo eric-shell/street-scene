@@ -6,7 +6,8 @@
    screen, so nothing jumps; the key legend sits along the bottom. Narrow
    screens get a full width rail without the edge. The main menu (.home) keeps
    the rail's box for framing but draws only a scrim in it: its cards are
-   plates of their own, and the city shows between them. */
+   plates of their own, and the city shows between them (the garage does the
+   same, styles/garage/_layout.scss). */
 @use '../abstracts/media';
 @use '../abstracts/palette';
 .rail-screen {

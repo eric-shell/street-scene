@@ -2,8 +2,9 @@
  * The rail: the one layout every full screen menu shares (main menu, pause,
  * results, garage). An opaque column down the left edge with a straight right
  * side and the accent rule down it, so the text never depends on the 3D scene
- * behind it; the scene keeps the rest of the screen and is framed to
- * the free area beside the rail (railInset, GameRenderer.setFraming). Parts:
+ * behind it (the main menu and the garage draw only a scrim there, their cards
+ * being plates of their own); the scene keeps the rest of the screen and is
+ * framed to the free area beside the rail (railInset, GameRenderer.setFraming). Parts:
  *  - railScreen: the screen root with the rail's background and edge.
  *  - screenHead: back button, the screen's icon and title, an aside on the right.
  *  - keybar: the key legend along the bottom of the rail. Plain hints only show

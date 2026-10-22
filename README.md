@@ -55,7 +55,7 @@ Useful URL parameters: `?seed=anything` (custom event), `?race=circuit|sprint|dr
 | Manual shift (when enabled) | Q / E | LB / RB | |
 | Reset to road | R | Y | RST |
 | Horn and headlight flash (hold for a long blast) | Shift | Right stick click | |
-| Hide the HUD (menu, drone, free roam); again to bring it back | H | | Eye button on the card |
+| Hide the HUD (menu, drone, free roam, races); again to bring it back | H | | Eye button on the card |
 | Camera (chase, close, bumper, hood) | C | Back | CAM |
 | Camera views: 1 chase, 2 close, 3 bumper, 4 hood, 5 trackside TV, 6 orbit, 7 free (replays) | 1 to 7 | | |
 | Drone (photo mode in a race, flyover from the menu); again to come back | 0 | | |

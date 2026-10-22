@@ -1,8 +1,9 @@
 /**
- * The HUD card: the one top left card the drone (Explore) and free roam share,
- * so both read alike and stay alike. A chamfered plate like the menu's cards,
- * its rule in the place's hue (the menu row's: Explore cyan, free roam green):
- * a badge and the title over a status line with Exit in the corner, three
+ * The HUD card: the one top left card the drone (Explore), free roam and
+ * every race share, so all of them read alike and stay alike. A chamfered
+ * plate like the menu's cards, its rule in the place's hue (the menu's: Explore
+ * cyan, free roam green, each race type its own): a badge and the title over a
+ * status line with Exit (a race's Pause) in the corner, three or four
  * readouts, then a foot of actions (the caller's, then Controls) with the hide
  * button on the right. Controls opens a dialog in the settings page's key list.
  *
@@ -25,12 +26,15 @@ export interface HudCardOptions {
   title: string;
   /** The status line under the title (flight mode, district). */
   status: string;
-  /** The three readouts' labels; setStat writes their values. */
-  stats: [string, string, string];
+  /** The readouts' labels (three or four, in equal columns); setStat writes their values. */
+  stats: readonly string[];
   /** Buttons on the left of the foot, before Controls. */
   actions?: HTMLElement[];
   onExit: () => void;
-  /** Exit's tooltip, e.g. Back to the car (default Exit). */
+  /** The corner button's label and icon (default Exit with an X; a race's is Pause). */
+  exitLabel?: string;
+  exitIcon?: IconNode;
+  /** Its tooltip, e.g. Back to the car (default the label). */
   exitTitle?: string;
   /** The controls dialog's rows. */
   controls: ControlRow[];
@@ -57,7 +61,7 @@ export class HudCard {
         { class: 'hud-card-head' },
         h('span', { class: 'hud-card-badge' }, icon(o.icon, { size: 20 })),
         h('div', { class: 'hud-card-title' }, h('b', {}, o.title), this.statusEl),
-        btn(X, 'Exit', o.onExit, 'small hud-card-exit'),
+        btn(o.exitIcon ?? X, o.exitLabel ?? 'Exit', o.onExit, 'small hud-card-exit'),
       ),
       h('div', { class: 'hud-card-stats' }, ...o.stats.map((label, i) => h('div', { class: 'hud-card-stat' }, h('span', {}, label), this.values[i]))),
       h(
@@ -69,7 +73,7 @@ export class HudCard {
         iconBtn(EyeOff, 'Hide HUD (H)', () => setHudHidden(true), 'small'),
       ),
     );
-    this.el.querySelector('.hud-card-exit')?.setAttribute('title', o.exitTitle ?? 'Exit');
+    this.el.querySelector('.hud-card-exit')?.setAttribute('title', o.exitTitle ?? o.exitLabel ?? 'Exit');
     cards.add(this);
   }
 

@@ -1,8 +1,11 @@
 /**
  * Race HUD in plain DOM plus small canvases (tachometer, boost gauge, and the
- * minimap from minimap.ts, which the drone shares). The nitrous bar shows the
- * tank's three stages, each in its own color, and the callouts over the dial
- * cluster (boostCallouts.ts) name the style that fills it.
+ * minimap from minimap.ts, which the drone shares). Every mode leads with the
+ * HUD card the drone shares (ui/hudCard.ts): free roam's district and
+ * readouts, a race's place, lap or progress, time and best in its type's hue;
+ * the ghost, drift zone and waypoint chips stand under it. The nitrous bar
+ * shows the tank's three stages, each in its own color, and the callouts over
+ * the dial cluster (boostCallouts.ts) name the style that fills it.
  * Reads a snapshot each frame; never touches the sim.
  */
 import type { World } from '../city/world';
@@ -10,9 +13,10 @@ import type { RaceMode } from '../sim/race';
 import { nitroFullStages } from '../sim/car';
 import { NITRO_STAGES } from '../sim/tuning';
 import { BoostCallouts } from './boostCallouts';
-import { FlagTriangleRight, Timer, Trophy, TriangleAlert, Zap, Award, Ghost, icon, Compass, Disc3, MapPin, Navigation2 } from './icons';
+import { TriangleAlert, Zap, Ghost, icon, Compass, Disc3, MapPin, Navigation2, RotateCcw, Route, ChevronsRight, MapPinned, Wind, type IconNode } from './icons';
 import { formatTime } from './format';
 import type { HudCard } from './hudCard';
+import type { Hue } from './rail';
 import { MapCar, Minimap } from './minimap';
 import { NITRO_STAGE_COLORS, PALETTE, rgb, rgba } from './palette';
 import { formatDistance } from './places';
@@ -39,6 +43,30 @@ const INK = {
 } as const;
 
 export type HudCar = MapCar;
+
+/** Each race type's card: the menu's name and icon (ui/menu.ts TYPE_INFO) in its hue (palette.$modes). */
+export const RACE_CARD: Record<RaceMode, { title: string; icon: IconNode; hue: Hue }> = {
+  circuit: { title: 'Circuit', icon: RotateCcw, hue: 'orange' },
+  sprint: { title: 'Sprint', icon: Route, hue: 'yellow' },
+  drag: { title: 'Drag', icon: ChevronsRight, hue: 'purple' },
+  waypoint: { title: 'Waypoint', icon: MapPinned, hue: 'cyan' },
+  drift: { title: 'Drift', icon: Wind, hue: 'red' },
+};
+
+/** The races run point to point: their card reads progress instead of laps. */
+const POINT_TO_POINT: ReadonlySet<RaceMode> = new Set(['sprint', 'drag', 'waypoint']);
+
+/**
+ * A race card's readouts, in the order Hud.update fills them: place (drift
+ * runs solo, so none), lap or how much of the course is behind (short labels:
+ * four share a phone's card), time and best. Its own drift score stays on the
+ * right.
+ */
+export function raceReadouts(mode: RaceMode): string[] {
+  const along = POINT_TO_POINT.has(mode) ? 'Course' : 'Lap';
+  const best = POINT_TO_POINT.has(mode) ? 'Best' : 'Best lap';
+  return mode === 'drift' ? [along, 'Time', best] : ['Place', along, 'Time', best];
+}
 
 export interface HudData {
   mode: RaceMode;
@@ -82,10 +110,6 @@ export interface HudData {
 
 export class Hud {
   readonly root: HTMLDivElement;
-  private posEl: HTMLElement;
-  private lapEl: HTMLElement;
-  private timeEl: HTMLElement;
-  private bestEl: HTMLElement;
   private centerEl: HTMLElement;
   private msgEl: HTMLElement;
   private wrongEl: HTMLElement;
@@ -112,7 +136,7 @@ export class Hud {
   private driftEl: HTMLElement;
   private progressFill: HTMLElement;
   private ghostEl: HTMLElement;
-  /** Free roam: the HUD card the drone shares (ui/hudCard.ts) on top of the chips, with the district and readouts. */
+  /** The HUD card the drone shares (ui/hudCard.ts) on top of the chips: free roam's district or the race's readouts. */
   private card: HudCard | null = null;
   private zoneEl: HTMLElement;
   private zoneText: HTMLElement;
@@ -132,10 +156,6 @@ export class Hud {
     this.root.className = 'hud';
     this.root.innerHTML = `
       <div class="hud-tl">
-        <div class="hud-chip hud-pos"><span class="ic"></span><b class="v"></b></div>
-        <div class="hud-chip hud-lap"><span class="ic"></span><b class="v"></b></div>
-        <div class="hud-chip hud-time"><span class="ic"></span><b class="v"></b></div>
-        <div class="hud-chip hud-best"><span class="ic"></span><b class="v"></b></div>
         <div class="hud-chip hud-ghost"><span class="ic"></span><b class="v">Ghost</b></div>
         <div class="hud-chip hud-zone"><span class="ic"></span><b class="v"></b><span class="left"><i></i></span></div>
         <div class="hud-chip hud-waypoint"><span class="ic"></span><b class="v"></b><span class="dir"></span></div>
@@ -155,10 +175,6 @@ export class Hud {
     `;
     parent.appendChild(this.root);
     const q = (s: string) => this.root.querySelector(s) as HTMLElement;
-    q('.hud-pos .ic').appendChild(icon(Trophy, { size: 16 }));
-    q('.hud-lap .ic').appendChild(icon(FlagTriangleRight, { size: 16 }));
-    q('.hud-time .ic').appendChild(icon(Timer, { size: 16 }));
-    q('.hud-best .ic').appendChild(icon(Award, { size: 16 }));
     q('.hud-ghost .ic').appendChild(icon(Ghost, { size: 16 }));
     q('.hud-zone .ic').appendChild(icon(Disc3, { size: 16 }));
     this.zoneEl = q('.hud-zone');
@@ -171,10 +187,6 @@ export class Hud {
     this.wpDir = q('.hud-waypoint .dir');
     q('.hud-wrong .ic').appendChild(icon(TriangleAlert, { size: 28 }));
     q('.hud-nitro .ic').appendChild(icon(Zap, { size: 18 }));
-    this.posEl = q('.hud-pos .v');
-    this.lapEl = q('.hud-lap .v');
-    this.timeEl = q('.hud-time .v');
-    this.bestEl = q('.hud-best .v');
     this.ghostEl = q('.hud-ghost');
     this.centerEl = q('.hud-center');
     this.msgEl = q('.hud-msg');
@@ -189,7 +201,7 @@ export class Hud {
     this.boostCv = q('.hud-boost') as HTMLCanvasElement;
     this.map = new Minimap(world);
     this.root.append(this.map.canvas);
-    // Clickable in every race and free roam, with a hint (free roam's) that it opens.
+    // Clickable in every race and free roam, with a hint that it opens.
     this.map.canvas.title = 'City map (Tab)';
     this.map.canvas.addEventListener('click', () => this.onMapClick?.());
     const hint = document.createElement('div');
@@ -199,7 +211,7 @@ export class Hud {
 
   }
 
-  /** Puts the HUD card (free roam's) on top of the chips; update() fills it while the world is open. */
+  /** Puts the HUD card on top of the chips; update() fills its readouts (free roam's, or raceReadouts' for a race). */
   setCard(card: HudCard): void {
     this.card = card;
     this.root.querySelector('.hud-tl')?.prepend(card.el);
@@ -214,17 +226,20 @@ export class Hud {
   update(d: HudData, dt: number): void {
     this.root.classList.toggle('open-world', !!d.openWorld);
     this.root.classList.toggle('waypoint-race', d.mode === 'waypoint' && !d.openWorld);
-    if (d.openWorld && this.card) {
-      this.card.setStatus(d.openWorld.area);
-      this.card.setStat(0, formatTime(d.raceTime));
-      this.card.setStat(1, String(d.openWorld.smashed));
-      this.card.setStat(2, `${Math.round(d.openWorld.topMph)} mph`);
+    const card = this.card;
+    if (card && d.openWorld) {
+      card.setStatus(d.openWorld.area);
+      card.setStat(0, formatTime(d.raceTime));
+      card.setStat(1, String(d.openWorld.smashed));
+      card.setStat(2, `${Math.round(d.openWorld.topMph)} mph`);
+    } else if (card) {
+      // raceReadouts' order: place (not in drift), lap or progress, time, best.
+      let i = 0;
+      if (d.mode !== 'drift') card.setStat(i++, `${d.position}/${d.carCount}`);
+      card.setStat(i++, POINT_TO_POINT.has(d.mode) ? `${Math.round(d.progress * 100)}%` : `${Math.max(1, Math.min(d.lap, d.laps))}/${d.laps}`);
+      card.setStat(i++, formatTime(d.raceTime));
+      card.setStat(i, d.bestLap ? formatTime(d.bestLap) : '--:--.--');
     }
-    const racingMode = d.mode !== 'drift';
-    this.posEl.textContent = racingMode ? `${d.position}/${d.carCount}` : 'Drift';
-    this.lapEl.textContent = d.mode === 'sprint' || d.mode === 'drag' || d.mode === 'waypoint' ? `${Math.round(d.progress * 100)}%` : `${Math.max(1, Math.min(d.lap, d.laps))}/${d.laps}`;
-    this.timeEl.textContent = formatTime(d.raceTime);
-    this.bestEl.textContent = d.bestLap ? formatTime(d.bestLap) : '--:--.--';
     this.ghostEl.style.display = d.ghost ? '' : 'none';
     this.progressFill.style.width = `${Math.max(0, Math.min(1, d.progress)) * 100}%`;
     this.updateNitro(d);

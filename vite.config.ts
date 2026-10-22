@@ -13,6 +13,8 @@ function gitHash(): string {
 export default defineConfig({
   server: { host: true, port: 5175, strictPort: true },
   build: { target: 'es2022', chunkSizeWarningLimit: 1500 },
+  // DevTools traces every style rule back to its .scss partial (dev only; builds ship no maps).
+  css: { devSourcemap: true },
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __BUILD_HASH__: JSON.stringify(gitHash()),

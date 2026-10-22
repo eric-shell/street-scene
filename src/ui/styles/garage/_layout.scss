@@ -1,9 +1,11 @@
 /* ---------- garage (garage/garageUi.ts) ----------
    The garage's rail: header, tabs and the open tab down the left, narrower
-   than the menu's so the car has room; beside it the 3D view with the car card
-   (top left, a plate like the menu's event card), the Garage / Street switch
-   (top right) and the rev button in the middle of the free space at the
-   bottom. Phones get the rail as a sheet over the lower half.
+   than the menu's so the car has room. Like the main menu it draws no column,
+   only a scrim: the tabs and the open tab's groups are plates of their own and
+   the scene shows between them. Beside it the 3D view with the car card (top
+   left, a plate like the menu's event card, the Garage / Street switch on its
+   foot) and the rev button in the middle of the free space at the bottom.
+   Phones get the rail as a sheet over the lower half.
    It speaks the main menu's language: everything pressable or carded is
    chamfered, the open tab's groups are plates with the accent hairline, and
    each category has a hue (like the home menu's rows) that its tab wears at
@@ -49,8 +51,34 @@ $tab-hues: (
     @include palette.tint(hue, $hue);
   }
 }
+/* The main menu's scrim instead of the opaque column (styles/rail/_rail.scss .home): darkest at the left
+   edge, enough for the header and key legend over a bright scene. No edge, except dev mode's yellow one. */
+.garage .rail-bg {
+  background: linear-gradient(90deg, palette.alpha(bg0, 0.62), palette.alpha(bg0, 0.38) 70%, palette.alpha(bg0, 0));
+}
+.garage .rail-edge {
+  display: none;
+}
 .garage.dev .rail-edge {
+  display: block;
   background: var(--accent-2);
+}
+/* What stands straight on the scene keeps the menu's dark halo; the back button is a plate like the cards. */
+.garage :is(.screen-title, .keybar) {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 14px rgba(0, 0, 0, 0.7);
+}
+.garage .screen-head .btn {
+  background: var(--plate);
+}
+.garage .screen-head .btn:hover,
+.garage .screen-head .btn:focus-visible {
+  background: var(--plate-hover);
+}
+/* The menu's drop shadow under every plate: chamfered plates clip their own box shadows, so the tabs and
+   the open tab's groups cast it together, following every cut corner. */
+.garage-tabs,
+.garage-body {
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.42));
 }
 .garage-panel {
   position: absolute;
@@ -171,12 +199,12 @@ $tab-hues: (
 /* The garage opens behind the roller door: its parts hold on their first frame while the door is down
    (.hold) and, once it starts rolling up (0.72 s, uncovering the screen from the bottom), rise in as it
    clears them: the rev button and key legend first, the groups from the lowest up, the tabs and header as
-   the door leaves the top. The car card slides in from the rail and the switch drops in. `translate`
-   rather than `transform`, so the rev button keeps its centering. */
-.garage.arrive :is(.garage-panel > :not(.garage-body), .garage-body > *, .garage-car, .garage-stage, .garage-gas, .keybar) {
+   the door leaves the top. The car card slides in from the rail with its switch. `translate` rather than
+   `transform`, so the rev button keeps its centering. */
+.garage.arrive :is(.garage-panel > :not(.garage-body), .garage-body > *, .garage-car, .garage-gas, .keybar) {
   animation: garage-rise 0.5s var(--ease-out) var(--d, 0.3s) both;
 }
-.garage.arrive.hold :is(.garage-panel > :not(.garage-body), .garage-body > *, .garage-car, .garage-stage, .garage-gas, .keybar) {
+.garage.arrive.hold :is(.garage-panel > :not(.garage-body), .garage-body > *, .garage-car, .garage-gas, .keybar) {
   animation-play-state: paused;
 }
 .garage.arrive :is(.garage-gas, .keybar) {
@@ -204,10 +232,6 @@ $tab-hues: (
   --d: 0.5s;
   animation-name: garage-slide;
 }
-.garage.arrive .garage-stage {
-  --d: 0.58s;
-  animation-name: garage-drop;
-}
 @keyframes garage-rise {
   from {
     opacity: 0;
@@ -218,12 +242,6 @@ $tab-hues: (
   from {
     opacity: 0;
     translate: -28px 0;
-  }
-}
-@keyframes garage-drop {
-  from {
-    opacity: 0;
-    translate: 0 -14px;
   }
 }
 /* An open tab's group: a plate with the accent hairline in the tab's hue and a faint wash of it from the
