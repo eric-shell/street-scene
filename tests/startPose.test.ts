@@ -115,7 +115,9 @@ describe('the cruise at the wheel', () => {
       worst = Math.max(worst, Math.hypot(c.x - p.x, c.z - p.z));
       if (i > TICK_HZ) slowest = Math.min(slowest, c.speed);
     }
-    return { worst, slowest, events: r.events.filter((e) => e.type === 'wall' || e.type === 'reset' || e.type === 'crash'), speed: rc.state.speed, r };
+    return { worst, slowest, // Walls, resets and crashes into the city; a civilian car in the lane is the player's to dodge (the cruise
+    // follows its lane and never steers round traffic, as the menu car never had to).
+    events: r.events.filter((e) => (e.type === 'wall' || e.type === 'reset' || e.type === 'crash') && (e as { traffic?: number }).traffic === undefined), speed: rc.state.speed, r };
   }
 
   it('keeps the car on the lane at the cruise speed, clear of walls, from several points on several cities', () => {
