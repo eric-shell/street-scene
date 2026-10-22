@@ -16,8 +16,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { GameRenderer } from '../render/scene';
-import { CarPose, CarView } from '../render/carView';
-import { CarAssetLibrary } from '../render/carAssets';
+import { CarPose, CarView } from '../render/car/carView';
+import { CarAssetLibrary } from '../render/car/carAssets';
 import { EngineVoice, audioHub } from '../audio/engineAudio';
 import { BlipScript, REV_LEVEL, RevModel, revVoice } from './revModel';
 import { Showroom } from './showroom';

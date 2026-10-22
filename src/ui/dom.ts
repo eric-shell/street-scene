@@ -20,7 +20,7 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<s
 
 /**
  * The band of light that sweeps across a control when it is hovered or
- * focused, like a streetlight passing over paint (ui.css `.sheen`): bright on
+ * focused, like a streetlight passing over paint (styles/base/_sheen.scss): bright on
  * primary actions, faint on the rest. Clipped by the control's chamfer.
  */
 export function sheen(): HTMLElement {

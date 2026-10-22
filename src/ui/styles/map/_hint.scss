@@ -1,0 +1,39 @@
+/* ---------- free roam city map ---------- */
+@use '../abstracts/media';
+@use '../abstracts/palette';
+/* In the open world the minimap opens the full map (click or Tab); a small hint sits above it. */
+.hud.open-world .hud-map {
+  pointer-events: auto;
+  cursor: pointer;
+}
+.hud.open-world .hud-map:hover {
+  filter: brightness(1.15);
+}
+.hud-map-hint {
+  display: none;
+  position: absolute;
+  left: max(10px, env(safe-area-inset-left));
+  bottom: calc(max(10px, env(safe-area-inset-bottom)) + 176px);
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--soft);
+  background: palette.alpha(bg0, 0.72);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.hud.open-world .hud-map-hint {
+  display: flex;
+}
+.hud-map-hint svg {
+  color: var(--accent);
+}
+@include media.compact-hud {
+  .hud-map-hint {
+    bottom: calc(max(10px, env(safe-area-inset-bottom)) + 116px);
+  }
+}

@@ -1,0 +1,83 @@
+/* The sheen (ui/dom.ts sheen): a skewed band of light that sweeps once across a control as it is hovered or
+   focused, like a streetlight passing over paint. The control's chamfer clips it. Plates get a faint band,
+   primary actions a bright, wider one, and the screen's main action (.cta) also glints on its own every few
+   seconds so the eye finds it. Transform only, so it runs on the compositor. */
+.sheen {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.sheen::before {
+  content: '';
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: 0;
+  width: 36%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.04) 30%, var(--sheen-soft) 50%, rgba(255, 255, 255, 0.04) 70%, transparent);
+  transform: translateX(-130%) skewX(-20deg);
+}
+.btn.primary > .sheen::before {
+  width: 58%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.28) 30%, var(--sheen-bright) 50%, rgba(255, 255, 255, 0.28) 70%, transparent);
+  mix-blend-mode: overlay;
+}
+.btn.ghost > .sheen::before,
+.btn.icon-only > .sheen::before {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.09) 50%, transparent);
+}
+:is(.btn, .nav-item, .mode-tile, .event-map, .g-item, .garage-tab, .g-swatch):is(:hover, :focus-visible) > .sheen::before {
+  animation: sheen 0.7s var(--ease-out) both;
+}
+.btn.primary:is(:hover, :focus-visible) > .sheen::before {
+  animation-duration: 0.85s;
+}
+.btn.primary.cta > .sheen::before {
+  animation: sheen-idle 6s var(--ease-in-out) 2.4s infinite;
+}
+.btn.primary.cta:is(:hover, :focus-visible) > .sheen::before {
+  animation: sheen 0.85s var(--ease-out) both;
+}
+@keyframes sheen {
+  from {
+    transform: translateX(-130%) skewX(-20deg);
+  }
+  to {
+    transform: translateX(260%) skewX(-20deg);
+  }
+}
+/* One slow pass, then a long wait off the far edge. */
+@keyframes sheen-idle {
+  0% {
+    transform: translateX(-130%) skewX(-20deg);
+  }
+  18%,
+  100% {
+    transform: translateX(260%) skewX(-20deg);
+  }
+}
+.row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.muted {
+  color: var(--muted);
+}
+.label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}

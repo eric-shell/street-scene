@@ -32,7 +32,7 @@ import { onSpan } from '../../city/drawbridge';
 import type { Vec2 } from '../../sim/math';
 import { Rng } from '../../sim/prng';
 import { GeoBuilder } from '../geoBuilder';
-import { RIVER_TEX, UvRect, riverTextures } from '../riverTextures';
+import { RIVER_TEX, UvRect, riverTextures } from '../textures/riverTextures';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { col, cylinder, wallBox } from './kit';
 
@@ -540,7 +540,7 @@ function buildChannel(kit: DistrictKit, a: Area): void {
   };
   const concreteMat = new THREE.MeshStandardMaterial({ map: tex.concrete, vertexColors: true, roughness: 0.93, metalness: 0, envMapIntensity: 0.35 });
   add(concrete, 'riverConcrete', concreteMat);
-  // The floor under the drawbridge's span: before its depth-only lid (render/drawbridge.ts), so the
+  // The floor under the drawbridge's span: before its depth-only lid (render/street/drawbridge.ts), so the
   // leaves open over the real channel.
   if (under.vertexCount) add(under, 'riverUnderDrawbridge', concreteMat, -4);
   const decalMesh = add(

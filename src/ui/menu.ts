@@ -80,7 +80,7 @@ import type { BestRecord } from '../replay/replay';
 import type { MusicPlayer } from '../audio/musicPlayer';
 import { uiBlip, uiWhoosh } from '../audio/uiSound';
 
-/** The title's words: one line, sized to the menu's column in the menu and on the splash alike (ui.css `.head-title .logo`). */
+/** The title's words: one line, sized to the menu's column in the menu and on the splash alike (`.head-title .logo` in styles/menu/_home.scss). */
 export const TITLE_WORDS = ['STREET', 'SCENE'] as const;
 export const TAGLINE = 'Street racing after dark';
 
@@ -172,7 +172,7 @@ const PLACES_INFO = {
   settings: { icon: SettingsIcon, label: 'Settings', hue: 'purple' },
 } as const;
 
-/** Columns of the race step's type grid (ui.css .mode-grid): the arrow keys move a row by this many types. */
+/** Columns of the race step's type grid (`.mode-grid` in styles/menu/_race.scss): the arrow keys move a row by this many types. */
 const MODE_COLUMNS = 3;
 const GRID_MOVES: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: MODE_COLUMNS, ArrowUp: -MODE_COLUMNS };
 

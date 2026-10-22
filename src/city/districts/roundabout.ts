@@ -21,7 +21,7 @@
  * pots and bollards rings the middle at a radius a straight line cannot miss
  * twice, and the few solid pieces (tree trunks, the basin, the plinth) are
  * walls of look 'tree' and 'island' with room to pass either side at a crawl.
- * Lantern posts ('parkLamp' props, pooled by render/areaLights) light every
+ * Lantern posts ('parkLamp' props, pooled by render/street/areaLights) light every
  * island.
  */
 import { CITY } from '../config';

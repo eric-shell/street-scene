@@ -1,0 +1,364 @@
+/* The event card: what tonight's event is, the city it runs in (a live map and its notable districts) and
+   the way in. It names no race type; the race step does. Warm light falls on it from the top corners. */
+@use '../abstracts/media';
+@use '../abstracts/palette';
+.event-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px 16px;
+  background:
+    var(--card-top),
+    radial-gradient(120% 60% at 100% 0%, palette.alpha(red, 0.07), transparent 60%),
+    radial-gradient(90% 55% at 0% 0%, palette.alpha(orange, 0.1), transparent 65%),
+    var(--plate);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--edge);
+}
+.event-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 32px;
+}
+.event-top .label {
+  flex: none;
+}
+.label.kicker {
+  color: var(--accent-2);
+}
+.label.kicker > svg {
+  color: var(--accent);
+}
+.event-name {
+  margin: 2px 0 0;
+  font: 900 32px/1.02 var(--display);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+  background: linear-gradient(180deg, #fff 35%, #ffd9c2);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.event-tagline {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+.event-go {
+  margin-top: 6px;
+}
+.event-go > svg:last-child {
+  margin-left: auto;
+  transition: transform var(--t-med) var(--ease-out);
+}
+.event-go:hover > svg:last-child,
+.event-go:focus-visible > svg:last-child {
+  transform: translateX(4px);
+}
+/* The city map: a well in the card where the city stands tilted like a model on a table, turning slowly,
+   with the cruising car moving on it (ui/menuMaps.ts CityOverview). It is a button: the full map. */
+.event-map {
+  display: block;
+  height: clamp(116px, 19vh, 168px);
+  margin: 8px 0 2px;
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  background:
+    radial-gradient(70% 100% at 50% 110%, palette.alpha(orange, 0.14), transparent 70%),
+    linear-gradient(180deg, rgba(13, 12, 14, 0.94), rgba(31, 29, 32, 0.94));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.5);
+  transition: border-color var(--t-fast);
+}
+.event-map:hover,
+.event-map:focus-visible {
+  border-color: var(--accent-line);
+  outline: none;
+}
+.event-map:focus-visible {
+  border-color: var(--accent-2);
+  box-shadow: inset 0 0 0 1px var(--accent-2);
+}
+.event-map-hint {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  font: 700 11px var(--font);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--soft);
+  background: palette.alpha(bg0, 0.82);
+  clip-path: var(--chamfer-sm);
+  transition: color var(--t-fast), background var(--t-fast);
+}
+.event-map-hint > svg {
+  color: var(--accent);
+}
+.event-map:hover .event-map-hint,
+.event-map:focus-visible .event-map-hint {
+  color: var(--on-accent);
+  background: var(--accent-grad);
+}
+.event-map:hover .event-map-hint > svg,
+.event-map:focus-visible .event-map-hint > svg {
+  color: var(--on-accent);
+}
+/* The arrow on the map is the car on screen right now. */
+.event-map-live {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 2px 7px;
+  font: 800 10px var(--font);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--soft);
+  background: palette.alpha(bg0, 0.75);
+  clip-path: var(--chamfer-sm);
+}
+.event-map-live > i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--red);
+  animation: live-dot 1.6s ease-in-out infinite;
+}
+@keyframes live-dot {
+  50% {
+    opacity: 0.25;
+  }
+}
+.city-overview {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+/* The table: perspective from above the near edge, the plane tilted back on it (flatter on hover), and the
+   map turning slowly on the plane. Two nested transforms, so the turn stays a compositor animation. */
+.ov-stage {
+  position: absolute;
+  inset: -16% 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  perspective: 620px;
+  perspective-origin: 50% 35%;
+}
+.ov-plane {
+  display: block;
+  width: 66%;
+  aspect-ratio: 1.15;
+  transform: translateY(-4%) rotateX(55deg);
+  transition: transform 0.7s var(--ease-out);
+}
+.event-map:hover .ov-plane,
+.event-map:focus-visible .ov-plane {
+  transform: translateY(-4%) rotateX(44deg) scale(1.05);
+}
+/* The race step's table is sized by the well's height (which follows the viewport) and lifted a little,
+   so the city's near corners stay in the well through the whole turn and every course reads to its end. */
+.course-map .ov-plane {
+  width: auto;
+  max-width: 70%;
+  height: 96%;
+  transform: translateY(-7%) rotateX(55deg);
+}
+.course-map.opens:is(:hover, :focus-visible) .ov-plane {
+  transform: translateY(-7%) rotateX(44deg) scale(1.05);
+}
+.ov-spin {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  animation: ov-turn 34s ease-in-out infinite alternate;
+}
+/* The table's faint grid and the city fade out toward its edges; what lies on them (the course, the car,
+   the pin) does not, so a course reaching the city's corner still reads to its end; free roam's streets
+   are the city itself, so they fade with it. The city zooms inside its lens (CityOverview.focus), so the
+   fade stays on the table's edge. */
+.ov-spin::before,
+.ov-lens,
+.ov-zoom,
+.ov-zoom > canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.ov-spin::before,
+.ov-lens,
+.course-map[data-mode='roam'] .course-svg {
+  -webkit-mask-image: radial-gradient(closest-side, #000 72%, transparent);
+  mask-image: radial-gradient(closest-side, #000 72%, transparent);
+}
+.ov-lens {
+  overflow: hidden;
+}
+.ov-zoom {
+  transform-origin: 0 0;
+  will-change: transform;
+}
+.ov-spin::before {
+  content: '';
+  background:
+    repeating-linear-gradient(0deg, palette.alpha(text, 0.045) 0 1px, transparent 1px 22px),
+    repeating-linear-gradient(90deg, palette.alpha(text, 0.045) 0 1px, transparent 1px 22px);
+}
+/* The event's own district breathes on its layer (the river for River Run, the roundabouts for Ring Rush). */
+.ov-glow {
+  animation: ov-breathe 2.6s ease-in-out infinite alternate;
+}
+@keyframes ov-turn {
+  from {
+    transform: rotate(-16deg);
+  }
+  to {
+    transform: rotate(16deg);
+  }
+}
+@keyframes ov-breathe {
+  from {
+    opacity: 0.2;
+  }
+  to {
+    opacity: 1;
+  }
+}
+/* A faint scan line crossing the well now and then, like a radar sweep over the table. */
+.ov-scan {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 28%;
+  background: linear-gradient(90deg, transparent, palette.alpha(orange, 0.08) 70%, palette.alpha(yellow, 0.16));
+  transform: translateX(-110%);
+  animation: ov-scan 7s var(--ease-in-out) 1.5s infinite;
+}
+@keyframes ov-scan {
+  0% {
+    transform: translateX(-110%);
+  }
+  40%,
+  100% {
+    transform: translateX(380%);
+  }
+}
+/* A car on a menu map (ui/menuMaps.ts CarMarker): a heading arrow over two radar pings a beat apart. */
+.map-car {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  will-change: transform;
+  transition: opacity 0.3s;
+}
+.map-car.off {
+  opacity: 0;
+}
+.map-arrow {
+  position: absolute;
+  left: -6px;
+  top: -8px;
+  width: 12px;
+  height: 15px;
+  background: var(--text);
+  clip-path: polygon(50% 0, 100% 100%, 50% 72%, 0 100%);
+}
+.map-ping {
+  position: absolute;
+  left: -13px;
+  top: -13px;
+  width: 26px;
+  height: 26px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  opacity: 0;
+  animation: map-ping 2.4s var(--ease-out) infinite;
+}
+.map-ping.late {
+  animation-delay: 1.2s;
+}
+@keyframes map-ping {
+  from {
+    opacity: 1;
+    transform: scale(0.15);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+/* On the tilted table the car lies flat with the map, so it is drawn larger to read. */
+.city-overview .map-arrow {
+  transform: scale(1.5);
+}
+.city-overview .map-ping {
+  border-width: 2.5px;
+  transform-origin: center;
+}
+/* What makes this city: chips in their districts' map inks, a legend of the map above them. */
+.event-feats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.chip.feat {
+  color: var(--soft);
+  border-color: color-mix(in srgb, var(--ink) 45%, transparent);
+  background: linear-gradient(color-mix(in srgb, var(--ink) 13%, transparent), color-mix(in srgb, var(--ink) 13%, transparent)), palette.alpha(bg0, 0.85);
+}
+.chip.feat > svg {
+  color: var(--ink);
+}
+/* The seed: a chip with quiet edit, shuffle and back-to-today actions; editing swaps the chip for a field. */
+.seed-ctl {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.seed-ctl .seed {
+  min-width: 0;
+  margin-right: 4px;
+  font: 700 13px var(--mono);
+  color: var(--accent-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.seed-ctl input {
+  width: min(180px, 40vw);
+  min-width: 0;
+  padding: 5px 8px;
+  font-size: 13px;
+}
+.seed-ctl .btn.small.icon-only {
+  padding: 6px;
+}
+@include media.phone {
+  .event-name {
+    font-size: 26px;
+  }
+}

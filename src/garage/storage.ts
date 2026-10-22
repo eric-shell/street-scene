@@ -5,7 +5,7 @@
  */
 import { CarBuild, defaultBuild, validateBuild } from '../sim/build';
 import { DEFAULT_CAR_ID } from '../sim/tuning';
-import { manifestCar } from '../render/carAssets';
+import { manifestCar } from '../render/car/carAssets';
 
 export const MAX_SLOTS = 6;
 const KEY = 'nightrun.garage.v1';

@@ -15,26 +15,26 @@ import { InputFrame, NEUTRAL_INPUT, unpackInput } from '../sim/input';
 import { VisualBuild } from '../sim/build';
 import { DT } from '../sim/constants';
 import { DEG } from '../sim/math';
-import { CarView, CarPose } from '../render/carView';
-import { ROAD_Y } from '../render/cityMeshes';
+import { CarView, CarPose } from '../render/car/carView';
+import { ROAD_Y } from '../render/street/cityMeshes';
 import { unmaskVehicle } from '../render/vehicleMask';
-import { LightTrails } from '../render/lightTrails';
-import { Sparks } from '../render/sparks';
-import { WaypointBeacons } from '../render/waypointBeacons';
+import { LightTrails } from '../render/car/lightTrails';
+import { Sparks } from '../render/car/sparks';
+import { WaypointBeacons } from '../render/race/waypointBeacons';
 import { EngineVoice, audioHub } from '../audio/engineAudio';
 import { Sfx } from '../audio/sfx';
-import { manifestCar } from '../render/carAssets';
-import { CarAssetLibrary } from '../render/carAssets';
-import { CAMERA, ChaseCamera } from '../render/camera';
-import { RaceCinematics, type HandoffShot } from '../render/cinematics';
+import { manifestCar } from '../render/car/carAssets';
+import { CarAssetLibrary } from '../render/car/carAssets';
+import { CAMERA, ChaseCamera } from '../render/camera/camera';
+import { RaceCinematics, type HandoffShot } from '../render/camera/cinematics';
 import { GameRenderer, NightScene, createNightScene } from '../render/scene';
 import type { World } from '../city/world';
 import type { Cruise } from './cruise';
 import type { StreetStage } from './streetStage';
-import type { CrowdCar } from '../render/crowds';
-import { FreeFlyCamera } from '../render/freeFly';
+import type { CrowdCar } from '../render/race/crowds';
+import { FreeFlyCamera } from '../render/camera/freeFly';
 import { DroneMode } from './drone';
-import type { CameraMode } from '../render/camera';
+import type { CameraMode } from '../render/camera/camera';
 import { InputManager } from '../input/inputManager';
 import { Rumble } from '../input/rumble';
 import { Hud, HudCar, HudData } from '../ui/hud';
@@ -51,10 +51,10 @@ import { formatTime } from '../ui/format';
 import { mph } from '../ui/units';
 import { ReplayData } from '../replay/replay';
 import { PROP_DEFS } from '../city/props';
-import { TRAFFIC_SNAP, TrafficView, snapTraffic } from '../render/traffic';
+import { TRAFFIC_SNAP, TrafficView, snapTraffic } from '../render/traffic/traffic';
 import { driftZoneStatus } from '../sim/driftZones';
 import { DRIFT_ZONES } from '../sim/tuning';
-import { ChaseCall, policeChaseCall } from '../render/policeChase';
+import { ChaseCall, policeChaseCall } from '../render/traffic/policeChase';
 import { HazardFx } from './hazardFx';
 
 interface Snap extends CarPose {
@@ -142,7 +142,7 @@ const TRAFFIC_DOT_RANGE = 280;
  */
 const WAYPOINT = { reach: 25, arm: 35 } as const;
 
-/** Car sparks (render/sparks.ts): when, where and how many, from the sim's contact telemetry. */
+/** Car sparks (render/car/sparks.ts): when, where and how many, from the sim's contact telemetry. */
 const SPARK = {
   /** Only cars this close to the camera throw sparks (m). */
   range: 140,
@@ -272,11 +272,11 @@ export class RaceSession {
   private unsub: (() => void)[] = [];
   readonly isReplay: boolean;
   private trails: LightTrails;
-  /** Underbody and wall sparks for every car near the camera (render/sparks.ts). */
+  /** Underbody and wall sparks for every car near the camera (render/car/sparks.ts). */
   private sparks: Sparks;
   /** The waypoint race's columns of light over its waypoints (null in the other modes). */
   private readonly beacons: WaypointBeacons | null = null;
-  /** Ambient traffic (render/traffic.ts) and its last two snapshots (TRAFFIC_SNAP floats per car), swapped every tick. */
+  /** Ambient traffic (render/traffic/traffic.ts) and its last two snapshots (TRAFFIC_SNAP floats per car), swapped every tick. */
   private traffic: TrafficView | null = null;
   private trafficPrev = new Float32Array(0);
   private trafficCurr = new Float32Array(0);
@@ -306,7 +306,7 @@ export class RaceSession {
   private signAt = -1;
   /** Player lap whose line approach fireworks were launched. */
   private fireworksLap = -1;
-  /** The police helicopter's brief from the last tick (render/policeChase.ts): patrol, or chase which car. */
+  /** The police helicopter's brief from the last tick (render/traffic/policeChase.ts): patrol, or chase which car. */
   private chaseCall: ChaseCall = { phase: 'patrol', car: -1 };
   /** The drawbridge posed at sim time, its bell and the HUD warning (game/hazardFx.ts). */
   private readonly hazards: HazardFx;

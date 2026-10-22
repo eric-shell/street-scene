@@ -1,0 +1,52 @@
+/* Short screens: home tightens (a lower map well, slimmer rows) so it fits above the key legend without a
+   scrolling column (1440 x 800 down to 1280 x 720). */
+@use '../abstracts/media';
+@include media.short {
+  .event-map {
+    height: clamp(100px, 16.5vh, 168px);
+  }
+}
+@media (max-height: 780px) {
+  .event-map {
+    height: clamp(92px, 14vh, 168px);
+  }
+  .event-card {
+    gap: 4px;
+    padding: 10px 14px 12px;
+  }
+  .event-name {
+    font-size: 28px;
+  }
+  .event-go {
+    margin-top: 4px;
+  }
+  .nav-item {
+    min-height: 46px;
+    padding-block: 6px;
+  }
+}
+/* Phones: four tiles across leave room for short names only, so a long one takes two lines. */
+@include media.phone {
+  .mode-label {
+    font-size: 12px;
+    line-height: 1.05;
+    white-space: normal;
+    text-align: center;
+  }
+}
+.build-version {
+  font: 500 10px var(--mono);
+  letter-spacing: 0.04em;
+  color: var(--dim);
+  margin-top: 4px;
+}
+.fps-meter {
+  position: fixed;
+  left: 50%;
+  bottom: 6px;
+  transform: translateX(-50%);
+  font: 11px var(--mono);
+  color: var(--green);
+  z-index: 100;
+  pointer-events: none;
+}

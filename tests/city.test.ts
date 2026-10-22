@@ -327,7 +327,7 @@ describe('city generation', () => {
         } else expect(pointInPolygon(p.x, p.z, w.areas[p.area].polygon)).toBe(true);
         if (p.kind === 'trafficLight') expect(w.graph.nodes[p.node!].edges.length).toBeGreaterThanOrEqual(3);
       });
-      // Lantern posts light every park, plaza and corner pocket and the monument plaza (render/areaLights.ts).
+      // Lantern posts light every park, plaza and corner pocket and the monument plaza (render/street/areaLights.ts).
       const lanterns = props.filter((p) => p.kind === 'parkLamp');
       for (const a of w.areas) {
         const n = lanterns.filter((p) => p.area === a.id).length;

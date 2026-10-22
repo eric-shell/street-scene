@@ -1,0 +1,239 @@
+/* ---------- the full city map (ui/fullMap.ts): its frame, header, body and controls ----------  */
+@use '../abstracts/palette';
+/* The full city map (ui/fullMap.ts) and the HUD's waypoint chip: the map in a chamfered frame like every card,
+   the accent hairline across the dialog, plates for everything over the map, and the game's tabs, chips and
+   kbd caps in the side panel and footer. The panel lands, the legend rows step in, the hover card fades in by
+   the pointer; none of it under reduced motion. */
+.fullmap-modal {
+  padding: 16px;
+  box-sizing: border-box;
+  animation: fullmap-fade 0.2s ease backwards;
+}
+/* The music player sits over the whole UI layer and would cover the map's close button wherever the panel
+   reaches the top of the screen: it steps aside while the map is open (the music plays on, M still mutes). */
+body.fullmap-open .mw {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.16s, visibility 0s linear 0.16s;
+}
+.fullmap-modal.out {
+  pointer-events: none;
+  animation: fullmap-fade-out 0.16s ease forwards;
+}
+.fullmap-panel {
+  width: min(1280px, 100%);
+  height: min(900px, 100%);
+  box-sizing: border-box;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 14px 16px 12px;
+  background: var(--card-top), var(--panel);
+  /* Near opaque already: a blur behind it would cost a pass over the live city every frame for nothing. */
+  backdrop-filter: none;
+  animation: fullmap-in 0.28s var(--ease-out) backwards;
+}
+.fullmap-modal.out .fullmap-panel {
+  animation: fullmap-out 0.16s ease forwards;
+}
+@keyframes fullmap-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes fullmap-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes fullmap-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.975);
+  }
+}
+@keyframes fullmap-out {
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+}
+
+/* ---- header ---- */
+.fullmap-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.fullmap-title {
+  margin: 0 6px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 22px;
+  white-space: nowrap;
+}
+.fullmap-title > svg {
+  color: var(--accent);
+}
+.fullmap-chip {
+  flex: none;
+}
+/* The course shown, in its race type's color. */
+.fullmap-chip.course {
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--ink) 45%, transparent);
+  background: linear-gradient(color-mix(in srgb, var(--ink) 13%, transparent), color-mix(in srgb, var(--ink) 13%, transparent)), palette.alpha(bg0, 0.85);
+}
+.fullmap-chip.course > svg {
+  color: var(--ink);
+}
+.fullmap-where {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  color: var(--muted);
+  font-size: 14px;
+}
+.fullmap-where b {
+  color: var(--accent-2);
+  font-weight: 800;
+}
+.fullmap-close {
+  flex: none;
+}
+
+/* ---- body: the map beside the side panel ---- */
+.fullmap-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 272px;
+  gap: 14px;
+  min-height: 0;
+}
+/* The map's frame: chamfered, its border drawn along the cuts like a card's. */
+.fullmap-stage {
+  --cut: 14px;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #141315;
+  border: 1px solid var(--line-strong);
+  clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, var(--cut) 100%, 0 calc(100% - var(--cut)));
+  outline: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.fullmap-stage::before,
+.fullmap-stage::after {
+  content: '';
+  position: absolute;
+  z-index: 3;
+  width: calc(var(--cut) * 1.4142);
+  border-top: 1px solid var(--line-strong);
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+.fullmap-stage::before {
+  left: calc(100% - var(--cut));
+  top: -1px;
+  transform: rotate(45deg);
+}
+.fullmap-stage::after {
+  left: -1px;
+  top: calc(100% - var(--cut));
+  transform: rotate(45deg) translateY(-1px);
+}
+.fullmap-cv {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: crosshair;
+}
+/* The map's edges sink into the frame. */
+.fullmap-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(130% 110% at 50% 50%, transparent 62%, rgba(10, 9, 11, 0.5));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03), inset 0 0 36px rgba(0, 0, 0, 0.4);
+}
+/* Viewfinder ticks in the two corners the chamfer leaves square. */
+.fullmap-corner {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+  border-color: var(--accent);
+  opacity: 0.85;
+}
+.fullmap-corner.tl {
+  left: 6px;
+  top: 6px;
+  border-left: 2px solid;
+  border-top: 2px solid;
+}
+.fullmap-corner.br {
+  right: 6px;
+  bottom: 6px;
+  border-right: 2px solid;
+  border-bottom: 2px solid;
+}
+.fullmap-rose {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 52px;
+  height: 56px;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+}
+.fullmap-rose svg {
+  display: block;
+  font-family: var(--font);
+}
+
+/* Zoom, find me and fit: a column of chamfered plates at the bottom right. */
+.fullmap-tools {
+  position: absolute;
+  right: 14px;
+  bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.fullmap-tools .btn {
+  background: var(--plate);
+  box-shadow: var(--edge), 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+.fullmap-tools .btn:hover,
+.fullmap-tools .btn:focus-visible {
+  background: var(--plate-hover);
+}
+.fullmap-tools .btn.on {
+  border-color: var(--accent-line);
+}
+.fullmap-tools .btn.on > svg {
+  color: var(--accent);
+}
+.fullmap-tools-gap {
+  height: 4px;
+}
+.fullmap-zoom {
+  min-width: 34px;
+  padding: 1px 4px;
+  font: 800 11px var(--mono);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--accent-2);
+  background: palette.alpha(bg0, 0.8);
+  clip-path: var(--chamfer-sm);
+}

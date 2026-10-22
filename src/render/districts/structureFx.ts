@@ -11,7 +11,7 @@
  * take the scene's real lights on top (headlights, the light pool), and it
  * costs nothing per frame. The wash is the same idea on the asphalt the city
  * draws: an additive, vertex colored strip that fades out in fog instead of
- * glowing toward the fog color (as render/areaLights.ts does).
+ * glowing toward the fog color (as render/street/areaLights.ts does).
  */
 import * as THREE from 'three';
 import type { Frame } from '../../city/districts/structures';

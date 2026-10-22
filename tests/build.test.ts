@@ -7,7 +7,7 @@ import { validateCatalog } from '../scripts/validateParts';
 import { createRace, stepRace } from '../src/sim/race';
 import { raceConfig } from './helpers';
 import { createAi, autopilotInput } from '../src/sim/ai';
-import { MAX_BEAD, beadForSize, detectProfile, remapWheel, sizeForBead } from '../src/render/wheelFit';
+import { MAX_BEAD, beadForSize, detectProfile, remapWheel, sizeForBead } from '../src/render/car/wheelFit';
 import { BlipScript, RevModel } from '../src/garage/revModel';
 
 const allTier = (t: 0 | 1 | 2 | 3): PerformanceBuild => {

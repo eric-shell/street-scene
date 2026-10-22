@@ -26,7 +26,7 @@
  * sim closes for them come down for the train you see.
  * Two merged meshes (textured steel atlas, alpha tested ties) plus lamps in
  * the kit's shared glow builder; the trains are their own instanced meshes
- * (render/trains.ts). The line lights itself the way the tunnels do
+ * (render/traffic/trains.ts). The line lights itself the way the tunnels do
  * (structureFx.ts): every lamp's light is baked into the steel and ties per
  * vertex at build time and added as emissive (albedo x light), so the track
  * reads at night for no per frame cost, and the sodium lamps under the deck
@@ -42,8 +42,8 @@ import { GeoBuilder } from '../geoBuilder';
 import { CurvePoint, RAIL, RailCurve, curvePoint, dirOn, projectOnCurve, sampleCurve, stationSwing, trackLateral } from '../../city/railCurve';
 import { elCurve } from '../../city/districts/subway';
 import { TICK_HZ } from '../../sim/constants';
-import { Band, STATION_NAMES, SUBWAY_SIGN, makeSteelAtlas, makeTieTexture, signBand, steelBand } from '../railTextures';
-import { createTrains } from '../trains';
+import { Band, STATION_NAMES, SUBWAY_SIGN, makeSteelAtlas, makeTieTexture, signBand, steelBand } from '../textures/railTextures';
+import { createTrains } from '../traffic/trains';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { col, cylinder } from './kit';
 import { washMaterial } from './structureFx';

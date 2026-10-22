@@ -25,7 +25,7 @@
  *  - a crowd rail (look 'marketRail') CFG.railSetback behind the curb, with
  *    end caps back to the building line: a closed pen the crowd stands in,
  *    unreachable by car (render/districts/market.ts plans the people,
- *    render/crowds.ts draws them). The frontage behind a pen takes look
+ *    render/race/crowds.ts draws them). The frontage behind a pen takes look
  *    'marketFront': a front look wins over a void, so the late infill never
  *    opens a lot or plaza behind a pen (nothing drivable reaches the crowd
  *    from behind), and the renderer draws a shuttered market wall wherever no

@@ -23,7 +23,7 @@
  * back up. A car still on the span when the leaves start up is towed off to
  * the approach behind the nearer gate (sim/hazards.ts); cars on the floor
  * below drive on. The renderer
- * (render/drawbridge.ts) draws the leaves, the pit under them, the
+ * (render/street/drawbridge.ts) draws the leaves, the pit under them, the
  * counterweight houses, the control cabin, the gates and their lights from
  * the same pure functions at the interpolated sim time.
  */

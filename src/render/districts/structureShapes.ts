@@ -1,7 +1,7 @@
 /**
  * What the structures over the streets look like in 3D, shared by their
  * renderers (tunnel.ts, overpass.ts) and the camera's ceiling clamp
- * (render/ceilings.ts) so the camera stops exactly under what is drawn. The
+ * (render/camera/ceilings.ts) so the camera stops exactly under what is drawn. The
  * sim only knows the walls; everything overhead is decided here, read only,
  * from the area params and the terrain.
  */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createWorld } from '../src/city/world';
-import { planArchitecture } from '../src/render/architecture';
+import { planArchitecture } from '../src/render/buildings/architecture';
 
 describe('architecture plan', () => {
   const seeds = [1, 7, 43405381];

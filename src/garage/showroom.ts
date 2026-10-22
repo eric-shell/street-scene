@@ -20,10 +20,10 @@
  */
 import * as THREE from 'three';
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
-import { CarView } from '../render/carView';
-import type { CarPose } from '../render/carView';
-import { MANIFEST, partsFor } from '../render/carAssets';
-import type { CarAssetLibrary } from '../render/carAssets';
+import { CarView } from '../render/car/carView';
+import type { CarPose } from '../render/car/carView';
+import { MANIFEST, partsFor } from '../render/car/carAssets';
+import type { CarAssetLibrary } from '../render/car/carAssets';
 import { defaultVisual } from '../sim/build';
 import type { PaintFinish } from '../sim/build';
 import type { PartSlot } from '../shared/parts';

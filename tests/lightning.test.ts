@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LIGHTNING, LightningSchedule, strikeLevel } from '../src/render/lightning';
+import { LIGHTNING, LightningSchedule, strikeLevel } from '../src/render/sky/lightning';
 
 describe('lightning', () => {
   it('strikes on a schedule that is a pure function of the seed, every 15 to 40 s', () => {

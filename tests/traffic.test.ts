@@ -7,7 +7,7 @@ import { TRAFFIC } from '../src/sim/tuning';
 import { placeCar } from '../src/sim/car';
 import { createAi, autopilotInput } from '../src/sim/ai';
 import { cos, distToSegment, sin } from '../src/sim/math';
-import { TRAFFIC_MODELS } from '../src/render/traffic';
+import { TRAFFIC_MODELS } from '../src/render/traffic/traffic';
 import { gateBlocking, gateSide } from '../src/sim/gates';
 import { leafAngle, onSpan } from '../src/city/drawbridge';
 import { carSnapshot, input, raceConfig, replayLog } from './helpers';

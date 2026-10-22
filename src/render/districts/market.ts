@@ -12,8 +12,8 @@
  * meshes of its own (the wash and the gate signs), so all markets together
  * cost two draw calls more than the kit and nothing per frame. Lantern
  * density follows the graphics quality, and so does the wash's tessellation.
- * Stalls, crates and carts are destructible props (render/props.ts); the
- * crowd is drawn by render/crowds.ts from marketPlan.ts.
+ * Stalls, crates and carts are destructible props (render/street/props.ts); the
+ * crowd is drawn by render/race/crowds.ts from marketPlan.ts.
  */
 import * as THREE from 'three';
 import { CITY } from '../../city/config';
@@ -22,7 +22,7 @@ import type { Wall } from '../../city/blocks';
 import type { Area } from '../../city/districts/types';
 import { MARKET_HINT } from '../../city/districts/market';
 import { GeoBuilder } from '../geoBuilder';
-import { MARKET_MAST, MarketEdgeView, MarketMast, marketEdges } from '../marketPlan';
+import { MARKET_MAST, MarketEdgeView, MarketMast, marketEdges } from './marketPlan';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { col, cylinder, orientedBox, wallBox } from './kit';
 

@@ -1,0 +1,181 @@
+/* ---------- main menu (ui/menu.ts) ----------
+   Home is the title block, the event card (the seed's event, the city as a
+   tilted live map with its notable districts, and the way into the race) and
+   the list of places, each in its own hue. The race step puts the race types in
+   a row over the course card (the picked type's course drawn on in its color,
+   ui/menuMaps.ts), then rivals and aids on a card above a sticky Start; the
+   settings step is the settings panel on a card. Every step keeps the title
+   block on top: the boot splash lands on .menu-head, which is shrink-wrapped
+   like the splash's copy so both measure the same. The steps slide in and out
+   under it (.menu-step). */
+@use '../abstracts/palette';
+.menu-head,
+.head-title {
+  width: max-content;
+  max-width: 100%;
+}
+.menu-head {
+  margin-bottom: 6px;
+}
+.head-title {
+  position: relative;
+}
+/* The title on one line, exactly the column's width (the splash's copy too, scaled up from there).
+   "STREET SCENE" advances 7.12em at the display optical size, pinned so the width per em holds at
+   every size, and the italic's last T overhangs 0.26em past that: the padding keeps the overhang
+   inside the box the gradient is clipped to, and 7.38em is the whole. */
+.head-title .logo {
+  font-size: calc(var(--menu-w) / 7.38);
+  font-variation-settings: 'opsz' 144;
+  padding-right: 0.26em;
+  white-space: nowrap;
+}
+.title-rule {
+  height: 3px;
+  margin-top: 10px;
+  border-radius: var(--radius-sm);
+  background: var(--rule);
+}
+/* The tagline centered under the title between two hairlines that fade in from the edges; the splash's
+   copy has the same lockup, so the flight lands on it exactly. Letter spacing leaves a space after the
+   last letter: the left line gives up as much, so the words sit in the true middle. */
+.menu-head .tagline,
+.splash .tagline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: center;
+}
+.menu-head .tagline::before,
+.menu-head .tagline::after,
+.splash .tagline::before,
+.splash .tagline::after {
+  content: '';
+  flex: 1 1 0;
+  min-width: 12px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, palette.alpha(text, 0.32));
+}
+.menu-head .tagline::before,
+.splash .tagline::before {
+  margin-right: 0.32em;
+}
+.menu-head .tagline::after,
+.splash .tagline::after {
+  background: linear-gradient(270deg, transparent, palette.alpha(text, 0.32));
+}
+/* Cinematic mode: all UI fades out, the menu city keeps playing; a hint fades in and out once. */
+body.cinematic #ui > *,
+body.cinematic > .mw {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s ease;
+}
+#ui > *,
+body > .mw {
+  transition: opacity 0.25s ease;
+}
+.cine-hint {
+  position: fixed;
+  left: max(12px, env(safe-area-inset-left));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  z-index: 80;
+  padding: 8px 14px;
+  font: 600 13px var(--font);
+  letter-spacing: 0.04em;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+  animation: cine-hint 3.2s ease both;
+}
+@keyframes cine-hint {
+  0%, 100% {
+    opacity: 0;
+  }
+  15%, 70% {
+    opacity: 1;
+  }
+}
+/* Explore: the menu slides away to the left while the camera cranes up off the street for the drone. */
+.rail-screen.menu-out {
+  pointer-events: none;
+}
+.rail-screen.menu-out > :is(.menu, .keybar, .rail-bg) {
+  opacity: 0;
+  transform: translateX(-40px);
+  transition: opacity 0.35s ease, transform 0.5s var(--ease-in-out);
+}
+/* A step's content under the title block. Between steps the old one leaves from where it stands (out of
+   the flow) toward the side it came from while the new one cascades in from the other side, its parts a
+   beat apart: forward (home to a step) moves left, back moves right. */
+.menu-step {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.menu-step > * {
+  flex-shrink: 0;
+}
+/* One shadow for everything a step stands on the city: chamfered plates clip their own box shadows, so the
+   step casts it as a drop shadow that follows every cut corner, the same under cards, rows, tiles and buttons. */
+.home .menu-step {
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.42));
+}
+.menu-step.leave {
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  animation: step-out 0.26s var(--ease-in-out) both;
+}
+.menu-step.leave.back {
+  animation-name: step-out-back;
+}
+.menu-step.enter > * {
+  animation: step-in 0.5s var(--ease-out) calc(60ms + var(--i, 0) * 45ms) both;
+}
+.menu-step.enter.back > * {
+  animation-name: step-in-back;
+}
+.menu-step > :nth-child(2) {
+  --i: 1;
+}
+.menu-step > :nth-child(3) {
+  --i: 2;
+}
+.menu-step > :nth-child(4) {
+  --i: 3;
+}
+.menu-step > :nth-child(5) {
+  --i: 4;
+}
+.menu-step > :nth-child(6) {
+  --i: 5;
+}
+@keyframes step-out {
+  to {
+    opacity: 0;
+    transform: translateX(-48px);
+  }
+}
+@keyframes step-out-back {
+  to {
+    opacity: 0;
+    transform: translateX(48px);
+  }
+}
+@keyframes step-in {
+  from {
+    opacity: 0;
+    transform: translateX(72px);
+  }
+}
+@keyframes step-in-back {
+  from {
+    opacity: 0;
+    transform: translateX(-72px);
+  }
+}

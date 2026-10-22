@@ -1,0 +1,288 @@
+/* ---------- music player ---------- */
+@use '../abstracts/media';
+@use '../abstracts/palette';
+.mw {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 40;
+}
+.mw a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.mw a:hover {
+  text-decoration: underline;
+}
+/* The player is a card like the menu's: the accent hairline across its top. */
+.mw-card {
+  position: absolute;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  width: min(340px, calc(100vw - 24px));
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: auto;
+  background: var(--card-top), var(--panel);
+}
+.mw-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mw-disc {
+  color: var(--accent);
+  display: flex;
+}
+.mw-disc.spin svg,
+.mw-pill svg.spin {
+  animation: mw-spin 2.4s linear infinite;
+}
+@keyframes mw-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.mw-meta {
+  flex: 1;
+  min-width: 0;
+}
+.mw-title {
+  font: 900 18px var(--display);
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mw-artist {
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mw-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mw-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg0);
+  cursor: pointer;
+  overflow: hidden;
+}
+.mw-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+.mw-time {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.mw-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.mw-controls .mw-play {
+  color: var(--accent);
+}
+.mw-vol {
+  flex: 1;
+  min-width: 50px;
+}
+.mw-credits,
+.mw-credit {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+.mw-pill {
+  position: absolute;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 220px;
+  padding: 8px 12px;
+  font: 600 13px var(--font);
+  color: var(--text);
+  cursor: pointer;
+  pointer-events: auto;
+}
+.mw-pill svg {
+  color: var(--accent);
+}
+.mw-pill span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mw-chip {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(320px, 40vw);
+  padding: 5px 10px;
+  font-size: 13px;
+  color: var(--muted);
+  background: palette.alpha(bg0, 0.72);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.mw-chip svg {
+  color: var(--accent);
+  flex: none;
+}
+.mw-chip span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@include media.touch {
+  .mw[data-mode='compact'] .mw-chip {
+    display: none !important;
+  }
+}
+.mw-banner {
+  position: absolute;
+  left: 50%;
+  top: 56px;
+  bottom: auto;
+  transform: translate(-50%, -16px);
+  opacity: 0;
+  padding: 10px 16px;
+  text-align: center;
+  width: max-content;
+  max-width: min(520px, calc(100vw - 32px));
+  background: var(--card-top), var(--panel);
+  transition: opacity 0.35s, transform 0.35s;
+}
+.mw-banner.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+}
+.mw-banner-label {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+}
+.mw-banner-title {
+  font: 900 24px var(--display);
+  letter-spacing: 0.03em;
+  margin-top: 2px;
+}
+.mw-banner-artist {
+  color: var(--accent);
+  font-weight: 600;
+}
+.mw-lib .dialog {
+  width: min(560px, calc(100vw - 32px));
+}
+.mw-lib-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 56vh;
+  overflow-y: auto;
+}
+.mw-lib-album {
+  padding: 6px 2px 8px;
+}
+.mw-lib-album-title {
+  font: 900 17px var(--display);
+  letter-spacing: 0.04em;
+  color: var(--accent-2);
+}
+.mw-lib-album-credit {
+  font-size: 12.5px;
+  margin-top: 3px;
+}
+.mw-lib a,
+.settings-pane .credits a {
+  color: var(--accent);
+}
+.mw-lib-track {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 10px;
+  font: 600 15px var(--font);
+  color: var(--text);
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.mw-lib-track:hover {
+  border-color: var(--accent-line);
+  background: var(--surface-hover);
+}
+.mw-lib-track.on {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent-line), 0 6px 18px palette.alpha(orange, 0.14);
+}
+.mw-lib-track .n,
+.mw-lib-track .d {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+.mw-credits-tracks {
+  columns: 2;
+  font-size: 13px;
+  margin: 6px 0 0;
+}
+
+/* Banner placement per screen so it never covers the HUD or menus. */
+.mw[data-context='race'] .mw-banner,
+.mw[data-context='drone'] .mw-banner {
+  top: auto;
+  bottom: max(48px, env(safe-area-inset-bottom));
+}
+/* Beside a rail the banner keeps to the top right of the scene (in the garage, under the Garage / Street switch). */
+.mw[data-context='garage'] .mw-banner,
+.mw[data-context='menu'] .mw-banner {
+  left: auto;
+  right: max(12px, env(safe-area-inset-right));
+  max-width: min(460px, calc(100vw - 560px));
+  transform: translate(0, -16px);
+}
+.mw[data-context='garage'] .mw-banner {
+  top: 64px;
+}
+.mw[data-context='garage'] .mw-banner.show,
+.mw[data-context='menu'] .mw-banner.show {
+  transform: translate(0, 0);
+}
+@include media.narrow {
+  .mw[data-context='garage'] .mw-banner,
+  .mw[data-context='menu'] .mw-banner {
+    left: 50%;
+    right: auto;
+    top: 12px;
+    transform: translate(-50%, 0);
+  }
+}

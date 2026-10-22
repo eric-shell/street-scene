@@ -11,7 +11,7 @@ import * as THREE from 'three';
 
 /**
  * Fog of a clear night: the defaults every self-fogging shader starts from.
- * The weather (render/weather.ts) picks a mood per seed and retunes the scene
+ * The weather (render/sky/weather.ts) picks a mood per seed and retunes the scene
  * fog and those shaders' fog uniforms to match.
  */
 export const FOG_COLOR = 0x0a0b1c;
@@ -60,7 +60,7 @@ export class NightLighting {
   }
 
   /**
-   * Lightning (render/lightning.ts): `level` 0..1 lifts the sky light by
+   * Lightning (render/sky/lightning.ts): `level` 0..1 lifts the sky light by
    * `hemi` (intensity) toward a cold white and swings the moon light round
    * to come from the strike's direction (unit x, z) at `key` extra
    * intensity. Light intensities only, so no shader recompiles; level 0

@@ -18,14 +18,14 @@
  *    and renders through a copy pulled in front of walls and under roofs, so
  *    the player's own zoom is never lost to a passing building.
  * Every camera stays out of the buildings and under anything overhead
- * (render/camera.ts wallHit, render/ceilings.ts clampCeiling). Render only.
+ * (render/camera/camera.ts wallHit, render/camera/ceilings.ts clampCeiling). Render only.
  */
 import * as THREE from 'three';
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { World } from '../city/world';
-import type { CarPose } from '../render/carView';
-import { wallHit } from '../render/camera';
-import { clampCeiling } from '../render/ceilings';
+import type { CarPose } from '../render/car/carView';
+import { wallHit } from '../render/camera/camera';
+import { clampCeiling } from '../render/camera/ceilings';
 import type { PathSample } from './cruise';
 import type { StreetStage } from './streetStage';
 

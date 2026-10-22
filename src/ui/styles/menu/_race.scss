@@ -1,0 +1,163 @@
+/* The race types in a grid of two rows of three (menu.ts MODE_COLUMNS): icon over name, the number key that
+   picks it in the corner. The picked one fills with its color's wash over a bar of it along the bottom
+   (.mode-* carries --mode). */
+@use '../abstracts/palette';
+.mode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.mode-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 68px;
+  padding: 11px 6px 10px;
+  cursor: pointer;
+  color: var(--soft);
+  font: inherit;
+  background: var(--plate);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--edge);
+  transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast), box-shadow var(--t-fast), transform var(--t-fast);
+}
+.mode-tile > svg {
+  color: var(--muted);
+  transition: color var(--t-fast), transform var(--t-med) var(--ease-out);
+}
+.mode-label {
+  max-width: 100%;
+  overflow: hidden;
+  font: 900 13px var(--display);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.mode-key {
+  position: absolute;
+  top: 5px;
+  left: 6px;
+  min-width: 0;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 14px;
+  opacity: 0.5;
+}
+.mode-tile:hover,
+.mode-tile:focus-visible {
+  color: var(--text);
+  border-color: rgba(var(--mode-rgb), 0.6);
+  background: var(--plate-hover);
+  outline: none;
+}
+.mode-tile:hover > svg,
+.mode-tile:focus-visible > svg {
+  color: var(--mode);
+}
+.mode-tile:focus-visible {
+  box-shadow: var(--edge), inset 0 0 0 1px var(--accent-2);
+}
+.mode-tile.on {
+  color: var(--text);
+  border-color: rgba(var(--mode-rgb), 0.7);
+  background: linear-gradient(180deg, rgba(var(--mode-rgb), 0.28), rgba(var(--mode-rgb), 0.07)), var(--plate);
+  box-shadow: var(--edge), inset 0 -3px 0 var(--mode);
+}
+.mode-tile.on > svg {
+  color: var(--mode);
+  transform: scale(1.14);
+}
+.mode-tile.on .mode-key {
+  opacity: 0.85;
+}
+.mode-tile:active {
+  transform: translateY(1px);
+}
+/* The course card: the picked type's name in its color, a few facts and the best on this event, over the
+   city with the course drawn on. The card's accent hairline takes the type's color too. */
+@each $mode, $color in palette.$modes {
+  .home[data-mode='#{$mode}'] {
+    @include palette.tint(mode, $color);
+  }
+}
+.course-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 11px 12px 12px;
+  background:
+    linear-gradient(90deg, var(--mode) 0 64px, var(--line-strong) 64px) top left / 100% 2px no-repeat,
+    radial-gradient(100% 80% at 0% 0%, rgba(var(--mode-rgb), 0.12), transparent 60%),
+    var(--plate);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--edge);
+  transition: background 0.3s;
+}
+.course-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 42px;
+  padding: 0 2px;
+}
+.course-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.course-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 900 20px/1 var(--display);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--mode);
+}
+.course-facts {
+  display: flex;
+  flex-wrap: wrap;
+  font: 600 12px var(--font);
+  color: var(--soft);
+}
+.course-facts > span + span::before {
+  content: '·';
+  margin: 0 7px;
+  color: var(--dim);
+}
+.course-best {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font: 800 14px var(--mono);
+  color: var(--accent-2);
+  background: linear-gradient(var(--accent-2-soft), var(--accent-2-soft)), palette.alpha(bg0, 0.85);
+  clip-path: var(--chamfer-sm);
+}
+.course-best.none {
+  font: 600 12px var(--font);
+  color: var(--muted);
+  background: palette.alpha(bg0, 0.6);
+}
+.course-head .swap {
+  animation: course-swap 0.42s var(--ease-out) both;
+}
+.course-head .course-best.swap {
+  animation-delay: 0.06s;
+}
+@keyframes course-swap {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}

@@ -1,0 +1,172 @@
+/* ---------- generic screen and controls ---------- */
+@use '../abstracts/palette';
+.screen {
+  position: fixed;
+  inset: 0;
+  pointer-events: auto;
+  display: flex;
+  z-index: 30;
+  color: var(--text);
+}
+.screen.center {
+  align-items: center;
+  justify-content: center;
+}
+.screen.dim {
+  background: linear-gradient(180deg, palette.alpha(bg0, 0.7), palette.alpha(bg0, 0.9));
+  backdrop-filter: blur(4px);
+}
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(10px) saturate(1.2);
+}
+.title {
+  font-family: var(--display);
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+/* The one italic in the UI: heavy, yellow sweeping into orange and red, on a crisp shadow. */
+.logo {
+  font-family: var(--logo);
+  font-weight: 900;
+  font-style: italic;
+  font-size: clamp(34px, min(8vw, 9vh), 80px);
+  letter-spacing: -0.01em;
+  line-height: 0.95;
+  margin: 0;
+  padding-right: 0.08em;
+  background: linear-gradient(100deg, var(--accent-2) 5%, var(--accent) 55%, var(--red) 110%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.55));
+}
+.tagline {
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  font-size: 13px;
+  margin-top: 8px;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font: 600 16px var(--font);
+  letter-spacing: 0.02em;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--edge);
+  padding: 11px 16px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.2s, transform 0.15s;
+  text-align: left;
+}
+/* Idle icons stay grey and pick up the accent with the button, so one thing on screen is lit at a time. */
+.btn > svg {
+  color: var(--muted);
+  transition: color 0.12s;
+}
+.btn:hover,
+.btn:focus-visible {
+  border-color: var(--accent-line);
+  background: var(--surface-hover);
+  outline: none;
+}
+.btn:hover > svg,
+.btn:focus-visible > svg {
+  color: var(--accent);
+}
+/* Keyboard and gamepad focus gets a ring on top of the hover look, so it is never ambiguous. The chamfer
+   clips anything outside the box, so a button's ring is its yellow border plus an inset line, cuts included. */
+.btn:focus-visible {
+  outline: none;
+  border-color: var(--accent-2);
+  box-shadow: var(--edge), inset 0 0 0 1px var(--accent-2);
+}
+.g-item:focus-visible,
+.garage-tab:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+.seg button:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: -2px;
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn.primary {
+  color: var(--on-accent);
+  background: var(--accent-grad);
+  border-color: transparent;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.btn.primary > svg,
+.btn.primary:hover > svg,
+.btn.primary:focus-visible > svg {
+  color: var(--on-accent);
+}
+.btn.primary:hover,
+.btn.primary:focus-visible {
+  background: var(--accent-grad);
+  border-color: transparent;
+  filter: brightness(1.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+.btn.primary:focus-visible {
+  border-color: var(--accent-2);
+  box-shadow: inset 0 0 0 1px var(--accent-2);
+}
+.btn.primary .sub {
+  color: palette.alpha(bg0, 0.72);
+}
+/* Quiet buttons (icon actions inside a card): no fill or edge until hovered or focused. */
+.btn.ghost {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+.btn.ghost:hover,
+.btn.ghost:focus-visible {
+  background: var(--surface);
+  border-color: var(--line-strong);
+}
+.btn.small {
+  padding: 7px 10px;
+  font-size: 13px;
+  gap: 6px;
+}
+.btn.icon-only {
+  padding: 8px;
+}
+.btn[disabled] {
+  opacity: 0.35;
+  pointer-events: none;
+}
+.btn .sub {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+  text-transform: none;
+  font-weight: 500;
+}
+.btn.big {
+  padding: 10px 16px;
+  font-size: 18px;
+  width: 100%;
+}
+.btn.big .grow {
+  flex: 1;
+}

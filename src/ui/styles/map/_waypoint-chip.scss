@@ -1,0 +1,48 @@
+/* ---- the HUD's waypoint chip (ui/hud.ts): where the waypoint is, an arrow turned like the minimap ---- */
+@use '../abstracts/media';
+@use '../abstracts/palette';
+.hud-waypoint {
+  display: none;
+  border-color: palette.alpha(yellow, 0.35);
+}
+.hud.open-world .hud-waypoint.show,
+.hud.waypoint-race .hud-waypoint.show {
+  display: flex;
+}
+/* The waypoint race's next target wears the type's cyan (free roam's own pin stays yellow). */
+.hud.waypoint-race .hud-waypoint {
+  border-color: palette.alpha(cyan, 0.4);
+}
+.hud.waypoint-race .hud-waypoint :is(.ic, .dir) {
+  color: var(--cyan);
+}
+.hud-waypoint .ic {
+  color: var(--accent-2);
+}
+.hud-waypoint b {
+  font: 800 15px var(--mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+.hud-waypoint .dir {
+  display: flex;
+  margin-left: auto;
+  color: var(--accent-2);
+}
+.hud-waypoint .dir svg {
+  fill: currentColor;
+}
+
+@include media.reduced-motion {
+  .fullmap-modal,
+  .fullmap-modal.out,
+  .fullmap-panel,
+  .fullmap-modal.out .fullmap-panel,
+  .fullmap-row,
+  .fullmap-wp {
+    animation: none !important;
+  }
+  .fullmap-tip {
+    transition: none;
+  }
+}

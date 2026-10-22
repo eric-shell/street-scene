@@ -133,6 +133,13 @@
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/check-json.sh",
             "timeout": 60,
             "statusMessage": "Validating JSON data file"
+          },
+          {
+            "type": "command",
+            "if": "Edit(**/*.scss)",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/check-scss.sh",
+            "timeout": 30,
+            "statusMessage": "Compiling the stylesheet"
           }
         ]
       }

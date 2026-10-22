@@ -8,7 +8,7 @@
  * between the two columns mid block at a skew (about 40 degrees off square
  * over two rows, 25 over three) and joins the next street tangent to it. The
  * deck carries two tracks; trains run both ways on a timetable, render only
- * (railTimetable.ts, render/trains.ts), so nothing here moves.
+ * (railTimetable.ts, render/traffic/trains.ts), so nothing here moves.
  *
  * The path (area.path) is the planned polyline, south run-off to north
  * run-off: one anchor where the line crosses every grid row's street line

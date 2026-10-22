@@ -1,0 +1,54 @@
+/* Breakpoints and media features by name, so every partial asks for the same screen classes the same
+   way. Widths: phones below 480px, narrow screens (the rail turns into a sheet) below 720px. Heights:
+   short laptop screens below 820px, very short ones (phones on their side) below 600px. One-off
+   thresholds a single layout needs (the full map's 760px, the garage's 640px) stay literal there.
+   Emits no CSS. */
+
+$phone: 480px;
+$narrow: 720px;
+$short: 820px;
+$very-short: 600px;
+
+@mixin phone {
+  @media (max-width: $phone) {
+    @content;
+  }
+}
+@mixin narrow {
+  @media (max-width: $narrow) {
+    @content;
+  }
+}
+/* Wider than narrow: the complement of narrow, no gap or overlap at its edge. */
+@mixin wide {
+  @media (min-width: $narrow + 1) {
+    @content;
+  }
+}
+@mixin short {
+  @media (max-height: $short) {
+    @content;
+  }
+}
+@mixin very-short {
+  @media (max-height: $very-short) {
+    @content;
+  }
+}
+/* The HUD's compact layout: narrow, or a phone on its side (any width, 500px high). */
+@mixin compact-hud {
+  @media (max-width: $narrow), (max-height: 500px) {
+    @content;
+  }
+}
+/* Touch first devices: no hover, fingers instead of keys. */
+@mixin touch {
+  @media (pointer: coarse) {
+    @content;
+  }
+}
+@mixin reduced-motion {
+  @media (prefers-reduced-motion: reduce) {
+    @content;
+  }
+}

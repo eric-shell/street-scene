@@ -3,7 +3,7 @@ import { createRace, standings, stepRace } from '../src/sim/race';
 import { createAi, autopilotInput } from '../src/sim/ai';
 import { TICK_HZ } from '../src/sim/constants';
 import { createWorld } from '../src/city/world';
-import { POLICE, policeChaseCall, policeWaypoints, raceLeader } from '../src/render/policeChase';
+import { POLICE, policeChaseCall, policeWaypoints, raceLeader } from '../src/render/traffic/policeChase';
 import { input, raceConfig } from './helpers';
 
 describe('police helicopter brief', () => {

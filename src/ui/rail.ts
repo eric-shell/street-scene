@@ -11,7 +11,7 @@
  *  - navRow: a row in a list of places or actions (the menu's Garage, Explore
  *    and Settings, the pause screen's actions), each in its own hue.
  *  - swapStep: a screen's steps slide (the menu's, the pause screen's).
- * Sizes live in ui.css (`--rail-*`); on narrow screens the rail
+ * Sizes live in styles/rail/_rail.scss (`--rail-*`); on narrow screens the rail
  * turns into a sheet over the bottom of the screen.
  */
 import { h, iconBtn, sheen } from './dom';
@@ -68,7 +68,7 @@ export function keybar(items: KeyHint[]): HTMLElement {
   );
 }
 
-/** The hues a row can wear (ui.css `.hue-*`): the palette's accents. */
+/** The hues a row can wear (`.hue-*` in styles/menu/_nav.scss): the palette's accents. */
 export type Hue = 'orange' | 'yellow' | 'red' | 'green' | 'cyan' | 'purple';
 
 /**
@@ -87,13 +87,13 @@ export function navRow(ico: IconNode, label: string, sub: string, hue: Hue, onCl
   );
 }
 
-/** How long a step takes to slide away (ms; ui.css `.menu-step.leave`). */
+/** How long a step takes to slide away (ms; `.menu-step.leave` in styles/menu/_home.scss). */
 export const STEP_LEAVE_MS = 260;
 
 /**
  * Swap a screen's step in its column: the old step leaves from where it
  * stands, out of the flow, toward the side it came from, while the new one
- * cascades in from the other (ui.css `.menu-step`). `dir` null, no old step or
+ * cascades in from the other (`.menu-step` in styles/menu/_home.scss). `dir` null, no old step or
  * reduced motion swap at once. Returns whether it slid.
  */
 export function swapStep(col: HTMLElement, old: HTMLElement | null, next: HTMLElement, dir: 'fwd' | 'back' | null): boolean {

@@ -344,7 +344,7 @@ export const CITY = {
       /** Tree trunk radius (m, a solid the sim collides with) and the least gap between two trunks (m). */
       treeRadius: 0.4,
       treeGap: 7,
-      /** Lantern posts per island (lit by render/areaLights), standing this far inside the rim (m). */
+      /** Lantern posts per island (lit by render/street/areaLights), standing this far inside the rim (m). */
       lamps: 6,
       lampInset: 1.6,
       /** Radius of a sculpture plinth or urn base (m). */

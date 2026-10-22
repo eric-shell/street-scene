@@ -6,16 +6,16 @@
  * the lip). The route's own shortcuts get pink and amber string lights all
  * the way through, leg by leg round their bends, between the construction
  * fences at their mouths (fences and the rest of the site clutter are props,
- * render/props.ts); a jump exit's ramp gets the same steel deck up to its lip
+ * render/street/props.ts); a jump exit's ramp gets the same steel deck up to its lip
  * and the face under the lip (the 'alleyLip' wall) a concrete block with a
  * hazard band. Tables, crates, dumpsters and trash are destructible props
- * drawn by render/props.ts. Content to add: fire escapes, graffiti, steam
+ * drawn by render/street/props.ts. Content to add: fire escapes, graffiti, steam
  * vents, puddles.
  */
 import * as THREE from 'three';
 import { jumpProfile, jumpRampProfile } from '../../city/districts/alley';
 import { GeoBuilder } from '../geoBuilder';
-import { makeRadialGlow } from '../textures';
+import { makeRadialGlow } from '../textures/textures';
 import { CITY } from '../../city/config';
 import { routeSample } from '../../city/route';
 import type { DistrictRenderer, DistrictKit } from './kit';

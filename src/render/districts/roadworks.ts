@@ -5,7 +5,7 @@
  * flashing an arrow toward the open lane; a yellow mini excavator digging
  * over steel road plates, a beacon on its cab; a skip full of rubble; a
  * light tower whose floods pool white light over the lot. Cones, barriers,
- * sawhorses, pallets and sandbags are destructible props (render/props.ts).
+ * sawhorses, pallets and sandbags are destructible props (render/street/props.ts).
  *
  * The plant goes into the shared merged builders (solid, glow, paint); the
  * flashing lamps are one extra mesh with a material blinked on the scene
@@ -17,7 +17,7 @@ import * as THREE from 'three';
 import type { Vec2 } from '../../sim/math';
 import type { AreaHint } from '../../city/districts/types';
 import { GeoBuilder } from '../geoBuilder';
-import { makeRadialGlow } from '../textures';
+import { makeRadialGlow } from '../textures/textures';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { col } from './kit';
 

@@ -3,9 +3,9 @@
  * pockets and verges (concrete at sidewalk level, verges a warmer paver),
  * raised planters, fountains, low curbs around lots, and the low 'boundary'
  * walls that close every other gap in the street frontage. The clutter in
- * the pockets is destructible and drawn by render/props.ts; this only lays a
+ * the pockets is destructible and drawn by render/street/props.ts; this only lays a
  * mulch bed under the greenery (it stays when a bush is ploughed through).
- * Lantern posts are props too; their light is render/areaLights.ts.
+ * Lantern posts are props too; their light is render/street/areaLights.ts.
  * Content to add: parked cars, bollards, kiosks.
  */
 import { CITY } from '../../city/config';

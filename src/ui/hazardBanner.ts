@@ -3,7 +3,7 @@
  * "BRIDGE RISING" in amber while the gates ahead warn and come down, "BRIDGE
  * UP" in red with the seconds left while they hold traffic back, "CLEAR THE
  * BRIDGE" when the player is on a span that is about to lift. Lives in the
- * HUD root (styles in ui.css, `.hud-hazard`); the session decides the text
+ * HUD root (`.hud-hazard` in styles/hud/_hud.scss); the session decides the text
  * (game/hazardFx.ts). Plain DOM, touched only when the text changes.
  */
 import { TriangleAlert, icon } from './icons';

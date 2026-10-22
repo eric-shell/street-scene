@@ -87,7 +87,7 @@ compare_donors([cid], OUT)         # side / front / rear PNGs to Read
    - logos and lettering inside a grille become grille;
    - the faces keep flat normals, so slats and emblems are not shaded back in.
 
-   The game draws one pattern on it (`GRILLE_PATTERN` in `src/render/carMaterials.ts`: ribs, diamond mesh or honeycomb) as a bright metal texture with raised bars. Every car's grille reads the same at no triangle cost.
+   The game draws one pattern on it (`GRILLE_PATTERN` in `src/render/car/carMaterials.ts`: ribs, diamond mesh or honeycomb) as a bright metal texture with raised bars. Every car's grille reads the same at no triangle cost.
 
 ## 5. Check
 

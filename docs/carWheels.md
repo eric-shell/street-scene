@@ -48,7 +48,7 @@ Material names on wheel models carry no meaning (`Material.026`, `blinn1`, `Main
 
    Both are smooth shaded about the axle.
 
-Materials: rim and ring `Rim` (the player's wheel colour), cap `Chrome`, tire `Tire`. The game finds the bead where the `Tire` mesh meets the rest, so the size slider works on every wheel (`src/render/wheelFit.ts`).
+Materials: rim and ring `Rim` (the player's wheel colour), cap `Chrome`, tire `Tire`. The game finds the bead where the `Tire` mesh meets the rest, so the size slider works on every wheel (`src/render/car/wheelFit.ts`).
 
 ## 4. Recipe overrides
 

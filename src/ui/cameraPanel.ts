@@ -7,7 +7,7 @@
  * the "Debug mode" setting is on, and toggled there with F3. Same look and
  * classes as the physics tuning panel.
  */
-import { CAMERA, CAMERA_DEFAULTS, CAMERA_PARAM_META } from '../render/camera';
+import { CAMERA, CAMERA_DEFAULTS, CAMERA_PARAM_META } from '../render/camera/camera';
 import { btn, h, iconBtn, toast } from './dom';
 import { Camera, Check, Copy, Download, RotateCcw, Upload, X, icon } from './icons';
 
@@ -217,7 +217,7 @@ export class CameraPanel {
       h(
         'div',
         { class: 'muted tp-note' },
-        'Changes apply live and are kept on this device. Start cinematic framing is read when a race starts. Tap a name for its description. The export has a "changed" list to paste into CAMERA_DEFAULTS in src/render/camera.ts.',
+        'Changes apply live and are kept on this device. Start cinematic framing is read when a race starts. Tap a name for its description. The export has a "changed" list to paste into CAMERA_DEFAULTS in src/render/camera/camera.ts.',
       ),
       list,
     );

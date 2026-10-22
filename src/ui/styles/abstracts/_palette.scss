@@ -1,0 +1,71 @@
+/* The Monokai Pro palette at compile time: the same names and values as ui/palette.ts (the canvas side;
+   keep the two in step). Rules reach a color through the custom properties on :root (base/_tokens.scss)
+   wherever it can change at runtime; this module is for what CSS cannot derive on its own: the "r, g, b"
+   triplets behind the --*-rgb washes and fixed-alpha tints of a palette color. Emits no CSS. */
+@use 'sass:color';
+@use 'sass:map';
+@use 'sass:math';
+
+$colors: (
+  'bg0': #19181a,
+  'text': #fcfcfa,
+  'orange': #fc9867,
+  'yellow': #ffd866,
+  'red': #ff6188,
+  'green': #a9dc76,
+  'cyan': #78dce8,
+  'purple': #ab9df2,
+);
+
+/* Each accent's custom property (--accent is orange, --accent-2 yellow; the rest go by their names). */
+$tokens: (
+  'orange': 'accent',
+  'yellow': 'accent-2',
+  'red': 'red',
+  'green': 'green',
+  'cyan': 'cyan',
+  'purple': 'purple',
+);
+
+/* Each race type's color (ui/menu.ts): the rule's three stops for the races (circuit orange, sprint
+   yellow, drift red), purple for the drag, cyan for the waypoint race and green for the open city. */
+$modes: (
+  circuit: 'orange',
+  sprint: 'yellow',
+  drift: 'red',
+  drag: 'purple',
+  waypoint: 'cyan',
+  roam: 'green',
+);
+
+/* Names may come in bare (palette.alpha(orange, 0.5)): orange, red and green are CSS color keywords to
+   Sass, so every lookup goes by the name's text. */
+@function key($name) {
+  @return '' + $name;
+}
+
+@function get($name) {
+  $name: key($name);
+  @if not map.has-key($colors, $name) {
+    @error 'Unknown palette color #{$name}; one of #{map.keys($colors)}.';
+  }
+  @return map.get($colors, $name);
+}
+
+/* "r, g, b" for rgba(var(--x-rgb), a) washes whose color is picked at runtime. */
+@function rgb($name) {
+  $c: get($name);
+  @return math.round(color.channel($c, 'red', $space: rgb)) + ', ' + math.round(color.channel($c, 'green', $space: rgb)) + ', ' + math.round(color.channel($c, 'blue', $space: rgb));
+}
+
+/* A palette color at a fixed alpha: rgba(r, g, b, a) in the output. */
+@function alpha($name, $a) {
+  @return color.change(get($name), $alpha: $a);
+}
+
+/* A hue pair a rule's washes read: --<prop> the accent's custom property, --<prop>-rgb its triplet
+   (the race types' --mode, the menu rows' and garage tabs' --hue). */
+@mixin tint($prop, $name) {
+  --#{$prop}: var(--#{map.get($tokens, key($name))});
+  --#{$prop}-rgb: #{rgb($name)};
+}

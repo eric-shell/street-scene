@@ -8,14 +8,14 @@
  * as share codes. Hidden dev mode (Ctrl+Shift+D or ?dev) accepts a dropped GLB
  * and equips it live in a chosen slot.
  *
- * It speaks the main menu's language (ui.css): chamfered plates, a hue per
+ * It speaks the main menu's language (ui/styles): chamfered plates, a hue per
  * category (the tab's badge, and the open tab's picks, sliders and section
  * hairlines take it through `data-tab` on the root), spec tags and stat bars
  * in the palette, a sheen on whatever is hovered, and the rail's parts rising
  * in as the roller door rolls up on the garage.
  */
 import type { GameRenderer } from '../render/scene';
-import { CarAssetLibrary, MANIFEST, manifestCar, partsFor } from '../render/carAssets';
+import { CarAssetLibrary, MANIFEST, manifestCar, partsFor } from '../render/car/carAssets';
 import { GarageScene } from './garageScene';
 import type { StreetStage } from '../game/streetStage';
 import type { Quality } from '../ui/settings';
@@ -30,7 +30,7 @@ import { SELECTABLE_CAR_IDS, DEFAULT_CAR_ID, getBaseTuning } from '../sim/tuning
 import type { SpecBadge } from '../shared/carSpec';
 import { specBadges } from '../shared/carSpec';
 import { measureStats, statBars, type CarStats } from '../sim/stats';
-import { SHAPE_LABELS } from '../render/decals';
+import { SHAPE_LABELS } from '../render/car/decals';
 import { btn, h, iconBtn, segmented, sheen, toast } from '../ui/dom';
 import { door, transitioning } from '../ui/transitions';
 import { KMH_PER_MPH, M_PER_FT } from '../ui/units';
@@ -84,7 +84,7 @@ const TABS: { id: Tab; label: string; icon: IconNode }[] = [
   { id: 'share', label: 'Save', icon: Share2 },
 ];
 
-/** Each spec tag's ink by its place in specBadges (drivetrain cyan, engine yellow, forced induction red): ui.css `.t-*`. */
+/** Each spec tag's ink by its place in specBadges (drivetrain cyan, engine yellow, forced induction red): `.t-*` in ui/styles/garage/_rows.scss. */
 const SPEC_INKS = ['t-drive', 't-engine', 't-boost'] as const;
 
 /** A spec tag as a chip in its ink, the long form on hover (car tiles and the car card alike). */
@@ -207,7 +207,7 @@ export class GarageScreen {
     this.scene.setPresentation(this.prefs.presentation);
     this.scene.setEngineVolume(cb.engineVolume?.() ?? 0.7);
     this.configureEngine();
-    // A tile per category: its icon on a badge in the category's hue (ui.css keys the hue on data-tab).
+    // A tile per category: its icon on a badge in the category's hue (ui/styles/garage/_layout.scss keys the hue on data-tab).
     for (const t of TABS) {
       const b = h(
         'button',
@@ -321,7 +321,7 @@ export class GarageScreen {
   /**
    * The garage opens behind the roller door (ui/transitions.ts), so its parts
    * wait, paused on their first frame, until the door starts rolling up, then
-   * rise in a beat apart as it clears them (ui.css `.garage.arrive`). With no
+   * rise in a beat apart as it clears them (`.garage.arrive` in ui/styles/garage). With no
    * door down (a deep link, reduced motion's fade) they go at once. A fallback
    * releases them in case the door never reports, so nothing stays hidden.
    */
@@ -354,7 +354,7 @@ export class GarageScreen {
     const car = manifestCar(b.carId);
     const st = statsFor(b);
     const bars = statBars(st);
-    // Each stat's bar in its own ink (ui.css `.s-*`), the same as on the Tune tab; the values stay yellow.
+    // Each stat's bar in its own ink (`.s-*` in ui/styles/garage/_rows.scss), the same as on the Tune tab; the values stay yellow.
     const stat = (kind: string, label: string, value: number, text: string) =>
       h('div', { class: `garage-stat s-${kind}` }, h('span', { class: 'name' }, label), h('span', { class: 'g-bar' }, h('span', { class: 'fill', style: `width:${value * 100}%` })), h('span', { class: 'value' }, text));
     this.carCard.replaceChildren(
@@ -425,7 +425,7 @@ export class GarageScreen {
 
   /** Hold to rev. Pointer events so mouse, pen and touch all work; the key works too. */
   private gasButton(): HTMLElement {
-    // A primary action: the bright sheen on hover, and a sweep after sweep while it is held (ui.css).
+    // A primary action: the bright sheen on hover, and a sweep after sweep while it is held (ui/styles/garage/_view.scss).
     const b = h('button', { class: 'btn garage-gas', type: 'button', title: 'Hold to rev (W, Up or Space)', 'aria-label': 'Rev the engine' }, icon(Gauge, { size: 20 }), h('span', {}, 'Hold to rev'), sheen());
     const release = () => {
       this.gasPointer = false;
@@ -467,7 +467,7 @@ export class GarageScreen {
       b.classList.toggle('on', on);
       b.setAttribute('aria-selected', String(on));
     });
-    // The open tab's hue colors its picks, sliders and section hairlines (ui.css keys it on data-tab).
+    // The open tab's hue colors its picks, sliders and section hairlines (ui/styles/garage/_layout.scss keys it on data-tab).
     this.root.dataset.tab = t;
     this.renderTab();
     if (!switched) return;
@@ -1024,7 +1024,7 @@ export class GarageScreen {
     const b = this.build;
     const stats = statsFor(b);
     const bars = statBars(stats);
-    // Each stat in its ink, as on the car card (ui.css `.s-*`).
+    // Each stat in its ink, as on the car card (`.s-*` in ui/styles/garage/_rows.scss).
     const bar = (kind: string, label: string, value: number, text: string, ic: IconNode) =>
       h('div', { class: `g-stat s-${kind}` }, h('div', { class: 'row', style: 'justify-content:space-between' }, h('span', { class: 'label' }, icon(ic, { size: 14 }), label), h('span', { class: 'g-val' }, text)), h('div', { class: 'g-bar' }, h('div', { class: 'fill', style: `width:${value * 100}%` })));
     this.body.append(

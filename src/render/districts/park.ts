@@ -2,8 +2,8 @@
  * Park renderer: grass draped over the hills, low poly trees on the trunks
  * the sim collides with (a denser wood in one spot), and a gravel footpath
  * loop following the hills. Bushes, benches, bins and lantern posts are
- * destructible props drawn by render/props.ts; the light on the lawn is
- * render/areaLights.ts. Content to add: hedges, a pond, better trees and
+ * destructible props drawn by render/street/props.ts; the light on the lawn is
+ * render/street/areaLights.ts. Content to add: hedges, a pond, better trees and
  * grass shading.
  */
 import type { DistrictRenderer } from './kit';

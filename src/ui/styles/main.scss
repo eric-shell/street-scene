@@ -1,0 +1,89 @@
+/*
+ * Street Scene UI: Monokai Pro on near black, sharp and crisp. The city is the
+ * gritty part; the UI is clear and precise over it: near opaque panels with a
+ * faint top-down gradient, 1px hairlines, chamfered (cut corner) buttons, chips,
+ * segments and menu cards, flat accent fills and no soft glows. Orange is the
+ * primary accent (primary actions, active and selected states), yellow the
+ * secondary (values, records, highlights); red, green, cyan and purple keep their
+ * meanings (danger, success, nitrous, ghost). Canvas code reads the same colors
+ * from ui/palette.ts, so change both together. Type is Google Sans Flex: headings
+ * at 900, upright; only the Street Scene logo is italic. Numbers use tabular
+ * figures so they never jitter. The film grain is only for the splash's night
+ * road (environment, not UI).
+ *
+ * One layout for every full screen menu: the rail (ui/rail.ts). Pause, results
+ * and garage put their content on an opaque column down the left with a
+ * straight edge and the title rule's gradient down it; the main menu drops the
+ * column for a light scrim so the city comes through between its cards. Each
+ * has a screen header (back, icon, title, aside) on top and a key legend along
+ * the bottom; the 3D scene is framed in the space beside it. Three motifs repeat
+ * so every screen reads as one game: the chamfer (top right and bottom left cut
+ * off every button, chip, segment and menu card), the rule (the yellow-orange-red
+ * gradient under the logo, on the active tab and the loading bar) and the accent
+ * hairline across the top of every card and dialog.
+ *
+ * Motion carries the same voice: a sheen of light sweeps across whatever is
+ * hovered or focused (bright on primary actions), menu steps slide and cascade,
+ * the race types wear the rule's colors (circuit orange, sprint yellow, drift
+ * red, free roam green), and screens change behind the rule's colors as a
+ * wipe or behind the garage's roller door (ui/transitions.ts). Motion is
+ * transform and opacity wherever it can be (the course lines' dashes are the
+ * exception, on small SVGs), and reduced motion turns it off.
+ */
+/*
+ * The stylesheet is this list of partials, one per screen or component, in cascade order: later rules win
+ * ties of specificity, so a partial's place here matters (the toast comes after the HUD and dev panel, the
+ * drone and HUD card after the transitions, the music player after the garage). Put a new partial where its
+ * rules should win, not just in its folder's group. abstracts/ holds the compile time helpers (palette,
+ * breakpoints); a partial @uses them and nothing else, and only the files listed here emit CSS.
+ */
+@use 'base/reset';
+@use 'base/tokens';
+@use 'base/base';
+@use 'base/controls';
+@use 'base/chamfer';
+@use 'base/sheen';
+@use 'base/labels';
+
+/* Every full screen menu's layout (ui/rail.ts). */
+@use 'rail/screen-head';
+@use 'rail/rail';
+
+/* The main menu (ui/menu.ts, ui/menuMaps.ts). */
+@use 'menu/home';
+@use 'menu/event-card';
+@use 'menu/nav';
+@use 'menu/race';
+@use 'menu/course-map';
+@use 'menu/setup';
+@use 'menu/small-screens';
+
+/* Over a race: pause, results, dialogs, settings, loading (ui/screens.ts). */
+@use 'screens/pause-results';
+@use 'screens/dialogs';
+@use 'screens/settings';
+@use 'screens/loading';
+
+@use 'hud/hud';
+@use 'panels/dev-panel';
+@use 'screens/toast';
+@use 'splash/splash';
+@use 'transitions/wipe';
+@use 'transitions/door';
+@use 'hud/drone';
+@use 'hud/hud-card';
+
+/* The garage (garage/garageUi.ts). */
+@use 'garage/layout';
+@use 'garage/rows';
+@use 'garage/view';
+
+@use 'panels/music';
+@use 'panels/tuning';
+
+/* Free roam's full city map (ui/fullMap.ts) and the HUD's waypoint chip. */
+@use 'map/hint';
+@use 'map/full-map';
+@use 'map/hover-card';
+@use 'map/side-panel';
+@use 'map/waypoint-chip';

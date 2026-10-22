@@ -3,8 +3,9 @@
  * splash motion graphics, touch controls and the garage showroom lights.
  * Orange is the primary accent (active, selected, primary action), yellow the
  * secondary (values, highlights, records); red, green, cyan and purple keep
- * their meanings (danger, success, nitrous, ghost). ui.css carries the same
- * values as custom properties; keep the two in step.
+ * their meanings (danger, success, nitrous, ghost). The stylesheet carries the
+ * same values (ui/styles/abstracts/_palette.scss, emitted as custom properties
+ * by base/_tokens.scss); keep the two in step.
  */
 export const PALETTE = {
   /** Darkest to lightest backgrounds. */

@@ -7,8 +7,8 @@
  * curb, a warm strip at the foot of the plaza's lip and an uplight ring round
  * a plinth, all merged into the glow builder so none of it costs anything per
  * frame. Lantern posts and the clutter are destructible props drawn by
- * render/props.ts; their pools and the wash over the island are
- * render/areaLights.ts. The ring road itself is part of the city road mesh
+ * render/street/props.ts; their pools and the wash over the island are
+ * render/street/areaLights.ts. The ring road itself is part of the city road mesh
  * (cityMeshes drapes it finely under a roundabout).
  */
 import * as THREE from 'three';

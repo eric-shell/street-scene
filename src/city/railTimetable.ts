@@ -239,7 +239,7 @@ export interface LineService {
 /**
  * The line's two services, both ways, as the trains run them: trip phases from
  * the area's seed (a per city offset, the second direction about half a headway
- * later) and which of the pattern's slots run (runPattern), right hand running. render/trains.ts draws these and the sim's level
+ * later) and which of the pattern's slots run (runPattern), right hand running. render/traffic/trains.ts draws these and the sim's level
  * crossings time their gates from them, so both must come from here.
  */
 export function lineServices(curve: RailCurve, seed: number): LineService[] {

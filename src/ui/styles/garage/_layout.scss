@@ -1,0 +1,261 @@
+/* ---------- garage (garage/garageUi.ts) ----------
+   The garage's rail: header, tabs and the open tab down the left, narrower
+   than the menu's so the car has room; beside it the 3D view with the car card
+   (top left, a plate like the menu's event card), the Garage / Street switch
+   (top right) and the rev button in the middle of the free space at the
+   bottom. Phones get the rail as a sheet over the lower half.
+   It speaks the main menu's language: everything pressable or carded is
+   chamfered, the open tab's groups are plates with the accent hairline, and
+   each category has a hue (like the home menu's rows) that its tab wears at
+   rest and the open tab's picks, sliders and hairlines take on. Values stay
+   yellow, primary actions orange. The rail's parts rise in as the roller door
+   rolls up (.arrive, held paused while it is down). */
+@use 'sass:list';
+@use '../abstracts/palette';
+.garage {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20;
+  color: var(--text);
+  --rail-pad: max(12px, 2vw);
+  --rail-content: min(392px, calc(100vw - 24px));
+  --rail-w: calc(var(--rail-pad) * 2 + var(--rail-content));
+  /* The middle of the free space beside the rail. */
+  --free-mid: calc((var(--rail-w) + 100vw) / 2);
+  @include palette.tint(hue, orange);
+}
+/* Each category's hue, on its tab and, while it is open, on the body (garageUi.ts sets data-tab on the
+   root). Neighbours differ across both rows: Car orange like the menu's Garage row, Body and Lights yellow,
+   Paint and Tune red, Wheels and Neon cyan, Stance and Tint purple, Save green. */
+$tab-hues: (
+  'orange': (car),
+  'yellow': (body, lights),
+  'red': (paint, perf),
+  'cyan': (wheels, glow),
+  'purple': (stance, tint),
+  'green': (share, vinyl),
+);
+@each $hue, $tabs in $tab-hues {
+  $attrs: ();
+  @each $tab in $tabs {
+    $attrs: list.append($attrs, "[data-tab='#{$tab}']", $separator: comma);
+  }
+  $on: '#{$attrs}';
+  @if list.length($tabs) > 1 {
+    $on: ':is(#{$attrs})';
+  }
+  :is(.garage-tab#{$on}, .garage#{$on} .garage-body) {
+    @include palette.tint(hue, $hue);
+  }
+}
+.garage.dev .rail-edge {
+  background: var(--accent-2);
+}
+.garage-panel {
+  position: absolute;
+  left: var(--rail-pad);
+  top: 0;
+  bottom: 0;
+  width: var(--rail-content);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: max(14px, env(safe-area-inset-top)) 0 52px;
+  pointer-events: auto;
+}
+.garage-panel > * {
+  flex-shrink: 0;
+}
+/* Ten categories in two rows of tiles like the race types: the icon on a dim badge of the category's hue at
+   rest, lit with the tile's edge on hover; the open one fills with the hue's wash over a bar of it along the
+   bottom, its badge lit. */
+.garage-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 5px;
+}
+.garage-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 62px;
+  padding: 8px 2px 7px;
+  font: 800 11px var(--font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: pointer;
+  background: var(--plate);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--edge);
+  transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast), box-shadow var(--t-fast), transform var(--t-fast);
+}
+.gt-badge {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 26px;
+  color: var(--hue);
+  background: rgba(var(--hue-rgb), 0.13);
+  clip-path: var(--chamfer-sm);
+  transition: background var(--t-fast), color var(--t-fast), transform var(--t-med) var(--ease-out);
+}
+.gt-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.garage-tab:hover,
+.garage-tab:focus-visible {
+  color: var(--text);
+  border-color: rgba(var(--hue-rgb), 0.6);
+  background: linear-gradient(180deg, rgba(var(--hue-rgb), 0.12), transparent 70%), var(--plate-hover);
+  outline: none;
+}
+.garage-tab:hover .gt-badge,
+.garage-tab:focus-visible .gt-badge {
+  color: var(--on-accent);
+  background: var(--hue);
+}
+.garage-tab:focus-visible {
+  box-shadow: var(--edge), inset 0 0 0 1px var(--accent-2);
+}
+.garage-tab.on {
+  color: var(--text);
+  border-color: rgba(var(--hue-rgb), 0.7);
+  background: linear-gradient(180deg, rgba(var(--hue-rgb), 0.28), rgba(var(--hue-rgb), 0.06)), var(--plate);
+  box-shadow: var(--edge), inset 0 -3px 0 var(--hue);
+}
+.garage-tab.on:focus-visible {
+  box-shadow: var(--edge), inset 0 -3px 0 var(--hue), inset 0 0 0 1px var(--accent-2);
+}
+.garage-tab.on .gt-badge {
+  color: var(--on-accent);
+  background: var(--hue);
+  transform: scale(1.08);
+}
+.garage-tab:active {
+  transform: translateY(1px);
+}
+.garage-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px 6px 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  scrollbar-width: thin;
+}
+/* A new tab's sections cascade in (garageUi.ts setTab adds .tab-in for the switch only). */
+.garage-body.tab-in > * {
+  animation: pane-in 0.36s var(--ease-out) both;
+}
+.garage-body.tab-in > :nth-child(2) {
+  animation-delay: 40ms;
+}
+.garage-body.tab-in > :nth-child(3) {
+  animation-delay: 80ms;
+}
+.garage-body.tab-in > :nth-child(n + 4) {
+  animation-delay: 120ms;
+}
+/* The garage opens behind the roller door: its parts hold on their first frame while the door is down
+   (.hold) and, once it starts rolling up (0.72 s, uncovering the screen from the bottom), rise in as it
+   clears them: the rev button and key legend first, the groups from the lowest up, the tabs and header as
+   the door leaves the top. The car card slides in from the rail and the switch drops in. `translate`
+   rather than `transform`, so the rev button keeps its centering. */
+.garage.arrive :is(.garage-panel > :not(.garage-body), .garage-body > *, .garage-car, .garage-stage, .garage-gas, .keybar) {
+  animation: garage-rise 0.5s var(--ease-out) var(--d, 0.3s) both;
+}
+.garage.arrive.hold :is(.garage-panel > :not(.garage-body), .garage-body > *, .garage-car, .garage-stage, .garage-gas, .keybar) {
+  animation-play-state: paused;
+}
+.garage.arrive :is(.garage-gas, .keybar) {
+  --d: 0.14s;
+}
+.garage.arrive .garage-body > :nth-child(n + 4) {
+  --d: 0.26s;
+}
+.garage.arrive .garage-body > :nth-child(3) {
+  --d: 0.32s;
+}
+.garage.arrive .garage-body > :nth-child(2) {
+  --d: 0.38s;
+}
+.garage.arrive .garage-body > :nth-child(1) {
+  --d: 0.45s;
+}
+.garage.arrive .garage-panel > :nth-child(2) {
+  --d: 0.52s;
+}
+.garage.arrive .garage-panel > :nth-child(1) {
+  --d: 0.58s;
+}
+.garage.arrive .garage-car {
+  --d: 0.5s;
+  animation-name: garage-slide;
+}
+.garage.arrive .garage-stage {
+  --d: 0.58s;
+  animation-name: garage-drop;
+}
+@keyframes garage-rise {
+  from {
+    opacity: 0;
+    translate: 0 16px;
+  }
+}
+@keyframes garage-slide {
+  from {
+    opacity: 0;
+    translate: -28px 0;
+  }
+}
+@keyframes garage-drop {
+  from {
+    opacity: 0;
+    translate: 0 -14px;
+  }
+}
+/* An open tab's group: a plate with the accent hairline in the tab's hue and a faint wash of it from the
+   top left, its title in the menu cards' yellow caps over a hairline that leads in with the hue. */
+.g-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 14px 14px;
+  background:
+    linear-gradient(90deg, var(--hue) 0 48px, var(--line-strong) 48px) top left / 100% 2px no-repeat,
+    radial-gradient(100% 60% at 0% 0%, rgba(var(--hue-rgb), 0.08), transparent 60%),
+    var(--plate);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--edge);
+}
+.g-section > .section-title {
+  margin-top: 2px;
+}
+.g-section > .section-title::after {
+  background: linear-gradient(90deg, rgba(var(--hue-rgb), 0.45), var(--line) 56px);
+}
+.garage-body input[type='range'] {
+  accent-color: var(--hue);
+}
+/* Picks in a segmented control and toggles that are on (front and rear linked, mirrored) take the tab's
+   hue; the screen's actions (Export) stay orange. */
+.garage-body .seg button.on,
+.garage-body .btn.primary:is(.g-link, .g-toggle) {
+  background: linear-gradient(100deg, var(--hue) 55%, color-mix(in srgb, var(--hue), #fff 22%));
+}
+.g-section > .btn {
+  align-self: flex-start;
+}

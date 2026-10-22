@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWorld } from '../src/city/world';
-import { MOODS, MOOD_IDS, pickMood, skyParams } from '../src/render/weather';
-import { AIR, blimpParams, blimpPoseAt, buildLoop, heliPoseAt, heliWaypoints, loopAt } from '../src/render/airTraffic';
+import { MOODS, MOOD_IDS, pickMood, skyParams } from '../src/render/sky/weather';
+import { AIR, blimpParams, blimpPoseAt, buildLoop, heliPoseAt, heliWaypoints, loopAt } from '../src/render/traffic/airTraffic';
 
 describe('weather mood', () => {
   it('is a pure function of the seed, drawn roughly to the weights, with clear nights the most common', () => {

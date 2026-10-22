@@ -1,0 +1,90 @@
+/* ---------- the garage's roller door (ui/transitions.ts) ---------- */
+@use '../abstracts/palette';
+/* The roller door: horizontal ribs of brushed steel catching a light from above, grain over them, the
+   hazard striped bottom rail with a handle, and the place's name in neon tubes on the slats. */
+.door-curtain {
+  position: absolute;
+  inset: 0;
+  transform: translateY(-102%);
+  will-change: transform;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.55), transparent 30%, transparent 70%, rgba(0, 0, 0, 0.45)),
+    var(--grain),
+    repeating-linear-gradient(
+      180deg,
+      #3a373d 0,
+      #4a474e 3px,
+      #3a373d 9px,
+      #2a282d 22px,
+      #1b1a1d 25px,
+      #4f4c53 26px,
+      #3a373d 28px
+    );
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+.door-rail {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 34px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 3px, transparent 26px, rgba(0, 0, 0, 0.5)),
+    repeating-linear-gradient(-45deg, var(--accent-2) 0 16px, #1b1a1d 16px 32px);
+  border-top: 3px solid #5a575e;
+  box-shadow: 0 -2px 0 rgba(0, 0, 0, 0.5);
+}
+.door-handle {
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  width: 120px;
+  height: 12px;
+  margin-left: -60px;
+  background: linear-gradient(180deg, #8a878f, #403d43);
+  border-radius: 2px;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.6);
+}
+.door-sign {
+  position: absolute;
+  inset: 0 0 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* The sign is dark glass tubes until the door is shut, then strikes like the splash's neon. */
+.door-sign > span {
+  font: italic 900 clamp(48px, 10vw, 120px) / 1 var(--logo);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: palette.alpha(yellow, 0.12);
+  -webkit-text-stroke: 1.5px palette.alpha(yellow, 0.25);
+}
+.door.shut .door-sign > span,
+.door.opening .door-sign > span {
+  color: #fff1d6;
+  -webkit-text-stroke: 0;
+  text-shadow: 0 0 6px #fff1d6, 0 0 18px var(--accent-2), 0 0 44px palette.alpha(orange, 0.75), 0 0 90px palette.alpha(red, 0.35);
+  animation: door-neon 0.5s steps(1, end) both;
+}
+@keyframes door-neon {
+  0% {
+    opacity: 0.3;
+  }
+  14% {
+    opacity: 1;
+  }
+  24% {
+    opacity: 0.35;
+  }
+  38% {
+    opacity: 1;
+  }
+  48% {
+    opacity: 0.6;
+  }
+  60%,
+  100% {
+    opacity: 1;
+  }
+}

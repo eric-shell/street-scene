@@ -890,7 +890,7 @@ function wallContact(world: World, c: SfxCar): { vt: number; kind: WallHitKind }
 const RUMBLE = { level: 0.5, boom: 4, boomHz: 120, rattle: 1.1, rattleHz: 700, pulse: 0.8, jointSpacing: 7.7 } as const;
 
 /**
- * Elevated train rumble (render/trains.ts): low filtered noise for the deck
+ * Elevated train rumble (render/traffic/trains.ts): low filtered noise for the deck
  * booming plus a mid band rattle pulsed at the rate the trucks cross rail
  * joints, panned and scaled by the nearest train's distance and speed. It
  * fades out by itself shortly after the last update, so when the scene stops
@@ -985,7 +985,7 @@ const ROTOR = { level: 0.48, bladeHz: 10.5, thump: 0.85, bodyHz: 220, body: 3.2,
 export type RotorVoice = { [K in keyof typeof ROTOR]: number };
 
 /**
- * News helicopter rotor (render/airTraffic.ts): low filtered noise chopped at
+ * News helicopter rotor (render/traffic/airTraffic.ts): low filtered noise chopped at
  * the blade pass rate for the thump, plus a thin turbine whine, panned and
  * scaled by the helicopter's distance. Same shape as TrainRumble: created
  * after the first user gesture, and the gain dies by itself unless the next
@@ -1082,7 +1082,7 @@ export class HeliRotor {
 const THUNDER = { level: 0.4, near: 1800, lowNear: 420, lowFar: 150, rollNear: 4, rollFar: 8.5, crackUnder: 2400, crack: 0.9, crackHz: 2600 } as const;
 
 /**
- * Thunder for the lightning on rain nights (render/lightning.ts calls strike()
+ * Thunder for the lightning on rain nights (render/sky/lightning.ts calls strike()
  * once the sound of a bolt has travelled to the camera). A rumble of looped
  * hub noise through two low passes, darker and longer the further the strike,
  * swelling in and rolling through a few random surges before it dies; a close

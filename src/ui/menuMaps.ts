@@ -95,7 +95,7 @@ class PinMarker {
   }
 }
 
-/** The turn's period (s): `ov-turn` in ui.css, 34 s each way. */
+/** The turn's period (s): `ov-turn` in styles/menu/_event-card.scss, 34 s each way. */
 const TURN_S = 68;
 
 /** A world rectangle (m) the table frames: a course and what it needs around it. */
@@ -350,7 +350,7 @@ export function courseRoute(routes: CourseRoutes, type: RaceType): Route {
   return type === 'sprint' || type === 'drag' || type === 'waypoint' ? routes[type] : routes.circuit;
 }
 
-/** How long the outgoing course takes to fade (ms; matches `.course.leave` in ui.css). */
+/** How long the outgoing course takes to fade (ms; matches `.course.leave` in styles/menu/_course-map.scss). */
 const LEAVE_MS = 260;
 
 let maskIds = 0;

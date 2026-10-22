@@ -25,7 +25,7 @@
  *  - Every drivable pocket is furnished by theme (cafe, garden, market, lot
  *    clutter) with destructible props (AreaBuild.destructibles); plazas,
  *    corner pockets and lots get lantern posts along their back
- *    (render/areaLights.ts draws their light), lots a row of them so a racer
+ *    (render/street/areaLights.ts draws their light), lots a row of them so a racer
  *    sees the asphalt before turning in.
  * Whatever is left is a low 'boundary' wall drawn by render/districts/infill.ts.
  */

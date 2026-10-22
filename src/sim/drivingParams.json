@@ -240,7 +240,7 @@
     "rejoinYawDeg": 50,
     "rejoinLength": 9,
     "yawInertiaScale": 1,
-    "_kinds": "Vehicle kinds: collision size (half length, half width: the body below the mirrors, measured from the models in src/assets/trafficModels.json, which tests hold these to) and mass; share is the spawn mix. The renderer draws each by name from public/traffic/traffic.glb (render/traffic.ts).",
+    "_kinds": "Vehicle kinds: collision size (half length, half width: the body below the mirrors, measured from the models in src/assets/trafficModels.json, which tests hold these to) and mass; share is the spawn mix. The renderer draws each by name from public/traffic/traffic.glb (render/traffic/traffic.ts).",
     "kinds": [
       { "name": "sedan", "share": 0.15, "mass": 1450, "halfLength": 2.45, "halfWidth": 0.95 },
       { "name": "wagon", "share": 0.07, "mass": 1500, "halfLength": 2.47, "halfWidth": 1.04 },

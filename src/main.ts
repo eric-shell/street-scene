@@ -7,8 +7,7 @@
  * menu city and the car cruising it where it is, the camera swings from the
  * showreel's shot onto the chase camera while the menu slides away.
  */
-import './style.css';
-import './ui/ui.css';
+import './ui/styles/main.scss';
 import * as THREE from 'three';
 import { FixedStepLoop } from './loop';
 import { createCity, createRoute, createWorld, type World } from './city/world';
@@ -19,8 +18,8 @@ import { dailySeed, initialSeed } from './seed';
 import { Settings, loadSettings, saveSettings } from './ui/settings';
 import { AutoQualityController, MAX_LEVEL, QUALITY_LEVELS, autoLabel, deviceKey, guessLevel, loadRememberedLevel, readDeviceInfo, saveRememberedLevel } from './render/autoQuality';
 import { GameRenderer } from './render/scene';
-import { FreeFlyCamera } from './render/freeFly';
-import { CarAssetLibrary, manifestCar } from './render/carAssets';
+import { FreeFlyCamera } from './render/camera/freeFly';
+import { CarAssetLibrary, manifestCar } from './render/car/carAssets';
 import { InputManager } from './input/inputManager';
 import { PadNav } from './input/padNav';
 import { RaceSession, type SessionOptions } from './game/session';
@@ -47,7 +46,7 @@ import { courseArt, courseRoute, type CourseRoutes } from './ui/menuMaps';
 import type { RaceType } from './ui/settings';
 import { installUiSounds } from './audio/uiSound';
 import { DRAG_OPPONENTS, POINT_TO_POINT, RaceConfig, RaceEntrant, RaceMode, positionOf, standings, ticksToSeconds } from './sim/race';
-import { loadTrafficAssets } from './render/traffic';
+import { loadTrafficAssets } from './render/traffic/traffic';
 import { CarBuild, PerformanceBuild, VisualBuild, defaultVisual, PAINT_FINISHES } from './sim/build';
 import { DEFAULT_CAR_ID, PERFORMANCE_CATEGORIES, SELECTABLE_CAR_IDS, Tier } from './sim/tuning';
 import { GarageState, decodeShareCode, loadGarage, saveGarage } from './garage/storage';
@@ -436,7 +435,7 @@ function launch(t: RaceType): void {
   void wipe(raceCard(t), () => (t === 'roam' ? startFreeRoam(seedStr) : startRace(t)));
 }
 
-/** The handoff into free roam: how long the camera swings onto the chase view and the menu takes to leave (s; ui.css .menu-out). */
+/** The handoff into free roam: how long the camera swings onto the chase view and the menu takes to leave (s; `.menu-out` in ui/styles/menu/_home.scss). */
 const HANDOFF = { pan: 2, menuOut: 0.5 } as const;
 
 /**

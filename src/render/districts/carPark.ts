@@ -30,11 +30,11 @@
  * under, a lamp post on every facade column rims the roof, the pay booth is
  * a lit glass kiosk, and lamp posts behind the apron's flared walls and a
  * pair of bulkhead lamps on the portal beam light the way in; their pools on
- * the asphalt and the apron's wash are render/areaLights.ts (one mesh with
+ * the asphalt and the apron's wash are render/street/areaLights.ts (one mesh with
  * the park lamps' pools), none of it a real light. Low quality drops the
  * render only detail (parked cars off the drivable floor, the upper levels'
  * stall lines). The chase camera keeps under the ceilings drawn here
- * (garageSpan, render/ceilings.ts); nothing new hangs below them.
+ * (garageSpan, render/camera/ceilings.ts); nothing new hangs below them.
  */
 import * as THREE from 'three';
 import { CITY } from '../../city/config';
@@ -236,7 +236,7 @@ function stallEdges(s: Stall): [Vec2, Vec2][] {
 }
 
 /**
- * The garage's mass over (x, z) for the camera (render/ceilings.ts): over
+ * The garage's mass over (x, z) for the camera (render/camera/ceilings.ts): over
  * the deck's footprint from the drivable floor's ceiling up to the roof's
  * parapet, over the covered ramp its roof slab. False off both.
  */
@@ -271,7 +271,7 @@ export interface CarParkLamp extends Vec2 {
 
 /**
  * The lamps that light the way in from the street, drawn by buildOne and
- * pooled on the asphalt by render/areaLights.ts (which also offers them to
+ * pooled on the asphalt by render/street/areaLights.ts (which also offers them to
  * the car-following light): a post behind each of the apron's flared walls a
  * third of the way in from the building line (outside the drive, in the
  * plot the buildings keep off), the pay booth beside the apron's narrow

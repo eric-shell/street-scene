@@ -360,7 +360,7 @@ export function tuningHash(carId: string): string {
 
 /** One civilian vehicle kind: its collision box and mass. */
 export interface TrafficKind {
-  /** Silhouette the renderer draws (render/traffic.ts): sedan, hatch, van, taxi. */
+  /** Silhouette the renderer draws (render/traffic/traffic.ts): sedan, hatch, van, taxi. */
   name: string;
   /** Share of the spawn mix (weights, normalized over the kinds). */
   share: number;

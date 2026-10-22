@@ -22,7 +22,7 @@ donor (the spokes and hub) is reduced to RIM_BUDGET and shaded from its own auth
 
 Wheel space (exportCar.py): center at the origin, axle along X, the face toward +X. The game
 scales a wheel so the tire's outer radius meets the car's wheel radius and remaps the rim for
-the size slider from where the Tire mesh meets the rest (src/render/wheelFit.ts).
+the size slider from where the Tire mesh meets the rest (src/render/car/wheelFit.ts).
 """
 import re
 

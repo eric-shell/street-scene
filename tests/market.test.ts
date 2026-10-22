@@ -13,7 +13,7 @@ import { distToSegment, segmentT } from '../src/sim/math';
 import { MARKET_HINT } from '../src/city/districts/market';
 import type { Area } from '../src/city/districts/types';
 import { pointInPolygon } from '../src/city/districts/geom';
-import { marketEdges, marketLightPoints, planMarketCrowd } from '../src/render/marketPlan';
+import { marketEdges, marketLightPoints, planMarketCrowd } from '../src/render/districts/marketPlan';
 import { createRace, stepRace } from '../src/sim/race';
 import { NEUTRAL_INPUT } from '../src/sim/input';
 import { getBaseTuning } from '../src/sim/tuning';

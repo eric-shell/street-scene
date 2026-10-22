@@ -40,7 +40,7 @@ export type ConstructionPropKind = 'fencePanel' | 'trafficCone' | 'sawhorse' | '
 export type MarketPropKind = 'marketStall' | 'fruitCrates' | 'foodCart';
 /**
  * Clutter districts ask for (DistrictPropSpec): mostly soft, cheap to crash through. Park lamps light parks and
- * plazas (render/areaLights.ts); bollards fence the middle of a roundabout island (districts/roundabout.ts).
+ * plazas (render/street/areaLights.ts); bollards fence the middle of a roundabout island (districts/roundabout.ts).
  */
 export type DistrictPropKind = 'bush' | 'planterPot' | 'cafeTable' | 'barrel' | 'crate' | 'dumpster' | 'newsBox' | 'trashBags' | 'parkLamp' | 'bollard' | ConstructionPropKind | MarketPropKind;
 export type PropKind = StreetPropKind | DistrictPropKind;
@@ -144,7 +144,7 @@ export const PROP_DEFS: Record<PropKind, PropDef> = {
   fruitCrates: { radius: 0.5, mass: 26, height: 0.85, anchor: 1, breakSpeed: 0.1 },
   foodCart: { radius: 0.75, mass: 85, height: 2.3, anchor: 1, breakSpeed: 0.5 },
   // Neighbourhood furniture. A cast iron hydrant is a stubby, bolted lump: it holds a crawling car
-  // and costs a fast one about a seventh of its speed (then gushes, render/hydrantSpray.ts). Parking
+  // and costs a fast one about a seventh of its speed (then gushes, render/street/hydrantSpray.ts). Parking
   // meters and mailboxes are light knocks; a phone booth or a vending machine is a real hit.
   hydrant: { radius: 0.24, mass: 110, height: 0.85, anchor: 2, breakSpeed: 2.5 },
   parkingMeter: { radius: 0.14, mass: 28, height: 1.45, anchor: 1.6, breakSpeed: 0.6 },

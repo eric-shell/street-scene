@@ -1,0 +1,78 @@
+/* Design tokens: the palette, surfaces, lines, type, motion and the race types' colors, as custom
+   properties on :root so every rule and the canvas code (ui/palette.ts) agree. */
+@use '../abstracts/palette';
+:root {
+  --bg0: #{palette.get(bg0)};
+  --bg1: #221f22;
+  --bg2: #2d2a2e;
+  --bg3: #403e41;
+  --bg: var(--bg0);
+  --panel: linear-gradient(180deg, rgba(45, 42, 46, 0.97), rgba(28, 27, 29, 0.97));
+  --panel-solid: var(--bg1);
+  /* Buttons, tiles and chips sit one step above the panel. */
+  --surface: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.04));
+  --surface-hover: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.07));
+  --line: #{palette.alpha(text, 0.12)};
+  --line-strong: #{palette.alpha(text, 0.24)};
+  /* Boundaries a control is recognized by (inputs, toggles): at least 3:1 against the surface. */
+  --line-control: #{palette.alpha(text, 0.42)};
+  /* The lit top edge of every surface: one crisp hairline. */
+  --edge: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  --text: #{palette.get(text)};
+  --soft: #c1c0c0;
+  /* Secondary text stays at 4.5:1 or better on every panel and surface (WCAG AA), even over a bright street. */
+  --muted: #aeadae;
+  --dim: #a7a6a8;
+  --accent: #{palette.get(orange)};
+  --accent-hover: #fdb08a;
+  --accent-soft: #{palette.alpha(orange, 0.13)};
+  --accent-line: #{palette.alpha(orange, 0.6)};
+  /* Primary actions: a hard, short sweep from orange into yellow. */
+  --accent-grad: linear-gradient(100deg, #{palette.get(orange)} 0%, #{palette.get(orange)} 55%, #ffb36b 100%);
+  --accent-glow: 0 0 0 1px #{palette.alpha(orange, 0.35)};
+  /* Cut corners (top right, bottom left) for fills without a border (badges, selected segments);
+     bordered things use the .btn / .nav-item ... chamfer rule below, which also draws the border along the cuts. */
+  --chamfer: polygon(0 0, calc(100% - 9px) 0, 100% 9px, 100% 100%, 9px 100%, 0 calc(100% - 9px));
+  --chamfer-sm: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px));
+  /* Menu cards and rows standing over the city with no rail behind them: near opaque, so text keeps its contrast. */
+  --plate: linear-gradient(180deg, rgba(47, 44, 48, 0.95), rgba(30, 29, 31, 0.95));
+  --plate-hover: linear-gradient(180deg, rgba(60, 56, 61, 0.96), rgba(38, 36, 39, 0.96));
+  /* The main menu's column width, shared by the rail and the splash's copy of the title so both size the title alike. */
+  --menu-w: min(480px, calc(100vw - 32px));
+  --accent-2: #{palette.get(yellow)};
+  --accent-2-soft: #{palette.alpha(yellow, 0.12)};
+  --on-accent: #{palette.get(bg0)};
+  --red: #{palette.get(red)};
+  --green: #{palette.get(green)};
+  --cyan: #{palette.get(cyan)};
+  --purple: #{palette.get(purple)};
+  --radius: 3px;
+  --radius-sm: 2px;
+  --shadow: var(--edge), 0 1px 0 rgba(0, 0, 0, 0.5), 0 16px 40px rgba(0, 0, 0, 0.45);
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.08'/%3E%3C/svg%3E");
+  --font: 'Google Sans Flex', 'Google Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Headings: the same family at 900, upright. */
+  --display: var(--font);
+  /* Every number a player compares (times, seeds, scores, values) uses tabular figures so it does not jitter. */
+  --mono: var(--font);
+  --logo: var(--font);
+  /* The rule under the logo, reused wherever something is the active one (tab, loading bar). */
+  --rule: linear-gradient(90deg, var(--accent-2), var(--accent) 60%, var(--red));
+  /* A card's accent hairline: a short orange lead into a grey line, across the top. */
+  --card-top: linear-gradient(90deg, var(--accent) 0 64px, var(--line-strong) 64px) top left / 100% 2px no-repeat;
+  /* Motion: things arrive fast and settle (out), or move across the screen (in-out). */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.7, 0, 0.25, 1);
+  --t-fast: 0.12s;
+  --t-med: 0.25s;
+  /* The sheen across a hovered control (.sheen): its peak on plates, and on the accent sweep of a primary action. */
+  --sheen-soft: rgba(255, 255, 255, 0.2);
+  --sheen-bright: rgba(255, 252, 240, 0.85);
+}
+/* Each race type's color (palette.$modes) on its class: --mode-rgb feeds the washes; the course drawings
+   (ui/menuMaps.ts) read --mode. */
+@each $mode, $color in palette.$modes {
+  .mode-#{$mode} {
+    @include palette.tint(mode, $color);
+  }
+}

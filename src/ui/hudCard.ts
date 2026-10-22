@@ -125,7 +125,7 @@ const cards = new Set<HudCard>();
 let hidden = false;
 let tag: HTMLElement | null = null;
 
-/** Hides or shows the HUD (body.hud-off in ui.css) with the tag that brings it back. */
+/** Hides or shows the HUD (`body.hud-off` in styles/hud/_hud-card.scss) with the tag that brings it back. */
 export function setHudHidden(on: boolean): void {
   hidden = on;
   document.body.classList.toggle('hud-off', on);

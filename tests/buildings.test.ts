@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Building } from '../src/city/blocks';
 import { createWorld } from '../src/city/world';
-import { planArchitecture } from '../src/render/architecture';
-import { recessCoplanar } from '../src/render/buildings';
+import { planArchitecture } from '../src/render/buildings/architecture';
+import { recessCoplanar } from '../src/render/buildings/buildings';
 
 /** Pairs of overlapping footprints with two walls facing the same way in one plane (they z-fight). */
 function coplanarWalls(B: readonly Building[]): number {

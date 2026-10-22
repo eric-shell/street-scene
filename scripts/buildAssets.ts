@@ -310,7 +310,7 @@ async function writeOptimized(io: Awaited<ReturnType<typeof createIO>>, doc: Doc
     if (nodes.length === 1) nodes[0].setName(nodeName);
   }
   // UVs only where the game textures a surface: the Grille pattern is a runtime texture
-  // (src/render/carMaterials.ts), so prune would drop its coordinates as unused; every other
+  // (src/render/car/carMaterials.ts), so prune would drop its coordinates as unused; every other
   // material is flat colored and its UVs are only bytes.
   for (const mesh of doc.getRoot().listMeshes()) {
     for (const prim of mesh.listPrimitives()) {

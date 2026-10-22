@@ -11,7 +11,7 @@
  *     public/traffic/traffic.glb; the atlas goes to public/traffic/ as WebP.
  *  3. src/assets/trafficModels.json gets each kind's footprint, height,
  *     triangles, tint flag and lamps, plus the credits, for the renderer
- *     (render/traffic.ts) and the tests that hold the sim's kinds
+ *     (render/traffic/traffic.ts) and the tests that hold the sim's kinds
  *     (drivingParams.json traffic.kinds) to the models.
  *
  * <packDir> (default assets/source/comrade1280) holds the packs as

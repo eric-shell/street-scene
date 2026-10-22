@@ -7,7 +7,7 @@
  * one small wood packs them tighter, with bushes underneath. Clusters of
  * bushes (destructible, a car ploughs straight through) dot the grass, and
  * a footpath loop inside the edge has benches and bins (destructible too)
- * and lantern posts (destructible, lighting the park: render/areaLights.ts).
+ * and lantern posts (destructible, lighting the park: render/street/areaLights.ts).
  *
  * Content to add (render/districts/park.ts): hedges, a pond or playground,
  * better trees.

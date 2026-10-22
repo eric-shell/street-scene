@@ -3,23 +3,27 @@
 # With a directory or path fragment argument it lists the full header and exports of each match.
 #   map.sh            compact map of src/, scripts/ and tests/
 #   map.sh src/city   detailed map of everything whose path contains "src/city"
+# SCSS partials (src/ui/styles) are listed only with a filter: /map styles, /map styles/menu.
 set -u
 cd "$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null || echo .)" || exit 0
 filter=${1:-}
 
-git ls-files src scripts tests | grep -E '\.ts$' | { if [ -n "$filter" ]; then grep -F -- "$filter"; else cat; fi; } | sort | while read -r f; do
+git ls-files src scripts tests | { if [ -n "$filter" ]; then grep -E '\.(ts|scss)$' | grep -F -- "$filter"; else grep -E '\.ts$'; fi; } | sort | while read -r f; do
   lines=$(wc -l < "$f" | tr -d ' ')
-  # Leading `/** ... */` block or run of `//` lines, joined into one line.
+  # Leading `/** ... */` (or a partial's `/* ... */`) block or run of `//` lines, joined into one line.
   header=$(awk '
-    NR == 1 { if ($0 ~ /^\/\//) mode = "line"; else if ($0 ~ /^\/\*\*/) mode = "block"; else exit }
+    NR == 1 { if ($0 ~ /^\/\//) mode = "line"; else if ($0 ~ /^\/\*/) mode = "block"; else exit }
     mode == "line" { if ($0 !~ /^\/\//) exit; line = $0; sub(/^\/\/[ \t]?/, "", line); if (line != "") printf "%s ", line; next }
-    { line = $0; sub(/[ \t]*\*\/.*$/, "", line); sub(/^[ \t]*\/?\*+[ \t]?/, "", line); if (line != "") printf "%s ", line }
+    { line = $0; sub(/[ \t]*\*\/.*$/, "", line); sub(/^[ \t]*\/?\*+[ \t]?/, "", line); sub(/^[ \t]+/, "", line); if (line != "") printf "%s ", line }
     /\*\// { exit }
   ' "$f")
   if [ -n "$filter" ]; then
     printf '%s (%s lines)\n' "$f" "$lines"
     [ -n "$header" ] && printf '  %s\n' "$header"
-    exports=$(grep -oE '^export (default )?(async )?(function\*? |class |const |let |interface |type |enum )[A-Za-z0-9_]+' "$f" | awk '{ printf "%s ", $NF }')
+    case "$f" in
+      *.scss) exports=$(grep -oE '^(@mixin |@function |\$)[A-Za-z0-9_-]+' "$f" | awk '{ printf "%s ", $NF }') ;;
+      *) exports=$(grep -oE '^export (default )?(async )?(function\*? |class |const |let |interface |type |enum )[A-Za-z0-9_]+' "$f" | awk '{ printf "%s ", $NF }') ;;
+    esac
     [ -n "$exports" ] && printf '  exports: %s\n' "$exports"
   else
     # First sentence after 30 chars (a period not preceded by a digit, so "1. Convert" does not cut), capped at 118.
@@ -30,7 +34,8 @@ done
 
 if [ -z "$filter" ]; then
   echo
-  echo "Data: src/sim/drivingParams.json (physics), src/assets/carManifest.json, partsCatalog.json, musicCatalog.json. Styles: src/ui/ui.css, src/style.css."
+  echo "Data: src/sim/drivingParams.json (physics), src/assets/carManifest.json, partsCatalog.json, musicCatalog.json. "
+  echo "Styles: src/ui/styles/ (SCSS: main.scss lists the partials in cascade order; abstracts/ holds the palette and breakpoints). /map styles lists them."
   echo "Docs: README.md, docs/partsAuthoring.md, docs/music.md. Scripts above run with: npx tsx scripts/<name>.ts"
 fi
 exit 0

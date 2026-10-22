@@ -720,7 +720,7 @@ def flatten_grilles(bm, faces, back=0.004):
 
 def grille_surface(o, half_wb, step=0.03, uv_span=GRILLE_UV):
     """Turn the front grilles into the shared Grille material, whose pattern is a texture in the
-    game (src/render/carMaterials.ts), so every car's grille reads the same at no triangle cost.
+    game (src/render/car/carMaterials.ts), so every car's grille reads the same at no triangle cost.
     Logos inside a grille become grille, and each grille patch is flattened (flatten_grilles).
     A square grid (`step`) is cast at the nose: where the first thing seen is Black within 0.45 m
     of the nose, below the hood's leading edge and clear of the lamps, the face hit becomes Grille

@@ -2,7 +2,7 @@
  * Bus bays: some bus stops get a lay-by. For a stretch of one block side the
  * curb steps back into the sidewalk (an S shaped taper at each end, full
  * depth between), so the road widens locally; the shelter stands at the back
- * of the narrower sidewalk and BUS is painted in the bay (render/busBays.ts).
+ * of the narrower sidewalk and BUS is painted in the bay (render/street/busBays.ts).
  * A bay is a place to dive into to pass a rival or to straighten a kink.
  *
  * A bay lives in its block side's curb frame (props.ts edgeSides): `s` along
