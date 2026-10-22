@@ -1,6 +1,6 @@
 /**
- * Full city map: a modal over the paused free roam session (Tab, or a click on
- * the HUD minimap) or over the live menu city. A map to explore rather than a
+ * Full city map: a modal over a paused race or free roam session (Tab, or a
+ * click on the HUD minimap) or over the live menu city. A map to explore rather than a
  * picture: the wheel, a drag, a pinch, a double click and the keys pan and
  * zoom it (1x fits the whole city, up to 8x), the place under the pointer
  * lights up with a card naming it (how far and which way from you, drift zone,
@@ -51,6 +51,7 @@ import { btn, h, iconBtn } from '../dom';
 import { Flag, Hash, Landmark, Layers, LocateFixed, MapIcon, MapPinOff, MapPinned, Maximize2, Route, X, ZoomIn, ZoomOut, icon } from '../icons';
 import type { MapCar } from '../minimap';
 import { PALETTE, rgba, type PaletteColor } from '../palette';
+import type { RaceType } from '../settings';
 import { CITY_NAME, bearingDeg, compassPoint, distanceLabel, placeName } from '../places';
 import { MapCamera } from './camera';
 import { blit, cellName, covers, drawEdgeArrow, drawEdges, drawGrid, drawPlayer, drawRevealRing, lightPath, makeSprites, newRaster, offView, worldTransform, type Raster, type Sprites } from './draw';
@@ -89,15 +90,30 @@ export interface FullMapOptions {
   course?: { route: RaceRoute | null; ink: PaletteColor; label: string; zones?: boolean };
 }
 
+/** Each race type's course look on the map: one table, so the menu's race step and a race's own map draw a type alike. */
+const COURSE_STYLE: Record<RaceType, Omit<NonNullable<FullMapOptions['course']>, 'route'>> = {
+  circuit: { ink: 'orange', label: 'Circuit' },
+  sprint: { ink: 'yellow', label: 'Sprint' },
+  drag: { ink: 'purple', label: 'Drag strip' },
+  waypoint: { ink: 'cyan', label: 'Waypoint race' },
+  drift: { ink: 'red', label: 'Drift', zones: true },
+  roam: { ink: 'green', label: 'Free roam' },
+};
+
+/** The map's course for a race type on `route` (free roam has none: the whole city is the course). */
+export function courseFor(type: RaceType, route: RaceRoute | null): NonNullable<FullMapOptions['course']> {
+  return { route: type === 'roam' ? null : route, ...COURSE_STYLE[type] };
+}
+
 const TMP: Vec2 = { x: 0, z: 0 };
 
 /** What the pointer is over. */
 type Hover = { kind: 'area'; area: Area | null } | { kind: 'me' } | { kind: 'pin' } | { kind: 'mark'; finish: boolean };
 
 /**
- * Open the city map over `parent`: the one way every screen opens it (free
- * roam's minimap and Tab, the menu's event card and its race step's course
- * map), so it looks and works the same everywhere and an enrichment lands in
+ * Open the city map over `parent`: the one way every screen opens it (a race's
+ * or free roam's minimap and Tab, the menu's event card and its race step's
+ * course map), so it looks and works the same everywhere and an enrichment lands in
  * all of them at once. The caller disposes it when onClose fires.
  */
 export function openFullMap(parent: HTMLElement, world: World, player: MapCar, opts: FullMapOptions): FullMap {

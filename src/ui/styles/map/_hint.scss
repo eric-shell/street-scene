@@ -1,12 +1,12 @@
-/* ---------- free roam city map ---------- */
+/* ---------- the minimap opens the city map ---------- */
 @use '../abstracts/media';
 @use '../abstracts/palette';
-/* In the open world the minimap opens the full map (click or Tab); a small hint sits above it. */
-.hud.open-world .hud-map {
+/* The minimap opens the full map (click or Tab) in every race and free roam; free roam shows a small hint above it. */
+.hud .hud-map {
   pointer-events: auto;
   cursor: pointer;
 }
-.hud.open-world .hud-map:hover {
+.hud .hud-map:hover {
   filter: brightness(1.15);
 }
 .hud-map-hint {

@@ -38,7 +38,7 @@ import type { CameraMode } from '../render/camera/camera';
 import { InputManager } from '../input/inputManager';
 import { Rumble } from '../input/rumble';
 import { Hud, HudCar, HudData } from '../ui/hud';
-import { openFullMap, type FullMap, type WaypointStore } from '../ui/fullMap/fullMap';
+import { courseFor, openFullMap, type FullMap, type WaypointStore } from '../ui/fullMap/fullMap';
 import { placeName } from '../ui/places';
 import { toast } from '../ui/dom';
 import { Compass, MapIcon, MapPinned } from '../ui/icons';
@@ -256,7 +256,7 @@ export class RaceSession {
   private liveView: 'tv' | 'orbit' | null = null;
   /** Photo mode drone (0 key) and whether it paused the sim (live sessions hold still while it flies). */
   private drone: DroneMode | null = null;
-  /** Free roam city map (Tab or a click on the minimap); the session holds still while it is open. */
+  /** The full city map (Tab or a click on the minimap); the session holds still while it is open. */
   private fullMap: FullMap | null = null;
   /** The waypoint set on the city map (render only, never RaceState), and whether it can be reached yet. */
   private readonly wp: WaypointStore;
@@ -364,16 +364,16 @@ export class RaceSession {
         onControls: (open) => this.pauseForControls(open),
       });
       this.hud.setCard(this.card);
-      // Tab opens the city map while driving and closes it again; in menus (paused) it keeps moving focus.
-      const onTab = (e: KeyboardEvent) => {
-        if (e.code !== 'Tab' || e.repeat || e.altKey || e.ctrlKey || e.metaKey) return;
-        if (!this.fullMap && (this.paused || this.drone || this.cine.active)) return;
-        e.preventDefault();
-        this.toggleMap();
-      };
-      window.addEventListener('keydown', onTab);
-      this.unsub.push(() => window.removeEventListener('keydown', onTab));
     }
+    // Tab opens the city map while driving and closes it again; in menus (paused) it keeps moving focus.
+    const onTab = (e: KeyboardEvent) => {
+      if (e.code !== 'Tab' || e.repeat || e.altKey || e.ctrlKey || e.metaKey) return;
+      if (!this.fullMap && (this.paused || this.drone || this.cine.active || this.isReplay)) return;
+      e.preventDefault();
+      this.toggleMap();
+    };
+    window.addEventListener('keydown', onTab);
+    this.unsub.push(() => window.removeEventListener('keydown', onTab));
     this.sparks = new Sparks(settings.quality);
     this.night.scene.add(this.sparks.mesh);
     if (this.race.config.mode === 'waypoint' && this.race.world.route.waypoints) {
@@ -544,19 +544,21 @@ export class RaceSession {
     } else if (this.finishedAt >= 0 && !this.resultsShown) this.skipFinish = true;
   }
 
-  /** True while the free roam city map is open (Escape closes it). */
+  /** True while the city map is open (Escape closes it). */
   get mapOpen(): boolean {
     return !!this.fullMap;
   }
 
   /**
-   * Free roam: Tab or a click on the minimap opens the full city map over the
-   * paused session; Tab, Escape, its close button or the backdrop close it.
-   * A click on the map sets the waypoint the HUD then points to.
+   * Tab or a click on the minimap opens the full city map over the paused
+   * session (the same map as the menu's, through openFullMap); Tab, Escape,
+   * its close button or the backdrop close it. In free roam a click on the
+   * map sets the waypoint the HUD then points to; a race shows its course in
+   * its type's color instead (its waypoints are the race's own).
    */
   toggleMap(): void {
     if (this.fullMap) return this.closeMap();
-    if (!this.openWorld || this.isReplay || this.drone || this.cine.active || this.paused) return;
+    if (this.isReplay || this.drone || this.cine.active || this.paused || this.race.phase === 'finished') return;
     const p = this.curr[0];
     this.paused = true;
     this.input.releaseAll();
@@ -564,7 +566,9 @@ export class RaceSession {
     const world = this.race.world;
     this.fullMap = openFullMap(this.uiRoot, world, { x: p.x, z: p.z, yaw: p.yaw, isPlayer: true }, {
       onClose: () => this.closeMap(),
-      waypoint: { get: () => this.wp.get(), set: (w) => this.setWaypoint(w) },
+      ...(this.openWorld
+        ? { waypoint: { get: () => this.wp.get(), set: (w: Vec2 | null) => this.setWaypoint(w) } }
+        : { course: courseFor(this.race.config.mode, world.route) }),
       event: world.event?.name,
       seed: this.opts.seedText ?? String(this.opts.config.seed),
     });

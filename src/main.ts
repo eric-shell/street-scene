@@ -39,7 +39,7 @@ import { mainMenu, type MainMenu, type MenuStep } from './ui/menu';
 import { showSplash } from './ui/splash';
 import { toast } from './ui/dom';
 import { Check, Info, Shuffle } from './ui/icons';
-import { openFullMap, type FullMap, type FullMapOptions, type WaypointStore } from './ui/fullMap/fullMap';
+import { courseFor, openFullMap, type FullMap, type WaypointStore } from './ui/fullMap/fullMap';
 import type { Vec2 } from './sim/math';
 import { door, transitioning, wipe, type WipeCard } from './ui/transitions';
 import { courseArt, courseRoute, type CourseRoutes } from './ui/menuMaps';
@@ -216,24 +216,6 @@ function waypointFor(seed: number): WaypointStore {
   };
 }
 
-/** What the map shows for each race type picked on the menu: its course in the type's color, or the whole city for free roam. */
-function courseFor(t: RaceType, st: StreetStage): FullMapOptions['course'] {
-  switch (t) {
-    case 'circuit':
-      return { route: st.world.route, ink: 'orange', label: 'Circuit' };
-    case 'sprint':
-      return { route: stageCourses?.sprint ?? null, ink: 'yellow', label: 'Sprint' };
-    case 'drag':
-      return { route: stageCourses?.drag ?? null, ink: 'purple', label: 'Drag strip' };
-    case 'waypoint':
-      return { route: stageCourses?.waypoint ?? null, ink: 'cyan', label: 'Waypoint race' };
-    case 'drift':
-      return { route: st.world.route, ink: 'red', label: 'Drift', zones: true };
-    case 'roam':
-      return { route: null, ink: 'green', label: 'Free roam' };
-  }
-}
-
 /**
  * The full city map over the menu (the same map free roam opens, through
  * openFullMap), following the cruising car, on a race type's course when the
@@ -251,7 +233,8 @@ function openMenuMap(type?: RaceType): void {
     event: st.world.event?.name,
     seed: seedStr,
     waypoint: waypointFor(st.world.seed),
-    course: type ? courseFor(type, st) : undefined,
+    // The menu city's own route is the circuit; the other courses are planned on it for the race step.
+    course: type ? courseFor(type, stageCourses ? courseRoute(stageCourses, type) : st.world.route) : undefined,
   });
 }
 

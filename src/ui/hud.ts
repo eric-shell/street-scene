@@ -107,7 +107,7 @@ export class Hud {
   private wpAngle = NaN;
   private msgTimer = 0;
   private lastCountdown: number | null = null;
-  /** Free roam: a click on the minimap opens the full city map (the session sets this). */
+  /** A click on the minimap opens the full city map (the session sets this). */
   onMapClick: (() => void) | null = null;
 
   constructor(parent: HTMLElement, world: World) {
@@ -170,11 +170,9 @@ export class Hud {
     this.boostCv = q('.hud-boost') as HTMLCanvasElement;
     this.map = new Minimap(world);
     this.root.append(this.map.canvas);
-    // Only in the open world (CSS makes the map clickable there), with a hint that it opens.
+    // Clickable in every race and free roam, with a hint (free roam's) that it opens.
     this.map.canvas.title = 'City map (Tab)';
-    this.map.canvas.addEventListener('click', () => {
-      if (this.root.classList.contains('open-world')) this.onMapClick?.();
-    });
+    this.map.canvas.addEventListener('click', () => this.onMapClick?.());
     const hint = document.createElement('div');
     hint.className = 'hud-map-hint';
     hint.append(icon(Compass, { size: 13 }), 'Map · Tab');
