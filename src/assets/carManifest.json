@@ -10,98 +10,47 @@
       "file": "cars/protoHatch.glb",
       "baseBodyNode": "Body",
       "wheelNodes": [],
-      "wheelRadius": 0.328,
+      "wheelRadius": 0.309,
       "wheelWidth": 0.24,
       "wheels": {
         "FL": [
-          0.743,
-          0.3284,
-          1.3125
+          0.7459,
+          0.3088,
+          1.259
         ],
         "FR": [
-          -0.743,
-          0.3284,
-          1.3125
+          -0.7459,
+          0.3088,
+          1.259
         ],
         "RL": [
-          0.743,
-          0.3284,
-          -1.3125
+          0.7459,
+          0.3088,
+          -1.259
         ],
         "RR": [
-          -0.743,
-          0.3284,
-          -1.3125
+          -0.7459,
+          0.3088,
+          -1.259
         ]
       },
-      "wheelbase": 2.625,
-      "trackFront": 1.486,
-      "trackRear": 1.486,
+      "wheelbase": 2.518,
+      "trackFront": 1.492,
+      "trackRear": 1.492,
       "dimensions": {
-        "length": 4.41,
-        "width": 1.99,
-        "height": 1.39
+        "length": 4.17,
+        "width": 2.03,
+        "height": 1.28
       },
       "materialMap": {},
       "defaultWheel": "wheel_kiba",
       "defaultPaint": "#1f6bff",
       "selectable": true,
       "engine": {
-        "layout": "B4",
-        "aspiration": "turbo",
-        "position": "front",
-        "voice": { "headers": "unequal", "muffler": "sport" }
-      }
-    },
-    {
-      "id": "protoCompact",
-      "displayName": "Proto Compact",
-      "source": "eshell",
-      "provisional": false,
-      "file": "cars/protoCompact.glb",
-      "baseBodyNode": "Body",
-      "wheelNodes": [],
-      "wheelRadius": 0.31,
-      "wheelWidth": 0.24,
-      "wheels": {
-        "FL": [
-          0.7291,
-          0.3098,
-          1.285
-        ],
-        "FR": [
-          -0.7291,
-          0.3098,
-          1.285
-        ],
-        "RL": [
-          0.7291,
-          0.3098,
-          -1.285
-        ],
-        "RR": [
-          -0.7291,
-          0.3098,
-          -1.285
-        ]
-      },
-      "wheelbase": 2.57,
-      "trackFront": 1.458,
-      "trackRear": 1.458,
-      "dimensions": {
-        "length": 4.31,
-        "width": 1.93,
-        "height": 1.28
-      },
-      "materialMap": {},
-      "defaultWheel": "wheel_arashi",
-      "defaultPaint": "#ffcc1f",
-      "selectable": true,
-      "engine": {
-        "layout": "I6",
+        "layout": "VR6",
         "aspiration": "na",
         "position": "front",
-        "voice": { "pipes": 2, "muffler": "sport", "intake": "itb" }
+        "voice": { "headers": "unequal", "headerSpread": 0.35, "pipes": 1, "muffler": "sport" }
       }
     },
     {
@@ -112,47 +61,47 @@
       "file": "cars/protoCoupe.glb",
       "baseBodyNode": "Body",
       "wheelNodes": [],
-      "wheelRadius": 0.311,
+      "wheelRadius": 0.327,
       "wheelWidth": 0.24,
       "wheels": {
         "FL": [
-          0.7836,
-          0.3109,
-          1.275
+          0.7236,
+          0.3269,
+          1.2125
         ],
         "FR": [
-          -0.7836,
-          0.3109,
-          1.275
+          -0.7236,
+          0.3269,
+          1.2125
         ],
         "RL": [
-          0.7836,
-          0.3109,
-          -1.275
+          0.7236,
+          0.3269,
+          -1.2125
         ],
         "RR": [
-          -0.7836,
-          0.3109,
-          -1.275
+          -0.7236,
+          0.3269,
+          -1.2125
         ]
       },
-      "wheelbase": 2.55,
-      "trackFront": 1.567,
-      "trackRear": 1.567,
+      "wheelbase": 2.425,
+      "trackFront": 1.447,
+      "trackRear": 1.447,
       "dimensions": {
-        "length": 4.5,
-        "width": 1.97,
-        "height": 1.13
+        "length": 4.31,
+        "width": 1.88,
+        "height": 1.12
       },
       "materialMap": {},
       "defaultWheel": "wheel_hoshi",
       "defaultPaint": "#ff6a00",
       "selectable": true,
       "engine": {
-        "layout": "I6",
+        "layout": "R2",
         "aspiration": "turbo",
         "position": "front",
-        "voice": { "pipes": 1, "muffler": "quiet" }
+        "voice": { "pipes": 1, "muffler": "sport" }
       }
     },
     {
@@ -163,47 +112,47 @@
       "file": "cars/protoWagon.glb",
       "baseBodyNode": "Body",
       "wheelNodes": [],
-      "wheelRadius": 0.369,
+      "wheelRadius": 0.302,
       "wheelWidth": 0.24,
       "wheels": {
         "FL": [
-          0.8277,
-          0.369,
-          1.4645
+          0.6872,
+          0.302,
+          1.2985
         ],
         "FR": [
-          -0.8277,
-          0.369,
-          1.4645
+          -0.6872,
+          0.302,
+          1.2985
         ],
         "RL": [
-          0.8277,
-          0.369,
-          -1.4645
+          0.6872,
+          0.302,
+          -1.2985
         ],
         "RR": [
-          -0.8277,
-          0.369,
-          -1.4645
+          -0.6872,
+          0.302,
+          -1.2985
         ]
       },
-      "wheelbase": 2.929,
-      "trackFront": 1.655,
-      "trackRear": 1.655,
+      "wheelbase": 2.597,
+      "trackFront": 1.374,
+      "trackRear": 1.374,
       "dimensions": {
-        "length": 5,
-        "width": 2.12,
-        "height": 1.32
+        "length": 4.49,
+        "width": 1.88,
+        "height": 1.31
       },
       "materialMap": {},
       "defaultWheel": "wheel_senko",
       "defaultPaint": "#7d8186",
       "selectable": true,
       "engine": {
-        "layout": "V8",
+        "layout": "V6",
         "aspiration": "turbo",
         "position": "front",
-        "voice": { "pipes": 2, "muffler": "sport", "crank": "cross" }
+        "voice": { "pipes": 2, "muffler": "sport" }
       }
     },
     {

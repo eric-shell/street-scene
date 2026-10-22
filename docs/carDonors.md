@@ -52,8 +52,10 @@ A recipe adds only what that donor needs:
 | `tires` | the tire material, when it is not named tire or tyre (the axles, the scale and the track come from it) |
 | `drop` | whole meshes to drop by object or parent name |
 | `nose` | `'+y'` when the model faces +Y |
+| `turn` | Euler degrees (XYZ) that stand a model lying on its side up Z-up, before `nose`: `(-90, 0, 0)` for one with -Y up facing -Z |
 | `patches` | boxes to remove (`flush=False`: a roof plate) or press flush into the panel (sunroof, fuel door) |
 | `recolor`, `cull` | face fixes after the join (a glass roof to `Paint`) |
+| `islands` | loose islands to delete after the join, `pred(faces, lo, hi, materials)`: what `cull`'s face boxes would cut too wide (wiper arms over a black cowl, an antenna) |
 
 An unclassified material stops the run with its name, so nothing ships by accident. Look at the import's materials first: one listing with face counts and bounds per material says which is which.
 
@@ -136,7 +138,8 @@ Findings that drove the pipeline, now automatic:
 
 | Car | Model | Author | Licence |
 |---|---|---|---|
-| Proto Wagon | Audi RS6 C8 | Brahekoss123 | CC BY 4.0 |
-| Proto Hatch | 2011 Subaru Impreza WRX STI hatchback | ddiaz-design | CC BY-NC-SA, **replace before release** |
-| Proto Compact | 2002 Acura RSX Type-S | ddiaz-design | CC BY-NC-SA, **replace before release** |
-| Proto Coupe | Toyota Supra MK4 | Pooya_dh | CC BY-NC, **replace before release** |
+| Proto Hatch | 2002_volkswagen_golf_r32_mk4 (VW Golf R32 Mk4) | tangwang920 | CC BY 4.0 |
+| Proto Coupe | Mazda RX7 FD 1999 | niev | CC BY 4.0 |
+| Proto Wagon | 1992 Audi S2 Avant | tonielpro520 | CC BY 4.0 |
+
+The first set (2026-10-21: an RS6 C8, a WRX STI hatch, an RSX Type-S and a Supra MK4) was replaced on 2026-10-22: three of its four licences were NonCommercial. The Proto Compact went with them.

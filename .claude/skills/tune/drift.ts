@@ -20,7 +20,7 @@ const world = {
 } as unknown as World;
 
 const DEG = Math.PI / 180;
-const carId = process.argv[2] ?? 'protoCompact';
+const carId = process.argv[2] ?? 'proto';
 const t = getBaseTuning(carId);
 const inp = (p: Partial<InputFrame>): InputFrame => ({ throttle: 0, brake: 0, steer: 0, handbrake: false, nitrous: false, shift: 0, reset: false, ...p });
 

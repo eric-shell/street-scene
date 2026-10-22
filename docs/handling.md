@@ -44,7 +44,7 @@ The engine's inertia matters: in first gear the drivetrain's reflected inertia i
 | `tires.slideGripLong` | 0.7 | Lengthways sliding grip. Dry tarmac keeps 75 to 90% of peak when sliding; 0.7 is the arcade end of that, low enough that a stock car's second gear torque spins its rear in a drift, high enough for burnouts to still go. |
 | `engine.inertia` | 0.15 | Flywheel, crank and clutch (kg m²), reflected through the gearing squared (first gear: about 30 kg m² at the wheels). In first the stock rear reaches the limiter in about 0.65 s and hooks back up in under 0.5 s; 0.2 made both a third slower. |
 | `traction.wheelInertia` | 1.2 | Wheel, tire, hub, disc and half shaft (kg m²). |
-| `brakes.handbrakeTorque` | 6000 | Above the rear tires' resistance (about 3100 Nm on the Proto Compact), so it locks at once. |
+| `brakes.handbrakeTorque` | 6000 | Above the rear tires' resistance (about 3100 Nm on base tuning), so it locks at once. |
 | `traction.clutchKickSpeed` | 6 | Tread speed a kick adds (m/s). |
 | `traction.tcSlipTarget` / `tcMinDrive` | 0.94 / 0.2 | Traction control's drive cap inside the peak, and the drive it always leaves. |
 | `steering.counterSteerAllowance` | 1 | Full lock reaches the direction of travel at any slip angle. |

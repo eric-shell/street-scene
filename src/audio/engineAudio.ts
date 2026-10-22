@@ -433,7 +433,7 @@ export class EngineVoice {
  * flywheel that chases the throttle, falls back to idle and bounces off the
  * rev limiter. Owns its EngineVoice (null when Web Audio is unavailable).
  *
- *   const eng = new FreeRevEngine(manifestCar('protoCompact').engine, { idle: 900, redline: 7600 });
+ *   const eng = new FreeRevEngine(manifestCar('protoHatch').engine, { idle: 900, redline: 6800 });
  *   // every frame: eng.update(throttle01, dt);   eng.rpm for a tach
  *   eng.dispose();
  */

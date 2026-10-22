@@ -33,17 +33,17 @@ Material names on wheel models carry no meaning (`Material.026`, `blinn1`, `Main
 
 1. **Gather:** joins every mesh in world space. It drops scene junk by whole-word names below the import root (stand, ground, plane, shadow, logo, badge, decal, brake, caliper, disc, rotor), plus anything in the recipe's `drop`. It keeps the authored normals.
 2. **Frame:** the axle is the axis the other two are round about. The wheel is turned so the axle is X and centered.
-3. **Tire out:** an island reaching the outer radius whose tread covers the middle of its width is the source tire, and it goes. A rim lip reaches the outer radius only at its edges.
+3. **Tire out:** an island reaching the outer radius whose tread covers the middle of its width is the source tire, and it goes. A rim lip reaches the outer radius only at its edges. Sidewalls modelled as their own islands in the tread's material go with it: left in place they set the lip radius and shrink the rim (Kiba's did by 13 %, Rensa's by 20 %).
 4. **Face +X:** the hub and spokes lean their normals toward the face side; the wheel is flipped if needed.
 5. **Fit:**
    - scaled so the rim lip sits on the house tire's bead (lip radius = 0.74 × tire radius, a 16 inch rim on the 0.28 m tire);
    - squeezed along the axle to fit the tire's 0.24 m width;
    - the face set just inside the sidewall.
-6. **Dish, barrel and lip out:** walking in from the lip, the first radius where the face no longer covers every angle is where the spokes begin (`dish_start`). Everything outside it goes, because a collapse crumples round surfaces.
+6. **Dish, barrel and lip out:** walking in from the lip, the first radius where the face no longer covers every angle is where the spokes begin (`dish_start`). Everything outside it goes, because a collapse crumples round surfaces. With `lip: 'donor'` the donor's lip is measured first (`lip_profile`: the frontmost surface per radial band, and the lip edge's own depth) so the ring can be turned from it, and its rivets (small loose islands out there) stay.
 7. **House center cap:** a disc at 0.2 × the lip radius, just proud of the hub. It covers any logo; whatever stands in front of it goes.
-8. **Reduce:** culls what cannot be seen from the face side, collapses the donor face to `RIM_BUDGET`, and sets its authored normals back on the reduced faces.
+8. **Reduce:** culls what cannot be seen from the face side, collapses the donor face to `RIM_BUDGET` (1,300; `LIP_BUDGET`, 2,000, for a `lip: 'donor'` wheel, whose fine spokes shard at 1,300), and sets its authored normals back on the reduced faces.
 9. **House parts:**
-   - a **house ring** (lip edge and barrel) turned at 40 segments, stepping down to the spokes' depth on a deep dish;
+   - a **house ring** (lip edge and barrel) turned at 40 segments, stepping down to the spokes' depth on a deep dish; with `lip: 'donor'` its face side follows the donor's own profile and its lip edge the donor's depth, so a BBS-style deep lip or a riveted multi-piece lip stays that wheel's;
    - the **house tire**, a lathed profile with rounded shoulders.
 
    Both are smooth shaded about the axle.
@@ -60,6 +60,7 @@ Most wheels need none. The fields:
 | `dish` | where the spokes end, as a share of the lip radius, when a stepped or curved dish breaks the coverage test (0.7 to 0.75 typical) |
 | `face` | `1` or `-1` when the face direction comes out wrong |
 | `tire` | anything but `'auto'` to keep the source's outer faces |
+| `lip` | `'donor'` when the lip is the wheel's character (polished, riveted, multi-piece, stepped): turned from the donor's own profile instead of the house ring; set `dish` to where the spokes end |
 
 ## 5. Check
 
@@ -79,18 +80,20 @@ Most wheels need none. The fields:
 
 ## 7. First set (2026-10-21)
 
-Eight donors from five authors, covering mesh, multi-spoke, deep dish, three-piece, steel, wire, concept and five-spoke designs. Every wheel is 2,740 to 2,820 triangles: the donor face is about 1,300, the ring 480, the tire 960 and the cap 20. The game's wheel budget is 3,500.
+Eight donors from five authors, covering mesh, multi-spoke, deep dish, three-piece, steel, wire, concept and five-spoke designs. House-ring wheels are 2,740 to 2,820 triangles (the donor face about 1,300, the ring 480, the tire 960, the cap 20); the four `lip: 'donor'` wheels 3,840 to 4,160 (face 2,000 plus a turned lip of about 1,100). The game's wheel budget is 4,500.
 
 | Wheel | Donor (author) | Overrides | Notes |
 |---|---|---|---|
-| Kiba | BBS RS16 style mesh (TinoD2) | `drop` backdrop, `dish` 0.74 | display scene in the file |
-| Hoshi | Mugen M7 style seven spoke (TinoD2) | none | display stand dropped; a little crumple left on the outer step |
-| Rensa | Work Equip 03 style deep dish (TinoD2) | none | dish detected; logo plane dropped |
-| Tsuki | Work Meister S1 style three piece (alexanderlyreo) | `dish` 0.74 | no source tire |
-| Ginga | Stance steel 13x10 (terllok) | `dish` 0.7 | |
-| Hibana | Wire rim (3dpeter) | none | dish detected, spokes kept |
-| Senko | Concept rim (LagzDesign) | none | |
-| Arashi | Five spoke rim (UnforgettableName) | none | no source tire |
+| Kiba | BBS RS16 style mesh (TinoD2) | `drop` backdrop (any number), `lip: 'donor'`, `dish` 0.66 | display scene in the file; its own deep polished lip and rivet ring, 4,000 triangles |
+| Hoshi | Mugen M7 style seven spoke (TinoD2) | `lip: 'donor'`, `dish` 0.8 | display stand dropped; its own riveted lip, 3,840 |
+| Rensa | Work Equip 03 style deep dish (TinoD2) | `face` 1, `lip: 'donor'`, `dish` 0.74 | logo plane dropped; its own deep stepped lip, 4,160 |
+| Tsuki | Work Meister S1 style three piece (alexanderlyreo) | `lip: 'donor'`, `dish` 0.74 | no source tire; its own three piece lip and rivets, 4,160 |
+| Ginga | Stance steel 13x10 (terllok) | `dish` 0.7 | house ring |
+| Hibana | Wire rim (3dpeter) | none | house ring |
+| Senko | Concept rim (LagzDesign) | none | house ring: its spokes run out to a thin plain ring; turned from its own profile, the spoke tips left slivers |
+| Arashi | Five spoke rim (UnforgettableName) | none | no source tire; house ring |
+
+Rebuilt 2026-10-22: the first set's Kiba framed a backdrop (its `drop` matched one session's material number), and Kiba, Rensa and Tsuki had lost their spokes or shrunk behind leftover sidewalls; the multi-piece wheels lost their lips to the house ring.
 
 Learnings:
 - **Material names cannot be trusted on wheels.** Geometry (round axes, radial bands, tread coverage) classifies every wheel the same way.

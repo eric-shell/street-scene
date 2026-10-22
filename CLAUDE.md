@@ -15,7 +15,7 @@ Street Scene is a browser street racer (TypeScript, three.js, Vite, Vitest, SCSS
 | Browser tests, about 50 s per spec and 5+ min for all (Playwright, Chromium, software WebGL; starts the dev server if needed) | `npm run e2e -- e2e/raceMap.spec.ts` (`-g "music"` narrows further) |
 | Production build (typecheck + vite build) | `npm run build` |
 | Validate the parts catalog against `public/` | `npm run validate` |
-| Inspect a GLB (nodes, materials, triangles) | `npm run inspect -- public/cars/protoCompact.glb` |
+| Inspect a GLB (nodes, materials, triangles) | `npm run inspect -- public/cars/protoHatch.glb` |
 | Audit a shipped car against its reference spec (proportions, pillars, mirrors, handles, lamps) | `npm run audit -- protoHatch` |
 | Rebuild car assets from the authored .blend cars and FBX imports (needs Blender, rewrites generated files) | `npm run assets` |
 | Import music / rebuild the music catalog (needs ffmpeg) | `npm run music` |

@@ -80,9 +80,9 @@ Every number lives in `house.features` (carSpecs.json) and every builder in `scr
 
 | Car | Donors | Composition | Front | Rear |
 |---|---|---|---|---|
-| Proto Hatch | 2010 WRX hatch x 2012 Golf R Mk6 | WRX stance, tall arches, flares; Golf's flat hood, upright tailgate, one crisp shoulder crease; 4 doors, pillars A B C D with a quarter glass | teardrop, Light strip along the bottom | tall vertical units at the D pillar wrapping the corner, Light outer block, thin bar across the tailgate |
-| Proto Compact | 1999 BMW 318ti x 2003 Acura RSX | 318ti long doors, quarter windows, tail cut short behind the axle; RSX flatter fastback glass and clean sides; 2 doors, pillars A B C | flat long cover climbing the fender with twin rounds, Light strip | L units wrapping onto the tailgate with a Light inner block |
-| Proto Coupe | 1999 Supra JZA80 x BMW E46 M3 | Supra long hood, short deck, rounded greenhouse; M3 flared arches, kidneys, side gill; 2 doors, pillars A B C | slim wedge cover with twin rounds, Light outer block | dark panel with twin rounds in the E46's L line |
+| Proto Hatch | 2002 VW Golf R32 Mk4 (one donor, kept whole) | the donor's body at true size: three doors, pillars A B C, flat roof to a steep tailgate | the Golf's oval covers, kept | the Golf's corner units, kept |
+| Proto Coupe | 1999 Mazda RX-7 FD (one donor, kept whole) | the donor's body at true size: two doors, bubble cabin, glass hatch, wing | slim bumper lamps, pop-ups modelled raised | full width tail bar |
+| Proto Wagon | 1992 Audi S2 Avant (one donor, kept whole) | the donor's body at true size: four doors, pillars A B C D, roof rails | square headlights, kept | full width tail bar |
 
 Full briefs, dimensions with sources and `take` lists: `scripts/blender/carSpecs.json`; `npm run audit -- <carId>` prints them with the numbers.
 

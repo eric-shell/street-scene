@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Biquad, CHAIN, LAYOUT_VOICE, buildProgram, EngineSynth, kWeighting, renderImpulse, type EngineProgram } from '../src/audio/engineSynth';
-import { ENGINE_LAYOUTS, type EngineLayout, type EngineSpec } from '../src/shared/carSpec';
+import { ENGINE_LAYOUTS, engineSpecErrors, type EngineLayout, type EngineSpec } from '../src/shared/carSpec';
 import manifest from '../src/assets/carManifest.json';
 
 const SR = 48000;
@@ -72,27 +72,39 @@ describe('engine programs', () => {
     }
   });
 
-  it('read the manifest cars: boxer on unequal headers, twin pipe throttle body six, single pipe turbo six', () => {
+  it('read the manifest cars: single pipe VR6, turbo twin rotor, twin pipe turbo V6', () => {
     const car = (id: string) => buildProgram(manifest.cars.find((c) => c.id === id)!.engine as EngineSpec);
     const hatch = car('protoHatch');
-    const compact = car('protoCompact');
     const coupe = car('protoCoupe');
-    // The Hatch's left bank pair arrives over a millisecond late and weaker.
-    expect(hatch.pipes).toBe(1);
-    expect(Math.max(...hatch.cylinders.map((c) => c.delay))).toBeGreaterThan(0.0012);
-    expect(Math.min(...hatch.cylinders.map((c) => c.gain))).toBeLessThan(0.7);
-    expect(compact.pipes).toBe(2);
-    expect(compact.intake.gain).toBeGreaterThan(coupe.intake.gain);
-    expect(coupe.pipes).toBe(1);
-    // The turbine smears the Coupe's pulses: duller band limit, less edge, no sharp rise.
-    expect(coupe.lowpass).toBeLessThan(compact.lowpass);
-    expect(coupe.edge).toBeLessThan(compact.edge);
-    expect(coupe.pulse.rise).toBeGreaterThan(compact.pulse.rise);
-    // The Wagon: a cross-plane V8 with a pipe per bank.
     const wagon = car('protoWagon');
-    expect(wagon.cylinders).toHaveLength(8);
+    // The Hatch's VR6: six cylinders on one pipe. 1-5-3-6-2-4 fires three from the near side of the narrow V,
+    // then three from the far side, whose longer runners (unequal headers, 0.35 m) make them arrive a
+    // millisecond late and weaker: a beat once a cycle, the growl.
+    expect(hatch.cylinders).toHaveLength(6);
+    expect(hatch.pipes).toBe(1);
+    const late = hatch.cylinders.slice(3);
+    expect(Math.min(...late.map((c) => c.delay))).toBeGreaterThan(0.0009);
+    expect(Math.max(...hatch.cylinders.slice(0, 3).map((c) => c.delay))).toBeLessThan(0.0005);
+    expect(Math.max(...late.map((c) => c.gain))).toBeLessThan(0.75);
+    // The Coupe's twin rotor fires each rotor once per turn; its turbines smear the pulses against the
+    // naturally aspirated Hatch: duller band limit, less edge, a softer rise.
+    expect(coupe.cylinders).toHaveLength(2);
+    expect(coupe.pipes).toBe(1);
+    expect(coupe.lowpass).toBeLessThan(hatch.lowpass);
+    expect(coupe.edge).toBeLessThan(hatch.edge);
+    expect(coupe.pulse.rise).toBeGreaterThan(hatch.pulse.rise);
+    // The Wagon: a V6 with a pipe per bank.
+    expect(wagon.cylinders).toHaveLength(6);
     expect(wagon.pipes).toBe(2);
     expect(new Set(wagon.cylinders.map((c) => c.pipe)).size).toBe(2);
+    // The spread is the car's to set, and a crossover hands a share of each bank to the other pipe.
+    const wide = buildProgram({ ...spec('VR6'), voice: { headers: 'unequal', headerSpread: 0.6 } });
+    expect(Math.max(...wide.cylinders.map((c) => c.delay))).toBeGreaterThan(Math.max(...hatch.cylinders.map((c) => c.delay)));
+    expect(buildProgram({ ...spec('V8'), voice: { pipes: 2, crossover: 'x' } }).cylinders.every((c) => c.cross === 0.45)).toBe(true);
+    expect(buildProgram({ ...spec('V8'), voice: { pipes: 2, crossover: 'h' } }).cylinders.every((c) => c.cross === 0.2)).toBe(true);
+    expect(buildProgram({ ...spec('I4'), voice: { crossover: 'x' } }).cylinders.every((c) => c.cross === 0)).toBe(true);
+    expect(engineSpecErrors({ ...spec('I4'), voice: { headerSpread: 2 } })).toEqual([expect.stringContaining('engine.voice.headerSpread 2 is not a number from 0 to 1')]);
+    expect(engineSpecErrors({ ...spec('I4'), voice: { headers: 'unequal', headerSpread: 0.35, crossover: 'h' } })).toEqual([]);
     // A rival's lite program keeps the exhaust but drops the detail.
     const lite = buildProgram(spec('I6'), { lite: true });
     expect(lite.intake.gain).toBe(0);

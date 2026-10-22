@@ -20,7 +20,6 @@ Hoods and roofs (Kurogane, Hayate, Tsubame): carbon with louvres / vortex genera
 a cowl bulge / rally roof scoop, twin contrast stripes over both.
 """
 SEAMS = {
-    'protoCompact': dict(YF=-1.56, YR=1.56, ZF=0.505, ZR=0.595, ZS=0.285, YS=0.93, XS=0.70),
     'protoHatch': dict(YF=-1.54, YR=1.54, ZF=0.49, ZR=0.60, ZS=0.26, YS=0.86, XS=0.68),
     'protoCoupe': dict(YF=-1.6, YR=1.6, ZF=0.47, ZR=0.64, ZS=0.26, YS=0.95, XS=0.74),
     'protoWagon': dict(YF=-1.66, YR=1.66, ZF=0.48, ZR=0.62, ZS=0.27, YS=0.98, XS=0.8),

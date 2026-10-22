@@ -1,7 +1,7 @@
 {
   "_readme": [
     "Street Scene driving parameters: the ONE file that holds every car physics number.",
-    "base: the shared tuning every car starts from (it is exactly the Proto Compact / protoCompact).",
+    "base: the shared tuning every car starts from (a front inline 6, rear wheel drive; the retired Proto Compact drove on it, and tests drive it as `proto`).",
     "cars.<id>: per car overrides, merged over base. Write absolute values (e.g. \"mass\": 2000), only the keys that differ. Nested objects merge key by key, arrays (torqueCurve, ratios) replace the whole array.",
     "Keys starting with _ are comments and are ignored. Unknown keys fail loudly at startup, so typos never go unnoticed.",
     "drivetrain.layout is \"rwd\", \"awd\" or \"fwd\". awdFrontShare is the AWD torque share sent to the front axle (0.4 = 40/60).",
@@ -131,80 +131,71 @@
     }
   },
   "cars": {
-    "protoCompact": {
-      "_name": "Proto Compact: front inline 6, rev happy, rear wheel drive. Base engine; the final drive is shortened by its true size tire over the old shared 0.28 m one (0.31 / 0.28), so it keeps the gear speeds and the launch it was tuned with.",
-      "drivetrain": { "layout": "rwd" },
-      "gearbox": { "finalDrive": 4.32 }
-    },
     "protoHatch": {
-      "_name": "Proto Hatch: front turbo flat 4, front wheel drive. Lighter, a flat turbo torque plateau, shorter redline and a taller final drive; the front tires do all the work.",
-      "mass": 1400,
-      "drivetrain": { "layout": "fwd" },
-      "engine": {
-        "redline": 7200,
-        "torqueCurve": [
-          [800, 130],
-          [2000, 225],
-          [2800, 290],
-          [4500, 300],
-          [5800, 285],
-          [6600, 250],
-          [7200, 215]
-        ],
-        "torqueMul": 0.84
-      },
-      "gearbox": { "finalDrive": 3.55 },
-      "tires": { "gripFront": 1.66, "gripRear": 1.3 }
-    },
-    "protoCoupe": {
-      "_name": "Proto Coupe: front twin turbo inline 6, rear wheel drive. Heavier than the Compact, a big mid range turbo plateau that still revs out, longer gearing.",
-      "mass": 1560,
-      "drivetrain": { "layout": "rwd" },
-      "engine": {
-        "redline": 7600,
-        "torqueCurve": [
-          [800, 150],
-          [2000, 250],
-          [3000, 330],
-          [4500, 345],
-          [5800, 330],
-          [6800, 290],
-          [7600, 250]
-        ],
-        "torqueMul": 0.84
-      },
-      "gearbox": { "finalDrive": 3.6 },
-      "tires": { "gripFront": 1.64, "gripRear": 1.3 }
-    },
-    "protoWagon": {
-      "_name": "Proto Wagon: front twin turbo V8, all wheel drive (40/60), eight speeds. The heaviest and longest car: a huge flat torque plateau from low rpm and AWD launch, a short redline, more yaw inertia and brakes to match the mass.",
-      "mass": 1820,
-      "yawInertiaScale": 0.95,
-      "cgHeight": 0.44,
-      "drivetrain": { "layout": "awd", "awdFrontShare": 0.4 },
+      "_name": "Proto Hatch (Golf R32 Mk4 donor): front naturally aspirated VR6, all wheel drive biased to the front (a Haldex coupling sends the rear its share). No boost: torque builds to a broad plateau around 3,000 rpm and fades gently to a 6,800 rpm redline.",
+      "mass": 1480,
+      "drivetrain": { "layout": "awd", "awdFrontShare": 0.6 },
       "engine": {
         "redline": 6800,
         "torqueCurve": [
-          [800, 180],
-          [1800, 340],
-          [2500, 410],
-          [4500, 420],
-          [5600, 395],
-          [6300, 345],
-          [6800, 300]
+          [800, 170],
+          [2000, 270],
+          [2800, 315],
+          [3200, 320],
+          [4500, 305],
+          [5800, 285],
+          [6800, 250]
         ],
-        "torqueMul": 0.79,
+        "torqueMul": 0.86
+      },
+      "gearbox": { "finalDrive": 3.6 },
+      "tires": { "gripFront": 1.62, "gripRear": 1.36 }
+    },
+    "protoCoupe": {
+      "_name": "Proto Coupe (RX-7 FD donor): front sequential twin turbo twin rotor, rear wheel drive. The lightest car: the primary turbo fills the low range, the secondary takes over near 4,500 rpm and it pulls to an 8,000 rpm redline; five speeds on a short final drive.",
+      "mass": 1280,
+      "drivetrain": { "layout": "rwd" },
+      "engine": {
+        "redline": 8000,
+        "torqueCurve": [
+          [800, 110],
+          [2000, 215],
+          [3000, 275],
+          [4000, 285],
+          [4500, 300],
+          [5500, 314],
+          [6500, 300],
+          [7500, 265],
+          [8000, 235]
+        ],
+        "torqueMul": 0.8
+      },
+      "gearbox": { "ratios": [3.48, 2.02, 1.39, 1.0, 0.72], "finalDrive": 4.3 },
+      "tires": { "gripFront": 1.64, "gripRear": 1.3 }
+    },
+    "protoWagon": {
+      "_name": "Proto Wagon (S2 Avant donor): front twin turbo 90 degree V6, all wheel drive split evenly (a Torsen centre differential). A flat biturbo torque plateau from 1,800 rpm and an AWD launch; the longest car, a little more yaw inertia.",
+      "mass": 1550,
+      "yawInertiaScale": 0.95,
+      "drivetrain": { "layout": "awd", "awdFrontShare": 0.5 },
+      "engine": {
+        "redline": 7000,
+        "torqueCurve": [
+          [800, 170],
+          [1800, 370],
+          [2500, 400],
+          [3600, 400],
+          [4800, 385],
+          [5800, 350],
+          [6500, 310],
+          [7000, 280]
+        ],
+        "torqueMul": 0.76,
         "launchRpm": 3500
       },
-      "gearbox": {
-        "ratios": [3.25, 2.3, 1.75, 1.4, 1.15, 0.97, 0.83, 0.72],
-        "finalDrive": 3.7,
-        "shiftTime": 0.18
-      },
-      "tires": { "gripFront": 1.6, "gripRear": 1.36 },
-      "brakes": { "force": 15350 },
-      "steering": { "maxDeg": 21.5 },
-      "aero": { "drag": 0.43 }
+      "gearbox": { "finalDrive": 3.62 },
+      "tires": { "gripFront": 1.6, "gripRear": 1.38 },
+      "aero": { "drag": 0.42 }
     },
     "proto": {
       "_name": "Proto RS: procedural placeholder used by tests and the asset pipeline. Not selectable. Uses base as is."

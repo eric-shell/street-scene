@@ -136,7 +136,7 @@ describe('night market', () => {
 
   it('keeps a clear lane down the middle, stalls along both curbs, crates off the curb and street furniture out', () => {
     // A stall costs a fast car a few percent of its speed and never holds a car that is moving.
-    const m = getBaseTuning('protoCompact').mass;
+    const m = getBaseTuning('proto').mass;
     for (const k of MARKET_KINDS) {
       expect(PROP_DEFS[k].breakSpeed).toBeLessThanOrEqual(0.5);
       expect(m / (m + PROP_DEFS[k].mass * PROP_DEFS[k].anchor)).toBeGreaterThan(0.94);

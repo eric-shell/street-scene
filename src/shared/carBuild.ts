@@ -122,7 +122,8 @@ const PART_ID = /^[A-Za-z0-9_\-.]{1,64}$/;
 
 /**
  * Cars renamed when they moved from IceMaan FBX imports to authored models,
- * so saved builds and share codes made before the move still load.
+ * so saved builds and share codes made before the move still load. The Proto
+ * Compact has since been retired: its builds move to the default car.
  */
 const RENAMED_CARS: Record<string, string> = { gc14: 'protoHatch', s64: 'protoCompact' };
 

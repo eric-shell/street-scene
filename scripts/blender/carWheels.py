@@ -19,6 +19,10 @@ radius; everything else is rim. The rim is scaled so its lip sits on the house t
 squeezed to fit the tire's width and turned to face +X; its barrel and lip are replaced by one
 turned house ring, the hub gets a house center cap (covering any logo), and what is left of the
 donor (the spokes and hub) is reduced to RIM_BUDGET and shaded from its own authored normals.
+A wheel whose character is its lip (a polished, riveted multi-piece lip, a stepped dish) turns
+its ring from the donor's own profile instead (recipe `lip: 'donor'`): the house ring would wipe
+out exactly what makes it that wheel, and a collapsed donor lip comes out polygonal. The donor's
+rivets stay, and its spokes get LIP_BUDGET.
 
 Wheel space (exportCar.py): center at the origin, axle along X, the face toward +X. The game
 scales a wheel so the tire's outer radius meets the car's wheel radius and remaps the rim for
@@ -31,6 +35,8 @@ TIRE_W = 0.24        # m, house tire width
 BEAD = 0.74          # rim lip radius / tire radius: a 16 inch rim on a 0.28 m tire
 TIRE_SEG = 40        # segments around the house tire
 RIM_BUDGET = 1300    # triangles for the donor face (spokes, hub); the house ring adds TIRE_SEG * 12, the tire TIRE_SEG * 24
+LIP_BUDGET = 2000    # triangles for the donor face of a `lip: 'donor'` wheel: mesh and multi-spoke faces shard at RIM_BUDGET
+LIP_BANDS = 10       # radial bands sampled for a donor lip profile; the turned lip adds TIRE_SEG * (LIP_BANDS + 4) * 2
 CAP = 0.2            # house center cap radius / rim lip radius
 
 # Dropped from every wheel by material or object name: display scenes, branding, brakes.
@@ -39,15 +45,21 @@ JUNK = r'(?i)(?<![a-z])(stand|ground|plane|shadow|floor|backdrop|logo|badge|embl
 
 WHEELS = {
     'kiba': {'name': 'BBS RS16 style mesh', 'uid': '4e50d45e5ff04d00927a50c150e088c1', 'author': 'TinoD2', 'license': 'CC Attribution',
-             'drop': r'^Material\.026$', 'dish': 0.74},
-    'hoshi': {'name': 'Mugen M7 style seven spoke', 'uid': '3efc6a0cb9cc44d9adf24e226991a261', 'author': 'TinoD2', 'license': 'CC Attribution'},
-    'rensa': {'name': 'Work Equip 03 style deep dish', 'uid': '58330f40b725444e8c00bdbbfd88cc98', 'author': 'TinoD2', 'license': 'CC Attribution'},
+             'drop': r'^Material(\.\d+)?$',   # the backdrop: Blender numbers its material per session
+             'lip': 'donor', 'dish': 0.66},   # the turned lip starts where the mesh ends; the rivets ride on it
+    'hoshi': {'name': 'Mugen M7 style seven spoke', 'uid': '3efc6a0cb9cc44d9adf24e226991a261', 'author': 'TinoD2', 'license': 'CC Attribution',
+              'lip': 'donor', 'dish': 0.8},
+    'rensa': {'name': 'Work Equip 03 style deep dish', 'uid': '58330f40b725444e8c00bdbbfd88cc98', 'author': 'TinoD2', 'license': 'CC Attribution',
+              'face': 1,   # the deep dish's barrel outweighs the thin spokes in the face-side normal vote
+              'lip': 'donor', 'dish': 0.74},
     'tsuki': {'name': 'Work Meister S1 style three piece', 'uid': '7205c04f3cb24a7dbdaf6a304fb31f21', 'author': 'alexanderlyreo', 'license': 'CC Attribution',
-              'dish': 0.74},
+              'dish': 0.74, 'lip': 'donor'},
     'ginga': {'name': 'Stance steel 13x10', 'uid': '6c8a9dc226b64454a3af8dc37f7359ec', 'author': 'terllok', 'license': 'CC Attribution',
               'dish': 0.7},
     'hibana': {'name': 'Wire rim', 'uid': 'bda093957f8e47a7b27270de6c3e0d14', 'author': '3dpeter', 'license': 'CC Attribution'},
     'senko': {'name': 'Concept rim', 'uid': 'e36860f9f8de4d8e8429cb07007142f2', 'author': 'LagzDesign', 'license': 'CC Attribution'},
+    # (Its spokes run out to a thin plain ring, which the house ring matches; turned from its own
+    # profile, the spoke tips left slivers past the lip.)
     'arashi': {'name': 'Five spoke rim', 'uid': '232904121fff4e558b55ce724df7e47f', 'author': 'UnforgettableName', 'license': 'CC Attribution'},
 }
 
@@ -134,9 +146,14 @@ def _rad(co):
 def _split_tire(bm, R):
     """Delete the source tire: islands reaching the outer radius whose tread (faces past 96 % of
     it) covers the middle of the island's width. A rim lip reaches the outer radius only at its
-    edges. Returns the faces deleted."""
+    edges. Then the rest of that tire: sidewalls modelled as their own islands, in the tread's
+    source material and outside half the radius (a bead sits near 0.75, a rim's spokes reach far
+    inside half). Left in place they set the lip radius and shrink the rim (Kiba's did by 13 %,
+    Rensa's by 20 %). Returns the faces deleted."""
     doomed = []
-    for grp in _islands(bm):
+    islands = _islands(bm)
+    tire_mats = set()
+    for grp in islands:
         vs = {v for f in grp for v in f.verts}
         if max(_rad(v.co) for v in vs) < 0.97 * R or min(_rad(v.co) for v in vs) < 0.45 * R:
             continue
@@ -145,6 +162,12 @@ def _split_tire(bm, R):
         tread = [f for f in grp if _rad(f.calc_center_median()) > 0.96 * R]
         if any(abs(f.calc_center_median().x - mid) < 0.15 * (x1 - x0) for f in tread):
             doomed += grp
+            tire_mats |= {f.material_index for f in grp}
+    if tire_mats:
+        taken = set(doomed)
+        for grp in islands:
+            if grp[0] not in taken and {f.material_index for f in grp} <= tire_mats and min(_rad(v.co) for f in grp for v in f.verts) > 0.5 * R:
+                doomed += grp
     bmesh.ops.delete(bm, geom=doomed, context='FACES')
     return len(doomed)
 
@@ -216,17 +239,54 @@ def dish_start(bm, L, sectors=36, band=0.02, share=None):
     return share, (xs[len(xs) // 2] if xs else None)
 
 
-def house_ring(bm, mat, x_face, x_back, L, share=LIP, x_dish=None, seg=TIRE_SEG):
+def lip_profile(bm, L, share, bands=LIP_BANDS):
+    """The donor's surface as seen from the front, from where the spokes end to the lip edge, as
+    (x, r) pairs from the axle outward: per radial band, the depth of its frontmost faces (the
+    90th percentile, so a rivet head does not pull it; faces turned away from the front are left
+    out, but a steep dish cone facing the axle counts). Returns (profile, depth of the lip edge):
+    the edge is measured on its own, past 0.95 of the radius, because on a deep dish it stands
+    well proud of the dish just inside it."""
+    lo, hi = share * L, 0.93 * L
+    xs = [[] for _ in range(bands)]
+    edge = []
+    for f in bm.faces:
+        c = f.calc_center_median()
+        r = _rad(c)
+        if f.normal.x > -0.2:
+            if lo <= r < hi:
+                xs[min(bands - 1, int((r - lo) / (hi - lo) * bands))].append(c.x)
+            elif r >= 0.95 * L:
+                edge.append(c.x)
+    prof = []
+    for i, b in enumerate(xs):
+        if b:
+            b.sort()
+            prof.append((b[int(len(b) * 0.9)], lo + (i + 0.5) * (hi - lo) / bands))
+    edge.sort()
+    return prof, (edge[int(len(edge) * 0.9)] if edge else (prof[-1][0] if prof else None))
+
+
+def house_ring(bm, mat, x_face, x_back, L, share=LIP, x_dish=None, seg=TIRE_SEG, profile=None, x_lip=None):
     """The barrel and lip every wheel shares: a turned ring from LIP x L at the face out over a
-    rounded lip edge at L and back along the barrel to the rim's back. Faces are marked
-    `own_normals` and smooth shaded about the axle. Returns the faces made."""
+    rounded lip edge at L and back along the barrel to the rim's back. With a donor `profile`
+    (lip_profile), the face side follows the donor's own steps instead and the lip edge sits at
+    the donor's lip depth `x_lip`. Faces are marked `own_normals` and smooth shaded about the axle; the
+    donor profile's faces are tagged 2 in `house_ring` (their normals are the lathe's own).
+    Returns the faces made."""
     t = 0.006
-    # A deep dish steps down from the face to where the spokes start.
-    inner = [(x_dish, share * L)] if x_dish is not None and x_dish < x_face - 0.012 else []
-    prof = inner + [(x_face - 0.006, share * L), (x_face - 0.002, 0.93 * L), (x_face, L - t), (x_face - t, L), (x_face - 2 * t, L - t),
-            (x_face - 3 * t, 0.95 * L), (x_back, 0.95 * L)]
+    if profile:
+        xl = x_lip if x_lip is not None else profile[-1][0]
+        prof = [(profile[0][0], share * L)] + list(profile) + [(xl, L - t), (xl - t, L), (xl - 2 * t, L - t), (xl - 3 * t, 0.95 * L), (x_back, 0.95 * L)]
+        inner = []
+    else:
+        # A deep dish steps down from the face to where the spokes start.
+        inner = [(x_dish, share * L)] if x_dish is not None and x_dish < x_face - 0.012 else []
+        prof = inner + [(x_face - 0.006, share * L), (x_face - 0.002, 0.93 * L), (x_face, L - t), (x_face - t, L), (x_face - 2 * t, L - t),
+                (x_face - 3 * t, 0.95 * L), (x_back, 0.95 * L)]
+    face_side = len(profile) + 1 if profile else 0   # profile segments: the face side up to the lip edge
     own = bm.faces.layers.int.get('own_normals') or bm.faces.layers.int.new('own_normals')
     tag = bm.faces.layers.int.get('house_ring') or bm.faces.layers.int.new('house_ring')
+    seg_k = bm.faces.layers.int.get('ring_k') or bm.faces.layers.int.new('ring_k')
     rings = []
     for i in range(seg):
         a = 2 * math.pi * i / seg
@@ -239,14 +299,22 @@ def house_ring(bm, mat, x_face, x_back, L, share=LIP, x_dish=None, seg=TIRE_SEG)
             f.material_index = mat
             f.smooth = True
             f[own] = 1
-            f[tag] = 1
+            f[tag] = 2 if k < face_side else 1
+            f[seg_k] = k
             made.append(f)
     bm.normal_update()
     for f in made:
         c = f.calc_center_median()
+        radial = Vector((0, c.y, c.z)).normalized()
+        if f[tag] == 2:
+            # The side of the profile segment toward the front: (-dx, dr) in (r, x) for a
+            # segment walked outward, so a floor faces +X and a step down outward faces out.
+            (x0, r0), (x1, r1) = prof[f[seg_k]], prof[f[seg_k] + 1]
+            want = Vector((r1 - r0, 0, 0)) + radial * -(x1 - x0)
         # Face side faces +X, the lip edge faces out, the barrel inside faces the axle.
-        want = Vector((1, 0, 0)) if _rad(c) < 0.97 * L and c.x > x_face - 0.004 else -Vector((0, c.y, c.z)).normalized() if inner and _rad(c) < share * L + 0.004 else (
-            Vector((0, c.y, c.z)).normalized() if _rad(c) > 0.97 * L else -Vector((0, c.y, c.z)).normalized())
+        else:
+            want = Vector((1, 0, 0)) if _rad(c) < 0.97 * L and c.x > x_face - 0.004 else -radial if inner and _rad(c) < share * L + 0.004 else (
+                radial if _rad(c) > 0.97 * L else -radial)
         if f.normal.dot(want) < 0:
             f.normal_flip()
     return made
@@ -311,7 +379,19 @@ def wheel(name, root):
     lip = TIRE_R * BEAD
     # The donor's dish, barrel and lip go: faces entirely outside where the rim becomes a full ring.
     share, x_dish = dish_start(bm, lip, share=R0.get('dish'))
-    bmesh.ops.delete(bm, geom=[f for f in bm.faces if all(_rad(v.co) > share * lip for v in f.verts)], context='FACES')
+    own_lip = R0.get('lip') == 'donor'
+    profile, x_lip = lip_profile(bm, lip, share) if own_lip else (None, None)
+    # Faces wholly outside where the spokes end; with the donor's own lip, faces centred there too,
+    # or spokes that run out to the lip edge leave slivers poking past the turned ring.
+    ring_zone = {f for f in bm.faces if all(_rad(v.co) > share * lip for v in f.verts) or (own_lip and _rad(f.calc_center_median()) > share * lip)}
+    if own_lip:
+        # The donor's rivets and bolts stay on the turned lip: small loose islands in the ring zone.
+        for grp in _islands(bm):
+            if set(grp) <= ring_zone:
+                pts = [v.co for f in grp for v in f.verts]
+                if (Vector(map(max, *pts)) - Vector(map(min, *pts))).length < 0.08 * lip:
+                    ring_zone -= set(grp)
+    bmesh.ops.delete(bm, geom=list(ring_zone), context='FACES')
     x_back = min(v.co.x for v in bm.verts)
     me = bpy.data.meshes.new(oname)
     for u in SHARED:
@@ -328,13 +408,13 @@ def wheel(name, root):
     # then the rim is reduced; the tire is added after, so the collapse never touches it.
     gone, _ = cull_hidden(o, [d for d in _view_dirs() if d.x > -0.3])
     skin = _copy(o, oname + '.skin')
-    _collapse(o, RIM_BUDGET)
+    _collapse(o, LIP_BUDGET if own_lip else RIM_BUDGET)
     shade_from_source(o, skin)
     bpy.data.objects.remove(skin)
     bm = bmesh.new()
     bm.from_mesh(o.data)
     house_tire(bm, SHARED.index('Tire'))
-    house_ring(bm, SHARED.index('Rim'), TIRE_W * 0.46, min(x_back, TIRE_W * 0.46 - 0.08), lip, share, x_dish)
+    house_ring(bm, SHARED.index('Rim'), TIRE_W * 0.46, min(x_back, TIRE_W * 0.46 - 0.08), lip, share, x_dish, profile=profile, x_lip=x_lip)
     bm.to_mesh(o.data)
     bm.free()
     me = o.data
@@ -343,9 +423,11 @@ def wheel(name, root):
     cn = [cv.vector.copy() for cv in me.corner_normals]
     out = []
     hr = me.attributes.get('house_ring')
-    ring = [bool(v.value) for v in hr.data] if hr else [False] * len(me.polygons)
+    ring = [v.value for v in hr.data] if hr else [0] * len(me.polygons)
     for p in me.polygons:
-        if ring[p.index]:
+        if ring[p.index] == 2:
+            out += [cn[li] for li in p.loop_indices]   # a donor lip profile: the lathe's own smooth normals
+        elif ring[p.index]:
             for li in p.loop_indices:
                 v = me.vertices[me.loops[li].vertex_index].co
                 n = Vector((0, v.y, v.z)).normalized()
@@ -362,13 +444,13 @@ def wheel(name, root):
         else:
             out += [cn[li] for li in p.loop_indices]
     me.normals_split_custom_set(out)
-    for a in ('src_normal', 'own_normals', 'house_ring'):
+    for a in ('src_normal', 'own_normals', 'house_ring', 'ring_k'):
         if me.attributes.get(a):
             me.attributes.remove(me.attributes[a])
     remap_materials(o)
     o['displayName'] = name.capitalize()
     print(f'wheel_{name}: {R0["name"]} ({R0["author"]}); source tire {"removed (" + str(tire_faces) + " faces)" if tire_faces else "none"}, '
-          f'face {"+" if sign > 0 else "-"}X, rim scaled x{k:.3f}, width squeezed x{sq:.2f}, house ring from {share:.2f}{" (dish)" if x_dish is not None and x_dish < TIRE_W * 0.46 - 0.012 else ""}; {src_tris} -> {tris(o)} tris ({gone} hidden culled)')
+          f'face {"+" if sign > 0 else "-"}X, rim scaled x{k:.3f}, width squeezed x{sq:.2f}, ' + (f'lip turned from its own profile ({len(profile)} bands)' if own_lip else f'house ring from {share:.2f}{" (dish)" if x_dish is not None and x_dish < TIRE_W * 0.46 - 0.012 else ""}') + f'; {src_tris} -> {tris(o)} tris ({gone} hidden culled)')
     return o
 
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyBuild, stockPerformance, PerformanceBuild } from '../src/sim/build';
 import { defaultBuild, validateBuild } from '../src/shared/carBuild';
-import { getBaseTuning, PERFORMANCE_CATEGORIES } from '../src/sim/tuning';
+import { DEFAULT_CAR_ID, getBaseTuning, PERFORMANCE_CATEGORIES } from '../src/sim/tuning';
 import { measureStats } from '../src/sim/stats';
 import { decodeShareCode, encodeShareCode } from '../src/garage/storage';
 import { validateCatalog } from '../scripts/validateParts';
@@ -72,11 +72,13 @@ describe('build validation', () => {
     expect(await decodeShareCode('garbage!!')).toBeNull();
   });
 
-  it('moves builds of the renamed IceMaan cars to the authored ones', () => {
+  it('moves builds of the renamed IceMaan cars to the authored ones, and retired cars to the default', () => {
+    // The s64 became the Proto Compact, since retired: the build moves to the default car and keeps
+    // only its wheels (the parts were the old car's).
     const b = validateBuild({ carId: 's64', visual: { parts: { body: 's64_body_kit2', spoiler: 's64_spoiler_2', wheels: 'wheel_gc14_3' } } });
-    expect(b.carId).toBe('protoCompact');
-    // Whole-body kits were split into bumpers and skirts, so they fall back to stock.
-    expect(b.visual.parts).toEqual({ spoiler: 'protoCompact_spoiler_2', wheels: 'wheel_senko' });
+    expect(b.carId).toBe(DEFAULT_CAR_ID);
+    expect(b.visual.parts).toEqual({ wheels: 'wheel_senko' });
+    expect(validateBuild({ carId: 'protoCompact', visual: { parts: { wheels: 'wheel_kiba' } } })).toMatchObject({ carId: DEFAULT_CAR_ID, visual: { parts: { wheels: 'wheel_kiba' } } });
     expect(validateBuild({ carId: 'gc14' }).carId).toBe('protoHatch');
   });
 

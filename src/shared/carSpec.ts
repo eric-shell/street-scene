@@ -61,10 +61,12 @@ export const DRIVE_WHEELS: Record<DrivetrainLayout, { code: string; name: string
  * optional; the synth picks the layout's usual answer (src/audio/engineSynth.ts).
  */
 export const VOICE_OPTIONS = {
-  /** Header primaries: equal length, or a boxer's short and long bank pairs (the Subaru rumble). */
+  /** Header primaries: equal length, or one bank's runners longer (the Subaru rumble, the VR6's growl; how much longer is `headerSpread`). */
   headers: ['equal', 'unequal'],
   /** Separate tailpipes: 1 merges every cylinder, 2 keeps each bank (or half of an inline six) on its own pipe. */
   pipes: [1, 2],
+  /** Between twin pipes: none, an H-pipe balance tube (a little of each bank in the other pipe), or an X-pipe (nearly half). */
+  crossover: ['none', 'h', 'x'],
   /** How much the silencer lets through. */
   muffler: ['quiet', 'sport', 'straight'],
   /** One throttle on a plenum, or individual throttle bodies that honk when opened. */
@@ -73,12 +75,21 @@ export const VOICE_OPTIONS = {
   crank: ['cross', 'flat'],
 } as const;
 
+/** Numeric voice fields: [min, max]. */
+export const VOICE_RANGES = {
+  /** How much longer the long bank's primaries run with unequal headers (m): a boxer's crossover under the engine is about 0.5. */
+  headerSpread: [0, 1],
+} as const;
+
 export interface EngineVoiceSpec {
   headers?: (typeof VOICE_OPTIONS.headers)[number];
   pipes?: (typeof VOICE_OPTIONS.pipes)[number];
   muffler?: (typeof VOICE_OPTIONS.muffler)[number];
   intake?: (typeof VOICE_OPTIONS.intake)[number];
   crank?: (typeof VOICE_OPTIONS.crank)[number];
+  crossover?: (typeof VOICE_OPTIONS.crossover)[number];
+  /** Extra primary length on the long bank with unequal headers (m, VOICE_RANGES). */
+  headerSpread?: number;
 }
 
 /** The `engine` block of a car in carManifest.json. */
@@ -157,7 +168,10 @@ export function engineSpecErrors(spec: unknown): string[] {
     else {
       for (const [k, value] of Object.entries(v as Record<string, unknown>)) {
         const allowed = (VOICE_OPTIONS as Record<string, readonly (string | number)[]>)[k];
-        if (!allowed) errors.push(`engine.voice.${k} is not a known field (${Object.keys(VOICE_OPTIONS).join(', ')})`);
+        const range = (VOICE_RANGES as Record<string, readonly [number, number]>)[k];
+        if (range) {
+          if (!(typeof value === 'number' && value >= range[0] && value <= range[1])) errors.push(`engine.voice.${k} ${JSON.stringify(value)} is not a number from ${range[0]} to ${range[1]}`);
+        } else if (!allowed) errors.push(`engine.voice.${k} is not a known field (${[...Object.keys(VOICE_OPTIONS), ...Object.keys(VOICE_RANGES)].join(', ')})`);
         else if (!allowed.includes(value as string | number)) errors.push(`engine.voice.${k} ${JSON.stringify(value)} is not one of ${allowed.join(', ')}`);
       }
     }

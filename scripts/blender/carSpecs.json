@@ -110,295 +110,128 @@
   "cars": {
     "protoHatch": {
       "displayName": "Proto Hatch",
-      "brief": "Five door hot hatch: the WRX hatch's stance, tall arches and flares with the Golf R's squared-off, tidy surfacing and detailing.",
+      "brief": "Three door hot hatch: the Golf R32 Mk4 donor reduced whole at true size on its own tires, its own lamps (the lens covers recolored from glass), badges, antenna and wipers removed. Front naturally aspirated VR6, all wheel drive biased to the front.",
       "donors": [
         {
-          "name": "2010 Subaru Impreza WRX hatchback (GH)",
-          "weight": 0.5,
-          "mm": {
-            "length": 4415,
-            "width": 1740,
-            "height": 1475,
-            "wheelbase": 2620,
-            "trackFront": 1495,
-            "trackRear": 1495,
-            "overhangFront": 990,
-            "overhangRear": 805,
-            "beltLine": 1010,
-            "tireRadius": 317,
-            "windshieldDeg": 31,
-            "rearGlassDeg": 46
+          "name": "2002 Volkswagen Golf R32 (Mk4)",
+          "weight": 1.0,
+          "model": {
+            "source": "sketchfab",
+            "uid": "98e6828648084ae3b877ad69e8ad36dc",
+            "author": "tangwang920",
+            "license": "CC Attribution",
+            "url": "https://sketchfab.com/3d-models/98e6828648084ae3b877ad69e8ad36dc"
           },
-          "estimates": [
+          "mm": {
+            "length": 4149,
+            "width": 1735,
+            "height": 1440,
+            "wheelbase": 2518,
+            "trackFront": 1492,
+            "trackRear": 1492,
+            "overhangFront": 883,
+            "overhangRear": 767,
+            "beltLine": 877,
+            "tireRadius": 309,
+            "windshieldDeg": 20.9,
+            "rearGlassDeg": 15.8
+          },
+          "estimates": [],
+          "measured": [
             "trackFront",
             "trackRear",
             "overhangFront",
             "overhangRear",
             "beltLine",
+            "tireRadius",
             "windshieldDeg",
             "rearGlassDeg"
           ],
           "sources": [
-            "https://www.carexpert.com.au/subaru/impreza/2010-wrx-2-5l-hatchback-4x4-petrol-manual-joo5gak520091207",
-            "https://vehiclescore.co.uk/car-dimensions-check/subaru/impreza"
+            "https://kfz-tech.de/Engl/Herstellerdaten/VW/VW_2002_Golf_R32.htm",
+            "https://www.encycarpedia.com/volkswagen/02-golf-r32-hatch"
           ],
           "take": [
-            "stance: tall arches and wide flares (the house flares come from here)",
-            "teardrop headlights sweeping back along the fender top",
-            "wide low trapezoid grille with a slim upper slot (stock keeps both small)",
-            "tall taillight units at the D pillar that wrap onto the tailgate",
-            "hood scoop is a part (Hayate hood); the stock hood stays plain"
-          ]
-        },
-        {
-          "name": "2012 Volkswagen Golf R (Mk6)",
-          "weight": 0.5,
-          "mm": {
-            "length": 4212,
-            "width": 1785,
-            "height": 1461,
-            "wheelbase": 2574,
-            "trackFront": 1534,
-            "trackRear": 1507,
-            "overhangFront": 880,
-            "overhangRear": 758,
-            "beltLine": 980,
-            "tireRadius": 324,
-            "windshieldDeg": 30,
-            "rearGlassDeg": 50
-          },
-          "estimates": [
-            "trackFront",
-            "trackRear",
-            "overhangFront",
-            "overhangRear",
-            "beltLine",
-            "windshieldDeg",
-            "rearGlassDeg"
-          ],
-          "sources": [
-            "https://www.carexpert.co.nz/volkswagen/golf/2012/r/exterior-and-dimensions",
-            "https://www.carexpert.com.au/volkswagen/golf/2012-r-2l-hatchback-4x4-petrol-manual-jowf5k5f20110901"
-          ],
-          "take": [
-            "squared-off surfacing: flat hood, upright tailgate, one crisp shoulder crease",
-            "LED strip along the bottom of the headlight (the Light indicator strip)",
-            "honeycomb lower intakes implied by Black patches, thin upper grille bar",
-            "thin horizontal taillight bar across the tailgate joining the quarter units",
-            "roof spoiler extending the roof line (a part)"
+            "the whole body: reduced to the budget at true size on its own tires",
+            "its own lamps: the glass lens covers over the headlights and tail units recolored to lamps"
           ]
         }
       ],
       "body": {
-        "doors": 4,
+        "doors": 2,
         "pillars": [
           "A",
           "B",
-          "C",
-          "D"
+          "C"
         ],
-        "roofline": "flat roof to a steep tailgate; the D pillar carries a small quarter glass",
+        "roofline": "flat roof to a steep tailgate",
         "exhaust": "twin, one tip each side"
       },
       "lights": {
         "front": {
           "cover": "teardrop",
           "elements": "none",
-          "indicator": "bottomStrip",
-          "notes": "WRX teardrop in a Black housing, Golf R strip along the bottom"
-        },
-        "rear": {
-          "cover": "verticalUnit",
-          "elements": "none",
           "indicator": "outerBlock",
-          "wrap": true,
-          "centerBar": true,
-          "notes": "WRX hatch tall units at the D pillar wrapping the corner, Golf R bar across the tailgate"
-        }
-      }
-    },
-    "protoCompact": {
-      "displayName": "Proto Compact",
-      "brief": "Three door hatchback coupe: the 318ti's long doors, quarter windows and chopped-off short tail with the RSX's long swept lamps and flatter fastback glass.",
-      "donors": [
-        {
-          "name": "1999 BMW 318ti Compact (E36/5)",
-          "weight": 0.5,
-          "mm": {
-            "length": 4210,
-            "width": 1698,
-            "height": 1393,
-            "wheelbase": 2700,
-            "trackFront": 1418,
-            "trackRear": 1431,
-            "overhangFront": 790,
-            "overhangRear": 720,
-            "beltLine": 940,
-            "tireRadius": 314,
-            "windshieldDeg": 34,
-            "rearGlassDeg": 52
-          },
-          "estimates": [
-            "trackFront",
-            "trackRear",
-            "overhangFront",
-            "overhangRear",
-            "beltLine",
-            "windshieldDeg",
-            "rearGlassDeg"
-          ],
-          "sources": [
-            "https://www.carsales.com.au/research/bmw/3-series/1999/318ti",
-            "https://australiancar.reviews/review-bmw-e36-3-series-compact-1995-00/"
-          ],
-          "take": [
-            "short tail: the hatch drops almost straight behind the rear axle",
-            "flat glass cover over twin round lamps",
-            "small twin kidney grilles",
-            "L shaped taillights wrapping from the quarter onto the tailgate",
-            "long doors with a quarter window behind the B pillar"
-          ]
-        },
-        {
-          "name": "2003 Acura RSX (DC5)",
-          "weight": 0.5,
-          "mm": {
-            "length": 4375,
-            "width": 1725,
-            "height": 1389,
-            "wheelbase": 2570,
-            "trackFront": 1485,
-            "trackRear": 1483,
-            "overhangFront": 950,
-            "overhangRear": 855,
-            "beltLine": 930,
-            "tireRadius": 313,
-            "windshieldDeg": 28,
-            "rearGlassDeg": 28
-          },
-          "estimates": [
-            "trackFront",
-            "trackRear",
-            "overhangFront",
-            "overhangRear",
-            "beltLine",
-            "windshieldDeg",
-            "rearGlassDeg"
-          ],
-          "sources": [
-            "https://hondanews.com/en-US/releases/release-213ecdccccb00457c01e65004c34c6a5-2003-acura-rsx-specifications"
-          ],
-          "take": [
-            "long swept headlight covers climbing the fender",
-            "fastback: the rear glass lies flatter than a hatch's",
-            "slim mouth under a body colour bumper bar, no big grille",
-            "clean sides with one shoulder crease",
-            "taillights with a clear inner element (the Light block)"
-          ]
-        }
-      ],
-      "body": {
-        "doors": 2,
-        "pillars": [
-          "A",
-          "B",
-          "C"
-        ],
-        "roofline": "roof falls into a flatter fastback glass, then the tail is cut short behind the axle",
-        "exhaust": "twin, one tip each side"
-      },
-      "lights": {
-        "front": {
-          "cover": "flatCover",
-          "elements": "twinRound",
-          "indicator": "bottomStrip",
-          "notes": "318ti twin rounds under an RSX-long cover that climbs the fender"
+          "source": "donor",
+          "notes": "the Golf's own oval covers over twin reflectors, kept from the donor model"
         },
         "rear": {
-          "cover": "lUnit",
-          "elements": "innerBlock",
+          "cover": "slab",
+          "elements": "none",
           "indicator": "none",
           "wrap": true,
           "centerBar": false,
-          "notes": "318ti L units wrapping onto the tailgate with the RSX's clear inner block"
+          "source": "donor",
+          "notes": "the Golf's own corner units, kept from the donor model"
         }
       }
     },
     "protoCoupe": {
       "displayName": "Proto Coupe",
-      "brief": "Front engined coupe: the Supra's long hood, short deck and rounded greenhouse on the E46 M3's flared arches, kidneys and L line tail.",
+      "brief": "Two door sports coupe: the RX-7 FD donor reduced whole at true size on its own tires, pop-up headlights modelled raised, its own lamps, badges and lettering removed. Front sequential twin turbo twin rotor, rear wheel drive.",
       "donors": [
         {
-          "name": "1999 Toyota Supra twin turbo (JZA80)",
-          "weight": 0.5,
-          "mm": {
-            "length": 4520,
-            "width": 1810,
-            "height": 1275,
-            "wheelbase": 2550,
-            "trackFront": 1520,
-            "trackRear": 1525,
-            "overhangFront": 1050,
-            "overhangRear": 920,
-            "beltLine": 870,
-            "tireRadius": 321,
-            "windshieldDeg": 26,
-            "rearGlassDeg": 27
+          "name": "1999 Mazda RX-7 (FD3S)",
+          "weight": 1.0,
+          "model": {
+            "source": "sketchfab",
+            "uid": "06986b70c65b44c5a7315ed467b621a6",
+            "author": "niev",
+            "license": "CC Attribution",
+            "url": "https://sketchfab.com/3d-models/06986b70c65b44c5a7315ed467b621a6"
           },
-          "estimates": [
-            "overhangFront",
-            "overhangRear",
-            "beltLine",
-            "windshieldDeg",
-            "rearGlassDeg"
-          ],
-          "sources": [
-            "https://www.carsales.com.au/research/toyota/supra/1999/rz-s/"
-          ],
-          "take": [
-            "long hood, short deck, rounded greenhouse",
-            "quad projectors under one swept cover",
-            "big open lower mouth (stock keeps it small)",
-            "twin round taillights per side on a dark panel",
-            "hoop wing (a part)"
-          ]
-        },
-        {
-          "name": "BMW M3 coupe (E46)",
-          "weight": 0.5,
           "mm": {
-            "length": 4492,
-            "width": 1780,
-            "height": 1372,
-            "wheelbase": 2731,
-            "trackFront": 1508,
-            "trackRear": 1525,
-            "overhangFront": 830,
-            "overhangRear": 931,
-            "beltLine": 950,
-            "tireRadius": 330,
-            "windshieldDeg": 32,
-            "rearGlassDeg": 37
+            "length": 4285,
+            "width": 1760,
+            "height": 1230,
+            "wheelbase": 2425,
+            "trackFront": 1447,
+            "trackRear": 1447,
+            "overhangFront": 847,
+            "overhangRear": 1040,
+            "beltLine": 806,
+            "tireRadius": 327,
+            "windshieldDeg": 26.4,
+            "rearGlassDeg": 20.1
           },
-          "estimates": [
+          "estimates": [],
+          "measured": [
             "trackFront",
             "trackRear",
             "overhangFront",
             "overhangRear",
             "beltLine",
+            "tireRadius",
             "windshieldDeg",
             "rearGlassDeg"
           ],
           "sources": [
-            "https://fastcarcheck.uk/specs/make/bmw/m3/288168",
-            "https://www.lapmeta.com/en/vi/14947"
+            "https://www.encycarpedia.com/mazda/99-rx-7-type-r-coupe",
+            "https://carsguide.com.au/mazda/rx-7/car-dimensions/1999"
           ],
           "take": [
-            "flared arches with a side gill behind the front wheel",
-            "power dome hood is a part; the stock hood is flat",
-            "small kidneys and slim angular lamp covers",
-            "L line taillights",
-            "twin tips per side are a part; stock keeps one tip per side"
+            "the whole body: reduced to the budget at true size on its own tires",
+            "its own lamps: raised pop-ups, bumper lamps and the full width tail bar"
           ]
         }
       ],
@@ -406,117 +239,76 @@
         "doors": 2,
         "pillars": [
           "A",
-          "B",
           "C"
         ],
-        "roofline": "low rounded cabin, fastback into a short trunk lid",
+        "roofline": "low bubble cabin, glass hatch over a short tail with a wing",
         "exhaust": "twin, one tip each side"
       },
       "lights": {
         "front": {
           "cover": "slimWedge",
-          "elements": "twinRound",
+          "elements": "none",
           "indicator": "outerBlock",
-          "notes": "E46 slim wedge cover with the Supra's twin projectors inside"
+          "source": "donor",
+          "notes": "the FD's slim bumper lamps and raised pop-ups, kept from the donor model"
         },
         "rear": {
           "cover": "panel",
-          "elements": "twinRound",
+          "elements": "none",
           "indicator": "none",
           "wrap": false,
-          "centerBar": false,
-          "notes": "Supra twin rounds on a dark panel set in the E46's L line"
+          "centerBar": true,
+          "source": "donor",
+          "notes": "the FD's full width tail bar, kept from the donor model"
         }
       }
     },
     "protoWagon": {
       "displayName": "Proto Wagon",
-      "brief": "Five door super wagon, the longest car in the garage: the RS 6 Avant's reduced donor body (long low roof, blistered arches, big intakes, diffuser with oval tips) wearing the V60 Polestar's hammer headlight graphics and C-shaped tail lamps climbing the D pillars. Front twin turbo V8, all wheel drive.",
+      "brief": "Five door sports wagon: the S2 Avant donor reduced whole at true size on its own tires, its own lamps, roof rails kept, badges, antenna and wipers removed. Front twin turbo V6, all wheel drive split evenly.",
       "donors": [
         {
-          "name": "2020 Audi RS 6 Avant (C8)",
-          "weight": 0.7,
+          "name": "1992 Audi S2 Avant",
+          "weight": 1.0,
           "model": {
             "source": "sketchfab",
-            "uid": "aa5b94cc007c4c8a9b558f98d634c8d0",
-            "author": "Brahekoss123",
+            "uid": "939dc6336dfe4fbd99fdb3608d58de56",
+            "author": "tonielpro520",
             "license": "CC Attribution",
-            "url": "https://sketchfab.com/3d-models/aa5b94cc007c4c8a9b558f98d634c8d0"
+            "url": "https://sketchfab.com/3d-models/939dc6336dfe4fbd99fdb3608d58de56"
           },
           "mm": {
-            "length": 4995,
-            "width": 1951,
-            "height": 1486,
-            "wheelbase": 2929,
-            "trackFront": 1668,
-            "trackRear": 1650,
-            "overhangFront": 956,
-            "overhangRear": 1111,
-            "beltLine": 953,
-            "tireRadius": 363,
-            "windshieldDeg": 26.6,
-            "rearGlassDeg": 26.8
+            "length": 4509,
+            "width": 1695,
+            "height": 1386,
+            "wheelbase": 2597,
+            "trackFront": 1374,
+            "trackRear": 1374,
+            "overhangFront": 927,
+            "overhangRear": 961,
+            "beltLine": 895,
+            "tireRadius": 302,
+            "windshieldDeg": 27.7,
+            "rearGlassDeg": 38.5
           },
           "estimates": [],
           "measured": [
+            "trackFront",
+            "trackRear",
             "overhangFront",
             "overhangRear",
             "beltLine",
+            "tireRadius",
             "windshieldDeg",
             "rearGlassDeg"
           ],
           "sources": [
-            "https://autotijd.be/en/dimensions/audi/a6-avant/rs-6-performance-4633",
-            "https://www.iseecars.com/car/audi-rs-6-avant-performance-dimensions"
+            "https://cararac.com/dimensions/audi/s2.html",
+            "https://www.auto-data.net/en/audi-rs2-avant-generation-1092"
           ],
           "take": [
-            "the whole body: reduced to the budget, widened x1.06, dropped onto the house wheel, arches pulled in, roof chopped to 1.25 m",
-            "front and rear bumpers: big side intakes, single frame grille backing, diffuser with oval tips",
-            "its lamp lenses as the dark housings the V60 graphics sit in"
-          ]
-        },
-        {
-          "name": "2020 Volvo V60 T8 Polestar Engineered",
-          "weight": 0.3,
-          "model": {
-            "source": "sketchfab",
-            "uid": "7b28b4fbea4b490b816ba1b75d4fe50a",
-            "author": "Streetsraker",
-            "license": "CC Attribution",
-            "url": "https://sketchfab.com/3d-models/7b28b4fbea4b490b816ba1b75d4fe50a"
-          },
-          "mm": {
-            "length": 4761,
-            "width": 1850,
-            "height": 1427,
-            "wheelbase": 2872,
-            "trackFront": 1610,
-            "trackRear": 1610,
-            "overhangFront": 837,
-            "overhangRear": 999,
-            "beltLine": 920,
-            "tireRadius": 340,
-            "windshieldDeg": 25.0,
-            "rearGlassDeg": 40.7
-          },
-          "estimates": [
-            "tireRadius"
-          ],
-          "measured": [
-            "overhangFront",
-            "overhangRear",
-            "beltLine",
-            "windshieldDeg",
-            "rearGlassDeg"
-          ],
-          "sources": [
-            "https://www.truedelta.com/Volvo-V60/specs-1075-2020&r=4",
-            "https://autotijd.be/en/specs/volvo/v60/t8-polestar-engineered-405-hp-awd"
-          ],
-          "take": [
-            "headlight graphics: the hammer DRL and lens, laid into the RS 6 housings",
-            "tail lamps: the C shape climbing the D pillar, laid onto the RS 6 tail",
-            "the amber blinker at the outer end of each headlight"
+            "the whole body: reduced to the budget at true size on its own tires",
+            "its own lamps: square headlights and the full width tail bar"
           ]
         }
       ],
@@ -528,25 +320,25 @@
           "C",
           "D"
         ],
-        "roofline": "long roof falling to a raked tailgate glass; quarter glass behind the rear door",
-        "exhaust": "twin, one tip each side"
+        "roofline": "long flat roof with rails to an upright tailgate",
+        "exhaust": "twin tips on the left"
       },
       "lights": {
         "front": {
           "cover": "slab",
-          "elements": "bar",
+          "elements": "none",
           "indicator": "outerBlock",
           "source": "donor",
-          "notes": "V60 hammer DRL graphic in the RS 6 housing, grafted from the donor model (carDonors.graft), not built by carFeatures.lamps"
+          "notes": "the S2's own square headlights, kept from the donor model"
         },
         "rear": {
-          "cover": "verticalUnit",
+          "cover": "panel",
           "elements": "none",
           "indicator": "none",
-          "wrap": true,
-          "centerBar": false,
+          "wrap": false,
+          "centerBar": true,
           "source": "donor",
-          "notes": "V60 C lamps climbing the D pillar on the RS 6 tail, grafted from the donor model"
+          "notes": "the S2's full width tail bar, kept from the donor model"
         }
       }
     }

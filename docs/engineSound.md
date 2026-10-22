@@ -40,43 +40,38 @@ The manifest's `engine` block gained an optional `voice` (vocabulary in `src/sha
 
 | Field | Values | What it changes |
 |---|---|---|
-| `headers` | `equal`, `unequal` | Unequal: the second bank's primaries are 0.5 m longer, arriving late and weaker (boxer rumble). |
+| `headers` | `equal`, `unequal` | Unequal: the second bank's primaries run `headerSpread` further, so its pulses arrive late and weaker (the boxer rumble, the VR6 growl). |
+| `headerSpread` | 0 to 1 (m) | How much further, with unequal headers. Defaults: 0.5 (a boxer's crossover under the engine), 0.3 for a VR6. |
 | `pipes` | `1`, `2` | Two keeps each bank, or each half of an inline six, on its own pipe, so uneven per bank patterns reach the tailpipe. |
+| `crossover` | `none`, `h`, `x` | Between twin pipes: an H-pipe hands 20 % of each bank's pulse to the other pipe, an X-pipe 45 %, evening out the per pipe pattern (smoother, raspier); nothing with one pipe. |
 | `muffler` | `quiet`, `sport`, `straight` | System length, band limit, pops per lift, and the impulse response (long low modes vs short bright ring). |
 | `intake` | `plenum`, `itb` | Throttle bodies: a loud resonant honk that follows the pedal. |
 | `crank` | `cross`, `flat` | V8 only: cross-plane banks fire 180-270-180-90 (burble), flat-plane 180-180-180-180 (scream). |
 
 Defaults by layout are `LAYOUT_VOICE`; turbo engines default to the quiet silencer, the rest to sport.
 
-## The first four engines
+## The garage engines
 
-### Proto Hatch: Subaru EJ flat four, turbo (WRX)
+### Proto Hatch: VW VR6, naturally aspirated (Golf R32 Mk4)
 
-- Reference: Subaru EJ20/EJ25 turbo in the Impreza WRX (GC/GD/GH). 180° flat four, firing order 1-3-2-4 with cylinders 1 and 3 on the right bank: opposed pairs share crank timing, so each bank fires twice 180° apart then rests for a full turn. Redline 6500 to 7000; the sim's Hatch runs 7200.
-- The rumble: the classic "Subaru sound" is the **unequal length header**: the left bank's primaries cross under the engine to reach the right bank's collector, so its pair of pulses arrives late and weaker. Equal length headers (2015+ WRX FA20) take it away, which engine-sim demonstrates with its two EJ25 scripts (`assets/engines/atg-video-2/01_subaru_ej25_eh.mr` vs `02_subaru_ej25_uh.mr`: primaries 2", 3", 3", 5" against 2", 3", 500 mm, 550 mm).
-- Spec: `B4`, `turbo`, `voice: { headers: 'unequal', muffler: 'sport' }`. Measured unevenness (energy at cycle harmonics off the firing grid over energy on it): +1.5 dB at 3500 and +1.1 dB at 7000 rpm against −19 / −12 dB on equal headers.
-- Still to add: the turbo whistle as a blade pass harmonic series rather than one sine, wastegate flutter on the lift, a deeper idle (the EJ idles near 700 with a visible lope). The sport silencer gives it the occasional overrun pop.
+- Reference: 3.2 l VR6 (BFH/BDB), 15° narrow V sharing one head, firing order 1-5-3-6-2-4, 84.0 x 95.9 mm, 24 valves with variable cam timing, 10.9 to 11.3:1, Bosch Motronic ME 7.1.1. One manifold per three cylinders but runners of two lengths, as the narrow V staggers them.
+- The sound: even 120° firing, but odd cylinders sit on one side of the narrow V, so 1-5-3-6-2-4 fires three from one side and then three from the other. The far side's runners reach round the V and run longer, so its three pulses arrive late and weaker: a beat once a cycle under the six's even note, the hollow, gravelly growl the VR6 is known for (the "Chewbacca" sound). The runners are also staggered within a side (`stagger`). No turbines, so the pulses stay sharp.
+- Spec: `VR6`, `na`, `voice: { headers: 'unequal', headerSpread: 0.35, pipes: 1, muffler: 'sport' }` (the R32's twin centre tips come from one system). The far side's pulses arrive 1.0 ms late at about 0.7 of the gain.
+- Still to add: tune `headerSpread` and `stagger` against a recording of the R32, and the intake honk of its large plenum from 4000 up.
 
-### Proto Compact: BMW S54 inline six (E46 M3)
+### Proto Coupe: Mazda 13B-REW twin rotor, sequential twin turbo (RX-7 FD)
 
-- Reference: S54B32, 3.2 l inline six, firing order 1-5-3-6-2-4, six individual throttle bodies, 6-2-1 headers (cylinders 1-3 and 4-6 grouped) into twin pipes, redline 8000. engine-sim's `assets/engines/bmw/M52B28.mr` is the sibling six (same order, 20" primaries, two exhaust systems).
-- The sound: even 120° firing with no bank asymmetry, so the voice is smooth and the character comes from the **intake** (the ITB honk that follows the pedal from 4000 up) and a bright, metallic edge from short sport silencers. Measured unevenness −16 to −24 dB: as even as it should be.
-- Spec: `I6`, `na`, `voice: { pipes: 2, muffler: 'sport', intake: 'itb' }`. Measured −13 dB uneven in mono at 3500 rpm (−21 dB per pipe), so the 5 cm crossover does not lump it.
-- Still to add: a cam timing / VANOS step in the intake resonance at mid rpm, more rasp above 6000 (raise `edge` with rpm), the famous overrun crackle (more pops for `straight`).
+- Reference: 1308 cc two rotor Wankel, sequential twin turbos (the secondary joins near 4,500 rpm), 9.0:1, redline 8,000. Each rotor fires once per eccentric shaft turn, so two rotors fire as often as a four cylinder at the same rpm, but evenly and with no valvetrain.
+- The sound: a smooth, high buzz from even firing and short exhaust ports, rounded by the turbines; the brap at idle comes from port overlap.
+- Spec: `R2`, `turbo`, `voice: { pipes: 1, muffler: 'sport' }`.
+- Still to add: the idle brap (port overlap as a rough, slow lope at low rpm), the secondary turbo's step near 4,500 rpm, and the rotary's metallic ring at high rpm.
 
-### Proto Coupe: Toyota 2JZ-GTE inline six, twin turbo (Supra JZA80)
+### Proto Wagon: Audi 2.7 V6 biturbo (S2 Avant donor)
 
-- Reference: 3.0 l inline six, firing order 1-5-3-6-2-4, sequential twin turbos fed by a single cast log manifold, one exhaust after the turbines, redline 6800 to 7000 (the sim's Coupe runs 7600). engine-sim: `assets/engines/atg-video-2/03_2jz.mr` (40" primaries, two 100" systems in the NA script).
-- The sound: the turbines smear every pulse and the single quiet system rounds it off, so the Supra is a deep, smooth hum with the turbo whoosh and blow-off on top. The voice: `smear` (wider pulse, lower band limit, less edge, more air), one pipe, the quiet silencer with the longest response.
-- Spec: `I6`, `turbo`, `voice: { pipes: 1, muffler: 'quiet' }`.
-- Still to add: the sequential turbo's two stage spool (second turbine joins near 4000), a stronger induction whoosh band that follows boost, and a BOV with pitch drop.
-
-### Proto Wagon: Audi 4.0 TFSI V8, twin turbo (RS6 C7/C8)
-
-- Reference: 4.0 l 90° cross-plane V8, firing order 1-5-4-8-6-3-7-2 (Audi numbering, cylinders 1-4 on bank 1), "hot vee" turbos inside the V with one turbine per bank, twin pipes with each bank on its own side, valved sport exhaust, redline 6800 to 7000, lumpy idle near 650. engine-sim's cross-plane reference is `assets/engines/atg-video-2/07_gm_ls.mr` (per bank primaries 3·spacing+2 cm down to 5 cm, two systems of 100" and 172"); its flat-plane counterpart is `08_ferrari_f136_v8.mr`.
-- The sound: cross-plane banks fire 180-270-180-90, and with one pipe per bank that unevenness reaches the tailpipes: the V8 burble, softened by the turbines. Measured per pipe: +2.5 dB uneven at 3500 and +3.6 dB at 7000 against −14 / −10 dB for a flat-plane bank; the mono sum keeps −5 to −1 dB of it through the crossover.
-- Spec: `V8`, `turbo`, `voice: { pipes: 2, muffler: 'sport', crank: 'cross' }` on `protoWagon` (the car arrived from the donor model work: 1820 kg, AWD 40/60, eight speeds, redline 6800).
-- Still to add: the valved exhaust as a second `muffler` the garage can switch (quiet on cruise, sport on load), the deeper idle lope (`rough` with a slow 1 to 2 Hz wander), a longer, boomier response for the big silencers.
+- Reference: 2,671 cc 90° V6, 30 valves (three intake, two exhaust per cylinder) with variable inlet timing, 81.0 x 86.4 mm, 9.3:1, firing order 1-4-3-6-2-5, one turbo per bank and an exhaust per bank: the S4 and RS4 B5 engine, as specified for the wagon (the S2 Avant itself had a 2.2 turbo five).
+- The sound: banks alternate on an even fire, each bank an even three into its own turbine and pipe, so each tailpipe carries half the pulses: a smooth growl, smeared by the turbines.
+- Spec: `V6`, `turbo`, `voice: { pipes: 2, muffler: 'sport' }`.
+- Still to add: per bank 3-into-1 primaries (the even fire V6 row below), the twin turbo whoosh band following boost.
 
 ## The plan for the rest
 

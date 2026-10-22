@@ -689,7 +689,7 @@ describe('districts', () => {
           const c = createCar(x, z, Math.atan2(ux, uz), w.heightAt(x, z));
           c.vx = ux * 24;
           c.vz = uz * 24;
-          const t = getBaseTuning('protoCompact');
+          const t = getBaseTuning('proto');
           let air = 0;
           let best = 0;
           for (let k = 0; k < 4 * 60; k++) {
@@ -1135,7 +1135,7 @@ describe('route shortcuts', () => {
     }
     expect(crawled).toBe(4);
     // At speed a panel costs only a few percent: v' = v * m / (m + m_panel).
-    const m = getBaseTuning('protoCompact').mass;
+    const m = getBaseTuning('proto').mass;
     expect(m / (m + PROP_DEFS.fencePanel.mass * PROP_DEFS.fencePanel.anchor)).toBeGreaterThan(0.97);
   });
 

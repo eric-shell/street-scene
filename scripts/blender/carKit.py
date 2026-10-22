@@ -15,7 +15,7 @@ import os
 
 import bmesh
 import bpy
-from mathutils import Matrix, Vector
+from mathutils import Euler, Matrix, Vector
 from mathutils.bvhtree import BVHTree
 from mathutils.geometry import intersect_point_line
 

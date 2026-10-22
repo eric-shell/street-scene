@@ -37,6 +37,8 @@ export { Biquad, kWeighting };
 const SOUND = 343;
 /** How much further the second of two tailpipes runs (m). */
 const CROSSOVER = 0.05;
+/** Share of each pulse an H-pipe or X-pipe passes to the other tailpipe: a balance tube leaks a little, an X nearly halves. */
+const CROSSOVER_SHARE = { none: 0, h: 0.2, x: 0.45 } as const;
 
 export interface CylinderProgram {
   /** When this cylinder fires, as a fraction of the combustion cycle (720° for a four stroke, 360° for a rotor). */
@@ -45,6 +47,8 @@ export interface CylinderProgram {
   delay: number;
   /** Which tailpipe the pulse arrives in. */
   pipe: number;
+  /** Share of the pulse an H- or X-pipe hands to the other tailpipe (0 with one pipe or none). */
+  cross: number;
   /** Pulse amplitude relative to the shortest path (longer paths arrive weaker). */
   gain: number;
 }
@@ -154,8 +158,10 @@ const SCHEDULE: Record<Exclude<EngineLayout, 'V8'> | 'V8cross' | 'V8flat', Firin
   B6: [[0, 0], [1, 2], [0, 1], [1, 0], [0, 2], [1, 1]],
   // 60° V6 1-2-3-4-5-6, odd cylinders on one bank: the banks alternate.
   V6: [[0, 0], [1, 0], [0, 1], [1, 1], [0, 2], [1, 2]],
-  // One head, one manifold: an inline six with staggered runners (see stagger).
-  VR6: inline([1, 5, 3, 6, 2, 4]),
+  // One head, one manifold, but a narrow V: odd cylinders on one side, so 1-5-3-6-2-4 fires three from one side
+  // then three from the other. With that side's runners longer (unequal headers) the beat lands once a cycle:
+  // the VR6's growl. Its runners are staggered within a side too (see stagger).
+  VR6: [1, 5, 3, 6, 2, 4].map((c) => (c % 2 ? [0, (c - 1) / 2] : [1, c / 2 - 1]) as Firing),
   // Cross-plane 90° V8 1-8-7-2-6-5-4-3, odd cylinders left: a bank gets 180-270-180-90, the burble.
   V8cross: [[0, 0], [1, 3], [0, 3], [1, 0], [1, 2], [0, 2], [1, 1], [0, 1]],
   // Flat-plane 1-5-3-7-4-8-2-6, cylinders 1-4 on one bank: banks alternate like two inline fours.
@@ -172,6 +178,9 @@ const SCHEDULE: Record<Exclude<EngineLayout, 'V8'> | 'V8cross' | 'V8flat', Firin
 interface LayoutVoice {
   pipes: 1 | 2;
   headers: 'equal' | 'unequal';
+  /** Extra primary length on the long bank when the headers are unequal (m). */
+  headerSpread: number;
+  crossover: 'none' | 'h' | 'x';
   edge: number;
   air: number;
   jitter: number;
@@ -184,7 +193,7 @@ interface LayoutVoice {
   intakeHz: number;
 }
 
-const BASE: LayoutVoice = { pipes: 1, headers: 'equal', edge: 0.9, air: 0.75, jitter: 5, rough: 0.08, mech: 0.5, stagger: 0, pulse: { rise: 0.012, decay: 0.07, dip: 0.35 }, intakeHz: 520 };
+const BASE: LayoutVoice = { pipes: 1, headers: 'equal', headerSpread: 0.5, crossover: 'none', edge: 0.9, air: 0.75, jitter: 5, rough: 0.08, mech: 0.5, stagger: 0, pulse: { rise: 0.012, decay: 0.07, dip: 0.35 }, intakeHz: 520 };
 const ROTARY: LayoutVoice = { ...BASE, edge: 1.1, air: 0.9, rough: 0.05, mech: 0.3, pulse: { rise: 0.03, decay: 0.12, dip: 0.3 }, intakeHz: 600 };
 const TWELVE: LayoutVoice = { ...BASE, pipes: 2, edge: 1.0, air: 0.65, rough: 0.04, intakeHz: 720 };
 
@@ -197,7 +206,7 @@ export const LAYOUT_VOICE: Record<EngineLayout, LayoutVoice> = {
   B4: { ...BASE, headers: 'unequal', edge: 0.8, air: 0.85, rough: 0.14, mech: 0.6 },
   B6: { ...BASE, pipes: 2, edge: 1.0, rough: 0.06, intakeHz: 650 },
   V6: { ...BASE, edge: 0.85, air: 0.8 },
-  VR6: { ...BASE, stagger: 0.07 },
+  VR6: { ...BASE, headers: 'unequal', headerSpread: 0.3, stagger: 0.07 },
   V8: { ...BASE, pipes: 2, edge: 0.7, air: 0.85, rough: 0.1, mech: 0.4, pulse: { rise: 0.012, decay: 0.08, dip: 0.35 } },
   V10: { ...BASE, pipes: 2, edge: 0.95, rough: 0.06, intakeHz: 700 },
   V12: TWELVE,
@@ -225,8 +234,9 @@ function primaryLength(v: LayoutVoice & EngineVoiceSpec, turbo: boolean, bank: n
   const base = turbo && !unequal ? 0.15 : 0.55;
   const step = turbo && !unequal ? 0.05 : 0.015;
   let len = base + step * slot + (slot % 2) * v.stagger;
-  // The Subaru's left bank crosses under the engine to reach the right bank's collector.
-  if (unequal && bank === 1) len += 0.5;
+  // One bank's runners run further: the Subaru's left bank crosses under the engine to the right bank's
+  // collector, the VR6's far side reaches round the narrow V.
+  if (unequal && bank === 1) len += v.headerSpread;
   return len;
 }
 
@@ -255,6 +265,7 @@ export function buildProgram(spec: EngineSpec, opts: { seed?: number; lite?: boo
     // Every pulse also crosses the exhaust system, the same for all, so only the primaries set the arrival spread.
     delay: (primaries[i] - shortest) / SOUND,
     pipe: bank % v.pipes,
+    cross: v.pipes === 2 ? CROSSOVER_SHARE[v.crossover] : 0,
     // engine-sim scales a pulse by 1 / length²; a 1 m reference keeps header differences audible without the system length drowning them.
     gain: ((shortest + 1) / (primaries[i] + 1)) ** 2,
   }));
@@ -388,6 +399,8 @@ export class EngineSynth {
   private readonly fire: Float64Array;
   private readonly delay: Float64Array;
   private readonly pipe: Int32Array;
+  /** Per cylinder: the share its pulse hands to the other pipe through a crossover. */
+  private readonly cross: Float64Array;
   private readonly cgain: Float64Array;
   private readonly lastU: Float64Array;
   private readonly fireGain: Float64Array;
@@ -436,6 +449,7 @@ export class EngineSynth {
     this.fire = new Float64Array(program.cylinders.map((c) => c.fire));
     this.delay = new Float64Array(program.cylinders.map((c) => c.delay));
     this.pipe = new Int32Array(program.cylinders.map((c) => c.pipe));
+    this.cross = new Float64Array(program.cylinders.map((c) => c.cross ?? 0));
     this.cgain = new Float64Array(program.cylinders.map((c) => c.gain / n));
     this.lastU = new Float64Array(n);
     this.fireGain = new Float64Array(n).fill(0.5 / n);
@@ -540,7 +554,10 @@ export class EngineSynth {
         const x = u * TABLE;
         const k = x | 0;
         const fr = x - k;
-        this.pipeSum[this.pipe[c]] += (T[k] + (T[k + 1] - T[k]) * fr) * this.fireGain[c];
+        const pulse = (T[k] + (T[k + 1] - T[k]) * fr) * this.fireGain[c];
+        const cross = this.cross[c];
+        this.pipeSum[this.pipe[c]] += pulse * (1 - cross);
+        if (cross > 0) this.pipeSum[1 - this.pipe[c]] += pulse * cross;
         if (intakeAmp > 0) {
           let w = theta - this.fire[c] + 0.5;
           w -= Math.floor(w);

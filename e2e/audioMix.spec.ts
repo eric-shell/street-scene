@@ -130,7 +130,7 @@ test('every sound sits where the mix puts it', async ({ page }) => {
     const bell = bellMod.WarningBell.create(); tap = bell.out; scale = MASTER * BUS;
     const bellRun = (async () => { const end = performance.now() + 1800; while (performance.now() < end) { bell.update(1, 0); await sleep(30); } })();
     await sleep(600); results.bell = await measure(900); await bellRun; await sleep(900);
-    const voice = new audio.EngineVoice(manifest.cars.find((c) => c.id === 'protoCompact').engine, 0.26);
+    const voice = new audio.EngineVoice(manifest.cars.find((c) => c.id === 'protoHatch').engine, 0.26);
     tap = voice.pan; scale = MASTER * BUS;
     const drive = async (rpm, load, ms) => { const end = performance.now() + ms; let last = performance.now(); while (performance.now() < end) { const now = performance.now(); voice.update({ rpm, redline: 7200, throttle: load, nitro: false, proximity: 1, pan: 0, dt: (now - last) / 1000 }); last = now; await sleep(16); } };
     await drive(3500, 1, 1200); const engRun = drive(3500, 1, 1000); results.engineMid = await measure(900); await engRun;
@@ -138,7 +138,7 @@ test('every sound sits where the mix puts it', async ({ page }) => {
     voice.dispose();
     // The garage's engine, through the same level curve the garage scene uses (src/garage/revModel.ts).
     const revMod = await import('/src/garage/revModel.ts');
-    const gv = new audio.EngineVoice(manifest.cars.find((c) => c.id === 'protoCompact').engine, revMod.REV_LEVEL.base);
+    const gv = new audio.EngineVoice(manifest.cars.find((c) => c.id === 'protoHatch').engine, revMod.REV_LEVEL.base);
     tap = gv.pan;
     const rev = async (mode, rpm, rest, pedal, ms) => { const end = performance.now() + ms; let last = performance.now(); while (performance.now() < end) { const now = performance.now(); const l = revMod.revVoice(mode, rpm, rest, 7200, pedal); gv.update({ rpm, redline: 7200, throttle: l.throttle, nitro: false, proximity: l.proximity, pan: 0, dt: (now - last) / 1000 }); last = now; await sleep(16); } };
     const cruise = 900 + 0.28 * (7200 - 900);

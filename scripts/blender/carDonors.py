@@ -34,76 +34,63 @@ REDUCER = 'meshopt'   # _collapse: 'meshopt' (meshopt.py) or 'blender' (the Deci
 
 DONORS = {
     'protoWagon': {
-        'name': '2020 Audi RS 6 Avant (C8)',
-        'uid': 'aa5b94cc007c4c8a9b558f98d634c8d0',
-        'author': 'Brahekoss123',
+        'name': '1992 Audi S2 Avant',
+        'uid': '939dc6336dfe4fbd99fdb3608d58de56',
+        'author': 'tonielpro520',
         'license': 'CC Attribution',
-        'mm': {'length': 4995, 'wheelbase': 2929},
-        'tires': r'^tire\.001$',
-        # Wheels and brakes; badges (rings, RS, antenna); the honeycomb and slat meshes in front
-        # of the grille backing panels; lamp internals behind the outer lenses.
-        'drop': [r'^Object_(121|123|125|127|129|131|133|135|137|139|151|155|156|158|190|192|194|196|198|200|202|204|206|208|210|212|213|215)$',
-                 r'^Object_(15|68|119|178|237|238|239|240|242|243)$',
-                 r'^Object_(49|117|229|25|55|56|60|62|64|9|17|29|11|115|174|176|113|19|23|13|27)$',
-                 r'^Object_(74|76|80|82|84|86|88|90|92|94|96|98|99|101|103|105|160|162|164|166|220|221|252|70|72|78|107|109)$',
-                 r'^Object_(245|246|247|249|250|256|258|259|261|263|265|266|268|270|274|276|278|280|282|284|286|288|290|292|294|296|298|300|302|304|306|308|310|312|314|316|318|320|322|324|326|328|330|332|334|336)$'],
-        'materials': {r'^CARI_PAINT$': 'Paint', r'^Glass\.002$': 'Glass', r'^(Front_grill|Indisde_Front_Grill|RIM_DARK|Plastic|MIrror)$': 'Black',
-                      r'^(Material\.001|Rear_LIght_clear)$': 'Lamp', r'^Mirror_Lamp$': 'Light', r'^Small_Red_lamp_replaced$': 'TailLight'},
+        'mm': {'length': 4509, 'wheelbase': 2597},
+        'tires': r'^Tyre$',
+        'materials': {
+            r'^body(\.\d+|_2)?$': 'Paint',
+            # Interior (INT_ and its unprefixed pieces), the wheels in five materials, the logos.
+            r'(?i)^int_|^(headliner|cloth|leather|solid|plastic|metal|carbon_fiber|bump_stitching|gauge_\w+|digital_gauge|glass|reflector_cp|defrost_lines'
+            r'|material|material_57|Material_14|outer_rim|wheel_black|chrome_rim|rotor|audilogo|exT_black_shit)$': None,
+            # rubber_trim is the window and bumper seals, which AUTO would drop as tire rubber.
+            r'^(rubber_trim|plastic2|misc|undercarriage|weatherstrip|black|frame|bumper_frame|grille2_alpha|matte_colors)$': 'Black',
+            r'^(lights_glass|textured_reflector(\.\d+)?|detail_glass_clear|head_light|reverse_light_lod0)$': 'Lamp',
+            r'^(detail_glass_red|reflector|tail_light_lod0)$': 'TailLight',
+            r'^(window|black_glass)$': 'Glass',
+            r'^(chrome|chrome_2|exhaust_chrome_thing)$': 'Chrome'},
+        # What strip_wipers leaves of the wiper arms on the cowl, and the whip antenna on the roof.
+        'islands': [lambda k, a, b, mats: set(mats) == {'Black'} and k < 400 and -1.12 < (a.y + b.y) / 2 < -0.86 and 0.84 < (a.z + b.z) / 2 < 0.95
+                    and max(b - a) < 0.25,
+                    lambda k, a, b, mats: set(mats) == {'Black'} and abs((a.x + b.x) / 2) < 0.03 and b.z > 1.45 and (b - a).x < 0.05],
     },
     'protoHatch': {
-        'name': '2011 Subaru Impreza WRX STI hatchback',
-        'uid': 'f7ce18246466400e8a2b99337b183b74',
-        'author': 'ddiaz-design',
-        'license': 'CC Attribution-NonCommercial-ShareAlike',
-        'mm': {'length': 4415, 'wheelbase': 2625},
-        'tires': r'Wheel1A_3D',
-        # Door meshes carry 'Interior' in their names: classify by material. Chassis1's black
-        # meshes are the wipers, the cowl trim under them and a shell floating over the roof.
-        'drop': [r'^3DWheel ', r'^Calliper', r'SteeringWheel', r'^wrx:Chassis1_Mesh_M_Opaque_PlasticSmoothBlack_Max_wrx:M_Opaque_Plastic(Rough|Smooth)Black'],
-        # The rest of that shell and the antenna on the roof; the fuel door on the right rear quarter.
-        # (lo, hi, only these materials, flush): the plate and antenna go, then the sunroof under
-        # the plate and the fuel door are pressed flush into their panels.
-        'patches': [((-0.45, -0.3, 1.35), (0.45, 1.25, 1.6), {'Black'}, False), ((-0.4, 0.05, 1.38), (0.4, 1.05, 1.6), None, True),
-                    ((-0.92, 1.4, 0.7), (-0.74, 1.69, 0.97), None, True)],
-        'materials': {r'M_CarPaint(Normal)?_Max': 'Paint', r'M_CarPaint_Trim_Carbon': 'Black',
-                      r'M_Rim|Wheel1A_3D|Callipers|M_Interior_Max|M_Engine_Max|M_Badge_Max|M_RimBadge': None,
-                      r'M_Chassis_Max|M_Opaque_Plastic(Rough|Smooth)Black|M_Opaque_PlasticSmoothSilver|M_Opaque_ChromeSmooth|M_LightBucket|M_GlassOpaque_Mirror|M_Grille[AB]': 'Black',
-                      # The surround is the windshield's black frit band, a second layer on the glass.
-                      r'M_Glass_WindowFront|M_Glass_WindowSurround': 'Glass', r'M_LightGlassNormal_Clear': 'Lamp', r'M_LightGlass_Red': 'TailLight',
-                      r'M_Opaque_Nickel(Rough|Smooth)': 'Chrome'},
-    },
-    'protoCompact': {
-        'name': '2002 Acura RSX Type-S',
-        'uid': 'af6dbe66342943498849f61430b6e6c0',
-        'author': 'ddiaz-design',
-        'license': 'CC Attribution-NonCommercial-ShareAlike',
-        'mm': {'length': 4374, 'wheelbase': 2570},
-        'tires': r'^llanta$',
-        'drop': [],
-        'patches': [((-0.45, -0.25, 1.29), (0.45, 0.35, 1.5), None, True)],   # the sunroof, pressed flush
-        'materials': {r'^material$': 'Paint', r'^(RSX_rin|llanta|disk)$': None, r'^RSX_int$': None,
-                      r'^(RSX_plast|bajo|cromo|parrilla)$': 'Black', r'^(Windiw|vidrios)$': 'Glass', r'^D_glass$': 'Paint',
-                      r'^(RSX_luz|RSX_luz2|light_glass)$': 'Lamp'},
+        'name': '2002 Volkswagen Golf R32 (Mk4)',
+        'uid': '98e6828648084ae3b877ad69e8ad36dc',
+        'author': 'tangwang920',
+        'license': 'CC Attribution',
+        'mm': {'length': 4149, 'wheelbase': 2518},
+        'tires': r'TARMAC_TYRE_TREAD',
+        'drop': [r'SM_Interior'],
+        # `material` is one atlas for the trim, seals, bumper inserts and mirror housings; `chassis`
+        # the underbody.
+        'materials': {r'^material$': 'Black', r'^chassis$': 'Black'},
+        # The lamp lenses are `glass` like the windows: the headlight covers are their own mesh at
+        # the nose, the tail lenses part of the rear glass at the corners below the hatch window.
+        'recolor': [(lambda c, n, m: m == 'Glass' and c.y < -1.5, 'HeadLight'),
+                    (lambda c, n, m: m == 'Glass' and c.y > 1.55 and c.z < 0.95 and abs(c.x) > 0.4, 'TailLight')],
+        # The paint disc behind the grille badge, and the roof antenna's stub.
+        'cull': [lambda c, n, m: m == 'Paint' and abs(c.x) < 0.075 and c.y < -1.98 and 0.57 < c.z < 0.7,
+                 lambda c, n, m: m == 'Black' and abs(c.x) < 0.04 and 1.27 < c.y < 1.41 and c.z > 1.38],
     },
     'protoCoupe': {
-        'name': '1997 Toyota Supra (A80)',
-        'uid': '18e530a1f4e04b4bbc5f51a09e2f95e2',
-        'author': 'Pooya_dh',
-        'license': 'CC Attribution-NonCommercial',
-        'mm': {'length': 4515, 'wheelbase': 2550},
-        'tires': r'^Rubber$',
-        'tireObjects': r'(Front|Rear)_Wheel_0x',   # Rubber is the window seals too
-        # The lamp covers share the window glass.
-        'recolor': [(lambda c, n, m: m == 'Glass' and c.y < -1.7, 'HeadLight'), (lambda c, n, m: m == 'Glass' and c.y > 1.7, 'TailLight')],
-        # The driver's door skin lives under 'Left_Door_Interior': classify it by material, keep it.
-        'drop': [r'Wheel_0x', r'Brake_(Caliper|Disc)', r'Suspensions', r'^Interior_', r'Sear_', r'Steering',
-                 r'Kilometer', r'^Plane\.00[16]'],
-        'materials': {r'^Paint\.002$': 'Paint', r'^(Aluminium|Brake_Caliper|Brake_Disc|Badge|Engine)$': None,
-                      r'^(Dar_1|Dar_2\.[12]|null|Metal|Daste_farman|Farman|black|glass|Speed_kilometer|Narengi|Rpm_kilometer|Fuel_meter|White|Cooler|Up_Cooler|dariche_cooler|Radio|Pedal)$': None,
-                      r'^(Plastik_dashboard|Plastik_Dashboard_2|Black\.002|back_seat|Interior_2|Interior\.001|Dookgt|Kafpoosh|Material\.008|Material\.009|Parchii|material_0\.001)$': None,
-                      r'^(Rubber|Plastic\.001|Headlight_Backface|Light_Chrome|Headlight_Glass_Border|Bumper_Chassis|Grille|Base|Skirt_Chassis|Chrome\.002|Material\.007|Material\.010)$': 'Black',
-                      r'^Glass\.003$': 'Glass', r'^Bright_White_Light$': 'HeadLight', r'^(Bright_Red_Light|Trunk_Stoplight|Material\.011|Material\.012)$': 'TailLight',
-                      r'^(Orange_Light|orange|Material\.003|Material\.004)$': 'Light', r'^Exhaust$': 'Chrome', r'^Trunk$': 'Paint'},
+        'name': '1999 Mazda RX-7 (FD3S)',
+        'uid': '06986b70c65b44c5a7315ed467b621a6',
+        'author': 'niev',
+        'license': 'CC Attribution',
+        'mm': {'length': 4285, 'wheelbase': 2425},
+        'turn': (-90, 0, 0),   # -Y up, nose at -Z
+        # `material` is the rims, Material__1..4 the number plates; clear and orange glass are the
+        # lamp lenses (pop-ups modelled raised, bumper lamps, indicators), not windows.
+        'materials': {r'^material$': None, r'^Material__\d$': None, r'^(clearglass|orangeglass)$': 'Lamp', r'^redglass$': 'TailLight',
+                      r'^windowglass$': 'Glass', r'^carpaint$': 'Paint', r'^black$': 'Black', r'^chrome$': 'Chrome', r'^mirror$': 'Black'},
+        # The nose and tail badges and the tail lettering: chrome islands of 2,000 to 2,700 faces,
+        # past the de-badge limit, which the tail lamps' chrome reflectors (1,856) must stay under.
+        'cull': [lambda c, n, m: m == 'Chrome' and abs(c.x) < 0.05 and c.y < -1.89 and 0.55 < c.z < 0.63,
+                 lambda c, n, m: m == 'Chrome' and abs(c.x) < 0.05 and c.y > 2.11 and 0.68 < c.z < 0.77,
+                 lambda c, n, m: m == 'Chrome' and 0.26 < abs(c.x) < 0.35 and c.y > 2.1 and 0.69 < c.z < 0.73],
     },
 }
 
@@ -326,18 +313,22 @@ def donor(cid, root):
             bpy.data.meshes.remove(me)
     bpy.context.view_layer.update()
     src = [o for o in _descendants(bpy.data.objects[root]) if o.type == 'MESH']
-    # A model facing +y is turned to face -y first (recipe `nose`).
+    # A model facing +y is turned to face -y first (recipe `nose`); one lying on its side is stood
+    # up Z-up first (recipe `turn`, Euler degrees XYZ).
     turn = Matrix.Rotation(math.pi, 4, 'Z') if R.get('nose') == '+y' else Matrix.Identity(4)
-    if R.get('nose') == '+y':
+    if R.get('turn'):
+        turn = turn @ Euler([math.radians(a) for a in R['turn']]).to_matrix().to_4x4()
+    if turn != Matrix.Identity(4):
         for o in src:
             o.matrix_world = turn @ o.matrix_world
         bpy.context.view_layer.update()
     try:
         fy, ry, r, ground, track = donor_axles(src, R.get('tires', TIRES), R.get('tireObjects'))
     finally:
-        if R.get('nose') == '+y':
+        if turn != Matrix.Identity(4):
+            back = turn.inverted()
             for o in src:
-                o.matrix_world = turn @ o.matrix_world
+                o.matrix_world = back @ o.matrix_world
             bpy.context.view_layer.update()
     # Scaled from the published wheelbase: an import's own size can be anything (a ground dome or a
     # backdrop in the scene sets Sketchfab's normalized size). The length is the check.
@@ -398,14 +389,17 @@ def donor(cid, root):
         recolor(full, pred, name)
     for pred in R.get('cull', ()):
         delete_faces(full, pred)
+    for pred in R.get('islands', ()):
+        delete_islands(full, pred)
     for lo, hi, mats, flush in R.get('patches', ()):
         print(f'{cid}: patched {patch_out(full, Vector(lo), Vector(hi), mats, flush)} faces')
     print(f'{cid}: {strip_wipers(full)} wipers removed, {strip_antennas(full)} antennas removed')
     # De-badge: lettering and logos are small loose all-Black (formerly chrome) islands on the nose
-    # and tail, above exhaust tip height; a generic car carries none.
+    # and tail, above exhaust tip height; a generic car carries none. A finely modelled logo runs
+    # past a thousand faces (the Golf's are 900 and 1,168).
     ends = (ry - fy) / 2 + 0.25
     badges = delete_islands(full, lambda k, a, b, mats: set(mats) <= {'Black', 'Chrome'} and max((b - a).x, (b - a).z) < 0.3
-                            and abs((a.y + b.y) / 2) > ends and (a.z + b.z) / 2 > 0.45 and k < 400)
+                            and abs((a.y + b.y) / 2) > ends and (a.z + b.z) / 2 > 0.45 and k < 1500)
     # Anywhere on the body: emblems, scripts and stickers are thin (under 12 mm) and small (under
     # 0.35 m) loose islands of any paint-free material, lying on a panel. Lamps and glass are not.
     badges += delete_islands(full, lambda k, a, b, mats: k < 300 and not set(mats) & {'Glass', 'HeadLight', 'TailLight', 'Light', 'Paint'}
