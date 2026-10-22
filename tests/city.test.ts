@@ -6,6 +6,7 @@ import { createCity, createWorld, planRoads } from '../src/city/world';
 import { CITY, ROUTE } from '../src/city/config';
 import { createTerrain } from '../src/city/terrain';
 import { DEG, distToSegment, segmentT } from '../src/sim/math';
+import type { Vec2 } from '../src/sim/math';
 import { WALL_LOOKS } from '../src/city/districts/types';
 import { insideBuilding, BUILDING_SETBACK } from '../src/city/blocks';
 import { pointInPolygon, polygonCentroid } from '../src/city/districts/geom';
@@ -104,7 +105,7 @@ describe('city generation', () => {
       // Never through a back alley shortcut; never barriers across one of the route's own.
       for (const r of [circuit]) {
         for (const e of r.edges) expect(g.edges[e].shortcut).toBeFalsy();
-        const own = new Set(r.shortcuts.map((sc) => sc.edge));
+        const own = new Set(r.shortcuts.flatMap((sc) => sc.edges));
         for (const cs of r.closedStreets) expect(own.has(cs.edge)).toBe(false);
       }
       const first = circuit.points[0];
@@ -334,6 +335,14 @@ describe('city generation', () => {
       }
       const pockets = w.areas.filter((a) => a.kind === 'infill' && (a.variant === 'plaza' || a.variant === 'cornerPlaza'));
       expect(pockets.filter((a) => lanterns.some((p) => p.area === a.id)).length).toBeGreaterThanOrEqual(pockets.length * 0.95);
+      // Parking lots are lit too: a row of posts along the back, about one per lotLampSpacing, at least two.
+      const lots = w.areas.filter((a) => a.kind === 'infill' && a.variant === 'lot');
+      expect(lots.length).toBeGreaterThan(0);
+      for (const a of lots) {
+        const n = lanterns.filter((p) => p.area === a.id).length;
+        expect(n, `${seed} lot ${a.id}`).toBeGreaterThanOrEqual(Math.max(2, Math.floor(a.params.lu / CITY.districts.infill.lotLampSpacing)));
+        expect(n).toBeLessThanOrEqual(2 + Math.ceil(a.params.lu / CITY.districts.infill.lotLampSpacing));
+      }
       // District props come after all street furniture.
       const firstDistrict = props.findIndex((p) => p.area !== undefined);
       expect(firstDistrict).toBeGreaterThan(0);
@@ -390,8 +399,56 @@ describe('city generation', () => {
         expect(s.gz).toBeCloseTo((t.heightAt(x, z + e) - t.heightAt(x, z - e)) / (2 * e), 5);
       }
     }
-    expect(hi - lo).toBeGreaterThan(8);
-    expect(maxGrade).toBeLessThan(0.056);
+    expect(hi - lo).toBeGreaterThan(12);
+    expect(maxGrade).toBeLessThan(0.066);
+  });
+
+  it('sits the city on a landscape: macro relief across the map on every seed, grades still gentle', () => {
+    // The base alone (no district modifiers), sampled every 20 m over the grid's extent. The macro terms
+    // (CITY.hillAmp4/5) show as a spread between the mean heights of 350 m boxes, which the rolling terms
+    // (570-1500 m wavelengths) mostly average out of: without them the spread is 4-8 m, with them 12 m+.
+    const rng = new Rng(20261021);
+    const span = (CITY.gridW - 1) * CITY.spacing * 0.5;
+    const boxSize = 350;
+    let leastRange = Infinity;
+    let leastSpread = Infinity;
+    let maxGrade = 0;
+    for (let i = 0; i < 50; i++) {
+      const seed = rng.int(0, 0x7fffffff);
+      const t = createTerrain(seed);
+      const again = createTerrain(seed);
+      let lo = Infinity;
+      let hi = -Infinity;
+      let mismatches = 0;
+      const boxes = new Map<string, { sum: number; n: number }>();
+      for (let x = -span; x <= span; x += 20) {
+        for (let z = -span; z <= span; z += 20) {
+          const h = t.heightAt(x, z);
+          if (again.heightAt(x, z) !== h) mismatches++;
+          lo = Math.min(lo, h);
+          hi = Math.max(hi, h);
+          const s = t.slopeAt(x, z);
+          maxGrade = Math.max(maxGrade, Math.hypot(s.gx, s.gz));
+          const key = `${Math.floor((x + span) / boxSize)},${Math.floor((z + span) / boxSize)}`;
+          const b = boxes.get(key) ?? { sum: 0, n: 0 };
+          b.sum += h;
+          b.n++;
+          boxes.set(key, b);
+        }
+      }
+      let boxLo = Infinity;
+      let boxHi = -Infinity;
+      for (const b of boxes.values()) {
+        boxLo = Math.min(boxLo, b.sum / b.n);
+        boxHi = Math.max(boxHi, b.sum / b.n);
+      }
+      expect(mismatches, `seed ${seed} base terrain deterministic`).toBe(0);
+      leastRange = Math.min(leastRange, hi - lo);
+      leastSpread = Math.min(leastSpread, boxHi - boxLo);
+    }
+    expect(leastRange).toBeGreaterThan(12);
+    expect(leastSpread).toBeGreaterThan(9);
+    expect(maxGrade).toBeLessThan(0.066);
   });
 });
 
@@ -415,14 +472,17 @@ describe('districts', () => {
     expect(JSON.stringify(a.blocks.walls)).toBe(JSON.stringify(b.blocks.walls));
     const rng = new Rng(404);
     const seen = new Set<string>();
+    let shareSum = 0;
     for (let i = 0; i < 24; i++) {
       const c = createCity(rng.int(0, 0x7fffffff));
       const blockArea = c.blocks.faces.reduce((s, f) => s + (f.outer ? 0 : f.area), 0);
       // Downtown keeps the blocks nobody claimed (hills, parks and the monument claim about a fifth; the
-      // special share by streets, hill slopes included, is measured in hills.test.ts).
+      // special share by streets, hill slopes included, is measured in hills.test.ts). A seed whose El
+      // swings leave no room for a bluff can run to about 95%, so the mean carries the bound.
       const downtown = c.districts.areas.filter((x) => x.kind === 'downtown').reduce((s, x) => s + x.params.area, 0);
+      shareSum += downtown / blockArea;
       expect(downtown / blockArea).toBeGreaterThan(0.5);
-      expect(downtown / blockArea).toBeLessThan(0.95);
+      expect(downtown / blockArea).toBeLessThan(0.965);
       c.districts.areas.forEach((x, k) => {
         expect(x.id).toBe(k);
         seen.add(x.kind);
@@ -432,6 +492,7 @@ describe('districts', () => {
       expect(new Set(claimed).size).toBe(claimed.length);
       expect(claimed.length).toBe(c.blocks.faces.filter((f) => !f.outer).length);
     }
+    expect(shareSum / 24).toBeLessThan(0.9);
     for (const k of ['downtown', 'park', 'river', 'roundabout', 'alley', 'backAlley', 'subway', 'infill', 'hills', 'monument']) expect(seen.has(k)).toBe(true);
   });
 
@@ -459,8 +520,9 @@ describe('districts', () => {
           // (Neighbouring buildings may leave a gap under a meter: a 0.7 m margin covers it.)
           expect(w.blocks.buildings.some((b) => insideBuilding(b, px, pz, 0.7))).toBe(true);
         }
-        // A lane closure's plant stands in its closed curb lane.
-        if (wall.look === 'roadworks') continue;
+        // A lane closure's plant stands in its closed curb lane; the face under a jump exit's lip stands across
+        // its alley (the road drops under it, the car flies over it).
+        if (wall.look === 'roadworks' || wall.look === 'alleyLip') continue;
         // Not on any road (sampled along the wall).
         for (const t of [0.1, 0.5, 0.9]) {
           const x = wall.ax + (wall.bx - wall.ax) * t;
@@ -848,6 +910,65 @@ describe('race progress and resets', () => {
   });
 });
 
+/** Distance from a point to a polyline (m). */
+function distToPath(path: readonly Vec2[], x: number, z: number): number {
+  let best = Infinity;
+  for (let i = 0; i + 1 < path.length; i++) best = Math.min(best, distToSegment(x, z, path[i].x, path[i].z, path[i + 1].x, path[i + 1].z));
+  return best;
+}
+
+/** Point at distance s along a polyline. */
+function pathSpot(path: readonly Vec2[], s: number): Vec2 {
+  let i = 0;
+  let cum = 0;
+  for (; i + 2 < path.length; i++) {
+    const l = Math.hypot(path[i + 1].x - path[i].x, path[i + 1].z - path[i].z);
+    if (s < cum + l) break;
+    cum += l;
+  }
+  const l = Math.hypot(path[i + 1].x - path[i].x, path[i + 1].z - path[i].z) || 1;
+  const t = (s - cum) / l;
+  return { x: path[i].x + (path[i + 1].x - path[i].x) * t, z: path[i].z + (path[i + 1].z - path[i].z) * t };
+}
+
+/** A point in a polyline's frame: position along it (m, on the nearest leg) and lateral offset (+ left of travel). */
+function pathFrame(path: readonly Vec2[], p: { x: number; z: number }): { s: number; lateral: number; leg: number } {
+  let best = { s: 0, lateral: 0, leg: 0, d: Infinity };
+  let cum = 0;
+  for (let i = 0; i + 1 < path.length; i++) {
+    const a = path[i];
+    const b = path[i + 1];
+    const l = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+    const ux = (b.x - a.x) / l;
+    const uz = (b.z - a.z) / l;
+    const along = (p.x - a.x) * ux + (p.z - a.z) * uz;
+    const d = distToSegment(p.x, p.z, a.x, a.z, b.x, b.z);
+    if (d < best.d) best = { s: cum + Math.max(0, Math.min(l, along)), lateral: (p.x - a.x) * -uz + (p.z - a.z) * ux, leg: i, d };
+    cum += l;
+  }
+  return best;
+}
+
+/** The nodes of a shortcut's chain in path order. */
+function chainNodes(g: World['graph'], sc: { edges: number[]; points: Vec2[] }): number[] {
+  const first = g.edges[sc.edges[0]];
+  const startsAtA = Math.hypot(g.nodes[first.a].x - sc.points[0].x, g.nodes[first.a].z - sc.points[0].z) < 1e-6;
+  let n = startsAtA ? first.a : first.b;
+  const out = [n];
+  for (const eid of sc.edges) {
+    const e = g.edges[eid];
+    n = e.a === n ? e.b : e.a;
+    out.push(n);
+  }
+  return out;
+}
+
+/** The route nodes at a shortcut's entry and exit. */
+function shortcutEnds(g: World['graph'], sc: { edges: number[]; points: Vec2[] }): [number, number] {
+  const nodes = chainNodes(g, sc);
+  return [nodes[0], nodes[nodes.length - 1]];
+}
+
 describe('route shortcuts', () => {
   /** Route distance a shortcut skips (wrapping on circuits). */
   const skipOf = (route: World['route'], sc: World['route']['shortcuts'][number]) => (route.closed ? (((sc.sOut - sc.sIn) % route.length) + route.length) % route.length : sc.sOut - sc.sIn);
@@ -866,19 +987,30 @@ describe('route shortcuts', () => {
         const onRoute = new Set(route.nodes);
         const closed = new Set(route.closedStreets.map((c) => c.edge));
         for (const sc of route.shortcuts) {
-          const e = g.edges[sc.edge];
-          expect(e.shortcut).toBe(true);
-          expect(onRoute.has(e.a) && onRoute.has(e.b)).toBe(true);
-          expect(closed.has(sc.edge)).toBe(false);
-          expect(route.edges.includes(sc.edge)).toBe(false);
+          // A chain of shortcut back alleys through free bend nodes, its two ends on the route.
+          const ends = shortcutEnds(g, sc);
+          expect(onRoute.has(ends[0]) && onRoute.has(ends[1])).toBe(true);
+          expect(sc.points.length).toBe(sc.edges.length + 1);
+          for (const eid of sc.edges) {
+            expect(g.edges[eid].shortcut).toBe(true);
+            expect(g.edges[eid].kind).toBe('backAlley');
+            expect(closed.has(eid)).toBe(false);
+            expect(route.edges.includes(eid)).toBe(false);
+          }
+          for (const nid of chainNodes(g, sc).slice(1, -1)) {
+            const n = g.nodes[nid];
+            expect(n.gi).toBe(-1);
+            expect(n.edges.length).toBe(2);
+            expect(onRoute.has(nid)).toBe(false);
+          }
           // Saves a real share of what it skips, never a big chunk of the lap. Measured along the
           // streets node to node, as the planner and the route builder measure it (the driving
           // polyline rounds every corner it skips).
           const nodeCum = [0];
           for (let i = 0; i < route.edges.length; i++) nodeCum.push(nodeCum[i] + g.edges[route.edges[i]].length);
           const nodeTotal = nodeCum[route.edges.length];
-          const na = nodeCum[route.nodes.indexOf(e.a)];
-          const nb = nodeCum[route.nodes.indexOf(e.b)];
+          const na = nodeCum[route.nodes.indexOf(ends[0])];
+          const nb = nodeCum[route.nodes.indexOf(ends[1])];
           const f = (((nb - na) % nodeTotal) + nodeTotal) % nodeTotal;
           const skip = route.closed ? Math.min(f, nodeTotal - f) : Math.abs(nb - na);
           expect(sc.length).toBeLessThanOrEqual(skip * (1 - cfg.minSave) + 1e-6);
@@ -905,48 +1037,55 @@ describe('route shortcuts', () => {
       expect(w.route.shortcuts.length).toBeGreaterThanOrEqual(1);
       const contacts: Parameters<World['collideCircle']>[3] = [];
       for (const sc of w.route.shortcuts) {
-        const len = Math.hypot(sc.bx - sc.ax, sc.bz - sc.az);
-        // Down the middle from route to route: no wall in the way (city frontage, corner rails,
-        // closures) and drivable ground.
-        for (const wall of w.walls) {
-          if (Math.max(wall.ax, wall.bx) < Math.min(sc.ax, sc.bx) - 5 || Math.min(wall.ax, wall.bx) > Math.max(sc.ax, sc.bx) + 5) continue;
-          if (Math.max(wall.az, wall.bz) < Math.min(sc.az, sc.bz) - 5 || Math.min(wall.az, wall.bz) > Math.max(sc.az, sc.bz) + 5) continue;
-          expect(segmentsCross({ x: sc.ax, z: sc.az }, { x: sc.bx, z: sc.bz }, { x: wall.ax, z: wall.az }, { x: wall.bx, z: wall.bz }), `${seed} wall ${wall.kind}`).toBe(false);
+        const pts = sc.points;
+        const len = sc.length;
+        const area = w.areas.find((a) => a.kind === 'backAlley' && a.edges.includes(sc.edges[0]))!;
+        // Down the middle from route to route, round every bend: no wall in the way (city frontage,
+        // corner rails, closures; a jump exit's lip face is low, the car on the ramp passes over it) and
+        // drivable ground.
+        for (let i = 0; i + 1 < pts.length; i++) {
+          const a = pts[i];
+          const b = pts[i + 1];
+          for (const wall of w.walls) {
+            if (wall.top !== undefined) continue;
+            if (Math.max(wall.ax, wall.bx) < Math.min(a.x, b.x) - 5 || Math.min(wall.ax, wall.bx) > Math.max(a.x, b.x) + 5) continue;
+            if (Math.max(wall.az, wall.bz) < Math.min(a.z, b.z) - 5 || Math.min(wall.az, wall.bz) > Math.max(a.z, b.z) + 5) continue;
+            expect(segmentsCross(a, b, { x: wall.ax, z: wall.az }, { x: wall.bx, z: wall.bz }), `${seed} wall ${wall.kind} ${wall.look}`).toBe(false);
+          }
         }
         for (let s = 0; s <= len; s += 1) {
-          const x = sc.ax + ((sc.bx - sc.ax) * s) / len;
-          const z = sc.az + ((sc.bz - sc.az) * s) / len;
+          const { x, z } = pathSpot(pts, s);
           expect(w.surfaceAt(x, z)).not.toBe('offroad');
-          // A car's half width clear of every wall face (one sided walls also report a band behind them).
-          const n = w.collideCircle(x, z, 1.2, contacts);
+          // A car's half width clear of every wall face (one sided walls also report a band behind them);
+          // the car sits on the ground, so on a jump exit's ramp it is above the lip face's top, and past
+          // the lip it is in the air.
+          const flying = area.params.jumpExit && s > len - area.params.lipS - 0.5;
+          const n = w.collideCircle(x, z, 1.2, contacts, flying ? Infinity : w.heightAt(x, z));
           for (let k = 0; k < n; k++) expect(Math.hypot(x - contacts[k].px, z - contacts[k].pz), `${seed} at ${s.toFixed(0)} m`).toBeGreaterThan(1.2);
         }
-        // A construction site: fenced at both mouths, walls lined with clutter, a clear line down the middle.
-        const area = w.areas.find((a) => a.kind === 'backAlley' && a.edges.includes(sc.edge))!;
+        // A construction site: fenced at both mouths (a jump exit's across its lip), walls lined with
+        // clutter, a clear line down the middle.
         const mine = w.props.filter((p) => p.area === area.id);
-        const ux = (sc.bx - sc.ax) / len;
-        const uz = (sc.bz - sc.az) / len;
-        const along = (p: { x: number; z: number }) => (p.x - sc.ax) * ux + (p.z - sc.az) * uz;
-        const lateral = (p: { x: number; z: number }) => (p.x - sc.ax) * -uz + (p.z - sc.az) * ux;
         const fences = mine.filter((p) => p.kind === 'fencePanel');
         const halfCar = 0.95;
-        const roadHalf = w.graph.edges[sc.edge].width / 2;
-        for (const end of [fences.filter((p) => along(p) < len / 2), fences.filter((p) => along(p) >= len / 2)]) {
+        const roadHalf = w.graph.edges[sc.edges[0]].width / 2;
+        for (const end of [fences.filter((p) => pathFrame(pts, p).s < len / 2), fences.filter((p) => pathFrame(pts, p).s >= len / 2)]) {
           // Panels about every 2 m across the alley width (its sidewalks too), the end ones inset a little.
-          expect(end.length, `${seed} fence panels`).toBeGreaterThanOrEqual(Math.floor((roadHalf * 2 + 2 * w.graph.edges[sc.edge].sidewalk - 0.7) / 2));
+          expect(end.length, `${seed} fence panels`).toBeGreaterThanOrEqual(Math.floor((roadHalf * 2 + 2 * w.graph.edges[sc.edges[0]].sidewalk - 0.7) / 2));
           // No line down the alley a car fits on slips past the fence.
           for (let lat = -(roadHalf - halfCar); lat <= roadHalf - halfCar; lat += 0.25) {
-            expect(end.some((p) => Math.abs(lateral(p) - lat) < halfCar + p.radius), `${seed} gap at ${lat}`).toBe(true);
+            expect(end.some((p) => Math.abs(pathFrame(pts, p).lateral - lat) < halfCar + p.radius), `${seed} gap at ${lat}`).toBe(true);
           }
         }
         // Dense: well over a piece every 2.5 m of the alley between its mouth clearances (about 15 m
-        // each), construction pieces among them.
-        expect(mine.length, `${seed} ${len.toFixed(0)} m`).toBeGreaterThan((len - 30) / 2.5);
+        // each), construction pieces among them; a jump exit's run-up (the lip, ramp and lead-in) stays clean.
+        const cluttered = area.params.jumpExit ? len - area.params.lipS - CITY.districts.backAlley.route.jump.length - CITY.districts.backAlley.route.jump.lead : len;
+        expect(mine.length, `${seed} ${len.toFixed(0)} m`).toBeGreaterThan((cluttered - 30) / 2.5);
         for (const k of ['trafficCone', 'sawhorse']) expect(mine.some((p) => p.kind === k)).toBe(true);
         // Nothing that can stop a car stands in the line down the middle (soft pieces may: they break).
         for (const p of w.props) {
           if (PROP_DEFS[p.kind].breakSpeed < 1) continue;
-          expect(distToSegment(p.x, p.z, sc.ax, sc.az, sc.bx, sc.bz), `${seed} ${p.kind}`).toBeGreaterThan(LANE + p.radius);
+          expect(distToPath(pts, p.x, p.z), `${seed} ${p.kind}`).toBeGreaterThan(LANE + p.radius);
         }
         checked++;
       }
@@ -965,13 +1104,14 @@ describe('route shortcuts', () => {
       while (r.tick < r.countdownTicks) stepRace(r, NEUTRAL_INPUT);
       const w = r.world;
       const sc = w.route.shortcuts[0];
-      const len = Math.hypot(sc.bx - sc.ax, sc.bz - sc.az);
-      const ux = (sc.bx - sc.ax) / len;
-      const uz = (sc.bz - sc.az) / len;
-      const area = w.areas.find((a) => a.kind === 'backAlley' && a.edges.includes(sc.edge))!;
+      // The entry is the first leg of the chain.
+      const len = Math.hypot(sc.points[1].x - sc.ax, sc.points[1].z - sc.az);
+      const ux = (sc.points[1].x - sc.ax) / len;
+      const uz = (sc.points[1].z - sc.az) / len;
+      const area = w.areas.find((a) => a.kind === 'backAlley' && a.edges.includes(sc.edges[0]))!;
       // The entry fence panel nearest the middle line; roll into it from just short of it at 1 m/s.
       const panel = w.props
-        .filter((p) => p.area === area.id && p.kind === 'fencePanel' && (p.x - sc.ax) * ux + (p.z - sc.az) * uz < len / 2)
+        .filter((p) => p.area === area.id && p.kind === 'fencePanel' && pathFrame(sc.points, p).s < sc.length / 2)
         .sort((a, b) => Math.abs((a.x - sc.ax) * -uz + (a.z - sc.az) * ux) - Math.abs((b.x - sc.ax) * -uz + (b.z - sc.az) * ux))[0];
       // A crawl at this throttle stalls on a hill's grade alone (hills often sit on the routes): test on the flat.
       const sl = w.slopeAt(panel.x, panel.z);
@@ -1025,7 +1165,7 @@ describe('route shortcuts', () => {
     {
       const r = setup();
       const route = r.world.route;
-      const shortcut = route.shortcuts.find((x) => x.edge === sc.edge)!;
+      const shortcut = route.shortcuts.find((x) => x.edges[0] === sc.edges[0])!;
       const skip = skipOf(route, shortcut);
       const before = routeSample(route, shortcut.sIn - 30);
       const after = routeSample(route, shortcut.sOut + 25);
@@ -1034,7 +1174,7 @@ describe('route shortcuts', () => {
       const d0 = r.cars[0].dist;
       const events = r.events.length;
       const from = { x: r.cars[0].state.x, z: r.cars[0].state.z };
-      driveAlong(r, [from, { x: shortcut.ax, z: shortcut.az }, { x: shortcut.bx, z: shortcut.bz }, after], 18);
+      driveAlong(r, [from, ...shortcut.points, after], 18);
       const gained = r.cars[0].dist - d0;
       // Credited the route distance (30 m before + the skipped stretch + 25 m after), not the alley's length.
       expect(gained).toBeGreaterThan(30 + skip + 25 - 6);
@@ -1045,15 +1185,15 @@ describe('route shortcuts', () => {
     {
       const r = setup();
       const route = r.world.route;
-      const shortcut = route.shortcuts.find((x) => x.edge === sc.edge)!;
+      const shortcut = route.shortcuts.find((x) => x.edges[0] === sc.edges[0])!;
       const rc = r.cars[0];
-      const near = { x: shortcut.ax + (shortcut.bx - shortcut.ax) * 0.05, z: shortcut.az + (shortcut.bz - shortcut.az) * 0.05 };
+      const near = pathSpot(shortcut.points, shortcut.length * 0.05);
       rc.state.x = near.x;
       rc.state.z = near.z;
       rc.seg = -1;
       stepRace(r, NEUTRAL_INPUT);
       const d0 = rc.dist;
-      const far = { x: shortcut.ax + (shortcut.bx - shortcut.ax) * 0.97, z: shortcut.az + (shortcut.bz - shortcut.az) * 0.97 };
+      const far = pathSpot(shortcut.points, shortcut.length * 0.97);
       rc.state.x = far.x;
       rc.state.z = far.z;
       stepRace(r, NEUTRAL_INPUT);
@@ -1063,7 +1203,7 @@ describe('route shortcuts', () => {
     {
       const r = setup();
       const route = r.world.route;
-      const shortcut = route.shortcuts.find((x) => x.edge === sc.edge)!;
+      const shortcut = route.shortcuts.find((x) => x.edges[0] === sc.edges[0])!;
       const rc = r.cars[0];
       const s0 = shortcut.sOut + 120;
       const a = routeSample(route, s0);
@@ -1078,6 +1218,146 @@ describe('route shortcuts', () => {
       stepRace(r, NEUTRAL_INPUT);
       expect(rc.dist - d0).toBeLessThan(LOST.maxJump);
     }
+  });
+});
+
+describe('route shortcut shapes', () => {
+  it('bend through their blocks, about half end in a jump exit, the same every time', () => {
+    const rng = new Rng(7272);
+    const cfg = CITY.districts.backAlley.route;
+    let total = 0;
+    let bent = 0;
+    let jumps = 0;
+    for (let i = 0; i < 60; i++) {
+      const seed = rng.int(0, 0x7fffffff);
+      const { graph: g, routeNodes, districts } = planRoads(seed);
+      const again = planRoads(seed);
+      const describe = (d: typeof districts) => JSON.stringify(d.areas.filter((a) => a.kind === 'backAlley').map((a) => [a.variant, a.path, a.params]));
+      expect(describe(again.districts)).toBe(describe(districts));
+      for (const kind of ['circuit', 'sprint'] as const) {
+        const route = buildRoute(g, kind, routeNodes[kind]);
+        for (const sc of route.shortcuts) {
+          const area = districts.areas.find((a) => a.kind === 'backAlley' && a.edges.includes(sc.edges[0]))!;
+          if (area.variant !== 'routeShortcut' || area.edges.length !== sc.edges.length) continue;
+          total++;
+          if (sc.points.length > 2) bent++;
+          // Every leg long enough to settle on, every bend one a car can take.
+          for (let k = 0; k + 1 < sc.points.length; k++) expect(Math.hypot(sc.points[k + 1].x - sc.points[k].x, sc.points[k + 1].z - sc.points[k].z)).toBeGreaterThanOrEqual(cfg.bend.minLeg - 1e-6);
+          for (let k = 1; k + 1 < sc.points.length; k++) {
+            const u = { x: sc.points[k].x - sc.points[k - 1].x, z: sc.points[k].z - sc.points[k - 1].z };
+            const v = { x: sc.points[k + 1].x - sc.points[k].x, z: sc.points[k + 1].z - sc.points[k].z };
+            expect(Math.abs(Math.atan2(u.x * v.z - u.z * v.x, u.x * v.x + u.z * v.z))).toBeLessThanOrEqual((cfg.bend.maxDeg * Math.PI) / 180 + 1e-6);
+          }
+          if (!area.params.jumpExit) continue;
+          jumps++;
+          // The last leg meets the exit street at the shallow exit angle, heading down it, and the lip stands
+          // inside the alley with its ramp and lead-in behind it.
+          const n = sc.points.length;
+          const O = sc.points[n - 2];
+          const B = sc.points[n - 1];
+          const leg = Math.hypot(B.x - O.x, B.z - O.z);
+          const t = routeSample(route, sc.sOut + 1);
+          const cosA = ((B.x - O.x) * t.tx + (B.z - O.z) * t.tz) / leg;
+          expect(cosA).toBeGreaterThan(0);
+          expect(Math.abs(Math.acos(Math.min(1, cosA)) - (cfg.jump.exitDeg * Math.PI) / 180)).toBeLessThan(0.02);
+          expect(leg).toBeGreaterThanOrEqual(area.params.lipS + cfg.jump.length + cfg.jump.lead - 1e-6);
+          expect(area.params.landMax).toBeGreaterThan(20);
+          // The landing zone ends before the next route junction.
+          const exit = chainNodes(g, sc)[chainNodes(g, sc).length - 1];
+          const j = route.nodes.indexOf(exit);
+          const next = route.nodes[(j + 1) % route.nodes.length];
+          expect(g.edges[edgeBetween(g, exit, next)].length).toBeGreaterThanOrEqual(area.params.zone + cfg.jump.landingClear - 1e-6);
+        }
+      }
+    }
+    expect(total).toBeGreaterThan(150);
+    expect(bent / total).toBeGreaterThan(0.85);
+    expect(jumps / total).toBeGreaterThan(0.4);
+    expect(jumps / total).toBeLessThan(0.72);
+  });
+
+  it('a jump exit launches a car through its fence onto the street, where it keeps driving', () => {
+    const cfg = CITY.districts.backAlley.route.jump;
+    const rng = new Rng(9090);
+    let flown = 0;
+    for (let i = 0; i < 40 && flown < 3; i++) {
+      const seed = rng.int(0, 0x7fffffff);
+      const kind = i % 2 ? 'sprint' : 'circuit';
+      const config = raceConfig(seed, kind, 0);
+      const probe = createRace(config);
+      const w = probe.world;
+      const sc = w.route.shortcuts.find((x) => w.areas.find((a) => a.kind === 'backAlley' && a.edges.includes(x.edges[0]))?.params.jumpExit);
+      if (!sc) continue;
+      const area = w.areas.find((a) => a.kind === 'backAlley' && a.edges.includes(sc.edges[0]))!;
+      const n = sc.points.length;
+      const O = sc.points[n - 2];
+      const B = sc.points[n - 1];
+      const leg = Math.hypot(B.x - O.x, B.z - O.z);
+      const ux = (B.x - O.x) / leg;
+      const uz = (B.z - O.z) / leg;
+      const sLip = leg - area.params.lipS;
+      // The face under the lip: a low wall toward the street, its top between the street and the ramp's top.
+      const face = w.walls.filter((x) => x.look === 'alleyLip' && x.area === area.id);
+      expect(face.length).toBe(1);
+      const street = w.heightAt(O.x + ux * (sLip + 1.5), O.z + uz * (sLip + 1.5));
+      const top = w.heightAt(O.x + ux * (sLip - 0.05), O.z + uz * (sLip - 0.05));
+      expect(top - street).toBeGreaterThan(cfg.rise - 0.3);
+      expect(face[0].top!).toBeGreaterThan(street + 0.5);
+      expect(face[0].top!).toBeLessThan(top - 0.5);
+      expect(face[0].nx * ux + face[0].nz * uz).toBeGreaterThan(0.99);
+      const lipFence = w.props.filter((p) => p.area === area.id && p.kind === 'fencePanel' && Math.abs((p.x - O.x) * ux + (p.z - O.z) * uz - sLip) < 2);
+      expect(lipFence.length).toBeGreaterThanOrEqual(3);
+      for (const kmh of [60, 80]) {
+        const r = createRace(config);
+        while (r.tick < r.countdownTicks) stepRace(r, NEUTRAL_INPUT);
+        const rc = r.cars[0];
+        const c = rc.state;
+        const v = kmh / 3.6;
+        // Into the last leg at its bend, already at speed, heading down it.
+        c.x = O.x + ux * 2;
+        c.z = O.z + uz * 2;
+        c.y = r.world.driveHeightAt(c.x, c.z);
+        c.yaw = Math.atan2(ux, uz);
+        c.vx = ux * v;
+        c.vz = uz * v;
+        c.yawRate = 0;
+        rc.seg = -1;
+        const events = r.events.length;
+        let vLip = 0;
+        let airborne = false;
+        let landed: { s: number; lat: number; surface: string } | null = null;
+        let since = 0;
+        for (let k = 0; k < 60 * 6 && since < 90; k++) {
+          stepRace(r, { ...NEUTRAL_INPUT, throttle: 0.35 });
+          const s = (c.x - O.x) * ux + (c.z - O.z) * uz;
+          const air = c.y - r.world.heightAt(c.x, c.z);
+          if (!airborne && s >= sLip - 0.1 && s < sLip + 0.5) vLip = Math.hypot(c.vx, c.vz);
+          if (s > sLip && air > 0.25) airborne = true;
+          if (airborne && !landed && air < 0.08 && s > sLip + 2) landed = { s: s - sLip, lat: -(c.x - O.x) * uz + (c.z - O.z) * ux, surface: r.world.surfaceAt(c.x, c.z) };
+          if (landed) since++;
+        }
+        // Over the lip at about the entry speed (the ramp's 2.2 m climb and a leg that may face uphill
+        // under the macro relief cost up to about 15% of a slow entry), through the fence (a few percent
+        // of speed), a clean flight down the leg's line, landing on the street within the planned reach
+        // and rolling on.
+        expect(vLip, `${seed} ${kmh}`).toBeGreaterThan(v * 0.85);
+        expect(airborne).toBe(true);
+        expect(landed, `${seed} ${kmh} never landed`).not.toBeNull();
+        expect(landed!.s).toBeGreaterThan(10);
+        expect(landed!.s).toBeLessThanOrEqual(area.params.landMax);
+        expect(Math.abs(landed!.lat)).toBeLessThan(1.5);
+        expect(['road', 'cobble', 'sidewalk']).toContain(landed!.surface);
+        let broken = 0;
+        for (const p of lipFence) broken += r.brokenProps[p.id];
+        expect(broken).toBeGreaterThanOrEqual(1);
+        // Still rolling well after the landing: with no steering the car runs on at 28 degrees to the
+        // street, into its far curb and the landing clutter, and an uphill leg lands it slower.
+        expect(Math.hypot(c.vx, c.vz)).toBeGreaterThan(v * 0.65);
+        expect(r.events.slice(events).filter((e) => e.type === 'reset' && e.car === 0)).toEqual([]);
+      }
+      flown++;
+    }
+    expect(flown).toBe(3);
   });
 });
 

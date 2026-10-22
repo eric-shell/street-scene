@@ -181,8 +181,14 @@ describe('shortcut mouths', () => {
       const g = w.graph;
       for (const area of w.areas) {
         if (area.kind !== 'backAlley') continue;
-        const alley = g.edges[area.edges[0]];
-        for (const nid of area.nodes) {
+        // The chain's two mouths: its first node with its first edge, its last with its last (the bend
+        // nodes between them have no funnel).
+        const ends: [number, number][] = [
+          [area.nodes[0], area.edges[0]],
+          [area.nodes[area.nodes.length - 1], area.edges[area.edges.length - 1]],
+        ];
+        for (const [nid, eid] of ends) {
+          const alley = g.edges[eid];
           const n = g.nodes[nid];
           const secs = w.blocks.sectors[nid];
           const k = n.edges.indexOf(alley.id);

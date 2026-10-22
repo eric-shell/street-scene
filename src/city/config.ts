@@ -53,8 +53,11 @@ export const CITY = {
   curbRamp: { road: 0.22, walk: 0.12 },
 
   /**
-   * Rolling hills: amplitudes in meters, frequencies in rad/m. Worst case grade is
-   * about a1*f1 + a2*f2*sqrt(2) + a3*f3 = 5.2%, typical grades 1-3%.
+   * Rolling hills: amplitudes in meters, frequencies in rad/m. The three rolling terms' grades
+   * add to at most a1*f1 + a2*f2*sqrt(2) + a3*f3 = 5.2%; with the macro relief below the maxima
+   * sum to 7.7%, but the two long waves run roughly across each other and their steepest points
+   * rarely meet the short waves', so the worst grade measured over 100 seeds is 6.1% and the
+   * typical (median) grade 2-3% (tests/city.test.ts holds the base under 6.6%).
    */
   hillAmp1: 5.5,
   hillAmp2: 3.0,
@@ -63,6 +66,17 @@ export const CITY = {
   hillFreq2: 0.0026,
   /** Medium wavelength (~570 m) crests and dips, a few per lap. */
   hillFreq3: 0.011,
+  /**
+   * Macro relief, the landscape the city sits on: a broad ridge or tilt (one side of the map
+   * higher by 12-20 m) at a 2.4 km wavelength in a seed-random heading, and a gentler valley or
+   * swell at 3 km roughly across it (hillValleySkewDeg either side of perpendicular, degrees).
+   * Grades a4*f4 = 1.8% and a5*f5 = 0.7%; their curvature is far too slight to launch a car.
+   */
+  hillAmp4: 7.0,
+  hillAmp5: 3.5,
+  hillFreq4: 0.0026,
+  hillFreq5: 0.0021,
+  hillValleySkewDeg: 22,
 
   downtownRadius: 420,
   broadphaseCell: 32,
@@ -183,6 +197,23 @@ export const CITY = {
       /** Street stairs on the pillar side sidewalk, in line with the pillars: run and width (m). */
       stairRun: 7.4,
       stairWidth: 1.5,
+      /**
+       * Swings: the line leaves its street column for the neighbouring one through the blocks, on an
+       * S curve, this many times per seed [min, max] (one that does not fit is dropped: a diagonal
+       * avenue or the river in its blocks, a curve too tight). One spans [min, max] street rows: over
+       * two rows it crosses the street between them about 40 degrees off square, over three the two
+       * streets about 25.
+       */
+      swings: [1, 2],
+      swingRows: [2, 3],
+      /** The S curve starts and ends this far past the junction it leaves or joins (m): the deck is straight over the junction. */
+      swingLead: 26,
+      /** A swing is dropped when its curve radius falls under this anywhere (m): well above what the trains need (RAIL.minRadius). */
+      swingRadius: 75,
+      /** The S curve's path points are this far apart (m). */
+      swingStep: 10,
+      /** Through a block, buildings and infill keep this far beyond the deck's edges (m). */
+      blockMargin: 2,
     },
     /**
      * Bluff: an escarpment the El crosses level (src/city/districts/bluff.ts).
@@ -337,6 +368,42 @@ export const CITY = {
         /** A second shortcut on the same route starts at least this far along the route from the first (m). */
         spacing: 320,
         jumpChance: 0.6,
+        /**
+         * A shortcut's path through its block is a dogleg (one bend) or a gentle arc (two bends)
+         * when the block has room, never a straight shot: it bends away from the corner it cuts.
+         * Bend angles tried per node (deg, the first that fits), the sharpest bend a jump exit's
+         * run-up may follow, and the shortest leg (m): a bend close to a mouth or the kicker leaves
+         * no straight to settle on.
+         */
+        bend: { tryDeg: [32, 24, 16], maxDeg: 45, minLeg: 24 },
+        /**
+         * Jump exits: at the exit end the alley climbs a ramp to a lip and the car flies over the
+         * mouth onto the route's street, landing on it heading down it. The last leg meets the
+         * street at exitDeg (shallow, so the landing heading is nearly the street's; the alley's
+         * walls then run on obliquely, the acute one furthest). The ramp is a parabola `length` m
+         * long rising `rise` m, steepest at the lip (2 rise / length, about 11 deg), its lip
+         * `lipBack` m inside the last point where both alley walls still stand; the face under the
+         * lip (Wall.top) stops street cars up to `drop` m below the lip. `lead` m of straight run
+         * the last bend and the ramp's toe. Landing zone: the run-up speed bound is the last bend
+         * taken at bendSpeed then launchAccel to the lip (full throttle and nitrous, as measured
+         * on the car park), its flight reach plus `rollout` m of road, all landingClear m short of
+         * the next junction; the flight corridor spreads spreadDeg each side of the leg. `chance`
+         * is the share of cuts planned as jumps (a jump only happens where its landing fits).
+         */
+        jump: {
+          chance: 0.62,
+          exitDeg: 28,
+          rise: 2.2,
+          length: 22,
+          lipBack: 2,
+          drop: 1.0,
+          lead: 8,
+          bendSpeed: 20,
+          launchAccel: 6,
+          rollout: 25,
+          landingClear: 15,
+          spreadDeg: 6,
+        },
       },
     },
     /**
@@ -487,6 +554,11 @@ export const CITY = {
        */
       lampInset: 1.1,
       lampPairLen: 11,
+      /**
+       * Parking lots: lamp posts along the back row (the far side from the street's lights), about this
+       * far apart (m), lampInset in from the back and the ends; every lot gets at least two.
+       */
+      lotLampSpacing: 17,
     },
     /** Reserved unique features, documented placeholders (plan nothing yet). */
     /**

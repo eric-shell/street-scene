@@ -93,6 +93,8 @@ export interface RoadEdge {
   chain?: number;
   /** Back alley shortcut: drivable, never part of a route, never closed off by barriers. */
   shortcut?: boolean;
+  /** The last edge of a shortcut chain with a jump exit (districts/alley.ts): its b node is the lip's mouth, and the chain is only a shortcut driven toward it. */
+  jumpExit?: boolean;
   /** Crosses the river channel at street level. */
   bridge?: boolean;
   /** Crosses the El's tracks at grade (a bluff's level crossing, districts/bluff.ts) this far from node a (m). */

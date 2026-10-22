@@ -7,7 +7,7 @@ import { CITY, ROUTE } from './config';
 import { RoadGraph, chainFrom, edgeBetween, isBendNode, isRiverEdge, otherNode } from './roadGraph';
 import { EdgeMouths, Sector, Wall, buildEdgeGrid, computeMouths, computeSectors, corridorClearance, makeWall } from './blocks';
 import { Rng, deriveSeed } from '../sim/prng';
-import { shortcutSpan } from './districts/alley';
+import { chainBackwards, routeChains, shortcutSpan } from './districts/alley';
 import { isChannelNode } from './districts/river';
 import { DEG, Vec2, abs, atan2, clamp, cos, distToSegment, lineIntersectT, sign, sin, sqrt, wrapAngle, yawOf } from '../sim/math';
 
@@ -50,9 +50,11 @@ export interface Route {
 }
 
 export interface RouteShortcut {
-  /** Graph edge (a back alley flagged shortcut). */
-  edge: number;
-  /** Entry (on the route at sIn) and exit (at sOut) in world metres. */
+  /** Graph edges of the alley's chain (back alleys flagged shortcut), entry first; one edge for a straight alley. */
+  edges: number[];
+  /** The alley's path, entry first: its junction nodes and the free bend nodes between them (world metres). */
+  points: Vec2[];
+  /** Entry (on the route at sIn) and exit (at sOut) in world metres: the first and last of `points`. */
   ax: number;
   az: number;
   bx: number;
@@ -60,7 +62,7 @@ export interface RouteShortcut {
   /** Route distance at the entry and the exit (m); on circuits sOut may wrap past the start (sOut < sIn). */
   sIn: number;
   sOut: number;
-  /** Length of the alley itself (m). */
+  /** Length of the alley itself along its path (m). */
   length: number;
 }
 
@@ -579,20 +581,27 @@ export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[]):
   const nodeTotal = nodeCum[edges.length];
   const nodeS = new Map<number, number>();
   nodes.forEach((id, i) => nodeS.set(id, nodeCum[i]));
+  // A shortcut is a chain of shortcut edges through free bend nodes (districts/alley.ts shortcutChain);
+  // only its two ends sit on the route.
   const open = new Set<number>();
-  for (const e of g.edges) {
-    if (!e.shortcut) continue;
-    const ia = nodePoint.get(e.a);
-    const ib = nodePoint.get(e.b);
-    const na = nodeS.get(e.a);
-    const nb = nodeS.get(e.b);
+  for (const c of routeChains(g, nodes)) {
+    const a = c.nodes[0];
+    const b = c.nodes[c.nodes.length - 1];
+    const ia = nodePoint.get(a);
+    const ib = nodePoint.get(b);
+    const na = nodeS.get(a);
+    const nb = nodeS.get(b);
     if (ia === undefined || ib === undefined || na === undefined || nb === undefined) continue;
-    const span = shortcutSpan(na, nb, e.length, nodeTotal, closed, closed ? 0 : startS, closed ? nodeTotal : nodeTotal - (length - finishS));
-    if (!span) continue;
-    const A = g.nodes[span.aFirst ? e.a : e.b];
-    const B = g.nodes[span.aFirst ? e.b : e.a];
-    route.shortcuts.push({ edge: e.id, ax: A.x, az: A.z, bx: B.x, bz: B.z, sIn: cum[span.aFirst ? ia : ib], sOut: cum[span.aFirst ? ib : ia], length: e.length });
-    open.add(e.id);
+    const span = shortcutSpan(na, nb, c.length, nodeTotal, closed, closed ? 0 : startS, closed ? nodeTotal : nodeTotal - (length - finishS));
+    // A chain carved for the other route whose jump exit this route would meet first is no shortcut here
+    // (the face under the lip stops it); closed off at both ends like any side street.
+    if (!span || chainBackwards(c, span.aFirst)) continue;
+    const points = span.aFirst ? c.points : c.points.slice().reverse();
+    const edges = span.aFirst ? c.edges : c.edges.slice().reverse();
+    const A = points[0];
+    const B = points[points.length - 1];
+    route.shortcuts.push({ edges, points, ax: A.x, az: A.z, bx: B.x, bz: B.z, sIn: cum[span.aFirst ? ia : ib], sOut: cum[span.aFirst ? ib : ia], length: c.length });
+    for (const id of edges) open.add(id);
   }
   const onRoute = new Set(edges);
   const routeNodeSet = new Set(nodes);

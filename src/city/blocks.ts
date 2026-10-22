@@ -890,6 +890,8 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
   // oblique junction (the warp makes them, roadGraph.ts) a wide street's carriageway reaches along
   // the sidewalk of a narrow one well past the curb corner.
   const streetlights: Streetlight[] = [];
+  // Out of the junctions' paving too: on a block's outer side the mouth corner is the node itself.
+  const paving = g.nodes.map((n) => n.edges.reduce((m, id) => Math.max(m, g.edges[id].width / 2), 0) + 1);
   const lightScratch: number[] = [];
   const onRoad = (x: number, z: number): boolean => {
     edgeGrid.query(x - 1, z - 1, x + 1, z + 1, lightScratch);
@@ -904,6 +906,8 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
   };
   g.edges.forEach((e, ei) => {
     if (e.kind === 'backAlley' || isRiverEdge(e)) return;
+    const A = g.nodes[e.a];
+    const B = g.nodes[e.b];
     for (const side of edgeSides(g, mouths, ei)) {
       const along = sub(side.to, side.from);
       const len = sqrt(along.x * along.x + along.z * along.z);
@@ -912,6 +916,7 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
         const p = add(add(side.from, u, s), side.inward, -0.8);
         if (reserved.some((c) => (c.x - p.x) ** 2 + (c.z - p.z) ** 2 < (c.r + 0.8) ** 2)) continue;
         if (onRoad(p.x, p.z)) continue;
+        if ((A.x - p.x) ** 2 + (A.z - p.z) ** 2 < paving[e.a] ** 2 || (B.x - p.x) ** 2 + (B.z - p.z) ** 2 < paving[e.b] ** 2) continue;
         streetlights.push({ x: p.x, z: p.z, dx: side.inward.x, dz: side.inward.z, edge: ei });
       }
     }

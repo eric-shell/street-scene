@@ -8,8 +8,9 @@
  *    the deck never dips into the river channel or follows a pothole, plus
  *    the deck height, dropping to the portals at the ends; across a bluff
  *    (districts/bluff.ts) the deck holds one absolute level instead (`level`)
- *    and blends back into that profile beyond it, so the ground comes up to
- *    the track on the high side and the track runs at grade there;
+ *    and blends back into that profile beyond it, over whatever length keeps
+ *    the grade gentle, so the ground comes up to the track on the high side
+ *    and the track runs at grade there;
  *  - the unit tangent and the normal toward the pillar side (the deck's
  *    outer edge over the sidewalk);
  *  - the two tracks' lateral offsets: 2 m either side of the middle, except
@@ -50,8 +51,24 @@ export const RAIL = {
   /** Platform length (m) and the track's swing-out on each side of it (m). */
   platform: 92,
   swing: 50,
+  /**
+   * A blend back from a level stretch (RailLevel) grows in steps of blendStep (m) until the deck grade
+   * along it stays under levelGrade, up to levelBlendMax (m): the level's offset from the profile is
+   * what it is (a terrace meeting high ground, a ridge under the line), the grade is the trains'.
+   */
+  levelGrade: 0.06,
+  blendStep: 20,
+  levelBlendMax: 420,
   /** Deck edge beyond the outer track center (m). */
   edgeOut: 2.5,
+  /**
+   * Tightest curve the trains ride (m). The cars are rigid 15.4 m bodies posed from the tangent at
+   * their middle, so on a curve their ends swing out of the arc by (7.7 m)² / 2R: at 55 m that is
+   * 0.54 m, about the half gauge (0.72 m), and the body still covers its rails; tighter and the ends
+   * hang beside the track. The subway planner keeps its swings well above this
+   * (CITY.districts.subway.swingRadius); a bluff detour's legs come closest.
+   */
+  minRadius: 55,
 } as const;
 
 export interface RailStation {
@@ -86,6 +103,9 @@ export interface RailCurve {
   /** The level stretch across a bluff (s, both NaN without one): the deck top is `level.y` between them. */
   levelA: number;
   levelB: number;
+  /** How far before levelA and past levelB the deck blends back into its profile (m, NaN without a level). */
+  blendA: number;
+  blendB: number;
   /**
    * +1 when the pillar side is on the right of travel toward growing s. (With y up,
    * facing along (tx, tz) the right hand side is (-tz, tx).)
@@ -194,7 +214,7 @@ export interface RailLevel {
   b: Vec2;
   /** Deck top (tie top) height along it (m, absolute). */
   y: number;
-  /** Past each end the deck eases back into its normal profile over this distance (m). */
+  /** Past each end the deck eases back into its normal profile over at least this distance (m; longer where the grade needs it, RailCurve.blendA/B). */
   blend: number;
 }
 
@@ -327,25 +347,55 @@ export function buildRailCurve(path: readonly Vec2[], side: number, deckHeight: 
     stations: [],
     levelA: NaN,
     levelB: NaN,
+    blendA: NaN,
+    blendB: NaN,
     pillarRight,
   };
   curve.cityA = projectOnCurve(curve, path[0].x, path[0].z).s;
   curve.cityB = projectOnCurve(curve, path[path.length - 1].x, path[path.length - 1].z).s;
   curve.stations = stationPoints.map((p, i) => ({ s: projectOnCurve(curve, p.x, p.z).s, name: i }));
   if (level) {
-    // Level across the stretch, smoothstep back into the profile beyond it (a gentle train grade).
     const sa = projectOnCurve(curve, level.a.x, level.a.z).s;
     const sb = projectOnCurve(curve, level.b.x, level.b.z).s;
     curve.levelA = Math.min(sa, sb);
     curve.levelB = Math.max(sa, sb);
-    for (let i = 0; i < m; i++) {
-      const s = i * RAIL.step;
-      const out = s < curve.levelA ? curve.levelA - s : s > curve.levelB ? s - curve.levelB : 0;
-      if (out >= level.blend) continue;
-      const t = 1 - out / level.blend;
-      const w = t * t * (3 - 2 * t);
-      deck[i] += (level.y - deck[i]) * w;
+    // Level across the stretch, a smoothstep back into the profile beyond each end. Over a fixed length
+    // that step is as steep as the level's offset from the profile makes it (a terrace meeting high
+    // ground, a ridge under the line), so each blend grows from level.blend until the deck grade along
+    // it stays under RAIL.levelGrade: a gentle train grade whatever the offset.
+    const profile = Float64Array.from(deck);
+    const apply = (bA: number, bB: number) => {
+      for (let i = 0; i < m; i++) {
+        const s = i * RAIL.step;
+        const out = s < curve.levelA ? curve.levelA - s : s > curve.levelB ? s - curve.levelB : 0;
+        const b = s < curve.levelA ? bA : bB;
+        if (out >= b) {
+          deck[i] = profile[i];
+          continue;
+        }
+        const t = 1 - out / b;
+        const w = t * t * (3 - 2 * t);
+        deck[i] = profile[i] + (level.y - profile[i]) * w;
+      }
+    };
+    const steepest = (s0: number, s1: number) => {
+      let g = 0;
+      for (let i = Math.max(1, Math.floor(s0 / RAIL.step)); i <= Math.min(m - 1, Math.ceil(s1 / RAIL.step)); i++) g = Math.max(g, Math.abs(deck[i] - deck[i - 1]) / RAIL.step);
+      return g;
+    };
+    let bA = level.blend;
+    let bB = level.blend;
+    apply(bA, bB);
+    while (bA < RAIL.levelBlendMax && steepest(curve.levelA - bA, curve.levelA) > RAIL.levelGrade) {
+      bA += RAIL.blendStep;
+      apply(bA, bB);
     }
+    while (bB < RAIL.levelBlendMax && steepest(curve.levelB, curve.levelB + bB) > RAIL.levelGrade) {
+      bB += RAIL.blendStep;
+      apply(bA, bB);
+    }
+    curve.blendA = bA;
+    curve.blendB = bB;
   }
   return curve;
 }

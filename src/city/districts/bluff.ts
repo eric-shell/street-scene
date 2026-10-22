@@ -42,7 +42,6 @@
 import { CITY } from '../config';
 import { chainCum, chainOf, gridChain } from '../roadGraph';
 import type { Chain, RoadEdge, RoadGraph } from '../roadGraph';
-import { nodeRow } from './subway';
 import { Vec2, distToSegment, segmentT, sqrt } from '../../sim/math';
 import { createTerrain } from '../terrain';
 import type { Terrain } from '../terrain';
@@ -51,6 +50,7 @@ import type { Area, AreaBuild, DistrictModule, HeightSample, PlanContext } from 
 import { emptyBuild } from './types';
 import { pointInPolygon, smooth01 } from './geom';
 import { riverCenter } from './river';
+import { applyElDetour, elColumnAt, elDetourPath, elStreetEdges, gridNode } from './subway';
 
 const CFG = CITY.districts.bluff;
 /** The deck (tie) top sits this far under the crossing's road, so the rail heads come up flush with it (m). */
@@ -354,7 +354,8 @@ function outline(s: BluffShape): Vec2[] {
   return [at(u0, v0), at(u1, v0), at(u1, v1), at(u0, v1)];
 }
 
-const nodeAt = (g: RoadGraph, i: number, j: number) => g.nodes[j * CITY.gridW + i];
+/** Grid junction (i, j), looked up by gi/gj (subway.ts gridNode): node ids are not j * gridW + i once districts edit the graph. */
+const nodeAt = (g: RoadGraph, i: number, j: number) => gridNode(g, i, j);
 /** The level crossing keeps this far (m) along the crest street from its bend nodes (roadGraph.ts): the pad and gates stay in one piece's frame. */
 const CROSSING_BEND_CLEAR = 20;
 
@@ -395,8 +396,10 @@ export const bluffModule: DistrictModule = {
     const rng = ctx.rng;
     if (!rng.chance(CFG.chance)) return;
     const base = createTerrain(ctx.seed);
+    // Crest rows with two rows of the El on either side; the legs may sit on the map's edge rows, where the
+    // El's run-off carries straight on (the El swings columns elsewhere, so the straight stretches are shorter).
     const cands: { r: number; o: 1 | -1 }[] = [];
-    for (let r = 3; r <= CITY.gridH - 4; r++) for (const o of [1, -1] as const) cands.push({ r, o });
+    for (let r = 2; r <= CITY.gridH - 3; r++) for (const o of [1, -1] as const) cands.push({ r, o });
     rng.shuffle(cands);
     for (const c of cands) {
       const pl = tryPlace(ctx, sub, base, c.r, c.o);
@@ -494,11 +497,13 @@ export const bluffModule: DistrictModule = {
  */
 function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | -1): Placement | null {
   const g = ctx.graph;
-  const c0 = sub.params.column;
+  // The El must run straight on one column across the whole detour (it may swing to another column elsewhere).
+  const c0 = elColumnAt(sub, r);
   const side = sub.params.side;
   const c1 = c0 + side;
-  if (c1 < 0 || c1 >= CITY.gridW) return null;
+  if (c0 < 0 || c1 < 0 || c1 >= CITY.gridW) return null;
   const rows = { leg0: r - 2 * o, low: r - o, crest: r, dip: r + o, leg1: r + 2 * o };
+  for (const j of [rows.leg0, rows.low, rows.dip, rows.leg1]) if (elColumnAt(sub, j) !== c0) return null;
   // The crest street between the El's column and the next must exist, plain and straight across:
   // every piece of it (a street is a chain of pieces through bend nodes, roadGraph.ts).
   const crestA = nodeAt(g, c0, r);
@@ -550,8 +555,8 @@ function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | 
   const rl = sqrt((rb.x - ra.x) ** 2 + (rb.z - ra.z) ** 2) || 1;
   const rdx = (rb.x - ra.x) / rl;
   const rdz = (rb.z - ra.z) / rl;
-  // Where the right of way line crosses a row street (the piece of it that it crosses, and every
-  // piece of that street), or the row's mean z when the street is missing there.
+  // Where the right of way line crosses a row street (or the row's mean z when the street is missing there).
+  // (The piece of the street it crosses, and every piece of that street.)
   const onRow = (j: number): { p: Vec2; edge: number; pieces: number[] } => {
     const a = nodeAt(g, c0, j);
     const b = nodeAt(g, c1, j);
@@ -707,26 +712,22 @@ function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | 
     }
     if (!ok) continue;
     shape.sags = sags;
-    // The El's new path: between the leg rows every one of its nodes (the column streets' bend
-    // nodes included, roadGraph.ts) moves onto the polyline leg0 -> low -> crest -> dip -> leg1, so
-    // the S curves still take a whole block each. Keyed by the El's node index (path[k + 1]).
-    const kOf = (j: number) => sub.nodes.findIndex((id) => g.nodes[id].gi === c0 && g.nodes[id].gj === j);
-    const legKs = [rows.leg0, rows.low, r, rows.dip, rows.leg1].map(kOf);
-    if (legKs.some((k) => k < 0)) continue;
-    const legs: Vec2[] = [sub.path[legKs[0] + 1], low.p, C, dip.p, sub.path[legKs[4] + 1]];
-    const moved = new Map<number, Vec2>();
-    for (let s = 0; s + 1 < legKs.length; s++) {
-      const ka = legKs[s];
-      const kb = legKs[s + 1];
-      for (let k = Math.min(ka, kb); k <= Math.max(ka, kb); k++) {
-        if (k === legKs[0] || k === legKs[4]) continue;
-        const t = (k - ka) / (kb - ka);
-        moved.set(k, { x: legs[s].x + (legs[s + 1].x - legs[s].x) * t, z: legs[s].z + (legs[s + 1].z - legs[s].z) * t });
-      }
-    }
-    const path = sub.path.map((p, k) => moved.get(k - 1) ?? p);
-    // Nothing else crosses the right of way or its S curves (a diagonal, a stray street).
-    const allowed = new Set<number>([...crestChain.edges, ...low.pieces, ...dip.pieces]);
+    // The El's new path: the right of way points replace the low, crest and dip rows' points.
+    const moved = new Map<number, Vec2>([
+      [rows.low, low.p],
+      [r, C],
+      [rows.dip, dip.p],
+    ]);
+    const djA = Math.min(rows.leg0, rows.leg1);
+    const djB = Math.max(rows.leg0, rows.leg1);
+    const det = elDetourPath(sub, djA, djB, moved);
+    const path = det.path;
+    // Nothing else crosses the right of way or its S curves (a diagonal, a stray street): the detour's
+    // points from leg to leg, with the right of way the stretch between the low and dip rows' points.
+    const legs: Vec2[] = det.path.slice(det.at[djA], det.at[djB] + 1);
+    const rowK0 = Math.min(det.at[rows.low], det.at[rows.dip]) - det.at[djA];
+    const rowK1 = Math.max(det.at[rows.low], det.at[rows.dip]) - det.at[djA];
+    const allowed = new Set<number>([...crestChain.edges, ...low.pieces, ...dip.pieces, ...elStreetEdges(g, sub, djA, djB)]);
     for (const n of detourNodes) for (const eid of n.edges) allowed.add(eid);
     for (const e of g.edges) {
       if (allowed.has(e.id) || e.kind === 'channel' || e.kind === 'ramp') continue;
@@ -735,7 +736,7 @@ function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | 
       for (let k = 0; k + 1 < legs.length; k++) {
         if (segmentsIntersect(a, b, legs[k], legs[k + 1])) ok = false;
         // A street running close beside the right of way would have the deck over its sidewalk.
-        else if (k > 0 && k < legs.length - 2 && segDist(a, b, legs[k], legs[k + 1]) < e.width / 2 + e.sidewalk + SUB.deckWidth / 2 + 3) ok = false;
+        else if (k >= rowK0 && k < rowK1 && segDist(a, b, legs[k], legs[k + 1]) < e.width / 2 + e.sidewalk + SUB.deckWidth / 2 + 3) ok = false;
       }
       if (!ok) break;
     }
@@ -749,7 +750,7 @@ function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | 
       const q = rim[(i + 1) % rim.length];
       for (let t = 0; t <= 1; t += 0.05) probes.push({ x: p.x + (q.x - p.x) * t, z: p.z + (q.z - p.z) * t });
     }
-    for (let k = 1; k + 2 < legs.length; k++) for (let t = 0; t <= 1; t += 0.1) probes.push({ x: legs[k].x + (legs[k + 1].x - legs[k].x) * t, z: legs[k].z + (legs[k + 1].z - legs[k].z) * t });
+    for (let k = rowK0; k < rowK1; k++) for (let t = 0; t <= 1; t += 0.1) probes.push({ x: legs[k].x + (legs[k + 1].x - legs[k].x) * t, z: legs[k].z + (legs[k + 1].z - legs[k].z) * t });
     for (const rv of rivers) {
       const sgn = (p: Vec2) => (p.z - riverCenter(rv.params, p.x) > 0 ? 1 : -1);
       const s0 = sgn(probes[0]);
@@ -769,8 +770,8 @@ function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | 
     if (!ok) continue;
     // The El stays clear over every street it crosses but the crest one (a curve on the planned ground).
     const curve = buildRailCurve(path, side, sub.params.deckHeight, ground, [], { a: low.p, b: dip.p, y: shape.y, blend: CFG.levelBlend });
-    const s0 = curve.levelA - CFG.levelBlend - 10;
-    const s1 = curve.levelB + CFG.levelBlend + 10;
+    const s0 = curve.levelA - curve.blendA - 10;
+    const s1 = curve.levelB + curve.blendB + 10;
     for (let i = Math.max(0, Math.floor(s0 / 2)); i < curve.n && i * 2 <= s1 && ok; i++) {
       const x = curve.x[i];
       const z = curve.z[i];
@@ -805,7 +806,7 @@ function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | 
     for (const f of ctx.faces()) {
       if (f.outer || ctx.claims.face.has(f.id)) continue;
       let mine = faceCuts(f);
-      for (let k = 1; k + 2 < legs.length && !mine; k++) {
+      for (let k = rowK0; k < rowK1 && !mine; k++) {
         for (let t = 0.05; t < 1; t += 0.1) {
           if (pointInPolygon(legs[k].x + (legs[k + 1].x - legs[k].x) * t, legs[k].z + (legs[k + 1].z - legs[k].z) * t, f.ring)) mine = true;
         }
@@ -814,9 +815,9 @@ function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | 
       faces.push(f.id);
       area += f.area;
     }
-    // Edges it reshapes: the ramps, the dipped streets and the crest street (their width and line must
-    // stay), every piece of each (a ramp or a dip reaches past its piece's bend nodes).
+    // Edges it reshapes: the ramps, the dipped streets and the crest street (their width and line must stay).
     const edges = new Set<number>();
+    // Every piece of each (a ramp or a dip reaches past its piece's bend nodes).
     for (const rp of ramps) for (const id of chainOf(g, rp.edge).edges) edges.add(id);
     for (const sg of sags) for (const id of chainOf(g, sg.edge).edges) edges.add(id);
     for (const id of crestChain.edges) edges.add(id);
@@ -884,40 +885,14 @@ function commit(ctx: PlanContext, sub: Area, pl: Placement, r: number, o: number
   // The face line across the bluff's width, for the minimap and the area's tag.
   const at = (u: number): Vec2 => ({ x: s.ox + s.ux * u, z: s.oz + s.uz * u });
   const area = ctx.addArea({ kind: 'bluff', variant: 'scarp', polygon: pl.poly, path: [at(s.uA - s.we * 0.6), at(s.uB + s.we * 0.6)], nodes: pl.nodes, edges: pl.edges, faces: [], params }, pl.area);
-  // The El: its path through the right of way, the deck outline after it, and where the detour runs.
-  sub.path = sub.path.map((p, k) => pl.moved.get(k - 1) ?? p);
-  sub.polygon = deckOutline(sub.path, SUB.deckWidth / 2);
+  // The El: its path through the right of way, the deck outline after it, where the detour runs (dj0..dj1)
+  // and its street along it no longer under the deck (subway.ts applyElDetour).
+  applyElDetour(sub, ctx.graph, Math.min(pl.rows.leg0, pl.rows.leg1), Math.max(pl.rows.leg0, pl.rows.leg1), pl.moved);
   // The crest street knows where its level crossing is (routes keep their grids and finish off it).
   const ce = ctx.graph.edges[pl.crestEdge];
   const ca = ctx.graph.nodes[ce.a];
   ce.crossing = sqrt((s.cx - ca.x) ** 2 + (s.cz - ca.z) ** 2);
   sub.params.bluff = area.id;
-  sub.params.dj0 = Math.min(pl.rows.leg0, pl.rows.leg1);
-  sub.params.dj1 = Math.max(pl.rows.leg0, pl.rows.leg1);
-  // Its street on the detour is no longer under the El (the claim stays: nobody else reshapes it).
-  const g = ctx.graph;
-  // Rows as the El counts them (subway.ts nodeRow): a bend node's row is a fraction between its street's junctions.
-  const off = (id: number) => {
-    const row = nodeRow(g, id);
-    return row >= sub.params.dj0 && row <= sub.params.dj1;
-  };
-  sub.edges = sub.edges.filter((eid) => !(off(g.edges[eid].a) && off(g.edges[eid].b)));
-}
-
-/** Deck outline polygon around a path (half width hw), as the subway plan builds it. */
-export function deckOutline(path: readonly Vec2[], hw: number): Vec2[] {
-  const left: Vec2[] = [];
-  const right: Vec2[] = [];
-  path.forEach((p, j) => {
-    const a = path[Math.max(0, j - 1)];
-    const b = path[Math.min(path.length - 1, j + 1)];
-    const l = sqrt((b.x - a.x) ** 2 + (b.z - a.z) ** 2) || 1;
-    const nx = -(b.z - a.z) / l;
-    const nz = (b.x - a.x) / l;
-    left.push({ x: p.x + nx * hw, z: p.z + nz * hw });
-    right.push({ x: p.x - nx * hw, z: p.z - nz * hw });
-  });
-  return left.concat(right.reverse());
 }
 
 function cross(ax: number, az: number, bx: number, bz: number): number {

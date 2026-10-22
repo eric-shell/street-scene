@@ -17,11 +17,29 @@
  * Route shortcuts (carveRouteShortcuts): the random back alleys above only
  * meet a route by luck, so once both routes are picked every circuit and
  * sprint gets its own: a 'backAlley' area (variant 'routeShortcut') whose
- * edge joins two points of the route and skips a real stretch of it. Corner
- * cuts run diagonally across the inside block of a sharp turn; U cuts cross a
- * block the route wraps on three sides. Both are wider than a plain back
- * alley, kept clear of other streets and of the corner rails, and built like
- * any back alley (clutter, often a kicker).
+ * path joins two points of the route and skips a real stretch of it. Corner
+ * cuts run across the inside block of a sharp turn; U cuts cross a block the
+ * route wraps on three sides. Both are wider than a plain back alley, kept
+ * clear of other streets and of the corner rails, and built like any back
+ * alley (clutter, often a kicker). A route shortcut is never a straight shot:
+ * where the block has room its path is a dogleg or a gentle arc (one or two
+ * free bend nodes, gi -1 and degree 2, every edge of the chain 'backAlley'
+ * flagged shortcut), bent away from the corner it cuts. The chain is walked
+ * by shortcutChain; route.ts lists it as one RouteShortcut (entry first) and
+ * race progress credits the whole chain.
+ *
+ * Jump exits (about half the cuts, cfg.route.jump): the last leg meets the
+ * exit street at a shallow angle and climbs a parabolic ramp to a lip just
+ * inside the alley's walls; a construction fence stands across the lip and
+ * the car flies over the mouth onto the route's street, landing on it heading
+ * down it. The drop under the lip is a wall facing the street (look
+ * 'alleyLip', Wall.top: street cars cannot drive into the exit, the launching
+ * car passes over). The landing zone is planned like the car park's: a run-up
+ * speed bound gives the furthest landing (alleyFlightReach), the street past
+ * the mouth must be free of junctions for the flight plus a roll-out, corner
+ * rails crossing the flight are cut (shortcutJumpRails) and reserved circles
+ * keep street furniture off it; soft clutter lies below the lip and around
+ * the landing side. The entry end stays a normal flared mouth.
  *
  * Every alley is cobbled curb to curb between its mouths (surface 'cobble':
  * a little less grip and more rolling drag than asphalt, see
@@ -40,10 +58,12 @@
  * vents, puddles and grime on back alleys.
  */
 import { CITY, ROUTE } from '../config';
-import { addEdge, chainCum, chainFrom, chainOf, chainPoint, chainSnap, edgeBetween, gridChain, isBendNode, splitChainAt } from '../roadGraph';
-import type { Chain, RoadGraph } from '../roadGraph';
+import { addEdge, addNode, chainPoint, chainSnap, edgeBetween, gridChain, isBendNode, otherNode, splitChainAt, splitEdge } from '../roadGraph';
 import { faceSides } from '../blocks';
 import { circuitStart } from '../route';
+import type { RoadGraph } from '../roadGraph';
+import type { Wall } from '../blocks';
+import type { Terrain } from '../terrain';
 import { Vec2, atan2, distToSegment, lineIntersectT } from '../../sim/math';
 import { Rng } from '../../sim/prng';
 import { pointInPolygon } from './geom';
@@ -52,6 +72,7 @@ import { PROP_DEFS } from '../props';
 import type { Area, AreaBuild, BuildContext, DistrictModule, HeightSample, PlanContext, SurfacePatch } from './types';
 import { COBBLE_PRIORITY, emptyBuild } from './types';
 import { smooth01 } from './geom';
+import { CAR_HALF, railsClearOf } from './carPark';
 
 /** Hump height and its slope along the alley at distance s from the start (0 outside the hump). */
 export function jumpProfile(s: number, center: number, ramp: number, top: number, height: number): { h: number; dh: number } {
@@ -74,6 +95,126 @@ function sideSpot(a: Vec2, b: Vec2, s: number, lateral: number): { x: number; z:
   const nx = -uz;
   const nz = ux;
   return { x: a.x + ux * s + nx * lateral, z: a.z + uz * s + nz * lateral, yaw: Math.atan2(-nx * Math.sign(lateral), -nz * Math.sign(lateral)) };
+}
+
+/**
+ * A jump exit's ramp: height and slope `s` m past its toe, a parabola `length`
+ * m long rising `rise` m, flat at the toe (no kink to unsettle the car) and
+ * steepest at the lip (2 rise / length); 0 past the lip, where the alley
+ * drops back to street level under the face.
+ */
+export function jumpRampProfile(s: number, length: number, rise: number): { h: number; dh: number } {
+  if (s <= 0 || s > length) return { h: 0, dh: 0 };
+  const t = s / length;
+  return { h: rise * t * t, dh: (2 * rise * t) / length };
+}
+
+/** Ballistic reach (m from the lip, landing at street level `rise` m below it) of a launch at v m/s off a jump exit's lip. */
+export function alleyFlightReach(v: number): number {
+  const J = CITY.districts.backAlley.route.jump;
+  const a = Math.atan((2 * J.rise) / J.length);
+  const vy = v * Math.sin(a);
+  const vx = v * Math.cos(a);
+  const g = 9.81;
+  return (vx * (vy + Math.sqrt(vy * vy + 2 * g * J.rise))) / g;
+}
+
+/** Cumulative length (m) at each point of a polyline. */
+function pathCum(path: readonly Vec2[]): number[] {
+  const cum = [0];
+  for (let i = 1; i < path.length; i++) cum.push(cum[i - 1] + Math.hypot(path[i].x - path[i - 1].x, path[i].z - path[i - 1].z));
+  return cum;
+}
+
+/** Leg index holding position s along a polyline (the last leg at and past its end). */
+function legAt(cum: readonly number[], s: number): number {
+  let i = 0;
+  while (i + 2 < cum.length && s >= cum[i + 1]) i++;
+  return i;
+}
+
+/** sideSpot along a polyline: s from its start (m), lateral off the centerline (+ = left of travel). */
+function pathSpot(path: readonly Vec2[], cum: readonly number[], s: number, lateral: number): { x: number; z: number; yaw: number } {
+  const i = legAt(cum, s);
+  return sideSpot(path[i], path[i + 1], s - cum[i], lateral);
+}
+
+/** Distance from a point to a polyline (m). */
+function distToPath(path: readonly Vec2[], x: number, z: number): number {
+  let best = Infinity;
+  for (let i = 0; i + 1 < path.length; i++) best = Math.min(best, distToSegment(x, z, path[i].x, path[i].z, path[i + 1].x, path[i + 1].z));
+  return best;
+}
+
+/** A chain of shortcut edges between two junctions: its edges and nodes in walking order, its points and length (m). */
+export interface ShortcutChain {
+  edges: number[];
+  nodes: number[];
+  points: Vec2[];
+  length: number;
+  /** The node at the chain's jump exit lip, if it has one: only a shortcut driven toward it (a wall faces the street under the lip). */
+  jumpEnd: number | null;
+}
+
+/**
+ * Follow shortcut edges from node `from` along edge `eid` through free bend
+ * nodes (gi -1, two shortcut edges) to the junction at the far end. A plain
+ * back alley is a chain of one edge.
+ */
+export function shortcutChain(g: RoadGraph, eid: number, from: number): ShortcutChain {
+  const edges = [eid];
+  const nodes = [from];
+  let e = g.edges[eid];
+  let n = from;
+  let length = e.length;
+  let jumpEnd: number | null = e.jumpExit ? e.b : null;
+  for (let guard = 0; guard < 8; guard++) {
+    n = otherNode(e, n);
+    nodes.push(n);
+    const node = g.nodes[n];
+    if (node.gi >= 0 || node.edges.length !== 2) break;
+    const next = g.edges[node.edges[0] === e.id ? node.edges[1] : node.edges[0]];
+    if (!next.shortcut) break;
+    edges.push(next.id);
+    length += next.length;
+    if (next.jumpExit) jumpEnd = next.b;
+    e = next;
+  }
+  return { edges, nodes, points: nodes.map((id) => ({ x: g.nodes[id].x, z: g.nodes[id].z })), length, jumpEnd };
+}
+
+/** Whether a chain driven from its first node to its last would arrive at a jump exit backwards (over the face under its lip). */
+export function chainBackwards(c: ShortcutChain, aFirst: boolean): boolean {
+  return c.jumpEnd !== null && (aFirst ? c.nodes[c.nodes.length - 1] : c.nodes[0]) !== c.jumpEnd;
+}
+
+/** Every shortcut chain leaving one of the given nodes, each listed once, walked from the first of its ends in the list. */
+export function routeChains(g: RoadGraph, nodes: readonly number[]): ShortcutChain[] {
+  const seen = new Set<number>();
+  const out: ShortcutChain[] = [];
+  for (const nid of nodes) {
+    for (const eid of g.nodes[nid].edges) {
+      if (!g.edges[eid].shortcut || seen.has(eid)) continue;
+      const c = shortcutChain(g, eid, nid);
+      for (const id of c.edges) seen.add(id);
+      out.push(c);
+    }
+  }
+  return out;
+}
+
+/** The nodes of an area's shortcut chain in the order of its edges (edge i runs from node i to node i + 1). */
+function chainNodes(g: RoadGraph, edges: readonly number[]): number[] {
+  const first = g.edges[edges[0]];
+  if (edges.length === 1) return [first.a, first.b];
+  const second = g.edges[edges[1]];
+  let n = first.a === second.a || first.a === second.b ? first.b : first.a;
+  const out = [n];
+  for (const eid of edges) {
+    n = otherNode(g.edges[eid], n);
+    out.push(n);
+  }
+  return out;
 }
 
 /** Corridor polygon around a polyline (half width hw). */
@@ -281,7 +422,7 @@ export const backAlleyModule: DistrictModule = {
       g.edges[id].shortcut = true;
       f.edges.forEach((e) => touched.add(e));
       for (let e = edgesBefore; e < id; e++) touched.add(e);
-      // The mouths as placed (a split within MOUTH_SNAP of a bend node lands on the bend node).
+      // The mouths as placed (a split snapped onto a bend node lands on the bend node).
       const path = [
         { x: g.nodes[na].x, z: g.nodes[na].z },
         { x: g.nodes[nb].x, z: g.nodes[nb].z },
@@ -302,15 +443,32 @@ export const backAlleyModule: DistrictModule = {
   build(ctx, area) {
     const b = emptyBuild();
     const cfg = CITY.districts.backAlley;
-    const [A, B] = area.path;
-    const len = Math.hypot(B.x - A.x, B.z - A.z) || 1;
+    const P = area.params;
+    const path = area.path;
+    const cum = pathCum(path);
+    const hw = (P.width ?? CITY.width.backAlley) / 2 + CITY.sidewalkWidth.backAlley;
+    // The kicker sits on one leg (jumpS is a position along the whole chain).
+    if (P.jump) {
+      const i = legAt(cum, P.jumpS);
+      const u = unit(path[i], path[i + 1]);
+      addJump(b, path[i], u.x, u.z, u.len, hw, P.jumpS - cum[i]);
+    }
+    for (const eid of area.edges) b.surfaces.push(cobblePatch(ctx, eid, area.id));
+    for (const nid of area.nodes) b.surfaces.push(...mouthPatches(ctx, nid, area.id));
+    // A bend between two legs: the wedge outside both legs' strips is cobbled too.
+    for (let i = 1; i + 1 < area.nodes.length; i++) b.surfaces.push(bendPatch(ctx, area.nodes[i], area.id));
+    const rng = new Rng(((P.seed ?? 0) >>> 0) || 1);
+    if (area.variant === 'routeShortcut') {
+      const jumpClear = (s: number, r: number) => !P.jump || Math.abs(s - P.jumpS) > cfg.jumpRamp + cfg.jumpTop / 2 + 2 + r;
+      if (P.jumpExit) addJumpExit(ctx, area, b, path, hw, rng);
+      constructionSite(ctx, area, b, rng, path, cum, hw, jumpClear);
+      return b;
+    }
+    // Plain back alleys are one straight edge.
+    const [A, B] = path;
+    const len = cum[1] || 1;
     const ux = (B.x - A.x) / len;
     const uz = (B.z - A.z) / len;
-    const P = area.params;
-    const hw = (P.width ?? CITY.width.backAlley) / 2 + CITY.sidewalkWidth.backAlley;
-    if (P.jump) addJump(b, A, ux, uz, len, hw, P.jumpS);
-    b.surfaces.push(cobblePatch(ctx, area.edges[0], area.id));
-    for (const nid of area.nodes) b.surfaces.push(...mouthPatches(ctx, nid, area.id));
     const g = ctx.graph;
     // A shortcut's corners flare (blocks.ts computeSectors): its mouths reach further in.
     const flare = cfg.mouth.alley;
@@ -320,7 +478,6 @@ export const backAlleyModule: DistrictModule = {
     const sLo = Math.min(lo[0], lo[1]);
     const sHi = Math.max(hi[0], hi[1]);
     // Dumpsters against the walls, alternating sides, with bags and crates around them.
-    const rng = new Rng(((P.seed ?? 0) >>> 0) || 1);
     const clear = (s: number, lateral = 0) => {
       const k = lateral < 0 ? 1 : 0;
       const a = lateral === 0 ? Math.max(lo[0], lo[1]) : lo[k];
@@ -332,11 +489,6 @@ export const backAlleyModule: DistrictModule = {
       const p = sideSpot(A, B, s, lateral);
       b.destructibles.push({ kind, x: p.x, z: p.z, yaw: (yaw ?? p.yaw) + rng.range(-jitter, jitter), lift: 0, area: area.id });
     };
-    if (area.variant === 'routeShortcut') {
-      const jumpClear = (s: number, r: number) => !P.jump || Math.abs(s - P.jumpS) > cfg.jumpRamp + cfg.jumpTop / 2 + 2 + r;
-      constructionSite(ctx, area, b, rng, len, hw, jumpClear);
-      return b;
-    }
     funnelClutter(ctx, area, b, () => rng.pick(FUNNEL_MIX), rng);
     let side = rng.chance(0.5) ? 1 : -1;
     let dumpsters = 0;
@@ -419,6 +571,13 @@ function cobblePatch(ctx: BuildContext, eid: number, area: number): SurfacePatch
   return { surface: 'cobble', polygon: [m.aP.curb, m.bP.curb, m.bN.curb, m.aN.curb], priority: COBBLE_PRIORITY, area };
 }
 
+/** The fan at a bend node between two legs of a chain (its sectors' curb points), cobbled like the legs: the outside of the bend is rounded past both strips. */
+function bendPatch(ctx: BuildContext, nid: number, area: number): SurfacePatch {
+  const fan: Vec2[] = [];
+  for (const s of ctx.sectors[nid]) for (const p of s.curb) fan.push(p);
+  return { surface: 'cobble', polygon: fan, priority: COBBLE_PRIORITY, area };
+}
+
 /** Construction site layout in a route shortcut (constructionSite). */
 const SITE = {
   /** Fences stand this far inside the alley's mouth (past the flared corners) and stop this far inside its walls (m). */
@@ -464,37 +623,24 @@ const SOFT = new Set<PropKind>(['crate', 'trashBags', 'pallets', 'trafficCone', 
  * with site clutter (crates, barrels, bags, pallets, sandbags, water filled
  * barriers, the odd dumpster). Only soft pieces stand out into the alley: the
  * middle LANE each side of the centerline stays clear of anything that could
- * stop a car (PROP_DEFS breakSpeed). Pieces skip the kicker.
+ * stop a car (PROP_DEFS breakSpeed). Pieces skip the kicker and the inside of
+ * every bend (where the walls mitre). At a jump exit the exit fence stands
+ * across the lip instead and the clutter stops short of the ramp's toe.
  */
-function constructionSite(ctx: BuildContext, area: Area, b: AreaBuild, rng: Rng, len: number, hw: number, jumpClear: (s: number, r: number) => boolean): void {
-  const [A, B] = area.path;
-  const ux = (B.x - A.x) / len;
-  const uz = (B.z - A.z) / len;
-  // Yaws: local +X across the alley, or along it (fences, planks and barriers lie along local X).
-  const across = Math.atan2(-ux, -uz);
-  const along = Math.atan2(-uz, ux);
+function constructionSite(ctx: BuildContext, area: Area, b: AreaBuild, rng: Rng, path: Vec2[], cum: number[], hw: number, jumpClear: (s: number, r: number) => boolean): void {
+  const len = cum[cum.length - 1];
+  const legs = path.length - 1;
+  const J = CITY.districts.backAlley.route.jump;
+  const P = area.params;
+  const legDir = (i: number) => unit(path[i], path[i + 1]);
+  // Yaws at a chain position: local +X across the alley, or along it (fences, planks and barriers lie along local X).
+  const yawsAt = (s: number) => {
+    const u = legDir(legAt(cum, s));
+    return { across: Math.atan2(-u.x, -u.z), along: Math.atan2(-u.z, u.x) };
+  };
   const edge = hw - SITE.fenceInset;
-  const m = ctx.mouths[area.edges[0]];
-  /**
-   * Fence across the mouth at the A end (or B), wall to wall where the alley's
-   * straight walls start past the flared corners, fenceBack inside; returns its
-   * alley position (s) at lateral -edge and +edge.
-   */
-  const fence = (atA: boolean): [number, number] | null => {
-    const into = atA ? 1 : -1;
-    // P is the left wall seen from A (lateral +), N the right.
-    const Pw = atA ? m.aP.outer : m.bP.outer;
-    const Nw = atA ? m.aN.outer : m.bN.outer;
-    const lat = (p: Vec2) => (p.x - A.x) * -uz + (p.z - A.z) * ux;
-    const lN = lat(Nw);
-    const lP = lat(Pw);
-    if (lP - lN < 1) return null;
-    const at = (l: number): Vec2 => {
-      const u = (l - lN) / (lP - lN);
-      return { x: Nw.x + (Pw.x - Nw.x) * u + ux * into * SITE.fenceBack, z: Nw.z + (Pw.z - Nw.z) * u + uz * into * SITE.fenceBack };
-    };
-    const p0 = at(-edge);
-    const p1 = at(edge);
+  /** A row of fence panels from p0 to p1. */
+  const panels = (p0: Vec2, p1: Vec2) => {
     const span = Math.hypot(p1.x - p0.x, p1.z - p0.z);
     const dx = (p1.x - p0.x) / span;
     const dz = (p1.z - p0.z) / span;
@@ -504,29 +650,76 @@ function constructionSite(ctx: BuildContext, area: Area, b: AreaBuild, rng: Rng,
       const u = (span * (k + 0.5)) / count;
       b.destructibles.push({ kind: 'fencePanel', x: p0.x + dx * u, z: p0.z + dz * u, yaw, lift: 0, area: area.id });
     }
-    const sOf = (p: Vec2) => (p.x - A.x) * ux + (p.z - A.z) * uz;
+  };
+  /**
+   * Fence across the mouth at the entry (or the exit), wall to wall where the
+   * alley's straight walls start past the flared corners, fenceBack inside;
+   * returns its chain position (s) at lateral -edge and +edge.
+   */
+  const fence = (atA: boolean): [number, number] | null => {
+    const li = atA ? 0 : legs - 1;
+    const O = path[li];
+    const u = legDir(li);
+    const m = ctx.mouths[area.edges[li]];
+    const into = atA ? 1 : -1;
+    // P is the left wall seen along the leg (lateral +), N the right.
+    const Pw = atA ? m.aP.outer : m.bP.outer;
+    const Nw = atA ? m.aN.outer : m.bN.outer;
+    const lat = (p: Vec2) => (p.x - O.x) * -u.z + (p.z - O.z) * u.x;
+    const lN = lat(Nw);
+    const lP = lat(Pw);
+    if (lP - lN < 1) return null;
+    const at = (l: number): Vec2 => {
+      const t = (l - lN) / (lP - lN);
+      return { x: Nw.x + (Pw.x - Nw.x) * t + u.x * into * SITE.fenceBack, z: Nw.z + (Pw.z - Nw.z) * t + u.z * into * SITE.fenceBack };
+    };
+    const p0 = at(-edge);
+    const p1 = at(edge);
+    panels(p0, p1);
+    const sOf = (p: Vec2) => cum[li] + (p.x - O.x) * u.x + (p.z - O.z) * u.z;
     return [sOf(p0), sOf(p1)];
   };
+  /** The jump exit's fence: across the lip, on the ramp's top just behind the face. */
+  const lipFence = (): [number, number] => {
+    const s = len - P.lipS - 0.7;
+    const p0 = pathSpot(path, cum, s, -edge);
+    const p1 = pathSpot(path, cum, s, edge);
+    panels(p0, p1);
+    return [s, s];
+  };
   const inF = fence(true) ?? [12, 12];
-  const outF = fence(false) ?? [len - 12, len - 12];
+  const outF = P.jumpExit ? lipFence() : (fence(false) ?? [len - 12, len - 12]);
   // The flared mouths: a taper of cones along each curved curb, lining the funnel into the fence.
   funnelClutter(ctx, area, b, () => 'trafficCone', rng);
   // A fence across a diagonal mouth is oblique: where it stands depends on the lateral offset.
   const fenceS = (f: [number, number], lat: number) => f[0] + ((Math.max(-edge, Math.min(edge, lat)) + edge) / (2 * edge)) * (f[1] - f[0]);
   const s0 = Math.max(inF[0], inF[1]);
-  const s1 = Math.min(outF[0], outF[1]);
-  /** Place a piece at alley position s and lateral offset (left +), inside both fences and off the kicker. */
+  // Wall clutter ends at the exit fence, or short of a jump exit's ramp (a clean run-up).
+  const s1 = P.jumpExit ? len - P.lipS - J.length - 2 : Math.min(outF[0], outF[1]);
+  /** Bends: the inside wall mitres, so nothing stands within the mitre's reach of the node on that side; the outside only skips the node itself. */
+  const bendClear = (s: number, lateral: number, r: number) => {
+    for (let i = 1; i < legs; i++) {
+      const u = legDir(i - 1);
+      const v = legDir(i);
+      const turn = Math.atan2(u.x * v.z - u.z * v.x, u.x * v.x + u.z * v.z);
+      const inside = Math.sign(turn) === Math.sign(lateral);
+      const reach = inside ? hw * Math.tan(Math.abs(turn) / 2) + r + 0.6 : r + 0.3;
+      if (Math.abs(s - cum[i]) < reach) return false;
+    }
+    return true;
+  };
+  /** Place a piece at chain position s and lateral offset (left +), inside both fences, off the kicker and the bends. */
   const push = (kind: PropKind, s: number, lateral: number, jitter: number, yaw?: number) => {
     const r = PROP_DEFS[kind].radius;
-    if (s - r < fenceS(inF, lateral) + 0.9 || s + r > fenceS(outF, lateral) - 0.9 || !jumpClear(s, r)) return;
-    const p = sideSpot(A, B, s, lateral);
+    if (s - r < fenceS(inF, lateral) + 0.9 || s + r > Math.min(s1, fenceS(outF, lateral)) - 0.9 || !jumpClear(s, r) || !bendClear(s, lateral, r)) return;
+    const p = pathSpot(path, cum, s, lateral);
     b.destructibles.push({ kind, x: p.x, z: p.z, yaw: (yaw ?? p.yaw) + rng.range(-jitter, jitter), lift: 0, area: area.id });
   };
-  // Behind each fence: a sawhorse or two across the alley, cones scattered around them.
-  for (const [s, dir] of [
-    [s0 + SITE.barricade, 1],
-    [s1 - SITE.barricade, -1],
-  ] as const) {
+  // Behind each fence: a sawhorse or two across the alley, cones scattered around them (a jump exit's lip fence has nothing behind it: the ramp).
+  const barricades: [number, number][] = [[s0 + SITE.barricade, 1]];
+  if (!P.jumpExit) barricades.push([s1 - SITE.barricade, -1]);
+  for (const [s, dir] of barricades) {
+    const { across, along } = yawsAt(s);
     const lat = rng.range(0.9, 2.1) * (rng.chance(0.5) ? 1 : -1);
     push('sawhorse', s, lat, 0.15, across);
     if (rng.chance(0.6)) push('sawhorse', s + dir * rng.range(1.6, 2.4), -lat * rng.range(0.6, 1.1), 0.15, across);
@@ -559,13 +752,174 @@ function constructionSite(ctx: BuildContext, area: Area, b: AreaBuild, rng: Rng,
       }
       const at = s + r;
       if (at > s1 - SITE.inside) break;
-      const yaw = kind === 'waterBarrier' || kind === 'dumpster' ? along + (side > 0 ? 0 : Math.PI) : undefined;
+      const yaw = kind === 'waterBarrier' || kind === 'dumpster' ? yawsAt(at).along + (side > 0 ? 0 : Math.PI) : undefined;
       if (kind === 'trafficCone') {
         for (let k = 0; k < 3; k++) push('trafficCone', at + rng.range(-0.6, 0.6), side * (lat - rng.range(0, 1.2)), 3);
       } else push(kind, at, side * lat, kind === 'dumpster' ? 0.05 : 0.6, yaw);
       s = at + r + rng.range(SITE.gap[0], SITE.gap[1]);
     }
   }
+}
+
+/** The face under a jump exit's lip stands this far past the terrain's drop (m): the road mesh's step (one tessellation piece) hides inside its block. */
+const LIP_FACE = 1.0;
+
+/** Soft clutter below a jump exit's lip and around its landing side (everything breaks at a touch). */
+const LANDING_MIX: PropKind[] = ['crate', 'barrel', 'trashBags', 'pallets', 'trashBags', 'crate'];
+
+/**
+ * A route shortcut's jump exit on its last leg (see the header): the ramp as
+ * a height modifier (fading out behind the walls like the kicker, dropping to
+ * street level past the lip), the face under the lip as an 'alleyLip' wall
+ * toward the street (Wall.top settled once the terrain exists, see
+ * settleAlleyLips), reserved circles along the flight so street furniture
+ * keeps off it, the deck hint for the renderer, and soft clutter: along the
+ * obtuse wall below the lip, on the street's sidewalk in the acute pocket
+ * beside the mouth and along the curb past the landing.
+ */
+function addJumpExit(ctx: BuildContext, area: Area, b: AreaBuild, path: Vec2[], hw: number, rng: Rng): void {
+  const J = CITY.districts.backAlley.route.jump;
+  const F = CITY.districts.backAlley.jumpFade;
+  const P = area.params;
+  const n = path.length;
+  const O = path[n - 2];
+  const B = path[n - 1];
+  const u = unit(O, B);
+  const sLip = u.len - P.lipS;
+  const sToe = sLip - J.length;
+  const H = J.rise;
+  const at = (s: number, l: number): Vec2 => ({ x: O.x + u.x * s - u.z * l, z: O.z + u.z * s + u.x * l });
+  const corners = [at(sToe - 0.5, -(hw + F)), at(sToe - 0.5, hw + F), at(sLip + 0.5, -(hw + F)), at(sLip + 0.5, hw + F)];
+  b.heightMods.push({
+    minX: Math.min(...corners.map((c) => c.x)),
+    minZ: Math.min(...corners.map((c) => c.z)),
+    maxX: Math.max(...corners.map((c) => c.x)),
+    maxZ: Math.max(...corners.map((c) => c.z)),
+    add(x: number, z: number, out: HeightSample) {
+      const dx = x - O.x;
+      const dz = z - O.z;
+      const s = dx * u.x + dz * u.z;
+      if (s <= sToe || s > sLip) return;
+      const l = -dx * u.z + dz * u.x;
+      const p = jumpRampProfile(s - sToe, J.length, H);
+      const al = Math.abs(l);
+      const m = smooth01(hw + F, hw, al);
+      if (m.v <= 0) return;
+      const sl = l < 0 ? -1 : 1;
+      out.h += p.h * m.v;
+      out.gx += m.v * p.dh * u.x + p.h * m.d * sl * -u.z;
+      out.gz += m.v * p.dh * u.z + p.h * m.d * sl * u.x;
+    },
+  });
+  // The face under the lip, wall to wall, toward the street, LIP_FACE past the drop (the renderer's block
+  // covers the step between them); full height until settled.
+  const right = at(sLip + LIP_FACE, -hw);
+  const left = at(sLip + LIP_FACE, hw);
+  b.walls.push({ ax: right.x, az: right.z, bx: left.x, bz: left.z, nx: u.x, nz: u.z, kind: 'wall', look: 'alleyLip', area: area.id, top: Infinity });
+  b.hints.push({ kind: 'jumpExit', points: [O, { x: O.x + u.x, z: O.z + u.z }], values: [sToe, J.length, H, hw] });
+  // The flight: furniture keeps off the corridor from the lip to the furthest landing.
+  const spread = Math.tan(J.spreadDeg * RAD);
+  for (let s = 0; s <= P.landMax + 6; s += 3) {
+    const c = at(sLip + s, 0);
+    b.reserved.push({ x: c.x, z: c.z, r: hw + s * spread + CAR_HALF });
+  }
+  // The exit street at B: forward is the street edge leaving B the way the leg heads.
+  const g = ctx.graph;
+  const nodeB = g.nodes[area.nodes[n - 1]];
+  let uE = { x: u.x, z: u.z };
+  let OB = hw;
+  for (const eid of nodeB.edges) {
+    const e = g.edges[eid];
+    if (e.shortcut) continue;
+    const d = unit(nodeB, g.nodes[otherNode(e, nodeB.id)]);
+    if (d.x * u.x + d.z * u.z <= 0) continue;
+    uE = { x: d.x, z: d.z };
+    OB = e.width / 2 + e.sidewalk;
+  }
+  const cosT = Math.abs(u.x * uE.x + u.z * uE.z);
+  const sinT = Math.max(0.2, Math.sqrt(Math.max(0, 1 - cosT * cosT)));
+  // The forward street lies on the obtuse side of the mouth; the alley's walls end sObtuse and sAcute before B.
+  const sideF = Math.sign(u.x * uE.z - u.z * uE.x) || 1;
+  const sObtuse = (OB - hw * cosT) / sinT;
+  const sAcute = (OB + hw * cosT) / sinT;
+  // Every piece inside the area's outline (its mouth and landing tongue), the rule for district clutter.
+  const push = (kind: PropKind, p: Vec2, yaw: number, jitter: number) => {
+    const y = yaw + rng.range(-jitter, jitter);
+    if (pointInPolygon(p.x, p.z, area.polygon)) b.destructibles.push({ kind, x: p.x, z: p.z, yaw: y, lift: 0, area: area.id });
+  };
+  // Below the lip: pieces along the obtuse wall between the face and where that wall ends.
+  for (let s = sLip + 1.4; s < u.len - sObtuse - 1.2; s += rng.range(1.6, 2.6)) {
+    const kind = rng.pick(LANDING_MIX);
+    const r = PROP_DEFS[kind].radius;
+    if (s + r > u.len - sObtuse - 1) break;
+    push(kind, at(s, sideF * (hw - r - 0.2)), rng.range(0, Math.PI * 2), 0);
+  }
+  // Around the landing side, in street coordinates from B (forward along uE, lateral toward the block):
+  // bags and cones on the sidewalk strip of the acute pocket beside the mouth, cones and a sawhorse along
+  // the curb past the landing.
+  const nB = { x: sideF * -uE.z, z: sideF * uE.x };
+  const street = (a: number, l: number): Vec2 => ({ x: B.x + uE.x * a + nB.x * l, z: B.z + uE.z * a + nB.z * l });
+  const curb = OB - CITY.sidewalk;
+  for (let a = -sAcute * cosT + 3; a < -sObtuse * cosT - 2; a += rng.range(2.6, 4)) {
+    const kind = rng.chance(0.6) ? 'trashBags' : rng.chance(0.5) ? 'trafficCone' : 'crate';
+    push(kind, street(a, rng.range(curb + 0.8, OB - 0.9)), rng.range(0, Math.PI * 2), 0);
+  }
+  const alongYaw = Math.atan2(-uE.z, uE.x);
+  push('sawhorse', street(rng.range(4, 9), curb + 1.1), alongYaw, 0.2);
+  for (let k = 0; k < 3; k++) push('trafficCone', street(rng.range(2, 22), curb + rng.range(0.6, 1.6)), 0, 3);
+  push('barrel', street(rng.range(12, 20), curb + 1.2), 0, 3);
+}
+
+/**
+ * Give the face under each jump exit's lip its height (Wall.top): the street
+ * in front of it plus the lip's rise less `drop`, so street cars are stopped
+ * and the launching car, riding the ramp's top, passes over. Runs once the
+ * terrain exists (createCity); until then the face is full height.
+ */
+export function settleAlleyLips(areas: readonly Area[], builds: readonly AreaBuild[], terrain: Terrain): void {
+  const J = CITY.districts.backAlley.route.jump;
+  areas.forEach((a, i) => {
+    if (a.kind !== 'backAlley' || !a.params.jumpExit) return;
+    for (const w of builds[i].walls) {
+      if (w.look !== 'alleyLip' || w.top === undefined) continue;
+      const mx = (w.ax + w.bx) / 2 + w.nx * 1.5;
+      const mz = (w.az + w.bz) / 2 + w.nz * 1.5;
+      w.top = terrain.heightAt(mx, mz) + J.rise - J.drop;
+    }
+  });
+}
+
+/**
+ * The flight corridor past a jump exit (world quad): from just behind the lip
+ * `reach` m along the last leg, spreading at spreadDeg, padded `pad` m each side.
+ */
+export function jumpFlightZone(area: Area, reach: number, pad = 0): Vec2[] {
+  const J = CITY.districts.backAlley.route.jump;
+  const n = area.path.length;
+  const O = area.path[n - 2];
+  const u = unit(O, area.path[n - 1]);
+  const hw = (area.params.width ?? CITY.width.backAlley) / 2 + CITY.sidewalkWidth.backAlley;
+  const sLip = u.len - area.params.lipS;
+  const spread = Math.tan(J.spreadDeg * RAD);
+  const h0 = hw + pad;
+  const h1 = hw + reach * spread + pad;
+  const at = (s: number, l: number): Vec2 => ({ x: O.x + u.x * s - u.z * l, z: O.z + u.z * s + u.x * l });
+  return [at(sLip - 0.5, -h0), at(sLip + reach, -h1), at(sLip + reach, h1), at(sLip - 0.5, h0)];
+}
+
+/** The area of a route shortcut (the back alley whose chain holds its first edge), if any. */
+export function shortcutArea(areas: readonly Area[], sc: { edges: readonly number[] }): Area | undefined {
+  return areas.find((a) => a.kind === 'backAlley' && a.edges.includes(sc.edges[0]));
+}
+
+/** A route's corner rails with every piece the flight off one of its jump exits would cross taken out (see carPark.ts railsClearOf). */
+export function shortcutJumpRails<T extends Wall>(route: { shortcuts: { edges: readonly number[] }[] }, areas: readonly Area[], rails: T[]): T[] {
+  const zones: Vec2[][] = [];
+  for (const sc of route.shortcuts) {
+    const a = shortcutArea(areas, sc);
+    if (a?.params.jumpExit) zones.push(jumpFlightZone(a, a.params.landMax + 6, CAR_HALF + 1.5));
+  }
+  return railsClearOf(zones, rails);
 }
 
 /**
@@ -592,6 +946,9 @@ function funnelClutter(ctx: BuildContext, area: Area, b: AreaBuild, pick: () => 
         const x = c.x + (ox / ol) * SITE.taper;
         const z = c.z + (oz / ol) * SITE.taper;
         if (distToSegment(x, z, sa.x, sa.z, sb.x, sb.z) - street.width / 2 < SITE.taperClear) continue;
+        // Inside the alley's outline (district clutter stays in its area): a curb curve's street end can
+        // put a cone past the mouth's crossing line.
+        if (!pointInPolygon(x, z, area.polygon)) continue;
         b.destructibles.push({ kind: pick(), x, z, yaw: rng.range(0, Math.PI * 2), lift: 0, area: area.id });
       }
     });
@@ -642,17 +999,14 @@ function addJump(b: AreaBuild, A: Vec2, ux: number, uz: number, len: number, hw:
 // Route shortcuts
 // ---------------------------------------------------------------------------
 
+/**
+ * A back alley mouth due within BEND_CLEAR (m) of a bend node of its street lands on the bend node
+ * (roadGraph.ts chainSnap), which becomes its junction: a mouth whose corners reach past a bend
+ * node's own would fold the block's ring back over the alley.
+ */
+const BEND_CLEAR = 22;
 /** Corner rails go on route turns at least this sharp (rad). */
 const ROUTE_RAIL_MIN_TURN = (ROUTE.railMinTurnDeg * Math.PI) / 180;
-/**
- * A shortcut mouth due within MOUTH_SNAP (m) of a bend node of its street lands on the bend node
- * (roadGraph.ts chainSnap), which becomes its junction; otherwise it keeps BEND_CLEAR (m) from every
- * bend node: the building line crossing of a mouth at the narrowest angle a cut allows (34 degrees)
- * lies about 22 m along the street, and a mouth whose corners reach past a bend node's own would
- * fold the block's ring back over the alley.
- */
-const MOUTH_SNAP = 10;
-const BEND_CLEAR = 22;
 const RAD = Math.PI / 180;
 /** Spacing of the entry and exit points the fallback chord search tries along each route edge (m). */
 const CHORD_STEP = 6;
@@ -688,12 +1042,52 @@ interface Cut {
   eB: number;
   fromB: number;
   dB: number;
+  /** The alley's path, entry first: the straight chord, bent by the planner's bend() when carved, or a jump cut's planned chain. */
+  path: Vec2[];
+  /** Length of the path (m). */
   length: number;
   /** Route distance the cut skips (m). */
   skip: number;
   /** Route position of the entry along the node polyline (m). */
   at: number;
   score: number;
+  /** The route streets' directions at the entry and the exit (unit) and the least angle (rad) each mouth may make with its street. */
+  uIn: Vec2;
+  uOut: Vec2;
+  minMouth: number;
+  /** Route edges the path may run beside (the ones it splits), and the room it keeps from every other street (m). */
+  skipEdges: number[];
+  clear: number;
+  /** Inside corners the path keeps clear of (the junctions it cuts). */
+  corners: Corner[];
+  /** Unit normal to the chord on the side the path bends toward (away from the corners). */
+  away: Vec2;
+  /** A jump exit planned for this cut (jump cuts only). */
+  jump?: JumpPlan;
+}
+
+/** A route junction the cut goes round: its node and the two route roads leaving it (unit directions, half widths to the building line). */
+interface Corner {
+  C: Vec2;
+  u1: Vec2;
+  h1: number;
+  u2: Vec2;
+  h2: number;
+}
+
+interface JumpPlan {
+  /** The lip stands this far before the exit node along the last leg (m). */
+  lipS: number;
+  /** Furthest landing from the lip the run-up allows (m), and how far past the exit node the landing zone ends along the street (m). */
+  landMax: number;
+  zone: number;
+}
+
+/** Length of a polyline (m). */
+function pathLength(path: readonly Vec2[]): number {
+  let l = 0;
+  for (let i = 1; i < path.length; i++) l += Math.hypot(path[i].x - path[i - 1].x, path[i].z - path[i - 1].z);
+  return l;
 }
 
 function unit(from: Vec2, to: Vec2): { x: number; z: number; len: number } {
@@ -829,18 +1223,18 @@ export function shortcutSpan(sa: number, sb: number, length: number, total: numb
   return { sIn, sOut, skip, aFirst };
 }
 
-/** How many shortcut edges already give this route a real shortcut. */
-/** Shortcut edges joining two points of the route that save distance (carved or adopted). */
+/** How many shortcut chains joining two points of the route save distance (carved or adopted): the route's real shortcuts. */
 export function qualifiedCount(g: RoadGraph, r: CarveRoute): number {
   const { cum, total, lo, hi } = routeBounds(g, r);
   const pos = new Map<number, number>();
   r.nodes.forEach((id, i) => pos.set(id, cum[i]));
   let count = 0;
-  for (const e of g.edges) {
-    if (!e.shortcut) continue;
-    const sa = pos.get(e.a);
-    const sb = pos.get(e.b);
-    if (sa !== undefined && sb !== undefined && shortcutSpan(sa, sb, e.length, total, r.closed, lo, hi)) count++;
+  for (const c of routeChains(g, r.nodes)) {
+    const sa = pos.get(c.nodes[0]);
+    const sb = pos.get(c.nodes[c.nodes.length - 1]);
+    if (sa === undefined || sb === undefined) continue;
+    const span = shortcutSpan(sa, sb, c.length, total, r.closed, lo, hi);
+    if (span && !chainBackwards(c, span.aFirst)) count++;
   }
   return count;
 }
@@ -865,21 +1259,24 @@ export function carveRouteShortcuts(ctx: PlanContext, routes: CarveRoute[]): voi
     order.forEach(({ r, ri }) => {
       if (qualifiedCount(g, r) > pass) return;
       const { total, lo, hi } = routeBounds(g, r);
-      const pick = () =>
-        planner.candidates(r).filter(
+      const pick = (jumps: boolean) =>
+        planner.candidates(r, jumps).filter(
           (c) =>
+            (jumps ? c.jump !== undefined : c.jump === undefined) &&
             c.skip <= cfg.maxSkip * (r.closed ? total : hi - lo) &&
             madeAt[ri].every((at) => {
               const d = Math.abs(c.at - at);
               return (r.closed ? Math.min(d, total - d) : d) >= cfg.spacing;
             }),
         );
-      let list = pick();
+      // A jump exit where the roll says so and its landing fits, else a plain cut.
+      let list = ctx.rng.chance(cfg.jump.chance) ? pick(true) : [];
+      if (!list.length) list = pick(false);
       // A route with no other spot may cut on a circuit's longest edge (the start line then moves to
       // the longest edge left, still far longer than the grid needs), then try any chord.
       if (!list.length && pass === 0) {
         planner.allowProtected(true);
-        list = pick();
+        list = pick(false);
         if (!list.length) list = planner.chordCuts(r);
         planner.allowProtected(false);
       }
@@ -887,6 +1284,7 @@ export function carveRouteShortcuts(ctx: PlanContext, routes: CarveRoute[]): voi
       // Highest score first; ties keep route order (stable sort), so the pick is deterministic.
       list.sort((a, b) => b.score - a.score);
       const cut = list[0];
+      if (!cut.jump) planner.bend(cut, ctx.rng);
       carve(ctx, routes, cut, ctx.rng);
       madeAt[ri].push(cut.at);
     });
@@ -906,29 +1304,70 @@ export function carveRouteShortcuts(ctx: PlanContext, routes: CarveRoute[]): voi
     }
   }
   // Every back alley's area takes in its flared mouths, now that no more edges will be split.
-  for (const a of ctx.areas) if (a.kind === 'backAlley') a.polygon = alleyOutline(ctx, a.edges[0]);
+  for (const a of ctx.areas) if (a.kind === 'backAlley') a.polygon = alleyOutline(ctx, a);
 }
 
 /**
  * A back alley's outline with both flared mouths (blocks.ts computeSectors):
- * along its building lines, round each mouth's curved corners and across its
- * opening on the street's curb line, so the area takes in its funnels and the
- * cones that line them (and the HUD names the funnel the alley's).
+ * along its building lines (round the mitred and rounded corners of every
+ * bend), round each mouth's curved corners and across its opening on the
+ * street's curb line, so the area takes in its funnels and the cones that
+ * line them (and the HUD names the funnel the alley's). A jump exit's outline
+ * runs on past its mouth along the landing side's sidewalk to the end of the
+ * landing zone, for the clutter that marks the landing.
  */
-function alleyOutline(ctx: PlanContext, eid: number): Vec2[] {
+function alleyOutline(ctx: PlanContext, area: Area): Vec2[] {
   const g = ctx.graph;
   const sectors = ctx.sectors();
-  const e = g.edges[eid];
-  const funnel = (nid: number): Vec2[] => {
+  const edges = area.edges;
+  const nodes = chainNodes(g, edges);
+  const last = nodes.length - 1;
+  const funnel = (nid: number, eid: number, tongue: Vec2[] = []): Vec2[] => {
     const n = g.nodes[nid];
     const m = n.edges.length;
     const k = n.edges.indexOf(eid);
     // The corner before the alley ends on its clockwise side, the one after starts on its counterclockwise side.
     const cw = sectors[nid][(k - 1 + m) % m];
     const ccw = sectors[nid][k];
-    return [...cw.outer.slice().reverse(), cw.curb[0], ccw.curb[ccw.curb.length - 1], ...ccw.outer.slice().reverse()];
+    // The landing tongue (two points, curb end first) follows the forward street: the clockwise corner's
+    // street or the counterclockwise one's.
+    const forward = tongue.length ? n.edges[(k + 1) % m] : -1;
+    const cwT = tongue.length && forward !== g.edges[tongueEdge].id ? [tongue[1], tongue[0]] : [];
+    const ccwT = tongue.length && forward === g.edges[tongueEdge].id ? tongue : [];
+    return [...cw.outer.slice().reverse(), ...cwT, cw.curb[0], ccw.curb[ccw.curb.length - 1], ...ccwT, ...ccw.outer.slice().reverse()];
   };
-  return [...funnel(e.a), ...funnel(e.b)];
+  let tongueEdge = -1;
+  let tongue: Vec2[] = [];
+  if (area.params.jumpExit) {
+    const O = area.path[area.path.length - 2];
+    const Bn = g.nodes[nodes[last]];
+    const u = unit(O, Bn);
+    for (const eid of Bn.edges) {
+      const e = g.edges[eid];
+      if (e.shortcut) continue;
+      const d = unit(Bn, g.nodes[otherNode(e, Bn.id)]);
+      if (d.x * u.x + d.z * u.z <= 0) continue;
+      tongueEdge = eid;
+      const nb = unitPerp(d, { x: O.x - Bn.x, z: O.z - Bn.z });
+      const aEnd = area.params.zone + 4;
+      const at = (a: number, l: number): Vec2 => ({ x: Bn.x + d.x * a + nb.x * l, z: Bn.z + d.z * a + nb.z * l });
+      tongue = [at(aEnd, e.width / 2 + 0.3), at(aEnd, e.width / 2 + e.sidewalk - 0.05)];
+    }
+  }
+  // At a bend the sector from the outgoing edge round to the incoming one is the left wall (seen along the
+  // chain), the other the right wall. Their points are ordered along the chain's direction at the node (a
+  // near straight bend's two points sit side by side, so the sector's own order could run either way).
+  const left: Vec2[] = [];
+  const right: Vec2[] = [];
+  const wall = (i: number, eid: number, forward: boolean): Vec2[] => {
+    const n = g.nodes[nodes[i]];
+    const t = unit(g.nodes[nodes[i - 1]], g.nodes[nodes[i + 1]]);
+    const along = (p: Vec2) => (p.x - n.x) * t.x + (p.z - n.z) * t.z;
+    return sectors[nodes[i]][n.edges.indexOf(eid)].outer.slice().sort((a, b) => (forward ? along(a) - along(b) : along(b) - along(a)));
+  };
+  for (let i = 1; i < last; i++) left.push(...wall(i, edges[i], true));
+  for (let i = last - 1; i >= 1; i--) right.push(...wall(i, edges[i - 1], false));
+  return [...funnel(nodes[0], edges[0]), ...left, ...funnel(nodes[last], edges[edges.length - 1], tongue), ...right];
 }
 
 /** Whether a route has room for at least one shortcut, the other routes' start, grid and finish kept clear (dry run: nothing is carved). */
@@ -946,6 +1385,8 @@ export function hasShortcutSpot(ctx: PlanContext, r: CarveRoute, others: CarveRo
 /** Candidate cuts for the given routes (their start, grid and finish kept clear), scored by the distance they save. */
 function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
   const cfg = CITY.districts.backAlley.route;
+  const BEND = cfg.bend;
+  const JUMP = cfg.jump;
   const g = ctx.graph;
   const hwAll = cfg.width / 2 + CITY.sidewalkWidth.backAlley;
   const protect = new Set<number>();
@@ -961,6 +1402,16 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
         if (s === null) continue;
         if (s < START_CLEAR || s > Math.min(total - FINISH_CLEAR, hi - 30)) return false;
       }
+    }
+    return true;
+  };
+  /** A jump exit's landing zone (zone m of street past the exit B) stays before every sprint's finish. */
+  const landingGuard = (B: Vec2, zone: number): boolean => {
+    for (const r of routes) {
+      if (r.closed) continue;
+      const { cum, total, hi } = routeBounds(g, r);
+      const s = projectOnRoute(g, r, cum, B);
+      if (s !== null && s + zone > Math.min(total - FINISH_CLEAR, hi - 30)) return false;
     }
     return true;
   };
@@ -1008,19 +1459,35 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
     }
     return true;
   };
-  /** The inside sidewalk corner at C between the roads leaving along u1 and u2 stays clear of the cut, on C's side of it. */
-  const cornerClear = (C: Vec2, u1: Vec2, h1: number, u2: Vec2, h2: number, A: Vec2, B: Vec2): boolean => {
-    const n1 = unitPerp(u1, u2);
-    const n2 = unitPerp(u2, u1);
-    const p1 = { x: C.x + n1.x * h1, z: C.z + n1.z * h1 };
-    const p2 = { x: C.x + n2.x * h2, z: C.z + n2.z * h2 };
-    const t = lineIntersectT(p1, u1, p2, u2);
+  /** chordClear along every leg of a path. */
+  const pathClear = (path: Vec2[], skip: number[], clear: number = cfg.clear): boolean => {
+    for (let i = 0; i + 1 < path.length; i++) if (!chordClear(path[i], path[i + 1], skip, clear)) return false;
+    return true;
+  };
+  /** The inside sidewalk corner at C between the roads leaving along u1 and u2 stays clear of the path, on C's side of its chord. */
+  const cornerClear = (c: Corner, path: Vec2[]): boolean => {
+    const n1 = unitPerp(c.u1, c.u2);
+    const n2 = unitPerp(c.u2, c.u1);
+    const p1 = { x: c.C.x + n1.x * c.h1, z: c.C.z + n1.z * c.h1 };
+    const p2 = { x: c.C.x + n2.x * c.h2, z: c.C.z + n2.z * c.h2 };
+    const t = lineIntersectT(p1, c.u1, p2, c.u2);
     if (t === null) return false;
-    const K = { x: p1.x + u1.x * t, z: p1.z + u1.z * t };
-    const ab = unit(A, B);
+    const K = { x: p1.x + c.u1.x * t, z: p1.z + c.u1.z * t };
+    const A = path[0];
+    const ab = unit(A, path[path.length - 1]);
     const side = (P: Vec2) => (P.x - A.x) * ab.z - (P.z - A.z) * ab.x;
-    const sK = side(K);
-    return sK * side(C) > 0 && Math.abs(sK) >= hwAll + cfg.clear;
+    return side(K) * side(c.C) > 0 && distToPath(path, K.x, K.z) >= hwAll + cfg.clear;
+  };
+  /** Legs long enough to settle on and bends no sharper than a car can take; the first and last legs meet their streets at least minIn / minOut. */
+  const pathOk = (path: Vec2[], uIn: Vec2, minIn: number, uOut: Vec2, minOut: number): boolean => {
+    for (let i = 0; i + 1 < path.length; i++) if (unit(path[i], path[i + 1]).len < BEND.minLeg) return false;
+    for (let i = 1; i + 1 < path.length; i++) {
+      const u = unit(path[i - 1], path[i]);
+      const v = unit(path[i], path[i + 1]);
+      if (Math.abs(Math.atan2(u.x * v.z - u.z * v.x, u.x * v.x + u.z * v.z)) > BEND.maxDeg * RAD) return false;
+    }
+    const n = path.length;
+    return mouthAngle(unit(path[0], path[1]), uIn) >= minIn && mouthAngle(unit(path[n - 2], path[n - 1]), uOut) >= minOut;
   };
   /** Clearance an entry keeps from the route junction at the far end of its edge. */
   const endClear = (r: CarveRoute, j: number, cutTurn: number): number => {
@@ -1030,21 +1497,56 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
     // A junction turning the other way has its corner rail on the cut's side of the shared edge.
     return Math.abs(t) >= ROUTE_RAIL_MIN_TURN && Math.sign(t) !== Math.sign(cutTurn) ? cfg.railClear : cfg.nodeClear;
   };
+  /**
+   * Street past route node j (reached `base` m before it from the exit) that a landing car may roll
+   * on: through free bend nodes the route barely turns at, up to the first real junction.
+   */
+  const runPast = (r: CarveRoute, j: number, base: number): number => {
+    const n = r.nodes.length;
+    let run = base;
+    for (let guard = 0; guard < 4; guard++) {
+      const node = g.nodes[r.nodes[j]];
+      if (node.gi >= 0 || node.edges.length !== 2 || Math.abs(turnAt(g, r, j)) > 8 * RAD) break;
+      const next = (j + 1) % n;
+      if (!r.closed && next === 0) break;
+      run += unit(node, g.nodes[r.nodes[next]]).len;
+      j = next;
+    }
+    return run;
+  };
   const mouthAngle = (ab: Vec2, u: Vec2) => Math.acos(Math.min(1, Math.abs(ab.x * u.x + ab.z * u.z)));
-  /** Where a mouth due at s along a street goes: on a bend node within MOUTH_SNAP, else s when BEND_CLEAR from every bend node, else nowhere (NaN). */
-  const mouthAt = (c: Chain, s0: number): number => {
-    const s = chainSnap(g, c, s0, MOUTH_SNAP);
-    if (s !== s0) return s;
-    const cum = chainCum(g, c);
-    for (let i = 1; i + 1 < c.nodes.length; i++) if (Math.abs(cum[i] - s) < BEND_CLEAR) return NaN;
-    return s;
+  /** Unit normal to the chord A-B on the far side from P. */
+  const awayFrom = (A: Vec2, B: Vec2, P: Vec2): Vec2 => {
+    const n = unitPerp(unit(A, B), { x: P.x - A.x, z: P.z - A.z });
+    return { x: -n.x, z: -n.z };
   };
 
-  const dbg = (globalThis as unknown as { __dbg?: Record<string, number> }).__dbg;
-  const bump = (k: string) => {
-    if (dbg) dbg[k] = (dbg[k] ?? 0) + 1;
+  /**
+   * A jump exit's path from A to B: the last leg meets the exit street
+   * (forward direction uE, half width hE to its building line) at exitDeg
+   * heading down it, long enough for the lip (just inside where both alley
+   * walls still stand), the ramp and a lead-in straight; one bend joins it to
+   * A. Null when a leg is too short, the bend too sharp, the entry mouth too
+   * oblique or the landing zone does not fit in `run` m of street past B.
+   */
+  const jumpPath = (A: Vec2, B: Vec2, uIn: Vec2, uE: Vec2, hE: number, run: number, minMouth: number): { path: Vec2[]; jump: JumpPlan } | null => {
+    const th = JUMP.exitDeg * RAD;
+    const nb = unitPerp(uE, { x: A.x - B.x, z: A.z - B.z });
+    const d = { x: uE.x * Math.cos(th) - nb.x * Math.sin(th), z: uE.z * Math.cos(th) - nb.z * Math.sin(th) };
+    const lipS = (hE + hwAll * Math.cos(th)) / Math.sin(th) + JUMP.lipBack;
+    const L = lipS + JUMP.length + JUMP.lead;
+    const P = { x: B.x - d.x * L, z: B.z - d.z * L };
+    const path = [A, P, B];
+    // The exit mouth is shallow by design: only the entry keeps the plain cut's minimum.
+    if (!pathOk(path, uIn, minMouth, uE, th - 1 * RAD)) return null;
+    const vMax = Math.sqrt(JUMP.bendSpeed * JUMP.bendSpeed + 2 * JUMP.launchAccel * (JUMP.length + JUMP.lead));
+    const landMax = alleyFlightReach(vMax);
+    const zone = (landMax - lipS) * Math.cos(th) + JUMP.rollout;
+    if (zone + JUMP.landingClear > run || !landingGuard(B, zone)) return null;
+    return { path, jump: { lipS, landMax, zone } };
   };
-  const candidates = (r: CarveRoute): Cut[] => {
+
+  const candidates = (r: CarveRoute, jumps = false): Cut[] => {
     const R = r.nodes;
     const n = R.length;
     const { cum } = nodeCum(g, r);
@@ -1057,9 +1559,6 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
       const turn = turnAt(g, r, i);
       const deg = Math.abs(turn) / RAD;
       if (deg < turnMin || deg > turnMax) continue;
-      // A corner is a junction: a bend node (the route's street going on through its kink, roadGraph.ts)
-      // turns too little to pass the turn test above, so i is one. The streets leaving it run on through
-      // their bend nodes to the previous and the next junction (chains), the cut's reaches along them.
       const P = R[idx(i - 1)];
       const C = R[i];
       const Q = R[idx(i + 1)];
@@ -1067,111 +1566,109 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
       const e1 = edgeBetween(g, P, C);
       const e2 = edgeBetween(g, C, Q);
       if (!edgeOk(e1) || !edgeOk(e2)) continue;
-      const back = chainFrom(g, C, e1);
-      const fwd = chainFrom(g, C, e2);
-      if (!back.edges.every(edgeOk) || !fwd.edges.every(edgeOk)) {
-        bump('chainEdgeOk');
-        continue;
-      }
       const Cn = g.nodes[C];
-      const uBack = { ...unit(Cn, g.nodes[P]), len: back.length };
-      const uOut = { ...unit(Cn, g.nodes[Q]), len: fwd.length };
-      if (!wedgeFree(g, C, [e1, e2], uBack, uOut)) {
-        bump('wedge');
-        continue;
-      }
-      bump('corners');
+      const uBack = unit(Cn, g.nodes[P]);
+      const uOut = unit(Cn, g.nodes[Q]);
+      if (!wedgeFree(g, C, [e1, e2], uBack, uOut)) continue;
       const E1 = g.edges[e1];
       const E2 = g.edges[e2];
-      // Route indices of the far junctions: the route follows each street through its bend nodes.
-      const iP = idx(i - back.edges.length);
-      const iQ = idx(i + fwd.edges.length);
-      const clrP = endClear(r, iP, turn);
-      const clrQ = endClear(r, iQ, turn);
+      const clrP = endClear(r, idx(i - 1), turn);
+      const clrQ = endClear(r, idx(i + 1), turn);
       const h1 = E1.width / 2 + E1.sidewalk;
       const h2 = E2.width / 2 + E2.sidewalk;
+      const cornerC: Corner = { C: Cn, u1: uBack, h1, u2: uOut, h2 };
 
-      // Corner cut across the inside block: the longest that fits. A reach near a bend node takes the
-      // bend node (MOUTH_SNAP), so the cut is judged where its mouths will be.
-      corner: for (const dA0 of cfg.cornerReach) {
-        const dA = mouthAt(back, dA0);
-        if (Number.isNaN(dA) || uBack.len - dA < clrP) {
-          bump(Number.isNaN(dA) ? 'dA:nan' : 'dA:clrP');
-          continue;
-        }
-        for (const dB0 of cfg.cornerReach) {
-          const dB = mouthAt(fwd, dB0);
-          // (The reaches need not match: the bend nodes decide where a mouth may go.)
-          if (Number.isNaN(dB) || Math.abs(dA - dB) > cfg.cornerReach[0] - cfg.cornerReach[cfg.cornerReach.length - 1] || uOut.len - dB < clrQ) {
-            bump(Number.isNaN(dB) ? 'dB:nan' : uOut.len - dB < clrQ ? 'dB:clrQ' : 'dB:diff');
-            continue;
-          }
-          const A = chainPoint(g, back, dA);
-          const B = chainPoint(g, fwd, dB);
+      // Corner cut across the inside block: the longest that fits.
+      corner: for (const dA of cfg.cornerReach) {
+        if (uBack.len - dA < clrP) continue;
+        for (const dB of cfg.cornerReach) {
+          if (Math.abs(dA - dB) > 10 || uOut.len - dB < clrQ) continue;
+          const A = { x: Cn.x + uBack.x * dA, z: Cn.z + uBack.z * dA };
+          const B = { x: Cn.x + uOut.x * dB, z: Cn.z + uOut.z * dB };
           const length = Math.hypot(B.x - A.x, B.z - A.z);
           const skip = dA + dB;
-          if (length < cfg.minLength || length > skip * (1 - cfg.minSave)) {
-            bump(length < cfg.minLength ? 'len:short' : 'len:save');
-            continue;
-          }
+          if (length < cfg.minLength || length > skip * (1 - cfg.minSave)) continue;
           const ab = unit(A, B);
-          if (Math.min(mouthAngle(ab, uBack), mouthAngle(ab, uOut)) < 34 * RAD) {
-            bump('mouthAngle');
-            continue;
-          }
-          if (!sprintGuard(A, B)) {
-            bump('sprintGuard');
-            continue;
-          }
-          if (!cornerClear(Cn, uBack, h1, uOut, h2, A, B)) {
-            bump('cornerClear');
-            continue;
-          }
-          if (!chordClear(A, B, [...back.edges, ...fwd.edges])) {
-            bump('chordClear');
-            continue;
-          }
-          bump('cornerCuts');
-          out.push({ eA: e1, fromA: C, dA, eB: e2, fromB: C, dB, length, skip, at: cum[i] - dA, score: cutScore(skip, length) });
+          if (Math.min(mouthAngle(ab, uBack), mouthAngle(ab, uOut)) < 34 * RAD) continue;
+          if (!sprintGuard(A, B) || !cornerClear(cornerC, [A, B]) || !chordClear(A, B, [e1, e2])) continue;
+          out.push({ eA: e1, fromA: C, dA, eB: e2, fromB: C, dB, path: [A, B], length, skip, at: cum[i] - dA, score: cutScore(skip, length), uIn: uBack, uOut, minMouth: 34 * RAD, skipEdges: [e1, e2], clear: cfg.clear, corners: [cornerC], away: awayFrom(A, B, Cn) });
           break corner;
         }
       }
+      // A jump exit off the outgoing street: the exit nearer the corner than a plain cut's (the landing
+      // needs the street past it), the longest skip that fits first.
+      if (jumps) {
+        jump: for (const dB of cfg.cornerReach) {
+          if (uOut.len - dB < clrQ) continue;
+          const B = { x: Cn.x + uOut.x * dB, z: Cn.z + uOut.z * dB };
+          const run = runPast(r, idx(i + 1), uOut.len - dB);
+          for (const dA of cfg.cornerReach) {
+            if (uBack.len - dA < clrP) continue;
+            const A = { x: Cn.x + uBack.x * dA, z: Cn.z + uBack.z * dA };
+            const skip = dA + dB;
+            const jp = jumpPath(A, B, uBack, uOut, h2, run, 34 * RAD);
+            if (!jp) continue;
+            const length = pathLength(jp.path);
+            if (length < cfg.minLength || length > skip * (1 - cfg.minSave)) continue;
+            if (!sprintGuard(A, B) || !cornerClear(cornerC, jp.path) || !pathClear(jp.path, [e1, e2])) continue;
+            out.push({ eA: e1, fromA: C, dA, eB: e2, fromB: C, dB, path: jp.path, length, skip, at: cum[i] - dA, score: cutScore(skip, length), uIn: uBack, uOut, minMouth: 34 * RAD, skipEdges: [e1, e2], clear: cfg.clear, corners: [cornerC], away: awayFrom(A, B, Cn), jump: jp.jump });
+            break jump;
+          }
+        }
+      }
 
-      // U cut: this corner and the next (the junction at the end of the street ahead) turn the same way around one block.
-      if (!inner(iQ) || (!r.closed && iQ + 1 > n - 1) || (r.closed && fwd.edges.length >= n - 1)) continue;
-      const turn2 = turnAt(g, r, iQ);
+      // U cut: this corner and the next turn the same way around one block.
+      if (!inner(idx(i + 1)) || (!r.closed && i + 2 > n - 1)) continue;
+      const turn2 = turnAt(g, r, idx(i + 1));
       const deg2 = Math.abs(turn2) / RAD;
       if (deg2 < turnMin || deg2 > turnMax || Math.sign(turn2) !== Math.sign(turn)) continue;
-      const Q1 = R[iQ];
-      const Q2 = R[idx(iQ + 1)];
-      if (!cornerOk(Q1)) continue;
-      const e3 = edgeBetween(g, Q1, Q2);
+      const Q2 = R[idx(i + 2)];
+      if (!cornerOk(Q)) continue;
+      const e3 = edgeBetween(g, Q, Q2);
       if (!edgeOk(e3)) continue;
-      const out2 = chainFrom(g, Q1, e3);
-      if (!out2.edges.every(edgeOk)) continue;
-      const Qn = g.nodes[Q1];
-      const uBack2 = { ...unit(Qn, g.nodes[R[idx(iQ - 1)]]), len: fwd.length };
-      const uOut2 = { ...unit(Qn, g.nodes[Q2]), len: out2.length };
-      if (!wedgeFree(g, Q1, [fwd.edges[fwd.edges.length - 1], e3], uBack2, uOut2)) continue;
+      const Qn = g.nodes[Q];
+      const uBack2 = unit(Qn, Cn);
+      const uOut2 = unit(Qn, g.nodes[Q2]);
+      if (!wedgeFree(g, Q, [e2, e3], uBack2, uOut2)) continue;
       const E3 = g.edges[e3];
       const L1 = uOut.len;
       if (L1 < 50 || L1 > 180) continue;
-      const clrQ2 = endClear(r, idx(iQ + out2.edges.length), turn);
-      for (const d0 of cfg.uReach) {
-        const d = mouthAt(back, d0);
-        const d2 = mouthAt(out2, d0);
-        if (Number.isNaN(d) || Number.isNaN(d2) || uBack.len - d < clrP || uOut2.len - d2 < clrQ2) continue;
-        const A = chainPoint(g, back, d);
-        const B = chainPoint(g, out2, d2);
+      const clrQ2 = endClear(r, idx(i + 2), turn);
+      const h3 = E3.width / 2 + E3.sidewalk;
+      const cornerQ: Corner = { C: Qn, u1: uBack2, h1: h2, u2: uOut2, h2: h3 };
+      for (const d of cfg.uReach) {
+        if (uBack.len - d < clrP || uOut2.len - d < clrQ2) continue;
+        const A = { x: Cn.x + uBack.x * d, z: Cn.z + uBack.z * d };
+        const B = { x: Qn.x + uOut2.x * d, z: Qn.z + uOut2.z * d };
         const length = Math.hypot(B.x - A.x, B.z - A.z);
-        const skip = d + L1 + d2;
+        const skip = d + L1 + d;
         if (length < cfg.minLength || length > skip * (1 - cfg.minSave)) continue;
         const ab = unit(A, B);
         if (Math.min(mouthAngle(ab, uBack), mouthAngle(ab, uOut2)) < 55 * RAD) continue;
-        if (!cornerClear(Cn, uBack, h1, uOut, h2, A, B) || !cornerClear(Qn, uBack2, h2, uOut2, E3.width / 2 + E3.sidewalk, A, B)) continue;
-        if (!sprintGuard(A, B) || !chordClear(A, B, [...back.edges, ...fwd.edges, ...out2.edges])) continue;
-        out.push({ eA: e1, fromA: C, dA: d, eB: e3, fromB: Q1, dB: d2, length, skip, at: cum[i] - d, score: cutScore(skip, length) - 4 });
+        if (!cornerClear(cornerC, [A, B]) || !cornerClear(cornerQ, [A, B])) continue;
+        if (!sprintGuard(A, B) || !chordClear(A, B, [e1, e3])) continue;
+        out.push({ eA: e1, fromA: C, dA: d, eB: e3, fromB: Q, dB: d, path: [A, B], length, skip, at: cum[i] - d, score: cutScore(skip, length) - 4, uIn: uBack, uOut: uOut2, minMouth: 55 * RAD, skipEdges: [e1, e3], clear: cfg.clear, corners: [cornerC, cornerQ], away: awayFrom(A, B, Cn) });
         break;
+      }
+      if (jumps) {
+        jumpU: for (const dB of cfg.uReach) {
+          if (uOut2.len - dB < clrQ2) continue;
+          const B = { x: Qn.x + uOut2.x * dB, z: Qn.z + uOut2.z * dB };
+          const run = runPast(r, idx(i + 2), uOut2.len - dB);
+          for (const dA of cfg.uReach) {
+            if (uBack.len - dA < clrP) continue;
+            const A = { x: Cn.x + uBack.x * dA, z: Cn.z + uBack.z * dA };
+            const skip = dA + L1 + dB;
+            const jp = jumpPath(A, B, uBack, uOut2, h3, run, 55 * RAD);
+            if (!jp) continue;
+            const length = pathLength(jp.path);
+            if (length < cfg.minLength || length > skip * (1 - cfg.minSave)) continue;
+            if (!cornerClear(cornerC, jp.path) || !cornerClear(cornerQ, jp.path)) continue;
+            if (!sprintGuard(A, B) || !pathClear(jp.path, [e1, e3])) continue;
+            out.push({ eA: e1, fromA: C, dA, eB: e3, fromB: Q, dB, path: jp.path, length, skip, at: cum[i] - dA, score: cutScore(skip, length) - 4, uIn: uBack, uOut: uOut2, minMouth: 55 * RAD, skipEdges: [e1, e3], clear: cfg.clear, corners: [cornerC, cornerQ], away: awayFrom(A, B, Cn), jump: jp.jump });
+            break jumpU;
+          }
+        }
       }
     }
     return out;
@@ -1193,29 +1690,22 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
       if (!edgeOk(e)) continue;
       const a = g.nodes[R[k]];
       const u = unit(a, g.nodes[R[(k + 1) % n]]);
-      // A bend node (roadGraph.ts) is a spot itself (the mouth takes the node), and the rest of the
-      // piece keeps MOUTH_SNAP from it; a junction end keeps nodeClear as ever.
-      const bendA = isBendNode(g, R[k]);
-      if (bendA) spots.push({ k, d: 0, p: { x: a.x, z: a.z }, u, e });
-      const d0 = bendA ? BEND_CLEAR : cfg.nodeClear;
-      const d1 = isBendNode(g, R[(k + 1) % n]) ? BEND_CLEAR : cfg.nodeClear;
-      for (let d = d0; d <= u.len - d1; d += CHORD_STEP) spots.push({ k, d, p: { x: a.x + u.x * d, z: a.z + u.z * d }, u, e });
+      for (let d = cfg.nodeClear; d <= u.len - cfg.nodeClear; d += CHORD_STEP) spots.push({ k, d, p: { x: a.x + u.x * d, z: a.z + u.z * d }, u, e });
     }
     const out: Cut[] = [];
-    // A mouth on the outside of a turning junction's corner rail keeps railClear from it; a bend node is no junction.
+    // A mouth on the outside of a turning junction's corner rail keeps railClear from it.
     const clearOk = (k: number, d: number, len: number, side: number) => {
       const t0 = turnAt(g, r, k);
       const t1 = turnAt(g, r, (k + 1) % n);
-      const need0 = isBendNode(g, R[k]) ? 0 : g.nodes[R[k]].ring ? g.nodes[R[k]].ring!.outer + cfg.railClear * 0.6 : Math.abs(t0) >= ROUTE_RAIL_MIN_TURN && Math.sign(t0) === -side ? cfg.railClear : cfg.nodeClear;
-      const need1 = isBendNode(g, R[(k + 1) % n]) ? 0 : g.nodes[R[(k + 1) % n]].ring ? g.nodes[R[(k + 1) % n]].ring!.outer + cfg.railClear * 0.6 : Math.abs(t1) >= ROUTE_RAIL_MIN_TURN && Math.sign(t1) === -side ? cfg.railClear : cfg.nodeClear;
+      const need0 = g.nodes[R[k]].ring ? g.nodes[R[k]].ring!.outer + cfg.railClear * 0.6 : Math.abs(t0) >= ROUTE_RAIL_MIN_TURN && Math.sign(t0) === -side ? cfg.railClear : cfg.nodeClear;
+      const need1 = g.nodes[R[(k + 1) % n]].ring ? g.nodes[R[(k + 1) % n]].ring!.outer + cfg.railClear * 0.6 : Math.abs(t1) >= ROUTE_RAIL_MIN_TURN && Math.sign(t1) === -side ? cfg.railClear : cfg.nodeClear;
       return d >= need0 && len - d >= need1;
     };
     for (const a of spots) {
       for (const b of spots) {
         let gap = b.k - a.k;
         if (r.closed) gap = (gap + n) % n;
-        // Up to four streets apart: the route's edges are pieces of streets (CITY.bendSegments each).
-        if (gap < 1 || gap > 4 * CITY.bendSegments) continue;
+        if (gap < 1 || gap > 4) continue;
         let skip = cum[b.k] + b.d - (cum[a.k] + a.d);
         if (r.closed && skip < 0) skip += total;
         if (skip <= 0 || skip > cfg.maxSkip * total) continue;
@@ -1227,73 +1717,136 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
         const sideB = Math.sign(b.u.x * -ab.z - b.u.z * -ab.x);
         if (!clearOk(a.k, a.d, a.u.len, sideA) || !clearOk(b.k, b.d, b.u.len, sideB)) continue;
         if (!sprintGuard(a.p, b.p)) continue;
-        if (gap === 1 && !isBendNode(g, R[(a.k + 1) % n])) {
+        const corners: Corner[] = [];
+        if (gap === 1) {
           const C = g.nodes[R[(a.k + 1) % n]];
           const E1 = g.edges[a.e];
           const E2 = g.edges[b.e];
-          if (!cornerClear(C, { x: -a.u.x, z: -a.u.z }, E1.width / 2 + E1.sidewalk, b.u, E2.width / 2 + E2.sidewalk, a.p, b.p)) continue;
+          corners.push({ C, u1: { x: -a.u.x, z: -a.u.z }, h1: E1.width / 2 + E1.sidewalk, u2: b.u, h2: E2.width / 2 + E2.sidewalk });
+          if (!cornerClear(corners[0], [a.p, b.p])) continue;
         }
         // Tight cities (diagonals, the river) leave narrow blocks: a fallback chord may pass closer.
-        // The mouths' own streets (every piece of them) are not in the way.
-        if (!chordClear(a.p, b.p, [...chainOf(g, a.e).edges, ...chainOf(g, b.e).edges], CHORD_CLEAR)) continue;
-        out.push({ eA: a.e, fromA: R[a.k], dA: a.d, eB: b.e, fromB: R[b.k], dB: b.d, length: ab.len, skip, at: cum[a.k] + a.d, score: cutScore(skip, ab.len) });
+        if (!chordClear(a.p, b.p, [a.e, b.e], CHORD_CLEAR)) continue;
+        // Bends away from the corner it cuts, or from the route node ahead of its entry.
+        const far = corners.length ? corners[0].C : g.nodes[R[(a.k + 1) % n]];
+        out.push({ eA: a.e, fromA: R[a.k], dA: a.d, eB: b.e, fromB: R[b.k], dB: b.d, path: [a.p, b.p], length: ab.len, skip, at: cum[a.k] + a.d, score: cutScore(skip, ab.len), uIn: a.u, uOut: b.u, minMouth: 34 * RAD, skipEdges: [a.e, b.e], clear: CHORD_CLEAR, corners, away: awayFrom(a.p, b.p, far) });
       }
     }
     return out;
   };
 
+  /**
+   * Bend a plain cut's path through its block (in place): a dogleg (one bend)
+   * on short cuts, an arc (two) where three legs fit, bent away from the
+   * corners it cuts, the first bend that fits in a seeded order and the
+   * straight chord where none does. The bent path is checked like the chord (streets, areas,
+   * corners, mouths) and must still save minSave of what it skips.
+   */
+  const bend = (cut: Cut, rng: Rng): void => {
+    const [A, B] = cut.path;
+    const ab = unit(A, B);
+    // Which bend and shape to try first is the seed's call, so cuts do not all bend alike.
+    const shapes: (1 | 2)[] = ab.len >= 3 * BEND.minLeg + 12 ? rng.shuffle([2, 1]) : [1];
+    const degs = rng.shuffle(BEND.tryDeg.slice());
+    const sides = cut.corners.length ? [cut.away] : [cut.away, { x: -cut.away.x, z: -cut.away.z }];
+    for (const deg of degs) {
+      for (const nodes of shapes) {
+        for (const away of sides) {
+          // Dogleg: the node at the chord's middle, each leg turning half the bend; arc: nodes at the thirds, the middle leg parallel.
+          const t = Math.tan((deg * RAD) / (nodes === 1 ? 2 : 1));
+          const o = (ab.len / (nodes === 1 ? 2 : 3)) * t;
+          const at = (f: number): Vec2 => ({ x: A.x + ab.x * ab.len * f + away.x * o, z: A.z + ab.z * ab.len * f + away.z * o });
+          const path = nodes === 1 ? [A, at(0.5), B] : [A, at(1 / 3), at(2 / 3), B];
+          const length = pathLength(path);
+          if (length > cut.skip * (1 - cfg.minSave)) continue;
+          if (!pathOk(path, cut.uIn, cut.minMouth, cut.uOut, cut.minMouth)) continue;
+          if (!cut.corners.every((c) => cornerClear(c, path)) || !pathClear(path, cut.skipEdges, cut.clear)) continue;
+          cut.path = path;
+          cut.length = length;
+          return;
+        }
+      }
+    }
+  };
+
   return {
     candidates,
     chordCuts,
+    bend,
     allowProtected(v: boolean) {
       allowProtected = v;
     },
   };
 }
 
-/** Split the two route edges, join the split points with the shortcut and register its area. */
+/**
+ * Split the two route edges, join the split points with the shortcut's chain
+ * (free bend nodes at the path's interior points, every edge 'backAlley'
+ * flagged shortcut) and register its area.
+ */
 function carve(ctx: PlanContext, routes: CarveRoute[], cut: Cut, rng: Rng): void {
   const cfg = CITY.districts.backAlley.route;
   const bcfg = CITY.districts.backAlley;
   const g = ctx.graph;
   const split = (eid: number, from: number, d: number): number => {
-    // d is measured along the street from `from`: on through its bend nodes (roadGraph.ts) to the
-    // piece that holds it, which is the one split; a mouth due within MOUTH_SNAP of a bend node takes
-    // the bend node itself (already a route node, so nothing to insert).
-    const street = chainFrom(g, from, eid);
-    const before = g.nodes.length;
-    const m = splitChainAt(g, street, d, MOUTH_SNAP);
-    if (m < before) return m;
-    const piece = g.edges[g.edges.length - 1];
-    // The new piece runs from the mouth to the old far end: the split edge ran from its other end to the mouth.
-    const first = g.edges.find((x) => x.b === m && x.id !== piece.id)!;
-    insertSplit(routes, first.a, piece.b, m);
+    const e = g.edges[eid];
+    const u = e.a;
+    const v = e.b;
+    const m = splitEdge(g, eid, u === from ? d / e.length : 1 - d / e.length);
+    insertSplit(routes, u, v, m);
     return m;
   };
   const na = split(cut.eA, cut.fromA, cut.dA);
   const nb = split(cut.eB, cut.fromB, cut.dB);
-  const id = addEdge(g, na, nb, 'backAlley');
-  const edge = g.edges[id];
-  edge.shortcut = true;
-  edge.width = cfg.width;
+  const ids = [na];
+  for (let i = 1; i + 1 < cut.path.length; i++) ids.push(addNode(g, cut.path[i].x, cut.path[i].z));
+  ids.push(nb);
+  const edges: number[] = [];
+  for (let i = 0; i + 1 < ids.length; i++) {
+    const id = addEdge(g, ids[i], ids[i + 1], 'backAlley');
+    g.edges[id].shortcut = true;
+    g.edges[id].width = cfg.width;
+    if (cut.jump && i + 2 === ids.length) g.edges[id].jumpExit = true;
+    edges.push(id);
+  }
   ctx.graphChanged();
-  const A = { x: g.nodes[na].x, z: g.nodes[na].z };
-  const B = { x: g.nodes[nb].x, z: g.nodes[nb].z };
-  const length = edge.length;
+  const path = ids.map((id) => ({ x: g.nodes[id].x, z: g.nodes[id].z }));
+  const cum = pathCum(path);
+  const length = cum[cum.length - 1];
+  // A kicker hump on the longest leg with room for it, clear of both (flared) mouths and of the bends;
+  // never on a jump exit's run-up.
   const half = bcfg.jumpRamp + bcfg.jumpTop / 2;
   const end = half + 15 + bcfg.mouth.alley;
-  const jump = length > 2 * end && rng.chance(cfg.jumpChance) ? 1 : 0;
-  const jumpS = Math.max(end, Math.min(length - end, length * rng.pick([0.5, 0.42, 0.58])));
+  const legs = path.length - 1;
+  let legI = -1;
+  let room = 0;
+  for (let i = 0; i < legs; i++) {
+    if (cut.jump && i === legs - 1) continue;
+    const r = cum[i + 1] - cum[i] - (i === 0 ? end : half + 6) - (i === legs - 1 ? end : half + 6);
+    if (r > room) {
+      room = r;
+      legI = i;
+    }
+  }
+  const jump = legI >= 0 && rng.chance(cfg.jumpChance) ? 1 : 0;
+  const jumpS = legI >= 0 ? cum[legI] + (legI === 0 ? end : half + 6) + room * rng.pick([0.5, 0.42, 0.58]) : 0;
+  const params: Record<string, number> = { length, jump, jumpS, seed: rng.int(1, 0x7ffffffe), width: cfg.width };
+  if (cut.jump) {
+    params.jumpExit = 1;
+    params.lipS = cut.jump.lipS;
+    params.landMax = cut.jump.landMax;
+    params.zone = cut.jump.zone;
+  }
   ctx.addArea(
     {
       kind: 'backAlley',
       variant: 'routeShortcut',
-      polygon: corridor([A, B], cfg.width / 2 + CITY.sidewalkWidth.backAlley),
-      path: [A, B],
-      nodes: [na, nb],
-      edges: [id],
+      polygon: corridor(path, cfg.width / 2 + CITY.sidewalkWidth.backAlley),
+      path,
+      nodes: ids,
+      edges,
       faces: [],
-      params: { length, jump, jumpS, seed: rng.int(1, 0x7ffffffe), width: cfg.width },
+      params,
     },
     length * (cfg.width + 2 * CITY.sidewalkWidth.backAlley),
   );

@@ -209,8 +209,8 @@ export function planMeets(world: World, opts: MeetOptions): MeetPlan {
     if (!beyondEnds && Math.abs(rp.lateral) < route.segWidth[rp.seg] / 2 + CITY.sidewalk + MEET.routeClear + r) return false;
     // Shortcuts stay open: nobody stands or parks in the alley, its sidewalks or its mouths.
     for (const sc of route.shortcuts) {
-      const half = world.graph.edges[sc.edge].width / 2 + world.graph.edges[sc.edge].sidewalk + MEET.shortcutClear + r;
-      if (distToSegment(x, z, sc.ax, sc.az, sc.bx, sc.bz) < half) return false;
+      const half = world.graph.edges[sc.edges[0]].width / 2 + world.graph.edges[sc.edges[0]].sidewalk + MEET.shortcutClear + r;
+      for (let i = 0; i + 1 < sc.points.length; i++) if (distToSegment(x, z, sc.points[i].x, sc.points[i].z, sc.points[i + 1].x, sc.points[i + 1].z) < half) return false;
     }
     // collideCircle also reports walls up to 3 m in front of the point (its anti tunnelling band), and
     // standing right behind the barrier is the whole point: only a real overlap, or being behind a city

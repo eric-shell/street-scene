@@ -590,10 +590,16 @@ function recessPass(B: Building[], plans: readonly BuildingPlan[]): Building[] {
           const lo = Math.max(0, Math.min(t0, t1));
           const hi = Math.min(len, Math.max(t0, t1));
           if (hi - lo < 0.5) continue;
-          // Plane gap at the middle of the shared stretch (the walls may be a hair off parallel).
-          const mx = f.p.x + (ex * ((lo + hi) / 2 - t0)) / (t1 - t0);
-          const mz = f.p.z + (ez * ((lo + hi) / 2 - t0)) / (t1 - t0);
-          if (Math.abs(((mx - p.x) * dz - (mz - p.z) * dx) / len) > BLD.coplanarTol) continue;
+          // Plane gap where the walls come closest: at either end of the shared stretch, or at the other
+          // wall's start (the walls may be a hair off parallel: a few mrad over a 20 m wall opens 0.1 m
+          // from one end to the other, and a wall that starts in the plane and drifts out of it still
+          // reads as one surface from the street).
+          const gapAt = (t: number) => {
+            const x = f.p.x + (ex * (t - t0)) / (t1 - t0);
+            const z = f.p.z + (ez * (t - t0)) / (t1 - t0);
+            return Math.abs(((x - p.x) * dz - (z - p.z) * dx) / len);
+          };
+          if (Math.min(gapAt(lo), gapAt(hi), gapAt(t0)) > BLD.coplanarTol) continue;
           recess[lower][lower === i ? ka : kb] = true;
         }
       }
