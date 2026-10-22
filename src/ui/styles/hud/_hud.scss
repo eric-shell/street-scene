@@ -265,31 +265,7 @@
   width: 200px;
   height: 200px;
 }
-.hud-nitro {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--cyan);
-  width: 190px;
-  margin-right: 5px;
-}
-.hud-nitro .bar {
-  flex: 1;
-  height: 10px;
-  border-radius: var(--radius-sm);
-  background: palette.alpha(bg0, 0.72);
-  border: 1px solid palette.alpha(cyan, 0.4);
-  overflow: hidden;
-}
-/* Nitrous keeps its own cyan: it is the one blue thing on screen, so the bottle reads at a glance. */
-.hud-nitro .fill {
-  height: 100%;
-  background: linear-gradient(90deg, #4fb8cc, var(--cyan));
-}
-.hud-nitro.active .fill {
-  background: linear-gradient(90deg, var(--cyan), #d6f6fa);
-  box-shadow: 0 0 10px var(--cyan);
-}
+/* The nitrous bar under the dials and its callouts: hud/_nitro.scss. */
 .hud-map {
   position: absolute;
   left: max(10px, env(safe-area-inset-left));
@@ -306,9 +282,6 @@
     width: 82px;
     height: 82px;
     margin-right: -10px;
-  }
-  .hud-nitro {
-    width: 130px;
   }
   .hud-map {
     width: 110px;

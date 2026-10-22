@@ -100,6 +100,8 @@ export class MusicPlayer {
   /** Whether music should be playing: on at every session start, off after pause until play. */
   private wantsPlay = true;
   private duck = 1;
+  /** Gain over the slider (1 = none): the race session's nitrous swell. */
+  private lift = 1;
   private saveTimer = 0;
   private errors = 0;
 
@@ -315,10 +317,22 @@ export class MusicPlayer {
     this.applyVolume();
   }
 
+  /**
+   * Lift the music over its slider by a gain (1 = none), up to the element's
+   * full volume: a swell the caller eases, set every frame (writes only when
+   * it moves).
+   */
+  setLift(gain: number): void {
+    const g = Math.max(1, gain);
+    if (Math.abs(g - this.lift) < 1e-3 && (g !== 1 || this.lift === 1)) return;
+    this.lift = g;
+    this.applyVolume();
+  }
+
   private applyVolume(): void {
     // Perceptual curve so the slider feels linear.
     const v = this.s.muted ? 0 : this.s.volume * this.s.volume;
-    this.audio.volume = v * this.duck;
+    this.audio.volume = Math.min(1, v * this.duck * this.lift);
   }
 
   private load(): Persisted {

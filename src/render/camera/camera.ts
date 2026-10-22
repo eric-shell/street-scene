@@ -10,7 +10,8 @@
  * car pulling away from the viewer. Two shake layers ride on every follow camera: a heavy one for wall
  * and car crashes and sudden stops (crash()), a light one for knocking over
  * street furniture (knock()), plus a fine rumble on cobbles (rumble(), fed
- * each frame). Each trauma layer decays linearly and is shown
+ * each frame) and a buzz under nitrous that grows with the stage burning,
+ * as do the nitrous FOV kick and pull back (update()'s `nitro`). Each trauma layer decays linearly and is shown
  * squared through smooth noise as sway, bob and roll, so it is the same at
  * any frame rate and small hits stay subtle. Render only.
  *
@@ -23,6 +24,7 @@ import * as THREE from 'three';
 import type { World } from '../../city/world';
 import type { CarPose } from '../car/carView';
 import { clampCeiling } from './ceilings';
+import { NITRO_STAGES } from '../../sim/tuning';
 
 export const CAMERA_MODES = ['chase', 'close', 'bumper', 'hood'] as const;
 export type CameraMode = (typeof CAMERA_MODES)[number];
@@ -88,6 +90,12 @@ export interface CameraParams {
     rumbleMinSpeed: number;
     rumbleFullSpeed: number;
     rumbleEase: number;
+    /** Each nitrous stage above the first adds this share of the nitrous FOV kick and pull back. */
+    nitroStageGain: number;
+    /** Nitrous buzz: sway and bob (m) and roll (deg) at the top stage, a share of it per stage below, eased at nitroShakeEase (1/s). */
+    nitroShake: number;
+    nitroRoll: number;
+    nitroShakeEase: number;
     crashMin: number;
     crashFull: number;
     slowdownMin: number;
@@ -182,6 +190,10 @@ export const CAMERA_DEFAULTS: CameraParams = {
     rumbleMinSpeed: 3,
     rumbleFullSpeed: 26,
     rumbleEase: 7,
+    nitroStageGain: 0.2,
+    nitroShake: 0.03,
+    nitroRoll: 0.45,
+    nitroShakeEase: 4,
     crashMin: 3,
     crashFull: 16,
     slowdownMin: 0.45,
@@ -276,6 +288,10 @@ export const CAMERA_PARAM_META: Record<string, [number, number, number, string]>
   'common.rumbleMinSpeed': [0, 20, 0.5, 'Speed on cobbles where the rumble starts (m/s).'],
   'common.rumbleFullSpeed': [5, 60, 0.5, 'Speed on cobbles that gives the full rumble (m/s).'],
   'common.rumbleEase': [0.5, 30, 0.5, 'How fast the rumble fades in and out at an alley mouth (1/s).'],
+  'common.nitroStageGain': [0, 1, 0.01, 'Share of the nitrous FOV kick and pull back each stage above the first adds.'],
+  'common.nitroShake': [0, 0.1, 0.001, 'Nitrous buzz: sway and bob at the top stage (m); lower stages get their share.'],
+  'common.nitroRoll': [0, 2, 0.01, 'Nitrous buzz roll at the top stage (deg).'],
+  'common.nitroShakeEase': [0.5, 30, 0.5, 'How fast the nitrous buzz comes in, changes stage and dies away (1/s).'],
   'common.crashMin': [0, 20, 0.5, 'Wall or car impact speed below which there is no heavy shake (m/s).'],
   'common.crashFull': [2, 60, 0.5, 'Wall or car impact speed that gives full heavy trauma (m/s).'],
   'common.slowdownMin': [0.1, 5, 0.05, 'Speed lost in one sim tick that counts as a crash (m/s; braking hard loses about 0.25).'],
@@ -327,6 +343,9 @@ export class ChaseCamera {
   /** Cobble rumble 0..1: what the surface asks for this frame, and the eased level shown. */
   private rumbleTarget = 0;
   private rumbleLevel = 0;
+  /** Nitrous buzz 0..1: the stage burning as a share of the top one, and the eased level shown. */
+  private boostTarget = 0;
+  private boostLevel = 0;
   private shakeT = 0;
   private readonly shakeOff = new THREE.Vector3();
   private scratch: number[] = [];
@@ -399,7 +418,8 @@ export class ChaseCamera {
    * This frame's shake: an offset in camera space (x right, y up, m) and a
    * roll (rad), from smooth noise at a low (heavy) and a high (light) band,
    * plus the cobble rumble at a higher band still (eased, with a slow
-   * waver so it reads as stones rather than a buzz).
+   * waver so it reads as stones rather than a buzz) and the nitrous buzz
+   * between the two (eased, with a faster waver, like a pulsing jet).
    */
   private shakeNow(dt: number): number {
     const c = CAMERA.common;
@@ -407,27 +427,32 @@ export class ChaseCamera {
     this.heavy = Math.max(0, this.heavy - dt * c.heavyDecay);
     this.light = Math.max(0, this.light - dt * c.lightDecay);
     this.rumbleLevel += (this.rumbleTarget - this.rumbleLevel) * (1 - Math.exp(-c.rumbleEase * dt));
+    this.boostLevel += (this.boostTarget - this.boostLevel) * (1 - Math.exp(-c.nitroShakeEase * dt));
     const h = this.heavy * this.heavy;
     const l = this.light * this.light;
     const t = this.shakeT;
     const r = this.rumbleLevel * (0.75 + 0.25 * Math.sin(t * 9.7));
+    const jet = this.boostLevel * (0.8 + 0.2 * Math.sin(t * 13.1));
     // Sums of incommensurate sines: smooth, never repeating, zero mean.
     const n = (a: number, b: number, p: number) => 0.6 * Math.sin(t * a + p) + 0.4 * Math.sin(t * b + p * 1.7);
     this.shakeOff.set(
-      h * c.heavyShake * n(19, 31, 0.3) + l * c.lightShake * n(47, 61, 2.1) + r * c.rumbleShake * n(83, 127, 3.3),
-      h * c.heavyShake * 0.75 * n(23, 37, 1.1) + l * c.lightShake * 0.75 * n(53, 71, 4.2) + r * c.rumbleShake * 0.75 * n(97, 139, 0.9),
+      h * c.heavyShake * n(19, 31, 0.3) + l * c.lightShake * n(47, 61, 2.1) + r * c.rumbleShake * n(83, 127, 3.3) + jet * c.nitroShake * n(67, 101, 1.9),
+      h * c.heavyShake * 0.75 * n(23, 37, 1.1) + l * c.lightShake * 0.75 * n(53, 71, 4.2) + r * c.rumbleShake * 0.75 * n(97, 139, 0.9) + jet * c.nitroShake * 0.75 * n(73, 113, 2.7),
       0,
     );
-    return (h * c.heavyRoll * n(13, 29, 5.3) + l * c.lightRoll * n(41, 59, 0.7) + r * c.rumbleRoll * n(79, 109, 2.4)) * (Math.PI / 180);
+    return (h * c.heavyRoll * n(13, 29, 5.3) + l * c.lightRoll * n(41, 59, 0.7) + r * c.rumbleRoll * n(79, 109, 2.4) + jet * c.nitroRoll * n(59, 97, 4.4)) * (Math.PI / 180);
   }
 
-  /** `gear` is how far up the box the car is: 0 in first (and reverse), 1 in top gear. */
-  update(p: CarPose, vx: number, vz: number, nitro: boolean, gear: number, carLength: number, dt: number): void {
+  /** `nitro` is the nitrous stage burning (0 off, 1..NITRO_STAGES); `gear` how far up the box the car is: 0 in first (and reverse), 1 in top gear. */
+  update(p: CarPose, vx: number, vz: number, nitro: number, gear: number, carLength: number, dt: number): void {
     const speed = Math.hypot(vx, vz);
     const fx = Math.sin(p.yaw);
     const fz = Math.cos(p.yaw);
     const cam = this.camera;
     const common = CAMERA.common;
+    // Nitrous: the FOV kick and pull back at stage 1, a share more per stage above; the buzz by stage.
+    const boost = nitro > 0 ? 1 + (nitro - 1) * common.nitroStageGain : 0;
+    this.boostTarget = Math.min(1, nitro / NITRO_STAGES);
     // Let go of a drag: hold a moment, then ease back behind the car once it moves.
     if (!this.orbiting && (this.orbitYaw !== 0 || this.orbitPitch !== 0)) {
       this.orbitHold -= dt;
@@ -456,7 +481,7 @@ export class ChaseCamera {
       cam.translateX(this.shakeOff.x * 0.25);
       cam.translateY(this.shakeOff.y * 0.25);
       cam.rotateZ(-p.roll * q.rollFollow + roll);
-      this.setFov(q.fov + Math.min(q.speedFovMax, speed * q.speedFovGain) + (nitro ? q.nitroFov : 0), dt);
+      this.setFov(q.fov + Math.min(q.speedFovMax, speed * q.speedFovGain) + q.nitroFov * boost, dt);
       this.initialized = true;
       return;
     }
@@ -482,7 +507,7 @@ export class ChaseCamera {
     while (dy < -Math.PI) dy += Math.PI * 2;
     this.dirYaw += dy * (1 - Math.exp(-dt * prof.yawStiffness));
 
-    const dist = prof.dist + (nitro ? prof.nitroPullback : 0) + Math.min(prof.speedPullbackMax, speed * prof.speedPullback) + this.gearLevel * prof.gearPullback;
+    const dist = prof.dist + prof.nitroPullback * boost + Math.min(prof.speedPullbackMax, speed * prof.speedPullback) + this.gearLevel * prof.gearPullback;
     // Orbit: around the car's look point, at the same range, raised by the drag.
     const oy = this.dirYaw + this.orbitYaw;
     const bx = Math.sin(oy);
@@ -517,7 +542,7 @@ export class ChaseCamera {
       cam.translateY(this.shakeOff.y);
       cam.rotateZ(roll);
     }
-    this.setFov(prof.fov + Math.min(prof.speedFovMax, speed * prof.speedFovGain) + (nitro ? prof.nitroFov : 0), dt);
+    this.setFov(prof.fov + Math.min(prof.speedFovMax, speed * prof.speedFovGain) + prof.nitroFov * boost, dt);
   }
 
   /**

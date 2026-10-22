@@ -95,6 +95,8 @@
       "capacity": 3.2,
       "force": 3600,
       "torqueMul": 1.25,
+      "stagePower": [1, 1.1, 1.2],
+      "chainRefill": [0.3333, 0.6667, 1],
       "refillDrift": 0.09,
       "refillNearMiss": 0.18,
       "refillDraft": 0.07,
@@ -264,7 +266,7 @@
     ]
   },
   "driftZones": {
-    "_readme": "Drift zones (src/sim/driftZones.ts): the monument plaza and the bigger parking lots. Drifting inside one counts drift points scoreMul times (drift mode) and refills nitrous refillMul times as fast (every mode, every car), for at most bonusTime s of drifting and refillCap of a tank per visit. A visit survives exitGrace s outside; once it ends the zone rests cooldown s before it pays that car again.",
+    "_readme": "Drift zones (src/sim/driftZones.ts): the monument plaza and the bigger parking lots. Drifting inside one counts drift points scoreMul times (drift mode) and refills nitrous refillMul times as fast (every mode, every car), for at most bonusTime s of drifting and refillCap of a nitrous stage per visit. A visit survives exitGrace s outside; once it ends the zone rests cooldown s before it pays that car again.",
     "scoreMul": 2,
     "refillMul": 3,
     "bonusTime": 8,

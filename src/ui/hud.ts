@@ -1,15 +1,20 @@
 /**
  * Race HUD in plain DOM plus small canvases (tachometer, boost gauge, and the
- * minimap from minimap.ts, which the drone shares).
+ * minimap from minimap.ts, which the drone shares). The nitrous bar shows the
+ * tank's three stages, each in its own color, and the callouts over the dial
+ * cluster (boostCallouts.ts) name the style that fills it.
  * Reads a snapshot each frame; never touches the sim.
  */
 import type { World } from '../city/world';
 import type { RaceMode } from '../sim/race';
+import { nitroFullStages } from '../sim/car';
+import { NITRO_STAGES } from '../sim/tuning';
+import { BoostCallouts } from './boostCallouts';
 import { FlagTriangleRight, Timer, Trophy, TriangleAlert, Zap, Award, Ghost, icon, Compass, Disc3, MapPin, Navigation2 } from './icons';
 import { formatTime } from './format';
 import type { HudCard } from './hudCard';
 import { MapCar, Minimap } from './minimap';
-import { PALETTE, rgb, rgba } from './palette';
+import { NITRO_STAGE_COLORS, PALETTE, rgb, rgba } from './palette';
 import { formatDistance } from './places';
 
 /** Canvas inks for the dials, built once (they redraw every frame); the minimap has its own in minimap.ts. */
@@ -24,9 +29,9 @@ const INK = {
   /** Needles and the gear: yellow, the secondary accent. */
   needle: PALETTE.yellow,
   red: PALETTE.red,
-  /** Nitrous glow keeps its cyan. */
-  nitro: PALETTE.cyan,
-  nitroRgb: rgb('cyan'),
+  /** Nitrous glow in the burning stage's color (cyan, purple, pink). */
+  nitro: NITRO_STAGE_COLORS.map((c) => PALETTE[c]),
+  nitroRgb: NITRO_STAGE_COLORS.map((c) => rgb(c)),
   vacuum: rgba('muted', 0.6),
   text: PALETTE.text,
   font: '"Google Sans Flex", system-ui, sans-serif',
@@ -49,8 +54,11 @@ export interface HudData {
   redline: number;
   gear: number;
   manual: boolean;
+  /** Nitrous in stages, 0..NITRO_STAGES. */
   nitro: number;
   nitroActive: boolean;
+  /** The stage burning (1..NITRO_STAGES), 0 when not boosting. */
+  nitroStage: number;
   /** Throttle 0..1, drives the boost gauge (vacuum off throttle). */
   throttle?: number;
   countdown: number | null;
@@ -83,6 +91,13 @@ export class Hud {
   private wrongEl: HTMLElement;
   private nitroFill: HTMLElement;
   private nitroBox: HTMLElement;
+  private nitroPips: HTMLElement[];
+  /** What the nitrous bar shows, so its attributes are written only on a change: the stage filling, full stages, the stage burning. */
+  private nitroTop = 0;
+  private nitroFull = -1;
+  private nitroBurn = -1;
+  /** Callouts for the style that fills the tank, over the dial cluster; the session feeds them each tick. */
+  readonly callouts = new BoostCallouts();
   private tach: HTMLCanvasElement;
   private boostCv: HTMLCanvasElement;
   /** Boost pressure in bar (negative = vacuum), simulated render side with spool lag. */
@@ -91,6 +106,8 @@ export class Hud {
   private lastThrottle = 0;
   private bov = 0;
   private nitroGlow = 0;
+  /** Stage whose color the glow takes: the burning one, kept while it fades. */
+  private glowStage = 1;
   private map: Minimap;
   private driftEl: HTMLElement;
   private progressFill: HTMLElement;
@@ -133,7 +150,7 @@ export class Hud {
           <canvas class="hud-boost" width="132" height="132"></canvas>
           <canvas class="hud-tach" width="220" height="220"></canvas>
         </div>
-        <div class="hud-nitro"><span class="ic"></span><div class="bar"><div class="fill"></div></div></div>
+        <div class="hud-nitro"><span class="ic"></span><div class="bar"><div class="fill"></div></div><span class="pips">${'<i></i>'.repeat(NITRO_STAGES)}</span></div>
       </div>
     `;
     parent.appendChild(this.root);
@@ -164,6 +181,8 @@ export class Hud {
     this.wrongEl = q('.hud-wrong');
     this.nitroFill = q('.hud-nitro .fill');
     this.nitroBox = q('.hud-nitro');
+    this.nitroPips = [...this.root.querySelectorAll<HTMLElement>('.hud-nitro .pips i')];
+    q('.hud-br').append(this.callouts.el);
     this.driftEl = q('.hud-drift');
     this.progressFill = q('.hud-progress .fill');
     this.tach = q('.hud-tach') as HTMLCanvasElement;
@@ -208,8 +227,8 @@ export class Hud {
     this.bestEl.textContent = d.bestLap ? formatTime(d.bestLap) : '--:--.--';
     this.ghostEl.style.display = d.ghost ? '' : 'none';
     this.progressFill.style.width = `${Math.max(0, Math.min(1, d.progress)) * 100}%`;
-    this.nitroFill.style.width = `${d.nitro * 100}%`;
-    this.nitroBox.classList.toggle('active', d.nitroActive);
+    this.updateNitro(d);
+    this.callouts.update(dt);
     this.wrongEl.classList.toggle('show', d.wrongWay);
 
     if (d.countdown !== this.lastCountdown) {
@@ -239,6 +258,31 @@ export class Hud {
     this.updateBoost(d, dt);
     this.drawBoost();
     this.drawMap(d);
+  }
+
+  /**
+   * The nitrous bar: the stage being filled, in its color, over the full
+   * stage below it, and a pip per full stage; boosting, it glows in the
+   * burning stage's color (hud/_nitro.scss reads the data attributes).
+   */
+  private updateNitro(d: HudData): void {
+    const full = nitroFullStages(d.nitro);
+    const top = Math.min(NITRO_STAGES, full + 1);
+    this.nitroFill.style.width = `${(full >= NITRO_STAGES ? 1 : Math.max(0, d.nitro - full)) * 100}%`;
+    if (top !== this.nitroTop) {
+      this.nitroTop = top;
+      this.nitroBox.dataset.top = String(top);
+    }
+    if (full !== this.nitroFull) {
+      this.nitroFull = full;
+      this.nitroPips.forEach((p, i) => p.classList.toggle('on', i < full));
+    }
+    const burn = d.nitroActive ? d.nitroStage : 0;
+    if (burn !== this.nitroBurn) {
+      this.nitroBurn = burn;
+      this.nitroBox.dataset.burn = String(burn);
+      this.nitroBox.classList.toggle('active', burn > 0);
+    }
   }
 
   /** The drift zone chip: shown while inside one, the bar is the visit's bonus left; a resting zone reads dim. */
@@ -283,7 +327,8 @@ export class Hud {
     const r = Math.max(0, d.rpm / Math.max(1000, d.redline));
     const spool = Math.max(0, Math.min(1, (r - 0.22) / 0.5));
     const vacuum = -0.68 * (1 - load) ** 1.5;
-    let target = vacuum + load * (spool * spool * (3 - 2 * spool)) * 1.25 + (d.nitroActive ? 0.55 : 0);
+    // Each nitrous stage spikes it a little harder.
+    let target = vacuum + load * (spool * spool * (3 - 2 * spool)) * 1.25 + (d.nitroActive ? 0.55 + 0.1 * (d.nitroStage - 1) : 0);
     if (d.countdown !== null && d.countdown > 0) target = vacuum + load * 0.35 * Math.min(1, r * 1.6);
     // Blow-off valve: lifting sharply at boost dumps the pressure at once.
     if (this.lastThrottle > 0.6 && load < 0.25 && this.boost > 0.35) this.bov = 0.35;
@@ -293,6 +338,7 @@ export class Hud {
     this.boost += (target - this.boost) * (1 - Math.exp(-dt / tau));
     this.boostNeedle += (this.boost - this.boostNeedle) * (1 - Math.exp(-dt / 0.05));
     this.nitroGlow += ((d.nitroActive ? 1 : 0) - this.nitroGlow) * (1 - Math.exp(-dt / 0.12));
+    if (d.nitroActive && d.nitroStage > 0) this.glowStage = d.nitroStage;
   }
 
   private drawBoost(): void {
@@ -308,6 +354,7 @@ export class Hud {
     const ang = (bar: number) => a0 + (a1 - a0) * Math.max(0, Math.min(1, (bar - lo) / (hi - lo)));
     const v = this.boostNeedle;
     const glow = this.nitroGlow;
+    const nitro = INK.nitro[this.glowStage - 1];
     const accent = glow > 0.05 ? INK.text : INK.fill;
     c.clearRect(0, 0, W, W);
     c.lineCap = 'butt';
@@ -316,9 +363,9 @@ export class Hud {
     c.arc(cx, cy, R + 9, 0, Math.PI * 2);
     c.fill();
     if (glow > 0.01) {
-      c.strokeStyle = `rgba(${INK.nitroRgb},${0.75 * glow})`;
+      c.strokeStyle = `rgba(${INK.nitroRgb[this.glowStage - 1]},${0.75 * glow})`;
       c.lineWidth = 3;
-      c.shadowColor = INK.nitro;
+      c.shadowColor = nitro;
       c.shadowBlur = 16 * glow;
       c.beginPath();
       c.arc(cx, cy, R + 8, 0, Math.PI * 2);
@@ -337,7 +384,7 @@ export class Hud {
     c.stroke();
     if (v > 0) {
       c.strokeStyle = accent;
-      c.shadowColor = glow > 0.05 ? INK.nitro : INK.fill;
+      c.shadowColor = glow > 0.05 ? nitro : INK.fill;
       c.shadowBlur = 4 + 12 * glow;
       c.beginPath();
       c.arc(cx, cy, R, ang(0), ang(v));

@@ -868,6 +868,8 @@ const loop = new FixedStepLoop({
       stage.render(gr, fly.camera, dt);
     } else if (splashWarmup === null || splashWarmup-- > 0) renderStage(dt);
     else stage?.step(dt);
+    // The race's nitrous swells the music (eased by the session); everywhere else it sits at its slider.
+    music.setLift(state === 'race' && session ? session.musicLift : 1);
     // Auto quality only measures real gameplay frames (not menus, pauses, results or loading).
     const playing = (state === 'race' && !!session && !session.paused && session.race.phase !== 'finished') || state === 'drone' || state === 'freefly';
     autoQ.frame(dt, settings.autoQuality && playing && !document.hidden);

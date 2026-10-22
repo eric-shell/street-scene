@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { createCar, placeCar, stepCar } from '../src/sim/car';
+import { createCar, placeCar, refillNitrous, stepCar } from '../src/sim/car';
 import type { CarState } from '../src/sim/car';
 import { applyBuild, stockPerformance } from '../src/sim/build';
-import { CAR_IDS, CarTuning, SELECTABLE_CAR_IDS, driveSplit, getBaseTuning, tuningHash } from '../src/sim/tuning';
+import { CAR_IDS, CarTuning, NITRO_STAGES, SELECTABLE_CAR_IDS, driveSplit, getBaseTuning, tuningHash } from '../src/sim/tuning';
+import { DT } from '../src/sim/constants';
+import { createRace, stepRace } from '../src/sim/race';
 import { WorldHit, collideCarWithWorld } from '../src/sim/collision';
 import { DEG } from '../src/sim/math';
 import { packInput, quantizeInput, unpackInput } from '../src/sim/input';
@@ -71,6 +73,124 @@ describe('car physics', () => {
     for (let i = 0; i < 300; i++) stepCar(c, t, input({ brake: 1 }), { world });
     expect(c.gear).toBe(-1);
     expect(c.vz).toBeLessThan(-1);
+  });
+});
+
+describe('nitrous stages', () => {
+  const world = flatWorld();
+  const t = getBaseTuning('proto');
+
+  /** A car rolling at 20 m/s with `nitro` stages in the tank. */
+  function rolling(nitro: number): CarState {
+    const c = createCar(0, 0, 0, 0);
+    while (c.speed < 20) stepCar(c, t, input({ throttle: 1 }), { world });
+    c.nitro = nitro;
+    return c;
+  }
+
+  /** Hold throttle and nitrous (while `held` says so) for `seconds`: the chain refills seen and the ticks boosted. */
+  function hold(c: CarState, seconds: number, held = (_tick: number) => true) {
+    const chains: number[] = [];
+    let boosted = 0;
+    for (let i = 0; i < seconds * 60; i++) {
+      stepCar(c, t, input({ throttle: 1, nitrous: held(i) }), { world });
+      if (c.nitroActive) boosted++;
+      if (c.nitroChain > 0) chains.push(c.nitroChain);
+    }
+    return { chains, boosted };
+  }
+
+  it('style fills the stages in order up to a full tank, and says what paid', () => {
+    const c = createCar(0, 0, 0, 0);
+    c.nitro = 0;
+    c.drifting = true;
+    c.slipAngle = 40 * DEG;
+    c.nearMiss = true;
+    refillNitrous(c, t);
+    expect(c.nitroGain.drift).toBeCloseTo(t.nitrous.refillDrift * DT, 12);
+    expect(c.nitroGain.nearMiss).toBeCloseTo(t.nitrous.refillNearMiss * DT, 12);
+    expect(c.nitroGain.draft).toBe(0);
+    let level = c.nitro;
+    for (let i = 0; i < 60 * 40; i++) {
+      refillNitrous(c, t);
+      expect(c.nitro).toBeGreaterThanOrEqual(level);
+      level = c.nitro;
+    }
+    expect(c.nitro).toBe(NITRO_STAGES);
+    // A full tank takes no more, and no callout claims any.
+    refillNitrous(c, t);
+    expect(c.nitroGain.drift + c.nitroGain.nearMiss).toBe(0);
+  });
+
+  it('burns the top stage first, each a little harder than the one below', () => {
+    const plain = rolling(0);
+    hold(plain, 1);
+    const gain: number[] = [];
+    for (let stage = 1; stage <= NITRO_STAGES; stage++) {
+      const c = rolling(stage);
+      stepCar(c, t, input({ throttle: 1, nitrous: true }), { world });
+      expect(c.nitroStage).toBe(stage);
+      hold(c, 1 - DT);
+      gain.push(c.speed - plain.speed);
+    }
+    expect(gain[0]).toBeGreaterThan(2);
+    expect(gain[1]).toBeGreaterThan(gain[0] * 1.03);
+    expect(gain[2]).toBeGreaterThan(gain[1] * 1.03);
+    // Slightly: the top stage is not a different car.
+    expect(gain[2]).toBeLessThan(gain[0] * 1.5);
+    // Two and a half stages burn half of stage 3, then stage 2.
+    const c = rolling(2.5);
+    hold(c, (0.5 * t.nitrous.capacity) - 0.05);
+    expect(c.nitroStage).toBe(3);
+    hold(c, 0.1);
+    expect(c.nitroStage).toBe(2);
+  });
+
+  it('held until the tank runs dry, a burn from full stages chains a refill and goes on', () => {
+    for (const [start, refills] of [
+      [0.9, []],
+      [1, [t.nitrous.chainRefill[0]]],
+      [2, [t.nitrous.chainRefill[1]]],
+      [2.5, [t.nitrous.chainRefill[1]]],
+      // A full tank chains a whole stage, and that stage chains once more.
+      [3, [t.nitrous.chainRefill[2], t.nitrous.chainRefill[0]]],
+    ] as [number, number[]][]) {
+      const c = rolling(start);
+      const { chains, boosted } = hold(c, 20);
+      expect(chains, `from ${start} stages`).toEqual(refills);
+      const stages = start + refills.reduce((a, b) => a + b, 0);
+      expect(Math.abs(boosted - stages * t.nitrous.capacity * 60), `from ${start} stages`).toBeLessThan(2);
+      expect(c.nitro).toBe(0);
+    }
+  });
+
+  it('letting go ends the run: the next press chains on what is left', () => {
+    const c = rolling(2);
+    // A second of boost, a tick off the button, then on until dry: the run restarts on 1 full stage.
+    const { chains } = hold(c, 20, (i) => i !== 60);
+    expect(chains).toEqual([t.nitrous.chainRefill[0]]);
+    // Off the throttle with the button held only pauses the run.
+    const d = rolling(2);
+    for (let i = 0; i < 20 * 60; i++) {
+      stepCar(d, t, input({ throttle: i >= 60 && i < 75 ? 0 : 1, nitrous: true }), { world });
+      if (d.nitroChain > 0) {
+        expect(d.nitroChain).toBe(t.nitrous.chainRefill[1]);
+        return;
+      }
+    }
+    throw new Error('the paused run never chained');
+  });
+
+  it('a drag run with chained nitrous replays bit for bit', () => {
+    const cfg = { ...raceConfig(31337, 'drag', 0), laps: 1 };
+    const r = createRace(cfg);
+    let chained = 0;
+    while (r.tick < r.countdownTicks + 60 * 8) {
+      stepRace(r, input({ throttle: 1, nitrous: r.tick >= r.countdownTicks }));
+      chained += r.cars[0].state.nitroChain;
+    }
+    expect(chained).toBeCloseTo(t.nitrous.chainRefill[0], 9);
+    expect(carSnapshot(replayLog(cfg, r.inputLog))).toBe(carSnapshot(r));
   });
 });
 

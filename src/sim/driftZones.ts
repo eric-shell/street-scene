@@ -7,7 +7,7 @@
  *
  * The bonus is bounded per visit so a zone is a detour worth taking, not a
  * place to farm: a visit pays for at most `bonusTime` s of drifting and
- * `refillCap` of a tank, and once a visit that drifted ends the zone rests
+ * `refillCap` of a nitrous stage, and once a visit that drifted ends the zone rests
  * `cooldown` s before it pays that car again (driving through without a
  * slide, or a cold visit to a resting zone, never starts or extends the
  * rest). A visit survives `exitGrace` s outside, so a slide over the edge or
@@ -26,7 +26,7 @@ import { pointInPolygon, polygonBounds } from '../city/districts/geom';
 import type { Vec2 } from './math';
 import { DEG, abs } from './math';
 import { DT, TICK_HZ } from './constants';
-import { DRIFT_ZONES } from './tuning';
+import { DRIFT_ZONES, NITRO_STAGES } from './tuning';
 import type { RaceState } from './race';
 
 export type DriftZoneKind = 'plaza' | 'lot';
@@ -54,7 +54,7 @@ export interface DriftZoneVisit {
   outside: number;
   /** Bonus drifting left this visit (s). */
   timeLeft: number;
-  /** Bonus nitrous left this visit (tank fraction). */
+  /** Bonus nitrous left this visit (stages). */
   refillLeft: number;
   /** The visit started with the zone rested (it has a bonus to pay); ending it after drifting starts the cooldown. */
   fresh: boolean;
@@ -159,9 +159,10 @@ export function stepDriftZones(r: RaceState): void {
     v.scoreMul = Z.scoreMul;
     v.timeLeft = Math.max(0, v.timeLeft - DT);
     // The regular refill already ran this tick; the zone adds (refillMul - 1) of it, up to the visit's cap.
-    const extra = Math.min(rc.tuning.nitrous.refillDrift * Math.min(1, abs(c.slipAngle) / FULL_REFILL_SLIP) * (Z.refillMul - 1) * DT, v.refillLeft, 1 - c.nitro);
+    const extra = Math.min(rc.tuning.nitrous.refillDrift * Math.min(1, abs(c.slipAngle) / FULL_REFILL_SLIP) * (Z.refillMul - 1) * DT, v.refillLeft, NITRO_STAGES - c.nitro);
     if (extra > 0) {
       c.nitro += extra;
+      c.nitroGain.zone = extra;
       v.refillLeft -= extra;
     }
   }

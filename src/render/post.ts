@@ -8,8 +8,9 @@
  * more the further out), flows like liquid streaming past (a moving domain
  * warp), blurs harder toward the edges, gains contrast and saturation there
  * and splits into colour fringes; the bloom strengthens overall. Inside the
- * middle 50% nothing changes, so the road ahead stays readable. NITRO_FX holds
- * the numbers.
+ * middle 50% nothing changes, so the road ahead stays readable. Each nitrous
+ * stage runs it harder and turns the edge glow from cold blue through violet
+ * to hot pink, the HUD bar's stage colors. NITRO_FX holds the numbers.
  *
  * Bloom stability: the stock UnrealBloomPass extracts bright pixels with one
  * bilinear tap per texel of a buffer 2x-8x smaller than the scene, with a hard
@@ -35,9 +36,27 @@ import { CopyShader } from 'three/examples/jsm/shaders/CopyShader.js';
  * stretch (fraction of the distance to the vanishing point), fluid flow (uv
  * offset of the moving domain warp), extra zoom blur at the edge (multiplier),
  * colour fringe (uv split), saturation and contrast at the edge (1 = none),
- * a cold edge glow, and the bloom strength multiplier (whole frame).
+ * the edge glow, and the bloom strength multiplier (whole frame). Per nitrous
+ * stage (1..3): the warp's strength (1 = the numbers above) and the edge
+ * glow's color (linear RGB).
  */
-export const NITRO_FX = { inner: 0.5, stretch: 0.34, flow: 0.012, blurEdge: 2.2, fringe: 0.012, saturation: 1.5, contrast: 1.35, edgeTint: 0.05, bloom: 1.45 } as const;
+export const NITRO_FX = {
+  inner: 0.5,
+  stretch: 0.34,
+  flow: 0.012,
+  blurEdge: 2.2,
+  fringe: 0.012,
+  saturation: 1.5,
+  contrast: 1.35,
+  edgeTint: 0.05,
+  bloom: 1.45,
+  stageWarp: [1, 1.2, 1.4],
+  stageTint: [
+    [0.25, 0.55, 1],
+    [0.62, 0.42, 1],
+    [1, 0.36, 0.68],
+  ],
+} as const;
 
 const FxShader = {
   uniforms: {
@@ -55,6 +74,7 @@ const FxShader = {
     saturation: { value: NITRO_FX.saturation },
     contrast: { value: NITRO_FX.contrast },
     edgeTint: { value: NITRO_FX.edgeTint },
+    tint: { value: new THREE.Vector3(...NITRO_FX.stageTint[0]) },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -75,6 +95,7 @@ const FxShader = {
     uniform float saturation;
     uniform float contrast;
     uniform float edgeTint;
+    uniform vec3 tint;
     varying vec2 vUv;
     void main() {
       vec2 uv = vUv;
@@ -124,8 +145,8 @@ const FxShader = {
         // Saturation and contrast ramp in from the middle 50% to the edges only.
         c.rgb = max(vec3(0.0), mix(vec3(l), c.rgb, 1.0 + (saturation - 1.0) * warp * m));
         c.rgb = max(vec3(0.0), (c.rgb - 0.18) * (1.0 + (contrast - 1.0) * warp * m) + 0.18);
-        // A faint cold glow creeping in from the edges.
-        c.rgb += vec3(0.25, 0.55, 1.0) * edgeTint * warp * m * m;
+        // A faint glow creeping in from the edges, in the stage's color.
+        c.rgb += tint * edgeTint * warp * m * m;
       }
       vec2 q = vUv - 0.5;
       float v = 1.0 - vignette * smoothstep(0.25, 0.85, length(q * vec2(1.1, 1.0)) * 1.25);
@@ -365,13 +386,22 @@ export class PostFx {
     this.fx.uniforms.blur.value = amount;
   }
 
-  /** Nitrous warp amount 0..1 (eased by the caller) and the clock (s) its ripple runs on. 0 turns it all off. */
-  setNitroFx(amount: number, time: number): void {
-    const a = Math.max(0, Math.min(1, amount));
+  /**
+   * Nitrous warp amount (0 off, 1 a stage 1 burn, up to the top of NITRO_FX.stageWarp), the clock (s) its
+   * ripple runs on, and the stage 1..3 whose edge glow it takes (fractions blend; both eased by the caller).
+   */
+  setNitroFx(amount: number, time: number, stage = 1): void {
+    const a = Math.max(0, Math.min(NITRO_FX.stageWarp[2], amount));
     this.nitro = a;
     const u = this.fx.uniforms;
     u.warp.value = a;
     u.time.value = time;
+    const s = Math.max(0, Math.min(2, stage - 1));
+    const i = Math.min(1, Math.floor(s));
+    const lo = NITRO_FX.stageTint[i];
+    const hi = NITRO_FX.stageTint[i + 1];
+    const f = s - i;
+    (u.tint.value as THREE.Vector3).set(lo[0] + (hi[0] - lo[0]) * f, lo[1] + (hi[1] - lo[1]) * f, lo[2] + (hi[2] - lo[2]) * f);
     this.bloom.strength = this.bloomBase * (1 + (NITRO_FX.bloom - 1) * a);
   }
 

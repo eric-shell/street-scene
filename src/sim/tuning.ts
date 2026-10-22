@@ -133,14 +133,23 @@ export interface CarTuning {
     drag: number;
     downforce: number;
   };
+  /** The tank holds NITRO_STAGES stages; refills fill them in order and a burn empties the top one first (car.ts). */
   nitrous: {
-    /** Seconds of boost from a full tank. */
+    /** Seconds of boost in one stage. */
     capacity: number;
+    /** Extra push while boosting at stage 1 (N). */
     force: number;
+    /** Engine torque multiplier while boosting at stage 1. */
     torqueMul: number;
-    /** Tank fraction per second while drifting. */
+    /** Boost power of each stage, scaling force and torqueMul's extra torque: stage 1 is stock. */
+    stagePower: number[];
+    /** Stages put back when a burn that began with 1, 2 or 3 full stages is held until the tank runs dry. */
+    chainRefill: number[];
+    /** Stage fraction per second while drifting (at 30 deg of slip and over). */
     refillDrift: number;
+    /** Stage fraction per second while skimming a wall at speed. */
     refillNearMiss: number;
+    /** Stage fraction per second in a slipstream. */
     refillDraft: number;
     draftDragMul: number;
   };
@@ -187,6 +196,8 @@ export interface CarTuning {
 }
 
 export const GRAVITY = 9.81;
+/** Stages in a nitrous tank, each with its own power (nitrous.stagePower) and HUD color. */
+export const NITRO_STAGES = 3;
 
 type BaseTuning = Omit<CarTuning, 'carId' | 'geometry'>;
 type DeepPartial<T> = { [K in keyof T]?: T[K] extends unknown[] ? T[K] : T[K] extends object ? DeepPartial<T[K]> : T[K] };
@@ -228,7 +239,7 @@ export interface DriftZoneTuning {
   refillMul: number;
   /** Drifting per visit that earns the bonus (s). */
   bonusTime: number;
-  /** Most extra nitrous one visit refills (tank fraction). */
+  /** Most extra nitrous one visit refills (stages). */
   refillCap: number;
   /** A visit lasts this long after the car leaves the zone (s), so a slide over the edge keeps it. */
   exitGrace: number;
@@ -323,6 +334,7 @@ export function getBaseTuning(carId: string): CarTuning {
     mergeOverride(base, (CAR_OVERRIDES[id] ?? {}) as Record<string, unknown>, `cars.${id}`);
     t = { ...(base as unknown as BaseTuning), carId: id, geometry: geometryFromManifest(id) };
     if (!DRIVETRAIN_LAYOUTS.includes(t.drivetrain.layout)) throw new Error(`drivingParams.json: cars.${id}.drivetrain.layout must be one of ${DRIVETRAIN_LAYOUTS.join(', ')}`);
+    if (t.nitrous.stagePower.length !== NITRO_STAGES || t.nitrous.chainRefill.length !== NITRO_STAGES) throw new Error(`drivingParams.json: cars.${id}.nitrous.stagePower and chainRefill need ${NITRO_STAGES} entries, one per stage`);
     resolved.set(id, t);
   }
   return deepClone(t);

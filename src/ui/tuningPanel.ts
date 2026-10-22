@@ -81,12 +81,12 @@ export const PARAM_INFO: Record<string, ParamInfo> = {
   'steering.counterSteerAllowance': P(0, 2, 0.05, 'Extra lock when steering into a slide. Higher = easier to catch drifts.'),
   'aero.drag': P(0.1, 1, 0.01, 'Air drag. Higher = lower top speed.'),
   'aero.downforce': P(0, 3, 0.05, 'Aero grip that grows with speed. Higher = more high speed grip.'),
-  'nitrous.capacity': P(0.5, 10, 0.1, 'Seconds of boost in a full tank.'),
-  'nitrous.force': P(0, 9000, 100, 'Extra push while boosting, N. Higher = harder kick.'),
-  'nitrous.torqueMul': P(1, 2, 0.01, 'Engine torque multiplier while boosting. Higher = more power, more wheelspin.'),
-  'nitrous.refillDrift': P(0, 0.5, 0.01, 'Tank refill per second while drifting.'),
-  'nitrous.refillNearMiss': P(0, 1, 0.01, 'Tank refill per second while skimming walls.'),
-  'nitrous.refillDraft': P(0, 0.5, 0.01, 'Tank refill per second while drafting.'),
+  'nitrous.capacity': P(0.5, 10, 0.1, 'Seconds of boost in each of the three stages.'),
+  'nitrous.force': P(0, 9000, 100, 'Extra push while boosting at stage 1, N. Higher = harder kick.'),
+  'nitrous.torqueMul': P(1, 2, 0.01, 'Engine torque multiplier while boosting at stage 1. Higher = more power, more wheelspin.'),
+  'nitrous.refillDrift': P(0, 0.5, 0.01, 'Share of a stage refilled per second while drifting.'),
+  'nitrous.refillNearMiss': P(0, 1, 0.01, 'Share of a stage refilled per second while skimming walls.'),
+  'nitrous.refillDraft': P(0, 0.5, 0.01, 'Share of a stage refilled per second while drafting.'),
   'nitrous.draftDragMul': P(0.2, 1, 0.01, 'Air drag in a slipstream. Lower = bigger draft speed boost.'),
   'drift.clutchKickTime': P(0.05, 1.5, 0.01, 'How long a clutch kick keeps feeding extra torque, s.'),
   'drift.maxSlipDeg': P(20, 80, 1, 'Slide angle where the anti spin aid pushes back. Lower = harder to spin out.'),
@@ -124,6 +124,13 @@ export function paramInfo(path: string, value: number, t?: CarTuning): ParamInfo
   }
   const gear = /^gearbox\.ratios\.(\d+)$/.exec(path);
   if (gear) return P(0.5, 5, 0.01, `Gear ${Number(gear[1]) + 1} ratio. Higher = shorter gear: more pull, less speed in that gear.`);
+  const stage = /^nitrous\.(stagePower|chainRefill)\.(\d+)$/.exec(path);
+  if (stage) {
+    const n = Number(stage[2]) + 1;
+    return stage[1] === 'stagePower'
+      ? P(0.5, 2, 0.01, `Boost power while burning stage ${n}, times the stage 1 push and extra torque. Higher = harder kick.`)
+      : P(0, 3, 0.01, `Stages put back when a boost begun with ${n} full stage${n > 1 ? 's' : ''} is held until the tank runs dry. Higher = longer chains.`);
+  }
   // Fallback for parameters added to the tuning without a table entry.
   const min = value > 0 ? 0 : value * 3;
   const max = value > 0 ? Math.max(value * 3, value + 1) : value < 0 ? 0 : 1;

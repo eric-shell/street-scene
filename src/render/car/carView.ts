@@ -26,6 +26,8 @@ export interface CarPose {
   spin: number[];
   braking: boolean;
   nitro: boolean;
+  /** The nitrous stage burning (1..3) while nitro is on: the flames grow and run hotter with it (1 when missing). */
+  nitroStage?: number;
   speed: number;
 }
 
@@ -51,6 +53,16 @@ const glow = () => (glowTex ??= makeRadialGlow());
 
 /** Overrun pop flash: lifetime (s) and tongue length (m) from a crackle to a bang. */
 const POP_FLASH = { life: [0.07, 0.16], length: [0.4, 1.3] } as const;
+/**
+ * Nitrous flames per stage (1..3): the additive HDR color, from the stock
+ * blue through violet to a hot pink (the HUD bar's stage colors, run hot so
+ * they bloom), and the cone's width and length scale.
+ */
+const NITRO_FLAME = {
+  color: [new THREE.Color(0x4fa8ff).multiplyScalar(3), new THREE.Color(0x9b6dff).multiplyScalar(3.2), new THREE.Color(0xff4fae).multiplyScalar(3.4)],
+  width: [1, 1.12, 1.25],
+  length: [1, 1.3, 1.6],
+} as const;
 
 export class CarView {
   readonly root = new THREE.Group();
@@ -197,7 +209,7 @@ export class CarView {
     // Nitrous exhaust flames, and the orange flash of an overrun pop at the same tailpipes.
     const flameGeo = new THREE.ConeGeometry(0.11, 0.9, 10, 1, true).rotateX(-Math.PI / 2).translate(0, 0, -0.45);
     for (const side of [1, -1]) {
-      const flame = new THREE.Mesh(flameGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color(0x4fa8ff).multiplyScalar(3), transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
+      const flame = new THREE.Mesh(flameGeo, new THREE.MeshBasicMaterial({ color: NITRO_FLAME.color[0].clone(), transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
       flame.position.set(side * 0.38, 0.32, -dims.length / 2 + 0.05);
       flame.visible = false;
       this.root.add(flame);
@@ -554,9 +566,13 @@ export class CarView {
     this.poseGroundFx(pose);
     setBrake(this.materials, pose.braking);
     this.applyUnderglow(time);
+    const stage = Math.max(1, Math.min(3, pose.nitroStage ?? 1)) - 1;
     for (const f of this.flames) {
       f.visible = pose.nitro;
-      if (pose.nitro) f.scale.set(1, 1, 0.7 + Math.random() * 0.6);
+      if (!pose.nitro) continue;
+      const w = NITRO_FLAME.width[stage];
+      f.scale.set(w, w, NITRO_FLAME.length[stage] * (0.7 + Math.random() * 0.6));
+      (f.material as THREE.MeshBasicMaterial).color.copy(NITRO_FLAME.color[stage]);
     }
     this.lastTime = time;
     for (const [i, p] of this.pops.entries()) {

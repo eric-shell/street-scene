@@ -26,7 +26,7 @@
  */
 import { DT, SUBSTEPS } from './constants';
 import { InputFrame } from './input';
-import { CarTuning, GRAVITY, driveSplit } from './tuning';
+import { CarTuning, GRAVITY, NITRO_STAGES, driveSplit } from './tuning';
 import { DEG, abs, approach, atan2, clamp, cos, lerp, sign, sin, sqrt, tan } from './math';
 import type { Surface, World } from '../city/world';
 import { SURFACE_PHYSICS } from '../city/districts/types';
@@ -77,9 +77,20 @@ export interface CarState {
   /** Tread speed of each axle's wheels (m/s, signed): the wheels' own speed over the road, not the car's. */
   wheelSpeedFront: number;
   wheelSpeedRear: number;
-  /** 0..1 */
+  /** Nitrous in stages, 0..NITRO_STAGES: 1 is a full first stage. */
   nitro: number;
   nitroActive: boolean;
+  /** Stage burning this tick (1..NITRO_STAGES, the top one in the tank), 0 when not boosting. */
+  nitroStage: number;
+  /** Full stages in the tank when the nitrous button went down (they set the chain refill), -1 while it is up. */
+  nitroRun: number;
+  /**
+   * Telemetry for the HUD's callouts, written by the sim and never read by it:
+   * the stages a chain put back this tick (0 when none), and what each style
+   * source put in the tank this tick (stages, after the tank's cap).
+   */
+  nitroChain: number;
+  nitroGain: { drift: number; nearMiss: number; draft: number; zone: number };
   /** Drive pedal actually applied this tick (0..1), for engine sound and telemetry. */
   throttle: number;
   /** Seconds left of a clutch kick's extra torque. */
@@ -145,6 +156,10 @@ export function createCar(x: number, z: number, yaw: number, y: number): CarStat
     wheelSpeedRear: 0,
     nitro: 1,
     nitroActive: false,
+    nitroStage: 0,
+    nitroRun: -1,
+    nitroChain: 0,
+    nitroGain: { drift: 0, nearMiss: 0, draft: 0, zone: 0 },
     throttle: 0,
     clutchKick: 0,
     throttleOffTime: 10,
@@ -306,13 +321,29 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
   c.rpm = approach(c.rpm, Math.min(rpmTarget, t.engine.redline + 150), 24000 * dt);
 
   c.throttle = drive;
+  // Nitrous burns the top stage in the tank first, at that stage's power. Holding the button until the tank
+  // runs dry, from at least one full stage, chains: chainRefill puts some back and the burn goes on (a chain
+  // of a whole stage can chain once more). Letting go ends the run; a dip off the throttle only pauses it.
+  if (!inp.nitrous) c.nitroRun = -1;
+  else if (c.nitroRun < 0) c.nitroRun = nitroFullStages(c.nitro);
+  c.nitroChain = 0;
   c.nitroActive = inp.nitrous && c.nitro > 0 && c.gear > 0 && drive > 0.2;
-  if (c.nitroActive) c.nitro = Math.max(0, c.nitro - dt / t.nitrous.capacity);
+  c.nitroStage = c.nitroActive ? nitroTopStage(c.nitro) : 0;
+  if (c.nitroActive) {
+    c.nitro -= dt / t.nitrous.capacity;
+    if (c.nitro <= 0) {
+      const refill = c.nitroRun > 0 ? t.nitrous.chainRefill[c.nitroRun - 1] : 0;
+      c.nitro = refill;
+      c.nitroChain = refill;
+      c.nitroRun = nitroFullStages(refill);
+    }
+  }
+  const boostPower = c.nitroActive ? t.nitrous.stagePower[c.nitroStage - 1] : 0;
 
   let engineTorque = 0;
   if (c.shiftTimer === 0 && !clutchIn) {
     if (c.rpm < t.engine.redline) engineTorque = torqueAt(t, c.rpm) * t.engine.torqueMul * drive;
-    if (c.nitroActive) engineTorque *= t.nitrous.torqueMul;
+    if (c.nitroActive) engineTorque *= 1 + (t.nitrous.torqueMul - 1) * boostPower;
     // Dumping the clutch at high revs (launch, clutch kick, handbrake release) adds the flywheel's energy on top.
     const dump = c.clutchKick > 0 ? 1 : clamp(clutchSlipRpm / t.engine.redline, 0, 1);
     if (engineTorque > 0) engineTorque *= 1 + t.traction.launchBoost * dump;
@@ -366,7 +397,7 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
     tcCut = true;
   }
 
-  const ctl: Controls = { driveTorque, brake, handbrake: inp.handbrake, clutchIn: clutchIn || c.shiftTimer > 0, gearing, surfaceGrip, dragMul, drive, frontShare: split.front };
+  const ctl: Controls = { driveTorque, brake, handbrake: inp.handbrake, clutchIn: clutchIn || c.shiftTimer > 0, gearing, surfaceGrip, dragMul, drive, frontShare: split.front, boostForce: t.nitrous.force * boostPower };
   const h = dt / SUBSTEPS;
   c.bottomOut = 0;
   for (let s = 0; s < SUBSTEPS; s++) tcCut = integrate(c, t, ctl, world, h) || tcCut;
@@ -404,6 +435,8 @@ interface Controls {
   drive: number;
   /** Share of driveTorque sent to the front axle. */
   frontShare: number;
+  /** Nitrous push along the car while boosting (N), at the burning stage's power. */
+  boostForce: number;
 }
 
 /** Grip over the length of a normalized slip vector, given the sideways share of that vector (0..1). */
@@ -705,7 +738,7 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
   const sp = SURFACE_PHYSICS[c.surface];
   const surfaceDrag = sp === 'offroad' ? t.surface.offroadDrag : sp === 'cobble' ? t.surface.cobbleDrag : 0;
   if (surfaceDrag > 0) Fu -= surfaceDrag * sign(vLong) * Math.min(1, abs(vLong));
-  if (c.nitroActive && contacts > 0) Fu += t.nitrous.force;
+  if (c.nitroActive && contacts > 0) Fu += ctl.boostForce;
   // The ground pushes back along its normal: the springs' vertical load times the slope, sideways. At
   // rest that is gravity's pull down a grade; climbing a bank, the extra load is what slows the car.
   const sl = world.slopeAt(c.x, c.z, c.y);
@@ -803,11 +836,35 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
   return tcCut;
 }
 
-/** Refill nitrous from style: drifting, near misses and drafting. Call once per tick after collisions. */
+/** Slack for a tank level summed from many small refills: 0.9999999 of a stage counts as the full stage. */
+const NITRO_EPS = 1e-6;
+
+/** Full stages in a tank of `nitro` stages. */
+export function nitroFullStages(nitro: number): number {
+  return Math.floor(nitro + NITRO_EPS);
+}
+
+/** The stage a tank of `nitro` stages burns first (the top one with anything in it), 0 when empty. */
+export function nitroTopStage(nitro: number): number {
+  return nitro > NITRO_EPS ? Math.min(NITRO_STAGES, Math.ceil(nitro - NITRO_EPS)) : 0;
+}
+
+/**
+ * Refill nitrous from style: drifting, near misses and drafting, filling the
+ * stages in order up to a full tank. Call once per tick after collisions.
+ */
 export function refillNitrous(c: CarState, t: CarTuning): void {
-  let add = 0;
-  if (c.drifting) add += t.nitrous.refillDrift * Math.min(1, abs(c.slipAngle) / (30 * DEG));
-  if (c.nearMiss) add += t.nitrous.refillNearMiss;
-  if (c.drafting) add += t.nitrous.refillDraft;
-  c.nitro = Math.min(1, c.nitro + add * DT);
+  const drift = c.drifting ? t.nitrous.refillDrift * Math.min(1, abs(c.slipAngle) / (30 * DEG)) : 0;
+  const near = c.nearMiss ? t.nitrous.refillNearMiss : 0;
+  const draft = c.drafting ? t.nitrous.refillDraft : 0;
+  const add = drift + near + draft;
+  const before = c.nitro;
+  c.nitro = Math.min(NITRO_STAGES, c.nitro + add * DT);
+  // Telemetry: each source's share of what the tank took (stages driftZones.ts adds go in .zone).
+  const k = add > 0 ? (c.nitro - before) / add : 0;
+  const g = c.nitroGain;
+  g.drift = drift * k;
+  g.nearMiss = near * k;
+  g.draft = draft * k;
+  g.zone = 0;
 }

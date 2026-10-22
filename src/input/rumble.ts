@@ -44,9 +44,10 @@ const RUMBLE = {
   /** Weak motor on the rev limiter: rpm past this share of the redline. */
   limiter: 0.15,
   limiterAt: 0.98,
-  /** Both motors under nitrous. */
+  /** Both motors under nitrous at stage 1, times the burning stage's share in nitroStage. */
   nitroStrong: 0.12,
   nitroWeak: 0.2,
+  nitroStage: [1, 1.3, 1.6],
   /** Under this both motors are off. */
   floor: 0.03,
 } as const;
@@ -86,13 +87,14 @@ export class Rumble {
     const c = rc.state;
     this.hit = Math.max(this.hit * RUMBLE.decay, Math.min(1, c.bottomOut / RUMBLE.bottomFull));
     this.knock *= RUMBLE.decay;
+    const nitro = c.nitroActive ? RUMBLE.nitroStage[Math.min(RUMBLE.nitroStage.length, c.nitroStage) - 1] : 0;
     const texture =
       RUMBLE.rough[c.surface] * Math.min(1, c.speed / RUMBLE.roughSpeed) +
       Math.max(c.spinFront, c.spinRear) * RUMBLE.wheelspin +
       Math.min(RUMBLE.scrapeMax, c.scrape * RUMBLE.scrapePerMs) +
       (c.rpm >= rc.tuning.engine.redline * RUMBLE.limiterAt ? RUMBLE.limiter : 0) +
-      (c.nitroActive ? RUMBLE.nitroWeak : 0);
-    const strong = Math.max(this.hit, c.nitroActive ? RUMBLE.nitroStrong : 0);
+      RUMBLE.nitroWeak * nitro;
+    const strong = Math.max(this.hit, RUMBLE.nitroStrong * nitro);
     const weak = Math.min(1, Math.max(this.knock, texture));
     if (strong < RUMBLE.floor && weak < RUMBLE.floor) {
       if (this.on) this.silence();

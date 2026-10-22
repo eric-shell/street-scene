@@ -1,0 +1,166 @@
+/* The nitrous bar under the dials and the callouts over them (ui/hud.ts, ui/boostCallouts.ts). The tank
+   holds three stages, each in its own color: cyan, purple, then the hot pink red (ui/palette.ts
+   NITRO_STAGE_COLORS lists the same). The bar shows the stage being filled (data-top) over the full stage
+   below it, with a pip per full stage, and glows in the burning stage's color (data-burn); a callout's
+   points take the color of the stage they went into (data-stage). */
+@use 'sass:color';
+@use 'sass:list';
+@use '../abstracts/media';
+@use '../abstracts/palette';
+
+$stages: ('cyan', 'purple', 'red');
+
+.hud-nitro {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 190px;
+  margin-right: 5px;
+  @include palette.tint(top, cyan);
+  @include palette.tint(under, cyan);
+  @include palette.tint(burn, cyan);
+  --top-light: #{color.mix(#fff, palette.get(cyan), 70%)};
+  color: var(--top);
+}
+.hud-nitro .bar {
+  flex: 1;
+  height: 10px;
+  border-radius: var(--radius-sm);
+  background: palette.alpha(bg0, 0.72);
+  border: 1px solid rgba(var(--top-rgb), 0.4);
+  overflow: hidden;
+}
+/* Past the first stage the full stage below lies under the one filling, a little darker than the fill. */
+.hud-nitro:not([data-top='1']) .bar {
+  background: linear-gradient(90deg, rgba(var(--under-rgb), 0.5), rgba(var(--under-rgb), 0.75));
+}
+.hud-nitro .fill {
+  height: 100%;
+  background: linear-gradient(90deg, rgba(var(--top-rgb), 0.7), var(--top));
+}
+.hud-nitro.active .bar {
+  box-shadow: 0 0 10px var(--burn);
+}
+.hud-nitro.active .fill {
+  background: linear-gradient(90deg, var(--top), var(--top-light));
+}
+.hud-nitro .pips {
+  display: flex;
+  gap: 3px;
+}
+.hud-nitro .pips i {
+  width: 5px;
+  height: 10px;
+  background: palette.alpha(bg0, 0.72);
+  border: 1px solid var(--line);
+  transform: skewX(-14deg);
+}
+@for $i from 1 through list.length($stages) {
+  $name: list.nth($stages, $i);
+  .hud-nitro[data-top='#{$i}'] {
+    @include palette.tint(top, $name);
+    --top-light: #{color.mix(#fff, palette.get($name), 70%)};
+    @if $i > 1 {
+      @include palette.tint(under, list.nth($stages, $i - 1));
+    }
+  }
+  .hud-nitro[data-burn='#{$i}'] {
+    @include palette.tint(burn, $name);
+  }
+  .hud-nitro .pips i.on:nth-child(#{$i}) {
+    background: palette.get($name);
+    border-color: transparent;
+  }
+  .hud-callout[data-stage='#{$i}'] {
+    @include palette.tint(stage, $name);
+  }
+}
+
+/* Callouts stack up from the dial cluster, the newest nearest the bar. */
+.hud-callouts {
+  position: absolute;
+  right: 8px;
+  bottom: 100%;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.hud-callout {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.7), 0 0 12px rgba(0, 0, 0, 0.5);
+  animation: callout-in 0.24s ease-out;
+  transition: opacity 0.35s, transform 0.35s;
+}
+.hud-callout b {
+  font: 900 15px var(--display);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.hud-callout .pts {
+  min-width: 3ch;
+  text-align: right;
+  font: 700 19px var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--stage);
+}
+/* A stage filling or a chain refill is the stage's own news: the name takes its color. */
+.hud-callout[data-kind='stage'] b,
+.hud-callout[data-kind='chain'] b {
+  color: var(--stage);
+}
+.hud-callout[data-kind='stage'] b {
+  font-size: 19px;
+}
+.hud-callout[data-kind='stage'] .pts {
+  font: 900 13px var(--display);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+.hud-callout.out {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+@keyframes callout-in {
+  from {
+    opacity: 0;
+    transform: translateX(14px) scale(1.25);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@include media.compact-hud {
+  .hud-nitro {
+    width: 130px;
+  }
+  .hud-callout b {
+    font-size: 13px;
+  }
+  .hud-callout .pts,
+  .hud-callout[data-kind='stage'] b {
+    font-size: 16px;
+  }
+}
+/* Touch moves the cluster to the top right corner: the callouts hang under it instead. */
+@include media.touch {
+  .hud-callouts {
+    bottom: auto;
+    top: 100%;
+    margin: 10px 0 0;
+  }
+}
+@include media.reduced-motion {
+  .hud-callout {
+    animation: none;
+    transition: opacity 0.35s;
+  }
+  .hud-callout.out {
+    transform: none;
+  }
+}

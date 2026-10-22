@@ -1,11 +1,18 @@
 /**
  * Nitrous light trails: two glowing ribbons that stream from the taillights
- * while boosting and shrink away when the boost ends. Camera facing, tapered,
- * additive so they bloom. Render only.
+ * while boosting and shrink away when the boost ends; each nitrous stage
+ * burns them brighter and a little wider. Camera facing, tapered, additive so
+ * they bloom. Render only.
  */
 import * as THREE from 'three';
 
 const N = 56;
+/**
+ * Trail strength per nitrous stage (1..3): brightness, and width past 1. Kept
+ * small: the trails are long and HDR, so a little more of them blooms over the
+ * whole frame.
+ */
+const STAGE_STRENGTH = [1, 1.1, 1.2] as const;
 
 export class LightTrails {
   readonly mesh: THREE.Mesh;
@@ -41,8 +48,11 @@ export class LightTrails {
     this.mesh.renderOrder = 6;
   }
 
-  update(carRoot: THREE.Object3D, camera: THREE.Camera, active: boolean, dt: number): void {
-    this.strength += ((active ? 1 : 0) - this.strength) * (1 - Math.exp(-dt * (active ? 8 : 3)));
+  /** `stage` is the nitrous stage burning (1..3), 0 when off. */
+  update(carRoot: THREE.Object3D, camera: THREE.Camera, stage: number, dt: number): void {
+    const active = stage > 0;
+    const target = active ? STAGE_STRENGTH[Math.min(3, stage) - 1] : 0;
+    this.strength += (target - this.strength) * (1 - Math.exp(-dt * (active ? 8 : 3)));
     carRoot.updateMatrixWorld();
     for (let t = 0; t < 2; t++) {
       const h = this.history[t];
@@ -63,6 +73,7 @@ export class LightTrails {
     const tan = new THREE.Vector3();
     const view = new THREE.Vector3();
     const side = new THREE.Vector3();
+    const widen = 1 + 0.8 * Math.max(0, this.strength - 1);
     for (let t = 0; t < 2; t++) {
       const h = this.history[t];
       for (let i = 0; i < N; i++) {
@@ -81,7 +92,7 @@ export class LightTrails {
         view.subVectors(cam, p);
         side.crossVectors(tan, view).normalize();
         const k = 1 - i / (N - 1);
-        const w = 0.055 * (0.3 + 0.7 * k);
+        const w = 0.055 * (0.3 + 0.7 * k) * widen;
         side.multiplyScalar(w);
         this.positions[o] = p.x + side.x;
         this.positions[o + 1] = p.y + side.y;

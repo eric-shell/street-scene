@@ -28,6 +28,7 @@ import { CarAssetLibrary } from '../render/car/carAssets';
 import { CAMERA, ChaseCamera } from '../render/camera/camera';
 import { RaceCinematics, type HandoffShot } from '../render/camera/cinematics';
 import { GameRenderer, NightScene, createNightScene } from '../render/scene';
+import { NITRO_FX } from '../render/post';
 import type { World } from '../city/world';
 import type { Cruise } from './cruise';
 import type { StreetStage } from './streetStage';
@@ -58,6 +59,7 @@ import { ChaseCall, policeChaseCall } from '../render/traffic/policeChase';
 import { HazardFx } from './hazardFx';
 
 interface Snap extends CarPose {
+  nitroStage: number;
   vx: number;
   vz: number;
   rpm: number;
@@ -79,6 +81,7 @@ function snap(c: CarState): Snap {
     spin: c.wheels.map((w) => w.spin),
     braking: c.aLong < -4 && c.speed > 1,
     nitro: c.nitroActive,
+    nitroStage: c.nitroStage,
     speed: c.speed,
     vx: c.vx,
     vz: c.vz,
@@ -109,6 +112,7 @@ function lerpSnap(a: Snap, b: Snap, t: number): Snap {
     spin: a.spin.map((v, i) => lerpAngle(v, b.spin[i], t)),
     braking: b.braking,
     nitro: b.nitro,
+    nitroStage: b.nitroStage,
     speed: l(a.speed, b.speed),
     vx: l(a.vx, b.vx),
     vz: l(a.vz, b.vz),
@@ -128,9 +132,11 @@ const SIGN_DELAY = 70;
 /** District names for the open world HUD; plain streets and filler pockets read as the city. */
 /** A new district name shows as a HUD message once the car has been in it this long (s). */
 const AREA_SETTLE = 0.6;
-/** Nitrous screen warp easing rates in and out (1/s). */
+/** Nitrous screen warp easing rates in and out (1/s); a change of stage eases its glow over at NITRO_IN too. */
 const NITRO_IN = 5;
 const NITRO_OUT = 2.5;
+/** Nitrous swells the music by this much per stage burning (dB), easing in and back out at these rates (1/s). */
+const MUSIC_LIFT = { db: [2, 4, 6], in: 4, out: 1.2 } as const;
 /** On a tick where the player only hit props, the speed drop must exceed slowdownMin by this many times over to count as a crash. */
 const PROP_SLOWDOWN_EXTRA = 1.6;
 /** Free roam minimap: traffic this close to the player shows as dots (m; the map spans about 260 m to its edge). */
@@ -247,8 +253,11 @@ export class RaceSession {
   private resetThisTick = false;
   private propOnlyTick = false;
   private hardHitTick = false;
-  /** Nitrous screen warp, eased in and out (0..1). */
+  /** Nitrous screen warp, eased in and out (0 off, 1 at stage 1, more at the stages above), and the stage its edge glow takes (eased). */
   private nitroFx = 0;
+  private nitroTint = 1;
+  /** Gain the music is lifted by while boosting (1 = none), eased; main.ts hands it to the music player. */
+  private lift = 1;
   /** Open world HUD: props the player broke, top speed (mph), the district shown and the one being entered. */
   private smashed = 0;
   private topMph = 0;
@@ -709,6 +718,11 @@ export class RaceSession {
     return this.replayCam;
   }
 
+  /** Gain to lift the music by (1 = none): the player's nitrous swell, eased per frame. */
+  get musicLift(): number {
+    return this.lift;
+  }
+
   /** One fixed sim step. */
   tick(): void {
     if (this.paused) return this.rumble?.stop();
@@ -747,6 +761,8 @@ export class RaceSession {
       stepRace(this.ghostRace, gt < this.ghostLog.length ? unpackInput(this.ghostLog[gt]) : { ...NEUTRAL_INPUT, brake: 1 });
       this.ghostCurr = snap(this.ghostRace.cars[0].state);
     }
+    // Callouts for the nitrous the player's style earned this tick (ui/boostCallouts.ts).
+    this.hud.callouts.tick(r.cars[0].state);
     this.chaseCall = policeChaseCall(r);
     this.sfx?.syncCountdown(r);
     this.handleEvents();
@@ -1000,7 +1016,7 @@ export class RaceSession {
       camera = this.drone.camera;
     } else camera = this.updateCamera(p, dt);
     this.lastCamera = camera;
-    this.trails.update(this.views[0].root, camera, p.nitro && !this.paused, dt);
+    this.trails.update(this.views[0].root, camera, this.paused ? 0 : p.nitroStage, dt);
     this.carLight.position.set(p.x - Math.sin(p.yaw) * 1.5, p.y + 4.2, p.z - Math.cos(p.yaw) * 1.5);
     // The few real point lights follow the action, or the drone when it flies off.
     this.night.lighting.update(this.drone ? camera.position : new THREE.Vector3(p.x, p.y, p.z));
@@ -1022,11 +1038,17 @@ export class RaceSession {
     const target = this.settings.radialBlur && !this.paused ? Math.max(0, Math.min(1, (p.speed - 25) / 45)) * 0.4 + (p.nitro ? 1 : 0) : 0;
     this.blur += (target - this.blur) * (1 - Math.exp(-dt * (target > this.blur ? 6 : 3)));
     this.gr.post.setSpeedBlur(this.blur);
-    // Nitrous warp: in fast, out a little slower; follows the speed blur setting, off in the drone and while paused.
-    const warpTarget = this.settings.radialBlur && !this.paused && !this.drone && p.nitro ? 1 : 0;
+    // Nitrous warp: in fast, out a little slower, harder and hotter each stage; follows the speed blur setting, off in the drone and while paused.
+    const stage = this.paused ? 0 : p.nitroStage;
+    const warpTarget = this.settings.radialBlur && !this.drone && stage > 0 ? NITRO_FX.stageWarp[stage - 1] : 0;
     this.nitroFx += (warpTarget - this.nitroFx) * (1 - Math.exp(-dt * (warpTarget > this.nitroFx ? NITRO_IN : NITRO_OUT)));
     if (warpTarget === 0 && this.nitroFx < 0.002) this.nitroFx = 0;
-    this.gr.post.setNitroFx(this.nitroFx, this.time);
+    if (stage > 0) this.nitroTint += (stage - this.nitroTint) * (1 - Math.exp(-dt * NITRO_IN));
+    this.gr.post.setNitroFx(this.nitroFx, this.time, this.nitroTint);
+    // The music swells with the stage burning.
+    const lift = stage > 0 ? 10 ** (MUSIC_LIFT.db[stage - 1] / 20) : 1;
+    this.lift += (lift - this.lift) * (1 - Math.exp(-dt * (lift > this.lift ? MUSIC_LIFT.in : MUSIC_LIFT.out)));
+    if (lift === 1 && this.lift < 1.001) this.lift = 1;
     this.updateHud(dt);
     this.updateEngines(poses, camera, dt);
     this.updateSfx(poses, camera, dt);
@@ -1125,7 +1147,7 @@ export class RaceSession {
       const rc = this.race.cars[0];
       const gears = rc.tuning.gearbox.ratios.length;
       const gear = gears > 1 ? Math.max(0, rc.state.gear - 1) / (gears - 1) : 0;
-      this.cam.update(p, p.vx, p.vz, p.nitro, gear, len, dt);
+      this.cam.update(p, p.vx, p.vz, p.nitroStage, gear, len, dt);
       this.applyCinematics(p, dt);
       return this.cam.camera;
     }
@@ -1219,6 +1241,7 @@ export class RaceSession {
       manual: c.manualGearbox,
       nitro: c.nitro,
       nitroActive: c.nitroActive,
+      nitroStage: c.nitroStage,
       throttle: c.throttle,
       countdown,
       wrongWay: rc.wrongWay,
