@@ -1,7 +1,7 @@
 /**
  * Tire shapes besides the house tire every wheel ships with (docs/carWheels.md):
- * a meaty race tire and two stretched ones, lathed at runtime in place of the
- * wheel's own tire so any wheel can wear any of them. Pure math on vertex
+ * for now a stretched one, lathed at runtime in place of the wheel's own tire so
+ * any wheel can wear it; more shapes are another profile in the table. Pure math on vertex
  * arrays in wheel space (center at the origin, axle along X), no three.js.
  *
  * A shape is a half profile in units of the tire it replaces: x is the distance
@@ -17,13 +17,8 @@ type Profile = readonly (readonly [x: number, v: number])[];
 
 /** Each shape's half profile, from the face side's bead up to the tread's center. */
 const PROFILES: Record<Exclude<TireShape, 'standard'>, Profile> = {
-  // A bulky square race tire: the sidewall bulges well past the lip and stays upright to a tight
-  // shoulder, the tread flat almost to the edges.
-  meaty: [[1, 0], [1.26, 0.14], [1.35, 0.4], [1.36, 0.8], [1.34, 0.93], [1.28, 0.985], [1.16, 1], [0, 1]],
-  // Slightly narrower than the wheel: the sidewall leans in from the lip with a trace of bulge left.
-  mildStretch: [[1, 0], [1.03, 0.12], [1, 0.42], [0.93, 0.75], [0.86, 0.93], [0.78, 0.99], [0.6, 1], [0, 1]],
   // Pulled tight over a wide wheel: a straight, steep sidewall and a narrow tread, the lip standing proud.
-  aggressiveStretch: [[1, 0], [0.98, 0.07], [0.89, 0.37], [0.78, 0.71], [0.7, 0.92], [0.63, 0.99], [0.48, 1], [0, 1]],
+  stretched: [[1, 0], [0.98, 0.07], [0.89, 0.37], [0.78, 0.71], [0.7, 0.92], [0.63, 0.99], [0.48, 1], [0, 1]],
 };
 
 /** Segments around the tire, as the house tire's (scripts/blender/carWheels.py TIRE_SEG). */

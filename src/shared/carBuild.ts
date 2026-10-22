@@ -22,8 +22,8 @@ export type VinylShape = (typeof VINYL_SHAPES)[number];
 export const GLOW_PATTERNS = ['steady', 'pulse', 'breathe', 'strobe', 'alternate', 'wave', 'chase'] as const;
 export type GlowPattern = (typeof GLOW_PATTERNS)[number];
 
-/** Tire shapes, from the bulkiest to the most stretched (render/car/tireShapes.ts draws each). */
-export const TIRE_SHAPES = ['meaty', 'standard', 'mildStretch', 'aggressiveStretch'] as const;
+/** Tire shapes (render/car/tireShapes.ts draws each). */
+export const TIRE_SHAPES = ['standard', 'stretched'] as const;
 export type TireShape = (typeof TIRE_SHAPES)[number];
 
 export const MAX_DECALS = 8;
@@ -200,7 +200,9 @@ export function validateVisual(v: unknown): VisualBuild {
   // Stance per axle. Legacy builds (saves and share codes from before per axle stance) had
   // stance.camberFront / camberRear, one stance.offset and wheels.size; they seed both axles.
   const wheelColor = hexColor(wheels.color, d.wheels.color);
-  const tire = oneOf(wheels.tire, TIRE_SHAPES, d.wheels.tire);
+  // The first set's mild and aggressive stretches are the stretched tire now; its meaty one, standard.
+  const tireShape = (v: unknown, fallback: TireShape) => (v === 'meaty' ? 'standard' : oneOf(v === 'mildStretch' || v === 'aggressiveStretch' ? 'stretched' : v, TIRE_SHAPES, fallback));
+  const tire = tireShape(wheels.tire, d.wheels.tire);
   const rearPart = typeof wheels.rearPart === 'string' && PART_ID.test(wheels.rearPart) ? renamedPart(wheels.rearPart) : null;
   const L = STANCE_LIMITS;
   const legacySize = num(wheels.size, L.wheelSize[0], L.wheelSize[1], 1);
@@ -217,7 +219,7 @@ export function validateVisual(v: unknown): VisualBuild {
     paint: { color: hexColor(paint.color, d.paint.color), finish: oneOf(paint.finish, PAINT_FINISHES, d.paint.finish) },
     trimColor: hexColor(o.trimColor, d.trimColor),
     parts,
-    wheels: { color: wheelColor, rearColor: hexColor(wheels.rearColor, wheelColor), rearPart, tire, rearTire: oneOf(wheels.rearTire, TIRE_SHAPES, tire) },
+    wheels: { color: wheelColor, rearColor: hexColor(wheels.rearColor, wheelColor), rearPart, tire, rearTire: tireShape(wheels.rearTire, tire) },
     decals,
     stance: {
       rideHeight: num(stance.rideHeight, L.rideHeight[0], L.rideHeight[1], 0),
