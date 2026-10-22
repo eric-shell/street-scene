@@ -208,21 +208,38 @@ export function edgeDir(g: RoadGraph, e: RoadEdge, from: number): Vec2 {
 /** A corner between 170 and 190 degrees is mitered only when its offset lines cross within this far (m) of the node along the first edge (a bend node: a few degrees, equal widths). */
 const MITER_REACH = 1.5;
 
+/** The single sharp corner where edge A's offset line (oA, CCW side) crosses edge B's (oB, CW side), or null when the corner keeps its square cut or rounding. */
+function cornerMiter(p: Vec2, dA: Vec2, oA: number, dB: Vec2, oB: number, angle: number): Vec2 | null {
+  // Past 170 degrees only when the crossing sits right by the node (MITER_REACH): a bend node's few
+  // degrees between two pieces of one street, where two square-cut points would overlap on the
+  // inside and leave a wedge on the outside. A street running straight on into a narrower one has
+  // nearly parallel lines that cross far down the street: it keeps the square cut and its curb step
+  // at the node. Sharper outside corners are rounded; parallel lines (a ford's straight-through
+  // node) give two coincident points.
+  if (angle >= 190 * DEG) return null;
+  const pa = add(p, { x: -dA.z, z: dA.x }, oA);
+  const t = lineIntersectT(pa, dA, add(p, { x: dB.z, z: -dB.x }, oB), dB);
+  return t !== null && (angle < 170 * DEG || (t > -MITER_REACH && t < MITER_REACH)) ? add(pa, dA, t) : null;
+}
+
+/**
+ * A plain corner's curb and building lines. Both lines take the same form (a miter, or the square
+ * cut or rounding) so they keep the same point count: near 180 degrees the wider building line can
+ * cross past MITER_REACH while the curb line does not.
+ */
+function sectorLines(p: Vec2, dA: Vec2, oA: number, OA: number, dB: Vec2, oB: number, OB: number, angle: number): { curb: Vec2[]; outer: Vec2[] } {
+  const curb = cornerMiter(p, dA, oA, dB, oB, angle);
+  const outer = cornerMiter(p, dA, OA, dB, OB, angle);
+  if (curb && outer) return { curb: [curb], outer: [outer] };
+  return { curb: sectorPoints(p, dA, oA, dB, oB, angle), outer: sectorPoints(p, dA, OA, dB, OB, angle) };
+}
+
+/** A corner's square cut, rounded on the outside of a bend past 190 degrees; the point count depends on the angle alone. */
 function sectorPoints(p: Vec2, dA: Vec2, oA: number, dB: Vec2, oB: number, angle: number): Vec2[] {
   const na: Vec2 = { x: -dA.z, z: dA.x };
   const nb: Vec2 = { x: dB.z, z: -dB.x };
   const pa = add(p, na, oA);
   const pb = add(p, nb, oB);
-  // One sharp corner where the offset lines cross. Past 170 degrees only when the crossing sits
-  // right by the node (MITER_REACH): a bend node's few degrees between two pieces of one street,
-  // where two square-cut points would overlap on the inside and leave a wedge on the outside. A
-  // street running straight on into a narrower one has nearly parallel lines that cross far down
-  // the street: it keeps the square cut and its curb step at the node. Sharper outside corners are
-  // rounded below; parallel lines (a ford's straight-through node) give two coincident points.
-  if (angle < 190 * DEG) {
-    const t = lineIntersectT(pa, dA, pb, dB);
-    if (t !== null && (angle < 170 * DEG || (t > -MITER_REACH && t < MITER_REACH))) return [add(pa, dA, t)];
-  }
   const pts: Vec2[] = [pa];
   if (angle > 190 * DEG) {
     // Round the outside of a bend.
@@ -341,11 +358,7 @@ export function computeSectors(g: RoadGraph): Sector[][] {
           }
         }
       }
-      out.push({
-        angle,
-        curb: sectorPoints(p, dA, oA, dB, oB, angle),
-        outer: sectorPoints(p, dA, oA + eA.sidewalk, dB, oB + eB.sidewalk, angle),
-      });
+      out.push({ angle, ...sectorLines(p, dA, oA, oA + eA.sidewalk, dB, oB, oB + eB.sidewalk, angle) });
     }
     return out;
   });

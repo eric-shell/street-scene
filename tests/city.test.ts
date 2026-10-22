@@ -1501,6 +1501,14 @@ describe('street curves', () => {
     expect(JSON.stringify(generateRoadGraph(99))).toBe(JSON.stringify(generateRoadGraph(99)));
   });
 
+  it('every corner draws its curb and building lines with the same point count, near-straight ones too', () => {
+    // The sidewalk renderer strips curb[i]..outer[i] pairwise; a wider building line once mitered
+    // where its curb kept the square cut (seeds 4, 5, 9, 10, 20 among these) and broke the boot.
+    for (let seed = 1; seed <= 24; seed++) {
+      for (const secs of createCity(seed).blocks.sectors) for (const s of secs) expect(s.outer.length).toBe(s.curb.length);
+    }
+  });
+
   it('routes run through the bends: both routes build with their stats in range, clean miters at bend nodes, nothing of a junction at one', () => {
     const rng = new Rng(2929);
     for (let i = 0; i < 8; i++) {
