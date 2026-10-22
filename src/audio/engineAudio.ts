@@ -87,7 +87,7 @@ export interface AudioLevels {
  * the engine, menu sounds under everything.
  */
 const MIX = {
-  calibration: { engine: 0.9, effects: 0.9, ambience: 0.9, interface: 0.5 },
+  calibration: { engine: 0.9, effects: 0.9, ambience: 0.9, interface: 0.9 },
   limiter: { threshold: -3, knee: 2, ratio: 20, attack: 0.002, release: 0.12 },
   defaults: { masterVolume: 0.7, engineVolume: 1, effectsVolume: 1, ambienceVolume: 1, interfaceVolume: 1 } as AudioLevels,
 } as const;

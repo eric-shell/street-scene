@@ -21,7 +21,7 @@ music (an <audio> element, its own volume)
 | master | the four above | Master |
 | music | the player | Music (in the player and here) |
 
-A slider maps to gain by its square. Each bus also carries a fixed calibration (`MIX.calibration`) that sets where it sits with every slider at its default, so the defaults *are* the intended balance and a slider only moves away from it; the interface bus is calibrated 6 dB under the rest. The old single "Engine volume" slider, which scaled every synthesized sound, becomes the Master on first load after the change (the engine itself goes to full), so nobody's chosen loudness jumps.
+A slider maps to gain by its square. Each bus also carries a fixed calibration (`MIX.calibration`) that sets where it sits with every slider at its default, so the defaults *are* the intended balance and a slider only moves away from it. The interface bus was once calibrated 6 dB under the rest, which left every menu sound buried under the menu music; it now sits with the others, and the menu sounds are set by peak against the music instead. The old single "Engine volume" slider, which scaled every synthesized sound, becomes the Master on first load after the change (the engine itself goes to full), so nobody's chosen loudness jumps.
 
 The master ends in a limiter (threshold −3 dBFS, 20:1, 2 ms attack), not a musical compressor. Before, everything went through one 4:1 compressor at −18 dBFS that the engine alone drove 5 dB into, so a loud engine ducked every effect and a crowd could duck the engine; with the sources gain staged against each other the limiter only has to catch a crash, a cheer and a bang landing together.
 
@@ -56,7 +56,10 @@ Measured at the output with every level at its default, each source alone and ri
 | thunder, 200 m | −11 (peak −2) | −19 | −18 | level with the engine, the loudest thing it should be |
 | thunder, 1800 m | −13 | −25 | −25 | it was as loud as near; the distance curve now falls to a tenth at three times `near` |
 | crossing bell | −25 | −24 | −24 | |
-| menu press / garage door | ≈ −26 / −14 | ≈ −32 / −20 | | the interface bus is 6 dB under |
+| menu press (peak) | −31 | −15 (RMS −32) | −32 | a click peaks over the music's −26; short sounds read low as RMS |
+| menu hover tick (peak) | −44 | −28 (RMS −48) | −48 | under the press, so sweeping a list is not a rattle |
+| menu step whoosh (peak) | −40 | −19 (RMS −32) | −32 | |
+| garage door up / down (peak) | −38 / −20 | −17 / −9 | −32 (up) | the rattle was 18 dB under the clunk and lost under the music |
 
 What was wrong before: the crowds and thunder were set hotter than the player's own engine, nitrous and the horn were set so low the engine covered them, the countdown beeps barely cleared an idle, and the shared compressor let whichever source was loudest duck the rest. Every number had been chosen on its own; none against the engine.
 

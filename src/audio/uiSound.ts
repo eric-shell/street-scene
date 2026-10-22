@@ -17,15 +17,20 @@
  */
 import { audioHub } from './engineAudio';
 
-/** Levels (linear gain into the interface bus) and timings (s). */
+/**
+ * Levels (linear gain into the interface bus) and timings (s). Set by peak at
+ * the output against the menu music's -26 dBFS RMS (docs/audioMix.md): a press
+ * near -15, a hover tick near -28, the whoosh and the door's rattle near -19
+ * and -17; quieter than that and the music covers them.
+ */
 const UI = {
-  tick: 0.05,
-  press: 0.11,
-  blip: 0.06,
-  whoosh: 0.13,
-  wipe: 0.2,
-  rattle: 0.16,
-  clunk: 0.42,
+  tick: 0.18,
+  press: 0.35,
+  blip: 0.3,
+  whoosh: 0.72,
+  wipe: 0.32,
+  rattle: 1.2,
+  clunk: 0.67,
   /** Ticks closer together than this are dropped (fast sweeps over a list). */
   tickGap: 0.045,
 } as const;

@@ -38,6 +38,10 @@ const TARGETS: Record<string, [rms: number, tolerance: number]> = {
   thunderNear: [-18, 3],
   thunderFar: [-25, 4],
   bell: [-24, 3],
+  uiPress: [-32, 3],
+  uiTick: [-48, 5],
+  uiWhoosh: [-32, 3],
+  uiDoorUp: [-32, 3],
 };
 
 interface Level {
@@ -62,6 +66,7 @@ test('every sound sits where the mix puts it', async ({ page }) => {
     const audio = await import('/src/audio/engineAudio.ts');
     const sfxMod = await import('/src/audio/sfx.ts');
     const bellMod = await import('/src/audio/warningBell.ts');
+    const uiMod = await import('/src/audio/uiSound.ts');
     const manifest = (await import('/src/assets/carManifest.json')).default;
     const hub = audio.audioHub();
     await hub.ctx.resume();
@@ -139,6 +144,10 @@ test('every sound sits where the mix puts it', async ({ page }) => {
     const shots2 = [['garageIdle', 'garage', 900, 900, 0], ['garageRev', 'garage', 6800, 900, 1], ['streetCruise', 'street', cruise, cruise, 0], ['streetRev', 'street', 6800, cruise, 1]];
     for (const [name, mode, rpm, rest, pedal] of shots2) { await rev(mode, rpm, rest, pedal, 1000); const run = rev(mode, rpm, rest, pedal, 1000); results[name] = await measure(900); await run; }
     gv.dispose();
+    // Menu sounds: the press first, since the hover and slide sounds wait for one (uiSound.ts live).
+    tap = hub.uiBus; scale = MASTER; tapOf(tap); await sleep(200);
+    const ui = { uiPress: () => uiMod.uiPress(), uiTick: () => uiMod.uiTick(), uiWhoosh: () => uiMod.uiWhoosh(), uiDoorUp: () => uiMod.uiDoorUp(0.9) };
+    for (const [name, fire] of Object.entries(ui)) { fire(); results[name] = await measure(1000); await sleep(400); }
     return results;
   })()`)) as Record<string, Level>;
 
@@ -154,6 +163,7 @@ test('every sound sits where the mix puts it', async ({ page }) => {
   expect(rms('train'), 'a train bed stays under the engine').toBeLessThan(rms('engineMid') - 3);
   expect(db(levels.crash20.peak), 'a hard crash tops the engine').toBeGreaterThan(db(levels.engineMid.peak));
   expect(rms('thunderFar'), 'far thunder is far').toBeLessThan(rms('thunderNear') - 5);
+  expect(db(levels.uiPress.peak), 'a menu press peaks over the menu music').toBeGreaterThan(-26);
   expect(rms('beep'), 'the countdown is heard over an idling engine').toBeGreaterThan(rms('engineIdle') + 6);
   expect(rms('garageIdle'), 'the garage idles under the music').toBeLessThan(-26 - 8);
   expect(rms('streetCruise'), 'the Street view cruises under the music').toBeLessThan(-26 - 3);
