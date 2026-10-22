@@ -22,10 +22,13 @@
  * fast car cannot tunnel through; a car whose center is already past the line
  * (caught on a drawbridge span when the gates came down) drives out freely.
  * Gates are not part of World.walls (they stand across a road, which no
- * static wall may), and each carries a WallLook its renderer draws.
+ * static wall may), and each carries a WallLook its renderer draws. A level
+ * crossing's gates (TimedGate.train) are no wall at all: their arms snap off
+ * (sim/levelCrossing.ts), and the train is what stops a car.
  *
  * Racers: gateSpeedCap (sim/ai.ts) brakes an AI to a stop short of a gate
- * that will be blocking when it gets there, queues it behind cars already
+ * that will be blocking when it gets there (a level crossing's: while its
+ * train cycle says a train is there), queues it behind cars already
  * waiting, and tells it to stop its stuck and reverse-out logic meanwhile;
  * waitingAtGate keeps race.ts from counting a waiting car as lost.
  * Per tick cost: a bounding circle test per gate per car circle; only cars
@@ -93,6 +96,8 @@ export interface TimedGate {
   look: WallLook;
   /** Index into GateSet.cycles. */
   cycle: number;
+  /** A level crossing's gate: its arms break instead of blocking, and racers time their pass by this cycle (the trains) instead. */
+  train?: number;
   /** Midpoint and half length (m): the broadphase circle. */
   cx: number;
   cz: number;
@@ -301,6 +306,8 @@ export function collideGates(set: GateSet, tick: number, carX: number, carZ: num
   const gates = set.gates;
   for (let i = 0; i < gates.length; i++) {
     const g = gates[i];
+    // A level crossing's arms snap off instead (sim/levelCrossing.ts).
+    if (g.train !== undefined) continue;
     const reach = g.half + r + 3;
     if ((x - g.cx) ** 2 + (z - g.cz) ** 2 > reach * reach) continue;
     if (!gateBlocking(set.cycles[g.cycle], tick)) continue;
@@ -344,7 +351,7 @@ export const GATE_AI = {
   /** The nose stops this far short of the gate line. */
   stopGap: 1.6,
   /** Braking the stop is planned with (m/s^2), a little under AI.brakeDecel so it never overshoots. */
-  decel: 11.5,
+  decel: 9,
   /** A car carries on when it reaches the line at least this long before the gates block. */
   commit: 0.6,
   /** Arrival time estimates never assume less speed than this (m/s). */
@@ -401,7 +408,7 @@ export function gateSpeedCap(r: RaceState, rc: RaceCar, out: GateWait): GateWait
     const t = ((hx - g.ax) * (g.bx - g.ax) + (hz - g.az) * (g.bz - g.az)) / (len * len);
     const slack = GATE_AI.endReach / len;
     if (t < -slack || t > 1 + slack) continue;
-    const p = gatePhase(set.cycles[g.cycle], r.tick, phaseScratch);
+    const p = gatePhase(set.cycles[g.train ?? g.cycle], r.tick, phaseScratch);
     if (!p.blocking) {
       const eta = along / Math.max(c.speed, GATE_AI.minSpeed);
       if (eta < p.untilBlock / TICK_HZ - GATE_AI.commit) continue;

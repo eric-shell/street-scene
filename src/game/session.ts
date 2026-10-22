@@ -20,6 +20,7 @@ import { ROAD_Y } from '../render/cityMeshes';
 import { unmaskVehicle } from '../render/vehicleMask';
 import { LightTrails } from '../render/lightTrails';
 import { Sparks } from '../render/sparks';
+import { WaypointBeacons } from '../render/waypointBeacons';
 import { EngineVoice, audioHub } from '../audio/engineAudio';
 import { Sfx } from '../audio/sfx';
 import { manifestCar } from '../render/carAssets';
@@ -39,7 +40,10 @@ import { Hud, HudCar, HudData } from '../ui/hud';
 import { openFullMap, type FullMap, type WaypointStore } from '../ui/fullMap';
 import { placeName } from '../ui/places';
 import { toast } from '../ui/dom';
-import { MapPinned } from '../ui/icons';
+import { Compass, MapIcon, MapPinned } from '../ui/icons';
+import { HudCard } from '../ui/hudCard';
+import { CONTROLS } from '../ui/screens';
+import { btn } from '../ui/dom';
 import type { Vec2 } from '../sim/math';
 import { Settings } from '../ui/settings';
 import { formatTime } from '../ui/format';
@@ -173,7 +177,7 @@ export interface SessionOptions {
   visuals: VisualBuild[];
   replay?: ReplayData & { decoded: number[] };
   ghost?: { config: RaceConfig; log: number[]; visual: VisualBuild } | null;
-  /** Start / finish camera shots (default on; off for test drives). Replays never play them. */
+  /** Start / finish camera shots (default on; off for free roam). Replays never play them. */
   cinematics?: boolean;
   /** Free roam: where the waypoint is kept (main.ts shares one with the menu's map); the session keeps its own without it. */
   waypoint?: WaypointStore;
@@ -193,6 +197,8 @@ export interface SessionOptions {
     shot: HandoffShot;
     pan: number;
   };
+  /** Free roam: the HUD card's Exit, back to the menu. */
+  onQuit?: () => void;
 }
 
 export interface FinishInfo {
@@ -266,6 +272,8 @@ export class RaceSession {
   private trails: LightTrails;
   /** Underbody and wall sparks for every car near the camera (render/sparks.ts). */
   private sparks: Sparks;
+  /** The waypoint race's columns of light over its waypoints (null in the other modes). */
+  private readonly beacons: WaypointBeacons | null = null;
   /** Ambient traffic (render/traffic.ts) and its last two snapshots (TRAFFIC_SNAP floats per car), swapped every tick. */
   private traffic: TrafficView | null = null;
   private trafficPrev = new Float32Array(0);
@@ -275,7 +283,7 @@ export class RaceSession {
   private sfx: Sfx | null = null;
   /** Headlight flash level driven by the horn (render side only). */
   private flash = 0;
-  /** Open world test drive: no crowds, fireworks or line celebrations. */
+  /** Open world (free roam): no crowds, fireworks or line celebrations. */
   private readonly openWorld: boolean;
   /** The scene is the street stage's (handoff): it goes back to the stage on dispose instead of being disposed. */
   private readonly borrowed: boolean;
@@ -285,6 +293,10 @@ export class RaceSession {
    * touches a control first. Null once the player has the car.
    */
   private cruise: { drive: Cruise; s: number; untilTick: number } | null = null;
+  /** Free roam: the HUD card the drone shares (ui/hudCard.ts), on top of the HUD's chips. */
+  private card: HudCard | null = null;
+  /** The controls dialog paused the drive (and so unpauses it when it closes). */
+  private controlsPaused = false;
   /** Text on the circuit gantry sign, and the tick a pending change is applied (-1 = none). */
   private signText = '';
   private signAt = -1;
@@ -324,13 +336,29 @@ export class RaceSession {
     }
     this.cam = new ChaseCamera(this.race.world);
     this.cine = new RaceCinematics(this.cam, this.race.world, uiRoot);
-    this.openWorld = opts.config.openWorld === true || this.race.world.openWorld === true;
+    // Free roam (the waypoint race's world is open too, but it is a race: grid, rivals, finish).
+    this.openWorld = opts.config.openWorld === true;
     this.night.crowds.setEnabled(!this.openWorld);
     this.crowdCars = this.race.cars.map(() => ({ x: 0, z: 0, speed: 0 }));
     this.hud = new Hud(uiRoot, this.race.world);
     this.hud.onMapClick = () => this.toggleMap();
     this.hazards = new HazardFx(this.night.drawbridge, this.hud.root);
     if (this.openWorld) {
+      // The same card as the drone's, in free roam's green from the menu: the district, time, smashes and top speed.
+      this.card = new HudCard({
+        hue: 'green',
+        icon: Compass,
+        title: 'Free roam',
+        status: '',
+        stats: ['Time', 'Smashed', 'Top speed'],
+        actions: [btn(MapIcon, 'Map', () => this.toggleMap(), 'small')],
+        onExit: () => opts.onQuit?.(),
+        exitTitle: 'Back to the menu',
+        controls: [...CONTROLS.keyboard, [['Tab'], 'City map'], [['0'], 'Drone photo mode']],
+        canHide: () => !this.paused && !this.fullMap && !this.cine.active,
+        onControls: (open) => this.pauseForControls(open),
+      });
+      this.hud.setCard(this.card);
       // Tab opens the city map while driving and closes it again; in menus (paused) it keeps moving focus.
       const onTab = (e: KeyboardEvent) => {
         if (e.code !== 'Tab' || e.repeat || e.altKey || e.ctrlKey || e.metaKey) return;
@@ -343,6 +371,10 @@ export class RaceSession {
     }
     this.sparks = new Sparks(settings.quality);
     this.night.scene.add(this.sparks.mesh);
+    if (this.race.config.mode === 'waypoint' && this.race.world.route.waypoints) {
+      this.beacons = new WaypointBeacons(this.race.world);
+      this.night.scene.add(this.beacons.group);
+    }
     const traffic = this.race.traffic;
     if (traffic) {
       this.traffic = new TrafficView(this.race.world, traffic.cars.length);
@@ -534,6 +566,15 @@ export class RaceSession {
     });
   }
 
+  /** Free roam: the drive pauses under the HUD card's controls dialog, as under the map (keys there never reach the car). */
+  private pauseForControls(open: boolean): void {
+    if (open === this.controlsPaused || (open && this.paused)) return;
+    this.controlsPaused = open;
+    this.paused = open;
+    this.input.releaseAll();
+    this.input.setTouchVisible(!open);
+  }
+
   /** Set or clear the free roam waypoint (render only). */
   private setWaypoint(w: Vec2 | null): void {
     this.wp.set(w ? { x: w.x, z: w.z } : null);
@@ -594,7 +635,8 @@ export class RaceSession {
     this.drone = new DroneMode(this.gr, this.night, this.race.world, this.uiRoot, () => this.toggleDrone(), {
       start: { x: cam.position.x, y: cam.position.y, z: cam.position.z, yaw: Math.atan2(dir.x, dir.z), pitch: Math.asin(Math.max(-1, Math.min(1, dir.y))) },
       escape: false,
-      hint: 'WASD fly · drag to look · Space / Ctrl up / down · Shift boost · wheel speed · T tour · 0 or Esc back to the car',
+      title: 'Drone',
+      exitLabel: 'Back to the car',
       cars: () => this.mapCars(),
     });
     this.droneResume = !this.isReplay;
@@ -864,8 +906,12 @@ export class RaceSession {
         const prop = r.world.props[e.value ?? -1];
         const def = prop ? PROP_DEFS[prop.kind] : null;
         if (def) this.cam.knock(Math.min(1, 0.35 + (def.mass * def.anchor) / 900));
+      } else if (e.type === 'arm') {
+        // A level crossing's gate arm snapping: a light knock, like a sawhorse.
+        this.propOnlyTick = true;
+        this.cam.knock(0.4);
       } else if (e.type === 'reset') this.resetThisTick = true;
-      if (e.type === 'prop') this.smashed++;
+      if (e.type === 'prop' || e.type === 'arm') this.smashed++;
       const rc = r.cars[0];
       switch (e.type) {
         case 'lap': {
@@ -895,6 +941,13 @@ export class RaceSession {
         case 'reset':
           this.hud.message('Back on track', 1);
           break;
+        case 'checkpoint': {
+          // The waypoint race's waypoints (its last target is the finish line, which says FINISH itself).
+          const n = (r.world.route.waypoints?.length ?? 0) - 1;
+          const k = e.value ?? 0;
+          if (r.config.mode === 'waypoint' && k <= n) this.hud.message(k < n ? `Waypoint ${k}/${n}  ${formatTime(raceTime(r))}` : `Waypoint ${k}/${n}  ·  TO THE FINISH`, 2);
+          break;
+        }
         case 'driftBank':
           // A drift that ran through a zone shows what the zone added.
           this.hud.message(`+${(e.value ?? 0).toLocaleString()}${e.other ? `  ·  zone +${e.other.toLocaleString()}` : ''}`, 1.2);
@@ -910,6 +963,7 @@ export class RaceSession {
       const px = this.gr.renderer.domElement.clientHeight || window.innerHeight;
       this.sparks.update(this.time, (2 * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, px));
     }
+    this.beacons?.update(this.race.cars[0].nextCheckpoint, this.time);
     this.alpha = alpha;
     const r = this.race;
     const poses = this.curr.map((c, i) => lerpSnap(this.prev[i], c, this.paused ? 1 : alpha));
@@ -930,7 +984,7 @@ export class RaceSession {
     const chase = this.chaseCall;
     this.night.air.chase(chase.phase === 'chase' ? (poses[chase.car] ?? null) : null);
     // The El's trains and level crossings at the interpolated sim time: the gates close for these trains.
-    this.night.syncDistricts(Math.max(0, r.tick - 1 + (this.paused ? 1 : alpha)), !this.paused);
+    this.night.syncDistricts(Math.max(0, r.tick - 1 + (this.paused ? 1 : alpha)), !this.paused, r.brokenArms);
     this.night.update(this.time);
     // Timed hazards (the drawbridge) at the interpolated sim time, so replays look the same.
     this.hazards.update(r, this.paused ? 1 : alpha, !this.paused);
@@ -1043,7 +1097,11 @@ export class RaceSession {
     if (isFollowCam(view)) {
       // Cobbled alleys: a fine rumble that grows with speed (camera.ts rumble).
       this.cam.rumble(this.race.cars[0].state.surface === 'cobble' ? Math.hypot(p.vx, p.vz) : 0);
-      this.cam.update(p, p.vx, p.vz, p.nitro, len, dt);
+      // Gear share for the chase pull back: 0 in first or reverse, 1 in top.
+      const rc = this.race.cars[0];
+      const gears = rc.tuning.gearbox.ratios.length;
+      const gear = gears > 1 ? Math.max(0, rc.state.gear - 1) / (gears - 1) : 0;
+      this.cam.update(p, p.vx, p.vz, p.nitro, gear, len, dt);
       this.applyCinematics(p, dt);
       return this.cam.camera;
     }
@@ -1147,6 +1205,13 @@ export class RaceSession {
     };
     const zone = driftZoneStatus(r, 0);
     if (zone) data.zone = { mul: r.config.mode === 'drift' ? DRIFT_ZONES.scoreMul : DRIFT_ZONES.refillMul, nitro: r.config.mode !== 'drift', left: zone.left, resting: zone.resting };
+    // The waypoint race points the waypoint chip and the minimap at the next target.
+    const target = r.config.mode === 'waypoint' && !rc.finished ? r.world.route.waypoints?.[rc.nextCheckpoint] : undefined;
+    if (target) {
+      const n = r.world.route.waypoints!.length - 1;
+      data.waypoint = target;
+      data.waypointLabel = rc.nextCheckpoint < n ? `Waypoint ${rc.nextCheckpoint + 1}/${n}` : 'Finish';
+    }
     if (this.openWorld) {
       this.topKmh = Math.max(this.topKmh, c.speed * 3.6);
       this.updateArea(c.x, c.z, dt);
@@ -1184,6 +1249,7 @@ export class RaceSession {
     this.fullMap = null;
     this.drone?.dispose();
     this.drone = null;
+    this.card?.dispose();
     this.unsub.forEach((u) => u());
     this.freeCam?.dispose();
     this.hazards.dispose();
@@ -1192,6 +1258,7 @@ export class RaceSession {
     this.ghostView?.dispose();
     this.trails.dispose();
     this.sparks.dispose();
+    this.beacons?.dispose();
     this.traffic?.dispose();
     this.engines.forEach((e) => e.dispose());
     this.night.city.finishLine.onFirework = null;

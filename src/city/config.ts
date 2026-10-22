@@ -797,6 +797,33 @@ export const ROUTE = {
   sprintFinishNodeClear: 22,
   gridRowSpacing: 8,
   gridFirstRow: 9,
+  /**
+   * Drag strip (findDragNodes): dragBlocks city blocks (CITY.spacing each) down the straightest
+   * wide street, the start this far from the first intersection, then a runout long enough for the
+   * finisher's runout brake (race.ts RUNOUT, about 2 g at full brake) to stop from 250 km/h.
+   * Bends of at most the first of dragBendDeg at each node; a city with no straight that long
+   * gets the gentler bends next, and only then the longest straight it has, raced to the runout.
+   */
+  dragBlocks: 7,
+  dragStartOffset: 40,
+  dragRunout: 170,
+  dragBendDeg: [6, 10, 15],
+  /** Drag strip lanes: each car this far either side of the centerline at most (m). */
+  dragLaneOffset: 2.8,
+  /**
+   * Waypoint races (findWaypointNodes): this many waypoints between the start and the finish, each
+   * leg between waypoints legMin to legMax m as the crow flies, the whole suggested route between
+   * the min and max lengths (m). A waypoint counts within its intersection's half width plus
+   * `waypointSlack` (m).
+   */
+  waypointCount: 4,
+  waypointLegMin: 330,
+  waypointLegMax: 700,
+  waypointMinLength: 2000,
+  waypointMaxLength: 3400,
+  waypointSlack: 6,
+  /** The finish line counts within the road's half width plus this (m). */
+  waypointFinishSlack: 3,
   /** Start grid slots: the player and up to nine rivals (see the grid in route.ts). */
   gridSlots: 10,
   maxAttempts: 400,

@@ -69,7 +69,7 @@ import { distToPolygonEdge, pointInPolygon, polygonArea, polygonBounds, solidWal
 import type { Area, AreaBuild, DistrictModule, HeightSample, PlanContext } from './types';
 import { emptyBuild } from './types';
 import type { CarveRoute } from './alley';
-import type { Route } from '../route';
+import type { Route, RouteKind } from '../route';
 import type { RouteProgress } from '../world';
 
 const CFG = CITY.districts.carPark;
@@ -97,8 +97,8 @@ const SCORE_LAND = 30;
 /** The launch heading bound (rad): a straight line through the chute, a car's width clear of both walls. */
 export const LAUNCH_BOUND = atan2(CFG.chuteWidth - 2 * CAR_HALF, CFG.chuteLength);
 
-/** Route index (CarveRoute order in planRoads, Area.params.owner) of each route kind. */
-export const ROUTE_INDEX = { circuit: 0, sprint: 1 } as const;
+/** Route index (CarveRoute order in planRoads, Area.params.owner) of each route kind; the drag strip and the waypoint race own none (-1). */
+export const ROUTE_INDEX = { circuit: 0, sprint: 1, drag: -1, waypoint: -1 } as const;
 
 /**
  * A car park's geometry in world space, rebuilt from its area params.
@@ -845,7 +845,7 @@ export function railsClearOf<T extends Wall>(zones: readonly Vec2[][], rails: T[
 }
 
 /** Whether a point is within `pad` m of a flight off one of the route's car parks (over the junction, render dressing keeps out). */
-export function nearCarParkFlight(world: { areas: readonly Area[]; openWorld?: boolean; route: { kind: 'circuit' | 'sprint' } }, x: number, z: number, pad: number): boolean {
+export function nearCarParkFlight(world: { areas: readonly Area[]; openWorld?: boolean; route: { kind: RouteKind } }, x: number, z: number, pad: number): boolean {
   for (const g of carParks(world.areas)) {
     if (!world.openWorld && g.owner !== ROUTE_INDEX[world.route.kind]) continue;
     if (pointInPolygon(x, z, flightCorridor(g, g.lipBack + 14, pad))) return true;

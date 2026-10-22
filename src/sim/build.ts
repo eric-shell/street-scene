@@ -61,7 +61,12 @@ export interface VisualBuild {
   trimColor: string;
   /** partId per slot; null means stock (base meshes) or none for optional slots. */
   parts: Partial<Record<PartSlot, string | null>>;
-  wheels: { color: string };
+  wheels: {
+    /** Front wheel color (legacy builds, saved before per axle colors, used it for all four). */
+    color: string;
+    /** Rear wheel color; matches the front unless the garage's axles are unlinked. */
+    rearColor: string;
+  };
   decals: DecalLayer[];
   stance: { rideHeight: number; front: AxleStance; rear: AxleStance };
   tint: { darkness: number; color: string };
@@ -101,7 +106,7 @@ export function defaultVisual(): VisualBuild {
     paint: { color: '#d11f3f', finish: 'metallic' },
     trimColor: '#15161a',
     parts: {},
-    wheels: { color: '#c9ced8' },
+    wheels: { color: '#c9ced8', rearColor: '#c9ced8' },
     decals: [],
     stance: { rideHeight: 0, front: { camber: 0, offset: 0, wheelSize: 1 }, rear: { camber: 0, offset: 0, wheelSize: 1 } },
     tint: { darkness: 0.55, color: '#101820' },
@@ -232,6 +237,7 @@ export function validateVisual(v: unknown): VisualBuild {
   }
   // Stance per axle. Legacy builds (saves and share codes from before per axle stance) had
   // stance.camberFront / camberRear, one stance.offset and wheels.size; they seed both axles.
+  const wheelColor = color(wheels.color, d.wheels.color);
   const L = STANCE_LIMITS;
   const legacySize = num(wheels.size, L.wheelSize[0], L.wheelSize[1], 1);
   const legacyOffset = num(stance.offset, L.offset[0], L.offset[1], 0);
@@ -247,7 +253,7 @@ export function validateVisual(v: unknown): VisualBuild {
     paint: { color: color(paint.color, d.paint.color), finish: oneOf(paint.finish, PAINT_FINISHES, d.paint.finish) },
     trimColor: color(o.trimColor, d.trimColor),
     parts,
-    wheels: { color: color(wheels.color, d.wheels.color) },
+    wheels: { color: wheelColor, rearColor: color(wheels.rearColor, wheelColor) },
     decals,
     stance: {
       rideHeight: num(stance.rideHeight, L.rideHeight[0], L.rideHeight[1], 0),

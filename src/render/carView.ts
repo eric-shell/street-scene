@@ -11,7 +11,7 @@ import { CarMaterialSet, applyVisualToMaterials, createCarMaterials, disposeCarM
 import { makeRadialGlow } from './textures';
 import { DecalLayerView } from './decals';
 import { FEATURES } from '../shared/features';
-import { WheelProfile, beadForSize, detectProfile, remapWheel } from './wheelFit';
+import { WheelProfile, beadForSize, detectProfile, remapWheel, sizeForBead } from './wheelFit';
 import { maskVehicleMesh, underVehicles } from './vehicleMask';
 
 export interface CarPose {
@@ -391,9 +391,13 @@ export class CarView {
     this.wheelProfile = detectProfile(tireR, otherR);
     if (model.userData.ownGeometry) model.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
     const rear = front.clone(true);
+    // The rear axle gets its own geometry (rim size) and its own rim material (wheel color).
+    const rearMat = (m: THREE.Material) => (m === this.materials.Rim ? this.materials.RimRear : m);
     rear.traverse((o) => {
       const mesh = o as THREE.Mesh;
-      if (mesh.isMesh) mesh.geometry = mesh.geometry.clone();
+      if (!mesh.isMesh) return;
+      mesh.geometry = mesh.geometry.clone();
+      mesh.material = Array.isArray(mesh.material) ? mesh.material.map(rearMat) : rearMat(mesh.material);
     });
     const collect = (g: THREE.Object3D) => g.children.filter((c): c is THREE.Mesh => (c as THREE.Mesh).isMesh);
     this.axleMeshes = [collect(front), collect(rear)];
@@ -430,6 +434,17 @@ export class CarView {
   rimInches(size: number): number {
     const scale = this.car.wheelRadius / (this.wheelProfile.outer || 1);
     return (2 * beadForSize(this.wheelProfile, size) * scale) / 0.0254;
+  }
+
+  /** Inverse of rimInches: the wheel size that gives this rim diameter (in) on this car and wheel. */
+  rimSizeForInches(inches: number): number {
+    const scale = this.car.wheelRadius / (this.wheelProfile.outer || 1);
+    return sizeForBead(this.wheelProfile, (inches * 0.0254) / 2 / scale);
+  }
+
+  /** True once a wheel is baked, so rimInches measures the real profile rather than the placeholder one. */
+  get wheelsReady(): boolean {
+    return this.wheelModels.length > 0;
   }
 
   private applyStance(): void {

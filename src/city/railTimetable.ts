@@ -8,7 +8,11 @@
  * Each direction runs one fixed motion profile per trip along its track:
  * enter from the portal at one end at cruising speed, brake into every
  * station, dwell, pull away, leave through the portal at the far end.
- * Trips start every `headway` seconds from a per direction phase. Distances
+ * Trip slots come every `headway` seconds from a per direction phase, but
+ * only a few of them run: each direction picks TRAIN.runs of every
+ * TRAIN.pattern slots from the line's seed (Service.runs), so a train is a
+ * seldom, irregular sight, and the level crossing it passes (sim/levelCrossing.ts)
+ * closes at no rhythm a racer could learn in a race. Distances
  * are along the track ("travel s", 0 at the entry portal); a train's head is
  * its front, and the rest of the train trails behind it.
  *
@@ -33,6 +37,9 @@ export const TRAIN = {
   decel: 1.15,
   dwell: 14,
   headway: 78,
+  /** Trip slots in the repeating pattern (at most 30, a bit mask) and how many of them run, per direction. */
+  pattern: 16,
+  runs: 3,
 } as const;
 
 /** Length of a whole train, head to tail (m). */
@@ -137,13 +144,36 @@ export interface Service {
   headway: number;
   /** Time of trip 0's departure from its entry portal (s). */
   phase: number;
+  /** Trip k runs when bit (k mod TRAIN.pattern) is set; the other slots stay empty. */
+  runs: number;
 }
 
+/** Every slot of the pattern running. */
+export const ALL_TRIPS = (1 << TRAIN.pattern) - 1;
+
 /** Make a service: station centers are track s (platform middles); trains stop centered on them. */
-export function makeService(dir: 1 | -1, length: number, stationCenters: readonly number[], phase: number, cars: number = TRAIN.cars): Service {
+export function makeService(dir: 1 | -1, length: number, stationCenters: readonly number[], phase: number, cars: number = TRAIN.cars, runs: number = ALL_TRIPS): Service {
   const L = trainLength(cars);
   const stops = stationCenters.map((c) => (dir === 1 ? c : length - c) + L / 2);
-  return { dir, length, run: buildRun(length, stops, L), headway: TRAIN.headway, phase };
+  return { dir, length, run: buildRun(length, stops, L), headway: TRAIN.headway, phase, runs };
+}
+
+/** Does trip k of a service run? */
+export function tripRuns(sv: Service, k: number): boolean {
+  const j = k - Math.floor(k / TRAIN.pattern) * TRAIN.pattern;
+  return ((sv.runs >>> j) & 1) === 1;
+}
+
+/** TRAIN.runs distinct slots of the pattern, picked by hash from `seed` and `salt`, as a bit mask. */
+export function runPattern(seed: number, salt: number): number {
+  let mask = 0;
+  for (let n = 0, i = 0; n < TRAIN.runs && i < 64; i++) {
+    const j = Math.floor(hash01(seed, salt, i) * TRAIN.pattern);
+    if ((mask >>> j) & 1) continue;
+    mask |= 1 << j;
+    n++;
+  }
+  return mask;
 }
 
 /** A train on the line right now. */
@@ -170,7 +200,7 @@ export function tripsAt(sv: Service, time: number, out: TripState[]): number {
   const tmp = { s: 0, v: 0, a: 0 };
   for (let k = kMin; k <= kMax; k++) {
     const tau = rel - k * sv.headway;
-    if (tau < 0 || tau > sv.run.duration) continue;
+    if (tau < 0 || tau > sv.run.duration || !tripRuns(sv, k)) continue;
     runAt(sv.run, tau, tmp);
     let t = out[n];
     if (!t) out[n] = t = { trip: 0, s: 0, v: 0, a: 0, tau: 0 };
@@ -209,11 +239,11 @@ export interface LineService {
 /**
  * The line's two services, both ways, as the trains run them: trip phases from
  * the area's seed (a per city offset, the second direction about half a headway
- * later), right hand running. render/trains.ts draws these and the sim's level
+ * later) and which of the pattern's slots run (runPattern), right hand running. render/trains.ts draws these and the sim's level
  * crossings time their gates from them, so both must come from here.
  */
 export function lineServices(curve: RailCurve, seed: number): LineService[] {
   const stations = curve.stations.map((s) => s.s);
   const phase0 = hash01(seed, 11, 3) * TRAIN.headway;
-  return ([1, -1] as const).map((dir, k) => ({ sv: makeService(dir, curve.length, stations, phase0 + k * TRAIN.headway * 0.47), track: trackFor(curve, dir) }));
+  return ([1, -1] as const).map((dir, k) => ({ sv: makeService(dir, curve.length, stations, phase0 + k * TRAIN.headway * 0.47, TRAIN.cars, runPattern(seed, 17 + k)), track: trackFor(curve, dir) }));
 }

@@ -50,6 +50,8 @@ export interface DistrictKit {
   simTick(time: number): number;
   /** False unless a live, unpaused session syncs this scene (bells stay quiet otherwise). */
   audible(): boolean;
+  /** Has a car snapped off level crossing arm `i` (RaceState.brokenArms: gate * 2 + half)? False outside a race. */
+  armBroken(i: number): boolean;
 }
 
 /** What each district renderer module exports. */

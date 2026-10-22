@@ -5,7 +5,9 @@
  * the camera is pushed in front of any hit. A mouse drag orbits the chase
  * cameras around the car (and turns the head in the bumper and hood views);
  * after letting go the view eases back behind the car once it is moving
- * (ORBIT). Two shake layers ride on every follow camera: a heavy one for wall
+ * (ORBIT). The chase cameras also drift back a little with each upshift
+ * (gearPullback, eased at gearEase), so climbing through the box reads as the
+ * car pulling away from the viewer. Two shake layers ride on every follow camera: a heavy one for wall
  * and car crashes and sudden stops (crash()), a light one for knocking over
  * street furniture (knock()), plus a fine rumble on cobbles (rumble(), fed
  * each frame). Each trauma layer decays linearly and is shown
@@ -40,6 +42,8 @@ export interface ChaseParams {
   speedPullback: number;
   speedPullbackMax: number;
   nitroPullback: number;
+  /** Extra distance in top gear (m); each gear above first adds its share, none in reverse. */
+  gearPullback: number;
   fov: number;
   speedFovGain: number;
   speedFovMax: number;
@@ -70,6 +74,8 @@ export interface CameraParams {
   common: {
     fovStiffness: number;
     driftSwingMinSpeed: number;
+    /** How fast the gear pull back eases to a new gear (1/s): slow, so a shift glides rather than jumps. */
+    gearEase: number;
     heavyShake: number;
     heavyRoll: number;
     heavyDecay: number;
@@ -124,13 +130,14 @@ export interface CameraParams {
 
 export const CAMERA_DEFAULTS: CameraParams = {
   chase: {
-    dist: 6.4,
-    height: 2.3,
+    dist: 5.8,
+    height: 2.15,
     lookHeight: 1.1,
     lookAhead: 2.5,
     speedPullback: 0.015,
     speedPullbackMax: 1.2,
     nitroPullback: 1.3,
+    gearPullback: 0.9,
     fov: 62,
     speedFovGain: 0.14,
     speedFovMax: 12,
@@ -141,13 +148,14 @@ export const CAMERA_DEFAULTS: CameraParams = {
     driftSwing: 0.45,
   },
   close: {
-    dist: 4.6,
-    height: 1.7,
+    dist: 4.1,
+    height: 1.6,
     lookHeight: 0.95,
     lookAhead: 2.5,
     speedPullback: 0.015,
     speedPullbackMax: 1.2,
     nitroPullback: 1.3,
+    gearPullback: 0.7,
     fov: 62,
     speedFovGain: 0.14,
     speedFovMax: 12,
@@ -162,6 +170,7 @@ export const CAMERA_DEFAULTS: CameraParams = {
   common: {
     fovStiffness: 4,
     driftSwingMinSpeed: 4,
+    gearEase: 1.6,
     heavyShake: 0.55,
     heavyRoll: 4.5,
     heavyDecay: 1.6,
@@ -224,6 +233,7 @@ const CHASE_META = (s: string): Record<string, [number, number, number, string]>
   [`${s}.speedPullback`]: [0, 0.06, 0.001, 'Extra distance per m/s of speed.'],
   [`${s}.speedPullbackMax`]: [0, 4, 0.05, 'Cap on the speed pull back (m).'],
   [`${s}.nitroPullback`]: [0, 4, 0.05, 'Extra distance while nitrous fires (m).'],
+  [`${s}.gearPullback`]: [0, 4, 0.05, 'Extra distance in top gear, shared out gear by gear (m).'],
   [`${s}.fov`]: [35, 100, 0.5, 'Base vertical field of view (deg).'],
   [`${s}.speedFovGain`]: [0, 0.5, 0.005, 'FOV added per m/s of speed.'],
   [`${s}.speedFovMax`]: [0, 30, 0.5, 'Cap on the speed FOV widening (deg).'],
@@ -254,6 +264,7 @@ export const CAMERA_PARAM_META: Record<string, [number, number, number, string]>
   ...COCKPIT_META('hood'),
   'common.fovStiffness': [0.5, 20, 0.1, 'How fast the FOV eases toward its target (1/s).'],
   'common.driftSwingMinSpeed': [0, 20, 0.5, 'Speed above which the drift swing kicks in (m/s).'],
+  'common.gearEase': [0.2, 10, 0.1, 'How fast the camera settles to a new gear\'s distance (1/s).'],
   'common.heavyShake': [0, 2, 0.01, 'Heavy shake (crashes, sudden stops): sway and bob at full trauma (m).'],
   'common.heavyRoll': [0, 15, 0.1, 'Heavy shake roll at full trauma (deg).'],
   'common.heavyDecay': [0.2, 10, 0.05, 'Heavy trauma lost per second (full trauma lasts 1 / this s).'],
@@ -306,6 +317,8 @@ export class ChaseCamera {
   private pos = new THREE.Vector3();
   private look = new THREE.Vector3();
   private dirYaw = 0;
+  /** Gear pull back eased toward the current gear's share, 0..1. */
+  private gearLevel = 0;
   private fov = 62;
   private initialized = false;
   /** Shake trauma 0..1 of the heavy and light layers, and the noise clock (s). */
@@ -408,7 +421,8 @@ export class ChaseCamera {
     return (h * c.heavyRoll * n(13, 29, 5.3) + l * c.lightRoll * n(41, 59, 0.7) + r * c.rumbleRoll * n(79, 109, 2.4)) * (Math.PI / 180);
   }
 
-  update(p: CarPose, vx: number, vz: number, nitro: boolean, carLength: number, dt: number): void {
+  /** `gear` is how far up the box the car is: 0 in first (and reverse), 1 in top gear. */
+  update(p: CarPose, vx: number, vz: number, nitro: boolean, gear: number, carLength: number, dt: number): void {
     const speed = Math.hypot(vx, vz);
     const fx = Math.sin(p.yaw);
     const fz = Math.cos(p.yaw);
@@ -458,13 +472,17 @@ export class ChaseCamera {
       while (d < -Math.PI) d += Math.PI * 2;
       if (Math.abs(d) < 2) targetYaw = p.yaw + d * prof.driftSwing;
     }
-    if (!this.initialized) this.dirYaw = targetYaw;
+    if (!this.initialized) {
+      this.dirYaw = targetYaw;
+      this.gearLevel = gear;
+    }
+    this.gearLevel += (gear - this.gearLevel) * (1 - Math.exp(-dt * common.gearEase));
     let dy = targetYaw - this.dirYaw;
     while (dy > Math.PI) dy -= Math.PI * 2;
     while (dy < -Math.PI) dy += Math.PI * 2;
     this.dirYaw += dy * (1 - Math.exp(-dt * prof.yawStiffness));
 
-    const dist = prof.dist + (nitro ? prof.nitroPullback : 0) + Math.min(prof.speedPullbackMax, speed * prof.speedPullback);
+    const dist = prof.dist + (nitro ? prof.nitroPullback : 0) + Math.min(prof.speedPullbackMax, speed * prof.speedPullback) + this.gearLevel * prof.gearPullback;
     // Orbit: around the car's look point, at the same range, raised by the drag.
     const oy = this.dirYaw + this.orbitYaw;
     const bx = Math.sin(oy);

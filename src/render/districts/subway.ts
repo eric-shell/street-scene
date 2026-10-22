@@ -4,7 +4,8 @@
  *  - a riveted plate girder at each deck edge, floor beams every few meters,
  *    stringers under the rails, open deck ties you can see the sky between
  *    (alpha tested), running rails, a third rail with its cover board per
- *    track, catwalk handrails, sodium lamps under the deck;
+ *    track, catwalk handrails, track lamps on posts along both catwalks,
+ *    sodium lamps under the deck;
  *  - steel H columns on concrete footings (the footing is the sim's pillar
  *    wall) with a bent cap under the deck and knee braces out to the
  *    cantilevered street side; a through truss where the line crosses the
@@ -25,8 +26,13 @@
  * sim closes for them come down for the train you see.
  * Two merged meshes (textured steel atlas, alpha tested ties) plus lamps in
  * the kit's shared glow builder; the trains are their own instanced meshes
- * (render/trains.ts). Quality trims detail: Low draws a solid deck instead of
- * open ties, fewer handrail posts and no sparks or light wash.
+ * (render/trains.ts). The line lights itself the way the tunnels do
+ * (structureFx.ts): every lamp's light is baked into the steel and ties per
+ * vertex at build time and added as emissive (albedo x light), so the track
+ * reads at night for no per frame cost, and the sodium lamps under the deck
+ * throw an additive pool on the street. Quality trims detail: Low draws a
+ * solid deck instead of open ties, fewer handrail posts and no sparks, pools
+ * or light wash.
  */
 import * as THREE from 'three';
 import { CITY } from '../../city/config';
@@ -40,6 +46,7 @@ import { Band, STATION_NAMES, SUBWAY_SIGN, makeSteelAtlas, makeTieTexture, signB
 import { createTrains } from '../trains';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { col, cylinder } from './kit';
+import { washMaterial } from './structureFx';
 
 interface V3 {
   x: number;
@@ -76,8 +83,95 @@ const LAMP = {
   green: col(0x2aff8a, 1.6),
   amber: col(0xffb020, 1.7),
   house: col(0xfff1d6, 0.7),
+  track: col(0xfff0d0, 1.6),
   void: col(0x000000),
 } as const;
+
+/**
+ * Light the line's lamps throw, baked per vertex (linear color at the lamp,
+ * fading to nothing at `reach`, m). Tuned so the rails and ties read as a lit
+ * line from the street and the deck, with dimmer steel between the lamps.
+ */
+const LIGHT = {
+  track: { color: col(0xffe2b0, 1.5), reach: 14 },
+  sodium: { color: col(0xff9a40, 1.1), reach: 8 },
+  tube: { color: col(0xe6f0ff, 0.7), reach: 7 },
+  /** Street pool under each sodium lamp: radius (m), rings and segments of its disc, additive color at its middle. */
+  pool: { r: 7.5, rings: 3, segs: 12, color: col(0xff9a40, 0.3) },
+  /** Pool a track lamp at grade throws on the ballast (the deck's open ties let the street show through instead). */
+  ballast: { r: 9, rings: 4, segs: 14, color: col(0xffe2b0, 0.22) },
+} as const;
+
+/** A lamp whose light is baked into the line's meshes. */
+interface Light {
+  x: number;
+  y: number;
+  z: number;
+  /** Distance the light reaches (m). */
+  reach: number;
+  /** Linear color at the lamp. */
+  color: THREE.Color;
+}
+
+/** Spatial hash cell for the bake (m): bigger than any reach, so a vertex only checks its own cell. */
+const BAKE_CELL = 16;
+
+/**
+ * Bake `lights` into a `bake` attribute (linear color per vertex): a smooth
+ * falloff to each light's reach, stronger on faces turned toward it (but never
+ * zero, so thin rails and posts pick it up from any side).
+ */
+function bakeLights(geo: THREE.BufferGeometry, lights: Light[]): void {
+  const grid = new Map<number, Light[]>();
+  const key = (i: number, j: number) => (i + 4096) * 8192 + (j + 4096);
+  for (const L of lights) {
+    for (let i = Math.floor((L.x - L.reach) / BAKE_CELL); i <= Math.floor((L.x + L.reach) / BAKE_CELL); i++) {
+      for (let j = Math.floor((L.z - L.reach) / BAKE_CELL); j <= Math.floor((L.z + L.reach) / BAKE_CELL); j++) {
+        const k = key(i, j);
+        const list = grid.get(k);
+        if (list) list.push(L);
+        else grid.set(k, [L]);
+      }
+    }
+  }
+  const pos = geo.getAttribute('position');
+  const nrm = geo.getAttribute('normal');
+  const out = new Float32Array(pos.count * 3);
+  for (let v = 0; v < pos.count; v++) {
+    const x = pos.getX(v);
+    const y = pos.getY(v);
+    const z = pos.getZ(v);
+    const list = grid.get(key(Math.floor(x / BAKE_CELL), Math.floor(z / BAKE_CELL)));
+    if (!list) continue;
+    for (const L of list) {
+      const dx = L.x - x;
+      const dy = L.y - y;
+      const dz = L.z - z;
+      const d2 = dx * dx + dy * dy + dz * dz;
+      const r2 = L.reach * L.reach;
+      if (d2 >= r2) continue;
+      const f = (1 - d2 / r2) ** 2;
+      const facing = (nrm.getX(v) * dx + nrm.getY(v) * dy + nrm.getZ(v) * dz) / Math.max(1e-3, Math.sqrt(d2));
+      const w = f * (0.3 + 0.7 * Math.max(0, facing));
+      out[v * 3] += L.color.r * w;
+      out[v * 3 + 1] += L.color.g * w;
+      out[v * 3 + 2] += L.color.b * w;
+    }
+  }
+  geo.setAttribute('bake', new THREE.Float32BufferAttribute(out, 3));
+}
+
+/** Add the baked light (attribute `bake`) to a lit material's emissive: albedo x light. */
+function bakeLit<M extends THREE.MeshStandardMaterial>(m: M, key: string): M {
+  m.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nattribute vec3 bake;\nvarying vec3 vBake;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvBake = bake;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vBake;')
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vBake;');
+  };
+  m.customProgramCacheKey = () => key;
+  return m;
+}
 
 /** Structure dimensions relative to the deck (tie) top and the track curve (m). */
 const EL = {
@@ -110,6 +204,10 @@ const EL = {
   fenceHeight: 1.9,
   /** Signals keep this far along the track from a level crossing (m). */
   signalClear: 40,
+  /** Track lamps every this many meters, alternating catwalks (m); head height over the deck top, clear of the train roofs (m), and its reach in over the track (m). */
+  trackLampEvery: 18,
+  trackLampTop: 4.6,
+  trackLampArm: 0.7,
 } as const;
 
 /** Band-mapped oriented cuboid from a to b (end face centers): hw across (horizontal), hh up. */
@@ -216,12 +314,14 @@ export const subwayRenderer: DistrictRenderer = {
     const steel = new GeoBuilder(true);
     const open = kit.quality !== 'low';
     const bed = new GeoBuilder(false);
+    const lights: Light[] = [];
+    const pools = new GeoBuilder(true);
     for (const a of areas) {
       const b = kit.builds[a.id];
       // The same curve the sim's level crossings time their gates on.
       const curve = elCurve(a, b, kit.h);
       curve.stations.forEach((st, i) => (st.name = ((a.params.seed ?? 0) + i) % STATION_NAMES.length));
-      buildLine(kit, a, curve, steel, open ? bed : null);
+      buildLine(kit, a, curve, steel, open ? bed : null, lights, open ? pools : null);
       const trains = createTrains(kit.group, curve, a.params.seed ?? 1, kit.quality, kit.track);
       kit.track(trains);
       kit.animate((time) => trains.update(kit.simTick(time) / TICK_HZ));
@@ -242,23 +342,37 @@ export const subwayRenderer: DistrictRenderer = {
       metalness: 0.35,
       envMapIntensity: 0.6,
     });
-    const sm = new THREE.Mesh(kit.track(steel.build()), kit.track(steelMat));
+    const steelGeo = kit.track(steel.build());
+    bakeLights(steelGeo, lights);
+    const sm = new THREE.Mesh(steelGeo, kit.track(bakeLit(steelMat, 'elSteelBaked')));
     sm.name = 'elevatedSteel';
     kit.group.add(sm);
     if (bed.vertexCount) {
       const ties = kit.track(makeTieTexture());
-      const bm = new THREE.Mesh(kit.track(bed.build()), kit.track(new THREE.MeshStandardMaterial({ map: ties, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, envMapIntensity: 0.3 })));
+      const bedGeo = kit.track(bed.build());
+      bakeLights(bedGeo, lights);
+      const tieMat = bakeLit(new THREE.MeshStandardMaterial({ map: ties, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, envMapIntensity: 0.3 }), 'elTiesBaked');
+      const bm = new THREE.Mesh(bedGeo, kit.track(tieMat));
       bm.name = 'elevatedTies';
       kit.group.add(bm);
+    }
+    if (pools.vertexCount) {
+      const pm = new THREE.Mesh(kit.track(pools.build()), kit.track(washMaterial()));
+      pm.name = 'elevatedPools';
+      pm.renderOrder = 1;
+      kit.group.add(pm);
     }
   },
 };
 
-function buildLine(kit: DistrictKit, area: Area, c: RailCurve, steel: GeoBuilder, bed: GeoBuilder | null): void {
+/** Build one line into the shared builders; its lamps go into `lights` (for the bake) and their street pools into `pools` (null on Low). */
+function buildLine(kit: DistrictKit, area: Area, c: RailCurve, steel: GeoBuilder, bed: GeoBuilder | null, lights: Light[], pools: GeoBuilder | null): void {
   const glow = kit.glow;
   const low = kit.quality === 'low';
   const P0: CurvePoint = curvePoint();
   const P1: CurvePoint = curvePoint();
+  const PL: CurvePoint = curvePoint();
+  const light = (p: V3, kind: { color: THREE.Color; reach: number }) => lights.push({ x: p.x, y: p.y, z: p.z, reach: kind.reach, color: kind.color });
   const at = (p: CurvePoint, l: number, dy: number): V3 => ({ x: p.x + p.px * l, y: p.y + dy, z: p.z + p.pz * l });
   const edgeIn = (s: number) => trackLateral(c, 0, s) - RAIL.edgeOut;
   const edgeOut = RAIL.trackHalf + RAIL.edgeOut;
@@ -289,6 +403,7 @@ function buildLine(kit: DistrictKit, area: Area, c: RailCurve, steel: GeoBuilder
     const ein0 = edgeIn(s);
     const ein1 = edgeIn(s1);
     const detail = near(s);
+    const lampAt = detail && Math.floor(s / EL.trackLampEvery) !== Math.floor(s1 / EL.trackLampEvery) ? Math.floor(s1 / EL.trackLampEvery) : -1;
     // Over a level crossing's street: the running rails alone, their heads flush with the road.
     if (inXing((s + s1) / 2)) {
       for (const tr of [0, 1] as const) {
@@ -300,8 +415,10 @@ function buildLine(kit: DistrictKit, area: Area, c: RailCurve, steel: GeoBuilder
     }
     if (clearAt(s) < EL.atGrade && clearAt(s1) < EL.atGrade) {
       atGrade(s, s1, ein0, ein1, detail);
+      if (lampAt >= 0) trackLamp(s1, lampAt % 2, true);
       continue;
     }
+    if (lampAt >= 0) trackLamp(s1, lampAt % 2, false);
     const gy = (EL.girderTop + EL.girderBottom) / 2;
     const gh = (EL.girderTop - EL.girderBottom) / 2;
     strut(steel, at(P0, ein0 + EL.girderHalf, gy), at(P1, ein1 + EL.girderHalf, gy), EL.girderHalf, gh, GIRDER, TINT.steel, { caps: false });
@@ -355,7 +472,66 @@ function buildLine(kit: DistrictKit, area: Area, c: RailCurve, steel: GeoBuilder
     // Sodium lamps under the deck, alternating over the sidewalk and the street (not under a low deck).
     if (detail && Math.floor(s / EL.lampEvery) !== Math.floor(s1 / EL.lampEvery) && P1.y - P1.ground > 3) {
       const k = Math.floor(s1 / EL.lampEvery);
-      lamp(glow, at(P1, k % 2 ? edgeOut - 1.2 : -RAIL.trackHalf, -1.12), 0.18, 0.05, { x: P1.tx, z: P1.tz }, 0.35, LAMP.sodium);
+      const p = at(P1, k % 2 ? edgeOut - 1.2 : -RAIL.trackHalf, -1.12);
+      lamp(glow, p, 0.18, 0.05, { x: P1.tx, z: P1.tz }, 0.35, LAMP.sodium);
+      light({ x: p.x, y: p.y - 0.1, z: p.z }, LIGHT.sodium);
+      if (pools) pool(p.x, p.z, kit.world.heightAt, LIGHT.pool);
+    }
+  }
+
+  /**
+   * A track lamp on catwalk `side` (0 inner, 1 street side) at s: a post on the
+   * girder (or on the ballast shoulder at grade), a short arm in over the track
+   * and the lamp head, high enough to clear the train roofs.
+   */
+  function trackLamp(s: number, side: number, grade: boolean): void {
+    sampleCurve(c, s, PL);
+    const inward = side ? -1 : 1;
+    const base = grade ? (side ? edgeOut + EL.shoulder + 0.3 : edgeIn(s) - EL.shoulder - 0.3) : side ? edgeOut - EL.girderHalf : edgeIn(s) + EL.girderHalf;
+    const y0 = grade ? -0.22 : EL.girderTop;
+    const head = base + inward * EL.trackLampArm;
+    const t = { x: PL.tx, z: PL.tz };
+    strut(steel, at(PL, base, y0), at(PL, base, EL.trackLampTop + 0.05), 0.05, 0.05, STEEL, TINT.dark, { side: t });
+    strut(steel, at(PL, base, EL.trackLampTop), at(PL, head + inward * 0.12, EL.trackLampTop), 0.035, 0.035, STEEL, TINT.dark);
+    const lamp0 = at(PL, head, EL.trackLampTop - 0.07);
+    lamp(glow, lamp0, 0.12, 0.035, t, 0.22, LAMP.track);
+    light(at(PL, head, EL.trackLampTop - 0.3), LIGHT.track);
+    if (!grade || !pools) return;
+    // At grade the pool lies on the ballast bed, follows its shoulders down (or up) and then the ground.
+    const lIn = edgeIn(s) - EL.shoulder;
+    const lOut = edgeOut + EL.shoulder;
+    const bedY = PL.y - 0.22;
+    const { x: ox, z: oz, px, pz } = PL;
+    pool(lamp0.x, lamp0.z, (x, z) => {
+      const l = (x - ox) * px + (z - oz) * pz;
+      const out = l > lOut ? l - lOut : l < lIn ? lIn - l : 0;
+      return out >= 1.6 ? kit.world.heightAt(x, z) : bedY + ((kit.h(x, z) - 0.05 - bedY) * out) / 1.6;
+    }, LIGHT.ballast);
+  }
+
+  /** An additive light pool on the ground under a lamp, draped ring by ring on `y` (the street has curbs, the bed its shoulders). */
+  function pool(x: number, z: number, y: (x: number, z: number) => number, P: { r: number; rings: number; segs: number; color: THREE.Color }): void {
+    const gb = pools!;
+    const tint = new THREE.Color();
+    const vertex = (px: number, pz: number, t: number) => {
+      const k = (1 - t * t) ** 2;
+      return gb.vertex(px, y(px, pz) + 0.08, pz, 0, 1, 0, 0, 0, tint.copy(P.color).multiplyScalar(k));
+    };
+    const mid = vertex(x, z, 0);
+    let prev: number[] = [];
+    for (let r = 1; r <= P.rings; r++) {
+      const t = r / P.rings;
+      const ring: number[] = [];
+      for (let i = 0; i < P.segs; i++) {
+        const a = (i / P.segs) * Math.PI * 2;
+        ring.push(vertex(x + Math.cos(a) * P.r * t, z + Math.sin(a) * P.r * t, t));
+      }
+      for (let i = 0; i < P.segs; i++) {
+        const j = (i + 1) % P.segs;
+        if (r === 1) gb.triFacing(mid, ring[i], ring[j], 0, 1, 0);
+        else gb.quadFacing(prev[i], prev[j], ring[j], ring[i], 0, 1, 0);
+      }
+      prev = ring;
     }
   }
 
@@ -549,7 +725,10 @@ function buildLine(kit: DistrictKit, area: Area, c: RailCurve, steel: GeoBuilder
         const under = top.map((p) => ({ x: p.x, y: p.y - 0.06, z: p.z }));
         quad(steel, under, [0, -1, 0], STEEL, (s1 - s) / STEEL.tile, TINT.roofUnder);
       }
-      for (const l of [ridge - 1.4, ridge + 1.3]) lamp(glow, at(P0, l, EL.eave - 0.12), 0.07, 0.03, { x: P0.tx, z: P0.tz }, 1.8, LAMP.tube);
+      for (const l of [ridge - 1.4, ridge + 1.3]) {
+        lamp(glow, at(P0, l, EL.eave - 0.12), 0.07, 0.03, { x: P0.tx, z: P0.tz }, 1.8, LAMP.tube);
+        light(at(P0, l, EL.eave - 0.3), LIGHT.tube);
+      }
     }
     // Name boards hanging under the canopy, facing each track.
     for (let s = sc - half + 9; s < sc + half - 6; s += 15) {

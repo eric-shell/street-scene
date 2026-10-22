@@ -47,7 +47,7 @@ Parts must use the shared material names. The game swaps each one for a runtime 
 | `Black` | Grilles, vents, undertray | fixed |
 | `Chrome` | Exhaust tips, badges | fixed |
 | `Glass` | Windows | Window tint |
-| `Rim` | Wheel rim | Rim color |
+| `Rim` | Wheel rim | Wheel color (front and rear can differ) |
 | `Tire` | Tire rubber | fixed |
 | `HeadLight` | Headlight lenses | Headlight color (emissive) |
 | `TailLight` | Taillight lenses | Taillight color (emissive, brighter when braking) |

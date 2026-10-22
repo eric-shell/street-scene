@@ -98,8 +98,9 @@
   --sheen-soft: rgba(255, 255, 255, 0.2);
   --sheen-bright: rgba(255, 252, 240, 0.85);
 }
-/* Each race type's color: the rule's three stops for the races (circuit orange, sprint yellow, drift red)
-   and green for the open city. --mode-rgb feeds the washes; the course drawings (ui/menuMaps.ts) read --mode. */
+/* Each race type's color: the rule's three stops for the races (circuit orange, sprint yellow, drift red),
+   purple for the drag, cyan for the waypoint race and green for the open city. --mode-rgb feeds the washes;
+   the course drawings (ui/menuMaps.ts) read --mode. */
 .mode-circuit {
   --mode: var(--accent);
   --mode-rgb: 252, 152, 103;
@@ -111,6 +112,14 @@
 .mode-drift {
   --mode: var(--red);
   --mode-rgb: 255, 97, 136;
+}
+.mode-drag {
+  --mode: var(--purple);
+  --mode-rgb: 171, 157, 242;
+}
+.mode-waypoint {
+  --mode: var(--cyan);
+  --mode-rgb: 120, 220, 232;
 }
 .mode-roam {
   --mode: var(--green);
@@ -325,7 +334,8 @@ body {
 .garage-tab,
 .g-section,
 .garage-car,
-.race-ticket {
+.race-ticket,
+.hud-card {
   position: relative;
   clip-path: polygon(0 0, calc(100% - var(--cut, 9px)) 0, 100% var(--cut, 9px), 100% 100%, var(--cut, 9px) 100%, 0 calc(100% - var(--cut, 9px)));
 }
@@ -342,7 +352,8 @@ body {
 .pause .settings,
 .g-section,
 .garage-car,
-.race-ticket {
+.race-ticket,
+.hud-card {
   --cut: 12px;
 }
 .btn::before,
@@ -361,6 +372,7 @@ body {
 .g-section::before,
 .garage-car::before,
 .race-ticket::before,
+.hud-card::before,
 .btn::after,
 .nav-item::after,
 .mode-tile::after,
@@ -376,7 +388,8 @@ body {
 .garage-tab::after,
 .g-section::after,
 .garage-car::after,
-.race-ticket::after {
+.race-ticket::after,
+.hud-card::after {
   content: '';
   position: absolute;
   width: calc(var(--cut, 9px) * 1.4142);
@@ -401,7 +414,8 @@ body {
 .garage-tab::before,
 .g-section::before,
 .garage-car::before,
-.race-ticket::before {
+.race-ticket::before,
+.hud-card::before {
   left: calc(100% + 1px - var(--cut, 9px));
   top: -1px;
   transform: rotate(45deg);
@@ -422,7 +436,8 @@ body {
 .garage-tab::after,
 .g-section::after,
 .garage-car::after,
-.race-ticket::after {
+.race-ticket::after,
+.hud-card::after {
   left: -1px;
   top: calc(100% + 1px - var(--cut, 9px));
   transform: rotate(45deg) translateY(-1px);
@@ -1247,24 +1262,55 @@ body > .mw {
 .event-map:focus-visible .ov-plane {
   transform: translateY(-4%) rotateX(44deg) scale(1.05);
 }
+/* The race step's table is sized by the well's height (which follows the viewport) and lifted a little,
+   so the city's near corners stay in the well through the whole turn and every course reads to its end. */
+.course-map .ov-plane {
+  width: auto;
+  max-width: 70%;
+  height: 96%;
+  transform: translateY(-7%) rotateX(55deg);
+}
+.course-map.opens:is(:hover, :focus-visible) .ov-plane {
+  transform: translateY(-7%) rotateX(44deg) scale(1.05);
+}
 .ov-spin {
   position: relative;
   display: block;
   width: 100%;
   height: 100%;
   animation: ov-turn 34s ease-in-out infinite alternate;
-  /* The table's faint grid, fading out toward its edges with the city. */
-  background:
-    repeating-linear-gradient(0deg, rgba(252, 252, 250, 0.045) 0 1px, transparent 1px 22px),
-    repeating-linear-gradient(90deg, rgba(252, 252, 250, 0.045) 0 1px, transparent 1px 22px);
-  -webkit-mask-image: radial-gradient(closest-side, #000 72%, transparent);
-  mask-image: radial-gradient(closest-side, #000 72%, transparent);
 }
-.ov-spin > canvas {
+/* The table's faint grid and the city fade out toward its edges; what lies on them (the course, the car,
+   the pin) does not, so a course reaching the city's corner still reads to its end; free roam's streets
+   are the city itself, so they fade with it. The city zooms inside its lens (CityOverview.focus), so the
+   fade stays on the table's edge. */
+.ov-spin::before,
+.ov-lens,
+.ov-zoom,
+.ov-zoom > canvas {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+}
+.ov-spin::before,
+.ov-lens,
+.course-map[data-mode='roam'] .course-svg {
+  -webkit-mask-image: radial-gradient(closest-side, #000 72%, transparent);
+  mask-image: radial-gradient(closest-side, #000 72%, transparent);
+}
+.ov-lens {
+  overflow: hidden;
+}
+.ov-zoom {
+  transform-origin: 0 0;
+  will-change: transform;
+}
+.ov-spin::before {
+  content: '';
+  background:
+    repeating-linear-gradient(0deg, rgba(252, 252, 250, 0.045) 0 1px, transparent 1px 22px),
+    repeating-linear-gradient(90deg, rgba(252, 252, 250, 0.045) 0 1px, transparent 1px 22px);
 }
 /* The event's own district breathes on its layer (the river for River Run, the roundabouts for Ring Rush). */
 .ov-glow {
@@ -1314,6 +1360,10 @@ body > .mw {
   width: 0;
   height: 0;
   will-change: transform;
+  transition: opacity 0.3s;
+}
+.map-car.off {
+  opacity: 0;
 }
 .map-arrow {
   position: absolute;
@@ -1507,11 +1557,12 @@ body > .mw {
 .nav-item:active {
   transform: translateY(1px);
 }
-/* The race types in a row: icon over name, the number key that picks it in the corner. The picked one
-   fills with its color's wash over a bar of it along the bottom (.mode-* carries --mode). */
-.mode-row {
+/* The race types in a grid of two rows of three (menu.ts MODE_COLUMNS): icon over name, the number key that
+   picks it in the corner. The picked one fills with its color's wash over a bar of it along the bottom
+   (.mode-* carries --mode). */
+.mode-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
 }
 .mode-tile {
@@ -1599,6 +1650,14 @@ body > .mw {
   --mode: var(--red);
   --mode-rgb: 255, 97, 136;
 }
+.home[data-mode='drag'] {
+  --mode: var(--purple);
+  --mode-rgb: 171, 157, 242;
+}
+.home[data-mode='waypoint'] {
+  --mode: var(--cyan);
+  --mode-rgb: 120, 220, 232;
+}
 .home[data-mode='roam'] {
   --mode: var(--green);
   --mode-rgb: 169, 220, 118;
@@ -1679,25 +1738,38 @@ body > .mw {
     transform: translateY(8px);
   }
 }
+/* The race step's map: the home card's well and table (CityOverview), lit from below in the type's color,
+   with the course lying on the plane. */
 .course-map {
   position: relative;
   height: clamp(124px, 22vh, 206px);
   overflow: hidden;
   background:
-    radial-gradient(80% 90% at 50% 50%, rgba(var(--mode-rgb), 0.07), transparent 70%),
-    linear-gradient(180deg, rgba(13, 12, 14, 0.94), rgba(28, 27, 30, 0.94));
+    radial-gradient(70% 100% at 50% 110%, rgba(var(--mode-rgb), 0.16), transparent 70%),
+    linear-gradient(180deg, rgba(13, 12, 14, 0.94), rgba(31, 29, 32, 0.94));
+  border: 1px solid var(--line);
   clip-path: var(--chamfer-sm);
+  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.5);
   transition: background 0.3s;
 }
-.course-city,
 .course-svg {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-}
-.course-svg {
   overflow: visible;
+}
+/* Under a course the event's district breathes quieter, so the course in its color stays the brightest line. */
+.course-map .ov-glow {
+  animation-name: ov-breathe-quiet;
+}
+@keyframes ov-breathe-quiet {
+  from {
+    opacity: 0.15;
+  }
+  to {
+    opacity: 0.5;
+  }
 }
 /* The course: a soft road of its color under the line, which draws on from the start; then a pulse runs
    the course in its driving direction, a white head on a trail. */
@@ -1761,13 +1833,35 @@ body > .mw {
 .course.enter .reveal {
   animation: course-reveal 1.4s var(--ease-out) both;
 }
-.course .c-mark circle {
-  fill: var(--bg0);
-  stroke: var(--mode);
+/* The start is green and the finish checkered whatever the type's color, each on a dark halo so it reads
+   over the city and the course line. */
+.course .c-halo {
+  fill: rgba(18, 17, 19, 0.85);
+}
+.course .c-start .c-disc {
+  fill: var(--green);
+  stroke: #fcfcfa;
+  stroke-width: 1.5;
+}
+.course .c-start svg {
+  color: var(--bg0);
+}
+.course .c-finish .c-disc {
+  stroke: #fcfcfa;
   stroke-width: 2;
 }
-.course .c-mark svg {
-  color: var(--mode);
+/* Waypoints: numbered discs in the type's color, each popping in as the line is drawn to it (--at, 0..1). */
+.course .c-wp .c-disc {
+  fill: var(--mode);
+  stroke: #fcfcfa;
+  stroke-width: 1.2;
+}
+.course .c-wp-n {
+  fill: var(--bg0);
+  font: 900 10px var(--display);
+}
+.course.enter .c-wp .c-mark-in {
+  animation: course-mark 0.45s cubic-bezier(0.3, 1.7, 0.5, 1) calc(0.15s + var(--at, 0) * 0.75s) backwards;
 }
 .course .c-mark-in {
   transform-box: fill-box;
@@ -1782,15 +1876,8 @@ body > .mw {
 .course.leave {
   animation: course-leave 0.26s ease-in both;
 }
-/* The car only shows where it matters: free roam starts where you are. */
-.course-map .map-car {
-  transition: opacity 0.3s;
-}
-.course-map:not([data-mode='roam']) .map-car {
-  opacity: 0;
-}
 .course-map .map-ping {
-  border-color: var(--green);
+  border-color: var(--mode);
 }
 @keyframes course-draw {
   to {
@@ -1851,13 +1938,14 @@ body > .mw {
 .course-map.opens {
   cursor: pointer;
   outline: none;
-  transition: box-shadow var(--t-fast);
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
 }
 .course-map.opens:hover,
 .course-map.opens:focus-visible {
-  box-shadow: inset 0 0 0 1px rgba(var(--mode-rgb), 0.7);
+  border-color: rgba(var(--mode-rgb), 0.7);
 }
 .course-map.opens:focus-visible {
+  border-color: var(--accent-2);
   box-shadow: inset 0 0 0 1px var(--accent-2);
 }
 .course-map.opens:is(:hover, :focus-visible) > .sheen::before {
@@ -2000,7 +2088,7 @@ body > .mw {
 .race-setup .section-title {
   margin-top: 2px;
 }
-/* The settings tabs run wider than the card's padding so all five still fit across the column. */
+/* Narrow screens: the settings tabs run wider than the card's padding so all five still fit across the column. */
 .home .settings,
 .pause .settings {
   padding: 2px 16px 14px;
@@ -2012,6 +2100,71 @@ body > .mw {
 .home .settings-tabs .tab,
 .pause .settings-tabs .tab {
   padding-inline: 6px;
+}
+/* Wide screens: the card reaches past the column (the pause rail widens to keep it on the rail) and the
+   tabs stand in a list down its left, the open one a lit plate with the rule down its edge. */
+@media (min-width: 721px) {
+  .rail-screen {
+    --settings-w: min(660px, calc(100vw - var(--rail-pad) * 2));
+  }
+  .home .settings,
+  .pause .settings {
+    width: var(--settings-w);
+    display: grid;
+    grid-template-columns: 150px minmax(0, 1fr);
+    gap: 0 20px;
+    padding: 14px 18px 14px 12px;
+  }
+  .home .settings-tabs,
+  .pause .settings-tabs {
+    flex-direction: column;
+    gap: 3px;
+    margin: 0;
+    padding-right: 12px;
+    border-bottom: 0;
+    border-right: 1px solid var(--line);
+    overflow: visible;
+  }
+  .home .settings-tabs .tab,
+  .pause .settings-tabs .tab {
+    gap: 10px;
+    padding: 10px 12px 10px 14px;
+    font-size: 14px;
+    border-radius: var(--radius-sm);
+    clip-path: var(--chamfer-sm);
+    transition: color var(--t-fast), background var(--t-fast);
+  }
+  .home .settings-tabs .tab:hover,
+  .pause .settings-tabs .tab:hover {
+    background: var(--surface);
+  }
+  .home .settings-tabs .tab.on,
+  .pause .settings-tabs .tab.on {
+    background: var(--accent-soft);
+  }
+  .home .settings-tabs .tab::after,
+  .pause .settings-tabs .tab::after {
+    left: 0;
+    right: auto;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    height: auto;
+    background: linear-gradient(180deg, var(--accent-2), var(--accent) 60%, var(--red));
+    transform: scaleY(0);
+    transform-origin: 50% 0;
+  }
+  .home .settings-tabs .tab.on::after,
+  .pause .settings-tabs .tab.on::after {
+    transform: none;
+  }
+  .pause:has(.menu-step:not(.leave) .settings) {
+    --rail-w: calc(var(--rail-pad) * 2 + var(--settings-w));
+  }
+  .pause .rail-bg,
+  .pause .rail-edge {
+    transition: width 0.4s var(--ease-out);
+  }
 }
 /* The menu's and the pause screen's columns do not scroll, so a long page (credits, controls) scrolls inside the card. */
 .home .settings-pane,
@@ -2621,26 +2774,15 @@ body > .mw {
   font-size: 24px;
   color: var(--accent-2);
 }
-/* Open world (free roam, test drive): district and smash count instead of position, lap and best. */
-.hud-area,
-.hud-smash {
-  display: none;
-}
-.hud.open-world .hud-area,
-.hud.open-world .hud-smash {
-  display: flex;
-}
+/* Open world (free roam): the HUD card (ui/hudCard.ts) holds the district, time and smashes instead of
+   position, lap and best; the drift zone and waypoint chips stay under it. */
 .hud.open-world .hud-pos,
 .hud.open-world .hud-lap,
+.hud.open-world .hud-time,
 .hud.open-world .hud-best,
 .hud.open-world .hud-ghost,
 .hud.open-world .hud-progress {
   display: none;
-}
-.hud-area b {
-  font: 900 16px var(--display);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 .hud-ghost {
   border-left-color: var(--purple);
@@ -3654,22 +3796,109 @@ body.garage-open .toast {
   pointer-events: none;
   z-index: 15;
 }
-.drone-top {
+/* The drone's card stands in the top left corner (free roam's leads the HUD's column of chips). */
+.drone-ui > .hud-card {
   position: absolute;
   top: max(12px, env(safe-area-inset-top));
   left: max(12px, env(safe-area-inset-left));
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  max-width: calc(100vw - 200px);
 }
-.drone-actions {
-  position: absolute;
-  top: max(12px, env(safe-area-inset-top));
-  right: max(12px, env(safe-area-inset-right));
+/* ---------- HUD card (ui/hudCard.ts): the drone's and free roam's, one look for both ----------
+   A plate like the menu's, its rule in the place's hue, the badge and title over the readouts. */
+.hud-card {
   display: flex;
-  gap: 6px;
+  flex-direction: column;
+  gap: 12px;
+  width: min(360px, calc(100vw - 24px));
+  padding: 12px 14px 12px;
+  background: linear-gradient(90deg, var(--hue) 0 64px, var(--line-strong) 64px) top left / 100% 2px no-repeat, var(--plate);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--edge);
+}
+.hud-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.hud-card-badge {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  color: var(--hue);
+  background: rgba(var(--hue-rgb), 0.13);
+  clip-path: var(--chamfer-sm);
+}
+.hud-card-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.hud-card-title b {
+  font: 900 20px var(--display);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.hud-card-status {
+  font: 600 12px var(--font);
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+/* Three readouts over the card's width, a hairline between them. */
+.hud-card-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.hud-card-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 0 10px;
+}
+.hud-card-stat:first-child {
+  padding-left: 0;
+}
+.hud-card-stat + .hud-card-stat {
+  border-left: 1px solid var(--line);
+}
+.hud-card-stat span {
+  font: 700 10.5px var(--font);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.hud-card-stat b {
+  font: 700 17px var(--mono);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+/* Exit in the card's top right corner, beside the title. */
+.hud-card-exit {
+  margin-left: auto;
+  align-self: flex-start;
   pointer-events: auto;
+}
+/* The place's actions and Controls on the left of the foot, hide on its right. The card is a plate already,
+   so the buttons are the surface buttons the menus use inside their cards. */
+.hud-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  pointer-events: auto;
+}
+.hud-card-actions .grow {
+  flex: 1;
+}
+/* The card stands on the city like the menu's plates, with the menu's drop shadow. */
+.hud-card {
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.42));
 }
 .drone-updown {
   position: absolute;
@@ -3691,20 +3920,46 @@ body.garage-open .toast {
     display: flex;
   }
 }
-.drone-hint {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: max(10px, env(safe-area-inset-bottom));
-  text-align: center;
-  font-size: 13px;
-  /* Clear of the minimap in the bottom left corner (and balanced on the right). */
-  padding: 0 190px;
+/* A card's controls dialog lists them in the settings page's key list. */
+.hud-card-controls .controls-list {
+  font-size: 14px;
 }
-@media (max-width: 720px), (max-height: 500px) {
-  .drone-hint {
-    padding: 0 12px 0 130px;
-    text-align: left;
+/* H hides the HUD: the UI layer and the music player fade like the menu's cinematic mode, and a small tag in
+   the top left corner says how to bring them back (a click on it does too). */
+body.hud-off #ui > *,
+body.hud-off > .mw {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s ease;
+}
+.hud-off-tag {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  left: max(12px, env(safe-area-inset-left));
+  z-index: 80;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font: 600 12px var(--font);
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background: var(--plate);
+  border: 0;
+  clip-path: var(--chamfer-sm);
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity var(--t-fast), color var(--t-fast);
+  animation: hud-tag-in 0.35s var(--ease-out) backwards;
+}
+.hud-off-tag:hover,
+.hud-off-tag:focus-visible {
+  opacity: 1;
+  color: var(--text);
+}
+@keyframes hud-tag-in {
+  from {
+    opacity: 0;
   }
 }
 
@@ -3963,7 +4218,7 @@ body.garage-open .toast {
   accent-color: var(--hue);
 }
 /* Picks in a segmented control and toggles that are on (front and rear linked, mirrored) take the tab's
-   hue; the screen's actions (Test drive, Export) stay orange. */
+   hue; the screen's actions (Export) stay orange. */
 .garage-body .seg button.on,
 .garage-body .btn.primary:is(.g-link, .g-toggle) {
   background: linear-gradient(100deg, var(--hue) 55%, color-mix(in srgb, var(--hue), #fff 22%));
@@ -4744,7 +4999,7 @@ body.garage-open .toast {
   margin-top: 3px;
 }
 .mw-lib a,
-.mw-credits-block a {
+.settings-pane .credits a {
   color: var(--accent);
 }
 .mw-lib-track {
@@ -5664,8 +5919,16 @@ body.fullmap-open .mw {
   display: none;
   border-color: rgba(255, 216, 102, 0.35);
 }
-.hud.open-world .hud-waypoint.show {
+.hud.open-world .hud-waypoint.show,
+.hud.waypoint-race .hud-waypoint.show {
   display: flex;
+}
+/* The waypoint race's next target wears the type's cyan (free roam's own pin stays yellow). */
+.hud.waypoint-race .hud-waypoint {
+  border-color: rgba(120, 220, 232, 0.4);
+}
+.hud.waypoint-race .hud-waypoint :is(.ic, .dir) {
+  color: var(--cyan);
 }
 .hud-waypoint .ic {
   color: var(--accent-2);

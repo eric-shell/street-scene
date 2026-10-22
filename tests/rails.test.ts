@@ -296,7 +296,7 @@ describe('corner rails', () => {
   });
 });
 
-describe('open world test drive', () => {
+describe('open world free roam', () => {
   it('has no barriers, rails, rivals or countdown, and never nags about the route', () => {
     const r = createRace({ ...raceConfig(20261019, 'circuit', 3), openWorld: true, laps: 10 });
     expect(r.world.openWorld).toBe(true);
