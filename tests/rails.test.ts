@@ -29,7 +29,8 @@ describe('corner rails', () => {
     const rng = new Rng(4242);
     let pieces = 0;
     for (let i = 0; i < 16; i++) {
-      const w = createWorld(rng.int(0, 0x7fffffff), i % 2 ? 'sprint' : 'circuit');
+      const seed = rng.int(0, 0x7fffffff);
+      const w = createWorld(seed, i % 2 ? 'sprint' : 'circuit');
       const all = rails(w);
       const closures = closureGroups(w);
       const rs = all.filter((r) => !closures.has(r.group));
@@ -78,7 +79,7 @@ describe('corner rails', () => {
       for (const r of all) {
         for (const o of others) {
           if (Math.abs(o.ax - r.ax) > 80 || Math.abs(o.az - r.az) > 80) continue;
-          expect(cross(r.ax, r.az, r.bx, r.bz, o.ax, o.az, o.bx, o.bz)).toBe(false);
+          expect(cross(r.ax, r.az, r.bx, r.bz, o.ax, o.az, o.bx, o.bz), `${seed} ${w.route.kind}: rail ${r.group}/${r.piece} (${r.ax.toFixed(1)},${r.az.toFixed(1)}) crosses ${o.kind}/${o.look} (${o.ax.toFixed(1)},${o.az.toFixed(1)})-(${o.bx.toFixed(1)},${o.bz.toFixed(1)})`).toBe(false);
         }
         for (const p of w.props) {
           if (Math.abs(p.x - r.ax) > 6 || Math.abs(p.z - r.az) > 6) continue;

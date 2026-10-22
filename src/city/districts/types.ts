@@ -20,7 +20,9 @@
  * carry a `look` naming what draws them, and every look has a renderer.
  * Walls are one sided (normal toward the drivable side) and push back a car
  * up to 3 m behind them, so two drivable spaces separated by a wall must be at
- * least ~4 m apart (use a solid body between them, see river.ts bridgeBody).
+ * least ~4 m apart (use a solid body between them). Where two drivable levels
+ * stack (a bridge deck over the river channel) the walls of one level carry a
+ * `top` or `bottom` height so cars on the other pass them (see DeckSpan).
  */
 import type { Vec2 } from '../../sim/math';
 import type { Rng } from '../../sim/prng';
@@ -82,13 +84,15 @@ export const COBBLE_PRIORITY = 6;
  * planter / fountain: raised planter box, fountain basin (infill).
  * island: a roundabout island's solid pieces, the plaza's dry basin and a sculpture plinth (roundabout).
  * pillar: elevated railway support (subway).
- * parapet / culvert / fence / trench / channelEnd: bridge sides, bridge body seen from the
- *   channel, bank top fence, ramp retaining walls, channel tunnel ends (river).
+ * parapet / culvert / fence / trench / channelEnd: bridge deck sides (a car in the channel below
+ *   passes under them: Wall.bottom), a bridge's abutments on the banks under its deck (solids with
+ *   Wall.top), bank top fence, ramp retaining walls, channel tunnel ends (river).
  * tree: a tree trunk (park, roundabout).
  * monument: the step ring around a landmark's base, or an arch's piers (monument).
  * tunnel / rock: tunnel walls, portal wingwalls and the shut in building line behind them;
  *   the rock face along a ridge's cutting (tunnel).
- * pier: overpass piers and abutments, sign gantry legs (overpass).
+ * pier: overpass piers and abutments, sign gantry legs (overpass); a river bridge's piers standing on
+ *   the channel floor under its deck (solids with Wall.top, river).
  * marketRail: the night market's crowd rail along a pen and its end caps back to the building line;
  *   marketFront: the frontage behind a pen, a facade or the market's shuttered back wall (market).
  * gate: a timed gate's arms across the deck (sim/gates.ts; drawn by render/drawbridge.ts).
@@ -184,6 +188,25 @@ export interface HeightMod {
   add(x: number, z: number, out: HeightSample): void;
 }
 
+/**
+ * A bridge deck over a sunken district (the river channel): two drivable
+ * levels inside `polygon`. The terrain is the deck; `lower` adds the ground
+ * beneath it (its height below the deck, 0 or negative, with the gradient),
+ * which World.heightAt returns for a car body nearer to it than to the deck.
+ */
+export interface DeckSpan {
+  polygon: Vec2[];
+  area: number;
+  /** The drop from the deck to the lower level's floor (m): a body less than half of it below the deck is on the deck. */
+  depth: number;
+  /**
+   * Add the lower level's height relative to the terrain (m, <= 0) and its gradient at (x, z) into
+   * `out`; returns the deck's height above the terrain there (0 on the deck proper, up to the drop
+   * at the footprint's edge, where the terrain eases down to the lower level under the deck's edge).
+   */
+  lower(x: number, z: number, out: HeightSample): number;
+}
+
 /** City frontage walls whose inside probe falls in `polygon` are drawn by this look instead. */
 export interface FrontLook {
   polygon: Vec2[];
@@ -212,6 +235,8 @@ export interface AreaBuild {
   surfaces: SurfacePatch[];
   /** Folded into the terrain (graph phase only). */
   heightMods: HeightMod[];
+  /** Two level spans (bridge decks over the river channel), read by World's height queries. */
+  decks: DeckSpan[];
   /** No buildings or infill inside these polygons (graph phase only). */
   exclusions: Vec2[][];
   /** City frontage walls whose inside probe falls in these polygons are removed. */
@@ -225,7 +250,7 @@ export interface AreaBuild {
 }
 
 export function emptyBuild(): AreaBuild {
-  return { walls: [], props: [], surfaces: [], heightMods: [], exclusions: [], openings: [], frontLooks: [], reserved: [], hints: [], destructibles: [] };
+  return { walls: [], props: [], surfaces: [], heightMods: [], decks: [], exclusions: [], openings: [], frontLooks: [], reserved: [], hints: [], destructibles: [] };
 }
 
 /**

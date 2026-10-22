@@ -6,8 +6,9 @@
  * the leaves flat) is towed off: put at a standstill on the approach behind
  * the nearer gate, facing the way it was heading along the bridge, with a
  * 'reset' event like any reset to the road. No car is ever left on a raised
- * leaf. Pure and deterministic; costs nothing while the leaves are down and a
- * point test per car while they are up.
+ * leaf. A car on the channel floor under the span (the sim's lower level,
+ * see World.heightAt) is not on it. Pure and deterministic; costs nothing
+ * while the leaves are down and a point test per car while they are up.
  */
 import type { RaceState } from './race';
 import { DRAWBRIDGE, leafAngle, onSpan, spanCoords } from '../city/drawbridge';
@@ -25,6 +26,8 @@ export function stepHazards(r: RaceState): void {
   for (const rc of r.cars) {
     const c = rc.state;
     if (!onSpan(db, c.x, c.z, DRAWBRIDGE.towMargin)) continue;
+    // Under the span, on the channel floor: below the deck by more than half the channel's depth.
+    if (c.y < r.world.heightAt(c.x, c.z) - DRAWBRIDGE.underDeck) continue;
     const { u, w } = spanCoords(db, c.x, c.z);
     const end = u >= 0 ? 1 : -1;
     const dir = sin(c.yaw) * db.dx + cos(c.yaw) * db.dz >= 0 ? 1 : -1;

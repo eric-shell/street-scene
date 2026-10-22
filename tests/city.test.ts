@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Rng, hashString, seedFromString } from '../src/sim/prng';
-import { generateRoadGraph, graphIsConnected, edgeBetween } from '../src/city/roadGraph';
+import { generateRoadGraph, graphIsConnected, edgeBetween, isRiverEdge } from '../src/city/roadGraph';
 import { buildRoute, routeSample } from '../src/city/route';
 import { createCity, createWorld, planRoads } from '../src/city/world';
 import { CITY, ROUTE } from '../src/city/config';
@@ -176,7 +176,8 @@ describe('city generation', () => {
         w.route.grid.forEach((g, k) => {
           const surf = w.surfaceAt(g.x, g.z);
           if (surf !== 'road' && surf !== 'cobble') failures.push(`seed ${seed} ${mode} slot ${k}: on ${surf}`);
-          if (w.collideCircle(g.x, g.z, 1.2, [])) failures.push(`seed ${seed} ${mode} slot ${k}: touches a wall`);
+          // A car standing on the slot (at street level: on a bridge deck the river's piers are beneath it).
+          if (w.collideCircle(g.x, g.z, 1.2, [], w.heightAt(g.x, g.z))) failures.push(`seed ${seed} ${mode} slot ${k}: touches a wall`);
           for (const o of w.route.grid.slice(k + 1)) if (Math.hypot(o.x - g.x, o.z - g.z) < 3.4) failures.push(`seed ${seed} ${mode} slot ${k}: overlaps another`);
         });
       }
@@ -350,10 +351,12 @@ describe('city generation', () => {
       // in the curb lane on purpose (roadworks.ts; their own test keeps the rest of the street open), and
       // the night market's fruit crates spill off the curb onto the road edge (checked in market.test.ts).
       // A roundabout island's clutter stands where its spokes' edges run on to the node (the island test
-      // keeps it off the ring road).
+      // keeps it off the ring road). The river's channel and ramp edges run beneath the bridge decks,
+      // whose sidewalks carry the crossing streets' lights a level above them.
       for (const p of props) {
         if (p.area !== undefined && ['backAlley', 'river', 'alley', 'roadworks', 'market', 'roundabout'].includes(w.areas[p.area].kind)) continue;
         for (const e of w.graph.edges) {
+          if (isRiverEdge(e)) continue;
           const a = w.graph.nodes[e.a];
           const b = w.graph.nodes[e.b];
           expect(distToSegment(p.x, p.z, a.x, a.z, b.x, b.z) - e.width / 2).toBeGreaterThan(p.radius);
@@ -456,6 +459,8 @@ describe('districts', () => {
         }
         // A lane closure's plant stands in its closed curb lane.
         if (wall.look === 'roadworks') continue;
+        // A bridge deck's parapets, piers and abutments stand on the road of the other level (Wall.top / bottom).
+        if (wall.top !== undefined || wall.bottom !== undefined) continue;
         // Not on any road (sampled along the wall).
         for (const t of [0.1, 0.5, 0.9]) {
           const x = wall.ax + (wall.bx - wall.ax) * t;
@@ -884,8 +889,9 @@ describe('route shortcuts', () => {
         }
       }
     }
-    // Most routes get a second one.
-    expect(two).toBeGreaterThan(160);
+    // Many routes get a second one (fewer since the river channel runs the whole map: a dive is a long
+    // stretch with no street corner to cut; 163 of 240 before, 130 after).
+    expect(two).toBeGreaterThan(110);
   });
 
   it('shortcuts are open, drivable and the same every time', () => {

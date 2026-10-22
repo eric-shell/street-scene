@@ -71,6 +71,12 @@ export interface Wall {
    * the roof flies over it (districts/carPark.ts).
    */
   top?: number;
+  /**
+   * World height (m) of a wall's underside: a car whose body is below it (CarState.y < bottom)
+   * passes under it, the mirror of `top`. Used by the parapets of a bridge deck over the river
+   * channel, which cars on the channel floor beneath drive under (districts/river.ts).
+   */
+  bottom?: number;
 }
 
 /** A small convex solid: its faces with outward unit normals, in order around it. */

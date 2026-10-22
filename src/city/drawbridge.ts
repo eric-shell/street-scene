@@ -16,12 +16,13 @@
  * (reserved circles in the river's build): a streetlight would be left
  * standing in mid air over a raised leaf.
  *
- * In the sim the deck stays where it is (the bridge body is solid ground at
- * street level, like every bridge: the channel never passes under one), and
- * the two gates are the only thing that changes: they block from a few
- * seconds before the leaves start up until the arms are half way back up.
- * A car still on the span when the leaves start up is towed off to the
- * approach behind the nearer gate (sim/hazards.ts). The renderer
+ * In the sim the deck stays where it is (at street level, the channel floor
+ * running on beneath it like under every bridge: World.heightAt's two
+ * levels), and the two gates are the only thing that changes: they block
+ * from a few seconds before the leaves start up until the arms are half way
+ * back up. A car still on the span when the leaves start up is towed off to
+ * the approach behind the nearer gate (sim/hazards.ts); cars on the floor
+ * below drive on. The renderer
  * (render/drawbridge.ts) draws the leaves, the pit under them, the
  * counterweight houses, the control cabin, the gates and their lights from
  * the same pure functions at the interpolated sim time.
@@ -29,9 +30,9 @@
 import type { RoadGraph, RoadEdge } from './roadGraph';
 import type { RouteKind } from './route';
 import { buildRoute, routeSample } from './route';
-import { riverCenter } from './districts/river';
+import { riverCenter, riverSlope } from './districts/river';
 import type { Area, AreaBuild } from './districts/types';
-import { DEG, cos, distToSegment, sin, sqrt } from '../sim/math';
+import { DEG, distToSegment, sin, sqrt } from '../sim/math';
 import { Rng, deriveSeed } from '../sim/prng';
 import { TICK_HZ } from '../sim/constants';
 import type { GateCycle, GateSet } from '../sim/gates';
@@ -73,6 +74,8 @@ export const DRAWBRIDGE = {
   towMargin: 1.5,
   /** Towed cars land this far beyond their gate line (center, m). */
   towBack: 6,
+  /** A car this far (m) below the deck is on the channel floor under the span, not on it. */
+  underDeck: 2,
 } as const;
 
 /**
@@ -174,7 +177,7 @@ export function bridgeFrame(g: RoadGraph, area: Area, eid: number): BridgeFrame 
   const nz = dx;
   const half = e.width / 2 + e.sidewalk;
   // The channel's frame at the crossing: tangent t, normal m toward +l.
-  const slope = p.amp * p.k * cos(p.k * cx + p.phase);
+  const slope = riverSlope(p, cx);
   const tl = sqrt(1 + slope * slope);
   const tx = 1 / tl;
   const tz = slope / tl;

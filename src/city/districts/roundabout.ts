@@ -32,6 +32,7 @@ import { PROP_DEFS, PropKind } from '../props';
 import type { DistrictModule } from './types';
 import { emptyBuild } from './types';
 import { circlePolygon, polyWalls, smooth01, solidWalls } from './geom';
+import { riverCenter } from './river';
 
 const CFG = CITY.districts.roundabout;
 
@@ -61,7 +62,7 @@ export const roundaboutModule: DistrictModule = {
         }
         // Keep clear of the river channel.
         for (const r of rivers) {
-          const zc = r.params.zMid + r.params.amp * Math.sin(r.params.k * n.x + r.params.phase);
+          const zc = riverCenter(r.params, n.x);
           if (Math.abs(n.z - zc) < r.params.top + CFG.outerRadius[1] + CITY.sidewalk + 12) return false;
         }
         return true;

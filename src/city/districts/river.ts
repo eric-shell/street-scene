@@ -1,29 +1,41 @@
 /**
  * River: an LA River style concrete flood channel running east-west across
- * the whole map between two street rows, with a gently meandering
- * centerline z = zMid + amp * sin(k x + phase), and a race venue: its floor
- * is part of the road graph and routes dive in and out of it.
+ * the whole map between two street rows, and a race venue end to end: its
+ * floor is one chain of 'channel' edges in the road graph from one tunnel
+ * portal to the other, routes dive in anywhere along it and run its length,
+ * under every bridge.
+ *
+ * Centerline: the midline between the two bank rows, sampled column by
+ * column from the grid nodes (so it follows a warped grid) and smoothed, plus
+ * a slow meander whose amplitude swells and fades along the length; stored
+ * as samples in the area params (riverCenter / riverSlope interpolate them),
+ * the swing scaled down until every junction clears the band. Nothing here
+ * assumes rows are straight or that one edge joins two grid nodes: a
+ * crossing street is any edge whose segment crosses the centerline, followed
+ * through degree-2 bend nodes into a deck polyline.
  *
  * Cross section (l = z - centerline): flat floor |l| <= floorHalf at -depth,
  * smooth sloped concrete banks up to |l| = top, a fence on top facing the
- * channel. Streets crossing it are bridges at street level (edge.bridge:
- * the terrain stays flat under the deck, its frontage walls become parapets,
- * and a solid bridge body `bridgeBody` m wide on each side, walls 'culvert'
- * facing the channel, keeps channel and deck apart since walls push back
- * cars up to 3 m behind them) except the fords: one or two crossing streets
- * dip through the channel instead, so the floor runs on under them.
+ * channel. Crossing streets are bridges (edge.bridge) except the fords, which
+ * dip through. A bridge is two drivable levels: the terrain under the deck
+ * stays at street level (the deck, what the road mesh drapes on and what
+ * every height query without a car height returns) and the channel profile
+ * runs on beneath it as a DeckSpan the world's height queries return for a
+ * car body nearer the floor than the deck. The deck's parapets carry a
+ * `bottom` (channel cars pass under them); the piers on the channel floor
+ * edges and the abutment boxes on the banks are solids with a `top` (deck
+ * cars pass over them), set by settleRiver once the terrain exists.
  *
- * Entrances (4-6 per seed): a ford is two ramps meeting at a foot node on
- * the centerline, a side ramp is a trench cut from a parallel bank street
- * (a T node split into it) down to its own foot. Every ramp is an edge of
- * kind 'ramp' between its street node and its foot; the feet inside one
- * bridge gap are chained by 'channel' edges along the meander (plus a stub
- * toward each bridge, so a route leaving the channel has something to close
- * off), with intermediate nodes so the chords stay near the true centerline.
- * Ramp trenches have 'trench' retaining walls and a solid plinth either side
- * (its outer faces are walls too) so nobody drives off the edge; the ramp
- * profile has a rounded lip at the top (a crest you launch over) and a hard
- * kink at the floor edge (a landing that bottoms the suspension out).
+ * Entrances (6-8 per seed, at least one in every quarter of the length, the
+ * outer quarters served first, banks alternating): a ford is two ramps
+ * meeting at a foot node on the centerline, a side ramp a trench cut from a
+ * bank street (a T node split into it) down to its own foot. Every ramp is an
+ * edge of kind 'ramp' between its street node and its foot, every foot a node
+ * of the channel chain. Ramp trenches have 'trench' retaining walls and a
+ * solid plinth either side; the profile has a rounded lip at the top (a crest
+ * you launch over) and a hard kink at the floor edge. Every ramp top gets the
+ * shortcut treatment: fences and clutter funnelling from the street into the
+ * mouth and string lights across it, never a sign.
  *
  * The floor is drivable concrete; a wet 'water' trickle (offroad grip) runs
  * to one side of the racing line; barrels, crates and bags litter the floor
@@ -33,25 +45,93 @@
 import { CITY } from '../config';
 import type { RoadGraph, RoadEdge, RoadNode } from '../roadGraph';
 import { addEdge, addNode, isRiverEdge, otherNode, splitEdge } from '../roadGraph';
-import { Vec2, cos, distToSegment, segmentT, sin, sqrt } from '../../sim/math';
+import { Vec2, distToSegment, segmentT, sin, sqrt } from '../../sim/math';
 import { Rng } from '../../sim/prng';
 import type { Wall } from '../blocks';
+import type { Terrain } from '../terrain';
 import type { PropKind } from '../props';
-import type { Area, DistrictModule, HeightSample } from './types';
+import type { Area, AreaBuild, DistrictModule, HeightSample } from './types';
 import { emptyBuild } from './types';
-import { polyWalls, smooth01 } from './geom';
+import { polyWalls, smooth01, solidWalls } from './geom';
 
 const CFG = CITY.districts.river;
 
-/** Centerline helpers from an area's params. */
+/** Street kinds that may cross the channel (alleys and shortcuts are planned later and never do). */
+const STREET_KINDS = new Set<RoadEdge['kind']>(['street', 'avenue', 'boulevard', 'diagonal']);
+/** A deck polyline is followed through bend nodes until this far beyond the band's top edge (m). */
+const DECK_REACH = 8;
+/** The parapets, deck openings and span footprints reach this far beyond the band's top edge (m). */
+const DECK_END = 2.5;
+
+// ---------------------------------------------------------------------------
+// Centerline
+
+const samplesCache = new WeakMap<Record<string, number>, Float64Array>();
+
+/** The centerline samples of an area's params (c0..c{cn-1}, every cdx m from cx0), cached per params object. */
+function samplesOf(p: Record<string, number>): Float64Array {
+  let s = samplesCache.get(p);
+  if (!s) {
+    const n = p.cn;
+    s = new Float64Array(n);
+    for (let i = 0; i < n; i++) s[i] = p[`c${i}`];
+    samplesCache.set(p, s);
+  }
+  return s;
+}
+
+/** Centerline z at x: uniform Catmull-Rom through the samples (C1), flat beyond the ends. */
 export function riverCenter(p: Record<string, number>, x: number): number {
-  return p.zMid + p.amp * sin(p.k * x + p.phase);
+  const s = samplesOf(p);
+  const n = s.length;
+  const u = (x - p.cx0) / p.cdx;
+  if (u <= 0) return s[0];
+  if (u >= n - 1) return s[n - 1];
+  const k = Math.floor(u);
+  const t = u - k;
+  const y0 = s[Math.max(0, k - 1)];
+  const y1 = s[k];
+  const y2 = s[Math.min(n - 1, k + 1)];
+  const y3 = s[Math.min(n - 1, k + 2)];
+  return 0.5 * (2 * y1 + (-y0 + y2) * t + (2 * y0 - 5 * y1 + 4 * y2 - y3) * t * t + (-y0 + 3 * y1 - 3 * y2 + y3) * t * t * t);
+}
+
+/** dz/dx of the centerline at x. */
+export function riverSlope(p: Record<string, number>, x: number): number {
+  const s = samplesOf(p);
+  const n = s.length;
+  const u = (x - p.cx0) / p.cdx;
+  if (u <= 0 || u >= n - 1) return 0;
+  const k = Math.floor(u);
+  const t = u - k;
+  const y0 = s[Math.max(0, k - 1)];
+  const y1 = s[k];
+  const y2 = s[Math.min(n - 1, k + 1)];
+  const y3 = s[Math.min(n - 1, k + 2)];
+  return (0.5 * (-y0 + y2 + 2 * (2 * y0 - 5 * y1 + 4 * y2 - y3) * t + 3 * (-y0 + 3 * y1 - 3 * y2 + y3) * t * t)) / p.cdx;
+}
+
+/** Signed distance across the channel (z above the centerline at the point's x; the meander is gentle, so this is close to the true normal distance). */
+export function riverL(p: Record<string, number>, x: number, z: number): number {
+  return z - riverCenter(p, x);
+}
+
+/** Unit tangent (toward +x) and normal (toward +l) of the centerline at x. */
+export function riverFrame(p: Record<string, number>, x: number): { tx: number; tz: number; mx: number; mz: number } {
+  const s = riverSlope(p, x);
+  const tl = sqrt(1 + s * s);
+  const tx = 1 / tl;
+  const tz = s / tl;
+  return { tx, tz, mx: -tz, mz: tx };
 }
 
 /** Width of the channel edges as the route sees them (the floor less the chord margin on each side). */
 export function channelWidth(floorHalf = CFG.floorHalf): number {
   return 2 * (floorHalf - CFG.channelMargin);
 }
+
+// ---------------------------------------------------------------------------
+// Ramps
 
 /** An entrance ramp as stored in the area params (see rampsOf). */
 export interface Ramp {
@@ -101,69 +181,6 @@ export function rampProfile(u: number): { f: number; df: number } {
   return { f: s * (u - a / 2), df: s };
 }
 
-interface Bridge {
-  edge: number;
-  ax: number;
-  az: number;
-  bx: number;
-  bz: number;
-  dx: number;
-  dz: number;
-  nx: number;
-  nz: number;
-  len: number;
-  /** Half width to the outer sidewalk line. */
-  dk: number;
-  /** x where the edge crosses the centerline. */
-  cx: number;
-}
-
-/** Parameter along a -> b where the edge crosses l = target, by bisection on l(t). */
-function crossingT(p: Record<string, number>, a: Vec2, b: Vec2, target: number): number {
-  const lAt = (t: number) => a.z + (b.z - a.z) * t - riverCenter(p, a.x + (b.x - a.x) * t) - target;
-  let lo = 0;
-  let hi = 1;
-  const sLo = lAt(0) < 0;
-  for (let i = 0; i < 48; i++) {
-    const mid = (lo + hi) / 2;
-    if (lAt(mid) < 0 === sLo) lo = mid;
-    else hi = mid;
-  }
-  return (lo + hi) / 2;
-}
-
-function bridgesOf(g: RoadGraph, area: Area): Bridge[] {
-  const p = area.params;
-  return area.edges
-    .filter((eid) => g.edges[eid].bridge)
-    .map((eid) => {
-      const e = g.edges[eid];
-      const a = g.nodes[e.a];
-      const b = g.nodes[e.b];
-      const len = sqrt((b.x - a.x) ** 2 + (b.z - a.z) ** 2) || 1;
-      const dx = (b.x - a.x) / len;
-      const dz = (b.z - a.z) / len;
-      const t = crossingT(p, a, b, 0);
-      return { edge: eid, ax: a.x, az: a.z, bx: b.x, bz: b.z, dx, dz, nx: -dz, nz: dx, len, dk: e.width / 2 + e.sidewalk, cx: a.x + (b.x - a.x) * t };
-    });
-}
-
-/** Point on the bridge's line offset by `off` (along its normal) where l = lTarget. */
-function bridgePoint(p: Record<string, number>, br: Bridge, off: number, lTarget: number): Vec2 {
-  const ox = br.ax + br.nx * off;
-  const oz = br.az + br.nz * off;
-  const f = (t: number) => oz + br.dz * t - riverCenter(p, ox + br.dx * t) - lTarget;
-  let lo = -40;
-  let hi = br.len + 40;
-  const sLo = f(lo) < 0;
-  for (let i = 0; i < 56; i++) {
-    const mid = (lo + hi) / 2;
-    if (f(mid) < 0 === sLo) lo = mid;
-    else hi = mid;
-  }
-  return { x: ox + br.dx * lo, z: oz + br.dz * lo };
-}
-
 /**
  * Distance along a ramp's axis from its foot where |l| reaches `al`, on the
  * line `lat` to the left of the axis (the axis is nearly perpendicular to the
@@ -199,10 +216,193 @@ interface RampPlan {
   body: number;
   topL: number;
   curbL: number;
-  /** Side ramps: the parallel street edge to split and where. Fords: the crossing edge. */
+  /** Side ramps: the bank street edge to split (where the ramp's axis meets it). Fords: the crossing edge. */
   edge: number;
-  t?: number;
+  hit?: Vec2;
 }
+
+// ---------------------------------------------------------------------------
+// Bridges
+
+/** A bridge: one street through the band, its deck polyline and frame at the crossing. */
+export interface Bridge {
+  /** Its edges, the one whose segment crosses the centerline first (the drawbridge and hints name a bridge by it). */
+  edge: number;
+  edges: number[];
+  /** Deck polyline, node to node, running toward +l, reaching DECK_REACH beyond the band on both banks (or the next junction). */
+  pts: Vec2[];
+  /** Half width to the outer sidewalk line (m). */
+  dk: number;
+  /** Where the polyline crosses the centerline, the unit axis along it there (toward +l) and its left normal. */
+  cx: number;
+  cz: number;
+  dx: number;
+  dz: number;
+  nx: number;
+  nz: number;
+}
+
+/** Parameter along a -> b where the segment crosses l = target, by bisection on l(t). */
+function crossingT(p: Record<string, number>, a: Vec2, b: Vec2, target: number): number {
+  const lAt = (t: number) => riverL(p, a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t) - target;
+  let lo = 0;
+  let hi = 1;
+  const sLo = lAt(0) < 0;
+  for (let i = 0; i < 48; i++) {
+    const mid = (lo + hi) / 2;
+    if (lAt(mid) < 0 === sLo) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+/** True when the segment a -> b crosses the centerline. */
+const crosses = (p: Record<string, number>, a: Vec2, b: Vec2): boolean => riverL(p, a.x, a.z) * riverL(p, b.x, b.z) < 0;
+
+/**
+ * The street through the band that edge `e` (crossing the centerline) is part
+ * of: followed through degree-2 nodes on both sides until the node lies
+ * DECK_REACH beyond the band or is a junction. `allowed` limits the walk to
+ * some edges (an area's). Null when a bend leads onto a road of another kind.
+ */
+function chainOf(g: RoadGraph, p: Record<string, number>, e: RoadEdge, allowed?: Set<number>): { edges: RoadEdge[]; nodes: number[] } | null {
+  const T = p.top;
+  const edges: RoadEdge[] = [e];
+  const nodes: number[] = [e.a, e.b];
+  for (const end of [0, 1]) {
+    let cur = e;
+    let node = end === 0 ? e.a : e.b;
+    for (let guard = 0; guard < 8; guard++) {
+      const n = g.nodes[node];
+      if (n.edges.length !== 2 || Math.abs(riverL(p, n.x, n.z)) >= T + DECK_REACH) break;
+      const nextId = n.edges[0] === cur.id ? n.edges[1] : n.edges[0];
+      if (allowed && !allowed.has(nextId)) break;
+      const next = g.edges[nextId];
+      if (!STREET_KINDS.has(next.kind) || next.shortcut || isRiverEdge(next)) return null;
+      const far = otherNode(next, node);
+      if (end === 0) {
+        edges.unshift(next);
+        nodes.unshift(far);
+      } else {
+        edges.push(next);
+        nodes.push(far);
+      }
+      cur = next;
+      node = far;
+    }
+  }
+  return { edges, nodes };
+}
+
+function makeBridge(g: RoadGraph, p: Record<string, number>, e: RoadEdge, chain: { edges: RoadEdge[]; nodes: number[] }): Bridge {
+  let pts = chain.nodes.map((id) => ({ x: g.nodes[id].x, z: g.nodes[id].z }));
+  // Toward +l.
+  if (riverL(p, pts[0].x, pts[0].z) > 0) pts = pts.reverse();
+  const a = g.nodes[e.a];
+  const b = g.nodes[e.b];
+  const t = crossingT(p, a, b, 0);
+  const cx = a.x + (b.x - a.x) * t;
+  const cz = a.z + (b.z - a.z) * t;
+  const len = e.length || 1;
+  let dx = (b.x - a.x) / len;
+  let dz = (b.z - a.z) / len;
+  if (riverL(p, b.x, b.z) < 0) {
+    dx = -dx;
+    dz = -dz;
+  }
+  return { edge: e.id, edges: chain.edges.map((x) => x.id), pts, dk: e.width / 2 + e.sidewalk, cx, cz, dx, dz, nx: -dz, nz: dx };
+}
+
+/** The bridges of a river area, in crossing x order. */
+export function bridgesOf(g: RoadGraph, area: Area): Bridge[] {
+  const p = area.params;
+  const allowed = new Set(area.edges);
+  const out: Bridge[] = [];
+  for (const eid of area.edges) {
+    const e = g.edges[eid];
+    if (!e.bridge || !crosses(p, g.nodes[e.a], g.nodes[e.b])) continue;
+    const chain = chainOf(g, p, e, allowed) ?? { edges: [e], nodes: [e.a, e.b] };
+    out.push(makeBridge(g, p, e, chain));
+  }
+  return out.sort((u, v) => u.cx - v.cx);
+}
+
+/** Distance from a point to a bridge's deck polyline (m). */
+export function distToBridge(br: Bridge, x: number, z: number): number {
+  let d = Infinity;
+  for (let i = 0; i + 1 < br.pts.length; i++) d = Math.min(d, distToSegment(x, z, br.pts[i].x, br.pts[i].z, br.pts[i + 1].x, br.pts[i + 1].z));
+  return d;
+}
+
+/**
+ * Point on the deck polyline offset `off` to its left (toward +w) where
+ * l = lTarget, by bisection along the offset segments (extended 60 m past
+ * both ends, so targets beyond the bank nodes resolve along the end streets).
+ */
+export function bridgePoint(p: Record<string, number>, br: Bridge, off: number, lTarget: number): Vec2 {
+  const pts = br.pts;
+  const m = pts.length - 1;
+  const at = (i: number, t: number): Vec2 => {
+    const a = pts[i];
+    const b = pts[i + 1];
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const len = sqrt(dx * dx + dz * dz) || 1;
+    return { x: a.x + dx * t - (dz / len) * off, z: a.z + dz * t + (dx / len) * off };
+  };
+  for (let i = 0; i < m; i++) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    const len = sqrt((b.x - a.x) ** 2 + (b.z - a.z) ** 2) || 1;
+    let lo = i === 0 ? -60 / len : 0;
+    let hi = i === m - 1 ? 1 + 60 / len : 1;
+    const q0 = at(i, lo);
+    const q1 = at(i, hi);
+    const l0 = riverL(p, q0.x, q0.z) - lTarget;
+    const l1 = riverL(p, q1.x, q1.z) - lTarget;
+    if (l0 * l1 > 0 && i < m - 1) continue;
+    const sLo = l0 < 0;
+    for (let k = 0; k < 50; k++) {
+      const mid = (lo + hi) / 2;
+      const q = at(i, mid);
+      if (riverL(p, q.x, q.z) - lTarget < 0 === sLo) lo = mid;
+      else hi = mid;
+    }
+    return at(i, (lo + hi) / 2);
+  }
+  return at(m - 1, 1);
+}
+
+/** The four corners of a bridge's box between |w| <= half and l in [l0, l1] (in that w, l order). */
+function deckBox(p: Record<string, number>, br: Bridge, half: number, l0: number, l1: number): Vec2[] {
+  return [bridgePoint(p, br, -half, l0), bridgePoint(p, br, half, l0), bridgePoint(p, br, half, l1), bridgePoint(p, br, -half, l1)];
+}
+
+/** The deck polyline offset `off`, clipped to l in [l0, l1]: the end points by bisection, the bends between kept. */
+function deckLine(p: Record<string, number>, br: Bridge, off: number, l0: number, l1: number): Vec2[] {
+  const out: Vec2[] = [bridgePoint(p, br, off, l0)];
+  for (let i = 1; i + 1 < br.pts.length; i++) {
+    const q = br.pts[i];
+    const l = riverL(p, q.x, q.z);
+    if (l <= l0 || l >= l1) continue;
+    // Offset along the bisector of the two segments at the bend.
+    const a = br.pts[i - 1];
+    const b = br.pts[i + 1];
+    const d0 = { x: q.x - a.x, z: q.z - a.z };
+    const d1 = { x: b.x - q.x, z: b.z - q.z };
+    const l0n = sqrt(d0.x * d0.x + d0.z * d0.z) || 1;
+    const l1n = sqrt(d1.x * d1.x + d1.z * d1.z) || 1;
+    const nx = -d0.z / l0n - d1.z / l1n;
+    const nz = d0.x / l0n + d1.x / l1n;
+    const nl = sqrt(nx * nx + nz * nz) || 1;
+    out.push({ x: q.x + (nx / nl) * off, z: q.z + (nz / nl) * off });
+  }
+  out.push(bridgePoint(p, br, off, l1));
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// The module
 
 export const riverModule: DistrictModule = {
   kind: 'river',
@@ -215,229 +415,326 @@ export const riverModule: DistrictModule = {
     const F = CFG.floorHalf;
     const T = F + CFG.bankWidth;
     const H = CITY.gridH;
-    const rowZ: number[] = [];
-    for (let j = 0; j < H; j++) {
-      const ns = g.nodes.filter((n) => n.gj === j);
-      rowZ.push(ns.reduce((s, n) => s + n.z, 0) / Math.max(1, ns.length));
-    }
+    const x0 = g.bounds.minX - 160;
+    const x1 = g.bounds.maxX + 160;
+    const step = CFG.centerStep;
+    const cx0 = x0 - 2 * step;
+    const cn = Math.ceil((x1 + 2 * step - cx0) / step) + 1;
+    const kM = (Math.PI * 2) / CFG.wavelength;
+    const kE = (Math.PI * 2) / CFG.envelope;
+    const phase = rng.range(0, Math.PI * 2);
+    const phaseE = rng.range(0, Math.PI * 2);
     const rows: number[] = [];
     for (let j = 2; j <= H - 4; j++) rows.push(j);
     rng.shuffle(rows);
-    const k = (Math.PI * 2) / CFG.wavelength;
-    const phase = rng.range(0, Math.PI * 2);
-    let params: Record<string, number> | null = null;
-    for (const j of rows) {
-      for (const amp of [CFG.meander, 0]) {
-        const p = { zMid: (rowZ[j] + rowZ[j + 1]) / 2, amp, k, phase };
-        if (g.nodes.every((n) => Math.abs(n.z - riverCenter(p, n.x)) >= T + 20)) {
-          params = p;
-          break;
-        }
-      }
-      if (params) break;
-    }
-    if (!params) return;
-    const x0 = g.bounds.minX - 160;
-    const x1 = g.bounds.maxX + 160;
-    const footprint = (g.bounds.maxX - g.bounds.minX) * 2 * T;
-    if (ctx.budget.used + footprint > ctx.budget.total) return;
-    const p: Record<string, number> = { ...params, floor: F, top: T, depth: CFG.depth, x0, x1, ramps: 0, seed: rng.int(1, 0x7ffffffe) };
-    const lOf = (x: number, z: number) => z - riverCenter(p, x);
-    const crossing = g.edges.filter((e) => lOf(g.nodes[e.a].x, g.nodes[e.a].z) * lOf(g.nodes[e.b].x, g.nodes[e.b].z) < 0);
 
-    // The racing section: a run of consecutive crossing streets that dip through the channel (fords)
-    // between two bridges, so the floor runs on through several blocks; a ford needs a plain, nearly
-    // perpendicular street with room on both banks for its ramp run and a stretch of flat street before
-    // the junction. Side ramps then fill the gaps of that section until the seed has its entrances.
-    const plans: RampPlan[] = [];
-    const fordBody = (e: RoadEdge, hw: number) => e.width / 2 + e.sidewalk - hw;
-    const crossX = (e: RoadEdge) => {
-      const a = g.nodes[e.a];
-      return a.x + (g.nodes[e.b].x - a.x) * crossingT(p, a, g.nodes[e.b], 0);
-    };
-    const sorted = crossing.map((e) => ({ e, cx: crossX(e) })).sort((u, v) => u.cx - v.cx);
-    const fordWidth = (e: RoadEdge) => (e.kind === 'avenue' ? CFG.fordHalfWidth + 1 : CFG.fordHalfWidth);
-    // Flat street kept before a ford's ramp top at junction n: past the junction's far sidewalk corner
-    // (a neighbouring road at angle phi puts it (H + w cos phi) / sin phi along the street, w this
-    // street's half corridor, H the neighbour's) plus the room its mouth closure needs.
-    const setbackOf = (n: RoadNode, e: RoadEdge): number => {
-      const far = g.nodes[otherNode(e, n.id)];
-      const len = sqrt((far.x - n.x) ** 2 + (far.z - n.z) ** 2) || 1;
-      const ux = (far.x - n.x) / len;
-      const uz = (far.z - n.z) / len;
-      const w = e.width / 2 + e.sidewalk;
-      let corner = 0;
-      for (const oid of n.edges) {
-        const o = g.edges[oid];
-        if (o === e) continue;
-        const q = g.nodes[otherNode(o, n.id)];
-        const ol = sqrt((q.x - n.x) ** 2 + (q.z - n.z) ** 2) || 1;
-        const c = ((q.x - n.x) * ux + (q.z - n.z) * uz) / ol;
-        const s = Math.abs((q.x - n.x) * uz - (q.z - n.z) * ux) / ol;
-        // A road carrying straight on makes no corner with this one.
-        if (s < 0.35) continue;
-        corner = Math.max(corner, (o.width / 2 + o.sidewalk + w * c) / s);
+    /** The midline between grid rows j and j + 1 as a function of x: column samples, linear between, flat beyond, box smoothed. */
+    const midline = (j: number): ((x: number) => number) | null => {
+      const byCol = new Map<number, RoadNode[]>();
+      for (const n of g.nodes) if (n.gj === j || n.gj === j + 1) (byCol.get(n.gi) ?? byCol.set(n.gi, []).get(n.gi)!).push(n);
+      const cols: Vec2[] = [];
+      for (const ns of byCol.values()) {
+        const a = ns.find((n) => n.gj === j);
+        const b = ns.find((n) => n.gj === j + 1);
+        if (a && b) cols.push({ x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 });
       }
-      return corner + CFG.fordSetback;
+      if (cols.length < 3) return null;
+      cols.sort((u, v) => u.x - v.x);
+      const raw = (x: number): number => {
+        if (x <= cols[0].x) return cols[0].z;
+        for (let i = 0; i + 1 < cols.length; i++) {
+          if (x <= cols[i + 1].x) {
+            const t = (x - cols[i].x) / (cols[i + 1].x - cols[i].x || 1);
+            return cols[i].z + (cols[i + 1].z - cols[i].z) * t;
+          }
+        }
+        return cols[cols.length - 1].z;
+      };
+      const half = CFG.smoothSpan / 2;
+      return (x) => {
+        let sum = 0;
+        let n = 0;
+        for (let u = -half; u <= half + 1e-6; u += 8) {
+          sum += raw(x + u);
+          n++;
+        }
+        return sum / n;
+      };
     };
-    const fordOk = (e: RoadEdge) => {
-      if ((e.kind !== 'street' && e.kind !== 'avenue') || e.shortcut) return false;
-      const a = g.nodes[e.a];
-      const b = g.nodes[e.b];
-      if (Math.abs(b.x - a.x) > 0.25 * e.length) return false;
-      if (![a, b].every((n) => Math.abs(lOf(n.x, n.z)) - F - setbackOf(n, e) >= CFG.rampMinRun)) return false;
-      // No other road (a diagonal leaving the same junction, say) runs through the dip's trench or
-      // plinths: no point of another road's corridor inside the ramp's rectangle on either bank.
-      const reach = fordWidth(e) + fordBody(e, fordWidth(e)) + CFG.fordClear;
-      const len = e.length || 1;
-      const ux = (b.x - a.x) / len;
-      const uz = (b.z - a.z) / len;
-      const tf = crossingT(p, a, b, 0);
-      const fx = a.x + (b.x - a.x) * tf;
-      const fz = a.z + (b.z - a.z) * tf;
-      const runs = [a, b].map((n) => Math.min(CFG.rampMaxRun, Math.abs(lOf(n.x, n.z)) - F - setbackOf(n, e)));
-      for (const o of g.edges) {
-        if (o === e) continue;
-        const oa = g.nodes[o.a];
-        const ob = g.nodes[o.b];
-        const half = o.width / 2 + o.sidewalk;
-        const steps = Math.max(2, Math.ceil(o.length / 3));
-        for (let k = 0; k <= steps; k++) {
-          const x = oa.x + ((ob.x - oa.x) * k) / steps;
-          const z = oa.z + ((ob.z - oa.z) * k) / steps;
-          const along = (x - fx) * ux + (z - fz) * uz;
-          const lat = -(x - fx) * uz + (z - fz) * ux;
-          // Which bank this point is on decides which half's run bounds it.
-          const run = along >= 0 ? runs[1] : runs[0];
-          if (Math.abs(along) < F + run + half && Math.abs(lat) < reach + half) return false;
+    /** Junctions clear of the band, every street either crossing it squarely or well away from it. */
+    const bandClear = (p: Record<string, number>): boolean => {
+      for (const n of g.nodes) if (n.edges.length !== 2 && Math.abs(riverL(p, n.x, n.z)) < T + CFG.junctionClear) return false;
+      for (const e of g.edges) {
+        const a = g.nodes[e.a];
+        const b = g.nodes[e.b];
+        if (crosses(p, a, b)) {
+          if (!STREET_KINDS.has(e.kind) || e.shortcut) return false;
+          const t = crossingT(p, a, b, 0);
+          const fr = riverFrame(p, a.x + (b.x - a.x) * t);
+          const len = e.length || 1;
+          if (Math.abs(((b.x - a.x) / len) * fr.tx + ((b.z - a.z) / len) * fr.tz) > CFG.maxSkew) return false;
+          if (!chainOf(g, p, e)) return false;
+        } else {
+          const steps = Math.max(1, Math.ceil(e.length / 8));
+          for (let k = 0; k <= steps; k++) {
+            const x = a.x + ((b.x - a.x) * k) / steps;
+            const z = a.z + ((b.z - a.z) * k) / steps;
+            if (Math.abs(riverL(p, x, z)) < T + CFG.streetClear) return false;
+          }
         }
       }
       return true;
     };
-    let fords: RoadEdge[] = [];
-    for (let count = rng.int(CFG.fords[0], CFG.fords[1]); count >= 1 && !fords.length; count--) {
-      const windows: number[] = [];
-      for (let i = 1; i + count < sorted.length; i++) {
-        let ok = true;
-        for (let k = 0; k < count && ok; k++) ok = fordOk(sorted[i + k].e);
-        if (ok) windows.push(i);
-      }
-      if (!windows.length) continue;
-      const i = windows[rng.int(0, windows.length - 1)];
-      fords = sorted.slice(i, i + count).map((c) => c.e);
+    const qx0 = g.bounds.minX;
+    const qx1 = g.bounds.maxX;
+    const quarterOf = (x: number) => Math.max(0, Math.min(3, Math.floor((4 * (x - qx0)) / (qx1 - qx0))));
+    /** The entrances a candidate centerline can seat. Pure: the graph is only read; rng is drawn in a fixed order. */
+    interface Entrances {
+      plans: RampPlan[];
+      fords: RoadEdge[];
+      chains: Map<number, { edges: RoadEdge[]; nodes: number[] }>;
+      crossing: RoadEdge[];
+      /** Quarters of the channel's length with an entrance, and the count (a ford is two). */
+      quarters: number;
+      count: number;
     }
-    for (const e of crossing) if (!fords.includes(e)) e.bridge = true;
-    for (const e of fords) {
-      const a = g.nodes[e.a];
-      const b = g.nodes[e.b];
-      const cx = crossX(e);
-      const hw = fordWidth(e);
-      for (const n of [a, b]) {
-        const side = lOf(n.x, n.z) > 0 ? 1 : -1;
-        const run = Math.min(CFG.rampMaxRun, Math.abs(lOf(n.x, n.z)) - F - setbackOf(n, e));
-        plans.push({ ford: true, x: cx, side, hw, body: fordBody(e, hw), topL: F + run, curbL: F + run, edge: e.id });
-      }
-    }
-
-    // Side ramps in the gaps of the section (every gap between its crossings, bridges at both ends),
-    // alternating banks, down from the nearest parallel street. Without fords any gap will do.
-    const hw = CFG.rampHalfWidth;
-    const body = CFG.rampBody;
-    const minGap = 2 * (CFG.footClear + hw + body + 8);
-    let lo = 0;
-    let hi = sorted.length - 1;
-    if (fords.length) {
-      lo = sorted.findIndex((c) => c.e === fords[0]) - 1;
-      hi = sorted.findIndex((c) => c.e === fords[fords.length - 1]) + 1;
-    }
-    // Slots: the middle of every gap wide enough, two slots in gaps wide enough for a stretch between.
-    const slotsOf = (i: number): number[] => {
-      const w = sorted[i + 1].cx - sorted[i].cx;
-      if (w <= minGap) return [];
-      if (w > CFG.twoSlotGap) return [sorted[i].cx + w / 3, sorted[i].cx + (2 * w) / 3];
-      return [(sorted[i].cx + sorted[i + 1].cx) / 2];
-    };
-    // Gaps in a random order, every slot of a gap in turn: two ramps in one gap make a stretch of
-    // floor between their feet even where no ford joins the gaps up.
-    const gaps: number[][] = [];
-    for (let i = Math.max(0, lo); i < Math.min(sorted.length - 1, hi); i++) if (slotsOf(i).length) gaps.push(slotsOf(i));
-    // Gaps outside the section only when the section cannot seat enough entrances.
-    const spare: number[][] = [];
-    for (let i = 0; i + 1 < sorted.length; i++) if ((i < lo || i >= hi) && slotsOf(i).length) spare.push(slotsOf(i));
-    rng.shuffle(gaps);
-    rng.shuffle(spare);
-    let side = rng.chance(0.5) ? 1 : -1;
-    const want = rng.int(CFG.entrances[0], CFG.entrances[1]);
-    const sideRamp = (xr: number, side: number): RampPlan | null => {
-      // Street on this bank, parallel to the river, covering the ramp, with its curb far enough from
-      // the floor for a legal grade and near enough that the trench fits.
-      let best: RoadEdge | null = null;
-      let bestL = Infinity;
-      let bestFront = 0;
-      let bestT = 0;
-      for (const e of g.edges) {
-        if (e.kind === 'backAlley' || e.bridge || isRiverEdge(e)) continue;
+    const planEntrances = (p: Record<string, number>): Entrances => {
+      const lOf = (x: number, z: number) => riverL(p, x, z);
+      // Crossing streets, each followed through its bends into a deck polyline; all bridges unless a ford.
+      const crossing = g.edges.filter((e) => crosses(p, g.nodes[e.a], g.nodes[e.b]));
+      const chains = new Map<number, { edges: RoadEdge[]; nodes: number[] }>();
+      for (const e of crossing) chains.set(e.id, chainOf(g, p, e)!);
+      const crossX = (e: RoadEdge) => {
+        const a = g.nodes[e.a];
+        return a.x + (g.nodes[e.b].x - a.x) * crossingT(p, a, g.nodes[e.b], 0);
+      };
+      const sorted = crossing.map((e) => ({ e, cx: crossX(e), dk: e.width / 2 + e.sidewalk })).sort((u, v) => u.cx - v.cx);
+      // ----- Fords: a plain, nearly square crossing street in one piece, with room on both banks for its
+      // ramp run and a stretch of flat street before each junction, nothing else through its trench.
+      const plans: RampPlan[] = [];
+      const fordBody = (e: RoadEdge, hw: number) => e.width / 2 + e.sidewalk - hw;
+      const fordWidth = (e: RoadEdge) => (e.kind === 'avenue' ? CFG.fordHalfWidth + 1 : CFG.fordHalfWidth);
+      // Flat street kept before a ford's ramp top at junction n: past the junction's far sidewalk corner
+      // (a neighbouring road at angle phi puts it (H + w cos phi) / sin phi along the street, w this
+      // street's half corridor, H the neighbour's) plus the room its mouth closure needs.
+      const setbackOf = (n: RoadNode, e: RoadEdge): number => {
+        const far = g.nodes[otherNode(e, n.id)];
+        const len = sqrt((far.x - n.x) ** 2 + (far.z - n.z) ** 2) || 1;
+        const ux = (far.x - n.x) / len;
+        const uz = (far.z - n.z) / len;
+        const w = e.width / 2 + e.sidewalk;
+        let corner = 0;
+        for (const oid of n.edges) {
+          const o = g.edges[oid];
+          if (o === e) continue;
+          const q = g.nodes[otherNode(o, n.id)];
+          const ol = sqrt((q.x - n.x) ** 2 + (q.z - n.z) ** 2) || 1;
+          const c = ((q.x - n.x) * ux + (q.z - n.z) * uz) / ol;
+          const s = Math.abs((q.x - n.x) * uz - (q.z - n.z) * ux) / ol;
+          // A road carrying straight on makes no corner with this one.
+          if (s < 0.35) continue;
+          corner = Math.max(corner, (o.width / 2 + o.sidewalk + w * c) / s);
+        }
+        return corner + CFG.fordSetback;
+      };
+      const fordOk = (e: RoadEdge) => {
+        if ((e.kind !== 'street' && e.kind !== 'avenue') || e.shortcut) return false;
+        if (chains.get(e.id)!.edges.length !== 1) return false;
         const a = g.nodes[e.a];
         const b = g.nodes[e.b];
-        if (Math.abs(b.x - a.x) < 0.9 * e.length) continue;
-        const t = (xr - a.x) / (b.x - a.x);
-        // The T node keeps clear of the street's own junctions.
-        if (t * e.length < 18 || (1 - t) * e.length < 18) continue;
-        const la = lOf(a.x, a.z);
-        const lb = lOf(b.x, b.z);
-        if (la * side <= 0 || lb * side <= 0) continue;
-        const zc = a.z + (b.z - a.z) * t;
-        const l = Math.abs(zc - riverCenter(p, xr));
-        if (l < bestL) {
-          bestL = l;
-          best = e;
-          bestFront = l - (e.width / 2 + e.sidewalk);
-          bestT = t;
+        const len = e.length || 1;
+        const ux = (b.x - a.x) / len;
+        const uz = (b.z - a.z) / len;
+        const tf = crossingT(p, a, b, 0);
+        const fx = a.x + (b.x - a.x) * tf;
+        const fz = a.z + (b.z - a.z) * tf;
+        const fr = riverFrame(p, fx);
+        if (Math.abs(ux * fr.tx + uz * fr.tz) > 0.25) return false;
+        if (![a, b].every((n) => Math.abs(lOf(n.x, n.z)) - F - setbackOf(n, e) >= CFG.rampMinRun)) return false;
+        // No other road (a diagonal leaving the same junction, say) runs through the dip's trench or
+        // plinths: no point of another road's corridor inside the ramp's rectangle on either bank.
+        const reach = fordWidth(e) + fordBody(e, fordWidth(e)) + CFG.fordClear;
+        const runs = [a, b].map((n) => Math.min(CFG.rampMaxRun, Math.abs(lOf(n.x, n.z)) - F - setbackOf(n, e)));
+        for (const o of g.edges) {
+          if (o === e) continue;
+          const oa = g.nodes[o.a];
+          const ob = g.nodes[o.b];
+          const half = o.width / 2 + o.sidewalk;
+          const steps = Math.max(2, Math.ceil(o.length / 3));
+          for (let k = 0; k <= steps; k++) {
+            const x = oa.x + ((ob.x - oa.x) * k) / steps;
+            const z = oa.z + ((ob.z - oa.z) * k) / steps;
+            const along = (x - fx) * ux + (z - fz) * uz;
+            const lat = -(x - fx) * uz + (z - fz) * ux;
+            // Which bank this point is on decides which half's run bounds it.
+            const run = along >= 0 ? runs[1] : runs[0];
+            if (Math.abs(along) < F + run + half && Math.abs(lat) < reach + half) return false;
+          }
+        }
+        return true;
+      };
+
+      // ----- Side ramps: from the foot at channel x, straight up bank `side` along the channel's normal to
+      // the first street roughly parallel to the river, with the curb far enough from the floor for a
+      // legal grade and near enough that the trench fits, nothing else across the trench.
+      const hw = CFG.rampHalfWidth;
+      const body = CFG.rampBody;
+      const sideRamp = (xr: number, side: number): RampPlan | null => {
+        const fr = riverFrame(p, xr);
+        const P = { x: xr, z: riverCenter(p, xr) };
+        const dx = side * fr.mx;
+        const dz = side * fr.mz;
+        let best: RoadEdge | null = null;
+        let bestU = Infinity;
+        let bestHit: Vec2 | null = null;
+        for (const e of g.edges) {
+          if (!STREET_KINDS.has(e.kind) || e.bridge || e.shortcut || isRiverEdge(e)) continue;
+          const a = g.nodes[e.a];
+          const b = g.nodes[e.b];
+          const sx = b.x - a.x;
+          const sz = b.z - a.z;
+          const den = dx * sz - dz * sx;
+          if (Math.abs(den) < 1e-9) continue;
+          const u = ((a.x - P.x) * sz - (a.z - P.z) * sx) / den;
+          const v = ((a.x - P.x) * dz - (a.z - P.z) * dx) / den;
+          if (u <= 0 || v < 0 || v > 1) continue;
+          const len = e.length || 1;
+          // The T node keeps clear of the street's own ends, and the street runs along the river.
+          if (v * len < 18 || (1 - v) * len < 18) continue;
+          if (Math.abs((sx / len) * fr.tx + (sz / len) * fr.tz) < 0.8) continue;
+          if (u < bestU) {
+            bestU = u;
+            best = e;
+            bestHit = { x: a.x + sx * v, z: a.z + sz * v };
+          }
+        }
+        if (!best || !bestHit) return null;
+        const bestFront = bestU - (best.width / 2 + best.sidewalk);
+        const run = bestFront - 0.5 - F;
+        if (run < CFG.rampMinRun || run > CFG.rampMaxRun) return null;
+        // Nothing else may cross the trench (a missing row street would make it run on to the next row),
+        // and no deck box either side of it.
+        const reach = hw + body + 4;
+        for (let q = 0; q <= 10; q++) {
+          const u = F + ((bestFront + best.sidewalk - F) * q) / 10;
+          const x = P.x + dx * u;
+          const z = P.z + dz * u;
+          for (const e of g.edges) {
+            if (e === best) continue;
+            const a = g.nodes[e.a];
+            const b = g.nodes[e.b];
+            if (distToSegment(x, z, a.x, a.z, b.x, b.z) < e.width / 2 + e.sidewalk + reach) return null;
+          }
+        }
+        return { ford: false, x: xr, side, hw, body, topL: bestFront - 0.5, curbL: bestFront + best.sidewalk, edge: best.id, hit: bestHit };
+      };
+
+      // ----- Entrances by quarter of the channel's length: fords first (each fills its quarter on both
+      // banks), then one side ramp in every quarter still empty, the outer quarters first, banks
+      // alternating, then more in random quarters up to the seed's count.
+      const feetX: number[] = [];
+      const spaced = (x: number) => feetX.every((fx) => Math.abs(x - fx) >= CFG.entranceGap) && sorted.every((c) => Math.abs(x - c.cx) >= c.dk + CFG.footClear);
+      const want = rng.int(CFG.entrances[0], CFG.entrances[1]);
+      const fordCands = sorted.filter((c) => fordOk(c.e));
+      rng.shuffle(fordCands);
+      const fords: RoadEdge[] = [];
+      const fordQuarters = new Set<number>();
+      for (let count = rng.int(CFG.fords[0], CFG.fords[1]); count > 0 && fordCands.length; count--) {
+        const i = fordCands.findIndex((c) => !fordQuarters.has(quarterOf(c.cx)) && feetX.every((fx) => Math.abs(c.cx - fx) >= CFG.entranceGap));
+        if (i < 0) break;
+        const c = fordCands.splice(i, 1)[0];
+        fords.push(c.e);
+        fordQuarters.add(quarterOf(c.cx));
+        feetX.push(c.cx);
+        const a = g.nodes[c.e.a];
+        const b = g.nodes[c.e.b];
+        const hwF = fordWidth(c.e);
+        for (const n of [a, b]) {
+          const side = lOf(n.x, n.z) > 0 ? 1 : -1;
+          const run = Math.min(CFG.rampMaxRun, Math.abs(lOf(n.x, n.z)) - F - setbackOf(n, c.e));
+          plans.push({ ford: true, x: c.cx, side, hw: hwF, body: fordBody(c.e, hwF), topL: F + run, curbL: F + run, edge: c.e.id });
         }
       }
-      if (!best) return null;
-      const run = bestFront - 0.5 - F;
-      if (run < CFG.rampMinRun || run > CFG.rampMaxRun) return null;
-      // Nothing else may cross the trench (a missing row street would make it run on to the next row).
-      const z0 = riverCenter(p, xr) + side * F;
-      const z1 = riverCenter(p, xr) + side * bestFront;
-      const reach = hw + body + 4;
-      const crosses = g.edges.some((e) => {
-        if (e === best) return false;
-        const a = g.nodes[e.a];
-        const b = g.nodes[e.b];
-        for (let q = 0; q <= 10; q++) {
-          const z = z0 + ((z1 - z0) * q) / 10;
-          if (distToSegment(xr, z, a.x, a.z, b.x, b.z) < e.width / 2 + e.sidewalk + reach) return true;
+      const entrances = () => plans.filter((q) => !q.ford).length + fords.length * 2;
+      /** Slots of a quarter: channel x positions every 6 m inside it, shuffled. */
+      const slotsOf = (q: number): number[] => {
+        const qa = qx0 + ((qx1 - qx0) * q) / 4;
+        const qb = qa + (qx1 - qx0) / 4;
+        const xs: number[] = [];
+        for (let x = qa + 12; x <= qb - 12; x += 6) xs.push(x);
+        rng.shuffle(xs);
+        return xs;
+      };
+      /** The bank the next entrance is due on: opposite the nearest one along the channel. */
+      const dueSide = (x: number): number => {
+        let best: RampPlan | null = null;
+        for (const q of plans) if (!best || Math.abs(q.x - x) < Math.abs(best.x - x)) best = q;
+        return best ? -best.side : rng.chance(0.5) ? 1 : -1;
+      };
+      const fill = (q: number): boolean => {
+        for (const x of slotsOf(q)) {
+          if (!spaced(x)) continue;
+          const side = dueSide(x);
+          const plan = sideRamp(x, side) ?? sideRamp(x, -side);
+          if (!plan) continue;
+          plans.push(plan);
+          feetX.push(x);
+          return true;
         }
         return false;
-      });
-      if (crosses) return null;
-      return { ford: false, x: xr, side, hw, body, topL: bestFront - 0.5, curbL: bestFront + best.sidewalk, edge: best.id, t: bestT };
+      };
+      const filled = new Set<number>(fordQuarters);
+      for (const q of [0, 3, 1, 2]) if (!filled.has(q) && fill(q)) filled.add(q);
+      const order = [0, 1, 2, 3];
+      rng.shuffle(order);
+      for (let round = 0; round < 3 && entrances() < want; round++) {
+        let any = false;
+        for (const q of order) {
+          if (entrances() >= want) break;
+          if (fill(q)) any = true;
+        }
+        if (!any) break;
+      }
+
+      return { plans, fords, chains, crossing, quarters: new Set(feetX.map(quarterOf)).size, count: entrances() };
     };
-    for (const xr of gaps.concat(spare).flat()) {
-      if (plans.length >= want) break;
-      // The bank it is due on first, the other one if that fails; a facing pair on both banks (one
-      // foot, a crossing of its own) where the seed still wants entrances and the river has no ford.
-      const plan = sideRamp(xr, side) ?? sideRamp(xr, -side);
-      if (!plan) continue;
-      plans.push(plan);
-      side = -plan.side;
-      if (plans.length < want && (!fords.length || rng.chance(0.5))) {
-        const facing = sideRamp(xr, -plan.side);
-        if (facing) plans.push(facing);
+
+    // The first row pair (and meander swing) whose band clears every junction and seats an entrance in
+    // every quarter; failing that, the one that comes closest.
+    let best: { p: Record<string, number>; ent: Entrances; score: number } | null = null;
+    rowLoop: for (const j of rows) {
+      const mid = midline(j);
+      if (!mid) continue;
+      for (let s = CFG.meanderSteps; s >= 0; s--) {
+        const A = (CFG.meander * s) / CFG.meanderSteps;
+        const p: Record<string, number> = { cn, cx0, cdx: step, floor: F, top: T, depth: CFG.depth, x0, x1, meander: A, ramps: 0 };
+        for (let i = 0; i < cn; i++) {
+          const x = cx0 + i * step;
+          p[`c${i}`] = mid(x) + A * (0.6 + 0.4 * sin(kE * x + phaseE)) * sin(kM * x + phase);
+        }
+        if (!bandClear(p)) continue;
+        const ent = planEntrances(p);
+        const score = ent.quarters * 100 + ent.count;
+        if (!best || score > best.score) best = { p, ent, score };
+        if (ent.quarters === 4 && ent.count >= CFG.entrances[0]) break rowLoop;
       }
     }
-    if (!plans.length) {
-      // No entrance fits: keep the channel as scenery (every crossing a bridge).
-      for (const e of fords) e.bridge = true;
-    }
+    if (!best) return;
+    const footprint = (g.bounds.maxX - g.bounds.minX) * 2 * T;
+    if (ctx.budget.used + footprint > ctx.budget.total) return;
+    const p = best.p;
+    p.seed = rng.int(1, 0x7ffffffe);
+    const { plans, chains, crossing } = best.ent;
+    let fords = best.ent.fords;
+    // No entrance fits: keep the channel as scenery (every crossing a bridge).
+    if (!plans.length) fords = [];
+    for (const e of crossing) if (!fords.includes(e)) for (const ce of chains.get(e.id)!.edges) ce.bridge = true;
 
-    // Graph: feet, T nodes, ramp edges; then the channel chains between the feet of each bridge gap.
-    const tmp: Area = { id: -1, kind: 'river', variant: '', polygon: [], path: [], nodes: [], edges: [], faces: [], params: p };
+    // ----- Graph: feet, T nodes, ramp edges; then the channel chain from portal to portal through every foot.
     const channelDims = { width: channelWidth(F), lanes: 2 as const, sidewalk: 0 };
     const nodes: number[] = [];
-    const edges: number[] = crossing.map((e) => e.id);
+    const edges: number[] = [];
+    for (const e of crossing) for (const ce of chains.get(e.id)!.edges) if (ce.bridge) edges.push(ce.id);
     const feet = new Map<number, number>();
     const footAt = (x: number): number => {
       const key = Math.round(x * 100);
@@ -491,24 +788,27 @@ export const riverModule: DistrictModule = {
         pushRamp(p, { ...q, x: F0.x }, F0, { x: (N.x - F0.x) / len, z: (N.z - F0.z) / len }, d.id, node, foot);
       }
     }
-    const pieces = new Map<number, number[]>();
     for (const q of plans) {
-      if (q.ford) continue;
+      if (q.ford || !q.hit) continue;
       const foot = footAt(q.x);
-      // The street may already carry another ramp's T node: split whichever piece spans this x.
-      const list = pieces.get(q.edge) ?? [q.edge];
-      const piece = list.find((eid) => {
-        const e = g.edges[eid];
-        const xa = g.nodes[e.a].x;
-        const xb = g.nodes[e.b].x;
-        return q.x >= Math.min(xa, xb) && q.x <= Math.max(xa, xb);
-      });
-      if (piece === undefined) continue;
+      // The street may already carry another ramp's T node: split whichever piece holds the hit point.
+      let piece = -1;
+      let pieceD = 0.5;
+      for (const e of g.edges) {
+        if (e.kind !== g.edges[q.edge].kind || isRiverEdge(e)) continue;
+        const a = g.nodes[e.a];
+        const b = g.nodes[e.b];
+        const d = distToSegment(q.hit.x, q.hit.z, a.x, a.z, b.x, b.z);
+        if (d < pieceD) {
+          pieceD = d;
+          piece = e.id;
+        }
+      }
+      if (piece < 0) continue;
       const pe = g.edges[piece];
-      const t = (q.x - g.nodes[pe.a].x) / (g.nodes[pe.b].x - g.nodes[pe.a].x);
-      const node = splitEdge(g, piece, t);
-      list.push(g.edges.length - 1);
-      pieces.set(q.edge, list);
+      const A = g.nodes[pe.a];
+      const B = g.nodes[pe.b];
+      const node = splitEdge(g, piece, segmentT(q.hit.x, q.hit.z, A.x, A.z, B.x, B.z));
       const N = g.nodes[node];
       const dims = { width: 2 * q.hw, lanes: 2 as const, sidewalk: 0 };
       const edge = addEdge(g, node, foot, 'ramp', dims);
@@ -518,64 +818,66 @@ export const riverModule: DistrictModule = {
       const len = sqrt((N.x - Fp.x) ** 2 + (N.z - Fp.z) ** 2) || 1;
       pushRamp(p, q, Fp, { x: (N.x - Fp.x) / len, z: (N.z - Fp.z) / len }, edge, node, foot);
     }
-    // Channel chains: feet sorted by x, grouped by the bridge gap they sit in.
-    const bridgeXs = bridgesOf(g, { ...tmp, edges }).map((b) => ({ x: b.cx, half: b.dk + CFG.bridgeBody + 2 }));
-    const footList = [...feet.values()].sort((u, v) => g.nodes[u].x - g.nodes[v].x);
-    const gapOf = (x: number) => bridgeXs.filter((b) => b.x < x).length;
-    const chain = (a: number, b: number) => {
-      const A = g.nodes[a];
-      const B = g.nodes[b];
-      const n = Math.max(1, Math.ceil(Math.abs(B.x - A.x) / CFG.nodeSpacing));
-      let prev = a;
-      for (let i = 1; i <= n; i++) {
-        const x = A.x + ((B.x - A.x) * i) / n;
-        const id = i === n ? b : addNode(g, x, riverCenter(p, x));
-        if (i < n) nodes.push(id);
-        edges.push(addEdge(g, prev, id, 'channel', channelDims));
+    // The chain: portal to portal through every foot, a node at least every nodeSpacing, none under a deck.
+    {
+      const tmp: Area = { id: -1, kind: 'river', variant: '', polygon: [], path: [], nodes, edges, faces: [], params: p };
+      const bridges = bridgesOf(g, tmp);
+      const stations: number[] = [x0 + CFG.endStub, ...[...feet.values()].map((id) => g.nodes[id].x), x1 - CFG.endStub].sort((a, b) => a - b);
+      const ends: number[] = [];
+      let prev = -1;
+      for (let i = 0; i < stations.length; i++) {
+        const x = stations[i];
+        let id = feet.get(Math.round(x * 100));
+        if (id === undefined) {
+          id = addNode(g, x, riverCenter(p, x));
+          nodes.push(id);
+          if (i === 0 || i === stations.length - 1) ends.push(id);
+        }
+        if (prev >= 0) {
+          const xa = g.nodes[prev].x;
+          const n = Math.max(1, Math.ceil((x - xa) / CFG.nodeSpacing));
+          let last = prev;
+          for (let k = 1; k < n; k++) {
+            let mx = xa + ((x - xa) * k) / n;
+            for (const br of bridges) {
+              const keep = br.dk + CFG.bridgeBody + 8;
+              if (Math.abs(mx - br.cx) < keep) mx = br.cx + (mx >= br.cx ? keep : -keep);
+            }
+            if (mx - g.nodes[last].x < 12 || x - mx < 12) continue;
+            const mid = addNode(g, mx, riverCenter(p, mx));
+            nodes.push(mid);
+            edges.push(addEdge(g, last, mid, 'channel', channelDims));
+            last = mid;
+          }
+          edges.push(addEdge(g, last, id, 'channel', channelDims));
+        }
         prev = id;
       }
-    };
-    for (let i = 0; i < footList.length; i++) {
-      const id = footList[i];
-      const x = g.nodes[id].x;
-      const gap = gapOf(x);
-      const prevFoot = i > 0 && gapOf(g.nodes[footList[i - 1]].x) === gap ? footList[i - 1] : -1;
-      const nextFoot = i + 1 < footList.length && gapOf(g.nodes[footList[i + 1]].x) === gap ? footList[i + 1] : -1;
-      if (nextFoot >= 0) chain(id, nextFoot);
-      // Stubs toward the bridges at both ends of the gap.
-      for (const dir of [-1, 1]) {
-        if ((dir < 0 && prevFoot >= 0) || (dir > 0 && nextFoot >= 0)) continue;
-        const wall = dir < 0 ? bridgeXs.filter((b) => b.x < x).map((b) => b.x + b.half).reduce((m, v) => Math.max(m, v), x0) : bridgeXs.filter((b) => b.x > x).map((b) => b.x - b.half).reduce((m, v) => Math.min(m, v), x1);
-        const room = Math.abs(wall - x) - 6;
-        // A short stub still gives a closure somewhere to stand; a lone foot always gets at least one.
-        if (room < CFG.stubMin) continue;
-        const sx = x + dir * Math.min(CFG.stubLength, room);
-        const end = addNode(g, sx, riverCenter(p, sx));
-        nodes.push(end);
-        edges.push(addEdge(g, id, end, 'channel', channelDims));
-      }
     }
-    if (plans.length) ctx.graphChanged();
+    ctx.graphChanged();
 
     // Footprint: the channel band, bulging out over the ramp trenches (a simple comb polygon).
     const ramps = rampsOf({ id: -1, kind: 'river', variant: '', polygon: [], path: [], nodes, edges, faces: [], params: p });
     const path: Vec2[] = [];
     const up: Vec2[] = [];
     const down: Vec2[] = [];
+    // A ramp's bulge covers its trench, plinths and the funnel at its top (the funnel's props must stand
+    // inside the area's polygon).
+    const funnelL = (r: Ramp) => (r.ford ? r.topL : r.curbL) + CFG.funnelReach + 8;
     const bulge = (x: number, s: number): number => {
       let l = T + 0.5;
       for (const r of ramps) {
         if (r.side !== s) continue;
-        const reach = r.hw + r.body + CITY.districts.infill.gap;
+        const reach = r.hw + r.body + CFG.funnelFlare + 4 + CITY.districts.infill.gap;
         const xTop = r.ax + r.ux * rampAlong(p, r, r.topL);
-        if (x >= Math.min(r.ax, xTop) - reach && x <= Math.max(r.ax, xTop) + reach) l = Math.max(l, r.topL + 2);
+        if (x >= Math.min(r.ax, xTop) - reach && x <= Math.max(r.ax, xTop) + reach) l = Math.max(l, funnelL(r));
       }
       return l;
     };
     const xs: number[] = [];
     for (let x = x0; x <= x1 + 1e-6; x += 16) xs.push(x);
     for (const r of ramps) {
-      const reach = r.hw + r.body + CITY.districts.infill.gap;
+      const reach = r.hw + r.body + CFG.funnelFlare + 4 + CITY.districts.infill.gap;
       const xTop = r.ax + r.ux * rampAlong(p, r, r.topL);
       const lo = Math.min(r.ax, xTop) - reach;
       const hi = Math.max(r.ax, xTop) + reach;
@@ -618,110 +920,170 @@ export const riverModule: DistrictModule = {
     /** Ramp frame: distance along its axis from the foot and lateral offset (left of the axis). */
     const frame = (r: Ramp, x: number, z: number) => ({ along: (x - r.ax) * r.ux + (z - r.az) * r.uz, lat: -(x - r.ax) * r.uz + (z - r.az) * r.ux });
 
-    // Height: channel profile, ramp trenches (the lower of the two wins), flattened under bridge decks.
-    let lMax = T + 1;
-    for (const r of ramps) lMax = Math.max(lMax, r.topL + 1);
-    b.heightMods.push({
-      minX: p.x0 - 2,
-      maxX: p.x1 + 2,
-      minZ: p.zMid - p.amp - lMax,
-      maxZ: p.zMid + p.amp + lMax,
-      add(x, z, out: HeightSample) {
-        const s = sin(p.k * x + p.phase);
-        const c = cos(p.k * x + p.phase);
-        const l = z - (p.zMid + p.amp * s);
-        const sg = l >= 0 ? 1 : -1;
-        const al = l * sg;
-        let h = 0;
-        let gl = 0;
-        if (al < T) {
-          const st = smooth01(F, T, al);
-          h = -D * (1 - st.v);
-          gl = D * st.d * sg;
+    /**
+     * The channel profile at (x, z): height below ground and gradient, ramp trenches included (the
+     * lower of the two wins); `flat` also flattens it under the bridge decks (the terrain: the deck).
+     */
+    const profile = (x: number, z: number, out: HeightSample, flat: boolean): void => {
+      const s = riverSlope(p, x);
+      const l = z - zc(x);
+      const sg = l >= 0 ? 1 : -1;
+      const al = l * sg;
+      let h = 0;
+      let gl = 0;
+      if (al < T) {
+        const st = smooth01(F, T, al);
+        h = -D * (1 - st.v);
+        gl = D * st.d * sg;
+      }
+      for (const r of ramps) {
+        if (r.side !== sg || al <= F || al >= r.topL) continue;
+        const fr = frame(r, x, z);
+        if (Math.abs(fr.lat) > r.hw) continue;
+        const u = (r.topL - al) / (r.topL - F);
+        const pr = rampProfile(u);
+        const hr = -D * pr.f;
+        if (hr < h) {
+          h = hr;
+          gl = ((D * pr.df) / (r.topL - F)) * sg;
         }
-        for (const r of ramps) {
-          if (r.side !== sg || al <= F || al >= r.topL) continue;
-          const fr = frame(r, x, z);
-          if (Math.abs(fr.lat) > r.hw) continue;
-          const u = (r.topL - al) / (r.topL - F);
-          const pr = rampProfile(u);
-          const hr = -D * pr.f;
-          if (hr < h) {
-            h = hr;
-            gl = ((D * pr.df) / (r.topL - F)) * sg;
-          }
-        }
-        if (h === 0) return;
-        let gx = -gl * p.amp * p.k * c;
-        let gz = gl;
+      }
+      if (h === 0) return;
+      let gx = -gl * s;
+      let gz = gl;
+      if (flat) {
         for (const br of bridges) {
           if (Math.abs(x - br.cx) > 90) continue;
           const lim = br.dk + body;
-          const d = distToSegment(x, z, br.ax, br.az, br.bx, br.bz);
+          const d = distToBridge(br, x, z);
           if (d >= lim) continue;
-          const m = smooth01(br.dk, lim, d);
-          const t = segmentT(x, z, br.ax, br.az, br.bx, br.bz);
-          const ddx = d > 1e-6 ? (x - (br.ax + (br.bx - br.ax) * t)) / d : 0;
-          const ddz = d > 1e-6 ? (z - (br.az + (br.bz - br.az) * t)) / d : 0;
+          // Flat across the deck and half a meter past its parapets (the wheels of a car against one).
+          const m = smooth01(br.dk + 0.5, lim, d);
+          // Gradient of the distance to the nearest deck segment.
+          let ddx = 0;
+          let ddz = 0;
+          let best = Infinity;
+          for (let i = 0; i + 1 < br.pts.length; i++) {
+            const a = br.pts[i];
+            const c = br.pts[i + 1];
+            const t = segmentT(x, z, a.x, a.z, c.x, c.z);
+            const qx = a.x + (c.x - a.x) * t;
+            const qz = a.z + (c.z - a.z) * t;
+            const dd = sqrt((x - qx) ** 2 + (z - qz) ** 2);
+            if (dd < best) {
+              best = dd;
+              ddx = dd > 1e-6 ? (x - qx) / dd : 0;
+              ddz = dd > 1e-6 ? (z - qz) / dd : 0;
+            }
+          }
           gx = gx * m.v + h * m.d * ddx;
           gz = gz * m.v + h * m.d * ddz;
           h *= m.v;
         }
-        out.h += h;
-        out.gx += gx;
-        out.gz += gz;
+      }
+      out.h += h;
+      out.gx += gx;
+      out.gz += gz;
+    };
+    let lMax = T + 1;
+    for (const r of ramps) lMax = Math.max(lMax, r.topL + 1);
+    let zMin = Infinity;
+    let zMax = -Infinity;
+    for (let x = p.x0; x <= p.x1 + 1e-6; x += 8) {
+      zMin = Math.min(zMin, zc(x));
+      zMax = Math.max(zMax, zc(x));
+    }
+    b.heightMods.push({
+      minX: p.x0 - 2,
+      maxX: p.x1 + 2,
+      minZ: zMin - lMax,
+      maxZ: zMax + lMax,
+      add(x, z, out: HeightSample) {
+        profile(x, z, out, true);
       },
     });
+    // Two levels under every deck: the lower is the unflattened profile.
+    const scratch: HeightSample = { h: 0, gx: 0, gz: 0 };
+    for (const br of bridges) {
+      b.decks.push({
+        polygon: deckBox(p, br, br.dk + body + 0.3, -(T + DECK_END + 0.5), T + DECK_END + 0.5),
+        area: id,
+        depth: D,
+        lower(x, z, out) {
+          scratch.h = 0;
+          scratch.gx = 0;
+          scratch.gz = 0;
+          profile(x, z, scratch, false);
+          out.h += scratch.h;
+          out.gx += scratch.gx;
+          out.gz += scratch.gz;
+          scratch.h = 0;
+          scratch.gx = 0;
+          scratch.gz = 0;
+          profile(x, z, scratch, true);
+          out.h -= scratch.h;
+          out.gx -= scratch.gx;
+          out.gz -= scratch.gz;
+          // The terrain is the deck less what the flattening left of the profile (nothing on the deck proper).
+          return -scratch.h;
+        },
+      });
+    }
 
     // No buildings or infill near the channel.
     const clear = T + CFG.clearance;
     for (let x = p.x0; x < p.x1; x += 24) b.exclusions.push(band(x, Math.min(p.x1, x + 24), -clear, clear, 24));
     b.surfaces.push({ surface: 'concrete', polygon: area.polygon, priority: 1, area: id });
-    // The trickle outranks the road classification of the channel edges, so it stays slippery; it
-    // stops at every bridge body, where the deck road runs over it at street level.
-    {
-      const cuts = bridges.map((br) => [br.cx - (br.dk + body + 2), br.cx + (br.dk + body + 2)]).sort((u, v) => u[0] - v[0]);
-      let x = p.x0;
-      for (const [c0, c1] of cuts) {
-        if (c0 > x + 2) b.surfaces.push({ surface: 'water', polygon: band(x, c0, CFG.waterOffset - CFG.waterHalf, CFG.waterOffset + CFG.waterHalf), priority: 6, area: id });
-        x = Math.max(x, c1);
-      }
-      if (x < p.x1 - 2) b.surfaces.push({ surface: 'water', polygon: band(x, p.x1, CFG.waterOffset - CFG.waterHalf, CFG.waterOffset + CFG.waterHalf), priority: 6, area: id });
-    }
+    // The trickle outranks the road classification of the channel edges, so it stays slippery; it runs
+    // on under the decks (World.surfaceAt keeps the river's patches off the deck level).
+    for (let x = p.x0; x < p.x1 - 2; x += 48) b.surfaces.push({ surface: 'water', polygon: band(x, Math.min(p.x1, x + 48), CFG.waterOffset - CFG.waterHalf, CFG.waterOffset + CFG.waterHalf), priority: 6, area: id });
 
-    // Bridges: culvert faces of the solid bridge body, parapet looks on the deck sides.
+    // Bridges: parapets along the deck edges (channel cars pass under them), the deck's frontage opened
+    // over the band so the city draws no wall there, an abutment box on each bank and pier rows along
+    // the floor edges under the deck (deck cars pass over them, their tops set by settleRiver).
     const gapsBySide: Record<number, [number, number][]> = { 1: [], [-1]: [] };
     for (const br of bridges) {
-      const qs: Record<number, Vec2[]> = {};
+      const W = br.dk + body;
       for (const s of [-1, 1]) {
-        const off = s * (br.dk + body);
-        const q0 = bridgePoint(p, br, off, -fenceL);
-        const q1 = bridgePoint(p, br, off, fenceL);
-        qs[s] = [q0, q1];
-        const w: Wall = { ax: q0.x, az: q0.z, bx: q1.x, bz: q1.z, nx: br.nx * s, nz: br.nz * s, kind: 'wall', look: 'culvert', area: id };
-        b.walls.push(w);
+        const line = deckLine(p, br, s * br.dk, -(T + DECK_END), T + DECK_END);
+        b.walls.push(...polyWalls(line, s > 0, 'parapet', id, false));
+        const box = deckBox(p, br, W, s * (F + CFG.abutment), s * (T + 1.5));
+        b.walls.push(...solidWalls(box, 'culvert', id));
+        const lo = s * (T + 0.5);
+        const xa = bridgePoint(p, br, -W - 0.3, lo).x;
+        const xb = bridgePoint(p, br, W + 0.3, lo).x;
+        gapsBySide[s].push([Math.min(xa, xb) - 0.3, Math.max(xa, xb) + 0.3]);
+        // Piers at the floor edge, square to the deck, from one parapet to the other.
+        const lp = s * (F - CFG.pierInset);
+        const n = Math.max(1, Math.floor((2 * (br.dk - 1.2)) / CFG.pierSpacing));
+        for (let k = 0; k < n; k++) {
+          const w = n === 1 ? 0 : -(br.dk - 1.2) + ((2 * (br.dk - 1.2)) * k) / (n - 1);
+          const c = bridgePoint(p, br, w, lp);
+          const h = CFG.pier / 2;
+          const square = [
+            { x: c.x - br.dx * h - br.nx * h, z: c.z - br.dz * h - br.nz * h },
+            { x: c.x + br.dx * h - br.nx * h, z: c.z + br.dz * h - br.nz * h },
+            { x: c.x + br.dx * h + br.nx * h, z: c.z + br.dz * h + br.nz * h },
+            { x: c.x - br.dx * h + br.nx * h, z: c.z - br.dz * h + br.nz * h },
+          ];
+          b.walls.push(...solidWalls(square, 'pier', id));
+        }
       }
-      for (const fs of [-1, 1]) {
-        const xa = qs[-1][fs > 0 ? 1 : 0].x;
-        const xb = qs[1][fs > 0 ? 1 : 0].x;
-        gapsBySide[fs].push([Math.min(xa, xb), Math.max(xa, xb)]);
-      }
-      const o = br.dk + body + 0.5;
-      b.frontLooks.push({
-        polygon: [bridgePoint(p, br, -o, -fenceL - 1), bridgePoint(p, br, o, -fenceL - 1), bridgePoint(p, br, o, fenceL + 1), bridgePoint(p, br, -o, fenceL + 1)],
-        look: 'parapet',
-        area: id,
-      });
-      b.hints.push({ kind: 'bridge', points: [qs[-1][0], qs[1][0], qs[1][1], qs[-1][1]], values: [br.edge, br.dk] });
+      b.openings.push(deckBox(p, br, br.dk + 1.2, -(T + DECK_END - 0.3), T + DECK_END - 0.3));
+      const corners = deckBox(p, br, W, -(T + DECK_END), T + DECK_END);
+      b.hints.push({ kind: 'bridge', points: corners, values: [br.edge, br.dk] });
     }
 
     // Ramps: trench walls, a solid plinth either side (outer face, foot and top caps), a drivable
-    // concrete surface, buildings kept out, the street frontage opened at a side ramp's mouth.
+    // concrete surface, buildings kept out, the street frontage opened at a side ramp's mouth, and
+    // the funnel at the top.
+    const rng = new Rng(p.seed >>> 0 || 1);
     for (const r of ramps) {
       const s = r.side;
       const aF = rampAlong(p, r, F);
       const aTop = rampAlong(p, r, r.topL);
       const aFence = rampAlong(p, r, fenceL);
+      const aCurb = r.ford ? aTop : rampAlong(p, r, r.curbL);
       const P = (along: number, lat: number) => rampPoint(r, along, lat);
       const wall = (a: Vec2, c: Vec2, nx: number, nz: number) => b.walls.push({ ax: a.x, az: a.z, bx: c.x, bz: c.z, nx, nz, kind: 'wall', look: 'trench', area: id });
       // Left of the axis is (-uz, ux).
@@ -743,7 +1105,7 @@ export const riverModule: DistrictModule = {
       }
       const gx = r.ax + r.ux * aFence;
       gapsBySide[s].push([gx - (r.hw + r.body) - 0.3, gx + (r.hw + r.body) + 0.3]);
-      const trench = [P(aF - 0.5, -r.hw), P(aF - 0.5, r.hw), P(r.ford ? aTop : rampAlong(p, r, r.curbL), r.hw), P(r.ford ? aTop : rampAlong(p, r, r.curbL), -r.hw)];
+      const trench = [P(aF - 0.5, -r.hw), P(aF - 0.5, r.hw), P(aCurb, r.hw), P(aCurb, -r.hw)];
       b.surfaces.push({ surface: 'concrete', polygon: trench, priority: 2, area: id });
       const m = CITY.districts.infill.gap;
       const reach = r.hw + r.body + m;
@@ -753,7 +1115,8 @@ export const riverModule: DistrictModule = {
         const w = r.hw + r.body + 0.1;
         b.openings.push([P(aTop - 2, -w), P(aTop - 2, w), P(aTop + 1.5, w), P(aTop + 1.5, -w)]);
       }
-      b.hints.push({ kind: 'ramp', points: [P(0, 0), P(aTop, 0)], values: [s, r.hw, r.body, aF, aTop, r.ford, aFence, r.ford ? aTop : rampAlong(p, r, r.curbL)] });
+      b.hints.push({ kind: 'ramp', points: [P(0, 0), P(aTop, 0)], values: [s, r.hw, r.body, aF, aTop, r.ford, aFence, aCurb] });
+      funnel(ctx.graph, b, rng, r, aTop, aCurb, id);
     }
 
     // Bank top fences between bridges and ramps, normals toward the channel.
@@ -779,8 +1142,7 @@ export const riverModule: DistrictModule = {
     b.walls.push({ ax: p.x0, az: zc(p.x0) - fenceL, bx: p.x0, bz: zc(p.x0) + fenceL, nx: 1, nz: 0, kind: 'wall', look: 'channelEnd', area: id });
     b.walls.push({ ax: p.x1, az: zc(p.x1) - fenceL, bx: p.x1, bz: zc(p.x1) + fenceL, nx: -1, nz: 0, kind: 'wall', look: 'channelEnd', area: id });
 
-    // Clutter along the floor edges, clear of feet (closures and meets stand there) and bridge bodies.
-    const rng = new Rng(p.seed >>> 0 || 1);
+    // Clutter along the floor edges, clear of feet (closures and meets stand there) and decks.
     const busy = (x: number) => ramps.some((r) => Math.abs(x - r.ax) < r.hw + r.body + 14) || bridges.some((br) => Math.abs(x - br.cx) < br.dk + body + 8);
     const kinds: PropKind[] = ['barrel', 'barrel', 'crate', 'trashBags', 'trashBags'];
     for (let x = p.x0 + 40; x < p.x1 - 40; x += CFG.clutterSpacing * rng.range(0.6, 1.4)) {
@@ -797,6 +1159,60 @@ export const riverModule: DistrictModule = {
     return b;
   },
 };
+
+/**
+ * The funnel at a ramp top, in the shortcut language (see districts/alley.ts
+ * constructionSite): two lines of fence panels splaying from the plinth caps
+ * out across the sidewalk onto the street (cones where they stand on the
+ * road), a sawhorse and a water barrier at each line's street end, cones
+ * scattered along, and two strings of lights across the mouth and across the
+ * street edge in front of it. Everything breaks before it can stop a car.
+ */
+function funnel(g: RoadGraph, b: AreaBuild, rng: Rng, r: Ramp, aTop: number, aCurb: number, area: number): void {
+  const P = (along: number, lat: number) => rampPoint(r, along, lat);
+  const push = (kind: PropKind, q: Vec2, yaw: number, lift = 0) => b.destructibles.push({ kind, x: q.x, z: q.z, yaw, lift, area });
+  // A ford's plinths cover the street's sidewalks and the outer road edge: the road ends inside them.
+  const roadHalf = r.ford ? r.hw + r.body - CITY.sidewalk : g.edges[r.edge].width / 2;
+  // Fords: the street's own road continues into the dip; the funnel narrows it from the sidewalk corners
+  // to the trench. Side ramps: from the plinths' outer corners out onto the bank street.
+  const latIn = r.ford ? r.hw + 0.3 : r.hw + r.body;
+  const latOut = r.ford ? r.hw + r.body - 0.6 : r.hw + r.body + CFG.funnelFlare;
+  const aStart = r.ford ? aTop + 1.5 : aTop + 1.2;
+  const aEnd = r.ford ? aTop + 1.5 + CFG.funnelReach + 3 : aCurb + CFG.funnelReach;
+  const onRoad = (along: number, lat: number) => (r.ford ? Math.abs(lat) < roadHalf - 0.2 : along > aCurb - 0.3);
+  for (const sd of [1, -1]) {
+    const A = P(aStart, sd * latIn);
+    const B = P(aEnd, sd * latOut);
+    const len = sqrt((B.x - A.x) ** 2 + (B.z - A.z) ** 2);
+    const ux = (B.x - A.x) / len;
+    const uz = (B.z - A.z) / len;
+    const yaw = Math.atan2(-uz, ux);
+    const n = Math.max(2, Math.round(len / 2.1));
+    for (let k = 0; k <= n; k++) {
+      const t = k / n;
+      const q = { x: A.x + (B.x - A.x) * t, z: A.z + (B.z - A.z) * t };
+      const along = aStart + (aEnd - aStart) * t;
+      const lat = latIn + (latOut - latIn) * t;
+      push(onRoad(along, lat) ? 'trafficCone' : 'fencePanel', q, yaw + rng.range(-0.1, 0.1));
+    }
+    // Cones scattered inside the line (clear of the panels: generateProps drops overlaps), a sawhorse
+    // across the line's street end and a water barrier or sandbags beyond it.
+    for (let k = 0; k < 3; k++) {
+      const t = 0.2 + k * 0.28 + rng.range(0, 0.1);
+      const q = P(aStart + (aEnd - aStart) * t, sd * (latIn + (latOut - latIn) * t - rng.range(1.6, 2.4)));
+      push('trafficCone', q, rng.range(0, Math.PI * 2));
+    }
+    push('sawhorse', P(aEnd + 2.4, sd * (latOut + 0.4)), yaw + Math.PI / 2 + rng.range(-0.15, 0.15));
+    push(rng.chance(0.5) ? 'waterBarrier' : 'sandbags', P(aEnd + 2.2, sd * (latOut + 3.2)), yaw);
+  }
+  // String lights: across the mouth between the plinths' tops, and across the street edge in front.
+  const mouthA = r.ford ? aTop + 1.2 : aTop + 1.0;
+  const mouthL = r.ford ? r.hw + r.body - 0.4 : r.hw + r.body + 0.6;
+  b.hints.push({ kind: 'stringLights', points: [P(mouthA, -mouthL), P(mouthA, mouthL)], values: [] });
+  const frontA = r.ford ? aTop + 8 : aCurb - 0.6;
+  const frontL = r.ford ? r.hw + r.body - 0.4 : r.hw + r.body + CFG.funnelFlare;
+  b.hints.push({ kind: 'stringLights', points: [P(frontA, -frontL), P(frontA, frontL)], values: [] });
+}
 
 /** Record a ramp in the area params (see rampsOf). */
 function pushRamp(p: Record<string, number>, q: RampPlan, foot: Vec2, u: Vec2, edge: number, node: number, footId: number): void {
@@ -817,6 +1233,47 @@ function pushRamp(p: Record<string, number>, q: RampPlan, foot: Vec2, u: Vec2, e
   set('foot', footId);
 }
 
+/**
+ * Once the terrain exists (createCity, before the blocks read the walls):
+ * the level walls under every bridge get their heights from the deck
+ * there, deckClear below it: the parapets' `bottom` (so a car on the
+ * channel floor passes under them) and the abutments' and piers' `top` (so a
+ * car on the deck passes over them). The deck is the terrain over the wall,
+ * pulled in onto the deck proper (|w| <= dk, flat across) for the abutment
+ * faces beyond its edge, where the terrain is already down the channel's
+ * profile; the base terrain rolls along and across a bridge, so each wall
+ * takes the deck right above it.
+ */
+export function settleRiver(g: RoadGraph, areas: readonly Area[], builds: readonly AreaBuild[], terrain: Terrain): void {
+  for (const area of areas) {
+    if (area.kind !== 'river') continue;
+    const p = area.params;
+    const bridges = bridgesOf(g, area);
+    if (!bridges.length) continue;
+    for (const w of builds[area.id].walls) {
+      if (w.look !== 'parapet' && w.look !== 'culvert' && w.look !== 'pier') continue;
+      const mx = (w.ax + w.bx) / 2;
+      const mz = (w.az + w.bz) / 2;
+      let br = bridges[0];
+      let best = Infinity;
+      for (const c of bridges) {
+        const d = distToBridge(c, mx, mz);
+        if (d < best) {
+          best = d;
+          br = c;
+        }
+      }
+      const l = riverL(p, mx, mz);
+      const c = bridgePoint(p, br, 0, l);
+      const wv = Math.max(-br.dk, Math.min(br.dk, (mx - c.x) * br.nx + (mz - c.z) * br.nz));
+      const q = bridgePoint(p, br, wv, l);
+      const deck = terrain.heightAt(q.x, q.z);
+      if (w.look === 'parapet') w.bottom = deck - p.depth / 2;
+      else w.top = deck - CFG.deckClear;
+    }
+  }
+}
+
 /** True for a node of the channel floor (a ramp foot or a point along the chain). */
 export function isChannelNode(g: RoadGraph, id: number): boolean {
   return g.nodes[id].edges.some((eid) => g.edges[eid].kind === 'channel');
@@ -826,3 +1283,6 @@ export function isChannelNode(g: RoadGraph, id: number): boolean {
 export function isRiverNode(g: RoadGraph, id: number): boolean {
   return g.nodes[id].edges.some((eid) => isRiverEdge(g.edges[eid]));
 }
+
+/** Walls of a river area under a bridge: the deck's parapets and the abutments and piers beneath it. */
+export const isDeckWall = (w: Wall): boolean => w.look === 'parapet' || w.look === 'culvert' || w.look === 'pier';

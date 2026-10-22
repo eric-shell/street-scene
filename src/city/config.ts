@@ -72,32 +72,64 @@ export const CITY = {
       floorHalf: 11,
       bankWidth: 8,
       depth: 4.2,
-      /** Meander amplitude (m) and wavelength (m) of the centerline. */
-      meander: 9,
-      wavelength: 640,
+      /**
+       * The centerline is the midline between the two bank street rows (sampled column by column
+       * and box smoothed over smoothSpan m) plus a meander: a swing of up to `meander` m with
+       * wavelength `wavelength` m whose amplitude itself swells and fades over `envelope` m. The
+       * swing is scaled down in steps (meanderSteps tries) until the band clears every junction.
+       * Samples every centerStep m (cubic interpolation between them).
+       */
+      meander: 14,
+      wavelength: 700,
+      envelope: 1900,
+      meanderSteps: 4,
+      centerStep: 16,
+      smoothSpan: 240,
+      /** Junctions keep this far (m) beyond the band's top edge; any other street this far. */
+      junctionClear: 20,
+      streetClear: 12,
+      /** A crossing street runs within this |cos| of square to the channel (the diagonals cross at about 45). */
+      maxSkew: 0.78,
       /**
        * Low flow trickle on the floor (surface 'water', offroad grip): half width and offset from the
        * centerline (m), to one side of the racing line so it is a hazard to dodge, not a given.
        */
       waterHalf: 1.6,
       waterOffset: 5.5,
-      /** Solid bridge body beyond each bridge's sidewalk, seen from the channel as a culvert face. */
-      bridgeBody: 4,
       /**
-       * The channel is a race venue: its floor joins the road graph (edges of kind 'channel' between
-       * the feet of the entrances) and routes dive in. Entrances per seed [min, max], counting a ford
-       * (a crossing street that dips through the channel instead of bridging it) as two; fords per seed
-       * [min, max] where crossing streets have room for one.
+       * A bridge deck's structure beyond its outer sidewalk line (m): the terrain (the deck, what the
+       * road mesh drapes on) eases down into the channel profile across it, hidden under the deck's
+       * edge; the channel floor runs on beneath (World.heightAt with a car height, DeckSpan). The El
+       * keeps its pillars this far off the channel too.
        */
-      entrances: [4, 6],
-      fords: [2, 3],
-      /** Channel edges follow the meander with a node at least every this far (m): chords stay within about half a meter of it. */
+      bridgeBody: 4,
+      /** Pier and abutment tops, and the parapets' undersides, sit this far below the deck (m): deck cars pass over the one, channel cars under the other. */
+      deckClear: 0.6,
+      /** Piers under a deck: square side (m), spacing along the deck (m), inset from the floor edge (m); the abutment box starts this far up the bank (m). */
+      pier: 1.0,
+      pierSpacing: 6.5,
+      pierInset: 0.9,
+      abutment: 2,
+      /**
+       * The channel is a race venue: its floor is one chain of 'channel' edges from end to end and
+       * routes dive in anywhere. Entrances per seed [min, max], counting a ford (a crossing street
+       * that dips through the channel instead of bridging it) as two: at least one in every quarter
+       * of the channel's length, banks alternating; fords per seed [min, max] where a street fits one.
+       */
+      entrances: [6, 8],
+      fords: [1, 2],
+      /** Entrance feet keep this far apart along the channel (m) and this far from a bridge's crossing (m). */
+      entranceGap: 70,
+      footClear: 28,
+      /** Channel edges follow the meander with a node at least every this far (m): chords stay within about a meter of it. */
       nodeSpacing: 70,
       /**
        * Channel edge width (m) as the route sees it: the floor less a margin, so the chords between
-       * channel nodes (up to about 1.3 m off the true centerline) never put a floor edge wall "on the road".
+       * channel nodes (up to about a meter off the true centerline) never put a floor edge wall "on the road".
        */
       channelMargin: 1.5,
+      /** The chain ends this far (m) inside each tunnel portal: room for a closure and a meet behind the last foot. */
+      endStub: 30,
       /** Half widths (m) of side ramp trenches and of ford dips (a two lane street, curbs included). */
       rampHalfWidth: 4.5,
       fordHalfWidth: 5,
@@ -117,18 +149,18 @@ export const CITY = {
       rampLip: 0.3,
       /** Solid retaining plinth beside each trench (m): keeps cars on the bank 4 m from the drop. */
       rampBody: 4,
-      /** Ramp feet keep this far from a bridge's culvert face (m): room for a stub with a closure and a crowd behind it. */
-      footClear: 28,
       /**
        * A closure across the channel stands at least this far from a foot (m): past the widest plinth
        * (an avenue ford's, 12.5 m) plus the skew the meander gives the closure line across the banks.
        */
       closureFootClear: 16,
-      /** Dead-end channel stubs from a foot toward a bridge (m): room for a closure at closureFootClear and a meet behind it. */
-      stubLength: 32,
-      stubMin: 22,
-      /** Gaps between crossings wider than this (m) seat two side ramps, a short stretch of floor between them. */
-      twoSlotGap: 110,
+      /**
+       * Funnel at every ramp top (the shortcut language: fences, lights and clutter, never a sign):
+       * two lines of fence panels splaying from the plinth caps out onto the street by funnelReach m
+       * and funnelFlare m wider each side, cones and barricades along them, string lights across.
+       */
+      funnelReach: 6,
+      funnelFlare: 5,
       /** Buildings and infill keep this far from the channel's top edge. */
       clearance: 5,
       /** Clutter along the floor edges (barrels, crates, bags) about every this far (m), clear of feet and bridges. */

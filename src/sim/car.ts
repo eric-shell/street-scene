@@ -154,16 +154,16 @@ export function createCar(x: number, z: number, yaw: number, y: number): CarStat
   };
 }
 
-/** Put a car at rest at a position (used for grid and reset to road). */
-export function placeCar(c: CarState, x: number, z: number, yaw: number, world: World): void {
+/** Put a car at rest at a position (used for grid and reset to road); `y` picks the level under a bridge deck (World.heightAt). */
+export function placeCar(c: CarState, x: number, z: number, yaw: number, world: World, y?: number): void {
   c.x = x;
   c.z = z;
   c.yaw = yaw;
-  c.y = world.driveHeightAt(x, z);
+  c.y = world.driveHeightAt(x, z, y);
   c.vx = c.vy = c.vz = 0;
   c.yawRate = c.pitchRate = c.rollRate = 0;
   // Lying on the ground at its own angle (a reset on a bank or a ramp sits flat on it).
-  const sl = world.slopeAt(x, z);
+  const sl = world.slopeAt(x, z, y);
   c.pitch = -atan2(sl.gx * sin(yaw) + sl.gz * cos(yaw), 1);
   c.roll = atan2(sl.gx * cos(yaw) - sl.gz * sin(yaw), 1);
   c.steerAngle = 0;
@@ -220,7 +220,7 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
   const vLat = c.vx * lx + c.vz * lz;
   const speed = sqrt(c.vx * c.vx + c.vz * c.vz);
   const beta = speed > 1 ? atan2(vLat, abs(vLong)) : 0;
-  c.surface = world.surfaceAt(c.x, c.z);
+  c.surface = world.surfaceAt(c.x, c.z, c.y);
 
   // ---- pedals and gearbox ----
   let drive = inp.throttle;
@@ -467,7 +467,7 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
     const wx = c.x + fx * wu + lx * wv;
     const wz = c.z + fz * wu + lz * wv;
     // Wheels ride the paving: up onto a sidewalk over its curb, not through it.
-    const ground = world.driveHeightAt(wx, wz);
+    const ground = world.driveHeightAt(wx, wz, c.y);
     const comp = ground - (c.y + wv * tRoll - wu * tPitch);
     const compVel = (comp - w.compression) / h;
     w.compression = comp;
@@ -586,7 +586,7 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
   if (c.nitroActive && contacts > 0) Fu += t.nitrous.force;
   // The ground pushes back along its normal: the springs' vertical load times the slope, sideways. At
   // rest that is gravity's pull down a grade; climbing a bank, the extra load is what slows the car.
-  const sl = world.slopeAt(c.x, c.z);
+  const sl = world.slopeAt(c.x, c.z, c.y);
   Fu -= sumF * (sl.gx * fx + sl.gz * fz);
   Fv -= sumF * (sl.gx * lx + sl.gz * lz);
   // Load transfer (pitch and roll below) follows the body's actual acceleration, slope included, so a
@@ -668,7 +668,7 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
     c.roll = groundRoll - BODY_LEAN;
     if (c.rollRate < 0) c.rollRate = 0;
   }
-  const ground = world.driveHeightAt(c.x, c.z);
+  const ground = world.driveHeightAt(c.x, c.z, c.y);
   if (c.y < ground - 0.35) {
     if (c.vy < 0 && -c.vy * h > c.bottomOut) {
       c.bottomOut = -c.vy * h;
