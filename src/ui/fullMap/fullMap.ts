@@ -34,20 +34,30 @@
  * it takes the keys it uses and swallows the others (music and dev keys pass),
  * so nothing drives, pauses or navigates behind it; Tab and Escape call
  * onClose, as do its close button and a click on the backdrop.
+ *
+ * This class owns the state, the loop, the input and the order of drawing;
+ * the parts beside it are camera.ts (where the map looks and how it eases),
+ * draw.ts (stateless painters and the cached city bitmaps), tags.ts (name tag
+ * layout), tip.ts (the card's DOM), sidePanel.ts (the legend and the places)
+ * and tuning.ts (numbers, inks and shared helpers).
  */
-import type { World } from '../city/world';
-import type { Area, AreaKind } from '../city/districts/types';
-import { polygonBounds } from '../city/districts/geom';
-import { routeSample, type Route as RaceRoute, type RouteSample } from '../city/route';
-import { driftZones } from '../sim/driftZones';
-import type { Vec2 } from '../sim/math';
-import { CityLayers, KINDS, MAP_INK, MAP_PAD, fitCity, layersOf, mapHeading, mapToWorld, mapX, mapY, nearestOnArea, shownOnMap, tagAnchor, tagWeight, type CityDrawOptions, type MapView } from './cityMap';
-import { btn, h, iconBtn } from './dom';
-import { Disc3, Eye, EyeOff, Flag, FlagTriangleRight, Hash, Landmark, Layers, LocateFixed, MapIcon, MapPin, MapPinOff, MapPinned, Maximize2, Navigation, Navigation2, Route, X, ZoomIn, ZoomOut, drawIcon, icon, type IconNode } from './icons';
-import type { MapCar } from './minimap';
-import { PALETTE, rgba, type PaletteColor } from './palette';
-import { CITY_NAME, bearingDeg, compassPoint, distanceLabel, placeName } from './places';
-import { M_PER_FT, M_PER_MI } from './units';
+import type { World } from '../../city/world';
+import type { Area, AreaKind } from '../../city/districts/types';
+import { routeSample, type Route as RaceRoute, type RouteSample } from '../../city/route';
+import { driftZones } from '../../sim/driftZones';
+import type { Vec2 } from '../../sim/math';
+import { CityLayers, KINDS, MAP_INK, layersOf, mapToWorld, mapX, mapY, nearestOnArea, shownOnMap, type CityDrawOptions, type MapView } from '../cityMap';
+import { btn, h, iconBtn } from '../dom';
+import { Flag, Hash, Landmark, Layers, LocateFixed, MapIcon, MapPinOff, MapPinned, Maximize2, Route, X, ZoomIn, ZoomOut, icon } from '../icons';
+import type { MapCar } from '../minimap';
+import { PALETTE, rgba, type PaletteColor } from '../palette';
+import { CITY_NAME, bearingDeg, compassPoint, distanceLabel, placeName } from '../places';
+import { MapCamera } from './camera';
+import { blit, cellName, covers, drawEdgeArrow, drawEdges, drawGrid, drawPlayer, drawRevealRing, lightPath, makeSprites, newRaster, offView, worldTransform, type Raster, type Sprites } from './draw';
+import { buildLegend, buildPlaces, type PlaceRow } from './sidePanel';
+import { NameTags } from './tags';
+import { MapTip } from './tip';
+import { DROP_END, INK, NO_DASH, PASS_KEYS, PIN, PULSE_RINGS, ROSE_SVG, UI, bounceOut, clamp01, easeOut, inkOf, isShortcut, kindNote, trace, type LegendKey } from './tuning';
 
 /** Where a waypoint is kept: by whoever owns the map's city (main.ts keeps one per event city, so one set on the menu carries into free roam). */
 export interface WaypointStore {
@@ -79,420 +89,7 @@ export interface FullMapOptions {
   course?: { route: RaceRoute | null; ink: PaletteColor; label: string; zones?: boolean };
 }
 
-/** Motion, interaction and drawing tuning. Lengths in CSS px, times in s, rates in 1/s. */
-const UI = {
-  /** Deepest zoom, in multiples of the fitted city. */
-  maxZoom: 8,
-  /** Ease rates: the scale toward a wheel or key zoom, the center toward a key pan or a spring back, a fling's glide. */
-  zoomRate: 14,
-  panRate: 12,
-  flingRate: 4.5,
-  /** A fly-to (find me, fit, a place) lasts flyTime, plus up to flyExtra on a long trip, pulling back up to bump (log zoom). */
-  flyTime: 0.55,
-  flyExtra: 0.4,
-  bump: 0.8,
-  /** Wheel zoom per pixel of scroll; a trackpad pinch (ctrl + wheel) reports much smaller steps. */
-  wheel: 0.0022,
-  pinchWheel: 0.012,
-  /** Zoom step of the buttons and the + and - keys, and of a double click. */
-  step: 1.6,
-  dblStep: 2,
-  /** Find me zooms in to at least this; a place is framed between these zooms. */
-  findZoom: 3,
-  placeMin: 1.4,
-  placeMax: 5,
-  /** Key pan speed. */
-  keyPan: 760,
-  /** A press that travels this far is a drag, not a click (a finger gets more room). */
-  dragSlop: 5,
-  touchSlop: 10,
-  /** Two clicks this close in time and space are a double click. */
-  dblTime: 0.26,
-  dblDist: 22,
-  /** A drag released faster than this flings on; past the city's edge a drag moves the view this share of the way. */
-  minFling: 160,
-  rubber: 0.3,
-  /** The open: the panel lands, then the map is revealed outwards from the player. */
-  revealDelay: 0.14,
-  revealTime: 0.7,
-  /** Route dashes: their march speed and pattern. */
-  march: 16,
-  dash: 3,
-  gap: 11,
-  /** The player's two pings, a beat apart (the menu maps' map-ping). */
-  ping: 2.4,
-  /** The waypoint pin drops in, then a ripple spreads from it; a place picked from the list pulses. */
-  drop: 0.45,
-  ripple: 0.6,
-  pulse: 1.8,
-  /** Hit radii: the waypoint pin's head, the start and finish discs. */
-  pinHit: 15,
-  markHit: 12,
-  /** The view's bitmap margin (share of the canvas), the least time between redraws while moving, the zoom it may drift. */
-  margin: 0.15,
-  rasterGap: 0.09,
-  rasterDrift: 1.3,
-  /** Highlight and tag fades. */
-  fade: 12,
-  tagFade: 10,
-  /** Minor places (roundabouts, lots, shortcuts...) get tags from this zoom. */
-  minorZoom: 2.4,
-  /** The grid's cell (m), labelled A, B, C... across and 1, 2, 3... down; 100 m lines show in between from minorGrid px per cell. */
-  grid: 200,
-  minorGrid: 64,
-  /** How often live readouts (where you are, distances) refresh. */
-  live: 0.5,
-  /** Decoration alone (dashes, pings) redraws at most this often. */
-  idleHz: 60,
-} as const;
-
-/** Inks of the overlays (the city's own are MAP_INK and KINDS in cityMap.ts). */
-const INK = {
-  veil: PALETTE.bg0,
-  grid: 'rgba(252, 252, 250, 0.075)',
-  gridMinor: 'rgba(252, 252, 250, 0.035)',
-  band: 'rgba(25, 24, 26, 0.82)',
-  label: PALETTE.muted,
-  routeDash: 'rgba(255, 238, 220, 0.95)',
-  ping: PALETTE.orange,
-  pin: PALETTE.yellow,
-  outline: PALETTE.bg0,
-  player: PALETTE.text,
-  plate: rgba('bg0', 0.8),
-  scaleLight: PALETTE.soft,
-  scaleDark: PALETTE.bg3,
-  font: MAP_INK.font,
-} as const;
-
-/** Legend order; kinds missing from the city are left out. */
-const LEGEND_ORDER: AreaKind[] = ['park', 'river', 'lake', 'waterfront', 'subway', 'alley', 'backAlley', 'roundabout', 'hills', 'monument', 'tunnel', 'overpass', 'carPark', 'market', 'infill', 'roadworks', 'bluff'];
-
-/** What a legend row stands for: a district kind, or one of the map's own layers. */
-type LegendKey = AreaKind | 'you' | 'route' | 'shortcut' | 'waypoint';
-
-const isShortcut = (a: Area) => a.kind === 'backAlley' && a.variant === 'routeShortcut';
-/** Small places tagged only once zoomed in. */
-const isMinor = (a: Area) => a.kind === 'roundabout' || a.kind === 'overpass' || a.kind === 'roadworks' || isShortcut(a) || (a.kind === 'infill' && shownOnMap(a));
-
-const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
-const easeOut = (t: number) => 1 - (1 - t) ** 3;
-const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
-/** A drop that lands, bounces once and settles. */
-const bounceOut = (t: number) => (t < 0.62 ? (t / 0.62) ** 2 : 1 - 0.22 * Math.sin(((t - 0.62) / 0.38) * Math.PI) * (1 - (t - 0.62) / 0.38));
-
-/** A kind's legend label as a note under a place's name, unless it only says the name again ("Park" is in "Parks"). */
-function kindNote(name: string, label: string): string {
-  const n = name.toLowerCase();
-  const l = label.toLowerCase();
-  return label && !l.startsWith(n) && !n.startsWith(l) ? label : '';
-}
-
-/** Grid column name: A..Z, then AA, AB... */
-const colName = (i: number) => (i < 26 ? String.fromCharCode(65 + i) : String.fromCharCode(64 + Math.floor(i / 26)) + String.fromCharCode(65 + (i % 26)));
-
-/** Append a closed polygon or an open polyline (world m) to a path. */
-function trace(p: Path2D, pts: readonly Vec2[], closed: boolean): void {
-  for (let i = 0; i < pts.length; i++) (i ? p.lineTo(pts[i].x, pts[i].z) : p.moveTo(pts[i].x, pts[i].z));
-  if (closed) p.closePath();
-}
-
 const TMP: Vec2 = { x: 0, z: 0 };
-
-/** A view: the world point at the canvas center (m) and device px per meter. */
-interface Pose {
-  cx: number;
-  cz: number;
-  scale: number;
-}
-
-/**
- * Where the map looks, easing toward where it was sent. Wheel and key zooms
- * ease the scale (in log space) about an anchor that stays under the pointer;
- * key pans, flings and spring backs ease the center; a drag or a pinch moves
- * the view directly (a drag stretches past the city's edge and springs back);
- * a fly-to is a timed ease that pulls back on long trips. The center is kept
- * so the city never leaves the view; an axis the whole city fits along stays
- * centered, so at 1x nothing pans.
- */
-class MapCamera {
-  /** The current view (device px). */
-  readonly view: MapView = { cx: 0, cz: 0, scale: 1, w: 0, h: 0 };
-  /** The fitted city (1x) at this canvas size. */
-  readonly fit: Pose = { cx: 0, cz: 0, scale: 1 };
-  private readonly goal: Pose = { cx: 0, cz: 0, scale: 1 };
-  private readonly anchor = { on: false, sx: 0, sy: 0, wx: 0, wz: 0 };
-  private fly: { from: Pose; to: Pose; t: number; dur: number; bump: number } | null = null;
-  /** Dragging: the unstretched center the pointer has pulled the view to. */
-  private readonly drag = { on: false, cx: 0, cz: 0 };
-  /** Pinching: the world point under the fingers' midpoint and the scale it started at. */
-  private readonly pinch = { on: false, wx: 0, wz: 0, s0: 1 };
-  private rate: number = UI.panRate;
-  private readonly tmp: Pose = { cx: 0, cz: 0, scale: 1 };
-  /** The city's bounds plus the map's margin (m). */
-  private readonly b: { minX: number; maxX: number; minZ: number; maxZ: number };
-
-  constructor(private readonly world: World) {
-    const g = world.graph.bounds;
-    this.b = { minX: g.minX - MAP_PAD, maxX: g.maxX + MAP_PAD, minZ: g.minZ - MAP_PAD, maxZ: g.maxZ + MAP_PAD };
-  }
-
-  get zoom(): number {
-    return this.view.scale / this.fit.scale;
-  }
-  get goalZoom(): number {
-    return this.goal.scale / this.fit.scale;
-  }
-  /** A pointer holds the view (drag or pinch). */
-  get held(): boolean {
-    return this.drag.on || this.pinch.on;
-  }
-
-  /** A new canvas size: keep the zoom and the center, refit the 1x scale. */
-  resize(w: number, h: number): void {
-    const v = this.view;
-    const first = !v.w;
-    const zoom = first ? 1 : this.zoom;
-    const goalZoom = first ? 1 : this.goalZoom;
-    const f = fitCity(this.world, w, h);
-    this.fit.cx = f.cx;
-    this.fit.cz = f.cz;
-    this.fit.scale = f.scale;
-    v.w = w;
-    v.h = h;
-    if (first) {
-      v.cx = this.goal.cx = f.cx;
-      v.cz = this.goal.cz = f.cz;
-    }
-    v.scale = f.scale * zoom;
-    this.goal.scale = f.scale * goalZoom;
-    this.anchor.on = false;
-    this.fly = null;
-    this.clamp(v.scale, v);
-    this.clamp(this.goal.scale, this.goal);
-  }
-
-  /** Keep a center for a scale so the city never leaves the view. */
-  clamp(scale: number, p: { cx: number; cz: number }): void {
-    const { b, view } = this;
-    const hw = view.w / 2 / scale;
-    const hh = view.h / 2 / scale;
-    p.cx = b.maxX - b.minX <= 2 * hw + 1e-6 ? (b.minX + b.maxX) / 2 : Math.max(b.minX + hw, Math.min(b.maxX - hw, p.cx));
-    p.cz = b.maxZ - b.minZ <= 2 * hh + 1e-6 ? (b.minZ + b.maxZ) / 2 : Math.max(b.minZ + hh, Math.min(b.maxZ - hh, p.cz));
-  }
-
-  private clampScale(s: number): number {
-    return Math.max(this.fit.scale, Math.min(this.fit.scale * UI.maxZoom, s));
-  }
-
-  /** Zoom by f about canvas point (sx, sy), eased: the world point under it stays there. */
-  zoomAt(f: number, sx: number, sy: number): void {
-    this.fly = null;
-    const s = this.clampScale(this.goal.scale * f);
-    const w = mapToWorld(this.view, sx, sy, TMP);
-    Object.assign(this.anchor, { on: true, sx, sy, wx: w.x, wz: w.z });
-    this.goal.scale = s;
-    this.goal.cx = w.x + (sx - this.view.w / 2) / s;
-    this.goal.cz = w.z + (sy - this.view.h / 2) / s;
-    this.clamp(s, this.goal);
-  }
-
-  /** Move the content by (dx, dy) device px, eased (the arrow keys). */
-  nudge(dx: number, dy: number): void {
-    this.fly = null;
-    this.anchor.on = false;
-    this.rate = UI.panRate;
-    this.goal.cx += dx / this.goal.scale;
-    this.goal.cz += dy / this.goal.scale;
-    this.clamp(this.goal.scale, this.goal);
-  }
-
-  /** Ease the center toward a moving point (find me while the menu's car drives). */
-  follow(x: number, z: number): void {
-    if (this.fly || this.held) return;
-    this.anchor.on = false;
-    this.rate = UI.panRate;
-    this.goal.cx = x;
-    this.goal.cz = z;
-    this.clamp(this.goal.scale, this.goal);
-  }
-
-  /** Fly to a center and scale: a timed ease that pulls back on a long trip (instant with reduced motion). */
-  flyTo(cx: number, cz: number, scale: number, instant: boolean): void {
-    const to: Pose = { cx, cz, scale: this.clampScale(scale) };
-    this.clamp(to.scale, to);
-    this.anchor.on = this.drag.on = this.pinch.on = false;
-    Object.assign(this.goal, to);
-    const v = this.view;
-    if (instant) {
-      Object.assign(v, to);
-      this.fly = null;
-      return;
-    }
-    // Trip length in view widths at the nearer of the two zooms.
-    const trip = (Math.hypot(to.cx - v.cx, to.cz - v.cz) * Math.min(v.scale, to.scale)) / Math.max(v.w, v.h);
-    this.fly = { from: { cx: v.cx, cz: v.cz, scale: v.scale }, to, t: 0, dur: UI.flyTime + UI.flyExtra * Math.min(1, trip), bump: Math.min(UI.bump, trip * 0.7) };
-  }
-
-  /** Halt any ease or flight where the view is (a stretched view still springs back); true if it was on its way. */
-  stop(): boolean {
-    const v = this.view;
-    const g = this.goal;
-    const was = !!this.fly || this.anchor.on || Math.abs(g.cx - v.cx) * v.scale > 0.5 || Math.abs(g.cz - v.cz) * v.scale > 0.5 || Math.abs(g.scale / v.scale - 1) > 1e-3;
-    this.fly = null;
-    this.anchor.on = false;
-    g.cx = v.cx;
-    g.cz = v.cz;
-    g.scale = v.scale;
-    this.clamp(v.scale, g);
-    return was;
-  }
-
-  beginDrag(): void {
-    this.fly = null;
-    this.anchor.on = this.pinch.on = false;
-    Object.assign(this.drag, { on: true, cx: this.view.cx, cz: this.view.cz });
-    this.goal.scale = this.view.scale;
-  }
-
-  /** Drag the content by (dx, dy) device px; past the edge it stretches. */
-  dragBy(dx: number, dy: number): void {
-    const d = this.drag;
-    if (!d.on) return;
-    const v = this.view;
-    d.cx += dx / v.scale;
-    d.cz += dy / v.scale;
-    const t = this.tmp;
-    t.cx = d.cx;
-    t.cz = d.cz;
-    this.clamp(v.scale, t);
-    v.cx = this.goal.cx = t.cx + (d.cx - t.cx) * UI.rubber;
-    v.cz = this.goal.cz = t.cz + (d.cz - t.cz) * UI.rubber;
-  }
-
-  /** Let go at (vx, vy) device px/s: a fling glides on (an ease from the release speed covers speed / rate); a stretch springs back. */
-  endDrag(vx: number, vy: number, glide: boolean): void {
-    if (!this.drag.on) return;
-    this.drag.on = false;
-    const v = this.view;
-    this.rate = glide ? UI.flingRate : UI.panRate;
-    this.goal.cx = v.cx + (glide ? vx / UI.flingRate / v.scale : 0);
-    this.goal.cz = v.cz + (glide ? vy / UI.flingRate / v.scale : 0);
-    this.goal.scale = v.scale;
-    this.clamp(v.scale, this.goal);
-  }
-
-  beginPinch(mx: number, my: number): void {
-    this.fly = null;
-    this.anchor.on = this.drag.on = false;
-    const w = mapToWorld(this.view, mx, my, TMP);
-    Object.assign(this.pinch, { on: true, wx: w.x, wz: w.z, s0: this.view.scale });
-  }
-
-  /** Two fingers at midpoint (mx, my), spread `ratio` times their first distance. */
-  pinchTo(mx: number, my: number, ratio: number): void {
-    if (!this.pinch.on) return;
-    const v = this.view;
-    v.scale = this.clampScale(this.pinch.s0 * ratio);
-    v.cx = this.pinch.wx + (mx - v.w / 2) / v.scale;
-    v.cz = this.pinch.wz + (my - v.h / 2) / v.scale;
-    this.clamp(v.scale, v);
-    Object.assign(this.goal, { cx: v.cx, cz: v.cz, scale: v.scale });
-  }
-
-  endPinch(): void {
-    this.pinch.on = false;
-  }
-
-  /** Advance the eases by dt (s); `instant` settles at once. True if the view moved. */
-  step(dt: number, instant: boolean): boolean {
-    const v = this.view;
-    const cx = v.cx;
-    const cz = v.cz;
-    const s = v.scale;
-    const f = this.fly;
-    if (f) {
-      f.t += dt;
-      const u = instant ? 1 : Math.min(1, f.t / f.dur);
-      const e = easeInOut(u);
-      v.scale = Math.max(this.fit.scale, Math.exp(lerp(Math.log(f.from.scale), Math.log(f.to.scale), e) - f.bump * Math.sin(Math.PI * u)));
-      v.cx = lerp(f.from.cx, f.to.cx, e);
-      v.cz = lerp(f.from.cz, f.to.cz, e);
-      this.clamp(v.scale, v);
-      if (u >= 1) {
-        Object.assign(v, f.to);
-        this.fly = null;
-      }
-    } else if (!this.held) {
-      const g = this.goal;
-      const ls = Math.log(v.scale);
-      const lg = Math.log(g.scale);
-      v.scale = instant || Math.abs(lg - ls) < 2e-4 ? g.scale : Math.exp(ls + (lg - ls) * (1 - Math.exp(-UI.zoomRate * dt)));
-      if (this.anchor.on) {
-        const a = this.anchor;
-        v.cx = a.wx + (a.sx - v.w / 2) / v.scale;
-        v.cz = a.wz + (a.sy - v.h / 2) / v.scale;
-        this.clamp(v.scale, v);
-        if (v.scale === g.scale) {
-          this.anchor.on = false;
-          v.cx = g.cx;
-          v.cz = g.cz;
-        }
-      } else {
-        // Unclamped on the way, so a stretched drag springs back; the goal is inside.
-        const k = instant ? 1 : 1 - Math.exp(-this.rate * dt);
-        const eps = 0.1 / v.scale;
-        v.cx = Math.abs(g.cx - v.cx) < eps ? g.cx : v.cx + (g.cx - v.cx) * k;
-        v.cz = Math.abs(g.cz - v.cz) < eps ? g.cz : v.cz + (g.cz - v.cz) * k;
-      }
-    }
-    return v.cx !== cx || v.cz !== cz || v.scale !== s;
-  }
-}
-
-/** A cached bitmap of the city drawn through one view. */
-interface Raster {
-  readonly cv: HTMLCanvasElement;
-  readonly c: CanvasRenderingContext2D;
-  readonly view: MapView;
-  ok: boolean;
-  /** Map time it was drawn at (s). */
-  at: number;
-}
-
-function newRaster(): Raster {
-  const cv = document.createElement('canvas');
-  return { cv, c: cv.getContext('2d', { alpha: false })!, view: { cx: 0, cz: 0, scale: 1, w: 1, h: 1 }, ok: false, at: -1 };
-}
-
-/** A place's name tag, laid out again every frame. */
-interface Tag {
-  area: Area;
-  text: string;
-  ink: string;
-  /** Anchor (world m). */
-  x: number;
-  z: number;
-  minor: boolean;
-  /** Text width at the tag's font (device px; 0 until measured). */
-  w: number;
-  /** Shown amount (fades in and out as it fits or not) and where it was last drawn (device px). */
-  alpha: number;
-  sx: number;
-  sy: number;
-}
-
-/** A row of the Places tab. */
-interface PlaceRow {
-  area: Area;
-  /** Where a waypoint set from the list goes, and where the map flies (the area's middle). */
-  at: Vec2;
-  /** The area's bounds (m), framed by a fly-to. */
-  span: { minX: number; maxX: number; minZ: number; maxZ: number };
-  li: HTMLLIElement;
-  far: HTMLElement;
-  d: number;
-}
 
 /** What the pointer is over. */
 type Hover = { kind: 'area'; area: Area | null } | { kind: 'me' } | { kind: 'pin' } | { kind: 'mark'; finish: boolean };
@@ -529,21 +126,8 @@ export class FullMap {
   private readonly tools: HTMLElement;
   private readonly ro: ResizeObserver;
   private readonly focusBack: Element | null;
-  // Tooltip card.
-  private readonly tip: HTMLDivElement;
-  private readonly tipName: HTMLElement;
-  private readonly tipCell: HTMLElement;
-  private readonly tipKind: HTMLElement;
-  private readonly tipFar: HTMLElement;
-  private readonly tipArrow: HTMLElement;
-  private readonly tipDrift: HTMLElement;
-  private readonly tipShort: HTMLElement;
-  private readonly tipHere: HTMLElement;
-  private readonly tipAct: HTMLElement;
-  private readonly tipBtn: HTMLButtonElement;
-  private tipKey = '';
-  private tipW = 0;
-  private tipH = 0;
+  // The card by the pointer.
+  private readonly tip: MapTip;
   /** A tap's card stays put (touch); it can set the waypoint from its button. */
   private pinned: { x: number; y: number; wx: number; wz: number; hover: Hover } | null = null;
   // Side panel.
@@ -552,7 +136,7 @@ export class FullMap {
   private readonly legendPane: HTMLElement;
   private readonly placesPane: HTMLElement;
   private readonly placesList: HTMLUListElement;
-  private readonly rows = new Map<LegendKey, HTMLLIElement>();
+  private readonly rows: Map<LegendKey, HTMLLIElement>;
   private readonly wpCard: HTMLElement;
   private readonly wpFar: HTMLElement;
   private places: PlaceRow[] | null = null;
@@ -563,10 +147,7 @@ export class FullMap {
   private readonly drawOpts: CityDrawOptions = { dpr: 1, route: false, shortcuts: true };
   private readonly overview = newRaster();
   private readonly detail = newRaster();
-  private readonly tags: Tag[] = [];
-  /** Placed rectangles this frame (x0, y0, x1, y1 in device px), tags and what they keep clear of. */
-  private placed = new Float32Array(64);
-  private placedN = 0;
+  private readonly names: NameTags;
   private readonly kindPaths = new Map<AreaKind | 'shortcut', Path2D>();
   private readonly driftAreas: Set<number>;
   /** The course drawn (none for free roam's whole city), its color and its name in the legend and cards. */
@@ -576,9 +157,8 @@ export class FullMap {
   private readonly zonePaths: Path2D | null;
   private readonly start: RouteSample | null;
   private readonly finish: RouteSample | null;
-  private sprites: { dpr: number; start: HTMLCanvasElement; finish: HTMLCanvasElement | null; pin: HTMLCanvasElement } | null = null;
-  private bandTop: CanvasGradient | null = null;
-  private bandLeft: CanvasGradient | null = null;
+  private sprites: Sprites | null = null;
+  private bands: { top: CanvasGradient; left: CanvasGradient } | null = null;
   private readonly dashes: number[] = [UI.dash, UI.gap];
   /** Canvas fonts at the pixel ratio, and the furniture over the canvas tags keep clear of (device px), set on resize. */
   private readonly font = { tag: '', minor: '', you: '', grid: '', scale: '' };
@@ -646,7 +226,7 @@ export class FullMap {
       for (const z of driftZones(world)) z.polygon.forEach((q, i) => (i ? zones!.lineTo(q.x, q.z) : zones!.moveTo(q.x, q.z)));
     }
     this.zonePaths = zones;
-    this.buildTags();
+    this.names = new NameTags(world);
 
     this.canvas = h('canvas', { class: 'fullmap-cv', role: 'img', 'aria-label': 'City map' });
     this.ctx = this.canvas.getContext('2d', { alpha: false })!;
@@ -656,27 +236,7 @@ export class FullMap {
     this.findBtn = iconBtn(LocateFixed, 'Find me (C)', () => this.findMe());
     this.zoomEl = h('span', { class: 'fullmap-zoom', 'aria-hidden': 'true' }, '1×');
     this.tools = h('div', { class: 'fullmap-tools' }, this.zoomInBtn, this.zoomEl, this.zoomOutBtn, h('i', { class: 'fullmap-tools-gap' }), this.findBtn, iconBtn(Maximize2, 'Whole city (F)', () => this.fitAll()));
-    // The card that follows the pointer.
-    this.tipName = h('b', { class: 'fullmap-tip-name' });
-    this.tipCell = h('span', { class: 'fullmap-tip-cell' });
-    this.tipKind = h('div', { class: 'fullmap-tip-kind' });
-    this.tipArrow = h('span', { class: 'fullmap-tip-arrow' }, icon(Navigation2, { size: 12 }));
-    this.tipFar = h('span', {});
-    this.tipDrift = h('span', { class: 'chip fullmap-badge drift' }, icon(Disc3, { size: 12 }), h('span', {}, 'Drift zone'));
-    this.tipShort = h('span', { class: 'chip fullmap-badge short' }, icon(Route, { size: 12 }), h('span', {}, 'Shortcut'));
-    this.tipHere = h('span', { class: 'chip fullmap-badge here' }, icon(Navigation, { size: 12 }), h('span', {}, 'You are here'));
-    this.tipAct = h('div', { class: 'fullmap-tip-act' });
-    this.tipBtn = btn(MapPin, 'Set waypoint', () => this.tipAction(), 'small primary fullmap-tip-btn');
-    this.tip = h(
-      'div',
-      { class: 'fullmap-tip', 'aria-hidden': 'true' },
-      h('div', { class: 'fullmap-tip-head' }, h('i', { class: 'fullmap-dot' }), this.tipName, this.tipCell),
-      this.tipKind,
-      h('div', { class: 'fullmap-tip-far' }, this.tipArrow, this.tipFar),
-      h('div', { class: 'fullmap-tip-badges' }, this.tipDrift, this.tipShort, this.tipHere),
-      this.tipAct,
-      this.tipBtn,
-    );
+    this.tip = new MapTip(() => this.tipAction());
     this.stage = h(
       'div',
       { class: 'fullmap-stage', tabindex: '-1' },
@@ -686,10 +246,20 @@ export class FullMap {
       h('i', { class: 'fullmap-corner br' }),
       this.rose,
       this.tools,
-      this.tip,
+      this.tip.el,
     );
     // Side panel: the legend and the places, under tabs.
-    this.legendPane = h('div', { class: 'fullmap-pane', role: 'tabpanel' }, this.buildLegend());
+    const legend = buildLegend(world, route ? { ink: PALETTE[this.routeInk], label: this.routeLabel } : null, {
+      find: () => this.findMe(),
+      flyToWaypoint: () => this.flyToWaypoint(),
+      toggle: (key, li, b) => this.toggleLayer(key, li, b),
+      hover: (key, on) => {
+        if (on) this.legendKey = key;
+        else if (this.legendKey === key) this.legendKey = null;
+      },
+    });
+    this.rows = legend.rows;
+    this.legendPane = h('div', { class: 'fullmap-pane', role: 'tabpanel' }, legend.list);
     this.placesList = h('ul', { class: 'fullmap-places' });
     this.placesPane = h('div', { class: 'fullmap-pane', role: 'tabpanel', hidden: true }, this.placesList);
     this.legendTab = h('button', { class: 'tab on', type: 'button', role: 'tab', 'aria-selected': 'true' }, icon(Layers, { size: 15 }), 'Legend');
@@ -813,7 +383,7 @@ export class FullMap {
     this.overview.ok = this.detail.ok = false;
     this.dashes[0] = UI.dash * dpr;
     this.dashes[1] = UI.gap * dpr;
-    for (const t of this.tags) t.w = 0;
+    this.names.remeasure();
     const f = this.font;
     f.tag = `700 ${11 * dpr}px ${INK.font}`;
     f.minor = `600 ${10 * dpr}px ${INK.font}`;
@@ -822,53 +392,17 @@ export class FullMap {
     f.scale = `700 ${11 * dpr}px ${INK.font}`;
     [this.rose, this.tools].forEach((el, i) => this.furniture.set([el.offsetLeft * dpr, el.offsetTop * dpr, (el.offsetLeft + el.offsetWidth) * dpr, (el.offsetTop + el.offsetHeight) * dpr], i * 4));
     const c = this.ctx;
-    this.bandTop = c.createLinearGradient(0, 0, 0, 24 * dpr);
-    this.bandLeft = c.createLinearGradient(0, 0, 24 * dpr, 0);
-    for (const g of [this.bandTop, this.bandLeft]) {
+    const top = c.createLinearGradient(0, 0, 0, 24 * dpr);
+    const left = c.createLinearGradient(0, 0, 24 * dpr, 0);
+    for (const g of [top, left]) {
       g.addColorStop(0, INK.band);
       g.addColorStop(1, 'rgba(25, 24, 26, 0)');
     }
-    if (!this.sprites || this.sprites.dpr !== dpr) this.sprites = this.makeSprites(dpr);
-    this.tipW = 0;
+    this.bands = { top, left };
+    if (!this.sprites || this.sprites.dpr !== dpr) this.sprites = makeSprites(dpr, PALETTE[this.routeInk], this.route?.closed === false, !!this.finish);
+    this.tip.remeasure();
     this.updateZoomUi();
     this.dirty = true;
-  }
-
-  /** The start and finish discs (the menu course map's flag in a disc) and the waypoint pin, drawn once per pixel ratio. */
-  private makeSprites(dpr: number): { dpr: number; start: HTMLCanvasElement; finish: HTMLCanvasElement | null; pin: HTMLCanvasElement } {
-    const disc = (ico: IconNode): HTMLCanvasElement => {
-      const cv = document.createElement('canvas');
-      const r = 8.5 * dpr;
-      cv.width = cv.height = Math.ceil(2 * r + 4 * dpr);
-      const c = cv.getContext('2d')!;
-      const m = cv.width / 2;
-      c.fillStyle = PALETTE.bg0;
-      c.strokeStyle = PALETTE[this.routeInk];
-      c.lineWidth = 2 * dpr;
-      c.beginPath();
-      c.arc(m, m, r, 0, Math.PI * 2);
-      c.fill();
-      c.stroke();
-      drawIcon(c, ico, m - 5.5 * dpr, m - 5.5 * dpr, 11 * dpr, PALETTE[this.routeInk], 2.6);
-      return cv;
-    };
-    const pin = document.createElement('canvas');
-    pin.width = Math.ceil(PIN.w * dpr);
-    pin.height = Math.ceil(PIN.h * dpr);
-    const c = pin.getContext('2d')!;
-    c.scale(dpr, dpr);
-    pinPath(c, PIN.w / 2, PIN.tip, PIN.head, PIN.r);
-    c.fillStyle = INK.pin;
-    c.strokeStyle = INK.outline;
-    c.lineWidth = 2;
-    c.lineJoin = 'round';
-    c.stroke();
-    c.fill();
-    c.fillStyle = INK.outline;
-    c.beginPath();
-    c.arc(PIN.w / 2, PIN.tip - PIN.head, 2.8, 0, Math.PI * 2);
-    c.fill();
-    return { dpr, start: disc(this.route?.closed === false ? FlagTriangleRight : Flag), finish: this.finish ? disc(Flag) : null, pin };
   }
 
   // ---------- the loop ----------
@@ -999,7 +533,7 @@ export class FullMap {
       c.clip();
     }
     this.drawCity(c, v);
-    this.drawGrid(c, v);
+    drawGrid(c, v, this.world.graph.bounds, this.dpr);
     this.drawHighlights(c, v);
     if (this.showRoute) this.drawRoute(c, v);
     this.drawTags(c, v, mx, my);
@@ -1007,48 +541,17 @@ export class FullMap {
     this.drawWaypoint(c, v);
     if (revealing) {
       c.restore();
-      this.drawRevealRing(c, mx, my, radius, u);
+      drawRevealRing(c, mx, my, radius, u, this.dpr);
     }
     // Zoomed in, what is off the view still shows where it is: an arrow on the edge.
-    if (this.offView(v, mx, my)) this.drawEdgeArrow(c, v, mx, my, INK.player);
-    else this.drawPlayer(c, mx, my);
+    if (offView(v, mx, my, this.dpr)) drawEdgeArrow(c, v, mx, my, INK.player, this.dpr);
+    else drawPlayer(c, mx, my, { yaw: this.me.yaw, dpr: this.dpr, time: this.time, lit: this.legendShown === 'you' ? this.legendAmt : 0, reduced: this.reduced, font: this.font.you });
     if (this.wp) {
       const wx = mapX(v, this.wp.x);
       const wy = mapY(v, this.wp.z);
-      if (this.offView(v, wx, wy)) this.drawEdgeArrow(c, v, wx, wy, INK.pin);
+      if (offView(v, wx, wy, this.dpr)) drawEdgeArrow(c, v, wx, wy, INK.pin, this.dpr);
     }
-    this.drawEdges(c, v);
-  }
-
-  private offView(v: MapView, x: number, y: number): boolean {
-    const m = 6 * this.dpr;
-    return x < -m || y < -m || x > v.w + m || y > v.h + m;
-  }
-
-  /** An arrow just inside the map's edge, on the line from the center to a point off the view, pointing at it. */
-  private drawEdgeArrow(c: CanvasRenderingContext2D, v: MapView, x: number, y: number, ink: string): void {
-    const dpr = this.dpr;
-    const inset = 30 * dpr;
-    const dx = x - v.w / 2;
-    const dy = y - v.h / 2;
-    const t = Math.min((v.w / 2 - inset) / Math.max(1e-6, Math.abs(dx)), (v.h / 2 - inset) / Math.max(1e-6, Math.abs(dy)));
-    const a = Math.atan2(dy, dx);
-    const cs = Math.cos(a) * dpr;
-    const sn = Math.sin(a) * dpr;
-    c.setTransform(cs, sn, -sn, cs, v.w / 2 + dx * t, v.h / 2 + dy * t);
-    c.beginPath();
-    c.moveTo(10, 0);
-    c.lineTo(-6, 7.5);
-    c.lineTo(-2.5, 0);
-    c.lineTo(-6, -7.5);
-    c.closePath();
-    c.lineJoin = 'round';
-    c.strokeStyle = INK.outline;
-    c.lineWidth = 3;
-    c.stroke();
-    c.fillStyle = ink;
-    c.fill();
-    c.setTransform(1, 0, 0, 1, 0, 0);
+    drawEdges(c, v, this.world.graph.bounds, this.dpr, this.font, this.bands);
   }
 
   /** The city from the cached bitmaps: the view's own when it covers, the fitted city under it (or alone at 1x). */
@@ -1064,14 +567,14 @@ export class FullMap {
     const d = this.detail;
     const k = d.ok ? v.scale / d.view.scale : 0;
     const exact = d.ok && Math.abs(k - 1) < 1e-4 && Math.abs(v.cx - d.view.cx) * v.scale < 0.25 && Math.abs(v.cz - d.view.cz) * v.scale < 0.25;
-    const stale = !d.ok || !this.covers(d, v) || k > UI.rasterDrift || k < 1 / UI.rasterDrift;
+    const stale = !d.ok || !covers(d, v) || k > UI.rasterDrift || k < 1 / UI.rasterDrift;
     // While moving: redraw when the bitmap falls short, at most every rasterGap; once settled, redraw for the exact view.
     if ((stale && this.time - d.at >= UI.rasterGap) || (!this.camMoving && !exact)) {
       const m = Math.round(Math.max(v.w, v.h) * UI.margin);
       this.rasterize(d, v.cx, v.cz, v.scale, v.w + 2 * m, v.h + 2 * m);
     }
-    if (!this.covers(d, v)) this.blit(c, ov, v);
-    this.blit(c, d, v);
+    if (!covers(d, v)) blit(c, ov, v);
+    blit(c, d, v);
   }
 
   private rasterize(r: Raster, cx: number, cz: number, scale: number, w: number, hgt: number): void {
@@ -1084,65 +587,6 @@ export class FullMap {
     this.layers.draw(r.c, r.view, this.drawOpts);
     r.ok = true;
     r.at = this.time;
-  }
-
-  /** The bitmap's rectangle in the current view (device px). */
-  private rect(r: Raster, v: MapView): { x: number; y: number; w: number; h: number } {
-    const k = v.scale / r.view.scale;
-    RECT.x = v.w / 2 - (r.view.cx - v.cx) * v.scale - (r.view.w / 2) * k;
-    RECT.y = v.h / 2 - (r.view.cz - v.cz) * v.scale - (r.view.h / 2) * k;
-    RECT.w = r.view.w * k;
-    RECT.h = r.view.h * k;
-    return RECT;
-  }
-
-  private covers(r: Raster, v: MapView): boolean {
-    if (!r.ok) return false;
-    const q = this.rect(r, v);
-    return q.x <= 0.5 && q.y <= 0.5 && q.x + q.w >= v.w - 0.5 && q.y + q.h >= v.h - 0.5;
-  }
-
-  private blit(c: CanvasRenderingContext2D, r: Raster, v: MapView): void {
-    if (!r.ok) return;
-    const q = this.rect(r, v);
-    c.drawImage(r.cv, q.x, q.y, q.w, q.h);
-  }
-
-  /** The coordinate grid over the city: 200 m cells, 100 m lines between them once there is room. */
-  private drawGrid(c: CanvasRenderingContext2D, v: MapView): void {
-    const g = this.world.graph.bounds;
-    const x0 = g.maxX + MAP_PAD;
-    const z0 = g.maxZ + MAP_PAD;
-    const x1 = g.minX - MAP_PAD;
-    const z1 = g.minZ - MAP_PAD;
-    const cell = UI.grid * v.scale;
-    const minor = cell >= UI.minorGrid * this.dpr;
-    const step = minor ? UI.grid / 2 : UI.grid;
-    const top = Math.max(0, mapY(v, z0));
-    const bottom = Math.min(v.h, mapY(v, z1));
-    const left = Math.max(0, mapX(v, x0));
-    const right = Math.min(v.w, mapX(v, x1));
-    c.setTransform(1, 0, 0, 1, 0, 0);
-    c.lineWidth = 1;
-    for (let pass = 0; pass < (minor ? 2 : 1); pass++) {
-      c.beginPath();
-      for (let i = 0, x = x0; x >= x1 - 1e-6; i++, x = x0 - i * step) {
-        if (minor && (i % 2 === 0) !== (pass === 0)) continue;
-        const sx = Math.round(mapX(v, x)) + 0.5;
-        if (sx < left - 1 || sx > right + 1) continue;
-        c.moveTo(sx, top);
-        c.lineTo(sx, bottom);
-      }
-      for (let i = 0, z = z0; z >= z1 - 1e-6; i++, z = z0 - i * step) {
-        if (minor && (i % 2 === 0) !== (pass === 0)) continue;
-        const sy = Math.round(mapY(v, z)) + 0.5;
-        if (sy < top - 1 || sy > bottom + 1) continue;
-        c.moveTo(left, sy);
-        c.lineTo(right, sy);
-      }
-      c.strokeStyle = pass === 0 ? INK.grid : INK.gridMinor;
-      c.stroke();
-    }
   }
 
   /** Legend hover (a veil, the kind lit), the area under the pointer or a hovered place, a picked place's pulse. */
@@ -1158,22 +602,22 @@ export class FullMap {
       c.globalAlpha = 1;
       if (key !== 'you' && key !== 'route' && key !== 'waypoint') {
         const ink = key === 'shortcut' ? MAP_INK.shortcut : (KINDS[key]?.ink ?? PALETTE.soft);
-        this.worldTransform(c, v);
-        this.lightPath(c, this.kindPath(key), ink, key === 'shortcut' ? undefined : KINDS[key]?.fill, this.legendAmt, px, true);
+        worldTransform(c, v);
+        lightPath(c, this.kindPath(key), ink, key === 'shortcut' ? undefined : KINDS[key]?.fill, this.legendAmt, px, true);
       }
     }
     const lit = this.placeHover ?? this.hoverArea;
     if (lit && (this.placeHover || this.hoverAmt > 0.003) && !this.hidden.has(lit.kind)) {
-      this.worldTransform(c, v);
-      this.lightPath(c, this.layers.areaPath(lit), this.inkOf(lit), KINDS[lit.kind]?.fill, this.placeHover ? 1 : this.hoverAmt, px, lit.polygon.length >= 3);
+      worldTransform(c, v);
+      lightPath(c, this.layers.areaPath(lit), inkOf(lit), KINDS[lit.kind]?.fill, this.placeHover ? 1 : this.hoverAmt, px, lit.polygon.length >= 3);
     }
     const p = this.pulse;
     if (p) {
       const path = this.layers.areaPath(p.area);
-      const ink = this.inkOf(p.area);
-      this.worldTransform(c, v);
+      const ink = inkOf(p.area);
+      worldTransform(c, v);
       const fadeOut = 1 - clamp01((p.t - (UI.pulse - 0.4)) / 0.4);
-      this.lightPath(c, path, ink, KINDS[p.area.kind]?.fill, fadeOut, px, p.area.polygon.length >= 3);
+      lightPath(c, path, ink, KINDS[p.area.kind]?.fill, fadeOut, px, p.area.polygon.length >= 3);
       if (!this.reduced) {
         // Two rings of light running out from the outline.
         for (const off of PULSE_RINGS) {
@@ -1189,32 +633,6 @@ export class FullMap {
     }
   }
 
-  private worldTransform(c: CanvasRenderingContext2D, v: MapView): void {
-    const s = v.scale;
-    c.setTransform(-s, 0, 0, -s, v.w / 2 + v.cx * s, v.h / 2 + v.cz * s);
-    c.lineCap = 'round';
-    c.lineJoin = 'round';
-  }
-
-  /** A lit outline: its fill again (brighter), a soft wide stroke and a crisp one in its ink. */
-  private lightPath(c: CanvasRenderingContext2D, path: Path2D, ink: string, fill: string | undefined, amt: number, px: number, filled: boolean): void {
-    c.globalAlpha = amt;
-    if (filled) {
-      c.fillStyle = fill ?? ink;
-      if (!fill) c.globalAlpha = amt * 0.3;
-      c.fill(path);
-      c.globalAlpha = amt;
-    }
-    c.strokeStyle = ink;
-    c.lineWidth = (filled ? 7 : 10) * px;
-    c.globalAlpha = amt * 0.22;
-    c.stroke(path);
-    c.globalAlpha = amt;
-    c.lineWidth = (filled ? 2 : 4) * px;
-    c.stroke(path);
-    c.globalAlpha = 1;
-  }
-
   /** Every shown area of a legend kind as one path (the race shortcuts are their own). */
   private kindPath(key: AreaKind | 'shortcut'): Path2D {
     let p = this.kindPaths.get(key);
@@ -1228,12 +646,6 @@ export class FullMap {
       this.kindPaths.set(key, p);
     }
     return p;
-  }
-
-  private inkOf(a: Area | null): string {
-    if (!a) return PALETTE.soft;
-    if (isShortcut(a)) return MAP_INK.shortcut;
-    return KINDS[a.kind]?.ink ?? PALETTE.soft;
   }
 
   /** The race route: a soft road, the line, and dashes marching in its driving direction. */
@@ -1326,262 +738,34 @@ export class FullMap {
     c.drawImage(sp.pin, x - pw / 2, y - fall - (PIN.tip / PIN.h) * ph, pw, ph);
   }
 
-  /** The reveal's edge: a ring running out from the player as the map boots. */
-  private drawRevealRing(c: CanvasRenderingContext2D, x: number, y: number, r: number, u: number): void {
-    if (r <= 0) return;
-    const dpr = this.dpr;
-    c.setTransform(1, 0, 0, 1, 0, 0);
-    c.strokeStyle = INK.ping;
-    c.globalAlpha = 0.18 * (1 - u);
-    c.lineWidth = 14 * dpr;
-    c.beginPath();
-    c.arc(x, y, r, 0, Math.PI * 2);
-    c.stroke();
-    c.globalAlpha = 0.85 * (1 - u);
-    c.lineWidth = 2 * dpr;
-    c.stroke();
-    c.globalAlpha = 1;
-  }
-
-  /** The player: a white heading arrow over two orange pings a beat apart (the menu maps' car marker). */
-  private drawPlayer(c: CanvasRenderingContext2D, x: number, y: number): void {
-    const dpr = this.dpr;
-    c.setTransform(1, 0, 0, 1, 0, 0);
-    const lit = this.legendShown === 'you' ? this.legendAmt : 0;
-    c.strokeStyle = INK.ping;
-    c.lineWidth = 2 * dpr;
-    if (this.reduced) {
-      c.globalAlpha = 0.6;
-      c.beginPath();
-      c.arc(x, y, 15 * dpr, 0, Math.PI * 2);
-      c.stroke();
-    } else
-      for (const off of PINGS) {
-        const q = ((this.time + off) % UI.ping) / UI.ping;
-        const e = 1 - (1 - q) ** 2.2;
-        c.globalAlpha = 1 - e;
-        c.beginPath();
-        c.arc(x, y, 13 * (0.15 + 1.35 * e) * (1 + 0.5 * lit) * dpr, 0, Math.PI * 2);
-        c.stroke();
-      }
-    c.globalAlpha = 1;
-    // The arrow, turned to the heading: polygon(50% 0, 100% 100%, 50% 72%, 0 100%) on 12 x 15 px, a little larger here.
-    const a = mapHeading(this.me.yaw);
-    const k = dpr * (1.25 + 0.25 * lit);
-    const cs = Math.cos(a) * k;
-    const sn = Math.sin(a) * k;
-    c.setTransform(cs, sn, -sn, cs, x, y);
-    c.beginPath();
-    c.moveTo(0, -7.5);
-    c.lineTo(6, 7.5);
-    c.lineTo(0, 3.3);
-    c.lineTo(-6, 7.5);
-    c.closePath();
-    c.lineJoin = 'round';
-    c.strokeStyle = INK.outline;
-    c.lineWidth = 2.6;
-    c.stroke();
-    c.fillStyle = INK.player;
-    c.fill();
-    c.setTransform(1, 0, 0, 1, 0, 0);
-    c.font = this.font.you;
-    c.textAlign = 'center';
-    c.textBaseline = 'middle';
-    c.strokeStyle = INK.outline;
-    c.lineWidth = 3 * dpr;
-    c.strokeText('YOU', x, y + 22 * dpr);
-    c.fillStyle = INK.player;
-    c.fillText('YOU', x, y + 22 * dpr);
-  }
-
-  /** The grid's column and row names along the top and left edges, and the scale bar. */
-  private drawEdges(c: CanvasRenderingContext2D, v: MapView): void {
-    const dpr = this.dpr;
-    c.setTransform(1, 0, 0, 1, 0, 0);
-    if (this.bandTop && this.bandLeft) {
-      c.fillStyle = this.bandTop;
-      c.fillRect(0, 0, v.w, 24 * dpr);
-      c.fillStyle = this.bandLeft;
-      c.fillRect(0, 0, 24 * dpr, v.h);
-    }
-    const g = this.world.graph.bounds;
-    const x0 = g.maxX + MAP_PAD;
-    const z0 = g.maxZ + MAP_PAD;
-    const cols = Math.ceil((x0 - (g.minX - MAP_PAD)) / UI.grid);
-    const rows = Math.ceil((z0 - (g.minZ - MAP_PAD)) / UI.grid);
-    c.font = this.font.grid;
-    c.textAlign = 'center';
-    c.textBaseline = 'middle';
-    c.fillStyle = INK.label;
-    const edge = 22 * dpr;
-    for (let i = 0; i < cols; i++) {
-      const a = Math.max(edge, mapX(v, x0 - i * UI.grid));
-      const b = Math.min(v.w - 4 * dpr, mapX(v, x0 - (i + 1) * UI.grid));
-      if (b - a < 14 * dpr) continue;
-      c.fillText(colName(i), (a + b) / 2, 11 * dpr);
-    }
-    for (let i = 0; i < rows; i++) {
-      const a = Math.max(edge, mapY(v, z0 - i * UI.grid));
-      const b = Math.min(v.h - 4 * dpr, mapY(v, z0 - (i + 1) * UI.grid));
-      if (b - a < 14 * dpr) continue;
-      c.fillText(String(i + 1), 11 * dpr, (a + b) / 2);
-    }
-    // Scale bar, bottom left: the longest step under 110 px, in two tones like a surveyor's bar.
-    const cssScale = v.scale / dpr;
-    let step: (typeof SCALE_STEPS)[number] = SCALE_STEPS[0];
-    for (const s of SCALE_STEPS) if (s.m * cssScale <= 110) step = s;
-    const len = step.m * v.scale;
-    const m = 14 * dpr;
-    const y = v.h - m;
-    const label = step.label;
-    c.font = this.font.scale;
-    const tw = c.measureText(label).width;
-    c.fillStyle = INK.plate;
-    c.fillRect(m - 6 * dpr, y - 21 * dpr, Math.max(len, tw) + 12 * dpr, 27 * dpr);
-    c.fillStyle = INK.scaleDark;
-    c.fillRect(m, y - 4 * dpr, len, 4 * dpr);
-    c.fillStyle = INK.scaleLight;
-    c.fillRect(m, y - 4 * dpr, len / 2, 4 * dpr);
-    c.fillRect(m, y - 7 * dpr, 1.5 * dpr, 7 * dpr);
-    c.fillRect(m + len - 1.5 * dpr, y - 7 * dpr, 1.5 * dpr, 7 * dpr);
-    c.textAlign = 'left';
-    c.textBaseline = 'alphabetic';
-    c.fillText(label, m, y - 10 * dpr);
-  }
-
   // ---------- name tags ----------
 
-  private buildTags(): void {
-    const w = this.world;
-    const major = w.areas.filter((a) => KINDS[a.kind]?.tag && shownOnMap(a)).sort((a, b) => tagWeight(b) - tagWeight(a));
-    const minor = w.areas.filter((a) => isMinor(a) && !KINDS[a.kind]?.tag).sort((a, b) => tagWeight(b) - tagWeight(a));
-    for (const [list, small] of [
-      [major, false],
-      [minor, true],
-    ] as const) {
-      for (const a of list) {
-        const p = tagAnchor(w, a);
-        if (p) this.tags.push({ area: a, text: isShortcut(a) ? 'Shortcut' : placeName(a), ink: this.inkOf(a), x: p.x, z: p.z, minor: small, w: 0, alpha: 0, sx: 0, sy: 0 });
-      }
-    }
-    this.placed = new Float32Array(4 * (this.tags.length + 12));
-  }
-
-  private reserveMark(v: MapView, p: RouteSample): void {
-    const r = 11 * this.dpr;
-    const x = mapX(v, p.x);
-    const y = mapY(v, p.z);
-    this.reserve(x - r, y - r, x + r, y + r);
-  }
-
-  private reserve(x0: number, y0: number, x1: number, y1: number): void {
-    const P = this.placed;
-    P[this.placedN++] = x0;
-    P[this.placedN++] = y0;
-    P[this.placedN++] = x1;
-    P[this.placedN++] = y1;
-  }
-
-  private free(x0: number, y0: number, x1: number, y1: number, pad: number): boolean {
-    const P = this.placed;
-    for (let i = 0; i < this.placedN; i += 4) if (x0 < P[i + 2] + pad && x1 > P[i] - pad && y0 < P[i + 3] + pad && y1 > P[i + 1] - pad) return false;
-    return true;
-  }
-
-  /**
-   * Name tags: bigger places first, each dropped where it would cover one
-   * already placed, a marker or the map's furniture, so zooming in (the places
-   * spread out) fits more of them, and the minor places join from minorZoom.
-   * Tags fade in and out as they fit or not.
-   */
+  /** The tags, kept clear of the player and its label, the markers and the furniture over the canvas. */
   private drawTags(c: CanvasRenderingContext2D, v: MapView, mx: number, my: number): void {
     const dpr = this.dpr;
-    const zoom = this.cam.zoom;
-    this.placedN = 0;
-    // Keep clear of the player and its label, the markers, and the furniture over the canvas.
-    this.reserve(mx - 18 * dpr, my - 18 * dpr, mx + 18 * dpr, my + 30 * dpr);
+    const t = this.names;
+    t.clear();
+    t.reserve(mx - 18 * dpr, my - 18 * dpr, mx + 18 * dpr, my + 30 * dpr);
     if (this.wp) {
       const px = mapX(v, this.wp.x);
       const py = mapY(v, this.wp.z);
-      this.reserve(px - 12 * dpr, py - 30 * dpr, px + 12 * dpr, py + 4 * dpr);
+      t.reserve(px - 12 * dpr, py - 30 * dpr, px + 12 * dpr, py + 4 * dpr);
     }
     if (this.showRoute && this.start) {
-      this.reserveMark(v, this.start);
-      if (this.finish) this.reserveMark(v, this.finish);
+      const r = 11 * dpr;
+      for (const p of this.finish ? [this.start, this.finish] : [this.start]) {
+        const x = mapX(v, p.x);
+        const y = mapY(v, p.z);
+        t.reserve(x - r, y - r, x + r, y + r);
+      }
     }
     const F = this.furniture;
-    this.reserve(F[0], F[1], F[2], F[3]);
-    this.reserve(F[4], F[5], F[6], F[7]);
-    this.reserve(0, v.h - 44 * dpr, 150 * dpr, v.h);
-    const kf = this.reduced ? 1 : 1 - Math.exp(-UI.tagFade * (this.time - this.tagTime));
+    t.reserve(F[0], F[1], F[2], F[3]);
+    t.reserve(F[4], F[5], F[6], F[7]);
+    t.reserve(0, v.h - 44 * dpr, 150 * dpr, v.h);
+    const fade = this.reduced ? 1 : 1 - Math.exp(-UI.tagFade * (this.time - this.tagTime));
     this.tagTime = this.time;
-    const lit = this.legendShown;
-    const H = 18 * dpr;
-    const hm = 15 * dpr;
-    for (const t of this.tags) {
-      let goal = 0;
-      const font = t.minor ? this.font.minor : this.font.tag;
-      if ((!t.minor || zoom >= UI.minorZoom) && !this.hidden.has(t.area.kind) && !(isShortcut(t.area) && !this.drawOpts.shortcuts)) {
-        if (!t.w) {
-          c.font = font;
-          t.w = c.measureText(t.text).width;
-        }
-        const sx = mapX(v, t.x);
-        const sy = mapY(v, t.z);
-        const w = t.w + 12 * dpr;
-        const th = t.minor ? hm : H;
-        const x0 = sx - w / 2;
-        const y0 = sy - th / 2;
-        if (x0 > 24 * dpr && y0 > 24 * dpr && x0 + w < v.w - 4 * dpr && y0 + th < v.h - 4 * dpr && this.free(x0, y0, x0 + w, y0 + th, 3 * dpr)) {
-          this.reserve(x0, y0, x0 + w, y0 + th);
-          goal = 1;
-          t.sx = sx;
-          t.sy = sy;
-        }
-      }
-      t.alpha = Math.abs(goal - t.alpha) < 0.01 ? goal : t.alpha + (goal - t.alpha) * kf;
-      if (t.alpha < 0.01) continue;
-      if (goal === 0) {
-        // Fading out where it was, following the view.
-        t.sx = mapX(v, t.x);
-        t.sy = mapY(v, t.z);
-      }
-      const dim = lit && lit !== 'you' && lit !== 'route' && lit !== 'waypoint' ? (t.area.kind === lit || (lit === 'shortcut' && isShortcut(t.area)) ? 1 : 1 - 0.75 * this.legendAmt) : lit ? 1 - 0.6 * this.legendAmt : 1;
-      this.drawTag(c, t, font, dim * t.alpha);
-    }
-  }
-
-  /** One tag: a chamfered dark plate with a hairline and the name in the place's ink. */
-  private drawTag(c: CanvasRenderingContext2D, t: Tag, font: string, alpha: number): void {
-    const dpr = this.dpr;
-    const w = t.w + 12 * dpr;
-    const hgt = (t.minor ? 15 : 18) * dpr;
-    const x0 = t.sx - w / 2;
-    const y0 = t.sy - hgt / 2;
-    const cut = 4 * dpr;
-    c.setTransform(1, 0, 0, 1, 0, 0);
-    c.globalAlpha = alpha;
-    c.beginPath();
-    c.moveTo(x0, y0);
-    c.lineTo(x0 + w - cut, y0);
-    c.lineTo(x0 + w, y0 + cut);
-    c.lineTo(x0 + w, y0 + hgt);
-    c.lineTo(x0 + cut, y0 + hgt);
-    c.lineTo(x0, y0 + hgt - cut);
-    c.closePath();
-    c.fillStyle = MAP_INK.tagBg;
-    c.fill();
-    c.strokeStyle = t.ink;
-    c.lineWidth = dpr;
-    if (t.minor) c.globalAlpha = alpha * 0.55;
-    c.stroke();
-    c.globalAlpha = alpha * (t.minor ? 0.9 : 1);
-    c.font = font;
-    c.textAlign = 'center';
-    c.textBaseline = 'middle';
-    c.fillStyle = t.ink;
-    c.fillText(t.text, t.sx, t.sy + 0.5 * dpr);
-    c.globalAlpha = 1;
+    t.draw(c, v, { dpr, zoom: this.cam.zoom, font: this.font, hidden: this.hidden, shortcuts: !!this.drawOpts.shortcuts, lit: this.legendShown, litAmt: this.legendAmt, fade });
   }
 
   // ---------- hover and the card ----------
@@ -1592,7 +776,7 @@ export class FullMap {
     const show = this.pinned ?? (this.ptr.in && !this.press?.moved && !this.cam.held ? this.ptr : null);
     if (!show) {
       this.setHover({ kind: 'area', area: null }, null);
-      this.hideTip();
+      this.tip.hide();
       return;
     }
     const v = this.cam.view;
@@ -1615,7 +799,7 @@ export class FullMap {
     const area = hv.kind === 'area' && hv.area && !this.hidden.has(hv.area.kind) && KINDS[hv.area.kind] && shownOnMap(hv.area) ? hv.area : null;
     this.setHover(hv, area);
     this.fillTip(hv, wx, wz);
-    this.placeTip(show.x, show.y);
+    this.tip.place(show.x, show.y, this.cam.view.w / this.dpr, this.cam.view.h / this.dpr);
   }
 
   private setHover(hv: Hover, area: Area | null): void {
@@ -1675,7 +859,7 @@ export class FullMap {
     } else {
       area = hv.kind === 'area' ? hv.area : null;
       name = area && isShortcut(area) ? 'Race shortcut' : placeName(area);
-      ink = this.inkOf(area);
+      ink = inkOf(area);
       kind = area ? kindNote(name, isShortcut(area) ? 'Race shortcuts' : (KINDS[area.kind]?.label ?? '')) : '';
     }
     const dx = at.x - this.me.x;
@@ -1684,7 +868,7 @@ export class FullMap {
       far = distanceLabel(dx, dz);
       bearing = bearingDeg(dx, dz);
     }
-    const cell = this.cellName(at.x, at.z);
+    const cell = cellName(this.world.graph.bounds, at.x, at.z);
     const drift = !!area && this.driftAreas.has(area.id);
     const short = !!area && isShortcut(area);
     const here = !!area && hv.kind === 'area' && this.world.areaAt(this.me.x, this.me.z) === area;
@@ -1692,51 +876,7 @@ export class FullMap {
     const canSet = !!this.opts.waypoint;
     const act = pinned ? '' : hv.kind === 'me' ? 'Click to center the map on you' : !canSet ? '' : hv.kind === 'pin' ? 'Click to clear the waypoint' : 'Click to drop a waypoint here';
     const btnLabel = !canSet || !pinned || hv.kind === 'me' ? '' : hv.kind === 'pin' ? 'Clear waypoint' : 'Set waypoint';
-    const key = `${name}|${ink}|${kind}|${far}|${cell}|${drift}|${short}|${here}|${act}|${btnLabel}`;
-    if (key === this.tipKey) return;
-    this.tipKey = key;
-    this.tip.style.setProperty('--ink', ink);
-    this.tipName.textContent = name;
-    this.tipCell.textContent = cell;
-    this.tipKind.textContent = kind;
-    this.tipKind.hidden = !kind;
-    this.tipFar.textContent = far;
-    this.tipArrow.hidden = far === 'Here';
-    this.tipArrow.style.transform = `rotate(${Math.round(bearing)}deg)`;
-    this.tipDrift.hidden = !drift;
-    this.tipShort.hidden = !short;
-    this.tipHere.hidden = !here;
-    this.tipAct.textContent = act;
-    this.tipAct.hidden = !act;
-    this.tipBtn.hidden = !btnLabel;
-    if (btnLabel) (this.tipBtn.querySelector('.grow') as HTMLElement).textContent = btnLabel;
-    this.tip.classList.add('on');
-    this.tip.classList.toggle('pinned', pinned);
-    this.tipW = 0;
-  }
-
-  /** Put the card by the pointer, flipped to stay inside the map. */
-  private placeTip(x: number, y: number): void {
-    if (!this.tipW) {
-      this.tipW = this.tip.offsetWidth;
-      this.tipH = this.tip.offsetHeight;
-    }
-    const W = this.cam.view.w / this.dpr;
-    const H = this.cam.view.h / this.dpr;
-    const off = 16;
-    let left = x + off;
-    let top = y + off;
-    if (left + this.tipW > W - 8) left = x - off - this.tipW;
-    if (top + this.tipH > H - 8) top = y - off - this.tipH;
-    left = Math.max(8, Math.min(W - 8 - this.tipW, left));
-    top = Math.max(28, Math.min(H - 8 - this.tipH, top));
-    this.tip.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`;
-  }
-
-  private hideTip(): void {
-    if (!this.tip.classList.contains('on')) return;
-    this.tip.classList.remove('on', 'pinned');
-    this.tipKey = '';
+    this.tip.show({ name, ink, kind, far, bearing, cell, drift, short, here, act, button: btnLabel, pinned });
   }
 
   /** The card's button (touch): set the waypoint where the tap was, or clear it. */
@@ -1746,18 +886,8 @@ export class FullMap {
     this.pinned = null;
     if (p.hover.kind === 'pin') this.setWaypoint(null);
     else this.setWaypoint({ x: p.wx, z: p.wz });
-    this.hideTip();
+    this.tip.hide();
     this.hoverDirty = true;
-  }
-
-  /** The grid cell a point lies in ("C4"), or '' outside the grid. */
-  private cellName(x: number, z: number): string {
-    const g = this.world.graph.bounds;
-    const col = Math.floor((g.maxX + MAP_PAD - x) / UI.grid);
-    const row = Math.floor((g.maxZ + MAP_PAD - z) / UI.grid);
-    const cols = Math.ceil((g.maxX - g.minX + 2 * MAP_PAD) / UI.grid);
-    const rows = Math.ceil((g.maxZ - g.minZ + 2 * MAP_PAD) / UI.grid);
-    return col >= 0 && row >= 0 && col < cols && row < rows ? `${colName(col)}${row + 1}` : '';
   }
 
   private setCursor(cur: string): void {
@@ -1785,7 +915,7 @@ export class FullMap {
     this.setFollow(false);
     if (this.pinned) {
       this.pinned = null;
-      this.hideTip();
+      this.tip.hide();
     }
     if (this.pointers.size === 1) {
       // A press on a gliding or flying map stops it there, and is no tap.
@@ -1831,7 +961,7 @@ export class FullMap {
       pr.y = pr.y0;
       pr.t = now;
       this.cam.beginDrag();
-      this.hideTip();
+      this.tip.hide();
       this.setCursor('grabbing');
     }
     const dx = p.x - pr.x;
@@ -2035,7 +1165,7 @@ export class FullMap {
     this.opts.waypoint.set(this.wp);
     if (p) this.dropT = this.reduced ? DROP_END : 0;
     this.syncWaypoint();
-    this.tipKey = '';
+    this.tip.invalidate();
     this.hoverDirty = true;
     this.dirty = true;
   }
@@ -2091,57 +1221,6 @@ export class FullMap {
     }
   }
 
-  /** The legend: what this city has, with counts; a row lights its kind up on the map, a click hides or shows it. */
-  private buildLegend(): HTMLElement {
-    const counts = new Map<AreaKind, number>();
-    let shortcuts = 0;
-    for (const a of this.world.areas) {
-      if (!shownOnMap(a)) continue;
-      if (isShortcut(a)) shortcuts++;
-      else counts.set(a.kind, (counts.get(a.kind) ?? 0) + 1);
-    }
-    const swatch = (kind: 'fill' | 'line' | 'dash' | 'ring' | 'icon', ink: string, fill?: string, ico?: IconNode) =>
-      h('span', { class: `fullmap-sw ${kind}`, style: kind === 'fill' ? `background:${fill};border-color:${ink}` : kind === 'icon' ? `color:${ink}` : `border-color:${ink}` }, ico ? icon(ico, { size: 14 }) : null);
-    const list = h('ul', { class: 'fullmap-rows' });
-    let i = 0;
-    const row = (key: LegendKey, sw: HTMLElement, label: string, count: string, action: 'toggle' | 'find' | 'fly'): void => {
-      const state = action === 'toggle' ? h('span', { class: 'fullmap-state' }, icon(Eye, { size: 15, className: 'on' }), icon(EyeOff, { size: 15, className: 'off' })) : h('span', { class: 'fullmap-state' }, icon(action === 'find' ? LocateFixed : MapPinned, { size: 15, className: 'on' }));
-      const b = h(
-        'button',
-        { class: 'fullmap-row-btn', type: 'button', title: action === 'toggle' ? `Show or hide ${label.toLowerCase()}` : action === 'find' ? 'Find me' : 'Show the waypoint', 'aria-pressed': action === 'toggle' ? 'true' : null },
-        sw,
-        h('span', { class: 'fullmap-label' }, label),
-        h('span', { class: 'fullmap-num' }, count),
-        state,
-      );
-      const li = h('li', { class: 'fullmap-row', 'data-key': key, style: `--i:${i++}` }, b);
-      b.addEventListener('click', () => {
-        if (action === 'find') this.findMe();
-        else if (action === 'fly') this.flyToWaypoint();
-        else this.toggleLayer(key, li, b);
-      });
-      b.addEventListener('pointerenter', () => (this.legendKey = key));
-      b.addEventListener('pointerleave', () => this.legendKey === key && (this.legendKey = null));
-      b.addEventListener('focus', () => (this.legendKey = key));
-      b.addEventListener('blur', () => this.legendKey === key && (this.legendKey = null));
-      this.rows.set(key, li);
-      list.append(li);
-    };
-    row('you', swatch('icon', PALETTE.text, undefined, Navigation), 'You', '', 'find');
-    row('waypoint', swatch('icon', INK.pin, undefined, MapPin), 'Waypoint', '', 'fly');
-    if (this.route) row('route', swatch('line', PALETTE[this.routeInk]), this.routeLabel, '', 'toggle');
-    if (shortcuts) row('shortcut', swatch('line', MAP_INK.shortcut), 'Race shortcuts', shortcuts > 1 ? String(shortcuts) : '', 'toggle');
-    for (const k of LEGEND_ORDER) {
-      const n = counts.get(k) ?? 0;
-      const st = KINDS[k];
-      if (!n || !st) continue;
-      const sw = k === 'roundabout' ? swatch('ring', st.ink) : st.fill ? swatch('fill', st.ink, st.fill) : swatch(st.dash ? 'dash' : 'line', st.ink);
-      // Infill is frontage filler: a count of it says nothing.
-      row(k, sw, st.label, k === 'infill' || n < 2 ? '' : String(n), 'toggle');
-    }
-    return list;
-  }
-
   private toggleLayer(key: LegendKey, li: HTMLElement, b: HTMLButtonElement): void {
     let on: boolean;
     if (key === 'route') on = this.showRoute = !this.showRoute;
@@ -2166,48 +1245,13 @@ export class FullMap {
     this.dirty = true;
   }
 
-  /** The Places tab: the notable places (and the drift zones), nearest first. */
+  /** The Places tab: the notable places (and the drift zones), sorted nearest first when it opens. */
   private buildPlaces(): void {
-    const rows: PlaceRow[] = [];
-    for (const a of this.world.areas) {
-      if (!shownOnMap(a) || !(KINDS[a.kind]?.tag || this.driftAreas.has(a.id))) continue;
-      const pts = a.polygon.length >= 3 ? a.polygon : a.path;
-      if (!pts.length) continue;
-      const span = polygonBounds(pts);
-      const at = tagAnchor(this.world, a) ?? { x: (span.minX + span.maxX) / 2, z: (span.minZ + span.maxZ) / 2 };
-      const ink = this.inkOf(a);
-      const far = h('span', { class: 'fullmap-place-far' });
-      const name = placeName(a);
-      const drift = this.driftAreas.has(a.id);
-      const note = drift ? 'Drift zone' : kindNote(name, KINDS[a.kind]?.label ?? '');
-      const go = h(
-        'button',
-        { class: 'fullmap-place-btn', type: 'button', title: 'Show on the map' },
-        h('i', { class: 'fullmap-dot', style: `--ink:${ink}` }),
-        h('span', { class: 'fullmap-place-name' }, name, note ? h('small', { class: drift ? 'drift' : '' }, note) : null),
-        far,
-      );
-      const li = h('li', { class: 'fullmap-place' }, go);
-      const row: PlaceRow = { area: a, at, span, li, far, d: 0 };
-      go.addEventListener('click', () => this.flyToPlace(row));
-      go.addEventListener('pointerenter', () => this.hoverPlace(a));
-      go.addEventListener('pointerleave', () => this.hoverPlace(null));
-      if (this.opts.waypoint) {
-        li.append(
-          iconBtn(
-            MapPin,
-            'Set waypoint here',
-            () => {
-              this.setWaypoint(at);
-              this.flyToPlace(row);
-            },
-            'small ghost fullmap-place-pin',
-          ),
-        );
-      }
-      rows.push(row);
-    }
-    this.places = rows;
+    const rows = (this.places = buildPlaces(this.world, this.driftAreas, {
+      fly: (r) => this.flyToPlace(r),
+      hover: (a) => this.hoverPlace(a),
+      setWaypoint: this.opts.waypoint ? (at) => this.setWaypoint(at) : undefined,
+    }));
     if (!rows.length) this.placesList.append(h('li', { class: 'fullmap-empty' }, 'No named places in this city.'));
   }
 
@@ -2236,40 +1280,3 @@ export class FullMap {
 }
 
 const NEAR = { x: 0, z: 0, d: 0 };
-/** Where the pin's drop (0..1) and landing ripple end, in drop lengths. */
-const DROP_END = 1 + UI.ripple / UI.drop;
-/** The player's two pings start this far apart (s), and a picked place's two rings. */
-const PINGS = [0, UI.ping / 2] as const;
-const PULSE_RINGS = [0, 0.45] as const;
-const RECT = { x: 0, y: 0, w: 0, h: 0 };
-const NO_DASH: number[] = [];
-/** Scale bar lengths (m) it picks from. */
-/** Scale bar lengths in round US units (ui/units.ts), shortest first. */
-const SCALE_STEPS = [
-  ...[50, 100, 250, 500, 1000].map((ft) => ({ m: ft * M_PER_FT, label: `${ft} ft` })),
-  ...[0.25, 0.5, 1].map((mi) => ({ m: mi * M_PER_MI, label: `${mi} mi` })),
-] as const;
-/** Keys that pass through while the map is open: music (M, [ and ]), the dev panels and the function keys. */
-const PASS_KEYS = /^(KeyM|BracketLeft|BracketRight|Backquote|F\d+)$/;
-/** The waypoint pin (CSS px): its canvas, the tip's height in it, the head's center above the tip and its radius. */
-const PIN = { w: 22, h: 30, tip: 27, head: 15, r: 7.5 } as const;
-
-/** A map pin: a round head over a point at (x, tip), traced for filling and stroking. */
-function pinPath(c: CanvasRenderingContext2D, x: number, tip: number, head: number, r: number): void {
-  // The tangents from the tip to the head's circle meet it at pi/2 +- acos(r / head) from straight down.
-  const a = Math.acos(r / head);
-  c.beginPath();
-  c.moveTo(x, tip);
-  c.arc(x, tip - head, r, Math.PI / 2 + a, Math.PI / 2 - a + Math.PI * 2);
-  c.closePath();
-}
-
-/** The compass rose in the map's corner: north in yellow (the map never turns, so it is static markup). */
-const ROSE_SVG = `<svg viewBox="-26 -30 52 56" width="52" height="56">
-<circle r="17" fill="rgba(25,24,26,0.8)" stroke="rgba(252,252,250,0.22)"/>
-<circle r="12.5" fill="none" stroke="rgba(252,252,250,0.08)"/>
-<path d="M0 -15 L4 0 L-4 0Z" fill="#ffd866"/><path d="M0 15 L4 0 L-4 0Z" fill="#727072"/>
-<path d="M-13 0 L0 -2.6 L0 2.6Z M13 0 L0 -2.6 L0 2.6Z" fill="#5b595c"/>
-<circle r="1.8" fill="#19181a"/>
-<text y="-20.5" text-anchor="middle" font-size="10" font-weight="900" fill="#ffd866">N</text>
-</svg>`;

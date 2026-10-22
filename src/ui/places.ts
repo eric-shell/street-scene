@@ -1,7 +1,7 @@
 /**
  * Player facing names for the district areas, shared by the free roam area
  * chip and callouts (game/session.ts) and the full map's tags and readouts
- * (ui/fullMap.ts), so a place is called the same thing everywhere; and how
+ * (ui/fullMap/), so a place is called the same thing everywhere; and how
  * far and which way a place is ("0.4 mi · NE"), as the full map, its places
  * list and the HUD's waypoint chip say it.
  */

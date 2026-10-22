@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Rng } from '../src/sim/prng';
 import { createWorld } from '../src/city/world';
-import type { RailWall } from '../src/city/route';
+import type { RailWall } from '../src/city/routeRails';
 import { ROUTE } from '../src/city/config';
 import { corridorClearance } from '../src/city/blocks';
 import { createCar, stepCar } from '../src/sim/car';
@@ -50,7 +50,7 @@ describe('corner rails', () => {
         expect(corridorClearance(w.graph, w.blocks.edgeGrid, r.ax, r.az, scratch)).toBeLessThan(0.1);
         // Beside a route edge, away from its ends: at the back of the sidewalk, never on it or the road.
         // Street furniture just behind the rail bends it a little further onto the sidewalk, over a
-        // span of a couple of pieces either side of the prop (route.ts).
+        // span of a couple of pieces either side of the prop (routeRails.ts).
         const furniture = w.props.some((p) => (p.x - r.ax) ** 2 + (p.z - r.az) ** 2 < 81);
         const onto = ROUTE.railInset + 0.05 + (furniture ? ROUTE.railPropClear + 0.6 : 0);
         for (const eid of w.route.edges) {

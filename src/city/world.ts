@@ -6,14 +6,18 @@
 import { CITY, ROUTE } from './config';
 import { CityBlocks, Solid, Wall, generateBlocks } from './blocks';
 import { RoadGraph, generateRoadGraph, isRiverEdge } from './roadGraph';
-import { BarrierGroup, PlannedRouteKind, RailWall, Route, RouteKind, buildRoute, findCircuitNodes, findDragNodes, findSprintNodes, findWaypointNodes, routeBarrierGroups, routeRails } from './route';
+import { PlannedRouteKind, Route, RouteKind, buildRoute } from './route';
+import { BarrierGroup, routeBarrierGroups } from './routeBarriers';
+import { RailWall, routeRails } from './routeRails';
+import { findCircuitNodes, findDragNodes, findSprintNodes, findWaypointNodes } from './routeSearch';
 import { Prop, buildPropGrid } from './props';
 import { SpatialGrid } from './spatial';
 import { Terrain, createTerrain } from './terrain';
 import { Vec2, cos, distToSegment, segmentT, sin, sqrt } from '../sim/math';
 import { settleRiver } from './districts/river';
 import { CityDistricts, planDistricts } from './districts';
-import { carveRouteShortcuts, hasShortcutSpot, qualifiedCount, settleAlleyLips, shortcutJumpRails } from './districts/alley';
+import { settleAlleyLips, shortcutJumpRails } from './districts/alleyDressing';
+import { carveRouteShortcuts, hasShortcutSpot, qualifiedCount } from './districts/alleyShortcuts';
 import { ROUTE_INDEX, carParkGates, carParkRails, carParkSites, planCarParks, settleCarParks } from './districts/carPark';
 import { bayRoadDistance, baysByEdge } from './busBays';
 import { CityEvent, EventFlavourId, eventOffer, eventRoutePreference, pickEventFlavour, resolveEvent, routeEdges } from './events';
@@ -160,7 +164,7 @@ export interface World extends City {
   /** City walls plus this route's barriers and corner rails. */
   walls: Wall[];
   wallGrid: SpatialGrid;
-  /** Closed side street barriers grouped per intersection (see route.ts). Barrier walls carry `group`. */
+  /** Closed side street barriers grouped per intersection (see routeBarriers.ts). Barrier walls carry `group`. */
   barrierGroups: BarrierGroup[];
   /**
    * Open world (free roam, and the waypoint race's city): no route barriers,

@@ -19,7 +19,8 @@
 import * as THREE from 'three';
 import type { World } from '../../city/world';
 import type { Wall } from '../../city/blocks';
-import type { BarrierGroup, RailWall } from '../../city/route';
+import type { BarrierGroup } from '../../city/routeBarriers';
+import type { RailWall } from '../../city/routeRails';
 import { ChevronsRight, drawIcon } from '../../ui/icons';
 import { GeoBuilder } from '../geoBuilder';
 import { FOG_DENSITY } from '../lighting';

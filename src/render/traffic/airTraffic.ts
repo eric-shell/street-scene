@@ -5,7 +5,7 @@
  *    few times a lap and roams the blocks in between, rotors spinning, nav
  *    lights blinking, with a searchlight that sweeps the course ahead of it
  *    (a soft additive cone and a pool of light on the road), plus a rotor
- *    thump near the camera (audio/sfx.ts HeliRotor);
+ *    thump near the camera (audio/sceneVoices.ts HeliRotor);
  *  - a blimp drifting round downtown with an LED band scrolling event and
  *    sponsor words along both flanks;
  *  - a police helicopter (black and white, red and blue light bar) that
@@ -23,7 +23,7 @@ import type { World } from '../../city/world';
 import { routeSample } from '../../city/route';
 import { Rng, deriveSeed } from '../../sim/prng';
 import type { Quality } from '../../ui/settings';
-import { HeliRotor } from '../../audio/sfx';
+import { HeliRotor } from '../../audio/sceneVoices';
 import { GeoBuilder } from '../geoBuilder';
 import { makeLedTextTexture } from '../sky/skyTextures';
 import { makeRadialGlow } from '../textures/textures';

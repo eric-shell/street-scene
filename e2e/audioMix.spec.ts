@@ -65,6 +65,7 @@ test('every sound sits where the mix puts it', async ({ page }) => {
   const levels = (await page.evaluate(`(async () => {
     const audio = await import('/src/audio/engineAudio.ts');
     const sfxMod = await import('/src/audio/sfx.ts');
+    const sceneMod = await import('/src/audio/sceneVoices.ts');
     const bellMod = await import('/src/audio/warningBell.ts');
     const uiMod = await import('/src/audio/uiSound.ts');
     const manifest = (await import('/src/assets/carManifest.json')).default;
@@ -117,13 +118,13 @@ test('every sound sits where the mix puts it', async ({ page }) => {
     const crowdRun = (async () => { const end = performance.now() + 3500; while (performance.now() < end) { sfx.updateCrowds([spot], false); await sleep(50); } sfx.updateCrowds([], false); })();
     await sleep(2500); results.crowdLoop = await measure(900); await crowdRun; await sleep(800);
     sfx.crowdCheer(0, 2, 1.6, true); await sleep(400); results.crowdCheer = await measure(1200); await sleep(2500);
-    const train = sfxMod.TrainRumble.create(); tap = train.out; scale = MASTER * BUS;
+    const train = sceneMod.TrainRumble.create(); tap = train.out; scale = MASTER * BUS;
     const trainRun = (async () => { const end = performance.now() + 1800; while (performance.now() < end) { train.update(1, 17, 0); await sleep(30); } })();
     await sleep(600); results.train = await measure(900); await trainRun; await sleep(900);
-    const heli = sfxMod.HeliRotor.create(); tap = heli.out;
+    const heli = sceneMod.HeliRotor.create(); tap = heli.out;
     const heliRun = (async () => { const end = performance.now() + 1800; while (performance.now() < end) { heli.update(1, 0); await sleep(30); } })();
     await sleep(600); results.heli = await measure(900); await heliRun; await sleep(900);
-    const thunder = sfxMod.Thunder.create(); tap = thunder.bus; scale = MASTER;
+    const thunder = sceneMod.Thunder.create(); tap = thunder.bus; scale = MASTER;
     thunder.strike(200, 1, 0); results.thunderNear = await measure(1500); await sleep(2500);
     thunder.strike(1800, 1, 0); results.thunderFar = await measure(1500); await sleep(2500);
     const bell = bellMod.WarningBell.create(); tap = bell.out; scale = MASTER * BUS;

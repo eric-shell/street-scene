@@ -13,7 +13,7 @@
  * vents, puddles.
  */
 import * as THREE from 'three';
-import { jumpProfile, jumpRampProfile } from '../../city/districts/alley';
+import { jumpProfile, jumpRampProfile } from '../../city/districts/alleyPath';
 import { GeoBuilder } from '../geoBuilder';
 import { makeRadialGlow } from '../textures/textures';
 import { CITY } from '../../city/config';

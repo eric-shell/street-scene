@@ -69,7 +69,7 @@ import { Rng } from '../../sim/prng';
 import { distToPolygonEdge, pointInPolygon, polygonArea, polygonBounds, solidWalls } from './geom';
 import type { Area, AreaBuild, DistrictModule, HeightSample, PlanContext } from './types';
 import { emptyBuild } from './types';
-import type { CarveRoute } from './alley';
+import type { CarveRoute } from './alleyShortcuts';
 import type { Route, RouteKind } from '../route';
 import type { RouteProgress } from '../world';
 
@@ -813,7 +813,7 @@ export function carParkRails<T extends Wall>(areas: readonly Area[], route: numb
 /**
  * `rails` with every piece touching one of the `zones` (convex polygons, a
  * flight corridor) taken out; the rest of each rail stays, its ends at the
- * gap. Shared with the alleys' jump exits (districts/alley.ts).
+ * gap. Shared with the alleys' jump exits (districts/alleyDressing.ts).
  */
 export function railsClearOf<T extends Wall>(zones: readonly Vec2[][], rails: T[]): T[] {
   if (!zones.length) return rails;
@@ -1008,7 +1008,7 @@ function unit(from: Vec2, to: Vec2): { x: number; z: number; len: number } {
   return { x: dx / len, z: dz / len, len };
 }
 
-/** Route node positions along the node polyline (m), its length and the span cuts may use (alley.ts routeBounds and its sprint guards). */
+/** Route node positions along the node polyline (m), its length and the span cuts may use (alleyShortcuts.ts routeBounds and its sprint guards). */
 function routeFrame(g: RoadGraph, r: CarveRoute): { cum: number[]; total: number; lo: number; hi: number } {
   const n = r.nodes.length;
   const cum = [0];

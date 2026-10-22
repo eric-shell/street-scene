@@ -1,7 +1,7 @@
 /**
  * Corner rails as heavy modular bodies.
  *
- * Every route corner rail (see routeRails in src/city/route.ts) is a chain of
+ * Every route corner rail (see src/city/routeRails.ts) is a chain of
  * pieces about 2.5 m long, each made of a few straight sub segments. A piece is
  * a very heavy sim body: when a car hits it, it is shoved back along the impact
  * normal by impulse / pieceMass * yieldTime (capped at maxOffset from its rest
@@ -18,7 +18,7 @@
  * fixed iteration order, sim math only.
  */
 import type { Contact, World } from '../city/world';
-import type { RailWall } from '../city/route';
+import type { RailWall } from '../city/routeRails';
 import type { Wall } from '../city/blocks';
 import { SpatialGrid } from '../city/spatial';
 import { abs, cos, segmentT, sign, sin, sqrt } from './math';

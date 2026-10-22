@@ -39,7 +39,7 @@ import { mainMenu, type MainMenu, type MenuStep } from './ui/menu';
 import { showSplash } from './ui/splash';
 import { toast } from './ui/dom';
 import { Check, Info, Shuffle } from './ui/icons';
-import { openFullMap, type FullMap, type FullMapOptions, type WaypointStore } from './ui/fullMap';
+import { openFullMap, type FullMap, type FullMapOptions, type WaypointStore } from './ui/fullMap/fullMap';
 import type { Vec2 } from './sim/math';
 import { door, transitioning, wipe, type WipeCard } from './ui/transitions';
 import { courseArt, courseRoute, type CourseRoutes } from './ui/menuMaps';

@@ -27,7 +27,8 @@ import { HillShape, plateauDistance, shapeOf } from './hills';
 import { riverCenter } from './river';
 import { bluffFootprint } from './bluff';
 import { distToPolygonEdge, pointInPolygon } from './geom';
-import { NodeHeap, circuitStart, routeRuns } from '../route';
+import { NodeHeap } from '../graphSearch';
+import { circuitStart, routeRuns } from '../route';
 
 /** Street local frame: origin on the centerline, u along the street (unit), v across it along (-uz, ux) (the right of travel along +u, yaw convention of sim/math). */
 export interface Frame {
@@ -325,7 +326,7 @@ export function routeTraffic(g: RoadGraph, seed: number): Float64Array {
     via.fill(-1);
     done.fill(0);
     dist[src] = 0;
-    // Heap Dijkstra (route.ts NodeHeap): the bend nodes triple the graph, a linear scan per step is too slow.
+    // Heap Dijkstra (graphSearch.ts NodeHeap): the bend nodes triple the graph, a linear scan per step is too slow.
     const heap = new NodeHeap();
     const popped = { key: 0 };
     heap.push(0, src);

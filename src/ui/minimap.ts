@@ -11,7 +11,7 @@
 import type { World } from '../city/world';
 import { AREA_MAP_STYLE, AreaKind, AreaMapStyle } from '../city/districts/types';
 import { ROUTE_INDEX, carParks } from '../city/districts/carPark';
-import { shortcutArea } from '../city/districts/alley';
+import { shortcutArea } from '../city/districts/alleyDressing';
 import { PALETTE, rgba } from './palette';
 
 /** Map inks (Monokai Pro, ui/palette.ts), built once: orange is the route, yellow the closures. */
@@ -32,7 +32,7 @@ const INK = {
   cone: rgba('cyan', 0.42),
   coneEnd: rgba('cyan', 0),
   north: PALETTE.yellow,
-  /** The free roam waypoint (ui/fullMap.ts): a yellow pin, outlined dark. */
+  /** The free roam waypoint (ui/fullMap/): a yellow pin, outlined dark. */
   waypoint: PALETTE.yellow,
   waypointEdge: PALETTE.bg0,
   font: '700 13px "Google Sans Flex", system-ui, sans-serif',

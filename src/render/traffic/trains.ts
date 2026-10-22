@@ -13,13 +13,13 @@
  *  - sparks off the third rail shoes, more while braking into a station,
  *    each a little ballistic shower computed from when it flew off (Medium
  *    and High), so nothing has to be stepped or stored between frames.
- * Plus a positional rumble (audio/sfx.ts TrainRumble) as the nearest train
+ * Plus a positional rumble (audio/sceneVoices.ts TrainRumble) as the nearest train
  * passes the camera, created on first approach once the page has had a user
  * gesture (browsers keep audio off until then).
  * No per frame allocations: every scratch object is created once.
  */
 import * as THREE from 'three';
-import { TrainRumble } from '../../audio/sfx';
+import { TrainRumble } from '../../audio/sceneVoices';
 import type { Quality } from '../../ui/settings';
 import { GeoBuilder } from '../geoBuilder';
 import { CurvePoint, RailCurve, curvePoint, deckSlope, sampleCurve, trackLateral } from '../../city/railCurve';

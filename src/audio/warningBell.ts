@@ -5,13 +5,13 @@
  * inharmonic bell partials with exponential decays plus a click of hammer
  * noise) whose length is the strike interval, then looped, so ringing costs
  * one buffer source, a gain and a panner. The caller feeds proximity and pan
- * from the camera every frame; like TrainRumble (audio/sfx.ts) the gain dies
+ * from the camera every frame; like TrainRumble (sceneVoices.ts) the gain dies
  * by itself unless the next frame renews it, so a scene that stops being
  * drawn never keeps ringing. Created only after a user gesture (browser
  * policy). Render side only; the cosmetic noise uses Math.random.
  */
 import { audioHub } from './engineAudio';
-import { TrainRumble } from './sfx';
+import { TrainRumble } from './sceneVoices';
 
 /** Bell voice: strike rate (Hz), fundamental (Hz), partial ratios, levels and decays (s), output level. */
 const BELL = {

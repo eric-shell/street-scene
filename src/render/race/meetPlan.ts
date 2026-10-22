@@ -14,7 +14,7 @@
  */
 import type { World } from '../../city/world';
 import type { Wall } from '../../city/blocks';
-import type { RailWall } from '../../city/route';
+import type { RailWall } from '../../city/routeRails';
 import type { Contact } from '../../city/world';
 import { CITY } from '../../city/config';
 import { Rng } from '../../sim/prng';

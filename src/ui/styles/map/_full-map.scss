@@ -1,6 +1,6 @@
-/* ---------- the full city map (ui/fullMap.ts): its frame, header, body and controls ----------  */
+/* ---------- the full city map (ui/fullMap/): its frame, header, body and controls ----------  */
 @use '../abstracts/palette';
-/* The full city map (ui/fullMap.ts) and the HUD's waypoint chip: the map in a chamfered frame like every card,
+/* The full city map (ui/fullMap/) and the HUD's waypoint chip: the map in a chamfered frame like every card,
    the accent hairline across the dialog, plates for everything over the map, and the game's tabs, chips and
    kbd caps in the side panel and footer. The panel lands, the legend rows step in, the hover card fades in by
    the pointer; none of it under reduced motion. */

@@ -1,6 +1,6 @@
 # The audio mix
 
-How every sound in the game is balanced against the others, what the player can set, and how the balance is kept as sounds are added. Code: `src/audio/engineAudio.ts` (`AudioHub`, the mixer: buses, calibration, levels, the limiter), `src/audio/sfx.ts` (the effects and the world's voices, with their levels at the top of the file), `src/audio/uiSound.ts` (menu sounds), `src/audio/musicPlayer.ts` (music, on its own element). Guard: `e2e/audioMix.spec.ts`. The engine voices themselves are in [engineSound.md](engineSound.md).
+How every sound in the game is balanced against the others, what the player can set, and how the balance is kept as sounds are added. Code: `src/audio/engineAudio.ts` (`AudioHub`, the mixer: buses, calibration, levels, the limiter), `src/audio/sfx.ts` (the effects player; the drive's levels are at the top of `sfxVoices.ts`, the crowd clips' in `crowdAudio.ts`, the train, helicopter and thunder voices' in `sceneVoices.ts`), `src/audio/uiSound.ts` (menu sounds), `src/audio/musicPlayer.ts` (music, on its own element). Guard: `e2e/audioMix.spec.ts`. The engine voices themselves are in [engineSound.md](engineSound.md).
 
 ## Buses and settings
 

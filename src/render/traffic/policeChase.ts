@@ -65,7 +65,7 @@ export const POLICE = {
   aimLag: 0.12,
   /** Lights and beam fade on and off over about this long (s). */
   fade: 0.5,
-  /** Rotor voice (sfx HeliRotor): a faster, harder chop than the news helicopter's. */
+  /** Rotor voice (audio/sceneVoices.ts HeliRotor): a faster, harder chop than the news helicopter's. */
   rotor: { bladeHz: 12.8, bodyHz: 250, whineHz: 2100, level: 0.4 },
   /** Rotor sound: silent beyond `hear` m, full within `near` m. */
   hear: 360,

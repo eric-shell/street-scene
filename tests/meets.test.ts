@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWorld } from '../src/city/world';
 import { planMeets } from '../src/render/race/meetPlan';
-import type { RailWall } from '../src/city/route';
+import type { RailWall } from '../src/city/routeRails';
 import { RAIL } from '../src/sim/rails';
 import { Rng } from '../src/sim/prng';
 import { distToSegment } from '../src/sim/math';

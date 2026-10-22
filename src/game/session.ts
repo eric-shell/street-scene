@@ -38,7 +38,7 @@ import type { CameraMode } from '../render/camera/camera';
 import { InputManager } from '../input/inputManager';
 import { Rumble } from '../input/rumble';
 import { Hud, HudCar, HudData } from '../ui/hud';
-import { openFullMap, type FullMap, type WaypointStore } from '../ui/fullMap';
+import { openFullMap, type FullMap, type WaypointStore } from '../ui/fullMap/fullMap';
 import { placeName } from '../ui/places';
 import { toast } from '../ui/dom';
 import { Compass, MapIcon, MapPinned } from '../ui/icons';

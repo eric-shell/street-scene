@@ -15,7 +15,7 @@
  *    beyond the near mountain ridge like the backdrop (it follows the camera,
  *    unfogged, with depth so the skyline cuts it), and a glow in the cloud
  *    above it, both additive;
- *  - thunder (audio/sfx.ts Thunder) once the sound has travelled the strike's
+ *  - thunder (audio/sceneVoices.ts Thunder) once the sound has travelled the strike's
  *    distance at 343 m/s, panned toward it.
  * Flashes stay soft: the peak lifts are modest (no white frame), a strike has
  * at most three strokes (never more than three flashes in a second, the
@@ -27,7 +27,7 @@
 import * as THREE from 'three';
 import { Rng, deriveSeed } from '../../sim/prng';
 import type { Quality } from '../../ui/settings';
-import { Thunder } from '../../audio/sfx';
+import { Thunder } from '../../audio/sceneVoices';
 import type { NightLighting } from '../lighting';
 import { makeNoiseTexture } from './skyTextures';
 import { makeRadialGlow } from '../textures/textures';

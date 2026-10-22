@@ -1,6 +1,6 @@
 /**
  * The city drawn as a map, shared by every view of the whole city: the full
- * map (ui/fullMap.ts) and the main menu's overview and course maps
+ * map (ui/fullMap/) and the main menu's overview and course maps
  * (ui/menu.ts), so a player learns one set of colors everywhere (the
  * minimap's hues). The layers are built once per world as Path2D in world
  * meters (blocks, district fills and outlines per kind, building footprints,

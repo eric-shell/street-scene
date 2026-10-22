@@ -46,8 +46,8 @@ import type { PropKind } from '../props';
 import { PROP_DEFS } from '../props';
 import type { DistrictModule, PlanContext } from './types';
 import { emptyBuild } from './types';
-import { corridor } from './alley';
-import type { CarveRoute } from './alley';
+import { corridor } from './alleyPath';
+import type { CarveRoute } from './alleyShortcuts';
 import { TOUR_REACH, monumentSites } from './monument';
 
 const CFG = CITY.districts.market;
@@ -272,7 +272,7 @@ export function planMarkets(ctx: PlanContext, routes: readonly CarveRoute[]): vo
  * How far (m) into a market edge the other streets at node nid reach on one
  * side (+1 left of the edge's direction t leaving nid): their road and
  * sidewalk plus a margin, deeper on a skew junction's acute corner. A street
- * leaving ahead of the node (along t) is the alley module's rule (alley.ts
+ * leaving ahead of the node (along t) is the alley module's rule (alleyDressing.ts
  * mouthReach); one leaving behind it (an obtuse angle, or the route carrying
  * on nearly straight onto a street that is not the market) recedes from the
  * market: its corridor reaches no further along this side's building line

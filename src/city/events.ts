@@ -39,7 +39,7 @@
 import { CITY } from './config';
 import type { RoadGraph } from './roadGraph';
 import { edgeBetween } from './roadGraph';
-import type { RoutePreference } from './route';
+import type { RoutePreference } from './routeSearch';
 import type { Area, HeightSample, PlanContext } from './districts/types';
 import { hillAt, shapeOf } from './districts/hills';
 import { TOUR_REACH, monumentSites } from './districts/monument';

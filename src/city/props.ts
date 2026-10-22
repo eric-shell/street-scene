@@ -34,7 +34,7 @@ import { DEG, Vec2, atan2, distToSegment, sin, sqrt } from '../sim/math';
 export type StreetPropKind = 'streetlight' | 'trafficLight' | 'garbageCan' | 'bench' | 'busStop' | FurnitureKind;
 /** Neighbourhood street furniture (streetFurniture.ts): what makes one street read different from the next. */
 export type FurnitureKind = 'hydrant' | 'parkingMeter' | 'mailbox' | 'phoneBooth' | 'vendingMachine';
-/** Construction site pieces fencing off and filling route shortcuts (districts/alley.ts). */
+/** Construction site pieces fencing off and filling route shortcuts (districts/alleyDressing.ts). */
 export type ConstructionPropKind = 'fencePanel' | 'trafficCone' | 'sawhorse' | 'waterBarrier' | 'sandbags' | 'pallets';
 /** Night market pieces (districts/market.ts): lantern lit awning stalls, fruit crates spilling off the curb, food carts. */
 export type MarketPropKind = 'marketStall' | 'fruitCrates' | 'foodCart';

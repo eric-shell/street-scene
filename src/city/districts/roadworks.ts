@@ -27,7 +27,7 @@ import type { RoadGraph, RoadKind } from '../roadGraph';
 import { chainOf, isBendNode } from '../roadGraph';
 import { buildRoute, Route } from '../route';
 import { computeMouths } from '../blocks';
-import type { CarveRoute } from './alley';
+import type { CarveRoute } from './alleyShortcuts';
 import { PROP_DEFS } from '../props';
 import type { PropKind } from '../props';
 import { Rng, deriveSeed } from '../../sim/prng';

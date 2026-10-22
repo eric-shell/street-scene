@@ -1268,7 +1268,7 @@ export const riverModule: DistrictModule = {
 };
 
 /**
- * The funnel at a ramp top, in the shortcut language (see districts/alley.ts
+ * The funnel at a ramp top, in the shortcut language (see districts/alleyDressing.ts
  * constructionSite): two lines of fence panels splaying from the plinths out
  * toward the street, a sawhorse and a water barrier at each line's street
  * end, cones scattered along, and two strings of lights across the mouth and

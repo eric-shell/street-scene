@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { renderImpact, SFX_BANKS } from '../src/audio/sfx';
+import { renderImpact, SFX_BANKS } from '../src/audio/sfxRecipes';
 
 describe('synthesized impact sounds', () => {
   it('every bank renders finite, normalized, non silent audio', () => {
