@@ -49,7 +49,8 @@ import type { RaceType } from './ui/settings';
 import { installUiSounds } from './audio/uiSound';
 import { DRAG_OPPONENTS, POINT_TO_POINT, RaceConfig, RaceEntrant, RaceMode, positionOf, standings, ticksToSeconds } from './sim/race';
 import { loadTrafficAssets } from './render/traffic/traffic';
-import { CarBuild, PerformanceBuild, VisualBuild, defaultVisual, PAINT_FINISHES } from './sim/build';
+import { PerformanceBuild } from './sim/build';
+import { CarBuild, VisualBuild, defaultVisual, PAINT_FINISHES } from './shared/carBuild';
 import { DEFAULT_CAR_ID, PERFORMANCE_CATEGORIES, SELECTABLE_CAR_IDS, Tier } from './sim/tuning';
 import { GarageState, decodeShareCode, loadGarage, saveGarage } from './garage/storage';
 import { ReplayData, decodeLog, encodeLog, loadBest, loadGhost, loadLastReplay, saveGhost, saveLastReplay, submitBest } from './replay/replay';
@@ -116,7 +117,7 @@ let overlay: HTMLElement | null = null;
 let lastConfig: RaceConfig | null = null;
 let lastVisuals: VisualBuild[] = [];
 let availability: Record<string, boolean> = {};
-let garageScreen: { tick(): void; render(dt: number): void; dispose(): void } | null = null;
+let garageScreen: { render(dt: number): void; dispose(): void } | null = null;
 
 // ---------------------------------------------------------------------------
 // The menu city: the event city with the player's car cruising its route
@@ -854,7 +855,6 @@ let splashWarmup: number | null = null;
 const loop = new FixedStepLoop({
   tick() {
     if (state === 'race') session?.tick();
-    else if (state === 'garage') garageScreen?.tick();
   },
   render(alpha, dt) {
     // The pad works the screens whenever no car (or drone) is reading it.

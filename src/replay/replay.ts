@@ -4,7 +4,7 @@
  * data is what a future leaderboard would upload for server verification.
  */
 import type { RaceConfig, RaceMode } from '../sim/race';
-import type { VisualBuild } from '../sim/build';
+import type { VisualBuild } from '../shared/carBuild';
 
 export interface ReplayData {
   v: 1;

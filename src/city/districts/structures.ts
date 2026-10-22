@@ -84,7 +84,7 @@ export function runPiece(run: StreetRun, s: number): number {
 }
 
 /** Point at distance s along a run. */
-export function runPoint(run: StreetRun, s: number): Vec2 {
+function runPoint(run: StreetRun, s: number): Vec2 {
   const i = runPiece(run, s);
   const a = run.pts[i];
   const b = run.pts[i + 1];

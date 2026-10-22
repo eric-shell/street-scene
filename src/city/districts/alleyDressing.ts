@@ -11,11 +11,14 @@ import type { Wall } from '../blocks';
 import type { Terrain } from '../terrain';
 import { type Vec2, distToSegment } from '../../sim/math';
 import { Rng } from '../../sim/prng';
-import { pointInPolygon, smooth01 } from './geom';
+import { pointInPolygon, smooth01, type Smooth, segmentAt } from './geom';
 import { type PropKind, PROP_DEFS } from '../props';
 import { type Area, type AreaBuild, type BuildContext, type HeightSample, type SurfacePatch, COBBLE_PRIORITY } from './types';
 import { CAR_HALF, railsClearOf } from './carPark';
-import { jumpProfile, jumpRampProfile, legAt, pathSpot, RAD, unit } from './alleyPath';
+import { jumpProfile, jumpRampProfile, pathSpot, RAD, unit } from './alleyPath';
+
+/** Scratch for the terrain's smoothsteps (queried per wheel per substep, so nothing allocates). */
+const SMOOTH: Smooth = { v: 0, d: 0 };
 
 /** Half width (m) of the line down the middle of every alley that nothing solid may stand in: a car plus a margin. */
 export const LANE = 1.3;
@@ -131,7 +134,7 @@ export function constructionSite(ctx: BuildContext, area: Area, b: AreaBuild, rn
   const legDir = (i: number) => unit(path[i], path[i + 1]);
   // Yaws at a chain position: local +X across the alley, or along it (fences, planks and barriers lie along local X).
   const yawsAt = (s: number) => {
-    const u = legDir(legAt(cum, s));
+    const u = legDir(segmentAt(cum, s));
     return { across: Math.atan2(-u.x, -u.z), along: Math.atan2(-u.z, u.x) };
   };
   const edge = hw - SITE.fenceInset;
@@ -299,7 +302,7 @@ export function addJumpExit(ctx: BuildContext, area: Area, b: AreaBuild, path: V
       const l = -dx * u.z + dz * u.x;
       const p = jumpRampProfile(s - sToe, J.length, H);
       const al = Math.abs(l);
-      const m = smooth01(hw + F, hw, al);
+      const m = smooth01(hw + F, hw, al, SMOOTH);
       if (m.v <= 0) return;
       const sl = l < 0 ? -1 : 1;
       out.h += p.h * m.v;
@@ -389,7 +392,7 @@ export function settleAlleyLips(areas: readonly Area[], builds: readonly AreaBui
  * The flight corridor past a jump exit (world quad): from just behind the lip
  * `reach` m along the last leg, spreading at spreadDeg, padded `pad` m each side.
  */
-export function jumpFlightZone(area: Area, reach: number, pad = 0): Vec2[] {
+function jumpFlightZone(area: Area, reach: number, pad = 0): Vec2[] {
   const J = CITY.districts.backAlley.route.jump;
   const n = area.path.length;
   const O = area.path[n - 2];
@@ -455,7 +458,7 @@ export function funnelClutter(ctx: BuildContext, area: Area, b: AreaBuild, pick:
 export const FUNNEL_MIX: PropKind[] = ['trashBags', 'crate', 'trashBags', 'barrel', 'trafficCone'];
 
 /** The back alley kicker: a height modifier across the alley (fading out behind the walls) plus a render hint. */
-export function addJump(b: AreaBuild, A: Vec2, ux: number, uz: number, len: number, hw: number, center: number): void {
+export function addJump(b: AreaBuild, A: Vec2, ux: number, uz: number, hw: number, center: number): void {
   const cfg = CITY.districts.backAlley;
   const R = cfg.jumpRamp;
   const T = cfg.jumpTop;
@@ -463,7 +466,6 @@ export function addJump(b: AreaBuild, A: Vec2, ux: number, uz: number, len: numb
   const F = cfg.jumpFade;
   const s0 = center - T / 2 - R;
   const s3 = center + T / 2 + R;
-  void len;
   // Bounding box of the footprint (along s0..s3, across +-(hw + F)).
   const corners: Vec2[] = [];
   for (const s of [s0, s3]) for (const l of [-(hw + F), hw + F]) corners.push({ x: A.x + ux * s - uz * l, z: A.z + uz * s + ux * l });
@@ -480,7 +482,7 @@ export function addJump(b: AreaBuild, A: Vec2, ux: number, uz: number, len: numb
       const p = jumpProfile(s, center, R, T, H);
       if (p.h === 0 && p.dh === 0) return;
       const al = Math.abs(l);
-      const m = smooth01(hw + F, hw, al);
+      const m = smooth01(hw + F, hw, al, SMOOTH);
       if (m.v <= 0) return;
       const sl = l < 0 ? -1 : 1;
       out.h += p.h * m.v;

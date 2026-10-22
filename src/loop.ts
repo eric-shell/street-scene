@@ -10,8 +10,8 @@
  * at 60 fps it is one tick per frame, at the 30 fps floor two. Below 12 fps
  * the catch-up cap drops time instead of spiralling.
  */
-export const SIM_HZ = 60;
-export const SIM_DT = 1 / SIM_HZ;
+import { DT } from './sim/constants';
+
 /** Max ticks per rendered frame. Beyond this we drop time instead of spiralling. */
 export const MAX_CATCH_UP_STEPS = 5;
 
@@ -35,16 +35,16 @@ export class FixedStepLoop {
     // Clamp huge gaps (tab switch, debugger) so we never try to simulate them.
     this.accumulator += Math.min(Math.max(frameDt, 0), 0.25);
     let steps = 0;
-    while (this.accumulator >= SIM_DT && steps < MAX_CATCH_UP_STEPS) {
+    while (this.accumulator >= DT && steps < MAX_CATCH_UP_STEPS) {
       this.cb.tick();
-      this.accumulator -= SIM_DT;
+      this.accumulator -= DT;
       steps++;
     }
-    if (steps === MAX_CATCH_UP_STEPS && this.accumulator >= SIM_DT) {
+    if (steps === MAX_CATCH_UP_STEPS && this.accumulator >= DT) {
       // Too far behind: drop the backlog rather than spiral.
-      this.accumulator = this.accumulator % SIM_DT;
+      this.accumulator = this.accumulator % DT;
     }
-    return { steps, alpha: this.accumulator / SIM_DT };
+    return { steps, alpha: this.accumulator / DT };
   }
 
   start(): void {

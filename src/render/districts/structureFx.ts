@@ -55,33 +55,6 @@ export function bakedMaterial(lamp: THREE.Color): THREE.MeshStandardMaterial {
   return m;
 }
 
-/** Additive light on the road (vertex colors), fading to nothing in fog rather than toward the fog color. */
-export function washMaterial(): THREE.MeshBasicMaterial {
-  const m = new THREE.MeshBasicMaterial({
-    vertexColors: true,
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    polygonOffset: true,
-    polygonOffsetFactor: -2,
-    polygonOffsetUnits: -2,
-  });
-  m.onBeforeCompile = (shader) => {
-    shader.fragmentShader = shader.fragmentShader.replace(
-      '#include <fog_fragment>',
-      `#ifdef USE_FOG
-        #ifdef FOG_EXP2
-          float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth );
-        #else
-          float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
-        #endif
-        gl_FragColor.rgb *= 1.0 - fogFactor;
-      #endif`,
-    );
-  };
-  m.customProgramCacheKey = () => 'structureWash';
-  return m;
-}
 
 /** Faces of a frame box to emit (all by default). */
 export interface BoxFaces {

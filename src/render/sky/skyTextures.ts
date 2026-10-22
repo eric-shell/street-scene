@@ -8,22 +8,9 @@
  */
 import * as THREE from 'three';
 import { Rng } from '../../sim/prng';
+import { canvas, canvasTex } from '../textures/canvasKit';
 
-function canvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
-  const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
-  return [c, c.getContext('2d')!];
-}
-
-function tex(c: HTMLCanvasElement, srgb: boolean, repeat: boolean): THREE.CanvasTexture {
-  const t = new THREE.CanvasTexture(c);
-  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
-  if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.anisotropy = 4;
-  t.needsUpdate = true;
-  return t;
-}
+const tex = (c: HTMLCanvasElement, srgb: boolean, repeat: boolean): THREE.CanvasTexture => canvasTex(c, { srgb, repeat });
 
 export interface MoodSkyParams {
   /** Gradient stops (CSS): straight up, mid sky, just above the horizon, and the ground side of the dome. */

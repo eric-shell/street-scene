@@ -10,13 +10,14 @@
 import { createCity, createWorld, World, City, RouteProgress } from '../city/world';
 import { GridSlot, RouteKind, RouteWaypoint, routeSample } from '../city/route';
 import { carParkProgress, onCarPark } from '../city/districts/carPark';
-import { CarState, createCar, placeCar, refillNitrous, stepCar, wheelRpm } from './car';
+import { CarState, createCar, groundPitch, groundRoll, refillNitrous, steerLimit, stepCar, wheelRpm, type StepEnv } from './car';
+import { relocateCar } from './reset';
 import { WorldHit, collideCarWithWorld, collideCars, detectNearMiss } from './collision';
-import { DT, TICK_HZ } from './constants';
+import { CRASH_EVENT, DT, TICK_HZ } from './constants';
 import { InputFrame, NEUTRAL_INPUT, packInput, quantizeInput } from './input';
 import { CarTuning } from './tuning';
 import { PerformanceBuild, tuningForBuild, validatePerformance } from './build';
-import { DEG, abs, atan2, clamp, cos, distToSegment, lerp, segmentT, sin, sqrt, yawOf } from './math';
+import { DEG, PI, TAU, abs, atan2, clamp, cos, distToSegment, segmentT, sin, sqrt, wrapIndex, yawOf } from './math';
 import { AiState, Course, aiInput, buildRacingLine, createAi, driverDetours, driverLine, RacingLine, rollDrivers, sweepFrame } from './ai';
 import { deriveSeed } from './prng';
 import { stepProps } from './props';
@@ -128,7 +129,6 @@ export interface DriftScore {
   multiplier: number;
   chainTime: number;
   graceTime: number;
-  lastBank: number;
   /** Of `current`, the points the drift zone multiplier added (before the chain multiplier). */
   zoneBonus: number;
 }
@@ -146,7 +146,7 @@ export interface RaceState {
   /** Packed player input frames, one per tick. */
   inputLog: number[];
   drift: DriftScore;
-  /** Player finish order snapshot, filled when the player finishes. */
+  /** What happened this race, in order (RaceEvent): the session turns each into HUD messages, sounds and effects. */
   events: RaceEvent[];
   /** Last tick a 'wall' event fired per car and a 'crash' event per car pair (i * n + j), for rate limiting. */
   hitTicks: { wall: number[]; pair: number[] };
@@ -162,10 +162,8 @@ export interface RaceState {
   driftZones: DriftZoneState;
 }
 
-/** Impact sound events: minimum impact speed (m/s) and minimum gap between events (ticks). */
-const CRASH_EVENT_SPEED = 2;
+/** Wall hit events: the least impact speed that makes one (m/s); car crashes and the gap between events are CRASH_EVENT's. */
 const WALL_EVENT_SPEED = 3;
-const HIT_EVENT_GAP = Math.round(0.25 * TICK_HZ);
 
 /**
  * Sim events, consumed by the session for HUD messages, sounds and effects.
@@ -323,9 +321,9 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
     cars,
     distance,
     inputLog: [],
-    drift: { total: 0, current: 0, multiplier: 1, chainTime: 0, graceTime: 0, lastBank: 0, zoneBonus: 0 },
+    drift: { total: 0, current: 0, multiplier: 1, chainTime: 0, graceTime: 0, zoneBonus: 0 },
     events: [],
-    hitTicks: { wall: cars.map(() => -HIT_EVENT_GAP), pair: cars.flatMap(() => cars.map(() => -HIT_EVENT_GAP)) },
+    hitTicks: { wall: cars.map(() => -CRASH_EVENT.gap), pair: cars.flatMap(() => cars.map(() => -CRASH_EVENT.gap)) },
     brokenProps: coveredPropsRemoved(w),
     brokenArms: new Uint8Array((w.timedGates?.gates.length ?? 0) * 2),
     rails: createRailState(w),
@@ -342,8 +340,10 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
  */
 function rollCar(c: CarState, t: CarTuning, speed: number, world: World): void {
   const sl = world.slopeAt(c.x, c.z, c.y);
-  c.pitch = -atan2(sl.gx * sin(c.yaw) + sl.gz * cos(c.yaw), 1);
-  c.roll = atan2(sl.gx * cos(c.yaw) - sl.gz * sin(c.yaw), 1);
+  const fx = sin(c.yaw);
+  const fz = cos(c.yaw);
+  c.pitch = groundPitch(sl, fx, fz);
+  c.roll = groundRoll(sl, fx, fz);
   c.vx = sin(c.yaw) * speed;
   c.vz = cos(c.yaw) * speed;
   c.speed = speed;
@@ -387,11 +387,7 @@ export function resetToRoad(r: RaceState, rc: RaceCar): void {
   // Nudge to the right lane so we are not dropped onto another car head on.
   const half = route.segWidth[p.seg] / 2;
   const lateral = -Math.min(2, half * 0.35);
-  placeCar(rc.state, p.x + p.tz * lateral, p.z - p.tx * lateral, yawOf(p.tx, p.tz), r.world);
-  rc.resetCooldown = 1;
-  rc.stuckTime = 0;
-  rc.wrongWayTime = 0;
-  r.events.push({ tick: r.tick, type: 'reset', car: rc.index });
+  relocateCar(r, rc, p.x + p.tz * lateral, p.z - p.tx * lateral, yawOf(p.tx, p.tz));
 }
 
 /** Seconds off the road network before an open world car counts as lost and is put back. */
@@ -439,11 +435,7 @@ export function resetToStreet(r: RaceState, rc: RaceCar): void {
     tz = -tz;
   }
   const lateral = -Math.min(2, e.width * 0.175);
-  placeCar(c, px + tz * lateral, pz - tx * lateral, yawOf(tx, tz), r.world);
-  rc.resetCooldown = 1;
-  rc.stuckTime = 0;
-  rc.wrongWayTime = 0;
-  r.events.push({ tick: r.tick, type: 'reset', car: rc.index });
+  relocateCar(r, rc, px + tz * lateral, pz - tx * lateral, yawOf(tx, tz));
 }
 
 /** Open world: no laps, checkpoints or wrong way; only a car lost off the road network is put back. */
@@ -474,12 +466,12 @@ export function runoutInput(r: RaceState, rc: RaceCar): InputFrame {
   const yawDes = yawOf(ahead.tx, ahead.tz) + clamp(laneErr * RUNOUT.laneGain, -RUNOUT.laneMax, RUNOUT.laneMax);
   const velYaw = c.speed > 2 ? atan2(c.vx, c.vz) : c.yaw;
   let err = yawDes - velYaw;
-  while (err > Math.PI) err -= Math.PI * 2;
-  while (err < -Math.PI) err += Math.PI * 2;
+  while (err > PI) err -= TAU;
+  while (err < -PI) err += TAU;
   // Yaw rate is positive turning left; positive steer turns right.
   const yrDes = clamp(err * RUNOUT.headingGain, -RUNOUT.maxYawRate, RUNOUT.maxYawRate);
   const delta = atan2((yrDes * t.geometry.wheelbase) / Math.max(3, c.speed), 1);
-  const limit = lerp(t.steering.maxDeg, t.steering.highSpeedDeg, clamp(c.speed / t.steering.fadeSpeed, 0, 1)) * DEG;
+  const limit = steerLimit(t, c.speed);
   const steer = clamp(-delta / limit + (c.yawRate - yrDes) * RUNOUT.yawDamping, -RUNOUT.maxSteer, RUNOUT.maxSteer);
 
   // Brake: follow a speed profile that reaches zero at the stop point, slower for corners.
@@ -495,12 +487,14 @@ export function runoutInput(r: RaceState, rc: RaceCar): InputFrame {
   const step = line.n > 1 ? line.s[1] - line.s[0] : 1;
   const i0 = Math.round(rc.rawS / step);
   for (let k = 0; k <= 8; k++) {
-    const i = line.closed ? (((i0 + k) % line.n) + line.n) % line.n : clamp(i0 + k, 0, line.n - 1);
-    vt = Math.min(vt, line.speed[i]);
+    vt = Math.min(vt, line.speed[wrapIndex(i0 + k, line.n, line.closed)]);
   }
   const brake = clamp(RUNOUT.coastBrake + (c.speed - vt) * RUNOUT.brakeGain, RUNOUT.coastBrake, 1);
   return { ...NEUTRAL_INPUT, steer, brake };
 }
+
+/** The world each car steps against, reused tick to tick (no allocation per car). */
+const stepEnv: StepEnv = { world: null as unknown as World };
 
 /** Advance the race exactly one tick with the player's input frame. */
 export function stepRace(r: RaceState, rawInput: InputFrame): void {
@@ -556,12 +550,13 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
     const rc = r.cars[i];
     const inp = inputs[i];
     if (inp.reset && rc.resetCooldown <= 0) resetToRoad(r, rc);
-    stepCar(rc.state, rc.tuning, inp, { world: r.world });
+    stepEnv.world = r.world;
+    stepCar(rc.state, rc.tuning, inp, stepEnv);
   }
   const hit: WorldHit = { speed: 0, kind: 'wall' };
   for (const rc of r.cars) {
     rc.state.impact = collideCarWithWorld(rc.state, rc.tuning, r.world, hit, r.rails, r.tick);
-    if (hit.speed > WALL_EVENT_SPEED && r.tick - r.hitTicks.wall[rc.index] >= HIT_EVENT_GAP) {
+    if (hit.speed > WALL_EVENT_SPEED && r.tick - r.hitTicks.wall[rc.index] >= CRASH_EVENT.gap) {
       r.hitTicks.wall[rc.index] = r.tick;
       r.events.push({ tick: r.tick, type: 'wall', car: rc.index, kind: hit.kind, value: hit.speed });
     }
@@ -580,7 +575,7 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
         r.cars[i].state.impact = Math.max(r.cars[i].state.impact, imp);
         r.cars[j].state.impact = Math.max(r.cars[j].state.impact, imp);
         const pair = i * r.cars.length + j;
-        if (imp > CRASH_EVENT_SPEED && r.tick - r.hitTicks.pair[pair] >= HIT_EVENT_GAP) {
+        if (imp > CRASH_EVENT.speed && r.tick - r.hitTicks.pair[pair] >= CRASH_EVENT.gap) {
           r.hitTicks.pair[pair] = r.tick;
           r.events.push({ tick: r.tick, type: 'crash', car: i, other: j, value: imp });
         }
@@ -839,38 +834,57 @@ export function checkpointDist(r: RaceState, k: number): number {
   return route.checkpoints[k] - route.startS;
 }
 
+/**
+ * Drift scoring (drift mode, the player only): points accrue while the car drifts, by angle and speed, the
+ * chain's multiplier climbing the longer it holds; a short grace after the drift ends banks them, a hard
+ * hit loses them.
+ */
+const DRIFT_SCORE = {
+  /** A hit harder than this (m/s of impact) loses the chain. */
+  breakImpact: 3,
+  /** The least speed that scores (m/s). */
+  minSpeed: 12,
+  /** Slip angle counts up to this (deg). */
+  maxAngle: 60,
+  /** Points per degree of slip per meter driven. */
+  rate: 0.6,
+  /** How long after a drift ends the chain waits for another before banking (s). */
+  grace: 0.7,
+  /** The multiplier grows by one per this many seconds of chain (s), up to maxMultiplier. */
+  multiplierStep: 2,
+  maxMultiplier: 5,
+} as const;
+
+/** End a drift chain: no points pending, the multiplier back to one. */
+function clearChain(d: DriftScore): void {
+  d.current = 0;
+  d.multiplier = 1;
+  d.chainTime = 0;
+  d.zoneBonus = 0;
+}
+
 function updateDrift(r: RaceState): void {
   const rc = r.cars[0];
   const c = rc.state;
   const d = r.drift;
-  if (c.impact > 3 && d.current > 0) {
-    d.current = 0;
-    d.multiplier = 1;
-    d.chainTime = 0;
-    d.zoneBonus = 0;
-    return;
-  }
-  if (c.drifting && c.speed > 12 && !rc.wrongWay) {
-    const angle = Math.min(abs(c.slipAngle) / DEG, 60);
-    const gain = angle * c.speed * DT * 0.6;
+  if (c.impact > DRIFT_SCORE.breakImpact && d.current > 0) return clearChain(d);
+  if (c.drifting && c.speed > DRIFT_SCORE.minSpeed && !rc.wrongWay) {
+    const angle = Math.min(abs(c.slipAngle) / DEG, DRIFT_SCORE.maxAngle);
+    const gain = angle * c.speed * DT * DRIFT_SCORE.rate;
     const zoneMul = r.driftZones.cars[0]?.scoreMul ?? 1;
     d.current += gain * zoneMul;
     d.zoneBonus += gain * (zoneMul - 1);
     d.chainTime += DT;
-    d.graceTime = 0.7;
-    d.multiplier = Math.min(5, 1 + Math.floor(d.chainTime / 2));
+    d.graceTime = DRIFT_SCORE.grace;
+    d.multiplier = Math.min(DRIFT_SCORE.maxMultiplier, 1 + Math.floor(d.chainTime / DRIFT_SCORE.multiplierStep));
   } else if (d.current > 0) {
     d.graceTime -= DT;
     if (d.graceTime <= 0) {
       const banked = Math.round(d.current * d.multiplier);
       const zone = Math.round(d.zoneBonus * d.multiplier);
       d.total += banked;
-      d.lastBank = banked;
       r.events.push({ tick: r.tick, type: 'driftBank', car: 0, value: banked, ...(zone > 0 ? { other: zone } : {}) });
-      d.current = 0;
-      d.multiplier = 1;
-      d.chainTime = 0;
-      d.zoneBonus = 0;
+      clearChain(d);
     }
   }
 }

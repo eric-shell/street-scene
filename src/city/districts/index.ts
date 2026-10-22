@@ -27,11 +27,10 @@
 import { CITY } from '../config';
 import type { RoadGraph } from '../roadGraph';
 import { sortNodeEdges } from '../roadGraph';
-import { BlockFace, CityBlocks, Sector, computeFaces, computeMouths, computeSectors } from '../blocks';
+import { BlockFace, Sector, computeFaces, computeMouths, computeSectors } from '../blocks';
 import { Rng, deriveSeed } from '../../sim/prng';
-import type { Vec2 } from '../../sim/math';
 import { PolygonIndex, pointInPolygon, polygonBounds } from './geom';
-import type { Area, AreaBuild, AreaKind, BuildContext, Claims, DistrictModule, HeightMod, LateContext, PlanContext, PlannedEvent, Surface, SurfacePatch } from './types';
+import type { Area, AreaBuild, AreaKind, BuildContext, Claims, DistrictModule, HeightMod, LateContext, PlanContext, PlannedEvent, SurfacePatch } from './types';
 import { emptyBuild } from './types';
 import { riverModule } from './river';
 import { subwayModule } from './subway';
@@ -116,7 +115,7 @@ export interface CityDistricts {
   /** Highest priority surface patch at a point, or null. */
   surfaceAt(x: number, z: number): SurfacePatch | null;
   /** Index surfaces and rasterize areas once blocks exist. */
-  finalize(blocks: CityBlocks): void;
+  finalize(): void;
 }
 
 function makeContext(seed: number, g: RoadGraph, areas: Area[], claims: Claims, budget: { total: number; used: number }, kind: AreaKind, stream = `district:${kind}`): PlanContext {
@@ -262,7 +261,7 @@ export function planDistricts(seed: number, g: RoadGraph, hooks: PlanHooks = {})
       for (const h of hits) if (!best || h.priority > best.priority) best = h;
       return best;
     },
-    finalize(blocks) {
+    finalize() {
       const pad = 220;
       rx0 = g.bounds.minX - pad;
       rz0 = g.bounds.minZ - pad;
@@ -285,16 +284,8 @@ export function planDistricts(seed: number, g: RoadGraph, hooks: PlanHooks = {})
       }
       surfaces = new PolygonIndex<SurfacePatch>(rx0, rz0, rx0 + rcols * RASTER_CELL, rz0 + rrows * RASTER_CELL);
       for (const b of builds) for (const s of b.surfaces) surfaces.add(s);
-      void blocks;
     },
   };
-}
-
-/** Convenience for tests and tools: the surface a patch list gives at a point. */
-export function patchSurface(patches: SurfacePatch[], p: Vec2): Surface | null {
-  let best: SurfacePatch | null = null;
-  for (const s of patches) if (pointInPolygon(p.x, p.z, s.polygon) && (!best || s.priority > best.priority)) best = s;
-  return best ? best.surface : null;
 }
 
 export { emptyBuild };

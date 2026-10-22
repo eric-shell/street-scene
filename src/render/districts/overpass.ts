@@ -28,7 +28,8 @@ import { Rng } from '../../sim/prng';
 import { GeoBuilder } from '../geoBuilder';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { col, cylinder, orientedBox, wallBox } from './kit';
-import { CLOSED_CELL, GANTRY_SIGNS, beam, boardCell, frameBox, gantryCell, makeStructureSigns, signPanel, washMaterial } from './structureFx';
+import { CLOSED_CELL, GANTRY_SIGNS, beam, boardCell, frameBox, gantryCell, makeStructureSigns, signPanel } from './structureFx';
+import { washMaterial } from '../materialFx';
 import { ViaductShape, deckLine, viaductShape } from './structureShapes';
 
 const OCFG = CITY.districts.overpass;

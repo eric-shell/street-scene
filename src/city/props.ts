@@ -153,18 +153,12 @@ export const PROP_DEFS: Record<PropKind, PropDef> = {
   vendingMachine: { radius: 0.52, mass: 330, height: 1.9, anchor: 1, breakSpeed: 3 },
 };
 
-/** Construction kinds, for the shortcut builder and tests. */
-export const CONSTRUCTION_PROP_KINDS: readonly ConstructionPropKind[] = ['fencePanel', 'trafficCone', 'sawhorse', 'waterBarrier', 'sandbags', 'pallets'];
-
 /** Neighbourhood furniture kinds (streetFurniture.ts). */
 export const FURNITURE_KINDS: readonly FurnitureKind[] = ['hydrant', 'parkingMeter', 'mailbox', 'phoneBooth', 'vendingMachine'];
 
 /** Street furniture kinds (sidewalk only), in the order generateProps places them. */
 export const STREET_PROP_KINDS: readonly StreetPropKind[] = ['streetlight', 'trafficLight', 'garbageCan', 'bench', 'busStop', ...FURNITURE_KINDS];
 export const isStreetProp = (k: PropKind): k is StreetPropKind => (STREET_PROP_KINDS as readonly PropKind[]).includes(k);
-
-/** Emitted as RaceEvent { type: 'prop', car, value: propId } when a car breaks a prop. */
-export const PROP_EVENT = 'prop' as const;
 
 /** Distance behind the curb line (into the sidewalk) of each kind's center. */
 export const SETBACK: Record<StreetPropKind, number> = {

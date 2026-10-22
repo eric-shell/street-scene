@@ -24,7 +24,7 @@
  * screens. The caller feeds the
  * cruising car's pose every frame (MainMenu.frame) for the maps' car markers.
  */
-import { btn, chip, h, iconBtn, segmented, sheen } from '../kit/dom';
+import { bem, btn, chip, h, iconBtn, segmented, sheen } from '../kit/dom';
 import {
   Anchor,
   Calendar,
@@ -52,7 +52,6 @@ import {
   Store,
   TrainFront,
   Trees,
-  Trophy,
   Undo2,
   Users,
   Video,
@@ -65,11 +64,12 @@ import {
 } from '../kit/icons';
 import { RACE_TYPES, type Difficulty, type RaceType, type Settings } from '../settings';
 import { onOff, settingRow, settingsPanel } from '../screens/settingsPanel';
-import { navRow, railScreen, screenHead, swapStep } from '../rail/rail';
+import { RailSteps, navRow, railScreen, screenHead } from '../rail/rail';
 import { Help, MUSIC_KEYS, type HelpKey } from '../panels/help';
 import { formatTime } from '../kit/format';
 import { roadDistance } from '../kit/units';
-import { CityOverview, CourseMap, courseArt, courseRoute, type CourseRoutes, type MapPose } from './menuMaps';
+import { CityOverview, CourseMap, courseRoute, type CourseRoutes, type MapPose } from './menuMaps';
+import { courseBest, courseFacts, raceTicket } from './raceTicket';
 import { KINDS, layersOf } from '../map/cityMap';
 import { DRAG_OPPONENTS, MAX_OPPONENTS, type RaceMode } from '../../sim/race';
 import { driftZones } from '../../sim/driftZones';
@@ -229,7 +229,7 @@ export function mainMenu(o: MenuOptions): MainMenu {
   );
   menu.append(head);
   let step: MenuStep = 'home';
-  let current: HTMLElement | null = null;
+  const rail = new RailSteps(menu);
   // The maps of the step on screen; frame() moves their car markers.
   let overview: CityOverview | null = null;
   let course: CourseMap | null = null;
@@ -310,7 +310,7 @@ export function mainMenu(o: MenuOptions): MainMenu {
   ];
 
   /** What a type's course is, in a few facts: laps and length, A to B, the zones, the streets. */
-  const courseFacts = (t: RaceType): string[] => {
+  const factsOf = (t: RaceType): string[] => {
     const r = o.routes;
     switch (t) {
       case 'circuit':
@@ -369,16 +369,11 @@ export function mainMenu(o: MenuOptions): MainMenu {
       course!.show(t, animate);
       const info = TYPE_INFO[t];
       const record = t === 'roam' ? null : best(t);
-      const swap = animate ? ' is-swapping' : '';
+      const swap = animate ? 'is-swapping' : '';
       courseHead.replaceChildren(
-        h(
-          'div',
-          { class: `course-card__title${swap}` },
-          h('span', { class: 'course-name' }, icon(info.icon, { size: 18 }), info.label),
-          h('span', { class: 'course-facts' }, ...courseFacts(t).map((f) => h('span', {}, f))),
-        ),
+        h('div', { class: bem('course-card__title', swap) }, h('span', { class: 'course-name' }, icon(info.icon, { size: 18 }), info.label), courseFacts(factsOf(t))),
         // Free roam keeps no records.
-        ...(record ? [h('span', { class: `course-best${swap}`, title: 'Your best on this event' }, icon(Trophy, { size: 14 }), record)] : t === 'roam' ? [] : [h('span', { class: `course-best course-best--none${swap}` }, 'No time yet')]),
+        ...(t === 'roam' ? [] : [courseBest(record, swap)]),
       );
       next.querySelector('.btn__label')!.textContent = `Set up ${info.label.toLowerCase()}`;
     };
@@ -407,13 +402,7 @@ export function mainMenu(o: MenuOptions): MainMenu {
     const info = TYPE_INFO[t];
     root.dataset.mode = t;
     const record = t === 'roam' ? null : best(t);
-    const ticket = h(
-      'section',
-      { class: 'race-ticket', 'aria-label': 'Race' },
-      h('span', { class: 'race-ticket__art' }, t === 'roam' ? icon(Compass, { size: 30 }) : courseArt(courseRoute(o.routes, t), t, 104, 52)),
-      h('span', { class: 'race-ticket__text' }, h('span', { class: 'course-name' }, info.label), h('span', { class: 'course-facts' }, ...courseFacts(t).map((f) => h('span', {}, f)))),
-      record && h('span', { class: 'course-best', title: 'Your best on this event' }, icon(Trophy, { size: 14 }), record),
-    );
+    const ticket = raceTicket({ mode: t, title: info.label, label: 'Race', facts: factsOf(t), route: t === 'roam' ? null : courseRoute(o.routes, t), best: record });
     // Drift is a solo score attack and free roam has no rules: the card says so instead of offering rivals.
     const solo = t === 'drift' || t === 'roam';
     const difficultyRow = () =>
@@ -515,10 +504,9 @@ export function mainMenu(o: MenuOptions): MainMenu {
     course?.dispose();
     overview = course = null;
     pickType = null;
-    const el = h('div', { class: 'rail__step' }, ...steps[next]());
     const fwd = STEP_DEPTH[next] > STEP_DEPTH[from];
-    if (swapStep(menu, current, el, animate ? (fwd ? 'fwd' : 'back') : null)) uiWhoosh(fwd);
-    current = el;
+    if (rail.show(steps[next](), animate ? (fwd ? 'fwd' : 'back') : null)) uiWhoosh(fwd);
+    const el = rail.current!;
     help.close();
     if (next !== from || !animate) o.onStep?.(next);
     if (!animate) return;
@@ -544,7 +532,7 @@ export function mainMenu(o: MenuOptions): MainMenu {
       go(step === 'setup' ? 'race' : 'home');
     } else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && step === 'home') {
       // Up and down walk the home menu: the map, the race button, then the list.
-      const items = [...(current?.querySelectorAll<HTMLElement>('.event-map, .event-card__go, .nav-row') ?? [])];
+      const items = [...(rail.current?.querySelectorAll<HTMLElement>('.event-map, .event-card__go, .nav-row') ?? [])];
       const at = items.indexOf(document.activeElement as HTMLElement);
       const next = at < 0 ? items.findIndex((x) => x.classList.contains('event-card__go')) : (at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
       e.preventDefault();

@@ -35,7 +35,8 @@ import { Rng } from '../../sim/prng';
 import { GeoBuilder } from '../geoBuilder';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { col, cylinder, wallBox } from './kit';
-import { BakedBuilder, CLEARANCE_CELL, bakedMaterial, frameBox, frameCylinderU, frameWall, makeStructureSigns, nameCell, signPanel, washMaterial } from './structureFx';
+import { BakedBuilder, CLEARANCE_CELL, bakedMaterial, frameBox, frameCylinderU, frameWall, makeStructureSigns, nameCell, signPanel } from './structureFx';
+import { washMaterial } from '../materialFx';
 import { ridgeRawAt } from '../../city/districts/tunnel';
 import { FACADE_OUT, FLOOR_H, RidgeShape, TunnelShape, boreRoad, bridgeTop, ceilingAbove, coverOf, ridgeShape, rockAt, tunnelShape, vaultProfile } from './structureShapes';
 

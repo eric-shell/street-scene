@@ -16,14 +16,11 @@
  * per tick, a box against two arms per car while the arms are down, and a
  * point test per car while a train is on the street.
  */
-import type { World } from '../city/world';
+import type { Contact, World } from '../city/world';
 import type { RaceState } from './race';
-import type { LevelCrossing } from '../city/levelCrossings';
-import { CROSSING, crossingTrain } from '../city/levelCrossings';
-import type { Contact } from '../city/world';
-import { gatePhase } from './gates';
-import type { GatePhase } from './gates';
-import { placeCar } from './car';
+import { CROSSING, crossingTrain, type LevelCrossing } from '../city/levelCrossings';
+import { gatePhase, newGatePhase } from './gates';
+import { relocateCar } from './reset';
 import { abs, clamp, cos, sin, yawOf } from './math';
 
 /** A towed car is put this far behind the gate line (m). */
@@ -128,7 +125,7 @@ function segmentHitsBox(x: number, z: number, yaw: number, hl: number, hw: numbe
   return clip(-du, au + hl) && clip(du, hl - au) && clip(-dv, av + hw) && clip(dv, hw - av);
 }
 
-const armPhase: GatePhase = { name: 'open', t: 0, len: 0, arm: 0, blocking: false, untilBlock: 0, untilClear: 0, cycleT: -1 };
+const armPhase = newGatePhase();
 
 /**
  * Every race car on the level crossings, once a tick (from stepHazards): one
@@ -154,12 +151,7 @@ export function stepLevelCrossings(r: RaceState): void {
       const dir = sin(c.yaw) * lc.rx + cos(c.yaw) * lc.rz >= 0 ? 1 : -1;
       const at = end * (lc.gate + TOW_BACK);
       const lat = clamp(q, -(lc.half - 2), lc.half - 2);
-      placeCar(c, lc.x + lc.rx * at - lc.rz * lat, lc.z + lc.rz * at + lc.rx * lat, yawOf(lc.rx * dir, lc.rz * dir), r.world);
-      rc.resetCooldown = 1;
-      rc.stuckTime = 0;
-      rc.wrongWayTime = 0;
-      if (rc.ai) rc.ai.idx = -1;
-      r.events.push({ tick: r.tick, type: 'reset', car: rc.index });
+      relocateCar(r, rc, lc.x + lc.rx * at - lc.rz * lat, lc.z + lc.rz * at + lc.rx * lat, yawOf(lc.rx * dir, lc.rz * dir), true);
     }
   }
 }

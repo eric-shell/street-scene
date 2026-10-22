@@ -31,7 +31,7 @@ import type { World } from '../city/world';
 import type { RoadGraph } from '../city/roadGraph';
 import type { RaceCar, RaceState } from './race';
 import { InputFrame, NEUTRAL_INPUT } from './input';
-import { DEG, TAU, type Vec2, abs, approach, atan2, clamp, cos, lerp, sign, sin, sqrt } from './math';
+import { DEG, TAU, type Vec2, abs, approach, atan2, clamp, cos, exp, lerp, sign, sin, sqrt, wrapIndex } from './math';
 import { GRAVITY } from './tuning';
 import { DT, TICK_HZ } from './constants';
 import { Rng } from './prng';
@@ -39,6 +39,7 @@ import { type Route, routeSample } from '../city/route';
 import { CITY } from '../city/config';
 import { trafficAhead } from './traffic';
 import { GATE_AI, GateWait, gateSpeedCap } from './gates';
+import { steerLimit } from './car';
 import { laneClosures } from '../city/districts/roadworks';
 
 export const AI = {
@@ -424,39 +425,26 @@ export function rollDrivers(seed: number, count: number): Driver[] {
 
 export function buildRacingLine(world: World): RacingLine {
   const route = world.route;
-  const start = route.closed ? 0 : 0;
-  const end = route.closed ? route.length : route.length;
-  const n = Math.max(8, Math.floor((end - start) / AI.spacing) + (route.closed ? 0 : 1));
-  const step = (end - start) / (route.closed ? n : n - 1);
+  const n = Math.max(8, Math.floor(route.length / AI.spacing) + (route.closed ? 0 : 1));
+  const step = route.length / (route.closed ? n : n - 1);
   const cx = new Float64Array(n);
   const cz = new Float64Array(n);
   const s = new Float64Array(n);
-  const nx = new Float64Array(n);
-  const nz = new Float64Array(n);
   const room = new Float64Array(n);
   for (let i = 0; i < n; i++) {
-    const si = start + i * step;
+    const si = i * step;
     const p = routeSample(route, si);
     cx[i] = p.x;
     cz[i] = p.z;
     s[i] = si;
     room[i] = route.segWidth[p.seg] / 2 - AI.edgeMargin;
   }
-  // Normals from neighbors (smooth across corners).
-  for (let i = 0; i < n; i++) {
-    const a = route.closed ? (i - 1 + n) % n : Math.max(0, i - 1);
-    const b = route.closed ? (i + 1) % n : Math.min(n - 1, i + 1);
-    const dx = cx[b] - cx[a];
-    const dz = cz[b] - cz[a];
-    const l = sqrt(dx * dx + dz * dz) || 1;
-    nx[i] = dz / l;
-    nz[i] = -dx / l;
-  }
+  const { nx, nz } = lineNormals(cx, cz, route.closed);
   // Corners: the road is narrower in the polyline sense right at a node; use min of neighbors.
   const roomMin = Float64Array.from(room);
   for (let i = 0; i < n; i++) {
     for (let k = -2; k <= 2; k++) {
-      const j = route.closed ? (i + k + n) % n : clamp(i + k, 0, n - 1);
+      const j = wrapIndex(i + k, n, route.closed);
       roomMin[i] = Math.min(roomMin[i], room[j]);
     }
   }
@@ -497,6 +485,23 @@ export function buildRacingLine(world: World): RacingLine {
   return { n, closed: route.closed, x: px, z: pz, s, cx, cz, nx, nz, room: roomMin, lo, hi, offset: off, speed };
 }
 
+/** Unit normals (to the left) of a polyline from each sample's neighbours, so they turn smoothly across a corner. */
+function lineNormals(x: Float64Array, z: Float64Array, closed: boolean): { nx: Float64Array; nz: Float64Array } {
+  const n = x.length;
+  const nx = new Float64Array(n);
+  const nz = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const a = wrapIndex(i - 1, n, closed);
+    const b = wrapIndex(i + 1, n, closed);
+    const dx = x[b] - x[a];
+    const dz = z[b] - z[a];
+    const l = sqrt(dx * dx + dz * dz) || 1;
+    nx[i] = dz / l;
+    nz[i] = -dx / l;
+  }
+  return { nx, nz };
+}
+
 /**
  * The frame the drivers' own lines are solved in (driverLine). The shared
  * line's offsets hang off the centerline polyline, whose normals swing round
@@ -513,7 +518,7 @@ export function buildRacingLine(world: World): RacingLine {
  */
 export function sweepFrame(base: RacingLine): SweepFrame {
   const { n, closed } = base;
-  const wrap = (i: number): number => (closed ? ((i % n) + n) % n : clamp(i, 0, n - 1));
+  const wrap = (i: number): number => wrapIndex(i, n, closed);
   const step = n > 1 ? base.s[1] - base.s[0] : AI.spacing;
   const sigma = DRIVER.frameSigma / step;
   const reach = Math.ceil(3 * sigma);
@@ -524,7 +529,7 @@ export function sweepFrame(base: RacingLine): SweepFrame {
     let sz = 0;
     let sw = 0;
     for (let k = -reach; k <= reach; k++) {
-      const w = Math.exp((-k * k) / (2 * sigma * sigma));
+      const w = exp((-k * k) / (2 * sigma * sigma));
       const j = wrap(i + k);
       sx += w * base.cx[j];
       sz += w * base.cz[j];
@@ -538,17 +543,7 @@ export function sweepFrame(base: RacingLine): SweepFrame {
     cx[i] = base.cx[i] + dx + base.nx[i] * keep;
     cz[i] = base.cz[i] + dz + base.nz[i] * keep;
   }
-  const nx = new Float64Array(n);
-  const nz = new Float64Array(n);
-  for (let i = 0; i < n; i++) {
-    const a = wrap(i - 1);
-    const b = wrap(i + 1);
-    const dx = cx[b] - cx[a];
-    const dz = cz[b] - cz[a];
-    const l = sqrt(dx * dx + dz * dz) || 1;
-    nx[i] = dz / l;
-    nz[i] = -dx / l;
-  }
+  const { nx, nz } = lineNormals(cx, cz, closed);
   const frame: SweepFrame = { ...base, x: cx, z: cz, cx, cz, nx, nz, lo: new Float64Array(n), hi: new Float64Array(n), room: new Float64Array(n), offset: new Float64Array(n), cutLo: new Float64Array(n), cutHi: new Float64Array(n) };
   // The shared bounds, and a corner cutter's: the road's edges let out by DRIVER.cutRoom, or a share
   // of the room on a narrow street; a lane closure's side stays put.
@@ -595,7 +590,7 @@ export function sweepFrame(base: RacingLine): SweepFrame {
  */
 function onRoad(base: RacingLine, lo: Float64Array, hi: Float64Array, x: number, z: number, j: number): boolean {
   const { n, closed, cx, cz } = base;
-  const wrap = (i: number): number => (closed ? ((i % n) + n) % n : clamp(i, 0, n - 1));
+  const wrap = (i: number): number => wrapIndex(i, n, closed);
   for (let k = -DRIVER.frameWindow; k <= DRIVER.frameWindow; k++) {
     const a = wrap(j + k);
     const b = wrap(a + 1);
@@ -661,8 +656,8 @@ export function driverLine(base: SweepFrame, d: Readonly<Driver>): RacingLine {
       if (!closed && (i === 0 || i === n - 1)) continue;
       const f = i - shift;
       const j = Math.floor(f);
-      const a = closed ? ((j % n) + n) % n : clamp(j, 0, n - 1);
-      const b = closed ? (((j + 1) % n) + n) % n : clamp(j + 1, 0, n - 1);
+      const a = wrapIndex(j, n, closed);
+      const b = wrapIndex(j + 1, n, closed);
       off[i] = clamp(lerp(src[a], src[b], f - j), blo[i], bhi[i]);
     }
     sweep(base, blo, bhi, want, off, px, pz, 1, DRIVER.apexIterations);
@@ -683,7 +678,7 @@ export function driverLine(base: SweepFrame, d: Readonly<Driver>): RacingLine {
 function sweep(base: RacingLine, blo: Float64Array, bhi: Float64Array, want: Float64Array, off: Float64Array, px: Float64Array, pz: Float64Array, stride: number, iterations: number): void {
   const { n, closed, cx, cz, nx, nz } = base;
   const m = closed ? Math.floor(n / stride) : Math.floor((n - 1) / stride) + 1;
-  const at = (j: number): number => (closed ? ((j % m) + m) % m : clamp(j, 0, m - 1)) * stride;
+  const at = (j: number): number => wrapIndex(j, m, closed) * stride;
   const w = DRIVER.pull * stride ** 4;
   const h = (base.s[n - 1] - base.s[0]) / Math.max(1, n - 1) * stride;
   for (let j = 0; j < m; j++) {
@@ -750,7 +745,7 @@ function sweep(base: RacingLine, blo: Float64Array, bhi: Float64Array, want: Flo
 export function driverDetours(line: RacingLine, route: Route, graph: RoadGraph, d: Readonly<Driver>): Detour[] {
   const { n, closed } = line;
   const step = n > 1 ? line.s[1] - line.s[0] : AI.spacing;
-  const wrap = (i: number): number => (closed ? ((i % n) + n) % n : clamp(i, 0, n - 1));
+  const wrap = (i: number): number => wrapIndex(i, n, closed);
   const sample = (s: number): number => (closed ? wrap(Math.round(s / step)) : s < 0 || s > line.s[n - 1] ? -1 : Math.round(s / step));
   const J = CITY.districts.backAlley.route.jump;
   const out: Detour[] = [];
@@ -837,8 +832,8 @@ function speedProfile(n: number, closed: boolean, px: Float64Array, pz: Float64A
   const speed = new Float64Array(n);
   const span = 3;
   for (let i = 0; i < n; i++) {
-    const a = closed ? (i - span + n) % n : Math.max(0, i - span);
-    const b = closed ? (i + span) % n : Math.min(n - 1, i + span);
+    const a = wrapIndex(i - span, n, closed);
+    const b = wrapIndex(i + span, n, closed);
     const k = curvature(px[a], pz[a], px[i], pz[i], px[b], pz[b]);
     speed[i] = k > 1e-5 ? Math.min(AI.maxSpeed, sqrt((grip * GRAVITY) / k)) : AI.maxSpeed;
   }
@@ -868,8 +863,8 @@ function curvature(ax: number, az: number, bx: number, bz: number, cx: number, c
 
 /** Signed curvature of the line at sample i (1/m), positive bending left. */
 function bendAt(line: RacingLine, i: number): number {
-  const a = wrapIdx(line, i - 3);
-  const b = wrapIdx(line, i + 3);
+  const a = wrapIndex(i - 3, line.n, line.closed);
+  const b = wrapIndex(i + 3, line.n, line.closed);
   const k = curvature(line.x[a], line.z[a], line.x[i], line.z[i], line.x[b], line.z[b]);
   // Left of a heading (fx, fz) is (fz, -fx): the second chord on the left of the first bends left.
   const turn = (line.x[b] - line.x[i]) * (line.z[i] - line.z[a]) - (line.z[b] - line.z[i]) * (line.x[i] - line.x[a]);
@@ -878,19 +873,15 @@ function bendAt(line: RacingLine, i: number): number {
 
 /** Sine of the line's heading change from sample i over the next `k` samples, positive turning left. */
 function turnAhead(line: RacingLine, i: number, k: number): number {
-  const a = wrapIdx(line, i + 1);
-  const b = wrapIdx(line, i + k);
-  const c = wrapIdx(line, i + k + 1);
+  const a = wrapIndex(i + 1, line.n, line.closed);
+  const b = wrapIndex(i + k, line.n, line.closed);
+  const c = wrapIndex(i + k + 1, line.n, line.closed);
   const ax = line.x[a] - line.x[i];
   const az = line.z[a] - line.z[i];
   const bx = line.x[c] - line.x[b];
   const bz = line.z[c] - line.z[b];
   const l = sqrt((ax * ax + az * az) * (bx * bx + bz * bz));
   return l > 1e-9 ? (bx * az - bz * ax) / l : 0;
-}
-
-function wrapIdx(line: RacingLine, i: number): number {
-  return line.closed ? ((i % line.n) + line.n) % line.n : clamp(i, 0, line.n - 1);
 }
 
 function nearestIdx(line: RacingLine, x: number, z: number, hint: number): number {
@@ -907,7 +898,7 @@ function nearestIdx(line: RacingLine, x: number, z: number, hint: number): numbe
     return best;
   }
   for (let k = -6; k <= 14; k++) {
-    const i = wrapIdx(line, hint + k);
+    const i = wrapIndex(hint + k, line.n, line.closed);
     const d = (line.x[i] - x) ** 2 + (line.z[i] - z) ** 2;
     if (d < bestD) {
       bestD = d;
@@ -1046,7 +1037,7 @@ function racecraft(r: RaceState, rc: RaceCar, line: RacingLine, i0: number, ti: 
     // Into a bottleneck (an alley, a lane closure, a bridge) nobody goes two abreast.
     let narrow = false;
     for (let k = 0; k <= DRIVER.narrowLook && !narrow; k += 2) {
-      const j = wrapIdx(line, i0 + k);
+      const j = wrapIndex(i0 + k, line.n, line.closed);
       narrow = line.hi[j] - line.lo[j] < DRIVER.narrowRoom;
     }
     if (frontAhead >= look || narrow) side = 0;
@@ -1056,7 +1047,7 @@ function racecraft(r: RaceState, rc: RaceCar, line: RacingLine, i0: number, ti: 
       else side = abs(lt - myOff) < abs(rt - myOff) ? 1 : abs(lt - myOff) > abs(rt - myOff) ? -1 : ai.driver.side >= 0 ? 1 : -1;
     } else if (canL) side = 1;
     else if (canR) side = -1;
-    const wait = a < DRIVER.patient && line.speed[wrapIdx(line, i0 + 10)] * ai.pace < c.speed * DRIVER.brakeZone;
+    const wait = a < DRIVER.patient && line.speed[wrapIndex(i0 + 10, line.n, line.closed)] * ai.pace < c.speed * DRIVER.brakeZone;
     if (side !== 0 && !wait) {
       ai.passCar = front.index;
       ai.passSide = side;
@@ -1129,7 +1120,7 @@ function courseLine(r: RaceState, rc: RaceCar): RacingLine {
 
 /** Clear of walls by `room` (m) at `extra` off the line, at the steering target and halfway to it. */
 function clearAt(r: RaceState, line: RacingLine, i0: number, ti: number, extra: number, room: number, y: number): boolean {
-  const mid = wrapIdx(line, i0 + Math.round((((ti - i0) % line.n) + line.n) % line.n / 2));
+  const mid = wrapIndex(i0 + Math.round((((ti - i0) % line.n) + line.n) % line.n / 2), line.n, line.closed);
   for (const i of [ti, mid]) if (r.world.wallClearance(line.x[i] + line.nx[i] * (extra + line.offset[ti] - line.offset[i]), line.z[i] + line.nz[i] * (extra + line.offset[ti] - line.offset[i]), room + 0.1, y) < room) return false;
   return true;
 }
@@ -1141,7 +1132,7 @@ export function aiInput(r: RaceState, rc: RaceCar): InputFrame {
   const c = rc.state;
   const racing = r.tick >= r.countdownTicks;
   if (!racing) return { ...NEUTRAL_INPUT, throttle: 0.55 };
-  if (rc.finished) return { ...NEUTRAL_INPUT, throttle: 0.35, steer: steerToward(r, rc, 0.5) };
+  if (rc.finished) return { ...NEUTRAL_INPUT, throttle: 0.35, steer: steerToward(r, rc) };
   // Reaction time: still on the brake as the lights go green.
   if (r.tick - r.countdownTicks < d.reaction * TICK_HZ) return { ...NEUTRAL_INPUT, brake: DRIVER.reactionBrake };
 
@@ -1157,7 +1148,7 @@ export function aiInput(r: RaceState, rc: RaceCar): InputFrame {
   const pace = ai.pace * band * slipAt(ai, rc.dist);
 
   const look = ai.detour >= 0 ? DRIVER.detourLook + speed * DRIVER.detourLookPerSpeed : AI.lookaheadBase + speed * AI.lookaheadPerSpeed;
-  const ti = wrapIdx(line, idx + Math.round(look / AI.spacing));
+  const ti = wrapIndex(idx + Math.round(look / AI.spacing), line.n, line.closed);
   // Racecraft against the other racers, else round any traffic car ahead (they keep off the route, but a car pushed out among them dodges).
   const plan = racecraft(r, rc, line, idx, ti, craft);
   let target = plan.target;
@@ -1202,7 +1193,7 @@ export function aiInput(r: RaceState, rc: RaceCar): InputFrame {
 
   // Speed control: look a little ahead for the binding limit.
   let vt = Infinity;
-  for (let k = 0; k <= 3; k++) vt = Math.min(vt, line.speed[wrapIdx(line, idx + k)]);
+  for (let k = 0; k <= 3; k++) vt = Math.min(vt, line.speed[wrapIndex(idx + k, line.n, line.closed)]);
   vt *= pace;
   // Off the line toward the inside of a bend, the radius is tighter: slower.
   const inside = extra * bendAt(line, ti);
@@ -1238,7 +1229,7 @@ export function aiInput(r: RaceState, rc: RaceCar): InputFrame {
   }
 
   // Nitrous on straights, keeping the reserve back for passes and the final push; never down a shortcut (a jump exit's landing is planned without it).
-  const far = line.speed[wrapIdx(line, idx + 25)] * pace;
+  const far = line.speed[wrapIndex(idx + 25, line.n, line.closed)] * pace;
   const keep = plan.passing || rc.dist > r.distance * (1 - DRIVER.finalPush) ? 0 : d.reserve;
   const lead = lerp(DRIVER.nitroLead[0], DRIVER.nitroLead[1], d.aggression);
   let nitrous = false;
@@ -1366,16 +1357,15 @@ function pursuitSteer(rc: RaceCar, tx: number, tz: number): number {
   if (d2 < 1e-6) return 0;
   const k = (2 * v) / d2;
   const delta = atan2(k * t.geometry.wheelbase, 1);
-  const limit = lerp(t.steering.maxDeg, t.steering.highSpeedDeg, clamp(c.speed / t.steering.fadeSpeed, 0, 1)) * DEG;
-  // also counter the body slip a bit
-  return clamp(-(delta + c.slipAngle * AI.slipCounter) / limit, -1, 1);
+  // Also counter the body slip a bit.
+  return clamp(-(delta + c.slipAngle * AI.slipCounter) / steerLimit(t, c.speed), -1, 1);
 }
 
-function steerToward(r: RaceState, rc: RaceCar, _gain: number): number {
+function steerToward(r: RaceState, rc: RaceCar): number {
   const ai = rc.ai!;
   const line = ai.line ?? r.line;
   ai.idx = nearestIdx(line, rc.state.x, rc.state.z, ai.idx);
-  const ti = wrapIdx(line, ai.idx + 4);
+  const ti = wrapIndex(ai.idx + 4, line.n, line.closed);
   return pursuitSteer(rc, line.x[ti], line.z[ti]);
 }
 

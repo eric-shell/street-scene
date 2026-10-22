@@ -16,7 +16,7 @@
  * Only one panel is open at a time. Helps are found through the page, so one
  * on a screen that is simply removed (pause, results) is never held on to.
  */
-import { h } from '../kit/dom';
+import { h, isTyping, keyCaps } from '../kit/dom';
 import { X, icon } from '../kit/icons';
 
 /** A key row: the caps (alternatives side by side) and what they do; with an action the row is a button that does it. */
@@ -116,7 +116,7 @@ export class Help {
   }
 
   private row(k: HelpKey): HTMLElement {
-    const caps = h('span', { class: 'help__row-keys' }, ...k.keys.flatMap((key, i) => (i ? [' ', h('kbd', {}, key)] : [h('kbd', {}, key)])));
+    const caps = h('span', { class: 'help__row-keys' }, ...keyCaps(k.keys, ' '));
     const label = h('span', { class: 'help__row-label' }, k.label);
     if (!k.action) return h('div', { class: 'help__row' }, caps, label);
     const run = k.action;
@@ -157,9 +157,7 @@ window.addEventListener(
       open.close();
       return;
     }
-    if (e.key !== '?' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
-    const t = e.target;
-    if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement) return;
+    if (e.key !== '?' || e.repeat || e.ctrlKey || e.metaKey || e.altKey || isTyping(e)) return;
     // Not while the UI is faded out (the menu's cinematic mode, a hidden HUD): the panel would open unseen.
     if (document.body.classList.contains('is-cinematic') || document.body.classList.contains('is-hud-hidden')) return;
     const top = open ?? onTop();

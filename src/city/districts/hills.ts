@@ -34,9 +34,12 @@ import type { BlockFace } from '../blocks';
 import { Vec2, atan2, cos, sin, sqrt } from '../../sim/math';
 import type { Area, DistrictModule, HeightSample } from './types';
 import { emptyBuild } from './types';
-import { pointInPolygon, polygonCentroid, smooth01 } from './geom';
+import { pointInPolygon, polygonCentroid, smooth01, type Smooth } from './geom';
 import { riverCenter } from './river';
 import { bluffFootprint } from './bluff';
+
+/** Scratch for the terrain's smoothsteps (queried per wheel per substep, so nothing allocates). */
+const SMOOTH: Smooth = { v: 0, d: 0 };
 
 const CFG = CITY.districts.hills;
 
@@ -70,7 +73,7 @@ export function plateauDistance(s: HillShape, x: number, z: number): { d: number
 export function hillAt(s: HillShape, x: number, z: number, out: HeightSample): void {
   const q = plateauDistance(s, x, z);
   if (q.d >= s.w) return;
-  const m = smooth01(0, s.w, q.d);
+  const m = smooth01(0, s.w, q.d, SMOOTH);
   out.h += s.h * (1 - m.v);
   if (q.d <= 0 || m.d === 0) return;
   // d(h)/d(d) along the direction the rectangle distance grows in (local), rotated to world.

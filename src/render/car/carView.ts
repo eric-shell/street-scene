@@ -5,7 +5,7 @@
  */
 import * as THREE from 'three';
 import { BODY_PART_SLOTS, PartSlot } from '../../shared/parts';
-import { VisualBuild, defaultVisual } from '../../sim/build';
+import { GLOW_PATTERNS, VisualBuild, defaultVisual } from '../../shared/carBuild';
 import { CarAssetLibrary, ManifestCar, manifestCar, partById, partsFor } from './carAssets';
 import { CarMaterialSet, applyVisualToMaterials, createCarMaterials, disposeCarMaterials, resolveMaterialName, setBrake } from './carMaterials';
 import { makeRadialGlow } from '../textures/textures';
@@ -13,6 +13,7 @@ import { DecalLayerView } from './decals';
 import { FEATURES } from '../../shared/features';
 import { WheelProfile, beadForSize, detectProfile, remapWheel, sizeForBead } from './wheelFit';
 import { maskVehicleMesh, underVehicles } from '../vehicleMask';
+import { Disposer } from '../disposer';
 
 export interface CarPose {
   x: number;
@@ -31,12 +32,15 @@ export interface CarPose {
   speed: number;
 }
 
-const WHEEL_KEYS = ['FL', 'FR', 'RL', 'RR'] as const;
+export const WHEEL_KEYS = ['FL', 'FR', 'RL', 'RR'] as const;
 const DEG = Math.PI / 180;
 /** Scratch for CarView.update's wheel placement. */
 const WHEEL_POS = new THREE.Vector3();
 const WHEEL_STEER = new THREE.Quaternion();
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
+/** Scratch for the underglow's two colors, set every frame. */
+const GLOW_C1 = new THREE.Color();
+const GLOW_C2 = new THREE.Color();
 
 /** The glows a car throws on the road (underglow, headlight pool), laid on the ground under its wheels. */
 const GROUND_FX = {
@@ -99,6 +103,8 @@ export class CarView {
   private beam: THREE.Mesh;
   readonly decals: DecalLayerView;
   private loadToken = 0;
+  /** The car's own effect materials (underglow, headlight pool, flames, pops); the shared car materials go with disposeCarMaterials. */
+  private readonly owned = new Disposer();
 
   constructor(
     carId: string,
@@ -127,8 +133,9 @@ export class CarView {
       this.wheelSpins.push(spin);
     }
 
+    const { track } = this.owned;
     // Underglow: a shader glow on the road around the footprint, plus an optional real light.
-    this.underglowMat = new THREE.ShaderMaterial({
+    this.underglowMat = track(new THREE.ShaderMaterial({
       uniforms: {
         color1: { value: new THREE.Color(0x00e5ff) },
         color2: { value: new THREE.Color(0xff3df2) },
@@ -177,7 +184,7 @@ export class CarView {
       transparent: true,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
-    });
+    }));
     underVehicles(this.underglowMat);
     this.underglow = new THREE.Mesh(new THREE.PlaneGeometry(dims.width * 2.6, dims.length * 1.9).rotateX(-Math.PI / 2), this.underglowMat);
     this.underglow.position.y = GROUND_FX.glowY;
@@ -191,7 +198,7 @@ export class CarView {
     }
 
     // Headlight beams: a soft additive pool on the road ahead (cheap), plus real spots for the player.
-    const beamMat = new THREE.MeshBasicMaterial({ map: glow(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, color: 0x6f7a8a });
+    const beamMat = track(new THREE.MeshBasicMaterial({ map: glow(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, color: 0x6f7a8a }));
     underVehicles(beamMat);
     this.beam = new THREE.Mesh(new THREE.PlaneGeometry(9, 22).rotateX(-Math.PI / 2).translate(0, GROUND_FX.beamY, dims.length / 2 + 10), beamMat);
     this.beam.renderOrder = 3;
@@ -209,12 +216,12 @@ export class CarView {
     // Nitrous exhaust flames, and the orange flash of an overrun pop at the same tailpipes.
     const flameGeo = new THREE.ConeGeometry(0.11, 0.9, 10, 1, true).rotateX(-Math.PI / 2).translate(0, 0, -0.45);
     for (const side of [1, -1]) {
-      const flame = new THREE.Mesh(flameGeo, new THREE.MeshBasicMaterial({ color: NITRO_FLAME.color[0].clone(), transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
+      const flame = new THREE.Mesh(flameGeo, track(new THREE.MeshBasicMaterial({ color: NITRO_FLAME.color[0].clone(), transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false })));
       flame.position.set(side * 0.38, 0.32, -dims.length / 2 + 0.05);
       flame.visible = false;
       this.root.add(flame);
       this.flames.push(flame);
-      const pop = new THREE.Mesh(flameGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff8a2a).multiplyScalar(3.5), transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
+      const pop = new THREE.Mesh(flameGeo, track(new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff8a2a).multiplyScalar(3.5), transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false })));
       pop.position.copy(flame.position);
       pop.visible = false;
       this.root.add(pop);
@@ -496,9 +503,8 @@ export class CarView {
       return;
     }
     const t = time * g.speed;
-    const modes = ['steady', 'pulse', 'breathe', 'strobe', 'alternate', 'wave', 'chase'];
     let k = 1;
-    const c1 = new THREE.Color(g.color);
+    const c1 = GLOW_C1.set(g.color);
     if (g.pattern === 'pulse') k = 0.45 + 0.55 * Math.abs(Math.sin(t * 3));
     else if (g.pattern === 'breathe') k = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(t * 1.3));
     else if (g.pattern === 'strobe') k = Math.sin(t * 18) > 0.3 ? 1 : 0.08;
@@ -507,11 +513,12 @@ export class CarView {
     u.color1.value.copy(c1);
     u.color2.value.set(g.color2);
     u.intensity.value = 1.5 * g.brightness * k * this.airFade;
-    u.mode.value = modes.indexOf(g.pattern);
+    // The shader picks the pattern by its index in GLOW_PATTERNS (4 alternate, 6 chase).
+    u.mode.value = GLOW_PATTERNS.indexOf(g.pattern);
     u.time.value = t;
     this.underglow.scale.set(g.size, 1, g.size);
     if (this.underglowLight) {
-      this.underglowLight.color.copy(g.pattern === 'alternate' && Math.floor(t * 0.5 * 2) % 2 ? new THREE.Color(g.color2) : c1);
+      this.underglowLight.color.copy(g.pattern === 'alternate' && Math.floor(t * 0.5 * 2) % 2 ? GLOW_C2.set(g.color2) : c1);
       this.underglowLight.intensity = 14 * g.brightness * k;
       this.underglowLight.distance = 6 * g.size;
     }
@@ -661,6 +668,7 @@ export class CarView {
       if (mesh.isMesh) mesh.geometry?.dispose();
     });
     disposeCarMaterials(this.materials);
+    this.owned.dispose();
     this.decals.dispose();
   }
 }

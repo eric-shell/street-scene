@@ -12,7 +12,7 @@ import { CarState } from '../sim/car';
 import { routeSample } from '../city/route';
 import { createRace, RaceConfig, RaceState, raceTime, standings, stepRace, ticksToSeconds } from '../sim/race';
 import { InputFrame, NEUTRAL_INPUT, unpackInput } from '../sim/input';
-import { VisualBuild } from '../sim/build';
+import { VisualBuild } from '../shared/carBuild';
 import { DT, TICK_HZ } from '../sim/constants';
 import { DEG } from '../sim/math';
 import { CarView, CarPose } from '../render/car/carView';
@@ -57,6 +57,7 @@ import { driftZoneStatus } from '../sim/driftZones';
 import { DRIFT_ZONES } from '../sim/tuning';
 import { ChaseCall, policeChaseCall } from '../render/traffic/policeChase';
 import { HazardFx } from './hazardFx';
+import { KeyLight } from './keyLight';
 
 interface Snap extends CarPose {
   nitroStage: number;
@@ -296,7 +297,7 @@ export class RaceSession {
   private traffic: TrafficView | null = null;
   private trafficPrev = new Float32Array(0);
   private trafficCurr = new Float32Array(0);
-  private carLight: THREE.PointLight;
+  private carLight: KeyLight;
   private engines: EngineVoice[] = [];
   private sfx: Sfx | null = null;
   /** Gamepad rumble for the player's car; none in a replay. */
@@ -461,8 +462,8 @@ export class RaceSession {
     const pd = this.views[0].car.dimensions;
     this.trails = new LightTrails(pd.width, pd.length);
     this.night.scene.add(this.trails.mesh);
-    // A soft key light that rides above the player so cars read clearly at night.
-    this.carLight = new THREE.PointLight(0xdfe6ff, 9, 9, 1.6);
+    // The key light that rides above the player so cars read clearly at night.
+    this.carLight = new KeyLight();
     this.night.scene.add(this.carLight);
     // Engine sound: the player's car loud and centered, rivals by distance.
     const hub = audioHub();
@@ -1075,7 +1076,7 @@ export class RaceSession {
     } else camera = this.updateCamera(p, dt);
     this.lastCamera = camera;
     this.trails.update(this.views[0].root, camera, this.paused ? 0 : p.nitroStage, dt);
-    this.carLight.position.set(p.x - Math.sin(p.yaw) * 1.5, p.y + 4.2, p.z - Math.cos(p.yaw) * 1.5);
+    this.carLight.follow(p);
     // The few real point lights follow the action, or the drone when it flies off.
     this.night.lighting.update(this.drone ? camera.position : new THREE.Vector3(p.x, p.y, p.z));
     // Last lap: the police helicopter follows the leader's interpolated pose.

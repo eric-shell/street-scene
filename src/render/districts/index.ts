@@ -10,7 +10,7 @@ import type { WallLook } from '../../city/districts/types';
 import type { Quality } from '../../ui/settings';
 import { TICK_HZ } from '../../sim/constants';
 import { GeoBuilder } from '../geoBuilder';
-import { fadeSubPixel } from '../street/lightFx';
+import { fadeSubPixel } from '../materialFx';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { alleyRenderer } from './alley';
 import { hillsRenderer } from './hills';

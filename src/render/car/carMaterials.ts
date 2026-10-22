@@ -5,7 +5,7 @@
  */
 import * as THREE from 'three';
 import { MATERIAL_NAMES, MaterialName } from '../../shared/parts';
-import type { PaintFinish, VisualBuild } from '../../sim/build';
+import type { PaintFinish, VisualBuild } from '../../shared/carBuild';
 
 /** The shared runtime materials, plus the rear axle's own rim so front and rear wheel colors can differ. */
 export type CarMaterialSet = Record<MaterialName, THREE.Material> & { RimRear: THREE.Material };

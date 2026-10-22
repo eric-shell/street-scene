@@ -149,7 +149,7 @@ export interface Service {
 }
 
 /** Every slot of the pattern running. */
-export const ALL_TRIPS = (1 << TRAIN.pattern) - 1;
+const ALL_TRIPS = (1 << TRAIN.pattern) - 1;
 
 /** Make a service: station centers are track s (platform middles); trains stop centered on them. */
 export function makeService(dir: 1 | -1, length: number, stationCenters: readonly number[], phase: number, cars: number = TRAIN.cars, runs: number = ALL_TRIPS): Service {
@@ -165,7 +165,7 @@ export function tripRuns(sv: Service, k: number): boolean {
 }
 
 /** TRAIN.runs distinct slots of the pattern, picked by hash from `seed` and `salt`, as a bit mask. */
-export function runPattern(seed: number, salt: number): number {
+function runPattern(seed: number, salt: number): number {
   let mask = 0;
   for (let n = 0, i = 0; n < TRAIN.runs && i < 64; i++) {
     const j = Math.floor(hash01(seed, salt, i) * TRAIN.pattern);
@@ -188,6 +188,9 @@ export interface TripState {
   tau: number;
 }
 
+/** Where a trip is along its run, reused by tripsAt (it runs every frame for every service). */
+const runScratch = { s: 0, v: 0, a: 0 };
+
 /**
  * Trains of a service in motion at `time`, written into `out` (reused, no
  * allocation once it has grown). Returns how many there are.
@@ -197,7 +200,7 @@ export function tripsAt(sv: Service, time: number, out: TripState[]): number {
   const kMax = Math.floor(rel / sv.headway);
   const kMin = Math.ceil((rel - sv.run.duration) / sv.headway);
   let n = 0;
-  const tmp = { s: 0, v: 0, a: 0 };
+  const tmp = runScratch;
   for (let k = kMin; k <= kMax; k++) {
     const tau = rel - k * sv.headway;
     if (tau < 0 || tau > sv.run.duration || !tripRuns(sv, k)) continue;

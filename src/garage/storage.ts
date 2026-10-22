@@ -3,19 +3,20 @@
  * build JSON with short keys, deflate-compressed and base64url encoded, so it
  * fits in a URL parameter (?build=...). Imported builds are always validated.
  */
-import { CarBuild, defaultBuild, validateBuild } from '../sim/build';
+import { CarBuild, DEFAULT_BUILD_NAME, defaultBuild, validateBuild } from '../shared/carBuild';
+import { loadJson, saveJson } from '../shared/store';
 import { DEFAULT_CAR_ID } from '../sim/tuning';
 import { manifestCar } from '../render/car/carAssets';
 
 export const MAX_SLOTS = 6;
-const KEY = 'nightrun.garage.v1';
+const KEY = 'garage.v1';
 
 export interface GarageState {
   current: number;
   slots: CarBuild[];
 }
 
-export function freshBuild(carId = DEFAULT_CAR_ID, name = 'My Ride'): CarBuild {
+export function freshBuild(carId = DEFAULT_CAR_ID, name = DEFAULT_BUILD_NAME): CarBuild {
   const b = defaultBuild(carId);
   b.name = name;
   b.visual.paint.color = manifestCar(carId).defaultPaint;
@@ -24,28 +25,37 @@ export function freshBuild(carId = DEFAULT_CAR_ID, name = 'My Ride'): CarBuild {
 
 export function loadGarage(): GarageState {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as { current?: unknown; slots?: unknown };
-      const slots = Array.isArray(parsed.slots) ? parsed.slots.slice(0, MAX_SLOTS).map(validateBuild) : [];
-      if (slots.length) {
-        const current = Math.max(0, Math.min(slots.length - 1, Math.round(Number(parsed.current) || 0)));
-        return { current, slots };
-      }
+    const parsed = loadJson<{ current?: unknown; slots?: unknown } | null>(KEY, null);
+    const slots = Array.isArray(parsed?.slots) ? parsed.slots.slice(0, MAX_SLOTS).map(validateBuild) : [];
+    if (slots.length) {
+      const current = Math.max(0, Math.min(slots.length - 1, Math.round(Number(parsed?.current) || 0)));
+      return { current, slots };
     }
   } catch {
-    /* fall through to default */
+    /* a slot that fails validation: fall through to the default */
   }
   return { current: 0, slots: [freshBuild(DEFAULT_CAR_ID, 'Garage')] };
 }
 
 export function saveGarage(g: GarageState): boolean {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(g));
-    return true;
-  } catch {
-    return false;
-  }
+  return saveJson(KEY, g);
+}
+
+/** Add a build as a new slot and select it; false (and nothing changed) when all MAX_SLOTS are taken. */
+export function addSlot(g: GarageState, b: CarBuild): boolean {
+  if (g.slots.length >= MAX_SLOTS) return false;
+  g.slots.push(b);
+  g.current = g.slots.length - 1;
+  return true;
+}
+
+/**
+ * Take in a shared build (a ?build= link at boot or a code pasted in the
+ * garage): a new slot while there is room, else it replaces the slot in use,
+ * which stays selected.
+ */
+export function importBuild(g: GarageState, b: CarBuild): void {
+  if (!addSlot(g, b)) g.slots[g.current] = b;
 }
 
 // ---------------------------------------------------------------------------
@@ -63,24 +73,16 @@ export interface GaragePrefs {
   linkWheelColor: boolean;
 }
 
-const PREFS_KEY = 'nightrun.garage.prefs.v1';
+const PREFS_KEY = 'garage.prefs.v1';
 
 export function loadGaragePrefs(): GaragePrefs {
-  const d: GaragePrefs = { presentation: 'garage', linkAxles: true, linkWheelColor: true };
-  try {
-    const o = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') as Partial<GaragePrefs>;
-    return { presentation: o.presentation === 'street' ? 'street' : 'garage', linkAxles: o.linkAxles !== false, linkWheelColor: o.linkWheelColor !== false };
-  } catch {
-    return d;
-  }
+  const o = loadJson<Partial<GaragePrefs> | null>(PREFS_KEY, null) ?? {};
+  return { presentation: o.presentation === 'street' ? 'street' : 'garage', linkAxles: o.linkAxles !== false, linkWheelColor: o.linkWheelColor !== false };
 }
 
+/** Private mode or a full store: the preferences just do not persist. */
 export function saveGaragePrefs(p: GaragePrefs): void {
-  try {
-    localStorage.setItem(PREFS_KEY, JSON.stringify(p));
-  } catch {
-    /* private mode: preferences just do not persist */
-  }
+  saveJson(PREFS_KEY, p);
 }
 
 // ---------------------------------------------------------------------------

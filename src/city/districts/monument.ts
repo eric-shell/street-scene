@@ -26,9 +26,12 @@ import { Rng } from '../../sim/prng';
 import type { DistrictModule, PlanContext } from './types';
 import type { BlockFace } from '../blocks';
 import { emptyBuild } from './types';
-import { circlePolygon, distToPolygonEdge, pointInPolygon, polyWalls, polygonCentroid, smooth01 } from './geom';
+import { circlePolygon, distToPolygonEdge, pointInPolygon, polyWalls, polygonCentroid, smooth01, type Smooth } from './geom';
 import { convexRing } from './park';
 import { riverCenter } from './river';
+
+/** Scratch for the terrain's smoothsteps (queried per wheel per substep, so nothing allocates). */
+const SMOOTH: Smooth = { v: 0, d: 0 };
 
 const CFG = CITY.districts.monument;
 /** A Grand Tour's monument may stand this far from the center (m), wherever both routes pass a block that can hold it. */
@@ -178,7 +181,7 @@ export const monumentModule: DistrictModule = {
           const dz = pz - c.z;
           const r = sqrt(dx * dx + dz * dz);
           if (r >= domeR) return;
-          const s = smooth01(flatR, domeR, r);
+          const s = smooth01(flatR, domeR, r, SMOOTH);
           out.h += rise * (1 - s.v);
           if (r > 1e-6 && s.d) {
             out.gx -= (rise * s.d * dx) / r;

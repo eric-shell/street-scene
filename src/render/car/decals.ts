@@ -5,7 +5,7 @@
  */
 import * as THREE from 'three';
 import { DecalGeometry } from 'three/examples/jsm/geometries/DecalGeometry.js';
-import { DecalLayer, VINYL_SHAPES, VinylShape } from '../../sim/build';
+import { DecalLayer, VINYL_SHAPES, VinylShape } from '../../shared/carBuild';
 import type { CarView } from './carView';
 
 const CELL = 256;
@@ -13,7 +13,7 @@ const COLS = 4;
 const ROWS = 3;
 
 /** Width / height of each shape's projector. */
-export const SHAPE_ASPECT: Record<VinylShape, number> = {
+const SHAPE_ASPECT: Record<VinylShape, number> = {
   stripe: 4,
   twinStripe: 4,
   flame: 2,
@@ -228,18 +228,8 @@ export class DecalLayerView {
     const isNumber = layer.shape === 'number';
     const map = isNumber ? numberTexture(layer.text ?? '7') : getAtlas();
     const idx = VINYL_SHAPES.indexOf(layer.shape);
-    const mat = new THREE.MeshPhysicalMaterial({
-      map,
-      color: layer.color,
-      transparent: true,
-      depthWrite: false,
-      polygonOffset: true,
-      polygonOffsetFactor: -4,
-      polygonOffsetUnits: -4,
-      roughness: 0.3,
-      clearcoat: 1,
-      alphaTest: 0.05,
-    });
+    // The layer's material, made with its first mesh: a layer that lands on nothing makes none to leak.
+    let mat: THREE.MeshPhysicalMaterial | null = null;
     for (const target of targets) {
       // Skip meshes far from the decal; DecalGeometry clips to the projector box anyway.
       const box = new THREE.Box3().setFromObject(target);
@@ -260,6 +250,18 @@ export class DecalLayerView {
         const v0 = 1 - Math.floor(idx / COLS) / ROWS - vh;
         for (let i = 0; i < uv.count; i++) uv.setXY(i, u0 + uv.getX(i) / COLS, v0 + uv.getY(i) * vh);
       }
+      mat ??= new THREE.MeshPhysicalMaterial({
+        map,
+        color: layer.color,
+        transparent: true,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -4,
+        polygonOffsetUnits: -4,
+        roughness: 0.3,
+        clearcoat: 1,
+        alphaTest: 0.05,
+      });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.renderOrder = 2;
       this.view.model.add(mesh);

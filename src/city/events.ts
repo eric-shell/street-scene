@@ -159,7 +159,7 @@ export const EVENT_FLAVOURS: Readonly<Record<EventFlavourId, EventFlavour>> = {
  * Title leads every flavour shares: night, light, weather, metal and the hours of a night out.
  * One word or two, so a title stays short enough for the gantry sign and the menu.
  */
-export const EVENT_LEADS: readonly string[] = [
+const EVENT_LEADS: readonly string[] = [
   'Midnight', 'Neon', 'Chrome', 'Sodium', 'Afterglow', 'Static', 'Velvet', 'Redline', 'Graveyard', 'Cobalt',
   'Amber', 'Crimson', 'Violet', 'Indigo', 'Electric', 'Phantom', 'Ghost', 'Shadow', 'Silver', 'Golden',
   'Iron', 'Steel', 'Copper', 'Mercury', 'Nitro', 'Turbo', 'Hyper', 'Rogue', 'Outlaw', 'Wildcard',

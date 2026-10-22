@@ -93,10 +93,6 @@ export interface EngineSpec {
   voice?: EngineVoiceSpec;
 }
 
-export function cylinderCount(spec: EngineSpec): number {
-  return ENGINE_LAYOUTS[spec.layout].cylinders;
-}
-
 /**
  * Combustion events per crankshaft revolution: the engine's fundamental
  * frequency is rpm / 60 times this. A four stroke piston fires every other

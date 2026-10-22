@@ -6,17 +6,18 @@ import * as THREE from 'three';
 import { World } from '../city/world';
 import { QUALITY, QualityProfile, Settings } from '../ui/settings';
 import { buildCityMeshes, CityMeshes } from './street/cityMeshes';
-import { buildLightFx, fadeSubPixel, LightFx } from './street/lightFx';
+import { buildLightFx, LightFx } from './street/lightFx';
+import { fadeSubPixel } from './materialFx';
 import { NightLighting } from './lighting';
 import { PostFx } from './post';
-import { makeNightEnvironment, makeSkyTexture } from './textures/textures';
+import { makeNightEnvironment } from './textures/textures';
 import { buildRouteArrows, classifyBarriers, RouteArrows } from './race/routeArrows';
 import { MEET_VARIANTS, buildRoadblocks, parkedCars, type Roadblocks } from './race/roadblocks';
-import { planMeets } from './race/meetPlan';
+import { MEET_QUALITY, planMeets } from './race/meetPlan';
 import { buildProps, PropRenderer } from './street/props';
 import { buildDistrictMeshes } from './districts';
 import { Backdrop, buildBackdrop } from './sky/backdrop';
-import { buildCrowds, Crowds } from './race/crowds';
+import { CROWD_QUALITY, buildCrowds, Crowds } from './race/crowds';
 import { buildStreetPolish } from './street/streetPolish';
 import { createWeather, Weather } from './sky/weather';
 import { AirTraffic, buildAirTraffic } from './traffic/airTraffic';
@@ -24,14 +25,15 @@ import { buildAreaLights } from './street/areaLights';
 import { marketLightPoints, planMarketCrowd } from './districts/marketPlan';
 import { buildDrawbridge, DrawbridgeView } from './street/drawbridge';
 import { GROUND_PAINT_ORDER, underVehicles } from './vehicleMask';
+import { damp } from '../shared/anim';
 
-export const RETRO_HEIGHT = 240;
+/** Retro mode's render height (px): the view is drawn this many pixels tall and scaled up. */
+const RETRO_HEIGHT = 240;
 
 export class GameRenderer {
   readonly renderer: THREE.WebGLRenderer;
   readonly post: PostFx;
   readonly envMap: THREE.Texture;
-  readonly sky: THREE.Texture;
   private settings: Settings;
   private width = 1;
   private height = 1;
@@ -55,7 +57,6 @@ export class GameRenderer {
     this.envMap = pmrem.fromEquirectangular(envTex).texture;
     envTex.dispose();
     pmrem.dispose();
-    this.sky = makeSkyTexture();
     this.post = new PostFx(this.renderer, this.placeholderScene, this.placeholderCam);
     window.addEventListener('resize', () => this.resize());
     this.applySettings(settings);
@@ -121,7 +122,7 @@ export class GameRenderer {
     }
     // The subject stays centered in the free area: shift the projection by half of what the rail covers.
     const f = this.frame;
-    const k = 1 - Math.exp(-dt * 7);
+    const k = damp(7, dt);
     f.left += (this.frameTarget.left - f.left) * k;
     f.bottom += (this.frameTarget.bottom - f.bottom) * k;
     if (Math.abs(f.left) > 0.5 || Math.abs(f.bottom) > 0.5) camera.setViewOffset(this.width, this.height, -f.left / 2, f.bottom / 2, this.width, this.height);
@@ -207,14 +208,8 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   scene.add(weather.group);
   const air = buildAirTraffic(world, { quality: settings.quality, fogDensity, flashes });
   scene.add(air.group);
-  // Street meets behind every cyan barrier: a crowd against the barrier, thinning back among parked
-  // cars. Denser, deeper and drawn further at higher quality.
-  const meetQ =
-    {
-      low: { peopleDensity: 0.45, peopleDepth: 5, carRows: 2, drawDistance: 170, crowdDraw: 140 },
-      medium: { peopleDensity: 0.7, peopleDepth: 7, carRows: 3, drawDistance: 240, crowdDraw: 190 },
-      high: { peopleDensity: 1, peopleDepth: 9, carRows: 5, drawDistance: 300, crowdDraw: 260 },
-    }[settings.quality] ?? { peopleDensity: 0.7, peopleDepth: 7, carRows: 3, drawDistance: 240, crowdDraw: 190 };
+  // Street meets behind every cyan barrier: a crowd against the barrier, thinning back among parked cars.
+  const meetQ = MEET_QUALITY[settings.quality];
   const meet = planMeets(world, {
     cars: parkedCars().map((c) => ({ length: c.dimensions.length, width: c.dimensions.width, variants: MEET_VARIANTS })),
     peopleDensity: meetQ.peopleDensity,
@@ -249,7 +244,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   });
   scene.add(props.group);
   // Spectators on the sidewalks by the start / finish gantries, and every meet's crowd (none in an open world).
-  const crowdQ = { low: { density: 0.55, rows: 2 }, medium: { density: 0.8, rows: 2 }, high: { density: 1, rows: 3 } }[settings.quality] ?? { density: 0.8, rows: 2 };
+  const crowdQ = CROWD_QUALITY[settings.quality];
   const crowds = buildCrowds(world, world.openWorld ? [] : city.finishLine.gates, { ...crowdQ, drawDistance: meetQ.crowdDraw, meet, sections: planMarketCrowd(world, crowdQ.density) });
   scene.add(crowds.group);
   stabilizeSmallEmitters(city);

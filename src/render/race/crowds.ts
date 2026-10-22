@@ -25,6 +25,7 @@ import { Rng } from '../../sim/prng';
 import { routeSample } from '../../city/route';
 import { distToSegment } from '../../sim/math';
 import type { Contact } from '../../city/world';
+import type { Quality } from '../../ui/settings';
 
 /** The gate fields the crowd needs (structurally a FinishGate). */
 export interface CrowdGate {
@@ -53,6 +54,13 @@ export interface CrowdSpot {
   /** A start / finish stand, or a section along a closure or corner. */
   kind: 'gate' | 'section';
 }
+
+/** Spectators per graphics quality: density scale and rows deep along the start and finish. */
+export const CROWD_QUALITY: Record<Quality, { density: number; rows: number }> = {
+  low: { density: 0.55, rows: 2 },
+  medium: { density: 0.8, rows: 2 },
+  high: { density: 1, rows: 3 },
+};
 
 export interface CrowdOptions {
   /** 0..1 people per meter scale (graphics quality). */

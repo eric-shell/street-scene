@@ -29,14 +29,9 @@ import { LevelCrossing, addLevelCrossings } from './levelCrossings';
 const ROUTE_TRIES = 12;
 import { pointInPolygon, polygonBounds } from './districts/geom';
 import { ROADWORKS } from './districts/roadworks';
-import { Area, DeckSpan, HeightSample, SURFACE_PHYSICS, Surface, SurfacePhysics } from './districts/types';
+import { Area, DeckSpan, HeightSample, Surface } from './districts/types';
 
 export type { Surface, SurfacePhysics } from './districts/types';
-
-/** Which tuning surface entry (road / sidewalk / offroad) a surface drives with. */
-export function surfacePhysics(s: Surface): SurfacePhysics {
-  return SURFACE_PHYSICS[s];
-}
 
 export interface Contact {
   /** Push direction (unit) out of the wall into drivable space. */
@@ -229,7 +224,7 @@ export function createCity(seed: number): City {
   const blocks = generateBlocks(seed, graph, terrain, districts.blocksInput);
   settleCarParks(districts.areas, districts.builds, terrain);
   settleAlleyLips(districts.areas, districts.builds, terrain);
-  districts.finalize(blocks);
+  districts.finalize();
   return { seed, graph, terrain, blocks, districts, routeNodes, event };
 }
 
@@ -441,7 +436,7 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
   const { graph, blocks, terrain } = city;
   const openWorld = opts.openWorld === true;
   // Corner rails, minus the pieces the flights off the route's car park and jump exits would cross.
-  const rails = openWorld ? [] : carParkRails(city.districts.areas, ROUTE_INDEX[kind], shortcutJumpRails(route, city.districts.areas, awayFromRoundabouts(graph, routeRails(graph, route, blocks.props, blocks.walls))));
+  const rails = openWorld ? [] : carParkRails(city.districts.areas, ROUTE_INDEX[kind], shortcutJumpRails(route, city.districts.areas, awayFromRoundabouts(graph, routeRails(graph, route, blocks))));
   const barrierGroups = openWorld ? [] : routeBarrierGroups(graph, blocks.mouths, route, rails, city.districts.areas.find((a) => a.kind === 'river')?.params, blocks.walls);
   sealBarriers(city, barrierGroups);
   const closures = closureRails(barrierGroups, rails);
@@ -619,31 +614,46 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
 
   /** Bus bays by edge (busBays.ts): their stretch of sidewalk is road, with a curb of its own. */
   const bayOf = baysByEdge(blocks.bays ?? [], graph.edges.length);
+  const streetScratch: number[] = [];
+  /** streetDistance's results (m): to the nearest road surface (negative on it) and to the outer sidewalk line. */
+  let streetRoad = Infinity;
+  let streetWalk = Infinity;
+  /**
+   * The street classification by distance to the edges near (x, z): road strips, their sidewalks, and the
+   * bus bays (whose indented curb is a curb like any other). On a deck (`span`) the channel edges beneath
+   * are no street of its own. Writes streetRoad / streetWalk: surfaceAt and curbLift run per wheel per
+   * substep, so nothing allocates.
+   */
+  function streetDistance(x: number, z: number, span: DeckSpan | null): void {
+    edgeGrid.query(x - 1, z - 1, x + 1, z + 1, streetScratch);
+    let road = Infinity;
+    let walk = Infinity;
+    for (const id of streetScratch) {
+      const e = graph.edges[id];
+      if (span && isRiverEdge(e)) continue;
+      const a = graph.nodes[e.a];
+      const b = graph.nodes[e.b];
+      const d = distToSegment(x, z, a.x, a.z, b.x, b.z) - e.width / 2;
+      if (d < road) road = d;
+      if (d - e.sidewalk < walk) walk = d - e.sidewalk;
+      const bay = bayOf[id];
+      if (bay) {
+        const bd = bayRoadDistance(bay, x, z);
+        if (bd < road) road = bd;
+      }
+    }
+    streetRoad = road;
+    streetWalk = walk;
+  }
   function surfaceAt(x: number, z: number, y?: number): Surface {
     const span = spans.length ? spanAt(x, z) : null;
     // Under a deck: the channel's own patches (its concrete, the trickle) below, the street above
     // (the channel edges running beneath are no part of the deck's classification).
     const patch = city.districts.surfaceAt(x, z);
     if (span && y !== undefined && lowerOn(span, x, z, y, terrain.heightAt(x, z))) return patch && patch.area === span.area ? patch.surface : 'concrete';
-    edgeGrid.query(x - 1, z - 1, x + 1, z + 1, scratch);
-    let best = Infinity;
-    let walk = Infinity;
-    for (const id of scratch) {
-      const e = graph.edges[id];
-      if (span && isRiverEdge(e)) continue;
-      const a = graph.nodes[e.a];
-      const b = graph.nodes[e.b];
-      const d = distToSegment(x, z, a.x, a.z, b.x, b.z) - e.width / 2;
-      if (d < best) best = d;
-      if (d - e.sidewalk < walk) walk = d - e.sidewalk;
-      const bay = bayOf[id];
-      if (bay) {
-        const bd = bayRoadDistance(bay, x, z);
-        if (bd < best) best = bd;
-      }
-    }
+    streetDistance(x, z, span);
     // District surface patches win over the street classification by priority (road 5, sidewalk 3).
-    const base = best <= 0 ? 5 : walk <= 0 ? 3 : 0;
+    const base = streetRoad <= 0 ? 5 : streetWalk <= 0 ? 3 : 0;
     if (patch && patch.priority > base && !(span && patch.area === span.area)) return patch.surface;
     return base === 5 ? 'road' : base === 3 ? 'sidewalk' : 'offroad';
   }
@@ -658,7 +668,6 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     for (const p of ring) reach = Math.max(reach, sqrt((p.x - n.x) ** 2 + (p.z - n.z) ** 2));
     return [{ x: n.x, z: n.z, ring, reach }];
   });
-  const liftScratch: number[] = [];
   const CURB_IN = CITY.curbRamp.road;
   const CURB_SPAN = CITY.curbRamp.road + CITY.curbRamp.walk;
   /** Paving a district draws at curb height: plazas, corner pockets and verges, the monument plaza. */
@@ -676,25 +685,9 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
    * onto the paving.
    */
   function curbLift(x: number, z: number, span: DeckSpan | null): number {
-    edgeGrid.query(x - 1, z - 1, x + 1, z + 1, liftScratch);
-    let road = Infinity;
-    let walk = Infinity;
-    for (const id of liftScratch) {
-      const e = graph.edges[id];
-      // On a deck the channel edges beneath are no street of its own.
-      if (span && isRiverEdge(e)) continue;
-      const a = graph.nodes[e.a];
-      const b = graph.nodes[e.b];
-      const d = distToSegment(x, z, a.x, a.z, b.x, b.z) - e.width / 2;
-      if (d < road) road = d;
-      if (d - e.sidewalk < walk) walk = d - e.sidewalk;
-      // A bus bay's indented curb is a curb like any other.
-      const bay = bayOf[id];
-      if (bay) {
-        const bd = bayRoadDistance(bay, x, z);
-        if (bd < road) road = bd;
-      }
-    }
+    streetDistance(x, z, span);
+    let road = streetRoad;
+    let walk = streetWalk;
     for (const n of rings) {
       const d = sqrt((x - n.x) ** 2 + (z - n.z) ** 2) - n.ring!.outer;
       if (d < road) road = d;

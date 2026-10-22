@@ -13,6 +13,15 @@ const N = 56;
  * whole frame.
  */
 const STAGE_STRENGTH = [1, 1.1, 1.2] as const;
+/** How fast a trail retracts once the boost ends (history points per second; two a frame at 60 fps). */
+const RETRACT_RATE = 120;
+
+/** Scratch for update and writeGeometry. */
+const TAIL = new THREE.Vector3();
+const CAM = new THREE.Vector3();
+const TAN = new THREE.Vector3();
+const VIEW = new THREE.Vector3();
+const SIDE = new THREE.Vector3();
 
 export class LightTrails {
   readonly mesh: THREE.Mesh;
@@ -22,6 +31,12 @@ export class LightTrails {
   private geo: THREE.BufferGeometry;
   private strength = 0;
   private local: THREE.Vector3[];
+  /** History points dropped off the trails, reused for new ones. */
+  private spare: THREE.Vector3[] = [];
+  /** Retraction owed but not yet a whole point (points). */
+  private retractCarry = 0;
+  /** The buffers hold nothing to draw (skip rewriting them while the trails stay empty). */
+  private cleared = false;
   /** The taillight red (carMaterials' TailLight emissive). */
   private readonly color = new THREE.Color(0xff1a2a);
 
@@ -54,25 +69,40 @@ export class LightTrails {
     const target = active ? STAGE_STRENGTH[Math.min(3, stage) - 1] : 0;
     this.strength += (target - this.strength) * (1 - Math.exp(-dt * (active ? 8 : 3)));
     carRoot.updateMatrixWorld();
+    // Retract when the boost ends, at a rate in time so every frame rate looks the same.
+    let retract = 0;
+    if (active) this.retractCarry = 0;
+    else {
+      this.retractCarry += dt * RETRACT_RATE;
+      retract = Math.floor(this.retractCarry + 1e-9);
+      this.retractCarry -= retract;
+    }
     for (let t = 0; t < 2; t++) {
       const h = this.history[t];
-      const p = this.local[t].clone().applyMatrix4(carRoot.matrixWorld);
+      const p = TAIL.copy(this.local[t]).applyMatrix4(carRoot.matrixWorld);
       if (active || this.strength > 0.02) {
-        if (!h.length || h[0].distanceToSquared(p) > 0.04) h.unshift(p);
+        if (!h.length || h[0].distanceToSquared(p) > 0.04) h.unshift((this.spare.pop() ?? new THREE.Vector3()).copy(p));
         else h[0].copy(p);
-        if (h.length > N) h.length = N;
-        if (!active && h.length > 2) h.length = Math.max(2, h.length - 2); // retract when the boost ends
-      } else h.length = 0;
+        if (h.length > N) this.truncate(h, N);
+        if (!active && h.length > 2) this.truncate(h, Math.max(2, h.length - retract));
+      } else this.truncate(h, 0);
     }
-    this.writeGeometry(camera);
+    const empty = !this.history[0].length && !this.history[1].length;
+    if (!empty || !this.cleared) this.writeGeometry(camera);
+    this.cleared = empty;
     this.mesh.visible = this.strength > 0.02;
   }
 
+  /** Cut a trail's history to `n` points, keeping the dropped ones for reuse. */
+  private truncate(h: THREE.Vector3[], n: number): void {
+    while (h.length > n) this.spare.push(h.pop()!);
+  }
+
   private writeGeometry(camera: THREE.Camera): void {
-    const cam = camera.getWorldPosition(new THREE.Vector3());
-    const tan = new THREE.Vector3();
-    const view = new THREE.Vector3();
-    const side = new THREE.Vector3();
+    const cam = camera.getWorldPosition(CAM);
+    const tan = TAN;
+    const view = VIEW;
+    const side = SIDE;
     const widen = 1 + 0.8 * Math.max(0, this.strength - 1);
     for (let t = 0; t < 2; t++) {
       const h = this.history[t];

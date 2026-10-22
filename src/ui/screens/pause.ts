@@ -4,11 +4,12 @@
  * race ticket (ui/menu/), the settings step the shared settings panel.
  */
 import { btn, chip, h } from '../kit/dom';
-import { ChevronsRight, Compass, MapPinned, Pause, Play, RotateCcw, Route, Settings as SettingsIcon, Wind, X, type IconNode, icon } from '../kit/icons';
+import { ChevronsRight, Compass, MapPinned, Pause, Play, RotateCcw, Route, Settings as SettingsIcon, Wind, X, type IconNode } from '../kit/icons';
 import type { RaceType, Settings } from '../settings';
-import { navRow, railScreen, screenHead, swapStep, type Hue } from '../rail/rail';
+import { RailSteps, navRow, railScreen, screenHead, type Hue } from '../rail/rail';
 import { Help, MUSIC_KEYS } from '../panels/help';
-import { courseArt, type ArtCar } from '../menu/menuMaps';
+import type { ArtCar } from '../menu/menuMaps';
+import { raceTicket } from '../menu/raceTicket';
 import type { Route as RaceRoute } from '../../city/route';
 import type { MusicPlayer } from '../../audio/musicPlayer';
 import { settingsPanel } from './settingsPanel';
@@ -87,21 +88,10 @@ export function pauseMenu(o: {
   root.setAttribute('aria-label', 'Paused');
   const t = o.ticket;
   let step: 'pause' | 'settings' = 'pause';
-  let current: HTMLElement | null = null;
+  const steps = new RailSteps(col);
   const pause = (): HTMLElement[] => [
     screenHead({ icon: Pause, title: 'Paused', aside: chip(t.title, TYPE_ICON[t.mode], `--mode mode-${t.mode}`) }),
-    h(
-      'section',
-      { class: `race-ticket mode-${t.mode}`, 'aria-label': 'What is paused' },
-      h('span', { class: 'race-ticket__art' }, t.route ? courseArt(t.route, t.mode, 104, 52, t.cars) : icon(Compass, { size: 30 })),
-      h(
-        'span',
-        { class: 'race-ticket__text' },
-        t.event && h('span', { class: 'race-ticket__kicker' }, t.event),
-        h('span', { class: 'course-name' }, t.title),
-        h('span', { class: 'course-facts' }, ...t.facts.map((f) => h('span', {}, f))),
-      ),
-    ),
+    raceTicket({ mode: t.mode, title: t.title, label: 'What is paused', facts: t.facts, route: t.route ?? null, cars: t.cars, kicker: t.event, cls: `mode-${t.mode}` }),
     btn(Play, 'Resume', o.onResume, '--large --primary --cta pause-screen__resume'),
     h(
       'nav',
@@ -115,9 +105,8 @@ export function pauseMenu(o: {
   const settings = (): HTMLElement[] => [screenHead({ icon: SettingsIcon, title: 'Settings', back: () => show('pause') }), settingsPanel(o.settings, o.onSettings, o.music)];
   const show = (next: 'pause' | 'settings', animate = true) => {
     step = next;
-    const el = h('div', { class: 'rail__step' }, ...(next === 'pause' ? pause() : settings()));
-    swapStep(col, current, el, animate ? (next === 'settings' ? 'fwd' : 'back') : null);
-    current = el;
+    steps.show(next === 'pause' ? pause() : settings(), animate ? (next === 'settings' ? 'fwd' : 'back') : null);
+    const el = steps.current!;
     help.close();
     // Keyboard and gamepad focus stays on the rail: Resume, the open settings tab, or Settings when coming back.
     const focus = next === 'settings' ? '.settings__tab.is-selected' : animate ? '.pause-screen__settings' : '.pause-screen__resume';

@@ -31,12 +31,15 @@ import { Rng } from '../../sim/prng';
 import { PROP_DEFS, PropKind } from '../props';
 import type { DistrictModule } from './types';
 import { emptyBuild } from './types';
-import { circlePolygon, polyWalls, smooth01, solidWalls } from './geom';
+import { circlePolygon, polyWalls, smooth01, type Smooth, solidWalls } from './geom';
 import { riverCenter } from './river';
+
+/** Scratch for the terrain's smoothsteps (queried per wheel per substep, so nothing allocates). */
+const SMOOTH: Smooth = { v: 0, d: 0 };
 
 const CFG = CITY.districts.roundabout;
 
-export type IslandVariant = (typeof CFG.variants)[number];
+type IslandVariant = (typeof CFG.variants)[number];
 
 /** Cobble path strips of a garden island are read by the renderer from this hint kind. */
 export const ISLAND_HINT = { path: 'islandPath' } as const;
@@ -144,7 +147,7 @@ export const roundaboutModule: DistrictModule = {
         const dz = pz - z;
         const r = sqrt(dx * dx + dz * dz);
         if (r >= island) return;
-        const s = smooth01(r0, island, r);
+        const s = smooth01(r0, island, r, SMOOTH);
         out.h += H * (1 - s.v);
         if (r > 1e-6 && s.d) {
           out.gx -= (H * s.d * dx) / r;

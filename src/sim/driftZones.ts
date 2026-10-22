@@ -24,7 +24,7 @@ import type { World } from '../city/world';
 import type { Area } from '../city/districts/types';
 import { pointInPolygon, polygonBounds } from '../city/districts/geom';
 import type { Vec2 } from './math';
-import { DEG, abs } from './math';
+import { driftRefillRate } from './car';
 import { DT, TICK_HZ } from './constants';
 import { DRIFT_ZONES, NITRO_STAGES } from './tuning';
 import type { RaceState } from './race';
@@ -68,9 +68,6 @@ export interface DriftZoneState {
   /** First tick zone z pays car i again, at [i * zoneCount + z]. */
   readyTick: number[];
 }
-
-/** The regular drift refill reaches full rate at this slip angle (as in car.ts refillNitrous). */
-const FULL_REFILL_SLIP = 30 * DEG;
 
 /** What kind of zone an area is, or null: the monument plaza, and lots big enough to hold a slide. */
 export function driftZoneKind(a: Area): DriftZoneKind | null {
@@ -159,7 +156,7 @@ export function stepDriftZones(r: RaceState): void {
     v.scoreMul = Z.scoreMul;
     v.timeLeft = Math.max(0, v.timeLeft - DT);
     // The regular refill already ran this tick; the zone adds (refillMul - 1) of it, up to the visit's cap.
-    const extra = Math.min(rc.tuning.nitrous.refillDrift * Math.min(1, abs(c.slipAngle) / FULL_REFILL_SLIP) * (Z.refillMul - 1) * DT, v.refillLeft, NITRO_STAGES - c.nitro);
+    const extra = Math.min(driftRefillRate(c, rc.tuning) * (Z.refillMul - 1) * DT, v.refillLeft, NITRO_STAGES - c.nitro);
     if (extra > 0) {
       c.nitro += extra;
       c.nitroGain.zone = extra;

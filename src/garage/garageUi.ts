@@ -22,18 +22,16 @@ import type { StreetStage } from '../game/streetStage';
 import type { Quality } from '../ui/settings';
 import { railInset, screenHead } from '../ui/rail/rail';
 import { Help, MUSIC_KEYS } from '../ui/panels/help';
-import { GaragePrefs, GarageState, MAX_SLOTS, Presentation, decodeShareCode, encodeShareCode, freshBuild, loadGaragePrefs, saveGaragePrefs, shareUrl } from './storage';
+import { GaragePrefs, GarageState, MAX_SLOTS, Presentation, addSlot, decodeShareCode, encodeShareCode, freshBuild, importBuild, loadGaragePrefs, saveGaragePrefs, shareUrl } from './storage';
 import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PART_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
-import { AXLES, Axle, AxleStance, CarBuild, DecalLayer, GLOW_PATTERNS, MAX_DECALS, PAINT_FINISHES, STANCE_LIMITS, VINYL_SHAPES, VinylShape, validateBuild } from '../sim/build';
-import { PERFORMANCE_CATEGORIES, PerformanceCategory, TIER_NAMES, Tier } from '../sim/tuning';
+import { AXLES, Axle, AxleStance, BUILD_NAME_MAX, CarBuild, DEFAULT_BUILD_NAME, DecalLayer, GLOW_PATTERNS, MAX_DECALS, PAINT_FINISHES, STANCE_LIMITS, VINYL_SHAPES, VinylShape, validateBuild } from '../shared/carBuild';
+import { DEFAULT_CAR_ID, PERFORMANCE_CATEGORIES, PerformanceCategory, SELECTABLE_CAR_IDS, TIER_NAMES, Tier, getBaseTuning } from '../sim/tuning';
 import { tuningForBuild } from '../sim/build';
 import { FEATURES } from '../shared/features';
-import { SELECTABLE_CAR_IDS, DEFAULT_CAR_ID, getBaseTuning } from '../sim/tuning';
-import type { SpecBadge } from '../shared/carSpec';
-import { specBadges } from '../shared/carSpec';
+import { specBadges, type SpecBadge } from '../shared/carSpec';
 import { measureStats, statBars, type CarStats } from '../sim/stats';
 import { SHAPE_LABELS } from '../render/car/decals';
-import { btn, chip, h, iconBtn, segmented, sheen, toast } from '../ui/kit/dom';
+import { btn, chip, h, iconBtn, isTyping, segmented, sheen, toast } from '../ui/kit/dom';
 import { door, transitioning } from '../ui/transitions/transitions';
 import { KMH_PER_MPH, M_PER_FT } from '../ui/kit/units';
 import {
@@ -134,8 +132,99 @@ function statsFor(b: CarBuild): CarStats {
   return st;
 }
 
+/**
+ * The measured stats the car card and the Tune tab show, in order, each bar in
+ * its ink (`.ink-*` in _tune-stat.scss). The card names the measure, the Tune
+ * tab the quality (with an icon), so its acceleration value says what was timed.
+ */
+const STATS: readonly { ink: string; bar: keyof ReturnType<typeof statBars>; card: string; tune: string; icon: IconNode; value: (s: CarStats, onTune: boolean) => string }[] = [
+  { ink: 'speed', bar: 'topSpeed', card: 'Top speed', tune: 'Top speed', icon: Gauge, value: (s) => `${Math.round(s.topSpeed / KMH_PER_MPH)} mph` },
+  { ink: 'accel', bar: 'acceleration', card: '0-60', tune: 'Acceleration', icon: Timer, value: (s, onTune) => `${onTune ? '0-60 ' : ''}${s.zeroTo60.toFixed(2)} s` },
+  { ink: 'grip', bar: 'handling', card: 'Grip', tune: 'Handling', icon: Disc3, value: (s) => `${s.grip.toFixed(2)} g` },
+  { ink: 'nitrous', bar: 'nitrous', card: 'Nitrous', tune: 'Nitrous', icon: Zap, value: (s) => `${s.nitrous.toFixed(1)} kN·s` },
+];
+
 /** Keys that hold the gas in the garage. */
 const GAS_KEYS = ['KeyW', 'ArrowUp', 'Space'];
+
+// ---------------------------------------------------------------------------
+// The tabs' controls
+// ---------------------------------------------------------------------------
+
+type Child = Node | false | null;
+
+/**
+ * A group: a plate with the tab's hue on its hairline, a section title (the
+ * menu cards' yellow caps over a hairline) and its controls. Icons are for the
+ * tabs only.
+ */
+const section = (label: string, ...children: Child[]) => h('div', { class: 'garage-section' }, h('div', { class: 'section-title' }, label), ...children);
+
+/** A swatch: a chamfered chip of color, marked while it is the color in use. */
+function swatch(hex: string, current: string, onPick: (el: HTMLElement) => void): HTMLElement {
+  const s = h('button', { type: 'button', class: `garage-swatch${hex.toLowerCase() === current.toLowerCase() ? ' is-selected' : ''}`, style: `--swatch:${hex}`, title: hex, 'aria-label': hex }, sheen());
+  s.addEventListener('click', () => onPick(s));
+  return s;
+}
+
+function color(value: string, onInput: (c: string) => void): HTMLInputElement {
+  const el = h('input', { type: 'color', value }) as HTMLInputElement;
+  el.addEventListener('input', () => onInput(el.value));
+  return el;
+}
+
+/** A row in a group: the name on the left, its control on the right (the settings' rows). */
+const field = (label: string, control: Node) => h('div', { class: 'garage-row' }, h('span', { class: 'garage-row__name' }, label), control);
+
+function slider(label: string, value: number, min: number, max: number, step: number, fmt: (x: number) => string, onInput: (x: number) => void): HTMLElement {
+  const out = h('span', { class: 'garage-value' }, fmt(value));
+  const el = h('input', { type: 'range', min, max, step, value }) as HTMLInputElement;
+  el.addEventListener('input', () => {
+    const x = Number(el.value);
+    out.textContent = fmt(x);
+    onInput(x);
+  });
+  return h('div', { class: 'garage-slider' }, h('div', { class: 'row', style: 'justify-content:space-between' }, h('span', {}, label), out), el);
+}
+
+/** One pick in a list: its name, a sub line, and spec tags (drivetrain code, engine) on their own row, each in its ink. */
+interface Choice<T> {
+  value: T;
+  label: string;
+  sub?: string;
+  tags?: SpecBadge[];
+  /** Extra content after the label (a layer's color dot). */
+  extra?: Node;
+}
+
+/** A list of picks, the current one marked; a click marks it and calls onPick. */
+function choiceList<T extends string | number | null>(items: Choice<T>[], current: T, onPick: (x: T) => void): HTMLElement {
+  const list = h('div', { class: 'garage-list' });
+  for (const it of items) {
+    // Hover a spec tag for its long form.
+    const tags = it.tags?.length ? h('span', { class: 'garage-item__tags' }, ...it.tags.map((t, i) => specChip(t, i, '--small'))) : null;
+    const el = h(
+      'button',
+      { type: 'button', class: `garage-item${it.value === current ? ' is-selected' : ''}${tags ? ' garage-item--car' : ''}` },
+      h('span', { class: 'garage-item__label' }, it.label),
+      it.sub ? h('span', { class: 'garage-item__sub muted' }, it.sub) : null,
+      it.extra ?? null,
+      tags,
+      sheen(),
+    );
+    el.addEventListener('click', () => {
+      list.querySelectorAll('.garage-item').forEach((x) => x.classList.remove('is-selected'));
+      el.classList.add('is-selected');
+      onPick(it.value);
+    });
+    list.append(el);
+  }
+  return list;
+}
+
+/** Slider readouts: a length (m) in cm, a factor as a percent. */
+const cm =(x: number) => `${Math.round(x * 100)} cm`;
+const percent = (x: number) => `${Math.round(x * 100)}%`;
 
 export class GarageScreen {
   private scene: GarageScene;
@@ -247,7 +336,7 @@ export class GarageScreen {
     window.addEventListener(
       'keydown',
       (e) => {
-        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement || e.repeat) return;
+        if (isTyping(e) || e.repeat) return;
         if (this.uiRoot.querySelector('.screen')) return;
         if (e.key === 'Escape') {
           e.preventDefault();
@@ -275,11 +364,10 @@ export class GarageScreen {
     window.addEventListener('pointerdown', unlock, { ...o, capture: true });
     window.addEventListener('keydown', unlock, { ...o, capture: true });
     // Hold W / Up / Space to rev (not while typing in a field, and not the arrows the pad sends to move around the screen: input/padNav.ts).
-    const typing = (e: KeyboardEvent) => e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement;
     window.addEventListener(
       'keydown',
       (e) => {
-        if (!e.isTrusted || !GAS_KEYS.includes(e.code) || typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+        if (!e.isTrusted || !GAS_KEYS.includes(e.code) || isTyping(e) || e.ctrlKey || e.metaKey || e.altKey) return;
         e.preventDefault();
         this.gasKeys.add(e.code);
         this.updateGas();
@@ -371,21 +459,18 @@ export class GarageScreen {
     const car = manifestCar(b.carId);
     const st = statsFor(b);
     const bars = statBars(st);
-    // Each stat's bar in its own ink (`.ink-*` in _tune-stat.scss), the same as on the Tune tab; the values stay yellow.
-    const stat = (kind: string, label: string, value: number, text: string) =>
-      h('div', { class: `car-card__stat ink-${kind}` }, h('span', { class: 'car-card__stat-name' }, label), h('span', { class: 'stat-bar' }, h('span', { class: 'stat-bar__fill', style: `width:${value * 100}%` })), h('span', { class: 'car-card__stat-value' }, text));
     this.carCard.replaceChildren(
       h('div', { class: 'label label--kicker' }, icon(Car, { size: 14 }), AUTHORS[car.source] ? `By ${AUTHORS[car.source]}` : 'Car'),
       h('h2', { class: 'car-card__name' }, car.displayName),
       h('div', { class: 'car-card__build' }, `"${b.name}"`),
       h('div', { class: 'car-card__tags' }, ...specBadges(car.engine, getBaseTuning(b.carId).drivetrain.layout).map((t, i) => specChip(t, i))),
+      // The values stay yellow; each bar takes its stat's ink.
       h(
         'div',
         { class: 'car-card__stats' },
-        stat('speed', 'Top speed', bars.topSpeed, `${Math.round(st.topSpeed / KMH_PER_MPH)} mph`),
-        stat('accel', '0-60', bars.acceleration, `${st.zeroTo60.toFixed(2)} s`),
-        stat('grip', 'Grip', bars.handling, `${st.grip.toFixed(2)} g`),
-        stat('nitrous', 'Nitrous', bars.nitrous, `${st.nitrous.toFixed(1)} kN·s`),
+        ...STATS.map((t) =>
+          h('div', { class: `car-card__stat ink-${t.ink}` }, h('span', { class: 'car-card__stat-name' }, t.card), h('span', { class: 'stat-bar' }, h('span', { class: 'stat-bar__fill', style: `width:${bars[t.bar] * 100}%` })), h('span', { class: 'car-card__stat-value' }, t.value(st, false))),
+        ),
       ),
       this.stageEl,
     );
@@ -520,55 +605,6 @@ export class GarageScreen {
     this.body.replaceChildren();
     const b = this.build;
     const v = b.visual;
-    // A group: a plate with the tab's hue on its hairline, a section title (the menu cards' yellow caps over a
-    // hairline) and its controls. Icons are for the tabs only.
-    const section = (label: string, _ic: IconNode | null, ...children: (Node | false | null)[]) => h('div', { class: 'garage-section' }, h('div', { class: 'section-title' }, label), ...children);
-    // A swatch: a chamfered chip of color, marked while it is the color in use.
-    const swatch = (hex: string, current: string, onPick: (el: HTMLElement) => void) => {
-      const s = h('button', { type: 'button', class: `garage-swatch${hex.toLowerCase() === current.toLowerCase() ? ' is-selected' : ''}`, style: `--swatch:${hex}`, title: hex, 'aria-label': hex }, sheen());
-      s.addEventListener('click', () => onPick(s));
-      return s;
-    };
-    const color = (value: string, onInput: (c: string) => void) => {
-      const el = h('input', { type: 'color', value }) as HTMLInputElement;
-      el.addEventListener('input', () => onInput(el.value));
-      return el;
-    };
-    // A row in a group: the name on the left, its control on the right (the settings' rows).
-    const field = (label: string, control: Node) => h('div', { class: 'garage-row' }, h('span', { class: 'garage-row__name' }, label), control);
-    const slider = (label: string, value: number, min: number, max: number, step: number, fmt: (x: number) => string, onInput: (x: number) => void) => {
-      const out = h('span', { class: 'garage-value' }, fmt(value));
-      const el = h('input', { type: 'range', min, max, step, value }) as HTMLInputElement;
-      el.addEventListener('input', () => {
-        const x = Number(el.value);
-        out.textContent = fmt(x);
-        onInput(x);
-      });
-      return h('div', { class: 'garage-slider' }, h('div', { class: 'row', style: 'justify-content:space-between' }, h('span', {}, label), out), el);
-    };
-    const choiceList = <T extends string | null>(items: { value: T; label: string; sub?: string; tags?: SpecBadge[] }[], current: T, onPick: (x: T) => void) => {
-      const list = h('div', { class: 'garage-list' });
-      for (const it of items) {
-        // Spec tags (drivetrain code, engine) get their own row under the name, each in its ink; hover for the long form.
-        const tags = it.tags?.length ? h('span', { class: 'garage-item__tags' }, ...it.tags.map((t, i) => specChip(t, i, '--small'))) : null;
-        const el = h(
-          'button',
-          { type: 'button', class: `garage-item${it.value === current ? ' is-selected' : ''}${tags ? ' garage-item--car' : ''}` },
-          h('span', { class: 'garage-item__label' }, it.label),
-          it.sub ? h('span', { class: 'garage-item__sub muted' }, it.sub) : null,
-          tags,
-          sheen(),
-        );
-        el.addEventListener('click', () => {
-          list.querySelectorAll('.garage-item').forEach((x) => x.classList.remove('is-selected'));
-          el.classList.add('is-selected');
-          onPick(it.value);
-        });
-        list.append(el);
-      }
-      return list;
-    };
-    const cm = (x: number) => `${Math.round(x * 100)} cm`;
     // Rim size steps in whole inches once the wheel is measured; the build keeps the size factor, so the
     // slider converts both ways (the inches a factor gives depend on the car and the wheel model).
     const car = this.scene.car?.wheelsReady ? this.scene.car : null;
@@ -586,7 +622,7 @@ export class GarageScreen {
               const max = Math.floor(car.rimInches(L[1]) + 1e-6);
               return { label: 'Rim size', min, max, step: 1, fmt: (x: number) => `${x} in`, toUi: (x: number) => Math.max(min, Math.min(max, Math.round(car.rimInches(x)))), fromUi: (x: number) => car.rimSizeForInches(x) };
             })()
-          : { label: 'Rim size', min: L[0], max: L[1], step: 0.01, fmt: (x: number) => `${Math.round(x * 100)}%`, toUi: id, fromUi: id },
+          : { label: 'Rim size', min: L[0], max: L[1], step: 0.01, fmt: percent, toUi: id, fromUi: id },
       }[key];
       const label = short ? spec.label : `${axle === 'front' ? 'Front' : 'Rear'}`;
       const el = slider(label, spec.toUi(v.stance[axle][key]), spec.min, spec.max, spec.step, spec.fmt, (ui) => {
@@ -609,9 +645,9 @@ export class GarageScreen {
 
     switch (this.tab) {
       case 'car': {
-        const nameInput = h('input', { type: 'text', value: b.name, maxlength: 24, style: 'width:100%' }) as HTMLInputElement;
+        const nameInput = h('input', { type: 'text', value: b.name, maxlength: BUILD_NAME_MAX, style: 'width:100%' }) as HTMLInputElement;
         nameInput.addEventListener('input', () => {
-          b.name = nameInput.value.slice(0, 24) || 'My Ride';
+          b.name = nameInput.value.slice(0, BUILD_NAME_MAX) || DEFAULT_BUILD_NAME;
           this.changed();
         });
         // Only real, imported cars; a disabled tile at the end promises more.
@@ -634,7 +670,7 @@ export class GarageScreen {
         const soon = h('div', { class: 'garage-item garage-item--soon', 'aria-disabled': 'true', title: 'More models coming soon' }, h('span', { class: 'garage-item__label' }, 'More models soon'), h('span', { class: 'garage-item__sub muted' }, 'Coming soon'));
         soon.addEventListener('click', () => toast('More cars are on the way', Car));
         list.append(soon);
-        this.body.append(section('Build name', null, nameInput), section('Car', Car, list));
+        this.body.append(section('Build name', nameInput), section('Car', list));
         break;
       }
       case 'body': {
@@ -647,7 +683,6 @@ export class GarageScreen {
           this.body.append(
             section(
               SLOT_LABELS[slot],
-              null,
               items.length > 1
                 ? choiceList(items, v.parts[slot] ?? null, (id) => {
                     v.parts[slot] = id;
@@ -679,10 +714,9 @@ export class GarageScreen {
         // A color from the picker is no preset: no swatch stays marked.
         picker.addEventListener('input', () => sw.querySelectorAll('.garage-swatch.is-selected').forEach((x) => x.classList.remove('is-selected')));
         this.body.append(
-          section('Body color', Paintbrush, h('div', { class: 'row' }, picker, sw)),
+          section('Body color', h('div', { class: 'row' }, picker, sw)),
           section(
             'Finish',
-            null,
             segmented(
               PAINT_FINISHES.map((f) => ({ value: f, label: capital(f) })),
               v.paint.finish,
@@ -694,7 +728,6 @@ export class GarageScreen {
           ),
           section(
             'Trim color',
-            null,
             color(v.trimColor, (c) => {
               v.trimColor = c;
               this.changed();
@@ -708,7 +741,6 @@ export class GarageScreen {
         this.body.append(
           section(
             'Rims',
-            Disc3,
             choiceList(
               wheels.map((p) => ({ value: p.id, label: p.displayName, sub: `${p.tris} tris` })),
               v.parts.wheels ?? manifestCar(b.carId).defaultWheel,
@@ -719,12 +751,11 @@ export class GarageScreen {
               },
             ),
           ),
-          section('Rim size', null, this.linkToggle(), ...AXLES.map((a) => axleSlider(a, 'wheelSize')), h('div', { class: 'muted garage-note' }, 'Bigger rims, thinner sidewalls: the tire keeps its outer size.')),
+          section('Rim size', this.linkToggle(), ...AXLES.map((a) => axleSlider(a, 'wheelSize')), h('div', { class: 'muted garage-note' }, 'Bigger rims, thinner sidewalls: the tire keeps its outer size.')),
           // Wheel color has its own link: one picker while linked, front and rear pickers when not.
           this.prefs.linkWheelColor
             ? section(
                 'Wheel color',
-                null,
                 this.colorLinkToggle(),
                 color(v.wheels.color, (c) => {
                   v.wheels.color = v.wheels.rearColor = c;
@@ -733,7 +764,6 @@ export class GarageScreen {
               )
             : section(
                 'Wheel color',
-                null,
                 this.colorLinkToggle(),
                 field(
                   'Front',
@@ -754,7 +784,7 @@ export class GarageScreen {
         break;
       }
       case 'vinyl':
-        this.renderVinyls(section, color, slider);
+        this.renderVinyls();
         break;
       case 'stance': {
         const s = v.stance;
@@ -762,14 +792,13 @@ export class GarageScreen {
         this.body.append(
           section(
             'Stance (visual only)',
-            ArrowUpDown,
             slider('Ride height', s.rideHeight, L.rideHeight[0], L.rideHeight[1], 0.005, cm, (x) => {
               s.rideHeight = x;
               this.changed();
             }),
             this.linkToggle(),
           ),
-          ...AXLES.map((a) => section(a === 'front' ? 'Front' : 'Rear', null, ...(['camber', 'offset', 'wheelSize'] as const).map((k) => axleSlider(a, k, true)))),
+          ...AXLES.map((a) => section(a === 'front' ? 'Front' : 'Rear', ...(['camber', 'offset', 'wheelSize'] as const).map((k) => axleSlider(a, k, true)))),
         );
         break;
       }
@@ -777,8 +806,7 @@ export class GarageScreen {
         this.body.append(
           section(
             'Window tint',
-            Eye,
-            slider('Darkness', v.tint.darkness, 0, 0.95, 0.01, (x) => `${Math.round(x * 100)}%`, (x) => {
+            slider('Darkness', v.tint.darkness, 0, 0.95, 0.01, percent, (x) => {
               v.tint.darkness = x;
               this.changed();
             }),
@@ -798,7 +826,6 @@ export class GarageScreen {
         this.body.append(
           section(
             'Underglow',
-            Sparkles,
             segmented(
               [
                 { value: 'off', label: 'Off' },
@@ -813,7 +840,6 @@ export class GarageScreen {
           ),
           section(
             'Colors',
-            null,
             h(
               'div',
               { class: 'row' },
@@ -843,7 +869,6 @@ export class GarageScreen {
           ),
           section(
             'Pattern',
-            null,
             segmented(
               GLOW_PATTERNS.map((p) => ({ value: p, label: capital(p) })),
               g.pattern,
@@ -857,8 +882,7 @@ export class GarageScreen {
           ),
           section(
             'Glow',
-            null,
-            slider('Brightness', g.brightness, 0.2, 2, 0.05, (x) => `${Math.round(x * 100)}%`, (x) => {
+            slider('Brightness', g.brightness, 0.2, 2, 0.05, percent, (x) => {
               g.brightness = x;
               this.changed();
             }),
@@ -866,7 +890,7 @@ export class GarageScreen {
               g.speed = x;
               this.changed();
             }),
-            slider('Spread', g.size, 0.6, 1.6, 0.05, (x) => `${Math.round(x * 100)}%`, (x) => {
+            slider('Spread', g.size, 0.6, 1.6, 0.05, percent, (x) => {
               g.size = x;
               this.changed();
             }),
@@ -875,10 +899,10 @@ export class GarageScreen {
         break;
       }
       case 'perf':
-        this.renderPerformance(section);
+        this.renderPerformance();
         break;
       case 'share':
-        this.renderShare(section);
+        this.renderShare();
         break;
     }
   }
@@ -926,11 +950,7 @@ export class GarageScreen {
     );
   }
 
-  private renderVinyls(
-    section: (label: string, ic: IconNode | null, ...c: (Node | false | null)[]) => HTMLElement,
-    color: (v: string, f: (c: string) => void) => HTMLInputElement,
-    slider: (l: string, v: number, a: number, b: number, s: number, f: (x: number) => string, i: (x: number) => void) => HTMLElement,
-  ): void {
+  private renderVinyls(): void {
     const v = this.build.visual;
     const full = v.decals.length >= MAX_DECALS;
     const shapes = h('div', { class: 'garage-grid' });
@@ -944,31 +964,23 @@ export class GarageScreen {
       });
       shapes.append(b);
     }
-    this.body.append(section(`Add vinyl (${v.decals.length}/${MAX_DECALS})`, Plus, shapes, this.placing ? h('div', { class: 'garage-note' }, icon(MousePointerClick, { size: 14 }), 'Click on the painted body to place it') : null));
+    this.body.append(section(`Add vinyl (${v.decals.length}/${MAX_DECALS})`, shapes, this.placing ? h('div', { class: 'garage-note' }, icon(MousePointerClick, { size: 14 }), 'Click on the painted body to place it') : null));
     if (!v.decals.length) return;
-    const layers = h('div', { class: 'garage-list' });
-    v.decals.forEach((d, i) => {
-      const el = h(
-        'button',
-        { type: 'button', class: `garage-item${i === this.selectedDecal ? ' is-selected' : ''}` },
-        h('span', { class: 'garage-item__label' }, `${i + 1}. ${SHAPE_LABELS[d.shape]}`),
-        h('span', { class: 'garage-dot', style: `background:${d.color}` }),
-        sheen(),
-      );
-      el.addEventListener('click', () => {
+    const layers = choiceList(
+      v.decals.map((d, i) => ({ value: i, label: `${i + 1}. ${SHAPE_LABELS[d.shape]}`, extra: h('span', { class: 'garage-dot', style: `background:${d.color}` }) })),
+      this.selectedDecal,
+      (i) => {
         this.selectedDecal = i;
         this.renderTab();
-      });
-      layers.append(el);
-    });
-    this.body.append(section('Layers', Layers, layers));
+      },
+    );
+    this.body.append(section('Layers', layers));
     const d = v.decals[this.selectedDecal];
     if (!d) return;
     const update = () => this.changed();
     this.body.append(
       section(
         'Selected layer',
-        null,
         h(
           'div',
           { class: 'row' },
@@ -1028,33 +1040,27 @@ export class GarageScreen {
     this.changed(true);
   }
 
-  private renderPerformance(section: (label: string, ic: IconNode | null, ...c: (Node | false | null)[]) => HTMLElement): void {
+  private renderPerformance(): void {
     const b = this.build;
     const stats = statsFor(b);
     const bars = statBars(stats);
-    // Each stat in its ink, as on the car card (`.ink-*` in _tune-stat.scss).
-    const bar = (kind: string, label: string, value: number, text: string, ic: IconNode) =>
-      h(
-        'div',
-        { class: `tune-stat ink-${kind}` },
-        h('div', { class: 'row', style: 'justify-content:space-between' }, h('span', { class: 'label' }, icon(ic, { size: 14 }), label), h('span', { class: 'garage-value' }, text)),
-        h('div', { class: 'stat-bar' }, h('div', { class: 'stat-bar__fill', style: `width:${value * 100}%` })),
-      );
     this.body.append(
       section(
         'Stats',
-        Gauge,
-        bar('speed', 'Top speed', bars.topSpeed, `${Math.round(stats.topSpeed / KMH_PER_MPH)} mph`, Gauge),
-        bar('accel', 'Acceleration', bars.acceleration, `0-60 ${stats.zeroTo60.toFixed(2)} s`, Timer),
-        bar('grip', 'Handling', bars.handling, `${stats.grip.toFixed(2)} g`, Disc3),
-        bar('nitrous', 'Nitrous', bars.nitrous, `${stats.nitrous.toFixed(1)} kN·s`, Zap),
+        ...STATS.map((t) =>
+          h(
+            'div',
+            { class: `tune-stat ink-${t.ink}` },
+            h('div', { class: 'row', style: 'justify-content:space-between' }, h('span', { class: 'label' }, icon(t.icon, { size: 14 }), t.tune), h('span', { class: 'garage-value' }, t.value(stats, true))),
+            h('div', { class: 'stat-bar' }, h('div', { class: 'stat-bar__fill', style: `width:${bars[t.bar] * 100}%` })),
+          ),
+        ),
       ),
     );
     // One group of upgrades, a row per part: its icon and name, then the tiers.
     this.body.append(
       section(
         'Upgrades',
-        Wrench,
         ...PERFORMANCE_CATEGORIES.map((cat) =>
           h(
             'div',
@@ -1075,39 +1081,29 @@ export class GarageScreen {
     this.body.append(h('div', { class: 'muted garage-note' }, 'Everything is unlocked in this proof of concept. Visual parts never change performance.'));
   }
 
-  private renderShare(section: (label: string, ic: IconNode | null, ...c: (Node | false | null)[]) => HTMLElement): void {
+  private renderShare(): void {
     const g = this.garage;
-    const list = h('div', { class: 'garage-list' });
-    g.slots.forEach((s, i) => {
-      const el = h(
-        'button',
-        { type: 'button', class: `garage-item${i === g.current ? ' is-selected' : ''}` },
-        h('span', { class: 'garage-item__label' }, `${s.name}`),
-        h('span', { class: 'garage-item__sub muted' }, manifestCar(s.carId).displayName),
-        sheen(),
-      );
-      el.addEventListener('click', () => {
+    const list = choiceList(
+      g.slots.map((s, i) => ({ value: i, label: s.name, sub: manifestCar(s.carId).displayName })),
+      g.current,
+      (i) => {
         g.current = i;
         this.changed(true);
-      });
-      list.append(el);
-    });
+      },
+    );
+    // A new slot is selected at once; with every slot taken nothing changes but the toast.
+    const add = (b: CarBuild) => {
+      if (!addSlot(g, b)) return toast(`Up to ${MAX_SLOTS} builds`, Save);
+      this.changed(true);
+    };
     const slotActions = h(
       'div',
       { class: 'row' },
-      btn(Plus, 'New', () => {
-        if (g.slots.length >= MAX_SLOTS) return toast(`Up to ${MAX_SLOTS} builds`, Save);
-        g.slots.push(freshBuild(DEFAULT_CAR_ID, `Build ${g.slots.length + 1}`));
-        g.current = g.slots.length - 1;
-        this.changed(true);
-      }, '--small'),
+      btn(Plus, 'New', () => add(freshBuild(DEFAULT_CAR_ID, `Build ${g.slots.length + 1}`)), '--small'),
       btn(Copy, 'Duplicate', () => {
-        if (g.slots.length >= MAX_SLOTS) return toast(`Up to ${MAX_SLOTS} builds`, Save);
         const copy = validateBuild(JSON.parse(JSON.stringify(this.build)));
-        copy.name = `${copy.name} copy`.slice(0, 24);
-        g.slots.push(copy);
-        g.current = g.slots.length - 1;
-        this.changed(true);
+        copy.name = `${copy.name} copy`.slice(0, BUILD_NAME_MAX);
+        add(copy);
       }, '--small'),
       btn(Trash2, 'Delete', () => {
         if (g.slots.length <= 1) return toast('Keep at least one build', Save);
@@ -1119,10 +1115,9 @@ export class GarageScreen {
     const codeOut = h('input', { type: 'text', readonly: true, placeholder: 'Press Export to create a code', style: 'width:100%' }) as HTMLInputElement;
     const importIn = h('input', { type: 'text', placeholder: 'Paste a build code or link', style: 'width:100%' }) as HTMLInputElement;
     this.body.append(
-      section('Garage slots', Save, list, slotActions, h('div', { class: 'muted garage-note' }, 'Builds save automatically in this browser.')),
+      section('Garage slots', list, slotActions, h('div', { class: 'muted garage-note' }, 'Builds save automatically in this browser.')),
       section(
         'Share',
-        Share2,
         codeOut,
         h(
           'div',
@@ -1145,7 +1140,6 @@ export class GarageScreen {
       ),
       section(
         'Import',
-        Upload,
         importIn,
         btn(Upload, 'Load code', async () => {
           let code = importIn.value.trim();
@@ -1157,9 +1151,7 @@ export class GarageScreen {
           }
           const imported = await decodeShareCode(code);
           if (!imported) return toast('That code could not be read', Upload);
-          if (g.slots.length >= MAX_SLOTS) g.slots.splice(g.current, 1, imported);
-          else g.slots.push(imported);
-          g.current = g.slots.indexOf(imported);
+          importBuild(g, imported);
           this.changed(true);
           toast(`Loaded "${imported.name}"`, Check);
         }, '--small'),
@@ -1215,12 +1207,10 @@ export class GarageScreen {
     this.uiRoot.append(dialog);
   }
 
+  /** Back to the menu; dispose() saves the garage once on the way out. */
   private exit(): void {
-    this.cb.onChange(this.garage);
     this.cb.onExit();
   }
-
-  tick(): void {}
 
   render(dt: number): void {
     this.scene.render(dt);

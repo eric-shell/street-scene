@@ -27,7 +27,7 @@
 import { DT, SUBSTEPS } from './constants';
 import { InputFrame } from './input';
 import { CarTuning, GRAVITY, NITRO_STAGES, driveSplit } from './tuning';
-import { DEG, abs, approach, atan2, clamp, cos, lerp, sign, sin, sqrt, tan } from './math';
+import { DEG, TAU, abs, approach, atan2, clamp, cos, lerp, sign, sin, sqrt, tan } from './math';
 import type { Surface, World } from '../city/world';
 import { SURFACE_PHYSICS } from '../city/districts/types';
 
@@ -69,8 +69,6 @@ export interface CarState {
   manualGearbox: boolean;
   /** Driver aid: drive force is limited to what the driven tires can transmit. */
   tractionControl: boolean;
-  /** Traction control cut the drive force this tick (for a HUD light). */
-  tcActive: boolean;
   /** Wheelspin of the front / rear axle, 0 (at or under the peak slip ratio) .. 1 (fully spinning). Only driven axles spin. */
   spinFront: number;
   spinRear: number;
@@ -149,7 +147,6 @@ export function createCar(x: number, z: number, yaw: number, y: number): CarStat
     reverseHold: 0,
     manualGearbox: false,
     tractionControl: false,
-    tcActive: false,
     spinFront: 0,
     spinRear: 0,
     wheelSpeedFront: 0,
@@ -185,7 +182,7 @@ export function createCar(x: number, z: number, yaw: number, y: number): CarStat
   };
 }
 
-/** Put a car at rest at a position (used for grid and reset to road); `y` picks the level under a bridge deck (World.heightAt). */
+/** Put a car at rest at a position (resets to the road, tows off a hazard); `y` picks the level under a bridge deck (World.heightAt). */
 export function placeCar(c: CarState, x: number, z: number, yaw: number, world: World, y?: number): void {
   c.x = x;
   c.z = z;
@@ -195,8 +192,10 @@ export function placeCar(c: CarState, x: number, z: number, yaw: number, world: 
   c.yawRate = c.pitchRate = c.rollRate = 0;
   // Lying on the ground at its own angle (a reset on a bank or a ramp sits flat on it).
   const sl = world.slopeAt(x, z, y);
-  c.pitch = -atan2(sl.gx * sin(yaw) + sl.gz * cos(yaw), 1);
-  c.roll = atan2(sl.gx * cos(yaw) - sl.gz * sin(yaw), 1);
+  const fx = sin(yaw);
+  const fz = cos(yaw);
+  c.pitch = groundPitch(sl, fx, fz);
+  c.roll = groundRoll(sl, fx, fz);
   c.steerAngle = 0;
   c.clutchKick = 0;
   c.spinFront = c.spinRear = 0;
@@ -209,7 +208,7 @@ export function placeCar(c: CarState, x: number, z: number, yaw: number, world: 
   }
 }
 
-const RPM_PER_RADS = 60 / (2 * Math.PI);
+const RPM_PER_RADS = 60 / TAU;
 /** Most the body pitches or rolls away from the ground's own angle (rad): suspension geometry, not tuning. */
 const BODY_LEAN = 0.15;
 /**
@@ -217,6 +216,36 @@ const BODY_LEAN = 0.15;
  * angle and slip ratio divide by the wheel's road speed, which would make them explode as the car stops.
  */
 const SLIP_REF_SPEED = 2.5;
+/** Body height of the box the pitch and roll inertia are taken from (m): a car's, not a tuning value. */
+const BODY_HEIGHT = 1.3;
+
+/** Front wheel lock at a road speed (rad): maxDeg at a standstill, fading to highSpeedDeg by fadeSpeed. */
+export function steerLimit(t: CarTuning, speed: number): number {
+  return lerp(t.steering.maxDeg, t.steering.highSpeedDeg, clamp(speed / t.steering.fadeSpeed, 0, 1)) * DEG;
+}
+
+/** Yaw inertia (kg m^2): the footprint's box approximation, scaled by yawInertiaScale. */
+export function yawInertia(t: CarTuning): number {
+  const L = t.geometry.halfLength * 2;
+  const W = t.geometry.halfWidth * 2;
+  return ((t.mass * (L * L + W * W)) / 12) * t.yawInertiaScale;
+}
+
+/** The ground's slope (World.slopeAt: rise per meter along x and z). */
+interface Slope {
+  gx: number;
+  gz: number;
+}
+
+/** The ground's pitch under a car heading (fx, fz) = (sin yaw, cos yaw) (rad, nose down positive). */
+export function groundPitch(sl: Slope, fx: number, fz: number): number {
+  return -atan2(sl.gx * fx + sl.gz * fz, 1);
+}
+
+/** The ground's roll under a car heading (fx, fz) (rad, left side up positive). */
+export function groundRoll(sl: Slope, fx: number, fz: number): number {
+  return atan2(sl.gx * fz - sl.gz * fx, 1);
+}
 
 export function torqueAt(t: CarTuning, rpm: number): number {
   const curve = t.engine.torqueCurve;
@@ -240,6 +269,7 @@ export function wheelRpm(t: CarTuning, gear: number, vLong: number): number {
   return (abs(vLong) / t.geometry.wheelRadius) * gearRatio(t, gear) * t.gearbox.finalDrive * RPM_PER_RADS;
 }
 
+/** What a car steps against: the world it drives on. */
 export interface StepEnv {
   world: World;
 }
@@ -357,7 +387,7 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
   }
 
   // ---- steering ----
-  const limit = lerp(t.steering.maxDeg, t.steering.highSpeedDeg, clamp(speed / t.steering.fadeSpeed, 0, 1)) * DEG;
+  const limit = steerLimit(t, speed);
   let target = -inp.steer * limit;
   if (speed > 5 && target !== 0 && sign(target) === sign(beta)) {
     // steering into a slide (counter steer) gets extra lock
@@ -390,18 +420,15 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
   const dragMul = c.drafting ? t.nitrous.draftDragMul : 1;
 
   // Traction control stability: cut the throttle once the body slides past a few degrees.
-  let tcCut = false;
   const tcSlip = t.traction.tcMaxSlipDeg * DEG;
   if (c.tractionControl && driveTorque > 0 && speed > 6 && abs(beta) > tcSlip) {
     driveTorque *= Math.max(0.2, 1 - (abs(beta) - tcSlip) / (10 * DEG));
-    tcCut = true;
   }
 
   const ctl: Controls = { driveTorque, brake, handbrake: inp.handbrake, clutchIn: clutchIn || c.shiftTimer > 0, gearing, surfaceGrip, dragMul, drive, frontShare: split.front, boostForce: t.nitrous.force * boostPower };
   const h = dt / SUBSTEPS;
   c.bottomOut = 0;
-  for (let s = 0; s < SUBSTEPS; s++) tcCut = integrate(c, t, ctl, world, h) || tcCut;
-  c.tcActive = tcCut;
+  for (let s = 0; s < SUBSTEPS; s++) integrate(c, t, ctl, world, h);
   c.wheelspin = c.spinFront > 0.2 || c.spinRear > 0.2;
 
   // ---- telemetry and wheel visuals ----
@@ -417,7 +444,7 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
     const w = c.wheels[i];
     // The wheels turn at their own tread speed: ahead of the road when spinning, still under the handbrake.
     w.spinRate = (i < 2 ? c.wheelSpeedFront : c.wheelSpeedRear) / r;
-    w.spin = (w.spin + w.spinRate * dt) % (Math.PI * 2);
+    w.spin = (w.spin + w.spinRate * dt) % TAU;
   }
 }
 
@@ -466,15 +493,14 @@ const axleGrip = [0, 0];
  * brake only reins spinning wheels in (its stopping force is per wheel in the
  * force pass). Traction control never asks the tires for more than
  * tcSlipTarget of what they hold. Fills wKappa, the axle tables and the spin
- * telemetry; returns true when traction control cut the drive.
+ * telemetry.
  */
-function updateAxles(c: CarState, t: CarTuning, ctl: Controls, gripAt: GripCurve, h: number): boolean {
+function updateAxles(c: CarState, t: CarTuning, ctl: Controls, gripAt: GripCurve, h: number): void {
   const tr = t.traction;
   const R = t.geometry.wheelRadius;
   const peakK = t.tires.peakSlipRatio;
   const fullK = peakK * (t.tires.fullSlideDeg / t.tires.peakSlipDeg);
   const dir = c.gear < 0 ? -1 : 1;
-  let cut = false;
   for (let a = 0; a < 2; a++) {
     const share = a === 0 ? ctl.frontShare : 1 - ctl.frontShare;
     const driven = share > 0;
@@ -500,10 +526,7 @@ function updateAxles(c: CarState, t: CarTuning, ctl: Controls, gripAt: GripCurve
       capTc += wFmax[i] * Math.max(tr.tcMinDrive, sqrt(Math.max(0, 1 - wSy[i] * wSy[i])));
     }
     let T = driven && !ctl.clutchIn ? ctl.driveTorque * share : 0;
-    if (c.tractionControl && T * dir > 0 && abs(T) > tr.tcSlipTarget * capTc * R) {
-      T = sign(T) * tr.tcSlipTarget * capTc * R;
-      cut = true;
-    }
+    if (c.tractionControl && T * dir > 0 && abs(T) > tr.tcSlipTarget * capTc * R) T = sign(T) * tr.tcSlipTarget * capTc * R;
     let spin = 0;
     let hold = false;
     if (stiff === 0) {
@@ -553,13 +576,18 @@ function updateAxles(c: CarState, t: CarTuning, ctl: Controls, gripAt: GripCurve
       c.spinRear = spin;
     }
   }
-  return cut;
 }
 
-/** One physics substep. Returns true if traction control cut the drive force. */
-function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: number): boolean {
+/** Each spring's load this substep (N), from suspension(). */
+const wLoad = [0, 0, 0, 0];
+/** suspension()'s sums over the four springs: vertical force (N), pitch and roll torque (Nm), wheels touching. */
+const springs = { sumF: 0, pitchTorque: 0, rollTorque: 0, contacts: 0 };
+/** tireForces()'s sums over the four tires in the car's frame: forward and left force (N), yaw torque (Nm). */
+const tireSum = { Fu: 0, Fv: 0, torque: 0 };
+
+/** One physics substep: springs, tires, body forces, then the body's motion and attitude. */
+function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: number): void {
   const m = t.mass;
-  const geo = t.geometry;
   const fx = sin(c.yaw);
   const fz = cos(c.yaw);
   const lx = fz;
@@ -569,166 +597,18 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
   const speed = sqrt(c.vx * c.vx + c.vz * c.vz);
 
   // Box approximations for inertia.
-  const L = geo.halfLength * 2;
-  const W = geo.halfWidth * 2;
-  const Hh = 1.3;
-  const Iz = ((m * (L * L + W * W)) / 12) * t.yawInertiaScale;
-  const Ip = (m * (L * L + Hh * Hh)) / 12;
-  const Ir = (m * (W * W + Hh * Hh)) / 12;
+  const L = t.geometry.halfLength * 2;
+  const W = t.geometry.halfWidth * 2;
+  const Iz = yawInertia(t);
+  const Ip = (m * (L * L + BODY_HEIGHT * BODY_HEIGHT)) / 12;
+  const Ir = (m * (W * W + BODY_HEIGHT * BODY_HEIGHT)) / 12;
 
-  // ---- suspension ----
-  const sus = t.suspension;
-  const omega = 2 * Math.PI * sus.frequency;
-  const k = (m / 4) * omega * omega;
-  const crit = 2 * sqrt(k * (m / 4));
-  const kStop = k * sus.bumpStopRate;
-  const dampStop = sus.bumpStopDamping * 2 * sqrt(kStop * (m / 4));
-  const sag = (m * GRAVITY) / (4 * k);
-  // The body over each wheel: the plane through c.y tilted by pitch and roll. tan, so a body lying
-  // on a plane at the plane's own angle has the same compression at every wheel.
-  const tPitch = tan(c.pitch);
-  const tRoll = tan(c.roll);
-  let sumF = 0;
-  let pitchTorque = 0;
-  let rollTorque = 0;
-  const loads = [0, 0, 0, 0];
-  let contacts = 0;
-  for (let i = 0; i < 4; i++) {
-    const [wv, , wu] = geo.wheels[i];
-    const w = c.wheels[i];
-    const wx = c.x + fx * wu + lx * wv;
-    const wz = c.z + fz * wu + lz * wv;
-    // Wheels ride the paving: up onto a sidewalk over its curb, not through it.
-    const ground = world.driveHeightAt(wx, wz, c.y);
-    const comp = ground - (c.y + wv * tRoll - wu * tPitch);
-    const compVel = (comp - w.compression) / h;
-    w.compression = comp;
-    let F = 0;
-    if (comp + sag > 0) {
-      // Rebound damped harder than bump: the spring cannot fling the body back up after a hit.
-      F = k * (comp + sag) + (compVel > 0 ? sus.dampingRatio : sus.reboundRatio) * crit * compVel;
-      const over = comp - sus.travel;
-      if (over > 0) {
-        // Bump stop: stiff and lossy. It soaks up a landing while it compresses and gives back only
-        // bumpStopReturn of its force as it unloads, so the car settles instead of bouncing.
-        F += compVel > 0 ? kStop * over + dampStop * compVel : kStop * over * sus.bumpStopReturn;
-        if (over > c.bottomOut) {
-          c.bottomOut = over;
-          c.bottomWheel = i;
-        }
-      }
-      if (F < 0) F = 0;
-    }
-    w.contact = comp + sag > 0;
-    if (w.contact) contacts++;
-    w.load = F;
-    loads[i] = F;
-    sumF += F;
-    pitchTorque += -wu * F;
-    rollTorque += wv * F;
-  }
-
-  // ---- tires ----
-  const cosd = cos(c.steerAngle);
-  const sind = sin(c.steerAngle);
-  const peakA = t.tires.peakSlipDeg * DEG;
-  const peakK = t.tires.peakSlipRatio;
-  const rhoFull = t.tires.fullSlideDeg / t.tires.peakSlipDeg;
-  const down = (t.aero.downforce * speed * speed) / 4;
-  const loadCap = (t.tires.loadCap * m * GRAVITY) / 4;
-  // Grip over the length of the normalized slip vector (1 = the peak): up to the peak, then down to what a
-  // sliding tire keeps, which is slideGrip sideways and slideGripLong lengthways (a spinning or locked
-  // wheel keeps most of its forward bite, sideways slides are looser), by the direction of the slip.
-  const gripAt: GripCurve = (rho, latShare) => {
-    if (rho < 1) return rho;
-    return 1 - (1 - lerp(t.tires.slideGripLong, t.tires.slideGrip, latShare)) * Math.min(1, (rho - 1) / (rhoFull - 1));
-  };
-  // Pass 1: each wheel's road velocity in its own frame, its grip and its sideways slip.
-  for (let i = 0; i < 4; i++) {
-    const w = c.wheels[i];
-    const front = i < 2;
-    const [wv, , wu] = geo.wheels[i];
-    const pl = vLong - c.yawRate * wv;
-    const pt = vLat + c.yawRate * wu;
-    const cd = front ? cosd : 1;
-    const sd = front ? sind : 0;
-    const wl = pl * cd + pt * sd;
-    const wt = -pl * sd + pt * cd;
-    const mu = (front ? t.tires.gripFront : t.tires.gripRear) * ctl.surfaceGrip;
-    const alpha = atan2(wt, Math.max(abs(wl), SLIP_REF_SPEED));
-    // Grip stops growing past loadCap times the static wheel load: a landing or a bump stop hit on one
-    // wheel loads the spring, not the tire, so it cannot turn into a sideways kick that spins the car.
-    wFmax[i] = w.contact ? mu * (Math.min(loads[i], loadCap) + down) : 0;
-    wLong[i] = wl;
-    wAlpha[i] = alpha;
-    wSy[i] = abs(alpha) / peakA;
-  }
-  // Pass 2: the axles (drive, wheelspin, handbrake), which sets each wheel's slip ratio.
-  const tcCut = updateAxles(c, t, ctl, gripAt, h);
-  // Pass 3: forces. A holding axle transmits its drive torque exactly, split by grip; otherwise the force
-  // is the grip curve over the slip vector's length, pointed against it. Either way the sideways force is
-  // what that vector leaves: the friction circle, so a spinning or locked wheel gives up cornering grip.
-  let Fu = 0;
-  let Fv = 0;
-  let torque = 0;
-  const R = geo.wheelRadius;
-  for (let i = 0; i < 4; i++) {
-    const w = c.wheels[i];
-    if (!w.contact) {
-      w.slip = 0;
-      w.skid = 0;
-      continue;
-    }
-    const front = i < 2;
-    const a = front ? 0 : 1;
-    const [wv, , wu] = geo.wheels[i];
-    const cd = front ? cosd : 1;
-    const sd = front ? sind : 0;
-    const wl = wLong[i];
-    const pt = vLat + c.yawRate * wu;
-    const wt = -(vLong - c.yawRate * wv) * sd + pt * cd;
-    const Fmax = wFmax[i];
-    const alpha = wAlpha[i];
-    w.slip = alpha;
-    if (Fmax === 0) {
-      // Touching with no load yet (the spring unloaded by its damper): nothing to push with.
-      w.skid = 0;
-      continue;
-    }
-    const sy = wSy[i];
-    // Lengthways slip, normalized: the share of the axle's forward capacity in use while holding, the slip
-    // ratio over its peak while spinning.
-    const sx = axleHold[a] ? axleT[a] / (axleCap[a] * R) : wKappa[i] / peakK;
-    const rho = sqrt(sx * sx + sy * sy);
-    const mag = rho > 0 ? gripAt(rho, (sy * sy) / (rho * rho)) * Fmax : 0;
-    let Fx = axleHold[a] ? (axleT[a] / R) * (Fmax / axleGrip[a]) : rho > 0 ? (mag * sx) / rho : 0;
-    let Fy = rho > 0 ? -sign(alpha) * ((mag * sy) / rho) : 0;
-    // Foot brake: split across the axle by load (EBD) so a light inside wheel does not lock, opposing wheel
-    // motion and never reversing it within a step, on tires not already sliding lengthways (a locked or
-    // spinning wheel has nothing more to give). It takes sideways grip by the friction circle but leaves
-    // minLateralShare: the arcade ABS that lets the car still turn on the brakes.
-    if (ctl.brake > 0 && abs(wKappa[i]) < peakK) {
-      const axleLoad = front ? loads[0] + loads[1] : loads[2] + loads[3];
-      const share = axleLoad > 1 ? loads[i] / axleLoad : 0.5;
-      const brakeF = ctl.brake * t.brakes.force * (front ? t.brakes.frontBias : 1 - t.brakes.frontBias) * share;
-      const stop = (wl * (m / 4)) / h;
-      const before = abs(Fx);
-      Fx -= clamp(stop, -brakeF, brakeF);
-      if (abs(Fx) > Fmax) Fx = sign(Fx) * Fmax;
-      const used = clamp((abs(Fx) - before) / Fmax, 0, 1);
-      Fy *= Math.max(t.tires.minLateralShare, sqrt(1 - used * used));
-    }
-    // Squeal and smoke telemetry: how far into the slide the tire is, whichever way it slides.
-    w.skid = Math.min(1.6, Math.max(0, rho - 0.7));
-    const maxFy = ((m / 4) * abs(wt)) / h;
-    if (abs(Fy) > maxFy) Fy = sign(Fy) * maxFy;
-
-    const fu = Fx * cd - Fy * sd;
-    const fv = Fx * sd + Fy * cd;
-    Fu += fu;
-    Fv += fv;
-    torque += wu * fv - wv * fu;
-  }
+  suspension(c, t, world, h, fx, fz, lx, lz);
+  const { sumF, contacts } = springs;
+  tireForces(c, t, ctl, h, vLong, vLat, speed);
+  let Fu = tireSum.Fu;
+  let Fv = tireSum.Fv;
+  const torque = tireSum.torque;
 
   // ---- body forces ----
   const drag = t.aero.drag * ctl.dragMul;
@@ -791,39 +671,219 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
   c.z += c.vz * h;
   c.yaw += c.yawRate * h;
 
-  // ---- heave, pitch, roll ----
-  c.vy += (sumF / m - GRAVITY) * h;
+  heaveAndLean(c, t, world, sl, h, fx, fz, Ip, Ir);
+}
+
+/**
+ * The springs against the ground under each wheel: fills wLoad and springs (the forces they push the body
+ * with, the torques those make about its pitch and roll axes, and how many wheels touch), and each wheel's
+ * compression, contact and load, with the deepest bump stop overtravel for the spark telemetry.
+ */
+function suspension(c: CarState, t: CarTuning, world: World, h: number, fx: number, fz: number, lx: number, lz: number): void {
+  const m = t.mass;
+  const geo = t.geometry;
+  const sus = t.suspension;
+  const omega = TAU * sus.frequency;
+  const k = (m / 4) * omega * omega;
+  const crit = 2 * sqrt(k * (m / 4));
+  const kStop = k * sus.bumpStopRate;
+  const dampStop = sus.bumpStopDamping * 2 * sqrt(kStop * (m / 4));
+  const sag = (m * GRAVITY) / (4 * k);
+  // The body over each wheel: the plane through c.y tilted by pitch and roll. tan, so a body lying
+  // on a plane at the plane's own angle has the same compression at every wheel.
+  const tPitch = tan(c.pitch);
+  const tRoll = tan(c.roll);
+  let sumF = 0;
+  let pitchTorque = 0;
+  let rollTorque = 0;
+  let contacts = 0;
+  for (let i = 0; i < 4; i++) {
+    const [wv, , wu] = geo.wheels[i];
+    const w = c.wheels[i];
+    const wx = c.x + fx * wu + lx * wv;
+    const wz = c.z + fz * wu + lz * wv;
+    // Wheels ride the paving: up onto a sidewalk over its curb, not through it.
+    const ground = world.driveHeightAt(wx, wz, c.y);
+    const comp = ground - (c.y + wv * tRoll - wu * tPitch);
+    const compVel = (comp - w.compression) / h;
+    w.compression = comp;
+    let F = 0;
+    if (comp + sag > 0) {
+      // Rebound damped harder than bump: the spring cannot fling the body back up after a hit.
+      F = k * (comp + sag) + (compVel > 0 ? sus.dampingRatio : sus.reboundRatio) * crit * compVel;
+      const over = comp - sus.travel;
+      if (over > 0) {
+        // Bump stop: stiff and lossy. It soaks up a landing while it compresses and gives back only
+        // bumpStopReturn of its force as it unloads, so the car settles instead of bouncing.
+        F += compVel > 0 ? kStop * over + dampStop * compVel : kStop * over * sus.bumpStopReturn;
+        if (over > c.bottomOut) {
+          c.bottomOut = over;
+          c.bottomWheel = i;
+        }
+      }
+      if (F < 0) F = 0;
+    }
+    w.contact = comp + sag > 0;
+    if (w.contact) contacts++;
+    w.load = F;
+    wLoad[i] = F;
+    sumF += F;
+    pitchTorque += -wu * F;
+    rollTorque += wv * F;
+  }
+  springs.sumF = sumF;
+  springs.pitchTorque = pitchTorque;
+  springs.rollTorque = rollTorque;
+  springs.contacts = contacts;
+}
+
+/**
+ * The tires: each wheel's slip, the axles' drive (updateAxles), then each tire's force from its slip vector,
+ * with the foot brake. Sums the forces and the yaw torque they make into tireSum, and writes each wheel's
+ * slip and skid telemetry.
+ */
+function tireForces(c: CarState, t: CarTuning, ctl: Controls, h: number, vLong: number, vLat: number, speed: number): void {
+  const m = t.mass;
+  const geo = t.geometry;
+  const cosd = cos(c.steerAngle);
+  const sind = sin(c.steerAngle);
+  const peakA = t.tires.peakSlipDeg * DEG;
+  const peakK = t.tires.peakSlipRatio;
+  const rhoFull = t.tires.fullSlideDeg / t.tires.peakSlipDeg;
+  const down = (t.aero.downforce * speed * speed) / 4;
+  const loadCap = (t.tires.loadCap * m * GRAVITY) / 4;
+  // Grip over the length of the normalized slip vector (1 = the peak): up to the peak, then down to what a
+  // sliding tire keeps, which is slideGrip sideways and slideGripLong lengthways (a spinning or locked
+  // wheel keeps most of its forward bite, sideways slides are looser), by the direction of the slip.
+  const gripAt: GripCurve = (rho, latShare) => {
+    if (rho < 1) return rho;
+    return 1 - (1 - lerp(t.tires.slideGripLong, t.tires.slideGrip, latShare)) * Math.min(1, (rho - 1) / (rhoFull - 1));
+  };
+  // Pass 1: each wheel's road velocity in its own frame, its grip and its sideways slip.
+  for (let i = 0; i < 4; i++) {
+    const w = c.wheels[i];
+    const front = i < 2;
+    const [wv, , wu] = geo.wheels[i];
+    const pl = vLong - c.yawRate * wv;
+    const pt = vLat + c.yawRate * wu;
+    const cd = front ? cosd : 1;
+    const sd = front ? sind : 0;
+    const wl = pl * cd + pt * sd;
+    const wt = -pl * sd + pt * cd;
+    const mu = (front ? t.tires.gripFront : t.tires.gripRear) * ctl.surfaceGrip;
+    const alpha = atan2(wt, Math.max(abs(wl), SLIP_REF_SPEED));
+    // Grip stops growing past loadCap times the static wheel load: a landing or a bump stop hit on one
+    // wheel loads the spring, not the tire, so it cannot turn into a sideways kick that spins the car.
+    wFmax[i] = w.contact ? mu * (Math.min(wLoad[i], loadCap) + down) : 0;
+    wLong[i] = wl;
+    wAlpha[i] = alpha;
+    wSy[i] = abs(alpha) / peakA;
+  }
+  // Pass 2: the axles (drive, wheelspin, handbrake), which sets each wheel's slip ratio.
+  updateAxles(c, t, ctl, gripAt, h);
+  // Pass 3: forces. A holding axle transmits its drive torque exactly, split by grip; otherwise the force
+  // is the grip curve over the slip vector's length, pointed against it. Either way the sideways force is
+  // what that vector leaves: the friction circle, so a spinning or locked wheel gives up cornering grip.
+  let Fu = 0;
+  let Fv = 0;
+  let torque = 0;
+  const R = geo.wheelRadius;
+  for (let i = 0; i < 4; i++) {
+    const w = c.wheels[i];
+    if (!w.contact) {
+      w.slip = 0;
+      w.skid = 0;
+      continue;
+    }
+    const front = i < 2;
+    const a = front ? 0 : 1;
+    const [wv, , wu] = geo.wheels[i];
+    const cd = front ? cosd : 1;
+    const sd = front ? sind : 0;
+    const wl = wLong[i];
+    const pt = vLat + c.yawRate * wu;
+    const wt = -(vLong - c.yawRate * wv) * sd + pt * cd;
+    const Fmax = wFmax[i];
+    const alpha = wAlpha[i];
+    w.slip = alpha;
+    if (Fmax === 0) {
+      // Touching with no load yet (the spring unloaded by its damper): nothing to push with.
+      w.skid = 0;
+      continue;
+    }
+    const sy = wSy[i];
+    // Lengthways slip, normalized: the share of the axle's forward capacity in use while holding, the slip
+    // ratio over its peak while spinning.
+    const sx = axleHold[a] ? axleT[a] / (axleCap[a] * R) : wKappa[i] / peakK;
+    const rho = sqrt(sx * sx + sy * sy);
+    const mag = rho > 0 ? gripAt(rho, (sy * sy) / (rho * rho)) * Fmax : 0;
+    let Fx = axleHold[a] ? (axleT[a] / R) * (Fmax / axleGrip[a]) : rho > 0 ? (mag * sx) / rho : 0;
+    let Fy = rho > 0 ? -sign(alpha) * ((mag * sy) / rho) : 0;
+    // Foot brake: split across the axle by load (EBD) so a light inside wheel does not lock, opposing wheel
+    // motion and never reversing it within a step, on tires not already sliding lengthways (a locked or
+    // spinning wheel has nothing more to give). It takes sideways grip by the friction circle but leaves
+    // minLateralShare: the arcade ABS that lets the car still turn on the brakes.
+    if (ctl.brake > 0 && abs(wKappa[i]) < peakK) {
+      const axleLoad = front ? wLoad[0] + wLoad[1] : wLoad[2] + wLoad[3];
+      const share = axleLoad > 1 ? wLoad[i] / axleLoad : 0.5;
+      const brakeF = ctl.brake * t.brakes.force * (front ? t.brakes.frontBias : 1 - t.brakes.frontBias) * share;
+      const stop = (wl * (m / 4)) / h;
+      const before = abs(Fx);
+      Fx -= clamp(stop, -brakeF, brakeF);
+      if (abs(Fx) > Fmax) Fx = sign(Fx) * Fmax;
+      const used = clamp((abs(Fx) - before) / Fmax, 0, 1);
+      Fy *= Math.max(t.tires.minLateralShare, sqrt(1 - used * used));
+    }
+    // Squeal and smoke telemetry: how far into the slide the tire is, whichever way it slides.
+    w.skid = Math.min(1.6, Math.max(0, rho - 0.7));
+    const maxFy = ((m / 4) * abs(wt)) / h;
+    if (abs(Fy) > maxFy) Fy = sign(Fy) * maxFy;
+
+    const fu = Fx * cd - Fy * sd;
+    const fv = Fx * sd + Fy * cd;
+    Fu += fu;
+    Fv += fv;
+    torque += wu * fv - wv * fu;
+  }
+  tireSum.Fu = Fu;
+  tireSum.Fv = Fv;
+  tireSum.torque = torque;
+}
+
+/** Hold one body angle within BODY_LEAN of the ground's; a rate pushing past the limit stops there. */
+function holdLean(c: CarState, angle: 'pitch' | 'roll', rate: 'pitchRate' | 'rollRate', ground: number): void {
+  if (c[angle] > ground + BODY_LEAN) {
+    c[angle] = ground + BODY_LEAN;
+    if (c[rate] > 0) c[rate] = 0;
+  } else if (c[angle] < ground - BODY_LEAN) {
+    c[angle] = ground - BODY_LEAN;
+    if (c[rate] < 0) c[rate] = 0;
+  }
+}
+
+/** Heave, pitch and roll from the springs' sums and the body's acceleration; the chassis never sinks into the ground. */
+function heaveAndLean(c: CarState, t: CarTuning, world: World, sl: Slope, h: number, fx: number, fz: number, Ip: number, Ir: number): void {
+  const m = t.mass;
+  c.vy += (springs.sumF / m - GRAVITY) * h;
   c.y += c.vy * h;
-  c.pitchRate += ((pitchTorque - m * c.aLong * t.cgHeight) / Ip) * h;
-  c.rollRate += ((rollTorque + m * c.aLat * t.cgHeight) / Ir) * h;
+  c.pitchRate += ((springs.pitchTorque - m * c.aLong * t.cgHeight) / Ip) * h;
+  c.rollRate += ((springs.rollTorque + m * c.aLat * t.cgHeight) / Ir) * h;
   // The body leans at most BODY_LEAN from the ground's own angle in the car's frame: level on a street,
   // laid over on a bank, pitched up a ramp (and in the air, over whatever it flies across). A rate
   // pushing past the limit stops there.
-  const groundPitch = -atan2(sl.gx * fx + sl.gz * fz, 1);
-  const groundRoll = atan2(sl.gx * lx + sl.gz * lz, 1);
-  if (contacts === 0) {
+  const gPitch = groundPitch(sl, fx, fz);
+  const gRoll = groundRoll(sl, fx, fz);
+  if (springs.contacts === 0) {
     // In the air the body levels out over the ground below (arcade air control, critically damped at
     // airLevel rad/s), so a jump comes down flat on all four wheels instead of on its nose.
-    const w = sus.airLevel;
-    c.pitchRate += (w * w * (groundPitch - c.pitch) - 2 * w * c.pitchRate) * h;
-    c.rollRate += (w * w * (groundRoll - c.roll) - 2 * w * c.rollRate) * h;
+    const w = t.suspension.airLevel;
+    c.pitchRate += (w * w * (gPitch - c.pitch) - 2 * w * c.pitchRate) * h;
+    c.rollRate += (w * w * (gRoll - c.roll) - 2 * w * c.rollRate) * h;
   }
   c.pitch += c.pitchRate * h;
   c.roll += c.rollRate * h;
-  if (c.pitch > groundPitch + BODY_LEAN) {
-    c.pitch = groundPitch + BODY_LEAN;
-    if (c.pitchRate > 0) c.pitchRate = 0;
-  } else if (c.pitch < groundPitch - BODY_LEAN) {
-    c.pitch = groundPitch - BODY_LEAN;
-    if (c.pitchRate < 0) c.pitchRate = 0;
-  }
-  if (c.roll > groundRoll + BODY_LEAN) {
-    c.roll = groundRoll + BODY_LEAN;
-    if (c.rollRate > 0) c.rollRate = 0;
-  } else if (c.roll < groundRoll - BODY_LEAN) {
-    c.roll = groundRoll - BODY_LEAN;
-    if (c.rollRate < 0) c.rollRate = 0;
-  }
+  holdLean(c, 'pitch', 'pitchRate', gPitch);
+  holdLean(c, 'roll', 'rollRate', gRoll);
   const ground = world.driveHeightAt(c.x, c.z, c.y);
   if (c.y < ground - 0.35) {
     if (c.vy < 0 && -c.vy * h > c.bottomOut) {
@@ -833,7 +893,6 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
     c.y = ground - 0.35;
     if (c.vy < 0) c.vy = 0;
   }
-  return tcCut;
 }
 
 /** Slack for a tank level summed from many small refills: 0.9999999 of a stage counts as the full stage. */
@@ -849,12 +908,20 @@ export function nitroTopStage(nitro: number): number {
   return nitro > NITRO_EPS ? Math.min(NITRO_STAGES, Math.ceil(nitro - NITRO_EPS)) : 0;
 }
 
+/** The drift refill reaches its full rate at this slip angle (rad). */
+const FULL_REFILL_SLIP = 30 * DEG;
+
+/** Nitrous a drift refills (stages/s) at the car's slip angle; driftZones.ts adds a share of it inside a zone. */
+export function driftRefillRate(c: CarState, t: CarTuning): number {
+  return t.nitrous.refillDrift * Math.min(1, abs(c.slipAngle) / FULL_REFILL_SLIP);
+}
+
 /**
  * Refill nitrous from style: drifting, near misses and drafting, filling the
  * stages in order up to a full tank. Call once per tick after collisions.
  */
 export function refillNitrous(c: CarState, t: CarTuning): void {
-  const drift = c.drifting ? t.nitrous.refillDrift * Math.min(1, abs(c.slipAngle) / (30 * DEG)) : 0;
+  const drift = c.drifting ? driftRefillRate(c, t) : 0;
   const near = c.nearMiss ? t.nitrous.refillNearMiss : 0;
   const draft = c.drafting ? t.nitrous.refillDraft : 0;
   const add = drift + near + draft;

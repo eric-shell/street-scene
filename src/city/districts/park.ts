@@ -18,7 +18,10 @@ import { Rng } from '../../sim/prng';
 import type { DistrictModule } from './types';
 import type { PropKind } from '../props';
 import { emptyBuild } from './types';
-import { circlePolygon, distToPolygonEdge, pointInPolygon, polygonArea, polygonBounds, smooth01, solidWalls } from './geom';
+import { circlePolygon, distToPolygonEdge, pointInPolygon, polygonArea, polygonBounds, smooth01, type Smooth, solidWalls } from './geom';
+
+/** Scratch for the terrain's smoothsteps (queried per wheel per substep, so nothing allocates). */
+const SMOOTH: Smooth = { v: 0, d: 0 };
 
 const CFG = CITY.districts.park;
 
@@ -154,7 +157,7 @@ export const parkModule: DistrictModule = {
         for (const s of sides) {
           if (s.len < 0.5) continue;
           const d = (x - s.x) * s.nx + (z - s.z) * s.nz;
-          const m = smooth01(0, CFG.hillEdge, d);
+          const m = smooth01(0, CFG.hillEdge, d, SMOOTH);
           if (m.v <= 0) return;
           P *= m.v;
           sx += (m.d / m.v) * s.nx;

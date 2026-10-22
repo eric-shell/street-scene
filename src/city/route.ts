@@ -14,6 +14,7 @@ import { chainBackwards, routeChains } from './districts/alleyPath';
 import { shortcutSpan } from './districts/alleyShortcuts';
 import { DEG, type Vec2, abs, atan2, clamp, cos, distToSegment, segmentT, sin, sqrt, yawOf } from '../sim/math';
 import { distanceField } from './graphSearch';
+import { segmentAt } from './districts/geom';
 
 
 /** The routes planned with the city (planRoads carves their shortcuts and car parks into it). */
@@ -446,7 +447,7 @@ function appendNode(g: RoadGraph, points: Vec2[], segWidth: number[], inWidth: n
   push({ x: P.x + dout.x * Re, z: P.z + dout.z * Re }, ringW);
 }
 
-export function wrapS(route: Route, s: number): number {
+function wrapS(route: Route, s: number): number {
   if (!route.closed) return s;
   const L = route.length;
   return ((s % L) + L) % L;
@@ -456,13 +457,7 @@ export function wrapS(route: Route, s: number): number {
 export function routeSample(route: Route, sIn: number): RouteSample {
   const s = route.closed ? wrapS(route, sIn) : Math.max(0, Math.min(route.length, sIn));
   const cum = route.cum;
-  let lo = 0;
-  let hi = cum.length - 1;
-  while (hi - lo > 1) {
-    const mid = (lo + hi) >> 1;
-    if (cum[mid] <= s) lo = mid;
-    else hi = mid;
-  }
+  const lo = segmentAt(cum, s);
   const a = route.points[lo];
   const b = route.points[lo + 1];
   const segLen = cum[lo + 1] - cum[lo] || 1;

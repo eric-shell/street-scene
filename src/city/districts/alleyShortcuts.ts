@@ -13,7 +13,8 @@ import { type Vec2, atan2, distToSegment, lineIntersectT } from '../../sim/math'
 import { Rng } from '../../sim/prng';
 import { pointInPolygon } from './geom';
 import type { Area, PlanContext } from './types';
-import { alleyFlightReach, pathCum, distToPath, chainBackwards, routeChains, chainNodes, corridor, RAD, unit } from './alleyPath';
+import { alleyFlightReach, pathCum, chainBackwards, routeChains, chainNodes, corridor, RAD, unit } from './alleyPath';
+import { distToPath } from './geom';
 
 /** A route shortcut's mouth due within MOUTH_SNAP (m) of a bend node of its street lands on the bend node. */
 const MOUTH_SNAP = 10;

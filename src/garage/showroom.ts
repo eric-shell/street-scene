@@ -24,8 +24,8 @@ import { CarView } from '../render/car/carView';
 import type { CarPose } from '../render/car/carView';
 import { MANIFEST, partsFor } from '../render/car/carAssets';
 import type { CarAssetLibrary } from '../render/car/carAssets';
-import { defaultVisual } from '../sim/build';
-import type { PaintFinish } from '../sim/build';
+import { defaultVisual } from '../shared/carBuild';
+import type { PaintFinish } from '../shared/carBuild';
 import type { PartSlot } from '../shared/parts';
 import type { Quality } from '../ui/settings';
 import { PALETTE } from '../ui/kit/palette';
@@ -33,6 +33,7 @@ import { concreteTextures, hazardTexture, noise, plateTexture, shadowTexture, wa
 import { GLOW, Kit, batten, compressor, createMaterials, drum, engineHoist, extinguisher, jackAndStands, lift, panels, roof, shelving, tire, tireRack, toolChest, workbench } from './showroomProps';
 import type { LiftFit } from './showroomProps';
 import { MAIN_SIGN, NEON, NeonSign, OPEN_SIGN } from './neonSign';
+import { Disposer } from '../render/disposer';
 
 /**
  * Per quality tier: the floor's reflection pass (render scale of the screen,
@@ -47,7 +48,7 @@ export const SHOWROOM_QUALITY: Record<Quality, { reflection: number; dust: boole
 };
 
 /** The room (m): half its width and depth, the roof, the turntable, the painted band on the walls, the battens' height. */
-const ROOM = {
+export const ROOM = {
   half: 12,
   height: 6.6,
   /** Turntable radius and top (the car's ground). */
@@ -93,8 +94,6 @@ const SIGNS = { main: { x: -2, y: 5.0, z: -ROOM.half + 0.02, yaw: 0 }, open: { x
 /** The car's ground on the turntable and how far the lift cars' wheels hang when lifted (m). */
 const DROOP = -0.06;
 
-type Disposable = { dispose(): void };
-
 export class Showroom {
   readonly scene = new THREE.Scene();
   /** Turns with the car on it (the garage scene spins it). */
@@ -112,14 +111,14 @@ export class Showroom {
   private readonly liftCars: CarView[] = [];
   /** What the orbit camera must not pass through: the lifts and their cars, as room-space boxes. */
   private readonly obstacles: THREE.Box3[] = [];
-  private readonly disposables: Disposable[] = [];
+  private readonly owned = new Disposer();
   private readonly offset = new THREE.Vector3();
   private disposed = false;
   private time = 0;
 
   constructor(renderer: THREE.WebGLRenderer, quality: Quality, assets: CarAssetLibrary) {
     const q = SHOWROOM_QUALITY[quality];
-    const track = <T extends Disposable>(x: T): T => (this.disposables.push(x), x);
+    const { track } = this.owned;
     const s = this.scene;
     s.background = new THREE.Color(0x070709);
     s.fog = new THREE.Fog(0x09090d, 14, 36);
@@ -386,7 +385,7 @@ export class Showroom {
     this.reflector?.dispose();
     for (const v of this.liftCars) v.dispose();
     for (const sign of this.signs) sign.dispose();
-    for (const d of this.disposables) d.dispose();
+    this.owned.dispose();
   }
 }
 
@@ -652,8 +651,8 @@ function scaleUv(g: THREE.BufferGeometry, su: number, sv: number): void {
  */
 function studioEnvironment(renderer: THREE.WebGLRenderer): THREE.WebGLRenderTarget {
   const env = new THREE.Scene();
-  const disposables: Disposable[] = [];
-  const track = <T extends Disposable>(x: T): T => (disposables.push(x), x);
+  const owned = new Disposer();
+  const { track } = owned;
   const basic = (color: THREE.ColorRepresentation, k = 1, side: THREE.Side = THREE.FrontSide) => track(new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(k), side }));
   const H = ROOM.half;
   const room = new THREE.Mesh(track(new THREE.BoxGeometry(2 * H, ROOM.height, 2 * H)), basic(0x0c0c0f, 1, THREE.BackSide));
@@ -684,7 +683,7 @@ function studioEnvironment(renderer: THREE.WebGLRenderer): THREE.WebGLRenderTarg
   const pmrem = new THREE.PMREMGenerator(renderer);
   const rt = pmrem.fromScene(env, 0.035, 0.1, 40, { position: new THREE.Vector3(0, 0.8, 0) });
   pmrem.dispose();
-  for (const d of disposables) d.dispose();
+  owned.dispose();
   return rt;
 }
 

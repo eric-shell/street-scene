@@ -43,3 +43,6 @@ Thumbs.db
 .claude/settings.local.json
 .claude/worktrees/
 CLAUDE.local.md
+
+# The refactor skill's font cache (.claude/skills/refactor/capture.mjs)
+.claude/skills/refactor/.fontcache/

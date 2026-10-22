@@ -23,8 +23,12 @@ export interface Terrain {
   slopeAt(x: number, z: number): { gx: number; gz: number };
 }
 
+/** The base terrain of the last seed built: the planners ask for the plain landscape again and again while one city builds. */
+let lastBase: { seed: number; terrain: Terrain } | null = null;
+
 export function createTerrain(seed: number, mods: HeightMod[] = []): Terrain {
-  const base = createBaseTerrain(seed);
+  if (lastBase?.seed !== seed) lastBase = { seed, terrain: createBaseTerrain(seed) };
+  const base = lastBase.terrain;
   if (!mods.length) return base;
   // Coarse grid of modifier ids by bounding box; queries visit one cell.
   let minX = Infinity;

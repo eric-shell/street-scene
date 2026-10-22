@@ -75,7 +75,7 @@ Most wheels need none. The fields:
 1. Run `saveCar.py` headless with `wheels` as the id, writing `assets/source/eshell/wheels/wheels.blend`. It keeps only the `wheels:Wheels` collection.
 2. Run `npm run assets`: the wheel set is exported by `exportCar.py` (wheels-only mode) and cataloged as universal wheels `wheel_<name>`.
 3. Set each car's `defaultWheel` in the manifest.
-4. A retired wheel id goes in `RENAMED_WHEELS` (`src/sim/build.ts`), so saved builds and share codes keep a wheel.
+4. A retired wheel id goes in `RENAMED_WHEELS` (`src/shared/carBuild.ts`), so saved builds and share codes keep a wheel.
 
 ## 7. First set (2026-10-21)
 

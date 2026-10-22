@@ -37,7 +37,7 @@ import { gatePhase } from '../../sim/gates';
 import { TICK_HZ } from '../../sim/constants';
 import type { Quality } from '../../ui/settings';
 import { GeoBuilder } from '../geoBuilder';
-import { fadeSubPixel } from './lightFx';
+import { fadeSubPixel } from '../materialFx';
 import { WarningBell } from '../../audio/warningBell';
 
 /** Layout (m), timing and tints of the dressing. */

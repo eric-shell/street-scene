@@ -26,6 +26,10 @@ import { GeoBuilder } from '../geoBuilder';
 import { FOG_DENSITY } from '../lighting';
 import { RailState, railLayout } from '../../sim/rails';
 import { nearCarParkFlight } from '../../city/districts/carPark';
+import { Disposer } from '../disposer';
+
+/** The route's cyan: rail panels, LED comets, ground glow and the floating signs. */
+const ROUTE_CYAN = 0x19e6ff;
 
 /** A closure as the renderer sees it: its group, where it faces and which way the route goes past it. */
 export interface BarrierInfo {
@@ -267,20 +271,18 @@ export interface RouteArrowOptions {
 export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classifyBarriers(world), opts: RouteArrowOptions = {}): RouteArrows {
   const group = new THREE.Group();
   group.name = 'routeArrows';
-  const disposables: { dispose(): void }[] = [];
+  const res = new Disposer();
+  const { track } = res;
   const mats: THREE.ShaderMaterial[] = [];
-  const tex = boardTexture();
-  const signTex = signTexture();
-  disposables.push(tex, signTex);
+  const tex = track(boardTexture());
+  const signTex = track(signTexture());
 
   // Rail modules (corner rails and closures alike) follow the sim's rail state.
-  const rails = buildRailMeshes(world, tex, opts.beacon ?? null);
+  const rails = track(buildRailMeshes(world, tex, opts.beacon ?? null));
   for (const m of rails.meshes) group.add(m);
   mats.push(...rails.materials);
-  disposables.push(rails);
 
   const signs: Board[] = [];
-  const route = world.route;
   // Closures: a sign over every one, chevrons pointing the way the route goes past it. Seen
   // from the course (looking along -n) the viewer's right is (nz, -nx).
   barriers.forEach((b, i) => {
@@ -307,21 +309,22 @@ export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classif
     if (nearCarParkFlight(world, mx, mz, 9)) return;
     signs.push({ x: mx - mid.nx * 1.2, y: world.heightAt(mx, mz) + SIGN.height + 0.4, z: mz - mid.nz * 1.2, yaw: Math.atan2(mid.nx, mid.nz), w: 15, h: 15 / SIGN.aspect, flip: flipFor(mid), phase: (ci * 0.37) % 1, tilt: -0.1 });
   });
-  void route;
 
   if (signs.length) {
-    const geo = new THREE.PlaneGeometry(1, 1);
+    const geo = track(new THREE.PlaneGeometry(1, 1));
     const flip = new Float32Array(signs.length);
     const phase = new Float32Array(signs.length);
-    const mat = new THREE.ShaderMaterial({
-      vertexShader: signVert,
-      fragmentShader: signFrag,
-      uniforms: { map: { value: signTex }, time: { value: 0 }, color: { value: new THREE.Color(0x19e6ff) }, fogDensity: { value: FOG_DENSITY } },
-      side: THREE.DoubleSide,
-      transparent: true,
-      depthWrite: false,
-    });
-    const mesh = new THREE.InstancedMesh(geo, mat, signs.length);
+    const mat = track(
+      new THREE.ShaderMaterial({
+        vertexShader: signVert,
+        fragmentShader: signFrag,
+        uniforms: { map: { value: signTex }, time: { value: 0 }, color: { value: new THREE.Color(ROUTE_CYAN) }, fogDensity: { value: FOG_DENSITY } },
+        side: THREE.DoubleSide,
+        transparent: true,
+        depthWrite: false,
+      }),
+    );
+    const mesh = track(new THREE.InstancedMesh(geo, mat, signs.length));
     mesh.name = 'routeSigns';
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
@@ -339,7 +342,6 @@ export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classif
     mesh.renderOrder = 5;
     group.add(mesh);
     mats.push(mat);
-    disposables.push(geo, mat);
   }
 
   return {
@@ -351,9 +353,7 @@ export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classif
     syncRails(state) {
       rails.sync(state);
     },
-    dispose() {
-      for (const d of disposables) d.dispose();
-    },
+    dispose: () => res.dispose(),
   };
 }
 
@@ -610,19 +610,19 @@ function buildRailMeshes(world: World, tex: THREE.Texture, beaconMaterial: THREE
   const panelMaterial = new THREE.ShaderMaterial({
     vertexShader: railPanelVert,
     fragmentShader: boardFrag,
-    uniforms: { map: { value: tex }, time: { value: 0 }, color: { value: new THREE.Color(0x19e6ff) }, fogDensity: { value: FOG_DENSITY } },
+    uniforms: { map: { value: tex }, time: { value: 0 }, color: { value: new THREE.Color(ROUTE_CYAN) }, fogDensity: { value: FOG_DENSITY } },
     side: THREE.DoubleSide,
   });
   const frameMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.4 });
   const ledMaterial = new THREE.ShaderMaterial({
     vertexShader: railPanelVert,
     fragmentShader: ledFrag,
-    uniforms: { time: { value: 0 }, color: { value: new THREE.Color(0x19e6ff) }, fogDensity: { value: FOG_DENSITY } },
+    uniforms: { time: { value: 0 }, color: { value: new THREE.Color(ROUTE_CYAN) }, fogDensity: { value: FOG_DENSITY } },
   });
   const poolMaterial = new THREE.ShaderMaterial({
     vertexShader: railPanelVert,
     fragmentShader: poolFrag,
-    uniforms: { time: { value: 0 }, color: { value: new THREE.Color(0x19e6ff) }, fogDensity: { value: FOG_DENSITY } },
+    uniforms: { time: { value: 0 }, color: { value: new THREE.Color(ROUTE_CYAN) }, fogDensity: { value: FOG_DENSITY } },
     transparent: true,
     depthWrite: false,
     blending: THREE.AdditiveBlending,

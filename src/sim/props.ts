@@ -13,6 +13,8 @@
 import { PROP_DEFS } from '../city/props';
 import type { RaceCar, RaceState } from './race';
 import { abs, sin, cos, sqrt } from './math';
+import { yawInertia } from './car';
+import { LEVEL_GAP } from './constants';
 
 /** Fraction of the off center angular impulse applied as yaw (a nudge, not a spin). */
 const YAW_NUDGE = 0.35;
@@ -21,16 +23,7 @@ const IMPACT_PER_DV = 1.25;
 /** Points sampled along a capsule prop's core (odd, so the middle is one): closer than its radius apart. */
 const CORE_SAMPLES = 5;
 
-/** A prop further than this (m) above or below the car body is on another level (a bridge deck's sidewalk over the river channel) and never touches it. */
-const LEVEL_GAP = 3;
 const scratch: number[] = [];
-
-function yawInertia(rc: RaceCar): number {
-  const t = rc.tuning;
-  const L = t.geometry.halfLength * 2;
-  const W = t.geometry.halfWidth * 2;
-  return ((t.mass * (L * L + W * W)) / 12) * t.yawInertiaScale;
-}
 
 /** Collide one car with the props around it. Returns the impact speed (0 when nothing was hit). */
 export function collideCarWithProps(r: RaceState, rc: RaceCar): number {
@@ -144,7 +137,7 @@ export function collideCarWithProps(r: RaceState, rc: RaceCar): number {
     c.vz += dv * nz;
     // Off center hits turn the car a little (impulse J = m * dv along n at r).
     const rn = rx * nz - rz * nx;
-    c.yawRate -= ((rn * m * dv) / yawInertia(rc)) * YAW_NUDGE;
+    c.yawRate -= ((rn * m * dv) / yawInertia(rc.tuning)) * YAW_NUDGE;
     r.brokenProps[id] = 1;
     r.events.push({ tick: r.tick, type: 'prop', car: rc.index, value: id });
     impact = Math.max(impact, dv * IMPACT_PER_DV);
@@ -154,7 +147,6 @@ export function collideCarWithProps(r: RaceState, rc: RaceCar): number {
 
 /** Prop collisions for every car, in car order. Raises each car's impact for this tick. */
 export function stepProps(r: RaceState): void {
-  if (!r.brokenProps) return;
   for (const rc of r.cars) {
     const imp = collideCarWithProps(r, rc);
     if (imp > rc.state.impact) rc.state.impact = imp;

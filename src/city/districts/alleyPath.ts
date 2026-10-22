@@ -6,7 +6,8 @@
  */
 import { CITY } from '../config';
 import { otherNode, type RoadGraph } from '../roadGraph';
-import { type Vec2, distToSegment } from '../../sim/math';
+import type { Vec2 } from '../../sim/math';
+import { segmentAt } from './geom';
 
 /** Hump height and its slope along the alley at distance s from the start (0 outside the hump). */
 export function jumpProfile(s: number, center: number, ramp: number, top: number, height: number): { h: number; dh: number } {
@@ -60,24 +61,10 @@ export function pathCum(path: readonly Vec2[]): number[] {
   return cum;
 }
 
-/** Leg index holding position s along a polyline (the last leg at and past its end). */
-export function legAt(cum: readonly number[], s: number): number {
-  let i = 0;
-  while (i + 2 < cum.length && s >= cum[i + 1]) i++;
-  return i;
-}
-
 /** sideSpot along a polyline: s from its start (m), lateral off the centerline (+ = left of travel). */
 export function pathSpot(path: readonly Vec2[], cum: readonly number[], s: number, lateral: number): { x: number; z: number; yaw: number } {
-  const i = legAt(cum, s);
+  const i = segmentAt(cum, s);
   return sideSpot(path[i], path[i + 1], s - cum[i], lateral);
-}
-
-/** Distance from a point to a polyline (m). */
-export function distToPath(path: readonly Vec2[], x: number, z: number): number {
-  let best = Infinity;
-  for (let i = 0; i + 1 < path.length; i++) best = Math.min(best, distToSegment(x, z, path[i].x, path[i].z, path[i + 1].x, path[i + 1].z));
-  return best;
 }
 
 /** A chain of shortcut edges between two junctions: its edges and nodes in walking order, its points and length (m). */
@@ -95,7 +82,7 @@ export interface ShortcutChain {
  * nodes (gi -1, two shortcut edges) to the junction at the far end. A plain
  * back alley is a chain of one edge.
  */
-export function shortcutChain(g: RoadGraph, eid: number, from: number): ShortcutChain {
+function shortcutChain(g: RoadGraph, eid: number, from: number): ShortcutChain {
   const edges = [eid];
   const nodes = [from];
   let e = g.edges[eid];

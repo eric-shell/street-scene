@@ -25,7 +25,7 @@ import type { DistrictPropKind, FurnitureKind, Prop } from '../../city/props';
 import { FURNITURE_KINDS } from '../../city/props';
 import { GeoBuilder } from '../geoBuilder';
 import { FOG_DENSITY } from '../lighting';
-import { fadeSubPixel } from './lightFx';
+import { fadeSubPixel } from '../materialFx';
 import { D_BOX, D_CYL, D_GLASS, D_GLOW, Debris, DebrisType } from './debris';
 import { FURNITURE_PARTS, PropPartsDef, shatterFurniture } from './streetFurniture';
 import { buildHydrantSpray } from './hydrantSpray';

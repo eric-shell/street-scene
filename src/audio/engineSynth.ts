@@ -28,6 +28,10 @@
  */
 import type { EngineLayout, EngineSpec, EngineVoiceSpec } from '../shared/carSpec';
 import { ENGINE_LAYOUTS } from '../shared/carSpec';
+import { Biquad, kWeighting, powerSpectrum } from './dsp';
+
+// The chain model's filters, which the tests also build.
+export { Biquad, kWeighting };
 
 /** Speed of sound for exhaust path delays (m/s); engine-sim's figure, hot gas would be faster. */
 const SOUND = 343;
@@ -109,6 +113,19 @@ export interface SynthParams {
   nitro: number;
 }
 
+/** The parameters as the worklet declares them (k-rate AudioParams the voice ramps) and the voice looks them up. */
+export const SYNTH_PARAMS = [
+  { name: 'rpm', defaultValue: 900, minValue: 0, maxValue: 20000 },
+  { name: 'redline', defaultValue: 7000, minValue: 1000, maxValue: 20000 },
+  { name: 'load', defaultValue: 0, minValue: 0, maxValue: 1 },
+  { name: 'cut', defaultValue: 0, minValue: 0, maxValue: 1 },
+  { name: 'limiter', defaultValue: 0, minValue: 0, maxValue: 1 },
+  { name: 'nitro', defaultValue: 0, minValue: 0, maxValue: 1 },
+] as const satisfies readonly { name: keyof SynthParams; defaultValue: number; minValue: number; maxValue: number }[];
+
+/** What the voice posts to the worklet: 'stop' ends processing so the node can be collected, a pop fires an overrun bang or crackle (EngineSynth.pop). */
+export type EngineMessage = 'stop' | { pop: { at: number; pipe: number; gain: number; size: number } };
+
 // ---------------------------------------------------------------------------
 // Programs: from a car's engine spec to the numbers above
 // ---------------------------------------------------------------------------
@@ -117,6 +134,9 @@ export interface SynthParams {
 type Firing = [number, number];
 
 const inline = (order: number[], split = Infinity): Firing[] => order.map((c) => (c <= split ? [0, c - 1] : [1, c - split - 1]));
+
+/** 60° V12 1-7-5-11-3-9-6-12-2-8-4-10: every bank is an inline six. */
+const V12: Firing[] = [[0, 0], [1, 0], [0, 4], [1, 4], [0, 2], [1, 2], [0, 5], [1, 5], [0, 1], [1, 1], [0, 3], [1, 3]];
 
 /**
  * Firing schedules by layout, cylinders numbered the way the makers do.
@@ -142,9 +162,8 @@ const SCHEDULE: Record<Exclude<EngineLayout, 'V8'> | 'V8cross' | 'V8flat', Firin
   V8flat: [[0, 0], [1, 0], [0, 2], [1, 2], [0, 3], [1, 3], [0, 1], [1, 1]],
   // 72° V10 1-10-9-4-3-6-5-8-7-2, cylinders 1-5 on one bank.
   V10: [[0, 0], [1, 4], [1, 3], [0, 3], [0, 2], [1, 0], [0, 4], [1, 2], [1, 1], [0, 1]],
-  // 60° V12 1-7-5-11-3-9-6-12-2-8-4-10: every bank is an inline six.
-  V12: [[0, 0], [1, 0], [0, 4], [1, 4], [0, 2], [1, 2], [0, 5], [1, 5], [0, 1], [1, 1], [0, 3], [1, 3]],
-  W12: [[0, 0], [1, 0], [0, 4], [1, 4], [0, 2], [1, 2], [0, 5], [1, 5], [0, 1], [1, 1], [0, 3], [1, 3]],
+  V12,
+  W12: V12,
   W16: Array.from({ length: 16 }, (_, k) => [k % 4, Math.floor(k / 4)] as Firing),
   R2: [[0, 0], [0, 1]],
   R3: [[0, 0], [0, 1], [0, 2]],
@@ -265,7 +284,7 @@ export function buildProgram(spec: EngineSpec, opts: { seed?: number; lite?: boo
     trim: 1,
     seed,
   };
-  // Every program lands on one A-weighted loudness through a model of the voice's chain, whatever its spectrum,
+  // Every program lands on one K-weighted loudness through a model of the voice's chain, whatever its spectrum,
   // pipes or intake: the trim is measured, never hand set, so new layouts and silencers stay matched.
   program.trim = Math.max(0.25, Math.min(4, LOUDNESS_REF / estimateLoudness(program)));
   return program;
@@ -299,7 +318,7 @@ const TARGET = 0.1;
 const MAX_POPS = 8;
 
 /** One cycle of exhaust pressure as a wavetable over the cycle fraction u, mean removed. */
-export function pulseTable(shape: PulseShape, n = TABLE): Float32Array<ArrayBuffer> {
+function pulseTable(shape: PulseShape, n = TABLE): Float32Array<ArrayBuffer> {
   const t = new Float32Array(n + 1);
   let mean = 0;
   for (let i = 0; i < n; i++) {
@@ -615,7 +634,7 @@ export class EngineSynth {
 export const ENGINE_PROCESSOR = 'street-scene-engine';
 
 // ---------------------------------------------------------------------------
-// Loudness: every program is trimmed to one A-weighted loudness through a model of the voice's chain
+// Loudness: every program is trimmed to one K-weighted loudness through a model of the voice's chain
 // ---------------------------------------------------------------------------
 
 /**
@@ -626,138 +645,29 @@ export const CHAIN = {
   presence: { harmonic: 6, min: 550, max: 2400, q: 0.8, gain: 6 },
   /** Roll off above this (Hz): the voice has nothing but grain up there. */
   top: 6500,
+  /**
+   * The roll-off node's Q. The loudness model runs a Butterworth 0.707 instead; every program's trim was measured
+   * with it, and matching the two would move each by about 0.05 dB for nothing heard.
+   */
+  topQ: 0.7,
   /** The valvetrain tick's band (Hz) and width: a tick, not a hiss. */
   bodyHz: 2200,
   bodyQ: 1.2,
 } as const;
 
-/** A direct form biquad (the cookbook formulas BiquadFilterNode uses), for the chain model and the tests. */
-export class Biquad {
-  private x1 = 0;
-  private x2 = 0;
-  private y1 = 0;
-  private y2 = 0;
-
-  private constructor(
-    private readonly b0: number,
-    private readonly b1: number,
-    private readonly b2: number,
-    private readonly a1: number,
-    private readonly a2: number,
-  ) {}
-
-  private static make(b0: number, b1: number, b2: number, a0: number, a1: number, a2: number): Biquad {
-    return new Biquad(b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0);
-  }
-
-  /** From normalized coefficients (a0 = 1). */
-  static coefficients(b0: number, b1: number, b2: number, a1: number, a2: number): Biquad {
-    return new Biquad(b0, b1, b2, a1, a2);
-  }
-
-  static peaking(sr: number, hz: number, q: number, dbGain: number): Biquad {
-    const A = 10 ** (dbGain / 40);
-    const w = (2 * Math.PI * hz) / sr;
-    const alpha = Math.sin(w) / (2 * q);
-    return Biquad.make(1 + alpha * A, -2 * Math.cos(w), 1 - alpha * A, 1 + alpha / A, -2 * Math.cos(w), 1 - alpha / A);
-  }
-
-  static lowpass(sr: number, hz: number, q: number): Biquad {
-    const w = (2 * Math.PI * hz) / sr;
-    const alpha = Math.sin(w) / (2 * q);
-    const c = Math.cos(w);
-    return Biquad.make((1 - c) / 2, 1 - c, (1 - c) / 2, 1 + alpha, -2 * c, 1 - alpha);
-  }
-
-  /** Constant 0 dB peak gain band pass. */
-  static bandpass(sr: number, hz: number, q: number): Biquad {
-    const w = (2 * Math.PI * hz) / sr;
-    const alpha = Math.sin(w) / (2 * q);
-    return Biquad.make(alpha, 0, -alpha, 1 + alpha, -2 * Math.cos(w), 1 - alpha);
-  }
-
-  /** |H| at `hz`. */
-  magnitude(sr: number, hz: number): number {
-    const w = (2 * Math.PI * hz) / sr;
-    const c1 = Math.cos(w);
-    const s1 = Math.sin(w);
-    const c2 = Math.cos(2 * w);
-    const s2 = Math.sin(2 * w);
-    const nr = this.b0 + this.b1 * c1 + this.b2 * c2;
-    const ni = -(this.b1 * s1 + this.b2 * s2);
-    const dr = 1 + this.a1 * c1 + this.a2 * c2;
-    const di = -(this.a1 * s1 + this.a2 * s2);
-    return Math.hypot(nr, ni) / Math.hypot(dr, di);
-  }
-
-  process(x: number): number {
-    const y = this.b0 * x + this.b1 * this.x1 + this.b2 * this.x2 - this.a1 * this.y1 - this.a2 * this.y2;
-    this.x2 = this.x1;
-    this.x1 = x;
-    this.y2 = this.y1;
-    this.y1 = y;
-    return y;
-  }
+/** The firing frequency (Hz) of a program at `rpm`: combustion events per second over every cylinder. */
+export function firingHz(program: EngineProgram, rpm: number): number {
+  return (rpm / 60) * (program.cylinders.length / program.revsPerCycle);
 }
 
-/**
- * K-weighting (ITU-R BS.1770, the LUFS pre-filter) at 48 kHz: a +4 dB high shelf above 1.5 kHz and a 38 Hz high
- * pass. Nearly flat through the bass an engine lives in, unlike A-weighting, which would call a V8 quiet and have
- * it trimmed up until its peaks fought the bus compressor.
- */
-export function kWeighting(): [Biquad, Biquad] {
-  return [Biquad.coefficients(1.53512485958697, -2.69169618940638, 1.19839281085285, -1.69065929318241, 0.73248077421585), Biquad.coefficients(1, -2, 1, -1.99004745483398, 0.99007225036621)];
-}
-
-/** In-place radix-2 FFT; lengths are powers of two. */
-function fft(re: Float64Array, im: Float64Array): void {
-  const n = re.length;
-  for (let i = 1, j = 0; i < n; i++) {
-    let bit = n >> 1;
-    for (; j & bit; bit >>= 1) j ^= bit;
-    j ^= bit;
-    if (i < j) {
-      [re[i], re[j]] = [re[j], re[i]];
-      [im[i], im[j]] = [im[j], im[i]];
-    }
-  }
-  for (let len = 2; len <= n; len <<= 1) {
-    const ang = (-2 * Math.PI) / len;
-    const wr = Math.cos(ang);
-    const wi = Math.sin(ang);
-    for (let i = 0; i < n; i += len) {
-      let cr = 1;
-      let ci = 0;
-      for (let k = 0; k < len / 2; k++) {
-        const a = i + k;
-        const b = a + len / 2;
-        const tr = re[b] * cr - im[b] * ci;
-        const ti = re[b] * ci + im[b] * cr;
-        re[b] = re[a] - tr;
-        im[b] = im[a] - ti;
-        re[a] += tr;
-        im[a] += ti;
-        const ncr = cr * wr - ci * wi;
-        ci = cr * wi + ci * wr;
-        cr = ncr;
-      }
-    }
-  }
-}
-
-/** One sided power spectrum |X_k|² of a real signal zero padded to `size`. */
-function powerSpectrum(x: ArrayLike<number>, from: number, size: number): Float64Array {
-  const re = new Float64Array(size);
-  const im = new Float64Array(size);
-  for (let i = from; i < x.length; i++) re[i - from] = x[i];
-  fft(re, im);
-  const out = new Float64Array(size / 2 + 1);
-  for (let k = 0; k <= size / 2; k++) out[k] = re[k] * re[k] + im[k] * im[k];
-  return out;
+/** The presence peak's centre (Hz) at a firing frequency: a harmonic of it, held inside the band small speakers reproduce. */
+export function presenceHz(firing: number): number {
+  const pr = CHAIN.presence;
+  return Math.max(pr.min, Math.min(pr.max, firing * pr.harmonic));
 }
 
 /** The loudness every program is trimmed to (K-weighted RMS of the modelled chain at 3500 rpm, full throttle). */
-export const LOUDNESS_REF = 0.107;
+const LOUDNESS_REF = 0.107;
 
 /**
  * K-weighted RMS of the voice at 3500 rpm, full throttle, through the main thread chain: both tips convolved with
@@ -765,7 +675,7 @@ export const LOUDNESS_REF = 0.107;
  * its band. Done in the frequency domain (the spectra of 0.12 s of each output times the responses), which is the
  * real convolution's loudness for about ten milliseconds. Deterministic from the program's seed, always at 48 kHz.
  */
-export function estimateLoudness(program: EngineProgram): number {
+function estimateLoudness(program: EngineProgram): number {
   const sr = 48000;
   const synth = new EngineSynth(program, sr);
   const n = Math.round(0.27 * sr);
@@ -780,9 +690,8 @@ export function estimateLoudness(program: EngineProgram): number {
   const m = n - skip;
   const ir = renderImpulse(program.ir, sr);
   const irPow = powerSpectrum(ir, 0, size);
-  const f = (3500 / 60) * (program.cylinders.length / program.revsPerCycle);
   const pr = CHAIN.presence;
-  const presence = Biquad.peaking(sr, Math.max(pr.min, Math.min(pr.max, f * pr.harmonic)), pr.q, pr.gain);
+  const presence = Biquad.peaking(sr, presenceHz(firingHz(program, 3500)), pr.q, pr.gain);
   const top = Biquad.lowpass(sr, CHAIN.top, 0.707);
   const intakeBp = Biquad.bandpass(sr, program.intake.hz, program.intake.q);
   const bodyBp = Biquad.bandpass(sr, CHAIN.bodyHz, CHAIN.bodyQ);

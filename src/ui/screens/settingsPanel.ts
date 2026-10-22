@@ -4,8 +4,8 @@
  * _settings.scss (the panel, its card on the menu's and pause rails) and
  * _setting-row.scss (rows, notes, the controls list).
  */
-import { h, segmented } from '../kit/dom';
-import { Code, Gamepad2, Heart, Keyboard, Monitor, Smartphone, Volume2, type IconNode, icon } from '../kit/icons';
+import { h, keyCaps, link, segmented, selectTab, tab } from '../kit/dom';
+import { Code, Gamepad2, Heart, Keyboard, Monitor, Smartphone, Volume2, type IconNode } from '../kit/icons';
 import type { Quality, Settings } from '../settings';
 import type { MusicPlayer } from '../../audio/musicPlayer';
 import { musicCredits } from '../panels/musicWidget';
@@ -96,7 +96,7 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
         // One device's bindings at a time: a key column and an action column read faster than a run-on line.
         const list = h('div', { class: 'controls-list' });
         const show = (device: keyof typeof CONTROLS) =>
-          list.replaceChildren(...CONTROLS[device].flatMap(([keys, action]) => [h('span', { class: 'controls-list__keys' }, ...keys.flatMap((k, i) => (i ? [' / ', h('kbd', {}, k)] : [h('kbd', {}, k)]))), h('span', {}, action)]));
+          list.replaceChildren(...CONTROLS[device].flatMap(([keys, action]) => [h('span', { class: 'controls-list__keys' }, ...keyCaps(keys, ' / ')), h('span', {}, action)]));
         show('keyboard');
         return [
           settingRow('Gamepad rumble', toggle('rumble'), 'Hits, landings, rough ground, nitrous'),
@@ -122,14 +122,10 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
     { id: 'credits', label: 'Credits', icon: Heart, rows: credits },
   ];
   const pane = h('div', { class: 'settings__pane', role: 'tabpanel' });
-  const tabs = pages.map((p) => h('button', { class: 'tabs__tab settings__tab', type: 'button', role: 'tab', onclick: () => open(p) }, icon(p.icon, { size: 15 }), h('span', {}, p.label)));
+  const tabs = pages.map((p) => tab(p.icon, h('span', {}, p.label), () => open(p), 'settings__tab'));
   const open = (p: SettingsPage) => {
     lastPage = p.id;
-    tabs.forEach((t, i) => {
-      const on = pages[i] === p;
-      t.classList.toggle('is-selected', on);
-      t.setAttribute('aria-selected', String(on));
-    });
+    selectTab(tabs, tabs[pages.indexOf(p)]);
     pane.replaceChildren(...p.rows().filter((r): r is HTMLElement => !!r));
     pane.setAttribute('aria-label', p.label);
   };
@@ -155,7 +151,7 @@ export function onOff(value: boolean, onChange: (v: boolean) => void): HTMLEleme
 }
 
 /** Bindings per device for the settings' Controls page: keys (alternatives) and what they do. */
-export const CONTROLS: Record<'keyboard' | 'gamepad' | 'touch', [string[], string][]> = {
+const CONTROLS: Record<'keyboard' | 'gamepad' | 'touch', [string[], string][]> = {
   keyboard: [
     [['W', '↑'], 'Throttle'],
     [['S', '↓'], 'Brake, reverse'],
@@ -203,7 +199,7 @@ function credits(): HTMLElement[] {
       h('p', {}, 'Car models by ', h('b', {}, 'IceMaan'), ' (icemaan.itch.io), released as CC0. Thank you for sharing them with the world!'),
       h('p', { class: 'muted' }, 'The Proto Compact and Proto Hatch, with their bumpers, skirts, spoilers and rims, are reworked by eshell from IceMaan\'s S64 and GC14 low poly cars; the Proto Coupe is eshell\'s own.'),
       ...trafficModels.credits.map((c) =>
-        h('p', {}, 'Traffic: ', h('a', { href: c.url, target: '_blank', rel: 'noopener' }, `"${c.title}"`), ' by ', h('a', { href: c.creatorUrl, target: '_blank', rel: 'noopener' }, h('b', {}, c.creator)), ', ', h('a', { href: c.licenseUrl, target: '_blank', rel: 'noopener' }, c.license), `. ${c.changes}.`),
+        h('p', {}, 'Traffic: ', link(c.url, `"${c.title}"`), ' by ', link(c.creatorUrl, h('b', {}, c.creator)), ', ', link(c.licenseUrl, c.license), `. ${c.changes}.`),
       ),
       h('p', {}, 'Icons: ', h('b', {}, 'Lucide'), ' (lucide.dev), ISC license.'),
       musicCredits(),

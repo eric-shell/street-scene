@@ -68,7 +68,7 @@ import { CITY } from '../city/config';
 import { CarState, createCar } from './car';
 import { CarTuning, DEFAULT_CAR_ID, TRAFFIC, getBaseTuning } from './tuning';
 import { collideCarWithWorld, collideCars } from './collision';
-import { DT, TICK_HZ } from './constants';
+import { CRASH_EVENT, DT, TICK_HZ } from './constants';
 import { Rng, deriveSeed } from './prng';
 import { DEG, TAU, abs, approach, atan2, cos, distToSegment, exp, segmentT, sin, smoothstep, sqrt, wrapAngle, yawOf } from './math';
 import type { RaceCar, RaceEvent, RaceState } from './race';
@@ -145,9 +145,6 @@ export const TRAFFIC_LAYOUT = {
   lookMin: 22,
   /** A rejoining car counts as a foreign body for the others until its offset is below this (m). */
   offsetSettled: 0.4,
-  /** Hit events: minimum impact speed (m/s) and minimum gap per traffic car (ticks). */
-  hitSpeed: 2,
-  hitGap: 15,
   /**
    * Timed gates: the nose stops this far short of the line (m); a driver goes
    * on when the gate stays open until it is this long (s) past the bridge
@@ -812,7 +809,7 @@ export function createTraffic(world: World, cars: readonly RaceCar[], seed: numb
   const focus = cars[0]?.state;
   for (let i = 0; i < count; i++) {
     const body = createCar(0, 0, 0, 0);
-    const c: TrafficCar = { id: i, kind: 0, mode: 'gone', path: -1, next: -1, after: -1, s: 0, v: 0, cruise: 0, hold: -1, wait: 0, still: 0, ox: 0, oz: 0, oyaw: 0, born: 0, hitTick: -L.hitGap, braking: false, body };
+    const c: TrafficCar = { id: i, kind: 0, mode: 'gone', path: -1, next: -1, after: -1, s: 0, v: 0, cruise: 0, hold: -1, wait: 0, still: 0, ox: 0, oz: 0, oyaw: 0, born: 0, hitTick: -CRASH_EVENT.gap, braking: false, body };
     t.cars.push(c);
     if (focus) trySpawn(t, world, c, cars, focus.x, focus.z, discreet ? L.spawnMin : 0, L.bubble * 0.9, L.startClear, 0, 60);
   }
@@ -1247,7 +1244,7 @@ function contact(t: TrafficState, r: RaceState, carIndex: number, a: CarState, t
     const rc = r.cars[carIndex];
     rc.state.impact = Math.max(rc.state.impact, imp);
   }
-  if (imp > L.hitSpeed && r.tick - c.hitTick >= L.hitGap) {
+  if (imp > CRASH_EVENT.speed && r.tick - c.hitTick >= CRASH_EVENT.gap) {
     c.hitTick = r.tick;
     if (src) src.hitTick = r.tick;
     const e: RaceEvent = { tick: r.tick, type: 'crash', car: carIndex, traffic: c.id, value: imp };

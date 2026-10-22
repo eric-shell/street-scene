@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { applyBuild, defaultBuild, stockPerformance, validateBuild, PerformanceBuild } from '../src/sim/build';
+import { applyBuild, stockPerformance, PerformanceBuild } from '../src/sim/build';
+import { defaultBuild, validateBuild } from '../src/shared/carBuild';
 import { getBaseTuning, PERFORMANCE_CATEGORIES } from '../src/sim/tuning';
 import { measureStats } from '../src/sim/stats';
 import { decodeShareCode, encodeShareCode } from '../src/garage/storage';

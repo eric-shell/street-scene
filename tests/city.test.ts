@@ -9,7 +9,7 @@ import { DEG, distToSegment, segmentT } from '../src/sim/math';
 import type { Vec2 } from '../src/sim/math';
 import { WALL_LOOKS } from '../src/city/districts/types';
 import { insideBuilding, BUILDING_SETBACK } from '../src/city/blocks';
-import { pointInPolygon, polygonCentroid } from '../src/city/districts/geom';
+import { distToPath, pointInPolygon, polygonCentroid } from '../src/city/districts/geom';
 import { riverCenter } from '../src/city/districts/river';
 import { LOST, createRace, stepRace } from '../src/sim/race';
 import { NEUTRAL_INPUT } from '../src/sim/input';
@@ -914,13 +914,6 @@ describe('race progress and resets', () => {
     expect(r.events.slice(events).some((e) => e.type === 'reset' && e.car === 0)).toBe(true);
   });
 });
-
-/** Distance from a point to a polyline (m). */
-function distToPath(path: readonly Vec2[], x: number, z: number): number {
-  let best = Infinity;
-  for (let i = 0; i + 1 < path.length; i++) best = Math.min(best, distToSegment(x, z, path[i].x, path[i].z, path[i + 1].x, path[i + 1].z));
-  return best;
-}
 
 /** Point at distance s along a polyline. */
 function pathSpot(path: readonly Vec2[], s: number): Vec2 {

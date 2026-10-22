@@ -1,0 +1,70 @@
+[
+ [
+  "^\\.(rail-col|rail__col)>:nth-child",
+  "^\\.(menu-step|rail__step)>:nth-child"
+ ],
+ [
+  "^\\.(rail-col\\.step-enter|is-entering\\.rail__col)>:not\\(",
+  "^\\.(course|splash|go\\.splash|is-playing\\.splash|pause\\.rail-screen|results\\.rail-screen|pause-screen|results-screen|menu\\.splash-arrive|is-arriving\\.menu|rail-screen|rail)\\b"
+ ],
+ [
+  "^\\.loading-bar i$",
+  "^\\.event-map-live>i$"
+ ],
+ [
+  "^\\.loading__bar-fill$",
+  "^\\.map-live__dot$"
+ ],
+ [
+  "^\\.(g-item|garage-tab|g-swatch|garage-item|garage-swatch)",
+  "^\\.(result-actions|results-screen__actions)"
+ ],
+ [
+  "^body(\\.[\\w-]+)?>\\.(mw|music-player)$",
+  ">(svg|button|input|select|i|span)(:[\\w-]+)?$|^(input|select|button)|^\\.[\\w-]+ (button|input|select|i|span)|^\\.(btn|tab|tabs__tab|segmented__option|event-go|event-card__go|seg)\\b.*(>svg|button)"
+ ],
+ [
+  "^\\.(hud-center|hud-hazard|hud__countdown|hazard-banner)",
+  "wipe-card|wipe__card"
+ ],
+ [
+  "^\\.btn--(primary|ghost)",
+  "^\\.full-map__tools \\.btn"
+ ],
+ [
+  "^\\.menu-screen",
+  "^\\.garage( |__body|\\b)"
+ ],
+ [
+  "^\\.garage__body \\.btn--primary",
+  "^\\.(full-map__tools|garage \\.screen-head|menu-screen)"
+ ],
+ [
+  "^\\.garage-item(:focus-visible|\\.is-selected)",
+  "^\\.garage-item--soon"
+ ],
+ [
+  "^\\.menu-screen \\.btn\\[disabled\\]",
+  "splash__shine"
+ ],
+ [
+  "^\\.btn--cta\\.btn--primary",
+  "^\\.results-screen__actions"
+ ],
+ [
+  "^\\.is-entering\\.rail__step>\\*",
+  "^\\.(course__|course-art__)"
+ ],
+ [
+  "^\\.settings__pane>\\*",
+  "^\\.(map-live__dot|course__|course-art__|results-table__row|toast)"
+ ],
+ [
+  "splash__letter|door__sign-text",
+  "rail__step>\\*|car-card\\.is-swapping"
+ ],
+ [
+  "garage__panel>:nth-child\\(1\\)$",
+  "garage__panel>:nth-child\\(2\\)$"
+ ]
+]

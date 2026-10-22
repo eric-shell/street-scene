@@ -11,7 +11,9 @@
  * values past 1 feed the bloom. Render only.
  */
 import * as THREE from 'three';
-import { canvasTexture, glowTexture, noise } from './showroomTextures';
+import { glowTexture, noise } from './showroomTextures';
+import { drawTexture } from '../render/textures/canvasKit';
+import { Disposer } from '../render/disposer';
 
 /** Saturated tube colors (the UI palette is pastel; gas in glass is not). */
 export const NEON = { orange: '#ff7a2e', pink: '#ff2f6d', cyan: '#2fe4ff' } as const;
@@ -224,22 +226,20 @@ function drawSign(g: CanvasRenderingContext2D, spec: NeonSpec, layer: 'base' | '
   }
 }
 
-type Disposable = { dispose(): void };
-
 export class NeonSign {
   readonly group = new THREE.Group();
   readonly light: THREE.PointLight;
   private readonly letterMat: THREE.MeshBasicMaterial | null = null;
-  private readonly disposables: Disposable[] = [];
+  private readonly owned = new Disposer();
   private readonly lightBase: number;
 
   constructor(readonly spec: NeonSpec) {
-    const track = <T extends Disposable>(x: T): T => (this.disposables.push(x), x);
+    const { track } = this.owned;
     const [W, H] = spec.canvas;
     const w = spec.width;
     const h = (w * H) / W;
     const layer = (which: 'base' | 'letter') => {
-      const t = track(canvasTexture(W, H, (g) => drawSign(g, spec, which)));
+      const t = track(drawTexture(W, H, (g) => drawSign(g, spec, which)));
       t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
       // Draw again once the display font is in (the first draw may use the fallback).
       void document.fonts
@@ -297,6 +297,6 @@ export class NeonSign {
   }
 
   dispose(): void {
-    for (const d of this.disposables) d.dispose();
+    this.owned.dispose();
   }
 }

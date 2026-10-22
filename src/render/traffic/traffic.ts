@@ -37,7 +37,7 @@ import { TRAFFIC } from '../../sim/tuning';
 import type { Quality } from '../../ui/settings';
 import modelsJson from '../../assets/trafficModels.json';
 import { kelvin, makeRadialGlow } from '../textures/textures';
-import { fadeSubPixel } from '../street/lightFx';
+import { fadeSubPixel } from '../materialFx';
 import { ROAD_Y } from '../street/cityMeshes';
 import { maskVehicleMesh, underVehicles } from '../vehicleMask';
 

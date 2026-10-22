@@ -101,7 +101,7 @@ const SWING_STRAIGHT = CFG.swingLead - 10;
 const PLATFORM_CLEAR = 10;
 
 /** A station on one street block under the deck (render reads it from the 'station' hint). */
-export interface StationPlan {
+interface StationPlan {
   /** Row interval (j, j + 1) of the block. */
   j: number;
   /** Platform center along the block's street (m from its south node) and the street edge under it. */
@@ -246,7 +246,7 @@ function alongChain(g: RoadGraph, ch: Chain, s: number): { x: number; z: number;
 }
 
 /** Deck outline polygon around a path (half width hw). */
-export function deckOutline(path: readonly Vec2[], hw: number): Vec2[] {
+function deckOutline(path: readonly Vec2[], hw: number): Vec2[] {
   const left: Vec2[] = [];
   const right: Vec2[] = [];
   path.forEach((p, j) => {
@@ -342,11 +342,6 @@ export function elRowIndex(area: Area, row: number): number {
   const i = area.params[`at${row}`];
   if (i === undefined) throw new Error(`the El has no anchor at row ${row}`);
   return i;
-}
-
-/** The point where the line crosses row `row`'s street line. */
-export function elRowPoint(area: Area, row: number): Vec2 {
-  return area.path[elRowIndex(area, row)];
 }
 
 /**

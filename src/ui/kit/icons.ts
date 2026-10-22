@@ -6,13 +6,11 @@
 import { createElement, type IconNode } from 'lucide';
 
 export {
-  ArrowBigRight,
   ArrowLeft,
   ChevronLeft,
   ChevronRight,
   ChevronsRight,
   Car,
-  CarFront,
   Check,
   Copy,
   Flag,
@@ -43,11 +41,8 @@ export {
   Route,
   Ghost,
   Wind,
-  Palette,
   SlidersHorizontal,
   CircleDot,
-  Shirt,
-  Sun,
   Eye,
   EyeOff,
   Camera,
@@ -59,15 +54,12 @@ export {
   Shuffle,
   FlipHorizontal2,
   Hash,
-  Award,
   Medal,
-  Clock,
   Navigation,
   TriangleAlert,
   Move,
   Box,
   Hammer,
-  ListOrdered,
   Calendar,
   ListMusic,
   Minimize2,
@@ -130,16 +122,6 @@ export function icon(node: IconNode, opts: IconOptions = {}): SVGElement {
     el.setAttribute('aria-label', opts.label);
   } else el.setAttribute('aria-hidden', 'true');
   return el;
-}
-
-/** Element with an icon followed by text, e.g. for buttons and tabs. */
-export function iconLabel(node: IconNode, text: string, size = 18): DocumentFragment {
-  const f = document.createDocumentFragment();
-  f.appendChild(icon(node, { size }));
-  const span = document.createElement('span');
-  span.textContent = text;
-  f.appendChild(span);
-  return f;
 }
 
 /**

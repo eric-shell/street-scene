@@ -16,7 +16,7 @@
  * river's own trench and bank walls are the collision there).
  */
 import { CITY } from './config';
-import { Chain, RoadGraph, RoadEdge, RoadNode, edgeAngleFrom, isBendNode, isRiverEdge, otherNode, sectorAngle } from './roadGraph';
+import { Chain, RoadGraph, RoadEdge, RoadNode, isBendNode, isRiverEdge, otherNode, sectorAngle } from './roadGraph';
 import { SpatialGrid } from './spatial';
 import { Terrain } from './terrain';
 import { Prop, edgeSides, generateProps, lightStations } from './props';
@@ -199,7 +199,7 @@ const norm = (a: Vec2): Vec2 => {
   return { x: a.x / l, z: a.z / l };
 };
 
-export function edgeDir(g: RoadGraph, e: RoadEdge, from: number): Vec2 {
+function edgeDir(g: RoadGraph, e: RoadEdge, from: number): Vec2 {
   const p = g.nodes[from];
   const q = g.nodes[otherNode(e, from)];
   return norm({ x: q.x - p.x, z: q.z - p.z });
@@ -1003,8 +1003,4 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
   }
 
   return { sectors, mouths, faces, walls, buildings, streetlights, props, bays, signs, edgeGrid };
-}
-
-export function edgeAngle(g: RoadGraph, e: RoadEdge): number {
-  return edgeAngleFrom(g, e, e.a);
 }

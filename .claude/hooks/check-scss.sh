@@ -10,7 +10,11 @@ else
 fi
 case "$file" in *.scss) ;; *) exit 0 ;; esac
 sass=node_modules/.bin/sass
-[ -x "$sass" ] || exit 0
+# A missing compiler is a broken install, not a pass: say so instead of skipping the check silently.
+if [ ! -x "$sass" ]; then
+  echo "Sass is not installed (node_modules/.bin/sass is missing, sass-embedded in package.json): run npm install. The stylesheet was not checked." >&2
+  exit 2
+fi
 
 if ! out=$("$sass" --no-source-map src/ui/styles/main.scss 2>&1 >/dev/null); then
   printf 'Sass error:\n%s\n' "$(printf '%s\n' "$out" | head -20)" >&2

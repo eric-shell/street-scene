@@ -25,7 +25,7 @@ import { Rng } from '../../sim/prng';
 import { GeoBuilder } from '../geoBuilder';
 import { orientedBox } from '../districts/kit';
 import { FacadeProbe, ProbeHit } from './wallProbe';
-import { fadeSubPixel } from '../street/lightFx';
+import { fadeSubPixel } from '../materialFx';
 import { AtlasCell, BLADE_SIGN_COLS, BLADE_SIGN_ROWS, BLADE_SIGN_TEXTS, GRAFFITI_ATLAS, GraffitiKind, NEON_COLORS, graffitiCell } from '../textures/textures';
 
 export interface WallDressingOptions {

@@ -13,9 +13,9 @@
  * crossing (sim/levelCrossing.ts collideTrains) while it is on the street.
  * Car vs car: equal-ish impulses. Fixed iteration order.
  */
-import { CarState } from './car';
+import { CarState, yawInertia } from './car';
 import { CarTuning } from './tuning';
-import { DT } from './constants';
+import { DT, LEVEL_GAP } from './constants';
 import { abs, cos, sign, sin, sqrt } from './math';
 import type { Contact, World } from '../city/world';
 import { RailState, collideRails, pushRailPiece, railStepAhead } from './rails';
@@ -29,21 +29,25 @@ export interface WorldHit {
 }
 
 const CIRCLES = 3;
-/** Two cars further apart than this in height (m) are on different levels (a bridge deck over the river channel) and never touch. */
-const LEVEL_GAP = 3;
 
-function circleOffsets(t: CarTuning): { u: number; r: number }[] {
-  const r = t.geometry.halfWidth * 0.95;
-  const span = Math.max(0, t.geometry.halfLength - r);
-  const out: { u: number; r: number }[] = [];
-  for (let i = 0; i < CIRCLES; i++) out.push({ u: -span + (2 * span * i) / (CIRCLES - 1), r });
-  return out;
+/** A car's collision circles: center along its length (m, + ahead) and radius (m). */
+interface Circle {
+  u: number;
+  r: number;
 }
+/** Each tuning's circles, built once and rebuilt only if its footprint changes (collision runs per car per tick). */
+const circleCache = new WeakMap<CarTuning, { halfWidth: number; halfLength: number; circles: readonly Circle[] }>();
 
-function yawInertia(t: CarTuning): number {
-  const L = t.geometry.halfLength * 2;
-  const W = t.geometry.halfWidth * 2;
-  return ((t.mass * (L * L + W * W)) / 12) * t.yawInertiaScale;
+function circleOffsets(t: CarTuning): readonly Circle[] {
+  const g = t.geometry;
+  const hit = circleCache.get(t);
+  if (hit && hit.halfWidth === g.halfWidth && hit.halfLength === g.halfLength) return hit.circles;
+  const r = g.halfWidth * 0.95;
+  const span = Math.max(0, g.halfLength - r);
+  const circles: Circle[] = [];
+  for (let i = 0; i < CIRCLES; i++) circles.push({ u: -span + (2 * span * i) / (CIRCLES - 1), r });
+  circleCache.set(t, { halfWidth: g.halfWidth, halfLength: g.halfLength, circles });
+  return circles;
 }
 
 const contacts: Contact[] = [];

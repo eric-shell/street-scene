@@ -133,16 +133,9 @@ export interface WarpTerm {
 }
 
 /** The seed's warp terms (phases from the 'warp' stream): what warpField sums, for anything that must follow the rows (the river channel). */
-export function warpTerms(seed: number): WarpTerm[] {
+function warpTerms(seed: number): WarpTerm[] {
   const rng = new Rng(deriveSeed(seed, 'warp'));
   return CITY.warp.map((t) => ({ amp: t.amp, k: TAU / t.wavelength, px: rng.range(0, TAU), pz: rng.range(0, TAU) }));
-}
-
-/** The warp's z displacement at x (m): every row of the grid moves by this much, the same for all rows. */
-export function warpZ(terms: readonly WarpTerm[], x: number): number {
-  let dz = 0;
-  for (const t of terms) dz += t.amp * sin(x * t.k + t.pz);
-  return dz;
 }
 
 export function warpField(seed: number): (x: number, z: number) => { x: number; z: number } {

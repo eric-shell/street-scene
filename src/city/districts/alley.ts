@@ -67,8 +67,9 @@ import { faceSides } from '../blocks';
 import { Rng } from '../../sim/prng';
 import type { PropKind } from '../props';
 import { type DistrictModule, emptyBuild } from './types';
-import { sideSpot, pathCum, legAt, corridor, gridIndex, BEND_CLEAR, unit } from './alleyPath';
+import { sideSpot, pathCum, corridor, gridIndex, BEND_CLEAR, unit } from './alleyPath';
 import { mouthReach, mouthPatches, cobblePatch, bendPatch, constructionSite, addJumpExit, funnelClutter, FUNNEL_MIX, addJump } from './alleyDressing';
+import { segmentAt } from './geom';
 
 export const alleyModule: DistrictModule = {
   kind: 'alley',
@@ -280,9 +281,9 @@ export const backAlleyModule: DistrictModule = {
     const hw = (P.width ?? CITY.width.backAlley) / 2 + CITY.sidewalkWidth.backAlley;
     // The kicker sits on one leg (jumpS is a position along the whole chain).
     if (P.jump) {
-      const i = legAt(cum, P.jumpS);
+      const i = segmentAt(cum, P.jumpS);
       const u = unit(path[i], path[i + 1]);
-      addJump(b, path[i], u.x, u.z, u.len, hw, P.jumpS - cum[i]);
+      addJump(b, path[i], u.x, u.z, hw, P.jumpS - cum[i]);
     }
     for (const eid of area.edges) b.surfaces.push(cobblePatch(ctx, eid, area.id));
     for (const nid of area.nodes) b.surfaces.push(...mouthPatches(ctx, nid, area.id));

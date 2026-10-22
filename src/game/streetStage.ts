@@ -20,15 +20,20 @@ import * as THREE from 'three';
 import type { World } from '../city/world';
 import { routeSample, type Route } from '../city/route';
 import { createNightScene, type GameRenderer, type NightScene } from '../render/scene';
-import { CarView, type CarPose } from '../render/car/carView';
+import { CarView, WHEEL_KEYS, type CarPose } from '../render/car/carView';
 import { ROAD_Y } from '../render/street/cityMeshes';
 import type { CarAssetLibrary } from '../render/car/carAssets';
-import type { CarBuild } from '../sim/build';
+import type { CarBuild } from '../shared/carBuild';
 import { TICK_HZ } from '../sim/constants';
+import { clamp } from '../sim/math';
+import { damp } from '../shared/anim';
 import type { Settings } from '../ui/settings';
-import { CRUISE, Cruise, type CruisePath, type PathSample } from './cruise';
+import type { CarMotion } from '../render/street/props';
+import { CRUISE, Cruise, newPathSample, type CruisePath } from './cruise';
+import { KeyLight } from './keyLight';
 
-const WHEELS = ['FL', 'FR', 'RL', 'RR'] as const;
+/** No racing cars knock the street's props over behind the menu. */
+const NO_CARS: readonly CarMotion[] = [];
 
 export class StreetStage {
   readonly night: NightScene;
@@ -46,13 +51,11 @@ export class StreetStage {
   private viewCar = '';
   private loading: Promise<void> = Promise.resolve();
   private loadToken = 0;
-  private readonly carLight = new THREE.PointLight(0xdfe6ff, 9, 9, 1.6);
+  private readonly carLight = new KeyLight();
   /** The scene is out on loan to a free roam session (lend). */
   private lent = false;
-  private readonly sample: PathSample = { x: 0, z: 0, tx: 0, tz: 1, yaw: 0, k: 0 };
+  private readonly sample = newPathSample();
   private readonly focus = new THREE.Vector3();
-  /** The car's heading as a unit vector (sin, cos of the yaw). */
-  private readonly fwd = { x: 0, z: 1 };
   private spin = 0;
   private accel = 0;
   /** Body lean (rad) and its rates: the springs the pitch and roll ride on. */
@@ -175,16 +178,18 @@ export class StreetStage {
     if (target > this.speed) this.speed = Math.min(target, this.speed + CRUISE.accel * dt);
     else this.speed = Math.max(target, this.speed - CRUISE.brake * dt);
     const a = (this.speed - before) / Math.max(dt, 1e-4);
-    this.accel += (a - this.accel) * (1 - Math.exp(-dt * 6));
+    this.accel += (a - this.accel) * damp(6, dt);
     this.s = this.path.wrap(this.s + this.speed * dt);
     this.place(dt);
     const p = this.pose;
-    // A soft key light rides above and behind the car, as in a race, so it reads clearly at night.
-    this.carLight.position.set(p.x - this.fwd.x * 1.5, p.y + 4.2, p.z - this.fwd.z * 1.5);
+    // The key light rides with the car, as in a race.
+    this.carLight.follow(p);
     this.night.lighting.update(opts.focus ?? this.focus.set(p.x, p.y, p.z));
     // The drawbridge on the stage clock, through sync: once a session has driven it, its own clock no longer does.
     this.night.drawbridge.sync(this.time * TICK_HZ, false);
     this.night.update(this.time);
+    // The street furniture's own clock: the traffic signals, any debris and spray still settling.
+    this.night.props.update(dt, this.time, undefined, NO_CARS);
   }
 
   /** Render the stage through `camera`. */
@@ -217,7 +222,7 @@ export class StreetStage {
       wb = Math.max(1, car.wheelbase);
       half = Math.max(0.4, Math.abs(car.wheels.FL[0]));
       for (let i = 0; i < 4; i++) {
-        const w = car.wheels[WHEELS[i]];
+        const w = car.wheels[WHEEL_KEYS[i]];
         h[i] = this.world.heightAt(c.x + w[0] * cos + w[2] * sin, c.z - w[0] * sin + w[2] * cos, this.level);
       }
     } else h.fill(this.world.heightAt(c.x, c.z, this.level));
@@ -229,8 +234,8 @@ export class StreetStage {
     const L = this.lean;
     if (dt > 0) {
       const w = 2 * Math.PI * CRUISE.bodyHz;
-      const pitchT = Math.max(-CRUISE.maxLean, Math.min(CRUISE.maxLean, -this.accel * CRUISE.pitchPerAccel));
-      const rollT = Math.max(-CRUISE.maxLean, Math.min(CRUISE.maxLean, this.speed * this.speed * c.k * CRUISE.rollPerAccel));
+      const pitchT = clamp(-this.accel * CRUISE.pitchPerAccel, -CRUISE.maxLean, CRUISE.maxLean);
+      const rollT = clamp(this.speed * this.speed * c.k * CRUISE.rollPerAccel, -CRUISE.maxLean, CRUISE.maxLean);
       L.pitchV += (w * w * (pitchT - L.pitch) - 2 * CRUISE.bodyDamping * w * L.pitchV) * dt;
       L.pitch += L.pitchV * dt;
       L.rollV += (w * w * (rollT - L.roll) - 2 * CRUISE.bodyDamping * w * L.rollV) * dt;
@@ -240,8 +245,6 @@ export class StreetStage {
     p.z = c.z;
     p.y = y;
     p.yaw = yaw;
-    this.fwd.x = sin;
-    this.fwd.z = cos;
     p.pitch = slopePitch + L.pitch + this.extraPitch;
     p.roll = slopeRoll + L.roll + this.extraRoll;
     p.steer = Math.max(-0.5, Math.min(0.5, Math.atan(wb * c.k)));
@@ -249,7 +252,7 @@ export class StreetStage {
     // what is left is the springs (squashed on the side the body leans to).
     if (car)
       for (let i = 0; i < 4; i++) {
-        const w = car.wheels[WHEELS[i]];
+        const w = car.wheels[WHEEL_KEYS[i]];
         p.comp[i] = h[i] - y - (w[0] * p.roll - w[2] * p.pitch);
       }
     this.spin = (this.spin + (this.speed / Math.max(0.2, car?.wheelRadius ?? 0.3)) * dt) % (Math.PI * 2);

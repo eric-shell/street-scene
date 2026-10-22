@@ -6,10 +6,11 @@
  */
 import { CITY, ROUTE } from './config';
 import { type RoadGraph, edgeBetween, isBendNode, isRiverEdge, otherNode } from './roadGraph';
-import { type EdgeMouths, type Sector, type Wall, buildEdgeGrid, computeMouths, computeSectors, corridorClearance, makeWall } from './blocks';
+import { type CityBlocks, type Wall, corridorClearance, makeWall } from './blocks';
 import { isChannelNode } from './districts/river';
 import { DEG, type Vec2, abs, atan2, clamp, cos, distToSegment, lineIntersectT, sign, sin, sqrt, wrapAngle } from '../sim/math';
 import type { Route } from './route';
+import { segmentAt } from './districts/geom';
 
 /** A corner rail sub segment: a 'rail' Wall that also knows which modular rail piece it belongs to. */
 export interface RailWall extends Wall {
@@ -18,17 +19,6 @@ export interface RailWall extends Wall {
   group: number;
   /** Global rail piece index, consecutive along each rail (pieces are sim bodies, see src/sim/rails.ts). */
   piece: number;
-}
-
-/** City wall segments around a node: its sector corners and the outer sidewalk lines of its edges. */
-function localCityWalls(g: RoadGraph, sectors: Sector[][], mouths: EdgeMouths[], node: number): [Vec2, Vec2][] {
-  const out: [Vec2, Vec2][] = [];
-  for (const s of sectors[node]) for (let i = 0; i + 1 < s.outer.length; i++) out.push([s.outer[i], s.outer[i + 1]]);
-  for (const eid of g.nodes[node].edges) {
-    const m = mouths[eid];
-    out.push([m.aP.outer, m.bP.outer], [m.aN.outer, m.bN.outer]);
-  }
-  return out;
 }
 
 /** A corner rail reaching toward a route shortcut's T junction stops this far before it (m). */
@@ -111,13 +101,12 @@ function segmentsCross(a: Vec2, b: Vec2, c: Vec2, d: Vec2): boolean {
  * walls (b of one segment == a of the next), all sharing `group`, with normals
  * toward the drivable side and `piece` numbered along the chain. The fillet is
  * widened until the rail keeps clear of every city wall around the corner
- * (pass the city's walls; without them the sidewalk lines are rebuilt), and
- * the rail eases around street furniture (`props`) it would otherwise touch.
+ * (district features included), and the rail eases around the street
+ * furniture it would otherwise touch. The city's blocks give the finished
+ * graph's mouths and edge grid, its walls and its props.
  */
-export function routeRails(g: RoadGraph, route: Route, props: readonly { x: number; z: number; radius: number; kind?: string }[] = [], cityWallList?: readonly Wall[]): RailWall[] {
-  const sectors = computeSectors(g);
-  const mouths = computeMouths(g, sectors);
-  const edgeGrid = buildEdgeGrid(g);
+export function routeRails(g: RoadGraph, route: Route, blocks: CityBlocks): RailWall[] {
+  const { mouths, edgeGrid, props, walls: cityWallList } = blocks;
   const gridScratch: number[] = [];
   const walls: RailWall[] = [];
   const n = route.nodes.length;
@@ -187,12 +176,10 @@ export function routeRails(g: RoadGraph, route: Route, props: readonly { x: numb
     const maxReach = Math.min(reachOf(lenIn, insideRun(g, route, i, -1, oin)), reachOf(lenOut, insideRun(g, route, i, 1, oout)));
     const rMax = Math.max(1, Math.min(maxReach - 1, ROUTE.railFilletReach) / tanHalf);
     let R = Math.min(rMax, outside.length ? (ROUTE.railCornerCut * c) / (1 - c) : Math.max(hIn, hOut) + 0.3);
-    // The city's real walls around the corner when given (district features included), else the sidewalk lines.
+    // The city's real walls around the corner (district features included).
     const cityWalls: [Vec2, Vec2][] = cityWallList
-      ? cityWallList
-          .filter((w) => Math.min(w.ax, w.bx) < P.x + 90 && Math.max(w.ax, w.bx) > P.x - 90 && Math.min(w.az, w.bz) < P.z + 90 && Math.max(w.az, w.bz) > P.z - 90)
-          .map((w) => [{ x: w.ax, z: w.az }, { x: w.bx, z: w.bz }])
-      : localCityWalls(g, sectors, mouths, id);
+      .filter((w) => Math.min(w.ax, w.bx) < P.x + 90 && Math.max(w.ax, w.bx) > P.x - 90 && Math.min(w.az, w.bz) < P.z + 90 && Math.max(w.az, w.bz) > P.z - 90)
+      .map((w) => [{ x: w.ax, z: w.az }, { x: w.bx, z: w.bz }]);
     const nearProps = props.filter((q) => abs(q.x - P.x) < 70 && abs(q.z - P.z) < 70);
     let best: { pts: Vec2[]; nrm: Vec2[]; score: number } | null = null;
     let grew = false;
@@ -410,13 +397,7 @@ export function routeRails(g: RoadGraph, route: Route, props: readonly { x: numb
     const head: number[] = [];
     for (let k = 1; k < pts.length; k++) head.push(atan2(pts[k].z - pts[k - 1].z, pts[k].x - pts[k - 1].x));
     const at = (s: number): { p: Vec2; k: number } => {
-      let lo = 0;
-      let hi = cum.length - 1;
-      while (hi - lo > 1) {
-        const mid = (lo + hi) >> 1;
-        if (cum[mid] <= s) lo = mid;
-        else hi = mid;
-      }
+      const lo = segmentAt(cum, s);
       const u = clamp((s - cum[lo]) / (cum[lo + 1] - cum[lo] || 1), 0, 1);
       return { p: { x: pts[lo].x + (pts[lo + 1].x - pts[lo].x) * u, z: pts[lo].z + (pts[lo + 1].z - pts[lo].z) * u }, k: lo };
     };

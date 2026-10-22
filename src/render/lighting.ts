@@ -24,6 +24,12 @@ export interface MoodLighting {
   moonLight: number;
 }
 
+/** A clear night's mood until the weather sets one, and where the moon light sits outside a lightning flash. */
+const DEFAULT_MOOD: MoodLighting = { hemi: 0x3a4a9a, hemiIntensity: 0.4, moonLight: 0.35 };
+const MOON_HOME = new THREE.Vector3(-200, 400, 120);
+/** How often the pool re-picks its nearest lamps (ms; eight frames at 60 fps). */
+const REPICK_MS = (8 * 1000) / 60;
+
 export class NightLighting {
   readonly group = new THREE.Group();
   private pool: THREE.PointLight[] = [];
@@ -32,22 +38,28 @@ export class NightLighting {
   private assigned: number[] = [];
   /** Distance to the nearest lamp outside the pool. */
   private cutoff = Infinity;
-  private frame = 0;
+  /** When the pool next re-picks its lamps (performance.now ms; 0 picks on the next update). */
+  private nextPick = 0;
+  /** Scratch for the re-pick: the nearest lamps' squared distances and indices, nearest first. */
+  private readonly bestD: number[] = [];
+  private readonly bestI: number[] = [];
+  private readonly want = new Set<number>();
+  private readonly free: number[] = [];
+  private readonly incoming: number[] = [];
   private static readonly INTENSITY = 140;
   private readonly hemi: THREE.HemisphereLight;
   private readonly moon: THREE.DirectionalLight;
-  /** The mood a lightning flash adds on top of, and where the moon light sits outside a flash. */
-  private mood: MoodLighting = { hemi: 0x3a4a9a, hemiIntensity: 0.4, moonLight: 0.35 };
-  private readonly moonHome = new THREE.Vector3(-200, 400, 120);
+  /** The mood a lightning flash adds on top of. */
+  private mood: MoodLighting = { ...DEFAULT_MOOD };
   private readonly flashSky = new THREE.Color(0xc4d0ff);
   private flashing = false;
 
   constructor() {
     this.group.name = 'lighting';
-    this.hemi = new THREE.HemisphereLight(0x3a4a9a, 0x0b0b14, 0.4);
+    this.hemi = new THREE.HemisphereLight(DEFAULT_MOOD.hemi, 0x0b0b14, DEFAULT_MOOD.hemiIntensity);
     this.group.add(this.hemi);
-    this.moon = new THREE.DirectionalLight(0x7f8cff, 0.35);
-    this.moon.position.set(-200, 400, 120);
+    this.moon = new THREE.DirectionalLight(0x7f8cff, DEFAULT_MOOD.moonLight);
+    this.moon.position.copy(MOON_HOME);
     this.group.add(this.moon);
   }
 
@@ -71,7 +83,7 @@ export class NightLighting {
       if (!this.flashing) return;
       this.flashing = false;
       this.setMood(this.mood);
-      this.moon.position.copy(this.moonHome);
+      this.moon.position.copy(MOON_HOME);
       return;
     }
     this.flashing = true;
@@ -83,7 +95,7 @@ export class NightLighting {
 
   setLamps(lamps: THREE.Vector3[]): void {
     this.lamps = lamps;
-    this.frame = 0;
+    this.nextPick = 0;
     this.assigned = this.pool.map(() => -1);
   }
 
@@ -104,7 +116,7 @@ export class NightLighting {
       this.group.add(l);
     }
     this.assigned = this.pool.map(() => -1);
-    this.frame = 0;
+    this.nextPick = 0;
   }
 
   update(focus: THREE.Vector3): void {
@@ -114,27 +126,40 @@ export class NightLighting {
       return;
     }
     const n = this.pool.length;
-    // Re-pick nearest lamps a few times per second; cheap linear scan.
-    if (this.frame++ % 8 === 0) {
-      const best: { d: number; i: number }[] = [];
+    // Re-pick nearest lamps a few times per second (on a clock, so every frame rate picks as often); a cheap
+    // linear scan keeping the n + 1 nearest in order (ties in lamp order).
+    const now = performance.now();
+    if (now >= this.nextPick) {
+      this.nextPick = now + REPICK_MS;
+      const { bestD, bestI, want, free, incoming } = this;
+      bestD.length = 0;
+      bestI.length = 0;
       for (let i = 0; i < this.lamps.length; i++) {
         const p = this.lamps[i];
         const d = (p.x - focus.x) ** 2 + (p.z - focus.z) ** 2;
-        if (best.length <= n || d < best[best.length - 1].d) {
-          best.push({ d, i });
-          best.sort((a, b) => a.d - b.d);
-          if (best.length > n + 1) best.pop();
+        if (bestD.length <= n || d < bestD[bestD.length - 1]) {
+          let at = bestD.length;
+          while (at > 0 && bestD[at - 1] > d) at--;
+          bestD.splice(at, 0, d);
+          bestI.splice(at, 0, i);
+          if (bestD.length > n + 1) {
+            bestD.pop();
+            bestI.pop();
+          }
         }
       }
-      this.cutoff = best.length > n ? Math.sqrt(best[n].d) : Infinity;
+      this.cutoff = bestD.length > n ? Math.sqrt(bestD[n]) : Infinity;
       // Keep lights on lamps that stay in the set; hand the rest the newcomers.
-      const want = new Set(best.slice(0, n).map((b) => b.i));
-      const free: number[] = [];
-      this.assigned.forEach((lamp, k) => {
+      want.clear();
+      for (let k = 0; k < Math.min(n, bestI.length); k++) want.add(bestI[k]);
+      free.length = 0;
+      for (let k = 0; k < this.assigned.length; k++) {
+        const lamp = this.assigned[k];
         if (want.has(lamp)) want.delete(lamp);
         else free.push(k);
-      });
-      const incoming = [...want];
+      }
+      incoming.length = 0;
+      for (const lamp of want) incoming.push(lamp);
       for (const k of free) {
         const lamp = incoming.pop() ?? -1;
         this.assigned[k] = lamp;

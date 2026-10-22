@@ -46,7 +46,7 @@ import { Band, STATION_NAMES, SUBWAY_SIGN, makeSteelAtlas, makeTieTexture, signB
 import { createTrains } from '../traffic/trains';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { col, cylinder } from './kit';
-import { washMaterial } from './structureFx';
+import { washMaterial } from '../materialFx';
 
 interface V3 {
   x: number;

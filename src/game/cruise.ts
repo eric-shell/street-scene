@@ -10,7 +10,7 @@
  */
 import type { World } from '../city/world';
 import { routeSample, type Route } from '../city/route';
-import { gatePhase, type GatePhase } from '../sim/gates';
+import { gatePhase, newGatePhase } from '../sim/gates';
 import { TICK_HZ } from '../sim/constants';
 import type { InputFrame } from '../sim/input';
 
@@ -65,6 +65,11 @@ export interface PathSample {
   tz: number;
   yaw: number;
   k: number;
+}
+
+/** A zeroed sample heading +z, for a caller's scratch `out`. */
+export function newPathSample(): PathSample {
+  return { x: 0, z: 0, tx: 0, tz: 1, yaw: 0, k: 0 };
 }
 
 /**
@@ -220,8 +225,8 @@ export class Cruise {
   readonly path: CruisePath;
   /** Where each timed gate crosses the path, approaching it: path distance and its cycle. */
   private readonly gates: { s: number; cycle: number }[] = [];
-  private readonly ahead: PathSample = { x: 0, z: 0, tx: 0, tz: 1, yaw: 0, k: 0 };
-  private readonly phase: GatePhase = { name: 'open', t: 0, len: 0, arm: 0, blocking: false, untilBlock: 0, untilClear: 0, cycleT: -1 };
+  private readonly ahead = newPathSample();
+  private readonly phase = newGatePhase();
 
   constructor(readonly world: World) {
     this.path = new CruisePath(world.route);

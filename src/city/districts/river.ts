@@ -56,7 +56,10 @@ import type { Terrain } from '../terrain';
 import type { PropKind } from '../props';
 import type { Area, AreaBuild, DistrictModule, HeightSample } from './types';
 import { emptyBuild } from './types';
-import { polyWalls, smooth01, solidWalls } from './geom';
+import { distToPath, polyWalls, smooth01, type Smooth, solidWalls } from './geom';
+
+/** Scratch for the terrain's smoothsteps (queried per wheel per substep, so nothing allocates). */
+const SMOOTH: Smooth = { v: 0, d: 0 };
 
 const CFG = CITY.districts.river;
 
@@ -375,9 +378,7 @@ export function bridgesOf(g: RoadGraph, area: Area): Bridge[] {
 
 /** Distance from a point to a bridge's deck polyline (m). */
 export function distToBridge(br: Bridge, x: number, z: number): number {
-  let d = Infinity;
-  for (let i = 0; i + 1 < br.pts.length; i++) d = Math.min(d, distToSegment(x, z, br.pts[i].x, br.pts[i].z, br.pts[i + 1].x, br.pts[i + 1].z));
-  return d;
+  return distToPath(br.pts, x, z);
 }
 
 /**
@@ -1007,7 +1008,7 @@ export const riverModule: DistrictModule = {
       let h = 0;
       let gl = 0;
       if (al < T) {
-        const st = smooth01(F, T, al);
+        const st = smooth01(F, T, al, SMOOTH);
         h = -D * (1 - st.v);
         gl = D * st.d * sg;
       }
@@ -1033,7 +1034,7 @@ export const riverModule: DistrictModule = {
           const d = distToBridge(br, x, z);
           if (d >= lim) continue;
           // Flat across the deck and half a meter past its parapets (the wheels of a car against one).
-          const m = smooth01(br.dk + 0.5, lim, d);
+          const m = smooth01(br.dk + 0.5, lim, d, SMOOTH);
           // Gradient of the distance to the nearest deck segment.
           let ddx = 0;
           let ddz = 0;
@@ -1435,7 +1436,7 @@ export function settleRiver(g: RoadGraph, areas: readonly Area[], builds: readon
     const bridges = bridgesOf(g, area);
     if (!bridges.length) continue;
     for (const w of builds[area.id].walls) {
-      if (w.look !== 'parapet' && w.look !== 'culvert' && w.look !== 'pier') continue;
+      if (!isDeckWall(w)) continue;
       const mx = (w.ax + w.bx) / 2;
       const mz = (w.az + w.bz) / 2;
       let br = bridges[0];
@@ -1477,10 +1478,5 @@ export function isChannelNode(g: RoadGraph, id: number): boolean {
   return g.nodes[id].edges.some((eid) => g.edges[eid].kind === 'channel');
 }
 
-/** True for a node touching the channel floor or a ramp (its sectors are open ground the river draws). */
-export function isRiverNode(g: RoadGraph, id: number): boolean {
-  return g.nodes[id].edges.some((eid) => isRiverEdge(g.edges[eid]));
-}
-
-/** Walls of a river area under a bridge: the deck's parapets and the abutments and piers beneath it. */
-export const isDeckWall = (w: Wall): boolean => w.look === 'parapet' || w.look === 'culvert' || w.look === 'pier';
+/** A wall of a bridge: the deck's parapets and the abutments and piers beneath it. */
+const isDeckWall = (w: Wall): boolean => w.look === 'parapet' || w.look === 'culvert' || w.look === 'pier';

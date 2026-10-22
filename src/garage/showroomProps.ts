@@ -12,8 +12,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { deckTexture, doorTexture, drawerTexture, glowTexture, lineTexture, pegboardTexture, posterTexture, stainTexture } from './showroomTextures';
 import { PALETTE } from '../ui/kit/palette';
+import type { Disposable } from '../render/disposer';
 
-type Disposable = { dispose(): void };
 type Vec = [number, number, number];
 
 /** Fluorescent tube glow, pushed past 1 so the bloom catches it, and the warm work lamps. */

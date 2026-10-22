@@ -10,8 +10,7 @@
 import type { RaceState } from '../sim/race';
 import type { DrawbridgeView } from '../render/street/drawbridge';
 import { HazardBanner } from '../ui/hud/hazardBanner';
-import { gateAhead, gatePhase } from '../sim/gates';
-import type { GatePhase } from '../sim/gates';
+import { gateAhead, gatePhase, newGatePhase } from '../sim/gates';
 import { leafAngle, onSpan } from '../city/drawbridge';
 import { TICK_HZ } from '../sim/constants';
 
@@ -20,7 +19,7 @@ const WARN = { range: 230, spanMargin: 1 } as const;
 
 export class HazardFx {
   private readonly banner: HazardBanner;
-  private readonly phase: GatePhase = { name: 'open', t: 0, len: 0, arm: 0, blocking: false, untilBlock: 0, untilClear: 0, cycleT: -1 };
+  private readonly phase = newGatePhase();
 
   constructor(
     private readonly view: DrawbridgeView,

@@ -64,9 +64,9 @@ import { circuitStart, routeRuns } from '../route';
 import type { Wall } from '../blocks';
 import type { Terrain } from '../terrain';
 import { createTerrain } from '../terrain';
-import { DEG, Vec2, atan2, cos, distToSegment, segmentT, sin, sqrt } from '../../sim/math';
+import { DEG, Vec2, atan2, cos, segmentT, sin, sqrt } from '../../sim/math';
 import { Rng } from '../../sim/prng';
-import { distToPolygonEdge, pointInPolygon, polygonArea, polygonBounds, solidWalls } from './geom';
+import { distToPath, distToPolygonEdge, pointInPolygon, polygonArea, polygonBounds, segmentAt, solidWalls } from './geom';
 import type { Area, AreaBuild, DistrictModule, HeightSample, PlanContext } from './types';
 import { emptyBuild } from './types';
 import type { CarveRoute } from './alleyShortcuts';
@@ -435,13 +435,6 @@ function convexOverlap(a: Vec2[], b: Vec2[]): boolean {
     }
   }
   return true;
-}
-
-/** Distance (m) from a point to a polyline. */
-function distToPath(path: Vec2[], x: number, z: number): number {
-  let d = Infinity;
-  for (let i = 0; i + 1 < path.length; i++) d = Math.min(d, distToSegment(x, z, path[i].x, path[i].z, path[i + 1].x, path[i + 1].z));
-  return d;
 }
 
 /**
@@ -972,14 +965,8 @@ export function carParkProgress(world: ProgressWorld, x: number, z: number): Rou
   let s = t.sIn + ((t.cum[q.i] + q.t * len) / t.cum[t.cum.length - 1]) * t.span;
   if (route.closed) s = ((s % route.length) + route.length) % route.length;
   else s = Math.min(s, route.length);
-  // Polyline segment holding s (binary search on cum): the hint the plain projection resumes from.
-  let lo = 0;
-  let hi = route.cum.length - 2;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1;
-    if (route.cum[mid] <= s) lo = mid;
-    else hi = mid - 1;
-  }
+  // Polyline segment holding s: the hint the plain projection resumes from.
+  const lo = segmentAt(route.cum, s);
   const px = a.x + (b.x - a.x) * q.t;
   const pz = a.z + (b.z - a.z) * q.t;
   return { s, lateral: (x - px) * tz - (z - pz) * tx, seg: lo, tx, tz };
@@ -1454,7 +1441,7 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
               for (const ar of blocked) {
                 if (ar.polygon.length >= 3 && pointInPolygon(p.x, p.z, ar.polygon)) return null;
                 if (ar.kind !== 'subway') continue;
-                for (let q = 0; q + 1 < ar.path.length; q++) if (distToSegment(p.x, p.z, ar.path[q].x, ar.path[q].z, ar.path[q + 1].x, ar.path[q + 1].z) < CITY.districts.subway.deckWidth / 2 + 3) return null;
+                if (distToPath(ar.path, p.x, p.z) < CITY.districts.subway.deckWidth / 2 + 3) return null;
               }
             }
           }

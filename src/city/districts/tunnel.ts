@@ -42,9 +42,12 @@ import type { Rng } from '../../sim/prng';
 import type { Area, DistrictModule, HeightSample, PlanContext } from './types';
 import { emptyBuild } from './types';
 import { HillShape, hillAt, hillOutline, plateauDistance } from './hills';
-import { smooth01 } from './geom';
+import { smooth01, type Smooth } from './geom';
 import { Frame, ON_ROUTE, SiteHazards, StreetRun, TRAFFIC_FLOOR, chordFrame, corridorGap, raceStreets, edgeFaces, junctionReach, routeTraffic, runPiece, siteClear, siteHazards, streetRun, toWorld, weightedOrder } from './structures';
 import { chains } from '../roadGraph';
+
+/** Scratch for the terrain's smoothsteps (queried per wheel per substep, so nothing allocates). */
+const SMOOTH: Smooth = { v: 0, d: 0 };
 
 const CFG = CITY.districts.tunnel;
 
@@ -101,7 +104,7 @@ export function ridgeAt(s: RidgeShape, x: number, z: number, out: HeightSample):
   hillAt(s, x, z, raw);
   if (raw.h === 0) return;
   const v = -(x - s.cx) * s.uz + (z - s.cz) * s.ux;
-  const m = smooth01(s.m0, s.m1, Math.abs(v));
+  const m = smooth01(s.m0, s.m1, Math.abs(v), SMOOTH);
   if (m.v === 0) return;
   out.h += raw.h * m.v;
   // d|v|/dx = sign(v) * -uz, d|v|/dz = sign(v) * ux.
@@ -132,7 +135,7 @@ function invSmooth(y: number): number {
 }
 
 /** Rectangle u0..u1 x v0..v1 in a frame, as a polygon. */
-export function frameRect(f: Frame, u0: number, u1: number, v0: number, v1: number): Vec2[] {
+function frameRect(f: Frame, u0: number, u1: number, v0: number, v1: number): Vec2[] {
   return [toWorld(f, u0, v0), toWorld(f, u1, v0), toWorld(f, u1, v1), toWorld(f, u0, v1)];
 }
 

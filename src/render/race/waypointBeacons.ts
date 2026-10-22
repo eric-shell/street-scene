@@ -10,6 +10,8 @@
  */
 import * as THREE from 'three';
 import type { World } from '../../city/world';
+import { Disposer } from '../disposer';
+import { canvas } from '../textures/canvasKit';
 
 export const BEACON = {
   /** Column height (m) and its radius at the foot and the top (m). */
@@ -32,7 +34,7 @@ export class WaypointBeacons {
   private readonly columns: THREE.InstancedMesh;
   private readonly rings: THREE.InstancedMesh;
   private readonly count: number;
-  private readonly disposables: { dispose(): void }[] = [];
+  private readonly owned = new Disposer();
   private shownNext = -1;
   private readonly base = new THREE.Color(BEACON.color);
   private readonly tmp = new THREE.Color();
@@ -41,18 +43,15 @@ export class WaypointBeacons {
     const targets = (world.route.waypoints ?? []).slice(0, -1);
     this.count = targets.length;
     this.group.name = 'waypointBeacons';
-    const track = <T extends { dispose(): void }>(x: T): T => {
-      this.disposables.push(x);
-      return x;
-    };
+    const { track } = this.owned;
     // The column fades out upward (and in just above the street), so it reads as light, not a tube.
     const fade = track(fadeTexture());
     const column = track(new THREE.CylinderGeometry(BEACON.topRadius, BEACON.footRadius, BEACON.height, 18, 1, true).translate(0, BEACON.height / 2, 0));
     const ring = track(new THREE.RingGeometry(1 - BEACON.ringWidth / 12, 1, 56).rotateX(-Math.PI / 2));
     const glow = (map?: THREE.Texture) =>
       track(new THREE.MeshBasicMaterial({ map, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, fog: false }));
-    this.columns = new THREE.InstancedMesh(column, glow(fade), Math.max(1, this.count));
-    this.rings = new THREE.InstancedMesh(ring, glow(), Math.max(1, this.count));
+    this.columns = track(new THREE.InstancedMesh(column, glow(fade), Math.max(1, this.count)));
+    this.rings = track(new THREE.InstancedMesh(ring, glow(), Math.max(1, this.count)));
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     targets.forEach((t, i) => {
@@ -89,18 +88,13 @@ export class WaypointBeacons {
 
   dispose(): void {
     this.group.removeFromParent();
-    this.columns.dispose();
-    this.rings.dispose();
-    for (const d of this.disposables) d.dispose();
+    this.owned.dispose();
   }
 }
 
 /** A vertical alpha ramp for the columns (v = 0 at the foot): in over the first meters, out toward the top. */
 function fadeTexture(): THREE.CanvasTexture {
-  const c = document.createElement('canvas');
-  c.width = 1;
-  c.height = 128;
-  const g = c.getContext('2d')!;
+  const [c, g] = canvas(1, 128);
   const grad = g.createLinearGradient(0, 128, 0, 0);
   grad.addColorStop(0, 'rgba(255,255,255,0)');
   grad.addColorStop(0.04, 'rgba(255,255,255,0.55)');

@@ -46,9 +46,9 @@ import { Vec2, distToSegment, segmentT, sqrt } from '../../sim/math';
 import { createTerrain } from '../terrain';
 import type { Terrain } from '../terrain';
 import { RAIL, buildRailCurve } from '../railCurve';
-import type { Area, AreaBuild, DistrictModule, HeightSample, PlanContext } from './types';
+import type { Area, DistrictModule, HeightSample, PlanContext } from './types';
 import { emptyBuild } from './types';
-import { pointInPolygon, smooth01 } from './geom';
+import { pointInPolygon, smooth01v } from './geom';
 import { riverCenter } from './river';
 import { applyElDetour, elColumnAt, elDetourPath, elStreetEdges, gridNode } from './subway';
 
@@ -58,7 +58,7 @@ const RAIL_SINK = 0.14;
 const SUB = CITY.districts.subway;
 
 /** A street crossing the face: its centerline (through the face point R, unit direction D toward the high side) and corridor half width. */
-export interface BluffRamp {
+interface BluffRamp {
   x: number;
   z: number;
   dx: number;
@@ -71,7 +71,7 @@ export interface BluffRamp {
 }
 
 /** A dip of a street under the El (center on the street, unit direction along it). */
-export interface BluffSag {
+interface BluffSag {
   x: number;
   z: number;
   dx: number;
@@ -170,15 +170,9 @@ function step(t: number, a: number): void {
   }
 }
 
-/** Ramp step as a value pair (tests, tools). */
-export function rampStep(t: number, a: number): { f: number; d: number } {
-  step(t, a);
-  return { f: SV, d: SD };
-}
-
 /** The envelope along the face at u: 1 across the core, easing to 0 over `we` beyond it. */
 export function envelope(s: BluffShape, u: number): number {
-  return smooth01(s.uA - s.we, s.uA, u).v * (1 - smooth01(s.uB, s.uB + s.we, u).v);
+  return smooth01v(s.uA - s.we, s.uA, u) * (1 - smooth01v(s.uB, s.uB + s.we, u));
 }
 
 /** Frame coordinates of a point. */
@@ -279,7 +273,7 @@ function localAt(s: BluffShape, base: Terrain, x: number, z: number, out: Height
 const TERRACE: HeightSample = { h: 0, gx: 0, gz: 0 };
 
 /** The bluff's whole modifier (terrace, crossing pad, sags) at (x, z), added into `out`. `base` is the seed's base terrain. */
-export function bluffAt(s: BluffShape, base: Terrain, x: number, z: number, out: HeightSample): void {
+function bluffAt(s: BluffShape, base: Terrain, x: number, z: number, out: HeightSample): void {
   TERRACE.h = TERRACE.gx = TERRACE.gz = 0;
   terraceAt(s, x, z, TERRACE);
   const th = TERRACE.h;
@@ -387,7 +381,6 @@ interface Placement {
   rowB: Vec2;
   crestEdge: number;
   rows: { leg0: number; low: number; crest: number; dip: number; leg1: number };
-  faces: number[];
   nodes: number[];
   edges: number[];
   poly: Vec2[];
@@ -812,7 +805,6 @@ function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | 
     // El's own), which keeps parks, the monument and back alleys out; the outline keeps route
     // shortcuts off the face and the low track; infill keeps off the exclusions. The gentle slopes
     // beyond stay plain city, like a hill's (the hills keep off the whole footprint).
-    const faces: number[] = [];
     let area = 0;
     const faceCuts = (f: { ring: Vec2[] }) => {
       for (let u = s0u; u <= s1u; u += 6) {
@@ -832,7 +824,6 @@ function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | 
         }
       }
       if (!mine) continue;
-      faces.push(f.id);
       area += f.area;
     }
     // Edges it reshapes: the ramps, the dipped streets and the crest street (their width and line must stay).
@@ -843,7 +834,7 @@ function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | 
     for (const id of crestChain.edges) edges.add(id);
     // Streets another district claimed first (the El's own, a bridge) stay theirs.
     const free = [...edges].filter((id) => !ctx.claims.edge.has(id)).sort((p, q) => p - q);
-    return { rowOffset, shape, moved, rowA: low.p, rowB: dip.p, crestEdge, rows, faces, nodes, edges: free, poly: outline(shape), area };
+    return { rowOffset, shape, moved, rowA: low.p, rowB: dip.p, crestEdge, rows, nodes, edges: free, poly: outline(shape), area };
   }
   return null;
 }
@@ -951,11 +942,3 @@ export function corridorHalf(e: RoadEdge): number {
   return e.width / 2 + e.sidewalk;
 }
 
-/** The rows of a placement read back from the area (crest row, high side direction). */
-export function bluffRows(area: Area): { low: number; crest: number; dip: number } {
-  const r = area.params.crest;
-  const o = area.params.dir;
-  return { low: r - o, crest: r, dip: r + o };
-}
-
-export type { AreaBuild };

@@ -12,7 +12,7 @@
  */
 import type { RaceState } from './race';
 import { DRAWBRIDGE, leafAngle, onSpan, spanCoords } from '../city/drawbridge';
-import { placeCar } from './car';
+import { relocateCar } from './reset';
 import { stepLevelCrossings } from './levelCrossing';
 import { clamp, cos, sin, yawOf } from './math';
 
@@ -33,11 +33,6 @@ export function stepHazards(r: RaceState): void {
     const dir = sin(c.yaw) * db.dx + cos(c.yaw) * db.dz >= 0 ? 1 : -1;
     const at = end * (db.gate + DRAWBRIDGE.towBack);
     const lat = clamp(w, -(db.road - 1.5), db.road - 1.5);
-    placeCar(c, db.cx + db.dx * at + db.nx * lat, db.cz + db.dz * at + db.nz * lat, yawOf(db.dx * dir, db.dz * dir), r.world);
-    rc.resetCooldown = 1;
-    rc.stuckTime = 0;
-    rc.wrongWayTime = 0;
-    if (rc.ai) rc.ai.idx = -1;
-    r.events.push({ tick: r.tick, type: 'reset', car: rc.index });
+    relocateCar(r, rc, db.cx + db.dx * at + db.nx * lat, db.cz + db.dz * at + db.nz * lat, yawOf(db.dx * dir, db.dz * dir), true);
   }
 }

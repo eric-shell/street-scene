@@ -16,15 +16,16 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { GameRenderer } from '../render/scene';
-import { CarPose, CarView } from '../render/car/carView';
+import { CarPose, CarView, WHEEL_KEYS } from '../render/car/carView';
 import { CarAssetLibrary } from '../render/car/carAssets';
 import { EngineVoice, audioHub } from '../audio/engineAudio';
 import { BlipScript, REV_LEVEL, RevModel, revVoice } from './revModel';
-import { Showroom } from './showroom';
+import { ROOM, Showroom } from './showroom';
 import { FollowOrbit } from '../game/streetCameras';
 import type { StreetStage } from '../game/streetStage';
 import type { Presentation } from './storage';
 import type { Quality } from '../ui/settings';
+import { smoothstep } from '../sim/math';
 
 /** Camera presets in car space (x left, y up, z forward; m for a 4.45 m car, scaled by length): position and target. */
 const CAMERAS: { name: string; pos: [number, number, number]; target: [number, number, number] }[] = [
@@ -35,12 +36,21 @@ const CAMERAS: { name: string; pos: [number, number, number]; target: [number, n
   { name: 'Front', pos: [0.6, 1.1, 5.4], target: [0, 0.6, 0] },
 ];
 
-const WHEEL_KEYS = ['FL', 'FR', 'RL', 'RR'] as const;
-/** The turntable's top, where the car stands in the showroom (m), and how fast it turns (rad/s). */
-const TABLE_TOP = 0.08;
+/** How fast the turntable turns (rad/s). */
 const SPIN = 0.22;
 /** The street view's auto tour: the next angle after this long without a touch (s). */
 const TOUR = 10;
+/** A camera preset is reached over this long (s). */
+const TWEEN = 1.1;
+/** In the showroom the engine falls silent this long after the last blip (s). */
+const QUIET = 3.5;
+/** The showroom is small and full of lights: the bloom is tamed to this share while it is on screen. */
+const ROOM_BLOOM = 0.42;
+/** The orbit camera's reach in each presentation: distance (m) and polar angle (rad) limits. */
+const ORBIT: Record<Presentation, Pick<OrbitControls, 'minDistance' | 'maxDistance' | 'minPolarAngle' | 'maxPolarAngle'>> = {
+  garage: { minDistance: 3.2, maxDistance: 8.4, minPolarAngle: 0.35, maxPolarAngle: 1.47 },
+  street: { minDistance: 2.2, maxDistance: 7, minPolarAngle: 0.45, maxPolarAngle: 1.5 },
+};
 /**
  * Lens: the vertical field of view (deg) on a landscape screen, widened on a
  * portrait one (a phone) so the car still fits across, up to `max`.
@@ -50,15 +60,17 @@ const LENS = { fov: 40, minAcross: 36, max: 66 } as const;
 export class GarageScene {
   readonly camera = new THREE.PerspectiveCamera(40, 1, 0.1, 2500);
   readonly controls: OrbitControls;
-  /** The car on the turntable (the street has its own, kept in step by setCar). */
+  /** The car on the turntable, or the one about to replace it while it loads (the street has its own, kept in step by setCar). */
   car: CarView | null = null;
+  /** The car standing on the turntable now; `car` differs while a new one loads. */
+  private mounted: CarView | null = null;
   spin = true;
   private time = 0;
   private readonly showroom: Showroom;
   private readonly follow = new FollowOrbit();
   private readonly raycaster = new THREE.Raycaster();
   private mode: Presentation = 'garage';
-  private readonly pose: CarPose = { x: 0, y: TABLE_TOP, z: 0, yaw: 0, pitch: 0, roll: 0, steer: 0.18, comp: [0, 0, 0, 0], spin: [0, 0, 0, 0], braking: false, nitro: false, speed: 0 };
+  private readonly pose: CarPose = { x: 0, y: ROOM.tableTop, z: 0, yaw: 0, pitch: 0, roll: 0, steer: 0.18, comp: [0, 0, 0, 0], spin: [0, 0, 0, 0], braking: false, nitro: false, speed: 0 };
   // Camera presets and the tween between them (in car space on the street, world space in the showroom).
   private camIndex = 0;
   private camTween: { from: THREE.Vector3; fromT: THREE.Vector3; to: THREE.Vector3; toT: THREE.Vector3; t: number; local: boolean } | null = null;
@@ -107,12 +119,7 @@ export class GarageScene {
   }
 
   private applyMode(): void {
-    const street = this.mode === 'street';
-    const c = this.controls;
-    c.minDistance = street ? 2.2 : 3.2;
-    c.maxDistance = street ? 7 : 8.4;
-    c.minPolarAngle = street ? 0.45 : 0.35;
-    c.maxPolarAngle = street ? 1.5 : 1.47;
+    Object.assign(this.controls, ORBIT[this.mode]);
     this.follow.reset();
   }
 
@@ -179,7 +186,9 @@ export class GarageScene {
 
   /**
    * Show a build: the turntable's car (swapped when the car changes, otherwise
-   * repainted and re-parted in place) and the street's.
+   * repainted and re-parted in place) and the street's. A new car takes the
+   * turntable once it has loaded, unless a newer one was asked for meanwhile
+   * (that one disposes itself); the car it replaces is disposed then.
    */
   async setCar(carId: string, visual: Parameters<CarView['load']>[0]): Promise<CarView> {
     void this.street.setBuild({ carId, visual });
@@ -188,16 +197,16 @@ export class GarageScene {
       await this.car.load(visual);
       return this.car;
     }
-    const old = this.car;
     const view = new CarView(carId, this.assets, { underglowLight: true, envMap: this.showroom.envMap });
     view.setHeadlightsEnabled(false);
     this.car = view;
     await view.load(visual);
     if (this.car !== view) {
       view.dispose();
-      return this.car!;
+      return this.car ?? view;
     }
-    old?.dispose();
+    this.mounted?.dispose();
+    this.mounted = view;
     this.showroom.mount(view);
     return view;
   }
@@ -266,7 +275,7 @@ export class GarageScene {
     // Garage: the engine falls silent a few seconds after the last blip.
     const busy = street || throttle > 0 || Math.abs(this.rev.rpm - this.rev.rest) > 40;
     this.quietFor = busy ? 0 : this.quietFor + dt;
-    if (this.quietFor > 3.5) {
+    if (this.quietFor > QUIET) {
       this.voice?.silence();
       return;
     }
@@ -307,8 +316,8 @@ export class GarageScene {
   private updateCamera(dt: number): void {
     const tw = this.camTween;
     if (tw) {
-      tw.t = Math.min(1, tw.t + dt / 1.1);
-      const e = tw.t * tw.t * (3 - 2 * tw.t);
+      tw.t = Math.min(1, tw.t + dt / TWEEN);
+      const e = smoothstep(0, 1, tw.t);
       this.camera.position.lerpVectors(tw.from, tw.to, e);
       this.controls.target.lerpVectors(tw.fromT, tw.toT, e);
       if (tw.local) {
@@ -367,10 +376,9 @@ export class GarageScene {
     // The orbit stays inside the room (it would otherwise rise through the ceiling looking down).
     this.showroom.contain(this.camera.position, this.controls.target);
     this.gr.post.setSpeedBlur(0);
-    // The showroom is small and full of lights: tame the bloom while we are here.
     const bloom = this.gr.post.bloom;
     const saved = bloom.strength;
-    bloom.strength = saved * 0.42;
+    bloom.strength = saved * ROOM_BLOOM;
     this.gr.render(this.showroom.scene, this.camera, dt);
     bloom.strength = saved;
   }
@@ -380,7 +388,10 @@ export class GarageScene {
     this.controls.dispose();
     this.voice?.dispose();
     this.voice = null;
-    this.car?.dispose();
+    // A car still loading disposes itself when it lands (it is no longer `car`).
+    this.car = null;
+    this.mounted?.dispose();
+    this.mounted = null;
     this.showroom.dispose();
   }
 }

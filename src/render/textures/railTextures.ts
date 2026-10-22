@@ -14,6 +14,7 @@
  * Band layouts are exported so geometry can address them by name.
  */
 import * as THREE from 'three';
+import { canvas, canvasTex } from './canvasKit';
 
 /** A band of an atlas: V range (bottom, top) and the world length one repeat of U covers (m). */
 export interface Band {
@@ -56,13 +57,6 @@ export function signBand(k: number): Band {
 
 export const SUBWAY_SIGN = SIGN_TEXTS.length - 1;
 
-function canvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
-  const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
-  return [c, c.getContext('2d')!];
-}
-
 /** Tiny repeatable noise so every scene draws the same textures. */
 function rand(seed: number): () => number {
   let s = seed >>> 0 || 1;
@@ -74,12 +68,11 @@ function rand(seed: number): () => number {
   };
 }
 
+/** A texture over a drawn canvas that repeats along the rail (u), and across it too when `wrapT`. */
 function finish(c: HTMLCanvasElement, color: boolean, wrapT = false): THREE.CanvasTexture {
-  const t = new THREE.CanvasTexture(c);
-  if (color) t.colorSpace = THREE.SRGBColorSpace;
+  const t = canvasTex(c, { srgb: color, repeat: false });
   t.wrapS = THREE.RepeatWrapping;
   if (wrapT) t.wrapT = THREE.RepeatWrapping;
-  t.anisotropy = 4;
   return t;
 }
 

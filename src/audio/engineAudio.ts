@@ -19,7 +19,7 @@
  * Render side only; reads interpolated car state.
  */
 import type { EngineSpec } from '../shared/carSpec';
-import { CHAIN, ENGINE_PROCESSOR, buildProgram, renderImpulse, type EngineProgram } from './engineSynth';
+import { CHAIN, ENGINE_PROCESSOR, SYNTH_PARAMS, buildProgram, firingHz, presenceHz, renderImpulse, type EngineMessage, type EngineProgram, type SynthParams } from './engineSynth';
 import workletUrl from './engineWorklet?worker&url';
 
 export interface EngineInput {
@@ -198,8 +198,7 @@ export function audioHub(): AudioHub | null {
  */
 const VOICE = { gain: 16 } as const;
 
-const PARAM_NAMES = ['rpm', 'redline', 'load', 'cut', 'limiter', 'nitro'] as const;
-type ParamName = (typeof PARAM_NAMES)[number];
+type ParamName = keyof SynthParams;
 
 /** Each voice gets its own noise seed so rivals never phase lock with the player. */
 let voiceCount = 0;
@@ -252,7 +251,7 @@ export class EngineVoice {
     const top = ctx.createBiquadFilter();
     top.type = 'lowpass';
     top.frequency.value = CHAIN.top;
-    top.Q.value = 0.7;
+    top.Q.value = CHAIN.topQ;
     this.presence.connect(top).connect(this.out);
     // Exhaust: the silencer and pipe column as a convolution with a rendered impulse response.
     this.exhaust = ctx.createConvolver();
@@ -314,7 +313,7 @@ export class EngineVoice {
       node.connect(this.intake, 1);
       node.connect(this.body, 2);
       this.node = node;
-      this.params = Object.fromEntries(PARAM_NAMES.map((n) => [n, node.parameters.get(n)!])) as Record<ParamName, AudioParam>;
+      this.params = Object.fromEntries(SYNTH_PARAMS.map((p) => [p.name, node.parameters.get(p.name)!])) as Record<ParamName, AudioParam>;
       if (this.last) this.update(this.last);
     } catch (err) {
       console.warn('Engine sound: could not start a voice', err);
@@ -329,7 +328,6 @@ export class EngineVoice {
     const rpm = Math.max(500, e.rpm);
     const load = Math.max(0, Math.min(1, e.throttle));
     const r = Math.min(1.05, rpm / e.redline);
-    const f = (rpm / 60) * (this.program.cylinders.length / this.program.revsPerCycle);
     // The sim holds rpm at the redline by cutting torque, a free revving garage engine dips under it between cuts; either way the pedal is down near the top.
     const limiter = rpm >= e.redline - 150 && Math.max(load, this.lastThrottle) > 0.5;
     const p = this.params;
@@ -341,8 +339,7 @@ export class EngineVoice {
       p.limiter.setValueAtTime(limiter ? 1 : 0, t);
       p.nitro.setValueAtTime(e.nitro ? 1 : 0, t);
     }
-    const pr = CHAIN.presence;
-    this.presence.frequency.setTargetAtTime(Math.max(pr.min, Math.min(pr.max, f * pr.harmonic)), t, tc);
+    this.presence.frequency.setTargetAtTime(presenceHz(firingHz(this.program, rpm)), t, tc);
     // Closed throttle is only a little quieter: the overrun is where the pops and the silencer's character are heard.
     const level = this.base * VOICE.gain * this.program.trim * e.proximity * (0.7 + 0.3 * load) * (0.7 + 0.3 * r) * (e.shifting ? 0.8 : 1);
     this.out.gain.setTargetAtTime(level, t, 0.05);
@@ -408,7 +405,7 @@ export class EngineVoice {
 
   private pop(delay: number, size: number, gain: number): void {
     const pipe = this.program.pipes > 1 && Math.random() < 0.5 ? 1 : 0;
-    this.node?.port.postMessage({ pop: { at: delay, pipe, gain, size } });
+    this.node?.port.postMessage({ pop: { at: delay, pipe, gain, size } } satisfies EngineMessage);
     this.onPop?.(pipe, size, delay);
   }
 
@@ -424,7 +421,7 @@ export class EngineVoice {
     this.turbo?.stop(t + 0.2);
     const node = this.node;
     setTimeout(() => {
-      node?.port.postMessage('stop');
+      node?.port.postMessage('stop' satisfies EngineMessage);
       node?.disconnect();
       this.pan.disconnect();
     }, 400);

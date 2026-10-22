@@ -95,11 +95,7 @@ function routeView(g: RoadGraph, r: CarveRoute): RouteView {
   const n = r.nodes.length;
   const m = r.closed ? n : n - 1;
   const edges: number[] = [];
-  const cum = [0];
-  for (let i = 0; i < m; i++) {
-    edges.push(edgeBetween(g, r.nodes[i], r.nodes[(i + 1) % n]));
-    cum.push(cum[i] + g.edges[edges[i]].length);
-  }
+  for (let i = 0; i < m; i++) edges.push(edgeBetween(g, r.nodes[i], r.nodes[(i + 1) % n]));
   const banned = new Set<number>();
   if (r.closed) {
     // buildRoute puts the start line in the middle of the longest street (route.ts circuitStart: a run

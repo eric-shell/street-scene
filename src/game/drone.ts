@@ -20,6 +20,9 @@ import { Help, MUSIC_KEYS, helpOpen } from '../ui/panels/help';
 import { ArrowDown, ArrowUp, Drone, Route, icon } from '../ui/kit/icons';
 import { MAP, MapCar, Minimap } from '../ui/hud/minimap';
 import { feetLabel, speedLabel } from '../ui/kit/units';
+import { bearingDeg, compassPoint } from '../ui/map/places';
+import { clamp, wrapAngle } from '../sim/math';
+import { damp } from '../shared/anim';
 
 export interface DroneOptions {
   /** Start pose (world position, yaw and pitch in rad); default behind and above the grid. */
@@ -41,10 +44,44 @@ export interface DroneOptions {
   drive?: (dt: number, focus: THREE.Vector3) => void;
 }
 
-const MAX_SPEED = 28;
-const BOOST = 3;
-const ACCEL = 4;
-const DAMP = 2.2;
+/** How the drone flies: speeds (m/s), rates (1/s), angles (rad), heights (m). */
+const DRONE = {
+  /** Free flight: top speed, Shift's multiple of it, the push toward it (per s, as a share of top speed) and the air's drag. */
+  maxSpeed: 28,
+  boost: 3,
+  accel: 4,
+  drag: 2.2,
+  /** The wheel scales the top speed by these steps, within this range. */
+  wheelUp: 1.1,
+  wheelDown: 0.9,
+  speedMul: [0.25, 4],
+  /** Looking: rad per px dragged, a gamepad stick's px per s at full tilt and its deadzone, and the pitch range. */
+  lookPerPx: 0.004,
+  padLook: 600,
+  deadzone: 0.15,
+  pitch: [-1.45, 1.2],
+  /** A touch drag this long (px) is the move stick at full tilt. */
+  touchReach: 60,
+  /** It banks this far per share of top speed moving sideways, at this rate. */
+  bank: 0.35,
+  bankRate: 4,
+  /** It keeps this far over the ground and under this height. */
+  clearance: 1.5,
+  ceiling: 400,
+  /** Hover bob: its rate (rad/s) and height. */
+  bobRate: 1.7,
+  bob: 0.06,
+  /** How fast the minimap's zoom follows the height. */
+  mapZoomRate: 3,
+} as const;
+
+/**
+ * Touring the route: its speed, how far ahead it looks, its height over the
+ * road with a slow sway, how far right of the line it flies, how fast it
+ * closes on its spot and turns to look ahead, the pitch it settles at, and
+ * how much it banks into the turn.
+ */
+const TOUR = { speed: 16, lookAhead: 60, height: 26, sway: 8, swayRate: 0.3, side: 8, follow: 1.5, turn: 1.2, pitch: -0.35, pitchRate: 1, bank: 0.4, bankRate: 2 } as const;
 
 /**
  * Minimap zoom (px per m) for a height above ground (m): street detail near the
@@ -83,6 +120,11 @@ export class DroneMode {
   private moveTouch: { id: number; x0: number; y0: number; x: number; y: number } | null = null;
   private lookTouch: { id: number; x: number; y: number } | null = null;
   private touchUp = 0;
+  /** Scratch for update(): nothing allocated per frame. */
+  private readonly target = new THREE.Vector3();
+  private readonly fwd = new THREE.Vector3();
+  private readonly right = new THREE.Vector3();
+  private readonly wish = new THREE.Vector3();
 
   constructor(
     private readonly gr: GameRenderer,
@@ -96,7 +138,7 @@ export class DroneMode {
     if (opts.start) {
       this.pos.set(opts.start.x, opts.start.y, opts.start.z);
       this.yaw = opts.start.yaw;
-      this.pitch = Math.max(-1.45, Math.min(1.2, opts.start.pitch));
+      this.pitch = clamp(opts.start.pitch, DRONE.pitch[0], DRONE.pitch[1]);
     } else {
       this.pos.set(g0.x - Math.sin(g0.yaw) * 30, world.heightAt(g0.x, g0.z) + 30, g0.z - Math.cos(g0.yaw) * 30);
       this.yaw = g0.yaw;
@@ -159,7 +201,7 @@ export class DroneMode {
     canvas.addEventListener(
       'wheel',
       (e) => {
-        this.speedMul = Math.max(0.25, Math.min(4, this.speedMul * (e.deltaY > 0 ? 0.9 : 1.1)));
+        this.speedMul = clamp(this.speedMul * (e.deltaY > 0 ? DRONE.wheelDown : DRONE.wheelUp), DRONE.speedMul[0], DRONE.speedMul[1]);
         e.preventDefault();
       },
       { passive: false, signal: this.abort.signal },
@@ -181,11 +223,12 @@ export class DroneMode {
       return b;
     };
     // The HUD card free roam shares (ui/hud/hudCard.ts), in the Explore row's cyan.
+    const title = opts.title ?? 'Explore';
     const exitLabel = opts.exitLabel ?? 'Exit';
     this.card = new HudCard({
       hue: 'cyan',
       icon: Drone,
-      title: opts.title ?? 'Explore',
+      title,
       status: 'Free flight',
       stats: ['Altitude', 'Speed', 'Heading'],
       actions: [this.tourBtn],
@@ -193,7 +236,7 @@ export class DroneMode {
       exitTitle: exitLabel,
     });
     this.help = new Help({
-      title: opts.title ?? 'Explore',
+      title,
       sections: () => [
         {
           title: 'Flying',
@@ -227,8 +270,8 @@ export class DroneMode {
   }
 
   private look(dx: number, dy: number): void {
-    this.yaw -= dx * 0.004;
-    this.pitch = Math.max(-1.45, Math.min(1.2, this.pitch - dy * 0.004));
+    this.yaw -= dx * DRONE.lookPerPx;
+    this.pitch = clamp(this.pitch - dy * DRONE.lookPerPx, DRONE.pitch[0], DRONE.pitch[1]);
   }
 
   private setTour(on: boolean): void {
@@ -246,24 +289,20 @@ export class DroneMode {
     const k = (c: string) => this.keys.has(c);
     if (this.tour) {
       // Glide along the route, looking ahead.
-      this.tourS += dt * 16;
+      this.tourS += dt * TOUR.speed;
       const p = routeSample(this.world.route, this.tourS);
-      const ahead = routeSample(this.world.route, this.tourS + 60);
-      const alt = this.world.heightAt(p.x, p.z) + 26 + Math.sin(this.time * 0.3) * 8;
-      const target = new THREE.Vector3(p.x - p.tz * 8, alt, p.z + p.tx * 8);
-      this.pos.lerp(target, 1 - Math.exp(-dt * 1.5));
-      const lookYaw = Math.atan2(ahead.x - this.pos.x, ahead.z - this.pos.z);
-      let d = lookYaw - this.yaw;
-      while (d > Math.PI) d -= Math.PI * 2;
-      while (d < -Math.PI) d += Math.PI * 2;
-      this.yaw += d * (1 - Math.exp(-dt * 1.2));
-      this.pitch += (-0.35 - this.pitch) * (1 - Math.exp(-dt));
-      this.roll += (-d * 0.4 - this.roll) * (1 - Math.exp(-dt * 2));
+      const ahead = routeSample(this.world.route, this.tourS + TOUR.lookAhead);
+      const alt = this.world.heightAt(p.x, p.z) + TOUR.height + Math.sin(this.time * TOUR.swayRate) * TOUR.sway;
+      this.pos.lerp(this.target.set(p.x - p.tz * TOUR.side, alt, p.z + p.tx * TOUR.side), damp(TOUR.follow, dt));
+      const d = wrapAngle(Math.atan2(ahead.x - this.pos.x, ahead.z - this.pos.z) - this.yaw);
+      this.yaw += d * damp(TOUR.turn, dt);
+      this.pitch += (TOUR.pitch - this.pitch) * damp(TOUR.pitchRate, dt);
+      this.roll += (-d * TOUR.bank - this.roll) * damp(TOUR.bankRate, dt);
       this.vel.set(0, 0, 0);
     } else {
-      const fwd = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
-      const right = new THREE.Vector3(-Math.cos(this.yaw), 0, Math.sin(this.yaw));
-      const wish = new THREE.Vector3();
+      const fwd = this.fwd.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+      const right = this.right.set(-Math.cos(this.yaw), 0, Math.sin(this.yaw));
+      const wish = this.wish.set(0, 0, 0);
       if (k('KeyW') || k('ArrowUp')) wish.add(fwd);
       if (k('KeyS') || k('ArrowDown')) wish.sub(fwd);
       if (k('KeyD') || k('ArrowRight')) wish.add(right);
@@ -272,49 +311,51 @@ export class DroneMode {
       if (k('ControlLeft') || k('ControlRight') || k('KeyQ') || k('KeyC')) wish.y -= 1;
       wish.y += this.touchUp;
       if (this.moveTouch) {
-        const mx = Math.max(-1, Math.min(1, (this.moveTouch.x - this.moveTouch.x0) / 60));
-        const my = Math.max(-1, Math.min(1, (this.moveTouch.y - this.moveTouch.y0) / 60));
+        const mx = clamp((this.moveTouch.x - this.moveTouch.x0) / DRONE.touchReach, -1, 1);
+        const my = clamp((this.moveTouch.y - this.moveTouch.y0) / DRONE.touchReach, -1, 1);
         wish.addScaledVector(right, mx).addScaledVector(fwd, -my);
       }
       const pads = typeof navigator.getGamepads === 'function' ? navigator.getGamepads() : [];
       for (const pad of pads) {
         if (!pad?.connected) continue;
-        const dz = (v: number) => (Math.abs(v) > 0.15 ? v : 0);
+        const dz = (v: number) => (Math.abs(v) > DRONE.deadzone ? v : 0);
         wish.addScaledVector(right, dz(pad.axes[0] ?? 0)).addScaledVector(fwd, -dz(pad.axes[1] ?? 0));
-        this.look(dz(pad.axes[2] ?? 0) * 600 * dt, dz(pad.axes[3] ?? 0) * 600 * dt);
+        this.look(dz(pad.axes[2] ?? 0) * DRONE.padLook * dt, dz(pad.axes[3] ?? 0) * DRONE.padLook * dt);
         wish.y += (pad.buttons[7]?.value ?? 0) - (pad.buttons[6]?.value ?? 0);
         break;
       }
-      const boost = k('ShiftLeft') || k('ShiftRight') ? BOOST : 1;
-      const max = MAX_SPEED * this.speedMul * boost;
+      const boost = k('ShiftLeft') || k('ShiftRight') ? DRONE.boost : 1;
+      const max = DRONE.maxSpeed * this.speedMul * boost;
       if (wish.lengthSq() > 1) wish.normalize();
-      this.vel.addScaledVector(wish, max * ACCEL * dt);
-      this.vel.multiplyScalar(Math.exp(-DAMP * dt));
+      this.vel.addScaledVector(wish, max * DRONE.accel * dt);
+      this.vel.multiplyScalar(Math.exp(-DRONE.drag * dt));
       if (this.vel.length() > max) this.vel.setLength(max);
       this.pos.addScaledVector(this.vel, dt);
       // Bank into turns and strafes like a real quad.
       const lateral = this.vel.dot(right) / Math.max(1, max);
-      this.roll += (-lateral * 0.35 - this.roll) * (1 - Math.exp(-dt * 4));
+      this.roll += (-lateral * DRONE.bank - this.roll) * damp(DRONE.bankRate, dt);
     }
     // Stay above ground.
-    const floor = this.world.heightAt(this.pos.x, this.pos.z) + 1.5;
+    const floor = this.world.heightAt(this.pos.x, this.pos.z) + DRONE.clearance;
     if (this.pos.y < floor) {
       this.pos.y = floor;
       if (this.vel.y < 0) this.vel.y = 0;
     }
-    this.pos.y = Math.min(this.pos.y, 400);
+    this.pos.y = Math.min(this.pos.y, DRONE.ceiling);
     // Gentle hover bob.
-    const bob = Math.sin(this.time * 1.7) * 0.06;
+    const bob = Math.sin(this.time * DRONE.bobRate) * DRONE.bob;
     this.camera.position.set(this.pos.x, this.pos.y + bob, this.pos.z);
     this.camera.rotation.set(this.pitch, this.yaw + Math.PI, 0, 'YXZ');
     this.camera.rotateZ(-this.roll);
 
     const alt = this.pos.y - this.world.heightAt(this.pos.x, this.pos.z);
     this.card.setStat(0, feetLabel(alt));
-    this.card.setStat(1, speedLabel(this.tour ? 16 : this.vel.length()));
-    const deg = ((((-this.yaw * 180) / Math.PI) % 360) + 360) % 360;
-    this.card.setStat(2, `${['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8]} ${Math.round(deg)}°`);
-    this.mapZoom += (mapScale(alt) - this.mapZoom) * (1 - Math.exp(-dt * 3));
+    this.card.setStat(1, speedLabel(this.tour ? TOUR.speed : this.vel.length()));
+    // The heading the drone looks along, on the maps' compass.
+    const hx = Math.sin(this.yaw);
+    const hz = Math.cos(this.yaw);
+    this.card.setStat(2, `${compassPoint(hx, hz)} ${Math.round(bearingDeg(hx, hz))}°`);
+    this.mapZoom += (mapScale(alt) - this.mapZoom) * damp(DRONE.mapZoomRate, dt);
     const fov = 2 * Math.atan(Math.tan((this.camera.fov * Math.PI) / 360) * this.gr.aspect);
     this.map.draw({ x: this.pos.x, z: this.pos.z, yaw: this.yaw, scale: this.mapZoom, marker: 'drone', fov }, this.cars?.() ?? []);
   }

@@ -7,17 +7,15 @@
  * A "now playing" banner with full credit appears whenever the track changes.
  * Styled by _music-player.scss and, for the library dialog, _music-library.scss.
  */
-import { MusicPlayer, MusicTrack, MUSIC_CATALOG } from '../../audio/musicPlayer';
-import { h, iconBtn } from '../kit/dom';
+import { MUSIC_CATALOG, type MusicPlayer, type MusicTrack } from '../../audio/musicPlayer';
+import { btn, h, iconBtn, isTyping, link } from '../kit/dom';
 import { ChevronLeft, Disc3, ListMusic, Minimize2, Music, Pause, Play, Shuffle, SkipBack, SkipForward, Volume2, VolumeX, X, icon } from '../kit/icons';
-import { formatTime } from '../kit/format';
+import { formatClock } from '../kit/format';
 
 export type MusicMode = 'full' | 'compact' | 'hidden';
 
-const link = (href: string, text: string, cls = '') => h('a', { href, target: '_blank', rel: 'noopener noreferrer', class: cls }, text);
-
 /** "Title" by Artist · Album · Source · License, all linked. */
-export function creditLine(t: MusicTrack): HTMLElement {
+function creditLine(t: MusicTrack): HTMLElement {
   return h(
     'span',
     { class: 'music-player__credit' },
@@ -109,11 +107,11 @@ export class MusicWidget {
     player.on('state', () => this.render());
     player.on('time', () => this.renderTime());
     window.addEventListener('keydown', (e) => {
-      const tgt = e.target as HTMLElement | null;
-      if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.tagName === 'SELECT')) return;
-      if (e.code === 'KeyM' && !e.repeat) player.setMuted(!player.muted);
-      else if (e.code === 'BracketRight' && !e.repeat) player.next();
-      else if (e.code === 'BracketLeft' && !e.repeat) player.prev();
+      // Ctrl+M, Cmd+[ and the like belong to the browser and the OS.
+      if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || isTyping(e)) return;
+      if (e.code === 'KeyM') player.setMuted(!player.muted);
+      else if (e.code === 'BracketRight') player.next();
+      else if (e.code === 'BracketLeft') player.prev();
     });
     // Phones start minimized so the player never covers controls.
     if (window.matchMedia('(max-width: 720px), (max-height: 500px)').matches && !player.minimized) player.setMinimized(true);
@@ -184,7 +182,7 @@ export class MusicWidget {
     const p = this.player;
     const d = p.duration;
     this.fill.style.width = d > 0 ? `${(p.time / d) * 100}%` : '0';
-    this.timeEl.textContent = `${formatTime(p.time).slice(0, -3)} / ${formatTime(d).slice(0, -3)}`;
+    this.timeEl.textContent = `${formatClock(p.time)} / ${formatClock(d)}`;
   }
 
   /** Library: every artist, album and track with full credits. */
@@ -219,7 +217,7 @@ export class MusicWidget {
             { type: 'button', class: `music-library__track${p.current?.id === id ? ' is-current' : ''}` },
             h('span', { class: 'music-library__track-number' }, String(tr.number).padStart(2, '0')),
             h('span', { class: 'music-library__track-title' }, tr.title),
-            h('span', { class: 'music-library__track-time' }, formatTime(tr.duration).slice(0, -3)),
+            h('span', { class: 'music-library__track-time' }, formatClock(tr.duration)),
           );
           row.addEventListener('click', () => {
             p.playTrack(id);
@@ -243,7 +241,7 @@ export class MusicWidget {
         h('h2', { class: 'title dialog__title' }, icon(ListMusic, { size: 22 }), 'Music', h('span', { class: 'dialog__spacer' }), iconBtn(X, 'Close', close, '--small')),
         h('div', { class: 'muted', style: 'font-size:13px' }, 'All music is used under its Creative Commons license. Click a title to play it, or a link to visit its page.'),
         list,
-        h('div', { class: 'row' }, h('button', { type: 'button', class: 'btn btn--small', onclick: close }, icon(ChevronLeft, { size: 16 }), 'Back')),
+        h('div', { class: 'row' }, btn(ChevronLeft, 'Back', close, '--small')),
       ),
     );
     document.getElementById('ui')!.append(this.library);

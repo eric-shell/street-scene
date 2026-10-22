@@ -30,14 +30,14 @@
  * Whatever is left is a low 'boundary' wall drawn by render/districts/infill.ts.
  */
 import { CITY } from '../config';
-import { Vec2, sqrt } from '../../sim/math';
+import type { Vec2 } from '../../sim/math';
 import { Rng } from '../../sim/prng';
 import type { Wall } from '../blocks';
 import type { DistrictPropKind } from '../props';
 import { PROP_DEFS } from '../props';
 import type { Area, AreaBuild, DistrictModule } from './types';
 import { emptyBuild } from './types';
-import { PolygonIndex, circlePolygon, distToPolygonEdge, pointInPolygon, polyWalls, polygonBounds, rectPolygon, solidWalls } from './geom';
+import { PolygonIndex, circlePolygon, distToPolygonEdge, distToPolyline, pointInPolygon, polyWalls, polygonBounds, rectPolygon, solidWalls } from './geom';
 
 const CFG = CITY.districts.infill;
 
@@ -62,22 +62,6 @@ const MAX_PROPS = 36;
 const EDGE_CLEAR = 0.35;
 /** Pockets shallower than this (m) get a single row of greenery. */
 const SHALLOW = 4.6;
-
-function distToPolyline(x: number, z: number, pts: Vec2[]): number {
-  let best = Infinity;
-  for (let i = 0; i + 1 < pts.length; i++) {
-    const a = pts[i];
-    const b = pts[i + 1];
-    const dx = b.x - a.x;
-    const dz = b.z - a.z;
-    const l2 = dx * dx + dz * dz;
-    let t = l2 > 1e-12 ? ((x - a.x) * dx + (z - a.z) * dz) / l2 : 0;
-    t = t < 0 ? 0 : t > 1 ? 1 : t;
-    const d = sqrt((x - a.x - dx * t) ** 2 + (z - a.z - dz * t) ** 2);
-    if (d < best) best = d;
-  }
-  return best;
-}
 
 /** Local frame of a pocket for furnishing: origin, along axis u (length lu), depth axis w (length lw). Parallelograms included. */
 function frameParams(o: Vec2, u: Vec2, w: Vec2, lu: number, lw: number): Record<string, number> {

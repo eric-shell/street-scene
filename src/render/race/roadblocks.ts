@@ -11,12 +11,13 @@
  */
 import * as THREE from 'three';
 import type { World } from '../../city/world';
-import { CarAssetLibrary, MANIFEST, ManifestCar } from '../car/carAssets';
+import { CarAssetLibrary, MANIFEST, ManifestCar, partsFor } from '../car/carAssets';
 import { buildPlaceholderCar } from '../car/carView';
 import { resolveMaterialName } from '../car/carMaterials';
-import { kelvin } from '../textures/textures';
+import { kelvin } from '../color';
+import { Disposer } from '../disposer';
+import { canvas } from '../textures/canvasKit';
 import type { PartEntry } from '../../shared/parts';
-import { partsFor } from '../car/carAssets';
 import type { MeetPlan } from './meetPlan';
 import { maskVehicleMesh, underVehicles } from '../vehicleMask';
 
@@ -221,10 +222,7 @@ function bakeKit(car: ManifestCar, model: THREE.Object3D, rimColor: THREE.Color)
 
 /** Underglow: a soft oval pool of light, drawn flat on the ground under the car. */
 function glowTexture(): THREE.CanvasTexture {
-  const c = document.createElement('canvas');
-  c.width = 64;
-  c.height = 128;
-  const g = c.getContext('2d')!;
+  const [c, g] = canvas(64, 128);
   const grad = g.createRadialGradient(32, 64, 4, 32, 64, 64);
   grad.addColorStop(0, 'rgba(255,255,255,0.9)');
   grad.addColorStop(0.45, 'rgba(255,255,255,0.45)');
@@ -307,35 +305,32 @@ export function buildRoadblocks(world: World, plan: MeetPlan, hazardMaterial: TH
   const glowColArr = new Float32Array(glowCols);
 
   // ---------- Meshes (filled once the car models are loaded) ----------
-  const paintMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, metalness: 0.55, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 1.6 });
-  const darkMat = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.4, roughness: 0.5 });
-  const glassMat = new THREE.MeshStandardMaterial({ color: 0x0c1018, metalness: 0.1, roughness: 0.05, transparent: true, opacity: 0.85, envMapIntensity: 1.4 });
-  const lightMat = new THREE.MeshBasicMaterial({ vertexColors: true });
-  const glowTex = glowTexture();
-  const glowMat = new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  const res = new Disposer();
+  const { track } = res;
+  const paintMat = track(new THREE.MeshPhysicalMaterial({ color: 0xffffff, metalness: 0.55, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 1.6 }));
+  const darkMat = track(new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.4, roughness: 0.5 }));
+  const glassMat = track(new THREE.MeshStandardMaterial({ color: 0x0c1018, metalness: 0.1, roughness: 0.05, transparent: true, opacity: 0.85, envMapIntensity: 1.4 }));
+  const lightMat = track(new THREE.MeshBasicMaterial({ vertexColors: true }));
+  const glowMat = track(new THREE.MeshBasicMaterial({ map: track(glowTexture()), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
   underVehicles(glowMat);
   const partMats = [paintMat, darkMat, glassMat, lightMat];
-  const disposables: { dispose(): void }[] = [...partMats, glowTex, glowMat];
   const kitMeshes: (THREE.InstancedMesh | null)[][] = Array.from({ length: kitCount }, () => [null, null, null, null]);
-  const hazardGeo = new THREE.BoxGeometry(1, 1, 1);
-  const glowGeo = new THREE.PlaneGeometry(1, 1);
-  disposables.push(hazardGeo, glowGeo);
+  const hazardGeo = track(new THREE.BoxGeometry(1, 1, 1));
+  const glowGeo = track(new THREE.PlaneGeometry(1, 1));
   const hazardCount = hazardMats.length / 16;
-  const hazardMesh = new THREE.InstancedMesh(hazardGeo, hazardMaterial, Math.max(1, hazardCount));
+  const hazardMesh = track(new THREE.InstancedMesh(hazardGeo, hazardMaterial, Math.max(1, hazardCount)));
   hazardMesh.count = 0;
   hazardMesh.frustumCulled = false;
   hazardMesh.name = 'carMeetHazards';
   group.add(hazardMesh);
-  disposables.push(hazardMesh);
   const glowCount = glowMatArr.length / 16;
-  const glowMesh = new THREE.InstancedMesh(glowGeo, glowMat, Math.max(1, glowCount));
+  const glowMesh = track(new THREE.InstancedMesh(glowGeo, glowMat, Math.max(1, glowCount)));
   glowMesh.count = 0;
   glowMesh.frustumCulled = false;
   glowMesh.renderOrder = 2;
   glowMesh.name = 'carMeetUnderglow';
   if (glowCount) glowMesh.setColorAt(0, new THREE.Color(1, 1, 1));
   group.add(glowMesh);
-  disposables.push(glowMesh);
 
   const visible = new Uint8Array(zones.length);
   let dirty = true;
@@ -388,7 +383,8 @@ export function buildRoadblocks(world: World, plan: MeetPlan, hazardMaterial: TH
       if (disposed) return;
       kit.geos.forEach((geo, part) => {
         if (!geo) return;
-        const mesh = new THREE.InstancedMesh(geo, partMats[part], perKit[k]);
+        // The baked geometry is shared (cached per app): only the instances go.
+        const mesh = track(new THREE.InstancedMesh(geo, partMats[part], perKit[k]));
         mesh.count = 0;
         mesh.frustumCulled = false;
         mesh.name = `carMeet:${car.id}:${k % MEET_VARIANTS}:${part}`;
@@ -397,7 +393,6 @@ export function buildRoadblocks(world: World, plan: MeetPlan, hazardMaterial: TH
         if (part === PART_GLASS) mesh.renderOrder = 3;
         kitMeshes[k][part] = mesh;
         group.add(mesh);
-        disposables.push(mesh); // the baked geometry is shared (cached per app), only the instances go
       });
       dirty = true;
     });
@@ -427,7 +422,7 @@ export function buildRoadblocks(world: World, plan: MeetPlan, hazardMaterial: TH
     },
     dispose() {
       disposed = true;
-      for (const d of disposables) d.dispose();
+      res.dispose();
     },
   };
 }

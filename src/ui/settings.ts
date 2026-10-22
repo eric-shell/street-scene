@@ -1,9 +1,12 @@
 /** Player settings persisted in localStorage. */
-import type { RaceMode } from '../sim/race';
-import { MAX_OPPONENTS } from '../sim/race';
+import { clamp, clamp01 } from '../sim/math';
+import { MAX_OPPONENTS, type RaceMode } from '../sim/race';
+import { loadJson, saveJson } from '../shared/store';
 
 export type Quality = 'low' | 'medium' | 'high';
 export type Difficulty = 'easy' | 'medium' | 'hard';
+const QUALITIES: readonly Quality[] = ['low', 'medium', 'high'];
+const DIFFICULTIES: readonly Difficulty[] = ['easy', 'medium', 'hard'];
 /** What the menu's race step starts: a race mode, or free roam. */
 export type RaceType = RaceMode | 'roam';
 /** In the race step's grid order (two rows of three, read left to right); the number keys pick them in this order. */
@@ -43,7 +46,9 @@ export interface Settings {
   debugMode: boolean;
 }
 
-const KEY = 'nightrun.settings.v1';
+const KEY = 'settings.v1';
+/** The sound levels, each 0..1. */
+const VOLUMES = ['masterVolume', 'engineVolume', 'effectsVolume', 'ambienceVolume', 'interfaceVolume'] as const;
 
 export const DEFAULT_SETTINGS: Settings = {
   quality: 'medium',
@@ -67,43 +72,34 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 export function loadSettings(): Settings {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return defaultForDevice();
-    const parsed = JSON.parse(raw) as Partial<Settings>;
-    const s = { ...DEFAULT_SETTINGS, ...parsed };
-    if (!['low', 'medium', 'high'].includes(s.quality)) s.quality = 'medium';
-    // Players from before Auto existed made an explicit choice (or got the old default): keep it.
-    if (typeof parsed.autoQuality !== 'boolean') s.autoQuality = false;
-    if (!['easy', 'medium', 'hard'].includes(s.difficulty)) s.difficulty = 'medium';
-    s.opponents = Math.max(0, Math.min(MAX_OPPONENTS, Math.round(Number(s.opponents) || 0)));
-    if (!RACE_TYPES.includes(s.raceType)) s.raceType = 'circuit';
-    // Before the mixer one "engine volume" slider scaled every sound: it becomes the master, the engine itself stays full.
-    if (typeof parsed.masterVolume !== 'number' && typeof parsed.engineVolume === 'number') {
-      s.masterVolume = parsed.engineVolume;
-      s.engineVolume = DEFAULT_SETTINGS.engineVolume;
-    }
-    // Before debug mode each tuning panel had its own setting: either one on turns debug mode on.
-    const legacy = parsed as { debugTuningPanel?: boolean; debugCameraPanel?: boolean };
-    if (typeof parsed.debugMode !== 'boolean') s.debugMode = !!(legacy.debugTuningPanel || legacy.debugCameraPanel);
-    delete (s as Partial<typeof legacy>).debugTuningPanel;
-    delete (s as Partial<typeof legacy>).debugCameraPanel;
-    for (const k of ['masterVolume', 'engineVolume', 'effectsVolume', 'ambienceVolume', 'interfaceVolume'] as const) {
-      s[k] = Math.max(0, Math.min(1, Number(s[k])));
-      if (!Number.isFinite(s[k])) s[k] = DEFAULT_SETTINGS[k];
-    }
-    return s;
-  } catch {
-    return defaultForDevice();
+  const parsed = loadJson<Partial<Settings> | null>(KEY, null);
+  if (!parsed || typeof parsed !== 'object') return defaultForDevice();
+  const s = { ...DEFAULT_SETTINGS, ...parsed };
+  if (!QUALITIES.includes(s.quality)) s.quality = 'medium';
+  // Players from before Auto existed made an explicit choice (or got the old default): keep it.
+  if (typeof parsed.autoQuality !== 'boolean') s.autoQuality = false;
+  if (!DIFFICULTIES.includes(s.difficulty)) s.difficulty = 'medium';
+  s.opponents = clamp(Math.round(Number(s.opponents) || 0), 0, MAX_OPPONENTS);
+  if (!RACE_TYPES.includes(s.raceType)) s.raceType = 'circuit';
+  // Before the mixer one "engine volume" slider scaled every sound: it becomes the master, the engine itself stays full.
+  if (typeof parsed.masterVolume !== 'number' && typeof parsed.engineVolume === 'number') {
+    s.masterVolume = parsed.engineVolume;
+    s.engineVolume = DEFAULT_SETTINGS.engineVolume;
   }
+  // Before debug mode each tuning panel had its own setting: either one on turns debug mode on.
+  const legacy = parsed as { debugTuningPanel?: boolean; debugCameraPanel?: boolean };
+  if (typeof parsed.debugMode !== 'boolean') s.debugMode = !!(legacy.debugTuningPanel || legacy.debugCameraPanel);
+  delete (s as Partial<typeof legacy>).debugTuningPanel;
+  delete (s as Partial<typeof legacy>).debugCameraPanel;
+  for (const k of VOLUMES) {
+    s[k] = clamp01(Number(s[k]));
+    if (!Number.isFinite(s[k])) s[k] = DEFAULT_SETTINGS[k];
+  }
+  return s;
 }
 
 export function saveSettings(s: Settings): void {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(s));
-  } catch {
-    /* storage unavailable */
-  }
+  saveJson(KEY, s);
 }
 
 function defaultForDevice(): Settings {

@@ -38,7 +38,7 @@ import type { Contact } from '../city/world';
 import type { WallLook } from '../city/districts/types';
 import type { RaceCar, RaceState } from './race';
 import { TICK_HZ } from './constants';
-import { cos, segmentT, sin, sqrt } from './math';
+import { abs, cos, segmentT, sin, sqrt } from './math';
 
 /** A gate schedule in sim ticks. Pure data: the state at tick t is gatePhase(cycle, t). */
 export interface GateCycle {
@@ -81,6 +81,11 @@ export interface GatePhase {
   untilClear: number;
   /** Ticks since the current cycle started (-1 before the first cycle). */
   cycleT: number;
+}
+
+/** A gate phase at rest (open, no cycle yet), to fill in place each tick. */
+export function newGatePhase(): GatePhase {
+  return { name: 'open', t: 0, len: 0, arm: 0, blocking: false, untilBlock: 0, untilClear: 0, cycleT: -1 };
 }
 
 /** A timed gate across a road: a one sided wall that blocks while its cycle says so. */
@@ -422,7 +427,7 @@ export function gateSpeedCap(r: RaceState, rc: RaceCar, out: GateWait): GateWait
       const dz = o.state.z - c.z;
       const ahead = dx * fx + dz * fz;
       if (ahead <= 0 || ahead > along + 2) continue;
-      const lat = Math.abs(dx * fz - dz * fx);
+      const lat = abs(dx * fz - dz * fx);
       if (lat > g0.halfWidth + o.tuning.geometry.halfWidth + GATE_AI.laneSlack) continue;
       stop = Math.min(stop, ahead - (g0.halfLength + o.tuning.geometry.halfLength + GATE_AI.queueGap));
     }

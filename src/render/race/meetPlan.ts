@@ -21,6 +21,7 @@ import { Rng } from '../../sim/prng';
 import { distToSegment } from '../../sim/math';
 import { RAIL } from '../../sim/rails';
 import { railCurves } from './routeArrows';
+import type { Quality } from '../../ui/settings';
 
 export interface MeetPerson {
   x: number;
@@ -73,6 +74,17 @@ export interface MeetOptions {
   /** Rows of parked cars behind the crowd. */
   carRows?: number;
 }
+
+/**
+ * The meets per graphics quality: denser, deeper and drawn further at higher quality. People per meter
+ * scale and crowd depth (m), rows of parked cars, how far the parked cars (roadblocks.ts) and the crowd
+ * (crowds.ts) are drawn (m).
+ */
+export const MEET_QUALITY: Record<Quality, { peopleDensity: number; peopleDepth: number; carRows: number; drawDistance: number; crowdDraw: number }> = {
+  low: { peopleDensity: 0.45, peopleDepth: 5, carRows: 2, drawDistance: 170, crowdDraw: 140 },
+  medium: { peopleDensity: 0.7, peopleDepth: 7, carRows: 3, drawDistance: 240, crowdDraw: 190 },
+  high: { peopleDensity: 1, peopleDepth: 9, carRows: 5, drawDistance: 300, crowdDraw: 260 },
+};
 
 /** Layout (m from the barrier's rest line, plus how far a hit may shove it), densities and caps. */
 const MEET = {

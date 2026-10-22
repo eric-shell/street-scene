@@ -12,7 +12,7 @@
  * top left corner brings them back (H again, or a click). One key listener for
  * every card, so a free roam card under the photo drone's never toggles twice.
  */
-import { bem, h, btn, iconBtn } from '../kit/dom';
+import { bem, btn, h, iconBtn, isTyping, keyCaps } from '../kit/dom';
 import { EyeOff, X, icon, type IconNode } from '../kit/icons';
 import type { Hue } from '../rail/rail';
 import { helpOpen } from '../panels/help';
@@ -95,7 +95,7 @@ let tag: HTMLElement | null = null;
 export function setHudHidden(on: boolean): void {
   hidden = on;
   document.body.classList.toggle('is-hud-hidden', on);
-  tag ??= h('button', { class: 'hud-hidden-tag', type: 'button', title: 'Show the HUD (H)', onclick: () => setHudHidden(false) }, h('kbd', {}, 'H'), h('span', {}, 'Show HUD'));
+  tag ??= h('button', { class: 'hud-hidden-tag', type: 'button', title: 'Show the HUD (H)', onclick: () => setHudHidden(false) }, ...keyCaps(['H']), h('span', {}, 'Show HUD'));
   if (on) document.body.append(tag);
   else tag.remove();
 }
@@ -105,9 +105,7 @@ window.addEventListener(
   'keydown',
   (e) => {
     if (!cards.size || helpOpen()) return;
-    if (e.code !== 'KeyH' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
-    const t = e.target;
-    if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement) return;
+    if (e.code !== 'KeyH' || e.repeat || e.ctrlKey || e.metaKey || e.altKey || isTyping(e)) return;
     if (!hidden && ![...cards].some((c) => c.o.canHide?.() ?? true)) return;
     setHudHidden(!hidden);
   },

@@ -7,18 +7,7 @@
  */
 import * as THREE from 'three';
 import { PALETTE } from '../ui/kit/palette';
-
-export function canvasTexture(w: number, h: number, draw: (g: CanvasRenderingContext2D) => void, srgb = true): THREE.CanvasTexture {
-  const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
-  draw(c.getContext('2d')!);
-  const t = new THREE.CanvasTexture(c);
-  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.anisotropy = 4;
-  return t;
-}
+import { drawTexture } from '../render/textures/canvasKit';
 
 /** A small deterministic hash noise in 0..1 for texture speckle and flicker. */
 export function noise(i: number): number {
@@ -69,7 +58,7 @@ export function concreteTextures(): { color: THREE.CanvasTexture; rough: THREE.C
   const S = 1024;
   const stains: [number, number, number][] = [];
   for (let i = 0; i < 11; i++) stains.push([noise(i * 9.1) * S, noise(i * 4.7 + 2) * S, 30 + noise(i * 2.3) * 70]);
-  const color = canvasTexture(S, S, (g) => {
+  const color = drawTexture(S, S, (g) => {
     g.fillStyle = '#4a4946';
     g.fillRect(0, 0, S, S);
     // Low frequency mottling: big soft patches lighter and darker.
@@ -122,7 +111,7 @@ export function concreteTextures(): { color: THREE.CanvasTexture; rough: THREE.C
       g.fillRect(0, p, S, 1);
     }
   });
-  const rough = canvasTexture(
+  const rough = drawTexture(
     256,
     256,
     (g) => {
@@ -132,7 +121,7 @@ export function concreteTextures(): { color: THREE.CanvasTexture; rough: THREE.C
       stains.forEach(([x, y, r], i) => blot(g, x / 4, y / 4, r / 4, '0,95,0', 0.7, i * 17));
       for (let i = 0; i < 6; i++) blot(g, noise(i * 12.1) * 256, noise(i * 6.3) * 256, 20 + noise(i) * 26, '0,110,0', 0.5, i * 71);
     },
-    false,
+    { srgb: false },
   );
   return { color, rough };
 }
@@ -148,7 +137,7 @@ export function wallTexture(height: number, band: number): THREE.CanvasTexture {
   const H = 960;
   const pxm = H / height;
   const bandPx = H - band * pxm;
-  return canvasTexture(W, H, (g) => {
+  return drawTexture(W, H, (g) => {
     g.fillStyle = '#2b2a2c';
     g.fillRect(0, 0, W, H);
     // Blocks 0.4 x 0.2 m in running bond.
@@ -220,7 +209,7 @@ export function wallTexture(height: number, band: number): THREE.CanvasTexture {
 
 /** The roof deck seen from below: corrugated steel, dark with a few rust blooms. 2 m square. */
 export function deckTexture(): THREE.CanvasTexture {
-  return canvasTexture(256, 256, (g) => {
+  return drawTexture(256, 256, (g) => {
     for (let x = 0; x < 256; x += 16) {
       const grad = g.createLinearGradient(x, 0, x + 16, 0);
       grad.addColorStop(0, '#1d1d20');
@@ -235,7 +224,7 @@ export function deckTexture(): THREE.CanvasTexture {
 
 /** A roller door: dented slats, rust weeping from the bottom rail, grime and the hazard band. */
 export function doorTexture(): THREE.CanvasTexture {
-  return canvasTexture(256, 512, (g) => {
+  return drawTexture(256, 512, (g) => {
     for (let y = 0; y < 512; y += 12) {
       const grad = g.createLinearGradient(0, y, 0, y + 12);
       grad.addColorStop(0, '#4b5058');
@@ -281,7 +270,7 @@ export function doorTexture(): THREE.CanvasTexture {
 
 /** A worn yellow floor line along u (alpha where the paint is gone), 4 m per repeat. */
 export function lineTexture(): THREE.CanvasTexture {
-  const t = canvasTexture(512, 32, (g) => {
+  const t = drawTexture(512, 32, (g) => {
     g.fillStyle = '#c9a23a';
     g.fillRect(0, 2, 512, 28);
     g.globalCompositeOperation = 'destination-out';
@@ -294,19 +283,23 @@ export function lineTexture(): THREE.CanvasTexture {
 
 /** An oil stain decal: dark, irregular, its edge soaked into the concrete. */
 export function stainTexture(): THREE.CanvasTexture {
-  const t = canvasTexture(256, 256, (g) => {
-    blot(g, 128, 128, 120, '46,34,22', 0.28, 3);
-    blot(g, 120, 134, 70, '12,10,9', 0.45, 11);
-    // Splashes and drips round the main puddle, so it never reads as a disc.
-    for (let i = 0; i < 9; i++) blot(g, 128 + (noise(i * 2.1) - 0.5) * 190, 128 + (noise(i * 4.3) - 0.5) * 190, 6 + noise(i) * 20, '12,10,9', 0.4, i * 29);
-  });
-  t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
-  return t;
+  // A decal: clamped, never repeating.
+  return drawTexture(
+    256,
+    256,
+    (g) => {
+      blot(g, 128, 128, 120, '46,34,22', 0.28, 3);
+      blot(g, 120, 134, 70, '12,10,9', 0.45, 11);
+      // Splashes and drips round the main puddle, so it never reads as a disc.
+      for (let i = 0; i < 9; i++) blot(g, 128 + (noise(i * 2.1) - 0.5) * 190, 128 + (noise(i * 4.3) - 0.5) * 190, 6 + noise(i) * 20, '12,10,9', 0.4, i * 29);
+    },
+    { repeat: false },
+  );
 }
 
 /** Diamond plate for the turntable's top: alternating raised lugs, scuffed paths and a worn rim. */
 export function plateTexture(): THREE.CanvasTexture {
-  return canvasTexture(512, 512, (g) => {
+  return drawTexture(512, 512, (g) => {
     g.fillStyle = '#6c6d72';
     g.fillRect(0, 0, 512, 512);
     for (let y = 0; y < 512; y += 16) {
@@ -343,7 +336,7 @@ export function plateTexture(): THREE.CanvasTexture {
 
 /** Yellow and black chevrons for the ring round the turntable, chipped. */
 export function hazardTexture(): THREE.CanvasTexture {
-  return canvasTexture(64, 32, (g) => {
+  return drawTexture(64, 32, (g) => {
     g.fillStyle = '#141316';
     g.fillRect(0, 0, 64, 32);
     g.fillStyle = '#9c8034';
@@ -362,7 +355,7 @@ export function hazardTexture(): THREE.CanvasTexture {
 
 /** Pegboard crowded with tools: spanners, screwdrivers, sockets, pliers, a hammer, a saw and an air line. */
 export function pegboardTexture(): THREE.CanvasTexture {
-  return canvasTexture(768, 384, (g) => {
+  return drawTexture(768, 384, (g) => {
     g.fillStyle = '#3a3226';
     g.fillRect(0, 0, 768, 384);
     g.fillStyle = '#16120d';
@@ -432,7 +425,7 @@ export function pegboardTexture(): THREE.CanvasTexture {
 
 /** A tool chest's drawer fronts in a body color: seams, chrome pulls, scratches and a sticker or two. */
 export function drawerTexture(body: string): THREE.CanvasTexture {
-  return canvasTexture(256, 192, (g) => {
+  return drawTexture(256, 192, (g) => {
     g.fillStyle = body;
     g.fillRect(0, 0, 256, 192);
     const rows = [0, 20, 40, 60, 84, 112, 148, 192];
@@ -467,7 +460,7 @@ export function drawerTexture(body: string): THREE.CanvasTexture {
 
 /** A poster for one of the game's fictional tuners, aged: faded, creased, taped at the corners, one corner torn. */
 export function posterTexture(name: string, line: string, accent: string, variant: number): THREE.CanvasTexture {
-  return canvasTexture(256, 360, (g) => {
+  return drawTexture(256, 360, (g) => {
     g.fillStyle = '#1b1a1f';
     g.fillRect(0, 0, 256, 360);
     g.fillStyle = accent;
@@ -529,23 +522,26 @@ export function posterTexture(name: string, line: string, accent: string, varian
 
 /** A soft round glow (white, alpha falling off), for light spilling on the wall round a sign or a lamp. */
 export function glowTexture(): THREE.CanvasTexture {
-  const t = canvasTexture(128, 128, (g) => {
-    const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
-    grad.addColorStop(0, 'rgba(255,255,255,1)');
-    grad.addColorStop(0.35, 'rgba(255,255,255,0.4)');
-    grad.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = grad;
-    g.fillRect(0, 0, 128, 128);
-  });
-  t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
-  return t;
+  return drawTexture(
+    128,
+    128,
+    (g) => {
+      const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+      grad.addColorStop(0, 'rgba(255,255,255,1)');
+      grad.addColorStop(0.35, 'rgba(255,255,255,0.4)');
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = grad;
+      g.fillRect(0, 0, 128, 128);
+    },
+    { repeat: false },
+  );
 }
 
 /** The contact shadow: a soft rounded rectangle, darkest under the car's middle. */
 export function shadowTexture(): THREE.CanvasTexture {
   const w = 128;
   const h = 256;
-  const t = canvasTexture(
+  return drawTexture(
     w,
     h,
     (g) => {
@@ -565,8 +561,6 @@ export function shadowTexture(): THREE.CanvasTexture {
       }
       g.putImageData(img, 0, 0);
     },
-    false,
+    { srgb: false, repeat: false },
   );
-  t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
-  return t;
 }

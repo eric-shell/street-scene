@@ -11,11 +11,11 @@
  *    where every screen keeps its keys and tips.
  *  - navRow: a row in a list of places or actions (the menu's Garage, Explore
  *    and Settings, the pause screen's actions), each in its own hue.
- *  - swapStep: a screen's steps slide (the menu's, the pause screen's).
+ *  - RailSteps: a screen's steps, sliding (the menu's, the pause screen's).
  * Sizes live in _rail.scss (`--rail-*`); on narrow screens the rail turns
  * into a sheet over the bottom of the screen.
  */
-import { bem, h, iconBtn, sheen } from '../kit/dom';
+import { bem, h, iconBtn, prefersReducedMotion, sheen } from '../kit/dom';
 import { ArrowLeft, ChevronRight, icon, type IconNode } from '../kit/icons';
 
 type Child = Node | null | false | undefined;
@@ -46,7 +46,6 @@ export function screenHead(o: ScreenHeadOptions): HTMLElement {
   );
 }
 
-
 /** The hues a row can wear (`.hue-*` in styles/base/_tokens.scss): the palette's accents. */
 export type Hue = 'orange' | 'yellow' | 'red' | 'green' | 'cyan' | 'purple';
 
@@ -67,16 +66,31 @@ export function navRow(ico: IconNode, label: string, sub: string, hue: Hue, onCl
 }
 
 /** How long a step takes to slide away (ms; `.rail__step.is-leaving` in _rail.scss). */
-export const STEP_LEAVE_MS = 260;
+const STEP_LEAVE_MS = 260;
 
 /**
- * Swap a screen's step (a `.rail__step`) in its column: the old step leaves
- * from where it stands, out of the flow, toward the side it came from, while
- * the new one cascades in from the other (_rail.scss). `dir` null, no old step
- * or reduced motion swap at once. Returns whether it slid.
+ * A screen's steps in its rail column, one at a time (`.rail__step`): show()
+ * puts the next one in, and the old one leaves from where it stands, out of
+ * the flow, toward the side it came from, while the new one cascades in from
+ * the other (_rail.scss).
  */
-export function swapStep(col: HTMLElement, old: HTMLElement | null, next: HTMLElement, dir: 'fwd' | 'back' | null): boolean {
-  const slide = !!old && !!dir && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+export class RailSteps {
+  /** The step on screen. */
+  current: HTMLElement | null = null;
+
+  constructor(private readonly col: HTMLElement) {}
+
+  /** Show a step holding `children`, sliding `dir` (null, the first step or reduced motion: at once). Returns whether it slid. */
+  show(children: Child[], dir: 'fwd' | 'back' | null): boolean {
+    const next = h('div', { class: 'rail__step' }, ...children);
+    const slid = swapStep(this.col, this.current, next, dir);
+    this.current = next;
+    return slid;
+  }
+}
+
+function swapStep(col: HTMLElement, old: HTMLElement | null, next: HTMLElement, dir: 'fwd' | 'back' | null): boolean {
+  const slide = !!old && !!dir && !prefersReducedMotion();
   if (old && dir && slide) {
     old.style.top = `${old.offsetTop}px`;
     const way = dir === 'back' ? 'is-back' : 'is-forward';
