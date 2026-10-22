@@ -1,36 +1,9 @@
 /* ---------- the minimap opens the city map ---------- */
-@use '../abstracts/media';
-/* The minimap opens the full map (click or Tab) in every race and free roam, with a small hint above it: a
-   chip like the HUD's. */
+/* The minimap opens the full map (click or Tab) in every race and free roam; the help panel says so (ui/help.ts). */
 .hud .hud-map {
   pointer-events: auto;
   cursor: pointer;
 }
 .hud .hud-map:hover {
   filter: brightness(1.15);
-}
-.hud-map-hint {
-  display: flex;
-  position: absolute;
-  left: max(10px, env(safe-area-inset-left));
-  bottom: calc(max(10px, env(safe-area-inset-bottom)) + 176px);
-  align-items: center;
-  gap: 5px;
-  padding: 3px 8px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--soft);
-  background: var(--plate);
-  border: 1px solid var(--line);
-  box-shadow: var(--edge);
-}
-.hud-map-hint svg {
-  color: var(--accent);
-}
-@include media.compact-hud {
-  .hud-map-hint {
-    bottom: calc(max(10px, env(safe-area-inset-bottom)) + 116px);
-  }
 }

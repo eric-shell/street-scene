@@ -13,9 +13,10 @@ import type { RaceMode } from '../sim/race';
 import { nitroFullStages } from '../sim/car';
 import { NITRO_STAGES } from '../sim/tuning';
 import { BoostCallouts } from './boostCallouts';
-import { TriangleAlert, Zap, Ghost, icon, Compass, Disc3, MapPin, Navigation2, RotateCcw, Route, ChevronsRight, MapPinned, Wind, type IconNode } from './icons';
+import { TriangleAlert, Zap, Ghost, icon, Disc3, MapPin, Navigation2, RotateCcw, Route, ChevronsRight, MapPinned, Wind, type IconNode } from './icons';
 import { formatTime } from './format';
 import type { HudCard } from './hudCard';
+import type { Help } from './help';
 import type { Hue } from './rail';
 import { MapCar, Minimap } from './minimap';
 import { NITRO_STAGE_COLORS, PALETTE, rgb, rgba } from './palette';
@@ -201,14 +202,15 @@ export class Hud {
     this.boostCv = q('.hud-boost') as HTMLCanvasElement;
     this.map = new Minimap(world);
     this.root.append(this.map.canvas);
-    // Clickable in every race and free roam, with a hint that it opens.
+    // Clickable in every race and free roam (the help panel says so, and Tab does the same).
     this.map.canvas.title = 'City map (Tab)';
     this.map.canvas.addEventListener('click', () => this.onMapClick?.());
-    const hint = document.createElement('div');
-    hint.className = 'hud-map-hint';
-    hint.append(icon(Compass, { size: 13 }), 'Map · Tab');
-    this.root.append(hint);
 
+  }
+
+  /** The help button (ui/help.ts) beside the minimap, with the session's keys and tips. */
+  setHelp(help: Help): void {
+    this.root.append(help.el);
   }
 
   /** Puts the HUD card on top of the chips; update() fills its readouts (free roam's, or raceReadouts' for a race). */

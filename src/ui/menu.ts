@@ -19,9 +19,9 @@
  * moves with them (onStep; game/streetCameras.ts). Every step keeps the title
  * block on top (the boot splash lands on `.menu-head`, see ui/splash.ts);
  * Escape or the back button goes back a step. Arrow keys walk the home list and
- * the race type grid (1 to 6 pick one); the key legend along the bottom of the
- * deeper steps carries Hide UI (H), which stays a button on touch screens; home
- * has no legend. The caller feeds the
+ * the race type grid (1 to 6 pick one); the ? in the bottom left (ui/help.ts)
+ * lists each step's keys and tips, with Hide the menu (H) as a button for touch
+ * screens. The caller feeds the
  * cruising car's pose every frame (MainMenu.frame) for the maps' car markers.
  */
 import { btn, h, iconBtn, segmented, sheen } from './dom';
@@ -65,7 +65,8 @@ import {
 } from './icons';
 import { RACE_TYPES, type Difficulty, type RaceType, type Settings } from './settings';
 import { onOff, settingRow, settingsPanel } from './screens';
-import { chip, keybar, navRow, railScreen, screenHead, swapStep, type KeyHint } from './rail';
+import { chip, navRow, railScreen, screenHead, swapStep } from './rail';
+import { Help, MUSIC_KEYS, type HelpKey } from './help';
 import { formatTime } from './format';
 import { roadDistance } from './units';
 import { CityOverview, CourseMap, courseArt, courseRoute, type CourseRoutes, type MapPose } from './menuMaps';
@@ -82,7 +83,7 @@ import { uiBlip, uiWhoosh } from '../audio/uiSound';
 
 /** The title's words: one line, sized to the menu's column in the menu and on the splash alike (`.head-title .logo` in styles/menu/_home.scss). */
 export const TITLE_WORDS = ['STREET', 'SCENE'] as const;
-export const TAGLINE = 'Street racing after dark';
+export const TAGLINE = 'midnight street racing club';
 
 /** The title's words as spans, with a space between so its text reads "STREET SCENE"; the splash fills them letter by letter. */
 export function titleWords(word: (text: string) => (Node | string)[] = (t) => [t]): (Node | string)[] {
@@ -216,8 +217,9 @@ function cityFeatures(world: World): HTMLElement | null {
 export function mainMenu(o: MenuOptions): MainMenu {
   const s = o.settings;
   const menu = h('div', { class: 'menu rail-col' });
-  let bar = keybar([]);
-  const root = railScreen('home', menu, bar);
+  // The step's keys and tips behind the ? in the corner (KEYS and TIPS below, read when it opens).
+  const help = new Help({ title: 'Menu', sections: () => helpFor(step) });
+  const root = railScreen('home', menu, help.el);
   // The title block is what the boot splash lands on (same structure as the splash's, see ui/splash.ts).
   const head = h(
     'div',
@@ -483,13 +485,25 @@ export function mainMenu(o: MenuOptions): MainMenu {
 
   const settings = (): HTMLElement[] => [screenHead({ icon: SettingsIcon, title: 'Settings', back: () => go('home') }), settingsPanel(s, o.onSettings, o.music)];
 
-  const hideUi: KeyHint = { keys: ['H'], label: 'Hide UI', action: () => o.onHideUi(), title: 'Hide the menu and watch the city (H)' };
-  const KEYS: Record<MenuStep, KeyHint[]> = {
-    home: [],
-    race: [{ keys: ['←', '→', '↑', '↓'], label: 'Race type' }, { keys: ['Enter'], label: 'Next' }, { keys: ['Esc'], label: 'Back' }, hideUi],
+  // Hide the menu is a button in the panel too, for touch screens.
+  const hideUi: HelpKey = { keys: ['H'], label: 'Hide the menu and watch the city', action: () => o.onHideUi() };
+  const KEYS: Record<MenuStep, HelpKey[]> = {
+    home: [{ keys: ['↑', '↓'], label: 'Walk the menu' }, { keys: ['Enter'], label: 'Choose' }, hideUi],
+    race: [{ keys: ['←', '→', '↑', '↓'], label: 'Race type' }, { keys: ['1–6'], label: 'Pick a type by its place' }, { keys: ['Enter'], label: 'Next' }, { keys: ['Esc'], label: 'Back' }, hideUi],
     setup: [{ keys: ['Enter'], label: 'Start' }, { keys: ['Esc'], label: 'Back' }, hideUi],
     settings: [{ keys: ['Esc'], label: 'Back' }, hideUi],
   };
+  const TIPS: Record<MenuStep, string[]> = {
+    home: ['Every day brings a new event city. Beside its name the pencil types a seed of your own and shuffle rolls a random city.', 'The live map opens the whole city; a waypoint set there carries into free roam.'],
+    race: ['Each type draws its course on the card, with your best on this event.'],
+    setup: ['Rivals and driving aids are remembered for your next race.'],
+    settings: ['Controls lists every key, gamepad button and touch control.'],
+  };
+  const helpFor = (at: MenuStep) => [
+    { title: 'Keys', keys: KEYS[at] },
+    { title: 'Music', keys: MUSIC_KEYS },
+    { title: 'Tips', tips: TIPS[at] },
+  ];
 
   const steps: Record<MenuStep, () => HTMLElement[]> = { home, race, setup, settings };
   function go(next: MenuStep, animate = true): void {
@@ -505,9 +519,7 @@ export function mainMenu(o: MenuOptions): MainMenu {
     const fwd = STEP_DEPTH[next] > STEP_DEPTH[from];
     if (swapStep(menu, current, el, animate ? (fwd ? 'fwd' : 'back') : null)) uiWhoosh(fwd);
     current = el;
-    const nextBar = keybar(KEYS[next]);
-    bar.replaceWith(nextBar);
-    bar = nextBar;
+    help.close();
     if (next !== from || !animate) o.onStep?.(next);
     if (!animate) return;
     // Keep keyboard and gamepad focus on the menu: the step's main action, or where the player came back from.
@@ -561,6 +573,7 @@ export function mainMenu(o: MenuOptions): MainMenu {
     },
     dispose() {
       window.removeEventListener('keydown', onKey);
+      help.dispose();
       overview?.dispose();
       course?.dispose();
     },

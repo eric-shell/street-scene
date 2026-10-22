@@ -20,7 +20,8 @@ import { CarAssetLibrary, MANIFEST, manifestCar, partsFor } from '../render/car/
 import { GarageScene } from './garageScene';
 import type { StreetStage } from '../game/streetStage';
 import type { Quality } from '../ui/settings';
-import { chip, keybar, railInset, screenHead } from '../ui/rail';
+import { chip, railInset, screenHead } from '../ui/rail';
+import { Help, MUSIC_KEYS } from '../ui/help';
 import { GaragePrefs, GarageState, MAX_SLOTS, Presentation, decodeShareCode, encodeShareCode, freshBuild, loadGaragePrefs, saveGaragePrefs, shareUrl } from './storage';
 import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PART_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
 import { AXLES, Axle, AxleStance, CarBuild, DecalLayer, GLOW_PATTERNS, MAX_DECALS, PAINT_FINISHES, STANCE_LIMITS, VINYL_SHAPES, VinylShape, validateBuild } from '../sim/build';
@@ -158,6 +159,26 @@ export class GarageScreen {
   private cardCar = '';
   /** The Garage / Street switch and camera on the car card's foot, built once so its pick survives the card's rebuilds. */
   private readonly stageEl: HTMLElement;
+  /** The garage's keys and tips behind the ? in the corner (C is a button there too, for touch screens). */
+  private readonly help = new Help({
+    title: 'Garage',
+    sections: () => [
+      {
+        title: 'Keys',
+        keys: [
+          { keys: ['Drag'], label: 'Orbit the car' },
+          { keys: ['W', '↑', 'Space'], label: 'Hold to rev' },
+          { keys: ['C'], label: 'Next camera angle', action: () => this.nextCamera() },
+          { keys: ['Esc'], label: 'Back to the menu' },
+        ],
+      },
+      { title: 'Music', keys: MUSIC_KEYS },
+      {
+        title: 'Tips',
+        tips: ['Every change saves to this build as you go; Save keeps builds in slots and shares them as a code.', 'Garage / Street on the car card shows the car on the turntable or out on the event street.'],
+      },
+    ],
+  });
   /** Watches the roller door for the moment it starts rolling up (arrive). */
   private doorWatch: MutationObserver | null = null;
   private arriveTimer = 0;
@@ -187,12 +208,7 @@ export class GarageScreen {
         this.tabBar,
         this.body,
       ),
-      keybar([
-        { keys: ['Drag'], label: 'Orbit' },
-        { keys: ['W'], label: 'Hold to rev' },
-        { keys: ['C'], label: 'Camera', action: () => this.nextCamera() },
-        { keys: ['Esc'], label: 'Back' },
-      ]),
+      this.help.el,
       this.carCard,
       this.gasButton(),
     );
@@ -1193,6 +1209,7 @@ export class GarageScreen {
     this.cb.onChange(this.garage);
     this.abort.abort();
     document.body.classList.remove('garage-open');
+    this.help.dispose();
     this.root.remove();
     this.scene.dispose();
   }

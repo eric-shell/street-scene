@@ -24,7 +24,8 @@ $chamfered: (
   '.race-ticket',
   '.hud-card',
   '.hud-chip',
-  '.hud-map-hint',
+  '.help-btn',
+  '.help-panel',
   '.mw-card',
   '.mw-pill',
   '.mw-chip',
@@ -47,7 +48,7 @@ $chamfered: (
 .chip,
 .seg,
 .hud-chip,
-.hud-map-hint,
+.help-btn,
 .mw-chip {
   --cut: 6px;
 }
@@ -60,6 +61,7 @@ $chamfered: (
 .garage-car,
 .race-ticket,
 .hud-card,
+.help-panel,
 .mw-card,
 .mw-banner {
   --cut: 12px;

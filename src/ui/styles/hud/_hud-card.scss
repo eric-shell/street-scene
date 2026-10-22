@@ -88,7 +88,7 @@
   align-self: flex-start;
   pointer-events: auto;
 }
-/* The place's actions and Controls on the left of the foot, hide on its right. The card is a plate already,
+/* The place's actions on the left of the foot, hide on its right. The card is a plate already,
    so the buttons are the surface buttons the menus use inside their cards. */
 .hud-card-actions {
   display: flex;
@@ -150,10 +150,6 @@
   .hud-card-stat b {
     font-size: 14px;
   }
-}
-/* A card's controls dialog lists them in the settings page's key list. */
-.hud-card-controls .controls-list {
-  font-size: 14px;
 }
 /* H hides the HUD: the UI layer and the music player fade like the menu's cinematic mode, and a small tag in
    the top left corner says how to bring them back (a click on it does too). */

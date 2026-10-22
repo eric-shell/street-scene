@@ -7,8 +7,8 @@
  * framed to the free area beside the rail (railInset, GameRenderer.setFraming). Parts:
  *  - railScreen: the screen root with the rail's background and edge.
  *  - screenHead: back button, the screen's icon and title, an aside on the right.
- *  - keybar: the key legend along the bottom of the rail. Plain hints only show
- *    with a keyboard; hints with an action stay as buttons on touch screens.
+ *  - The help button (ui/help.ts) stands in the rail's bottom left corner,
+ *    where every screen keeps its keys and tips.
  *  - navRow: a row in a list of places or actions (the menu's Garage, Explore
  *    and Settings, the pause screen's actions), each in its own hue.
  *  - swapStep: a screen's steps slide (the menu's, the pause screen's).
@@ -46,28 +46,6 @@ export function screenHead(o: ScreenHeadOptions): HTMLElement {
   );
 }
 
-export interface KeyHint {
-  /** Key caps, alternatives shown side by side (e.g. ['W', 'Space']). */
-  keys: string[];
-  label: string;
-  /** Makes the hint a button that does the same as the key (kept on touch screens). */
-  action?: () => void;
-  title?: string;
-}
-
-/** The key legend along the bottom of a rail. */
-export function keybar(items: KeyHint[]): HTMLElement {
-  return h(
-    'div',
-    { class: 'keybar' },
-    ...items.map((k) => {
-      const caps = k.keys.map((key) => h('kbd', {}, key));
-      return k.action
-        ? h('button', { class: 'key key-action', type: 'button', title: k.title ?? k.label, onclick: k.action }, ...caps, h('span', {}, k.label))
-        : h('span', { class: 'key' }, ...caps, h('span', {}, k.label));
-    }),
-  );
-}
 
 /** The hues a row can wear (`.hue-*` in styles/menu/_nav.scss): the palette's accents. */
 export type Hue = 'orange' | 'yellow' | 'red' | 'green' | 'cyan' | 'purple';

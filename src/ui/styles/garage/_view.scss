@@ -201,8 +201,10 @@
     height: var(--sheet);
     padding: 10px 12px max(12px, env(safe-area-inset-bottom));
   }
-  .garage .keybar {
-    display: none;
+  /* The help stands above the sheet's left corner, across from the rev button. */
+  .garage > .help {
+    left: 12px;
+    bottom: calc(var(--sheet) + 12px);
   }
   .garage-tabs {
     grid-template-columns: repeat(9, minmax(60px, 1fr));

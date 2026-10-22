@@ -43,8 +43,8 @@ import { courseFor, openFullMap, type FullMap, type WaypointStore } from '../ui/
 import { placeName } from '../ui/places';
 import { toast } from '../ui/dom';
 import { Compass, MapIcon, MapPinned, Pause } from '../ui/icons';
-import { HudCard, type ControlRow } from '../ui/hudCard';
-import { CONTROLS } from '../ui/screens';
+import { HudCard } from '../ui/hudCard';
+import { Help, MUSIC_KEYS, type HelpKey, type HelpSection } from '../ui/help';
 import { btn } from '../ui/dom';
 import type { Vec2 } from '../sim/math';
 import { Settings } from '../ui/settings';
@@ -315,8 +315,10 @@ export class RaceSession {
   private cruise: { drive: Cruise; s: number; untilTick: number } | null = null;
   /** The HUD card the drone shares (ui/hudCard.ts), on top of the HUD's chips: free roam's or the race's. */
   private card: HudCard;
-  /** The controls dialog paused the drive (and so unpauses it when it closes). */
-  private controlsPaused = false;
+  /** The keys and tips behind the ? beside the minimap (ui/help.ts). */
+  private help: Help;
+  /** The help panel paused the drive (and so unpauses it when it closes). */
+  private helpPaused = false;
   /** Text on the circuit gantry sign, and the tick a pending change is applied (-1 = none). */
   private signText = '';
   private signAt = -1;
@@ -364,13 +366,10 @@ export class RaceSession {
     this.hud = new Hud(uiRoot, this.race.world);
     this.hud.onMapClick = () => this.toggleMap();
     this.hazards = new HazardFx(this.night.drawbridge, this.hud.root);
-    // The same card as the drone's in every mode: Map (not in a replay, which has none), Controls and hide.
-    const controls: ControlRow[] = [...CONTROLS.keyboard, [['Tab'], 'City map'], [['0'], 'Drone photo mode']];
+    // The same card as the drone's in every mode: Map (not in a replay, which has none) and hide.
     const shared = {
       actions: this.isReplay ? [] : [btn(MapIcon, 'Map', () => this.toggleMap(), 'small')],
-      controls,
       canHide: () => !this.paused && !this.fullMap && !this.cine.active,
-      onControls: (open: boolean) => this.pauseForControls(open),
     };
     if (this.openWorld) {
       // Free roam's green from the menu: the district, time, smashes and top speed, and Exit back to the menu.
@@ -399,6 +398,8 @@ export class RaceSession {
         exitTitle: 'Pause (Esc)',
       });
     }
+    this.help = new Help({ title: this.openWorld ? 'Free roam' : RACE_CARD[this.race.config.mode].title, sections: () => this.helpSections(), onToggle: (open) => this.pauseForHelp(open) });
+    this.hud.setHelp(this.help);
     this.hud.setCard(this.card);
     // Tab opens the city map while driving and closes it again; in menus (paused) it keeps moving focus.
     const onTab = (e: KeyboardEvent) => {
@@ -609,10 +610,46 @@ export class RaceSession {
     });
   }
 
-  /** The drive (or the race) pauses under the HUD card's controls dialog, as under the map (keys there never reach the car). */
-  private pauseForControls(open: boolean): void {
-    if (open === this.controlsPaused || (open && this.paused)) return;
-    this.controlsPaused = open;
+  /** The help panel's sections: the driving keys (a replay's cameras instead), the views, music and tips for this mode. */
+  private helpSections(): HelpSection[] {
+    const mode = this.race.config.mode;
+    const driving: HelpKey[] = [
+      { keys: ['W', '↑'], label: 'Throttle' },
+      { keys: ['S', '↓'], label: 'Brake, reverse' },
+      { keys: ['A', 'D'], label: 'Steer' },
+      { keys: ['Space'], label: 'Handbrake' },
+      { keys: ['N'], label: 'Nitrous' },
+      { keys: ['Shift'], label: 'Horn' },
+      { keys: ['Q', 'E'], label: 'Shift down, up (manual gearbox)' },
+      { keys: ['R'], label: 'Reset the car' },
+    ];
+    const view: HelpKey[] = [
+      { keys: ['C'], label: this.isReplay ? 'Next camera' : 'Camera' },
+      { keys: [this.isReplay ? '1–7' : '1–6'], label: 'Pick a camera' },
+      { keys: ['0'], label: 'Drone photo mode' },
+      ...(this.isReplay ? [] : [{ keys: ['Tab'], label: 'City map (or click the minimap)' }]),
+      { keys: ['H'], label: 'Hide the HUD' },
+      { keys: ['Esc'], label: 'Pause' },
+    ];
+    const tips = this.openWorld
+      ? ['Set a waypoint on the city map: the chip under the card points the way.', 'The card counts everything you smash on the way.']
+      : mode === 'drift'
+        ? ['Drift zones multiply the points you score inside them.']
+        : mode === 'waypoint'
+          ? ['Any streets go: the chip and the beacons point to the next waypoint.', 'Drift zones refill nitrous faster while you slide through them.']
+          : ['Drift zones refill nitrous faster while you slide through them.'];
+    return [
+      ...(this.isReplay ? [] : [{ title: 'Driving', keys: driving }]),
+      { title: 'View', keys: view },
+      { title: 'Music', keys: MUSIC_KEYS },
+      { title: 'Tips', tips: [...tips, 'Settings › Controls lists the gamepad and touch controls.'] },
+    ];
+  }
+
+  /** The drive (or the race) pauses under the help panel, as under the map (keys there never reach the car). */
+  private pauseForHelp(open: boolean): void {
+    if (open === this.helpPaused || (open && this.paused)) return;
+    this.helpPaused = open;
     this.paused = open;
     this.input.releaseAll();
     this.input.setTouchVisible(!open);
@@ -1318,6 +1355,7 @@ export class RaceSession {
     this.drone?.dispose();
     this.drone = null;
     this.card.dispose();
+    this.help.dispose();
     this.unsub.forEach((u) => u());
     this.freeCam?.dispose();
     this.hazards.dispose();

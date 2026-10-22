@@ -4,8 +4,8 @@
  * plate like the menu's cards, its rule in the place's hue (the menu's: Explore
  * cyan, free roam green, each race type its own): a badge and the title over a
  * status line with Exit (a race's Pause) in the corner, three or four
- * readouts, then a foot of actions (the caller's, then Controls) with the hide
- * button on the right. Controls opens a dialog in the settings page's key list.
+ * readouts, then a foot of the caller's actions with the hide button on the
+ * right. The keys live behind the screen's help button (ui/help.ts).
  *
  * H hides the HUD wherever a card is up: the whole UI layer and the music
  * player fade as they do in the menu's cinematic mode, and a small tag in the
@@ -13,11 +13,9 @@
  * every card, so a free roam card under the photo drone's never toggles twice.
  */
 import { h, btn, iconBtn } from './dom';
-import { EyeOff, Keyboard, X, icon, type IconNode } from './icons';
+import { EyeOff, X, icon, type IconNode } from './icons';
 import type { Hue } from './rail';
-
-/** A row of the controls dialog: key caps (alternatives side by side) and what they do. */
-export type ControlRow = [keys: string[], action: string];
+import { helpOpen } from './help';
 
 export interface HudCardOptions {
   /** The place's hue, the menu row's. */
@@ -28,7 +26,7 @@ export interface HudCardOptions {
   status: string;
   /** The readouts' labels (three or four, in equal columns); setStat writes their values. */
   stats: readonly string[];
-  /** Buttons on the left of the foot, before Controls. */
+  /** Buttons on the left of the foot. */
   actions?: HTMLElement[];
   onExit: () => void;
   /** The corner button's label and icon (default Exit with an X; a race's is Pause). */
@@ -36,19 +34,14 @@ export interface HudCardOptions {
   exitIcon?: IconNode;
   /** Its tooltip, e.g. Back to the car (default the label). */
   exitTitle?: string;
-  /** The controls dialog's rows. */
-  controls: ControlRow[];
   /** Whether H may hide the HUD right now (not while paused or a map is open); default always. */
   canHide?: () => boolean;
-  /** The controls dialog opened or closed (free roam pauses the drive under it, as under its map). */
-  onControls?: (open: boolean) => void;
 }
 
 export class HudCard {
   readonly el: HTMLElement;
   private statusEl: HTMLElement;
   private values: HTMLElement[];
-  private dialog: HTMLElement | null = null;
 
   constructor(readonly o: HudCardOptions) {
     this.statusEl = h('span', { class: 'hud-card-status' }, o.status);
@@ -68,7 +61,6 @@ export class HudCard {
         'div',
         { class: 'hud-card-actions' },
         ...(o.actions ?? []),
-        btn(Keyboard, 'Controls', () => this.openControls(), 'small'),
         h('span', { class: 'grow' }),
         iconBtn(EyeOff, 'Hide HUD (H)', () => setHudHidden(true), 'small'),
       ),
@@ -88,37 +80,7 @@ export class HudCard {
     if (v && v.textContent !== text) v.textContent = text;
   }
 
-  get controlsOpen(): boolean {
-    return !!this.dialog;
-  }
-
-  openControls(): void {
-    if (this.dialog) return;
-    const list = h('div', { class: 'controls-list' }, ...this.o.controls.flatMap(([keys, action]) => [h('span', { class: 'keys' }, ...keys.flatMap((k, i) => (i ? [' / ', h('kbd', {}, k)] : [h('kbd', {}, k)]))), h('span', {}, action)]));
-    const close = () => this.closeControls();
-    this.dialog = h(
-      'div',
-      { class: 'screen center dim hud-card-controls', onclick: (e: Event) => e.target === this.dialog && close() },
-      h(
-        'div',
-        { class: 'dialog panel', role: 'dialog', 'aria-modal': 'true', 'aria-label': `${this.o.title} controls` },
-        h('h2', {}, icon(Keyboard, { size: 22 }), h('span', { class: 'grow' }, 'Controls'), iconBtn(X, 'Close (Esc)', close, 'small')),
-        list,
-      ),
-    );
-    (document.getElementById('ui') ?? document.body).append(this.dialog);
-    this.o.onControls?.(true);
-  }
-
-  closeControls(): void {
-    if (!this.dialog) return;
-    this.dialog.remove();
-    this.dialog = null;
-    this.o.onControls?.(false);
-  }
-
   dispose(): void {
-    this.closeControls();
     this.el.remove();
     cards.delete(this);
     if (!cards.size) setHudHidden(false);
@@ -138,26 +100,11 @@ export function setHudHidden(on: boolean): void {
   else tag.remove();
 }
 
-/** Whether a card's controls dialog is open (the drone stops flying under it). */
-export function hudControlsOpen(): boolean {
-  for (const c of cards) if (c.controlsOpen) return true;
-  return false;
-}
-
-// One listener for every card: Escape closes an open controls dialog before anything else sees it
-// (capture, so a session's pause or the drone's exit never fires), H hides or shows the HUD.
+// One listener for every card: H hides or shows the HUD (not while a help panel is open over it).
 window.addEventListener(
   'keydown',
   (e) => {
-    if (!cards.size) return;
-    const open = [...cards].find((c) => c.controlsOpen);
-    if (open) {
-      if (e.code === 'Escape') {
-        e.stopImmediatePropagation();
-        open.closeControls();
-      }
-      return;
-    }
+    if (!cards.size || helpOpen()) return;
     if (e.code !== 'KeyH' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
     const t = e.target;
     if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement) return;

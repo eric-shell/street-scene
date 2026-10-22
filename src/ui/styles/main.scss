@@ -15,8 +15,8 @@
  * results put their content on an opaque column down the left with a straight
  * edge and the title rule's gradient down it; the main menu and the garage drop
  * the column for a light scrim so the scene comes through between their cards. Each
- * has a screen header (back, icon, title, aside) on top and a key legend along
- * the bottom; the 3D scene is framed in the space beside it. Three motifs repeat
+ * has a screen header (back, icon, title, aside) on top and a small ? in the
+ * bottom left for its keys and tips (ui/help.ts); the 3D scene is framed in the space beside it. Three motifs repeat
  * so every screen reads as one game: the chamfer (top right and bottom left cut
  * off every button, chip, segment and menu card), the rule (the yellow-orange-red
  * gradient under the logo, on the active tab and the loading bar) and the accent
@@ -81,6 +81,7 @@
 
 @use 'panels/music';
 @use 'panels/tuning';
+@use 'panels/help';
 
 /* Free roam's full city map (ui/fullMap/) and the HUD's waypoint chip. */
 @use 'map/hint';

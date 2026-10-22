@@ -3,7 +3,7 @@
    a straight right edge and the accent down it, so its contrast never depends
    on the scene behind it, and the 3D view framed in the space beside it
    (GameRenderer.setFraming). The column keeps one width on every step of a
-   screen, so nothing jumps; the key legend sits along the bottom. Narrow
+   screen, so nothing jumps; the help button sits in the bottom left. Narrow
    screens get a full width rail without the edge. The main menu (.home) keeps
    the rail's box for framing but draws only a scrim in it: its cards are
    plates of their own, and the city shows between them (the garage does the
@@ -35,7 +35,7 @@
   background: linear-gradient(180deg, var(--accent-2), var(--accent) 45%, palette.alpha(red, 0.7));
   clip-path: inset(0 0 0 calc(100% - 2px));
 }
-/* The column: a fixed top so the title stays put from step to step, room for the key legend at the bottom. */
+/* The column: a fixed top so the title stays put from step to step, room for the help button at the bottom. */
 .rail-col {
   --col-top: clamp(16px, 9vh, 96px);
   position: absolute;
@@ -67,7 +67,7 @@
     overflow-y: auto;
   }
 }
-/* The main menu: a scrim darkest at the left edge, enough for the title, tagline and key legend over a bright street. */
+/* The main menu: a scrim darkest at the left edge, enough for the title and tagline over a bright street. */
 .rail-screen.home .rail-bg {
   background: linear-gradient(90deg, palette.alpha(bg0, 0.62), palette.alpha(bg0, 0.38) 70%, palette.alpha(bg0, 0));
 }
@@ -91,7 +91,6 @@
 }
 /* What stands straight on the city keeps a dark halo under it. */
 .home .tagline,
-.home .keybar,
 .home .screen-title {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 14px rgba(0, 0, 0, 0.7);
 }

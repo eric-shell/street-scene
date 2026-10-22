@@ -52,7 +52,7 @@ $tab-hues: (
   }
 }
 /* The main menu's scrim instead of the opaque column (styles/rail/_rail.scss .home): darkest at the left
-   edge, enough for the header and key legend over a bright scene. No edge, except dev mode's yellow one. */
+   edge, enough for the header over a bright scene. No edge, except dev mode's yellow one. */
 .garage .rail-bg {
   background: linear-gradient(90deg, palette.alpha(bg0, 0.62), palette.alpha(bg0, 0.38) 70%, palette.alpha(bg0, 0));
 }
@@ -64,7 +64,7 @@ $tab-hues: (
   background: var(--accent-2);
 }
 /* What stands straight on the scene keeps the menu's dark halo; the back button is a plate like the cards. */
-.garage :is(.screen-title, .keybar) {
+.garage .screen-title {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 14px rgba(0, 0, 0, 0.7);
 }
 .garage .screen-head .btn {
@@ -198,16 +198,16 @@ $tab-hues: (
 }
 /* The garage opens behind the roller door: its parts hold on their first frame while the door is down
    (.hold) and, once it starts rolling up (0.72 s, uncovering the screen from the bottom), rise in as it
-   clears them: the rev button and key legend first, the groups from the lowest up, the tabs and header as
+   clears them: the rev button and help first, the groups from the lowest up, the tabs and header as
    the door leaves the top. The car card slides in from the rail with its switch. `translate` rather than
    `transform`, so the rev button keeps its centering. */
-.garage.arrive :is(.garage-panel > :not(.garage-body), .garage-body > *, .garage-car, .garage-gas, .keybar) {
+.garage.arrive :is(.garage-panel > :not(.garage-body), .garage-body > *, .garage-car, .garage-gas, .help) {
   animation: garage-rise 0.5s var(--ease-out) var(--d, 0.3s) both;
 }
-.garage.arrive.hold :is(.garage-panel > :not(.garage-body), .garage-body > *, .garage-car, .garage-gas, .keybar) {
+.garage.arrive.hold :is(.garage-panel > :not(.garage-body), .garage-body > *, .garage-car, .garage-gas, .help) {
   animation-play-state: paused;
 }
-.garage.arrive :is(.garage-gas, .keybar) {
+.garage.arrive :is(.garage-gas, .help) {
   --d: 0.14s;
 }
 .garage.arrive .garage-body > :nth-child(n + 4) {

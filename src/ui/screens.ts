@@ -34,7 +34,8 @@ import {
 } from './icons';
 import type { Quality, RaceType, Settings } from './settings';
 import { formatTime, ordinal } from './format';
-import { chip, keybar, navRow, railScreen, screenHead, swapStep, type Hue } from './rail';
+import { chip, navRow, railScreen, screenHead, swapStep, type Hue } from './rail';
+import { Help, MUSIC_KEYS } from './help';
 import { courseArt, type ArtCar } from './menuMaps';
 import type { Route as RaceRoute } from '../city/route';
 import type { RaceMode } from '../sim/race';
@@ -104,8 +105,15 @@ export function pauseMenu(o: {
   music?: MusicPlayer;
 }): PauseScreen {
   const col = h('div', { class: 'rail-col' });
-  let bar = keybar([]);
-  const root = railScreen('pause scrim', col, bar);
+  const help = new Help({
+    title: 'Paused',
+    sections: () => [
+      { title: 'Keys', keys: [{ keys: ['Esc'], label: step === 'pause' ? 'Resume' : 'Back to the pause list' }] },
+      { title: 'Music', keys: MUSIC_KEYS },
+      { title: 'Tips', tips: ['Settings › Controls lists every key, gamepad button and touch control.'] },
+    ],
+  });
+  const root = railScreen('pause scrim', col, help.el);
   root.setAttribute('role', 'dialog');
   root.setAttribute('aria-label', 'Paused');
   const t = o.ticket;
@@ -135,9 +143,7 @@ export function pauseMenu(o: {
     const el = h('div', { class: 'menu-step' }, ...(next === 'pause' ? pause() : settings()));
     swapStep(col, current, el, animate ? (next === 'settings' ? 'fwd' : 'back') : null);
     current = el;
-    const nextBar = keybar([{ keys: ['Esc'], label: next === 'pause' ? 'Resume' : 'Back' }]);
-    bar.replaceWith(nextBar);
-    bar = nextBar;
+    help.close();
     // Keyboard and gamepad focus stays on the rail: Resume, the open settings tab, or Settings when coming back.
     requestAnimationFrame(() => el.querySelector<HTMLElement>(next === 'settings' ? '.settings-tab.on' : animate ? '.open-settings' : '.resume')?.focus({ preventScroll: true }));
   };
@@ -208,7 +214,14 @@ export function resultsScreen(o: {
     !drift && table,
     h('div', { class: 'result-actions' }, retry, btn(Video, 'Replay', o.onReplay), btn(Wrench, 'Garage', o.onGarage), btn(X, 'Menu', o.onMenu)),
   );
-  const root = railScreen('results', col, keybar([{ keys: ['Enter'], label: 'Retry' }]));
+  const help = new Help({
+    title: 'Results',
+    sections: () => [
+      { title: 'Keys', keys: [{ keys: ['Enter'], label: 'Retry' }] },
+      { title: 'Tips', tips: ['Replay watches the run again; C changes the camera.', 'Racing solo, your best on this event drives beside you as a ghost.'] },
+    ],
+  });
+  const root = railScreen('results', col, help.el);
   root.setAttribute('role', 'dialog');
   root.setAttribute('aria-label', 'Results');
   requestAnimationFrame(() => retry.focus({ preventScroll: true }));
@@ -370,6 +383,7 @@ export const CONTROLS: Record<'keyboard' | 'gamepad' | 'touch', [string[], strin
     [['R'], 'Reset car'],
     [['C'], 'Camera'],
     [['H'], 'Hide the HUD'],
+    [['?'], 'Keys and tips for the screen'],
     [['Esc'], 'Pause'],
     [['M'], 'Mute music'],
     [['[', ']'], 'Previous, next track'],

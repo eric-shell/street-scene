@@ -1,5 +1,4 @@
 /* A screen's header (ui/rail.ts screenHead): back, icon and title, an aside on the right. */
-@use '../abstracts/media';
 .screen-head {
   display: flex;
   align-items: center;
@@ -24,65 +23,4 @@
 }
 .screen-title > svg {
   color: var(--accent);
-}
-/* The key legend along the bottom of a rail (ui/rail.ts keybar). */
-.keybar {
-  position: absolute;
-  left: var(--rail-pad, 16px);
-  bottom: max(14px, env(safe-area-inset-bottom));
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 18px;
-  max-width: var(--rail-content, calc(100vw - 32px));
-  font: 600 12px var(--font);
-  letter-spacing: 0.04em;
-  color: var(--muted);
-  pointer-events: auto;
-}
-.keybar .key {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-.keybar kbd + kbd {
-  margin-left: -2px;
-}
-.key-action {
-  font: inherit;
-  letter-spacing: inherit;
-  color: inherit;
-  background: none;
-  border: 0;
-  padding: 2px 0;
-  cursor: pointer;
-  transition: color var(--t-fast);
-}
-.key-action:hover,
-.key-action:focus-visible {
-  color: var(--text);
-  outline: none;
-}
-.key-action:hover kbd,
-.key-action:focus-visible kbd {
-  border-color: var(--accent-line);
-}
-.key-action:focus-visible {
-  outline: 2px solid var(--accent-2);
-  outline-offset: 3px;
-}
-/* Touch screens have no keys: only the hints that do something stay, as buttons. */
-@include media.touch {
-  .keybar .key:not(.key-action),
-  .keybar kbd {
-    display: none;
-  }
-  .key-action {
-    padding: 8px 12px;
-    color: var(--text);
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-sm);
-  }
 }

@@ -21,7 +21,7 @@ test.describe('boot splash', () => {
     expect(log.filter((s) => s.splash && s.head === 'visible')).toEqual([]);
     await expect(page.locator('.menu-head')).toBeVisible();
     await expect(page.locator('.menu .logo')).toHaveText('STREET SCENE');
-    await expect(page.locator('.menu .tagline')).toHaveText('Street racing after dark');
+    await expect(page.locator('.menu .tagline')).toHaveText('midnight street racing club');
     await expect(page.locator('.menu')).not.toHaveClass(/splash-/);
   });
 

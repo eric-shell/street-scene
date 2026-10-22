@@ -15,7 +15,8 @@ import type { NightScene } from '../render/scene';
 import type { GameRenderer } from '../render/scene';
 import { routeSample } from '../city/route';
 import { h, btn } from '../ui/dom';
-import { HudCard, hudControlsOpen } from '../ui/hudCard';
+import { HudCard } from '../ui/hudCard';
+import { Help, MUSIC_KEYS, helpOpen } from '../ui/help';
 import { ArrowDown, ArrowUp, Drone, Route, icon } from '../ui/icons';
 import { MAP, MapCar, Minimap } from '../ui/minimap';
 import { feetLabel, speedLabel } from '../ui/units';
@@ -27,7 +28,7 @@ export interface DroneOptions {
   escape?: boolean;
   /** The card's title (default Explore, the menu's name for it). */
   title?: string;
-  /** What the exit keys do, for the controls dialog (default Exit). */
+  /** What the exit keys do, for the help panel (default Exit). */
   exitLabel?: string;
   /** Cars to mark on the minimap (a race's field, frozen or replaying); none from the menu. */
   cars?: () => readonly MapCar[];
@@ -71,6 +72,8 @@ export class DroneMode {
   private time = 0;
   private root: HTMLElement;
   private card: HudCard;
+  /** The flying keys and tips behind the ? beside the minimap (ui/help.ts); nothing flies while it is open. */
+  private help: Help;
   private tourBtn: HTMLButtonElement;
   private map: Minimap;
   private mapZoom: number = MAP.scale;
@@ -102,8 +105,8 @@ export class DroneMode {
     window.addEventListener(
       'keydown',
       (e) => {
-        // Nothing flies under the controls dialog (its card closes it on Escape).
-        if (hudControlsOpen()) return;
+        // Nothing flies under a help panel (it closes on Escape before this sees it).
+        if (helpOpen()) return;
         if (e.code === 'Escape' && opts.escape !== false) onExit();
         if (e.code === 'KeyT' && !e.repeat) this.setTour(!this.tour);
         this.keys.add(e.code);
@@ -188,21 +191,34 @@ export class DroneMode {
       actions: [this.tourBtn],
       onExit,
       exitTitle: exitLabel,
-      controls: [
-        [['W', 'A', 'S', 'D'], 'Fly (or the arrow keys)'],
-        [['Drag'], 'Look around'],
-        [['Space', 'Ctrl'], 'Climb / descend (or E, Q)'],
-        [['Shift'], 'Boost'],
-        [['Wheel'], 'Cruise speed'],
-        [['T'], 'Tour the route'],
-        [['H'], 'Hide the HUD'],
-        [['0', 'Esc'], exitLabel],
-        [['Left stick'], 'Gamepad: fly; right stick looks, triggers climb and descend'],
-        [['Touch'], 'Left half drags to fly, right half to look; the arrows climb and descend'],
+    });
+    this.help = new Help({
+      title: opts.title ?? 'Explore',
+      sections: () => [
+        {
+          title: 'Flying',
+          keys: [
+            { keys: ['W', 'A', 'S', 'D'], label: 'Fly (or the arrow keys)' },
+            { keys: ['Drag'], label: 'Look around' },
+            { keys: ['Space', 'Ctrl'], label: 'Climb, descend (or E, Q)' },
+            { keys: ['Shift'], label: 'Boost' },
+            { keys: ['Wheel'], label: 'Cruise speed' },
+          ],
+        },
+        {
+          title: 'Keys',
+          keys: [
+            { keys: ['T'], label: 'Tour the route' },
+            { keys: ['H'], label: 'Hide the HUD' },
+            { keys: ['0', 'Esc'], label: exitLabel },
+          ],
+        },
+        { title: 'Music', keys: MUSIC_KEYS },
+        { title: 'Tips', tips: ['Gamepad: the left stick flies, the right stick looks, the triggers climb and descend.', 'Touch: drag the left half to fly and the right half to look; the arrows climb and descend.'] },
       ],
     });
-    // The card stands in the race HUD's top left column (ui/styles/hud/_hud.scss .hud-tl), which casts its shadow.
-    this.root = h('div', { class: 'drone-ui' }, h('div', { class: 'hud-tl' }, this.card.el), h('div', { class: 'drone-updown' }, hold(ArrowUp, 1), hold(ArrowDown, -1)));
+    // The card stands in the race HUD's top left column (ui/styles/hud/_hud.scss .hud-tl), which casts its shadow; the help beside the minimap.
+    this.root = h('div', { class: 'drone-ui' }, h('div', { class: 'hud-tl' }, this.card.el), this.help.el, h('div', { class: 'drone-updown' }, hold(ArrowUp, 1), hold(ArrowDown, -1)));
     this.map = new Minimap(world, 'hud-map drone-map');
     this.root.append(this.map.canvas);
     this.cars = opts.cars;
@@ -317,6 +333,7 @@ export class DroneMode {
   dispose(): void {
     this.abort.abort();
     this.card.dispose();
+    this.help.dispose();
     this.root.remove();
   }
 }
