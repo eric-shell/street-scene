@@ -99,7 +99,7 @@ function build(world: World): Overhead[] {
         ...bbox(a.path, 2),
         at(x, z, s) {
           const l = toLocal(g, x, z);
-          if (Math.abs(l.u) > 0.9 || Math.abs(l.v) > g.legV) return false;
+          if (Math.abs(l.u) > 1.25 || Math.abs(l.v) > g.legV) return false;
           s.bottom = world.heightAt(g.cx, g.cz) + g.clearance - 0.2;
           s.top = world.heightAt(g.cx, g.cz) + g.clearance + 1.4;
           return true;

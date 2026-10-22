@@ -43,6 +43,9 @@ const OV = {
   signH: 2.2,
   signW: 5.6,
   signDrop: -0.1,
+  /** Sign face out from the truss face (m): clear of the chords (OV.chord half thick) on standoff brackets, the backing plate behind it. */
+  signStandoff: 0.22,
+  signBacking: 0.06,
   /** Viaduct: barrier height and width (m), lamp post spacing and height (m), soffit lamps per crossing. */
   barrierH: 1.05,
   barrierW: 0.45,
@@ -167,17 +170,27 @@ function gantry(kit: DistrictKit, signs: GeoBuilder, a: Area, rng: Rng): void {
   const count = board || s.road < 10 ? 1 : 2;
   const sw = board ? Math.min(7.5, s.road - 1) : Math.min(OV.signW, s.road / count - 0.6);
   const yc = y0 + OV.signDrop + OV.signH / 2;
+  // Spans along u from a to b at this end's face (a, b measured outward from the truss centre).
+  const span = (end: number, a: number, b: number): [number, number] => [Math.min(-end * a, -end * b), Math.max(-end * a, -end * b)];
+  const face = hd + OV.signStandoff;
+  const yb = yc - OV.signH / 2;
+  const yt = yc + OV.signH / 2;
   for (const end of [-1, 1]) {
-    // end +1: the face toward -u, read by traffic heading +u on v > 0.
-    const uf = -end * (hd + 0.08);
+    // end +1: the face toward -u, read by traffic heading +u on v > 0. The panel hangs in front of the
+    // chords, never inside them, so the truss reads behind it.
+    const uf = -end * (face + 0.01);
     for (let k = 0; k < count; k++) {
       const vv = end * (count === 1 ? s.road / 2 : (s.road * (k + 0.5)) / count);
       const p = toWorld(f, uf, vv);
       const cell = board ? boardCell(rng.int(0, 1)) : gantryCell((k0 + (end > 0 ? 0 : 3) + k) % GANTRY_SIGNS.length);
       signPanel(signs, p.x, yc, p.z, -end * s.ux, -end * s.uz, sw, OV.signH, cell, col(0xffffff, board ? 1.4 : 0.85));
-      // The panel's back, and a lamp hood over a direction sign.
-      frameBox(kit.solid, f, Math.min(-end * hd, -end * (hd + 0.06)), Math.max(-end * hd, -end * (hd + 0.06)), vv - sw / 2, vv + sw / 2, yc - OV.signH / 2, yc - OV.signH / 2, yc + OV.signH / 2, yc + OV.signH / 2, C.steelDark);
-      if (!board) frameBox(kit.glow, f, Math.min(-end * (hd + 0.25), -end * (hd + 0.45)), Math.max(-end * (hd + 0.25), -end * (hd + 0.45)), vv - 0.6, vv + 0.6, yc + OV.signH / 2 + 0.05, yc + OV.signH / 2 + 0.05, yc + OV.signH / 2 + 0.15, yc + OV.signH / 2 + 0.15, LIGHT.signLamp);
+      // The panel's back, the standoff brackets from the chords to it, and a lamp hood over a direction sign.
+      const [b0, b1] = span(end, face - OV.signBacking, face);
+      frameBox(kit.solid, f, b0, b1, vv - sw / 2, vv + sw / 2, yb, yb, yt, yt, C.steelDark);
+      const [s0, s1] = span(end, hd + OV.chord, face - OV.signBacking);
+      for (const bv of [vv - sw * 0.35, vv + sw * 0.35]) for (const y of [y0, Math.min(y1, yt - 0.1)]) frameBox(kit.solid, f, s0, s1, bv - 0.05, bv + 0.05, y - 0.05, y - 0.05, y + 0.05, y + 0.05, C.steelDark);
+      const [l0, l1] = span(end, face + 0.17, face + 0.37);
+      if (!board) frameBox(kit.glow, f, l0, l1, vv - 0.6, vv + 0.6, yt + 0.05, yt + 0.05, yt + 0.15, yt + 0.15, LIGHT.signLamp);
     }
   }
   frameBox(kit.glow, f, -0.12, 0.12, s.legV - 0.12, s.legV + 0.12, y1 + 0.25, y1 + 0.25, y1 + 0.5, y1 + 0.5, LIGHT.amber);
