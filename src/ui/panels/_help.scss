@@ -12,15 +12,15 @@
   pointer-events: auto;
   filter: var(--plate-drop);
   .rail > & {
-    left: var(--rail-pad, 16px);
-    bottom: mixins.safe(bottom, 14px);
+    left: var(--rail-pad, var(--gutter));
+    bottom: mixins.safe(bottom, var(--gutter));
   }
-  /* Beside the minimap (hud/_hud.scss .hud__minimap, 170px from the left edge; 110px on a compact HUD). */
+  /* Beside the minimap (hud/_hud.scss .hud__minimap, 170px wide one gutter in; 110px on a compact HUD). */
   :is(.hud, .drone-hud) > & {
-    left: calc(#{mixins.safe(left, 10px)} + 178px);
-    bottom: mixins.safe(bottom, 10px);
+    left: calc(#{mixins.safe(left, var(--gutter))} + 178px);
+    bottom: mixins.safe(bottom, var(--gutter));
     @include media.compact-hud {
-      left: calc(#{mixins.safe(left, 10px)} + 118px);
+      left: calc(#{mixins.safe(left, var(--gutter))} + 118px);
     }
   }
   .hud > & {

@@ -131,8 +131,8 @@
 }
 .hud-hidden-tag {
   position: fixed;
-  top: mixins.safe(top, 12px);
-  left: mixins.safe(left, 12px);
+  top: mixins.safe(top, var(--gutter));
+  left: mixins.safe(left, var(--gutter));
   z-index: 80;
   display: inline-flex;
   align-items: center;

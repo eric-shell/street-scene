@@ -12,7 +12,8 @@
 @use '../styles/abstracts/mixins';
 @use '../styles/abstracts/palette';
 .rail {
-  --rail-pad: max(16px, 4.5vw);
+  /* The screen's gutter inside the column too (pause, results); the main menu keeps a wider margin of its own (_menu.scss). */
+  --rail-pad: var(--gutter);
   --rail-content: var(--menu-w);
   /* The content's margin on both sides of the column. */
   --rail-w: calc(var(--rail-pad) * 2 + var(--rail-content));
@@ -41,10 +42,10 @@
       display: none;
     }
   }
-  /* The column: a fixed top so the title stays put from step to step, room for the help button at the bottom.
+  /* The column: a fixed top (the gutter) so the title stays put from step to step, room for the help button at the bottom.
      Its parts rise in when a rail screen opens or the player moves between its steps (.is-entering). */
   &__col {
-    --col-top: clamp(16px, 9vh, 96px);
+    --col-top: #{mixins.safe(top, var(--gutter))};
     position: absolute;
     left: var(--rail-pad);
     top: var(--col-top);
@@ -58,9 +59,7 @@
     > * {
       flex-shrink: 0;
     }
-    /* Short screens (laptops, phones on their side): a higher column. */
     @include media.short {
-      --col-top: clamp(12px, 6vh, 48px);
       gap: 10px;
     }
     &.is-entering > :not(.title-lockup) {

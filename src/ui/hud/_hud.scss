@@ -17,8 +17,8 @@
      clip their own box shadows, so the column casts the menu's drop shadow for all of them. */
   &__top-left {
     position: absolute;
-    top: mixins.safe(top, 12px);
-    left: mixins.safe(left, 12px);
+    top: mixins.safe(top, var(--gutter));
+    left: mixins.safe(left, var(--gutter));
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -30,7 +30,7 @@
   }
   &__progress {
     position: absolute;
-    top: mixins.safe(top, 12px);
+    top: mixins.safe(top, var(--gutter));
     left: 50%;
     transform: translateX(-50%);
     width: min(320px, 40vw);
@@ -42,7 +42,7 @@
     /* The card takes most of the top on a small screen: the race's progress runs along the bottom instead. */
     @include media.compact-hud {
       top: auto;
-      bottom: mixins.safe(bottom, 12px);
+      bottom: mixins.safe(bottom, var(--gutter));
     }
   }
   &__progress-fill {
@@ -103,8 +103,8 @@
   }
   &__bottom-right {
     position: absolute;
-    right: mixins.safe(right, 10px);
-    bottom: mixins.safe(bottom, 10px);
+    right: mixins.safe(right, var(--gutter));
+    bottom: mixins.safe(bottom, var(--gutter));
     display: flex;
     flex-direction: column;
     align-items: flex-end;
@@ -145,8 +145,8 @@
      _nitro-gauge.scss, _boost-callouts.scss. */
   &__minimap {
     position: absolute;
-    left: mixins.safe(left, 10px);
-    bottom: mixins.safe(bottom, 10px);
+    left: mixins.safe(left, var(--gutter));
+    bottom: mixins.safe(bottom, var(--gutter));
     width: 170px;
     height: 170px;
     @include media.compact-hud {

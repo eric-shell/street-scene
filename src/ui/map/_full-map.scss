@@ -8,7 +8,7 @@
 @use '../styles/abstracts/palette';
 @use 'map-media';
 .full-map {
-  padding: 16px;
+  padding: mixins.safe(top, var(--gutter)) mixins.safe(right, var(--gutter)) mixins.safe(bottom, var(--gutter)) mixins.safe(left, var(--gutter));
   box-sizing: border-box;
   @include media.motion {
     animation: full-map-fade 0.2s ease backwards;
@@ -18,9 +18,6 @@
     @include media.motion {
       animation: full-map-fade-out 0.16s ease forwards;
     }
-  }
-  @include map-media.narrow {
-    padding: mixins.safe(top, 6px) mixins.safe(right, 6px) mixins.safe(bottom, 6px) mixins.safe(left, 6px);
   }
 
   &__panel {

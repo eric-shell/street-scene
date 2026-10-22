@@ -9,6 +9,9 @@
 @use '../styles/abstracts/media';
 @use '../styles/abstracts/palette';
 .menu-screen {
+  /* The primary screen keeps more room than the gutter every other screen stands in: a wide margin and a
+     column that starts well below the top. */
+  --rail-pad: max(16px, 4.5vw);
   /* A scrim darkest at the left edge, enough for the title and tagline over a bright street. */
   .rail__bg {
     background: linear-gradient(90deg, palette.alpha(bg0, 0.62), palette.alpha(bg0, 0.38) 70%, palette.alpha(bg0, 0));
@@ -53,8 +56,13 @@
    that), so nothing is clipped at the column's edge, neither a halo nor a card sliding in between steps.
    The settings pane scrolls inside its card instead; only very short screens fall back to a scrolling column. */
 .menu.rail__col {
+  --col-top: clamp(16px, 9vh, 96px);
   max-height: none;
   overflow: visible;
+  /* Short screens (laptops, phones on their side): a higher column. */
+  @include media.short {
+    --col-top: clamp(12px, 6vh, 48px);
+  }
   @include media.very-short {
     max-height: calc(100% - var(--col-top) - 58px);
     overflow-y: auto;

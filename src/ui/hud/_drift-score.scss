@@ -4,7 +4,7 @@
 .drift-score {
   position: absolute;
   top: 12%;
-  right: mixins.safe(right, 16px);
+  right: mixins.safe(right, var(--gutter));
   text-align: right;
   font-family: var(--mono);
   font-weight: 700;

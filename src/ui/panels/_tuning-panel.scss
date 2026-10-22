@@ -5,10 +5,10 @@
 @use '../styles/abstracts/mixins';
 .tuning-panel {
   position: fixed;
-  right: mixins.safe(right, 10px);
+  right: mixins.safe(right, var(--gutter));
   top: 52px;
   bottom: 236px;
-  width: min(340px, calc(100vw - 20px));
+  width: min(340px, calc(100vw - var(--gutter) * 2));
   z-index: 50;
   pointer-events: auto;
   padding: 10px;
@@ -17,8 +17,8 @@
   gap: 8px;
   font-size: 13px;
   @include media.compact-hud {
-    top: 8px;
-    bottom: 8px;
+    top: var(--gutter);
+    bottom: var(--gutter);
     width: min(300px, 46vw);
   }
   &__head {

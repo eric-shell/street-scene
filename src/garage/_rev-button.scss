@@ -8,7 +8,7 @@
 .rev-button {
   position: absolute;
   left: var(--free-mid);
-  bottom: mixins.safe(bottom, 18px);
+  bottom: mixins.safe(bottom, var(--gutter));
   transform: translateX(-50%);
   min-width: 200px;
   justify-content: center;
@@ -63,8 +63,8 @@
   }
   @include media.narrow {
     left: auto;
-    right: 12px;
-    bottom: calc(var(--sheet) + 12px);
+    right: var(--gutter);
+    bottom: calc(var(--sheet) + var(--gutter));
     transform: none;
     min-width: 0;
     &:active {

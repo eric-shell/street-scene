@@ -25,8 +25,8 @@ $head-rise: 0.58s, 0.52s;
   pointer-events: none;
   z-index: 20;
   color: var(--text);
-  --rail-pad: max(12px, 2vw);
-  --rail-content: min(392px, calc(100vw - 24px));
+  --rail-pad: var(--gutter);
+  --rail-content: min(392px, calc(100vw - var(--gutter) * 2));
   --rail-w: calc(var(--rail-pad) * 2 + var(--rail-content));
   /* The middle of the free space beside the rail. */
   --free-mid: calc((var(--rail-w) + 100vw) / 2);
@@ -78,8 +78,8 @@ $head-rise: 0.58s, 0.52s;
   /* The help stands above the sheet's left corner, across from the rev button. */
   > .help {
     @include media.narrow {
-      left: 12px;
-      bottom: calc(var(--sheet) + 12px);
+      left: var(--gutter);
+      bottom: calc(var(--sheet) + var(--gutter));
     }
   }
   /* The garage's segmented controls are smaller and wrap. */
@@ -100,7 +100,7 @@ $head-rise: 0.58s, 0.52s;
     display: flex;
     flex-direction: column;
     gap: 10px;
-    padding: mixins.safe(top, 14px) 0 52px;
+    padding: mixins.safe(top, var(--gutter)) 0 calc(var(--gutter) + 46px);
     pointer-events: auto;
     > * {
       flex-shrink: 0;
@@ -108,7 +108,7 @@ $head-rise: 0.58s, 0.52s;
     @include media.narrow {
       top: auto;
       height: var(--sheet);
-      padding: 10px 12px mixins.safe(bottom, 12px);
+      padding: 10px var(--gutter) mixins.safe(bottom, var(--gutter));
     }
   }
   /* The tiles of categories (_garage-tab.scss) in two rows, one scrolling row on a phone. The tabs and the

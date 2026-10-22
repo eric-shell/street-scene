@@ -2,7 +2,7 @@
 .toast {
   position: fixed;
   left: 50%;
-  bottom: 24px;
+  bottom: calc(var(--gutter) * 2);
   transform: translateX(-50%);
   z-index: 60;
   padding: 10px 16px;

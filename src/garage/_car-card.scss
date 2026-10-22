@@ -9,9 +9,9 @@
 .car-card {
   @include mixins.chamfer(12px);
   position: absolute;
-  /* A gap from the rail's plates as wide as its top margin. */
-  left: calc(var(--rail-w) + 16px);
-  top: mixins.safe(top, 16px);
+  /* One gutter from the rail's plates and from the top. */
+  left: calc(var(--rail-pad) + var(--rail-content) + var(--gutter));
+  top: mixins.safe(top, var(--gutter));
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -133,9 +133,9 @@
     }
   }
   @include media.narrow {
-    left: 10px;
-    top: mixins.safe(top, 10px);
-    max-width: calc(100vw - 20px);
+    left: var(--gutter);
+    top: mixins.safe(top, var(--gutter));
+    max-width: calc(100vw - var(--gutter) * 2);
     padding: 8px 14px 10px 12px;
     --cut: 9px;
   }
