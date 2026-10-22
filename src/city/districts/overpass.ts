@@ -292,7 +292,18 @@ function planViaduct(ctx: PlanContext, hz: SiteHazards, mouths: EdgeMouths[], tr
       if (!ok) break;
     }
     for (const e of ok ? g.edges : []) {
-      if (crossed.has(e.id)) continue;
+      if (crossed.has(e.id)) {
+        // A crossed street's pieces pass under the deck, but never under an end abutment (a diagonal
+        // crossed near one end runs its next piece on past it).
+        const A = g.nodes[e.a];
+        const B = g.nodes[e.b];
+        const keep = e.width / 2 + e.sidewalk + Math.hypot(CFG.abutment, half) + 1;
+        if (distToSegment(p0.x, p0.z, A.x, A.z, B.x, B.z) < keep || distToSegment(p1.x, p1.z, A.x, A.z, B.x, B.z) < keep) {
+          ok = false;
+          break;
+        }
+        continue;
+      }
       // Not crossed: the deck and its abutments keep clear of this street's corridor.
       const A = g.nodes[e.a];
       const B = g.nodes[e.b];

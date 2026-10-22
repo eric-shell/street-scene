@@ -9,7 +9,8 @@
  * walls: hits shove pieces back a little and cost speed for the dent, and the
  * steps between dented and straight pieces catch cars scraping along.
  * Timed gates (sim/gates.ts: the drawbridge's arms) join the static walls
- * while they block, for cars coming at them.
+ * while they block, for cars coming at them, and so does a train on a level
+ * crossing (sim/levelCrossing.ts collideTrains) while it is on the street.
  * Car vs car: equal-ish impulses. Fixed iteration order.
  */
 import { CarState } from './car';
@@ -19,6 +20,7 @@ import { abs, cos, sign, sin, sqrt } from './math';
 import type { Contact, World } from '../city/world';
 import { RailState, collideRails, pushRailPiece, railStepAhead } from './rails';
 import { collideGates } from './gates';
+import { collideTrains } from './levelCrossing';
 
 /** Hardest static hit of a tick: normal impact speed (m/s) and what was hit. */
 export interface WorldHit {
@@ -58,7 +60,7 @@ function gatherContacts(world: World, rails: RailState | undefined, x: number, z
   contactPiece.length = 0;
   if (!rails || !rails.layout.subCount) {
     for (let i = 0; i < n; i++) contactPiece.push(-1);
-    return world.timedGates ? n + collideGates(world.timedGates, tick, carX, carZ, x, z, r, contacts, contactPiece) : n;
+    return world.timedGates ? n + timedContacts(world, tick, carX, carZ, x, z, r) : n;
   }
   let w = 0;
   for (let i = 0; i < n; i++) {
@@ -68,7 +70,13 @@ function gatherContacts(world: World, rails: RailState | undefined, x: number, z
   }
   contacts.length = w;
   const nr = w + collideRails(rails, x, z, r, contacts, contactPiece);
-  return world.timedGates ? nr + collideGates(world.timedGates, tick, carX, carZ, x, z, r, contacts, contactPiece) : nr;
+  return world.timedGates ? nr + timedContacts(world, tick, carX, carZ, x, z, r) : nr;
+}
+
+/** The timed hazards' contacts: gates blocking at `tick`, and the trains on the level crossings (sim/levelCrossing.ts). */
+function timedContacts(world: World, tick: number, carX: number, carZ: number, x: number, z: number, r: number): number {
+  const n = collideGates(world.timedGates!, tick, carX, carZ, x, z, r, contacts, contactPiece);
+  return n + collideTrains(world, tick, carX, carZ, x, z, r, contacts, contactPiece);
 }
 
 /**

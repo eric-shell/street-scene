@@ -46,7 +46,7 @@ import { btn, h, iconBtn } from './dom';
 import { Disc3, Eye, EyeOff, Flag, FlagTriangleRight, Hash, Landmark, Layers, LocateFixed, MapIcon, MapPin, MapPinOff, MapPinned, Maximize2, Navigation, Navigation2, Route, X, ZoomIn, ZoomOut, drawIcon, icon, type IconNode } from './icons';
 import type { MapCar } from './minimap';
 import { PALETTE, rgba, type PaletteColor } from './palette';
-import { bearingDeg, compassPoint, distanceLabel, placeName } from './places';
+import { CITY_NAME, bearingDeg, compassPoint, distanceLabel, placeName } from './places';
 
 /** Where a waypoint is kept: by whoever owns the map's city (main.ts keeps one per event city, so one set on the menu carries into free roam). */
 export interface WaypointStore {
@@ -714,7 +714,7 @@ export class FullMap {
     const head = h(
       'header',
       { class: 'fullmap-top' },
-      h('h2', { class: 'title fullmap-title' }, icon(MapIcon, { size: 22 }), h('span', {}, 'City map')),
+      h('h2', { class: 'title fullmap-title' }, icon(MapIcon, { size: 22 }), h('span', {}, CITY_NAME)),
       ...chips,
       h('span', { class: 'fullmap-where' }, h('span', { class: 'fullmap-where-pre' }, 'You are in '), this.hereEl),
       iconBtn(X, 'Close map (Esc)', () => opts.onClose(), 'fullmap-close'),

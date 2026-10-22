@@ -1,22 +1,27 @@
 /**
  * The main menu's maps of the event city, both drawn from the shared city
- * layers (ui/cityMap.ts) so they read like the full map and the minimap:
- *  - CityOverview: the home card's map. The whole city tilted like a model on
- *    a table, with the cruising car's live position on it (a heading arrow
- *    over a radar ping) and the event's signature district breathing (the
- *    river for River Run, the roundabouts for Ring Rush ...). It says where
- *    tonight's event is without saying which race; the race step shows the
- *    courses. A click opens the full map.
- *  - CourseMap: the race step's map, flat, with the picked race type's course
- *    drawn on in its color: the circuit's lap from the start line, the sprint
- *    from A to B, the drift lap with its zones, or every street for free roam,
- *    lit outward from the car. Switching types fades the old course out and
- *    draws the new one in; a pulse of light then runs the course in its
- *    driving direction.
- * The city is rasterized once per map (and again when the box resizes); the
- * markers and courses are DOM and SVG over it, so CSS does the drawing on, the
- * fades and the pulses on the compositor. Per frame only the car marker moves
- * (one transform). Render only.
+ * layers (ui/cityMap.ts) so they read like the full map and the minimap, and
+ * both the same model: the whole city tilted like a model on a table, turning
+ * slowly, with the cruising car's live position on it (a heading arrow over a
+ * radar ping) and the event's signature district breathing (the river for
+ * River Run, the roundabouts for Ring Rush ...). Going from home to the race
+ * step keeps the same city at the same angle; only the course arrives.
+ *  - CityOverview: the home card's map, the table on its own. It says where
+ *    tonight's event is without saying which race. A click opens the full map.
+ *  - CourseMap: the race step's map, the same table zoomed in on the picked
+ *    race type's course, drawn on the plane in its color: the circuit's lap
+ *    from the start line, the sprint from A to B, the drag strip, the waypoint
+ *    race's suggested route with its numbered waypoints, the drift lap with its
+ *    zones; free roam zooms back out to the whole city and lights every
+ *    street outward from the car. The signature district breathes quieter
+ *    there so the course is the brightest thing. Switching types fades the
+ *    old course out, zooms to the new one and draws it on; a pulse of light
+ *    then runs the course in its driving direction.
+ * The city is rasterized once per map (again when the box resizes, and at
+ * both ends of a zoom); the markers and courses are DOM and SVG over it, so
+ * CSS does the tilt, the turn, the drawing on, the fades and the pulses. Per
+ * frame only the car marker moves (one transform), and the city raster while
+ * a zoom runs (one more). Render only.
  */
 import type { World } from '../city/world';
 import type { AreaKind } from '../city/districts/types';
@@ -26,7 +31,7 @@ import { driftZones } from '../sim/driftZones';
 import type { Vec2 } from '../sim/math';
 import { fitCity, layersOf, mapHeading, mapX, mapY, type CityLayers, type MapView } from './cityMap';
 import { h, sheen } from './dom';
-import { Flag, FlagTriangleRight, MapIcon, icon } from './icons';
+import { FlagTriangleRight, MapIcon, icon } from './icons';
 import { PALETTE } from './palette';
 import type { RaceType } from './settings';
 
@@ -90,29 +95,116 @@ class PinMarker {
   }
 }
 
-/** The home card's tilted city with the cruising car on it. */
+/** The turn's period (s): `ov-turn` in ui.css, 34 s each way. */
+const TURN_S = 68;
+
+/** A world rectangle (m) the table frames: a course and what it needs around it. */
+export interface Frame {
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+}
+
+/**
+ * Framing a course: the share of the plane it may fill (its corners stay in the
+ * well through the whole turn, near edge magnified), and the most it may zoom
+ * past the whole city, so a short sprint still shows the streets around it.
+ */
+const FOCUS = { fill: 0.62, maxZoom: 3.2, seconds: 0.75 } as const;
+
+/** What the course map lays on the table: an overlay on the plane under the markers, redrawn with the city. */
+interface TableLayer {
+  el: Element;
+  /** The table settled on this plane view (CSS px): first layout, a resize, or the end of a zoom; `animate` draws on. */
+  drawn(view: MapView, animate: boolean): void;
+}
+
+/** The world rectangle a view shows (m). */
+function visible(v: MapView): Frame {
+  const hx = v.w / 2 / v.scale;
+  const hz = v.h / 2 / v.scale;
+  return { minX: v.cx - hx, maxX: v.cx + hx, minZ: v.cz - hz, maxZ: v.cz + hz };
+}
+
+/** The view of a w x h box that fits a world rectangle, `fill` of the box. */
+function frameView(f: Frame, w: number, hgt: number, fill = 1): MapView {
+  const scale = Math.min((w * fill) / Math.max(1, f.maxX - f.minX), (hgt * fill) / Math.max(1, f.maxZ - f.minZ));
+  return { cx: (f.minX + f.maxX) / 2, cz: (f.minZ + f.maxZ) / 2, scale, w, h: hgt };
+}
+
+/** The views between two, at t in [0, 1]: the center glides, the scale moves in ratio, so a zoom feels even. */
+function lerpView(a: MapView, b: MapView, t: number): MapView {
+  return { cx: a.cx + (b.cx - a.cx) * t, cz: a.cz + (b.cz - a.cz) * t, scale: a.scale * Math.pow(b.scale / a.scale, t), w: b.w, h: b.h };
+}
+
+const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+
+/**
+ * The tilted city with the cruising car on it: the home card's map, and the
+ * table the race step's course lies on. The table can frame part of the city
+ * (focus): the zoom moves the city raster with one transform per frame, from a
+ * raster wide enough to hold both ends, and redraws it crisp in the new view
+ * when it lands; only then does the layer (the course) draw on.
+ */
 export class CityOverview {
   readonly el: HTMLElement;
   private readonly plane: HTMLElement;
+  private readonly zoom: HTMLElement;
   private readonly base: HTMLCanvasElement;
   private readonly glow: HTMLCanvasElement;
   private readonly car = new CarMarker();
   private readonly pin = new PinMarker();
   private readonly layers: CityLayers;
-  /** The plane's view in CSS px, for the marker. */
+  /** The plane's view in CSS px as shown right now, for the markers and any layer. */
   private view: MapView | null = null;
+  /** The view the canvases were last drawn in (CSS px). */
+  private raster: MapView | null = null;
+  /** What the table frames; null is the whole city. */
+  private frame: Frame | null = null;
+  private zooming: { from: MapView; to: MapView; t0: number } | null = null;
   private readonly ro: ResizeObserver;
 
-  constructor(private readonly world: World) {
+  constructor(
+    private readonly world: World,
+    private readonly layer?: TableLayer,
+  ) {
     this.layers = layersOf(world);
     this.base = h('canvas', { class: 'ov-base' });
     this.glow = h('canvas', { class: 'ov-glow' });
-    // The plane tilts (and flattens on hover); the map turns slowly on it, so each is one transform.
+    // The plane tilts (and flattens on hover); the map turns slowly on it, so each is one transform. The
+    // city zooms inside a lens that fades it toward the table's edge; what lies on it stays sharp.
     // Spans: the overview sits inside the event card's map button, where only phrasing content belongs.
-    this.plane = h('span', { class: 'ov-spin' }, this.base, this.glow, this.pin.el, this.car.el);
+    this.zoom = h('span', { class: 'ov-zoom' }, this.base, this.glow);
+    this.plane = h('span', { class: 'ov-spin' }, h('span', { class: 'ov-lens' }, this.zoom), ...(layer ? [layer.el] : []), this.pin.el, this.car.el);
+    // Every table turns on one clock, so the race step's map picks up the home map's angle where it left off.
+    this.plane.style.animationDelay = `${-((performance.now() / 1000) % TURN_S).toFixed(2)}s`;
     this.el = h('span', { class: 'city-overview', 'aria-hidden': 'true' }, h('span', { class: 'ov-stage' }, h('span', { class: 'ov-plane' }, this.plane)), h('i', { class: 'ov-scan' }));
     this.ro = new ResizeObserver(() => this.draw());
     this.ro.observe(this.el);
+  }
+
+  /** The view that frames `f` (or the whole city) on a w x h plane. */
+  private viewFor(f: Frame | null, w: number, hgt: number): MapView {
+    const city = fitCity(this.world, w, hgt, 30);
+    if (!f) return city;
+    const v = frameView(f, w, hgt, FOCUS.fill);
+    return { ...v, scale: Math.min(Math.max(v.scale, city.scale), city.scale * FOCUS.maxZoom) };
+  }
+
+  /**
+   * Frame part of the city, or the whole city with null. `animate` zooms there
+   * and draws the layer on when it lands; otherwise the table cuts to it.
+   */
+  focus(f: Frame | null, animate = true): void {
+    this.frame = f;
+    const from = this.view;
+    if (!from) return; // The first layout frames it.
+    const to = this.viewFor(f, from.w, from.h);
+    const still = Math.abs(to.scale / from.scale - 1) < 0.01 && Math.hypot(to.cx - from.cx, to.cz - from.cz) * to.scale < 1;
+    if (!animate || still || reducedMotion()) this.settle(to, animate);
+    else this.zoomFrom(from, to);
   }
 
   /** Rasterize the city for the plane's current size (on first layout and resizes). */
@@ -126,8 +218,50 @@ export class CityOverview {
       c.width = Math.round(w * k);
       c.height = Math.round(hgt * k);
     }
-    const view = fitCity(this.world, this.base.width, this.base.height, 30);
-    this.view = fitCity(this.world, w, hgt, 30);
+    const first = !this.view;
+    const to = this.viewFor(this.frame, w, hgt);
+    // A first layout on a course zooms in from the whole city, the home card's view, so the race step opens on it.
+    if (first && this.frame && !reducedMotion()) this.zoomFrom(this.viewFor(null, w, hgt), to);
+    else this.settle(to, first);
+  }
+
+  /** Start a zoom: the canvases hold both ends, and update() moves them until it lands. */
+  private zoomFrom(from: MapView, to: MapView): void {
+    const a = visible(from);
+    const b = visible(to);
+    this.rasterize(frameView({ minX: Math.min(a.minX, b.minX), maxX: Math.max(a.maxX, b.maxX), minZ: Math.min(a.minZ, b.minZ), maxZ: Math.max(a.maxZ, b.maxZ) }, to.w, to.h));
+    this.zooming = { from, to, t0: performance.now() };
+    this.show(from);
+  }
+
+  /** Land on a view: the city drawn crisp in it, the layer laid over it. */
+  private settle(v: MapView, animate: boolean): void {
+    this.zooming = null;
+    this.rasterize(v);
+    this.show(v);
+    this.layer?.drawn(v, animate);
+  }
+
+  /** Show the canvases' raster as the given view: one transform on the zoom layer. */
+  private show(v: MapView): void {
+    this.view = v;
+    const r = this.raster!;
+    const k = v.scale / r.scale;
+    if (Math.abs(k - 1) < 1e-4 && r.cx === v.cx && r.cz === v.cz) {
+      this.zoom.style.transform = '';
+      return;
+    }
+    // mapX(v, x) = k * mapX(r, x) + tx, and the same down the page.
+    const tx = (v.w / 2) * (1 - k) - (r.cx - v.cx) * v.scale;
+    const ty = (v.h / 2) * (1 - k) - (r.cz - v.cz) * v.scale;
+    this.zoom.style.transform = `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) scale(${k.toFixed(4)})`;
+  }
+
+  /** Draw the city and the signature district into the canvases in a view (CSS px). */
+  private rasterize(v: MapView): void {
+    this.raster = v;
+    const k = this.base.width / v.w;
+    const view = { ...v, scale: v.scale * k, w: this.base.width, h: this.base.height };
     const c = this.base.getContext('2d')!;
     c.clearRect(0, 0, this.base.width, this.base.height);
     this.layers.draw(c, view, { dpr: k, ground: false, route: false, minStreet: 1.1, ink: { block: 'rgba(64, 62, 65, 0.55)', building: 'rgba(96, 92, 100, 0.5)', road: 'rgba(147, 146, 150, 0.85)' } });
@@ -180,11 +314,21 @@ export class CityOverview {
     c.restore();
   }
 
-  /** Move the car marker to the cruising car and the pin to the waypoint (every frame the menu shows). */
+  /** Step a zoom, and move the car marker to the cruising car and the pin to the waypoint (every frame the menu shows). */
   update(p: MapPose, wp: Vec2 | null = null): void {
+    const z = this.zooming;
+    if (z) {
+      const t = Math.min(1, (performance.now() - z.t0) / (FOCUS.seconds * 1000));
+      if (t < 1) this.show(lerpView(z.from, z.to, easeInOut(t)));
+      else this.settle(z.to, true);
+    }
     const v = this.view;
     if (!v) return;
-    this.car.place(mapX(v, p.x), mapY(v, p.z), mapHeading(p.yaw));
+    const x = mapX(v, p.x);
+    const y = mapY(v, p.z);
+    this.car.place(x, y, mapHeading(p.yaw));
+    // Zoomed in on a course, the car can be off the table: it fades rather than floating over the well.
+    this.car.el.classList.toggle('off', x < 0 || y < 0 || x > v.w || y > v.h);
     this.pin.place(wp && mapX(v, wp.x), wp ? mapY(v, wp.z) : 0);
   }
 
@@ -197,6 +341,13 @@ export class CityOverview {
 export interface CourseRoutes {
   circuit: Route;
   sprint: Route;
+  drag: Route;
+  waypoint: Route;
+}
+
+/** The route a race type's course is drawn from (drift laps the circuit; free roam's stand-in is the circuit too). */
+export function courseRoute(routes: CourseRoutes, type: RaceType): Route {
+  return type === 'sprint' || type === 'drag' || type === 'waypoint' ? routes[type] : routes.circuit;
 }
 
 /** How long the outgoing course takes to fade (ms; matches `.course.leave` in ui.css). */
@@ -204,18 +355,15 @@ const LEAVE_MS = 260;
 
 let maskIds = 0;
 
-/** The race step's flat city with the picked type's course drawn on. */
+/** The race step's map: the home card's table with the picked type's course drawn on the plane. */
 export class CourseMap {
   readonly el: HTMLElement;
-  private readonly canvas: HTMLCanvasElement;
+  private readonly table: CityOverview;
   private readonly overlay: SVGSVGElement;
-  private readonly car = new CarMarker();
-  private readonly pin = new PinMarker();
-  private readonly layers: CityLayers;
+  /** The plane's view in CSS px (the table's), once it has been laid out. */
   private view: MapView | null = null;
   private type: RaceType | null = null;
   private course: SVGGElement | null = null;
-  private readonly ro: ResizeObserver;
   private lastPose: MapPose | null = null;
 
   /** `onOpen`: the map is a button that opens the full city map on this course. */
@@ -224,10 +372,10 @@ export class CourseMap {
     private readonly routes: CourseRoutes,
     onOpen?: () => void,
   ) {
-    this.layers = layersOf(world);
-    this.canvas = h('canvas', { class: 'course-city' });
     this.overlay = svg('svg', { class: 'course-svg', 'aria-hidden': 'true' });
-    this.el = h('div', { class: 'course-map' }, this.canvas, this.overlay, this.pin.el, this.car.el);
+    this.table = new CityOverview(world, { el: this.overlay, drawn: (view, animate) => this.drawn(view, animate) });
+    // The arrow on the table is the car on screen, as on the home card.
+    this.el = h('div', { class: 'course-map' }, this.table.el, h('span', { class: 'event-map-live' }, h('i'), 'Live'));
     if (onOpen) {
       this.el.classList.add('opens');
       this.el.setAttribute('role', 'button');
@@ -243,83 +391,52 @@ export class CourseMap {
         onOpen();
       });
     }
-    this.ro = new ResizeObserver(() => this.draw());
-    this.ro.observe(this.el);
   }
 
-  /** Show a race type's course; `animate` draws it on (a type change), otherwise it simply appears. */
+  /**
+   * Show a race type's course; `animate` fades the old one out, zooms to the
+   * new one and draws it on (a type change), otherwise the map cuts to it.
+   */
   show(type: RaceType, animate = true): void {
-    if (type === this.type && this.course) return;
+    if (type === this.type) return;
     this.type = type;
     this.el.dataset.mode = type;
     const old = this.course;
+    this.course = null;
     if (old) {
       if (animate) {
         old.classList.add('leave');
         setTimeout(() => old.remove(), LEAVE_MS);
       } else old.remove();
     }
-    this.course = this.view ? this.build(type, animate) : null;
-    if (this.course) this.overlay.append(this.course);
+    // The table calls drawn() when it lands on the frame, at once without a zoom.
+    this.table.focus(this.frameOf(type), animate);
   }
 
-  /**
-   * Where the racing is: the box around both courses and the drift zones, so
-   * every type's course shows as large as the card allows while the city
-   * behind stays put when the type changes (free roam's streets run on past
-   * the edges, as the city does).
-   */
-  private frame(w: number, hgt: number): MapView {
-    let minX = Infinity;
-    let maxX = -Infinity;
-    let minZ = Infinity;
-    let maxZ = -Infinity;
-    const add = (p: Vec2) => {
-      minX = Math.min(minX, p.x);
-      maxX = Math.max(maxX, p.x);
-      minZ = Math.min(minZ, p.z);
-      maxZ = Math.max(maxZ, p.z);
-    };
-    coursePoints(this.routes.circuit).forEach(add);
-    coursePoints(this.routes.sprint).forEach(add);
-    for (const z of driftZones(this.world)) z.polygon.forEach(add);
-    if (!Number.isFinite(minX)) return fitCity(this.world, w, hgt, 24);
-    // The margin is in pixels, so the start and finish discs (8.5 px) never sit on the edge whatever the scale.
-    const pad = 20;
-    const scale = Math.min((w - 2 * pad) / Math.max(1, maxX - minX), (hgt - 2 * pad) / Math.max(1, maxZ - minZ));
-    return { cx: (minX + maxX) / 2, cz: (minZ + maxZ) / 2, scale, w, h: hgt };
+  /** What a type frames: its course with the start and finish discs clear of it, the zones too for drift; free roam the whole city. */
+  private frameOf(type: RaceType): Frame | null {
+    if (type === 'roam') return null;
+    const pts: Vec2[] = coursePoints(courseRoute(this.routes, type));
+    if (type === 'drift') for (const z of driftZones(this.world)) pts.push(...z.polygon);
+    const f: Frame = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
+    for (const p of pts) {
+      f.minX = Math.min(f.minX, p.x);
+      f.maxX = Math.max(f.maxX, p.x);
+      f.minZ = Math.min(f.minZ, p.z);
+      f.maxZ = Math.max(f.maxZ, p.z);
+    }
+    return f;
   }
 
-  /** Rasterize the city and rebuild the course for the box's current size. */
-  private draw(): void {
-    const w = this.el.clientWidth;
-    const hgt = this.el.clientHeight;
-    if (w < 8 || hgt < 8) return;
-    const dpr = dprOf();
-    this.canvas.width = Math.round(w * dpr);
-    this.canvas.height = Math.round(hgt * dpr);
-    const first = !this.view;
-    const view = (this.view = this.frame(w, hgt));
-    this.overlay.setAttribute('viewBox', `0 0 ${w} ${hgt}`);
-    const c = this.canvas.getContext('2d')!;
-    c.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    this.layers.draw(c, { ...view, scale: view.scale * dpr, w: this.canvas.width, h: this.canvas.height }, {
-      dpr,
-      ground: false,
-      route: false,
-      minStreet: 1,
-      ink: { block: 'rgba(58, 56, 60, 0.5)', building: 'rgba(80, 77, 84, 0.45)', road: 'rgba(120, 118, 124, 0.7)', channel: 'rgba(120, 220, 232, 0.3)' },
-    });
-    // A veil over the city, so the course in its color is the brightest thing on the card.
-    c.fillStyle = 'rgba(18, 17, 19, 0.38)';
-    c.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    // The course goes on top in the type's color; the city stays a quiet backdrop for it.
+  /** The table landed on a view (first layout, a resize, the end of a zoom): lay the course over it. */
+  private drawn(view: MapView, animate: boolean): void {
+    this.view = view;
+    this.overlay.setAttribute('viewBox', `0 0 ${view.w} ${view.h}`);
     if (this.type) {
       this.course?.remove();
-      this.course = this.build(this.type, first);
+      this.course = this.build(this.type, animate);
       this.overlay.append(this.course);
     }
-    if (this.lastPose) this.update(this.lastPose);
   }
 
   /** The SVG of one type's course in the current view. */
@@ -344,7 +461,7 @@ export class CourseMap {
       g.append(defs, svg('path', { class: 'c-streets', d: streets, mask: `url(#${id})` }));
       return g;
     }
-    const route = type === 'sprint' ? this.routes.sprint : this.routes.circuit;
+    const route = courseRoute(this.routes, type);
     if (type === 'drift') {
       // The zones where a slide pays: the plaza and the bigger lots.
       let zones = '';
@@ -359,38 +476,66 @@ export class CourseMap {
       svg('path', { class: 'c-pulse', d: line, pathLength: 1 }),
     );
     const start = routeSample(route, route.startS);
-    g.append(marker(mapX(v, start.x), mapY(v, start.z), route.closed ? Flag : FlagTriangleRight, 'c-start'));
+    // The waypoints in order, each popping in as the line is drawn to it (the last target is the finish line itself).
+    const wps = route.waypoints ?? [];
+    wps.slice(0, -1).forEach((wp, i) => g.append(waypointMarker(mapX(v, wp.x), mapY(v, wp.z), i + 1, (wp.s - route.startS) / (route.finishS - route.startS))));
+    // A lap starts and ends on one line: its marker is the start, green, where the grid lines up.
     if (!route.closed) {
       const end = routeSample(route, route.finishS);
-      g.append(marker(mapX(v, end.x), mapY(v, end.z), Flag, 'c-finish'));
+      g.append(finishMarker(mapX(v, end.x), mapY(v, end.z)));
     }
+    g.append(startMarker(mapX(v, start.x), mapY(v, start.z)));
     return g;
   }
 
   /** Follow the cruising car and the waypoint (free roam shows where you are and where you are headed). */
   update(p: MapPose, wp: Vec2 | null = null): void {
     this.lastPose = p;
-    const v = this.view;
-    if (!v) return;
-    this.car.place(mapX(v, p.x), mapY(v, p.z), mapHeading(p.yaw));
-    this.pin.place(wp && mapX(v, wp.x), wp ? mapY(v, wp.z) : 0);
+    this.table.update(p, wp);
   }
 
   dispose(): void {
-    this.ro.disconnect();
+    this.table.dispose();
   }
 }
 
-/** A start or finish marker: a flag in a disc, popping in once the line has been drawn to it. */
-function marker(x: number, y: number, ico: typeof Flag, cls: string): SVGGElement {
+/**
+ * A course marker: a disc on a dark halo, so it reads on the tilted city
+ * whatever is under it, popping in once the line has been drawn to it.
+ */
+function markerDisc(x: number, y: number, cls: string, ...face: SVGElement[]): SVGGElement {
   const g = svg('g', { class: `c-mark ${cls}`, transform: `translate(${x.toFixed(1)} ${y.toFixed(1)})` });
   const inner = svg('g', { class: 'c-mark-in' });
-  inner.append(svg('circle', { r: 8.5 }));
-  const fl = icon(ico, { size: 11, strokeWidth: 2.6 });
-  fl.setAttribute('x', '-5.5');
-  fl.setAttribute('y', '-5.5');
-  inner.append(fl);
+  inner.append(svg('circle', { class: 'c-halo', r: 12.5 }), ...face);
   g.append(inner);
+  return g;
+}
+
+/** The start: a dark flag on a green disc, green for go whatever the type's color. */
+function startMarker(x: number, y: number): SVGGElement {
+  const fl = icon(FlagTriangleRight, { size: 12, strokeWidth: 2.8 });
+  fl.setAttribute('x', '-5.5');
+  fl.setAttribute('y', '-6');
+  return markerDisc(x, y, 'c-start', svg('circle', { class: 'c-disc', r: 10 }), fl);
+}
+
+/** The finish: a checkered disc in a white ring, the flag itself. */
+function finishMarker(x: number, y: number): SVGGElement {
+  const id = `course-checks-${++maskIds}`;
+  // Checks of 4 px, on the disc's own axes so a square sits on its center.
+  const pattern = svg('pattern', { id, width: 8, height: 8, patternUnits: 'userSpaceOnUse' });
+  pattern.append(svg('rect', { width: 8, height: 8, fill: '#fcfcfa' }), svg('rect', { width: 4, height: 4, fill: '#19181a' }), svg('rect', { x: 4, y: 4, width: 4, height: 4, fill: '#19181a' }));
+  const defs = svg('defs');
+  defs.append(pattern);
+  return markerDisc(x, y, 'c-finish', defs, svg('circle', { class: 'c-disc', r: 10, fill: `url(#${id})` }));
+}
+
+/** A waypoint: its number on a disc in the type's color, popping in when the line drawn on reaches it (`at`, 0..1 of the course). */
+function waypointMarker(x: number, y: number, n: number, at: number): SVGGElement {
+  const label = svg('text', { class: 'c-wp-n', 'text-anchor': 'middle', 'dominant-baseline': 'central' });
+  label.textContent = String(n);
+  const g = markerDisc(x, y, 'c-wp', svg('circle', { class: 'c-disc', r: 8.5 }), label);
+  g.style.setProperty('--at', at.toFixed(3));
   return g;
 }
 

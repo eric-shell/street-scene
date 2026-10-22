@@ -24,11 +24,13 @@ export const POLICE = {
   patrolPoints: 5,
   /**
    * When the chase starts: the leader's last lap on a circuit of two laps or more, otherwise the
-   * last `stretchShare` of the race distance (at least `stretchMin` m). It lingers over the
-   * winner this long after the finish (s), then leaves.
+   * last `stretchShare` of the race distance (at least `stretchMin` m, at most `stretchMaxShare` of
+   * it: a drag is chased down its second half, not from the green light). It
+   * lingers over the winner this long after the finish (s), then leaves.
    */
   stretchShare: 0.35,
   stretchMin: 500,
+  stretchMaxShare: 0.5,
   linger: 6,
   /** Chase station: behind the leader along its travel (m), off to one side (m), above the ground (m). */
   behind: 24,
@@ -58,7 +60,7 @@ export const POLICE = {
   /** Searchlight: cone radius at the target (m), ground pool radius (m), brightness, reach (m), aim lag (s). */
   beamRadius: 4.2,
   spotR: 7.8,
-  intensity: 1.9,
+  intensity: 1.3,
   reach: 240,
   aimLag: 0.12,
   /** Lights and beam fade on and off over about this long (s). */
@@ -105,7 +107,8 @@ export function policeChaseCall(r: RaceState): ChaseCall {
   const lead = raceLeader(r);
   if (lead.finished) return { phase: r.tick - lead.finishTick <= POLICE.linger * TICK_HZ ? 'chase' : 'leave', car: lead.index };
   const lapped = r.world.route.closed && r.config.laps > 1;
-  const last = lapped ? lead.lap >= r.config.laps : r.distance - lead.dist <= Math.max(POLICE.stretchMin, r.distance * POLICE.stretchShare);
+  const stretch = Math.min(Math.max(POLICE.stretchMin, r.distance * POLICE.stretchShare), r.distance * POLICE.stretchMaxShare);
+  const last = lapped ? lead.lap >= r.config.laps : r.distance - lead.dist <= stretch;
   return last ? { phase: 'chase', car: lead.index } : PATROL;
 }
 

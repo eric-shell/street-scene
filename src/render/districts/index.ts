@@ -58,8 +58,8 @@ export interface DistrictMeshes {
   update(time: number): void;
   /** Call before each render with the camera rendering the scene. */
   view(camera: THREE.Camera): void;
-  /** Pose sim-timed parts (trains, level crossings) at a fractional sim tick from now on; `audible` lets bells ring. */
-  sync(tick: number, audible: boolean): void;
+  /** Pose sim-timed parts (trains, level crossings) at a fractional sim tick from now on; `audible` lets bells ring; `brokenArms` is RaceState.brokenArms. */
+  sync(tick: number, audible: boolean, brokenArms?: Uint8Array): void;
   dispose(): void;
 }
 
@@ -72,6 +72,7 @@ export function buildDistrictMeshes(world: World, opts: { quality?: Quality } = 
   // The session's interpolated sim tick, once it drives this scene (NaN: the scene clock).
   let syncTick = NaN;
   let canHear = false;
+  let arms: Uint8Array | undefined;
   const walls = new Map<WallLook, Wall[]>();
   for (const w of world.walls) {
     if (w.kind !== 'wall' || !w.look) continue;
@@ -99,6 +100,7 @@ export function buildDistrictMeshes(world: World, opts: { quality?: Quality } = 
     view: (fn) => views.push(fn),
     simTick: (time) => (Number.isNaN(syncTick) ? time * TICK_HZ : syncTick),
     audible: () => canHear,
+    armBroken: (i) => !!arms?.[i],
   };
   for (const r of DISTRICT_RENDERERS) {
     const areas = world.areas.filter((a) => r.kinds.includes(a.kind));
@@ -129,9 +131,10 @@ export function buildDistrictMeshes(world: World, opts: { quality?: Quality } = 
     view(camera) {
       for (const fn of views) fn(camera);
     },
-    sync(tick, audible) {
+    sync(tick, audible, brokenArms) {
       syncTick = tick;
       canHear = audible;
+      arms = brokenArms;
     },
     dispose() {
       for (const d of disposables) d.dispose();

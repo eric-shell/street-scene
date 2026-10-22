@@ -3,7 +3,7 @@ import { Rng } from '../src/sim/prng';
 import { createWorld, planRoads } from '../src/city/world';
 import type { World } from '../src/city/world';
 import { buildRoute } from '../src/city/route';
-import type { Route, RouteKind } from '../src/city/route';
+import type { Route, PlannedRouteKind } from '../src/city/route';
 import { edgeBetween } from '../src/city/roadGraph';
 import type { RoadGraph } from '../src/city/roadGraph';
 import { CITY } from '../src/city/config';
@@ -30,7 +30,7 @@ function routeEdgeSet(g: RoadGraph, nodes: number[], closed: boolean): Set<numbe
 }
 
 /** The first `count` seeds of a seeded stream whose `mode` route drives a market. */
-function marketSeeds(stream: number, count: number, mode: RouteKind): number[] {
+function marketSeeds(stream: number, count: number, mode: PlannedRouteKind): number[] {
   const rng = new Rng(stream);
   const out: number[] = [];
   for (let i = 0; i < 80 && out.length < count; i++) {
@@ -203,10 +203,14 @@ describe('night market', () => {
           const [, , rnx, rnz] = h.values;
           const has = (a: { x: number; z: number }, b: { x: number; z: number }) =>
             w.walls.some((x) => x.kind === 'wall' && x.look === 'marketRail' && Math.hypot(x.ax - a.x, x.az - a.z) < 1e-9 && Math.hypot(x.bx - b.x, x.bz - b.z) < 1e-9);
-          // The rail (facing the road) and both end caps back to the building line.
+          // The rail (facing the road) and both end caps back to the building line, except where the
+          // pen runs on round a bend node of its street (roadGraph.ts): there the next pen's rail
+          // starts within a metre and a half and the two make one pen.
+          const joined = (q: { x: number; z: number }) =>
+            w.districts.builds[area.id].hints.some((o) => o !== h && o.kind === MARKET_HINT.pen && [o.points[0], o.points[1]].some((r) => Math.hypot(r.x - q.x, r.z - q.z) < 1.5));
           expect(has(r0, r1)).toBe(true);
-          expect(has(r0, o0)).toBe(true);
-          expect(has(r1, o1)).toBe(true);
+          expect(has(r0, o0) || joined(r0)).toBe(true);
+          expect(has(r1, o1) || joined(r1)).toBe(true);
           const rail = w.walls.find((x) => x.look === 'marketRail' && Math.hypot(x.ax - r0.x, x.az - r0.z) < 1e-9 && Math.hypot(x.bx - r1.x, x.bz - r1.z) < 1e-9)!;
           expect(rail.nx * rnx + rail.nz * rnz).toBeCloseTo(1, 9);
           // The road lies in front of the rail.
@@ -280,7 +284,7 @@ describe('night market', () => {
   });
 
   it('AI fields race through the market without getting stuck, and replay identically', () => {
-    const runs: [number, RouteKind][] = [
+    const runs: [number, PlannedRouteKind][] = [
       [marketSeeds(1212, 1, 'circuit')[0], 'circuit'],
       [marketSeeds(1313, 1, 'sprint')[0], 'sprint'],
     ];

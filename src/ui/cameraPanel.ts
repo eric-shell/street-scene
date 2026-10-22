@@ -3,8 +3,8 @@
  * (chase/close/bumper/hood follow and FOV, shake and wall handling, plus the
  * start and finish cinematic timing), grouped by section, with a tooltip per
  * parameter, JSON export (copy / download), import and reset. Tweaks persist
- * in localStorage and are applied at boot. Shown when the "Camera tuning
- * panel" debug setting is on, or toggled with F3 during a race. Same look and
+ * in localStorage and are applied at boot. Shown in races and free roam when
+ * the "Debug mode" setting is on, and toggled there with F3. Same look and
  * classes as the physics tuning panel.
  */
 import { CAMERA, CAMERA_DEFAULTS, CAMERA_PARAM_META } from '../render/camera';

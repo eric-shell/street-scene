@@ -7,7 +7,7 @@ import { validateCatalog } from '../scripts/validateParts';
 import { createRace, stepRace } from '../src/sim/race';
 import { raceConfig } from './helpers';
 import { createAi, autopilotInput } from '../src/sim/ai';
-import { MAX_BEAD, beadForSize, detectProfile, remapWheel } from '../src/render/wheelFit';
+import { MAX_BEAD, beadForSize, detectProfile, remapWheel, sizeForBead } from '../src/render/wheelFit';
 import { BlipScript, RevModel } from '../src/garage/revModel';
 
 const allTier = (t: 0 | 1 | 2 | 3): PerformanceBuild => {
@@ -59,6 +59,7 @@ describe('build validation', () => {
     b.visual.paint = { color: '#19e6ff', finish: 'pearl' };
     b.visual.parts = { spoiler: 'protoHatch_spoiler_1', frontBumper: 'protoHatch_frontBumper_kurogane', wheels: 'wheel_rensa' };
     b.visual.decals.push({ shape: 'number', color: '#ff3df2', pos: [0.9, 0.6, 0.2], normal: [1, 0, 0], rotation: 12, scale: 0.7, mirror: true, text: '42' });
+    b.visual.wheels = { color: '#ffcc00', rearColor: '#1a1b1f' };
     b.visual.underglow = { enabled: true, color: '#ff00aa', color2: '#00ffaa', pattern: 'chase', brightness: 1.4, speed: 2, size: 1.2 };
     b.visual.stance = { rideHeight: -0.045, front: { camber: -3.5, offset: 0.015, wheelSize: 1.05 }, rear: { camber: -7, offset: 0.05, wheelSize: 1.2 } };
     b.performance.engine = 3;
@@ -82,7 +83,9 @@ describe('build validation', () => {
     const b = validateBuild({ carId: 'protoHatch', visual: { wheels: { size: 1.1, color: '#ffffff' }, stance: { rideHeight: -0.02, camberFront: -4, camberRear: -6, offset: 0.02 } } });
     expect(b.visual.stance.front).toEqual({ camber: -4, offset: 0.02, wheelSize: 1.1 });
     expect(b.visual.stance.rear).toEqual({ camber: -6, offset: 0.02, wheelSize: 1.1 });
-    expect(b.visual.wheels).toEqual({ color: '#ffffff' });
+    // A legacy single wheel color paints both axles; a rear color of its own is kept.
+    expect(b.visual.wheels).toEqual({ color: '#ffffff', rearColor: '#ffffff' });
+    expect(validateBuild({ visual: { wheels: { color: '#ffffff', rearColor: '#1a1b1f' } } }).visual.wheels).toEqual({ color: '#ffffff', rearColor: '#1a1b1f' });
     // New per axle values win over legacy ones and are clamped independently.
     const n = validateBuild({ visual: { stance: { camberFront: -4, front: { camber: -2, offset: 0.5, wheelSize: 0.9 }, rear: { wheelSize: 2 } } } });
     expect(n.visual.stance.front).toEqual({ camber: -2, offset: 0.08, wheelSize: 0.9 });
@@ -99,7 +102,7 @@ describe('build validation', () => {
     expect(b!.visual.stance.rideHeight).toBe(-0.03);
     expect(b!.visual.stance.front).toEqual({ camber: -6, offset: 0.04, wheelSize: 1.15 });
     expect(b!.visual.stance.rear).toEqual({ camber: -8.5, offset: 0.04, wheelSize: 1.15 });
-    expect(b!.visual.wheels.color).toBe('#ffcc00');
+    expect(b!.visual.wheels).toEqual({ color: '#ffcc00', rearColor: '#ffcc00' });
     // Saved before the cars were renamed: the wheel id follows the rename.
     expect(b!.visual.parts.wheels).toBe('wheel_rensa');
     expect(b!.performance.engine).toBe(2);
@@ -182,6 +185,10 @@ describe('rim size keeps the tire outer diameter', () => {
     expect(beadForSize(profile, 1)).toBeCloseTo(profile.bead, 9);
     expect(beadForSize(profile, 1.25)).toBeGreaterThan(beadForSize(profile, 1.1));
     expect(beadForSize(profile, 0.85)).toBeLessThan(profile.bead);
+    // The garage's whole inch rim slider inverts the size curve on both sides of stock.
+    for (const size of [0.85, 0.93, 1, 1.07, 1.25]) expect(sizeForBead(profile, beadForSize(profile, size))).toBeCloseTo(size, 9);
+    expect(sizeForBead(profile, 0)).toBe(0.85);
+    expect(sizeForBead(profile, 2)).toBe(1.25);
   });
 
   it('keeps normals unit length and pointing the same way at size 1', () => {

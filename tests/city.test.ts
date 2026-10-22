@@ -1027,8 +1027,9 @@ describe('route shortcuts', () => {
       }
     }
     // Many routes get a second one (fewer since the river channel runs the whole map: a dive is a long
-    // stretch with no street corner to cut; 163 of 240 before, 130 after).
-    expect(two).toBeGreaterThan(110);
+    // stretch with no street corner to cut; 163 of 240 before, 130 after; about 90 on the curved grid,
+    // where a mouth keeps its acute corner and its flare off the street's bend nodes).
+    expect(two).toBeGreaterThan(80);
   });
 
   it('shortcuts are open, drivable and the same every time', () => {
@@ -1268,11 +1269,17 @@ describe('route shortcut shapes', () => {
           expect(Math.abs(Math.acos(Math.min(1, cosA)) - (cfg.jump.exitDeg * Math.PI) / 180)).toBeLessThan(0.02);
           expect(leg).toBeGreaterThanOrEqual(area.params.lipS + cfg.jump.length + cfg.jump.lead - 1e-6);
           expect(area.params.landMax).toBeGreaterThan(20);
-          // The landing zone ends before the next route junction.
+          // The landing zone ends before the next route junction (on along the street through its bend nodes).
           const exit = chainNodes(g, sc)[chainNodes(g, sc).length - 1];
           const j = route.nodes.indexOf(exit);
-          const next = route.nodes[(j + 1) % route.nodes.length];
-          expect(g.edges[edgeBetween(g, exit, next)].length).toBeGreaterThanOrEqual(area.params.zone + cfg.jump.landingClear - 1e-6);
+          let run = 0;
+          for (let k = j; ; ) {
+            const nx = (k + 1) % route.nodes.length;
+            run += g.edges[edgeBetween(g, route.nodes[k], route.nodes[nx])].length;
+            k = nx;
+            if (!isBendNode(g, route.nodes[k]) || k === j) break;
+          }
+          expect(run).toBeGreaterThanOrEqual(area.params.zone + cfg.jump.landingClear - 1e-6);
         }
       }
     }
@@ -1351,7 +1358,8 @@ describe('route shortcut shapes', () => {
         expect(landed, `${seed} ${kmh} never landed`).not.toBeNull();
         expect(landed!.s).toBeGreaterThan(10);
         expect(landed!.s).toBeLessThanOrEqual(area.params.landMax);
-        expect(Math.abs(landed!.lat)).toBeLessThan(1.5);
+        // (A leg across a hillside drifts a little in the air: up to about 8% cross slope on the curved grid.)
+        expect(Math.abs(landed!.lat)).toBeLessThan(2.5);
         expect(['road', 'cobble', 'sidewalk']).toContain(landed!.surface);
         let broken = 0;
         for (const p of lipFence) broken += r.brokenProps[p.id];

@@ -2,9 +2,10 @@
  * Physics tuning panel. Exposes every driving parameter of the player's
  * CarTuning as a live slider (drivetrain layout as a switch), grouped by
  * section, with a tooltip per parameter, JSON export (copy / download) and
- * import. Changes persist per car and are re-applied on the next test drive.
- * Shown when the "Physics tuning panel" debug setting is on, or toggled with
- * ` / F2 during any race (runs with changed tuning are never saved as records).
+ * import. Changes persist per car and are re-applied on the next free roam in
+ * debug mode. Shown in races and free roam when the "Debug mode" setting is
+ * on, and toggled there with ` / F2 (runs with changed tuning are never saved
+ * as records).
  */
 import { CarTuning, DRIVETRAIN_LAYOUTS, DrivetrainLayout, getBaseTuning, getByPath, setByPath, tuningHash } from '../sim/tuning';
 import { PerformanceBuild, applyBuild } from '../sim/build';
@@ -129,7 +130,7 @@ export function paramInfo(path: string, value: number, t?: CarTuning): ParamInfo
   return P(min, max, niceStep(max - min), 'No description yet: add it to PARAM_INFO in tuningPanel.ts.');
 }
 
-/** Saved test drive tuning: values plus the fingerprint of drivingParams.json they were made against. */
+/** Saved free roam tuning: values plus the fingerprint of drivingParams.json they were made against. */
 interface SavedTuning {
   v: string;
   changed: TuningValues;
@@ -464,7 +465,7 @@ export class TuningPanel {
       h(
         'div',
         { class: 'muted tp-note' },
-        'Changes apply live and are kept for this car in test drives. Tap a name for its description. The export has a "changed" list, a "fileOverride" block for src/sim/drivingParams.json and the full tuning.',
+        'Changes apply live and are kept for this car in free roam. Tap a name for its description. The export has a "changed" list, a "fileOverride" block for src/sim/drivingParams.json and the full tuning.',
       ),
       list,
     );

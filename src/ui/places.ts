@@ -8,6 +8,9 @@
 import type { Area } from '../city/districts/types';
 import { tunnelName } from '../city/districts/tunnel';
 
+/** The city every seed is a night in (working title), as the full map's header names it. */
+export const CITY_NAME = 'New San Delphia';
+
 export const AREA_NAMES: Partial<Record<Area['kind'], string>> = {
   alley: 'Raceway alley',
   backAlley: 'Back alley',

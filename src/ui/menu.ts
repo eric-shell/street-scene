@@ -8,7 +8,7 @@
  * Settings. Home says nothing about the race itself, so no type is implied
  * before the player picks one. A race takes three steps, each short enough
  * to fit the column without scrolling: home, then the race step (the types in
- * a row over the course card, each type's course drawn on in its own color as
+ * a grid of two rows over the course card, each type's course drawn on in its own color as
  * it is picked, ui/menuMaps.ts; the course map opens the full city map on that
  * course), then the setup step (what is about to start, rivals, difficulty
  * and driving aids, Start). A pip trio in the header says which step this is.
@@ -19,8 +19,9 @@
  * moves with them (onStep; game/streetCameras.ts). Every step keeps the title
  * block on top (the boot splash lands on `.menu-head`, see ui/splash.ts);
  * Escape or the back button goes back a step. Arrow keys walk the home list and
- * switch race types (1 to 4 pick one); the key legend along the bottom carries
- * Hide UI (H), which stays a button on touch screens. The caller feeds the
+ * the race type grid (1 to 6 pick one); the key legend along the bottom of the
+ * deeper steps carries Hide UI (H), which stays a button on touch screens; home
+ * has no legend. The caller feeds the
  * cruising car's pose every frame (MainMenu.frame) for the maps' car markers.
  */
 import { btn, h, iconBtn, segmented, sheen } from './dom';
@@ -29,6 +30,7 @@ import {
   Calendar,
   Check,
   ChevronRight,
+  ChevronsRight,
   CircleDot,
   Compass,
   Drone,
@@ -36,6 +38,7 @@ import {
   Ghost,
   Landmark,
   MapIcon,
+  MapPinned,
   Mountain,
   MountainSnow,
   Pencil,
@@ -64,10 +67,11 @@ import { RACE_TYPES, type Difficulty, type RaceType, type Settings } from './set
 import { onOff, settingRow, settingsPanel } from './screens';
 import { chip, keybar, navRow, railScreen, screenHead, swapStep, type KeyHint } from './rail';
 import { formatTime } from './format';
-import { CityOverview, CourseMap, courseArt, type CourseRoutes, type MapPose } from './menuMaps';
+import { CityOverview, CourseMap, courseArt, courseRoute, type CourseRoutes, type MapPose } from './menuMaps';
 import { KINDS, layersOf } from './cityMap';
-import { MAX_OPPONENTS, type RaceMode } from '../sim/race';
+import { DRAG_OPPONENTS, MAX_OPPONENTS, type RaceMode } from '../sim/race';
 import { driftZones } from '../sim/driftZones';
+import { CITY } from '../city/config';
 import type { World } from '../city/world';
 import type { Vec2 } from '../sim/math';
 import type { AreaKind } from '../city/districts/types';
@@ -93,7 +97,7 @@ export interface MenuOptions {
   event?: { name: string; tagline: string };
   /** The event city: the home map, the courses' backdrop and what the city has. */
   world: World;
-  /** The event's courses (the drift lap runs the circuit). */
+  /** The event's courses (the drift lap runs the circuit; the waypoint race's is its suggested route). */
   routes: CourseRoutes;
   bests: Record<RaceMode, BestRecord | null>;
   /** The current build's car, for the Garage row. */
@@ -134,6 +138,8 @@ export interface MainMenu {
 const TYPE_INFO: Record<RaceType, { label: string; icon: IconNode; sub: string; start: string; laps?: number }> = {
   circuit: { label: 'Circuit', icon: RotateCcw, sub: '3 laps', start: 'Start circuit', laps: 3 },
   sprint: { label: 'Sprint', icon: Route, sub: 'A to B', start: 'Start sprint' },
+  drag: { label: 'Drag', icon: ChevronsRight, sub: 'Head to head', start: 'Start drag' },
+  waypoint: { label: 'Waypoint', icon: MapPinned, sub: 'Any streets', start: 'Start waypoint race' },
   drift: { label: 'Drift', icon: Wind, sub: 'Score attack', start: 'Start drift', laps: 2 },
   roam: { label: 'Free roam', icon: Compass, sub: 'No rules', start: 'Start free roam' },
 };
@@ -164,6 +170,10 @@ const PLACES_INFO = {
   explore: { icon: Drone, label: 'Explore', hue: 'cyan' },
   settings: { icon: SettingsIcon, label: 'Settings', hue: 'purple' },
 } as const;
+
+/** Columns of the race step's type grid (ui.css .mode-grid): the arrow keys move a row by this many types. */
+const MODE_COLUMNS = 3;
+const GRID_MOVES: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: MODE_COLUMNS, ArrowUp: -MODE_COLUMNS };
 
 /** How deep each step sits, so a move deeper slides forward (left) and a move out slides back. */
 const STEP_DEPTH: Record<MenuStep, number> = { home: 0, race: 1, settings: 1, setup: 2 };
@@ -306,6 +316,12 @@ export function mainMenu(o: MenuOptions): MainMenu {
         return [`${TYPE_INFO.circuit.laps} laps`, `${km(r.circuit.length)} lap`, `${r.circuit.tightCorners} tight turns`];
       case 'sprint':
         return ['A to B', km(r.sprint.finishS - r.sprint.startS), `${r.sprint.tightCorners} tight turns`];
+      case 'drag':
+        return [`${Math.round((r.drag.finishS - r.drag.startS) / CITY.spacing)} blocks`, km(r.drag.finishS - r.drag.startS), 'Head to head'];
+      case 'waypoint': {
+        const n = (r.waypoint.waypoints?.length ?? 1) - 1;
+        return [`${n} waypoints`, `${km(r.waypoint.finishS - r.waypoint.startS)} suggested`, 'Any streets'];
+      }
       case 'drift': {
         const zones = driftZones(o.world).length;
         return [`${TYPE_INFO.drift.laps} laps`, zones === 1 ? '1 drift zone' : `${zones} drift zones`, 'Solo'];
@@ -324,9 +340,9 @@ export function mainMenu(o: MenuOptions): MainMenu {
       aside,
     );
 
-  /** Step 2: the race types in a row over the course card, the picked type's course drawn on in its color; then on to the setup. */
+  /** Step 2: the race types in a grid (two rows of three) over the course card, the picked type's course drawn on in its color; then on to the setup. */
   const race = (): HTMLElement[] => {
-    const types = h('div', { class: 'mode-row', role: 'radiogroup', 'aria-label': 'Race type' });
+    const types = h('div', { class: 'mode-grid', role: 'radiogroup', 'aria-label': 'Race type' });
     const typeTiles = RACE_TYPES.map((t, i) => {
       const b = modeTile(t, i, () => pick(t));
       types.append(b);
@@ -393,15 +409,40 @@ export function mainMenu(o: MenuOptions): MainMenu {
     const ticket = h(
       'section',
       { class: 'race-ticket', 'aria-label': 'Race' },
-      h('span', { class: 'ticket-art' }, t === 'roam' ? icon(Compass, { size: 30 }) : courseArt(t === 'sprint' ? o.routes.sprint : o.routes.circuit, t, 104, 52)),
+      h('span', { class: 'ticket-art' }, t === 'roam' ? icon(Compass, { size: 30 }) : courseArt(courseRoute(o.routes, t), t, 104, 52)),
       h('span', { class: 'ticket-text' }, h('span', { class: 'course-name' }, info.label), h('span', { class: 'course-facts' }, ...courseFacts(t).map((f) => h('span', {}, f)))),
       record && h('span', { class: 'course-best', title: 'Your best on this event' }, icon(Trophy, { size: 14 }), record),
     );
     // Drift is a solo score attack and free roam has no rules: the card says so instead of offering rivals.
     const solo = t === 'drift' || t === 'roam';
+    const difficultyRow = () =>
+      settingRow(
+        'AI difficulty',
+        segmented<Difficulty>(
+          [
+            { value: 'easy', label: 'Easy' },
+            { value: 'medium', label: 'Medium' },
+            { value: 'hard', label: 'Hard' },
+          ],
+          s.difficulty,
+          (v) => {
+            s.difficulty = v;
+            o.onSettings(s);
+          },
+        ),
+      );
     let rivals: HTMLElement;
     if (solo) {
       rivals = h('div', { class: 'race-group' }, h('div', { class: 'section-title' }, 'Rivals'), h('p', { class: 'setting-note solo-note' }, icon(Ghost, { size: 14 }), t === 'drift' ? 'Drift is a solo score attack: just you, the zones and the clock.' : 'Free roam has no rivals and no clock: the city is yours.'));
+    } else if (t === 'drag') {
+      // A drag is always head to head: the field is fixed, only how hard the rival launches is the player's.
+      rivals = h(
+        'div',
+        { class: 'race-group' },
+        h('div', { class: 'section-title' }, 'Rivals'),
+        h('p', { class: 'setting-note solo-note' }, icon(Users, { size: 14 }), `Head to head: ${DRAG_OPPONENTS} rival in the next lane, first to the line wins.`),
+        difficultyRow(),
+      );
     } else {
       const oppHint = h('span', { class: 'hint' });
       const hint = () => oppHint.replaceChildren(...(s.opponents ? [icon(Users, { size: 12 }), ` ${s.opponents} on the grid`] : [icon(Ghost, { size: 12 }), ' Solo: race your best ghost']));
@@ -416,25 +457,13 @@ export function mainMenu(o: MenuOptions): MainMenu {
       );
       opponents.classList.add('wide');
       opponents.setAttribute('aria-label', 'Opponents');
-      const difficulty = segmented<Difficulty>(
-        [
-          { value: 'easy', label: 'Easy' },
-          { value: 'medium', label: 'Medium' },
-          { value: 'hard', label: 'Hard' },
-        ],
-        s.difficulty,
-        (v) => {
-          s.difficulty = v;
-          o.onSettings(s);
-        },
-      );
       hint();
       rivals = h(
         'div',
         { class: 'race-group' },
         h('div', { class: 'section-title' }, 'Rivals'),
         h('div', { class: 'field' }, h('div', { class: 'field-head' }, h('span', { class: 'name' }, 'Opponents'), oppHint), opponents),
-        settingRow('AI difficulty', difficulty),
+        difficultyRow(),
       );
     }
     const driving = h(
@@ -457,8 +486,8 @@ export function mainMenu(o: MenuOptions): MainMenu {
 
   const hideUi: KeyHint = { keys: ['H'], label: 'Hide UI', action: () => o.onHideUi(), title: 'Hide the menu and watch the city (H)' };
   const KEYS: Record<MenuStep, KeyHint[]> = {
-    home: [{ keys: ['↑', '↓'], label: 'Select' }, { keys: ['0'], label: 'Explore' }, { keys: ['M'], label: 'Mute music' }, hideUi],
-    race: [{ keys: ['←', '→'], label: 'Race type' }, { keys: ['Enter'], label: 'Next' }, { keys: ['Esc'], label: 'Back' }, hideUi],
+    home: [],
+    race: [{ keys: ['←', '→', '↑', '↓'], label: 'Race type' }, { keys: ['Enter'], label: 'Next' }, { keys: ['Esc'], label: 'Back' }, hideUi],
     setup: [{ keys: ['Enter'], label: 'Start' }, { keys: ['Esc'], label: 'Back' }, hideUi],
     settings: [{ keys: ['Esc'], label: 'Back' }, hideUi],
   };
@@ -510,12 +539,14 @@ export function mainMenu(o: MenuOptions): MainMenu {
       e.preventDefault();
       items[next]?.focus();
     } else if (step === 'race' && pickType && !e.repeat) {
-      // Left and right step through the race types; 1 to 4 pick one.
+      // Left and right step through the race types, up and down change rows of the grid; 1 to 6 pick one.
       const at = RACE_TYPES.indexOf(s.raceType);
-      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      const n = RACE_TYPES.length;
+      const move = GRID_MOVES[e.key];
+      if (move) {
         e.preventDefault();
-        pickType(RACE_TYPES[(at + (e.key === 'ArrowRight' ? 1 : -1) + RACE_TYPES.length) % RACE_TYPES.length]);
-      } else if (/^[1-4]$/.test(e.key)) pickType(RACE_TYPES[Number(e.key) - 1]);
+        pickType(RACE_TYPES[(at + move + n) % n]);
+      } else if (e.key >= '1' && e.key <= String(n) && e.key.length === 1) pickType(RACE_TYPES[Number(e.key) - 1]);
     }
   };
   window.addEventListener('keydown', onKey);

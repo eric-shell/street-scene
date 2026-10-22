@@ -11,11 +11,11 @@ argument-hint: [?race=circuit|sprint|drift | ?freeroam | ?garage | ?drone] [&see
    - `?race=circuit|sprint|drift` straight into a race (3 laps / point to point / 2 laps); `?freeroam` (open world, no rules); `?garage`; `?drone` (these skip the boot splash; a plain load shows it for about 3 s before the menu)
    - `?seed=<anything>` for a fixed city (default is the UTC date); `?quality=low|medium|high|auto`; `?fps` (meter: fps, frame time, auto level and aim)
    - `?dev` garage dev mode (Ctrl+Shift+D, then drag a GLB onto the window to try a part); `?build=<share code>`
-   - Test drive = the garage's Test drive button: open world, no rivals, physics tuning panel on ` / F2
+   - Debug mode (Settings > Developer, `debugMode` in `nightrun.settings.v1`): physics (` / F2) and camera (F3) tuning panels in races and free roam; free roam applies the car's saved physics tuning
 4. In the page, `window.__nr` exposes the live objects: `{ world, gr, backdrop }` on the menu, `{ session, gr }` in a race (`session.race` is the `RaceState`, `session.race.cars[0].state` the player car), `{ garageScreen, gr }` in the garage. Use it from the console instead of adding debug code.
 5. Use the browser tools when they are available (navigate, screenshot, read the console); otherwise ask the user to look and tell you what they see.
 6. Audio only starts after a click or key press (browser autoplay rules); not a bug.
 7. Performance: the `?fps` meter reads like `117 fps · 8.5 ms · Auto (High) 6/8 aim 120`. Targets (CLAUDE.md): aim 120 fps, hold 60, never below 30. A frame time pinned at the display's refresh (8.3 or 16.7 ms) means headroom; above 16.7 ms at Medium is a regression to fix, above 33 ms a bug. `?quality=high&fps` is the stress check, `?quality=auto&fps` the default path; `window.__nr.autoQ.stats` has the controller's median, p90 and slow fraction, and `.aim` the frame time it is aiming at. Compare before and after a change on the same seed and camera.
 8. Stop the background server when you are done unless the user is using it.
 
-Keys: W/S throttle and brake, A/D steer, Space handbrake, Shift nitrous, R reset, C camera, Esc pause, ` tuning panel, F3 camera panel. README.md has the full table.
+Keys: W/S throttle and brake, A/D steer, Space handbrake, Shift nitrous, R reset, C camera, Esc pause, ` tuning panel and F3 camera panel (debug mode only). README.md has the full table.

@@ -4,7 +4,7 @@ import { planRoads } from '../src/city/world';
 import { buildRoute } from '../src/city/route';
 import { createTerrain } from '../src/city/terrain';
 import { isRiverEdge } from '../src/city/roadGraph';
-import { EVENT_FLAVOURS, EVENTS, type EventFlavourId, eventOffer, eventRating, hillClimbAlong, pickEventFlavour, routeEdges } from '../src/city/events';
+import { EVENT_FLAVOURS, EVENTS, type EventFlavourId, eventOffer, eventRating, eventTitle, hillClimbAlong, pickEventFlavour, routeEdges } from '../src/city/events';
 
 const FLAVOURS = Object.keys(EVENT_FLAVOURS) as EventFlavourId[];
 type Plan = ReturnType<typeof planRoads>;
@@ -68,13 +68,18 @@ describe('event flavours', () => {
 
   it('names a varied event on every seed, and the routes really deliver it, across 200 seeds', () => {
     const counts: Record<string, number> = {};
+    const titles = new Set<string>();
     let fallbacks = 0;
     for (const seed of seedsFrom(2026, 200)) {
       const p = planRoads(seed);
       const ev = p.event;
       counts[ev.id] = (counts[ev.id] ?? 0) + 1;
-      expect(ev.name).toBe(EVENT_FLAVOURS[ev.id].name);
-      expect(ev.tagline).toBe(EVENT_FLAVOURS[ev.id].tagline);
+      // The title ends in one of the flavour's nouns, so it still says what the race is.
+      expect(EVENT_FLAVOURS[ev.id].nouns.some((n) => ev.name.endsWith(` ${n}`)), ev.name).toBe(true);
+      expect(EVENT_FLAVOURS[ev.id].taglines).toContain(ev.tagline);
+      expect(ev.name.length, ev.name).toBeLessThanOrEqual(30);
+      expect(eventTitle(seed, ev.id)).toEqual({ name: ev.name, tagline: ev.tagline });
+      titles.add(ev.name);
       // The drawn flavour, or Downtown Dash when its routes could not deliver it.
       if (ev.id !== ev.drawn) {
         expect(ev.id).toBe('downtownDash');
@@ -85,6 +90,8 @@ describe('event flavours', () => {
     expect(Object.keys(counts).length).toBe(FLAVOURS.length);
     for (const id of FLAVOURS) expect(counts[id] ?? 0, id).toBeLessThanOrEqual(80);
     expect(fallbacks).toBeLessThanOrEqual(12);
+    // Seeds rarely share a title.
+    expect(titles.size).toBeGreaterThanOrEqual(190);
   });
 
   it('plans the same city, routes and event for every flavour, and keeps grids and finishes on streets', () => {

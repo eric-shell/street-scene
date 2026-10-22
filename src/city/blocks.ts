@@ -478,6 +478,9 @@ export function buildEdgeGrid(g: RoadGraph): SpatialGrid {
 }
 
 /** Signed clearance from a point to the nearest road corridor (curb + sidewalk). Negative = inside. */
+/** Ring nodes per node array (corridorClearance); rings are set while planning, before any clearance is asked. */
+const ringNodes = new WeakMap<RoadNode[], RoadNode[]>();
+
 export function corridorClearance(g: RoadGraph, grid: SpatialGrid, x: number, z: number, scratch: number[]): number {
   grid.query(x - 1, z - 1, x + 1, z + 1, scratch);
   let best = Infinity;
@@ -488,10 +491,12 @@ export function corridorClearance(g: RoadGraph, grid: SpatialGrid, x: number, z:
     const d = distToSegment(x, z, a.x, a.z, b.x, b.z) - (e.width / 2 + e.sidewalk);
     if (d < best) best = d;
   }
-  // Roundabout rings are wider than their roads.
-  for (const n of g.nodes) {
-    if (!n.ring) continue;
-    const d = sqrt((x - n.x) ** 2 + (z - n.z) ** 2) - (n.ring.outer + CITY.sidewalk);
+  // Roundabout rings are wider than their roads (their nodes listed once per node array: the bend
+  // nodes make the full scan the bulk of this call).
+  let rings = ringNodes.get(g.nodes);
+  if (!rings) ringNodes.set(g.nodes, (rings = g.nodes.filter((n) => n.ring)));
+  for (const n of rings) {
+    const d = sqrt((x - n.x) ** 2 + (z - n.z) ** 2) - (n.ring!.outer + CITY.sidewalk);
     if (d < best) best = d;
   }
   return best;

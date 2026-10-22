@@ -27,7 +27,7 @@ import { HillShape, plateauDistance, shapeOf } from './hills';
 import { riverCenter } from './river';
 import { bluffFootprint } from './bluff';
 import { distToPolygonEdge, pointInPolygon } from './geom';
-import { circuitStart, routeRuns } from '../route';
+import { NodeHeap, circuitStart, routeRuns } from '../route';
 
 /** Street local frame: origin on the centerline, u along the street (unit), v across it along (-uz, ux) (the right of travel along +u, yaw convention of sim/math). */
 export interface Frame {
@@ -325,16 +325,13 @@ export function routeTraffic(g: RoadGraph, seed: number): Float64Array {
     via.fill(-1);
     done.fill(0);
     dist[src] = 0;
-    for (;;) {
-      let u = -1;
-      let best = Infinity;
-      for (let i = 0; i < n; i++) {
-        if (!done[i] && dist[i] < best) {
-          best = dist[i];
-          u = i;
-        }
-      }
-      if (u < 0) break;
+    // Heap Dijkstra (route.ts NodeHeap): the bend nodes triple the graph, a linear scan per step is too slow.
+    const heap = new NodeHeap();
+    const popped = { key: 0 };
+    heap.push(0, src);
+    while (heap.size) {
+      const u = heap.pop(popped);
+      if (done[u] || popped.key > dist[u]) continue;
       done[u] = 1;
       for (const eid of g.nodes[u].edges) {
         const e = g.edges[eid];
@@ -343,6 +340,7 @@ export function routeTraffic(g: RoadGraph, seed: number): Float64Array {
         if (nd < dist[v]) {
           dist[v] = nd;
           via[v] = eid;
+          heap.push(nd, v);
         }
       }
     }

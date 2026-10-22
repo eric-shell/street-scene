@@ -6,12 +6,14 @@
  */
 import { btn, h, segmented } from './dom';
 import {
+  ChevronsRight,
   Code,
   Compass,
   Flag,
   Gamepad2,
   Heart,
   Keyboard,
+  MapPinned,
   Medal,
   Monitor,
   Pause,
@@ -51,7 +53,7 @@ export interface PauseScreen {
 export interface PauseTicket {
   /** The event's name, over the title. */
   event?: string;
-  /** Circuit, Sprint, Drift, Free roam, Test drive. */
+  /** Circuit, Sprint, Drag, Waypoint, Drift, Free roam. */
   title: string;
   /** The race type whose color it wears. */
   mode: RaceType;
@@ -71,7 +73,7 @@ export interface PauseAction {
   onClick(): void;
 }
 
-const TYPE_ICON: Record<RaceType, IconNode> = { circuit: RotateCcw, sprint: Route, drift: Wind, roam: Compass };
+const TYPE_ICON: Record<RaceType, IconNode> = { circuit: RotateCcw, sprint: Route, drag: ChevronsRight, waypoint: MapPinned, drift: Wind, roam: Compass };
 
 /**
  * Pause: a rail over the dimmed race in the main menu's language. The header
@@ -159,7 +161,7 @@ export interface ResultRow {
   bestLap: number | null;
 }
 
-const MODE_LABEL: Record<RaceMode, string> = { circuit: 'Circuit', sprint: 'Sprint', drift: 'Drift' };
+const MODE_LABEL: Record<RaceMode, string> = { circuit: 'Circuit', sprint: 'Sprint', drag: 'Drag', waypoint: 'Waypoint', drift: 'Drift' };
 
 /** Results: a rail beside the finish shots with the headline (place or score), a new best, the standings and what next. */
 export function resultsScreen(o: {
@@ -236,7 +238,7 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
     s[k] = v;
     onChange(s);
   };
-  const toggle = (k: 'retro' | 'radialBlur' | 'showFps' | 'flashEffects' | 'debugTuningPanel' | 'debugCameraPanel') => onOff(s[k], (v) => set(k, v));
+  const toggle = (k: 'retro' | 'radialBlur' | 'showFps' | 'flashEffects' | 'debugMode') => onOff(s[k], (v) => set(k, v));
   const slider = (label: string, value: number, onInput: (v: number) => void) => {
     const r = h('input', { type: 'range', min: 0, max: 1, step: 0.01, value, class: 'setting-slider', 'aria-label': label }) as HTMLInputElement;
     r.addEventListener('input', () => onInput(Number(r.value)));
@@ -317,7 +319,7 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
       id: 'developer',
       label: 'Developer',
       icon: Code,
-      rows: () => [settingRow('Physics tuning panel', toggle('debugTuningPanel'), '` or F2 in a race'), settingRow('Camera tuning panel', toggle('debugCameraPanel'), 'F3 in a race')],
+      rows: () => [settingRow('Debug mode', toggle('debugMode'), 'Physics (` or F2) and camera (F3) tuning panels in races and free roam')],
     },
     { id: 'credits', label: 'Credits', icon: Heart, rows: credits },
   ];
@@ -354,21 +356,24 @@ export function onOff(value: boolean, onChange: (v: boolean) => void): HTMLEleme
   );
 }
 
-/** Bindings per device for the settings dialog: keys (alternatives) and what they do. */
-const CONTROLS: Record<'keyboard' | 'gamepad' | 'touch', [string[], string][]> = {
+/** Bindings per device for the settings dialog (and free roam's controls, game/session.ts): keys (alternatives) and what they do. */
+export const CONTROLS: Record<'keyboard' | 'gamepad' | 'touch', [string[], string][]> = {
   keyboard: [
     [['W', '↑'], 'Throttle'],
     [['S', '↓'], 'Brake, reverse'],
     [['A', 'D'], 'Steer'],
     [['Space'], 'Handbrake'],
-    [['Shift', 'N'], 'Nitrous'],
+    [['N'], 'Nitrous'],
+    [['Shift'], 'Horn (hold for a long blast)'],
     [['Q', 'E'], 'Shift down, up (manual)'],
     [['R'], 'Reset car'],
     [['C'], 'Camera'],
+    [['H'], 'Hide the HUD (free roam, drone)'],
     [['Esc'], 'Pause'],
     [['M'], 'Mute music'],
     [['[', ']'], 'Previous, next track'],
-    [['`', 'F2'], 'Tuning panel'],
+    [['`', 'F2'], 'Physics panel (debug mode)'],
+    [['F3'], 'Camera panel (debug mode)'],
   ],
   gamepad: [
     [['Left stick'], 'Steer'],

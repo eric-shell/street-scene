@@ -153,8 +153,9 @@ function driveThrough(seed: number, bias: number) {
 describe('car park shortcut', () => {
   it('plans car parks on a fair share of seeds, deterministically, chute on the landing street and its landing straight clear', () => {
     // Measured share over this sweep (README decisions log): about a quarter of the seeds before the
-    // river channel ran the whole map, a tenth since (routes spend their corners on long dives).
-    expect(WITH.length / SWEEP.length).toBeGreaterThan(0.07);
+    // river channel ran the whole map, a tenth since (routes spend their corners on long dives), and
+    // two or three in a hundred on the curved grid (few corners leave a block square behind them).
+    expect(WITH.length / SWEEP.length).toBeGreaterThan(0.015);
     // The straight-line launch bound the chute guarantees.
     expect(LAUNCH_BOUND * DEG).toBeLessThan(6.5);
     let worstAxis = 0;
@@ -250,7 +251,8 @@ describe('car park shortcut', () => {
         checked++;
       }
     }
-    expect(checked).toBeGreaterThanOrEqual(4);
+    // (As many as the sweep finds: car parks are rare on the curved grid, see the share above.)
+    expect(checked).toBeGreaterThanOrEqual(Math.min(4, WITH.length));
   });
 
   it('is walled where it is drawn: parapets off the roads, a low face under the lip, the flight clear of rails, closures and props', () => {
@@ -314,7 +316,7 @@ describe('car park shortcut', () => {
         checked++;
       }
     }
-    expect(checked).toBeGreaterThanOrEqual(5);
+    expect(checked).toBeGreaterThanOrEqual(Math.min(5, WITH.length));
   });
 
   it('a car climbs the ramp, crosses the roof and lands down the street in line, credited the stretch it skips', () => {

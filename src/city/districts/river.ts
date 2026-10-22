@@ -44,7 +44,7 @@
  */
 import { CITY } from '../config';
 import type { RoadGraph, RoadEdge, RoadNode } from '../roadGraph';
-import { addEdge, addNode, isRiverEdge, otherNode, splitEdge } from '../roadGraph';
+import { addEdge, addNode, chainOf as streetChain, chains as streetChains, isRiverEdge, mergeChains, otherNode, splitEdge } from '../roadGraph';
 import { Vec2, distToSegment, segmentT, sin, sqrt } from '../../sim/math';
 import { Rng } from '../../sim/prng';
 import type { Wall } from '../blocks';
@@ -464,6 +464,10 @@ export const riverModule: DistrictModule = {
     /** Junctions clear of the band, every street either crossing it squarely or well away from it. */
     const bandClear = (p: Record<string, number>): boolean => {
       for (const n of g.nodes) if (n.edges.length !== 2 && Math.abs(riverL(p, n.x, n.z)) < T + CFG.junctionClear) return false;
+      // The other pieces of a crossing street (cut through bend nodes, roadGraph.ts) run on into the
+      // crossing: they are its approach, not a street alongside the band.
+      const approach = new Set<number>();
+      for (const e of g.edges) if (crosses(p, g.nodes[e.a], g.nodes[e.b])) for (const id of streetChain(g, e.id).edges) approach.add(id);
       for (const e of g.edges) {
         const a = g.nodes[e.a];
         const b = g.nodes[e.b];
@@ -474,7 +478,7 @@ export const riverModule: DistrictModule = {
           const len = e.length || 1;
           if (Math.abs(((b.x - a.x) / len) * fr.tx + ((b.z - a.z) / len) * fr.tz) > CFG.maxSkew) return false;
           if (!chainOf(g, p, e)) return false;
-        } else {
+        } else if (!approach.has(e.id)) {
           const steps = Math.max(1, Math.ceil(e.length / 8));
           for (let k = 0; k <= steps; k++) {
             const x = a.x + ((b.x - a.x) * k) / steps;
@@ -588,7 +592,9 @@ export const riverModule: DistrictModule = {
         let bestU = Infinity;
         let bestHit: Vec2 | null = null;
         for (const e of g.edges) {
-          if (!STREET_KINDS.has(e.kind) || e.bridge || e.shortcut || isRiverEdge(e)) continue;
+          // Never a diagonal: the warp (roadGraph.ts) swings some within the parallel test below, and a
+          // trench meeting one obliquely pokes its end into the street.
+          if (!STREET_KINDS.has(e.kind) || e.kind === 'diagonal' || e.bridge || e.shortcut || isRiverEdge(e)) continue;
           const a = g.nodes[e.a];
           const b = g.nodes[e.b];
           const sx = b.x - a.x;
@@ -701,7 +707,7 @@ export const riverModule: DistrictModule = {
 
     // The first row pair (and meander swing) whose band clears every junction and seats an entrance in
     // every quarter; failing that, the one that comes closest.
-    let best: { p: Record<string, number>; ent: Entrances; score: number } | null = null;
+    let best: { p: Record<string, number>; ent: Entrances; score: number; row: number } | null = null;
     rowLoop: for (const j of rows) {
       const mid = midline(j);
       if (!mid) continue;
@@ -715,13 +721,33 @@ export const riverModule: DistrictModule = {
         if (!bandClear(p)) continue;
         const ent = planEntrances(p);
         const score = ent.quarters * 100 + ent.count;
-        if (!best || score > best.score) best = { p, ent, score };
+        if (!best || score > best.score) best = { p, ent, score, row: j };
         if (ent.quarters === 4 && ent.count >= CFG.entrances[0]) break rowLoop;
       }
     }
     if (!best) return;
     const footprint = (g.bounds.maxX - g.bounds.minX) * 2 * T;
     if (ctx.budget.used + footprint > ctx.budget.total) return;
+    // Every street over the channel runs straight from bank junction to bank junction, and so does
+    // every street of the two bank rows: their pieces through bend nodes (roadGraph.ts) merge back
+    // into one edge, so a bridge deck, a ford's ramps, a side ramp's T and the drawbridge each sit on
+    // one straight edge. The river plans first, so no district holds an id yet; the entrances are
+    // planned again on the merged streets.
+    {
+      const bp = best.p;
+      const row = best.row;
+      const bank = (c: { nodes: number[] }) => {
+        const A = g.nodes[c.nodes[0]];
+        const B = g.nodes[c.nodes[c.nodes.length - 1]];
+        return A.gj >= 0 && A.gj === B.gj && (A.gj === row || A.gj === row + 1);
+      };
+      const over = streetChains(g).filter((c) => c.edges.length > 1 && (bank(c) || c.edges.some((id) => crosses(bp, g.nodes[g.edges[id].a], g.nodes[g.edges[id].b]))));
+      if (over.length) {
+        mergeChains(g, over);
+        ctx.graphChanged();
+        best.ent = planEntrances(bp);
+      }
+    }
     const p = best.p;
     p.seed = rng.int(1, 0x7ffffffe);
     const { plans, chains, crossing } = best.ent;
@@ -863,13 +889,15 @@ export const riverModule: DistrictModule = {
     const down: Vec2[] = [];
     // A ramp's bulge covers its trench, plinths and the funnel at its top (the funnel's props must stand
     // inside the area's polygon).
-    const funnelL = (r: Ramp) => (r.ford ? r.topL : r.curbL) + CFG.funnelReach + 8;
+    // (12 m past the funnel: a long ford on a skewed street carries its end props a little further out.)
+    const funnelL = (r: Ramp) => (r.ford ? r.topL : r.curbL) + CFG.funnelReach + 12;
     const bulge = (x: number, s: number): number => {
       let l = T + 0.5;
       for (const r of ramps) {
         if (r.side !== s) continue;
         const reach = r.hw + r.body + CFG.funnelFlare + 4 + CITY.districts.infill.gap;
-        const xTop = r.ax + r.ux * rampAlong(p, r, r.topL);
+        // Out to the funnel's street end (a skewed street carries it sideways past the ramp top).
+        const xTop = r.ax + r.ux * rampAlong(p, r, funnelL(r));
         if (x >= Math.min(r.ax, xTop) - reach && x <= Math.max(r.ax, xTop) + reach) l = Math.max(l, funnelL(r));
       }
       return l;
@@ -878,7 +906,7 @@ export const riverModule: DistrictModule = {
     for (let x = x0; x <= x1 + 1e-6; x += 16) xs.push(x);
     for (const r of ramps) {
       const reach = r.hw + r.body + CFG.funnelFlare + 4 + CITY.districts.infill.gap;
-      const xTop = r.ax + r.ux * rampAlong(p, r, r.topL);
+      const xTop = r.ax + r.ux * rampAlong(p, r, funnelL(r));
       const lo = Math.min(r.ax, xTop) - reach;
       const hi = Math.max(r.ax, xTop) + reach;
       xs.push(lo - 0.01, lo + 0.01, hi - 0.01, hi + 0.01);
@@ -1263,14 +1291,28 @@ export function settleRiver(g: RoadGraph, areas: readonly Area[], builds: readon
           br = c;
         }
       }
-      const l = riverL(p, mx, mz);
-      const c = bridgePoint(p, br, 0, l);
-      const wv = Math.max(-br.dk, Math.min(br.dk, (mx - c.x) * br.nx + (mz - c.z) * br.nz));
-      const q = bridgePoint(p, br, wv, l);
-      const deck = terrain.heightAt(q.x, q.z);
+      // The deck under the wall, at its lowest along it: a long skewed abutment face (a diagonal over
+      // the band) spans a deck that climbs with the ground, and a car on the deck must clear all of it.
+      const deckAt = (x: number, z: number) => {
+        const l = riverL(p, x, z);
+        const c = bridgePoint(p, br, 0, l);
+        const wv = Math.max(-br.dk, Math.min(br.dk, (x - c.x) * br.nx + (z - c.z) * br.nz));
+        const q = bridgePoint(p, br, wv, l);
+        return terrain.heightAt(q.x, q.z);
+      };
+      let deck = deckAt(mx, mz);
+      if (w.look !== 'parapet') {
+        const steps = Math.ceil(Math.hypot(w.bx - w.ax, w.bz - w.az) / 4);
+        for (let k = 0; k <= steps; k++) deck = Math.min(deck, deckAt(w.ax + ((w.bx - w.ax) * k) / steps, w.az + ((w.bz - w.az) * k) / steps));
+      }
       if (w.look === 'parapet') w.bottom = deck - p.depth / 2;
       else w.top = deck - CFG.deckClear;
     }
+    // A solid is collided whole at the first face a car does not clear, so its faces share one top:
+    // the lowest of them.
+    const solidTop = new Map<object, number>();
+    for (const w of builds[area.id].walls) if (w.solid && w.top !== undefined) solidTop.set(w.solid, Math.min(solidTop.get(w.solid) ?? Infinity, w.top));
+    for (const w of builds[area.id].walls) if (w.solid && w.top !== undefined) w.top = solidTop.get(w.solid)!;
   }
 }
 

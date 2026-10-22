@@ -97,7 +97,9 @@ export class InputManager {
         case 'KeyE':
           this.shiftLatch = 1;
           break;
-        case 'KeyH':
+        // The horn is Shift (H hides the HUD everywhere, ui/hudCard.ts).
+        case 'ShiftLeft':
+        case 'ShiftRight':
           this.emit('horn');
           break;
         case 'KeyR':
@@ -110,9 +112,9 @@ export class InputManager {
     else this.keys.delete(e.code);
   }
 
-  /** Horn held (H key or right stick click). Not recorded: replays never honk. */
+  /** Horn held (Shift or right stick click). Not recorded: replays never honk. */
   hornHeld(): boolean {
-    return this.enabled && (this.keys.has('KeyH') || this.padHorn);
+    return this.enabled && (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || this.padHorn);
   }
 
   releaseAll(): void {
@@ -145,7 +147,7 @@ export class InputManager {
       brake: this.brake,
       steer: this.steer,
       handbrake: this.k('Space'),
-      nitrous: this.k('ShiftLeft', 'ShiftRight', 'KeyN'),
+      nitrous: this.k('KeyN'),
       shift: this.shiftLatch,
       reset: this.resetLatch,
     };

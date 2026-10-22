@@ -76,7 +76,7 @@ export interface Crowds {
   /** Number of sections (stands away from the start / finish). */
   readonly sectionCount: number;
   readonly enabled: boolean;
-  /** Hide the crowd (test drive / open world) or show it again. */
+  /** Hide the crowd (open world) or show it again. */
   setEnabled(on: boolean): void;
   /** Start a wave of excitement at a gate; strength 1 = cheer, 1.5 = finish frenzy. */
   cheer(at: 'start' | 'lap' | 'finish', strength?: number): void;

@@ -93,6 +93,7 @@ describe('river channel racing', () => {
     expect(rivers / tried).toBeGreaterThan(0.75);
     let fords = 0;
     let seedsWithFords = 0;
+    let threeQuarters = 0;
     let alternating = 0;
     let pairs = 0;
     for (const { plan, ramps } of seeds) {
@@ -128,7 +129,10 @@ describe('river channel racing', () => {
       // One entrance in every quarter of the channel's length, the feet entranceGap apart.
       const quarter = (x: number) => Math.max(0, Math.min(3, Math.floor((4 * (x - g.bounds.minX)) / (g.bounds.maxX - g.bounds.minX))));
       const footXs = [...feet].map((id) => g.nodes[id].x).sort((a, b) => a - b);
-      expect(new Set(footXs.map(quarter)).size).toBe(4);
+      // (On the curved grid one seed in sixty or so has no row pair seating all four: three then.)
+      const quarters = new Set(footXs.map(quarter)).size;
+      expect(quarters).toBeGreaterThanOrEqual(3);
+      if (quarters < 4) threeQuarters++;
       for (let i = 1; i < footXs.length; i++) expect(footXs[i] - footXs[i - 1]).toBeGreaterThanOrEqual(CFG.entranceGap - 0.5);
       // Banks alternate along the channel where the planner could (a ford serves both).
       const sides = [...feet].sort((a, b) => g.nodes[a].x - g.nodes[b].x).map((id) => ramps.filter((r) => r.foot === id).map((r) => r.side));
@@ -149,10 +153,12 @@ describe('river channel racing', () => {
     }
     expect(fords % 2).toBe(0);
     expect(seedsWithFords).toBeGreaterThan(seeds.length * 0.6);
-    // Where the swing leaves one bank no run the other bank serves, so not every pair can alternate.
-    expect(alternating).toBeGreaterThan(pairs * 0.6);
+    // Where the swing leaves one bank no run the other bank serves, so not every pair can alternate
+    // (a little more often on the curved grid, roadGraph.ts CITY.warp).
+    expect(alternating).toBeGreaterThan(pairs * 0.55);
     const swings = seeds.filter(({ plan }) => plan.districts.areas.find((a) => a.kind === 'river')!.params.meander > 0).length;
     expect(swings).toBeGreaterThan(seeds.length * 0.6);
+    expect(threeQuarters).toBeLessThanOrEqual(1);
   });
 
   it('the centerline follows the midline between the bank rows, smoothly, with an exact slope', () => {
@@ -175,8 +181,8 @@ describe('river channel racing', () => {
         const e = 0.01;
         const num = (riverCenter(p, x + e) - riverCenter(p, x - e)) / (2 * e);
         expect(Math.abs(num - riverSlope(p, x))).toBeLessThan(1e-3);
-        // Gentle: a car along the channel never turns hard.
-        expect(Math.abs(riverSlope(p, x))).toBeLessThan(0.2);
+        // Gentle: a car along the channel never turns hard (the warp tilts whole rows by up to about 0.26 plus the meander: a heading, not a turn).
+        expect(Math.abs(riverSlope(p, x))).toBeLessThan(0.35);
       }
       // Every junction clears the band (the river's own nodes, feet and chain, are in it).
       for (const n of g.nodes) {
@@ -490,7 +496,8 @@ describe('river channel racing', () => {
     let prevS = rc.rawS;
     let crossedOver = false;
     let crossedUnder = false;
-    for (let i = 0; i < 150 * TICK_HZ && !(crossedOver && crossedUnder); i++) {
+    // (The deck comes late in this seed's lap on the curved grid: about 153 s in.)
+    for (let i = 0; i < 200 * TICK_HZ && !(crossedOver && crossedUnder); i++) {
       stepRace(r, autopilotInput(r, rc, ai));
       const c = rc.state;
       let d = rc.rawS - prevS;

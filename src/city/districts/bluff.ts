@@ -45,7 +45,7 @@ import type { Chain, RoadEdge, RoadGraph } from '../roadGraph';
 import { Vec2, distToSegment, segmentT, sqrt } from '../../sim/math';
 import { createTerrain } from '../terrain';
 import type { Terrain } from '../terrain';
-import { buildRailCurve } from '../railCurve';
+import { RAIL, buildRailCurve } from '../railCurve';
 import type { Area, AreaBuild, DistrictModule, HeightSample, PlanContext } from './types';
 import { emptyBuild } from './types';
 import { pointInPolygon, smooth01 } from './geom';
@@ -356,8 +356,14 @@ function outline(s: BluffShape): Vec2[] {
 
 /** Grid junction (i, j), looked up by gi/gj (subway.ts gridNode): node ids are not j * gridW + i once districts edit the graph. */
 const nodeAt = (g: RoadGraph, i: number, j: number) => gridNode(g, i, j);
-/** The level crossing keeps this far (m) along the crest street from its bend nodes (roadGraph.ts): the pad and gates stay in one piece's frame. */
-const CROSSING_BEND_CLEAR = 20;
+/**
+ * The level crossing keeps this far (m) along the crest street from its bend nodes (roadGraph.ts): its
+ * gates are laid out in its piece's frame, and past a bend node of a few degrees a gate line that
+ * overhangs onto the next piece is off by a few tenths of a metre at most.
+ */
+const CROSSING_BEND_CLEAR = 8;
+/** The right of way's second try sits this much further from the El's street than rowOffset (m): past the crest street's first bend node. */
+const ROW_OFFSET_STEP = 16;
 
 /** Point where segment a-b crosses the line through p with unit direction d (t along a-b), or null. */
 function crossLine(ax: number, az: number, bx: number, bz: number, px: number, pz: number, dx: number, dz: number): { t: number; x: number; z: number } | null {
@@ -372,6 +378,8 @@ function crossLine(ax: number, az: number, bx: number, bz: number, px: number, p
 
 /** The plan of one candidate placement, everything the area params and the subway edit need. */
 interface Placement {
+  /** The right of way's distance from the El's street (m): rowOffset, or one ROW_OFFSET_STEP further. */
+  rowOffset: number;
   shape: BluffShape;
   /** Subway path points that move (node row -> point). */
   moved: Map<number, Vec2>;
@@ -402,7 +410,9 @@ export const bluffModule: DistrictModule = {
     for (let r = 2; r <= CITY.gridH - 3; r++) for (const o of [1, -1] as const) cands.push({ r, o });
     rng.shuffle(cands);
     for (const c of cands) {
-      const pl = tryPlace(ctx, sub, base, c.r, c.o);
+      // The right of way at rowOffset, or a little further out where that puts the crossing on a bend
+      // node of the crest street (a street's bend nodes stand near its thirds, roadGraph.ts).
+      const pl = tryPlace(ctx, sub, base, c.r, c.o, CFG.rowOffset) ?? tryPlace(ctx, sub, base, c.r, c.o, CFG.rowOffset + ROW_OFFSET_STEP);
       if (!pl) continue;
       if (ctx.budget.used + pl.area > ctx.budget.total) continue;
       commit(ctx, sub, pl, c.r, c.o);
@@ -495,7 +505,7 @@ export const bluffModule: DistrictModule = {
  * does not fit (a missing street, a diagonal through it, the river, a ramp
  * or a dip too close to a junction, the El too low somewhere).
  */
-function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | -1): Placement | null {
+function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | -1, rowOffset: number): Placement | null {
   const g = ctx.graph;
   // The El must run straight on one column across the whole detour (it may swing to another column elsewhere).
   const c0 = elColumnAt(sub, r);
@@ -547,7 +557,7 @@ function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | 
   const elNode = (j: number) => nodeAt(g, c0, j);
   const rowPoint = (j: number): Vec2 => {
     const n = elNode(j);
-    const px = n.x + side * CFG.rowOffset;
+    const px = n.x + side * rowOffset;
     return { x: px, z: n.z };
   };
   const ra = rowPoint(rows.low);
@@ -772,6 +782,16 @@ function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | 
     const curve = buildRailCurve(path, side, sub.params.deckHeight, ground, [], { a: low.p, b: dip.p, y: shape.y, blend: CFG.levelBlend });
     const s0 = curve.levelA - curve.blendA - 10;
     const s1 = curve.levelB + curve.blendB + 10;
+    // Curves the trains can take: the S curves onto the right of way (sharper the further out it runs,
+    // ROW_OFFSET_STEP) keep RAIL.minRadius and turn under 2 degrees per sample (a margin kept for the
+    // track's own easing).
+    const maxTurn = Math.min(RAIL.step / RAIL.minRadius, (2 * Math.PI) / 180) * 0.95;
+    for (let i = Math.max(1, Math.ceil(curve.cityA / RAIL.step) + 1); i * RAIL.step < curve.cityB && ok; i++) {
+      const dot = curve.tx[i] * curve.tx[i - 1] + curve.tz[i] * curve.tz[i - 1];
+      const cross = curve.tx[i - 1] * curve.tz[i] - curve.tz[i - 1] * curve.tx[i];
+      if (Math.abs(Math.atan2(cross, dot)) > maxTurn) ok = false;
+    }
+    if (!ok) continue;
     for (let i = Math.max(0, Math.floor(s0 / 2)); i < curve.n && i * 2 <= s1 && ok; i++) {
       const x = curve.x[i];
       const z = curve.z[i];
@@ -823,7 +843,7 @@ function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | 
     for (const id of crestChain.edges) edges.add(id);
     // Streets another district claimed first (the El's own, a bridge) stay theirs.
     const free = [...edges].filter((id) => !ctx.claims.edge.has(id)).sort((p, q) => p - q);
-    return { shape, moved, rowA: low.p, rowB: dip.p, crestEdge, rows, faces, nodes, edges: free, poly: outline(shape), area };
+    return { rowOffset, shape, moved, rowA: low.p, rowB: dip.p, crestEdge, rows, faces, nodes, edges: free, poly: outline(shape), area };
   }
   return null;
 }
@@ -852,6 +872,7 @@ function commit(ctx: PlanContext, sub: Area, pl: Placement, r: number, o: number
     top: s.top,
     y: s.y,
     crestEdge: pl.crestEdge,
+    rowOffset: pl.rowOffset,
     rowAx: pl.rowA.x,
     rowAz: pl.rowA.z,
     rowBx: pl.rowB.x,

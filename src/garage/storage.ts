@@ -59,15 +59,17 @@ export interface GaragePrefs {
   presentation: Presentation;
   /** Front and rear stance sliders move together. */
   linkAxles: boolean;
+  /** Front and rear wheels share one color. */
+  linkWheelColor: boolean;
 }
 
 const PREFS_KEY = 'nightrun.garage.prefs.v1';
 
 export function loadGaragePrefs(): GaragePrefs {
-  const d: GaragePrefs = { presentation: 'garage', linkAxles: true };
+  const d: GaragePrefs = { presentation: 'garage', linkAxles: true, linkWheelColor: true };
   try {
     const o = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') as Partial<GaragePrefs>;
-    return { presentation: o.presentation === 'street' ? 'street' : 'garage', linkAxles: o.linkAxles !== false };
+    return { presentation: o.presentation === 'street' ? 'street' : 'garage', linkAxles: o.linkAxles !== false, linkWheelColor: o.linkWheelColor !== false };
   } catch {
     return d;
   }
@@ -98,6 +100,7 @@ const SHORT: Record<string, string> = {
   trimColor: 'tc',
   parts: 'pt',
   wheels: 'wh',
+  rearColor: 'rc',
   size: 'sz',
   decals: 'dc',
   shape: 'sh',

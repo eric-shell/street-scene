@@ -29,9 +29,9 @@ export const AI = {
   smoothIterations: 80,
   lateralGrip: 0.9,
   /** Braking the speed profile plans with (m/s^2): about half what full brake (tires plus assist) does. */
-  brakeDecel: 13,
+  brakeDecel: 10,
   /** m/s over the profile speed that asks for full brake. */
-  brakeSpan: 7,
+  brakeSpan: 5,
   maxSpeed: 95,
   lookaheadBase: 7,
   lookaheadPerSpeed: 0.42,

@@ -51,6 +51,8 @@ import type { CarveRoute } from './alley';
 import { TOUR_REACH, monumentSites } from './monument';
 
 const CFG = CITY.districts.market;
+/** Rail ends of two pens this close (m) at a bend node join: the pen runs on without caps between them. */
+const PEN_JOIN = 1.5;
 
 /**
  * Render hints (AreaHint.kind) a market build leaves for render/districts/market.ts:
@@ -311,6 +313,8 @@ export const marketModule: DistrictModule = {
   },
   build(ctx, area) {
     const b = emptyBuild();
+    /** Pen end caps (rail end r back to the building line o, normal out of the pen), placed after the loop. */
+    const caps: { r: Vec2; o: Vec2; nx: number; nz: number; bend: boolean }[] = [];
     const g = ctx.graph;
     const rng = new Rng(((area.params.seed ?? 0) >>> 0) || 1);
     const crateR = PROP_DEFS.fruitCrates.radius;
@@ -406,10 +410,10 @@ export const marketModule: DistrictModule = {
         const rnz = -side * nz;
         const wall = (a: Vec2, c: Vec2, wx: number, wz: number) => b.walls.push({ ax: a.x, az: a.z, bx: c.x, bz: c.z, nx: wx, nz: wz, kind: 'wall', look: 'marketRail', area: area.id });
         wall(r0, r1, rnx, rnz);
-        // (At a bend node the next piece's pen starts with a cap of its own beside this one: both
-        // stand on the sidewalk behind the rail, where no car goes.)
-        wall(r0, o0, -ux, -uz);
-        wall(r1, o1, ux, uz);
+        // The caps once every pen is known: at a bend node where the next piece's pen runs on (its
+        // rail meets this one there, a few degrees round) there is none, so a car ploughing down the
+        // row meets no cap end (see below).
+        caps.push({ r: r0, o: o0, nx: -ux, nz: -uz, bend: bendA }, { r: r1, o: o1, nx: ux, nz: uz, bend: bendB });
         b.frontLooks.push({
           polygon: [at(p0 - FRONT_MARGIN, side * (outer + 0.1)), at(p1 + FRONT_MARGIN, side * (outer + 0.1)), at(p1 + FRONT_MARGIN, side * (outer + 1.2)), at(p0 - FRONT_MARGIN, side * (outer + 1.2))],
           look: 'marketFront',
@@ -426,6 +430,11 @@ export const marketModule: DistrictModule = {
         penHi = 0;
       }
       b.hints.push({ kind: MARKET_HINT.edge, points: [{ x: A.x, z: A.z }, { x: B.x, z: B.z }], values: [eid, curb, rail, outer, lo, hi, penLo, penHi, ...sides] });
+    }
+    // Every pen closed at both ends, except at a bend node where another pen's rail end meets its own.
+    for (const c of caps) {
+      if (c.bend && caps.some((d) => d !== c && d.bend && Math.hypot(d.r.x - c.r.x, d.r.z - c.r.z) < PEN_JOIN)) continue;
+      b.walls.push({ ax: c.r.x, az: c.r.z, bx: c.o.x, bz: c.o.z, nx: c.nx, nz: c.nz, kind: 'wall', look: 'marketRail', area: area.id });
     }
     return b;
   },

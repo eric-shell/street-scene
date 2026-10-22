@@ -153,8 +153,8 @@ export interface NightScene {
   drawbridge: DrawbridgeView;
   /** Animate time-based effects (barrier lamps, arrows). */
   update(time: number): void;
-  /** Pose the sim-timed district parts (the El's trains, level crossing gates) at a fractional sim tick; call before update. */
-  syncDistricts(tick: number, audible: boolean): void;
+  /** Pose the sim-timed district parts (the El's trains, level crossing gates, RaceState.brokenArms) at a fractional sim tick; call before update. */
+  syncDistricts(tick: number, audible: boolean, brokenArms?: Uint8Array): void;
   dispose(): void;
 }
 
@@ -269,8 +269,8 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     air,
     backdrop,
     drawbridge,
-    syncDistricts(tick, audible) {
-      districts.sync(tick, audible);
+    syncDistricts(tick, audible, brokenArms) {
+      districts.sync(tick, audible, brokenArms);
     },
     update(time) {
       city.update(time);

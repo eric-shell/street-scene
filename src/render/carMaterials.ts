@@ -7,7 +7,8 @@ import * as THREE from 'three';
 import { MATERIAL_NAMES, MaterialName } from '../shared/parts';
 import type { PaintFinish, VisualBuild } from '../sim/build';
 
-export type CarMaterialSet = Record<MaterialName, THREE.Material>;
+/** The shared runtime materials, plus the rear axle's own rim so front and rear wheel colors can differ. */
+export type CarMaterialSet = Record<MaterialName, THREE.Material> & { RimRear: THREE.Material };
 
 /** Car space meters per UV unit on Grille faces (GRILLE_UV in scripts/blender/carDonors.py). */
 const GRILLE_UV_SPAN = 3;
@@ -93,6 +94,7 @@ export function createCarMaterials(envMap: THREE.Texture | null = null): CarMate
       mat.envMapIntensity = boost[k] ?? 1;
     }
   }
+  m.RimRear = m.Rim.clone();
   return m;
 }
 
@@ -124,6 +126,7 @@ export function applyVisualToMaterials(m: CarMaterialSet, v: VisualBuild, brakin
   paint.needsUpdate = true;
   (m.Trim as THREE.MeshStandardMaterial).color.set(v.trimColor);
   (m.Rim as THREE.MeshStandardMaterial).color.set(v.wheels.color);
+  (m.RimRear as THREE.MeshStandardMaterial).color.set(v.wheels.rearColor);
   const glass = m.Glass as THREE.MeshPhysicalMaterial;
   glass.color.set(v.tint.color).lerp(new THREE.Color(0x8fa0b0), 1 - v.tint.darkness);
   glass.opacity = 0.35 + v.tint.darkness * 0.62;
@@ -149,4 +152,5 @@ export function resolveMaterialName(name: string, map: Record<string, string> = 
 export function disposeCarMaterials(m: CarMaterialSet): void {
   (m.Grille as THREE.MeshStandardMaterial).map?.dispose();
   for (const k of MATERIAL_NAMES) m[k].dispose();
+  m.RimRear.dispose();
 }

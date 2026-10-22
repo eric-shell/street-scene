@@ -70,7 +70,7 @@ import { distToPolygonEdge, pointInPolygon, polygonArea, polygonBounds, solidWal
 import type { Area, AreaBuild, DistrictModule, HeightSample, PlanContext } from './types';
 import { emptyBuild } from './types';
 import type { CarveRoute } from './alley';
-import type { Route } from '../route';
+import type { Route, RouteKind } from '../route';
 import type { RouteProgress } from '../world';
 
 const CFG = CITY.districts.carPark;
@@ -98,8 +98,8 @@ const SCORE_LAND = 30;
 /** The launch heading bound (rad): a straight line through the chute, a car's width clear of both walls. */
 export const LAUNCH_BOUND = atan2(CFG.chuteWidth - 2 * CAR_HALF, CFG.chuteLength);
 
-/** Route index (CarveRoute order in planRoads, Area.params.owner) of each route kind. */
-export const ROUTE_INDEX = { circuit: 0, sprint: 1 } as const;
+/** Route index (CarveRoute order in planRoads, Area.params.owner) of each route kind; the drag strip and the waypoint race own none (-1). */
+export const ROUTE_INDEX = { circuit: 0, sprint: 1, drag: -1, waypoint: -1 } as const;
 
 /**
  * A car park's geometry in world space, rebuilt from its area params.
@@ -846,7 +846,7 @@ export function railsClearOf<T extends Wall>(zones: readonly Vec2[][], rails: T[
 }
 
 /** Whether a point is within `pad` m of a flight off one of the route's car parks (over the junction, render dressing keeps out). */
-export function nearCarParkFlight(world: { areas: readonly Area[]; openWorld?: boolean; route: { kind: 'circuit' | 'sprint' } }, x: number, z: number, pad: number): boolean {
+export function nearCarParkFlight(world: { areas: readonly Area[]; openWorld?: boolean; route: { kind: RouteKind } }, x: number, z: number, pad: number): boolean {
   for (const g of carParks(world.areas)) {
     if (!world.openWorld && g.owner !== ROUTE_INDEX[world.route.kind]) continue;
     if (pointInPolygon(x, z, flightCorridor(g, g.lipBack + 14, pad))) return true;
@@ -1129,10 +1129,6 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
   const faces = ctx.faces();
   const { cum, total, lo, hi } = routeFrame(g, r);
   const out: Candidate[] = [];
-  const dbg = (globalThis as unknown as { __dbg?: Record<string, number> }).__dbg;
-  const bump = (k: string) => {
-    if (dbg) dbg[k] = (dbg[k] ?? 0) + 1;
-  };
   // The ground the car park will stand on (hills keep their slopes off car parks, see hills.ts).
   const ground = createTerrain(ctx.seed);
   /**
@@ -1186,17 +1182,13 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
     if (!okStreet(eE) || !okStreet(eIn)) continue;
     const turn = turnAt(g, r, j);
     if (Math.abs(turn) < CFG.minTurnDeg * DEG || Math.abs(turn) > ROUTE.maxTurnDeg * DEG) continue;
-    bump('corners');
     const t = unit(C, Q);
     let behind = false;
     for (const eid of C.edges) {
       const d = unit(C, g.nodes[otherNode(g.edges[eid], C.id)]);
       if (-(d.x * t.x + d.z * t.z) > cos(CFG.behindDeg * DEG)) behind = true;
     }
-    if (behind) {
-      bump('behind');
-      continue;
-    }
+    if (behind) continue;
     // The landing straight: E and any straight continuation, up to the first junction or turn (its
     // corridor, where closures, crosswalks and rails start). E's own bend nodes are no such thing:
     // the street goes on through them a few degrees at a time, the landing with it.
@@ -1222,17 +1214,10 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
     const probe = { x: C.x + back.x * (corrIn + 3), z: C.z + back.z * (corrIn + 3) };
     const fi = faces.findIndex((f) => !f.outer && pointInPolygon(probe.x, probe.z, f.ring));
     // A block claimed, or held by a car park planned earlier in this hook (it claims its block later).
-    if (fi < 0 || ctx.claims.face.has(fi) || ctx.areas.some((a) => a.kind === 'carPark' && a.params.face === fi)) {
-      bump('face');
-      continue;
-    }
+    if (fi < 0 || ctx.claims.face.has(fi) || ctx.areas.some((a) => a.kind === 'carPark' && a.params.face === fi)) continue;
     const F = faces[fi];
     const sLip = rayHit(C, back, F.ring, corrIn + 6);
-    if (sLip === null) {
-      bump('lip');
-      continue;
-    }
-    bump('sites');
+    if (sLip === null) continue;
     const lipBack = sLip + CFG.inset;
     const frame: Frame = { ox: C.x + back.x * lipBack, oz: C.z + back.z * lipBack, ux: back.x, uz: back.z, vx: -back.z, vz: back.x };
     /** The deck's front line (building line + inset) at lateral v, as frame u, or null. */
@@ -1255,11 +1240,7 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
     }
     for (const { ia, ib } of entries) {
       const eY = edgeBetween(g, R[ia], R[ib]);
-      if (eY === eIn || !F.edges.includes(eY) || !okStreet(eY)) {
-        bump(!F.edges.includes(eY) ? 'entryNotOnF' : 'entryStreet');
-        continue;
-      }
-      bump('entries');
+      if (eY === eIn || !F.edges.includes(eY) || !okStreet(eY)) continue;
       const Ya = g.nodes[R[ia]];
       const Yb = g.nodes[R[ib]];
       const dY = unit(Ya, Yb);
@@ -1281,11 +1262,7 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
       // tilting streets, roadGraph.ts), back entry when it runs across it; layout checks the skew
       // the ramp can take (an >= 0.85) either way.
       const side = Math.abs(dotU) > 0.75 ? (toV(frame, seg[0]) > 0 ? 1 : -1) : Math.abs(dotU) < 0.6 ? 0 : NaN;
-      if (Number.isNaN(side)) {
-        bump('sideNaN');
-        continue;
-      }
-      bump(side === 0 ? 'back' : 'side');
+      if (Number.isNaN(side)) continue;
       // Entry clearance from each end of its street: a turning junction's corner rail runs along the
       // outside of the turn, so where the block is on the outside the entry keeps railClear from it.
       const clearAt = (idx: number, other: Vec2) => {
@@ -1310,23 +1287,13 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
       const edgeRoom = CFG.rampWidth / 2 + APRON.flareIn + 2;
       for (const foot of feet) {
         const s = (foot.x - base.x) * fl.x + (foot.z - base.z) * fl.z;
-        if (s < edgeRoom || s > fl.len - edgeRoom) {
-          bump('footRoom');
-          continue;
-        }
+        if (s < edgeRoom || s > fl.len - edgeRoom) continue;
         const at = (foot.x - Ya.x) * dY.x + (foot.z - Ya.z) * dY.z;
-        if (at < clearA || at > dY.len - clearB) {
-          bump('footClear');
-          continue;
-        }
+        if (at < clearA || at > dY.len - clearB) continue;
         const params = layout(side, foot, N);
-        if (!params) {
-          bump('layoutNull');
-          continue;
-        }
+        if (!params) continue;
         const cand = validate(params, cum[ia] + at);
         if (cand) out.push(cand);
-        else bump('validateNull');
       }
 
       /** Ramp, deck and chute for a ramp foot on the entry line; params, or null when the site has no room. */
@@ -1334,7 +1301,6 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
         const A = side !== 0 ? { x: -side * frame.vx, z: -side * frame.vz } : { x: -frame.ux, z: -frame.uz };
         const an = A.x * N.x + A.z * N.z;
         if (an < 0.85) {
-          bump('layout:an');
           return null;
         }
         const rhw = CFG.rampWidth / 2;
@@ -1386,7 +1352,6 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
         const fa = frontAt(v0);
         const fb = frontAt(v1);
         if (f0 === null || fa === null || fb === null || Math.abs(f0) > 0.05) {
-          bump('layout:front0');
           return null;
         }
         const front = [{ u: fa, v: v0 }];
@@ -1395,23 +1360,19 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
         for (const q of corners) front.push(q);
         front.push({ u: fb, v: v1 });
         if (front.length > 6) {
-          bump('layout:frontPts');
           return null;
         }
         const geoF = { front };
         for (let v = v0; v <= v1; v += SAMPLE / 2) {
           const f = frontAt(v);
           if (f === null || Math.abs(f - frontU(geoF, v)) > STRAIGHT_TOL) {
-            bump('layout:straight');
             return null;
           }
         }
         if (Math.abs(frontU(geoF, -hc) - frontU(geoF, hc)) > 1.2) {
-          bump('layout:frontTilt');
           return null;
         }
         if (u1 - Math.max(...front.map((f) => f.u)) < CFG.chuteLength + CFG.chuteFunnel[0] + 4) {
-          bump('layout:chuteRoom');
           return null;
         }
         const fp: Record<string, number> = { fn: front.length };
@@ -1473,7 +1434,6 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
         const landMax = flightReach(vMax);
         const zone = landMax - lipBack + CFG.rollout;
         if (zone > clearRun) {
-          bump('validate:zone');
           return null;
         }
         params.landMax = landMax;

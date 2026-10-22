@@ -10,8 +10,11 @@ import type { World } from '../src/city/world';
 import { distToPolygonEdge, pointInPolygon, polygonCentroid } from '../src/city/districts/geom';
 import { carSnapshot, input, raceConfig } from './helpers';
 
-/** Seeds whose city has a monument plaza, and the first of them (city generation may move it between seeds). */
-const PLAZA_SEEDS = [99, 7, 123, 31337, 42, 1234, 2024, 5].filter((s) => createCity(s).districts.areas.some((a) => a.kind === 'monument'));
+/**
+ * Seeds whose city has a monument plaza, and the first of them (city generation may move it between seeds).
+ * Seed 6 joined when the curved grid (roadGraph.ts CITY.warp) moved seed 1234's plaza off its runways.
+ */
+const PLAZA_SEEDS = [99, 7, 123, 31337, 42, 1234, 2024, 5, 6].filter((s) => createCity(s).districts.areas.some((a) => a.kind === 'monument'));
 const PLAZA_SEED = PLAZA_SEEDS[0];
 
 function driftRace(seed: number): RaceState {

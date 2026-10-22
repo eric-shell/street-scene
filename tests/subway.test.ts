@@ -8,7 +8,7 @@ import { RAIL, buildRailCurve, dirOn, projectOnCurve, sampleCurve, curvePoint, t
 import type { RailCurve } from '../src/city/railCurve';
 import { TRAIN, buildRun, makeService, runAt, trackS, trainLength, tripsAt } from '../src/city/railTimetable';
 import type { TripState } from '../src/city/railTimetable';
-import { elColumnAt, elCurve, elRowIndex } from '../src/city/districts/subway';
+import { elColumnAt, elCurve, elRowIndex, streetChain } from '../src/city/districts/subway';
 
 const CFG = CITY.districts.subway;
 /** Seeds with a railway (chance 0.75), found once. */
@@ -87,7 +87,12 @@ describe('elevated railway (city)', () => {
           expect(right - left).toBe(1);
           const A = g.nodes[j * CITY.gridW + left];
           const B = g.nodes[j * CITY.gridW + right];
-          expect(distToSegment(p.x, p.z, A.x, A.z, B.x, B.z)).toBeLessThan(2.5);
+          // On the row's street as it runs: its pieces through bend nodes (a curved street bows a few
+          // metres off the chord between its junctions), or the chord where no street joins them.
+          const ids = streetChain(g, A.id, B.id) ?? [A.id, B.id];
+          let off = Infinity;
+          for (let k = 0; k + 1 < ids.length; k++) off = Math.min(off, distToSegment(p.x, p.z, g.nodes[ids[k]].x, g.nodes[ids[k]].z, g.nodes[ids[k + 1]].x, g.nodes[ids[k + 1]].z));
+          expect(off).toBeLessThan(2.5);
           expect(Math.hypot(p.x - A.x, p.z - A.z)).toBeGreaterThan(28);
           expect(Math.hypot(p.x - B.x, p.z - B.z)).toBeGreaterThan(28);
           crossings++;
@@ -95,10 +100,11 @@ describe('elevated railway (city)', () => {
           const n = g.nodes[j * CITY.gridW + c];
           expect(n.gi).toBe(c);
           expect(n.gj).toBe(j);
-          // Over the curb lane beside its node, or on a bluff's right of way beside the street (rowOffset from
-          // the El's column, where that line meets the row's jittered street).
+          // Over the curb lane beside its node, or on a bluff's right of way beside the street (its rowOffset from
+          // the El's column, where that line meets the row's jittered street; the warp's short wave, roadGraph.ts, bows
+          // a column a few metres more between rows).
           const d = Math.hypot(p.x - n.x, p.z - n.z);
-          if (j > (sub.params.dj0 ?? Infinity) && j < (sub.params.dj1 ?? -Infinity)) expect(Math.abs(d - CITY.districts.bluff.rowOffset)).toBeLessThan(2 * CITY.jitter);
+          if (j > (sub.params.dj0 ?? Infinity) && j < (sub.params.dj1 ?? -Infinity)) expect(Math.abs(d - (plan.districts.areas.find((a) => a.kind === 'bluff')?.params.rowOffset ?? CITY.districts.bluff.rowOffset))).toBeLessThan(2 * (CITY.jitter + CITY.warp[CITY.warp.length - 1].amp));
           else expect(d).toBeLessThan(CITY.width.boulevard / 2);
         }
       }
@@ -156,7 +162,8 @@ describe('elevated railway (city)', () => {
       const P = curvePoint();
       for (const st of curve.stations) {
         stations++;
-        // The platform and a little beyond it: the heading barely turns.
+        // The platform and a little beyond it: the heading barely turns (on curved streets too: stations
+        // only go where the track's bends under the platform stay this gentle).
         const s0 = st.s - RAIL.platform / 2 - 8;
         const s1 = st.s + RAIL.platform / 2 + 8;
         sampleCurve(curve, s0, P);
@@ -164,7 +171,7 @@ describe('elevated railway (city)', () => {
         const tz = P.tz;
         for (let s = s0; s <= s1; s += 4) {
           sampleCurve(curve, s, P);
-          expect(tx * P.tx + tz * P.tz).toBeGreaterThan(Math.cos((2.5 * Math.PI) / 180));
+          expect(tx * P.tx + tz * P.tz).toBeGreaterThan(Math.cos((4 * Math.PI) / 180));
         }
         // Over the curb lane of a street under the deck, not a swing's block or a bluff's right of way.
         sampleCurve(curve, st.s, P);
@@ -177,7 +184,9 @@ describe('elevated railway (city)', () => {
         expect(under).toBe(true);
       }
     }
-    expect(stations).toBeGreaterThan(40);
+    // Most cities get one or two (curved streets, roadGraph.ts, leave some with no block straight enough
+    // under a platform).
+    expect(stations).toBeGreaterThanOrEqual(30);
   });
 
   it('every pillar and stair wall is drawn, off the roads, and stairs come in pairs at stations', () => {
@@ -217,7 +226,8 @@ describe('elevated railway (city)', () => {
       const rivers = c.districts.areas.filter((a) => a.kind === 'river');
       for (const s of stairs) for (const rv of rivers) expect(Math.abs(s.z - riverCenter(rv.params, s.x))).toBeGreaterThan(rv.params.top);
     }
-    expect(stations).toBeGreaterThan(cities.length);
+    // (Most cities have a station: curved streets leave some with no block straight enough for one.)
+    expect(stations).toBeGreaterThanOrEqual(cities.length * 0.75);
   });
 
   it('plans the same railway every time', () => {

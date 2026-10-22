@@ -201,8 +201,11 @@ describe('shortcut mouths', () => {
           // A bent shortcut may leave its street at the planner's least angle (34 deg) on a short first leg:
           // the acute corner then has no room left to flare on either edge (one mouth in this sweep since
           // the river reshaped the layouts), and keeps a plain corner.
+          // A jump exit leaves at its shallow exitDeg: on a curved street (pieces of about 47 m between bend
+          // nodes, roadGraph.ts) its acute corner has no room to flare on the piece it lands on (blocks.ts
+          // caps a flare at half the piece) and stays plain, by design of the shallow exit.
           if (!(cw.flared && ccw.flared)) {
-            plain++;
+            if (!(area.params.jumpExit && nid === area.nodes[area.nodes.length - 1])) plain++;
             continue;
           }
           mouths++;

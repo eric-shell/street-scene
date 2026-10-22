@@ -64,6 +64,13 @@ export function beadForSize(p: WheelProfile, size: number): number {
   return p.bead + (max - p.bead) * ((s - 1) / (SIZE_MAX - 1));
 }
 
+/** Inverse of beadForSize: the wheel size that puts the bead at this radius (clamped to the slider range). */
+export function sizeForBead(p: WheelProfile, bead: number): number {
+  const max = Math.max(p.bead, MAX_BEAD * p.outer);
+  const s = bead <= p.bead || max <= p.bead ? bead / p.bead : 1 + ((bead - p.bead) / (max - p.bead)) * (SIZE_MAX - 1);
+  return Math.max(SIZE_MIN, Math.min(SIZE_MAX, s));
+}
+
 /** Remap one radius. Returns [new radius, d(new)/d(old)]. */
 export function remapRadius(r: number, p: WheelProfile, bead2: number): [number, number] {
   if (r <= p.bead) {

@@ -907,8 +907,12 @@ function planLine(ctx: PlanContext, side: number, cols: readonly number[], swing
   const t0 = anchorAt(cols[0], 0).t;
   const tN = anchorAt(cols[H - 1], H - 1).t;
   const last = path[path.length - 1];
-  path.unshift({ x: path[0].x - t0.x * RUN_OFF, z: path[0].z - t0.z * RUN_OFF });
-  path.push({ x: last.x + tN.x * RUN_OFF, z: last.z + tN.z * RUN_OFF });
+  // At least RUN_OFF, and on until past the map's edge: the warp (roadGraph.ts) lifts or drops the end
+  // rows by tens of metres from column to column, so an end node may lie well inside the bounds.
+  const r0 = Math.min(200, Math.max(RUN_OFF, (path[0].z - g.bounds.minZ + 10) / Math.max(0.5, t0.z)));
+  const rN = Math.min(200, Math.max(RUN_OFF, (g.bounds.maxZ - last.z + 10) / Math.max(0.5, tN.z)));
+  path.unshift({ x: path[0].x - t0.x * r0, z: path[0].z - t0.z * r0 });
+  path.push({ x: last.x + tN.x * rN, z: last.z + tN.z * rN });
   for (let j = 0; j < H; j++) at[j]++;
   let length = 0;
   for (let i = 1; i < path.length; i++) length += sqrt((path[i].x - path[i - 1].x) ** 2 + (path[i].z - path[i - 1].z) ** 2);
@@ -922,6 +926,9 @@ function planLine(ctx: PlanContext, side: number, cols: readonly number[], swing
  * away from the map ends, the river and a bluff's crossing, spaced apart, in
  * a seeded order.
  */
+/** Cosine of the most the track turns under a station's platform and 8 m past either end (3.5 degrees: a curved street bends a degree or two at each bend node). */
+const STATION_TURN_COS = Math.cos((3.5 * Math.PI) / 180);
+
 function planStations(
   ctx: BuildContext,
   area: Area,
@@ -987,6 +994,21 @@ function planStations(
     if (used.some((j) => Math.abs(j - st.j) < 3)) continue;
     const half = st.length / 2;
     const m = alongChain(g, st, half);
+    // A curved street (its bend nodes, roadGraph.ts) may turn the deck under the platform: the track keeps
+    // within STATION_TURN of its heading over the platform and a little beyond.
+    {
+      const s0 = projectOnCurve(curve, m.x, m.z).s;
+      const P = curvePoint();
+      sampleCurve(curve, s0 - RAIL.platform / 2 - 8, P);
+      const tx = P.tx;
+      const tz = P.tz;
+      let straight = true;
+      for (let s = s0 - RAIL.platform / 2 - 8; s <= s0 + RAIL.platform / 2 + 8 && straight; s += 4) {
+        sampleCurve(curve, s, P);
+        if (tx * P.tx + tz * P.tz < STATION_TURN_COS) straight = false;
+      }
+      if (!straight) continue;
+    }
     const { dx, dz } = m;
     // The pillar side normal: the right of travel toward +z for side 1.
     const nx = side * dz;

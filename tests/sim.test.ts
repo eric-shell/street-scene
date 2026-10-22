@@ -88,7 +88,7 @@ describe('driving parameters file', () => {
       carId: t.carId,
       geometry: t.geometry,
       surface: { ...exported.tuning.surface, sidewalkGrip: 1 },
-      brakes: { ...exported.tuning.brakes, force: 18000, frontBias: 0.68 },
+      brakes: { ...exported.tuning.brakes, force: 16250, frontBias: 0.68 },
       gearbox: { ...exported.tuning.gearbox, finalDrive: 4.32 },
       steering: { ...exported.tuning.steering, counterSteerAllowance: 1 },
     };
@@ -134,7 +134,7 @@ describe('driving parameters file', () => {
     expect(u.drivetrain.layout).toBe('awd');
   });
 
-  it('saved test drive tuning is fingerprinted per car', () => {
+  it('saved tuning panel values are fingerprinted per car', () => {
     expect(tuningHash('protoCompact')).toMatch(/^[0-9a-f]{8}$/);
     expect(tuningHash('protoCompact')).not.toBe(tuningHash('protoHatch'));
     expect(tuningHash('protoCompact')).toBe(tuningHash('protoCompact'));
@@ -500,7 +500,7 @@ describe('landings, banks and brakes', () => {
     }
   });
 
-  it('brakes hard: 160 km/h to a stop in under 45 m, shorter with upgraded brakes', () => {
+  it('brakes hard: 160 km/h to a stop in under 60 m, shorter with upgraded brakes', () => {
     const stop = (t: CarTuning) => {
       const c = createCar(0, 0, 0, 0);
       c.vz = 160 / 3.6;
@@ -509,7 +509,7 @@ describe('landings, banks and brakes', () => {
     };
     for (const id of SELECTABLE_CAR_IDS) {
       const stock = stop(getBaseTuning(id));
-      expect(stock, id).toBeLessThan(45);
+      expect(stock, id).toBeLessThan(60);
       expect(stop(applyBuild(getBaseTuning(id), { ...stockPerformance(), brakes: 3 })), id).toBeLessThan(stock - 5);
     }
   });
