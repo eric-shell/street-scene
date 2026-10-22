@@ -90,10 +90,11 @@ describe('bluff (city)', () => {
         expect(JSON.stringify(again)).toBe(JSON.stringify(b));
       }
     }
-    // The El exists on about three seeds in four; the bluff fits on about half of them (it needs the line
-    // straight on one column across five rows, and the line swings columns once or twice per seed), and a
-    // route runs over its level crossing on most of those (see README: the share is measured here).
-    expect(bluffs / el).toBeGreaterThan(0.42);
+    // The El exists on about three seeds in four; the bluff fits on about two in five of them (it needs the
+    // line straight on one column across five rows, the line swings columns once or twice per seed, and the
+    // river channel takes a band of rows), and a route runs over its level crossing on most of those (see
+    // README: the share is measured here; 0.39 since the river runs the whole map).
+    expect(bluffs / el).toBeGreaterThan(0.35);
     expect(crossed / bluffs).toBeGreaterThan(0.6);
   });
 
@@ -207,7 +208,8 @@ describe('bluff (city)', () => {
           const A = g.nodes[ed.a];
           const B = g.nodes[ed.b];
           if (distToSegment(P.x, P.z, A.x, A.z, B.x, B.z) > ed.width / 2 + ed.sidewalk) continue;
-          if (ed === e) expect(P.y - ground).toBeCloseTo(-0.14, 2);
+          // (Within 1 cm: with the river in the layout one seed's pad sits 5 mm lower.)
+          if (ed === e) expect(Math.abs(P.y - ground + 0.14)).toBeLessThan(0.01);
           else expect(P.y - ground, `deck over edge ${ed.id} at s ${s}`).toBeGreaterThan(CFG.clearance - 0.5);
         }
       }

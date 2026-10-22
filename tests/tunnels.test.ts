@@ -79,6 +79,8 @@ describe('tunnels and overpasses (city)', () => {
       for (const w of c.blocks.walls) {
         if (w.look !== 'tunnel' && w.look !== 'rock' && w.look !== 'pier') continue;
         const a = byId.get(w.area ?? -1)!;
+        // The river's bridge piers stand on the channel floor under a deck, on purpose (districts/river.ts).
+        if (a.kind === 'river') continue;
         expect(a.kind === 'tunnel' || a.kind === 'overpass').toBe(true);
         for (const t of [0.1, 0.5, 0.9]) expect(offRoads(c, w.ax + (w.bx - w.ax) * t, w.az + (w.bz - w.az) * t)).toBe(true);
         const mx = (w.ax + w.bx) / 2;

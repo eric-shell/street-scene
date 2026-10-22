@@ -27,6 +27,8 @@ export interface WorldHit {
 }
 
 const CIRCLES = 3;
+/** Two cars further apart than this in height (m) are on different levels (a bridge deck over the river channel) and never touch. */
+const LEVEL_GAP = 3;
 
 function circleOffsets(t: CarTuning): { u: number; r: number }[] {
   const r = t.geometry.halfWidth * 0.95;
@@ -180,6 +182,7 @@ export function collideCarWithWorld(c: CarState, t: CarTuning, world: World, hit
 
 /** Resolve contact between two cars. Returns impact speed. */
 export function collideCars(a: CarState, ta: CarTuning, b: CarState, tb: CarTuning): number {
+  if (abs(a.y - b.y) > LEVEL_GAP) return 0;
   const dx0 = b.x - a.x;
   const dz0 = b.z - a.z;
   const reach = ta.geometry.halfLength + tb.geometry.halfLength + 0.5;
@@ -253,7 +256,7 @@ export function detectNearMiss(c: CarState, t: CarTuning, world: World): boolean
   const fx = sin(c.yaw);
   const fz = cos(c.yaw);
   for (const circ of circleOffsets(t)) {
-    const clear = world.wallClearance(c.x + fx * circ.u, c.z + fz * circ.u, circ.r + 1.5) - circ.r;
+    const clear = world.wallClearance(c.x + fx * circ.u, c.z + fz * circ.u, circ.r + 1.5, c.y) - circ.r;
     if (clear < 0.9) return true;
   }
   return false;

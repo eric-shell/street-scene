@@ -285,7 +285,8 @@ function pathBlocked(w: World, xs: number[], zs: number[], r: number, contacts: 
     for (let k = i === 0 ? 0 : 1; k <= n; k++) {
       const x = xs[i] + (dx * k) / n;
       const z = zs[i] + (dz * k) / n;
-      if (w.collideCircle(x, z, r, contacts) > 0) return true;
+      // Probed at street level: over the river channel a bridge's piers stand beneath its deck (Wall.top).
+      if (w.collideCircle(x, z, r, contacts, w.heightAt(x, z)) > 0) return true;
       const s = w.surfaceAt(x, z);
       if (s === 'offroad' || s === 'grass' || s === 'water') return true;
     }
@@ -1159,6 +1160,8 @@ export function stepTraffic(r: RaceState): void {
     bd.x += bd.vx * DT;
     bd.z += bd.vz * DT;
     bd.yaw = wrapAngle(bd.yaw + bd.yawRate * DT);
+    // On the street level (traffic never drives the river channel): over a deck's piers, held by its parapets.
+    bd.y = r.world.heightAt(bd.x, bd.z);
     collideCarWithWorld(bd, trafficTuning(c.kind), r.world, undefined, undefined, r.tick);
     bd.speed = sqrt(bd.vx * bd.vx + bd.vz * bd.vz);
     c.still = bd.speed < P.restSpeed && abs(bd.yawRate) < 0.15 ? c.still + DT : 0;
@@ -1173,6 +1176,8 @@ export function stepTraffic(r: RaceState): void {
       if (c.mode === 'gone') continue;
       const reach = rc.tuning.geometry.halfLength + hl(c) + 0.5;
       if ((c.body.x - s.x) ** 2 + (c.body.z - s.z) ** 2 > reach * reach) continue;
+      // Its height on the street level: a race car on the channel floor under a bridge deck passes beneath it.
+      c.body.y = r.world.heightAt(c.body.x, c.body.z);
       contact(t, r, rc.index, s, rc.tuning, c);
     }
   }

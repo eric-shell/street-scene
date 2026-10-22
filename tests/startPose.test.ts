@@ -16,10 +16,20 @@ import { carSnapshot, input, raceConfig } from './helpers';
 
 const roam = (seed: number, start?: RaceConfig['start']): RaceConfig => ({ ...raceConfig(seed, 'circuit', 0), openWorld: true, traffic: true, start });
 
-/** Where the stage car would be: a point on the cruise path, with its heading. */
+/**
+ * Where the stage car would be: a point on the cruise path, with its heading and the ground height
+ * it is on, followed along the path from its start as the stage does (under a river bridge the route
+ * may run on the channel floor beneath the deck).
+ */
 function onPath(cruise: Cruise, s: number) {
-  const c = cruise.path.sample(s, { x: 0, z: 0, tx: 0, tz: 1, yaw: 0, k: 0 });
-  return { x: c.x, z: c.z, yaw: c.yaw };
+  const probe = { x: 0, z: 0, tx: 0, tz: 1, yaw: 0, k: 0 };
+  let y: number | undefined;
+  for (let u = 0; u < s; u += 1) {
+    const q = cruise.path.sample(u, probe);
+    y = cruise.world.heightAt(q.x, q.z, y);
+  }
+  const c = cruise.path.sample(s, probe);
+  return { x: c.x, z: c.z, y: cruise.world.heightAt(c.x, c.z, y), yaw: c.yaw };
 }
 
 describe('start pose', () => {

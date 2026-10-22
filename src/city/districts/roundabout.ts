@@ -26,13 +26,13 @@
  */
 import { CITY } from '../config';
 import { chainFrom, edgeAngleFrom, sectorAngle } from '../roadGraph';
-import { riverCenter } from './river';
 import { DEG, Vec2, atan2, cos, sin, sqrt } from '../../sim/math';
 import { Rng } from '../../sim/prng';
 import { PROP_DEFS, PropKind } from '../props';
 import type { DistrictModule } from './types';
 import { emptyBuild } from './types';
 import { circlePolygon, polyWalls, smooth01, solidWalls } from './geom';
+import { riverCenter } from './river';
 
 const CFG = CITY.districts.roundabout;
 
@@ -67,7 +67,8 @@ export const roundaboutModule: DistrictModule = {
         }
         // Keep clear of the river channel.
         for (const r of rivers) {
-          if (Math.abs(n.z - riverCenter(r.params, n.x)) < r.params.top + CFG.outerRadius[1] + CITY.sidewalk + 12) return false;
+          const zc = riverCenter(r.params, n.x);
+          if (Math.abs(n.z - zc) < r.params.top + CFG.outerRadius[1] + CITY.sidewalk + 12) return false;
         }
         return true;
       })

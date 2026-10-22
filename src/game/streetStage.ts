@@ -193,6 +193,13 @@ export class StreetStage {
     gr.render(this.night.scene, camera, dt);
   }
 
+  /**
+   * The car's height last frame (m), the level it is on under a river bridge (World.heightAt): the
+   * route dives under the decks, so the car stays on the channel floor beneath one. Unset before
+   * the first pose (the route never starts in the channel).
+   */
+  private level: number | undefined = undefined;
+
   /** Pose the car at the current distance: on the terrain, steered by the path, leaning on its springs. */
   private place(dt: number): void {
     const c = this.path.sample(this.s, this.sample);
@@ -211,10 +218,11 @@ export class StreetStage {
       half = Math.max(0.4, Math.abs(car.wheels.FL[0]));
       for (let i = 0; i < 4; i++) {
         const w = car.wheels[WHEELS[i]];
-        h[i] = this.world.heightAt(c.x + w[0] * cos + w[2] * sin, c.z - w[0] * sin + w[2] * cos);
+        h[i] = this.world.heightAt(c.x + w[0] * cos + w[2] * sin, c.z - w[0] * sin + w[2] * cos, this.level);
       }
-    } else h.fill(this.world.heightAt(c.x, c.z));
+    } else h.fill(this.world.heightAt(c.x, c.z, this.level));
     const y = (h[0] + h[1] + h[2] + h[3]) / 4;
+    this.level = y;
     const slopePitch = -Math.atan(((h[0] + h[1]) / 2 - (h[2] + h[3]) / 2) / wb);
     const slopeRoll = Math.atan(((h[0] + h[2]) / 2 - (h[1] + h[3]) / 2) / (2 * half));
     // Dive and squat from the speed change, lean out of the corner from the sideways pull.

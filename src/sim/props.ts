@@ -12,7 +12,7 @@
  */
 import { PROP_DEFS } from '../city/props';
 import type { RaceCar, RaceState } from './race';
-import { sin, cos, sqrt } from './math';
+import { abs, sin, cos, sqrt } from './math';
 
 /** Fraction of the off center angular impulse applied as yaw (a nudge, not a spin). */
 const YAW_NUDGE = 0.35;
@@ -21,6 +21,8 @@ const IMPACT_PER_DV = 1.25;
 /** Points sampled along a capsule prop's core (odd, so the middle is one): closer than its radius apart. */
 const CORE_SAMPLES = 5;
 
+/** A prop further than this (m) above or below the car body is on another level (a bridge deck's sidewalk over the river channel) and never touches it. */
+const LEVEL_GAP = 3;
 const scratch: number[] = [];
 
 function yawInertia(rc: RaceCar): number {
@@ -51,6 +53,7 @@ export function collideCarWithProps(r: RaceState, rc: RaceCar): number {
   for (const id of scratch) {
     if (r.brokenProps[id]) continue;
     const p = world.props[id];
+    if (abs(p.y - c.y) > LEVEL_GAP) continue;
     const dx = p.x - c.x;
     const dz = p.z - c.z;
     let u = dx * fx + dz * fz;

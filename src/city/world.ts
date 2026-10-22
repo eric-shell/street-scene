@@ -5,12 +5,13 @@
  */
 import { CITY, ROUTE } from './config';
 import { CityBlocks, Solid, Wall, generateBlocks } from './blocks';
-import { RoadGraph, generateRoadGraph } from './roadGraph';
+import { RoadGraph, generateRoadGraph, isRiverEdge } from './roadGraph';
 import { BarrierGroup, RailWall, Route, RouteKind, buildRoute, findCircuitNodes, findSprintNodes, routeBarrierGroups, routeRails } from './route';
 import { Prop, buildPropGrid } from './props';
 import { SpatialGrid } from './spatial';
 import { Terrain, createTerrain } from './terrain';
 import { Vec2, cos, distToSegment, segmentT, sin, sqrt } from '../sim/math';
+import { settleRiver } from './districts/river';
 import { CityDistricts, planDistricts } from './districts';
 import { carveRouteShortcuts, hasShortcutSpot, qualifiedCount, settleAlleyLips, shortcutJumpRails } from './districts/alley';
 import { ROUTE_INDEX, carParkGates, carParkRails, carParkSites, planCarParks, settleCarParks } from './districts/carPark';
@@ -22,8 +23,8 @@ import { LevelCrossing, addLevelCrossings } from './levelCrossings';
 
 /** Routes tried (the first pick, then alternatives) until one has room for a shortcut. */
 const ROUTE_TRIES = 12;
-import { pointInPolygon } from './districts/geom';
-import { Area, SURFACE_PHYSICS, Surface, SurfacePhysics } from './districts/types';
+import { pointInPolygon, polygonBounds } from './districts/geom';
+import { Area, DeckSpan, HeightSample, SURFACE_PHYSICS, Surface, SurfacePhysics } from './districts/types';
 
 export type { Surface, SurfacePhysics } from './districts/types';
 
@@ -175,22 +176,32 @@ export interface World extends City {
    * (RaceState.brokenProps = 2): no collision, not rendered, no debris.
    */
   coveredProps: number[];
-  /** Terrain height (m): the ground everything is draped on, road level. */
-  heightAt(x: number, z: number): number;
+  /**
+   * Terrain height (m): the ground everything is draped on, road level.
+   * Under a bridge deck over the river channel two drivable levels stack
+   * (districts/types.ts DeckSpan): with `y`, the querying car body's height
+   * (m), the channel floor is returned when the body is nearer to it than to
+   * the deck (below their midpoint); without `y` the deck, as everywhere
+   * else (render draping, traffic, props and every other caller).
+   */
+  heightAt(x: number, z: number, y?: number): number;
   /**
    * Height a wheel stands at (m): the terrain plus CITY.curbHeight on the
    * paving the city draws at curb height (sidewalks, roundabout rings,
    * plazas), eased across the curb so a car rolls up onto a sidewalk instead
-   * of sinking into it.
+   * of sinking into it. `y` as for heightAt (the channel floor has no curbs).
    */
-  driveHeightAt(x: number, z: number): number;
-  slopeAt(x: number, z: number): { gx: number; gz: number };
-  surfaceAt(x: number, z: number): Surface;
-  /** Walls touching a circle; `y` (the car body's height, m) lets it pass over low walls (Wall.top). */
+  driveHeightAt(x: number, z: number, y?: number): number;
+  slopeAt(x: number, z: number, y?: number): { gx: number; gz: number };
+  /** Surface under a point; `y` as for heightAt (the river's floor and trickle below a deck, the street on it). */
+  surfaceAt(x: number, z: number, y?: number): Surface;
+  /** True inside a bridge deck's footprint over the river channel, where two levels stack (resets keep off it). */
+  twoLevels(x: number, z: number): boolean;
+  /** Walls touching a circle; `y` (the car body's height, m) lets it pass over low walls (Wall.top) and under high ones (Wall.bottom). */
   collideCircle(x: number, z: number, r: number, out: Contact[], y?: number): number;
-  collideBox(cx: number, cz: number, yaw: number, halfLength: number, halfWidth: number, out: Contact[]): number;
-  /** Distance to the nearest wall, capped at maxDist. */
-  wallClearance(x: number, z: number, maxDist: number): number;
+  collideBox(cx: number, cz: number, yaw: number, halfLength: number, halfWidth: number, out: Contact[], y?: number): number;
+  /** Distance to the nearest wall, capped at maxDist; `y` as for collideCircle. */
+  wallClearance(x: number, z: number, maxDist: number, y?: number): number;
   routeProgress(x: number, z: number, hintSeg?: number): RouteProgress;
   /** Every district area (same array as districts.areas). */
   areas: Area[];
@@ -207,6 +218,8 @@ export interface World extends City {
 export function createCity(seed: number): City {
   const { graph, districts, routeNodes, event } = planRoads(seed);
   const terrain = createTerrain(seed, districts.heightMods);
+  // The river's level walls (parapets, piers, abutments) take their heights from the finished terrain.
+  settleRiver(graph, districts.areas, districts.builds, terrain);
   const blocks = generateBlocks(seed, graph, terrain, districts.blocksInput);
   settleCarParks(districts.areas, districts.builds, terrain);
   settleAlleyLips(districts.areas, districts.builds, terrain);
@@ -383,7 +396,7 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
   const openWorld = opts.openWorld === true;
   // Corner rails, minus the pieces the flights off the route's car park and jump exits would cross.
   const rails = openWorld ? [] : carParkRails(city.districts.areas, ROUTE_INDEX[kind], shortcutJumpRails(route, city.districts.areas, awayFromRoundabouts(graph, routeRails(graph, route, blocks.props, blocks.walls))));
-  const barrierGroups = openWorld ? [] : routeBarrierGroups(graph, blocks.mouths, route, rails, blocks.walls);
+  const barrierGroups = openWorld ? [] : routeBarrierGroups(graph, blocks.mouths, route, rails, city.districts.areas.find((a) => a.kind === 'river')?.params, blocks.walls);
   sealBarriers(city, barrierGroups);
   const closures = closureRails(barrierGroups, rails);
   // A car park that is the other route's shortcut has its ramp shuttered (open world: all open).
@@ -448,8 +461,10 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     let lastSolid: Solid | undefined;
     for (const id of scratch) {
       const w = walls[id];
-      // A low wall (a car park's lip face) is flown over by a car above its top.
+      // A low wall (a car park's lip face) is flown over by a car above its top; a deck's parapet is
+      // passed under by a car on the channel floor below its bottom.
       if (w.top !== undefined && y > w.top) continue;
+      if (w.bottom !== undefined && y < w.bottom) continue;
       if (w.solid) {
         if (w.solid !== lastSolid) collideSolid(w.solid, w.kind, x, z, r, out);
         lastSolid = w.solid;
@@ -483,7 +498,7 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
   }
 
   const boxScratch: Contact[] = [];
-  function collideBox(cx: number, cz: number, yaw: number, halfLength: number, halfWidth: number, out: Contact[]): number {
+  function collideBox(cx: number, cz: number, yaw: number, halfLength: number, halfWidth: number, out: Contact[], y = -Infinity): number {
     // Approximate the box with overlapping circles along its length.
     out.length = 0;
     const n = Math.max(2, Math.ceil(halfLength / halfWidth) + 1);
@@ -491,33 +506,85 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     const fz = cos(yaw);
     for (let i = 0; i < n; i++) {
       const u = -halfLength + halfWidth + ((2 * (halfLength - halfWidth)) * i) / (n - 1);
-      collideCircle(cx + fx * u, cz + fz * u, halfWidth, boxScratch);
+      collideCircle(cx + fx * u, cz + fz * u, halfWidth, boxScratch, y);
       for (const c of boxScratch) out.push(c);
     }
     return out.length;
   }
 
-  function wallClearance(x: number, z: number, maxDist: number): number {
+  function wallClearance(x: number, z: number, maxDist: number, y = -Infinity): number {
     wallGrid.query(x - maxDist, z - maxDist, x + maxDist, z + maxDist, scratch);
     let best = maxDist;
     for (const id of scratch) {
       const w = walls[id];
-      // Low walls (car park lips) are launched over, not skimmed.
+      // Low walls (car park lips) are launched over, not skimmed; a deck's parapet is nothing to a car under it.
       if (w.top !== undefined) continue;
+      if (w.bottom !== undefined && y < w.bottom) continue;
       const d = distToSegment(x, z, w.ax, w.az, w.bx, w.bz);
       if (d < best) best = d;
     }
     return best;
   }
 
+  // ---- Two drivable levels under the river's bridge decks (districts/types.ts DeckSpan).
+  const spans = city.districts.builds.flatMap((b) => b.decks).map((d) => ({ d, ...polygonBounds(d.polygon) }));
+  const levelSample: HeightSample = { h: 0, gx: 0, gz: 0 };
+  function spanAt(x: number, z: number): DeckSpan | null {
+    for (const s of spans) {
+      if (x < s.minX || x > s.maxX || z < s.minZ || z > s.maxZ) continue;
+      if (pointInPolygon(x, z, s.d.polygon)) return s.d;
+    }
+    return null;
+  }
+  /**
+   * Whether a body at height y over (x, z) inside span s drives the lower level there: the span's
+   * lower profile (left in levelSample, relative to the terrain height h) when the body is nearer the
+   * span's floor than its deck, i.e. more than half the drop below the deck. Measured against the
+   * deck and the drop, not the terrain under the body (which eases down from the deck under its
+   * edge), so a car on the floor stays on it right up to the deck's edge and a car on the deck stays
+   * up where the bank beneath rises to meet it.
+   */
+  function lowerOn(s: DeckSpan, x: number, z: number, y: number, h: number): boolean {
+    levelSample.h = 0;
+    levelSample.gx = 0;
+    levelSample.gz = 0;
+    const rise = s.lower(x, z, levelSample);
+    // Where the two levels meet (the bank tops under the deck's ends, the floor beyond the deck's
+    // edge) the lower one is the terrain itself, gradient included, so no special case is needed.
+    return y <= h + rise - s.depth / 2;
+  }
+  function lowerLevel(x: number, z: number, y: number | undefined, h: number): boolean {
+    if (y === undefined || !spans.length) return false;
+    const s = spanAt(x, z);
+    return s !== null && lowerOn(s, x, z, y, h);
+  }
+  function heightAt(x: number, z: number, y?: number): number {
+    const h = terrain.heightAt(x, z);
+    return lowerLevel(x, z, y, h) ? h + levelSample.h : h;
+  }
+  function slopeAt(x: number, z: number, y?: number): { gx: number; gz: number } {
+    const s = terrain.slopeAt(x, z);
+    if (y === undefined || !spans.length || !lowerLevel(x, z, y, terrain.heightAt(x, z))) return s;
+    return { gx: s.gx + levelSample.gx, gz: s.gz + levelSample.gz };
+  }
+  function twoLevels(x: number, z: number): boolean {
+    return spans.length > 0 && spanAt(x, z) !== null;
+  }
+
   /** Bus bays by edge (busBays.ts): their stretch of sidewalk is road, with a curb of its own. */
   const bayOf = baysByEdge(blocks.bays ?? [], graph.edges.length);
-  function surfaceAt(x: number, z: number): Surface {
+  function surfaceAt(x: number, z: number, y?: number): Surface {
+    const span = spans.length ? spanAt(x, z) : null;
+    // Under a deck: the channel's own patches (its concrete, the trickle) below, the street above
+    // (the channel edges running beneath are no part of the deck's classification).
+    const patch = city.districts.surfaceAt(x, z);
+    if (span && y !== undefined && lowerOn(span, x, z, y, terrain.heightAt(x, z))) return patch && patch.area === span.area ? patch.surface : 'concrete';
     edgeGrid.query(x - 1, z - 1, x + 1, z + 1, scratch);
     let best = Infinity;
     let walk = Infinity;
     for (const id of scratch) {
       const e = graph.edges[id];
+      if (span && isRiverEdge(e)) continue;
       const a = graph.nodes[e.a];
       const b = graph.nodes[e.b];
       const d = distToSegment(x, z, a.x, a.z, b.x, b.z) - e.width / 2;
@@ -530,9 +597,8 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
       }
     }
     // District surface patches win over the street classification by priority (road 5, sidewalk 3).
-    const patch = city.districts.surfaceAt(x, z);
     const base = best <= 0 ? 5 : walk <= 0 ? 3 : 0;
-    if (patch && patch.priority > base) return patch.surface;
+    if (patch && patch.priority > base && !(span && patch.area === span.area)) return patch.surface;
     return base === 5 ? 'road' : base === 3 ? 'sidewalk' : 'offroad';
   }
 
@@ -563,12 +629,14 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
    * The lift eases in from curbRamp.road out on the road to curbRamp.walk
    * onto the paving.
    */
-  function curbLift(x: number, z: number): number {
+  function curbLift(x: number, z: number, span: DeckSpan | null): number {
     edgeGrid.query(x - 1, z - 1, x + 1, z + 1, liftScratch);
     let road = Infinity;
     let walk = Infinity;
     for (const id of liftScratch) {
       const e = graph.edges[id];
+      // On a deck the channel edges beneath are no street of its own.
+      if (span && isRiverEdge(e)) continue;
       const a = graph.nodes[e.a];
       const b = graph.nodes[e.b];
       const d = distToSegment(x, z, a.x, a.z, b.x, b.z) - e.width / 2;
@@ -600,15 +668,19 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     }
     if (road <= -CURB_IN) return 0;
     const patch = city.districts.surfaceAt(x, z);
-    if (patch && patch.priority > 3 && patch.surface !== 'sidewalk') return 0;
+    if (patch && patch.priority > 3 && patch.surface !== 'sidewalk' && !(span && patch.area === span.area)) return 0;
     if (walk > 0 && !(patch && (patch.surface === 'sidewalk' || raisedPatch(patch.area)))) return 0;
     const t = (road + CURB_IN) / CURB_SPAN;
     if (t >= 1) return CITY.curbHeight;
     return CITY.curbHeight * t * t * (3 - 2 * t);
   }
 
-  function driveHeightAt(x: number, z: number): number {
-    return terrain.heightAt(x, z) + curbLift(x, z);
+  function driveHeightAt(x: number, z: number, y?: number): number {
+    const h = terrain.heightAt(x, z);
+    const span = spans.length ? spanAt(x, z) : null;
+    // The channel floor under a deck has no curbs: the deck's sidewalks are above it.
+    if (span && y !== undefined && lowerOn(span, x, z, y, h)) return h + levelSample.h;
+    return h + curbLift(x, z, span);
   }
 
   const pts = route.points;
@@ -674,10 +746,11 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     props,
     coveredProps,
     propGrid,
-    heightAt: terrain.heightAt,
+    heightAt,
     driveHeightAt,
-    slopeAt: terrain.slopeAt,
+    slopeAt,
     surfaceAt,
+    twoLevels,
     collideCircle,
     collideBox,
     wallClearance,

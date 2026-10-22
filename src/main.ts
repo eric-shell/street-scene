@@ -454,7 +454,7 @@ function handoffToFreeRoam(): void {
     tractionControl: settings.tractionControl,
     openWorld: true,
     traffic: true,
-    start: { x: p.x, z: p.z, yaw: p.yaw, speed: st.speed, tick: Math.round(st.time * TICK_HZ) },
+    start: { x: p.x, z: p.z, y: p.y, yaw: p.yaw, speed: st.speed, tick: Math.round(st.time * TICK_HZ) },
   };
   const shot = { position: showreel.camera.position.clone(), look: showreel.lookTarget.clone(), fov: showreel.camera.fov };
   const el = menuEl;

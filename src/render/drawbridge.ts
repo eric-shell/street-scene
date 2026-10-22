@@ -1,8 +1,8 @@
 /**
- * Drawbridge renderer (city/drawbridge.ts): the two bascule leaves, the pit
- * they open over, four counterweight houses at the hinges (one carrying the
- * glazed control cabin), the gate arms at both ends with their flashing
- * signals, stop lines and red light washes on the road. Every moving part is
+ * Drawbridge renderer (city/drawbridge.ts): the two bascule leaves, the
+ * opening they lift over, four counterweight houses at the hinges (one
+ * carrying the glazed control cabin), the gate arms at both ends with their
+ * flashing signals, stop lines and red light washes on the road. Every moving part is
  * posed from the sim's pure functions (gatePhase, leafAngle) at the
  * interpolated sim tick the session passes to sync(), so a replay looks the
  * same as the race; scenes no session drives (the menu backdrop) run on the
@@ -11,17 +11,18 @@
  * The leaves are built from the same pieces as the street they replace,
  * draped on the same terrain, with the city's own road, sidewalk and marking
  * materials and world mapped UVs, so a leaf lying down is the static street
- * pixel for pixel; they are only drawn while off the ground. The pit is a
- * trick that needs no change to the city meshes: its walls and water are drawn
- * first (renderOrder -4), then a depth-only lid over the opening (-3) that
- * hides the static deck under it from everything drawn after, so the street
- * reads as cut open while the leaves are up (the lid is off while they lie
- * down). Its rim stops a little inside the hinge lines: the lid only goes on
- * once the leaves are clear of it.
+ * pixel for pixel; they are only drawn while off the ground. The opening is
+ * a trick that needs no change to the city meshes: the river renderer draws
+ * the channel floor under the span first (renderOrder -4), then a depth-only
+ * lid over the opening (-3) hides the static deck under it from everything
+ * drawn after, so the street reads as cut open over the real channel while
+ * the leaves are up (the lid is off while they lie down). Its rim stops a
+ * little inside the hinge lines: the lid only goes on once the leaves are
+ * clear of it.
  *
  * Cost: about nine draw calls when in view with the leaves down (merged
  * static parts, two instanced meshes for the four arms and their lamps, the
- * light washes), up to ten more while the bridge is up. Per frame: one phase
+ * light washes), up to seven more while the bridge is up. Per frame: one phase
  * evaluation, two leaf quaternions and four arm matrices, only while moving.
  * The bell (audio/warningBell.ts) rings from view(camera) during the warning
  * and while the arms move.
@@ -48,11 +49,9 @@ const DB = {
   /** Leaf: steel depth under the deck, gap between the two tips. */
   leafDepth: 0.9,
   tipGap: 0.12,
-  /** Pit: rim this far inside the hinge lines, lid this far above the deck, floor and water below the deck. */
+  /** Opening: its rim this far inside the hinge lines, the lid this far above the deck. */
   ledge: 1.2,
   lidLift: 0.12,
-  pitDepth: 6.5,
-  waterDepth: 5.6,
   /** The lid goes on once the leaves are past this angle (rad): ledge * sin(angle) clears lidLift. */
   lidAngle: 6.5 * (Math.PI / 180),
   /** Gate arms: this far inside the sim's gate line (a car held at the line stops short of the arm), pivot height,
@@ -96,8 +95,6 @@ const TINT = {
   roof: new THREE.Color(0x35514a),
   post: new THREE.Color(0x9aa0a8),
   plate: new THREE.Color(0x101114),
-  pitTop: new THREE.Color(0x5a5852),
-  pitLow: new THREE.Color(0x15161a),
   window: new THREE.Color(0xffc777),
   windowDim: new THREE.Color(0x4a3a24),
   cabin: new THREE.Color(0xffe0a8),
@@ -179,8 +176,6 @@ export function buildDrawbridge(world: World, opts: DrawbridgeOptions): Drawbrid
   const roadMat = opts.road ?? track(new THREE.MeshStandardMaterial({ color: 0x2a2c33, roughness: 0.9 }));
   const walkMat = opts.walk ?? track(new THREE.MeshStandardMaterial({ color: 0x6d707a, roughness: 0.8 }));
   const marksMat = opts.marks ?? track(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 }));
-  const pitMat = track(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, envMapIntensity: 0.3 }));
-  const waterMat = track(new THREE.MeshStandardMaterial({ color: 0x0a1018, roughness: 0.12, metalness: 0.9, envMapIntensity: 2 }));
   const lidMat = track(new THREE.MeshBasicMaterial({ colorWrite: false }));
   const washes = opts.quality !== 'low';
 
@@ -448,57 +443,13 @@ export function buildDrawbridge(world: World, opts: DrawbridgeOptions): Drawbrid
     leaves.push({ group: leaf, s });
   }
 
-  // ---------- The pit: walls, water and lamps first, then the depth-only lid ----------
+  // ---------- The opening: a depth-only lid over the span (the river draws the floor beneath first) ----------
   const pit = new THREE.Group();
-  pit.name = 'drawbridgePit';
+  pit.name = 'drawbridgeOpening';
   pit.visible = false;
   {
-    const walls = new GeoBuilder(true);
-    const water = new GeoBuilder(false);
-    const pitLamps = new GeoBuilder(true);
     const lid = new GeoBuilder(false);
     const L = db.hinge - DB.ledge;
-    const corners = [Q(-db.half, -L), Q(db.half, -L), Q(db.half, L), Q(-db.half, L)];
-    let low = Infinity;
-    for (const c of corners) low = Math.min(low, h(c.x, c.y));
-    for (let lq = -L; lq <= L; lq += 4) low = Math.min(low, h(Q(0, lq).x, Q(0, lq).y));
-    const floor = low - DB.pitDepth;
-    const pitCx = db.cx;
-    const pitCz = db.cz;
-    // Four walls facing in, from the rim down to the floor, lighter near the top.
-    for (let k = 0; k < 4; k++) {
-      const a = corners[k];
-      const b = corners[(k + 1) % 4];
-      const len = a.distanceTo(b);
-      const n = Math.max(1, Math.ceil(len / 3));
-      let mx = (a.x + b.x) / 2 - pitCx;
-      let mz = (a.y + b.y) / 2 - pitCz;
-      const ml = Math.hypot(mx, mz) || 1;
-      mx /= -ml;
-      mz /= -ml;
-      let prev: number[] | null = null;
-      for (let i = 0; i <= n; i++) {
-        const x = a.x + ((b.x - a.x) * i) / n;
-        const z = a.y + ((b.y - a.y) * i) / n;
-        const top = h(x, z) + DB.lidLift - 0.01;
-        const col = [
-          walls.vertex(x, top, z, mx, 0, mz, 0, 0, TINT.pitTop),
-          walls.vertex(x, top - 1.4, z, mx, 0, mz, 0, 0, TINT.pitTop.clone().lerp(TINT.pitLow, 0.4)),
-          walls.vertex(x, floor, z, mx, 0, mz, 0, 0, TINT.pitLow),
-        ];
-        if (prev) for (let r = 0; r < 2; r++) walls.quadFacing(prev[r], col[r], col[r + 1], prev[r + 1], mx, 0, mz);
-        prev = col;
-      }
-      // Two amber lamps on each wall, just under the rim.
-      for (const f of [0.3, 0.7]) {
-        const x = a.x + (b.x - a.x) * f;
-        const z = a.y + (b.y - a.y) * f;
-        lampBox(pitLamps, x + mx * 0.12, h(x, z) - 0.9, z + mz * 0.12, mx, mz, 0.14, TINT.lampWarm);
-      }
-    }
-    const wy = low - DB.waterDepth;
-    const wv = corners.map((c) => water.vertex(c.x, wy, c.y, 0, 1, 0, 0, 0));
-    water.quadFacing(wv[0], wv[1], wv[2], wv[3], 0, 1, 0);
     // The lid: a grid draped on the deck just above the sidewalks, depth only.
     const lidL: number[] = [];
     const lidW: number[] = [];
@@ -510,10 +461,7 @@ export function buildDrawbridge(world: World, opts: DrawbridgeOptions): Drawbrid
       const q = Q(w, l);
       return lid.vertex(q.x, h(q.x, q.y) + DB.lidLift, q.y, 0, 1, 0, 0, 0);
     });
-    addMesh(walls, pitMat, 'pitWalls', pit, -4);
-    addMesh(water, waterMat, 'pitWater', pit, -4);
-    addMesh(pitLamps, glowMat, 'pitLamps', pit, -4);
-    addMesh(lid, lidMat, 'pitLid', pit, -3);
+    addMesh(lid, lidMat, 'spanLid', pit, -3);
   }
   group.add(pit);
 

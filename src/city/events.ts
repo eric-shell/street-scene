@@ -69,8 +69,8 @@ const ORDER = Object.keys(EVENT_FLAVOURS) as EventFlavourId[];
  * routes along them).
  */
 export const EVENTS = {
-  /** The channel floor is only a couple of hundred metres of the map: plenty is this share of all of it (stubs included). */
-  riverRun: { share: 0.55, bias: 0.7 },
+  /** Channel floor on the route (m) that delivers / rates 2: a dive and a good stretch along the channel, which runs the whole map. */
+  riverRun: { some: 160, long: 420, bias: 0.7 },
   alleySprint: { long: 180, bias: 0.6 },
   underTheEl: { some: 100, long: 300, bias: 0.6 },
   /** Roundabouts on the route for a rating of 1 and 2; edges into a roundabout get the bias. */
@@ -224,7 +224,7 @@ function featureRate(id: EventFlavourId, v: Venue, edges: number[], nodes: numbe
   const g = v.g;
   switch (id) {
     case 'riverRun':
-      return tier(metres(g, edges, (e) => g.edges[e].kind === 'channel'), 1e-9, v.channelLength * EVENTS.riverRun.share);
+      return tier(metres(g, edges, (e) => g.edges[e].kind === 'channel'), EVENTS.riverRun.some, EVENTS.riverRun.long);
     case 'alleySprint':
       return tier(metres(g, edges, (e) => g.edges[e].kind === 'alley'), 1e-9, EVENTS.alleySprint.long);
     case 'underTheEl':

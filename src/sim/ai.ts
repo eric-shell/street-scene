@@ -409,7 +409,7 @@ function noseBlocked(r: RaceState, rc: RaceCar): boolean {
   const fz = cos(c.yaw);
   const px = c.x + fx * (g.halfLength - g.halfWidth * 0.5);
   const pz = c.z + fz * (g.halfLength - g.halfWidth * 0.5);
-  if (r.world.wallClearance(px, pz, 2) < g.halfWidth + AI.noseClear) return true;
+  if (r.world.wallClearance(px, pz, 2, c.y) < g.halfWidth + AI.noseClear) return true;
   for (const o of r.cars) {
     if (o === rc) continue;
     const dx = o.state.x - c.x;

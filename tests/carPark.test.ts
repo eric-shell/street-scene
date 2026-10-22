@@ -152,8 +152,9 @@ function driveThrough(seed: number, bias: number) {
 
 describe('car park shortcut', () => {
   it('plans car parks on a fair share of seeds, deterministically, chute on the landing street and its landing straight clear', () => {
-    // Measured share over this sweep (README decisions log): about a quarter of the seeds.
-    expect(WITH.length / SWEEP.length).toBeGreaterThan(0.15);
+    // Measured share over this sweep (README decisions log): about a quarter of the seeds before the
+    // river channel ran the whole map, a tenth since (routes spend their corners on long dives).
+    expect(WITH.length / SWEEP.length).toBeGreaterThan(0.07);
     // The straight-line launch bound the chute guarantees.
     expect(LAUNCH_BOUND * DEG).toBeLessThan(6.5);
     let worstAxis = 0;

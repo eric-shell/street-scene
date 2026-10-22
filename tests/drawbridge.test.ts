@@ -6,6 +6,7 @@ import { buildRoute, routeSample } from '../src/city/route';
 import { DRAWBRIDGE, buildTimedGates, leafAngle, onSpan, spanCoords } from '../src/city/drawbridge';
 import { blockTicks, gateBlocking, gatePhase, gateSide, waitingAtGate } from '../src/sim/gates';
 import { WALL_LOOKS } from '../src/city/districts/types';
+import { isRiverEdge } from '../src/city/roadGraph';
 import { createRace, stepRace } from '../src/sim/race';
 import type { RaceState } from '../src/sim/race';
 import { placeCar } from '../src/sim/car';
@@ -14,7 +15,11 @@ import { TICK_HZ } from '../src/sim/constants';
 import { distToSegment, yawOf } from '../src/sim/math';
 import { carSnapshot, input, raceConfig, replayLog, runAutopilot } from './helpers';
 
-/** The first seed of a stream whose circuit crosses its drawbridge on top (planRoads only: cheap). */
+/**
+ * The first seed of a stream whose circuit crosses its drawbridge on top, coming to it along plain
+ * streets (no ramp out of the river channel within two edges of it, which the AI crawls through:
+ * the gate tests want it at the line early in the block). planRoads only: cheap.
+ */
 function drawbridgeCircuitSeed(stream: number): number {
   const rng = new Rng(stream);
   for (let i = 0; i < 80; i++) {
@@ -22,7 +27,13 @@ function drawbridgeCircuitSeed(stream: number): number {
     const plan = planRoads(seed);
     const river = plan.districts.areas.find((a) => a.kind === 'river');
     if (river?.params.drawbridge === undefined) continue;
-    if (buildRoute(plan.graph, 'circuit', plan.routeNodes.circuit).edges.includes(river.params.drawbridge)) return seed;
+    const g = plan.graph;
+    const route = buildRoute(g, 'circuit', plan.routeNodes.circuit);
+    const i0 = route.edges.indexOf(river.params.drawbridge);
+    if (i0 < 0) continue;
+    const n = route.edges.length;
+    const plain = [-2, -1, 1, 2].every((k) => !isRiverEdge(g.edges[route.edges[(i0 + k + n) % n]]));
+    if (plain) return seed;
   }
   throw new Error('no seed with a circuit over its drawbridge');
 }

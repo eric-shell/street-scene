@@ -36,11 +36,11 @@
  * benches, cans, bus stops) keeps off the market floor (reserved circles); the
  * lanterns light it instead.
  */
-import { CITY, ROUTE } from '../config';
+import { CITY } from '../config';
 import type { RoadGraph } from '../roadGraph';
 import { chainOf, edgeBetween, isBendNode } from '../roadGraph';
-import { circuitStart } from '../route';
-import { DEG, Vec2, abs, atan2 } from '../../sim/math';
+import { buildRoute, circuitStart } from '../route';
+import { DEG, Vec2, abs, atan2, segmentT } from '../../sim/math';
 import { Rng } from '../../sim/prng';
 import type { PropKind } from '../props';
 import { PROP_DEFS } from '../props';
@@ -105,11 +105,28 @@ function routeView(g: RoadGraph, r: CarveRoute): RouteView {
     const start = circuitStart(g, r.nodes);
     for (let k = -1; k <= start.run.edges.length; k++) banned.add(edges[(start.run.from + k + m) % m]);
   } else {
-    // The finish line as buildRoute places it (on the node polyline, close enough with the margins).
-    const total = cum[m];
-    let finish = total - ROUTE.sprintFinishOffset;
-    for (let i = n - 2; i > 0; i--) if (abs(finish - cum[i]) < ROUTE.sprintFinishNodeClear) finish = cum[i] - ROUTE.sprintFinishNodeClear;
-    for (let i = 0; i < m; i++) if (cum[i] < ROUTE.sprintStartOffset + CFG.startClear || cum[i + 1] > finish - CFG.finishClear) banned.add(edges[i]);
+    // The start and finish lines as buildRoute places them, with every node's distance measured on
+    // its driving polyline (roundabout arcs add to it, the corners it rounds take away: along a
+    // sprint diving through the river channel the two drift far enough apart to matter).
+    const built = buildRoute(g, 'sprint', r.nodes);
+    const sOf = (id: number): number => {
+      const q = g.nodes[id];
+      let best = Infinity;
+      let s = 0;
+      for (let i = 0; i + 1 < built.points.length; i++) {
+        const a = built.points[i];
+        const b = built.points[i + 1];
+        const t = segmentT(q.x, q.z, a.x, a.z, b.x, b.z);
+        const d = (q.x - (a.x + (b.x - a.x) * t)) ** 2 + (q.z - (a.z + (b.z - a.z) * t)) ** 2;
+        if (d < best) {
+          best = d;
+          s = built.cum[i] + t * (built.cum[i + 1] - built.cum[i]);
+        }
+      }
+      return s;
+    };
+    const nodeS = r.nodes.map(sOf);
+    for (let i = 0; i < m; i++) if (nodeS[i] < built.startS + CFG.startClear || nodeS[i + 1] > built.finishS - CFG.finishClear) banned.add(edges[i]);
   }
   return { edges, onRoute: new Set(edges), banned };
 }

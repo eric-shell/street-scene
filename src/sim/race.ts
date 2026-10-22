@@ -66,6 +66,8 @@ export interface StartPose {
   yaw: number;
   /** Rolling speed along the heading (m/s). */
   speed: number;
+  /** Ground height it was on (m): picks the level under a river bridge deck (World.heightAt); the deck when missing. */
+  y?: number;
   /**
    * First tick of the race: the timed gates, the drawbridge and the El are
    * pure schedules of the tick, so starting on the tick the menu city showed
@@ -246,7 +248,7 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
   const cars: RaceCar[] = entrants.map((e, i) => {
     const slot = i === 0 && start ? start : slots[i];
     const tuning = tuningForBuild(e.carId, validatePerformance(e.performance));
-    const state = createCar(slot.x, slot.z, slot.yaw, w.driveHeightAt(slot.x, slot.z));
+    const state = createCar(slot.x, slot.z, slot.yaw, w.driveHeightAt(slot.x, slot.z, i === 0 && start ? start.y : undefined));
     if (i === 0 && start) rollCar(state, tuning, start.speed, w);
     state.manualGearbox = i === 0 && config.manualGearbox;
     // AI drives with traction control: stable lines, no power oversteer surprises.
@@ -308,7 +310,7 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
  * have reached with the revs to match.
  */
 function rollCar(c: CarState, t: CarTuning, speed: number, world: World): void {
-  const sl = world.slopeAt(c.x, c.z);
+  const sl = world.slopeAt(c.x, c.z, c.y);
   c.pitch = -atan2(sl.gx * sin(c.yaw) + sl.gz * cos(c.yaw), 1);
   c.roll = atan2(sl.gx * cos(c.yaw) - sl.gz * sin(c.yaw), 1);
   c.vx = sin(c.yaw) * speed;
@@ -343,8 +345,14 @@ export function ticksToSeconds(ticks: number): number {
 export function resetToRoad(r: RaceState, rc: RaceCar): void {
   if (r.config.openWorld) return resetToStreet(r, rc);
   const route = r.world.route;
-  const s = route.closed ? rc.rawS : clamp(rc.rawS, 0, route.length);
-  const p = routeSample(route, s);
+  let s = route.closed ? rc.rawS : clamp(rc.rawS, 0, route.length);
+  let p = routeSample(route, s);
+  // Never onto a bridge deck's footprint over the river channel, where two levels stack and the
+  // car's level would have to be guessed: a little further along the route, off it.
+  for (let k = 0; k < RESET_OFF_DECK.tries && r.world.twoLevels(p.x, p.z); k++) {
+    s = route.closed ? s + RESET_OFF_DECK.step : Math.min(route.length, s + RESET_OFF_DECK.step);
+    p = routeSample(route, s);
+  }
   // Nudge to the right lane so we are not dropped onto another car head on.
   const half = route.segWidth[p.seg] / 2;
   const lateral = -Math.min(2, half * 0.35);
@@ -357,6 +365,8 @@ export function resetToRoad(r: RaceState, rc: RaceCar): void {
 
 /** Seconds off the road network before an open world car counts as lost and is put back. */
 const OPEN_WORLD_LOST_TIME = 2;
+/** A reset target under a bridge deck moves on along the road by `step` m, up to `tries` times (a deck is about 30 m across). */
+const RESET_OFF_DECK = { step: 8, tries: 6 } as const;
 
 /**
  * Open world reset: onto the right hand lane of the nearest street, facing the
@@ -384,9 +394,15 @@ export function resetToStreet(r: RaceState, rc: RaceCar): void {
   let tx = (b.x - a.x) / len;
   let tz = (b.z - a.z) / len;
   const margin = Math.min(15, len / 3);
-  const u = clamp((c.x - a.x) * tx + (c.z - a.z) * tz, margin, len - margin);
-  const px = a.x + tx * u;
-  const pz = a.z + tz * u;
+  let u = clamp((c.x - a.x) * tx + (c.z - a.z) * tz, margin, len - margin);
+  let px = a.x + tx * u;
+  let pz = a.z + tz * u;
+  // Off a bridge deck's footprint (two levels there), either way along the street.
+  for (let k = 1; k <= RESET_OFF_DECK.tries && r.world.twoLevels(px, pz); k++) {
+    u = clamp(u + (k % 2 ? k : -k) * RESET_OFF_DECK.step, margin, len - margin);
+    px = a.x + tx * u;
+    pz = a.z + tz * u;
+  }
   if (sin(c.yaw) * tx + cos(c.yaw) * tz < 0) {
     tx = -tx;
     tz = -tz;
