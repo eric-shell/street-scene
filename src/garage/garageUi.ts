@@ -172,6 +172,10 @@ function statLines(b: CarBuild): HTMLElement {
 
 /** Keys that hold the gas in the garage (W, Up or Space; the help lists them). */
 const GAS_KEYS = ['KeyW', 'ArrowUp', 'Space'];
+/** The race's steering keys turn the front wheels on the turntable. */
+const LEFT_KEYS = ['KeyA', 'ArrowLeft'];
+const RIGHT_KEYS = ['KeyD', 'ArrowRight'];
+const DRIVE_KEYS = [...GAS_KEYS, ...LEFT_KEYS, ...RIGHT_KEYS];
 
 // ---------------------------------------------------------------------------
 // The tabs' controls
@@ -296,7 +300,8 @@ export class GarageScreen {
   private abort = new AbortController();
   private pointerDown: { x: number; y: number } | null = null;
   private prefs: GaragePrefs = loadGaragePrefs();
-  private gasKeys = new Set<string>();
+  /** Drive keys held now (gas and steering). */
+  private driveKeys = new Set<string>();
   private tabInTimer = 0;
   /** The roller door is running for a Garage / Street switch. */
   private switching = false;
@@ -312,6 +317,7 @@ export class GarageScreen {
       const keys: HelpKey[] = [
         { keys: ['Drag'], label: 'Orbit the car' },
         { keys: ['W', '↑', 'Space'], label: 'Hold to rev', action: () => this.scene.blip() },
+        { keys: ['A', 'D', '←', '→'], label: 'Turn the front wheels' },
         { keys: ['C'], label: 'Next camera angle', action: () => this.nextCamera() },
         { keys: ['Ctrl S'], label: 'Save the build', action: () => this.save() },
       ];
@@ -437,31 +443,32 @@ export class GarageScreen {
     const unlock = () => this.scene.unlockAudio();
     window.addEventListener('pointerdown', unlock, { ...o, capture: true });
     window.addEventListener('keydown', unlock, { ...o, capture: true });
-    // Hold W / Up / Space to rev (not while typing in a field, and not the arrows the pad sends to move around the screen: input/padNav.ts).
+    // Hold W / Up / Space to rev and A / D / Left / Right to steer (not while typing in a field or on a slider, and
+    // not the arrows the pad sends to move around the screen: input/padNav.ts).
     window.addEventListener(
       'keydown',
       (e) => {
-        if (!e.isTrusted || !GAS_KEYS.includes(e.code) || isTyping(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+        if (!e.isTrusted || !DRIVE_KEYS.includes(e.code) || isTyping(e) || e.ctrlKey || e.metaKey || e.altKey) return;
         e.preventDefault();
-        this.gasKeys.add(e.code);
-        this.updateGas();
+        this.driveKeys.add(e.code);
+        this.updateDrive();
       },
       o,
     );
     window.addEventListener(
       'keyup',
       (e) => {
-        if (!this.gasKeys.delete(e.code)) return;
+        if (!this.driveKeys.delete(e.code)) return;
         e.preventDefault();
-        this.updateGas();
+        this.updateDrive();
       },
       o,
     );
     window.addEventListener(
       'blur',
       () => {
-        this.gasKeys.clear();
-        this.updateGas();
+        this.driveKeys.clear();
+        this.updateDrive();
       },
       o,
     );
@@ -705,14 +712,17 @@ export class GarageScreen {
     });
   }
 
-  private updateGas(): void {
-    this.scene.setGas(this.gasKeys.size > 0 ? 1 : 0);
+  private updateDrive(): void {
+    const held = (keys: string[]) => keys.some((k) => this.driveKeys.has(k));
+    this.scene.setGas(held(GAS_KEYS) ? 1 : 0);
+    this.scene.setSteer((held(RIGHT_KEYS) ? 1 : 0) - (held(LEFT_KEYS) ? 1 : 0));
   }
 
-  /** Idle and redline of the current build feed the garage rev model. */
+  /** Idle and redline of the current build feed the garage rev model; its steering lock and rate the turntable's front wheels. */
   private configureEngine(): void {
-    const e = tuningForBuild(this.build.carId, this.build.performance).engine;
-    this.scene.setEngine(e.idleRpm, e.redline);
+    const t = tuningForBuild(this.build.carId, this.build.performance);
+    this.scene.setEngine(t.engine.idleRpm, t.engine.redline);
+    this.scene.setSteering(t.steering.maxDeg, t.steering.rateDegPerSec);
   }
 
   private setTab(t: Tab): void {

@@ -9,7 +9,8 @@
  * Both share the orbit camera (drag to rotate, pinch or scroll to zoom) and a
  * few camera presets in car space; the garage UI frames the view beside its
  * rail. The engine can be revved in either: a free-rev model drives the
- * synthesized engine voice and rocks the body on its springs. Also turns a
+ * synthesized engine voice and rocks the body on its springs. On the turntable
+ * the steering keys turn the front wheels, straight ahead at rest. Also turns a
  * pointer position into a decal hit in car space for vinyl placement. Render
  * only.
  */
@@ -70,7 +71,7 @@ export class GarageScene {
   private readonly follow = new FollowOrbit();
   private readonly raycaster = new THREE.Raycaster();
   private mode: Presentation = 'garage';
-  private readonly pose: CarPose = { x: 0, y: ROOM.tableTop, z: 0, yaw: 0, pitch: 0, roll: 0, steer: 0.18, comp: [0, 0, 0, 0], spin: [0, 0, 0, 0], braking: false, nitro: false, speed: 0 };
+  private readonly pose: CarPose = { x: 0, y: ROOM.tableTop, z: 0, yaw: 0, pitch: 0, roll: 0, steer: 0, comp: [0, 0, 0, 0], spin: [0, 0, 0, 0], braking: false, nitro: false, speed: 0 };
   // Camera presets and the tween between them (in car space on the street, world space in the showroom).
   private camIndex = 0;
   private camTween: { from: THREE.Vector3; fromT: THREE.Vector3; to: THREE.Vector3; toT: THREE.Vector3; t: number; local: boolean } | null = null;
@@ -80,6 +81,10 @@ export class GarageScene {
   private rev = new RevModel({ idle: 900, redline: 7200 });
   private blipScript = new BlipScript();
   private gasHeld = 0;
+  /** Steering held on the keys (-1 left .. 1 right), and the build's lock (rad) and rate (rad/s) from its tuning. */
+  private steerHeld = 0;
+  private steerLock = 0;
+  private steerRate = 0;
   private voice: EngineVoice | null = null;
   private voiceCar = '';
   private audioOk = false;
@@ -242,6 +247,17 @@ export class GarageScene {
     this.audioOk = true;
   }
 
+  /** The build's steering lock (deg) and how fast the wheels turn (deg/s), as the sim steers them. */
+  setSteering(maxDeg: number, rateDegPerSec: number): void {
+    this.steerLock = (maxDeg * Math.PI) / 180;
+    this.steerRate = (rateDegPerSec * Math.PI) / 180;
+  }
+
+  /** Hold the steering (-1 full left .. 1 full right, 0 straight ahead). */
+  setSteer(x: number): void {
+    this.steerHeld = x;
+  }
+
   /** Hold the gas (0..1). */
   setGas(x: number): void {
     this.gasHeld = x;
@@ -364,6 +380,10 @@ export class GarageScene {
     if (view) {
       // Parked in neutral: the wheels stay on the turntable while the body rocks with the revs.
       const p = this.pose;
+      // The front wheels turn at the build's steering rate toward the held lock, like the sim's
+      // (a right turn is a negative angle there), and come back straight when the keys let go.
+      const step = this.steerRate * dt;
+      p.steer += Math.max(-step, Math.min(step, -this.steerHeld * this.steerLock - p.steer));
       p.pitch = rev.pitch;
       p.roll = rev.roll;
       for (let i = 0; i < 4; i++) {
