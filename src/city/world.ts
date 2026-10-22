@@ -13,7 +13,7 @@ import { Terrain, createTerrain } from './terrain';
 import { Vec2, cos, distToSegment, segmentT, sin, sqrt } from '../sim/math';
 import { settleRiver } from './districts/river';
 import { CityDistricts, planDistricts } from './districts';
-import { carveRouteShortcuts, hasShortcutSpot, qualifiedCount } from './districts/alley';
+import { carveRouteShortcuts, hasShortcutSpot, qualifiedCount, settleAlleyLips, shortcutJumpRails } from './districts/alley';
 import { ROUTE_INDEX, carParkGates, carParkRails, carParkSites, planCarParks, settleCarParks } from './districts/carPark';
 import { bayRoadDistance, baysByEdge } from './busBays';
 import { CityEvent, EventFlavourId, eventOffer, eventRoutePreference, pickEventFlavour, resolveEvent, routeEdges } from './events';
@@ -222,6 +222,7 @@ export function createCity(seed: number): City {
   settleRiver(graph, districts.areas, districts.builds, terrain);
   const blocks = generateBlocks(seed, graph, terrain, districts.blocksInput);
   settleCarParks(districts.areas, districts.builds, terrain);
+  settleAlleyLips(districts.areas, districts.builds, terrain);
   districts.finalize(blocks);
   return { seed, graph, terrain, blocks, districts, routeNodes, event };
 }
@@ -393,7 +394,8 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
   const route = createRoute(city, kind);
   const { graph, blocks, terrain } = city;
   const openWorld = opts.openWorld === true;
-  const rails = openWorld ? [] : carParkRails(city.districts.areas, ROUTE_INDEX[kind], awayFromRoundabouts(graph, routeRails(graph, route, blocks.props, blocks.walls)));
+  // Corner rails, minus the pieces the flights off the route's car park and jump exits would cross.
+  const rails = openWorld ? [] : carParkRails(city.districts.areas, ROUTE_INDEX[kind], shortcutJumpRails(route, city.districts.areas, awayFromRoundabouts(graph, routeRails(graph, route, blocks.props, blocks.walls))));
   const barrierGroups = openWorld ? [] : routeBarrierGroups(graph, blocks.mouths, route, rails, city.districts.areas.find((a) => a.kind === 'river')?.params);
   sealBarriers(city, barrierGroups);
   const closures = closureRails(barrierGroups, rails);

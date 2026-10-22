@@ -43,6 +43,8 @@ export interface CarTuning {
     engineBraking: number;
     /** Max clutch slip rpm used for launches from a standstill. */
     launchRpm: number;
+    /** Spin inertia of the engine's rotating parts, flywheel and clutch (kg m^2); geared onto the driven wheels. */
+    inertia: number;
   };
   gearbox: {
     ratios: number[];
@@ -54,45 +56,41 @@ export interface CarTuning {
     downshiftRpmFrac: number;
     reverseMaxSpeed: number;
   };
+  /**
+   * One grip curve over the normalized slip vector (sideways slip over peakSlipDeg, slip ratio over
+   * peakSlipRatio): linear to the peak at length 1, down to the sliding grip at fullSlideDeg / peakSlipDeg.
+   */
   tires: {
     gripFront: number;
     gripRear: number;
+    /** Slip angle of peak grip (deg). */
     peakSlipDeg: number;
+    /** Slip ratio (tread speed over road speed, minus one) of peak grip. */
+    peakSlipRatio: number;
     /** Slip angle where grip has fallen to slideGrip. */
     fullSlideDeg: number;
+    /** Grip of a tire sliding sideways, fraction of peak. */
     slideGrip: number;
-    /** Lateral grip kept even when longitudinal force uses the whole friction circle. */
+    /** Grip of a tire sliding lengthways (spinning or locked, going straight), fraction of peak. */
+    slideGripLong: number;
+    /** Lateral grip kept however hard the foot brake uses the friction circle (arcade ABS). */
     minLateralShare: number;
     rollingResistance: number;
     /** Wheel load past which grip stops growing, as a multiple of the static wheel load (mg/4). */
     loadCap: number;
   };
-  /** Driven wheel spin (slip ratio proxy per driven axle) and traction control. */
+  /** Axle dynamics (wheelspin) and traction control. */
   traction: {
-    /** Drive demand / available grip ratio where the driven wheels break loose. */
-    breakaway: number;
-    /** How much cornering eats into forward grip (friction circle). 0 = none, 1 = none left at peak slip. */
-    cornerCoupling: number;
-    /** Once spinning, the wheels keep spinning down to demand = breakaway * spinHold. */
-    spinHold: number;
-    /** Spin level per unit of demand above the threshold (2.5 = full spin at 40% over). */
-    spinPerExcess: number;
-    /** Wheelspin build rate (1/s at full excess). */
-    spinBuildRate: number;
-    /** Wheelspin recovery rate (1/s). */
-    spinRecoverRate: number;
-    /** Forward grip of a fully spinning axle, fraction of peak. */
-    spinLongGrip: number;
-    /** Sideways grip of a fully spinning axle, fraction of normal. */
-    spinLateralGrip: number;
+    /** Spin inertia of one wheel with its hub, brake and half shaft (kg m^2). */
+    wheelInertia: number;
     /** Extra drive torque from dumping the clutch (launches, clutch kicks), at clutch slip = redline. */
     launchBoost: number;
-    /** Wheelspin forced on the driven axles by a clutch kick. */
-    clutchKickSpin: number;
-    /** Engine rpm flare above road speed at full wheelspin. */
-    spinRpm: number;
-    /** Traction control: max drive demand as a fraction of available grip. */
+    /** Tread speed a clutch kick adds to the driven wheels (m/s): the flywheel's energy dumped into them. */
+    clutchKickSpeed: number;
+    /** Traction control: max drive as a fraction of the forward force that keeps the tires inside their peak. */
     tcSlipTarget: number;
+    /** Traction control: drive it always allows, as a fraction of grip, even at full cornering slip. */
+    tcMinDrive: number;
     /** Traction control: cuts throttle above this body slip angle (stops power oversteer). */
     tcMaxSlipDeg: number;
   };
@@ -118,8 +116,9 @@ export interface CarTuning {
     /** Total tire brake force (N), split by frontBias. */
     force: number;
     frontBias: number;
-    handbrakeForce: number;
-    /** Arcade deceleration on top of the tires at full brake (m/s^2); it does not use up cornering grip. */
+    /** Handbrake torque on the rear axle (Nm): above what its tires hold back, it locks. */
+    handbrakeTorque: number;
+    /** Arcade deceleration on top of the tires at full brake (m/s^2), along the car's path; it does not use up cornering grip. */
     assistDecel: number;
   };
   steering: {
@@ -145,22 +144,17 @@ export interface CarTuning {
     refillDraft: number;
     draftDragMul: number;
   };
+  /** Arcade drift aids on top of the tire model. */
   drift: {
-    handbrakeRearGrip: number;
-    /** Extra yaw torque while the handbrake is pulled with steering, so the rear snaps out. */
-    handbrakeYawTorque: number;
-    clutchKickRearGrip: number;
+    /** How long a clutch kick keeps feeding extra torque (s). */
     clutchKickTime: number;
-    powerOversteerGrip: number;
-    powerOversteerMinSlipDeg: number;
-    gripDropRate: number;
-    gripRecoverRate: number;
+    /** Body slip angle past which the anti spin aid turns the nose back toward the direction of travel (deg). */
     maxSlipDeg: number;
+    /** Strength of the anti spin aid (Nm per rad past maxSlipDeg, times 4). */
     assistTorque: number;
     /** Always-on yaw damping, Nm per rad/s. Keeps the car from feeling twitchy. */
     yawDamping: number;
-    /** Rad/s that velocity bends toward the heading while drifting on throttle. */
-    driftCarve: number;
+    /** Extra yaw damping below 3 m/s (per m/s under it), so a car cannot pirouette at a crawl. */
     yawDampingLowSpeed: number;
   };
   surface: {

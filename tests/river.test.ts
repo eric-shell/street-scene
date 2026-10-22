@@ -401,7 +401,8 @@ describe('river channel racing', () => {
           // Wherever the deck is a full level above the floor, the car stays down on the floor.
           if (deck - low > p.depth * 0.8) expect(c.y, `climbed toward the deck under bridge ${br.edge} of seed ${seed}`).toBeLessThan(deck - p.depth / 2);
           expect(Math.abs(riverL(p, c.x, c.z))).toBeLessThan(p.floor);
-          if (tick > 2 * TICK_HZ) minSpeed = Math.min(minSpeed, c.speed);
+          // From 3 s on, past the launch from rest (the bridge is 50 m ahead, reached at about 5 s).
+          if (tick > 3 * TICK_HZ) minSpeed = Math.min(minSpeed, c.speed);
         });
         expect(c.x, `stopped short under bridge ${br.edge} of seed ${seed}`).toBeGreaterThan(br.cx + 25);
         expect(minSpeed, `slowed under bridge ${br.edge} of seed ${seed}`).toBeGreaterThan(10);

@@ -8,7 +8,7 @@ import { bluffShape, bluffUV, envelope, terraceAt } from '../src/city/districts/
 import { elCurve } from '../src/city/districts/subway';
 import { WALL_LOOKS } from '../src/city/districts/types';
 import { pointInPolygon } from '../src/city/districts/geom';
-import { curvePoint, sampleCurve } from '../src/city/railCurve';
+import { RAIL, curvePoint, sampleCurve } from '../src/city/railCurve';
 import { TRAIN, lineServices, trackS, trainLength, tripsAt } from '../src/city/railTimetable';
 import type { TripState } from '../src/city/railTimetable';
 import { CROSSING, crossingTrain } from '../src/city/levelCrossings';
@@ -47,9 +47,14 @@ function crossingSeed(stream: number, kind: 'circuit' | 'sprint'): number {
   throw new Error('no seed whose route crosses its level crossing');
 }
 
-/** First tick at or after `after` the crossing's gates start blocking. */
+/**
+ * First tick at or after `after` a block of the crossing's gates starts. Mid-block at `after`
+ * (untilBlock is 0 then) it skips to the next block, so a scenario timed from it gets a whole block.
+ */
 function nextBlock(c: GateCycle, after: number): number {
-  return after + gatePhase(c, after).untilBlock;
+  const p = gatePhase(c, after);
+  const t = p.blocking ? after + p.untilClear : after;
+  return t + gatePhase(c, t).untilBlock;
 }
 
 describe('bluff (city)', () => {
@@ -85,9 +90,11 @@ describe('bluff (city)', () => {
         expect(JSON.stringify(again)).toBe(JSON.stringify(b));
       }
     }
-    // The El exists on about three seeds in four; the bluff fits on most of them, and a route runs over its
-    // level crossing on most of those (see README: the share is measured here).
-    expect(bluffs / el).toBeGreaterThan(0.5);
+    // The El exists on about three seeds in four; the bluff fits on about two in five of them (it needs the
+    // line straight on one column across five rows, the line swings columns once or twice per seed, and the
+    // river channel takes a band of rows), and a route runs over its level crossing on most of those (see
+    // README: the share is measured here; 0.39 since the river runs the whole map).
+    expect(bluffs / el).toBeGreaterThan(0.35);
     expect(crossed / bluffs).toBeGreaterThan(0.6);
   });
 
@@ -201,12 +208,17 @@ describe('bluff (city)', () => {
           const A = g.nodes[ed.a];
           const B = g.nodes[ed.b];
           if (distToSegment(P.x, P.z, A.x, A.z, B.x, B.z) > ed.width / 2 + ed.sidewalk) continue;
-          if (ed === e) expect(P.y - ground).toBeCloseTo(-0.14, 2);
+          // (Within 1 cm: with the river in the layout one seed's pad sits 5 mm lower.)
+          if (ed === e) expect(Math.abs(P.y - ground + 0.14)).toBeLessThan(0.01);
           else expect(P.y - ground, `deck over edge ${ed.id} at s ${s}`).toBeGreaterThan(CFG.clearance - 0.5);
         }
       }
-      // Grades the trains ride over the city stay gentle.
-      for (let i = Math.ceil(curve.cityA / 2) + 1; i < curve.cityB / 2; i++) expect(Math.abs(curve.deck[i] - curve.deck[i - 1]) / 2).toBeLessThan(0.06);
+      // Grades the trains ride over the city stay gentle, the blends back from the level included: each grows
+      // (RailCurve.blendA/B, from CFG.levelBlend) until its grade is under RAIL.levelGrade, however far the
+      // level sits from the deck's normal height.
+      expect(curve.blendA).toBeGreaterThanOrEqual(CFG.levelBlend);
+      expect(curve.blendB).toBeGreaterThanOrEqual(CFG.levelBlend);
+      for (let i = Math.ceil(curve.cityA / 2) + 1; i < curve.cityB / 2; i++) expect(Math.abs(curve.deck[i] - curve.deck[i - 1]) / 2).toBeLessThan(RAIL.levelGrade + 0.005);
     }
   });
 });

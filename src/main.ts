@@ -3,13 +3,17 @@
  *   menu -> race -> results -> (retry | replay | garage | menu)
  *   menu -> garage -> menu / test drive
  *   menu -> free roam (open world on the event seed, or a new city from the pause menu) -> menu
+ * Free roam from the menu is a handoff, not a cut: the session takes over the
+ * menu city and the car cruising it where it is, the camera swings from the
+ * showreel's shot onto the chase camera while the menu slides away.
  */
 import './style.css';
 import './ui/ui.css';
 import * as THREE from 'three';
 import { FixedStepLoop } from './loop';
-import { createCity, createRoute, createWorld } from './city/world';
+import { createCity, createRoute, createWorld, type World } from './city/world';
 import type { Route } from './city/route';
+import { trafficNet } from './sim/traffic';
 import { seedFromString, Rng } from './sim/prng';
 import { dailySeed, initialSeed } from './seed';
 import { Settings, loadSettings, saveSettings } from './ui/settings';
@@ -18,8 +22,9 @@ import { GameRenderer } from './render/scene';
 import { FreeFlyCamera } from './render/freeFly';
 import { CarAssetLibrary, manifestCar } from './render/carAssets';
 import { InputManager } from './input/inputManager';
-import { RaceSession } from './game/session';
+import { RaceSession, type SessionOptions } from './game/session';
 import { DroneMode } from './game/drone';
+import { TICK_HZ } from './sim/constants';
 import { StreetStage } from './game/streetStage';
 import { ShowreelCamera } from './game/streetCameras';
 import { MusicPlayer } from './audio/musicPlayer';
@@ -117,6 +122,8 @@ let garageScreen: { tick(): void; render(dt: number): void; dispose(): void } | 
 let stage: StreetStage | null = null;
 /** The event's sprint, planned with the stage's city (the stage drives the circuit); the menu's race step draws both. */
 let stageSprint: Route | null = null;
+/** The open world over the stage's city, with its traffic net built: what free roam taken over from the menu drives in, ready before it is asked for. */
+let stageOpen: World | null = null;
 const showreel = new ShowreelCamera();
 let fly: FreeFlyCamera | null = null;
 let drone: DroneMode | null = null;
@@ -159,12 +166,19 @@ function exitDrone(): void {
 /** The street stage for the current seed, built (with the current build on it) when the seed changes. */
 function ensureStage(): StreetStage {
   const seed = seedFromString(seedStr);
-  if (stage && stage.world.seed === seed) return stage;
+  if (stage && stage.world.seed === seed) {
+    // Back from a race: the console handle points at the menu city again.
+    (window as unknown as Record<string, unknown>).__nr = { world: stage.world, gr, stage, showreel, autoQ };
+    return stage;
+  }
   stage?.dispose();
   // The same world createWorld builds on its own, with the city kept for the sprint's route.
   const city = createCity(seed);
   stage = new StreetStage(gr, assets, createWorld(seed, 'circuit', city), settings);
   stageSprint = createRoute(city, 'sprint');
+  // A few ms over the city that is already built, and its traffic net now (cached per world) rather than at the handoff.
+  stageOpen = createWorld(seed, 'circuit', city, { openWorld: true });
+  trafficNet(stageOpen);
   void stage.setBuild(currentBuild());
   showreel.cut();
   (window as unknown as Record<string, unknown>).__nr = { world: stage.world, gr, stage, showreel, autoQ };
@@ -407,9 +421,54 @@ function raceCard(t: RaceType): WipeCard {
 
 /** Start the race type picked on the menu: the camera drops in behind the car as the wipe covers the screen. */
 function launch(t: RaceType): void {
-  if (transitioning()) return;
+  if (state !== 'menu' || transitioning()) return;
+  // Free roam carries on from the car on screen; before its model has loaded there is nothing to carry on from.
+  if (t === 'roam' && stage?.car) return handoffToFreeRoam();
   showreel.setMode('launch');
   void wipe(raceCard(t), () => (t === 'roam' ? startFreeRoam(seedStr) : startRace(t)));
+}
+
+/** The handoff into free roam: how long the camera swings onto the chase view and the menu takes to leave (s; ui.css .menu-out). */
+const HANDOFF = { pan: 2, menuOut: 0.5 } as const;
+
+/**
+ * Free roam from the menu, with no wipe: the session takes over the menu
+ * city's scene and its car where it is and at the speed it is going (the sim
+ * starts on the stage's tick, so the gates and the El stay where they were),
+ * the camera swings from the showreel's shot round onto the chase camera, and
+ * the menu slides away meanwhile; the HUD fades in once the swing settles.
+ */
+function handoffToFreeRoam(): void {
+  const st = stage!;
+  closeMenuMap();
+  const build = currentBuild();
+  const p = st.pose;
+  const config: RaceConfig = {
+    seed: seedFromString(seedStr),
+    mode: 'circuit',
+    laps: 1,
+    player: { name: 'You', carId: build.carId, performance: build.performance },
+    opponents: [],
+    difficulty: settings.difficulty,
+    manualGearbox: settings.manualGearbox,
+    tractionControl: settings.tractionControl,
+    openWorld: true,
+    traffic: true,
+    start: { x: p.x, z: p.z, y: p.y, yaw: p.yaw, speed: st.speed, tick: Math.round(st.time * TICK_HZ) },
+  };
+  const shot = { position: showreel.camera.position.clone(), look: showreel.lookTarget.clone(), fov: showreel.camera.fov };
+  const el = menuEl;
+  el?.classList.add('menu-out');
+  // Nothing on the sliding menu takes a key press on the way out.
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  // The open world built with the stage (from scratch, the city alone would be hundreds of ms here).
+  const world = stageOpen?.seed === config.seed ? stageOpen : createWorld(config.seed, 'circuit', st.world, { openWorld: true });
+  runSession(config, [build.visual], null, null, 'roam', { handoff: { stage: st, shot, pan: HANDOFF.pan }, world });
+  // The view recenters on the whole screen as the rail slides away (a race start would snap it).
+  gr.setFraming(0, 0);
+  window.setTimeout(() => {
+    if (overlay === el) setOverlay(null);
+  }, HANDOFF.menuOut * 1000);
 }
 
 /** Back to the menu from a race or the pause screen, behind the wipe. */
@@ -564,11 +623,12 @@ function startReplay(r: ReplayData): void {
   runSession(r.config, r.visuals, r, null, 'race');
 }
 
-function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayData | null, ghost: ReplayData | null, kind: SessionKind): void {
+function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayData | null, ghost: ReplayData | null, kind: SessionKind, extra: Pick<SessionOptions, 'handoff' | 'world'> = {}): void {
   const testDrive = kind === 'testDrive';
   session?.dispose();
   dev.close();
-  setOverlay(null);
+  // A handoff keeps the menu on screen while it slides away (handoffToFreeRoam takes it down).
+  if (!extra.handoff) setOverlay(null);
   lastConfig = config;
   lastVisuals = visuals;
   session = new RaceSession(gr, assets, input, settings, uiRoot, {
@@ -581,6 +641,7 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
     // Free roam steers to the city's waypoint, which the menu's map may already have set.
     waypoint: kind === 'roam' ? waypointFor(config.seed) : undefined,
     seedText: config.seed === seedFromString(seedStr) ? seedStr : undefined,
+    ...extra,
   });
   state = 'race';
   sessionKind = kind;

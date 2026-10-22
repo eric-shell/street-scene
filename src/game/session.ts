@@ -2,14 +2,19 @@
  * A race on screen: owns the sim RaceState, the night scene, car views, the
  * camera and HUD. tick() advances the sim one fixed step (live input or a
  * recorded log); render() interpolates between the last two snapshots.
+ * Free roam taken over from the menu (SessionOptions.handoff) runs in the
+ * menu city's own scene instead, borrowed from the street stage and handed
+ * back when the session ends, with the menu's cruise still driving the car
+ * until the player touches a control.
  */
 import * as THREE from 'three';
 import { CarState } from '../sim/car';
 import { routeSample } from '../city/route';
 import { createRace, RaceConfig, RaceState, raceTime, standings, stepRace, ticksToSeconds } from '../sim/race';
-import { NEUTRAL_INPUT, unpackInput } from '../sim/input';
+import { InputFrame, NEUTRAL_INPUT, unpackInput } from '../sim/input';
 import { VisualBuild } from '../sim/build';
 import { DT } from '../sim/constants';
+import { DEG } from '../sim/math';
 import { CarView, CarPose } from '../render/carView';
 import { ROAD_Y } from '../render/cityMeshes';
 import { unmaskVehicle } from '../render/vehicleMask';
@@ -20,8 +25,11 @@ import { Sfx } from '../audio/sfx';
 import { manifestCar } from '../render/carAssets';
 import { CarAssetLibrary } from '../render/carAssets';
 import { CAMERA, ChaseCamera } from '../render/camera';
-import { RaceCinematics } from '../render/cinematics';
+import { RaceCinematics, type HandoffShot } from '../render/cinematics';
 import { GameRenderer, NightScene, createNightScene } from '../render/scene';
+import type { World } from '../city/world';
+import type { Cruise } from './cruise';
+import type { StreetStage } from './streetStage';
 import type { CrowdCar } from '../render/crowds';
 import { FreeFlyCamera } from '../render/freeFly';
 import { DroneMode } from './drone';
@@ -153,6 +161,9 @@ const SPARK = {
   burstPerMs: 2.2,
   burstMax: 46,
 } as const;
+/** After a handoff with nobody at the wheel: the cruise brakes to a stop this gently (share of the brake), and lets go under this speed (m/s). */
+const CRUISE_RUNOUT = { target: 0, maxBrake: 0.12 } as const;
+const CRUISE_STOPPED = 0.3;
 /** A crowd section's heard excitement crossing this cheers out loud, at most every SECTION_CHEER_GAP s. */
 const SECTION_CHEER_LEVEL = 0.7;
 const SECTION_CHEER_GAP = 8;
@@ -168,6 +179,20 @@ export interface SessionOptions {
   waypoint?: WaypointStore;
   /** The seed as the player knows it, for the map's header. */
   seedText?: string;
+  /** A world already built for this config (same seed, route kind and open world flag): createRace reuses it instead of building one. */
+  world?: World;
+  /**
+   * Free roam taken over from the menu (main.ts): the session drives in the
+   * street stage's own scene, borrowed with stage.lend() and given back on
+   * dispose, from the config's start pose (the stage car's). The camera
+   * starts on `shot` (the showreel's) and swings onto the chase camera over
+   * `pan` s; the stage's cruise drives until the first input.
+   */
+  handoff?: {
+    stage: StreetStage;
+    shot: HandoffShot;
+    pan: number;
+  };
 }
 
 export interface FinishInfo {
@@ -252,6 +277,14 @@ export class RaceSession {
   private flash = 0;
   /** Open world test drive: no crowds, fireworks or line celebrations. */
   private readonly openWorld: boolean;
+  /** The scene is the street stage's (handoff): it goes back to the stage on dispose instead of being disposed. */
+  private readonly borrowed: boolean;
+  /**
+   * The menu's cruise still at the wheel after a handoff: its path distance
+   * (carried tick to tick) and the last tick it drives, unless the player
+   * touches a control first. Null once the player has the car.
+   */
+  private cruise: { drive: Cruise; s: number; untilTick: number } | null = null;
   /** Text on the circuit gantry sign, and the tick a pending change is applied (-1 = none). */
   private signText = '';
   private signAt = -1;
@@ -280,8 +313,15 @@ export class RaceSession {
     this.uiRoot = uiRoot;
     let own: Vec2 | null = null;
     this.wp = opts.waypoint ?? { get: () => own, set: (p) => (own = p) };
-    this.race = createRace(opts.config);
-    this.night = createNightScene(this.race.world, gr, settings);
+    this.race = createRace(opts.config, opts.world);
+    const hand = opts.handoff;
+    this.borrowed = !!hand;
+    this.night = hand ? hand.stage.lend() : createNightScene(this.race.world, gr, settings);
+    if (hand) {
+      // The scene's clock carries on from the stage's: its blinking, weather, steam and air traffic never jump.
+      this.time = hand.stage.time;
+      this.cruise = { drive: hand.stage.cruise, s: hand.stage.s, untilTick: this.race.tick + Math.round((hand.pan + 1) / DT) };
+    }
     this.cam = new ChaseCamera(this.race.world);
     this.cine = new RaceCinematics(this.cam, this.race.world, uiRoot);
     this.openWorld = opts.config.openWorld === true || this.race.world.openWorld === true;
@@ -313,7 +353,10 @@ export class RaceSession {
     }
     const loads: Promise<void>[] = [];
     this.race.cars.forEach((rc, i) => {
-      const view = new CarView(rc.carId, assets, { headlights: i === 0, underglowLight: i === 0, envMap: gr.envMap, roadLift: ROAD_Y });
+      // In the menu's scene the player's car carries no real lights, like the menu's car it replaces: a new light
+      // count would recompile every lit shader in the city (seconds of freeze). The beam and underglow glows stay.
+      const lit = i === 0 && !hand;
+      const view = new CarView(rc.carId, assets, { headlights: lit, underglowLight: lit, envMap: gr.envMap, roadLift: ROAD_Y });
       this.night.scene.add(view.root);
       this.views.push(view);
       loads.push(view.load(opts.visuals[i] ?? opts.visuals[0]));
@@ -420,6 +463,11 @@ export class RaceSession {
     }
     input.setTouchVisible(!this.isReplay);
     this.cineOn = !this.isReplay && opts.cinematics !== false;
+    if (hand) {
+      // The first frame is the showreel's shot of the car where it stands; the HUD waits for the swing to settle.
+      this.cine.startHandoff(hand.shot, this.curr[0], hand.pan);
+      this.cine.syncHud(this.hud.root, false);
+    }
     if (this.cineOn) {
       this.preRoll = this.preRollTotal = Math.round(CAMERA.intro.preRoll / DT);
       this.cine.startIntro(this.curr[0], this.race.cars[0].rawS);
@@ -617,10 +665,13 @@ export class RaceSession {
     }
     let frame = NEUTRAL_INPUT;
     if (this.opts.replay) {
+      // The log starts on the race's first tick (0 on a grid, the start pose's tick off it).
       const log = this.opts.replay.decoded;
-      frame = r.tick < log.length ? unpackInput(log[r.tick]) : { ...NEUTRAL_INPUT, brake: 0.5 };
+      const i = r.tick - (r.config.openWorld && r.config.start ? r.config.start.tick : 0);
+      frame = i < log.length ? unpackInput(log[i]) : { ...NEUTRAL_INPUT, brake: 0.5 };
     } else {
       frame = this.input.sample(DT);
+      if (this.cruise) frame = this.cruiseHold(frame);
     }
     this.prev = this.curr;
     const speedBefore = r.cars[0].state.speed;
@@ -661,6 +712,32 @@ export class RaceSession {
       this.cine.settle();
       this.onFinish({ race: r, tuned: this.tuned });
     }
+  }
+
+  /**
+   * After a handoff the menu's cruise keeps driving (lane, speed, gates) so
+   * the car rolls on as it did behind the menu. Any input from the player
+   * ends it for good. With nobody at the wheel a second past the camera's
+   * swing it eases to a stop on its lane instead of cruising forever, and
+   * lets go once stopped.
+   */
+  private cruiseHold(frame: InputFrame): InputFrame {
+    const h = this.cruise!;
+    const r = this.race;
+    const c = r.cars[0].state;
+    const stopping = r.tick >= h.untilTick;
+    const touched = frame.throttle > 0 || frame.brake > 0 || frame.handbrake || frame.nitrous || frame.shift !== 0 || frame.reset || Math.abs(frame.steer) > 0.01;
+    if (touched || (stopping && c.speed < CRUISE_STOPPED)) {
+      this.cruise = null;
+      return frame;
+    }
+    const rc = r.cars[0];
+    const st = rc.tuning.steering;
+    // The lock the sim allows at this speed (car.ts): the cruise asks for wheel angles, the frame carries shares of it.
+    const steerLimit = (st.maxDeg + (st.highSpeedDeg - st.maxDeg) * Math.max(0, Math.min(1, c.speed / st.fadeSpeed))) * DEG;
+    const out: InputFrame = { ...NEUTRAL_INPUT };
+    h.s = h.drive.drive(h.s, c.x, c.z, c.yaw, c.speed, r.tick * DT, { wheelbase: rc.tuning.geometry.wheelbase, steerLimit }, out, stopping ? CRUISE_RUNOUT : {});
+    return out;
   }
 
   /**
@@ -938,23 +1015,25 @@ export class RaceSession {
     });
   }
 
-  /** Intro fly-in and finish hero shot, layered over the chase camera. */
+  /** Intro fly-in and finish hero shot (and the menu's handoff swing), layered over the chase camera. */
   private applyCinematics(p: Snap, dt: number): void {
-    if (!this.cineOn) return;
-    const r = this.race;
     const step = this.paused ? 0 : dt;
-    if (this.cine.phase === 'intro') {
-      // Progress in sim ticks so the landing is exactly on the green light.
-      const done = this.preRollTotal - this.preRoll + r.tick + (this.paused ? 0 : this.alpha);
-      this.cine.applyIntro(Math.min(1, done / (this.preRollTotal + r.countdownTicks)), step);
-    } else if (r.cars[0].finished) {
-      if (!this.outroStarted) {
-        this.outroStarted = true;
-        this.cine.startOutro(p);
+    if (this.cine.phase === 'handoff') this.cine.applyHandoff(p, step);
+    else if (this.cineOn) {
+      const r = this.race;
+      if (this.cine.phase === 'intro') {
+        // Progress in sim ticks so the landing is exactly on the green light.
+        const done = this.preRollTotal - this.preRoll + r.tick + (this.paused ? 0 : this.alpha);
+        this.cine.applyIntro(Math.min(1, done / (this.preRollTotal + r.countdownTicks)), step);
+      } else if (r.cars[0].finished) {
+        if (!this.outroStarted) {
+          this.outroStarted = true;
+          this.cine.startOutro(p);
+        }
+        this.cine.applyOutro(p, step);
       }
-      this.cine.applyOutro(p, step);
     }
-    this.cine.syncHud(this.hud.root, this.preRoll > 0);
+    if (this.cineOn || this.borrowed) this.cine.syncHud(this.hud.root, this.preRoll > 0, step);
   }
 
   private updateCamera(p: Snap, dt: number): THREE.PerspectiveCamera {
@@ -1120,7 +1199,9 @@ export class RaceSession {
     this.cine.dispose();
     this.carLight.removeFromParent();
     this.carLight.dispose();
-    this.night.dispose();
+    // A borrowed scene goes back to the menu's stage as it was; everything this session added has left it above.
+    if (this.borrowed) this.opts.handoff?.stage.reclaim();
+    else this.night.dispose();
     this.input.setTouchVisible(false);
   }
 }

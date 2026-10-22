@@ -214,7 +214,10 @@ describe('tunnels and overpasses (city)', () => {
           const v = rng.range(-(r.b + r.w + 3), r.b + r.w + 3);
           const x = r.cx + r.ux * u - r.uz * v;
           const z = r.cz + r.uz * u + r.ux * v;
-          const h = 0.005;
+          // A small step: the profile is C1 but not C2 at each smoothstep end, so a central difference
+          // straddling one is off by about 1.5 * h * (ridge height) / (ramp length)^2, which at h = 0.005
+          // reaches 1e-2 for a 24 m ridge whose corridor mask ramps over 4 m; at 2e-4 it stays under 4e-4.
+          const h = 2e-4;
           const g = at(r, x, z);
           expect(Math.abs(g.gx - (at(r, x + h, z).h - at(r, x - h, z).h) / (2 * h))).toBeLessThan(2e-3);
           expect(Math.abs(g.gz - (at(r, x, z + h).h - at(r, x, z - h).h) / (2 * h))).toBeLessThan(2e-3);

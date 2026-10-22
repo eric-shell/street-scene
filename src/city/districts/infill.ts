@@ -23,8 +23,10 @@
  *    drivable space and out of buildings and exclusions, and is walled on
  *    its back sides with low curbs (look 'lotEdge').
  *  - Every drivable pocket is furnished by theme (cafe, garden, market, lot
- *    clutter) with destructible props (AreaBuild.destructibles); plazas and
- *    corner pockets get lantern posts along their back (render/areaLights.ts).
+ *    clutter) with destructible props (AreaBuild.destructibles); plazas,
+ *    corner pockets and lots get lantern posts along their back
+ *    (render/areaLights.ts draws their light), lots a row of them so a racer
+ *    sees the asphalt before turning in.
  * Whatever is left is a low 'boundary' wall drawn by render/districts/infill.ts.
  */
 import { CITY } from '../config';
@@ -303,32 +305,41 @@ export const infillModule: DistrictModule = {
         b.hints.push({ kind: 'bay', points: [a, { x: a.x - wx * bayDepth, z: a.z - wz * bayDepth }], values: [] });
       }
     }
-    if (area.variant === 'plaza' || area.variant === 'cornerPlaza') lamps(b, area);
+    if (area.variant === 'plaza' || area.variant === 'cornerPlaza' || area.variant === 'lot') lamps(b, area);
     furnish(b, area);
     return b;
   },
 };
 
 /**
- * Lantern posts along the back of a plaza or corner pocket (the darkest part,
- * furthest from the streetlights): one near each end of the back row, or one
- * in the middle of a short pocket. Placed before the clutter, so a table or
- * pot on the same spot is the one dropped. No rng draws, so the lamps never
- * shift the clutter's layout.
+ * Lantern posts along the back of a plaza, corner pocket or parking lot (the
+ * darkest part, furthest from the streetlights): one near each end of the
+ * back row, or one in the middle of a short pocket; a lot's back row gets
+ * one every lotLampSpacing or so (its painted bays end there, so the posts
+ * stand at the bay heads, off the drive aisle). Placed before the clutter, so
+ * a table, pot or barrel on the same spot is the one dropped. No rng draws,
+ * so the lamps never shift the clutter's layout.
  */
 function lamps(b: AreaBuild, area: Area): void {
   const P = area.params;
   if (P.lu === undefined) return;
   const inset = CFG.lampInset;
+  const lot = area.variant === 'lot';
   const v = P.lw < SHALLOW ? P.lw / 2 : P.lw - inset;
-  const us = P.lu >= CFG.lampPairLen ? [inset, P.lu - inset] : [P.lu / 2];
+  const us: number[] = [];
+  if (lot) {
+    const span = P.lu - 2 * inset;
+    const n = Math.max(2, Math.round(span / CFG.lotLampSpacing) + 1);
+    for (let k = 0; k < n; k++) us.push(inset + (span * k) / (n - 1));
+  } else if (P.lu >= CFG.lampPairLen) us.push(inset, P.lu - inset);
+  else us.push(P.lu / 2);
   const r = PROP_DEFS.parkLamp.radius;
   for (const u of us) {
     const x = P.ox + P.ux * u + P.wx * v;
     const z = P.oz + P.uz * u + P.wz * v;
     if (!pointInPolygon(x, z, area.polygon) || distToPolygonEdge(x, z, area.polygon) < r + EDGE_CLEAR) continue;
     if (P.fountain > 0 && Math.hypot(x - P.fx, z - P.fz) < P.fountain + r + 0.8) continue;
-    b.destructibles.push({ kind: 'parkLamp', x, z, yaw: Math.atan2(-P.wx, -P.wz), lift: CITY.curbHeight, area: area.id });
+    b.destructibles.push({ kind: 'parkLamp', x, z, yaw: Math.atan2(-P.wx, -P.wz), lift: lot ? 0 : CITY.curbHeight, area: area.id });
   }
 }
 

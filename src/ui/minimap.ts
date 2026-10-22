@@ -11,6 +11,7 @@
 import type { World } from '../city/world';
 import { AREA_MAP_STYLE, AreaKind, AreaMapStyle } from '../city/districts/types';
 import { ROUTE_INDEX, carParks } from '../city/districts/carPark';
+import { shortcutArea } from '../city/districts/alley';
 import { PALETTE, rgba } from './palette';
 
 /** Map inks (Monokai Pro, ui/palette.ts), built once: orange is the route, yellow the closures. */
@@ -104,8 +105,17 @@ export class Minimap {
     world.route.points.forEach((p, i) => (i ? this.routePath.lineTo(p.x, p.z) : this.routePath.moveTo(p.x, p.z)));
     this.shortcuts = new Path2D();
     for (const sc of world.route.shortcuts) {
-      this.shortcuts.moveTo(sc.ax, sc.az);
-      this.shortcuts.lineTo(sc.bx, sc.bz);
+      sc.points.forEach((p, i) => (i ? this.shortcuts.lineTo(p.x, p.z) : this.shortcuts.moveTo(p.x, p.z)));
+      // A jump exit runs on past its mouth: the flight down onto the street.
+      const a = shortcutArea(world.areas, sc);
+      if (a?.params.jumpExit) {
+        const n = sc.points.length;
+        const o = sc.points[n - 2];
+        const b = sc.points[n - 1];
+        const len = Math.hypot(b.x - o.x, b.z - o.z) || 1;
+        const reach = a.params.landMax * 0.6 - a.params.lipS;
+        this.shortcuts.lineTo(b.x + ((b.x - o.x) / len) * reach, b.z + ((b.z - o.z) / len) * reach);
+      }
     }
     // Car park shortcuts: up the ramp, across the roof and the jump down onto the route (the route's own only).
     for (const cp of carParks(world.areas)) {

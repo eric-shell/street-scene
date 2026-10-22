@@ -21,10 +21,13 @@ describe('hills', () => {
     const sizes = new Set<number>();
     const variants = new Set<string>();
     const out = { h: 0, gx: 0, gz: 0 };
+    let short = 0;
     for (let i = 0; i < 24; i++) {
       const c = createCity(rng.int(0, 0x7fffffff));
       const hs = c.districts.areas.filter((a) => a.kind === 'hills');
-      expect(hs.length).toBeGreaterThanOrEqual(HILLS.count[0]);
+      // The river across the whole map, the El and a bluff leave a rare city room for one cluster only.
+      expect(hs.length).toBeGreaterThanOrEqual(1);
+      if (hs.length < HILLS.count[0]) short++;
       expect(hs.length).toBeLessThanOrEqual(HILLS.count[1]);
       for (const h of hs) {
         // A Hill Climb's hill that does not fit as a cluster stands on its route block alone (hills.ts).
@@ -71,6 +74,7 @@ describe('hills', () => {
         steepest = Math.max(steepest, edgeMax);
       }
     }
+    expect(short).toBeLessThanOrEqual(1);
     expect(worst).toBeLessThan(HILLS.maxGrade + 0.056 + 0.005);
     expect(steepest).toBeGreaterThan(0.08);
     expect(sizes.size).toBeGreaterThan(1);

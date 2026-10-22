@@ -795,8 +795,12 @@ function trySpawn(t: TrafficState, world: World, c: TrafficCar, cars: readonly R
   return false;
 }
 
-/** Traffic for a new race: count by mode, spread over the bubble around the player's start. */
-export function createTraffic(world: World, cars: readonly RaceCar[], seed: number, openWorld: boolean): TrafficState {
+/**
+ * Traffic for a new race: count by mode, spread over the bubble around the
+ * player's start; `discreet` keeps the first cars as far out as respawns go
+ * (the player is already on screen when a race starts off the grid).
+ */
+export function createTraffic(world: World, cars: readonly RaceCar[], seed: number, openWorld: boolean, discreet = false): TrafficState {
   const net = trafficNet(world);
   const count = openWorld ? L.count.openWorld : L.count.race;
   rng.setState(deriveSeed(seed, 'traffic'));
@@ -806,7 +810,7 @@ export function createTraffic(world: World, cars: readonly RaceCar[], seed: numb
     const body = createCar(0, 0, 0, 0);
     const c: TrafficCar = { id: i, kind: 0, mode: 'gone', path: -1, next: -1, after: -1, s: 0, v: 0, cruise: 0, hold: -1, wait: 0, still: 0, ox: 0, oz: 0, oyaw: 0, born: 0, hitTick: -L.hitGap, braking: false, body };
     t.cars.push(c);
-    if (focus) trySpawn(t, world, c, cars, focus.x, focus.z, 0, L.bubble * 0.9, L.startClear, 0, 60);
+    if (focus) trySpawn(t, world, c, cars, focus.x, focus.z, discreet ? L.spawnMin : 0, L.bubble * 0.9, L.startClear, 0, 60);
   }
   t.rng = rng.getState();
   return t;

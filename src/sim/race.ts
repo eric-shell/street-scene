@@ -7,7 +7,7 @@
 import { createCity, createWorld, World, City } from '../city/world';
 import { GridSlot, routeSample } from '../city/route';
 import { carParkProgress, onCarPark } from '../city/districts/carPark';
-import { CarState, createCar, placeCar, refillNitrous, stepCar } from './car';
+import { CarState, createCar, placeCar, refillNitrous, stepCar, wheelRpm } from './car';
 import { WorldHit, collideCarWithWorld, collideCars, detectNearMiss } from './collision';
 import { DT, TICK_HZ } from './constants';
 import { InputFrame, NEUTRAL_INPUT, packInput, quantizeInput } from './input';
@@ -50,6 +50,30 @@ export interface RaceConfig {
   openWorld?: boolean;
   /** Ambient traffic on the streets the race does not use (src/sim/traffic.ts). Missing in old replays = off. */
   traffic?: boolean;
+  /**
+   * Open world only: the player starts here, rolling, instead of on the grid
+   * (free roam from the menu carries on from the car cruising behind it,
+   * game/streetStage.ts). Ignored on a grid start; absent, the grid as ever.
+   */
+  start?: StartPose;
+}
+
+/** Where and how the player starts off the grid: a pose on a street, a speed, and the sim tick the clock starts on. */
+export interface StartPose {
+  x: number;
+  z: number;
+  /** Heading (rad): forward is (sin yaw, cos yaw). */
+  yaw: number;
+  /** Rolling speed along the heading (m/s). */
+  speed: number;
+  /** Ground height it was on (m): picks the level under a river bridge deck (World.heightAt); the deck when missing. */
+  y?: number;
+  /**
+   * First tick of the race: the timed gates, the drawbridge and the El are
+   * pure schedules of the tick, so starting on the tick the menu city showed
+   * keeps them where they were on screen.
+   */
+  tick: number;
 }
 
 export type RacePhase = 'countdown' | 'racing' | 'finished';
@@ -218,10 +242,14 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
   const entrants = [config.player, ...config.opponents];
   const line = buildRacingLine(w);
   const slots = gridSlots(route.grid, entrants.length);
+  // Off the grid (open world only): the player's start pose and the tick the clock starts on.
+  const start = open ? config.start : undefined;
+  const tick0 = start?.tick ?? 0;
   const cars: RaceCar[] = entrants.map((e, i) => {
-    const slot = slots[i];
+    const slot = i === 0 && start ? start : slots[i];
     const tuning = tuningForBuild(e.carId, validatePerformance(e.performance));
-    const state = createCar(slot.x, slot.z, slot.yaw, w.driveHeightAt(slot.x, slot.z));
+    const state = createCar(slot.x, slot.z, slot.yaw, w.driveHeightAt(slot.x, slot.z, i === 0 && start ? start.y : undefined));
+    if (i === 0 && start) rollCar(state, tuning, start.speed, w);
     state.manualGearbox = i === 0 && config.manualGearbox;
     // AI drives with traction control: stable lines, no power oversteer surprises.
     state.tractionControl = i === 0 ? config.tractionControl === true : true;
@@ -239,7 +267,7 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
       seg: p.seg,
       lateral: p.lateral,
       lap: 0,
-      lapStartTick: 0,
+      lapStartTick: tick0,
       lapTimes: [],
       bestLap: 0,
       nextCheckpoint: 0,
@@ -253,12 +281,13 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
     };
   });
   const distance = route.closed ? route.length * config.laps : route.finishS - route.startS;
-  const traffic = config.traffic ? createTraffic(w, cars, config.seed, open) : null;
+  // A start off the grid is a car already on screen: its traffic spawns out of sight, as respawns do.
+  const traffic = config.traffic ? createTraffic(w, cars, config.seed, open, !!start) : null;
   return {
     config,
     world: w,
     line,
-    tick: 0,
+    tick: tick0,
     phase: 'countdown',
     countdownTicks: open ? 0 : COUNTDOWN_SECONDS * TICK_HZ,
     cars,
@@ -274,7 +303,28 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
   };
 }
 
-/** Race clock in seconds (0 until the green light). */
+/**
+ * Set a car rolling at `speed` along its heading, as it would be if it had
+ * driven here: lying on the ground's own angle, wheels turning with the road
+ * (a still wheel at speed is a locked one), in the gear the automatic would
+ * have reached with the revs to match.
+ */
+function rollCar(c: CarState, t: CarTuning, speed: number, world: World): void {
+  const sl = world.slopeAt(c.x, c.z, c.y);
+  c.pitch = -atan2(sl.gx * sin(c.yaw) + sl.gz * cos(c.yaw), 1);
+  c.roll = atan2(sl.gx * cos(c.yaw) - sl.gz * sin(c.yaw), 1);
+  c.vx = sin(c.yaw) * speed;
+  c.vz = cos(c.yaw) * speed;
+  c.speed = speed;
+  c.wheelSpeedFront = c.wheelSpeedRear = speed;
+  for (const w of c.wheels) w.spinRate = speed / t.geometry.wheelRadius;
+  const up = t.gearbox.upshiftRpmFrac * t.engine.redline;
+  let gear = 1;
+  while (gear < t.gearbox.ratios.length && wheelRpm(t, gear, speed) > up) gear++;
+  c.gear = gear;
+  c.rpm = Math.max(t.engine.idleRpm, wheelRpm(t, gear, speed));
+}
+
 /** Fresh broken-prop flags: props under this route's barriers/rails start removed (2, no debris). */
 function coveredPropsRemoved(w: World): Uint8Array {
   const flags = new Uint8Array(w.props?.length ?? 0);
@@ -282,8 +332,9 @@ function coveredPropsRemoved(w: World): Uint8Array {
   return flags;
 }
 
+/** Race clock in seconds (0 until the green light; a start off the grid counts from its first tick). */
 export function raceTime(r: RaceState): number {
-  return Math.max(0, r.tick - r.countdownTicks) / TICK_HZ;
+  return Math.max(0, r.tick - r.countdownTicks - (r.config.openWorld && r.config.start ? r.config.start.tick : 0)) / TICK_HZ;
 }
 
 export function ticksToSeconds(ticks: number): number {
@@ -611,8 +662,8 @@ function updateProgress(r: RaceState, rc: RaceCar): void {
 
 /**
  * A forward progress jump from s0 to s1 made inside one of the route's
- * shortcuts: the car is within SHORTCUT.reach of the alley and the jump runs
- * from around its entry to around its exit (positions relative to the entry,
+ * shortcuts: the car is within SHORTCUT.reach of the alley's path and the jump
+ * runs from around its entry to around its exit (positions relative to the entry,
  * wrapped on circuits), so the skipped stretch is credited in full.
  */
 function inShortcut(route: World['route'], s0: number, s1: number, x: number, z: number): boolean {
@@ -626,7 +677,9 @@ function inShortcut(route: World['route'], s0: number, s1: number, x: number, z:
     return d;
   };
   for (const sc of route.shortcuts) {
-    if (distToSegment(x, z, sc.ax, sc.az, sc.bx, sc.bz) > SHORTCUT.reach) continue;
+    let d = Infinity;
+    for (let i = 0; i + 1 < sc.points.length; i++) d = Math.min(d, distToSegment(x, z, sc.points[i].x, sc.points[i].z, sc.points[i + 1].x, sc.points[i + 1].z));
+    if (d > SHORTCUT.reach) continue;
     const span = rel(sc.sOut, sc.sIn);
     const a = rel(s0, sc.sIn);
     const b = rel(s1, sc.sIn);

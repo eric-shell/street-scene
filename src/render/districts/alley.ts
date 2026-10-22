@@ -4,19 +4,22 @@
  * purpose), and a steel kicker deck over every back alley hump, following
  * the same height profile the sim drives on (hazard yellow at the toes and
  * the lip). The route's own shortcuts get pink and amber string lights all
- * the way through, between the construction fences at their mouths (fences
- * and the rest of the site clutter are props, render/props.ts). Tables, crates, dumpsters and trash are destructible props drawn
- * by render/props.ts. Content to add: fire escapes, graffiti, steam vents,
- * puddles.
+ * the way through, leg by leg round their bends, between the construction
+ * fences at their mouths (fences and the rest of the site clutter are props,
+ * render/props.ts); a jump exit's ramp gets the same steel deck up to its lip
+ * and the face under the lip (the 'alleyLip' wall) a concrete block with a
+ * hazard band. Tables, crates, dumpsters and trash are destructible props
+ * drawn by render/props.ts. Content to add: fire escapes, graffiti, steam
+ * vents, puddles.
  */
 import * as THREE from 'three';
-import { jumpProfile } from '../../city/districts/alley';
+import { jumpProfile, jumpRampProfile } from '../../city/districts/alley';
 import { GeoBuilder } from '../geoBuilder';
 import { makeRadialGlow } from '../textures';
 import { CITY } from '../../city/config';
 import { routeSample } from '../../city/route';
 import type { DistrictRenderer, DistrictKit } from './kit';
-import { col, cylinder } from './kit';
+import { col, cylinder, orientedBox } from './kit';
 
 /** String lights: one string every STRING_STEP m along a raceway alley, a bulb every BULB_STEP m, sagging SAG m. */
 const STRING_STEP = 7;
@@ -117,28 +120,30 @@ function stringLights(kit: DistrictKit, ax: number, az: number, bx: number, bz: 
   }
 }
 
-function kickerDeck(kit: DistrictKit, ax: number, az: number, ux: number, uz: number, center: number, ramp: number, top: number, height: number, hw: number): void {
-  const steel = col(0x3a3d44);
-  const hazard = col(0xf2b81c);
-  const dark = col(0x15161a);
+const STEEL = col(0x3a3d44);
+const HAZARD = col(0xf2b81c);
+const DARK = col(0x15161a);
+const CONCRETE = col(0x5a5b60);
+
+/**
+ * A steel deck over a profile along a leg (origin a, direction u), from s0 to
+ * s3, `profile` giving its height and slope and `band` which stations get the
+ * hazard stripes, with skirts from the deck's edges down to the ground.
+ */
+function deck(kit: DistrictKit, ax: number, az: number, ux: number, uz: number, s0: number, s3: number, hw: number, profile: (s: number) => { h: number; dh: number }, band: (s: number) => boolean, extra: number[] = []): void {
   const lx = -uz;
   const lz = ux;
-  const s0 = center - top / 2 - ramp;
-  const s1 = center - top / 2;
-  const s2 = center + top / 2;
-  const s3 = center + top / 2 + ramp;
   const stations: number[] = [];
   for (let s = s0; s < s3; s += DECK_STEP) stations.push(s);
-  stations.push(s1, s2, s3);
+  stations.push(s3, ...extra);
   stations.sort((a, b) => a - b);
   const gb = kit.solid;
   let prev: number[] | null = null;
   let prevS = s0;
   for (const s of stations) {
     if (prev && s - prevS < 1e-3) continue;
-    const p = jumpProfile(s, center, ramp, top, height);
-    const band = s - s0 < 0.6 || s3 - s < 0.6 || Math.abs(s - s1) < 0.35 || Math.abs(s - s2) < 0.35;
-    const c = band ? (Math.floor((s - s0) / 0.3) % 2 ? hazard : dark) : steel;
+    const p = profile(s);
+    const c = band(s) ? (Math.floor((s - s0) / 0.3) % 2 ? HAZARD : DARK) : STEEL;
     // Slope normal along the alley: (-dh * u, 1) normalized.
     const nl = Math.hypot(p.dh, 1);
     const nx = (-p.dh * ux) / nl;
@@ -157,20 +162,71 @@ function kickerDeck(kit: DistrictKit, ax: number, az: number, ux: number, uz: nu
           const x = ax + ux * ss + lx * side * hw;
           const z = az + uz * ss + lz * side * hw;
           const y = kit.h(x, z) + DECK_LIFT;
-          return { x, z, y, base: y - jumpProfile(ss, center, ramp, top, height).h - 0.2 };
+          return { x, z, y, base: y - profile(ss).h - 0.2 };
         };
         const a = at(prevS);
         const b = at(s);
-        const v0 = gb.vertex(a.x, a.base, a.z, lx * side, 0, lz * side, 0, 0, dark);
-        const v1 = gb.vertex(b.x, b.base, b.z, lx * side, 0, lz * side, 0, 0, dark);
-        const v2 = gb.vertex(b.x, b.y, b.z, lx * side, 0, lz * side, 0, 0, dark);
-        const v3 = gb.vertex(a.x, a.y, a.z, lx * side, 0, lz * side, 0, 0, dark);
+        const v0 = gb.vertex(a.x, a.base, a.z, lx * side, 0, lz * side, 0, 0, DARK);
+        const v1 = gb.vertex(b.x, b.base, b.z, lx * side, 0, lz * side, 0, 0, DARK);
+        const v2 = gb.vertex(b.x, b.y, b.z, lx * side, 0, lz * side, 0, 0, DARK);
+        const v3 = gb.vertex(a.x, a.y, a.z, lx * side, 0, lz * side, 0, 0, DARK);
         gb.quadFacing(v0, v1, v2, v3, lx * side, 0, lz * side);
       }
     }
     prev = row;
     prevS = s;
   }
+}
+
+/** The jump exit's ramp deck: from the toe to the lip, striped at the toe and the lip. */
+function rampDeck(kit: DistrictKit, ax: number, az: number, ux: number, uz: number, toe: number, length: number, rise: number, hw: number): void {
+  const lip = toe + length;
+  deck(
+    kit,
+    ax,
+    az,
+    ux,
+    uz,
+    toe,
+    lip,
+    hw,
+    (s) => jumpRampProfile(Math.min(s, lip) - toe, length, rise),
+    (s) => s - toe < 0.6 || lip - s < 0.9,
+  );
+}
+
+/** The block under a jump exit's lip reaches this far behind its face (m): over the terrain's drop one metre behind it, so the road mesh's step never shows. */
+const LIP_BLOCK = 1.4;
+
+/** The face under a jump exit's lip: a concrete block from the street up to the deck, a hazard band along its top edge. */
+function lipFace(kit: DistrictKit, wall: { ax: number; az: number; bx: number; bz: number; nx: number; nz: number }): void {
+  const mx = (wall.ax + wall.bx) / 2;
+  const mz = (wall.az + wall.bz) / 2;
+  const top = kit.h(mx - wall.nx * LIP_BLOCK, mz - wall.nz * LIP_BLOCK) + DECK_LIFT;
+  const base = Math.min(kit.h(wall.ax + wall.nx, wall.az + wall.nz), kit.h(wall.bx + wall.nx, wall.bz + wall.nz)) - 0.3;
+  // The block stands behind the face (under the ramp's end); the band is a thin box on its street side.
+  orientedBox(kit.solid, wall.ax, wall.az, wall.bx, wall.bz, -wall.nx * LIP_BLOCK, -wall.nz * LIP_BLOCK, base, top - 0.3, CONCRETE);
+  orientedBox(kit.solid, wall.ax, wall.az, wall.bx, wall.bz, -wall.nx * LIP_BLOCK, -wall.nz * LIP_BLOCK, top - 0.3, top, HAZARD);
+}
+
+function kickerDeck(kit: DistrictKit, ax: number, az: number, ux: number, uz: number, center: number, ramp: number, top: number, height: number, hw: number): void {
+  const s0 = center - top / 2 - ramp;
+  const s1 = center - top / 2;
+  const s2 = center + top / 2;
+  const s3 = center + top / 2 + ramp;
+  deck(
+    kit,
+    ax,
+    az,
+    ux,
+    uz,
+    s0,
+    s3,
+    hw,
+    (s) => jumpProfile(s, center, ramp, top, height),
+    (s) => s - s0 < 0.6 || s3 - s < 0.6 || Math.abs(s - s1) < 0.35 || Math.abs(s - s2) < 0.35,
+    [s1, s2],
+  );
 }
 
 export const alleyRenderer: DistrictRenderer = {
@@ -188,28 +244,42 @@ export const alleyRenderer: DistrictRenderer = {
         }
         continue;
       }
-      // Route shortcuts: strung with lights all the way through.
-      const sc = kit.world.route.shortcuts.find((x) => a.edges.includes(x.edge));
+      // Route shortcuts: strung with lights all the way through, leg by leg round the bends.
+      const sc = kit.world.route.shortcuts.find((x) => a.edges.includes(x.edges[0]));
       if (sc) {
-        const e = g.edges[sc.edge];
+        const e = g.edges[sc.edges[0]];
         const half = e.width / 2 + e.sidewalk - 0.1;
+        const pts = sc.points;
+        const legs = pts.length - 1;
+        const route = kit.world.route;
         // Keep the strings inside the alley, clear of the streets at both ends: a diagonal mouth
         // reaches further along the alley (the acute corner side).
-        const len = Math.hypot(sc.bx - sc.ax, sc.bz - sc.az);
-        const route = kit.world.route;
-        const mouthAt = (s: number) => {
+        const mouthAt = (s: number, o: { x: number; z: number }, d: { x: number; z: number }) => {
           const t = routeSample(route, s);
-          const ux = (sc.bx - sc.ax) / len;
-          const uz = (sc.bz - sc.az) / len;
+          const len = Math.hypot(d.x - o.x, d.z - o.z);
+          const ux = (d.x - o.x) / len;
+          const uz = (d.z - o.z) / len;
           const sinA = Math.max(0.35, Math.abs(t.tx * uz - t.tz * ux));
           const cosA = Math.abs(t.tx * ux + t.tz * uz);
           return Math.min(len * 0.4, (route.segWidth[t.seg] / 2 + CITY.sidewalk + half * cosA) / sinA + 1);
         };
-        const m0 = mouthAt(sc.sIn);
-        const m1 = mouthAt(sc.sOut);
-        stringLights(kit, sc.ax, sc.az, sc.bx, sc.bz, half, SHORTCUT_BULBS, m0, m1);
-        // Warm light the strings throw on the floor, so the site clutter reads against it.
-        for (let s = m0 + POOL.step / 2; s < len - m1; s += POOL.step) pools.push({ x: sc.ax + ((sc.bx - sc.ax) * s) / len, z: sc.az + ((sc.bz - sc.az) * s) / len, ux: (sc.bx - sc.ax) / len, uz: (sc.bz - sc.az) / len, w: half * 2 });
+        // A jump exit's strings stop at the ramp's toe (the lip's fence and face take over from there).
+        const J = CITY.districts.backAlley.route.jump;
+        const lastLen = Math.hypot(pts[legs].x - pts[legs - 1].x, pts[legs].z - pts[legs - 1].z);
+        const m0 = mouthAt(sc.sIn, pts[0], pts[1]);
+        const m1 = a.params.jumpExit ? Math.min(lastLen * 0.6, a.params.lipS + J.length + 1) : mouthAt(sc.sOut, pts[legs], pts[legs - 1]);
+        for (let i = 0; i < legs; i++) {
+          const o = pts[i];
+          const d = pts[i + 1];
+          const from = i === 0 ? m0 : 2.5;
+          const to = i === legs - 1 ? m1 : 2.5;
+          stringLights(kit, o.x, o.z, d.x, d.z, half, SHORTCUT_BULBS, from, to);
+          // Warm light the strings throw on the floor, so the site clutter reads against it.
+          const len = Math.hypot(d.x - o.x, d.z - o.z);
+          const ux = (d.x - o.x) / len;
+          const uz = (d.z - o.z) / len;
+          for (let s = from + POOL.step / 2; s < len - to; s += POOL.step) pools.push({ x: o.x + ux * s, z: o.z + uz * s, ux, uz, w: half * 2 });
+        }
       }
       // Back alleys: a few dim lamps (low light on purpose) and the kicker.
       const dim = col(0xffb35c, 1.1);
@@ -230,12 +300,17 @@ export const alleyRenderer: DistrictRenderer = {
         }
       }
       for (const h of kit.builds[a.id].hints) {
-        if (h.kind !== 'jump') continue;
         const [o, d] = h.points;
-        const [center, ramp, top, height, hw] = h.values;
-        kickerDeck(kit, o.x, o.z, d.x - o.x, d.z - o.z, center, ramp, top, height, hw);
+        if (h.kind === 'jump') {
+          const [center, ramp, top, height, hw] = h.values;
+          kickerDeck(kit, o.x, o.z, d.x - o.x, d.z - o.z, center, ramp, top, height, hw);
+        } else if (h.kind === 'jumpExit') {
+          const [toe, length, rise, hw] = h.values;
+          rampDeck(kit, o.x, o.z, d.x - o.x, d.z - o.z, toe, length, rise, hw);
+        }
       }
     }
+    for (const w of kit.walls.get('alleyLip') ?? []) lipFace(kit, w);
     if (pools.length) lightPools(kit, pools);
   },
 };

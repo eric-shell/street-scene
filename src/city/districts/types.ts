@@ -101,6 +101,7 @@ export const COBBLE_PRIORITY = 6;
  * bluff: retaining wall where a street ramps or dips through the escarpment (bluff).
  * railFence: the El's fence across its right of way where it meets a street at grade (bluff).
  * carPark: a multi-storey car park's parapets, facades, chute and ramp walls, and the low face under its lip (carPark).
+ * alleyLip: the face under a route shortcut's jump exit lip, toward the street (Wall.top: the launching car passes over it) (alley).
  */
 export type WallLook =
   | 'building'
@@ -126,9 +127,10 @@ export type WallLook =
   | 'roadworks'
   | 'bluff'
   | 'railFence'
-  | 'carPark';
+  | 'carPark'
+  | 'alleyLip';
 
-export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark'];
+export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark', 'alleyLip'];
 
 export interface Area {
   /** Index into CityDistricts.areas. */

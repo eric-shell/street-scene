@@ -24,10 +24,17 @@
  *
  * Light: the interior is lit by its own fluorescents, baked per vertex
  * (structureFx's BakedBuilder, emissive): one mesh for every car park in the
- * city; the rest merges into the kit's builders, nothing per frame. Low
- * quality drops the render only detail (parked cars off the drivable floor,
- * the upper levels' stall lines). The chase camera keeps under the ceilings
- * drawn here (garageSpan, render/ceilings.ts).
+ * city; the rest merges into the kit's builders, nothing per frame. From the
+ * street the garage reads as lit before a racer turns in: the strips of the
+ * levels seen from outside burn brighter than the one the chase camera rides
+ * under, a lamp post on every facade column rims the roof, the pay booth is
+ * a lit glass kiosk, and lamp posts behind the apron's flared walls and a
+ * pair of bulkhead lamps on the portal beam light the way in; their pools on
+ * the asphalt and the apron's wash are render/areaLights.ts (one mesh with
+ * the park lamps' pools), none of it a real light. Low quality drops the
+ * render only detail (parked cars off the drivable floor, the upper levels'
+ * stall lines). The chase camera keeps under the ceilings drawn here
+ * (garageSpan, render/ceilings.ts); nothing new hangs below them.
  */
 import * as THREE from 'three';
 import { CITY } from '../../city/config';
@@ -77,15 +84,21 @@ const LOOK = {
   /** Columns along the ramp's walls (m), the portal beam's depth below the ramp roof (m). */
   rampColumns: 6,
   header: 0.45,
-  /** Roof lamp posts: height (m), every this many facade columns. */
+  /** Lamp posts (roof parapet and the apron): height (m); a roof post every this many facade columns. */
   lampHeight: 4.2,
-  lampEvery: 2,
+  lampEvery: 1,
+  /** Pay booth: footprint along and across the ramp (m), its sill (dark base) and head heights (m). */
+  booth: [2.4, 2],
+  boothSill: 1,
+  boothHead: 2.3,
+  /** Bulkhead lamps on the portal beam over the ramp's mouth: width, height and depth (m). */
+  bulkhead: [0.5, 0.22, 0.2],
   /** The stair core rises this far over the roof (m). */
   coreHead: 3,
 } as const;
 
 /** Baked light level (0..1) of each surface: the fluorescents' light, added as emissive. */
-const BAKE = { floor: 0.32, ceiling: 0.5, column: 0.22, band: 0.12, outer: 0.05, podium: 0.24, ramp: 0.3, car: 0.3 } as const;
+const BAKE = { floor: 0.32, ceiling: 0.55, column: 0.24, band: 0.2, outer: 0.08, podium: 0.24, ramp: 0.3, car: 0.3 } as const;
 
 /** The fluorescents' color (the baked light's lamp). */
 const LAMP = col(0xd6e8ff, 0.85);
@@ -99,10 +112,15 @@ const SHUTTER = col(0x3b3d42);
 const STRIPE_WHITE = col(0xd9dade, 0.9);
 const STRIPE_YELLOW = col(0xf2b81c, 0.9);
 const HAZARD_DARK = col(0x15161a);
-/** Strip lights: bright enough to read as tubes, no brighter (the chase camera rides just under them). */
+/** Strip lights under the drivable floor's ceiling: bright enough to read as tubes, no brighter (the chase camera rides just under them). */
 const STRIP = col(0xe8f0ff, 1.05);
+/** The strips of the other levels, seen from the street through the open sides: these sell the garage as lit. */
+const STRIP_OUTER = col(0xe8f0ff, 1.9);
 const LIP_LAMP = col(0xffb35c, 2.4);
 const ROOF_LAMP = col(0xffe2b0, 2);
+/** The booth's glass: lit from inside, dim enough that bloom leaves it a kiosk and not a lightbox. */
+const BOOTH_GLASS = col(0xffd9a0, 0.5);
+const BULKHEAD = col(0xffe2b0, 2.6);
 const CORE_GLASS = col(0xbfe0ff, 0.55);
 const SHOP_GLASS = [col(0xffd9a0, 0.6), col(0xffe7c4, 0.45), col(0xbfe0ff, 0.42), col(0xffc27a, 0.55)];
 const SHORTCUT_BULBS = [col(0xff4fd8, 2.2), col(0xffb35c, 2.3), col(0xff2bd6, 2), col(0xffd08a, 2.1)];
@@ -241,6 +259,56 @@ export function garageSpan(g: CarParkGeo, heightAt: (x: number, z: number) => nu
   span.bottom = heightAt(c.x, c.z) + storey - slab;
   span.top = span.bottom + slab + 0.3;
   return true;
+}
+
+/** A lamp outside the garage: a post standing on the ground, the pay booth (its lamp and glass), a bulkhead on the portal beam. */
+export interface CarParkLamp extends Vec2 {
+  kind: 'post' | 'booth' | 'bulkhead';
+  /** Ramp frame position (m up the axis from the foot center, m to the left of it). */
+  a: number;
+  l: number;
+}
+
+/**
+ * The lamps that light the way in from the street, drawn by buildOne and
+ * pooled on the asphalt by render/areaLights.ts (which also offers them to
+ * the car-following light): a post behind each of the apron's flared walls a
+ * third of the way in from the building line (outside the drive, in the
+ * plot the buildings keep off), the pay booth beside the apron's narrow
+ * side, and a pair of bulkhead lamps on the portal beam over the ramp's
+ * mouth. Render only: nothing here collides, so nothing is ever switched off.
+ */
+export function carParkStreetLamps(g: CarParkGeo): CarParkLamp[] {
+  const t = CFG.wall;
+  const out: CarParkLamp[] = [];
+  const r = g.ramp;
+  const apronMid = rampPoint(g, (g.apron0 + g.apron1) / 2, 0);
+  const frame = (p: Vec2) => ({ a: (p.x - g.rcx) * g.rax + (p.z - g.rcz) * g.raz, l: -(p.x - g.rcx) * g.raz + (p.z - g.rcz) * g.rax });
+  for (const [a, b] of [
+    [r[0], r[1]],
+    [r[5], r[4]],
+  ] as const) {
+    const m = { x: a.x + (b.x - a.x) * 0.35, z: a.z + (b.z - a.z) * 0.35 };
+    const len = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+    let nx = -(b.z - a.z) / len;
+    let nz = (b.x - a.x) / len;
+    if ((apronMid.x - m.x) * nx + (apronMid.z - m.z) * nz > 0) {
+      nx = -nx;
+      nz = -nz;
+    }
+    const p = { x: m.x + nx * (t / 2 + 0.8), z: m.z + nz * (t / 2 + 0.8) };
+    out.push({ kind: 'post', ...p, ...frame(p) });
+  }
+  const narrow = g.fl < g.fr ? -1 : 1;
+  const boothA = g.apron1 - 3;
+  const boothL = narrow * (rampHalf(g, boothA, narrow) + t + 1.1);
+  out.push({ kind: 'booth', ...rampPoint(g, boothA, boothL), a: boothA, l: boothL });
+  const roofA = g.apron1 + GARAGE.rampRoofFrom;
+  for (const s of [-1, 1]) {
+    const l = s * (g.rhw - 0.9);
+    out.push({ kind: 'bulkhead', ...rampPoint(g, roofA, l), a: roofA, l });
+  }
+  return out;
 }
 
 /** A facade segment of the deck's outline: on the front (the street the lip faces), open on the drivable floor (lip, ramp mouth). */
@@ -453,7 +521,7 @@ function buildOne(kit: DistrictKit, bb: BakedBuilder, g: CarParkGeo, open: boole
       const a = W(u, v);
       const b = W(u + LOOK.stripLen, v);
       if (core && (pointInPolygon(a.x, a.z, core) || pointInPolygon(b.x, b.z, core))) continue;
-      for (let k = 0; k <= roofK; k++) strip(kit.glow, a, b, levelY(a, k) - slab - 0.04, 0.16, STRIP);
+      for (let k = 0; k <= roofK; k++) strip(kit.glow, a, b, levelY(a, k) - slab - 0.04, 0.16, k === 1 ? STRIP : STRIP_OUTER);
     }
   }
   // The shortcut bulbs strung under the drivable floor's ceiling along the racing line, ramp top to lip.
@@ -494,14 +562,18 @@ function buildOne(kit: DistrictKit, bb: BakedBuilder, g: CarParkGeo, open: boole
     cylinder(kit.glow, p.x, p.z, 0.09, y - 0.05, y + 0.06, 5, LIP_LAMP);
   }
 
-  // ---------- Roof: lamp posts along the parapet ----------
+  // ---------- Lamp posts: one inside every facade column on the roof, the apron's at the street ----------
+  const lampPost = (x: number, z: number, y: number) => {
+    cylinder(kit.solid, x, z, 0.08, y, y + LOOK.lampHeight, 5, CONCRETE_DARK, false);
+    cylinder(kit.glow, x, z, 0.2, y + LOOK.lampHeight - 0.25, y + LOOK.lampHeight, 6, ROOF_LAMP);
+  };
   posts.forEach((c, i) => {
     if (i % LOOK.lampEvery !== 0) return;
     const p = { x: c.p.x + c.nx * 0.9, z: c.p.z + c.nz * 0.9 };
-    const y = levelY(p, roofK);
-    cylinder(kit.solid, p.x, p.z, 0.08, y, y + LOOK.lampHeight, 5, CONCRETE_DARK, false);
-    cylinder(kit.glow, p.x, p.z, 0.2, y + LOOK.lampHeight - 0.25, y + LOOK.lampHeight, 6, ROOF_LAMP);
+    lampPost(p.x, p.z, levelY(p, roofK));
   });
+  const streetLamps = carParkStreetLamps(g);
+  for (const l of streetLamps) if (l.kind === 'post') lampPost(l.x, l.z, ground(l.x, l.z));
 
   // ---------- Covered ramp: surface from the building line, solid side walls, columns, a roof following the grade ----------
   const an = g.rax * g.fnx + g.raz * g.fnz;
@@ -574,21 +646,48 @@ function buildOne(kit: DistrictKit, bb: BakedBuilder, g: CarParkGeo, open: boole
       }
     }
     wallSeg(bb, rampPoint(g, roofA, -half), rampPoint(g, roofA, half), rampPoint(g, roofA + 2, 0), 0.4, ys[0] - slab - LOOK.header, ys[0], CONCRETE);
+    // Bulkhead lamps on the beam's street face, over each lane of the mouth.
+    const [bw, bh, bd] = LOOK.bulkhead;
+    for (const l of streetLamps) {
+      if (l.kind !== 'bulkhead') continue;
+      const a = { x: l.x + g.raz * (bw / 2), z: l.z - g.rax * (bw / 2) };
+      const b = { x: l.x - g.raz * (bw / 2), z: l.z + g.rax * (bw / 2) };
+      const y1 = ys[0] - slab - LOOK.header / 2 + bh / 2;
+      orientedBox(kit.glow, a.x, a.z, b.x, b.z, -g.rax * bd, -g.raz * bd, y1 - bh, y1, BULKHEAD);
+    }
     // Strip lights across the ceiling.
     for (let at = roofA + 2; at < g.rend - 1; at += 4.5) {
       const y = rampY(at) + storey - slab - 0.04;
       strip(kit.glow, rampPoint(g, at, -LOOK.stripLen / 2), rampPoint(g, at, LOOK.stripLen / 2), y, 0.16, STRIP);
     }
   }
-  // Pay booth beside the apron on its narrow side, its barrier arm raised (or a shutter down when closed).
+  // Pay booth beside the apron on its narrow side (behind the apron's narrow flared wall, inside the
+  // plot the buildings keep off): a lit glass kiosk, dark below the sill, glowing above it on every side
+  // under a flat roof with a lamp on it, so the way in is marked from down the street. Its barrier arm
+  // stands raised (or a shutter is down when closed).
   const narrow = g.fl < g.fr ? -1 : 1;
-  // Behind the apron's narrow flared wall, inside the plot the buildings keep off.
-  const boothA = g.apron1 - 3;
-  const boothL = narrow * (rampHalf(g, boothA, narrow) + t + 1.1);
-  const boothAt = rampPoint(g, boothA, boothL);
-  const by = ground(boothAt.x, boothAt.z);
-  orientedBox(kit.solid, boothAt.x - g.rax * 1.2 + g.raz * 1, boothAt.z - g.raz * 1.2 - g.rax * 1, boothAt.x + g.rax * 1.2 + g.raz * 1, boothAt.z + g.raz * 1.2 - g.rax * 1, -g.raz * 2, g.rax * 2, by, by + 2.5, CONCRETE_DARK);
-  strip(kit.glow, rampPoint(g, boothA - 0.9, boothL - narrow * 1.05), rampPoint(g, boothA + 0.9, boothL - narrow * 1.05), by + 1.6, 0.5, col(0xffd9a0, 1.6));
+  const booth = streetLamps.find((l) => l.kind === 'booth')!;
+  const by = ground(booth.x, booth.z);
+  {
+    const [bl, bwid] = LOOK.booth;
+    // A box in the ramp frame: from a0 to a1 along the axis, l0 to l1 across, y0 to y1.
+    const box = (gb: GeoBuilder, a0: number, a1: number, l0: number, l1: number, y0: number, y1: number, color: THREE.Color) => {
+      const p = rampPoint(g, a0, l0);
+      const q = rampPoint(g, a1, l0);
+      orientedBox(gb, p.x, p.z, q.x, q.z, -g.raz * (l1 - l0), g.rax * (l1 - l0), y0, y1, color);
+    };
+    const [a0, a1] = [booth.a - bl / 2, booth.a + bl / 2];
+    const [l0, l1] = [booth.l - bwid / 2, booth.l + bwid / 2];
+    box(kit.solid, a0, a1, l0, l1, by, by + LOOK.boothSill, CONCRETE_DARK);
+    // The glass band sits a hair inside the base's and the roof's edges, a dark transom bar across it.
+    box(kit.glow, a0 + 0.03, a1 - 0.03, l0 + 0.03, l1 - 0.03, by + LOOK.boothSill, by + LOOK.boothHead, BOOTH_GLASS);
+    box(kit.solid, a0, a1, l0, l1, by + LOOK.boothSill + 0.55, by + LOOK.boothSill + 0.62, CONCRETE_DARK);
+    box(kit.solid, a0 - 0.1, a1 + 0.1, l0 - 0.1, l1 + 0.1, by + LOOK.boothHead, by + LOOK.boothHead + 0.2, CONCRETE_DARK);
+    // Its lamp: a short post on the roof's corner nearest the apron and the street.
+    const lp = rampPoint(g, a0 + 0.25, booth.l - narrow * (bwid / 2 - 0.25));
+    cylinder(kit.solid, lp.x, lp.z, 0.05, by + LOOK.boothHead + 0.2, by + LOOK.boothHead + 1.1, 5, CONCRETE_DARK, false);
+    cylinder(kit.glow, lp.x, lp.z, 0.16, by + LOOK.boothHead + 0.9, by + LOOK.boothHead + 1.1, 6, ROOF_LAMP);
+  }
   const armBase = rampPoint(g, g.apron1 - 0.3, narrow * (g.rhw + 0.1));
   const ay = kit.h(armBase.x, armBase.z);
   for (let k = 0; k < 6; k++) cylinder(kit.solid, armBase.x, armBase.z, 0.06, ay + 1 + k * 0.6, ay + 1.6 + k * 0.6, 4, k % 2 ? col(0xd92b2b) : col(0xeeeeee), false);

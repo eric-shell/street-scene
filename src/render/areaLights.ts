@@ -1,15 +1,20 @@
 /**
- * Park and plaza lighting. Parks and plazas are open ground the streetlights
- * barely reach, so they get light of their own, faked like the street pools
- * in lightFx (the only real lights are the few that follow the car):
- *  - a wash over every park, plaza, corner pocket, roundabout island and the
- *    monument plaza: a soft, even glow tinted by what it lies on (green over
- *    grass, warm over paving), fading in from a park's edge so the lawn reads
- *    as lit rather than as a decal;
+ * Park, plaza, parking lot and car park lighting. Parks, plazas and lots are
+ * open ground the streetlights barely reach, so they get light of their own,
+ * faked like the street pools in lightFx (the only real lights are the few
+ * that follow the car):
+ *  - a wash over every park, plaza, corner pocket, parking lot, roundabout
+ *    island, the monument plaza and each multi-storey car park's apron: a
+ *    soft, even glow tinted by what it lies on (green over grass, warm over
+ *    paving and asphalt), fading in from a park's edge so the lawn reads as
+ *    lit rather than as a decal;
  *  - a pool under every lantern post (props of kind 'parkLamp', placed by
  *    the park, infill and monument modules), draped over the ground point by
  *    point because park lawns roll: a flat disc would sink into a hill and
- *    float over a dip.
+ *    float over a dip;
+ *  - the same pools under the car park's street lamps (render only posts and
+ *    bulkheads the car park renderer draws: nothing to break, so never
+ *    switched off), so a racer sees its apron lit before turning in.
  * Both are additive vertex colors in one merged mesh, so all of it is a
  * single draw call with no per-frame work. A broken lamp's pool goes dark
  * (setLampOn); the wash stays. Additive light fades to black in fog instead
@@ -20,9 +25,11 @@ import * as THREE from 'three';
 import { CITY } from '../city/config';
 import type { World } from '../city/world';
 import type { Area } from '../city/districts/types';
+import { carParkGeo } from '../city/districts/carPark';
 import { circlePolygon, distToPolygonEdge } from '../city/districts/geom';
 import type { Vec2 } from '../sim/math';
 import { GeoBuilder } from './geoBuilder';
+import { carParkStreetLamps } from './districts/carPark';
 import { parkLamps } from './props';
 
 const AREA_LIGHT = {
@@ -42,7 +49,10 @@ const AREA_LIGHT = {
    * Wash per area: color (linear, additive), how far in from the edge it fades
    * up (m) and the triangle size it drapes with (m). Corner pockets and small
    * plazas are lit evenly; the big monument plaza only faintly, so its lantern
-   * pools give it shape instead of one flat bright floor.
+   * pools give it shape instead of one flat bright floor. A parking lot's
+   * asphalt takes a dim warm wash: enough to tell it from the dark of a
+   * building's back, its lamp pools do the rest. A car park's apron is lit
+   * by the garage's spill and its own lamps, so it is brighter than a lot.
    */
   wash: {
     park: { color: new THREE.Color(0x3c6a34).multiplyScalar(0.11), fade: 9, edge: 5 },
@@ -50,6 +60,8 @@ const AREA_LIGHT = {
     monument: { color: new THREE.Color(0xffd8a8).multiplyScalar(0.035), fade: 4, edge: 8 },
     /** A roundabout's lawn island: lit like a park but evenly, its lanterns stand right at the rim. */
     island: { color: new THREE.Color(0x3c6a34).multiplyScalar(0.13), fade: 4, edge: 2.5 },
+    lot: { color: new THREE.Color(0xffc890).multiplyScalar(0.075), fade: 2, edge: 4 },
+    apron: { color: new THREE.Color(0xffd8a8).multiplyScalar(0.13), fade: 1.5, edge: 3 },
   },
   /** What light picks up from the ground it lands on: lawn takes it green, paving and asphalt warm. */
   grassTint: new THREE.Color(0.7, 1, 0.55),
@@ -69,7 +81,10 @@ function poolFalloff(t: number): number {
 
 export interface AreaLights {
   group: THREE.Group;
-  /** Where the real light of each park lamp goes (NightLighting), in parkLamps order. */
+  /**
+   * Where the real light of each lamp goes (NightLighting): the park lamps first, in parkLamps order
+   * (the props' light order), then the car parks' street lamps, which no prop ever switches off.
+   */
   lamps: THREE.Vector3[];
   /** Switch the k-th park lamp's pool (parkLamps order): broken lamps go dark. */
   setLampOn(k: number, on: boolean): void;
@@ -90,16 +105,9 @@ export function buildAreaLights(world: World): AreaLights {
   };
 
   // ---------- Washes ----------
-  const washed = (a: Area) => a.kind === 'park' || a.kind === 'monument' || a.kind === 'roundabout' || (a.kind === 'infill' && (a.variant === 'plaza' || a.variant === 'cornerPlaza'));
-  for (const a of world.areas) {
-    if (!washed(a)) continue;
-    // A roundabout's area is the whole junction; its wash covers the island only.
-    const poly = a.kind === 'roundabout' ? circlePolygon(a.params.x, a.params.z, a.params.island, 32) : a.polygon;
-    if (poly.length < 3) continue;
-    const lawn = a.kind === 'park' || (a.kind === 'roundabout' && !a.params.paved);
-    const W = a.kind === 'park' || a.kind === 'monument' ? A.wash[a.kind] : a.kind === 'roundabout' ? (lawn ? A.wash.island : A.wash.plaza) : A.wash.plaza;
-    // Islands are drawn at ground level, not at curb height like a plaza's paving.
-    const lift = lawn ? A.liftGrass : a.kind === 'roundabout' ? A.liftGrass : A.liftPaved;
+  /** The wash over one convex polygon: a quad is one bilinear grid, any other shape a fan of sector grids. */
+  const wash = (poly: Vec2[], W: { color: THREE.Color; fade: number; edge: number }, lift: number) => {
+    if (poly.length < 3) return;
     const vertex = (x: number, z: number) => {
       const k = Math.min(1, Math.max(0, distToPolygonEdge(x, z, poly) / W.fade));
       c.copy(W.color).multiplyScalar(k * k * (3 - 2 * k));
@@ -140,26 +148,41 @@ export function buildAreaLights(world: World): AreaLights {
       const mid = { x: cx, z: cz };
       for (let i = 0; i < poly.length; i++) grid(mid, poly[i], poly[(i + 1) % poly.length], mid);
     }
+  };
+  const washed = (a: Area) => a.kind === 'park' || a.kind === 'monument' || a.kind === 'roundabout' || (a.kind === 'infill' && (a.variant === 'plaza' || a.variant === 'cornerPlaza' || a.variant === 'lot'));
+  for (const a of world.areas) {
+    if (!washed(a)) continue;
+    // A roundabout's area is the whole junction; its wash covers the island only.
+    const poly = a.kind === 'roundabout' ? circlePolygon(a.params.x, a.params.z, a.params.island, 32) : a.polygon;
+    const lawn = a.kind === 'park' || (a.kind === 'roundabout' && !a.params.paved);
+    const lot = a.kind === 'infill' && a.variant === 'lot';
+    const W = a.kind === 'park' || a.kind === 'monument' ? A.wash[a.kind] : a.kind === 'roundabout' ? (lawn ? A.wash.island : A.wash.plaza) : lot ? A.wash.lot : A.wash.plaza;
+    // Islands are drawn at ground level, not at curb height like a plaza's paving; a lot is asphalt at road level.
+    const lift = lawn ? A.liftGrass : a.kind === 'roundabout' ? A.liftGrass : lot ? A.liftRoad : A.liftPaved;
+    wash(poly, W, lift);
+  }
+  // Each car park's apron: the flared mouth of its ramp between the building line and the covered part.
+  const garages = world.areas.filter((a) => a.kind === 'carPark').map((a) => carParkGeo(a));
+  for (const g of garages) {
+    const r = g.ramp;
+    wash([r[0], r[1], r[4], r[5]], A.wash.apron, A.liftRoad);
   }
 
   // ---------- Lantern pools ----------
-  const lanterns = parkLamps(world);
-  const poolStart = gb.vertexCount;
-  const perPool = 1 + A.rings * A.segs;
-  for (const p of lanterns) {
-    const at = (x: number, z: number, t: number) => {
+  const pool = (x: number, z: number) => {
+    const at = (px: number, pz: number, t: number) => {
       c.copy(A.lamp).multiplyScalar(poolFalloff(t));
-      if (world.surfaceAt(x, z) === 'grass') c.multiply(A.grassTint);
-      return gb.vertex(x, h(x, z) + liftAt(x, z), z, 0, 1, 0, 0, 0, c);
+      if (world.surfaceAt(px, pz) === 'grass') c.multiply(A.grassTint);
+      return gb.vertex(px, h(px, pz) + liftAt(px, pz), pz, 0, 1, 0, 0, 0, c);
     };
-    const center = at(p.x, p.z, 0);
+    const center = at(x, z, 0);
     const rings: number[][] = [];
     for (let r = 1; r <= A.rings; r++) {
       const t = r / A.rings;
       const ring: number[] = [];
       for (let k = 0; k < A.segs; k++) {
         const ang = (k / A.segs) * Math.PI * 2;
-        ring.push(at(p.x + Math.cos(ang) * A.poolR * t, p.z + Math.sin(ang) * A.poolR * t, t));
+        ring.push(at(x + Math.cos(ang) * A.poolR * t, z + Math.sin(ang) * A.poolR * t, t));
       }
       rings.push(ring);
     }
@@ -170,7 +193,15 @@ export function buildAreaLights(world: World): AreaLights {
         gb.quadFacing(rings[r - 1][k], rings[r][k], rings[r][k1], rings[r - 1][k1], 0, 1, 0);
       }
     }
-  }
+  };
+  // The park lamps' pools first, one block of perPool vertices each, so setLampOn can find them.
+  const lanterns = parkLamps(world);
+  const poolStart = gb.vertexCount;
+  const perPool = 1 + A.rings * A.segs;
+  for (const p of lanterns) pool(p.x, p.z);
+  // Then the car parks' street lamps, never switched off.
+  const fixed: Vec2[] = garages.flatMap((g) => carParkStreetLamps(g));
+  for (const p of fixed) pool(p.x, p.z);
 
   const geo = gb.build();
   const colors = geo.getAttribute('color') as THREE.BufferAttribute;
@@ -205,7 +236,7 @@ export function buildAreaLights(world: World): AreaLights {
 
   return {
     group,
-    lamps: lanterns.map((p) => new THREE.Vector3(p.x, p.y + A.lightY, p.z)),
+    lamps: [...lanterns.map((p) => new THREE.Vector3(p.x, p.y + A.lightY, p.z)), ...fixed.map((p) => new THREE.Vector3(p.x, h(p.x, p.z) + A.lightY, p.z))],
     setLampOn(k, on) {
       if (k < 0 || k >= lanterns.length) return;
       const start = (poolStart + k * perPool) * 3;
