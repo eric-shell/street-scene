@@ -1,0 +1,82 @@
+/* A pick in a list (garageUi.ts choiceList, the vinyl shapes and layers, the build slots): a chamfered row like
+   the menu's, its edge and a wash of the tab's hue on hover; the picked one lit from the left edge in the hue,
+   its label bolder. Focus is the yellow ring inside the cut. Car tiles (--car) put their spec tags on a row of
+   their own under the name; "More models soon" (--soon) looks like a car tile but is inert, its cuts dashed
+   like its edges. */
+@use '../ui/styles/abstracts/mixins';
+.garage-item {
+  @include mixins.chamfer;
+  overflow: hidden;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 9px 12px 9px 13px;
+  font: 600 15px var(--font);
+  color: var(--text);
+  text-align: left;
+  @include mixins.plate(var(--surface), var(--radius-sm));
+  cursor: pointer;
+  transition: background var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast), transform var(--t-fast);
+  &__sub {
+    font-size: 12px;
+    font-weight: 500;
+  }
+  &:hover,
+  &:focus-visible {
+    border-color: rgba(var(--hue-rgb), 0.6);
+    background: linear-gradient(90deg, rgba(var(--hue-rgb), 0.12), transparent 65%), var(--surface-hover);
+    outline: none;
+  }
+  &:focus-visible {
+    box-shadow: var(--edge), var(--ring);
+  }
+  &.is-selected {
+    border-color: rgba(var(--hue-rgb), 0.7);
+    background: linear-gradient(90deg, rgba(var(--hue-rgb), 0.24), rgba(var(--hue-rgb), 0.05) 75%), var(--surface);
+    box-shadow: var(--edge), inset 3px 0 0 var(--hue);
+    color: var(--text);
+    &:focus-visible {
+      box-shadow: var(--edge), inset 3px 0 0 var(--hue), var(--ring);
+    }
+    .garage-item__label {
+      font-weight: 700;
+    }
+  }
+  &:active {
+    transform: translateY(1px);
+  }
+  &[disabled] {
+    opacity: 0.4;
+    pointer-events: none;
+  }
+  &--car {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    .garage-item__label {
+      flex: 1;
+    }
+  }
+  &__tags {
+    flex-basis: 100%;
+    display: flex;
+    gap: 5px;
+  }
+  &--soon {
+    border-style: dashed;
+    color: var(--muted);
+    background: rgba(45, 42, 46, 0.25);
+    box-shadow: none;
+    cursor: default;
+    &::before,
+    &::after {
+      border-top-style: dashed;
+    }
+    &:hover {
+      border-color: var(--line);
+      background: rgba(45, 42, 46, 0.25);
+    }
+  }
+  @include mixins.sheen-on-hover;
+}

@@ -1,0 +1,15 @@
+/* Entrances more than one component shares (the per-component ones live with their component). */
+/* A page's rows rising in as a tab opens (settings, the garage's tabs). */
+@keyframes pane-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+/* A rail's parts rising in as the splash lands on the menu or a rail screen opens. */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}

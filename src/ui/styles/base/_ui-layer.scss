@@ -1,0 +1,51 @@
+/* The UI layer (#ui) and what main.ts puts beside it. Two document states hide the layer and the music player
+   (they fade, the scene keeps playing): the menu's cinematic mode (body.is-cinematic, with a hint that fades
+   in and out once) and H hiding the HUD (body.is-hud-hidden; the HUD card's tag brings it back). Then the fps
+   meter. */
+body.is-cinematic #ui > *,
+body.is-cinematic > .music-player,
+body.is-hud-hidden #ui > *,
+body.is-hud-hidden > .music-player {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s ease;
+}
+#ui > *,
+body > .music-player {
+  transition: opacity 0.25s ease;
+}
+.cinematic-hint {
+  position: fixed;
+  left: max(12px, env(safe-area-inset-left));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  z-index: 80;
+  padding: 8px 14px;
+  font: 600 13px var(--font);
+  letter-spacing: 0.04em;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+  animation: cinematic-hint 3.2s ease both;
+}
+@keyframes cinematic-hint {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  15%,
+  70% {
+    opacity: 1;
+  }
+}
+.fps-meter {
+  position: fixed;
+  left: 50%;
+  bottom: 6px;
+  transform: translateX(-50%);
+  font: 11px var(--mono);
+  color: var(--green);
+  z-index: 100;
+  pointer-events: none;
+}

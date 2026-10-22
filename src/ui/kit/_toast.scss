@@ -1,0 +1,32 @@
+/* A toast (ui/kit/dom.ts toast): a short panel at the bottom center that rises, holds and fades on its own. */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 60;
+  padding: 10px 16px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  pointer-events: none;
+  animation: toast 2.6s ease forwards;
+  /* In the garage the rev button holds the bottom of the view: toasts rise above it. */
+  body.is-garage-open & {
+    bottom: max(86px, calc(env(safe-area-inset-bottom) + 74px));
+  }
+}
+@keyframes toast {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 10px);
+  }
+  10%,
+  80% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  100% {
+    opacity: 0;
+  }
+}

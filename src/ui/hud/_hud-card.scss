@@ -1,0 +1,161 @@
+/* The HUD card (hudCard.ts): the drone's, free roam's and every race's, one look for all. A plate like the
+   menu's, its rule in the place's hue, the badge and title over the readouts in equal columns, and a foot of
+   the place's actions. A race's four readouts widen it a little so each keeps the room three have. Then the
+   tag that brings the HUD back once H hid it (body.is-hud-hidden, styles/base/_ui-layer.scss). */
+@use '../styles/abstracts/media';
+@use '../styles/abstracts/mixins';
+.hud-card {
+  @include mixins.chamfer(12px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(360px, calc(100vw - 24px));
+  padding: 12px 14px 12px;
+  @include mixins.plate((mixins.rule-line(var(--hue)), var(--plate)));
+  &__head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  &__badge {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 38px;
+    height: 38px;
+    color: var(--hue);
+    background: rgba(var(--hue-rgb), 0.13);
+    clip-path: var(--chamfer-sm);
+  }
+  &__title {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  &__name {
+    font: 900 20px var(--display);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  &__status {
+    font: 600 12px var(--font);
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+  /* The readouts in equal columns over the card's width, a hairline between them. */
+  &__stats {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+  }
+  &:has(&__stat:nth-child(4)) {
+    width: min(420px, calc(100vw - 24px));
+  }
+  &__stat {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    padding: 0 10px;
+    &:first-child {
+      padding-left: 0;
+    }
+    & + & {
+      border-left: 1px solid var(--line);
+    }
+  }
+  &__stat-label {
+    font: 700 10.5px var(--font);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    @include mixins.ellipsis;
+  }
+  &__stat-value {
+    font: 700 17px var(--mono);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  /* Exit in the card's top right corner, beside the title. */
+  &__exit {
+    margin-left: auto;
+    align-self: flex-start;
+    pointer-events: auto;
+  }
+  /* The place's actions on the left of the foot, hide on its right. The card is a plate already,
+     so the buttons are the surface buttons the menus use inside their cards. */
+  &__actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+    pointer-events: auto;
+  }
+  &__spacer {
+    flex: 1;
+  }
+  /* Phones and short screens: the same card, tighter, so the road keeps the screen. */
+  @include media.compact-hud {
+    &,
+    &:has(.hud-card__stat:nth-child(4)) {
+      gap: 8px;
+      width: min(340px, calc(100vw - 24px));
+      padding: 8px 10px;
+    }
+    &__stat {
+      padding: 0 8px;
+    }
+    &__stat-label {
+      font-size: 9.5px;
+      letter-spacing: 0.1em;
+    }
+    &__badge {
+      width: 30px;
+      height: 30px;
+    }
+    &__name {
+      font-size: 16px;
+    }
+    &__stats,
+    &__actions {
+      padding-top: 7px;
+    }
+    &__stat-value {
+      font-size: 14px;
+    }
+  }
+}
+.hud-hidden-tag {
+  position: fixed;
+  top: mixins.safe(top, 12px);
+  left: mixins.safe(left, 12px);
+  z-index: 80;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font: 600 12px var(--font);
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background: var(--plate);
+  border: 0;
+  clip-path: var(--chamfer-sm);
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity var(--t-fast), color var(--t-fast);
+  animation: hud-hidden-tag-in 0.35s var(--ease-out) backwards;
+  &:hover,
+  &:focus-visible {
+    opacity: 1;
+    color: var(--text);
+  }
+}
+@keyframes hud-hidden-tag-in {
+  from {
+    opacity: 0;
+  }
+}

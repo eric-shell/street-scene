@@ -1,0 +1,55 @@
+/* Tabs: a row of labels over a hairline, the open one underlined with the rule. */
+.tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  scrollbar-width: none;
+  &__tab {
+    position: relative;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px 11px;
+    font: 700 13px var(--font);
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    transition: color var(--t-fast);
+    > svg {
+      color: inherit;
+      transition: color var(--t-fast);
+    }
+    &:hover {
+      color: var(--text);
+    }
+    &:focus-visible {
+      outline: 2px solid var(--accent-2);
+      outline-offset: -2px;
+    }
+    &.is-selected {
+      color: var(--text);
+      > svg {
+        color: var(--accent);
+      }
+    }
+    &::after {
+      content: '';
+      position: absolute;
+      left: 8px;
+      right: 8px;
+      bottom: -1px;
+      height: 2px;
+      background: var(--rule);
+      transform: scaleX(0);
+      transform-origin: 0 50%;
+      transition: transform var(--t-med) var(--ease-out);
+    }
+    &.is-selected::after {
+      transform: none;
+    }
+  }
+}

@@ -1,0 +1,81 @@
+/* An open tab's group (garageUi.ts section): a plate with the accent hairline in the tab's hue and a faint wash
+   of it from the top left, its title in the menu cards' yellow caps over a hairline that leads in with the hue.
+   Inside it: rows (a name on the left, its control on the right, like the settings' rows), lists and grids of
+   picks (_garage-item.scss) and notes. */
+@use '../ui/styles/abstracts/mixins';
+.garage-section {
+  @include mixins.chamfer(12px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 14px 14px;
+  @include mixins.plate((mixins.rule-line(var(--hue), 48px), radial-gradient(100% 60% at 0% 0%, rgba(var(--hue-rgb), 0.08), transparent 60%), var(--plate)));
+  > .section-title {
+    margin-top: 2px;
+    &::after {
+      background: linear-gradient(90deg, rgba(var(--hue-rgb), 0.45), var(--line) 56px);
+    }
+  }
+  > .btn {
+    align-self: flex-start;
+  }
+}
+.garage-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 34px;
+  &__name {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    font-size: 14px;
+    color: var(--soft);
+    > svg {
+      color: var(--hue);
+    }
+  }
+  & + & {
+    padding-top: 8px;
+    border-top: 1px solid var(--line);
+  }
+  /* An upgrade row: the part's name beside its tiers, which keep to one line. On a narrow phone the longest
+     names leave no room beside them, so every row puts its tiers under the name, across the group's width. */
+  &--tier {
+    .segmented {
+      flex: none;
+      flex-wrap: nowrap;
+    }
+    @media (max-width: 420px) {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 6px;
+      .segmented {
+        display: flex;
+      }
+      .segmented__option {
+        flex: 1;
+        justify-content: center;
+      }
+    }
+  }
+}
+.garage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.garage-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+/* A line of help under a group's controls, or in place of a list with nothing in it (--empty). */
+.garage-note {
+  font-size: 13px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}

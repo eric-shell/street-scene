@@ -1,0 +1,133 @@
+/* The full map's card by the pointer (ui/map/tip.ts): what is under it (a place, you, the waypoint, the start or
+   finish), which grid cell, how far and which way from you, and badges (chips) for drift zones, shortcuts and
+   where you are. Its hairline takes the place's ink (--ink, set by tip.ts). It fades in by the pointer; on
+   touch a tap pins it, with a button that sets or clears the waypoint. */
+@use '../styles/abstracts/media';
+@use '../styles/abstracts/mixins';
+@use '../styles/abstracts/palette';
+.map-tip {
+  --ink: var(--soft);
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 4;
+  min-width: 168px;
+  max-width: 264px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 12px 10px;
+  background: mixins.rule-line(var(--ink), 40px), var(--plate);
+  border: 1px solid var(--line);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+  clip-path: var(--chamfer);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--t-fast), visibility 0s linear var(--t-fast);
+  will-change: transform;
+  @include media.reduced-motion {
+    transition: none;
+  }
+  &.is-visible {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity var(--t-fast);
+  }
+  /* A tapped card (touch) stays and can be pressed. */
+  &.is-pinned {
+    pointer-events: auto;
+  }
+  [hidden] {
+    display: none !important;
+  }
+
+  &__head {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+  }
+  &__name {
+    flex: 1;
+    min-width: 0;
+    @include mixins.ellipsis;
+    font: 900 14px var(--display);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text);
+  }
+  &__cell {
+    flex: none;
+    padding: 0 5px;
+    font: 700 11px var(--mono);
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    &:empty {
+      display: none;
+    }
+  }
+  &__kind {
+    font: 600 12px var(--font);
+    color: var(--muted);
+  }
+  &__distance {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font: 800 13px var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--accent-2);
+  }
+  &__arrow {
+    display: flex;
+    color: var(--accent-2);
+    svg {
+      fill: currentColor;
+    }
+  }
+  &__badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    &:not(:has(> :not([hidden]))) {
+      display: none;
+    }
+  }
+  /* The badges are small chips, each in its meaning's color: drift yellow, shortcut red, you orange. */
+  &__badge {
+    &--drift,
+    &--drift > svg {
+      color: var(--accent-2);
+    }
+    &--drift {
+      border-color: palette.alpha(yellow, 0.35);
+    }
+    &--shortcut,
+    &--shortcut > svg {
+      color: var(--red);
+    }
+    &--shortcut {
+      border-color: palette.alpha(red, 0.4);
+    }
+    &--here,
+    &--here > svg {
+      color: var(--accent);
+    }
+    &--here {
+      border-color: var(--accent-line);
+    }
+  }
+  &__action {
+    margin-top: 2px;
+    font: 600 11px var(--font);
+    letter-spacing: 0.03em;
+    color: var(--dim);
+  }
+  &__button {
+    margin-top: 4px;
+    justify-content: center;
+  }
+}

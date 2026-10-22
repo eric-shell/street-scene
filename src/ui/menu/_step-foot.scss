@@ -1,0 +1,36 @@
+/* A race step's foot (menu.ts race, setup): Replay and Next, or Start. Start stays on screen however far the
+   step scrolls: the foot sticks to the bottom of the column. The main menu's column does not scroll, so there
+   the foot needs no band to hide content under it and stands like any other row; on very short screens the
+   column scrolls again and the foot sticks with its band. */
+@use '../styles/abstracts/media';
+@use '../styles/abstracts/palette';
+.step-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+  padding: 12px 0 2px;
+  background: linear-gradient(180deg, transparent, var(--bg0) 12px);
+  &__replay {
+    flex: none;
+  }
+  &__start {
+    flex: 1;
+    justify-content: center;
+    .btn__label {
+      flex: none;
+    }
+  }
+  .menu-screen & {
+    position: static;
+    padding-top: 4px;
+    background: none;
+    @include media.very-short {
+      position: sticky;
+      padding-top: 10px;
+      background: linear-gradient(180deg, palette.alpha(bg0, 0), palette.alpha(bg0, 0.92) 10px);
+    }
+  }
+}

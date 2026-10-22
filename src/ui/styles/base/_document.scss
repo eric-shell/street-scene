@@ -1,0 +1,13 @@
+/* Document defaults: the UI font with tabular figures on the body, and every Lucide icon (ui/kit/icons.ts). */
+body {
+  font-family: var(--font);
+  font-optical-sizing: auto;
+  font-variant-numeric: tabular-nums;
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+.icon {
+  flex: none;
+  vertical-align: middle;
+}

@@ -1,0 +1,71 @@
+/* The main menu (menu.ts) on its rail (.menu-screen). Home is the title lockup, the event card (the seed's
+   event, the city as a tilted live map with its notable districts, and the way into the race) and the list
+   of places, each in its own hue. The race step puts the race types in a grid over the course card (the
+   picked type's course drawn on in its color, menuMaps.ts), then rivals and aids on a card above Start;
+   the settings step is the settings panel on a card (ui/screens/). Every step keeps the title lockup on
+   top, where the boot splash lands; the steps slide in and out under it (.rail__step, ui/rail/). Like the
+   garage, the menu keeps the rail's box for framing but draws only a scrim in it: its cards are plates of
+   their own, and the city shows between them. */
+@use '../styles/abstracts/media';
+@use '../styles/abstracts/palette';
+.menu-screen {
+  /* A scrim darkest at the left edge, enough for the title and tagline over a bright street. */
+  .rail__bg {
+    background: linear-gradient(90deg, palette.alpha(bg0, 0.62), palette.alpha(bg0, 0.38) 70%, palette.alpha(bg0, 0));
+  }
+  .rail__edge {
+    display: none;
+  }
+  /* Buttons outside the cards (back, replay) are plates like the cards. */
+  .btn:not(.btn--primary):not(.btn--ghost) {
+    background: var(--plate);
+    &:hover,
+    &:focus-visible {
+      background: var(--plate-hover);
+    }
+  }
+  /* A disabled plate stays opaque (a faded one would show the city, or the content under the sticky foot); its contents fade. */
+  .btn[disabled] {
+    opacity: 1;
+    > * {
+      opacity: 0.4;
+    }
+  }
+  /* What stands straight on the city keeps a dark halo under it. */
+  .title-lockup__tagline,
+  .screen-head__title {
+    text-shadow: var(--halo);
+  }
+  /* One shadow for everything a step stands on the city: chamfered plates clip their own box shadows, so the
+     step casts it as a drop shadow that follows every cut corner, the same under cards, rows, tiles and buttons. */
+  .rail__step {
+    filter: var(--plate-drop);
+  }
+  /* The race type picked on the race and setup steps (menu.ts sets data-mode): the course card, the ticket and
+     the setup card take its color. */
+  @each $mode, $color in palette.$modes {
+    &[data-mode='#{$mode}'] {
+      @include palette.tint(mode, $color);
+    }
+  }
+}
+/* The menu's column does not scroll: every step is short enough to fit (the race takes three steps for
+   that), so nothing is clipped at the column's edge, neither a halo nor a card sliding in between steps.
+   The settings pane scrolls inside its card instead; only very short screens fall back to a scrolling column. */
+.menu.rail__col {
+  max-height: none;
+  overflow: visible;
+  @include media.very-short {
+    max-height: calc(100% - var(--col-top) - 58px);
+    overflow-y: auto;
+  }
+}
+/* Explore: the menu slides away to the left while the camera cranes up off the street for the drone (main.ts). */
+.rail.is-exiting {
+  pointer-events: none;
+  > :is(.menu, .help, .rail__bg) {
+    opacity: 0;
+    transform: translateX(-40px);
+    transition: opacity 0.35s ease, transform 0.5s var(--ease-in-out);
+  }
+}

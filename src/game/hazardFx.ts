@@ -2,14 +2,14 @@
  * Timed hazards on screen for one race session: poses the drawbridge view
  * (render/street/drawbridge.ts) at the interpolated sim tick every frame, so a
  * replay shows the same bridge at the same moment, lets its bell ring only
- * while the session runs, and drives the HUD warning (ui/hazardBanner.ts)
+ * while the session runs, and drives the HUD warning (ui/hud/hazardBanner.ts)
  * from what the player's car is heading at: the gates ahead warning or coming
  * down, holding traffic back (with the seconds left), or the span under the
  * car about to lift. Reads race state only.
  */
 import type { RaceState } from '../sim/race';
 import type { DrawbridgeView } from '../render/street/drawbridge';
-import { HazardBanner } from '../ui/hazardBanner';
+import { HazardBanner } from '../ui/hud/hazardBanner';
 import { gateAhead, gatePhase } from '../sim/gates';
 import type { GatePhase } from '../sim/gates';
 import { leafAngle, onSpan } from '../city/drawbridge';

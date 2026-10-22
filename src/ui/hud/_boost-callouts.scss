@@ -1,0 +1,93 @@
+/* The callouts over the dial cluster (boostCallouts.ts): every way of earning nitrous names itself as it
+   pays. They stack up from the cluster, the newest nearest the gauge; a callout's points take the color of
+   the stage they went into (data-stage, the gauge's $stages), and a stage filling or a chain refill
+   (data-kind) is the stage's own news, its name in that color too. */
+@use 'sass:list';
+@use '../styles/abstracts/media';
+@use '../styles/abstracts/palette';
+@use 'nitro-gauge';
+
+.boost-callouts {
+  position: absolute;
+  right: 8px;
+  bottom: 100%;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  /* Touch moves the cluster to the top right corner: the callouts hang under it instead. */
+  @include media.touch {
+    bottom: auto;
+    top: 100%;
+    margin: 10px 0 0;
+  }
+}
+.boost-callout {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  text-shadow: var(--hud-halo);
+  animation: boost-callout-in 0.24s ease-out;
+  transition: opacity 0.35s, transform 0.35s;
+  @for $i from 1 through list.length(nitro-gauge.$stages) {
+    &[data-stage='#{$i}'] {
+      @include palette.tint(stage, list.nth(nitro-gauge.$stages, $i));
+    }
+  }
+  &__label {
+    font: 900 15px var(--display);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  &__points {
+    min-width: 3ch;
+    text-align: right;
+    font: 700 19px var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--stage);
+  }
+  &[data-kind='stage'] &__label,
+  &[data-kind='chain'] &__label {
+    color: var(--stage);
+  }
+  &[data-kind='stage'] &__label {
+    font-size: 19px;
+  }
+  &[data-kind='stage'] &__points {
+    font: 900 13px var(--display);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text);
+  }
+  &.is-leaving {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  @include media.compact-hud {
+    &__label {
+      font-size: 13px;
+    }
+    &__points,
+    &[data-kind='stage'] &__label {
+      font-size: 16px;
+    }
+  }
+  @include media.reduced-motion {
+    animation: none;
+    transition: opacity 0.35s;
+    &.is-leaving {
+      transform: none;
+    }
+  }
+}
+@keyframes boost-callout-in {
+  from {
+    opacity: 0;
+    transform: translateX(14px) scale(1.25);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

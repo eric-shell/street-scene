@@ -345,7 +345,7 @@ export interface DistrictModule {
   build(ctx: BuildContext, area: Area): AreaBuild;
 }
 
-/** Minimap look per kind (ui/hud.ts). Colors are CSS strings, widths in meters. */
+/** Minimap look per kind (ui/hud/hud.ts). Colors are CSS strings, widths in meters. */
 export interface AreaMapStyle {
   fill?: string;
   stroke?: string;
@@ -354,7 +354,7 @@ export interface AreaMapStyle {
 }
 
 export const AREA_MAP_STYLE: Record<AreaKind, AreaMapStyle> = {
-  // Monokai Pro tints (ui/palette.ts) that stay clear of the orange route and yellow roadblocks.
+  // Monokai Pro tints (ui/kit/palette.ts) that stay clear of the orange route and yellow roadblocks.
   downtown: {},
   alley: { stroke: 'rgba(171,157,242,0.35)', width: 5 },
   backAlley: { stroke: 'rgba(147,146,147,0.12)', width: 4 },
@@ -368,7 +368,7 @@ export const AREA_MAP_STYLE: Record<AreaKind, AreaMapStyle> = {
   tunnel: { fill: 'rgba(147,146,147,0.16)', stroke: 'rgba(25,24,26,0.8)', width: 6, dash: [7, 4] },
   overpass: { fill: 'rgba(193,192,192,0.22)', stroke: 'rgba(193,192,192,0.5)', width: 5, dash: [3, 3] },
   market: { fill: 'rgba(255,97,136,0.3)' },
-  // A lane closure: the closures' yellow (ui/minimap.ts), not the market's pink.
+  // A lane closure: the closures' yellow (ui/hud/minimap.ts), not the market's pink.
   roadworks: { fill: 'rgba(255,216,102,0.55)' },
   // The escarpment: its face line, a solid edge (the minimap strokes area.path).
   bluff: { stroke: 'rgba(252,152,103,0.5)', width: 5 },

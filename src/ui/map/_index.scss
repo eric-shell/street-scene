@@ -1,0 +1,8 @@
+/* The full city map (fullMap.ts and its parts), in cascade order. _map-media.scss holds the map's own
+   breakpoints and emits no CSS. */
+@use 'full-map';
+@use 'map-tip';
+@use 'map-side';
+@use 'map-legend';
+@use 'map-places';
+@use 'map-waypoint';

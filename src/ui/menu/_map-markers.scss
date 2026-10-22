@@ -1,0 +1,74 @@
+/* What lies on a menu map's table (menuMaps.ts): the car (CarMarker), a heading arrow over two radar pings a
+   beat apart, moved with one transform per frame and hidden off the table; and the waypoint free roam will
+   steer to (PinMarker), pinned in the pin's yellow while there is one. */
+@use '../styles/abstracts/media';
+.map-car {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  will-change: transform;
+  transition: opacity 0.3s;
+  &.is-hidden {
+    opacity: 0;
+  }
+  &__arrow {
+    position: absolute;
+    left: -6px;
+    top: -8px;
+    width: 12px;
+    height: 15px;
+    background: var(--text);
+    clip-path: polygon(50% 0, 100% 100%, 50% 72%, 0 100%);
+  }
+  &__ping {
+    position: absolute;
+    left: -13px;
+    top: -13px;
+    width: 26px;
+    height: 26px;
+    border: 2px solid var(--accent);
+    border-radius: 50%;
+    opacity: 0;
+    animation: map-car-ping 2.4s var(--ease-out) infinite;
+    &--late {
+      animation-delay: 1.2s;
+    }
+    @include media.reduced-motion {
+      animation: none !important;
+    }
+  }
+}
+@keyframes map-car-ping {
+  from {
+    opacity: 1;
+    transform: scale(0.15);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+.map-pin {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  display: none;
+  &.is-visible {
+    display: block;
+  }
+  &__marker {
+    position: absolute;
+    left: -6px;
+    top: -16px;
+    width: 12px;
+    height: 12px;
+    background: var(--accent-2);
+    border: 2px solid var(--bg0);
+    border-radius: 50% 50% 50% 0;
+    transform: rotate(-45deg);
+  }
+}

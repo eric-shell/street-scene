@@ -1,0 +1,93 @@
+/* On-screen controls for touch devices (touch.ts): the left half of the screen is the steering pad (a knob
+   shows where the drag started), round pedals and buttons stand on the right, small ones along the top. */
+@use '../ui/styles/abstracts/mixins';
+@use '../ui/styles/abstracts/palette';
+.touch-controls {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20;
+  &.is-hidden {
+    display: none;
+  }
+  &__steer {
+    position: absolute;
+    left: 0;
+    top: 30%;
+    bottom: 0;
+    width: 50%;
+    pointer-events: auto;
+    touch-action: none;
+  }
+  &__knob {
+    position: absolute;
+    width: 84px;
+    height: 84px;
+    margin: -42px 0 0 -42px;
+    border-radius: 50%;
+    border: 2px solid palette.alpha(orange, 0.6);
+    background: palette.alpha(bg0, 0.3);
+    display: none;
+  }
+  &__button {
+    position: absolute;
+    pointer-events: auto;
+    touch-action: none;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font: 700 14px var(--display, system-ui), sans-serif;
+    letter-spacing: 0.08em;
+    color: palette.get(text);
+    background: palette.alpha(bg0, 0.55);
+    border: 2px solid rgba(147, 146, 147, 0.55);
+    user-select: none;
+    -webkit-user-select: none;
+    &.is-pressed {
+      background: palette.alpha(orange, 0.5);
+    }
+    &--gas {
+      right: 18px;
+      bottom: 26px;
+      width: 96px;
+      height: 96px;
+      border-color: palette.alpha(green, 0.75);
+    }
+    &--brake {
+      right: 128px;
+      bottom: 18px;
+      width: 74px;
+      height: 74px;
+      border-color: palette.alpha(red, 0.75);
+    }
+    &--handbrake {
+      right: 128px;
+      bottom: 104px;
+      width: 64px;
+      height: 64px;
+    }
+    &--nitrous {
+      right: 30px;
+      bottom: 136px;
+      width: 70px;
+      height: 70px;
+      border-color: palette.alpha(cyan, 0.9);
+    }
+    &--small {
+      width: 44px;
+      height: 44px;
+      font-size: 11px;
+      top: mixins.safe(top, 10px);
+    }
+    &--pause {
+      right: 12px;
+    }
+    &--camera {
+      right: 64px;
+    }
+    &--reset {
+      right: 116px;
+    }
+  }
+}

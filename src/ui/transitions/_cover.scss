@@ -1,0 +1,16 @@
+/* Screen transitions (transitions.ts): the wipe (_wipe.scss) and the garage's roller door (_door.scss) cover
+   the whole screen, the music player included, and swallow the pointer while they are up; reduced motion
+   swaps both for a plain fade through the dark (.transition-fade). */
+.wipe,
+.door,
+.transition-fade {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  overflow: hidden;
+  pointer-events: auto;
+}
+.transition-fade {
+  background: var(--bg0);
+  opacity: 0;
+}

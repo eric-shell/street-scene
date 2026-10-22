@@ -1,0 +1,110 @@
+/* The wipe (transitions.ts wipe): the rule's colors as slanted bands leading a dark title card across the
+   screen and trailing it off the far side. The card names what is coming (the event over the title, the
+   course drawing itself on, a line of facts under it); its text stands upright inside the slanted panel and
+   cascades in as the card arrives (.is-entering), then leans away as it leaves (.is-leaving). */
+@use '../styles/abstracts/mixins';
+@use '../styles/abstracts/palette';
+.wipe {
+  &__rig {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    display: flex;
+    will-change: transform;
+  }
+  &__band {
+    flex: none;
+    width: 26px;
+    height: 100%;
+    &--yellow {
+      background: var(--accent-2);
+    }
+    &--orange {
+      background: var(--accent);
+    }
+    &--red {
+      background: var(--red);
+    }
+  }
+  &__panel {
+    position: relative;
+    flex: none;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+      radial-gradient(50% 45% at 50% 50%, palette.alpha(orange, 0.12), transparent 70%),
+      repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 2px, transparent 2px 46px),
+      var(--bg0);
+  }
+  &__card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    transform: skewX(12deg);
+    text-align: center;
+    &.is-entering > * {
+      animation: wipe-text-in 0.5s var(--ease-out) 0.18s backwards;
+    }
+    &.is-entering > .wipe__title {
+      animation-delay: 0.24s;
+    }
+    &.is-entering > .wipe__rule {
+      animation: wipe-rule 0.55s var(--ease-out) 0.32s forwards;
+    }
+    &.is-entering > .wipe__sub {
+      animation-delay: 0.36s;
+    }
+    &.is-leaving {
+      animation: wipe-text-out 0.3s ease-in forwards;
+    }
+  }
+  &__kicker {
+    font: 800 14px var(--font);
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--accent-2);
+  }
+  &__title {
+    font: italic 900 clamp(44px, 9vw, 108px) / 0.95 var(--logo);
+    letter-spacing: -0.01em;
+    text-transform: uppercase;
+    padding: 0 0.12em;
+    @include mixins.gradient-text(var(--logo-ink));
+  }
+  &__rule {
+    width: min(420px, 60vw);
+    height: 3px;
+    background: var(--rule);
+    transform: scaleX(0);
+  }
+  &__art {
+    margin: 4px 0 2px;
+  }
+  &__sub {
+    font: 600 13px var(--font);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--soft);
+  }
+}
+@keyframes wipe-text-in {
+  from {
+    opacity: 0;
+    transform: translateX(-40px);
+  }
+}
+@keyframes wipe-text-out {
+  to {
+    opacity: 0;
+    transform: skewX(12deg) translateX(60px);
+  }
+}
+@keyframes wipe-rule {
+  to {
+    transform: none;
+  }
+}

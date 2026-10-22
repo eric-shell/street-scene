@@ -1,0 +1,78 @@
+/* Colors (garageUi.ts paint, wheels, neon and vinyl): rows of preset swatches beside a color well, and the dot
+   that shows a vinyl layer's color in its row. */
+@use '../ui/styles/abstracts/mixins';
+@use '../ui/styles/abstracts/palette';
+.garage-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  flex: 1;
+}
+/* A swatch: a chamfered chip of the color with a faint inner edge (so black and white read on the plate),
+   lifting and ringed on hover; the color in use keeps a ring and a dark core. */
+.garage-swatch {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  cursor: pointer;
+  background: var(--swatch);
+  border: 0;
+  border-radius: 0;
+  clip-path: var(--chamfer-sm);
+  box-shadow: inset 0 0 0 1px palette.alpha(text, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transition: transform var(--t-fast), box-shadow var(--t-fast);
+  &:hover,
+  &:focus-visible {
+    transform: translateY(-2px);
+    box-shadow: inset 0 0 0 2px var(--text);
+    outline: none;
+  }
+  &:focus-visible {
+    box-shadow: inset 0 0 0 2px var(--accent-2);
+  }
+  &.is-selected {
+    box-shadow: inset 0 0 0 2px var(--text), inset 0 0 0 4px palette.alpha(bg0, 0.85);
+  }
+  @include mixins.sheen-on-hover;
+}
+/* The color picker beside them: a chamfered well holding a chamfered chip of the color. */
+.garage input[type='color'] {
+  width: 46px;
+  height: 34px;
+  padding: 4px;
+  cursor: pointer;
+  background: palette.alpha(bg0, 0.85);
+  border: 1px solid var(--line-control);
+  border-radius: 0;
+  clip-path: var(--chamfer-sm);
+  transition: border-color var(--t-fast);
+  &:hover,
+  &:focus-visible {
+    border-color: rgba(var(--hue-rgb), 0.8);
+    outline: none;
+  }
+  &:focus-visible {
+    border-color: var(--accent-2);
+    box-shadow: var(--ring);
+  }
+  &::-webkit-color-swatch-wrapper {
+    padding: 0;
+  }
+  &::-webkit-color-swatch {
+    border: 0;
+    border-radius: 0;
+    clip-path: mixins.cut-corners(4px);
+  }
+  &::-moz-color-swatch {
+    border: 0;
+    border-radius: 0;
+  }
+}
+.garage-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid palette.alpha(text, 0.35);
+  clip-path: mixins.cut-corners(4px);
+}

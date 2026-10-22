@@ -1,0 +1,44 @@
+/* The sheen (ui/kit/dom.ts sheen): a skewed band of light that sweeps once across a control as it is hovered
+   or focused, like a streetlight passing over paint. The control's chamfer clips it. A component starts it
+   with mixins.sheen-on-hover; the button's variants (bright on primary actions) are in _button.scss.
+   Transform only, so it runs on the compositor. */
+@use '../styles/abstracts/media';
+.sheen {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  &::before {
+    content: '';
+    position: absolute;
+    top: -20%;
+    bottom: -20%;
+    left: 0;
+    width: 36%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.04) 30%, var(--sheen-soft) 50%, rgba(255, 255, 255, 0.04) 70%, transparent);
+    transform: translateX(-130%) skewX(-20deg);
+  }
+}
+@keyframes sheen {
+  from {
+    transform: translateX(-130%) skewX(-20deg);
+  }
+  to {
+    transform: translateX(260%) skewX(-20deg);
+  }
+}
+/* One slow pass, then a long wait off the far edge. */
+@keyframes sheen-idle {
+  0% {
+    transform: translateX(-130%) skewX(-20deg);
+  }
+  18%,
+  100% {
+    transform: translateX(260%) skewX(-20deg);
+  }
+}
+@include media.reduced-motion {
+  .sheen::before {
+    animation: none !important;
+  }
+}

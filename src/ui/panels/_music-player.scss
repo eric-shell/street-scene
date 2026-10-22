@@ -1,0 +1,241 @@
+/* The music player (panels/musicWidget.ts), over the whole UI layer: the player card (menu, garage, drone),
+   minimized to a pill, or in a race a now-playing chip; a banner names each new track with its full credit.
+   The card is a card like the menu's (the accent hairline across its top); the credit's links are in the
+   accent. The banner is placed per screen so it never covers the HUD or a menu (data-context). */
+@use '../styles/abstracts/media';
+@use '../styles/abstracts/mixins';
+.music-player {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 40;
+  a {
+    color: var(--accent);
+    text-decoration: none;
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  &__card {
+    @include mixins.chamfer(12px);
+    position: absolute;
+    right: mixins.safe(right, 12px);
+    bottom: mixins.safe(bottom, 12px);
+    width: min(340px, calc(100vw - 24px));
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: auto;
+    background: var(--card-top), var(--panel);
+  }
+  &__head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  &__disc {
+    color: var(--accent);
+    display: flex;
+  }
+  &__disc.is-spinning svg,
+  &__pill svg.is-spinning {
+    animation: music-player-spin 2.4s linear infinite;
+  }
+  &__meta {
+    flex: 1;
+    min-width: 0;
+  }
+  &__title {
+    font: 900 18px var(--display);
+    letter-spacing: 0.03em;
+    @include mixins.ellipsis;
+  }
+  &__artist {
+    font-size: 13px;
+    color: var(--muted);
+    @include mixins.ellipsis;
+  }
+  &__progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  &__bar {
+    flex: 1;
+    height: 6px;
+    border-radius: var(--radius-sm);
+    background: var(--bg0);
+    cursor: pointer;
+    overflow: hidden;
+  }
+  &__fill {
+    height: 100%;
+    width: 0;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  }
+  &__time {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  &__controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  &__play {
+    color: var(--accent);
+  }
+  &__volume {
+    flex: 1;
+    min-width: 50px;
+  }
+  &__credits,
+  &__credit {
+    font-size: 11.5px;
+    line-height: 1.4;
+    color: var(--muted);
+  }
+
+  &__pill {
+    @include mixins.chamfer;
+    position: absolute;
+    right: mixins.safe(right, 12px);
+    bottom: mixins.safe(bottom, 12px);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 220px;
+    padding: 8px 12px;
+    font: 600 13px var(--font);
+    color: var(--text);
+    cursor: pointer;
+    pointer-events: auto;
+    svg {
+      color: var(--accent);
+    }
+  }
+  &__pill-label {
+    @include mixins.ellipsis;
+  }
+
+  /* A race's now-playing chip (controls via M, [ and ]); touch screens drop it to keep the corner clear. */
+  &__chip {
+    @include mixins.chamfer(6px);
+    position: absolute;
+    top: mixins.safe(top, 12px);
+    right: mixins.safe(right, 12px);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    max-width: min(320px, 40vw);
+    padding: 6px 12px;
+    font-size: 13px;
+    color: var(--muted);
+    @include mixins.plate($radius: null);
+    svg {
+      color: var(--accent);
+      flex: none;
+    }
+  }
+  &__chip-label {
+    @include mixins.ellipsis;
+  }
+  &[data-mode='compact'] .music-player__chip {
+    @include media.touch {
+      display: none !important;
+    }
+  }
+
+  &__banner {
+    @include mixins.chamfer(12px);
+    position: absolute;
+    left: 50%;
+    top: 56px;
+    bottom: auto;
+    transform: translate(-50%, -16px);
+    opacity: 0;
+    padding: 10px 16px;
+    text-align: center;
+    width: max-content;
+    max-width: min(520px, calc(100vw - 32px));
+    background: var(--card-top), var(--panel);
+    transition: opacity 0.35s, transform 0.35s;
+    &.is-visible {
+      opacity: 1;
+      transform: translate(-50%, 0);
+      pointer-events: auto;
+    }
+  }
+  &__banner-label {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent-2);
+  }
+  &__banner-title {
+    font: 900 24px var(--display);
+    letter-spacing: 0.03em;
+    margin-top: 2px;
+  }
+  &__banner-artist {
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  /* The credits screen's music credits (musicCredits). */
+  &__credits-tracks {
+    columns: 2;
+    font-size: 13px;
+    margin: 6px 0 0;
+  }
+
+  /* Banner placement per screen: under the HUD's top in a race and the drone, and beside a rail in the top
+     right corner of the scene (the garage's switch and camera sit in its car card, top left). */
+  &[data-context='race'],
+  &[data-context='drone'] {
+    .music-player__banner {
+      top: auto;
+      bottom: mixins.safe(bottom, 48px);
+    }
+  }
+  &[data-context='garage'],
+  &[data-context='menu'] {
+    .music-player__banner {
+      left: auto;
+      right: mixins.safe(right, 12px);
+      max-width: min(460px, calc(100vw - 560px));
+      transform: translate(0, -16px);
+    }
+  }
+  &[data-context='garage'] .music-player__banner {
+    top: mixins.safe(top, 12px);
+  }
+  /* After the garage's top: narrow screens center it under the top edge on both. */
+  &[data-context='garage'],
+  &[data-context='menu'] {
+    .music-player__banner.is-visible {
+      transform: translate(0, 0);
+    }
+    .music-player__banner {
+      @include media.narrow {
+        left: 50%;
+        right: auto;
+        top: 12px;
+        transform: translate(-50%, 0);
+      }
+    }
+  }
+}
+@keyframes music-player-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

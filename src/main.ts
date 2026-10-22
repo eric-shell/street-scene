@@ -29,20 +29,22 @@ import { StreetStage } from './game/streetStage';
 import { ShowreelCamera } from './game/streetCameras';
 import { MusicPlayer } from './audio/musicPlayer';
 import { audioHub } from './audio/engineAudio';
-import { MusicWidget } from './ui/musicWidget';
-import { TuningPanel, applySavedTuning, loadSavedTuning } from './ui/tuningPanel';
-import { CameraPanel, applySavedCameraParams } from './ui/cameraPanel';
-import { loadingScreen, pauseMenu, resultsScreen, type PauseScreen, type PauseTicket } from './ui/screens';
-import { placeName } from './ui/places';
-import { railInset } from './ui/rail';
-import { mainMenu, type MainMenu, type MenuStep } from './ui/menu';
-import { showSplash } from './ui/splash';
-import { toast } from './ui/dom';
-import { Check, Info, Shuffle } from './ui/icons';
-import { courseFor, openFullMap, type FullMap, type WaypointStore } from './ui/fullMap/fullMap';
+import { MusicWidget } from './ui/panels/musicWidget';
+import { TuningPanel, applySavedTuning, loadSavedTuning } from './ui/panels/tuningPanel';
+import { CameraPanel, applySavedCameraParams } from './ui/panels/cameraPanel';
+import { loadingScreen } from './ui/screens/loading';
+import { pauseMenu, type PauseScreen, type PauseTicket } from './ui/screens/pause';
+import { resultsScreen } from './ui/screens/results';
+import { placeName } from './ui/map/places';
+import { railInset } from './ui/rail/rail';
+import { mainMenu, type MainMenu, type MenuStep } from './ui/menu/menu';
+import { showSplash } from './ui/splash/splash';
+import { toast } from './ui/kit/dom';
+import { Check, Info, Shuffle } from './ui/kit/icons';
+import { courseFor, openFullMap, type FullMap, type WaypointStore } from './ui/map/fullMap';
 import type { Vec2 } from './sim/math';
-import { door, transitioning, wipe, type WipeCard } from './ui/transitions';
-import { courseArt, courseRoute, type CourseRoutes } from './ui/menuMaps';
+import { door, transitioning, wipe, type WipeCard } from './ui/transitions/transitions';
+import { courseArt, courseRoute, type CourseRoutes } from './ui/menu/menuMaps';
 import type { RaceType } from './ui/settings';
 import { installUiSounds } from './audio/uiSound';
 import { DRAG_OPPONENTS, POINT_TO_POINT, RaceConfig, RaceEntrant, RaceMode, positionOf, standings, ticksToSeconds } from './sim/race';
@@ -150,7 +152,7 @@ function exploreFromMenu(): void {
   if (state !== 'menu' || liftoff || transitioning()) return;
   closeMenuMap();
   showreel.setMode('lift');
-  menuEl?.classList.add('menu-out');
+  menuEl?.classList.add('is-exiting');
   // Nothing on the sliding menu takes a key press on the way out.
   if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
   liftoff = window.setTimeout(() => {
@@ -296,13 +298,13 @@ function currentBuild(): CarBuild {
 // The first key, click or tap after that only brings the UI back (it never reaches a button).
 let cinematic = false;
 const cineHint = document.createElement('div');
-cineHint.className = 'cine-hint';
+cineHint.className = 'cinematic-hint';
 cineHint.textContent = 'Press any key or click to show the menu';
 
 function setCinematic(on: boolean): void {
   if (cinematic === on) return;
   cinematic = on;
-  document.body.classList.toggle('cinematic', on);
+  document.body.classList.toggle('is-cinematic', on);
   updateFraming();
   if (on) {
     document.body.append(cineHint);
@@ -418,7 +420,7 @@ function launch(t: RaceType): void {
   void wipe(raceCard(t), () => (t === 'roam' ? startFreeRoam(seedStr) : startRace(t)));
 }
 
-/** The handoff into free roam: how long the camera swings onto the chase view and the menu takes to leave (s; `.menu-out` in ui/styles/menu/_home.scss). */
+/** The handoff into free roam: how long the camera swings onto the chase view and the menu takes to leave (s; `.rail.is-exiting` in ui/menu/_menu.scss). */
 const HANDOFF = { pan: 2, menuOut: 0.5 } as const;
 
 /**
@@ -448,7 +450,7 @@ function handoffToFreeRoam(): void {
   };
   const shot = { position: showreel.camera.position.clone(), look: showreel.lookTarget.clone(), fov: showreel.camera.fov };
   const el = menuEl;
-  el?.classList.add('menu-out');
+  el?.classList.add('is-exiting');
   // Nothing on the sliding menu takes a key press on the way out.
   if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
   // The open world built with the stage (from scratch, the city alone would be hundreds of ms here).

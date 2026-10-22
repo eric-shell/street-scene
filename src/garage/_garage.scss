@@ -1,0 +1,233 @@
+/* The garage (garageUi.ts): its rail, narrower than the menu's so the car has room, with the header, the
+   category tabs and the open tab's groups down the left. Like the main menu it draws no column, only a scrim:
+   the tabs and the groups are plates of their own and the scene shows between them. Beside it the 3D view
+   with the car card (top left, _car-card.scss) and the rev button in the middle of the free space at the
+   bottom (_rev-button.scss). Phones get the rail as a sheet over the lower half.
+   It speaks the main menu's language: everything pressable or carded is chamfered, the open tab's groups are
+   plates with the accent hairline, and each category has a hue (like the home menu's rows) that its tab wears
+   at rest and the open tab's picks, sliders and hairlines take on. Values stay yellow, primary actions orange.
+   The rail's parts rise in as the roller door rolls up (.is-arriving, held paused while it is down). */
+@use 'sass:list';
+@use '../ui/styles/abstracts/media';
+@use '../ui/styles/abstracts/mixins';
+@use '../ui/styles/abstracts/palette';
+
+/* What rises in as the door rolls up: the header and tabs, each open group, the car card, the rev button and help. */
+$arriving: '.garage__panel > :not(.garage__body), .garage__body > *, .car-card, .rev-button, .help';
+/* When each group starts, from the first down (s): the lowest groups go first, as the door clears them. */
+$group-rise: 0.45s, 0.38s, 0.32s;
+/* When the header and then the tabs start (s), as the door leaves the top. */
+$head-rise: 0.58s, 0.52s;
+
+.garage {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20;
+  color: var(--text);
+  --rail-pad: max(12px, 2vw);
+  --rail-content: min(392px, calc(100vw - 24px));
+  --rail-w: calc(var(--rail-pad) * 2 + var(--rail-content));
+  /* The middle of the free space beside the rail. */
+  --free-mid: calc((var(--rail-w) + 100vw) / 2);
+  @include palette.tint(hue, orange);
+  /* Phones: the rail is a sheet over the lower half, the view above it. */
+  @include media.narrow {
+    --rail-pad: 0px;
+    --rail-content: 100vw;
+    --rail-w: 100%;
+    --sheet: 52vh;
+  }
+
+  /* The main menu's scrim instead of the opaque column (.menu-screen): darkest at the left edge, enough for
+     the header over a bright scene. No edge, except dev mode's yellow one. On a phone the scrim rises from
+     the bottom under the sheet's plates, and dev mode's edge runs along its top. */
+  .rail__bg {
+    background: linear-gradient(90deg, palette.alpha(bg0, 0.62), palette.alpha(bg0, 0.38) 70%, palette.alpha(bg0, 0));
+    @include media.narrow {
+      top: auto;
+      height: var(--sheet);
+      clip-path: none;
+      background: linear-gradient(0deg, palette.alpha(bg0, 0.7), palette.alpha(bg0, 0.45) 75%, palette.alpha(bg0, 0));
+    }
+  }
+  .rail__edge {
+    display: none;
+    @include media.narrow {
+      top: auto;
+      bottom: var(--sheet);
+      height: 2px;
+      clip-path: none;
+    }
+  }
+  &.is-dev .rail__edge {
+    display: block;
+    background: var(--accent-2);
+  }
+  /* What stands straight on the scene keeps the menu's dark halo; the back button is a plate like the cards. */
+  .screen-head__title {
+    text-shadow: var(--halo);
+  }
+  .screen-head .btn {
+    background: var(--plate);
+    &:hover,
+    &:focus-visible {
+      background: var(--plate-hover);
+    }
+  }
+  /* The help stands above the sheet's left corner, across from the rev button. */
+  > .help {
+    @include media.narrow {
+      left: 12px;
+      bottom: calc(var(--sheet) + 12px);
+    }
+  }
+  /* The garage's segmented controls are smaller and wrap. */
+  .segmented {
+    flex-wrap: wrap;
+  }
+  .segmented__option {
+    font-size: 12px;
+    padding: 6px 9px;
+  }
+
+  &__panel {
+    position: absolute;
+    left: var(--rail-pad);
+    top: 0;
+    bottom: 0;
+    width: var(--rail-content);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: mixins.safe(top, 14px) 0 52px;
+    pointer-events: auto;
+    > * {
+      flex-shrink: 0;
+    }
+    @include media.narrow {
+      top: auto;
+      height: var(--sheet);
+      padding: 10px 12px mixins.safe(bottom, 12px);
+    }
+  }
+  /* The tiles of categories (_garage-tab.scss) in two rows, one scrolling row on a phone. The tabs and the
+     open tab's groups cast the menu's drop shadow together, following every cut corner. */
+  &__tabs {
+    filter: var(--plate-drop);
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 5px;
+    @include media.narrow {
+      grid-template-columns: repeat(9, minmax(60px, 1fr));
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+  }
+  /* The open tab's groups (_garage-section.scss), scrolling under the tabs. A new tab's groups cascade in
+     (setTab adds .is-switching for the switch only). */
+  &__body {
+    filter: var(--plate-drop);
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 2px 6px 12px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    @include mixins.scroll-y;
+    &.is-switching {
+      > * {
+        animation: pane-in 0.36s var(--ease-out) both;
+      }
+      @include mixins.stagger(2, 3) using ($i) {
+        animation-delay: ($i - 1) * 40ms;
+      }
+      > :nth-child(n + 4) {
+        animation-delay: 120ms;
+      }
+    }
+    input[type='range'] {
+      accent-color: var(--hue);
+    }
+    /* Picks in a segmented control and toggles that are on (front and rear linked, mirrored) take the tab's
+       hue; the screen's actions (Export) stay orange. */
+    .segmented__option.is-selected,
+    .btn--primary:is(.garage-link, .garage-toggle) {
+      background: linear-gradient(100deg, var(--hue) 55%, color-mix(in srgb, var(--hue), #fff 22%));
+    }
+  }
+
+  /* The garage opens behind the roller door: its parts hold on their first frame while the door is down
+     (.is-held) and, once it starts rolling up (0.72 s, uncovering the screen from the bottom), rise in as it
+     clears them: the rev button and help first, the groups from the lowest up, the tabs and header as the
+     door leaves the top. The car card slides in from the rail with its switch. `translate` rather than
+     `transform`, so the rev button keeps its centering. */
+  &.is-arriving {
+    :is(#{$arriving}) {
+      animation: garage-rise 0.5s var(--ease-out) var(--d, 0.3s) both;
+    }
+    &.is-held :is(#{$arriving}) {
+      animation-play-state: paused;
+    }
+    :is(.rev-button, .help) {
+      --d: 0.14s;
+    }
+    .garage__body > :nth-child(n + 4) {
+      --d: 0.26s;
+    }
+    @include mixins.stagger(1, 3, '.garage__body > ') using ($i) {
+      --d: #{list.nth($group-rise, $i)};
+    }
+    @include mixins.stagger(1, 2, '.garage__panel > ') using ($i) {
+      --d: #{list.nth($head-rise, $i)};
+    }
+    .car-card {
+      --d: 0.5s;
+      animation-name: garage-slide;
+    }
+  }
+  @include media.reduced-motion {
+    &.is-arriving *,
+    &__body.is-switching > * {
+      animation: none !important;
+    }
+  }
+}
+
+/* Each category's hue, on its tab and, while it is open, on the body (garageUi.ts sets data-tab on the root).
+   Neighbours differ across both rows: Car orange like the menu's Garage row, Body and Tune yellow, Paint red,
+   Wheels and Neon cyan, Stance and Tint purple, Save green. */
+$tab-hues: (
+  'orange': (car),
+  'yellow': (body, perf),
+  'red': (paint),
+  'cyan': (wheels, glow),
+  'purple': (stance, tint),
+  'green': (share, vinyl),
+);
+@each $hue, $tabs in $tab-hues {
+  $attrs: ();
+  @each $tab in $tabs {
+    $attrs: list.append($attrs, "[data-tab='#{$tab}']", $separator: comma);
+  }
+  $on: '#{$attrs}';
+  @if list.length($tabs) > 1 {
+    $on: ':is(#{$attrs})';
+  }
+  :is(.garage-tab#{$on}, .garage#{$on} .garage__body) {
+    @include palette.tint(hue, $hue);
+  }
+}
+
+@keyframes garage-rise {
+  from {
+    opacity: 0;
+    translate: 0 16px;
+  }
+}
+@keyframes garage-slide {
+  from {
+    opacity: 0;
+    translate: -28px 0;
+  }
+}

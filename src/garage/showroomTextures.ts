@@ -6,7 +6,7 @@
  * so the room looks the same every time. Render only.
  */
 import * as THREE from 'three';
-import { PALETTE } from '../ui/palette';
+import { PALETTE } from '../ui/kit/palette';
 
 export function canvasTexture(w: number, h: number, draw: (g: CanvasRenderingContext2D) => void, srgb = true): THREE.CanvasTexture {
   const c = document.createElement('canvas');

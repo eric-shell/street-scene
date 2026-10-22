@@ -1,0 +1,32 @@
+/* A screen's header (ui/rail/rail.ts screenHead): back, the screen's icon and title, and an aside on the
+   right (a chip, the race steps' pips). */
+@use '../styles/abstracts/mixins';
+.screen-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 38px;
+  &__title {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+    font: 900 22px var(--display);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    > svg {
+      color: var(--accent);
+    }
+  }
+  &__text {
+    @include mixins.ellipsis;
+  }
+  &__aside {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+}

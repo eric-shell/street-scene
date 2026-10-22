@@ -3,7 +3,7 @@
 # With a directory or path fragment argument it lists the full header and exports of each match.
 #   map.sh            compact map of src/, scripts/ and tests/
 #   map.sh src/city   detailed map of everything whose path contains "src/city"
-# SCSS partials (src/ui/styles) are listed only with a filter: /map styles, /map styles/menu.
+# SCSS partials (beside the TS that builds their DOM) are listed only with a filter: /map .scss, /map ui/menu.
 set -u
 cd "$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null || echo .)" || exit 0
 filter=${1:-}
@@ -35,7 +35,7 @@ done
 if [ -z "$filter" ]; then
   echo
   echo "Data: src/sim/drivingParams.json (physics), src/assets/carManifest.json, partsCatalog.json, musicCatalog.json. "
-  echo "Styles: src/ui/styles/ (SCSS: main.scss lists the partials in cascade order; abstracts/ holds the palette and breakpoints). /map styles lists them."
+  echo "Styles: SCSS partials beside their TS (BEM, nested); src/ui/styles/main.scss uses each area's _index.scss in cascade order, abstracts/ holds the palette, breakpoints and mixins. /map .scss lists them."
   echo "Docs: README.md, docs/partsAuthoring.md, docs/music.md. Scripts above run with: npx tsx scripts/<name>.ts"
 fi
 exit 0

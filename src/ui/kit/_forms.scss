@@ -1,0 +1,34 @@
+/* Native form controls in the house style: text fields and selects on a dark well with a control-strength
+   border (the accent when focused), range sliders and color wells in the accent. */
+@use '../styles/abstracts/palette';
+input[type='text'],
+select {
+  font: 600 15px var(--font);
+  color: var(--text);
+  background: palette.alpha(bg0, 0.85);
+  border: 1px solid var(--line-control);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+input[type='text'].mono {
+  font: 500 14px var(--mono);
+}
+input[type='text']:focus,
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+input[type='color'] {
+  width: 44px;
+  height: 34px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: none;
+  padding: 2px;
+}

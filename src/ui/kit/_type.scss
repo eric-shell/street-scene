@@ -1,0 +1,75 @@
+/* Type every screen shares: headings (.title), the logo, a group's section title, small caps labels (a
+   kicker in yellow over a card's name), secondary text, tabular numbers and kbd caps. */
+@use '../styles/abstracts/mixins';
+.title {
+  font-family: var(--display);
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+/* The one italic in the UI: heavy, yellow sweeping into orange and red, on a crisp shadow. */
+.logo {
+  font-family: var(--logo);
+  font-weight: 900;
+  font-style: italic;
+  font-size: clamp(34px, min(8vw, 9vh), 80px);
+  letter-spacing: -0.01em;
+  line-height: 0.95;
+  margin: 0;
+  padding-right: 0.08em;
+  @include mixins.gradient-text(var(--logo-ink));
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.55));
+}
+/* A group heading inside a dialog or panel: yellow caps trailed by a hairline. */
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font: 900 13px var(--display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+  &::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--line);
+  }
+}
+.label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* Over a card's name: who or what it is, in the secondary color. */
+  &--kicker {
+    color: var(--accent-2);
+    > svg {
+      color: var(--accent);
+    }
+  }
+}
+.muted {
+  color: var(--muted);
+}
+.mono {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 1px 5px;
+  font: 600 11px var(--mono);
+  text-align: center;
+  color: var(--text);
+  background: linear-gradient(180deg, var(--bg3), var(--bg2));
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+}

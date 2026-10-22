@@ -1,0 +1,21 @@
+/* Where a step stands in the race flow (menu.ts progress): three pips beside the header's chip, the ones done in
+   the accent, the current one longer and in the rule. */
+@use '../styles/abstracts/mixins';
+@use '../styles/abstracts/palette';
+.stepper {
+  display: flex;
+  gap: 3px;
+  &__pip {
+    width: 14px;
+    height: 4px;
+    background: palette.alpha(text, 0.18);
+    clip-path: mixins.cut-corners(2px);
+    &.is-done {
+      background: var(--accent-line);
+    }
+    &.is-current {
+      width: 22px;
+      background: var(--rule);
+    }
+  }
+}

@@ -1,0 +1,30 @@
+/* The drift score in a drift race (hud.ts): the total in yellow over the drift being scored, its
+   multiplier and, in a drift zone, the zone's tag. */
+@use '../styles/abstracts/mixins';
+.drift-score {
+  position: absolute;
+  top: 12%;
+  right: mixins.safe(right, 16px);
+  text-align: right;
+  font-family: var(--mono);
+  font-weight: 700;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.6);
+  &__total {
+    font-size: 34px;
+    color: var(--accent-2);
+  }
+  &__current {
+    font-size: 22px;
+    color: var(--accent);
+  }
+  &__multiplier {
+    color: var(--text);
+  }
+  &__zone {
+    font: 900 13px var(--display);
+    font-style: normal;
+    letter-spacing: 0.08em;
+    color: var(--accent-2);
+    vertical-align: middle;
+  }
+}

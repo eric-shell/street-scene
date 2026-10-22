@@ -1,0 +1,87 @@
+/* A list of places or actions (ui/rail/rail.ts navRow): the home menu's Garage, Explore and Settings, the
+   pause screen's actions. Each row has its hue (.hue-*): a dim badge at rest that lights up, with the row's
+   edge and wash, on hover and focus. */
+@use '../styles/abstracts/media';
+@use '../styles/abstracts/mixins';
+.nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.nav-row {
+  @include mixins.chamfer;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 60px;
+  padding: 10px 14px 10px 12px;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+  @include mixins.plate($radius: var(--radius-sm));
+  transition: background var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast), transform var(--t-fast);
+  &__badge {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 38px;
+    height: 38px;
+    color: var(--hue);
+    background: rgba(var(--hue-rgb), 0.13);
+    clip-path: var(--chamfer-sm);
+    transition: background var(--t-fast), color var(--t-fast), transform var(--t-med) var(--ease-out);
+  }
+  > svg {
+    flex: none;
+    margin-left: auto;
+    color: var(--dim);
+    transition: color var(--t-fast), transform var(--t-fast);
+  }
+  &__text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  &__label {
+    font: 900 16px var(--display);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  &__sub {
+    font: 500 12px var(--font);
+    color: var(--muted);
+    @include mixins.ellipsis;
+  }
+  &:hover,
+  &:focus-visible {
+    border-color: rgba(var(--hue-rgb), 0.6);
+    background: linear-gradient(90deg, rgba(var(--hue-rgb), 0.13), transparent 65%), var(--plate-hover);
+    box-shadow: var(--edge), inset 3px 0 0 var(--hue);
+    outline: none;
+    .nav-row__badge {
+      color: var(--on-accent);
+      background: var(--hue);
+      transform: scale(1.06);
+    }
+    > svg {
+      color: var(--hue);
+      transform: translateX(3px);
+    }
+  }
+  &:focus-visible {
+    box-shadow: var(--edge), inset 3px 0 0 var(--hue), var(--ring);
+  }
+  &:active {
+    transform: translateY(1px);
+  }
+  @include mixins.sheen-on-hover;
+  /* Short screens: slimmer rows, so home fits above the help button without a scrolling column. */
+  @include media.short {
+    min-height: 54px;
+  }
+  @media (max-height: 780px) {
+    min-height: 46px;
+    padding-block: 6px;
+  }
+}

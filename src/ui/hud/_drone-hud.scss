@@ -1,0 +1,28 @@
+/* The drone's HUD (game/drone.ts): the HUD card in the race HUD's top left column (.hud__top-left), the
+   minimap (.hud__minimap) and, on touch screens, the buttons that climb and descend. */
+@use '../styles/abstracts/media';
+@use '../styles/abstracts/mixins';
+.drone-hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 15;
+  &__lift {
+    position: absolute;
+    right: mixins.safe(right, 16px);
+    bottom: 60px;
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: auto;
+    @include media.touch {
+      display: flex;
+    }
+  }
+  &__lift-button {
+    width: 56px;
+    height: 56px;
+    justify-content: center;
+    touch-action: none;
+  }
+}

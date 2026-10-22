@@ -1,0 +1,92 @@
+/* The race types on the race step (menu.ts modeTile), in a grid of two rows of three (MODE_COLUMNS): icon over
+   name, the number key that picks it in the corner. The picked one fills with its color's wash over a bar of it
+   along the bottom (.mode-* carries --mode). */
+@use '../styles/abstracts/media';
+@use '../styles/abstracts/mixins';
+.mode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.mode-tile {
+  @include mixins.chamfer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 68px;
+  padding: 11px 6px 10px;
+  cursor: pointer;
+  color: var(--soft);
+  font: inherit;
+  @include mixins.plate($radius: var(--radius-sm));
+  transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast), box-shadow var(--t-fast), transform var(--t-fast);
+  > svg {
+    color: var(--muted);
+    transition: color var(--t-fast), transform var(--t-med) var(--ease-out);
+  }
+  &__label {
+    max-width: 100%;
+    font: 900 13px var(--display);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    @include mixins.ellipsis;
+    /* Phones: four tiles across leave room for short names only, so a long one takes two lines. */
+    @include media.phone {
+      font-size: 12px;
+      line-height: 1.05;
+      white-space: normal;
+      text-align: center;
+    }
+  }
+  &__key {
+    position: absolute;
+    top: 5px;
+    left: 6px;
+    min-width: 0;
+    padding: 0 4px;
+    font-size: 10px;
+    line-height: 14px;
+    opacity: 0.5;
+    /* Touch screens have no keys to press. */
+    @include media.touch {
+      display: none;
+    }
+  }
+  &:hover,
+  &:focus-visible {
+    color: var(--text);
+    border-color: rgba(var(--mode-rgb), 0.6);
+    background: var(--plate-hover);
+    outline: none;
+    > svg {
+      color: var(--mode);
+    }
+  }
+  &:focus-visible {
+    box-shadow: var(--edge), var(--ring);
+  }
+  &.is-selected {
+    color: var(--text);
+    border-color: rgba(var(--mode-rgb), 0.7);
+    background: linear-gradient(180deg, rgba(var(--mode-rgb), 0.28), rgba(var(--mode-rgb), 0.07)), var(--plate);
+    box-shadow: var(--edge), inset 0 -3px 0 var(--mode);
+    > svg {
+      color: var(--mode);
+      transform: scale(1.14);
+    }
+    .mode-tile__key {
+      opacity: 0.85;
+    }
+  }
+  &:active {
+    transform: translateY(1px);
+  }
+  @include mixins.sheen-on-hover;
+  @include media.short {
+    min-height: 60px;
+    padding: 9px 6px 8px;
+  }
+}

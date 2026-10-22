@@ -1,0 +1,5 @@
+/* Floating panels: the music player and its library, the tuning panels, the help button and its panel. In cascade order. */
+@use 'music-player';
+@use 'music-library';
+@use 'tuning-panel';
+@use 'help';

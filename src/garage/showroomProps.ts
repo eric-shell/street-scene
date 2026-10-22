@@ -11,7 +11,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { deckTexture, doorTexture, drawerTexture, glowTexture, lineTexture, pegboardTexture, posterTexture, stainTexture } from './showroomTextures';
-import { PALETTE } from '../ui/palette';
+import { PALETTE } from '../ui/kit/palette';
 
 type Disposable = { dispose(): void };
 type Vec = [number, number, number];

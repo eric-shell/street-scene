@@ -28,7 +28,7 @@ import { defaultVisual } from '../sim/build';
 import type { PaintFinish } from '../sim/build';
 import type { PartSlot } from '../shared/parts';
 import type { Quality } from '../ui/settings';
-import { PALETTE } from '../ui/palette';
+import { PALETTE } from '../ui/kit/palette';
 import { concreteTextures, hazardTexture, noise, plateTexture, shadowTexture, wallTexture } from './showroomTextures';
 import { GLOW, Kit, batten, compressor, createMaterials, drum, engineHoist, extinguisher, jackAndStands, lift, panels, roof, shelving, tire, tireRack, toolChest, workbench } from './showroomProps';
 import type { LiftFit } from './showroomProps';

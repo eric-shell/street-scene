@@ -1,0 +1,72 @@
+/* Hold to rev (garageUi.ts gasButton): in the middle of the free space, the view's main action; on a phone,
+   above the sheet's right corner. At rest a plate lit from its left edge in the accent; held (.is-revving), it
+   fills with the accent sweep while the bright sheen runs across it again and again like a needle swinging.
+   It is a .btn, so the chamfer comes with it. */
+@use '../ui/styles/abstracts/media';
+@use '../ui/styles/abstracts/mixins';
+@use '../ui/styles/abstracts/palette';
+.rev-button {
+  position: absolute;
+  left: var(--free-mid);
+  bottom: mixins.safe(bottom, 18px);
+  transform: translateX(-50%);
+  min-width: 200px;
+  justify-content: center;
+  padding: 14px 24px;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: linear-gradient(90deg, palette.alpha(orange, 0.16), palette.alpha(orange, 0.03) 70%), var(--plate);
+  border-color: var(--accent-line);
+  box-shadow: var(--edge), inset 3px 0 0 var(--accent);
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  > svg {
+    color: var(--accent);
+  }
+  &:hover,
+  &:focus-visible {
+    background: linear-gradient(90deg, palette.alpha(orange, 0.24), palette.alpha(orange, 0.06) 70%), var(--plate-hover);
+  }
+  &:focus-visible {
+    box-shadow: var(--edge), inset 3px 0 0 var(--accent), var(--ring);
+  }
+  &:active {
+    transform: translateX(-50%) translateY(1px);
+  }
+  &.is-revving,
+  &.is-revving:hover {
+    color: var(--on-accent);
+    background: var(--accent-grad);
+    border-color: transparent;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  }
+  &.is-revving > svg {
+    color: var(--on-accent);
+  }
+  > .sheen::before {
+    width: 58%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.28) 30%, var(--sheen-bright) 50%, rgba(255, 255, 255, 0.28) 70%, transparent);
+  }
+  &:not(.is-revving) > .sheen::before {
+    opacity: 0.45;
+  }
+  &.is-revving > .sheen::before {
+    mix-blend-mode: overlay;
+    animation: sheen 0.5s linear infinite;
+  }
+  @include media.narrow {
+    left: auto;
+    right: 12px;
+    bottom: calc(var(--sheet) + 12px);
+    transform: none;
+    min-width: 0;
+    &:active {
+      transform: translateY(1px);
+    }
+  }
+}

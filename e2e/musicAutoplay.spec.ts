@@ -22,13 +22,13 @@ test('plays Astrology by itself under the splash', async ({ page }) => {
       for (const r of records)
         for (const n of r.removedNodes)
           if (n instanceof HTMLElement && n.classList.contains('splash')) {
-            w.__splashGone = { playing: document.querySelector('.mw-play')?.getAttribute('aria-label') === 'Pause', hint: n.querySelectorAll('.splash-hint').length };
+            w.__splashGone = { playing: document.querySelector('.music-player__play')?.getAttribute('aria-label') === 'Pause', hint: n.querySelectorAll('.splash__hint').length };
             observer.disconnect();
           }
     }).observe(document, { childList: true, subtree: true });
   });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('.mw-title')).toHaveText('Astrology');
+  await expect(page.locator('.music-player__title')).toHaveText('Astrology');
   await expect.poll(() => page.evaluate(() => (window as unknown as { __splashGone?: SplashGone }).__splashGone ?? null)).toEqual({ playing: true, hint: 0 });
   expect((await music(page)).playing).toBe(true);
 });

@@ -1,0 +1,117 @@
+/* The shapes and patterns the partials share, so each is written once: the chamfer, the card's accent
+   hairline, plates, gradient type, single-line text, scrolling panes, entrance cascades and safe-area
+   insets. Emits no CSS. */
+@use 'sass:string';
+
+/* A polygon with the top right and bottom left corners cut off by $cut: the chamfer's clip-path, for
+   borderless fills (--chamfer and --chamfer-sm are the 9px and 6px ones) and small one-off cuts. */
+@function cut-corners($cut) {
+  @return polygon(0 0, calc(100% - #{$cut}) 0, 100% $cut, 100% 100%, $cut 100%, 0 calc(100% - #{$cut}));
+}
+
+/* The chamfer on everything pressable or carded: the box loses its top right and bottom left corners
+   (--cut: 9px unless set; 6px on small things, 12px on cards), and ::before / ::after draw the border along
+   the two cuts. They inherit the border color, so hover, focus and the border's transitions follow along,
+   and a borderless fill (a primary action) shows no lines. Clipping removes outlines and outer shadows, so
+   chamfered controls mark focus with the border and inset shadows (--ring). A $cut sets --cut on the box;
+   without one the box inherits its parent's --cut (a button in a card takes the card's), so include it
+   with a size only where the size is the component's own. Include it first in the block's rule: the
+   block's own position wins over the relative one it sets. */
+@mixin chamfer($cut: null) {
+  @if $cut {
+    --cut: #{$cut};
+  }
+  position: relative;
+  clip-path: cut-corners(var(--cut, 9px));
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    width: calc(var(--cut, 9px) * 1.4142);
+    border-top: 1px solid;
+    border-color: inherit;
+    transform-origin: 0 0;
+    pointer-events: none;
+  }
+  // From the start of the top edge's cut down to the right edge; the line falls inside the cut.
+  &::before {
+    left: calc(100% + 1px - var(--cut, 9px));
+    top: -1px;
+    transform: rotate(45deg);
+  }
+  // From the left edge's cut down to the bottom edge, lifted by its width so it stays inside.
+  &::after {
+    left: -1px;
+    top: calc(100% + 1px - var(--cut, 9px));
+    transform: rotate(45deg) translateY(-1px);
+  }
+}
+
+/* A card's accent hairline as a background layer: a $lead of $color into a grey line across the top. Cards
+   in the race type's or the category's color pass var(--mode) or var(--hue); --card-top is the orange one. */
+@function rule-line($color: var(--accent), $lead: 64px) {
+  @return string.unquote('linear-gradient(90deg, #{$color} 0 #{$lead}, var(--line-strong) #{$lead}) top left / 100% 2px no-repeat');
+}
+
+/* The plate every menu card, row and tile stands on: a near opaque surface with the hairline border and the
+   lit top edge. $radius null for chamfered boxes that set no radius. */
+@mixin plate($background: var(--plate), $radius: var(--radius)) {
+  background: $background;
+  border: 1px solid var(--line);
+  @if $radius {
+    border-radius: $radius;
+  }
+  box-shadow: var(--edge);
+}
+
+/* Type filled with a gradient (the logo, event and car names). */
+@mixin gradient-text($gradient) {
+  background: $gradient;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* One line, cut with an ellipsis. */
+@mixin ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A pane that scrolls on its own, without chaining the scroll to the page. */
+@mixin scroll-y {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+/* An entrance cascade: one rule per child from $from through $to, the content given the child's number
+   (`@include stagger(2, 6) using ($i)` with `--i: $i - 1` interpolated inside). $child picks the
+   children: '> ' (the default) for the direct children of the current selector, '&' for the current
+   selector's own position among its siblings. */
+@mixin stagger($from, $to, $child: '> ') {
+  @for $i from $from through $to {
+    @if $child == '&' {
+      &:nth-child(#{$i}) {
+        @content ($i);
+      }
+    } @else {
+      #{$child}:nth-child(#{$i}) {
+        @content ($i);
+      }
+    }
+  }
+}
+
+/* A distance from a screen edge that clears the notch and home indicator: at least $min. */
+@function safe($side, $min) {
+  @return max(#{$min}, env(safe-area-inset-#{$side}));
+}
+
+/* The sweep of light across a control (ui/kit/dom.ts sheen) as it is hovered or focused. */
+@mixin sheen-on-hover($duration: 0.7s) {
+  &:is(:hover, :focus-visible) > .sheen::before {
+    animation: sheen $duration var(--ease-out) both;
+  }
+}

@@ -1,0 +1,141 @@
+/* The button (ui/kit/dom.ts btn, iconBtn): a chamfered surface with an icon and a label, an optional sub line
+   under the label. Idle icons stay grey and pick up the accent with the button, so one thing on screen is lit
+   at a time. Keyboard and gamepad focus gets a ring on top of the hover look, so it is never ambiguous: the
+   chamfer clips anything outside the box, so the ring is the yellow border plus an inset line, cuts included.
+   Modifiers: --primary (the accent sweep, a bright sheen), --cta (the screen's main action, which also glints
+   on its own every few seconds so the eye finds it), --ghost (no fill or edge until hovered), --small,
+   --icon (icon only) and --large (full width). */
+@use '../styles/abstracts/mixins';
+@use '../styles/abstracts/palette';
+.btn {
+  @include mixins.chamfer;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font: 600 16px var(--font);
+  letter-spacing: 0.02em;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--edge);
+  padding: 11px 16px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.2s, transform 0.15s;
+  text-align: left;
+  > svg {
+    color: var(--muted);
+    transition: color 0.12s;
+  }
+  &:hover,
+  &:focus-visible {
+    border-color: var(--accent-line);
+    background: var(--surface-hover);
+    outline: none;
+    > svg {
+      color: var(--accent);
+    }
+  }
+  &:focus-visible {
+    outline: none;
+    border-color: var(--accent-2);
+    box-shadow: var(--edge), var(--ring);
+  }
+  &:active {
+    transform: translateY(1px);
+  }
+
+  &--primary {
+    color: var(--on-accent);
+    background: var(--accent-grad);
+    border-color: transparent;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    > svg,
+    &:hover > svg,
+    &:focus-visible > svg {
+      color: var(--on-accent);
+    }
+    &:hover,
+    &:focus-visible {
+      background: var(--accent-grad);
+      border-color: transparent;
+      filter: brightness(1.08);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    }
+    &:focus-visible {
+      border-color: var(--accent-2);
+      box-shadow: var(--ring);
+    }
+    .btn__sub {
+      color: palette.alpha(bg0, 0.72);
+    }
+  }
+  &--ghost {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    &:hover,
+    &:focus-visible {
+      background: var(--surface);
+      border-color: var(--line-strong);
+    }
+    /* Focus shows the stronger edge, not the ring. */
+    &:focus-visible {
+      box-shadow: none;
+    }
+  }
+  &--small {
+    --cut: 6px;
+    padding: 7px 10px;
+    font-size: 13px;
+    gap: 6px;
+  }
+  &--icon {
+    --cut: 6px;
+    padding: 8px;
+  }
+  &[disabled] {
+    opacity: 0.35;
+    pointer-events: none;
+  }
+  &__sub {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 0.01em;
+    text-transform: none;
+    font-weight: 500;
+  }
+  &--large {
+    padding: 10px 16px;
+    font-size: 18px;
+    width: 100%;
+    .btn__label {
+      flex: 1;
+    }
+  }
+
+  /* The sheen: a bright, wider band on primary actions, a faint one on quiet buttons. */
+  &--primary > .sheen::before {
+    width: 58%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.28) 30%, var(--sheen-bright) 50%, rgba(255, 255, 255, 0.28) 70%, transparent);
+    mix-blend-mode: overlay;
+  }
+  &--ghost > .sheen::before,
+  &--icon > .sheen::before {
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.09) 50%, transparent);
+  }
+  @include mixins.sheen-on-hover;
+  &--primary:is(:hover, :focus-visible) > .sheen::before {
+    animation-duration: 0.85s;
+  }
+  &--primary.btn--cta > .sheen::before {
+    animation: sheen-idle 6s var(--ease-in-out) 2.4s infinite;
+  }
+  &--primary.btn--cta:is(:hover, :focus-visible) > .sheen::before {
+    animation: sheen 0.85s var(--ease-out) both;
+  }
+}

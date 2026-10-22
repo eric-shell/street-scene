@@ -60,12 +60,12 @@ test.describe('gamepad', () => {
   test('walks the menu with the d-pad, A and B', async ({ page }) => {
     await fakePad(page);
     await page.goto('/?seed=e2e-pad&quality=low', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('.menu-head')).toBeVisible({ timeout: 30_000 });
-    const screen = page.locator('.rail-screen');
+    await expect(page.locator('.title-lockup')).toBeVisible({ timeout: 30_000 });
+    const screen = page.locator('.menu-screen');
     await expect(screen).toHaveAttribute('data-step', 'home');
     // Down from nothing focused lands on the race button, A presses it, B comes back.
     await tap(page, 13);
-    await expect(page.locator('.event-go')).toBeFocused();
+    await expect(page.locator('.event-card__go')).toBeFocused();
     await tap(page, 0);
     await expect(screen).toHaveAttribute('data-step', 'race');
     await tap(page, 1);
@@ -89,7 +89,7 @@ test.describe('gamepad', () => {
     expect((await session(page)).resets).toBeGreaterThan(0);
     // The pause screen has no arrow keys of its own: the d-pad moves focus onto its buttons.
     await tap(page, 13);
-    await expect.poll(() => page.evaluate(() => !!document.activeElement?.closest('.rail-screen'))).toBe(true);
+    await expect.poll(() => page.evaluate(() => !!document.activeElement?.closest('.rail'))).toBe(true);
     // Start resumes, and the press carried into the race does not pause it again.
     await tap(page, 9);
     await expect.poll(async () => (await session(page)).paused).toBe(false);
@@ -99,7 +99,7 @@ test.describe('gamepad', () => {
 
   test('the garage speaks mph and 0-60', async ({ page }) => {
     await page.goto('/?garage&quality=low', { waitUntil: 'domcontentloaded' });
-    const stats = page.locator('.garage-stats');
+    const stats = page.locator('.car-card__stats');
     await expect(stats).toContainText('mph', { timeout: 30_000 });
     await expect(stats).toContainText('0-60');
     await expect(stats).not.toContainText('km/h');

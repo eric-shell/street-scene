@@ -1,0 +1,97 @@
+/* The race's start and finish shots (cinematics.ts): the HUD fades for them (.hud.is-intro, .is-outro but
+   for its message, .is-handoff; .is-revealing times the fade back in), the letterbox bars slide in, the
+   fly-in's title card names the seed's event, and a hint says how to skip. */
+@use '../../ui/styles/abstracts/mixins';
+.hud {
+  &.is-intro > * {
+    opacity: 0 !important;
+    transition: opacity 0.4s;
+  }
+  &.is-outro > :not(.hud__message) {
+    opacity: 0 !important;
+    transition: opacity 0.6s;
+  }
+  &.is-handoff > * {
+    opacity: 0 !important;
+  }
+  &.is-revealing > * {
+    transition: opacity 0.9s ease;
+  }
+}
+.cinematic-skip {
+  position: fixed;
+  left: 50%;
+  bottom: mixins.safe(bottom, 18px);
+  transform: translateX(-50%);
+  z-index: 40;
+  pointer-events: none;
+  font: 600 13px var(--font, system-ui);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.72);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8);
+  opacity: 0;
+  transition: opacity 0.5s;
+  &.is-visible {
+    opacity: 1;
+  }
+}
+/* The letterbox: two black bars, drawn by the element's ::before (top) and ::after (bottom). */
+.cinematic-bars {
+  &::before,
+  &::after {
+    content: '';
+    position: fixed;
+    left: 0;
+    right: 0;
+    height: 0;
+    background: #000;
+    z-index: 30;
+    pointer-events: none;
+    transition: height 0.6s ease;
+  }
+  &::before {
+    top: 0;
+  }
+  &::after {
+    bottom: 0;
+  }
+  &.is-visible::before,
+  &.is-visible::after {
+    height: 7vh;
+  }
+}
+.cinematic-title {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 16vh;
+  z-index: 35;
+  padding: 0 16px;
+  pointer-events: none;
+  text-align: center;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.6s, transform 0.6s ease;
+  &.is-visible {
+    opacity: 1;
+    transform: none;
+  }
+  &__name {
+    display: block;
+    font: 900 clamp(30px, 7vw, 76px) var(--display, system-ui);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent-2, #ffd866);
+    text-shadow: 0 3px 0 rgba(0, 0, 0, 0.55), 0 0 28px rgba(0, 0, 0, 0.6);
+  }
+  &__tagline {
+    display: block;
+    margin-top: 6px;
+    font: 600 clamp(11px, 1.6vw, 16px) var(--font, system-ui);
+    letter-spacing: 0.26em;
+    text-transform: uppercase;
+    color: rgba(252, 252, 250, 0.85);
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85);
+  }
+}

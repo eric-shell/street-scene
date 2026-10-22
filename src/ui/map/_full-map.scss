@@ -1,0 +1,329 @@
+/* The full city map (ui/map/fullMap.ts): a modal over a paused race, free roam or the menu city. The map sits in
+   a chamfered frame like every card, the accent hairline across the dialog, plates for everything over the map,
+   and the game's tabs, chips and kbd caps in the side panel and footer. The panel lands and leaves with a
+   short fade; none of it under reduced motion. The side panel, its lists and the card by the pointer are
+   blocks of their own (_map-side, _map-legend, _map-places, _map-waypoint, _map-tip). */
+@use '../styles/abstracts/media';
+@use '../styles/abstracts/mixins';
+@use '../styles/abstracts/palette';
+@use 'map-media';
+.full-map {
+  padding: 16px;
+  box-sizing: border-box;
+  animation: full-map-fade 0.2s ease backwards;
+  &.is-closing {
+    pointer-events: none;
+    animation: full-map-fade-out 0.16s ease forwards;
+  }
+  @include map-media.narrow {
+    padding: mixins.safe(top, 6px) mixins.safe(right, 6px) mixins.safe(bottom, 6px) mixins.safe(left, 6px);
+  }
+  @include media.reduced-motion {
+    animation: none !important;
+  }
+
+  &__panel {
+    width: min(1280px, 100%);
+    height: min(900px, 100%);
+    box-sizing: border-box;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    gap: 12px;
+    padding: 14px 16px 12px;
+    background: var(--card-top), var(--panel);
+    /* Near opaque already: a blur behind it would cost a pass over the live city every frame for nothing. */
+    backdrop-filter: none;
+    animation: full-map-in 0.28s var(--ease-out) backwards;
+    .full-map.is-closing & {
+      animation: full-map-out 0.16s ease forwards;
+    }
+    @include map-media.narrow {
+      width: 100%;
+      height: 100%;
+      gap: 8px;
+      padding: 10px;
+    }
+    @include media.reduced-motion {
+      animation: none !important;
+    }
+  }
+
+  /* Header: the city's name, the event, seed and course chips, where you are, close. */
+  &__top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+  &__title {
+    margin: 0 6px 0 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 22px;
+    white-space: nowrap;
+    > svg {
+      color: var(--accent);
+    }
+    @include map-media.narrow {
+      font-size: 18px;
+    }
+  }
+  &__chip {
+    flex: none;
+    &--seed {
+      @include map-media.narrow {
+        display: none;
+      }
+    }
+    /* The course shown: a chip in its race type's ink (chip--ink), its name in the ink too. */
+    &--course {
+      color: var(--ink);
+    }
+  }
+  &__where {
+    flex: 1;
+    min-width: 0;
+    @include mixins.ellipsis;
+    text-align: right;
+    color: var(--muted);
+    font-size: 14px;
+    @include map-media.narrow {
+      font-size: 12px;
+    }
+    @include map-media.landscape-phone {
+      display: none;
+    }
+  }
+  &__where-prefix {
+    @include media.phone {
+      display: none;
+    }
+  }
+  &__here {
+    color: var(--accent-2);
+    font-weight: 800;
+  }
+  &__close {
+    flex: none;
+  }
+
+  /* Body: the map beside the side panel; under it on narrow screens, beside it again on a phone on its side. */
+  &__main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 272px;
+    gap: 14px;
+    min-height: 0;
+    @include map-media.narrow {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr) auto;
+      gap: 8px;
+    }
+    @include map-media.landscape-phone {
+      grid-template-columns: minmax(0, 1fr) 200px;
+      grid-template-rows: minmax(0, 1fr);
+    }
+  }
+  /* The map's frame: chamfered with a larger cut than a card's, its stronger border drawn along the cuts over
+     the map (z-index 3). */
+  &__stage {
+    --cut: 14px;
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: #141315;
+    border: 1px solid var(--line-strong);
+    clip-path: mixins.cut-corners(var(--cut));
+    outline: none;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    &::before,
+    &::after {
+      content: '';
+      position: absolute;
+      z-index: 3;
+      width: calc(var(--cut) * 1.4142);
+      border-top: 1px solid var(--line-strong);
+      transform-origin: 0 0;
+      pointer-events: none;
+    }
+    &::before {
+      left: calc(100% - var(--cut));
+      top: -1px;
+      transform: rotate(45deg);
+    }
+    &::after {
+      left: -1px;
+      top: calc(100% - var(--cut));
+      transform: rotate(45deg) translateY(-1px);
+    }
+  }
+  &__canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+  /* The map's edges sink into the frame. */
+  &__vignette {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(130% 110% at 50% 50%, transparent 62%, rgba(10, 9, 11, 0.5));
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03), inset 0 0 36px rgba(0, 0, 0, 0.4);
+  }
+  /* Viewfinder ticks in the two corners the chamfer leaves square. */
+  &__corner {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    pointer-events: none;
+    border-color: var(--accent);
+    opacity: 0.85;
+    &--top-left {
+      left: 6px;
+      top: 6px;
+      border-left: 2px solid;
+      border-top: 2px solid;
+    }
+    &--bottom-right {
+      right: 6px;
+      bottom: 6px;
+      border-right: 2px solid;
+      border-bottom: 2px solid;
+    }
+  }
+  &__rose {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 52px;
+    height: 56px;
+    pointer-events: none;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+    svg {
+      display: block;
+      font-family: var(--font);
+    }
+    @include map-media.narrow {
+      transform: scale(0.85);
+      transform-origin: top right;
+    }
+  }
+
+  /* Zoom, find me and fit: a column of chamfered plates at the bottom right; find me lit while it follows you. */
+  &__tools {
+    position: absolute;
+    right: 14px;
+    bottom: 18px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    .btn {
+      background: var(--plate);
+      box-shadow: var(--edge), 0 2px 8px rgba(0, 0, 0, 0.45);
+    }
+    .btn:hover,
+    .btn:focus-visible {
+      background: var(--plate-hover);
+    }
+    .btn.is-active {
+      border-color: var(--accent-line);
+    }
+    .btn.is-active > svg {
+      color: var(--accent);
+    }
+    .btn--icon {
+      @include map-media.narrow {
+        padding: 10px;
+      }
+    }
+  }
+  &__tools-gap {
+    height: 4px;
+  }
+  &__zoom {
+    min-width: 34px;
+    padding: 1px 4px;
+    font: 800 11px var(--mono);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    color: var(--accent-2);
+    background: palette.alpha(bg0, 0.8);
+    clip-path: var(--chamfer-sm);
+  }
+
+  /* Footer: the key legend (touch screens get gestures instead of keys); gone on narrow screens. */
+  &__footer {
+    display: flex;
+    align-items: center;
+    min-height: 22px;
+    @include map-media.narrow {
+      display: none;
+    }
+  }
+  &__hints {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 18px;
+    font: 600 12px var(--font);
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    @include media.touch {
+      display: none;
+    }
+    &--touch {
+      display: none;
+      @include media.touch {
+        display: flex;
+        kbd {
+          font-family: var(--font);
+        }
+      }
+    }
+  }
+  &__key {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    kbd + kbd {
+      margin-left: -2px;
+    }
+  }
+}
+/* The music player sits over the whole UI layer and would cover the map's close button wherever the panel
+   reaches the top of the screen: it steps aside while the map is open (the music plays on, M still mutes). */
+body.is-map-open .music-player {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.16s, visibility 0s linear 0.16s;
+}
+@keyframes full-map-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes full-map-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes full-map-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.975);
+  }
+}
+@keyframes full-map-out {
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+}

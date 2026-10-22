@@ -1,0 +1,114 @@
+/* The chips under the HUD card (hud.ts): small chamfered plates like the card, an icon and a value. The
+   ghost's, in its purple; the drift zone's (sim/driftZones.ts), yellow while the zone pays, its meter the
+   bonus left in this visit; the waypoint's, how far the waypoint is and an arrow turned like the minimap,
+   in the pin's yellow (a waypoint race's next target in the type's cyan). */
+@use '../styles/abstracts/media';
+@use '../styles/abstracts/mixins';
+@use '../styles/abstracts/palette';
+.hud-chip {
+  @include mixins.chamfer(6px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  @include mixins.plate($radius: null);
+  padding: 6px 12px;
+  min-width: 120px;
+  &__icon {
+    color: var(--accent);
+    display: flex;
+  }
+  &__value {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 17px;
+    letter-spacing: 0;
+  }
+  /* The drift zone's bonus left, a hairline along the chip's foot. */
+  &__meter {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 2px;
+    background: palette.alpha(yellow, 0.15);
+  }
+  &__meter-fill {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: var(--accent-2);
+  }
+  &__arrow {
+    display: flex;
+    margin-left: auto;
+    color: var(--accent-2);
+    svg {
+      fill: currentColor;
+    }
+  }
+  &--ghost {
+    border-left-color: var(--purple);
+    .hud-chip__icon {
+      color: var(--purple);
+    }
+    .hud-chip__value {
+      font: 900 16px var(--display);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+  }
+  &--zone {
+    display: none;
+    position: relative;
+    overflow: hidden;
+    border-left-color: var(--accent-2);
+    &.is-visible {
+      display: flex;
+    }
+    .hud-chip__icon {
+      color: var(--accent-2);
+    }
+    .hud-chip__value {
+      font: 900 15px var(--display);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--accent-2);
+    }
+    &.is-resting .hud-chip__icon,
+    &.is-resting .hud-chip__value {
+      color: var(--muted);
+    }
+  }
+  /* Phones and short screens: slimmer chips. The smaller value comes after the ghost's and the zone's and
+     before the waypoint's, so the waypoint keeps its own size. */
+  @include media.compact-hud {
+    min-width: 0;
+    padding: 3px 8px;
+    .hud-chip__value {
+      font-size: 14px;
+    }
+  }
+  &--waypoint {
+    display: none;
+    border-color: palette.alpha(yellow, 0.35);
+    .hud--open-world &.is-visible,
+    .hud--waypoint-race &.is-visible {
+      display: flex;
+    }
+    /* The waypoint race's next target wears the type's cyan (free roam's own pin stays yellow). */
+    .hud--waypoint-race & {
+      border-color: palette.alpha(cyan, 0.4);
+    }
+    .hud--waypoint-race & :is(.hud-chip__icon, .hud-chip__arrow) {
+      color: var(--cyan);
+    }
+    .hud-chip__icon {
+      color: var(--accent-2);
+    }
+    .hud-chip__value {
+      font: 800 15px var(--mono);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.01em;
+    }
+  }
+}

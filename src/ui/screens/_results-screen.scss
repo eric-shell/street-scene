@@ -1,0 +1,169 @@
+/* The results screen (results.ts resultsScreen): a rail beside the finish shots, sliding in like the pause
+   screen's (rail-in, _pause-screen.scss). The headline strikes in, a new best is a sticker slapped on in the
+   accent sweep, the standings deal in a row at a time, and Retry glints on its own every few seconds. */
+@use '../styles/abstracts/media';
+@use '../styles/abstracts/mixins';
+.results-screen {
+  > .rail__bg,
+  > .rail__edge {
+    animation: rail-in 0.42s var(--ease-out) both;
+    @include media.reduced-motion {
+      animation: none !important;
+    }
+  }
+  &__head {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  &__title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0;
+    font: 900 clamp(32px, 4.6vw, 44px) / 1 var(--display);
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    animation: results-title-strike 0.6s var(--ease-out) 0.12s both;
+    > svg {
+      color: var(--accent-2);
+      flex: none;
+    }
+    @include media.reduced-motion {
+      animation: none !important;
+    }
+  }
+  &__score {
+    font-variant-numeric: tabular-nums;
+  }
+  &__note {
+    margin: 0;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  &__actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    .btn {
+      justify-content: center;
+    }
+    .btn--primary {
+      grid-column: 1 / -1;
+    }
+    .btn--primary > .sheen::before {
+      animation: sheen-idle 6s var(--ease-in-out) 1.6s infinite;
+      @include media.reduced-motion {
+        animation: none !important;
+      }
+    }
+    .btn--primary:is(:hover, :focus-visible) > .sheen::before {
+      animation: sheen 0.85s var(--ease-out) both;
+    }
+  }
+  /* A sticker slapped on the results: chamfered, in the accent sweep, glinting. */
+  &__badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--on-accent);
+    background: var(--accent-grad);
+    border-radius: var(--radius-sm);
+    padding: 4px 12px;
+    clip-path: var(--chamfer-sm);
+    font: 900 14px var(--display);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    position: relative;
+    overflow: hidden;
+    animation: results-badge-pop 0.5s cubic-bezier(0.3, 1.6, 0.5, 1) 0.5s both;
+    &::after {
+      content: '';
+      position: absolute;
+      top: -20%;
+      bottom: -20%;
+      left: 0;
+      width: 40%;
+      background: linear-gradient(90deg, transparent, var(--sheen-bright), transparent);
+      mix-blend-mode: overlay;
+      transform: translateX(-130%) skewX(-20deg);
+      animation: sheen-idle 3.2s var(--ease-in-out) 1s infinite;
+    }
+    @include media.reduced-motion {
+      &,
+      &::after {
+        animation: none !important;
+      }
+    }
+  }
+}
+/* The standings: a row per car, the player's in the secondary color. */
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+  &__row {
+    animation: results-row-in 0.42s var(--ease-out) calc(0.3s + var(--row, 0) * 55ms) both;
+    @include mixins.stagger(2, 10, '&') using ($i) {
+      --row: #{$i - 1};
+    }
+    &:last-child .results-table__cell {
+      border-bottom: 0;
+    }
+    &--player .results-table__cell {
+      color: var(--accent-2);
+      font-weight: 700;
+      background: var(--accent-2-soft);
+    }
+    @include media.reduced-motion {
+      animation: none !important;
+    }
+  }
+  &__cell {
+    padding: 9px 6px;
+    border-bottom: 1px solid var(--line);
+  }
+  &__pos {
+    font: 900 16px var(--mono);
+    width: 40px;
+    text-align: center;
+  }
+  &__car {
+    display: block;
+    margin-top: 2px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+  }
+  &__time {
+    text-align: right;
+    font: 600 14px var(--mono);
+    white-space: nowrap;
+  }
+}
+@keyframes results-title-strike {
+  0% {
+    opacity: 0;
+    transform: scale(1.25);
+    letter-spacing: 0.16em;
+  }
+  45% {
+    opacity: 1;
+  }
+  100% {
+    transform: none;
+  }
+}
+@keyframes results-row-in {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+}
+@keyframes results-badge-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.4) rotate(-6deg);
+  }
+}

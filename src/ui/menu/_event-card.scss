@@ -1,0 +1,78 @@
+/* The event card on home (menu.ts eventCard): what tonight's event is, the city it runs in (a live map and its
+   notable districts) and the way in. It names no race type; the race step does. Warm light falls on it from
+   the top corners. */
+@use '../styles/abstracts/media';
+@use '../styles/abstracts/mixins';
+@use '../styles/abstracts/palette';
+.event-card {
+  @include mixins.chamfer(12px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px 16px;
+  @include mixins.plate(
+    (
+      var(--card-top),
+      radial-gradient(120% 60% at 100% 0%, palette.alpha(red, 0.07), transparent 60%),
+      radial-gradient(90% 55% at 0% 0%, palette.alpha(orange, 0.1), transparent 65%),
+      var(--plate)
+    )
+  );
+  /* Short screens: home tightens (a lower map well, slimmer rows) so it fits above the help button without a
+     scrolling column (1440 x 800 down to 1280 x 720). */
+  @media (max-height: 780px) {
+    gap: 4px;
+    padding: 10px 14px 12px;
+  }
+  &__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 32px;
+    .label {
+      flex: none;
+    }
+  }
+  &__name {
+    margin: 2px 0 0;
+    font: 900 32px/1.02 var(--display);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    overflow-wrap: anywhere;
+    @include mixins.gradient-text(var(--title-ink));
+    @include media.phone {
+      font-size: 26px;
+    }
+    @media (max-height: 780px) {
+      font-size: 28px;
+    }
+  }
+  &__tagline {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.4;
+    color: var(--muted);
+  }
+  &__go {
+    margin-top: 6px;
+    > svg:last-child {
+      margin-left: auto;
+      transition: transform var(--t-med) var(--ease-out);
+    }
+    &:hover > svg:last-child,
+    &:focus-visible > svg:last-child {
+      transform: translateX(4px);
+    }
+    @media (max-height: 780px) {
+      margin-top: 4px;
+    }
+  }
+  /* What makes this city: chips in their districts' map inks (.chip--ink), a legend of the map above them. */
+  &__feats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
+  }
+}

@@ -1,0 +1,76 @@
+/* The nitrous gauge under the dials (hud.ts). The tank holds three stages, each in its own color: cyan,
+   purple, then the hot pink red (ui/kit/palette.ts NITRO_STAGE_COLORS lists the same; $stages here, which the
+   callouts read too). The bar shows the stage being filled (data-top) over the full stage below it, with a
+   pip per full stage (.is-full), and glows in the burning stage's color (data-burn, .is-burning). */
+@use 'sass:color';
+@use 'sass:list';
+@use '../styles/abstracts/media';
+@use '../styles/abstracts/palette';
+
+$stages: ('cyan', 'purple', 'red');
+
+.nitro-gauge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 190px;
+  margin-right: 5px;
+  @include palette.tint(top, cyan);
+  @include palette.tint(under, cyan);
+  @include palette.tint(burn, cyan);
+  --top-light: #{color.mix(#fff, palette.get(cyan), 70%)};
+  color: var(--top);
+  &__bar {
+    flex: 1;
+    height: 10px;
+    border-radius: var(--radius-sm);
+    background: palette.alpha(bg0, 0.72);
+    border: 1px solid rgba(var(--top-rgb), 0.4);
+    overflow: hidden;
+  }
+  /* Past the first stage the full stage below lies under the one filling, a little darker than the fill. */
+  &:not([data-top='1']) &__bar {
+    background: linear-gradient(90deg, rgba(var(--under-rgb), 0.5), rgba(var(--under-rgb), 0.75));
+  }
+  &__fill {
+    height: 100%;
+    background: linear-gradient(90deg, rgba(var(--top-rgb), 0.7), var(--top));
+  }
+  &.is-burning &__bar {
+    box-shadow: 0 0 10px var(--burn);
+  }
+  &.is-burning &__fill {
+    background: linear-gradient(90deg, var(--top), var(--top-light));
+  }
+  &__pips {
+    display: flex;
+    gap: 3px;
+  }
+  &__pip {
+    width: 5px;
+    height: 10px;
+    background: palette.alpha(bg0, 0.72);
+    border: 1px solid var(--line);
+    transform: skewX(-14deg);
+  }
+  @for $i from 1 through list.length($stages) {
+    $name: list.nth($stages, $i);
+    &[data-top='#{$i}'] {
+      @include palette.tint(top, $name);
+      --top-light: #{color.mix(#fff, palette.get($name), 70%)};
+      @if $i > 1 {
+        @include palette.tint(under, list.nth($stages, $i - 1));
+      }
+    }
+    &[data-burn='#{$i}'] {
+      @include palette.tint(burn, $name);
+    }
+    &__pip.is-full:nth-child(#{$i}) {
+      background: palette.get($name);
+      border-color: transparent;
+    }
+  }
+  @include media.compact-hud {
+    width: 130px;
+  }
+}

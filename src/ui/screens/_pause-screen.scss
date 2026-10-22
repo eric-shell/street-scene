@@ -1,0 +1,33 @@
+/* The pause screen (pause.ts pauseMenu): a rail over the dimmed race in the main menu's language: the type's
+   chip, the ticket of what is paused, Resume, then rows in their hues. Its column does not scroll (the
+   settings page scrolls inside its card), so a step sliding in is never clipped at the column's edge; very
+   short screens fall back to a scrolling column. The rail slides in from the left edge over the race (the
+   results rail arrives the same way, rail-in); Resume glints on its own every few seconds, like the menu's
+   main action. */
+@use '../styles/abstracts/media';
+.pause-screen {
+  > .rail__bg,
+  > .rail__edge {
+    animation: rail-in 0.42s var(--ease-out) both;
+    @include media.reduced-motion {
+      animation: none !important;
+    }
+  }
+  .rail__col {
+    max-height: none;
+    overflow: visible;
+    @include media.very-short {
+      max-height: calc(100% - var(--col-top) - 58px);
+      overflow-y: auto;
+    }
+  }
+  /* The step casts one drop shadow under everything it stands on the race (chamfered plates clip their own). */
+  .rail__step {
+    filter: var(--plate-drop);
+  }
+}
+@keyframes rail-in {
+  from {
+    transform: translateX(-100%);
+  }
+}

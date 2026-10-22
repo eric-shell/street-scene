@@ -1,0 +1,78 @@
+/* The race step's map (menuMaps.ts CourseMap): the home card's well and table (.city-overview), lit from below
+   in the type's color, with the course lying on the plane (.course-map__svg, _course.scss). The table is sized
+   by the well's height (which follows the viewport) and lifted a little, so the city's near corners stay in
+   the well through the whole turn and every course reads to its end. Under a course the event's district
+   breathes quieter, so the course in its color stays the brightest line. With --link it opens the full city
+   map on its course and lights like the home card's map. */
+@use '../styles/abstracts/mixins';
+@use 'table';
+.course-map {
+  position: relative;
+  height: clamp(124px, 22vh, 206px);
+  overflow: hidden;
+  background: radial-gradient(70% 100% at 50% 110%, rgba(var(--mode-rgb), 0.16), transparent 70%), var(--well);
+  border: 1px solid var(--line);
+  clip-path: var(--chamfer-sm);
+  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.5);
+  transition: background 0.3s;
+  &__svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+  /* Free roam's streets are the city itself, so they fade with it at the table's edge. */
+  &[data-mode='roam'] .course-map__svg {
+    @include table.fade-edge;
+  }
+  .city-overview__plane {
+    width: auto;
+    max-width: 70%;
+    height: 96%;
+    transform: translateY(-7%) rotateX(55deg);
+  }
+  .city-overview__glow {
+    animation-name: city-overview-breathe-quiet;
+  }
+  .map-car__ping {
+    border-color: var(--mode);
+  }
+  .map-hint {
+    z-index: 3;
+  }
+  &--link {
+    cursor: pointer;
+    outline: none;
+    transition: border-color var(--t-fast), box-shadow var(--t-fast);
+    &:hover,
+    &:focus-visible {
+      border-color: rgba(var(--mode-rgb), 0.7);
+    }
+    &:focus-visible {
+      border-color: var(--accent-2);
+      box-shadow: var(--ring);
+    }
+    @include mixins.sheen-on-hover;
+    &:is(:hover, :focus-visible) {
+      .city-overview__plane {
+        transform: translateY(-7%) rotateX(44deg) scale(1.05);
+      }
+      .map-hint {
+        color: var(--on-accent);
+        background: var(--accent-grad);
+        > svg {
+          color: var(--on-accent);
+        }
+      }
+    }
+  }
+}
+@keyframes city-overview-breathe-quiet {
+  from {
+    opacity: 0.15;
+  }
+  to {
+    opacity: 0.5;
+  }
+}

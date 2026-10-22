@@ -1,0 +1,190 @@
+/* The race HUD (hud.ts): the root over the race, the top left column (the HUD card, hudCard.ts, with the
+   chips under it), the race's progress, the countdown, messages and the wrong way warning, the dial cluster
+   in the bottom right (the boost gauge tucked against the tachometer, the nitrous gauge and its callouts
+   under them) and the minimap in the bottom left, which opens the full map. The drone's HUD reuses the top
+   left column and the minimap (_drone-hud.scss). Reads a snapshot each frame; never touches the sim. */
+@use '../styles/abstracts/media';
+@use '../styles/abstracts/mixins';
+@use '../styles/abstracts/palette';
+.hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  color: var(--text);
+  font-family: var(--font);
+  /* The HUD card with the ghost, drift zone and waypoint chips under it, as wide as the card. Chamfered plates
+     clip their own box shadows, so the column casts the menu's drop shadow for all of them. */
+  &__top-left {
+    position: absolute;
+    top: mixins.safe(top, 12px);
+    left: mixins.safe(left, 12px);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    filter: var(--plate-drop);
+  }
+  /* Free roam shows no race progress. */
+  &--open-world &__progress {
+    display: none;
+  }
+  &__progress {
+    position: absolute;
+    top: mixins.safe(top, 12px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(320px, 40vw);
+    height: 4px;
+    background: palette.alpha(bg0, 0.7);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    /* The card takes most of the top on a small screen: the race's progress runs along the bottom instead. */
+    @include media.compact-hud {
+      top: auto;
+      bottom: mixins.safe(bottom, 12px);
+    }
+  }
+  &__progress-fill {
+    height: 100%;
+    width: 0;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  }
+  &__countdown {
+    position: absolute;
+    top: 26%;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: clamp(72px, 16vw, 170px);
+    color: var(--accent-2);
+    text-shadow: 0 3px 0 rgba(0, 0, 0, 0.55);
+    &.is-popping {
+      animation: hud-countdown-pop 0.9s ease-out forwards;
+    }
+  }
+  &__message {
+    position: absolute;
+    top: 17%;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font: 900 clamp(20px, 3.2vw, 32px) var(--display);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    opacity: 0;
+    transition: opacity 0.25s;
+    text-shadow: var(--hud-halo);
+    &.is-visible {
+      opacity: 1;
+    }
+  }
+  &__wrong-way {
+    position: absolute;
+    top: 38%;
+    left: 0;
+    right: 0;
+    display: none;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: clamp(32px, 7vw, 64px);
+    letter-spacing: 0.08em;
+    color: var(--red);
+    text-shadow: 0 3px 0 rgba(0, 0, 0, 0.6);
+    animation: hud-blink 0.6s steps(2) infinite;
+    &.is-visible {
+      display: flex;
+    }
+  }
+  &__bottom-right {
+    position: absolute;
+    right: mixins.safe(right, 10px);
+    bottom: mixins.safe(bottom, 10px);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    /* On touch devices the right side belongs to the pedals. */
+    @include media.touch {
+      bottom: auto;
+      top: mixins.safe(top, 64px);
+      transform: scale(0.7);
+      transform-origin: top right;
+    }
+  }
+  /* Boost gauge tucked against the lower left of the tachometer, like a twin dial cluster. */
+  &__dials {
+    display: flex;
+    align-items: flex-end;
+  }
+  &__boost {
+    width: 116px;
+    height: 116px;
+    margin-right: -14px;
+    margin-bottom: -2px;
+    @include media.compact-hud {
+      width: 82px;
+      height: 82px;
+      margin-right: -10px;
+    }
+  }
+  &__tach {
+    width: 200px;
+    height: 200px;
+    @include media.compact-hud {
+      width: 140px;
+      height: 140px;
+    }
+  }
+  /* The minimap (minimap.ts), the drone's too. The nitrous gauge under the dials and its callouts:
+     _nitro-gauge.scss, _boost-callouts.scss. */
+  &__minimap {
+    position: absolute;
+    left: mixins.safe(left, 10px);
+    bottom: mixins.safe(bottom, 10px);
+    width: 170px;
+    height: 170px;
+    @include media.compact-hud {
+      width: 110px;
+      height: 110px;
+    }
+    /* The left half is the steering pad: keep the map small and out of the way. */
+    @include media.touch {
+      opacity: 0.85;
+    }
+  }
+  /* In a race and free roam (not the drone's) the minimap opens the full map (a click or Tab); the help
+     panel says so (ui/panels/help.ts). */
+  .hud__minimap {
+    pointer-events: auto;
+    cursor: pointer;
+    &:hover {
+      filter: brightness(1.15);
+    }
+  }
+}
+@keyframes hud-countdown-pop {
+  0% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+  20% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+}
+/* The wrong way warning and a timed hazard's warning (_hazard-banner.scss) blink on it. */
+@keyframes hud-blink {
+  50% {
+    opacity: 0.25;
+  }
+}

@@ -1,0 +1,74 @@
+/* A category's tab (garageUi.ts): nine tiles in two rows like the race types, the icon on a dim badge in the
+   category's hue at rest (the hue table in _garage.scss keys it on data-tab), lit with the tile's edge on
+   hover; the open one fills with the hue's wash over a bar of it along the bottom, its badge lit. */
+@use '../ui/styles/abstracts/media';
+@use '../ui/styles/abstracts/mixins';
+.garage-tab {
+  @include mixins.chamfer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 62px;
+  padding: 8px 2px 7px;
+  font: 800 11px var(--font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: pointer;
+  @include mixins.plate($radius: var(--radius-sm));
+  transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast), box-shadow var(--t-fast), transform var(--t-fast);
+  &__badge {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 32px;
+    height: 26px;
+    color: var(--hue);
+    background: rgba(var(--hue-rgb), 0.13);
+    clip-path: var(--chamfer-sm);
+    transition: background var(--t-fast), color var(--t-fast), transform var(--t-med) var(--ease-out);
+  }
+  &__label {
+    max-width: 100%;
+    @include mixins.ellipsis;
+  }
+  &:hover,
+  &:focus-visible {
+    color: var(--text);
+    border-color: rgba(var(--hue-rgb), 0.6);
+    background: linear-gradient(180deg, rgba(var(--hue-rgb), 0.12), transparent 70%), var(--plate-hover);
+    outline: none;
+    .garage-tab__badge {
+      color: var(--on-accent);
+      background: var(--hue);
+    }
+  }
+  &:focus-visible {
+    box-shadow: var(--edge), var(--ring);
+  }
+  &.is-selected {
+    color: var(--text);
+    border-color: rgba(var(--hue-rgb), 0.7);
+    background: linear-gradient(180deg, rgba(var(--hue-rgb), 0.28), rgba(var(--hue-rgb), 0.06)), var(--plate);
+    box-shadow: var(--edge), inset 0 -3px 0 var(--hue);
+    &:focus-visible {
+      box-shadow: var(--edge), inset 0 -3px 0 var(--hue), var(--ring);
+    }
+    .garage-tab__badge {
+      color: var(--on-accent);
+      background: var(--hue);
+      transform: scale(1.08);
+    }
+  }
+  &:active {
+    transform: translateY(1px);
+  }
+  @include mixins.sheen-on-hover;
+  @include media.narrow {
+    min-height: 56px;
+    padding: 6px 2px 5px;
+  }
+}

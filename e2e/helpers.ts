@@ -4,9 +4,9 @@ import type { Page } from '@playwright/test';
 /** The music player's state as the widget shows it. */
 export function music(page: Page) {
   return page.evaluate(() => ({
-    title: document.querySelector('.mw-title')?.textContent ?? '',
-    playing: document.querySelector('.mw-play')?.getAttribute('aria-label') === 'Pause',
-    time: document.querySelector('.mw-time')?.textContent ?? '',
+    title: document.querySelector('.music-player__title')?.textContent ?? '',
+    playing: document.querySelector('.music-player__play')?.getAttribute('aria-label') === 'Pause',
+    time: document.querySelector('.music-player__time')?.textContent ?? '',
   }));
 }
 
@@ -34,11 +34,11 @@ export async function sampleSplash(page: Page): Promise<void> {
     w.__splashLog = log;
     const tick = setInterval(() => {
       const splash = document.querySelector('.splash');
-      const head = document.querySelector('.menu-head');
+      const head = document.querySelector('.title-lockup');
       log.samples.push({
         splash: !!splash,
-        logo: splash?.querySelector('.splash-logo')?.textContent ?? '',
-        hints: splash?.querySelectorAll('.splash-hint').length ?? 0,
+        logo: splash?.querySelector('.splash__logo')?.textContent ?? '',
+        hints: splash?.querySelectorAll('.splash__hint').length ?? 0,
         head: head ? getComputedStyle(head).visibility : 'none',
       });
       if (!splash && head) {

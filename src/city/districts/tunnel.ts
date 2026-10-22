@@ -83,7 +83,7 @@ export function ridgeShape(a: Area): RidgeShape {
 
 /**
  * Tunnel names, on the portal boards (render/districts/tunnel.ts) and the HUD
- * and map (ui/places.ts). Each tunnel in a city gets its own (params.name).
+ * and map (ui/map/places.ts). Each tunnel in a city gets its own (params.name).
  */
 export const TUNNEL_NAMES = ['Chrome Tunnel', 'Midnight Tunnel', 'Harbor Tunnel', 'Meridian Tunnel', 'Nova Bore', 'Irongate Tunnel'] as const;
 

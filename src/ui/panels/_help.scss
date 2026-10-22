@@ -1,0 +1,188 @@
+/* The help (panels/help.ts): the small ? in a screen's bottom left and its panel of keys and tips. The button
+   is a small chamfered plate that stays quiet (muted, no sheen) until it is hovered or open; the panel opens
+   above it as a card with the accent hairline, its sections under the menu cards' yellow caps, the keys in
+   caps beside what they do. On the rails it stands where the key legend did; on the HUD and the drone beside
+   the minimap. Touch screens steer with the HUD's left half, so there the race's help waits for the pause
+   screen's. The wrapper casts the drop shadow the chamfers would clip. */
+@use '../styles/abstracts/media';
+@use '../styles/abstracts/mixins';
+.help {
+  position: absolute;
+  z-index: 5;
+  pointer-events: auto;
+  filter: var(--plate-drop);
+  .rail > & {
+    left: var(--rail-pad, 16px);
+    bottom: mixins.safe(bottom, 14px);
+  }
+  /* Beside the minimap (hud/_hud.scss .hud__minimap, 170px from the left edge; 110px on a compact HUD). */
+  :is(.hud, .drone-hud) > & {
+    left: calc(#{mixins.safe(left, 10px)} + 178px);
+    bottom: mixins.safe(bottom, 10px);
+    @include media.compact-hud {
+      left: calc(#{mixins.safe(left, 10px)} + 118px);
+    }
+  }
+  .hud > & {
+    @include media.touch {
+      display: none;
+    }
+  }
+
+  &__button {
+    @include mixins.chamfer(6px);
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    font: 900 15px var(--display);
+    color: var(--muted);
+    @include mixins.plate($radius: null);
+    cursor: pointer;
+    transition: color var(--t-fast), border-color var(--t-fast), background var(--t-fast);
+    &:hover,
+    &:focus-visible {
+      color: var(--text);
+      border-color: var(--accent-line);
+      background: var(--plate-hover);
+      outline: none;
+    }
+    &:focus-visible {
+      box-shadow: var(--edge), var(--ring);
+    }
+    &.is-open {
+      color: var(--on-accent);
+      background: var(--accent);
+      border-color: transparent;
+    }
+  }
+
+  /* The panel: a card over the button's corner. Its body scrolls, so the chamfer's edges stay put. */
+  &__panel {
+    @include mixins.chamfer(12px);
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 8px);
+    width: min(340px, calc(100vw - 24px));
+    max-height: min(66vh, 560px);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px 14px 14px;
+    /* Solid under the plate: it opens over cards and bright buttons, which would show through. */
+    @include mixins.plate((var(--card-top), var(--plate), var(--bg1)), null);
+    animation: help-panel-in 0.22s var(--ease-out) both;
+    &[hidden] {
+      display: none;
+    }
+    @include media.reduced-motion {
+      animation: none;
+    }
+  }
+  &__head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  &__title {
+    font: 900 16px var(--display);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  &__subtitle {
+    flex: 1;
+    font: 600 12px var(--font);
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+  &__close {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    margin-right: -6px;
+    padding: 0;
+    color: var(--muted);
+    background: none;
+    border: 0;
+    cursor: pointer;
+    transition: color var(--t-fast);
+    &:hover,
+    &:focus-visible {
+      color: var(--text);
+    }
+  }
+  &__body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+    @include mixins.scroll-y;
+  }
+  &__section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  &__keys {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  /* A key row: the caps in a column wide enough for four (W A S D), then what they do. */
+  &__row {
+    display: grid;
+    grid-template-columns: 100px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    padding: 3px 0;
+    font: 600 13px var(--font);
+    color: var(--soft);
+    text-align: left;
+    /* A row that does what its key does: a quiet button, its words in the accent. */
+    &--action {
+      margin: 0 -6px;
+      padding: 3px 6px;
+      background: none;
+      border: 0;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: background var(--t-fast);
+      .help__row-label {
+        color: var(--accent);
+      }
+      &:hover,
+      &:focus-visible {
+        background: var(--surface-hover);
+        outline: none;
+      }
+      &:focus-visible {
+        box-shadow: var(--ring);
+      }
+    }
+  }
+  &__row-keys {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+  }
+  &__tips {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin: 0;
+    padding-left: 16px;
+    font: 500 13px/1.4 var(--font);
+    color: var(--soft);
+  }
+  &__tip::marker {
+    color: var(--accent);
+  }
+}
+@keyframes help-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}

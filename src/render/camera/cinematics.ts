@@ -15,7 +15,8 @@
  * (game/streetCameras.ts) and swings round the car onto the chase camera; the
  * shot is carried in the car's frame and blended in polar coordinates around
  * the car, so it rides along with the car and never passes through it. The
- * HUD stays hidden until the swing settles, then fades in.
+ * HUD stays hidden until the swing settles, then fades in. The overlays and the
+ * HUD's hiding classes are styled by _cinematics.scss beside this file.
  */
 import * as THREE from 'three';
 import type { World } from '../../city/world';
@@ -44,36 +45,6 @@ const wrap = (a: number) => {
   while (a < -Math.PI) a += Math.PI * 2;
   return a;
 };
-
-let styled = false;
-/** HUD hiding during shots, scoped to classes this module toggles. */
-function ensureStyles(): void {
-  if (styled || typeof document === 'undefined') return;
-  styled = true;
-  const st = document.createElement('style');
-  st.textContent = `
-.hud.cine-intro > * { opacity: 0 !important; transition: opacity .4s; }
-.hud.cine-outro > :not(.hud-msg) { opacity: 0 !important; transition: opacity .6s; }
-.hud.cine-handoff > * { opacity: 0 !important; }
-.hud.cine-reveal > * { transition: opacity .9s ease; }
-.cine-skip { position: fixed; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translateX(-50%);
-  z-index: 40; pointer-events: none; font: 600 13px var(--font, system-ui); letter-spacing: .12em; text-transform: uppercase;
-  color: rgba(255,255,255,.72); text-shadow: 0 1px 6px rgba(0,0,0,.8); opacity: 0; transition: opacity .5s; }
-.cine-skip.show { opacity: 1; }
-.cine-bars::before, .cine-bars::after { content: ''; position: fixed; left: 0; right: 0; height: 0; background: #000; z-index: 30;
-  pointer-events: none; transition: height .6s ease; }
-.cine-bars::before { top: 0; } .cine-bars::after { bottom: 0; }
-.cine-bars.on::before, .cine-bars.on::after { height: 7vh; }
-.cine-title { position: fixed; left: 0; right: 0; top: 16vh; z-index: 35; padding: 0 16px; pointer-events: none; text-align: center;
-  opacity: 0; transform: translateY(10px); transition: opacity .6s, transform .6s ease; }
-.cine-title.show { opacity: 1; transform: none; }
-.cine-title b { display: block; font: 900 clamp(30px, 7vw, 76px) var(--display, system-ui); letter-spacing: .08em; text-transform: uppercase;
-  color: var(--accent-2, #ffd866); text-shadow: 0 3px 0 rgba(0,0,0,.55), 0 0 28px rgba(0,0,0,.6); }
-.cine-title span { display: block; margin-top: 6px; font: 600 clamp(11px, 1.6vw, 16px) var(--font, system-ui); letter-spacing: .26em;
-  text-transform: uppercase; color: rgba(252,252,250,.85); text-shadow: 0 1px 6px rgba(0,0,0,.85); }
-`;
-  document.head.append(st);
-}
 
 interface Pose {
   pos: THREE.Vector3;
@@ -149,21 +120,22 @@ export class RaceCinematics {
     private readonly world: World,
     hintParent?: HTMLElement | null,
   ) {
-    ensureStyles();
     if (hintParent) {
       this.hint = document.createElement('div');
-      this.hint.className = 'cine-skip';
+      this.hint.className = 'cinematic-skip';
       this.hint.textContent = 'Enter / tap to skip';
       hintParent.append(this.hint);
       this.bars = document.createElement('div');
-      this.bars.className = 'cine-bars';
+      this.bars.className = 'cinematic-bars';
       hintParent.append(this.bars);
       if (world.event && !world.openWorld) {
         this.title = document.createElement('div');
-        this.title.className = 'cine-title';
+        this.title.className = 'cinematic-title';
         const name = document.createElement('b');
+        name.className = 'cinematic-title__name';
         name.textContent = world.event.name;
         const tag = document.createElement('span');
+        tag.className = 'cinematic-title__tagline';
         tag.textContent = world.event.tagline;
         this.title.append(name, tag);
         hintParent.append(this.title);
@@ -191,8 +163,8 @@ export class RaceCinematics {
     this.l0.set(p.x + fx * q.lookAhead, p.y + q.lookHeight, p.z + fz * q.lookAhead);
     this.phase = 'intro';
     this.skipFrom = null;
-    this.hint?.classList.add('show');
-    this.bars?.classList.add('on');
+    this.hint?.classList.add('is-visible');
+    this.bars?.classList.add('is-visible');
   }
 
   /**
@@ -279,7 +251,7 @@ export class RaceCinematics {
     if (this.phase === 'intro' && !this.skipFrom) {
       this.skipFrom = { pos: this.cam.camera.position.clone(), look: this.shot.look.clone(), fov: this.cam.camera.fov, roll: 0 };
       this.skipT = 0;
-      this.hint?.classList.remove('show');
+      this.hint?.classList.remove('is-visible');
     }
   }
 
@@ -290,8 +262,8 @@ export class RaceCinematics {
   private endIntro(): void {
     this.phase = 'none';
     this.skipFrom = null;
-    this.hint?.classList.remove('show');
-    this.bars?.classList.remove('on');
+    this.hint?.classList.remove('is-visible');
+    this.bars?.classList.remove('is-visible');
   }
 
   /** Begin the finish shot from wherever the camera is now. */
@@ -308,14 +280,14 @@ export class RaceCinematics {
     const left = this.cam.wallHit(p.x, p.z, p.x + fz * r, p.z - fx * r);
     const right = this.cam.wallHit(p.x, p.z, p.x - fz * r, p.z + fx * r);
     this.side = left >= right ? 1 : -1;
-    this.bars?.classList.add('on');
-    this.hint?.classList.add('show');
+    this.bars?.classList.add('is-visible');
+    this.hint?.classList.add('is-visible');
   }
 
   /** Drop the skip hint and letterbox (results are up); the camera keeps orbiting. */
   settle(): void {
-    this.hint?.classList.remove('show');
-    this.bars?.classList.remove('on');
+    this.hint?.classList.remove('is-visible');
+    this.bars?.classList.remove('is-visible');
   }
 
   /** Override the camera for the finish shot. Call after the chase camera update. */
@@ -396,14 +368,14 @@ export class RaceCinematics {
   /** Toggle the HUD hiding classes for the current phase; `dt` times the fade in after a handoff. */
   syncHud(hud: HTMLElement, preRoll: boolean, dt = 0): void {
     const intro = this.phase === 'intro' && preRoll && !this.skipFrom;
-    if (this.title && this.title.classList.contains('show') !== intro) this.title.classList.toggle('show', intro);
-    hud.classList.toggle('cine-intro', intro);
-    hud.classList.toggle('cine-outro', this.phase === 'outro');
+    if (this.title && this.title.classList.contains('is-visible') !== intro) this.title.classList.toggle('is-visible', intro);
+    hud.classList.toggle('is-intro', intro);
+    hud.classList.toggle('is-outro', this.phase === 'outro');
     const handoff = this.phase === 'handoff';
-    hud.classList.toggle('cine-handoff', handoff);
+    hud.classList.toggle('is-handoff', handoff);
     // The fade in: the transition only while it runs, so the HUD's own transitions (messages, warnings) come back after.
     if (!handoff && this.reveal > 0) this.reveal = Math.max(0, this.reveal - Math.min(dt, MAX_STEP));
-    hud.classList.toggle('cine-reveal', handoff || this.reveal > 0);
+    hud.classList.toggle('is-revealing', handoff || this.reveal > 0);
   }
 
   dispose(): void {

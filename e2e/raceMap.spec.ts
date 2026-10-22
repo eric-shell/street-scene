@@ -20,10 +20,10 @@ test.describe('the city map in a race', () => {
     await page.goto('/?race=sprint&seed=e2e-map&quality=low', { waitUntil: 'domcontentloaded' });
     // The intro cinematic ignores the map; wait until the race is the player's.
     await expect.poll(async () => (await race(page))?.phase ?? null, { timeout: 60_000 }).toBe('none');
-    await page.locator('.hud-map').click();
-    const modal = page.locator('.fullmap-modal');
+    await page.locator('.hud__minimap').click();
+    const modal = page.locator('.full-map');
     await expect(modal).toBeVisible();
-    await expect(modal.locator('.fullmap-chip.course')).toHaveText('Sprint');
+    await expect(modal.locator('.full-map__chip--course')).toHaveText('Sprint');
     const open = await race(page);
     expect(open?.mapOpen).toBe(true);
     expect(open?.paused).toBe(true);
@@ -33,6 +33,6 @@ test.describe('the city map in a race', () => {
     expect(closed?.mapOpen).toBe(false);
     expect(closed?.paused).toBe(false);
     // No pause screen: Escape closed the map, not the race.
-    await expect(page.locator('.rail-screen.pause')).toHaveCount(0);
+    await expect(page.locator('.pause-screen')).toHaveCount(0);
   });
 });

@@ -1,0 +1,26 @@
+/* The seed on the event card (menu.ts seedControl): the city's seed with quiet edit, shuffle and back-to-today
+   actions; editing swaps it for a field (Enter applies, Escape cancels). */
+@use '../styles/abstracts/mixins';
+.seed-control {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  &__value {
+    min-width: 0;
+    margin-right: 4px;
+    font: 700 13px var(--mono);
+    color: var(--accent-2);
+    @include mixins.ellipsis;
+  }
+  /* Under the block, so it outweighs the kit's input[type='text'] padding (its .mono font still wins). */
+  .seed-control__input {
+    width: min(180px, 40vw);
+    min-width: 0;
+    padding: 5px 8px;
+    font-size: 13px;
+  }
+  .btn--small.btn--icon {
+    padding: 6px;
+  }
+}

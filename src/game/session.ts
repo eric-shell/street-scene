@@ -38,18 +38,18 @@ import { DroneMode } from './drone';
 import type { CameraMode } from '../render/camera/camera';
 import { InputManager } from '../input/inputManager';
 import { Rumble } from '../input/rumble';
-import { Hud, HudCar, HudData, RACE_CARD, raceReadouts } from '../ui/hud';
-import { courseFor, openFullMap, type FullMap, type WaypointStore } from '../ui/fullMap/fullMap';
-import { placeName } from '../ui/places';
-import { toast } from '../ui/dom';
-import { Compass, MapIcon, MapPinned, Pause } from '../ui/icons';
-import { HudCard } from '../ui/hudCard';
-import { Help, MUSIC_KEYS, type HelpKey, type HelpSection } from '../ui/help';
-import { btn } from '../ui/dom';
+import { Hud, HudCar, HudData, RACE_CARD, raceReadouts } from '../ui/hud/hud';
+import { courseFor, openFullMap, type FullMap, type WaypointStore } from '../ui/map/fullMap';
+import { placeName } from '../ui/map/places';
+import { toast } from '../ui/kit/dom';
+import { Compass, MapIcon, MapPinned, Pause } from '../ui/kit/icons';
+import { HudCard } from '../ui/hud/hudCard';
+import { Help, MUSIC_KEYS, type HelpKey, type HelpSection } from '../ui/panels/help';
+import { btn } from '../ui/kit/dom';
 import type { Vec2 } from '../sim/math';
 import { Settings } from '../ui/settings';
-import { formatTime } from '../ui/format';
-import { mph } from '../ui/units';
+import { formatTime } from '../ui/kit/format';
+import { mph } from '../ui/kit/units';
 import { ReplayData } from '../replay/replay';
 import { PROP_DEFS } from '../city/props';
 import { TRAFFIC_SNAP, TrafficView, snapTraffic } from '../render/traffic/traffic';
@@ -313,9 +313,9 @@ export class RaceSession {
    * touches a control first. Null once the player has the car.
    */
   private cruise: { drive: Cruise; s: number; untilTick: number } | null = null;
-  /** The HUD card the drone shares (ui/hudCard.ts), on top of the HUD's chips: free roam's or the race's. */
+  /** The HUD card the drone shares (ui/hud/hudCard.ts), on top of the HUD's chips: free roam's or the race's. */
   private card: HudCard;
-  /** The keys and tips behind the ? beside the minimap (ui/help.ts). */
+  /** The keys and tips behind the ? beside the minimap (ui/panels/help.ts). */
   private help: Help;
   /** The help panel paused the drive (and so unpauses it when it closes). */
   private helpPaused = false;
@@ -368,7 +368,7 @@ export class RaceSession {
     this.hazards = new HazardFx(this.night.drawbridge, this.hud.root);
     // The same card as the drone's in every mode: Map (not in a replay, which has none) and hide.
     const shared = {
-      actions: this.isReplay ? [] : [btn(MapIcon, 'Map', () => this.toggleMap(), 'small')],
+      actions: this.isReplay ? [] : [btn(MapIcon, 'Map', () => this.toggleMap(), '--small')],
       canHide: () => !this.paused && !this.fullMap && !this.cine.active,
     };
     if (this.openWorld) {
@@ -819,7 +819,7 @@ export class RaceSession {
       stepRace(this.ghostRace, gt < this.ghostLog.length ? unpackInput(this.ghostLog[gt]) : { ...NEUTRAL_INPUT, brake: 1 });
       this.ghostCurr = snap(this.ghostRace.cars[0].state);
     }
-    // Callouts for the nitrous the player's style earned this tick (ui/boostCallouts.ts).
+    // Callouts for the nitrous the player's style earned this tick (ui/hud/boostCallouts.ts).
     this.hud.callouts.tick(r.cars[0].state);
     this.chaseCall = policeChaseCall(r);
     this.sfx?.syncCountdown(r);

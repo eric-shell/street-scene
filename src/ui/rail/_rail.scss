@@ -1,0 +1,138 @@
+/* The rail (ui/rail/rail.ts): every full screen menu stands on one. An opaque column down the left
+   (.rail__bg) with a straight right edge and the accent down it (.rail__edge), so its contrast never
+   depends on the scene behind it, and the 3D view framed in the space beside it (GameRenderer.setFraming).
+   The column (.rail__col) keeps one width on every step of a screen, so nothing jumps; the help button sits
+   in the bottom left. Narrow screens get a full width rail without the edge. The main menu (.menu-screen)
+   and the garage keep the rail's box for framing but draw only a scrim in it: their cards are plates of
+   their own, and the city shows between them (ui/menu/_menu.scss, garage/_garage.scss).
+   A screen's content changes in steps (.rail__step, swapStep): the old step leaves from where it stands
+   (out of the flow) toward the side it came from while the new one cascades in from the other side, its
+   parts a beat apart: forward (home to a step) moves left, back (.is-back) moves right. */
+@use '../styles/abstracts/media';
+@use '../styles/abstracts/mixins';
+@use '../styles/abstracts/palette';
+.rail {
+  --rail-pad: max(16px, 4.5vw);
+  --rail-content: var(--menu-w);
+  /* The content's margin on both sides of the column. */
+  --rail-w: calc(var(--rail-pad) * 2 + var(--rail-content));
+  @include media.narrow {
+    --rail-w: 100%;
+  }
+  &__bg,
+  &__edge {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: var(--rail-w);
+    pointer-events: none;
+  }
+  &__bg {
+    background:
+      radial-gradient(90% 38% at 0% 0%, palette.alpha(orange, 0.07), transparent 70%),
+      linear-gradient(90deg, palette.alpha(bg0, 0.985) 55%, palette.alpha(bg0, 0.96));
+  }
+  /* The accent down the edge: the rail's width clipped to its last 2px, so a sheet can unclip it into a full width bar. */
+  &__edge {
+    background: linear-gradient(180deg, var(--accent-2), var(--accent) 45%, palette.alpha(red, 0.7));
+    clip-path: inset(0 0 0 calc(100% - 2px));
+    @include media.narrow {
+      display: none;
+    }
+  }
+  /* The column: a fixed top so the title stays put from step to step, room for the help button at the bottom.
+     Its parts rise in when a rail screen opens or the player moves between its steps (.is-entering). */
+  &__col {
+    --col-top: clamp(16px, 9vh, 96px);
+    position: absolute;
+    left: var(--rail-pad);
+    top: var(--col-top);
+    width: var(--rail-content);
+    max-height: calc(100% - var(--col-top) - 58px);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 4px 0;
+    @include mixins.scroll-y;
+    > * {
+      flex-shrink: 0;
+    }
+    /* Short screens (laptops, phones on their side): a higher column. */
+    @include media.short {
+      --col-top: clamp(12px, 6vh, 48px);
+      gap: 10px;
+    }
+    &.is-entering > :not(.title-lockup) {
+      animation: rise-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--i, 0) * 35ms) both;
+    }
+    @include mixins.stagger(2, 6) using ($i) {
+      --i: #{$i - 1};
+    }
+  }
+  /* A paused race stays visible beside the rail, dimmed. */
+  &--scrim {
+    background: linear-gradient(90deg, palette.alpha(bg0, 0.3), palette.alpha(bg0, 0.6));
+  }
+  &__step {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    > * {
+      flex-shrink: 0;
+    }
+    &.is-leaving {
+      position: absolute;
+      left: 0;
+      right: 0;
+      pointer-events: none;
+      animation: step-out 0.26s var(--ease-in-out) both;
+      &.is-back {
+        animation-name: step-out-back;
+      }
+    }
+    &.is-entering > * {
+      animation: step-in 0.5s var(--ease-out) calc(60ms + var(--i, 0) * 45ms) both;
+    }
+    &.is-entering.is-back > * {
+      animation-name: step-in-back;
+    }
+    @include mixins.stagger(2, 6) using ($i) {
+      --i: #{$i - 1};
+    }
+  }
+}
+@keyframes step-out {
+  to {
+    opacity: 0;
+    transform: translateX(-48px);
+  }
+}
+@keyframes step-out-back {
+  to {
+    opacity: 0;
+    transform: translateX(48px);
+  }
+}
+@keyframes step-in {
+  from {
+    opacity: 0;
+    transform: translateX(72px);
+  }
+}
+@keyframes step-in-back {
+  from {
+    opacity: 0;
+    transform: translateX(-72px);
+  }
+}
+@include media.reduced-motion {
+  .rail__col.is-entering > *,
+  .rail__step.is-entering > *,
+  .rail__step.is-leaving {
+    animation: none !important;
+  }
+  .rail__step.is-leaving {
+    display: none;
+  }
+}

@@ -1,0 +1,56 @@
+/* A chip (ui/kit/dom.ts chip): a small chamfered label, an icon and a short text (event facts, specs,
+   records). --accent reads as a value (yellow); --ink takes --ink on its border, wash and icon (a district,
+   a car's spec), --mode the race type's color for the whole chip; --small is the size of tags and badges. */
+@use '../styles/abstracts/mixins';
+@use '../styles/abstracts/palette';
+.chip {
+  @include mixins.chamfer(6px);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 3px 8px;
+  font: 700 12px var(--font);
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  color: var(--soft);
+  background: palette.alpha(bg0, 0.85);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  &__label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  > svg {
+    color: var(--muted);
+  }
+  &--accent {
+    color: var(--accent-2);
+    background: linear-gradient(var(--accent-2-soft), var(--accent-2-soft)), palette.alpha(bg0, 0.85);
+    border-color: palette.alpha(yellow, 0.35);
+    > svg {
+      color: var(--accent-2);
+    }
+  }
+  &--ink {
+    color: var(--soft);
+    border-color: color-mix(in srgb, var(--ink) 45%, transparent);
+    background: linear-gradient(color-mix(in srgb, var(--ink) 13%, transparent), color-mix(in srgb, var(--ink) 13%, transparent)), palette.alpha(bg0, 0.85);
+    > svg {
+      color: var(--ink);
+    }
+  }
+  &--mode {
+    color: var(--mode);
+    border-color: rgba(var(--mode-rgb), 0.45);
+    background: linear-gradient(rgba(var(--mode-rgb), 0.13), rgba(var(--mode-rgb), 0.13)), palette.alpha(bg0, 0.85);
+    > svg {
+      color: var(--mode);
+    }
+  }
+  &--small {
+    padding: 2px 7px;
+    font-size: 11px;
+  }
+}

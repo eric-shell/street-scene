@@ -1,6 +1,7 @@
 /**
  * On-screen controls for touch devices: drag anywhere on the left half to
- * steer, buttons on the right for gas, brake, handbrake and nitrous.
+ * steer, buttons on the right for gas, brake, handbrake and nitrous. Styled by
+ * _touch-controls.scss beside this file.
  */
 export interface TouchState {
   active: boolean;
@@ -12,26 +13,6 @@ export interface TouchState {
   reset: boolean;
 }
 
-const STYLE = `
-.nr-touch { position: fixed; inset: 0; pointer-events: none; z-index: 20; }
-.nr-touch.hidden { display: none; }
-.nr-steer { position: absolute; left: 0; top: 30%; bottom: 0; width: 50%; pointer-events: auto; touch-action: none; }
-.nr-knob { position: absolute; width: 84px; height: 84px; margin: -42px 0 0 -42px; border-radius: 50%;
-  border: 2px solid rgba(252,152,103,.6); background: rgba(25,24,26,.3); display: none; }
-.nr-btn { position: absolute; pointer-events: auto; touch-action: none; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center; font: 700 14px var(--display, system-ui), sans-serif; letter-spacing: .08em;
-  color: #fcfcfa; background: rgba(25,24,26,.55); border: 2px solid rgba(147,146,147,.55); user-select: none; -webkit-user-select: none; }
-.nr-btn.on { background: rgba(252,152,103,.5); }
-.nr-gas { right: 18px; bottom: 26px; width: 96px; height: 96px; border-color: rgba(169,220,118,.75); }
-.nr-brake { right: 128px; bottom: 18px; width: 74px; height: 74px; border-color: rgba(255,97,136,.75); }
-.nr-hb { right: 128px; bottom: 104px; width: 64px; height: 64px; }
-.nr-nos { right: 30px; bottom: 136px; width: 70px; height: 70px; border-color: rgba(120,220,232,.9); }
-.nr-small { width: 44px; height: 44px; font-size: 11px; top: max(10px, env(safe-area-inset-top)); }
-.nr-pause { right: 12px; }
-.nr-cam { right: 64px; }
-.nr-reset { right: 116px; }
-`;
-
 export class TouchControls {
   private root: HTMLDivElement;
   private s: TouchState = { active: false, steer: 0, throttle: 0, brake: 0, handbrake: false, nitrous: false, reset: false };
@@ -40,18 +21,12 @@ export class TouchControls {
   private knob: HTMLDivElement;
 
   constructor(parent: HTMLElement, onPause: () => void, onCamera: () => void) {
-    if (!document.getElementById('nr-touch-style')) {
-      const st = document.createElement('style');
-      st.id = 'nr-touch-style';
-      st.textContent = STYLE;
-      document.head.appendChild(st);
-    }
     this.root = document.createElement('div');
-    this.root.className = 'nr-touch hidden';
+    this.root.className = 'touch-controls is-hidden';
     const steer = document.createElement('div');
-    steer.className = 'nr-steer';
+    steer.className = 'touch-controls__steer';
     this.knob = document.createElement('div');
-    this.knob.className = 'nr-knob';
+    this.knob.className = 'touch-controls__knob';
     steer.appendChild(this.knob);
     steer.addEventListener('pointerdown', (e) => {
       this.steerId = e.pointerId;
@@ -76,19 +51,19 @@ export class TouchControls {
     steer.addEventListener('pointercancel', endSteer);
     this.root.appendChild(steer);
 
-    const hold = (cls: string, label: string, set: (on: boolean) => void) => {
+    const hold = (mod: string, label: string, set: (on: boolean) => void) => {
       const b = document.createElement('div');
-      b.className = `nr-btn ${cls}`;
+      b.className = `touch-controls__button touch-controls__button--${mod}`;
       b.textContent = label;
       const on = (e: PointerEvent) => {
         e.preventDefault();
         b.setPointerCapture(e.pointerId);
-        b.classList.add('on');
+        b.classList.add('is-pressed');
         this.s.active = true;
         set(true);
       };
       const off = () => {
-        b.classList.remove('on');
+        b.classList.remove('is-pressed');
         set(false);
       };
       b.addEventListener('pointerdown', on);
@@ -96,13 +71,13 @@ export class TouchControls {
       b.addEventListener('pointercancel', off);
       this.root.appendChild(b);
     };
-    hold('nr-gas', 'GAS', (v) => (this.s.throttle = v ? 1 : 0));
-    hold('nr-brake', 'BRAKE', (v) => (this.s.brake = v ? 1 : 0));
-    hold('nr-hb', 'E-BRK', (v) => (this.s.handbrake = v));
-    hold('nr-nos', 'NOS', (v) => (this.s.nitrous = v));
-    const tap = (cls: string, label: string, fn: () => void) => {
+    hold('gas', 'GAS', (v) => (this.s.throttle = v ? 1 : 0));
+    hold('brake', 'BRAKE', (v) => (this.s.brake = v ? 1 : 0));
+    hold('handbrake', 'E-BRK', (v) => (this.s.handbrake = v));
+    hold('nitrous', 'NOS', (v) => (this.s.nitrous = v));
+    const tap = (mod: string, label: string, fn: () => void) => {
       const b = document.createElement('div');
-      b.className = `nr-btn nr-small ${cls}`;
+      b.className = `touch-controls__button touch-controls__button--small touch-controls__button--${mod}`;
       b.textContent = label;
       b.addEventListener('pointerdown', (e) => {
         e.preventDefault();
@@ -110,9 +85,9 @@ export class TouchControls {
       });
       this.root.appendChild(b);
     };
-    tap('nr-pause', 'II', onPause);
-    tap('nr-cam', 'CAM', onCamera);
-    tap('nr-reset', 'RST', () => (this.s.reset = true));
+    tap('pause', 'II', onPause);
+    tap('camera', 'CAM', onCamera);
+    tap('reset', 'RST', () => (this.s.reset = true));
     parent.appendChild(this.root);
   }
 
@@ -126,11 +101,11 @@ export class TouchControls {
     this.s = { ...this.s, steer: 0, throttle: 0, brake: 0, handbrake: false, nitrous: false, reset: false };
     this.steerId = null;
     this.knob.style.display = 'none';
-    this.root.querySelectorAll('.on').forEach((el) => el.classList.remove('on'));
+    this.root.querySelectorAll('.is-pressed').forEach((el) => el.classList.remove('is-pressed'));
   }
 
   setVisible(v: boolean): void {
-    this.root.classList.toggle('hidden', !v);
+    this.root.classList.toggle('is-hidden', !v);
     if (!v) this.release();
   }
 

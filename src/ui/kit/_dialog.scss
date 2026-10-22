@@ -1,0 +1,33 @@
+/* A dialog (the music library, the garage's dialogs): the card's accent hairline across the top, a title row
+   with its icon (a spacer pushes the title's actions right), then the body. */
+.dialog {
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--card-top), var(--panel);
+  &__title {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 26px;
+    > svg {
+      color: var(--accent);
+    }
+  }
+  &__spacer {
+    flex: 1;
+  }
+  /* The dialog scrolls, so its rows keep their height instead of shrinking (overflow: hidden children would collapse to nothing). */
+  > * {
+    flex-shrink: 0;
+  }
+  /* Segmented controls in a dialog's column keep their natural width. */
+  > .segmented {
+    align-self: flex-start;
+  }
+}

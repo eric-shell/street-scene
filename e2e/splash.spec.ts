@@ -19,10 +19,10 @@ test.describe('boot splash', () => {
     // The title was up on the splash, and the menu's title stayed hidden underneath it the whole time.
     expect(log.some((s) => s.splash && s.logo === 'STREET SCENE')).toBe(true);
     expect(log.filter((s) => s.splash && s.head === 'visible')).toEqual([]);
-    await expect(page.locator('.menu-head')).toBeVisible();
+    await expect(page.locator('.title-lockup')).toBeVisible();
     await expect(page.locator('.menu .logo')).toHaveText('STREET SCENE');
-    await expect(page.locator('.menu .tagline')).toHaveText('midnight street racing club');
-    await expect(page.locator('.menu')).not.toHaveClass(/splash-/);
+    await expect(page.locator('.menu .title-lockup__tagline')).toHaveText('midnight street racing club');
+    await expect(page.locator('.menu')).not.toHaveClass(/is-pending|is-arriving/);
   });
 
   test('is skipped by deep links', async ({ page }) => {
@@ -39,7 +39,7 @@ test.describe('music', () => {
   test('opens on Astrology and starts on the first interaction when autoplay is refused, without a prompt', async ({ page }) => {
     await sampleSplash(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('.mw-title')).toHaveText('Astrology');
+    await expect(page.locator('.music-player__title')).toHaveText('Astrology');
     // Blocked by the browser: nothing plays until the player does anything at all, and the splash
     // never showed a "tap for sound" prompt.
     expect((await music(page)).playing).toBe(false);
@@ -56,9 +56,9 @@ test.describe('music', () => {
   test('starts every session on Astrology from the top, not where the last one left off', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.keyboard.press(']'); // next track (also the first gesture)
-    await expect(page.locator('.mw-title')).not.toHaveText('Astrology');
+    await expect(page.locator('.music-player__title')).not.toHaveText('Astrology');
     await page.reload();
-    await expect(page.locator('.mw-title')).toHaveText('Astrology');
-    await expect(page.locator('.mw-time')).toHaveText(/^0:00/);
+    await expect(page.locator('.music-player__title')).toHaveText('Astrology');
+    await expect(page.locator('.music-player__time')).toHaveText(/^0:00/);
   });
 });

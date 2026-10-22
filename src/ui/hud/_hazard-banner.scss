@@ -1,0 +1,27 @@
+/* A timed hazard's warning in the HUD (hazardBanner.ts): the drawbridge ahead rising, blinking amber while
+   its gates warn and come down (.is-warn), red while it is up (.is-stop). */
+.hazard-banner {
+  position: absolute;
+  top: 24%;
+  left: 0;
+  right: 0;
+  display: none;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  font: 900 clamp(18px, 2.8vw, 28px) var(--display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-shadow: var(--hud-halo);
+  pointer-events: none;
+  &.is-visible {
+    display: flex;
+  }
+  &.is-warn {
+    color: var(--accent-2);
+    animation: hud-blink 0.8s steps(2) infinite;
+  }
+  &.is-stop {
+    color: var(--red);
+  }
+}

@@ -101,7 +101,7 @@ export class GameRenderer {
 
   /**
    * Center the view on the part of the screen a menu leaves free: `left` and
-   * `bottom` are the CSS px its rail covers (ui/rail.ts railInset). The view
+   * `bottom` are the CSS px its rail covers (ui/rail/rail.ts railInset). The view
    * eases there over a few tenths of a second unless `snap`; zeros give the
    * camera the whole screen again. Races snap to zero: their view never shifts.
    */

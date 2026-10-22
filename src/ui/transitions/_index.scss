@@ -1,0 +1,4 @@
+/* Screen transitions (transitions.ts): the cover all three share, the wipe and the garage's roller door. In cascade order. */
+@use 'cover';
+@use 'wipe';
+@use 'door';

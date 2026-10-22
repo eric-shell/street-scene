@@ -6,7 +6,7 @@
  * Used on its own from the menu (it renders the backdrop city) and inside a
  * race or free roam as a photo mode (0 key): the session starts it from its
  * current camera, renders its own scene through the drone's camera and keeps
- * Escape for itself (DroneOptions). A heading-up minimap (ui/minimap.ts) rides
+ * Escape for itself (DroneOptions). A heading-up minimap (ui/hud/minimap.ts) rides
  * along, centred on the drone with its view cone, zooming out as it climbs.
  */
 import * as THREE from 'three';
@@ -14,12 +14,12 @@ import type { World } from '../city/world';
 import type { NightScene } from '../render/scene';
 import type { GameRenderer } from '../render/scene';
 import { routeSample } from '../city/route';
-import { h, btn } from '../ui/dom';
-import { HudCard } from '../ui/hudCard';
-import { Help, MUSIC_KEYS, helpOpen } from '../ui/help';
-import { ArrowDown, ArrowUp, Drone, Route, icon } from '../ui/icons';
-import { MAP, MapCar, Minimap } from '../ui/minimap';
-import { feetLabel, speedLabel } from '../ui/units';
+import { h, btn } from '../ui/kit/dom';
+import { HudCard } from '../ui/hud/hudCard';
+import { Help, MUSIC_KEYS, helpOpen } from '../ui/panels/help';
+import { ArrowDown, ArrowUp, Drone, Route, icon } from '../ui/kit/icons';
+import { MAP, MapCar, Minimap } from '../ui/hud/minimap';
+import { feetLabel, speedLabel } from '../ui/kit/units';
 
 export interface DroneOptions {
   /** Start pose (world position, yaw and pitch in rad); default behind and above the grid. */
@@ -72,7 +72,7 @@ export class DroneMode {
   private time = 0;
   private root: HTMLElement;
   private card: HudCard;
-  /** The flying keys and tips behind the ? beside the minimap (ui/help.ts); nothing flies while it is open. */
+  /** The flying keys and tips behind the ? beside the minimap (ui/panels/help.ts); nothing flies while it is open. */
   private help: Help;
   private tourBtn: HTMLButtonElement;
   private map: Minimap;
@@ -166,9 +166,9 @@ export class DroneMode {
     );
 
     // HUD
-    this.tourBtn = btn(Route, 'Tour', () => this.setTour(!this.tour), 'small');
+    this.tourBtn = btn(Route, 'Tour', () => this.setTour(!this.tour), '--small');
     const hold = (iconNode: typeof ArrowUp, dir: number) => {
-      const b = h('button', { class: 'btn icon-only drone-touch', type: 'button', 'aria-label': dir > 0 ? 'Up' : 'Down' });
+      const b = h('button', { class: 'btn btn--icon drone-hud__lift-button', type: 'button', 'aria-label': dir > 0 ? 'Up' : 'Down' });
       b.append(icon(iconNode, { size: 20 }));
       b.addEventListener('pointerdown', (e) => {
         e.preventDefault();
@@ -180,7 +180,7 @@ export class DroneMode {
       b.addEventListener('pointerleave', stop);
       return b;
     };
-    // The HUD card free roam shares (ui/hudCard.ts), in the Explore row's cyan.
+    // The HUD card free roam shares (ui/hud/hudCard.ts), in the Explore row's cyan.
     const exitLabel = opts.exitLabel ?? 'Exit';
     this.card = new HudCard({
       hue: 'cyan',
@@ -217,9 +217,9 @@ export class DroneMode {
         { title: 'Tips', tips: ['Gamepad: the left stick flies, the right stick looks, the triggers climb and descend.', 'Touch: drag the left half to fly and the right half to look; the arrows climb and descend.'] },
       ],
     });
-    // The card stands in the race HUD's top left column (ui/styles/hud/_hud.scss .hud-tl), which casts its shadow; the help beside the minimap.
-    this.root = h('div', { class: 'drone-ui' }, h('div', { class: 'hud-tl' }, this.card.el), this.help.el, h('div', { class: 'drone-updown' }, hold(ArrowUp, 1), hold(ArrowDown, -1)));
-    this.map = new Minimap(world, 'hud-map drone-map');
+    // The card stands in the race HUD's top left column (.hud__top-left, ui/hud/_hud.scss), which casts its shadow; the help beside the minimap.
+    this.root = h('div', { class: 'drone-hud' }, h('div', { class: 'hud__top-left' }, this.card.el), this.help.el, h('div', { class: 'drone-hud__lift' }, hold(ArrowUp, 1), hold(ArrowDown, -1)));
+    this.map = new Minimap(world, 'hud__minimap');
     this.root.append(this.map.canvas);
     this.cars = opts.cars;
     this.drive = opts.drive;
@@ -233,7 +233,7 @@ export class DroneMode {
 
   private setTour(on: boolean): void {
     this.tour = on;
-    this.tourBtn.classList.toggle('primary', on);
+    this.tourBtn.classList.toggle('btn--primary', on);
     this.card.setStatus(on ? 'Touring the route' : 'Free flight');
     if (on) {
       const p = this.world.routeProgress(this.pos.x, this.pos.z);

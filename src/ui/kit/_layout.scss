@@ -1,0 +1,37 @@
+/* Layout primitives: the full screen layer (.screen, centered or dimmed over the scene), the near opaque
+   panel surface, and flex rows and columns. */
+@use '../styles/abstracts/palette';
+.screen {
+  position: fixed;
+  inset: 0;
+  pointer-events: auto;
+  display: flex;
+  z-index: 30;
+  color: var(--text);
+  &--center {
+    align-items: center;
+    justify-content: center;
+  }
+  &--dim {
+    background: linear-gradient(180deg, palette.alpha(bg0, 0.7), palette.alpha(bg0, 0.9));
+    backdrop-filter: blur(4px);
+  }
+}
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(10px) saturate(1.2);
+}
+.row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}

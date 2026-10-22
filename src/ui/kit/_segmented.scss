@@ -1,0 +1,56 @@
+/* A segmented control (ui/kit/dom.ts segmented): a chamfered well of options, the picked one filled with the
+   accent sweep and cut like a badge. --wide stretches it across its row, the options sharing the width. */
+@use '../styles/abstracts/mixins';
+@use '../styles/abstracts/palette';
+.segmented {
+  @include mixins.chamfer(6px);
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line-control);
+  border-radius: var(--radius-sm);
+  background: palette.alpha(bg0, 0.55);
+  /* Shrinks in a row like a clipped box would; the chamfer clips what overflows. */
+  min-width: 0;
+  &__option {
+    white-space: nowrap;
+    font: 600 14px var(--font);
+    letter-spacing: 0.03em;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-sm);
+    padding: 6px 14px;
+    transition: background 0.15s, color 0.15s;
+    cursor: pointer;
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    &:focus-visible {
+      outline: 2px solid var(--accent-2);
+      outline-offset: -2px;
+    }
+    &:hover {
+      color: var(--text);
+    }
+    &.is-selected {
+      color: var(--on-accent);
+      background: var(--accent-grad);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+      clip-path: var(--chamfer-sm);
+      font-weight: 700;
+    }
+    &:disabled {
+      cursor: default;
+    }
+  }
+  &--wide {
+    display: flex;
+    .segmented__option {
+      flex: 1;
+      justify-content: center;
+      padding: 6px 0;
+      font-variant-numeric: tabular-nums;
+    }
+  }
+}

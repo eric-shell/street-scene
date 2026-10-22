@@ -1,0 +1,39 @@
+/* A race ticket (menu.ts setup, the pause screen's in ui/screens/): what is about to start or is paused, its
+   course drawn small in its color (.course-art), its name, facts and the best on this event, on a plate with
+   the type's hairline. */
+@use '../styles/abstracts/mixins';
+.race-ticket {
+  @include mixins.chamfer(12px);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px 10px 10px;
+  @include mixins.plate((mixins.rule-line(var(--mode)), radial-gradient(100% 120% at 0% 0%, rgba(var(--mode-rgb), 0.14), transparent 60%), var(--plate)), null);
+  &__art {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 112px;
+    height: 60px;
+    color: var(--mode);
+    background: linear-gradient(180deg, rgba(13, 12, 14, 0.9), rgba(28, 27, 30, 0.9));
+    clip-path: var(--chamfer-sm);
+  }
+  &__text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+  /* The event over the ticket's title, in the secondary color. */
+  &__kicker {
+    font: 800 11px var(--font);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent-2);
+  }
+  .course-best {
+    align-self: flex-start;
+  }
+}

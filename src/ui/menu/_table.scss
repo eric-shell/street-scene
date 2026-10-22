@@ -1,0 +1,13 @@
+/* What the menu maps' table pieces share (_city-overview.scss, _course-map.scss). Emits no CSS. */
+/* Fill the box on the table: the grid, the lens, the zoom and the city's canvases. */
+@mixin cover {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+/* The fade toward the table's edge: the grid and the city wear it, what lies on them does not. */
+@mixin fade-edge {
+  -webkit-mask-image: radial-gradient(closest-side, #000 72%, transparent);
+  mask-image: radial-gradient(closest-side, #000 72%, transparent);
+}

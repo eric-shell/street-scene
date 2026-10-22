@@ -179,7 +179,7 @@ export function uiDoorUp(dur: number): void {
 }
 
 /** Controls that tick under the pointer and click when pressed. */
-const CONTROLS = '.btn, .nav-item, .mode-tile, .event-map, .course-map.opens, .tab, .seg button, .help-btn, .help-row.act, .g-item, .g-swatch, .garage-tab, .fullmap button';
+const CONTROLS = '.btn, .nav-row, .mode-tile, .event-map, .course-map--link, .tabs__tab, .segmented__option, .help__button, .help__row--action, .garage-item, .garage-swatch, .garage-tab, .full-map button';
 
 /**
  * Wire ticks and clicks to every control in the document, once: a tick when
@@ -204,7 +204,7 @@ export function installUiSounds(): void {
       const el = e.target instanceof Element ? e.target.closest(CONTROLS) : null;
       if (!el || (el as HTMLButtonElement).disabled || el.closest('[data-sound="off"]')) return;
       const label = (el.getAttribute('aria-label') ?? el.getAttribute('title') ?? '').toLowerCase();
-      uiPress(el.classList.contains('back') || label.startsWith('back') || label.startsWith('close') || label.startsWith('cancel'));
+      uiPress(el.classList.contains('screen-head__back') || label.startsWith('back') || label.startsWith('close') || label.startsWith('cancel'));
     },
     true,
   );

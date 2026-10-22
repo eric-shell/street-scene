@@ -1,0 +1,85 @@
+/* The course card on the race step (menu.ts race): the picked type's name in its color, a few facts and the
+   best on this event, over the course map. The card's accent hairline takes the type's color too. A type change
+   deals the head in again (.is-swapping): the title, then the best a beat later. The name, facts and best are
+   blocks of their own, also on the race tickets (the setup step's, the pause screen's in ui/screens/). */
+@use '../styles/abstracts/media';
+@use '../styles/abstracts/mixins';
+@use '../styles/abstracts/palette';
+.course-card {
+  @include mixins.chamfer(12px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 11px 12px 12px;
+  @include mixins.plate((mixins.rule-line(var(--mode)), radial-gradient(100% 80% at 0% 0%, rgba(var(--mode-rgb), 0.12), transparent 60%), var(--plate)));
+  transition: background 0.3s;
+  &__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 42px;
+    padding: 0 2px;
+    .course-best.is-swapping {
+      animation: course-card-swap 0.42s var(--ease-out) both;
+      animation-delay: 0.06s;
+    }
+  }
+  &__title {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    &.is-swapping {
+      animation: course-card-swap 0.42s var(--ease-out) both;
+    }
+  }
+}
+@keyframes course-card-swap {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@include media.reduced-motion {
+  .course-card__title.is-swapping,
+  .course-card__head .course-best.is-swapping {
+    animation: none !important;
+  }
+}
+.course-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 900 20px/1 var(--display);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--mode);
+}
+.course-facts {
+  display: flex;
+  flex-wrap: wrap;
+  font: 600 12px var(--font);
+  color: var(--soft);
+  > span + span::before {
+    content: '·';
+    margin: 0 7px;
+    color: var(--dim);
+  }
+}
+.course-best {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font: 800 14px var(--mono);
+  color: var(--accent-2);
+  background: linear-gradient(var(--accent-2-soft), var(--accent-2-soft)), palette.alpha(bg0, 0.85);
+  clip-path: var(--chamfer-sm);
+  &--none {
+    font: 600 12px var(--font);
+    color: var(--muted);
+    background: palette.alpha(bg0, 0.6);
+  }
+}

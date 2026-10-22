@@ -1,0 +1,60 @@
+/* A course drawn small (menuMaps.ts courseArt), on the wipe's title card and the race tickets: the line drawing
+   itself on in its type's color over a soft road, the start, and the cars on it (the pause screen's ticket:
+   rivals small, the player white with a ping). */
+@use '../styles/abstracts/media';
+.course-art {
+  display: block;
+  overflow: visible;
+  path {
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  &__road {
+    stroke: rgba(var(--mode-rgb), 0.18);
+    stroke-width: 9;
+  }
+  &__line {
+    stroke: var(--mode);
+    stroke-width: 3;
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: course-draw 0.75s var(--ease-out) 0.2s forwards;
+  }
+  &__car {
+    fill: var(--soft);
+    stroke: var(--bg0);
+    stroke-width: 1.5;
+    &--player {
+      fill: #fff;
+      stroke: var(--mode);
+      stroke-width: 2;
+    }
+  }
+  &__ping {
+    fill: none;
+    stroke: var(--mode);
+    stroke-width: 1.5;
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: course-art-ping 2s var(--ease-out) infinite;
+    @include media.reduced-motion {
+      animation: none !important;
+    }
+  }
+  &__start {
+    fill: var(--accent-2);
+    stroke: var(--bg0);
+    stroke-width: 2;
+  }
+}
+@keyframes course-art-ping {
+  from {
+    opacity: 1;
+    transform: scale(0.3);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.4);
+  }
+}

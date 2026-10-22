@@ -99,7 +99,7 @@ export class InputManager {
         case 'KeyE':
           this.shiftLatch = 1;
           break;
-        // The horn is Shift (H hides the HUD everywhere, ui/hudCard.ts).
+        // The horn is Shift (H hides the HUD everywhere, ui/hud/hudCard.ts).
         case 'ShiftLeft':
         case 'ShiftRight':
           this.emit('horn');

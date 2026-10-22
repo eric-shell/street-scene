@@ -8,7 +8,7 @@ import { createRace, stepRace } from '../src/sim/race';
 import { WorldHit, collideCarWithWorld } from '../src/sim/collision';
 import { DEG } from '../src/sim/math';
 import { packInput, quantizeInput, unpackInput } from '../src/sim/input';
-import { applySavedTuning, importValues, tuningParams } from '../src/ui/tuningPanel';
+import { applySavedTuning, importValues, tuningParams } from '../src/ui/panels/tuningPanel';
 import type { Contact, World } from '../src/city/world';
 import exported from './fixtures/s64-tuning-export.json';
 import { carSnapshot, flatWorld, input, raceConfig, replayLog, runAutopilot } from './helpers';

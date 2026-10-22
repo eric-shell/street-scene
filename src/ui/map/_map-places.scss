@@ -1,0 +1,61 @@
+/* The full map's Places tab (sidePanel.ts buildPlaces, fullMap.ts): the notable places and the drift zones,
+   nearest first, each a row with its dot, name and kind and the distance as a value (orange where you are),
+   with a waypoint button beside it when the map can set one. */
+@use '../styles/abstracts/mixins';
+@use '../styles/abstracts/palette';
+.map-places {
+  &__item {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  &__button {
+    flex: 1;
+    min-width: 0;
+    .map-dot {
+      box-shadow: none;
+    }
+  }
+  &__name {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    @include mixins.ellipsis;
+  }
+  &__kind {
+    font: 600 11px var(--font);
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    &--drift {
+      color: var(--accent-2);
+    }
+  }
+  &__distance {
+    flex: none;
+    font: 800 12px var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--accent-2);
+    &.is-here {
+      color: var(--accent);
+    }
+  }
+  &__pin {
+    flex: none;
+  }
+  &__empty {
+    padding: 10px 8px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+}
+/* A place's dot in its ink (--ink), on a dark ring where it stands on the map's card. */
+.map-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow: 0 0 0 2px palette.alpha(bg0, 0.9);
+}

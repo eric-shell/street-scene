@@ -6,86 +6,75 @@
  * primary accent (primary actions, active and selected states), yellow the
  * secondary (values, records, highlights); red, green, cyan and purple keep their
  * meanings (danger, success, nitrous, ghost). Canvas code reads the same colors
- * from ui/palette.ts, so change both together. Type is Google Sans Flex: headings
- * at 900, upright; only the Street Scene logo is italic. Numbers use tabular
- * figures so they never jitter. The film grain is only for the splash's night
- * road (environment, not UI).
+ * from ui/kit/palette.ts, so change both together. Type is Google Sans Flex:
+ * headings at 900, upright; only the Street Scene logo is italic. Numbers use
+ * tabular figures so they never jitter. The film grain is only for the splash's
+ * night road (environment, not UI).
  *
- * One layout for every full screen menu: the rail (ui/rail.ts). Pause and
- * results put their content on an opaque column down the left with a straight
- * edge and the title rule's gradient down it; the main menu and the garage drop
- * the column for a light scrim so the scene comes through between their cards. Each
- * has a screen header (back, icon, title, aside) on top and a small ? in the
- * bottom left for its keys and tips (ui/help.ts); the 3D scene is framed in the space beside it. Three motifs repeat
- * so every screen reads as one game: the chamfer (top right and bottom left cut
- * off every button, chip, segment and menu card), the rule (the yellow-orange-red
- * gradient under the logo, on the active tab and the loading bar) and the accent
- * hairline across the top of every card and dialog.
+ * One layout for every full screen menu: the rail (ui/rail/). Pause and results
+ * put their content on an opaque column down the left with a straight edge and
+ * the title rule's gradient down it; the main menu and the garage drop the column
+ * for a light scrim so the scene comes through between their cards. Each has a
+ * screen header (back, icon, title, aside) on top and a small ? in the bottom
+ * left for its keys and tips (ui/panels/help.ts); the 3D scene is framed in the
+ * space beside it. Three motifs repeat so every screen reads as one game: the
+ * chamfer (top right and bottom left cut off every button, chip, segment and
+ * menu card), the rule (the yellow-orange-red gradient under the logo, on the
+ * active tab and the loading bar) and the accent hairline across the top of
+ * every card and dialog.
  *
  * Motion carries the same voice: a sheen of light sweeps across whatever is
  * hovered or focused (bright on primary actions), menu steps slide and cascade,
  * the race types wear the rule's colors (circuit orange, sprint yellow, drift
- * red, free roam green), and screens change behind the rule's colors as a
- * wipe or behind the garage's roller door (ui/transitions.ts). Motion is
- * transform and opacity wherever it can be (the course lines' dashes are the
- * exception, on small SVGs), and reduced motion turns it off.
+ * red, free roam green), and screens change behind the rule's colors as a wipe
+ * or behind the garage's roller door (ui/transitions/). Motion is transform and
+ * opacity wherever it can be (the course lines' dashes are the exception, on
+ * small SVGs), and reduced motion turns it off.
  */
 /*
- * The stylesheet is this list of partials, one per screen or component, in cascade order: later rules win
- * ties of specificity, so a partial's place here matters (the toast comes after the HUD and dev panel, the
- * drone and HUD card after the transitions, the music player after the garage). Put a new partial where its
- * rules should win, not just in its folder's group. abstracts/ holds the compile time helpers (palette,
- * breakpoints); a partial @uses them and nothing else, and only the files listed here emit CSS.
+ * How the stylesheet is built.
+ *
+ * Files. Each partial sits beside the TS module that builds its DOM (ui/hud/_hud.scss next to
+ * ui/hud/hud.ts, garage/_garage.scss next to garage/garageUi.ts), one block per partial where it can be,
+ * named after the block. An area's _index.scss @uses its partials in their cascade order; this file
+ * holds the base layer and @uses the areas in theirs. Later rules win ties of specificity, so a new
+ * partial goes where its rules should win. abstracts/ emits no CSS: the palette, the breakpoints and
+ * the mixins every partial @uses (relative paths, ../styles/abstracts/...).
+ *
+ * Names (BEM). A block is a component, named in full words after what it is (.hud-card, .event-card,
+ * .music-player; no abbreviations). Its parts are elements, .block__element, flat however deep the
+ * markup nests (.hud-card__stat-label, not __stat__label). A variant fixed when the element is built is
+ * a modifier, .block--modifier (.btn--primary, .chip--accent); the TS helpers take them as `--primary`
+ * (ui/kit/dom.ts bem). A state the code toggles at runtime is .is-* chained to what it is on
+ * (.tabs__tab.is-selected, .help__button.is-open; body.is-cinematic for document states). Theme classes
+ * set one custom property for whatever inside reads it: .mode-* (--mode, a race type), .hue-* (--hue,
+ * a row's or card's accent) and .ink-* (--ink, a spec or stat). Lucide icons are styled as `> svg`.
+ *
+ * Nesting. A block's partial is one rule nested with &: elements (&__stat), modifiers (&--primary),
+ * states (&.is-selected), pseudo-classes and pseudo-elements, and the media queries that change it
+ * (@include media.narrow { ... } inside the rule it changes). Keep selectors flat in the output (one
+ * class, or a block and a state) and nest at most three levels. A block restyled inside another is
+ * written in the context's partial (.garage .segmented__option, in the garage's).
+ *
+ * Shared patterns are mixins and tokens, never copies: mixins.chamfer (every chamfered box), rule-line
+ * (a card's accent hairline in any color), plate, gradient-text, ellipsis, scroll-y, stagger (entrance
+ * cascades), safe (safe-area insets) and sheen-on-hover; tokens for repeated values (--ring for focus
+ * inside a chamfer, --plate-drop, --halo, --well, --title-ink, --logo-ink).
  */
 @use 'base/reset';
 @use 'base/tokens';
-@use 'base/base';
-@use 'base/controls';
-@use 'base/chamfer';
-@use 'base/sheen';
-@use 'base/labels';
+@use 'base/document';
+@use 'base/ui-layer';
+@use 'base/keyframes';
 
-/* Every full screen menu's layout (ui/rail.ts). */
-@use 'rail/screen-head';
-@use 'rail/rail';
-
-/* The main menu (ui/menu.ts, ui/menuMaps.ts). */
-@use 'menu/home';
-@use 'menu/event-card';
-@use 'menu/nav';
-@use 'menu/race';
-@use 'menu/course-map';
-@use 'menu/setup';
-@use 'menu/small-screens';
-
-/* Over a race: pause, results, dialogs, settings, loading (ui/screens.ts). */
-@use 'screens/pause-results';
-@use 'screens/dialogs';
-@use 'screens/settings';
-@use 'screens/loading';
-
-@use 'hud/hud';
-@use 'hud/nitro';
-@use 'panels/dev-panel';
-@use 'screens/toast';
-@use 'splash/splash';
-@use 'transitions/wipe';
-@use 'transitions/door';
-@use 'hud/drone';
-@use 'hud/hud-card';
-
-/* The garage (garage/garageUi.ts). */
-@use 'garage/layout';
-@use 'garage/rows';
-@use 'garage/view';
-
-@use 'panels/music';
-@use 'panels/tuning';
-@use 'panels/help';
-
-/* Free roam's full city map (ui/fullMap/) and the HUD's waypoint chip. */
-@use 'map/hint';
-@use 'map/full-map';
-@use 'map/hover-card';
-@use 'map/side-panel';
-@use 'map/waypoint-chip';
+/* Each area: its _index.scss uses the area's partials in their own cascade order. */
+@use '../kit';
+@use '../rail';
+@use '../menu';
+@use '../splash';
+@use '../screens';
+@use '../transitions';
+@use '../hud';
+@use '../../garage';
+@use '../panels';
+@use '../map';

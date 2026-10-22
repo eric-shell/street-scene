@@ -1,0 +1,56 @@
+/* The badges in a menu map's well (menu.ts, menuMaps.ts CourseMap): the hint in the bottom right saying what a
+   click opens (lit with the accent sweep while its map is hovered), and Live in the top left, because the arrow
+   on the map is the car on screen right now. */
+@use '../styles/abstracts/media';
+@use '../styles/abstracts/palette';
+.map-hint {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  font: 700 11px var(--font);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--soft);
+  background: palette.alpha(bg0, 0.82);
+  clip-path: var(--chamfer-sm);
+  transition: color var(--t-fast), background var(--t-fast);
+  > svg {
+    color: var(--accent);
+  }
+}
+.map-live {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 2px 7px;
+  font: 800 10px var(--font);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--soft);
+  background: palette.alpha(bg0, 0.75);
+  clip-path: var(--chamfer-sm);
+  &__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--red);
+    animation: map-live-dot 1.6s ease-in-out infinite;
+    @include media.reduced-motion {
+      animation: none !important;
+    }
+  }
+}
+@keyframes map-live-dot {
+  50% {
+    opacity: 0.25;
+  }
+}

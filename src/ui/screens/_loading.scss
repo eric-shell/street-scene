@@ -1,0 +1,52 @@
+/* The loading card (loading.ts loadingScreen): the logo over what is loading and a bar sweeping in the rule's
+   colors; under reduced motion the bar stands full. */
+@use '../styles/abstracts/media';
+@use '../styles/abstracts/palette';
+.loading {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: radial-gradient(ellipse 50% 40% at 50% 50%, palette.alpha(orange, 0.08), transparent 70%), var(--bg);
+  pointer-events: auto;
+  .logo {
+    font-size: clamp(30px, 6vw, 44px);
+    white-space: nowrap;
+  }
+  &__label {
+    font: 700 12px var(--font);
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  &__bar {
+    width: 168px;
+    height: 3px;
+    overflow: hidden;
+    border-radius: var(--radius-sm);
+    background: palette.alpha(text, 0.08);
+  }
+  &__bar-fill {
+    display: block;
+    width: 40%;
+    height: 100%;
+    background: var(--rule);
+    animation: loading-sweep 1.1s var(--ease-in-out) infinite;
+    @include media.reduced-motion {
+      animation: none;
+      width: 100%;
+    }
+  }
+}
+@keyframes loading-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}

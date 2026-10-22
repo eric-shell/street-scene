@@ -1,0 +1,13 @@
+/* The full map's own layouts (no CSS): below 760px wide the panel takes the screen and the side panel stacks
+   under the map; on a phone on its side (short and narrow, or very short) the side panel goes back beside
+   the map, slim. Every map partial asks for them by name. */
+@mixin narrow {
+  @media (max-width: 760px) {
+    @content;
+  }
+}
+@mixin landscape-phone {
+  @media (max-width: 760px) and (max-height: 560px), (max-height: 460px) {
+    @content;
+  }
+}

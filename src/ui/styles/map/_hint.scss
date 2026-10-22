@@ -1,9 +1,0 @@
-/* ---------- the minimap opens the city map ---------- */
-/* The minimap opens the full map (click or Tab) in every race and free roam; the help panel says so (ui/help.ts). */
-.hud .hud-map {
-  pointer-events: auto;
-  cursor: pointer;
-}
-.hud .hud-map:hover {
-  filter: brightness(1.15);
-}

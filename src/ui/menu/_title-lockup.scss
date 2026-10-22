@@ -1,0 +1,58 @@
+/* The title lockup on top of every menu step (menu.ts): the logo on one line over the rule, the tagline under
+   it. The boot splash builds a copy with the same classes (ui/splash/splash.ts) and flies it onto this one,
+   so both are shrink-wrapped and measure the same at any width. */
+@use '../styles/abstracts/palette';
+.title-lockup {
+  width: max-content;
+  max-width: 100%;
+  margin-bottom: 6px;
+  &__title {
+    width: max-content;
+    max-width: 100%;
+    position: relative;
+    /* The title on one line, exactly the column's width (the splash's copy too, scaled up from there).
+       "STREET SCENE" advances 7.12em at the display optical size, pinned so the width per em holds at
+       every size, and the italic's last T overhangs 0.26em past that: the padding keeps the overhang
+       inside the box the gradient is clipped to, and 7.38em is the whole. */
+    .logo {
+      font-size: calc(var(--menu-w) / 7.38);
+      font-variation-settings: 'opsz' 144;
+      padding-right: 0.26em;
+      white-space: nowrap;
+    }
+  }
+  &__rule {
+    height: 3px;
+    margin-top: 10px;
+    border-radius: var(--radius-sm);
+    background: var(--rule);
+  }
+  /* The tagline centered under the title between two hairlines that fade in from the edges. Letter spacing
+     leaves a space after the last letter: the left line gives up as much, so the words sit in the true middle. */
+  &__tagline {
+    font-weight: 600;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    font-size: 13px;
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    text-align: center;
+    &::before,
+    &::after {
+      content: '';
+      flex: 1 1 0;
+      min-width: 12px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, palette.alpha(text, 0.32));
+    }
+    &::before {
+      margin-right: 0.32em;
+    }
+    &::after {
+      background: linear-gradient(270deg, transparent, palette.alpha(text, 0.32));
+    }
+  }
+}

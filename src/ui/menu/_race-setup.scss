@@ -1,0 +1,60 @@
+/* The setup step's card (menu.ts setup): rivals and driving share one card over the city, each a group under
+   its section title, the opponents a field (a name, a hint saying who is on the grid, the picks). A solo
+   type's rivals are a line saying why there are none. On the setup step the card takes the race type's
+   hairline, like the ticket above it. */
+@use '../styles/abstracts/mixins';
+.race-setup {
+  @include mixins.chamfer(12px);
+  @include mixins.plate((var(--card-top), var(--plate)));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 10px 16px 14px;
+  .section-title {
+    margin-top: 2px;
+  }
+  .menu-screen[data-step='setup'] & {
+    background: mixins.rule-line(var(--mode)), var(--plate);
+  }
+  &__group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: opacity 0.15s;
+  }
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  &__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 15px;
+  }
+  &__name {
+    color: var(--soft);
+  }
+  &__hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 12px;
+    color: var(--muted);
+    > svg {
+      color: var(--accent-2);
+    }
+  }
+}
+/* The solo types' note (a settings note, ui/screens/): its icon leads the line. */
+.setting-note--solo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  > svg {
+    flex: none;
+    color: var(--purple);
+  }
+}
