@@ -1,0 +1,25 @@
+/* A build slot's row with its delete X (garageUi.ts updateSlots): the X sits over the row's right end, beside its
+   button rather than in it, and the row makes room for it. Always shown, muted until it is hovered or focused. */
+.garage-slot {
+  position: relative;
+  > .garage-item {
+    width: 100%;
+    padding-right: 44px;
+    /* The unsaved dot moves off the X to the top right of what is left. */
+    .garage-item__unsaved {
+      right: 42px;
+    }
+  }
+  &__delete {
+    position: absolute;
+    top: 50%;
+    right: 4px;
+    translate: 0 -50%;
+    color: var(--muted);
+    transition: color var(--t-fast);
+    &:hover,
+    &:focus-visible {
+      color: var(--text);
+    }
+  }
+}

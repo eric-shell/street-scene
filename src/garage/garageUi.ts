@@ -635,7 +635,8 @@ export class GarageScreen {
 
   /**
    * The slots, one build to a row: its number, name and car (the one in use
-   * marked, with a dot while it has unsaved changes). Slots fill in order, so
+   * marked, with a dot while it has unsaved changes) and an X that deletes it
+   * once confirmed (none while it is the only build). Slots fill in order, so
    * one New build row stands for every empty slot, numbered for the next.
    */
   private updateSlots(): void {
@@ -664,7 +665,8 @@ export class GarageScreen {
             sheen(),
           );
       tile.addEventListener('click', () => (s ? this.pickSlot(i) : this.addBuild(() => freshBuild(DEFAULT_CAR_ID, `Build ${g.slots.length + 1}`))));
-      this.slotsEl.append(tile);
+      // The X sits beside the row's button, not in it: a button inside a button is not one a keyboard can reach.
+      this.slotsEl.append(s && g.slots.length > 1 ? h('div', { class: 'garage-slot' }, tile, iconBtn(X, `Delete "${s.name}"`, () => this.confirmDelete(i), '--small --ghost garage-slot__delete')) : tile);
     }
     const title = this.slotsEl.parentElement?.querySelector('.section-title');
     if (title) title.textContent = `Builds · ${g.slots.length} of ${MAX_SLOTS}`;
@@ -859,7 +861,8 @@ export class GarageScreen {
       this.garage.current = i;
       this.selectedDecal = -1;
       this.persist();
-      void this.changed(true);
+      // Say hello, as a new car does on the Model tab: a short blip of its engine (and the body rocks with it).
+      void this.changed(true).then(() => this.scene.blip());
     });
   }
 
@@ -881,21 +884,42 @@ export class GarageScreen {
     });
   }
 
-  /** Delete the build in use, once confirmed (its unsaved changes with it); the slot before it takes over. */
-  private confirmDelete(): void {
+  /**
+   * Delete slot i (the build in use by default), once confirmed. The build in
+   * use goes with its unsaved changes and the slot before it takes over (with
+   * a blip, like any switch); another slot goes without saving the build in
+   * use, whose changes stay a draft.
+   */
+  private confirmDelete(i = this.garage.current): void {
     const g = this.garage;
     if (g.slots.length <= 1) return toast('Keep at least one build', Save);
-    const name = this.build.name;
+    const name = g.slots[i].name;
     const del = btn(Trash2, 'Delete', () => {
       this.closeDialog();
-      g.slots.splice(g.current, 1);
-      g.current = Math.max(0, g.current - 1);
-      this.selectedDecal = -1;
-      this.persist();
-      void this.changed(true);
+      const current = i === g.current;
+      g.slots.splice(i, 1);
+      if (current) {
+        g.current = Math.max(0, g.current - 1);
+        this.selectedDecal = -1;
+        this.persist();
+        void this.changed(true).then(() => this.scene.blip());
+      } else {
+        if (i < g.current) g.current--;
+        // Store the build in use as last saved: its draft is not the player's to keep yet.
+        const live = g.slots[g.current];
+        g.slots[g.current] = JSON.parse(this.savedJson) as CarBuild;
+        this.cb.onChange(g);
+        g.slots[g.current] = live;
+        // The same build under a new slot number: the card is not dealt in again, the Save button's title renumbers.
+        this.cardKey = `${g.current}:${live.carId}`;
+        this.shownDirty = null;
+        this.updateCarCard();
+        this.updateSlots();
+        this.updateSaveState();
+      }
       toast(`Deleted "${name}"`, Trash2);
     }, '--primary');
-    this.openDialog(Trash2, 'Delete build', h('div', { class: 'muted' }, `"${name}" leaves slot ${g.current + 1} for good. Share it first to keep a copy.`), h('div', { class: 'row' }, del, btn(null, 'Cancel', () => this.closeDialog())));
+    this.openDialog(Trash2, 'Delete build', h('div', { class: 'muted' }, `"${name}" leaves slot ${i + 1} for good. Share it first to keep a copy.`), h('div', { class: 'row' }, del, btn(null, 'Cancel', () => this.closeDialog())));
     del.focus();
   }
 
