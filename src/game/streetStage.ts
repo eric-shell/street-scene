@@ -15,6 +15,15 @@
  * Free roam from the menu carries straight on from this car: the session
  * borrows the scene (lend / reclaim) and the Cruise keeps driving the sim car
  * on the lane, at the cruise's speed, until the player touches a control.
+ *
+ * The setup step's car pick builds a convoy (setBuild's `hop`): a build
+ * not on the street yet joins HOP.gap behind the last car in the line,
+ * out of the setup shot (it looks forward from behind the car), and one
+ * already there is simply driven to. The cars keep their places in the
+ * line, all at one speed, so once every build has joined, picking walks
+ * round them. The showreel glides along the lane to whichever car is
+ * picked (it watches `hops`). Any other build set (the garage, a new
+ * street) and free roam clear the line back to the one car.
  */
 import * as THREE from 'three';
 import type { World } from '../city/world';
@@ -35,6 +44,52 @@ import { KeyLight } from './keyLight';
 /** No racing cars knock the street's props over behind the menu. */
 const NO_CARS: readonly CarMotion[] = [];
 
+/**
+ * The setup step's convoy: the gap between cars in the line (m) and how
+ * many cars it holds at most (the garage's slots; past that the car
+ * farthest from the picked one goes).
+ */
+export const HOP = { gap: 38, maxCars: 6 } as const;
+
+/** A car on the street: the picked one, or one waiting in the convoy. */
+interface StreetCar {
+  /** The garage slot it shows (setBuild's key), when one was given. */
+  key: number | undefined;
+  carId: string;
+  view: CarView | null;
+  /** Path distance from the picked car (m, + ahead); 0 for the picked car. */
+  offset: number;
+  pose: CarPose;
+  /** Body lean (rad) and its rates: the springs the pitch and roll ride on. */
+  lean: { pitch: number; pitchV: number; roll: number; rollV: number };
+  /**
+   * Height last frame (m), the level the car is on under a river bridge (World.heightAt): the
+   * route dives under the decks, so the car stays on the channel floor beneath one. Unset before
+   * the first pose (the route never starts in the channel).
+   */
+  level: number | undefined;
+  /** Wheel spin (rad). */
+  spin: number;
+}
+
+const newPose = (): CarPose => ({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, steer: 0, comp: [0, 0, 0, 0], spin: [0, 0, 0, 0], braking: false, nitro: false, speed: 0 });
+
+/** Copy a pose's values into another (its arrays too, kept as they are). */
+function copyPose(from: CarPose, to: CarPose): void {
+  const { comp, spin } = to;
+  Object.assign(to, from);
+  to.comp = comp;
+  to.spin = spin;
+  for (let i = 0; i < 4; i++) {
+    comp[i] = from.comp[i];
+    spin[i] = from.spin[i];
+  }
+}
+
+function newCar(key: number | undefined, carId: string, view: CarView | null, offset: number, pose: CarPose = newPose()): StreetCar {
+  return { key, carId, view, offset, pose, lean: { pitch: 0, pitchV: 0, roll: 0, rollV: 0 }, level: undefined, spin: 0 };
+}
+
 export class StreetStage {
   readonly night: NightScene;
   /** The cruise's driving logic and its path round the route. */
@@ -42,15 +97,21 @@ export class StreetStage {
   readonly path: CruisePath;
   /** Scene clock (s): the timed districts and the gates the car waits at all read it. */
   time = 0;
-  /** Distance along the path (m) and speed (m/s). */
+  /** The picked car's distance along the path (m), and the speed every car on the street goes (m/s). */
   s: number;
   speed: number = CRUISE.speed;
-  /** The car's pose this frame (what the cameras frame). */
-  readonly pose: CarPose = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, steer: 0, comp: [0, 0, 0, 0], spin: [0, 0, 0, 0], braking: false, nitro: false, speed: 0 };
-  private view: CarView | null = null;
-  /** The driver at the cruising car's wheel. */
-  private readonly drivers = new Drivers(1);
-  private viewCar = '';
+  /** The picked car's pose this frame (what the cameras frame; the same object whichever car is picked). */
+  readonly pose: CarPose = newPose();
+  /** How many times the pick has moved to another car in the convoy (the showreel glides to it on each). */
+  hops = 0;
+  /** The picked car: `s` and `pose` are its. */
+  private lead: StreetCar = newCar(undefined, '', null, 0, this.pose);
+  /** The rest of the convoy, at their offsets from the picked car. */
+  private readonly convoy: StreetCar[] = [];
+  /** The drivers at every car's wheel, and who sits where this frame. */
+  private readonly drivers = new Drivers(HOP.maxCars);
+  private readonly seatViews: CarView[] = [];
+  private readonly seatPoses: CarPose[] = [];
   private loading: Promise<void> = Promise.resolve();
   private loadToken = 0;
   private readonly carLight = new KeyLight();
@@ -58,10 +119,7 @@ export class StreetStage {
   private lent = false;
   private readonly sample = newPathSample();
   private readonly focus = new THREE.Vector3();
-  private spin = 0;
   private accel = 0;
-  /** Body lean (rad) and its rates: the springs the pitch and roll ride on. */
-  private lean = { pitch: 0, pitchV: 0, roll: 0, rollV: 0 };
   /** Lean added by the caller this frame (the garage's revs), rad. */
   private extraPitch = 0;
   private extraRoll = 0;
@@ -72,7 +130,7 @@ export class StreetStage {
     gr: GameRenderer,
     private readonly assets: CarAssetLibrary,
     readonly world: World,
-    settings: Settings,
+    private readonly settings: Settings,
   ) {
     this.night = createNightScene(world, gr, settings);
     this.cruise = new Cruise(world);
@@ -86,13 +144,14 @@ export class StreetStage {
    * Hand the scene to a free roam session that carries on from the car as it
    * stands (game/session.ts). The circuit's dressing goes, since the open
    * world has none of it: barriers and the street meets behind them, corner
-   * rails and route arrows, the crowds. The stage's own car and key light
-   * leave the scene for the session's, and the stage stands still until
-   * reclaim() puts everything back.
+   * rails and route arrows, the crowds. The stage's own car, the rest of the
+   * convoy and the key light leave the scene for the session's, and the stage
+   * stands still until reclaim() puts everything back.
    */
   lend(): NightScene {
     this.lent = true;
-    if (this.view) this.view.root.visible = false;
+    this.dropConvoy();
+    if (this.lead.view) this.lead.view.root.visible = false;
     this.carLight.visible = false;
     const n = this.night;
     n.crowds.setEnabled(false);
@@ -112,45 +171,50 @@ export class StreetStage {
     // NaN hands the El and the level crossings back to the scene clock (render/districts).
     n.syncDistricts(NaN, false);
     n.props.update(0, this.time, new Uint8Array(this.world.props.length), []);
-    if (this.view) this.view.root.visible = true;
+    if (this.lead.view) this.lead.view.root.visible = true;
     this.carLight.visible = true;
     this.place(0);
   }
 
-  /** The car on the street, once a build has been set. */
+  /** The picked car on the street, once a build has been set. */
   get car(): CarView | null {
-    return this.view;
+    return this.lead.view;
   }
 
   /**
    * Put a build on the street: the paint and parts change in place, a different
    * car swaps the model once it has loaded (old out and new in on the same
-   * frame, so the street is never without a car).
+   * frame, so the street is never without a car). `key` names the garage slot
+   * it shows. With `hop` (the setup step's pick) the slot's car is driven to
+   * if it is already in the convoy, or joins HOP.gap behind the last car once
+   * loaded; without it, a different slot (or none) clears the convoy first.
    */
-  setBuild(build: Pick<CarBuild, 'carId' | 'visual'>): Promise<void> {
+  setBuild(build: Pick<CarBuild, 'carId' | 'visual'>, opts: { key?: number; hop?: boolean } = {}): Promise<void> {
     const token = ++this.loadToken;
-    if (this.view && this.viewCar === build.carId) {
+    const lead = this.lead;
+    if (opts.hop && lead.view && !this.lent) return this.pickBuild(build, opts.key, token);
+    if (opts.key === undefined || opts.key !== lead.key) this.dropConvoy();
+    lead.key = opts.key;
+    if (lead.view && lead.carId === build.carId) {
       // load(), not applyVisual(): a later call supersedes an earlier one still loading, and only load()
       // finishes the base model if that earlier one was the first.
-      this.loading = this.view.load(build.visual);
+      this.loading = lead.view.load(build.visual);
       return this.loading;
     }
-    const first = !this.view;
-    // No headlight spots or underglow light: every lit pixel of the city pays for each real light, and the
-    // menu is drawn on every device. The beams' glow on the road, the underglow and the key light above stay.
-    const view = new CarView(build.carId, this.assets, { envMap: this.night.scene.environment, roadLift: ROAD_Y });
+    const first = !lead.view;
+    const view = this.newView(build.carId);
     // The first car joins at once, so the city's shaders compile with it from the first frame.
     if (first) {
-      this.view = view;
-      this.viewCar = build.carId;
+      lead.view = view;
+      lead.carId = build.carId;
       this.night.scene.add(view.root);
     }
     this.loading = view.load(build.visual).then(() => {
       if (token !== this.loadToken) return void (first ? undefined : view.dispose());
       if (!first) {
-        this.view?.dispose();
-        this.view = view;
-        this.viewCar = build.carId;
+        lead.view?.dispose();
+        lead.view = view;
+        lead.carId = build.carId;
         this.night.scene.add(view.root);
       }
       this.place(0);
@@ -164,10 +228,98 @@ export class StreetStage {
   }
 
   /**
-   * Advance the clock and the car by dt seconds. `throttle` (0..1, the garage's
-   * rev) raises the cruise speed toward a sprint and `lean` rocks the body on
-   * top of the road and the driving (rad); the real lights follow `focus`
-   * (default the car) and the timed districts run on the stage clock.
+   * A car for the street. No headlight spots or underglow light: every lit pixel of the city pays for
+   * each real light, and the menu is drawn on every device. The beams' glow on the road, the underglow
+   * and the key light above stay.
+   */
+  private newView(carId: string): CarView {
+    return new CarView(carId, this.assets, { envMap: this.night.scene.environment, roadLift: ROAD_Y });
+  }
+
+  /** The setup step's pick: drive to the slot's car in the convoy, or load it and add it behind the last car. */
+  private pickBuild(build: Pick<CarBuild, 'carId' | 'visual'>, key: number | undefined, token: number): Promise<void> {
+    const lead = this.lead;
+    if (key === lead.key && lead.carId === build.carId) return (this.loading = lead.view!.load(build.visual));
+    const i = this.convoy.findIndex((c) => c.key === key);
+    if (i >= 0 && this.convoy[i].carId === build.carId) {
+      this.pickCar(i);
+      return (this.loading = Promise.resolve());
+    }
+    // The slot shows another car than the one in the line: that one goes.
+    if (i >= 0) this.dropCar(i);
+    const view = this.newView(build.carId);
+    this.loading = view.load(build.visual).then(() => {
+      if (token !== this.loadToken || this.lent) return void view.dispose();
+      if (this.convoy.length + 1 >= HOP.maxCars) {
+        let far = 0;
+        for (let j = 1; j < this.convoy.length; j++) if (Math.abs(this.convoy[j].offset) > Math.abs(this.convoy[far].offset)) far = j;
+        this.dropCar(far);
+      }
+      let rear = 0;
+      for (const c of this.convoy) rear = Math.min(rear, c.offset);
+      const car = newCar(key, build.carId, view, rear - HOP.gap);
+      car.level = this.levelAt(car.offset);
+      this.night.scene.add(view.root);
+      this.convoy.push(car);
+      this.pickCar(this.convoy.length - 1);
+    });
+    return this.loading;
+  }
+
+  /**
+   * Make convoy car i the picked one. The cars keep their places on the lane:
+   * the offsets move to the new pick, and the poses trade so `pose` stays the
+   * picked car's.
+   */
+  private pickCar(i: number): void {
+    const old = this.lead;
+    const next = this.convoy[i];
+    const shift = next.offset;
+    const pose = newPose();
+    copyPose(old.pose, pose);
+    copyPose(next.pose, this.pose);
+    old.pose = pose;
+    next.pose = this.pose;
+    for (const c of this.convoy) c.offset -= shift;
+    old.offset = -shift;
+    next.offset = 0;
+    this.convoy[i] = old;
+    this.lead = next;
+    this.s = this.path.wrap(this.s + shift);
+    this.hops++;
+    this.place(0);
+  }
+
+  /**
+   * The level (World.heightAt) `offset` m along the lane from the picked car,
+   * walked there in 2 m steps, so a car placed on or under a river deck
+   * stands on the deck or the channel floor it would have driven to.
+   */
+  private levelAt(offset: number): number | undefined {
+    let level = this.lead.level;
+    const n = Math.ceil(Math.abs(offset) / 2);
+    for (let k = 1; k <= n; k++) {
+      const c = this.path.sample(this.path.wrap(this.s + (offset * k) / n), this.sample);
+      level = this.world.heightAt(c.x, c.z, level);
+    }
+    return level;
+  }
+
+  private dropCar(i: number): void {
+    this.convoy[i].view?.dispose();
+    this.convoy.splice(i, 1);
+  }
+
+  /** Back to the one car. */
+  private dropConvoy(): void {
+    while (this.convoy.length) this.dropCar(0);
+  }
+
+  /**
+   * Advance the clock and the cars by dt seconds. `throttle` (0..1, the garage's
+   * rev) raises the cruise speed toward a sprint and `lean` rocks the picked
+   * car's body on top of the road and the driving (rad); the real lights follow
+   * `focus` (default the picked car) and the timed districts run on the stage clock.
    */
   step(dt: number, opts: { throttle?: number; focus?: THREE.Vector3; lean?: { pitch: number; roll: number } } = {}): void {
     if (this.lent) return;
@@ -175,7 +327,9 @@ export class StreetStage {
     this.time += dt;
     this.extraPitch = opts.lean?.pitch ?? 0;
     this.extraRoll = opts.lean?.roll ?? 0;
-    const target = this.cruise.targetSpeed(this.s, this.speed, this.time, opts.throttle ?? 0);
+    // One speed for the whole convoy, the slowest any car in it needs, so the gaps hold and none runs a lowered gate.
+    let target = this.cruise.targetSpeed(this.s, this.speed, this.time, opts.throttle ?? 0);
+    for (const c of this.convoy) target = Math.min(target, this.cruise.targetSpeed(this.path.wrap(this.s + c.offset), this.speed, this.time));
     const before = this.speed;
     if (target > this.speed) this.speed = Math.min(target, this.speed + CRUISE.accel * dt);
     else this.speed = Math.max(target, this.speed - CRUISE.brake * dt);
@@ -192,24 +346,37 @@ export class StreetStage {
     this.night.props.update(dt, this.time, undefined, NO_CARS);
   }
 
-  /** Render the stage through `camera`. */
-  render(gr: GameRenderer, camera: THREE.PerspectiveCamera, dt: number): void {
-    gr.post.setSpeedBlur(0);
+  /** Render the stage through `camera`, with `blur` of speed blur (the showreel's glide between cars; off when the setting is). */
+  render(gr: GameRenderer, camera: THREE.PerspectiveCamera, dt: number, blur = 0): void {
+    gr.post.setSpeedBlur(this.settings.radialBlur ? blur : 0);
     gr.render(this.night.scene, camera, dt);
   }
 
-  /**
-   * The car's height last frame (m), the level it is on under a river bridge (World.heightAt): the
-   * route dives under the decks, so the car stays on the channel floor beneath one. Unset before
-   * the first pose (the route never starts in the channel).
-   */
-  private level: number | undefined = undefined;
-
-  /** Pose the car at the current distance: on the terrain, steered by the path, leaning on its springs. */
+  /** Pose every car on the street, then seat their drivers. */
   private place(dt: number): void {
-    const c = this.path.sample(this.s, this.sample);
-    const p = this.pose;
-    const view = this.view;
+    this.placeCar(this.lead, dt);
+    for (const c of this.convoy) this.placeCar(c, dt);
+    const lead = this.lead.view;
+    if (!lead) return;
+    if (!this.drivers.group.parent) this.night.scene.add(this.drivers.group);
+    const views = this.seatViews;
+    const poses = this.seatPoses;
+    views.length = poses.length = 0;
+    views.push(lead);
+    poses.push(this.pose);
+    for (const c of this.convoy)
+      if (c.view) {
+        views.push(c.view);
+        poses.push(c.pose);
+      }
+    this.drivers.update(views, poses);
+  }
+
+  /** Pose a car at its place on the lane: on the terrain, steered by the path, leaning on its springs. */
+  private placeCar(sc: StreetCar, dt: number): void {
+    const c = this.path.sample(this.path.wrap(this.s + sc.offset), this.sample);
+    const p = sc.pose;
+    const view = sc.view;
     const car = view?.car;
     const yaw = c.yaw;
     const sin = Math.sin(yaw);
@@ -223,15 +390,15 @@ export class StreetStage {
       half = Math.max(0.4, Math.abs(car.wheels.FL[0]));
       for (let i = 0; i < 4; i++) {
         const w = car.wheels[WHEEL_KEYS[i]];
-        h[i] = this.world.heightAt(c.x + w[0] * cos + w[2] * sin, c.z - w[0] * sin + w[2] * cos, this.level);
+        h[i] = this.world.heightAt(c.x + w[0] * cos + w[2] * sin, c.z - w[0] * sin + w[2] * cos, sc.level);
       }
-    } else h.fill(this.world.heightAt(c.x, c.z, this.level));
+    } else h.fill(this.world.heightAt(c.x, c.z, sc.level));
     const y = (h[0] + h[1] + h[2] + h[3]) / 4;
-    this.level = y;
+    sc.level = y;
     const slopePitch = -Math.atan(((h[0] + h[1]) / 2 - (h[2] + h[3]) / 2) / wb);
     const slopeRoll = Math.atan(((h[0] + h[2]) / 2 - (h[1] + h[3]) / 2) / (2 * half));
     // Dive and squat from the speed change, lean out of the corner from the sideways pull.
-    const L = this.lean;
+    const L = sc.lean;
     if (dt > 0) {
       const w = 2 * Math.PI * CRUISE.bodyHz;
       const pitchT = clamp(-this.accel * CRUISE.pitchPerAccel, -CRUISE.maxLean, CRUISE.maxLean);
@@ -241,12 +408,14 @@ export class StreetStage {
       L.rollV += (w * w * (rollT - L.roll) - 2 * CRUISE.bodyDamping * w * L.rollV) * dt;
       L.roll += L.rollV * dt;
     }
+    // The garage's revs rock only the picked car.
+    const picked = sc === this.lead;
     p.x = c.x;
     p.z = c.z;
     p.y = y;
     p.yaw = yaw;
-    p.pitch = slopePitch + L.pitch + this.extraPitch;
-    p.roll = slopeRoll + L.roll + this.extraRoll;
+    p.pitch = slopePitch + L.pitch + (picked ? this.extraPitch : 0);
+    p.roll = slopeRoll + L.roll + (picked ? this.extraRoll : 0);
     p.steer = Math.max(-0.5, Math.min(0.5, Math.atan(wb * c.k)));
     // Wheels on the road: CarView lifts each wheel with the body's tilt, so take that back off and
     // what is left is the springs (squashed on the side the body leans to).
@@ -255,21 +424,18 @@ export class StreetStage {
         const w = car.wheels[WHEEL_KEYS[i]];
         p.comp[i] = h[i] - y - (w[0] * p.roll - w[2] * p.pitch);
       }
-    this.spin = (this.spin + (this.speed / Math.max(0.2, car?.wheelRadius ?? 0.3)) * dt) % (Math.PI * 2);
-    p.spin.fill(this.spin);
+    sc.spin = (sc.spin + (this.speed / Math.max(0.2, car?.wheelRadius ?? 0.3)) * dt) % (Math.PI * 2);
+    p.spin.fill(sc.spin);
     p.braking = this.speed < 0.5 || this.accel < -CRUISE.brakeLights;
     p.speed = this.speed;
     view?.update(p, this.time);
-    if (view) {
-      if (!this.drivers.group.parent) this.night.scene.add(this.drivers.group);
-      this.drivers.update([view], [p]);
-    }
   }
 
   dispose(): void {
     this.drivers.dispose();
-    this.view?.dispose();
-    this.view = null;
+    this.dropConvoy();
+    this.lead.view?.dispose();
+    this.lead.view = null;
     this.night.dispose();
   }
 }

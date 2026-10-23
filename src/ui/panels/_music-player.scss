@@ -109,7 +109,8 @@
     align-items: center;
     gap: 8px;
     max-width: 220px;
-    padding: 8px 12px;
+    height: var(--corner-h);
+    padding: 0 12px;
     font: 600 13px var(--font);
     color: var(--text);
     cursor: pointer;

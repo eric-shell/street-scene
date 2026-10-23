@@ -14,7 +14,12 @@
  *    as its door comes down, Explore cranes up for the drone to take over and
  *    a race start drops in low behind the car. Every move eases over from
  *    wherever the camera was, carried along in the car's frame, so it never
- *    jumps however the car moves meanwhile.
+ *    jumps however the car moves meanwhile. When the setup step's pick moves
+ *    to another car in the convoy (StreetStage.hops) the camera glides to it
+ *    along the lane, not through the blocks: its frame rides a point that
+ *    runs along the path from where it was to the picked car (back or ahead,
+ *    the shorter way), with a swoop up, a wider lens and a touch of speed
+ *    blur at the peak.
  *  - FollowOrbit: the garage's Street presentation. Carries the orbit
  *    camera's offset round with the car, so a turn carries the view with it,
  *    and renders through a copy pulled in front of walls and under roofs, so
@@ -33,6 +38,16 @@ import type { StreetStage } from './streetStage';
 
 /** A point in the car's frame: forward, left, up (m). */
 type Local = [number, number, number];
+
+/** What a car frame needs: a position (m) and a heading (rad). */
+type Frame = Pick<CarPose, 'x' | 'y' | 'z' | 'yaw'>;
+
+/**
+ * The glide after a hop: how long it takes over `ref` m of street (s; a longer
+ * glide takes longer, by the square root, up to `maxDur`), and at its peak how
+ * high it swoops (m), how far the lens widens (degrees) and the speed blur.
+ */
+const GLIDE = { dur: 0.95, ref: 38, maxDur: 1.9, rise: 1.2, fov: 7, blur: 0.45 } as const;
 
 interface Shot {
   name: string;
@@ -120,14 +135,14 @@ const MOVES: Record<Exclude<ReelMode, 'reel'>, Move> = {
 };
 
 /** Car frame to world: forward is (sin yaw, cos yaw), left is (cos yaw, -sin yaw). */
-function toWorld(p: CarPose, l: Local, out: THREE.Vector3): THREE.Vector3 {
+function toWorld(p: Frame, l: Local, out: THREE.Vector3): THREE.Vector3 {
   const s = Math.sin(p.yaw);
   const c = Math.cos(p.yaw);
   return out.set(p.x + l[0] * s + l[1] * c, p.y + l[2], p.z + l[0] * c - l[1] * s);
 }
 
 /** World to the car frame (forward, left, up), the inverse of toWorld. */
-function toLocal(p: CarPose, v: THREE.Vector3, o: Local): Local {
+function toLocal(p: Frame, v: THREE.Vector3, o: Local): Local {
   const s = Math.sin(p.yaw);
   const c = Math.cos(p.yaw);
   const dx = v.x - p.x;
@@ -165,6 +180,24 @@ export class ShowreelCamera {
   private readonly tmp = new THREE.Vector3();
   /** The stage last shot, to capture the camera in its car's frame when the mode changes. */
   private stage: StreetStage | null = null;
+  /** The stage's hop count last frame: a change starts a glide. */
+  private hopsSeen = 0;
+  /** The frame the camera was set in last frame (the car's, or the glide's) and its distance along the path (m). */
+  private readonly lastFrame: Frame = { x: 0, y: 0, z: 0, yaw: 0 };
+  private lastS = 0;
+  /**
+   * The glide after a hop, 0..1 (1: none): the path distance it covers (m),
+   * the camera and its aim where they were in the frame it left, and the
+   * height that frame stood above the road under its middle (m).
+   */
+  private glide = 1;
+  private glideDur: number = GLIDE.dur;
+  private glideDist = 0;
+  private readonly glideCam: Local = [0, 0, 0];
+  private readonly glideLook: Local = [0, 0, 0];
+  private glideLift = 0;
+  private readonly glideFrame: Frame = { x: 0, y: 0, z: 0, yaw: 0 };
+  private readonly goalLocal: Local = [0, 0, 0];
 
   /** Start the reel over on its opener, for a newly built street with the car on the start line. */
   open(): void {
@@ -205,6 +238,11 @@ export class ShowreelCamera {
     else if (this.stage) this.pickSide(this.stage, MOVES[mode].cam);
   }
 
+  /** Speed blur for the stage's render: a touch at the peak of a glide, none otherwise. */
+  get blur(): number {
+    return this.glide < 1 ? GLIDE.blur * Math.sin(Math.PI * smoother(this.glide)) : 0;
+  }
+
   /** The point the camera is aimed at this frame (world space), for a camera taking over from this one. */
   get lookTarget(): THREE.Vector3 {
     return this.look;
@@ -217,6 +255,12 @@ export class ShowreelCamera {
   }
 
   update(stage: StreetStage, dt: number): void {
+    // A new street starts with its own hop count: nothing to glide from.
+    if (stage !== this.stage) {
+      this.hopsSeen = stage.hops;
+      this.glide = 1;
+    }
+    if (stage.hops !== this.hopsSeen) this.startGlide(stage);
     this.stage = stage;
     this.clock += dt;
     this.t += dt;
@@ -259,6 +303,30 @@ export class ShowreelCamera {
       fov = this.fromFov + (fov - this.fromFov) * e;
       this.keepClear(stage.world, p, pos);
     }
+    let frame: Frame = p;
+    let frameS = stage.s;
+    if (this.glide < 1) {
+      this.glide = Math.min(1, this.glide + dt / this.glideDur);
+      const e = smoother(this.glide);
+      const arc = Math.sin(Math.PI * e);
+      frameS = stage.path.wrap(stage.s - this.glideDist * (1 - e));
+      frame = this.glideFrameAt(stage, frameS, e);
+      // The camera and its aim ease from where they were in the frame they left to the shot's, in the gliding frame.
+      const g = this.goalLocal;
+      const a = this.glideCam;
+      toLocal(p, pos, g);
+      toWorld(frame, at(this.local, lerp(a[0], g[0], e), lerp(a[1], g[1], e), lerp(a[2], g[2], e) + GLIDE.rise * arc), pos);
+      const b = this.glideLook;
+      toLocal(p, look, g);
+      toWorld(frame, at(this.local, lerp(b[0], g[0], e), lerp(b[1], g[1], e), lerp(b[2], g[2], e) + 0.5 * GLIDE.rise * arc), look);
+      fov += GLIDE.fov * arc;
+      this.keepClear(stage.world, frame, pos);
+    }
+    this.lastFrame.x = frame.x;
+    this.lastFrame.y = frame.y;
+    this.lastFrame.z = frame.z;
+    this.lastFrame.yaw = frame.yaw;
+    this.lastS = frameS;
     cam.position.copy(pos);
     this.look.copy(look);
     // A breath of handheld sway, the same at any frame rate.
@@ -270,6 +338,48 @@ export class ShowreelCamera {
       cam.fov = fov;
       cam.updateProjectionMatrix();
     }
+  }
+
+  /**
+   * The pick moved to another car in the convoy: glide to it from the frame the camera
+   * was in last frame (mid glide too, so a quick run of picks never jumps),
+   * taking over any ease still running. A roadside shot's camera is
+   * stood again ahead of the new car.
+   */
+  private startGlide(stage: StreetStage): void {
+    this.hopsSeen = stage.hops;
+    if (!this.stage) return;
+    const f = this.lastFrame;
+    toLocal(f, this.camera.position, this.glideCam);
+    toLocal(f, this.look, this.glideLook);
+    // Signed: the shorter way round the loop, so a hop back glides back.
+    const d = stage.path.wrap(stage.s - this.lastS);
+    this.glideDist = d > stage.path.length / 2 ? d - stage.path.length : d;
+    this.glideDur = Math.min(GLIDE.maxDur, GLIDE.dur * Math.sqrt(Math.max(1, Math.abs(this.glideDist) / GLIDE.ref)));
+    this.glideLift = f.y - stage.world.heightAt(f.x, f.z, f.y);
+    // The gliding frame's last height is the level hint under a river deck (World.heightAt).
+    this.glideFrame.y = f.y;
+    this.glide = 0;
+    this.blend = 1;
+    if (this.mode === 'reel' && SHOTS[this.index]?.name === 'roadside') this.placeRoadside(stage);
+  }
+
+  /**
+   * The gliding frame at path distance s, e of the way through the glide: on
+   * the lane, its height above the road eased from the old frame's to the
+   * car's, so the glide starts and lands exactly on them.
+   */
+  private glideFrameAt(stage: StreetStage, s: number, e: number): Frame {
+    const c = stage.path.sample(s, this.sample);
+    const f = this.glideFrame;
+    const p = stage.pose;
+    const ground = stage.world.heightAt(c.x, c.z, f.y);
+    const carLift = p.y - stage.world.heightAt(p.x, p.z, p.y);
+    f.x = c.x;
+    f.z = c.z;
+    f.yaw = c.yaw;
+    f.y = ground + lerp(this.glideLift, carLift, e);
+    return f;
   }
 
   /** Take the side of the car with room for a move's camera. */
@@ -320,7 +430,7 @@ export class ShowreelCamera {
   }
 
   /** Pull a camera in front of any wall between it and the car, keep it off the ground and under roofs. */
-  private keepClear(world: World, p: CarPose, pos: THREE.Vector3): void {
+  private keepClear(world: World, p: Frame, pos: THREE.Vector3): void {
     const hit = wallHit(world, p.x, p.z, pos.x, pos.z, this.scratch);
     if (hit < 1) {
       const t = Math.max(0.2, hit - 0.06);

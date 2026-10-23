@@ -7,6 +7,7 @@
    garage, the menu keeps the rail's box for framing but draws only a scrim in it: its cards are plates of
    their own, and the city shows between them. */
 @use '../styles/abstracts/media';
+@use '../styles/abstracts/mixins';
 @use '../styles/abstracts/palette';
 .menu-screen {
   /* The primary screen keeps more room than the gutter every other screen stands in: a wide margin and a
@@ -33,6 +34,20 @@
     > * {
       opacity: 0.4;
     }
+  }
+  /* A step's cards between its header and its foot (menu.ts scrolling): they take the column's height left
+     over and scroll in it when they do not fit, with the kit's fades and chevrons (_scroll-hint.scss) at the
+     edges that hold more. A few px of room each side keep focus rings and card edges clear of the clip. */
+  &__scroll {
+    flex: 0 1 auto;
+  }
+  &__body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-inline: -4px;
+    padding: 2px 4px;
+    @include mixins.scroll-y;
   }
   /* What stands straight on the city keeps a dark halo under it. */
   .title-lockup__tagline,
@@ -61,21 +76,23 @@
     }
   }
 }
-/* The menu's column does not scroll: every step is short enough to fit (the race takes three steps for
-   that), so nothing is clipped at the column's edge, neither a halo nor a card sliding in between steps.
-   The settings pane scrolls inside its card instead; only very short screens fall back to a scrolling column. */
+/* The menu's column ends above the corner's controls (the help and the music pill, --corner-h) and does not
+   scroll itself, so nothing is clipped at its edge, neither a halo nor a card sliding in between steps: the
+   step shrinks to fit, and its cards scroll between its header and foot (.menu-screen__body). The settings
+   pane scrolls inside its card instead. */
 .menu.rail__col {
   --col-top: clamp(16px, 9vh, 96px);
-  max-height: none;
+  max-height: calc(100% - var(--col-top) - #{mixins.safe(bottom, var(--gutter))} - var(--corner-h) - 12px);
   overflow: visible;
+  .rail__step {
+    flex-shrink: 1;
+    min-height: 0;
+  }
   /* Short screens (laptops, phones on their side): a higher column. */
   @include media.short {
     --col-top: clamp(12px, 6vh, 48px);
   }
-  @include media.very-short {
-    max-height: calc(100% - var(--col-top) - 58px);
-    overflow-y: auto;
-  }
+
 }
 /* Explore: the menu slides away to the left while the camera cranes up off the street for the drone (main.ts). */
 .rail.is-exiting {

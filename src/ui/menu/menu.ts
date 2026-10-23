@@ -24,14 +24,14 @@
  * screens. The caller feeds the
  * cruising car's pose every frame (MainMenu.frame) for the maps' car markers.
  */
-import { bem, btn, chip, h, iconBtn, segmented, sheen, specChip } from '../kit/dom';
+import { bem, btn, chip, h, iconBtn, prefersReducedMotion, scrollHint, segmented, sheen, specChip } from '../kit/dom';
 import {
   Anchor,
   Calendar,
   Check,
-  ChevronLeft,
   ChevronRight,
   ChevronsRight,
+  ChevronsUpDown,
   CircleDot,
   Compass,
   Drone,
@@ -416,36 +416,82 @@ export function mainMenu(o: MenuOptions): MainMenu {
   /** Pick a race type on the race step (arrow and number keys). */
   let pickType: ((t: RaceType) => void) | null = null;
 
-  /** The setup step's car: the build in use between previous and next, which walk the garage's slots and swap the car on the street. */
+  /**
+   * The setup step's model card: the build in use as one row (its slot, name, car and spec tags) that
+   * opens the garage's builds as a list under it, so the card stays one row tall however many builds
+   * there are until it is opened. The list opens in the flow, not over the cards below: the step's
+   * cards scroll on a short screen, and their box would clip a list hanging past it. A row in the list, the up and down keys or a number key picks a build and
+   * swaps the car on the street; Escape, a pick or a click elsewhere closes the list. The rows run in
+   * slot order, like the line of cars the picks build up there.
+   */
+  let turnBuild: ((to: number, relative: boolean) => void) | null = null;
+  /** Close the open build list; false when it was not open. */
+  let closeBuilds: (() => boolean) | null = null;
   const buildPick = (): HTMLElement => {
     const n = o.builds.length;
-    const shown = h('div', { class: 'build-pick__build' });
+    const rowParts = (b: MenuBuild, i: number) => [
+      h('span', { class: 'build-pick__slot' }, String(i + 1)),
+      h('span', { class: 'build-pick__text' }, h('span', { class: 'build-pick__name' }, b.name), h('span', { class: 'build-pick__car' }, b.car)),
+      buildTags(b),
+    ];
+    const current = h('button', { class: 'build-pick__row build-pick__row--current', type: 'button', 'aria-haspopup': 'listbox', 'aria-expanded': 'false' });
+    const rows = o.builds.map((b, i) => {
+      const row = h('button', { class: 'build-pick__row', type: 'button', role: 'option', title: `${b.name} · ${b.car}` }, ...rowParts(b, i));
+      row.addEventListener('click', () => {
+        choose(i);
+        close();
+        current.focus({ preventScroll: true });
+      });
+      return row;
+    });
+    const list = h('div', { class: 'build-pick__list', role: 'listbox', 'aria-label': 'Build' }, ...rows);
+    const el = h(
+      'div',
+      { class: 'build-pick' },
+      h('div', { class: 'build-pick__card' }, h('div', { class: 'build-pick__head' }, h('div', { class: 'section-title' }, 'Model'), h('span', { class: 'build-pick__count' }, n > 1 ? `${n} builds` : 'Only build')), current),
+      n > 1 && list,
+    );
     const show = () => {
-      const b = o.builds[build];
-      shown.replaceChildren(
-        h('span', { class: 'build-pick__head' }, h('span', { class: 'build-pick__name' }, b.name), h('span', { class: 'build-pick__slot' }, n > 1 ? `${build + 1} / ${n}` : 'Only build')),
-        h('span', { class: 'build-pick__car' }, buildTags(b), h('span', { class: 'build-line__name' }, b.car)),
-      );
+      current.replaceChildren(...rowParts(o.builds[build], build));
+      if (n > 1) current.append(icon(ChevronsUpDown, { size: 16 }));
+      rows.forEach((r, i) => {
+        r.classList.toggle('is-selected', i === build);
+        r.setAttribute('aria-selected', String(i === build));
+      });
     };
-    const turn = (d: number) => {
-      build = (build + d + n) % n;
+    const choose = (i: number) => {
+      if (i === build) return;
+      build = i;
       show();
       o.onBuild(build);
       uiBlip();
     };
-    const prev = iconBtn(ChevronLeft, 'Previous build', () => turn(-1), '--small --ghost');
-    const next = iconBtn(ChevronRight, 'Next build', () => turn(1), '--small --ghost');
-    prev.disabled = next.disabled = n < 2;
+    // A press outside the card and its list closes the list.
+    const outside = (e: PointerEvent) => {
+      if (!el.contains(e.target as Node)) close();
+    };
+    const open = (on: boolean) => {
+      el.classList.toggle('is-open', on);
+      current.setAttribute('aria-expanded', String(on));
+      if (on) {
+        document.addEventListener('pointerdown', outside, true);
+        list.scrollIntoView({ block: 'nearest', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+      } else document.removeEventListener('pointerdown', outside, true);
+    };
+    const close = () => {
+      const was = el.classList.contains('is-open');
+      open(false);
+      return was;
+    };
+    if (n > 1) current.addEventListener('click', () => open(!el.classList.contains('is-open')));
+    else current.disabled = true;
+    turnBuild = n > 1 ? (to, relative) => choose(relative ? (build + to + n) % n : to) : null;
+    closeBuilds = close;
     show();
-    return h(
-      'div',
-      { class: 'race-setup__group' },
-      h('div', { class: 'section-title' }, 'Car'),
-      h('div', { class: 'build-pick' }, prev, shown, next),
-    );
+    return el;
   };
 
-  /** Step 3: what is about to start (its course drawn small, its facts, your best), the build to race in, rivals and driving aids, and Start. */
+  /** Step 3: what is about to start (its course drawn small, its facts, your best), the build to race in on its own card, rivals and driving aids, and Start. */
   const setup = (): HTMLElement[] => {
     const t = s.raceType;
     const info = TYPE_INFO[t];
@@ -516,7 +562,8 @@ export function mainMenu(o: MenuOptions): MainMenu {
     return [
       screenHead({ icon: SlidersHorizontal, title: 'Setup', back: () => go('race'), aside: progress(3, chip(info.label, info.icon, `--mode mode-${t}`)) }),
       ticket,
-      h('div', { class: 'race-setup' }, buildPick(), rivals, driving),
+      buildPick(),
+      h('div', { class: 'race-setup' }, rivals, driving),
       h('div', { class: 'step-foot' }, start),
     ];
   };
@@ -528,13 +575,13 @@ export function mainMenu(o: MenuOptions): MainMenu {
   const KEYS: Record<MenuStep, HelpKey[]> = {
     home: [{ keys: ['↑', '↓'], label: 'Walk the menu' }, { keys: ['Enter'], label: 'Choose' }, hideUi],
     race: [{ keys: ['←', '→', '↑', '↓'], label: 'Race type' }, { keys: ['1–6'], label: 'Pick a type by its place' }, { keys: ['Enter'], label: 'Next' }, { keys: ['Esc'], label: 'Back' }, hideUi],
-    setup: [{ keys: ['Enter'], label: 'Start' }, { keys: ['Esc'], label: 'Back' }, hideUi],
+    setup: [...(o.builds.length > 1 ? [{ keys: ['↑', '↓'], label: 'Build' }, { keys: [`1–${o.builds.length}`], label: 'Pick a build by its slot' }] : []), { keys: ['Enter'], label: 'Start' }, { keys: ['Esc'], label: 'Back' }, hideUi],
     settings: [{ keys: ['Esc'], label: 'Back' }, hideUi],
   };
   const TIPS: Record<MenuStep, string[]> = {
     home: ['Every day brings a new event city. Beside its name the pencil types a seed of your own and shuffle rolls a random city.', 'The live map opens the whole city; a waypoint set there carries into free roam.'],
     race: ['Each type draws its course on the card, with your best on this event.'],
-    setup: ['The arrows beside your car pick another build from the garage.', 'Rivals and driving aids are remembered for your next race.'],
+    setup: ['Your car opens the garage\'s builds; each one you pick joins the line of cars on the street.', 'Rivals and driving aids are remembered for your next race.'],
     settings: ['Controls lists every key, gamepad button and touch control.'],
   };
   const helpFor = (at: MenuStep) => [
@@ -544,6 +591,18 @@ export function mainMenu(o: MenuOptions): MainMenu {
   ];
 
   const steps: Record<MenuStep, () => HTMLElement[]> = { home, race, setup, settings };
+
+  /**
+   * A step's cards between its header and its foot, in a box that scrolls when the screen is too short
+   * for them, with the kit's fades and chevrons at the edges that hold more (scrollHint, as the garage's
+   * body): the header and the foot (Next, Start) stay on screen. Settings keeps its own scrolling pane.
+   */
+  const scrolling = (parts: HTMLElement[]): HTMLElement[] => {
+    const head = parts[0]?.classList.contains('screen-head') ? 1 : 0;
+    const foot = parts.at(-1)?.classList.contains('step-foot') ? 1 : 0;
+    const body = h('div', { class: 'menu-screen__body' }, ...parts.slice(head, parts.length - foot));
+    return [...parts.slice(0, head), scrollHint(body, 'menu-screen__scroll'), ...parts.slice(parts.length - foot)];
+  };
   function go(next: MenuStep, animate = true): void {
     const from = step;
     step = next;
@@ -553,8 +612,12 @@ export function mainMenu(o: MenuOptions): MainMenu {
     course?.dispose();
     overview = course = null;
     pickType = null;
+    turnBuild = null;
+    closeBuilds?.();
+    closeBuilds = null;
     const fwd = STEP_DEPTH[next] > STEP_DEPTH[from];
-    if (rail.show(steps[next](), animate ? (fwd ? 'fwd' : 'back') : null)) uiWhoosh(fwd);
+    const parts = steps[next]();
+    if (rail.show(next === 'settings' ? parts : scrolling(parts), animate ? (fwd ? 'fwd' : 'back') : null)) uiWhoosh(fwd);
     const el = rail.current!;
     help.close();
     if (next !== from || !animate) o.onStep?.(next);
@@ -576,7 +639,10 @@ export function mainMenu(o: MenuOptions): MainMenu {
     const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement;
     // The full map over the menu keeps the keys to itself.
     if (typing || root.parentElement?.querySelector('.full-map')) return;
-    if (e.key === 'Escape' && step !== 'home') {
+    if (e.key === 'Escape' && closeBuilds?.()) {
+      // The open build list closes first; the next Escape goes back a step.
+      e.preventDefault();
+    } else if (e.key === 'Escape' && step !== 'home') {
       e.preventDefault();
       go(step === 'setup' ? 'race' : 'home');
     } else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && step === 'home') {
@@ -595,6 +661,13 @@ export function mainMenu(o: MenuOptions): MainMenu {
         e.preventDefault();
         pickType(RACE_TYPES[(at + move + n) % n]);
       } else if (e.key >= '1' && e.key <= String(n) && e.key.length === 1) pickType(RACE_TYPES[Number(e.key) - 1]);
+    } else if (step === 'setup' && turnBuild && !e.repeat) {
+      // Up and down (or left and right) walk the garage's builds; 1 to the last slot pick one.
+      const move = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 0;
+      if (move) {
+        e.preventDefault();
+        turnBuild(move, true);
+      } else if (e.key >= '1' && e.key <= String(o.builds.length) && e.key.length === 1) turnBuild(Number(e.key) - 1, false);
     }
   };
   window.addEventListener('keydown', onKey);

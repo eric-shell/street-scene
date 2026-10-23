@@ -1,8 +1,8 @@
 /* The help (panels/help.ts): the small ? and its panel of keys and tips. On every screen it stands just left
    of the music player, the other thing that is always there: beside its card or pill in the bottom right, or
    beside the race's now-playing chip up top (the widget publishes where, panels/musicWidget.ts dock; with no
-   player on show, the bottom right corner). The button is a small chamfered plate that stays quiet (muted, no
-   sheen) until it is hovered or open; the panel opens over it toward the screen (above it, or below it up
+   player on show, the bottom right corner). The button is a square twin of the minimized music pill beside
+   it: its height (--corner-h), panel, chamfer and accent glyph, so the corner reads as one row of controls; the panel opens over it toward the screen (above it, or below it up
    top), right aligned, as a card with the accent hairline, its sections under the menu cards' yellow caps, the
    keys in caps beside what they do. The race HUD's help hides on touch screens, where the corners hold the
    driving controls: there the pause screen's serves. The wrapper casts the drop shadow the chamfers would
@@ -27,15 +27,17 @@
   }
 
   &__button {
-    @include mixins.chamfer(6px);
+    @include mixins.chamfer;
     display: grid;
     place-items: center;
-    width: 30px;
-    height: 30px;
+    width: var(--corner-h);
+    height: var(--corner-h);
     padding: 0;
-    font: 900 15px var(--display);
-    color: var(--muted);
-    @include mixins.plate($radius: null);
+    font: 900 18px var(--display);
+    color: var(--accent);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    box-shadow: var(--edge);
     cursor: pointer;
     transition: color var(--t-fast), border-color var(--t-fast), background var(--t-fast);
     &:hover,

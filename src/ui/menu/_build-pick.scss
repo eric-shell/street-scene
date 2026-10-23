@@ -1,16 +1,29 @@
-/* The setup step's car (menu.ts buildPick): the build in use between previous and next, its name over its
-   spec tags and car, which slot it is at the right of the name. */
+/* The setup step's model card (menu.ts buildPick), between the ticket and the rivals and driving card: its
+   section title with the garage's count at its right, over the build in use as one row (its slot number, its
+   name over its car, its spec tags, and the up-down chevrons that say it opens). Pressing it opens the
+   garage's builds under the card as a list of the same rows (.is-open), in the flow: the step's cards scroll
+   on a short screen (_menu.scss), and their box would clip a list hanging over the cards below. The card is
+   the plate and the list its own. The build in use is lit in the race type's
+   color (--mode): an edge bar, a wash and its number filled, the way a nav row lights on hover. */
+@use '../styles/abstracts/media';
 @use '../styles/abstracts/mixins';
 .build-pick {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  &__build {
+  flex-direction: column;
+  gap: 4px;
+  &__card {
+    @include mixins.chamfer(12px);
+    @include mixins.plate((var(--card-top), var(--plate)));
     display: flex;
-    flex: 1;
     flex-direction: column;
-    gap: 4px;
-    min-width: 0;
+    gap: 6px;
+    padding: 10px 16px 10px;
+    .section-title {
+      margin-top: 2px;
+    }
+    .menu-screen[data-step='setup'] & {
+      background: mixins.rule-line(var(--mode)), var(--plate);
+    }
   }
   &__head {
     display: flex;
@@ -18,24 +31,123 @@
     justify-content: space-between;
     gap: 10px;
   }
-  &__name {
-    min-width: 0;
-    font: 900 16px var(--display);
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    @include mixins.ellipsis;
-  }
-  &__slot {
+  &__count {
     flex: none;
     font: 500 12px var(--font);
     color: var(--muted);
   }
-  &__car {
+  &__list {
+    @include mixins.chamfer(10px);
+    @include mixins.plate((var(--card-top), var(--plate)));
+    display: none;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 8px;
+    .build-pick.is-open & {
+      display: flex;
+      @include media.motion {
+        animation: build-list-in 0.16s var(--ease-out) both;
+      }
+    }
+  }
+  &__row {
     display: flex;
     align-items: center;
-    gap: 8px;
-    min-width: 0;
-    font-size: 13px;
+    gap: 12px;
+    min-height: 44px;
+    padding: 6px 10px 6px 8px;
+    text-align: left;
     color: var(--soft);
+    background: transparent;
+    border: 0;
+    clip-path: var(--chamfer-sm);
+    cursor: pointer;
+    transition: background var(--t-fast), box-shadow var(--t-fast), color var(--t-fast);
+    > svg {
+      flex: none;
+      color: var(--dim);
+      transition: color var(--t-fast);
+    }
+    &:hover {
+      color: var(--text);
+      background: var(--plate-hover);
+      > svg {
+        color: var(--mode);
+      }
+    }
+    &:focus-visible {
+      outline: 2px solid var(--accent-2);
+      outline-offset: -2px;
+    }
+    &.is-selected,
+    &--current {
+      color: var(--text);
+      background: linear-gradient(90deg, rgba(var(--mode-rgb), 0.16), transparent 75%);
+      box-shadow: inset 3px 0 0 var(--mode);
+    }
+    &--current {
+      margin-inline: -8px;
+      &:disabled {
+        cursor: default;
+      }
+    }
+    @media (max-height: 780px) {
+      min-height: 38px;
+      padding-block: 4px;
+    }
+  }
+  &__slot {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 26px;
+    height: 26px;
+    font: 800 13px var(--font);
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+    background: rgba(var(--mode-rgb), 0.1);
+    clip-path: var(--chamfer-sm);
+    transition: background var(--t-fast), color var(--t-fast);
+    .build-pick__row:is(.is-selected, .build-pick__row--current) & {
+      color: var(--on-accent);
+      background: var(--mode);
+    }
+  }
+  &__text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+  &__name {
+    font: 900 14px var(--display);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    @include mixins.ellipsis;
+  }
+  &__car {
+    font: 500 12px var(--font);
+    color: var(--muted);
+    @include mixins.ellipsis;
+  }
+  .build-line__tags {
+    opacity: 0.7;
+    transition: opacity var(--t-fast);
+  }
+  &__row:is(.is-selected, .build-pick__row--current, :hover) .build-line__tags {
+    opacity: 1;
+  }
+  @include media.reduced-motion {
+    &__row,
+    &__slot {
+      transition: none;
+    }
+  }
+}
+@keyframes build-list-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
   }
 }

@@ -185,7 +185,7 @@ function ensureStage(): StreetStage {
   // A few ms over the city that is already built, and its traffic net now (cached per world) rather than at the handoff.
   stageOpen = createWorld(seed, 'circuit', city, { openWorld: true });
   trafficNet(stageOpen);
-  void stage.setBuild(currentBuild());
+  void stage.setBuild(currentBuild(), { key: garage.current });
   showreel.open();
   (window as unknown as Record<string, unknown>).__nr = { world: stage.world, gr, stage, showreel, autoQ };
   return stage;
@@ -196,7 +196,7 @@ function renderStage(dt: number): void {
   if (!stage) return;
   stage.step(dt);
   showreel.update(stage, dt);
-  stage.render(gr, showreel.camera, dt);
+  stage.render(gr, showreel.camera, dt, showreel.blur);
   if (menu && overlay === menuEl && !cinematic) menu.frame(stage.pose);
 }
 
@@ -347,7 +347,7 @@ function showMenu(step: MenuStep = 'home'): void {
   closeMenuMap();
   const st = ensureStage();
   // The car on the street shows the build as the garage left it (paint and parts in place, a new car swapped in).
-  void st.setBuild(currentBuild());
+  void st.setBuild(currentBuild(), { key: garage.current });
   // Catch the menu city up with any point light increase auto quality deferred.
   if (st.night.lighting.poolSize !== gr.profile.pointLights) st.night.lighting.setPoolSize(gr.profile.pointLights);
   showreel.setMode(STEP_CAMERA[step], false);
@@ -371,7 +371,8 @@ function showMenu(step: MenuStep = 'home'): void {
     onBuild: (i) => {
       garage.current = i;
       saveGarage(garage);
-      void st.setBuild(currentBuild());
+      // The slot's car joins the convoy behind the line, or the camera glides to it if it is already there (StreetStage.setBuild's hop).
+      void st.setBuild(currentBuild(), { key: i, hop: true });
     },
     hasReplay: !!loadLastReplay(),
     settings: { ...settings },

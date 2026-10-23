@@ -12,6 +12,7 @@ export {
   ChevronLeft,
   ChevronRight,
   ChevronsRight,
+  ChevronsUpDown,
   Car,
   Check,
   Copy,
