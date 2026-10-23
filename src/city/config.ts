@@ -598,13 +598,38 @@ export const CITY = {
       /** A small wood in each park: radius range (m) and its denser tree spacing (m). */
       groveRadius: [15, 22],
       groveSpacing: 6,
-      /** One cluster of drive-through bushes per this much park area (m^2). */
+      /** One cluster of drive-through bushes per this much park area (m^2); a park with a race pass through it keeps at least minBushes. */
       bushClusterArea: 800,
+      minBushes: 14,
       /** Footpath loop this far inside the park edge (m), with a bench every benchSpacing m. */
       pathInset: 11,
       benchSpacing: 36,
       /** Lantern posts along the footpath's outer side, about this far apart (m); one stands at every path corner. */
       lampSpacing: 24,
+      /**
+       * Race passes (park.ts parkPasses, districts/passes.ts): a route turning round a corner of the
+       * park block cuts through the park on a cobbled path instead, bowed in from the corner toward
+       * the park's middle. Parks go on the blocks the routes turn round first. The path's width (m);
+       * how far from the corner it leaves and rejoins the street [min, max], tried every passStep
+       * (m), as far as the route runs along the block's side less the clearances (passes.ts
+       * PassClear: before a junction run straight across, before a shortcut's mouth, after a junction
+       * the route turns at, m); its sharpest bend (deg); how far its middle is pulled from the chord
+       * between its street ends toward the park's middle (fractions, the first that fits wins);
+       * the room it keeps inside the park edge beyond its half width (m), earned at passEntry m per
+       * metre from where it crosses the edge (the sine of the shallowest way in); and how far trees,
+       * bushes and furniture keep off its edge (m).
+       */
+      pathWidth: 8,
+      passReach: [30, 130],
+      passStep: 8,
+      passJunctionClear: 28,
+      passMouthClear: 12,
+      passTurnClear: 8,
+      passMaxTurn: 70,
+      passPulls: [1, 0.8, 0.6, 0.45, 0.3, 0.15],
+      passMargin: 5,
+      passEntry: 0.7,
+      passVerge: 1.5,
     },
     infill: {
       enabled: true,
