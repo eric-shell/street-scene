@@ -10,6 +10,7 @@
  */
 import type { World } from '../city/world';
 import { routeSample, type Route } from '../city/route';
+import { laneClosures, type LaneClosure } from '../city/districts/roadworks';
 import { gatePhase, newGatePhase } from '../sim/gates';
 import { TICK_HZ } from '../sim/constants';
 import type { InputFrame } from '../sim/input';
@@ -75,7 +76,9 @@ export function newPathSample(): PathSample {
 /**
  * A smoothed lane line around the route, sampled every CRUISE.step m: the
  * centerline shifted into the right lane, then averaged so corners become
- * arcs. Distances wrap on circuits.
+ * arcs. Past a roadworks closure the lane moves out to where the AI's racing
+ * line keeps (LaneClosure.keep), from far enough either side that the
+ * smoothing cannot pull it back into the cones. Distances wrap on circuits.
  */
 export class CruisePath {
   readonly length: number;
@@ -86,7 +89,7 @@ export class CruisePath {
   private readonly k: Float64Array;
   private readonly cum: Float64Array;
 
-  constructor(route: Route) {
+  constructor(route: Route, closures: readonly LaneClosure[] = []) {
     this.closed = route.closed;
     const n = Math.max(8, Math.ceil(route.length / CRUISE.step));
     let x = new Float64Array(n);
@@ -97,6 +100,7 @@ export class CruisePath {
       // Right of a heading (tx, tz) is (-tz, tx).
       x[i] = c.x - c.tz * lane;
       z[i] = c.z + c.tx * lane;
+      for (const cl of closures) keepClear(cl, x, z, i);
     }
     const wrap = (i: number) => (this.closed ? ((i % n) + n) % n : Math.max(0, Math.min(n - 1, i)));
     for (let pass = 0; pass < CRUISE.smoothPasses; pass++) {
@@ -208,6 +212,20 @@ export class CruisePath {
   }
 }
 
+/** How far (m) the smoothing reaches along the path: a closure's stretch is widened by this before the lane is moved. */
+const SMOOTH_REACH = CRUISE.smoothSpan * CRUISE.smoothPasses * CRUISE.step;
+
+/** Move lane point i out of a closure's way: on that street's carriageway, within its widened stretch, no nearer the closed curb than `keep`. */
+function keepClear(c: LaneClosure, x: Float64Array, z: Float64Array, i: number): void {
+  const rx = x[i] - c.ax;
+  const rz = z[i] - c.az;
+  const along = rx * c.dx + rz * c.dz;
+  const lat = rx * c.nx + rz * c.nz;
+  if (along < c.s0 - SMOOTH_REACH || along > c.s1 + SMOOTH_REACH || lat > c.half || lat <= c.keep) return;
+  x[i] -= c.nx * (lat - c.keep);
+  z[i] -= c.nz * (lat - c.keep);
+}
+
 /** What the cruise needs to know of the car it drives: its wheelbase (m) and the steering lock at its speed (rad). */
 export interface CruiseCar {
   wheelbase: number;
@@ -229,7 +247,7 @@ export class Cruise {
   private readonly phase = newGatePhase();
 
   constructor(readonly world: World) {
-    this.path = new CruisePath(world.route);
+    this.path = new CruisePath(world.route, laneClosures(world.areas ?? [], world.graph));
     const set = world.timedGates;
     if (set) set.gates.forEach((g) => this.path.crossings(g.ax, g.az, g.bx, g.bz, g.nx, g.nz).forEach((s) => this.gates.push({ s, cycle: g.cycle })));
   }

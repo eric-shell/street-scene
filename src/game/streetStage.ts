@@ -12,6 +12,11 @@
  * its own clock, which the timed districts and the crossings read as ticks
  * (time x TICK_HZ), so the gates the car waits at are the gates on screen.
  *
+ * The cars swing round roadworks closures (CruisePath) and knock over any
+ * destructible they still touch, as a race car would; a knocked prop stands
+ * back up once every car is PROPS.restore m away, so the loop round the
+ * route never strips the street.
+ *
  * Free roam from the menu carries straight on from this car: the session
  * borrows the scene (lend / reclaim) and the Cruise keeps driving the sim car
  * on the lane, at the cruise's speed, until the player touches a control.
@@ -35,14 +40,20 @@ import { ROAD_Y } from '../render/street/cityMeshes';
 import type { CarAssetLibrary } from '../render/car/carAssets';
 import type { CarBuild } from '../shared/carBuild';
 import { clamp } from '../sim/math';
+import { LEVEL_GAP } from '../sim/constants';
 import { damp } from '../shared/anim';
 import type { Settings } from '../ui/settings';
 import type { CarMotion } from '../render/street/props';
 import { CRUISE, Cruise, newPathSample, type CruisePath } from './cruise';
 import { KeyLight } from './keyLight';
 
-/** No racing cars knock the street's props over behind the menu. */
-const NO_CARS: readonly CarMotion[] = [];
+/**
+ * The menu cars against the street's destructibles: a prop goes down when it
+ * comes within `pad` m of a car's footprint (its manifest length and width),
+ * and stands again once every car is `restore` m from it, well out of the
+ * showreel's shot.
+ */
+const PROPS = { pad: 0.1, restore: 160 } as const;
 
 /**
  * The setup step's convoy: the gap between cars in the line (m) and how
@@ -125,6 +136,13 @@ export class StreetStage {
   private extraRoll = 0;
   /** Road height under each wheel this frame (FL, FR, RL, RR). */
   private readonly road = [0, 0, 0, 0];
+  /** The street's props as the race flags them (RaceState.brokenProps): 1 knocked down, 2 under a route barrier. */
+  private readonly broken: Uint8Array;
+  /** Props knocked down, waiting for the cars to leave so they can stand again. */
+  private readonly down: number[] = [];
+  /** Every car's motion this frame, which way a prop it hits comes apart. */
+  private readonly motions: CarMotion[] = [];
+  private readonly hits: number[] = [];
 
   constructor(
     gr: GameRenderer,
@@ -135,6 +153,8 @@ export class StreetStage {
     this.night = createNightScene(world, gr, settings);
     this.cruise = new Cruise(world);
     this.path = this.cruise.path;
+    this.broken = new Uint8Array(world.props.length);
+    for (const id of world.coveredProps ?? []) this.broken[id] = 2;
     this.s = this.path.wrap(this.path.nearest(...startPoint(world.route)) - CRUISE.startBack);
     this.night.scene.add(this.carLight);
     this.place(0);
@@ -170,7 +190,9 @@ export class StreetStage {
     n.arrows.group.visible = true;
     // NaN hands the El and the level crossings back to the scene clock (render/districts).
     n.syncDistricts(NaN, false);
-    n.props.update(0, this.time, new Uint8Array(this.world.props.length), []);
+    for (const id of this.down) this.broken[id] = 0;
+    this.down.length = 0;
+    n.props.update(0, this.time, this.broken, []);
     if (this.lead.view) this.lead.view.root.visible = true;
     this.carLight.visible = true;
     this.place(0);
@@ -342,8 +364,57 @@ export class StreetStage {
     this.carLight.follow(p);
     this.night.lighting.update(opts.focus ?? this.focus.set(p.x, p.y, p.z));
     this.night.update(this.time);
-    // The street furniture's own clock: the traffic signals, any debris and spray still settling.
-    this.night.props.update(dt, this.time, undefined, NO_CARS);
+    // The street furniture's own clock: the traffic signals, the props the cars knock over, debris and spray.
+    this.knockProps();
+    this.night.props.update(dt, this.time, this.broken, this.motions);
+  }
+
+  /** Knock down the props the cars touch this frame, and stand up the ones every car has left behind. */
+  private knockProps(): void {
+    const motions = this.motions;
+    motions.length = 0;
+    this.knockBy(this.lead);
+    for (const c of this.convoy) this.knockBy(c);
+    const r2 = PROPS.restore * PROPS.restore;
+    const down = this.down;
+    for (let i = down.length - 1; i >= 0; i--) {
+      const p = this.world.props[down[i]];
+      let near = false;
+      for (const m of motions) near ||= (m.x - p.x) ** 2 + (m.z - p.z) ** 2 < r2;
+      if (near) continue;
+      this.broken[down[i]] = 0;
+      down[i] = down[down.length - 1];
+      down.pop();
+    }
+  }
+
+  /** One car against the props round it: its footprint box, as the sim's (sim/props.ts) but every touch breaks. */
+  private knockBy(sc: StreetCar): void {
+    const p = sc.pose;
+    const sin = Math.sin(p.yaw);
+    const cos = Math.cos(p.yaw);
+    this.motions.push({ x: p.x, z: p.z, vx: this.speed * sin, vz: this.speed * cos });
+    const dim = sc.view?.car.dimensions;
+    if (!dim) return;
+    const hl = dim.length / 2 + PROPS.pad;
+    const hw = dim.width / 2 + PROPS.pad;
+    const reach = hl + 2;
+    const hits = this.hits;
+    this.world.propGrid.query(p.x - reach, p.z - reach, p.x + reach, p.z + reach, hits);
+    for (const id of hits) {
+      if (this.broken[id]) continue;
+      const q = this.world.props[id];
+      if (Math.abs(q.y - p.y) > LEVEL_GAP) continue;
+      const dx = q.x - p.x;
+      const dz = q.z - p.z;
+      // Car space: u forward, v right; the gap from the box to the prop's center against its radius.
+      const u = Math.abs(dx * sin + dz * cos) - hl;
+      const v = Math.abs(dx * cos - dz * sin) - hw;
+      const r = q.depth ?? q.radius;
+      if (Math.max(u, 0) ** 2 + Math.max(v, 0) ** 2 > r * r) continue;
+      this.broken[id] = 1;
+      this.down.push(id);
+    }
   }
 
   /** Render the stage through `camera`, with `blur` of speed blur (the showreel's glide between cars; off when the setting is). */
