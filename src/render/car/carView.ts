@@ -15,6 +15,7 @@ import { WheelProfile, beadForSize, detectProfile, remapWheel, sizeForBead } fro
 import { BRAKE, buildCaliperGeometry, buildRotorGeometry } from './brakes';
 import { damp } from '../../shared/anim';
 import { latheTire, measureTire } from './tireShapes';
+import { PLATE, buildPlateGeometry, createPlateMaterial, drawPlate, plateTexture, seatPlate } from './plate';
 import { maskVehicleMesh, underVehicles } from '../vehicleMask';
 import { Disposer } from '../disposer';
 
@@ -126,6 +127,9 @@ export class CarView {
   /** Rotor heat, 0 cold to 1 glowing: builds under braking and fades slowly once off the brakes (BRAKE.heatUp / coolDown). */
   private rotorHeat = 0;
   private beam: THREE.Mesh;
+  /** The rear license plate (plate.ts), seated on the bumper after every load; null headless or when opted out. */
+  private plate: THREE.Mesh | null = null;
+  private plateTex: THREE.CanvasTexture | null = null;
   readonly decals: DecalLayerView;
   private loadToken = 0;
   /** The car's own effect materials (underglow, headlight pool, flames, pops); the shared car materials go with disposeCarMaterials. */
@@ -139,7 +143,7 @@ export class CarView {
      * The sim rests the tires on the ground; on the city's asphalt they would sink that far into it.
      * 0 (the garage floor) by default.
      */
-    opts: { headlights?: boolean; underglowLight?: boolean; envMap?: THREE.Texture | null; roadLift?: number; brakes?: boolean } = {},
+    opts: { headlights?: boolean; underglowLight?: boolean; envMap?: THREE.Texture | null; roadLift?: number; brakes?: boolean; plate?: string | null } = {},
   ) {
     this.materials = createCarMaterials(opts.envMap ?? null);
     this.car = manifestCar(carId);
@@ -256,7 +260,37 @@ export class CarView {
       this.pops.push(pop);
     }
 
+    // The rear plate: drawn once, seated on the bumper once the body and its parts are in (applyVisual).
+    if (FEATURES.plates && opts.plate !== null) {
+      this.plateTex = plateTexture(opts.plate ?? PLATE.defaultText);
+      if (this.plateTex) {
+        track(this.plateTex);
+        this.plate = new THREE.Mesh(buildPlateGeometry(), track(createPlateMaterial(this.plateTex, opts.envMap ?? null)));
+        this.plate.name = 'Plate';
+        this.plate.visible = false;
+        maskVehicleMesh(this.plate);
+        this.model.add(this.plate);
+      }
+    }
+
     this.decals = new DecalLayerView(this);
+  }
+
+  /** Redraw the rear plate for a registration (the player's name). */
+  setPlate(text: string): void {
+    if (this.plateTex) drawPlate(this.plateTex, text);
+  }
+
+  /** Seat the plate on whatever bumper the car wears now: after the body loads and after every rear bumper swap. */
+  private seatPlate(): void {
+    const plate = this.plate;
+    if (!plate) return;
+    plate.visible = false;
+    const seat = seatPlate(this.model, this.materials, this.car.dimensions.length, plate);
+    plate.position.copy(seat.position).addScaledVector(seat.normal, PLATE.proud);
+    // The face follows the bumper's tilt: pitch only, the seat is on the centre line.
+    plate.rotation.set(Math.atan2(seat.normal.y, -seat.normal.z), 0, 0);
+    plate.visible = true;
   }
 
   get isPlaceholder(): boolean {
@@ -320,6 +354,7 @@ export class CarView {
       }
     }
     this.updateHiddenBaseMeshes();
+    this.seatPlate();
 
     // Wheels, per axle: the rear wears the front's wheel unless it has one of its own.
     const frontWheel = v.parts.wheels ?? this.car.defaultWheel;
