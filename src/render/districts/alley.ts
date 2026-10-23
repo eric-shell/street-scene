@@ -9,7 +9,7 @@
  * render/street/props.ts); a jump exit's ramp gets the same steel deck up to its lip
  * and the face under the lip (the 'alleyLip' wall) a concrete block with a
  * hazard band. Tables, crates, dumpsters and trash are destructible props
- * drawn by render/street/props.ts. Content to add: fire escapes, graffiti, steam
+ * drawn by render/street/props.ts. Content to add: fire escapes, steam
  * vents, puddles.
  */
 import * as THREE from 'three';

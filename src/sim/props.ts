@@ -7,7 +7,10 @@
  * normal by momentum exchange with the prop's anchored mass, gets a small yaw
  * nudge from an off center hit, and the prop is marked broken for the rest of
  * the race (RaceState.brokenProps) with a 'prop' event. Below the break speed
- * the prop holds like a short wall. Deterministic: fixed car order, props
+ * the prop holds like a short wall. Knocking one down pays a little
+ * nitrous (nitrous.wreckBonus, scaled by the prop's effective mass so a trash bag
+ * is worth a fraction of a light pole), the wreck telemetry the HUD calls out.
+ * Deterministic: fixed car order, props
  * visited in ascending id order.
  */
 import { PROP_DEFS } from '../city/props';
@@ -15,6 +18,7 @@ import type { RaceCar, RaceState } from './race';
 import { abs, sin, cos, sqrt } from './math';
 import { yawInertia } from './car';
 import { LEVEL_GAP } from './constants';
+import { NITRO_STAGES } from './tuning';
 
 /** Fraction of the off center angular impulse applied as yaw (a nudge, not a spin). */
 const YAW_NUDGE = 0.35;
@@ -140,14 +144,22 @@ export function collideCarWithProps(r: RaceState, rc: RaceCar): number {
     c.yawRate -= ((rn * m * dv) / yawInertia(rc.tuning)) * YAW_NUDGE;
     r.brokenProps[id] = 1;
     r.events.push({ tick: r.tick, type: 'prop', car: rc.index, value: id });
+    // The wreck pays nitrous: the whole bonus for anything as heavy as wreckFullMass, sqrt scaled below it.
+    const bonus = t.nitrous.wreckBonus * Math.min(1, sqrt(mp / t.nitrous.wreckFullMass));
+    const gain = Math.min(bonus, NITRO_STAGES - c.nitro);
+    if (gain > 0) {
+      c.nitro += gain;
+      c.nitroGain.wreck += gain;
+    }
     impact = Math.max(impact, dv * IMPACT_PER_DV);
   }
   return impact;
 }
 
-/** Prop collisions for every car, in car order. Raises each car's impact for this tick. */
+/** Prop collisions for every car, in car order. Raises each car's impact for this tick and resets its wreck telemetry (refillNitrous runs after this and leaves it alone). */
 export function stepProps(r: RaceState): void {
   for (const rc of r.cars) {
+    rc.state.nitroGain.wreck = 0;
     const imp = collideCarWithProps(r, rc);
     if (imp > rc.state.impact) rc.state.impact = imp;
   }

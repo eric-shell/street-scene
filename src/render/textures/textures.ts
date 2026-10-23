@@ -1,7 +1,7 @@
 /**
  * Small shared sprites and the night environment: the radial glow every lamp and pool blooms with, the start
  * line's checker, the steam puff, the neon palette, and the equirectangular night panorama the cars reflect.
- * The street's surfaces, sign atlases, road decals and graffiti have modules of their own beside this one;
+ * The street's surfaces, sign atlases, road decals and wall paper have modules of their own beside this one;
  * building facades live in render/buildings. Render only; seeded anyway, so a seed looks the same each time.
  */
 import * as THREE from 'three';
@@ -14,7 +14,7 @@ export { kelvin } from '../color';
 export { COBBLE_TILE, makeAsphalt, makeCobble, makeSidewalk } from './streetTextures';
 export { BLADE_SIGN_COLS, BLADE_SIGN_ROWS, BLADE_SIGN_TEXTS, SIGN_ATLAS_COLS, SIGN_ATLAS_ROWS, SIGN_NAMES, makeBladeSignAtlas, makeSignAtlas } from './signAtlases';
 export { DECAL_ATLAS_SIZE, DECAL_CELLS, makeStreetDecalAtlas, type DecalKind } from './streetDecalAtlas';
-export { GRAFFITI_ATLAS, graffitiCell, makeGraffitiAtlas, type GraffitiKind } from './graffitiAtlas';
+export { WALL_ATLAS, makeWallAtlas, wallCell, type WallKind } from './wallAtlas';
 export type { AtlasCell } from './canvasKit';
 
 /** Neon sign colors: the podium signs and roof neon (buildings), blade signs and the panorama's blobs. */

@@ -1,6 +1,6 @@
 /**
  * Street level polish: the lived in detail that the big meshes leave out.
- * Road decals and puddles (streetDecals.ts), graffiti, posters, grime, air
+ * Road decals and puddles (streetDecals.ts), posters, grime, air
  * conditioners, pipes, blade signs and banners on the walls
  * (wallDressing.ts) and steam off the manholes (steam.ts), built once per
  * scene from the world and the drawn podium geometry. Five draw calls at
@@ -14,7 +14,7 @@ import { buildStreetDecals } from './streetDecals';
 import { buildWallDressing } from '../buildings/wallDressing';
 import { buildSteam, Steam } from './steam';
 import { FacadeProbe } from '../buildings/wallProbe';
-import { makeBladeSignAtlas, makeGraffitiAtlas, makeSteamPuff, makeStreetDecalAtlas } from '../textures/textures';
+import { makeBladeSignAtlas, makeSteamPuff, makeStreetDecalAtlas, makeWallAtlas } from '../textures/textures';
 
 export interface StreetPolishOptions {
   quality: Quality;
@@ -38,7 +38,7 @@ export const POLISH = {
 interface Atlases {
   seed: number;
   decals: { map: THREE.Texture; roughness: THREE.Texture };
-  graffiti: THREE.Texture;
+  walls: THREE.Texture;
   blades: THREE.Texture;
   puff: THREE.Texture;
 }
@@ -49,13 +49,13 @@ const cache: Atlases[] = [];
 function atlasesFor(seed: number): Atlases {
   const hit = cache.find((a) => a.seed === seed);
   if (hit) return hit;
-  const a: Atlases = { seed, decals: makeStreetDecalAtlas(seed), graffiti: makeGraffitiAtlas(seed), blades: makeBladeSignAtlas(), puff: makeSteamPuff() };
+  const a: Atlases = { seed, decals: makeStreetDecalAtlas(seed), walls: makeWallAtlas(seed), blades: makeBladeSignAtlas(), puff: makeSteamPuff() };
   cache.push(a);
   while (cache.length > 2) {
     const old = cache.shift()!;
     old.decals.map.dispose();
     old.decals.roughness.dispose();
-    old.graffiti.dispose();
+    old.walls.dispose();
     old.blades.dispose();
     old.puff.dispose();
   }
@@ -70,7 +70,7 @@ export function buildStreetPolish(world: World, opts: StreetPolishOptions): Stre
   const decals = buildStreetDecals(world, atlases.decals, { density: q.decals, puddles: q.puddles });
   for (const m of decals.meshes) group.add(m);
   const probe = new FacadeProbe(opts.facades);
-  const walls = buildWallDressing(world, probe, { graffiti: atlases.graffiti, blades: atlases.blades }, { density: q.walls, banners: q.banners });
+  const walls = buildWallDressing(world, probe, { walls: atlases.walls, blades: atlases.blades }, { density: q.walls, banners: q.banners });
   for (const m of walls.meshes) group.add(m);
   let steam: Steam | null = null;
   if (q.steam && decals.vents.length) {

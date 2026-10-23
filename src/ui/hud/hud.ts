@@ -90,6 +90,12 @@ export interface HudData {
   nitroStage: number;
   /** Throttle 0..1, drives the boost gauge (vacuum off throttle). */
   throttle?: number;
+  /** The build's launch rpm (the two-step's set point), marked on the tach; missing when off. */
+  launchRpm?: number;
+  /** Turbo cars: the sim's boost (0..1, CarState.boost) drives the gauge instead of the guess from rpm and throttle. */
+  boost?: number;
+  /** Rolling antilag is holding boost this frame (the boost gauge says so). */
+  antilag?: boolean;
   countdown: number | null;
   wrongWay: boolean;
   progress: number;
@@ -123,6 +129,8 @@ export class Hud {
   private nitroBurn = -1;
   /** Callouts for the style that fills the tank, over the dial cluster; the session feeds them each tick. */
   readonly callouts = new BoostCallouts();
+  /** Antilag is holding boost (the gauge's caption). */
+  private antilag = false;
   private tach: HTMLCanvasElement;
   private boostCv: HTMLCanvasElement;
   /** Boost pressure in bar (negative = vacuum), simulated render side with spool lag. */
@@ -349,6 +357,9 @@ export class Hud {
     // Each nitrous stage spikes it a little harder.
     let target = vacuum + load * (spool * spool * (3 - 2 * spool)) * 1.25 + (d.nitroActive ? 0.55 + 0.1 * (d.nitroStage - 1) : 0);
     if (d.countdown !== null && d.countdown > 0) target = vacuum + load * 0.35 * Math.min(1, r * 1.6);
+    // A turbo car's boost is the sim's: antilag pins it, the two-step builds it at the line.
+    if (d.boost !== undefined) target = d.boost >= 0.02 ? d.boost * 1.25 + (d.nitroActive ? 0.55 + 0.1 * (d.nitroStage - 1) : 0) : vacuum;
+    this.antilag = d.antilag === true;
     // Blow-off valve: lifting sharply at boost dumps the pressure at once.
     if (this.lastThrottle > 0.6 && load < 0.25 && this.boost > 0.35) this.bov = 0.35;
     this.lastThrottle = load;
@@ -452,7 +463,8 @@ export class Hud {
     c.fillText((shown > 0 ? '+' : '') + shown.toFixed(1), cx, cy + 26);
     c.font = `600 9px ${INK.font}`;
     c.fillStyle = INK.caption;
-    c.fillText(this.bov > 0.1 ? 'BLOW OFF' : 'BOOST BAR', cx, cy + 42);
+    if (this.antilag) c.fillStyle = INK.needle;
+    c.fillText(this.antilag ? 'ANTILAG' : this.bov > 0.1 ? 'BLOW OFF' : 'BOOST BAR', cx, cy + 42);
   }
 
   private drawTach(d: HudData): void {
@@ -500,6 +512,16 @@ export class Hud {
       c.lineTo(cx + Math.cos(a) * (R - 4), cy + Math.sin(a) * (R - 4));
       c.stroke();
       c.fillText(String(k), cx + Math.cos(a) * (R - 24), cy + Math.sin(a) * (R - 24));
+    }
+    // The launch rpm: a yellow mark on the arc where the two-step holds the needle at the line.
+    if (d.launchRpm) {
+      const la = ang(d.launchRpm);
+      c.strokeStyle = INK.needle;
+      c.lineWidth = 3;
+      c.beginPath();
+      c.moveTo(cx + Math.cos(la) * (R - 14), cy + Math.sin(la) * (R - 14));
+      c.lineTo(cx + Math.cos(la) * (R + 6), cy + Math.sin(la) * (R + 6));
+      c.stroke();
     }
     const na = ang(d.rpm);
     c.strokeStyle = INK.needle;

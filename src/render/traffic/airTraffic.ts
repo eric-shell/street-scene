@@ -39,9 +39,13 @@ export const AIR = {
     roamPoints: 4,
     /** Main rotor turns per second (the tail rotor spins four times faster). */
     rotorRps: 5.5,
-    /** Searchlight: pool radius on the road (m), brightness, how far ahead on the course it aims (m), sweep (m), furthest reach (m). */
+    /**
+     * Searchlight: pool radius on the road (m), brightness, how far ahead on the course it aims (m), sweep (m),
+     * furthest reach (m). The brightness is a sweep you notice on the street, never a flash in the camera: the
+     * beam shader also dims the pool and cone as the camera comes to stand in them (beamFrag).
+     */
     beamRadius: 9,
-    intensity: 0.75,
+    intensity: 0.28,
     ahead: 55,
     sweep: 16,
     reach: 170,
@@ -502,7 +506,12 @@ function airMaterial(led: THREE.Texture): { material: THREE.MeshStandardMaterial
 const BEAM_SEGS = 28;
 const CONE_INDICES = BEAM_SEGS * 6;
 
-/** The searchlight material: an additive cone and ground pool between uApex and uTarget, faded by fog. */
+/**
+ * The searchlight material: an additive cone and ground pool between uApex and uTarget, faded by fog, and
+ * faded again as the camera gets close: a chase camera sitting in the pool, or under the cone, would
+ * otherwise see an additive disc filling the lower half of the frame (the blinding case), so within a few
+ * pool radii of the target the pool drops to a floor and inside the cone the cone does the same.
+ */
 function beamMaterial(opts: { radius: number; spotR: number; color: THREE.Color; intensity: number; fogDensity: number; glow: THREE.Texture }): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     vertexShader: beamVert,
@@ -538,6 +547,7 @@ const beamVert = /* glsl */ `
   varying float vPart;
   varying float vEdge;
   varying float vDist;
+  varying float vNear;
   void main() {
     vec3 beam = uTarget - uApex;
     vec3 b = normalize(beam);
@@ -557,6 +567,12 @@ const beamVert = /* glsl */ `
     vec3 toCam = normalize(cameraPosition - pos);
     // The cone reads thicker at its silhouette, where the eye looks through more of it.
     vEdge = 1.0 - abs(dot(n, toCam));
+    // How close the camera stands to the light: the pool by its distance to the target in pool radii, the
+    // cone by the camera's distance from the beam axis in cone radii (under 1 the camera is inside it).
+    vec3 camRel = cameraPosition - uApex;
+    float axial = clamp(dot(camRel, b) / max(length(beam), 1.0), 0.0, 1.0);
+    float offAxis = length(camRel - b * dot(camRel, b)) / max(uRadius * axial, 0.5);
+    vNear = aPart < 0.5 ? smoothstep(0.8, 2.2, offAxis) : smoothstep(0.6, 3.0, distance(cameraPosition, uTarget) / uSpotR);
     vUv = aRing * 0.5 * aT + 0.5;
     vT = aT;
     vPart = aPart;
@@ -576,6 +592,7 @@ const beamFrag = /* glsl */ `
   varying float vPart;
   varying float vEdge;
   varying float vDist;
+  varying float vNear;
   void main() {
     float fog = exp(-uFogDensity * uFogDensity * vDist * vDist);
     float a;
@@ -583,10 +600,13 @@ const beamFrag = /* glsl */ `
       // Thickest through the middle of the beam, fading out to a soft silhouette.
       float along = smoothstep(0.0, 0.08, vT) * (0.04 + 0.96 * pow(1.0 - vT, 1.6));
       float body = pow(max(0.0, 1.0 - vEdge), 1.4);
-      a = along * body * 0.16;
+      a = along * body * 0.11;
     } else {
-      a = texture2D(uGlow, vUv).r * 1.6;
+      // A soft pool: the glow sprite's falloff steepened so the bright core stays small.
+      a = pow(texture2D(uGlow, vUv).r, 1.5);
     }
+    // Standing in the light, the pool and cone fall to a floor instead of filling the frame.
+    a *= mix(0.3, 1.0, vNear);
     gl_FragColor = vec4(uColor * a * uIntensity * fog, 1.0);
   }
 `;

@@ -5,9 +5,10 @@
  * can pin a car and the AI simply drives over them), with analytic gradients
  * like the rest of the terrain (the tests check slopes against heights):
  *
- * - hump: a speed hump straight across the floor, a bump at speed.
- * - bar: a water bar, the same hump skewed across the floor, which kicks the
- *   car a little sideways and unsettles a drift.
+ * - hump: a long low wedge straight across the floor (two gentle grades to a
+ *   rounded crest), a lift you feel at speed rather than a launch.
+ * - bar: a water bar, the same wedge skewed across the floor, which rolls the
+ *   car a little and unsettles a drift.
  * - table: a tabletop jump on one half of the floor, a rounded foot and a hard
  *   crest at both ends (the ramp lip profile), so it launches either way and
  *   the other half stays flat as the slow line.
@@ -126,6 +127,41 @@ function bump(d: number, half: number, out: Smooth): Smooth {
   return out;
 }
 
+/**
+ * A wedge of unit height over |d| < half: each side a straight grade whose
+ * ends are eased over FEAT.wedgeEase of the half (a quadratic in and out, so
+ * the grade is a trapezoid and the shape C1 at the foot and the crest), unlike
+ * `bump`, whose bell is steepest halfway up. Same grade both ways, since the
+ * channel runs either way. Writes value and d/dd into out.
+ */
+function wedge(d: number, half: number, out: Smooth): Smooth {
+  const u = 1 - Math.abs(d) / half;
+  if (u <= 0) {
+    out.v = 0;
+    out.d = 0;
+    return out;
+  }
+  const a = FEAT.wedgeEase;
+  const s = 1 / (1 - a);
+  let v: number;
+  let dv: number;
+  if (u < a) {
+    v = (s * u * u) / (2 * a);
+    dv = (s * u) / a;
+  } else if (u <= 1 - a) {
+    v = s * (u - a / 2);
+    dv = s;
+  } else {
+    const r = 1 - u;
+    v = 1 - (s * r * r) / (2 * a);
+    dv = (s * r) / a;
+  }
+  out.v = v;
+  // u falls away from the crest on both sides: d/dd = dv/du * du/dd = -dv / half * sign(d).
+  out.d = (d >= 0 ? -dv : dv) / half;
+  return out;
+}
+
 /** Fade to 0 over the last stretch before the floor edge, so a full width feature never climbs the bank. */
 function floorFade(al: number, floor: number, out: Smooth): Smooth {
   smooth01(floor - FEAT.edgeFade, floor - 0.2, al, out);
@@ -174,7 +210,7 @@ export function featureHeight(f: Feature, floor: number, x: number, l: number, o
   switch (f.kind) {
     case 'hump': {
       const H = FEAT.hump.height;
-      const b = bump(dx, FEAT.hump.length / 2, S1);
+      const b = wedge(dx, FEAT.hump.length / 2, S1);
       if (b.v <= 0) return out;
       const w = floorFade(al, floor, S2);
       out.h = H * b.v * w.v;
@@ -186,7 +222,7 @@ export function featureHeight(f: Feature, floor: number, x: number, l: number, o
       const H = FEAT.bar.height;
       const c = Math.cos(f.skew);
       const s = Math.sin(f.skew);
-      const b = bump(dx * c + l * s, FEAT.bar.length / 2, S1);
+      const b = wedge(dx * c + l * s, FEAT.bar.length / 2, S1);
       if (b.v <= 0) return out;
       const w = floorFade(al, floor, S2);
       out.h = H * b.v * w.v;

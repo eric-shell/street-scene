@@ -182,14 +182,6 @@ export function makeFacadeKitTextures(seed: number): FacadeKitTextures {
         c.fillRect(x + 14, y + 40, W - 28, H - 54);
         c.fillStyle = 'rgba(0,0,0,0.35)';
         for (let yy = y + 44; yy < y + H - 14; yy += 7) c.fillRect(x + 14, yy, W - 28, 2);
-        // graffiti tag
-        const hue = rng.int(0, 360);
-        c.strokeStyle = `hsl(${hue},90%,60%)`;
-        c.lineWidth = 6;
-        c.beginPath();
-        c.moveTo(x + 40, y + 140);
-        c.bezierCurveTo(x + 90, y + 90, x + 120, y + 190, x + 200, y + 120);
-        c.stroke();
         e.fillStyle = kelvin(2200);
         e.globalAlpha = 0.6;
         e.fillRect(x + W / 2 - 10, y + 24, 20, 8);

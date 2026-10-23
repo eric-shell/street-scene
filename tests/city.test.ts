@@ -664,6 +664,73 @@ describe('districts', () => {
     expect(clutterTurns / turns).toBeGreaterThan(0.25);
   });
 
+  it('alleys never open onto a lot on their sides: bays and mouth pockets taper back into the lane', () => {
+    const rng = new Rng(31);
+    let bays = 0;
+    let mouths = 0;
+    for (let i = 0; i < 24; i++) {
+      const seed = rng.int(0, 0x7fffffff);
+      const w = createWorld(seed, i % 2 ? 'sprint' : 'circuit');
+      const g = w.graph;
+      const alleys = g.edges.filter((e) => e.kind === 'alley' || e.kind === 'backAlley');
+      const alleyNodes = new Set(alleys.flatMap((e) => [e.a, e.b]));
+      /** Nearest alley wall line (sidewalk back) to a point, clear of the alley's end caps, and that alley's axis. */
+      const nearest = (x: number, z: number) => {
+        let best = { d: Infinity, ax: 0, az: 0 };
+        for (const e of alleys) {
+          const a = g.nodes[e.a];
+          const b = g.nodes[e.b];
+          const ax = (b.x - a.x) / e.length;
+          const az = (b.z - a.z) / e.length;
+          const t = (x - a.x) * ax + (z - a.z) * az;
+          if (t < 2 || t > e.length - 2) continue;
+          const d = Math.abs(Math.abs((x - a.x) * az - (z - a.z) * ax) - (e.width / 2 + e.sidewalk));
+          if (d < best.d) best = { d, ax, az };
+        }
+        return best;
+      };
+      for (const a of w.areas) {
+        if (a.kind !== 'infill') continue;
+        // Its open frontage runs along an alley's wall line (parallel and on it).
+        let along = false;
+        for (let k = 0; k < (a.params.frontSides ?? 1); k++) {
+          const p = a.polygon[k];
+          const q = a.polygon[(k + 1) % a.polygon.length];
+          const L = Math.hypot(q.x - p.x, q.z - p.z);
+          for (const t of [0.2, 0.5, 0.8]) {
+            const n = nearest(p.x + (q.x - p.x) * t, p.z + (q.z - p.z) * t);
+            if (n.d < 0.8 && Math.abs((q.x - p.x) * n.ax + (q.z - p.z) * n.az) / L > 0.9) along = true;
+          }
+        }
+        if (!along) continue;
+        // Never a lot, plaza or verge: a recess with square ends beside the raceway. A bay (the alley
+        // widening, tapered ends) or a flush planter, or a corner pocket at the alley's mouth node.
+        expect(['alleyBay', 'planter', 'cornerPlaza'], `${seed} infill ${a.id}`).toContain(a.variant);
+        if (a.variant === 'cornerPlaza') {
+          mouths++;
+          expect(alleyNodes.has(a.nodes[0]), `${seed} pocket ${a.id} off an alley's side`).toBe(true);
+          expect(a.params.fountain).toBe(0);
+        }
+        if (a.variant === 'alleyBay') bays++;
+        if (a.variant === 'planter') continue;
+        // Every wall of it that meets the alley's wall line runs within the taper angle of the alley, so
+        // a car riding the wall is guided back into the lane instead of stopped.
+        for (const wall of w.walls) {
+          if (wall.kind !== 'wall' || wall.area !== a.id) continue;
+          const na = nearest(wall.ax, wall.az);
+          const nb = nearest(wall.bx, wall.bz);
+          const n = na.d < nb.d ? na : nb;
+          if (n.d > 1.2) continue;
+          const L = Math.hypot(wall.bx - wall.ax, wall.bz - wall.az);
+          const cosA = Math.abs((wall.bx - wall.ax) * n.ax + (wall.bz - wall.az) * n.az) / L;
+          expect(cosA, `${seed} ${a.variant} ${a.id} wall across the alley`).toBeGreaterThan(Math.cos((CITY.districts.infill.bayTaperDeg + 6) * DEG));
+        }
+      }
+    }
+    expect(bays).toBeGreaterThan(60);
+    expect(mouths).toBeGreaterThan(40);
+  });
+
   it('parks and alleys are full of destructible clutter, and back alley humps throw cars in the air', () => {
     const rng = new Rng(9);
     let jumps = 0;
@@ -859,8 +926,9 @@ describe('race progress and resets', () => {
     return null;
   }
 
-  it('cutting the seed 43405383 inside corner never resets the car', () => {
-    const r = createRace(raceConfig(43405383, 'circuit', 0));
+  // (Seed 43405383's deep cut was a corner pocket at an alley's mouth; those taper back into the alley now, so seed 1's pocket on a plain street corner is the case.)
+  it('cutting the seed 1 inside corner never resets the car', () => {
+    const r = createRace(raceConfig(1, 'circuit', 0));
     while (r.tick < r.countdownTicks) stepRace(r, NEUTRAL_INPUT);
     const cut = insideCut(r.world);
     expect(cut).not.toBeNull();

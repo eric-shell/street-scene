@@ -4,7 +4,8 @@
  * is named the moment it pays and racers go looking for more. A drift, a
  * wall skim (near miss) and a slipstream each get one live callout that
  * counts up while it pays and holds a moment after; filling a stage and a
- * chain refill are one shot calls. Points are hundredths of a stage (+100 is
+ * chain refill are one shot calls; a wreck (a prop knocked down) is live too, so
+ * a row of cans counts up as one call. Points are hundredths of a stage (+100 is
  * a whole stage, one bar length), colored by the stage they went into.
  *
  * Fed once per sim tick from the player's CarState telemetry (nitroGain,
@@ -30,10 +31,10 @@ const CALLOUT = {
   minShow: 0.005,
 } as const;
 
-type LiveKind = 'drift' | 'nearMiss' | 'draft';
+type LiveKind = 'drift' | 'nearMiss' | 'draft' | 'wreck';
 type Kind = LiveKind | 'chain' | 'stage';
 
-const NAME: Record<LiveKind | 'chain', string> = { drift: 'Drift', nearMiss: 'Near miss', draft: 'Slipstream', chain: 'Chain boost' };
+const NAME: Record<LiveKind | 'chain', string> = { drift: 'Drift', nearMiss: 'Near miss', draft: 'Slipstream', wreck: 'Wreck', chain: 'Chain boost' };
 
 interface Callout {
   kind: Kind;
@@ -73,6 +74,7 @@ export class BoostCallouts {
     this.pay('drift', g.drift + g.zone, filling, g.zone > 0);
     this.pay('nearMiss', g.nearMiss, filling, false);
     this.pay('draft', g.draft, filling, false);
+    this.pay('wreck', g.wreck, filling, false);
     if (c.nitroChain > 0) this.shot('chain', c.nitroChain, 1);
     // A stage that filled from style (a chain's refill is called as the chain).
     else if (this.lastFull >= 0 && full > this.lastFull) this.shot('stage', 0, full);

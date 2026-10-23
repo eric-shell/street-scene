@@ -3,7 +3,7 @@
  * run along the outer sidewalk line, but the building podiums stand up to
  * 1.3 m behind it (BUILDING_SETBACK) minus whatever each level and shopfront
  * bay protrudes (facadeKit extrusions, decided by the mesher's own random
- * stream). Anything pasted on a wall (graffiti, posters, grime, pipes) has
+ * stream). Anything pasted on a wall (posters, grime, pipes) has
  * to sit on the surface that is actually drawn, so this indexes the vertical
  * triangles of the podium geometry as 2D segments on a coarse grid and
  * answers "how far behind this point, along this normal, is the facade, and

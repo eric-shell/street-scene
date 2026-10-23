@@ -38,7 +38,7 @@ import { GaragePrefs, GarageState, MAX_SLOTS, Presentation, addSlot, decodeShare
 import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PART_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
 import { AXLES, Axle, AxleStance, BUILD_NAME_MAX, CarBuild, DEFAULT_BUILD_NAME, DecalLayer, GLOW_PATTERNS, MAX_DECALS, PAINT_FINISHES, Paint, AccentPaint, STANCE_LIMITS, TireShape, VINYL_SHAPES, VinylShape, validateBuild } from '../shared/carBuild';
 import { DEFAULT_CAR_ID, PERFORMANCE_CATEGORIES, PerformanceCategory, SELECTABLE_CAR_IDS, TIER_NAMES, Tier, getBaseTuning } from '../sim/tuning';
-import { tuningForBuild } from '../sim/build';
+import { LAUNCH_RPM, maxLaunchRpm, tuningForBuild } from '../sim/build';
 import { FEATURES } from '../shared/features';
 import { specBadges, type SpecBadge } from '../shared/carSpec';
 import { measureStats, statBars, type CarStats } from '../sim/stats';
@@ -133,7 +133,7 @@ const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 /** Measured stats per car and performance build: measuring drives the sim for up to a minute of game time. */
 const statsCache = new Map<string, CarStats>();
 function statsFor(b: CarBuild): CarStats {
-  const key = `${b.carId}:${PERFORMANCE_CATEGORIES.map((c) => b.performance[c]).join('')}`;
+  const key = `${b.carId}:${PERFORMANCE_CATEGORIES.map((c) => b.performance[c]).join('')}:${b.performance.launchRpm}`;
   let st = statsCache.get(key);
   if (!st) statsCache.set(key, (st = measureStats(tuningForBuild(b.carId, b.performance))));
   return st;
@@ -1484,6 +1484,21 @@ export class GarageScreen {
             ),
           ),
         ),
+      ),
+    );
+    // Launch control: the rpm the two-step holds at the line while the throttle is down through the countdown.
+    // One slider: its bottom step is Off (free revs), then LAUNCH_RPM.min up to the car's redline less the cut's depth.
+    const off = LAUNCH_RPM.min - LAUNCH_RPM.step;
+    const top = maxLaunchRpm(tuningForBuild(b.carId, b.performance));
+    const rpmLabel = (x: number) => (x <= off ? 'Off' : `${x} rpm`);
+    this.body.append(
+      section(
+        'Launch',
+        slider('Launch RPM', b.performance.launchRpm || off, off, top, LAUNCH_RPM.step, rpmLabel, (x) => {
+          b.performance.launchRpm = x <= off ? 0 : x;
+          this.changed(true);
+        }),
+        h('div', { class: 'muted garage-note' }, 'Hold the gas through the countdown and the two-step bounces the engine here, so you leave the line from these revs. Gas and brake together: a burnout standing, antilag rolling on a turbo car.'),
       ),
     );
     this.body.append(h('div', { class: 'muted garage-note' }, 'Everything is unlocked in this proof of concept. Visual parts never change performance.'));

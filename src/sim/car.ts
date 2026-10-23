@@ -85,14 +85,27 @@ export interface CarState {
   /**
    * Telemetry for the HUD's callouts, written by the sim and never read by it:
    * the stages a chain put back this tick (0 when none), and what each style
-   * source put in the tank this tick (stages, after the tank's cap).
+   * source put in the tank this tick (stages, after the tank's cap; wreck is what props.ts paid).
    */
   nitroChain: number;
-  nitroGain: { drift: number; nearMiss: number; draft: number; zone: number };
+  nitroGain: { drift: number; nearMiss: number; draft: number; zone: number; wreck: number };
   /** Drive pedal actually applied this tick (0..1), for engine sound and telemetry. */
   throttle: number;
   /** Seconds left of a clutch kick's extra torque. */
   clutchKick: number;
+  /**
+   * Launch control and the pedal combos (launch tuning). twoStepCut: seconds left of the current rev cut
+   * (> 0 while the two-step or antilag has the spark off: the stutter the tach and the engine voice show).
+   * lineLock: throttle and brake together at a standstill, the brakes holding the undriven axle while the
+   * driven wheels spin (a burnout). antilag: the same combo rolling in a turbo car, the engine held at
+   * revs with boost pinned and no drive. boost: turbo spool, 0 (off boost) .. 1 (full), always 0 on a
+   * naturally aspirated car. antilagHold: seconds boost stays pinned after the brake comes off antilag.
+   */
+  twoStepCut: number;
+  lineLock: boolean;
+  antilag: boolean;
+  boost: number;
+  antilagHold: number;
   throttleOffTime: number;
   prevThrottle: number;
   wheels: WheelState[];
@@ -156,9 +169,14 @@ export function createCar(x: number, z: number, yaw: number, y: number): CarStat
     nitroStage: 0,
     nitroRun: -1,
     nitroChain: 0,
-    nitroGain: { drift: 0, nearMiss: 0, draft: 0, zone: 0 },
+    nitroGain: { drift: 0, nearMiss: 0, draft: 0, zone: 0, wreck: 0 },
     throttle: 0,
     clutchKick: 0,
+    twoStepCut: 0,
+    lineLock: false,
+    antilag: false,
+    boost: 0,
+    antilagHold: 0,
     throttleOffTime: 10,
     prevThrottle: 0,
     wheels: [0, 1, 2, 3].map(() => ({ compression: 0, load: 0, spin: 0, spinRate: 0, contact: true, slip: 0, skid: 0 })),
@@ -198,6 +216,9 @@ export function placeCar(c: CarState, x: number, z: number, yaw: number, world: 
   c.roll = groundRoll(sl, fx, fz);
   c.steerAngle = 0;
   c.clutchKick = 0;
+  c.twoStepCut = 0;
+  c.antilagHold = 0;
+  c.lineLock = c.antilag = false;
   c.spinFront = c.spinRear = 0;
   c.wheelSpeedFront = c.wheelSpeedRear = 0;
   c.gear = 1;
@@ -209,6 +230,8 @@ export function placeCar(c: CarState, x: number, z: number, yaw: number, world: 
 }
 
 const RPM_PER_RADS = 60 / TAU;
+/** How fast the free engine chases its target revs (rpm/s): the flywheel's response, not tuning. */
+const REV_RATE = 24000;
 /** Most the body pitches or rolls away from the ground's own angle (rad): suspension geometry, not tuning. */
 const BODY_LEAN = 0.15;
 /**
@@ -348,7 +371,23 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
   let rpmTarget = Math.max(axleRpm, lowGear ? clutchRpm : t.engine.idleRpm);
   if (c.shiftTimer > 0) rpmTarget = Math.max(t.engine.idleRpm, axleRpm);
   if (clutchIn) rpmTarget = t.engine.idleRpm + drive * (t.engine.redline - t.engine.idleRpm);
-  c.rpm = approach(c.rpm, Math.min(rpmTarget, t.engine.redline + 150), 24000 * dt);
+  // The pedal combos (launch tuning). Throttle and brake together: standing, a line lock (the brakes hold
+  // the undriven axle, the driven wheels spin: a burnout); rolling in a turbo car, antilag (the clutch
+  // slips, the engine is held at revs with boost pinned, the brakes drag the speed). The two-step is
+  // armed at a standstill while a launch rpm is set: a hard cut that bounces the revs under it (the
+  // countdown's launch control, gridRev), so the car leaves the line from exactly those revs.
+  const L = t.launch;
+  const combo = c.gear > 0 && inp.throttle > L.pedalThreshold && inp.brake > L.pedalThreshold;
+  const standing = speed < L.lineLockSpeed;
+  c.lineLock = combo && standing;
+  c.antilag = combo && !standing && t.engine.turbo && !clutchIn;
+  const holdRpm = L.twoStepRpm > 0 ? L.twoStepRpm : L.antilagRpm;
+  const armed = L.twoStepRpm > 0 && c.gear > 0 && standing && drive > L.pedalThreshold && !clutchIn;
+  if (c.antilag) rpmTarget = Math.max(axleRpm, holdRpm);
+  else if (armed) rpmTarget = Math.max(rpmTarget, holdRpm);
+  if (c.antilag || armed) rpmTarget = twoStep(c, holdRpm, L, dt, rpmTarget);
+  else c.twoStepCut = 0;
+  c.rpm = approach(c.rpm, Math.min(rpmTarget, t.engine.redline + 150), REV_RATE * dt);
 
   c.throttle = drive;
   // Nitrous burns the top stage in the tank first, at that stage's power. Holding the button until the tank
@@ -371,14 +410,17 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
   const boostPower = c.nitroActive ? t.nitrous.stagePower[c.nitroStage - 1] : 0;
 
   let engineTorque = 0;
-  if (c.shiftTimer === 0 && !clutchIn) {
-    if (c.rpm < t.engine.redline) engineTorque = torqueAt(t, c.rpm) * t.engine.torqueMul * drive;
+  if (c.shiftTimer === 0 && !clutchIn && !c.antilag) {
+    // The two-step's cut takes the spark away: no torque while it bounces.
+    if (c.rpm < t.engine.redline && c.twoStepCut === 0) engineTorque = torqueAt(t, c.rpm) * t.engine.torqueMul * drive;
+    if (t.engine.turbo) engineTorque *= 1 - L.turboShare * (1 - c.boost);
     if (c.nitroActive) engineTorque *= 1 + (t.nitrous.torqueMul - 1) * boostPower;
     // Dumping the clutch at high revs (launch, clutch kick, handbrake release) adds the flywheel's energy on top.
     const dump = c.clutchKick > 0 ? 1 : clamp(clutchSlipRpm / t.engine.redline, 0, 1);
     if (engineTorque > 0) engineTorque *= 1 + t.traction.launchBoost * dump;
     if (drive < 0.05 && c.gear > 0) engineTorque -= t.engine.engineBraking * clamp(c.rpm / t.engine.redline, 0, 1) * sign(axleSpeed);
   }
+  if (t.engine.turbo) spoolTurbo(c, t, drive, dt);
   // Torque at the driven wheels, all axles together.
   let driveTorque = engineTorque * gearing * t.gearbox.efficiency;
   if (c.gear < 0) {
@@ -425,7 +467,10 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
     driveTorque *= Math.max(0.2, 1 - (abs(beta) - tcSlip) / (10 * DEG));
   }
 
-  const ctl: Controls = { driveTorque, brake, handbrake: inp.handbrake, clutchIn: clutchIn || c.shiftTimer > 0, gearing, surfaceGrip, dragMul, drive, frontShare: split.front, boostForce: t.nitrous.force * boostPower };
+  // Line lock: the driven wheels' brakes come off so they can spin; the others, and the brake assist, hold the car.
+  const brakeFront = c.lineLock && split.front > 0 ? 0 : brake;
+  const brakeRear = c.lineLock && split.rear > 0 ? 0 : brake;
+  const ctl: Controls = { driveTorque, brake, brakeFront, brakeRear, handbrake: inp.handbrake, clutchIn: clutchIn || c.shiftTimer > 0 || c.antilag, gearing, surfaceGrip, dragMul, drive, frontShare: split.front, boostForce: t.nitrous.force * boostPower };
   const h = dt / SUBSTEPS;
   c.bottomOut = 0;
   for (let s = 0; s < SUBSTEPS; s++) integrate(c, t, ctl, world, h);
@@ -448,10 +493,94 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
   }
 }
 
+/**
+ * The two-step (and antilag's rev hold): a hard cut that bounces the engine under `set`. Returns the revs
+ * the engine chases this tick given what it wanted (`want`): the set point until it gets there, then a
+ * cut of twoStepCutTime drops it twoStepDepth under and the climb back starts the next cut, the stutter
+ * of a launch control. c.twoStepCut is the cut's timer (> 0 while the spark is off).
+ */
+function twoStep(c: CarState, set: number, L: CarTuning['launch'], dt: number, want: number): number {
+  if (c.twoStepCut > 0) {
+    c.twoStepCut = Math.max(0, c.twoStepCut - dt);
+    return set - L.twoStepDepth;
+  }
+  if (want >= set && c.rpm >= set - 1) {
+    c.twoStepCut = L.twoStepCutTime;
+    return set - L.twoStepDepth;
+  }
+  return Math.min(want, set);
+}
+
+/**
+ * Turbo spool for a turbocharged car: boost builds under load above spoolRpmFrac of the redline in
+ * spoolTime and bleeds off the throttle in spoolDownTime. Antilag pins it at full and keeps it there
+ * antilagHold after the brake comes off, so the release is on full boost at once.
+ */
+function spoolTurbo(c: CarState, t: CarTuning, drive: number, dt: number): void {
+  const L = t.launch;
+  if (c.antilag) {
+    c.boost = 1;
+    c.antilagHold = L.antilagHold;
+    return;
+  }
+  if (c.antilagHold > 0) {
+    c.antilagHold = Math.max(0, c.antilagHold - dt);
+    c.boost = 1;
+    return;
+  }
+  const spooling = drive > 0.3 && c.rpm > L.spoolRpmFrac * t.engine.redline;
+  c.boost = spooling ? Math.min(1, c.boost + dt / L.spoolTime) : Math.max(0, c.boost - dt / L.spoolDownTime);
+}
+
+/**
+ * The engine on the grid (race.ts, the countdown): the cars stand still and only rev. Free revving chases
+ * the pedal to 85% of the redline, as it always has (old replays). With a launch rpm set, holding the
+ * throttle past the pedal threshold arms the two-step and the revs bounce under it. Throttle and brake
+ * together is a line lock burnout: the driven wheels spin up to the engine's tread speed in first (the
+ * spin telemetry and the wheels' skid follow, for the smoke and the marks) and the car leaves the line
+ * already spinning. A turbo builds boost through all of it.
+ */
+export function gridRev(c: CarState, t: CarTuning, inp: InputFrame, dt: number): void {
+  const L = t.launch;
+  const armed = L.twoStepRpm > 0 && inp.throttle > L.pedalThreshold;
+  if (armed) {
+    c.rpm = approach(c.rpm, twoStep(c, L.twoStepRpm, L, dt, L.twoStepRpm), REV_RATE * dt);
+  } else {
+    c.twoStepCut = 0;
+    const target = t.engine.idleRpm + inp.throttle * (t.engine.redline * 0.85 - t.engine.idleRpm);
+    c.rpm += (target - c.rpm) * 0.15;
+  }
+  c.lineLock = inp.throttle > L.pedalThreshold && inp.brake > L.pedalThreshold;
+  c.antilag = false;
+  const split = driveSplit(t);
+  // The driven wheels' tread speed with the engine in first gear, the limiter's cut included.
+  const gearing = gearRatio(t, 1) * t.gearbox.finalDrive;
+  const tread = c.lineLock && c.twoStepCut === 0 ? (c.rpm / RPM_PER_RADS / gearing) * t.geometry.wheelRadius : 0;
+  const rate = (c.lineLock ? 4 : 2) * t.traction.clutchKickSpeed * dt;
+  c.wheelSpeedFront = split.front > 0 ? approach(c.wheelSpeedFront, tread, rate) : 0;
+  c.wheelSpeedRear = split.rear > 0 ? approach(c.wheelSpeedRear, tread, rate) : 0;
+  const spin = (ws: number) => clamp(ws / Math.max(1, tread), 0, 1);
+  c.spinFront = split.front > 0 && c.lineLock ? spin(c.wheelSpeedFront) : 0;
+  c.spinRear = split.rear > 0 && c.lineLock ? spin(c.wheelSpeedRear) : 0;
+  c.wheelspin = c.spinFront > 0.2 || c.spinRear > 0.2;
+  const r = t.geometry.wheelRadius;
+  for (let i = 0; i < 4; i++) {
+    const w = c.wheels[i];
+    w.spinRate = (i < 2 ? c.wheelSpeedFront : c.wheelSpeedRear) / r;
+    w.spin = (w.spin + w.spinRate * dt) % TAU;
+    w.skid = 1.6 * (i < 2 ? c.spinFront : c.spinRear);
+  }
+  c.throttle = inp.throttle;
+  if (t.engine.turbo) spoolTurbo(c, t, inp.throttle, dt);
+}
+
 interface Controls {
   /** Drive torque at the wheels, all axles together (Nm, signed; engine braking is negative). */
   driveTorque: number;
+  /** Foot brake (0..1): the pedal for the arcade assist, and what reaches each axle's wheels (a line lock lifts it off the driven axle). */
   brake: number;
+  brakeFront: number;
+  brakeRear: number;
   handbrake: boolean;
   /** Clutch out (handbrake on a driven rear axle, a shift): no drive, and the engine's inertia is off the wheels. */
   clutchIn: boolean;
@@ -554,8 +683,9 @@ function updateAxles(c: CarState, t: CarTuning, ctl: Controls, gripAt: GripCurve
         ws += (h * R * (T - R * Fx)) / I;
       }
       // The foot brake pulls spinning wheels back to road speed, never under it.
-      if (ctl.brake > 0 && (ws - wsRoll) * dir > 0) {
-        const bt = ctl.brake * t.brakes.force * (a === 0 ? t.brakes.frontBias : 1 - t.brakes.frontBias) * R;
+      const axleBrake = a === 0 ? ctl.brakeFront : ctl.brakeRear;
+      if (axleBrake > 0 && (ws - wsRoll) * dir > 0) {
+        const bt = axleBrake * t.brakes.force * (a === 0 ? t.brakes.frontBias : 1 - t.brakes.frontBias) * R;
         ws = dir * Math.max(wsRoll * dir, ws * dir - (h * R * bt) / I);
       }
       // Telemetry: how far past the peak the axle spins, in the gear's direction.
@@ -581,7 +711,7 @@ function updateAxles(c: CarState, t: CarTuning, ctl: Controls, gripAt: GripCurve
 /** Each spring's load this substep (N), from suspension(). */
 const wLoad = [0, 0, 0, 0];
 /** suspension()'s sums over the four springs: vertical force (N), pitch and roll torque (Nm), wheels touching. */
-const springs = { sumF: 0, pitchTorque: 0, rollTorque: 0, contacts: 0 };
+const springs = { sumF: 0, pitchTorque: 0, rollTorque: 0, contacts: 0, wet: 0 };
 /** tireForces()'s sums over the four tires in the car's frame: forward and left force (N), yaw torque (Nm). */
 const tireSum = { Fu: 0, Fv: 0, torque: 0 };
 
@@ -618,6 +748,13 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
   const sp = SURFACE_PHYSICS[c.surface];
   const surfaceDrag = sp === 'offroad' ? t.surface.offroadDrag : sp === 'cobble' ? t.surface.cobbleDrag : 0;
   if (surfaceDrag > 0) Fu -= surfaceDrag * sign(vLong) * Math.min(1, abs(vLong));
+  // Water drags with the square of speed, so the trickle costs a racer what clipping a destructible
+  // does and a crawler nothing much: the dry line is the fast line down the channel.
+  if (springs.wet > 0) {
+    const kw = t.surface.waterDrag * (springs.wet / 4) * speed;
+    Fu -= kw * vLong;
+    Fv -= kw * vLat;
+  }
   if (c.nitroActive && contacts > 0) Fu += ctl.boostForce;
   // The ground pushes back along its normal: the springs' vertical load times the slope, sideways. At
   // rest that is gravity's pull down a grade; climbing a bank, the extra load is what slows the car.
@@ -697,6 +834,7 @@ function suspension(c: CarState, t: CarTuning, world: World, h: number, fx: numb
   let pitchTorque = 0;
   let rollTorque = 0;
   let contacts = 0;
+  let wet = 0;
   for (let i = 0; i < 4; i++) {
     const [wv, , wu] = geo.wheels[i];
     const w = c.wheels[i];
@@ -704,6 +842,9 @@ function suspension(c: CarState, t: CarTuning, world: World, h: number, fx: numb
     const wz = c.z + fz * wu + lz * wv;
     // Wheels ride the paving: up onto a sidewalk over its curb, not through it.
     const ground = world.driveHeightAt(wx, wz, c.y);
+    // Water is felt per wheel (the body's own surface is sampled at its center): a car straddling the
+    // river trickle's edge ploughs with the wheels that are in it.
+    if (world.surfaceAt(wx, wz, c.y) === 'water') wet++;
     const comp = ground - (c.y + wv * tRoll - wu * tPitch);
     const compVel = (comp - w.compression) / h;
     w.compression = comp;
@@ -735,6 +876,7 @@ function suspension(c: CarState, t: CarTuning, world: World, h: number, fx: numb
   springs.pitchTorque = pitchTorque;
   springs.rollTorque = rollTorque;
   springs.contacts = contacts;
+  springs.wet = wet;
 }
 
 /**
@@ -823,10 +965,11 @@ function tireForces(c: CarState, t: CarTuning, ctl: Controls, h: number, vLong: 
     // motion and never reversing it within a step, on tires not already sliding lengthways (a locked or
     // spinning wheel has nothing more to give). It takes sideways grip by the friction circle but leaves
     // minLateralShare: the arcade ABS that lets the car still turn on the brakes.
-    if (ctl.brake > 0 && abs(wKappa[i]) < peakK) {
+    const wheelBrake = front ? ctl.brakeFront : ctl.brakeRear;
+    if (wheelBrake > 0 && abs(wKappa[i]) < peakK) {
       const axleLoad = front ? wLoad[0] + wLoad[1] : wLoad[2] + wLoad[3];
       const share = axleLoad > 1 ? wLoad[i] / axleLoad : 0.5;
-      const brakeF = ctl.brake * t.brakes.force * (front ? t.brakes.frontBias : 1 - t.brakes.frontBias) * share;
+      const brakeF = wheelBrake * t.brakes.force * (front ? t.brakes.frontBias : 1 - t.brakes.frontBias) * share;
       const stop = (wl * (m / 4)) / h;
       const before = abs(Fx);
       Fx -= clamp(stop, -brakeF, brakeF);

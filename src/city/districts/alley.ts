@@ -54,7 +54,7 @@
  * dumpster only goes flying when hit hard. Nothing that can stop a car ever
  * stands in the line down the middle: a car's width plus a margin (LANE).
  *
- * Content to add (render/districts/alley.ts): fire escapes, graffiti, steam
+ * Content to add (render/districts/alley.ts): fire escapes, steam
  * vents, puddles and grime on back alleys.
  *
  * This file holds the two district modules; alleyPath.ts the path and chain

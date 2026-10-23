@@ -146,6 +146,7 @@ const SHORT: Record<string, string> = {
   brakes: 'b',
   weight: 'w',
   nitrous: 'o',
+  launchRpm: 'lr',
   frontBumper: 'fb',
   rearBumper: 'rb',
   sideSkirts: 'ss',

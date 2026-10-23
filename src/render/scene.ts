@@ -181,7 +181,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     centerZ: (bounds.minZ + bounds.maxZ) / 2,
   });
   scene.add(backdrop.group);
-  // Street level polish: road decals, puddles, graffiti, blade signs, banners, steam (pasted onto the drawn podiums).
+  // Street level polish: road decals, puddles, posters, blade signs, banners, steam (pasted onto the drawn podiums).
   const polish = buildStreetPolish(world, { quality: settings.quality, facades: (city.group.getObjectByName('podiums') as THREE.Mesh | undefined)?.geometry });
   scene.add(polish.group);
   const fx = buildLightFx(city.lampPositions, city.signLights, world.heightAt, fogDensity);

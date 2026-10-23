@@ -10,7 +10,7 @@
 import { createCity, createWorld, World, City, RouteProgress } from '../city/world';
 import { GridSlot, Route, RouteKind, RouteWaypoint, routeSample } from '../city/route';
 import { carParkProgress, onCarPark } from '../city/districts/carPark';
-import { CarState, createCar, groundPitch, groundRoll, refillNitrous, steerLimit, stepCar, wheelRpm, type StepEnv } from './car';
+import { CarState, createCar, gridRev, groundPitch, groundRoll, refillNitrous, steerLimit, stepCar, wheelRpm, type StepEnv } from './car';
 import { relocateCar } from './reset';
 import { WorldHit, collideCarWithWorld, collideCars, detectNearMiss } from './collision';
 import { CRASH_EVENT, DT, TICK_HZ } from './constants';
@@ -524,13 +524,8 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
   });
 
   if (!racing) {
-    // Grid: engines rev, cars hold still.
-    for (let i = 0; i < r.cars.length; i++) {
-      const c = r.cars[i].state;
-      const t = r.cars[i].tuning;
-      const target = t.engine.idleRpm + inputs[i].throttle * (t.engine.redline * 0.85 - t.engine.idleRpm);
-      c.rpm += (target - c.rpm) * 0.15;
-    }
+    // Grid: engines rev (the two-step and a line lock burnout included, car.ts gridRev), cars hold still.
+    for (let i = 0; i < r.cars.length; i++) gridRev(r.cars[i].state, r.cars[i].tuning, inputs[i], DT);
     // The city keeps moving while the grid waits.
     stepTraffic(r);
     r.tick++;

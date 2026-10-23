@@ -68,6 +68,7 @@ function ram(kind: PropKind, speed: number) {
   let after = 0;
   let hitTick = -1;
   let impact = 0;
+  let wreckGain = 0;
   for (let i = 0; i < 90; i++) {
     const v = Math.hypot(c.vx, c.vz);
     const n = r.events.length;
@@ -76,12 +77,13 @@ function ram(kind: PropKind, speed: number) {
       hitTick = r.tick;
       before = v;
       impact = c.impact;
+      wreckGain = c.nitroGain.wreck;
     } else if (hitTick >= 0 && r.tick === hitTick + 2) {
       after = Math.hypot(c.vx, c.vz);
       break;
     }
   }
-  return { r, prop, before, after, impact, hitTick };
+  return { r, prop, before, after, impact, hitTick, wreckGain };
 }
 
 describe('destructible props', () => {
@@ -112,6 +114,17 @@ describe('destructible props', () => {
     const loss = (x: { before: number; after: number }) => 1 - x.after / x.before;
     expect(loss(hydrant)).toBeGreaterThan(loss(can) * 1.5);
     expect(loss(hydrant)).toBeLessThan(loss(pole));
+  });
+
+  it('a wreck pays nitrous by its weight, a pole the whole bonus and a can a fraction', () => {
+    const pole = ram('streetlight', 20);
+    const t = pole.r.cars[0].tuning.nitrous;
+    expect(pole.wreckGain).toBeCloseTo(t.wreckBonus, 6);
+    const can = ram('garbageCan', 20);
+    expect(can.wreckGain).toBeGreaterThan(0);
+    expect(can.wreckGain).toBeLessThan(t.wreckBonus / 2);
+    // Telemetry lasts one tick.
+    expect(pole.r.cars[0].state.nitroGain.wreck).toBe(0);
   });
 
   it('broken props stay down and are tracked per race', () => {

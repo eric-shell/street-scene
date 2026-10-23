@@ -21,6 +21,7 @@ import { ROAD_Y } from '../render/street/cityMeshes';
 import { unmaskVehicle } from '../render/vehicleMask';
 import { LightTrails } from '../render/car/lightTrails';
 import { Sparks } from '../render/car/sparks';
+import { TireFx } from '../render/car/tireFx';
 import { WaypointBeacons } from '../render/race/waypointBeacons';
 import { EngineVoice, audioHub } from '../audio/engineAudio';
 import { Sfx } from '../audio/sfx';
@@ -68,6 +69,8 @@ interface Snap extends CarPose {
   throttle: number;
   /** A gear change is cutting the drive (engine voice). */
   shifting: boolean;
+  /** The two-step or antilag has the spark off (engine voice: the limiter's stutter). */
+  cut: boolean;
 }
 
 function snap(c: CarState): Snap {
@@ -90,6 +93,7 @@ function snap(c: CarState): Snap {
     rpm: c.rpm,
     throttle: c.throttle,
     shifting: c.shiftTimer > 0,
+    cut: c.twoStepCut > 0,
   };
 }
 
@@ -121,6 +125,7 @@ function lerpSnap(a: Snap, b: Snap, t: number): Snap {
     rpm: l(a.rpm, b.rpm),
     throttle: l(a.throttle, b.throttle),
     shifting: b.shifting,
+    cut: b.cut,
   };
 }
 
@@ -294,6 +299,8 @@ export class RaceSession {
   private trails: LightTrails;
   /** Underbody and wall sparks for every car near the camera (render/car/sparks.ts). */
   private sparks: Sparks;
+  /** Rubber on the road and tire smoke for every car losing traction (render/car/tireFx.ts). */
+  private tireFx: TireFx;
   /** The waypoint race's columns of light over its waypoints (null in the other modes). */
   private readonly beacons: WaypointBeacons | null = null;
   /** Ambient traffic (render/traffic/traffic.ts) and its last two snapshots (TRAFFIC_SNAP floats per car), swapped every tick. */
@@ -416,6 +423,8 @@ export class RaceSession {
     this.unsub.push(() => window.removeEventListener('keydown', onTab));
     this.sparks = new Sparks(settings.quality);
     this.night.scene.add(this.sparks.mesh);
+    this.tireFx = new TireFx(settings.quality, ROAD_Y);
+    this.tireFx.meshes.forEach((m) => this.night.scene.add(m));
     if (this.race.config.mode === 'waypoint' && this.race.world.route.waypoints) {
       this.beacons = new WaypointBeacons(this.race.world);
       this.night.scene.add(this.beacons.group);
@@ -837,6 +846,10 @@ export class RaceSession {
       else this.rumble.stop();
     }
     this.emitSparks();
+    {
+      const cam = (this.lastCamera ?? this.cam.camera).position;
+      this.tireFx.tick(r.cars, r.world, cam.x, cam.z, this.time, DT);
+    }
     // A sudden loss of speed (a hard hit on anything, a dumpster) shakes the camera hard; resets do not count.
     // Ploughing through soft props (bushes, tables, bags) costs a little speed too: that stays a light knock.
     const drop = speedBefore - r.cars[0].state.speed;
@@ -1068,6 +1081,7 @@ export class RaceSession {
       const cam = this.lastCamera ?? this.cam.camera;
       const px = this.gr.renderer.domElement.clientHeight || window.innerHeight;
       this.sparks.update(this.time, (2 * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, px));
+      this.tireFx.update(this.time);
     }
     this.beacons?.update(this.race.cars[0].nextCheckpoint, this.time);
     this.alpha = alpha;
@@ -1177,7 +1191,7 @@ export class RaceSession {
       const d = Math.hypot(dx, dz);
       const proximity = i === 0 ? 1 : 1 / (1 + (d / 14) ** 2);
       const pan = i === 0 ? 0 : (dx * right.x + dz * right.z) / Math.max(1, d);
-      voice.update({ rpm: p.rpm, redline: rc.tuning.engine.redline, throttle: p.throttle, nitro: p.nitro, proximity, pan: pan * 0.8, shifting: p.shifting, dt });
+      voice.update({ rpm: p.rpm, redline: rc.tuning.engine.redline, throttle: p.throttle, nitro: p.nitro, proximity, pan: pan * 0.8, shifting: p.shifting, cut: p.cut, dt });
     });
   }
 
@@ -1309,6 +1323,9 @@ export class RaceSession {
       nitroActive: c.nitroActive,
       nitroStage: c.nitroStage,
       throttle: c.throttle,
+      launchRpm: rc.tuning.launch.twoStepRpm || undefined,
+      boost: rc.tuning.engine.turbo ? c.boost : undefined,
+      antilag: c.antilag,
       countdown,
       wrongWay: rc.wrongWay,
       progress: Math.max(0, rc.dist) / r.distance,
@@ -1373,6 +1390,7 @@ export class RaceSession {
     this.ghostView?.dispose();
     this.trails.dispose();
     this.sparks.dispose();
+    this.tireFx.dispose();
     this.beacons?.dispose();
     this.traffic?.dispose();
     this.engines.forEach((e) => e.dispose());

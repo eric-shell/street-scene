@@ -45,6 +45,33 @@ export interface CarTuning {
     launchRpm: number;
     /** Spin inertia of the engine's rotating parts, flywheel and clutch (kg m^2); geared onto the driven wheels. */
     inertia: number;
+    /** Turbocharged (the manifest's engine spec, not drivingParams.json): boost spools with lag and rolling antilag holds it. */
+    turbo: boolean;
+  };
+  /** Launch control and the pedal combos (car.ts): the two-step at the line, line lock burnouts, rolling antilag, turbo spool. */
+  launch: {
+    /** The build's launch rpm the two-step holds the engine at (rpm); 0 = off. applyBuild writes it from the garage's Tune tab. */
+    twoStepRpm: number;
+    /** How far under the set point each cut lets the revs fall (rpm): the stutter's depth. */
+    twoStepDepth: number;
+    /** How long each cut keeps the spark off (s): with the depth, the stutter's rate. */
+    twoStepCutTime: number;
+    /** Throttle and brake both past this (0..1) is the pedal combo: line lock standing, antilag rolling. */
+    pedalThreshold: number;
+    /** Under this speed (m/s) the combo is a line lock burnout and the two-step is armed; over it, antilag. */
+    lineLockSpeed: number;
+    /** Rolling antilag holds the engine here (rpm) when no launch rpm is set. */
+    antilagRpm: number;
+    /** Boost stays pinned at full this long after the brake comes off antilag (s). */
+    antilagHold: number;
+    /** Turbo cars: boost spools from nothing to full in this long under load (s). */
+    spoolTime: number;
+    /** Turbo cars: boost bleeds off in this long off the throttle (s). */
+    spoolDownTime: number;
+    /** Turbo cars: boost builds only above this fraction of the redline. */
+    spoolRpmFrac: number;
+    /** Turbo cars: share of the engine's torque that needs full boost (0 = no lag at all). */
+    turboShare: number;
   };
   gearbox: {
     ratios: number[];
@@ -151,6 +178,10 @@ export interface CarTuning {
     refillNearMiss: number;
     /** Stage fraction per second in a slipstream. */
     refillDraft: number;
+    /** Stages a knocked down prop pays the car that broke it, scaled by sqrt(its effective mass / wreckFullMass) and capped at 1 (a can is worth a quarter of a pole; props.ts). */
+    wreckBonus: number;
+    /** Effective prop mass (kg, mass * anchor) at and above which a wreck pays the whole bonus. */
+    wreckFullMass: number;
     draftDragMul: number;
   };
   /** Arcade drift aids on top of the tire model. */
@@ -174,6 +205,8 @@ export interface CarTuning {
     /** Cobbled alleys: grip multiplier and the extra rolling drag of the stones (N, full above 1 m/s). */
     cobbleGrip: number;
     cobbleDrag: number;
+    /** Water in the river trickle: hydrodynamic drag, N per (m/s)^2 of speed with all four wheels in it (scaled by the wheels that are). */
+    waterDrag: number;
   };
   collision: {
     wallRestitution: number;
@@ -270,6 +303,8 @@ export const DRIFT_ZONES: DriftZoneTuning = driftZoneTuning(params.driftZones as
 
 interface ManifestCar {
   id: string;
+  /** The engine spec (shared/carSpec.ts); only the aspiration reaches the tuning (engine.turbo). */
+  engine?: { aspiration?: string };
   wheels: Record<'FL' | 'FR' | 'RL' | 'RR', number[]>;
   wheelRadius: number;
   wheelbase: number;
@@ -333,6 +368,8 @@ export function getBaseTuning(carId: string): CarTuning {
     const base = deepClone(BASE) as unknown as Record<string, unknown>;
     mergeOverride(base, (CAR_OVERRIDES[id] ?? {}) as Record<string, unknown>, `cars.${id}`);
     t = { ...(base as unknown as BaseTuning), carId: id, geometry: geometryFromManifest(id) };
+    // Forced induction is the manifest's call (the engine spec the garage badges and the voice read), not a tuning number.
+    t.engine.turbo = (manifest.cars as ManifestCar[]).find((c) => c.id === id)?.engine?.aspiration === 'turbo';
     if (!DRIVETRAIN_LAYOUTS.includes(t.drivetrain.layout)) throw new Error(`drivingParams.json: cars.${id}.drivetrain.layout must be one of ${DRIVETRAIN_LAYOUTS.join(', ')}`);
     if (t.nitrous.stagePower.length !== NITRO_STAGES || t.nitrous.chainRefill.length !== NITRO_STAGES) throw new Error(`drivingParams.json: cars.${id}.nitrous.stagePower and chainRefill need ${NITRO_STAGES} entries, one per stage`);
     resolved.set(id, t);

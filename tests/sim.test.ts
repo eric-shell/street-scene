@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createCar, placeCar, refillNitrous, stepCar } from '../src/sim/car';
+import { createCar, gridRev, placeCar, refillNitrous, stepCar } from '../src/sim/car';
 import type { CarState } from '../src/sim/car';
 import { applyBuild, stockPerformance } from '../src/sim/build';
 import { CAR_IDS, CarTuning, NITRO_STAGES, SELECTABLE_CAR_IDS, driveSplit, getBaseTuning, tuningHash } from '../src/sim/tuning';
@@ -435,6 +435,118 @@ describe('drifting and the handbrake', () => {
     const a = JSON.stringify(flickAndHold(0.8, 120));
     const b = JSON.stringify(flickAndHold(0.8, 120));
     expect(a).toBe(b);
+  });
+});
+
+describe('launch control and the pedal combos', () => {
+  const world = flatWorld();
+  const withLaunch = (carId: string, launchRpm: number) => applyBuild(getBaseTuning(carId), { ...stockPerformance(), launchRpm });
+
+  it('the two-step bounces the engine under the launch rpm on the grid; off, the grid revs as it always has', () => {
+    const t = withLaunch('proto', 5000);
+    expect(t.launch.twoStepRpm).toBe(5000);
+    const c = createCar(0, 0, 0, 0);
+    let cuts = 0;
+    let low = Infinity;
+    for (let i = 0; i < 120; i++) {
+      gridRev(c, t, input({ throttle: 1 }), DT);
+      if (i >= 30) {
+        low = Math.min(low, c.rpm);
+        if (c.twoStepCut > 0) cuts++;
+      }
+      expect(c.rpm).toBeLessThanOrEqual(5000);
+    }
+    // Held just under the set point, the spark off a good share of the time: the stutter.
+    expect(low).toBeGreaterThanOrEqual(5000 - t.launch.twoStepDepth);
+    expect(cuts).toBeGreaterThan(20);
+    expect(cuts).toBeLessThan(80);
+    expect(c.lineLock).toBe(false);
+    const free = createCar(0, 0, 0, 0);
+    const stock = applyBuild(getBaseTuning('proto'), stockPerformance());
+    for (let i = 0; i < 120; i++) gridRev(free, stock, input({ throttle: 1 }), DT);
+    expect(free.rpm).toBeCloseTo(stock.engine.redline * 0.85, 0);
+    expect(free.twoStepCut).toBe(0);
+    expect(free.wheelspin).toBe(false);
+  });
+
+  it('gas and brake standing is a line lock: the driven wheels spin, the car stays put, in the countdown too', () => {
+    const t = applyBuild(getBaseTuning('proto'), stockPerformance());
+    const c = createCar(0, 0, 0, 0);
+    for (let i = 0; i < 120; i++) stepCar(c, t, input({ throttle: 1, brake: 1 }), { world });
+    expect(c.lineLock).toBe(true);
+    expect(c.spinRear).toBeGreaterThan(0.5);
+    expect(c.spinFront).toBe(0);
+    expect(c.wheelspin).toBe(true);
+    expect(c.speed).toBeLessThan(1);
+    expect(Math.abs(c.z)).toBeLessThan(1.5);
+    // On the grid the same combo spins the rear up without the physics running.
+    const g = createCar(0, 0, 0, 0);
+    for (let i = 0; i < 90; i++) gridRev(g, t, input({ throttle: 1, brake: 1 }), DT);
+    expect(g.lineLock).toBe(true);
+    expect(g.spinRear).toBeGreaterThan(0.5);
+    expect(g.wheelSpeedFront).toBe(0);
+    expect(g.wheels[2].skid).toBeGreaterThan(0.5);
+    // Front drive spins the front instead.
+    const f = { ...t, drivetrain: { ...t.drivetrain, layout: 'fwd' as const } };
+    const fc = createCar(0, 0, 0, 0);
+    for (let i = 0; i < 120; i++) stepCar(fc, f, input({ throttle: 1, brake: 1 }), { world });
+    expect(fc.spinFront).toBeGreaterThan(0.5);
+    expect(fc.spinRear).toBe(0);
+  });
+
+  it('gas and brake rolling is antilag on a turbo car only: boost pinned, no drive, and full boost on release', () => {
+    expect(getBaseTuning('protoCoupe').engine.turbo).toBe(true);
+    expect(getBaseTuning('proto').engine.turbo).toBe(false);
+    const roll = (carId: string) => {
+      const t = applyBuild(getBaseTuning(carId), stockPerformance());
+      const c = createCar(0, 0, 0, 0);
+      for (let i = 0; i < 180; i++) stepCar(c, t, input({ throttle: 1 }), { world });
+      const before = c.speed;
+      let held = 0;
+      for (let i = 0; i < 30; i++) {
+        stepCar(c, t, input({ throttle: 1, brake: 1 }), { world });
+        if (c.antilag) held++;
+      }
+      return { c, t, before, held };
+    };
+    const turbo = roll('protoCoupe');
+    expect(turbo.held).toBe(30);
+    expect(turbo.c.boost).toBe(1);
+    expect(turbo.c.speed).toBeLessThan(turbo.before - 3);
+    expect(turbo.c.rpm).toBeGreaterThan(turbo.t.launch.antilagRpm - turbo.t.launch.twoStepDepth - 1);
+    // Off the brake: boost stays pinned for the hold, then the spool model takes over.
+    stepCar(turbo.c, turbo.t, input({ throttle: 1 }), { world });
+    expect(turbo.c.antilag).toBe(false);
+    expect(turbo.c.boost).toBe(1);
+    expect(turbo.c.antilagHold).toBeGreaterThan(0);
+    // Braked to a standstill with the gas still down, the combo turns into the line lock.
+    for (let i = 0; i < 120; i++) stepCar(turbo.c, turbo.t, input({ throttle: 1, brake: 1 }), { world });
+    expect(turbo.c.antilag).toBe(false);
+    expect(turbo.c.lineLock).toBe(true);
+    expect(turbo.c.spinRear).toBeGreaterThan(0.5);
+    const na = roll('proto');
+    expect(na.held).toBe(0);
+    expect(na.c.boost).toBe(0);
+  });
+
+  it('a turbo spools: boost builds under load and bleeds off the throttle', () => {
+    const t = applyBuild(getBaseTuning('protoCoupe'), stockPerformance());
+    const c = createCar(0, 0, 0, 0);
+    for (let i = 0; i < 90; i++) stepCar(c, t, input({ throttle: 1 }), { world });
+    expect(c.boost).toBeGreaterThan(0.5);
+    for (let i = 0; i < 60; i++) stepCar(c, t, input({}), { world });
+    expect(c.boost).toBe(0);
+  });
+
+  it('a two-step launch with a burnout replays bit for bit', () => {
+    const run = () => {
+      const t = withLaunch('protoCoupe', 5500);
+      const c = createCar(0, 0, 0, 0);
+      for (let i = 0; i < 60; i++) gridRev(c, t, input({ throttle: 1, brake: i < 30 ? 1 : 0 }), DT);
+      for (let i = 0; i < 180; i++) stepCar(c, t, input({ throttle: 1, brake: i > 120 ? 1 : 0 }), { world });
+      return c;
+    };
+    expect(JSON.stringify(run())).toBe(JSON.stringify(run()));
   });
 });
 

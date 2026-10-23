@@ -27,10 +27,18 @@
  *    corner pockets and lots get lantern posts along their back
  *    (render/street/areaLights.ts draws their light), lots a row of them so a racer
  *    sees the asphalt before turning in.
+ *  - Along an alley (raceway alleys and back alley shortcuts) none of those: a
+ *    recess with square ends beside a narrow raceway is a trap, so the void
+ *    becomes an alley bay (CFG.bayChance), a widening of the alley whose ends
+ *    taper back to the wall at CFG.bayTaperDeg (a trapezoid, 'boundary' walls),
+ *    or stays a flush planter. A corner pocket at an alley's mouth is kept (a
+ *    racer cuts across it into the alley) but never solid or fountained, and
+ *    its end along the alley tapers the same way; corners between two alley
+ *    pieces (a shortcut's dogleg, two alleys crossing) get no pocket.
  * Whatever is left is a low 'boundary' wall drawn by render/districts/infill.ts.
  */
 import { CITY } from '../config';
-import type { Vec2 } from '../../sim/math';
+import { DEG, tan, type Vec2 } from '../../sim/math';
 import { Rng } from '../../sim/prng';
 import type { Wall } from '../blocks';
 import type { DistrictPropKind } from '../props';
@@ -42,7 +50,7 @@ import { PolygonIndex, circlePolygon, distToPolygonEdge, distToPolyline, pointIn
 const CFG = CITY.districts.infill;
 
 /** Pocket themes: which clutter a drivable pocket gets (Area.params.theme indexes this). */
-export const INFILL_THEMES = ['cafe', 'garden', 'market', 'lot'] as const;
+export const INFILL_THEMES = ['cafe', 'garden', 'market', 'lot', 'bay'] as const;
 export type InfillTheme = (typeof INFILL_THEMES)[number];
 
 /**
@@ -55,7 +63,11 @@ const FURNISH: Record<InfillTheme, { spacing: number; fill: number; kinds: [Dist
   garden: { spacing: 2.3, fill: 0.7, kinds: [['bush', 6], ['planterPot', 3]] },
   market: { spacing: 2.2, fill: 0.6, kinds: [['crate', 4], ['barrel', 3], ['planterPot', 1], ['newsBox', 1]] },
   lot: { spacing: 4.5, fill: 0.3, kinds: [['barrel', 5], ['crate', 2], ['trashBags', 2]] },
+  // Out the back of the kitchens: a bay is a recess, so its clutter stays sparse and soft (a dumpster only flies when hit hard).
+  bay: { spacing: 3.4, fill: 0.45, kinds: [['trashBags', 4], ['crate', 2], ['barrel', 2], ['dumpster', 1]] },
 };
+/** Taper of an alley bay's ends and of a mouth pocket's end along its alley: run along the alley per meter of depth. */
+const BAY_COT = 1 / tan(CFG.bayTaperDeg * DEG);
 /** At most this many props per pocket (big lots stay cheap). */
 const MAX_PROPS = 36;
 /** Props keep this far from the pocket's sides beyond their radius (m). */
@@ -115,12 +127,49 @@ export const infillModule: DistrictModule = {
       return INFILL_THEMES.indexOf(weights[weights.length - 1][0]);
     };
 
+    /** The run's segment is the sidewalk line of an alley or a back alley shortcut (-1: a rounded corner piece). */
+    const alleyEdge = (eid: number): boolean => eid >= 0 && (g.edges[eid].kind === 'alley' || g.edges[eid].kind === 'backAlley');
+    const alleys = g.edges.filter((e) => e.kind === 'alley' || e.kind === 'backAlley');
+    /**
+     * A run segment (midpoint p, direction u) lying along an alley's wall line whatever edge it is
+     * labelled with: where an alley runs straight on into a wider street the ring steps between
+     * their sidewalk lines at the node and that piece carries the street's edge.
+     */
+    const alleyBeside = (p: Vec2, u: Vec2): boolean => {
+      for (const e of alleys) {
+        const a = g.nodes[e.a];
+        const b = g.nodes[e.b];
+        const dx = (b.x - a.x) / e.length;
+        const dz = (b.z - a.z) / e.length;
+        if (Math.abs(u.x * dx + u.z * dz) < 0.9) continue;
+        const t = (p.x - a.x) * dx + (p.z - a.z) * dz;
+        if (t < 0 || t > e.length) continue;
+        if (Math.abs(Math.abs((p.x - a.x) * dz - (p.z - a.z) * dx) - (e.width / 2 + e.sidewalk)) < 1.5) return true;
+      }
+      return false;
+    };
+    /** Direction and midpoint of a run's segment j. */
+    const segDir = (pts: Vec2[], j: number): Vec2 => {
+      const L = Math.hypot(pts[j + 1].x - pts[j].x, pts[j + 1].z - pts[j].z) || 1;
+      return { x: (pts[j + 1].x - pts[j].x) / L, z: (pts[j + 1].z - pts[j].z) / L };
+    };
+    const segMid = (pts: Vec2[], j: number): Vec2 => ({ x: (pts[j].x + pts[j + 1].x) / 2, z: (pts[j].z + pts[j + 1].z) / 2 });
+
     for (const run of L.voids) {
       if (run.length < CFG.minRun) continue;
       const pts = run.points;
       const pos = [0];
       for (let i = 1; i < pts.length; i++) pos.push(pos[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z));
       const used: [number, number][] = [];
+      // The street each side of a corner runs along: the nearest segment with an edge, past the corner's rounded pieces.
+      const edgeBack = (i: number): number => {
+        for (let j = i - 1; j >= 0; j--) if (run.edges[j] >= 0) return run.edges[j];
+        return -1;
+      };
+      const edgeFwd = (i: number): number => {
+        for (let j = i; j < run.edges.length; j++) if (run.edges[j] >= 0) return run.edges[j];
+        return -1;
+      };
 
       // 1. Corner pockets.
       for (const c of run.corners) {
@@ -134,12 +183,19 @@ export const infillModule: DistrictModule = {
         const room1 = Math.min(CFG.cornerReach, len1 - CFG.cornerMargin);
         const room2 = Math.min(CFG.cornerReach, len2 - CFG.cornerMargin);
         if (Math.min(room1, room2) < CFG.cornerMinSide || Math.max(room1, room2) < CFG.minRun) continue;
+        // Which sides run along an alley: a corner between two alley pieces (a shortcut's dogleg, two
+        // alleys crossing) gets no pocket at all; at an alley's mouth the pocket is kept drivable and
+        // its end along the alley tapers back to the wall (a flat end there would face the racers).
+        const alley1 = alleyEdge(edgeBack(i)) || alleyBeside(segMid(pts, i - 1), segDir(pts, i - 1));
+        const alley2 = alleyEdge(edgeFwd(i)) || alleyBeside(segMid(pts, i), segDir(pts, i));
+        if (alley1 && alley2) continue;
+        const mouth = alley1 || alley2;
         const deg = (c.angle * 180) / Math.PI;
         const chance = deg < 80 ? 0.97 : deg < 110 ? 0.92 : 0.85;
         if (!rng.chance(chance)) continue;
         const u1 = { x: (pts[i - 1].x - C.x) / len1, z: (pts[i - 1].z - C.z) / len1 };
         const u2 = { x: (pts[i + 1].x - C.x) / len2, z: (pts[i + 1].z - C.z) / len2 };
-        const solid = rng.chance(CFG.solidChance);
+        const solid = !mouth && rng.chance(CFG.solidChance);
         // Candidate reaches along each street, largest pocket first; a corner keeps wrapping the
         // corner even when one side has to stay shallow to clear a building.
         const reaches = (room: number) => [1, 0.78, 0.6, 0.45, 0.3].map((k) => Math.max(CFG.cornerMinSide, room * k)).filter((v, j, all) => j === 0 || v < all[j - 1] - 0.2);
@@ -147,9 +203,14 @@ export const infillModule: DistrictModule = {
         for (const a of reaches(room1)) for (const b of reaches(room2)) if (Math.max(a, b) >= CFG.minRun - 1e-9) pairs.push([a, b]);
         pairs.sort((p, q) => q[0] * q[1] - p[0] * p[1] || q[0] - p[0]);
         for (const [L1, L2] of pairs.slice(0, 12)) {
+          // At a mouth the far corner is pulled back along the alley by the taper's run, so the end
+          // along the alley runs from the alley's wall out to the pocket's back at bayTaperDeg.
+          const back1 = alley1 ? L1 - L2 * BAY_COT : L1;
+          const back2 = alley2 ? L2 - L1 * BAY_COT : L2;
+          if (Math.min(back1, back2) < 1) continue;
           const a = { x: C.x + u1.x * L1, z: C.z + u1.z * L1 };
           const b = { x: C.x + u2.x * L2, z: C.z + u2.z * L2 };
-          const poly = [a, { x: C.x, z: C.z }, b, { x: a.x + u2.x * L2, z: a.z + u2.z * L2 }];
+          const poly = [a, { x: C.x, z: C.z }, b, { x: C.x + u1.x * back1 + u2.x * back2, z: C.z + u1.z * back1 + u2.z * back2 }];
           if (valid(poly, [a, C, b], !solid)) {
             used.push([pos[i] - L1, pos[i] + L2]);
             if (solid) {
@@ -157,7 +218,7 @@ export const infillModule: DistrictModule = {
               break;
             }
             const busy = c.node >= 0 && g.nodes[c.node].edges.length >= 4;
-            const fountain = Math.min(L1, L2) >= 10 && rng.chance(CFG.fountainChance + (busy ? 0.15 : 0));
+            const fountain = !mouth && Math.min(L1, L2) >= 10 && rng.chance(CFG.fountainChance + (busy ? 0.15 : 0));
             const fr = Math.min(3, Math.max(1.6, Math.min(L1, L2) * 0.16));
             const cx = (poly[0].x + poly[1].x + poly[2].x + poly[3].x) / 4;
             const cz = (poly[0].z + poly[1].z + poly[2].z + poly[3].z) / 4;
@@ -191,10 +252,37 @@ export const infillModule: DistrictModule = {
         // Into the block: right of travel.
         const w = { x: u.z, z: -u.x };
         const at = (s: number) => ({ x: pts[k].x + u.x * (s - pos[k]), z: pts[k].z + u.z * (s - pos[k]) });
+        const alley = alleyEdge(run.edges[k]) || alleyBeside(segMid(pts, k), u);
         for (const [s0, s1] of pieces) {
           if (s1 - s0 < CFG.minRun) continue;
           const r = rng.next();
           const solid = rng.chance(CFG.solidChance);
+          if (alley) {
+            // Beside an alley: a tapered bay (its ends funnel a car riding the wall back into the lane),
+            // else a flush planter; never a lot, plaza or verge with square ends to slide into.
+            let done = false;
+            if (r < CFG.bayChance) {
+              bay: for (const [i0, i1] of [[1, 1], [4, 4]] as [number, number][]) {
+                const len = s1 - s0 - i0 - i1;
+                for (const D of CFG.bayDepth) {
+                  const T = D * BAY_COT;
+                  if (len < 2 * T + CFG.bayMinBack) continue;
+                  const o = at(s0 + i0);
+                  const poly = [o, { x: o.x + u.x * len, z: o.z + u.z * len }, { x: o.x + u.x * (len - T) + w.x * D, z: o.z + u.z * (len - T) + w.z * D }, { x: o.x + u.x * T + w.x * D, z: o.z + u.z * T + w.z * D }];
+                  if (!valid(poly, [poly[0], poly[1]], true)) continue;
+                  add('alleyBay', poly, 1, run.face, -1, { depth: D, length: len, taper: T, theme: INFILL_THEMES.indexOf('bay'), ...frameParams(o, u, w, len, D) });
+                  done = true;
+                  break bay;
+                }
+              }
+            }
+            if (!done && solid) {
+              const len = s1 - s0 - 0.4;
+              const poly = rectPolygon(at(s0 + 0.2), u, w, len, CFG.planterDepth);
+              if (valid(poly, [], false)) add('planter', poly, 1, run.face, -1, { depth: CFG.planterDepth, length: len });
+            }
+            continue;
+          }
           const kind = solid ? 'planter' : s1 - s0 >= CFG.lotMinLen && r < CFG.lotChance ? 'lot' : r < CFG.lotChance + CFG.plazaChance ? 'plaza' : 'verge';
           /** Try insets [start, end] (m off each end of the piece) and depths in order; first valid wins. */
           const tryRect = (variant: 'lot' | 'plaza' | 'verge', insets: [number, number][], depths: number[]): boolean => {
@@ -247,13 +335,15 @@ export const infillModule: DistrictModule = {
       return b;
     }
     b.openings.push(poly);
-    b.surfaces.push({ surface: area.variant === 'lot' ? 'road' : 'concrete', polygon: poly, priority: 2, area: id });
-    // Low curbs on the back sides (the first frontSides sides are the open frontage).
+    const bay = area.variant === 'alleyBay';
+    b.surfaces.push({ surface: area.variant === 'lot' ? 'road' : bay ? 'cobble' : 'concrete', polygon: poly, priority: 2, area: id });
+    // Low curbs on the back sides (the first frontSides sides are the open frontage); a bay's tapers and
+    // back are yard walls like the rest of the alley's frontage.
     const fs = area.params.frontSides;
     const sides: Wall[] = [];
     for (let i = fs; i < poly.length; i++) {
       const seg = [poly[i], poly[(i + 1) % poly.length]];
-      const w = polyWalls(seg, true, 'lotEdge', id, false)[0];
+      const w = polyWalls(seg, true, bay ? 'boundary' : 'lotEdge', id, false)[0];
       if (!w) continue;
       // Normal into the polygon.
       const mx = (w.ax + w.bx) / 2 + w.nx * 0.2;

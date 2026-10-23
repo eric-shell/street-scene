@@ -33,6 +33,8 @@ export interface EngineInput {
   pan: number;
   /** A gear change is cutting the drive this frame. */
   shifting?: boolean;
+  /** A rev cut has the spark off this frame (the two-step at the line, antilag): the limiter's stutter and crackle at any revs. */
+  cut?: boolean;
   /** Seconds since the last update, for the overrun model (a 60 Hz frame when missing). */
   dt?: number;
 }
@@ -329,7 +331,7 @@ export class EngineVoice {
     const load = Math.max(0, Math.min(1, e.throttle));
     const r = Math.min(1.05, rpm / e.redline);
     // The sim holds rpm at the redline by cutting torque, a free revving garage engine dips under it between cuts; either way the pedal is down near the top.
-    const limiter = rpm >= e.redline - 150 && Math.max(load, this.lastThrottle) > 0.5;
+    const limiter = e.cut === true || (rpm >= e.redline - 150 && Math.max(load, this.lastThrottle) > 0.5);
     const p = this.params;
     if (p) {
       p.rpm.setTargetAtTime(rpm, t, tc);

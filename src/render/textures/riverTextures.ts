@@ -1,8 +1,7 @@
 /**
  * Procedural canvas textures for the river channel (render/districts/river.ts):
- * stained concrete with expansion joints and cracks, a decal atlas of
- * graffiti murals (big overlapping letters, outlines, drips and spray) plus
- * storm drain outlets and the arched culvert recesses under the bridges, and
+ * stained concrete with expansion joints and cracks, a decal strip of storm
+ * drain outlets and the arched culvert recesses under the bridges, and
  * a tiling chain-link fence (alpha tested). Seeded, so every scene of a seed
  * paints the same walls; cached per seed because the menu backdrop and the
  * race it starts draw the same city.
@@ -10,12 +9,11 @@
 import * as THREE from 'three';
 import { Rng } from '../../sim/prng';
 
-/** Meters per repeat of the concrete texture, and the atlas layout (px). */
+/** Meters per repeat of the concrete texture, and the decal strip's layout (px): one row of cells. */
 export const RIVER_TEX = {
   concreteSpan: 16,
   atlas: 1024,
   cell: 256,
-  murals: 6,
   /** Chain-link repeat (m) and the share of the tile taken by the top rail. */
   fenceSpan: 2,
 } as const;
@@ -31,8 +29,7 @@ export interface RiverTextures {
   concrete: THREE.CanvasTexture;
   decals: THREE.CanvasTexture;
   chainlink: THREE.CanvasTexture;
-  /** Atlas rectangle of a mural (0..murals-1), the drain outlet, the culvert arch or the portal. */
-  mural(i: number): UvRect;
+  /** Atlas rectangle of the drain outlet, the culvert arch or the portal. */
   drain: UvRect;
   arch: UvRect;
   portal: UvRect;
@@ -126,108 +123,15 @@ function makeConcrete(rng: Rng): THREE.CanvasTexture {
   return finish(c, true, true);
 }
 
-const NEON = ['#ff2bd6', '#22e6ff', '#ffe14d', '#7cff4f', '#ff5a36', '#a66bff', '#ff3b6b', '#3bffb4', '#ffffff', '#ff9d1a'];
-const WORDS = ['NEON', 'DRIFT', 'VOLT', 'APEX', 'KAIJU', 'RUSH', 'ZERO', 'BLAZE', 'NITRO', 'GHOST', 'HYPER', 'ORBIT', 'SONIC', 'FLUX', 'TURBO', 'VIBE'];
-
-/** One graffiti piece into a cell: a dark wash, fat overlapping letters with outlines and drips, spray and sparkle. */
-function mural(ctx: CanvasRenderingContext2D, rng: Rng, x0: number, y0: number, W: number, H: number): void {
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(x0, y0, W, H);
-  ctx.clip();
-  const pal = rng.shuffle([...NEON]).slice(0, 4);
-  if (rng.chance(0.6)) {
-    ctx.fillStyle = rng.chance(0.5) ? 'rgba(20,22,34,0.75)' : `rgba(${rng.int(20, 80)},${rng.int(10, 40)},${rng.int(40, 90)},0.7)`;
-    ctx.beginPath();
-    ctx.ellipse(x0 + W / 2, y0 + H / 2, W * rng.range(0.42, 0.52), H * rng.range(0.4, 0.5), rng.range(-0.1, 0.1), 0, Math.PI * 2);
-    ctx.fill();
-  }
-  const word = WORDS[rng.int(0, WORDS.length - 1)];
-  const size = Math.min(H * 0.72, (W * 1.15) / word.length);
-  ctx.font = `900 italic ${size}px "Arial Black", Impact, "Helvetica Neue", sans-serif`;
-  ctx.textBaseline = 'middle';
-  ctx.textAlign = 'center';
-  const fill = pal[0];
-  const edge = pal[1];
-  const cx = x0 + W / 2;
-  const cy = y0 + H * 0.5;
-  const step = size * 0.82;
-  const startX = cx - (step * (word.length - 1)) / 2;
-  const tilt = rng.range(-0.12, 0.12);
-  // Block shadow, then the letters with a thick outline and a highlight stroke.
-  for (let pass = 0; pass < 3; pass++) {
-    for (let i = 0; i < word.length; i++) {
-      const lx = startX + i * step;
-      const ly = cy + Math.sin(i * 1.7 + rng.next() * 0.3) * size * 0.08;
-      ctx.save();
-      ctx.translate(lx, ly);
-      ctx.rotate(tilt + (i % 2 ? 0.05 : -0.05));
-      ctx.scale(1, 1.12);
-      if (pass === 0) {
-        ctx.fillStyle = 'rgba(0,0,0,0.75)';
-        ctx.fillText(word[i], size * 0.09, size * 0.09);
-      } else if (pass === 1) {
-        ctx.lineWidth = size * 0.16;
-        ctx.lineJoin = 'round';
-        ctx.strokeStyle = edge;
-        ctx.strokeText(word[i], 0, 0);
-        ctx.fillStyle = fill;
-        ctx.fillText(word[i], 0, 0);
-      } else {
-        ctx.lineWidth = size * 0.035;
-        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-        ctx.strokeText(word[i], -size * 0.03, -size * 0.03);
-      }
-      ctx.restore();
-    }
-  }
-  // Drips off the letters.
-  ctx.strokeStyle = fill;
-  ctx.lineCap = 'round';
-  for (let i = 0; i < rng.int(5, 12); i++) {
-    const dx = cx + rng.range(-W * 0.42, W * 0.42);
-    const dy = cy + size * rng.range(0.2, 0.45);
-    ctx.lineWidth = rng.range(3, 8);
-    ctx.beginPath();
-    ctx.moveTo(dx, dy);
-    ctx.lineTo(dx + rng.range(-3, 3), dy + rng.range(12, H * 0.35));
-    ctx.stroke();
-  }
-  // Spray haze, stars and arrows.
-  for (let i = 0; i < 6; i++) {
-    const g = ctx.createRadialGradient(x0 + rng.range(0, W), y0 + rng.range(0, H), 0, x0 + W / 2, y0 + H / 2, rng.range(40, 120));
-    g.addColorStop(0, pal[2] + '66');
-    g.addColorStop(1, pal[2] + '00');
-    ctx.fillStyle = g;
-    ctx.fillRect(x0, y0, W, H);
-  }
-  ctx.fillStyle = pal[3];
-  for (let i = 0; i < rng.int(2, 6); i++) {
-    const sx = x0 + rng.range(W * 0.05, W * 0.95);
-    const sy = y0 + rng.range(H * 0.08, H * 0.92);
-    const r = rng.range(6, 16);
-    ctx.beginPath();
-    for (let k = 0; k < 10; k++) {
-      const a = (k / 10) * Math.PI * 2;
-      const rr = k % 2 ? r * 0.45 : r;
-      ctx.lineTo(sx + Math.cos(a) * rr, sy + Math.sin(a) * rr);
-    }
-    ctx.closePath();
-    ctx.fill();
-  }
-  ctx.restore();
-}
-
-function makeDecals(rng: Rng): [THREE.CanvasTexture, (i: number) => UvRect, UvRect, UvRect, UvRect] {
+function makeDecals(rng: Rng): [THREE.CanvasTexture, UvRect, UvRect, UvRect] {
   const S = RIVER_TEX.atlas;
   const C = RIVER_TEX.cell;
-  const [c, ctx] = canvas(S, S);
-  ctx.clearRect(0, 0, S, S);
-  for (let i = 0; i < RIVER_TEX.murals; i++) mural(ctx, rng, (i % 2) * 2 * C, Math.floor(i / 2) * C, 2 * C, C);
+  const [c, ctx] = canvas(S, C);
+  ctx.clearRect(0, 0, S, C);
   // Drain outlet: a dark pipe mouth in a concrete collar, rust and algae streaking down.
   {
     const x0 = 0;
-    const y0 = 3 * C;
+    const y0 = 0;
     const r = C * 0.22;
     const cx = x0 + C / 2;
     const cy = y0 + C * 0.26;
@@ -280,13 +184,13 @@ function makeDecals(rng: Rng): [THREE.CanvasTexture, (i: number) => UvRect, UvRe
       ctx.stroke();
     }
   };
-  arch(C, 2 * C, C, 3 * C);
-  arch(3 * C, C, C, 3 * C);
-  const rect = (x: number, y: number, w: number, h: number): UvRect => ({ u0: x / S, v0: 1 - (y + h) / S, u1: (x + w) / S, v1: 1 - y / S });
+  arch(C, 2 * C, C, 0);
+  arch(3 * C, C, C, 0);
+  const rect = (x: number, w: number): UvRect => ({ u0: x / S, v0: 0, u1: (x + w) / S, v1: 1 });
   // Inset a hair so bilinear filtering never bleeds the neighbor cell in.
-  const inset = (r: UvRect): UvRect => ({ u0: r.u0 + 2 / S, v0: r.v0 + 2 / S, u1: r.u1 - 2 / S, v1: r.v1 - 2 / S });
+  const inset = (r: UvRect): UvRect => ({ u0: r.u0 + 2 / S, v0: r.v0 + 2 / C, u1: r.u1 - 2 / S, v1: r.v1 - 2 / C });
   const tex = finish(c, true, false);
-  return [tex, (i) => inset(rect((i % 2) * 2 * C, Math.floor(i / 2) * C, 2 * C, C)), inset(rect(0, 3 * C, C, C)), inset(rect(C, 3 * C, 2 * C, C)), inset(rect(3 * C, 3 * C, C, C))];
+  return [tex, inset(rect(0, C)), inset(rect(C, 2 * C)), inset(rect(3 * C, C))];
 }
 
 function makeChainlink(): THREE.CanvasTexture {
@@ -322,13 +226,12 @@ export function riverTextures(seed: number): RiverTextures {
   cache?.tex.dispose();
   const rng = new Rng((seed ^ 0x51a7e) >>> 0 || 1);
   const concrete = makeConcrete(rng);
-  const [decals, mural, drain, arch, portal] = makeDecals(rng);
+  const [decals, drain, arch, portal] = makeDecals(rng);
   const chainlink = makeChainlink();
   const tex: RiverTextures = {
     concrete,
     decals,
     chainlink,
-    mural,
     drain,
     arch,
     portal,

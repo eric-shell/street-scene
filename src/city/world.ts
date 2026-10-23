@@ -237,8 +237,8 @@ function awayFromRoundabouts<T extends Wall>(graph: RoadGraph, rails: T[]): T[] 
   return rails.filter((w) => !bad.has(w.group ?? -1));
 }
 
-/** Drivable infill (corner pockets, plazas, verges, lots) whose frontage is open to the street. */
-const POCKETS = new Set(['cornerPlaza', 'plaza', 'verge', 'lot']);
+/** Drivable infill (corner pockets, plazas, verges, lots, alley bays) whose frontage is open to the street. */
+const POCKETS = new Set(['cornerPlaza', 'plaza', 'verge', 'lot', 'alleyBay']);
 
 /**
  * A closure barrier ends at its street's building line. Where a drivable

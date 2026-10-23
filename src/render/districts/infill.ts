@@ -1,8 +1,9 @@
 /**
  * Infill renderer: parking lots (asphalt, painted bays), plazas, corner
  * pockets and verges (concrete at sidewalk level, verges a warmer paver),
- * raised planters, fountains, low curbs around lots, and the low 'boundary'
- * walls that close every other gap in the street frontage. The clutter in
+ * alley bays (the alley's cobbles, their tapered walls the yard walls of the
+ * frontage), raised planters, fountains, low curbs around lots, and the low
+ * 'boundary' walls that close every other gap in the street frontage. The clutter in
  * the pockets is destructible and drawn by render/street/props.ts; this only lays a
  * mulch bed under the greenery (it stays when a bush is ploughed through).
  * Lantern posts are props too; their light is render/street/areaLights.ts.
@@ -18,6 +19,7 @@ export const infillRenderer: DistrictRenderer = {
     const asphalt = col(0x2a2c33);
     const concrete = col(0x6d6f78);
     const pavers = col(0x76706a);
+    const cobbles = col(0x4d4a4c);
     const mulch = col(0x24170f);
     const paint = col(0xd8dce6, 0.8);
     for (const a of areas) {
@@ -27,6 +29,8 @@ export const infillRenderer: DistrictRenderer = {
         for (const h of b.hints) if (h.kind === 'bay') groundLine(kit, kit.paint, h.points[0], h.points[1], 0.12, 0.05, paint);
       } else if (a.variant === 'plaza' || a.variant === 'cornerPlaza' || a.variant === 'verge') {
         drapeConvex(kit, kit.ground, a.polygon, CITY.curbHeight, a.variant === 'verge' ? pavers : concrete);
+      } else if (a.variant === 'alleyBay') {
+        drapeConvex(kit, kit.ground, a.polygon, CITY.curbHeight, cobbles);
       } else if (a.variant === 'planter') {
         prism(kit, kit.solid, a.polygon, 0.7, col(0x55565e), col(0x24442a));
       }

@@ -1,18 +1,19 @@
 /**
- * Everything pasted on, bolted to or strung between the walls: graffiti
- * (murals, throw-ups, tags, stencils: dark spray paint, lit by the scene like
- * the wall, textures.ts makeGraffitiAtlas) and pasted posters and flyers down
- * the alleys and on the exposed side walls of buildings, a grime line along the
+ * Everything pasted on, bolted to or strung between the walls: pasted posters
+ * and flyers (textures/wallAtlas.ts, lit by the scene like the wall) down the
+ * alleys and on the exposed side walls of buildings, a grime line along the
  * base of every facade, air conditioning units and drainpipes on the side
  * walls, neon blade signs hanging off the shopfronts over the sidewalk, and
- * event banners strung across the route near the closures and the start.
+ * event banners strung across the route near the closures and the start. No
+ * graffiti: sprayed paint never read well against the drawn facades, so the
+ * paper and the dirt carry the lived in look on their own.
  *
  * Nothing here touches the road: blade signs hang 3.5 m up over the sidewalk
  * behind the collision wall line, banners cross at 6.5 m, and the rest is
  * flat on a facade. The facades stand an unknown few decimetres behind the
  * collision walls (podium extrusions), so every piece is placed by probing
  * the drawn podium geometry (wallProbe.ts); without that geometry only the
- * infill's low boundary walls, whose face is exact, get tagged. Three draw
+ * infill's low boundary walls, whose face is exact, get grimed. Three draw
  * calls: paint (one atlas), boxes, blade signs. Seeded, render only.
  */
 import * as THREE from 'three';
@@ -26,7 +27,7 @@ import { GeoBuilder } from '../geoBuilder';
 import { orientedBox } from '../districts/kit';
 import { FacadeProbe, ProbeHit } from './wallProbe';
 import { fadeSubPixel } from '../materialFx';
-import { AtlasCell, BLADE_SIGN_COLS, BLADE_SIGN_ROWS, BLADE_SIGN_TEXTS, GRAFFITI_ATLAS, GraffitiKind, NEON_COLORS, graffitiCell } from '../textures/textures';
+import { AtlasCell, BLADE_SIGN_COLS, BLADE_SIGN_ROWS, BLADE_SIGN_TEXTS, NEON_COLORS, WALL_ATLAS, WallKind, wallCell } from '../textures/textures';
 
 export interface WallDressingOptions {
   /** Share of candidate walls and faces that get dressed (graphics tier). */
@@ -41,12 +42,8 @@ export interface WallDressing {
 }
 
 const DRESS = {
-  /** Graffiti pieces: height (m) ranges by kind and the chance each station rolls. */
+  /** Paper down the alleys: spacing of the stations (m) and height (m) ranges by kind. */
   alleyStep: [3.5, 7.5],
-  tagH: [0.55, 0.8],
-  throwupH: [1.1, 1.5],
-  muralH: [2.2, 2.7],
-  stencilH: [0.7, 1.0],
   posterH: [0.9, 1.2],
   flyersH: [0.9, 1.1],
   /** Grime along the base of facades: piece length and height (m), chance per piece. */
@@ -73,12 +70,12 @@ const DRESS = {
 const SEED = 0x5a11;
 
 function uvOf(cell: AtlasCell, u0 = 0, u1 = 1): { u0: number; u1: number; v0: number; v1: number } {
-  const W = GRAFFITI_ATLAS.w;
-  const H = GRAFFITI_ATLAS.h;
+  const W = WALL_ATLAS.w;
+  const H = WALL_ATLAS.h;
   return { u0: (cell.x + cell.w * u0) / W, u1: (cell.x + cell.w * u1) / W, v1: 1 - cell.y / H, v0: 1 - (cell.y + cell.h) / H };
 }
 
-export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { graffiti: THREE.Texture; blades: THREE.Texture }, opts: WallDressingOptions): WallDressing {
+export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { walls: THREE.Texture; blades: THREE.Texture }, opts: WallDressingOptions): WallDressing {
   const rng = new Rng(world.seed ^ SEED);
   const g = world.graph;
   const h = world.heightAt;
@@ -89,8 +86,8 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { g
   const D = opts.density;
 
   /** A flat piece on a facade: centre (x, z) on the surface, tangent t (right), normal n (toward the viewer). */
-  const piece = (kind: GraffitiKind, i: number, x: number, z: number, tx: number, tz: number, nx: number, nz: number, w: number, y0: number, y1: number, color = WHITE, uu0 = 0, uu1 = 1) => {
-    const uv = uvOf(graffitiCell(kind, i), uu0, uu1);
+  const piece = (kind: WallKind, i: number, x: number, z: number, tx: number, tz: number, nx: number, nz: number, w: number, y0: number, y1: number, color = WHITE, uu0 = 0, uu1 = 1) => {
+    const uv = uvOf(wallCell(kind, i), uu0, uu1);
     const ox = nx * 0.02;
     const oz = nz * 0.02;
     const l = [x - (tx * w) / 2 + ox, z - (tz * w) / 2 + oz];
@@ -104,7 +101,7 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { g
   /** Width that fits the flat stretch around a probe hit (facade bays are about 5 m wide). */
   const fit = (hit: ProbeHit, w: number) => Math.min(w, 2 * Math.min(hit.left, hit.right) - 0.1);
   /** Place a probed piece: `want` metres wide, `hh` tall with its bottom at `yb` above the ground there. */
-  const probedPiece = (kind: GraffitiKind, i: number, px: number, pz: number, dx: number, dz: number, yb: number, hh: number, want: number, color = WHITE, maxDist = 2.6): boolean => {
+  const probedPiece = (kind: WallKind, i: number, px: number, pz: number, dx: number, dz: number, yb: number, hh: number, want: number, color = WHITE, maxDist = 2.6): boolean => {
     const ground = h(px, pz);
     const hit = probe.probe(px, pz, ground + yb + hh / 2, dx, dz, maxDist);
     if (!hit) return false;
@@ -119,18 +116,10 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { g
     piece(kind, i, x, z, hit.tx, hit.tz, hit.nx, hit.nz, w, y0, y1, color);
     return true;
   };
-  const rollGraffiti = (px: number, pz: number, dx: number, dz: number, busy: number) => {
+  /** A station on a wall: a poster or a sheet of flyers, or (most often) nothing, so the paper stays sparse. */
+  const rollPaper = (px: number, pz: number, dx: number, dz: number, busy: number) => {
     const r = rng.next();
-    if (r < 0.42 * busy) {
-      const hh = rng.range(DRESS.tagH[0], DRESS.tagH[1]);
-      probedPiece('tag', rng.int(0, 7), px, pz, dx, dz, rng.range(0.9, 2.0), hh, hh * 2);
-    } else if (r < 0.62 * busy) {
-      const hh = rng.range(DRESS.throwupH[0], DRESS.throwupH[1]);
-      probedPiece('throwup', rng.int(0, 3), px, pz, dx, dz, rng.range(1.0, 1.9), hh, hh * 2);
-    } else if (r < 0.74 * busy) {
-      const hh = rng.range(DRESS.stencilH[0], DRESS.stencilH[1]);
-      probedPiece('stencil', rng.int(0, 5), px, pz, dx, dz, rng.range(0.6, 1.8), hh, hh);
-    } else if (r < 0.88 * busy) {
+    if (r >= 0.74 * busy && r < 0.88 * busy) {
       const hh = rng.range(DRESS.posterH[0], DRESS.posterH[1]);
       probedPiece('poster', rng.int(0, 3), px, pz, dx, dz, rng.range(1.3, 2.0), hh, hh * (256 / 192));
     } else if (r < busy) {
@@ -168,17 +157,8 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { g
           const dx = -uz * side;
           const dz = ux * side;
           grimeAlong(A.x + ux * 8 + dx * lat, A.z + uz * 8 + dz * lat, A.x + ux * (len - 8) + dx * lat, A.z + uz * (len - 8) + dz * lat, dx, dz, 0.85 * D);
-          let mural = area.kind === 'backAlley' && rng.chance(0.6 * D) ? 1 : 0;
           for (let s = rng.range(8, 12); s < len - 8; s += rng.range(DRESS.alleyStep[0], DRESS.alleyStep[1]) / D) {
-            const px = A.x + ux * s + dx * lat;
-            const pz = A.z + uz * s + dz * lat;
-            if (mural && s > len * 0.3) {
-              mural = 0;
-              const hh = rng.range(DRESS.muralH[0], DRESS.muralH[1]);
-              probedPiece('mural', rng.int(0, 1), px, pz, dx, dz, rng.range(0.5, 0.9), hh, hh * 2);
-              continue;
-            }
-            rollGraffiti(px, pz, dx, dz, busy);
+            rollPaper(A.x + ux * s + dx * lat, A.z + uz * s + dz * lat, dx, dz, busy);
           }
           // Pipes down the walls every so often.
           for (let s = rng.range(10, 30); s < len - 10; s += rng.range(22, 40) / D) {
@@ -273,17 +253,11 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { g
         const tz = (q.z - p.z) / len;
         const at = (s: number) => ({ x: p.x + tx * s + nx * 1.6, z: p.z + tz * s + nz * 1.6 });
         if (!street) {
-          // A party wall facing a lot, pocket or park: the mural wall.
-          if (len >= 8 && rng.chance(0.45)) {
-            const hh = rng.range(DRESS.muralH[0], DRESS.muralH[1]);
-            const s = rng.range(len * 0.3, len * 0.7);
-            const a = at(s);
-            probedPiece('mural', rng.int(0, 1), a.x, a.z, dx, dz, rng.range(0.4, 0.9), hh, hh * 2, WHITE, 2.6);
-          }
+          // A party wall facing a lot, pocket or park: some paper, grime, the services.
           const pieces = rng.int(1, 3);
           for (let k = 0; k < pieces; k++) {
             const a = at(rng.range(2, len - 2));
-            rollGraffiti(a.x, a.z, dx, dz, 1);
+            rollPaper(a.x, a.z, dx, dz, 1);
           }
           const a0 = at(1.5);
           const a1 = at(len - 1.5);
@@ -298,15 +272,15 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { g
             drainpipe(a.x, a.z, dx, dz);
           }
         } else if (rng.chance(0.35)) {
-          // A side street front: just a tag or a poster near a corner, and some grime.
+          // A side street front: at most a poster near a corner.
           const a = at(rng.range(2, Math.min(len - 2, 9)));
-          rollGraffiti(a.x, a.z, dx, dz, 0.6);
+          rollPaper(a.x, a.z, dx, dz, 0.6);
         }
       }
     });
   }
 
-  // ---------- low boundary walls (exact faces) ----------
+  // ---------- low boundary walls (exact faces): grime along the foot ----------
   for (const w of world.walls) {
     if (w.kind !== 'wall' || w.look !== 'boundary') continue;
     const len = Math.hypot(w.bx - w.ax, w.bz - w.az);
@@ -318,20 +292,6 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { g
     const tz = (w.bz - w.az) / len;
     // Seen from the drivable side (the normal side) "right" runs a -> b (see blocks.ts: block on the right of travel).
     const base = Math.min(h(w.ax, w.az), h(w.bx, w.bz));
-    const top = Math.max(h(w.ax, w.az), h(w.bx, w.bz)) + 1.1;
-    const mid = (s: number) => ({ x: w.ax + tx * s, z: w.az + tz * s });
-    for (let s = 2; s < len - 2; s += rng.range(4, 9)) {
-      const m = mid(s);
-      const r = rng.next();
-      if (r < 0.5) {
-        const hh = 0.55;
-        piece('tag', rng.int(0, 7), m.x, m.z, tx, tz, w.nx, w.nz, Math.min(hh * 2, len - 1), base + 0.3, base + 0.3 + hh);
-      } else if (r < 0.75) {
-        piece('stencil', rng.int(0, 5), m.x, m.z, tx, tz, w.nx, w.nz, 0.7, base + 0.25, base + 0.95);
-      } else if (r < 0.9) {
-        piece('throwup', rng.int(0, 3), m.x, m.z, tx, tz, w.nx, w.nz, Math.min(1.7, len - 1), top - 0.95, top - 0.1);
-      }
-    }
     const gl = Math.min(len - 0.2, 6);
     piece('grime', 0, (w.ax + w.bx) / 2, (w.az + w.bz) / 2, tx, tz, w.nx, w.nz, gl, base - 0.05, base + 0.4);
   }
@@ -446,7 +406,7 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { g
     const span = Math.hypot(bx - ax, bz - az);
     const ux = (bx - ax) / span;
     const uz = (bz - az) / span;
-    const cell = graffitiCell('banner', i);
+    const cell = wallCell('banner', i);
     const textW = DRESS.bannerH * (cell.w / cell.h);
     const nx = -uz;
     const nz = ux;
@@ -487,8 +447,8 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { g
     // Paint is lit by the street like the wall it is on; a trace of self light keeps the paper of a
     // poster readable in an unlit alley without turning any of it into backlit signage.
     const mat = new THREE.MeshStandardMaterial({
-      map: atlases.graffiti,
-      emissiveMap: atlases.graffiti,
+      map: atlases.walls,
+      emissiveMap: atlases.walls,
       emissive: 0xffffff,
       emissiveIntensity: 0.04,
       roughness: 0.85,

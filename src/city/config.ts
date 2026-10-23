@@ -239,10 +239,12 @@ export const CITY = {
         clear: 40,
         gap: 90,
         edgeFade: 1.4,
-        /** Speed hump across the floor: length along the channel, height. */
-        hump: { length: 3.4, height: 0.32 },
-        /** Water bar: the hump skewed across the floor by skewDeg. */
-        bar: { length: 2.6, height: 0.26, skewDeg: 28 },
+        /** The hump's and bar's wedge: share of each grade eased at its foot and at the crest (riverFeatures.ts wedge). */
+        wedgeEase: 0.25,
+        /** Speed hump across the floor, a wedge: length along the channel, height (a 3% mean grade: a lift at 150 km/h, not a launch). */
+        hump: { length: 14, height: 0.22 },
+        /** Water bar: the hump skewed across the floor by skewDeg (length measured square to the bar). */
+        bar: { length: 12, height: 0.2, skewDeg: 28 },
         /** Tabletop jump on one half: each slope's run, the flat top, height; from `inner` of the centerline, bevelled over `edge`; the lip share of the run eased in. */
         table: { rise: 7, top: 2.5, height: 0.85, inner: 1.5, edge: 1.2, lip: 0.3 },
         /** Ledge along one half: length, height, from `inner` of the centerline bevelled over `ease`, its ends tapered over `end`, merging into the bank over bankMerge up the slope. */
@@ -646,6 +648,20 @@ export const CITY = {
        * far apart (m), lampInset in from the back and the ends; every lot gets at least two.
        */
       lotLampSpacing: 17,
+      /**
+       * Alleys (raceway alleys and back alley shortcuts) never get a lot, plaza or verge on their
+       * sides: a recess with square ends is a trap a racer slides into and a flat wall to get stuck
+       * on. Their void frontage becomes an alley bay instead: the alley widens into a cobbled recess
+       * whose two ends taper back to the wall at bayTaperDeg, so a car riding the wall is funnelled
+       * back into the lane. Depths tried deepest first (m), with at least bayMinBack m of straight
+       * back wall between the tapers; the rest of the void stays a flush planter or boundary wall.
+       * Corner pockets at an alley's mouth stay (a racer may cut across one into the alley) but are
+       * never solid or fountained, and their end along the alley tapers the same way.
+       */
+      bayChance: 0.6,
+      bayDepth: [3.5, 2.5],
+      bayMinBack: 6,
+      bayTaperDeg: 30,
     },
     /** Reserved unique features, documented placeholders (plan nothing yet). */
     /**

@@ -57,10 +57,15 @@ export const POLICE = {
   roofSpire: 1.25,
   roofClear: 10,
   roofLook: [0.6, 1.4, 2.6],
-  /** Searchlight: cone radius at the target (m), ground pool radius (m), brightness, reach (m), aim lag (s). */
+  /**
+   * Searchlight: cone radius at the target (m), ground pool radius (m), brightness, reach (m), aim lag (s).
+   * The brightness is set for a beam seen from the leader's chase camera, which stands in it for the whole
+   * chase: a hard white spot on the road, not a flash across the frame (airTraffic.ts beamFrag fades the
+   * pool further as the camera closes on it).
+   */
   beamRadius: 4.2,
   spotR: 7.8,
-  intensity: 1.3,
+  intensity: 0.5,
   reach: 240,
   aimLag: 0.12,
   /** Lights and beam fade on and off over about this long (s). */

@@ -15,7 +15,7 @@
  * deck its slab, girders,
  * the piers on the floor edges and the abutments on the banks (the sim's
  * 'pier' and 'culvert' solids) with sodium lamps hung from the slab and on
- * the piers; parapets on the decks; graffiti murals and storm drain outlets
+ * the piers; parapets on the decks; storm drain outlets
  * on the banks; a chain-link fence on posts along the bank tops with sodium
  * lamps pooling light down the slope; the low flow trickle and puddles as
  * dark mirrors; lit tunnel portals at both ends; a painted edge line along
@@ -48,9 +48,7 @@ const DRESS = {
   /** Sodium lamps along each bank top, staggered between the banks. */
   lampSpacing: 38,
   lampHeight: 5.2,
-  /** Murals and drains along the banks: spacing ranges (m) and mural widths (m). */
-  muralGap: [55, 120],
-  muralWidth: [12, 22],
+  /** Drains along the banks: spacing range (m). */
   drainGap: [70, 130],
   /** Puddles on the floor: spacing (m), radius (m). */
   puddleGap: [40, 95],
@@ -555,17 +553,8 @@ function buildChannel(kit: DistrictKit, a: Area): void {
     }
   }
 
-  // ----- Murals and drains on the bank faces, clear of ramps and decks.
+  // ----- Drains on the bank faces, clear of ramps and decks.
   const busy = (x: number, half: number) => ramps.some((r) => Math.abs(x - r.ax) < r.hw + r.body + half + 3) || bridges.some((b) => Math.abs(x - b.cx) < b.dk + CITY.districts.river.bridgeBody + half + 4) || features.some((f, i) => Math.abs(x - f.x) < fspan[i] + half + 2);
-  let side = rng.chance(0.5) ? 1 : -1;
-  const murals: { x: number; side: number; w: number }[] = [];
-  for (let x = p.x0 + 60 + rng.range(0, 40); x < p.x1 - 60; x += rng.range(DRESS.muralGap[0], DRESS.muralGap[1])) {
-    const w = rng.range(DRESS.muralWidth[0], DRESS.muralWidth[1]);
-    if (busy(x, w / 2)) continue;
-    bankDecal(kit, p, decal, tex.mural(rng.int(0, RIVER_TEX.murals - 1)), x - w / 2, x + w / 2, side, F + 0.5, T - 0.4, 6);
-    murals.push({ x, side, w });
-    side = -side;
-  }
   for (let x = p.x0 + 90 + rng.range(0, 60); x < p.x1 - 60; x += rng.range(DRESS.drainGap[0], DRESS.drainGap[1])) {
     if (busy(x, 1.4)) continue;
     bankDecal(kit, p, decal, tex.drain, x - 1.3, x + 1.3, rng.chance(0.5) ? 1 : -1, F + 0.1, T - 1.8, 3);
@@ -624,14 +613,12 @@ function buildChannel(kit: DistrictKit, a: Area): void {
   };
   const concreteMat = new THREE.MeshStandardMaterial({ map: tex.concrete, vertexColors: true, roughness: 0.93, metalness: 0, envMapIntensity: 0.35 });
   add(concrete, 'riverConcrete', concreteMat);
-  const decalMesh = add(
+  add(
     decal,
     'riverDecals',
     new THREE.MeshStandardMaterial({ map: tex.decals, emissiveMap: tex.decals, emissive: 0xffffff, emissiveIntensity: 0.28, vertexColors: true, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, roughness: 0.9 }),
     1,
   );
-  // Where the murals are (for tools and tests looking at the banks).
-  if (decalMesh) decalMesh.userData.murals = murals;
   add(fence, 'riverFence', new THREE.MeshStandardMaterial({ map: tex.chainlink, alphaTest: 0.45, side: THREE.DoubleSide, vertexColors: true, roughness: 0.45, metalness: 0.75, envMapIntensity: 0.7 }));
   add(
     wet,
