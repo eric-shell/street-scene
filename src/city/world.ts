@@ -15,8 +15,7 @@ import { SpatialGrid } from './spatial';
 import { Terrain, createTerrain } from './terrain';
 import { Vec2, cos, distToSegment, segmentT, sin, sqrt } from '../sim/math';
 import { settleRiver } from './districts/river';
-import { plazaPasses } from './districts/monument';
-import { CityDistricts, planDistricts } from './districts';
+import { CityDistricts, districtModule, planDistricts } from './districts';
 import { settleAlleyLips, shortcutJumpRails } from './districts/alleyDressing';
 import { carveRouteShortcuts, hasShortcutSpot, qualifiedCount } from './districts/alleyShortcuts';
 import { ROUTE_INDEX, carParkGates, carParkRails, carParkSites, planCarParks, settleCarParks } from './districts/carPark';
@@ -420,22 +419,23 @@ function stripStreet(city: City, edge: number): boolean {
 export function createRoute(city: City, kind: RouteKind): Route {
   const g = city.graph;
   if (kind === 'drag') return buildRoute(g, kind, findDragNodes(g, city.seed, (e) => stripStreet(city, e)));
-  // The monument plaza's race passes (districts/monument.ts): every route turning round one of them crosses the plaza.
-  const passes = city.districts.areas.filter((a) => a.kind === 'monument').flatMap((a) => plazaPasses(g, a));
+  // The districts' race passes (DistrictModule.passes: across the monument plaza, say): every route driving through one takes it.
+  const passes = city.districts.areas.flatMap((a) => districtModule(a.kind).passes?.(g, a) ?? []);
   if (kind === 'waypoint') {
-    // The suggestion takes a pass where it can: one turning through a pass corner that is no waypoint is preferred.
+    // The suggestion takes a pass where it can: one driving through a pass's node that is no waypoint is preferred.
     const through = (nodes: number[], stops: number[]) => {
       const edges = routeEdges(g, nodes, false);
       return passes.some((p) => {
         const i = nodes.indexOf(p.node);
         if (i < 1 || i + 1 >= nodes.length || stops.includes(p.node)) return false;
-        return (edges[i - 1] === p.edgeA && edges[i] === p.edgeB) || (edges[i - 1] === p.edgeB && edges[i] === p.edgeA);
+        const any = p.edgeA < 0;
+        return (edges[i] === p.edgeB && (any ? edges[i - 1] !== p.edgeB : edges[i - 1] === p.edgeA)) || (edges[i - 1] === p.edgeB && (any ? edges[i] !== p.edgeB : edges[i] === p.edgeA));
       });
     };
     const { nodes, waypoints } = findWaypointNodes(g, city.seed, passes.length ? through : undefined);
-    return buildRoute(g, kind, nodes, waypoints, passes);
+    return buildRoute(g, kind, nodes, waypoints, passes, city.seed);
   }
-  return buildRoute(g, kind, city.routeNodes[kind], [], passes);
+  return buildRoute(g, kind, city.routeNodes[kind], [], passes, city.seed);
 }
 
 export function createWorld(seed: number, kind: RouteKind, city: City = createCity(seed), opts: { openWorld?: boolean } = {}): World {

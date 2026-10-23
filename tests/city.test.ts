@@ -183,7 +183,8 @@ describe('city generation', () => {
         expect(w.route.grid.length).toBe(ROUTE.gridSlots);
         w.route.grid.forEach((g, k) => {
           const surf = w.surfaceAt(g.x, g.z);
-          if (surf !== 'road' && surf !== 'cobble') failures.push(`seed ${seed} ${mode} slot ${k}: on ${surf}`);
+          // A circuit starting on a race pass (route.passStart) lines its grid up on the plaza's paving.
+          if (surf !== 'road' && surf !== 'cobble' && !(w.route.passStart && surf === 'concrete')) failures.push(`seed ${seed} ${mode} slot ${k}: on ${surf}`);
           // A car standing on the slot (at street level: on a bridge deck the river's piers are beneath it).
           if (w.collideCircle(g.x, g.z, 1.2, [], w.heightAt(g.x, g.z))) failures.push(`seed ${seed} ${mode} slot ${k}: touches a wall`);
           for (const o of w.route.grid.slice(k + 1)) if (Math.hypot(o.x - g.x, o.z - g.z) < 3.4) failures.push(`seed ${seed} ${mode} slot ${k}: overlaps another`);
@@ -741,7 +742,8 @@ describe('districts', () => {
       for (const a of w.areas) {
         const mine = w.props.filter((p) => p.area === a.id);
         mine.forEach((p) => kinds.add(p.kind));
-        if (a.kind === 'park') expect(mine.filter((p) => p.kind === 'bush').length).toBeGreaterThan(10);
+        // (A hilltop park, variant 'hills', can be a small plateau with a grove and no bush cluster.)
+        if (a.kind === 'park' && a.variant !== 'hills') expect(mine.filter((p) => p.kind === 'bush').length).toBeGreaterThan(10);
         if (a.kind === 'alley') expect(mine.length).toBeGreaterThan(8);
         // Plain back alleys have dumpsters; route shortcuts are construction sites (checked with the shortcuts).
         if (a.kind === 'backAlley' && a.variant !== 'routeShortcut') expect(mine.some((p) => p.kind === 'dumpster')).toBe(true);

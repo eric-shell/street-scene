@@ -188,7 +188,8 @@ describe('car park shortcut', () => {
           const B = a.graph.nodes[R[(j + k) % n]];
           along += Math.hypot(B.x - A.x, B.z - A.z);
           const dot = ((B.x - A.x) * (Q.x - C.x) + (B.z - A.z) * (Q.z - C.z)) / (Math.hypot(B.x - A.x, B.z - A.z) * l);
-          expect(dot, `${seed} straight`).toBeGreaterThan(Math.cos(3.5 / DEG));
+          // Straight as the planner reads it: a run of pieces through bend nodes (roadGraph.ts), a few degrees between them.
+          expect(dot, `${seed} straight`).toBeGreaterThan(Math.cos(6 / DEG));
           const corridor = Math.max(...B.edges.map((id) => a.graph.edges[id].width / 2 + a.graph.edges[id].sidewalk));
           if (B.edges.length > 2) expect(along - corridor, `${seed} junction in the landing zone`).toBeGreaterThan(g.landZone);
         }

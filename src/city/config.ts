@@ -788,6 +788,31 @@ export const CITY = {
       passApproach: 11,
       passCornerMax: 60,
       passSites: 40,
+      /**
+       * A chicane along one street (a through pass) swings onto the paving over one of these runs (m)
+       * and runs straight at least passStraightMin (m) past the landmark. A second route's chicane or
+       * U cut must agree with the landmark the first placed: its line within passFitSlack (m) of where
+       * the landmark wants it, along the arch's axis within passFitDeg (deg).
+       */
+      passEntry: [14, 20, 28],
+      passStraightMin: 24,
+      passFitSlack: 2,
+      passFitDeg: 8,
+      /** A chicane may leave its street this soon after the corner it came round (m: past the junction's closures). */
+      passThroughFrom: 18,
+      /** A U cut turns off one street and onto the other about as squarely as the two corners it replaces: its own bend cap (deg). */
+      passUcutMaxTurn: 96,
+      /** Added to a pass's sharpest bend when the shapes compete for a route (deg): a U cut crosses the whole plaza and wins over a chicane along one side. */
+      passShapeBias: { corner: -12, through: 0, ucut: -70 },
+      /** ... and a pass straight enough for a start grid on it (route.ts PASS_START_RUN) is worth this much (deg). */
+      passStartBias: -15,
+      /** A chicane's depth off the street as fractions of the landmark's at the block's middle: shallower swings in more gently. */
+      passDepths: [1, 0.75, 0.55],
+      /**
+       * How candidate blocks rank for the plaza (plan): points per route served, for a U cut and for a
+       * corner pass among their passes, less perMetre per metre from the city center.
+       */
+      passSiteGrade: { route: 100, ucut: 40, corner: 12, perMetre: 0.1 },
     },
     /**
      * Tunnels (src/city/districts/tunnel.ts): a street runs for part of one
@@ -976,6 +1001,12 @@ export const ROUTE = {
   waypointPreferTries: 60,
   /** A pass off the streets (route.ts RoutePass) may cut through a junction the route runs within this of straight across (deg). */
   passStraightDeg: 25,
+  /**
+   * A circuit that takes a pass allowing a start (RoutePass.start) puts its start line on it with this
+   * chance per seed (its own stream), when the pass runs straight this far (m) past the last grid row.
+   */
+  passStartChance: 0.2,
+  passStartMargin: 4,
   /** Start grid slots: the player and up to nine rivals (see the grid in route.ts). */
   gridSlots: 10,
   maxAttempts: 400,

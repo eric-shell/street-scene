@@ -357,7 +357,10 @@ export function buildFinishLines(world: World): FinishLines {
 
   const lights: LightPlan = { leds: [], ledPos: [], ledScale: [], beams: [] };
   const kit: GantryKit = { world, group, track, steelMat, darkMat, flagMat, bannerMat, beamTex, lights };
-  const runtime = lines.map(({ s, kind }, gi) => buildGantry(kit, s, kind, gi));
+  // A circuit starting on a race pass (under the monument's arch, city/route.ts Route.passStart) keeps
+  // its painted line but gets no gantry: the landmark is the gate, and steel pillars would stand in
+  // the plaza's paving beside the piers. No gantry, no sign, no burst or fireworks there.
+  const runtime = route.passStart ? [] : lines.map(({ s, kind }, gi) => buildGantry(kit, s, kind, gi));
   const gates = runtime.map((rt) => rt.gate);
   const rig = createLightRig(group, track, lights, runtime, beamTex);
   const fx = createCelebration(world, group, track, dot);
