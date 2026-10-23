@@ -255,7 +255,7 @@ function choiceList<T extends string | number | null>(items: Choice<T>[], curren
 
 /** The tire shapes as the Wheels tab lists them (TIRE_SHAPES' order, render/car/tireShapes.ts draws them). */
 const TIRE_CHOICES: Choice<TireShape>[] = [
-  { value: 'standard', label: 'Standard', sub: 'Everyday sidewall' },
+  { value: 'standard', label: 'Standard', sub: 'Square sidewall' },
   { value: 'stretched', label: 'Stretched', sub: 'Angled sidewall' },
 ];
 
