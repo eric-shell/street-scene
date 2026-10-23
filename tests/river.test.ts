@@ -7,6 +7,7 @@ import { CITY } from '../src/city/config';
 import { createTerrain } from '../src/city/terrain';
 import { bridgePoint, bridgesOf, distToBridge, rampAlong, rampPoint, rampProfile, rampsOf, riverCenter, riverL, riverSlope } from '../src/city/districts/river';
 import type { Bridge } from '../src/city/districts/river';
+import { featureHeight, featuresOf, type FeatureSample } from '../src/city/districts/riverFeatures';
 import { isRiverEdge } from '../src/city/roadGraph';
 import type { RoadGraph } from '../src/city/roadGraph';
 import { distToSegment, yawOf } from '../src/sim/math';
@@ -88,6 +89,7 @@ function drive(r: RaceState, ticks: number, check: (tick: number) => void): void
 }
 
 describe('river channel racing', () => {
+  const feat: FeatureSample = { h: 0, hx: 0, hl: 0 };
   it('nearly every seed has a river: one channel chain end to end, 6-8 entrances with one in every quarter, banks alternating, fords and side ramps', () => {
     const { seeds, rivers, tried } = riverSeeds(60, 4040);
     expect(rivers / tried).toBeGreaterThan(0.75);
@@ -249,12 +251,15 @@ describe('river channel racing', () => {
           expect(wall.bottom!).toBeLessThan(w.heightAt((wall.ax + wall.bx) / 2, (wall.az + wall.bz) / 2) - 1);
         }
         if (e.kind !== 'channel') continue;
-        // The floor runs the channel's full depth below the base terrain and drives like a road, under
-        // the decks included (asked with a body down on the floor).
+        // The floor runs the channel's full depth below the base terrain (less a set piece's own height
+        // where one stands, riverFeatures.ts) and drives like a road, under the decks included (asked
+        // with a body down on the floor).
         for (const t of [0.25, 0.5, 0.75]) {
           const x = a.x + (b.x - a.x) * t;
           const z = a.z + (b.z - a.z) * t;
-          expect(base.heightAt(x, z) - w.heightAt(x, z, -Infinity)).toBeGreaterThan(p.depth - 0.05);
+          let raised = 0;
+          for (const f of featuresOf(p)) raised += featureHeight(f, p.floor, x, z - riverCenter(p, x), feat).h;
+          expect(base.heightAt(x, z) - w.heightAt(x, z, -Infinity)).toBeGreaterThan(p.depth - raised - 0.05);
           expect(['road', 'concrete', 'water']).toContain(w.surfaceAt(x, z, -Infinity));
         }
       }

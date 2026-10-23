@@ -8,7 +8,7 @@
  * src/sim/rails.ts at their displaced positions instead of the static rail
  * walls: hits shove pieces back a little and cost speed for the dent, and the
  * steps between dented and straight pieces catch cars scraping along.
- * Timed gates (sim/gates.ts: the drawbridge's arms) join the static walls
+ * Timed gates (sim/gates.ts) join the static walls
  * while they block, for cars coming at them, and so does a train on a level
  * crossing (sim/levelCrossing.ts collideTrains) while it is on the street.
  * Car vs car: equal-ish impulses. Fixed iteration order.

@@ -8,8 +8,6 @@ import { placeCar } from '../src/sim/car';
 import { createAi, autopilotInput } from '../src/sim/ai';
 import { cos, distToSegment, sin } from '../src/sim/math';
 import { TRAFFIC_MODELS } from '../src/render/traffic/traffic';
-import { gateBlocking, gateSide } from '../src/sim/gates';
-import { leafAngle, onSpan } from '../src/city/drawbridge';
 import { carSnapshot, input, raceConfig, replayLog } from './helpers';
 
 /** Traffic state that must replay bit for bit: every car's plan, speed and body. */
@@ -211,54 +209,6 @@ describe('ambient traffic', () => {
     const b = scenario();
     expect(trafficSnapshot(b.r)).toBe(trafficSnapshot(a.r));
     expect(carSnapshot(b.r)).toBe(carSnapshot(a.r));
-  });
-
-  it('waits at the drawbridge gates and is never on the span when the leaves go up', () => {
-    let waitedSomewhere = false;
-    for (const seed of [1, 7]) {
-      const r = createRace({ ...withTraffic(raceConfig(seed, 'circuit', 0)), openWorld: true });
-      const db = r.world.drawbridge!;
-      const set = r.world.timedGates!;
-      expect(db).toBeTruthy();
-      const t = r.traffic!;
-      expect(t.net.paths.some((p) => p.gates.length > 0)).toBe(true);
-      // Park the player on the approach's sidewalk so the bubble of traffic is around the bridge.
-      const along = db.gate + 40;
-      placeCar(r.cars[0].state, db.cx + db.dx * along + db.nx * (db.half + 2.5), db.cz + db.dz * along + db.nz * (db.half + 2.5), 0, r.world);
-      const side = t.cars.map(() => set.gates.map(() => 0));
-      let crossings = 0;
-      let blockedCrossings = 0;
-      let waiting = 0;
-      for (let i = 0; i < 60 * 160; i++) {
-        const lifting = leafAngle(db, set, r.tick) > 0;
-        stepRace(r, input({}));
-        const tick = r.tick - 1;
-        t.cars.forEach((c, k) => {
-          if (c.mode === 'gone') {
-            side[k].fill(0);
-            return;
-          }
-          if (lifting) expect(onSpan(db, c.body.x, c.body.z)).toBe(false);
-          set.gates.forEach((g, gi) => {
-            const sd = gateSide(g, c.body.x, c.body.z);
-            const u = ((c.body.x - g.ax) * (g.bx - g.ax) + (c.body.z - g.az) * (g.bz - g.az)) / ((g.bx - g.ax) ** 2 + (g.bz - g.az) ** 2);
-            const within = u > -0.1 && u < 1.1;
-            // (A car recycled and respawned within one tick jumps; only a car at the line crosses it.)
-            if (within && side[k][gi] > 0 && sd <= 0 && sd > -10) {
-              crossings++;
-              if (gateBlocking(set.cycles[g.cycle], tick)) blockedCrossings++;
-            }
-            side[k][gi] = within ? (sd > 0 ? 1 : -1) : 0;
-            if (within && sd > 0 && sd < 40 && c.v < 0.5 && gateBlocking(set.cycles[g.cycle], tick)) waiting++;
-          });
-        });
-      }
-      // Traffic uses the bridge, never crosses a blocking gate, and queues at it while the leaves are up.
-      expect(crossings).toBeGreaterThan(3);
-      expect(blockedCrossings).toBe(0);
-      if (waiting > 0) waitedSomewhere = true;
-    }
-    expect(waitedSomewhere).toBe(true);
   });
 
   it('old replays (no traffic flag) run without traffic, exactly as with it off', () => {

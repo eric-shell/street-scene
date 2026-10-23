@@ -34,8 +34,6 @@ describe('drag strip', () => {
       }
       for (const n of route.nodes) expect(g.nodes[n].ring).toBeUndefined();
       for (const e of route.edges) {
-        // Street bridges over the river are fine, the drawbridge never.
-        expect(city.districts.areas.some((a) => a.kind === 'river' && a.params.drawbridge === e)).toBe(false);
         expect(g.edges[e].crossing).toBeUndefined();
       }
       // Two cars side by side on the line, the player's (slot 1) in the right hand lane.

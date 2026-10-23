@@ -23,7 +23,7 @@
  * brakes ease off with steering lock so they never trail brake into a spin,
  * and a car pinned nose in against a wall, rail, barrier or car reverses out
  * with the nose swinging toward the line before the stuck reset kicks in.
- * Timed gates (a drawbridge going up, sim/gates.ts): they brake to a stop
+ * Timed gates (a level crossing's, sim/gates.ts): they brake to a stop
  * short of one that will be down when they get there, queue behind the cars
  * already waiting and hold still, with the stuck and reverse-out logic off.
  */

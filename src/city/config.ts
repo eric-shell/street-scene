@@ -216,10 +216,40 @@ export const CITY = {
        */
       funnelReach: 6,
       funnelFlare: 5,
+      /**
+       * Two rows of fence panels across every entrance that racers break through to get in: a side
+       * ramp's first row stands across the mouth on the sidewalk, a ford's this far (m) past the top
+       * across its road; the second row stands this far (m) down the lip inside the trench.
+       */
+      fordFenceRow: 2,
+      fenceRowDrop: 3.4,
       /** Buildings and infill keep this far from the channel's top edge. */
       clearance: 5,
-      /** Clutter along the floor edges (barrels, crates, bags) about every this far (m), clear of feet and bridges. */
-      clutterSpacing: 28,
+      /** Clutter along the floor edges (barrels, crates, bags) about every this far (m), clear of feet, bridges and features. */
+      clutterSpacing: 16,
+      /** Clusters out on the floor itself (pallets, barrels, a water barrier) about every this far (m), on the side away from the trickle. */
+      floorClutterSpacing: 55,
+      /**
+       * Channel features (districts/riverFeatures.ts): count per seed [min, max]; each keeps `clear` m
+       * beyond its own span from every foot and deck edge and `gap` m from the others; a full width
+       * feature fades out over the last edgeFade m before the floor edge. Sizes in m.
+       */
+      features: {
+        count: [1, 3],
+        clear: 40,
+        gap: 90,
+        edgeFade: 1.4,
+        /** Speed hump across the floor: length along the channel, height. */
+        hump: { length: 3.4, height: 0.32 },
+        /** Water bar: the hump skewed across the floor by skewDeg. */
+        bar: { length: 2.6, height: 0.26, skewDeg: 28 },
+        /** Tabletop jump on one half: each slope's run, the flat top, height; from `inner` of the centerline, bevelled over `edge`; the lip share of the run eased in. */
+        table: { rise: 7, top: 2.5, height: 0.85, inner: 1.5, edge: 1.2, lip: 0.3 },
+        /** Ledge along one half: length, height, from `inner` of the centerline bevelled over `ease`, its ends tapered over `end`, merging into the bank over bankMerge up the slope. */
+        ledge: { length: 60, height: 0.5, inner: 1.2, ease: 1.8, end: 8, bankMerge: 3 },
+        /** Median ridge down the centerline: length, half width, height, tapered ends, the barriers' spacing along it. */
+        median: { length: 48, half: 1.2, height: 0.3, end: 6, barrierStep: 4 },
+      },
       /**
        * Other roads keep this far (m) from a side ramp's trench and plinths (the wider trench kept this
        * reach where it was, so every seed's entrance plan stayed put when the trench grew). */

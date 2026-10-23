@@ -238,7 +238,7 @@ export class RaceCinematics {
     fromCarFrame(p, a.look, s.look).lerp(fromCarFrame(p, b.look, this.tmp), e);
     s.fov = a.fov + (b.fov - a.fov) * e;
     s.roll = 0;
-    this.cam.keepOutOfWalls(p.x, p.z, s.pos, CAMERA.common.groundClearance, 0);
+    this.cam.keepOutOfWalls(p.x, p.z, s.pos, CAMERA.common.groundClearance, 0, p.y);
     this.write(s);
     if (u >= 1) {
       this.phase = 'none';
@@ -327,7 +327,7 @@ export class RaceCinematics {
     s.look.lerp(look0, 1 - e);
     s.fov = this.fov0 + (q.heroFov - this.fov0) * e;
     s.roll = q.heroRoll * DEG * e * this.side;
-    this.cam.keepOutOfWalls(p.x, p.z, s.pos, q.groundMin, 0);
+    this.cam.keepOutOfWalls(p.x, p.z, s.pos, q.groundMin, 0, p.y);
     this.write(s);
   }
 

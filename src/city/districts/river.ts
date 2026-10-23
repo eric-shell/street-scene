@@ -44,9 +44,12 @@
  * street furniture kept out) and string lights across it, never a sign.
  *
  * The floor is drivable concrete; a wet 'water' trickle (offroad grip) runs
- * to one side of the racing line; barrels, crates and bags litter the floor
- * edges; the channel ends in tunnel walls ('channelEnd') well outside the
- * city. The renderer (render/districts/river.ts) draws all of it.
+ * to one side of the racing line; barrels, crates, pallets and bags litter the
+ * floor edges with clusters out on the floor; a few set pieces per seed (a
+ * hump, a water bar, a tabletop jump, a ledge, a split median:
+ * riverFeatures.ts) break up the run; the channel ends in tunnel walls
+ * ('channelEnd') well outside the city. The renderer
+ * (render/districts/river.ts) draws all of it.
  */
 import { CITY } from '../config';
 import type { RoadGraph, RoadEdge, RoadNode } from '../roadGraph';
@@ -59,6 +62,8 @@ import type { PropKind } from '../props';
 import type { Area, AreaBuild, DistrictModule, HeightSample } from './types';
 import { emptyBuild } from './types';
 import { distToPath, polyWalls, smooth01, type Smooth, solidWalls } from './geom';
+import { type FeatureSample, featureHeight, featureSpan, featuresOf, medianBarrierXs, planFeatures } from './riverFeatures';
+import { deriveSeed } from '../../sim/prng';
 
 /** Scratch for the terrain's smoothsteps (queried per wheel per substep, so nothing allocates). */
 const SMOOTH: Smooth = { v: 0, d: 0 };
@@ -292,7 +297,7 @@ interface RampPlan {
 
 /** A bridge: one street through the band, its deck polyline and frame at the crossing. */
 export interface Bridge {
-  /** Its edges, the one whose segment crosses the centerline first (the drawbridge and hints name a bridge by it). */
+  /** Its edges, the one whose segment crosses the centerline first (hints name a bridge by it). */
   edge: number;
   edges: number[];
   /** Deck polyline, node to node, running toward +l, reaching DECK_REACH beyond the band on both banks (or the next junction). */
@@ -794,7 +799,7 @@ export const riverModule: DistrictModule = {
     if (ctx.budget.used + footprint > ctx.budget.total) return;
     // Every street over the channel runs straight from bank junction to bank junction, and so does
     // every street of the two bank rows: their pieces through bend nodes (roadGraph.ts) merge back
-    // into one edge, so a bridge deck, a ford's ramps, a side ramp's T and the drawbridge each sit on
+    // into one edge, so a bridge deck, a ford's ramps and a side ramp's T each sit on
     // one straight edge. The river plans first, so no district holds an id yet; the entrances are
     // planned again on the merged streets.
     {
@@ -944,6 +949,15 @@ export const riverModule: DistrictModule = {
         }
         prev = id;
       }
+      // The set pieces along the floor, between the end stubs, clear of every foot and deck.
+      planFeatures(
+        p,
+        deriveSeed(p.seed, 'river:features'),
+        x0 + CFG.endStub + 30,
+        x1 - CFG.endStub - 30,
+        [...feet.values()].map((id) => g.nodes[id].x),
+        bridges.map((br) => ({ cx: br.cx, half: br.dk + CFG.bridgeBody })),
+      );
     }
     ctx.graphChanged();
 
@@ -997,6 +1011,9 @@ export const riverModule: DistrictModule = {
     const fenceL = T + 0.5;
     const bridges = bridgesOf(ctx.graph, area);
     const ramps = rampsOf(area);
+    const features = featuresOf(p);
+    const spans = features.map((f) => featureSpan(f, F));
+    const feat: FeatureSample = { h: 0, hx: 0, hl: 0 };
     const zc = (x: number) => riverCenter(p, x);
     const at = (x: number, l: number): Vec2 => ({ x, z: zc(x) + l });
     const band = (xa: number, xb: number, la: number, lb: number, step = 16): Vec2[] => {
@@ -1024,6 +1041,7 @@ export const riverModule: DistrictModule = {
       const al = l * sg;
       let h = 0;
       let gl = 0;
+      let gx0 = 0;
       if (al < T) {
         const st = smooth01(F, T, al, SMOOTH);
         h = -D * (1 - st.v);
@@ -1041,8 +1059,17 @@ export const riverModule: DistrictModule = {
           gl = ((D * pr.df) / (r.topL - F)) * sg;
         }
       }
+      // The set pieces on the floor (riverFeatures.ts): partials in x and l, l's gradient being (-slope, 1).
+      for (let i = 0; i < features.length; i++) {
+        if (Math.abs(x - features[i].x) >= spans[i]) continue;
+        featureHeight(features[i], F, x, l, feat);
+        h += feat.h;
+        gl += feat.hl;
+        // feat.hx is at fixed l: the x gradient below adds -gl * s for l's own drift.
+        gx0 += feat.hx;
+      }
       if (h === 0) return;
-      let gx = -gl * s;
+      let gx = gx0 - gl * s;
       let gz = gl;
       if (flat) {
         for (const br of bridges) {
@@ -1268,18 +1295,41 @@ export const riverModule: DistrictModule = {
     b.walls.push({ ax: p.x0, az: zc(p.x0) - fenceL, bx: p.x0, bz: zc(p.x0) + fenceL, nx: 1, nz: 0, kind: 'wall', look: 'channelEnd', area: id });
     b.walls.push({ ax: p.x1, az: zc(p.x1) - fenceL, bx: p.x1, bz: zc(p.x1) + fenceL, nx: -1, nz: 0, kind: 'wall', look: 'channelEnd', area: id });
 
-    // Clutter along the floor edges, clear of feet (closures and meets stand there) and decks.
-    const busy = (x: number) => ramps.some((r) => Math.abs(x - r.ax) < r.hw + r.body + 14) || bridges.some((br) => Math.abs(x - br.cx) < br.dk + body + 8);
-    const kinds: PropKind[] = ['barrel', 'barrel', 'crate', 'trashBags', 'trashBags'];
+    // Clutter along the floor edges, clear of feet (closures and meets stand there), decks and the features.
+    const busy = (x: number, half = 0) => ramps.some((r) => Math.abs(x - r.ax) < r.hw + r.body + 14 + half) || bridges.some((br) => Math.abs(x - br.cx) < br.dk + body + 8 + half) || features.some((f, i) => Math.abs(x - f.x) < spans[i] + 6 + half);
+    const push = (kind: PropKind, x: number, l: number) => b.destructibles.push({ kind, x, z: zc(x) + l, yaw: rng.range(0, Math.PI * 2), lift: 0, area: id });
+    const kinds: PropKind[] = ['barrel', 'barrel', 'crate', 'trashBags', 'trashBags', 'pallets', 'sandbags', 'barrel', 'crate'];
     for (let x = p.x0 + 40; x < p.x1 - 40; x += CFG.clutterSpacing * rng.range(0.6, 1.4)) {
       if (busy(x)) continue;
       const s = rng.chance(0.5) ? 1 : -1;
+      const n = rng.int(1, 4);
+      for (let i = 0; i < n; i++) {
+        // Right at the floor edge: an obstacle for a car hugging the bank, like back alley clutter.
+        push(kinds[rng.int(0, kinds.length - 1)], x + rng.range(-3, 3), s * (F - 0.75 - rng.range(0, 0.9)));
+      }
+    }
+    // Clusters out on the floor, on the side away from the trickle: a stack of pallets or a water
+    // barrier with barrels and crates around it, something to thread or smash through at speed.
+    const floorSide = -Math.sign(CFG.waterOffset) || 1;
+    const floorKinds: PropKind[] = ['barrel', 'crate', 'pallets', 'barrel', 'sandbags'];
+    for (let x = p.x0 + 70 + rng.range(0, 30); x < p.x1 - 70; x += CFG.floorClutterSpacing * rng.range(0.7, 1.3)) {
+      if (busy(x, 4)) continue;
+      const l = floorSide * rng.range(3, F - 4);
+      push(rng.chance(0.5) ? 'waterBarrier' : 'pallets', x, l);
       const n = rng.int(1, 3);
       for (let i = 0; i < n; i++) {
-        const px = x + rng.range(-2.5, 2.5);
-        // Right at the floor edge: an obstacle for a car hugging the bank, like back alley clutter.
-        const l = s * (F - 0.75 - rng.range(0, 0.6));
-        b.destructibles.push({ kind: kinds[rng.int(0, kinds.length - 1)], x: px, z: zc(px) + l, yaw: rng.range(0, Math.PI * 2), lift: 0, area: id });
+        const a = rng.range(0, Math.PI * 2);
+        const d = rng.range(1.6, 2.6);
+        push(floorKinds[rng.int(0, floorKinds.length - 1)], x + Math.cos(a) * d, l + Math.sin(a) * d);
+      }
+    }
+    // A median's barriers along its ridge: water barriers and sandbags in turn, lying along the channel.
+    for (const f of features) {
+      if (f.kind !== 'median') continue;
+      let k = 0;
+      for (const x of medianBarrierXs(f)) {
+        const yaw = Math.atan2(-riverSlope(p, x), 1);
+        b.destructibles.push({ kind: k++ % 2 ? 'sandbags' : 'waterBarrier', x, z: zc(x), yaw, lift: 0, area: id });
       }
     }
     return b;
@@ -1358,6 +1408,17 @@ function funnel(g: RoadGraph, b: AreaBuild, rng: Rng, r: Ramp, aTop: number, aCu
       // A sawhorse along the curb past the line's end; nothing heavy where a car running wide lands.
       push('sawhorse', P(aEnd - 0.4, sd * (latOut + 2.2)), Math.atan2(-r.ux, -r.uz) + rng.range(-0.15, 0.15));
     }
+  }
+  // Two rows of fence panels across the way in, both to be broken through: one across the mouth (a
+  // side ramp's on the sidewalk between the plinth tips, a ford's across its road past the top) and
+  // one down the lip inside the trench, each spanning the trench's width where it stands.
+  const rowYaw = Math.atan2(-r.ux, -r.uz);
+  for (const along of [r.ford ? aTop + CFG.fordFenceRow : (aTop + aCurb) / 2, aTop - CFG.fenceRowDrop]) {
+    const inside = along < aTop;
+    const latL = inside ? rampHalf(r, along, 1) - 0.6 : r.ford ? r.hw - 0.4 : rampHalf(r, aTop, 1) - 0.4;
+    const latR = inside ? rampHalf(r, along, -1) - 0.6 : r.ford ? r.hw - 0.4 : rampHalf(r, aTop, -1) - 0.4;
+    const n = Math.max(2, Math.round((latL + latR) / 2.1));
+    for (let k = 0; k <= n; k++) push('fencePanel', rampPoint(r, along, -latR + ((latL + latR) * k) / n), rowYaw + rng.range(-0.08, 0.08));
   }
   // String lights: across the mouth between the plinths' tops, and across the street edge in front.
   const mouthA = r.ford ? aTop + 1.2 : aTop + 1.0;

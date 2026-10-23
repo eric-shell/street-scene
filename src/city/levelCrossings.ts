@@ -2,10 +2,10 @@
  * Level crossings: where a street crosses the El's tracks at grade (the crest
  * street of a bluff, districts/bluff.ts), two timed gates (sim/gates.ts) come
  * down while a train goes over. Static data built with the world
- * (createWorld), appended to World.timedGates after the drawbridge's, so the
+ * (createWorld), appended to World.timedGates, so the
  * shared machinery does the rest: ambient traffic stopping, the lost timer
- * leaving held cars alone, the HUD warning and the bell. Unlike the
- * drawbridge's, these gates are no wall: their arms snap off when a car
+ * leaving held cars alone, the HUD warning and the bell. These gates are
+ * no wall: their arms snap off when a car
  * drives through them (sim/levelCrossing.ts), and the only hard thing on the
  * crossing is the train itself. Racers time their run over the tracks by the
  * trains, not the arms (TimedGate.train, a second cycle that blocks only
@@ -25,8 +25,7 @@
  * the crossing exactly when the timetable puts it there.
  *
  * A car that sits on the tracks when a train arrives is towed off behind the
- * nearer gate, like a car left on the drawbridge (sim/levelCrossing.ts, from
- * sim/hazards.ts), and a car that comes at the train stops against it:
+ * nearer gate (sim/levelCrossing.ts), and a car that comes at the train stops against it:
  * `trains` lists when each track's strip is occupied.
  */
 import type { City } from './world';
@@ -110,7 +109,7 @@ function tauAt(run: RunProfile, target: number): number {
 
 /**
  * Build the city's level crossings and append their cycles and gates to `set`
- * (createWorld, after the drawbridge's). Returns them in a fixed order.
+ * (createWorld). Returns them in a fixed order.
  */
 export function addLevelCrossings(city: City, set: GateSet): LevelCrossing[] {
   const out: LevelCrossing[] = [];

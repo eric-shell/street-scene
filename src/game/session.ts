@@ -327,7 +327,7 @@ export class RaceSession {
   private fireworksLap = -1;
   /** The police helicopter's brief from the last tick (render/traffic/policeChase.ts): patrol, or chase which car. */
   private chaseCall: ChaseCall = { phase: 'patrol', car: -1 };
-  /** The drawbridge posed at sim time, its bell and the HUD warning (game/hazardFx.ts). */
+  /** The HUD warning for the level crossing gates ahead (game/hazardFx.ts). */
   private readonly hazards: HazardFx;
   /** Racer poses for the crowd (reused every frame). */
   private readonly crowdCars: CrowdCar[];
@@ -366,7 +366,7 @@ export class RaceSession {
     this.crowdCars = this.race.cars.map(() => ({ x: 0, z: 0, speed: 0 }));
     this.hud = new Hud(uiRoot, this.race.world);
     this.hud.onMapClick = () => this.toggleMap();
-    this.hazards = new HazardFx(this.night.drawbridge, this.hud.root);
+    this.hazards = new HazardFx(this.hud.root);
     // The same card as the drone's in every mode: Map (not in a replay, which has none) and hide.
     const shared = {
       actions: this.isReplay ? [] : [btn(MapIcon, 'Map', () => this.toggleMap(), '--small')],
@@ -1087,8 +1087,7 @@ export class RaceSession {
     // The El's trains and level crossings at the interpolated sim time: the gates close for these trains.
     this.night.syncDistricts(Math.max(0, r.tick - 1 + (this.paused ? 1 : alpha)), !this.paused, r.brokenArms);
     this.night.update(this.time);
-    // Timed hazards (the drawbridge) at the interpolated sim time, so replays look the same.
-    this.hazards.update(r, this.paused ? 1 : alpha, !this.paused);
+    this.hazards.update(r);
     // Corner rail pieces shoved by hits this race.
     this.night.arrows.syncRails(r.rails);
     this.night.city.finishLine.update(this.time);

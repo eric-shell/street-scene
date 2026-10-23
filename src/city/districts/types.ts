@@ -95,7 +95,7 @@ export const COBBLE_PRIORITY = 6;
  *   the channel floor under its deck (solids with Wall.top, river).
  * marketRail: the night market's crowd rail along a pen and its end caps back to the building line;
  *   marketFront: the frontage behind a pen, a facade or the market's shuttered back wall (market).
- * gate: a timed gate's arms across the deck (sim/gates.ts; drawn by render/street/drawbridge.ts).
+ * gate: a timed gate's arms across a street (sim/gates.ts; a level crossing's are drawn by render/districts/bluff.ts).
  *   Timed gates are not in World.walls: they block only while their schedule says so.
  * roadworks: the plant of a lane closure (arrow board, excavator, skip, light tower) (roadworks).
  * bluff: retaining wall where a street ramps or dips through the escarpment (bluff).

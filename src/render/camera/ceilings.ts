@@ -1,7 +1,8 @@
 /**
  * What hangs over the streets, for the cameras: tunnel ceilings and the mass
  * above them (an air rights building, a ridge's rock), viaduct decks, gantry
- * trusses and a car park garage's levels over its drivable floor and ramp.
+ * trusses, a car park garage's levels over its drivable floor and ramp, and
+ * the bridge decks over the river channel (slab and girders over the floor).
  * The chase camera rides 2-4 m over the car, but an orbit drag or a wall
  * pull-in (camera.ts wallLift) can lift it into a deck or a tunnel's roof,
  * and the intro fly-in can pass through one: keepOutOfWalls
@@ -20,6 +21,8 @@ import { CITY } from '../../city/config';
 import { boreRoad, bridgeTop, ceilingAbove, coverOf, deckLine, ridgeShape, rockAt, tunnelShape, viaductShape } from '../districts/structureShapes';
 import { carParkGeo } from '../../city/districts/carPark';
 import { garageSpan } from '../districts/carPark';
+import { bridgesOf, distToBridge, riverL } from '../../city/districts/river';
+import { DECK_UNDERSIDE } from '../districts/river';
 
 /** Room kept between the camera and a ceiling or a deck (m): the near plane and a little air. */
 export const CEILING_MARGIN = 0.45;
@@ -93,6 +96,26 @@ function build(world: World): Overhead[] {
       // The garage's levels over its drivable floor and the covered ramp's roof (render/districts/carPark.ts).
       const g = carParkGeo(a);
       out.push({ ...bbox([...g.deck, ...g.ramp], 1), at: (x, z, s) => garageSpan(g, world.heightAt, x, z, s) });
+    } else if (a.kind === 'river') {
+      // Each bridge deck over the channel: the footprint of its slab (the deck's half width, the band
+      // plus the parapets' reach across it); the deck is the terrain's height there (World.heightAt
+      // without a body height), the floor beneath is the lower level.
+      const reach = a.params.top + 3;
+      for (const br of bridgesOf(world.graph, a)) {
+        const half = br.dk + 1;
+        out.push({
+          ...bbox(br.pts, half + 1),
+          at(x, z, s) {
+            if (distToBridge(br, x, z) > half || Math.abs(riverL(a.params, x, z)) > reach) return false;
+            const deck = world.heightAt(x, z);
+            // Only a real two level spot: over the banks beyond the floor the deck is the ground itself.
+            if (deck - world.heightAt(x, z, -Infinity) < 1) return false;
+            s.bottom = deck - DECK_UNDERSIDE;
+            s.top = deck + 1.1;
+            return true;
+          },
+        });
+      }
     } else if (a.kind === 'overpass' && a.variant === 'gantry') {
       const g = gantryShape(a);
       out.push({

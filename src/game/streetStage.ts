@@ -5,11 +5,11 @@
  * garage's Street presentation (with an orbit camera that rides along).
  *
  * Render only. The car follows a smoothed line in the right lane around the
- * event route (CruisePath), lifts off for corners and brakes for the drawbridge
- * and the level crossings while their gates are down, and sits on the terrain
+ * event route (CruisePath), lifts off for corners and brakes for the level
+ * crossings while their gates are down, and sits on the terrain
  * like a sprung car: it dives under braking, squats as it pulls away and leans
  * out of corners. The stage owns the menu city (World and NightScene) and keeps
- * its own clock, which the timed districts and the drawbridge read as ticks
+ * its own clock, which the timed districts and the crossings read as ticks
  * (time x TICK_HZ), so the gates the car waits at are the gates on screen.
  *
  * Free roam from the menu carries straight on from this car: the session
@@ -24,7 +24,6 @@ import { CarView, WHEEL_KEYS, type CarPose } from '../render/car/carView';
 import { ROAD_Y } from '../render/street/cityMeshes';
 import type { CarAssetLibrary } from '../render/car/carAssets';
 import type { CarBuild } from '../shared/carBuild';
-import { TICK_HZ } from '../sim/constants';
 import { clamp } from '../sim/math';
 import { damp } from '../shared/anim';
 import type { Settings } from '../ui/settings';
@@ -40,7 +39,7 @@ export class StreetStage {
   /** The cruise's driving logic and its path round the route. */
   readonly cruise: Cruise;
   readonly path: CruisePath;
-  /** Scene clock (s): the timed districts, the drawbridge and the gates the car waits at all read it. */
+  /** Scene clock (s): the timed districts and the gates the car waits at all read it. */
   time = 0;
   /** Distance along the path (m) and speed (m/s). */
   s: number;
@@ -185,8 +184,6 @@ export class StreetStage {
     // The key light rides with the car, as in a race.
     this.carLight.follow(p);
     this.night.lighting.update(opts.focus ?? this.focus.set(p.x, p.y, p.z));
-    // The drawbridge on the stage clock, through sync: once a session has driven it, its own clock no longer does.
-    this.night.drawbridge.sync(this.time * TICK_HZ, false);
     this.night.update(this.time);
     // The street furniture's own clock: the traffic signals, any debris and spray still settling.
     this.night.props.update(dt, this.time, undefined, NO_CARS);

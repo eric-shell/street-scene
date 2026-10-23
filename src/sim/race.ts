@@ -25,7 +25,7 @@ import { RailState, createRailState } from './rails';
 import { TrafficState, createTraffic, stepTraffic } from './traffic';
 import { DriftZoneState, createDriftZoneState, stepDriftZones } from './driftZones';
 import { waitingAtGate } from './gates';
-import { stepHazards } from './hazards';
+import { stepLevelCrossings } from './levelCrossing';
 
 export type RaceMode = 'circuit' | 'sprint' | 'drift' | 'drag' | 'waypoint';
 
@@ -86,7 +86,7 @@ export interface StartPose {
   /** Ground height it was on (m): picks the level under a river bridge deck (World.heightAt); the deck when missing. */
   y?: number;
   /**
-   * First tick of the race: the timed gates, the drawbridge and the El are
+   * First tick of the race: the timed gates, the trains and the El are
    * pure schedules of the tick, so starting on the tick the menu city showed
    * keeps them where they were on screen.
    */
@@ -575,8 +575,8 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
   }
   // Destructible street furniture: knocks props down, slows cars, emits 'prop' events.
   stepProps(r);
-  // Timed hazards: cars left on a rising drawbridge or on the tracks are towed off, level crossing arms snap (sim/hazards.ts).
-  stepHazards(r);
+  // Level crossings (sim/levelCrossing.ts): arms snap under cars, a car left on the tracks when a train comes is towed off.
+  stepLevelCrossings(r);
   for (let i = 0; i < r.cars.length; i++) {
     if (r.cars[i].finished) continue;
     for (let j = i + 1; j < r.cars.length; j++) {
@@ -782,7 +782,7 @@ function updateLost(r: RaceState, rc: RaceCar, p: RouteProgress): void {
   let off = offFrom(p);
   if (off > LOST.lateral) off = offFrom(r.world.routeProgress(c.x, c.z));
   const offroad = c.surface === 'offroad';
-  // A car held at a timed gate (the drawbridge going up) is waiting, not lost.
+  // A car held at a timed gate (a level crossing's) is waiting, not lost.
   const held = (off > LOST.lateral || offroad) && waitingAtGate(r.world.timedGates, r.tick, c.x, c.z, c.speed);
   if (off > LOST.farLateral && !held) return resetToRoad(r, rc);
   // Up in one of the route's car parks a car is far from the streets but not lost.

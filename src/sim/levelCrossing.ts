@@ -10,8 +10,7 @@
  * circle), so a car that comes at it stops against its side. A car already
  * on the rails when the train comes (it stopped there, spun there) is towed
  * off, put at a standstill behind the nearer gate facing the way it was
- * heading along the street, with a 'reset' event, the way the drawbridge
- * clears its span (sim/hazards.ts); ambient traffic caught there is recycled
+ * heading along the street, with a 'reset' event; ambient traffic caught there is recycled
  * (sim/traffic.ts). Pure and deterministic: a schedule lookup per crossing
  * per tick, a box against two arms per car while the arms are down, and a
  * point test per car while a train is on the street.

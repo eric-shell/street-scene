@@ -1,6 +1,6 @@
 /**
- * Warning bell for timed gates (the drawbridge's, render/street/drawbridge.ts; a
- * level crossing rings the same way): the electric "ding ding ding" of a
+ * Warning bell for timed gates (the level crossings', render/districts/bluff.ts):
+ * the electric "ding ding ding" of a
  * crossing gong. One strike is rendered offline into a short buffer (a few
  * inharmonic bell partials with exponential decays plus a click of hammer
  * noise) whose length is the strike interval, then looped, so ringing costs

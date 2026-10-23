@@ -528,9 +528,9 @@ export class ChaseCamera {
       this.look.lerp(lookT, 1 - Math.exp(-dt * prof.lookStiffness));
     }
 
-    // Keep the camera out of buildings.
+    // Keep the camera out of buildings, on the car's level under a bridge deck.
     const out = this.pos.clone();
-    this.keepOutOfWalls(p.x, p.z, out, common.groundClearance, common.wallLift);
+    this.keepOutOfWalls(p.x, p.z, out, common.groundClearance, common.wallLift, p.y);
     cam.position.copy(out);
     cam.up.set(0, 1, 0);
     this.lookTarget.copy(this.look);
@@ -548,20 +548,24 @@ export class ChaseCamera {
   /**
    * Pull a camera position in toward (ax, az) if the line to it crosses a wall,
    * lifting it by `lift` m at full pull, and keep it `clearance` m above the ground
-   * and out of anything overhead (render/camera/ceilings.ts).
+   * and out of anything overhead (render/camera/ceilings.ts). `ay` is the car
+   * body's height: with it the walls of the other level under a bridge deck
+   * over the river (the parapets above a car on the channel floor, the piers
+   * below one on the deck) are ignored and the ground is the car's level, so
+   * the camera follows the car under the deck instead of popping up onto it.
    */
-  keepOutOfWalls(ax: number, az: number, out: THREE.Vector3, clearance: number, lift: number): void {
+  keepOutOfWalls(ax: number, az: number, out: THREE.Vector3, clearance: number, lift: number, ay?: number): void {
     if (!this.world) return;
     const c = CAMERA.common;
-    const hit = this.wallHit(ax, az, out.x, out.z);
+    const hit = this.wallHit(ax, az, out.x, out.z, ay);
     if (hit < 1) {
       const t = Math.max(c.wallMinFraction, hit - c.wallMargin);
       out.x = ax + (out.x - ax) * t;
       out.z = az + (out.z - az) * t;
       out.y += (1 - t) * lift;
     }
-    out.y = Math.max(out.y, this.world.heightAt(out.x, out.z) + clearance);
-    // Never inside a tunnel's roof, a viaduct's deck or a gantry's truss.
+    out.y = Math.max(out.y, this.world.heightAt(out.x, out.z, ay) + clearance);
+    // Never inside a tunnel's roof, a viaduct's deck, a gantry's truss or a river bridge's slab.
     clampCeiling(this.world, out);
   }
 
@@ -578,9 +582,9 @@ export class ChaseCamera {
     }
   }
 
-  /** Fraction along (ax,az)->(bx,bz) of the first wall hit, or 1. */
-  wallHit(ax: number, az: number, bx: number, bz: number): number {
-    return this.world ? wallHit(this.world, ax, az, bx, bz, this.scratch) : 1;
+  /** Fraction along (ax,az)->(bx,bz) of the first wall hit, or 1; `y` as for keepOutOfWalls. */
+  wallHit(ax: number, az: number, bx: number, bz: number, y?: number): number {
+    return this.world ? wallHit(this.world, ax, az, bx, bz, this.scratch, y) : 1;
   }
 }
 
@@ -588,15 +592,18 @@ export class ChaseCamera {
  * Fraction along (ax,az)->(bx,bz) of the first static wall the line crosses,
  * or 1 when it is clear: how every camera stays out of the buildings (the race
  * cameras here, the menu and garage street cameras in game/streetCameras.ts).
+ * With `y` (the followed car's body height) a low wall it passes over
+ * (Wall.top) or a deck's parapet it passes under (Wall.bottom) does not count.
  * `scratch` is reused for the grid query.
  */
-export function wallHit(w: World, ax: number, az: number, bx: number, bz: number, scratch: number[]): number {
+export function wallHit(w: World, ax: number, az: number, bx: number, bz: number, scratch: number[], y?: number): number {
   w.wallGrid.query(Math.min(ax, bx) - 1, Math.min(az, bz) - 1, Math.max(ax, bx) + 1, Math.max(az, bz) + 1, scratch);
   let best = 1;
   const dx = bx - ax;
   const dz = bz - az;
   for (const id of scratch) {
     const s = w.walls[id];
+    if (y !== undefined && ((s.top !== undefined && y > s.top) || (s.bottom !== undefined && y < s.bottom))) continue;
     const ex = s.bx - s.ax;
     const ez = s.bz - s.az;
     const den = dx * ez - dz * ex;

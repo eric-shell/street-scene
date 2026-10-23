@@ -1,7 +1,6 @@
 /**
  * Timed gates: the generic mechanism behind every scheduled road hazard (the
- * drawbridge over the river, city/drawbridge.ts; a level crossing would use
- * the same pieces). A gate is a one sided wall across a road that stops cars
+ * level crossings, city/levelCrossings.ts). A gate is a one sided wall across a road that stops cars
  * only while its schedule says so; the schedule (GateCycle) is static data
  * and the state at any tick is a pure function of that tick (gatePhase), so
  * World stays immutable, nothing is kept on RaceState, a replay sees exactly
@@ -20,7 +19,7 @@
  * a blocking gate holds back a car whose center is on its holding side (the
  * side its normal points to), with the same one sided push as a wall, so a
  * fast car cannot tunnel through; a car whose center is already past the line
- * (caught on a drawbridge span when the gates came down) drives out freely.
+ * (caught between the gates when they came down) drives out freely.
  * Gates are not part of World.walls (they stand across a road, which no
  * static wall may), and each carries a WallLook its renderer draws. A level
  * crossing's gates (TimedGate.train) are no wall at all: their arms snap off

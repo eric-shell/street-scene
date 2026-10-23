@@ -41,12 +41,12 @@
  * Positions are also clamped so a driving car never advances into its
  * leader, which keeps driving cars from ever overlapping.
  *
- * Timed gates (sim/gates.ts: the drawbridge's arms): every lane or connector
+ * Timed gates (sim/gates.ts: a level crossing's arms): every lane or connector
  * crossing a gate line from its holding side knows where. A driver stops
  * short of it whenever the gate is not open, or would close before the car
- * has cleared the bridge beyond it, unless it is already too close to stop;
- * so nobody is on the span when the leaves go up (and any car that still is,
- * after a crash say, is taken off it).
+ * has cleared the crossing beyond it, unless it is already too close to stop;
+ * so nobody is on the tracks when the train comes (and any car that still is,
+ * after a crash say, is taken off them).
  *
  * Contact: race cars collide with traffic as solid bodies (collideCars). A
  * struck car turns loose: a passive body that slides, spins and scrapes off
@@ -73,7 +73,6 @@ import { Rng, deriveSeed } from './prng';
 import { DEG, TAU, abs, approach, atan2, cos, distToSegment, exp, segmentT, sin, smoothstep, sqrt, wrapAngle, yawOf } from './math';
 import type { RaceCar, RaceEvent, RaceState } from './race';
 import { GatePhase, gatePhase } from './gates';
-import { leafAngle, onSpan } from '../city/drawbridge';
 import { trainAt } from './levelCrossing';
 
 /** Network layout, counts and spawning (not physics: those are TRAFFIC in drivingParams.json). */
@@ -149,7 +148,7 @@ export const TRAFFIC_LAYOUT = {
    * Timed gates: the nose stops this far short of the line (m); a driver goes
    * on when the gate stays open until it is this long (s) past the bridge
    * beyond, judged at no less than gateMinSpeed (m/s); nothing spawns within
-   * gateSpawnClear (m) of a drawbridge span.
+   * gateSpawnClear (m) of a level crossing's gates.
    */
   gateStop: 1.6,
   gateMargin: 1.5,
@@ -771,8 +770,7 @@ function trySpawn(t: TrafficState, world: World, c: TrafficCar, cars: readonly R
     samplePath(p, s, pose);
     const d = sqrt((pose.x - fx) ** 2 + (pose.z - fz) ** 2);
     if (d < minD || d > maxD) continue;
-    if (world.drawbridge && onSpan(world.drawbridge, pose.x, pose.z, L.gateSpawnClear)) continue;
-    // Nor on a level crossing's tracks (city/levelCrossings.ts).
+    // Not on a level crossing's tracks (city/levelCrossings.ts).
     if (world.levelCrossings?.some((lc) => (lc.x - pose.x) ** 2 + (lc.z - pose.z) ** 2 < (lc.gate + L.gateSpawnClear) ** 2)) continue;
     let ok = true;
     for (const rc of cars) {
@@ -1188,16 +1186,10 @@ export function stepTraffic(r: RaceState): void {
     }
   }
 
-  // 6. Recycling: out of the bubble, or struck / stuck for good with nobody near, or on a rising drawbridge leaf; then respawns.
+  // 6. Recycling: out of the bubble, or struck / stuck for good with nobody near, or met by a train; then respawns.
   const focus = r.cars[0]?.state;
-  const db = r.world.drawbridge;
-  const lifting = !!db && !!r.world.timedGates && leafAngle(db, r.world.timedGates, r.tick) > 0;
   let spawns = 0;
   for (const c of cars) {
-    if (lifting && c.mode !== 'gone' && onSpan(db!, c.body.x, c.body.z, 1)) {
-      release(c);
-      c.mode = 'gone';
-    }
     // A car a train meets on a level crossing (struck there, say) goes too (sim/levelCrossing.ts).
     if (c.mode !== 'gone' && trainAt(r.world, r.tick, c.body.x, c.body.z, 1)) {
       release(c);

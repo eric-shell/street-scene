@@ -1,6 +1,6 @@
 /**
- * Putting a car back down as a reset: resetToRoad and resetToStreet (sim/race.ts), and the tows off a rising
- * drawbridge span (sim/hazards.ts) or a level crossing's tracks (sim/levelCrossing.ts). The car stands still
+ * Putting a car back down as a reset: resetToRoad and resetToStreet (sim/race.ts), and the tow off a level
+ * crossing's tracks (sim/levelCrossing.ts). The car stands still
  * where it is put (placeCar), gets a second's cooldown before the next reset, its stuck and wrong way timers
  * cleared, and the race a 'reset' event. Pure and deterministic.
  */

@@ -200,9 +200,7 @@ export function findSprintNodes(g: RoadGraph, seed: number, variant = 0, want?: 
   return best;
 }
 
-/** Through streets a drag strip may run along: no alley, river floor, ramp or level crossing (bridges: world.ts keeps it off the drawbridge). */
-
-/** Through streets a drag strip may run along: no alley, river floor, ramp or level crossing (bridges: world.ts keeps it off the drawbridge). */
+/** Through streets a drag strip may run along: no alley, river floor, ramp or level crossing. */
 const DRAG_KINDS = new Set(['street', 'avenue', 'boulevard', 'diagonal']);
 
 /**

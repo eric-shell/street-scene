@@ -21,7 +21,6 @@ import { carveRouteShortcuts, hasShortcutSpot, qualifiedCount } from './district
 import { ROUTE_INDEX, carParkGates, carParkRails, carParkSites, planCarParks, settleCarParks } from './districts/carPark';
 import { bayRoadDistance, baysByEdge } from './busBays';
 import { CityEvent, EventFlavourId, eventOffer, eventRoutePreference, pickEventFlavour, resolveEvent, routeEdges } from './events';
-import { Drawbridge, buildTimedGates, markDrawbridge } from './drawbridge';
 import type { GateSet } from '../sim/gates';
 import { LevelCrossing, addLevelCrossings } from './levelCrossings';
 
@@ -145,8 +144,6 @@ export function planRoads(seed: number, forceFlavour?: EventFlavourId): { graph:
   });
   if (!routeNodes) throw new Error('routes were not planned');
   const nodes: Record<PlannedRouteKind, number[]> = routeNodes;
-  // One bridge becomes the drawbridge, its span kept clear of street furniture (city/drawbridge.ts).
-  markDrawbridge(seed, graph, districts.areas, districts.builds, nodes);
   const event = resolveEvent(seed, flavour, graph, districts.areas, [
     { nodes: nodes.circuit, closed: true },
     { nodes: nodes.sprint, closed: false },
@@ -208,10 +205,8 @@ export interface World extends City {
   areas: Area[];
   /** Area at a point (4 m raster): the block, park, plaza, channel... or null on plain streets. */
   areaAt(x: number, z: number): Area | null;
-  /** Timed gates and their schedules (sim/gates.ts): the drawbridge's. Absent on hand-built test worlds. */
+  /** Timed gates and their schedules (sim/gates.ts): the level crossings'. Absent on hand-built test worlds. */
   timedGates?: GateSet;
-  /** The river's drawbridge (city/drawbridge.ts), or null when the city has none. */
-  drawbridge?: Drawbridge | null;
   /** Level crossings over the El at grade (city/levelCrossings.ts); their gates are in timedGates. */
   levelCrossings?: LevelCrossing[];
 }
@@ -399,12 +394,11 @@ const STRIP_CLEAR = ROUTE.dragLaneOffset + 1.5;
 /**
  * Whether a street can be part of the drag strip: no district on its
  * carriageway, sampled every 8 m along it. A street bridge over the river
- * stands in the river's area and is fine, the drawbridge (a timed gate) never.
+ * stands in the river's area and is fine.
  */
 function stripStreet(city: City, edge: number): boolean {
   const g = city.graph;
   const e = g.edges[edge];
-  if (e.bridge && city.districts.areas.some((a) => a.kind === 'river' && a.params.drawbridge === edge)) return false;
   const A = g.nodes[e.a];
   const B = g.nodes[e.b];
   const steps = Math.max(1, Math.ceil(e.length / 8));
@@ -446,7 +440,8 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
   const props = blocks.props;
   const propGrid = buildPropGrid(graph, props);
   const coveredProps = propsUnderWalls(props, propGrid, walls.slice(blocks.walls.length));
-  const { timedGates, drawbridge } = buildTimedGates(seed, graph, city.districts.areas);
+  // Timed gates (sim/gates.ts): the level crossings' (city/levelCrossings.ts) fill the set.
+  const timedGates: GateSet = { cycles: [], gates: [] };
   const levelCrossings = addLevelCrossings(city, timedGates);
   const pad = 60;
   const wallGrid = SpatialGrid.forBounds(graph.bounds.minX - pad, graph.bounds.minZ - pad, graph.bounds.maxX + pad, graph.bounds.maxZ + pad, CITY.broadphaseCell);
@@ -798,7 +793,6 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     areaAt: city.districts.areaAt,
     timedGates,
     levelCrossings,
-    drawbridge,
   };
 }
 
