@@ -49,6 +49,22 @@ Authored cars are `assets/source/eshell/<carId>/<carId>.blend` (collections `Car
 - **Assemble and save**: build `<carId>:Car|Parts|Wheels|Rig` collections in the working file (object names may carry a `<carId>.` prefix; the exporter strips it), `remap_materials` on every mesh, Rig empties at `(±x, ±axle_y, 0.28)`, `Parts` in garage order with a `displayName` property. Save a copy, run `saveCar.py` headless, then `npm run assets` (ask first; it rewrites generated catalog entries).
 - **Verify the shipped result** without a browser: a headless render of `public/` GLBs (car plus parts plus wheels scaled to the manifest radius; the meshopt node scale must be dropped before scaling wheels). The game itself: `/dev` garage.
 
+## Donor imports (cars and wheels)
+
+The processes are `docs/carDonors.md` (`carDonors.py`: `donor`, `reduce_donor`) and `docs/carWheels.md` (`carWheels.py`: `wheel`, `wheel_report`, `wheel_sheet`). What they share, learned the hard way on 2026-10-21/22, applies to any model brought in from Sketchfab:
+
+- **Licence first**, through the API (`https://api.sketchfab.com/v3/models/<uid>`: `license`, `isDownloadable`), then `import_asset(source='sketchfab', id=uid, target_size=...)`; the size is irrelevant, the pipeline scales from the wheelbase or the lip.
+- **Names mean nothing.** Materials and objects are `Material.026` and `Object_12`; classify by geometry (radius bands, thickness, island count, position against the axles) and by keyword only as a first guess. Match names without the `.001` suffix a second import adds.
+- **Weld first** (`remove_doubles`): models arrive shattered into thousands of islands, and a collapse refuses to touch open borders.
+- **Reduce per kind, each to its own budget.** An error-driven collapse eats the small things first (mirrors, handles, spokes); a part that must survive is split off and collapsed alone: the cabin on a car, face / ring / cap on a wheel. Keep the budget where it shows: a face at 6,000, a shell at 16,000, a cabin at 2,500. Budgets are `BUDGET` / `INTERIOR_BUDGET` and `BUDGETS` in the two scripts, `TRI_BUDGETS` in `src/shared/parts.ts`.
+- **A surface of revolution is turned, never collapsed**: a lip or barrel collapsed at any budget crumples; its visible profile (after the cull) lathed at 56 segments is clean and cheap (`_ring_profile`, `_lathe`).
+- **Hardware is rebuilt, not reduced**: half a million triangles of bolts become hex heads at the bolts' own count, radius and depth (`_bolt_circles`, `_hex_heads`); hubs, nuts and calipers inside the tires' cylinders are deleted by position.
+- **Cull hidden faces against the whole assembly** (tire or glass in place; glass transparent to the rays), from the directions the game sees, then take the shading skin **after** the cull: the cull rights faces modelled inside out and their authored normals with them.
+- **A mirror reverses winding.** After any negative-determinant transform, `reverse_faces` so winding and authored normals agree, or the cull and the shading turn the model inside out.
+- **Check with backface culling on** (`space.shading.show_backface_culling = True` on the viewport before a `look`): Blender draws both sides, the game draws `Rim` and `Tire` single sided. Print the count of faces pointing toward the viewer against away as the number.
+- **The front cannot be read from the ring.** A deep dish and a deep barrel look the same to geometry; use the hub's badge, then look, then the recipe's `face`.
+- **Compare against the source on a sheet** (`wheel_sheet`, `compare_donors`), front and three-quarter, solid and material; fidelity to the model the user picked is the measure, house replacements are for what the licence or the budget forbids (badges, tires, bolts).
+
 ## Blender
 
 `/Applications/Blender.app/Contents/MacOS/Blender` (5.2); `npm run assets` also honors `BLENDER`.

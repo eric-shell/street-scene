@@ -28,7 +28,8 @@ interface ManifestCar {
 }
 
 const ROOT = process.cwd();
-const CAR_BYTES_BUDGET = 300 * 1024;
+/** A car with its parts, Meshopt compressed: a 16,000 triangle shell plus cabin is 540 to 610 KB (docs/carDonors.md). */
+const CAR_BYTES_BUDGET = 700 * 1024;
 
 export async function validateCatalog(catalogPath = 'src/assets/partsCatalog.json', manifestPath = 'src/assets/carManifest.json', publicDir = 'public'): Promise<ValidationResult> {
   const errors: string[] = [];

@@ -41,8 +41,11 @@ The size the importer reports does not matter: the pipeline scales from the publ
 ## 3. Write the recipe
 
 Most of the classification is automatic. `AUTO` in `carDonors.py` maps material names by keyword:
-- dropped: tire, rim, wheel, brake, interior, seat, engine, badge, emblem, licence and plate, ground and shadow;
+- dropped: tire, rim, wheel, brake, engine, badge, emblem, licence and plate, ground and shadow;
+- `Interior` for the cabin (interior, seat, dash, steering, headliner, carpet, cloth, leather, gauges): it ships, reduced hard, because the game's glass is 70 % opaque and a car without a cabin reads hollow;
 - `Glass`, lamps, `Paint`, `Chrome` and `Black` by their usual words.
+
+Names are matched without Blender's `.001` suffix, so several donors can sit in one session.
 
 A recipe adds only what that donor needs:
 
@@ -76,14 +79,15 @@ compare_donors([cid], OUT)         # side / front / rear PNGs to Read
 - turns the car to face -Y;
 - scales it to the published wheelbase, then checks its length against the published one;
 - keeps the authored normals as an attribute; flat-shaded sources are smoothed at 30 degrees first;
-- assigns lamps by position: ahead of the axles `HeadLight`, behind them `TailLight`, between them `Light`;
-- removes badges on the nose and tail, thin decals anywhere on the body, wipers and antennas, and applies the recipe's patches.
+- assigns lamps by position: ahead of the axles `HeadLight`, behind them `TailLight`, between them `Light`, and well inboard between the axles (a dome or dash lamp) `Interior`;
+- removes badges on the nose and tail, thin decals anywhere on the body, wipers and antennas, and applies the recipe's patches;
+- removes the hub hardware whose materials gave nothing away (the RX-7's lug nuts and calipers were plain black and chrome): loose islands inside the tires' cylinders, out at the track.
 
 `reduce_donor()` does this:
 1. Collapses to 60k triangles. Both collapses are meshoptimizer's simplifier (`scripts/blender/meshopt.py`, run in Node from the npm package by `scripts/meshoptSimplify.ts`; nothing to install, but `node` must be findable: PATH, `$NODE`, or nvm/Homebrew). It weighs the authored normals and keeps material edges. It stops at 1 % of the car's size rather than tear a part off, and the Decimate modifier's mirror-symmetric collapse finishes the rest. `REDUCER = 'blender'` in `carDonors.py` goes back to Decimate alone.
-2. Culls every face that cannot be seen from outside: jambs, flanges, double layers and inner glass.
-3. Collapses to `BUDGET`.
-4. Sets the authored normals back on the reduced faces, matched within the same material.
+2. Culls every face that cannot be seen from outside: jambs, flanges, double layers and inner glass. Glass does not block the test rays, so the cabin behind the windows counts as seen, as it is in the game.
+3. Collapses the shell to `BUDGET` (16,000) and the cabin apart to `INTERIOR_BUDGET` (2,500): the cabin touches nothing of the shell, and in one collapse its 30,000 triangles of seats and dash would starve the mirrors and handles. Small features are what an error-driven collapse eats first, so a part that must survive gets its own budget (the wheel set does the same per kind: `docs/carWheels.md`).
+4. Sets the authored normals back on the reduced faces, matched within the same material, from the skin as it is after the cull: the cull turns faces only their back is seen from and negates their authored normals with them, which rights a donor modelled inside out; a skin from before the cull would turn them back.
 5. Turns the front grilles into the shared `Grille` material:
    - each grille patch is pressed flat onto its own plane;
    - logos and lettering inside a grille become grille;
@@ -100,7 +104,8 @@ compare_donors([cid], OUT)         # side / front / rear PNGs to Read
   - holes;
   - lamps missing or on the wrong end;
   - leftover wipers, plates or antennas.
-- **Budget:** about 8,000 triangles; drift p95 under 3 mm. Drift only measures the kept vertices, so also read **lost** (the skin's vertices to the reduced surface): a high lost max is a part collapsed away, such as a mirror or a lip.
+- **Budget:** 16,000 triangles for the shell plus up to 2,500 of cabin; drift p95 under 1 mm. Drift only measures the kept vertices, so also read **lost** (the skin's vertices to the reduced surface): a high lost max is a part collapsed away, such as a mirror or a lip.
+- **Winding:** look with backface culling on (`shading.show_backface_culling` on the viewport). The game draws most car materials double sided but not `Rim` or `Tire`, and a car wound inside out shades dark; Blender's default viewport hides both faults.
 
 ## 6. Ship
 
@@ -111,7 +116,11 @@ Copy `donor:<cid>.Low` into `<cid>:Car` as `<cid>.Body`. Drop the `src_normal` a
 
 A new car also needs a manifest entry, its `drivingParams.json` block and the car-list tests.
 
-## 7. Reproducibility test (2026-10-21)
+## 7. Second import (2026-10-22)
+
+The three cars were re-imported after the wheel set showed what a collapse to a small budget costs (`docs/carWheels.md`): at 8,000 triangles the mirrors, handles and lamp edges smeared, the cabins were dropped, and the RX-7 kept its lug nuts and calipers. Now 16,000 for the shell, the donor's own cabin at 2,500 seen through the glass, and the hub hardware culled by position. The Hatch is 16,936 triangles, the Coupe 18,494, the Wagon 18,483 (budget 20,000). Nothing in the manifest changed (same donors, same wheelbase and track), so replays and bests still stand.
+
+## 8. Reproducibility test (2026-10-21)
 
 Four donors the pipeline had never seen, from four authors: four body styles and four ways of authoring a model.
 

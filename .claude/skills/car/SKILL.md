@@ -34,4 +34,4 @@ Every call: `exec` carKit.py, then carRefs.py, then carFeatures.py (`/blender`, 
 
 ## New feature kinds
 
-A new shared feature (roof rails, a side gill, a fuel door) is a house entry in `carSpecs.json`, a builder in `carFeatures.py` that strips its old work and pins to stations, a row in `auditCar.ts` and `carRefs.py` `checks` so every car is measured for it, and a paragraph in `docs/carDesign.md` section 2. Wheels get their own reference process later; do not fold them in here.
+A new shared feature (roof rails, a side gill, a fuel door) is a house entry in `carSpecs.json`, a builder in `carFeatures.py` that strips its old work and pins to stations, a row in `auditCar.ts` and `carRefs.py` `checks` so every car is measured for it, and a paragraph in `docs/carDesign.md` section 2. Wheels have their own process (`docs/carWheels.md`, `/blender` "Donor imports"); do not fold them in here. A body from a donor model (`docs/carDonors.md`) already carries the donor's own mirrors, handles, lamps and cabin: run `apply_features` only for what the audit still lists as missing.

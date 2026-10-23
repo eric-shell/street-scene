@@ -29,7 +29,8 @@ import re
 
 exec(open(os.path.join(REPO, 'scripts/blender/meshopt.py')).read())   # meshopt_reduce
 
-BUDGET = 8000   # triangles per car for the reduced donor shell, the same for every car
+BUDGET = 16000   # triangles per car for the reduced donor shell, the same for every car: at 8,000 mirrors, handles and lamp edges smeared
+INTERIOR_BUDGET = 2500   # triangles for the donor's own cabin (dash, seats, door cards), seen through the glass
 REDUCER = 'meshopt'   # _collapse: 'meshopt' (meshopt.py) or 'blender' (the Decimate modifier, mirror-symmetric)
 
 DONORS = {
@@ -42,9 +43,9 @@ DONORS = {
         'tires': r'^Tyre$',
         'materials': {
             r'^body(\.\d+|_2)?$': 'Paint',
-            # Interior (INT_ and its unprefixed pieces), the wheels in five materials, the logos.
-            r'(?i)^int_|^(headliner|cloth|leather|solid|plastic|metal|carbon_fiber|bump_stitching|gauge_\w+|digital_gauge|glass|reflector_cp|defrost_lines'
-            r'|material|material_57|Material_14|outer_rim|wheel_black|chrome_rim|rotor|audilogo|exT_black_shit)$': None,
+            # Interior (INT_ and its unprefixed pieces); then the wheels in five materials and the logos.
+            r'(?i)^int_|^(headliner|cloth|leather|solid|plastic|metal|carbon_fiber|bump_stitching|gauge_\w+|digital_gauge|reflector_cp|defrost_lines)$': 'Interior',
+            r'^(glass|material|material_57|Material_14|outer_rim|wheel_black|chrome_rim|rotor|audilogo|exT_black_shit)$': None,
             # rubber_trim is the window and bumper seals, which AUTO would drop as tire rubber.
             r'^(rubber_trim|plastic2|misc|undercarriage|weatherstrip|black|frame|bumper_frame|grille2_alpha|matte_colors)$': 'Black',
             r'^(lights_glass|textured_reflector(\.\d+)?|detail_glass_clear|head_light|reverse_light_lod0)$': 'Lamp',
@@ -63,7 +64,6 @@ DONORS = {
         'license': 'CC Attribution',
         'mm': {'length': 4149, 'wheelbase': 2518},
         'tires': r'TARMAC_TYRE_TREAD',
-        'drop': [r'SM_Interior'],
         # `material` is one atlas for the trim, seals, bumper inserts and mirror housings; `chassis`
         # the underbody.
         'materials': {r'^material$': 'Black', r'^chassis$': 'Black'},
@@ -150,7 +150,9 @@ def _descendants(o):
 # The default classes by material name, used after a recipe's own `materials`: most imports name
 # their materials plainly, so a new donor's recipe holds only what these get wrong. Order matters.
 AUTO = [
-    (r'(?i)tire|tyre|rubber|llanta|rim|wheel|brake|disc|disk|calip|interior|seat|dash|steer|engine|badge|emblem|logo|licen[cs]e|plate|dome|shadow|ground|poster', None),
+    (r'(?i)tire|tyre|rubber|llanta|rim|wheel|brake|disc|disk|calip|engine|badge|emblem|logo|licen[cs]e|plate|dome|shadow|ground|poster', None),
+    # The cabin ships (reduced hard, seen through the glass): a car without one reads hollow.
+    (r'(?i)interior|seat|dash|steer|headliner|carpet|cloth|leather|gauge|stitch|pedal|console', 'Interior'),
     (r'(?i)glass|window|windiw|vidrio', 'Glass'),
     (r'(?i)light|lamp|lens|reflector|luz', 'Lamp'),
     (r'(?i)paint|body|carroc', 'Paint'),
@@ -161,7 +163,9 @@ TIRES = r'(?i)tire|tyre|llanta'
 
 
 def _classify(R, mat_name):
-    """The shared material for an import material, 'drop', or KeyError when nothing matches."""
+    """The shared material for an import material, 'drop', or KeyError when nothing matches. The
+    name is matched without Blender's `.001` suffix, which a second import in the session adds."""
+    mat_name = _base(mat_name)
     for pat, target in list(R.get('materials', {}).items()) + AUTO:
         if re.search(pat, mat_name):
             return 'drop' if target is None else target
@@ -371,12 +375,15 @@ def donor(cid, root):
         bm.from_mesh(me)
         bpy.data.meshes.remove(me)
         kept += 1
-    # Lamps by position: ahead of the axles HeadLight, behind TailLight, between Light.
+    # Lamps by position: ahead of the axles HeadLight, behind TailLight, between Light; one inside
+    # the cabin (well inboard, between the axles) is a dome or dash lamp: Interior.
     half = (ry - fy) / 2
+    hw = max(abs(v.co.x) for v in bm.verts)
     for f in bm.faces:
         if f.material_index >= 100:
-            y = f.calc_center_median().y
-            f.material_index = SHARED.index('HeadLight' if y < -half else 'TailLight' if y > half else 'Light')
+            q = f.calc_center_median()
+            inside = abs(q.y) < half - 0.2 and abs(q.x) < 0.7 * hw
+            f.material_index = SHARED.index('Interior' if inside else 'HeadLight' if q.y < -half else 'TailLight' if q.y > half else 'Light')
     bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-4)
     me = bpy.data.meshes.new(f'donor:{cid}.Full')
     for u in SHARED:
@@ -393,6 +400,10 @@ def donor(cid, root):
         delete_islands(full, pred)
     for lo, hi, mats, flush in R.get('patches', ()):
         print(f'{cid}: patched {patch_out(full, Vector(lo), Vector(hi), mats, flush)} faces')
+    # Hubs, lug nuts, calipers and discs the material names did not give away (the RX-7's are
+    # plain black and chrome): loose islands inside the tires' cylinders, out at the track.
+    hubs = delete_islands(full, lambda k, a, b, mats: 'Paint' not in mats and abs((a.x + b.x) / 2) > track / 2 - 0.3
+                          and any(math.hypot((a.y + b.y) / 2 - ay, (a.z + b.z) / 2 - r) < 0.85 * r for ay in (fy, ry)))
     print(f'{cid}: {strip_wipers(full)} wipers removed, {strip_antennas(full)} antennas removed')
     # De-badge: lettering and logos are small loose all-Black (formerly chrome) islands on the nose
     # and tail, above exhaust tip height; a generic car carries none. A finely modelled logo runs
@@ -408,7 +419,7 @@ def donor(cid, root):
     ln = (max(v.co.y for v in me.vertices) - min(v.co.y for v in me.vertices)) * 1000
     full['wheelbase'], full['tireRadius'] = ry - fy, r
     full['track'] = track
-    print(f'{cid}: kept {kept} meshes, dropped {dropped}, {badges} badge islands; scaled x{k:.3f} to the published wheelbase, length {ln:.0f} mm '
+    print(f'{cid}: kept {kept} meshes, dropped {dropped}, {badges} badge islands, {hubs} wheel hub islands; scaled x{k:.3f} to the published wheelbase, length {ln:.0f} mm '
           f'(published {R["mm"]["length"]}, {(ln / R["mm"]["length"] - 1) * 100:+.1f}%), tire radius {r:.3f} m, {tris(full)} tris')
     return full
 
@@ -513,16 +524,19 @@ def _view_dirs(n=160, min_z=-0.35):
     return out
 
 
-def cull_hidden(o, dirs=None):
+def cull_hidden(o, dirs=None, through=('Glass',)):
     """Keep only the outer skin: a face survives when a ray from it escapes the car in some view
     direction, from its front or its back (then it is flipped to face out). Inner door jambs,
     panel flanges, double layers and anything boxed in go: they are invisible, cost triangles, and
-    a collapse that welds them to the skin is what blotches a reduced car. Returns (deleted, flipped)."""
+    a collapse that welds them to the skin is what blotches a reduced car. The `through` materials
+    (glass) do not block a ray: what sits behind a window, the cabin, is seen in the game too.
+    Returns (deleted, flipped)."""
     dirs = dirs or _view_dirs()
     bm = bmesh.new()
     bm.from_mesh(o.data)
     bm.faces.ensure_lookup_table()
-    tree = BVHTree.FromBMesh(bm)
+    clear = {i for i, m in enumerate(o.data.materials) if m and m.name.split('.')[0] in through}
+    tree = BVHTree.FromPolygons([v.co for v in bm.verts], [[v.index for v in f.verts] for f in bm.faces if f.material_index not in clear]) if clear else BVHTree.FromBMesh(bm)
     gone, flip = [], []
     for f in bm.faces:
         c, n = f.calc_center_median(), f.normal
@@ -853,7 +867,22 @@ def grille_surface(o, half_wb, step=0.03, uv_span=GRILLE_UV):
     return len(hit_faces), quads
 
 
-def reduce_donor(cid, budget=BUDGET, mid=60000):
+def _carry_custom_normals(o):
+    """The object's custom normals written into its `src_normal` corner attribute, so a bmesh join
+    keeps them; _set_custom_normals reads them back."""
+    me = o.data
+    sn = me.attributes.get('src_normal') or me.attributes.new('src_normal', 'FLOAT_VECTOR', 'CORNER')
+    sn.data.foreach_set('vector', [x for c in me.corner_normals for x in c.vector])
+
+
+def _set_custom_normals(o):
+    me = o.data
+    sn = me.attributes.get('src_normal')
+    if sn:
+        me.normals_split_custom_set([v.vector.copy() for v in sn.data])
+
+
+def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET):
     """`donor:<cid>.Low` at about `budget` triangles, in three steps: collapse to `mid` (a copy,
     `.Skin`), cull what cannot be seen from outside (cull_hidden), collapse the skin to the
     budget. Shading is the source's own: the authored normals ride along as an attribute and are
@@ -865,17 +894,35 @@ def reduce_donor(cid, budget=BUDGET, mid=60000):
     skin = _copy(full, f'donor:{cid}.Skin')
     _collapse(skin, mid)
     gone, flipped = cull_hidden(skin)
+    # The cabin is reduced apart, to its own budget: it touches nothing of the shell, and in one
+    # collapse its 30,000 triangles of seats and dash would starve the mirrors and handles.
     low = _copy(skin, f'donor:{cid}.Low')
+    cabin = _copy(skin, f'donor:{cid}.Cabin')
+    ii = [i for i, m in enumerate(low.data.materials) if m and m.name.split('.')[0] == 'Interior']
+    delete_faces(low, lambda c, n, m: m == 'Interior')
+    delete_faces(cabin, lambda c, n, m: m != 'Interior')
     _collapse(low, budget)
     recolored, quads = grille_surface(low, full['wheelbase'] / 2)
     turned = shade_from_source(low, skin)
+    if cabin.data.polygons:
+        _collapse(cabin, interior)
+        turned += shade_from_source(cabin, skin)
+        _carry_custom_normals(cabin)
+        _carry_custom_normals(low)
+        bm = bmesh.new()
+        bm.from_mesh(low.data)
+        bm.from_mesh(cabin.data)
+        bm.to_mesh(low.data)
+        bm.free()
+        _set_custom_normals(low)
+    bpy.data.objects.remove(cabin)
     tree = surface_tree([full])
     d = sorted((tree.find_nearest(v.co)[3] or 0) for v in low.data.vertices)
     # Drift only sees the low vertices: a part collapsed away leaves none behind to measure. Lost
     # is the other way, the skin's vertices to the low surface.
     low_tree = surface_tree([low])
     lost = sorted((low_tree.find_nearest(v.co)[3] or 0) for v in skin.data.vertices)
-    print(f'{cid}: {tris(full)} -> skin {tris(skin)} ({gone} hidden faces culled, {flipped} flipped) -> {tris(low)} tris ({turned} turned; grille {recolored} faces + {quads} quads); '
+    print(f'{cid}: {tris(full)} -> skin {tris(skin)} ({gone} hidden faces culled, {flipped} flipped) -> {tris(low)} tris (cabin {sum(1 for p in low.data.polygons if p.material_index in ii)}; {turned} turned; grille {recolored} faces + {quads} quads); '
           f'drift mean {sum(d) / len(d) * 1000:.1f} mm, p95 {d[int(len(d) * 0.95)] * 1000:.1f} mm; '
           f'lost p95 {lost[int(len(lost) * 0.95)] * 1000:.1f} mm, max {lost[-1] * 1000:.0f} mm')
     return low

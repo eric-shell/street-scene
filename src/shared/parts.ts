@@ -33,7 +33,7 @@ export type MaterialName = (typeof MATERIAL_NAMES)[number];
 
 /** Triangle budgets per slot used by validation. */
 export const TRI_BUDGETS: Record<PartSlot, number> = {
-  body: 12000,
+  body: 20000,
   frontBumper: 3000,
   rearBumper: 3000,
   sideSkirts: 2000,
