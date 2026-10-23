@@ -39,8 +39,8 @@ describe('build validation', () => {
     // Legacy single wheel size, camber and offset migrate onto both axles (clamped).
     expect(b.visual.stance.front.wheelSize).toBe(1.25);
     expect(b.visual.stance.rear.wheelSize).toBe(1.25);
-    expect(b.visual.stance.front.rideHeight).toBe(-0.08);
-    expect(b.visual.stance.rear.rideHeight).toBe(-0.08);
+    expect(b.visual.stance.front.rideHeight).toBe(-0.09);
+    expect(b.visual.stance.rear.rideHeight).toBe(-0.09);
     expect(b.visual.stance.front.camber).toBe(-10);
     expect(b.visual.stance.rear.camber).toBe(0);
     expect(b.visual.stance.front.offset).toBe(0);
@@ -104,7 +104,7 @@ describe('build validation', () => {
     expect(validateBuild({ visual: { wheels: { tire: 'aggressiveStretch', rearTire: 'meaty' } } }).visual.wheels).toMatchObject({ tire: 'stretched', rearTire: 'standard' });
     // New per axle values win over legacy ones and are clamped independently.
     const n = validateBuild({ visual: { stance: { camberFront: -4, front: { camber: -2, offset: 0.5, wheelSize: 0.9 }, rear: { wheelSize: 2 } } } });
-    expect(n.visual.stance.front).toEqual({ rideHeight: 0, camber: -2, offset: 0.08, wheelSize: 0.9 });
+    expect(n.visual.stance.front).toEqual({ rideHeight: 0, camber: -2, offset: 0.09, wheelSize: 0.9 });
     expect(n.visual.stance.rear).toEqual({ rideHeight: 0, camber: 0, offset: 0, wheelSize: 1.25 });
   });
 

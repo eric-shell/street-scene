@@ -71,9 +71,9 @@ export type Axle = (typeof AXLES)[number];
 
 /** Limits shared by validation and the garage sliders. */
 export const STANCE_LIMITS = {
-  rideHeight: [-0.08, 0.06],
+  rideHeight: [-0.09, 0.07],
   camber: [-10, 2],
-  offset: [-0.03, 0.08],
+  offset: [-0.035, 0.09],
   wheelSize: [0.85, 1.25],
 } as const;
 
