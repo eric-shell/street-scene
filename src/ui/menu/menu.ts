@@ -24,7 +24,7 @@
  * screens. The caller feeds the
  * cruising car's pose every frame (MainMenu.frame) for the maps' car markers.
  */
-import { bem, btn, chip, h, iconBtn, prefersReducedMotion, scrollHint, segmented, sheen, specChip } from '../kit/dom';
+import { bem, btn, chip, h, iconBtn, scrollHint, segmented, sheen, specChip } from '../kit/dom';
 import {
   Anchor,
   Calendar,
@@ -418,9 +418,11 @@ export function mainMenu(o: MenuOptions): MainMenu {
 
   /**
    * The setup step's model card: the build in use as one row (its slot, name, car and spec tags) that
-   * opens the garage's builds as a list under it, so the card stays one row tall however many builds
-   * there are until it is opened. The list opens in the flow, not over the cards below: the step's
-   * cards scroll on a short screen, and their box would clip a list hanging past it. A row in the list, the up and down keys or a number key picks a build and
+   * drops the garage's builds down as a list over the cards below, so the card stays one row tall
+   * however many builds there are. The list hangs in the menu screen, not in the step: the step's
+   * cards scroll on a short screen, and their box would clip it. It is placed under the card when it
+   * opens (over it, when there is more room above), and closes on a scroll or resize rather than
+   * chase the card. A row in the list, the up and down keys or a number key picks a build and
    * swaps the car on the street; Escape, a pick or a click elsewhere closes the list. The rows run in
    * slot order, like the line of cars the picks build up there.
    */
@@ -445,12 +447,26 @@ export function mainMenu(o: MenuOptions): MainMenu {
       return row;
     });
     const list = h('div', { class: 'build-pick__list', role: 'listbox', 'aria-label': 'Build' }, ...rows);
-    const el = h(
-      'div',
-      { class: 'build-pick' },
-      h('div', { class: 'build-pick__card' }, h('div', { class: 'build-pick__head' }, h('div', { class: 'section-title' }, 'Model'), h('span', { class: 'build-pick__count' }, n > 1 ? `${n} builds` : 'Only build')), current),
-      n > 1 && list,
-    );
+    // The wrapper casts the drop shadow the list's chamfer would clip.
+    const drop = h('div', { class: 'build-pick__drop' }, list);
+    const el = h('div', { class: 'build-pick' }, h('div', { class: 'build-pick__head' }, h('div', { class: 'section-title' }, 'Model'), h('span', { class: 'build-pick__count' }, n > 1 ? `${n} builds` : 'Only build')), current);
+    // A little air between the list and the card, and between the list and the screen's edge (px).
+    const GAP = 4;
+    const EDGE = 12;
+    const place = () => {
+      const r = el.getBoundingClientRect();
+      const box = root.getBoundingClientRect();
+      const below = box.bottom - r.bottom - GAP - EDGE;
+      const above = r.top - box.top - GAP - EDGE;
+      list.style.maxHeight = '';
+      const up = list.scrollHeight > below && above > below;
+      drop.classList.toggle('is-up', up);
+      drop.style.left = `${r.left - box.left}px`;
+      drop.style.width = `${r.width}px`;
+      drop.style.top = up ? '' : `${r.bottom - box.top + GAP}px`;
+      drop.style.bottom = up ? `${box.bottom - r.top + GAP}px` : '';
+      list.style.maxHeight = `${Math.max(120, up ? above : below)}px`;
+    };
     const show = () => {
       current.replaceChildren(...rowParts(o.builds[build], build));
       if (n > 1) current.append(icon(ChevronsUpDown, { size: 16 }));
@@ -466,21 +482,33 @@ export function mainMenu(o: MenuOptions): MainMenu {
       o.onBuild(build);
       uiBlip();
     };
-    // A press outside the card and its list closes the list.
+    // A press outside the card and its list, a scroll anywhere but in the list, or a resize closes it.
     const outside = (e: PointerEvent) => {
-      if (!el.contains(e.target as Node)) close();
+      if (!el.contains(e.target as Node) && !drop.contains(e.target as Node)) close();
     };
+    const scrolled = (e: Event) => {
+      if (!drop.contains(e.target as Node)) close();
+    };
+    const resized = () => close();
     const open = (on: boolean) => {
       el.classList.toggle('is-open', on);
       current.setAttribute('aria-expanded', String(on));
       if (on) {
+        root.append(drop);
+        place();
         document.addEventListener('pointerdown', outside, true);
-        list.scrollIntoView({ block: 'nearest', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
-      } else document.removeEventListener('pointerdown', outside, true);
+        document.addEventListener('scroll', scrolled, true);
+        window.addEventListener('resize', resized);
+      } else {
+        drop.remove();
+        document.removeEventListener('pointerdown', outside, true);
+        document.removeEventListener('scroll', scrolled, true);
+        window.removeEventListener('resize', resized);
+      }
     };
     const close = () => {
       const was = el.classList.contains('is-open');
-      open(false);
+      if (was) open(false);
       return was;
     };
     if (n > 1) current.addEventListener('click', () => open(!el.classList.contains('is-open')));

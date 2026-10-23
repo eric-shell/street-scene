@@ -1,29 +1,27 @@
 /* The setup step's model card (menu.ts buildPick), between the ticket and the rivals and driving card: its
    section title with the garage's count at its right, over the build in use as one row (its slot number, its
-   name over its car, its spec tags, and the up-down chevrons that say it opens). Pressing it opens the
-   garage's builds under the card as a list of the same rows (.is-open), in the flow: the step's cards scroll
-   on a short screen (_menu.scss), and their box would clip a list hanging over the cards below. The card is
-   the plate and the list its own. The build in use is lit in the race type's
-   color (--mode): an edge bar, a wash and its number filled, the way a nav row lights on hover. */
+   name over its car, its spec tags, and the up-down chevrons that say it opens). Pressing it drops the
+   garage's builds down as a list of the same rows (.build-pick__drop) over the cards below. The list hangs in
+   the menu screen rather than in the step, whose cards scroll on a short screen and would clip it: menu.ts
+   places it under the card (over it with .is-up), as wide as the card, its height capped by the room there
+   (the list scrolls past that). Being outside the card, everything the rows wear is written on the rows, not
+   under .build-pick. The wrapper casts the drop shadow the list's chamfer would clip. The build in use is lit
+   in the race type's color (--mode, set on the menu screen): an edge bar, a wash and its number filled, the
+   way a nav row lights on hover. The card wears the race type's hairline like those around it. */
 @use '../styles/abstracts/media';
 @use '../styles/abstracts/mixins';
 .build-pick {
+  @include mixins.chamfer(12px);
+  @include mixins.plate((var(--card-top), var(--plate)));
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  &__card {
-    @include mixins.chamfer(12px);
-    @include mixins.plate((var(--card-top), var(--plate)));
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 10px 16px 10px;
-    .section-title {
-      margin-top: 2px;
-    }
-    .menu-screen[data-step='setup'] & {
-      background: mixins.rule-line(var(--mode)), var(--plate);
-    }
+  gap: 6px;
+  padding: 10px 16px 10px;
+  .section-title {
+    margin-top: 2px;
+  }
+  .menu-screen[data-step='setup'] & {
+    background: mixins.rule-line(var(--mode)), var(--plate);
   }
   &__head {
     display: flex;
@@ -36,19 +34,27 @@
     font: 500 12px var(--font);
     color: var(--muted);
   }
+  &__drop {
+    position: absolute;
+    z-index: 6;
+    /* Deeper than a plate's drop: the list floats over the cards below, so it needs to lift clear of them,
+       a wide soft shadow for the height and a tight dark one under its edge. */
+    filter: drop-shadow(0 22px 40px rgba(0, 0, 0, 0.7)) drop-shadow(0 6px 12px rgba(0, 0, 0, 0.55));
+    @include media.motion {
+      animation: build-drop-in 0.16s var(--ease-out) both;
+      &.is-up {
+        animation-name: build-drop-up;
+      }
+    }
+  }
   &__list {
     @include mixins.chamfer(10px);
-    @include mixins.plate((var(--card-top), var(--plate)));
-    display: none;
+    @include mixins.plate((var(--card-top), var(--plate), var(--bg1)));
+    display: flex;
     flex-direction: column;
     gap: 2px;
     padding: 6px 8px;
-    .build-pick.is-open & {
-      display: flex;
-      @include media.motion {
-        animation: build-list-in 0.16s var(--ease-out) both;
-      }
-    }
+    @include mixins.scroll-y;
   }
   &__row {
     display: flex;
@@ -131,7 +137,7 @@
     color: var(--muted);
     @include mixins.ellipsis;
   }
-  .build-line__tags {
+  &__row .build-line__tags {
     opacity: 0.7;
     transition: opacity var(--t-fast);
   }
@@ -145,9 +151,15 @@
     }
   }
 }
-@keyframes build-list-in {
+@keyframes build-drop-in {
   from {
     opacity: 0;
     transform: translateY(-4px);
+  }
+}
+@keyframes build-drop-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
   }
 }
