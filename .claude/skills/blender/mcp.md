@@ -1,6 +1,6 @@
 # Blender MCP: setup and upgrades
 
-Two MCP servers drive the user's Blender. Each one is a pair: a server Claude Code starts from `.mcp.json`, and an add-on inside Blender that the server talks to over a localhost socket. A server and its add-on speak a versioned protocol, so they are pinned and moved together. `.mcp.json` holds the only pins; `mcp.sh` reads them.
+Two MCP servers drive the user's Blender. Each one is a pair: a server Claude Code starts from `.claude/skills/blender/mcp.json`, and an add-on inside Blender that the server talks to over a localhost socket. A server and its add-on speak a versioned protocol, so they are pinned and moved together. `.claude/skills/blender/mcp.json` holds the only pins; `mcp.sh` reads them.
 
 | | `blender` | `blender-lab` |
 |---|---|---|
@@ -8,7 +8,7 @@ Two MCP servers drive the user's Blender. Each one is a pair: a server Claude Co
 | Used for | All scene work: `execute_blender_code` (screened by the crash hook), `look`, Sketchfab / Poly Haven search and import | Reference only: `search_api_docs`, `get_python_api_docs`, `search_manual_docs` before guessing a `bpy` call; window and area screenshots |
 | Server pin | `mcp-for-blender@<version>` (PyPI) | `git+…/blender_mcp.git@<40-char commit>#subdirectory=mcp` (not on PyPI) |
 | Add-on in Blender | "MCP for Blender", legacy add-on `scripts/addons/blender_mcp.py` | "MCP", extension `extensions/user_default/mcp/` |
-| Port | 9876 (default) | 9877 (`BLENDER_MCP_PORT` in `.mcp.json` and Port in the add-on's preferences) |
+| Port | 9876 (default) | 9877 (`BLENDER_MCP_PORT` in `.claude/skills/blender/mcp.json` and Port in the add-on's preferences) |
 | Settings | `DISABLE_TELEMETRY=true` | `BLENDER_PATH` for its headless `*_for_cli` tools |
 
 Never write scene code through `blender-lab`'s `execute_blender_code`: the PreToolUse hook only matches `mcp__blender__execute_blender_code`.
@@ -19,7 +19,7 @@ Never write scene code through `blender-lab`'s `execute_blender_code`: the PreTo
 
 - `status`: pins vs the latest releases, whether each installed add-on matches its pin, stray add-on copies, and which ports listen with the fix for a closed one. Run it first whenever an MCP call fails to connect.
 - `install`: installs both add-ons at the pinned versions (community through `uvx mcp-for-blender@<pin> install-addon`, Lab from the pinned commit of the repo), then restart Blender.
-- `upgrade`: moves both pins to the latest releases in `.mcp.json`, then installs. Restart Claude Code and Blender afterwards.
+- `upgrade`: moves both pins to the latest releases in `.claude/skills/blender/mcp.json`, then installs. Restart Claude Code and Blender afterwards.
 
 ## First setup on a machine
 
@@ -40,15 +40,15 @@ The add-on steps in 3 can also be done live through `blender` once it connects:
 2. Skim the release notes and commits it prints for renamed tools or changed settings.
 3. `mcp.sh upgrade`, restart Blender, restart Claude Code, `mcp.sh status`.
 4. Check the tools this repo names still exist: `execute_blender_code` and `look` on `blender` (the hook matcher in `.claude/settings.json`, SKILL.md), the doc search tools on `blender-lab`. A rename means updating the hook matcher and the skills in the same change.
-5. Commit `.mcp.json` alone with a subject like "Blender MCP: mcp-for-blender 2.3.0, Lab abc1234".
+5. Commit `.claude/skills/blender/mcp.json` alone with a subject like "Blender MCP: mcp-for-blender 2.3.0, Lab abc1234".
 
-To roll back, revert `.mcp.json` and run `mcp.sh install`.
+To roll back, revert `.claude/skills/blender/mcp.json` and run `mcp.sh install`.
 
 ## Daily use
 
 - Both add-ons auto start their servers with Blender. If one is closed, `mcp.sh status` names the fix.
 - The Sketchfab switch is a scene property (`bpy.context.scene.blendermcp_use_sketchfab`), off in every new file even though the key persists. Turn it on in the viewport N panel → MCP for Blender, or with that one line through `blender`; File → Defaults → Save Startup File with it on keeps it on for new files. Licensing rules for what may be imported are in memory (third-party model licensing).
-- Editing `.mcp.json` only takes effect in a new Claude Code session.
+- Editing `.claude/skills/blender/mcp.json` only takes effect in a new Claude Code session.
 
 ## Traps (each cost time when this was set up, 2026-10-22)
 

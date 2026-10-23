@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Keeps the two Blender MCP servers in .mcp.json and their Blender add-ons on the same versions.
-# .mcp.json holds the only pins: `mcp-for-blender@<version>` for `blender`, `@<commit>` in the git URL
+# Keeps the two Blender MCP servers in .claude/skills/blender/mcp.json and their Blender add-ons on the same versions.
+# .claude/skills/blender/mcp.json holds the only pins: `mcp-for-blender@<version>` for `blender`, `@<commit>` in the git URL
 # for `blender-lab`. Server and add-on talk a versioned protocol, so they move together or not at all.
 #   status   (default) pins vs the latest releases, installed add-ons vs the pins, stray copies, ports
 #   install  installs both add-ons at the pinned versions (then restart Blender)
@@ -9,7 +9,7 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
-MCP_JSON="$ROOT/.mcp.json"
+MCP_JSON="$ROOT/.claude/skills/blender/mcp.json"
 LAB_REPO=https://projects.blender.org/lab/blender_mcp.git
 BLENDER=${BLENDER:-/Applications/Blender.app/Contents/MacOS/Blender}
 # Written next to the Lab add-on so status can tell which commit is installed (the manifest version lags).
@@ -68,7 +68,7 @@ status() {
 install() {
   local cpin lpin tmp
   cpin=$(community_pin); lpin=$(lab_pin)
-  [ -n "$lpin" ] || { echo "No 40-character commit in the blender-lab URL in .mcp.json" >&2; exit 1; }
+  [ -n "$lpin" ] || { echo "No 40-character commit in the blender-lab URL in .claude/skills/blender/mcp.json" >&2; exit 1; }
   uvx "mcp-for-blender@$cpin" install-addon --addons-dir "$ADDONS"
 
   tmp=$(mktemp -d); trap 'rm -rf "$tmp"' RETURN

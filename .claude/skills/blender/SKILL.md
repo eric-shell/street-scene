@@ -2,7 +2,10 @@
 name: blender
 description: Model cars and parts in Blender, live through the Blender MCP server or headless with `blender -b` - load the carKit helpers, import shipped GLBs, split bodies into bumpers and skirts, build tuner kits from stock parts, restyle a body, check wheel arches, look at the result, save authored .blend cars and export them. Use for any Blender or MCP modelling task, including designing new bumpers, skirts or spoilers, and read it before the first Blender MCP call.
 ---
+
 # Blender for car work
+
+Start a modelling session with `claude --mcp-config .claude/skills/blender/mcp.json`; a plain session has no Blender tools.
 
 Authored cars are `assets/source/eshell/<carId>/<carId>.blend` (collections `Car`, `Parts`, `Wheels`, `Rig`; the contract is the docstring of `scripts/blender/exportCar.py` and README "Car assets"). `npm run assets` exports and catalogs them; you never export GLBs by hand for an authored car.
 
@@ -69,7 +72,7 @@ The processes are `docs/carDonors.md` (`carDonors.py`: `donor`, `reduce_donor`) 
 
 `/Applications/Blender.app/Contents/MacOS/Blender` (5.2); `npm run assets` also honors `BLENDER`.
 
-Two MCP servers in `.mcp.json`, each paired with a Blender add-on at the same pinned version:
+Two MCP servers in `.claude/skills/blender/mcp.json`, each paired with a Blender add-on at the same pinned version:
 
 - `blender` (MCP for Blender, port 9876): `execute_blender_code`, `look`, asset search and import. Everything in this skill goes through it, and the crash hook screens it.
 - `blender-lab` (Blender Lab's official server, port 9877): `search_api_docs`, `get_python_api_docs`, `search_manual_docs` before guessing a `bpy` call or enum. Never write scene code through its `execute_blender_code`; the hook does not screen it.
