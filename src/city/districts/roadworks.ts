@@ -3,7 +3,7 @@
  * side is shut for 30 to 60 m: a taper of cones at each end, a line of water
  * filled barriers (a striped sawhorse with its lamp every few) along the
  * closure, and behind them the plant: a flashing arrow board facing the
- * oncoming traffic, a mini excavator over a row of steel road plates, a skip,
+ * oncoming traffic, an excavator digging over a row of steel road plates, a skip,
  * a light tower lighting the lot, pallets and sandbags against the curb.
  *
  * Collision rule: the plant is solid (convex 'roadworks' solids, drawn from
@@ -68,11 +68,18 @@ export const ROADWORKS = {
   sawhorseEvery: 4,
 } as const;
 
-/** Footprints of the plant (m): along the lane, across it; the excavator's arm reaches `arm` further along. */
-const PLANT = {
+/**
+ * Footprints of the plant (m): along the lane, across it. The excavator is the model's own
+ * (src/assets/plantModels.json, `npm run plant`; a test holds these to it): its body, the arm
+ * reaching `arm` beyond it, and the stick and bucket, the only part of the arm low enough to
+ * hit, `stick` = [from, to] beyond the body, `center` across from the body's (on the model's
+ * +x side, toward (fwd.z, -fwd.x)) and `width`. The boom clears 3.5 m. It is drawn full size
+ * where the closure has the room and scaled down to it where not, never below `minScale`.
+ */
+export const PLANT = {
   arrowBoard: { along: 2.4, across: 1.6 },
   skip: { along: 3.4, across: 1.7 },
-  excavator: { along: 3.3, across: 2, arm: 2.8 },
+  excavator: { along: 4.562, across: 3.086, arm: 4.676, stick: [3.259, 4.676], center: -0.22, width: 1.205, minScale: 0.7 },
   lightTower: { along: 2.2, across: 1.3 },
 } as const;
 
@@ -284,10 +291,12 @@ function buildRoadworks(ctx: BuildContext, area: Area): AreaBuild {
   // The plant, from the oncoming end: the arrow board first, the rest in a random order while it fits.
   const v0 = C.plantClear;
   const vMax = close - 0.6 - C.plantClear;
+  /** A box wall from `t0` along and `va` across, `along` by `across` (m): its corner on the oncoming, curb side. */
+  const box = (t0: number, va: number, along: number, across: number) => {
+    for (const w of solidWalls(rectPolygon(f.at(S(t0), va), fwd, toRoad, along, across), 'roadworks', area.id)) b.walls.push(w);
+  };
   const solid = (kind: keyof typeof PLANT, t0: number, along: number, across: number, extra: number) => {
-    const o = f.at(S(t0), v0);
-    const poly = rectPolygon(o, fwd, toRoad, along, Math.min(across, vMax - v0));
-    for (const w of solidWalls(poly, 'roadworks', area.id)) b.walls.push(w);
+    box(t0, v0, along, Math.min(across, vMax - v0));
     const c = f.at(S(t0 + along / 2), v0 + Math.min(across, vMax - v0) / 2);
     b.hints.push({ kind, points: [c, fwd, toRoad], values: [along, Math.min(across, vMax - v0), extra] });
   };
@@ -298,18 +307,30 @@ function buildRoadworks(ctx: BuildContext, area: Area): AreaBuild {
   rng.shuffle(order);
   /** Free stretches left along the curb (t ranges), for the soft pieces. */
   const free: [number, number][] = [];
+  const X = PLANT.excavator;
+  // Full size where the closure has the room across, scaled to it where not.
+  const scale = Math.min(1, (vMax - v0) / X.across);
   for (const kind of order) {
+    const k = kind === 'excavator' ? scale : 1;
+    if (k < X.minScale) continue;
     const p = PLANT[kind];
-    const arm = kind === 'excavator' ? PLANT.excavator.arm : 0;
-    const len = p.along + arm;
+    const arm = kind === 'excavator' ? X.arm * k : 0;
+    const len = p.along * k + arm;
     if (t + len > W - 0.6) continue;
-    // The excavator digs on its downstream side: arm and plates there, body first.
-    solid(kind, t, p.along, p.across, kind === 'excavator' ? rng.range(-0.25, 0.25) : 0);
+    // The excavator digs on its downstream side: arm, stick and plates there, body first; the hint's
+    // last value is its scale.
+    solid(kind, t, p.along * k, p.across * k, kind === 'excavator' ? k : 0);
     if (kind === 'excavator') {
+      // The model's +x side is (fwd.z, -fwd.x): toward the road or the curb, by the side of the street.
+      const sx = fwd.z * toRoad.x - fwd.x * toRoad.z;
+      const vStick = v0 + (X.across / 2 + sx * X.center) * k;
+      box(t + (X.along + X.stick[0]) * k, vStick - (X.width / 2) * k, (X.stick[1] - X.stick[0]) * k, X.width * k);
       const plates = 2;
-      for (let k = 0; k < plates; k++) {
-        const c = f.at(S(t + p.along + 0.2 + (arm / plates) * (k + 0.5)), v0 + 0.85);
-        b.hints.push({ kind: 'plate', points: [c, fwd, toRoad], values: [arm / plates - 0.05, 1.6, rng.range(-0.04, 0.04)] });
+      const pw = Math.min(1.6, vMax - v0);
+      const pv = Math.min(Math.max(vStick, v0 + pw / 2), vMax - pw / 2);
+      for (let n = 0; n < plates; n++) {
+        const c = f.at(S(t + p.along * k + 0.2 + (arm / plates) * (n + 0.5)), pv);
+        b.hints.push({ kind: 'plate', points: [c, fwd, toRoad], values: [arm / plates - 0.05, pw, rng.range(-0.04, 0.04)] });
       }
     }
     const gap = rng.range(1, 2);

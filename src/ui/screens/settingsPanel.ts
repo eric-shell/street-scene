@@ -10,6 +10,7 @@ import type { Quality, Settings } from '../settings';
 import type { MusicPlayer } from '../../audio/musicPlayer';
 import { musicCredits } from '../panels/musicWidget';
 import trafficModels from '../../assets/trafficModels.json';
+import plantModels from '../../assets/plantModels.json';
 import { BUILD_VERSION } from '../../version';
 
 /** A settings page: its tab and the rows it shows. */
@@ -224,6 +225,9 @@ function credits(): HTMLElement[] {
       h('p', { class: 'muted' }, 'Changes: the cars are reduced to about 8,000 triangles at their true size, with badges, antennas, wipers and interiors removed and their materials remapped; the wheels are reduced, fitted to one shared tire and center cap, and some wear a turned lip. Every car and wheel ships under a fictional name.'),
       ...trafficModels.credits.map((c) =>
         h('p', {}, 'Traffic: ', link(c.url, `"${c.title}"`), ' by ', link(c.creatorUrl, h('b', {}, c.creator)), ', ', link(c.licenseUrl, c.license), `. ${c.changes}.`),
+      ),
+      ...plantModels.credits.map((c) =>
+        h('p', {}, 'Roadworks: ', link(c.url, `"${c.title}"`), ' by ', link(c.creatorUrl, h('b', {}, c.creator)), ', ', link(c.licenseUrl, c.license), `. ${c.changes}.`),
       ),
       h('p', {}, 'Icons: ', h('b', {}, 'Lucide'), ' (lucide.dev), ISC license.'),
       musicCredits(),

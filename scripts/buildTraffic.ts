@@ -28,7 +28,7 @@ import { EXTMeshoptCompression } from '@gltf-transform/extensions';
 import { dedup, meshopt, prune, weld } from '@gltf-transform/functions';
 import { MeshoptEncoder } from 'meshoptimizer';
 import { createIO } from './inspectAsset';
-import { triangleCount } from './gltfUtil';
+import { findBlender, triangleCount } from './gltfUtil';
 
 const ROOT = process.cwd();
 const PACKS = process.argv[2] ?? join(ROOT, 'assets/source/comrade1280');
@@ -58,13 +58,6 @@ export const TRAFFIC_CREDITS = [
     kinds: ['taxi', 'police', 'ambulance', 'postvan', 'serviceTruck', 'towTruck', 'fireTruck', 'garbageTruck', 'cityBus', 'schoolBus'],
   },
 ];
-
-function findBlender(): string {
-  const candidates = [process.env.BLENDER, 'blender', '/Applications/Blender.app/Contents/MacOS/Blender', 'C:/Program Files/Blender Foundation/Blender/blender.exe'].filter(Boolean) as string[];
-  const bin = candidates.find((b) => spawnSync(b, ['--version'], { encoding: 'utf8' }).status === 0);
-  if (!bin) throw new Error('Blender not found (set BLENDER)');
-  return bin;
-}
 
 async function main(): Promise<void> {
   // Blender's own message for a missing file is "Please select a file", which names nothing.

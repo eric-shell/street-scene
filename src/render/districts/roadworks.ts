@@ -2,21 +2,30 @@
  * Roadworks renderer: the plant of every lane closure, built from the area's
  * hints (city/districts/roadworks.ts) over the solids the sim collides with:
  * a trailer mounted arrow board facing the oncoming traffic, its amber lamps
- * flashing an arrow toward the open lane; a yellow mini excavator digging
- * over steel road plates, a beacon on its cab; a skip full of rubble; a
- * light tower whose floods pool white light over the lot. Cones, barriers,
- * sawhorses, pallets and sandbags are destructible props (render/street/props.ts).
+ * flashing an arrow toward the open lane; an excavator digging over steel
+ * road plates, a beacon on its cab; a skip full of rubble; a light tower
+ * whose floods pool white light over the lot. Cones, barriers, sawhorses,
+ * pallets and sandbags are destructible props (render/street/props.ts).
  *
- * The plant goes into the shared merged builders (solid, glow, paint); the
- * flashing lamps are one extra mesh with a material blinked on the scene
- * clock, and the light pools one additive mesh (Medium and High only), so
- * all the city's closures cost two draw calls beyond the kit's and nothing
- * per frame but a color. Render only.
+ * The excavator is MD.Jobair Hossain's Sketchfab model (CC BY 4.0), cut to
+ * 6k triangles with its colors in the vertices by `npm run plant` into
+ * public/plant/plant.glb; it loads once per page (loadExcavator), and every
+ * excavator in the city is one instance of it, drawn at the size the sim
+ * gave it (the hint's scale). A scene built before it lands shows the
+ * excavators when it does. The rest of the plant goes into the shared merged
+ * builders (solid, glow, paint); the flashing lamps are one extra mesh with
+ * a material blinked on the scene clock, and the light pools one additive
+ * mesh (Medium and High only), so all the city's closures cost three draw
+ * calls beyond the kit's and nothing per frame but a color. Render only.
  */
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import type { Vec2 } from '../../sim/math';
 import type { AreaHint } from '../../city/districts/types';
+import plantModels from '../../assets/plantModels.json';
 import { GeoBuilder } from '../geoBuilder';
+import { floatGeometry } from '../gltfGeometry';
 import { makeRadialGlow } from '../textures/textures';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { col } from './kit';
@@ -33,7 +42,6 @@ const LOOK = {
   wash: new THREE.Color(0xffc890).multiplyScalar(0.22),
 } as const;
 
-const YELLOW = col(0xf2b81c);
 const DARK = col(0x22242a);
 const STEEL = col(0x6a6e76);
 
@@ -77,21 +85,6 @@ function obox(gb: GeoBuilder, F: Frame, a0: number, a1: number, c0: number, c1: 
   }
   const t = pts.map((p) => gb.vertex(p.x, y1, p.z, 0, 1, 0, 0, 0, color));
   gb.quadFacing(t[0], t[1], t[2], t[3], 0, 1, 0);
-}
-
-/** A square beam `w` thick from p to q (3D): the excavator's boom and stick. */
-function beam(gb: GeoBuilder, p: THREE.Vector3, q: THREE.Vector3, w: number, color: THREE.Color): void {
-  const d = new THREE.Vector3().subVectors(q, p);
-  const s = new THREE.Vector3(-d.z, 0, d.x).normalize().multiplyScalar(w / 2);
-  const u = new THREE.Vector3().crossVectors(d, s).normalize().multiplyScalar(w / 2);
-  const corners = [s.clone().add(u), s.clone().sub(u), s.clone().negate().sub(u), s.clone().negate().add(u)];
-  for (let i = 0; i < 4; i++) {
-    const a = corners[i];
-    const b = corners[(i + 1) % 4];
-    const nrm = a.clone().add(b).normalize();
-    const v = [p.clone().add(a), p.clone().add(b), q.clone().add(b), q.clone().add(a)].map((x) => gb.vertex(x.x, x.y, x.z, nrm.x, nrm.y, nrm.z, 0, 0, color));
-    gb.quadFacing(v[0], v[1], v[2], v[3], nrm.x, nrm.y, nrm.z);
-  }
 }
 
 /** Lowest ground under a piece's footprint, so nothing floats on a slope. */
@@ -163,40 +156,44 @@ function arrowBoard(kit: DistrictKit, flash: GeoBuilder, F: Frame, along: number
   }
 }
 
-/** Tracked mini excavator: tracks, slewed upper body, cab, boom and stick over the plates, bucket raised. */
-function excavator(kit: DistrictKit, flash: GeoBuilder, F: Frame, along: number, across: number, slew: number): void {
-  const ha = along / 2;
-  const hc = across / 2;
-  const y = baseY(kit, F, ha, hc);
-  const g = kit.solid;
-  for (const c of [-hc + 0.22, hc - 0.22]) {
-    obox(g, F, -ha, ha, c - 0.22, c + 0.22, y - 0.05, y + 0.5, DARK);
-    obox(g, F, -ha + 0.15, ha - 0.15, c - 0.24, c + 0.24, y + 0.1, y + 0.4, col(0x30323a));
-  }
-  // The upper body swings a little off the tracks' line.
-  const U = turned(F, slew);
-  obox(g, U, -ha + 0.1, ha - 0.25, -hc + 0.1, hc - 0.1, y + 0.55, y + 1.35, YELLOW);
-  obox(g, U, -ha - 0.05, -ha + 0.5, -hc + 0.15, hc - 0.15, y + 0.6, y + 1.25, col(0x3a3c42));
-  // Cab on the curb side, glass dark, a roof and the beacon.
-  obox(g, U, -0.6, 0.55, -hc + 0.12, -hc + 1.0, y + 1.35, y + 2.45, col(0x1a1d24));
-  obox(g, U, -0.65, 0.6, -hc + 0.08, -hc + 1.05, y + 2.45, y + 2.55, YELLOW);
-  lampQuad(flash, U, 0, -hc + 0.56, y + 2.65, 0.14, U.f, LOOK.amber);
-  lampQuad(flash, U, 0, -hc + 0.56, y + 2.65, 0.14, { x: -U.f.x, z: -U.f.z }, LOOK.amber);
-  // Boom up from the front of the body, stick down to the bucket over the plates beyond it.
-  const P = (a: number, c: number, h: number) => {
-    const p = at(U, a, c);
-    return new THREE.Vector3(p.x, y + h, p.z);
-  };
-  const c0 = 0.35;
-  const pivot = P(ha - 0.3, c0, 1.2);
-  const elbow = P(ha + 1.3, c0, 2.9);
-  const tip = P(ha + 2.6, c0, 1.6);
-  beam(g, pivot, elbow, 0.28, YELLOW);
-  beam(g, elbow, tip, 0.2, YELLOW);
-  beam(g, P(ha - 0.1, c0, 1.0), P(ha + 1.1, c0, 2.6), 0.1, STEEL);
-  const b = at(U, ha + 2.6, c0);
-  const bucketF: Frame = { c: b, f: U.f, n: U.n };
-  obox(g, bucketF, -0.2, 0.35, -0.38, 0.38, y + 1.05, y + 1.6, col(0x3a3c42));
+const base = import.meta.env.BASE_URL ?? '/';
+let excavatorGeo: Promise<THREE.BufferGeometry | null> | null = null;
+
+/** The excavator from public/plant/plant.glb, once per page, in plant space (null if it is missing). Kept for the page: every scene shares it. */
+function loadExcavator(): Promise<THREE.BufferGeometry | null> {
+  excavatorGeo ??= new GLTFLoader()
+    .setMeshoptDecoder(MeshoptDecoder)
+    .loadAsync(`${base}plant/plant.glb`)
+    .then((g) => {
+      g.scene.updateMatrixWorld(true);
+      const node = g.scene.getObjectByName('excavator') as THREE.Mesh | undefined;
+      if (!node?.isMesh) throw new Error('plant.glb has no excavator');
+      return floatGeometry(node.geometry, node.matrixWorld);
+    })
+    .catch((e) => {
+      console.warn('excavator model unavailable', e);
+      return null;
+    });
+  return excavatorGeo;
+}
+
+const EXCAVATOR = plantModels.pieces.excavator;
+
+/**
+ * Excavator: its instance matrix (plant space: +z toward the dig, the body's footprint centered on
+ * the hint) at the hint's scale `k`, and the amber beacon on its cab roof into `flash`.
+ */
+function excavator(kit: DistrictKit, flash: GeoBuilder, F: Frame, along: number, across: number, k: number): THREE.Matrix4 {
+  const y = baseY(kit, F, along / 2, across / 2);
+  // Plant +x is up x +z: (f.z, -f.x), toward the road or the curb by the side of the street (sim's sx).
+  const x = new THREE.Vector3(F.f.z, 0, -F.f.x);
+  const m = new THREE.Matrix4().makeBasis(x, new THREE.Vector3(0, 1, 0), new THREE.Vector3(F.f.x, 0, F.f.z));
+  m.scale(new THREE.Vector3(k, k, k)).setPosition(F.c.x, y, F.c.z);
+  const sx = F.f.z * F.n.x - F.f.x * F.n.z;
+  const [bx, by, bz] = EXCAVATOR.beacon;
+  lampQuad(flash, F, bz * k, sx * bx * k, y + by * k + 0.08, 0.14, F.f, LOOK.amber);
+  lampQuad(flash, F, bz * k, sx * bx * k, y + by * k + 0.08, 0.14, { x: -F.f.x, z: -F.f.z }, LOOK.amber);
+  return m;
 }
 
 /** Skip: a steel bin with sloped ends, rubble heaped inside. */
@@ -248,6 +245,7 @@ export const roadworksRenderer: DistrictRenderer = {
   build(kit, areas) {
     const flash = new GeoBuilder(true);
     const pools = kit.quality === 'low' ? null : new GeoBuilder(true);
+    const excavators: THREE.Matrix4[] = [];
     for (const a of areas) {
       const hints = kit.builds[a.id]?.hints ?? [];
       let lit = false;
@@ -256,7 +254,7 @@ export const roadworksRenderer: DistrictRenderer = {
         const F = frameOf(h);
         const [along, across, extra] = h.values;
         if (h.kind === 'arrowBoard') arrowBoard(kit, flash, F, along, across);
-        else if (h.kind === 'excavator') excavator(kit, flash, F, along, across, extra);
+        else if (h.kind === 'excavator') excavators.push(excavator(kit, flash, F, along, across, extra));
         else if (h.kind === 'skip') skip(kit, F, along, across, col([0xf2b81c, 0xe06a1a, 0x2a7a4a, 0x2050a0][a.id % 4]));
         else if (h.kind === 'lightTower') {
           lightTower(kit, pools, F, along, across);
@@ -273,6 +271,18 @@ export const roadworksRenderer: DistrictRenderer = {
         }
         pool(kit, pools, x, z, LOOK.washR, LOOK.wash);
       }
+    }
+    if (excavators.length) {
+      // An empty stand-in until the shared model lands (its own, disposed with the scene; the model is the page's).
+      const mesh = new THREE.InstancedMesh(kit.track(new THREE.BufferGeometry()), kit.track(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.1, envMapIntensity: 0.5 })), excavators.length);
+      mesh.name = 'roadworksExcavators';
+      excavators.forEach((m, i) => mesh.setMatrixAt(i, m));
+      kit.group.add(mesh);
+      void loadExcavator().then((geo) => {
+        if (!geo) return;
+        mesh.geometry = geo;
+        mesh.computeBoundingSphere();
+      });
     }
     if (flash.vertexCount) {
       const mat = kit.track(new THREE.MeshBasicMaterial({ vertexColors: true }));

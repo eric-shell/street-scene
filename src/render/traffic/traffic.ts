@@ -38,6 +38,7 @@ import type { Quality } from '../../ui/settings';
 import modelsJson from '../../assets/trafficModels.json';
 import { kelvin, makeRadialGlow } from '../textures/textures';
 import { fadeSubPixel } from '../materialFx';
+import { floatGeometry } from '../gltfGeometry';
 import { ROAD_Y } from '../street/cityMeshes';
 import { maskVehicleMesh, underVehicles } from '../vehicleMask';
 
@@ -154,31 +155,6 @@ export function loadTrafficAssets(): Promise<TrafficAssets | null> {
       return null;
     });
   return loading;
-}
-
-/** A copy of a (possibly quantized) glTF geometry with float position, normal and uv, transformed by `m`. */
-function floatGeometry(src: THREE.BufferGeometry, m: THREE.Matrix4): THREE.BufferGeometry {
-  const g = new THREE.BufferGeometry();
-  for (const [name, size] of [
-    ['position', 3],
-    ['normal', 3],
-    ['uv', 2],
-  ] as const) {
-    const a = src.getAttribute(name);
-    const out = new Float32Array(a.count * size);
-    for (let i = 0; i < a.count; i++) {
-      out[i * size] = a.getX(i);
-      out[i * size + 1] = a.getY(i);
-      if (size === 3) out[i * size + 2] = a.getZ(i);
-    }
-    g.setAttribute(name, new THREE.BufferAttribute(out, size));
-  }
-  const idx = src.getIndex();
-  g.setIndex(idx ? Array.from(idx.array as ArrayLike<number>) : [...Array(src.getAttribute('position').count).keys()]);
-  g.applyMatrix4(m);
-  g.computeBoundingBox();
-  g.computeBoundingSphere();
-  return g;
 }
 
 /** Muted street paint for the tinted cars (the atlas holds their paint as grey). */

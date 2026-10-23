@@ -1,4 +1,5 @@
-/** Small glTF-Transform helpers shared by the asset scripts. */
+/** Small glTF-Transform helpers shared by the asset scripts, and their Blender lookup. */
+import { spawnSync } from 'node:child_process';
 import { Document, Material, Mesh, Node, Primitive } from '@gltf-transform/core';
 import { clearNodeTransform, flatten, prune, transformMesh } from '@gltf-transform/functions';
 
@@ -162,4 +163,12 @@ export function lowestHit(tris: number[][], x: number, z: number): number | null
     if (best === null || y < best) best = y;
   }
   return best;
+}
+
+/** The Blender binary for the headless asset scripts: $BLENDER, then PATH, then the usual install places. */
+export function findBlender(): string {
+  const candidates = [process.env.BLENDER, 'blender', '/Applications/Blender.app/Contents/MacOS/Blender', 'C:/Program Files/Blender Foundation/Blender/blender.exe'].filter(Boolean) as string[];
+  const bin = candidates.find((b) => spawnSync(b, ['--version'], { encoding: 'utf8' }).status === 0);
+  if (!bin) throw new Error('Blender not found (set BLENDER)');
+  return bin;
 }
