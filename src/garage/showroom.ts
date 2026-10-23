@@ -35,11 +35,26 @@ import type { PaintFinish, VisualBuild } from '../shared/carBuild';
 import { PART_SLOTS } from '../shared/parts';
 import type { Quality } from '../ui/settings';
 import { PALETTE } from '../ui/kit/palette';
-import { concreteTextures, hazardTexture, noise, plateTextures, shadowTexture, wallTexture } from './showroomTextures';
+import { concreteTextures, dynoScreen, glowTexture, hazardTexture, noise, plateTextures, shadowTexture, wallTexture } from './showroomTextures';
 import {
   GLOW,
   Kit,
   acMachine,
+  banner,
+  beerCooler,
+  dyno,
+  bayNumber,
+  calendar,
+  cleanup,
+  cones,
+  drumFan,
+  exitSign,
+  floorDrain,
+  lightPool,
+  plateRow,
+  spaceHeater,
+  wallClock,
+  wallTv,
   alignmentConsole,
   batten,
   batteryCharger,
@@ -88,20 +103,24 @@ import {
 } from './showroomProps';
 import type { LiftFit } from './showroomProps';
 import { MAIN_SIGN, NEON, NeonSign, OPEN_SIGN } from './neonSign';
+import { Crew, liftHeight } from './showroomCrew';
+import type { CrewLift } from './showroomCrew';
 import { Disposer } from '../render/disposer';
 
 /**
  * Per quality tier: the floor's reflection pass (render scale of the screen,
- * 0 = off), the dust in the light, how many lifts have a car on them (each is
- * a full car view, about 20 draw calls and 20k triangles) and the work lights
+ * 0 = off), the dust in the light, how many lifts have a car on them and
+ * whether the dyno does (each is a full car view, about 20 draw calls and 20k
+ * triangles), the crew (garage/showroomCrew.ts: about fifteen instanced draw
+ * calls, the fourth lift going up and down with its operator) and the work lights
  * (the second lift's batten, the lamp under a car, the bench's), and the
  * floor's and turntable's texture resolution (the concrete at 128 px/m times
  * `texRes`, the diamond plate at 1024 px across times `texRes`).
  */
-export const SHOWROOM_QUALITY: Record<Quality, { reflection: number; dust: boolean; liftCars: number; workLights: boolean; texRes: 1 | 2 }> = {
-  low: { reflection: 0, dust: false, liftCars: 2, workLights: false, texRes: 1 },
-  medium: { reflection: 0.35, dust: true, liftCars: 4, workLights: true, texRes: 2 },
-  high: { reflection: 0.45, dust: true, liftCars: 4, workLights: true, texRes: 2 },
+export const SHOWROOM_QUALITY: Record<Quality, { reflection: number; dust: boolean; liftCars: number; dynoCar: boolean; crew: boolean; workLights: boolean; texRes: 1 | 2 }> = {
+  low: { reflection: 0, dust: false, liftCars: 2, dynoCar: false, crew: false, workLights: false, texRes: 1 },
+  medium: { reflection: 0.35, dust: true, liftCars: 4, dynoCar: true, crew: true, workLights: true, texRes: 2 },
+  high: { reflection: 0.45, dust: true, liftCars: 4, dynoCar: true, crew: true, workLights: true, texRes: 2 },
 };
 
 /** The room (m): half its width and depth, the roof, the turntable, the painted band on the walls, the battens' height. */
@@ -129,6 +148,12 @@ const LIFTS: { x: number; z: number; yaw: number; h: number; wheelsOff?: boolean
   { x: -8.7, z: -1.6, yaw: Math.PI / 2, h: 1.7 },
   { x: -8.7, z: 4.6, yaw: Math.PI / 2, h: 0.4 },
 ];
+
+/** The lift the crew's operator raises and lowers, and how high its car's ground goes (m). */
+const MOVING_LIFT = { index: 3, high: 1.75 } as const;
+
+/** The dyno cell in the front right quadrant, beside the way in: where the car on it stands (m) and faces (rad: into the room, its tail and exhaust toward the door, the giant fan at its nose). */
+const DYNO = { x: 8.0, z: 6.6, yaw: Math.PI, fanR: 0.75 } as const;
 
 /** Body paints the customers' cars come in, each with its finish. */
 const LIFT_PAINTS: [string, PaintFinish][] = [
@@ -174,6 +199,8 @@ const BATTENS: { x: number; y: number; z: number; yaw: number; len: number; stat
   { x: -8.7, y: 5.0, z: 4.6, yaw: 0, len: 2.4, state: 'lit' },
   { x: 10.4, y: 4.6, z: -2.5, yaw: Math.PI / 2, len: 2.4, state: 'lit' },
   { x: 2.5, y: 5.0, z: 8, yaw: 0, len: 2.4, state: 'lit' },
+  // Over the dyno.
+  { x: DYNO.x, y: 5.0, z: DYNO.z, yaw: Math.PI / 2, len: 2.4, state: 'lit' },
   // Every lift's batten is on; the dying one hangs over the front corner's lockers.
   { x: -5, y: 5.0, z: 9, yaw: 0, len: 2.4, state: 'flicker' },
 ];
@@ -197,6 +224,14 @@ export class Showroom {
   private readonly dust: THREE.Points | null = null;
   private readonly dustTime: { value: number } = { value: 0 };
   private readonly signs: NeonSign[] = [];
+  /** The drum fan's blades (spun in update) and the dyno screen on the wall (redrawn a few times a second). */
+  private readonly fanBlades: THREE.Object3D;
+  private readonly dyno: ReturnType<typeof dynoScreen>;
+  private dynoWait = 0;
+  /** The crew, and the moving lift's carriage, arms and car (raised to the crew's cycle); null on Low. */
+  private readonly crew: Crew | null = null;
+  private liftRig: THREE.Group | null = null;
+  private crewLift: CrewLift | null = null;
   private readonly liftCars: CarView[] = [];
   /** What the orbit camera must not pass through: the lifts and their cars, as room-space boxes. */
   private readonly obstacles: THREE.Box3[] = [];
@@ -234,23 +269,102 @@ export class Showroom {
     rollerDoor(k, 8.6, -H + 0.03, 0, 3.6, 3.6);
 
     // ---------- the lifts and their cars ----------
-    const builds = liftBuilds(LIFTS.length);
+    const builds = liftBuilds(LIFTS.length + 1);
     LIFTS.forEach((l, i) => {
       const { carId, visual } = builds[i];
       const car = MANIFEST.cars.find((c) => c.id === carId)!;
       const fit: LiftFit = { width: car.dimensions.width, length: car.dimensions.length, wheelbase: car.wheelbase };
       const loaded = i < q.liftCars;
       const h = loaded ? l.h : 0.3;
-      const [ax, az] = lift(k, l.x, l.z, l.yaw, h, fit);
+      // The operator's lift: its carriage, arms and car in a rig that rises and falls with the crew's cycle.
+      const moving = loaded && q.crew && i === MOVING_LIFT.index;
+      const rigKit = moving ? new Kit(m) : undefined;
+      const [ax, az] = lift(k, l.x, l.z, l.yaw, h, fit, rigKit);
+      if (rigKit) {
+        const rig = new THREE.Group();
+        rig.position.y = h;
+        rigKit.build(rig, track);
+        s.add(rig);
+        this.liftRig = rig;
+        this.crewLift = { x: l.x, z: l.z, yaw: l.yaw, px: car.dimensions.width / 2 + 0.42, wheel: [car.wheels.FL[0], car.wheels.FL[2]], low: h, high: MOVING_LIFT.high };
+      }
       this.obstacle(l.x, l.z, l.yaw, ax, az, 4.0);
       // Oil stains under every lift; a drain pan under the one being worked on.
       k.place().plane(m.stain, 2.2, 2.2, l.x + 0.3, 0.006, l.z - 0.4, i * 1.3, -Math.PI / 2);
       if (!loaded) return;
       if (l.wheelsOff) hubs(k, l.x, h + DROOP, l.z, l.yaw, car.wheels.FL, car.wheels.FR);
-      void this.loadLiftCar(assets, carId, visual, i, h);
+      void this.loadParkedCar(assets, carId, visual, { x: l.x, y: moving ? 0 : h, z: l.z, yaw: l.yaw }, DROOP, l.wheelsOff, moving ? this.liftRig! : this.scene);
     });
+    // ---------- the dyno, its car and the giant fan in front of it ----------
+    const dynoBuild = builds[LIFTS.length];
+    const dynoCar = MANIFEST.cars.find((c) => c.id === dynoBuild.carId)!;
+    // The exhaust hose vents under the front door: that point in the dyno's frame.
+    const vdx = 7.3 - DYNO.x;
+    const vdz = H - 0.1 - DYNO.z;
+    const vent: [number, number, number] = [Math.cos(DYNO.yaw) * vdx - Math.sin(DYNO.yaw) * vdz, 0.06, Math.sin(DYNO.yaw) * vdx + Math.cos(DYNO.yaw) * vdz];
+    const deck = dyno(
+      k,
+      DYNO.x,
+      DYNO.z,
+      DYNO.yaw,
+      { length: dynoCar.dimensions.length, width: dynoCar.dimensions.width, rearZ: dynoCar.wheels.RL[2], frontZ: dynoCar.wheels.FL[2], track: 2 * Math.abs(dynoCar.wheels.RL[0]) },
+      vent,
+    );
+    this.obstacle(DYNO.x, DYNO.z, DYNO.yaw, 1.45, dynoCar.dimensions.length / 2 + 0.6, 1.6);
+    if (q.dynoCar) void this.loadParkedCar(assets, dynoBuild.carId, dynoBuild.visual, { x: DYNO.x, y: deck, z: DYNO.z, yaw: DYNO.yaw }, 0);
+    const fanAt = { x: DYNO.x, z: DYNO.z - dynoCar.dimensions.length / 2 - 1.25, yaw: 0 };
+    const hub = drumFan(k, fanAt.x, fanAt.z, fanAt.yaw, DYNO.fanR);
+    this.obstacle(fanAt.x, fanAt.z, 0, DYNO.fanR + 0.2, 0.4, 2 * DYNO.fanR + 0.3);
     for (const [x, z, hx, hz, h] of workArea(k, m)) this.obstacle(x, z, 0, hx, hz, h);
+    // Faked light under the work areas' battens (the cluster over the table has real light): additive pools, no shading cost.
+    BATTENS.slice(3).forEach((b) => {
+      if (b.state === 'lit') lightPool(k, m.poolTube, b.x, b.z, b.len + 1.2, 2.4, b.yaw);
+    });
+    // The dyno's screen on the wall beside it, redrawn as the run goes.
+    this.dyno = dynoScreen();
+    const screen = track(new THREE.MeshBasicMaterial({ map: track(this.dyno.texture), color: new THREE.Color(1.25, 1.25, 1.25) }));
+    wallTv(k, H, 2.6, 6.75, -Math.PI / 2, screen);
     k.build(s, track);
+    // The giant fan's blades, spun in update: four broad blades pitched into the air, the hub.
+    const blades = new Kit(m);
+    const br = DYNO.fanR;
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2;
+      blades.place(0, 0, 0, 0).box(m.galv, 0.34 * br, 0.82 * br, 0.014, Math.cos(a + Math.PI / 2) * 0.48 * br, Math.sin(a + Math.PI / 2) * 0.48 * br, 0, 0.35, 0, a);
+    }
+    blades.cyl(m.black, 0.14 * br, 0.1, 0, 0, 0, 'z', 16);
+    const fan = new THREE.Group();
+    fan.position.set(fanAt.x, 0, fanAt.z);
+    fan.rotation.y = fanAt.yaw;
+    this.fanBlades = new THREE.Group();
+    this.fanBlades.position.set(...hub);
+    fan.add(this.fanBlades);
+    blades.build(this.fanBlades, track);
+    s.add(fan);
+
+    // ---------- the crew ----------
+    if (this.crewLift) {
+      const l1 = LIFTS[0];
+      this.crew = new Crew(
+        {
+          lift: this.crewLift,
+          overhead: { x: l1.x + 0.15, z: l1.z + 0.3, yaw: Math.PI },
+          bench: { x: 10.78, z: -2.75, yaw: Math.PI / 2 },
+          dyno: { x: 6.1, z: 8.7, screen: [H, 6.75], car: [DYNO.x, DYNO.z] },
+          talk: [
+            [-8.55, 8.85],
+            [-7.75, 8.35],
+          ],
+          carry: [
+            [9.95, -6.4],
+            [9.95, -3.5],
+          ],
+        },
+        track,
+        track(glowTexture()),
+      );
+      s.add(this.crew.group);
+    }
 
     // ---------- signs ----------
     for (const [spec, at] of [
@@ -303,8 +417,10 @@ export class Showroom {
       const mirror = r.onBeforeRender.bind(r);
       r.onBeforeRender = (...args) => {
         for (const v of this.liftCars) v.root.visible = false;
+        if (this.crew) this.crew.group.visible = false;
         mirror(...args);
         for (const v of this.liftCars) v.root.visible = true;
+        if (this.crew) this.crew.group.visible = true;
       };
       s.add(r);
       this.reflector = r;
@@ -401,8 +517,8 @@ export class Showroom {
   }
 
   /** Load a lift's car, dress it in its build and pose it once on the arms (wheels hanging). */
-  private async loadLiftCar(assets: CarAssetLibrary, carId: string, visual: VisualBuild, index: number, h: number): Promise<void> {
-    const l = LIFTS[index];
+  /** Load a car view standing still at `at` (its ground and yaw), its wheels hung by `droop` (m), the front pair off for a brake job. */
+  private async loadParkedCar(assets: CarAssetLibrary, carId: string, visual: VisualBuild, at: { x: number; y: number; z: number; yaw: number }, droop: number, wheelsOff = false, parent: THREE.Object3D = this.scene): Promise<void> {
     const view = new CarView(carId, assets, { envMap: this.envMap });
     view.setHeadlightsEnabled(false);
     await view.load(visual);
@@ -410,11 +526,11 @@ export class Showroom {
       view.dispose();
       return;
     }
-    if (l.wheelsOff) {
+    if (wheelsOff) {
       view.setWheelVisible(0, false);
       view.setWheelVisible(1, false);
     }
-    const pose: CarPose = { x: l.x, y: h, z: l.z, yaw: l.yaw, pitch: 0, roll: 0, steer: 0, comp: [DROOP, DROOP, DROOP, DROOP], spin: [0, 0, 0, 0], braking: false, nitro: false, speed: 0 };
+    const pose: CarPose = { x: at.x, y: at.y, z: at.z, yaw: at.yaw, pitch: 0, roll: 0, steer: 0, comp: [droop, droop, droop, droop], spin: [0, 0, 0, 0], braking: false, nitro: false, speed: 0 };
     view.update(pose, 0);
     // Parked with the ignition off: dark lenses, no glow (posed once, nothing sets them again).
     const lamps = view.materials as Record<string, THREE.Material>;
@@ -427,7 +543,7 @@ export class Showroom {
       lens.color.setHex(color);
       lens.emissiveIntensity = 0;
     }
-    this.scene.add(view.root);
+    parent.add(view.root);
     this.liftCars.push(view);
   }
 
@@ -486,6 +602,17 @@ export class Showroom {
     this.flickerMat.color.copy(GLOW.tube).multiplyScalar(f);
     for (const sign of this.signs) sign.update(t);
     this.dustTime.value = t;
+    this.fanBlades.rotation.z -= dt * 14;
+    if (this.crew && this.liftRig && this.crewLift) {
+      this.crew.update(t);
+      this.liftRig.position.y = liftHeight(this.crewLift, t);
+    }
+    // The dyno redraws at about 12 Hz: enough for the curve to climb, one small texture upload each time.
+    this.dynoWait -= dt;
+    if (this.dynoWait <= 0) {
+      this.dynoWait = 1 / 12;
+      this.dyno.draw(t);
+    }
   }
 
   dispose(): void {
@@ -606,7 +733,10 @@ function workArea(k: Kit, m: Kit['m']): [number, number, number, number, number]
   sandblaster(k, 1.5, -11.55, 0);
   // The back right corner: the fridge with the coffee on it under the beer sign, a bin beside it.
   coffeeCorner(k, 11.1, -11.68, 0);
-  trashCan(k, 11.68, -11.6, 0.24);
+  beerCooler(k, 11.68, -11.68, 0);
+  trashCan(k, 9.9, -10.25, 0.24);
+  spaceHeater(k, 10.0, -11.3, 0.3);
+  wallClock(k, 3.6, 3.0, -H, 0);
   // Left wall: tire stacks in the back corner, a chest under a pegboard between the lifts.
   for (const [x, z, n] of [
     [-11.3, -5.3, 5],
@@ -619,6 +749,7 @@ function workArea(k: Kit, m: Kit['m']): [number, number, number, number, number]
   // Left wall, front corner: a bank of black lockers.
   locker(k, -H + 0.32, 9.0, Y, 0.95, m.black);
   locker(k, -H + 0.32, 8.02, Y, 0.95, m.black, true);
+  calendar(k, -H, 2.55, 8.5, Y);
   // The machines along the left wall: parts washer and grinder by the tires, the press, a charger, the drill press.
   partsWasher(k, -H + 0.32, -7.9, Y);
   benchGrinder(k, -11.5, -6.5, Y);
@@ -631,6 +762,9 @@ function workArea(k: Kit, m: Kit['m']): [number, number, number, number, number]
   // The gunmetal cab with its top chest and a locker each side, a cart pulled out by it; a blue locker by the drums.
   flagshipCab(k, -0.4, H - 0.33, Math.PI, 1.8, { body: m.gunmetal, fronts: m.drawersGunmetal, accent: m.accentPink, glow: m.glowPink, badge: 2, top: 'chest', lockers: 2, cabinets: 4, cabinetY: 2.6 });
   ragBin(k, 1.25, 10.85);
+  plateRow(k, -0.4, 3.35, H, Math.PI);
+  cones(k, 2.75, 10.95, 3);
+  cleanup(k, 8.25, H - 0.5, Math.PI);
   trashCan(k, -5.2, 10.85);
   wheelBoxes(k, -7.0, 10.55, 3, m.boxKiba);
   k.place(-7.05, 0.9, 10.5, 0.3).box(m.boxHayate, 0.5, 0.36, 0.4, 0, 0.18, 0);
@@ -643,9 +777,9 @@ function workArea(k: Kit, m: Kit['m']): [number, number, number, number, number]
   for (let i = 0; i < 4; i++) tire(k, 10.7, 0.1 + i * 0.2, 11.2);
   for (let i = 0; i < 3; i++) tire(k, 1.9, 0.1 + i * 0.2, 11.3);
   extinguisher(k, 2.6, H, Math.PI);
-  // Right wall: the bench under its pegboard and the small sign, a tool cart pulled out, the tire rack, panels.
+  // Right wall: the bench under its tool board and the small sign, a tool cart pulled out, the tire rack, panels.
   workbench(k, H - 0.45, -2.5, -Y, 3.2);
-  k.place().plane(m.pegboard, 3.0, 1.5, H - 0.02, 1.95, -2.5, -Y);
+  toolBoard(k, H, 1.95, -2.5, -Y, 3.0, 1.4);
   k.place().plane(m.poster2, 1.0, 1.4, H - 0.02, 2.6, 1.9, -Y);
   toolChest(k, 11.1, 0.7, -Y + 0.35, 1.0, m.blue, m.drawersBlue, false);
   tireRack(k, H - 0.25, 4.4, -Y, 8);
@@ -658,7 +792,8 @@ function workArea(k: Kit, m: Kit['m']): [number, number, number, number, number]
   toolBoard(k, H, 1.55, -7.15, -Y, 1.2, 0.9);
   whiteboard(k, H, 2.45, 8.6, -Y, 1.6, 0.9);
   rollingStool(k, 10.5, -8.9);
-  alignmentConsole(k, 9.2, 8.6, -Y - 0.5);
+  // The dyno's computer beside it.
+  alignmentConsole(k, 9.95, 7.4, -Y);
   // Air on a reel over the bench, another between the back lifts and the table, a drop light on a cord over the second lift.
   const chord = ROOM.height - 0.82;
   ceilingReel(k, 8.6, 5.45, 0, chord, m.yellow, [8.8, 2.3, 0.15], 'air');
@@ -719,8 +854,9 @@ function workArea(k: Kit, m: Kit['m']): [number, number, number, number, number]
     m.yellow,
     [
       [9.3, 0.62, H - 0.45],
-      [8.9, 0.015, 10.6],
-      [5.0, 0.015, 9.2],
+      [8.9, 0.015, 11.0],
+      [6.6, 0.015, 10.95],
+      [5.0, 0.015, 9.6],
       [1.0, 0.015, 9.7],
       [-3.0, 0.015, 8.7],
       [-5.5, 0.015, 7.3],
@@ -735,7 +871,7 @@ function workArea(k: Kit, m: Kit['m']): [number, number, number, number, number]
   underhoistStand(k, l1.x + 0.55, l1.z - 1.5, l1.h + 0.1);
   k.place().bar(m.chrome, [l1.x - 0.3, 0.06, l1.z - 1.9], [l1.x + 0.1, 0.06, l1.z + 1.2], 0.08);
   k.place().cyl(m.chrome, 0.14, 0.6, l1.x + 0.15, 0.14, l1.z + 1.6, 'z', 14);
-  // The third: an oil drainer under the engine. The fourth: coilovers and boxed parts waiting to go in.
+  // The third: an oil drainer under the engine. The fourth: boxed parts waiting to go in.
   const l3 = LIFTS[2];
   k.place().cyl(m.yellow, 0.22, 0.4, l3.x + 1.4, 0.22, l3.z, 'y', 14);
   k.place().cyl(m.galv, 0.025, 1.0, l3.x + 1.4, 0.9, l3.z, 'y', 8);
@@ -743,13 +879,6 @@ function workArea(k: Kit, m: Kit['m']): [number, number, number, number, number]
   transmissionJack(k, l3.x + 0.4, l3.z, Y, 1.5);
   clipboard(k, l3.x + 0.18, 1.45, l3.z + 1.3, Y);
   const l4 = LIFTS[3];
-  for (const [dx, dz] of [
-    [2.5, -1.4],
-    [2.75, -1.2],
-  ] as const) {
-    k.place().cyl(m.galv, 0.03, 0.55, l4.x + dx, 0.3, l4.z + dz, 'y', 8);
-    for (let i = 0; i < 6; i++) k.place().add(m.yellow, new THREE.TorusGeometry(0.06, 0.012, 6, 14), l4.x + dx, 0.1 + i * 0.065, l4.z + dz, 0, Math.PI / 2);
-  }
   k.place().box(m.boxKurogane, 0.6, 0.4, 0.45, l4.x + 2.6, 0.2, l4.z + 1.9, 0.2);
   k.place().box(m.boxHayate, 0.45, 0.3, 0.4, l4.x + 2.6, 0.55, l4.z + 1.9, 0.5);
   k.place(l4.x + 2.4, 0, l4.z - 2.1, -0.5);
@@ -759,6 +888,15 @@ function workArea(k: Kit, m: Kit['m']): [number, number, number, number, number]
   // The fourth lift: the brake bleeder and a creeper seat by the front wheels.
   brakeBleeder(k, l4.x + 2.9, l4.z + 0.6, 0.3);
   creeperSeat(k, l4.x + 2.9, l4.z - 0.7, 0.6);
+  // Exit signs over both doors, the bay numbers painted in front of the lifts, a drain in the floor.
+  exitSign(k, 5.5, 4.85, H, Math.PI);
+  exitSign(k, 8.6, 4.25, -H, 0);
+  LIFTS.forEach((l, i) => (l.z < -5 ? bayNumber(k, l.x, -6.1, 0, i + 1) : bayNumber(k, -6.4, l.z, Y, i + 1)));
+  floorDrain(k, 4.8, -2.6);
+  // The tuners' banners hung from the trusses in the front half, and one over the bench, clear of the main sign.
+  banner(k, -5.5, 4.5, 0, chord, 0);
+  banner(k, 5.5, 4.5, 0, chord, 1);
+  banner(k, 7.5, -4.5, 0, chord, 2);
   // Bay lines round the lifts.
   floorLine(k, -8.1, -H, -8.1, -5.4);
   floorLine(k, -1.95, -H, -1.95, -5.4);

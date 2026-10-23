@@ -14,7 +14,7 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { badgeTexture, beerSignTexture, deckTexture, doorTexture, drawerTexture, glowTexture, lineTexture, partsBoxTexture, pegboardTexture, posterTexture, stainTexture, whiteboardTexture, workOrderTexture } from './showroomTextures';
+import { badgeTexture, bannerTexture, bayNumbersTexture, beerSignTexture, calendarTexture, clockTexture, deckTexture, exitTexture, platesTexture, washTexture, doorTexture, drawerTexture, glowTexture, lineTexture, partsBoxTexture, pegboardTexture, posterTexture, stainTexture, whiteboardTexture, workOrderTexture } from './showroomTextures';
 import { PALETTE } from '../ui/kit/palette';
 import type { Disposable } from '../render/disposer';
 
@@ -37,8 +37,8 @@ export function createMaterials(track: <T extends Disposable>(x: T) => T, wallMa
     return m;
   };
   const glowMap = track(glowTexture());
-  const pool = (color: string) => {
-    const l = track(new THREE.MeshBasicMaterial({ map: glowMap, color: new THREE.Color(color).multiplyScalar(0.55), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  const pool = (color: string, k = 0.55) => {
+    const l = track(new THREE.MeshBasicMaterial({ map: glowMap, color: new THREE.Color(color).multiplyScalar(k), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
     l.userData.renderOrder = 3;
     return l;
   };
@@ -113,10 +113,30 @@ export function createMaterials(track: <T extends Disposable>(x: T) => T, wallMa
     })(),
     leakEdge: basic(new THREE.Color(0xffb050).multiplyScalar(1.6)),
     /** Each underglow's pool on the floor in front of its cab: additive, like the door's leak. */
-    glowCyan: pool(PALETTE.cyan),
-    glowPurple: pool(PALETTE.purple),
-    glowPink: pool(PALETTE.pink),
-    glowGreen: pool(PALETTE.green),
+    glowCyan: pool(PALETTE.cyan, 0.22),
+    glowPurple: pool(PALETTE.purple, 0.22),
+    /** Faked light, no lighting cost: the pools under the battens, the exit signs' green, the heater's warmth. */
+    poolTube: pool('#dfe8ff', 0.16),
+    poolExit: pool('#3cff7a', 0.14),
+    poolHeater: pool('#ff7a2a', 0.6),
+    /** Light washing down the wall or a hutch's back under an LED strip. */
+    wash: (() => {
+      const l = track(new THREE.MeshBasicMaterial({ map: track(washTexture()), color: new THREE.Color(0xe8f0ff).multiplyScalar(0.32), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+      l.userData.renderOrder = 3;
+      return l;
+    })(),
+    exit: track(new THREE.MeshBasicMaterial({ map: track(exitTexture()), color: new THREE.Color(1.6, 1.6, 1.6) })),
+    heaterCoil: basic(new THREE.Color(0xff6a20).multiplyScalar(2.4)),
+    /** The beer cooler's lit interior and its glass door. */
+    coolerLight: basic(new THREE.Color(0xdfefff).multiplyScalar(0.95)),
+    glass: std({ color: 0x9fb4c8, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.2, depthWrite: false }),
+    bayNumbers: decal(bayNumbersTexture(), 1, 0.8),
+    banner: std({ map: track(bannerTexture(BANNERS)), roughness: 0.9 }),
+    plates: std({ map: track(platesTexture()), roughness: 0.6, metalness: 0.3 }),
+    clock: std({ map: track(clockTexture()), roughness: 0.4 }),
+    calendar: std({ map: track(calendarTexture()), roughness: 0.9 }),
+    glowPink: pool(PALETTE.pink, 0.22),
+    glowGreen: pool(PALETTE.green, 0.22),
   };
 }
 export type Mats = ReturnType<typeof createMaterials>;
@@ -209,13 +229,19 @@ export interface LiftFit {
 
 /**
  * A two-post lift with the car's ground at height h, the car along local z:
- * base plates, posts with the hazard band and lock ladders, the overhead beam,
+ * base plates, posts with the hazard band and lock ladders, the overhead beam
+ * with its safety bar and LED bars,
  * carriages, four swing arms to pads under the sills and the power unit.
+ * With `move`, the carriages, arms and pads go into that kit instead, at
+ * height 0 in the same frame, so the showroom can raise and lower them.
  * Returns the lift's half extents across (x) and along (z), for the camera.
  */
-export function lift(k: Kit, x: number, z: number, yaw: number, h: number, car: LiftFit): [number, number] {
+export function lift(k: Kit, x: number, z: number, yaw: number, h: number, car: LiftFit, move?: Kit): [number, number] {
   const m = k.m;
   k.place(x, 0, z, yaw);
+  const mk = move ?? k;
+  mk.place(x, 0, z, yaw);
+  const mh = move ? 0 : h;
   const px = car.width / 2 + 0.42;
   for (const s of [-1, 1]) {
     const sx = s * px;
@@ -226,16 +252,18 @@ export function lift(k: Kit, x: number, z: number, yaw: number, h: number, car: 
     k.box(m.yellow, 0.31, 0.3, 0.35, sx, 0.17, 0);
     for (const y of [0.09, 0.21]) k.box(m.black, 0.315, 0.05, 0.355, sx, y, 0);
     // Carriage at the arms' height, arms swung under the sills.
-    k.box(m.lift, 0.2, 0.72, 0.42, sx - s * 0.24, h + 0.36, 0);
+    mk.box(m.lift, 0.2, 0.72, 0.42, sx - s * 0.24, mh + 0.36, 0);
     for (const e of [-1, 1]) {
-      const pad: Vec = [s * (car.width / 2 - 0.4), h, e * (car.wheelbase / 2 - 0.45)];
-      k.bar(m.lift, [sx - s * 0.3, h, e * 0.16], pad, 0.13, 0.08);
-      k.cyl(m.rubber, 0.085, 0.07, pad[0], h + 0.055, pad[2], 'y', 12);
-      k.cyl(m.yellow, 0.06, 0.03, pad[0], h + 0.03, pad[2], 'y', 10);
+      const pad: Vec = [s * (car.width / 2 - 0.4), mh, e * (car.wheelbase / 2 - 0.45)];
+      mk.bar(m.lift, [sx - s * 0.3, mh, e * 0.16], pad, 0.13, 0.08);
+      mk.cyl(m.rubber, 0.085, 0.07, pad[0], mh + 0.055, pad[2], 'y', 12);
+      mk.cyl(m.yellow, 0.06, 0.03, pad[0], mh + 0.03, pad[2], 'y', 10);
     }
   }
   k.box(m.lift, 2 * px + 0.3, 0.2, 0.26, 0, 4.0, 0);
   k.box(m.yellow, 0.5, 0.06, 0.27, 0, 3.86, 0);
+  // LED bars under the beam either side of the safety bar, lighting down onto the car.
+  for (const s of [-1, 1]) k.box(m.tube, px - 0.45, 0.016, 0.05, s * (px / 2 + 0.2), 3.892, 0);
   k.cyl(m.rubber, 0.016, 2 * px, 0, 3.86, -0.15, 'x', 6);
   // The power unit on the right post: motor, reservoir, a red button, its hose up the post.
   k.cyl(m.steel, 0.11, 0.34, px + 0.3, 1.45, 0.05);
@@ -876,31 +904,52 @@ function sprayCans(k: Kit, x: number, y: number, z: number, n: number): void {
 
 /**
  * A louvred steel tool board on a wall, centered at height y along local x:
- * a wrench rack of twelve, a screwdriver rack, hammers, pliers, ratchets and
- * a magnetic socket rail, each hung where it belongs.
+ * a wrench rack, a screwdriver rack, hammers, pliers, ratchets and a magnetic
+ * socket rail, each hung where it belongs, as many as the width holds at the
+ * spacing the cabs' hutches use, under an LED strip washing down over them
+ * the way the hutches are lit.
  */
 export function toolBoard(k: Kit, x: number, y: number, z: number, yaw: number, w: number, h: number): void {
   const m = k.m;
   k.place(x, y, z, yaw);
   k.box(m.gunmetal, w, h, 0.02, 0, 0, 0.01);
   for (let i = 0; i < Math.floor(h / 0.09); i++) k.box(m.black, w - 0.08, 0.008, 0.004, 0, -h / 2 + 0.05 + i * 0.09, 0.022);
+  k.box(m.steel, w, 0.04, 0.08, 0, h / 2 + 0.02, 0.06);
+  k.box(m.tube, w - 0.1, 0.012, 0.025, 0, h / 2 - 0.006, 0.08);
+  k.plane(m.wash, w - 0.06, h, 0, 0, 0.026);
   const top = h / 2 - 0.08;
   // Wrenches, short to long, ring ends down.
   const ww = w * 0.45;
   k.box(m.black, ww, 0.02, 0.03, -w / 2 + 0.04 + ww / 2, top, 0.035);
-  for (let i = 0; i < 12; i++) {
-    const len = 0.12 + i * 0.016;
-    const wx = -w / 2 + 0.07 + (i * (ww - 0.06)) / 11;
+  const nw = Math.max(12, Math.floor((ww - 0.06) / 0.045) + 1);
+  for (let i = 0; i < nw; i++) {
+    const f = i / (nw - 1);
+    const len = 0.12 + f * 0.18;
+    const wx = -w / 2 + 0.07 + f * (ww - 0.06);
     k.box(m.chrome, 0.016, len, 0.006, wx, top - 0.01 - len / 2, 0.04);
-    k.cyl(m.chrome, 0.014 + i * 0.0008, 0.008, wx, top - 0.01 - len, 0.04, 'z', 10);
+    k.cyl(m.chrome, 0.014 + f * 0.009, 0.008, wx, top - 0.01 - len, 0.04, 'z', 10);
+  }
+  // A second, shorter set across the middle on its own rail, where a wide board has the room.
+  if (h >= 1.2) {
+    const mw = w - 0.2;
+    const mn = Math.floor(mw / 0.04) + 1;
+    k.box(m.black, mw, 0.02, 0.03, 0, 0.08, 0.035);
+    for (let i = 0; i < mn; i++) {
+      const f = i / (mn - 1);
+      const len = 0.08 + f * 0.13;
+      const wx = -mw / 2 + f * mw;
+      k.box(m.chrome, 0.013, len, 0.006, wx, 0.07 - len / 2, 0.04);
+      k.cyl(m.chrome, 0.011 + f * 0.007, 0.008, wx, 0.07 - len, 0.04, 'z', 10);
+    }
   }
   // Screwdrivers through their rack, handles up.
   const sx = w * 0.18;
   const sw = w * 0.32;
   k.box(m.black, sw, 0.02, 0.06, sx, top, 0.05);
-  const handles = [m.red, m.yellow, m.black, m.blue, m.red, m.yellow, m.black, m.red, m.blue];
-  handles.forEach((mat, i) => {
-    const px = sx - sw / 2 + 0.03 + (i * (sw - 0.06)) / 8;
+  const colors = [m.red, m.yellow, m.black, m.blue];
+  const ns = Math.max(9, Math.floor((sw - 0.06) / 0.045) + 1);
+  Array.from({ length: ns }, (_, i) => colors[(i * 3 + (i >> 2)) % 4]).forEach((mat, i) => {
+    const px = sx - sw / 2 + 0.03 + (i * (sw - 0.06)) / (ns - 1);
     k.cyl(mat, 0.013, 0.09, px, top + 0.055, 0.055, 'y', 8);
     const len = 0.1 + (i % 3) * 0.04;
     k.cyl(m.chrome, 0.004, len, px, top - 0.01 - len / 2, 0.055, 'y', 5);
@@ -926,7 +975,11 @@ export function toolBoard(k: Kit, x: number, y: number, z: number, yaw: number, 
   const rx0 = w * 0.12;
   const rw = w * 0.36;
   k.box(m.red, rw, 0.03, 0.012, rx0 + rw / 2, low + 0.06, 0.028);
-  for (let i = 0; i < 10; i++) k.cyl(m.chrome, 0.012 + i * 0.0015, 0.04 + i * 0.002, rx0 + 0.03 + (i * (rw - 0.06)) / 9, low + 0.06, 0.06, 'z', 8);
+  const nk = Math.max(10, Math.floor((rw - 0.06) / 0.042) + 1);
+  for (let i = 0; i < nk; i++) {
+    const f = i / (nk - 1);
+    k.cyl(m.chrome, 0.012 + f * 0.0135, 0.04 + f * 0.018, rx0 + 0.03 + f * (rw - 0.06), low + 0.06, 0.06, 'z', 8);
+  }
   k.box(m.black, rw, 0.02, 0.03, rx0 + rw / 2, low + 0.22, 0.035);
   for (let i = 0; i < 6; i++) k.box(m.chrome, 0.02, 0.09 + i * 0.012, 0.012, rx0 + 0.04 + (i * (rw - 0.08)) / 5, low + 0.21 - (0.09 + i * 0.012) / 2, 0.04);
 }
@@ -940,6 +993,7 @@ export function wallCabinets(k: Kit, x: number, y: number, z: number, yaw: numbe
   for (let i = 1; i < n; i++) k.box(m.black, 0.008, 0.58, 0.006, -w / 2 + (i * w) / n, 0, d + 0.003);
   for (let i = 0; i < n; i++) k.box(m.chrome, 0.02, 0.14, 0.025, -w / 2 + ((i + 0.5) * w) / n + (i % 2 ? -1 : 1) * (w / n / 2 - 0.06), -0.18, d + 0.012);
   k.box(m.tube, w - 0.12, 0.012, 0.025, 0, -0.306, d - 0.06);
+  k.plane(m.wash, w - 0.1, 0.75, 0, -0.31 - 0.375, 0.004);
 }
 
 /** The jobs whiteboard centered at height y on a wall: aluminium frame, the board, the marker tray with markers and an eraser. */
@@ -1305,7 +1359,7 @@ export function wheelBoxes(k: Kit, x: number, z: number, n: number, mat: THREE.M
 
 /**
  * The coffee corner against a wall: a mini fridge with its stickers and the
- * coffee maker, mugs and a towel roll on top, the beer sign on the wall over it.
+ * coffee maker, mugs and a towel roll on top (the beer cooler stands beside it).
  */
 export function coffeeCorner(k: Kit, x: number, z: number, yaw: number): void {
   const m = k.m;
@@ -1329,8 +1383,6 @@ export function coffeeCorner(k: Kit, x: number, z: number, yaw: number): void {
   ] as const)
     k.cyl(c, 0.04, 0.09, dx, 0.915, c === m.black ? -0.1 : 0.08 - (dx - 0.08), 'y', 10);
   k.cyl(m.enamel, 0.06, 0.24, 0.17, 1.12, -0.15, 'x', 12);
-  k.box(m.black, 0.76, 0.4, 0.03, 0, 1.8, -0.285);
-  k.plane(m.beerSign, 0.72, 0.36, 0, 1.8, -0.268);
 }
 
 /** The flagship cabs' nameplates, in the badge atlas's row order: series name, line, the accent they are lit in. */
@@ -1396,9 +1448,7 @@ export function flagshipCab(k: Kit, x: number, z: number, yaw: number, w: number
   k.box(m.rubber, span + 0.3, 0.012, 1.1, cx, 0.006, d / 2 + 0.5);
   k.plane(style.glow, span * 1.25, 1.8, cx, 0.014, d / 2 + 0.1, 0, -Math.PI / 2);
   // The nameplate: on the hutch's overhead cabinet, or across the top chest under its handle.
-  const plate = new THREE.PlaneGeometry(hutch ? 0.66 : 0.5, hutch ? 0.124 : 0.094);
-  const uv = plate.getAttribute('uv') as THREE.BufferAttribute;
-  for (let i = 0; i < uv.count; i++) uv.setY(i, 1 - (style.badge + 1 - uv.getY(i)) / BADGES.length);
+  const plate = cellPlane(hutch ? 0.66 : 0.5, hutch ? 0.124 : 0.094, 0, 1, style.badge, BADGES.length);
   if (hutch) k.add(m.badge, plate, 0, ty + 0.82, -d / 2 + 0.364);
   else k.add(m.badge, plate, 0, ty + 0.5 - 0.06, d / 2 - 0.054);
   if (hutch) {
@@ -1417,6 +1467,8 @@ export function flagshipCab(k: Kit, x: number, z: number, yaw: number, w: number
       k.cyl(m.chrome, 0.004, 0.1 + (i % 3) * 0.04, px, ty + 0.4 - (i % 3) * 0.02, -d / 2 + 0.06, 'y', 5);
     });
     for (let i = 0; i < 10; i++) k.cyl(m.chrome, 0.012 + i * 0.0014, 0.04, w / 2 - 0.5 + i * 0.042, ty + 0.2, -d / 2 + 0.07, 'z', 8);
+    // The hutch's LED washing down its back.
+    k.plane(m.wash, w - 0.12, 0.6, 0, ty + 0.3, -d / 2 + 0.048);
   }
   // On the lockers: a helmet in the cab's paint on one, a carry box on the other.
   const lt = base + lh;
@@ -1429,4 +1481,299 @@ export function flagshipCab(k: Kit, x: number, z: number, yaw: number, w: number
   const c = Math.cos(yaw);
   const sn = Math.sin(yaw);
   wallCabinets(k, x + cx * c - (d / 2) * sn, style.cabinetY, z - cx * sn - (d / 2) * c, yaw, span, style.cabinets, style.body);
+}
+
+/** A plane w x h showing one cell (col, row) of a cols x rows atlas (row 0 at the top of the canvas). */
+export function cellPlane(w: number, h: number, col: number, cols: number, row: number, rows: number): THREE.PlaneGeometry {
+  const g = new THREE.PlaneGeometry(w, h);
+  const uv = g.getAttribute('uv') as THREE.BufferAttribute;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, (col + uv.getX(i)) / cols, 1 - (row + 1 - uv.getY(i)) / rows);
+  return g;
+}
+
+// ---------------------------------------------------------------------------
+// Atmosphere: faked light, signs, banners, the walls' odds and ends
+// ---------------------------------------------------------------------------
+
+/** The tuners' banners hung from the trusses, in bannerTexture's row order. */
+export const BANNERS = [
+  { name: 'KUROGANE', line: 'AERO WORKS  ·  WIDE BODY', color: PALETTE.orange },
+  { name: 'HAYATE', line: 'NIGHT SERIES  ·  COILOVERS', color: PALETTE.cyan },
+  { name: 'KIBA', line: 'FORGED WHEELS  ·  SINCE 98', color: PALETTE.yellow },
+] as const;
+
+/** A pool of faked light on the floor, w along x by d along z (m), turned by yaw. Additive: it only ever brightens. */
+export function lightPool(k: Kit, mat: THREE.Material, x: number, z: number, w: number, d: number, yaw = 0): void {
+  k.place(x, 0, z, yaw).plane(mat, w, d, 0, 0.012, 0, 0, -Math.PI / 2);
+}
+
+/** An exit sign over a door, centered at height y on the wall: the housing, its lit face and the green it throws on the wall. */
+export function exitSign(k: Kit, x: number, y: number, z: number, yaw: number): void {
+  const m = k.m;
+  k.place(x, y, z, yaw);
+  k.box(m.enamel, 0.42, 0.18, 0.07, 0, 0, 0.035);
+  k.plane(m.exit, 0.36, 0.135, 0, 0, 0.071);
+  k.plane(m.poolExit, 1.0, 0.6, 0, 0, 0.003);
+}
+
+/** A bay's number painted big on the floor, n 1 to 4, its top toward the lift (yaw 0 reads from +z). */
+export function bayNumber(k: Kit, x: number, z: number, yaw: number, n: number): void {
+  k.place(x, 0, z, yaw).add(k.m.bayNumbers, cellPlane(0.8, 0.8, n - 1, 4, 0, 1), 0, 0.006, 0, 0, -Math.PI / 2);
+}
+
+/** A tuner's cloth banner hung under a truss chord at height `chord`: the rod, its wires, the cloth hanging in a slight wave. */
+export function banner(k: Kit, x: number, z: number, yaw: number, chord: number, row: number): void {
+  const m = k.m;
+  k.place(x, 0, z, yaw);
+  const w = 2.2;
+  const h = 0.82;
+  const top = chord - 0.25;
+  // A strip with a wave across it, the cloth sagging between its grommets, showing its row of the atlas.
+  const wave = new THREE.PlaneGeometry(w, h, 16, 1);
+  const pos = wave.getAttribute('position') as THREE.BufferAttribute;
+  const uv = wave.getAttribute('uv') as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) {
+    pos.setZ(i, Math.sin((pos.getX(i) / w) * Math.PI * 3) * 0.03);
+    uv.setY(i, 1 - (row + 1 - uv.getY(i)) / BANNERS.length);
+  }
+  wave.computeVertexNormals();
+  // Printed both sides: a second face turned round so the brand reads the right way from behind too.
+  const back = wave.clone();
+  k.add(m.banner, wave, 0, top - h / 2, 0);
+  k.add(m.banner, back, 0, top - h / 2, -0.002, Math.PI);
+  k.cyl(m.galv, 0.012, w + 0.1, 0, top + 0.01, 0, 'x', 6);
+  for (const s of [-1, 1]) k.bar(m.steel, [s * (w / 2 - 0.1), top + 0.01, 0], [s * (w / 2 - 0.25), chord, 0], 0.006);
+}
+
+/** A row of old number plates nailed to a wall, centered at height y. */
+export function plateRow(k: Kit, x: number, y: number, z: number, yaw: number): void {
+  const m = k.m;
+  k.place(x, y, z, yaw);
+  k.box(m.wood, 1.86, 0.24, 0.02, 0, 0, 0.01);
+  k.plane(m.plates, 1.8, 0.3, 0, 0, 0.022);
+  for (let i = 0; i < 6; i++) for (const s of [-1, 1]) k.cyl(m.chrome, 0.006, 0.01, -0.75 + i * 0.3 + s * 0.11, 0.035, 0.025, 'z', 6);
+}
+
+/** The shop clock on a wall at height y: the black rim and its face. */
+export function wallClock(k: Kit, x: number, y: number, z: number, yaw: number): void {
+  const m = k.m;
+  k.place(x, y, z, yaw);
+  k.cyl(m.black, 0.17, 0.04, 0, 0, 0.02, 'z', 32);
+  k.add(m.clock, new THREE.CircleGeometry(0.15, 32), 0, 0, 0.041);
+}
+
+/** The supplier's calendar on its nail at height y. */
+export function calendar(k: Kit, x: number, y: number, z: number, yaw: number): void {
+  const m = k.m;
+  k.place(x, y, z, yaw);
+  k.plane(m.calendar, 0.32, 0.45, 0, 0, 0.004);
+  k.cyl(m.chrome, 0.005, 0.02, 0, 0.21, 0.01, 'z', 6);
+}
+
+/** A TV on a wall bracket at height y showing `screen`, its cable running down the wall. */
+export function wallTv(k: Kit, x: number, y: number, z: number, yaw: number, screen: THREE.Material): void {
+  const m = k.m;
+  k.place(x, y, z, yaw);
+  k.box(m.steel, 0.3, 0.2, 0.08, 0, 0, 0.04);
+  k.box(m.black, 1.1, 0.65, 0.05, 0, 0, 0.105);
+  k.plane(screen, 1.02, 0.574, 0, 0, 0.131);
+  k.hose(m.black, [[0.3, -0.3, 0.06], [0.34, -0.6, 0.02], [0.36, -1.2, 0.015], [0.36, -1.8, 0.015]], 0.008, 16);
+}
+
+/** A floor drain: the dark sump under a galvanized grate. */
+export function floorDrain(k: Kit, x: number, z: number): void {
+  const m = k.m;
+  k.place(x, 0, z, 0);
+  k.box(m.carbon, 0.46, 0.004, 0.46, 0, 0.002, 0);
+  for (let i = 0; i < 9; i++) k.box(m.galv, 0.44, 0.008, 0.012, 0, 0.006, -0.2 + i * 0.05);
+  for (const s of [-1, 1]) k.box(m.galv, 0.012, 0.008, 0.46, s * 0.22, 0.006, 0);
+}
+
+/** A push broom and a floor squeegee leant on the wall behind (local -z), a mop bucket with its wringer beside them. */
+export function cleanup(k: Kit, x: number, z: number, yaw: number): void {
+  const m = k.m;
+  k.place(x, 0, z, yaw);
+  k.bar(m.wood, [-0.15, 0.08, 0.45], [-0.1, 1.45, 0.02], 0.025);
+  k.box(m.black, 0.6, 0.06, 0.08, -0.15, 0.08, 0.46, 0.1);
+  k.box(m.wood, 0.6, 0.04, 0.07, -0.15, 0.12, 0.46, 0.1);
+  k.bar(m.galv, [0.15, 0.05, 0.4], [0.2, 1.4, 0.02], 0.022);
+  k.box(m.rubber, 0.5, 0.06, 0.03, 0.15, 0.04, 0.42, -0.1);
+  k.box(m.yellow, 0.4, 0.34, 0.36, 0.55, 0.2, 0.45);
+  k.box(m.carbon, 0.36, 0.01, 0.32, 0.55, 0.36, 0.45);
+  k.box(m.galv, 0.16, 0.16, 0.2, 0.62, 0.45, 0.45);
+  k.bar(m.wood, [0.45, 0.3, 0.45], [0.35, 1.3, 0.1], 0.022);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) k.cyl(m.rubber, 0.025, 0.02, 0.55 + sx * 0.16, 0.025, 0.45 + sz * 0.15, 'x', 8);
+}
+
+/** A stack of n traffic cones, nested. */
+export function cones(k: Kit, x: number, z: number, n: number): void {
+  const m = k.m;
+  k.place(x, 0, z, 0);
+  for (let i = 0; i < n; i++) {
+    const y = i * 0.07;
+    k.box(m.black, 0.32, 0.03, 0.32, 0, y + 0.015, 0);
+    k.cyl(m.orange, 0.025, 0.46, 0, y + 0.26, 0, 'y', 14, 0.13);
+  }
+  k.cyl(m.enamel, 0.07, 0.06, 0, (n - 1) * 0.07 + 0.32, 0, 'y', 14, 0.085);
+}
+
+/** A space heater facing local +z: the grey case, its coils glowing behind the guard, the warmth on the floor in front. */
+export function spaceHeater(k: Kit, x: number, z: number, yaw: number): void {
+  const m = k.m;
+  k.place(x, 0, z, yaw);
+  k.box(m.primer, 0.36, 0.5, 0.24, 0, 0.29, 0);
+  k.box(m.black, 0.4, 0.04, 0.3, 0, 0.02, 0);
+  for (let i = 0; i < 5; i++) k.box(m.heaterCoil, 0.26, 0.016, 0.01, 0, 0.18 + i * 0.05, 0.115);
+  for (let i = 0; i < 7; i++) k.box(m.chrome, 0.006, 0.28, 0.006, -0.12 + i * 0.04, 0.28, 0.125);
+  k.box(m.black, 0.14, 0.03, 0.04, 0, 0.56, 0);
+  k.place(x, 0, z, yaw).plane(m.poolHeater, 1.6, 1.6, 0, 0.012, 0.55, 0, -Math.PI / 2);
+}
+
+/**
+ * A drum fan on its cart facing local +z, everything but the blades (the
+ * showroom spins those on their own): the cage of staves between two rims,
+ * the front guard's spokes and rings, the motor, the frame and wheels. `r` is
+ * the drum's radius (m): a shop fan at 0.32, the dyno's giant cooling fan at
+ * 0.75. Returns the hub's center in the fan's frame.
+ */
+export function drumFan(k: Kit, x: number, z: number, yaw: number, r = 0.32): Vec {
+  const m = k.m;
+  k.place(x, 0, z, yaw);
+  const sc = r / 0.32;
+  const y = r + 0.23 * sc;
+  const depth = 0.24 * sc;
+  for (const dz of [-depth / 2, depth / 2]) k.add(m.gunmetal, new THREE.TorusGeometry(r, 0.02 * sc, 6, 40), 0, y, dz);
+  const n = Math.round(16 * sc);
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    k.box(m.gunmetal, ((Math.PI * 2 * r) / n) * 0.9, 0.012 * sc, depth, Math.cos(a) * r, y + Math.sin(a) * r, 0, 0, 0, a + Math.PI / 2);
+  }
+  const spokes = sc > 1.5 ? 12 : 8;
+  for (let i = 0; i < spokes; i++) {
+    const a = (i / spokes) * Math.PI * 2;
+    k.bar(m.chrome, [0, y, depth / 2 + 0.01], [Math.cos(a) * r, y + Math.sin(a) * r, depth / 2 + 0.01], 0.006 * Math.sqrt(sc));
+  }
+  for (const rr of sc > 1.5 ? [0.2, 0.38, 0.56] : [0.12, 0.22]) k.add(m.chrome, new THREE.TorusGeometry(rr * (sc > 1.5 ? 1 : sc), 0.004 * Math.sqrt(sc), 4, 36), 0, y, depth / 2 + 0.01);
+  k.cyl(m.black, 0.08 * sc, 0.16 * sc, 0, y, -depth / 2 + 0.02, 'z', 14);
+  for (const s of [-1, 1]) {
+    k.box(m.steel, 0.03 * sc, y + 0.07 * sc, 0.04 * sc, s * (r + 0.06 * sc), (y + 0.07 * sc) / 2, -0.02);
+    k.cyl(m.steel, 0.03 * sc, 0.04, s * (r + 0.04 * sc), y, 0, 'x', 10);
+    k.cyl(m.rubber, 0.06 * sc, 0.04 * sc, s * (r + 0.06 * sc), 0.06 * sc, -0.15 * sc, 'x', 12);
+  }
+  k.box(m.steel, 2 * r + 0.16 * sc, 0.03 * sc, 0.04 * sc, 0, 0.08 * sc, -0.02);
+  return [0, y, 0.02];
+}
+
+/**
+ * A glass door beer cooler against the wall behind it (local -z): the black
+ * cabinet, its lit header, the bright interior with shelves of cans and
+ * bottles behind the glass, the handle, and the COLD BEER sign on the wall
+ * over it, with a little of its light on the floor in front.
+ */
+export function beerCooler(k: Kit, x: number, z: number, yaw: number): void {
+  const m = k.m;
+  k.place(x, 0, z, yaw);
+  const w = 0.62;
+  const d = 0.6;
+  const h = 1.9;
+  const t = 0.04;
+  // The cabinet: sides, top, kick, the back panel lit from inside.
+  for (const sx of [-1, 1]) k.box(m.black, t, h, d, sx * (w / 2 - t / 2), h / 2, 0);
+  k.box(m.black, w, 0.24, d, 0, h - 0.12, 0);
+  k.box(m.black, w, 0.1, d, 0, 0.05, 0);
+  k.box(m.black, w - 2 * t, h - 0.34, t, 0, (h - 0.34) / 2 + 0.1, -d / 2 + t / 2);
+  k.plane(m.coolerLight, w - 2 * t, h - 0.36, 0, (h - 0.34) / 2 + 0.1, -d / 2 + t + 0.002);
+  k.plane(m.coolerLight, w - 0.1, 0.12, 0, h - 0.12, d / 2 + 0.002);
+  // Shelves of cans, two deep, and bottles on the top shelf.
+  const cans = [m.red, m.blue, m.enamel, m.yellow, m.red, m.black];
+  [0.12, 0.48, 0.84, 1.2].forEach((y, si) => {
+    k.box(m.galv, w - 2 * t, 0.012, d - 0.1, 0, y, 0);
+    for (let row = 0; row < 2; row++)
+      for (let i = 0; i < 7; i++) {
+        const cx = -w / 2 + t + 0.04 + i * 0.075;
+        const cz = 0.08 - row * 0.12;
+        if (si === 3) {
+          k.cyl(m.orange, 0.028, 0.2, cx, y + 0.106, cz, 'y', 8);
+          k.cyl(m.orange, 0.011, 0.07, cx, y + 0.24, cz, 'y', 6);
+        } else k.cyl(cans[(i + row * 2 + si * 3) % cans.length], 0.032, 0.12, cx, y + 0.066, cz, 'y', 10);
+      }
+  });
+  // The glass door in its frame, the handle.
+  k.plane(m.glass, w - 0.06, h - 0.36, 0, (h - 0.34) / 2 + 0.1, d / 2 + 0.004);
+  for (const sx of [-1, 1]) k.box(m.black, 0.03, h - 0.34, 0.02, sx * (w / 2 - 0.015), (h - 0.34) / 2 + 0.1, d / 2 + 0.01);
+  k.box(m.black, w, 0.03, 0.02, 0, 0.115, d / 2 + 0.01);
+  k.box(m.chrome, 0.025, 0.6, 0.03, w / 2 - 0.06, 1.0, d / 2 + 0.03);
+  // The sign over it, its light on the floor.
+  k.box(m.black, 0.76, 0.4, 0.03, 0, h + 0.36, -d / 2 + 0.015);
+  k.plane(m.beerSign, 0.72, 0.36, 0, h + 0.36, -d / 2 + 0.032);
+  k.plane(m.poolTube, 1.4, 1.2, 0, 0.012, d / 2 + 0.45, 0, -Math.PI / 2);
+}
+
+/** What the dyno needs of the car strapped to it (m, car space): its length and width, the rear axle's z and the wheels' track. */
+export interface DynoFit {
+  length: number;
+  width: number;
+  rearZ: number;
+  frontZ: number;
+  track: number;
+}
+
+/**
+ * A roller dyno with the car's ground at its deck, the car along local +z:
+ * the steel deck in two halves either side of the roller pit, the drum under
+ * the rear wheels, the absorber housing beside it, ramps at the back, chocks
+ * at the front wheels, ratchet straps from the deck to the car, the
+ * operator's pendant on its stand and the exhaust hose from the tailpipe
+ * along the floor to `vent` (the dyno's frame: under the door, so the fumes
+ * go outside). Returns the deck's height.
+ */
+export function dyno(k: Kit, x: number, z: number, yaw: number, car: DynoFit, vent: Vec): number {
+  const m = k.m;
+  k.place(x, 0, z, yaw);
+  const deck = 0.22;
+  const half = car.length / 2 + 0.55;
+  const w = 2.6;
+  const pit = 0.8;
+  const rz = car.rearZ;
+  // The deck either side of the pit, its plate skin and yellow edges.
+  for (const [z0, z1] of [
+    [-half, rz - pit / 2],
+    [rz + pit / 2, half],
+  ] as const) {
+    const len = z1 - z0;
+    const cz = (z0 + z1) / 2;
+    k.box(m.gunmetal, w, deck - 0.01, len, 0, (deck - 0.01) / 2, cz);
+    k.box(m.galv, w - 0.04, 0.01, len - 0.02, 0, deck - 0.005, cz);
+    for (const s of [-1, 1]) k.box(m.yellow, 0.07, 0.012, len, s * (w / 2 - 0.035), deck + 0.001, cz);
+  }
+  k.box(m.black, w - 0.2, deck - 0.02, pit, 0, (deck - 0.02) / 2, rz);
+  for (const s of [-1, 1]) k.box(m.gunmetal, 0.1, deck, pit, s * (w / 2 - 0.05), deck / 2, rz);
+  // The drum, its top at deck height, knurled where the tires sit; the absorber on the right.
+  k.cyl(m.chrome, 0.3, w - 0.24, 0, deck - 0.3 + 0.01, rz, 'x', 32);
+  for (const s of [-1, 1]) for (let i = 0; i < 5; i++) k.cyl(m.cast, 0.302, 0.012, s * (car.track / 2) + (i - 2) * 0.045, deck - 0.29, rz, 'x', 32);
+  k.box(m.blue, 0.5, 0.5, 0.75, w / 2 + 0.3, 0.25, rz);
+  k.box(m.black, 0.42, 0.18, 0.006, w / 2 + 0.3, 0.32, rz + 0.378);
+  k.box(m.yellow, 0.2, 0.06, 0.006, w / 2 + 0.3, 0.12, rz + 0.378);
+  // Ramps up onto it at the back.
+  for (const s of [-1, 1]) k.box(m.gunmetal, 0.7, 0.03, 1.0, s * (car.track / 2), deck / 2, -half - 0.48, 0, -Math.atan2(deck, 1.0));
+  // Chocks at the front wheels, straps from the deck's corners to the car's tow points with their ratchets.
+  for (const s of [-1, 1]) k.box(m.yellow, 0.28, 0.12, 0.18, s * (car.track / 2), deck + 0.06, car.frontZ + 0.45);
+  for (const s of [-1, 1])
+    for (const e of [-1, 1]) {
+      const a: Vec = [s * (w / 2 - 0.12), deck + 0.02, e * (half - 0.15)];
+      const b: Vec = [s * (car.width / 2 - 0.35), deck + 0.22, e * (car.length / 2 - 0.3)];
+      k.bar(m.yellow, a, b, 0.04, 0.006);
+      k.box(m.black, 0.05, 0.06, 0.09, (a[0] * 2 + b[0]) / 3, (a[1] * 2 + b[1]) / 3 + 0.02, (a[2] * 2 + b[2]) / 3);
+      k.box(m.steel, 0.08, 0.02, 0.08, a[0], deck + 0.005, a[2]);
+    }
+  // The pendant on its stand at the back right, its cable to the absorber.
+  k.box(m.steel, 0.3, 0.02, 0.3, w / 2 + 0.35, 0.01, -half + 0.4);
+  k.cyl(m.galv, 0.02, 1.1, w / 2 + 0.35, 0.56, -half + 0.4, 'y', 8);
+  k.box(m.yellow, 0.12, 0.2, 0.06, w / 2 + 0.35, 1.18, -half + 0.43);
+  k.hose(m.black, [[w / 2 + 0.35, 1.08, -half + 0.4], [w / 2 + 0.4, 0.2, -half + 0.8], [w / 2 + 0.35, 0.015, rz - 0.6], [w / 2 + 0.3, 0.2, rz - 0.3]], 0.008, 24);
+  // Exhaust: a funnel over the tailpipe, the hose down to the floor and out to the vent.
+  const tz = -car.length / 2 - 0.25;
+  k.cyl(m.galv, 0.11, 0.25, 0.35, deck + 0.28, tz, 'z', 14, 0.07);
+  k.hose(m.galv, [[0.35, deck + 0.28, tz - 0.12], [0.35, 0.09, tz - 0.9], [vent[0], 0.08, (tz + vent[2]) / 2], vent], 0.07, 40);
+  return deck;
 }

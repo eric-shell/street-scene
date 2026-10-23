@@ -2,7 +2,9 @@
  * Canvas textures for the garage (garage/showroom.ts): stained concrete, grimy
  * block walls, the roof deck, the roller door, worn paint lines, oil stains,
  * diamond plate, the pegboard, drawer fronts, aged posters, the jobs board,
- * work orders, the tuners' parts boxes, the beer sign and the neon signs.
+ * work orders, the tuners' parts boxes, the beer sign, the nameplates, the
+ * banners, bay numbers, exit signs, plates, clock and calendar, the light
+ * washes, and the dyno screen redrawn as it runs.
  * Each is drawn once per visit (a few milliseconds in all) from a fixed hash,
  * so the room looks the same every time. Render only.
  */
@@ -865,6 +867,311 @@ export function beerSignTexture(): THREE.CanvasTexture {
     },
     { repeat: false },
   );
+}
+
+/** Light washing down a wall from a strip over it: white at the top edge fading to nothing, soft at the sides. */
+export function washTexture(): THREE.CanvasTexture {
+  return drawTexture(
+    64,
+    128,
+    (g) => {
+      const v = g.createLinearGradient(0, 0, 0, 128);
+      v.addColorStop(0, 'rgba(255,255,255,1)');
+      v.addColorStop(0.25, 'rgba(255,255,255,0.45)');
+      v.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = v;
+      g.fillRect(0, 0, 64, 128);
+      g.globalCompositeOperation = 'destination-in';
+      const h = g.createLinearGradient(0, 0, 64, 0);
+      h.addColorStop(0, 'rgba(0,0,0,0)');
+      h.addColorStop(0.15, 'rgba(0,0,0,1)');
+      h.addColorStop(0.85, 'rgba(0,0,0,1)');
+      h.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = h;
+      g.fillRect(0, 0, 64, 128);
+    },
+    { repeat: false },
+  );
+}
+
+/** An exit sign's face: the word and an arrow, lit green on dark glass. */
+export function exitTexture(): THREE.CanvasTexture {
+  return drawTexture(
+    256,
+    96,
+    (g) => {
+      g.fillStyle = '#071209';
+      g.fillRect(0, 0, 256, 96);
+      g.fillStyle = '#3cff7a';
+      g.textAlign = 'center';
+      g.font = '800 58px "Google Sans Flex", system-ui, sans-serif';
+      g.fillText('EXIT', 112, 70);
+      g.beginPath();
+      g.moveTo(206, 30);
+      g.lineTo(236, 48);
+      g.lineTo(206, 66);
+      g.lineTo(206, 56);
+      g.lineTo(190, 56);
+      g.lineTo(190, 40);
+      g.lineTo(206, 40);
+      g.fill();
+    },
+    { repeat: false },
+  );
+}
+
+/** The bay numbers 1 to 4 in a row of cells, painted big in worn yellow on the floor. */
+export function bayNumbersTexture(): THREE.CanvasTexture {
+  return drawTexture(
+    512,
+    128,
+    (g) => {
+      g.textAlign = 'center';
+      g.font = '900 118px "Google Sans Flex", system-ui, sans-serif';
+      for (let i = 0; i < 4; i++) {
+        g.fillStyle = '#c9a227';
+        g.fillText(String(i + 1), i * 128 + 64, 112);
+      }
+      // Worn through where the tires run over it.
+      g.globalCompositeOperation = 'destination-out';
+      for (let i = 0; i < 500; i++) {
+        g.fillStyle = `rgba(0,0,0,${0.3 + noise(i * 1.7) * 0.6})`;
+        g.fillRect(noise(i * 2.3) * 512, noise(i * 3.1) * 128, 2 + noise(i) * 8, 1 + noise(i * 5.9) * 4);
+      }
+      g.globalCompositeOperation = 'source-over';
+    },
+    { repeat: false },
+  );
+}
+
+/** The tuners' cloth banners, one per 512 x 192 row: brand, line, a stripe in its color, the weave and the grommets. */
+export function bannerTexture(banners: readonly { name: string; line: string; color: string }[]): THREE.CanvasTexture {
+  return drawTexture(
+    512,
+    192 * banners.length,
+    (g) => {
+      banners.forEach(({ name, line, color }, i) => {
+        const y = i * 192;
+        g.fillStyle = '#121115';
+        g.fillRect(0, y, 512, 192);
+        g.fillStyle = color;
+        g.fillRect(0, y + 132, 512, 10);
+        g.beginPath();
+        g.moveTo(0, y + 18);
+        g.lineTo(120, y + 18);
+        g.lineTo(90, y + 30);
+        g.lineTo(0, y + 30);
+        g.fill();
+        g.fillStyle = '#f2efe8';
+        fitFont(g, name, 470, 92, (px) => `italic 900 ${px}px "Google Sans Flex", system-ui, sans-serif`);
+        g.fillText(name, 22, y + 118);
+        g.fillStyle = color;
+        g.font = '700 26px "Google Sans Flex", system-ui, sans-serif';
+        g.fillText(line, 24, y + 176);
+        g.fillStyle = 'rgba(255,255,255,0.035)';
+        for (let x = 0; x < 512; x += 3) g.fillRect(x, y, 1, 192);
+        for (let k = 0; k < 192; k += 3) g.fillRect(0, y + k, 512, 1);
+        g.fillStyle = '#9aa0aa';
+        for (const gx of [12, 500]) {
+          g.beginPath();
+          g.arc(gx, y + 10, 5, 0, Math.PI * 2);
+          g.fill();
+        }
+      });
+    },
+    { repeat: false },
+  );
+}
+
+/** Old number plates nailed up in a row: six fictional plates, faded, one rusted. */
+export function platesTexture(): THREE.CanvasTexture {
+  const plates: [string, string, string, string][] = [
+    ['NGHT RN', 'NIGHT CITY', '#e9e4d6', '#1c2a6b'],
+    ['SCN 01', 'HARBOR DIST.', '#f2c230', '#16151a'],
+    ['DRFT 4U', 'MIDTOWN', '#dfe6ee', '#b3242c'],
+    ['BOOST', 'RIVERSIDE', '#16151a', '#e9e4d6'],
+    ['2JZ', 'OLD TOWN', '#e9e4d6', '#0e7a5a'],
+    ['LATE NT', 'NIGHT CITY', '#c9ced8', '#16151a'],
+  ];
+  return drawTexture(
+    768,
+    128,
+    (g) => {
+      plates.forEach(([text, line, bg, ink], i) => {
+        const x = i * 128;
+        g.fillStyle = bg;
+        g.fillRect(x + 4, 24, 120, 64);
+        g.strokeStyle = ink;
+        g.lineWidth = 3;
+        g.strokeRect(x + 8, 28, 112, 56);
+        g.fillStyle = ink;
+        g.textAlign = 'center';
+        fitFont(g, text, 100, 30, (px) => `800 ${px}px "Google Sans Flex", system-ui, sans-serif`);
+        g.fillText(text, x + 64, 70);
+        g.font = '700 9px "Google Sans Flex", system-ui, sans-serif';
+        g.fillText(line, x + 64, 40);
+        for (let k = 0; k < 4; k++) blot(g, x + 10 + noise(i * 9 + k) * 108, 30 + noise(i * 5 + k) * 52, 6 + noise(k) * 8, i === 3 ? '120,60,20' : '60,50,40', i === 3 ? 0.4 : 0.15, i * 11 + k);
+      });
+    },
+    { repeat: false },
+  );
+}
+
+/** The shop clock's face: numerals, ticks and the hands stopped at a quarter to three, the night long. */
+export function clockTexture(): THREE.CanvasTexture {
+  return drawTexture(
+    256,
+    256,
+    (g) => {
+      g.fillStyle = '#e9e7e0';
+      g.beginPath();
+      g.arc(128, 128, 124, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = '#16151a';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.font = '700 26px "Google Sans Flex", system-ui, sans-serif';
+      for (let i = 1; i <= 12; i++) {
+        const a = (i / 12) * Math.PI * 2 - Math.PI / 2;
+        g.fillText(String(i), 128 + Math.cos(a) * 96, 128 + Math.sin(a) * 96);
+      }
+      for (let i = 0; i < 60; i++) {
+        const a = (i / 60) * Math.PI * 2;
+        const l = i % 5 ? 6 : 12;
+        g.fillRect(128 + Math.cos(a) * (118 - l) - 1, 128 + Math.sin(a) * (118 - l) - 1, 2 + Math.cos(a) * 0, 2);
+      }
+      const hand = (a: number, len: number, w: number, c: string) => {
+        g.strokeStyle = c;
+        g.lineWidth = w;
+        g.lineCap = 'round';
+        g.beginPath();
+        g.moveTo(128, 128);
+        g.lineTo(128 + Math.cos(a - Math.PI / 2) * len, 128 + Math.sin(a - Math.PI / 2) * len);
+        g.stroke();
+      };
+      hand(((2 + 45 / 60) / 12) * Math.PI * 2, 60, 8, '#16151a');
+      hand((45 / 60) * Math.PI * 2, 92, 5, '#16151a');
+      hand((20 / 60) * Math.PI * 2, 98, 2, '#b3242c');
+    },
+    { repeat: false },
+  );
+}
+
+/** A parts supplier's wall calendar: a car photo up top (a silhouette under a sunset), the month's grid below. */
+export function calendarTexture(): THREE.CanvasTexture {
+  return drawTexture(256, 360, (g) => {
+    g.fillStyle = '#ebe7dc';
+    g.fillRect(0, 0, 256, 360);
+    const sky = g.createLinearGradient(0, 0, 0, 160);
+    sky.addColorStop(0, '#2a1640');
+    sky.addColorStop(1, '#ff7a3c');
+    g.fillStyle = sky;
+    g.fillRect(10, 10, 236, 150);
+    g.fillStyle = '#0d0d10';
+    g.beginPath();
+    g.moveTo(30, 140);
+    g.lineTo(60, 112);
+    g.lineTo(120, 100);
+    g.lineTo(170, 104);
+    g.lineTo(220, 122);
+    g.lineTo(228, 140);
+    g.fill();
+    for (const wx of [72, 190]) {
+      g.beginPath();
+      g.arc(wx, 140, 14, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.fillStyle = '#26282d';
+    g.font = '800 26px "Google Sans Flex", system-ui, sans-serif';
+    g.fillText('OCTOBER', 14, 192);
+    g.fillStyle = PALETTE.orange;
+    g.font = '700 12px "Google Sans Flex", system-ui, sans-serif';
+    g.fillText('KUROGANE AERO WORKS', 140, 192);
+    g.strokeStyle = 'rgba(40,40,46,0.5)';
+    g.lineWidth = 1;
+    for (let r = 0; r < 5; r++)
+      for (let c = 0; c < 7; c++) {
+        g.strokeRect(12 + c * 33, 204 + r * 30, 33, 30);
+        const day = r * 7 + c - 2;
+        if (day > 0 && day <= 31) {
+          g.fillStyle = '#26282d';
+          g.font = '10px "Google Sans Flex", system-ui, sans-serif';
+          g.fillText(String(day), 15 + c * 33, 215 + r * 30);
+        }
+      }
+    // Today circled in marker, a meet on the weekend.
+    g.strokeStyle = '#b3242c';
+    g.lineWidth = 3;
+    g.beginPath();
+    g.arc(12 + 4 * 33 + 16, 204 + 3 * 30 + 15, 14, 0, Math.PI * 2);
+    g.stroke();
+    g.fillStyle = '#1c2a6b';
+    g.font = `12px ${HAND}`;
+    g.fillText('meet!', 12 + 6 * 33 + 2, 204 + 3 * 30 + 26);
+  });
+}
+
+/**
+ * The dyno screen on the wall: a run drawn as it happens on a small canvas,
+ * power and torque climbing with the revs, the peak held for a few seconds,
+ * then the next pull. `draw(t)` repaints for time t (s); the showroom calls it
+ * a few times a second, so the upload is a 256 x 144 texture now and then.
+ */
+export function dynoScreen(): { texture: THREE.CanvasTexture; draw: (t: number) => void } {
+  const [c, g] = canvas(256, 144);
+  const texture = new THREE.CanvasTexture(c);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const power = (x: number) => Math.min(1, x * 1.25) * (1 - 0.25 * Math.max(0, x - 0.8) / 0.2) * (0.9 + 0.1 * x);
+  const torque = (x: number) => 0.55 + 0.35 * Math.sin(Math.min(1, x) * Math.PI * 0.8) - 0.12 * x;
+  const draw = (t: number) => {
+    const run = t % 9;
+    const p = Math.min(1, run / 6);
+    g.fillStyle = '#05080c';
+    g.fillRect(0, 0, 256, 144);
+    g.strokeStyle = 'rgba(120,220,232,0.15)';
+    g.lineWidth = 1;
+    for (let x = 24; x < 250; x += 28) {
+      g.beginPath();
+      g.moveTo(x, 22);
+      g.lineTo(x, 128);
+      g.stroke();
+    }
+    for (let y = 22; y <= 128; y += 21) {
+      g.beginPath();
+      g.moveTo(24, y);
+      g.lineTo(248, y);
+      g.stroke();
+    }
+    const curve = (f: (x: number) => number, color: string) => {
+      g.strokeStyle = color;
+      g.lineWidth = 2;
+      g.beginPath();
+      for (let i = 0; i <= 60 * p; i++) {
+        const x = i / 60;
+        const px = 24 + x * 224;
+        const py = 128 - f(x) * 100;
+        if (i === 0) g.moveTo(px, py);
+        else g.lineTo(px, py);
+      }
+      g.stroke();
+    };
+    curve(power, PALETTE.orange);
+    curve(torque, PALETTE.cyan);
+    g.fillStyle = '#e9e7e0';
+    g.font = '700 11px "Google Sans Flex", system-ui, sans-serif';
+    g.textAlign = 'left';
+    g.fillText('DYNO CELL  ·  PULL 3', 6, 14);
+    g.textAlign = 'right';
+    g.fillStyle = PALETTE.orange;
+    g.font = '800 14px "Google Sans Flex", system-ui, sans-serif';
+    g.fillText(`${Math.round(power(p) * 412)} WHP`, 250, 14);
+    g.fillStyle = PALETTE.cyan;
+    g.font = '700 10px "Google Sans Flex", system-ui, sans-serif';
+    g.fillText(`${Math.round(1500 + p * 6000)} RPM`, 250, 140);
+    texture.needsUpdate = true;
+  };
+  draw(0);
+  return { texture, draw };
 }
 
 /** A soft round glow (white, alpha falling off), for light spilling on the wall round a sign or a lamp. */
