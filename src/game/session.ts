@@ -16,6 +16,7 @@ import { VisualBuild } from '../shared/carBuild';
 import { DT, TICK_HZ } from '../sim/constants';
 import { DEG } from '../sim/math';
 import { CarView, CarPose } from '../render/car/carView';
+import { Drivers } from '../render/people/drivers';
 import { ROAD_Y } from '../render/street/cityMeshes';
 import { unmaskVehicle } from '../render/vehicleMask';
 import { LightTrails } from '../render/car/lightTrails';
@@ -226,6 +227,8 @@ export class RaceSession {
   readonly race: RaceState;
   readonly night: NightScene;
   readonly views: CarView[] = [];
+  /** A driver at the wheel of every car (the ghost drives itself). */
+  private readonly drivers: Drivers;
   readonly cam: ChaseCamera;
   readonly hud: Hud;
   paused = false;
@@ -437,6 +440,8 @@ export class RaceSession {
       this.views.push(view);
       loads.push(view.load(opts.visuals[i] ?? opts.visuals[0]));
     });
+    this.drivers = new Drivers(this.race.cars.length);
+    this.night.scene.add(this.drivers.group);
     if (opts.ghost) {
       this.ghostRace = createRace(opts.ghost.config, this.race.world);
       this.ghostLog = opts.ghost.log;
@@ -1069,6 +1074,7 @@ export class RaceSession {
     const r = this.race;
     const poses = this.curr.map((c, i) => lerpSnap(this.prev[i], c, this.paused ? 1 : alpha));
     this.views.forEach((v, i) => v.update(poses[i], this.time));
+    this.drivers.update(this.views, poses);
     if (this.ghostView && this.ghostPrev && this.ghostCurr) this.ghostView.update(lerpSnap(this.ghostPrev, this.ghostCurr, alpha), this.time);
     const p = poses[0];
     let camera: THREE.PerspectiveCamera;
@@ -1363,6 +1369,7 @@ export class RaceSession {
     this.hazards.dispose();
     this.hud.dispose();
     this.views.forEach((v) => v.dispose());
+    this.drivers.dispose();
     this.ghostView?.dispose();
     this.trails.dispose();
     this.sparks.dispose();

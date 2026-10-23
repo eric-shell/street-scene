@@ -21,6 +21,7 @@ import type { World } from '../city/world';
 import { routeSample, type Route } from '../city/route';
 import { createNightScene, type GameRenderer, type NightScene } from '../render/scene';
 import { CarView, WHEEL_KEYS, type CarPose } from '../render/car/carView';
+import { Drivers } from '../render/people/drivers';
 import { ROAD_Y } from '../render/street/cityMeshes';
 import type { CarAssetLibrary } from '../render/car/carAssets';
 import type { CarBuild } from '../shared/carBuild';
@@ -47,6 +48,8 @@ export class StreetStage {
   /** The car's pose this frame (what the cameras frame). */
   readonly pose: CarPose = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, steer: 0, comp: [0, 0, 0, 0], spin: [0, 0, 0, 0], braking: false, nitro: false, speed: 0 };
   private view: CarView | null = null;
+  /** The driver at the cruising car's wheel. */
+  private readonly drivers = new Drivers(1);
   private viewCar = '';
   private loading: Promise<void> = Promise.resolve();
   private loadToken = 0;
@@ -257,9 +260,14 @@ export class StreetStage {
     p.braking = this.speed < 0.5 || this.accel < -CRUISE.brakeLights;
     p.speed = this.speed;
     view?.update(p, this.time);
+    if (view) {
+      if (!this.drivers.group.parent) this.night.scene.add(this.drivers.group);
+      this.drivers.update([view], [p]);
+    }
   }
 
   dispose(): void {
+    this.drivers.dispose();
     this.view?.dispose();
     this.view = null;
     this.night.dispose();

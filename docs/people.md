@@ -1,6 +1,6 @@
 # People
 
-Every person in the game is the same character: the garage crew and the race crowds today, the driver next. One look, one mesh, one shader rig and one wardrobe (`render/people/looks.ts`), so they read as the same world and stay cheap enough to draw by the hundred.
+Every person in the game is the same character: the garage crew, the race crowds and every driver. One look, one mesh, one shader rig and one wardrobe (`render/people/looks.ts`), so they read as the same world and stay cheap enough to draw by the hundred.
 
 ## The look
 
@@ -32,4 +32,4 @@ The rig costs about ten 4x4 multiplies per vertex, so the crowd's budget is vert
 ## Next
 
 - **Race crowds** are on the character: `race/crowds.ts` keeps its stands, excitement, cheer waves and car dodging, and its shader computes the pose per instance from excitement and a phase (`CROWD_POSE`: idle sway and weight shifting, a glance around, clapping as it rises, arms up waving and jumping at the top, a phone held up or a flag waved). A material variant passes that GLSL to `personMaterial()` (`PersonShader`), which is how any new context gets its own motion without touching the rig.
-- **Driver**: the same character seated, hands on the wheel from the steering angle, head following the turn, in the team's colors; drawn only where a camera can see into the car.
+- **Drivers** are in (`render/people/drivers.ts`): one `People` at the mid level for the whole field, seated from each car's measured cabin (`SEATS`: cushion, seat back and wheel stations from the shipped GLB's `Interior` faces; measure a new car before it ships), hands turning the wheel with the steer angle, head into the turn, body against the roll, through the tinted glass. The menu's cruising car has one too.

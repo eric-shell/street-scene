@@ -431,10 +431,10 @@ export function writeLook(lookA: THREE.InstancedBufferAttribute, lookB: THREE.In
   lookB.setXYZW(i, look.hair, look.cap, look.sleeves, look.wear);
 }
 
-/** Up to `max` people at one level of detail in one draw call (and their blob shadows in another): place, pose and dress each by index, then commit(). */
+/** Up to `max` people at one level of detail in one draw call (and their blob shadows in another, given a map): place, pose and dress each by index, then commit(). */
 export class People {
   readonly mesh: THREE.InstancedMesh;
-  readonly shadows: THREE.InstancedMesh;
+  readonly shadows: THREE.InstancedMesh | null;
   readonly group = new THREE.Group();
   private readonly pose: THREE.InstancedBufferAttribute[];
   private readonly lookA: THREE.InstancedBufferAttribute;
@@ -446,7 +446,7 @@ export class People {
   constructor(
     readonly max: number,
     track: <T extends Disposable>(x: T) => T,
-    shadowMap: THREE.Texture,
+    shadowMap: THREE.Texture | null,
     detail: PersonDetail = 'hero',
   ) {
     const geo = track(personGeometry(detail));
@@ -464,15 +464,20 @@ export class People {
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     // People spread across the scene; one instance's bounds would cull the rest.
     this.mesh.frustumCulled = false;
-    this.shadows = new THREE.InstancedMesh(
-      track(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2)),
-      track(new THREE.MeshBasicMaterial({ color: 0x000000, map: shadowMap, transparent: true, opacity: 0.55, depthWrite: false })),
-      max,
-    );
-    this.shadows.frustumCulled = false;
-    this.shadows.renderOrder = 1;
+    this.group.add(this.mesh);
+    this.shadows = shadowMap
+      ? new THREE.InstancedMesh(
+          track(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2)),
+          track(new THREE.MeshBasicMaterial({ color: 0x000000, map: shadowMap, transparent: true, opacity: 0.55, depthWrite: false })),
+          max,
+        )
+      : null;
+    if (this.shadows) {
+      this.shadows.frustumCulled = false;
+      this.shadows.renderOrder = 1;
+      this.group.add(this.shadows);
+    }
     for (let i = 0; i < max; i++) this.hide(i);
-    this.group.add(this.mesh, this.shadows);
   }
 
   /** Dress person i. */
@@ -489,20 +494,22 @@ export class People {
     b.setXYZW(i, p.headYaw, p.headPitch, p.arms[0].raise, p.arms[0].out);
     c.setXYZW(i, p.arms[0].elbow, p.arms[1].raise, p.arms[1].out, p.arms[1].elbow);
     d.setXYZW(i, p.legs[0][0], p.legs[0][1], p.legs[1][0], p.legs[1][1]);
-    this.v.setFromMatrixPosition(root);
-    this.shadows.setMatrixAt(i, this.m4.makeScale(0.75, 1, 0.75).setPosition(this.v.x, this.v.y + 0.008, this.v.z));
+    if (this.shadows) {
+      this.v.setFromMatrixPosition(root);
+      this.shadows.setMatrixAt(i, this.m4.makeScale(0.75, 1, 0.75).setPosition(this.v.x, this.v.y + 0.008, this.v.z));
+    }
   }
 
   /** Take person i out of the scene. */
   hide(i: number): void {
     this.mesh.setMatrixAt(i, this.zero);
-    this.shadows.setMatrixAt(i, this.zero);
+    this.shadows?.setMatrixAt(i, this.zero);
   }
 
   /** Upload this frame's changes. */
   commit(): void {
     this.mesh.instanceMatrix.needsUpdate = true;
-    this.shadows.instanceMatrix.needsUpdate = true;
+    if (this.shadows) this.shadows.instanceMatrix.needsUpdate = true;
     for (const a of this.pose) a.needsUpdate = true;
   }
 }
