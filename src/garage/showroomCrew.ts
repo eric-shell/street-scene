@@ -15,8 +15,9 @@
  */
 import * as THREE from 'three';
 import { clamp, lerp, smoothstep, wrapAngle } from '../sim/math';
-import { BODY, People, WEAR, personFrame, plantFeet, standingPose } from '../render/people/person';
-import type { PersonLook, PersonPose } from '../render/people/person';
+import { BODY, People, personFrame, plantFeet, standingPose } from '../render/people/person';
+import type { PersonPose } from '../render/people/person';
+import { shopLook } from '../render/people/looks';
 import type { Disposable } from '../render/disposer';
 
 type V3 = [number, number, number];
@@ -73,16 +74,11 @@ const LIFT_CYCLE = { period: 60, upStart: 4, upEnd: 10, downStart: 31.5, downEnd
 /** Things held at once, across the crew. */
 const MAX_HOLDS = 12;
 
-/** The crew's clothes, in script order: dark work shirts and trousers, most with the hi-vis stripe, caps, beanies and gloves mixed. */
-const LOOKS: PersonLook[] = [
-  { skin: 0xc68e6a, shirt: 0x1c2a44, pants: 0x22252b, shoes: 0x1a1410, hair: 0x2a1e14, cap: 0x9a1b25, wear: WEAR.cap | WEAR.stripe | WEAR.gloves },
-  { skin: 0x8a5a3c, shirt: 0x2b2d31, pants: 0x1c2233, shoes: 0x101012, hair: 0x101012, cap: 0x101012, wear: WEAR.hair | WEAR.stripe | WEAR.gloves },
-  { skin: 0xe0b394, shirt: 0x6b2a1c, pants: 0x2a2a2e, shoes: 0x2a1e14, hair: 0x5a3a1e, cap: 0x101012, wear: WEAR.beanie },
-  { skin: 0x5e3a26, shirt: 0x1c2a44, pants: 0x3a3426, shoes: 0xd8d8d4, hair: 0x101012, cap: 0x101012, wear: WEAR.hair | WEAR.stripe },
-  { skin: 0xd8a37f, shirt: 0x3a3d44, pants: 0x22252b, shoes: 0x1a1410, hair: 0x8a5a2a, cap: 0x1d4f9a, wear: WEAR.cap },
-  { skin: 0xa8714e, shirt: 0x1c2a44, pants: 0x22252b, shoes: 0x101012, hair: 0x101012, cap: 0xc8541c, wear: WEAR.beanie | WEAR.stripe | WEAR.gloves },
-  { skin: 0xf0c8a8, shirt: 0x2b2d31, pants: 0x1c2233, shoes: 0x2a1e14, hair: 0xb08a50, cap: 0x101012, wear: WEAR.hair | WEAR.stripe | WEAR.gloves },
-];
+/** The hash the crew's clothes are drawn from, so the same crew turns up every visit. */
+const hash = (i: number) => {
+  const x = Math.sin(i * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
+};
 
 /** A slow wandering value in -1..1 from a few sines, so idle motion never visibly loops. */
 function drift(t: number, seed: number): number {
@@ -193,7 +189,10 @@ export class Crew {
   ) {
     this.scripts = this.makeScripts();
     this.people = new People(this.scripts.length, track, shadowMap);
-    LOOKS.forEach((look, i) => this.people.setLook(i, look));
+    for (let i = 0; i < this.scripts.length; i++) {
+      let k = i * 31;
+      this.people.setLook(i, shopLook(() => hash(k++)));
+    }
     const mat = track(new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.3 }));
     const held = (geo: THREE.BufferGeometry) => {
       const mesh = new THREE.InstancedMesh(track(geo), mat, MAX_HOLDS);
@@ -246,7 +245,7 @@ export class Crew {
     skip.setMatrixAt(n, this.zero);
   }
 
-  /** The scripted workers, in the order of LOOKS. */
+  /** The scripted workers. */
   private makeScripts(): ((t: number) => Pose)[] {
     const s = this.spots;
     const c = this.c;

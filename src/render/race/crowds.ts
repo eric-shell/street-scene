@@ -1,15 +1,18 @@
 /**
- * Spectator crowds. At the start and finish: rows of low poly people lining
- * the sidewalks along the outer edge. Everywhere else on the route: the crowd
- * of every street meet (meetPlan.ts), packed against the cyan barrier and
- * thinning back among the parked cars. Never on the route. One InstancedMesh
- * per stand (a single merged person with optional phone / flag / glowstick
- * that the vertex shader hides per instance) plus a few-box stand-in drawn
- * instead beyond LOD_NEAR; sections past the draw distance are not drawn at
- * all, and density and draw distance follow the graphics quality.
+ * Spectator crowds. At the start and finish: rows of people lining the
+ * sidewalks along the outer edge. Everywhere else on the route: the crowd of
+ * every street meet (meetPlan.ts), packed against the cyan barrier and
+ * thinning back among the parked cars. Never on the route. They are the
+ * game's people (render/people/person.ts) at the crowd level of detail, in
+ * street clothes from the shared wardrobe, some with a phone, a flag or a
+ * glowstick: one InstancedMesh per stand, plus the far level drawn instead
+ * beyond LOD_NEAR; sections past the draw distance are not drawn at all, and
+ * density and draw distance follow the graphics quality.
  *
- * Animation is all in the vertex shader: idle sway and bounce, arms up,
- * jumping and waving scaled by one float per instance ("excitement"),
+ * Animation is all in the vertex shader: the person's pose is computed per
+ * instance from one float ("excitement") and a phase: idle sway, weight
+ * shifting and a glance around, clapping as it rises, arms up waving and
+ * jumping at the top, a phone held up filming or a flag waved overhead,
  * plus stepping back from cars that come too close. The CPU only updates
  * that float: it rises when a racer passes close (speed weighted) and when a
  * cheer wave started at the gate (start, lap, finish) sweeps along the stands,
@@ -17,7 +20,6 @@
  * replays cheer exactly like the live race. Render only.
  */
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { World } from '../../city/world';
 import type { MeetPerson, MeetPlan } from './meetPlan';
 import { CITY } from '../../city/config';
@@ -26,6 +28,8 @@ import { routeSample } from '../../city/route';
 import { distToSegment } from '../../sim/math';
 import type { Contact } from '../../city/world';
 import type { Quality } from '../../ui/settings';
+import { WEAR, personGeometry, personMaterial, writeLook } from '../people/person';
+import { streetLook } from '../people/looks';
 
 /** The gate fields the crowd needs (structurally a FinishGate). */
 export interface CrowdGate {
@@ -98,8 +102,8 @@ export interface Crowds {
  * only ones whose dodge anyone sees, and a longer uniform loop runs for every crowd vertex.
  */
 const MAX_CARS = 4;
-/** Stands further than this from the camera (m, from their edge) draw the few-box stand-in instead. */
-const LOD_NEAR = 70;
+/** Stands further than this from the camera (m, from their edge) draw the far level instead. */
+const LOD_NEAR = 45;
 /** A meet with fewer people than this gets no stand. */
 const SECTION_MIN = 6;
 /** A racer this close excites people (m). */
@@ -110,133 +114,65 @@ const WAVE_SPEED = 26;
 const BACK = 58;
 const FWD = 38;
 
-const SHIRTS = [0x1b1d24, 0x2a2f3a, 0x8a1424, 0x1f3f8a, 0xd8d8d8, 0x121212, 0x3a5a2a, 0xc9a227, 0x6b2fc2, 0xff2d7a, 0x2de2ff, 0xff6a00, 0x7a7f8a, 0x0f3a3a, 0x5a1a4a].map((c) => new THREE.Color(c));
-
 // ---------------------------------------------------------------------------
-// The person: one merged low poly mesh. Attributes per vertex:
-//   aPart: 0 body, 1 left arm, 2 right arm (items ride on the right arm)
-//   aMat:  0 shirt, 1 pants, 2 skin, 3 hair, 4 dark, 5 glow, 6 flag cloth
-//   aItem: 0 always, 1 phone, 2 flag, 3 glowstick (hidden unless the instance holds it)
+// The person's pose from excitement, in the shader
 // ---------------------------------------------------------------------------
 
-const SHOULDER_Y = 1.4;
-const SHOULDER_X = 0.28;
-
-function personGeometry(): THREE.BufferGeometry {
-  const parts: THREE.BufferGeometry[] = [];
-  const add = (w: number, h: number, d: number, x: number, y: number, z: number, part: number, mat: number, item = 0) => {
-    const g = new THREE.BoxGeometry(w, h, d).translate(x, y, z);
-    g.deleteAttribute('uv');
-    const n = g.attributes.position.count;
-    g.setAttribute('aPart', new THREE.Float32BufferAttribute(new Float32Array(n).fill(part), 1));
-    g.setAttribute('aMat', new THREE.Float32BufferAttribute(new Float32Array(n).fill(mat), 1));
-    g.setAttribute('aItem', new THREE.Float32BufferAttribute(new Float32Array(n).fill(item), 1));
-    parts.push(g);
-  };
-  add(0.34, 0.84, 0.2, 0, 0.42, 0, 0, 1); // legs
-  add(0.44, 0.6, 0.25, 0, 1.13, 0, 0, 0); // torso
-  add(0.22, 0.25, 0.23, 0, 1.585, 0.005, 0, 2); // head
-  add(0.24, 0.08, 0.25, 0, 1.73, -0.01, 0, 3); // hair
-  for (const [side, part] of [
-    [1, 1],
-    [-1, 2],
-  ] as const) {
-    const x = side * SHOULDER_X;
-    add(0.12, 0.36, 0.13, x, 1.23, 0, part, 0); // sleeve
-    add(0.1, 0.28, 0.11, x, 0.91, 0, part, 2); // forearm + hand
-  }
-  // Items in the right hand, along the arm past the hand.
-  const hx = -SHOULDER_X;
-  add(0.075, 0.14, 0.02, hx, 0.71, 0.03, 2, 5, 1); // phone (screen glows)
-  add(0.03, 1.0, 0.03, hx, 0.3, 0, 2, 4, 2); // flag pole
-  add(0.02, 0.34, 0.52, hx, -0.03, 0.27, 2, 6, 2); // flag cloth
-  add(0.04, 0.34, 0.04, hx, 0.6, 0, 2, 5, 3); // glowstick
-  const geo = mergeGeometries(parts)!;
-  parts.forEach((g) => g.dispose());
-  // Arms up and jumping reach above the rest pose.
-  geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 1.1, 0), 1.9);
-  return geo;
-}
-
-/** The far stand-in: legs, a torso as wide as the arms and a head (36 triangles instead of about 190). */
-function litePersonGeometry(): THREE.BufferGeometry {
-  const parts: THREE.BufferGeometry[] = [];
-  const add = (w: number, h: number, d: number, x: number, y: number, z: number, mat: number) => {
-    const g = new THREE.BoxGeometry(w, h, d).translate(x, y, z);
-    g.deleteAttribute('uv');
-    const n = g.attributes.position.count;
-    g.setAttribute('aPart', new THREE.Float32BufferAttribute(new Float32Array(n).fill(0), 1));
-    g.setAttribute('aMat', new THREE.Float32BufferAttribute(new Float32Array(n).fill(mat), 1));
-    g.setAttribute('aItem', new THREE.Float32BufferAttribute(new Float32Array(n).fill(0), 1));
-    parts.push(g);
-  };
-  add(0.34, 0.84, 0.2, 0, 0.42, 0, 1);
-  add(0.62, 0.62, 0.25, 0, 1.12, 0, 0);
-  add(0.22, 0.27, 0.23, 0, 1.6, 0.005, 2);
-  const geo = mergeGeometries(parts)!;
-  parts.forEach((g) => g.dispose());
-  geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 1.1, 0), 1.9);
-  return geo;
-}
-
-const VERT_PARS = /* glsl */ `
+const CROWD_PARS = /* glsl */ `
 uniform float uTime;
 uniform vec4 uCars[${MAX_CARS}];
-attribute float aPart;
-attribute float aMat;
-attribute float aItem;
-attribute vec3 iShirt;
 attribute vec4 iData;
 attribute float iExcite;
-varying vec3 vCrowdColor;
-varying vec3 vCrowdGlow;
-mat3 crowdRotX(float a) { float c = cos(a), s = sin(a); return mat3(1.0, 0.0, 0.0, 0.0, c, s, 0.0, -s, c); }
-mat3 crowdRotZ(float a) { float c = cos(a), s = sin(a); return mat3(c, s, 0.0, -s, c, 0.0, 0.0, 0.0, 1.0); }
 vec3 crowdHue(float h) { return clamp(abs(fract(h + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0, 0.0, 1.0); }
 `;
 
-// Runs at the top of the normal chunk, so both the normal and the position see it.
-const VERT_MAIN = /* glsl */ `
+/** Sets the pose's four vec4s (person.ts, PersonShader) from excitement, phase and what the hand holds. */
+const CROWD_POSE = /* glsl */ `
   float cT = uTime;
   float cPh = iData.x * 6.2832;
-  float cItem = iData.y;
-  float cStyle = iData.w;
+  float cStyle = iData.y;
   float cE = clamp(iExcite, 0.0, 1.6);
   float cEx = smoothstep(0.08, 0.7, cE);
-  vec3 cP = position;
-  vec3 cN = normal;
-  // Arms: hang and swing a little when idle, go up and wave when excited.
-  if (aPart > 0.5) {
-    float side = aPart < 1.5 ? 1.0 : -1.0;
-    float wave = sin(cT * (8.0 + 3.0 * cStyle) + cPh + side * 1.3);
-    float pump = cStyle > 0.6 ? 0.5 * max(0.0, sin(cT * 9.0 + cPh)) : 0.0;
-    float up = mix(0.07 + 0.04 * sin(cT * 1.6 + cPh + side), 2.45 + 0.35 * wave - pump, cEx);
-    float fwd = 0.0;
-    if (side < 0.0 && cItem > 0.5) {
-      if (cItem < 1.5) {
-        // Phone held up toward the road, filming.
-        fwd = mix(1.9, 2.5, cEx);
-        up = 0.12 + 0.18 * cEx * wave;
-      } else {
-        // Flag or glowstick waved overhead the whole time.
-        up = 2.4 + (0.3 + 0.25 * cEx) * sin(cT * (2.2 + 4.5 * cEx) + cPh);
-      }
-    }
-    mat3 arm = crowdRotZ(up * side) * crowdRotX(-fwd);
-    vec3 pivot = vec3(SHOULDER_X * side, SHOULDER_Y, 0.0);
-    cP = arm * (cP - pivot) + pivot;
-    cN = arm * cN;
-  }
-  // Items the person does not hold collapse to a point.
-  if (aItem > 0.5 && abs(aItem - cItem) > 0.5) cP = vec3(0.0);
-  // Body: sway and a small bounce; excited people jump.
-  float sway = 0.035 * sin(cT * 1.1 + cPh) + 0.09 * cEx * sin(cT * 4.6 + cPh);
+  int cWorn = int(lookB.w + 0.5);
+  bool cPhone = (cWorn & ${WEAR.phone}) != 0;
+  bool cWaving = (cWorn & ${WEAR.flag | WEAR.glowstick}) != 0;
+  // Hips: a small idle bounce and sway; the excited jump.
   float hop = (0.02 + 0.015 * cStyle) * abs(sin(cT * 2.0 + cPh)) * (1.0 - cEx)
     + 0.3 * smoothstep(0.45, 1.4, cE) * (0.6 + 0.6 * cStyle) * pow(max(0.0, sin(cT * 6.8 + cPh * 2.0)), 2.0);
-  mat3 body = crowdRotZ(sway);
-  cP = body * cP + vec3(0.0, hop, 0.0);
-  cN = body * cN;
-  // Step back from cars that come too close (world space push, applied in the instance frame).
+  float sway = 0.035 * sin(cT * 1.1 + cPh) + 0.09 * cEx * sin(cT * 4.6 + cPh);
+  float shift = sin(cT * 0.9 + cPh) * (1.0 - cEx);
+  float hipY = 0.965 + hop;
+  // Legs: weight shifting side to side when idle, knees tucked a little in the jump.
+  float kneeL = 0.1 + 0.06 * shift + hop * 0.9;
+  float kneeR = 0.1 - 0.06 * shift + hop * 0.9;
+  // Arms: hanging with a little swing, clapping as the excitement rises, up and waving at the top.
+  float wave = sin(cT * (8.0 + 3.0 * cStyle) + cPh);
+  float pump = cStyle > 0.6 ? 0.5 * max(0.0, sin(cT * 9.0 + cPh)) : 0.0;
+  float clap = smoothstep(0.25, 0.55, cE) * (1.0 - smoothstep(0.7, 1.0, cE));
+  float clapIn = 0.08 + 0.3 * max(0.0, sin(cT * 9.0 + cPh));
+  vec3 aL = mix(mix(vec3(0.07 + 0.04 * sin(cT * 1.6 + cPh + 1.0), 0.1, 0.25), vec3(2.45 + 0.35 * sin(cT * (8.0 + 3.0 * cStyle) + cPh + 1.3) - pump, 0.35, 0.45), cEx), vec3(1.0, clapIn, 1.55), clap);
+  vec3 aR = mix(mix(vec3(0.07 + 0.04 * sin(cT * 1.6 + cPh - 1.0), 0.1, 0.25), vec3(2.45 + 0.35 * wave - pump, 0.35, 0.45), cEx), vec3(1.0, clapIn, 1.55), clap);
+  // A phone held up toward the road, filming; a flag or glowstick waved overhead the whole time.
+  if (cPhone) aR = vec3(mix(1.45, 1.9, cEx) + 0.12 * cEx * wave, 0.0, 1.05 - 0.3 * cEx);
+  if (cWaving) aR = vec3(2.4 + (0.3 + 0.25 * cEx) * sin(cT * (2.2 + 4.5 * cEx) + cPh), 0.3, 0.2);
+  // A look around when idle, up at the arms when cheering.
+  float headYaw = 0.3 * sin(cT * 0.5 + cPh * 1.7) * (1.0 - cEx);
+  float headPitch = 0.04 - 0.14 * cEx;
+  vec4 p0 = vec4(hipY, 0.04 + 0.08 * cEx * sin(cT * 4.6 + cPh), sway, 0.0);
+  vec4 p1 = vec4(headYaw, headPitch, aL.x, aL.y);
+  vec4 p2 = vec4(aL.z, aR.x, aR.y, aR.z);
+  vec4 p3 = vec4(kneeL * 0.5, kneeL, kneeR * 0.5, kneeR);
+  // The items' light: a phone's screen (with the odd camera flash when the crowd goes wild), a glowstick or a flag in a neon hue.
+  vec3 neon = crowdHue(fract(iData.x * 13.7));
+  cloth = neon * 0.6;
+  if (cPhone) {
+    float flash = step(0.94, fract(sin(floor(cT * 7.0) * 78.233 + iData.x * 431.0) * 43758.5453)) * cEx;
+    itemGlow = vec3(0.55, 0.7, 1.0) * (1.3 + 5.0 * flash);
+  } else itemGlow = neon * (1.6 + 1.6 * cEx);
+`;
+
+/** After the pose: step back from cars that come too close (a world space push in the instance frame), and fade the tiny emitters with distance so they never sparkle in the bloom. */
+const CROWD_POST = /* glsl */ `
   vec2 cAt = vec2(instanceMatrix[3].x, instanceMatrix[3].z);
   vec2 push = vec2(0.0);
   for (int i = 0; i < ${MAX_CARS}; i++) {
@@ -246,42 +182,19 @@ const VERT_MAIN = /* glsl */ `
   }
   mat3 cInst = mat3(instanceMatrix);
   float cScale2 = max(dot(cInst[0], cInst[0]), 1e-4);
-  cP += transpose(cInst) * vec3(push.x, 0.0, push.y) / cScale2;
-  // Colors per material slot; shirts and skin tones vary per instance.
-  vec3 skin = mix(vec3(0.93, 0.72, 0.58), vec3(0.28, 0.17, 0.11), iData.z);
-  vec3 pants = mix(vec3(0.035, 0.04, 0.055), vec3(0.08, 0.11, 0.24), fract(iData.x * 7.31));
-  vec3 hair = mix(vec3(0.025, 0.02, 0.018), vec3(0.3, 0.19, 0.09), fract(iData.x * 3.7));
-  vec3 neon = crowdHue(fract(iData.x * 13.7));
-  vCrowdColor = aMat < 0.5 ? iShirt : aMat < 1.5 ? pants : aMat < 2.5 ? skin : aMat < 3.5 ? hair : aMat < 4.5 ? vec3(0.03) : aMat < 5.5 ? vec3(0.0) : neon * 0.6;
-  vec3 glow = iShirt * 0.06;
-  if (aMat > 4.5 && aMat < 5.5) {
-    if (cItem < 1.5) {
-      // Phone screen, with the odd camera flash when the crowd goes wild.
-      float flash = step(0.94, fract(sin(floor(cT * 7.0) * 78.233 + iData.x * 431.0) * 43758.5453)) * cEx;
-      glow = vec3(0.55, 0.7, 1.0) * (1.3 + 5.0 * flash);
-    } else glow = neon * (1.6 + 1.6 * cEx);
-  } else if (aMat > 5.5) glow = neon * 0.3;
-  // Tiny emitters fade with distance so they never sparkle in the bloom.
-  vec3 cWorld = (modelMatrix * instanceMatrix * vec4(cP, 1.0)).xyz;
-  vCrowdGlow = glow * clamp(28.0 / max(distance(cWorld, cameraPosition), 1.0), 0.15, 1.0);
+  transformed += transpose(cInst) * vec3(push.x, 0.0, push.y) / cScale2;
+  vec3 cWorld = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
+  vPersonGlow *= clamp(28.0 / max(distance(cWorld, cameraPosition), 1.0), 0.15, 1.0);
 `;
 
-function crowdMaterial(uniforms: { uTime: { value: number }; uCars: { value: THREE.Vector4[] } }): THREE.MeshLambertMaterial {
-  const mat = new THREE.MeshLambertMaterial({ color: 0xffffff });
-  mat.onBeforeCompile = (shader) => {
+function crowdMaterial(uniforms: { uTime: { value: number }; uCars: { value: THREE.Vector4[] } }): THREE.MeshStandardMaterial {
+  const mat = personMaterial({ pars: CROWD_PARS, pose: CROWD_POSE, post: CROWD_POST, key: 'crowd' });
+  const compile = mat.onBeforeCompile;
+  mat.onBeforeCompile = (shader, renderer) => {
     shader.uniforms.uTime = uniforms.uTime;
     shader.uniforms.uCars = uniforms.uCars;
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `#include <common>\n#define SHOULDER_X ${SHOULDER_X.toFixed(3)}\n#define SHOULDER_Y ${SHOULDER_Y.toFixed(3)}\n${VERT_PARS}`)
-      .replace('#include <color_vertex>', '')
-      .replace('#include <beginnormal_vertex>', `${VERT_MAIN}\n  vec3 objectNormal = cN;\n  #ifdef USE_TANGENT\n  vec3 objectTangent = vec3( tangent.xyz );\n  #endif`)
-      .replace('#include <begin_vertex>', 'vec3 transformed = cP;');
-    shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vCrowdColor;\nvarying vec3 vCrowdGlow;')
-      .replace('#include <color_fragment>', 'diffuseColor.rgb = vCrowdColor;')
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vCrowdGlow;');
+    compile(shader, renderer);
   };
-  mat.customProgramCacheKey = () => 'crowd-v1';
   return mat;
 }
 
@@ -472,8 +385,8 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
   const rows = opts.rows ?? 3;
   const drawDistance = opts.drawDistance ?? 260;
   const rng = new Rng((world.seed ^ 0xc40d) >>> 0);
-  const geo = personGeometry();
-  const liteGeo = litePersonGeometry();
+  const geo = personGeometry('crowd');
+  const liteGeo = personGeometry('far');
   const uniforms = { uTime: { value: 0 }, uCars: { value: Array.from({ length: MAX_CARS }, () => new THREE.Vector4(1e6, 1e6, 0, 0)) } };
   const mat = crowdMaterial(uniforms);
   const stands: Stand[] = [];
@@ -489,7 +402,8 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
     for (const name of Object.keys(geo.attributes)) g.setAttribute(name, geo.attributes[name]);
     g.setIndex(geo.index);
     g.boundingSphere = geo.boundingSphere!.clone();
-    const shirt = new Float32Array(n * 3);
+    const lookA = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);
+    const lookB = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);
     const data = new Float32Array(n * 4);
     const excite = new THREE.InstancedBufferAttribute(new Float32Array(n), 1).setUsage(THREE.DynamicDrawUsage);
     const mesh = new THREE.InstancedMesh(g, mat, n);
@@ -514,13 +428,13 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
       dummy.scale.set(s * rng.range(0.92, 1.15), s, s);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
-      const c = SHIRTS[rng.int(0, SHIRTS.length - 1)];
-      const bright = rng.range(0.75, 1.1);
-      shirt.set([c.r * bright, c.g * bright, c.b * bright], i * 3);
+      const look = streetLook(() => rng.next());
       const r = rng.next();
       // Items: about 22% phones, 10% flags, 10% glowsticks.
-      const item = r < 0.22 ? 1 : r < 0.32 ? 2 : r < 0.42 ? 3 : 0;
-      data.set([rng.next(), item, rng.next() ** 1.3, rng.next()], i * 4);
+      look.wear |= r < 0.22 ? WEAR.phone : r < 0.32 ? WEAR.flag : r < 0.42 ? WEAR.glowstick : 0;
+      writeLook(lookA, lookB, i, look);
+      // Phase and style (how big a mover) for the shader's pose.
+      data.set([rng.next(), rng.next(), 0, 0], i * 4);
       x[i] = p.x;
       z[i] = p.z;
       ds[i] = p.ds;
@@ -538,9 +452,9 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
       cx += p.x;
       cz += p.z;
     });
-    const iShirt = new THREE.InstancedBufferAttribute(shirt, 3);
     const iData = new THREE.InstancedBufferAttribute(data, 4);
-    g.setAttribute('iShirt', iShirt);
+    g.setAttribute('lookA', lookA);
+    g.setAttribute('lookB', lookB);
     g.setAttribute('iData', iData);
     g.setAttribute('iExcite', excite);
     mesh.instanceMatrix.needsUpdate = true;
@@ -551,7 +465,8 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
     for (const name of Object.keys(liteGeo.attributes)) gl.setAttribute(name, liteGeo.attributes[name]);
     gl.setIndex(liteGeo.index);
     gl.boundingSphere = liteGeo.boundingSphere!.clone();
-    gl.setAttribute('iShirt', iShirt);
+    gl.setAttribute('lookA', lookA);
+    gl.setAttribute('lookB', lookB);
     gl.setAttribute('iData', iData);
     gl.setAttribute('iExcite', excite);
     const lite = new THREE.InstancedMesh(gl, mat, n);
