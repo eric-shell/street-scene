@@ -7,7 +7,9 @@
  * goes, an LED strip along the top with light comets running the same way, a
  * soft glow pooled on the ground in front, posts, and an amber beacon
  * blinking on every fourth post. Pieces a hit has shoved are redrawn where
- * the race left them.
+ * the race left them, and a hard hit cracks the piece's panel where it
+ * landed (a spider web drawn in the panel shader, the broken backlight
+ * stuttering around it) for the rest of the race.
  *
  * Above every closure and at the apex of every corner rail floats a neon
  * sign: a tube frame around big chevrons pointing the way to go (along the
@@ -25,6 +27,7 @@ import { ChevronsRight, drawIcon } from '../../ui/kit/icons';
 import { GeoBuilder } from '../geoBuilder';
 import { FOG_DENSITY } from '../lighting';
 import { RailState, railLayout } from '../../sim/rails';
+import { segmentT } from '../../sim/math';
 import { nearCarParkFlight } from '../../city/districts/carPark';
 import { Disposer } from '../disposer';
 
@@ -94,26 +97,6 @@ function closureFlow(b: BarrierInfo, ux: number, uz: number): number {
 // ---------------------------------------------------------------------------
 // Chevron panels on the rail modules
 // ---------------------------------------------------------------------------
-
-const boardFrag = /* glsl */ `
-  uniform sampler2D map;
-  uniform float time;
-  uniform vec3 color;
-  varying vec2 vUv;
-  varying float vFlip;
-  varying float vPhase;
-  varying float vFog;
-  void main() {
-    vec2 uv = vec2(vFlip > 0.0 ? vUv.x : 1.0 - vUv.x, vUv.y);
-    vec4 tex = texture2D(map, uv);
-    float w = fract(uv.x * 1.5 - time * 1.1 + vPhase);
-    float march = 0.3 + 0.7 * pow(1.0 - w, 2.5);
-    float pulse = 0.7 + 0.3 * sin(time * 4.0 + vPhase * 6.2831);
-    float glow = tex.r * march * pulse + tex.g * 0.35;
-    vec3 c = color * glow * 2.6 + vec3(0.01, 0.02, 0.03) * tex.a;
-    gl_FragColor = vec4(c * vFog, 1.0);
-  }
-`;
 
 function boardTexture(): THREE.CanvasTexture {
   const W = 1024;
@@ -236,7 +219,33 @@ export interface RouteArrows {
   update(time: number): void;
   /** Move the rail pieces to the race's displaced poses (cheap when nothing moved). */
   syncRails(state: RailState | null | undefined): void;
+  /**
+   * Crack the panel of the rail piece hit at (x, z), strength 0..1, at scene
+   * time `time` (s); a piece hit again keeps its crack and it grows. Returns
+   * the crack, or null with no rail piece there. Cracks last for the race
+   * (until `state` changes).
+   */
+  crackRail(state: RailState | null | undefined, x: number, z: number, strength: number, time: number): RailCrack | null;
+  /** The panels cracked this race. */
+  readonly railCracks: readonly RailCrack[];
   dispose(): void;
+}
+
+/** A cracked rail panel: where on it, facing which way, how badly. */
+export interface RailCrack {
+  /** Rail piece (RailLayout index). */
+  piece: number;
+  /** Crack center on the panel's face (m), and the panel's outward normal (unit, x/z). */
+  x: number;
+  y: number;
+  z: number;
+  nx: number;
+  nz: number;
+  /** 0..1. */
+  strength: number;
+  /** Center on the panel: u along the piece, v up it (0..1). */
+  u: number;
+  v: number;
 }
 
 interface Board {
@@ -360,6 +369,8 @@ export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classif
     syncRails(state) {
       rails.sync(state);
     },
+    crackRail: (state, x, z, strength, time) => rails.crack(state, x, z, strength, time),
+    railCracks: rails.cracks,
     dispose: () => res.dispose(),
   };
 }
@@ -398,6 +409,110 @@ const poolFrag = /* glsl */ `
   }
 `;
 
+/** A rail panel's height (m, it runs 0.28 to 1.23 m up the piece); cracks: reach (m, at strength 0 and 1) and ray count. */
+const RAIL_PANEL_H = 0.95;
+const CRACK = { reach: [0.3, 0.85], rays: 9 } as const;
+
+/** The rail panel's vertex shader: railPanelVert plus the crack (railBoardFrag). */
+const railBoardVert = /* glsl */ `
+  attribute float aFlip;
+  attribute float aPhase;
+  attribute vec4 aCrack;
+  attribute float aLen;
+  varying vec2 vUv;
+  varying float vFlip;
+  varying float vPhase;
+  varying float vFog;
+  varying vec4 vCrack;
+  varying float vLen;
+  uniform float fogDensity;
+  void main() {
+    vUv = uv;
+    vFlip = aFlip;
+    vPhase = aPhase;
+    vCrack = aCrack;
+    vLen = aLen;
+    vec4 mv = viewMatrix * modelMatrix * vec4(position, 1.0);
+    float d = length(mv.xyz);
+    vFog = exp(-fogDensity * fogDensity * d * d * 0.5);
+    gl_Position = projectionMatrix * mv;
+  }
+`;
+
+/**
+ * The rail panel: the board plus its crack (vCrack: center u, v on the
+ * panel, strength 0..1 with 0 for none, hit time s; vLen the piece's length,
+ * m). The web is polar around the center: rays wandering out from a crushed
+ * core, broken rings between them. The acrylic scatters the backlight, so the
+ * cracks read bright on the dark panel; around them the backlight stutters in
+ * bursts and the core is dead. Lines keep at least a pixel and fade instead
+ * of shimmering in the distance.
+ */
+const railBoardFrag = /* glsl */ `
+  uniform sampler2D map;
+  uniform float time;
+  uniform vec3 color;
+  varying vec2 vUv;
+  varying float vFlip;
+  varying float vPhase;
+  varying float vFog;
+  varying vec4 vCrack;
+  varying float vLen;
+  float h1(float n) { return fract(sin(n) * 43758.5453123); }
+  float thin(float off, float w) {
+    float px = max(w, fwidth(off) * 1.2);
+    return (1.0 - smoothstep(px * 0.4, px, off)) * (w / px);
+  }
+  void main() {
+    vec2 uv = vec2(vFlip > 0.0 ? vUv.x : 1.0 - vUv.x, vUv.y);
+    vec4 tex = texture2D(map, uv);
+    float w = fract(uv.x * 1.5 - time * 1.1 + vPhase);
+    float march = 0.3 + 0.7 * pow(1.0 - w, 2.5);
+    float pulse = 0.7 + 0.3 * sin(time * 4.0 + vPhase * 6.2831);
+    float glow = tex.r * march * pulse + tex.g * 0.35;
+    vec3 add = vec3(0.0);
+    if (vCrack.z > 0.0) {
+      float s = vCrack.z;
+      float seed = floor(fract(vCrack.x * 17.31 + vLen * 0.37) * 997.0);
+      vec2 q = vec2((vUv.x - vCrack.x) * vLen, (vUv.y - vCrack.y) * ${RAIL_PANEL_H.toFixed(2)});
+      float d = length(q);
+      float reach = mix(${CRACK.reach[0].toFixed(2)}, ${CRACK.reach[1].toFixed(2)}, s);
+      float a = atan(q.y, q.x);
+      const float N = ${CRACK.rays.toFixed(1)};
+      float sector = 6.2831853 / N;
+      float i0 = floor(a / sector);
+      float line = 0.0;
+      for (int j = -1; j <= 1; j++) {
+        float i = i0 + float(j);
+        float hi = mod(i, N) + seed;
+        float ra = (i + 0.2 + 0.6 * h1(hi * 7.13)) * sector + sin(d * 11.0 + hi) * 0.07;
+        float len = reach * (0.4 + 0.6 * h1(hi * 3.71));
+        float off = d * abs(sin(a - ra));
+        float on = step(0.0, cos(a - ra)) * (1.0 - smoothstep(len * 0.8, len, d));
+        line = max(line, on * thin(off, mix(0.012, 0.004, clamp(d / reach, 0.0, 1.0))));
+      }
+      for (int k = 1; k <= 3; k++) {
+        float fk = float(k);
+        float rk = reach * (0.14 + 0.2 * fk) * (0.9 + 0.2 * h1(fk + seed)) + 0.015 * sin(a * 5.0 + seed);
+        float arc = step(0.4, h1(mod(floor(a / sector + fk * 0.5), N) + fk * 13.0 + seed));
+        float ring = step(fk * 0.3, s + 0.3);
+        line = max(line, arc * ring * thin(abs(d - rk), 0.004));
+      }
+      float dmg = 1.0 - smoothstep(0.0, reach * 1.1, d);
+      float core = 1.0 - smoothstep(0.03, 0.08 + 0.08 * s, d);
+      // Broken backlight: now and then a burst of stutters, dimmer bursts more often the harder the hit.
+      float burst = step(0.75 - 0.25 * s, h1(floor(time * 0.9) + seed));
+      float lit = mix(1.0, step(0.5, h1(floor(time * 14.0) + seed * 3.1)), burst);
+      glow *= mix(1.0, 0.3 + 0.5 * lit, dmg) * (1.0 - 0.9 * core);
+      float since = time - vCrack.w;
+      float flash = since >= 0.0 ? exp(-since * 7.0) : 0.0;
+      add = vec3(0.7, 0.95, 1.0) * line * (0.5 + 0.5 * lit) * 1.3 * (1.0 - core) + color * dmg * flash * 3.0;
+    }
+    vec3 c = color * glow * 2.6 + vec3(0.01, 0.02, 0.03) * tex.a + add;
+    gl_FragColor = vec4(c * vFog, 1.0);
+  }
+`;
+
 const railPanelVert = /* glsl */ `
   attribute float aFlip;
   attribute float aPhase;
@@ -422,6 +537,8 @@ interface RailMeshes {
   /** Animated materials (time uniform). */
   materials: THREE.ShaderMaterial[];
   sync(state: RailState | null | undefined): void;
+  crack(state: RailState | null | undefined, x: number, z: number, strength: number, time: number): RailCrack | null;
+  cracks: RailCrack[];
   dispose(): void;
 }
 
@@ -459,6 +576,10 @@ function buildRailMeshes(world: World, barriers: BarrierInfo[], tex: THREE.Textu
   const oEnd = new Int32Array(l.count);
   const bStart = new Int32Array(l.count);
   const bEnd = new Int32Array(l.count);
+  // Each sub segment's span of its piece's panel u, to place cracks, and each panel vertex's piece length (m).
+  const subU0 = new Float32Array(l.subCount);
+  const subU1 = new Float32Array(l.subCount);
+  const lens: number[] = [];
   const gap = 0.03;
   /** Distance along the current rail chain (m), for the LED comets. */
   let chainS = 0;
@@ -502,6 +623,8 @@ function buildRailMeshes(world: World, barriers: BarrierInfo[], tex: THREE.Textu
       const gb = world.heightAt(bx, bz);
       const u0 = s / total;
       const u1 = (s + len) / total;
+      subU0[k] = u0;
+      subU1[k] = u1;
       s += len;
       // Chevron panel on the track side.
       const pv = [
@@ -514,6 +637,7 @@ function buildRailMeshes(world: World, barriers: BarrierInfo[], tex: THREE.Textu
       for (let i = 0; i < 4; i++) {
         flip.push(fl);
         phase.push(ph);
+        lens.push(total);
       }
       // LED strip along the top edge, facing the course; u is the distance along the chain (m).
       const sa = chainS + s - len;
@@ -623,8 +747,8 @@ function buildRailMeshes(world: World, barriers: BarrierInfo[], tex: THREE.Textu
 
   const meshes: THREE.Mesh[] = [];
   const panelMaterial = new THREE.ShaderMaterial({
-    vertexShader: railPanelVert,
-    fragmentShader: boardFrag,
+    vertexShader: railBoardVert,
+    fragmentShader: railBoardFrag,
     uniforms: { map: { value: tex }, time: { value: 0 }, color: { value: new THREE.Color(ROUTE_CYAN) }, fogDensity: { value: FOG_DENSITY } },
     side: THREE.DoubleSide,
   });
@@ -644,10 +768,15 @@ function buildRailMeshes(world: World, barriers: BarrierInfo[], tex: THREE.Textu
   });
   const geos: THREE.BufferGeometry[] = [];
   const restOf: { pos: Float32Array; nor: Float32Array; geo: THREE.BufferGeometry; start: Int32Array; end: Int32Array }[] = [];
+  // Per panel vertex: the piece's crack (u, v, strength, hit time; railBoardFrag), all zero until a hit.
+  let crackAttr: THREE.BufferAttribute | null = null;
   if (panel.vertexCount) {
     const pg = panel.build();
     pg.setAttribute('aFlip', new THREE.Float32BufferAttribute(flip, 1));
     pg.setAttribute('aPhase', new THREE.Float32BufferAttribute(phase, 1));
+    pg.setAttribute('aLen', new THREE.Float32BufferAttribute(lens, 1));
+    crackAttr = new THREE.BufferAttribute(new Float32Array(panel.vertexCount * 4), 4);
+    pg.setAttribute('aCrack', crackAttr);
     const pm = new THREE.Mesh(pg, panelMaterial);
     pm.name = 'railPanels';
     meshes.push(pm);
@@ -686,11 +815,68 @@ function buildRailMeshes(world: World, barriers: BarrierInfo[], tex: THREE.Textu
   const shownRot = new Float64Array(l.count);
   let shownVersion = 0;
   let shownState: RailState | null = null;
+  const cracks: RailCrack[] = [];
+  let crackedFor: RailState | null = null;
+  const near: number[] = [];
+  /** A new race: every panel whole again. */
+  const mend = (state: RailState) => {
+    if (state === crackedFor) return;
+    crackedFor = state;
+    if (cracks.length && crackAttr) {
+      (crackAttr.array as Float32Array).fill(0);
+      crackAttr.needsUpdate = true;
+    }
+    cracks.length = 0;
+  };
   return {
     meshes,
     materials: [panelMaterial, ledMaterial, poolMaterial],
+    cracks,
+    crack(state, x, z, strength, time) {
+      if (!state || state.layout !== l || !crackAttr) return null;
+      mend(state);
+      // The displaced sub segment nearest the contact.
+      l.grid.query(x - 1.5, z - 1.5, x + 1.5, z + 1.5, near);
+      let best = -1;
+      let bestD = 1.5 * 1.5;
+      let bestT = 0;
+      for (const k of near) {
+        const t = segmentT(x, z, state.ax[k], state.az[k], state.bx[k], state.bz[k]);
+        const d = (state.ax[k] + (state.bx[k] - state.ax[k]) * t - x) ** 2 + (state.az[k] + (state.bz[k] - state.az[k]) * t - z) ** 2;
+        if (d < bestD) {
+          best = k;
+          bestD = d;
+          bestT = t;
+        }
+      }
+      if (best < 0) return null;
+      const p = l.piece[best];
+      let c = cracks.find((q) => q.piece === p);
+      if (c) c.strength = Math.min(1, Math.max(c.strength, strength) + strength * 0.25);
+      else {
+        // Bumper height up to the middle of the panel: the web reaches up from where the nose struck.
+        const v = 0.2 + Math.random() * 0.3;
+        const u = Math.max(0.05, Math.min(0.95, subU0[best] + (subU1[best] - subU0[best]) * bestT));
+        const nx = state.nx[best];
+        const nz = state.nz[best];
+        const cx = state.ax[best] + (state.bx[best] - state.ax[best]) * bestT;
+        const cz = state.az[best] + (state.bz[best] - state.az[best]) * bestT;
+        c = { piece: p, x: cx + nx * 0.09, y: world.heightAt(cx, cz) + 0.28 + v * RAIL_PANEL_H, z: cz + nz * 0.09, nx, nz, strength, u, v };
+        cracks.push(c);
+      }
+      const a = crackAttr.array as Float32Array;
+      for (let i = pStart[p]; i < pEnd[p]; i++) {
+        a[i * 4] = c.u;
+        a[i * 4 + 1] = c.v;
+        a[i * 4 + 2] = Math.max(0.01, c.strength);
+        a[i * 4 + 3] = time;
+      }
+      crackAttr.needsUpdate = true;
+      return c;
+    },
     sync(state) {
       if (!state || state.layout !== l) return;
+      mend(state);
       if (state === shownState && state.version === shownVersion) return;
       shownState = state;
       shownVersion = state.version;

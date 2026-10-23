@@ -58,7 +58,6 @@ import { driftZoneStatus } from '../sim/driftZones';
 import { DRIFT_ZONES } from '../sim/tuning';
 import { ChaseCall, policeChaseCall } from '../render/traffic/policeChase';
 import { HazardFx } from './hazardFx';
-import { ScreenCrack } from '../ui/hud/screenCrack';
 import { KeyLight } from './keyLight';
 
 interface Snap extends CarPose {
@@ -78,8 +77,12 @@ interface Snap extends CarPose {
 /** Blinks per second of a car passing through the others after a reset. */
 const RESET_BLINK_HZ = 7;
 
-/** A player hit on a cyan barrier cracks the screen from this impact speed (m/s); the crack is full size at `full`. */
-const CRACK_HIT = { min: 6, full: 20 } as const;
+/**
+ * A hit on a cyan barrier cracks its panel from this impact speed (m/s), full size at `full`;
+ * the hit throws `burst` sparks off the panel (at strength 0 and 1), and a cracked panel near
+ * the camera shorts out `spit` times a second (at strength 0 and 1), `spitCount` sparks each.
+ */
+const RAIL_CRACK = { min: 6, full: 20, burst: [14, 40], spit: [0.25, 1.1], spitCount: [3, 8] } as const;
 
 function snap(rc: RaceCar): Snap {
   const c = rc.state;
@@ -350,8 +353,6 @@ export class RaceSession {
   private chaseCall: ChaseCall = { phase: 'patrol', car: -1 };
   /** The HUD warning for the level crossing gates ahead (game/hazardFx.ts). */
   private readonly hazards: HazardFx;
-  /** The screen the player cracked on a cyan barrier, cracked for the rest of the session (ui/hud/screenCrack.ts). */
-  private readonly screenCrack: ScreenCrack;
   /** Racer poses for the crowd (reused every frame). */
   private readonly crowdCars: CrowdCar[];
   /** Last heard excitement and last cheer time (s) per crowd section spot. */
@@ -387,8 +388,6 @@ export class RaceSession {
     this.openWorld = opts.config.openWorld === true;
     this.night.crowds.setEnabled(!this.openWorld);
     this.crowdCars = this.race.cars.map(() => ({ x: 0, z: 0, speed: 0 }));
-    // Under the HUD: the HUD is drawn on the cracked glass, not behind it.
-    this.screenCrack = new ScreenCrack(uiRoot);
     this.hud = new Hud(uiRoot, this.race.world);
     this.hud.onMapClick = () => this.toggleMap();
     this.hazards = new HazardFx(this.hud.root);
@@ -969,20 +968,33 @@ export class RaceSession {
     this.sparks.emit(this.time, c.scrapeX + c.scrapeNx * 0.08, g + 0.45, c.scrapeZ + c.scrapeNz * 0.08, c.vx * 0.4 + c.scrapeNx * out, 2, c.vz * 0.4 + c.scrapeNz * out, 3.2, n, g);
   }
 
-  /** The player slamming into a cyan barrier: the screen cracks where the contact is on it, wider the harder the hit (m/s). */
-  private crackScreen(impact: number): void {
-    if (impact < CRACK_HIT.min) return;
-    const c = this.race.cars[0].state;
-    const cam = this.lastCamera ?? this.cam.camera;
-    const hasContact = c.scrapeNx || c.scrapeNz;
-    const x = hasContact ? c.scrapeX : c.x;
-    const z = hasContact ? c.scrapeZ : c.z;
-    const p = new THREE.Vector3(x, this.race.world.heightAt(x, z) + 0.6, z).project(cam);
-    // Off screen or behind the camera (a drone, a cinematic shot): somewhere toward the middle instead.
-    const seen = p.z < 1 && Math.abs(p.x) < 1 && Math.abs(p.y) < 1;
-    const u = seen ? Math.max(0.12, Math.min(0.88, (p.x + 1) / 2)) : 0.3 + Math.random() * 0.4;
-    const v = seen ? Math.max(0.12, Math.min(0.88, (1 - p.y) / 2)) : 0.3 + Math.random() * 0.4;
-    this.screenCrack.crack(u, v, Math.min(1, (impact - CRACK_HIT.min) / (CRACK_HIT.full - CRACK_HIT.min)));
+  /** A car slamming into a cyan barrier: the piece's panel cracks where it was hit, wider the harder the hit (m/s), and spits sparks. */
+  private crackRail(car: number, impact: number): void {
+    if (impact < RAIL_CRACK.min) return;
+    const c = this.race.cars[car]?.state;
+    if (!c || !(c.scrapeNx || c.scrapeNz)) return;
+    const k = Math.min(1, (impact - RAIL_CRACK.min) / (RAIL_CRACK.full - RAIL_CRACK.min));
+    const crack = this.night.arrows.crackRail(this.race.rails, c.scrapeX, c.scrapeZ, k, this.time);
+    if (!crack) return;
+    const cam = (this.lastCamera ?? this.cam.camera).position;
+    if ((crack.x - cam.x) ** 2 + (crack.z - cam.z) ** 2 > SPARK.range * SPARK.range) return;
+    const out = 1.5 + impact * 0.12;
+    const n = RAIL_CRACK.burst[0] + (RAIL_CRACK.burst[1] - RAIL_CRACK.burst[0]) * k;
+    this.sparks.emit(this.time, crack.x, crack.y, crack.z, crack.nx * out, 2.4, crack.nz * out, 2.6, n, this.race.world.heightAt(crack.x, crack.z));
+  }
+
+  /** Cracked barrier panels near the camera short out now and then: a few sparks off the crack (dt s, the render frame). */
+  private spitRailSparks(dt: number): void {
+    const cracks = this.night.arrows.railCracks;
+    if (!cracks.length || dt <= 0) return;
+    const cam = (this.lastCamera ?? this.cam.camera).position;
+    for (const c of cracks) {
+      if ((c.x - cam.x) ** 2 + (c.z - cam.z) ** 2 > SPARK.range * SPARK.range) continue;
+      const rate = RAIL_CRACK.spit[0] + (RAIL_CRACK.spit[1] - RAIL_CRACK.spit[0]) * c.strength;
+      if (Math.random() >= rate * dt) continue;
+      const n = RAIL_CRACK.spitCount[0] + Math.random() * (RAIL_CRACK.spitCount[1] - RAIL_CRACK.spitCount[0]) * (0.5 + c.strength * 0.5);
+      this.sparks.emit(this.time, c.x, c.y, c.z, c.nx * 1.2, 0.6, c.nz * 1.2, 1.4, n, this.race.world.heightAt(c.x, c.z));
+    }
   }
 
   /** Gate position for crowd sounds: the start line or the finish line (the same gate on circuits). */
@@ -1042,12 +1054,12 @@ export class RaceSession {
       this.sfx?.raceEvent(e, r);
       this.rumble?.event(e);
       if (e.type === 'wall') this.sparkBurst(e.car, e.value ?? 0);
+      if (e.type === 'wall' && e.kind === 'rail') this.crackRail(e.car, e.value ?? 0);
       // Rivals crossing the finish get a smaller cheer.
       if (e.type === 'finish' && e.car !== 0 && !this.openWorld) this.night.crowds.cheer('finish', 0.8);
       // A rival slamming into the player shakes the player's camera too.
       if (e.type === 'crash' && e.other === 0) this.cam.crashAt(e.value ?? 0);
       if (e.car !== 0) continue;
-      if (e.type === 'wall' && e.kind === 'rail') this.crackScreen(e.value ?? 0);
       // Camera shake: walls, rails and cars hit hard; knocking props over is a light knock, heavier props knock harder.
       if (e.type === 'wall' || e.type === 'crash') {
         this.cam.crashAt(e.value ?? 0);
@@ -1145,7 +1157,7 @@ export class RaceSession {
     this.night.syncDistricts(Math.max(0, r.tick - 1 + (this.paused ? 1 : alpha)), !this.paused, r.brokenArms);
     this.night.update(this.time);
     this.hazards.update(r);
-    this.screenCrack.update(this.paused ? 0 : dt);
+    this.spitRailSparks(this.paused ? 0 : dt);
     // Corner rail pieces shoved by hits this race.
     this.night.arrows.syncRails(r.rails);
     this.night.city.finishLine.update(this.time);
@@ -1422,7 +1434,6 @@ export class RaceSession {
     this.unsub.forEach((u) => u());
     this.freeCam?.dispose();
     this.hazards.dispose();
-    this.screenCrack.dispose();
     this.hud.dispose();
     this.views.forEach((v) => v.dispose());
     this.drivers.dispose();

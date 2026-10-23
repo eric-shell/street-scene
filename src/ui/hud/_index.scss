@@ -1,7 +1,6 @@
-/* The race HUD and the drone's, in cascade order: the cracked screen under it, the HUD and its chips, the hazard
-   banner, the drift score, the nitrous gauge and its callouts, the drone's HUD, the HUD card; then the touch
-   controls (input/) and the cinematic overlays (render/camera/), which only add their own classes. */
-@use 'screen-crack';
+/* The race HUD and the drone's, in cascade order: the HUD and its chips, the hazard banner, the drift score,
+   the nitrous gauge and its callouts, the drone's HUD, the HUD card; then the touch controls (input/) and
+   the cinematic overlays (render/camera/), which only add their own classes. */
 @use 'hud';
 @use 'hud-chip';
 @use 'hazard-banner';
