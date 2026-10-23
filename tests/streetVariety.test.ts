@@ -5,7 +5,8 @@ import { BUS_BAY, bayFrame, bayHitsCircle, bayInset, bayPoint } from '../src/cit
 import { CITY } from '../src/city/config';
 import { isBendNode } from '../src/city/roadGraph';
 import { FURNITURE_KINDS, PROP_DEFS } from '../src/city/props';
-import { ROADWORKS, laneClosures } from '../src/city/districts/roadworks';
+import { PLANT, ROADWORKS, laneClosures } from '../src/city/districts/roadworks';
+import plantModels from '../src/assets/plantModels.json';
 import type { Area } from '../src/city/districts/types';
 import { createRace, stepRace } from '../src/sim/race';
 import { placeCar } from '../src/sim/car';
@@ -36,12 +37,14 @@ describe('bus bays', () => {
     for (const seed of SEEDS) {
       const c = createCity(seed);
       expect(JSON.stringify(createCity(seed).blocks.bays)).toBe(JSON.stringify(c.blocks.bays));
-      const bays = c.blocks.bays;
+      // Bus bays only (a park path's mouth is a bay too, cut where its path crosses: tests/parkMouths).
+      const bays = c.blocks.bays.filter((b) => b.kind === 'bus');
       total += bays.length;
       const closed = new Set(zones(c).map((a) => a.params.edge));
       const reserved = c.districts.builds.flatMap((b) => b.reserved);
       bays.forEach((b, i) => {
         expect(b.id).toBe(i);
+        expect(b.kind).toBe('bus');
         const e = c.graph.edges[b.edge];
         expect(['street', 'avenue', 'diagonal', 'boulevard']).toContain(e.kind);
         expect(e.shortcut || e.bridge).toBeFalsy();
@@ -243,6 +246,36 @@ describe('roadworks', () => {
         }
       }
     }
+  });
+
+  it("size the excavator's walls to the model the renderer draws", () => {
+    const m = plantModels.pieces.excavator;
+    const X = PLANT.excavator;
+    for (const [sim, model] of [
+      [X.along, m.length],
+      [X.across, m.width],
+      [X.arm, m.reach],
+      [X.stick[0], m.stick.from],
+      [X.stick[1], m.stick.to],
+      [X.center, m.stick.center],
+      [X.width, m.stick.width],
+    ]) expect(sim).toBeCloseTo(model, 2);
+    // Every city has excavators, and each one fits its closure: a body and a stick wall, at its hint's scale.
+    let seen = 0;
+    for (const seed of SEEDS) {
+      const c = createCity(seed);
+      for (const a of zones(c)) {
+        for (const h of c.districts.builds[a.id].hints.filter((x) => x.kind === 'excavator')) {
+          seen++;
+          const k = h.values[2];
+          expect(k).toBeGreaterThanOrEqual(X.minScale);
+          expect(k).toBeLessThanOrEqual(1);
+          expect(h.values[0]).toBeCloseTo(X.along * k, 6);
+          expect(h.values[1]).toBeCloseTo(X.across * k, 6);
+        }
+      }
+    }
+    expect(seen).toBeGreaterThanOrEqual(SEEDS.length);
   });
 
   it('the racing line swings round every closure on the route, and AI races still finish', () => {

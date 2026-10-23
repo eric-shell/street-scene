@@ -99,6 +99,8 @@ const MEET = {
   carFirst: 4.7,
   carRow: 5.4,
   carSlot: 2.9,
+  /** A parked car's center keeps at least this far from every piece of its barrier, past how far a hit may shove it (m). */
+  carClear: 2.7,
   /**
    * Share of slots filled per row, front to back: densest where the crowd thins, and the rows from
    * the third back together sparser than the first, so a deep meet still reads front heavy.
@@ -281,7 +283,8 @@ export function planMeets(world: World, opts: MeetOptions): MeetPlan {
         const off = dims.length / 2 - rad;
         const fx = Math.sin(yaw);
         const fz = Math.cos(yaw);
-        let ok = true;
+        // Behind the packed crowd from every piece of the barrier (two segments meeting in a V), and on open ground.
+        let ok = !chain.some((w) => distToSegment(x, z, w.ax, w.az, w.bx, w.bz) < d0 + MEET.carClear);
         for (let k = -1; k <= 1 && ok; k++) ok = free(x + fx * off * k, z + fz * off * k, rad, true);
         if (!ok) continue;
         for (let k = -1; k <= 1; k++) taken.add(x + fx * off * k, z + fz * off * k, rad);
@@ -304,7 +307,8 @@ export function planMeets(world: World, opts: MeetOptions): MeetPlan {
         const d = depth + rng.range(-0.1, 0.1);
         const x = p.x - p.nx * d;
         const z = p.z - p.nz * d;
-        if (!free(x, z, 0.3)) continue;
+        // Clear of every piece of the barrier, not just the one it stands behind (two segments meeting in a V).
+        if (!free(x, z, 0.3) || chain.some((w) => distToSegment(x, z, w.ax, w.az, w.bx, w.bz) < d0 + 0.25)) continue;
         taken.add(x, z, 0.21);
         const y = world.heightAt(x, z) + (world.surfaceAt(x, z) === 'road' ? 0 : CITY.curbHeight);
         zone.people.push({ x, y, z, yaw: Math.atan2(p.nx, p.nz) + rng.range(-0.45, 0.45) });

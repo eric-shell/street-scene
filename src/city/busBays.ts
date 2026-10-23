@@ -17,6 +17,12 @@
  * side) never meet one, and it keeps clear of the El's pillars and stairs
  * (reserved circles), district paving, bridges and lane closures. Pure and
  * deterministic, on its own random stream.
+ *
+ * The same curb frame cuts the mouths where a district's race path leaves
+ * the street (mouthBay, districts/park.ts): kind 'mouth', the curb stepping
+ * back the whole sidewalk so the path meets the road at road level, its ends
+ * flared into curb returns like a shortcut's mouth (blocks.ts flaredCorner).
+ * An edge may carry a bus bay and mouths, on either side.
  */
 import type { RoadGraph } from './roadGraph';
 import { chainOf, isRiverEdge } from './roadGraph';
@@ -55,6 +61,8 @@ export const BUS_BAY = {
 export interface BusBay {
   /** Index into CityBlocks.bays. */
   id: number;
+  /** 'bus': a lay-by with its stop (S tapers); 'mouth': a district path's curb cut, the whole sidewalk deep (flared tapers, no stop or paint). */
+  kind: 'bus' | 'mouth';
   /** Road edge whose curb steps back. */
   edge: number;
   /** 1: the P side of the edge (left of a -> b), -1: the N side. */
@@ -64,24 +72,46 @@ export interface BusBay {
   u: Vec2;
   inward: Vec2;
   len: number;
-  /** Along the curb (m from `from`): the taper runs s0 .. s0 + taper, full depth to s1 - taper, back out to s1. */
+  /**
+   * Along the curb (m from `from`): the taper runs s0 .. s0 + taper, full depth to s1 - taper, back out to s1.
+   * A mouth across a bend node is cut on both pieces of its street, each in its own frame, so s0 or s1
+   * may lie past the piece's ends (0 and len): each piece's bay answers only within its piece (bayLo, bayHi).
+   */
   s0: number;
   s1: number;
   taper: number;
-  /** How far the curb steps back (m). */
+  /** How far the curb steps back (m); a mouth's a little past the building line (MOUTH_REACH). */
   depth: number;
   /** Outline of the bay's asphalt (original curb, then the indented curb back), counterclockwise or not. */
   polygon: Vec2[];
 }
 
-/** Smoothstep, the shape of each taper (tangent to the curb at both ends). */
+/** Smoothstep, the shape of a bus bay's taper (tangent to the curb at both ends). */
 const ease = (t: number): number => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+
+/**
+ * A mouth's curb return: the quadratic from the curb line round to square into the sidewalk (the
+ * shortcut mouths' flaredCorner, blocks.ts), with the turn's corner as its control point.
+ */
+const flare = (t: number): number => {
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  const r = 1 - sqrt(1 - t);
+  return r * r;
+};
+
+/** A bay reaches this far (m) past its piece's ends, so the two halves of a mouth across a bend node cover the wedge between the pieces on the outside of the bend. */
+const PIECE_OVERLAP = 1.5;
+
+/** The stretch of the side (m along the curb) a bay answers for: its own, within its piece. */
+export const bayLo = (b: BusBay): number => Math.max(b.s0, -PIECE_OVERLAP);
+export const bayHi = (b: BusBay): number => Math.min(b.s1, b.len + PIECE_OVERLAP);
 
 /** How far the curb is set back (m) at `s` along the side: 0 outside the bay. */
 export function bayInset(b: BusBay, s: number): number {
   if (s <= b.s0 || s >= b.s1) return 0;
   const t = Math.min(s - b.s0, b.s1 - s) / b.taper;
-  return b.depth * ease(t);
+  return b.depth * (b.kind === 'mouth' ? flare(t) : ease(t));
 }
 
 /** Curb frame of a point: s along the side's curb, v behind it (into the sidewalk). */
@@ -106,7 +136,7 @@ export function bayRoadDistance(b: BusBay, x: number, z: number): number {
   const dx = x - b.from.x;
   const dz = z - b.from.z;
   const s = dx * b.u.x + dz * b.u.z;
-  if (s <= b.s0 || s >= b.s1) return Infinity;
+  if (s <= bayLo(b) || s >= bayHi(b)) return Infinity;
   const v = -(dx * b.inward.x + dz * b.inward.z);
   if (v < -BUS_BAY.roadReach) return Infinity;
   return v - bayInset(b, s);
@@ -115,33 +145,46 @@ export function bayRoadDistance(b: BusBay, x: number, z: number): number {
 /** Does a circle (r, plus `margin`) reach into the bay's asphalt? Conservative across the tapers. */
 export function bayHitsCircle(b: BusBay, x: number, z: number, r: number, margin = 0.1): boolean {
   const { s, v } = bayFrame(b, x, z);
-  if (s <= b.s0 - r || s >= b.s1 + r || v < -BUS_BAY.roadReach - r) return false;
+  if (s <= bayLo(b) - r || s >= bayHi(b) + r || v < -BUS_BAY.roadReach - r) return false;
   const inset = Math.max(bayInset(b, s - r), bayInset(b, s), bayInset(b, s + r));
   return v < inset + r + margin;
 }
 
-/** Bays by edge id (an edge has at most one), for the per point lookups. */
-export function baysByEdge(bays: readonly BusBay[], edgeCount: number): (BusBay | undefined)[] {
-  const out: (BusBay | undefined)[] = new Array(edgeCount).fill(undefined);
-  for (const b of bays) out[b.edge] = b;
+/** Bays by edge id (a bus bay and any mouths), for the per point lookups. */
+export function baysByEdge(bays: readonly BusBay[], edgeCount: number): BusBay[][] {
+  const out: BusBay[][] = Array.from({ length: edgeCount }, () => []);
+  for (const b of bays) out[b.edge].push(b);
   return out;
+}
+
+/** The bays of one edge on one block side (1: the P side), in order along the curb. */
+export function sideBays(bays: readonly BusBay[], side: 1 | -1): BusBay[] {
+  return bays.filter((b) => b.side === side).sort((p, q) => p.s0 - q.s0);
 }
 
 /**
  * Stations (s, ascending) that trace the indented curb: every ~0.8 m along
- * both tapers, which also gives the two ends of the full depth stretch.
+ * both tapers (a mouth's bunched where its return turns square), which also
+ * gives the two ends of the full depth stretch. Within the bay's piece (with
+ * its own ends when the bay runs past them) when the piece's length is known.
  */
-export function bayCurbStations(b: Pick<BusBay, 's0' | 's1' | 'taper'>): number[] {
-  const n = Math.max(2, Math.ceil(b.taper / 0.8));
+export function bayCurbStations(b: Pick<BusBay, 's0' | 's1' | 'taper'> & { kind?: BusBay['kind']; len?: number }): number[] {
+  const mouth = b.kind === 'mouth';
+  const n = Math.max(mouth ? 8 : 2, Math.ceil(b.taper / 0.8));
+  // The return's quadratic runs evenly in its own parameter u: s = 2u - u^2 of the taper.
+  const at = (i: number) => (mouth ? (i / n) * (2 - i / n) : i / n);
   const out: number[] = [];
-  for (let i = 0; i <= n; i++) out.push(b.s0 + (b.taper * i) / n);
-  for (let i = 0; i <= n; i++) out.push(b.s1 - b.taper + (b.taper * i) / n);
-  return out;
+  for (let i = 0; i <= n; i++) out.push(b.s0 + b.taper * at(i));
+  for (let i = 0; i <= n; i++) out.push(b.s1 - b.taper * at(n - i));
+  if (b.len === undefined) return out;
+  const lo = bayLo(b as BusBay);
+  const hi = bayHi(b as BusBay);
+  return [...(lo > b.s0 ? [lo] : []), ...out.filter((s) => s >= lo && s <= hi), ...(hi < b.s1 ? [hi] : [])];
 }
 
-/** The asphalt outline: the original curb from s0 to s1, then the indented curb back. */
+/** The asphalt outline: the original curb from s0 to s1 (within the piece), then the indented curb back. */
 function outline(b: BusBay): Vec2[] {
-  const pts: Vec2[] = [bayPoint(b, b.s0, 0), bayPoint(b, b.s1, 0)];
+  const pts: Vec2[] = [bayPoint(b, bayLo(b), 0), bayPoint(b, bayHi(b), 0)];
   const ss = bayCurbStations(b);
   for (let i = ss.length - 2; i >= 1; i--) pts.push(bayPoint(b, ss[i], bayInset(b, ss[i])));
   return pts;
@@ -206,7 +249,7 @@ export function planBusBays(seed: number, g: RoadGraph, mouths: EdgeMouths[], re
         }
       }
       if (!best) continue;
-      const bay: BusBay = { id: bays.length, edge: ei, side: si === 0 ? 1 : -1, from: { x: side.from.x, z: side.from.z }, u, inward: { x: side.inward.x, z: side.inward.z }, len, s0: best.s0, s1: best.s1, taper, depth, polygon: [] };
+      const bay: BusBay = { id: bays.length, kind: 'bus', edge: ei, side: si === 0 ? 1 : -1, from: { x: side.from.x, z: side.from.z }, u, inward: { x: side.inward.x, z: side.inward.z }, len, s0: best.s0, s1: best.s1, taper, depth, polygon: [] };
       bay.polygon = outline(bay);
       // Nothing of a district's on this stretch of sidewalk: pillars and stairs, paving.
       const clearOfReserved = reserved.every((c) => {
@@ -222,4 +265,26 @@ export function planBusBays(seed: number, g: RoadGraph, mouths: EdgeMouths[], re
     }
   });
   return bays;
+}
+
+/**
+ * A mouth's cut reaches this far (m) past the building line, so no sliver of curb is left where the
+ * building line kinks at a bend node, nor a curb ramp along the back of the cut.
+ */
+export const MOUTH_REACH = 0.5;
+
+/**
+ * A district path's curb cut (kind 'mouth') on block side `side` (1: the P side) of `edge`: the curb
+ * steps back the whole sidewalk between s0 + taper and s1 - taper (m along the side's curb), flaring
+ * out over `taper` at each end. The planner (districts/park.ts) keeps it inside the side's straight
+ * piece and clear of its junction corners.
+ */
+export function mouthBay(g: RoadGraph, mouths: EdgeMouths[], id: number, edge: number, side: 1 | -1, s0: number, s1: number, taper: number): BusBay {
+  const sd = edgeSides(g, mouths, edge)[side === 1 ? 0 : 1];
+  const ax = sd.to.x - sd.from.x;
+  const az = sd.to.z - sd.from.z;
+  const len = sqrt(ax * ax + az * az) || 1;
+  const bay: BusBay = { id, kind: 'mouth', edge, side, from: { x: sd.from.x, z: sd.from.z }, u: { x: ax / len, z: az / len }, inward: { x: sd.inward.x, z: sd.inward.z }, len, s0, s1, taper, depth: g.edges[edge].sidewalk + MOUTH_REACH, polygon: [] };
+  bay.polygon = outline(bay);
+  return bay;
 }

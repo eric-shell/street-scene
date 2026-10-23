@@ -3,6 +3,7 @@ import { CITY } from '../src/city/config';
 import { createCity, createWorld } from '../src/city/world';
 import { buildRoute } from '../src/city/route';
 import { parkPasses } from '../src/city/districts/park';
+import { MOUTH_REACH } from '../src/city/busBays';
 import { distToPolygonEdge, pointInPolygon } from '../src/city/districts/geom';
 import { distToSegment } from '../src/sim/math';
 
@@ -87,5 +88,58 @@ describe('park passes', () => {
       }
     }
     expect(crossings).toBeGreaterThanOrEqual(4);
+  });
+
+  it('meet the street at road level through a flared curb cut, its gate piers either side of the path', () => {
+    let ends = 0;
+    let cut = 0;
+    let piers = 0;
+    for (let seed = 0; seed < 24; seed++) {
+      const w = createWorld(seed, 'circuit');
+      expect(JSON.stringify(createCity(seed).blocks.bays)).toBe(JSON.stringify(w.blocks.bays));
+      const mouths = w.blocks.bays.filter((b) => b.kind === 'mouth');
+      for (const b of mouths) expect(b.depth).toBe(w.graph.edges[b.edge].sidewalk + MOUTH_REACH);
+      for (const a of w.districts.areas) {
+        if (a.kind !== 'park') continue;
+        const passes = parkPasses(w.graph, a);
+        for (const pass of passes) {
+          for (const pts of [pass.points, [...pass.points].reverse()]) {
+            ends++;
+            // Along the line from the street to a metre inside the park: no curb to climb, cobbles over the sidewalk.
+            let flat = true;
+            for (let i = 0; i + 1 < pts.length; i++) {
+              const q = pts[i];
+              const r = pts[i + 1];
+              const l = Math.hypot(r.x - q.x, r.z - q.z);
+              for (let d = 0; d < l; d += 0.25) {
+                const x = q.x + ((r.x - q.x) * d) / l;
+                const z = q.z + ((r.z - q.z) * d) / l;
+                if (pointInPolygon(x, z, a.polygon) && distToPolygonEdge(x, z, a.polygon) > 1) {
+                  i = pts.length;
+                  break;
+                }
+                if (w.driveHeightAt(x, z) - w.heightAt(x, z) > 1e-6 || w.surfaceAt(x, z) === 'sidewalk') flat = false;
+              }
+            }
+            if (flat) cut++;
+          }
+        }
+        // The gate piers stand off the path, outside its half width.
+        for (const wall of w.walls.filter((x) => x.look === 'gatePier' && x.area === a.id)) {
+          piers++;
+          for (const pass of passes) {
+            for (let i = 0; i + 1 < pass.points.length; i++) {
+              const q = pass.points[i];
+              const r = pass.points[i + 1];
+              expect(distToSegment(wall.ax, wall.az, q.x, q.z, r.x, r.z)).toBeGreaterThan(PARK.pathWidth / 2);
+            }
+          }
+        }
+      }
+    }
+    // Most path ends get their cut (one too near a junction keeps its curb).
+    expect(ends).toBeGreaterThan(8);
+    expect(cut).toBeGreaterThanOrEqual(ends * 0.75);
+    expect(piers).toBeGreaterThanOrEqual(cut * 2 * 4);
   });
 });

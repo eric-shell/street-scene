@@ -199,10 +199,9 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
     const yawAB = Math.atan2(dx, dz);
     const yawBA = yawAB + Math.PI;
     const at = (s: number, lat: number): Vec2 => ({ x: a.x + dx * s + nx * lat, z: a.z + dz * s + nz * lat });
-    // A bus bay's stretch of curb (m along a -> b, a little margin), on its side (1 = left): no gutter decals there.
-    const bay = bayOf[ei];
-    const bayAt = bay ? bayMouth(bay, a, dx, dz) : null;
-    const inBay = (side: number, s0: number, s1: number) => !!bay && bay.side === side && s1 > bayAt![0] - 1 && s0 < bayAt![1] + 1;
+    // A bay's stretch of curb (a bus bay or a path's mouth; m along a -> b, a little margin), on its side (1 = left): no gutter decals there.
+    const bays = bayOf[ei].map((b) => ({ side: b.side, at: bayMouth(b, a, dx, dz) }));
+    const inBay = (side: number, s0: number, s1: number) => bays.some((b) => b.side === side && s1 > b.at[0] - 1 && s0 < b.at[1] + 1);
     // Lanes: offset (left +), heading of the traffic in it (right hand traffic: negative offsets run a -> b).
     const lanes: { lat: number; yaw: number; outer: boolean }[] = [];
     if (e.lanes === 2) {
@@ -329,7 +328,7 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
         const p = at(t, side * (half - 1.3));
         quad(gb, 'busStop', p.x, p.z, laneYaw, 1.1, 3.2, WHITE);
       }
-      if (bay?.side === side) continue;
+      if (bays.some((b) => b.side === side)) continue;
       if (stops.length === 0 && clen > 40 && rng.chance(DECAL.redZoneChance * D)) {
         const zl = rng.range(DECAL.redZoneLen[0], DECAL.redZoneLen[1]);
         const s0 = rng.range(8, clen - 8 - zl);

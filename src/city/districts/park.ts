@@ -18,19 +18,27 @@
  * planned later stands in its way; the path's edges are reserved so street
  * furniture keeps off its way over the sidewalk. The graph is untouched: only
  * the racing line cuts the corner, a car may still go round by the street.
+ * Where the path crosses the sidewalk the curb is cut the whole sidewalk
+ * deep with flared returns (passMouths, a 'mouth' bay of busBays.ts), so the
+ * path meets the road at road level, its cobbles paved out to the curb line;
+ * a stone gate pier stands each side of the opening at the park edge, with a
+ * lantern post beyond it, a planter pot before each flare and bollards along
+ * the flared curbs.
  *
  * Content to add (render/districts/park.ts): hedges, a pond or playground,
  * better trees.
  */
 import { CITY } from '../config';
+import { MOUTH_REACH, bayHi, bayInset, bayLo, bayPoint, mouthBay } from '../busBays';
+import { edgeSides } from '../props';
 import { DEG, type Vec2, atan2, cos, distToSegment, sin, sqrt } from '../../sim/math';
 import { Rng } from '../../sim/prng';
-import type { RoadGraph } from '../roadGraph';
+import { type RoadGraph, isBendNode } from '../roadGraph';
 import { PASS_START_RUN, type RoutePass } from '../route';
-import type { Area, DistrictModule, PlanContext } from './types';
+import type { Area, BuildContext, DistrictModule, PlanContext } from './types';
 import type { BlockFace } from '../blocks';
 import type { PropKind } from '../props';
-import { emptyBuild } from './types';
+import { COBBLE_PRIORITY, emptyBuild } from './types';
 import { circlePolygon, distToPolygonEdge, pointInPolygon, polygonArea, polygonBounds, polygonCentroid, smooth01, type Smooth, solidWalls } from './geom';
 import { type PassClear, type PassCorner, type PlannedRoute, alongStreet, blockCorners, leaving, routeCorners, sharpestBend, streetEdges } from './passes';
 
@@ -247,6 +255,89 @@ function gridSpot(pts: Vec2[]): { s: number; straight: number } | null {
   return best;
 }
 
+/** A pass end's curb cut (busBays.ts mouthBay): the block side it crosses and the cut along its curb (m). */
+interface PassMouth {
+  edge: number;
+  side: 1 | -1;
+  s0: number;
+  s1: number;
+  taper: number;
+}
+
+/**
+ * The curb cut where a path leaves the street, `pts` running from its street end into the park:
+ * on the block side it crosses, the stretch where the path's two edges cross the curb and the
+ * building line, mouthMargin wider each side, flared out over mouthFlare more. A street is a chain
+ * of straight pieces through bend nodes (roadGraph.ts): a cut running past a bend node is cut on
+ * the next piece too, in that piece's own frame (busBays.ts bayLo, bayHi), while a junction end
+ * shortens the flares (no cut below mouthMinFlare). Empty where the path crosses no side cleanly.
+ */
+function passMouths(ctx: BuildContext, pts: Vec2[], width: number): PassMouth[] {
+  const g = ctx.graph;
+  const p0 = pts[0];
+  // The pieces the path's street end lies on (two where it is a bend node).
+  const on = g.edges.flatMap((e, ei) => (distToSegment(p0.x, p0.z, g.nodes[e.a].x, g.nodes[e.a].z, g.nodes[e.b].x, g.nodes[e.b].z) < 1 ? [ei] : []));
+  const hw = width / 2;
+  /** The path's footprint in piece `edge`'s curb frame on the side it crosses: [lo, hi] along the curb (m), and the piece's length. */
+  const cut = (edge: number): { edge: number; side: 1 | -1; lo: number; hi: number; len: number } | null => {
+    const depth = g.edges[edge].sidewalk;
+    const sides = edgeSides(g, ctx.mouths, edge);
+    for (let k = 0; k < 2; k++) {
+      const sd = sides[k];
+      const len = sqrt((sd.to.x - sd.from.x) ** 2 + (sd.to.z - sd.from.z) ** 2);
+      const ux = (sd.to.x - sd.from.x) / len;
+      const uz = (sd.to.z - sd.from.z) / len;
+      const frame = (p: Vec2) => ({ s: (p.x - sd.from.x) * ux + (p.z - sd.from.z) * uz, v: -((p.x - sd.from.x) * sd.inward.x + (p.z - sd.from.z) * sd.inward.z) });
+      // Where each edge of the path first crosses the curb (v = 0) and the building line (v = depth), as s.
+      const cuts: number[] = [];
+      for (const off of [-hw, hw]) {
+        for (const line of [0, depth]) {
+          for (let i = 0; i + 1 < pts.length; i++) {
+            const q = pts[i];
+            const r = pts[i + 1];
+            const l = sqrt((r.x - q.x) ** 2 + (r.z - q.z) ** 2) || 1;
+            const nx = (-(r.z - q.z) / l) * off;
+            const nz = ((r.x - q.x) / l) * off;
+            const a = frame({ x: q.x + nx, z: q.z + nz });
+            const b = frame({ x: r.x + nx, z: r.z + nz });
+            if ((a.v - line) * (b.v - line) > 0 || a.v === b.v) continue;
+            cuts.push(a.s + ((b.s - a.s) * (line - a.v)) / (b.v - a.v));
+            break;
+          }
+        }
+      }
+      if (cuts.length === 4) return { edge, side: k === 0 ? 1 : -1, lo: Math.min(...cuts) - CFG.mouthMargin, hi: Math.max(...cuts) + CFG.mouthMargin, len };
+    }
+    return null;
+  };
+  let c: ReturnType<typeof cut> = null;
+  for (const ei of on) c ??= cut(ei);
+  if (!c) return [];
+  const first = c.edge;
+  const e = g.edges[first];
+  // The piece's two ends (s = 0 at its a node): room for a flare before each, and the piece beyond a bend node.
+  const ends = [
+    { node: e.a, room: c.lo - 1 },
+    { node: e.b, room: c.len - 1 - c.hi },
+  ];
+  let flare: number = CFG.mouthFlare;
+  for (const end of ends) if (!isBendNode(g, end.node)) flare = Math.min(flare, end.room);
+  if (flare < CFG.mouthMinFlare) return [];
+  const pieces = [c];
+  for (const end of ends) {
+    if (end.room >= flare) continue;
+    const next = g.nodes[end.node].edges.find((x) => x !== first);
+    const cn = next === undefined ? null : cut(next);
+    // The next piece must hold the rest of the cut, flares included, short of its own far end.
+    if (!cn) return [];
+    const ne = g.edges[cn.edge];
+    const far = ne.a === end.node ? cn.len - 1 - cn.hi : cn.lo - 1;
+    if (far < flare && !isBendNode(g, ne.a === end.node ? ne.b : ne.a)) return [];
+    pieces.push(cn);
+  }
+  return pieces.map((p) => ({ edge: p.edge, side: p.side, s0: p.lo - flare, s1: p.hi + flare, taper: flare }));
+}
+
 /** The race passes a park area carries (its params p<i>...), as the routes take them (route.ts RoutePass). */
 export function parkPasses(g: RoadGraph, area: Area): ParkPass[] {
   const P = area.params;
@@ -359,6 +450,57 @@ export const parkModule: DistrictModule = {
         for (let k = 0; k <= n; k++) b.reserved.push({ x: q.x + ((r.x - q.x) * k) / n, z: q.z + ((r.z - q.z) * k) / n, r: half });
       }
     }
+    // The passes' mouths (passMouth): the curb cut both ends, paved in the path's cobbles out to the
+    // curb line, kept clear of street furniture and bus bays, and dressed as a gateway.
+    const decor: { x: number; z: number; r: number }[] = [];
+    const inDecor = (x: number, z: number, r: number) => decor.some((d) => (d.x - x) ** 2 + (d.z - z) ** 2 < (d.r + r + 0.4) ** 2);
+    const curb = CITY.curbHeight;
+    for (const ps of passes) {
+      for (const end of [ps.points, [...ps.points].reverse()]) {
+        for (const m of passMouths(ctx, end, ps.width)) {
+          const bay = mouthBay(ctx.graph, ctx.mouths, -1, m.edge, m.side, m.s0, m.s1, m.taper);
+          // The dressing goes by the building line (the cut itself runs on a little past it).
+          const depth = bay.depth - MOUTH_REACH;
+          const lo = bayLo(bay);
+          const hi = bayHi(bay);
+          b.hints.push({ kind: 'mouth', points: bay.polygon, values: [m.edge, m.side, m.s0, m.s1, m.taper] });
+          b.surfaces.push({ surface: 'cobble', polygon: bay.polygon, priority: COBBLE_PRIORITY, area: id });
+          for (let s = lo; s <= hi + 1e-6; s += 2) for (const v of [0.6, depth / 2, depth - 0.6]) if (v < bayInset(bay, s) + 0.6) b.reserved.push({ ...bayPoint(bay, s, v), r: 1.2 });
+          // Facing the street: a prop's local +Z toward the road (-inward is into the block).
+          const toRoad = Math.atan2(bay.inward.x, bay.inward.z);
+          for (const sg of [-1, 1]) {
+            // Each flare is dressed by the piece its outer end lies on (a cut across a bend node is on two).
+            if (sg < 0 ? m.s0 < lo : m.s1 > hi) continue;
+            // s along the curb measured outward from the opening on this side.
+            const out = (ds: number) => (sg < 0 ? m.s0 + m.taper - ds : m.s1 - m.taper + ds);
+            const half = CFG.gatePier / 2;
+            // Just outside the opening, further out where the path bows that way inside the park.
+            let ds = half + 0.2;
+            const clearOfPath = (q: Vec2) => ps.points.every((r, i) => i + 1 >= ps.points.length || distToSegment(q.x, q.z, r.x, r.z, ps.points[i + 1].x, ps.points[i + 1].z) > half * Math.SQRT2 + ps.width / 2 + 0.3);
+            while (ds < half + 4 && !clearOfPath(bayPoint(bay, out(ds), depth + CFG.gatePierBack))) ds += 0.25;
+            const c = bayPoint(bay, out(ds), depth + CFG.gatePierBack);
+            const corner = (a: number, v: number) => bayPoint(bay, out(ds + a), depth + CFG.gatePierBack + v);
+            const square = [corner(-half, -half), corner(half, -half), corner(half, half), corner(-half, half)];
+            b.walls.push(...solidWalls(square, 'gatePier', id));
+            b.hints.push({ kind: 'gate', points: square, values: [CFG.gatePierHeight, toRoad] });
+            decor.push({ x: c.x, z: c.z, r: half * 1.5 });
+            const lamp = bayPoint(bay, out(ds + CFG.gateLampOut), depth + 1);
+            b.destructibles.push({ kind: 'parkLamp', x: lamp.x, z: lamp.z, yaw: toRoad, lift: 0, area: id });
+            decor.push({ x: lamp.x, z: lamp.z, r: 0.4 });
+            // On the sidewalk: a planter just before the flare starts, bollards along its curb.
+            const pot = bayPoint(bay, sg < 0 ? m.s0 - 1.1 : m.s1 + 1.1, depth * 0.55);
+            b.destructibles.push({ kind: 'planterPot', x: pot.x, z: pot.z, yaw: toRoad, lift: curb, area: id });
+            for (const t of [0.4, 0.75]) {
+              const s = sg < 0 ? m.s0 + m.taper * t : m.s1 - m.taper * t;
+              const v = bayInset(bay, s) + CFG.gateBollardBack;
+              if (v > depth - 0.35) continue;
+              const q = bayPoint(bay, s, v);
+              b.destructibles.push({ kind: 'bollard', x: q.x, z: q.z, yaw: toRoad, lift: curb, area: id });
+            }
+          }
+        }
+      }
+    }
     // Hill: H * bump(x, z) * prod_i smooth(0, edge, inside distance to side i).
     const { hill, kx, kz, px, pz } = area.params;
     const sides = ring.map((p, i) => {
@@ -415,14 +557,14 @@ export const parkModule: DistrictModule = {
         if (rnd() < 0.35) continue;
         const tx = x + (rnd() - 0.5) * step * 0.7;
         const tz = z + (rnd() - 0.5) * step * 0.7;
-        if (!pointInPolygon(tx, tz, ring) || distToPolygonEdge(tx, tz, ring) < 9 || inGrove(tx, tz) || onPath(tx, tz, CFG.treeRadius)) continue;
+        if (!pointInPolygon(tx, tz, ring) || distToPolygonEdge(tx, tz, ring) < 9 || inGrove(tx, tz) || onPath(tx, tz, CFG.treeRadius) || inDecor(tx, tz, CFG.treeRadius)) continue;
         addTree(tx, tz);
       }
     }
     const clutter = (kind: PropKind, x: number, z: number, yaw: number) => b.destructibles.push({ kind, x, z, yaw, lift: 0, area: id });
     /** Clear of tree trunks, of the park edge and of the race passes' path. */
     const open = (x: number, z: number, r: number, edge: number) =>
-      pointInPolygon(x, z, ring) && distToPolygonEdge(x, z, ring) > edge && !onPath(x, z, r) && trees.every((t) => (t.x - x) ** 2 + (t.z - z) ** 2 > (CFG.treeRadius + r + 0.6) ** 2);
+      pointInPolygon(x, z, ring) && distToPolygonEdge(x, z, ring) > edge && !onPath(x, z, r) && !inDecor(x, z, r) && trees.every((t) => (t.x - x) ** 2 + (t.z - z) ** 2 > (CFG.treeRadius + r + 0.6) ** 2);
     if (grove) {
       const gs = CFG.groveSpacing;
       for (let x = grove.x - grove.r; x < grove.x + grove.r; x += gs) {

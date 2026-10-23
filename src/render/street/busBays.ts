@@ -3,14 +3,17 @@
  * bay's asphalt, the block side's sidewalk with its curb stepping back along
  * the bay (S tapers, the curb face following it), and the paint: BUS across
  * the bay for the traffic pulling in, a yellow bus zone curb, and the lane's
- * edge line broken into dashes across the bay's mouth. Everything goes into
+ * edge line broken into dashes across the bay's mouth. A path's mouth (kind
+ * 'mouth') is drawn the same way without the paint, its sidewalk and curb
+ * face gone where it is the whole sidewalk deep (the path's own renderer
+ * paves it, render/districts/park.ts). Everything goes into
  * the city's existing merged builders (asphalt, sidewalks, markings), so bays
  * cost no draw calls; they are a few hundred triangles each, built once.
  * Render only.
  */
 import * as THREE from 'three';
 import type { BusBay } from '../../city/busBays';
-import { bayCurbStations, bayInset, bayPoint } from '../../city/busBays';
+import { bayCurbStations, bayFrame, bayHi, bayInset, bayLo, bayPoint } from '../../city/busBays';
 import { CITY } from '../../city/config';
 import type { Vec2 } from '../../sim/math';
 import type { GeoBuilder } from '../geoBuilder';
@@ -77,7 +80,7 @@ function asphaltStations(bay: BusBay): number[] {
   const b = bay.s1 - bay.taper;
   const n = Math.max(1, Math.ceil((b - a) / 3));
   for (let i = 1; i < n; i++) out.push(a + ((b - a) * i) / n);
-  return out.sort((p, q) => p - q);
+  return out.filter((s) => s >= bayLo(bay) && s <= bayHi(bay)).sort((p, q) => p - q);
 }
 
 /** The bay's asphalt: from just over the old curb line (it overlaps the road strip a little: no slit) back to the indented curb. */
@@ -96,44 +99,65 @@ export function drawBayAsphalt(bay: BusBay, road: GeoBuilder, d: BayDraw, roadY:
   }
 }
 
+/** A mouth's inset this close to the sidewalk's whole depth (m) leaves no sidewalk: open to the path. */
+const OPEN = 0.02;
+
 /**
- * The block side's sidewalk with the bay cut out of it, in place of the
- * plain strip: curb and building lines interpolated by the same parameter as
- * the plain strip (so the ends meet the junction corners exactly), the curb
- * line pushed back by the bay's inset, and the curb face along it.
+ * The block side's sidewalk with its bays cut out of it (a bus bay, path
+ * mouths), in place of the plain strip: curb and building lines interpolated
+ * by the same parameter as the plain strip (so the ends meet the junction
+ * corners exactly), the curb line pushed back by the deepest bay's inset, and
+ * the curb face along it. Where a mouth takes the whole sidewalk there is
+ * neither: the path runs on from the road there.
  */
-export function drawBaySidewalk(bay: BusBay, walk: GeoBuilder, d: BayDraw, curbA: Vec2, curbB: Vec2, outerA: Vec2, outerB: Vec2, steps: number): void {
+export function drawBaySidewalk(bays: readonly BusBay[], walk: GeoBuilder, d: BayDraw, curbA: Vec2, curbB: Vec2, outerA: Vec2, outerB: Vec2, steps: number): void {
+  const ref = bays[0];
   const ts: number[] = [];
   for (let i = 0; i <= steps; i++) ts.push(i / steps);
-  for (const s of bayCurbStations(bay)) ts.push(s / bay.len);
+  for (const b of bays) for (const s of bayCurbStations(b)) if (s >= 0 && s <= ref.len) ts.push(s / ref.len);
   ts.sort((p, q) => p - q);
   const curbH = CITY.curbHeight;
   let prevC = -1;
   let prevO = -1;
   let prev: Vec2 | null = null;
+  let prevOpen = false;
   let last = -1;
   for (const t of ts) {
     if (t - last < 1e-6) continue;
     last = t;
-    const inset = bayInset(bay, t * bay.len);
-    const c = { x: curbA.x + (curbB.x - curbA.x) * t - bay.inward.x * inset, z: curbA.z + (curbB.z - curbA.z) * t - bay.inward.z * inset };
+    const p = { x: curbA.x + (curbB.x - curbA.x) * t, z: curbA.z + (curbB.z - curbA.z) * t };
+    // The sidewalk's own depth here: a mouth's cut runs on a little past it (MOUTH_REACH).
+    const walkDepth = Math.hypot(outerA.x + (outerB.x - outerA.x) * t - p.x, outerA.z + (outerB.z - outerA.z) * t - p.z);
+    let inset = 0;
+    let mouth = false;
+    for (const b of bays) {
+      const i = bayInset(b, bayFrame(b, p.x, p.z).s);
+      if (i > inset) {
+        inset = i;
+        mouth = b.kind === 'mouth';
+      }
+    }
+    const open = mouth && inset >= walkDepth - OPEN;
+    inset = Math.min(inset, walkDepth);
+    const c = { x: p.x - ref.inward.x * inset, z: p.z - ref.inward.z * inset };
     const o = { x: outerA.x + (outerB.x - outerA.x) * t, z: outerA.z + (outerB.z - outerA.z) * t };
     const vc = d.ground(walk, c.x, c.z, curbH, 4);
     const vo = d.ground(walk, o.x, o.z, curbH, 4);
-    if (prev) {
+    if (prev && !(open && prevOpen)) {
       walk.quadFacing(prevC, vc, vo, prevO, 0, 1, 0);
       d.curbFace(prev, c, 1);
     }
     prevC = vc;
     prevO = vo;
     prev = c;
+    prevOpen = open;
   }
 }
 
 /** Positions (m along the lane line a -> b) of the bay's two ends, for breaking the edge line into dashes there. */
 export function bayMouth(bay: BusBay, a: Vec2, dx: number, dz: number): [number, number] {
-  const p = bayPoint(bay, bay.s0, 0);
-  const q = bayPoint(bay, bay.s1, 0);
+  const p = bayPoint(bay, bayLo(bay), 0);
+  const q = bayPoint(bay, bayHi(bay), 0);
   const sp = (p.x - a.x) * dx + (p.z - a.z) * dz;
   const sq = (q.x - a.x) * dx + (q.z - a.z) * dz;
   return sp < sq ? [sp, sq] : [sq, sp];
@@ -144,6 +168,7 @@ export const BAY_DASH = PAINT.dash;
 
 /** BUS across the bay for the traffic pulling in, and the yellow bus zone along the indented curb. */
 export function drawBayPaint(bay: BusBay, marks: GeoBuilder, d: BayDraw): void {
+  if (bay.kind !== 'bus') return;
   // Right hand traffic: the P side (side 1, left of a -> b) carries b -> a, against the curb's direction.
   const fx = bay.u.x * -bay.side;
   const fz = bay.u.z * -bay.side;

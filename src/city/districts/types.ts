@@ -103,6 +103,7 @@ export const COBBLE_PRIORITY = 6;
  * railFence: the El's fence across its right of way where it meets a street at grade (bluff).
  * carPark: a multi-storey car park's parapets, facades, chute and ramp walls, and the low face under its lip (carPark).
  * alleyLip: the face under a route shortcut's jump exit lip, toward the street (Wall.top: the launching car passes over it) (alley).
+ * gatePier: a stone pier each side of a race path's opening at the park edge (park).
  */
 export type WallLook =
   | 'building'
@@ -129,9 +130,10 @@ export type WallLook =
   | 'bluff'
   | 'railFence'
   | 'carPark'
-  | 'alleyLip';
+  | 'alleyLip'
+  | 'gatePier';
 
-export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark', 'alleyLip'];
+export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark', 'alleyLip', 'gatePier'];
 
 export interface Area {
   /** Index into CityDistricts.areas. */

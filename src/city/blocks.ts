@@ -20,7 +20,7 @@ import { Chain, RoadGraph, RoadEdge, RoadNode, isBendNode, isRiverEdge, otherNod
 import { SpatialGrid } from './spatial';
 import { Terrain } from './terrain';
 import { Prop, edgeSides, generateProps, lightStations } from './props';
-import { BusBay, planBusBays } from './busBays';
+import { BusBay, mouthBay, planBusBays } from './busBays';
 import { Rng, deriveSeed } from '../sim/prng';
 import { DEG, Vec2, atan2, clamp, cos, distToSegment, exp, lineIntersectT, sin, sqrt, TAU } from '../sim/math';
 import type { AreaBuild, Circle, FrontageRun, FrontLook, LateContext, WallLook } from './districts/types';
@@ -178,7 +178,7 @@ export interface CityBlocks {
   streetlights: Streetlight[];
   /** Destructible street furniture, see props.ts. */
   props: Prop[];
-  /** Bus bays: stretches where the curb steps back into the sidewalk for a bus stop (busBays.ts). */
+  /** Bus bays (stretches where the curb steps back into the sidewalk for a bus stop) and the path mouths cut through it (busBays.ts). */
   bays: BusBay[];
   signs: SignAnchor[];
   edgeGrid: SpatialGrid;
@@ -948,6 +948,15 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
 
   // Bus bays between two streetlights, clear of district structures, paving and lane closures.
   const bays = planBusBays(seed, g, mouths, reserved, [...districts.builds, ...lateBuilds]);
+  // The curb cuts where district paths leave the streets (hints of kind 'mouth', districts/park.ts):
+  // bays the whole sidewalk deep, which keep their sidewalks clear by the district's reserved circles.
+  for (const b of [...districts.builds, ...lateBuilds]) {
+    for (const h of b.hints) {
+      if (h.kind !== 'mouth') continue;
+      const [edge, side, s0, s1, taper] = h.values;
+      bays.push(mouthBay(g, mouths, bays.length, edge, side === 1 ? 1 : -1, s0, s1, taper));
+    }
+  }
 
   // Destructible street furniture (streetlights first, ids aligned with `streetlights`), then district clutter.
   const clutter = [...districts.builds, ...lateBuilds].flatMap((b) => b.destructibles);

@@ -309,6 +309,8 @@ export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classif
     const gr = b.group;
     const right = closureFlow(b, b.nz, -b.nx);
     if (Math.abs(right) < 0.25) return;
+    // A short tie onto a corner rail is no closure to sign: the rail's own sign stands over its apex.
+    if (gr.tied && gr.length < SIGN.minWidth) return;
     const w = Math.max(SIGN.minWidth, Math.min(SIGN.maxWidth, gr.length * 0.6));
     const y = world.heightAt(b.x, b.z) + SIGN.height + (b.headOn ? 0.6 : 0);
     signs.push({ x: b.x + b.nx * 0.4, y, z: b.z + b.nz * 0.4, yaw: Math.atan2(b.nx, b.nz), w, h: w / SIGN.aspect, flip: right > 0 ? 1 : -1, phase: (i * 0.29) % 1, tilt: -0.08 });

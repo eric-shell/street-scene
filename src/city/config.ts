@@ -639,6 +639,23 @@ export const CITY = {
       passMargin: 5,
       passEntry: 0.7,
       passVerge: 1.5,
+      /**
+       * Where a pass crosses the sidewalk the curb is cut the whole sidewalk deep (busBays.ts
+       * mouthBay): the cut spans the path's footprint plus mouthMargin each side (m) and flares
+       * out over mouthFlare more (m; less where the block side is short, none below mouthMinFlare,
+       * and then no cut). At the park edge a stone gate pier (gatePier m square, gatePierHeight
+       * tall, solid) stands each side of the opening, set gatePierBack m into the park; a lantern
+       * post gateLampOut m further along the edge, a planter pot on the sidewalk just before each
+       * flare, and bollards along the flared curbs gateBollardBack m behind them.
+       */
+      mouthMargin: 0.5,
+      mouthFlare: 5,
+      mouthMinFlare: 2,
+      gatePier: 0.8,
+      gatePierHeight: 1.9,
+      gatePierBack: 0.7,
+      gateLampOut: 2.2,
+      gateBollardBack: 0.7,
     },
     infill: {
       enabled: true,
@@ -1024,6 +1041,14 @@ export const ROUTE = {
   barrierSetbackHeadOn: 7,
   barrierSetbackSide: 3,
   barrierMinRoom: 10,
+  /**
+   * A corner rail crossing a closed street's mouth closes it where it passes both of the mouth's
+   * building corners closer than barrierTieSeal (m, narrower than any car). Past one corner only,
+   * the closure is a tie from the street's edge at the other corner to the rail, ending
+   * barrierTieGap (m) short of it, instead of a second rail standing behind the first.
+   */
+  barrierTieSeal: 2,
+  barrierTieGap: 0.3,
   /** Corner guard rails: minimum turn, extra reach past the corner (m). */
   railMinTurnDeg: 30,
   railReach: 14,

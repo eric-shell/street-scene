@@ -245,9 +245,29 @@ const POCKETS = new Set(['cornerPlaza', 'plaza', 'verge', 'lot', 'alleyBay']);
  * pocket opens right there, carry the barrier on across the pocket to its
  * far side, so the pocket is no way around the closure (and nobody drives
  * through the parked cars behind it). Parks stay open: they are shortcuts.
+ * A tie's end at a corner rail (routeBarriers.ts) already closes: it stays.
  */
-function sealBarriers(city: City, groups: BarrierGroup[]): void {
+function sealBarriers(city: City, groups: BarrierGroup[], rails: readonly RailWall[]): void {
   const pockets = city.districts.areas.filter((a) => a.kind === 'infill' && POCKETS.has(a.variant));
+  /** The corner rail group a barrier end leans on (a tie's rail end), or -1. */
+  const railAt = (x: number, z: number): number => rails.find((r) => distToSegment(x, z, r.ax, r.az, r.bx, r.bz) < ROUTE.barrierTieGap + 0.2)?.group ?? -1;
+  /** The pocket a barrier end opens into, carrying on along the barrier (from its other end). */
+  const pocketPast = (ex: number, ez: number, ox: number, oz: number) => {
+    const len = sqrt((ex - ox) ** 2 + (ez - oz) ** 2) || 1;
+    return pockets.find((a) => pointInPolygon(ex + ((ex - ox) / len) * 0.6, ez + ((ez - oz) / len) * 0.6, a.polygon));
+  };
+  // Two ties onto one corner rail whose free ends open into the same pocket enclose it with the
+  // rail between them: neither carries on across it (they would stand as two rails side by side).
+  const tiesInto = new Map<string, number>();
+  for (const gr of groups) {
+    for (const w of gr.walls) {
+      for (const atA of [true, false]) {
+        const rail = railAt(atA ? w.bx : w.ax, atA ? w.bz : w.az);
+        const pocket = rail >= 0 && pocketPast(atA ? w.ax : w.bx, atA ? w.az : w.bz, atA ? w.bx : w.ax, atA ? w.bz : w.az);
+        if (pocket) tiesInto.set(`${rail}:${pocket.id}`, (tiesInto.get(`${rail}:${pocket.id}`) ?? 0) + 1);
+      }
+    }
+  }
   const sealed: Wall[] = [];
   for (const gr of groups) {
     for (const w of gr.walls) {
@@ -256,11 +276,14 @@ function sealBarriers(city: City, groups: BarrierGroup[]): void {
         const ez = atA ? w.az : w.bz;
         const ox = atA ? w.bx : w.ax;
         const oz = atA ? w.bz : w.az;
+        if (railAt(ex, ez) >= 0) continue;
         const len = sqrt((ex - ox) ** 2 + (ez - oz) ** 2) || 1;
         const dx = (ex - ox) / len;
         const dz = (ez - oz) / len;
-        const pocket = pockets.find((a) => pointInPolygon(ex + dx * 0.6, ez + dz * 0.6, a.polygon));
+        const pocket = pocketPast(ex, ez, ox, oz);
         if (!pocket) continue;
+        const rail = railAt(ox, oz);
+        if (rail >= 0 && (tiesInto.get(`${rail}:${pocket.id}`) ?? 0) > 1) continue;
         // Farthest crossing of the ray with the pocket outline: where it leaves the pocket.
         let reach = 0;
         const P = pocket.polygon;
@@ -445,7 +468,7 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
   // Corner rails, minus the pieces the flights off the route's car park and jump exits would cross.
   const rails = openWorld ? [] : carParkRails(city.districts.areas, ROUTE_INDEX[kind], shortcutJumpRails(route, city.districts.areas, awayFromRoundabouts(graph, routeRails(graph, route, blocks))));
   const barrierGroups = openWorld ? [] : routeBarrierGroups(graph, blocks.mouths, route, rails, city.districts.areas.find((a) => a.kind === 'river')?.params, blocks.walls);
-  sealBarriers(city, barrierGroups);
+  sealBarriers(city, barrierGroups, rails);
   const closures = closureRails(barrierGroups, rails);
   // A car park that is the other route's shortcut has its ramp shuttered (open world: all open).
   const gates = openWorld ? [] : carParkGates(city.districts.areas, ROUTE_INDEX[kind]);
@@ -620,7 +643,7 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     return spans.length > 0 && spanAt(x, z) !== null;
   }
 
-  /** Bus bays by edge (busBays.ts): their stretch of sidewalk is road, with a curb of its own. */
+  /** Bus bays and path mouths by edge (busBays.ts): their stretch of sidewalk is road, with a curb of its own. */
   const bayOf = baysByEdge(blocks.bays ?? [], graph.edges.length);
   const streetScratch: number[] = [];
   /** streetDistance's results (m): to the nearest road surface (negative on it) and to the outer sidewalk line. */
@@ -644,8 +667,7 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
       const d = distToSegment(x, z, a.x, a.z, b.x, b.z) - e.width / 2;
       if (d < road) road = d;
       if (d - e.sidewalk < walk) walk = d - e.sidewalk;
-      const bay = bayOf[id];
-      if (bay) {
+      for (const bay of bayOf[id]) {
         const bd = bayRoadDistance(bay, x, z);
         if (bd < road) road = bd;
       }

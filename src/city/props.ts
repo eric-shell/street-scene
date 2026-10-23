@@ -318,10 +318,7 @@ export function generateProps(
     // On a sidewalk: off every road, inside some road's sidewalk band.
     if (c.road < across + 0.2 || c.corridor > -across - 0.1) return false;
     // Out of the bus bays (their asphalt was sidewalk to the edge distances above).
-    for (const id of scratch) {
-      const b = bayOf[id];
-      if (b && bayHitsCircle(b, x, z, across, 0.08)) return false;
-    }
+    for (const id of scratch) for (const b of bayOf[id]) if (bayHitsCircle(b, x, z, across, 0.08)) return false;
     // District structures on the sidewalk (subway pillars...).
     for (const q of reserved) if ((q.x - x) ** 2 + (q.z - z) ** 2 < (q.r + r + PROP_GAP) ** 2) return false;
     const reach = r + 2 + PROP_GAP;
@@ -408,7 +405,7 @@ export function generateProps(
     const streetLength = Math.max(sides[0].span.total, sides[1].span.total);
     const roll = hostsMiddle && streetLength >= CITY.propBusStopMinEdge && rng.chance(CITY.propBusStopChance) ? rng.int(0, 1) : -1;
     // A bus bay always has its stop (busBays.ts): the shelter at the back of the narrowed sidewalk.
-    const bay = bayOf[ei];
+    const bay = bayOf[ei].find((b) => b.kind === 'bus');
     const busSide = bay ? (bay.side === 1 ? 0 : 1) : roll;
     sides.forEach((side, si) => {
       const ax = side.to.x - side.from.x;

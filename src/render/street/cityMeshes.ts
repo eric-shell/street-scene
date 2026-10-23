@@ -1,7 +1,7 @@
 /**
  * Turns the pure city description into three.js meshes: roads with markings
  * (alleys cobbled and unmarked), curbs and sidewalks (stepping back at bus
- * bays, busBays.ts), the buildings (regional
+ * bays and opening at park paths' mouths, busBays.ts), the buildings (regional
  * architecture, buildings.ts), streetlight lamp positions, neon signs and the
  * start line. Built once per world; read only.
  */
@@ -17,7 +17,7 @@ import { STREETLIGHT_ARM, STREETLIGHT_POLE_H } from './props';
 import { createPodiumOutput, makeFacadeKitTextures } from '../buildings/facadeKit';
 import { buildBuildings, Detail } from '../buildings/buildings';
 import { ridgeLift } from '../districts/structureShapes';
-import { baysByEdge } from '../../city/busBays';
+import { baysByEdge, sideBays } from '../../city/busBays';
 import { BAY_DASH, BayDraw, bayMouth, drawBayAsphalt, drawBayPaint, drawBaySidewalk } from './busBays';
 import {
   NEON_COLORS,
@@ -245,7 +245,7 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     if (cobbled(ei)) alignedStrip(cobble, m.aP.curb, m.bP.curb, m.aN.curb, m.bN.curb, ROAD_Y, COBBLE_TILE, edgeSteps(ei));
     else strip(road, m.aP.curb, m.bP.curb, m.aN.curb, m.bN.curb, ROAD_Y, ROAD_Y, 10, 6, edgeSteps(ei));
   });
-  // Bus bays (busBays.ts): asphalt where the curb steps back; their sidewalks and paint follow below.
+  // Bus bays and path mouths (busBays.ts): asphalt where the curb steps back; their sidewalks and paint follow below.
   const bays = world.blocks.bays ?? [];
   const bayOf = baysByEdge(bays, g.edges.length);
   const bayDraw: BayDraw = {
@@ -334,17 +334,16 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
       addLine(a2, b2, -half / 2, 0.14, 3, 6, white);
     }
     for (const side of [1, -1]) {
-      // The edge line: broken into dashes across a bus bay's mouth.
-      const bay = bayOf[ei]?.side === side ? bayOf[ei] : undefined;
-      if (!bay) {
-        addLine(a2, b2, side * (half - 0.45), 0.14, 0, 0, white);
-        continue;
-      }
-      const [s0, s1] = bayMouth(bay, a, dx, dz);
+      // The edge line: broken into dashes across each bay's (or path mouth's) mouth.
+      const spans = bayOf[ei].filter((b) => b.side === side).map((b) => bayMouth(b, a, dx, dz)).sort((p, q) => p[0] - q[0]);
       const at = (s: number) => ({ x: a.x + dx * s, z: a.z + dz * s });
-      addLine(a2, at(s0), side * (half - 0.45), 0.14, 0, 0, white);
-      addLine(at(s0), at(s1), side * (half - 0.45), 0.14, BAY_DASH, BAY_DASH, white);
-      addLine(at(s1), b2, side * (half - 0.45), 0.14, 0, 0, white);
+      let from = a2;
+      for (const [s0, s1] of spans) {
+        addLine(from, at(s0), side * (half - 0.45), 0.14, 0, 0, white);
+        addLine(at(s0), at(s1), side * (half - 0.45), 0.14, BAY_DASH, BAY_DASH, white);
+        from = at(s1);
+      }
+      addLine(from, b2, side * (half - 0.45), 0.14, 0, 0, white);
     }
     // crosswalk stripes near each junction end
     for (const [from, dir] of [
@@ -401,13 +400,14 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     if (isRiverEdge(e)) return;
     const m = mouths[ei];
     const n = edgeSteps(ei);
-    const bay = bayOf[ei];
-    if (bay?.side === 1) drawBaySidewalk(bay, walk, bayDraw, m.aP.curb, m.bP.curb, m.aP.outer, m.bP.outer, n);
+    const pBays = sideBays(bayOf[ei], 1);
+    const nBays = sideBays(bayOf[ei], -1);
+    if (pBays.length) drawBaySidewalk(pBays, walk, bayDraw, m.aP.curb, m.bP.curb, m.aP.outer, m.bP.outer, n);
     else {
       strip(walk, m.aP.curb, m.bP.curb, m.aP.outer, m.bP.outer, curbH, curbH, 4, 6, n);
       curbFace(m.aP.curb, m.bP.curb, n);
     }
-    if (bay?.side === -1) drawBaySidewalk(bay, walk, bayDraw, m.aN.curb, m.bN.curb, m.aN.outer, m.bN.outer, n);
+    if (nBays.length) drawBaySidewalk(nBays, walk, bayDraw, m.aN.curb, m.bN.curb, m.aN.outer, m.bN.outer, n);
     else {
       strip(walk, m.aN.curb, m.bN.curb, m.aN.outer, m.bN.outer, curbH, curbH, 4, 6, n);
       curbFace(m.aN.curb, m.bN.curb, n);

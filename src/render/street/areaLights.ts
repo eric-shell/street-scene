@@ -65,10 +65,14 @@ const AREA_LIGHT = {
   },
   /** What light picks up from the ground it lands on: lawn takes it green, paving and asphalt warm. */
   grassTint: new THREE.Color(0.7, 1, 0.55),
-  /** Lift over the drawn ground (m): grass and its gravel path, sidewalk level paving, the road. */
+  /**
+   * Lift over the drawn ground (m): grass and its gravel path, sidewalk level paving, the road, and
+   * cobbles (over a park path's paint, which lies 0.075 over the lawn, render/districts/park.ts).
+   */
   liftGrass: 0.12,
   liftPaved: CITY.curbHeight + 0.06,
   liftRoad: 0.06,
+  liftCobble: 0.11,
 } as const;
 
 /** Pool falloff: the radial glow profile of the street pools (textures.ts makeRadialGlow), t = r / radius. */
@@ -101,7 +105,7 @@ export function buildAreaLights(world: World): AreaLights {
 
   const liftAt = (x: number, z: number): number => {
     const s = world.surfaceAt(x, z);
-    return s === 'road' || s === 'cobble' ? A.liftRoad : s === 'sidewalk' || s === 'concrete' ? A.liftPaved : A.liftGrass;
+    return s === 'road' ? A.liftRoad : s === 'cobble' ? A.liftCobble : s === 'sidewalk' || s === 'concrete' ? A.liftPaved : A.liftGrass;
   };
 
   // ---------- Washes ----------

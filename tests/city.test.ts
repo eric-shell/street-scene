@@ -155,7 +155,8 @@ describe('city generation', () => {
     expect(p.s).toBeGreaterThan(w.route.length - 40);
     const h = w.heightAt(0, 0);
     expect(Math.abs(h)).toBeLessThan(11);
-    // Every side street off the route is closed: by exactly one closure group, or by the corner rail running across its mouth.
+    // Every side street off the route is closed: by exactly one closure group, by the corner rail running across its mouth,
+    // or by that rail and the ties from both of the mouth's corners to it (routeBarriers.ts).
     const railCrosses = (cs: { edge: number; node: number }) => {
       const e = w.graph.edges[cs.edge];
       const n = w.graph.nodes[cs.node];
@@ -165,8 +166,9 @@ describe('city generation', () => {
       return w.walls.some((r) => r.kind === 'rail' && segmentsCross(n, end, { x: r.ax, z: r.az }, { x: r.bx, z: r.bz }));
     };
     for (const cs of w.route.closedStreets) {
-      const groups = w.barrierGroups.filter((g) => g.node === cs.node && g.edges.includes(cs.edge)).length;
-      expect(groups === 1 || (groups === 0 && railCrosses(cs))).toBe(true);
+      const mine = w.barrierGroups.filter((g) => g.node === cs.node && g.edges.includes(cs.edge));
+      const groups = mine.length;
+      expect(groups === 1 || (groups === 2 && mine.every((g) => g.tied)) || (groups === 0 && railCrosses(cs))).toBe(true);
     }
     // There are no yellow barrier walls any more: closures are cyan rail pieces.
     expect(w.walls.filter((x) => x.kind === 'barrier').length).toBe(0);
@@ -246,7 +248,9 @@ describe('city generation', () => {
         }
         expect(Math.hypot(g.nx, g.nz)).toBeCloseTo(1, 6);
         expect(g.depth).toBeGreaterThanOrEqual(0);
-        // Head-on closures (straight ahead of the incoming road) stand further back than side ones.
+        // Head-on closures (straight ahead of the incoming road) stand further back than side ones
+        // (a tie onto a corner rail stands at the rail, wherever its street goes).
+        if (g.tied) continue;
         const n = w.graph.nodes[g.node];
         const d = Math.hypot(g.x - n.x, g.z - n.z);
         if (g.headOn) {
@@ -323,11 +327,12 @@ describe('city generation', () => {
       expect(count('busStop')).toBeLessThan(count('bench'));
       props.forEach((p, i) => {
         expect(p.id).toBe(i);
-        // Street furniture on sidewalks; district clutter wherever its area put it (pockets, parks, alleys).
+        // Street furniture on sidewalks; district clutter wherever its area put it (pockets, parks, alleys), a
+        // park's on the sidewalk too where its race path's mouth is dressed (planters, bollards).
         if (p.area === undefined) {
           expect(isStreetProp(p.kind)).toBe(true);
           expect(w.surfaceAt(p.x, p.z)).toBe('sidewalk');
-        } else expect(pointInPolygon(p.x, p.z, w.areas[p.area].polygon)).toBe(true);
+        } else expect(pointInPolygon(p.x, p.z, w.areas[p.area].polygon) || (w.areas[p.area].kind === 'park' && w.surfaceAt(p.x, p.z) === 'sidewalk')).toBe(true);
         if (p.kind === 'trafficLight') expect(w.graph.nodes[p.node!].edges.length).toBeGreaterThanOrEqual(3);
       });
       // Lantern posts light every park, plaza and corner pocket and the monument plaza (render/street/areaLights.ts).

@@ -57,7 +57,8 @@ describe('street meets', () => {
       const meetRails = new Set(plan.zones.filter((z) => z.closure).map((z) => z.rail));
       for (const g of w.barrierGroups) {
         const e = w.graph.edges[g.edges[0]];
-        if (e.width < CITY.width.street || e.length < 60) continue;
+        // A tie onto a corner rail shares that rail's meet.
+        if (e.width < CITY.width.street || e.length < 60 || g.tied) continue;
         expect(meetRails.has((g.walls[0] as RailWall).group)).toBe(true);
       }
       for (const zone of plan.zones) {
