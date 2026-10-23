@@ -426,11 +426,13 @@ export class RaceSession {
       this.trafficPrev = this.trafficCurr.slice();
     }
     const loads: Promise<void>[] = [];
+    // Brake units are eight small draws per car: Medium and up (the Low tier keeps every car to its body and wheels).
+    const brakes = settings.quality !== 'low';
     this.race.cars.forEach((rc, i) => {
       // In the menu's scene the player's car carries no real lights, like the menu's car it replaces: a new light
       // count would recompile every lit shader in the city (seconds of freeze). The beam and underglow glows stay.
       const lit = i === 0 && !hand;
-      const view = new CarView(rc.carId, assets, { headlights: lit, underglowLight: lit, envMap: gr.envMap, roadLift: ROAD_Y });
+      const view = new CarView(rc.carId, assets, { headlights: lit, underglowLight: lit, envMap: gr.envMap, roadLift: ROAD_Y, brakes });
       this.night.scene.add(view.root);
       this.views.push(view);
       loads.push(view.load(opts.visuals[i] ?? opts.visuals[0]));
@@ -438,7 +440,7 @@ export class RaceSession {
     if (opts.ghost) {
       this.ghostRace = createRace(opts.ghost.config, this.race.world);
       this.ghostLog = opts.ghost.log;
-      const gv = new CarView(opts.ghost.config.player.carId, assets, { envMap: gr.envMap, roadLift: ROAD_Y });
+      const gv = new CarView(opts.ghost.config.player.carId, assets, { envMap: gr.envMap, roadLift: ROAD_Y, brakes });
       this.ghostView = gv;
       this.night.scene.add(gv.root);
       loads.push(

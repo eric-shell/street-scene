@@ -6,9 +6,13 @@
 import * as THREE from 'three';
 import { MATERIAL_NAMES, MaterialName } from '../../shared/parts';
 import type { PaintFinish, VisualBuild } from '../../shared/carBuild';
+import { BRAKE, rotorTexture } from './brakes';
 
-/** The shared runtime materials, plus the rear axle's own wheel material so front and rear wheel colors can differ. */
-export type CarMaterialSet = Record<MaterialName, THREE.Material> & { RimRear: THREE.Material };
+/**
+ * The shared runtime materials, plus the rear axle's own wheel material so front and rear wheel colors
+ * can differ, and the brake unit's rotor and caliper (brakes.ts), which no part GLB names.
+ */
+export type CarMaterialSet = Record<MaterialName, THREE.Material> & { RimRear: THREE.Material; Rotor: THREE.Material; Caliper: THREE.Material };
 
 /** Car space meters per UV unit on Grille faces (GRILLE_UV in scripts/blender/carDonors.py). */
 const GRILLE_UV_SPAN = 3;
@@ -95,6 +99,10 @@ export function createCarMaterials(envMap: THREE.Texture | null = null): CarMate
     }
   }
   m.RimRear = m.Rim.clone();
+  // Brakes: the drilled face darkens the holes and the bump map dents them; the rotor glows while braking.
+  const rotor = rotorTexture();
+  m.Rotor = new THREE.MeshStandardMaterial({ name: 'Rotor', color: 0xc4c7cc, metalness: 0.7, roughness: 0.45, map: rotor, bumpMap: rotor, bumpScale: 1.2, emissive: 0xff6a1a, emissiveIntensity: 0, envMap, envMapIntensity: 1.4 });
+  m.Caliper = new THREE.MeshStandardMaterial({ name: 'Caliper', color: 0xc41e3a, metalness: 0.35, roughness: 0.45, envMap, envMapIntensity: 1.2 });
   return m;
 }
 
@@ -136,6 +144,7 @@ export function applyVisualToMaterials(m: CarMaterialSet, v: VisualBuild, brakin
 export function setBrake(m: CarMaterialSet, braking: boolean): void {
   const tl = m.TailLight as THREE.MeshStandardMaterial;
   tl.emissiveIntensity = braking ? 4.5 : 1.4;
+  (m.Rotor as THREE.MeshStandardMaterial).emissiveIntensity = braking ? BRAKE.glow : 0;
 }
 
 /** Map a source material name to the shared vocabulary (exact, case-insensitive, or via manifest map). */
@@ -151,4 +160,7 @@ export function disposeCarMaterials(m: CarMaterialSet): void {
   (m.Grille as THREE.MeshStandardMaterial).map?.dispose();
   for (const k of MATERIAL_NAMES) m[k].dispose();
   m.RimRear.dispose();
+  (m.Rotor as THREE.MeshStandardMaterial).map?.dispose();
+  m.Rotor.dispose();
+  m.Caliper.dispose();
 }

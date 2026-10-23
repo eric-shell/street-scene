@@ -12,6 +12,7 @@ import { makeRadialGlow } from '../textures/textures';
 import { DecalLayerView } from './decals';
 import { FEATURES } from '../../shared/features';
 import { WheelProfile, beadForSize, detectProfile, remapWheel, sizeForBead } from './wheelFit';
+import { BRAKE, buildCaliperGeometry, buildRotorGeometry } from './brakes';
 import { latheTire, measureTire } from './tireShapes';
 import { maskVehicleMesh, underVehicles } from '../vehicleMask';
 import { Disposer } from '../disposer';
@@ -77,11 +78,18 @@ export class CarView {
   readonly car: ManifestCar;
   private wheelPivots: THREE.Group[] = [];
   private wheelSpins: THREE.Group[] = [];
+  /** Per wheel, under the pivot beside the spin group: steers and cambers with the wheel but never spins (the caliper's frame). */
+  private wheelHubs: THREE.Group[] = [];
+  /** The brake unit behind each wheel (brakes.ts), null until its axle is baked or when brakes are off. */
+  private brakes: ({ rotor: THREE.Mesh; caliper: THREE.Mesh } | null)[] = [null, null, null, null];
+  private readonly brakesOn: boolean;
   /** The four wheels' holders (FL, FR, RL, RR), null until their axle is baked. */
   private wheelModels: (THREE.Object3D | null)[] = [null, null, null, null];
   /** Baked wheel meshes per axle (front, rear); the two wheels of an axle share geometry. */
   private axleMeshes: THREE.Mesh[][] = [[], []];
   private axleSize = [NaN, NaN];
+  /** Per axle, the back of the wheel's spokes along the axle (baked wheel space, m; +X outboard): the brake sits behind it. */
+  private spokeBack = [0, 0];
   /** Each axle's wheel profile: front and rear may wear different wheels. */
   private wheelProfiles: WheelProfile[] = [
     { outer: 1, bead: 0.75 },
@@ -122,11 +130,12 @@ export class CarView {
      * The sim rests the tires on the ground; on the city's asphalt they would sink that far into it.
      * 0 (the garage floor) by default.
      */
-    opts: { headlights?: boolean; underglowLight?: boolean; envMap?: THREE.Texture | null; roadLift?: number } = {},
+    opts: { headlights?: boolean; underglowLight?: boolean; envMap?: THREE.Texture | null; roadLift?: number; brakes?: boolean } = {},
   ) {
     this.materials = createCarMaterials(opts.envMap ?? null);
     this.car = manifestCar(carId);
     this.roadLift = opts.roadLift ?? 0;
+    this.brakesOn = opts.brakes ?? true;
     this.root.name = `car:${carId}`;
     this.root.add(this.body, this.groundFx);
     this.body.add(this.model);
@@ -135,10 +144,12 @@ export class CarView {
     for (let i = 0; i < 4; i++) {
       const pivot = new THREE.Group();
       const spin = new THREE.Group();
-      pivot.add(spin);
+      const hub = new THREE.Group();
+      pivot.add(spin, hub);
       this.root.add(pivot);
       this.wheelPivots.push(pivot);
       this.wheelSpins.push(spin);
+      this.wheelHubs.push(hub);
     }
 
     const { track } = this.owned;
@@ -394,6 +405,7 @@ export class CarView {
     const baked = new THREE.Group();
     const tireR: number[] = [];
     const otherR: number[] = [];
+    const otherX: number[] = [];
     model.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh || !visibleInTree(mesh, model)) return;
@@ -432,7 +444,10 @@ export class CarView {
       geo.userData.basePos = Float32Array.from(pos.array as ArrayLike<number>);
       geo.userData.baseNrm = nrm ? Float32Array.from(nrm.array as ArrayLike<number>) : null;
       const radii = isTire ? tireR : otherR;
-      for (let k = 0; k < pos.count; k++) radii.push(Math.hypot(pos.getY(k), pos.getZ(k)));
+      for (let k = 0; k < pos.count; k++) {
+        radii.push(Math.hypot(pos.getY(k), pos.getZ(k)));
+        if (!isTire) otherX.push(pos.getX(k));
+      }
       // The rear axle wears its own wheel material (wheel color).
       const material = axle === 1 ? (Array.isArray(mesh.material) ? mesh.material.map(this.rearMat) : this.rearMat(mesh.material)) : mesh.material;
       const out = new THREE.Mesh(geo, material);
@@ -442,6 +457,14 @@ export class CarView {
     });
     const profile = detectProfile(tireR, otherR);
     this.wheelProfiles[axle] = profile;
+    // The spokes' back: the innermost point of the spoke zone (between the center bore, which can run
+    // deeper and sits inside the hat anyway, and the barrel with its lip).
+    let back = Infinity;
+    for (let k = 0; k < otherR.length; k++) {
+      const r = otherR[k] / profile.bead;
+      if (r > 0.3 && r < 0.75) back = Math.min(back, otherX[k]);
+    }
+    this.spokeBack[axle] = Number.isFinite(back) ? back : 0;
     if (model.userData.ownGeometry) model.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
     this.axleMeshes[axle] = baked.children.filter((c): c is THREE.Mesh => (c as THREE.Mesh).isMesh);
     const baseScale = this.car.wheelRadius / (profile.outer || this.car.wheelRadius);
@@ -452,6 +475,32 @@ export class CarView {
       holder.userData.baseScale = baseScale;
       this.wheelSpins[i].add(holder);
       this.wheelModels[i] = holder;
+    }
+    this.bakeBrakes(axle);
+  }
+
+  /** Build the axle's brake units: the rotor spins with the wheel, the caliper sits still on the hub. Both wheels share the geometry. */
+  private bakeBrakes(axle: 0 | 1): void {
+    if (!this.brakesOn) return;
+    const rotorGeo = buildRotorGeometry(axle);
+    const caliperGeo = buildCaliperGeometry(axle);
+    for (const i of [axle * 2, axle * 2 + 1]) {
+      const old = this.brakes[i];
+      if (old) {
+        old.rotor.removeFromParent();
+        old.caliper.removeFromParent();
+        old.rotor.geometry.dispose();
+        old.caliper.geometry.dispose();
+      }
+      const rotor = new THREE.Mesh(rotorGeo, this.materials.Rotor);
+      rotor.name = 'Rotor';
+      const caliper = new THREE.Mesh(caliperGeo, this.materials.Caliper);
+      caliper.name = 'Caliper';
+      maskVehicleMesh(rotor);
+      maskVehicleMesh(caliper);
+      this.wheelSpins[i].add(rotor);
+      this.wheelHubs[i].add(caliper);
+      this.brakes[i] = { rotor, caliper };
     }
   }
 
@@ -509,10 +558,23 @@ export class CarView {
       pivot.position.set(pivot.userData.restX, p[1], p[2]);
       const camber = axle.camber * DEG;
       this.wheelSpins[i].rotation.z = left ? -camber : camber;
+      this.wheelHubs[i].rotation.z = left ? -camber : camber;
       const holder = this.wheelModels[i];
       if (holder) {
         const sc = holder.userData.baseScale as number;
         holder.scale.set(left ? sc : -sc, sc, sc);
+        const brake = this.brakes[i];
+        if (brake) {
+          // The brake follows the bead the wheel size slider moves, so it keeps filling the barrel.
+          const ax = i < 2 ? 0 : 1;
+          const k = (sc * beadForSize(this.wheelProfiles[ax], axle.wheelSize)) / BRAKE.refBead;
+          // Behind the spokes of this axle's wheel, whatever its offset (the holder's scale flips x on the right side).
+          const x = (sc * this.spokeBack[ax] - BRAKE.clearance) * (left ? 1 : -1);
+          brake.rotor.scale.set(left ? k : -k, k, k);
+          brake.caliper.scale.set(left ? k : -k, k, k);
+          brake.rotor.position.x = x;
+          brake.caliper.position.x = x;
+        }
       }
     }
   }
