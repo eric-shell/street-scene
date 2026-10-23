@@ -31,6 +31,7 @@ import type { BlockFace, Building, EdgeMouths, Sector, Wall } from '../blocks';
 import type { Terrain } from '../terrain';
 import type { DistrictPropSpec } from '../props';
 import type { EventFlavourId } from '../events';
+import type { RoutePass } from '../route';
 
 export type AreaKind =
   | 'downtown'
@@ -343,6 +344,13 @@ export interface DistrictModule {
   plan(ctx: PlanContext): void;
   /** Build one of this module's areas. */
   build(ctx: BuildContext, area: Area): AreaBuild;
+  /**
+   * The ways off the streets one of this module's areas gives the races (route.ts RoutePass: a
+   * racing line across a plaza or a park that a route driving through the pass's node takes in
+   * place of the street). Read from the finished city by every route (world.ts createRoute), so
+   * it must be a pure function of the graph and the area (the area's params carry what it needs).
+   */
+  passes?(g: RoadGraph, area: Area): RoutePass[];
 }
 
 /** Minimap look per kind (ui/hud/hud.ts). Colors are CSS strings, widths in meters. */

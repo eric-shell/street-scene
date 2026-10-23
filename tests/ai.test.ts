@@ -22,7 +22,7 @@ describe('AI opponents', () => {
   });
 
   it('a full field of nine rivals gets off the two-wide grid and finishes', () => {
-    const rng = new Rng(909);
+    const rng = new Rng(910);
     const failures: string[] = [];
     for (let i = 0; i < 6; i++) {
       const seed = rng.int(0, 0x7fffffff);

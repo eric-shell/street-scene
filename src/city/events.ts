@@ -36,16 +36,17 @@
  * hundred leads and a dozen nouns a flavour has over a thousand titles, so
  * neighbouring seeds rarely share one. Pure and deterministic.
  */
-import { CITY } from './config';
+import { CITY, ROUTE } from './config';
 import type { RoadGraph } from './roadGraph';
-import { edgeBetween } from './roadGraph';
+import { edgeBetween, isBendNode } from './roadGraph';
+import { turnAngle } from './route';
 import type { RoutePreference } from './routeSearch';
 import type { Area, HeightSample, PlanContext } from './districts/types';
 import { hillAt, shapeOf } from './districts/hills';
-import { TOUR_REACH, monumentSites, plazaCorners } from './districts/monument';
+import { TOUR_REACH, monumentSites, plazaSides, plazaWraps } from './districts/monument';
 import { riverCenter } from './districts/river';
 import { Rng, deriveSeed } from '../sim/prng';
-import { type Vec2, distToSegment, sqrt } from '../sim/math';
+import { DEG, type Vec2, abs, distToSegment, sqrt } from '../sim/math';
 
 export type EventFlavourId = 'hillClimb' | 'riverRun' | 'alleySprint' | 'underTheEl' | 'ringRush' | 'grandTour' | 'downtownDash';
 
@@ -223,7 +224,7 @@ export const EVENTS = {
   sampleStep: 5,
   /** Dijkstra weight factor of the level crossing's street (districts/bluff.ts), for every flavour. */
   crossingBias: 0.5,
-  /** Dijkstra weight factor of the streets round a corner of a block that can hold the monument plaza (its race passes), for every flavour. */
+  /** Dijkstra weight factor of the sides of a block that can hold the monument plaza (its race passes), for every flavour. */
   plazaBias: 0.75,
 } as const;
 
@@ -435,11 +436,12 @@ function openGround(v: Venue): boolean[] {
  * The route finders' preference for a flavour on this graph (findCircuitNodes /
  * findSprintNodes). Ratings: the flavour's own wish counts most, the river
  * dive (every flavour but River Run, where the channel exists), a run over
- * the bluff's level crossing (where there is one, districts/bluff.ts) and a
- * turn round a corner of a block that can hold the monument plaza (where the
- * monument is enabled: such a turn gets a race pass across the plaza,
- * districts/monument.ts) add one each, so a route with everything wins, then
- * the flavour alone, then the side wishes alone.
+ * the bluff's level crossing (where there is one, districts/bluff.ts) add one
+ * each, and a block that can hold the monument plaza (where the monument is
+ * enabled) one for a run along a side, two for wrapping it (a route along,
+ * round or wrapping such a block gets a race pass across the plaza,
+ * districts/monument.ts), so a route with everything wins, then the flavour
+ * alone, then the side wishes alone.
  */
 export function eventRoutePreference(id: EventFlavourId, ctx: SiteContext, closed: boolean): RoutePreference {
   const g = ctx.graph;
@@ -449,22 +451,29 @@ export function eventRoutePreference(id: EventFlavourId, ctx: SiteContext, close
   const dives = (edges: number[]) => edges.some((e) => e >= 0 && g.edges[e].kind === 'channel');
   const cross = v.crossings.size > 0;
   const crosses = (edges: number[]) => edges.some((e) => v.crossings.has(e));
-  const corners = CITY.districts.monument.enabled ? plazaCorners(ctx, TOUR_REACH) : [];
-  const plaza = corners.length > 0;
-  const plazaStreets = new Set(corners.flatMap((k) => [k.eA, k.eB]));
-  const turnsAtPlaza = (nodes: number[], edges: number[]) =>
-    corners.some((k) => {
-      const i = nodes.indexOf(k.node);
-      if (i < 0 || (!closed && (i === 0 || i === nodes.length - 1))) return false;
-      const eIn = edges[(i - 1 + edges.length) % edges.length];
-      const eOut = edges[i % edges.length];
-      return (eIn === k.eA && eOut === k.eB) || (eIn === k.eB && eOut === k.eA);
-    });
-  const sides = (dive ? 1 : 0) + (cross ? 1 : 0) + (plaza ? 1 : 0);
+  const plazaStreets = CITY.districts.monument.enabled ? plazaSides(ctx, TOUR_REACH) : new Set<number>();
+  const plaza = plazaStreets.size > 0;
+  const wraps = plaza ? plazaWraps(ctx, TOUR_REACH) : new Set<string>();
+  // The plaza wish: 2 for wrapping a block (turning at both ends of one of its sides: a U cut
+  // straight across the plaza), 1 for running along a side (a chicane or a corner pass).
+  const plazaWish = (nodes: number[], edges: number[]) => {
+    if (!edges.some((e) => plazaStreets.has(e))) return 0;
+    const n = nodes.length;
+    const turning = (i: number) => (closed || (i > 0 && i < n - 1)) && abs(turnAngle(g, nodes[(i - 1 + n) % n], nodes[i], nodes[(i + 1) % n])) > ROUTE.passStraightDeg * DEG;
+    let prev = -1;
+    for (let i = 0; i < n + (closed ? 1 : 0); i++) {
+      const id = nodes[i % n];
+      if (isBendNode(g, id)) continue;
+      if (prev >= 0 && turning(prev) && turning(i % n) && wraps.has(`${Math.min(nodes[prev], id)}-${Math.max(nodes[prev], id)}`)) return 2;
+      prev = i % n;
+    }
+    return 1;
+  };
+  const sides = (dive ? 1 : 0) + (cross ? 1 : 0) + (plaza ? 2 : 0);
   const rate = (nodes: number[]) => {
     const edges = routeEdges(g, nodes, closed);
     const own = wish.rate(edges, nodes);
-    return sides ? own * (sides + 1) + (dive && dives(edges) ? 1 : 0) + (cross && crosses(edges) ? 1 : 0) + (plaza && turnsAtPlaza(nodes, edges) ? 1 : 0) : own;
+    return sides ? own * (sides + 1) + (dive && dives(edges) ? 1 : 0) + (cross && crosses(edges) ? 1 : 0) + (plaza ? plazaWish(nodes, edges) : 0) : own;
   };
   const anchors = wish.anchors.length ? wish.anchors : v.feet;
   // The other end of a circuit (or every other sprint waypoint) from the ramp feet, or from the flavour's own anchors again.

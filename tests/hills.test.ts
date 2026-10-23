@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { CITY } from '../src/city/config';
+import { CITY, ROUTE } from '../src/city/config';
 import { createCity, createWorld } from '../src/city/world';
+import { raceConfig, runAutopilot } from './helpers';
 import { Rng } from '../src/sim/prng';
 import { distToPolygonEdge, pointInPolygon } from '../src/city/districts/geom';
 import { distToSegment } from '../src/sim/math';
@@ -196,16 +197,24 @@ describe('monument', () => {
     expect(WALL_LOOKS).toContain('monument');
   });
 
-  it('races turning round the plaza cross it: round the steps or through the arch, clear of the walls and the clutter', () => {
+  it('races by the plaza cross it, round a corner or straight along a side: round the steps or through the arch, clear of the walls and the clutter', () => {
     const rng = new Rng(5);
     let crossings = 0;
     const kinds = new Set<string>();
-    for (let i = 0; i < 40 && crossings < 6; i++) {
+    const shapes = new Set<number>();
+    for (let i = 0; i < 40 && crossings < 8; i++) {
       const city = createCity(rng.int(0, 0x7fffffff));
       const m = city.districts.areas.find((a) => a.kind === 'monument');
       if (!m || !m.params.passes) continue;
       const passes = plazaPasses(city.graph, m);
       expect(passes.length).toBe(m.params.passes);
+      for (let k = 0; k < m.params.passes; k++) shapes.add(m.params[`p${k}shape`]);
+      // A chicane (shape 1) or U cut (2) runs straight past the landmark or through the arch: its start point is on its straight.
+      passes.forEach((p, k) => {
+        if (m.params[`p${k}shape`] === 0) return;
+        expect(p.start).toBeDefined();
+        expect(p.start!.straight).toBeGreaterThan(MON.passStraightMin / 2 - 1);
+      });
       for (const kind of ['circuit', 'sprint'] as const) {
         const w = createWorld(city.seed, kind, city);
         const P = w.route.points;
@@ -237,6 +246,46 @@ describe('monument', () => {
     }
     expect(crossings).toBeGreaterThanOrEqual(4);
     expect(kinds.size).toBeGreaterThan(1);
+    // Corner passes and chicanes both occur (U cuts are rare: a route has to wrap the block).
+    expect(shapes.has(0) && shapes.has(1)).toBe(true);
+  });
+
+  it('a circuit may start on a pass: the line under the arch or beside the column, the grid on the paving clear of the walls, and the race runs', () => {
+    // The draw is rare (ROUTE.passStartChance): force it for the seeds whose circuits take a pass straight enough.
+    const knob = ROUTE as unknown as { passStartChance: number };
+    const was = knob.passStartChance;
+    knob.passStartChance = 1;
+    try {
+      let starts = 0;
+      for (let seed = 0; seed < 60 && starts < 2; seed++) {
+        const city = createCity(seed);
+        const m = city.districts.areas.find((a) => a.kind === 'monument');
+        if (!m?.params.passes) continue;
+        const w = createWorld(seed, 'circuit', city);
+        if (!w.route.passStart) continue;
+        starts++;
+        expect(w.route.startS).toBe(0);
+        // The line at the landmark: on the arch's middle, or beside an obelisk or column.
+        const S = w.route.points[0];
+        const d = Math.hypot(S.x - m.params.cx, S.z - m.params.cz);
+        if (m.variant === 'arch') expect(d).toBeLessThan(0.5);
+        else expect(d).toBeLessThan(MON.base + MON.steps + MON.passWidth / 2 + 2);
+        for (const g of w.route.grid) {
+          expect(pointInPolygon(g.x, g.z, m.polygon)).toBe(true);
+          expect(w.surfaceAt(g.x, g.z)).toBe('concrete');
+          expect(w.collideCircle(g.x, g.z, 1.2, [], w.heightAt(g.x, g.z))).toBe(0);
+        }
+        // Behind the line the pass runs straight for the whole grid; the lap goes on from under the arch.
+        const last = w.route.points[w.route.points.length - 2];
+        expect(Math.hypot(last.x - S.x, last.z - S.z)).toBeGreaterThanOrEqual(ROUTE.gridFirstRow + 4 * ROUTE.gridRowSpacing);
+        const r = runAutopilot(raceConfig(seed, 'circuit', 3), 420, true);
+        for (const c of r.cars) expect(c.finished, `seed ${seed} ${c.name}`).toBe(true);
+        expect(r.events.filter((e) => e.type === 'reset').length).toBeLessThanOrEqual(2);
+      }
+      expect(starts).toBe(2);
+    } finally {
+      knob.passStartChance = was;
+    }
   });
 });
 
