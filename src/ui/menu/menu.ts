@@ -176,7 +176,7 @@ const FEATURES: { kind: AreaKind; icon: IconNode; one: string; many?: (n: number
   { kind: 'alley', icon: Route, one: 'Raceway alley', many: (n) => `${n} raceway alleys` },
   { kind: 'roundabout', icon: CircleDot, one: 'Roundabout', many: (n) => `${n} roundabouts` },
   { kind: 'park', icon: Trees, one: 'Park', many: (n) => `${n} parks` },
-  { kind: 'carPark', icon: SquareParking, one: 'Car park', many: (n) => `${n} car parks` },
+  { kind: 'carPark', icon: SquareParking, one: 'Parking garage', many: (n) => `${n} parking garages` },
 ];
 
 /** The other places on home, each in its own hue (rail.ts navRow). */

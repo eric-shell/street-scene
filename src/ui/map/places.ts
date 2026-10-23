@@ -26,7 +26,7 @@ export const AREA_NAMES: Partial<Record<Area['kind'], string>> = {
   overpass: 'Under the freeway',
   market: 'Night market',
   roadworks: 'Roadworks',
-  carPark: 'Multi-storey car park',
+  carPark: 'Parking garage',
   waterfront: 'Waterfront',
   lake: 'Lake',
 };
