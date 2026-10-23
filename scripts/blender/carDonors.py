@@ -91,7 +91,10 @@ DONORS = {
         'recolor': [(lambda c, n, m: m == 'Black' and 0.45 < abs(c.x) < 0.78 and -1.9 < c.y < -1.58 and c.z > 0.58, 'Paint')],
         # The nose and tail badges and the tail lettering: chrome islands of 2,000 to 2,700 faces,
         # past the de-badge limit, which the tail lamps' chrome reflectors (1,856) must stay under.
-        'cull': [lambda c, n, m: m == 'Chrome' and abs(c.x) < 0.05 and c.y < -1.89 and 0.55 < c.z < 0.63,
+        # Then the inboard flap of each raised pop-up lid, a plane floating over the lamp (cut by
+        # hand in the shipped file on 2026-10-22, kept here so a rebuild cuts it too).
+        'cull': [lambda c, n, m: 0.46 < abs(c.x) < 0.53 and -1.95 < c.y < -1.6 and 0.76 < c.z < 0.83,
+                 lambda c, n, m: m == 'Chrome' and abs(c.x) < 0.05 and c.y < -1.89 and 0.55 < c.z < 0.63,
                  lambda c, n, m: m == 'Chrome' and abs(c.x) < 0.05 and c.y > 2.11 and 0.68 < c.z < 0.77,
                  lambda c, n, m: m == 'Chrome' and 0.26 < abs(c.x) < 0.35 and c.y > 2.1 and 0.69 < c.z < 0.73],
     },
