@@ -86,6 +86,9 @@ DONORS = {
         # lamp lenses (pop-ups modelled raised, bumper lamps, indicators), not windows.
         'materials': {r'^material$': None, r'^Material__\d$': None, r'^(clearglass|orangeglass)$': 'Lamp', r'^redglass$': 'TailLight',
                       r'^windowglass$': 'Glass', r'^carpaint$': 'Paint', r'^black$': 'Black', r'^chrome$': 'Chrome', r'^mirror$': 'Black'},
+        # The pop-up lamps are modelled raised, with black lids: on the car the lids are body panels,
+        # and black ones read as bars hung in front of the lamps.
+        'recolor': [(lambda c, n, m: m == 'Black' and 0.45 < abs(c.x) < 0.78 and -1.9 < c.y < -1.58 and c.z > 0.6 and (c.z > 0.74 or n.z > 0.6), 'Paint')],
         # The nose and tail badges and the tail lettering: chrome islands of 2,000 to 2,700 faces,
         # past the de-badge limit, which the tail lamps' chrome reflectors (1,856) must stay under.
         'cull': [lambda c, n, m: m == 'Chrome' and abs(c.x) < 0.05 and c.y < -1.89 and 0.55 < c.z < 0.63,

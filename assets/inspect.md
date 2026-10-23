@@ -9,7 +9,7 @@ Authored cars: protoCoupe, protoHatch, protoWagon. FBX cars with source files: n
 | Car | Size |
 |---|---|
 | proto | 56.1 KB |
-| protoCoupe | 604.8 KB |
+| protoCoupe | 605.8 KB |
 | protoHatch | 539.5 KB |
 | protoWagon | 592.9 KB |
 
@@ -53,11 +53,11 @@ Source materials are renamed using `materialMap` in scripts/assetConfig.json to:
 
 Source: `assets/source/eshell/protoCoupe/protoCoupe.blend` (authored in car space, exported with scripts/blender/exportCar.py).
 
-- Base car `public/cars/protoCoupe.glb`: 604.8 KB, 18494 tris, nodes `Body`.
+- Base car `public/cars/protoCoupe.glb`: 605.8 KB, 18498 tris, nodes `Body`.
 - Parts: .
 - WARNING: wheel radius 0.327 m differs from the standard 0.28 m (assetConfig.json standardWheel). Every car shares one wheel size so scale reads the same.
 - Wheel radius 0.327 m, width 0.24 m, wheelbase 2.425 m, track 1.447 m.
-- Car dimensions 4.31 x 1.88 x 1.12 m.
+- Car dimensions 4.32 x 1.88 x 1.12 m.
 
 ## protoHatch
 
