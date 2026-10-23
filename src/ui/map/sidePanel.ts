@@ -33,21 +33,26 @@ export interface LegendHandlers {
 export function buildLegend(world: World, course: { ink: string; label: string } | null, on: LegendHandlers): { list: HTMLElement; rows: Map<LegendKey, HTMLLIElement> } {
   const counts = new Map<AreaKind, number>();
   let shortcuts = 0;
+  // A shortcut driven one way only (a jump exit, a car park) carries chevrons on the map; the row's swatch shows one.
+  let oneWay = false;
   for (const a of world.areas) {
     if (!shownOnMap(a)) continue;
-    if (isShortcut(a)) shortcuts++;
-    else counts.set(a.kind, (counts.get(a.kind) ?? 0) + 1);
+    if (isShortcut(a)) {
+      shortcuts++;
+      if (a.params.jumpExit) oneWay = true;
+    } else counts.set(a.kind, (counts.get(a.kind) ?? 0) + 1);
+    if (a.kind === 'carPark') oneWay = true;
   }
-  const swatch = (kind: 'fill' | 'line' | 'dash' | 'ring' | 'icon', ink: string, fill?: string, ico?: IconNode) =>
+  const swatch = (kind: 'fill' | 'line' | 'dash' | 'ring' | 'icon' | 'arrow', ink: string, fill?: string, ico?: IconNode) =>
     h('span', { class: bem('map-swatch', `--${kind}`), style: kind === 'fill' ? `background:${fill};border-color:${ink}` : kind === 'icon' ? `color:${ink}` : `border-color:${ink}` }, ico ? icon(ico, { size: 14 }) : null);
   const list = h('ul', { class: 'map-legend' });
   const rows = new Map<LegendKey, HTMLLIElement>();
   let i = 0;
-  const row = (key: LegendKey, sw: HTMLElement, label: string, count: string, action: 'toggle' | 'find' | 'fly'): void => {
+  const row = (key: LegendKey, sw: HTMLElement, label: string, count: string, action: 'toggle' | 'find' | 'fly', note = ''): void => {
     const state = action === 'toggle' ? h('span', { class: 'map-legend__eye' }, icon(Eye, { size: 15, className: 'map-legend__eye-open' }), icon(EyeOff, { size: 15, className: 'map-legend__eye-shut' })) : h('span', { class: 'map-legend__eye' }, icon(action === 'find' ? LocateFixed : MapPinned, { size: 15, className: 'map-legend__eye-open' }));
     const b = h(
       'button',
-      { class: 'map-legend__button', type: 'button', title: action === 'toggle' ? `Show or hide ${label.toLowerCase()}` : action === 'find' ? 'Find me' : 'Show the waypoint', 'aria-pressed': action === 'toggle' ? 'true' : null },
+      { class: 'map-legend__button', type: 'button', title: (action === 'toggle' ? `Show or hide ${label.toLowerCase()}` : action === 'find' ? 'Find me' : 'Show the waypoint') + note, 'aria-pressed': action === 'toggle' ? 'true' : null },
       sw,
       h('span', { class: 'map-legend__label' }, label),
       h('span', { class: 'map-legend__count' }, count),
@@ -69,7 +74,7 @@ export function buildLegend(world: World, course: { ink: string; label: string }
   row('you', swatch('icon', PALETTE.text, undefined, Navigation), 'You', '', 'find');
   row('waypoint', swatch('icon', INK.pin, undefined, MapPin), 'Waypoint', '', 'fly');
   if (course) row('route', swatch('line', course.ink), course.label, '', 'toggle');
-  if (shortcuts) row('shortcut', swatch('line', MAP_INK.shortcut), 'Race shortcuts', shortcuts > 1 ? String(shortcuts) : '', 'toggle');
+  if (shortcuts) row('shortcut', swatch(oneWay ? 'arrow' : 'line', MAP_INK.shortcut), 'Race shortcuts', shortcuts > 1 ? String(shortcuts) : '', 'toggle', oneWay ? '. Chevrons point the only way through a one-way shortcut' : '');
   for (const k of LEGEND_ORDER) {
     const n = counts.get(k) ?? 0;
     const st = KINDS[k];

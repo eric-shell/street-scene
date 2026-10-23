@@ -4,11 +4,20 @@
  * (ui/menu.ts), so a player learns one set of colors everywhere (the
  * minimap's hues). The layers are built once per world as Path2D in world
  * meters (blocks, district fills and outlines per kind, building footprints,
- * streets grouped by ink and width, roundabouts, the bluff's face, the El,
+ * streets grouped by ink and width, roundabouts, the bluff's terrace, the El,
  * tunnels and overpasses, the race route), so drawing the whole city at any
  * center and zoom is a few dozen fills and strokes; layersOf() shares one set
  * per world between the maps. A view says where the map looks: the world
  * point at the canvas center, device pixels per meter and the canvas size.
+ *
+ * Two symbols are sized in screen pixels and so traced per draw (cheap, a few
+ * hundred segments): the chevrons that mark a one-way shortcut, and the cliff
+ * ticks along the bluff's crest. Shortcut direction comes from the data: a
+ * back alley with a jump exit is driven toward its lip only (its path ends
+ * there, districts/alleyShortcuts.ts), a car park goes up its ramp and out of
+ * its chute only (its path, districts/carPark.ts); a chain without a jump
+ * exit runs both ways and gets the plain shortcut ink. The minimap
+ * (ui/hud/minimap.ts) draws the same marks with chevronPath and cliffPath.
  *
  * Orientation matches the minimap and the drone: north (+Z) is up, which puts
  * world +X on the left, as the city looks from above. Render only.
@@ -17,6 +26,9 @@ import type { World } from '../../city/world';
 import type { Area, AreaKind } from '../../city/districts/types';
 import { isRiverEdge } from '../../city/roadGraph';
 import { pointInPolygon } from '../../city/districts/geom';
+import { bluffShape, bluffUV, envelope, type BluffShape } from '../../city/districts/bluff';
+import { carParkGeo } from '../../city/districts/carPark';
+import { CITY } from '../../city/config';
 import type { Vec2 } from '../../sim/math';
 import { PALETTE, rgba } from '../kit/palette';
 
@@ -45,7 +57,8 @@ export const KINDS: Partial<Record<AreaKind, KindStyle>> = {
   carPark: { label: 'Car parks', ink: rgba('red', 0.6), fill: rgba('soft', 0.24), width: 1.5, tag: true },
   hills: { label: 'The hills', ink: PALETTE.soft, fill: rgba('soft', 0.07), width: 1.5, dash: [6, 5], tag: true },
   subway: { label: 'Under the El', ink: PALETTE.cyan, width: 4, dash: [9, 6], tag: true },
-  bluff: { label: 'The bluff', ink: PALETTE.orange, fill: rgba('orange', 0.08), width: 1.5, dash: [4, 4], tag: true },
+  // The terrace: its high ground filled, the foot of its slopes dashed; the crest is the cliff symbol (cliffPath).
+  bluff: { label: 'The bluff', ink: PALETTE.orange, fill: rgba('orange', 0.1), width: 1.2, dash: [3, 4], tag: true },
   alley: { label: 'Raceway alleys', ink: PALETTE.purple, tag: true },
   backAlley: { label: 'Back alleys', ink: rgba('soft', 0.55), tag: false },
   roundabout: { label: 'Roundabouts', ink: PALETTE.soft, tag: false },
@@ -87,6 +100,159 @@ export interface MapView {
 
 /** Margin kept around the city when it is fitted to a canvas (m). */
 export const MAP_PAD = 40;
+
+/**
+ * The one-way mark: open chevrons along the line, pointing the drivable way,
+ * one every `step` CSS px, `size` px from wing to tip (never smaller than
+ * most of the line's width, so they still read as road arrows zoomed right
+ * in), kept `inset` px off both ends where the line meets the streets, drawn
+ * `stroke` px wide over a `halo` px dark edge so they stand off the line.
+ */
+export const CHEVRON = { step: 18, size: 4, inset: 7, stroke: 1.6, halo: 1.4, ofWidth: 0.8 } as const;
+
+/**
+ * The cliff symbol along the bluff's crest: the crest line with ticks down
+ * the face every `step` CSS px, `len` px long at the full step height,
+ * shorter as the terrace eases out at its ends, none where a street ramps
+ * through the face.
+ */
+export const CLIFF = { step: 7, len: 5, min: 0.15 } as const;
+
+/** A one-way shortcut on the map: its line in driving order (the exit last) and the lane's width (m). */
+export interface OneWay {
+  pts: readonly Vec2[];
+  width: number;
+}
+
+/** A point `s` m along a polyline and the unit direction there (writes into `out`). */
+function alongAt(pts: readonly Vec2[], s: number, out: { x: number; z: number; ux: number; uz: number }): void {
+  let left = s;
+  for (let i = 1; i < pts.length; i++) {
+    const p = pts[i - 1];
+    const q = pts[i];
+    const l = Math.hypot(q.x - p.x, q.z - p.z);
+    if (l <= 0) continue;
+    if (left <= l || i === pts.length - 1) {
+      const t = Math.max(0, Math.min(1, left / l));
+      out.x = p.x + (q.x - p.x) * t;
+      out.z = p.z + (q.z - p.z) * t;
+      out.ux = (q.x - p.x) / l;
+      out.uz = (q.z - p.z) / l;
+      return;
+    }
+    left -= l;
+  }
+}
+
+const SPOT = { x: 0, z: 0, ux: 0, uz: 0 };
+
+/**
+ * Append the chevrons of a one-way line to `p` (world m): every `step` m
+ * along it, `size` m wing to tip, pointing toward its last point, spread
+ * evenly about the middle and `inset` m off both ends; a line too short for
+ * the spacing still gets one at its middle.
+ */
+export function chevronPath(p: Path2D, pts: readonly Vec2[], step: number, size: number, inset: number): void {
+  let total = 0;
+  for (let i = 1; i < pts.length; i++) total += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z);
+  if (total <= 0) return;
+  const n = Math.max(1, Math.floor((total - 2 * inset) / step));
+  const s0 = total / 2 - ((n - 1) * step) / 2;
+  const half = size / 2;
+  for (let k = 0; k < n; k++) {
+    alongAt(pts, s0 + k * step, SPOT);
+    const { x, z, ux, uz } = SPOT;
+    // Wings half a size back and out to each side (left of travel is (-uz, ux)), the tip half a size ahead.
+    p.moveTo(x - ux * half - uz * half, z - uz * half + ux * half);
+    p.lineTo(x + ux * half, z + uz * half);
+    p.lineTo(x - ux * half + uz * half, z - uz * half - ux * half);
+  }
+}
+
+/** The u span of each street corridor cut through a bluff's face (frame u, m), as the sim cuts the rock face (districts/bluff.ts build). */
+function faceCuts(s: BluffShape): [number, number][] {
+  return s.ramps.map((r) => {
+    const { u } = bluffUV(s, r.x, r.z);
+    const cosU = Math.max(0.3, Math.abs(r.dx * s.vx + r.dz * s.vz));
+    const half = (r.hw + CITY.districts.bluff.blend) / cosU;
+    return [u - half, u + half];
+  });
+}
+
+/**
+ * Append a bluff's cliff symbol to `p` (world m): the crest line along the
+ * top of the rock face where the step still stands (envelope over CLIFF.min),
+ * broken where streets ramp through it, with a tick down the face every
+ * `step` m, `len` m long at full height and shorter toward the ends.
+ */
+export function cliffPath(p: Path2D, area: Area, step: number, len: number): void {
+  const s = bluffShape(area);
+  const cuts = faceCuts(s);
+  const cut = (u: number) => cuts.some(([a, b]) => u > a && u < b);
+  const v0 = s.fw / 2;
+  const at = (u: number, v: number): Vec2 => ({ x: s.ox + s.ux * u + s.vx * v, z: s.oz + s.uz * u + s.vz * v });
+  const u0 = s.uA - s.we;
+  const u1 = s.uB + s.we;
+  // The crest, piecewise at 2 m: the ends and the ramp cuts break it.
+  let on = false;
+  for (let u = u0; u <= u1 + 1e-6; u += 2) {
+    const uu = Math.min(u, u1);
+    const here = envelope(s, uu) >= CLIFF.min && !cut(uu);
+    if (here) {
+      const q = at(uu, v0);
+      if (on) p.lineTo(q.x, q.z);
+      else p.moveTo(q.x, q.z);
+    }
+    on = here;
+  }
+  for (let u = u0 + step / 2; u < u1; u += step) {
+    const e = envelope(s, u);
+    if (e < CLIFF.min || cut(u)) continue;
+    const a = at(u, v0);
+    const b = at(u, v0 - len * e);
+    p.moveTo(a.x, a.z);
+    p.lineTo(b.x, b.z);
+  }
+}
+
+/**
+ * A bluff's terrace on the map: its high ground, from the crest back over
+ * the plateau to the foot of the back slope and out to the foot of each end's
+ * easing (where the terrain is level again), the soft corners rounded. The
+ * foot (every side but the crest) is the dashed contour; the crest gets the
+ * cliff symbol.
+ */
+export function terracePaths(area: Area): { ground: Path2D; foot: Path2D } {
+  const s = bluffShape(area);
+  const at = (u: number, v: number): Vec2 => ({ x: s.ox + s.ux * u + s.vx * v, z: s.oz + s.uz * u + s.vz * v });
+  const u0 = s.uA - s.we;
+  const u1 = s.uB + s.we;
+  const v0 = s.fw / 2;
+  const v1 = s.vp + s.wd;
+  const r = Math.min(s.we, s.wd) * 0.5;
+  const ground = new Path2D();
+  const foot = new Path2D();
+  const trace = (p: Path2D, close: boolean) => {
+    const a = at(u0, v0);
+    p.moveTo(a.x, a.z);
+    const c0 = at(u0, v1 - r);
+    p.lineTo(c0.x, c0.z);
+    const k0 = at(u0, v1);
+    const c1 = at(u0 + r, v1);
+    p.quadraticCurveTo(k0.x, k0.z, c1.x, c1.z);
+    const c2 = at(u1 - r, v1);
+    p.lineTo(c2.x, c2.z);
+    const k1 = at(u1, v1);
+    const c3 = at(u1, v1 - r);
+    p.quadraticCurveTo(k1.x, k1.z, c3.x, c3.z);
+    const b = at(u1, v0);
+    p.lineTo(b.x, b.z);
+    if (close) p.closePath();
+  };
+  trace(ground, true);
+  trace(foot, false);
+  return { ground, foot };
+}
 
 /** The view that fits the whole city (plus `pad` m) into a w x h canvas, centered. */
 export function fitCity(world: Pick<World, 'graph'>, w: number, h: number, pad = MAP_PAD): MapView {
@@ -155,7 +321,12 @@ export class CityLayers {
   readonly ringRoads = new Path2D();
   readonly pavedIslands = new Path2D();
   readonly plantedIslands = new Path2D();
-  readonly bluff = new Path2D();
+  /** The bluffs' terraces (filled) and the feet of their slopes (dashed); their crests are traced per draw (cliffPath). */
+  readonly terraces = new Path2D();
+  readonly terraceFeet = new Path2D();
+  readonly bluffs: Area[] = [];
+  /** The one-way shortcuts (jump exits, car parks), for the chevrons traced per draw. */
+  readonly oneWay: OneWay[] = [];
   readonly el = new Path2D();
   /** Tunnel bores by street width, then the tunnels' and overpasses' dashed outlines. */
   readonly bores: { width: number; path: Path2D }[] = [];
@@ -172,7 +343,7 @@ export class CityLayers {
     const fills = new Map<AreaKind, Path2D>();
     for (const a of world.areas) {
       const st = KINDS[a.kind];
-      if (!st?.fill || a.polygon.length < 3 || a.kind === 'roundabout' || !shownOnMap(a)) continue;
+      if (!st?.fill || a.polygon.length < 3 || a.kind === 'roundabout' || a.kind === 'bluff' || !shownOnMap(a)) continue;
       let p = fills.get(a.kind);
       if (!p) fills.set(a.kind, (p = new Path2D()));
       ring(p, a.polygon);
@@ -192,7 +363,11 @@ export class CityLayers {
     }
     // Streets at their real widths: the channel floor in the river's color, shortcuts and alleys in theirs.
     const shortcutEdges = new Set<number>();
-    for (const a of world.areas) if (a.kind === 'backAlley' && a.variant === 'routeShortcut') a.edges.forEach((e) => shortcutEdges.add(e));
+    for (const a of world.areas) {
+      if (a.kind !== 'backAlley' || a.variant !== 'routeShortcut') continue;
+      a.edges.forEach((e) => shortcutEdges.add(e));
+      if (a.params.jumpExit) this.oneWay.push({ pts: a.path, width: a.params.width ?? CITY.width.backAlley });
+    }
     const groups = new Map<string, StreetGroup>();
     let length = 0;
     for (const e of g.edges) {
@@ -208,6 +383,17 @@ export class CityLayers {
       length += e.length;
     }
     this.streetLength = length;
+    // A car park's racing line (up the ramp, over the roof, down the chute) is a shortcut too, one way.
+    for (const a of world.areas) {
+      if (a.kind !== 'carPark') continue;
+      const cp = carParkGeo(a);
+      const width = Math.round(cp.rhw * 4) / 2;
+      const key = `shortcut:${width}`;
+      let grp = groups.get(key);
+      if (!grp) groups.set(key, (grp = { ink: 'shortcut', width, path: new Path2D() }));
+      line(grp.path, cp.path);
+      this.oneWay.push({ pts: cp.path, width });
+    }
     // Plain roads first, so the colored streets read on top where they meet.
     this.streets.push(...[...groups.values()].sort((a, b) => Number(a.ink !== 'road') - Number(b.ink !== 'road')));
     for (const a of world.areas) {
@@ -218,8 +404,13 @@ export class CityLayers {
         const isl = a.params.paved ? this.pavedIslands : this.plantedIslands;
         isl.moveTo(x + island, z);
         isl.arc(x, z, island, 0, Math.PI * 2);
-      } else if (a.kind === 'bluff' && a.path.length > 1) line(this.bluff, a.path);
-      else if (a.kind === 'subway' && a.path.length > 1) line(this.el, a.path);
+      } else if (a.kind === 'bluff') {
+        const t = terracePaths(a);
+        this.terraces.addPath(t.ground);
+        this.terraceFeet.addPath(t.foot);
+        this.areaPaths.set(a.id, t.ground);
+        this.bluffs.push(a);
+      } else if (a.kind === 'subway' && a.path.length > 1) line(this.el, a.path);
       else if (a.kind === 'tunnel' && a.path.length > 1) {
         const e = g.edges[a.params.edge];
         const width = e ? e.width : 10;
@@ -236,7 +427,7 @@ export class CityLayers {
     }
   }
 
-  /** An area's outline as a path (world meters), built on first use. */
+  /** An area's outline as a path (world meters), built on first use (a bluff's is its terrace, not its claim). */
   areaPath(a: Area): Path2D {
     let p = this.areaPaths.get(a.id);
     if (!p) {
@@ -301,6 +492,17 @@ export class CityLayers {
       c.lineWidth = Math.max(grp.width, minStreet);
       c.stroke(grp.path);
     }
+    if (!hideShortcuts && this.oneWay.length) {
+      // One-way shortcuts: chevrons the drivable way, in the shortcut ink over a dark edge.
+      const p = new Path2D();
+      for (const w of this.oneWay) chevronPath(p, w.pts, CHEVRON.step * px, Math.max(CHEVRON.size * px, CHEVRON.ofWidth * Math.max(w.width, minStreet)), CHEVRON.inset * px);
+      c.strokeStyle = ink.tagBg;
+      c.lineWidth = (CHEVRON.stroke + 2 * CHEVRON.halo) * px;
+      c.stroke(p);
+      c.strokeStyle = ink.shortcut;
+      c.lineWidth = CHEVRON.stroke * px;
+      c.stroke(p);
+    }
     if (o.districts !== false && !o.hidden?.has('roundabout')) {
       c.fillStyle = ink.road;
       c.fill(this.ringRoads);
@@ -310,10 +512,22 @@ export class CityLayers {
       c.fill(this.plantedIslands);
     }
     if (o.districts !== false) {
-      if (!o.hidden?.has('bluff')) {
-        c.strokeStyle = PALETTE.orange;
-        c.lineWidth = 3 * px;
-        c.stroke(this.bluff);
+      if (!o.hidden?.has('bluff') && this.bluffs.length) {
+        // The terrace over the streets (it is high ground), its foot dashed, the crest as a cliff line with ticks down the face.
+        const st = KINDS.bluff!;
+        c.fillStyle = st.fill!;
+        c.fill(this.terraces);
+        c.strokeStyle = st.ink;
+        c.globalAlpha = 0.7;
+        c.lineWidth = st.width! * px;
+        c.setLineDash(st.dash!.map((d) => d * px));
+        c.stroke(this.terraceFeet);
+        c.setLineDash([]);
+        c.globalAlpha = 1;
+        const crest = new Path2D();
+        for (const a of this.bluffs) cliffPath(crest, a, CLIFF.step * px, CLIFF.len * px);
+        c.lineWidth = 1.5 * px;
+        c.stroke(crest);
       }
       if (!o.hidden?.has('subway')) {
         const el = KINDS.subway!;

@@ -199,18 +199,37 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
   // run along and across the strip so the stones follow the alley.
   const cobbled = (ei: number) => g.edges[ei].kind === 'alley' || g.edges[ei].kind === 'backAlley';
   const cobble = new GeoBuilder();
+  // Rows are stationed by distance along the alley, not by equal fractions of each curb line: a diagonal
+  // mouth starts the two lines at different distances, and rows between unequal fractions tilt across
+  // the alley, so over a kicker or a jump exit's ramp the cobbles would cut up through the steel deck
+  // drawn on the true profile (render/districts/alley.ts). Where one line has not started yet (or has
+  // ended) its vertex waits at its corner, and the junction fan covers the mouth anyway.
   const alignedStrip = (gb: GeoBuilder, l0: Vec2, l1: Vec2, r0: Vec2, r1: Vec2, lift: number, uvScale: number, steps: number) => {
-    const len = Math.max(Math.hypot(l1.x - l0.x, l1.z - l0.z), Math.hypot(r1.x - r0.x, r1.z - r0.z));
+    let ax = l1.x - l0.x + (r1.x - r0.x);
+    let az = l1.z - l0.z + (r1.z - r0.z);
+    const al = Math.hypot(ax, az) || 1;
+    ax /= al;
+    az /= al;
+    const along = (p: Vec2) => p.x * ax + p.z * az;
+    const sL0 = along(l0);
+    const sL1 = along(l1);
+    const sR0 = along(r0);
+    const sR1 = along(r1);
+    const s0 = Math.min(sL0, sR0);
+    const s1 = Math.max(sL1, sR1);
+    const frac = (s: number, a: number, b: number) => (b - a > 1e-6 ? Math.max(0, Math.min(1, (s - a) / (b - a))) : 0);
     const across = Math.hypot(r0.x - l0.x, r0.z - l0.z) / uvScale;
     let prevL = -1;
     let prevR = -1;
     for (let i = 0; i <= steps; i++) {
-      const t = i / steps;
-      const u = (t * len) / uvScale;
-      const lx = l0.x + (l1.x - l0.x) * t;
-      const lz = l0.z + (l1.z - l0.z) * t;
-      const rx = r0.x + (r1.x - r0.x) * t;
-      const rz = r0.z + (r1.z - r0.z) * t;
+      const s = s0 + ((s1 - s0) * i) / steps;
+      const u = (s - s0) / uvScale;
+      const tl = frac(s, sL0, sL1);
+      const tr = frac(s, sR0, sR1);
+      const lx = l0.x + (l1.x - l0.x) * tl;
+      const lz = l0.z + (l1.z - l0.z) * tl;
+      const rx = r0.x + (r1.x - r0.x) * tr;
+      const rz = r0.z + (r1.z - r0.z) * tr;
       const [lnx, lny, lnz] = normalAt(lx, lz);
       const [rnx, rny, rnz] = normalAt(rx, rz);
       const vl = gb.vertex(lx, h(lx, lz) + lift, lz, lnx, lny, lnz, u, 0);

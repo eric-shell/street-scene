@@ -1,7 +1,9 @@
 /**
  * Minimap: a round, heading-up map canvas centred on a viewpoint, drawing the
  * district layers (AREA_MAP_STYLE), the street network, the route with its
- * shortcuts (dim pink dashes), closures and car markers. The race HUD centres it on the player's car; the drone
+ * shortcuts (dim pink dashes; a one-way shortcut, a jump exit or a car park,
+ * carries the city map's chevrons the drivable way, ui/map/cityMap.ts), the
+ * bluff's crest as the same cliff symbol, closures and car markers. The race HUD centres it on the player's car; the drone
  * centres it on itself with a view cone and a north mark, and zooms out as it
  * climbs, so the same map serves both. In free roam it also shows the waypoint
  * set on the full map: a pin where it is, or an arrow on the rim pointing to
@@ -9,9 +11,10 @@
  * world, so a frame is a handful of strokes. Render only.
  */
 import type { World } from '../../city/world';
-import { AREA_MAP_STYLE, AreaKind, AreaMapStyle } from '../../city/districts/types';
+import { AREA_MAP_STYLE, type Area, AreaKind, AreaMapStyle } from '../../city/districts/types';
 import { ROUTE_INDEX, carParks } from '../../city/districts/carPark';
 import { shortcutArea } from '../../city/districts/alleyDressing';
+import { CHEVRON, CLIFF, chevronPath, cliffPath, terracePaths, type OneWay } from '../map/cityMap';
 import { PALETTE, rgba } from '../kit/palette';
 
 /** Map inks (Monokai Pro, ui/kit/palette.ts), built once: orange is the route, yellow the closures. */
@@ -81,6 +84,10 @@ export class Minimap {
   private routePath: Path2D;
   /** The route's own shortcuts (back alleys it opens), entry to exit. */
   private shortcuts: Path2D;
+  /** The one-way ones among them, for the chevrons; the bluffs, for their crests. Both are sized on screen, so traced again when the zoom changes. */
+  private readonly oneWay: OneWay[] = [];
+  private readonly bluffs: Area[] = [];
+  private marks: { scale: number; chevrons: Path2D; crests: Path2D } | null = null;
   private closed: { x: number; z: number }[];
   /** District layers: polygon fills and line strokes, in draw order. */
   private areaFills: { path: Path2D; style: AreaMapStyle }[] = [];
@@ -106,7 +113,7 @@ export class Minimap {
     this.shortcuts = new Path2D();
     for (const sc of world.route.shortcuts) {
       sc.points.forEach((p, i) => (i ? this.shortcuts.lineTo(p.x, p.z) : this.shortcuts.moveTo(p.x, p.z)));
-      // A jump exit runs on past its mouth: the flight down onto the street.
+      // A jump exit runs on past its mouth: the flight down onto the street. It is driven toward its lip only.
       const a = shortcutArea(world.areas, sc);
       if (a?.params.jumpExit) {
         const n = sc.points.length;
@@ -115,13 +122,15 @@ export class Minimap {
         const len = Math.hypot(b.x - o.x, b.z - o.z) || 1;
         const reach = a.params.landMax * 0.6 - a.params.lipS;
         this.shortcuts.lineTo(b.x + ((b.x - o.x) / len) * reach, b.z + ((b.z - o.z) / len) * reach);
+        this.oneWay.push({ pts: sc.points, width: g.edges[sc.edges[0]].width });
       }
     }
-    // Car park shortcuts: up the ramp, across the roof and the jump down onto the route (the route's own only).
+    // Car park shortcuts: up the ramp, across the roof and the jump down onto the route (the route's own only); one way.
     for (const cp of carParks(world.areas)) {
       if (!world.openWorld && cp.owner !== ROUTE_INDEX[world.route.kind]) continue;
       cp.path.forEach((p, i) => (i ? this.shortcuts.lineTo(p.x, p.z) : this.shortcuts.moveTo(p.x, p.z)));
       this.shortcuts.lineTo(cp.ox - cp.ux * (cp.lipBack + cp.landMax * 0.6), cp.oz - cp.uz * (cp.lipBack + cp.landMax * 0.6));
+      this.oneWay.push({ pts: cp.path, width: cp.rhw * 2 });
     }
     // Closures: one marker per closure group (they are cyan rail pieces, like the corner rails).
     this.closed = (world.barrierGroups ?? []).map((gr) => ({ x: gr.x, z: gr.z }));
@@ -139,6 +148,12 @@ export class Minimap {
     };
     for (const a of world.areas) {
       const st = AREA_MAP_STYLE[a.kind];
+      if (a.kind === 'bluff') {
+        // The terrace's high ground, not its claim; the crest is traced per zoom (draw).
+        if (st.fill) get(fills, a.kind).addPath(terracePaths(a).ground);
+        this.bluffs.push(a);
+        continue;
+      }
       if (st.fill && a.polygon.length > 2 && a.kind !== 'roundabout') {
         const p = get(fills, a.kind);
         a.polygon.forEach((q, i) => (i ? p.lineTo(q.x, q.z) : p.moveTo(q.x, q.z)));
@@ -152,9 +167,6 @@ export class Minimap {
         p.moveTo(a.params.x + a.params.island, a.params.z);
         p.arc(a.params.x, a.params.z, a.params.island, 0, Math.PI * 2);
       } else if (a.kind === 'subway' || a.kind === 'tunnel' || a.kind === 'overpass') {
-        a.path.forEach((q, i) => (i ? p.lineTo(q.x, q.z) : p.moveTo(q.x, q.z)));
-      } else if (a.kind === 'bluff') {
-        // The escarpment's face line.
         a.path.forEach((q, i) => (i ? p.lineTo(q.x, q.z) : p.moveTo(q.x, q.z)));
       } else if (a.kind === 'hills') {
         // A contour around the rise.
@@ -170,7 +182,7 @@ export class Minimap {
     }
     for (const [k, path] of fills) this.areaFills.push({ path, style: AREA_MAP_STYLE[k] });
     // Order: alleys and shortcuts under the subway and roundabout outlines.
-    const order: AreaKind[] = ['hills', 'bluff', 'backAlley', 'alley', 'roundabout', 'subway', 'overpass', 'tunnel'];
+    const order: AreaKind[] = ['hills', 'backAlley', 'alley', 'roundabout', 'subway', 'overpass', 'tunnel'];
     for (const k of order) {
       const path = lines.get(k);
       if (path) this.areaLines.push({ path, style: AREA_MAP_STYLE[k] });
@@ -214,12 +226,30 @@ export class Minimap {
       c.setLineDash(l.style.dash ?? []);
       c.stroke(l.path);
     }
+    const scWidth = Math.max(4, 2.2 * px);
+    const marks = this.marksAt(scale, scWidth);
+    if (this.bluffs.length) {
+      const st = AREA_MAP_STYLE.bluff;
+      c.strokeStyle = st.stroke!;
+      c.lineWidth = (st.width ?? 2) * px;
+      c.setLineDash([]);
+      c.stroke(marks.crests);
+    }
     // Shortcuts under the route line, so their dashes start where the alley leaves it; no glow.
     c.strokeStyle = INK.shortcut;
-    c.lineWidth = Math.max(4, 2.2 * px);
+    c.lineWidth = scWidth;
     c.setLineDash([4 * px, 3 * px]);
     c.stroke(this.shortcuts);
     c.setLineDash([]);
+    if (this.oneWay.length) {
+      // One way: the city map's chevrons, in the shortcut ink over the face's dark edge.
+      c.strokeStyle = INK.face;
+      c.lineWidth = (CHEVRON.stroke + 2 * CHEVRON.halo) * px;
+      c.stroke(marks.chevrons);
+      c.strokeStyle = INK.shortcut;
+      c.lineWidth = CHEVRON.stroke * px;
+      c.stroke(marks.chevrons);
+    }
     c.strokeStyle = INK.route;
     c.shadowColor = INK.route;
     c.shadowBlur = 4;
@@ -286,6 +316,18 @@ export class Minimap {
     c.arc(W / 2, W / 2, W / 2 - 2, 0, Math.PI * 2);
     c.stroke();
     if (waypoint && !wpIn) this.drawRimArrow(c, wpAngle);
+  }
+
+  /** The screen sized marks (chevrons, crest ticks) traced for this zoom (px per m), kept until it changes (the drone's climb). */
+  private marksAt(scale: number, lineWidth: number): { chevrons: Path2D; crests: Path2D } {
+    if (this.marks && this.marks.scale === scale) return this.marks;
+    const px = 1 / scale;
+    const chevrons = new Path2D();
+    for (const w of this.oneWay) chevronPath(chevrons, w.pts, CHEVRON.step * px, Math.max(CHEVRON.size * px, CHEVRON.ofWidth * Math.max(w.width, lineWidth)), CHEVRON.inset * px);
+    const crests = new Path2D();
+    for (const a of this.bluffs) cliffPath(crests, a, CLIFF.step * px, CLIFF.len * px);
+    this.marks = { scale, chevrons, crests };
+    return this.marks;
   }
 
   /** The waypoint's pin, its point at (x, y): a round head over a point, like the full map's. */

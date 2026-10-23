@@ -58,7 +58,7 @@ import { blit, cellName, covers, drawEdgeArrow, drawEdges, drawGrid, drawPlayer,
 import { buildLegend, buildPlaces, type PlaceRow } from './sidePanel';
 import { NameTags } from './tags';
 import { MapTip } from './tip';
-import { DROP_END, INK, NO_DASH, PASS_KEYS, PIN, PULSE_RINGS, ROSE_SVG, UI, bounceOut, clamp01, easeOut, inkOf, isShortcut, kindNote, trace, type LegendKey } from './tuning';
+import { DROP_END, INK, NO_DASH, PASS_KEYS, PIN, PULSE_RINGS, ROSE_SVG, UI, bounceOut, clamp01, easeOut, inkOf, isShortcut, kindNote, type LegendKey } from './tuning';
 
 /** Where a waypoint is kept: by whoever owns the map's city (main.ts keeps one per event city, so one set on the menu carries into free roam). */
 export interface WaypointStore {
@@ -660,8 +660,7 @@ export class FullMap {
       p = new Path2D();
       for (const a of this.world.areas) {
         if (!shownOnMap(a) || (key === 'shortcut' ? !isShortcut(a) : a.kind !== key || (key === 'backAlley' && isShortcut(a)))) continue;
-        if (a.polygon.length >= 3) trace(p, a.polygon, true);
-        else if (a.path.length > 1) trace(p, a.path, false);
+        p.addPath(this.layers.areaPath(a));
       }
       this.kindPaths.set(key, p);
     }
@@ -878,7 +877,7 @@ export class FullMap {
       at = p;
     } else {
       area = hv.kind === 'area' ? hv.area : null;
-      name = area && isShortcut(area) ? 'Race shortcut' : placeName(area);
+      name = area && isShortcut(area) ? (area.params.jumpExit ? 'One-way shortcut' : 'Race shortcut') : placeName(area);
       ink = inkOf(area);
       kind = area ? kindNote(name, isShortcut(area) ? 'Race shortcuts' : (KINDS[area.kind]?.label ?? '')) : '';
     }
