@@ -1,6 +1,6 @@
 /**
  * A car build as the garage saves and shares it: the car, a name, the visual half (paint, parts, wheels,
- * vinyls, stance, tint, underglow; read only by the renderer and the garage, never by the sim) and the
+ * calipers, vinyls, stance, tint, underglow; read only by the renderer and the garage, never by the sim) and the
  * performance half (sim/build.ts, the only part the sim reads, through applyBuild). Validation clamps
  * anything imported from storage or share codes and migrates old saves.
  */
@@ -15,6 +15,12 @@ export const BUILD_NAME_MAX = 24;
 
 export const PAINT_FINISHES = ['gloss', 'metallic', 'matte', 'pearl', 'candy'] as const;
 export type PaintFinish = (typeof PAINT_FINISHES)[number];
+
+/** A painted surface: the body, each axle's wheels and the calipers all take a color and a finish. */
+export interface Paint {
+  color: string;
+  finish: PaintFinish;
+}
 
 export const VINYL_SHAPES = ['stripe', 'twinStripe', 'flame', 'tribal', 'sponsorA', 'sponsorB', 'sponsorC', 'number', 'star', 'chevron'] as const;
 export type VinylShape = (typeof VINYL_SHAPES)[number];
@@ -65,15 +71,15 @@ export const STANCE_LIMITS = {
 } as const;
 
 export interface VisualBuild {
-  paint: { color: string; finish: PaintFinish };
+  paint: Paint;
   trimColor: string;
   /** partId per slot; null means stock (base meshes) or none for optional slots. */
   parts: Partial<Record<PartSlot, string | null>>;
   wheels: {
-    /** Front wheel color (legacy builds, saved before per axle colors, used it for all four). */
-    color: string;
-    /** Rear wheel color; matches the front unless the garage's axles are unlinked. */
-    rearColor: string;
+    /** Front wheel paint (legacy builds saved one `color` for all four; validation migrates it). */
+    paint: Paint;
+    /** Rear wheel paint; matches the front unless the garage's wheel paint is unlinked. */
+    rearPaint: Paint;
     /** Rear wheel part id; null wears the front's (parts.wheels), so a car change keeps them matched. */
     rearPart: string | null;
     /** Front tire shape. */
@@ -81,6 +87,8 @@ export interface VisualBuild {
     /** Rear tire shape; matches the front unless the garage's wheels are unlinked. */
     rearTire: TireShape;
   };
+  /** Brake caliper paint, all four corners. */
+  calipers: Paint;
   decals: DecalLayer[];
   stance: { rideHeight: number; front: AxleStance; rear: AxleStance };
   tint: { darkness: number; color: string };
@@ -112,7 +120,8 @@ export function defaultVisual(): VisualBuild {
     paint: { color: '#d11f3f', finish: 'metallic' },
     trimColor: '#15161a',
     parts: {},
-    wheels: { color: '#c9ced8', rearColor: '#c9ced8', rearPart: null, tire: 'standard', rearTire: 'standard' },
+    wheels: { paint: { color: '#c9ced8', finish: 'metallic' }, rearPaint: { color: '#c9ced8', finish: 'metallic' }, rearPart: null, tire: 'standard', rearTire: 'standard' },
+    calipers: { color: '#c41e3a', finish: 'gloss' },
     decals: [],
     stance: { rideHeight: 0, front: { camber: 0, offset: 0, wheelSize: 1 }, rear: { camber: 0, offset: 0, wheelSize: 1 } },
     tint: { darkness: 0.55, color: '#101820' },
@@ -160,10 +169,15 @@ function renamedPart(raw: string): string | null {
   return RENAMED_WHEELS[renamed] ?? renamed;
 }
 
+/** A paint from storage or a share code; anything missing or invalid takes the fallback's. */
+function validPaint(v: unknown, fallback: Paint): Paint {
+  const o = obj(v);
+  return { color: hexColor(o.color, fallback.color), finish: oneOf(o.finish, PAINT_FINISHES, fallback.finish) };
+}
+
 export function validateVisual(v: unknown): VisualBuild {
   const o = obj(v);
   const d = defaultVisual();
-  const paint = obj(o.paint);
   const wheels = obj(o.wheels);
   const stance = obj(o.stance);
   const tint = obj(o.tint);
@@ -200,9 +214,12 @@ export function validateVisual(v: unknown): VisualBuild {
       });
     }
   }
+  // Wheel paint: builds from before wheel finishes saved a color per axle (one for all four before
+  // that); it keeps the default finish. A missing rear follows the front.
+  const wheelPaint = validPaint(wheels.paint, { ...d.wheels.paint, color: hexColor(wheels.color, d.wheels.paint.color) });
+  const rearPaint = validPaint(wheels.rearPaint, { ...wheelPaint, color: hexColor(wheels.rearColor, wheelPaint.color) });
   // Stance per axle. Legacy builds (saves and share codes from before per axle stance) had
   // stance.camberFront / camberRear, one stance.offset and wheels.size; they seed both axles.
-  const wheelColor = hexColor(wheels.color, d.wheels.color);
   // The first set's mild and aggressive stretches are the stretched tire now; its meaty one, standard.
   const tireShape = (v: unknown, fallback: TireShape) => (v === 'meaty' ? 'standard' : oneOf(v === 'mildStretch' || v === 'aggressiveStretch' ? 'stretched' : v, TIRE_SHAPES, fallback));
   const tire = tireShape(wheels.tire, d.wheels.tire);
@@ -219,10 +236,11 @@ export function validateVisual(v: unknown): VisualBuild {
     };
   };
   return {
-    paint: { color: hexColor(paint.color, d.paint.color), finish: oneOf(paint.finish, PAINT_FINISHES, d.paint.finish) },
+    paint: validPaint(o.paint, d.paint),
     trimColor: hexColor(o.trimColor, d.trimColor),
     parts,
-    wheels: { color: wheelColor, rearColor: hexColor(wheels.rearColor, wheelColor), rearPart, tire, rearTire: tireShape(wheels.rearTire, tire) },
+    wheels: { paint: wheelPaint, rearPaint, rearPart, tire, rearTire: tireShape(wheels.rearTire, tire) },
+    calipers: validPaint(o.calipers, d.calipers),
     decals,
     stance: {
       rideHeight: num(stance.rideHeight, L.rideHeight[0], L.rideHeight[1], 0),

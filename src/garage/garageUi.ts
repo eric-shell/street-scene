@@ -36,7 +36,7 @@ import { Help, MUSIC_KEYS, type HelpKey } from '../ui/panels/help';
 import { uiWhoosh } from '../audio/uiSound';
 import { GaragePrefs, GarageState, MAX_SLOTS, Presentation, addSlot, decodeShareCode, encodeShareCode, freshBuild, importBuild, loadGaragePrefs, saveGaragePrefs, shareUrl } from './storage';
 import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PART_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
-import { AXLES, Axle, AxleStance, BUILD_NAME_MAX, CarBuild, DEFAULT_BUILD_NAME, DecalLayer, GLOW_PATTERNS, MAX_DECALS, PAINT_FINISHES, STANCE_LIMITS, TireShape, VINYL_SHAPES, VinylShape, validateBuild } from '../shared/carBuild';
+import { AXLES, Axle, AxleStance, BUILD_NAME_MAX, CarBuild, DEFAULT_BUILD_NAME, DecalLayer, GLOW_PATTERNS, MAX_DECALS, PAINT_FINISHES, Paint, STANCE_LIMITS, TireShape, VINYL_SHAPES, VinylShape, validateBuild } from '../shared/carBuild';
 import { DEFAULT_CAR_ID, PERFORMANCE_CATEGORIES, PerformanceCategory, SELECTABLE_CAR_IDS, TIER_NAMES, Tier, getBaseTuning } from '../sim/tuning';
 import { tuningForBuild } from '../sim/build';
 import { FEATURES } from '../shared/features';
@@ -201,6 +201,54 @@ function color(value: string, onInput: (c: string) => void): HTMLInputElement {
   const el = h('input', { type: 'color', value }) as HTMLInputElement;
   el.addEventListener('input', () => onInput(el.value));
   return el;
+}
+
+/** Preset swatches per colored surface: the body's loud street colors, wheel metals, caliper brights, neon. */
+const PRESETS = {
+  body: ['#d11f3f', '#ff6a00', '#ffcc1f', '#3dff9a', '#19e6ff', '#1f6bff', '#8b3dff', '#ff3df2', '#f2f2f2', '#9aa3ad', '#2a2c33', '#0b0b0d'],
+  wheels: ['#c9ced8', '#e8eaee', '#7d838c', '#3a3d44', '#1a1b1f', '#f2f2f2', '#b08d57', '#d4af37', '#d11f3f', '#19e6ff'],
+  calipers: ['#c41e3a', '#ffcc1f', '#ff6a00', '#1f6bff', '#3dff9a', '#ff3df2', '#d4af37', '#f2f2f2', '#9aa3ad', '#1a1b1f'],
+  glow: ['#00e5ff', '#ff3df2', '#7cff4f', '#ffe14d', '#ff2e5b', '#7a5cff', '#ffffff', '#ff8a00'],
+} as const;
+
+/**
+ * A color well and its preset swatches, kept in step: a swatch sets the well and is marked, a color from
+ * the well marks none. `preset` says whether a swatch picked it.
+ */
+function colorPicker(value: string, presets: readonly string[], onInput: (c: string, preset: boolean) => void): HTMLElement {
+  const sw = h('div', { class: 'garage-swatches' });
+  const well = color(value, (c) => {
+    sw.querySelectorAll('.garage-swatch.is-selected').forEach((x) => x.classList.remove('is-selected'));
+    onInput(c, false);
+  });
+  for (const p of presets) {
+    sw.append(
+      swatch(p, value, (s) => {
+        well.value = p;
+        sw.querySelectorAll('.garage-swatch').forEach((x) => x.classList.toggle('is-selected', x === s));
+        onInput(p, true);
+      }),
+    );
+  }
+  return h('div', { class: 'row' }, well, sw);
+}
+
+/** Every paint's controls (body, wheels, calipers): its color over its finish. Edits the paint in place, then calls onChange. */
+function paintPicker(paint: Paint, presets: readonly string[], onChange: () => void): Node[] {
+  return [
+    colorPicker(paint.color, presets, (c) => {
+      paint.color = c;
+      onChange();
+    }),
+    segmented(
+      PAINT_FINISHES.map((f) => ({ value: f, label: capital(f) })),
+      paint.finish,
+      (f) => {
+        paint.finish = f;
+        onChange();
+      },
+    ),
+  ];
 }
 
 /** A row in a group: the name on the left, its control on the right (the settings' rows). */
@@ -1031,37 +1079,8 @@ export class GarageScreen {
         break;
       }
       case 'paint': {
-        const presets = ['#d11f3f', '#ff6a00', '#ffcc1f', '#3dff9a', '#19e6ff', '#1f6bff', '#8b3dff', '#ff3df2', '#f2f2f2', '#9aa3ad', '#2a2c33', '#0b0b0d'];
-        const sw = h('div', { class: 'garage-swatches' });
-        const picker = color(v.paint.color, (c) => {
-          v.paint.color = c;
-          this.changed();
-        });
-        for (const p of presets) {
-          sw.append(
-            swatch(p, v.paint.color, (s) => {
-              v.paint.color = p;
-              picker.value = p;
-              sw.querySelectorAll('.garage-swatch').forEach((x) => x.classList.toggle('is-selected', x === s));
-              this.changed();
-            }),
-          );
-        }
-        // A color from the picker is no preset: no swatch stays marked.
-        picker.addEventListener('input', () => sw.querySelectorAll('.garage-swatch.is-selected').forEach((x) => x.classList.remove('is-selected')));
         this.body.append(
-          section('Body color', h('div', { class: 'row' }, picker, sw)),
-          section(
-            'Finish',
-            segmented(
-              PAINT_FINISHES.map((f) => ({ value: f, label: capital(f) })),
-              v.paint.finish,
-              (f) => {
-                v.paint.finish = f;
-                this.changed();
-              },
-            ),
-          ),
+          section('Body paint', ...paintPicker(v.paint, PRESETS.body, () => this.changed())),
           section(
             'Trim color',
             color(v.trimColor, (c) => {
@@ -1131,38 +1150,23 @@ export class GarageScreen {
             ),
           ),
           section('Wheel size', this.linkToggle(), ...AXLES.map((a) => axleSlider(a, 'wheelSize')), h('div', { class: 'muted garage-note' }, 'Bigger wheels, thinner sidewalls.')),
-          // Wheel color has its own link: one picker while linked, front and rear pickers when not.
-          this.prefs.linkWheelColor
-            ? section(
-                'Wheel color',
-                h(
-                  'div',
-                  { class: 'row' },
-                  color(v.wheels.color, (c) => {
-                    v.wheels.color = v.wheels.rearColor = c;
-                    this.changed();
-                  }),
+          // Wheel paint has its own link: one picker while linked (the rear copies the front), one per axle when not.
+          ...(this.prefs.linkWheelColor
+            ? [
+                section(
+                  'Wheel paint',
                   this.colorLinkToggle(),
-                ),
-              )
-            : section(
-                'Wheel color',
-                this.colorLinkToggle(),
-                field(
-                  'Front',
-                  color(v.wheels.color, (c) => {
-                    v.wheels.color = c;
+                  ...paintPicker(w.paint, PRESETS.wheels, () => {
+                    w.rearPaint = { ...w.paint };
                     this.changed();
                   }),
                 ),
-                field(
-                  'Rear',
-                  color(v.wheels.rearColor, (c) => {
-                    v.wheels.rearColor = c;
-                    this.changed();
-                  }),
-                ),
-              ),
+              ]
+            : [
+                section('Front wheel paint', this.colorLinkToggle(), ...paintPicker(w.paint, PRESETS.wheels, () => this.changed())),
+                section('Rear wheel paint', ...paintPicker(w.rearPaint, PRESETS.wheels, () => this.changed())),
+              ]),
+          section('Caliper paint', ...paintPicker(v.calipers, PRESETS.calipers, () => this.changed())),
         );
         break;
       }
@@ -1236,32 +1240,18 @@ export class GarageScreen {
           ),
           section(
             'Colors',
-            h(
-              'div',
-              { class: 'row' },
-              h('span', {}, 'Primary'),
-              color(g.color, (c) => {
-                g.color = c;
-                g.enabled = true;
-                this.changed();
-              }),
-              h('span', {}, 'Secondary'),
-              color(g.color2, (c) => {
-                g.color2 = c;
-                this.changed();
-              }),
-            ),
-            h(
-              'div',
-              { class: 'garage-swatches' },
-              ...['#00e5ff', '#ff3df2', '#7cff4f', '#ffe14d', '#ff2e5b', '#7a5cff', '#ffffff', '#ff8a00'].map((p) =>
-                swatch(p, g.color, () => {
-                  g.color = p;
-                  g.enabled = true;
-                  this.changed(true);
-                }),
-              ),
-            ),
+            // A swatch re-renders so the Lights switch shows the glow it turned on; the well cannot (it would close mid drag).
+            h('span', { class: 'garage-row__name' }, 'Primary'),
+            colorPicker(g.color, PRESETS.glow, (c, preset) => {
+              g.color = c;
+              g.enabled = true;
+              this.changed(preset);
+            }),
+            h('span', { class: 'garage-row__name' }, 'Secondary'),
+            colorPicker(g.color2, PRESETS.glow, (c) => {
+              g.color2 = c;
+              this.changed();
+            }),
           ),
           section(
             'Glow',
@@ -1332,18 +1322,18 @@ export class GarageScreen {
     );
   }
 
-  /** Link toggle for the wheel color, separate from the stance link so sizes and colors can split independently. */
+  /** Link toggle for the wheel paint, separate from the stance link so sizes and colors can split independently. */
   private colorLinkToggle(): HTMLElement {
     const linked = this.prefs.linkWheelColor;
     return btn(
       linked ? Link2 : Link2Off,
-      linked ? 'Front and rear same color' : 'Front and rear colors separate',
+      linked ? 'Front and rear same paint' : 'Front and rear paint separate',
       () => {
         this.prefs.linkWheelColor = !linked;
         saveGaragePrefs(this.prefs);
         if (this.prefs.linkWheelColor) {
           const w = this.build.visual.wheels;
-          w.rearColor = w.color;
+          w.rearPaint = { ...w.paint };
           this.changed();
           toast('Rear wheels now match front', Link2);
         }

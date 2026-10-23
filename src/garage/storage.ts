@@ -104,7 +104,10 @@ const SHORT: Record<string, string> = {
   trimColor: 'tc',
   parts: 'pt',
   wheels: 'wh',
+  // Legacy (pre wheel finish) wheel colors stay in the table so old codes decode.
   rearColor: 'rc',
+  rearPaint: 'rpa',
+  calipers: 'cl',
   rearPart: 'rp',
   tire: 'ty',
   rearTire: 'rt',

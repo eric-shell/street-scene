@@ -2,10 +2,11 @@
  * Runtime materials for the shared material vocabulary. Any mesh whose source
  * material is named e.g. "Paint" gets the player's paint, so new parts pick up
  * paint, trim and glass tint automatically. Lamp colors are fixed, not a build choice.
+ * The body, the wheels and the calipers are all paints (a color and a finish, applyPaint).
  */
 import * as THREE from 'three';
 import { MATERIAL_NAMES, MaterialName } from '../../shared/parts';
-import type { PaintFinish, VisualBuild } from '../../shared/carBuild';
+import type { Paint, PaintFinish, VisualBuild } from '../../shared/carBuild';
 import { BRAKE, rotorTexture } from './brakes';
 
 /**
@@ -13,6 +14,9 @@ import { BRAKE, rotorTexture } from './brakes';
  * can differ, and the brake unit's rotor and caliper (brakes.ts), which no part GLB names.
  */
 export type CarMaterialSet = Record<MaterialName, THREE.Material> & { RimRear: THREE.Material; Rotor: THREE.Material; Caliper: THREE.Material };
+
+/** Each painted material's environment reflection strength (the boost createCarMaterials gives it); candy raises it. */
+const PAINT_ENV = { Paint: 1.9, Rim: 1.8, Caliper: 1.2 } as const;
 
 /** Car space meters per UV unit on Grille faces (GRILLE_UV in scripts/blender/carDonors.py). */
 const GRILLE_UV_SPAN = 3;
@@ -75,7 +79,8 @@ export function createCarMaterials(envMap: THREE.Texture | null = null): CarMate
   m.Black = new THREE.MeshStandardMaterial({ name: 'Black', color: 0x0b0b0d, roughness: 0.65 });
   m.Chrome = new THREE.MeshStandardMaterial({ name: 'Chrome', color: 0xdedede, metalness: 1, roughness: 0.12 });
   m.Glass = new THREE.MeshPhysicalMaterial({ name: 'Glass', color: 0x101820, metalness: 0, roughness: 0.04, transparent: true, opacity: 0.7, envMapIntensity: 1.4 });
-  m.Rim = new THREE.MeshStandardMaterial({ name: 'Rim', color: 0xc9ced8, metalness: 0.9, roughness: 0.22 });
+  // Physical like the body so a wheel takes every paint finish (clearcoat, pearl, candy).
+  m.Rim = new THREE.MeshPhysicalMaterial({ name: 'Rim', color: 0xc9ced8, metalness: 0.75, roughness: 0.32 });
   m.Tire = new THREE.MeshStandardMaterial({ name: 'Tire', color: 0x141414, roughness: 0.92 });
   m.HeadLight = new THREE.MeshStandardMaterial({ name: 'HeadLight', color: 0xffffff, emissive: 0xeaf2ff, emissiveIntensity: 1.3 });
   m.TailLight = new THREE.MeshStandardMaterial({ name: 'TailLight', color: 0x330000, emissive: 0xff1a2a, emissiveIntensity: 1.4 });
@@ -91,7 +96,7 @@ export function createCarMaterials(envMap: THREE.Texture | null = null): CarMate
   for (const k of ['Paint', 'Trim', 'Black', 'Chrome', 'Interior', 'Grille'] as const) m[k].side = THREE.DoubleSide;
   // Cars carry their own (stronger) environment reflections so they read clearly at night.
   if (envMap) {
-    const boost: Partial<Record<MaterialName, number>> = { Paint: 1.9, Trim: 1.3, Black: 1, Chrome: 2.2, Glass: 1.7, Rim: 1.8, Tire: 0.8, Interior: 0.6 };
+    const boost: Partial<Record<MaterialName, number>> = { ...PAINT_ENV, Trim: 1.3, Black: 1, Chrome: 2.2, Glass: 1.7, Tire: 0.8, Interior: 0.6 };
     for (const k of MATERIAL_NAMES) {
       const mat = m[k] as THREE.MeshStandardMaterial;
       mat.envMap = envMap;
@@ -102,7 +107,7 @@ export function createCarMaterials(envMap: THREE.Texture | null = null): CarMate
   // Brakes: the drilled face darkens the holes and the bump map dents them; the rotor glows while braking.
   const rotor = rotorTexture();
   m.Rotor = new THREE.MeshStandardMaterial({ name: 'Rotor', color: 0xc4c7cc, metalness: 0.7, roughness: 0.45, map: rotor, bumpMap: rotor, bumpScale: 1.2, emissive: 0xff6a1a, emissiveIntensity: 0, envMap, envMapIntensity: 1.4 });
-  m.Caliper = new THREE.MeshStandardMaterial({ name: 'Caliper', color: 0xc41e3a, metalness: 0.35, roughness: 0.45, envMap, envMapIntensity: 1.2 });
+  m.Caliper = new THREE.MeshPhysicalMaterial({ name: 'Caliper', color: 0xc41e3a, metalness: 0, roughness: 0.28, envMap, envMapIntensity: PAINT_ENV.Caliper });
   return m;
 }
 
@@ -114,27 +119,32 @@ const FINISH: Record<PaintFinish, Partial<THREE.MeshPhysicalMaterialParameters>>
   candy: { metalness: 0.55, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.0, iridescence: 0, sheen: 0, specularIntensity: 1 },
 };
 
-export function applyVisualToMaterials(m: CarMaterialSet, v: VisualBuild, braking = false): void {
-  const paint = m.Paint as THREE.MeshPhysicalMaterial;
-  const f = FINISH[v.paint.finish];
-  paint.setValues(f);
-  paint.iridescenceThicknessRange = [180, 760];
-  paint.sheenColor.set(0xffffff);
-  const base = new THREE.Color(v.paint.color);
-  if (v.paint.finish === 'candy') {
-    // Deep clearcoat over a tinted base: darker body, colored reflections.
-    paint.color.copy(base).multiplyScalar(0.55);
-    paint.specularColor.copy(base).lerp(new THREE.Color(1, 1, 1), 0.25);
-    paint.envMapIntensity = 2.5;
+const WHITE = new THREE.Color(1, 1, 1);
+
+/** Paint a physical material: the finish's surface, then the color (a candy finish tints its reflections). */
+function applyPaint(mat: THREE.MeshPhysicalMaterial, p: Paint, env: number): void {
+  mat.setValues(FINISH[p.finish]);
+  mat.iridescenceThicknessRange = [180, 760];
+  mat.sheenColor.set(0xffffff);
+  mat.color.set(p.color);
+  if (p.finish === 'candy') {
+    // Deep clearcoat over a tinted base: darker base, colored reflections.
+    mat.specularColor.copy(mat.color).lerp(WHITE, 0.25);
+    mat.color.multiplyScalar(0.55);
+    mat.envMapIntensity = env * (2.5 / 1.9);
   } else {
-    paint.color.copy(base);
-    paint.specularColor.set(0xffffff);
-    paint.envMapIntensity = 1.9;
+    mat.specularColor.set(0xffffff);
+    mat.envMapIntensity = env;
   }
-  paint.needsUpdate = true;
+  mat.needsUpdate = true;
+}
+
+export function applyVisualToMaterials(m: CarMaterialSet, v: VisualBuild, braking = false): void {
+  applyPaint(m.Paint as THREE.MeshPhysicalMaterial, v.paint, PAINT_ENV.Paint);
+  applyPaint(m.Rim as THREE.MeshPhysicalMaterial, v.wheels.paint, PAINT_ENV.Rim);
+  applyPaint(m.RimRear as THREE.MeshPhysicalMaterial, v.wheels.rearPaint, PAINT_ENV.Rim);
+  applyPaint(m.Caliper as THREE.MeshPhysicalMaterial, v.calipers, PAINT_ENV.Caliper);
   (m.Trim as THREE.MeshStandardMaterial).color.set(v.trimColor);
-  (m.Rim as THREE.MeshStandardMaterial).color.set(v.wheels.color);
-  (m.RimRear as THREE.MeshStandardMaterial).color.set(v.wheels.rearColor);
   const glass = m.Glass as THREE.MeshPhysicalMaterial;
   glass.color.set(v.tint.color).lerp(new THREE.Color(0x8fa0b0), 1 - v.tint.darkness);
   glass.opacity = 0.35 + v.tint.darkness * 0.62;

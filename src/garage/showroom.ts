@@ -415,7 +415,8 @@ function liftVisual(carId: string, paint: string, finish: PaintFinish, trim: str
     const pick = Math.floor(noise(seed * 17 + j * 5) * (list.length + 1));
     v.parts[slot] = pick < list.length ? list[pick].id : null;
   });
-  v.wheels.color = v.wheels.rearColor = seed % 2 ? '#1a1b1f' : '#c9ced8';
+  v.wheels.paint = seed % 2 ? { color: '#1a1b1f', finish: 'gloss' } : { color: '#c9ced8', finish: 'metallic' };
+  v.wheels.rearPaint = { ...v.wheels.paint };
   v.stance.rideHeight = -0.03;
   return v;
 }
