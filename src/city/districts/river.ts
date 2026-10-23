@@ -403,6 +403,28 @@ export function distToBridge(br: Bridge, x: number, z: number): number {
   return distToPath(br.pts, x, z);
 }
 
+/** The outer pier columns of a bent stand this far inside the parapet lines (m). */
+const PIER_EDGE = 1.2;
+
+/** Half the spread of a bent's columns across the deck (m): the outer columns stand at +-pierReach. */
+export function pierReach(br: Bridge): number {
+  return br.dk - PIER_EDGE;
+}
+
+/**
+ * Offsets across the deck (w, m) of the pier columns of one bent: the outer
+ * ones at +-pierReach, the rest evenly between about pierSpacing apart (one
+ * on the axis when only one fits). The renderer's girders follow them
+ * (render/districts/river.ts).
+ */
+export function pierOffsets(br: Bridge): number[] {
+  const reach = pierReach(br);
+  const n = Math.max(1, Math.floor((2 * reach) / CFG.pierSpacing));
+  const out: number[] = [];
+  for (let k = 0; k < n; k++) out.push(n === 1 ? 0 : -reach + ((2 * reach) * k) / (n - 1));
+  return out;
+}
+
 /**
  * Point on the deck polyline offset `off` to its left (toward +w) where
  * l = lTarget, by bisection along the offset segments (extended 60 m past
@@ -1175,9 +1197,7 @@ export const riverModule: DistrictModule = {
         gapsBySide[s].push([Math.min(xa, xb) - 0.3, Math.max(xa, xb) + 0.3]);
         // Piers at the floor edge, square to the deck, from one parapet to the other.
         const lp = s * (F - CFG.pierInset);
-        const n = Math.max(1, Math.floor((2 * (br.dk - 1.2)) / CFG.pierSpacing));
-        for (let k = 0; k < n; k++) {
-          const w = n === 1 ? 0 : -(br.dk - 1.2) + ((2 * (br.dk - 1.2)) * k) / (n - 1);
+        for (const w of pierOffsets(br)) {
           const c = bridgePoint(p, br, w, lp);
           const h = CFG.pier / 2;
           const square = [

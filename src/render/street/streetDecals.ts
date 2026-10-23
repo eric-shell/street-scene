@@ -10,6 +10,12 @@
  * makeStreetDecalAtlas) with a matching roughness atlas, so tar and oil gloss
  * while paint stays matte: one draw call for the decals, one for the puddles
  * (a mirror material of their own). Seeded from the world, render only.
+ *
+ * The river's channel and ramp edges get nothing: the river renderer paints
+ * its own floor, and a decal draped on the terrain under a bridge deck would
+ * hang at deck level 4 m over the floor (the terrain there is the deck,
+ * World.heightAt without a body height). The route's rubber samples the
+ * lower level at a corner on the channel floor for the same reason.
  */
 import * as THREE from 'three';
 import type { World } from '../../city/world';
@@ -20,7 +26,7 @@ import { GeoBuilder } from '../geoBuilder';
 import { DECAL_ATLAS_SIZE, DECAL_CELLS, DecalKind, AtlasCell } from '../textures/textures';
 import { baysByEdge } from '../../city/busBays';
 import { bayMouth } from './busBays';
-import { isBendNode } from '../../city/roadGraph';
+import { isBendNode, isRiverEdge } from '../../city/roadGraph';
 
 export interface DecalOptions {
   /** Multiplies every density (graphics tier). */
@@ -93,6 +99,8 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
   const g = world.graph;
   const mouths = world.blocks.mouths;
   const h = world.heightAt;
+  /** The channel floor under a bridge deck (the same ground as `h` everywhere else). */
+  const hLow = (x: number, z: number) => world.heightAt(x, z, -Infinity);
   const gb = new GeoBuilder(true);
   const pb = new GeoBuilder(true);
   const vents: THREE.Vector3[] = [];
@@ -106,7 +114,7 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
    * (sin yaw, cos yaw). The cell's top is the heading: text reads for a driver
    * facing that way, the cell's right is the driver's right.
    */
-  const quad = (out: GeoBuilder, kind: DecalKind, cx: number, cz: number, yaw: number, w: number, len: number, color: THREE.Color, lift: number = DECAL.lift) => {
+  const quad = (out: GeoBuilder, kind: DecalKind, cx: number, cz: number, yaw: number, w: number, len: number, color: THREE.Color, lift: number = DECAL.lift, ground = h) => {
     const uv = cellUv(DECAL_CELLS[kind]);
     const fx = Math.sin(yaw);
     const fz = Math.cos(yaw);
@@ -120,7 +128,7 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
     ];
     const ids = corners.map(([x, z, u, v]) => {
       const [nx, ny, nz] = normalAt(x, z);
-      return out.vertex(x, h(x, z) + lift, z, nx, ny, nz, u, v, color);
+      return out.vertex(x, ground(x, z) + lift, z, nx, ny, nz, u, v, color);
     });
     out.quadFacing(ids[0], ids[1], ids[2], ids[3], 0, 1, 0);
   };
@@ -175,6 +183,7 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
 
   // ---------- per edge ----------
   g.edges.forEach((e, ei) => {
+    if (isRiverEdge(e)) return;
     const m = mouths[ei];
     const alley = e.kind === 'backAlley' || e.kind === 'alley';
     const a = { x: (m.aP.curb.x + m.aN.curb.x) / 2, z: (m.aP.curb.z + m.aN.curb.z) / 2 };
@@ -381,7 +390,8 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
   });
 
   // ---------- rubber on the route ----------
-  rubberOnRoute(world, rng, gb, quad, D);
+  const quadLow: Quad = (out, kind, cx, cz, yaw, w, len, color, lift) => quad(out, kind, cx, cz, yaw, w, len, color, lift, hLow);
+  rubberOnRoute(world, rng, gb, quad, quadLow, D);
 
   const decalMat = new THREE.MeshStandardMaterial({
     map: atlas.map,
@@ -438,13 +448,18 @@ type Quad = (out: GeoBuilder, kind: DecalKind, cx: number, cz: number, yaw: numb
  * real corner (outside of the turn, where the line starts), a rubbered
  * fillet through the apex, exit streaks where the car runs wide, and burnout
  * marks off the grid slots. The fillet is a circular arc tangent to both
- * legs, which is close enough to the AI's smoothed line.
+ * legs, which is close enough to the AI's smoothed line. A corner at a node
+ * of the river's own (a channel bend, an entrance foot) is on the channel
+ * floor, so its rubber uses `quadLow`: a braking mark there can reach under a
+ * bridge deck, where the terrain is the deck.
  */
-function rubberOnRoute(world: World, rng: Rng, gb: GeoBuilder, quad: Quad, D: number): void {
+function rubberOnRoute(world: World, rng: Rng, gb: GeoBuilder, quadHigh: Quad, quadLow: Quad, D: number): void {
   const route = world.route;
   const P = route.points;
   const n = P.length;
   const dark = (k: number) => new THREE.Color(k, k, k);
+  const g = world.graph;
+  const floorNodes = new Set(g.nodes.filter((nd) => nd.edges.length > 0 && nd.edges.every((eid) => isRiverEdge(g.edges[eid]))).map((nd) => `${nd.x},${nd.z}`));
   const from = route.closed ? 0 : 1;
   const to = route.closed ? n - 1 : n - 1;
   for (let i = from; i < to; i++) {
@@ -462,6 +477,7 @@ function rubberOnRoute(world: World, rng: Rng, gb: GeoBuilder, quad: Quad, D: nu
     const turn = Math.atan2(d1x * d2z - d1z * d2x, d1x * d2x + d1z * d2z);
     const deg = (Math.abs(turn) * 180) / Math.PI;
     if (deg < DECAL.rubberTurn) continue;
+    const quad = floorNodes.has(`${b.x},${b.z}`) ? quadLow : quadHigh;
     const sgn = turn > 0 ? 1 : -1;
     const half = route.segWidth[i === 0 ? route.segWidth.length - 1 : i - 1] / 2;
     const halfOut = route.segWidth[Math.min(route.segWidth.length - 1, i)] / 2;
@@ -524,6 +540,6 @@ function rubberOnRoute(world: World, rng: Rng, gb: GeoBuilder, quad: Quad, D: nu
     const fx = Math.sin(slot.yaw);
     const fz = Math.cos(slot.yaw);
     const len = rng.range(5, 9);
-    quad(gb, 'skid', slot.x + fx * (len / 2 + 1), slot.z + fz * (len / 2 + 1), slot.yaw, 2.0, len, dark(rng.range(0.02, 0.06)));
+    quadHigh(gb, 'skid', slot.x + fx * (len / 2 + 1), slot.z + fz * (len / 2 + 1), slot.yaw, 2.0, len, dark(rng.range(0.02, 0.06)));
   }
 }

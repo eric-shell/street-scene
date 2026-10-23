@@ -9,7 +9,9 @@
  *  - steel H columns on concrete footings (the footing is the sim's pillar
  *    wall) with a bent cap under the deck and knee braces out to the
  *    cantilevered street side; a through truss where the line crosses the
- *    river channel and the columns cannot stand;
+ *    river channel and the columns cannot stand; a gravel yard on the
+ *    ground wherever the deck cuts through a block (the strip the sim keeps
+ *    buildings off), so the lamps' pools land on lit ground there;
  *  - stations: an island platform the street side track swings out around,
  *    a corrugated canopy with fluorescent strips and lit name boards, the
  *    station house hung under the deck, and enclosed stairs down to the
@@ -38,6 +40,7 @@ import * as THREE from 'three';
 import { CITY } from '../../city/config';
 import { riverCenter } from '../../city/districts/river';
 import type { Area } from '../../city/districts/types';
+import type { Vec2 } from '../../sim/math';
 import { GeoBuilder } from '../geoBuilder';
 import { CurvePoint, RAIL, RailCurve, curvePoint, dirOn, projectOnCurve, sampleCurve, stationSwing, trackLateral } from '../../city/railCurve';
 import { elCurve } from '../../city/districts/subway';
@@ -45,7 +48,7 @@ import { TICK_HZ } from '../../sim/constants';
 import { Band, STATION_NAMES, SUBWAY_SIGN, makeSteelAtlas, makeTieTexture, signBand, steelBand } from '../textures/railTextures';
 import { createTrains } from '../traffic/trains';
 import type { DistrictKit, DistrictRenderer } from './kit';
-import { col, cylinder } from './kit';
+import { col, cylinder, groundVertex } from './kit';
 import { washMaterial } from '../materialFx';
 
 interface V3 {
@@ -72,6 +75,8 @@ const TINT = {
   yellow: col(0xffd23a, 1.5),
   ballast: col(0x6a645c, 0.55),
   roofUnder: col(0xffffff, 0.55),
+  /** The gravel yard under the deck where it cuts through a block (the kit's plain lit ground). */
+  yard: col(0x5a5446),
 } as const;
 
 /** Lamp colors (unlit glow builder). */
@@ -198,6 +203,14 @@ const EL = {
   truss: 4.6,
   /** Below this tie top clearance over the ground the track runs at grade: ballast, no deck steel (m). */
   atGrade: 1.6,
+  /**
+   * The yard under the deck through the blocks: drawn this far (m) beyond the sim's exclusion strip
+   * (out to the backs of the neighbouring buildings, which hide what runs under them, so the block's
+   * open interior reads as a lot from the street), in cells this long (m), this high off the ground (m).
+   */
+  yardMargin: 10,
+  yardCell: 3,
+  yardLift: 0.03,
   /** At grade: ballast shoulder beyond the deck edges and the fence beyond that (m), fence height (m). */
   shoulder: 0.5,
   fenceOut: 1.4,
@@ -322,6 +335,7 @@ export const subwayRenderer: DistrictRenderer = {
       const curve = elCurve(a, b, kit.h);
       curve.stations.forEach((st, i) => (st.name = ((a.params.seed ?? 0) + i) % STATION_NAMES.length));
       buildLine(kit, a, curve, steel, open ? bed : null, lights, open ? pools : null);
+      yards(kit, b.exclusions);
       const trains = createTrains(kit.group, curve, a.params.seed ?? 1, kit.quality, kit.track);
       kit.track(trains);
       kit.animate((time) => trains.update(kit.simTick(time) / TICK_HZ));
@@ -871,5 +885,55 @@ function buildLine(kit: DistrictKit, area: Area, c: RailCurve, steel: GeoBuilder
     block(-34, -1.2, half - 0.6, half, g - 0.5, y + 5.8);
     block(-34, -1.2, -half, half, y + 5.0, y + 5.8);
     block(-34.6, -34, -half, half, g - 0.5, y + 5.8);
+  }
+}
+
+/**
+ * The ground under the deck where the line cuts through a block (a swing, a
+ * missing street, a bluff's detour): the sim keeps buildings off that strip
+ * (the build's exclusions, 12 m quads along the curve), so without this the
+ * only ground there is the coarse ground plane, black at night with the
+ * lamps' pools floating on it. A gravel yard draped on the terrain, a little
+ * wider than the strip, in cells that skip the streets the strip crosses and
+ * any district ground (a park's grass) that already covers them.
+ */
+function yards(kit: DistrictKit, strips: Vec2[][]): void {
+  const world = kit.world;
+  const across = (a: Vec2, b: Vec2): Vec2 => {
+    const l = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+    return { x: (b.x - a.x) / l, z: (b.z - a.z) / l };
+  };
+  for (const q of strips) {
+    if (q.length !== 4) continue;
+    // Corners run start-left, end-left, end-right, start-right (city/districts/subway.ts build): widen across.
+    const w0 = across(q[0], q[3]);
+    const w1 = across(q[1], q[2]);
+    const m = EL.yardMargin;
+    const c = [
+      { x: q[0].x - w0.x * m, z: q[0].z - w0.z * m },
+      { x: q[1].x - w1.x * m, z: q[1].z - w1.z * m },
+      { x: q[2].x + w1.x * m, z: q[2].z + w1.z * m },
+      { x: q[3].x + w0.x * m, z: q[3].z + w0.z * m },
+    ];
+    /** Bilinear point: s along the strip (0 start, 1 end), t across (0 left, 1 right). */
+    const at = (s: number, t: number): Vec2 => {
+      const lx = c[0].x + (c[1].x - c[0].x) * s;
+      const lz = c[0].z + (c[1].z - c[0].z) * s;
+      const rx = c[3].x + (c[2].x - c[3].x) * s;
+      const rz = c[3].z + (c[2].z - c[3].z) * s;
+      return { x: lx + (rx - lx) * t, z: lz + (rz - lz) * t };
+    };
+    const along = Math.hypot(c[1].x - c[0].x, c[1].z - c[0].z);
+    const wide = Math.hypot(c[3].x - c[0].x, c[3].z - c[0].z);
+    const ns = Math.max(1, Math.ceil(along / EL.yardCell));
+    const nt = Math.max(1, Math.ceil(wide / EL.yardCell));
+    for (let i = 0; i < ns; i++) {
+      for (let j = 0; j < nt; j++) {
+        const mid = at((i + 0.5) / ns, (j + 0.5) / nt);
+        if (world.surfaceAt(mid.x, mid.z) !== 'offroad') continue;
+        const v = [at(i / ns, j / nt), at((i + 1) / ns, j / nt), at((i + 1) / ns, (j + 1) / nt), at(i / ns, (j + 1) / nt)].map((p) => groundVertex(kit, kit.ground, p.x, p.z, EL.yardLift, TINT.yard));
+        kit.ground.quadFacing(v[0], v[1], v[2], v[3], 0, 1, 0);
+      }
+    }
   }
 }
