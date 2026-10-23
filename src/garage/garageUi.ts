@@ -362,7 +362,7 @@ export class GarageScreen {
       { class: 'garage rail' },
       h('div', { class: 'rail__bg', 'aria-hidden': 'true' }),
       h('div', { class: 'rail__edge', 'aria-hidden': 'true' }),
-      h('div', { class: 'garage__panel' }, stepsEl, h('div', { class: 'garage__foot' }, this.saveBtn, this.revertBtn)),
+      h('div', { class: 'garage__panel' }, stepsEl, h('div', { class: 'garage__foot' }, this.revertBtn, this.saveBtn)),
       this.help.el,
       this.stageBar(),
     );

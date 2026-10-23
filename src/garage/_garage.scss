@@ -148,8 +148,8 @@ $step-rise: 0.58s, 0.45s, 0.32s;
       scrollbar-width: none;
     }
   }
-  /* The foot under both steps: Save across the rail, the discard button after it. Save is the screen's primary
-     action while the build has unsaved changes and a quiet plate reading "Saved" without. */
+  /* The foot under both steps: the discard button leads, square, and Save fills the rest of the rail. Save is the
+     screen's primary action while the build has unsaved changes and a quiet plate reading "Saved" without. */
   &__foot {
     display: flex;
     gap: 6px;
@@ -160,6 +160,12 @@ $step-rise: 0.58s, 0.45s, 0.32s;
       &:focus-visible {
         background: var(--plate-hover);
       }
+    }
+    /* Stretched to the row's height, so aspect-ratio makes its width match it; the icon centers in the square. */
+    .btn--icon {
+      flex: none;
+      aspect-ratio: 1;
+      justify-content: center;
     }
   }
   /* Caps in both states, so the label keeps its size when the button lights. */
