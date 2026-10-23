@@ -138,13 +138,16 @@ const PART_ID = /^[A-Za-z0-9_\-.]{1,64}$/;
 const RENAMED_CARS: Record<string, string> = { gc14: 'protoHatch', s64: 'protoCompact' };
 
 /**
- * Wheels retired for the shared wheel set (docs/carWheels.md). The new wheels took the old ones'
- * names, so a saved build keeps the name it showed.
+ * Wheels retired for the shared wheel set (docs/carWheels.md): the per car wheels of the IceMaan
+ * cars, then the first donor set (Kiba ... Arashi), each mapped to the Work wheel nearest its
+ * style, so a saved build keeps a wheel of the kind it showed.
  */
 const RENAMED_WHEELS: Record<string, string> = {
-  wheel_protoCompact_0: 'wheel_kiba', wheel_protoCompact_1: 'wheel_hoshi', wheel_protoCompact_2: 'wheel_rensa', wheel_protoCompact_3: 'wheel_tsuki',
-  wheel_protoHatch_1: 'wheel_ginga', wheel_protoHatch_2: 'wheel_hibana', wheel_protoHatch_3: 'wheel_senko', wheel_protoHatch_4: 'wheel_arashi',
-  wheel_proto_5spoke: 'wheel_arashi', wheel_proto_deepdish: 'wheel_rensa',
+  wheel_protoCompact_0: 'wheel_kumo', wheel_protoCompact_1: 'wheel_tsurugi', wheel_protoCompact_2: 'wheel_yari', wheel_protoCompact_3: 'wheel_hagane',
+  wheel_protoHatch_1: 'wheel_kaze', wheel_protoHatch_2: 'wheel_hari', wheel_protoHatch_3: 'wheel_kagero', wheel_protoHatch_4: 'wheel_shinobi',
+  wheel_proto_5spoke: 'wheel_shinobi', wheel_proto_deepdish: 'wheel_yari',
+  wheel_kiba: 'wheel_kumo', wheel_hoshi: 'wheel_tsurugi', wheel_rensa: 'wheel_yari', wheel_tsuki: 'wheel_hagane',
+  wheel_ginga: 'wheel_kaze', wheel_hibana: 'wheel_hari', wheel_senko: 'wheel_kagero', wheel_arashi: 'wheel_shinobi',
 };
 
 /** A part id under its current name; null for whole-body kits that were split into bumpers and skirts. */

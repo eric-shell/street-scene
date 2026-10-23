@@ -65,10 +65,10 @@ Name the Blender material exactly that (e.g. `Paint`). Suffixes like `Paint.001`
 | frontBumper, rearBumper | 3000 |
 | sideSkirts, hood, roof | 2000 |
 | spoiler | 1500 |
-| wheels | 3500 |
+| wheels | 12000 |
 | body | 12000 |
 
-Keep it low poly. Flat shading with a few hundred triangles looks right next to the Proto cars.
+Keep it low poly. Flat shading with a few hundred triangles looks right next to the Proto cars. Wheels are the exception: the garage shows them full screen, so a wheel keeps its donor's face at about 6,000 triangles with a turned lip, house bolts and the house tire (`docs/carWheels.md`), 9,000 to 11,500 in all.
 
 ## 5. File naming
 

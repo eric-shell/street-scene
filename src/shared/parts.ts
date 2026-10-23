@@ -40,7 +40,7 @@ export const TRI_BUDGETS: Record<PartSlot, number> = {
   spoiler: 1500,
   hood: 2000,
   roof: 2000,
-  wheels: 4500,
+  wheels: 12000,
 };
 
 export interface PartEntry {

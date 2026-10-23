@@ -83,11 +83,15 @@ Source: `assets/source/eshell/protoWagon/protoWagon.blend` (authored in car spac
 
 Source: `assets/source/eshell/wheels/wheels.blend` (scripts/blender/carWheels.py).
 
-- `wheel_arashi` Arashi: 1246.9 KB, 2819 tris.
-- `wheel_ginga` Ginga: 1238.2 KB, 2740 tris.
-- `wheel_hibana` Hibana: 1245.7 KB, 2739 tris.
-- `wheel_hoshi` Hoshi: 1251.3 KB, 3840 tris.
-- `wheel_kiba` Kiba: 1250.2 KB, 4000 tris.
-- `wheel_rensa` Rensa: 1263.3 KB, 4160 tris.
-- `wheel_senko` Senko: 1233.2 KB, 2819 tris.
-- `wheel_tsuki` Tsuki: 1271.8 KB, 4159 tris.
+- `wheel_hagane` Hagane: 210.7 KB, 9005 tris.
+- `wheel_hari` Hari: 243.0 KB, 9642 tris.
+- `wheel_kagero` Kagero: 208.1 KB, 9495 tris.
+- `wheel_kasumi` Kasumi: 214.9 KB, 9228 tris.
+- `wheel_kaze` Kaze: 211.3 KB, 9338 tris.
+- `wheel_kumo` Kumo: 228.1 KB, 9191 tris.
+- `wheel_raiden` Raiden: 217.0 KB, 9038 tris.
+- `wheel_ryusei` Ryusei: 249.1 KB, 9716 tris.
+- `wheel_shinobi` Shinobi: 251.8 KB, 11476 tris.
+- `wheel_tsume` Tsume: 214.2 KB, 10651 tris.
+- `wheel_tsurugi` Tsurugi: 222.4 KB, 9341 tris.
+- `wheel_yari` Yari: 243.2 KB, 10539 tris.

@@ -43,14 +43,19 @@
         "height": 1.28
       },
       "materialMap": {},
-      "defaultWheel": "wheel_kiba",
+      "defaultWheel": "wheel_yari",
       "defaultPaint": "#1f6bff",
       "selectable": true,
       "engine": {
         "layout": "VR6",
         "aspiration": "na",
         "position": "front",
-        "voice": { "headers": "unequal", "headerSpread": 0.35, "pipes": 1, "muffler": "sport" }
+        "voice": {
+          "headers": "unequal",
+          "headerSpread": 0.35,
+          "pipes": 1,
+          "muffler": "sport"
+        }
       }
     },
     {
@@ -94,14 +99,17 @@
         "height": 1.12
       },
       "materialMap": {},
-      "defaultWheel": "wheel_hoshi",
+      "defaultWheel": "wheel_ryusei",
       "defaultPaint": "#ff6a00",
       "selectable": true,
       "engine": {
         "layout": "R2",
         "aspiration": "turbo",
         "position": "front",
-        "voice": { "pipes": 1, "muffler": "sport" }
+        "voice": {
+          "pipes": 1,
+          "muffler": "sport"
+        }
       }
     },
     {
@@ -145,14 +153,17 @@
         "height": 1.31
       },
       "materialMap": {},
-      "defaultWheel": "wheel_senko",
+      "defaultWheel": "wheel_kumo",
       "defaultPaint": "#7d8186",
       "selectable": true,
       "engine": {
         "layout": "V6",
         "aspiration": "turbo",
         "position": "front",
-        "voice": { "pipes": 2, "muffler": "sport" }
+        "voice": {
+          "pipes": 2,
+          "muffler": "sport"
+        }
       }
     },
     {
@@ -196,7 +207,7 @@
         "height": 1.3
       },
       "materialMap": {},
-      "defaultWheel": "wheel_arashi",
+      "defaultWheel": "wheel_shinobi",
       "defaultPaint": "#d11f3f",
       "selectable": false,
       "engine": {

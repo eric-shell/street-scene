@@ -1,28 +1,37 @@
 """
-Wheels from donor models: one real wheel model per Street Scene wheel (Sketchfab, CC BY), made generic
-and fitted to one house tire, so every wheel shares a tire, a size and a construction and
-differs only in its face (docs/carWheels.md).
+Wheels from donor models: one real wheel model per Street Scene wheel (Sketchfab, CC BY), kept as
+the wheel it is and fitted to one house tire, so every wheel shares a tire and a size and keeps
+its own face, lip and barrel (docs/carWheels.md).
 
     exec(open(REPO + '/scripts/blender/carKit.py').read())
     exec(open(REPO + '/scripts/blender/carRefs.py').read())
-    exec(open(REPO + '/scripts/blender/carDonors.py').read())     # cull_hidden, shade_from_source, ...
+    exec(open(REPO + '/scripts/blender/carDonors.py').read())     # cull_hidden, shade_from_source, meshopt
     exec(open(REPO + '/scripts/blender/carWheels.py').read())
     import_asset(source='sketchfab', id=WHEELS[name]['uid'], target_size=0.65)   # MCP tool
     w = wheel(name, '<import root>')     # -> wheels:Wheels / wheel_<name>
     wheel_report(list(WHEELS))
 
-Material names on wheel models are useless (`Material.026`, `blinn1`, `MainColor`), so the
-pipeline works from geometry: the axle is the axis the other two are round about; the scene
-junk (display stands, logo planes, backdrops) goes by name or by being far from round; the
-source tire, if any, is the island whose tread covers the middle of its width at the outer
-radius; everything else is wheel. The wheel is scaled so its lip sits on the house tire's bead,
-squeezed to fit the tire's width and turned to face +X; its barrel and lip are replaced by one
-turned house ring, the hub gets a house center cap (covering any logo), and what is left of the
-donor (the spokes and hub) is reduced to RIM_BUDGET and shaded from its own authored normals.
-A wheel whose character is its lip (a polished, riveted multi-piece lip, a stepped dish) turns
-its ring from the donor's own profile instead (recipe `lip: 'donor'`): the house ring would wipe
-out exactly what makes it that wheel, and a collapsed donor lip comes out polygonal. The donor's
-rivets stay, and its spokes get LIP_BUDGET.
+Material and object names on wheel models carry no meaning (`Material.026`, `Object_12`), so the
+pipeline works from geometry. The import's meshes are welded (several arrive shattered into
+thousands of islands) and every island is classified by where it sits on the wheel: a `ring`
+reaches the lip radius and never comes inside the dish (the lip and the barrel), a `cap` sits in
+the hub, a `bolt` is one of a circle of small islands at the same radius, `decal`s are flat (logo
+planes, pinstripes, glass over a badge) and go, and everything else is `face` (spokes, hub,
+flanges). The donor's own lip and barrel stay, so a deep dish is as deep and a stepped lip as
+stepped as the author made it; the rings of bolts, which carry most of a donor's triangles
+(500,000 on the VS-TX), are replaced by house hex heads at the bolts' own circle, radius and
+count; the house tire is lathed around the lip; a house center cap fills a hub nothing covers.
+
+Fit: the wheel is scaled so its lip edge sits on the house tire's bead (BEAD x TIRE_R, a 16 inch
+wheel on the 0.28 m tire), the lip edge is set just proud of the tire's sidewall, and what is
+visible from the lip edge back to the face keeps its depth: only the barrel behind the face is
+squeezed to end at the tire's back bead, since nothing sees it.
+
+Reduce: faces hidden from every direction forward of the car's centerline go (nobody sees a wheel
+from inside the car), then each kind is collapsed to its budget (BUDGETS: the face takes most)
+and shaded from the donor's authored normals. Materials: face and hub `Rim` (the player's wheel
+colour), the ring `Chrome` on a bolted (multi-piece) wheel and `Rim` on a one-piece, bolts and
+caps `Chrome`, the tire `Tire`; a source material named black stays `Black`.
 
 Wheel space (exportCar.py): center at the origin, axle along X, the face toward +X. The game
 scales a wheel so the tire's outer radius meets the car's wheel radius and remaps the wheel for
@@ -33,40 +42,48 @@ import re
 TIRE_R = 0.28        # m, house tire outer radius (standardWheel)
 TIRE_W = 0.24        # m, house tire width
 BEAD = 0.74          # wheel lip radius / tire radius: a 16 inch wheel on a 0.28 m tire
-TIRE_SEG = 40        # segments around the house tire
-RIM_BUDGET = 1300    # triangles for the donor face (spokes, hub); the house ring adds TIRE_SEG * 12, the tire TIRE_SEG * 24
-LIP_BUDGET = 2000    # triangles for the donor face of a `lip: 'donor'` wheel: mesh and multi-spoke faces shard at RIM_BUDGET
-LIP_BANDS = 10       # radial bands sampled for a donor lip profile; the turned lip adds TIRE_SEG * (LIP_BANDS + 4) * 2
-CAP = 0.2            # house center cap radius / wheel lip radius
+TIRE_SEG = 40        # segments around the house tire (960 triangles)
+X_LIP = TIRE_W * 0.45      # m, where the lip edge sits: just proud of the tire's bead (TIRE_W * 0.42)
+X_BACK = -TIRE_W * 0.5     # m, where the barrel ends: the tire's back bead
+BUDGETS = {'face': 6000, 'ring': 2400, 'cap': 700}   # triangles per kind after the collapse (the ring's is for the pre-cull collapse; it is turned afterwards)
+RING_SEG = 56        # segments around the turned lip and barrel (a 40-gon shows on a chrome lip up close)
+RING_BANDS = 26      # profile points sampled along the lip's visible surface
+BOLT_SEG = 6         # hex heads
+BOLT_MAX = 48        # more peaks than this on a bolt circle is a knurl, not bolts
+WELD = 2e-5          # m, vertices closer than this (in the import's 0.65 m scale) are one
 
-# Dropped from every wheel by material or object name: display scenes, branding, brakes.
-# Whole words only: `MaterialStandart` is a wheel, `GLTF_SceneRootNode` holds everything.
-JUNK = r'(?i)(?<![a-z])(stand|ground|plane|shadow|floor|backdrop|logo|badge|emblem|decal|brake|caliper|calliper|disc|disk|rotor)(?![a-z])'
+# Dropped from every wheel by material or object name: display scenes, branding, brakes, valves.
+# Whole words only: `MaterialStandart` is a wheel and `GLTF_SceneRootNode` holds everything.
+JUNK = r'(?i)(?<![a-z])(stand|ground|plane|shadow|floor|backdrop|logo|badge|emblem|decal|brake|caliper|calliper|disc|disk|rotor|valve)(?![a-z])'
 
+# The Work set (jonver87, CC BY 4.0): clean showpiece models without tires, each piece its own
+# mesh. Recipe fields: `face` 1 / -1 forces the face direction when the normal vote gets it wrong,
+# `lip` 'chrome' / 'rim' overrides the ring's finish, `drop` a regex of material or object names
+# to drop, `bolts` 0 to keep no bolt circle.
 WHEELS = {
-    'kiba': {'name': 'BBS RS16 style mesh', 'uid': '4e50d45e5ff04d00927a50c150e088c1', 'author': 'TinoD2', 'license': 'CC Attribution',
-             'drop': r'^Material(\.\d+)?$',   # the backdrop: Blender numbers its material per session
-             'lip': 'donor', 'dish': 0.66},   # the turned lip starts where the mesh ends; the rivets ride on it
-    'hoshi': {'name': 'Mugen M7 style seven spoke', 'uid': '3efc6a0cb9cc44d9adf24e226991a261', 'author': 'TinoD2', 'license': 'CC Attribution',
-              'lip': 'donor', 'dish': 0.8},
-    'rensa': {'name': 'Work Equip 03 style deep dish', 'uid': '58330f40b725444e8c00bdbbfd88cc98', 'author': 'TinoD2', 'license': 'CC Attribution',
-              'face': 1,   # the deep dish's barrel outweighs the thin spokes in the face-side normal vote
-              'lip': 'donor', 'dish': 0.74},
-    'tsuki': {'name': 'Work Meister S1 style three piece', 'uid': '7205c04f3cb24a7dbdaf6a304fb31f21', 'author': 'alexanderlyreo', 'license': 'CC Attribution',
-              'dish': 0.74, 'lip': 'donor'},
-    'ginga': {'name': 'Stance steel 13x10', 'uid': '6c8a9dc226b64454a3af8dc37f7359ec', 'author': 'terllok', 'license': 'CC Attribution',
-              'dish': 0.7},
-    'hibana': {'name': 'Wire rim', 'uid': 'bda093957f8e47a7b27270de6c3e0d14', 'author': '3dpeter', 'license': 'CC Attribution'},
-    'senko': {'name': 'Concept rim', 'uid': 'e36860f9f8de4d8e8429cb07007142f2', 'author': 'LagzDesign', 'license': 'CC Attribution'},
-    # (Its spokes run out to a thin plain ring, which the house ring matches; turned from its own
-    # profile, the spoke tips left slivers past the lip.)
-    'arashi': {'name': 'Five spoke rim', 'uid': '232904121fff4e558b55ce724df7e47f', 'author': 'UnforgettableName', 'license': 'CC Attribution'},
+    'kumo': {'name': 'Work VS-TX', 'uid': '31c76095a0754cb1b08591d63973a2c2', 'author': 'jonver87', 'license': 'CC Attribution'},
+    'yari': {'name': 'Work Equip 03', 'uid': '13c021b58f2b4c42ac747feb5457750b', 'author': 'jonver87', 'license': 'CC Attribution'},
+    'tsume': {'name': 'Work Equip 40', 'uid': 'ac9b1a3ffbd8400a9b364d0596fdcc56', 'author': 'jonver87', 'license': 'CC Attribution'},
+    'hari': {'name': 'Work Emitz', 'uid': '0dd4b490ee624aeda867cd5ccfe530e6', 'author': 'jonver87', 'license': 'CC Attribution'},
+    'kasumi': {'name': 'Work VS-KF', 'uid': 'f762ae9a968d4971a9c4c61922310e44', 'author': 'jonver87', 'license': 'CC Attribution'},
+    'raiden': {'name': 'Work VS-XV', 'uid': 'bb47f6dd1ab6406289c59e3c0a86be38', 'author': 'jonver87', 'license': 'CC Attribution'},
+    'ryusei': {'name': 'Work VS-XX', 'uid': '6a1c8ab8df444530a2a0ac93487cf3bd', 'author': 'jonver87', 'license': 'CC Attribution',
+               'face': -1},   # its badge sits behind the hub's center, so the badge rule turned it round
+    'shinobi': {'name': 'Work Zistance W5S', 'uid': '8a80d5dd27384671bb1beef04234f3db', 'author': 'jonver87', 'license': 'CC Attribution'},
+    'tsurugi': {'name': 'Work Schwert SC2', 'uid': '054f59d1321e41aebeffa272d4b7f863', 'author': 'jonver87', 'license': 'CC Attribution'},
+    'kaze': {'name': 'Work Equip 02', 'uid': '57f0fcea45df47188bc8531a012d3357', 'author': 'jonver87', 'license': 'CC Attribution'},
+    'hagane': {'name': 'Work Euroline DH', 'uid': 'eab967f5fcab4581bd427ddf6b79da52', 'author': 'jonver87', 'license': 'CC Attribution'},
+    'kagero': {'name': 'Work Import Label AL4', 'uid': '593aed74677d49ff953e068debce4b87', 'author': 'jonver87', 'license': 'CC Attribution'},
 }
 
 
+def _rad(co):
+    return math.hypot(co.y, co.z)
+
+
 def _gather(root, R):
-    """The import's meshes joined into one bmesh in world space, junk dropped, with each face's
-    source material name kept in `mat_names` and the authored normals in `src_normal`."""
+    """The import's meshes joined into one bmesh in world space and welded, junk dropped. Each
+    face keeps its source material name (`mat_names`) and the authored normals (`src_normal`)."""
     bm = bmesh.new()
     names = []
     top = bpy.data.objects[root]
@@ -76,7 +93,7 @@ def _gather(root, R):
         while p is not None and p is not top:
             below.append(_base(p.name))
             p = p.parent
-        if o.type != 'MESH' or any(re.search(JUNK, n) for n in below):
+        if o.type != 'MESH' or not o.data.polygons or any(re.search(JUNK, n) for n in below) or (R.get('drop') and any(re.search(R['drop'], n) for n in below)):
             continue
         me = o.data.copy()
         me.transform(o.matrix_world)
@@ -87,7 +104,6 @@ def _gather(root, R):
         mats = [m.name if m else '-' for m in me.materials] or ['-']
         t = bmesh.new()
         t.from_mesh(me)
-        t.faces.ensure_lookup_table()
         junk = [f for f in t.faces if re.search(JUNK, mats[f.material_index]) or (R.get('drop') and re.search(R['drop'], mats[f.material_index]))]
         bmesh.ops.delete(t, geom=junk, context='FACES')
         for f in t.faces:
@@ -97,6 +113,8 @@ def _gather(root, R):
         t.free()
         bm.from_mesh(me)
         bpy.data.meshes.remove(me)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=WELD)
+    bm.faces.layers.int.new('kind')   # set later; made now, since a new layer invalidates face handles
     return bm, names
 
 
@@ -120,7 +138,7 @@ def _islands(bm):
 
 
 def _frame(bm):
-    """Rotate and move so the axle is X and the wheel is centered; returns the outer radius."""
+    """Rotate and move so the axle is X and the wheel is centered on it; returns the lip radius."""
     pts = [v.co for v in bm.verts]
     lo, hi = Vector(map(min, *pts)), Vector(map(max, *pts))
     e = hi - lo
@@ -128,59 +146,162 @@ def _frame(bm):
     a = min(range(3), key=lambda i: abs(e[(i + 1) % 3] - e[(i + 2) % 3]) + (0 if e[i] < min(e[(i + 1) % 3], e[(i + 2) % 3]) else 9))
     c = (lo + hi) / 2
     rot = {0: Matrix.Identity(4), 1: Matrix.Rotation(-math.pi / 2, 4, 'Z'), 2: Matrix.Rotation(math.pi / 2, 4, 'Y')}[a]
-    m = rot @ Matrix.Translation(-c)
+    _xform(bm, rot @ Matrix.Translation(-c))
+    return max(_rad(v.co) for v in bm.verts)
+
+
+def _xform(bm, m):
+    """Transform the mesh and its authored normals together. A mirror reverses every face's
+    winding, so the faces are reversed back: winding and authored normals must agree, or the
+    hidden face cull and the shading turn the whole wheel inside out (every face wound toward
+    the back is invisible in the game, which draws the wheel single sided)."""
     bmesh.ops.transform(bm, matrix=m, verts=bm.verts)
+    if m.determinant() < 0:
+        bmesh.ops.reverse_faces(bm, faces=bm.faces[:])
+    n3 = m.to_3x3().inverted().transposed()
     sn = bm.loops.layers.float_vector['src_normal']
-    r3 = rot.to_3x3()
     for f in bm.faces:
         for l in f.loops:
-            l[sn] = r3 @ l[sn]
+            l[sn] = (n3 @ l[sn]).normalized()
     bm.normal_update()
-    return max(math.hypot(v.co.y, v.co.z) for v in bm.verts)
 
 
-def _rad(co):
-    return math.hypot(co.y, co.z)
+class _Island:
+    def __init__(self, faces, L):
+        self.faces = faces
+        vs = {v for f in faces for v in f.verts}
+        rs = [_rad(v.co) for v in vs]
+        xs = [v.co.x for v in vs]
+        self.rmin, self.rmax = min(rs) / L, max(rs) / L
+        self.xmin, self.xmax = min(xs), max(xs)
+        self.thick = (self.xmax - self.xmin) / L
+        self.tris = sum(len(f.verts) - 2 for f in faces)
+        c = sum((f.calc_center_median() for f in faces), Vector()) / len(faces)
+        self.angle = math.atan2(c.z, c.y)
+        self.kind = None
 
 
-def _split_tire(bm, R):
-    """Delete the source tire: islands reaching the outer radius whose tread (faces past 96 % of
-    it) covers the middle of the island's width. A wheel's lip reaches the outer radius only at its
-    edges. Then the rest of that tire: sidewalls modelled as their own islands, in the tread's
-    source material and outside half the radius (a bead sits near 0.75, a wheel's spokes reach far
-    inside half). Left in place they set the lip radius and shrink the wheel (Kiba's did by 13 %,
-    Rensa's by 20 %). Returns the faces deleted."""
-    doomed = []
-    islands = _islands(bm)
-    tire_mats = set()
-    for grp in islands:
-        vs = {v for f in grp for v in f.verts}
-        if max(_rad(v.co) for v in vs) < 0.97 * R or min(_rad(v.co) for v in vs) < 0.45 * R:
+def _classify(bm, L, names, R):
+    """Every island's kind: 'decal' (flat), 'ring' (lip and barrel), 'cap' (in the hub), 'bolt'
+    (small, out on the dish), else 'face'. Bolts are confirmed as circles afterwards."""
+    isl = [_Island(g, L) for g in _islands(bm)]
+    for i in isl:
+        if i.rmax < 0.2 and i.thick < 0.02 or i.thick < 0.006:
+            i.kind = 'decal'      # logo planes, badge glass, pinstripes
+        elif i.rmin > 0.6 and i.rmax > 0.95:
+            i.kind = 'ring'
+        elif i.rmax < 0.35 and i.rmin < 0.2:
+            i.kind = 'cap'
+        elif i.rmin > 0.55 and i.rmax < 0.97 and i.rmax - i.rmin < 0.12:
+            i.kind = 'bolt'      # or a flange ring the bolts sit on: the circle test tells, below
+        else:
+            i.kind = 'face'
+    return isl
+
+
+def _bolt_circles(isl):
+    """The 'bolt' islands grouped into circles: islands sorted by their circle radius, split at
+    gaps over 0.015 of the lip radius; a group of fewer than six is not a circle (its islands go
+    back to being face). Returns the groups, frontmost first."""
+    bolts = sorted((i for i in isl if i.kind == 'bolt'), key=lambda i: (i.rmin + i.rmax) / 2)
+    groups, cur = [], []
+    for i in bolts:
+        if cur and (i.rmin + i.rmax) / 2 - (cur[-1].rmin + cur[-1].rmax) / 2 > 0.015:
+            groups.append(cur)
+            cur = []
+        cur.append(i)
+    if cur:
+        groups.append(cur)
+    circles = []
+    for g in groups:
+        if len(g) >= 6 or sum(i.tris for i in g) > 4000:
+            circles.append(g)
+        else:
+            for i in g:
+                i.kind = 'face'
+    return sorted(circles, key=lambda g: -max(i.xmax for i in g))
+
+
+def _bolt_circle(circ, L):
+    """House bolt placement for one circle: (angles, radius, head radius, x base, x top). The
+    count is the number of peaks of the circle's angular histogram (a shattered bolt is many
+    islands at one angle); None when there is no clean count."""
+    n = 720
+    hist = [0.0] * n
+    for i in circ:
+        for f in i.faces:
+            c = f.calc_center_median()
+            hist[int((math.atan2(c.z, c.y) + math.pi) / (2 * math.pi) * n) % n] += f.calc_area()
+    # Smooth over about 2 degrees and pick the peaks.
+    sm = [sum(hist[(k + d) % n] for d in range(-2, 3)) for k in range(n)]
+    # A peak stands well over the circle's mean (a plain flange ring has none).
+    floor = 1.3 * sum(sm) / n
+    peaks = [k for k in range(n) if sm[k] > floor and all(sm[k] > sm[(k - d) % n] for d in range(1, 7)) and all(sm[k] >= sm[(k + d) % n] for d in range(1, 7))]
+    if len(peaks) < 3 or len(peaks) > BOLT_MAX:
+        return None
+    angles = [(k + 0.5) / n * 2 * math.pi - math.pi for k in peaks]
+    r = sum((i.rmin + i.rmax) / 2 for i in circ) / len(circ) * L
+    # A head wider than it is tall: real bolt heads are 8 to 10 mm across and stand 2 to 3 mm proud.
+    head = max(0.016 * L, min(0.45 * (max(i.rmax for i in circ) - min(i.rmin for i in circ)) * L, 0.025 * L))
+    top = max(i.xmax for i in circ)
+    return angles, r, head, top - 0.012 * L, top
+
+
+def _hex_heads(bm, mat, circle):
+    """House bolts: a hex head (top and sides, 18 triangles) at each angle of the circle."""
+    angles, r, h, base, top = circle
+    own = bm.faces.layers.int.get('own_normals') or bm.faces.layers.int.new('own_normals')
+    for a in angles:
+        cy, cz = r * math.cos(a), r * math.sin(a)
+        ring_t = [bm.verts.new((top, cy + h * math.cos(a + 2 * math.pi * k / BOLT_SEG), cz + h * math.sin(a + 2 * math.pi * k / BOLT_SEG))) for k in range(BOLT_SEG)]
+        ring_b = [bm.verts.new((base, cy + h * math.cos(a + 2 * math.pi * k / BOLT_SEG), cz + h * math.sin(a + 2 * math.pi * k / BOLT_SEG))) for k in range(BOLT_SEG)]
+        faces = [bm.faces.new(ring_t)]
+        for k in range(BOLT_SEG):
+            faces.append(bm.faces.new((ring_b[k], ring_b[(k + 1) % BOLT_SEG], ring_t[(k + 1) % BOLT_SEG], ring_t[k])))
+        for f in faces:
+            f.material_index = mat
+            f[own] = 1
+            f.normal_update()
+        if faces[0].normal.x < 0:
+            faces[0].normal_flip()
+        for f in faces[1:]:
+            c = f.calc_center_median()
+            if f.normal.dot(Vector((0, c.y - cy, c.z - cz))) < 0:
+                f.normal_flip()
+
+
+def _dish_share(isl, L, sectors=36, band=0.02):
+    """Where a one-piece wheel stops being a full ring (lip and dish wall) and becomes its spoked
+    or slotted face, as a share of the lip radius: walking in from the lip, the first radial band
+    whose front-facing faces do not cover every angular sector."""
+    cover = {}
+    for i in isl:
+        if i.kind != 'face':
             continue
-        x0, x1 = min(v.co.x for v in vs), max(v.co.x for v in vs)
-        mid = (x0 + x1) / 2
-        tread = [f for f in grp if _rad(f.calc_center_median()) > 0.96 * R]
-        if any(abs(f.calc_center_median().x - mid) < 0.15 * (x1 - x0) for f in tread):
-            doomed += grp
-            tire_mats |= {f.material_index for f in grp}
-    if tire_mats:
-        taken = set(doomed)
-        for grp in islands:
-            if grp[0] not in taken and {f.material_index for f in grp} <= tire_mats and min(_rad(v.co) for f in grp for v in f.verts) > 0.5 * R:
-                doomed += grp
-    bmesh.ops.delete(bm, geom=doomed, context='FACES')
-    return len(doomed)
+        for f in i.faces:
+            if f.normal.x < 0.3:
+                continue
+            c = f.calc_center_median()
+            cover.setdefault(int(_rad(c) / L / band), set()).add(int((math.atan2(c.z, c.y) + math.pi) / (2 * math.pi) * sectors) % sectors)
+    b = int(0.99 / band)
+    while b > int(0.5 / band) and len(cover.get(b - 1, ())) == sectors:
+        b -= 1
+    return max(0.5, min(0.95, b * band))
 
 
-def _face_sign(bm, L):
-    """+1 when the wheel's face already points +X: the hub and spokes (inside 80 % of the lip) are
-    seen from the face, so their area weighted normals lean toward it; ties go to where the hub
-    sits relative to the barrel."""
-    s = sum(f.normal.x * f.calc_area() for f in bm.faces if _rad(f.calc_center_median()) < 0.8 * L)
-    if abs(s) > 1e-6:
-        return 1 if s > 0 else -1
-    hub = [f.calc_center_median().x for f in bm.faces if _rad(f.calc_center_median()) < 0.3 * L]
-    return 1 if hub and sum(hub) / len(hub) > 0 else -1
+def _face_sign(isl, L):
+    """+1 when the wheel's face already points +X. A badge, its glass or lettering in the hub (the
+    cap zone's decals) faces the front, so their side of the hub is the front; a wheel without
+    them goes by the spokes' and hub's area weighted normals, which lean toward the front. Neither
+    is sure (a flat face plate, a bore plug on the back), so every wheel is looked at, and the
+    recipe's `face` settles it."""
+    badges = [i for i in isl if i.kind == 'decal' and i.rmax < 0.2]
+    hub = [v.co.x for i in isl if i.kind in ('face', 'cap') for f in i.faces for v in f.verts if _rad(v.co) < 0.3 * L]
+    if badges and hub:
+        bx = sum((i.xmin + i.xmax) / 2 for i in badges) / len(badges)
+        return 1 if bx > (min(hub) + max(hub)) / 2 else -1
+    vote = sum(f.normal.x * f.calc_area() for i in isl if i.kind in ('face', 'cap') for f in i.faces if _rad(f.calc_center_median()) < 0.9 * L)
+    return 1 if vote >= 0 else -1
 
 
 def house_tire(bm, mat, seg=TIRE_SEG):
@@ -215,243 +336,338 @@ def house_tire(bm, mat, seg=TIRE_SEG):
     return made
 
 
-LIP = 0.86          # the donor wheel inside this share of the lip radius is kept; the rest is house ring
-
-
-def dish_start(bm, L, sectors=36, band=0.02, share=None):
-    """Where the wheel stops being a spoked pattern and becomes a full ring (dish and lip), as a
-    share of the lip radius: walking in from the lip, the first radial band whose face-side
-    surfaces do not cover every angular sector, or `share` when the recipe sets it (a stepped or
-    curved dish breaks the coverage test). Returns (share, depth x of the ring's inner edge)."""
-    cover = {}
-    for f in bm.faces:
-        c = f.calc_center_median()
-        if f.normal.x < 0.3:
-            continue
-        b = int(_rad(c) / L / band)
-        cover.setdefault(b, {}).setdefault(int((math.atan2(c.z, c.y) + math.pi) / (2 * math.pi) * sectors) % sectors, []).append(c.x)
-    if share is None:
-        b = int(0.99 / band)
-        while b > int(0.45 / band) and len(cover.get(b - 1, {})) == sectors:
-            b -= 1
-        share = max(0.5, min(LIP, b * band))
-    xs = sorted(x for xs_ in cover.get(int(share / band), {}).values() for x in xs_)
-    return share, (xs[len(xs) // 2] if xs else None)
-
-
-def lip_profile(bm, L, share, bands=LIP_BANDS):
-    """The donor's surface as seen from the front, from where the spokes end to the lip edge, as
-    (x, r) pairs from the axle outward: per radial band, the depth of its frontmost faces (the
-    90th percentile, so a rivet head does not pull it; faces turned away from the front are left
-    out, but a steep dish cone facing the axle counts). Returns (profile, depth of the lip edge):
-    the edge is measured on its own, past 0.95 of the radius, because on a deep dish it stands
-    well proud of the dish just inside it."""
-    lo, hi = share * L, 0.93 * L
-    xs = [[] for _ in range(bands)]
-    edge = []
-    for f in bm.faces:
-        c = f.calc_center_median()
-        r = _rad(c)
-        if f.normal.x > -0.2:
-            if lo <= r < hi:
-                xs[min(bands - 1, int((r - lo) / (hi - lo) * bands))].append(c.x)
-            elif r >= 0.95 * L:
-                edge.append(c.x)
-    prof = []
-    for i, b in enumerate(xs):
-        if b:
-            b.sort()
-            prof.append((b[int(len(b) * 0.9)], lo + (i + 0.5) * (hi - lo) / bands))
-    edge.sort()
-    return prof, (edge[int(len(edge) * 0.9)] if edge else (prof[-1][0] if prof else None))
-
-
-def house_ring(bm, mat, x_face, x_back, L, share=LIP, x_dish=None, seg=TIRE_SEG, profile=None, x_lip=None):
-    """The barrel and lip every wheel shares: a turned ring from LIP x L at the face out over a
-    rounded lip edge at L and back along the barrel to the wheel's back. With a donor `profile`
-    (lip_profile), the face side follows the donor's own steps instead and the lip edge sits at
-    the donor's lip depth `x_lip`. Faces are marked `own_normals` and smooth shaded about the axle; the
-    donor profile's faces are tagged 2 in `house_ring` (their normals are the lathe's own).
-    Returns the faces made."""
-    t = 0.006
-    if profile:
-        xl = x_lip if x_lip is not None else profile[-1][0]
-        prof = [(profile[0][0], share * L)] + list(profile) + [(xl, L - t), (xl - t, L), (xl - 2 * t, L - t), (xl - 3 * t, 0.95 * L), (x_back, 0.95 * L)]
-        inner = []
-    else:
-        # A deep dish steps down from the face to where the spokes start.
-        inner = [(x_dish, share * L)] if x_dish is not None and x_dish < x_face - 0.012 else []
-        prof = inner + [(x_face - 0.006, share * L), (x_face - 0.002, 0.93 * L), (x_face, L - t), (x_face - t, L), (x_face - 2 * t, L - t),
-                (x_face - 3 * t, 0.95 * L), (x_back, 0.95 * L)]
-    face_side = len(profile) + 1 if profile else 0   # profile segments: the face side up to the lip edge
+def _house_cap(bm, mat, r, x):
+    """A chrome disc over a hub nothing covers (the donor's cap was a logo decal): radius `r`, a
+    little past the bore, its face at `x`, just proud of the hub's front."""
+    seg = 24
     own = bm.faces.layers.int.get('own_normals') or bm.faces.layers.int.new('own_normals')
-    tag = bm.faces.layers.int.get('house_ring') or bm.faces.layers.int.new('house_ring')
-    seg_k = bm.faces.layers.int.get('ring_k') or bm.faces.layers.int.new('ring_k')
+    c = bm.verts.new((x, 0, 0))
+    ring = [bm.verts.new((x, r * math.cos(2 * math.pi * k / seg), r * math.sin(2 * math.pi * k / seg))) for k in range(seg)]
+    back = [bm.verts.new((x - 0.004, r * math.cos(2 * math.pi * k / seg), r * math.sin(2 * math.pi * k / seg))) for k in range(seg)]
+    for k in range(seg):
+        for f in (bm.faces.new((c, ring[k], ring[(k + 1) % seg])), bm.faces.new((back[k], back[(k + 1) % seg], ring[(k + 1) % seg], ring[k]))):
+            f.material_index = mat
+            f[own] = 1
+            f.smooth = len(f.verts) == 4
+            f.normal_update()
+            want = Vector((1, 0, 0)) if len(f.verts) == 3 else Vector((0, f.calc_center_median().y, f.calc_center_median().z))
+            if f.normal.dot(want) < 0:
+                f.normal_flip()
+
+
+def _ring_profile(o, L, x_back):
+    """The lip and barrel's visible surface as (x, r) points from the lip edge inward, measured on
+    the culled ring: every face center sorted by its angle from a viewpoint in front of the wheel
+    (what the front sees along one ray is one point of the profile, so the order is the surface's
+    own, steps and all), binned into RING_BANDS and area averaged. The outer barrel, which the
+    tire hides, is left out; a short stub of it is added under the bead."""
+    me = o.data
+    P = Vector((0.25, 0.3 * L))
+    pts = []
+    for p in me.polygons:
+        c = p.center
+        r = _rad(c)
+        radial = Vector((0, c.y, c.z)).normalized()
+        if r > 0.95 * L and p.normal.dot(radial) > 0.5 and c.x < X_LIP - 0.004 or c.x < x_back - 0.01:
+            continue   # the outer barrel, and the barrel behind the face: the tire and the face hide them
+        q = Vector((c.x, r))
+        pts.append((math.atan2(q.y - P.y, q.x - P.x), p.area, q))
+    if len(pts) < 4:
+        return None
+    pts.sort(key=lambda t: t[0])
+    a0, a1 = pts[0][0], pts[-1][0]
+    bins = [[] for _ in range(RING_BANDS)]
+    for a, w, q in pts:
+        bins[min(RING_BANDS - 1, int((a - a0) / (a1 - a0 + 1e-9) * RING_BANDS))].append((w, q))
+    total = sum(w for _, w, _ in pts)
+    prof = []
+    for b in bins:
+        w = sum(x for x, _ in b)
+        if w > 0.002 * total:
+            prof.append(sum((q * x for x, q in b), Vector((0, 0))) / w)
+    edge = max(prof, key=lambda q: q.y)
+    prof.insert(0, Vector((edge.x - 0.015, L)))
+    prof.append(Vector((prof[-1].x, prof[-1].y - 0.01 * L)))   # tucked under the face's edge
+    return prof
+
+
+def _lathe(bm, prof, mat, seg=RING_SEG):
+    """A surface of revolution through the (x, r) profile about the axle, smooth, its normals in
+    `src_normal` (toward the viewpoint side of the profile). Returns the faces made."""
+    sn = bm.loops.layers.float_vector.get('src_normal') or bm.loops.layers.float_vector.new('src_normal')
+    P = len(prof)
+    n2 = []
+    for k in range(P):
+        a, b = prof[max(0, k - 1)], prof[min(P - 1, k + 1)]
+        t = (b - a).normalized()
+        n = Vector((t.y, -t.x))
+        # Toward the front viewpoint: the side the dish is seen from.
+        if n.dot(Vector((0.25, 0.3 * prof[0].y)) - prof[k]) < 0:
+            n = -n
+        n2.append(n)
     rings = []
     for i in range(seg):
         a = 2 * math.pi * i / seg
-        rings.append([bm.verts.new((x, r * math.cos(a), r * math.sin(a))) for x, r in prof])
+        rings.append([bm.verts.new((q.x, q.y * math.cos(a), q.y * math.sin(a))) for q in prof])
     made = []
     for i in range(seg):
         a, b = rings[i], rings[(i + 1) % seg]
-        for k in range(len(prof) - 1):
+        ca, sa = math.cos(2 * math.pi * i / seg), math.sin(2 * math.pi * i / seg)
+        cb, sb = math.cos(2 * math.pi * (i + 1) / seg), math.sin(2 * math.pi * (i + 1) / seg)
+        for k in range(P - 1):
             f = bm.faces.new((a[k], a[k + 1], b[k + 1], b[k]))
             f.material_index = mat
             f.smooth = True
-            f[own] = 1
-            f[tag] = 2 if k < face_side else 1
-            f[seg_k] = k
+            for l, (nk, c, s_) in zip(f.loops, ((n2[k], ca, sa), (n2[k + 1], ca, sa), (n2[k + 1], cb, sb), (n2[k], cb, sb))):
+                l[sn] = Vector((nk.x, nk.y * c, nk.y * s_))
             made.append(f)
     bm.normal_update()
     for f in made:
-        c = f.calc_center_median()
-        radial = Vector((0, c.y, c.z)).normalized()
-        if f[tag] == 2:
-            # The side of the profile segment toward the front: (-dx, dr) in (r, x) for a
-            # segment walked outward, so a floor faces +X and a step down outward faces out.
-            (x0, r0), (x1, r1) = prof[f[seg_k]], prof[f[seg_k] + 1]
-            want = Vector((r1 - r0, 0, 0)) + radial * -(x1 - x0)
-        # Face side faces +X, the lip edge faces out, the barrel inside faces the axle.
-        else:
-            want = Vector((1, 0, 0)) if _rad(c) < 0.97 * L and c.x > x_face - 0.004 else -radial if inner and _rad(c) < share * L + 0.004 else (
-                radial if _rad(c) > 0.97 * L else -radial)
-        if f.normal.dot(want) < 0:
+        if f.normal.dot(f.loops[0][sn]) < 0:
             f.normal_flip()
     return made
 
 
-def _cap(bm, L, x_face, mat, seg=20):
-    """The house center cap: a disc of radius CAP x L just proud of the hub, over any logo."""
-    r = CAP * L
-    hub = [v.co.x for v in bm.verts if _rad(v.co) < r * 1.05]
-    x = (max(hub) if hub else x_face) + 0.002
-    # Logos and center bores standing in front of the cap's plane go.
-    bmesh.ops.delete(bm, geom=[f for f in bm.faces if _rad(f.calc_center_median()) < r and f.calc_center_median().x > x - 0.002], context='FACES')
-    c = bm.verts.new((x, 0, 0))
-    ring = [bm.verts.new((x, r * math.cos(2 * math.pi * i / seg), r * math.sin(2 * math.pi * i / seg))) for i in range(seg)]
-    own = bm.faces.layers.int.get('own_normals') or bm.faces.layers.int.new('own_normals')
-    for i in range(seg):
-        f = bm.faces.new((c, ring[i], ring[(i + 1) % seg]))
-        f.material_index = mat
-        f[own] = 1
-        f.normal_update()
-        if f.normal.x < 0:
-            f.normal_flip()
-    return x
+def _reduce(o, budget):
+    """Collapse to about `budget` triangles: meshoptimizer's (keeps the authored shading and the
+    material seams) as far as it goes without tearing loose pieces, Decimate for the rest. No
+    mirror symmetry: a wheel has none across its axle."""
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    bmesh.ops.dissolve_limit(bm, angle_limit=math.radians(1.5), verts=bm.verts, edges=bm.edges, delimit={'MATERIAL'})
+    bmesh.ops.triangulate(bm, faces=bm.faces[:])
+    bm.to_mesh(o.data)
+    bm.free()
+    have = tris(o)
+    if have > budget:
+        have = meshopt_reduce(o, budget, uv=False)[0]
+    if have > budget * 1.05:
+        mod = o.modifiers.new('reduce', 'DECIMATE')
+        mod.decimate_type = 'COLLAPSE'
+        mod.ratio = budget / have
+        mod.use_collapse_triangulate = True
+        _apply(o, mod)
+
+
+def _kind_objects(bm, kind_of, names, mats, work):
+    """One object per kind from a bmesh whose faces carry a `kind` int layer (a copy each)."""
+    out = {}
+    kl = bm.faces.layers.int['kind']
+    for kind, idx in kind_of.items():
+        if not any(f[kl] == idx for f in bm.faces):
+            continue
+        t = bm.copy()
+        tl = t.faces.layers.int['kind']
+        bmesh.ops.delete(t, geom=[f for f in t.faces if f[tl] != idx], context='FACES')
+        me = bpy.data.meshes.new(f'{names}.{kind}')
+        for m in mats:
+            me.materials.append(m)
+        t.to_mesh(me)
+        t.free()
+        o = bpy.data.objects.new(me.name, me)
+        work.objects.link(o)
+        out[kind] = o
+    return out
+
+
+def _join(objs):
+    """The objects' meshes in one bmesh (their faces keep every attribute layer)."""
+    bm = bmesh.new()
+    for o in objs:
+        bm.from_mesh(o.data)
+    return bm
+
+
+def _carry_normals(o):
+    """Write the object's custom normals into its src_normal corner attribute, so a join keeps them."""
+    me = o.data
+    sn = me.attributes.get('src_normal') or me.attributes.new('src_normal', 'FLOAT_VECTOR', 'CORNER')
+    sn.data.foreach_set('vector', [x for c in me.corner_normals for x in c.vector])
 
 
 def wheel(name, root):
     """Build `wheels.wheel_<name>` in collection `wheels:Wheels` from the import under `root`."""
     R0 = WHEELS[name]
     c = coll('wheels:Wheels')
+    work = coll('wheels:Work')
     oname = f'wheels.wheel_{name}'
-    old = bpy.data.objects.get(oname)
-    if old:
-        bpy.data.objects.remove(old)
+    for stale in list(bpy.data.objects):
+        if stale.name.startswith(oname):
+            bpy.data.objects.remove(stale)
     bpy.context.view_layer.update()
     bm, names = _gather(root, R0)
     if not bm.faces:
         raise ValueError(f'{name}: nothing left after dropping scene junk')
-    R = _frame(bm)
-    tire_faces = _split_tire(bm, R) if R0.get('tire', 'auto') == 'auto' else 0
-    # Stray bits left floating off the wheel (a lone screw from a scene) go: the wheel is round.
-    L = max(_rad(v.co) for v in bm.verts)
-    sign = R0.get('face') or _face_sign(bm, L)
-    k = TIRE_R * BEAD / L
-    bmesh.ops.transform(bm, matrix=Matrix.Diagonal((sign * k, k, sign * k, 1)), verts=bm.verts)
-    sn = bm.loops.layers.float_vector['src_normal']
+    L = _frame(bm)
+    isl = _classify(bm, L, names, R0)
+    sign = R0.get('face') or _face_sign(isl, L)
     if sign < 0:
-        for f in bm.faces:
-            for l in f.loops:
-                l[sn] = Vector((-l[sn].x, l[sn].y, -l[sn].z))
-    bm.normal_update()
-    # Squeeze into the tire's width, face side flush with the tire's sidewall bulge, slightly in.
-    x0, x1 = min(v.co.x for v in bm.verts), max(v.co.x for v in bm.verts)
-    room = TIRE_W * 0.94
-    sq = min(1.0, room / (x1 - x0))
-    for v in bm.verts:
-        v.co.x = TIRE_W * 0.46 - (x1 - v.co.x) * sq
-    if sq < 1:
-        for f in bm.faces:
-            for l in f.loops:
-                l[sn] = Vector((l[sn].x / sq, l[sn].y, l[sn].z)).normalized()
-    bm.normal_update()
-    lip = TIRE_R * BEAD
-    # The donor's dish, barrel and lip go: faces entirely outside where the wheel becomes a full ring.
-    share, x_dish = dish_start(bm, lip, share=R0.get('dish'))
-    own_lip = R0.get('lip') == 'donor'
-    profile, x_lip = lip_profile(bm, lip, share) if own_lip else (None, None)
-    # Faces wholly outside where the spokes end; with the donor's own lip, faces centred there too,
-    # or spokes that run out to the lip edge leave slivers poking past the turned ring.
-    ring_zone = {f for f in bm.faces if all(_rad(v.co) > share * lip for v in f.verts) or (own_lip and _rad(f.calc_center_median()) > share * lip)}
-    if own_lip:
-        # The donor's rivets and bolts stay on the turned lip: small loose islands in the ring zone.
-        for grp in _islands(bm):
-            if set(grp) <= ring_zone:
-                pts = [v.co for f in grp for v in f.verts]
-                if (Vector(map(max, *pts)) - Vector(map(min, *pts))).length < 0.08 * lip:
-                    ring_zone -= set(grp)
-    bmesh.ops.delete(bm, geom=list(ring_zone), context='FACES')
+        _xform(bm, Matrix.Diagonal((-1, 1, -1, 1)))
+        for i in isl:
+            i.xmin, i.xmax = -i.xmax, -i.xmin
+    # Scale the lip onto the house tire's bead, in meters from here on.
+    k = TIRE_R * BEAD / L
+    _xform(bm, Matrix.Scale(k, 4))
+    for i in isl:
+        i.xmin, i.xmax = i.xmin * k, i.xmax * k
+    L = TIRE_R * BEAD
+    # The lip edge just proud of the tire's sidewall, then the barrel behind the face squeezed
+    # to the tire's back bead; the dish keeps its depth.
+    rings = [i for i in isl if i.kind == 'ring']
+    faces = [i for i in isl if i.kind in ('face', 'cap')]
+    edge = [v.co.x for i in rings for f in i.faces for v in f.verts if _rad(v.co) > 0.97 * L] or [i.xmax for i in faces]
+    dx = X_LIP - max(edge)
+    _xform(bm, Matrix.Translation((dx, 0, 0)))
+    for i in isl:
+        i.xmin, i.xmax = i.xmin + dx, i.xmax + dx
+    x_face_back = min(i.xmin for i in faces)
     x_back = min(v.co.x for v in bm.verts)
-    me = bpy.data.meshes.new(oname)
-    for u in SHARED:
-        me.materials.append(shared_mat(u))
-    for f in bm.faces:
-        f.material_index = SHARED.index('Rim')
-    _cap(bm, lip, TIRE_W * 0.46, SHARED.index('Chrome'))
-    bm.to_mesh(me)
+    squeeze = 1.0
+    if x_back < X_BACK:
+        pivot = max(x_face_back, X_BACK + 0.02)
+        squeeze = (pivot - X_BACK) / (pivot - x_back)
+        for v in bm.verts:
+            if v.co.x < pivot:
+                v.co.x = pivot - (pivot - v.co.x) * squeeze
+    bm.normal_update()
+    circles = _bolt_circles(isl) if R0.get('bolts', 1) else []
+    circle = None
+    for g in circles:
+        circle = _bolt_circle(g, L)
+        if circle:
+            break
+        for i in g:
+            i.kind = 'face'   # a flange ring without bolts on it stays part of the face
+    lip = R0.get('lip', 'chrome')   # Work lips are polished; a painted one-piece lip is a recipe's call
+    # The hub, for the house cap: the bore radius and the hub's front.
+    faces = [i for i in isl if i.kind in ('face', 'cap')]
+    bore = min((i.rmin for i in faces), default=1.0)
+    cap_r = max(bore * 1.3, 0.12) * L if bore > 0.05 else 0
+    hub = [v.co.x for i in faces for f in i.faces for v in f.verts if _rad(v.co) < cap_r * 1.2] if cap_r else []
+    cap_x = (max(hub) if hub else 0) + 0.002
+    # Materials by kind (a source material called black stays black).
+    mats = [shared_mat(u) for u in SHARED]
+    IDX = {u: SHARED.index(u) for u in SHARED}
+    KIND = {'face': 0, 'ring': 1, 'cap': 2}
+    kl = bm.faces.layers.int['kind']
+    one_piece = not any(i.kind == 'ring' for i in isl)
+    dish = _dish_share(isl, L) if one_piece else 1.0
+    for i in isl:
+        for f in i.faces:
+            src = names[f.material_index] if f.material_index < len(names) else ''
+            kind = i.kind
+            # A one-piece wheel's lip, dish and barrel are its face's own outer faces: turned like a ring.
+            if one_piece and kind == 'face' and all(_rad(v.co) > dish * L for v in f.verts):
+                kind = 'ring'
+            f.material_index = IDX['Black'] if re.search(r'(?i)black', src) and kind == 'face' else IDX['Chrome'] if kind == 'cap' or (kind == 'ring' and lip == 'chrome') else IDX['Rim']
+            f[kl] = KIND.get(kind, -1)
+    src_tris = sum(i.tris for i in isl)
+    gone = {kd: sum(i.tris for i in isl if i.kind == kd) for kd in ('bolt', 'decal')}
+    kinds = {kd: sum(1 for i in isl if i.kind == kd) for kd in ('face', 'ring', 'cap', 'bolt', 'decal')}
+    bmesh.ops.delete(bm, geom=[f for i in isl if i.kind in ('bolt', 'decal') for f in i.faces], context='FACES')
+    # Each kind on its own. A first collapse to three times the budget makes the hidden face test
+    # affordable on a 100k triangle face; the budget collapse follows it, and the shading comes
+    # from the authored normals the first collapse kept.
+    parts = _kind_objects(bm, KIND, oname, mats, work)
     bm.free()
-    o = bpy.data.objects.new(oname, me)
+    for kind, o in parts.items():
+        if tris(o) > 3 * BUDGETS[kind]:
+            _reduce(o, 3 * BUDGETS[kind])
+    # Hidden faces go against the whole wheel, tire included: the barrel under the tire, the backs
+    # of the spokes. Nobody sees a wheel from inside the car, so only the front half's views count.
+    wbm = _join(parts.values())
+    wkl = wbm.faces.layers.int.get('kind') or wbm.faces.layers.int.new('kind')
+    for f in house_tire(wbm, IDX['Tire']):
+        f[wkl] = 3
+    me = bpy.data.meshes.new(oname + '.all')
+    for m in mats:
+        me.materials.append(m)
+    wbm.to_mesh(me)
+    wbm.free()
+    whole = bpy.data.objects.new(me.name, me)
+    work.objects.link(whole)
+    culled = cull_hidden(whole, [d for d in _view_dirs() if d.x > -0.3])[0]
+    for o in parts.values():
+        bpy.data.objects.remove(o)
+    wbm = bmesh.new()
+    wbm.from_mesh(me)
+    bpy.data.objects.remove(whole)
+    parts = _kind_objects(wbm, KIND, oname, mats, work)
+    wbm.free()
+    obm = bmesh.new()
+    ring_prof = None
+    for kind, o in parts.items():
+        if kind == 'ring':
+            ring_prof = _ring_profile(o, L, x_face_back)
+            if ring_prof:
+                bpy.data.objects.remove(o)
+                continue
+        # The shading skin is taken after the cull: it turned the faces only their back is seen
+        # from and negated their authored normals with them, which rights a donor modelled inside
+        # out (the Equip 40's face); a skin from before the cull would turn them back.
+        skin = _copy(o, o.name + '.skin')
+        _reduce(o, BUDGETS[kind])
+        shade_from_source(o, skin)
+        bpy.data.objects.remove(skin)
+        _carry_normals(o)
+        obm.from_mesh(o.data)
+        bpy.data.objects.remove(o)
+    if ring_prof:
+        _lathe(obm, ring_prof, IDX['Chrome'] if lip == 'chrome' else IDX['Rim'])
+    if circle:
+        _hex_heads(obm, IDX['Chrome'], circle)
+    if cap_r:
+        _house_cap(obm, IDX['Chrome'], cap_r, cap_x)
+    house_tire(obm, IDX['Tire'])
+    out = bpy.data.meshes.new(oname)
+    for m in mats:
+        out.materials.append(m)
+    obm.to_mesh(out)
+    obm.free()
+    o = bpy.data.objects.new(oname, out)
     c.objects.link(o)
-    src_tris = tris(o)
-    # Hidden faces go (from the face side and around: nobody sees a wheel from inside the car),
-    # then the wheel is reduced; the tire is added after, so the collapse never touches it.
-    gone, _ = cull_hidden(o, [d for d in _view_dirs() if d.x > -0.3])
-    skin = _copy(o, oname + '.skin')
-    _collapse(o, LIP_BUDGET if own_lip else RIM_BUDGET)
-    shade_from_source(o, skin)
-    bpy.data.objects.remove(skin)
-    bm = bmesh.new()
-    bm.from_mesh(o.data)
-    house_tire(bm, SHARED.index('Tire'))
-    house_ring(bm, SHARED.index('Rim'), TIRE_W * 0.46, min(x_back, TIRE_W * 0.46 - 0.08), lip, share, x_dish, profile=profile, x_lip=x_lip)
-    bm.to_mesh(o.data)
-    bm.free()
-    me = o.data
-    tire_idx = SHARED.index('Tire')
-    # The tire's own smooth normals (custom normals were set for the wheel only).
-    cn = [cv.vector.copy() for cv in me.corner_normals]
-    out = []
-    hr = me.attributes.get('house_ring')
-    ring = [v.value for v in hr.data] if hr else [0] * len(me.polygons)
-    for p in me.polygons:
-        if ring[p.index] == 2:
-            out += [cn[li] for li in p.loop_indices]   # a donor lip profile: the lathe's own smooth normals
-        elif ring[p.index]:
-            for li in p.loop_indices:
-                v = me.vertices[me.loops[li].vertex_index].co
-                n = Vector((0, v.y, v.z)).normalized()
-                out.append(Vector((1, 0, 0)) if _rad(v) < 0.94 * lip and v.x > TIRE_W * 0.46 - 0.008 else (n if _rad(v) > 0.97 * lip else -n))
+    _set_normals(o)
+    for a in ('src_normal', 'own_normals', 'kind'):
+        if out.attributes.get(a):
+            out.attributes.remove(out.attributes[a])
+    remap_materials(o)
+    o['displayName'] = name.capitalize()
+    print(f'wheel_{name}: {R0["name"]} ({R0["author"]}); islands {kinds}; face {"+" if sign > 0 else "-"}X, scaled x{k:.3f}, '
+          f'barrel squeezed x{squeeze:.2f}, lip {lip}' + (f' turned from {len(ring_prof)} points' if ring_prof else '') + ', ' + (f'{len(circle[0])} house bolts at r {circle[1]:.3f}' if circle else 'no bolt circle') +
+          (f', house cap r {cap_r:.3f}' if cap_r else '') + f'; {src_tris} -> {tris(o)} tris ({culled} hidden culled, {gone["bolt"]} of bolts and {gone["decal"]} of decals replaced)')
+    return o
 
-        elif p.material_index == tire_idx:
-            c3 = p.center
+
+def _set_normals(o):
+    """Custom normals: the reduced kinds' own (carried in src_normal), the house parts' lathe
+    normals (tire and cap smooth about the axle, bolt heads flat)."""
+    me = o.data
+    sn = me.attributes.get('src_normal')
+    hc = me.attributes.get('own_normals')
+    own = [bool(v.value) for v in hc.data] if hc else [False] * len(me.polygons)
+    src = [v.vector.copy() for v in sn.data] if sn else None
+    tire_idx = SHARED.index('Tire')
+    out = []
+    for p in me.polygons:
+        if own[p.index] and p.material_index == tire_idx:
             for li in p.loop_indices:
                 v = me.vertices[me.loops[li].vertex_index].co
                 n = Vector((0, v.y, v.z)).normalized()
                 side = abs(v.x) > TIRE_W * 0.45 and _rad(v) < TIRE_R * 0.93
                 out.append((Vector((math.copysign(1, v.x), 0, 0)) * 0.9 + n * 0.1).normalized() if side else
                            (n + Vector((v.x / (TIRE_W * 0.5) * 0.35, 0, 0))).normalized())
+        elif own[p.index] and p.use_smooth:
+            for li in p.loop_indices:
+                v = me.vertices[me.loops[li].vertex_index].co
+                out.append(Vector((0, v.y, v.z)).normalized())
+        elif own[p.index] or src is None:
+            out += [p.normal.copy()] * p.loop_total
         else:
-            out += [cn[li] for li in p.loop_indices]
+            out += [src[li] if src[li].length > 0.5 else p.normal.copy() for li in p.loop_indices]
+    for p in me.polygons:
+        if not own[p.index]:
+            p.use_smooth = True
     me.normals_split_custom_set(out)
-    for a in ('src_normal', 'own_normals', 'house_ring', 'ring_k'):
-        if me.attributes.get(a):
-            me.attributes.remove(me.attributes[a])
-    remap_materials(o)
-    o['displayName'] = name.capitalize()
-    print(f'wheel_{name}: {R0["name"]} ({R0["author"]}); source tire {"removed (" + str(tire_faces) + " faces)" if tire_faces else "none"}, '
-          f'face {"+" if sign > 0 else "-"}X, wheel scaled x{k:.3f}, width squeezed x{sq:.2f}, ' + (f'lip turned from its own profile ({len(profile)} bands)' if own_lip else f'house ring from {share:.2f}{" (dish)" if x_dish is not None and x_dish < TIRE_W * 0.46 - 0.012 else ""}') + f'; {src_tris} -> {tris(o)} tris ({gone} hidden culled)')
-    return o
 
 
 def wheel_report(names):
@@ -467,4 +683,19 @@ def wheel_report(names):
             k = me.materials[p.material_index].name
             by[k] = by.get(k, 0) + len(p.vertices) - 2
         face = [v.co for p in me.polygons if me.materials[p.material_index].name != 'Tire' for i in p.vertices for v in [me.vertices[i]]]
-        print(f"wheel_{n:8} {tris(o):5} tris {by}  face x {min(v.x for v in face):+.3f}..{max(v.x for v in face):+.3f}, lip {max(_rad(v) for v in face):.3f}")
+        print(f"wheel_{n:8} {tris(o):5} tris {by}  x {min(v.x for v in face):+.3f}..{max(v.x for v in face):+.3f}, lip {max(_rad(v) for v in face):.3f}")
+
+
+def wheel_sheet(names, cols=4, gap=0.7):
+    """Lay linked copies of the wheels out in a grid facing -Y (Blender front), for a look."""
+    c = coll('wheels:Sheet')
+    for o in list(c.objects):
+        bpy.data.objects.remove(o)
+    for k, n in enumerate(names):
+        src = bpy.data.objects.get(f'wheels.wheel_{n}')
+        if not src:
+            continue
+        o = bpy.data.objects.new(f'sheet.{n}', src.data)
+        o.rotation_euler = (0, 0, math.radians(-90))
+        o.location = ((k % cols) * gap, 0, -(k // cols) * gap)
+        c.objects.link(o)
