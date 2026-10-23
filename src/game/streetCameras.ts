@@ -58,9 +58,11 @@ const at = (o: Local, f: number, l: number, up: number): Local => ((o[0] = f), (
 /** The shot list, in the order the showreel plays it: the drone opener once, then the rest on a loop. */
 const SHOTS: Shot[] = [
   // One move from high behind the car down onto the tracking shot's first frame: the car low in frame with the start
-  // line ahead, then a swoop across and down to its flank. The height falls late (ease^1.6), so the camera is still
-  // about 14 m up as it passes the line (about 4.4 s in, over the full gantry's 11.9 m), flying over the arch, not through it.
-  { name: 'drone', dur: 9, fov: 54, fovEnd: 38, sided: true, flows: true, cam: (u, s, o) => at(o, lerp(-14, 1.6, ease(u)), lerp(-2.5, 6.6, ease(u)) * s, lerp(20, 0.9, ease(u) ** 1.6)), look: (u, _s, o) => at(o, lerp(14, 0.1, ease(u)), 0, lerp(0.5, 0.62, ease(u))) },
+  // line ahead, then a swoop round behind it and down to its flank. It arcs round the car (DRONE) rather than cutting
+  // across, and aims at the car and holds the wide lens until late, so the whole car stays in frame all the way down.
+  // The height falls late (ease^1.6), so the camera is still about 14 m up as it passes the line (about 4.4 s in, over
+  // the full gantry's 11.9 m), flying over the arch, not through it.
+  { name: 'drone', dur: 9, fov: 54, fovEnd: 38, sided: true, flows: true, cam: (u, s, o) => drone(ease(u), s, o), look: (u, _s, o) => at(o, lerp(14, 0.1, 1 - (1 - ease(u)) ** 2), 0, lerp(0.5, 0.62, ease(u))) },
   { name: 'tracking', dur: 9, fov: 38, sided: true, cam: (u, s, o) => at(o, lerp(1.6, -1.0, u), 6.6 * s, 0.9), look: (_u, _s, o) => at(o, 0.1, 0, 0.62) },
   { name: 'chase', dur: 8, fov: 46, sided: true, cam: (u, s, o) => at(o, -6.4, 1.3 * s, 1.55 + 0.25 * u), look: (_u, _s, o) => at(o, 4.5, 0, 0.9) },
   { name: 'roadside', dur: 10, fov: 36, sided: false, cam: (_u, _s, o) => at(o, 0, 0, 0), look: (_u, _s, o) => at(o, 0, 0, 0) },
@@ -72,6 +74,18 @@ const SHOTS: Shot[] = [
 
 /** Where the loop starts again: the opener plays once per street. */
 const LOOP_START = 1;
+
+/**
+ * The drone opener's arc round the car: from 14 m behind and 2.5 m to the
+ * other side, round behind the car to the tracking shot's start (1.6 m
+ * ahead, 6.6 m out), angle and radius eased together.
+ */
+const DRONE = { a0: Math.atan2(-2.5, -14), a1: Math.atan2(6.6, 1.6) - 2 * Math.PI, r0: Math.hypot(14, 2.5), r1: Math.hypot(6.6, 1.6) } as const;
+
+/** The drone opener's camera at eased progress e, favouring `side`. */
+function drone(e: number, side: number, o: Local): Local {
+  return orbit(side * lerp(DRONE.a0, DRONE.a1, e), lerp(DRONE.r0, DRONE.r1, e), lerp(20, 0.9, e ** 1.6), o);
+}
 
 /** A point on a circle round the car at angle a (0 = straight ahead, + turning left), radius r and height y. */
 function orbit(a: number, r: number, y: number, o: Local): Local {
@@ -217,7 +231,8 @@ export class ShowreelCamera {
       if (done) this.next(stage);
       const s = SHOTS[this.index];
       const u = Math.min(1, this.t / s.dur);
-      fov = s.fovEnd === undefined ? s.fov : lerp(s.fov, s.fovEnd, ease(u));
+      // The zoom comes late (ease^3): the wide lens holds the whole car while the camera is close and above it.
+      fov = s.fovEnd === undefined ? s.fov : lerp(s.fov, s.fovEnd, ease(u) ** 3);
       if (s.name === 'roadside') {
         pos.copy(this.fixed);
         // Aim a little ahead of the car, so it drives into the frame and past.
