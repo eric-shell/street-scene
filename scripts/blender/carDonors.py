@@ -271,6 +271,10 @@ def strip_wipers(o, gap=0.08):
     bm.to_mesh(me)
     bm.free()
     me.update()
+    # What the wipers leave: pivots, nozzles, the mirror's mount, small black bits lying on the
+    # glass (the Golf's cowl kept ten of them, 2 to 5 cm each).
+    n += delete_islands(o, lambda k, a, b, mats: k < 60 and set(mats) <= {'Black', 'Chrome'} and (b - a).length < 0.12
+                        and all((tree.find_nearest(c)[3] or 1) < 0.03 for c in ((a + b) / 2, a, b, Vector((a.x, a.y, b.z)), Vector((b.x, b.y, a.z)))))
     return n
 
 
@@ -737,17 +741,18 @@ def flatten_grilles(bm, faces, back=0.004):
                 v.co = v.co - n * ((v.co - c).dot(n) + back)
 
 
-def grille_surface(o, half_wb, step=0.03, uv_span=GRILLE_UV):
-    """Turn the front grilles into the shared Grille material, whose pattern is a texture in the
-    game (src/render/car/carMaterials.ts), so every car's grille reads the same at no triangle cost.
-    Logos inside a grille become grille, and each grille patch is flattened (flatten_grilles).
+def grille_surface(o, half_wb, step=0.03, uv_span=GRILLE_UV, material='Black', flatten=False):
+    """Close the front grilles. The donor's own grille geometry stays as it is, matte `material`
+    (Black: at night a grille reads dark, and the patterned Grille plate every car once wore read
+    as a silver sticker); logos and lettering inside a grille become the same, de-branded.
     A square grid (`step`) is cast at the nose: where the first thing seen is Black within 0.45 m
-    of the nose, below the hood's leading edge and clear of the lamps, the face hit becomes Grille
-    (the car's own grille surfaces keep their shape); where the ray runs on into the car (an open
-    grille) the row's run of open cells gets one flat Grille quad 0.12 m behind the nose, so
-    nobody sees into the body. Grille faces get planar UVs from x and z (`uv_span` meters a unit,
-    inside 0..1); other faces' UVs are zeroed and extra UV layers dropped (they only cost bytes).
-    New quads are marked `own_normals` for the shading pass. Returns (faces recolored, quads)."""
+    of the nose, below the hood's leading edge and clear of the lamps, the face hit is grille;
+    where the ray runs on into the car (an open grille) the row's run of open cells gets one flat
+    quad 0.12 m behind the nose, so nobody sees into the body. With `flatten` each grille patch is
+    pressed onto its plane (flatten_grilles) and the faces get planar UVs from x and z (`uv_span`
+    meters a unit) for a patterned material; other faces' UVs are zeroed and extra UV layers
+    dropped (they only cost bytes). New quads are marked `own_normals` for the shading pass.
+    Returns (faces recolored, quads)."""
     me = o.data
     while len(me.uv_layers) > 1:
         me.uv_layers.remove(me.uv_layers[-1])
@@ -823,7 +828,7 @@ def grille_surface(o, half_wb, step=0.03, uv_span=GRILLE_UV):
             hit_faces.add(p.index)
     # Only faces wholly inside the grille zone: a big Black triangle reaching under the car stays Black.
     hit_faces = {fi for fi in hit_faces if all(in_zone(verts[i]) for i in me.polygons[fi].vertices)}
-    grille = mat_index(o, 'Grille')
+    grille = mat_index(o, material)
     bm = bmesh.new()
     bm.from_mesh(me)
     bm.faces.ensure_lookup_table()
@@ -831,8 +836,10 @@ def grille_surface(o, half_wb, step=0.03, uv_span=GRILLE_UV):
     targets = [bm.faces[i] for i in hit_faces]
     for f in targets:
         f.material_index = grille
-        f[own] = 1      # flat: the source normals would draw the slats and logos back in
-    flatten_grilles(bm, set(targets))
+        if flatten:
+            f[own] = 1      # flat: the source normals would draw the slats and logos back in
+    if flatten:
+        flatten_grilles(bm, set(targets))
     quads = 0
     y_open = nose + 0.12
     for zi, cols in open_rows.items():

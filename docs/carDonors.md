@@ -88,12 +88,8 @@ compare_donors([cid], OUT)         # side / front / rear PNGs to Read
 2. Culls every face that cannot be seen from outside: jambs, flanges, double layers and inner glass. Glass does not block the test rays, so the cabin behind the windows counts as seen, as it is in the game.
 3. Collapses the shell to `BUDGET` (16,000) and the cabin apart to `INTERIOR_BUDGET` (2,500): the cabin touches nothing of the shell, and in one collapse its 30,000 triangles of seats and dash would starve the mirrors and handles. Small features are what an error-driven collapse eats first, so a part that must survive gets its own budget (the wheel set does the same per kind: `docs/carWheels.md`).
 4. Sets the authored normals back on the reduced faces, matched within the same material, from the skin as it is after the cull: the cull turns faces only their back is seen from and negates their authored normals with them, which rights a donor modelled inside out; a skin from before the cull would turn them back.
-5. Turns the front grilles into the shared `Grille` material:
-   - each grille patch is pressed flat onto its own plane;
-   - logos and lettering inside a grille become grille;
-   - the faces keep flat normals, so slats and emblems are not shaded back in.
-
-   The game draws one pattern on it (`GRILLE_PATTERN` in `src/render/car/carMaterials.ts`: ribs, diamond mesh or honeycomb) as a bright metal texture with raised bars. Every car's grille reads the same at no triangle cost.
+5. Closes the front grilles: the donor's own grille geometry stays as it is, matte `Black` (at night a grille reads dark; the patterned `Grille` plate every car once wore read as a silver sticker), logos inside a grille become black too, and an open grille gets one flat black quad 0.12 m behind the nose so nobody sees into the body. `grille_surface(..., material='Grille', flatten=True)` is the old patterned plate, for a donor whose grille is only a texture.
+6. Strips what the wipers leave on the glass (pivots, nozzles, the mirror's mount: small black islands lying on it) with the wiper arms and antennas.
 
 ## 5. Check
 

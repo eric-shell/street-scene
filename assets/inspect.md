@@ -9,9 +9,9 @@ Authored cars: protoCoupe, protoHatch, protoWagon. FBX cars with source files: n
 | Car | Size |
 |---|---|
 | proto | 56.1 KB |
-| protoCoupe | 605.8 KB |
-| protoHatch | 539.5 KB |
-| protoWagon | 592.9 KB |
+| protoCoupe | 603.3 KB |
+| protoHatch | 534.8 KB |
+| protoWagon | 590.8 KB |
 
 ## Material vocabulary
 
@@ -53,7 +53,7 @@ Source materials are renamed using `materialMap` in scripts/assetConfig.json to:
 
 Source: `assets/source/eshell/protoCoupe/protoCoupe.blend` (authored in car space, exported with scripts/blender/exportCar.py).
 
-- Base car `public/cars/protoCoupe.glb`: 605.8 KB, 18498 tris, nodes `Body`.
+- Base car `public/cars/protoCoupe.glb`: 603.3 KB, 18495 tris, nodes `Body`.
 - Parts: .
 - WARNING: wheel radius 0.327 m differs from the standard 0.28 m (assetConfig.json standardWheel). Every car shares one wheel size so scale reads the same.
 - Wheel radius 0.327 m, width 0.24 m, wheelbase 2.425 m, track 1.447 m.
@@ -63,7 +63,7 @@ Source: `assets/source/eshell/protoCoupe/protoCoupe.blend` (authored in car spac
 
 Source: `assets/source/eshell/protoHatch/protoHatch.blend` (authored in car space, exported with scripts/blender/exportCar.py).
 
-- Base car `public/cars/protoHatch.glb`: 539.5 KB, 16936 tris, nodes `Body`.
+- Base car `public/cars/protoHatch.glb`: 534.8 KB, 16937 tris, nodes `Body`.
 - Parts: .
 - WARNING: wheel radius 0.309 m differs from the standard 0.28 m (assetConfig.json standardWheel). Every car shares one wheel size so scale reads the same.
 - Wheel radius 0.309 m, width 0.24 m, wheelbase 2.518 m, track 1.492 m.
@@ -73,7 +73,7 @@ Source: `assets/source/eshell/protoHatch/protoHatch.blend` (authored in car spac
 
 Source: `assets/source/eshell/protoWagon/protoWagon.blend` (authored in car space, exported with scripts/blender/exportCar.py).
 
-- Base car `public/cars/protoWagon.glb`: 592.9 KB, 18483 tris, nodes `Body`.
+- Base car `public/cars/protoWagon.glb`: 590.8 KB, 18483 tris, nodes `Body`.
 - Parts: .
 - WARNING: wheel radius 0.302 m differs from the standard 0.28 m (assetConfig.json standardWheel). Every car shares one wheel size so scale reads the same.
 - Wheel radius 0.302 m, width 0.24 m, wheelbase 2.597 m, track 1.374 m.
