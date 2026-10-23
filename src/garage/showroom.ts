@@ -25,16 +25,17 @@
  */
 import * as THREE from 'three';
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { CarView } from '../render/car/carView';
 import type { CarPose } from '../render/car/carView';
 import { MANIFEST, partsFor } from '../render/car/carAssets';
 import type { CarAssetLibrary } from '../render/car/carAssets';
-import { defaultVisual } from '../shared/carBuild';
-import type { PaintFinish } from '../shared/carBuild';
-import type { PartSlot } from '../shared/parts';
+import { AXLES, defaultVisual } from '../shared/carBuild';
+import type { PaintFinish, VisualBuild } from '../shared/carBuild';
+import { PART_SLOTS } from '../shared/parts';
 import type { Quality } from '../ui/settings';
 import { PALETTE } from '../ui/kit/palette';
-import { concreteTextures, hazardTexture, noise, plateTexture, shadowTexture, wallTexture } from './showroomTextures';
+import { concreteTextures, hazardTexture, noise, plateTextures, shadowTexture, wallTexture } from './showroomTextures';
 import {
   GLOW,
   Kit,
@@ -55,6 +56,7 @@ import {
   drum,
   engineHoist,
   extinguisher,
+  flagshipCab,
   hydraulicPress,
   jackAndStands,
   laptopCart,
@@ -78,7 +80,6 @@ import {
   trashCan,
   underhoistStand,
   utilityCart,
-  wallCabinets,
   welder,
   wheelBalancer,
   wheelBoxes,
@@ -93,12 +94,14 @@ import { Disposer } from '../render/disposer';
  * Per quality tier: the floor's reflection pass (render scale of the screen,
  * 0 = off), the dust in the light, how many lifts have a car on them (each is
  * a full car view, about 20 draw calls and 20k triangles) and the work lights
- * (the dying batten's, the lamp under a car, the bench's).
+ * (the second lift's batten, the lamp under a car, the bench's), and the
+ * floor's and turntable's texture resolution (the concrete at 128 px/m times
+ * `texRes`, the diamond plate at 1024 px across times `texRes`).
  */
-export const SHOWROOM_QUALITY: Record<Quality, { reflection: number; dust: boolean; liftCars: number; workLights: boolean }> = {
-  low: { reflection: 0, dust: false, liftCars: 2, workLights: false },
-  medium: { reflection: 0.35, dust: true, liftCars: 4, workLights: true },
-  high: { reflection: 0.45, dust: true, liftCars: 4, workLights: true },
+export const SHOWROOM_QUALITY: Record<Quality, { reflection: number; dust: boolean; liftCars: number; workLights: boolean; texRes: 1 | 2 }> = {
+  low: { reflection: 0, dust: false, liftCars: 2, workLights: false, texRes: 1 },
+  medium: { reflection: 0.35, dust: true, liftCars: 4, workLights: true, texRes: 2 },
+  high: { reflection: 0.45, dust: true, liftCars: 4, workLights: true, texRes: 2 },
 };
 
 /** The room (m): half its width and depth, the roof, the turntable, the painted band on the walls, the battens' height. */
@@ -116,16 +119,48 @@ export const ROOM = {
 
 /**
  * The lifts, in the order their cars appear as the quality allows: where (m),
- * which way the car faces (rad), how high its ground is (m), and the build on
- * it (paint, finish, a seed for the parts it wears). The second has its front
- * wheels off with the work lamp under it.
+ * which way the car faces (rad) and how high its ground is (m). The second has
+ * its front wheels off with the work lamp under it. Which car each holds and
+ * how it is built are rolled fresh every visit (liftBuilds).
  */
-const LIFTS: { x: number; z: number; yaw: number; h: number; paint: string; finish: PaintFinish; trim: string; seed: number; wheelsOff?: boolean }[] = [
-  { x: -5.4, z: -8.7, yaw: 0, h: 1.85, paint: '#5f6266', finish: 'matte', trim: '#111215', seed: 1 },
-  { x: 1.4, z: -8.7, yaw: Math.PI, h: 0.95, paint: '#3b1f6e', finish: 'candy', trim: '#0d0d10', seed: 2, wheelsOff: true },
-  { x: -8.7, z: -1.6, yaw: Math.PI / 2, h: 1.7, paint: '#e6e3dc', finish: 'pearl', trim: '#16171a', seed: 3 },
-  { x: -8.7, z: 4.6, yaw: Math.PI / 2, h: 0.4, paint: '#0f1012', finish: 'matte', trim: '#c9a227', seed: 4 },
+const LIFTS: { x: number; z: number; yaw: number; h: number; wheelsOff?: boolean }[] = [
+  { x: -5.4, z: -8.7, yaw: 0, h: 1.85 },
+  { x: 1.4, z: -8.7, yaw: Math.PI, h: 0.95, wheelsOff: true },
+  { x: -8.7, z: -1.6, yaw: Math.PI / 2, h: 1.7 },
+  { x: -8.7, z: 4.6, yaw: Math.PI / 2, h: 0.4 },
 ];
+
+/** Body paints the customers' cars come in, each with its finish. */
+const LIFT_PAINTS: [string, PaintFinish][] = [
+  ['#5f6266', 'matte'],
+  ['#3b1f6e', 'candy'],
+  ['#e6e3dc', 'pearl'],
+  ['#0f1012', 'matte'],
+  ['#b3121e', 'candy'],
+  ['#f2c230', 'gloss'],
+  ['#1f6fd1', 'metallic'],
+  ['#0e7a5a', 'pearl'],
+  ['#ff6a1a', 'gloss'],
+  ['#c9ced8', 'metallic'],
+  ['#7d1fd1', 'candy'],
+  ['#2b3a2e', 'matte'],
+  ['#e83f8c', 'pearl'],
+  ['#101a3a', 'metallic'],
+  ['#f4f4f0', 'gloss'],
+  ['#5a0f14', 'metallic'],
+];
+/** Wheel paints and caliper colors the builds pick from. */
+const WHEEL_PAINTS: [string, PaintFinish][] = [
+  ['#1a1b1f', 'gloss'],
+  ['#c9ced8', 'metallic'],
+  ['#b08d57', 'metallic'],
+  ['#d8dade', 'gloss'],
+  ['#2a2c31', 'matte'],
+  ['#c41e3a', 'gloss'],
+  ['#f2c230', 'gloss'],
+  ['#3d4a5c', 'candy'],
+];
+const CALIPER_COLORS = ['#c41e3a', '#f2c230', '#1f6fd1', '#1a1b1f', '#ff6a1a', '#c9ced8', '#2fbf71'];
 
 /** Battens: position (m), yaw, length and state. The cluster over the turntable, then the work areas. */
 const BATTENS: { x: number; y: number; z: number; yaw: number; len: number; state: 'lit' | 'off' | 'flicker' }[] = [
@@ -134,12 +169,13 @@ const BATTENS: { x: number; y: number; z: number; yaw: number; len: number; stat
   { x: 1.1, y: ROOM.battenY, z: 0, yaw: Math.PI / 2, len: 2.4, state: 'lit' },
   // Over the back lifts, hung high and forward so they stay under the sign from the default view.
   { x: -5.4, y: 5.75, z: -6.4, yaw: 0, len: 2.4, state: 'lit' },
-  { x: 1.4, y: 5.75, z: -6.4, yaw: 0, len: 2.4, state: 'flicker' },
+  { x: 1.4, y: 5.75, z: -6.4, yaw: 0, len: 2.4, state: 'lit' },
   { x: -8.7, y: 5.0, z: -1.6, yaw: 0, len: 2.4, state: 'lit' },
-  { x: -8.7, y: 5.0, z: 4.6, yaw: 0, len: 2.4, state: 'off' },
+  { x: -8.7, y: 5.0, z: 4.6, yaw: 0, len: 2.4, state: 'lit' },
   { x: 10.4, y: 4.6, z: -2.5, yaw: Math.PI / 2, len: 2.4, state: 'lit' },
   { x: 2.5, y: 5.0, z: 8, yaw: 0, len: 2.4, state: 'lit' },
-  { x: -5, y: 5.0, z: 9, yaw: 0, len: 2.4, state: 'off' },
+  // Every lift's batten is on; the dying one hangs over the front corner's lockers.
+  { x: -5, y: 5.0, z: 9, yaw: 0, len: 2.4, state: 'flicker' },
 ];
 
 /** Where the neon signs hang: center (m) and facing yaw. */
@@ -156,7 +192,6 @@ export class Showroom {
   readonly envMap: THREE.Texture;
   private readonly ringMat: THREE.MeshBasicMaterial;
   private readonly flickerMat: THREE.MeshBasicMaterial;
-  private readonly flickerLight: THREE.PointLight | null = null;
   private readonly shadow: THREE.Mesh;
   private readonly reflector: Reflector | null = null;
   private readonly dust: THREE.Points | null = null;
@@ -199,8 +234,9 @@ export class Showroom {
     rollerDoor(k, 8.6, -H + 0.03, 0, 3.6, 3.6);
 
     // ---------- the lifts and their cars ----------
+    const builds = liftBuilds(LIFTS.length);
     LIFTS.forEach((l, i) => {
-      const carId = liftCarId(i);
+      const { carId, visual } = builds[i];
       const car = MANIFEST.cars.find((c) => c.id === carId)!;
       const fit: LiftFit = { width: car.dimensions.width, length: car.dimensions.length, wheelbase: car.wheelbase };
       const loaded = i < q.liftCars;
@@ -211,7 +247,7 @@ export class Showroom {
       k.place().plane(m.stain, 2.2, 2.2, l.x + 0.3, 0.006, l.z - 0.4, i * 1.3, -Math.PI / 2);
       if (!loaded) return;
       if (l.wheelsOff) hubs(k, l.x, h + DROOP, l.z, l.yaw, car.wheels.FL, car.wheels.FR);
-      void this.loadLiftCar(assets, carId, i, h);
+      void this.loadLiftCar(assets, carId, visual, i, h);
     });
     for (const [x, z, hx, hz, h] of workArea(k, m)) this.obstacle(x, z, 0, hx, hz, h);
     k.build(s, track);
@@ -229,8 +265,12 @@ export class Showroom {
     }
 
     // ---------- floor ----------
-    const concrete = concreteTextures();
+    const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    const concrete = concreteTextures(q.texRes);
     for (const t of [concrete.color, concrete.rough]) track(t).repeat.set((2 * H) / 8, (2 * H) / 8);
+    // The aggregate's bump repeats every 2 m, finer than the color's 8 m.
+    track(concrete.bump).repeat.set(H, H);
+    concrete.color.anisotropy = concrete.bump.anisotropy = aniso;
     const reflective = q.reflection > 0;
     const floor = new THREE.Mesh(
       track(new THREE.PlaneGeometry(2 * H, 2 * H).rotateX(-Math.PI / 2)),
@@ -238,6 +278,8 @@ export class Showroom {
         new THREE.MeshStandardMaterial({
           map: concrete.color,
           roughnessMap: concrete.rough,
+          bumpMap: concrete.bump,
+          bumpScale: 0.6,
           roughness: 1,
           metalness: 0,
           // Over the reflection pass, the sealed concrete lets a little of the mirror image through.
@@ -267,18 +309,31 @@ export class Showroom {
       s.add(r);
       this.reflector = r;
     }
-    const hazard = new THREE.Mesh(track(ringGeometry(ROOM.ring[0], ROOM.ring[1], 96)), track(new THREE.MeshStandardMaterial({ map: track(hazardTexture()), roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 })));
+    const hazardMap = track(hazardTexture());
+    hazardMap.anisotropy = aniso;
+    const hazard = new THREE.Mesh(track(ringGeometry(ROOM.ring[0], ROOM.ring[1], 192)), track(new THREE.MeshStandardMaterial({ map: hazardMap, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 })));
     hazard.position.y = 0.004;
     hazard.renderOrder = 1;
     s.add(hazard);
 
     // ---------- turntable ----------
     const top = ROOM.tableTop;
-    const plate = track(new THREE.MeshStandardMaterial({ map: track(plateTexture()), color: 0x8a8a90, roughness: 0.45, metalness: 0.75 }));
+    const plateMaps = plateTextures(1024 * q.texRes);
+    for (const t of [plateMaps.color, plateMaps.bump, plateMaps.rough]) track(t).anisotropy = aniso;
+    const plate = track(new THREE.MeshStandardMaterial({ map: plateMaps.color, bumpMap: plateMaps.bump, bumpScale: 1.6, roughnessMap: plateMaps.rough, color: 0x8a8a90, roughness: 1, metalness: 0.75 }));
     const side = track(new THREE.MeshStandardMaterial({ color: 0x1b1b1f, roughness: 0.6, metalness: 0.5 }));
-    const table = new THREE.Mesh(track(new THREE.CylinderGeometry(ROOM.table, ROOM.table + 0.04, top, 96)), [side, plate, side]);
+    const table = new THREE.Mesh(track(new THREE.CylinderGeometry(ROOM.table, ROOM.table + 0.04, top, 192)), [side, plate, side]);
     table.position.y = top / 2;
     this.turntable.add(table);
+    // Countersunk bolts round the rim and the bearing's hub cap with its own ring of bolts, one merged mesh turning with the table.
+    const bolts: THREE.BufferGeometry[] = [];
+    const bolt = (r: number, a: number, size: number, y: number) => bolts.push(new THREE.CylinderGeometry(size, size * 1.15, 0.008, 8).translate(Math.cos(a) * r, y + 0.004, Math.sin(a) * r));
+    for (let i = 0; i < 48; i++) bolt(ROOM.table - 0.09, (i / 48) * Math.PI * 2, 0.014, top);
+    bolts.push(new THREE.CylinderGeometry(0.26, 0.28, 0.012, 48).translate(0, top + 0.006, 0));
+    for (let i = 0; i < 8; i++) bolt(0.2, (i / 8) * Math.PI * 2 + 0.2, 0.012, top + 0.012);
+    const boltMat = track(new THREE.MeshStandardMaterial({ color: 0x9a9ca3, roughness: 0.35, metalness: 0.85 }));
+    this.turntable.add(new THREE.Mesh(track(mergeGeometries(bolts)), boltMat));
+    bolts.forEach((g) => g.dispose());
     this.ringMat = track(new THREE.MeshBasicMaterial({ color: new THREE.Color(PALETTE.orange).multiplyScalar(2.2) }));
     const ring = new THREE.Mesh(track(new THREE.TorusGeometry(ROOM.table + 0.03, 0.016, 8, 128).rotateX(Math.PI / 2)), this.ringMat);
     ring.position.y = top;
@@ -311,14 +366,14 @@ export class Showroom {
     bays.position.set(-8.2, 4.5, 1.5);
     s.add(fill, bays);
     if (q.workLights) {
-      // The dying batten over the second lift, the lamp hung under its car, the bench's strip.
-      this.flickerLight = new THREE.PointLight(0xe8eeff, 6, 8, 1.4);
-      this.flickerLight.position.set(LIFTS[1].x, 5.4, -6.6);
+      // The batten over the second lift, the lamp hung under its car, the bench's strip.
+      const liftLight = new THREE.PointLight(0xe8eeff, 6, 8, 1.4);
+      liftLight.position.set(LIFTS[1].x, 5.4, -6.6);
       const lamp = new THREE.PointLight(0xffb36a, 4, 4.5, 1.6);
       lamp.position.set(LIFTS[1].x - 0.4, 0.75, LIFTS[1].z + 0.9);
       const bench = new THREE.PointLight(0xfff0dc, 6, 7, 1.5);
       bench.position.set(10.4, 4.1, -2.5);
-      s.add(this.flickerLight, lamp, bench);
+      s.add(liftLight, lamp, bench);
     }
 
     // ---------- dust in the light ----------
@@ -346,11 +401,11 @@ export class Showroom {
   }
 
   /** Load a lift's car, dress it in its build and pose it once on the arms (wheels hanging). */
-  private async loadLiftCar(assets: CarAssetLibrary, carId: string, index: number, h: number): Promise<void> {
+  private async loadLiftCar(assets: CarAssetLibrary, carId: string, visual: VisualBuild, index: number, h: number): Promise<void> {
     const l = LIFTS[index];
     const view = new CarView(carId, assets, { envMap: this.envMap });
     view.setHeadlightsEnabled(false);
-    await view.load(liftVisual(carId, l.paint, l.finish, l.trim, l.seed));
+    await view.load(visual);
     if (this.disposed) {
       view.dispose();
       return;
@@ -429,7 +484,6 @@ export class Showroom {
     this.ringMat.color.copy(RING).multiplyScalar(1.45 + 0.3 * Math.sin(t * 1.6));
     const f = battenFlicker(t);
     this.flickerMat.color.copy(GLOW.tube).multiplyScalar(f);
-    if (this.flickerLight) this.flickerLight.intensity = 6 * f;
     for (const sign of this.signs) sign.update(t);
     this.dustTime.value = t;
   }
@@ -451,28 +505,44 @@ export class Showroom {
 const RING = new THREE.Color(PALETTE.orange);
 const AXES = ['x', 'y', 'z'] as const;
 
-/** Which car sits on lift i: the garage's cars in turn, starting a little way into the list so the first lift differs from the default pick. */
-function liftCarId(i: number): string {
-  const ids = MANIFEST.cars.filter((c) => c.selectable).map((c) => c.id);
-  return ids[(i + 2) % ids.length];
-}
-
-/** A lift car's build: its paint and trim, and a kit picked from the catalog by seed (some slots left stock), sat a little low. */
-function liftVisual(carId: string, paint: string, finish: PaintFinish, trim: string, seed: number): ReturnType<typeof defaultVisual> {
-  const v = defaultVisual();
-  v.paint = { color: paint, finish };
-  v.trimColor = trim;
-  v.tint.darkness = 0.75;
-  const slots: PartSlot[] = ['frontBumper', 'rearBumper', 'sideSkirts', 'spoiler', 'hood', 'wheels'];
-  slots.forEach((slot, j) => {
-    const list = partsFor(carId, slot);
-    const pick = Math.floor(noise(seed * 17 + j * 5) * (list.length + 1));
-    v.parts[slot] = pick < list.length ? list[pick].id : null;
+/**
+ * The lift cars for this visit: a different car on each lift while there are
+ * enough to go round, each built at random from the catalog the way a tuner's
+ * customers bring them in (paint and finish, trim, some slots kitted and some
+ * stock, wheels, calipers, tint and a stance from mild to slammed, kept inside
+ * what the lift arms leave room for). Render only, so Math.random is fine here.
+ */
+function liftBuilds(n: number, rnd: () => number = Math.random): { carId: string; visual: VisualBuild }[] {
+  const deck = MANIFEST.cars.filter((c) => c.selectable).map((c) => c.id);
+  for (let i = deck.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [deck[i], deck[j]] = [deck[j], deck[i]];
+  }
+  const pick = <T,>(list: readonly T[]): T => list[Math.floor(rnd() * list.length)];
+  const range = (a: number, b: number) => a + rnd() * (b - a);
+  return Array.from({ length: n }, (_, i) => {
+    const carId = deck[i % deck.length];
+    const v = defaultVisual();
+    const [color, finish] = pick(LIFT_PAINTS);
+    v.paint = { color, finish };
+    v.trimColor = rnd() < 0.7 ? '#111215' : pick(['#c9a227', '#c9ced8', color]);
+    v.tint.darkness = range(0.4, 0.85);
+    for (const slot of PART_SLOTS) {
+      const list = partsFor(carId, slot);
+      v.parts[slot] = list.length && rnd() < (slot === 'body' ? 0.35 : 0.65) ? pick(list).id : null;
+    }
+    const [wc, wf] = pick(WHEEL_PAINTS);
+    v.wheels.paint = { color: wc, finish: wf, match: rnd() < 0.1 };
+    v.wheels.rearPaint = { ...v.wheels.paint };
+    v.wheels.tire = v.wheels.rearTire = rnd() < 0.25 ? 'stretched' : 'standard';
+    v.calipers = { color: pick(CALIPER_COLORS), finish: 'gloss', match: false };
+    const ride = range(-0.05, 0);
+    const camber = rnd() < 0.4 ? range(-7, -2) : range(-1.5, 0);
+    const offset = range(0, 0.04);
+    const size = range(1, 1.15);
+    for (const a of AXLES) v.stance[a] = { rideHeight: ride, camber: a === 'rear' ? camber * 0.7 : camber, offset, wheelSize: size };
+    return { carId, visual: v };
   });
-  v.wheels.paint = seed % 2 ? { color: '#1a1b1f', finish: 'gloss', match: false } : { color: '#c9ced8', finish: 'metallic', match: false };
-  v.wheels.rearPaint = { ...v.wheels.paint };
-  v.stance.front.rideHeight = v.stance.rear.rideHeight = -0.03;
-  return v;
 }
 
 /** Where a car's front wheels came off: brake discs, hubs and calipers at the wheel centers (car space, posed like the car). */
@@ -527,11 +597,10 @@ function workArea(k: Kit, m: Kit['m']): [number, number, number, number, number]
   drum(k, 3.7, -11.35, m.blue);
   drum(k, 3.75, -10.7, m.red);
   shelving(k, -9.8, -H + 0.32, 0, 2.4, 1);
-  // Behind the lifts: a black cab under the high car, a pair of lockers (one left open) and the welder between the bays.
+  // Behind the lifts: a black cab under the high car, the flagship under the main sign, the welder by the sandblaster.
   rollCab(k, -5.4, -H + 0.33, 0, 1.8, m.black, m.drawersBlack, 'bare');
-  locker(k, -3.45, -H + 0.32, 0, 0.95, m.red);
-  locker(k, -2.47, -H + 0.32, 0, 0.95, m.red, true);
-  welder(k, -1.25, -11.2, 0.15);
+  flagshipCab(k, SIGNS.main.x, -H + 0.33, 0, 3.2, { body: m.candy, fronts: m.drawersCandy, accent: m.accentCyan, glow: m.glowCyan, badge: 0, top: 'hutch', lockers: 2, cabinets: 6, cabinetY: 2.95 });
+  welder(k, 2.95, -11.2, 0);
   toolBoard(k, -5.4, 1.85, -H, 0, 1.8, 0.9);
   acMachine(k, -7.3, -11.4, 0.2);
   sandblaster(k, 1.5, -11.55, 0);
@@ -545,8 +614,8 @@ function workArea(k: Kit, m: Kit['m']): [number, number, number, number, number]
     [-11.3, -9.2, 4],
   ] as const)
     for (let i = 0; i < n; i++) tire(k, x, 0.1 + i * 0.2, z);
-  toolChest(k, -H + 0.3, 1.5, Y, 1.5, m.red, m.drawersRed);
-  k.place().plane(m.pegboard, 2.2, 1.1, -H + 0.02, 2.45, 1.5, Y);
+  // Between the left lifts: the candy blue flagship with its green light.
+  flagshipCab(k, -H + 0.33, 1.6, Y, 1.7, { body: m.candyBlue, fronts: m.drawersCandyBlue, accent: m.accentGreen, glow: m.glowGreen, badge: 3, top: 'hutch', lockers: 2, cabinets: 5, cabinetY: 2.95 });
   // Left wall, front corner: a bank of black lockers.
   locker(k, -H + 0.32, 9.0, Y, 0.95, m.black);
   locker(k, -H + 0.32, 8.02, Y, 0.95, m.black, true);
@@ -554,14 +623,13 @@ function workArea(k: Kit, m: Kit['m']): [number, number, number, number, number]
   partsWasher(k, -H + 0.32, -7.9, Y);
   benchGrinder(k, -11.5, -6.5, Y);
   hydraulicPress(k, -H + 0.3, -3.7, Y);
-  batteryCharger(k, -11.5, 2.75, Y);
+  batteryCharger(k, -11.5, 3.38, Y);
   drillPress(k, -11.55, 6.7, Y);
   // Front wall: shelving, drums in the corner, the compressor and its reel, the extinguisher by the door.
   shelving(k, -3.6, H - 0.32, Math.PI, 2.4, 2);
   shelving(k, -6.8, H - 0.32, Math.PI, 2.4, 3);
   // The gunmetal cab with its top chest and a locker each side, a cart pulled out by it; a blue locker by the drums.
-  rollCab(k, -0.4, H - 0.33, Math.PI, 1.8, m.gunmetal, m.drawersGunmetal, 'chest', 2, true);
-  whiteboard(k, -0.4, 2.55, H, Math.PI, 1.6, 0.9);
+  flagshipCab(k, -0.4, H - 0.33, Math.PI, 1.8, { body: m.gunmetal, fronts: m.drawersGunmetal, accent: m.accentPink, glow: m.glowPink, badge: 2, top: 'chest', lockers: 2, cabinets: 4, cabinetY: 2.6 });
   ragBin(k, 1.25, 10.85);
   trashCan(k, -5.2, 10.85);
   wheelBoxes(k, -7.0, 10.55, 3, m.boxKiba);
@@ -585,10 +653,10 @@ function workArea(k: Kit, m: Kit['m']): [number, number, number, number, number]
   // The tire machines out from the rack, and the big red cab with its hutch and side locker in the back corner, a cart beside it.
   tireChanger(k, 10.1, 3.0, -Y);
   wheelBalancer(k, 10.3, 5.5, -Y);
-  rollCab(k, H - 0.33, -9.6, -Y, 2.1, m.red, m.drawersRed, 'hutch', 1);
+  flagshipCab(k, H - 0.33, -9.6, -Y, 2.1, { body: m.candyOrange, fronts: m.drawersCandyOrange, accent: m.accentPurple, glow: m.glowPurple, badge: 1, top: 'hutch', lockers: 1, cabinets: 4, cabinetY: 2.95 });
   utilityCart(k, 10.3, -7.1, -Y + 0.25, m.black, 0);
-  wallCabinets(k, H, 2.75, -9.32, -Y, 2.6, 4, m.red);
   toolBoard(k, H, 1.55, -7.15, -Y, 1.2, 0.9);
+  whiteboard(k, H, 2.45, 8.6, -Y, 1.6, 0.9);
   rollingStool(k, 10.5, -8.9);
   alignmentConsole(k, 9.2, 8.6, -Y - 0.5);
   // Air on a reel over the bench, another between the back lifts and the table, a drop light on a cord over the second lift.

@@ -8,7 +8,7 @@
  */
 import * as THREE from 'three';
 import { PALETTE } from '../ui/kit/palette';
-import { drawTexture, fitFont } from '../render/textures/canvasKit';
+import { canvas, drawTexture, fitFont } from '../render/textures/canvasKit';
 
 /** A small deterministic hash noise in 0..1 for texture speckle and flicker. */
 export function noise(i: number): number {
@@ -50,16 +50,19 @@ function crack(g: CanvasRenderingContext2D, x: number, y: number, len: number, s
 }
 
 /**
- * Shop concrete, 8 m square (128 px/m): mottled grey, speckle, saw-cut joints
- * every 4 m, hairline cracks, patched repairs, tire scuffs and oil stains. The
- * second texture is the matching roughness: oil and wet patches are glossier,
- * so the lights pick them out as dull puddles.
+ * Shop concrete, 8 m square at 128 px/m times `res`: mottled grey, speckle,
+ * saw-cut joints every 4 m, hairline cracks, patched repairs, tire scuffs and
+ * oil stains, laid out on a 1024 grid and scaled, then fine aggregate at the
+ * full resolution. The roughness makes oil and wet patches glossier, so the
+ * lights pick them out as dull puddles; the bump is a 2 m tile of aggregate
+ * and pits for the material to repeat finer than the color.
  */
-export function concreteTextures(): { color: THREE.CanvasTexture; rough: THREE.CanvasTexture } {
+export function concreteTextures(res = 1): { color: THREE.CanvasTexture; rough: THREE.CanvasTexture; bump: THREE.CanvasTexture } {
   const S = 1024;
   const stains: [number, number, number][] = [];
   for (let i = 0; i < 11; i++) stains.push([noise(i * 9.1) * S, noise(i * 4.7 + 2) * S, 30 + noise(i * 2.3) * 70]);
-  const color = drawTexture(S, S, (g) => {
+  const color = drawTexture(S * res, S * res, (g) => {
+    g.scale(res, res);
     g.fillStyle = '#4a4946';
     g.fillRect(0, 0, S, S);
     // Low frequency mottling: big soft patches lighter and darker.
@@ -111,11 +114,42 @@ export function concreteTextures(): { color: THREE.CanvasTexture; rough: THREE.C
       g.fillRect(p, 0, 1, S);
       g.fillRect(0, p, S, 1);
     }
+    // Fine aggregate at the full resolution: single pixel grains, light and dark.
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    const F = S * res;
+    for (let i = 0; i < 60000 * res * res; i++) {
+      const n = noise(i * 0.73 + 5);
+      g.fillStyle = n > 0.7 ? 'rgba(200,196,188,0.09)' : n > 0.35 ? 'rgba(0,0,0,0.12)' : 'rgba(120,104,88,0.07)';
+      g.fillRect(noise(i * 1.93) * F, noise(i * 3.17) * F, 1, 1);
+    }
   });
-  const rough = drawTexture(
-    256,
-    256,
+  const bump = drawTexture(
+    512,
+    512,
     (g) => {
+      g.fillStyle = '#808080';
+      g.fillRect(0, 0, 512, 512);
+      for (let i = 0; i < 9000; i++) {
+        const n = noise(i * 2.11 + 1);
+        g.fillStyle = n > 0.5 ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)';
+        const r = 0.6 + noise(i * 4.3) * 1.4;
+        g.fillRect(noise(i * 1.37) * 512, noise(i * 2.71) * 512, r, r);
+      }
+      // Pits: small dark holes where air was trapped in the pour.
+      g.fillStyle = 'rgba(0,0,0,0.7)';
+      for (let i = 0; i < 140; i++) {
+        g.beginPath();
+        g.arc(noise(i * 6.1) * 512, noise(i * 9.7) * 512, 1 + noise(i * 3.3) * 2.2, 0, Math.PI * 2);
+        g.fill();
+      }
+    },
+    { srgb: false },
+  );
+  const rough = drawTexture(
+    256 * res,
+    256 * res,
+    (g) => {
+      g.scale(res, res);
       // Green channel is roughness: bare concrete is matt, the stains are slick.
       g.fillStyle = 'rgb(0,225,0)';
       g.fillRect(0, 0, 256, 256);
@@ -124,7 +158,7 @@ export function concreteTextures(): { color: THREE.CanvasTexture; rough: THREE.C
     },
     { srgb: false },
   );
-  return { color, rough };
+  return { color, rough, bump };
 }
 
 /**
@@ -298,58 +332,189 @@ export function stainTexture(): THREE.CanvasTexture {
   );
 }
 
-/** Diamond plate for the turntable's top: alternating raised lugs, scuffed paths and a worn rim. */
-export function plateTexture(): THREE.CanvasTexture {
-  return drawTexture(512, 512, (g) => {
-    g.fillStyle = '#6c6d72';
-    g.fillRect(0, 0, 512, 512);
-    for (let y = 0; y < 512; y += 16) {
-      for (let x = 0; x < 512; x += 16) {
-        const flip = ((x + y) / 16) & 1;
-        g.save();
-        g.translate(x + 8, y + 8);
-        g.rotate(flip ? Math.PI / 4 : -Math.PI / 4);
-        g.fillStyle = '#9a9ba2';
-        g.fillRect(-6, -1.5, 12, 3);
-        g.fillStyle = 'rgba(0,0,0,0.45)';
-        g.fillRect(-6, 1.5, 12, 1.5);
-        g.restore();
-      }
-    }
-    // Tire paths across it and a grimy rim.
+/**
+ * The turntable's diamond plate, `size` px across the 6 m disc (the cap's
+ * UVs): lugs about 3.5 cm apart in alternating pairs, drawn as one tile and
+ * laid as a pattern, then the wear of cars turning on it: polished rings where
+ * the tires sit, rotational scratches, tire paths, oil drips under the engine
+ * and grime toward the rim. Three maps that line up: color, a bump of the
+ * raised lugs, and roughness (worn lugs and scratches shine, grime is matt).
+ */
+export function plateTextures(size: number): { color: THREE.CanvasTexture; bump: THREE.CanvasTexture; rough: THREE.CanvasTexture } {
+  const S = size;
+  const p = Math.max(6, Math.round(S / 170));
+  const len = p * 0.36;
+  /** One 2x2 tile of lugs, each drawn by `lug` centered and turned. */
+  const tile = (base: string, lug: (g: CanvasRenderingContext2D) => void) => {
+    const [c, g] = canvas(2 * p, 2 * p);
+    g.fillStyle = base;
+    g.fillRect(0, 0, 2 * p, 2 * p);
     g.lineCap = 'round';
-    for (let i = 0; i < 6; i++) {
-      g.strokeStyle = 'rgba(10,10,10,0.18)';
-      g.lineWidth = 40 + noise(i) * 30;
-      const a = noise(i * 3.3) * Math.PI;
+    for (let i = 0; i < 4; i++) {
+      const cx = (i % 2) * p + p / 2;
+      const cy = Math.floor(i / 2) * p + p / 2;
+      g.save();
+      g.translate(cx, cy);
+      g.rotate((i === 0 || i === 3 ? 1 : -1) * (Math.PI / 4));
+      lug(g);
+      g.restore();
+    }
+    return c;
+  };
+  const line = (g: CanvasRenderingContext2D, style: string, width: number, dy = 0) => {
+    g.strokeStyle = style;
+    g.lineWidth = width;
+    g.beginPath();
+    g.moveTo(-len, dy);
+    g.lineTo(len, dy);
+    g.stroke();
+  };
+  const fill = (g: CanvasRenderingContext2D, t: HTMLCanvasElement) => {
+    g.fillStyle = g.createPattern(t, 'repeat')!;
+    g.fillRect(0, 0, S, S);
+  };
+  const c = S / 2;
+  const px = S / 6;
+  // Where the wear goes, shared by the three maps.
+  const rings = [1.25, 1.55].map((r) => r * px);
+  const scratches = Array.from({ length: 700 }, (_, i) => [(0.2 + noise(i * 1.7) * 2.7) * px, noise(i * 2.9) * Math.PI * 2, 0.05 + noise(i * 4.1) * 0.35] as const);
+  const paths = Array.from({ length: 6 }, (_, i) => noise(i * 3.3) * Math.PI);
+  const wear = (g: CanvasRenderingContext2D, ring: string, scratch: string, path: string) => {
+    g.lineCap = 'round';
+    for (const r of rings) {
+      g.strokeStyle = ring;
+      g.lineWidth = 0.28 * px;
       g.beginPath();
-      g.moveTo(256 - Math.cos(a) * 260, 256 - Math.sin(a) * 260);
-      g.lineTo(256 + Math.cos(a) * 260, 256 + Math.sin(a) * 260);
+      g.arc(c, c, r, 0, Math.PI * 2);
       g.stroke();
     }
-    const rim = g.createRadialGradient(256, 256, 190, 256, 256, 256);
-    rim.addColorStop(0, 'rgba(12,11,10,0)');
-    rim.addColorStop(1, 'rgba(12,11,10,0.65)');
+    g.strokeStyle = scratch;
+    g.lineWidth = Math.max(1, S / 2048);
+    for (const [r, a, l] of scratches) {
+      g.beginPath();
+      g.arc(c, c, r, a, a + l);
+      g.stroke();
+    }
+    paths.forEach((a, i) => {
+      g.strokeStyle = path;
+      g.lineWidth = (0.2 + noise(i) * 0.1) * px;
+      g.beginPath();
+      g.moveTo(c - Math.cos(a) * c, c - Math.sin(a) * c);
+      g.lineTo(c + Math.cos(a) * c, c + Math.sin(a) * c);
+      g.stroke();
+    });
+  };
+  const grime = (g: CanvasRenderingContext2D, rgb: string, alpha: number) => {
+    const rim = g.createRadialGradient(c, c, c * 0.72, c, c, c);
+    rim.addColorStop(0, `rgba(${rgb},0)`);
+    rim.addColorStop(1, `rgba(${rgb},${alpha})`);
     g.fillStyle = rim;
-    g.fillRect(0, 0, 512, 512);
+    g.fillRect(0, 0, S, S);
+  };
+  const color = drawTexture(S, S, (g) => {
+    fill(
+      g,
+      tile('#5d5e63', (t) => {
+        line(t, 'rgba(0,0,0,0.5)', p * 0.24, p * 0.05);
+        line(t, '#9a9ba2', p * 0.2);
+        line(t, '#c9cbd2', p * 0.06, -p * 0.05);
+      }),
+    );
+    wear(g, 'rgba(255,255,255,0.06)', 'rgba(220,222,230,0.1)', 'rgba(10,10,10,0.16)');
+    for (let i = 0; i < 5; i++) blot(g, c + (noise(i * 7.7) - 0.5) * px * 1.2, c + (noise(i * 5.3) - 0.5) * px * 0.6, (0.08 + noise(i) * 0.12) * px, '18,14,10', 0.35, i * 19);
+    grime(g, '12,11,10', 0.6);
   });
+  const bump = drawTexture(
+    S,
+    S,
+    (g) => {
+      fill(
+        g,
+        tile('#000', (t) => {
+          line(t, '#404040', p * 0.3);
+          line(t, '#a0a0a0', p * 0.2);
+          line(t, '#fff', p * 0.1);
+        }),
+      );
+      g.strokeStyle = 'rgba(0,0,0,0.5)';
+      g.lineWidth = Math.max(1, S / 2048);
+      for (const [r, a, l] of scratches) {
+        g.beginPath();
+        g.arc(c, c, r, a, a + l);
+        g.stroke();
+      }
+    },
+    { srgb: false },
+  );
+  const rough = drawTexture(
+    S,
+    S,
+    (g) => {
+      // Green channel is roughness.
+      fill(
+        g,
+        tile('rgb(0,150,0)', (t) => line(t, 'rgb(0,95,0)', p * 0.2)),
+      );
+      wear(g, 'rgba(0,40,0,0.35)', 'rgba(0,40,0,0.5)', 'rgba(0,230,0,0.25)');
+      for (let i = 0; i < 5; i++) blot(g, c + (noise(i * 7.7) - 0.5) * px * 1.2, c + (noise(i * 5.3) - 0.5) * px * 0.6, (0.08 + noise(i) * 0.12) * px, '0,30,0', 0.6, i * 19);
+      grime(g, '0,235,0', 0.7);
+    },
+    { srgb: false },
+  );
+  return { color, bump, rough };
 }
 
-/** Yellow and black chevrons for the ring round the turntable, chipped. */
+/**
+ * The hazard ring round the turntable, one chevron per tile (48 round the
+ * ring, about 600 px/m): yellow and black floor paint with brush streaks,
+ * tire-dark wear down the middle where cars roll across, ragged edges and
+ * chips back to the concrete. Inner edge at the top (v 0), outer at the bottom.
+ */
 export function hazardTexture(): THREE.CanvasTexture {
-  return drawTexture(64, 32, (g) => {
+  return drawTexture(256, 128, (g) => {
     g.fillStyle = '#141316';
-    g.fillRect(0, 0, 64, 32);
-    g.fillStyle = '#9c8034';
+    g.fillRect(0, 0, 256, 128);
+    g.fillStyle = '#b08a2e';
     g.beginPath();
     g.moveTo(0, 0);
-    g.lineTo(32, 0);
-    g.lineTo(64, 32);
-    g.lineTo(32, 32);
+    g.lineTo(128, 0);
+    g.lineTo(256, 128);
+    g.lineTo(128, 128);
     g.fill();
-    for (let i = 0; i < 10; i++) {
-      g.fillStyle = 'rgba(30,28,26,0.8)';
-      g.fillRect(noise(i * 5.5) * 64, noise(i * 2.2) * 32, 2 + noise(i) * 5, 1 + noise(i * 9) * 3);
+    g.beginPath();
+    g.moveTo(-128, 0);
+    g.lineTo(0, 0);
+    g.lineTo(128, 128);
+    g.lineTo(0, 128);
+    g.fill();
+    // Brush streaks along the ring.
+    for (let i = 0; i < 420; i++) {
+      g.fillStyle = noise(i * 1.3) > 0.5 ? 'rgba(255,240,200,0.06)' : 'rgba(0,0,0,0.08)';
+      g.fillRect(noise(i * 2.1) * 256, noise(i * 3.7) * 128, 14 + noise(i * 5.1) * 40, 1);
+    }
+    // Tire wear: a dark band where the wheels cross, heaviest in the middle.
+    const band = g.createLinearGradient(0, 0, 0, 128);
+    band.addColorStop(0, 'rgba(10,10,10,0)');
+    band.addColorStop(0.5, 'rgba(10,10,10,0.32)');
+    band.addColorStop(1, 'rgba(10,10,10,0)');
+    g.fillStyle = band;
+    g.fillRect(0, 0, 256, 128);
+    // Chips back to bare concrete, more along the edges.
+    for (let i = 0; i < 70; i++) {
+      const edge = i < 40;
+      const x = noise(i * 5.5) * 256;
+      const y = edge ? (noise(i * 2.2) > 0.5 ? noise(i * 8.1) * 10 : 128 - noise(i * 8.1) * 10) : noise(i * 2.2) * 128;
+      const r = 1.5 + noise(i * 9.3) * (edge ? 6 : 4);
+      g.fillStyle = 'rgba(78,76,72,0.92)';
+      g.beginPath();
+      for (let k = 0; k < 6; k++) {
+        const a = (k / 6) * Math.PI * 2;
+        const rr = r * (0.5 + noise(i * 13 + k) * 0.7);
+        g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr * 0.7);
+      }
+      g.fill();
+      g.fillStyle = 'rgba(0,0,0,0.25)';
+      g.fillRect(x - r * 0.4, y + r * 0.3, r * 0.8, 1);
     }
   });
 }
@@ -650,6 +815,34 @@ export function partsBoxTexture(name: string, line: string, accent: string): THR
       g.stroke();
     }
   });
+}
+
+/**
+ * The flagship cabs' nameplates, one row each in an atlas: a black plate with
+ * the series name lit in its accent. The material pushes it past the bloom.
+ */
+export function badgeTexture(badges: readonly { name: string; line: string; color: string }[]): THREE.CanvasTexture {
+  return drawTexture(
+    512,
+    96 * badges.length,
+    (g) => {
+      badges.forEach(({ name, line, color }, i) => {
+        const y = i * 96;
+        g.fillStyle = '#0b0b0e';
+        g.fillRect(0, y, 512, 96);
+        g.strokeStyle = '#9aa0aa';
+        g.lineWidth = 4;
+        g.strokeRect(4, y + 4, 504, 88);
+        g.fillStyle = color;
+        g.textAlign = 'center';
+        fitFont(g, name, 440, 54, (px) => `italic 900 ${px}px "Google Sans Flex", system-ui, sans-serif`);
+        g.fillText(name, 256, y + 58);
+        g.font = '700 18px "Google Sans Flex", system-ui, sans-serif';
+        g.fillText(line, 256, y + 82);
+      });
+    },
+    { repeat: false },
+  );
 }
 
 /** The beer sign's face: two lines of light on black, drawn white so the material's color tints and pushes it past the bloom. */

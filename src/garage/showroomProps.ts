@@ -14,7 +14,7 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { beerSignTexture, deckTexture, doorTexture, drawerTexture, glowTexture, lineTexture, partsBoxTexture, pegboardTexture, posterTexture, stainTexture, whiteboardTexture, workOrderTexture } from './showroomTextures';
+import { badgeTexture, beerSignTexture, deckTexture, doorTexture, drawerTexture, glowTexture, lineTexture, partsBoxTexture, pegboardTexture, posterTexture, stainTexture, whiteboardTexture, workOrderTexture } from './showroomTextures';
 import { PALETTE } from '../ui/kit/palette';
 import type { Disposable } from '../render/disposer';
 
@@ -35,6 +35,12 @@ export function createMaterials(track: <T extends Disposable>(x: T) => T, wallMa
     const m = std({ map: track(map), transparent: true, opacity, depthWrite: false, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
     m.userData.renderOrder = order;
     return m;
+  };
+  const glowMap = track(glowTexture());
+  const pool = (color: string) => {
+    const l = track(new THREE.MeshBasicMaterial({ map: glowMap, color: new THREE.Color(color).multiplyScalar(0.55), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    l.userData.renderOrder = 3;
+    return l;
   };
   const deck = track(deckTexture());
   deck.repeat.set(12, 12);
@@ -74,6 +80,19 @@ export function createMaterials(track: <T extends Disposable>(x: T) => T, wallMa
     drawersBlack: std({ map: track(drawerTexture('#1d1d21')), roughness: 0.4, metalness: 0.3 }),
     drawersBlue: std({ map: track(drawerTexture('#1d4f9a')), roughness: 0.4, metalness: 0.25 }),
     drawersGunmetal: std({ map: track(drawerTexture('#3a3d44')), roughness: 0.38, metalness: 0.45 }),
+    /** The flagship cab's deep candy red, glossier than the shop's other paint. */
+    candy: std({ color: 0xa80d1a, roughness: 0.16, metalness: 0.6 }),
+    drawersCandy: std({ map: track(drawerTexture('#a80d1a')), roughness: 0.16, metalness: 0.6 }),
+    candyOrange: std({ color: 0xc4480e, roughness: 0.16, metalness: 0.6 }),
+    drawersCandyOrange: std({ map: track(drawerTexture('#c4480e')), roughness: 0.16, metalness: 0.6 }),
+    candyBlue: std({ color: 0x0d3fa8, roughness: 0.16, metalness: 0.6 }),
+    drawersCandyBlue: std({ map: track(drawerTexture('#0d3fa8')), roughness: 0.16, metalness: 0.6 }),
+    /** The flagship cabs' accent lights: the underglow strips and the seams between each cab and its lockers. */
+    accentCyan: basic(new THREE.Color(PALETTE.cyan).multiplyScalar(2.2)),
+    accentPurple: basic(new THREE.Color(PALETTE.purple).multiplyScalar(2.2)),
+    accentPink: basic(new THREE.Color(PALETTE.pink).multiplyScalar(2.2)),
+    accentGreen: basic(new THREE.Color(PALETTE.green).multiplyScalar(2.2)),
+    badge: track(new THREE.MeshBasicMaterial({ map: track(badgeTexture(BADGES)), color: new THREE.Color(1.6, 1.6, 1.6) })),
     poster0: std({ map: track(posterTexture('KUROGANE', 'AERO WORKS', PALETTE.orange, 0)), roughness: 0.8, transparent: true }),
     poster1: std({ map: track(posterTexture('HAYATE', 'NIGHT SERIES', PALETTE.cyan, 1)), roughness: 0.8, transparent: true }),
     poster2: std({ map: track(posterTexture('KIBA', 'FORGED WHEELS', PALETTE.yellow, 2)), roughness: 0.8, transparent: true }),
@@ -93,6 +112,11 @@ export function createMaterials(track: <T extends Disposable>(x: T) => T, wallMa
       return l;
     })(),
     leakEdge: basic(new THREE.Color(0xffb050).multiplyScalar(1.6)),
+    /** Each underglow's pool on the floor in front of its cab: additive, like the door's leak. */
+    glowCyan: pool(PALETTE.cyan),
+    glowPurple: pool(PALETTE.purple),
+    glowPink: pool(PALETTE.pink),
+    glowGreen: pool(PALETTE.green),
   };
 }
 export type Mats = ReturnType<typeof createMaterials>;
@@ -494,9 +518,10 @@ export type CabTop = 'chest' | 'hutch' | 'bare';
  * a stainless worktop, side lockers at either end (`lockers`: -1 the left, 1
  * the right, 2 both) and on top a chest of drawers, a hutch (pegboard back,
  * overhead cabinet, an LED strip over the worktop) or the tools in use.
- * `open` leaves a drawer of the right bank pulled out with its wrenches.
+ * `open` leaves a drawer of the right bank pulled out with its wrenches;
+ * `tall` runs the side lockers up to the top of the hutch.
  */
-export function rollCab(k: Kit, x: number, z: number, yaw: number, w: number, body: THREE.Material, fronts: THREE.Material, top: CabTop, lockers: -1 | 0 | 1 | 2 = 0, open = false): void {
+export function rollCab(k: Kit, x: number, z: number, yaw: number, w: number, body: THREE.Material, fronts: THREE.Material, top: CabTop, lockers: -1 | 0 | 1 | 2 = 0, open = false, tall = false): void {
   const m = k.m;
   k.place(x, 0, z, yaw);
   const d = 0.62;
@@ -523,7 +548,7 @@ export function rollCab(k: Kit, x: number, z: number, yaw: number, w: number, bo
     for (let i = 0; i < 10; i++) k.box(m.chrome, 0.014, 0.008, 0.14 + i * 0.012, fx - bw / 2 + 0.04 + (i * (bw - 0.08)) / 9, dy - 0.03, d / 2 + out / 2, 0.15);
   }
   // Side lockers: a tall door each, its handle and vents, as high as the chest when there is one.
-  const lh = h + (chest ? 0.03 + chest : 0);
+  const lh = h + (chest ? 0.03 + chest : tall ? 0.98 : 0);
   for (const s of sides) {
     const lx = s * (w / 2 + lw / 2);
     k.box(body, lw, lh, d, lx, base + lh / 2, 0);
@@ -541,7 +566,7 @@ export function rollCab(k: Kit, x: number, z: number, yaw: number, w: number, bo
     for (const dz of [-(d / 2 - 0.08), d / 2 - 0.08]) k.box(m.chrome, 0.06, 0.02, 0.02, ex + s * 0.03, base + h - 0.12, dz);
   }
   k.box(m.black, 0.03, 0.06, 0.32, x1 + 0.015, base + h - 0.32, 0);
-  const [t0, t1] = chest ? [-w / 2, w / 2] : [x0, x1];
+  const [t0, t1] = chest || tall ? [-w / 2, w / 2] : [x0, x1];
   const ty = base + h + 0.03;
   k.box(m.stainless, t1 - t0 + 0.03, 0.03, d + 0.03, (t0 + t1) / 2, ty - 0.015, 0);
   if (top === 'chest') {
@@ -1306,4 +1331,102 @@ export function coffeeCorner(k: Kit, x: number, z: number, yaw: number): void {
   k.cyl(m.enamel, 0.06, 0.24, 0.17, 1.12, -0.15, 'x', 12);
   k.box(m.black, 0.76, 0.4, 0.03, 0, 1.8, -0.285);
   k.plane(m.beerSign, 0.72, 0.36, 0, 1.8, -0.268);
+}
+
+/** The flagship cabs' nameplates, in the badge atlas's row order: series name, line, the accent they are lit in. */
+export const BADGES = [
+  { name: 'STREET SCENE', line: 'PRO SERIES  ·  CUSTOM GARAGE', color: PALETTE.cyan },
+  { name: 'STREET SCENE', line: 'NIGHT SHIFT  ·  FABRICATION', color: PALETTE.purple },
+  { name: 'STREET SCENE', line: 'RACE DEPT  ·  TUNING', color: PALETTE.pink },
+  { name: 'STREET SCENE', line: 'DRIFT LAB  ·  SUSPENSION', color: PALETTE.green },
+] as const;
+
+/** A flagship cab's configuration. */
+export interface CabStyle {
+  body: THREE.Material;
+  fronts: THREE.Material;
+  /** The accent light's strip material and its pool on the floor. */
+  accent: THREE.Material;
+  glow: THREE.Material;
+  /** Row of BADGES on its nameplate. */
+  badge: number;
+  /** A hutch with full-height lockers, or a top chest with the lockers at its height. */
+  top: 'hutch' | 'chest';
+  lockers: -1 | 1 | 2;
+  /** Doors in the run of wall cabinets over it, and their center height (m). */
+  cabinets: number;
+  cabinetY: number;
+}
+
+/**
+ * A showpiece roll cab along local x, the rollCab with everything: glossy
+ * paint, a hutch and full-height side lockers or a top chest with lockers to
+ * match, chrome pulls on every drawer, a drawer pulled out, seams and an
+ * underglow in the accent light pooling on a rubber mat, a lit nameplate,
+ * a run of wall cabinets over it lit underneath, a helmet and a carry box on
+ * the lockers. A hutch's back is a tool board of real tools, not the print.
+ */
+export function flagshipCab(k: Kit, x: number, z: number, yaw: number, w: number, style: CabStyle): void {
+  const m = k.m;
+  const hutch = style.top === 'hutch';
+  rollCab(k, x, z, yaw, w, style.body, style.fronts, style.top, style.lockers, true, hutch);
+  // rollCab's frame and measurements: depth, the cab's base and height, the lockers' width and height, the worktop.
+  const d = 0.62;
+  const base = 0.17;
+  const h = 0.9;
+  const lw = 0.56;
+  const lh = h + (hutch ? 0.98 : 0.53);
+  const ty = base + h + 0.03;
+  const sides = style.lockers === 2 ? [-1, 1] : [style.lockers];
+  const x0 = -w / 2 - (sides.includes(-1) ? lw : 0);
+  const x1 = w / 2 + (sides.includes(1) ? lw : 0);
+  const cx = (x0 + x1) / 2;
+  const span = x1 - x0;
+  // Chrome pulls over the printed ones: seven rows a bank (the drawer layout of drawerTexture), the open drawer's row left dark.
+  const top = base + h / 2 + (h - 0.08) / 2;
+  const rows = [0, 20, 40, 60, 84, 112, 148];
+  for (const s of [-1, 1])
+    rows.forEach((r, i) => {
+      if (s === 1 && i === 3) return;
+      k.box(m.chrome, w / 2 - 0.16, 0.014, 0.02, (s * w) / 4, top - ((r + 6.5) / 192) * (h - 0.08), d / 2 + 0.012);
+    });
+  // Accent seams where the lockers meet the cab, the underglow strip and its pool on the mat.
+  for (const s of sides) k.box(style.accent, 0.01, lh - 0.02, 0.008, s * (w / 2 + 0.004), base + lh / 2, d / 2 + 0.006);
+  k.box(style.accent, span - 0.1, 0.012, 0.02, cx, base - 0.012, d / 2 - 0.04);
+  k.box(m.rubber, span + 0.3, 0.012, 1.1, cx, 0.006, d / 2 + 0.5);
+  k.plane(style.glow, span * 1.25, 1.8, cx, 0.014, d / 2 + 0.1, 0, -Math.PI / 2);
+  // The nameplate: on the hutch's overhead cabinet, or across the top chest under its handle.
+  const plate = new THREE.PlaneGeometry(hutch ? 0.66 : 0.5, hutch ? 0.124 : 0.094);
+  const uv = plate.getAttribute('uv') as THREE.BufferAttribute;
+  for (let i = 0; i < uv.count; i++) uv.setY(i, 1 - (style.badge + 1 - uv.getY(i)) / BADGES.length);
+  if (hutch) k.add(m.badge, plate, 0, ty + 0.82, -d / 2 + 0.364);
+  else k.add(m.badge, plate, 0, ty + 0.5 - 0.06, d / 2 - 0.054);
+  if (hutch) {
+    // Real tools on the hutch's back instead of the print.
+    k.box(m.gunmetal, w - 0.1, 0.5, 0.012, 0, ty + 0.3, -d / 2 + 0.04);
+    const n = Math.floor((w * 0.45) / 0.045);
+    for (let i = 0; i < n; i++) {
+      const len = 0.1 + i * 0.013;
+      const wx = -w / 2 + 0.12 + i * 0.045;
+      k.box(m.chrome, 0.014, len, 0.006, wx, ty + 0.5 - len / 2, -d / 2 + 0.05);
+      k.cyl(m.chrome, 0.012 + i * 0.0006, 0.007, wx, ty + 0.5 - len, -d / 2 + 0.05, 'z', 10);
+    }
+    [m.red, m.yellow, m.black, m.blue, m.red, m.black, m.yellow, m.blue, m.red, m.black].forEach((mat, i) => {
+      const px = 0.05 + i * (w * 0.3 / 9);
+      k.cyl(mat, 0.013, 0.08, px, ty + 0.5, -d / 2 + 0.06, 'y', 8);
+      k.cyl(m.chrome, 0.004, 0.1 + (i % 3) * 0.04, px, ty + 0.4 - (i % 3) * 0.02, -d / 2 + 0.06, 'y', 5);
+    });
+    for (let i = 0; i < 10; i++) k.cyl(m.chrome, 0.012 + i * 0.0014, 0.04, w / 2 - 0.5 + i * 0.042, ty + 0.2, -d / 2 + 0.07, 'z', 8);
+  }
+  // On the lockers: a helmet in the cab's paint on one, a carry box on the other.
+  const lt = base + lh;
+  const lx = w / 2 + lw / 2;
+  const helmetX = sides.includes(-1) ? -lx : lx;
+  k.add(style.body, new THREE.SphereGeometry(0.15, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.6), helmetX, lt + 0.1, 0);
+  k.box(m.carbon, 0.2, 0.08, 0.04, helmetX, lt + 0.12, 0.13, 0, -0.2);
+  if (sides.length === 2) carryBox(k, m.black, lx, lt, 0, 0.44);
+  // A run of wall cabinets over it all, in the same paint, lit underneath: centered over the span, backs on the wall.
+  const c = Math.cos(yaw);
+  const sn = Math.sin(yaw);
+  wallCabinets(k, x + cx * c - (d / 2) * sn, style.cabinetY, z - cx * sn - (d / 2) * c, yaw, span, style.cabinets, style.body);
 }
