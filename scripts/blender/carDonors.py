@@ -88,7 +88,7 @@ DONORS = {
                       r'^windowglass$': 'Glass', r'^carpaint$': 'Paint', r'^black$': 'Black', r'^chrome$': 'Chrome', r'^mirror$': 'Black'},
         # The pop-up lamps are modelled raised, with black lids: on the car the lids are body panels,
         # and black ones read as bars hung in front of the lamps.
-        'recolor': [(lambda c, n, m: m == 'Black' and 0.45 < abs(c.x) < 0.78 and -1.9 < c.y < -1.58 and c.z > 0.6 and (c.z > 0.74 or n.z > 0.6), 'Paint')],
+        'recolor': [(lambda c, n, m: m == 'Black' and 0.45 < abs(c.x) < 0.78 and -1.9 < c.y < -1.58 and c.z > 0.58, 'Paint')],
         # The nose and tail badges and the tail lettering: chrome islands of 2,000 to 2,700 faces,
         # past the de-badge limit, which the tail lamps' chrome reflectors (1,856) must stay under.
         'cull': [lambda c, n, m: m == 'Chrome' and abs(c.x) < 0.05 and c.y < -1.89 and 0.55 < c.z < 0.63,
@@ -273,8 +273,8 @@ def strip_wipers(o, gap=0.08):
     me.update()
     # What the wipers leave: pivots, nozzles, the mirror's mount, small black bits lying on the
     # glass (the Golf's cowl kept ten of them, 2 to 5 cm each).
-    n += delete_islands(o, lambda k, a, b, mats: k < 60 and set(mats) <= {'Black', 'Chrome'} and (b - a).length < 0.12
-                        and all((tree.find_nearest(c)[3] or 1) < 0.03 for c in ((a + b) / 2, a, b, Vector((a.x, a.y, b.z)), Vector((b.x, b.y, a.z)))))
+    n += delete_islands(o, lambda k, a, b, mats: k < 400 and set(mats) <= {'Black', 'Chrome'} and (b - a).length < 0.12
+                        and (tree.find_nearest((a + b) / 2)[3] or 1) < 0.1)
     return n
 
 
