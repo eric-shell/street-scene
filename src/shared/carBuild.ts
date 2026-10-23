@@ -137,7 +137,7 @@ export function defaultVisual(): VisualBuild {
 }
 
 export function defaultBuild(carId = DEFAULT_CAR_ID): CarBuild {
-  return { version: 1, name: DEFAULT_BUILD_NAME, carId, visual: defaultVisual(), performance: stockPerformance() };
+  return { version: 1, name: DEFAULT_BUILD_NAME, carId, visual: defaultVisual(), performance: stockPerformance(carId) };
 }
 
 // ---------------------------------------------------------------------------
@@ -281,5 +281,5 @@ export function validateBuild(v: unknown): CarBuild {
   const visual = validateVisual(o.visual);
   // A build for a car that is no longer offered moves to the default car; its parts do not fit.
   if (carId !== savedId) visual.parts = visual.parts.wheels ? { wheels: visual.parts.wheels } : {};
-  return { version: 1, name, carId, visual, performance: validatePerformance(o.performance) };
+  return { version: 1, name, carId, visual, performance: validatePerformance(o.performance, carId) };
 }

@@ -52,6 +52,8 @@ export interface CarTuning {
   launch: {
     /** The build's launch rpm the two-step holds the engine at (rpm); 0 = off. applyBuild writes it from the garage's Tune tab. */
     twoStepRpm: number;
+    /** The car's stock Launch RPM (rpm; 0 = off): what a new garage build, or a saved one without the setting, starts on. */
+    defaultRpm: number;
     /** How far under the set point each cut lets the revs fall (rpm): the stutter's depth. */
     twoStepDepth: number;
     /** How long each cut keeps the spark off (s): with the depth, the stutter's rate. */

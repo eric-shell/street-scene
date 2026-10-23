@@ -65,8 +65,9 @@
       "tcMaxSlipDeg": 9
     },
     "launch": {
-      "_": "Launch control and the pedal combos (car.ts): the two-step rev cut at the line, line lock burnouts and rolling antilag. twoStepRpm is the build's Launch RPM (0 = off); applyBuild writes it, so leave it 0 here.",
+      "_": "Launch control and the pedal combos (car.ts): the two-step rev cut at the line, line lock burnouts and rolling antilag. twoStepRpm is the build's Launch RPM (0 = off); applyBuild writes it, so leave it 0 here. defaultRpm is the car's stock pick, the Launch RPM a new garage build (or a saved one from before launch control) starts on; 0 = off. Set per car from what owners of its donor launch at.",
       "twoStepRpm": 0,
+      "defaultRpm": 0,
       "twoStepDepth": 350,
       "twoStepCutTime": 0.06,
       "pedalThreshold": 0.5,
@@ -166,7 +167,11 @@
         "torqueMul": 0.86
       },
       "gearbox": { "finalDrive": 3.6 },
-      "tires": { "gripFront": 1.62, "gripRear": 1.36 }
+      "tires": { "gripFront": 1.62, "gripRear": 1.36 },
+      "launch": {
+        "_": "R32 owners launch near the VR6's torque peak (2,800 to 3,200 rpm); the DSG cars' launch control is reported at 2,500 to 3,500. An NA engine on an AWD grip launch wants the plateau, not more: the cut bounces it 3,150 to 3,500.",
+        "defaultRpm": 3500
+      }
     },
     "protoCoupe": {
       "_name": "Proto Coupe (RX-7 FD donor): front sequential twin turbo twin rotor, rear wheel drive. The lightest car: the primary turbo fills the low range, the secondary takes over near 4,500 rpm and it pulls to an 8,000 rpm redline; five speeds on a short final drive.",
@@ -188,7 +193,11 @@
         "torqueMul": 0.8
       },
       "gearbox": { "ratios": [3.48, 2.02, 1.39, 1.0, 0.72], "finalDrive": 4.3 },
-      "tires": { "gripFront": 1.64, "gripRear": 1.3 }
+      "tires": { "gripFront": 1.64, "gripRear": 1.3 },
+      "launch": {
+        "_": "FD owners on the stock sequential twins report a weak, boostless launch around 4,000 rpm (the turbo handover) and better ones from about 5,000; past 7,500 is called abuse. 5,000 clears the handover without lighting up the rear tires of the lightest, RWD car.",
+        "defaultRpm": 5000
+      }
     },
     "protoWagon": {
       "_name": "Proto Wagon (S2 Avant donor): front twin turbo 90 degree V6, all wheel drive split evenly (a Torsen centre differential). A flat biturbo torque plateau from 1,800 rpm and an AWD launch; the longest car, a little more yaw inertia.",
@@ -212,7 +221,11 @@
       },
       "gearbox": { "finalDrive": 3.62 },
       "tires": { "gripFront": 1.6, "gripRear": 1.38 },
-      "aero": { "drag": 0.42 }
+      "aero": { "drag": 0.42 },
+      "launch": {
+        "_": "B5 S4 and RS4 2.7T owners launch at 3,000 to 4,000 rpm (bogs under 3,000, spins over 3,500 to 4,000 on a clutch dump); a two-step at 4,000 holds the twins on boost and the even AWD split takes the torque.",
+        "defaultRpm": 4000
+      }
     },
     "proto": {
       "_name": "Proto RS: procedural placeholder used by tests and the asset pipeline. Not selectable. Uses base as is."

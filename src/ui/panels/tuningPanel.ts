@@ -63,6 +63,7 @@ export const PARAM_INFO: Record<string, ParamInfo> = {
   'traction.tcMinDrive': P(0, 0.6, 0.01, 'Traction control: drive always allowed as a share of grip, even at full cornering slip. Higher = pulls out of slides, loses more cornering grip.'),
   'traction.tcMaxSlipDeg': P(2, 30, 0.5, 'Traction control: cuts power above this slide angle. Lower = stops slides earlier.'),
   'launch.twoStepRpm': P(0, 10000, 50, 'Launch rpm the two-step holds at the line (the garage Tune tab sets it per build). 0 = off, free revs.'),
+  'launch.defaultRpm': P(0, 10000, 50, "The car's stock launch rpm: what a new garage build starts on. Read by the garage, not the sim."),
   'launch.twoStepDepth': P(50, 1500, 10, 'How far the two-step cut lets the revs fall under the launch rpm. Higher = deeper, slower stutter.'),
   'launch.twoStepCutTime': P(0.01, 0.3, 0.01, 'How long each two-step cut lasts, s. Higher = slower stutter.'),
   'launch.pedalThreshold': P(0.1, 0.95, 0.05, 'Throttle and brake both past this is the pedal combo (line lock, antilag). Lower = easier to trigger by accident.'),

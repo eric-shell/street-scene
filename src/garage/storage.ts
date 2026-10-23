@@ -6,10 +6,16 @@
 import { CarBuild, DEFAULT_BUILD_NAME, defaultBuild, validateBuild } from '../shared/carBuild';
 import { loadJson, saveJson } from '../shared/store';
 import { DEFAULT_CAR_ID } from '../sim/tuning';
+import { defaultLaunchRpm } from '../sim/build';
 import { manifestCar } from '../render/car/carAssets';
 
 export const MAX_SLOTS = 6;
 const KEY = 'garage.v1';
+/**
+ * Saved garage migrations, one number in the stored state. 1: every slot's launch rpm moved once to its
+ * car's stock pick (launch.defaultRpm), since the builds saved before the stock picks hold an explicit Off.
+ */
+const MIGRATION = 1;
 
 export interface GarageState {
   current: number;
@@ -25,11 +31,16 @@ export function freshBuild(carId = DEFAULT_CAR_ID, name = DEFAULT_BUILD_NAME): C
 
 export function loadGarage(): GarageState {
   try {
-    const parsed = loadJson<{ current?: unknown; slots?: unknown } | null>(KEY, null);
+    const parsed = loadJson<{ current?: unknown; slots?: unknown; migration?: unknown } | null>(KEY, null);
     const slots = Array.isArray(parsed?.slots) ? parsed.slots.slice(0, MAX_SLOTS).map(validateBuild) : [];
     if (slots.length) {
       const current = Math.max(0, Math.min(slots.length - 1, Math.round(Number(parsed?.current) || 0)));
-      return { current, slots };
+      const g = { current, slots };
+      if (!(Number(parsed?.migration) >= MIGRATION)) {
+        for (const b of slots) b.performance.launchRpm = defaultLaunchRpm(b.carId);
+        saveGarage(g);
+      }
+      return g;
     }
   } catch {
     /* a slot that fails validation: fall through to the default */
@@ -38,7 +49,7 @@ export function loadGarage(): GarageState {
 }
 
 export function saveGarage(g: GarageState): boolean {
-  return saveJson(KEY, g);
+  return saveJson(KEY, { ...g, migration: MIGRATION });
 }
 
 /** Add a build as a new slot and select it; false (and nothing changed) when all MAX_SLOTS are taken. */

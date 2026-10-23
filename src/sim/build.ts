@@ -16,8 +16,9 @@ export function maxLaunchRpm(t: CarTuning): number {
   return Math.floor((t.engine.redline - t.launch.twoStepDepth) / LAUNCH_RPM.step) * LAUNCH_RPM.step;
 }
 
-export function stockPerformance(): PerformanceBuild {
-  const p = { launchRpm: 0 } as PerformanceBuild;
+/** The stock build: every category at tier 0, and the car's stock launch rpm when a car is named (off without one). */
+export function stockPerformance(carId?: string): PerformanceBuild {
+  const p = { launchRpm: carId ? defaultLaunchRpm(carId) : 0 } as PerformanceBuild;
   for (const c of PERFORMANCE_CATEGORIES) p[c] = 0;
   return p;
 }
@@ -48,16 +49,26 @@ export function applyBuild(base: CarTuning, perf: PerformanceBuild): CarTuning {
   return t;
 }
 
+/** A car's stock launch rpm (drivingParams.json launch.defaultRpm; 0 = off), where its donor's owners launch. */
+export function defaultLaunchRpm(carId: string): number {
+  return getBaseTuning(carId).launch.defaultRpm;
+}
+
 export function tuningForBuild(carId: string, perf: PerformanceBuild): CarTuning {
   return applyBuild(getBaseTuning(carId), perf);
 }
 
-export function validatePerformance(v: unknown): PerformanceBuild {
+/**
+ * Clamp an imported performance build. A build with no launch rpm (saved before launch control) takes the
+ * car's stock one when the car is named (the garage), else off (the sim, so race configs, replays and the
+ * AI's builds stay as they were); an explicit 0 is always off.
+ */
+export function validatePerformance(v: unknown, carId?: string): PerformanceBuild {
   const o = obj(v);
   const p = stockPerformance();
   for (const c of PERFORMANCE_CATEGORIES) p[c] = Math.round(num(o[c], 0, 3, 0)) as Tier;
   // Off, or a step of the Tune tab's slider; applyBuild clamps it under the car's redline.
-  const lr = num(o.launchRpm, 0, 12000, 0);
+  const lr = num(o.launchRpm, 0, 12000, carId ? defaultLaunchRpm(carId) : 0);
   p.launchRpm = lr >= LAUNCH_RPM.min ? Math.round(lr / LAUNCH_RPM.step) * LAUNCH_RPM.step : 0;
   return p;
 }

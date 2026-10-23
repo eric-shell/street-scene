@@ -38,7 +38,7 @@ import { GaragePrefs, GarageState, MAX_SLOTS, Presentation, addSlot, decodeShare
 import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PART_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
 import { AXLES, Axle, AxleStance, BUILD_NAME_MAX, CarBuild, DEFAULT_BUILD_NAME, DecalLayer, GLOW_PATTERNS, MAX_DECALS, PAINT_FINISHES, Paint, AccentPaint, STANCE_LIMITS, TireShape, VINYL_SHAPES, VinylShape, validateBuild } from '../shared/carBuild';
 import { DEFAULT_CAR_ID, PERFORMANCE_CATEGORIES, PerformanceCategory, SELECTABLE_CAR_IDS, TIER_NAMES, Tier, getBaseTuning } from '../sim/tuning';
-import { LAUNCH_RPM, maxLaunchRpm, tuningForBuild } from '../sim/build';
+import { LAUNCH_RPM, defaultLaunchRpm, maxLaunchRpm, tuningForBuild } from '../sim/build';
 import { FEATURES } from '../shared/features';
 import { specBadges, type SpecBadge } from '../shared/carSpec';
 import { measureStats, statBars, type CarStats } from '../sim/stats';
@@ -1083,6 +1083,8 @@ export class GarageScreen {
           b.carId,
           (id) => {
             if (id === b.carId) return;
+            // A launch rpm left on the old car's stock pick follows the new car's; one the player chose stays (applyBuild clamps it).
+            if (b.performance.launchRpm === defaultLaunchRpm(b.carId)) b.performance.launchRpm = defaultLaunchRpm(id);
             b.carId = id;
             // Parts are per car; wheels are universal and stay.
             const wheels = v.parts.wheels;
@@ -1465,6 +1467,22 @@ export class GarageScreen {
     const b = this.build;
     // The build card's stat lines, so the stats and every upgrade fit the column together.
     this.body.append(section('Stats', statLines(b)));
+    // Launch control: the rpm the two-step holds at the line while the throttle is down through the countdown.
+    // One slider: its bottom step is Off (free revs), then LAUNCH_RPM.min up to the car's redline less the cut's depth.
+    const off = LAUNCH_RPM.min - LAUNCH_RPM.step;
+    const top = maxLaunchRpm(tuningForBuild(b.carId, b.performance));
+    const stock = defaultLaunchRpm(b.carId);
+    const rpmLabel = (x: number) => (x <= off ? 'Off' : x === stock ? `${x} rpm · stock` : `${x} rpm`);
+    this.body.append(
+      section(
+        'Launch',
+        slider('Launch RPM', b.performance.launchRpm || off, off, top, LAUNCH_RPM.step, rpmLabel, (x) => {
+          b.performance.launchRpm = x <= off ? 0 : x;
+          this.changed(true);
+        }),
+        h('div', { class: 'muted garage-note' }, 'Hold the gas through the countdown and the two-step bounces the engine here, so you leave the line from these revs. Gas and brake together: a burnout standing, antilag rolling on a turbo car.'),
+      ),
+    );
     // One group of upgrades, a row per part: its icon and name, then the tiers.
     this.body.append(
       section(
@@ -1484,21 +1502,6 @@ export class GarageScreen {
             ),
           ),
         ),
-      ),
-    );
-    // Launch control: the rpm the two-step holds at the line while the throttle is down through the countdown.
-    // One slider: its bottom step is Off (free revs), then LAUNCH_RPM.min up to the car's redline less the cut's depth.
-    const off = LAUNCH_RPM.min - LAUNCH_RPM.step;
-    const top = maxLaunchRpm(tuningForBuild(b.carId, b.performance));
-    const rpmLabel = (x: number) => (x <= off ? 'Off' : `${x} rpm`);
-    this.body.append(
-      section(
-        'Launch',
-        slider('Launch RPM', b.performance.launchRpm || off, off, top, LAUNCH_RPM.step, rpmLabel, (x) => {
-          b.performance.launchRpm = x <= off ? 0 : x;
-          this.changed(true);
-        }),
-        h('div', { class: 'muted garage-note' }, 'Hold the gas through the countdown and the two-step bounces the engine here, so you leave the line from these revs. Gas and brake together: a burnout standing, antilag rolling on a turbo car.'),
       ),
     );
     this.body.append(h('div', { class: 'muted garage-note' }, 'Everything is unlocked in this proof of concept. Visual parts never change performance.'));
