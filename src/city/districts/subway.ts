@@ -83,7 +83,7 @@ const STATION_CROSSING_CLEAR = 250;
 const CROSS_NODE_CLEAR = 30;
 /** A swing keeps this far from a diagonal avenue (m): its junctions with the grid lie inside the swing's blocks. */
 const DIAGONAL_CLEAR = 40;
-/** A swing keeps this far beyond a river channel's top edge (m): the line crosses the river straight, on its street. */
+/** A swing keeps this far beyond a river channel's top edge (m): the line crosses the river straight, on its street (a bridge, never a ford: planLine). */
 const RIVER_CLEAR = 25;
 /** The deck's exclusion strip starts this far into an off-street run (m, still inside the junction it leaves). */
 const STRIP_IN = 6;
@@ -885,8 +885,14 @@ function planLine(ctx: PlanContext, side: number, cols: readonly number[], swing
     }
     if (j + 1 < H) {
       const ch = streetAt(c, j);
-      if (!ch) missing++;
-      else {
+      if (!ch) {
+        // No street under the deck here. Across the river that is not an option: the chain breaks at a
+        // ford street's ramp edges, and its dip runs on under the track line for the length of both
+        // ramps, far past what the deck's terrain window spans; the line crosses the river on a bridge.
+        const m = gridNode(g, c, j + 1);
+        for (const rv of rivers) if ((n.z - riverCenter(rv.params, n.x)) * (m.z - riverCenter(rv.params, m.x)) < 0) return null;
+        missing++;
+      } else {
         for (let k = 1; k + 1 < ch.nodes.length; k++) {
           if (ctx.claims.node.has(ch.nodes[k])) return null;
           path.push(bendPoint(ch, k));

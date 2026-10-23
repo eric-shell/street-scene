@@ -5,9 +5,10 @@
  * below everything: the channel profile, which runs on under every bridge
  * deck) so every ramp trench and pier is exactly where the collision says;
  * the entrance ramps with their trench faces and the raised plinths beside
- * them (the sim's 'trench' walls) and the funnel at every top (fences and
- * cones are props; the pink and amber string lights across the mouth are
- * drawn here from the planner's hints); under each deck its slab, girders,
+ * them (the sim's 'trench' walls), chain-link down both plinth edges and a
+ * sodium lamp on each plinth corner at the foot, and the funnel at every top
+ * (fences and cones are props; the pink and amber string lights across the
+ * mouth are drawn here from the planner's hints); under each deck its slab, girders,
  * the piers on the floor edges and the abutments on the banks (the sim's
  * 'pier' and 'culvert' solids) with sodium lamps hung from the slab and on
  * the piers; parapets on the decks; graffiti murals and storm drain outlets
@@ -25,7 +26,7 @@
 import * as THREE from 'three';
 import { CITY } from '../../city/config';
 import type { Bridge, Ramp } from '../../city/districts/river';
-import { bridgePoint, bridgesOf, mouthAlongs, rampAlong, rampHalf, rampOuter, rampPoint, rampsOf, riverCenter, riverFrame, riverL } from '../../city/districts/river';
+import { bridgePoint, bridgesOf, footAlongs, mouthAlongs, rampAlong, rampHalf, rampOuter, rampPoint, rampsOf, riverCenter, riverFrame, riverL } from '../../city/districts/river';
 import type { Area } from '../../city/districts/types';
 import type { Wall } from '../../city/blocks';
 import { onSpan } from '../../city/drawbridge';
@@ -34,7 +35,7 @@ import { Rng } from '../../sim/prng';
 import { GeoBuilder } from '../geoBuilder';
 import { RIVER_TEX, UvRect, riverTextures } from '../textures/riverTextures';
 import type { DistrictKit, DistrictRenderer } from './kit';
-import { col, cylinder, wallBox } from './kit';
+import { col, cylinder, stringLights, wallBox } from './kit';
 
 /** Layout of the dressing (m), lamp and tint choices. */
 const DRESS = {
@@ -93,9 +94,6 @@ const TINT = {
   puddle: col(0x0d1424),
 } as const;
 
-/** Route shortcut bulbs: hot pink with amber, the shortcut sign's colours (render/districts/alley.ts). */
-const SHORTCUT_BULBS = [col(0xff4fd8, 2.2), col(0xffb35c, 2.3), col(0xff2bd6, 2), col(0xffd08a, 2.1)];
-const STRING_POOL = col(0xff7ab8, 1);
 
 export const riverRenderer: DistrictRenderer = {
   kinds: ['river'],
@@ -110,12 +108,13 @@ interface V3 {
   z: number;
 }
 
-/** One column of a ramp zone row: where it is, how far above the terrain, and its tint. */
+/** One column of a ramp zone row: where it is, how far above the terrain, its tint, and its LATS index (-1 and 8 for the zone's two ends). */
 interface Col {
   x: number;
   z: number;
   lift: number;
   tint: THREE.Color;
+  i: number;
 }
 
 type Ground = (x: number, z: number) => number;
@@ -262,20 +261,30 @@ function buildChannel(kit: DistrictKit, a: Area): void {
       const s = l >= 0 ? 1 : -1;
       const al = Math.abs(l);
       const r = rampOn(s);
-      const base = (x: number): Col => ({ x, z: zc(x) + l, lift: 0.02, tint: tintAt(l) });
+      const base = (x: number, i: number): Col => ({ x, z: zc(x) + l, lift: 0.02, tint: tintAt(l), i });
+      let mid: Col[];
       if (!r) {
         // The other bank or the floor under a lone side ramp: the same columns straight across.
         const o = zn.ramps[0];
-        return [base(zn.lo), ...LATS(o).map((lat) => base(o.ax - o.uz * lat)), base(zn.hi)];
+        mid = LATS(o).map((lat, i) => base(o.ax - o.uz * lat, i));
+      } else {
+        const along = al > F ? rampAlong(p, r, al) : al;
+        const plinth = al > F + 1e-6;
+        mid = LATS(r, along).map((lat, i) => {
+          const w = rampPoint(r, along, lat);
+          return { x: w.x, z: w.z, lift: colLift(i, plinth), tint: colTint(i, plinth, l), i };
+        });
       }
-      const along = al > F ? rampAlong(p, r, al) : al;
-      const plinth = al > F + 1e-6;
-      const mid: Col[] = LATS(r).map((lat, i) => {
-        const w = rampPoint(r, along, lat);
-        return { x: w.x, z: w.z, lift: colLift(i, plinth), tint: colTint(i, plinth, l) };
-      });
-      return [base(zn.lo), ...mid, base(zn.hi)];
+      // The columns run in descending x whichever bank the ramp climbs (its lats run the other way
+      // along x on the south bank, and a ford's two halves run opposite ways): with the rows ascending
+      // in l, that is the one order that winds every quad to face up and every plinth face outward
+      // (the concrete is single sided; a quad wound the other way is culled and shows the ground
+      // beneath as a black hole). The zone's two ends join their nearest column, never across the trench.
+      if (mid[0].x < mid[mid.length - 1].x) mid.reverse();
+      return [base(zn.hi, 8), ...mid, base(zn.lo, -1)];
     };
+    /** A quad between two columns takes the tint of the one nearer the zone's lo end in LATS order (the plinth and trench tints sit between their edge columns). */
+    const pairTint = (a: Col, b: Col): THREE.Color => (a.i < b.i ? a : b).tint;
     const rows: number[] = [];
     for (const l of ls) {
       rows.push(l);
@@ -286,10 +295,45 @@ function buildChannel(kit: DistrictKit, a: Area): void {
     for (const l of rows) {
       const cols = colsAt(l);
       const row: V3[] = cols.map((c) => ({ x: c.x, y: hLow(c.x, c.z) + c.lift, z: c.z }));
-      if (prev) for (let i = 0; i + 1 < row.length; i++) flat(concrete, [prev[i], prev[i + 1], row[i + 1], row[i]], cols[i].tint);
+      if (prev) for (let i = 0; i + 1 < row.length; i++) flat(concrete, [prev[i], prev[i + 1], row[i + 1], row[i]], pairTint(cols[i], cols[i + 1]));
       prev = row;
     }
   }
+
+  /**
+   * Chain-link on posts along a polyline (the bank tops, the plinth edges down every trench), its
+   * panels facing the side `s` of travel and standing on `yAt`; returns the run's length (m).
+   */
+  const chainlink = (pts: Vec2[], s: number, yAt: Ground): number => {
+    let run = 0;
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const a0 = pts[i];
+      const b0 = pts[i + 1];
+      const len = Math.hypot(b0.x - a0.x, b0.z - a0.z);
+      if (len < 0.05) continue;
+      const y0 = yAt(a0.x, a0.z);
+      const y1 = yAt(b0.x, b0.z);
+      const nx = (-(b0.z - a0.z) / len) * s;
+      const nz = ((b0.x - a0.x) / len) * s;
+      const u0 = run / RIVER_TEX.fenceSpan;
+      const u1 = (run + len) / RIVER_TEX.fenceSpan;
+      const v = [
+        fence.vertex(a0.x, y0 + 0.02, a0.z, nx, 0, nz, u0, 0, TINT.post),
+        fence.vertex(b0.x, y1 + 0.02, b0.z, nx, 0, nz, u1, 0, TINT.post),
+        fence.vertex(b0.x, y1 + DRESS.fence, b0.z, nx, 0, nz, u1, 1, TINT.post),
+        fence.vertex(a0.x, y0 + DRESS.fence, a0.z, nx, 0, nz, u0, 1, TINT.post),
+      ];
+      fence.quadFacing(v[0], v[1], v[2], v[3], nx, 0, nz);
+      for (let d = run === 0 ? 0 : DRESS.postSpacing - (run % DRESS.postSpacing); d <= len; d += DRESS.postSpacing) {
+        const t = d / len;
+        const px = a0.x + (b0.x - a0.x) * t;
+        const pz = a0.z + (b0.z - a0.z) * t;
+        cylinder(kit.solid, px, pz, 0.045, yAt(px, pz) - 0.2, yAt(px, pz) + DRESS.fence + 0.1, 5, TINT.post, true);
+      }
+      run += len;
+    }
+    return run;
+  };
 
   // ----- Ramp trenches beyond the band: up the bank top to the plinth caps at the top of the run and,
   // for side ramps, the flat mouth on to the street curb.
@@ -329,8 +373,28 @@ function buildChannel(kit: DistrictKit, a: Area): void {
         lineLow(kit.paint, rampPoint(r, s, q), rampPoint(r, Math.min(aTop - 0.5, s + 2.4), q), 0.14, 0.04, col(0xd8d2a0, 0.55));
       }
     }
+    // The entry's own fence and lights: chain-link on posts along both plinths' trench edges, from
+    // the floor edge up to the top caps (the bells included, so it reads as a fenced gateway from the
+    // floor and from the street), and a sodium lamp on each plinth corner at the foot bell lighting
+    // the way in off the channel floor. The run lamps start a spacing further up.
+    const plinthTop: Ground = (x, z) => h(x, z) + DRESS.plinth;
+    for (const sd of [1, -1]) {
+      const alongs = [aF + 0.4, ...footAlongs(r).filter((a) => a > aF + 0.4)];
+      for (let s = alongs[alongs.length - 1] + 2; s < aTop - CITY.districts.river.mouthLength - 0.05; s += 2) alongs.push(s);
+      alongs.push(...mouthAlongs(r, aTop).filter((a) => a < aTop - 0.4), aTop - 0.4);
+      chainlink(
+        alongs.map((a) => rampPoint(r, a, sd * (rampHalf(r, a, sd) + 0.3))),
+        -sd,
+        plinthTop,
+      );
+      const q = rampPoint(r, aF + 1.2, sd * (rampHalf(r, aF + 1.2, sd) + 0.9));
+      const y = plinthTop(q.x, q.z);
+      cylinder(kit.solid, q.x, q.z, 0.08, y - 0.1, y + 4.6, 6, TINT.pole, true);
+      const head = rampPoint(r, aF + 0.4, sd * (rampHalf(r, aF + 0.4, sd) + 0.9));
+      lamp(kit, pools, head.x, y + 4.5, head.z, -r.ux, -r.uz, 0.8, hLow);
+    }
     let lampSide = 1;
-    for (let s = aF + 7; s < aTop - 3; s += DRESS.rampLampSpacing) {
+    for (let s = aF + DRESS.rampLampSpacing; s < aTop - 3; s += DRESS.rampLampSpacing) {
       const q = lampSide * (r.hw + r.body / 2);
       const w = rampPoint(r, s, q);
       const y = h(w.x, w.z) + DRESS.plinth;
@@ -348,7 +412,7 @@ function buildChannel(kit: DistrictKit, a: Area): void {
   // pink and amber bulbs, a pool of their light on the ground below.
   for (const hint of build.hints) {
     if (hint.kind !== 'stringLights') continue;
-    stringLights(kit, pools, hint.points[0], hint.points[1]);
+    stringLights(kit, hint.points[0], hint.points[1], { post: DRESS.stringPost, sag: DRESS.stringSag, step: DRESS.bulbStep, pools });
   }
 
   // ----- Under every deck: slab, girders, piers and abutments, lamps; the parapets on top.
@@ -423,40 +487,13 @@ function buildChannel(kit: DistrictKit, a: Area): void {
     lamp(kit, pools, cx + w.nx * 0.3, floor + 5.2, cz + 7.5, w.nx, w.nz, 0.9, hLow);
   }
 
-  // ----- Fence on the bank tops: chain-link strips on posts, with the sodium lamps.
+  // ----- Fence on the bank tops: chain-link strips on posts (normal toward the channel), with the sodium lamps.
   let lampPhase = 0;
   for (const hint of build.hints) {
     if (hint.kind !== 'fence') continue;
     const s = hint.values[0];
     const pts = hint.points;
-    let run = 0;
-    for (let i = 0; i + 1 < pts.length; i++) {
-      const a0 = pts[i];
-      const b0 = pts[i + 1];
-      const len = Math.hypot(b0.x - a0.x, b0.z - a0.z);
-      if (len < 0.05) continue;
-      const y0 = h(a0.x, a0.z);
-      const y1 = h(b0.x, b0.z);
-      // Normal toward the channel.
-      const nx = (-(b0.z - a0.z) / len) * s;
-      const nz = ((b0.x - a0.x) / len) * s;
-      const u0 = run / RIVER_TEX.fenceSpan;
-      const u1 = (run + len) / RIVER_TEX.fenceSpan;
-      const v = [
-        fence.vertex(a0.x, y0 + 0.02, a0.z, nx, 0, nz, u0, 0, TINT.post),
-        fence.vertex(b0.x, y1 + 0.02, b0.z, nx, 0, nz, u1, 0, TINT.post),
-        fence.vertex(b0.x, y1 + DRESS.fence, b0.z, nx, 0, nz, u1, 1, TINT.post),
-        fence.vertex(a0.x, y0 + DRESS.fence, a0.z, nx, 0, nz, u0, 1, TINT.post),
-      ];
-      fence.quadFacing(v[0], v[1], v[2], v[3], nx, 0, nz);
-      for (let d = run === 0 ? 0 : DRESS.postSpacing - (run % DRESS.postSpacing); d <= len; d += DRESS.postSpacing) {
-        const t = d / len;
-        const px = a0.x + (b0.x - a0.x) * t;
-        const pz = a0.z + (b0.z - a0.z) * t;
-        cylinder(kit.solid, px, pz, 0.045, h(px, pz) - 0.2, h(px, pz) + DRESS.fence + 0.1, 5, TINT.post, true);
-      }
-      run += len;
-    }
+    const run = chainlink(pts, s, h);
     // Lamps standing just behind the fence, their arms reaching out over the bank; banks alternate.
     for (let d = DRESS.lampSpacing * (lampPhase++ % 2 ? 1 : 0.5); d < run; d += DRESS.lampSpacing) {
       const q = alongPolyline(pts, d);
@@ -639,51 +676,6 @@ function deckUnderside(gb: GeoBuilder, p: Record<string, number>, br: Bridge, T:
     strip(w - g, w - g, slab, low, TINT.girder, vertical, height);
     strip(w + g, w + g, low, slab, TINT.girder, vertical, height);
   }
-}
-
-/**
- * A string of shortcut bulbs over a ramp mouth: a post at each end, the wire
- * sagging between them, pink and amber bulbs along it (the alley renderer's
- * shortcut strings), and a pool of their light on the ground below.
- */
-function stringLights(kit: DistrictKit, pools: GeoBuilder, a: Vec2, b: Vec2): void {
-  const y0 = kit.h(a.x, a.z) + DRESS.stringPost;
-  const y1 = kit.h(b.x, b.z) + DRESS.stringPost;
-  cylinder(kit.solid, a.x, a.z, 0.07, y0 - DRESS.stringPost - 0.3, y0 + 0.1, 6, TINT.pole, true);
-  cylinder(kit.solid, b.x, b.z, 0.07, y1 - DRESS.stringPost - 0.3, y1 + 0.1, 6, TINT.pole, true);
-  const span = Math.hypot(b.x - a.x, b.z - a.z);
-  const n = Math.max(2, Math.round(span / DRESS.bulbStep));
-  let px = a.x;
-  let pz = a.z;
-  let py = y0;
-  for (let i = 0; i <= n; i++) {
-    const t = i / n;
-    const x = a.x + (b.x - a.x) * t;
-    const z = a.z + (b.z - a.z) * t;
-    const y = y0 + (y1 - y0) * t - DRESS.stringSag * 4 * t * (1 - t);
-    if (i > 0) cylinder(kit.solid, (x + px) / 2, (z + pz) / 2, 0.012, Math.min(y, py) - 0.012, Math.max(y, py) + 0.012, 3, TINT.wire, false);
-    if (i > 0 && i < n) cylinder(kit.glow, x, z, 0.07, y - 0.13, y, 5, SHORTCUT_BULBS[(i * 7) % SHORTCUT_BULBS.length]);
-    px = x;
-    pz = z;
-    py = y;
-  }
-  // The pool: an additive strip under the wire, brightest in the middle.
-  const ux = (b.x - a.x) / span;
-  const uz = (b.z - a.z) / span;
-  const half = 3.2;
-  const N = 6;
-  const ids: number[] = [];
-  for (let j = 0; j <= 2; j++) {
-    for (let i = 0; i <= N; i++) {
-      const t = i / N;
-      const c = (j - 1) * half;
-      const x = a.x + (b.x - a.x) * t - uz * c;
-      const z = a.z + (b.z - a.z) * t + ux * c;
-      const bright = j === 1 ? 0.5 * Math.sin(Math.PI * t) : 0;
-      ids.push(pools.vertex(x, kit.h(x, z) + 0.06, z, 0, 1, 0, 0, 0, STRING_POOL.clone().multiplyScalar(bright)));
-    }
-  }
-  for (let j = 0; j < 2; j++) for (let i = 0; i < N; i++) pools.quadFacing(ids[j * (N + 1) + i], ids[j * (N + 1) + i + 1], ids[(j + 1) * (N + 1) + i + 1], ids[(j + 1) * (N + 1) + i], 0, 1, 0);
 }
 
 /** Point `d` meters along a polyline, or null past its end. */

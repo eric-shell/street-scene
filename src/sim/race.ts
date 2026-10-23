@@ -8,7 +8,7 @@
  * city is open, the race is to reach its waypoints in order by any streets).
  */
 import { createCity, createWorld, World, City, RouteProgress } from '../city/world';
-import { GridSlot, RouteKind, RouteWaypoint, routeSample } from '../city/route';
+import { GridSlot, Route, RouteKind, RouteWaypoint, routeSample } from '../city/route';
 import { carParkProgress, onCarPark } from '../city/districts/carPark';
 import { CarState, createCar, groundPitch, groundRoll, refillNitrous, steerLimit, stepCar, wheelRpm, type StepEnv } from './car';
 import { relocateCar } from './reset';
@@ -282,7 +282,10 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
     state.manualGearbox = i === 0 && config.manualGearbox;
     // AI drives with traction control: stable lines, no power oversteer surprises.
     state.tractionControl = i === 0 ? config.tractionControl === true : true;
-    const p = w.routeProgress(slot.x, slot.z);
+    // The grid stands just behind the start line, so resolve it from the start's segment: a start on a
+    // bridge deck over the channel may have the lap's floor leg running right beneath it, and nearest in
+    // plan alone would put a car there. A handoff pose (free roam) is wherever the car was: no hint.
+    const p = w.routeProgress(slot.x, slot.z, i === 0 && start ? undefined : startSeg(route));
     const startDist = route.closed ? p.s - route.length : p.s - route.startS;
     return {
       index: i,
@@ -330,6 +333,15 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
     traffic,
     driftZones: createDriftZoneState(w, cars.length),
   };
+}
+
+/** The route segment holding the start line (the last one of a circuit, the one at startS of a sprint). */
+function startSeg(route: Route): number {
+  const nseg = route.points.length - 1;
+  if (route.closed) return nseg - 1;
+  let i = 0;
+  while (i + 1 < nseg && route.cum[i + 1] <= route.startS) i++;
+  return i;
 }
 
 /**

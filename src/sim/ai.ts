@@ -44,6 +44,8 @@ import { laneClosures } from '../city/districts/roadworks';
 
 export const AI = {
   spacing: 4,
+  /** With no place on a line yet, only samples within this (m) of the car's route distance count (see nearestIdx). */
+  seedWindow: 60,
   edgeMargin: 2.3,
   smoothIterations: 80,
   lateralGrip: 0.9,
@@ -884,15 +886,32 @@ function turnAhead(line: RacingLine, i: number, k: number): number {
   return l > 1e-9 ? (bx * az - bz * ax) / l : 0;
 }
 
-function nearestIdx(line: RacingLine, x: number, z: number, hint: number): number {
+/**
+ * The line sample nearest the car: around `hint`, or over the whole line with none. Where the route
+ * stacks two levels (a start on a bridge deck with the lap's channel leg right beneath it) the nearest
+ * sample in plan can be the wrong level, so with the car's route distance `sRef` known only the samples
+ * within AI.seedWindow m of it along the route count, the whole line if none is that close.
+ */
+function nearestIdx(line: RacingLine, x: number, z: number, hint: number, sRef = NaN): number {
   let best = 0;
   let bestD = Infinity;
   if (hint < 0) {
-    for (let i = 0; i < line.n; i++) {
-      const d = (line.x[i] - x) ** 2 + (line.z[i] - z) ** 2;
-      if (d < bestD) {
-        bestD = d;
-        best = i;
+    const L = line.closed && line.n > 1 ? line.s[line.n - 1] + line.s[1] - line.s[0] : Infinity;
+    for (let pass = Number.isNaN(sRef) ? 1 : 0; pass < 2 && bestD === Infinity; pass++) {
+      for (let i = 0; i < line.n; i++) {
+        if (pass === 0) {
+          let ds = line.s[i] - sRef;
+          if (line.closed) {
+            ds = ((ds % L) + L) % L;
+            if (ds > L / 2) ds -= L;
+          }
+          if (Math.abs(ds) > AI.seedWindow) continue;
+        }
+        const d = (line.x[i] - x) ** 2 + (line.z[i] - z) ** 2;
+        if (d < bestD) {
+          bestD = d;
+          best = i;
+        }
       }
     }
     return best;
@@ -1096,7 +1115,7 @@ function courseLine(r: RaceState, rc: RaceCar): RacingLine {
   const c = rc.state;
   const own = ai.line ?? r.line;
   if (ai.detour < 0) {
-    ai.idx = nearestIdx(own, c.x, c.z, ai.idx);
+    ai.idx = nearestIdx(own, c.x, c.z, ai.idx, ai.idx < 0 ? routeS(r, rc) : NaN);
     const lap = clamp(rc.lap - 1, 0, ai.laps - 1);
     for (let k = 0; k < ai.detours.length; k++) {
       const to = ai.detours[k].from - ai.idx;
@@ -1114,8 +1133,13 @@ function courseLine(r: RaceState, rc: RaceCar): RacingLine {
   const lost = Math.hypot(c.x - dt.line.x[ai.didx], c.z - dt.line.z[ai.didx]) > DRIVER.detourLost;
   if (!lost && ai.didx < dt.line.n - 3) return dt.line;
   ai.detour = -1;
-  ai.idx = nearestIdx(own, c.x, c.z, lost ? -1 : dt.to);
+  ai.idx = nearestIdx(own, c.x, c.z, lost ? -1 : dt.to, lost ? routeS(r, rc) : NaN);
   return own;
+}
+
+/** A car's route distance from the segment the race tracks for it: what seeds its place on a line (nearestIdx). */
+function routeS(r: RaceState, rc: RaceCar): number {
+  return r.world.routeProgress(rc.state.x, rc.state.z, rc.seg).s;
 }
 
 /** Clear of walls by `room` (m) at `extra` off the line, at the steering target and halfway to it. */
@@ -1364,7 +1388,7 @@ function pursuitSteer(rc: RaceCar, tx: number, tz: number): number {
 function steerToward(r: RaceState, rc: RaceCar): number {
   const ai = rc.ai!;
   const line = ai.line ?? r.line;
-  ai.idx = nearestIdx(line, rc.state.x, rc.state.z, ai.idx);
+  ai.idx = nearestIdx(line, rc.state.x, rc.state.z, ai.idx, ai.idx < 0 ? routeS(r, rc) : NaN);
   const ti = wrapIndex(ai.idx + 4, line.n, line.closed);
   return pursuitSteer(rc, line.x[ti], line.z[ti]);
 }

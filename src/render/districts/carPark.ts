@@ -18,7 +18,9 @@
  * street is the garage's covered access ramp: solid side walls with the bulbs
  * along their tops, columns, a roof slab following its grade with strip
  * lights under it, a pay booth and a raised barrier arm at its open apron,
- * or a closed shutter on the route it is not a shortcut of. Everything drawn
+ * or a closed shutter on the route it is not a shortcut of; on the sidewalk
+ * the planner's funnel (fences and cones are props) with strings of the
+ * bulbs across the mouth and the curb, and one across the lip. Everything drawn
  * where the sim has a wall stands on that wall's line; the rest is out of
  * reach above or behind them.
  *
@@ -45,7 +47,7 @@ import type { Vec2 } from '../../sim/math';
 import { Rng } from '../../sim/prng';
 import type { GeoBuilder } from '../geoBuilder';
 import type { DistrictKit, DistrictRenderer } from './kit';
-import { col, cylinder, groundVertex, orientedBox } from './kit';
+import { col, cylinder, groundVertex, orientedBox, stringLights } from './kit';
 import { BakedBuilder, bakedMaterial } from './structureFx';
 
 const CFG = CITY.districts.carPark;
@@ -86,6 +88,9 @@ const LOOK = {
   header: 0.45,
   /** Lamp posts (roof parapet and the apron): height (m); a roof post every this many facade columns. */
   lampHeight: 4.2,
+  /** The entry's strings of bulbs: post height on the sidewalk (m); the lip's string hangs this far over the kicker (m), under the ceiling. */
+  stringPost: 5.4,
+  lipString: 1.9,
   lampEvery: 1,
   /** Pay booth: footprint along and across the ramp (m), its sill (dark base) and head heights (m). */
   booth: [2.4, 2],
@@ -574,6 +579,14 @@ function buildOne(kit: DistrictKit, bb: BakedBuilder, g: CarParkGeo, open: boole
   });
   const streetLamps = carParkStreetLamps(g);
   for (const l of streetLamps) if (l.kind === 'post') lampPost(l.x, l.z, ground(l.x, l.z));
+  // Strings of the shortcut bulbs (the planner's hints): across the apron mouth and the curb line on
+  // posts, and across the lip opening hung under the drivable floor's ceiling.
+  for (const hint of kit.builds[g.area].hints) {
+    if (hint.kind !== 'stringLights') continue;
+    const [a, b] = hint.points;
+    if (hint.values[0] === 1) stringLights(kit, a, b, { ya: deckY(a) + LOOK.lipString, yb: deckY(b) + LOOK.lipString, sag: 0.3 });
+    else stringLights(kit, a, b, { post: LOOK.stringPost });
+  }
 
   // ---------- Covered ramp: surface from the building line, solid side walls, columns, a roof following the grade ----------
   const an = g.rax * g.fnx + g.raz * g.fnz;

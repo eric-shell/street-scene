@@ -31,7 +31,10 @@
  * furthest a launch can carry (flightReach of a run-up speed bound measured
  * in the sim) plus a roll-out; C's closures stay out of the flight, the route's
  * corner rail is cut where the flight crosses it (carParkRails) and street
- * furniture keeps off the launch cone (reserved circles).
+ * furniture keeps off the launch cone (reserved circles). The apron gets the
+ * shortcut treatment on the sidewalk, fence lines and cones funnelling in with
+ * strings of bulbs across the mouth and the curb, and a string across the lip
+ * (entryDressing).
  *
  * The sim is 2.5D (World.heightAt is single valued), so the drivable path is
  * a raised surface with an exact gradient (one height modifier: the ramp's
@@ -63,6 +66,7 @@ import type { RoadGraph } from '../roadGraph';
 import { circuitStart, routeRuns } from '../route';
 import type { Wall } from '../blocks';
 import type { Terrain } from '../terrain';
+import type { PropKind } from '../props';
 import { createTerrain } from '../terrain';
 import { DEG, Vec2, atan2, cos, segmentT, sin, sqrt } from '../../sim/math';
 import { Rng } from '../../sim/prng';
@@ -84,7 +88,13 @@ const LIP_DROP = 1.6;
  * The ramp's street end widens into a flared apron this deep (m): at the building line it is this
  * much wider on the side racers arrive from (they swing in from the lane), and on the other.
  */
-export const APRON = { depth: 10, flareIn: 9, flareOut: 4 } as const;
+export const APRON = { depth: 10, flareIn: 9, flareOut: 6 } as const;
+/**
+ * The entry's funnel on the sidewalk (the shortcut language): each fence line splays this much wider
+ * (m) from the apron's flared wall out to the curb, a panel every panelStep m; strings of shortcut
+ * bulbs hang across the mouth and the curb line, and across the lip opening on the exit facade.
+ */
+const FUNNEL = { flare: 5, panelStep: 2.1 } as const;
 /** Building line straightness tolerance across the deck (m), outline sample step (m). */
 const STRAIGHT_TOL = 0.35;
 const SAMPLE = 2;
@@ -673,7 +683,7 @@ export const carParkModule: DistrictModule = {
       ctx.claims.face.set(f.id, a.id);
     }
   },
-  build(_ctx, area) {
+  build(ctx, area) {
     const b = emptyBuild();
     const g = carParkGeo(area);
     const bb = polygonBounds([...g.deck, ...g.ramp]);
@@ -719,9 +729,77 @@ export const carParkModule: DistrictModule = {
       const p = rampPoint(g, g.apron0 + 1 + rng.range(0, 4), (k < 2 ? -1 : 1) * (g.rhw + (k < 2 ? g.fl : g.fr) * 0.4 - rng.range(0, 1.2)));
       b.destructibles.push({ kind: 'trafficCone', ...p, yaw: rng.range(0, Math.PI * 2), lift: 0, area: area.id });
     }
+    entryDressing(g, b, rng, ctx.graph.edges[g.entryEdge].sidewalk, area.id);
     return b;
   },
 };
+
+/**
+ * The entry's shortcut treatment, as a river ramp top or an alley mouth gets
+ * (districts/river.ts funnel, alleyDressing.ts constructionSite): two lines
+ * of fence panels on the sidewalk splaying from the ends of the apron's
+ * flared walls out to the curb, cones scattered inside them, a sawhorse at
+ * each line's curb end, and strings of the shortcut bulbs across the mouth at
+ * the building line and across the curb line in front of it; a third string
+ * hangs across the lip opening on the exit facade, so the way out reads from
+ * the landing street too. Everything on the ground breaks before it can stop
+ * a car; the strings are render only (hints, render/districts/carPark.ts).
+ * The entry street's lanes stay clear: nothing stands past the curb.
+ */
+function entryDressing(g: CarParkGeo, b: AreaBuild, rng: Rng, sidewalk: number, area: number): void {
+  const an = g.rax * g.fnx + g.raz * g.fnz;
+  const ln = -g.raz * g.fnx + g.rax * g.fnz;
+  /** The building line's a (m up the ramp axis) at lateral l: the apron's foot is cut by it. */
+  const footA = (l: number) => -(l * ln) / an;
+  /** A sidewalk point `back` m out from the building line toward the curb, at lateral l of the ramp axis. */
+  const P = (l: number, back: number): Vec2 => {
+    const q = rampPoint(g, footA(l), l);
+    return { x: q.x - g.fnx * back, z: q.z - g.fnz * back };
+  };
+  const push = (kind: PropKind, q: Vec2, yaw: number) => b.destructibles.push({ kind, x: q.x, z: q.z, yaw, lift: 0, area });
+  const t = CFG.wall;
+  const curbBack = sidewalk - 0.9;
+  const ends: Vec2[] = [];
+  for (const sd of [-1, 1]) {
+    // From just past the flared wall's end at the building line to the curb, FUNNEL.flare further out.
+    const lIn = sd * (g.rhw + (sd < 0 ? g.fl : g.fr) + t + 0.6);
+    const A = P(lIn, 0.8);
+    const B = P(lIn + sd * FUNNEL.flare, curbBack);
+    ends.push(B);
+    const len = sqrt((B.x - A.x) ** 2 + (B.z - A.z) ** 2);
+    const ux = (B.x - A.x) / len;
+    const uz = (B.z - A.z) / len;
+    const yaw = atan2(-uz, ux);
+    const n = Math.max(2, Math.round(len / FUNNEL.panelStep));
+    for (let k = 0; k <= n; k++) {
+      const q = { x: A.x + (B.x - A.x) * (k / n), z: A.z + (B.z - A.z) * (k / n) };
+      push('fencePanel', q, yaw + rng.range(-0.1, 0.1));
+      // Street furniture keeps off the line (generateProps drops a destructible that overlaps a prop).
+      b.reserved.push({ x: q.x, z: q.z, r: 1.6 });
+    }
+    // Cones inside the line (toward the mouth), light enough that a car through them barely notices.
+    const inX = -sd * uz;
+    const inZ = sd * ux;
+    const k0 = (inX * -g.raz + inZ * g.rax) * sd < 0 ? -1 : 1;
+    for (let k = 0; k < 3; k++) {
+      const f = 0.25 + k * 0.25 + rng.range(0, 0.1);
+      const off = rng.range(1.5, 2.2);
+      push('trafficCone', { x: A.x + (B.x - A.x) * f + k0 * inX * off, z: A.z + (B.z - A.z) * f + k0 * inZ * off }, rng.range(0, Math.PI * 2));
+    }
+    // A sawhorse along the curb past the line's end.
+    const C = P(lIn + sd * (FUNNEL.flare + 2.4), curbBack - 0.3);
+    push('sawhorse', C, atan2(-g.rax, -g.raz) + rng.range(-0.15, 0.15));
+    b.reserved.push({ x: C.x, z: C.z, r: 1.6 });
+  }
+  // Strings of bulbs: across the mouth between the flared walls' ends, across the curb line in front
+  // (both on posts: values [0]), and across the lip opening (hung under the ceiling: values [1]).
+  const mouth = [P(-(g.rhw + g.fl + t + 0.3), 0.6), P(g.rhw + g.fr + t + 0.3, 0.6)];
+  b.hints.push({ kind: 'stringLights', points: mouth, values: [0] });
+  b.hints.push({ kind: 'stringLights', points: ends, values: [0] });
+  for (const q of [...mouth, ...ends]) b.reserved.push({ x: q.x, z: q.z, r: 0.8 });
+  const W = (u: number, v: number) => toWorld(g, u, v);
+  b.hints.push({ kind: 'stringLights', points: [W(frontU(g, -g.hc) + 0.3, -(g.hc - 0.25)), W(frontU(g, g.hc) + 0.3, g.hc - 0.25)], values: [1] });
+}
 
 /**
  * The structure's footprint grown by d (m) into the block (not out over the

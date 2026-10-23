@@ -164,9 +164,12 @@ export const CITY = {
       channelMargin: 1.5,
       /** The chain ends this far (m) inside each tunnel portal: room for a closure and a meet behind the last foot. */
       endStub: 30,
-      /** Half widths (m) of side ramp trenches and of ford dips (a two lane street, curbs included). */
-      rampHalfWidth: 4.5,
-      fordHalfWidth: 5,
+      /**
+       * Half width (m) of a side ramp's trench: a 12 m cut, nearly a street's width, so a car can swing
+       * in from the channel floor or the bank street with room to spare. A ford dips the whole road
+       * (half width = the street's), its plinths on the sidewalks only, so nothing stands in a lane.
+       */
+      rampHalfWidth: 6,
       /**
        * Ramp run from its top (ground level) to the floor edge (m): the steepest fords run about
        * 1.2 x depth / rampMinRun (18%), typical ones half that; short enough that a side ramp fits
@@ -191,8 +194,16 @@ export const CITY = {
        * first. The plinth keeps at least mouthBody m where the bell eats into it (m).
        */
       mouthLength: 12,
-      mouthFlare: 4,
+      mouthFlare: 5,
       mouthBody: 1.5,
+      /**
+       * Every trench also opens into a bell at its foot: footFlare m wider each side at the floor edge,
+       * easing back to the straight trench over footLength m up the run, so a car turning in off the
+       * channel floor meets a chamfered plinth corner instead of a square one. footFlare + mouthBody
+       * stays within rampBody, so the plinth's outer face (routeBarriers' foot clearance) never moves.
+       */
+      footFlare: 2.5,
+      footLength: 10,
       /**
        * A closure across the channel stands at least this far from a foot (m): past the widest plinth
        * (an avenue ford's, 12.5 m) plus the skew the meander gives the closure line across the banks.
@@ -209,6 +220,10 @@ export const CITY = {
       clearance: 5,
       /** Clutter along the floor edges (barrels, crates, bags) about every this far (m), clear of feet and bridges. */
       clutterSpacing: 28,
+      /**
+       * Other roads keep this far (m) from a side ramp's trench and plinths (the wider trench kept this
+       * reach where it was, so every seed's entrance plan stayed put when the trench grew). */
+      rampClear: 2.5,
       /** Other roads keep this far (m) from a ford's trench and plinths. */
       fordClear: 3,
     },

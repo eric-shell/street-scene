@@ -257,3 +257,70 @@ export function tree(kit: DistrictKit, x: number, z: number, size: number, heigh
   cylinder(kit.foliage, x, z, size, y + height * 0.35, y + height * 0.8, 6, leaf, true, size * 0.35);
   cylinder(kit.foliage, x, z, size * 0.7, y + height * 0.7, y + height, 6, leaf.clone().multiplyScalar(1.15), true, 0.05);
 }
+
+/** Route shortcut bulbs: hot pink with amber, the shortcut sign's colours (the alleys, the river's ramp mouths, the car parks' entries). */
+export const SHORTCUT_BULBS = [col(0xff4fd8, 2.2), col(0xffb35c, 2.3), col(0xff2bd6, 2), col(0xffd08a, 2.1)];
+const STRING_POOL = col(0xff7ab8, 1);
+
+/** How a string of lights hangs: on two posts of `post` m standing on the ground, or between the heights `ya` and `yb` (hung from a structure). */
+export interface StringLightsOpts {
+  post?: number;
+  ya?: number;
+  yb?: number;
+  /** Sag of the wire in the middle (m) and bulb spacing (m). */
+  sag?: number;
+  step?: number;
+  /** An additive builder for a pool of the bulbs' light on the ground under the wire (none without). */
+  pools?: GeoBuilder;
+}
+
+/**
+ * A string of the shortcut bulbs from a to b: posts (or the given heights), a sagging wire, bulbs in
+ * the shared glow builder, and a pool of their light on the ground when `pools` is given.
+ */
+export function stringLights(kit: DistrictKit, a: Vec2, b: Vec2, opts: StringLightsOpts = {}): void {
+  const post = opts.post ?? 5.4;
+  const sag = opts.sag ?? 0.7;
+  const step = opts.step ?? 0.55;
+  const pole = col(0x6a6e76);
+  const wire = col(0x101114);
+  const y0 = opts.ya ?? kit.h(a.x, a.z) + post;
+  const y1 = opts.yb ?? kit.h(b.x, b.z) + post;
+  if (opts.ya === undefined) cylinder(kit.solid, a.x, a.z, 0.07, y0 - post - 0.3, y0 + 0.1, 6, pole, true);
+  if (opts.yb === undefined) cylinder(kit.solid, b.x, b.z, 0.07, y1 - post - 0.3, y1 + 0.1, 6, pole, true);
+  const span = Math.hypot(b.x - a.x, b.z - a.z);
+  const n = Math.max(2, Math.round(span / step));
+  let px = a.x;
+  let pz = a.z;
+  let py = y0;
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const x = a.x + (b.x - a.x) * t;
+    const z = a.z + (b.z - a.z) * t;
+    const y = y0 + (y1 - y0) * t - sag * 4 * t * (1 - t);
+    if (i > 0) cylinder(kit.solid, (x + px) / 2, (z + pz) / 2, 0.012, Math.min(y, py) - 0.012, Math.max(y, py) + 0.012, 3, wire, false);
+    if (i > 0 && i < n) cylinder(kit.glow, x, z, 0.07, y - 0.13, y, 5, SHORTCUT_BULBS[(i * 7) % SHORTCUT_BULBS.length]);
+    px = x;
+    pz = z;
+    py = y;
+  }
+  if (!opts.pools) return;
+  // The pool: an additive strip under the wire, brightest in the middle.
+  const pools = opts.pools;
+  const ux = (b.x - a.x) / span;
+  const uz = (b.z - a.z) / span;
+  const half = 3.2;
+  const N = 6;
+  const ids: number[] = [];
+  for (let j = 0; j <= 2; j++) {
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      const c = (j - 1) * half;
+      const x = a.x + (b.x - a.x) * t - uz * c;
+      const z = a.z + (b.z - a.z) * t + ux * c;
+      const bright = j === 1 ? 0.5 * Math.sin(Math.PI * t) : 0;
+      ids.push(pools.vertex(x, kit.h(x, z) + 0.06, z, 0, 1, 0, 0, 0, STRING_POOL.clone().multiplyScalar(bright)));
+    }
+  }
+  for (let j = 0; j < 2; j++) for (let i = 0; i < N; i++) pools.quadFacing(ids[j * (N + 1) + i], ids[j * (N + 1) + i + 1], ids[(j + 1) * (N + 1) + i + 1], ids[(j + 1) * (N + 1) + i], 0, 1, 0);
+}

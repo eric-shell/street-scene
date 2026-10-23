@@ -19,7 +19,7 @@ import { makeRadialGlow } from '../textures/textures';
 import { CITY } from '../../city/config';
 import { routeSample } from '../../city/route';
 import type { DistrictRenderer, DistrictKit } from './kit';
-import { col, cylinder, orientedBox } from './kit';
+import { SHORTCUT_BULBS, col, cylinder, orientedBox } from './kit';
 
 /** String lights: one string every STRING_STEP m along a raceway alley, a bulb every BULB_STEP m, sagging SAG m. */
 const STRING_STEP = 7;
@@ -82,8 +82,6 @@ function lightPools(kit: DistrictKit, pools: Pool[]): void {
 }
 
 const WARM = [col(0xffb35c, 2.4), col(0xffc98a, 2.2), col(0xff9a5c, 2.3), col(0xff7ab0, 1.8), col(0xfff0c8, 2)];
-/** Route shortcut bulbs: hot pink with amber, the shortcut sign's colours. */
-const SHORTCUT_BULBS = [col(0xff4fd8, 2.2), col(0xffb35c, 2.3), col(0xff2bd6, 2), col(0xffd08a, 2.1)];
 
 function stringLights(kit: DistrictKit, ax: number, az: number, bx: number, bz: number, half: number, warm = WARM, from = 10, to = 10): void {
   const len = Math.hypot(bx - ax, bz - az);

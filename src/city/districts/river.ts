@@ -33,10 +33,12 @@
  * edge of kind 'ramp' between its street node and its foot, every foot a node
  * of the channel chain. Ramp trenches have 'trench' retaining walls and a
  * solid plinth either side; the profile has a rounded lip at the top (a crest
- * you launch over) and a hard kink at the floor edge. A side ramp's trench
- * opens into a bell mouth over the last stretch of its run (rampHalf), as
- * wide as the room to the next street on each side allows, so the plinths
- * meet the street with angled faces instead of square caps. Every ramp top
+ * you launch over) and a hard kink at the floor edge. A ford dips the whole
+ * road, its plinths on the sidewalks. Every trench opens into a bell at its
+ * foot (the plinth corners chamfered for a car swinging in off the floor) and
+ * a side ramp's into a bell mouth over the last stretch of its run as well
+ * (rampHalf), as wide as the room to the next street on each side allows, so
+ * the plinths meet the street with angled faces instead of square caps. Every ramp top
  * gets the shortcut treatment: fences and clutter funnelling into the mouth
  * (a side ramp's on the sidewalk, the bank street's lanes left clear, its
  * street furniture kept out) and string lights across it, never a sign.
@@ -69,8 +71,9 @@ const STREET_KINDS = new Set<RoadEdge['kind']>(['street', 'avenue', 'boulevard',
 const DECK_REACH = 8;
 /** The parapets, deck openings and span footprints reach this far beyond the band's top edge (m). */
 const DECK_END = 2.5;
-/** Straight pieces of a side ramp's bell mouth, each side. */
+/** Straight pieces of a side ramp's bell mouth and of every trench's foot bell, each side. */
 const MOUTH_STEPS = 8;
+const FOOT_STEPS = 5;
 /** A bell mouth's plinth keeps this far (m) inside the room to the next corridor; the room is capped at MOUTH_ROOM (m). */
 const MOUTH_MARGIN = 2;
 const MOUTH_ROOM = 40;
@@ -80,6 +83,13 @@ export function mouthAlongs(r: Ramp, aTop: number): number[] {
   if (!r.flareL && !r.flareR) return [aTop];
   const out: number[] = [];
   for (let k = 0; k <= MOUTH_STEPS; k++) out.push(aTop - CFG.mouthLength + (CFG.mouthLength * k) / MOUTH_STEPS);
+  return out;
+}
+
+/** Where a trench's foot bell is sampled along its axis (m from the foot): from just above the floor edge to where the straight trench begins. */
+export function footAlongs(r: Ramp): number[] {
+  const out: number[] = [];
+  for (let k = 1; k <= FOOT_STEPS; k++) out.push(r.aFloor + (CFG.footLength * k) / FOOT_STEPS);
   return out;
 }
 
@@ -175,8 +185,9 @@ export interface Ramp {
   edge: number;
   node: number;
   foot: number;
-  /** Distance along the axis from the foot to the top (m). */
+  /** Distance along the axis from the foot to the top (m), and to the floor edge (m). */
   aTop: number;
+  aFloor: number;
   /** How far the trench widens at the top on its left (+lat) and right side (m): a side ramp's bell mouth, 0 for a ford. */
   flareL: number;
   flareR: number;
@@ -190,8 +201,9 @@ export function rampsOf(area: Area): Ramp[] {
   const out: Ramp[] = [];
   for (let i = 0; i < p.ramps; i++) {
     const r = (k: string) => p[`r${i}${k}`];
-    const ramp: Ramp = { ax: r('ax'), az: r('az'), ux: r('ux'), uz: r('uz'), side: r('side'), hw: r('hw'), body: r('body'), topL: r('topL'), curbL: r('curbL'), ford: r('ford'), edge: r('edge'), node: r('node'), foot: r('foot'), aTop: 0, flareL: r('flL'), flareR: r('flR'), roomL: r('rmL'), roomR: r('rmR') };
+    const ramp: Ramp = { ax: r('ax'), az: r('az'), ux: r('ux'), uz: r('uz'), side: r('side'), hw: r('hw'), body: r('body'), topL: r('topL'), curbL: r('curbL'), ford: r('ford'), edge: r('edge'), node: r('node'), foot: r('foot'), aTop: 0, aFloor: 0, flareL: r('flL'), flareR: r('flR'), roomL: r('rmL'), roomR: r('rmR') };
     ramp.aTop = rampAlong(p, ramp, ramp.topL);
+    ramp.aFloor = rampAlong(p, ramp, p.floor);
     out.push(ramp);
   }
   return out;
@@ -199,16 +211,21 @@ export function rampsOf(area: Area): Ramp[] {
 
 /**
  * Trench half width (m) on side `sd` (1 left of the axis, -1 right) at
- * `along` from the foot: hw down the run, then a side ramp's bell mouth over
- * the last CFG.mouthLength before the top, easing out (quadratic, so tangent
- * to the straight trench below) by that side's flare. Held at the mouth's
- * width past the top, across the sidewalk.
+ * `along` from the foot: the foot bell (footFlare at the floor edge, easing
+ * back quadratically over footLength so it is tangent to the straight trench
+ * above), hw up the run, then a side ramp's bell mouth over the last
+ * CFG.mouthLength before the top, easing out (quadratic again) by that
+ * side's flare. Held at the mouth's width past the top, across the sidewalk.
  */
 export function rampHalf(r: Ramp, along: number, sd: number): number {
+  const f = 1 - Math.min(1, Math.max(0, (along - r.aFloor) / CFG.footLength));
+  let w = r.hw + CFG.footFlare * f * f;
   const flare = sd > 0 ? r.flareL : r.flareR;
-  if (!flare) return r.hw;
-  const t = Math.min(1, Math.max(0, (along - (r.aTop - CFG.mouthLength)) / CFG.mouthLength));
-  return r.hw + flare * t * t;
+  if (flare) {
+    const t = Math.min(1, Math.max(0, (along - (r.aTop - CFG.mouthLength)) / CFG.mouthLength));
+    w += flare * t * t;
+  }
+  return w;
 }
 
 /** The plinth's outer face on side `sd` at `along` (m from the axis): body wide, thinning to CFG.mouthBody where the bell mouth eats into it, pushed out with it beyond. */
@@ -564,7 +581,7 @@ export const riverModule: DistrictModule = {
       // ramp run and a stretch of flat street before each junction, nothing else through its trench.
       const plans: RampPlan[] = [];
       const fordBody = (e: RoadEdge, hw: number) => e.width / 2 + e.sidewalk - hw;
-      const fordWidth = (e: RoadEdge) => (e.kind === 'avenue' ? CFG.fordHalfWidth + 1 : CFG.fordHalfWidth);
+      const fordWidth = (e: RoadEdge) => e.width / 2;
       // Flat street kept before a ford's ramp top at junction n: past the junction's far sidewalk corner
       // (a neighbouring road at angle phi puts it (H + w cos phi) / sin phi along the street, w this
       // street's half corridor, H the neighbour's) plus the room its mouth closure needs.
@@ -667,7 +684,7 @@ export const riverModule: DistrictModule = {
         if (run < CFG.rampMinRun || run > CFG.rampMaxRun) return null;
         // Nothing else may cross the trench (a missing row street would make it run on to the next row),
         // and no deck box either side of it.
-        const reach = hw + body + 4;
+        const reach = hw + body + CFG.rampClear;
         for (let q = 0; q <= 10; q++) {
           const u = F + ((bestFront + best.sidewalk - F) * q) / 10;
           const x = P.x + dx * u;
@@ -1166,18 +1183,19 @@ export const riverModule: DistrictModule = {
       const lx = -r.uz;
       const lz = r.ux;
       for (const sd of [1, -1]) {
-        const inner = sd * r.hw;
-        const outer = sd * (r.hw + r.body);
+        // At the floor edge the trench is at its foot bell's full width.
+        const inner = sd * rampHalf(r, 0, sd);
+        const outer = sd * rampOuter(r, 0, sd);
         // Each face starts where its own line reaches the floor edge (a skewed axis puts them at
         // different distances along it), so no wall pokes into the channel edge's corridor.
         const fIn = rampAlong(p, r, F, inner);
         const fOut = rampAlong(p, r, F, outer);
-        // Inner trench face, normal into the trench: straight up the run, then out along the bell
-        // mouth (rampHalf). Plinth outer face, normal away from it: straight, then pushed out with
-        // the mouth where it would leave less than mouthBody of plinth (rampOuter).
+        // Inner trench face, normal into the trench: in along the foot bell, straight up the run,
+        // then out along the bell mouth (rampHalf). Plinth outer face, normal away from it: straight,
+        // pushed out with either bell where it would leave less than mouthBody of plinth (rampOuter).
         const inFace = [P(fIn, inner)];
         const outFace = [P(fOut, outer)];
-        for (const a of mouthAlongs(r, aTop)) {
+        for (const a of [...footAlongs(r), ...mouthAlongs(r, aTop)]) {
           if (a > fIn + 0.5) inFace.push(P(a, sd * rampHalf(r, a, sd)));
           if (a > fOut + 0.5) outFace.push(P(a, sd * rampOuter(r, a, sd)));
         }
@@ -1201,8 +1219,8 @@ export const riverModule: DistrictModule = {
       }
       const gx = r.ax + r.ux * aFence;
       gapsBySide[s].push([gx - (r.hw + r.body) - 0.3, gx + (r.hw + r.body) + 0.3]);
-      // Up the left edge (the bell mouth included) to the curb and back down the right.
-      const edgeAt = [aF - 0.5, ...mouthAlongs(r, aTop), aCurb];
+      // Up the left edge (both bells included) to the curb and back down the right.
+      const edgeAt = [aF - 0.5, ...footAlongs(r), ...mouthAlongs(r, aTop), aCurb];
       const trench = [...edgeAt.map((a) => P(a, rampHalf(r, a, 1))), ...edgeAt.reverse().map((a) => P(a, -rampHalf(r, a, -1)))];
       b.surfaces.push({ surface: 'concrete', polygon: trench, priority: 2, area: id });
       const m = CITY.districts.infill.gap;

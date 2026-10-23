@@ -148,7 +148,9 @@ describe('city generation', () => {
     expect(w.surfaceAt(g0.x, g0.z)).toBe('road');
     const contacts: never[] = [];
     expect(w.collideCircle(g0.x, g0.z, 1, contacts)).toBe(0);
-    const p = w.routeProgress(g0.x, g0.z);
+    // From the start's segment, as the race seeds its grid (sim/race.ts): this seed starts on a bridge
+    // deck with the lap's channel leg running beneath it, where nearest in plan alone is the floor.
+    const p = w.routeProgress(g0.x, g0.z, w.route.points.length - 2);
     expect(Math.abs(p.lateral)).toBeLessThan(4);
     expect(p.s).toBeGreaterThan(w.route.length - 40);
     const h = w.heightAt(0, 0);
