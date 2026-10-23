@@ -1,0 +1,16 @@
+/* The garage's toggles (garageUi.ts toggle: Link, Match body, Mirror): smaller than the kit's small button,
+   with one short label in caps and the same weight on and off, so a toggle never changes size as it lights
+   (on, it takes the tab's hue: _garage.scss). */
+.garage-toggle {
+  --cut: 5px;
+  padding: 4px 9px 4px 7px;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  > svg {
+    width: 14px;
+    height: 14px;
+  }
+}

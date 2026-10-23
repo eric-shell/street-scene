@@ -36,14 +36,14 @@ import { Help, MUSIC_KEYS, type HelpKey } from '../ui/panels/help';
 import { uiWhoosh } from '../audio/uiSound';
 import { GaragePrefs, GarageState, MAX_SLOTS, Presentation, addSlot, decodeShareCode, encodeShareCode, freshBuild, importBuild, loadGaragePrefs, saveGaragePrefs, shareUrl } from './storage';
 import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PART_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
-import { AXLES, Axle, AxleStance, BUILD_NAME_MAX, CarBuild, DEFAULT_BUILD_NAME, DecalLayer, GLOW_PATTERNS, MAX_DECALS, PAINT_FINISHES, Paint, STANCE_LIMITS, TireShape, VINYL_SHAPES, VinylShape, validateBuild } from '../shared/carBuild';
+import { AXLES, Axle, AxleStance, BUILD_NAME_MAX, CarBuild, DEFAULT_BUILD_NAME, DecalLayer, GLOW_PATTERNS, MAX_DECALS, PAINT_FINISHES, Paint, AccentPaint, STANCE_LIMITS, TireShape, VINYL_SHAPES, VinylShape, validateBuild } from '../shared/carBuild';
 import { DEFAULT_CAR_ID, PERFORMANCE_CATEGORIES, PerformanceCategory, SELECTABLE_CAR_IDS, TIER_NAMES, Tier, getBaseTuning } from '../sim/tuning';
 import { tuningForBuild } from '../sim/build';
 import { FEATURES } from '../shared/features';
 import { specBadges, type SpecBadge } from '../shared/carSpec';
 import { measureStats, statBars, type CarStats } from '../sim/stats';
 import { SHAPE_LABELS } from '../render/car/decals';
-import { btn, chip, h, iconBtn, isTyping, segmented, sheen, toast } from '../ui/kit/dom';
+import { btn, chip, h, iconBtn, isTyping, scrollHint, segmented, sheen, toast } from '../ui/kit/dom';
 import { door, transitioning } from '../ui/transitions/transitions';
 import { KMH_PER_MPH, M_PER_FT } from '../ui/kit/units';
 import {
@@ -203,12 +203,18 @@ function color(value: string, onInput: (c: string) => void): HTMLInputElement {
   return el;
 }
 
-/** Preset swatches per colored surface: the body's loud street colors, wheel metals, caliper brights, neon. */
+/**
+ * Preset swatches per colored surface: the body's loud street colors (two rows), wheel metals, caliper brights,
+ * neon. The swatches sit nine to a row (_garage-swatch.scss), so every list is a multiple of nine: no row half full.
+ */
 const PRESETS = {
-  body: ['#d11f3f', '#ff6a00', '#ffcc1f', '#3dff9a', '#19e6ff', '#1f6bff', '#8b3dff', '#ff3df2', '#f2f2f2', '#9aa3ad', '#2a2c33', '#0b0b0d'],
-  wheels: ['#c9ced8', '#e8eaee', '#7d838c', '#3a3d44', '#1a1b1f', '#f2f2f2', '#b08d57', '#d4af37', '#d11f3f', '#19e6ff'],
-  calipers: ['#c41e3a', '#ffcc1f', '#ff6a00', '#1f6bff', '#3dff9a', '#ff3df2', '#d4af37', '#f2f2f2', '#9aa3ad', '#1a1b1f'],
-  glow: ['#00e5ff', '#ff3df2', '#7cff4f', '#ffe14d', '#ff2e5b', '#7a5cff', '#ffffff', '#ff8a00'],
+  body: [
+    ...['#d11f3f', '#ff6a00', '#ffcc1f', '#3dff9a', '#19e6ff', '#1f6bff', '#8b3dff', '#ff3df2', '#f2f2f2'],
+    ...['#7a0f22', '#b84a12', '#c9a227', '#1f7a4d', '#0f6f80', '#14306e', '#9aa3ad', '#2a2c33', '#0b0b0d'],
+  ],
+  wheels: ['#c9ced8', '#e8eaee', '#7d838c', '#3a3d44', '#1a1b1f', '#f2f2f2', '#b08d57', '#d4af37', '#d11f3f'],
+  calipers: ['#c41e3a', '#ffcc1f', '#ff6a00', '#1f6bff', '#3dff9a', '#ff3df2', '#d4af37', '#f2f2f2', '#1a1b1f'],
+  glow: ['#00e5ff', '#ff3df2', '#7cff4f', '#ffe14d', '#ff2e5b', '#7a5cff', '#ffffff', '#ff8a00', '#ff1a1a'],
 } as const;
 
 /**
@@ -233,22 +239,59 @@ function colorPicker(value: string, presets: readonly string[], onInput: (c: str
   return h('div', { class: 'row' }, well, sw);
 }
 
-/** Every paint's controls (body, wheels, calipers): its color over its finish. Edits the paint in place, then calls onChange. */
-function paintPicker(paint: Paint, presets: readonly string[], onChange: () => void): Node[] {
-  return [
-    colorPicker(paint.color, presets, (c) => {
-      paint.color = c;
-      onChange();
-    }),
-    segmented(
-      PAINT_FINISHES.map((f) => ({ value: f, label: capital(f) })),
-      paint.finish,
-      (f) => {
-        paint.finish = f;
-        onChange();
-      },
-    ),
-  ];
+/**
+ * Every paint's controls (body, wheels, calipers): its color over its finish, edited in place, then onChange.
+ * An accent (wheels, calipers) gets a Match body toggle beside any `tools`: matched, it wears the body's paint
+ * and shows that instead of its controls; unmatched, it starts from the body's paint, so nothing jumps.
+ */
+function paintPicker(paint: Paint | AccentPaint, presets: readonly string[], onChange: () => void, accent?: { body: Paint; tools?: Node[] }): HTMLElement {
+  const root = h('div', { class: 'garage-paint' });
+  const a = accent && 'match' in paint ? paint : null;
+  const draw = () => {
+    const tools: Node[] = [...(accent?.tools ?? [])];
+    if (accent && a) {
+      tools.push(
+        toggle(Paintbrush, 'Match body', a.match, a.match ? 'Wearing the body paint' : 'Wear the body paint', () => {
+          a.match = !a.match;
+          if (!a.match) Object.assign(a, { color: accent.body.color, finish: accent.body.finish });
+          onChange();
+          draw();
+        }),
+      );
+    }
+    root.replaceChildren(
+      ...(tools.length ? [h('div', { class: 'row' }, ...tools)] : []),
+      ...(accent && a?.match
+        ? [h('div', { class: 'muted garage-note' }, h('span', { class: 'garage-dot', style: `background:${accent.body.color}` }), `Body paint · ${capital(accent.body.finish)}`)]
+        : [
+            colorPicker(paint.color, presets, (c) => {
+              paint.color = c;
+              onChange();
+            }),
+            segmented(
+              PAINT_FINISHES.map((f) => ({ value: f, label: capital(f) })),
+              paint.finish,
+              (f) => {
+                paint.finish = f;
+                onChange();
+              },
+            ),
+          ]),
+    );
+  };
+  draw();
+  return root;
+}
+
+/**
+ * A garage toggle (front and rear linked, match body, mirror): a short label that never changes, so the
+ * button keeps its size, lit in the tab's hue while on (_garage-toggle.scss); the title says it in full.
+ */
+function toggle(ico: IconNode, label: string, on: boolean, title: string, onClick: () => void): HTMLButtonElement {
+  const b = btn(ico, label, onClick, `--small garage-toggle${on ? ' --primary' : ''}`);
+  b.title = title;
+  b.setAttribute('aria-pressed', String(on));
+  return b;
 }
 
 /** A row in a group: the name on the left, its control on the right (the settings' rows). */
@@ -307,6 +350,9 @@ const TIRE_CHOICES: Choice<TireShape>[] = [
   { value: 'stretched', label: 'Stretched', sub: 'Angled sidewall' },
 ];
 
+/** How long the Save button stays green after a save (ms), before it eases back to Saved. */
+const SAVED_FLASH_MS = 5000;
+
 /** Slider readouts: a length (m) in cm, a factor as a percent. */
 const cm = (x: number) => `${Math.round(x * 100)} cm`;
 const percent = (x: number) => `${Math.round(x * 100)}%`;
@@ -324,6 +370,8 @@ export class GarageScreen {
   private scene: GarageScene;
   private root: HTMLElement;
   private body: HTMLElement;
+  /** The body inside its scroll hints (fades and the more-below chevron), as the step lays it out. */
+  private readonly bodyView: HTMLElement;
   private tabBar: HTMLElement;
   private tab: Tab = 'model';
   private step: Step = 'builds';
@@ -351,6 +399,8 @@ export class GarageScreen {
   /** Drive keys held now (gas and steering). */
   private driveKeys = new Set<string>();
   private tabInTimer = 0;
+  /** Ends the Save button's green flash after a save. */
+  private savedTimer = 0;
   /** The roller door is running for a Garage / Street switch. */
   private switching = false;
   /** The slot and car the card last showed, so only another build (not every edit) deals the card in again. */
@@ -400,6 +450,7 @@ export class GarageScreen {
     this.scene = new GarageScene(gr, assets, stage.street, stage.quality);
     this.tabBar = h('div', { class: 'garage__tabs', role: 'tablist', 'aria-label': 'Categories', style: `--tabs:${Math.ceil(TABS.length / 2)};--tab-count:${TABS.length}` });
     this.body = h('div', { class: 'garage__body' });
+    this.bodyView = scrollHint(this.body, 'garage__scroll');
     this.savedJson = JSON.stringify(this.build);
     this.saveBtn = btn(Check, 'Saved', () => this.save(), 'garage__save');
     this.revertBtn = iconBtn(Undo2, 'Discard changes', () => this.revert());
@@ -614,7 +665,7 @@ export class GarageScreen {
   /** Step two: the build's name, the tabs and the open tab's groups. */
   private buildStep(): HTMLElement[] {
     this.setTab(this.tab);
-    return [screenHead({ icon: Hammer, title: 'Customize', back: () => this.go('builds'), backLabel: 'Back to your builds (Esc)', aside: progress(2, chip(this.build.name, undefined, '--accent garage__build-chip')) }), this.tabBar, this.body];
+    return [screenHead({ icon: Hammer, title: 'Customize', back: () => this.go('builds'), backLabel: 'Back to your builds (Esc)', aside: progress(2, chip(this.build.name, undefined, '--accent garage__build-chip')) }), this.tabBar, this.bodyView];
   }
 
   /**
@@ -829,6 +880,10 @@ export class GarageScreen {
     if (!this.isDirty()) return;
     this.persist();
     toast(`Saved "${this.build.name}" to slot ${this.garage.current + 1}`, Check);
+    // The Saved plate flashes green, then eases back (_garage.scss); an edit before then ends it (updateSaveState).
+    this.saveBtn.classList.add('is-saved');
+    clearTimeout(this.savedTimer);
+    this.savedTimer = window.setTimeout(() => this.saveBtn.classList.remove('is-saved'), SAVED_FLASH_MS);
   }
 
   /** Back to the build as last saved. */
@@ -848,6 +903,10 @@ export class GarageScreen {
   private updateSaveState(): void {
     const dirty = this.isDirty();
     this.slotsEl.querySelector('.garage-item--slot.is-selected')?.classList.toggle('is-dirty', dirty);
+    if (dirty) {
+      clearTimeout(this.savedTimer);
+      this.saveBtn.classList.remove('is-saved');
+    }
     if (dirty === this.shownDirty) return;
     this.shownDirty = dirty;
     const b = this.saveBtn;
@@ -1080,7 +1139,7 @@ export class GarageScreen {
       }
       case 'paint': {
         this.body.append(
-          section('Body paint', ...paintPicker(v.paint, PRESETS.body, () => this.changed())),
+          section('Body paint', paintPicker(v.paint, PRESETS.body, () => this.changed())),
           section(
             'Trim color',
             color(v.trimColor, (c) => {
@@ -1155,18 +1214,22 @@ export class GarageScreen {
             ? [
                 section(
                   'Wheel paint',
-                  this.colorLinkToggle(),
-                  ...paintPicker(w.paint, PRESETS.wheels, () => {
-                    w.rearPaint = { ...w.paint };
-                    this.changed();
-                  }),
+                  paintPicker(
+                    w.paint,
+                    PRESETS.wheels,
+                    () => {
+                      w.rearPaint = { ...w.paint };
+                      this.changed();
+                    },
+                    { body: v.paint, tools: [this.colorLinkToggle()] },
+                  ),
                 ),
               ]
             : [
-                section('Front wheel paint', this.colorLinkToggle(), ...paintPicker(w.paint, PRESETS.wheels, () => this.changed())),
-                section('Rear wheel paint', ...paintPicker(w.rearPaint, PRESETS.wheels, () => this.changed())),
+                section('Front wheel paint', paintPicker(w.paint, PRESETS.wheels, () => this.changed(), { body: v.paint, tools: [this.colorLinkToggle()] })),
+                section('Rear wheel paint', paintPicker(w.rearPaint, PRESETS.wheels, () => this.changed(), { body: v.paint })),
               ]),
-          section('Caliper paint', ...paintPicker(v.calipers, PRESETS.calipers, () => this.changed())),
+          section('Caliper paint', paintPicker(v.calipers, PRESETS.calipers, () => this.changed(), { body: v.paint })),
         );
         break;
       }
@@ -1280,8 +1343,10 @@ export class GarageScreen {
   /** "Link front and rear" convenience toggle for the per axle sliders. */
   private linkToggle(): HTMLElement {
     const linked = this.prefs.linkAxles;
-    return btn(
+    return toggle(
       linked ? Link2 : Link2Off,
+      'Link',
+      linked,
       linked ? 'Front and rear linked' : 'Front and rear separate',
       () => {
         this.prefs.linkAxles = !linked;
@@ -1295,15 +1360,16 @@ export class GarageScreen {
         }
         this.renderTab();
       },
-      `--small garage-link${linked ? ' --primary' : ''}`,
     );
   }
 
   /** Link toggle for the wheel and tire picks: linked, front and rear wear the same; unlinked, each axle picks its own. */
   private wheelLinkToggle(): HTMLElement {
     const linked = this.prefs.linkWheels;
-    return btn(
+    return toggle(
       linked ? Link2 : Link2Off,
+      'Link',
+      linked,
       linked ? 'Front and rear same wheels' : 'Front and rear wheels separate',
       () => {
         this.prefs.linkWheels = !linked;
@@ -1318,15 +1384,16 @@ export class GarageScreen {
         } else this.wheelAxle = 'front';
         this.renderTab();
       },
-      `--small garage-link${linked ? ' --primary' : ''}`,
     );
   }
 
   /** Link toggle for the wheel paint, separate from the stance link so sizes and colors can split independently. */
   private colorLinkToggle(): HTMLElement {
     const linked = this.prefs.linkWheelColor;
-    return btn(
+    return toggle(
       linked ? Link2 : Link2Off,
+      'Link',
+      linked,
       linked ? 'Front and rear same paint' : 'Front and rear paint separate',
       () => {
         this.prefs.linkWheelColor = !linked;
@@ -1339,7 +1406,6 @@ export class GarageScreen {
         }
         this.renderTab();
       },
-      `--small garage-link${linked ? ' --primary' : ''}`,
     );
   }
 
@@ -1381,11 +1447,11 @@ export class GarageScreen {
             d.color = c;
             update();
           }),
-          btn(FlipHorizontal2, d.mirror ? 'Mirrored' : 'Mirror', () => {
+          toggle(FlipHorizontal2, 'Mirror', d.mirror, d.mirror ? 'Mirrored to the other side' : 'Mirror to the other side', () => {
             d.mirror = !d.mirror;
             update();
             this.renderTab();
-          }, `--small garage-toggle${d.mirror ? ' --primary' : ''}`),
+          }),
           btn(MousePointerClick, 'Move', () => {
             this.placing = { shape: d.shape, index: this.selectedDecal };
             toast('Click on the car to move the vinyl', MousePointerClick);

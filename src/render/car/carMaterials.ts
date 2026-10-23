@@ -6,7 +6,7 @@
  */
 import * as THREE from 'three';
 import { MATERIAL_NAMES, MaterialName } from '../../shared/parts';
-import type { Paint, PaintFinish, VisualBuild } from '../../shared/carBuild';
+import type { AccentPaint, Paint, PaintFinish, VisualBuild } from '../../shared/carBuild';
 import { BRAKE, rotorTexture } from './brakes';
 
 /**
@@ -140,10 +140,12 @@ function applyPaint(mat: THREE.MeshPhysicalMaterial, p: Paint, env: number): voi
 }
 
 export function applyVisualToMaterials(m: CarMaterialSet, v: VisualBuild, braking = false): void {
+  // A matched accent wears the body's paint.
+  const accent = (p: AccentPaint): Paint => (p.match ? v.paint : p);
   applyPaint(m.Paint as THREE.MeshPhysicalMaterial, v.paint, PAINT_ENV.Paint);
-  applyPaint(m.Rim as THREE.MeshPhysicalMaterial, v.wheels.paint, PAINT_ENV.Rim);
-  applyPaint(m.RimRear as THREE.MeshPhysicalMaterial, v.wheels.rearPaint, PAINT_ENV.Rim);
-  applyPaint(m.Caliper as THREE.MeshPhysicalMaterial, v.calipers, PAINT_ENV.Caliper);
+  applyPaint(m.Rim as THREE.MeshPhysicalMaterial, accent(v.wheels.paint), PAINT_ENV.Rim);
+  applyPaint(m.RimRear as THREE.MeshPhysicalMaterial, accent(v.wheels.rearPaint), PAINT_ENV.Rim);
+  applyPaint(m.Caliper as THREE.MeshPhysicalMaterial, accent(v.calipers), PAINT_ENV.Caliper);
   (m.Trim as THREE.MeshStandardMaterial).color.set(v.trimColor);
   const glass = m.Glass as THREE.MeshPhysicalMaterial;
   glass.color.set(v.tint.color).lerp(new THREE.Color(0x8fa0b0), 1 - v.tint.darkness);

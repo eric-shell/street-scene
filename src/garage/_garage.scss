@@ -12,6 +12,12 @@
 @use '../ui/styles/abstracts/media';
 @use '../ui/styles/abstracts/mixins';
 @use '../ui/styles/abstracts/palette';
+/* The Save button's green flash (.garage__foot), registered so it can ease. */
+@property --save-flash {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
 
 /* What rises in as the door rolls up: the Builds step's header, card and slots, the Save button, the switch and help. */
 $arriving: '.rail__step > *, .garage__foot, .garage-stage, .help';
@@ -161,6 +167,21 @@ $step-rise: 0.58s, 0.45s, 0.32s;
         background: var(--plate-hover);
       }
     }
+    /* Just saved (garageUi.ts save adds .is-saved for a few seconds): the Saved plate shows green, then eases
+       back to its quiet look as --save-flash falls from 1 to 0. */
+    .garage__save[disabled] {
+      --flash: color-mix(in srgb, var(--green) calc(var(--save-flash) * 100%), transparent);
+      background: linear-gradient(var(--flash), var(--flash)), var(--plate);
+      color: color-mix(in srgb, var(--on-accent) calc(var(--save-flash) * 100%), var(--muted));
+      transition: --save-flash 0.8s ease;
+      > svg {
+        color: inherit;
+      }
+      &.is-saved {
+        --save-flash: 1;
+        transition: none;
+      }
+    }
     /* Stretched to the row's height, so aspect-ratio makes its width match it; the icon centers in the square. */
     .btn--icon {
       flex: none;
@@ -179,6 +200,10 @@ $step-rise: 0.58s, 0.45s, 0.32s;
       opacity: 1;
       color: var(--muted);
     }
+  }
+  /* The body's scroll hints (kit scrollHint) take the body's place in the step. */
+  &__scroll {
+    flex: 1 1 auto;
   }
   /* The open tab's groups (_garage-section.scss), scrolling under the tabs. A new tab's groups cascade in
      (setTab adds .is-switching for the switch only). */
@@ -206,10 +231,10 @@ $step-rise: 0.58s, 0.45s, 0.32s;
     input[type='range'] {
       accent-color: var(--hue);
     }
-    /* Picks in a segmented control and toggles that are on (front and rear linked, mirrored) take the tab's
+    /* Picks in a segmented control and toggles that are on (linked, match body, mirrored) take the tab's
        hue; the screen's actions (Export) stay orange. */
     .segmented__option.is-selected,
-    .btn--primary:is(.garage-link, .garage-toggle) {
+    .btn--primary.garage-toggle {
       background: linear-gradient(100deg, var(--hue) 55%, color-mix(in srgb, var(--hue), #fff 22%));
     }
   }

@@ -1,7 +1,7 @@
 /**
  * Tiny DOM helpers for the plain-DOM UI, and the kit's components built from
- * them: the button, the segmented control, the chip, key caps, links, tabs
- * and the toast (styled by the partials beside this file).
+ * them: the button, the segmented control, the chip, key caps, links, tabs,
+ * scroll hints and the toast (styled by the partials beside this file).
  *
  * Class names follow BEM (CLAUDE.md, ui/styles/main.scss): `block`,
  * `block__element`, `block--modifier`, and `is-*` for states the code toggles.
@@ -9,7 +9,7 @@
  * is a modifier of the helper's block, so `btn(icon, 'Race', go, '--primary
  * event-card__go')` is a `btn btn--primary event-card__go`.
  */
-import { icon, type IconNode } from './icons';
+import { ChevronDown, icon, type IconNode } from './icons';
 
 type Child = Node | string | null | undefined | false;
 
@@ -51,6 +51,30 @@ export function btn(iconNode: IconNode | null, label: string, onClick: () => voi
   if (sub) text.append(h('span', { class: 'btn__sub' }, sub));
   b.append(text, sheen());
   return b;
+}
+
+/**
+ * Hints that a scroller holds more than it shows (kit/_scroll-hint.scss): its edges fade where content runs
+ * past them and a small chevron bobs at the foot while there is more below, each easing away as that end is
+ * reached. Returns the wrapper to place where the scroller went (`cls`: its modifiers and extra classes).
+ * Scrolling, resizes and content changes (a re-rendered list) all update it; nothing runs per frame.
+ */
+export function scrollHint(scroller: HTMLElement, cls = ''): HTMLElement {
+  scroller.classList.add('scroll-hint__view');
+  const wrap = h('div', { class: bem('scroll-hint', cls) }, scroller, h('span', { class: 'scroll-hint__more', 'aria-hidden': 'true' }, icon(ChevronDown, { size: 16 })));
+  let above = false;
+  let below = false;
+  // A pixel of slack: fractional scroll positions at the ends never quite reach them.
+  const update = () => {
+    const a = scroller.scrollTop > 1;
+    const b = scroller.scrollTop + scroller.clientHeight < scroller.scrollHeight - 1;
+    if (a !== above) wrap.classList.toggle('is-above', (above = a));
+    if (b !== below) wrap.classList.toggle('is-below', (below = b));
+  };
+  scroller.addEventListener('scroll', update, { passive: true });
+  new ResizeObserver(update).observe(scroller);
+  new MutationObserver(update).observe(scroller, { childList: true, subtree: true });
+  return wrap;
 }
 
 /** A button that is only an icon, its label the tooltip and accessible name. */

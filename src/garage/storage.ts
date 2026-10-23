@@ -108,6 +108,7 @@ const SHORT: Record<string, string> = {
   rearColor: 'rc',
   rearPaint: 'rpa',
   calipers: 'cl',
+  match: 'mt',
   rearPart: 'rp',
   tire: 'ty',
   rearTire: 'rt',

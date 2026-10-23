@@ -1,19 +1,28 @@
 /* Colors (garageUi.ts paint, wheels, neon and vinyl): rows of preset swatches beside a color well, and the dot
-   that shows a vinyl layer's color in its row. */
+   that shows a vinyl layer's color in its row (or the body's on a matched accent). */
 @use '../ui/styles/abstracts/mixins';
 @use '../ui/styles/abstracts/palette';
+/* A paint picker (garageUi.ts paintPicker) redraws inside its own box; the box leaves its rows to the section's
+   column and gap. */
+.garage-paint {
+  display: contents;
+}
+/* Nine to a row whatever the rail's width (the preset lists are multiples of nine), so no row is left half full;
+   the chips shrink on a narrow rail rather than wrap. */
 .garage-swatches {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 26px));
+  justify-content: space-between;
   gap: 5px;
   flex: 1;
+  min-width: 0;
 }
 /* A swatch: a chamfered chip of the color with a faint inner edge (so black and white read on the plate),
    lifting and ringed on hover; the color in use keeps a ring and a dark core. */
 .garage-swatch {
   position: relative;
-  width: 26px;
-  height: 26px;
+  width: 100%;
+  aspect-ratio: 1;
   padding: 0;
   cursor: pointer;
   background: var(--swatch);

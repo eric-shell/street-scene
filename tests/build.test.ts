@@ -60,8 +60,8 @@ describe('build validation', () => {
     b.visual.paint = { color: '#19e6ff', finish: 'pearl' };
     b.visual.parts = { spoiler: 'protoHatch_spoiler_1', frontBumper: 'protoHatch_frontBumper_kurogane', wheels: 'wheel_yari' };
     b.visual.decals.push({ shape: 'number', color: '#ff3df2', pos: [0.9, 0.6, 0.2], normal: [1, 0, 0], rotation: 12, scale: 0.7, mirror: true, text: '42' });
-    b.visual.wheels = { paint: { color: '#ffcc00', finish: 'candy' }, rearPaint: { color: '#1a1b1f', finish: 'matte' }, rearPart: 'wheel_kumo', tire: 'standard', rearTire: 'stretched' };
-    b.visual.calipers = { color: '#ffcc1f', finish: 'pearl' };
+    b.visual.wheels = { paint: { color: '#ffcc00', finish: 'candy', match: false }, rearPaint: { color: '#1a1b1f', finish: 'matte', match: true }, rearPart: 'wheel_kumo', tire: 'standard', rearTire: 'stretched' };
+    b.visual.calipers = { color: '#ffcc1f', finish: 'pearl', match: true };
     b.visual.underglow = { enabled: true, color: '#ff00aa', color2: '#00ffaa', pattern: 'chase', brightness: 1.4, speed: 2, size: 1.2 };
     b.visual.stance = { rideHeight: -0.045, front: { camber: -3.5, offset: 0.015, wheelSize: 1.05 }, rear: { camber: -7, offset: 0.05, wheelSize: 1.2 } };
     b.performance.engine = 3;
@@ -91,8 +91,8 @@ describe('build validation', () => {
     expect(b.visual.wheels).toMatchObject({ paint: { color: '#ffffff', finish: 'metallic' }, rearPaint: { color: '#ffffff', finish: 'metallic' } });
     expect(validateBuild({ visual: { wheels: { color: '#ffffff', rearColor: '#1a1b1f' } } }).visual.wheels).toMatchObject({ paint: { color: '#ffffff' }, rearPaint: { color: '#1a1b1f' } });
     // Builds from before caliper paint get the stock red; a missing rear wheel paint follows the front's.
-    expect(b.visual.calipers).toEqual({ color: '#c41e3a', finish: 'gloss' });
-    expect(validateBuild({ visual: { wheels: { paint: { color: '#123456', finish: 'candy' } } } }).visual.wheels.rearPaint).toEqual({ color: '#123456', finish: 'candy' });
+    expect(b.visual.calipers).toEqual({ color: '#c41e3a', finish: 'gloss', match: false });
+    expect(validateBuild({ visual: { wheels: { paint: { color: '#123456', finish: 'candy', match: true } } } }).visual.wheels.rearPaint).toEqual({ color: '#123456', finish: 'candy', match: true });
     // Builds from before per axle wheels and tires wear the front's wheel and the standard tire all round.
     expect(b.visual.wheels).toMatchObject({ rearPart: null, tire: 'standard', rearTire: 'standard' });
     // A rear tire of its own is kept; a missing one follows the front, an unknown one falls back.
@@ -116,7 +116,7 @@ describe('build validation', () => {
     expect(b!.visual.stance.rideHeight).toBe(-0.03);
     expect(b!.visual.stance.front).toEqual({ camber: -6, offset: 0.04, wheelSize: 1.15 });
     expect(b!.visual.stance.rear).toEqual({ camber: -8.5, offset: 0.04, wheelSize: 1.15 });
-    expect(b!.visual.wheels).toEqual({ paint: { color: '#ffcc00', finish: 'metallic' }, rearPaint: { color: '#ffcc00', finish: 'metallic' }, rearPart: null, tire: 'standard', rearTire: 'standard' });
+    expect(b!.visual.wheels).toEqual({ paint: { color: '#ffcc00', finish: 'metallic', match: false }, rearPaint: { color: '#ffcc00', finish: 'metallic', match: false }, rearPart: null, tire: 'standard', rearTire: 'standard' });
     // Saved before the cars were renamed: the wheel id follows the rename.
     expect(b!.visual.parts.wheels).toBe('wheel_yari');
     expect(b!.performance.engine).toBe(2);

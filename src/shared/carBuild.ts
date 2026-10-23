@@ -22,6 +22,11 @@ export interface Paint {
   finish: PaintFinish;
 }
 
+/** An accent's paint (wheels, calipers): its own, or the body's while matched (it follows later body changes). */
+export interface AccentPaint extends Paint {
+  match: boolean;
+}
+
 export const VINYL_SHAPES = ['stripe', 'twinStripe', 'flame', 'tribal', 'sponsorA', 'sponsorB', 'sponsorC', 'number', 'star', 'chevron'] as const;
 export type VinylShape = (typeof VINYL_SHAPES)[number];
 
@@ -77,9 +82,9 @@ export interface VisualBuild {
   parts: Partial<Record<PartSlot, string | null>>;
   wheels: {
     /** Front wheel paint (legacy builds saved one `color` for all four; validation migrates it). */
-    paint: Paint;
+    paint: AccentPaint;
     /** Rear wheel paint; matches the front unless the garage's wheel paint is unlinked. */
-    rearPaint: Paint;
+    rearPaint: AccentPaint;
     /** Rear wheel part id; null wears the front's (parts.wheels), so a car change keeps them matched. */
     rearPart: string | null;
     /** Front tire shape. */
@@ -88,7 +93,7 @@ export interface VisualBuild {
     rearTire: TireShape;
   };
   /** Brake caliper paint, all four corners. */
-  calipers: Paint;
+  calipers: AccentPaint;
   decals: DecalLayer[];
   stance: { rideHeight: number; front: AxleStance; rear: AxleStance };
   tint: { darkness: number; color: string };
@@ -120,8 +125,8 @@ export function defaultVisual(): VisualBuild {
     paint: { color: '#d11f3f', finish: 'metallic' },
     trimColor: '#15161a',
     parts: {},
-    wheels: { paint: { color: '#c9ced8', finish: 'metallic' }, rearPaint: { color: '#c9ced8', finish: 'metallic' }, rearPart: null, tire: 'standard', rearTire: 'standard' },
-    calipers: { color: '#c41e3a', finish: 'gloss' },
+    wheels: { paint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPaint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPart: null, tire: 'standard', rearTire: 'standard' },
+    calipers: { color: '#c41e3a', finish: 'gloss', match: false },
     decals: [],
     stance: { rideHeight: 0, front: { camber: 0, offset: 0, wheelSize: 1 }, rear: { camber: 0, offset: 0, wheelSize: 1 } },
     tint: { darkness: 0.55, color: '#101820' },
@@ -175,6 +180,11 @@ function validPaint(v: unknown, fallback: Paint): Paint {
   return { color: hexColor(o.color, fallback.color), finish: oneOf(o.finish, PAINT_FINISHES, fallback.finish) };
 }
 
+function validAccent(v: unknown, fallback: AccentPaint): AccentPaint {
+  const o = obj(v);
+  return { ...validPaint(o, fallback), match: typeof o.match === 'boolean' ? o.match : fallback.match };
+}
+
 export function validateVisual(v: unknown): VisualBuild {
   const o = obj(v);
   const d = defaultVisual();
@@ -216,8 +226,8 @@ export function validateVisual(v: unknown): VisualBuild {
   }
   // Wheel paint: builds from before wheel finishes saved a color per axle (one for all four before
   // that); it keeps the default finish. A missing rear follows the front.
-  const wheelPaint = validPaint(wheels.paint, { ...d.wheels.paint, color: hexColor(wheels.color, d.wheels.paint.color) });
-  const rearPaint = validPaint(wheels.rearPaint, { ...wheelPaint, color: hexColor(wheels.rearColor, wheelPaint.color) });
+  const wheelPaint = validAccent(wheels.paint, { ...d.wheels.paint, color: hexColor(wheels.color, d.wheels.paint.color) });
+  const rearPaint = validAccent(wheels.rearPaint, { ...wheelPaint, color: hexColor(wheels.rearColor, wheelPaint.color) });
   // Stance per axle. Legacy builds (saves and share codes from before per axle stance) had
   // stance.camberFront / camberRear, one stance.offset and wheels.size; they seed both axles.
   // The first set's mild and aggressive stretches are the stretched tire now; its meaty one, standard.
@@ -240,7 +250,7 @@ export function validateVisual(v: unknown): VisualBuild {
     trimColor: hexColor(o.trimColor, d.trimColor),
     parts,
     wheels: { paint: wheelPaint, rearPaint, rearPart, tire, rearTire: tireShape(wheels.rearTire, tire) },
-    calipers: validPaint(o.calipers, d.calipers),
+    calipers: validAccent(o.calipers, d.calipers),
     decals,
     stance: {
       rideHeight: num(stance.rideHeight, L.rideHeight[0], L.rideHeight[1], 0),
