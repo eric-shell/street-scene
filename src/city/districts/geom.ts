@@ -142,6 +142,147 @@ export function solidWalls(poly: Vec2[], look: WallLook, area: number): Wall[] {
   return walls;
 }
 
+/**
+ * A convex ring moved inward by d (m) (outward when d is negative), either way round: every edge is
+ * shifted along its inward normal and consecutive edges meet again. Null when an inward inset collapses
+ * it (the inset passed the middle). Shared by the parks (footpath loop), the car parks (footprint,
+ * building clearances) and whoever grows or shrinks a block.
+ */
+export function insetRing(ring: Vec2[], d: number): Vec2[] | null {
+  const n = ring.length;
+  // The inward normal is the right normal when the ring runs clockwise in x/z (negative area), left otherwise.
+  const inward = polygonArea(ring) < 0 ? 1 : -1;
+  const lines = ring.map((p, i) => {
+    const q = ring[(i + 1) % n];
+    const l = Math.hypot(q.x - p.x, q.z - p.z) || 1;
+    const nx = ((q.z - p.z) / l) * inward;
+    const nz = (-(q.x - p.x) / l) * inward;
+    return { x: p.x + nx * d, z: p.z + nz * d, dx: (q.x - p.x) / l, dz: (q.z - p.z) / l, l };
+  });
+  const out: Vec2[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = lines[(i - 1 + n) % n];
+    const b = lines[i];
+    if (a.l < 1 || b.l < 1) continue;
+    const den = a.dx * b.dz - a.dz * b.dx;
+    if (Math.abs(den) < 1e-6) continue;
+    const t = ((b.x - a.x) * b.dz - (b.z - a.z) * b.dx) / den;
+    out.push({ x: a.x + a.dx * t, z: a.z + a.dz * t });
+  }
+  if (out.length < 3) return null;
+  if (d > 0) for (const p of out) if (!pointInPolygon(p.x, p.z, ring) || distToPolygonEdge(p.x, p.z, ring) < d - 0.5) return null;
+  return out;
+}
+
+/**
+ * The part of a convex polygon on one side of the line a-b: the side where (b - a) x (p - a) has the
+ * sign of `side` (either way round the polygon). Empty when nothing is left.
+ */
+export function clipConvex(poly: Vec2[], a: Vec2, b: Vec2, side: 1 | -1): Vec2[] {
+  const out: Vec2[] = [];
+  const dx = b.x - a.x;
+  const dz = b.z - a.z;
+  const n = poly.length;
+  for (let i = 0; i < n; i++) {
+    const p = poly[i];
+    const q = poly[(i + 1) % n];
+    const sp = (dx * (p.z - a.z) - dz * (p.x - a.x)) * side;
+    const sq = (dx * (q.z - a.z) - dz * (q.x - a.x)) * side;
+    if (sp >= 0) out.push(p);
+    if ((sp >= 0) !== (sq >= 0)) {
+      const t = sp / (sp - sq);
+      out.push({ x: p.x + (q.x - p.x) * t, z: p.z + (q.z - p.z) * t });
+    }
+  }
+  return out;
+}
+
+/** The intersection of two convex polygons (either way round each). */
+export function intersectConvex(poly: Vec2[], clip: Vec2[]): Vec2[] {
+  const side: 1 | -1 = polygonArea(clip) > 0 ? 1 : -1;
+  let out = poly;
+  for (let i = 0; i < clip.length && out.length; i++) out = clipConvex(out, clip[i], clip[(i + 1) % clip.length], side);
+  return out;
+}
+
+/** A convex polygon less a convex hole, as convex pieces (one per hole edge that cuts it). */
+export function subtractConvex(poly: Vec2[], hole: Vec2[]): Vec2[][] {
+  const side: 1 | -1 = polygonArea(hole) > 0 ? 1 : -1;
+  const out: Vec2[][] = [];
+  let rest = poly;
+  for (let i = 0; i < hole.length && rest.length >= 3; i++) {
+    const a = hole[i];
+    const b = hole[(i + 1) % hole.length];
+    const outside = clipConvex(rest, a, b, side === 1 ? -1 : 1);
+    if (outside.length >= 3) out.push(outside);
+    rest = clipConvex(rest, a, b, side);
+  }
+  return out;
+}
+
+/** The parameter span [t0, t1] of segment a-b inside a convex polygon, or null when it misses it. */
+export function segmentInConvex(a: Vec2, b: Vec2, poly: Vec2[]): [number, number] | null {
+  const side = polygonArea(poly) > 0 ? 1 : -1;
+  let t0 = 0;
+  let t1 = 1;
+  const n = poly.length;
+  for (let i = 0; i < n; i++) {
+    const p = poly[i];
+    const q = poly[(i + 1) % n];
+    const dx = q.x - p.x;
+    const dz = q.z - p.z;
+    const sa = (dx * (a.z - p.z) - dz * (a.x - p.x)) * side;
+    const sb = (dx * (b.z - p.z) - dz * (b.x - p.x)) * side;
+    if (sa < 0 && sb < 0) return null;
+    if (sa >= 0 && sb >= 0) continue;
+    const t = sa / (sa - sb);
+    if (sa < 0) t0 = Math.max(t0, t);
+    else t1 = Math.min(t1, t);
+    if (t0 >= t1) return null;
+  }
+  return [t0, t1];
+}
+
+/**
+ * A simple polygon (either way round, concave allowed) as triangles, by ear
+ * clipping: a renderer fills a block's outline cell by cell with them.
+ */
+export function triangulate(poly: Vec2[]): [Vec2, Vec2, Vec2][] {
+  const out: [Vec2, Vec2, Vec2][] = [];
+  const idx = poly.map((_, i) => i);
+  const way = polygonArea(poly) > 0 ? 1 : -1;
+  const cross = (a: Vec2, b: Vec2, c: Vec2) => (b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x);
+  const inTri = (p: Vec2, a: Vec2, b: Vec2, c: Vec2) => cross(a, b, p) * way >= 0 && cross(b, c, p) * way >= 0 && cross(c, a, p) * way >= 0;
+  let guard = 0;
+  while (idx.length > 3 && guard++ < 10000) {
+    let clipped = false;
+    for (let i = 0; i < idx.length; i++) {
+      const a = poly[idx[(i - 1 + idx.length) % idx.length]];
+      const b = poly[idx[i]];
+      const c = poly[idx[(i + 1) % idx.length]];
+      if (cross(a, b, c) * way <= 1e-9) continue;
+      let ear = true;
+      for (const j of idx) {
+        const p = poly[j];
+        if (p === a || p === b || p === c) continue;
+        if (inTri(p, a, b, c)) {
+          ear = false;
+          break;
+        }
+      }
+      if (!ear) continue;
+      out.push([a, b, c]);
+      idx.splice(i, 1);
+      clipped = true;
+      break;
+    }
+    // A degenerate ring (collinear run): drop the flattest corner and go on.
+    if (!clipped) idx.splice(0, 1);
+  }
+  if (idx.length === 3) out.push([poly[idx[0]], poly[idx[1]], poly[idx[2]]]);
+  return out;
+}
+
 /** Point-in-polygon index over many polygons (bounding box broadphase). */
 export class PolygonIndex<T extends { polygon: Vec2[] }> {
   private grid: SpatialGrid;

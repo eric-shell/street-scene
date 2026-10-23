@@ -6,12 +6,13 @@ import type { City, World } from '../src/city/world';
 import { CITY } from '../src/city/config';
 import { createTerrain } from '../src/city/terrain';
 import { distToSegment, segmentT } from '../src/sim/math';
-import { pointInPolygon } from '../src/city/districts/geom';
-import { CAR_HALF, LAUNCH_BOUND, ROUTE_INDEX, carParkGeo, carParkHeight, carParks, frontU, groundHeight, rampPoint } from '../src/city/districts/carPark';
+import { distToPolygonEdge, pointInPolygon, polygonArea, polygonBounds } from '../src/city/districts/geom';
+import { computeFaces, computeSectors, insideBuilding } from '../src/city/blocks';
+import { CAR_HALF, LAUNCH_BOUND, ROUTE_INDEX, carParkGeo, carParkHeight, carParks, deckEdges, frontU, groundHeight, rampPoint } from '../src/city/districts/carPark';
 import type { CarParkGeo } from '../src/city/districts/carPark';
 import { createRace, stepRace } from '../src/sim/race';
 import { NEUTRAL_INPUT } from '../src/sim/input';
-import { carSnapshot, raceConfig } from './helpers';
+import { carSnapshot, raceConfig, runAutopilot } from './helpers';
 
 const CFG = CITY.districts.carPark;
 const DEG = 180 / Math.PI;
@@ -202,6 +203,82 @@ describe('car park shortcut', () => {
     expect(worstAxis).toBeLessThan(1e-4);
   });
 
+  it('takes its whole block: the footprint is the building line, the drive and the ramp inside it, no building left on it', () => {
+    let checked = 0;
+    for (const seed of WITH.slice(0, 5)) {
+      const city = createCity(seed);
+      const faces = computeFaces(city.graph, computeSectors(city.graph));
+      for (const area of city.districts.areas.filter((x) => x.kind === 'carPark')) {
+        const g = carParkGeo(area);
+        const f = faces[area.faces[0]];
+        const footprint = Math.abs(polygonArea(g.deck));
+        // The block, or the top of the range of a block too big to take whole.
+        const [, maxA] = CFG.blockArea;
+        expect(footprint / Math.min(f.area, maxA), `${seed} footprint share`).toBeGreaterThan(0.85);
+        expect(footprint).toBeLessThan(maxA + 1);
+        // Inside the block, on its building line.
+        for (const p of g.deck) expect(pointInPolygon(p.x, p.z, f.ring) && distToPolygonEdge(p.x, p.z, f.ring) > CFG.inset - 0.05, `${seed} outline in the block`).toBe(true);
+        // The ramp (its foot on the building line) and the drive's box are in it.
+        for (const p of [...g.ramp, W(g, g.u1, g.v0), W(g, g.u1, g.v1), W(g, g.lc, -g.hc), W(g, g.lc, g.hc)]) {
+          expect(pointInPolygon(p.x, p.z, g.deck) || distToPolygonEdge(p.x, p.z, g.deck) < 0.3, `${seed} drive in the footprint`).toBe(true);
+        }
+        // No downtown building stands on it (a grid of probes across the floor).
+        const bb = polygonBounds(g.deck);
+        for (let x = bb.minX; x <= bb.maxX; x += 5) {
+          for (let z = bb.minZ; z <= bb.maxZ; z += 5) {
+            if (!pointInPolygon(x, z, g.deck)) continue;
+            expect(city.blocks.buildings.some((b) => insideBuilding(b, x, z, 0.5)), `${seed} building on the garage`).toBe(false);
+          }
+        }
+        // Its area polygon is the footprint, so maps and areaAt see the block.
+        expect(area.polygon).toEqual(g.deck);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThanOrEqual(Math.min(5, WITH.length));
+  });
+
+  it('is walled all round at both levels: a car on the floor meets a parapet, a car in the street the facade under it', () => {
+    let checked = 0;
+    for (const seed of WITH.slice(0, 4)) {
+      const city = createCity(seed);
+      for (const g of carParks(city.districts.areas)) {
+        const w = createWorld(seed, g.owner === ROUTE_INDEX.circuit ? 'circuit' : 'sprint', city);
+        const ground = groundHeight(w);
+        const inward = polygonArea(g.deck) < 0 ? 1 : -1;
+        const contacts: Parameters<World['collideCircle']>[3] = [];
+        const hitsWall = (x: number, z: number, y: number) => {
+          const n = w.collideCircle(x, z, 0.9, contacts, y);
+          return contacts.slice(0, n).some((c) => c.kind === 'wall');
+        };
+        for (const e of deckEdges(g)) {
+          const len = Math.hypot(e.b.x - e.a.x, e.b.z - e.a.z);
+          if (len < 2) continue;
+          const nx = ((e.b.z - e.a.z) / len) * inward;
+          const nz = (-(e.b.x - e.a.x) / len) * inward;
+          for (const tt of [0.25, 0.5, 0.75]) {
+            const mx = e.a.x + (e.b.x - e.a.x) * tt;
+            const mz = e.a.z + (e.b.z - e.a.z) * tt;
+            // Just inside: on the floor, deckHeight up, the parapet in reach (the openings excepted).
+            const ix = mx + nx * 0.6;
+            const iz = mz + nz * 0.6;
+            if (e.kind === 'wall') {
+              expect(w.heightAt(ix, iz) - ground(ix, iz), `${seed} floor at the parapet`).toBeCloseTo(g.H, 6);
+              expect(hitsWall(ix, iz, w.heightAt(ix, iz) + 0.3), `${seed} parapet`).toBe(true);
+            }
+            // Just outside, on the sidewalk at street level: the facade (or the lip's low face) stops a car.
+            const ox = mx - nx * 0.6;
+            const oz = mz - nz * 0.6;
+            expect(w.heightAt(ox, oz) - ground(ox, oz), `${seed} sidewalk`).toBeLessThan(1e-6);
+            if (e.kind !== 'ramp') expect(hitsWall(ox, oz, w.heightAt(ox, oz) + 0.3), `${seed} facade ${e.kind}`).toBe(true);
+          }
+        }
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThanOrEqual(Math.min(4, WITH.length));
+  });
+
   it('stands on exact heights: the roof the deck height over the ground, the ramp eased from the curb to it, hills kept off', () => {
     let checked = 0;
     for (const seed of WITH.slice(0, 4)) {
@@ -218,6 +295,21 @@ describe('car park shortcut', () => {
           const p = W(g, u, v);
           expect(city.terrain.heightAt(p.x, p.z) - ground(p.x, p.z)).toBeCloseTo(g.H, 9);
           expect(Math.abs(ground(p.x, p.z) - base.heightAt(p.x, p.z)), `${seed} ground under the roof`).toBeLessThan(1e-6);
+        }
+        // The whole floor off the ramp is at H (the ramp climbs inside the footprint).
+        for (let k = 0; k < 300; k++) {
+          const x = rng.range(g.box.minX, g.box.maxX);
+          const z = rng.range(g.box.minZ, g.box.maxZ);
+          if (!pointInPolygon(x, z, g.deck) || distToPolygonEdge(x, z, g.deck) < 0.5) continue;
+          const rx = x - g.rcx;
+          const rz = z - g.rcz;
+          const a = rx * g.rax + rz * g.raz;
+          const l = Math.abs(-rx * g.raz + rz * g.rax);
+          if (a < g.rend + 1 && l < g.rhw + Math.max(g.fl, g.fr) + 1) continue;
+          const u = (x - g.ox) * g.ux + (z - g.oz) * g.uz;
+          const v = (x - g.ox) * g.vx + (z - g.oz) * g.vz;
+          if (u < g.kl + 0.5 && Math.abs(v) < g.hc + 0.5) continue;
+          expect(city.terrain.heightAt(x, z) - ground(x, z), `${seed} floor height`).toBeCloseTo(g.H, 9);
         }
         // Ramp: curb height across the apron, H where the deck takes over, continuous into the deck.
         const lift = (a: number) => {
@@ -345,6 +437,14 @@ describe('car park shortcut', () => {
     expect(worstLaunch).toBeLessThan(8);
     expect(worstLand).toBeLessThan(8);
     expect(worstLat).toBeLessThan(1);
+  });
+
+  it('races on: an AI field runs its route past the garage, nobody lost in it', () => {
+    const seed = WITH[0];
+    const g = carParks(createCity(seed).districts.areas)[0];
+    const r = runAutopilot(raceConfig(seed, g.owner === ROUTE_INDEX.circuit ? 'circuit' : 'sprint', 2), 40);
+    for (const c of r.cars) expect(c.dist).toBeGreaterThan(200);
+    expect(r.events.filter((e) => e.type === 'reset')).toEqual([]);
   });
 
   it('is deterministic: the same drive twice gives the same race, bit for bit', () => {

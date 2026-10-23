@@ -3,26 +3,32 @@
  *
  * Where a route turns at a junction C with no street straight behind it, the
  * line of the street it turns into (E) runs on backwards into the block
- * behind C. A rectangular multi-storey garage in that block lets racers
- * leave the route on an earlier street of the same block, climb its covered
- * ramp to the first parking floor (the deck, deckHeight up, with more levels
- * drawn over it), cross that floor and leave over a kicker at the end of a
- * walled exit lane (the chute) that lies exactly on E's line, out through the
- * front facade: the jump carries them over the sidewalk and the junction and
- * drops them onto E heading down it. Two layouts, both found by the planner:
+ * behind C. A multi-storey garage taking that whole block lets racers leave
+ * the route on an earlier street of the same block, climb its ramp to the
+ * first parking floor (the deck, deckHeight up, with more levels drawn over
+ * it), cross that floor and leave over a kicker at the end of a walled exit
+ * lane (the chute) that lies exactly on E's line, out through the front
+ * facade: the jump carries them over the sidewalk and the junction and drops
+ * them onto E heading down it. Two layouts, both found by the planner:
  *  - side entry: the route reaches C along the block's side (an S bend: it
  *    turned at the block's corner before C); the ramp climbs from that street
  *    toward E's line and a turn on the deck lines the car up with the chute;
  *  - back entry: the route passes the block's far side first; ramp, deck and
  *    chute are one straight run across the block.
- * The deck is a garage floor, not an empty roof: stalls nose in along its
- * parapets, with parked cars, columns and a stair core (carParkFloor), all
- * kept an open aisle's width off the racing line, the exit lane and the
- * ramp's mouth; the chute's funnel flares wider on the side the turn arrives
- * from.
+ * The footprint is the block: its building line inset, when the block is
+ * convex and not comically large (CFG.blockArea), else cut down behind the
+ * drive or the largest frame rectangle that fits (footprintFor). The whole
+ * floor is drivable, a real parking floor, not an empty roof: stalls nose in
+ * along the parapets and in double rows down the floor with aisles between
+ * them, parked cars in half of them, columns on the bay grid and a stair core
+ * in a corner (carParkFloor), all kept an open aisle's width off the racing
+ * line, the exit lane and the ramp's mouth; the chute's funnel flares wider
+ * on the side the turn arrives from. The ramp climbs inside the footprint
+ * (only its flared apron reaches the building line), so the block's downtown
+ * buildings are gone and its frontage is the garage's own facades.
  * Back entries need the far street's frontage free right on E's line, which
  * is where its junction usually sits, so nearly every car park is a side
- * entry; about a quarter of the seeds get one.
+ * entry; about a tenth of the seeds get one.
  *
  * In line: the chute is aligned with E's tangent and its walls bound the
  * launch heading for any straight line through it to LAUNCH_BOUND (a car's
@@ -36,13 +42,14 @@
  * strings of bulbs across the mouth and the curb, and a string across the lip
  * (entryDressing).
  *
- * The sim is 2.5D (World.heightAt is single valued), so the drivable path is
+ * The sim is 2.5D (World.heightAt is single valued), so the drivable floor is
  * a raised surface with an exact gradient (one height modifier: the ramp's
  * eased profile, the deck deckHeight above the ground, the kicker's parabola)
- * and the storeys under and over it are render only. Every edge of the path
+ * and the storeys under and over it are render only. Every edge of the floor
  * is a thin two sided solid (Wall.solid): one body stops cars on the deck at
  * the parapet and cars in the street at the facade under it, with no one
- * sided band reaching through to the other side. The exception is the lip:
+ * sided band reaching through to the other side; the ramp's side walls part
+ * it from the deck beside it the same way. The exception is the lip:
  * the face under it is a low wall (Wall.top) that stops cars in the street
  * but lets a car launching off the deck fly over it; its height is set once
  * the terrain exists (settleCarParks). Hills keep their slopes off car parks
@@ -70,7 +77,8 @@ import type { PropKind } from '../props';
 import { createTerrain } from '../terrain';
 import { DEG, Vec2, atan2, cos, segmentT, sin, sqrt } from '../../sim/math';
 import { Rng } from '../../sim/prng';
-import { distToPath, distToPolygonEdge, pointInPolygon, polygonArea, polygonBounds, segmentAt, solidWalls } from './geom';
+import { clipConvex, distToPath, distToPolygonEdge, insetRing, pointInPolygon, polygonArea, polygonBounds, polygonCentroid, segmentAt, segmentInConvex, solidWalls } from './geom';
+import { convexRing } from './park';
 import type { Area, AreaBuild, DistrictModule, HeightSample, PlanContext } from './types';
 import { emptyBuild } from './types';
 import type { CarveRoute } from './alleyShortcuts';
@@ -129,8 +137,9 @@ export interface CarParkGeo {
   /** Roof height above the ground (m). */
   H: number;
   /**
-   * Deck: its front follows the building line (inset) as a polyline in frame coordinates, ascending v
-   * from v0 to v1 (a junction corner may kink it); back edge u1, sides v0 .. v1 (m).
+   * The drive's box on the deck (the turn or the run, the chute and their margins): its front follows
+   * the building line (inset) as a polyline in frame coordinates, ascending v from v0 to v1 (a junction
+   * corner may kink it); back edge u1, sides v0 .. v1 (m). The floor itself is `deck`, which holds it.
    */
   front: { u: number; v: number }[];
   u1: number;
@@ -174,10 +183,12 @@ export interface CarParkGeo {
   landMax: number;
   landZone: number;
   /**
-   * World outlines: the deck (its back corners at v0 and v1, then the front from v1 round to v0), the
-   * ramp (apron and strip: six points from the building line), the chute's parallel walls, the lip.
+   * World outlines: the deck (the footprint: the drivable floor's convex outline along the building
+   * lines, where the parapets and the facades under them stand) and its bounds, the ramp (apron and
+   * strip: six points from the building line, inside the deck), the chute's parallel walls, the lip.
    */
   deck: Vec2[];
+  box: { minX: number; minZ: number; maxX: number; maxZ: number };
   ramp: Vec2[];
   chute: Vec2[];
   lip: [Vec2, Vec2];
@@ -259,7 +270,8 @@ export function carParkGeo(area: Area): CarParkGeo {
     lipBack: p.lipBack,
     landMax: p.landMax,
     landZone: p.landZone,
-    deck: [],
+    deck: Array.from({ length: p.fpn }, (_, i) => ({ x: p[`fpx${i}`], z: p[`fpz${i}`] })),
+    box: { minX: 0, minZ: 0, maxX: 0, maxZ: 0 },
     ramp: [],
     chute: [],
     lip: [
@@ -269,7 +281,7 @@ export function carParkGeo(area: Area): CarParkGeo {
     path: [],
   };
   const W = (u: number, v: number) => toWorld(geo, u, v);
-  geo.deck = [W(geo.u1, geo.v0), W(geo.u1, geo.v1), ...geo.front.map((f) => W(f.u, f.v)).reverse()];
+  geo.box = polygonBounds(geo.deck);
   const fa = frontU(geo, -geo.hc);
   const fb = frontU(geo, geo.hc);
   geo.chute = [W(fa, -geo.hc), W(geo.lc, -geo.hc), W(geo.lc, geo.hc), W(fb, geo.hc)];
@@ -315,39 +327,42 @@ export function rampProfile(s: number, L: number, ease: number): { q: number; dq
 
 /**
  * The car park's own height above the ground (m) and its gradient at
- * (x, z), added into `out`; nothing outside the deck and the ramp. The deck
- * is a flat offset H (it rolls with the ground under it), the kicker a
- * parabola steepest at the lip, the ramp curb height across its apron, then
- * its eased profile up to H where the deck takes over.
+ * (x, z), added into `out`; nothing outside the footprint. The ramp comes
+ * first, since it climbs inside the footprint: curb height across its apron,
+ * then its eased profile up to H where the deck takes over. The rest of the
+ * footprint is the deck, a flat offset H (it rolls with the ground under it),
+ * with the kicker's parabola, steepest at the lip, in the exit lane.
  */
 export function carParkLift(g: CarParkGeo, x: number, z: number, out: HeightSample): void {
+  if (x < g.box.minX || x > g.box.maxX || z < g.box.minZ || z > g.box.maxZ) return;
+  const rx = x - g.rcx;
+  const rz = z - g.rcz;
+  const a = rx * g.rax + rz * g.raz;
+  if (a <= g.rend && rx * g.fnx + rz * g.fnz >= 0) {
+    const l = -rx * g.raz + rz * g.rax;
+    if ((l < 0 ? -l : l) <= rampHalf(g, a, l)) {
+      const c = CITY.curbHeight;
+      const p = rampProfile(a - g.apron1, g.rl, CFG.rampEase);
+      out.h += c + (g.H - c) * p.q;
+      const d = (g.H - c) * p.dq;
+      out.gx += d * g.rax;
+      out.gz += d * g.raz;
+      return;
+    }
+  }
+  if (!pointInPolygon(x, z, g.deck)) return;
+  out.h += g.H;
   const dx = x - g.ox;
   const dz = z - g.oz;
   const u = dx * g.ux + dz * g.uz;
   const v = dx * g.vx + dz * g.vz;
-  if (u <= g.u1 && v >= g.v0 && v <= g.v1 && u >= frontU(g, v)) {
-    out.h += g.H;
-    if (u < g.kl && v >= -g.hc && v <= g.hc) {
-      const k = (g.kl - u) / g.kl;
-      out.h += g.kh * k * k;
-      const du = (-2 * g.kh * k) / g.kl;
-      out.gx += du * g.ux;
-      out.gz += du * g.uz;
-    }
-    return;
+  if (u < g.kl && v >= -g.hc && v <= g.hc) {
+    const k = (g.kl - u) / g.kl;
+    out.h += g.kh * k * k;
+    const du = (-2 * g.kh * k) / g.kl;
+    out.gx += du * g.ux;
+    out.gz += du * g.uz;
   }
-  const rx = x - g.rcx;
-  const rz = z - g.rcz;
-  const a = rx * g.rax + rz * g.raz;
-  if (a > g.rend || rx * g.fnx + rz * g.fnz < 0) return;
-  const l = -rx * g.raz + rz * g.rax;
-  if ((l < 0 ? -l : l) > rampHalf(g, a, l)) return;
-  const c = CITY.curbHeight;
-  const p = rampProfile(a - g.apron1, g.rl, CFG.rampEase);
-  out.h += c + (g.H - c) * p.q;
-  const d = (g.H - c) * p.dq;
-  out.gx += d * g.rax;
-  out.gz += d * g.raz;
 }
 
 /** Height (m) and gradient of the car park alone at a point (0 outside it). */
@@ -370,24 +385,6 @@ function slab(a: Vec2, b: Vec2, toward: Vec2, t: number, area: number): Wall[] {
     nz = -nz;
   }
   return solidWalls([a, b, { x: b.x + nx * t, z: b.z + nz * t }, { x: a.x + nx * t, z: a.z + nz * t }], 'carPark', area);
-}
-
-/** The pieces of [a, b] left once the open spans are cut out of it. */
-function cutSpans(a: number, b: number, open: [number, number][]): [number, number][] {
-  let pieces: [number, number][] = [[a, b]];
-  for (const [o0, o1] of open) {
-    const next: [number, number][] = [];
-    for (const [p0, p1] of pieces) {
-      if (o1 <= p0 || o0 >= p1) {
-        next.push([p0, p1]);
-        continue;
-      }
-      if (o0 > p0) next.push([p0, o0]);
-      if (o1 < p1) next.push([o1, p1]);
-    }
-    pieces = next;
-  }
-  return pieces;
 }
 
 /** The funnel's extra half width at its mouth on side s (sign of v, m): wider on the side a side entry's turn arrives from. */
@@ -448,19 +445,25 @@ function convexOverlap(a: Vec2[], b: Vec2[]): boolean {
 }
 
 /**
- * The drivable floor's fittings, the same for the sim (carParkWalls makes
- * the cars, columns and core solid) and the renderer (which draws them):
- * stalls nose in along the parapets, a car parked in some, a column at the
- * inner end of every few stalls and a stair core in a free corner. All of it
- * keeps aisleClear from the racing line, off the exit lane and its funnel
- * and out of the ramp's mouth, so the drive itself is an open aisle and
- * nothing a car is meant to cross is in the way. Deterministic per seed.
+ * A parking floor's fittings, the same for the sim (carParkWalls makes the
+ * drivable floor's cars, columns and core solid) and the renderer (which
+ * draws every level): stalls nose in along the parapets and back to back in
+ * double rows down the floor with an aisle between the rows, a car parked in
+ * some, a column at the aisle end of every few stalls and a stair core in a
+ * corner. On the drivable floor (`upper` false) all of it keeps aisleClear
+ * from the racing line, off the exit lane and its funnel, out of the ramp's
+ * mouth and off the straight on from it, so the drive itself is an open
+ * aisle and nothing a car is meant to cross is in the way; the other levels
+ * are render only and park right across that. Deterministic per seed.
  */
-export function carParkFloor(g: CarParkGeo, seed: number): CarParkFloor {
+export function carParkFloor(g: CarParkGeo, seed: number, upper = false): CarParkFloor {
   const t = CFG.wall;
   const [P, D] = CFG.stall;
   const W = (u: number, v: number) => toWorld(g, u, v);
-  const rng = new Rng(((seed ^ 0x5ca1ab1e) >>> 0) || 1);
+  const rng = new Rng(((seed ^ (upper ? 0x0dd1ab1e : 0x5ca1ab1e)) >>> 0) || 1);
+  // Inside the parapets; off the ramp and its walls (the strip it climbs in and the apron's flare).
+  const floorIn = insetRing(g.deck, t - 0.02) ?? g.deck;
+  const rampHole = insetRing(g.ramp, -(t + 0.4)) ?? g.ramp;
   // The exit lane and its funnel, a margin round them (convex, frame order).
   const m = t + 0.6;
   const fMin = Math.min(...g.front.map((f) => f.u));
@@ -468,10 +471,15 @@ export function carParkFloor(g: CarParkGeo, seed: number): CarParkFloor {
   const mouth = rampPoint(g, g.rend, 0);
   const mouthClear = g.rhw + CFG.aisleClear;
   // Straight on across the deck from the ramp's mouth: where a car that misses the turn ends up.
-  const reach = 2 * (g.u1 - fMin + g.v1 - g.v0);
+  const reach = g.box.maxX - g.box.minX + g.box.maxZ - g.box.minZ;
   const sw = g.rhw + 1.5;
   const straight = [rampPoint(g, g.rend - 1, -sw), rampPoint(g, g.rend + reach, -sw), rampPoint(g, g.rend + reach, sw), rampPoint(g, g.rend - 1, sw)];
+  const placed: Vec2[][] = [];
   const clear = (poly: Vec2[]): boolean => {
+    for (const p of poly) if (!pointInPolygon(p.x, p.z, floorIn)) return false;
+    if (convexOverlap(poly, rampHole)) return false;
+    for (const q of placed) if (convexOverlap(poly, q)) return false;
+    if (upper) return true;
     if (convexOverlap(poly, lane) || convexOverlap(poly, straight)) return false;
     let cx = 0;
     let cz = 0;
@@ -484,68 +492,121 @@ export function carParkFloor(g: CarParkGeo, seed: number): CarParkFloor {
     return distToPath(g.path, cx, cz) >= CFG.aisleClear;
   };
   const rect = (u0: number, u1: number, v0: number, v1: number) => [W(u0, v0), W(u1, v0), W(u1, v1), W(u0, v1)];
+  // The footprint's frame bounds.
+  let uMin = Infinity;
+  let uMax = -Infinity;
+  let vMin = Infinity;
+  let vMax = -Infinity;
+  for (const p of g.deck) {
+    const u = toU(g, p);
+    const v = toV(g, p);
+    uMin = Math.min(uMin, u);
+    uMax = Math.max(uMax, u);
+    vMin = Math.min(vMin, v);
+    vMax = Math.max(vMax, v);
+  }
 
-  // Stair core: the free deck corner furthest from the racing line (never where a car runs wide).
+  // Stair core: in the footprint's corner furthest from the racing line (never where a car runs wide),
+  // slid in along the corner's diagonal until it fits.
   let core: Vec2[] | null = null;
-  let coreRect: Vec2[] | null = null;
   let coreFar = 0;
   const S = CFG.core;
-  for (const [atBack, sv] of [
-    [true, -1],
-    [true, 1],
-    [false, -1],
-    [false, 1],
+  for (const [su, sv] of [
+    [-1, -1],
+    [-1, 1],
+    [1, -1],
+    [1, 1],
   ] as const) {
-    const v0 = sv < 0 ? g.v0 + t : g.v1 - t - S;
-    const fu = Math.max(frontU(g, v0), frontU(g, v0 + S));
-    const u0 = atBack ? g.u1 - t - S : fu;
-    const r = rect(u0, u0 + S, v0, v0 + S);
-    if (!clear(r)) continue;
-    const far = Math.min(...r.map((p) => distToPath(g.path, p.x, p.z)));
-    if (far <= coreFar) continue;
-    coreFar = far;
-    core = r;
-    coreRect = rect(u0 - 0.3, u0 + S + 0.3, v0 - 0.3, v0 + S + 0.3);
+    let corner = g.deck[0];
+    let best = -Infinity;
+    for (const p of g.deck) {
+      const d = su * toU(g, p) + sv * toV(g, p);
+      if (d > best) {
+        best = d;
+        corner = p;
+      }
+    }
+    const cu = toU(g, corner);
+    const cv = toV(g, corner);
+    for (let k = t + 0.3; k <= 12; k += 1) {
+      const u0 = su < 0 ? cu + k : cu - k - S;
+      const v0 = sv < 0 ? cv + k : cv - k - S;
+      const r = rect(u0, u0 + S, v0, v0 + S);
+      if (!clear(r)) continue;
+      const far = Math.min(...r.map((p) => distToPath(g.path, p.x, p.z)));
+      if (far > coreFar) {
+        coreFar = far;
+        core = r;
+      }
+      break;
+    }
   }
+  if (core) placed.push(insetRing(core, -0.3) ?? core);
 
-  // Stall runs along the four edges: [stall center (u, v) at index k, nose heading (u, v)].
-  type Run = { n: number; at: (k: number) => [number, number]; nu: number; nv: number };
-  const runs: Run[] = [];
-  const across = (a: number, b: number) => Math.max(0, Math.floor((b - a) / P));
-  const nf = across(g.v0 + t, g.v1 - t);
-  runs.push({ n: nf, at: (k) => [frontU(g, g.v0 + t + P * (k + 0.5)) + t + D / 2, g.v0 + t + P * (k + 0.5)], nu: -1, nv: 0 });
-  runs.push({ n: nf, at: (k) => [g.u1 - t - D / 2, g.v0 + t + P * (k + 0.5)], nu: 1, nv: 0 });
-  for (const sv of [-1, 1]) {
-    const edge = sv < 0 ? g.v0 : g.v1;
-    const ua = frontU(g, edge) + t + D;
-    const n = across(ua, g.u1 - t - D);
-    runs.push({ n, at: (k) => [ua + P * (k + 0.5), edge - sv * (t + D / 2)], nu: 0, nv: sv });
-  }
   const stalls: Stall[] = [];
   const columns: Vec2[] = [];
-  for (const run of runs) {
+  /** A stall centred at c, nose along unit n (toward the wall or the row's spine), P wide across it. */
+  const stallRect = (c: Vec2, n: Vec2): Vec2[] => {
+    const lx = -n.z;
+    const lz = n.x;
+    return [
+      { x: c.x - n.x * (D / 2) - lx * (P / 2), z: c.z - n.z * (D / 2) - lz * (P / 2) },
+      { x: c.x + n.x * (D / 2) - lx * (P / 2), z: c.z + n.z * (D / 2) - lz * (P / 2) },
+      { x: c.x + n.x * (D / 2) + lx * (P / 2), z: c.z + n.z * (D / 2) + lz * (P / 2) },
+      { x: c.x - n.x * (D / 2) + lx * (P / 2), z: c.z - n.z * (D / 2) + lz * (P / 2) },
+    ];
+  };
+  /**
+   * A run of `count` stalls at `at(k)` with nose `nose(k)` (and `fits(k)`), a column at the aisle end
+   * between every few of them at `columnAt(k)` (null: a row half whose other half places the spine's).
+   */
+  const run = (count: number, at: (k: number) => Vec2, nose: (k: number) => Vec2, columnAt: ((k: number) => Vec2) | null, fits: (k: number) => boolean = () => true) => {
     const ok: boolean[] = [];
-    for (let k = 0; k < run.n; k++) {
-      const [u, v] = run.at(k);
-      // Half widths along u and v: a stall is D deep along its nose, P wide across it.
-      const hu = run.nu !== 0 ? D / 2 : P / 2;
-      const hv = run.nu !== 0 ? P / 2 : D / 2;
-      const r = rect(u - hu, u + hu, v - hv, v + hv);
-      ok.push(clear(r) && !(coreRect && convexOverlap(r, coreRect)));
+    const rects: Vec2[][] = [];
+    for (let k = 0; k < count; k++) {
+      const r = stallRect(at(k), nose(k));
+      ok.push(fits(k) && clear(r));
+      rects.push(r);
     }
-    for (let k = 0; k < run.n; k++) {
+    for (let k = 0; k < count; k++) {
       if (!ok[k]) continue;
-      const [u, v] = run.at(k);
-      const p = W(u, v);
-      const dir = W(run.nu, run.nv);
-      stalls.push({ x: p.x, z: p.z, dx: dir.x - g.ox, dz: dir.z - g.oz, car: rng.chance(CFG.parkedShare) ? rng.next() : -1 });
-      // A column between this stall and the next, at the run's inner (aisle) end, inside a run of stalls.
-      if ((k + 1) % CFG.columnEvery !== 0 || k + 1 >= run.n || !ok[k + 1]) continue;
-      const [un, vn] = run.at(k + 1);
-      const inner = D / 2 - COLUMN / 2;
-      const cu = (u + un) / 2 - run.nu * inner;
-      const cv = (v + vn) / 2 - run.nv * inner;
-      columns.push(W(cu, cv));
+      placed.push(rects[k]);
+      const c = at(k);
+      const n = nose(k);
+      stalls.push({ x: c.x, z: c.z, dx: n.x, dz: n.z, car: rng.chance(CFG.parkedShare) ? rng.next() : -1 });
+      if (!columnAt || (k + 1) % CFG.columnEvery !== 0 || k + 1 >= count || !ok[k + 1]) continue;
+      columns.push(columnAt(k));
+    }
+  };
+  // Along the parapets, nose to the wall (inward by the footprint's way round).
+  const inward = polygonArea(g.deck) < 0 ? 1 : -1;
+  const nd = g.deck.length;
+  const perimeter: Vec2[] = [];
+  for (let i = 0; i < nd; i++) {
+    const p = g.deck[i];
+    const q = g.deck[(i + 1) % nd];
+    const dx = q.x - p.x;
+    const dz = q.z - p.z;
+    const len = sqrt(dx * dx + dz * dz);
+    if (len < P + 2 * t) continue;
+    const dir = { x: dx / len, z: dz / len };
+    const n = { x: dir.z * inward, z: -dir.x * inward };
+    const count = Math.floor((len - 2 * t) / P);
+    const s0 = (len - count * P) / 2;
+    const at = (k: number): Vec2 => ({ x: p.x + dir.x * (s0 + P * (k + 0.5)) + n.x * (t + D / 2), z: p.z + dir.z * (s0 + P * (k + 0.5)) + n.z * (t + D / 2) });
+    const before = stalls.length;
+    run(count, at, () => ({ x: -n.x, z: -n.z }), (k) => ({ x: p.x + dir.x * (s0 + P * (k + 1)) + n.x * (t + D - COLUMN / 2), z: p.z + dir.z * (s0 + P * (k + 1)) + n.z * (t + D - COLUMN / 2) }));
+    for (let k = before; k < stalls.length; k++) perimeter.push(stalls[k]);
+  }
+  // Double rows down the floor along u, an aisle between them and from the parapets' stalls.
+  const aisleGap = D + CFG.aisle - 1;
+  const rowClear = (c: Vec2): boolean => perimeter.every((q) => (q.x - c.x) ** 2 + (q.z - c.z) ** 2 >= aisleGap * aisleGap);
+  const nu = Math.floor((uMax - uMin) / P);
+  for (let vr = vMin + t + D + CFG.aisle + D; vr + D + CFG.aisle + D + t <= vMax; vr += 2 * D + CFG.aisle) {
+    for (const sv of [1, -1] as const) {
+      const at = (k: number) => W(uMin + P * (k + 0.5), vr + (sv * D) / 2);
+      const nose = { x: -sv * g.vx, z: -sv * g.vz };
+      run(nu, at, () => nose, sv > 0 ? (k) => W(uMin + P * (k + 1), vr) : null, (k) => rowClear(at(k)));
     }
   }
   return { stalls, columns, core };
@@ -574,33 +635,80 @@ export function columnBox(g: Frame, c: Vec2): Vec2[] {
   });
 }
 
+/** What a piece of the footprint's outline is: parapet and facade, the lip's opening, or the ramp's mouth. */
+export type DeckEdgeKind = 'wall' | 'lip' | 'ramp';
+
 /**
- * Every wall of a car park: thin solids (look 'carPark') along the deck's
- * edges (open across the lip and where the ramp joins), both chute walls,
- * the apron's flared sides and the ramp's sides; the drivable floor's parked
- * cars, columns and stair core (carParkFloor); then the one sided low face
- * under the lip (Wall.top, settled later).
+ * The two openings in the footprint's outline as convex world polygons: the
+ * lip (the exit lane's width across the front, reaching out past the
+ * building line) and the ramp's mouth (the apron between its flared walls'
+ * outer faces, reaching out across the sidewalk).
+ */
+export function deckOpenings(g: CarParkGeo): { lip: Vec2[]; ramp: Vec2[] } {
+  const W = (u: number, v: number) => toWorld(g, u, v);
+  const fMin = Math.min(...g.front.map((f) => f.u));
+  const t = CFG.wall;
+  const l0 = -(g.rhw + g.fl + t);
+  const l1 = g.rhw + g.fr + t;
+  return {
+    lip: [W(fMin - 3, -g.hc), W(g.lc, -g.hc), W(g.lc, g.hc), W(fMin - 3, g.hc)],
+    ramp: [rampPoint(g, -6, l0), rampPoint(g, g.apron0 + 1, l0), rampPoint(g, g.apron0 + 1, l1), rampPoint(g, -6, l1)],
+  };
+}
+
+/**
+ * The footprint's outline in ring order, each edge cut where an opening
+ * crosses it: the pieces that are parapet (and facade under it), the lip's
+ * span and the ramp's mouth. The sim walls the first kind (carParkWalls);
+ * the renderer dresses all three (render/districts/carPark.ts).
+ */
+export function deckEdges(g: CarParkGeo): { a: Vec2; b: Vec2; kind: DeckEdgeKind }[] {
+  const open = deckOpenings(g);
+  const holes: [Vec2[], DeckEdgeKind][] = [
+    [open.lip, 'lip'],
+    [open.ramp, 'ramp'],
+  ];
+  const out: { a: Vec2; b: Vec2; kind: DeckEdgeKind }[] = [];
+  const n = g.deck.length;
+  for (let i = 0; i < n; i++) {
+    const a = g.deck[i];
+    const b = g.deck[(i + 1) % n];
+    const at = (t: number): Vec2 => ({ x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t });
+    const spans: { t0: number; t1: number; kind: DeckEdgeKind }[] = [];
+    for (const [poly, kind] of holes) {
+      const span = segmentInConvex(a, b, poly);
+      if (span && span[1] - span[0] > 1e-6) spans.push({ t0: span[0], t1: span[1], kind });
+    }
+    spans.sort((p, q) => p.t0 - q.t0);
+    let t = 0;
+    for (const sp of spans) {
+      if (sp.t0 > t + 1e-6) out.push({ a: at(t), b: at(sp.t0), kind: 'wall' });
+      out.push({ a: at(sp.t0), b: at(sp.t1), kind: sp.kind });
+      t = sp.t1;
+    }
+    if (t < 1 - 1e-6) out.push({ a: at(t), b: at(1), kind: 'wall' });
+  }
+  return out;
+}
+
+/**
+ * Every wall of a car park: thin solids (look 'carPark') along the
+ * footprint's outline (open across the lip and the ramp's mouth), both chute
+ * walls, the apron's flared sides and the ramp's sides; the drivable floor's
+ * parked cars, columns and stair core (carParkFloor); then the one sided low
+ * face under the lip (Wall.top, settled later).
  */
 export function carParkWalls(g: CarParkGeo, seed: number): Wall[] {
   const out: Wall[] = [];
   const t = CFG.wall;
   const W = (u: number, v: number) => toWorld(g, u, v);
-  // Deck parapets sit inside the deck, chute and ramp walls outside the lane they line.
-  const inner = W(g.u1 / 2, (g.v0 + g.v1) / 2);
-  const top = rampPoint(g, g.rend, 0);
-  const ur = toU(g, top);
-  const vr = toV(g, top);
-  // Front parapet: each piece of the front polyline, cut open across the lip.
-  for (let i = 1; i < g.front.length; i++) {
-    for (const [v0, v1] of cutSpans(g.front[i - 1].v, g.front[i].v, [[-g.hc, g.hc]])) out.push(...slab(W(frontU(g, v0), v0), W(frontU(g, v1), v1), inner, t, g.area));
-  }
-  for (const [v0, v1] of cutSpans(g.v0, g.v1, g.side === 0 ? [[vr - g.rhw, vr + g.rhw]] : [])) out.push(...slab(W(g.u1, v0), W(g.u1, v1), inner, t, g.area));
-  for (const [sv, sgn] of [
-    [g.v0, -1],
-    [g.v1, 1],
-  ] as const) {
-    const open: [number, number][] = g.side === sgn ? [[ur - g.rhw, ur + g.rhw]] : [];
-    for (const [a, b] of cutSpans(frontU(g, sv), g.u1, open)) out.push(...slab(W(a, sv), W(b, sv), inner, t, g.area));
+  // Parapets sit inside the footprint (thickened inward by its way round: an L's centroid may lie
+  // outside it), chute and ramp walls outside the lane they line.
+  const inward = polygonArea(g.deck) < 0 ? 1 : -1;
+  for (const e of deckEdges(g)) {
+    if (e.kind !== 'wall') continue;
+    const n = { x: (e.b.z - e.a.z) * inward, z: -(e.b.x - e.a.x) * inward };
+    out.push(...slab(e.a, e.b, { x: e.a.x + n.x, z: e.a.z + n.z }, t, g.area));
   }
   // Chute walls: parallel from the front line, then splaying out into the mouth's funnel.
   for (const s of [-1, 1]) {
@@ -651,19 +759,9 @@ export function flightCorridor(g: CarParkGeo, reach: number, pad = 0): Vec2[] {
   return [toWorld(g, 0.5, -h0), toWorld(g, -reach, -h1), toWorld(g, -reach, h1), toWorld(g, 0.5, h0)];
 }
 
-/** One outline around the deck and the ramp (areaAt, maps): the deck with the ramp spliced into the edge it joins. */
+/** The outline of the whole structure (areaAt, maps): the footprint, which the ramp climbs inside of. */
 export function carParkOutline(g: CarParkGeo): Vec2[] {
-  const d = g.deck;
-  const r = g.ramp;
-  // The ramp's outline from its top corner on the deck's (counter)clockwise side round to the other.
-  const strip = [r[2], r[1], r[0], r[5], r[4], r[3]];
-  const near = (p: Vec2, q: Vec2) => (p.x - q.x) ** 2 + (p.z - q.z) ** 2;
-  const splice = (from: Vec2) => (near(from, strip[0]) <= near(from, strip[5]) ? strip : strip.slice().reverse());
-  // d: back v0 corner, back v1 corner, then the front from v1 round to v0.
-  const last = d.length - 1;
-  if (g.side === 0) return [d[0], ...splice(d[0]), ...d.slice(1)];
-  if (g.side > 0) return [d[0], d[1], ...splice(d[1]), ...d.slice(2)];
-  return [...d, ...splice(d[last])];
+  return g.deck;
 }
 
 export const carParkModule: DistrictModule = {
@@ -676,7 +774,7 @@ export const carParkModule: DistrictModule = {
     for (const a of ctx.areas) {
       if (a.kind !== 'carPark' || a.faces.length) continue;
       const g = carParkGeo(a);
-      const p = toWorld(g, (frontU(g, 0) + g.u1) / 2, (g.v0 + g.v1) / 2);
+      const p = polygonCentroid(g.deck);
       const f = faces.find((x) => !x.outer && pointInPolygon(p.x, p.z, x.ring));
       if (!f || ctx.claims.face.has(f.id)) continue;
       a.faces = [f.id];
@@ -686,29 +784,23 @@ export const carParkModule: DistrictModule = {
   build(ctx, area) {
     const b = emptyBuild();
     const g = carParkGeo(area);
-    const bb = polygonBounds([...g.deck, ...g.ramp]);
     b.heightMods.push({
-      minX: bb.minX - 0.5,
-      minZ: bb.minZ - 0.5,
-      maxX: bb.maxX + 0.5,
-      maxZ: bb.maxZ + 0.5,
+      minX: g.box.minX - 0.5,
+      minZ: g.box.minZ - 0.5,
+      maxX: g.box.maxX + 0.5,
+      maxZ: g.box.maxZ + 0.5,
       add(x: number, z: number, out: HeightSample) {
         carParkLift(g, x, z, out);
       },
     });
     b.surfaces.push({ surface: 'road', polygon: g.deck, priority: DECK_PRIORITY, area: area.id });
-    b.surfaces.push({ surface: 'road', polygon: g.ramp, priority: DECK_PRIORITY, area: area.id });
     b.walls.push(...carParkWalls(g, area.params.seed ?? 0));
-    // Buildings keep out (room for the facades); the frontage it stands on opens (its parapets and the
-    // facade under them are the walls), reaching out past the building line so every probe falls in.
-    b.exclusions.push(...footprint(g, 1.5));
+    // The block's buildings go (the garage is the block; they keep `clear` off its facades where it
+    // does not reach the building line) and its frontage opens (the parapets and the facades under them
+    // are the walls), reaching out past the building line so every frontage probe falls in.
+    b.exclusions.push(...footprint(g, CFG.clear));
+    b.openings.push(...footprint(g, 2));
     const W = (u: number, v: number) => toWorld(g, u, v);
-    const fMin = Math.min(...g.front.map((f) => f.u));
-    const fMax = Math.max(...g.front.map((f) => f.u));
-    b.openings.push([W(fMin - 2, g.v0 + 0.2), W(fMax + 2, g.v0 + 0.2), W(fMax + 2, g.v1 - 0.2), W(fMin - 2, g.v1 - 0.2)]);
-    const r = g.ramp;
-    const off = (p: Vec2, k: number) => ({ x: p.x - g.fnx * k, z: p.z - g.fnz * k });
-    b.openings.push([off(r[0], 2), off(r[5], 2), off(r[5], -2), off(r[0], -2)]);
     // Street furniture keeps off the flight (the launch cone and a car's width, out to the furthest
     // landing: over the sidewalk, the junction and the landing street's sidewalks), and off the driveway.
     const spread = Math.tan(LAUNCH_BOUND);
@@ -801,21 +893,9 @@ function entryDressing(g: CarParkGeo, b: AreaBuild, rng: Rng, sidewalk: number, 
   b.hints.push({ kind: 'stringLights', points: [W(frontU(g, -g.hc) + 0.3, -(g.hc - 0.25)), W(frontU(g, g.hc) + 0.3, g.hc - 0.25)], values: [1] });
 }
 
-/**
- * The structure's footprint grown by d (m) into the block (not out over the
- * street): the deck, the apron and the ramp's strip with its walls, as three
- * rectangles.
- */
+/** The footprint grown by d (m) all round (out over the sidewalk too: a probe there must fall in). */
 function footprint(g: CarParkGeo, d: number): Vec2[][] {
-  const W = (u: number, v: number) => toWorld(g, u, v);
-  const f = Math.min(...g.front.map((p) => p.u)) - 0.5;
-  const rect = (a0: number, a1: number, l0: number, l1: number) => [rampPoint(g, a0, l0), rampPoint(g, a1, l0), rampPoint(g, a1, l1), rampPoint(g, a0, l1)];
-  const side = g.rhw + CFG.wall + d;
-  return [
-    [W(f, g.v0 - d), W(g.u1 + d, g.v0 - d), W(g.u1 + d, g.v1 + d), W(f, g.v1 + d)],
-    rect(-0.5, g.apron1, -(g.rhw + g.fl + d), g.rhw + g.fr + d),
-    rect(g.apron1 - 1, g.rend + d, -side, side),
-  ];
+  return [insetRing(g.deck, -d) ?? g.deck];
 }
 
 /**
@@ -945,7 +1025,7 @@ interface ProgressWorld {
 
 /** A route's car park as race progress sees it. */
 interface ParkTrack {
-  /** Deck and ramp outlines: a car inside them is on the car park; their bounds. */
+  /** The footprint: a car inside it is on the car park (the ramp climbs inside it); its bounds. */
   zones: Vec2[][];
   minX: number;
   minZ: number;
@@ -1000,8 +1080,7 @@ function tracksFor(world: ProgressWorld): ParkTrack[] {
           const sIn = routeS(route, path[0].x, path[0].z);
           let span = routeS(route, path[path.length - 1].x, path[path.length - 1].z) - sIn;
           if (route.closed) span = ((span % route.length) + route.length) % route.length;
-          const bb = polygonBounds([...g.deck, ...g.ramp]);
-          return { zones: [g.deck, g.ramp], ...bb, path, cum, sIn, span };
+          return { zones: [g.deck], ...g.box, path, cum, sIn, span };
         });
   tracks.set(world.route, list);
   return list;
@@ -1015,7 +1094,7 @@ function trackAt(world: ProgressWorld, x: number, z: number): ParkTrack | null {
   return null;
 }
 
-/** Whether a point is on one of the route's car parks (ramp or roof): race.ts does not count a car up there as lost. */
+/** Whether a point is on one of the route's car parks (anywhere on its floor or ramp): race.ts does not count a car up there as lost. */
 export function onCarPark(world: ProgressWorld, x: number, z: number): boolean {
   return trackAt(world, x, z) !== null;
 }
@@ -1123,6 +1202,81 @@ export function flightReach(v: number): number {
   const vx = v * cos(a);
   const g = 9.81;
   return (vx * (vy + sqrt(vy * vy + 2 * g * (CFG.deckHeight + CFG.kickHeight)))) / g;
+}
+
+/** The drive's box on the deck as a world polygon: its back corners at v0 and v1, then the front from v1 round to v0. */
+function driveBox(g: CarParkGeo): Vec2[] {
+  const W = (u: number, v: number) => toWorld(g, u, v);
+  return [W(g.u1, g.v0), W(g.u1, g.v1), ...g.front.map((f) => W(f.u, f.v)).reverse()];
+}
+
+/** Whether a point is inside a polygon or within `tol` of its outline. */
+function inOrOn(p: Vec2, poly: Vec2[], tol: number): boolean {
+  return pointInPolygon(p.x, p.z, poly) || distToPolygonEdge(p.x, p.z, poly) <= tol;
+}
+
+/**
+ * The garage's footprint for a planned drive (its box and ramp) in a block:
+ * the block's building line inset (`base`) when its area is within
+ * CFG.blockArea. A bigger convex block is cut down to the range's top along
+ * a line behind the drive (u = ub), and beside it if that is not enough; a
+ * bigger concave block (an L: a cut could split it) gets none. Null when
+ * nothing fits or the drive does not fit the result (a cut would take the
+ * ramp's foot).
+ */
+function footprintFor(ring: Vec2[], base: Vec2[] | null, g: CarParkGeo): Vec2[] | null {
+  if (!base) return null;
+  const [minA, maxA] = CFG.blockArea;
+  const W = (u: number, v: number) => toWorld(g, u, v);
+  const must = [...driveBox(g), ...g.ramp];
+  const holds = (poly: Vec2[]) => poly.length >= 3 && must.every((p) => inOrOn(p, poly, 0.3));
+  const area = (poly: Vec2[]) => Math.abs(polygonArea(poly));
+  const a = area(base);
+  if (a < minA) return null;
+  if (a <= maxA) return holds(base) ? base : null;
+  if (!convexRing(ring)) return null;
+  // What the floor has to reach round the drive, in the frame (a clearance that runs out past a building
+  // line the drive stands on is harmless: the cut there takes nothing).
+  let uNeed = -Infinity;
+  let vLo = Infinity;
+  let vHi = -Infinity;
+  for (const p of must) {
+    uNeed = Math.max(uNeed, toU(g, p) + CFG.clear);
+    vLo = Math.min(vLo, toV(g, p) - CFG.clear);
+    vHi = Math.max(vHi, toV(g, p) + CFG.clear);
+  }
+  // u <= ub keeps the drive's side of the cut: (b - a) x (p - a) along the v axis is -du; along u it is dv.
+  const cutU = (poly: Vec2[], ub: number) => clipConvex(poly, W(ub, 0), W(ub, 1), 1);
+  const cutV = (poly: Vec2[], dv: number) => {
+    const vc = (vLo + vHi) / 2;
+    return clipConvex(clipConvex(poly, W(0, vc - dv), W(1, vc - dv), 1), W(0, vc + dv), W(1, vc + dv), -1);
+  };
+  let uMax = -Infinity;
+  for (const p of base) uMax = Math.max(uMax, toU(g, p));
+  let poly: Vec2[];
+  if (area(cutU(base, uNeed)) <= maxA) {
+    // The furthest cut (bisection, to half a meter) that keeps the area under the top.
+    let lo = uNeed;
+    let hi = uMax;
+    while (hi - lo > 0.5) {
+      const mid = (lo + hi) / 2;
+      if (area(cutU(base, mid)) <= maxA) lo = mid;
+      else hi = mid;
+    }
+    poly = cutU(base, lo);
+  } else {
+    poly = cutU(base, uNeed);
+    let lo = (vHi - vLo) / 2;
+    if (area(cutV(poly, lo)) > maxA) return null;
+    let hi = 400;
+    while (hi - lo > 0.5) {
+      const mid = (lo + hi) / 2;
+      if (area(cutV(poly, mid)) <= maxA) lo = mid;
+      else hi = mid;
+    }
+    poly = cutV(poly, lo);
+  }
+  return holds(poly) ? poly : null;
 }
 
 /**
@@ -1285,10 +1439,14 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
     if (sLip === null) continue;
     const lipBack = sLip + CFG.inset;
     const frame: Frame = { ox: C.x + back.x * lipBack, oz: C.z + back.z * lipBack, ux: back.x, uz: back.z, vx: -back.z, vz: back.x };
-    /** The deck's front line (building line + inset) at lateral v, as frame u, or null. */
+    // The footprint's base: the block's building line inset (footprintFor); the deck's front is read
+    // off it so the two agree exactly.
+    const baseRing = insetRing(F.ring, CFG.inset);
+    if (!baseRing) continue;
+    /** The deck's front line (the base ring) at lateral v, as frame u, or null. */
     const frontAt = (v: number): number | null => {
-      const hit = rayHit(toWorld(frame, -30, v), back, F.ring, 60);
-      return hit === null ? null : hit - 30 + CFG.inset;
+      const hit = rayHit(toWorld(frame, -30, v), back, baseRing, 60);
+      return hit === null ? null : hit - 30;
     };
     // Entry streets: the route's streets ENTRY_BACK[0] - 1 .. ENTRY_BACK[last] - 1 streets before the
     // one arriving at C, each of their pieces that fronts the block in turn.
@@ -1485,6 +1643,7 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
           landMax: 0,
           landZone: 0,
           seed: 0,
+          fpn: 0,
         };
       }
 
@@ -1503,11 +1662,11 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
         }
         params.landMax = landMax;
         params.landZone = zone;
-        // Inside the block: every outline sample in F, clear of F's other building lines (the deck's
-        // front and the ramp's foot stand on theirs).
+        // Inside the block: every outline sample of the drive (its box and the ramp) in F, clear of F's
+        // other building lines (the box's front and the ramp's foot stand on theirs).
         const nearFront = (p: Vec2) => toU(geo, p) - frontU(geo, toV(geo, p)) < CFG.clear + 0.5;
         const nearFoot = (p: Vec2) => (p.x - geo.rcx) * geo.fnx + (p.z - geo.rcz) * geo.fnz < CFG.clear + 0.5;
-        for (const poly of [geo.deck, geo.ramp]) {
+        for (const poly of [driveBox(geo), geo.ramp]) {
           for (let i = 0; i < poly.length; i++) {
             const a = poly[i];
             const b = poly[(i + 1) % poly.length];
@@ -1540,6 +1699,24 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
             if (pointInPolygon(p.x, p.z, corridor)) return null;
           }
         }
+        // The footprint: the block, or what the drive needs of it; nothing else planned stands in it.
+        const fp = footprintFor(F.ring, baseRing, geo);
+        if (!fp) return null;
+        for (let i = 0; i < fp.length; i++) {
+          const a = fp[i];
+          const b = fp[(i + 1) % fp.length];
+          const steps = Math.max(1, Math.ceil(unit(a, b).len / SAMPLE));
+          for (let k = 0; k <= steps; k++) {
+            const p = { x: a.x + ((b.x - a.x) * k) / steps, z: a.z + ((b.z - a.z) * k) / steps };
+            for (const ar of blocked) if (ar.polygon.length >= 3 && pointInPolygon(p.x, p.z, ar.polygon)) return null;
+          }
+        }
+        for (const ar of blocked) for (const q of ar.polygon) if (pointInPolygon(q.x, q.z, fp)) return null;
+        params.fpn = fp.length;
+        fp.forEach((p, i) => {
+          params[`fpx${i}`] = p.x;
+          params[`fpz${i}`] = p.z;
+        });
         // Route positions: the entry, C and the far end of the landing zone.
         let sC = cum[j];
         if (r.closed && sC < sEntry) sC += total;
@@ -1552,7 +1729,7 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
         for (let i = 1; i < geo.path.length; i++) path += unit(geo.path[i - 1], geo.path[i]).len;
         if (path > skip * (1 - CFG.minSave)) return null;
         const edges = [...new Set([eY, eIn, ...C.edges, ...runEdges])];
-        return { face: fi, edges, params, outline: carParkOutline(geo), path: geo.path, footprint: Math.abs(polygonArea(geo.deck)) + Math.abs(polygonArea(geo.ramp)), score: skip - path };
+        return { face: fi, edges, params, outline: fp, path: geo.path, footprint: Math.abs(polygonArea(fp)), score: skip - path };
       }
     }
   }
