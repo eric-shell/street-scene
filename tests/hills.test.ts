@@ -5,7 +5,7 @@ import { Rng } from '../src/sim/prng';
 import { distToPolygonEdge, pointInPolygon } from '../src/city/districts/geom';
 import { distToSegment } from '../src/sim/math';
 import { hillAt, hillOutline, plateauDistance, shapeOf } from '../src/city/districts/hills';
-import { TOUR_REACH } from '../src/city/districts/monument';
+import { TOUR_REACH, plazaPasses } from '../src/city/districts/monument';
 import { riverCenter } from '../src/city/districts/river';
 import { WALL_LOOKS } from '../src/city/districts/types';
 import type { Contact } from '../src/city/world';
@@ -154,8 +154,9 @@ describe('monument', () => {
       const g = w.graph;
       const cx0 = (g.bounds.minX + g.bounds.maxX) / 2;
       const cz0 = (g.bounds.minZ + g.bounds.maxZ) / 2;
-      // A Grand Tour puts the plaza on a block its routes pass, further out (monument.ts TOUR_REACH).
-      expect(Math.hypot(m.params.cx - cx0, m.params.cz - cz0)).toBeLessThanOrEqual((w.event.drawn === 'grandTour' ? TOUR_REACH : MON.reach) + 1);
+      // A Grand Tour puts the plaza on a block its routes pass, further out (monument.ts TOUR_REACH), and so does
+      // a race pass, whose landmark stands at the middle of the pass's chord, off the block's middle.
+      expect(Math.hypot(m.params.cx - cx0, m.params.cz - cz0)).toBeLessThanOrEqual(m.params.passes ? TOUR_REACH + 80 : (w.event.drawn === 'grandTour' ? TOUR_REACH : MON.reach) + 1);
       const walls = w.walls.filter((x) => x.kind === 'wall' && x.look === 'monument' && x.area === m.id);
       expect(walls.length).toBeGreaterThan(3);
       for (const wall of walls) {
@@ -167,8 +168,11 @@ describe('monument', () => {
         }
       }
       // The plaza is open concrete with no building, and the landmark is solid where it stands.
-      const px = m.params.cx + m.params.ux * 22;
-      const pz = m.params.cz + m.params.uz * 22;
+      // Probed 22 m from the landmark the roomiest way (a pass may have set it off the block's middle).
+      const probes = [0, 1, 2, 3, 4, 5, 6, 7].map((k) => ({ x: m.params.cx + Math.cos((k * Math.PI) / 4) * 22, z: m.params.cz + Math.sin((k * Math.PI) / 4) * 22 }));
+      const probe = probes.reduce((p, q) => (distToPolygonEdge(q.x, q.z, m.polygon) * (pointInPolygon(q.x, q.z, m.polygon) ? 1 : -1) > distToPolygonEdge(p.x, p.z, m.polygon) * (pointInPolygon(p.x, p.z, m.polygon) ? 1 : -1) ? q : p));
+      const px = probe.x;
+      const pz = probe.z;
       expect(w.surfaceAt(px, pz)).toBe('concrete');
       expect(w.areaAt(px, pz)?.kind).toBe('monument');
       expect(w.blocks.buildings.some((b) => pointInPolygon(b.x, b.z, m.polygon))).toBe(false);
@@ -190,6 +194,49 @@ describe('monument', () => {
     expect(seen).toBeGreaterThan(6);
     expect(kinds.size).toBeGreaterThan(1);
     expect(WALL_LOOKS).toContain('monument');
+  });
+
+  it('races turning round the plaza cross it: round the steps or through the arch, clear of the walls and the clutter', () => {
+    const rng = new Rng(5);
+    let crossings = 0;
+    const kinds = new Set<string>();
+    for (let i = 0; i < 40 && crossings < 6; i++) {
+      const city = createCity(rng.int(0, 0x7fffffff));
+      const m = city.districts.areas.find((a) => a.kind === 'monument');
+      if (!m || !m.params.passes) continue;
+      const passes = plazaPasses(city.graph, m);
+      expect(passes.length).toBe(m.params.passes);
+      for (const kind of ['circuit', 'sprint'] as const) {
+        const w = createWorld(city.seed, kind, city);
+        const P = w.route.points;
+        const on = P.filter((p) => pointInPolygon(p.x, p.z, m.polygon) && distToPolygonEdge(p.x, p.z, m.polygon) > 2);
+        if (!on.length) continue;
+        crossings++;
+        kinds.add(m.variant);
+        // Every metre of the line on the paving keeps half its width off the landmark's walls (and any other).
+        for (let k = 0; k + 1 < P.length; k++) {
+          const len = Math.hypot(P[k + 1].x - P[k].x, P[k + 1].z - P[k].z);
+          for (let t = 0; t <= len; t += 1) {
+            const x = P[k].x + ((P[k + 1].x - P[k].x) * t) / len;
+            const z = P[k].z + ((P[k + 1].z - P[k].z) * t) / len;
+            if (!pointInPolygon(x, z, m.polygon)) continue;
+            expect(w.wallClearance(x, z, 10)).toBeGreaterThan(MON.passWidth / 2 - 1);
+          }
+        }
+        // Through the arch: the line runs over the landmark's middle, between the piers.
+        if (m.variant === 'arch') {
+          let d = Infinity;
+          for (let k = 0; k + 1 < P.length; k++) d = Math.min(d, distToSegment(m.params.cx, m.params.cz, P[k].x, P[k].z, P[k + 1].x, P[k + 1].z));
+          expect(d).toBeLessThan(0.5);
+        }
+      }
+      // Nothing of the plaza's clutter stands on a pass.
+      for (const p of city.blocks.props.filter((q) => q.area === m.id)) {
+        for (const ps of passes) for (let k = 0; k + 1 < ps.points.length; k++) expect(distToSegment(p.x, p.z, ps.points[k].x, ps.points[k].z, ps.points[k + 1].x, ps.points[k + 1].z)).toBeGreaterThan(MON.passWidth / 2);
+      }
+    }
+    expect(crossings).toBeGreaterThanOrEqual(4);
+    expect(kinds.size).toBeGreaterThan(1);
   });
 });
 

@@ -263,7 +263,9 @@ describe('night market', () => {
     expect(stallsAhead.length).toBeGreaterThan(6);
     const rc = r.cars[0];
     const c = rc.state;
-    const s0 = h.values[4] - 4;
+    // ... or from just past a streetlight or fence standing in the line at the row's head.
+    const head = w.props.filter((p) => p.area !== area.id).map((p) => ({ along: (p.x - A.x) * ux + (p.z - A.z) * uz, side: (p.x - A.x) * -uz + (p.z - A.z) * ux - lat }));
+    const s0 = Math.max(h.values[4] - 4, ...head.filter((q) => Math.abs(q.side) < 1.6 && q.along < h.values[4] + 6).map((q) => q.along + 2.5));
     c.x = A.x + ux * s0 - uz * lat;
     c.z = A.z + uz * s0 + ux * lat;
     c.y = w.driveHeightAt(c.x, c.z);

@@ -731,6 +731,29 @@ export const CITY = {
       /** A cafe in one corner: its cart stands cafeInset (m) in from the corner with cafeTables [min, max] around it. */
       cafeInset: 9,
       cafeTables: [4, 6],
+      /**
+       * Race passes (monument.ts plazaPasses): a route turning round a corner of the plaza block cuts
+       * across the paving instead, round the obelisk's or column's steps (the landmark the apex of
+       * the turn) or straight through the arch. The first pass places the landmark, at the middle of
+       * the chord between where it leaves and rejoins the streets. The racing line's width (m); how
+       * far from the corner it leaves and rejoins the street [min, max], tried every passStep (m),
+       * as far as the route runs along the block's side, less passJunctionClear (m) before a junction
+       * the route runs straight across, passMouthClear before a shortcut's mouth and passTurnClear
+       * after a junction it turns at; its sharpest bend (deg); how far it runs straight either side
+       * of the arch's piers (m); the furthest its nearest point may lie from the corner (m: a car that
+       * goes round by the street stays inside the race's lost limit, sim/race.ts LOST); and how many
+       * candidate blocks (nearest the center first, out to TOUR_REACH) are tried for one.
+       */
+      passWidth: 9,
+      passReach: [36, 120],
+      passStep: 6,
+      passJunctionClear: 28,
+      passMouthClear: 12,
+      passTurnClear: 8,
+      passMaxTurn: 72,
+      passApproach: 11,
+      passCornerMax: 60,
+      passSites: 40,
     },
     /**
      * Tunnels (src/city/districts/tunnel.ts): a street runs for part of one
@@ -915,6 +938,10 @@ export const ROUTE = {
   waypointSlack: 6,
   /** The finish line counts within the road's half width plus this (m). */
   waypointFinishSlack: 3,
+  /** A waypoint race keeps looking this many acceptable suggestions further for one that crosses the monument plaza (districts/monument.ts passes). */
+  waypointPreferTries: 60,
+  /** A pass off the streets (route.ts RoutePass) may cut through a junction the route runs within this of straight across (deg). */
+  passStraightDeg: 25,
   /** Start grid slots: the player and up to nine rivals (see the grid in route.ts). */
   gridSlots: 10,
   maxAttempts: 400,

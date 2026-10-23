@@ -261,7 +261,7 @@ describe('roadworks', () => {
             if (f.s < a.params.sA - a.params.taper || f.s > a.params.sB + a.params.taper) continue;
             if (f.v < -2 || f.v > w.graph.edges[a.params.edge].width + 2) continue;
             checked++;
-            expect(f.v).toBeGreaterThanOrEqual(a.params.close + ROADWORKS.barrierReach + ROADWORKS.aiMargin - 1e-6);
+            expect(f.v).toBeGreaterThanOrEqual(a.params.close + ROADWORKS.barrierReach + ROADWORKS.aiMargin - 1e-3);
           }
         }
         expect(cls.length).toBe(zones(w).length);

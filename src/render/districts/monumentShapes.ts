@@ -67,7 +67,7 @@ const SHADE = {
   /** Light gained by a face pointing straight down (soffits face the floods). */
   soffit: 0.3,
   /** Vertical faces toward the key side are this much brighter, away from it this much darker. */
-  key: 0.2,
+  key: 0.28,
   /** Wash falloff exponent: above 1 the glow stays near the floods. */
   falloff: 1.5,
 } as const;

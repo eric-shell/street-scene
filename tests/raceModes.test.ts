@@ -91,7 +91,11 @@ describe('waypoint race', () => {
         for (let s = w.s - 300; s <= w.s; s += 25) {
           const p = routeSample(route, s);
           const d = roadDistance(world, w, p.x, p.z);
-          expect(d, `seed ${seed} s ${s}`).toBeLessThanOrEqual(last + 1);
+          // Off the graph's straight edges (a roundabout's arc, a pass across the monument plaza) the distance
+          // by road is taken from the nearest street and may wobble by a few metres.
+          const kind = city.districts.areaAt(p.x, p.z)?.kind;
+          const slack = kind === 'roundabout' || kind === 'monument' ? 8 : 1;
+          expect(d, `seed ${seed} s ${s}`).toBeLessThanOrEqual(last + slack);
           last = d;
         }
         expect(last).toBeLessThan(w.radius);

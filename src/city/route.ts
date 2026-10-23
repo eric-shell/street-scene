@@ -92,6 +92,25 @@ export interface RouteShortcut {
   length: number;
 }
 
+/**
+ * A way off the streets a route takes round one of its corners (districts/monument.ts: across the
+ * monument plaza, round the landmark or through the arch). At `node`, turning between its edges
+ * `edgeA` and `edgeB` (either way round), the driving polyline leaves the street `a` m before the
+ * node (along edgeA's street) and rejoins it `b` m after (along edgeB's), following `points`: the
+ * two street points first and last, side A first. The graph is untouched, so barriers, rails and
+ * progress by road still see the corner; only the racing line cuts it.
+ */
+export interface RoutePass {
+  node: number;
+  edgeA: number;
+  edgeB: number;
+  a: number;
+  b: number;
+  points: Vec2[];
+  /** Width of the racing line across (m): what the AI and the grid read from segWidth. */
+  width: number;
+}
+
 export interface RouteSample {
   x: number;
   z: number;
@@ -209,8 +228,11 @@ export function circuitStart(g: RoadGraph, nodes: number[]): { index: number; t:
   return { index: best.from, t: 0.5, run: best };
 }
 
-/** `waypointNodes`: a waypoint race's waypoints (findWaypointNodes), all on `routeNodes`. */
-export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[], waypointNodes: readonly number[] = []): Route {
+/**
+ * `waypointNodes`: a waypoint race's waypoints (findWaypointNodes), all on `routeNodes`. `passes`:
+ * the city's ways off the streets (RoutePass); the route takes each one it turns through.
+ */
+export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[], waypointNodes: readonly number[] = [], passes: readonly RoutePass[] = []): Route {
   const closed = kind === 'circuit';
   const drag = kind === 'drag';
   let nodes = routeNodes.slice();
@@ -251,6 +273,7 @@ export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[], 
       appendNode(g, points, segWidth, i === 0 ? 0 : g.edges[edges[i - 1]].width, i > 0 ? nodes[i - 1] : -1, id, i + 1 < nodes.length ? nodes[i + 1] : -1);
     });
   }
+  if (!drag) for (const p of passes) takePass(g, kind, nodes, edges, points, segWidth, nodePoint, waypointNodes, p);
 
   const cum = [0];
   for (let i = 1; i < points.length; i++) {
@@ -445,6 +468,61 @@ function appendNode(g: RoadGraph, points: Vec2[], segWidth: number[], inWidth: n
     push({ x: P.x + cos(a) * Rd, z: P.z + sin(a) * Rd }, ringW);
   }
   push({ x: P.x + dout.x * Re, z: P.z + dout.z * Re }, ringW);
+}
+
+/**
+ * Splice a RoutePass into the driving polyline where the route turns through its node: the points
+ * from the street point `a` m before the node to the one `b` m after (the node's and any bend
+ * nodes' between) give way to the pass. Skipped when the route does not turn between the pass's
+ * edges there, when the node is a waypoint, when the stretch it cuts holds a junction the route
+ * turns at, a waypoint or a shortcut's mouth (junctions it runs straight through are fine), or when
+ * it would reach the start grid, the start line or a sprint's finish. nodePoint follows.
+ */
+function takePass(g: RoadGraph, kind: RouteKind, nodes: number[], edges: number[], points: Vec2[], segWidth: number[], nodePoint: Map<number, number>, waypoints: readonly number[], p: RoutePass): void {
+  const closed = kind === 'circuit';
+  const n = nodes.length;
+  const i = nodes.indexOf(p.node);
+  if (i < 0 || waypoints.includes(p.node) || (!closed && (i === 0 || i === n - 1))) return;
+  const eIn = edges[(i - 1 + edges.length) % edges.length];
+  const eOut = edges[i % edges.length];
+  const fwd = eIn === p.edgeA && eOut === p.edgeB;
+  if (!fwd && !(eIn === p.edgeB && eOut === p.edgeA)) return;
+  const k = nodePoint.get(p.node);
+  if (k === undefined) return;
+  const d = (q: number) => sqrt((points[q + 1].x - points[q].x) ** 2 + (points[q + 1].z - points[q].z) ** 2);
+  // First and last points the pass replaces: back `before` m and on `after` m from the node's point.
+  let j = k;
+  for (let rem = fwd ? p.a : p.b; j > 0 && d(j - 1) < rem; j--) rem -= d(j - 1);
+  let m = k;
+  for (let rem = fwd ? p.b : p.a; m + 1 < points.length && d(m) < rem; m++) rem -= d(m);
+  if (j < 1 || m + 2 > points.length) return;
+  for (const [id, q] of nodePoint) {
+    if (q < j || q > m || id === p.node || isBendNode(g, id)) continue;
+    const at = nodes.indexOf(id);
+    if (waypoints.includes(id) || g.nodes[id].edges.some((e) => g.edges[e].shortcut)) return;
+    if (abs(turnAngle(g, nodes[(at - 1 + n) % n], id, nodes[(at + 1) % n])) > ROUTE.passStraightDeg * DEG) return;
+  }
+  // Clear of the start: a circuit's grid stands on the polyline's last stretch and its line at point 0;
+  // a sprint's grid and finish sit at either end.
+  let total = 0;
+  for (let q = 0; q + 1 < points.length; q++) total += d(q);
+  let sIn = 0;
+  for (let q = 0; q + 1 < j; q++) sIn += d(q);
+  let sOut = sIn;
+  for (let q = j - 1; q <= m; q++) sOut += d(q);
+  const startClear = closed ? 30 : ROUTE.sprintStartOffset + 30;
+  const endClear = closed ? ROUTE.gridFirstRow + 4 * ROUTE.gridRowSpacing + 15 : ROUTE.sprintFinishOffset + ROUTE.sprintFinishNodeClear + 30;
+  if (sIn < startClear || sOut > total - endClear) return;
+  const path = fwd ? p.points : p.points.slice().reverse();
+  const cut = m - j + 1;
+  points.splice(j, cut, ...path.map((q) => ({ x: q.x, z: q.z })));
+  // Segment j - 1 now ends at the pass's first point (same street, same width); the pass's own
+  // segments follow, then the one from its last point back onto the street (the old segment m).
+  segWidth.splice(j, cut, ...path.slice(1).map(() => p.width), segWidth[m]);
+  for (const [id, q] of [...nodePoint]) {
+    if (q > m) nodePoint.set(id, q - cut + path.length);
+    else if (q >= j) nodePoint.delete(id);
+  }
 }
 
 function wrapS(route: Route, s: number): number {

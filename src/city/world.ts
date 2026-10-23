@@ -15,6 +15,7 @@ import { SpatialGrid } from './spatial';
 import { Terrain, createTerrain } from './terrain';
 import { Vec2, cos, distToSegment, segmentT, sin, sqrt } from '../sim/math';
 import { settleRiver } from './districts/river';
+import { plazaPasses } from './districts/monument';
 import { CityDistricts, planDistricts } from './districts';
 import { settleAlleyLips, shortcutJumpRails } from './districts/alleyDressing';
 import { carveRouteShortcuts, hasShortcutSpot, qualifiedCount } from './districts/alleyShortcuts';
@@ -417,12 +418,24 @@ function stripStreet(city: City, edge: number): boolean {
  * (nothing was carved for them, so they changed no city).
  */
 export function createRoute(city: City, kind: RouteKind): Route {
-  if (kind === 'drag') return buildRoute(city.graph, kind, findDragNodes(city.graph, city.seed, (e) => stripStreet(city, e)));
+  const g = city.graph;
+  if (kind === 'drag') return buildRoute(g, kind, findDragNodes(g, city.seed, (e) => stripStreet(city, e)));
+  // The monument plaza's race passes (districts/monument.ts): every route turning round one of them crosses the plaza.
+  const passes = city.districts.areas.filter((a) => a.kind === 'monument').flatMap((a) => plazaPasses(g, a));
   if (kind === 'waypoint') {
-    const { nodes, waypoints } = findWaypointNodes(city.graph, city.seed);
-    return buildRoute(city.graph, kind, nodes, waypoints);
+    // The suggestion takes a pass where it can: one turning through a pass corner that is no waypoint is preferred.
+    const through = (nodes: number[], stops: number[]) => {
+      const edges = routeEdges(g, nodes, false);
+      return passes.some((p) => {
+        const i = nodes.indexOf(p.node);
+        if (i < 1 || i + 1 >= nodes.length || stops.includes(p.node)) return false;
+        return (edges[i - 1] === p.edgeA && edges[i] === p.edgeB) || (edges[i - 1] === p.edgeB && edges[i] === p.edgeA);
+      });
+    };
+    const { nodes, waypoints } = findWaypointNodes(g, city.seed, passes.length ? through : undefined);
+    return buildRoute(g, kind, nodes, waypoints, passes);
   }
-  return buildRoute(city.graph, kind, city.routeNodes[kind]);
+  return buildRoute(g, kind, city.routeNodes[kind], [], passes);
 }
 
 export function createWorld(seed: number, kind: RouteKind, city: City = createCity(seed), opts: { openWorld?: boolean } = {}): World {

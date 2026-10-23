@@ -13,8 +13,9 @@
  * subway (claims a street column), roundabouts, alleys, the bluff (moves part
  * of the El off its street; before the routes, which run over its level
  * crossing), back alleys (the last
- * module allowed to change the graph topology, so face ids stay stable), parks
- * (claim faces), the monument plaza, hills (claim clusters of faces and keep
+ * module allowed to change the graph topology, so face ids stay stable), the
+ * monument plaza (before the parks: it takes a block the routes turn round,
+ * for its race passes), parks (claim faces), hills (claim clusters of faces and keep
  * their slopes clear of everything placed before them), tunnels and
  * overpasses (they keep clear of every slope and claim the blocks a ridge
  * stands in, so they come after the hills and before downtown), reserved
@@ -60,8 +61,8 @@ export const DISTRICT_MODULES: readonly DistrictModule[] = [
   backAlleyModule,
   marketModule,
   carParkModule,
-  parkModule,
   monumentModule,
+  parkModule,
   hillsModule,
   tunnelModule,
   overpassModule,

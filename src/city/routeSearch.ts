@@ -282,9 +282,11 @@ function straightestRun(g: RoadGraph, seed: number, edgeOk: (edge: number) => bo
  * finish, and the suggested route through them, the shortest way leg by leg
  * that never crosses itself. The AI drives the suggestion; the player may take
  * any street (the world is open, see createWorld). Returns the route's nodes
- * and, of those, the waypoints in order.
+ * and, of those, the waypoints in order. With `prefer` (the route's nodes and
+ * its waypoints), an acceptable route it likes ends the search; ones it does
+ * not are kept as the fallback for up to ROUTE.waypointPreferTries more.
  */
-export function findWaypointNodes(g: RoadGraph, seed: number): { nodes: number[]; waypoints: number[] } {
+export function findWaypointNodes(g: RoadGraph, seed: number, prefer?: (nodes: number[], waypoints: number[]) => boolean): { nodes: number[]; waypoints: number[] } {
   const rng = new Rng(deriveSeed(seed, 'waypoint'));
   const n = g.nodes.length;
   // Plain distances: the suggestion is the quick way, not the scenic one.
@@ -298,6 +300,7 @@ export function findWaypointNodes(g: RoadGraph, seed: number): { nodes: number[]
   };
   let best: { nodes: number[]; waypoints: number[] } | null = null;
   let bestScore = -Infinity;
+  let patience: number = ROUTE.waypointPreferTries;
   for (let attempt = 0; attempt < ROUTE.maxAttempts; attempt++) {
     const stops = [rng.int(0, n - 1)];
     // Waypoints, then the finish's node, each a leg away from the last and clear of the earlier ones.
@@ -344,11 +347,13 @@ export function findWaypointNodes(g: RoadGraph, seed: number): { nodes: number[]
     if (cut) continue;
     const len = pathLength(g, path, false);
     const sc = score(cornerStats(g, path, false), len, ROUTE.waypointMinLength, ROUTE.waypointMaxLength);
-    if (sc > bestScore) {
+    const liked = sc >= 0 && !!prefer?.(path, stops.slice(1, -1));
+    // The first acceptable route stays the fallback (the one found without a preference); only a liked one replaces it.
+    if (liked || (bestScore < 0 && sc > bestScore)) {
       bestScore = sc;
       best = { nodes: path, waypoints: stops.slice(1, -1) };
     }
-    if (sc >= 0) break;
+    if (liked || (sc >= 0 && (!prefer || --patience < 0))) break;
   }
   if (!best) throw new Error('could not find a waypoint race');
   return best;

@@ -42,8 +42,8 @@ const MONUMENT = {
    * Flood washes: HDR brightness at the floods (g0) and at the top of what they light (g1), the
    * glow material adds x1.6: the landmark, the drum under it, and the statue's own floods.
    */
-  wash: { g0: 0.62, g1: 0.24 },
-  baseWash: { g0: 0.5, g1: 0.3 },
+  wash: { g0: 0.5, g1: 0.22 },
+  baseWash: { g0: 0.42, g1: 0.26 },
   statueWash: { g0: 0.55, g1: 0.3 },
   /** The key side of the floodlit shading, turned from the landmark's axis (rad). */
   keyTurn: 0.6,
@@ -61,6 +61,20 @@ const MONUMENT = {
   /** Border band just inside the plaza edge: inset and width (m). */
   borderInset: 0.7,
   borderWidth: 0.4,
+  /**
+   * A race pass's way: drawn in pieces (m) kept this far inside the plaza (m), a dark granite band
+   * the line's width, lighter kerb lines (m wide) along its edges and flush lights every studStep (m).
+   */
+  pass: {
+    piece: 2,
+    inset: 0.6,
+    band: col(0x56575f),
+    kerb: 0.35,
+    kerbColor: col(0x9a9ca6),
+    studStep: 5,
+    studR: 0.24,
+    studColor: new THREE.Color(1, 0.86, 0.66).multiplyScalar(1.7),
+  },
 } as const;
 
 const STONE = col(0x4a4b53);
@@ -147,6 +161,10 @@ export const monumentRenderer: DistrictRenderer = {
         cylinder(kit.ground, bc.x, bc.z, h.values[0] + 0.45, y - 0.02, y + 0.06, 16, STONE_TOP);
         cylinder(kit.ground, bc.x, bc.z, h.values[0], y + 0.06, y + 0.08, 16, mulch);
       }
+      // Race passes (city monument.ts plazaPasses): a band of darker granite where the racing line
+      // crosses the paving, edged with lighter stone and studded with flush lights, drawn on the plaza
+      // only (the street ends of the line are asphalt).
+      for (const h of b.hints) if (h.kind === 'pass') passWay(kit, h.points, h.values[0], a.polygon, lift);
       // Pavement lights.
       for (const h of b.hints) {
         if (h.kind !== 'lamps') continue;
@@ -157,6 +175,45 @@ export const monumentRenderer: DistrictRenderer = {
     }
   },
 };
+
+/** A race pass's way across the plaza: its band, kerb lines and edge studs, in MONUMENT.pass pieces kept off the plaza's edge. */
+function passWay(kit: DistrictKit, pts: Vec2[], width: number, plaza: Vec2[], lift: number): void {
+  const W = MONUMENT.pass;
+  const on = (p: Vec2) => pointInPolygon(p.x, p.z, plaza) && distToPolygonEdge(p.x, p.z, plaza) > W.inset;
+  let stud = 0;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const p = pts[i];
+    const q = pts[i + 1];
+    const len = Math.hypot(q.x - p.x, q.z - p.z);
+    if (len < 0.1) continue;
+    const ux = (q.x - p.x) / len;
+    const uz = (q.z - p.z) / len;
+    const n = Math.max(1, Math.ceil(len / W.piece));
+    for (let k = 0; k < n; k++) {
+      const a = { x: p.x + (q.x - p.x) * (k / n), z: p.z + (q.z - p.z) * (k / n) };
+      const b = { x: p.x + (q.x - p.x) * ((k + 1) / n), z: p.z + (q.z - p.z) * ((k + 1) / n) };
+      if (!on(a) || !on(b)) continue;
+      groundLine(kit, kit.paint, a, b, width, lift + 0.045, W.band);
+      for (const sgn of [-1, 1]) {
+        const ox = -uz * sgn * (width / 2);
+        const oz = ux * sgn * (width / 2);
+        groundLine(kit, kit.paint, { x: a.x + ox, z: a.z + oz }, { x: b.x + ox, z: b.z + oz }, W.kerb, lift + 0.05, W.kerbColor);
+      }
+    }
+    // Flush lights down both edges, evenly along the whole line.
+    for (; stud <= len; stud += W.studStep) {
+      const c = { x: p.x + ux * stud, z: p.z + uz * stud };
+      for (const sgn of [-1, 1]) {
+        const x = c.x - uz * sgn * (width / 2 - 0.5);
+        const z = c.z + ux * sgn * (width / 2 - 0.5);
+        if (!on({ x, z })) continue;
+        const y = kit.h(x, z) + lift;
+        cylinder(kit.glow, x, z, W.studR, y + 0.02, y + 0.07, 6, W.studColor);
+      }
+    }
+    stud -= len;
+  }
+}
 
 /** Step rings, the drum, flags and floods under an obelisk or a statue column. */
 function pedestalLandmark(kit: DistrictKit, kind: string, P: Record<string, number>, rng: Rng): void {

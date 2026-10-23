@@ -42,7 +42,7 @@ import { edgeBetween } from './roadGraph';
 import type { RoutePreference } from './routeSearch';
 import type { Area, HeightSample, PlanContext } from './districts/types';
 import { hillAt, shapeOf } from './districts/hills';
-import { TOUR_REACH, monumentSites } from './districts/monument';
+import { TOUR_REACH, monumentSites, plazaCorners } from './districts/monument';
 import { riverCenter } from './districts/river';
 import { Rng, deriveSeed } from '../sim/prng';
 import { type Vec2, distToSegment, sqrt } from '../sim/math';
@@ -223,6 +223,8 @@ export const EVENTS = {
   sampleStep: 5,
   /** Dijkstra weight factor of the level crossing's street (districts/bluff.ts), for every flavour. */
   crossingBias: 0.5,
+  /** Dijkstra weight factor of the streets round a corner of a block that can hold the monument plaza (its race passes), for every flavour. */
+  plazaBias: 0.75,
 } as const;
 
 export interface CityEvent {
@@ -432,10 +434,12 @@ function openGround(v: Venue): boolean[] {
 /**
  * The route finders' preference for a flavour on this graph (findCircuitNodes /
  * findSprintNodes). Ratings: the flavour's own wish counts most, the river
- * dive (every flavour but River Run, where the channel exists) and a run over
- * the bluff's level crossing (where there is one, districts/bluff.ts) add one
- * each, so a route with everything wins, then the flavour alone, then the
- * side wishes alone. Without a level crossing the ratings are as before.
+ * dive (every flavour but River Run, where the channel exists), a run over
+ * the bluff's level crossing (where there is one, districts/bluff.ts) and a
+ * turn round a corner of a block that can hold the monument plaza (where the
+ * monument is enabled: such a turn gets a race pass across the plaza,
+ * districts/monument.ts) add one each, so a route with everything wins, then
+ * the flavour alone, then the side wishes alone.
  */
 export function eventRoutePreference(id: EventFlavourId, ctx: SiteContext, closed: boolean): RoutePreference {
   const g = ctx.graph;
@@ -445,16 +449,31 @@ export function eventRoutePreference(id: EventFlavourId, ctx: SiteContext, close
   const dives = (edges: number[]) => edges.some((e) => e >= 0 && g.edges[e].kind === 'channel');
   const cross = v.crossings.size > 0;
   const crosses = (edges: number[]) => edges.some((e) => v.crossings.has(e));
-  const sides = (dive ? 1 : 0) + (cross ? 1 : 0);
+  const corners = CITY.districts.monument.enabled ? plazaCorners(ctx, TOUR_REACH) : [];
+  const plaza = corners.length > 0;
+  const plazaStreets = new Set(corners.flatMap((k) => [k.eA, k.eB]));
+  const turnsAtPlaza = (nodes: number[], edges: number[]) =>
+    corners.some((k) => {
+      const i = nodes.indexOf(k.node);
+      if (i < 0 || (!closed && (i === 0 || i === nodes.length - 1))) return false;
+      const eIn = edges[(i - 1 + edges.length) % edges.length];
+      const eOut = edges[i % edges.length];
+      return (eIn === k.eA && eOut === k.eB) || (eIn === k.eB && eOut === k.eA);
+    });
+  const sides = (dive ? 1 : 0) + (cross ? 1 : 0) + (plaza ? 1 : 0);
   const rate = (nodes: number[]) => {
     const edges = routeEdges(g, nodes, closed);
     const own = wish.rate(edges, nodes);
-    return sides ? own * (sides + 1) + (dive && dives(edges) ? 1 : 0) + (cross && crosses(edges) ? 1 : 0) : own;
+    return sides ? own * (sides + 1) + (dive && dives(edges) ? 1 : 0) + (cross && crosses(edges) ? 1 : 0) + (plaza && turnsAtPlaza(nodes, edges) ? 1 : 0) : own;
   };
   const anchors = wish.anchors.length ? wish.anchors : v.feet;
   // The other end of a circuit (or every other sprint waypoint) from the ramp feet, or from the flavour's own anchors again.
   const via0 = dive && wish.anchors.length ? v.feet : anchors;
   const bias0 = wish.bias;
+  const bias =
+    cross || plaza
+      ? (e: number) => (bias0 ? bias0(e) : 1) * (v.crossings.has(e) ? EVENTS.crossingBias : 1) * (plazaStreets.has(e) ? EVENTS.plazaBias : 1)
+      : bias0;
   return {
     prefer: (nodes) => rate(nodes) > 0,
     rate,
@@ -462,7 +481,7 @@ export function eventRoutePreference(id: EventFlavourId, ctx: SiteContext, close
     anchors,
     // ... and the level crossing's street ends, its street a little cheaper to run along.
     via: cross ? [...via0, ...v.crossingNodes] : via0,
-    bias: cross ? (e) => (bias0 ? bias0(e) : 1) * (v.crossings.has(e) ? EVENTS.crossingBias : 1) : bias0,
+    bias,
   };
 }
 
