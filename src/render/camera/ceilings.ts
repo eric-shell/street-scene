@@ -22,7 +22,7 @@ import { boreRoad, bridgeTop, ceilingAbove, coverOf, deckLine, ridgeShape, rockA
 import { carParkGeo } from '../../city/districts/carPark';
 import { garageSpan } from '../districts/carPark';
 import { bridgesOf, distToBridge, riverL } from '../../city/districts/river';
-import { DECK_UNDERSIDE } from '../districts/river';
+import { deckUndersideAt } from '../districts/river';
 
 /** Room kept between the camera and a ceiling or a deck (m): the near plane and a little air. */
 export const CEILING_MARGIN = 0.45;
@@ -99,7 +99,8 @@ function build(world: World): Overhead[] {
     } else if (a.kind === 'river') {
       // Each bridge deck over the channel: the footprint of its slab (the deck's half width, the band
       // plus the parapets' reach across it); the deck is the terrain's height there (World.heightAt
-      // without a body height), the floor beneath is the lower level.
+      // without a body height), the floor beneath is the lower level. The structure hangs deeper
+      // over the pier bents (their cap beams), so the depth is asked per point.
       const reach = a.params.top + 3;
       for (const br of bridgesOf(world.graph, a)) {
         const half = br.dk + 1;
@@ -110,7 +111,7 @@ function build(world: World): Overhead[] {
             const deck = world.heightAt(x, z);
             // Only a real two level spot: over the banks beyond the floor the deck is the ground itself.
             if (deck - world.heightAt(x, z, -Infinity) < 1) return false;
-            s.bottom = deck - DECK_UNDERSIDE;
+            s.bottom = deck - deckUndersideAt(a.params, x, z);
             s.top = deck + 1.1;
             return true;
           },

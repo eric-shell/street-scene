@@ -95,8 +95,12 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     // tunnel renderer drapes its own rock over it (render/districts/tunnel.ts).
     const r = size / 96;
     const ridges = ridgeLift(world);
+    // The lowest level: under a river bridge the terrain is the deck, 4 m over the channel floor
+    // the river renderer drapes on, and a grid vertex at deck height there would slope the plane
+    // down through the banks, the piers and the floor beside every deck (render/districts/river.ts).
+    const low = (x: number, z: number) => world.heightAt(x, z, -Infinity);
     // Car park roofs are structures, not ground either (render/districts/carPark.ts draws them).
-    const gh = groundHeight({ areas: world.areas, heightAt: ridges ? (x: number, z: number) => h(x, z) - ridges(x, z) : h });
+    const gh = groundHeight({ areas: world.areas, heightAt: ridges ? (x: number, z: number) => low(x, z) - ridges(x, z) : low });
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
       const z = pos.getZ(i);

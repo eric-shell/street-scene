@@ -28,7 +28,7 @@
 import * as THREE from 'three';
 import { CITY } from '../../city/config';
 import type { Bridge, Ramp } from '../../city/districts/river';
-import { bridgePoint, bridgesOf, footAlongs, mouthAlongs, rampAlong, rampHalf, rampOuter, rampPoint, rampsOf, riverCenter, riverFrame, riverL } from '../../city/districts/river';
+import { bridgePoint, bridgesOf, distToBridge, footAlongs, mouthAlongs, pierOffsets, pierReach, rampAlong, rampHalf, rampOuter, rampPoint, rampsOf, riverCenter, riverFrame, riverL } from '../../city/districts/river';
 import type { Area } from '../../city/districts/types';
 import { type Feature, type FeatureSample, featureHeight, featureSpan, featuresOf } from '../../city/districts/riverFeatures';
 import type { Wall } from '../../city/blocks';
@@ -60,20 +60,45 @@ const DRESS = {
   /** Lamps on the plinths down each ramp (m apart) and the dashed lines along its trench edges. */
   rampLampSpacing: 16,
   rampLineInset: 0.35,
-  /** Deck slab under a bridge: depth below the road (m), overhang beyond the parapet line (m), girder depth and width (m), rows across the band (m). */
+  /** Deck slab under a bridge: depth below the road (m), overhang beyond the parapet line (m), rows across the band (m). */
   slab: 0.7,
   slabOver: 0.4,
-  girder: 0.6,
-  girderWidth: 0.35,
   deckRow: 3,
+  /** Girders under the slab: depth and width (m); one over every pier column and one between each pair. */
+  girder: 0.7,
+  girderWidth: 0.5,
+  /**
+   * Pier bents: the cap beam the girders rest on, its depth and thickness along the deck (m), its
+   * reach beyond the outer columns (m) and the chamfer under each end (m); the cameras keep this
+   * far (m) off its faces (deckUndersideAt).
+   */
+  capH: 0.9,
+  capT: 1.3,
+  capOver: 0.9,
+  capTaper: 0.6,
+  capRoom: 0.3,
+  /** Abutments: the coping chamfer on every top edge (m), and the lamp and arch kept this far under it (m). */
+  abutBevel: 0.5,
+  abutLampDrop: 0.35,
   /** String lights over a ramp mouth: post height (m), sag (m), bulb spacing (m). */
   stringPost: 5.4,
   stringSag: 0.7,
   bulbStep: 0.55,
 } as const;
 
-/** How far below a deck's road its structure reaches (slab and girders, m): the cameras stay under it (render/camera/ceilings.ts). */
-export const DECK_UNDERSIDE = DRESS.slab + DRESS.girder;
+/** How far below a deck's road its slab and girders reach (m). */
+const DECK_UNDERSIDE = DRESS.slab + DRESS.girder;
+
+/**
+ * How far below a deck's road its structure reaches at (x, z) (m): the slab
+ * and girders everywhere, the pier bents' cap beams as well over the floor
+ * edges (the sim's pier rows, CITY.districts.river.pierInset inside the
+ * floor edge). The cameras stay under it (render/camera/ceilings.ts).
+ */
+export function deckUndersideAt(p: Record<string, number>, x: number, z: number): number {
+  const offBent = Math.abs(Math.abs(riverL(p, x, z)) - (p.floor - CITY.districts.river.pierInset));
+  return DECK_UNDERSIDE + (offBent < DRESS.capT / 2 + DRESS.capRoom ? DRESS.capH : 0);
+}
 
 /** Vertex tints multiplying the concrete texture (which carries the grey), and the lamp colours. */
 const TINT = {
@@ -179,6 +204,17 @@ function buildChannel(kit: DistrictKit, a: Area): void {
   };
   const vertical = (v: V3) => (v.x + v.z) / span;
   const height = (v: V3) => v.y / span;
+  /** `flat` with the quad wound to face the way (hx, hy, hz) points (solids whose corners come in no fixed order). */
+  const facing = (gb: GeoBuilder, q: V3[], c: THREE.Color, hx: number, hy: number, hz: number, u?: (v: V3) => number, v?: (w: V3) => number): void => {
+    const ux = q[1].x - q[0].x;
+    const uy = q[1].y - q[0].y;
+    const uz = q[1].z - q[0].z;
+    const vx = q[3].x - q[0].x;
+    const vy = q[3].y - q[0].y;
+    const vz = q[3].z - q[0].z;
+    const dot = (uy * vz - uz * vy) * hx + (uz * vx - ux * vz) * hy + (ux * vy - uy * vx) * hz;
+    flat(gb, dot < 0 ? [q[0], q[3], q[2], q[1]] : q, c, u, v);
+  };
   /** Flat strip on the channel level from a to b (paint lines on the floor). */
   const lineLow = (gb: GeoBuilder, a0: Vec2, b0: Vec2, width: number, lift: number, c: THREE.Color): void => {
     const len = Math.hypot(b0.x - a0.x, b0.z - a0.z);
@@ -460,36 +496,87 @@ function buildChannel(kit: DistrictKit, a: Area): void {
     stringLights(kit, hint.points[0], hint.points[1], { post: DRESS.stringPost, sag: DRESS.stringSag, step: DRESS.bulbStep, pools });
   }
 
-  // ----- Under every deck: slab, girders, piers and abutments, lamps; the parapets on top.
+  // ----- Under every deck: the slab on its girders, a pier bent on each floor edge (the sim's 'pier'
+  // columns under one cap beam the girders rest on), the abutments on the banks (the sim's 'culvert'
+  // boxes, a bearing seat with a chamfered coping), lamps; the parapets on top.
   const piers = (kit.walls.get('pier') ?? []).filter((w) => w.area === a.id);
   const abutments = (kit.walls.get('culvert') ?? []).filter((w) => w.area === a.id);
   for (const br of bridges) deckUnderside(concrete, p, br, T, h, flat);
-  for (const solid of solidsOf(piers)) {
+  /** The deck's structure rests at this depth below its road: the slab and the girders. */
+  const seat = DRESS.slab + DRESS.girder;
+  const nearestBridge = (x: number, z: number): Bridge => bridges.reduce((best, br) => (distToBridge(br, x, z) < distToBridge(best, x, z) ? br : best));
+  const columns = solidsOf(piers).map((solid) => {
     const c = solidCenter(solid);
-    const floor = hLow(c.x, c.z);
-    const top = h(c.x, c.z) - DRESS.slab + 0.05;
-    for (const f of solid) flat(concrete, [{ x: f.ax, y: floor - 0.3, z: f.az }, { x: f.bx, y: floor - 0.3, z: f.bz }, { x: f.bx, y: top, z: f.bz }, { x: f.ax, y: top, z: f.az }], TINT.pier, vertical, height);
-    // A lamp on the face toward the floor, two thirds of the way up, pooling light on the floor.
-    const towardFloor = solid.reduce((best, f) => (lFace(p, f) < lFace(p, best) ? f : best));
-    const fx = (towardFloor.ax + towardFloor.bx) / 2 + towardFloor.nx * 0.12;
-    const fz = (towardFloor.az + towardFloor.bz) / 2 + towardFloor.nz * 0.12;
-    if (Math.round(c.x) % 2 === 0) lamp(kit, pools, fx, floor + 2.6, fz, towardFloor.nx, towardFloor.nz, 0.55, hLow);
+    return { solid, c, br: nearestBridge(c.x, c.z), s: riverL(p, c.x, c.z) >= 0 ? 1 : -1 };
+  });
+  for (const br of bridges) {
+    for (const s of [-1, 1]) {
+      const bent = columns.filter((k) => k.br === br && k.s === s);
+      if (!bent.length) continue;
+      // The cap beam across the deck at the bent's l, its ends past the outer columns, chamfered underneath.
+      const lp = s * (F - CITY.districts.river.pierInset);
+      const reach = pierReach(br) + DRESS.capOver;
+      const c0 = bridgePoint(p, br, -reach, lp);
+      const c1 = bridgePoint(p, br, reach, lp);
+      const t0 = bridgePoint(p, br, -reach + DRESS.capTaper, lp);
+      const t1 = bridgePoint(p, br, reach - DRESS.capTaper, lp);
+      const y0 = h(c0.x, c0.z) - seat;
+      const y1 = h(c1.x, c1.z) - seat;
+      const dx = br.dx * (DRESS.capT / 2);
+      const dz = br.dz * (DRESS.capT / 2);
+      const at = (q: Vec2, side: number, y: number): V3 => ({ x: q.x + dx * side, y, z: q.z + dz * side });
+      const ex = c0.x - c1.x;
+      const ez = c0.z - c1.z;
+      facing(concrete, [at(c0, -1, y0), at(c1, -1, y1), at(c1, 1, y1), at(c0, 1, y0)], TINT.pier, 0, 1, 0);
+      facing(concrete, [at(t0, -1, y0 - DRESS.capH), at(t1, -1, y1 - DRESS.capH), at(t1, 1, y1 - DRESS.capH), at(t0, 1, y0 - DRESS.capH)], TINT.girder, 0, -1, 0);
+      for (const side of [-1, 1]) {
+        facing(concrete, [at(c0, side, y0), at(c1, side, y1), at(t1, side, y1 - DRESS.capH), at(t0, side, y0 - DRESS.capH)], TINT.pier, br.dx * side, 0, br.dz * side, vertical, height);
+      }
+      facing(concrete, [at(c0, -1, y0), at(c0, 1, y0), at(t0, 1, y0 - DRESS.capH), at(t0, -1, y0 - DRESS.capH)], TINT.pier, ex, 0, ez, vertical, height);
+      facing(concrete, [at(c1, -1, y1), at(c1, 1, y1), at(t1, 1, y1 - DRESS.capH), at(t1, -1, y1 - DRESS.capH)], TINT.pier, -ex, 0, -ez, vertical, height);
+      // The columns on the sim's squares, floor to cap; a lamp on the cap over every other one, facing the floor.
+      for (const { solid, c } of bent) {
+        const floor = hLow(c.x, c.z);
+        const capBottom = h(c.x, c.z) - seat - DRESS.capH;
+        for (const f of solid) flat(concrete, [{ x: f.ax, y: floor - 0.3, z: f.az }, { x: f.bx, y: floor - 0.3, z: f.bz }, { x: f.bx, y: capBottom + 0.05, z: f.bz }, { x: f.ax, y: capBottom + 0.05, z: f.az }], TINT.pier, vertical, height);
+        const towardFloor = solid.reduce((best, f) => (lFace(p, f) < lFace(p, best) ? f : best));
+        const off = DRESS.capT / 2 + 0.12;
+        if (Math.round(c.x) % 2 === 0) lamp(kit, pools, c.x + towardFloor.nx * off, capBottom + DRESS.capH / 2, c.z + towardFloor.nz * off, towardFloor.nx, towardFloor.nz, 0.55, hLow);
+      }
+    }
   }
   for (const solid of solidsOf(abutments)) {
+    const bevel = DRESS.abutBevel;
+    /** The face whose end meets this face's start, for the mitre of the coping at the corner. */
+    const prevOf = (f: Wall): Wall => solid.find((g) => g !== f && Math.hypot(g.bx - f.ax, g.bz - f.az) < 0.05) ?? f;
+    const nextOf = (f: Wall): Wall => solid.find((g) => g !== f && Math.hypot(g.ax - f.bx, g.az - f.bz) < 0.05) ?? f;
+    /** The deck 6 m behind the face (the box is under the deck), less the seat: the box's top. */
+    const seatAt = (x: number, z: number, f: Wall): number => h(x - f.nx * 6, z - f.nz * 6) - seat + 0.05;
+    const cap: V3[] = [];
     for (const f of solid) {
       const len = Math.hypot(f.bx - f.ax, f.bz - f.az);
+      const prev = prevOf(f);
+      const next = nextOf(f);
+      // The coping's top line, set back from both ends by the neighbours' normals as well (a mitred corner).
+      const ia = { x: f.ax - (f.nx + prev.nx) * bevel, z: f.az - (f.nz + prev.nz) * bevel };
+      const ib = { x: f.bx - (f.nx + next.nx) * bevel, z: f.bz - (f.nz + next.nz) * bevel };
       const steps = Math.max(1, Math.ceil(len / 3));
-      let last: [V3, V3] | null = null;
+      let last: [V3, V3, V3] | null = null;
       for (let i = 0; i <= steps; i++) {
         const t = i / steps;
         const x = f.ax + (f.bx - f.ax) * t;
         const z = f.az + (f.bz - f.az) * t;
         const ground = hLow(x + f.nx * 0.3, z + f.nz * 0.3) - 0.3;
-        const top = h(x - f.nx * 6, z - f.nz * 6) - DRESS.slab + 0.05;
+        const top = seatAt(x, z, f);
         const lo = { x, y: ground, z };
-        const hi = { x, y: Math.max(ground + 0.05, top), z };
-        if (last) flat(concrete, [last[0], lo, hi, last[1]], TINT.culvert, vertical, height);
-        last = [lo, hi];
+        const hi = { x, y: Math.max(ground + 0.05, top - bevel), z };
+        const cope = { x: ia.x + (ib.x - ia.x) * t, y: Math.max(hi.y + 0.05, top), z: ia.z + (ib.z - ia.z) * t };
+        if (last) {
+          flat(concrete, [last[0], lo, hi, last[1]], TINT.culvert, vertical, height);
+          facing(concrete, [last[1], hi, cope, last[2]], TINT.plinth, f.nx, 1, f.nz, vertical, height);
+        }
+        last = [lo, hi, cope];
+        if (i === 0) cap.push(cope);
       }
       // The face toward the floor carries an arched recess and a lamp over it, as a culvert mouth.
       if (lFace(p, f) < F + CITY.districts.river.abutment + 0.5 && len > 10) {
@@ -501,11 +588,14 @@ function buildChannel(kit: DistrictKit, a: Area): void {
           const cx = f.ax + (f.bx - f.ax) * t;
           const cz = f.az + (f.bz - f.az) * t;
           const floor = hLow(cx + f.nx * 0.5, cz + f.nz * 0.5);
-          decalQuad(decal, tex.arch, { x: cx - dx * 5, y: floor + 0.05, z: cz - dz * 5 }, { x: cx + dx * 5, y: floor + 0.05, z: cz + dz * 5 }, 3.4, f.nx, f.nz, 0.06);
-          lamp(kit, pools, cx + f.nx * 0.25, floor + 3.3, cz + f.nz * 0.25, f.nx, f.nz, 0.7, hLow);
+          const under = seatAt(cx, cz, f) - bevel - DRESS.abutLampDrop;
+          decalQuad(decal, tex.arch, { x: cx - dx * 5, y: floor + 0.05, z: cz - dz * 5 }, { x: cx + dx * 5, y: floor + 0.05, z: cz + dz * 5 }, Math.min(3.4, under - floor - 0.1), f.nx, f.nz, 0.06);
+          lamp(kit, pools, cx + f.nx * 0.25, under, cz + f.nz * 0.25, f.nx, f.nz, 0.7, hLow);
         }
       }
     }
+    // The top: the bearing seat the girders rest on, a shelf beside the deck over the bank.
+    if (cap.length === 4) facing(concrete, cap, TINT.plinth, 0, 1, 0);
   }
   // Lamps hung from the slab over the floor, two each side of the axis, facing the centerline.
   for (const br of bridges) {
@@ -663,9 +753,10 @@ function solidCenter(faces: Wall[]): Vec2 {
 
 /**
  * A deck's underside across the band: the slab (its bottom face and the two
- * edge faces up to the road), three girders along it. Seen from the channel
- * floor only; the road, sidewalks and parapets on top are the city's and the
- * kit's.
+ * edge faces up to the road) and the girders along it, one over every pier
+ * column of the bents beneath and one between each pair, so they land on the
+ * cap beams. Seen from the channel floor only; the road, sidewalks and
+ * parapets on top are the city's and the kit's.
  */
 function deckUnderside(gb: GeoBuilder, p: Record<string, number>, br: Bridge, T: number, h: (x: number, z: number) => number, flat: (gb: GeoBuilder, q: V3[], c: THREE.Color, u?: (v: V3) => number, v?: (w: V3) => number) => void): void {
   const L = T + 2.5;
@@ -699,9 +790,13 @@ function deckUnderside(gb: GeoBuilder, p: Record<string, number>, br: Bridge, T:
   strip(W, -W, slab, slab, TINT.slab);
   strip(-W, -W, road, slab, TINT.slab, vertical, height);
   strip(W, W, slab, road, TINT.slab, vertical, height);
-  // Girders: three box beams under the slab.
+  // Girders: box beams under the slab, over the columns and halfway between them.
   const g = DRESS.girderWidth / 2;
-  for (const w of [-(br.dk - 1.6), 0, br.dk - 1.6]) {
+  const columns = pierOffsets(br);
+  const reach = pierReach(br);
+  const girders: number[] = [];
+  for (let k = 0; k <= 2 * columns.length; k++) girders.push(-reach + ((2 * reach) * k) / (2 * columns.length));
+  for (const w of girders) {
     const low = (y: number) => y - DRESS.slab - DRESS.girder;
     strip(w + g, w - g, low, low, TINT.girder);
     strip(w - g, w - g, slab, low, TINT.girder, vertical, height);
