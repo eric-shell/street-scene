@@ -5,9 +5,12 @@
  * four two-post lifts hold other cars mid-build (one high, one at working
  * height with its front wheels off, a lamp hung under it and the jack beside
  * it, one just off its wheels), among workbenches, roll cabs with their
- * hutches, top chests and side lockers, tool lockers, utility carts, shelving,
- * tire racks, drums, a compressor, a tire changer and balancer, a welder and
- * an engine on the hoist. The
+ * hutches, top chests and side lockers, tool lockers, tool boards and wall
+ * cabinets, utility carts, shelving, tire racks, drums, a compressor, a tire
+ * changer and balancer, a welder, a parts washer, grinder, drill press, shop
+ * press and sandblast cabinet, the A/C and alignment machines, jacks and
+ * stands under the cars, reels hung from the trusses, the jobs board and a
+ * coffee corner under a beer sign, and an engine on the hoist. The
  * Street Scene logo is a neon sign on the back wall with a failing letter, one
  * of the battens is dying, and the light is mostly what the work throws: cool
  * tubes, a warm lamp under a car, the neon's spill on grimy block walls.
@@ -32,7 +35,56 @@ import type { PartSlot } from '../shared/parts';
 import type { Quality } from '../ui/settings';
 import { PALETTE } from '../ui/kit/palette';
 import { concreteTextures, hazardTexture, noise, plateTexture, shadowTexture, wallTexture } from './showroomTextures';
-import { GLOW, Kit, batten, carryBox, compressor, createMaterials, drum, engineHoist, extinguisher, jackAndStands, lift, locker, panels, rollCab, roof, shelving, tire, tireChanger, tireRack, toolChest, utilityCart, welder, wheelBalancer, workbench } from './showroomProps';
+import {
+  GLOW,
+  Kit,
+  acMachine,
+  alignmentConsole,
+  batten,
+  batteryCharger,
+  benchGrinder,
+  brakeBleeder,
+  carryBox,
+  ceilingReel,
+  clipboard,
+  coffeeCorner,
+  compressor,
+  createMaterials,
+  creeperSeat,
+  drillPress,
+  drum,
+  engineHoist,
+  extinguisher,
+  hydraulicPress,
+  jackAndStands,
+  laptopCart,
+  lift,
+  locker,
+  panels,
+  partsWasher,
+  ragBin,
+  rollCab,
+  rollingStool,
+  roof,
+  sandblaster,
+  shelving,
+  smokeMachine,
+  tire,
+  tireChanger,
+  tireRack,
+  toolBoard,
+  toolChest,
+  transmissionJack,
+  trashCan,
+  underhoistStand,
+  utilityCart,
+  wallCabinets,
+  welder,
+  wheelBalancer,
+  wheelBoxes,
+  whiteboard,
+  workbench,
+} from './showroomProps';
 import type { LiftFit } from './showroomProps';
 import { MAIN_SIGN, NEON, NeonSign, OPEN_SIGN } from './neonSign';
 import { Disposer } from '../render/disposer';
@@ -457,7 +509,10 @@ function floorLine(k: Kit, x0: number, z0: number, x1: number, z1: number): void
 /**
  * Everything round the lifts: the walls' benches, roll cabs, chests, lockers,
  * shelving, racks, drums and the compressor, the tire machines by the rack,
- * the welder and the carts, the hoist out on the floor, the work in progress
+ * the welder and the carts, the machines along the left wall, the tool
+ * boards, cabinets, jobs board and ceiling reels, the coffee corner, the
+ * jacks, stands, chargers and diagnostics at the lifts, the hoist out on the
+ * floor, the work in progress
  * by the lifts, bay lines, stains, and the cords and air line across the floor.
  * Returns boxes the camera keeps out of: [x, z, half x, half z, height].
  */
@@ -477,6 +532,12 @@ function workArea(k: Kit, m: Kit['m']): [number, number, number, number, number]
   locker(k, -3.45, -H + 0.32, 0, 0.95, m.red);
   locker(k, -2.47, -H + 0.32, 0, 0.95, m.red, true);
   welder(k, -1.25, -11.2, 0.15);
+  toolBoard(k, -5.4, 1.85, -H, 0, 1.8, 0.9);
+  acMachine(k, -7.3, -11.4, 0.2);
+  sandblaster(k, 1.5, -11.55, 0);
+  // The back right corner: the fridge with the coffee on it under the beer sign, a bin beside it.
+  coffeeCorner(k, 11.1, -11.68, 0);
+  trashCan(k, 11.68, -11.6, 0.24);
   // Left wall: tire stacks in the back corner, a chest under a pegboard between the lifts.
   for (const [x, z, n] of [
     [-11.3, -5.3, 5],
@@ -489,11 +550,22 @@ function workArea(k: Kit, m: Kit['m']): [number, number, number, number, number]
   // Left wall, front corner: a bank of black lockers.
   locker(k, -H + 0.32, 9.0, Y, 0.95, m.black);
   locker(k, -H + 0.32, 8.02, Y, 0.95, m.black, true);
+  // The machines along the left wall: parts washer and grinder by the tires, the press, a charger, the drill press.
+  partsWasher(k, -H + 0.32, -7.9, Y);
+  benchGrinder(k, -11.5, -6.5, Y);
+  hydraulicPress(k, -H + 0.3, -3.7, Y);
+  batteryCharger(k, -11.5, 2.75, Y);
+  drillPress(k, -11.55, 6.7, Y);
   // Front wall: shelving, drums in the corner, the compressor and its reel, the extinguisher by the door.
   shelving(k, -3.6, H - 0.32, Math.PI, 2.4, 2);
   shelving(k, -6.8, H - 0.32, Math.PI, 2.4, 3);
   // The gunmetal cab with its top chest and a locker each side, a cart pulled out by it; a blue locker by the drums.
-  rollCab(k, -0.4, H - 0.33, Math.PI, 1.8, m.gunmetal, m.drawersGunmetal, 'chest', 2);
+  rollCab(k, -0.4, H - 0.33, Math.PI, 1.8, m.gunmetal, m.drawersGunmetal, 'chest', 2, true);
+  whiteboard(k, -0.4, 2.55, H, Math.PI, 1.6, 0.9);
+  ragBin(k, 1.25, 10.85);
+  trashCan(k, -5.2, 10.85);
+  wheelBoxes(k, -7.0, 10.55, 3, m.boxKiba);
+  k.place(-7.05, 0.9, 10.5, 0.3).box(m.boxHayate, 0.5, 0.36, 0.4, 0, 0.18, 0);
   utilityCart(k, -2.6, 10.85, Math.PI + 0.3, m.red, 1);
   locker(k, -9.0, H - 0.32, Math.PI, 1.0, m.blue);
   drum(k, -10.9, 10.6, m.red);
@@ -515,6 +587,15 @@ function workArea(k: Kit, m: Kit['m']): [number, number, number, number, number]
   wheelBalancer(k, 10.3, 5.5, -Y);
   rollCab(k, H - 0.33, -9.6, -Y, 2.1, m.red, m.drawersRed, 'hutch', 1);
   utilityCart(k, 10.3, -7.1, -Y + 0.25, m.black, 0);
+  wallCabinets(k, H, 2.75, -9.32, -Y, 2.6, 4, m.red);
+  toolBoard(k, H, 1.55, -7.15, -Y, 1.2, 0.9);
+  rollingStool(k, 10.5, -8.9);
+  alignmentConsole(k, 9.2, 8.6, -Y - 0.5);
+  // Air on a reel over the bench, another between the back lifts and the table, a drop light on a cord over the second lift.
+  const chord = ROOM.height - 0.82;
+  ceilingReel(k, 8.6, 5.45, 0, chord, m.yellow, [8.8, 2.3, 0.15], 'air');
+  ceilingReel(k, -2.5, 5.45, -4.5, chord, m.yellow, [-2.3, 2.3, -4.3], 'air');
+  ceilingReel(k, 3.4, 5.45, -9, chord, m.orange, [3.3, 2.5, -8.9], 'lamp');
   extinguisher(k, H, -6.2, -Y);
   k.place().cyl(m.red, 0.24, 0.7, 11.4, 0.35, -5.0, 'y', 14);
   k.place().cyl(m.black, 0.18, 0.06, 9.9, 0.66, -1.5, 'y', 14);
@@ -528,6 +609,22 @@ function workArea(k: Kit, m: Kit['m']): [number, number, number, number, number]
   jackAndStands(k, l2.x + 1.6, l2.z + 2.8, -0.3);
   k.place(l2.x + 2.5, 0, l2.z + 1.7, 0.4);
   carryBox(k, m.red, 0, 0, 0);
+  clipboard(k, l2.x + 1.32, 1.45, l2.z + 0.18, 0);
+  // The laptop on its stand, wired in through the driver's window, the smoke machine by it.
+  const lap: [number, number, number] = [l2.x - 2.0, 1.0, l2.z + 0.9];
+  laptopCart(k, lap[0], lap[2], 0);
+  smokeMachine(k, lap[0] + 0.6, lap[2] + 0.5, 0.4);
+  k.place().hose(
+    m.black,
+    [
+      [lap[0] + 0.2, lap[1] + 0.03, lap[2] + 0.1],
+      [lap[0] + 0.45, 0.6, lap[2] - 0.1],
+      [l2.x - 1.1, l2.h + 0.5, l2.z - 0.2],
+      [l2.x - 0.8, l2.h + 0.9, l2.z - 0.3],
+    ],
+    0.008,
+    32,
+  );
   k.place().cyl(m.black, 0.36, 0.06, l2.x, 0.03, l2.z - 1.6, 'y', 18);
   const lamp: [number, number, number] = [l2.x - 0.4, 0.75, l2.z + 0.9];
   k.place().cyl(m.lamp, 0.035, 0.18, lamp[0], lamp[1], lamp[2], 'y', 10);
@@ -565,8 +662,9 @@ function workArea(k: Kit, m: Kit['m']): [number, number, number, number, number]
     80,
   );
   k.place().box(m.black, 0.12, 0.1, 0.28, -6.3, 0.06, 5.75, 0.5);
-  // The first lift: a new exhaust laid out under it.
+  // The first lift: a new exhaust laid out under it, a tall stand under the tail.
   const l1 = LIFTS[0];
+  underhoistStand(k, l1.x + 0.55, l1.z - 1.5, l1.h + 0.1);
   k.place().bar(m.chrome, [l1.x - 0.3, 0.06, l1.z - 1.9], [l1.x + 0.1, 0.06, l1.z + 1.2], 0.08);
   k.place().cyl(m.chrome, 0.14, 0.6, l1.x + 0.15, 0.14, l1.z + 1.6, 'z', 14);
   // The third: an oil drainer under the engine. The fourth: coilovers and boxed parts waiting to go in.
@@ -574,6 +672,8 @@ function workArea(k: Kit, m: Kit['m']): [number, number, number, number, number]
   k.place().cyl(m.yellow, 0.22, 0.4, l3.x + 1.4, 0.22, l3.z, 'y', 14);
   k.place().cyl(m.galv, 0.025, 1.0, l3.x + 1.4, 0.9, l3.z, 'y', 8);
   k.place().cyl(m.yellow, 0.3, 0.14, l3.x + 1.4, 1.42, l3.z, 'y', 16, 0.06);
+  transmissionJack(k, l3.x + 0.4, l3.z, Y, 1.5);
+  clipboard(k, l3.x + 0.18, 1.45, l3.z + 1.3, Y);
   const l4 = LIFTS[3];
   for (const [dx, dz] of [
     [2.5, -1.4],
@@ -582,12 +682,15 @@ function workArea(k: Kit, m: Kit['m']): [number, number, number, number, number]
     k.place().cyl(m.galv, 0.03, 0.55, l4.x + dx, 0.3, l4.z + dz, 'y', 8);
     for (let i = 0; i < 6; i++) k.place().add(m.yellow, new THREE.TorusGeometry(0.06, 0.012, 6, 14), l4.x + dx, 0.1 + i * 0.065, l4.z + dz, 0, Math.PI / 2);
   }
-  k.place().box(m.cardboard, 0.6, 0.4, 0.45, l4.x + 2.6, 0.2, l4.z + 1.9, 0.2);
+  k.place().box(m.boxKurogane, 0.6, 0.4, 0.45, l4.x + 2.6, 0.2, l4.z + 1.9, 0.2);
+  k.place().box(m.boxHayate, 0.45, 0.3, 0.4, l4.x + 2.6, 0.55, l4.z + 1.9, 0.5);
   k.place(l4.x + 2.4, 0, l4.z - 2.1, -0.5);
   carryBox(k, m.black, 0, 0, 0);
   // The third lift's cart, pulled up beside the drainer.
   utilityCart(k, l3.x + 2.3, l3.z + 1.2, Y + 0.2, m.blue, 2);
-  k.place().box(m.cardboard, 0.45, 0.3, 0.4, l4.x + 2.6, 0.55, l4.z + 1.9, 0.5);
+  // The fourth lift: the brake bleeder and a creeper seat by the front wheels.
+  brakeBleeder(k, l4.x + 2.9, l4.z + 0.6, 0.3);
+  creeperSeat(k, l4.x + 2.9, l4.z - 0.7, 0.6);
   // Bay lines round the lifts.
   floorLine(k, -8.1, -H, -8.1, -5.4);
   floorLine(k, -1.95, -H, -1.95, -5.4);
@@ -611,6 +714,8 @@ function workArea(k: Kit, m: Kit['m']): [number, number, number, number, number]
   return [
     [7.9, -5.0, 1.0, 1.0, 2.2],
     [l3.x + 2.3, l3.z + 1.2, 0.6, 0.6, 1.1],
+    [lap[0], lap[2], 0.4, 0.4, 1.3],
+    [l4.x + 2.9, l4.z + 0.6, 0.3, 0.3, 1.0],
   ];
 }
 

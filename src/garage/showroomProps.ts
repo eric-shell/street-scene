@@ -14,7 +14,7 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { deckTexture, doorTexture, drawerTexture, glowTexture, lineTexture, pegboardTexture, posterTexture, stainTexture } from './showroomTextures';
+import { beerSignTexture, deckTexture, doorTexture, drawerTexture, glowTexture, lineTexture, partsBoxTexture, pegboardTexture, posterTexture, stainTexture, whiteboardTexture, workOrderTexture } from './showroomTextures';
 import { PALETTE } from '../ui/kit/palette';
 import type { Disposable } from '../render/disposer';
 
@@ -61,6 +61,8 @@ export function createMaterials(track: <T extends Disposable>(x: T) => T, wallMa
     wood: std({ color: 0x3e3127, roughness: 0.85 }),
     stainless: std({ color: 0xa9adb3, roughness: 0.32, metalness: 0.85 }),
     gunmetal: std({ color: 0x3a3d44, roughness: 0.38, metalness: 0.45 }),
+    /** Appliance white: the fridge, gauge faces. */
+    enamel: std({ color: 0xd9d7d0, roughness: 0.4, metalness: 0.1 }),
     tubeOff: std({ color: 0x8d9096, roughness: 0.3 }),
     tube: basic(GLOW.tube.clone()),
     /** The dying batten's tubes: its own material so it can stutter. */
@@ -75,6 +77,13 @@ export function createMaterials(track: <T extends Disposable>(x: T) => T, wallMa
     poster0: std({ map: track(posterTexture('KUROGANE', 'AERO WORKS', PALETTE.orange, 0)), roughness: 0.8, transparent: true }),
     poster1: std({ map: track(posterTexture('HAYATE', 'NIGHT SERIES', PALETTE.cyan, 1)), roughness: 0.8, transparent: true }),
     poster2: std({ map: track(posterTexture('KIBA', 'FORGED WHEELS', PALETTE.yellow, 2)), roughness: 0.8, transparent: true }),
+    whiteboard: std({ map: track(whiteboardTexture()), roughness: 0.3 }),
+    workOrder: std({ map: track(workOrderTexture()), roughness: 0.9 }),
+    boxKurogane: std({ map: track(partsBoxTexture('KUROGANE', 'AERO WORKS', PALETTE.orange)), roughness: 0.95 }),
+    boxHayate: std({ map: track(partsBoxTexture('HAYATE', 'NIGHT SERIES', PALETTE.cyan)), roughness: 0.95 }),
+    boxKiba: std({ map: track(partsBoxTexture('KIBA', 'FORGED WHEELS', PALETTE.yellow)), roughness: 0.95 }),
+    /** The beer sign over the fridge: additive, so only its lines show, pushed past the bloom. */
+    beerSign: track(new THREE.MeshBasicMaterial({ map: track(beerSignTexture()), color: new THREE.Color(0xff5a3c).multiplyScalar(2.2), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })),
     line: decal(lineTexture(), 1, 0.85),
     stain: decal(stainTexture(), 2, 0.6),
     /** Sodium street light leaking under the roller door: additive, so it only ever brightens the floor. */
@@ -485,8 +494,9 @@ export type CabTop = 'chest' | 'hutch' | 'bare';
  * a stainless worktop, side lockers at either end (`lockers`: -1 the left, 1
  * the right, 2 both) and on top a chest of drawers, a hutch (pegboard back,
  * overhead cabinet, an LED strip over the worktop) or the tools in use.
+ * `open` leaves a drawer of the right bank pulled out with its wrenches.
  */
-export function rollCab(k: Kit, x: number, z: number, yaw: number, w: number, body: THREE.Material, fronts: THREE.Material, top: CabTop, lockers: -1 | 0 | 1 | 2 = 0): void {
+export function rollCab(k: Kit, x: number, z: number, yaw: number, w: number, body: THREE.Material, fronts: THREE.Material, top: CabTop, lockers: -1 | 0 | 1 | 2 = 0, open = false): void {
   const m = k.m;
   k.place(x, 0, z, yaw);
   const d = 0.62;
@@ -500,6 +510,18 @@ export function rollCab(k: Kit, x: number, z: number, yaw: number, w: number, bo
   k.box(body, w, h, d, 0, base + h / 2, 0);
   for (const s of [-1, 1]) k.plane(fronts, w / 2 - 0.05, h - 0.08, (s * w) / 4, base + h / 2, d / 2 + 0.002);
   k.box(m.chrome, w - 0.04, 0.016, 0.012, 0, base + h - 0.02, d / 2 + 0.006);
+  if (open) {
+    const bw = w / 2 - 0.08;
+    const fx = w / 4;
+    const dy = base + h - 0.3;
+    const out = 0.36;
+    k.plane(m.black, bw, 0.1, fx, dy, d / 2 + 0.004);
+    k.box(body, bw + 0.02, 0.1, 0.02, fx, dy, d / 2 + out);
+    k.box(m.chrome, bw * 0.9, 0.018, 0.02, fx, dy + 0.02, d / 2 + out + 0.02);
+    for (const s of [-1, 1]) k.box(m.steel, 0.01, 0.07, out, fx + (s * bw) / 2, dy - 0.005, d / 2 + out / 2);
+    k.box(m.rubber, bw, 0.01, out - 0.02, fx, dy - 0.04, d / 2 + out / 2);
+    for (let i = 0; i < 10; i++) k.box(m.chrome, 0.014, 0.008, 0.14 + i * 0.012, fx - bw / 2 + 0.04 + (i * (bw - 0.08)) / 9, dy - 0.03, d / 2 + out / 2, 0.15);
+  }
   // Side lockers: a tall door each, its handle and vents, as high as the chest when there is one.
   const lh = h + (chest ? 0.03 + chest : 0);
   for (const s of sides) {
@@ -821,4 +843,467 @@ function sprayCans(k: Kit, x: number, y: number, z: number, n: number): void {
     k.cyl(colors[i % 3], 0.032, 0.19, x + i * 0.075, y + 0.095, z, 'y', 10);
     k.cyl(m.galv, 0.024, 0.04, x + i * 0.075, y + 0.21, z, 'y', 8);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Walls and ceiling: tool boards, cabinets, the jobs board, reels
+// ---------------------------------------------------------------------------
+
+/**
+ * A louvred steel tool board on a wall, centered at height y along local x:
+ * a wrench rack of twelve, a screwdriver rack, hammers, pliers, ratchets and
+ * a magnetic socket rail, each hung where it belongs.
+ */
+export function toolBoard(k: Kit, x: number, y: number, z: number, yaw: number, w: number, h: number): void {
+  const m = k.m;
+  k.place(x, y, z, yaw);
+  k.box(m.gunmetal, w, h, 0.02, 0, 0, 0.01);
+  for (let i = 0; i < Math.floor(h / 0.09); i++) k.box(m.black, w - 0.08, 0.008, 0.004, 0, -h / 2 + 0.05 + i * 0.09, 0.022);
+  const top = h / 2 - 0.08;
+  // Wrenches, short to long, ring ends down.
+  const ww = w * 0.45;
+  k.box(m.black, ww, 0.02, 0.03, -w / 2 + 0.04 + ww / 2, top, 0.035);
+  for (let i = 0; i < 12; i++) {
+    const len = 0.12 + i * 0.016;
+    const wx = -w / 2 + 0.07 + (i * (ww - 0.06)) / 11;
+    k.box(m.chrome, 0.016, len, 0.006, wx, top - 0.01 - len / 2, 0.04);
+    k.cyl(m.chrome, 0.014 + i * 0.0008, 0.008, wx, top - 0.01 - len, 0.04, 'z', 10);
+  }
+  // Screwdrivers through their rack, handles up.
+  const sx = w * 0.18;
+  const sw = w * 0.32;
+  k.box(m.black, sw, 0.02, 0.06, sx, top, 0.05);
+  const handles = [m.red, m.yellow, m.black, m.blue, m.red, m.yellow, m.black, m.red, m.blue];
+  handles.forEach((mat, i) => {
+    const px = sx - sw / 2 + 0.03 + (i * (sw - 0.06)) / 8;
+    k.cyl(mat, 0.013, 0.09, px, top + 0.055, 0.055, 'y', 8);
+    const len = 0.1 + (i % 3) * 0.04;
+    k.cyl(m.chrome, 0.004, len, px, top - 0.01 - len / 2, 0.055, 'y', 5);
+  });
+  // Lower left: hammers hung by their heads, pliers in a V, two ratchets.
+  const low = -h / 2 + 0.12;
+  for (let i = 0; i < 3; i++) {
+    const hx = -w / 2 + 0.1 + i * 0.11;
+    k.box(m.wood, 0.025, 0.28 - i * 0.03, 0.025, hx, low + 0.14, 0.04);
+    k.box(m.steel, 0.1 - i * 0.015, 0.035, 0.035, hx, low + 0.29 - i * 0.03, 0.045);
+  }
+  for (let i = 0; i < 3; i++) {
+    const px = -w / 2 + 0.48 + i * 0.09;
+    for (const s of [-1, 1]) k.box(m.red, 0.014, 0.16, 0.01, px + s * 0.018, low + 0.09, 0.035, 0, 0, s * 0.12);
+    k.box(m.chrome, 0.02, 0.06, 0.012, px, low + 0.2, 0.035);
+  }
+  for (let i = 0; i < 2; i++) {
+    const rx = -0.05 + i * 0.09;
+    k.box(m.chrome, 0.016, 0.24 + i * 0.06, 0.008, rx, low + 0.12 + i * 0.03, 0.035);
+    k.cyl(m.chrome, 0.024, 0.016, rx, low + 0.26 + i * 0.06, 0.04, 'z', 12);
+  }
+  // Lower right: a magnetic rail of sockets standing out of the board.
+  const rx0 = w * 0.12;
+  const rw = w * 0.36;
+  k.box(m.red, rw, 0.03, 0.012, rx0 + rw / 2, low + 0.06, 0.028);
+  for (let i = 0; i < 10; i++) k.cyl(m.chrome, 0.012 + i * 0.0015, 0.04 + i * 0.002, rx0 + 0.03 + (i * (rw - 0.06)) / 9, low + 0.06, 0.06, 'z', 8);
+  k.box(m.black, rw, 0.02, 0.03, rx0 + rw / 2, low + 0.22, 0.035);
+  for (let i = 0; i < 6; i++) k.box(m.chrome, 0.02, 0.09 + i * 0.012, 0.012, rx0 + 0.04 + (i * (rw - 0.08)) / 5, low + 0.21 - (0.09 + i * 0.012) / 2, 0.04);
+}
+
+/** A run of wall cabinets centered at height y along local x: n doors with their seams and handles, a light strip under them. */
+export function wallCabinets(k: Kit, x: number, y: number, z: number, yaw: number, w: number, n: number, body: THREE.Material): void {
+  const m = k.m;
+  k.place(x, y, z, yaw);
+  const d = 0.36;
+  k.box(body, w, 0.6, d, 0, 0, d / 2);
+  for (let i = 1; i < n; i++) k.box(m.black, 0.008, 0.58, 0.006, -w / 2 + (i * w) / n, 0, d + 0.003);
+  for (let i = 0; i < n; i++) k.box(m.chrome, 0.02, 0.14, 0.025, -w / 2 + ((i + 0.5) * w) / n + (i % 2 ? -1 : 1) * (w / n / 2 - 0.06), -0.18, d + 0.012);
+  k.box(m.tube, w - 0.12, 0.012, 0.025, 0, -0.306, d - 0.06);
+}
+
+/** The jobs whiteboard centered at height y on a wall: aluminium frame, the board, the marker tray with markers and an eraser. */
+export function whiteboard(k: Kit, x: number, y: number, z: number, yaw: number, w: number, h: number): void {
+  const m = k.m;
+  k.place(x, y, z, yaw);
+  k.box(m.galv, w + 0.04, h + 0.04, 0.02, 0, 0, 0.01);
+  k.plane(m.whiteboard, w, h, 0, 0, 0.021);
+  k.box(m.galv, w * 0.6, 0.02, 0.06, 0, -h / 2 - 0.02, 0.04);
+  [m.blue, m.red, m.black].forEach((c, i) => k.cyl(c, 0.008, 0.12, -0.1 + i * 0.05, -h / 2 - 0.002, 0.05, 'x', 6));
+  k.box(m.black, 0.12, 0.03, 0.045, 0.2, -h / 2 + 0.005, 0.045);
+}
+
+/** A clipboard with a work order on it, hung at (x, y, z) facing local +z. */
+export function clipboard(k: Kit, x: number, y: number, z: number, yaw: number): void {
+  const m = k.m;
+  k.place(x, y, z, yaw);
+  k.box(m.wood, 0.24, 0.32, 0.008, 0, 0, 0.004);
+  k.plane(m.workOrder, 0.21, 0.29, 0, -0.01, 0.0095);
+  k.box(m.chrome, 0.1, 0.03, 0.012, 0, 0.15, 0.012);
+}
+
+/**
+ * A reel hung from the roof truss at height `y` (its center): the bracket up
+ * to the chord at `chord`, the reel's flanges and drum with the line wound on
+ * it, and the line run down to `end` (room space) with an air coupler and its
+ * stop ball, or a caged drop light glowing at the end of a cord.
+ */
+export function ceilingReel(k: Kit, x: number, y: number, z: number, chord: number, line: THREE.Material, end: Vec, kind: 'air' | 'lamp'): void {
+  const m = k.m;
+  k.place();
+  k.box(m.steel, 0.06, chord - y, 0.06, x, (chord + y) / 2, z);
+  k.box(m.steel, 0.3, 0.03, 0.12, x, chord - 0.015, z);
+  for (const s of [-1, 1]) {
+    k.cyl(m.steel, 0.24, 0.015, x + s * 0.09, y, z, 'x', 18);
+    k.box(m.steel, 0.02, 0.12, 0.04, x + s * 0.09, y + 0.1, z);
+  }
+  k.cyl(line, 0.17, 0.16, x, y, z, 'x', 16);
+  k.cyl(m.galv, 0.06, 0.24, x, y, z, 'x', 8);
+  const [ex, ey, ez] = end;
+  k.hose(line, [[x, y - 0.17, z + 0.05], [x + (ex - x) * 0.3, y - 0.6, z + (ez - z) * 0.3], [ex, (y + ey) / 2, ez], [ex, ey, ez]], kind === 'air' ? 0.012 : 0.01, 40);
+  if (kind === 'air') {
+    k.cyl(m.yellow, 0.035, 0.05, ex, ey + 0.22, ez, 'y', 10);
+    k.cyl(m.chrome, 0.012, 0.08, ex, ey - 0.04, ez, 'y', 8);
+  } else {
+    k.cyl(m.lamp, 0.035, 0.2, ex, ey - 0.12, ez, 'y', 10);
+    for (const a of [0, 1.57, 3.14, 4.71]) k.box(m.galv, 0.008, 0.22, 0.008, ex + Math.cos(a) * 0.05, ey - 0.12, ez + Math.sin(a) * 0.05);
+    k.cyl(m.rubber, 0.03, 0.08, ex, ey - 0.01, ez, 'y', 10);
+    k.box(m.galv, 0.012, 0.14, 0.04, ex, ey + 0.06, ez + 0.04);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Shop machines
+// ---------------------------------------------------------------------------
+
+/** A parts washer against a wall, facing local +z: the red base, the sink with its solvent, the lid propped open, the flex tap and a brush. */
+export function partsWasher(k: Kit, x: number, z: number, yaw: number): void {
+  const m = k.m;
+  k.place(x, 0, z, yaw);
+  k.box(m.red, 0.9, 0.62, 0.55, 0, 0.31, 0);
+  k.box(m.galv, 0.96, 0.22, 0.6, 0, 0.73, 0);
+  k.box(m.carbon, 0.88, 0.01, 0.52, 0, 0.8, 0);
+  k.box(m.galv, 0.96, 0.6, 0.02, 0, 1.12, -0.33, 0, -0.14);
+  k.bar(m.steel, [0.42, 0.84, -0.28], [0.42, 1.38, -0.4], 0.008);
+  k.hose(m.chrome, [[0.36, 0.84, -0.27], [0.36, 1.06, -0.2], [0.3, 1.02, 0.0], [0.26, 0.9, 0.06]], 0.012, 16);
+  k.box(m.yellow, 0.05, 0.04, 0.24, -0.25, 0.86, 0.1, 0.4);
+  k.box(m.black, 0.2, 0.16, 0.16, 0.25, 0.4, 0.28);
+  k.box(m.yellow, 0.18, 0.1, 0.004, -0.2, 0.45, 0.277);
+}
+
+/** A bench grinder on its pedestal: base, column, motor, two stones under their guards with rests and eye shields, a quench pot. */
+export function benchGrinder(k: Kit, x: number, z: number, yaw: number): void {
+  const m = k.m;
+  k.place(x, 0, z, yaw);
+  k.box(m.cast, 0.4, 0.03, 0.4, 0, 0.015, 0);
+  k.cyl(m.cast, 0.045, 0.95, 0, 0.5, 0, 'y', 10);
+  k.box(m.cast, 0.24, 0.02, 0.2, 0, 0.98, 0);
+  k.cyl(m.gunmetal, 0.08, 0.26, 0, 1.08, 0, 'x', 14);
+  k.box(m.black, 0.06, 0.04, 0.04, 0, 1.0, 0.1);
+  for (const s of [-1, 1]) {
+    k.cyl(m.primer, 0.075, 0.03, s * 0.19, 1.08, 0, 'x', 18);
+    k.box(m.gunmetal, 0.05, 0.06, 0.18, s * 0.19, 1.16, -0.01);
+    k.box(m.gunmetal, 0.05, 0.12, 0.04, s * 0.19, 1.09, -0.09);
+    k.box(m.cast, 0.05, 0.01, 0.06, s * 0.19, 1.03, 0.1);
+    k.box(m.carbon, 0.08, 0.06, 0.005, s * 0.19, 1.22, 0.08, 0, -0.5);
+  }
+  k.cyl(m.galv, 0.06, 0.1, 0.16, 0.99, 0.05, 'y', 10);
+}
+
+/** A floor drill press: base, column, the table on its collar with a vise, the head and belt cover, motor behind, quill, chuck and the feed handles. */
+export function drillPress(k: Kit, x: number, z: number, yaw: number): void {
+  const m = k.m;
+  k.place(x, 0, z, yaw);
+  k.box(m.gunmetal, 0.45, 0.06, 0.6, 0, 0.03, -0.05);
+  k.cyl(m.chrome, 0.04, 1.55, 0, 0.83, -0.2, 'y', 12);
+  k.cyl(m.gunmetal, 0.07, 0.1, 0, 0.75, -0.2, 'y', 12);
+  k.box(m.gunmetal, 0.08, 0.05, 0.25, 0, 0.75, -0.06);
+  k.cyl(m.gunmetal, 0.15, 0.04, 0, 0.79, 0.08, 'y', 18);
+  k.box(m.blue, 0.14, 0.07, 0.1, 0, 0.845, 0.08);
+  k.box(m.gunmetal, 0.22, 0.26, 0.42, 0, 1.5, -0.08);
+  k.box(m.gunmetal, 0.26, 0.1, 0.5, 0, 1.68, -0.1);
+  k.cyl(m.gunmetal, 0.08, 0.24, 0, 1.52, -0.42, 'y', 12);
+  k.cyl(m.chrome, 0.03, 0.14, 0, 1.31, 0.06, 'y', 10);
+  k.cyl(m.chrome, 0.015, 0.07, 0, 1.21, 0.06, 'y', 10, 0.026);
+  k.cyl(m.steel, 0.004, 0.08, 0, 1.13, 0.06, 'y', 5);
+  for (const a of [0.4, 2.5, 4.6]) k.bar(m.chrome, [0.12, 1.45, -0.04], [0.12, 1.45 + Math.sin(a) * 0.2, -0.04 + Math.cos(a) * 0.2], 0.012);
+  k.box(m.yellow, 0.05, 0.07, 0.02, -0.07, 1.55, 0.135);
+}
+
+/** A hydraulic shop press: the red H-frame, its bed on pins with V-blocks, the bottle ram, the pump and handle, the gauge. */
+export function hydraulicPress(k: Kit, x: number, z: number, yaw: number): void {
+  const m = k.m;
+  k.place(x, 0, z, yaw);
+  for (const s of [-1, 1]) {
+    k.box(m.red, 0.08, 1.8, 0.12, s * 0.42, 0.9, 0);
+    k.box(m.red, 0.1, 0.06, 0.5, s * 0.42, 0.03, 0);
+    k.cyl(m.chrome, 0.015, 0.18, s * 0.42, 0.63, 0, 'z', 8);
+    k.box(m.cast, 0.14, 0.08, 0.12, s * 0.12, 0.82, 0);
+  }
+  for (const dz of [-0.05, 0.05]) {
+    k.box(m.red, 0.92, 0.12, 0.03, 0, 1.75, dz);
+    k.box(m.red, 0.8, 0.12, 0.03, 0, 0.72, dz);
+  }
+  k.cyl(m.black, 0.06, 0.3, 0, 1.54, 0, 'y', 12);
+  k.cyl(m.chrome, 0.035, 0.22, 0, 1.29, 0, 'y', 10);
+  k.box(m.black, 0.12, 0.1, 0.2, 0.56, 0.9, 0);
+  k.bar(m.chrome, [0.56, 0.95, 0.05], [0.8, 1.3, 0.25], 0.015);
+  k.cyl(m.enamel, 0.045, 0.02, 0.2, 1.75, 0.07, 'z', 14);
+  k.hose(m.rubber, [[0.56, 0.95, -0.08], [0.5, 1.3, -0.1], [0.1, 1.62, -0.08]], 0.01, 16);
+}
+
+/** A sandblast cabinet on legs facing local +z: hopper, cabinet, the slanted window, glove ports with the gloves, side door, the dust collector and its hose. */
+export function sandblaster(k: Kit, x: number, z: number, yaw: number): void {
+  const m = k.m;
+  k.place(x, 0, z, yaw);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) k.box(m.gunmetal, 0.04, 0.82, 0.04, sx * 0.5, 0.41, sz * 0.34);
+  k.add(m.gunmetal, new THREE.CylinderGeometry(0.42, 0.06, 0.3, 4), 0, 0.66, 0, Math.PI / 4);
+  k.box(m.gunmetal, 1.1, 0.6, 0.78, 0, 1.1, 0);
+  k.box(m.gunmetal, 1.1, 0.32, 0.51, 0, 1.56, -0.135);
+  k.box(m.gunmetal, 1.1, 0.42, 0.04, 0, 1.56, 0.255, 0, -0.7);
+  k.box(m.carbon, 0.8, 0.28, 0.01, 0, 1.56 + 0.025 * Math.sin(0.7), 0.255 + 0.025 * Math.cos(0.7), 0, -0.7);
+  for (const s of [-1, 1]) {
+    k.cyl(m.rubber, 0.08, 0.02, s * 0.22, 1.12, 0.395, 'z', 14);
+    k.box(m.rubber, 0.1, 0.16, 0.05, s * 0.22, 0.98, 0.41, 0, 0.3);
+  }
+  k.box(m.black, 0.01, 0.42, 0.52, 0.555, 1.1, 0);
+  k.box(m.black, 0.16, 0.04, 0.2, 0.2, 0.02, 0.4);
+  k.cyl(m.gunmetal, 0.2, 0.6, 0.82, 0.3, -0.1, 'y', 14);
+  k.box(m.black, 0.42, 0.04, 0.42, 0.82, 0.62, -0.1);
+  k.hose(m.rubber, [[0.82, 0.64, -0.1], [0.8, 1.1, -0.25], [0.5, 1.4, -0.38]], 0.04, 16);
+}
+
+/** An A/C recovery machine on its wheels facing local +z: the cabinet, control panel with two gauges and a readout, the red and blue hoses coiled on its hooks. */
+export function acMachine(k: Kit, x: number, z: number, yaw: number): void {
+  const m = k.m;
+  k.place(x, 0, z, yaw);
+  k.box(m.blue, 0.55, 0.95, 0.55, 0, 0.63, 0);
+  k.box(m.enamel, 0.55, 0.06, 0.55, 0, 1.13, 0);
+  k.box(m.black, 0.48, 0.34, 0.01, 0, 0.9, 0.28, 0, -0.15);
+  for (const s of [-1, 1]) {
+    k.cyl(m.chrome, 0.07, 0.03, s * 0.12, 0.92, 0.29, 'z', 16);
+    k.cyl(m.enamel, 0.06, 0.032, s * 0.12, 0.92, 0.29, 'z', 16);
+    k.cyl(m.rubber, 0.1, 0.06, s * 0.22, 0.1, -0.2, 'x', 14);
+    caster(k, s * 0.2, 0.2, 0.15);
+  }
+  k.plane(m.screen, 0.14, 0.06, 0, 0.79, 0.296, 0, -0.15);
+  k.box(m.black, 0.55, 0.03, 0.55, 0, 0.16, 0);
+  for (const [s, c] of [
+    [-1, m.red],
+    [1, m.blue],
+  ] as const) {
+    k.box(m.steel, 0.03, 0.03, 0.08, s * 0.29, 0.98, 0);
+    k.add(c, new THREE.TorusGeometry(0.16, 0.012, 6, 24), s * 0.3, 0.84, 0, Math.PI / 2);
+    k.cyl(m.chrome, 0.015, 0.06, s * 0.3, 0.66, 0.02, 'y', 8);
+  }
+  k.bar(m.chrome, [-0.2, 1.16, -0.28], [-0.2, 1.36, -0.32], 0.02);
+  k.bar(m.chrome, [0.2, 1.16, -0.28], [0.2, 1.36, -0.32], 0.02);
+  k.cyl(m.chrome, 0.015, 0.4, 0, 1.36, -0.32, 'x', 8);
+}
+
+/** An alignment console facing local +z: cabinet on casters, the monitor on its arm, keyboard tray, printer, the wheel targets hung on its sides. */
+export function alignmentConsole(k: Kit, x: number, z: number, yaw: number): void {
+  const m = k.m;
+  k.place(x, 0, z, yaw);
+  k.box(m.gunmetal, 0.9, 0.8, 0.6, 0, 0.53, 0);
+  k.box(m.black, 0.8, 0.02, 0.006, 0, 0.62, 0.303);
+  k.box(m.chrome, 0.3, 0.02, 0.02, 0, 0.75, 0.31);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) caster(k, sx * 0.38, sz * 0.24, 0.13);
+  k.box(m.black, 0.6, 0.03, 0.26, 0, 0.98, 0.38);
+  k.box(m.black, 0.5, 0.015, 0.16, 0, 1.0, 0.38);
+  k.box(m.black, 0.32, 0.14, 0.26, 0.24, 1.0, -0.12);
+  k.plane(m.enamel, 0.22, 0.004, 0.24, 1.071, -0.08, 0, -Math.PI / 2);
+  k.box(m.gunmetal, 0.06, 0.5, 0.06, -0.15, 1.18, -0.2);
+  k.box(m.black, 0.62, 0.4, 0.05, -0.15, 1.55, -0.16, 0, -0.08);
+  k.plane(m.screen, 0.56, 0.34, -0.15, 1.55 + 0.026 * Math.sin(0.08), -0.16 + 0.026 * Math.cos(0.08), 0, -0.08);
+  for (const s of [-1, 1])
+    for (let i = 0; i < 2; i++) {
+      k.box(m.black, 0.04, 0.26, 0.26, s * (0.47 + i * 0.05), 0.65, 0.12 - i * 0.24);
+      k.box(m.yellow, 0.042, 0.1, 0.1, s * (0.47 + i * 0.05), 0.65, 0.12 - i * 0.24);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Round the lifts: jacks, stands, chargers, diagnostics
+// ---------------------------------------------------------------------------
+
+/** A transmission jack with its saddle at height `top`: the H base on casters, the ram, the saddle and its arms, pedal and handles. */
+export function transmissionJack(k: Kit, x: number, z: number, yaw: number, top: number): void {
+  const m = k.m;
+  k.place(x, 0, z, yaw);
+  for (const s of [-1, 1]) {
+    k.box(m.red, 0.06, 0.06, 0.9, s * 0.3, 0.12, 0);
+    for (const e of [-1, 1]) caster(k, s * 0.3, e * 0.4, 0.09);
+    k.bar(m.chrome, [s * 0.1, 0.5, 0.05], [s * 0.18, 1.0, 0.25], 0.02);
+  }
+  k.box(m.red, 0.66, 0.06, 0.08, 0, 0.12, 0);
+  k.cyl(m.red, 0.06, 0.42, 0, 0.36, 0, 'y', 12);
+  k.cyl(m.chrome, 0.04, top - 0.62, 0, (top + 0.52) / 2, 0, 'y', 10);
+  k.box(m.red, 0.42, 0.03, 0.36, 0, top, 0);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) k.box(m.red, 0.03, 0.12, 0.03, sx * 0.19, top + 0.06, sz * 0.16);
+  k.box(m.black, 0.1, 0.03, 0.22, 0.18, 0.17, -0.3);
+}
+
+/** A tall under-hoist stand holding a car on the lift at height `top`: tripod legs, the tube, its screw and the rubber cup. */
+export function underhoistStand(k: Kit, x: number, z: number, top: number): void {
+  const m = k.m;
+  k.place(x, 0, z, 0);
+  for (let i = 0; i < 3; i++) {
+    const a = (i * Math.PI * 2) / 3 + 0.3;
+    k.bar(m.yellow, [Math.cos(a) * 0.36, 0.02, Math.sin(a) * 0.36], [0, 0.42, 0], 0.035);
+  }
+  k.cyl(m.yellow, 0.035, top - 0.62, 0, (top + 0.22) / 2, 0, 'y', 10);
+  k.cyl(m.chrome, 0.02, 0.24, 0, top - 0.14, 0, 'y', 8);
+  k.cyl(m.rubber, 0.06, 0.04, 0, top - 0.02, 0, 'y', 12);
+}
+
+/** A battery charger on its wheels: the red case, the meter, the handle, the clamped leads coiled over it. */
+export function batteryCharger(k: Kit, x: number, z: number, yaw: number): void {
+  const m = k.m;
+  k.place(x, 0, z, yaw);
+  k.box(m.red, 0.38, 0.5, 0.3, 0, 0.42, 0);
+  k.box(m.black, 0.3, 0.22, 0.01, 0, 0.52, 0.155);
+  k.cyl(m.enamel, 0.06, 0.012, -0.06, 0.55, 0.16, 'z', 14);
+  for (const dx of [0.07, 0.12]) k.cyl(m.chrome, 0.015, 0.02, dx, 0.5, 0.165, 'z', 8);
+  for (const s of [-1, 1]) {
+    k.cyl(m.rubber, 0.1, 0.05, s * 0.22, 0.1, -0.08, 'x', 14);
+    k.bar(m.chrome, [s * 0.17, 0.6, -0.15], [s * 0.17, 0.95, -0.2], 0.02);
+  }
+  k.cyl(m.black, 0.02, 0.38, 0, 0.95, -0.2, 'x', 8);
+  k.box(m.steel, 0.3, 0.03, 0.06, 0, 0.18, 0.15);
+  for (const [s, c] of [
+    [-1, m.red],
+    [1, m.black],
+  ] as const) {
+    k.add(c, new THREE.TorusGeometry(0.11, 0.012, 6, 20), s * 0.08, 0.84, -0.2);
+    k.box(c, 0.04, 0.1, 0.03, s * 0.08, 0.7, -0.17);
+  }
+}
+
+/** A pressure brake bleeder on its dolly: the yellow tank, pump and gauge on top, the line coiled with its reservoir cap. */
+export function brakeBleeder(k: Kit, x: number, z: number, yaw: number): void {
+  const m = k.m;
+  k.place(x, 0, z, yaw);
+  k.box(m.steel, 0.4, 0.03, 0.4, 0, 0.08, 0);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) caster(k, sx * 0.15, sz * 0.15, 0.065);
+  k.cyl(m.yellow, 0.16, 0.44, 0, 0.32, 0, 'y', 16);
+  k.add(m.yellow, new THREE.SphereGeometry(0.16, 14, 6, 0, Math.PI * 2, 0, Math.PI / 2), 0, 0.54, 0);
+  k.cyl(m.chrome, 0.02, 0.24, 0, 0.78, 0, 'y', 8);
+  k.cyl(m.black, 0.02, 0.18, 0, 0.9, 0, 'x', 8);
+  k.cyl(m.chrome, 0.04, 0.02, 0.1, 0.66, 0.06, 'z', 12);
+  k.add(m.rubber, new THREE.TorusGeometry(0.14, 0.01, 6, 20), 0, 0.4, 0.17);
+  k.cyl(m.black, 0.04, 0.03, 0.16, 0.12, 0.24, 'y', 12);
+}
+
+/** A diagnostic laptop on a rolling stand: five-star base on casters, the pole, the tray, the laptop open on the live data and the interface box. */
+export function laptopCart(k: Kit, x: number, z: number, yaw: number): void {
+  const m = k.m;
+  k.place(x, 0, z, yaw);
+  for (let i = 0; i < 5; i++) {
+    const a = (i * Math.PI * 2) / 5;
+    k.bar(m.black, [0, 0.12, 0], [Math.cos(a) * 0.3, 0.1, Math.sin(a) * 0.3], 0.03);
+    caster(k, Math.cos(a) * 0.3, Math.sin(a) * 0.3, 0.08);
+  }
+  k.cyl(m.chrome, 0.025, 0.86, 0, 0.55, 0, 'y', 10);
+  k.box(m.black, 0.46, 0.02, 0.36, 0, 0.99, 0);
+  k.box(m.black, 0.36, 0.02, 0.25, 0, 1.01, 0.02);
+  k.box(m.black, 0.36, 0.24, 0.012, 0, 1.13, -0.11, 0, -0.25);
+  k.plane(m.screen, 0.32, 0.2, 0, 1.13 + 0.007 * Math.sin(0.25), -0.11 + 0.007 * Math.cos(0.25), 0, -0.25);
+  k.box(m.yellow, 0.1, 0.04, 0.16, 0.2, 1.02, 0.1);
+}
+
+/** A smoke machine for finding leaks, on the floor: its case, handle, gauge and the clear line coiled beside it. */
+export function smokeMachine(k: Kit, x: number, z: number, yaw: number): void {
+  const m = k.m;
+  k.place(x, 0, z, yaw);
+  k.box(m.yellow, 0.34, 0.24, 0.22, 0, 0.12, 0);
+  k.box(m.black, 0.34, 0.03, 0.22, 0, 0.255, 0);
+  k.bar(m.black, [-0.12, 0.27, 0], [-0.12, 0.36, 0], 0.02);
+  k.bar(m.black, [0.12, 0.27, 0], [0.12, 0.36, 0], 0.02);
+  k.cyl(m.black, 0.015, 0.26, 0, 0.36, 0, 'x', 8);
+  k.cyl(m.enamel, 0.035, 0.012, -0.08, 0.15, 0.112, 'z', 12);
+  k.add(m.galv, new THREE.TorusGeometry(0.12, 0.01, 6, 20), 0.32, 0.012, 0.05, 0, Math.PI / 2);
+}
+
+// ---------------------------------------------------------------------------
+// Seats, bins, boxes and the coffee corner
+// ---------------------------------------------------------------------------
+
+/** A rolling shop stool: five-star base on casters, gas column, foot ring and the round seat. */
+export function rollingStool(k: Kit, x: number, z: number): void {
+  const m = k.m;
+  k.place(x, 0, z, 0);
+  for (let i = 0; i < 5; i++) {
+    const a = (i * Math.PI * 2) / 5 + 0.4;
+    k.bar(m.chrome, [0, 0.1, 0], [Math.cos(a) * 0.26, 0.08, Math.sin(a) * 0.26], 0.025);
+    caster(k, Math.cos(a) * 0.26, Math.sin(a) * 0.26, 0.07);
+  }
+  k.cyl(m.black, 0.03, 0.3, 0, 0.25, 0, 'y', 10);
+  k.cyl(m.chrome, 0.02, 0.14, 0, 0.45, 0, 'y', 8);
+  k.add(m.chrome, new THREE.TorusGeometry(0.17, 0.01, 6, 20), 0, 0.3, 0, 0, Math.PI / 2);
+  k.cyl(m.black, 0.18, 0.08, 0, 0.55, 0, 'y', 18);
+}
+
+/** A creeper seat: the low frame on four casters, the parts tray under it, the post and the seat. */
+export function creeperSeat(k: Kit, x: number, z: number, yaw: number): void {
+  const m = k.m;
+  k.place(x, 0, z, yaw);
+  k.box(m.steel, 0.4, 0.03, 0.5, 0, 0.11, 0);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) caster(k, sx * 0.16, sz * 0.21, 0.095);
+  k.box(m.red, 0.38, 0.02, 0.3, 0, 0.14, 0.04);
+  for (const s of [-1, 1]) k.box(m.red, 0.38, 0.04, 0.012, 0, 0.17, 0.04 + s * 0.15);
+  k.cyl(m.chrome, 0.025, 0.28, 0, 0.27, -0.12, 'y', 8);
+  k.box(m.black, 0.32, 0.07, 0.3, 0, 0.44, -0.08);
+  for (let i = 0; i < 4; i++) k.cyl(m.chrome, 0.012, 0.03, -0.1 + i * 0.06, 0.165, 0.08, 'y', 8);
+}
+
+/** A big grey shop bin with rags spilling over its rim. */
+export function trashCan(k: Kit, x: number, z: number, r = 0.28): void {
+  const m = k.m;
+  k.place(x, 0, z, 0);
+  k.cyl(m.primer, r, 0.85, 0, 0.425, 0, 'y', 18, r * 0.85);
+  k.add(m.primer, new THREE.TorusGeometry(r, 0.02, 6, 20), 0, 0.85, 0, 0, Math.PI / 2);
+  k.box(m.orange, r * 1.1, 0.08, r * 0.8, 0.04, 0.86, 0.02, 0.5, 0.2);
+  k.box(m.cardboard, r * 0.8, 0.06, r * 0.6, -0.06, 0.88, -0.05, -0.3, -0.15);
+}
+
+/** A red oily-rag can with its domed lid and foot pedal. */
+export function ragBin(k: Kit, x: number, z: number): void {
+  const m = k.m;
+  k.place(x, 0, z, 0);
+  k.cyl(m.red, 0.2, 0.5, 0, 0.26, 0, 'y', 16);
+  k.add(m.red, new THREE.SphereGeometry(0.205, 16, 5, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.35, 1), 0, 0.51, 0);
+  k.box(m.black, 0.12, 0.03, 0.12, 0, 0.04, 0.24);
+  k.box(m.yellow, 0.14, 0.08, 0.004, 0, 0.3, 0.201);
+}
+
+/** A stack of wheel boxes, flat squares a little askew, the brand on each. */
+export function wheelBoxes(k: Kit, x: number, z: number, n: number, mat: THREE.Material): void {
+  k.place(x, 0, z, 0);
+  for (let i = 0; i < n; i++) k.box(mat, 0.72, 0.3, 0.72, (i % 2) * 0.04, 0.15 + i * 0.3, -(i % 3) * 0.03, i * 0.12 - 0.1);
+}
+
+/**
+ * The coffee corner against a wall: a mini fridge with its stickers and the
+ * coffee maker, mugs and a towel roll on top, the beer sign on the wall over it.
+ */
+export function coffeeCorner(k: Kit, x: number, z: number, yaw: number): void {
+  const m = k.m;
+  k.place(x, 0, z, yaw);
+  k.box(m.enamel, 0.5, 0.85, 0.55, 0, 0.44, 0);
+  k.box(m.black, 0.5, 0.02, 0.55, 0, 0.01, 0);
+  k.box(m.black, 0.48, 0.006, 0.006, 0, 0.62, 0.278);
+  k.box(m.galv, 0.02, 0.24, 0.03, 0.2, 0.45, 0.29);
+  k.box(m.yellow, 0.1, 0.06, 0.004, -0.1, 0.4, 0.276, 0, 0, 0.2);
+  k.box(m.blue, 0.08, 0.08, 0.004, 0.05, 0.3, 0.276, 0, 0, -0.1);
+  k.box(m.red, 0.12, 0.05, 0.004, -0.05, 0.72, 0.276);
+  // On top: the coffee maker with its warm light, the carafe, mugs, the towel roll.
+  k.box(m.black, 0.2, 0.32, 0.22, -0.1, 1.03, -0.05);
+  k.box(m.black, 0.2, 0.04, 0.3, -0.1, 0.89, -0.01);
+  k.cyl(m.carbon, 0.06, 0.12, -0.1, 0.97, 0.06, 'y', 12);
+  k.box(m.lamp, 0.015, 0.015, 0.004, -0.03, 1.12, 0.062);
+  for (const [dx, c] of [
+    [0.08, m.red],
+    [0.16, m.enamel],
+    [0.12, m.black],
+  ] as const)
+    k.cyl(c, 0.04, 0.09, dx, 0.915, c === m.black ? -0.1 : 0.08 - (dx - 0.08), 'y', 10);
+  k.cyl(m.enamel, 0.06, 0.24, 0.17, 1.12, -0.15, 'x', 12);
+  k.box(m.black, 0.76, 0.4, 0.03, 0, 1.8, -0.285);
+  k.plane(m.beerSign, 0.72, 0.36, 0, 1.8, -0.268);
 }

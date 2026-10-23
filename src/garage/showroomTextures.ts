@@ -1,13 +1,14 @@
 /**
  * Canvas textures for the garage (garage/showroom.ts): stained concrete, grimy
  * block walls, the roof deck, the roller door, worn paint lines, oil stains,
- * diamond plate, the pegboard, drawer fronts, aged posters and the neon signs.
+ * diamond plate, the pegboard, drawer fronts, aged posters, the jobs board,
+ * work orders, the tuners' parts boxes, the beer sign and the neon signs.
  * Each is drawn once per visit (a few milliseconds in all) from a fixed hash,
  * so the room looks the same every time. Render only.
  */
 import * as THREE from 'three';
 import { PALETTE } from '../ui/kit/palette';
-import { drawTexture } from '../render/textures/canvasKit';
+import { drawTexture, fitFont } from '../render/textures/canvasKit';
 
 /** A small deterministic hash noise in 0..1 for texture speckle and flicker. */
 export function noise(i: number): number {
@@ -518,6 +519,159 @@ export function posterTexture(name: string, line: string, accent: string, varian
     g.fill();
     g.globalCompositeOperation = 'source-over';
   });
+}
+
+/** Marker on a whiteboard, the shop's hand. */
+const HAND = '"Marker Felt", "Segoe Print", "Comic Sans MS", cursive';
+
+/** The jobs board: tonight's work by bay in marker, ticks and a crossed-out line, a parts reminder in red, a sketch, old ghosting. */
+export function whiteboardTexture(): THREE.CanvasTexture {
+  return drawTexture(512, 288, (g) => {
+    g.fillStyle = '#e4e6e3';
+    g.fillRect(0, 0, 512, 288);
+    // Ghosts of wiped jobs and a grimy edge.
+    g.fillStyle = 'rgba(70,80,110,0.09)';
+    for (let i = 0; i < 9; i++) g.fillRect(30 + noise(i * 3.1) * 300, 40 + noise(i * 5.7) * 200, 60 + noise(i) * 120, 10);
+    g.strokeStyle = '#8d9096';
+    g.lineWidth = 12;
+    g.strokeRect(0, 0, 512, 288);
+    g.fillStyle = '#1c2a6b';
+    g.font = `700 30px ${HAND}`;
+    g.fillText('TONIGHT', 24, 44);
+    g.fillRect(24, 52, 132, 3);
+    g.font = `22px ${HAND}`;
+    const jobs: [string, string, boolean][] = [
+      ['BAY 1', 'cat-back + tune', true],
+      ['BAY 2', 'pads, rotors, hubs', false],
+      ['BAY 3', 'oil + diff fluid', true],
+      ['BAY 4', 'coilovers -> align', false],
+      ['FLOOR', 'motor out, reseal', false],
+    ];
+    jobs.forEach(([bay, job, done], i) => {
+      const y = 90 + i * 36;
+      g.fillStyle = '#1c2a6b';
+      g.fillText(bay, 24, y);
+      g.fillStyle = '#20232a';
+      g.fillText(job, 110, y);
+      if (done) {
+        g.strokeStyle = '#2a8c3e';
+        g.lineWidth = 3;
+        g.beginPath();
+        g.moveTo(300, y - 8);
+        g.lineTo(308, y);
+        g.lineTo(324, y - 18);
+        g.stroke();
+      }
+    });
+    g.strokeStyle = '#20232a';
+    g.lineWidth = 2;
+    g.beginPath();
+    g.moveTo(108, 154);
+    g.lineTo(270, 148);
+    g.stroke();
+    g.fillStyle = '#b3242c';
+    g.font = `700 24px ${HAND}`;
+    g.fillText('PARTS DUE FRI!', 330, 236);
+    g.fillText('KIBA x4', 360, 266);
+    // A quick sketch of a wing and its uprights.
+    g.strokeStyle = '#1c2a6b';
+    g.lineWidth = 3;
+    g.beginPath();
+    g.moveTo(350, 120);
+    g.quadraticCurveTo(420, 96, 490, 112);
+    g.lineTo(486, 128);
+    g.quadraticCurveTo(420, 114, 352, 136);
+    g.closePath();
+    g.moveTo(390, 126);
+    g.lineTo(386, 180);
+    g.moveTo(452, 116);
+    g.lineTo(456, 176);
+    g.stroke();
+    g.font = `18px ${HAND}`;
+    g.fillStyle = '#1c2a6b';
+    g.fillText('1650 wide?', 380, 82);
+  });
+}
+
+/** A work order on a clipboard: the printed header and boxes, the job written in, a greasy thumbprint. */
+export function workOrderTexture(): THREE.CanvasTexture {
+  return drawTexture(128, 176, (g) => {
+    g.fillStyle = '#ebe7dc';
+    g.fillRect(0, 0, 128, 176);
+    g.fillStyle = '#26282d';
+    g.font = '700 13px "Google Sans Flex", system-ui, sans-serif';
+    g.fillText('WORK ORDER', 10, 20);
+    g.fillStyle = PALETTE.orange;
+    g.fillRect(10, 26, 108, 3);
+    g.strokeStyle = 'rgba(40,40,46,0.45)';
+    g.lineWidth = 1;
+    for (let y = 44; y < 160; y += 14) {
+      g.beginPath();
+      g.moveTo(10, y);
+      g.lineTo(118, y);
+      g.stroke();
+    }
+    g.fillStyle = '#1c2a6b';
+    g.font = `12px ${HAND}`;
+    ['front pads', 'rotors x2', 'bleed - DOT4', 'torque 108'].forEach((t, i) => g.fillText(t, 12, 41 + i * 14 * 2));
+    blot(g, 96, 140, 10, '40,30,20', 0.35, 3);
+  });
+}
+
+/** A tuner's parts box: cardboard printed with the brand and its line, the this-way-up arrows and a shipping label. */
+export function partsBoxTexture(name: string, line: string, accent: string): THREE.CanvasTexture {
+  return drawTexture(256, 256, (g) => {
+    g.fillStyle = '#86663f';
+    g.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 6; i++) blot(g, noise(i * 6.1 + name.length) * 256, noise(i * 2.7) * 256, 20 + noise(i) * 30, '60,40,20', 0.18, i);
+    g.fillStyle = '#16151a';
+    g.fillRect(0, 96, 256, 64);
+    g.fillStyle = accent;
+    g.fillRect(0, 156, 256, 4);
+    g.fillStyle = '#f2efe8';
+    fitFont(g, name, 230, 44, (px) => `italic 900 ${px}px "Google Sans Flex", system-ui, sans-serif`);
+    g.fillText(name, 14, 142);
+    g.fillStyle = '#16151a';
+    g.font = '700 16px "Google Sans Flex", system-ui, sans-serif';
+    g.fillText(line, 14, 186);
+    g.fillStyle = '#ebe7dc';
+    g.fillRect(150, 200, 92, 44);
+    g.fillStyle = '#26282d';
+    for (let i = 0; i < 4; i++) g.fillRect(156, 208 + i * 9, 40 + noise(i + name.length) * 40, 3);
+    g.strokeStyle = '#16151a';
+    g.lineWidth = 4;
+    for (const x of [24, 60]) {
+      g.beginPath();
+      g.moveTo(x, 70);
+      g.lineTo(x, 24);
+      g.moveTo(x - 10, 36);
+      g.lineTo(x, 24);
+      g.lineTo(x + 10, 36);
+      g.stroke();
+    }
+  });
+}
+
+/** The beer sign's face: two lines of light on black, drawn white so the material's color tints and pushes it past the bloom. */
+export function beerSignTexture(): THREE.CanvasTexture {
+  return drawTexture(
+    256,
+    128,
+    (g) => {
+      g.fillStyle = '#000';
+      g.fillRect(0, 0, 256, 128);
+      g.strokeStyle = '#fff';
+      g.lineWidth = 4;
+      g.strokeRect(8, 8, 240, 112);
+      g.fillStyle = '#fff';
+      g.textAlign = 'center';
+      fitFont(g, 'COLD BEER', 220, 48, (px) => `italic 800 ${px}px ${HAND}`);
+      g.fillText('COLD BEER', 128, 62);
+      g.font = `600 22px "Google Sans Flex", system-ui, sans-serif`;
+      g.fillText('AFTER HOURS', 128, 100);
+    },
+    { repeat: false },
+  );
 }
 
 /** A soft round glow (white, alpha falling off), for light spilling on the wall round a sign or a lamp. */
