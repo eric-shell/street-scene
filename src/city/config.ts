@@ -543,8 +543,17 @@ export const CITY = {
       turnRadius: [14, 18],
       /** Straight roof run between the ramp top and the chute (back entries), [min, target]. */
       deckRun: [8, 16],
-      /** Roof margin beside the chute and the ramp (m). */
+      /** Roof margin beside the chute and the ramp (m): the drive's own box, the least the floor holds. */
       deckMargin: 4,
+      /**
+       * The garage takes its block: its footprint is the block's building line (inset) when the block is
+       * convex and that area (m^2) is within this range. A bigger block is cut down to the top of the
+       * range behind (or beside) the drive, and a concave one gets the largest frame rectangle grown
+       * from the drive's box, so the garage never stands on a street or grows comically large.
+       */
+      blockArea: [2500, 30000],
+      /** Parking aisle between facing rows of stalls on the floor (m); the floor's bays are stall deep each side of it. */
+      aisle: 6.5,
       /** Parapets and chute walls (thin two sided solids) are this thick. */
       wall: 0.4,
       /** The deck and ramp stop this far inside the building line, so the sidewalk never samples their height. */
