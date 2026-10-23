@@ -13,6 +13,7 @@ import { DecalLayerView } from './decals';
 import { FEATURES } from '../../shared/features';
 import { WheelProfile, beadForSize, detectProfile, remapWheel, sizeForBead } from './wheelFit';
 import { BRAKE, buildCaliperGeometry, buildRotorGeometry } from './brakes';
+import { damp } from '../../shared/anim';
 import { latheTire, measureTire } from './tireShapes';
 import { maskVehicleMesh, underVehicles } from '../vehicleMask';
 import { Disposer } from '../disposer';
@@ -122,6 +123,8 @@ export class CarView {
   private popAt = [-1, -1];
   private popSize = [0, 0];
   private lastTime = 0;
+  /** Rotor heat, 0 cold to 1 glowing: builds under braking and fades slowly once off the brakes (BRAKE.heatUp / coolDown). */
+  private rotorHeat = 0;
   private beam: THREE.Mesh;
   readonly decals: DecalLayerView;
   private loadToken = 0;
@@ -668,7 +671,9 @@ export class CarView {
       this.wheelSpins[i].rotation.order = 'ZXY';
     }
     this.poseGroundFx(pose);
-    setBrake(this.materials, pose.braking);
+    const dt = Math.max(0, Math.min(0.1, time - this.lastTime));
+    this.rotorHeat += ((pose.braking ? 1 : 0) - this.rotorHeat) * damp(pose.braking ? BRAKE.heatUp : BRAKE.coolDown, dt);
+    setBrake(this.materials, pose.braking, this.rotorHeat);
     this.applyUnderglow(time);
     const stage = Math.max(1, Math.min(3, pose.nitroStage ?? 1)) - 1;
     for (const f of this.flames) {

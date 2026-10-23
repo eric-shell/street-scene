@@ -153,10 +153,11 @@ export function applyVisualToMaterials(m: CarMaterialSet, v: VisualBuild, brakin
   setBrake(m, braking);
 }
 
-export function setBrake(m: CarMaterialSet, braking: boolean): void {
+/** Brake lights follow the pedal; the rotors glow with their heat (0 cold to 1, the car view's rotorHeat). */
+export function setBrake(m: CarMaterialSet, braking: boolean, heat = braking ? 1 : 0): void {
   const tl = m.TailLight as THREE.MeshStandardMaterial;
   tl.emissiveIntensity = braking ? 4.5 : 1.4;
-  (m.Rotor as THREE.MeshStandardMaterial).emissiveIntensity = braking ? BRAKE.glow : 0;
+  (m.Rotor as THREE.MeshStandardMaterial).emissiveIntensity = BRAKE.glow * heat;
 }
 
 /** Map a source material name to the shared vocabulary (exact, case-insensitive, or via manifest map). */
