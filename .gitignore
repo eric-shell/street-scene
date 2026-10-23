@@ -42,7 +42,7 @@ Thumbs.db
 
 # Claude Code: personal and machine-specific files stay out of the repo.
 # Project settings (.claude/settings.json), skills, rules and hooks are committed;
-# copy .claude/settings.local.json.example to .claude/settings.local.json for your own.
+# .claude/settings.local.json holds your own overrides.
 .claude/settings.local.json
 .claude/worktrees/
 CLAUDE.local.md
