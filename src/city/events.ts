@@ -44,6 +44,7 @@ import type { RoutePreference } from './routeSearch';
 import type { Area, HeightSample, PlanContext } from './districts/types';
 import { hillAt, shapeOf } from './districts/hills';
 import { TOUR_REACH, monumentSites, plazaSides, plazaWraps } from './districts/monument';
+import { parkCorners } from './districts/park';
 import { riverCenter } from './districts/river';
 import { Rng, deriveSeed } from '../sim/prng';
 import { DEG, type Vec2, abs, distToSegment, sqrt } from '../sim/math';
@@ -452,6 +453,8 @@ export function eventRoutePreference(id: EventFlavourId, ctx: SiteContext, close
   const cross = v.crossings.size > 0;
   const crosses = (edges: number[]) => edges.some((e) => v.crossings.has(e));
   const plazaStreets = CITY.districts.monument.enabled ? plazaSides(ctx, TOUR_REACH) : new Set<number>();
+  // The parks' race passes share the wish: a turn round a corner of a block that can hold a park (park.ts).
+  if (CITY.districts.park.enabled) for (const k of parkCorners(ctx)) plazaStreets.add(k.eA).add(k.eB);
   const plaza = plazaStreets.size > 0;
   const wraps = plaza ? plazaWraps(ctx, TOUR_REACH) : new Set<string>();
   // The plaza wish: 2 for wrapping a block (turning at both ends of one of its sides: a U cut

@@ -23,9 +23,9 @@ const PASS = {
   piece: 2,
   inset: 0.5,
   /** Cobble, kerb lines (m wide) and the path lights every studStep (m), their radius (m). */
-  cobble: col(0x6e6453),
+  cobble: col(0x9c8f78),
   kerb: 0.3,
-  kerbColor: col(0xb0a894),
+  kerbColor: col(0xd8cfb8),
   studStep: 8,
   studR: 0.22,
   studColor: new THREE.Color(1, 0.86, 0.66).multiplyScalar(1.5),

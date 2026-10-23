@@ -22,11 +22,11 @@
  * Content to add (render/districts/park.ts): hedges, a pond or playground,
  * better trees.
  */
-import { CITY, ROUTE } from '../config';
+import { CITY } from '../config';
 import { DEG, type Vec2, atan2, cos, distToSegment, sin, sqrt } from '../../sim/math';
 import { Rng } from '../../sim/prng';
 import type { RoadGraph } from '../roadGraph';
-import type { RoutePass } from '../route';
+import { PASS_START_RUN, type RoutePass } from '../route';
 import type { Area, DistrictModule, PlanContext } from './types';
 import type { BlockFace } from '../blocks';
 import type { PropKind } from '../props';
@@ -39,9 +39,7 @@ const SMOOTH: Smooth = { v: 0, d: 0 };
 
 const CFG = CITY.districts.park;
 const CLEAR: PassClear = { junction: CFG.passJunctionClear, mouth: CFG.passMouthClear, turn: CFG.passTurnClear };
-/** A straight stretch of path the start grid needs (m): the rows behind the line and a little past it. */
-const GRID_RUN = ROUTE.gridFirstRow + 4 * ROUTE.gridRowSpacing + 15;
-/** The path may bend this much (rad) over the grid's stretch and still carry the grid. */
+/** The path may bend this much (rad) over the start's straight and still carry the grid (route.ts startOnPass). */
 const GRID_BEND = 8 * DEG;
 
 /**
@@ -116,10 +114,8 @@ interface PassPick extends PassCorner {
   turn: number;
 }
 
-/** A park's race pass: the route's RoutePass plus where on it a start grid fits (route distance from its first point, m), when it does. */
-export interface ParkPass extends RoutePass {
-  start?: { s: number };
-}
+/** A park's race pass: a RoutePass, with `start` set where a start grid fits on its path (gridSpot). */
+export type ParkPass = RoutePass;
 
 /**
  * The path round corner `k`: from the street point `a` m before the corner, a quadratic bow whose
@@ -224,30 +220,31 @@ function parkSite(g: RoadGraph, f: BlockFace, routes: readonly PlannedRoute[]): 
 }
 
 /**
- * Where a start grid fits on a path: the end (route distance from the path's first point, m) of the
- * straightest stretch GRID_RUN long that bends less than GRID_BEND, with the line a little inside the
- * stretch's end so the grid stands behind it; null when the path bends too much everywhere.
+ * Where a start line may go on a path (RoutePass.start): the middle of the longest stretch between
+ * the path's inner points that bends less than GRID_BEND, with `straight` half its length (the grid
+ * stands behind the line whichever way the route drives the pass; route.ts takes it from
+ * PASS_START_RUN). Null when no stretch is long enough; the first and last segments are on the street.
  */
-function gridSpot(pts: Vec2[]): { s: number } | null {
+function gridSpot(pts: Vec2[]): { s: number; straight: number } | null {
   const cum = [0];
   for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + sqrt((pts[i].x - pts[i - 1].x) ** 2 + (pts[i].z - pts[i - 1].z) ** 2));
   const heading = (i: number) => atan2(pts[i + 1].x - pts[i].x, pts[i + 1].z - pts[i].z);
-  let best: { s: number; bend: number } | null = null;
-  // Stretches between the path's inner points only: the first and last segments are on the street.
-  for (let i = 1; i + 1 < pts.length; i++) {
-    let j = i;
-    while (j + 2 < pts.length && cum[j + 1] - cum[i] < GRID_RUN) j++;
-    if (cum[j + 1] - cum[i] < GRID_RUN || j + 2 >= pts.length) continue;
+  let best: { s: number; straight: number } | null = null;
+  for (let i = 1; i + 2 < pts.length; i++) {
     let bend = 0;
-    for (let q = i; q < j; q++) {
-      let d = heading(q + 1) - heading(q);
+    let j = i;
+    while (j + 2 < pts.length) {
+      let d = heading(j + 1) - heading(j);
       while (d > Math.PI) d -= 2 * Math.PI;
       while (d < -Math.PI) d += 2 * Math.PI;
+      if (bend + Math.abs(d) >= GRID_BEND) break;
       bend += Math.abs(d);
+      j++;
     }
-    if (bend < GRID_BEND && (!best || bend < best.bend)) best = { s: cum[i] + GRID_RUN - 5, bend };
+    const straight = (cum[j + 1] - cum[i]) / 2;
+    if (straight >= PASS_START_RUN && (!best || straight > best.straight)) best = { s: cum[i] + straight, straight };
   }
-  return best && { s: best.s };
+  return best;
 }
 
 /** The race passes a park area carries (its params p<i>...), as the routes take them (route.ts RoutePass). */
@@ -296,6 +293,7 @@ export function parkCorners(ctx: Pick<PlanContext, 'graph' | 'areas' | 'claims' 
 export const parkModule: DistrictModule = {
   kind: 'park',
   phase: 'graph',
+  passes: parkPasses,
   plan(ctx) {
     if (!CFG.enabled) return;
     const g = ctx.graph;
