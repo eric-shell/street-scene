@@ -12,9 +12,18 @@
  * are mirrored by the car view's negative x scale, so they are the opposite hand, as real ones are. The wheel GLBs'
  * barrels are open at the back (carWheels.py strips the packs' own brakes), so the rotor shows
  * through the spokes.
+ * The caliper is a monoblock in the manner of a Brembo GT: a body swept along the rotor's edge,
+ * its section a rounded block (soft outboard shoulders, tighter inboard edges) whose ends round
+ * off like the real castings, with a raised logo plate in the middle of the outboard face. It
+ * stands a little past the rotor's edge and reaches in over the pads, clear of the hat.
+ * The plate carries the house brake brand: its face is UV mapped along the arc onto a small mask
+ * (caliperLogoTexture) that the caliper material blends to white over the paint, so the letters cost
+ * no triangles or draws. They read clockwise with their tops outward, as on real calipers; the right
+ * side's mirrored meshes take a mirrored mapping, so the logo reads true on both sides.
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { drawTexture, fitFont } from '../textures/canvasKit';
 
 export const BRAKE = {
   /** Bead radius the geometry is built at (m); the car view scales the meshes by bead / refBead. */
@@ -28,12 +37,22 @@ export const BRAKE = {
   hatDepth: 0.02,
   /** Air between the hat's face and the back of the spokes (m). */
   clearance: 0.012,
-  /** Caliper: ring radius as a fraction of the rotor's and body width along the axle (× tube). */
-  caliperRadius: 0.84,
-  caliperWidth: 1.8,
-  /** Caliper body per axle: tube radius (m) and the arc of the rotor it clamps (rad). The fronts do most of the stopping and wear the bigger calipers. */
-  caliperTube: [0.038, 0.034],
-  caliperArc: [1.75, 1.2],
+  /**
+   * Caliper body per axle (m, at the reference bead; the fronts do most of the stopping and wear the bigger,
+   * six piston calipers): how far it stands past the rotor's edge, how far it reaches in from it over the
+   * pads, and how deep each half is from its rotor face to its own face (the piston housings).
+   */
+  caliperOver: [0.018, 0.015],
+  caliperReach: [0.066, 0.056],
+  caliperHousing: [0.05, 0.043],
+  /** The arc the caliper spans, rounded ends included (rad). */
+  caliperArc: [1.45, 1.2],
+  /** Edge radii of the body's section (m): the soft outboard shoulders, the tighter inboard edges. */
+  caliperRound: [0.013, 0.006],
+  /** The logo plate on the outboard face: share of the body's arc and height it covers, and how far it stands proud (m). */
+  caliperPlate: { arc: 0.56, height: 0.5, rise: 0.0025 },
+  /** The logo on the plate: the house brake brand (a fictional tuner name, never a real maker's) and its ink (linear grey, 1 = white). */
+  caliperLogo: { text: 'RAIJIN', ink: 0.86 },
   /** Where each axle's caliper sits: on the leading (car's front) or trailing side of the hub, and how far above the hub's height (rad). */
   caliperAt: [{ leading: false, up: 0.45 }, { leading: true, up: 0.45 }],
   /** Drilled holes: columns around the friction ring, holes per column, their radius (texture units, the face is radius 1) and how far a column sweeps (rad). */
@@ -148,17 +167,135 @@ export function buildRotorGeometry(axle: 0 | 1): THREE.BufferGeometry {
   return geo;
 }
 
-/** One caliper at the reference bead: a thick arc clamped over the rotor's edge where BRAKE.caliperAt puts it. */
-export function buildCaliperGeometry(axle: 0 | 1): THREE.BufferGeometry {
+/** A body swept along an arc about the axle: its section's radial and axial extents (m) and its corner radii. */
+interface Sweep {
+  rIn: number;
+  rOut: number;
+  xIn: number;
+  xOut: number;
+  /** Arc it spans (rad), centered on angle 0 (straight behind the hub). */
+  arc: number;
+  /** Corner radii of the section (m): the outboard (+X) edges and the inboard ones. */
+  round: [number, number];
+  /** UV per vertex from its arc angle (rad) and radius (m); without it every vertex samples (0, 0). */
+  uv?: (phi: number, r: number) => [number, number];
+}
+
+/**
+ * Sweep a rounded block section along an arc. Toward each end the section shrinks radially along a
+ * quarter circle as long as half its height, so the body ends in a half round seen from outboard (and
+ * slims a little along the axle, as a casting's ends do); the last section is flat, which closes it.
+ * Samples crowd toward the ends where the outline turns. Angle 0 points straight behind the hub (-Z),
+ * angles climb toward +Y, as rotateX turns them.
+ */
+function sweptBody(s: Sweep, segs: number): THREE.BufferGeometry {
+  const rm = (s.rIn + s.rOut) / 2;
+  const hr = (s.rOut - s.rIn) / 2;
+  const xm = (s.xIn + s.xOut) / 2;
+  const hx = (s.xOut - s.xIn) / 2;
+  // The section in (x, r) about its center, counterclockwise, three points to a corner.
+  const prof: [number, number][] = [];
+  const corner = (cx: number, cr: number, rad: number, a0: number) => {
+    for (let k = 0; k < 3; k++) prof.push([cx + rad * Math.cos(a0 + (k * Math.PI) / 4), cr + rad * Math.sin(a0 + (k * Math.PI) / 4)]);
+  };
+  const [ro, ri] = s.round;
+  corner(hx - ro, hr - ro, ro, 0);
+  corner(-hx + ri, hr - ri, ri, Math.PI / 2);
+  corner(-hx + ri, -hr + ri, ri, Math.PI);
+  corner(hx - ro, -hr + ro, ro, Math.PI * 1.5);
+  const half = s.arc / 2;
+  const endArc = Math.min(half, hr / rm);
+  const pos: number[] = [];
+  const uv: number[] = [];
+  for (let i = 0; i <= segs; i++) {
+    const u = (i / segs) * 2 - 1;
+    const phi = half * Math.sin((u * Math.PI) / 2);
+    const d = Math.max(0, Math.abs(phi) - (half - endArc)) / endArc;
+    const f = Math.sqrt(Math.max(0, 1 - d * d));
+    const g = 0.6 + 0.4 * f;
+    for (const [px, pr] of prof) {
+      const r = rm + pr * f;
+      pos.push(xm + px * g, r * Math.sin(phi), -r * Math.cos(phi));
+      uv.push(...(s.uv?.(phi, r) ?? [0, 0]));
+    }
+  }
+  const n = prof.length;
+  const index: number[] = [];
+  for (let i = 0; i < segs; i++) {
+    for (let j = 0; j < n; j++) {
+      const a = i * n + j;
+      const b = i * n + ((j + 1) % n);
+      const c = a + n;
+      const e = b + n;
+      index.push(a, b, c, b, e, c);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setIndex(index);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
+ * One caliper at the reference bead: the swept body and its logo plate, on the rotor's edge where
+ * BRAKE.caliperAt puts it. `mirrored`: for the right side's meshes, which the car view mirrors (negative
+ * x scale); their logo mapping is mirrored back so it reads true.
+ */
+export function buildCaliperGeometry(axle: 0 | 1, mirrored = false): THREE.BufferGeometry {
   const R = BRAKE.refBead * BRAKE.rotor[axle];
   const arc = BRAKE.caliperArc[axle];
   const at = BRAKE.caliperAt[axle];
-  const geo = new THREE.TorusGeometry(R * BRAKE.caliperRadius, BRAKE.caliperTube[axle], 6, 12, arc);
-  // Torus axis Z → X; its arc then starts straight behind the hub and climbs, so center it on the height asked for.
-  geo.rotateY(Math.PI / 2);
-  geo.rotateX(at.up - arc / 2);
-  if (at.leading) geo.rotateY(Math.PI);
-  geo.scale(BRAKE.caliperWidth, 1, 1);
+  const face = BRAKE.thickness / 2 + BRAKE.caliperHousing[axle];
+  const body: Sweep = { rIn: R - BRAKE.caliperReach[axle], rOut: R + BRAKE.caliperOver[axle], xIn: -face, xOut: face, arc, round: [...BRAKE.caliperRound] };
+  const P = BRAKE.caliperPlate;
+  const mid = (body.rIn + body.rOut) / 2;
+  const h = ((body.rOut - body.rIn) * P.height) / 2;
+  const plateArc = arc * P.arc;
+  // Increasing angle runs counterclockwise seen from outboard: the logo reads the other way, tops outward.
+  const dir = mirrored ? 1 : -1;
+  const plate: Sweep = {
+    rIn: mid - h,
+    rOut: mid + h,
+    xIn: face - 0.004,
+    xOut: face + P.rise,
+    arc: plateArc,
+    round: [0.002, 0.002],
+    uv: (phi, r) => [0.5 + (dir * phi) / plateArc, (r - (mid - h)) / (2 * h)],
+  };
+  const parts = [sweptBody(body, 22), sweptBody(plate, 12)];
+  const geo = mergeGeometries(parts);
+  for (const g of parts) g.dispose();
+  // Centered behind the hub; turn it up to the height asked for, on the trailing side or (mirrored about
+  // the hub's vertical) the leading one. A turn, not a flip, so the outboard face stays outboard.
+  geo.rotateX(at.leading ? Math.PI - at.up : at.up);
   geo.translate(-hatHeight(), 0, 0);
   return geo;
+}
+
+/**
+ * The logo plate's lettering as a mask (white on black, linear): the plate's face maps onto it, and
+ * everything else on the caliper samples its black corner. Null without a DOM to draw it on (the
+ * calipers are then plain).
+ */
+export function caliperLogoTexture(): THREE.Texture | null {
+  if (typeof document === 'undefined') return null;
+  const w = 256;
+  const ht = 64;
+  return drawTexture(
+    w,
+    ht,
+    (g) => {
+      g.fillStyle = '#000';
+      g.fillRect(0, 0, w, ht);
+      const text = BRAKE.caliperLogo.text;
+      fitFont(g, text, w * 0.78, ht * 0.62, (px) => `italic 900 ${px}px 'Google Sans Flex', system-ui, sans-serif`);
+      g.fillStyle = '#fff';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText(text, w / 2, ht / 2 + 2);
+    },
+    { srgb: false, repeat: false },
+  );
 }

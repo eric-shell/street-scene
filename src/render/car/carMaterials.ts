@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { MATERIAL_NAMES, MaterialName } from '../../shared/parts';
 import type { AccentPaint, Paint, PaintFinish, VisualBuild } from '../../shared/carBuild';
-import { BRAKE, rotorTexture } from './brakes';
+import { BRAKE, caliperLogoTexture, rotorTexture } from './brakes';
 
 /**
  * The shared runtime materials, plus the rear axle's own wheel material so front and rear wheel colors
@@ -107,7 +107,16 @@ export function createCarMaterials(envMap: THREE.Texture | null = null): CarMate
   // Brakes: the drilled face darkens the holes and the bump map dents them; the rotor glows while braking.
   const rotor = rotorTexture();
   m.Rotor = new THREE.MeshStandardMaterial({ name: 'Rotor', color: 0xc4c7cc, metalness: 0.7, roughness: 0.45, map: rotor, bumpMap: rotor, bumpScale: 1.2, emissive: 0xff6a1a, emissiveIntensity: 0, envMap, envMapIntensity: 1.4 });
-  m.Caliper = new THREE.MeshPhysicalMaterial({ name: 'Caliper', color: 0xc41e3a, metalness: 0, roughness: 0.28, envMap, envMapIntensity: PAINT_ENV.Caliper });
+  // The map is the logo plate's lettering as a mask (brakes.ts), blended to its ink over the paint, so the
+  // letters stay white whatever the caliper wears, in the caliper's own draw.
+  const logo = caliperLogoTexture();
+  m.Caliper = new THREE.MeshPhysicalMaterial({ name: 'Caliper', color: 0xc41e3a, metalness: 0, roughness: 0.28, map: logo, envMap, envMapIntensity: PAINT_ENV.Caliper });
+  m.Caliper.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <map_fragment>',
+      `#ifdef USE_MAP\n  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(${BRAKE.caliperLogo.ink.toFixed(2)}), texture2D(map, vMapUv).r);\n#endif`,
+    );
+  };
   return m;
 }
 
@@ -175,5 +184,6 @@ export function disposeCarMaterials(m: CarMaterialSet): void {
   m.RimRear.dispose();
   (m.Rotor as THREE.MeshStandardMaterial).map?.dispose();
   m.Rotor.dispose();
+  (m.Caliper as THREE.MeshStandardMaterial).map?.dispose();
   m.Caliper.dispose();
 }

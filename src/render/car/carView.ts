@@ -488,12 +488,16 @@ export class CarView {
     this.bakeBrakes(axle);
   }
 
-  /** Build the axle's brake units: the rotor spins with the wheel, the caliper sits still on the hub. Both wheels share the geometry. */
+  /**
+   * Build the axle's brake units: the rotor spins with the wheel, the caliper sits still on the hub. Both
+   * wheels share the rotor; each side has its own caliper, the right's logo mapped to read true through
+   * the mirroring.
+   */
   private bakeBrakes(axle: 0 | 1): void {
     if (!this.brakesOn) return;
     const rotorGeo = buildRotorGeometry(axle);
-    const caliperGeo = buildCaliperGeometry(axle);
     for (const i of [axle * 2, axle * 2 + 1]) {
+      const caliperGeo = buildCaliperGeometry(axle, this.car.wheels[WHEEL_KEYS[i]][0] <= 0);
       const old = this.brakes[i];
       if (old) {
         old.rotor.removeFromParent();
