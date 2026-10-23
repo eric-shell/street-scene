@@ -44,6 +44,15 @@
   .rail__step {
     filter: var(--plate-drop);
   }
+  /* Home's places a step up from the rail's rows, a line as tall as a small chip (20px, the Garage row's spec
+     tags). Race on the event card matches them (_event-card.scss). */
+  .nav-row__label {
+    font-size: 20px;
+    line-height: 1;
+  }
+  .nav-row__text {
+    gap: 5px;
+  }
   /* The race type picked on the race and setup steps (menu.ts sets data-mode): the course card, the ticket and
      the setup card take its color. */
   @each $mode, $color in palette.$modes {

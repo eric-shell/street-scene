@@ -54,7 +54,7 @@ export type Hue = 'orange' | 'yellow' | 'red' | 'green' | 'cyan' | 'purple';
  * label over a one-line sub, and a chevron. The badge is dim at rest and
  * lights, with the row's edge and wash, on hover and focus.
  */
-export function navRow(ico: IconNode, label: string, sub: string, hue: Hue, onClick: () => void, cls = ''): HTMLButtonElement {
+export function navRow(ico: IconNode, label: string | Node, sub: string, hue: Hue, onClick: () => void, cls = ''): HTMLButtonElement {
   return h(
     'button',
     { class: bem('nav-row', `hue-${hue} ${cls}`), type: 'button', onclick: onClick },

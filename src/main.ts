@@ -51,7 +51,8 @@ import { DRAG_OPPONENTS, POINT_TO_POINT, RaceConfig, RaceEntrant, RaceMode, posi
 import { loadTrafficAssets } from './render/traffic/traffic';
 import { PerformanceBuild } from './sim/build';
 import { CarBuild, VisualBuild, defaultVisual, PAINT_FINISHES } from './shared/carBuild';
-import { DEFAULT_CAR_ID, PERFORMANCE_CATEGORIES, SELECTABLE_CAR_IDS, Tier } from './sim/tuning';
+import { DEFAULT_CAR_ID, PERFORMANCE_CATEGORIES, SELECTABLE_CAR_IDS, Tier, getBaseTuning } from './sim/tuning';
+import { specBadges } from './shared/carSpec';
 import { GarageState, decodeShareCode, loadGarage, saveGarage } from './garage/storage';
 import { ReplayData, decodeLog, encodeLog, loadBest, loadGhost, loadLastReplay, saveGhost, saveLastReplay, submitBest } from './replay/replay';
 
@@ -362,7 +363,16 @@ function showMenu(step: MenuStep = 'home'): void {
     world: st.world,
     routes: stageCourses ?? { circuit: st.world.route, sprint: st.world.route, drag: st.world.route, waypoint: st.world.route },
     bests: { circuit: loadBest(seed, 'circuit'), sprint: loadBest(seed, 'sprint'), drag: loadBest(seed, 'drag'), waypoint: loadBest(seed, 'waypoint'), drift: loadBest(seed, 'drift') },
-    carName: manifestCar(currentBuild().carId).displayName,
+    builds: garage.slots.map((b) => {
+      const car = manifestCar(b.carId);
+      return { name: b.name, car: car.displayName, tags: specBadges(car.engine, getBaseTuning(b.carId).drivetrain.layout) };
+    }),
+    build: garage.current,
+    onBuild: (i) => {
+      garage.current = i;
+      saveGarage(garage);
+      void st.setBuild(currentBuild());
+    },
     hasReplay: !!loadLastReplay(),
     settings: { ...settings },
     music,

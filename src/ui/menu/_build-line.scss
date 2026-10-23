@@ -1,0 +1,20 @@
+/* A name with a build's spec tags (.chip--ink in their inks, garage/_tune-stat.scss) on one line (menu.ts):
+   home's Garage row has them after its label, the setup step's car pick before the car. The tags keep their
+   room and the name ellipsizes; inside the row's uppercase label they keep their own case. */
+@use '../styles/abstracts/mixins';
+.build-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  &__name {
+    min-width: 0;
+    @include mixins.ellipsis;
+  }
+  &__tags {
+    display: flex;
+    flex: none;
+    gap: 4px;
+    text-transform: none;
+  }
+}

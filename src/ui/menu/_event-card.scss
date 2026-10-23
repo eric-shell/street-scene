@@ -56,6 +56,8 @@
   }
   &__go {
     margin-top: 6px;
+    /* The home list's labels' size (.nav-row__label in _menu.scss), so Race reads as one of them. */
+    font-size: 20px;
     > svg:last-child {
       margin-left: auto;
       transition: transform var(--t-med) var(--ease-out);

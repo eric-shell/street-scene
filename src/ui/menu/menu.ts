@@ -10,8 +10,8 @@
  * to fit the column without scrolling: home, then the race step (the types in
  * a grid of two rows over the course card, each type's course drawn on in its own color as
  * it is picked, menuMaps.ts; the course map opens the full city map on that
- * course), then the setup step (what is about to start, rivals, difficulty
- * and driving aids, Start). A pip trio in the header says which step this is.
+ * course), then the setup step (what is about to start, the build to race
+ * in, rivals, difficulty and driving aids, Start). A pip trio in the header says which step this is.
  * Settings opens the settings panel as a step.
  *
  * Steps slide: deeper pushes the old step out to the left as the new one
@@ -24,11 +24,12 @@
  * screens. The caller feeds the
  * cruising car's pose every frame (MainMenu.frame) for the maps' car markers.
  */
-import { bem, btn, chip, h, iconBtn, segmented, sheen } from '../kit/dom';
+import { bem, btn, chip, h, iconBtn, segmented, sheen, specChip } from '../kit/dom';
 import {
   Anchor,
   Calendar,
   Check,
+  ChevronLeft,
   ChevronRight,
   ChevronsRight,
   CircleDot,
@@ -79,6 +80,7 @@ import type { Vec2 } from '../../sim/math';
 import type { AreaKind } from '../../city/districts/types';
 import type { BestRecord } from '../../replay/replay';
 import type { MusicPlayer } from '../../audio/musicPlayer';
+import type { SpecBadge } from '../../shared/carSpec';
 import { uiBlip, uiWhoosh } from '../../audio/uiSound';
 
 /** The title's words: one line, sized to the menu's column in the menu and on the splash alike (`.title-lockup__title .logo` in _title-lockup.scss). */
@@ -92,6 +94,13 @@ export function titleWords(word: (text: string) => (Node | string)[] = (t) => [t
 
 export type MenuStep = 'home' | 'race' | 'setup' | 'settings';
 
+/** A garage build as the menu shows it: its name, its car and the car's spec tags (drivetrain, engine, forced induction). */
+export interface MenuBuild {
+  name: string;
+  car: string;
+  tags: SpecBadge[];
+}
+
 export interface MenuOptions {
   seed: string;
   isDaily: boolean;
@@ -102,8 +111,12 @@ export interface MenuOptions {
   /** The event's courses (the drift lap runs the circuit; the waypoint race's is its suggested route). */
   routes: CourseRoutes;
   bests: Record<RaceMode, BestRecord | null>;
-  /** The current build's car, for the Garage row. */
-  carName: string;
+  /** The garage's builds, for the Garage row and the setup step's car pick. */
+  builds: MenuBuild[];
+  /** The build in use (an index into builds). */
+  build: number;
+  /** The setup step picked another build: the garage's current slot (and the car on the street) follows it. */
+  onBuild(i: number): void;
   hasReplay: boolean;
   /** A copy of the settings: the race and settings steps change it and report each change through onSettings. */
   settings: Settings;
@@ -181,9 +194,9 @@ const GRID_MOVES: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, Arrow
 const STEP_DEPTH: Record<MenuStep, number> = { home: 0, race: 1, settings: 1, setup: 2 };
 
 /** A row of the home menu's list (its element class names the place, for focus). */
-function navItem(kind: keyof typeof PLACES_INFO, sub: string, onClick: () => void): HTMLButtonElement {
+function navItem(kind: keyof typeof PLACES_INFO, sub: string, onClick: () => void, label: string | Node = PLACES_INFO[kind].label): HTMLButtonElement {
   const info = PLACES_INFO[kind];
-  return navRow(info.icon, info.label, sub, info.hue, onClick, `menu__${kind}`);
+  return navRow(info.icon, label, sub, info.hue, onClick, `menu__${kind}`);
 }
 
 /** A race type in the race step's row: icon over its name, the number key that picks it, its color when picked. */
@@ -197,6 +210,11 @@ function modeTile(t: RaceType, n: number, onClick: () => void): HTMLButtonElemen
     h('kbd', { class: 'mode-tile__key', 'aria-hidden': 'true' }, String(n + 1)),
     sheen(),
   );
+}
+
+/** A build's spec tags in their inks, small. */
+function buildTags(b: MenuBuild): HTMLElement {
+  return h('span', { class: 'build-line__tags' }, ...b.tags.map((t, i) => specChip(t, i, '--small')));
 }
 
 /** The city's notable districts as chips in their map inks (at most three). */
@@ -229,6 +247,7 @@ export function mainMenu(o: MenuOptions): MainMenu {
   );
   menu.append(head);
   let step: MenuStep = 'home';
+  let build = Math.max(0, Math.min(o.builds.length - 1, o.build));
   const rail = new RailSteps(menu);
   // The maps of the step on screen; frame() moves their car markers.
   let overview: CityOverview | null = null;
@@ -303,7 +322,8 @@ export function mainMenu(o: MenuOptions): MainMenu {
     h(
       'nav',
       { class: 'nav-list', 'aria-label': 'Main menu' },
-      navItem('garage', `${o.carName} · paint, parts, tuning`, o.onGarage),
+      // The build in use under Garage, its spec tags beside the word.
+      navItem('garage', `${o.builds[build].name} · ${o.builds[build].car}`, o.onGarage, h('span', { class: 'build-line' }, h('span', { class: 'build-line__name' }, PLACES_INFO.garage.label), buildTags(o.builds[build]))),
       navItem('explore', 'Fly a drone over the event city', o.onDrone),
       navItem('settings', 'Display, sound, controls', () => go('settings')),
     ),
@@ -396,7 +416,36 @@ export function mainMenu(o: MenuOptions): MainMenu {
   /** Pick a race type on the race step (arrow and number keys). */
   let pickType: ((t: RaceType) => void) | null = null;
 
-  /** Step 3: what is about to start (its course drawn small, its facts, your best), rivals and driving aids, and Start. */
+  /** The setup step's car: the build in use between previous and next, which walk the garage's slots and swap the car on the street. */
+  const buildPick = (): HTMLElement => {
+    const n = o.builds.length;
+    const shown = h('div', { class: 'build-pick__build' });
+    const show = () => {
+      const b = o.builds[build];
+      shown.replaceChildren(
+        h('span', { class: 'build-pick__head' }, h('span', { class: 'build-pick__name' }, b.name), h('span', { class: 'build-pick__slot' }, n > 1 ? `${build + 1} / ${n}` : 'Only build')),
+        h('span', { class: 'build-pick__car' }, buildTags(b), h('span', { class: 'build-line__name' }, b.car)),
+      );
+    };
+    const turn = (d: number) => {
+      build = (build + d + n) % n;
+      show();
+      o.onBuild(build);
+      uiBlip();
+    };
+    const prev = iconBtn(ChevronLeft, 'Previous build', () => turn(-1), '--small --ghost');
+    const next = iconBtn(ChevronRight, 'Next build', () => turn(1), '--small --ghost');
+    prev.disabled = next.disabled = n < 2;
+    show();
+    return h(
+      'div',
+      { class: 'race-setup__group' },
+      h('div', { class: 'section-title' }, 'Car'),
+      h('div', { class: 'build-pick' }, prev, shown, next),
+    );
+  };
+
+  /** Step 3: what is about to start (its course drawn small, its facts, your best), the build to race in, rivals and driving aids, and Start. */
   const setup = (): HTMLElement[] => {
     const t = s.raceType;
     const info = TYPE_INFO[t];
@@ -467,7 +516,7 @@ export function mainMenu(o: MenuOptions): MainMenu {
     return [
       screenHead({ icon: SlidersHorizontal, title: 'Setup', back: () => go('race'), aside: progress(3, chip(info.label, info.icon, `--mode mode-${t}`)) }),
       ticket,
-      h('div', { class: 'race-setup' }, rivals, driving),
+      h('div', { class: 'race-setup' }, buildPick(), rivals, driving),
       h('div', { class: 'step-foot' }, start),
     ];
   };
@@ -485,7 +534,7 @@ export function mainMenu(o: MenuOptions): MainMenu {
   const TIPS: Record<MenuStep, string[]> = {
     home: ['Every day brings a new event city. Beside its name the pencil types a seed of your own and shuffle rolls a random city.', 'The live map opens the whole city; a waypoint set there carries into free roam.'],
     race: ['Each type draws its course on the card, with your best on this event.'],
-    setup: ['Rivals and driving aids are remembered for your next race.'],
+    setup: ['The arrows beside your car pick another build from the garage.', 'Rivals and driving aids are remembered for your next race.'],
     settings: ['Controls lists every key, gamepad button and touch control.'],
   };
   const helpFor = (at: MenuStep) => [

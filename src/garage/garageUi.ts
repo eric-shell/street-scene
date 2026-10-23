@@ -43,7 +43,7 @@ import { FEATURES } from '../shared/features';
 import { specBadges, type SpecBadge } from '../shared/carSpec';
 import { measureStats, statBars, type CarStats } from '../sim/stats';
 import { SHAPE_LABELS } from '../render/car/decals';
-import { btn, chip, h, iconBtn, isTyping, scrollHint, segmented, sheen, toast } from '../ui/kit/dom';
+import { btn, chip, h, iconBtn, isTyping, scrollHint, segmented, sheen, specChip, toast } from '../ui/kit/dom';
 import { door, transitioning } from '../ui/transitions/transitions';
 import { KMH_PER_MPH, M_PER_FT } from '../ui/kit/units';
 import {
@@ -98,16 +98,6 @@ const TABS: { id: Tab; label: string; icon: IconNode }[] = [
   { id: 'neon', label: 'Neon', icon: Sparkles },
   { id: 'tune', label: 'Tune', icon: Gauge },
 ];
-
-/** Each spec tag's ink by its place in specBadges (drivetrain cyan, engine yellow, forced induction red): `.ink-*` in _tune-stat.scss. */
-const SPEC_INKS = ['ink-drive', 'ink-engine', 'ink-boost'] as const;
-
-/** A spec tag as a chip in its ink, the long form on hover (car tiles and the build card alike). */
-const specChip = (t: SpecBadge, i: number, cls = '') => {
-  const c = chip(t.text, undefined, `--ink ${SPEC_INKS[i] ?? ''} ${cls}`);
-  c.title = t.title;
-  return c;
-};
 
 /** Model author shown under a car's name, by manifest `source`. */
 const AUTHORS: Record<string, string | undefined> = { icemaan: 'IceMaan', eshell: 'eshell' };

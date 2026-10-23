@@ -1,0 +1,41 @@
+/* The setup step's car (menu.ts buildPick): the build in use between previous and next, its name over its
+   spec tags and car, which slot it is at the right of the name. */
+@use '../styles/abstracts/mixins';
+.build-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  &__build {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+  &__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  &__name {
+    min-width: 0;
+    font: 900 16px var(--display);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    @include mixins.ellipsis;
+  }
+  &__slot {
+    flex: none;
+    font: 500 12px var(--font);
+    color: var(--muted);
+  }
+  &__car {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    font-size: 13px;
+    color: var(--soft);
+  }
+}

@@ -1,7 +1,7 @@
 /* The main menu (menu.ts, menuMaps.ts), in cascade order: the menu screen and its title lockup; home's event
    card with its seed and its city map (the well, its badges, the table and what lies on it); the race step's
-   types, course card, course map and course; the setup step's ticket, card, pips and foot; the course art
-   the tickets and the wipe share. */
+   types, course card, course map and course; the setup step's ticket, card, car pick (with the build line
+   home's Garage row shares), pips and foot; the course art the tickets and the wipe share. */
 @use 'menu';
 @use 'title-lockup';
 @use 'event-card';
@@ -16,6 +16,8 @@
 @use 'course';
 @use 'race-ticket';
 @use 'race-setup';
+@use 'build-pick';
+@use 'build-line';
 @use 'stepper';
 @use 'step-foot';
 @use 'course-art';
