@@ -1,8 +1,10 @@
 /**
  * Cameras for the street stage (game/streetStage.ts):
- *  - ShowreelCamera: the main menu's attract mode. A loop of shots of the
- *    cruising car, cut every several seconds like a car advert: tracking
- *    alongside, chasing, leading it, a roadside camera it drives past, a slow
+ *  - ShowreelCamera: the main menu's attract mode. A new street opens on a
+ *    drone shot high behind the car as it rolls up to the start line, over
+ *    the crowd and uprights that block the low shots there, then a loop of
+ *    shots of the cruising car, cut every several seconds like a car
+ *    advert: tracking alongside, chasing, leading it, a roadside camera it drives past, a slow
  *    orbit, a low wheel shot and a high crane over the street. Shots pick the
  *    side of the car that has room and alternate sides from shot to shot.
  *    The menu's steps and transitions move it instead of cutting (setMode):
@@ -37,11 +39,15 @@ interface Shot {
   /** Length (s); a roadside shot ends sooner once the car has gone by. */
   dur: number;
   fov: number;
+  /** The lens it zooms to by the end, eased with the move (degrees); held at `fov` when missing. */
+  fovEnd?: number;
   /** Camera and look-at in the car's frame at progress u (0..1), favouring `side` (+1 left, -1 right), written into `o`. */
   cam(u: number, side: number, o: Local): Local;
   look(u: number, side: number, o: Local): Local;
   /** Shots that do not care about the side never flip for room. */
   sided: boolean;
+  /** Ends exactly on the next shot's first frame, so the next shot carries on from it on the same side with no cut. */
+  flows?: boolean;
 }
 
 const lerp = (a: number, b: number, u: number) => a + (b - a) * u;
@@ -49,8 +55,12 @@ const ease = (u: number) => u * u * (3 - 2 * u);
 /** Write a point in the car's frame into `o` (shots fill a scratch tuple, so nothing is allocated per frame). */
 const at = (o: Local, f: number, l: number, up: number): Local => ((o[0] = f), (o[1] = l), (o[2] = up), o);
 
-/** The shot list, in the order the showreel plays it. */
+/** The shot list, in the order the showreel plays it: the drone opener once, then the rest on a loop. */
 const SHOTS: Shot[] = [
+  // One move from high behind the car down onto the tracking shot's first frame: the car low in frame with the start
+  // line ahead, then a swoop across and down to its flank. The height falls late (ease^1.6), so the camera is still
+  // about 14 m up as it passes the line (about 4.4 s in, over the full gantry's 11.9 m), flying over the arch, not through it.
+  { name: 'drone', dur: 9, fov: 54, fovEnd: 38, sided: true, flows: true, cam: (u, s, o) => at(o, lerp(-14, 1.6, ease(u)), lerp(-2.5, 6.6, ease(u)) * s, lerp(20, 0.9, ease(u) ** 1.6)), look: (u, _s, o) => at(o, lerp(14, 0.1, ease(u)), 0, lerp(0.5, 0.62, ease(u))) },
   { name: 'tracking', dur: 9, fov: 38, sided: true, cam: (u, s, o) => at(o, lerp(1.6, -1.0, u), 6.6 * s, 0.9), look: (_u, _s, o) => at(o, 0.1, 0, 0.62) },
   { name: 'chase', dur: 8, fov: 46, sided: true, cam: (u, s, o) => at(o, -6.4, 1.3 * s, 1.55 + 0.25 * u), look: (_u, _s, o) => at(o, 4.5, 0, 0.9) },
   { name: 'roadside', dur: 10, fov: 36, sided: false, cam: (_u, _s, o) => at(o, 0, 0, 0), look: (_u, _s, o) => at(o, 0, 0, 0) },
@@ -59,6 +69,9 @@ const SHOTS: Shot[] = [
   { name: 'wheel', dur: 7, fov: 30, sided: true, cam: (u, s, o) => at(o, lerp(2.6, 0.9, u), 2.7 * s, 0.42), look: (_u, s, o) => at(o, 1.25, 0.8 * s, 0.34) },
   { name: 'crane', dur: 10, fov: 48, sided: true, cam: (u, s, o) => at(o, lerp(-10.5, -7.5, u), 2.8 * s, lerp(13.5, 7.5, ease(u))), look: (_u, _s, o) => at(o, 6, 0, 0.4) },
 ];
+
+/** Where the loop starts again: the opener plays once per street. */
+const LOOP_START = 1;
 
 /** A point on a circle round the car at angle a (0 = straight ahead, + turning left), radius r and height y. */
 function orbit(a: number, r: number, y: number, o: Local): Local {
@@ -139,6 +152,12 @@ export class ShowreelCamera {
   /** The stage last shot, to capture the camera in its car's frame when the mode changes. */
   private stage: StreetStage | null = null;
 
+  /** Start the reel over on its opener, for a newly built street with the car on the start line. */
+  open(): void {
+    this.index = -1;
+    this.cut();
+  }
+
   /** Move on to the next shot now. */
   cut(): void {
     this.t = Infinity;
@@ -198,7 +217,7 @@ export class ShowreelCamera {
       if (done) this.next(stage);
       const s = SHOTS[this.index];
       const u = Math.min(1, this.t / s.dur);
-      fov = s.fov;
+      fov = s.fovEnd === undefined ? s.fov : lerp(s.fov, s.fovEnd, ease(u));
       if (s.name === 'roadside') {
         pos.copy(this.fixed);
         // Aim a little ahead of the car, so it drives into the frame and past.
@@ -248,16 +267,19 @@ export class ShowreelCamera {
     if (room(this.side) < 0.9 && room(-this.side) > room(this.side)) this.side = -this.side;
   }
 
-  /** Cut to the next shot: alternate sides, and take the side with room when the shot has one. */
+  /** Cut to the next shot: alternate sides, and take the side with room when the shot has one (a flowing shot's next keeps its side). */
   private next(stage: StreetStage): void {
-    this.index = (this.index + 1) % SHOTS.length;
+    // A shot that flows into this one hands over its side too, or the camera would jump across the car.
+    const flowed = SHOTS[this.index]?.flows;
+    this.index = this.index + 1 < SHOTS.length ? this.index + 1 : LOOP_START;
     this.t = 0;
     const s = SHOTS[this.index];
     const p = stage.pose;
-    this.side = -this.side;
-    if (s.sided) {
+    if (!flowed) this.side = -this.side;
+    if (s.sided && !flowed) {
+      // A flowing shot settles where the next one starts, so that is where it needs the room.
       const room = (side: number) => {
-        const c = toWorld(p, s.cam(0.5, side, this.local), this.fixed);
+        const c = toWorld(p, s.cam(s.flows ? 1 : 0.5, side, this.local), this.fixed);
         return wallHit(stage.world, p.x, p.z, c.x, c.z, this.scratch);
       };
       if (room(this.side) < 0.9 && room(-this.side) > room(this.side)) this.side = -this.side;

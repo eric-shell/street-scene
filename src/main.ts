@@ -185,7 +185,7 @@ function ensureStage(): StreetStage {
   stageOpen = createWorld(seed, 'circuit', city, { openWorld: true });
   trafficNet(stageOpen);
   void stage.setBuild(currentBuild());
-  showreel.cut();
+  showreel.open();
   (window as unknown as Record<string, unknown>).__nr = { world: stage.world, gr, stage, showreel, autoQ };
   return stage;
 }
