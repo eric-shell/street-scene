@@ -3,33 +3,52 @@
  * wall to wall, a few dim lamps over plain back alleys (they stay dark on
  * purpose), and a steel kicker deck over every back alley hump, following
  * the same height profile the sim drives on (hazard yellow at the toes and
- * the lip). The route's own shortcuts get pink and amber string lights all
- * the way through, leg by leg round their bends, between the construction
- * fences at their mouths (fences and the rest of the site clutter are props,
- * render/street/props.ts); a jump exit's ramp gets the same steel deck up to its lip
- * and the face under the lip (the 'alleyLip' wall) a concrete block with a
- * hazard band. Tables, crates, dumpsters and trash are destructible props
- * drawn by render/street/props.ts. Content to add: fire escapes, steam
+ * the lip), between concrete cheek walls: a coping along each edge of the
+ * deck and, outside it, the battered face where the sim's profile fades out
+ * behind the building line (the terrain itself, draped, so a wheel on it sits
+ * on what is drawn). The route's own shortcuts get pink and amber string
+ * lights all the way through, leg by leg round their bends, between the
+ * construction fences at their mouths (fences and the rest of the site
+ * clutter are props, render/street/props.ts); a jump exit's ramp gets the
+ * same deck and cheeks up to its lip, and the face under the lip (the
+ * 'alleyLip' wall, exactly on the wall line) a concrete block with a hazard
+ * band, wide enough to close the cheeks and deep enough to hide the road
+ * mesh's drop behind it. Tables, crates, dumpsters and trash are destructible
+ * props drawn by render/street/props.ts. Content to add: fire escapes, steam
  * vents, puddles.
  */
 import * as THREE from 'three';
 import { jumpProfile, jumpRampProfile } from '../../city/districts/alleyPath';
+import type { Wall } from '../../city/blocks';
 import { GeoBuilder } from '../geoBuilder';
 import { makeRadialGlow } from '../textures/textures';
 import { CITY } from '../../city/config';
 import { routeSample } from '../../city/route';
 import type { DistrictRenderer, DistrictKit } from './kit';
-import { SHORTCUT_BULBS, col, cylinder, orientedBox } from './kit';
+import { SHORTCUT_BULBS, col, cylinder, groundVertex, orientedBox } from './kit';
 
 /** String lights: one string every STRING_STEP m along a raceway alley, a bulb every BULB_STEP m, sagging SAG m. */
 const STRING_STEP = 7;
 const BULB_STEP = 0.55;
 const SAG = 0.75;
 const STRING_Y = 5.9;
-/** The kicker deck floats this far above the profile so the road mesh never shows through it (m). */
+/** The kicker deck floats this far above the profile so the road mesh never shows through it (m); over the alley's sidewalk strips (a curb up) the same again. */
 const DECK_LIFT = 0.06;
+const WALK_LIFT = CITY.curbHeight + DECK_LIFT;
 /** Deck rows every DECK_STEP m along the hump. */
 const DECK_STEP = 0.5;
+/** The alley's sidewalk strips either side of its road, which the deck steps up over (m). */
+const WALK = CITY.sidewalkWidth.backAlley;
+/** The profile fades out over this band behind the building line (districts/alleyDressing.ts): the cheeks' batter. */
+const FADE = CITY.districts.backAlley.jumpFade;
+/**
+ * Cheek walls: the coping reaches `in` over the deck's edge and `out` past the building line, standing
+ * `lift` above the deck; the batter below it is draped `drape` over the terrain, in `steps` strips out
+ * to `beyond` past the fade, where the ground is level again.
+ */
+const CHEEK = { in: 0.3, out: 0.12, lift: 0.05, drape: 0.05, steps: 3, beyond: 0.3 } as const;
+/** The lip block's hazard band: this tall along its top edge (m). */
+const LIP_BAND = 0.3;
 
 /** Light pools under shortcut string lights: spacing along the alley and length (m), colour (additive). */
 const POOL = { step: 9, length: 11, color: 0xff9a6a, strength: 0.5 } as const;
@@ -122,11 +141,16 @@ const STEEL = col(0x3a3d44);
 const HAZARD = col(0xf2b81c);
 const DARK = col(0x15161a);
 const CONCRETE = col(0x5a5b60);
+const COPING = col(0x6e6f74);
 
 /**
  * A steel deck over a profile along a leg (origin a, direction u), from s0 to
  * s3, `profile` giving its height and slope and `band` which stations get the
- * hazard stripes, with skirts from the deck's edges down to the ground.
+ * hazard stripes. The deck follows the terrain (the sim's profile) exactly:
+ * a plate over the road, stepping a curb up over the alley's sidewalk strips.
+ * Either side, a cheek wall: a coping along the deck's edge and the battered
+ * face below it, draped over the fade band where the profile dies out behind
+ * the building line, out to level ground.
  */
 function deck(kit: DistrictKit, ax: number, az: number, ux: number, uz: number, s0: number, s3: number, hw: number, profile: (s: number) => { h: number; dh: number }, band: (s: number) => boolean, extra: number[] = []): void {
   const lx = -uz;
@@ -136,7 +160,22 @@ function deck(kit: DistrictKit, ax: number, az: number, ux: number, uz: number, 
   stations.push(s3, ...extra);
   stations.sort((a, b) => a - b);
   const gb = kit.solid;
+  const curb = hw - WALK;
+  // Across the deck: the sidewalk strips (lifted a curb) and the road, with doubled vertices at each curb line for the step.
+  const lanes: [number, number][] = [
+    [-hw, WALK_LIFT],
+    [-curb, WALK_LIFT],
+    [-curb, DECK_LIFT],
+    [0, DECK_LIFT],
+    [curb, DECK_LIFT],
+    [curb, WALK_LIFT],
+    [hw, WALK_LIFT],
+  ];
+  // Across a cheek, from the coping's inner edge out: the coping, then the batter strips to level ground.
+  const batter: number[] = [];
+  for (let k = 0; k <= CHEEK.steps; k++) batter.push(hw + CHEEK.out + ((FADE + CHEEK.beyond - CHEEK.out) * k) / CHEEK.steps);
   let prev: number[] | null = null;
+  let prevCheeks: number[][][] | null = null;
   let prevS = s0;
   for (const s of stations) {
     if (prev && s - prevS < 1e-3) continue;
@@ -147,31 +186,49 @@ function deck(kit: DistrictKit, ax: number, az: number, ux: number, uz: number, 
     const nx = (-p.dh * ux) / nl;
     const ny = 1 / nl;
     const nz = (-p.dh * uz) / nl;
-    const row = [-hw, 0, hw].map((l) => {
-      const x = ax + ux * s + lx * l;
-      const z = az + uz * s + lz * l;
-      return gb.vertex(x, kit.h(x, z) + DECK_LIFT, z, nx, ny, nz, 0, 0, c);
+    const at = (l: number) => ({ x: ax + ux * s + lx * l, z: az + uz * s + lz * l });
+    const row = lanes.map(([l, lift]) => {
+      const q = at(l);
+      return gb.vertex(q.x, kit.h(q.x, q.z) + lift, q.z, nx, ny, nz, 0, 0, c);
     });
-    if (prev) for (let k = 0; k < 2; k++) gb.quadFacing(prev[k], prev[k + 1], row[k + 1], row[k], 0, 1, 0);
-    // Side skirts from the deck edge down to the unmodified ground.
-    if (prev) {
-      for (const side of [-1, 1]) {
-        const at = (ss: number) => {
-          const x = ax + ux * ss + lx * side * hw;
-          const z = az + uz * ss + lz * side * hw;
-          const y = kit.h(x, z) + DECK_LIFT;
-          return { x, z, y, base: y - profile(ss).h - 0.2 };
-        };
-        const a = at(prevS);
-        const b = at(s);
-        const v0 = gb.vertex(a.x, a.base, a.z, lx * side, 0, lz * side, 0, 0, DARK);
-        const v1 = gb.vertex(b.x, b.base, b.z, lx * side, 0, lz * side, 0, 0, DARK);
-        const v2 = gb.vertex(b.x, b.y, b.z, lx * side, 0, lz * side, 0, 0, DARK);
-        const v3 = gb.vertex(a.x, a.y, a.z, lx * side, 0, lz * side, 0, 0, DARK);
-        gb.quadFacing(v0, v1, v2, v3, lx * side, 0, lz * side);
+    if (prev) for (let k = 0; k + 1 < lanes.length; k++) if (lanes[k][0] !== lanes[k + 1][0]) gb.quadFacing(prev[k], prev[k + 1], row[k + 1], row[k], 0, 1, 0);
+    // The cheeks: per side, the coping's vertices (inner edge, outer edge, top at both, outer face foot) and the batter's.
+    const cheeks = [-1, 1].map((side) => {
+      const edge = at(side * hw);
+      const yCope = kit.h(edge.x, edge.z) + WALK_LIFT + CHEEK.lift;
+      const inner = at(side * (hw - CHEEK.in));
+      const outer = at(side * (hw + CHEEK.out));
+      const yFoot = kit.h(outer.x, outer.z) + CHEEK.drape;
+      const ox = lx * side;
+      const oz = lz * side;
+      const cope = [
+        gb.vertex(inner.x, yCope, inner.z, nx, ny, nz, 0, 0, COPING),
+        gb.vertex(outer.x, yCope, outer.z, nx, ny, nz, 0, 0, COPING),
+        // The outer face, from the coping down to the batter's top, and the inner face down to the deck.
+        gb.vertex(outer.x, yCope, outer.z, ox, 0, oz, 0, 0, CONCRETE),
+        gb.vertex(outer.x, yFoot, outer.z, ox, 0, oz, 0, 0, CONCRETE),
+        gb.vertex(inner.x, yCope, inner.z, -ox, 0, -oz, 0, 0, CONCRETE),
+        gb.vertex(inner.x, kit.h(inner.x, inner.z) + WALK_LIFT, inner.z, -ox, 0, -oz, 0, 0, CONCRETE),
+      ];
+      const face = batter.map((l) => {
+        const q = at(side * l);
+        return groundVertex(kit, gb, q.x, q.z, CHEEK.drape, CONCRETE);
+      });
+      return [cope, face];
+    });
+    if (prev && prevCheeks) {
+      for (let i = 0; i < 2; i++) {
+        const side = i ? 1 : -1;
+        const [pc, pf] = prevCheeks[i];
+        const [cc, cf] = cheeks[i];
+        gb.quadFacing(pc[0], pc[1], cc[1], cc[0], 0, 1, 0);
+        gb.quadFacing(pc[3], pc[2], cc[2], cc[3], lx * side, 0, lz * side);
+        gb.quadFacing(pc[5], pc[4], cc[4], cc[5], -lx * side, 0, -lz * side);
+        for (let k = 0; k + 1 < batter.length; k++) gb.quadFacing(pf[k], pf[k + 1], cf[k + 1], cf[k], 0, 1, 0);
       }
     }
     prev = row;
+    prevCheeks = cheeks;
     prevS = s;
   }
 }
@@ -186,25 +243,32 @@ function rampDeck(kit: DistrictKit, ax: number, az: number, ux: number, uz: numb
     ux,
     uz,
     toe,
-    lip,
+    // Ends a hair short of the lip: the ramp's modifier stops there, and sampled on the boundary the terrain may already have dropped (the lip block reaches back over the gap).
+    lip - 0.02,
     hw,
     (s) => jumpRampProfile(Math.min(s, lip) - toe, length, rise),
     (s) => s - toe < 0.6 || lip - s < 0.9,
   );
 }
 
-/** The block under a jump exit's lip reaches this far behind its face (m): over the terrain's drop one metre behind it, so the road mesh's step never shows. */
-const LIP_BLOCK = 1.4;
-
-/** The face under a jump exit's lip: a concrete block from the street up to the deck, a hazard band along its top edge. */
-function lipFace(kit: DistrictKit, wall: { ax: number; az: number; bx: number; bz: number; nx: number; nz: number }): void {
-  const mx = (wall.ax + wall.bx) / 2;
-  const mz = (wall.az + wall.bz) / 2;
-  const top = kit.h(mx - wall.nx * LIP_BLOCK, mz - wall.nz * LIP_BLOCK) + DECK_LIFT;
-  const base = Math.min(kit.h(wall.ax + wall.nx, wall.az + wall.nz), kit.h(wall.bx + wall.nx, wall.bz + wall.nz)) - 0.3;
-  // The block stands behind the face (under the ramp's end); the band is a thin box on its street side.
-  orientedBox(kit.solid, wall.ax, wall.az, wall.bx, wall.bz, -wall.nx * LIP_BLOCK, -wall.nz * LIP_BLOCK, base, top - 0.3, CONCRETE);
-  orientedBox(kit.solid, wall.ax, wall.az, wall.bx, wall.bz, -wall.nx * LIP_BLOCK, -wall.nz * LIP_BLOCK, top - 0.3, top, HAZARD);
+/**
+ * The face under a jump exit's lip: a concrete block whose street face is
+ * the 'alleyLip' wall itself, reaching back to the lip (the terrain drops to
+ * street level between them, and the road mesh's step with it), as high as
+ * the deck's end, a hazard band along its top edge. It runs past both ends
+ * of the wall to close the cheeks' batter, which drops with the terrain too.
+ */
+function lipFace(kit: DistrictKit, wall: Wall, depth: number, ext: number, top: number): void {
+  const len = Math.hypot(wall.bx - wall.ax, wall.bz - wall.az) || 1;
+  const dx = ((wall.bx - wall.ax) / len) * ext;
+  const dz = ((wall.bz - wall.az) / len) * ext;
+  const ax = wall.ax - dx;
+  const az = wall.az - dz;
+  const bx = wall.bx + dx;
+  const bz = wall.bz + dz;
+  const base = Math.min(kit.h(ax + wall.nx, az + wall.nz), kit.h(bx + wall.nx, bz + wall.nz)) - 0.3;
+  orientedBox(kit.solid, ax, az, bx, bz, -wall.nx * depth, -wall.nz * depth, base, top - LIP_BAND, CONCRETE);
+  orientedBox(kit.solid, ax, az, bx, bz, -wall.nx * depth, -wall.nz * depth, top - LIP_BAND, top, HAZARD);
 }
 
 function kickerDeck(kit: DistrictKit, ax: number, az: number, ux: number, uz: number, center: number, ramp: number, top: number, height: number, hw: number): void {
@@ -304,11 +368,21 @@ export const alleyRenderer: DistrictRenderer = {
           kickerDeck(kit, o.x, o.z, d.x - o.x, d.z - o.z, center, ramp, top, height, hw);
         } else if (h.kind === 'jumpExit') {
           const [toe, length, rise, hw] = h.values;
-          rampDeck(kit, o.x, o.z, d.x - o.x, d.z - o.z, toe, length, rise, hw);
+          const ux = d.x - o.x;
+          const uz = d.z - o.z;
+          rampDeck(kit, o.x, o.z, ux, uz, toe, length, rise, hw);
+          // The block under the lip: from the area's lip wall back to the lip, as high as the deck's road ends.
+          const lip = toe + length;
+          // Sampled a hair short of the lip: the ramp's modifier ends there, and at the exact boundary float noise decides whether the drop is already in.
+          const top = kit.h(o.x + ux * (lip - 0.02), o.z + uz * (lip - 0.02)) + DECK_LIFT;
+          for (const w of kit.walls.get('alleyLip') ?? []) {
+            if (w.area !== a.id) continue;
+            const depth = ((w.ax + w.bx) / 2 - o.x) * ux + ((w.az + w.bz) / 2 - o.z) * uz - lip;
+            lipFace(kit, w, Math.max(0.5, depth) + 0.05, FADE + CHEEK.beyond, top);
+          }
         }
       }
     }
-    for (const w of kit.walls.get('alleyLip') ?? []) lipFace(kit, w);
     if (pools.length) lightPools(kit, pools);
   },
 };

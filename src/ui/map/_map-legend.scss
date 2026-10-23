@@ -86,7 +86,7 @@
   }
 }
 /* A row's swatch in its layer's ink (sidePanel.ts sets the colors inline): an area's fill, a street's line or
-   dashed line, a roundabout's ring, or an icon. */
+   dashed line, a line with a chevron (the shortcuts, when one is driven one way), a roundabout's ring, or an icon. */
 .map-swatch {
   width: 22px;
   height: 14px;
@@ -96,10 +96,29 @@
     border: 1.5px solid;
     border-radius: 2px;
   }
-  &--line {
+  &--line,
+  &--arrow {
     height: 0;
     border-top: 4px solid;
     border-radius: 2px;
+  }
+  &--arrow {
+    position: relative;
+    // The chevron: a corner of a square, turned to point right along the line, edged dark so it stands off it.
+    &::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: -2px;
+      width: 7px;
+      height: 7px;
+      box-sizing: border-box;
+      border-top: 2px solid;
+      border-right: 2px solid;
+      border-color: inherit;
+      filter: drop-shadow(0 0 1px var(--bg0)) drop-shadow(0 0 1px var(--bg0));
+      transform: translate(-70%, -50%) rotate(45deg);
+    }
   }
   &--dash {
     height: 0;

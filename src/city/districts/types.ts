@@ -370,8 +370,8 @@ export const AREA_MAP_STYLE: Record<AreaKind, AreaMapStyle> = {
   market: { fill: 'rgba(255,97,136,0.3)' },
   // A lane closure: the closures' yellow (ui/hud/minimap.ts), not the market's pink.
   roadworks: { fill: 'rgba(255,216,102,0.55)' },
-  // The escarpment: its face line, a solid edge (the minimap strokes area.path).
-  bluff: { stroke: 'rgba(252,152,103,0.5)', width: 5 },
+  // The escarpment: its terrace filled and its crest as a cliff line with ticks down the face (ui/map/cityMap.ts cliffPath; the width is in screen px).
+  bluff: { fill: 'rgba(252,152,103,0.08)', stroke: 'rgba(252,152,103,0.55)', width: 1.5 },
   carPark: { fill: 'rgba(147,146,147,0.22)', stroke: 'rgba(255,97,136,0.4)', width: 1.5 },
   waterfront: { fill: 'rgba(120,220,232,0.14)' },
   lake: { fill: 'rgba(120,220,232,0.18)' },
