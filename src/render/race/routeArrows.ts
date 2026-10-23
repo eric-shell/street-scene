@@ -80,6 +80,17 @@ export function classifyBarriers(world: World): BarrierInfo[] {
   });
 }
 
+/**
+ * How far the route runs along unit (ux, uz) past closure b (-1..1): the way
+ * out of the turn at a head-on closure, else whichever of the ways out and in
+ * runs across it. Not the nearest route segment: at a turn that is as often
+ * the leg driving straight at the closure, square to it, so its sign is noise.
+ */
+function closureFlow(b: BarrierInfo, ux: number, uz: number): number {
+  const out = b.outX * ux + b.outZ * uz;
+  return b.headOn || Math.abs(out) > 0.5 ? out : b.inX * ux + b.inZ * uz;
+}
+
 // ---------------------------------------------------------------------------
 // Chevron panels on the rail modules
 // ---------------------------------------------------------------------------
@@ -278,7 +289,7 @@ export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classif
   const signTex = track(signTexture());
 
   // Rail modules (corner rails and closures alike) follow the sim's rail state.
-  const rails = track(buildRailMeshes(world, tex, opts.beacon ?? null));
+  const rails = track(buildRailMeshes(world, barriers, tex, opts.beacon ?? null));
   for (const m of rails.meshes) group.add(m);
   mats.push(...rails.materials);
 
@@ -287,11 +298,7 @@ export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classif
   // from the course (looking along -n) the viewer's right is (nz, -nx).
   barriers.forEach((b, i) => {
     const gr = b.group;
-    const rp = world.routeProgress(b.x, b.z);
-    // Head on: the way out of the turn. Side: along the route right there.
-    const dx = b.headOn ? b.outX : rp.tx;
-    const dz = b.headOn ? b.outZ : rp.tz;
-    const right = dx * b.nz - dz * b.nx;
+    const right = closureFlow(b, b.nz, -b.nx);
     if (Math.abs(right) < 0.25) return;
     const w = Math.max(SIGN.minWidth, Math.min(SIGN.maxWidth, gr.length * 0.6));
     const y = world.heightAt(b.x, b.z) + SIGN.height + (b.headOn ? 0.6 : 0);
@@ -426,8 +433,10 @@ interface RailMeshes {
  * pieces that the race has shoved (offset and rotation about the piece's rest
  * center, like the sim) and uploads only when something moved.
  */
-function buildRailMeshes(world: World, tex: THREE.Texture, beaconMaterial: THREE.Material | null): RailMeshes {
+function buildRailMeshes(world: World, barriers: BarrierInfo[], tex: THREE.Texture, beaconMaterial: THREE.Material | null): RailMeshes {
   const l = railLayout(world);
+  const closureOf = new Map<Wall, BarrierInfo>();
+  for (const b of barriers) for (const w of b.group.walls) closureOf.set(w, b);
   const panel = new GeoBuilder();
   const frame = new GeoBuilder(true);
   const led = new GeoBuilder();
@@ -465,9 +474,15 @@ function buildRailMeshes(world: World, tex: THREE.Texture, beaconMaterial: THREE
     let total = 0;
     for (let k = k0; k < k1; k++) total += Math.hypot(l.bx[k] - l.ax[k], l.bz[k] - l.az[k]);
     // The panel's u runs along the piece (a -> b), so its chevrons point toward b from either side;
-    // mirror them only when the piece runs against the way the route drives past it.
+    // mirror them only when the piece runs against the way the route drives past it. A closure's
+    // pieces all follow its own flow (closureFlow); a corner rail's follow the route beside them.
+    const ux = l.bx[k1 - 1] - l.ax[k0];
+    const uz = l.bz[k1 - 1] - l.az[k0];
+    const ul = Math.hypot(ux, uz) || 1;
+    const closure = closureOf.get(world.walls[l.wall[k0]]);
+    const flow = closure ? closureFlow(closure, ux / ul, uz / ul) : 0;
     const rp = world.routeProgress((l.ax[k0] + l.bx[k1 - 1]) / 2, (l.az[k0] + l.bz[k1 - 1]) / 2);
-    const fl = (l.bx[k1 - 1] - l.ax[k0]) * rp.tx + (l.bz[k1 - 1] - l.az[k0]) * rp.tz >= 0 ? 1 : -1;
+    const fl = Math.abs(flow) > 0.25 ? Math.sign(flow) : ux * rp.tx + uz * rp.tz >= 0 ? 1 : -1;
     const ph = (l.group[p] * 0.31 + p * 0.08) % 1;
     let s = 0;
     for (let k = k0; k < k1; k++) {

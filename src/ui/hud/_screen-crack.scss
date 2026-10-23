@@ -1,0 +1,28 @@
+/* The cracked screen (screenCrack.ts): the glass over the race once a cyan barrier hit cracks it, under the HUD.
+   The session drives the flicker through two custom properties: --crack-dip (how dark the screen dips, 0..1)
+   and --crack-jitter (the cracked layer's jump, an x, y pair). */
+.screen-crack {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: none;
+  pointer-events: none;
+  &.is-cracked {
+    display: block;
+  }
+  &__dim,
+  &__glass,
+  &__sparks {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+  &__dim {
+    background: #000;
+    opacity: var(--crack-dip, 0);
+  }
+  &__glass {
+    transform: translate(var(--crack-jitter, 0px, 0px));
+  }
+}
