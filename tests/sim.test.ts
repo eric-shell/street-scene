@@ -5,6 +5,7 @@ import { applyBuild, stockPerformance } from '../src/sim/build';
 import { CAR_IDS, CarTuning, NITRO_STAGES, SELECTABLE_CAR_IDS, driveSplit, getBaseTuning, tuningHash } from '../src/sim/tuning';
 import { DT } from '../src/sim/constants';
 import { createRace, stepRace } from '../src/sim/race';
+import { relocateCar } from '../src/sim/reset';
 import { WorldHit, collideCarWithWorld } from '../src/sim/collision';
 import { DEG } from '../src/sim/math';
 import { packInput, quantizeInput, unpackInput } from '../src/sim/input';
@@ -762,6 +763,34 @@ describe('determinism', () => {
     expect(carSnapshot(a)).toBe(carSnapshot(original));
     expect(carSnapshot(b)).toBe(carSnapshot(a));
     expect(original.cars[0].dist).toBeGreaterThan(300);
+  });
+});
+
+describe('resets', () => {
+  it('a reset car passes through the others for a few seconds, and only turns solid once clear', () => {
+    const run = () => {
+      const r = createRace(raceConfig(11, 'sprint', 1));
+      const [me, rival] = r.cars;
+      const window = me.tuning.collision.resetPassThrough;
+      while (r.phase === 'countdown') stepRace(r, input({}));
+      // Put down square on the rival as it pulls away: no contact all the while.
+      relocateCar(r, me, rival.state.x, rival.state.z, rival.state.yaw);
+      expect(me.passThrough).toBe(window);
+      for (let i = 0; i < window * 60 - 2; i++) stepRace(r, input({}));
+      expect(r.events.filter((e) => e.type === 'crash')).toEqual([]);
+      expect(me.passThrough).toBeGreaterThan(0);
+      // Clear of everyone (the rival is long gone), the window runs out on time.
+      relocateCar(r, me, me.state.x, me.state.z, me.state.yaw);
+      for (let i = 0; i < window * 60 + 1; i++) stepRace(r, input({}));
+      expect(me.passThrough).toBeLessThanOrEqual(0);
+      // Still inside the rival as the window would run out: it holds.
+      relocateCar(r, me, rival.state.x, rival.state.z, rival.state.yaw);
+      me.passThrough = 0.001;
+      stepRace(r, input({}));
+      expect(me.passThrough).toBeGreaterThan(0);
+      return carSnapshot(r);
+    };
+    expect(run()).toBe(run());
   });
 });
 

@@ -262,6 +262,26 @@ export function collideCars(a: CarState, ta: CarTuning, b: CarState, tb: CarTuni
   return impact;
 }
 
+/** True when two cars' contact circles intersect (the test collideCars resolves), without touching either. */
+export function carsOverlap(a: CarState, ta: CarTuning, b: CarState, tb: CarTuning): boolean {
+  if (abs(a.y - b.y) > LEVEL_GAP) return false;
+  const reach = ta.geometry.halfLength + tb.geometry.halfLength + 0.5;
+  if ((b.x - a.x) ** 2 + (b.z - a.z) ** 2 > reach * reach) return false;
+  const afx = sin(a.yaw);
+  const afz = cos(a.yaw);
+  const bfx = sin(b.yaw);
+  const bfz = cos(b.yaw);
+  for (const p of circleOffsets(ta)) {
+    for (const q of circleOffsets(tb)) {
+      const dx = a.x + afx * p.u - (b.x + bfx * q.u);
+      const dz = a.z + afz * p.u - (b.z + bfz * q.u);
+      const minD = p.r + q.r;
+      if (dx * dx + dz * dz < minD * minD) return true;
+    }
+  }
+  return false;
+}
+
 /** True when the car skims a wall at speed without touching it. */
 export function detectNearMiss(c: CarState, t: CarTuning, world: World): boolean {
   if (c.speed < 25 || c.impact > 0) return false;

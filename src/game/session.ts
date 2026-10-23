@@ -8,9 +8,8 @@
  * until the player touches a control.
  */
 import * as THREE from 'three';
-import { CarState } from '../sim/car';
 import { routeSample } from '../city/route';
-import { createRace, RaceConfig, RaceState, raceTime, standings, stepRace, ticksToSeconds } from '../sim/race';
+import { createRace, RaceCar, RaceConfig, RaceState, raceTime, standings, stepRace, ticksToSeconds } from '../sim/race';
 import { InputFrame, NEUTRAL_INPUT, unpackInput } from '../sim/input';
 import { VisualBuild } from '../shared/carBuild';
 import { DT, TICK_HZ } from '../sim/constants';
@@ -71,9 +70,15 @@ interface Snap extends CarPose {
   shifting: boolean;
   /** The two-step or antilag has the spark off (engine voice: the limiter's stutter). */
   cut: boolean;
+  /** Time left passing through other cars after a reset (s): the car blinks while it does. */
+  passThrough: number;
 }
 
-function snap(c: CarState): Snap {
+/** Blinks per second of a car passing through the others after a reset. */
+const RESET_BLINK_HZ = 7;
+
+function snap(rc: RaceCar): Snap {
+  const c = rc.state;
   return {
     x: c.x,
     y: c.y,
@@ -94,6 +99,7 @@ function snap(c: CarState): Snap {
     throttle: c.throttle,
     shifting: c.shiftTimer > 0,
     cut: c.twoStepCut > 0,
+    passThrough: rc.passThrough,
   };
 }
 
@@ -126,6 +132,7 @@ function lerpSnap(a: Snap, b: Snap, t: number): Snap {
     throttle: l(a.throttle, b.throttle),
     shifting: b.shifting,
     cut: b.cut,
+    passThrough: b.passThrough,
   };
 }
 
@@ -496,11 +503,11 @@ export class RaceSession {
       const sfx = this.sfx;
       this.night.city.finishLine.onFirework = (x, y, z, size) => sfx.firework(x, y, z, size);
     }
-    this.curr = this.race.cars.map((c) => snap(c.state));
+    this.curr = this.race.cars.map((c) => snap(c));
     this.prev = this.curr.map((s) => ({ ...s }));
     if (!this.openWorld) this.updateCelebrations();
     if (this.ghostRace) {
-      this.ghostCurr = snap(this.ghostRace.cars[0].state);
+      this.ghostCurr = snap(this.ghostRace.cars[0]);
       this.ghostPrev = { ...this.ghostCurr };
     }
     this.unsub.push(
@@ -823,7 +830,7 @@ export class RaceSession {
     this.propOnlyTick = false;
     this.hardHitTick = false;
     stepRace(r, frame);
-    this.curr = r.cars.map((c) => snap(c.state));
+    this.curr = r.cars.map((c) => snap(c));
     if (r.traffic) {
       const t = this.trafficPrev;
       this.trafficPrev = this.trafficCurr;
@@ -834,7 +841,7 @@ export class RaceSession {
       this.ghostPrev = this.ghostCurr;
       const gt = this.ghostRace.tick;
       stepRace(this.ghostRace, gt < this.ghostLog.length ? unpackInput(this.ghostLog[gt]) : { ...NEUTRAL_INPUT, brake: 1 });
-      this.ghostCurr = snap(this.ghostRace.cars[0].state);
+      this.ghostCurr = snap(this.ghostRace.cars[0]);
     }
     // Callouts for the nitrous the player's style earned this tick (ui/hud/boostCallouts.ts).
     this.hud.callouts.tick(r.cars[0].state);
@@ -1076,7 +1083,8 @@ export class RaceSession {
   }
 
   render(alpha: number, dt: number): void {
-    this.time += dt;
+    // The session clock stands still in a pause: crowds, weather, trains, sparks and the finish line freeze with the race.
+    if (!this.paused) this.time += dt;
     {
       const cam = this.lastCamera ?? this.cam.camera;
       const px = this.gr.renderer.domElement.clientHeight || window.innerHeight;
@@ -1087,7 +1095,11 @@ export class RaceSession {
     this.alpha = alpha;
     const r = this.race;
     const poses = this.curr.map((c, i) => lerpSnap(this.prev[i], c, this.paused ? 1 : alpha));
-    this.views.forEach((v, i) => v.update(poses[i], this.time));
+    this.views.forEach((v, i) => {
+      v.update(poses[i], this.time);
+      // A car just reset blinks while it passes through the others (on the session clock, so it holds still in a pause).
+      v.root.visible = poses[i].passThrough <= 0 || (this.time * RESET_BLINK_HZ) % 1 < 0.6;
+    });
     this.drivers.update(this.views, poses);
     if (this.ghostView && this.ghostPrev && this.ghostCurr) this.ghostView.update(lerpSnap(this.ghostPrev, this.ghostCurr, alpha), this.time);
     const p = poses[0];

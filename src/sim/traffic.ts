@@ -48,7 +48,8 @@
  * so nobody is on the tracks when the train comes (and any car that still is,
  * after a crash say, is taken off them).
  *
- * Contact: race cars collide with traffic as solid bodies (collideCars). A
+ * Contact: race cars collide with traffic as solid bodies (collideCars), except
+ * for a few seconds after a reset (collision.resetPassThrough). A
  * struck car turns loose: a passive body that slides, spins and scrapes off
  * walls to a stop, then, if it is close to its lane and roughly facing along
  * it, drives on, blending the offset out. One that cannot (or a driving car
@@ -1165,7 +1166,8 @@ export function stepTraffic(r: RaceState): void {
 
   // 5. Contact: race cars against traffic, then struck traffic against the rest.
   for (const rc of r.cars) {
-    if (rc.finished) continue;
+    // A car just reset passes through traffic (collision.resetPassThrough).
+    if (rc.finished || rc.passThrough > 0) continue;
     const s = rc.state;
     for (const c of cars) {
       if (c.mode === 'gone') continue;

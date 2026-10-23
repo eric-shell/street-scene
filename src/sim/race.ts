@@ -12,7 +12,7 @@ import { GridSlot, Route, RouteKind, RouteWaypoint, routeSample } from '../city/
 import { carParkProgress, onCarPark } from '../city/districts/carPark';
 import { CarState, createCar, gridRev, groundPitch, groundRoll, refillNitrous, steerLimit, stepCar, wheelRpm, type StepEnv } from './car';
 import { relocateCar } from './reset';
-import { WorldHit, collideCarWithWorld, collideCars, detectNearMiss } from './collision';
+import { WorldHit, carsOverlap, collideCarWithWorld, collideCars, detectNearMiss } from './collision';
 import { CRASH_EVENT, DT, TICK_HZ } from './constants';
 import { InputFrame, NEUTRAL_INPUT, packInput, quantizeInput } from './input';
 import { CarTuning } from './tuning';
@@ -22,7 +22,7 @@ import { AiState, Course, aiInput, buildRacingLine, createAi, driverDetours, dri
 import { deriveSeed } from './prng';
 import { stepProps } from './props';
 import { RailState, createRailState } from './rails';
-import { TrafficState, createTraffic, stepTraffic } from './traffic';
+import { TrafficState, createTraffic, stepTraffic, trafficTuning } from './traffic';
 import { DriftZoneState, createDriftZoneState, stepDriftZones } from './driftZones';
 import { waitingAtGate } from './gates';
 import { stepLevelCrossings } from './levelCrossing';
@@ -117,6 +117,8 @@ export interface RaceCar {
   wrongWayTime: number;
   wrongWay: boolean;
   resetCooldown: number;
+  /** Time left passing through other cars, racers and traffic, after a reset (s); 0 = solid. */
+  passThrough: number;
   stuckTime: number;
   ai: AiState | null;
   /** Post-finish runout autopilot (player only), created on the first tick after finishing. */
@@ -308,6 +310,7 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
       wrongWayTime: 0,
       wrongWay: false,
       resetCooldown: 0,
+      passThrough: 0,
       stuckTime: 0,
       ai: i === 0 ? null : createAi(DIFFICULTY_PACE[config.difficulty], drivers[i - 1], courses[i - 1]),
     };
@@ -575,8 +578,8 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
   for (let i = 0; i < r.cars.length; i++) {
     if (r.cars[i].finished) continue;
     for (let j = i + 1; j < r.cars.length; j++) {
-      // Finished cars pull out of the race: no contact, so they never block anyone.
-      if (r.cars[j].finished) continue;
+      // Finished cars pull out of the race: no contact, so they never block anyone; nor does a car just reset.
+      if (r.cars[j].finished || r.cars[i].passThrough > 0 || r.cars[j].passThrough > 0) continue;
       const imp = collideCars(r.cars[i].state, r.cars[i].tuning, r.cars[j].state, r.cars[j].tuning);
       if (imp > 0) {
         r.cars[i].state.impact = Math.max(r.cars[i].state.impact, imp);
@@ -595,6 +598,11 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
     rc.state.nearMiss = detectNearMiss(rc.state, rc.tuning, r.world);
     refillNitrous(rc.state, rc.tuning);
     if (rc.resetCooldown > 0) rc.resetCooldown -= DT;
+    if (rc.passThrough > 0) {
+      rc.passThrough -= DT;
+      // Never solid again inside another car: the window holds until it is clear.
+      if (rc.passThrough <= 0 && insideAnotherCar(r, rc)) rc.passThrough = DT;
+    }
     updateProgress(r, rc);
   }
   // Drift zones: the extra refill for drifting on the plaza and the lots, and the score multiplier updateDrift reads.
@@ -602,6 +610,13 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
   if (r.config.mode === 'drift') updateDrift(r);
 
   r.tick++;
+}
+
+/** The reset car `rc` sits inside a racer still in the race or a traffic car. */
+function insideAnotherCar(r: RaceState, rc: RaceCar): boolean {
+  for (const o of r.cars) if (o !== rc && !o.finished && carsOverlap(rc.state, rc.tuning, o.state, o.tuning)) return true;
+  for (const c of r.traffic?.cars ?? []) if (c.mode !== 'gone' && carsOverlap(rc.state, rc.tuning, c.body, trafficTuning(c.kind))) return true;
+  return false;
 }
 
 function updateProgress(r: RaceState, rc: RaceCar): void {

@@ -145,7 +145,8 @@
       "railDentLoss": 1,
       "railStepLoss": 1.2,
       "carRestitution": 0.3,
-      "angularScale": 0.45
+      "angularScale": 0.45,
+      "resetPassThrough": 3
     }
   },
   "cars": {

@@ -227,6 +227,8 @@ export interface CarTuning {
     railStepLoss: number;
     carRestitution: number;
     angularScale: number;
+    /** After a reset or tow the car passes through other cars, racers and traffic, for this long (s); walls still stop it. */
+    resetPassThrough: number;
   };
 }
 

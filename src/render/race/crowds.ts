@@ -154,7 +154,8 @@ const CROWD_POSE = /* glsl */ `
   vec3 aR = mix(mix(vec3(0.07 + 0.04 * sin(cT * 1.6 + cPh - 1.0), 0.1, 0.25), vec3(2.45 + 0.35 * wave - pump, 0.35, 0.45), cEx), vec3(1.0, clapIn, 1.55), clap);
   // A phone held up toward the road, filming; a flag or glowstick waved overhead the whole time.
   if (cPhone) aR = vec3(mix(1.45, 1.9, cEx) + 0.12 * cEx * wave, 0.0, 1.05 - 0.3 * cEx);
-  if (cWaving) aR = vec3(2.4 + (0.3 + 0.25 * cEx) * sin(cT * (2.2 + 4.5 * cEx) + cPh), 0.3, 0.2);
+  // Two fixed rates crossfaded by excitement: a rate scaled by it would multiply the absolute time, so every change in excitement would race the phase (flags whipping round).
+  if (cWaving) aR = vec3(2.4 + (0.3 + 0.25 * cEx) * mix(sin(cT * 2.2 + cPh), sin(cT * 5.5 + cPh), cEx), 0.3, 0.2);
   // A look around when idle, up at the arms when cheering.
   float headYaw = 0.3 * sin(cT * 0.5 + cPh * 1.7) * (1.0 - cEx);
   float headPitch = 0.04 - 0.14 * cEx;
