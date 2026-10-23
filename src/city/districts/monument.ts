@@ -46,7 +46,8 @@ import { CITY, ROUTE } from '../config';
 import { DEG, Vec2, abs, atan2, cos, distToSegment, sin, sqrt } from '../../sim/math';
 import { Rng } from '../../sim/prng';
 import { type RoadGraph, isBendNode } from '../roadGraph';
-import { PASS_START_RUN, type RoutePass, circuitStart, turnAngle } from '../route';
+import { type PassClear, alongStreet, leaving, passRun, startEdges, streetEdges } from './passes';
+import { PASS_START_RUN, type RoutePass } from '../route';
 import type { Area, DistrictModule, PlanContext, PlannedEvent } from './types';
 import type { BlockFace } from '../blocks';
 import { emptyBuild } from './types';
@@ -58,6 +59,8 @@ import { riverCenter } from './river';
 const SMOOTH: Smooth = { v: 0, d: 0 };
 
 const CFG = CITY.districts.monument;
+/** The passes' clearances off junctions, shortcut mouths and the route's turns (passes.ts). */
+const CLEAR: PassClear = { junction: CFG.passJunctionClear, mouth: CFG.passMouthClear, turn: CFG.passTurnClear };
 /** A Grand Tour's monument may stand this far from the center (m), wherever both routes pass a block that can hold it. */
 export const TOUR_REACH = 650;
 const KINDS = ['obelisk', 'column', 'arch'] as const;
@@ -139,82 +142,11 @@ interface PassLine {
   dout: Vec2;
 }
 
-/** Unit direction of edge `eid` leaving `node`. */
-function leaving(g: RoadGraph, node: number, eid: number): Vec2 {
-  const e = g.edges[eid];
-  const A = g.nodes[node];
-  const B = g.nodes[e.a === node ? e.b : e.a];
-  const l = sqrt((B.x - A.x) ** 2 + (B.z - A.z) ** 2) || 1;
-  return { x: (B.x - A.x) / l, z: (B.z - A.z) / l };
-}
-
-/** The edge at node `n` that carries on straight from edge `e` (a bend node's other piece, or a street running on through a junction that is no shortcut's mouth), or -1. */
-function straightOn(g: RoadGraph, n: number, e: number): number {
-  const N = g.nodes[n];
-  if (isBendNode(g, n)) return N.edges[0] === e ? N.edges[1] : N.edges[0];
-  // Never across a route shortcut's mouth (its alley must stay a real shortcut, route.ts).
-  if (N.edges.some((o) => g.edges[o].shortcut)) return -1;
-  const d = leaving(g, n, e);
-  let best = -1;
-  let bestDot = cos(ROUTE.passStraightDeg * DEG);
-  for (const o of N.edges) {
-    if (o === e) continue;
-    const u = leaving(g, n, o);
-    // Straight on: leaving opposite to the way we came in.
-    const dot = -(u.x * d.x + u.z * d.z);
-    if (dot > bestDot) {
-      bestDot = dot;
-      best = o;
-    }
-  }
-  return best;
-}
-
 /**
  * The point `d` m from `node` along the street through edge `eid` (on through bend nodes and
  * junctions it runs straight across), with the street's direction there away from the node, or
  * null past where the street ends or turns. passRun says how far a pass may go.
  */
-function alongStreet(g: RoadGraph, node: number, eid: number, d: number): { p: Vec2; u: Vec2 } | null {
-  let from = node;
-  let e = eid;
-  let rem = d;
-  for (let guard = 0; guard < 64; guard++) {
-    const E = g.edges[e];
-    const to = E.a === from ? E.b : E.a;
-    const A = g.nodes[from];
-    const B = g.nodes[to];
-    const l = sqrt((B.x - A.x) ** 2 + (B.z - A.z) ** 2) || 1;
-    if (rem <= l) {
-      const u = { x: (B.x - A.x) / l, z: (B.z - A.z) / l };
-      return { p: { x: A.x + u.x * rem, z: A.z + u.z * rem }, u };
-    }
-    const on = straightOn(g, to, e);
-    if (on < 0) return null;
-    rem -= l;
-    from = to;
-    e = on;
-  }
-  return null;
-}
-
-/** The edges from `node` along the street through `eid` (as alongStreet walks it) that the first `d` m run along. */
-function streetEdges(g: RoadGraph, node: number, eid: number, d: number): number[] {
-  const out: number[] = [];
-  let from = node;
-  let e = eid;
-  let rem = d;
-  for (let guard = 0; guard < 64 && e >= 0 && rem > 0; guard++) {
-    out.push(e);
-    const E = g.edges[e];
-    const to = E.a === from ? E.b : E.a;
-    rem -= sqrt((g.nodes[to].x - g.nodes[from].x) ** 2 + (g.nodes[to].z - g.nodes[from].z) ** 2);
-    e = straightOn(g, to, e);
-    from = to;
-  }
-  return out;
-}
-
 /** Where a line from E touches the circle (c, R) with c on `side` of it (1: the side a turn with a positive cross product turns to). */
 function tangentPoint(E: Vec2, c: Vec2, R: number, side: number): Vec2 | null {
   const dx = c.x - E.x;
@@ -548,44 +480,6 @@ function placingPass(g: RoadGraph, f: BlockFace, kind: string, yaw0: number, k: 
  * run along the plaza), CFG.passMouthClear before a shortcut's mouth. Never onto a circuit's start
  * straight (grid and line, route.ts circuitStart) nor a sprint's first or last stretch.
  */
-function passRun(g: RoadGraph, r: PlannedEvent['routes'][number], i: number, dir: number, side: Set<number>, banned: Set<number>): number {
-  const n = r.nodes.length;
-  const m = r.edges.length;
-  let len = 0;
-  let j = i;
-  for (let guard = 0; guard < n; guard++) {
-    if (!r.closed && (dir < 0 ? j <= 0 : j >= n - 1)) return len - CFG.passJunctionClear;
-    const e = dir < 0 ? r.edges[(j - 1 + m) % m] : r.edges[j % m];
-    if (!side.has(e) || banned.has(e)) return len - CFG.passJunctionClear;
-    len += g.edges[e].length;
-    j = r.closed ? (j + dir + n) % n : j + dir;
-    const id = r.nodes[j];
-    if (isBendNode(g, id)) continue;
-    if (g.nodes[id].edges.some((o) => g.edges[o].shortcut)) return len - CFG.passMouthClear;
-    if (!r.closed && (j <= 0 || j >= n - 1)) return len - CFG.passJunctionClear;
-    const prev = r.nodes[(j - dir + n) % n];
-    const next = r.nodes[(j + dir + n) % n];
-    if (abs(turnAngle(g, prev, id, next)) > ROUTE.passStraightDeg * DEG) return len - CFG.passTurnClear;
-  }
-  return len;
-}
-
-/** Edges a pass never runs along for route r: a circuit's start straight, a sprint's first and last stretches (passRun). */
-function startEdges(g: RoadGraph, r: PlannedEvent['routes'][number]): Set<number> {
-  const banned = new Set<number>();
-  if (r.closed) for (const e of circuitStart(g, r.nodes).run.edges) banned.add(e);
-  else {
-    let total = 0;
-    for (const e of r.edges) total += g.edges[e].length;
-    let at = 0;
-    for (const e of r.edges) {
-      if (at < ROUTE.sprintStartOffset + 60 || at + g.edges[e].length > total - ROUTE.sprintFinishOffset - ROUTE.sprintFinishNodeClear - 60) banned.add(e);
-      at += g.edges[e].length;
-    }
-  }
-  return banned;
-}
-
 /** Whether route r really turns at its node i (more than ROUTE.passStraightDeg between the streets). */
 function turnsAt(g: RoadGraph, r: PlannedEvent['routes'][number], i: number): boolean {
   const m = r.edges.length;
@@ -618,11 +512,11 @@ function passPlaces(g: RoadGraph, f: BlockFace, r: PlannedEvent['routes'][number
     if (eA === eB || !side.has(eB)) continue;
     if (!side.has(eA)) {
       // Coming onto a side: a chicane along it.
-      out.push({ shape: 'through', node, eA, eB, node2: -1, e2: -1, maxA: 0, maxB: passRun(g, r, i, 1, side, banned) });
+      out.push({ shape: 'through', node, eA, eB, node2: -1, e2: -1, maxA: 0, maxB: passRun(g, r, i, 1, side, banned, CLEAR) });
       continue;
     }
     if (!turnsAt(g, r, i)) continue;
-    out.push({ shape: 'corner', node, eA, eB, node2: -1, e2: -1, maxA: passRun(g, r, i, -1, side, banned), maxB: passRun(g, r, i, 1, side, banned) });
+    out.push({ shape: 'corner', node, eA, eB, node2: -1, e2: -1, maxA: passRun(g, r, i, -1, side, banned, CLEAR), maxB: passRun(g, r, i, 1, side, banned, CLEAR) });
     // The next junction on along eB's side, if the route turns there onto a third side: a U cut between.
     let j = i;
     for (let q = 1; q <= 4; q++) {
@@ -637,7 +531,7 @@ function passPlaces(g: RoadGraph, f: BlockFace, r: PlannedEvent['routes'][number
     if (j < 0 || !corner.has(r.nodes[j]) || !turnsAt(g, r, j)) continue;
     const e2 = r.edges[j % m];
     if (!side.has(e2) || e2 === eA || e2 === eB) continue;
-    out.push({ shape: 'ucut', node, eA, eB, node2: r.nodes[j], e2, maxA: passRun(g, r, i, -1, side, banned), maxB: passRun(g, r, j, 1, side, banned) });
+    out.push({ shape: 'ucut', node, eA, eB, node2: r.nodes[j], e2, maxA: passRun(g, r, i, -1, side, banned, CLEAR), maxB: passRun(g, r, j, 1, side, banned, CLEAR) });
   }
   return out;
 }
