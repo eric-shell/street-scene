@@ -67,11 +67,9 @@ export type Presentation = 'garage' | 'street';
 export interface GaragePrefs {
   /** Turntable showroom or the car cruising through a tunnel. */
   presentation: Presentation;
-  /** Front and rear stance sliders move together. */
+  /** Front and rear stance sliders (ride height, camber, offset) move together. */
   linkAxles: boolean;
-  /** Front and rear wheels share one color. */
-  linkWheelColor: boolean;
-  /** Front and rear wear the same wheel and tire. */
+  /** Front and rear wear the same wheel, size, tire and paint (the Wheels tab's link). */
   linkWheels: boolean;
 }
 
@@ -79,7 +77,7 @@ const PREFS_KEY = 'garage.prefs.v1';
 
 export function loadGaragePrefs(): GaragePrefs {
   const o = loadJson<Partial<GaragePrefs> | null>(PREFS_KEY, null) ?? {};
-  return { presentation: o.presentation === 'street' ? 'street' : 'garage', linkAxles: o.linkAxles !== false, linkWheelColor: o.linkWheelColor !== false, linkWheels: o.linkWheels !== false };
+  return { presentation: o.presentation === 'street' ? 'street' : 'garage', linkAxles: o.linkAxles !== false, linkWheels: o.linkWheels !== false };
 }
 
 /** Private mode or a full store: the preferences just do not persist. */

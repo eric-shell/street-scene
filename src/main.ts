@@ -562,7 +562,7 @@ function opponentEntrants(seed: number, count: number, player: PerformanceBuild)
     v.paint.color = '#' + new THREE.Color().setHSL(rng.next(), 0.8, 0.5).getHexString();
     v.paint.finish = rng.pick(PAINT_FINISHES);
     v.underglow = { ...v.underglow, enabled: rng.chance(0.6), color: '#' + new THREE.Color().setHSL(rng.next(), 1, 0.55).getHexString(), pattern: rng.pick(['steady', 'pulse', 'breathe'] as const) };
-    v.stance.rideHeight = -rng.range(0, 0.05);
+    v.stance.front.rideHeight = v.stance.rear.rideHeight = -rng.range(0, 0.05);
     visuals.push(v);
   }
   return { entrants, visuals };

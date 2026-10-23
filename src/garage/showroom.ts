@@ -419,7 +419,7 @@ function liftVisual(carId: string, paint: string, finish: PaintFinish, trim: str
   });
   v.wheels.paint = seed % 2 ? { color: '#1a1b1f', finish: 'gloss', match: false } : { color: '#c9ced8', finish: 'metallic', match: false };
   v.wheels.rearPaint = { ...v.wheels.paint };
-  v.stance.rideHeight = -0.03;
+  v.stance.front.rideHeight = v.stance.rear.rideHeight = -0.03;
   return v;
 }
 

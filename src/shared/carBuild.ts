@@ -54,8 +54,10 @@ export interface DecalLayer {
   text?: string;
 }
 
-/** Per axle stance. Old builds had one offset and one wheel size for both axles; validation migrates them. */
+/** Per axle stance. Old builds had one ride height, offset and wheel size for both axles; validation migrates them. */
 export interface AxleStance {
+  /** Meters the body sits above (+) or below (-) stock over this axle; front and rear apart rake the body. */
+  rideHeight: number;
   /** Degrees, negative = top of the wheel leans in. */
   camber: number;
   /** Meters the wheel moves outward from its stock track. */
@@ -95,7 +97,7 @@ export interface VisualBuild {
   /** Brake caliper paint, all four corners. */
   calipers: AccentPaint;
   decals: DecalLayer[];
-  stance: { rideHeight: number; front: AxleStance; rear: AxleStance };
+  stance: { front: AxleStance; rear: AxleStance };
   tint: { darkness: number; color: string };
   underglow: {
     enabled: boolean;
@@ -128,7 +130,7 @@ export function defaultVisual(): VisualBuild {
     wheels: { paint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPaint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPart: null, tire: 'standard', rearTire: 'standard' },
     calipers: { color: '#c41e3a', finish: 'gloss', match: false },
     decals: [],
-    stance: { rideHeight: 0, front: { camber: 0, offset: 0, wheelSize: 1 }, rear: { camber: 0, offset: 0, wheelSize: 1 } },
+    stance: { front: { rideHeight: 0, camber: 0, offset: 0, wheelSize: 1 }, rear: { rideHeight: 0, camber: 0, offset: 0, wheelSize: 1 } },
     tint: { darkness: 0.55, color: '#101820' },
     underglow: { enabled: false, color: '#00e5ff', color2: '#ff3df2', pattern: 'steady', brightness: 1, speed: 1, size: 1 },
   };
@@ -229,7 +231,7 @@ export function validateVisual(v: unknown): VisualBuild {
   const wheelPaint = validAccent(wheels.paint, { ...d.wheels.paint, color: hexColor(wheels.color, d.wheels.paint.color) });
   const rearPaint = validAccent(wheels.rearPaint, { ...wheelPaint, color: hexColor(wheels.rearColor, wheelPaint.color) });
   // Stance per axle. Legacy builds (saves and share codes from before per axle stance) had
-  // stance.camberFront / camberRear, one stance.offset and wheels.size; they seed both axles.
+  // stance.camberFront / camberRear and one stance.rideHeight, stance.offset and wheels.size; they seed both axles.
   // The first set's mild and aggressive stretches are the stretched tire now; its meaty one, standard.
   const tireShape = (v: unknown, fallback: TireShape) => (v === 'meaty' ? 'standard' : oneOf(v === 'mildStretch' || v === 'aggressiveStretch' ? 'stretched' : v, TIRE_SHAPES, fallback));
   const tire = tireShape(wheels.tire, d.wheels.tire);
@@ -237,9 +239,11 @@ export function validateVisual(v: unknown): VisualBuild {
   const L = STANCE_LIMITS;
   const legacySize = num(wheels.size, L.wheelSize[0], L.wheelSize[1], 1);
   const legacyOffset = num(stance.offset, L.offset[0], L.offset[1], 0);
+  const legacyRide = num(stance.rideHeight, L.rideHeight[0], L.rideHeight[1], 0);
   const axle = (raw: unknown, legacyCamber: unknown): AxleStance => {
     const a = obj(raw);
     return {
+      rideHeight: num(a.rideHeight, L.rideHeight[0], L.rideHeight[1], legacyRide),
       camber: num(a.camber, L.camber[0], L.camber[1], num(legacyCamber, L.camber[0], L.camber[1], 0)),
       offset: num(a.offset, L.offset[0], L.offset[1], legacyOffset),
       wheelSize: num(a.wheelSize, L.wheelSize[0], L.wheelSize[1], legacySize),
@@ -253,7 +257,6 @@ export function validateVisual(v: unknown): VisualBuild {
     calipers: validAccent(o.calipers, d.calipers),
     decals,
     stance: {
-      rideHeight: num(stance.rideHeight, L.rideHeight[0], L.rideHeight[1], 0),
       front: axle(stance.front, stance.camberFront),
       rear: axle(stance.rear, stance.camberRear),
     },

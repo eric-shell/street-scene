@@ -8,6 +8,7 @@ import { createElement, type IconNode } from 'lucide';
 export {
   ArrowLeft,
   ChevronDown,
+  ChevronUp,
   ChevronLeft,
   ChevronRight,
   ChevronsRight,

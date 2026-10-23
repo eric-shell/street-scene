@@ -9,7 +9,7 @@
  * is a modifier of the helper's block, so `btn(icon, 'Race', go, '--primary
  * event-card__go')` is a `btn btn--primary event-card__go`.
  */
-import { ChevronDown, icon, type IconNode } from './icons';
+import { ChevronDown, ChevronUp, icon, type IconNode } from './icons';
 
 type Child = Node | string | null | undefined | false;
 
@@ -55,13 +55,14 @@ export function btn(iconNode: IconNode | null, label: string, onClick: () => voi
 
 /**
  * Hints that a scroller holds more than it shows (kit/_scroll-hint.scss): its edges fade where content runs
- * past them and a small chevron bobs at the foot while there is more below, each easing away as that end is
- * reached. Returns the wrapper to place where the scroller went (`cls`: its modifiers and extra classes).
+ * past them and a small chevron bobs at that edge (up at the top, down at the foot), each easing away as that
+ * end is reached. Returns the wrapper to place where the scroller went (`cls`: its modifiers and extra classes).
  * Scrolling, resizes and content changes (a re-rendered list) all update it; nothing runs per frame.
  */
 export function scrollHint(scroller: HTMLElement, cls = ''): HTMLElement {
   scroller.classList.add('scroll-hint__view');
-  const wrap = h('div', { class: bem('scroll-hint', cls) }, scroller, h('span', { class: 'scroll-hint__more', 'aria-hidden': 'true' }, icon(ChevronDown, { size: 16 })));
+  const more = (side: 'above' | 'below') => h('span', { class: bem('scroll-hint__more', `--${side}`), 'aria-hidden': 'true' }, icon(side === 'above' ? ChevronUp : ChevronDown, { size: 16 }));
+  const wrap = h('div', { class: bem('scroll-hint', cls) }, scroller, more('above'), more('below'));
   let above = false;
   let below = false;
   // A pixel of slack: fractional scroll positions at the ends never quite reach them.

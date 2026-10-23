@@ -1045,11 +1045,13 @@ export class GarageScreen {
     // slider converts both ways (the inches a factor gives depend on the car and the wheel model).
     const car = this.scene.car?.wheelsReady ? this.scene.car : null;
     const id = (x: number) => x;
-    // Per axle sliders. While front and rear are linked, moving one moves its partner too.
+    // Per axle sliders. While front and rear are linked (the Stance tab's link, or the Wheels tab's for wheel
+    // size), moving one moves its partner too.
     const partners = new Map<string, { el: HTMLInputElement; out: HTMLElement; fmt: (x: number) => string; toUi: (x: number) => number }>();
-    const axleSlider = (axle: Axle, key: keyof AxleStance, short = false) => {
+    const axleSlider = (axle: Axle, key: keyof AxleStance, short = false, link = this.prefs.linkAxles) => {
       const L = STANCE_LIMITS[key];
       const spec = {
+        rideHeight: { label: 'Ride height', min: L[0], max: L[1], step: 0.005, fmt: cm, toUi: id, fromUi: id },
         camber: { label: 'Camber', min: L[0], max: L[1], step: 0.5, fmt: (x: number) => `${x}°`, toUi: id, fromUi: id },
         offset: { label: 'Wheel offset', min: L[0], max: L[1], step: 0.005, fmt: cm, toUi: id, fromUi: id },
         wheelSize: car
@@ -1066,7 +1068,7 @@ export class GarageScreen {
       const el = slider(label, spec.toUi(v.stance[axle][key]), spec.min, spec.max, spec.step, spec.fmt, (ui) => {
         const x = spec.fromUi(ui);
         v.stance[axle][key] = x;
-        if (this.prefs.linkAxles) {
+        if (link) {
           const other: Axle = axle === 'front' ? 'rear' : 'front';
           v.stance[other][key] = x;
           const p = partners.get(`${other}.${key}`);
@@ -1103,7 +1105,7 @@ export class GarageScreen {
         const soon = h('div', { class: 'garage-item garage-item--soon', 'aria-disabled': 'true', title: 'More models coming soon' }, h('span', { class: 'garage-item__label' }, 'More models soon'), h('span', { class: 'garage-item__sub muted' }, 'Coming soon'));
         soon.addEventListener('click', () => toast('More cars are on the way', Car));
         list.append(soon);
-        this.body.append(section('Car', list, h('div', { class: 'muted garage-note' }, 'A new car starts from its stock body; the wheels stay.')));
+        this.body.append(section('Model', list, h('div', { class: 'muted garage-note' }, 'A new car starts from its stock body; the wheels stay.')));
         break;
       }
       case 'body': {
@@ -1153,29 +1155,34 @@ export class GarageScreen {
       case 'wheels': {
         const wheels = partsFor(b.carId, 'wheels');
         const w = v.wheels;
-        // Linked, a pick dresses all four; unlinked, the axle switch says which pair the picks dress.
+        // One axle switch scopes the tab: linked, every pick equips all four (the rear copies the front);
+        // unlinked, the Front / Rear switch says which pair the wheel, size, tire and paint picks dress.
         const linked = this.prefs.linkWheels;
         const rear = !linked && this.wheelAxle === 'rear';
+        const axle: Axle = rear ? 'rear' : 'front';
         const front = v.parts.wheels ?? manifestCar(b.carId).defaultWheel;
-        const axleName = linked ? '' : rear ? 'Rear ' : 'Front ';
+        const title = (name: string) => (linked ? capital(name) : `${capital(axle)} ${name}`);
         this.body.append(
           section(
-            linked ? 'Wheels' : `${axleName}wheels`,
-            linked
-              ? this.wheelLinkToggle()
-              : h(
-                  'div',
-                  { class: 'row' },
-                  segmented(
-                    AXLES.map((a) => ({ value: a, label: a === 'front' ? 'Front' : 'Rear' })),
+            'Axles',
+            h(
+              'div',
+              { class: 'row' },
+              this.wheelLinkToggle(),
+              linked
+                ? h('span', { class: 'muted garage-note' }, 'Every pick equips all four wheels.')
+                : segmented(
+                    AXLES.map((a) => ({ value: a, label: capital(a) })),
                     this.wheelAxle,
                     (a) => {
                       this.wheelAxle = a;
                       this.renderTab();
                     },
                   ),
-                  this.wheelLinkToggle(),
-                ),
+            ),
+          ),
+          section(
+            title('wheel'),
             choiceList(
               wheels.map((p) => ({ value: p.id, label: p.displayName })),
               rear ? (w.rearPart ?? front) : front,
@@ -1192,8 +1199,9 @@ export class GarageScreen {
               true,
             ),
           ),
+          section(title('size'), axleSlider(axle, 'wheelSize', true, linked), h('div', { class: 'muted garage-note' }, 'Bigger wheels, thinner sidewalls.')),
           section(
-            linked ? 'Tires' : `${axleName}tires`,
+            title('tire'),
             choiceList(
               TIRE_CHOICES,
               rear ? w.rearTire : w.tire,
@@ -1208,28 +1216,20 @@ export class GarageScreen {
               true,
             ),
           ),
-          section('Wheel size', this.linkToggle(), ...AXLES.map((a) => axleSlider(a, 'wheelSize')), h('div', { class: 'muted garage-note' }, 'Bigger wheels, thinner sidewalls.')),
-          // Wheel paint has its own link: one picker while linked (the rear copies the front), one per axle when not.
-          ...(this.prefs.linkWheelColor
-            ? [
-                section(
-                  'Wheel paint',
-                  paintPicker(
-                    w.paint,
-                    PRESETS.wheels,
-                    () => {
-                      w.rearPaint = { ...w.paint };
-                      this.changed();
-                    },
-                    { body: v.paint, tools: [this.colorLinkToggle()] },
-                  ),
-                ),
-              ]
-            : [
-                section('Front wheel paint', paintPicker(w.paint, PRESETS.wheels, () => this.changed(), { body: v.paint, tools: [this.colorLinkToggle()] })),
-                section('Rear wheel paint', paintPicker(w.rearPaint, PRESETS.wheels, () => this.changed(), { body: v.paint })),
-              ]),
-          section('Caliper paint', paintPicker(v.calipers, PRESETS.calipers, () => this.changed(), { body: v.paint })),
+          section(
+            title('paint'),
+            paintPicker(
+              rear ? w.rearPaint : w.paint,
+              PRESETS.wheels,
+              () => {
+                if (linked) w.rearPaint = { ...w.paint };
+                this.changed();
+              },
+              { body: v.paint },
+            ),
+          ),
+          // One caliper paint for all four corners, whatever the axle switch says.
+          section('Calipers', paintPicker(v.calipers, PRESETS.calipers, () => this.changed(), { body: v.paint })),
         );
         break;
       }
@@ -1237,18 +1237,9 @@ export class GarageScreen {
         this.renderVinyls();
         break;
       case 'stance': {
-        const s = v.stance;
-        const L = STANCE_LIMITS;
         this.body.append(
-          section(
-            'Stance (visual only)',
-            slider('Ride height', s.rideHeight, L.rideHeight[0], L.rideHeight[1], 0.005, cm, (x) => {
-              s.rideHeight = x;
-              this.changed();
-            }),
-            this.linkToggle(),
-          ),
-          ...AXLES.map((a) => section(a === 'front' ? 'Front' : 'Rear', ...(['camber', 'offset', 'wheelSize'] as const).map((k) => axleSlider(a, k, true)))),
+          section('Ride height', this.linkToggle(), ...AXLES.map((a) => axleSlider(a, 'rideHeight')), h('div', { class: 'muted garage-note' }, 'Visual only. Front and rear apart rake the car.')),
+          ...AXLES.map((a) => section(capital(a), ...(['camber', 'offset'] as const).map((k) => axleSlider(a, k, true)))),
         );
         break;
       }
@@ -1363,51 +1354,32 @@ export class GarageScreen {
     );
   }
 
-  /** Link toggle for the wheel and tire picks: linked, front and rear wear the same; unlinked, each axle picks its own. */
+  /** The Wheels tab's link: linked, front and rear wear the same wheel, size, tire and paint; unlinked, each axle picks its own. */
   private wheelLinkToggle(): HTMLElement {
     const linked = this.prefs.linkWheels;
     return toggle(
       linked ? Link2 : Link2Off,
       'Link',
       linked,
-      linked ? 'Front and rear same wheels' : 'Front and rear wheels separate',
+      linked ? 'Front and rear wheels the same' : 'Front and rear wheels separate',
       () => {
         this.prefs.linkWheels = !linked;
         saveGaragePrefs(this.prefs);
         const w = this.build.visual.wheels;
         if (this.prefs.linkWheels) {
-          // Linking starts from matching axles: the rear takes the front's wheel and tire.
+          // Linking starts from matching axles: the rear takes the front's wheel, size, tire and paint.
           w.rearPart = null;
           w.rearTire = w.tire;
+          w.rearPaint = { ...w.paint };
+          this.build.visual.stance.rear.wheelSize = this.build.visual.stance.front.wheelSize;
           void this.changed().then(() => this.tab === 'wheels' && this.renderTab());
-          toast('Rear wheels and tires now match front', Link2);
+          toast('Rear wheels now match front', Link2);
         } else this.wheelAxle = 'front';
         this.renderTab();
       },
     );
   }
 
-  /** Link toggle for the wheel paint, separate from the stance link so sizes and colors can split independently. */
-  private colorLinkToggle(): HTMLElement {
-    const linked = this.prefs.linkWheelColor;
-    return toggle(
-      linked ? Link2 : Link2Off,
-      'Link',
-      linked,
-      linked ? 'Front and rear same paint' : 'Front and rear paint separate',
-      () => {
-        this.prefs.linkWheelColor = !linked;
-        saveGaragePrefs(this.prefs);
-        if (this.prefs.linkWheelColor) {
-          const w = this.build.visual.wheels;
-          w.rearPaint = { ...w.paint };
-          this.changed();
-          toast('Rear wheels now match front', Link2);
-        }
-        this.renderTab();
-      },
-    );
-  }
 
   private renderVinyls(): void {
     const v = this.build.visual;

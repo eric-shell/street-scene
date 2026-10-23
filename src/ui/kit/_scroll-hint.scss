@@ -1,5 +1,5 @@
 /* Scroll hints (dom.ts scrollHint): the scroller's edges fade where its content runs past them, and a small
-   chevron bobs at the foot while there is more below. Both ease in and out as the ends are reached, and stay
+   chevron bobs at that edge (--above at the top, --below at the foot) while there is more past it. Both ease in and out as the ends are reached, and stay
    faint: a hint that more is there, not a control (the chevron never takes a click). The fade lengths are
    registered so the mask's stops can transition. */
 @use '../styles/abstracts/media';
@@ -27,22 +27,37 @@
   &__more {
     position: absolute;
     left: 50%;
-    bottom: 0;
     translate: -50% 0;
     display: flex;
     color: var(--muted);
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.35s ease;
+    &--above {
+      top: 0;
+      --bob: -3px;
+    }
+    &--below {
+      bottom: 0;
+      --bob: 3px;
+    }
   }
-  &.is-above > .scroll-hint__view {
-    --scroll-fade-top: 22px;
+  &.is-above {
+    > .scroll-hint__view {
+      --scroll-fade-top: 22px;
+    }
+    > .scroll-hint__more--above {
+      opacity: 0.5;
+      @include media.motion {
+        animation: scroll-hint-bob 1.8s ease-in-out infinite;
+      }
+    }
   }
   &.is-below {
     > .scroll-hint__view {
       --scroll-fade-bottom: 30px;
     }
-    > .scroll-hint__more {
+    > .scroll-hint__more--below {
       opacity: 0.5;
       @include media.motion {
         animation: scroll-hint-bob 1.8s ease-in-out infinite;
@@ -52,6 +67,6 @@
 }
 @keyframes scroll-hint-bob {
   50% {
-    transform: translateY(3px);
+    transform: translateY(var(--bob));
   }
 }

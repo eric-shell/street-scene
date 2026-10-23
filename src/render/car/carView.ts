@@ -39,6 +39,9 @@ const DEG = Math.PI / 180;
 /** Scratch for CarView.update's wheel placement. */
 const WHEEL_POS = new THREE.Vector3();
 const WHEEL_STEER = new THREE.Quaternion();
+/** Scratch for the driving pose alone (the body adds the stance's rake on top; the wheels never take it). */
+const POSE_Q = new THREE.Quaternion();
+const POSE_E = new THREE.Euler();
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
 /** Scratch for the underglow's two colors, set every frame. */
 const GLOW_C1 = new THREE.Color();
@@ -97,6 +100,9 @@ export class CarView {
   ];
   /** What each axle wears ("wheel id:tire shape"), so an unchanged axle is not baked again. */
   private axleWear = ['', ''];
+  /** The stance's ride height over each axle (front, rear; m), and the rake they give the body (rad about x). */
+  private axleLift = [0, 0];
+  private rake = 0;
   private slotObjects = new Map<PartSlot, THREE.Object3D>();
   private baseModel: THREE.Object3D | null = null;
   private placeholder = false;
@@ -544,7 +550,14 @@ export class CarView {
   private applyStance(): void {
     const v = this.visual;
     const s = v.stance;
-    this.body.position.y = s.rideHeight;
+    // Front and rear heights set a line along the car: the body sits where it crosses the body's origin and
+    // pitches along it, so each axle's arch drops by its own height. The wheels stay where they stand.
+    const zf = this.car.wheels.FL[2];
+    const zr = this.car.wheels.RL[2];
+    this.axleLift = [s.front.rideHeight, s.rear.rideHeight];
+    this.rake = Math.asin((s.front.rideHeight - s.rear.rideHeight) / (zr - zf || 1));
+    this.body.position.y = s.front.rideHeight + zf * Math.sin(this.rake);
+    this.body.rotation.x = this.rake;
     this.applyWheelSize(0, s.front.wheelSize);
     this.applyWheelSize(1, s.rear.wheelSize);
     for (let i = 0; i < 4; i++) {
@@ -630,15 +643,14 @@ export class CarView {
   update(pose: CarPose, time: number): void {
     this.root.position.set(pose.x, pose.y + this.roadLift, pose.z);
     this.root.rotation.set(0, pose.yaw, 0);
-    this.body.rotation.set(pose.pitch, 0, pose.roll, 'YXZ');
+    this.body.rotation.set(pose.pitch + this.rake, 0, pose.roll, 'YXZ');
     const tRoll = Math.tan(pose.roll);
     const tPitch = Math.tan(pose.pitch);
     const g = this.groundY;
     // The wheels hang off the body's own frame: its pitch and roll carry them, so on a steep bank they
     // lean with the body and stay in their arches. (The sim's sheared plane, tan below, only matches a
     // rotation at small angles: at 30 degrees of roll an upright wheel stands well clear of its arch.)
-    const bq = this.body.quaternion;
-    const rideHeight = this.body.position.y;
+    const bq = POSE_Q.setFromEuler(POSE_E.set(pose.pitch, 0, pose.roll, 'YXZ'));
     for (let i = 0; i < 4; i++) {
       const pivot = this.wheelPivots[i];
       const p = this.car.wheels[WHEEL_KEYS[i]];
@@ -647,8 +659,9 @@ export class CarView {
       const plane = p[0] * tRoll - p[2] * tPitch;
       g[i] = pose.comp[i] + plane;
       const comp = Math.max(-0.12, Math.min(0.12, pose.comp[i]));
-      WHEEL_POS.set(pivot.userData.restX as number, (pivot.userData.restY as number) - rideHeight + comp, pivot.userData.restZ as number).applyQuaternion(bq);
-      pivot.position.set(WHEEL_POS.x, WHEEL_POS.y + rideHeight, WHEEL_POS.z);
+      const lift = this.axleLift[i < 2 ? 0 : 1];
+      WHEEL_POS.set(pivot.userData.restX as number, (pivot.userData.restY as number) - lift + comp, pivot.userData.restZ as number).applyQuaternion(bq);
+      pivot.position.set(WHEEL_POS.x, WHEEL_POS.y + lift, WHEEL_POS.z);
       pivot.quaternion.copy(bq);
       if (i < 2) pivot.quaternion.multiply(WHEEL_STEER.setFromAxisAngle(Y_AXIS, pose.steer));
       this.wheelSpins[i].rotation.x = pose.spin[i];
