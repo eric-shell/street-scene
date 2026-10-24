@@ -565,7 +565,7 @@ export class ChaseCamera {
       out.y += (1 - t) * lift;
     }
     out.y = Math.max(out.y, this.world.heightAt(out.x, out.z, ay) + clearance);
-    // Never inside a tunnel's roof, a viaduct's deck, a gantry's truss or a river bridge's slab.
+    // Never inside a tunnel's roof, a viaduct's deck, the expressway's deck or a ramp, or a river bridge's slab.
     clampCeiling(this.world, out);
   }
 
@@ -593,7 +593,8 @@ export class ChaseCamera {
  * or 1 when it is clear: how every camera stays out of the buildings (the race
  * cameras here, the menu and garage street cameras in game/streetCameras.ts).
  * With `y` (the followed car's body height) a low wall it passes over
- * (Wall.top) or a deck's parapet it passes under (Wall.bottom) does not count.
+ * (Wall.top), a deck's parapet it passes under (Wall.bottom) or a column
+ * under the expressway's deck it drives over (Wall.under) does not count.
  * `scratch` is reused for the grid query.
  */
 export function wallHit(w: World, ax: number, az: number, bx: number, bz: number, scratch: number[], y?: number): number {
@@ -603,7 +604,7 @@ export function wallHit(w: World, ax: number, az: number, bx: number, bz: number
   const dz = bz - az;
   for (const id of scratch) {
     const s = w.walls[id];
-    if (y !== undefined && ((s.top !== undefined && y > s.top) || (s.bottom !== undefined && y < s.bottom))) continue;
+    if (y !== undefined && ((s.top !== undefined && y > s.top) || (s.bottom !== undefined && y < s.bottom) || (s.under !== undefined && y > s.under))) continue;
     const ex = s.bx - s.ax;
     const ez = s.bz - s.az;
     const den = dx * ez - dz * ex;

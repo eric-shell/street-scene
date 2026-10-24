@@ -113,7 +113,8 @@ export class TireFx {
         }
         const [wv, , wu] = geo.wheels[i];
         C.set(c.x + F.x * wu + L.x * wv, 0, c.z + F.z * wu + L.z * wv);
-        C.y = world.heightAt(C.x, C.z) + this.lift;
+        // The level the car is on: the street, or the highway's deck or a bridge's floor (World.heightAt).
+        C.y = world.heightAt(C.x, C.z, c.y) + this.lift;
 
         // ---- marks ----
         if (tint === undefined) tr.laying = false;

@@ -50,6 +50,7 @@ export type AreaKind =
   | 'roadworks'
   | 'bluff'
   | 'carPark'
+  | 'highway'
   // Reserved unique features (planned later, disabled in config).
   | 'waterfront'
   | 'lake';
@@ -92,8 +93,11 @@ export const COBBLE_PRIORITY = 6;
  * monument: the step ring around a landmark's base, or an arch's piers (monument).
  * tunnel / rock: tunnel walls, portal wingwalls and the shut in building line behind them;
  *   the rock face along a ridge's cutting (tunnel).
- * pier: overpass piers and abutments, sign gantry legs (overpass); a river bridge's piers standing on
+ * pier: overpass piers and abutments (overpass); a river bridge's piers standing on
  *   the channel floor under its deck (solids with Wall.top, river).
+ * highway: the elevated highway's columns (Wall.under: cars on the deck pass over them), its deck
+ *   barriers and median (Wall.bottom: cars under the deck pass beneath them), its on-ramps' walls and
+ *   the frontage under a ramp's merge, the closures at its ends and, in a race, across its ramps (highway).
  * marketRail: the night market's crowd rail along a pen and its end caps back to the building line;
  *   marketFront: the frontage behind a pen, a facade or the market's shuttered back wall (market).
  * gate: a timed gate's arms across a street (sim/gates.ts; a level crossing's are drawn by render/districts/bluff.ts).
@@ -131,9 +135,10 @@ export type WallLook =
   | 'railFence'
   | 'carPark'
   | 'alleyLip'
-  | 'gatePier';
+  | 'gatePier'
+  | 'highway';
 
-export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark', 'alleyLip', 'gatePier'];
+export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark', 'alleyLip', 'gatePier', 'highway'];
 
 export interface Area {
   /** Index into CityDistricts.areas. */
@@ -194,22 +199,34 @@ export interface HeightMod {
 }
 
 /**
- * A bridge deck over a sunken district (the river channel): two drivable
- * levels inside `polygon`. The terrain is the deck; `lower` adds the ground
- * beneath it (its height below the deck, 0 or negative, with the gradient),
- * which World.heightAt returns for a car body nearer to it than to the deck.
+ * A drivable level that is not the terrain, inside `polygon`. Two forms:
+ *  - `lower`: a bridge deck over a sunken district (the river channel). The
+ *    terrain is the deck; `lower` adds the ground beneath it (its height
+ *    below the deck, 0 or negative, with the gradient), which World.heightAt
+ *    returns for a car body nearer to it than to the deck.
+ *  - `upper`: a deck over the ground (the elevated highway). The terrain is
+ *    the street under it; `upper` writes the deck's own height, which
+ *    World.heightAt returns for a car body nearer to the deck than to the
+ *    terrain beneath (or always, with `solid`: an on-ramp's walled body,
+ *    which has nothing drivable under it).
+ * Without a body height (render draping, props, traffic, every caller that
+ * is no car) the terrain is the answer in both forms.
  */
 export interface DeckSpan {
   polygon: Vec2[];
   area: number;
-  /** The drop from the deck to the lower level's floor (m): a body less than half of it below the deck is on the deck. */
+  /** The drop from the deck to the lower level's floor (m): a body less than half of it below the deck is on the deck (`lower` spans). */
   depth: number;
   /**
    * Add the lower level's height relative to the terrain (m, <= 0) and its gradient at (x, z) into
    * `out`; returns the deck's height above the terrain there (0 on the deck proper, up to the drop
    * at the footprint's edge, where the terrain eases down to the lower level under the deck's edge).
    */
-  lower(x: number, z: number, out: HeightSample): number;
+  lower?(x: number, z: number, out: HeightSample): number;
+  /** Write the upper level's absolute height (m) and gradient at (x, z) into `out`. */
+  upper?(x: number, z: number, out: HeightSample): void;
+  /** An `upper` span with nothing drivable beneath it: every body height drives the upper level. */
+  solid?: boolean;
 }
 
 /** City frontage walls whose inside probe falls in `polygon` are drawn by this look instead. */
@@ -383,6 +400,8 @@ export const AREA_MAP_STYLE: Record<AreaKind, AreaMapStyle> = {
   // The escarpment: its terrace filled and its crest as a cliff line with ticks down the face (ui/map/cityMap.ts cliffPath; the width is in screen px).
   bluff: { fill: 'rgba(252,152,103,0.08)', stroke: 'rgba(252,152,103,0.55)', width: 1.5 },
   carPark: { fill: 'rgba(147,146,147,0.22)', stroke: 'rgba(255,97,136,0.4)', width: 1.5 },
+  // The freeway: a wide pale band (the deck line), solid where the El is dashed.
+  highway: { stroke: 'rgba(252,252,250,0.32)', width: 9 },
   waterfront: { fill: 'rgba(120,220,232,0.14)' },
   lake: { fill: 'rgba(120,220,232,0.18)' },
 };
