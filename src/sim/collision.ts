@@ -16,7 +16,7 @@
 import { CarState, yawInertia } from './car';
 import { CarTuning } from './tuning';
 import { DT, LEVEL_GAP } from './constants';
-import { abs, cos, sign, sin, sqrt } from './math';
+import { abs, cos, sign, sin, sqrt, tan } from './math';
 import type { Contact, World } from '../city/world';
 import { RailState, collideRails, pushRailPiece, railStepAhead } from './rails';
 import { collideGates } from './gates';
@@ -57,7 +57,7 @@ const contactPiece: number[] = [];
 /**
  * World contacts for a circle; with rail bodies, static rail walls are replaced by the displaced pieces.
  * Timed gates blocking at `tick` are added for the car whose center is (carX, carZ). A car body at
- * height y passes over low walls (Wall.top: a car park's lip face).
+ * height y over the circle passes over low walls (Wall.top: a car park's or a jump exit's lip face).
  */
 function gatherContacts(world: World, rails: RailState | undefined, x: number, z: number, r: number, tick = 0, carX = x, carZ = z, y = -Infinity): number {
   const n = world.collideCircle(x, z, r, contacts, y);
@@ -105,12 +105,16 @@ export function collideCarWithWorld(c: CarState, t: CarTuning, world: World, hit
   c.scrape = 0;
   c.scrapeNx = 0;
   c.scrapeNz = 0;
+  // The body's height over each circle: the plane through c.y tilted by pitch (car.ts suspension), so
+  // a nose climbing a jump exit's ramp is over the lip's face while the center is still below its top.
+  const tPitch = tan(c.pitch);
   for (const circ of circleOffsets(t)) {
+    const cy = c.y - circ.u * tPitch;
     // Two passes handle corners where two walls meet.
     for (let pass = 0; pass < 2; pass++) {
       const cx = c.x + fx * circ.u;
       const cz = c.z + fz * circ.u;
-      const n = gatherContacts(world, rails, cx, cz, circ.r, tick, c.x, c.z, c.y);
+      const n = gatherContacts(world, rails, cx, cz, circ.r, tick, c.x, c.z, cy);
       if (n === 0) break;
       let bi = 0;
       for (let i = 1; i < n; i++) if (contacts[i].depth > contacts[bi].depth) bi = i;

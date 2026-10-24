@@ -13,6 +13,7 @@ import { distToPath, pointInPolygon, polygonCentroid } from '../src/city/distric
 import { riverCenter } from '../src/city/districts/river';
 import { LOST, createRace, stepRace } from '../src/sim/race';
 import { NEUTRAL_INPUT } from '../src/sim/input';
+import { DT } from '../src/sim/constants';
 import { raceConfig } from './helpers';
 import { PROP_DEFS, isStreetProp } from '../src/city/props';
 import { LANE } from '../src/city/districts/alleyDressing';
@@ -1448,6 +1449,46 @@ describe('route shortcut shapes', () => {
       flown++;
     }
     expect(flown).toBe(3);
+  });
+
+  it('a car climbing a steep jump ramp rides over the lip face, never shoved through it', () => {
+    // Seed 353736660's sprint exit: the ramp is still below the face's top 3 m short of it, so a
+    // body judged at its center height met the face's anti tunnelling band and was shoved ~4 m
+    // forward and launched at 34 m/s. Judged at each circle's own height, the nose is over it.
+    const config = raceConfig(353736660, 'sprint', 0);
+    const r = createRace(config);
+    const w = r.world;
+    const sc = w.route.shortcuts.find((x) => w.areas.find((a) => a.kind === 'backAlley' && a.edges.includes(x.edges[0]))?.params.jumpExit)!;
+    expect(sc).toBeDefined();
+    const n = sc.points.length;
+    const O = sc.points[n - 2];
+    const B = sc.points[n - 1];
+    const leg = Math.hypot(B.x - O.x, B.z - O.z);
+    const ux = (B.x - O.x) / leg;
+    const uz = (B.z - O.z) / leg;
+    while (r.tick < r.countdownTicks) stepRace(r, NEUTRAL_INPUT);
+    const rc = r.cars[0];
+    const c = rc.state;
+    const v = 60 / 3.6;
+    c.x = O.x + ux * 2;
+    c.z = O.z + uz * 2;
+    c.y = w.driveHeightAt(c.x, c.z);
+    c.yaw = Math.atan2(ux, uz);
+    c.vx = ux * v;
+    c.vz = uz * v;
+    c.yawRate = 0;
+    rc.seg = -1;
+    let step = 0;
+    let climb = 0;
+    for (let k = 0; k < 150; k++) {
+      const px = c.x;
+      const pz = c.z;
+      stepRace(r, { ...NEUTRAL_INPUT, throttle: 0.35 });
+      step = Math.max(step, Math.hypot(c.x - px, c.z - pz));
+      climb = Math.max(climb, c.vy);
+    }
+    expect(step).toBeLessThan(v * DT * 1.5);
+    expect(climb).toBeLessThan(6);
   });
 });
 
