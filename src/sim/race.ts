@@ -10,6 +10,7 @@
 import { createCity, createWorld, World, City, RouteProgress } from '../city/world';
 import { GridSlot, Route, RouteKind, RouteWaypoint, routeSample } from '../city/route';
 import { carParkProgress, onCarPark } from '../city/districts/carPark';
+import { highwayResetPose } from '../city/districts/highway/settle';
 import { CarState, createCar, gridRev, groundPitch, groundRoll, refillNitrous, steerLimit, stepCar, wheelRpm, type StepEnv } from './car';
 import { relocateCar } from './reset';
 import { WorldHit, carsOverlap, collideCarWithWorld, collideCars, detectNearMiss } from './collision';
@@ -417,6 +418,11 @@ const RESET_OFF_DECK = { step: 8, tries: 6 } as const;
 export function resetToStreet(r: RaceState, rc: RaceCar): void {
   const g = r.world.graph;
   const c = rc.state;
+  // Up on the highway (its deck or a ramp): back onto the deck, on the level it was on.
+  if (r.world.upperLevel(c.x, c.z, c.y)) {
+    const up = highwayResetPose(r.world.areas, c.x, c.z, c.yaw);
+    if (up) return relocateCar(r, rc, up.x, up.z, up.yaw, false, up.y + 0.5);
+  }
   let best = -1;
   let bestD = Infinity;
   for (const e of g.edges) {
@@ -458,7 +464,8 @@ function updateOpenWorld(r: RaceState, rc: RaceCar): void {
   rc.wrongWay = false;
   rc.wrongWayTime = 0;
   const c = rc.state;
-  if (r.world.surfaceAt(c.x, c.z) === 'offroad') rc.stuckTime += DT;
+  // Up on the highway a car is on the road whatever the ground beneath it is.
+  if (r.world.surfaceAt(c.x, c.z) === 'offroad' && !r.world.upperLevel(c.x, c.z, c.y)) rc.stuckTime += DT;
   else rc.stuckTime = 0;
   if (rc.stuckTime > OPEN_WORLD_LOST_TIME) resetToStreet(r, rc);
 }

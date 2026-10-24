@@ -23,6 +23,11 @@ for (const e of city.graph.edges) {
   const color = e.kind === 'channel' ? '#245' : e.kind === 'ramp' ? '#357' : '#333';
   parts.push(`<line x1="${a.x}" y1="${a.z}" x2="${b.x}" y2="${b.z}" stroke="${color}" stroke-width="${e.width}"/>`);
 }
+// The elevated highway's deck and ramps (districts/highway/), under the walls.
+for (const a of city.districts.areas) {
+  if (a.kind !== 'highway' || a.polygon.length < 3) continue;
+  parts.push(`<polygon points="${a.polygon.map((p) => `${p.x},${p.z}`).join(' ')}" fill="${a.variant === 'ramp' ? '#c6a' : '#ddd'}" fill-opacity="0.22" stroke="none"/>`);
+}
 for (const w of circuit.walls) {
   parts.push(`<line x1="${w.ax}" y1="${w.az}" x2="${w.bx}" y2="${w.bz}" stroke="${w.kind === 'barrier' ? '#f80' : '#8af'}" stroke-width="1.2"/>`);
 }

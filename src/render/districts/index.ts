@@ -23,6 +23,7 @@ import { parkRenderer } from './park';
 import { riverRenderer } from './river';
 import { roundaboutRenderer } from './roundabout';
 import { subwayRenderer } from './subway';
+import { highwayRenderer } from './highway';
 import { bluffRenderer } from './bluff';
 import { tunnelRenderer } from './tunnel';
 import { overpassRenderer } from './overpass';
@@ -38,6 +39,7 @@ export const DISTRICT_RENDERERS: readonly DistrictRenderer[] = [
   roundaboutRenderer,
   alleyRenderer,
   subwayRenderer,
+  highwayRenderer,
   bluffRenderer,
   infillRenderer,
   hillsRenderer,

@@ -11,9 +11,10 @@ import { placeCar } from './car';
 /**
  * Put `rc` down at (x, z) facing `yaw` as a reset. `tow`: a hazard moved it off its racing line's track,
  * so an AI also looks for its place on its line again (a reset to the road keeps the place it had).
+ * `y` picks the level where two stack (World.heightAt): the highway's deck for a car put back up there.
  */
-export function relocateCar(r: RaceState, rc: RaceCar, x: number, z: number, yaw: number, tow = false): void {
-  placeCar(rc.state, x, z, yaw, r.world);
+export function relocateCar(r: RaceState, rc: RaceCar, x: number, z: number, yaw: number, tow = false, y?: number): void {
+  placeCar(rc.state, x, z, yaw, r.world, y);
   rc.resetCooldown = 1;
   rc.passThrough = rc.tuning.collision.resetPassThrough;
   rc.stuckTime = 0;

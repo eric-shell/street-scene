@@ -872,19 +872,12 @@ export const CITY = {
     },
     /**
      * Overpasses (src/city/districts/overpass.ts): structures you drive
-     * under. Sign gantries straddle the wide streets on two legs; a short
-     * freeway viaduct crosses one to three streets mid-block on hammerhead
-     * piers standing on the sidewalks, its ends buried in abutments inside
-     * the blocks.
+     * under. A short freeway viaduct crosses one to three streets mid-block
+     * on hammerhead piers standing on the sidewalks, its ends buried in
+     * abutments inside the blocks.
      */
     overpass: {
       enabled: true,
-      /** Sign gantries per city [min, max]. */
-      gantries: [3, 5],
-      /** Truss underside above the road (m), legs behind the curb (m) and their square size (m). */
-      gantryClearance: 6,
-      legSetback: 0.9,
-      legSize: 0.7,
       /** Chance of a viaduct per city, and how many streets it crosses [min, max]. */
       viaductChance: 0.85,
       crossings: [2, 3],
@@ -902,6 +895,63 @@ export const CITY = {
       minCrossDeg: 58,
       /** Abutment block at each end, along the deck (m). */
       abutment: 9,
+    },
+    /**
+     * Elevated highway (src/city/districts/highway/): a freeway on a deck
+     * crossing the whole map west to east along a row street, swinging to the
+     * next row through the blocks once or twice, drivable in free roam from
+     * its on-ramps (closed in races). Cars on the deck and in the street under
+     * it are two levels (districts/types.ts DeckSpan); its columns stand on the
+     * sidewalks and in the blocks.
+     */
+    highway: {
+      enabled: true,
+      /** Chance per city, the first draw of the module's own stream (highwayRolled). */
+      chance: 0.6,
+      /** Deck width (m): two carriageways of two lanes, shoulders, a median and a jersey barrier each side. */
+      deckWidth: 18,
+      /** Lane width (m) and the median barrier's width (m). */
+      lane: 3.5,
+      median: 0.8,
+      /** Deck underside above the smoothed ground (m), clear of the start gantry (11.9 m), and the deck's depth (m). */
+      clearance: 12,
+      depth: 1.5,
+      /** Over the El the underside clears the El's tie top by this much (m): its trains, track lamps and station canopies. */
+      elClear: 5.8,
+      /** The hump over the El eases in and out at this grade at most (rise per m). */
+      humpGrade: 0.025,
+      /** Street bents: a square column on each sidewalk this far behind the curb (m), this size (m), about this far apart (m). */
+      columnSetback: 2,
+      columnSize: 1.1,
+      bentSpacing: 34,
+      /** Hammerhead columns on the deck line through the blocks: radius (m). */
+      pierRadius: 1.05,
+      /** Swings to the next row [min, max] per seed, each over [min, max] columns. */
+      swings: [1, 2],
+      swingCols: [2, 3],
+      /** The S curve starts and ends this far past the junction it leaves or joins (m). */
+      swingLead: 30,
+      /** A swing is dropped when its curve radius falls under this anywhere (m). */
+      swingRadius: 80,
+      swingStep: 10,
+      /** Through a block, buildings and infill keep this far beyond the deck's edges (m). */
+      blockMargin: 3,
+      /** On-ramps per highway [min, max]: a two lane road from a parallel street up through a block to the deck. */
+      ramps: [2, 4],
+      /** Ramp: half width between its walls (m), grade cap (rise per m), vertical curves at the foot and the top (m). */
+      rampHalf: 4.2,
+      rampGrade: 0.15,
+      rampFootEase: 26,
+      rampTopEase: 34,
+      /** Turn radii tried for a ramp's curve onto the deck (m). */
+      rampRadius: [38, 48, 60, 75],
+      /** The ramp's mouth keeps this far from its street's junctions (m, beyond their closure reach). */
+      rampMouthClear: 2,
+      /** Ramps keep this far from the El crossing along the deck (m: its hump), and from each other (m). */
+      rampElClear: 170,
+      rampGap: 100,
+      /** Sign gantries over the carriageway about this far apart along the deck (m). */
+      signEvery: 360,
     },
     /**
      * Night market: a straight run of route street closed to traffic for race

@@ -149,6 +149,9 @@ export const hillsModule: DistrictModule = {
     const faces = ctx.faces();
     const rivers = ctx.areas.filter((a) => a.kind === 'river');
     const subways = ctx.areas.filter((a) => a.kind === 'subway').map((a) => samplePath(a.path, 10));
+    // The elevated highway: its deck holds a smoothed level over the ground and its ramps climb a fixed
+    // height to it, so no slope under either (districts/highway/); outlines sampled, the deck's line too.
+    const highways = ctx.areas.filter((a) => a.kind === 'highway' && a.polygon.length >= 3).map((a) => samplePath([...a.polygon, a.polygon[0]], 10));
     const monuments = ctx.areas.filter((a) => a.kind === 'monument');
     // A bluff (bluff.ts) shapes its own ground: slopes keep off its outline and out of it.
     const bluffs = ctx.areas
@@ -179,6 +182,7 @@ export const hillsModule: DistrictModule = {
         for (let x = r.params.x0; x <= r.params.x1; x += 12) if (plateauDistance(s, x, riverCenter(r.params, x)).d < reach + r.params.top) return false;
       }
       for (const path of subways) for (const p of path) if (plateauDistance(s, p.x, p.z).d < reach) return false;
+      for (const path of highways) for (const p of path) if (plateauDistance(s, p.x, p.z).d < reach) return false;
       for (const bl of bluffs) {
         if (pointInPolygon(s.cx, s.cz, bl.poly)) return false;
         for (const p of bl.rim) if (plateauDistance(s, p.x, p.z).d < reach) return false;

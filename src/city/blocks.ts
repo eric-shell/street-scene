@@ -74,9 +74,18 @@ export interface Wall {
   /**
    * World height (m) of a wall's underside: a car whose body is below it (CarState.y < bottom)
    * passes under it, the mirror of `top`. Used by the parapets of a bridge deck over the river
-   * channel, which cars on the channel floor beneath drive under (districts/river.ts).
+   * channel, which cars on the channel floor beneath drive under (districts/river.ts), and by the
+   * elevated highway's barriers (districts/highway/).
    */
   bottom?: number;
+  /**
+   * World height (m) of the deck a wall stands under: a car whose body is above it (on the deck,
+   * CarState.y > under) passes over it, any car below meets it as a full wall, in collision and wall
+   * clearance alike (unlike `top`, which wallClearance ignores outright: a lip is launched over, never
+   * skimmed). Used by the elevated highway's columns and by every wall that stands under its deck
+   * (districts/highway/).
+   */
+  under?: number;
 }
 
 /** A small convex solid: its faces with outward unit normals, in order around it. */

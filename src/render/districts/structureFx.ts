@@ -1,9 +1,12 @@
 /**
- * Shared kit for the structure renderers (tunnel.ts, overpass.ts): geometry
- * in a street frame, a baked light material for surfaces lit by their own
- * lamps, an additive wash for the light those lamps throw on the road, and
- * one canvas atlas for every sign they carry (tunnel name boards, clearance
- * plates, gantry direction signs, message boards).
+ * Shared kit for the structure renderers (tunnel.ts, overpass.ts, highway.ts):
+ * geometry in a street frame, a baked light material for surfaces lit by
+ * their own lamps, an additive wash for the light those lamps throw on the
+ * road, one canvas atlas for every sign they carry (tunnel name boards,
+ * clearance plates, gantry direction signs, message boards, the highway's
+ * on-ramp and exit signs) and the sign gantry itself (signGantry: a truss
+ * on two legs carrying direction signs for the traffic coming each way,
+ * which the elevated highway puts across its carriageways).
  *
  * Baked light: a tunnel at night is lit by its own fixtures, not the sky, so
  * its walls and ceiling carry a per vertex light level (`bake`, 0..1) that the
@@ -197,8 +200,8 @@ export const GANTRY_SIGNS: readonly { text: string; sub: string; arrow: number }
 export const BOARD_TEXTS = ['NO RACING', 'DRIVE SAFE'] as const;
 
 const SIGN_W = 1024;
-const SIGN_H = 1024;
-/** Atlas cells, two per row: name boards (rows 0-2), clearance and road closed plates (3), gantry signs (4-6), boards (7). */
+const SIGN_H = 1280;
+/** Atlas cells, two per row: name boards (rows 0-2), clearance and road closed plates (3), gantry signs (4-6), boards (7), the highway's on-ramp and exit signs (8), its wrong way and end boards (9). */
 const CELL_W = 512;
 const CELL_H = 128;
 
@@ -223,6 +226,12 @@ export const CLOSED_CELL: Cell = cellAt(1, 3);
 export const gantryCell = (i: number): Cell => cellAt(i % 2, 4 + Math.floor(i / 2));
 /** Message board i. */
 export const boardCell = (i: number): Cell => cellAt(i % 2, 7);
+/** The highway's on-ramp sign at a ramp's mouth, and its exit tab. */
+export const RAMP_CELL: Cell = cellAt(0, 8);
+export const EXIT_CELL: Cell = cellAt(1, 8);
+/** WRONG WAY (facing a car going down a ramp's up lane) and the END of the expressway at its closures. */
+export const WRONG_WAY_CELL: Cell = cellAt(0, 9);
+export const END_CELL: Cell = cellAt(1, 9);
 
 /** Draw the sign atlas (a few milliseconds, once per scene). */
 export function makeStructureSigns(): THREE.CanvasTexture {
@@ -336,6 +345,78 @@ export function makeStructureSigns(): THREE.CanvasTexture {
     for (let yy = y + 4; yy < y + CELL_H; yy += 7) g.fillRect(x, yy, CELL_W, 2);
     for (let xx = x + 4; xx < x + CELL_W; xx += 7) g.fillRect(xx, y, 2, CELL_H);
   });
+  // The highway's signs: white on highway green, an EXIT tab in yellow, WRONG WAY white on red.
+  const green = (x: number, y: number) => {
+    g.fillStyle = '#0b6b3a';
+    g.fillRect(x, y, CELL_W, CELL_H);
+    g.strokeStyle = '#f2f2f2';
+    g.lineWidth = 5;
+    g.strokeRect(x + 8, y + 8, CELL_W - 16, CELL_H - 16);
+    g.fillStyle = '#f7f7f7';
+  };
+  const arrow = (x: number, y: number, deg: number) => {
+    g.save();
+    g.translate(x, y);
+    g.rotate((deg * Math.PI) / 180);
+    g.beginPath();
+    g.moveTo(-9, 34);
+    g.lineTo(9, 34);
+    g.lineTo(9, -6);
+    g.lineTo(24, -6);
+    g.lineTo(0, -38);
+    g.lineTo(-24, -6);
+    g.lineTo(-9, -6);
+    g.closePath();
+    g.fill();
+    g.restore();
+  };
+  {
+    const x = 0;
+    const y = 8 * CELL_H;
+    green(x, y);
+    fit('EXPRESSWAY', CELL_W - 190, 56);
+    g.fillText('EXPRESSWAY', x + CELL_W / 2 + 40, y + 50);
+    fit('ON RAMP  ALL LANES', CELL_W - 190, 30, 'normal');
+    g.fillText('ON RAMP  ALL LANES', x + CELL_W / 2 + 40, y + 96);
+    arrow(x + 70, y + CELL_H / 2, 35);
+  }
+  {
+    const x = CELL_W;
+    const y = 8 * CELL_H;
+    green(x, y);
+    g.fillStyle = '#f2c230';
+    g.fillRect(x + 16, y + 16, 120, 44);
+    g.fillStyle = '#111';
+    fit('EXIT', 110, 38);
+    g.fillText('EXIT', x + 76, y + 40);
+    g.fillStyle = '#f7f7f7';
+    fit('CITY STREETS', CELL_W - 210, 46);
+    g.fillText('CITY STREETS', x + CELL_W / 2 + 60, y + 44);
+    fit('NEXT RIGHT', CELL_W - 210, 30, 'normal');
+    g.fillText('NEXT RIGHT', x + CELL_W / 2 + 60, y + 96);
+    arrow(x + 76, y + 96, 45);
+  }
+  {
+    const x = 0;
+    const y = 9 * CELL_H;
+    g.fillStyle = '#c81e1e';
+    g.fillRect(x, y, CELL_W, CELL_H);
+    g.strokeStyle = '#fff';
+    g.lineWidth = 6;
+    g.strokeRect(x + 10, y + 10, CELL_W - 20, CELL_H - 20);
+    g.fillStyle = '#fff';
+    fit('WRONG WAY', CELL_W - 80, 70);
+    g.fillText('WRONG WAY', x + CELL_W / 2, y + CELL_H / 2 + 3);
+  }
+  {
+    const x = CELL_W;
+    const y = 9 * CELL_H;
+    green(x, y);
+    fit('END EXPRESSWAY', CELL_W - 80, 54);
+    g.fillText('END EXPRESSWAY', x + CELL_W / 2, y + 48);
+    fit('CITY LIMIT  ROAD CLOSED', CELL_W - 80, 30, 'normal');
+    g.fillText('CITY LIMIT  ROAD CLOSED', x + CELL_W / 2, y + 96);
+  }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4;
@@ -352,4 +433,111 @@ export function signPanel(gb: GeoBuilder, x: number, y: number, z: number, nx: n
   const c = gb.vertex(x + rx * (w / 2), y + h / 2, z + rz * (w / 2), nx, 0, nz, cell[2], cell[3], color);
   const d = gb.vertex(x - rx * (w / 2), y + h / 2, z - rz * (w / 2), nx, 0, nz, cell[0], cell[3], color);
   gb.quadFacing(a, b, c, d, nx, 0, nz);
+}
+
+// ---------------------------------------------------------------------------
+// Sign gantry
+
+/** Gantry dimensions (m): truss depth along the road and height, chord size, panel spacing for the diagonals; signs. */
+const GANTRY = {
+  trussDepth: 1.2,
+  trussH: 1.1,
+  chord: 0.09,
+  panel: 1.6,
+  /** Sign panels: height, width per lane pair, set this far below the truss bottom. */
+  signH: 2.2,
+  signW: 5.6,
+  signDrop: -0.1,
+  /** Sign face out from the truss face, clear of the chords on standoff brackets, the backing plate behind it. */
+  signStandoff: 0.22,
+  signBacking: 0.06,
+  /** Leg square size. */
+  leg: 0.7,
+} as const;
+
+const GANTRY_INK = {
+  steel: new THREE.Color(0x6f757c),
+  steelDark: new THREE.Color(0x464a50),
+  concrete: new THREE.Color(0x77746e),
+  signLamp: new THREE.Color(0xfff2d8).multiplyScalar(0.9),
+  amber: new THREE.Color(0xffb020).multiplyScalar(1.2),
+} as const;
+
+/** Where and how a sign gantry stands, in a frame across its road (u along the road, v across it). */
+export interface GantrySpec {
+  /** The legs' centers from the road's centerline (m). */
+  legV: number;
+  /** Half width of the road its signs hang over (m). */
+  road: number;
+  /** Ground under a leg at v (m, absolute): its base plate stands there. */
+  legBase(v: number): number;
+  /** Truss underside (m, absolute). */
+  y0: number;
+  /** Cells for the faces: `end` +1 is the face read by traffic heading +u. */
+  cell(end: 1 | -1, k: number): Cell;
+  /** Signs per face (1 or 2), and whether the face is a message board (no lamp hoods). */
+  count: number;
+  board: boolean;
+}
+
+/**
+ * A sign gantry: two steel box legs on base plates, a four chord truss with
+ * diagonals between them (Low drops the diagonals), on each face the signs
+ * for the traffic coming at it over that direction's half of the road (right
+ * hand traffic: v = (-uz, ux) is the right of travel along +u), each lit by a
+ * small lamp hood, and an amber beacon on top. Into the kit's solid and glow
+ * builders and the sign builder (the structure sign atlas).
+ */
+export function signGantry(solid: GeoBuilder, glow: GeoBuilder, signs: GeoBuilder, f: Frame, spec: GantrySpec, low: boolean): void {
+  const y0 = spec.y0;
+  const y1 = y0 + GANTRY.trussH;
+  const hd = GANTRY.trussDepth / 2;
+  const half = GANTRY.leg / 2;
+  const legV = spec.legV;
+  for (const v of [-legV, legV]) {
+    const yb = spec.legBase(v);
+    frameBox(solid, f, -half, half, v - half, v + half, yb - 0.05, yb - 0.05, yb + 0.25, yb + 0.25, GANTRY_INK.concrete);
+    frameBox(solid, f, -half * 0.7, half * 0.7, v - half * 0.7, v + half * 0.7, yb + 0.25, yb + 0.25, y1 + 0.25, y1 + 0.25, GANTRY_INK.steel);
+  }
+  const P = (u: number, v: number, y: number) => {
+    const p = toWorld(f, u, v);
+    return { x: p.x, y, z: p.z };
+  };
+  for (const u of [-hd, hd]) for (const y of [y0, y1]) beam(solid, P(u, -legV, y), P(u, legV, y), GANTRY.chord, GANTRY.chord, GANTRY_INK.steel);
+  if (!low) {
+    const n = Math.max(2, Math.round((2 * legV) / GANTRY.panel));
+    for (let i = 0; i < n; i++) {
+      const va = -legV + (2 * legV * i) / n;
+      const vb = -legV + (2 * legV * (i + 1)) / n;
+      for (const u of [-hd, hd]) {
+        beam(solid, P(u, va, i % 2 ? y0 : y1), P(u, vb, i % 2 ? y1 : y0), GANTRY.chord * 0.6, GANTRY.chord * 0.6, GANTRY_INK.steelDark);
+        beam(solid, P(u, vb, y0), P(u, vb, y1), GANTRY.chord * 0.6, GANTRY.chord * 0.6, GANTRY_INK.steelDark);
+      }
+      beam(solid, P(-hd, vb, y0), P(hd, vb, y0), GANTRY.chord * 0.5, GANTRY.chord * 0.5, GANTRY_INK.steelDark);
+    }
+  }
+  const count = spec.count;
+  const sw = spec.board ? Math.min(7.5, spec.road - 1) : Math.min(GANTRY.signW, spec.road / count - 0.6);
+  const yc = y0 + GANTRY.signDrop + GANTRY.signH / 2;
+  const span = (end: number, a: number, b: number): [number, number] => [Math.min(-end * a, -end * b), Math.max(-end * a, -end * b)];
+  const face = hd + GANTRY.signStandoff;
+  const yb = yc - GANTRY.signH / 2;
+  const yt = yc + GANTRY.signH / 2;
+  for (const end of [-1, 1] as const) {
+    // end +1: the face toward -u, read by traffic heading +u on v > 0. The panel hangs in front of the
+    // chords, never inside them, so the truss reads behind it.
+    const uf = -end * (face + 0.01);
+    for (let k = 0; k < count; k++) {
+      const vv = end * (count === 1 ? spec.road / 2 : (spec.road * (k + 0.5)) / count);
+      const p = toWorld(f, uf, vv);
+      signPanel(signs, p.x, yc, p.z, -end * f.ux, -end * f.uz, sw, GANTRY.signH, spec.cell(end, k), new THREE.Color(0xffffff).multiplyScalar(spec.board ? 1.4 : 0.85));
+      const [b0, b1] = span(end, face - GANTRY.signBacking, face);
+      frameBox(solid, f, b0, b1, vv - sw / 2, vv + sw / 2, yb, yb, yt, yt, GANTRY_INK.steelDark);
+      const [s0, s1] = span(end, hd + GANTRY.chord, face - GANTRY.signBacking);
+      for (const bv of [vv - sw * 0.35, vv + sw * 0.35]) for (const y of [y0, Math.min(y1, yt - 0.1)]) frameBox(solid, f, s0, s1, bv - 0.05, bv + 0.05, y - 0.05, y - 0.05, y + 0.05, y + 0.05, GANTRY_INK.steelDark);
+      const [l0, l1] = span(end, face + 0.17, face + 0.37);
+      if (!spec.board) frameBox(glow, f, l0, l1, vv - 0.6, vv + 0.6, yt + 0.05, yt + 0.05, yt + 0.15, yt + 0.15, GANTRY_INK.signLamp);
+    }
+  }
+  frameBox(glow, f, -0.12, 0.12, legV - 0.12, legV + 0.12, y1 + 0.25, y1 + 0.25, y1 + 0.5, y1 + 0.5, GANTRY_INK.amber);
 }

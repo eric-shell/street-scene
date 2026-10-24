@@ -1,13 +1,9 @@
 /**
- * Overpasses: structures you drive under. The sim is 2.5D (one height per
- * point), so nothing here carries cars; what overhangs the street is render
- * only and what stands on the ground is solid and drawn.
+ * Overpasses: structures you drive under. Nothing here carries cars; what
+ * overhangs the street is render only and what stands on the ground is solid
+ * and drawn. (Sign gantries belong to the elevated highway's deck, highway.ts,
+ * not to the city streets.)
  *
- *  - 'gantry': a sign gantry straddling a street mid-block, its two legs on
- *    the sidewalks just behind the curbs (solid squares, look 'pier'), the
- *    truss and sign boards CFG.gantryClearance m up. Wide fast streets first:
- *    that is where routes run (route.ts favours them) and where real
- *    gantries stand.
  *  - 'viaduct': a short freeway viaduct crossing one to three streets
  *    mid-block, along the middle of a row or column of blocks between two
  *    block centers. At every street it crosses (steeply, clear of both
@@ -21,8 +17,8 @@
  *    only unclaimed blocks, and keeps away from the river, the El, hill
  *    slopes, roundabouts and the other structures (structures.ts).
  *
- * The renderer (render/districts/overpass.ts) draws decks, girders, lamps,
- * trusses and signs from the area params, path and props.
+ * The renderer (render/districts/overpass.ts) draws decks, girders, lamps
+ * and signs from the area params, path and props.
  */
 import { CITY } from '../config';
 import type { RoadEdge, RoadGraph } from '../roadGraph';
@@ -32,36 +28,17 @@ import { DEG, Vec2, abs, distToSegment, sin, yawOf } from '../../sim/math';
 import type { Area, AreaBuild, DistrictModule, PlanContext } from './types';
 import { emptyBuild } from './types';
 import { circlePolygon, pointInPolygon, polygonBounds, solidWalls } from './geom';
-import { Frame, ON_ROUTE, SiteHazards, StreetRun, TRAFFIC_FLOOR, corridorGap, raceStreets, edgeFrame, junctionReach, routeTraffic, runPiece, siteClear, siteHazards, streetEdges, streetRun, takePath, toWorld, weightedOrder } from './structures';
-import { chainCum, chainOf, chains } from '../roadGraph';
+import { ON_ROUTE, SiteHazards, TRAFFIC_FLOOR, corridorGap, raceStreets, junctionReach, routeTraffic, siteClear, siteHazards, streetEdges, takePath } from './structures';
+import { chainCum, chainOf } from '../roadGraph';
 
 const CFG = CITY.districts.overpass;
 
-/** Street kinds a gantry stands over or a viaduct crosses. */
+/** Street kinds a viaduct crosses. */
 const KINDS = new Set<RoadEdge['kind']>(['street', 'avenue', 'diagonal', 'boulevard']);
-/** Gantries go up over the wide roads more often than over side streets (on top of the traffic estimate). */
-const GANTRY_WEIGHT: Partial<Record<RoadEdge['kind'], number>> = { boulevard: 1.6, diagonal: 1.4, avenue: 1.4, street: 0.8 };
 /** Round column radius inside the blocks (m). */
 const COLUMN_R = 0.9;
-/** Other structures keep this far from a gantry (m, its reach), and gantries this far from each other (m). */
-const GANTRY_REACH = 12;
-const GANTRY_SPACING = 220;
 /** Candidate viaduct lines tried per city. */
 const VIADUCT_TRIES = 80;
-
-/** A sign gantry in its street frame (u along the street), from the area params. */
-export interface GantryShape extends Frame {
-  /** Curb half width and the legs' centers from the centerline (m). */
-  road: number;
-  legV: number;
-  /** Truss underside above the road (m). */
-  clearance: number;
-}
-
-export function gantryShape(a: Area): GantryShape {
-  const p = a.params;
-  return { cx: p.cx, cz: p.cz, ux: p.ux, uz: p.uz, road: p.road, legV: p.legV, clearance: p.clearance };
-}
 
 /** A viaduct deck from (x0, z0) to (x1, z1), from the area params. */
 export interface ViaductShape {
@@ -145,87 +122,12 @@ export const overpassModule: DistrictModule = {
     const traffic = routeTraffic(g, ctx.seed);
     const race = raceStreets(ctx);
     if (rng.chance(CFG.viaductChance)) planViaduct(ctx, hz, mouths, traffic, race);
-    // Streets (chains of pieces between junctions, roadGraph.ts) whose every piece qualifies.
-    const pieceOk = (e: RoadEdge) => KINDS.has(e.kind) && !e.bridge && !e.shortcut && !ctx.claims.edge.has(e.id) && !race.ends.has(e.id) && !g.nodes[e.a].ring && !g.nodes[e.b].ring;
-    const runs = chains(g)
-      .filter((c) => c.edges.every((id) => pieceOk(g.edges[id])))
-      .map((c) => streetRun(g, c));
-    const order = weightedOrder(
-      runs.map((_, i) => i),
-      (i) => {
-        const ids = runs[i].chain.edges;
-        let t = 0;
-        for (const id of ids) t += traffic[id];
-        return (GANTRY_WEIGHT[g.edges[ids[0]].kind] ?? 0) * (TRAFFIC_FLOOR + t / ids.length + (ids.some((id) => race.route.has(id)) ? ON_ROUTE : 0));
-      },
-      rng,
-    );
-    const want = rng.int(CFG.gantries[0], CFG.gantries[1]);
-    const gantries: Vec2[] = [];
-    for (const i of order) {
-      if (gantries.length >= want) break;
-      planGantry(ctx, hz, mouths, runs[i], gantries);
-    }
   },
 
   build(ctx, area) {
-    return area.variant === 'gantry' ? buildGantry(area) : buildViaduct(ctx.graph, area);
+    return buildViaduct(ctx.graph, area);
   },
 };
-
-function planGantry(ctx: PlanContext, hz: SiteHazards, mouths: EdgeMouths[], run: StreetRun, gantries: Vec2[]): void {
-  const g = ctx.graph;
-  const rng = ctx.rng;
-  // Somewhere along the street between its junctions' reach; the gantry stands square on the piece there.
-  const c = run.chain;
-  const lo = junctionReach(g, mouths, g.edges[c.edges[0]], c.nodes[0]) + 4;
-  const hi = run.length - junctionReach(g, mouths, g.edges[c.edges[c.edges.length - 1]], c.nodes[c.nodes.length - 1]) - 4;
-  const t = rng.next();
-  if (lo > hi) return;
-  const s = lo + (hi - lo) * t;
-  const i = runPiece(run, s);
-  const e = g.edges[c.edges[i]];
-  const f = edgeFrame(g, e, e.a === c.nodes[i] ? s - run.cum[i] : e.length - (s - run.cum[i]));
-  // One gantry per stretch of road: a run of them reads as a freeway, not a city street.
-  if (gantries.some((q) => (q.x - f.cx) ** 2 + (q.z - f.cz) ** 2 < GANTRY_SPACING ** 2)) return;
-  const road = e.width / 2;
-  const legV = road + CFG.legSetback + CFG.legSize / 2;
-  const own = new Set(c.edges);
-  for (const v of [-legV, legV]) {
-    const p = toWorld(f, 0, v);
-    if (!offRoads(g, p.x, p.z, CFG.legSize, own)) return;
-  }
-  for (const v of [-legV, 0, legV]) {
-    const p = toWorld(f, 0, v);
-    if (!siteClear(hz, p.x, p.z, 8)) return;
-  }
-  const path = [toWorld(f, 0, -legV), toWorld(f, 0, legV)];
-  ctx.addArea({
-    kind: 'overpass',
-    variant: 'gantry',
-    polygon: [],
-    path,
-    nodes: [],
-    // The street stays unclaimed (params.edge names it): a gantry leaves room for a lane closure or a bus bay.
-    edges: [],
-    faces: [],
-    params: { cx: f.cx, cz: f.cz, ux: f.ux, uz: f.uz, road, legV, clearance: CFG.gantryClearance, edge: e.id, reach: GANTRY_REACH, seed: rng.int(1, 0x7ffffffe) },
-  });
-  takePath(hz.taken, path, GANTRY_REACH);
-  gantries.push({ x: f.cx, z: f.cz });
-}
-
-function buildGantry(area: Area): AreaBuild {
-  const b = emptyBuild();
-  const s = gantryShape(area);
-  for (const v of [-s.legV, s.legV]) {
-    const c = toWorld(s, 0, v);
-    b.walls.push(...solidWalls(centeredRect(c, s.ux, s.uz, CFG.legSize, CFG.legSize), 'pier', area.id));
-    b.reserved.push({ x: c.x, z: c.z, r: CFG.legSize + 0.6 });
-    b.props.push({ kind: 'gantryLeg', x: c.x, z: c.z, yaw: yawOf(s.ux, s.uz), size: CFG.legSize / 2, height: s.clearance, area: area.id });
-  }
-  return b;
-}
 
 /** Plan one viaduct along the middle of a row or column of blocks, if a line fits. */
 function planViaduct(ctx: PlanContext, hz: SiteHazards, mouths: EdgeMouths[], traffic: Float64Array, race: { route: Set<number>; ends: Set<number> }): void {

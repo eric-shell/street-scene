@@ -6,7 +6,7 @@ import { chainOf, edgeBetween } from '../src/city/roadGraph';
 import { computeMouths } from '../src/city/blocks';
 import { distToSegment } from '../src/sim/math';
 import { ridgeAt, ridgeRawAt, ridgeShape, tunnelShape } from '../src/city/districts/tunnel';
-import { gantryShape, viaductShape } from '../src/city/districts/overpass';
+import { viaductShape } from '../src/city/districts/overpass';
 import { junctionReach, toLocal } from '../src/city/districts/structures';
 import { plateauDistance } from '../src/city/districts/hills';
 import { riverCenter } from '../src/city/districts/river';
@@ -18,7 +18,6 @@ import { createAi, autopilotInput } from '../src/sim/ai';
 import { carSnapshot, raceConfig } from './helpers';
 
 const TUN = CITY.districts.tunnel;
-const OV = CITY.districts.overpass;
 
 /** Cities from a seeded sweep, with every structure they plan. */
 const cities: City[] = (() => {
@@ -49,14 +48,14 @@ function offRoads(c: City, x: number, z: number): boolean {
 }
 
 describe('tunnels and overpasses (city)', () => {
-  it('most cities get a tunnel under a building, many a ridge, a viaduct and a few gantries', () => {
+  it('most cities get a tunnel under a building, many a ridge and a viaduct; no sign gantries on the streets', () => {
     let ridges = 0;
     let viaducts = 0;
     for (const c of cities) {
       const s = structures(c);
       expect(s.filter((a) => a.variant === 'building').length).toBeGreaterThanOrEqual(1);
-      expect(s.filter((a) => a.variant === 'gantry').length).toBeGreaterThanOrEqual(1);
-      expect(s.filter((a) => a.variant === 'gantry').length).toBeLessThanOrEqual(OV.gantries[1]);
+      // The sign gantries hang over the elevated highway's carriageways now (render/districts/highway.ts).
+      expect(s.filter((a) => a.variant === 'gantry').length).toBe(0);
       if (s.some((a) => a.variant === 'ridge')) ridges++;
       if (s.some((a) => a.variant === 'viaduct')) viaducts++;
     }
@@ -98,9 +97,12 @@ describe('tunnels and overpasses (city)', () => {
               expect(v).toBeCloseTo(s.wall + ((s.front - s.wall) * (u - s.half)) / s.wing, 4);
             }
           } else {
-            // The building line: shut in behind the walls (tunnel) or the ridge's rock face (rock).
-            expect(v).toBeGreaterThan(s.front - 0.3);
-            expect(v).toBeLessThan(s.front + 0.3);
+            // The building line: shut in behind the walls (tunnel) or the ridge's rock face (rock). Past the
+            // bore a long ridge's face follows the street's building line round its bend nodes (a degree or two
+            // each, roadGraph.ts), a little off the bore's straight frame.
+            const bend = 0.3 + 0.015 * Math.max(0, u - s.half);
+            expect(v).toBeGreaterThan(s.front - bend);
+            expect(v).toBeLessThan(s.front + bend);
             if (w.look === 'tunnel') expect(u).toBeLessThanOrEqual(s.half + s.wing + 1.5);
             else {
               const r = ridgeShape(a);
@@ -110,7 +112,7 @@ describe('tunnels and overpasses (city)', () => {
         } else {
           const b = c.districts.builds[a.id];
           if (w.solid) {
-            // A pier, column, abutment or gantry leg prop stands right there.
+            // A pier, column or abutment prop stands right there.
             const near = b.props.some((p) => Math.hypot(p.x - mx, p.z - mz) < Math.max(p.size, p.height) + 4);
             expect(near).toBe(true);
           } else {
@@ -124,7 +126,7 @@ describe('tunnels and overpasses (city)', () => {
     }
   });
 
-  it('bores and gantries keep clear of junctions; viaduct piers stand on their sidewalks', () => {
+  it('bores keep clear of junctions; viaduct piers stand on their sidewalks', () => {
     for (const c of cities) {
       const mouths = computeMouths(c.graph, c.blocks.sectors);
       for (const a of structures(c)) {
@@ -156,15 +158,6 @@ describe('tunnels and overpasses (city)', () => {
             if (s.cx < r.params.x0 || s.cx > r.params.x1) continue;
             expect(Math.abs(s.cz - riverCenter(r.params, s.cx))).toBeGreaterThan(r.params.top + 10);
           }
-        } else if (a.variant === 'gantry') {
-          const g = gantryShape(a);
-          const e = c.graph.edges[a.params.edge];
-          for (const p of a.path) {
-            const d = edgeDist(c, e.id, p.x, p.z);
-            expect(d).toBeGreaterThan(e.width / 2);
-            expect(d).toBeLessThan(e.width / 2 + e.sidewalk);
-          }
-          expect(g.legV).toBeGreaterThan(g.road);
         } else {
           for (const p of c.districts.builds[a.id].props.filter((q) => q.kind === 'pier')) {
             // On the sidewalk of one of the streets it crosses.
@@ -273,9 +266,9 @@ describe('tunnels and overpasses (routes)', () => {
         for (let k = 0; k < m; k++) used.add(edgeBetween(g, nodes[k], nodes[(k + 1) % nodes.length]));
       }
       const s = districts.areas.filter((a) => a.kind === 'tunnel' || a.kind === 'overpass');
-      const through = (a: Area) => (a.kind === 'tunnel' || a.variant === 'gantry' ? used.has(a.params.edge) : a.edges.some((e) => used.has(e)));
+      const through = (a: Area) => (a.kind === 'tunnel' ? used.has(a.params.edge) : a.edges.some((e) => used.has(e)));
       if (s.some((a) => a.kind === 'tunnel' && through(a))) tunnel++;
-      if (s.some((a) => a.variant !== 'gantry' && through(a))) covered++;
+      if (s.some((a) => through(a))) covered++;
     }
     // Placed on the race routes when they are known (PlanContext.event): one race or the other runs through
     // a tunnel on nearly every seed.
@@ -283,7 +276,7 @@ describe('tunnels and overpasses (routes)', () => {
     expect(covered / n).toBeGreaterThan(0.8);
   });
 
-  it('starts, grids and finishes stay in the open, away from bores, decks and gantries', () => {
+  it('starts, grids and finishes stay in the open, away from bores and decks', () => {
     const rng = new Rng(515);
     for (let i = 0; i < 16; i++) {
       const seed = rng.int(0, 0x7fffffff);
@@ -298,13 +291,11 @@ describe('tunnels and overpasses (routes)', () => {
               const l = toLocal(t, p.x, p.z);
               const inside = Math.abs(l.u) < t.half + t.wing + 25 && Math.abs(l.v) < t.front + 5;
               expect(inside).toBe(false);
-            } else if (a.variant === 'viaduct') {
+            } else {
               const v = viaductShape(a);
               const along = (p.x - v.x0) * v.ux + (p.z - v.z0) * v.uz;
               const lat = -(p.x - v.x0) * v.uz + (p.z - v.z0) * v.ux;
               expect(along > -5 && along < v.length + 5 && Math.abs(lat) < v.half + 20).toBe(false);
-            } else {
-              expect(Math.hypot(p.x - a.params.cx, p.z - a.params.cz)).toBeGreaterThan(20);
             }
           }
         }
