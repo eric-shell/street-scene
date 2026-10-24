@@ -6,7 +6,10 @@
  *    quick to rise with a little inertia, slower to fall, settling onto idle
  *    with a small dip and bounce.
  *  - At the redline a rev limiter cuts the throttle briefly, so holding the
- *    pedal gives the familiar bouncing "brap" at the top.
+ *    pedal gives the familiar bouncing "brap" at the top. With a two-step
+ *    set (the Tune tab's Launch RPM) the pedal past halfway meets that cut at
+ *    the launch rpm instead, bouncing the revs its depth under it, as the
+ *    sim's two-step does at the line.
  *  - The crank's reaction torque rocks the body about its long axis (old
  *    muscle cars on a blip) through a soft, lightly damped spring, plus a
  *    slight squat. Wheels stay planted; the caller only rotates the body.
@@ -45,6 +48,20 @@ export interface RevConfig {
   redline: number;
   /** Rest rpm when no throttle (idle in the showroom, a cruise rpm on the street). */
   rest?: number;
+  /** The two-step, as the build's launch tuning sets it; missing or null, free revs to the redline. */
+  launch?: TwoStep | null;
+}
+
+/** A two-step launch limiter (the sim's launch tuning): where it holds, how far each cut drops the revs and for how long. */
+export interface TwoStep {
+  /** Launch rpm the cut holds at (rpm). */
+  rpm: number;
+  /** How far under it a cut lets the revs fall (rpm). */
+  depth: number;
+  /** How long each cut lasts (s). */
+  cutTime: number;
+  /** Pedal past which the two-step is armed (0..1). */
+  pedal: number;
 }
 
 export class RevModel {
@@ -61,17 +78,21 @@ export class RevModel {
   pitchVel = 0;
   /** True while the limiter is cutting. */
   limiting = false;
+  /** True while the cut is the two-step's (at the launch rpm, not the redline). */
+  twoStep = false;
   private pedal = 0;
   private cut = 0;
   private accel = 0;
   idle: number;
   redline: number;
   rest: number;
+  launch: TwoStep | null;
 
   constructor(cfg: RevConfig) {
     this.idle = cfg.idle;
     this.redline = cfg.redline;
     this.rest = cfg.rest ?? cfg.idle;
+    this.launch = cfg.launch ?? null;
     this.rpm = this.rest;
   }
 
@@ -79,6 +100,7 @@ export class RevModel {
     this.idle = cfg.idle;
     this.redline = cfg.redline;
     this.rest = cfg.rest ?? cfg.idle;
+    this.launch = cfg.launch ?? null;
   }
 
   /** Advance by dt seconds with the pedal at `input` (0..1). */
@@ -87,12 +109,15 @@ export class RevModel {
     // Pedal: a fast but not instant travel.
     this.pedal += (Math.max(0, Math.min(1, input)) - this.pedal) * Math.min(1, dt * REV.pedalRate);
     if (this.cut > 0) this.cut -= dt;
-    if (this.rpm >= this.redline && this.cut <= 0) {
-      // Limiter: cut fuel for a moment and knock the revs back.
-      this.cut = REV.cut;
-      this.rpmVel = Math.min(this.rpmVel, 0) - REV.knock;
+    const L = this.launch && this.launch.rpm < this.redline && this.pedal > this.launch.pedal ? this.launch : null;
+    if (this.rpm >= (L ? L.rpm : this.redline) && this.cut <= 0) {
+      // Limiter: cut fuel for a moment and knock the revs back; the two-step's cut is longer and deeper.
+      this.cut = L ? L.cutTime : REV.cut;
+      this.rpmVel = Math.min(this.rpmVel, 0) - (L ? L.depth / L.cutTime : REV.knock);
+      this.twoStep = L !== null;
     }
     this.limiting = this.cut > 0;
+    if (!this.limiting) this.twoStep = false;
     this.throttle = this.limiting ? 0 : this.pedal;
     const top = this.redline * REV.overshoot;
     const target = this.rest + this.throttle * (top - this.rest);

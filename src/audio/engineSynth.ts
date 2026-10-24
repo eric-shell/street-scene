@@ -23,7 +23,8 @@
  * Besides the exhaust the renderer gives the intake (a pulse per firing half a
  * cycle later, loud only with the throttle open; a resonant filter outside
  * makes individual throttle bodies honk) and the body (the valvetrain tick
- * you hear at idle), overrun pops on a lift and a ragged limiter cut.
+ * you hear at idle), a ragged limiter cut, and the overrun pops: a fourth
+ * output, dry, since a backfire goes off at the tip, past the silencer.
  * Deterministic: all randomness comes from a seeded xorshift.
  */
 import type { EngineLayout, EngineSpec, EngineVoiceSpec } from '../shared/carSpec';
@@ -322,8 +323,22 @@ const AIR = 3.5;
 const AIR_HZ = 1200;
 /** Jitter wander band (Hz): slow enough to read as the pipe moving, not as grain. */
 const JITTER_HZ = 600;
-/** Pop noise band (Hz). */
-const POP_HZ = 3500;
+/**
+ * The overrun pop as a gunshot at the tip: a sub-millisecond crack (an impulse and a burst of white noise), the
+ * thump of the pipe's air column sweeping down, and a darker tail. Time constants in s, `bang` scales each from a
+ * crackle (size 0) to a full bang (size 1); `len` is the slot's whole life; `cross` is how much of a twin pipe car's
+ * pop the other tip hears; `hp` the DC block (Hz) that keeps the impulse from leaving an offset.
+ */
+const POP = {
+  len: [0.07, 0.32],
+  click: 0.00035,
+  crack: [0.0012, 0.0025],
+  crackGain: 0.8,
+  thump: { from: 190, to: 55, sweep: 0.012, tau: [0.012, 0.05], gain: [0.25, 0.9] },
+  tail: { tau: [0.02, 0.1], gain: [0.08, 0.3], hz: 900 },
+  cross: 0.35,
+  hp: 30,
+} as const;
 /** Leveler target (RMS); peaks land around 0.4 to 0.8 and the soft clip after it keeps them bounded. */
 const TARGET = 0.1;
 const MAX_POPS = 8;
@@ -421,10 +436,14 @@ export class EngineSynth {
   private readonly popPipe = new Int32Array(MAX_POPS);
   private readonly popGain = new Float64Array(MAX_POPS);
   private readonly popSize = new Float64Array(MAX_POPS);
-  /** Pops per pipe this sample, and low passed; they join after the leveler so it cannot duck them. */
+  /** Each pop slot's thump phase (cycles) and dark tail noise. */
+  private readonly popPhase = new Float64Array(MAX_POPS);
+  private readonly popTail = new Float64Array(MAX_POPS);
+  /** The pops per tip this sample, and their DC blocks; the pop output is apart from the leveler, so nothing ducks them. */
   private readonly popMix: Float64Array;
-  private readonly popLp: Float64Array;
-  private readonly popCoef: number;
+  private readonly popDc: Float64Array;
+  private readonly popHp: number;
+  private readonly popTailCoef: number;
   private readonly tickLen: number;
   private lastTick = -1e9;
   private readonly rng: { v: number };
@@ -464,23 +483,25 @@ export class EngineSynth {
     this.prevY = new Float64Array(p);
     this.airNz = new Float64Array(p);
     this.popMix = new Float64Array(p);
-    this.popLp = new Float64Array(p);
+    this.popDc = new Float64Array(p);
     this.twin = Math.round(TWIN_TIP * sampleRate);
     this.tickLen = Math.round(0.0015 * sampleRate);
     this.rng = { v: program.seed | 0 || 1 };
     this.dcCoef = 1 - Math.exp((-2 * Math.PI * 10) / sampleRate);
     this.airCoef = 1 - Math.exp((-2 * Math.PI * AIR_HZ) / sampleRate);
     this.jitCoef = 1 - Math.exp((-2 * Math.PI * JITTER_HZ) / sampleRate);
-    this.popCoef = 1 - Math.exp((-2 * Math.PI * POP_HZ) / sampleRate);
+    this.popHp = 1 - Math.exp((-2 * Math.PI * POP.hp) / sampleRate);
+    this.popTailCoef = 1 - Math.exp((-2 * Math.PI * POP.tail.hz) / sampleRate);
     this.derivK = (DERIV * sampleRate) / 44100;
   }
 
   /**
    * Fire an overrun pop `at` seconds from now through `pipe`: size 1 is a bang
-   * with the low thump of the silencer taking it, 0 a crackle; `gain` is its
-   * peak before the soft clip, independent of the engine's level (a levelled
-   * tip peaks near 0.3, so 0.1 is a crackle and 0.3 a big bang). The voice decides when (its rich overrun model), so the
-   * sound and the exhaust flash are one event.
+   * (a long thump and tail behind the crack), 0 a crackle (all crack); `gain`
+   * is its peak on the pop output before the soft clip, independent of the
+   * engine's level (a levelled tip runs near 0.1 RMS, so a 0.9 bang stands well
+   * clear of it, as a gunshot does). The voice decides when (its rich overrun
+   * model), so the sound and the exhaust flash are one event.
    */
   pop(at: number, pipe: number, gain: number, size: number): void {
     for (let k = 0; k < MAX_POPS; k++) {
@@ -489,16 +510,19 @@ export class EngineSynth {
       this.popPipe[k] = Math.max(0, Math.min(this.program.pipes - 1, pipe | 0));
       this.popGain[k] = gain;
       this.popSize[k] = size;
-      this.popLen[k] = Math.round((0.012 + 0.03 * size) * this.sr);
+      this.popLen[k] = Math.round((POP.len[0] + (POP.len[1] - POP.len[0]) * size) * this.sr);
+      this.popPhase[k] = 0;
+      this.popTail[k] = 0;
       return;
     }
   }
 
   /**
    * Render one block for parameters held over the block: the exhaust with one
-   * channel per tailpipe (a single channel sums every pipe), the intake and the body mono.
+   * channel per tailpipe (a single channel sums every pipe), the intake and the
+   * body mono, and the pops a channel per tip (dropped when `pops` is missing).
    */
-  render(exhaust: Float32Array[], intake: Float32Array, body: Float32Array, q: SynthParams): void {
+  render(exhaust: Float32Array[], intake: Float32Array, body: Float32Array, q: SynthParams, pops?: Float32Array[]): void {
     const P = this.program;
     const n = intake.length;
     const channels = exhaust.length;
@@ -566,7 +590,7 @@ export class EngineSynth {
           inSum += TI[ki] + (TI[ki + 1] - TI[ki]) * (xi - ki);
         }
       }
-      // Pops: a crack (fast pulse plus noise) into one pipe, and for a bang the low thump of the silencer taking it.
+      // Pops (POP): the crack, the thump sweeping down and the dark tail, out of one tip (both on a single exhaust).
       for (let k = 0; k < MAX_POPS; k++) {
         if (this.popStart[k] >= 0 && this.samples >= this.popStart[k]) {
           this.popStart[k] = -1;
@@ -575,16 +599,23 @@ export class EngineSynth {
         if (this.popLeft[k] > 0) {
           const t = (this.popLen[k] - this.popLeft[k]) / sr;
           const size = this.popSize[k];
-          let v = Math.exp(-t / (0.003 + 0.004 * size)) + (0.3 + 0.3 * size) * (nextRand(this.rng) * 2 - 1) * Math.exp(-t / (0.006 + 0.01 * size));
-          if (size > 0.5) v += 0.5 * Math.sin(2 * Math.PI * 90 * t) * Math.exp(-t / 0.025);
+          const nz = nextRand(this.rng) * 2 - 1;
+          let v = Math.exp(-t / POP.click) + POP.crackGain * nz * Math.exp(-t / (POP.crack[0] + (POP.crack[1] - POP.crack[0]) * size));
+          const T = POP.thump;
+          this.popPhase[k] += (T.to + (T.from - T.to) * Math.exp(-t / T.sweep)) / sr;
+          v += (T.gain[0] + (T.gain[1] - T.gain[0]) * size) * Math.sin(2 * Math.PI * this.popPhase[k]) * Math.exp(-t / (T.tau[0] + (T.tau[1] - T.tau[0]) * size));
+          const L = POP.tail;
+          this.popTail[k] += (nz - this.popTail[k]) * this.popTailCoef;
+          v += (L.gain[0] + (L.gain[1] - L.gain[0]) * size) * 4 * this.popTail[k] * Math.exp(-t / (L.tau[0] + (L.tau[1] - L.tau[0]) * size));
           const g = this.popGain[k] * v;
-          this.popMix[this.popPipe[k]] += g;
-          // One silencer, two tips: the pop leaves both.
+          const pp = this.popPipe[k];
+          this.popMix[pp] += g;
+          // One silencer, two tips: the pop leaves both. A twin pipe car's other tip hears some of it.
           if (P.pipes === 1) this.popMix[1] += g;
+          else this.popMix[1 - pp] += g * POP.cross;
           this.popLeft[k]--;
         }
       }
-      for (let p = 0; p < this.popLp.length; p++) this.popLp[p] += (this.popMix[p] - this.popLp[p]) * this.popCoef;
 
       let sum = 0;
       const pos = this.ringPos;
@@ -627,14 +658,20 @@ export class EngineSynth {
       if (channels > 1) {
         for (let ch = 0; ch < channels; ch++) {
           const p = Math.min(ch, tips - 1);
-          const out = this.post[p] * this.agc + this.popLp[p];
+          const out = this.post[p] * this.agc;
           exhaust[ch][i] = out / (1 + Math.abs(out) * 0.5);
         }
       } else {
-        let pops = 0;
-        for (let p = 0; p < this.pipeSum.length; p++) pops += this.popLp[p];
-        const out = sum * this.agc + pops;
+        const out = sum * this.agc;
         exhaust[0][i] = out / (1 + Math.abs(out) * 0.5);
+      }
+      if (pops) {
+        for (let ch = 0; ch < pops.length; ch++) {
+          const p = Math.min(ch, this.popMix.length - 1);
+          this.popDc[p] += (this.popMix[p] - this.popDc[p]) * this.popHp;
+          const out = this.popMix[p] - this.popDc[p];
+          pops[ch][i] = out / (1 + Math.abs(out) * 0.3);
+        }
       }
       intake[i] = inSum * intakeAmp;
       if (this.tickLeft > 0) {

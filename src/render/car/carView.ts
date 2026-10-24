@@ -62,8 +62,23 @@ const GROUND_FX = {
 let glowTex: THREE.Texture | null = null;
 const glow = () => (glowTex ??= makeRadialGlow());
 
-/** Overrun pop flash: lifetime (s) and tongue length (m) from a crackle to a bang. */
-const POP_FLASH = { life: [0.07, 0.16], length: [0.4, 1.3] } as const;
+/**
+ * Overrun pop flash, each [crackle, bang]: lifetime (s), the orange tongue's length (m) and width (scale), the hot
+ * core's share of the tongue, and the muzzle glow's size (m) at the tip; `flicker` jitters the length per frame.
+ */
+const POP_FLASH = {
+  life: [0.07, 0.18],
+  length: [0.45, 1.6],
+  width: [0.8, 1.9],
+  core: 0.55,
+  glow: [0.35, 1.1],
+  flicker: 0.35,
+  color: new THREE.Color(0xff7a1f).multiplyScalar(3.5),
+  coreColor: new THREE.Color(0xfff0c0).multiplyScalar(4),
+  glowColor: new THREE.Color(0xff8a2a).multiplyScalar(2.2),
+} as const;
+/** Where the flames sit without measured tips (car space, m): a tip each side this far out and up, at the tail. */
+const DEFAULT_TIP = { x: 0.38, y: 0.32 } as const;
 /**
  * Nitrous flames per stage (1..3): the additive HDR color, from the stock
  * blue through violet to a hot pink (the HUD bar's stage colors, run hot so
@@ -118,11 +133,13 @@ export class CarView {
   /** Underglow brightness left after the body's height over the road (1 on the ground). */
   private airFade = 1;
   private readonly roadLift: number;
+  /** Nitrous flames, one per exhaust tip. */
   private flames: THREE.Mesh[] = [];
-  /** Overrun pop flames per tailpipe (0 left, 1 right): when each starts and how big it is (1 bang, 0 crackle). */
-  private pops: THREE.Mesh[] = [];
-  private popAt = [-1, -1];
-  private popSize = [0, 0];
+  /** Overrun pop flames per exhaust tip (the tongue, its hot core, the muzzle glow), the pipe each tip belongs to (0 or 1), when each starts and how big it is (1 bang, 0 crackle). */
+  private pops: { tongue: THREE.Mesh; core: THREE.Mesh; glow: THREE.Sprite }[] = [];
+  private tipPipe: number[] = [];
+  private popAt: number[] = [];
+  private popSize: number[] = [];
   private lastTime = 0;
   /** Rotor heat, 0 cold to 1 glowing: builds under braking and fades slowly once off the brakes (BRAKE.heatUp / coolDown). */
   private rotorHeat = 0;
@@ -245,19 +262,30 @@ export class CarView {
       }
     }
 
-    // Nitrous exhaust flames, and the orange flash of an overrun pop at the same tailpipes.
-    const flameGeo = new THREE.ConeGeometry(0.11, 0.9, 10, 1, true).rotateX(-Math.PI / 2).translate(0, 0, -0.45);
-    for (const side of [1, -1]) {
-      const flame = new THREE.Mesh(flameGeo, track(new THREE.MeshBasicMaterial({ color: NITRO_FLAME.color[0].clone(), transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false })));
-      flame.position.set(side * 0.38, 0.32, -dims.length / 2 + 0.05);
+    // Nitrous exhaust flames, and the flash of an overrun pop, at each exhaust tip. On the body, so they ride with
+    // its height and rake. Tips sorted left to right: on a twin pipe car the left half is pipe 0, the right pipe 1
+    // (two tips on one side split outer and inner).
+    const flameGeo = track(new THREE.ConeGeometry(0.11, 0.9, 10, 1, true).rotateX(-Math.PI / 2).translate(0, 0, -0.45));
+    const tips = (this.car.exhaustTips ?? [[DEFAULT_TIP.x, DEFAULT_TIP.y, -dims.length / 2 + 0.05], [-DEFAULT_TIP.x, DEFAULT_TIP.y, -dims.length / 2 + 0.05]]).slice().sort((a, b) => b[0] - a[0]);
+    const additive = { transparent: true, blending: THREE.AdditiveBlending, depthWrite: false } as const;
+    for (const [i, [x, y, z]] of tips.entries()) {
+      const flame = new THREE.Mesh(flameGeo, track(new THREE.MeshBasicMaterial({ color: NITRO_FLAME.color[0].clone(), opacity: 0.85, ...additive })));
+      flame.position.set(x, y, z);
       flame.visible = false;
-      this.root.add(flame);
+      this.body.add(flame);
       this.flames.push(flame);
-      const pop = new THREE.Mesh(flameGeo, track(new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff8a2a).multiplyScalar(3.5), transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false })));
-      pop.position.copy(flame.position);
-      pop.visible = false;
-      this.root.add(pop);
-      this.pops.push(pop);
+      const tongue = new THREE.Mesh(flameGeo, track(new THREE.MeshBasicMaterial({ color: POP_FLASH.color, opacity: 0.9, ...additive })));
+      const core = new THREE.Mesh(flameGeo, track(new THREE.MeshBasicMaterial({ color: POP_FLASH.coreColor, opacity: 1, ...additive })));
+      const muzzle = new THREE.Sprite(track(new THREE.SpriteMaterial({ map: glow(), color: POP_FLASH.glowColor, ...additive })));
+      for (const o of [tongue, core, muzzle]) {
+        o.position.set(x, y, z);
+        o.visible = false;
+        this.body.add(o);
+      }
+      this.pops.push({ tongue, core, glow: muzzle });
+      this.tipPipe.push(i < tips.length / 2 ? 0 : 1);
+      this.popAt.push(-1);
+      this.popSize.push(0);
     }
 
     // The rear plate: drawn once, seated on the bumper once the body and its parts are in (applyVisual).
@@ -723,26 +751,41 @@ export class CarView {
       (f.material as THREE.MeshBasicMaterial).color.copy(NITRO_FLAME.color[stage]);
     }
     this.lastTime = time;
+    const F = POP_FLASH;
+    const span = (r: readonly [number, number], size: number) => r[0] + (r[1] - r[0]) * size;
     for (const [i, p] of this.pops.entries()) {
       const age = time - this.popAt[i];
       const size = this.popSize[i];
-      const life = POP_FLASH.life[0] + (POP_FLASH.life[1] - POP_FLASH.life[0]) * size;
-      p.visible = age >= 0 && age < life;
-      if (!p.visible) continue;
-      // Bursts out in the first moments, then shrinks and dims; a bang is a fatter, longer tongue than a crackle.
+      const life = span(F.life, size);
+      const on = age >= 0 && age < life;
+      p.tongue.visible = p.core.visible = p.glow.visible = on;
+      if (!on) continue;
+      // Bursts out in the first moments, then shrinks and dims; a bang is a fatter, longer tongue than a crackle,
+      // with a white hot core inside it and a muzzle flash at the tip that is gone first.
       const k = age / life;
-      const grow = Math.min(1, k * 4) * (1 - k * k);
-      const length = POP_FLASH.length[0] + (POP_FLASH.length[1] - POP_FLASH.length[0]) * size;
-      p.scale.set(0.8 + 0.9 * size * grow, 0.8 + 0.9 * size * grow, length * grow + 0.05);
-      (p.material as THREE.MeshBasicMaterial).opacity = 0.95 * (1 - k);
+      const grow = Math.min(1, k * 5) * (1 - k * k);
+      const length = span(F.length, size) * (1 - F.flicker / 2 + F.flicker * Math.random());
+      const width = 0.8 + (span(F.width, size) - 0.8) * grow;
+      p.tongue.scale.set(width, width, length * grow + 0.05);
+      (p.tongue.material as THREE.MeshBasicMaterial).opacity = 0.95 * (1 - k);
+      p.core.scale.set(width * F.core, width * F.core, length * F.core * grow + 0.03);
+      (p.core.material as THREE.MeshBasicMaterial).opacity = 1 - k;
+      const g = span(F.glow, size) * (1 - k) ** 0.5;
+      p.glow.scale.set(g, g, 1);
+      p.glow.material.opacity = (1 - k) ** 2;
     }
   }
 
-  /** An overrun pop: flash a flame at a tailpipe (0 left, 1 right) `delay` seconds from the last update; size 1 a bang, 0 a crackle. */
+  /**
+   * An overrun pop: flash the flames at a pipe's tips (0 left, 1 right; -1 every tip, a single exhaust leaving
+   * through all of them) `delay` seconds from the last update; size 1 a bang, 0 a crackle.
+   */
   popFlash(pipe: number, size: number, delay = 0): void {
-    const i = pipe === 1 && this.pops.length > 1 ? 1 : 0;
-    this.popAt[i] = this.lastTime + delay;
-    this.popSize[i] = Math.max(0, Math.min(1, size));
+    for (let i = 0; i < this.pops.length; i++) {
+      if (pipe >= 0 && this.tipPipe[i] !== pipe) continue;
+      this.popAt[i] = this.lastTime + delay;
+      this.popSize[i] = Math.max(0, Math.min(1, size));
+    }
   }
 
   /** Ground height under each wheel, in the root's frame (m); scratch for update(). */

@@ -20,7 +20,7 @@ import type { GameRenderer } from '../render/scene';
 import { CarPose, CarView, WHEEL_KEYS } from '../render/car/carView';
 import { CarAssetLibrary } from '../render/car/carAssets';
 import { EngineVoice, audioHub } from '../audio/engineAudio';
-import { BlipScript, REV_LEVEL, RevModel, revVoice } from './revModel';
+import { BlipScript, REV_LEVEL, RevModel, revVoice, type TwoStep } from './revModel';
 import { ROOM, Showroom } from './showroom';
 import { FollowOrbit } from '../game/streetCameras';
 import type { StreetStage } from '../game/streetStage';
@@ -220,9 +220,12 @@ export class GarageScene {
   // Engine
   // -------------------------------------------------------------------------
 
-  /** Engine limits for the current build (from its tuning). */
-  setEngine(idle: number, redline: number): void {
-    this.rev.configure({ idle, redline, rest: this.restRpm(idle, redline) });
+  /**
+   * Engine limits for the current build (from its tuning), and the two-step the gas meets while the Tune tab
+   * is open (null otherwise). Only on the turntable: the Street view's car is rolling, where no two-step arms.
+   */
+  setEngine(idle: number, redline: number, launch: TwoStep | null = null): void {
+    this.rev.configure({ idle, redline, rest: this.restRpm(idle, redline), launch: this.mode === 'garage' ? launch : null });
   }
 
   private restRpm(idle: number, redline: number): number {
@@ -305,6 +308,7 @@ export class GarageScene {
       nitro: false,
       proximity: level.proximity,
       pan: 0,
+      cut: this.rev.twoStep,
       dt,
     });
   }

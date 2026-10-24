@@ -33,6 +33,8 @@ export interface ManifestCar {
   selectable?: boolean;
   /** Engine layout, aspiration and position (src/shared/carSpec.ts); the driven wheels come from drivingParams.json. */
   engine: EngineSpec;
+  /** Each exhaust tip's opening in car space (m, x left, y up, z forward), where the nitrous and backfire flames sit; missing, a tip each side at the tail. */
+  exhaustTips?: [number, number, number][];
 }
 
 export const MANIFEST = manifestJson as unknown as { version: number; cars: ManifestCar[] };

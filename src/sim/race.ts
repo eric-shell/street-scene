@@ -20,7 +20,7 @@ import { CarTuning } from './tuning';
 import { PerformanceBuild, tuningForBuild, validatePerformance } from './build';
 import { DEG, PI, TAU, abs, atan2, clamp, cos, distToSegment, segmentT, sin, sqrt, wrapIndex, yawOf } from './math';
 import { AiState, Course, aiInput, buildRacingLine, createAi, driverDetours, driverLine, RacingLine, rollDrivers, sweepFrame } from './ai';
-import { deriveSeed } from './prng';
+import { Rng, deriveSeed } from './prng';
 import { stepProps } from './props';
 import { RailState, createRailState } from './rails';
 import { TrafficState, createTraffic, stepTraffic, trafficTuning } from './traffic';
@@ -243,13 +243,15 @@ export const MAX_OPPONENTS = 9;
 export const DRAG_OPPONENTS = 1;
 
 /**
- * Start slots for `count` entrants, player first. The player starts at the back of the grid,
- * like a street race challenger. Up to four cars take the original staggered slots in order (so
- * their replays hold); a bigger field fills the two-wide grid front to back.
+ * Start slots for `count` entrants, player first. The player draws a random place on the grid
+ * from `seed` (RaceConfig.aiSeed, fresh every start, so a retry lines up differently; the replay
+ * keeps it) and the rivals fill the rest front to back. Up to four cars take the original
+ * staggered slots; a bigger field fills the two-wide grid front to back.
  */
-function gridSlots(grid: GridSlot[], count: number): GridSlot[] {
+function gridSlots(grid: GridSlot[], count: number, seed: number): GridSlot[] {
   const order = count <= 4 ? grid.slice(0, count) : grid.slice().sort((a, b) => b.s - a.s).slice(0, count);
-  return order.map((_, i) => order[count - 1 - i]);
+  const player = new Rng(deriveSeed(seed, 'grid')).int(0, count - 1);
+  return [order[player], ...order.filter((_, i) => i !== player)];
 }
 
 export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
@@ -277,7 +279,7 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
     const own = driverLine(frame!, d);
     return { line: own, distance, laps: config.laps, detours: driverDetours(own, route, w.graph, d) };
   });
-  const slots = gridSlots(route.grid, entrants.length);
+  const slots = gridSlots(route.grid, entrants.length, config.aiSeed ?? config.seed);
   // Off the grid (open world only): the player's start pose and the tick the clock starts on.
   const start = open ? config.start : undefined;
   const tick0 = start?.tick ?? 0;

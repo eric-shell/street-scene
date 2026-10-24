@@ -44,7 +44,8 @@ export interface EngineInput {
  * driving and cools slowly; a lift from high revs leaves fuel in the pipe that
  * burns off in about a second; while both are high there is a small chance per
  * second of a bang or a crackle burst, each using up fuel. Tuned to be rare:
- * most lifts stay silent, and a cold engine never pops.
+ * most lifts stay silent, and a cold engine never pops. The two-step is the
+ * exception: every cut dumps fuel into a hot pipe, so most of them bang.
  */
 const OVERRUN = {
   /** Time constants (s): heat rising under load at revs, cooling when not. */
@@ -65,7 +66,20 @@ const OVERRUN = {
   bangShare: 0.45,
   /** Turbo cars run richer under boost and leave more fuel on a lift. */
   turboFuel: 1.3,
+  /** Chance that a two-step cut bangs (times the silencer's freedom, capped at 1): the launch's machine gun. */
+  cutChance: 0.75,
+  /**
+   * Pop peaks on the pop output (EngineSynth.pop): a bang and a crackle, each [min, max]. The engine runs near 0.12
+   * RMS through its chain, so a bang peaks some 14 dB over it, at the master limiter, as a gunshot would.
+   */
+  bang: [0.6, 0.8],
+  crackle: [0.25, 0.4],
 } as const;
+
+/** A random value in [min, max]. */
+function within([min, max]: readonly [number, number]): number {
+  return min + (max - min) * Math.random();
+}
 
 /** User levels 0..1 per bus (a slider maps to gain by its square), as the Sound settings hold them. */
 export interface AudioLevels {
@@ -207,12 +221,14 @@ let voiceCount = 0;
 
 export class EngineVoice {
   readonly program: EngineProgram;
-  /** Called when the overrun pops: which tailpipe (0 left, 1 right), size (1 bang, 0 crackle) and seconds until it fires. The owner draws the flame. */
+  /** Called when the overrun pops: which tailpipe (0 left, 1 right; -1 every tip of a single exhaust), size (1 bang, 0 crackle) and seconds until it fires. The owner draws the flame. */
   onPop: ((pipe: number, size: number, delay: number) => void) | null = null;
   private ctx: AudioContext;
   private out: GainNode;
   private pan: StereoPannerNode;
   private presence: BiquadFilterNode;
+  /** The worklet's dry pop output, past the silencer, scaled out of the program's trim so every car bangs alike. */
+  private pops: GainNode;
   private exhaust: ConvolverNode;
   private intake: BiquadFilterNode;
   private body: BiquadFilterNode;
@@ -230,6 +246,7 @@ export class EngineVoice {
   private heat = 0;
   private fuel = 0;
   private wasShifting = false;
+  private wasCut = false;
 
   /** `lite` (rivals): a shorter silencer response, no intake or valvetrain detail. */
   constructor(
@@ -275,6 +292,9 @@ export class EngineVoice {
     this.body.frequency.value = CHAIN.bodyHz;
     this.body.Q.value = CHAIN.bodyQ;
     this.body.connect(this.out);
+    this.pops = ctx.createGain();
+    this.pops.gain.value = 1 / this.program.trim;
+    this.pops.connect(this.out);
 
     if (spec.aspiration === 'turbo') {
       // Turbo spool whistle, straight to the output (not through the silencer).
@@ -306,14 +326,16 @@ export class EngineVoice {
       const node = new AudioWorkletNode(this.ctx, ENGINE_PROCESSOR, {
         numberOfInputs: 0,
         // Two tips, left and right: a bank each on a twin pipe car (so a bank's uneven train is heard on its own, not
-        // cancelled by the other's), the one exhaust through two tips otherwise, so every car is as wide.
-        numberOfOutputs: 3,
-        outputChannelCount: [2, 1, 1],
+        // cancelled by the other's), the one exhaust through two tips otherwise, so every car is as wide. The pops
+        // come out of the same two tips on their own output.
+        numberOfOutputs: 4,
+        outputChannelCount: [2, 1, 1, 2],
         processorOptions: { program: this.program },
       });
       node.connect(this.exhaust, 0);
       node.connect(this.intake, 1);
       node.connect(this.body, 2);
+      node.connect(this.pops, 3);
       this.node = node;
       this.params = Object.fromEntries(SYNTH_PARAMS.map((p) => [p.name, node.parameters.get(p.name)!])) as Record<ParamName, AudioParam>;
       if (this.last) this.update(this.last);
@@ -346,7 +368,7 @@ export class EngineVoice {
     const level = this.base * VOICE.gain * this.program.trim * e.proximity * (0.7 + 0.3 * load) * (0.7 + 0.3 * r) * (e.shifting ? 0.8 : 1);
     this.out.gain.setTargetAtTime(level, t, 0.05);
     this.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, e.pan)), t, 0.05);
-    this.overrun(load, r, e.shifting === true, limiter, Math.min(0.1, e.dt ?? 1 / 60));
+    this.overrun(load, r, e.shifting === true, limiter, e.cut === true, Math.min(0.1, e.dt ?? 1 / 60));
 
     if (this.turbo && this.gTurbo && this.bov) {
       // Boost builds with load and rpm and spools up with lag.
@@ -367,12 +389,13 @@ export class EngineVoice {
 
   /**
    * The rich overrun model (OVERRUN): decides the pops, then fires them in the
-   * worklet and tells the owner. Three ways in: bouncing off the limiter (a
-   * stream of crackles, the cut dumps mixture every few firings), a high rev
-   * upshift's cut (sometimes), and the overrun after a lift from revs (the
-   * hotter the exhaust and the higher the lift, the likelier).
+   * worklet and tells the owner. Four ways in: each two-step or antilag cut
+   * (most of them bang), bouncing off the limiter (a stream of crackles, the
+   * cut dumps mixture every few firings), a high rev upshift's cut
+   * (sometimes), and the overrun after a lift from revs (the hotter the
+   * exhaust and the higher the lift, the likelier).
    */
-  private overrun(load: number, r: number, shifting: boolean, limiter: boolean, dt: number): void {
+  private overrun(load: number, r: number, shifting: boolean, limiter: boolean, cut: boolean, dt: number): void {
     const P = this.program;
     if (P.pops <= 0) return;
     const free = Math.min(1.5, P.pops);
@@ -384,6 +407,17 @@ export class EngineVoice {
     }
     const upshift = shifting && !this.wasShifting && r > 0.8;
     this.wasShifting = shifting;
+    const cutStart = cut && !this.wasCut;
+    this.wasCut = cut;
+    if (cutStart) {
+      this.heat = Math.min(1, this.heat + 0.1);
+      if (Math.random() < Math.min(1, OVERRUN.cutChance * free)) {
+        this.bang();
+        // Now and then a second shot right behind it.
+        if (Math.random() < 0.25) this.pop(0.04 + 0.03 * Math.random(), 0.5 + 0.5 * Math.random(), within(OVERRUN.crackle));
+      }
+      return;
+    }
     this.fuel *= Math.exp(-dt / OVERRUN.burnOff);
     if (load > 0.3 && !limiter) this.fuel *= Math.exp(-dt / OVERRUN.onThrottle);
     let chance = 0;
@@ -394,21 +428,26 @@ export class EngineVoice {
     else if (this.fuel > 0.1) chance = P.pops * OVERRUN.rate * this.fuel * this.heat * dt;
     if (Math.random() >= chance) return;
     this.fuel *= limiter ? 0.9 : 0.45;
-    if (Math.random() < (limiter ? 0.2 : OVERRUN.bangShare)) this.pop(0, 1, 0.22 + 0.1 * Math.random());
+    if (Math.random() < (limiter ? 0.3 : OVERRUN.bangShare)) this.bang();
     else {
       const n = limiter ? 1 + Math.floor(Math.random() * 2) : 2 + Math.floor(Math.random() * 3);
       let at = 0;
       for (let i = 0; i < n; i++) {
-        this.pop(at, 0.3 * Math.random(), 0.09 + 0.06 * Math.random());
+        this.pop(at, 0.3 * Math.random(), within(OVERRUN.crackle));
         at += 0.03 + Math.random() * 0.05;
       }
     }
   }
 
+  private bang(): void {
+    this.pop(0, 0.8 + 0.2 * Math.random(), within(OVERRUN.bang));
+  }
+
   private pop(delay: number, size: number, gain: number): void {
-    const pipe = this.program.pipes > 1 && Math.random() < 0.5 ? 1 : 0;
+    const twin = this.program.pipes > 1;
+    const pipe = twin && Math.random() < 0.5 ? 1 : 0;
     this.node?.port.postMessage({ pop: { at: delay, pipe, gain, size } } satisfies EngineMessage);
-    this.onPop?.(pipe, size, delay);
+    this.onPop?.(twin ? pipe : -1, size, delay);
   }
 
   silence(): void {

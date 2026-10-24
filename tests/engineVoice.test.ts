@@ -180,30 +180,37 @@ describe('engine synth', () => {
 });
 
 describe('overrun pops', () => {
-  it('a pop is a short burst through one pipe on top of the engine: a bang longer and heavier than a crackle, deterministic', () => {
+  it('a pop is a gunshot on its own output, clear of the engine: a bang longer and heavier than a crackle, deterministic', () => {
     const p = buildProgram(spec('I6', 'na', { muffler: 'sport' }));
     const rms = (x: Float32Array) => Math.sqrt(x.reduce((a, v) => a + v * v, 0) / x.length);
+    const peak = (x: Float32Array) => Math.max(...Array.from(x, Math.abs));
     const take = (size: number, gain: number) => {
       const synth = new EngineSynth(p, SR);
       const scratch = new Float32Array(SR);
-      const out = new Float32Array(SR);
-      // Idle, closed throttle: a quiet bed, then a pop 100 ms in.
+      const exhaust = new Float32Array(SR);
+      const pops = [new Float32Array(SR), new Float32Array(SR)];
+      // Full throttle at 5000 rpm, then a pop 100 ms in.
       synth.pop(0.1, 0, gain, size);
-      for (let i = 0; i < SR; i += 128) synth.render([out.subarray(i, i + 128)], scratch.subarray(i, i + 128), scratch.subarray(i, i + 128), { rpm: 900, redline: 7500, load: 0, cut: 0, limiter: 0, nitro: 0 });
-      return out;
+      for (let i = 0; i < SR; i += 128)
+        synth.render([exhaust.subarray(i, i + 128)], scratch.subarray(i, i + 128), scratch.subarray(i, i + 128), { rpm: 5000, redline: 7500, load: 1, cut: 0, limiter: 0, nitro: 0 }, pops.map((x) => x.subarray(i, i + 128)));
+      return { exhaust, pop: pops[0] };
     };
-    const bang = take(1, 0.9);
-    const crackle = take(0, 0.4);
-    // The pop's own window: 12 ms for a crackle, 42 ms for a bang.
-    const win = (x: Float32Array, size: number) => rms(x.subarray(SR * 0.1, Math.round(SR * (0.1 + 0.012 + 0.03 * size))));
-    const quiet = rms(bang.subarray(SR * 0.02, SR * 0.09));
-    expect(win(bang, 1)).toBeGreaterThan(quiet * 2.5);
-    expect(win(crackle, 0)).toBeGreaterThan(quiet * 1.5);
-    expect(win(bang, 1)).toBeGreaterThan(win(crackle, 0));
-    // Gone again well before the leveler settles, and bounded by the soft clip.
-    expect(rms(bang.subarray(SR * 0.3, SR * 0.4))).toBeLessThan(win(bang, 1));
-    expect(Math.max(...Array.from(bang, Math.abs))).toBeLessThan(1);
-    expect(JSON.stringify(Array.from(take(1, 0.9).subarray(4800, 6000)))).toBe(JSON.stringify(Array.from(bang.subarray(4800, 6000))));
+    const bang = take(1, 0.8);
+    const crackle = take(0, 0.3);
+    // Nothing on the pop output before it fires; a crack that stands well over the engine when it does.
+    expect(peak(bang.pop.subarray(0, SR * 0.1))).toBe(0);
+    expect(peak(bang.pop)).toBeGreaterThan(4 * rms(bang.exhaust.subarray(SR * 0.3)));
+    expect(peak(crackle.pop)).toBeGreaterThan(rms(bang.exhaust.subarray(SR * 0.3)));
+    // A sharp onset: the peak inside the first millisecond.
+    const onset = Array.from(bang.pop.subarray(SR * 0.1), Math.abs);
+    expect(onset.indexOf(Math.max(...onset))).toBeLessThan(SR * 0.001);
+    // The bang carries on (its thump and tail), the crackle is all crack.
+    const body = (x: Float32Array) => rms(x.subarray(SR * 0.11, SR * 0.16));
+    expect(body(bang.pop)).toBeGreaterThan(3 * body(crackle.pop));
+    // Gone again, bounded by the soft clip, and the exhaust is not touched.
+    expect(peak(bang.pop.subarray(SR * 0.45))).toBeLessThan(1e-3);
+    expect(peak(bang.pop)).toBeLessThan(1.5);
+    expect(JSON.stringify(Array.from(take(1, 0.8).pop.subarray(4800, 6000)))).toBe(JSON.stringify(Array.from(bang.pop.subarray(4800, 6000))));
   });
 });
 

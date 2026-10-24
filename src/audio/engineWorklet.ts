@@ -1,8 +1,8 @@
 /**
  * The AudioWorklet processor that runs an EngineSynth on the audio thread:
- * no inputs, three outputs (the exhaust with a channel per tailpipe, the
- * intake, the body) that the EngineVoice on the main thread filters,
- * convolves and mixes. Parameters arrive as
+ * no inputs, four outputs (the exhaust with a channel per tailpipe, the
+ * intake, the body, the overrun pops a channel per tip) that the EngineVoice
+ * on the main thread filters, convolves and mixes. Parameters arrive as
  * k-rate AudioParams so the voice can ramp them with setTargetAtTime; the
  * program comes in processorOptions. Loaded by engineAudio.ts through Vite's
  * `?worker&url` import (bundled as its own module, so this file and what it
@@ -45,7 +45,7 @@ class EngineProcessor extends AudioWorkletProcessor {
     const body = outputs[2]?.[0];
     if (!exhaust?.length || !intake || !body) return true;
     for (const p of SYNTH_PARAMS) this.params[p.name] = parameters[p.name][0];
-    this.synth.render(exhaust, intake, body, this.params);
+    this.synth.render(exhaust, intake, body, this.params, outputs[3]);
     return true;
   }
 }

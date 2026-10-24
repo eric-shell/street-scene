@@ -210,7 +210,6 @@ export class GarageScreen implements TabHost {
     frame();
     this.scene.setPresentation(this.prefs.presentation);
     this.scene.setEngineVolume(cb.engineVolume?.() ?? 0.7);
-    this.configureEngine();
     // A tile per category: its icon on a badge in the category's hue (_garage.scss keys the hue on data-tab).
     for (const t of TABS) {
       const b = h(
@@ -377,6 +376,7 @@ export class GarageScreen implements TabHost {
     const from = this.step;
     this.step = next;
     this.root.dataset.step = next;
+    this.configureEngine();
     this.placing = null;
     const fwd = next === 'build' && from === 'builds';
     if (this.steps.show(next === 'builds' ? this.buildsStep() : this.buildStep(), animate ? (fwd ? 'fwd' : 'back') : null)) uiWhoosh(fwd);
@@ -553,10 +553,15 @@ export class GarageScreen implements TabHost {
     this.scene.setSteer((held(RIGHT_KEYS) ? 1 : 0) - (held(LEFT_KEYS) ? 1 : 0));
   }
 
-  /** Idle and redline of the current build feed the garage rev model; its steering lock and rate the turntable's front wheels. */
+  /**
+   * Idle and redline of the current build feed the garage rev model, and on the Tune tab its launch rpm (the gas
+   * bounces off the two-step there, as at the line); its steering lock and rate the turntable's front wheels.
+   */
   private configureEngine(): void {
     const t = tuningForBuild(this.build.carId, this.build.performance);
-    this.scene.setEngine(t.engine.idleRpm, t.engine.redline);
+    const L = t.launch;
+    const tune = this.step === 'build' && this.tab === 'tune' && L.twoStepRpm > 0;
+    this.scene.setEngine(t.engine.idleRpm, t.engine.redline, tune ? { rpm: L.twoStepRpm, depth: L.twoStepDepth, cutTime: L.twoStepCutTime, pedal: L.pedalThreshold } : null);
     this.scene.setSteering(t.steering.maxDeg, t.steering.rateDegPerSec);
   }
 
@@ -564,6 +569,7 @@ export class GarageScreen implements TabHost {
     const switched = t !== this.tab;
     this.tab = t;
     this.placing = null;
+    this.configureEngine();
     this.tabBar.querySelectorAll<HTMLElement>('.garage-tab').forEach((b) => {
       const on = b.dataset.tab === t;
       b.classList.toggle('is-selected', on);
