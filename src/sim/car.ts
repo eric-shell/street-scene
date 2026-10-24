@@ -30,7 +30,7 @@
 import { DT, SUBSTEPS } from './constants';
 import { InputFrame } from './input';
 import { CarTuning, GRAVITY, NITRO_STAGES, driveSplit } from './tuning';
-import { DEG, TAU, abs, approach, atan2, clamp, cos, lerp, sign, sin, sqrt, tan } from './math';
+import { DEG, TAU, abs, approach, atan2, clamp, cos, lerp, sign, sin, smoothstep, sqrt, tan } from './math';
 import type { Surface, World } from '../city/world';
 import { SURFACE_PHYSICS } from '../city/districts/types';
 
@@ -416,6 +416,9 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
   if (c.shiftTimer === 0 && !clutchIn && !c.antilag) {
     // The two-step's cut takes the spark away: no torque while it bounces.
     if (c.rpm < t.engine.redline && c.twoStepCut === 0) engineTorque = torqueAt(t, c.rpm) * t.engine.torqueMul * drive;
+    // The Gear Ratio slider's arcade term: short gears pull harder, long ones softer, fading out by top speed (the drag top speed stays real).
+    const G = t.gearbox;
+    if (G.torqueBonus !== 0) engineTorque *= 1 + G.torqueBonus * (1 - smoothstep(G.torqueBonusFadeStart, G.torqueBonusFadeEnd, speed));
     if (t.engine.turbo) engineTorque *= 1 - L.turboShare * (1 - c.boost);
     if (c.nitroActive) engineTorque *= 1 + (t.nitrous.torqueMul - 1) * boostPower;
     // Dumping the clutch at high revs (launch, clutch kick, handbrake release) adds the flywheel's energy on top.

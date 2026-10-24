@@ -40,11 +40,11 @@ export const SETUP_COPY: { [S in SetupSlider]: SliderCopy } = {
     icon: Cog,
     ends: ['Short', 'Long'],
     hints: [
-      'Short: every gear pulls harder and runs out sooner; the limiter caps top speed. Tight streets.',
-      'Shorter: a little more pull per gear, a little less room at the top.',
-      "Stock: the car's own gearing.",
-      'Longer: more room before the limiter, a touch softer off the line.',
-      'Long: room to spare up top, so nitrous and slipstreams run past stock top speed. Long straights.',
+      'Short: punchy off the line and out of corners, but top gear hits the limiter early, nitrous too. Tight streets.',
+      'Shorter: a little more punch out of corners; the limiter sits right at the top speed.',
+      "Stock: the car's own gearing; top gear runs out just past a slipstream's top speed.",
+      'Longer: a touch lazier out of corners, more room past the limiter on nitrous.',
+      'Long: lazy out of corners, but nitrous keeps pulling past the stock limiter to a higher top speed. Long straights.',
     ],
   },
   differential: {

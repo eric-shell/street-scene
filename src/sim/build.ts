@@ -6,7 +6,7 @@
  * clamps imported positions, and a build saved with the retired component upgrades starts on the stock setup.
  */
 import { CarTuning, SETUP, SETUP_SLIDERS, STOCK_POSITION, getBaseTuning, type SetupPosition, type SetupSlider } from './tuning';
-import { clamp01 } from './math';
+import { clamp01, pow } from './math';
 import { num, obj } from '../shared/validate';
 
 /** A position per setup slider (1 left .. 5 right, 3 stock), plus the launch rpm the two-step holds at the line (rpm; 0 = off, free revs). */
@@ -58,7 +58,19 @@ export function applyBuild(base: CarTuning, perf: PerformanceBuild): CarTuning {
   const rough = sus.roughGripMul[k] / sus.roadGripMul[k];
   t.surface.offroadGrip *= rough;
   t.surface.cobbleGrip *= rough;
-  t.gearbox.finalDrive *= SETUP.gearing.finalDriveMul[p.gearing - 1];
+  // Gear ratio: the final drive moves the top gear and its limiter; first gear moves by firstGearMul and the
+  // gears between blend evenly (each step the same share closer or wider), a close-ratio box on Short and a
+  // wide one on Long. Real gearing barely moves acceleration, so the arcade torque bonus does (car.ts fades it
+  // out toward top speed).
+  const gr = SETUP.gearing;
+  const g = p.gearing - 1;
+  t.gearbox.finalDrive *= gr.finalDriveMul[g];
+  const spread = gr.firstGearMul[g] / gr.finalDriveMul[g];
+  if (spread !== 1) {
+    const n = t.gearbox.ratios.length;
+    t.gearbox.ratios = t.gearbox.ratios.map((r, i) => r * pow(spread, (n - 1 - i) / (n - 1)));
+  }
+  t.gearbox.torqueBonus += gr.torqueBonus[g];
   const d = p.differential - 1;
   t.drivetrain.diffOpen = clamp01(t.drivetrain.diffOpen + SETUP.differential.open[d]);
   t.drivetrain.diffLock = clamp01(t.drivetrain.diffLock + SETUP.differential.lock[d]);
