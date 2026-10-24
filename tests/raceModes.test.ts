@@ -7,7 +7,8 @@ import { NEUTRAL_INPUT } from '../src/sim/input';
 import { DEG, abs, atan2 } from '../src/sim/math';
 import { carSnapshot, raceConfig, replayLog, runAutopilot } from './helpers';
 
-const SEEDS = [11, 404, 20261019];
+/** Cities with a full seven block straight (seed 14's runs past the elevated highway, districts/highway/). */
+const SEEDS = [14, 404, 20261019];
 
 describe('drag strip', () => {
   it('runs seven blocks down a straight from a two wide grid, the same strip every time', () => {

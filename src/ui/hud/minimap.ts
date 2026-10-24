@@ -166,7 +166,7 @@ export class Minimap {
         p.arc(a.params.x, a.params.z, a.params.outer, 0, Math.PI * 2);
         p.moveTo(a.params.x + a.params.island, a.params.z);
         p.arc(a.params.x, a.params.z, a.params.island, 0, Math.PI * 2);
-      } else if (a.kind === 'subway' || a.kind === 'tunnel' || a.kind === 'overpass') {
+      } else if (a.kind === 'subway' || a.kind === 'highway' || a.kind === 'tunnel' || a.kind === 'overpass') {
         a.path.forEach((q, i) => (i ? p.lineTo(q.x, q.z) : p.moveTo(q.x, q.z)));
       } else if (a.kind === 'hills') {
         // A contour around the rise.
@@ -182,7 +182,7 @@ export class Minimap {
     }
     for (const [k, path] of fills) this.areaFills.push({ path, style: AREA_MAP_STYLE[k] });
     // Order: alleys and shortcuts under the subway and roundabout outlines.
-    const order: AreaKind[] = ['hills', 'backAlley', 'alley', 'roundabout', 'subway', 'overpass', 'tunnel'];
+    const order: AreaKind[] = ['hills', 'backAlley', 'alley', 'roundabout', 'subway', 'highway', 'overpass', 'tunnel'];
     for (const k of order) {
       const path = lines.get(k);
       if (path) this.areaLines.push({ path, style: AREA_MAP_STYLE[k] });

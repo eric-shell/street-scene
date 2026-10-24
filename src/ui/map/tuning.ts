@@ -96,7 +96,7 @@ export const INK = {
 } as const;
 
 /** Legend order; kinds missing from the city are left out. */
-export const LEGEND_ORDER: AreaKind[] = ['park', 'river', 'lake', 'waterfront', 'subway', 'alley', 'backAlley', 'roundabout', 'hills', 'monument', 'tunnel', 'overpass', 'carPark', 'market', 'infill', 'roadworks', 'bluff'];
+export const LEGEND_ORDER: AreaKind[] = ['park', 'river', 'lake', 'waterfront', 'subway', 'highway', 'alley', 'backAlley', 'roundabout', 'hills', 'monument', 'tunnel', 'overpass', 'carPark', 'market', 'infill', 'roadworks', 'bluff'];
 
 /** What a legend row stands for: a district kind, or one of the map's own layers. */
 export type LegendKey = AreaKind | 'you' | 'route' | 'shortcut' | 'waypoint';

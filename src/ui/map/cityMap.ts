@@ -25,6 +25,8 @@
 import type { World } from '../../city/world';
 import type { Area, AreaKind } from '../../city/districts/types';
 import { isRiverEdge } from '../../city/roadGraph';
+import { highwayRamp } from '../../city/districts/highway/shape';
+import { axisAt } from '../../city/districts/highway/rampAxis';
 import { pointInPolygon } from '../../city/districts/geom';
 import { bluffShape, bluffUV, envelope, type BluffShape } from '../../city/districts/bluff';
 import { carParkGeo } from '../../city/districts/carPark';
@@ -57,6 +59,8 @@ export const KINDS: Partial<Record<AreaKind, KindStyle>> = {
   carPark: { label: 'Car parks', ink: rgba('red', 0.6), fill: rgba('soft', 0.24), width: 1.5, tag: true },
   hills: { label: 'The hills', ink: PALETTE.soft, fill: rgba('soft', 0.07), width: 1.5, dash: [6, 5], tag: true },
   subway: { label: 'Under the El', ink: PALETTE.cyan, width: 4, dash: [9, 6], tag: true },
+  // The elevated highway: a wide pale band along its deck line and up its ramps (solid where the El is dashed).
+  highway: { label: 'Expressway', ink: rgba('text', 0.55), width: 6, tag: true },
   // The terrace: its high ground filled, the foot of its slopes dashed; the crest is the cliff symbol (cliffPath).
   bluff: { label: 'The bluff', ink: PALETTE.orange, fill: rgba('orange', 0.1), width: 1.2, dash: [3, 4], tag: true },
   alley: { label: 'Raceway alleys', ink: PALETTE.purple, tag: true },
@@ -70,7 +74,7 @@ export const KINDS: Partial<Record<AreaKind, KindStyle>> = {
 
 /** Infill drawn and counted as places; verges and planters are frontage dressing, too small to read on the map. */
 const PLACES = new Set(['lot', 'plaza', 'cornerPlaza']);
-export const shownOnMap = (a: Area): boolean => a.kind !== 'infill' || PLACES.has(a.variant);
+export const shownOnMap = (a: Area): boolean => (a.kind !== 'infill' || PLACES.has(a.variant)) && !(a.kind === 'highway' && a.variant === 'ramp');
 
 /** Map inks outside the district kinds. */
 export const MAP_INK = {
@@ -328,6 +332,8 @@ export class CityLayers {
   /** The one-way shortcuts (jump exits, car parks), for the chevrons traced per draw. */
   readonly oneWay: OneWay[] = [];
   readonly el = new Path2D();
+  /** The elevated highway's deck line and its ramps' center lines. */
+  readonly highway = new Path2D();
   /** Tunnel bores by street width, then the tunnels' and overpasses' dashed outlines. */
   readonly bores: { width: number; path: Path2D }[] = [];
   readonly tunnels = new Path2D();
@@ -411,6 +417,8 @@ export class CityLayers {
         this.areaPaths.set(a.id, t.ground);
         this.bluffs.push(a);
       } else if (a.kind === 'subway' && a.path.length > 1) line(this.el, a.path);
+      else if (a.kind === 'highway' && a.variant === 'deck' && a.path.length > 1) line(this.highway, a.path);
+      else if (a.kind === 'highway' && a.variant === 'ramp') line(this.highway, rampLine(a));
       else if (a.kind === 'tunnel' && a.path.length > 1) {
         const e = g.edges[a.params.edge];
         const width = e ? e.width : 10;
@@ -537,6 +545,12 @@ export class CityLayers {
         c.stroke(this.el);
         c.setLineDash([]);
       }
+      if (!o.hidden?.has('highway')) {
+        const st = KINDS.highway!;
+        c.strokeStyle = st.ink;
+        c.lineWidth = st.width! * px;
+        c.stroke(this.highway);
+      }
       if (!o.hidden?.has('tunnel')) {
         c.strokeStyle = ink.tagBg;
         for (const b of this.bores) {
@@ -582,6 +596,15 @@ function ring(p: Path2D, pts: readonly Vec2[]): void {
   p.closePath();
 }
 
+/** A highway ramp's center line, foot to deck (districts/highway/rampAxis.ts axis), every few meters. */
+function rampLine(a: Area): Vec2[] {
+  const ax = highwayRamp(a).axis;
+  const pts: Vec2[] = [];
+  for (let u = 0; u <= ax.length; u += 8) pts.push(axisAt(ax, u));
+  pts.push(axisAt(ax, ax.length));
+  return pts;
+}
+
 /** Append an open polyline to a path. */
 function line(p: Path2D, pts: readonly Vec2[]): void {
   pts.forEach((q, i) => (i ? p.lineTo(q.x, q.z) : p.moveTo(q.x, q.z)));
@@ -589,7 +612,7 @@ function line(p: Path2D, pts: readonly Vec2[]): void {
 
 /** Tag priority: area for the filled kinds, length for the linear ones (the river and the El always first). */
 export function tagWeight(a: Area): number {
-  if (a.kind === 'river' || a.kind === 'subway') return 1e9;
+  if (a.kind === 'river' || a.kind === 'subway' || a.kind === 'highway') return 1e9;
   if (a.polygon.length < 3) return 0;
   let s = 0;
   for (let i = 0; i < a.polygon.length; i++) {
@@ -602,7 +625,7 @@ export function tagWeight(a: Area): number {
 
 /** Where an area's tag goes: along a linear area's path, the middle of an alley, the centroid of anything else. */
 export function tagAnchor(world: World, a: Area): Vec2 | null {
-  if (a.kind === 'river' || a.kind === 'subway') return along(a.path, a.kind === 'river' ? 0.3 : 0.7);
+  if (a.kind === 'river' || a.kind === 'subway' || a.kind === 'highway') return along(a.path, a.kind === 'river' ? 0.3 : a.kind === 'highway' ? 0.4 : 0.7);
   if (a.kind === 'alley') {
     const g = world.graph;
     const e = g.edges[a.edges[a.edges.length >> 1]];

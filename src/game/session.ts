@@ -20,6 +20,7 @@ import { VisualBuild } from '../shared/carBuild';
 import { DT, TICK_HZ } from '../sim/constants';
 import { DEG } from '../sim/math';
 import { CarView } from '../render/car/carView';
+import { manifestCar } from '../render/car/carAssets';
 import { Drivers } from '../render/people/drivers';
 import { ROAD_Y } from '../render/street/cityMeshes';
 import { unmaskVehicle } from '../render/vehicleMask';
@@ -47,6 +48,7 @@ import { MapPinned } from '../ui/kit/icons';
 import { HudCard } from '../ui/hud/hudCard';
 import { Help } from '../ui/panels/help';
 import type { Vec2 } from '../sim/math';
+import type { Aspiration } from '../shared/carSpec';
 import { Settings } from '../ui/settings';
 import { formatTime } from '../ui/kit/format';
 import { mph } from '../ui/kit/units';
@@ -175,6 +177,8 @@ export class RaceSession {
   /** Open world HUD: props the player broke, top speed (mph), the district shown and the one being entered. */
   private smashed = 0;
   private topMph = 0;
+  /** The player's engine aspiration (the HUD hides the boost gauge of a naturally aspirated car), read from the manifest once. */
+  private aspiration?: Aspiration;
   private areaName = 'Downtown';
   private areaNext = '';
   private areaFor = 0;
@@ -949,7 +953,7 @@ export class RaceSession {
 
   private updateHud(dt: number): void {
     const c = this.race.cars[0].state;
-    const data = raceHudData(this.race, this.mapCars(), !!this.ghostRace);
+    const data = raceHudData(this.race, this.mapCars(), !!this.ghostRace, (this.aspiration ??= manifestCar(this.race.cars[0].carId).engine.aspiration));
     if (this.openWorld) {
       this.topMph = Math.max(this.topMph, mph(c.speed));
       this.updateArea(c.x, c.z, dt);

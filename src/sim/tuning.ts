@@ -1,6 +1,6 @@
 /**
  * Car physics types and lookups. Every number lives in drivingParams.json
- * (base tuning, per car overrides, drivetrains, performance part tiers); this
+ * (base tuning, per car overrides, drivetrains, the Tune tab's setup tables); this
  * module only types, merges and validates it. Nothing else in the sim should
  * contain tuning magic numbers.
  */
@@ -32,6 +32,10 @@ export interface CarTuning {
     layout: DrivetrainLayout;
     /** AWD only: share of drive torque sent to the front axle (0.4 = 40/60). */
     awdFrontShare: number;
+    /** Driven axles: how far drive past twice the lighter wheel's grip drops toward twice its sliding force (0 = stock axle, 1 = open differential). */
+    diffOpen: number;
+    /** Driven axles: the locked axle's force pair in a turn, as a share of the axle's grip at the peak slip (0 = stock axle). */
+    diffLock: number;
   };
   engine: {
     idleRpm: number;
@@ -87,13 +91,21 @@ export interface CarTuning {
   };
   /**
    * One grip curve over the normalized slip vector (sideways slip over peakSlipDeg, slip ratio over
-   * peakSlipRatio): linear to the peak at length 1, down to the sliding grip at fullSlideDeg / peakSlipDeg.
+   * peakSlipRatio): rising to the peak at length 1 (shaped per axle by roundingFront / roundingRear), down
+   * to the sliding grip at fullSlideDeg / peakSlipDeg.
    */
   tires: {
     gripFront: number;
     gripRear: number;
     /** Slip angle of peak grip (deg). */
     peakSlipDeg: number;
+    /**
+     * Shape of the rise to the peak, per axle (0..1): 0 a straight line, 1 twice as steep at zero slip and
+     * flat into the peak. Higher = sharper response and less slip in ordinary corners; the peak and the
+     * slide past it are unchanged. A rear above the front keeps the car stable below the limit.
+     */
+    roundingFront: number;
+    roundingRear: number;
     /** Slip ratio (tread speed over road speed, minus one) of peak grip. */
     peakSlipRatio: number;
     /** Slip angle where grip has fallen to slideGrip. */
@@ -244,27 +256,53 @@ const BASE = params.base as unknown as BaseTuning;
 export const CAR_OVERRIDES = params.cars as unknown as Record<string, DeepPartial<BaseTuning>>;
 
 // ---------------------------------------------------------------------------
-// Performance parts. Index = tier: 0 stock, 1 street, 2 pro, 3 extreme.
+// The garage Tune tab's setup (build.ts applyBuild): four sliders, five positions each, left to right.
 // ---------------------------------------------------------------------------
-export const TIER_NAMES = ['Stock', 'Street', 'Pro', 'Extreme'] as const;
-export type Tier = 0 | 1 | 2 | 3;
+export const SETUP_SLIDERS = ['suspension', 'gearing', 'differential', 'brakeBalance'] as const;
+export type SetupSlider = (typeof SETUP_SLIDERS)[number];
+/** A slider position, 1 (left) .. 5 (right). */
+export type SetupPosition = 1 | 2 | 3 | 4 | 5;
+export const SETUP_POSITIONS: readonly SetupPosition[] = [1, 2, 3, 4, 5];
+/** The position every slider starts on: the stock car, which every table leaves exactly as it is. */
+export const STOCK_POSITION: SetupPosition = 3;
 
-export const PERFORMANCE_CATEGORIES = ['engine', 'turbo', 'exhaust', 'transmission', 'tires', 'suspension', 'brakes', 'weight', 'nitrous'] as const;
-export type PerformanceCategory = (typeof PERFORMANCE_CATEGORIES)[number];
-
-type TierTable = readonly [number, number, number, number];
-export interface PartTiers {
-  engine: { torqueMul: TierTable; redlineAdd: TierTable };
-  turbo: { torqueMul: TierTable; highRpmBoost: TierTable };
-  exhaust: { torqueMul: TierTable };
-  transmission: { shiftTime: TierTable; finalDriveMul: TierTable };
-  tires: { gripMul: TierTable };
-  suspension: { frequencyMul: TierTable; gripMul: TierTable; steerRateMul: TierTable };
-  brakes: { forceMul: TierTable };
-  weight: { massMul: TierTable };
-  nitrous: { capacity: TierTable; force: TierTable };
+/** One entry per position, left to right. */
+type SetupRow = readonly [number, number, number, number, number];
+export interface SetupTables {
+  suspension: { frequencyMul: SetupRow; travelMul: SetupRow; steerRateMul: SetupRow; roadGripMul: SetupRow; roughGripMul: SetupRow };
+  gearing: { finalDriveMul: SetupRow };
+  differential: { open: SetupRow; lock: SetupRow };
+  brakeBalance: { frontBiasAdd: SetupRow };
 }
-export const PART_TIERS = params.performanceParts as unknown as PartTiers;
+const SETUP_KEYS: { [S in SetupSlider]: readonly (keyof SetupTables[S])[] } = {
+  suspension: ['frequencyMul', 'travelMul', 'steerRateMul', 'roadGripMul', 'roughGripMul'],
+  gearing: ['finalDriveMul'],
+  differential: ['open', 'lock'],
+  brakeBalance: ['frontBiasAdd'],
+};
+
+/**
+ * The `setup` section, checked like the car tuning: unknown or missing keys throw, every table needs a
+ * number per position, and the stock position must leave the car as it is (1 in a *Mul table, else 0), so
+ * a stock build stays bit for bit the car's own tuning.
+ */
+export function validateSetup(raw: unknown): SetupTables {
+  if (!isObj(raw)) throw new Error('drivingParams.json: "setup" must be an object');
+  for (const k of Object.keys(raw)) if (!k.startsWith('_') && !(SETUP_SLIDERS as readonly string[]).includes(k)) throw new Error(`drivingParams.json: unknown key "setup.${k}"`);
+  for (const s of SETUP_SLIDERS) {
+    const sec = raw[s];
+    if (!isObj(sec)) throw new Error(`drivingParams.json: "setup.${s}" must be an object`);
+    const keys = SETUP_KEYS[s] as readonly string[];
+    for (const k of Object.keys(sec)) if (!k.startsWith('_') && !keys.includes(k)) throw new Error(`drivingParams.json: unknown key "setup.${s}.${k}"`);
+    for (const k of keys) {
+      const row = sec[k];
+      if (!Array.isArray(row) || row.length !== SETUP_POSITIONS.length || !row.every((x) => typeof x === 'number' && Number.isFinite(x))) throw new Error(`drivingParams.json: "setup.${s}.${k}" needs ${SETUP_POSITIONS.length} numbers, one per position`);
+      const stock = k.endsWith('Mul') ? 1 : 0;
+      if (row[STOCK_POSITION - 1] !== stock) throw new Error(`drivingParams.json: "setup.${s}.${k}" must hold ${stock} at position ${STOCK_POSITION}, the stock car`);
+    }
+  }
+  return raw as unknown as SetupTables;
+}
 
 // ---------------------------------------------------------------------------
 // Drift zones (src/sim/driftZones.ts): race rules, not car tuning, so not in tuningHash.
@@ -363,6 +401,9 @@ function mergeOverride(target: Record<string, unknown>, over: Record<string, unk
   }
 }
 
+/** The Tune tab's tables (drivingParams.json `setup`), validated at startup. */
+export const SETUP: SetupTables = validateSetup((params as Record<string, unknown>).setup);
+
 const resolved = new Map<string, CarTuning>();
 
 export function getBaseTuning(carId: string): CarTuning {
@@ -399,12 +440,12 @@ function hashString(s: string): string {
 }
 
 /**
- * Fingerprint of a car's stock tuning plus the part tiers. Saved tuning panel
+ * Fingerprint of a car's stock tuning plus the setup tables. Saved tuning panel
  * values store it and is discarded when drivingParams.json changes, so stale
  * browser overrides never mask edits to the file.
  */
 export function tuningHash(carId: string): string {
-  return hashString(JSON.stringify(getBaseTuning(carId)) + JSON.stringify(PART_TIERS));
+  return hashString(JSON.stringify(getBaseTuning(carId)) + JSON.stringify(SETUP));
 }
 
 // ---------------------------------------------------------------------------

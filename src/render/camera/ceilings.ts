@@ -1,8 +1,10 @@
 /**
  * What hangs over the streets, for the cameras: tunnel ceilings and the mass
- * above them (an air rights building, a ridge's rock), viaduct decks, gantry
- * trusses, a car park garage's levels over its drivable floor and ramp, and
- * the bridge decks over the river channel (slab and girders over the floor).
+ * above them (an air rights building, a ridge's rock), viaduct decks, a car
+ * park garage's levels over its drivable floor and ramp, the bridge decks
+ * over the river channel (slab and girders over the floor), and the elevated
+ * highway: its deck (a camera under it stays under, one following a car up
+ * there stays above) and its ramps (an embankment: out over the top).
  * The chase camera rides 2-4 m over the car, but an orbit drag or a wall
  * pull-in (camera.ts wallLift) can lift it into a deck or a tunnel's roof,
  * and the intro fly-in can pass through one: keepOutOfWalls
@@ -16,7 +18,9 @@
 import type * as THREE from 'three';
 import type { World } from '../../city/world';
 import { toLocal } from '../../city/districts/structures';
-import { gantryShape } from '../../city/districts/overpass';
+import { HIGHWAY_HALF, RAMP_SOLID_TO_END, deckTopAt, deckUnderAt, highwayDeck } from '../../city/districts/highway/shape';
+import { axisPoint, projectAxis, rampHeight } from '../../city/districts/highway/rampAxis';
+import { RAIL } from '../../city/railCurve';
 import { CITY } from '../../city/config';
 import { boreRoad, bridgeTop, ceilingAbove, coverOf, deckLine, ridgeShape, rockAt, tunnelShape, viaductShape } from '../districts/structureShapes';
 import { carParkGeo } from '../../city/districts/carPark';
@@ -117,18 +121,58 @@ function build(world: World): Overhead[] {
           },
         });
       }
-    } else if (a.kind === 'overpass' && a.variant === 'gantry') {
-      const g = gantryShape(a);
-      out.push({
-        ...bbox(a.path, 2),
-        at(x, z, s) {
-          const l = toLocal(g, x, z);
-          if (Math.abs(l.u) > 1.25 || Math.abs(l.v) > g.legV) return false;
-          s.bottom = world.heightAt(g.cx, g.cz) + g.clearance - 0.2;
-          s.top = world.heightAt(g.cx, g.cz) + g.clearance + 1.4;
-          return true;
-        },
-      });
+    } else if (a.kind === 'highway' && a.variant === 'deck') {
+      const d = highwayDeck(a, world.areas);
+      if (!d.settled) continue;
+      const c = d.curve;
+      // In stretches of a few samples: the nearest sample's normal says how far across the deck a point is.
+      const CH = 10;
+      const reach = HIGHWAY_HALF + 2 * CITY.districts.highway.rampHalf + 1.5;
+      for (let k0 = 1; k0 < c.n - 1; k0 += CH) {
+        const k1 = Math.min(c.n - 1, k0 + CH);
+        const pts: { x: number; z: number }[] = [];
+        for (let k = k0; k <= k1; k++) pts.push({ x: c.x[k], z: c.z[k] });
+        out.push({
+          ...bbox(pts, reach),
+          at(x, z, s) {
+            let best = k0;
+            let bd = Infinity;
+            for (let k = k0; k <= k1; k++) {
+              const dd = (c.x[k] - x) ** 2 + (c.z[k] - z) ** 2;
+              if (dd < bd) {
+                bd = dd;
+                best = k;
+              }
+            }
+            const along = (x - c.x[best]) * c.tx[best] + (z - c.z[best]) * c.tz[best];
+            const lat = Math.abs(-(x - c.x[best]) * c.tz[best] + (z - c.z[best]) * c.tx[best]);
+            if (Math.abs(along) > RAIL.step || lat > HIGHWAY_HALF + 0.3) return false;
+            const sv = best * RAIL.step + along;
+            s.bottom = deckUnderAt(d, sv);
+            s.top = deckTopAt(d, sv) + 1.1;
+            return true;
+          },
+        });
+      }
+      // Its ramps: an embankment up to the bridge stretch at the top (out over the top), then a bridge.
+      for (const r of d.ramps) {
+        const ax = r.axis;
+        const ap = axisPoint();
+        const sample = { h: 0, gx: 0, gz: 0 };
+        const hw = CITY.districts.highway.rampHalf + 0.5;
+        const pts: { x: number; z: number }[] = [{ x: ax.fx, z: ax.fz }, { x: ax.ex, z: ax.ez }, { x: ax.cx, z: ax.cz }];
+        out.push({
+          ...bbox(pts, ax.r + hw + 2),
+          at(x, z, s) {
+            projectAxis(ax, x, z, ap);
+            if (ap.u < 0 || ap.u > ax.length || Math.abs(ap.v) > hw) return false;
+            rampHeight(ax, r.profile, r.terrain, x, z, ap, sample);
+            s.bottom = ap.u >= ax.length - RAMP_SOLID_TO_END ? sample.h - 1.4 : -Infinity;
+            s.top = sample.h + 1.1;
+            return true;
+          },
+        });
+      }
     }
   }
   return out;

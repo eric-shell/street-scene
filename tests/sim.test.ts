@@ -203,6 +203,8 @@ describe('driving parameters file', () => {
     // export's car, the retired Proto Compact, drove base on a final drive shortened for its 0.31 m tire.)
     // Counter steer lock was later allowed to reach the direction of travel at any slip angle; the drift
     // aids and the handbrake were remodelled on real wheel speed (the fixture carries the surviving keys).
+    // The grip pass (docs/handling.md) moved grip from the front axle to the rear with a rounded rise to
+    // the peak, and nitrous was made stronger.
     const t = getBaseTuning('proto');
     const expected = {
       ...exported.tuning,
@@ -211,6 +213,8 @@ describe('driving parameters file', () => {
       surface: { ...exported.tuning.surface, sidewalkGrip: 1 },
       brakes: { ...exported.tuning.brakes, force: 16250, frontBias: 0.68 },
       steering: { ...exported.tuning.steering, counterSteerAllowance: 1 },
+      tires: { ...exported.tuning.tires, gripFront: 1.58, gripRear: 1.34 },
+      nitrous: { ...exported.tuning.nitrous, capacity: 3.6, force: 5500, torqueMul: 1.35 },
     };
     expect(t).toMatchObject(expected);
   });
@@ -739,7 +743,7 @@ describe('landings, banks and brakes', () => {
     }
   });
 
-  it('brakes hard: 160 km/h to a stop in under 60 m, shorter with upgraded brakes', () => {
+  it('brakes hard: 160 km/h to a stop in under 60 m, longer with the brakes biased to the rear', () => {
     const stop = (t: CarTuning) => {
       const c = createCar(0, 0, 0, 0);
       c.vz = 160 / 3.6;
@@ -749,7 +753,8 @@ describe('landings, banks and brakes', () => {
     for (const id of SELECTABLE_CAR_IDS) {
       const stock = stop(getBaseTuning(id));
       expect(stock, id).toBeLessThan(60);
-      expect(stop(applyBuild(getBaseTuning(id), { ...stockPerformance(), brakes: 3 })), id).toBeLessThan(stock - 5);
+      // Rear bias asks the rear tires, unloaded under braking, for more than they hold.
+      expect(stop(applyBuild(getBaseTuning(id), { ...stockPerformance(), brakeBalance: 1 })), id).toBeGreaterThan(stock + 1);
     }
   });
 });

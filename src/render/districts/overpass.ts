@@ -1,10 +1,6 @@
 /**
  * Overpass renderer (src/city/districts/overpass.ts).
  *
- *  - Sign gantries: two steel box legs on the sim's leg squares, a four chord
- *    truss with diagonals across the street, green direction signs (or an
- *    amber message board) over the lanes facing both ways, each lit by a
- *    small lamp hood, and a beacon on top.
  *  - Freeway viaducts: a concrete box girder deck on a straight grade
  *    (structureShapes.deckLine), its fascia banded with a darker drip edge,
  *    jersey barriers and tall lamp posts with sodium heads along the top, a
@@ -15,38 +11,22 @@
  *    red lamp, and a fenced retaining wall along the building lines under the
  *    deck (the frontage walls with look 'pier').
  * Everything is merged into the kit's builders, plus one sign mesh and one
- * road wash mesh (Medium and up) for the whole city. Low drops the truss
- * diagonals, the deck lamp posts and the wash.
+ * road wash mesh (Medium and up) for the whole city. Low drops the deck lamp
+ * posts and the wash. (The sign gantry is structureFx.ts signGantry, over the
+ * elevated highway's carriageways: render/districts/highway.ts.)
  */
 import * as THREE from 'three';
-import { CITY } from '../../city/config';
 import type { Area } from '../../city/districts/types';
 import type { Frame } from '../../city/districts/structures';
 import { toWorld } from '../../city/districts/structures';
-import { gantryShape } from '../../city/districts/overpass';
-import { Rng } from '../../sim/prng';
 import { GeoBuilder } from '../geoBuilder';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { col, cylinder, orientedBox, wallBox } from './kit';
-import { CLOSED_CELL, GANTRY_SIGNS, beam, boardCell, frameBox, gantryCell, makeStructureSigns, signPanel } from './structureFx';
+import { CLOSED_CELL, beam, frameBox, makeStructureSigns, signPanel } from './structureFx';
 import { washMaterial } from '../materialFx';
 import { ViaductShape, deckLine, viaductShape } from './structureShapes';
 
-const OCFG = CITY.districts.overpass;
-
 const OV = {
-  /** Gantry truss: depth along the street and height (m), chord size (m), panel spacing for the diagonals (m). */
-  trussDepth: 1.2,
-  trussH: 1.1,
-  chord: 0.09,
-  panel: 1.6,
-  /** Sign panels: height (m), width per lane pair (m), set this far below the truss bottom (m). */
-  signH: 2.2,
-  signW: 5.6,
-  signDrop: -0.1,
-  /** Sign face out from the truss face (m): clear of the chords (OV.chord half thick) on standoff brackets, the backing plate behind it. */
-  signStandoff: 0.22,
-  signBacking: 0.06,
   /** Viaduct: barrier height and width (m), lamp post spacing and height (m), soffit lamps per crossing. */
   barrierH: 1.05,
   barrierW: 0.45,
@@ -63,7 +43,6 @@ const OV = {
 
 const C = {
   steel: col(0x6f757c),
-  steelDark: col(0x464a50),
   concrete: col(0x77746e),
   fascia: col(0x8a867f),
   drip: col(0x3f3d3a),
@@ -76,9 +55,7 @@ const C = {
 
 const LIGHT = {
   sodium: col(0xffa040, 1.1),
-  signLamp: col(0xfff2d8, 0.9),
   red: col(0xff2a1a, 1.4),
-  amber: col(0xffb020, 1.2),
 } as const;
 
 const SODIUM_WASH = new THREE.Color(0xffa040);
@@ -88,11 +65,7 @@ export const overpassRenderer: DistrictRenderer = {
   build(kit, areas) {
     const signs = new GeoBuilder(true);
     const wash = new GeoBuilder(true);
-    for (const a of areas) {
-      const rng = new Rng((a.params.seed >>> 0) || 1);
-      if (a.variant === 'gantry') gantry(kit, signs, a, rng);
-      else viaduct(kit, signs, wash, a);
-    }
+    for (const a of areas) viaduct(kit, signs, wash, a);
     // Building lines under a deck: a concrete retaining wall with a chain link fence on top (solid pier
     // walls are the piers, columns and abutments drawn above).
     for (const w of kit.walls.get('pier') ?? []) {
@@ -125,77 +98,6 @@ export const overpassRenderer: DistrictRenderer = {
     }
   },
 };
-
-/** A sign gantry over its street. */
-function gantry(kit: DistrictKit, signs: GeoBuilder, a: Area, rng: Rng): void {
-  const s = gantryShape(a);
-  const f: Frame = s;
-  const yRoad = (v: number) => {
-    const p = toWorld(f, 0, v);
-    return kit.h(p.x, p.z);
-  };
-  const road = Math.max(yRoad(-s.legV), yRoad(0), yRoad(s.legV));
-  const y0 = road + s.clearance;
-  const y1 = y0 + OV.trussH;
-  const hd = OV.trussDepth / 2;
-  const half = OCFG.legSize / 2;
-  // Legs on their footings, a little past the truss top, with a base plate.
-  for (const v of [-s.legV, s.legV]) {
-    const yb = yRoad(v);
-    frameBox(kit.solid, f, -half, half, v - half, v + half, yb - 0.2, yb - 0.2, yb + 0.25, yb + 0.25, C.concrete);
-    frameBox(kit.solid, f, -half * 0.7, half * 0.7, v - half * 0.7, v + half * 0.7, yb + 0.25, yb + 0.25, y1 + 0.25, y1 + 0.25, C.steel);
-  }
-  // Four chords between the legs.
-  const P = (u: number, v: number, y: number) => {
-    const p = toWorld(f, u, v);
-    return { x: p.x, y, z: p.z };
-  };
-  for (const u of [-hd, hd]) for (const y of [y0, y1]) beam(kit.solid, P(u, -s.legV, y), P(u, s.legV, y), OV.chord, OV.chord, C.steel);
-  if (kit.quality !== 'low') {
-    // Diagonals on the faces, verticals at the panel points.
-    const n = Math.max(2, Math.round((2 * s.legV) / OV.panel));
-    for (let i = 0; i < n; i++) {
-      const va = -s.legV + (2 * s.legV * i) / n;
-      const vb = -s.legV + (2 * s.legV * (i + 1)) / n;
-      for (const u of [-hd, hd]) {
-        beam(kit.solid, P(u, va, i % 2 ? y0 : y1), P(u, vb, i % 2 ? y1 : y0), OV.chord * 0.6, OV.chord * 0.6, C.steelDark);
-        beam(kit.solid, P(u, vb, y0), P(u, vb, y1), OV.chord * 0.6, OV.chord * 0.6, C.steelDark);
-      }
-      beam(kit.solid, P(-hd, vb, y0), P(hd, vb, y0), OV.chord * 0.5, OV.chord * 0.5, C.steelDark);
-    }
-  }
-  // Each face carries the signs for the traffic coming at it, over that direction's half of the road
-  // (right hand traffic: v = (-uz, ux) is the right of travel along +u); now and then a message board.
-  const board = rng.next() < 0.3;
-  const k0 = rng.int(0, GANTRY_SIGNS.length - 1);
-  const count = board || s.road < 10 ? 1 : 2;
-  const sw = board ? Math.min(7.5, s.road - 1) : Math.min(OV.signW, s.road / count - 0.6);
-  const yc = y0 + OV.signDrop + OV.signH / 2;
-  // Spans along u from a to b at this end's face (a, b measured outward from the truss centre).
-  const span = (end: number, a: number, b: number): [number, number] => [Math.min(-end * a, -end * b), Math.max(-end * a, -end * b)];
-  const face = hd + OV.signStandoff;
-  const yb = yc - OV.signH / 2;
-  const yt = yc + OV.signH / 2;
-  for (const end of [-1, 1]) {
-    // end +1: the face toward -u, read by traffic heading +u on v > 0. The panel hangs in front of the
-    // chords, never inside them, so the truss reads behind it.
-    const uf = -end * (face + 0.01);
-    for (let k = 0; k < count; k++) {
-      const vv = end * (count === 1 ? s.road / 2 : (s.road * (k + 0.5)) / count);
-      const p = toWorld(f, uf, vv);
-      const cell = board ? boardCell(rng.int(0, 1)) : gantryCell((k0 + (end > 0 ? 0 : 3) + k) % GANTRY_SIGNS.length);
-      signPanel(signs, p.x, yc, p.z, -end * s.ux, -end * s.uz, sw, OV.signH, cell, col(0xffffff, board ? 1.4 : 0.85));
-      // The panel's back, the standoff brackets from the chords to it, and a lamp hood over a direction sign.
-      const [b0, b1] = span(end, face - OV.signBacking, face);
-      frameBox(kit.solid, f, b0, b1, vv - sw / 2, vv + sw / 2, yb, yb, yt, yt, C.steelDark);
-      const [s0, s1] = span(end, hd + OV.chord, face - OV.signBacking);
-      for (const bv of [vv - sw * 0.35, vv + sw * 0.35]) for (const y of [y0, Math.min(y1, yt - 0.1)]) frameBox(kit.solid, f, s0, s1, bv - 0.05, bv + 0.05, y - 0.05, y - 0.05, y + 0.05, y + 0.05, C.steelDark);
-      const [l0, l1] = span(end, face + 0.17, face + 0.37);
-      if (!board) frameBox(kit.glow, f, l0, l1, vv - 0.6, vv + 0.6, yt + 0.05, yt + 0.05, yt + 0.15, yt + 0.15, LIGHT.signLamp);
-    }
-  }
-  frameBox(kit.glow, f, -0.12, 0.12, s.legV - 0.12, s.legV + 0.12, y1 + 0.25, y1 + 0.25, y1 + 0.5, y1 + 0.5, LIGHT.amber);
-}
 
 /** A freeway viaduct: deck, barriers, lamps, piers, columns, abutments and the light under it. */
 function viaduct(kit: DistrictKit, signs: GeoBuilder, wash: GeoBuilder, a: Area): void {

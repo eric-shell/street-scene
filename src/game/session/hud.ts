@@ -12,6 +12,7 @@ import { btn } from '../../ui/kit/dom';
 import { mph } from '../../ui/kit/units';
 import { HudCard } from '../../ui/hud/hudCard';
 import { RACE_CARD, raceReadouts, type HudCar, type HudData } from '../../ui/hud/hud';
+import type { Aspiration } from '../../shared/carSpec';
 import { MUSIC_KEYS, type HelpKey, type HelpSection } from '../../ui/panels/help';
 import { driftZoneStatus } from '../../sim/driftZones';
 import { DRIFT_ZONES } from '../../sim/tuning';
@@ -105,7 +106,7 @@ export function helpSections(mode: RaceMode, isReplay: boolean, openWorld: boole
 }
 
 /** The HUD's numbers for this frame, read off the race (the session adds the open world's extras). */
-export function raceHudData(r: RaceState, cars: HudCar[], ghost: boolean): HudData {
+export function raceHudData(r: RaceState, cars: HudCar[], ghost: boolean, aspiration: Aspiration): HudData {
   const rc = r.cars[0];
   const c = rc.state;
   const countdownLeft = r.countdownTicks - r.tick;
@@ -130,6 +131,7 @@ export function raceHudData(r: RaceState, cars: HudCar[], ghost: boolean): HudDa
     nitroStage: c.nitroStage,
     throttle: c.throttle,
     launchRpm: rc.tuning.launch.twoStepRpm || undefined,
+    aspiration,
     boost: rc.tuning.engine.turbo ? c.boost : undefined,
     antilag: c.antilag,
     countdown,

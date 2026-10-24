@@ -47,30 +47,6 @@
     padding-top: 8px;
     border-top: 1px solid var(--line);
   }
-  /* An upgrade row: the part's name beside its tiers, which keep to one line. On a narrow phone the longest
-     names leave no room beside them, so every row puts its tiers under the name, across the group's width. */
-  &--tier {
-    min-height: 30px;
-    & + & {
-      padding-top: 5px;
-    }
-    .segmented {
-      flex: none;
-      flex-wrap: nowrap;
-    }
-    @media (max-width: 420px) {
-      flex-direction: column;
-      align-items: stretch;
-      gap: 6px;
-      .segmented {
-        display: flex;
-      }
-      .segmented__option {
-        flex: 1;
-        justify-content: center;
-      }
-    }
-  }
 }
 .garage-list {
   display: flex;

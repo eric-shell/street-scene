@@ -26,7 +26,7 @@ import type { RailWall } from '../../city/routeRails';
 import { ChevronsRight, drawIcon } from '../../ui/kit/icons';
 import { GeoBuilder } from '../geoBuilder';
 import { FOG_DENSITY } from '../lighting';
-import { RailState, railLayout } from '../../sim/rails';
+import { type RailLayout, RailState, railLayout } from '../../sim/rails';
 import { segmentT } from '../../sim/math';
 import { nearCarParkFlight } from '../../city/districts/carPark';
 import { Disposer } from '../disposer';
@@ -92,6 +92,23 @@ export function classifyBarriers(world: World): BarrierInfo[] {
 function closureFlow(b: BarrierInfo, ux: number, uz: number): number {
   const out = b.outX * ux + b.outZ * uz;
   return b.headOn || Math.abs(out) > 0.5 ? out : b.inX * ux + b.inZ * uz;
+}
+
+/**
+ * The one direction every chevron of closure b points: along the closure, the
+ * way the route runs past it, as +1 toward the right of someone on the course
+ * looking at it (the sign's own right, (nz, -nx)) or -1 toward the left. The
+ * overhead sign, its barrier's panels, LED comets and ground glow all read it,
+ * so they cannot disagree.
+ */
+export function closureFlip(b: BarrierInfo): 1 | -1 {
+  return closureFlow(b, b.nz, -b.nx) > 0 ? 1 : -1;
+}
+
+/** The closure's chevron direction as a unit vector on the ground (closureFlip along the closure). */
+export function closureWay(b: BarrierInfo): { x: number; z: number } {
+  const f = closureFlip(b);
+  return { x: b.nz * f, z: -b.nx * f };
 }
 
 // ---------------------------------------------------------------------------
@@ -248,16 +265,23 @@ export interface RailCrack {
   v: number;
 }
 
-interface Board {
+/** An overhead sign: where it hangs, facing (yaw) the course, and which way its chevrons point. */
+export interface Board {
   x: number;
   y: number;
   z: number;
+  /** Rotation about Y (rad): the plane's +z, its front, faces (sin yaw, cos yaw). */
   yaw: number;
+  /** Size (m). */
   w: number;
   h: number;
+  /** +1: the chevrons point toward the plane's +x, the right of someone on the course looking at it (cos yaw, -sin yaw); -1: toward its left. */
   flip: number;
   phase: number;
+  /** Pitch (rad). */
   tilt: number;
+  /** Rail group of the closure or corner rail the sign hangs over. */
+  rail: number;
 }
 
 /** Group rail segments into curves (one per route corner, segments in chain order). */
@@ -277,10 +301,49 @@ export function railCurves(world: World): Wall[][] {
   return curves;
 }
 
-/** +1 if travelling a -> b runs to the right as seen from the drivable side, else -1. */
+/**
+ * +1 if travelling a -> b runs to the right as seen from the drivable side, else -1. A corner
+ * rail runs a -> b in route order (city/routeRails.ts builds it from the incoming road round
+ * the fillet to the outgoing one, and the cuts after it keep that order), so this is the way
+ * the race goes past it.
+ */
 function flipFor(w: Wall): number {
   // viewer looks along -n; viewer right is (nz, -nx)
   return (w.bx - w.ax) * w.nz - (w.bz - w.az) * w.nx > 0 ? 1 : -1;
+}
+
+/**
+ * The overhead signs: one over every closure, chevrons pointing the way the
+ * route goes past it (closureFlip), and one at the apex of each corner rail,
+ * pointing the way the route goes through the corner. Seen from the course
+ * (looking along -n) the viewer's right is (nz, -nx).
+ */
+export function routeSigns(world: World, barriers: BarrierInfo[]): Board[] {
+  const signs: Board[] = [];
+  barriers.forEach((b, i) => {
+    const gr = b.group;
+    const right = closureFlow(b, b.nz, -b.nx);
+    if (Math.abs(right) < 0.25) return;
+    // A short tie onto a corner rail is no closure to sign: the rail's own sign stands over its apex.
+    if (gr.tied && gr.length < SIGN.minWidth) return;
+    const w = Math.max(SIGN.minWidth, Math.min(SIGN.maxWidth, gr.length * 0.6));
+    const y = world.heightAt(b.x, b.z) + SIGN.height + (b.headOn ? 0.6 : 0);
+    signs.push({ x: b.x + b.nx * 0.4, y, z: b.z + b.nz * 0.4, yaw: Math.atan2(b.nx, b.nz), w, h: w / SIGN.aspect, flip: closureFlip(b), phase: (i * 0.29) % 1, tilt: -0.08, rail: (gr.walls[0] as RailWall | undefined)?.group ?? -1 });
+  });
+  // Corner rails: one over the apex of each, unless a closure sign is right there.
+  const closureRails = new Set(barriers.map((b) => (b.group.walls[0] as RailWall | undefined)?.group));
+  railCurves(world).forEach((curve, ci) => {
+    if (closureRails.has((curve[0] as RailWall).group)) return;
+    const mid = curve[Math.floor(curve.length / 2)];
+    const mx = (mid.ax + mid.bx) / 2;
+    const mz = (mid.az + mid.bz) / 2;
+    if (signs.some((s) => Math.hypot(s.x - mx, s.z - mz) < 16)) return;
+    // Nor where a car launches off a car park's roof right over it (the rail is cut there, districts/carPark.ts).
+    if (nearCarParkFlight(world, mx, mz, 9)) return;
+    // Pointing the way the rail runs (a -> b, the way the route goes through the corner), as its panels do.
+    signs.push({ x: mx - mid.nx * 1.2, y: world.heightAt(mx, mz) + SIGN.height + 0.4, z: mz - mid.nz * 1.2, yaw: Math.atan2(mid.nx, mid.nz), w: 15, h: 15 / SIGN.aspect, flip: flipFor(mid), phase: (ci * 0.37) % 1, tilt: -0.1, rail: (curve[0] as RailWall).group });
+  });
+  return signs;
 }
 
 export interface RouteArrowOptions {
@@ -302,31 +365,7 @@ export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classif
   for (const m of rails.meshes) group.add(m);
   mats.push(...rails.materials);
 
-  const signs: Board[] = [];
-  // Closures: a sign over every one, chevrons pointing the way the route goes past it. Seen
-  // from the course (looking along -n) the viewer's right is (nz, -nx).
-  barriers.forEach((b, i) => {
-    const gr = b.group;
-    const right = closureFlow(b, b.nz, -b.nx);
-    if (Math.abs(right) < 0.25) return;
-    // A short tie onto a corner rail is no closure to sign: the rail's own sign stands over its apex.
-    if (gr.tied && gr.length < SIGN.minWidth) return;
-    const w = Math.max(SIGN.minWidth, Math.min(SIGN.maxWidth, gr.length * 0.6));
-    const y = world.heightAt(b.x, b.z) + SIGN.height + (b.headOn ? 0.6 : 0);
-    signs.push({ x: b.x + b.nx * 0.4, y, z: b.z + b.nz * 0.4, yaw: Math.atan2(b.nx, b.nz), w, h: w / SIGN.aspect, flip: right > 0 ? 1 : -1, phase: (i * 0.29) % 1, tilt: -0.08 });
-  });
-  // Corner rails: one over the apex of each, unless a closure sign is right there.
-  const closureRails = new Set(barriers.map((b) => (b.group.walls[0] as RailWall | undefined)?.group));
-  railCurves(world).forEach((curve, ci) => {
-    if (closureRails.has((curve[0] as RailWall).group)) return;
-    const mid = curve[Math.floor(curve.length / 2)];
-    const mx = (mid.ax + mid.bx) / 2;
-    const mz = (mid.az + mid.bz) / 2;
-    if (signs.some((s) => Math.hypot(s.x - mx, s.z - mz) < 16)) return;
-    // Nor where a car launches off a car park's roof right over it (the rail is cut there, districts/carPark.ts).
-    if (nearCarParkFlight(world, mx, mz, 9)) return;
-    signs.push({ x: mx - mid.nx * 1.2, y: world.heightAt(mx, mz) + SIGN.height + 0.4, z: mz - mid.nz * 1.2, yaw: Math.atan2(mid.nx, mid.nz), w: 15, h: 15 / SIGN.aspect, flip: flipFor(mid), phase: (ci * 0.37) % 1, tilt: -0.1 });
-  });
+  const signs = routeSigns(world, barriers);
 
   if (signs.length) {
     const geo = track(new THREE.PlaneGeometry(1, 1));
@@ -534,6 +573,42 @@ const railPanelVert = /* glsl */ `
   }
 `;
 
+/**
+ * Which way each rail piece's panel chevrons run: +1 toward the piece's b end,
+ * -1 toward its a end. The panel's u runs along the piece (a -> b) and is
+ * attached to its vertices, so a chevron points the same world way from the
+ * course side and from behind (the back face is the same texture, mirrored on
+ * screen but not in the world).
+ *
+ * A corner rail runs in route order, so its pieces all point toward b, like the
+ * sign over its apex. Not by the route leg nearest each piece: round a corner or
+ * a hairpin that leg is often the one square to the rail, or the return leg
+ * running the other way, and it turned stretches of one rail against the rest.
+ *
+ * A closure's pieces all follow the closure's own way (closureWay, the overhead
+ * sign's), each taking the end that lies most along it, whichever way the piece
+ * happens to run: a V closure's two arms and a tie to a corner rail run at
+ * different angles, and a piece's own flow can disagree with the group's.
+ */
+export function railPanelFlips(world: World, barriers: BarrierInfo[], l: RailLayout): Int8Array {
+  const closureOf = new Map<Wall, BarrierInfo>();
+  const way = new Map<BarrierInfo, { x: number; z: number }>();
+  for (const b of barriers) {
+    way.set(b, closureWay(b));
+    for (const w of b.group.walls) closureOf.set(w, b);
+  }
+  const out = new Int8Array(l.count).fill(1);
+  for (let p = 0; p < l.count; p++) {
+    const k0 = l.first[p];
+    const closure = closureOf.get(world.walls[l.wall[k0]]);
+    if (!closure) continue;
+    const k1 = k0 + l.subs[p];
+    const { x, z } = way.get(closure)!;
+    out[p] = (l.bx[k1 - 1] - l.ax[k0]) * x + (l.bz[k1 - 1] - l.az[k0]) * z >= 0 ? 1 : -1;
+  }
+  return out;
+}
+
 interface RailMeshes {
   meshes: THREE.Mesh[];
   /** Animated materials (time uniform). */
@@ -554,8 +629,7 @@ interface RailMeshes {
  */
 function buildRailMeshes(world: World, barriers: BarrierInfo[], tex: THREE.Texture, beaconMaterial: THREE.Material | null): RailMeshes {
   const l = railLayout(world);
-  const closureOf = new Map<Wall, BarrierInfo>();
-  for (const b of barriers) for (const w of b.group.walls) closureOf.set(w, b);
+  const flips = railPanelFlips(world, barriers, l);
   const panel = new GeoBuilder();
   const frame = new GeoBuilder(true);
   const led = new GeoBuilder();
@@ -596,16 +670,7 @@ function buildRailMeshes(world: World, barriers: BarrierInfo[], tex: THREE.Textu
     const k1 = k0 + l.subs[p];
     let total = 0;
     for (let k = k0; k < k1; k++) total += Math.hypot(l.bx[k] - l.ax[k], l.bz[k] - l.az[k]);
-    // The panel's u runs along the piece (a -> b), so its chevrons point toward b from either side;
-    // mirror them only when the piece runs against the way the route drives past it. A closure's
-    // pieces all follow its own flow (closureFlow); a corner rail's follow the route beside them.
-    const ux = l.bx[k1 - 1] - l.ax[k0];
-    const uz = l.bz[k1 - 1] - l.az[k0];
-    const ul = Math.hypot(ux, uz) || 1;
-    const closure = closureOf.get(world.walls[l.wall[k0]]);
-    const flow = closure ? closureFlow(closure, ux / ul, uz / ul) : 0;
-    const rp = world.routeProgress((l.ax[k0] + l.bx[k1 - 1]) / 2, (l.az[k0] + l.bz[k1 - 1]) / 2);
-    const fl = Math.abs(flow) > 0.25 ? Math.sign(flow) : ux * rp.tx + uz * rp.tz >= 0 ? 1 : -1;
+    const fl = flips[p];
     const ph = (l.group[p] * 0.31 + p * 0.08) % 1;
     let s = 0;
     for (let k = k0; k < k1; k++) {

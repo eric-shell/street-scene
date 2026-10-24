@@ -302,7 +302,8 @@ function venue(g: RoadGraph, areas: readonly Area[], ctx?: SiteContext): Venue {
     elEdges,
     elNodes: [...elNodes].sort((a, b) => a - b),
     rivers: areas.filter((a) => a.kind === 'river'),
-    elPaths: areas.filter((a) => a.kind === 'subway').map((a) => a.path),
+    // The El's line, and the highway's (its deck and ramps keep hills off too, hills.ts).
+    elPaths: areas.filter((a) => a.kind === 'subway' || (a.kind === 'highway' && a.variant === 'deck')).map((a) => a.path),
     rings: g.nodes.filter((n) => n.ring).map((n) => n.id),
     crossings: new Set(areas.filter((a) => a.kind === 'bluff').map((a) => a.params.crestEdge)),
     crossingNodes: areas.filter((a) => a.kind === 'bluff').flatMap((a) => [g.edges[a.params.crestEdge].a, g.edges[a.params.crestEdge].b]),
