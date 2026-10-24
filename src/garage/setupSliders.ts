@@ -1,5 +1,5 @@
 /**
- * The Tune tab's setup sliders (garageUi.ts renderPerformance): suspension, gear ratio, differential and
+ * The Tune tab's setup sliders (garageTabs.ts renderPerformance): suspension, gear ratio, differential and
  * brake balance, each a row of five numbered notches between its two ends (Soft / Stiff ...), with the
  * position and a line saying what it does under them. The notches are the kit's segmented control, so a tap
  * or a click picks one; Left / Right on a focused notch steps it (the keyboard's arrows and the pad's, which
