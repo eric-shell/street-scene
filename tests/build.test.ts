@@ -263,7 +263,7 @@ describe('setup sliders', () => {
       for (let i = 0; i < 90; i++) stepCar(c, t, input({ steer: 0.55, throttle: 1 }), { world });
       return c.speed - v0;
     };
-    expect(exit(tuned('protoHatch', 'differential', 1))).toBeLessThan(exit(tuned('protoHatch', 'differential', 3)) - 1);
+    expect(exit(tuned('protoHatch', 'differential', 1))).toBeLessThan(exit(tuned('protoHatch', 'differential', 3)) * 0.85);
     // A handbrake flick into a powered slide (RWD): the open axle cannot keep the rear spinning.
     const drift = (t: CarTuning) => {
       const c = rollTo(t, 70);
