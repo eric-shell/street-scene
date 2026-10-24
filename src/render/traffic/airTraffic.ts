@@ -502,9 +502,14 @@ function airMaterial(led: THREE.Texture): { material: THREE.MeshStandardMaterial
   return { material, uniforms };
 }
 
-/** Segments round the searchlight cone and spot, and the index count of the cone part of beamGeometry(). */
+/**
+ * Segments round the searchlight cone and spot, rings out from the pool's center (enough to follow a crest
+ * or a dip across it), the index count of the cone part of beamGeometry() and its first pool vertex.
+ */
 const BEAM_SEGS = 28;
+const POOL_RINGS = 5;
 const CONE_INDICES = BEAM_SEGS * 6;
+const POOL_FIRST = BEAM_SEGS * 2;
 
 /**
  * The searchlight material: an additive cone and ground pool between uApex and uTarget, faded by fog, and
@@ -538,6 +543,7 @@ const beamVert = /* glsl */ `
   attribute vec2 aRing;
   attribute float aT;
   attribute float aPart;
+  attribute float aLift;
   uniform vec3 uApex;
   uniform vec3 uTarget;
   uniform float uRadius;
@@ -561,7 +567,7 @@ const beamVert = /* glsl */ `
       pos = mix(uApex, uTarget + ring * uRadius, aT);
       n = ring;
     } else {
-      pos = uTarget + vec3(aRing.x, 0.0, aRing.y) * uSpotR * aT + vec3(0.0, 0.12, 0.0);
+      pos = uTarget + vec3(aRing.x, 0.0, aRing.y) * uSpotR * aT + vec3(0.0, aLift + 0.12, 0.0);
       n = vec3(0.0, 1.0, 0.0);
     }
     vec3 toCam = normalize(cameraPosition - pos);
@@ -597,8 +603,10 @@ const beamFrag = /* glsl */ `
     float fog = exp(-uFogDensity * uFogDensity * vDist * vDist);
     float a;
     if (vPart < 0.5) {
-      // Thickest through the middle of the beam, fading out to a soft silhouette.
-      float along = smoothstep(0.0, 0.08, vT) * (0.04 + 0.96 * pow(1.0 - vT, 1.6));
+      // Thickest through the middle of the beam, fading out to a soft silhouette. The max(): MSAA evaluates
+      // varyings at the pixel center even past the open base ring, so vT overshoots 1, and pow of a negative
+      // base is NaN on some GPUs, drawn as a black dashed arc round the target.
+      float along = smoothstep(0.0, 0.08, vT) * (0.04 + 0.96 * pow(max(0.0, 1.0 - vT), 1.6));
       float body = pow(max(0.0, 1.0 - vEdge), 1.4);
       a = along * body * 0.11;
     } else {
@@ -631,25 +639,51 @@ function beamGeometry(): THREE.BufferGeometry {
     const k2 = (k + 1) % segs;
     idx.push(k, segs + k, segs + k2, k, segs + k2, k2);
   }
-  // Spot: a fan on the ground.
+  // Spot: a polar grid on the ground, the center then POOL_RINGS rings (aRing the direction, aT the radius
+  // fraction), draped over the ground by drapePool.
   const base = ring.length / 2;
   ring.push(0, 0);
   t.push(0);
   part.push(1);
-  for (let k = 0; k < segs; k++) {
-    const a = (k / segs) * Math.PI * 2;
-    ring.push(Math.cos(a), Math.sin(a));
-    t.push(1);
-    part.push(1);
+  for (let r = 1; r <= POOL_RINGS; r++) {
+    for (let k = 0; k < segs; k++) {
+      const a = (k / segs) * Math.PI * 2;
+      ring.push(Math.cos(a), Math.sin(a));
+      t.push(r / POOL_RINGS);
+      part.push(1);
+    }
   }
-  for (let k = 0; k < segs; k++) idx.push(base, base + 1 + k, base + 1 + ((k + 1) % segs));
+  const at = (r: number, k: number): number => base + 1 + (r - 1) * segs + (k % segs);
+  for (let k = 0; k < segs; k++) idx.push(base, at(1, k), at(1, k + 1));
+  for (let r = 1; r < POOL_RINGS; r++) {
+    for (let k = 0; k < segs; k++) idx.push(at(r, k), at(r + 1, k), at(r + 1, k + 1), at(r, k), at(r + 1, k + 1), at(r, k + 1));
+  }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(part.length * 3), 3));
   geo.setAttribute('aRing', new THREE.Float32BufferAttribute(ring, 2));
   geo.setAttribute('aT', new THREE.Float32BufferAttribute(t, 1));
   geo.setAttribute('aPart', new THREE.Float32BufferAttribute(part, 1));
+  geo.setAttribute('aLift', new THREE.Float32BufferAttribute(new Float32Array(part.length), 1).setUsage(THREE.DynamicDrawUsage));
   geo.setIndex(idx);
   return geo;
+}
+
+/**
+ * Lay the pool on the ground: each pool vertex's height over the target from the world's height under it.
+ * A flat disc at the target's height sinks into a climbing road on one side, so a slope or a crest cut a
+ * straight edge across the pool. The 0.12 m lift in beamVert clears the curb (CITY.curbHeight) and the
+ * chords between samples. `level` (m) picks the deck the target is on where two levels stack (heightAt's y).
+ * Per frame: a heightAt per pool vertex (141) and one small buffer upload.
+ */
+function drapePool(geo: THREE.BufferGeometry, world: World, target: THREE.Vector3, spotR: number, level?: number): void {
+  const dir = geo.getAttribute('aRing') as THREE.BufferAttribute;
+  const t = geo.getAttribute('aT') as THREE.BufferAttribute;
+  const lift = geo.getAttribute('aLift') as THREE.BufferAttribute;
+  for (let i = POOL_FIRST; i < lift.count; i++) {
+    const r = t.getX(i) * spotR;
+    lift.setX(i, world.heightAt(target.x + dir.getX(i) * r, target.z + dir.getY(i) * r, level) - target.y);
+  }
+  lift.needsUpdate = true;
 }
 
 /** The police livery on the shared helicopter shape: black body, white doors and boom band, light bar, searchlight pod. */
@@ -806,6 +840,8 @@ export function buildPoliceHeli(
   let lights = 0;
   let beamOn = 0;
   let aimed = false;
+  // The leader's height (m), so the pool lands on the deck it drives where two levels stack.
+  let aimLevel: number | undefined;
   let last = -1;
   const e = new THREE.Euler();
 
@@ -908,11 +944,13 @@ export function buildPoliceHeli(
       aim.x += (target.x - aim.x) * ka;
       aim.z += (target.z - aim.z) * ka;
       aimed = true;
+      aimLevel = target.y;
     }
-    aim.y = world.heightAt(aim.x, aim.z);
+    aim.y = world.heightAt(aim.x, aim.z, aimLevel);
     apex.set(mesh.position.x, mesh.position.y - 1.1, mesh.position.z);
     beamMat.uniforms.uIntensity.value = P.intensity * beamOn;
     beam.visible = beamOn > 0.01;
+    if (beam.visible) drapePool(beamGeo, world, aim, P.spotR, aimLevel);
     if (!beam.visible && !target) aimed = false;
   };
   update(0);
@@ -988,7 +1026,8 @@ export function buildAirTraffic(world: World, opts: { quality: Quality; fogDensi
   group.add(heli, blimp);
 
   const glow = makeRadialGlow();
-  const beamMat = beamMaterial({ radius: AIR.heli.beamRadius, spotR: AIR.heli.beamRadius * 1.7, color: new THREE.Color(1.0, 0.95, 0.82), intensity: AIR.heli.intensity, fogDensity: opts.fogDensity, glow });
+  const spotR = AIR.heli.beamRadius * 1.7;
+  const beamMat = beamMaterial({ radius: AIR.heli.beamRadius, spotR, color: new THREE.Color(1.0, 0.95, 0.82), intensity: AIR.heli.intensity, fogDensity: opts.fogDensity, glow });
   const beamGeo = beamGeometry();
   const beam = new THREE.Mesh(beamGeo, beamMat);
   beam.name = 'searchlight';
@@ -1035,6 +1074,7 @@ export function buildAirTraffic(world: World, opts: { quality: Quality; fogDensi
     }
     apex.set(pose.pos.x, pose.pos.y - 1.1, pose.pos.z);
     target.set(tx, world.heightAt(tx, tz), tz);
+    drapePool(beamGeo, world, target, spotR);
     blimpPoseAt(bp, time, blimpPose);
     blimp.position.set(blimpPose.pos.x, blimpPose.pos.y, blimpPose.pos.z);
     blimp.quaternion.copy(q.setFromEuler(e.set(0, blimpPose.yaw, 0, 'YXZ')));
