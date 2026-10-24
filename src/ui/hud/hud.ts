@@ -1,11 +1,14 @@
 /**
- * Race HUD in plain DOM plus small canvases (tachometer, boost gauge, and the
- * minimap from minimap.ts, which the drone shares). Every mode leads with the
- * HUD card the drone shares (hudCard.ts): free roam's district and
- * readouts, a race's place, lap or progress, time and best in its type's hue;
- * the ghost, drift zone and waypoint chips stand under it. The nitrous bar
- * shows the tank's three stages, each in its own color, and the callouts over
- * the dial cluster (boostCallouts.ts) name the style that fills it.
+ * Race HUD in plain DOM plus small canvases (the tachometer and speedometer
+ * and the boost gauge, both in dials.ts, and the minimap from minimap.ts,
+ * which the drone shares). Every mode leads with the HUD card the drone
+ * shares (hudCard.ts): free roam's district and readouts, a race's place, lap
+ * or progress, time and best in its type's hue; the ghost, drift zone and
+ * waypoint chips stand under it. The dial cluster in the bottom right is the
+ * tachometer with the speed in it, the boost gauge beside it (a naturally
+ * aspirated car has none, so it is hidden and the cluster closes up) and the
+ * nitrous gauge under them: one cell per stage in its own color, which the
+ * callouts over the cluster (boostCallouts.ts) name the style that fills.
  * Reads a snapshot each frame; never touches the sim.
  */
 import type { World } from '../../city/world';
@@ -13,35 +16,17 @@ import type { RaceMode } from '../../sim/race';
 import { nitroFullStages } from '../../sim/car';
 import { NITRO_STAGES } from '../../sim/tuning';
 import { BoostCallouts } from './boostCallouts';
+import { damp } from '../../shared/anim';
+import type { Aspiration } from '../../shared/carSpec';
+import { clamp01 } from '../../sim/math';
+import { BoostGauge, Tachometer } from './dials';
 import { TriangleAlert, Zap, Ghost, icon, Disc3, MapPin, Navigation2, RotateCcw, Route, ChevronsRight, MapPinned, Wind, type IconNode } from '../kit/icons';
 import { formatTime } from '../kit/format';
 import type { HudCard } from './hudCard';
 import type { Help } from '../panels/help';
 import type { Hue } from '../rail/rail';
 import { MapCar, Minimap } from './minimap';
-import { NITRO_STAGE_COLORS, PALETTE, rgb, rgba } from '../kit/palette';
 import { formatDistance } from '../map/places';
-
-/** Canvas inks for the dials, built once (they redraw every frame); the minimap has its own in minimap.ts. */
-const INK = {
-  face: rgba('bg0', 0.72),
-  track: rgba('muted', 0.2),
-  tick: rgba('soft', 0.75),
-  numeral: PALETTE.soft,
-  caption: PALETTE.muted,
-  /** RPM and boost fill: orange, the primary accent. */
-  fill: PALETTE.orange,
-  /** Needles and the gear: yellow, the secondary accent. */
-  needle: PALETTE.yellow,
-  red: PALETTE.red,
-  /** Nitrous glow in the burning stage's color (cyan, purple, pink). */
-  nitro: NITRO_STAGE_COLORS.map((c) => PALETTE[c]),
-  nitroRgb: NITRO_STAGE_COLORS.map((c) => rgb(c)),
-  vacuum: rgba('muted', 0.6),
-  text: PALETTE.text,
-  font: '"Google Sans Flex", system-ui, sans-serif',
-  digits: '"Google Sans Flex", system-ui, sans-serif',
-} as const;
 
 export type HudCar = MapCar;
 
@@ -92,6 +77,11 @@ export interface HudData {
   throttle?: number;
   /** The build's launch rpm (the two-step's set point), marked on the tach; missing when off. */
   launchRpm?: number;
+  /**
+   * The car's engine aspiration (its engine spec in carManifest.json): a naturally aspirated car has no
+   * boost to show, so its gauge is hidden; turbo and supercharged cars wear it.
+   */
+  aspiration: Aspiration;
   /** Turbo cars: the sim's boost (0..1, CarState.boost) drives the gauge instead of the guess from rpm and throttle. */
   boost?: number;
   /** Rolling antilag is holding boost this frame (the boost gauge says so). */
@@ -120,19 +110,23 @@ export class Hud {
   private centerEl: HTMLElement;
   private msgEl: HTMLElement;
   private wrongEl: HTMLElement;
-  private nitroFill: HTMLElement;
   private nitroBox: HTMLElement;
-  private nitroPips: HTMLElement[];
-  /** What the nitrous bar shows, so its attributes are written only on a change: the stage filling, full stages, the stage burning. */
-  private nitroTop = 0;
+  private nitroCells: HTMLElement[];
+  private nitroFills: HTMLElement[];
+  /** What the nitrous gauge shows, so its DOM is written only on a change: each cell's fill (hundredths), the full stages, the stage burning, the state. */
+  private nitroShown: number[] = Array.from({ length: NITRO_STAGES }, () => -1);
   private nitroFull = -1;
   private nitroBurn = -1;
+  private nitroState = '';
   /** Callouts for the style that fills the tank, over the dial cluster; the session feeds them each tick. */
   readonly callouts = new BoostCallouts();
   /** Antilag is holding boost (the gauge's caption). */
   private antilag = false;
-  private tach: HTMLCanvasElement;
+  private tach: Tachometer;
+  private boostGauge: BoostGauge;
   private boostCv: HTMLCanvasElement;
+  /** The boost gauge is up: the car is turbocharged or supercharged (a naturally aspirated one has none to show). */
+  private boostShown = true;
   /** Boost pressure in bar (negative = vacuum), simulated render side with spool lag. */
   private boost = -0.6;
   private boostNeedle = -0.6;
@@ -141,6 +135,9 @@ export class Hud {
   private nitroGlow = 0;
   /** Stage whose color the glow takes: the burning one, kept while it fades. */
   private glowStage = 1;
+  /** Seconds of HUD time, for the limiter's flash; reduced motion (read live) holds it steady instead of blinking. */
+  private clock = 0;
+  private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   private map: Minimap;
   private driftEl: HTMLElement;
   private progressFill: HTMLElement;
@@ -176,10 +173,10 @@ export class Hud {
       <div class="drift-score"></div>
       <div class="hud__bottom-right">
         <div class="hud__dials">
-          <canvas class="hud__boost" width="132" height="132"></canvas>
+          <canvas class="hud__boost" width="120" height="120"></canvas>
           <canvas class="hud__tach" width="220" height="220"></canvas>
         </div>
-        <div class="nitro-gauge"><span class="nitro-gauge__icon"></span><div class="nitro-gauge__bar"><div class="nitro-gauge__fill"></div></div><span class="nitro-gauge__pips">${'<i class="nitro-gauge__pip"></i>'.repeat(NITRO_STAGES)}</span></div>
+        <div class="nitro-gauge"><span class="nitro-gauge__icon"></span><span class="nitro-gauge__cells">${'<span class="nitro-gauge__cell"><i class="nitro-gauge__fill"></i></span>'.repeat(NITRO_STAGES)}</span></div>
       </div>
     `;
     parent.appendChild(this.root);
@@ -200,14 +197,15 @@ export class Hud {
     this.centerEl = q('.hud__countdown');
     this.msgEl = q('.hud__message');
     this.wrongEl = q('.hud__wrong-way');
-    this.nitroFill = q('.nitro-gauge__fill');
     this.nitroBox = q('.nitro-gauge');
-    this.nitroPips = [...this.root.querySelectorAll<HTMLElement>('.nitro-gauge__pip')];
+    this.nitroCells = [...this.root.querySelectorAll<HTMLElement>('.nitro-gauge__cell')];
+    this.nitroFills = [...this.root.querySelectorAll<HTMLElement>('.nitro-gauge__fill')];
     q('.hud__bottom-right').append(this.callouts.el);
     this.driftEl = q('.drift-score');
     this.progressFill = q('.hud__progress-fill');
-    this.tach = q('.hud__tach') as HTMLCanvasElement;
+    this.tach = new Tachometer(q('.hud__tach') as HTMLCanvasElement);
     this.boostCv = q('.hud__boost') as HTMLCanvasElement;
+    this.boostGauge = new BoostGauge(this.boostCv);
     this.map = new Minimap(world);
     this.root.append(this.map.canvas);
     // Clickable in every race and free roam (the help panel says so, and Tab does the same).
@@ -281,34 +279,40 @@ export class Hud {
           : ''
       }`;
     } else this.driftEl.style.display = 'none';
-    this.drawTach(d);
-    this.updateBoost(d, dt);
-    this.drawBoost();
+    this.clock += dt;
+    this.updateDials(d, dt);
     this.drawMap(d);
   }
 
   /**
-   * The nitrous bar: the stage being filled, in its color, over the full
-   * stage below it, and a pip per full stage; boosting, it glows in the
-   * burning stage's color (_nitro-gauge.scss reads the data attributes).
+   * The nitrous gauge: a cell per stage, each filling in its own color (cyan, purple, then the hot pink
+   * red) as the tank charges, and the one burning glows; the icon lights once a full stage is in the tank
+   * (_nitro-gauge.scss reads the data attributes). Writes the DOM only when a fill (in hundredths), the
+   * full stages, the burning stage or the state changes.
    */
   private updateNitro(d: HudData): void {
     const full = nitroFullStages(d.nitro);
-    const top = Math.min(NITRO_STAGES, full + 1);
-    this.nitroFill.style.width = `${(full >= NITRO_STAGES ? 1 : Math.max(0, d.nitro - full)) * 100}%`;
-    if (top !== this.nitroTop) {
-      this.nitroTop = top;
-      this.nitroBox.dataset.top = String(top);
+    const burn = d.nitroActive ? d.nitroStage : 0;
+    for (let i = 0; i < NITRO_STAGES; i++) {
+      const fill = Math.round(clamp01(d.nitro - i) * 100);
+      if (fill !== this.nitroShown[i]) {
+        this.nitroShown[i] = fill;
+        this.nitroFills[i].style.transform = `scaleX(${fill / 100})`;
+      }
     }
     if (full !== this.nitroFull) {
       this.nitroFull = full;
-      this.nitroPips.forEach((p, i) => p.classList.toggle('is-full', i < full));
+      this.nitroBox.dataset.full = String(full);
+      this.nitroCells.forEach((cell, i) => cell.classList.toggle('is-full', i < full));
     }
-    const burn = d.nitroActive ? d.nitroStage : 0;
     if (burn !== this.nitroBurn) {
       this.nitroBurn = burn;
-      this.nitroBox.dataset.burn = String(burn);
-      this.nitroBox.classList.toggle('is-burning', burn > 0);
+      this.nitroCells.forEach((cell, i) => cell.classList.toggle('is-burning', i === burn - 1));
+    }
+    const state = burn > 0 ? 'burning' : d.nitro < 0.02 ? 'empty' : full >= 1 ? 'ready' : 'charging';
+    if (state !== this.nitroState) {
+      this.nitroState = state;
+      this.nitroBox.dataset.state = state;
     }
   }
 
@@ -345,6 +349,29 @@ export class Hud {
   }
 
   /**
+   * The dials. The nitrous glow is smoothed here for both (the tachometer wears it on every car); the boost
+   * gauge is for turbocharged and supercharged cars only: a naturally aspirated car hides it (the cluster
+   * closes up, _hud.scss) and skips its simulation and drawing.
+   */
+  private updateDials(d: HudData, dt: number): void {
+    this.nitroGlow += ((d.nitroActive ? 1 : 0) - this.nitroGlow) * damp(1 / 0.12, dt);
+    if (d.nitroActive && d.nitroStage > 0) this.glowStage = d.nitroStage;
+    const boosted = d.aspiration !== 'na';
+    if (boosted !== this.boostShown) {
+      this.boostShown = boosted;
+      this.boostCv.hidden = !boosted;
+    }
+    this.tach.draw(
+      { rpm: d.rpm, redline: d.redline, speedMph: d.speedMph, gear: d.gear, manual: d.manual, launchRpm: d.launchRpm ?? 0, glow: this.nitroGlow, glowStage: this.glowStage },
+      this.clock,
+      this.reducedMotion.matches,
+    );
+    if (!boosted) return;
+    this.updateBoost(d, dt);
+    this.boostGauge.draw({ bar: this.boostNeedle, glow: this.nitroGlow, glowStage: this.glowStage, antilag: this.antilag, blowOff: this.bov > 0.1 });
+  }
+
+  /**
    * Turbo boost from rpm and throttle: manifold vacuum when off throttle,
    * pressure building with rpm under load with spool lag, a blow-off dump when
    * lifting at boost, and an extra spike while nitrous is on.
@@ -365,188 +392,8 @@ export class Hud {
     this.lastThrottle = load;
     this.bov = Math.max(0, this.bov - dt);
     const tau = this.bov > 0 ? 0.05 : target > this.boost ? 0.55 : 0.16;
-    this.boost += (target - this.boost) * (1 - Math.exp(-dt / tau));
-    this.boostNeedle += (this.boost - this.boostNeedle) * (1 - Math.exp(-dt / 0.05));
-    this.nitroGlow += ((d.nitroActive ? 1 : 0) - this.nitroGlow) * (1 - Math.exp(-dt / 0.12));
-    if (d.nitroActive && d.nitroStage > 0) this.glowStage = d.nitroStage;
-  }
-
-  private drawBoost(): void {
-    const c = this.boostCv.getContext('2d')!;
-    const W = this.boostCv.width;
-    const cx = W / 2;
-    const cy = W / 2;
-    const R = W * 0.4;
-    const lo = -1;
-    const hi = 2;
-    const a0 = Math.PI * 0.75;
-    const a1 = Math.PI * 2.25;
-    const ang = (bar: number) => a0 + (a1 - a0) * Math.max(0, Math.min(1, (bar - lo) / (hi - lo)));
-    const v = this.boostNeedle;
-    const glow = this.nitroGlow;
-    const nitro = INK.nitro[this.glowStage - 1];
-    const accent = glow > 0.05 ? INK.text : INK.fill;
-    c.clearRect(0, 0, W, W);
-    c.lineCap = 'butt';
-    c.fillStyle = INK.face;
-    c.beginPath();
-    c.arc(cx, cy, R + 9, 0, Math.PI * 2);
-    c.fill();
-    if (glow > 0.01) {
-      c.strokeStyle = `rgba(${INK.nitroRgb[this.glowStage - 1]},${0.75 * glow})`;
-      c.lineWidth = 3;
-      c.shadowColor = nitro;
-      c.shadowBlur = 16 * glow;
-      c.beginPath();
-      c.arc(cx, cy, R + 8, 0, Math.PI * 2);
-      c.stroke();
-      c.shadowBlur = 0;
-    }
-    // Track: vacuum side dim, boost side lit up to the needle, overboost red.
-    c.lineWidth = 6;
-    c.strokeStyle = INK.track;
-    c.beginPath();
-    c.arc(cx, cy, R, a0, a1);
-    c.stroke();
-    c.strokeStyle = INK.red;
-    c.beginPath();
-    c.arc(cx, cy, R, ang(1.6), a1);
-    c.stroke();
-    if (v > 0) {
-      c.strokeStyle = accent;
-      c.shadowColor = glow > 0.05 ? nitro : INK.fill;
-      c.shadowBlur = 4 + 12 * glow;
-      c.beginPath();
-      c.arc(cx, cy, R, ang(0), ang(v));
-      c.stroke();
-      c.shadowBlur = 0;
-    } else {
-      c.strokeStyle = INK.vacuum;
-      c.beginPath();
-      c.arc(cx, cy, R, ang(v), ang(0));
-      c.stroke();
-    }
-    c.font = `600 10px ${INK.font}`;
-    c.textAlign = 'center';
-    c.textBaseline = 'middle';
-    for (let k = lo * 2; k <= hi * 2; k++) {
-      const a = ang(k / 2);
-      const major = k % 2 === 0;
-      c.strokeStyle = INK.tick;
-      c.lineWidth = major ? 2 : 1;
-      c.beginPath();
-      c.moveTo(cx + Math.cos(a) * (R - (major ? 10 : 7)), cy + Math.sin(a) * (R - (major ? 10 : 7)));
-      c.lineTo(cx + Math.cos(a) * (R - 3), cy + Math.sin(a) * (R - 3));
-      c.stroke();
-      if (major) {
-        c.fillStyle = INK.numeral;
-        c.fillText(String(k / 2), cx + Math.cos(a) * (R - 19), cy + Math.sin(a) * (R - 19));
-      }
-    }
-    const na = ang(v);
-    c.strokeStyle = INK.needle;
-    c.lineWidth = 2.5;
-    c.shadowColor = 'rgba(0,0,0,0.6)';
-    c.shadowBlur = 4;
-    c.beginPath();
-    c.moveTo(cx, cy);
-    c.lineTo(cx + Math.cos(na) * (R - 5), cy + Math.sin(na) * (R - 5));
-    c.stroke();
-    c.shadowBlur = 0;
-    c.fillStyle = INK.needle;
-    c.beginPath();
-    c.arc(cx, cy, 3.5, 0, Math.PI * 2);
-    c.fill();
-    c.font = `800 20px ${INK.digits}`;
-    c.fillStyle = v > 1.6 ? INK.red : glow > 0.05 ? INK.text : v > 0 ? INK.fill : INK.caption;
-    const shown = Math.abs(v) < 0.05 ? 0 : v;
-    c.fillText((shown > 0 ? '+' : '') + shown.toFixed(1), cx, cy + 26);
-    c.font = `600 9px ${INK.font}`;
-    c.fillStyle = INK.caption;
-    if (this.antilag) c.fillStyle = INK.needle;
-    c.fillText(this.antilag ? 'ANTILAG' : this.bov > 0.1 ? 'BLOW OFF' : 'BOOST BAR', cx, cy + 42);
-  }
-
-  private drawTach(d: HudData): void {
-    const c = this.tach.getContext('2d')!;
-    const W = this.tach.width;
-    const cx = W / 2;
-    const cy = W / 2;
-    const R = W * 0.44;
-    c.clearRect(0, 0, W, W);
-    const a0 = Math.PI * 0.75;
-    const a1 = Math.PI * 2.25;
-    const maxRpm = Math.ceil((d.redline + 500) / 1000) * 1000;
-    const ang = (rpm: number) => a0 + (a1 - a0) * Math.min(1, rpm / maxRpm);
-    c.lineCap = 'butt';
-    c.fillStyle = INK.face;
-    c.beginPath();
-    c.arc(cx, cy, R + 8, 0, Math.PI * 2);
-    c.fill();
-    c.lineWidth = 8;
-    c.strokeStyle = INK.track;
-    c.beginPath();
-    c.arc(cx, cy, R, a0, a1);
-    c.stroke();
-    c.strokeStyle = INK.red;
-    c.beginPath();
-    c.arc(cx, cy, R, ang(d.redline), a1);
-    c.stroke();
-    c.strokeStyle = INK.fill;
-    c.shadowColor = INK.fill;
-    c.shadowBlur = 6;
-    c.beginPath();
-    c.arc(cx, cy, R, a0, ang(d.rpm));
-    c.stroke();
-    c.shadowBlur = 0;
-    c.fillStyle = INK.numeral;
-    c.font = `600 13px ${INK.font}`;
-    c.textAlign = 'center';
-    c.textBaseline = 'middle';
-    for (let k = 0; k <= maxRpm / 1000; k++) {
-      const a = ang(k * 1000);
-      c.strokeStyle = INK.tick;
-      c.lineWidth = 2;
-      c.beginPath();
-      c.moveTo(cx + Math.cos(a) * (R - 12), cy + Math.sin(a) * (R - 12));
-      c.lineTo(cx + Math.cos(a) * (R - 4), cy + Math.sin(a) * (R - 4));
-      c.stroke();
-      c.fillText(String(k), cx + Math.cos(a) * (R - 24), cy + Math.sin(a) * (R - 24));
-    }
-    // The launch rpm: a yellow mark on the arc where the two-step holds the needle at the line.
-    if (d.launchRpm) {
-      const la = ang(d.launchRpm);
-      c.strokeStyle = INK.needle;
-      c.lineWidth = 3;
-      c.beginPath();
-      c.moveTo(cx + Math.cos(la) * (R - 14), cy + Math.sin(la) * (R - 14));
-      c.lineTo(cx + Math.cos(la) * (R + 6), cy + Math.sin(la) * (R + 6));
-      c.stroke();
-    }
-    const na = ang(d.rpm);
-    c.strokeStyle = INK.needle;
-    c.lineWidth = 3;
-    c.shadowColor = 'rgba(0,0,0,0.6)';
-    c.shadowBlur = 5;
-    c.beginPath();
-    c.moveTo(cx, cy);
-    c.lineTo(cx + Math.cos(na) * (R - 6), cy + Math.sin(na) * (R - 6));
-    c.stroke();
-    c.shadowBlur = 0;
-    c.fillStyle = INK.text;
-    c.font = `900 52px ${INK.digits}`;
-    c.fillText(String(Math.round(d.speedMph)), cx, cy + 40);
-    c.font = `600 12px ${INK.font}`;
-    c.fillStyle = INK.caption;
-    c.fillText('MPH', cx, cy + 66);
-    c.font = `900 30px ${INK.digits}`;
-    c.fillStyle = d.rpm > d.redline * 0.95 ? INK.red : INK.needle;
-    c.fillText(d.gear < 0 ? 'R' : String(d.gear), cx, cy - 6);
-    if (d.manual) {
-      c.font = `600 10px ${INK.font}`;
-      c.fillStyle = INK.caption;
-      c.fillText('MANUAL', cx, cy - 30);
-    }
+    this.boost += (target - this.boost) * damp(1 / tau, dt);
+    this.boostNeedle += (this.boost - this.boostNeedle) * damp(1 / 0.05, dt);
   }
 
   private drawMap(d: HudData): void {
@@ -555,6 +402,8 @@ export class Hud {
   }
 
   dispose(): void {
+    this.tach.dispose();
+    this.boostGauge.dispose();
     this.root.remove();
   }
 }
