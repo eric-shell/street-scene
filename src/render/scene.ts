@@ -23,6 +23,7 @@ import { createWeather, Weather } from './sky/weather';
 import { AirTraffic, buildAirTraffic } from './traffic/airTraffic';
 import { buildAreaLights } from './street/areaLights';
 import { marketLightPoints, planMarketCrowd } from './districts/marketPlan';
+import { highwayLamps } from './districts/highway';
 import { GROUND_PAINT_ORDER, underVehicles } from './vehicleMask';
 import { damp } from '../shared/anim';
 
@@ -191,8 +192,8 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   const areaLights = buildAreaLights(world);
   scene.add(areaLights.group);
   // Every lamp the real light pool may pick: streetlights, then the park lamps (the props' light order),
-  // then the night market's lantern strings (never switched off, so they come last).
-  const lamps = [...city.lampPositions, ...areaLights.lamps, ...marketLightPoints(world).map((p) => new THREE.Vector3(p.x, p.y, p.z))];
+  // then the night market's lantern strings and the expressway's lamps (never switched off, so they come last).
+  const lamps = [...city.lampPositions, ...areaLights.lamps, ...marketLightPoints(world).map((p) => new THREE.Vector3(p.x, p.y, p.z)), ...highwayLamps(world)];
   const lighting = new NightLighting();
   lighting.setLamps(lamps);
   lighting.setPoolSize(gr.profile.pointLights);

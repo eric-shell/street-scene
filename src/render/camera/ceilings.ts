@@ -18,7 +18,7 @@
 import type * as THREE from 'three';
 import type { World } from '../../city/world';
 import { toLocal } from '../../city/districts/structures';
-import { HIGHWAY_HALF, RAMP_SOLID_TO_END, deckTopAt, deckUnderAt, highwayDeck } from '../../city/districts/highway/shape';
+import { HIGHWAY_HALF, deckTopAt, deckUnderAt, highwayDeck } from '../../city/districts/highway/shape';
 import { axisPoint, projectAxis, rampHeight } from '../../city/districts/highway/rampAxis';
 import { RAIL } from '../../city/railCurve';
 import { CITY } from '../../city/config';
@@ -167,7 +167,7 @@ function build(world: World): Overhead[] {
             projectAxis(ax, x, z, ap);
             if (ap.u < 0 || ap.u > ax.length || Math.abs(ap.v) > hw) return false;
             rampHeight(ax, r.profile, r.terrain, x, z, ap, sample);
-            s.bottom = ap.u >= ax.length - RAMP_SOLID_TO_END ? sample.h - 1.4 : -Infinity;
+            s.bottom = ap.u >= r.uSolid ? sample.h - 1.4 : -Infinity;
             s.top = sample.h + 1.1;
             return true;
           },

@@ -2,18 +2,19 @@
  * The elevated highway's builds (highway.ts dispatches by variant): what the
  * sim stands on and runs into.
  *  - The deck: its two level spans (a chunk every few curve samples, widened
- *    onto a ramp's merge; DeckSpan `upper`), jersey barriers along both edges
- *    (open over a merge), the median and the closures at both ends, all walls
- *    only cars up on the deck meet (Wall.bottom, set once settled); its
- *    columns: a bent on the sidewalks along its streets, an extra one under a
- *    merge, hammerheads on the deck line through the blocks (with one on each
- *    sidewalk of a street it crosses), walls only cars below meet (Wall.under);
- *    no buildings under it where it runs through a block.
- *  - A ramp: one solid level up its embankment, two levels over its last
- *    stretch (over the sidewalk, onto the deck), walls both sides (only the
- *    bridge stretch's let cars below pass), the merge's outer wall and taper,
- *    a column under the bridge stretch, the frontage under its top as one
- *    Wall.under wall, the curb cut at its mouth, no buildings on its way.
+ *    onto a ramp's merge; DeckSpan `upper`), parapets along both edges (open
+ *    over a merge), the median (open at its crossovers) and the closures at
+ *    both ends, all walls only cars up on the deck meet (Wall.bottom, set once
+ *    settled); its columns: a bent on the sidewalks of every street under it
+ *    (the rows, the swings' diagonals), an extra one under a merge, walls only
+ *    cars below meet (Wall.under); no buildings near a swing's turns, where
+ *    the deck cuts the junction's corner on its arc.
+ *  - A ramp: one solid level up its embankment, two levels over its bridge
+ *    stretch (from where it leaves its block, over the cross street onto the
+ *    deck), walls both sides (only the bridge stretch's let cars below pass),
+ *    the merge's outer wall and taper, columns under the bridge stretch off
+ *    the streets, the frontage under its top as one Wall.under wall, the curb
+ *    cut at its mouth, no buildings on its way or beside its merge.
  * The heights the walls need are filled in by settle.ts (pending, rampPending).
  */
 import { CITY, ROUTE } from '../../config';
@@ -25,9 +26,9 @@ import { emptyBuild } from '../types';
 import { circlePolygon, distToPolygonEdge, pointInPolygon, solidWalls } from '../geom';
 import { riverCenter } from '../river';
 import { gridNode, streetChain } from '../subway';
-import { RAIL, curvePoint, projectOnCurve, sampleCurve } from '../../railCurve';
+import { RAIL, projectOnCurve } from '../../railCurve';
 import { axisAt, axisPoint, projectAxis, rampHeight } from './rampAxis';
-import { BARRIER_IN, CLOSURE_GAP, GORE, HALF, HighwayDeck, MOUTH_TAPER, SOLID_TO_END, barrierOpen, deckExtent, deckPoint, highwayDeck, highwayRamp, mergeRange, mouthCut, rampFront, rampInnerSign, rampOuterAt, rampOutline } from './shape';
+import { BARRIER_IN, CLOSURE_GAP, GORE, HALF, HighwayDeck, MOUTH_TAPER, barrierOpen, deckExtent, deckPoint, highwayDeck, highwayRamp, medianGaps, mergeRange, mouthCut, rampFront, rampInnerSign, rampOuterAt, rampOutline } from './shape';
 import { alongChain, chainOfNodes } from './line';
 
 const CFG = CITY.districts.highway;
@@ -62,9 +63,6 @@ export function buildDeck(ctx: BuildContext, area: Area): AreaBuild {
   const todo: Pending[] = [];
   pending.set(b, todo);
   const rows = Array.from({ length: W }, (_, i) => area.params[`row${i}`]);
-  const at = Array.from({ length: W }, (_, i) => area.params[`at${i}`]);
-  const P = curvePoint();
-  const sOf = (i: number) => projectOnCurve(curve, area.path[at[i]].x, area.path[at[i]].z).s;
   // The El's deck, for the columns to keep off (its pillars and stairs stand under it).
   const el: Vec2[] = [];
   for (const a of ctx.areas) {
@@ -130,30 +128,28 @@ export function buildDeck(ctx: BuildContext, area: Area): AreaBuild {
     { x: x - ux * half - uz * half, z: z - uz * half + ux * half },
   ];
 
-  // ----- Along its streets: bents of two square columns, one on each sidewalk.
+  // ----- Along every street under it (rows, the swings' diagonals): bents of two square columns, one
+  // on each sidewalk, where both stand under the deck (near a swing's turn the deck cuts the corner).
   const spread = (len: number, m0: number, m1: number): number[] => {
     const usable = len - m0 - m1;
     if (usable <= 0) return [];
     const n = Math.max(1, Math.round(usable / CFG.bentSpacing) + 1);
     return Array.from({ length: n }, (_, k) => m0 + (n === 1 ? usable / 2 : (usable * k) / (n - 1)));
   };
-  const offRuns: { ia: number; ib: number }[] = [];
+  const underDeck = (x: number, z: number) => {
+    const pr = projectOnCurve(curve, x, z);
+    return Math.abs(pr.lateral) < HALF - CFG.columnSize;
+  };
   for (let i = 0; i + 1 < W; i++) {
-    const j = rows[i];
-    const nodes = j >= 0 && rows[i + 1] === j ? streetChain(g, gridNode(g, i, j).id, gridNode(g, i + 1, j).id) : null;
-    if (!nodes) {
-      const last = offRuns[offRuns.length - 1];
-      if (last && last.ib === i) last.ib = i + 1;
-      else offRuns.push({ ia: i, ib: i + 1 });
-      continue;
-    }
+    const nodes = streetChain(g, gridNode(g, i, rows[i]).id, gridNode(g, i + 1, rows[i + 1]).id);
+    if (!nodes) continue;
     const st = chainOfNodes(g, nodes);
     for (const s of spread(st.length, clearOf[st.nodes[0]] + 3, clearOf[st.nodes[st.nodes.length - 1]] + 3)) {
       const p = alongChain(g, st, s);
       const lat = p.w / 2 + CFG.columnSetback;
       const pts = [1, -1].map((k) => ({ x: p.x + p.dz * lat * k, z: p.z - p.dx * lat * k }));
       const hr = CFG.columnSize / 2;
-      if (!pts.every((q) => columnOk(q.x, q.z, hr * 1.42, 0))) continue;
+      if (!pts.every((q) => underDeck(q.x, q.z) && columnOk(q.x, q.z, hr * 1.42, 0))) continue;
       const sd = projectOnCurve(curve, p.x, p.z).s;
       for (const q of pts) column(square(q.x, q.z, p.dx, p.dz, hr), q.x, q.z, sd, hr);
       b.props.push({ kind: 'bent', x: p.x, z: p.z, yaw: yawOf(p.dx, p.dz), size: lat, height: CFG.columnSize, area: area.id });
@@ -168,63 +164,24 @@ export function buildDeck(ctx: BuildContext, area: Area): AreaBuild {
     }
   }
 
-  // ----- Off its streets (a swing, a missing street): hammerhead columns on the deck line.
-  const R = CFG.pierRadius;
-  const okAt = (s: number) => {
-    sampleCurve(curve, s, P);
-    return columnOk(P.x, P.z, R);
-  };
+  // ----- Near a swing's turns the deck's arc cuts the junction's corners, and beside a block of street
+  // left at its width the deck overhangs the frontage: no buildings there.
   const half = HALF + CFG.blockMargin;
-  for (const run of offRuns) {
-    const sA = sOf(run.ia);
-    const sB = sOf(run.ib);
-    const nA = gridNode(g, run.ia, rows[run.ia]);
-    const nB = gridNode(g, run.ib, rows[run.ib]);
-    const fixed: number[] = [sA + clearOf[nA.id] + 2, sB - clearOf[nB.id] - 2];
-    for (let ii = run.ia + 1; ii < run.ib; ii++) {
-      const sX = sOf(ii);
-      if (rows[ii] >= 0) {
-        const cl = clearOf[gridNode(g, ii, rows[ii]).id] + 2;
-        fixed.push(sX - cl, sX + cl);
-      } else if (!okAt(sX)) {
-        for (const dir of [-1, 1]) {
-          for (let d = 1; d <= 70; d++) {
-            if (!okAt(sX + dir * d)) continue;
-            fixed.push(sX + dir * d);
-            break;
-          }
-        }
-      }
+  const keepOut = (s0: number, s1: number) => {
+    for (let s = s0; s < s1 - 1e-6; s += 8) {
+      const e = Math.min(s1, s + 8);
+      b.exclusions.push([deckPoint(curve, s, -half), deckPoint(curve, e, -half), deckPoint(curve, e, half), deckPoint(curve, s, half)]);
     }
-    fixed.sort((p, q) => p - q);
-    const spots: number[] = [];
-    for (let i = 0; i + 1 < fixed.length; i++) {
-      const f0 = fixed[i];
-      const f1 = fixed[i + 1];
-      if (f1 <= f0) continue;
-      const n = Math.max(1, Math.round((f1 - f0) / CFG.bentSpacing));
-      for (let k = 0; k <= n; k++) spots.push(f0 + ((f1 - f0) * k) / n);
-    }
-    spots.sort((p, q) => p - q);
-    let last = -Infinity;
-    for (const s of spots) {
-      if (s - last < 4) continue;
-      if (!okAt(s)) continue;
-      last = s;
-      sampleCurve(curve, s, P);
-      column(circlePolygon(P.x, P.z, R, 10), P.x, P.z, s, R);
-      b.props.push({ kind: 'pier', x: P.x, z: P.z, yaw: yawOf(P.tx, P.tz), size: R, height: 0, area: area.id });
-    }
-    // Buildings keep out from under the deck through the blocks.
-    const s1 = sB - 6;
-    for (let s = sA + 6; s < s1; s += 12) {
-      const e = Math.min(s1, s + 12);
-      const a0 = deckPoint(curve, s, -half);
-      const a1 = deckPoint(curve, e, -half);
-      const b1 = deckPoint(curve, e, half);
-      const b0 = deckPoint(curve, s, half);
-      b.exclusions.push([a0, a1, b1, b0]);
-    }
+  };
+  const reach = CFG.swingTangent + 24;
+  for (let k = 0; k < (area.params.turns ?? 0); k++) {
+    const st = projectOnCurve(curve, area.params[`turn${k}x`], area.params[`turn${k}z`]).s;
+    keepOut(st - reach, st + reach);
+  }
+  for (let k = 0; k < (area.params.narrow ?? 0); k++) {
+    const sa = projectOnCurve(curve, area.params[`narrow${k}ax`], area.params[`narrow${k}az`]).s;
+    const sb = projectOnCurve(curve, area.params[`narrow${k}bx`], area.params[`narrow${k}bz`]).s;
+    keepOut(Math.min(sa, sb), Math.max(sa, sb));
   }
 
   // ----- The deck: two levels between the closures, its barriers, median and end closures.
@@ -263,12 +220,27 @@ export function buildDeck(ctx: BuildContext, area: Area): AreaBuild {
       b.walls.push(w);
       todo.push({ walls: [w], s: sm, kind: 'bottom' });
     }
-    // The median: a thin solid down the middle (two directions, no crossing over).
-    const mh = CFG.median / 2;
-    const med = [deckPoint(curve, s0, -mh), deckPoint(curve, s1, -mh), deckPoint(curve, s1, mh), deckPoint(curve, s0, mh)];
-    const mw = solidWalls(med, 'highway', area.id);
-    b.walls.push(...mw);
-    todo.push({ walls: mw, s: sm, kind: 'bottom' });
+  }
+  // The median: a thin solid down the middle, in pieces between its crossovers (medianGaps), where a car
+  // swings round to the other carriageway.
+  const mh = CFG.median / 2;
+  const runs: [number, number][] = [];
+  let from = sW;
+  for (const [g0, g1] of medianGaps(deck)) {
+    runs.push([from, g0]);
+    from = g1;
+  }
+  runs.push([from, sE]);
+  for (const [r0, r1] of runs) {
+    const n = Math.max(1, Math.ceil((r1 - r0) / (CHUNK * RAIL.step)));
+    for (let k = 0; k < n; k++) {
+      const s0 = r0 + ((r1 - r0) * k) / n;
+      const s1 = r0 + ((r1 - r0) * (k + 1)) / n;
+      const med = [deckPoint(curve, s0, -mh), deckPoint(curve, s1, -mh), deckPoint(curve, s1, mh), deckPoint(curve, s0, mh)];
+      const mw = solidWalls(med, 'highway', area.id);
+      b.walls.push(...mw);
+      todo.push({ walls: mw, s: (s0 + s1) / 2, kind: 'bottom' });
+    }
   }
   for (const [s, dir] of [
     [sW, -1],
@@ -341,9 +313,9 @@ export function buildRamp(ctx: BuildContext, area: Area): AreaBuild {
     }
     return left.concat(right.reverse());
   };
-  // Spans, a few meters each: one solid level up to SOLID_TO_END before the top, two levels from there on
-  // over the sidewalk and onto the deck (overlapping the deck's widened chunks by the gore).
-  const uc = Math.max(4, L - SOLID_TO_END);
+  // Spans, a few meters each: one solid level up the embankment, two levels from where it leaves its
+  // block on, over the cross street and onto the deck (overlapping the deck's widened chunks by the gore).
+  const uc = Math.max(4, ramp.uSolid);
   const wide = hw + 0.5;
   const pieces = (u0: number, u1: number, solid: boolean) => {
     for (let u = u0; u < u1 - 1e-6; u += 6) {
@@ -367,19 +339,36 @@ export function buildRamp(ctx: BuildContext, area: Area): AreaBuild {
       todo.push({ walls, u: (u + e) / 2, s: NaN, kind: 'side' });
     }
   }
-  // A column under the bridge stretch near the top, in the block: solid to cars beneath, nothing to cars
-  // up on the ramp (the prop's height is its u along the ramp: the renderer reads the top off the profile).
+  // Columns under the bridge stretch, every few tens of meters where they stand off every street and its
+  // sidewalks and clear of the junctions: solid to cars beneath, nothing to cars up on the ramp (the
+  // prop's height is its u along the ramp: the renderer reads the top off the profile).
   {
-    const uCol = Math.max(uc + 4, L - 22);
-    const q = axisAt(ax, uCol);
-    const pr = projectOnCurve(curve, q.x, q.z);
-    if (Math.abs(pr.lateral) > ramp.building + 3) {
-      const R = 0.9;
+    const R = 0.9;
+    const clearOf = (n: { edges: number[] }) => {
+      let m = 0;
+      for (const eid of n.edges) m = Math.max(m, g.edges[eid].width / 2 + g.edges[eid].sidewalk);
+      return m + Math.max(ROUTE.barrierSetbackHeadOn + CLOSURE_GAP, ROUTE.railReach + 3);
+    };
+    const spotOk = (x: number, z: number) => {
+      for (const n of g.nodes) if ((n.gi >= 0 || n.edges.length > 2) && (n.x - x) ** 2 + (n.z - z) ** 2 < clearOf(n) ** 2) return false;
+      for (const e of g.edges) {
+        const a = g.nodes[e.a];
+        const c = g.nodes[e.b];
+        if (distToSegment(x, z, a.x, a.z, c.x, c.z) < e.width / 2 + e.sidewalk + R + 0.6) return false;
+      }
+      return Math.abs(projectOnCurve(curve, x, z).lateral) > ramp.building + R + 2;
+    };
+    let last = -Infinity;
+    for (let u = uc + 6; u <= L - 4; u += 2) {
+      if (u - last < 20) continue;
+      const q = axisAt(ax, u);
+      if (!spotOk(q.x, q.z)) continue;
+      last = u;
       const walls = solidWalls(circlePolygon(q.x, q.z, R, 10), 'highway', area.id);
       b.walls.push(...walls);
-      todo.push({ walls, u: uCol, s: NaN, kind: 'column' });
+      todo.push({ walls, u, s: NaN, kind: 'column' });
       b.reserved.push({ x: q.x, z: q.z, r: R + 0.5 });
-      b.props.push({ kind: 'rampColumn', x: q.x, z: q.z, yaw: 0, size: R, height: uCol, area: area.id });
+      b.props.push({ kind: 'rampColumn', x: q.x, z: q.z, yaw: 0, size: R, height: u, area: area.id });
     }
   }
   // The merge: the lane's outer wall alongside the deck, the taper back to its edge and on along it past
@@ -400,9 +389,10 @@ export function buildRamp(ctx: BuildContext, area: Area): AreaBuild {
   }
   // The frontage under the ramp's top and the merge: one wall along the building line that only street
   // cars meet (Wall.under), where the city's frontage walls are taken out.
-  const [fs0, fs1] = rampFront(ramp, curve);
+  const front = rampFront(ramp, curve);
+  const [fs0, fs1] = front ?? [0, 0];
   const bl = ramp.building;
-  const nf = Math.max(1, Math.ceil((fs1 - fs0) / 4));
+  const nf = front ? Math.max(1, Math.ceil((fs1 - fs0) / 4)) : 0;
   for (let k = 0; k < nf; k++) {
     const s0 = fs0 + ((fs1 - fs0) * k) / nf;
     const s1 = fs0 + ((fs1 - fs0) * (k + 1)) / nf;
@@ -420,7 +410,7 @@ export function buildRamp(ctx: BuildContext, area: Area): AreaBuild {
     b.walls.push(w);
     todo.push({ walls: [w], u: NaN, s: (s0 + s1) / 2, kind: 'front' });
   }
-  b.openings.push([deckPoint(curve, fs0 - 1, side * (bl - 2)), deckPoint(curve, fs1 + 1, side * (bl - 2)), deckPoint(curve, fs1 + 1, side * (bl + 2.5)), deckPoint(curve, fs0 - 1, side * (bl + 2.5))]);
+  if (front) b.openings.push([deckPoint(curve, fs0 - 1, side * (bl - 2)), deckPoint(curve, fs1 + 1, side * (bl - 2)), deckPoint(curve, fs1 + 1, side * (bl + 2.5)), deckPoint(curve, fs0 - 1, side * (bl + 2.5))]);
   // The mouth: the frontage across it goes, the curb is cut the sidewalk deep (busBays.ts mouthBay) in
   // the final graph's curb frame, and street furniture keeps off it.
   b.openings.push(strip(-2.5, 2.5, hw + 1));

@@ -897,21 +897,27 @@ export const CITY = {
       abutment: 9,
     },
     /**
-     * Elevated highway (src/city/districts/highway/): a freeway on a deck
+     * Elevated highway (src/city/districts/highway/): an expressway on a deck
      * crossing the whole map west to east along a row street, swinging to the
-     * next row through the blocks once or twice, drivable in free roam from
-     * its on-ramps (closed in races). Cars on the deck and in the street under
-     * it are two levels (districts/types.ts DeckSpan); its columns stand on the
-     * sidewalks and in the blocks.
+     * next row once or twice on a diagonal street of its own, drivable in free
+     * roam from its on-ramps (closed in races). Every street under the deck is
+     * widened to carry it, so cars drive under it all the way along; deck and
+     * street are two levels (districts/types.ts DeckSpan) and its columns
+     * stand on the sidewalks.
      */
     highway: {
       enabled: true,
       /** Chance per city, the first draw of the module's own stream (highwayRolled). */
       chance: 0.6,
-      /** Deck width (m): two carriageways of two lanes, shoulders, a median and a jersey barrier each side. */
-      deckWidth: 18,
-      /** Lane width (m) and the median barrier's width (m). */
-      lane: 3.5,
+      /**
+       * Deck width (m): the median, then each way an inner shoulder, three lanes, an outer shoulder and
+       * the parapet. 0.8 + 2 * (1.2 + 3 * 3.6 + 3.15 + 0.45) = 32: the outer shoulder is what is left.
+       */
+      deckWidth: 32,
+      /** Lanes each way and their width (m), the inner shoulder by the median (m), the median barrier's width (m). */
+      lanes: 3,
+      lane: 3.6,
+      innerShoulder: 1.2,
       median: 0.8,
       /** Deck underside above the smoothed ground (m), clear of the start gantry (11.9 m), and the deck's depth (m). */
       clearance: 12,
@@ -920,35 +926,55 @@ export const CITY = {
       elClear: 5.8,
       /** The hump over the El eases in and out at this grade at most (rise per m). */
       humpGrade: 0.025,
-      /** Street bents: a square column on each sidewalk this far behind the curb (m), this size (m), about this far apart (m). */
+      /** Bents: a square column on each sidewalk this far behind the curb (m), this size (m), about this far apart (m). */
       columnSetback: 2,
-      columnSize: 1.1,
+      columnSize: 1.3,
       bentSpacing: 34,
-      /** Hammerhead columns on the deck line through the blocks: radius (m). */
-      pierRadius: 1.05,
-      /** Swings to the next row [min, max] per seed, each over [min, max] columns. */
+      /** Render-only hammerhead columns carrying the deck on into the fog past the closures: radius (m). */
+      pierRadius: 1.2,
+      /**
+       * Swings to the next row [min, max] per seed, each a straight diagonal street of its own across
+       * one block, corner to corner (about 45 degrees off the row, like the city's diagonal avenues: a
+       * shallower one leaves its junctions' corners longer than the street pieces beside them).
+       */
       swings: [1, 2],
-      swingCols: [2, 3],
-      /** The S curve starts and ends this far past the junction it leaves or joins (m). */
-      swingLead: 30,
-      /** A swing is dropped when its curve radius falls under this anywhere (m). */
-      swingRadius: 80,
-      swingStep: 10,
-      /** Through a block, buildings and infill keep this far beyond the deck's edges (m). */
+      /** The deck turns onto and off a swing's diagonal on an arc from this far before the junction to this far past it (m), at least swingRadius (m) round. */
+      swingTangent: 36,
+      swingRadius: 70,
+      /** Sectors at a swing's junctions stay at least this wide (deg): a little over the city's minSectorDeg. */
+      swingSectorDeg: 25,
+      /** Near a swing's turns (where the deck cuts the corner), buildings and infill keep this far beyond the deck's edges (m). */
       blockMargin: 3,
-      /** On-ramps per highway [min, max]: a two lane road from a parallel street up through a block to the deck. */
+      /** Median crossovers: a gap in the median about this far apart (m), this long (m), clear of the ramps' merges and the closures by `crossoverClear` (m). */
+      crossoverEvery: 360,
+      crossoverLength: 30,
+      crossoverClear: 60,
+      /**
+       * On-ramps per highway [min, max]: a two lane road from a parallel street up through a block,
+       * over the cross street at its far end on a short bridge, onto the deck's edge and merging.
+       */
       ramps: [2, 4],
-      /** Ramp: half width between its walls (m), grade cap (rise per m), vertical curves at the foot and the top (m). */
+      /**
+       * Ramp: half width between its walls (m), grade caps (rise per m: the gentle one every line is tried
+       * at first, the steeper one only for a hilly city where no line has its ramps under the first),
+       * vertical curves at the foot and the top (m).
+       */
       rampHalf: 4.2,
-      rampGrade: 0.15,
-      rampFootEase: 26,
-      rampTopEase: 34,
+      rampGrade: [0.125, 0.15],
+      rampFootEase: 44,
+      rampTopEase: 52,
       /** Turn radii tried for a ramp's curve onto the deck (m). */
-      rampRadius: [38, 48, 60, 75],
+      rampRadius: [60, 75, 95, 120],
+      /** The ramp reaches the deck's edge this far past the next block's corner (m, the gentlest that fits): its top bridges the cross street. */
+      rampPast: [6, 18, -24],
+      /** The merge: the ramp's inner wall on along the deck's edge (the gore, m), the lane alongside at full width (m), and its taper back to the deck's edge (m). */
+      rampGore: 14,
+      rampMerge: 32,
+      rampTaper: 48,
       /** The ramp's mouth keeps this far from its street's junctions (m, beyond their closure reach). */
       rampMouthClear: 2,
-      /** Ramps keep this far from the El crossing along the deck (m: its hump), and from each other (m). */
-      rampElClear: 170,
+      /** A ramp's top keeps this far from the El crossing along the deck (m; its hump is planned for), and ramps this far from each other (m). */
+      rampElClear: 60,
       rampGap: 100,
       /** Sign gantries over the carriageway about this far apart along the deck (m). */
       signEvery: 360,

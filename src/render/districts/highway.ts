@@ -3,17 +3,21 @@
  * settled curve (highwayDeck: the same samples the sim's spans and walls
  * were cut from) so what is drawn is what is driven:
  *  - the deck: a concrete box girder (fascia, soffit), its asphalt top with
- *    lane lines (two lanes each way, edge lines, the median's yellow), jersey
- *    barriers along both edges (open where a ramp merges, the deck widened
- *    there out to the ramp's lane and its taper), the median barrier, and
- *    past both closures the deck running on into the fog;
+ *    lane lines (three lanes each way, the shoulders' edge lines: yellow by
+ *    the median, white outside), parapets along both edges (open where a ramp
+ *    merges, the deck widened there out to the ramp's lane and its taper), the
+ *    median barrier, broken at its crossovers with a crash cushion at each
+ *    end, and past both closures the deck running on into the fog;
  *  - columns: the sim's bents (a square column on each sidewalk and a cap
- *    beam across the street under the deck), the hammerheads through the
- *    blocks, a column under each ramp merge's widened deck; render-only
- *    hammerheads past the city at both ends;
- *  - light: twin headed lamp posts down the median, sodium lamps under the
- *    soffit; on Medium and up their pools on the deck and the street below
- *    (one additive mesh, as the El's and the viaducts');
+ *    beam across the street under the deck), a column under each ramp
+ *    merge's widened deck; render-only hammerheads past the city at both ends;
+ *  - light, so the expressway reads as the brightest road in the city: tall
+ *    twin headed lamp posts down the median every few tens of meters, amber
+ *    delineators along the parapets, two rows of sodium lamps under the
+ *    soffit lighting the street beneath; on Medium and up their pools on the
+ *    deck and the street below (one additive mesh, as the El's and the
+ *    viaducts'), and the median lamps and the ramps' join the real light pool
+ *    (highwayLamps, scene.ts) so a car up there is lit as on the streets;
  *  - sign gantries across both carriageways (structureFx.ts signGantry, the
  *    direction signs once on city streets), the closures at both ends (a
  *    barrier row, crash cushions, END EXPRESSWAY and red lamps);
@@ -25,19 +29,21 @@
  *    race (the ramps are closed), a cyan barrier across the mouth.
  * Everything merges into the kit's solid, paint and glow builders; signs and
  * the light pools are one mesh each for the whole city. Low draws coarser
- * deck pieces, no gantry diagonals, no lane dashes on the ramps and no pools.
+ * deck pieces, no gantry diagonals, no lane dashes on the ramps, no
+ * delineators and no pools.
  */
 import * as THREE from 'three';
 import { CITY } from '../../city/config';
 import type { Area } from '../../city/districts/types';
 import type { Frame } from '../../city/districts/structures';
-import { HIGHWAY_HALF, HighwayDeck, HighwayRamp, RAMP_SOLID_TO_END, barrierOpen, deckTopAt, deckUnderAt, highwayDeck, mergeRange, rampFront, rampInnerSign, rampOuterAt } from '../../city/districts/highway/shape';
+import { HIGHWAY_HALF, HighwayDeck, HighwayRamp, LANES_IN, barrierOpen, deckTopAt, deckUnderAt, highwayDeck, inMedianGap, laneCenter, medianGaps, mergeRange, rampFront, rampInnerSign, rampOuterAt } from '../../city/districts/highway/shape';
+import type { World } from '../../city/world';
 import { axisAt, axisPoint, projectAxis, rampHeight } from '../../city/districts/highway/rampAxis';
 import { RAIL, RailCurve, curvePoint, projectOnCurve, sampleCurve } from '../../city/railCurve';
 import { GANTRY_SIGNS, END_CELL, CLOSED_CELL, RAMP_CELL, gantryCell, makeStructureSigns, signGantry, signPanel } from './structureFx';
 import { GeoBuilder } from '../geoBuilder';
 import type { DistrictKit, DistrictRenderer } from './kit';
-import { col, cylinder, drapeConvex, orientedBox } from './kit';
+import { col, cylinder, orientedBox } from './kit';
 import { washMaterial } from '../materialFx';
 import type { Vec2 } from '../../sim/math';
 
@@ -56,12 +62,17 @@ const HW = {
   line: 0.15,
   dash: 3,
   period: 9,
-  /** Median lamp posts: spacing (m), height over the deck (m), arm reach (m). */
-  postEvery: 44,
-  postH: 10,
-  arm: 2.9,
-  /** Sodium lamps under the soffit every this far (m). */
-  soffitEvery: 36,
+  /** Median lamp posts: spacing (m), height over the deck (m), arm reach (m: the heads over the middle lanes). */
+  postEvery: 32,
+  postH: 12,
+  arm: 6.2,
+  /** Amber delineators along the parapets every this far (m, Medium and up). */
+  delineatorEvery: 12,
+  /** Sodium lamps under the soffit every this far (m), in two rows each side this far out (m). */
+  soffitEvery: 26,
+  soffitRows: [5, 11],
+  /** A crash cushion's length at each end of the median by a crossover (m). */
+  cushion: 2.4,
   /** Cap beams under the deck: depth (m) and width along the deck (m). */
   capH: 1.3,
   capW: 1.6,
@@ -69,11 +80,11 @@ const HW = {
   runOffEvery: 40,
   runOffFrom: 90,
   /** Pools: deck lamps and soffit lamps (radius m, additive color at the middle). */
-  deckPool: { r: 8.5, color: col(0xffb060, 0.22) },
-  streetPool: { r: 7, color: col(0xff9a40, 0.26) },
+  deckPool: { r: 13, color: col(0xffc070, 0.3) },
+  streetPool: { r: 9, color: col(0xff9a40, 0.3) },
   /** Ramp lamp posts every this far along the outer wall (m), their height (m). */
-  rampPostEvery: 24,
-  rampPostH: 8,
+  rampPostEvery: 18,
+  rampPostH: 9,
   /** Sign gantries keep this far from a ramp's merge and from the El crossing (m). */
   gantryClear: 70,
 } as const;
@@ -89,12 +100,11 @@ const C = {
   white: col(0xd8d8d0, 0.85),
   yellow: col(0xe0b030, 0.9),
   cushion: col(0xe8c020, 0.9),
-  yard: col(0x4f4a40),
   post: col(0x2a2d31),
 } as const;
 
 const LAMP = {
-  head: col(0xffd9a0, 1.5),
+  head: col(0xffe2b0, 1.8),
   sodium: col(0xffa040, 1.3),
   red: col(0xff2a1a, 1.6),
   amber: col(0xffb020, 1.5),
@@ -188,6 +198,70 @@ export const highwayRenderer: DistrictRenderer = {
   },
 };
 
+/** The pieces of [s0, s1] outside the median's crossovers (low to high). */
+function medianRuns(s0: number, s1: number, gaps: readonly [number, number][]): [number, number][] {
+  const out: [number, number][] = [];
+  let from = s0;
+  for (const [g0, g1] of gaps) {
+    if (g1 <= from || g0 >= s1) continue;
+    if (g0 > from) out.push([from, g0]);
+    from = Math.max(from, g1);
+  }
+  if (from < s1) out.push([from, s1]);
+  return out;
+}
+
+/** Where the median lamp posts stand along the deck (s, m): every HW.postEvery, none in a crossover. */
+function medianPosts(d: HighwayDeck): number[] {
+  const out: number[] = [];
+  for (let s = RAIL.step + HW.postEvery / 2; s < d.curve.length - RAIL.step; s += HW.postEvery) if (!inMedianGap(d, s, 3)) out.push(s);
+  return out;
+}
+
+/** A ramp's surface at lateral v (left of travel), u along it: what the sim drives. */
+function rampSurface(r: HighwayRamp): (u: number, v: number) => { x: number; y: number; z: number } {
+  const ax = r.axis;
+  const ap = axisPoint();
+  const sample = { h: 0, gx: 0, gz: 0 };
+  return (u, v) => {
+    const q = axisAt(ax, u);
+    const x = q.x - q.tz * v;
+    const z = q.z + q.tx * v;
+    projectAxis(ax, x, z, ap);
+    rampHeight(ax, r.profile, r.terrain, x, z, ap, sample);
+    return { x, y: sample.h, z };
+  };
+}
+
+/**
+ * The expressway's lamps for the real light pool (scene.ts NightLighting): one per median post between
+ * the closures, at its heads (it lights both carriageways), and every ramp lamp head.
+ */
+export function highwayLamps(world: World): THREE.Vector3[] {
+  const out: THREE.Vector3[] = [];
+  const P = curvePoint();
+  for (const a of world.areas) {
+    if (a.kind !== 'highway' || a.variant !== 'deck') continue;
+    const d = highwayDeck(a, world.areas);
+    if (!d.settled) continue;
+    for (const s of medianPosts(d)) {
+      if (s < d.sW || s > d.sE) continue;
+      sampleCurve(d.curve, s, P);
+      out.push(new THREE.Vector3(P.x, deckTopAt(d, s) + HW.postH - 0.3, P.z));
+    }
+    for (const r of d.ramps) {
+      const surf = rampSurface(r);
+      const inner = rampInnerSign(r, d.curve);
+      for (let u = 12; u < r.axis.length; u += HW.rampPostEvery) {
+        const p = surf(u, -inner * (CFG.rampHalf + 0.175));
+        const h = surf(u, -inner * (CFG.rampHalf - 1.6));
+        out.push(new THREE.Vector3(h.x, p.y + 1 + HW.rampPostH - 0.2, h.z));
+      }
+    }
+  }
+  return out;
+}
+
 /** The deck's surface extent on `side` at s (m): its half width, out to a merging ramp's outer wall. */
 function extent(d: HighwayDeck, s: number, sd: 1 | -1): number {
   let e = HALF;
@@ -208,11 +282,13 @@ function deck(kit: DistrictKit, area: Area, d: HighwayDeck, signs: GeoBuilder, w
   const s1 = c.length - RAIL.step;
   const solid = kit.solid;
   const paint = kit.paint;
-  const lane = CFG.lane;
   const mh = CFG.median / 2;
-  const innerLine = mh + 0.35;
-  const divider = mh + 0.6 + lane;
-  const outerLine = mh + 0.6 + 2 * lane;
+  // Lines across each carriageway: the inner edge (yellow, the inner shoulder inside it), the dashed lane
+  // dividers, the outer edge (the wide outer shoulder beyond it).
+  const innerLine = LANES_IN;
+  const dividers = Array.from({ length: CFG.lanes - 1 }, (_, k) => LANES_IN + (k + 1) * CFG.lane);
+  const outerLine = LANES_IN + CFG.lanes * CFG.lane;
+  const gaps = medianGaps(d);
   // ----- The deck, piece by piece.
   for (let s = s0; s < s1 - 1e-6; s += step) {
     const e = Math.min(s1, s + step);
@@ -235,8 +311,14 @@ function deck(kit: DistrictKit, area: Area, d: HighwayDeck, signs: GeoBuilder, w
       const v0 = sd > 0 ? HALF - HW.barrierW : -HALF;
       bar(solid, c, s, e, v0, v0 + HW.barrierW, t0, t1, HW.barrierH, C.barrier);
     }
-    bar(solid, c, s, e, -mh, mh, t0, t1, HW.medianH, C.barrier);
-    // Lane lines: the median's yellow, the dashed divider, the outer edge (dashed where a ramp merges).
+    // The median, broken at its crossovers (as the sim's, build.ts), a crash cushion at each end there.
+    for (const [m0, m1] of medianRuns(s, e, gaps)) {
+      const y0 = deckTopAt(d, m0);
+      const y1 = deckTopAt(d, m1);
+      const atGap = (q: number) => gaps.some(([g0, g1]) => Math.abs(q - g0) < HW.cushion || Math.abs(q - g1) < HW.cushion);
+      bar(solid, c, m0, m1, -mh, mh, y0, y1, HW.medianH, atGap(m0) || atGap(m1) ? C.cushion : C.barrier);
+    }
+    // Lane lines: the inner edge's yellow, the outer edge (dashed where a ramp merges).
     for (const sd of [1, -1]) {
       band(paint, c, s, e, sd * innerLine - HW.line / 2, sd * innerLine + HW.line / 2, t0 + 0.02, t1 + 0.02, C.yellow);
       const merging = extent(d, (s + e) / 2, sd > 0 ? 1 : -1) > HALF + 0.5;
@@ -246,12 +328,12 @@ function deck(kit: DistrictKit, area: Area, d: HighwayDeck, signs: GeoBuilder, w
   for (let s = s0; s < s1 - HW.dash; s += HW.period) {
     const e = s + HW.dash;
     for (const sd of [1, -1] as const) {
-      band(paint, c, s, e, sd * divider - HW.line / 2, sd * divider + HW.line / 2, deckTopAt(d, s) + 0.02, deckTopAt(d, e) + 0.02, C.white);
+      for (const v of dividers) band(paint, c, s, e, sd * v - HW.line / 2, sd * v + HW.line / 2, deckTopAt(d, s) + 0.02, deckTopAt(d, e) + 0.02, C.white);
       if (extent(d, s + HW.dash / 2, sd) > HALF + 0.5) band(paint, c, s, e, sd * outerLine - HW.line / 2, sd * outerLine + HW.line / 2, deckTopAt(d, s) + 0.02, deckTopAt(d, e) + 0.02, C.white);
     }
   }
 
-  // ----- Columns: the sim's bents, outriggers and hammerheads; render-only ones past the city.
+  // ----- Columns: the sim's bents and outriggers; render-only hammerheads past the city.
   const b = kit.builds[area.id];
   const sOf = (x: number, z: number) => projectOnCurve(c, x, z).s;
   const hh = CFG.columnSize / 2;
@@ -277,8 +359,6 @@ function deck(kit: DistrictKit, area: Area, d: HighwayDeck, signs: GeoBuilder, w
       const top = deckUnderAt(d, sOf(p.x, p.z));
       const g = kit.h(p.x, p.z);
       orientedBox(solid, p.x - dx * hh - dz * hh, p.z - dz * hh + dx * hh, p.x + dx * hh - dz * hh, p.z + dz * hh + dx * hh, dz * 2 * hh, -dx * 2 * hh, g - 0.3, top, C.concrete);
-    } else if (p.kind === 'pier') {
-      hammerhead(kit, d, sOf(p.x, p.z), p.x, p.z, p.size);
     }
   }
   for (let s = d.sW - HW.runOffFrom; s > 2 * RAIL.step; s -= HW.runOffEvery) {
@@ -289,12 +369,10 @@ function deck(kit: DistrictKit, area: Area, d: HighwayDeck, signs: GeoBuilder, w
     const q = at(c, s, 0);
     hammerhead(kit, d, s, q.x, q.z, CFG.pierRadius);
   }
-  // The yard under the deck where it runs through a block (the strip the sim keeps buildings off).
-  for (const poly of b.exclusions) drapeConvex(kit, kit.ground, poly, 0.04, C.yard);
-
-  // ----- Light: median lamp posts with two heads, sodium lamps under the soffit.
+  // ----- Light: tall median lamp posts with two heads (none in a crossover), amber delineators on the
+  // parapets, two rows of sodium lamps under the soffit each side.
   const P = curvePoint();
-  for (let s = s0 + HW.postEvery / 2; s < s1; s += HW.postEvery) {
+  for (const s of medianPosts(d)) {
     sampleCurve(c, s, P);
     const top = deckTopAt(d, s);
     const y = top + HW.postH;
@@ -303,19 +381,31 @@ function deck(kit: DistrictKit, area: Area, d: HighwayDeck, signs: GeoBuilder, w
       const h = at(c, s, sd * HW.arm);
       orientedBox(solid, P.x, P.z, h.x, h.z, P.tx * 0.12, P.tz * 0.12, y, y + 0.12, C.steel);
       const q = at(c, s, sd * (HW.arm + 0.3));
-      cylinder(kit.glow, q.x, q.z, 0.28, y - 0.2, y, 6, LAMP.head, true);
+      orientedBox(kit.glow, q.x - P.tx * 0.5, q.z - P.tz * 0.5, q.x + P.tx * 0.5, q.z + P.tz * 0.5, -P.tz * 0.3 * sd, P.tx * 0.3 * sd, y - 0.22, y - 0.02, LAMP.head);
       if (wash && s > d.sW && s < d.sE) {
-        const p = at(c, s, sd * 3.6);
+        const p = at(c, s, sd * laneCenter(1));
         pool(wash, p.x, p.z, () => top, HW.deckPool.r, HW.deckPool.color);
+      }
+    }
+  }
+  if (!low) {
+    for (let s = d.sW + 2; s < d.sE; s += HW.delineatorEvery) {
+      const top = deckTopAt(d, s);
+      for (const sd of [1, -1] as const) {
+        if (barrierOpen(d, s - 1, s + 1, sd) || extent(d, s, sd) > HALF + 0.5) continue;
+        const q = at(c, s, sd * (HALF - HW.barrierW - 0.02));
+        cylinder(kit.glow, q.x, q.z, 0.07, top + HW.barrierH - 0.25, top + HW.barrierH - 0.1, 4, LAMP.amber, true);
       }
     }
   }
   for (let s = d.sW + HW.soffitEvery / 2; s < d.sE; s += HW.soffitEvery) {
     const u = deckUnderAt(d, s);
     for (const sd of [1, -1]) {
-      const q = at(c, s, sd * 4);
-      cylinder(kit.glow, q.x, q.z, 0.3, u - 0.12, u - 0.02, 6, LAMP.sodium, true);
-      if (wash) pool(wash, q.x, q.z, (x, z) => kit.world.driveHeightAt(x, z), HW.streetPool.r, HW.streetPool.color);
+      for (const v of HW.soffitRows) {
+        const q = at(c, s, sd * v);
+        cylinder(kit.glow, q.x, q.z, 0.3, u - 0.12, u - 0.02, 6, LAMP.sodium, true);
+        if (wash) pool(wash, q.x, q.z, (x, z) => kit.world.driveHeightAt(x, z), HW.streetPool.r, HW.streetPool.color);
+      }
     }
   }
 
@@ -355,7 +445,7 @@ function deck(kit: DistrictKit, area: Area, d: HighwayDeck, signs: GeoBuilder, w
     const a = Math.min(s, sIn);
     const e = Math.max(s, sIn);
     for (let v = -HALF; v < HALF - 1e-6; v += 2) bar(solid, c, a, e, v, Math.min(HALF, v + 2), top, top, 1.1, C.barrier);
-    for (const v of [-6.25, -2.75, 2.75, 6.25]) {
+    for (const v of Array.from({ length: CFG.lanes }, (_, k) => laneCenter(k)).flatMap((l) => [-l, l])) {
       const q0 = at(c, sIn - dir * 0.2, v - 0.7);
       const q1 = at(c, sIn - dir * 0.2, v + 0.7);
       sampleCurve(c, sIn, P);
@@ -364,8 +454,8 @@ function deck(kit: DistrictKit, area: Area, d: HighwayDeck, signs: GeoBuilder, w
     sampleCurve(c, sIn, P);
     const sp = at(c, sIn - dir * 0.3, 0);
     // Facing back along the deck, toward the cars coming at it.
-    signPanel(signs, sp.x, top + 3.1, sp.z, -P.tx * dir, -P.tz * dir, 7.5, 1.9, END_CELL, col(0xffffff, 0.85));
-    for (const v of [-3, 3]) {
+    signPanel(signs, sp.x, top + 3.1, sp.z, -P.tx * dir, -P.tz * dir, 10, 2.5, END_CELL, col(0xffffff, 0.85));
+    for (const v of [-4, 4]) {
       const q = at(c, sIn, v);
       cylinder(solid, q.x, q.z, 0.08, top + 1.1, top + 4.2, 5, C.steel, false);
     }
@@ -402,19 +492,9 @@ function ramp(kit: DistrictKit, d: HighwayDeck, r: HighwayRamp, signs: GeoBuilde
   const c = d.curve;
   const solid = kit.solid;
   const low = kit.quality === 'low';
-  const ap = axisPoint();
-  const sample = { h: 0, gx: 0, gz: 0 };
-  /** The ramp's surface at lateral v (left of travel), u along it: what the sim drives. */
-  const surf = (u: number, v: number): { x: number; y: number; z: number } => {
-    const q = axisAt(ax, u);
-    const x = q.x - q.tz * v;
-    const z = q.z + q.tx * v;
-    projectAxis(ax, x, z, ap);
-    rampHeight(ax, r.profile, r.terrain, x, z, ap, sample);
-    return { x, y: sample.h, z };
-  };
+  const surf = rampSurface(r);
   const inner = rampInnerSign(r, c);
-  const uc = Math.max(4, L - RAMP_SOLID_TO_END);
+  const uc = Math.max(4, r.uSolid);
   const step = 3;
   const wt = 0.35;
   for (let u = 0; u < L - 1e-6; u += step) {
@@ -487,7 +567,7 @@ function ramp(kit: DistrictKit, d: HighwayDeck, r: HighwayRamp, signs: GeoBuilde
     orientedBox(solid, a.x - (nx / nl) * 0.17, a.z - (nz / nl) * 0.17, e.x - (nx / nl) * 0.17, e.z - (nz / nl) * 0.17, (nx / nl) * 0.35, (nz / nl) * 0.35, Math.min(ta, tb) - 0.1, Math.max(ta, tb) + HW.barrierH, C.barrier);
   }
   // The wall along the building line under the ramp's top: from the sidewalk up to the soffit.
-  const [f0, f1] = rampFront(r, c);
+  const [f0, f1] = rampFront(r, c) ?? [0, 0];
   for (let s = f0; s < f1 - 1e-6; s += 4) {
     const e = Math.min(f1, s + 4);
     const a = at(c, s, r.side * r.building);

@@ -6,7 +6,8 @@
  * ramps), a ramp's axis and profile (HighwayRamp), and the shared measures:
  * where the deck is widened onto a ramp's merge and its barrier opens, the
  * ramp's outline, its lane's outer wall along the merge, the frontage under
- * its top, the curb cut at its mouth. The build, the settle step, the
+ * its top, the curb cut at its mouth, the deck's cross section (lanes and
+ * shoulders) and the gaps in its median. The build, the settle step, the
  * renderer, the cameras and the resets all read these, so they agree. One
  * object per area (WeakMaps keyed by the area), pure and deterministic.
  */
@@ -24,6 +25,22 @@ const CFG = CITY.districts.highway;
 
 export const HALF = CFG.deckWidth / 2;
 
+/** Cross section, from the deck's centerline out (m): the first lane's inner edge, and the outer shoulder (what is left of the half width). */
+export const LANES_IN = CFG.median / 2 + CFG.innerShoulder;
+
+export const PARAPET = 0.45;
+
+export const OUTER_SHOULDER = HALF - LANES_IN - CFG.lanes * CFG.lane - PARAPET;
+
+/** Center of lane k (0 by the median) from the deck's centerline (m). */
+export const laneCenter = (k: number): number => LANES_IN + (k + 0.5) * CFG.lane;
+
+/**
+ * Curb to curb width of every street under the deck (m): widened so its building lines stand under
+ * the deck's edges (a plain street's sidewalk each side), and cars drive under the deck wherever it goes.
+ */
+export const UNDER_WIDTH = 2 * (HALF - CITY.sidewalk);
+
 /** Beyond a closure's reach columns keep this margin (m), as the El's (subway.ts CLOSURE_GAP). */
 export const CLOSURE_GAP = 3.5;
 
@@ -34,19 +51,16 @@ export const BARRIER_IN = 0.45;
 const END_PAST = 12;
 
 /** A ramp's lane: full width alongside the deck over `merge` m, then a taper back to its edge over `taper` m. */
-export const MERGE = 12;
+export const MERGE = CFG.rampMerge;
 
-export const TAPER = 20;
+export const TAPER = CFG.rampTaper;
 
 /**
  * The gore: the ramp's inner wall runs on this far past E along the deck's edge (m), and the deck is
  * widened onto the lane from there to the taper's end; the barrier opens only where a whole chunk lies
  * in that stretch, so there is never a hole between the barrier's end and the ramp's walls.
  */
-export const GORE = 8;
-
-/** The ramp is a solid single level up to this far before its end (m); past it, two levels (it passes over the sidewalk). */
-export const SOLID_TO_END = 40;
+export const GORE = CFG.rampGore;
 
 /** The mouth's curb cut flares this much at each end (m). */
 export const MOUTH_TAPER = 6;
@@ -122,6 +136,8 @@ export interface HighwayRamp {
   /** The row street's building line from the deck's centerline (m), and where the ramp's block ends along the deck (s, m). */
   building: number;
   sBlock: number;
+  /** The embankment (one solid level) ends this far along the axis (m), before the ramp leaves its block; a bridge on from there. */
+  uSolid: number;
   /** The terrain the mouth blends into (set when settled). */
   terrain: Terrain | null;
 }
@@ -137,7 +153,7 @@ export function highwayRamp(area: Area): HighwayRamp {
   const p = area.params;
   const axis: RampAxis = { fx: p.fx, fz: p.fz, dx: p.dx, dz: p.dz, a: p.a, cx: p.cx, cz: p.cz, r: p.r, sweep: p.sweep, phi0: p.phi0, ex: p.ex, ez: p.ez, tx: p.tx, tz: p.tz, length: p.length };
   const profile: RampProfile = { y0: 0, g0: 0, y1: 0, g1: 0, grade: 0, e0: CFG.rampFootEase, e1: CFG.rampTopEase, blend: 14, ready: false };
-  r = { area, axis, profile, side: p.side > 0 ? 1 : -1, sa: p.sa, sb: p.sb, building: p.building, sBlock: p.sBlock, terrain: null };
+  r = { area, axis, profile, side: p.side > 0 ? 1 : -1, sa: p.sa, sb: p.sb, building: p.building, sBlock: p.sBlock, uSolid: p.uSolid, terrain: null };
   rampShapes.set(area, r);
   return r;
 }
@@ -263,23 +279,69 @@ export function rampOuterAt(ramp: HighwayRamp, s: number): number {
   return HALF + (t <= 0 ? w : t >= 1 ? -BARRIER_IN : w - (w + BARRIER_IN) * t);
 }
 
-/** The stretch of the row street's frontage under the ramp's top, to its block's corner (s along the deck, low to high). */
-export function rampFront(ramp: HighwayRamp, curve: RailCurve): [number, number] {
+/**
+ * The stretch of the row street's frontage under the ramp's bridge stretch in its own block, to the
+ * block's corner (s along the deck, low to high), or null when the ramp's inner edge keeps off the
+ * building line there (it reaches the deck's edge past the cross street).
+ */
+export function rampFront(ramp: HighwayRamp, curve: RailCurve): [number, number] | null {
   const sx = frontStart(ramp, curve, rampInnerSign(ramp, curve));
+  if (Number.isNaN(sx) || (sx - ramp.sBlock) * ramp.side > -2) return null;
   return [Math.min(sx, ramp.sBlock), Math.max(sx, ramp.sBlock)];
 }
 
-/** Where along the deck the ramp's inner edge reaches the street's building line (s, m). */
+/** Where along the deck the ramp's inner edge reaches the street's building line on its bridge stretch (s, m; NaN if it never does). */
 function frontStart(ramp: HighwayRamp, curve: RailCurve, innerSign: number): number {
   const ax = ramp.axis;
-  for (let u = Math.max(0, ax.length - SOLID_TO_END - 10); u <= ax.length; u += 1) {
+  for (let u = Math.max(0, ramp.uSolid - 10); u <= ax.length; u += 1) {
     const q = axisAt(ax, u);
     const v = innerSign * (CFG.rampHalf + 0.5);
     const p = { x: q.x - q.tz * v, z: q.z + q.tx * v };
     const pr = projectOnCurve(curve, p.x, p.z);
     if (Math.abs(pr.lateral) <= ramp.building + 1.5) return pr.s;
   }
-  return ramp.sa;
+  return NaN;
+}
+
+const gaps = new WeakMap<HighwayDeck, [number, number][]>();
+
+/**
+ * The median's crossovers (s ranges along the deck, low to high): a gap about every
+ * CFG.crossoverEvery m between the closures, nudged along (or left out) to keep crossoverClear from
+ * every ramp's top and merge and from the closures, so a car can swing round to the other carriageway.
+ */
+export function medianGaps(d: HighwayDeck): [number, number][] {
+  let out = gaps.get(d);
+  if (out) return out;
+  out = [];
+  const half = CFG.crossoverLength / 2;
+  const clear = CFG.crossoverClear;
+  const blocked = (s: number) =>
+    s - half < d.sW + 2 * clear ||
+    s + half > d.sE - 2 * clear ||
+    d.ramps.some((r) => {
+      const lo = Math.min(r.sa, r.sb) - clear;
+      const hi = Math.max(r.sa, r.sb) + clear;
+      return s + half > lo && s - half < hi;
+    });
+  for (let s = d.sW + CFG.crossoverEvery / 2; s < d.sE; s += CFG.crossoverEvery) {
+    let at = NaN;
+    for (const k of [0, 1, -1, 2, -2, 3, -3]) {
+      const t = s + k * 25;
+      if (blocked(t) || out.some(([a, b]) => t - half < b + CFG.crossoverEvery / 2 && t + half > a - CFG.crossoverEvery / 2)) continue;
+      at = t;
+      break;
+    }
+    if (!Number.isNaN(at)) out.push([at - half, at + half]);
+  }
+  gaps.set(d, out);
+  return out;
+}
+
+/** Whether s lies in one of the median's crossovers (widened by `pad` m each end). */
+export function inMedianGap(d: HighwayDeck, s: number, pad = 0): boolean {
+  for (const [a, b] of medianGaps(d)) if (s > a - pad && s < b + pad) return true;
+  return false;
 }
 
 /** The curb cut of a ramp's mouth on its foot street's piece: the block side it opens on and the cut along its curb (busBays.ts mouthBay), or null if it would leave the piece. */
@@ -299,4 +361,4 @@ export function mouthCut(g: RoadGraph, mouths: EdgeMouths[], edge: number, ax: R
   return s0 < 1 || s1 > ul - 1 ? null : { side, s0, s1 };
 }
 
-export { HALF as HIGHWAY_HALF, TAPER as RAMP_TAPER, SOLID_TO_END as RAMP_SOLID_TO_END, GORE as RAMP_GORE };
+export { HALF as HIGHWAY_HALF, TAPER as RAMP_TAPER, GORE as RAMP_GORE };

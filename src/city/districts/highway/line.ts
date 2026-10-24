@@ -1,19 +1,25 @@
 /**
  * The elevated highway's line (highway.ts plans with it): the El's planner
  * (subway.ts) turned on its side. A line follows one grid row's streets from
- * the map's west edge to its east, centered over them, runs straight over a
- * block where the street is missing, and swings to the next row through the
- * blocks on a tangent S curve (the El's cubic) past a junction; run-offs carry
- * it on past both map edges. planLine walks the streets on the graph as it is
- * (bend nodes and all) and says no where the line cannot go: a claimed street
- * or junction (the El's, an alley's end and a roundabout's ring excepted: the
- * deck passes over them), an alley, too many missing streets, a swing too
- * tight or too near a junction, a diagonal or the river, the deck near the
- * river channel or a bluff, or a second crossing of the El. Pure.
+ * the map's west edge to its east, centered over them, and swings to the next
+ * row on a diagonal street of its own laid across one block corner to corner
+ * (like the city's diagonal avenues), the deck turning onto and off it on an
+ * arc through each junction (fillet); where a row's street is missing it is
+ * laid again; run-offs carry the line on past both map edges. So every
+ * stretch of the deck in the city stands over a street, widened (highway.ts
+ * commit) for cars to drive beneath the whole way. planLine walks the streets on the graph as it is (bend nodes and all)
+ * and says no where the line cannot go: a claimed street or junction (the
+ * El's and a roundabout's ring excepted: the deck passes over them; where
+ * an alley ends, the street keeps its width so the alley's mouth stays as
+ * it was), too many missing streets, a swing
+ * whose diagonal would squeeze a junction's sectors, cross another street or
+ * come near the El, a diagonal or the river, the deck near the river channel
+ * or a bluff, or a second crossing of the El. Pure.
  */
 import { CITY } from '../../config';
 import type { RoadGraph, RoadNode } from '../../roadGraph';
-import { Vec2, atan2, distToSegment, sqrt } from '../../../sim/math';
+import { edgeAngleFrom, edgeBetween } from '../../roadGraph';
+import { DEG, Vec2, atan2, cos, distToSegment, sin, sqrt, tan } from '../../../sim/math';
 import { Rng, deriveSeed } from '../../../sim/prng';
 import type { Area, PlanContext } from '../types';
 import { distToPolygonEdge, pointInPolygon } from '../geom';
@@ -24,27 +30,33 @@ import { HALF, PLAIN, elCrossings, segmentHit } from './shape';
 
 const CFG = CITY.districts.highway;
 
-/** A swing crosses a column street at least this far from its junctions (m): the deck is wide. */
-const CROSS_NODE_CLEAR = 38;
-
-/** A swing keeps this far from a diagonal avenue (m). */
+/** A swing's diagonal keeps this far from a diagonal avenue (m). */
 const DIAGONAL_CLEAR = 45;
+
+/** A street the line lays keeps this far from every junction and bend it does not join (m). */
+const NODE_GAP = 22;
 
 /** The deck keeps this far beyond the river channel's top edge (m, past its own half width). */
 const RIVER_CLEAR = 14;
 
-/** At most this many blocks of the line may have no street under the deck. */
+/** At most this many blocks of the line may have no street under the deck (laid again). */
 const MAX_MISSING = 2;
 
 /** Run-off straight on past each end node (m), at least, and on until past the map's edge. */
 const RUN_OFF = 70;
+
+/** Fillet arcs are sampled about this often (m). */
+const ARC_STEP = 4;
+
+/** Half corridor of a plain street (m): what the line lays where an alley ends. */
+const PLAIN_HALF = CITY.width.street / 2 + CITY.sidewalk;
 
 /** Whether a seed gets a highway: the first draw of the module's own stream (index.ts makeContext's). */
 export function highwayRolled(seed: number): boolean {
   return CFG.enabled && new Rng(deriveSeed(seed, 'district:highway')).chance(CFG.chance);
 }
 
-/** A swing: the line leaves row `from` at column i0 and joins row `to` at column i1. */
+/** A swing: the line leaves row `from` at column i0 and joins row `to` at column i1 = i0 + 1, on a diagonal across the block between. */
 export interface Swing {
   i0: number;
   i1: number;
@@ -68,16 +80,24 @@ interface Anchor {
 /** A planned line before it is an area. */
 export interface LinePlan {
   path: Vec2[];
-  /** Path index of every column's anchor, and the row the line's street is on there (-1 inside a swing). */
+  /** Path index of every column's anchor (a swing's junction: its fillet's middle), and the row the line's street is on there. */
   at: number[];
   rows: number[];
+  /** Unclaimed junctions and street pieces under the deck (the deck's area claims them). */
   nodes: number[];
   edges: number[];
-  /** Column streets the swings cross. */
-  crossed: number[];
+  /** Every street piece under the deck, claimed or not: widened when the line is committed. */
+  widen: number[];
+  /** Streets under the deck at a plain street's width (an alley ends at one of their junctions: blocks kept as they were, fills and diagonals laid so), junction to junction. */
+  narrow: [number, number][];
+  /** Missing row streets laid again (grid node pairs) and swing diagonals (grid node pairs). */
+  fills: [number, number][];
+  diagonals: [number, number][];
+  /** The swings' junctions, where the deck cuts the corner on its fillet. */
+  turns: Vec2[];
   length: number;
   swings: number;
-  /** Length of the line off its streets (m): through blocks. */
+  /** Length of the streets the line lays (m). */
   offStreet: number;
 }
 
@@ -132,31 +152,28 @@ export function outline(path: readonly Vec2[], hw: number): Vec2[] {
   return left.concat(right.reverse());
 }
 
-function polylineCrossing(pts: readonly Vec2[], line: readonly Vec2[]): { i: number; p: Vec2 } | null {
-  for (let i = 0; i + 1 < pts.length; i++) {
-    for (let k = 0; k + 1 < line.length; k++) {
-      const h = segmentHit(pts[i], pts[i + 1], line[k], line[k + 1]);
-      if (h) return { i, p: h.p };
-    }
+/**
+ * The deck's arc through a corner C between an incoming direction u and an outgoing one v (units): from
+ * T before C to T past it, the tangent arc of radius T / tan(turn / 2), sampled every ARC_STEP m.
+ */
+export function fillet(C: Vec2, u: Vec2, v: Vec2, T: number): { pts: Vec2[]; r: number } {
+  const phi = atan2(u.x * v.z - u.z * v.x, u.x * v.x + u.z * v.z);
+  const turn = Math.abs(phi);
+  if (turn < 1e-3) return { pts: [{ x: C.x, z: C.z }], r: Infinity };
+  const r = T / tan(turn / 2);
+  const A = { x: C.x - u.x * T, z: C.z - u.z * T };
+  // The center lies to the side the path turns to: u turned +90 degrees (x, z) -> (-z, x) for a positive turn.
+  const sg = phi > 0 ? 1 : -1;
+  const cx = A.x - u.z * r * sg;
+  const cz = A.z + u.x * r * sg;
+  const a0 = atan2(A.z - cz, A.x - cx);
+  const n = Math.max(2, Math.ceil((r * turn) / ARC_STEP));
+  const pts: Vec2[] = [];
+  for (let k = 0; k <= n; k++) {
+    const a = a0 + (phi * k) / n;
+    pts.push({ x: cx + r * cos(a), z: cz + r * sin(a) });
   }
-  return null;
-}
-
-/** The cubic S curve of a swing (the El's, subway.ts cubicPath). */
-function cubicPath(A: Vec2, tA: Vec2, B: Vec2, tB: Vec2, step: number): Vec2[] {
-  const chord = sqrt((B.x - A.x) ** 2 + (B.z - A.z) ** 2);
-  const k = chord * 0.4;
-  const C1 = { x: A.x + tA.x * k, z: A.z + tA.z * k };
-  const C2 = { x: B.x - tB.x * k, z: B.z - tB.z * k };
-  const N = Math.max(4, Math.ceil(chord / step));
-  const pts: Vec2[] = [A];
-  for (let i = 1; i < N; i++) {
-    const t = i / N;
-    const u = 1 - t;
-    pts.push({ x: u * u * u * A.x + 3 * u * u * t * C1.x + 3 * u * t * t * C2.x + t * t * t * B.x, z: u * u * u * A.z + 3 * u * u * t * C1.z + 3 * u * t * t * C2.z + t * t * t * B.z });
-  }
-  pts.push(B);
-  return pts;
+  return { pts, r };
 }
 
 /** What the planner keeps the deck and its ramps clear of. */
@@ -205,22 +222,68 @@ function freeOrEl(ctx: PlanContext, claim: number | undefined): boolean {
 }
 
 /**
- * A junction the deck may pass over: unclaimed, the El's, an alley's end (the alley is a side street
- * there; the deck's own streets are checked by kind) or a roundabout's ring (a long span over it,
- * its columns clear of the ring).
+ * Whether a street the line lays from node a to node b (half corridor `half`) fits: no node past degree
+ * maxNodeDegree (counting the streets the line already lays there, `added`), sectors at both ends at least swingSectorDeg and their corners short of the street
+ * pieces beside them, no other street crossed or junction or bend within NODE_GAP, no diagonal avenue
+ * near (a swing's), clear of the El by both decks' half widths.
  */
-function nodeOk(ctx: PlanContext, n: RoadNode): boolean {
-  const claim = ctx.claims.node.get(n.id);
-  if (claim === undefined) return true;
-  const kind = ctx.areas[claim].kind;
-  return kind === 'subway' || kind === 'alley' || kind === 'roundabout';
+function layable(g: RoadGraph, hz: Hazards, a: number, b: number, half: number, swing: boolean, added: Map<number, number>): boolean {
+  const A = g.nodes[a];
+  const B = g.nodes[b];
+  if (edgeBetween(g, a, b) >= 0) return false;
+  for (const [n, m] of [
+    [A, B],
+    [B, A],
+  ]) {
+    if (n.edges.length + (added.get(n.id) ?? 0) + 1 > CITY.maxNodeDegree || n.ring) return false;
+    const ang = atan2(m.z - n.z, m.x - n.x);
+    for (const eid of n.edges) {
+      const e = g.edges[eid];
+      let d = Math.abs(edgeAngleFrom(g, e, n.id) - ang);
+      if (d > Math.PI) d = 2 * Math.PI - d;
+      if (d < CFG.swingSectorDeg * DEG) return false;
+      // The corner between the two streets reaches (h1 + h2 cos d) / sin d along each from the node:
+      // short of the piece beside it, so the corner never runs past that piece's far node.
+      const other = e.width / 2 + e.sidewalk;
+      if (d < Math.PI / 2 && (other + half * cos(d)) / sin(d) > e.length - 6) return false;
+    }
+  }
+  const near = new Set<number>([a, b]);
+  for (const id of [a, b]) {
+    for (const eid of g.nodes[id].edges) {
+      const e = g.edges[eid];
+      near.add(e.a);
+      near.add(e.b);
+    }
+  }
+  for (const e of g.edges) {
+    if (e.a === a || e.a === b || e.b === a || e.b === b) continue;
+    const p = g.nodes[e.a];
+    const q = g.nodes[e.b];
+    if (segmentHit(A, B, p, q)) return false;
+    if (swing && e.kind === 'diagonal' && Math.min(distToSegment(p.x, p.z, A.x, A.z, B.x, B.z), distToSegment(q.x, q.z, A.x, A.z, B.x, B.z)) < DIAGONAL_CLEAR) return false;
+  }
+  for (const n of g.nodes) {
+    if (near.has(n.id)) continue;
+    if (distToSegment(n.x, n.z, A.x, A.z, B.x, B.z) < NODE_GAP) return false;
+  }
+  if (swing) {
+    const L = sqrt((B.x - A.x) ** 2 + (B.z - A.z) ** 2);
+    for (let s = 0; s <= L; s += 5) {
+      const x = A.x + ((B.x - A.x) * s) / L;
+      const z = A.z + ((B.z - A.z) * s) / L;
+      if (elDistance(hz, x, z) < HALF + CITY.districts.subway.deckWidth / 2 + 6) return false;
+    }
+  }
+  return true;
 }
 
 /**
- * The line along the rows per column (`rows`, -1 inside a swing) with the given swings, or null where
- * it does not fit: a claimed node or street on its way (the El's excepted), an alley, a roundabout,
- * too many missing streets, a swing too tight or near a junction, a diagonal or the river, the deck
- * near the river channel, a bluff or a roundabout's ring, or crossing the El more than once.
+ * The line along the rows per column (`rows`, the swings' rows as they leave and join) with the given
+ * swings, or null where it does not fit: a claimed node or street on its way (the El's excepted), an
+ * alley's end or a roundabout, too many missing streets, a swing or a missing street that cannot be
+ * laid, a diagonal near a swing, the deck near the river channel, a bluff or a roundabout's ring, or
+ * crossing the El more than once.
  */
 export function planLine(ctx: PlanContext, hz: Hazards, rows: readonly number[], swings: readonly Swing[]): LinePlan | null {
   const g = ctx.graph;
@@ -238,110 +301,96 @@ export function planLine(ctx: PlanContext, hz: Hazards, rows: readonly number[],
     }
     return ch;
   };
-  const anchorAt = (i: number, j: number): Anchor => {
+  /** The row's direction at column i on row j: along its street before (`before`) or after the junction, else its chord. */
+  const rowDir = (i: number, j: number, before: boolean): Vec2 => {
     const n = gridNode(g, i, j);
-    let tx = 0;
-    let tz = 0;
-    const before = rows[i - 1] === j ? streetAt(i - 1, j) : null;
-    const after = rows[i + 1] === j ? streetAt(i, j) : null;
-    if (before) {
-      const p = g.nodes[before.nodes[before.nodes.length - 2]];
-      const l = sqrt((n.x - p.x) ** 2 + (n.z - p.z) ** 2) || 1;
-      tx += (n.x - p.x) / l;
-      tz += (n.z - p.z) / l;
-    }
-    if (after) {
-      const q = g.nodes[after.nodes[1]];
-      const l = sqrt((q.x - n.x) ** 2 + (q.z - n.z) ** 2) || 1;
-      tx += (q.x - n.x) / l;
-      tz += (q.z - n.z) / l;
-    }
-    if (!before && !after) {
-      // No street either side (a missing street next to a swing): along the row's chord.
+    const ch = before ? streetAt(i - 1, j) : streetAt(i, j);
+    let tx: number;
+    let tz: number;
+    if (ch) {
+      const o = before ? g.nodes[ch.nodes[ch.nodes.length - 2]] : g.nodes[ch.nodes[1]];
+      tx = before ? n.x - o.x : o.x - n.x;
+      tz = before ? n.z - o.z : o.z - n.z;
+    } else {
       const m = gridNode(g, Math.min(W - 1, i + 1), j);
       const o = gridNode(g, Math.max(0, i - 1), j);
       tx = m.x - o.x;
       tz = m.z - o.z;
     }
     const l = sqrt(tx * tx + tz * tz) || 1;
+    return { x: tx / l, z: tz / l };
+  };
+  const anchorAt = (i: number, j: number): Anchor => {
+    const n = gridNode(g, i, j);
+    const b = i > 0 && rows[i - 1] === j ? rowDir(i, j, true) : null;
+    const a = i + 1 < W && rows[i + 1] === j ? rowDir(i, j, false) : null;
+    let tx = (b?.x ?? 0) + (a?.x ?? 0);
+    let tz = (b?.z ?? 0) + (a?.z ?? 0);
+    if (!a && !b) {
+      const d = rowDir(i, j, false);
+      tx = d.x;
+      tz = d.z;
+    }
+    const l = sqrt(tx * tx + tz * tz) || 1;
     return { p: { x: n.x, z: n.z }, t: { x: tx / l, z: tz / l } };
   };
+  // A junction under the deck: unclaimed, the El's, an alley's or a roundabout's ring (a long span over it,
+  // its columns clear). Where an alley ends, the row's street blocks either side keep their width (`narrow`).
+  const nodeOk = (n: RoadNode) => {
+    const claim = ctx.claims.node.get(n.id);
+    return freeOrEl(ctx, claim) || ['alley', 'roundabout'].includes(ctx.areas[claim!].kind);
+  };
+  /** An alley ends here: the street pieces either side keep their width, so its mouth stays as it was. */
+  const alleyAt = (n: RoadNode) => n.edges.some((e) => g.edges[e].kind === 'alley');
   const plainEdge = (eid: number) => {
     if (eid < 0) return false;
     const e = g.edges[eid];
     return PLAIN.has(e.kind) && !e.bridge && !e.shortcut && freeOrEl(ctx, ctx.claims.edge.get(eid));
   };
-  const swingPath = (a0: Anchor, a1: Anchor, sw: Swing): { pts: Vec2[]; at: Map<number, number>; crossed: number[] } | null => {
-    const lead = CFG.swingLead;
-    const A = { x: a0.p.x + a0.t.x * lead, z: a0.p.z + a0.t.z * lead };
-    const B = { x: a1.p.x - a1.t.x * lead, z: a1.p.z - a1.t.z * lead };
-    const chord = sqrt((B.x - A.x) ** 2 + (B.z - A.z) ** 2);
-    if (chord < 4 * lead) return null;
-    const pts = cubicPath(A, a0.t, B, a1.t, CFG.swingStep);
-    let minR = Infinity;
-    for (let i = 1; i + 1 < pts.length; i++) {
-      const ax = pts[i].x - pts[i - 1].x;
-      const az = pts[i].z - pts[i - 1].z;
-      const bx = pts[i + 1].x - pts[i].x;
-      const bz = pts[i + 1].z - pts[i].z;
-      const turn = Math.abs(atan2(ax * bz - az * bx, ax * bx + az * bz));
-      const len = (sqrt(ax * ax + az * az) + sqrt(bx * bx + bz * bz)) / 2;
-      if (turn > 1e-9) minR = Math.min(minR, len / turn);
-    }
-    if (minR < CFG.swingRadius) return null;
-    const at = new Map<number, number>();
-    const crossed: number[] = [];
-    for (let i = sw.i0 + 1; i < sw.i1; i++) {
-      const Pn = gridNode(g, i, sw.from);
-      const Qn = gridNode(g, i, sw.to);
-      const nodes = streetChain(g, Pn.id, Qn.id);
-      const line: Vec2[] = nodes ? nodes.map((id) => g.nodes[id]) : [Pn, Qn];
-      const hit = polylineCrossing(pts, line);
-      if (!hit) return null;
-      if (sqrt((hit.p.x - Pn.x) ** 2 + (hit.p.z - Pn.z) ** 2) < CROSS_NODE_CLEAR || sqrt((hit.p.x - Qn.x) ** 2 + (hit.p.z - Qn.z) ** 2) < CROSS_NODE_CLEAR) return null;
-      pts.splice(hit.i + 1, 0, hit.p);
-      at.set(i, hit.i + 1);
-      if (nodes) {
-        for (const e of chainOfNodes(g, nodes).edges) {
-          // Never across the El's column street mid block (its deck is over the curb lane there), nor a bridge.
-          if (e < 0 || g.edges[e].bridge || ctx.claims.edge.has(e)) return null;
-          crossed.push(e);
-        }
-      }
-    }
-    for (const e of g.edges) {
-      if (e.kind !== 'diagonal') continue;
-      const a = g.nodes[e.a];
-      const c = g.nodes[e.b];
-      for (const p of pts) if (distToSegment(p.x, p.z, a.x, a.z, c.x, c.z) < DIAGONAL_CLEAR) return null;
-    }
-    return { pts, at, crossed };
-  };
+  const under = HALF;
 
-  const path: Vec2[] = [];
+  // The corner polyline first: the row streets node to node, a swing's diagonal straight between its
+  // junctions, a missing street straight between its; then the swings' junctions filleted.
+  const corner: Vec2[] = [];
   const at = new Array<number>(W).fill(-1);
+  const turnAt: { k: number; i: number }[] = [];
   const nodes: number[] = [];
   const edges: number[] = [];
-  const crossed: number[] = [];
+  const widen: number[] = [];
+  const fills: [number, number][] = [];
+  const diagonals: [number, number][] = [];
+  const turns: Vec2[] = [];
+  const narrow: [number, number][] = [];
+  const added = new Map<number, number>();
+  const lay = (a: number, b: number) => {
+    added.set(a, (added.get(a) ?? 0) + 1);
+    added.set(b, (added.get(b) ?? 0) + 1);
+  };
   let missing = 0;
   let offStreet = 0;
   for (let i = 0; i < W; ) {
     const j = rows[i];
     if (j < 0) return null;
     const n = gridNode(g, i, j);
-    if (!nodeOk(ctx, n)) return null;
-    const a = anchorAt(i, j);
-    at[i] = path.length;
-    path.push(a.p);
+    if (!nodeOk(n)) return null;
+    at[i] = corner.length;
+    corner.push({ x: n.x, z: n.z });
     if (!ctx.claims.node.has(n.id)) nodes.push(n.id);
     const sw = swings.find((s) => s.i0 === i);
     if (sw) {
-      const S = swingPath(a, anchorAt(sw.i1, sw.to), sw);
-      if (!S) return null;
-      for (const [col, idx] of S.at) at[col] = path.length + idx;
-      for (const p of S.pts) path.push(p);
-      for (const e of S.crossed) crossed.push(e);
-      for (let k = 1; k < S.pts.length; k++) offStreet += sqrt((S.pts[k].x - S.pts[k - 1].x) ** 2 + (S.pts[k].z - S.pts[k - 1].z) ** 2);
+      const m = gridNode(g, sw.i1, sw.to);
+      // A swing turns at plain junctions (never the El's or a roundabout); at an alley's end its diagonal
+      // is laid at a plain street's width, so the alley's mouth stays as it was.
+      if (ctx.claims.node.has(n.id) || ctx.claims.node.has(m.id)) return null;
+      const keep = alleyAt(n) || alleyAt(m);
+      if (!layable(g, hz, n.id, m.id, keep ? PLAIN_HALF : under, true, added)) return null;
+      lay(n.id, m.id);
+      diagonals.push([n.id, m.id]);
+      if (keep) narrow.push([n.id, m.id]);
+      turnAt.push({ k: corner.length - 1, i });
+      turnAt.push({ k: corner.length, i: sw.i1 });
+      turns.push({ x: n.x, z: n.z }, { x: m.x, z: m.z });
+      offStreet += sqrt((m.x - n.x) ** 2 + (m.z - n.z) ** 2);
       i = sw.i1;
       continue;
     }
@@ -350,21 +399,63 @@ export function planLine(ctx: PlanContext, hz: Hazards, rows: readonly number[],
       if (!ch) {
         missing++;
         const m = gridNode(g, i + 1, j);
+        const keep = alleyAt(n) || alleyAt(m);
+        if (!layable(g, hz, n.id, m.id, keep ? PLAIN_HALF : under, false, added)) return null;
+        lay(n.id, m.id);
+        fills.push([n.id, m.id]);
+        if (keep) narrow.push([n.id, m.id]);
         offStreet += sqrt((m.x - n.x) ** 2 + (m.z - n.z) ** 2);
       } else {
         for (const e of ch.edges) if (!plainEdge(e)) return null;
         for (let k = 1; k + 1 < ch.nodes.length; k++) {
           const id = ch.nodes[k];
-          if (!freeOrEl(ctx, ctx.claims.node.get(id))) return null;
-          path.push({ x: g.nodes[id].x, z: g.nodes[id].z });
+          if (!nodeOk(g.nodes[id])) return null;
+          corner.push({ x: g.nodes[id].x, z: g.nodes[id].z });
           if (!ctx.claims.node.has(id)) nodes.push(id);
         }
-        for (const e of ch.edges) if (!ctx.claims.edge.has(e)) edges.push(e);
+        const keep = alleyAt(n) || alleyAt(gridNode(g, i + 1, j));
+        if (keep) narrow.push([n.id, gridNode(g, i + 1, j).id]);
+        for (const e of ch.edges) {
+          if (!keep) widen.push(e);
+          if (!ctx.claims.edge.has(e)) edges.push(e);
+        }
       }
     }
     i++;
   }
   if (missing > MAX_MISSING) return null;
+  // Fillets at the swings' junctions: the corner points within the tangent length either side make way
+  // for the arc (the row's bend nodes near the junction), and the arc must be round enough.
+  const path: Vec2[] = [];
+  const T = CFG.swingTangent;
+  const dist = (p: Vec2, q: Vec2) => sqrt((q.x - p.x) ** 2 + (q.z - p.z) ** 2);
+  const unit = (p: Vec2, q: Vec2): Vec2 => {
+    const l = dist(p, q) || 1;
+    return { x: (q.x - p.x) / l, z: (q.z - p.z) / l };
+  };
+  const newAt = new Array<number>(corner.length).fill(-1);
+  for (let k = 0; k < corner.length; k++) {
+    const t = turnAt.find((q) => q.k === k);
+    if (!t) {
+      // Skip a corner point inside a neighbouring fillet's reach.
+      if (turnAt.some((q) => q.k !== k && dist(corner[q.k], corner[k]) < T + 2)) continue;
+      newAt[k] = path.length;
+      path.push(corner[k]);
+      continue;
+    }
+    const C = corner[k];
+    // The row's direction on the way in or out; the diagonal's straight to the other junction.
+    const isStart = turnAt.indexOf(t) % 2 === 0;
+    const other = isStart ? corner[k + 1] : corner[k - 1];
+    const u = isStart ? (t.i > 0 ? rowDir(t.i, rows[t.i], true) : unit(C, other)) : unit(other, C);
+    const v = isStart ? unit(C, other) : t.i + 1 < W ? rowDir(t.i, rows[t.i], false) : unit(other, C);
+    const f = fillet(C, u, v, T);
+    if (f.r < CFG.swingRadius) return null;
+    newAt[k] = path.length + Math.floor(f.pts.length / 2);
+    for (const p of f.pts) path.push(p);
+  }
+  for (let i = 0; i < W; i++) at[i] = newAt[at[i]];
+  if (at.some((k) => k < 0)) return null;
   // Run-offs straight on along the end streets, on until past the map's edge.
   const t0 = anchorAt(0, rows[0]).t;
   const tN = anchorAt(W - 1, rows[W - 1]).t;
@@ -401,5 +492,5 @@ export function planLine(ctx: PlanContext, hz: Hazards, rows: readonly number[],
     }
   }
   if (elCrossings(path, ctx.areas).length > 1) return null;
-  return { path, at, rows: rows.slice(), nodes, edges, crossed, length, swings: swings.length, offStreet };
+  return { path, at, rows: rows.slice(), nodes, edges, widen, narrow, fills, diagonals, turns, length, swings: swings.length, offStreet };
 }

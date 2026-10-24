@@ -1,7 +1,8 @@
 /**
  * Night lighting: dark blue ambient, a faint moon, and a small pool of real
  * point lights that follows the focus point (the player's car), snapping to
- * the nearest streetlights. Everything else is emissive or faked in lightFx.
+ * the nearest lamps (streetlights, park and market lamps, the expressway's)
+ * on the level the car is on. Everything else is emissive or faked in lightFx.
  *
  * Lights fade with their distance relative to the first lamp that missed the
  * pool, so when the nearest set changes the light that hops from one lamp to
@@ -29,6 +30,18 @@ const DEFAULT_MOOD: MoodLighting = { hemi: 0x3a4a9a, hemiIntensity: 0.4, moonLig
 const MOON_HOME = new THREE.Vector3(-200, 400, 120);
 /** How often the pool re-picks its nearest lamps (ms; eight frames at 60 fps). */
 const REPICK_MS = (8 * 1000) / 60;
+
+/**
+ * A lamp's pick distance from the focus, squared (m²): across the ground, plus a penalty for a lamp
+ * between 3 and 25 m below it (the street under the expressway's deck, seen from a car up on it) or more
+ * than 10 m above it (the deck's lamps, seen from the street beneath), neither of which lights the road
+ * the car is on. A drone high over the city has every lamp more than 25 m below it: no penalty.
+ */
+function reach2(p: THREE.Vector3, f: THREE.Vector3): number {
+  const dy = p.y - f.y;
+  const pen = dy < -3 && dy > -25 ? 6 * (-dy - 3) : dy > 10 ? 3 * (dy - 10) : 0;
+  return (p.x - f.x) ** 2 + (p.z - f.z) ** 2 + pen * pen;
+}
 
 export class NightLighting {
   readonly group = new THREE.Group();
@@ -135,8 +148,7 @@ export class NightLighting {
       bestD.length = 0;
       bestI.length = 0;
       for (let i = 0; i < this.lamps.length; i++) {
-        const p = this.lamps[i];
-        const d = (p.x - focus.x) ** 2 + (p.z - focus.z) ** 2;
+        const d = reach2(this.lamps[i], focus);
         if (bestD.length <= n || d < bestD[bestD.length - 1]) {
           let at = bestD.length;
           while (at > 0 && bestD[at - 1] > d) at--;
@@ -173,8 +185,7 @@ export class NightLighting {
         this.pool[k].intensity = 0;
         continue;
       }
-      const p = this.lamps[lamp];
-      const d = Math.hypot(p.x - focus.x, p.z - focus.z);
+      const d = Math.sqrt(reach2(this.lamps[lamp], focus));
       const w = Number.isFinite(this.cutoff) ? Math.max(0, Math.min(1, (this.cutoff - d) / band)) : 1;
       this.pool[k].intensity = NightLighting.INTENSITY * w * w * (3 - 2 * w);
     }

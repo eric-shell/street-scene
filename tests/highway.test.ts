@@ -86,7 +86,7 @@ describe('elevated highway (plan)', () => {
       expect(ramps.length).toBeLessThanOrEqual(CFG.ramps[1]);
       for (const r of ramps) {
         expect(r.params.deck).toBe(deck.id);
-        expect(r.params.grade).toBeLessThanOrEqual(CFG.rampGrade);
+        expect(r.params.grade).toBeLessThanOrEqual(CFG.rampGrade[1]);
       }
       const again = planRoads(seed).districts.areas.filter((a) => a.kind === 'highway');
       expect(JSON.stringify(again)).toBe(JSON.stringify(areas));
@@ -135,7 +135,7 @@ describe('elevated highway (levels)', () => {
         const ax = r.axis;
         const pr = r.profile;
         expect(pr.ready).toBe(true);
-        expect(pr.grade).toBeLessThanOrEqual(CFG.rampGrade);
+        expect(pr.grade).toBeLessThanOrEqual(CFG.rampGrade[1]);
         expect(pr.grade).toBeGreaterThan(0.03);
         // Vertical curves: a car leaves the ground over a crest of curvature k at sqrt(g / k). The fastest a
         // car takes the ramp's turn (radius r at 1.6 g) plus a margin stays under that at the top; at the
@@ -153,7 +153,7 @@ describe('elevated highway (levels)', () => {
           const y = rampHeightAlong(ax, pr, u).y;
           const h = w.heightAt(q.x, q.z, y);
           if (u > pr.blend) expect(h).toBeCloseTo(y, 3);
-          if (!Number.isNaN(prev)) expect(Math.abs(h - prev)).toBeLessThan(0.5 * (CFG.rampGrade + 0.02));
+          if (!Number.isNaN(prev)) expect(Math.abs(h - prev)).toBeLessThan(0.5 * (CFG.rampGrade[1] + 0.02));
           prev = h;
         }
         const foot = axisAt(ax, 0.2);

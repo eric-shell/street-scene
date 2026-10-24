@@ -17,12 +17,12 @@ import { distToPolygonEdge, pointInPolygon, polygonBounds, solidWalls } from '..
 import { elCurve } from '../subway';
 import { RAIL, curvePoint, projectOnCurve, sampleCurve } from '../../railCurve';
 import { axisAt, rampHeightAlong, solveGrade } from './rampAxis';
-import { HALF, SOLID_TO_END, deckPoint, deckTopAt, deckUnderAt, highwayDeck, highwayRamp, rightOf } from './shape';
+import { HALF, deckPoint, deckTopAt, deckUnderAt, highwayDeck, highwayRamp, laneCenter, rightOf } from './shape';
 import { pending, rampPending } from './build';
 
 const CFG = CITY.districts.highway;
 
-/** A barrier stops cars within this much below the deck top (m); below that they pass under it. */
+/** A parapet or the median stops cars within this much below the deck top (m); below that they pass under it. */
 const BARRIER_REACH = 2.6;
 
 /** A column stops cars up to this far under the deck's underside (m); a car above it is on the deck. */
@@ -122,7 +122,7 @@ export function settleHighway(areas: readonly Area[], builds: readonly AreaBuild
           const q = axisAt(ax, p.u);
           // On the embankment (a solid level) a side wall is a plain wall to everyone; on the bridge stretch
           // at the top, high over the ground, it only stops cars up on the ramp.
-          if (p.u < ax.length - SOLID_TO_END || y - terrain.heightAt(q.x, q.z) < 4) continue;
+          if (p.u < r.uSolid || y - terrain.heightAt(q.x, q.z) < 4) continue;
           h = y - BARRIER_REACH;
           for (const w of p.walls) w.bottom = h;
         } else if (p.kind === 'column') {
@@ -237,7 +237,7 @@ export function highwayGates(areas: readonly Area[]): Wall[] {
 }
 
 /**
- * A reset on the highway (free roam): onto the slow lane of the carriageway the car was heading
+ * A reset on the highway (free roam): onto the slow (outer) lane of the carriageway the car was heading
  * along, at the nearest point of the deck clear of the closures and the ramps' merges, facing along
  * it, at the deck's height. Null when the world has no highway.
  */
@@ -260,7 +260,7 @@ export function highwayResetPose(areas: readonly Area[], x: number, z: number, y
       if (s >= lo && s <= hi) s = dir > 0 ? Math.min(d.sE - 30, hi + 6) : Math.max(d.sW + 30, lo - 6);
     }
     sampleCurve(c, s, P);
-    const lat = CFG.median / 2 + 0.6 + CFG.lane * 1.5;
+    const lat = laneCenter(CFG.lanes - 1);
     const p = deckPoint(c, s, dir * lat);
     const dist = Math.hypot(p.x - x, p.z - z);
     if (dist < bestD) {
