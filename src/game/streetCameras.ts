@@ -29,7 +29,11 @@
  * The showreel holds its line through the street's clutter: posts, trees,
  * pillars, barriers and low walls may pass in front of it, and only a mass
  * it could end up inside (a building, a tunnel's rock, a car park) pulls it
- * in, eased so even that never jumps. Render only.
+ * in. Shots ride a steadied copy of the car's frame (its heading on a
+ * spring fed the lane's turn rate, so the path's sample kinks never twitch a
+ * shot panning through a corner), and the pull in front of a mass and the
+ * lift off the ground and under a deck are springs too: nothing the camera
+ * does starts or stops in a single frame. Render only.
  */
 import * as THREE from 'three';
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -39,7 +43,7 @@ import type { WallLook } from '../city/districts/types';
 import type { CarPose } from '../render/car/carView';
 import { wallHit } from '../render/camera/camera';
 import { clampCeiling } from '../render/camera/ceilings';
-import { damp } from '../shared/anim';
+import { spring, type Spring } from '../shared/anim';
 import type { PathSample } from './cruise';
 import type { StreetStage } from './streetStage';
 
@@ -57,12 +61,19 @@ type Frame = Pick<CarPose, 'x' | 'y' | 'z' | 'yaw'>;
 const GLIDE = { dur: 0.95, ref: 38, maxDur: 1.9, rise: 1.2, fov: 7, blur: 0.45 } as const;
 
 /**
- * The showreel's pull in front of a mass between it and the car: how fast it
- * eases in when one comes between them and back out once it has gone (1/s),
+ * The showreel's pull in front of a mass between it and the car: its spring's
+ * stiffness easing in when one comes between them and back out once it has gone (1/s),
  * the least of the way out it keeps, the gap left in front of the wall (as a
  * fraction of the line) and how far it rises at full pull (m).
  */
-const PULL = { inRate: 9, outRate: 1.4, min: 0.2, margin: 0.06, lift: 1.2 } as const;
+const PULL = { inRate: 7, outRate: 2.2, min: 0.2, margin: 0.06, lift: 1.2 } as const;
+
+/**
+ * The steadied frame and the camera's lift: the stiffness (1/s) of the heading's spring
+ * after the car (tracked with no lag in a steady turn, fed the lane's turn rate) and
+ * of the lift off the ground and out of a deck or a ceiling.
+ */
+const STEADY = { yaw: 5, lift: 9 } as const;
 
 /** The walls the showreel will not shoot through: masses a camera could end up inside. Everything else may pass in front of it. */
 const MASSES: ReadonlySet<WallLook> = new Set<WallLook>(['building', 'boundary', 'tunnel', 'rock', 'bluff', 'carPark', 'marketFront', 'highway']);
@@ -217,8 +228,17 @@ export class ShowreelCamera {
   private glideLift = 0;
   private readonly glideFrame: Frame = { x: 0, y: 0, z: 0, yaw: 0 };
   private readonly goalLocal: Local = [0, 0, 0];
-  /** How far out along the line from the car the camera stands (1: where the shot puts it), eased (PULL); NaN: take the next one as it is. */
-  private pull = NaN;
+  /** How far out along the line from the car the camera stands (1: where the shot puts it), a spring (PULL). */
+  private readonly pull: Spring = { x: 1, v: 0 };
+  /** The lift off the ground and out of anything overhead (m), a spring (STEADY.lift). */
+  private readonly lift: Spring = { x: 0, v: 0 };
+  /** Set when the next keepClear should take its pull and lift as they are (after a cut, and while the roadside camera stands still). */
+  private settle = true;
+  /** The car's frame the shots ride: at the car, its heading a spring after the car's (STEADY.yaw). */
+  private readonly rig: Frame = { x: 0, y: 0, z: 0, yaw: 0 };
+  private readonly rigYaw: Spring = { x: 0, v: 0 };
+  private rigKnown = false;
+  private readonly lifted = new THREE.Vector3();
 
   /** Start the reel over on its opener, for a newly built street with the car on the start line. */
   open(): void {
@@ -230,7 +250,8 @@ export class ShowreelCamera {
   cut(): void {
     this.t = Infinity;
     this.blend = 1;
-    this.pull = NaN;
+    this.settle = true;
+    this.rigKnown = false;
   }
 
   /** The current mode: the shot loop or a held move. */
@@ -245,9 +266,9 @@ export class ShowreelCamera {
    */
   setMode(mode: ReelMode, blend = true): void {
     if (mode === this.mode && blend) return;
-    const p = this.stage?.pose;
+    const p = this.stage && this.rigKnown ? this.rig : undefined;
     this.blend = 1;
-    if (!blend) this.pull = NaN;
+    if (!blend) this.settle = true;
     if (p && blend) {
       toLocal(p, this.camera.position, this.fromCam);
       toLocal(p, this.look, this.fromLook);
@@ -282,13 +303,14 @@ export class ShowreelCamera {
     if (stage !== this.stage) {
       this.hopsSeen = stage.hops;
       this.glide = 1;
+      this.rigKnown = false;
     }
     if (stage.hops !== this.hopsSeen) this.startGlide(stage);
     this.stage = stage;
     this.clock += dt;
     this.t += dt;
     this.moveT += dt;
-    const p = stage.pose;
+    const p = this.steady(stage, dt);
     const pos = this.goal;
     const look = this.goalLook;
     let fov: number;
@@ -342,7 +364,7 @@ export class ShowreelCamera {
       fov += GLIDE.fov * arc;
     }
     // The roadside camera was stood clear of the street and holds still while the car drives past it.
-    if (this.mode === 'reel' && SHOTS[this.index].name === 'roadside' && this.blend >= 1 && this.glide >= 1) this.pull = NaN;
+    if (this.mode === 'reel' && SHOTS[this.index].name === 'roadside' && this.blend >= 1 && this.glide >= 1) this.settle = true;
     else this.keepClear(stage.world, frame, pos, dt);
     this.lastFrame.x = frame.x;
     this.lastFrame.y = frame.y;
@@ -404,9 +426,31 @@ export class ShowreelCamera {
     return f;
   }
 
+  /**
+   * The frame the shots ride this frame: at the car, its heading a spring after the car's, fed the lane's turn rate
+   * (curvature times speed) so a steady turn is tracked exactly and only the path's kinks are smoothed away.
+   */
+  private steady(stage: StreetStage, dt: number): Frame {
+    const p = stage.pose;
+    const r = this.rig;
+    const y = this.rigYaw;
+    // Unwrapped next to the spring, so it never spins the long way round.
+    const target = p.yaw + Math.round((y.x - p.yaw) / (2 * Math.PI)) * 2 * Math.PI;
+    if (!this.rigKnown) {
+      y.x = target;
+      y.v = 0;
+      this.rigKnown = true;
+    } else spring(y, target, STEADY.yaw, dt, stage.path.sample(stage.s, this.sample).k * stage.speed);
+    r.x = p.x;
+    r.y = p.y;
+    r.z = p.z;
+    r.yaw = y.x;
+    return r;
+  }
+
   /** Take the side of the car with room for a move's camera. */
   private pickSide(stage: StreetStage, cam: Move['cam']): void {
-    const p = stage.pose;
+    const p = this.rigKnown ? this.rig : stage.pose;
     const room = (side: number) => {
       const c = toWorld(p, cam(0, side, this.local), this.tmp);
       return wallHit(stage.world, p.x, p.z, c.x, c.z, this.scratch);
@@ -421,10 +465,10 @@ export class ShowreelCamera {
     this.index = this.index + 1 < SHOTS.length ? this.index + 1 : LOOP_START;
     this.t = 0;
     const s = SHOTS[this.index];
-    const p = stage.pose;
+    const p = this.rigKnown ? this.rig : stage.pose;
     if (!flowed) {
       this.side = -this.side;
-      this.pull = NaN;
+      this.settle = true;
     }
     if (s.sided && !flowed) {
       // A flowing shot settles where the next one starts, so that is where it needs the room.
@@ -455,23 +499,36 @@ export class ShowreelCamera {
   }
 
   /**
-   * Pull a camera in front of a mass between it and the car (eased, PULL), keep it off the ground and under roofs.
-   * Only masses count (MASSES): a lamp post or a tree trunk crossing the line used to snap the camera in and back
-   * out within a few frames.
+   * Pull a camera in front of a mass between it and the car (PULL), lift it off the ground and out of anything
+   * overhead (STEADY.lift), both on springs. Only masses count (MASSES): a lamp post or a tree trunk crossing the
+   * line used to snap the camera in and back out within a few frames, and a snap under a deck or up a trench's
+   * bank moved it metres in one.
    */
   private keepClear(world: World, p: Frame, pos: THREE.Vector3, dt: number): void {
     const hit = wallHit(world, p.x, p.z, pos.x, pos.z, this.scratch, undefined, isMass);
     const want = hit < 1 ? Math.max(PULL.min, hit - PULL.margin) : 1;
-    if (Number.isNaN(this.pull)) this.pull = want;
-    else this.pull += (want - this.pull) * damp(want < this.pull ? PULL.inRate : PULL.outRate, dt);
-    const t = this.pull;
+    const pull = this.pull;
+    if (this.settle) {
+      pull.x = want;
+      pull.v = 0;
+    } else spring(pull, want, want < pull.x ? PULL.inRate : PULL.outRate, dt);
+    const t = Math.min(1, Math.max(PULL.min, pull.x));
     if (t < 1) {
       pos.x = p.x + (pos.x - p.x) * t;
       pos.z = p.z + (pos.z - p.z) * t;
       pos.y += (1 - t) * PULL.lift;
     }
-    pos.y = Math.max(pos.y, world.heightAt(pos.x, pos.z) + 0.3);
-    clampCeiling(world, pos);
+    const c = this.lifted.copy(pos);
+    // The car's height picks the level under a deck (World.heightAt): it follows the car under a bridge, not up onto it.
+    c.y = Math.max(c.y, world.heightAt(c.x, c.z, p.y) + 0.3);
+    clampCeiling(world, c);
+    const lift = this.lift;
+    if (this.settle) {
+      lift.x = c.y - pos.y;
+      lift.v = 0;
+    } else spring(lift, c.y - pos.y, STEADY.lift, dt);
+    pos.y += lift.x;
+    this.settle = false;
   }
 }
 
