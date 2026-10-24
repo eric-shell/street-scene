@@ -6,15 +6,20 @@
  * menu city's own scene instead, borrowed from the street stage and handed
  * back when the session ends, with the menu's cruise still driving the car
  * until the player touches a control.
+ *
+ * RaceSession keeps the state and the tick/render core. The parts that read it
+ * sit in session/: snap.ts (the interpolated car poses), sparks.ts (car and
+ * barrier sparks), hud.ts (the HUD card, help sections and per frame HUD data),
+ * camera.ts (the view modes, orbit drag and the trackside TV camera) and
+ * audio.ts (engine voices, sound effects and their per frame feeds).
  */
 import * as THREE from 'three';
-import { routeSample } from '../city/route';
-import { createRace, RaceCar, RaceConfig, RaceState, raceTime, standings, stepRace, ticksToSeconds } from '../sim/race';
+import { createRace, RaceConfig, RaceState, raceTime, stepRace, ticksToSeconds } from '../sim/race';
 import { InputFrame, NEUTRAL_INPUT, unpackInput } from '../sim/input';
 import { VisualBuild } from '../shared/carBuild';
 import { DT, TICK_HZ } from '../sim/constants';
 import { DEG } from '../sim/math';
-import { CarView, CarPose } from '../render/car/carView';
+import { CarView } from '../render/car/carView';
 import { Drivers } from '../render/people/drivers';
 import { ROAD_Y } from '../render/street/cityMeshes';
 import { unmaskVehicle } from '../render/vehicleMask';
@@ -22,9 +27,6 @@ import { LightTrails } from '../render/car/lightTrails';
 import { Sparks } from '../render/car/sparks';
 import { TireFx } from '../render/car/tireFx';
 import { WaypointBeacons } from '../render/race/waypointBeacons';
-import { EngineVoice, audioHub } from '../audio/engineAudio';
-import { Sfx } from '../audio/sfx';
-import { manifestCar } from '../render/car/carAssets';
 import { CarAssetLibrary } from '../render/car/carAssets';
 import { CAMERA, ChaseCamera } from '../render/camera/camera';
 import { RaceCinematics, type HandoffShot } from '../render/camera/cinematics';
@@ -33,20 +35,17 @@ import { NITRO_FX } from '../render/post';
 import type { World } from '../city/world';
 import type { Cruise } from './cruise';
 import type { StreetStage } from './streetStage';
-import type { CrowdCar } from '../render/race/crowds';
 import { FreeFlyCamera } from '../render/camera/freeFly';
 import { DroneMode } from './drone';
-import type { CameraMode } from '../render/camera/camera';
 import { InputManager } from '../input/inputManager';
 import { Rumble } from '../input/rumble';
-import { Hud, HudCar, HudData, RACE_CARD, raceReadouts } from '../ui/hud/hud';
+import { Hud, HudCar, RACE_CARD } from '../ui/hud/hud';
 import { courseFor, openFullMap, type FullMap, type WaypointStore } from '../ui/map/fullMap';
 import { placeName } from '../ui/map/places';
 import { toast } from '../ui/kit/dom';
-import { Compass, MapIcon, MapPinned, Pause } from '../ui/kit/icons';
+import { MapPinned } from '../ui/kit/icons';
 import { HudCard } from '../ui/hud/hudCard';
-import { Help, MUSIC_KEYS, type HelpKey, type HelpSection } from '../ui/panels/help';
-import { btn } from '../ui/kit/dom';
+import { Help } from '../ui/panels/help';
 import type { Vec2 } from '../sim/math';
 import { Settings } from '../ui/settings';
 import { formatTime } from '../ui/kit/format';
@@ -54,100 +53,20 @@ import { mph } from '../ui/kit/units';
 import { ReplayData } from '../replay/replay';
 import { PROP_DEFS } from '../city/props';
 import { TRAFFIC_SNAP, TrafficView, snapTraffic } from '../render/traffic/traffic';
-import { driftZoneStatus } from '../sim/driftZones';
-import { DRIFT_ZONES } from '../sim/tuning';
 import { ChaseCall, policeChaseCall } from '../render/traffic/policeChase';
 import { HazardFx } from './hazardFx';
 import { KeyLight } from './keyLight';
+import { SessionAudio } from './session/audio';
+import { type Snap, snap, lerpSnap } from './session/snap';
+import { emitSparks, sparkBurst, crackRail, spitRailSparks } from './session/sparks';
+import { createHudCard, helpSections, raceHudData, trafficDotCars } from './session/hud';
+import { REPLAY_CAMS, VIEW_KEYS, isFollowCam, bindOrbitDrag, TvCamera, type ReplayCamMode } from './session/camera';
 
-interface Snap extends CarPose {
-  nitroStage: number;
-  vx: number;
-  vz: number;
-  rpm: number;
-  throttle: number;
-  /** A gear change is cutting the drive (engine voice). */
-  shifting: boolean;
-  /** The two-step or antilag has the spark off (engine voice: the limiter's stutter). */
-  cut: boolean;
-  /** Time left passing through other cars after a reset (s): the car blinks while it does. */
-  passThrough: number;
-}
+export type { ReplayCamMode };
 
 /** Blinks per second of a car passing through the others after a reset. */
 const RESET_BLINK_HZ = 7;
 
-/**
- * A hit on a cyan barrier cracks its panel from this impact speed (m/s), full size at `full`;
- * the hit throws `burst` sparks off the panel (at strength 0 and 1), and a cracked panel near
- * the camera shorts out `spit` times a second (at strength 0 and 1), `spitCount` sparks each.
- */
-const RAIL_CRACK = { min: 6, full: 20, burst: [14, 40], spit: [0.25, 1.1], spitCount: [3, 8] } as const;
-
-function snap(rc: RaceCar): Snap {
-  const c = rc.state;
-  return {
-    x: c.x,
-    y: c.y,
-    z: c.z,
-    yaw: c.yaw,
-    pitch: c.pitch,
-    roll: c.roll,
-    steer: c.steerAngle,
-    comp: c.wheels.map((w) => w.compression),
-    spin: c.wheels.map((w) => w.spin),
-    braking: c.aLong < -4 && c.speed > 1,
-    nitro: c.nitroActive,
-    nitroStage: c.nitroStage,
-    speed: c.speed,
-    vx: c.vx,
-    vz: c.vz,
-    rpm: c.rpm,
-    throttle: c.throttle,
-    shifting: c.shiftTimer > 0,
-    cut: c.twoStepCut > 0,
-    passThrough: rc.passThrough,
-  };
-}
-
-const lerpAngle = (a: number, b: number, t: number) => {
-  let d = b - a;
-  while (d > Math.PI) d -= Math.PI * 2;
-  while (d < -Math.PI) d += Math.PI * 2;
-  return a + d * t;
-};
-
-function lerpSnap(a: Snap, b: Snap, t: number): Snap {
-  const l = (x: number, y: number) => x + (y - x) * t;
-  return {
-    x: l(a.x, b.x),
-    y: l(a.y, b.y),
-    z: l(a.z, b.z),
-    yaw: lerpAngle(a.yaw, b.yaw, t),
-    pitch: l(a.pitch, b.pitch),
-    roll: l(a.roll, b.roll),
-    steer: l(a.steer, b.steer),
-    comp: a.comp.map((v, i) => l(v, b.comp[i])),
-    spin: a.spin.map((v, i) => lerpAngle(v, b.spin[i], t)),
-    braking: b.braking,
-    nitro: b.nitro,
-    nitroStage: b.nitroStage,
-    speed: l(a.speed, b.speed),
-    vx: l(a.vx, b.vx),
-    vz: l(a.vz, b.vz),
-    rpm: l(a.rpm, b.rpm),
-    throttle: l(a.throttle, b.throttle),
-    shifting: b.shifting,
-    cut: b.cut,
-    passThrough: b.passThrough,
-  };
-}
-
-export type ReplayCamMode = 'chase' | 'close' | 'bumper' | 'hood' | 'tv' | 'orbit' | 'free';
-const REPLAY_CAMS: ReplayCamMode[] = ['chase', 'tv', 'orbit', 'close', 'hood', 'free'];
-/** Number key views: 1 chase, 2 close, 3 bumper, 4 hood, 5 trackside TV, 6 orbit, 7 free fly (replays); 0 is the drone. */
-const VIEW_KEYS: ReplayCamMode[] = ['chase', 'close', 'bumper', 'hood', 'tv', 'orbit', 'free'];
-const isFollowCam = (v: ReplayCamMode): v is CameraMode => v === 'chase' || v === 'close' || v === 'bumper' || v === 'hood';
 /** The circuit gantry sign switches to the next label this many ticks after the player passes under it. */
 const SIGN_DELAY = 70;
 /** District names for the open world HUD; plain streets and filler pockets read as the city. */
@@ -160,8 +79,6 @@ const NITRO_OUT = 2.5;
 const MUSIC_LIFT = { db: [2, 4, 6], in: 4, out: 1.2 } as const;
 /** On a tick where the player only hit props, the speed drop must exceed slowdownMin by this many times over to count as a crash. */
 const PROP_SLOWDOWN_EXTRA = 1.6;
-/** Free roam minimap: traffic this close to the player shows as dots (m; the map spans about 260 m to its edge). */
-const TRAFFIC_DOT_RANGE = 280;
 /**
  * Free roam waypoint (set on the city map, render only): driving this close
  * (m) reaches it. One set within reach of the car only counts once the car has
@@ -169,37 +86,9 @@ const TRAFFIC_DOT_RANGE = 280;
  */
 const WAYPOINT = { reach: 25, arm: 35 } as const;
 
-/** Car sparks (render/car/sparks.ts): when, where and how many, from the sim's contact telemetry. */
-const SPARK = {
-  /** Only cars this close to the camera throw sparks (m). */
-  range: 140,
-  /**
-   * Sparks leave the contact backward at this share of the car's speed and outward from the
-   * wall. Real sparks shed forward with the car, but then the body hides them from every
-   * camera; a fan trailing behind is what the eye expects from a grinding car.
-   */
-  carry: 0.45,
-  outward: 2.4,
-  /** Scraping: sliding speed (m/s) before it sparks, sparks per tick per m/s, cap per tick, height band above the road (m). */
-  scrapeMin: 2,
-  scrapePerMs: 0.22,
-  scrapeMax: 6,
-  scrapeHeight: [0.2, 0.6],
-  /** Bottoming out: overtravel (m) and speed (m/s) before it sparks, sparks per m of overtravel at 25 m/s, cap per tick. */
-  bottomMin: 0.004,
-  bottomSpeed: 5,
-  bottomPerM: 260,
-  bottomMax: 14,
-  /** A hard wall hit: sparks per m/s of impact on top of 8, cap. */
-  burstPerMs: 2.2,
-  burstMax: 46,
-} as const;
 /** After a handoff with nobody at the wheel: the cruise brakes to a stop this gently (share of the brake), and lets go under this speed (m/s). */
 const CRUISE_RUNOUT = { target: 0, maxBrake: 0.12 } as const;
 const CRUISE_STOPPED = 0.3;
-/** A crowd section's heard excitement crossing this cheers out loud, at most every SECTION_CHEER_GAP s. */
-const SECTION_CHEER_LEVEL = 0.7;
-const SECTION_CHEER_GAP = 8;
 /**
  * The start crowd builds through the countdown: a wave this strong at each count (GO is 1).
  * A waiting grid alone only stirs a murmur, which an idling engine buried.
@@ -305,9 +194,7 @@ export class RaceSession {
   /** The camera rendered last frame (the drone starts from it). */
   private lastCamera: THREE.PerspectiveCamera | null = null;
   private freeCam: FreeFlyCamera | null = null;
-  private tvPoint = new THREE.Vector3();
-  private tvValid = false;
-  private tvSide = 1;
+  private tv = new TvCamera();
   private unsub: (() => void)[] = [];
   readonly isReplay: boolean;
   private trails: LightTrails;
@@ -322,12 +209,9 @@ export class RaceSession {
   private trafficPrev = new Float32Array(0);
   private trafficCurr = new Float32Array(0);
   private carLight: KeyLight;
-  private engines: EngineVoice[] = [];
-  private sfx: Sfx | null = null;
+  private audio: SessionAudio;
   /** Gamepad rumble for the player's car; none in a replay. */
   private readonly rumble: Rumble | null;
-  /** Headlight flash level driven by the horn (render side only). */
-  private flash = 0;
   /** Open world (free roam): no crowds, fireworks or line celebrations. */
   private readonly openWorld: boolean;
   /** The scene is the street stage's (handoff): it goes back to the stage on dispose instead of being disposed. */
@@ -353,11 +237,6 @@ export class RaceSession {
   private chaseCall: ChaseCall = { phase: 'patrol', car: -1 };
   /** The HUD warning for the level crossing gates ahead (game/hazardFx.ts). */
   private readonly hazards: HazardFx;
-  /** Racer poses for the crowd (reused every frame). */
-  private readonly crowdCars: CrowdCar[];
-  /** Last heard excitement and last cheer time (s) per crowd section spot. */
-  private readonly sectionLevel: number[] = [];
-  private readonly sectionCheerAt: number[] = [];
   readyPromise: Promise<void>;
 
   constructor(
@@ -387,43 +266,19 @@ export class RaceSession {
     // Free roam (the waypoint race's world is open too, but it is a race: grid, rivals, finish).
     this.openWorld = opts.config.openWorld === true;
     this.night.crowds.setEnabled(!this.openWorld);
-    this.crowdCars = this.race.cars.map(() => ({ x: 0, z: 0, speed: 0 }));
     this.hud = new Hud(uiRoot, this.race.world);
     this.hud.onMapClick = () => this.toggleMap();
     this.hazards = new HazardFx(this.hud.root);
-    // The same card as the drone's in every mode: Map (not in a replay, which has none) and hide.
-    const shared = {
-      actions: this.isReplay ? [] : [btn(MapIcon, 'Map', () => this.toggleMap(), '--small')],
+    this.card = createHudCard({
+      race: this.race,
+      isReplay: this.isReplay,
+      openWorld: this.openWorld,
+      onMap: () => this.toggleMap(),
       canHide: () => !this.paused && !this.fullMap && !this.cine.active,
-    };
-    if (this.openWorld) {
-      // Free roam's green from the menu: the district, time, smashes and top speed, and Exit back to the menu.
-      this.card = new HudCard({
-        ...shared,
-        hue: 'green',
-        icon: Compass,
-        title: 'Free roam',
-        status: '',
-        stats: ['Time', 'Smashed', 'Top speed'],
-        onExit: () => opts.onQuit?.(),
-        exitTitle: 'Back to the menu',
-      });
-    } else {
-      // A race in its type's hue under the event's name: place, lap or progress, time and best, and Pause where
-      // free roam has Exit (quitting a race goes through the pause screen).
-      const mode = this.race.config.mode;
-      this.card = new HudCard({
-        ...shared,
-        ...RACE_CARD[mode],
-        status: [this.isReplay ? 'Replay' : '', this.race.world.event?.name ?? ''].filter(Boolean).join(' · '),
-        stats: raceReadouts(mode),
-        onExit: () => opts.onPause?.(),
-        exitLabel: 'Pause',
-        exitIcon: Pause,
-        exitTitle: 'Pause (Esc)',
-      });
-    }
-    this.help = new Help({ title: this.openWorld ? 'Free roam' : RACE_CARD[this.race.config.mode].title, sections: () => this.helpSections(), onToggle: (open) => this.pauseForHelp(open) });
+      onQuit: () => opts.onQuit?.(),
+      onPause: () => opts.onPause?.(),
+    });
+    this.help = new Help({ title: this.openWorld ? 'Free roam' : RACE_CARD[this.race.config.mode].title, sections: () => helpSections(this.race.config.mode, this.isReplay, this.openWorld), onToggle: (open) => this.pauseForHelp(open) });
     this.hud.setHelp(this.help);
     this.hud.setCard(this.card);
     // Tab opens the city map while driving and closes it again; in menus (paused) it keeps moving focus.
@@ -495,21 +350,7 @@ export class RaceSession {
     // The key light that rides above the player so cars read clearly at night.
     this.carLight = new KeyLight();
     this.night.scene.add(this.carLight);
-    // Engine sound: the player's car loud and centered, rivals by distance.
-    const hub = audioHub();
-    if (hub) {
-      hub.applyLevels(settings);
-      this.engines = this.race.cars.map((rc, i) => {
-        const voice = new EngineVoice(manifestCar(rc.carId).engine, i === 0 ? 0.26 : 0.2, { lite: i > 0 });
-        // An overrun pop flashes a flame at the car's tailpipe when it sounds.
-        voice.onPop = (pipe, size, delay) => this.views[i]?.popFlash(pipe, size, delay);
-        return voice;
-      });
-      // Crashes, nitrous, scrapes, horn and countdown beeps (src/audio/sfx.ts).
-      this.sfx = new Sfx();
-      const sfx = this.sfx;
-      this.night.city.finishLine.onFirework = (x, y, z, size) => sfx.firework(x, y, z, size);
-    }
+    this.audio = new SessionAudio(settings, this.race, this.views, this.night);
     this.curr = this.race.cars.map((c) => snap(c));
     this.prev = this.curr.map((s) => ({ ...s }));
     if (!this.openWorld) this.updateCelebrations();
@@ -531,39 +372,7 @@ export class RaceSession {
       input.onView((n) => this.onViewKey(n)),
     );
     // A mouse drag orbits the follow camera around the car at any time (touch keeps its steering).
-    {
-      const canvas = gr.canvas;
-      let drag: { id: number; x: number; y: number } | null = null;
-      const down = (e: PointerEvent) => {
-        if (e.pointerType === 'touch' || e.button !== 0 || this.drone || (this.isReplay && this.replayCam === 'free')) return;
-        drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
-        this.cam.setOrbiting(true);
-        canvas.style.cursor = 'grabbing';
-      };
-      const move = (e: PointerEvent) => {
-        if (!drag || e.pointerId !== drag.id) return;
-        this.cam.orbitBy(e.clientX - drag.x, e.clientY - drag.y);
-        drag.x = e.clientX;
-        drag.y = e.clientY;
-      };
-      const up = (e: PointerEvent) => {
-        if (!drag || e.pointerId !== drag.id) return;
-        drag = null;
-        this.cam.setOrbiting(false);
-        canvas.style.cursor = '';
-      };
-      canvas.addEventListener('pointerdown', down);
-      window.addEventListener('pointermove', move);
-      window.addEventListener('pointerup', up);
-      window.addEventListener('pointercancel', up);
-      this.unsub.push(() => {
-        canvas.removeEventListener('pointerdown', down);
-        window.removeEventListener('pointermove', move);
-        window.removeEventListener('pointerup', up);
-        window.removeEventListener('pointercancel', up);
-        canvas.style.cursor = '';
-      });
-    }
+    this.unsub.push(bindOrbitDrag(gr.canvas, this.cam, () => !!this.drone || (this.isReplay && this.replayCam === 'free')));
     input.setTouchVisible(!this.isReplay);
     this.cineOn = !this.isReplay && opts.cinematics !== false;
     if (hand) {
@@ -587,6 +396,11 @@ export class RaceSession {
         gr.canvas.removeEventListener('pointerdown', onTap);
       });
     } else if (!this.openWorld && this.race.world.event) this.hud.message(this.race.world.event.name, 2.6);
+  }
+
+  /** Where the camera is now (last frame's, or the chase camera's before the first frame): sparks only fly near it. */
+  private get camPos(): THREE.Vector3 {
+    return (this.lastCamera ?? this.cam.camera).position;
   }
 
   /** True while the player's controls do nothing: intro, countdown and after the finish (runout). */
@@ -639,42 +453,6 @@ export class RaceSession {
       event: world.event?.name,
       seed: this.opts.seedText ?? String(this.opts.config.seed),
     });
-  }
-
-  /** The help panel's sections: the driving keys (a replay's cameras instead), the views, music and tips for this mode. */
-  private helpSections(): HelpSection[] {
-    const mode = this.race.config.mode;
-    const driving: HelpKey[] = [
-      { keys: ['W', '↑'], label: 'Throttle' },
-      { keys: ['S', '↓'], label: 'Brake, reverse' },
-      { keys: ['A', 'D'], label: 'Steer' },
-      { keys: ['Space'], label: 'Handbrake' },
-      { keys: ['N'], label: 'Nitrous' },
-      { keys: ['Shift'], label: 'Horn' },
-      { keys: ['Q', 'E'], label: 'Shift down, up (manual gearbox)' },
-      { keys: ['R'], label: 'Reset the car' },
-    ];
-    const view: HelpKey[] = [
-      { keys: ['C'], label: this.isReplay ? 'Next camera' : 'Camera' },
-      { keys: [this.isReplay ? '1–7' : '1–6'], label: 'Pick a camera' },
-      { keys: ['0'], label: 'Drone photo mode' },
-      ...(this.isReplay ? [] : [{ keys: ['Tab'], label: 'City map (or click the minimap)' }]),
-      { keys: ['H'], label: 'Hide the HUD' },
-      { keys: ['Esc'], label: 'Pause' },
-    ];
-    const tips = this.openWorld
-      ? ['Set a waypoint on the city map: the chip under the card points the way.', 'The card counts everything you smash on the way.']
-      : mode === 'drift'
-        ? ['Drift zones multiply the points you score inside them.']
-        : mode === 'waypoint'
-          ? ['Any streets go: the chip and the beacons point to the next waypoint.', 'Drift zones refill nitrous faster while you slide through them.']
-          : ['Drift zones refill nitrous faster while you slide through them.'];
-    return [
-      ...(this.isReplay ? [] : [{ title: 'Driving', keys: driving }]),
-      { title: 'View', keys: view },
-      { title: 'Music', keys: MUSIC_KEYS },
-      { title: 'Tips', tips: [...tips, 'Settings › Controls lists the gamepad and touch controls.'] },
-    ];
   }
 
   /** The drive (or the race) pauses under the help panel, as under the map (keys there never reach the car). */
@@ -774,7 +552,7 @@ export class RaceSession {
       this.cam.snap();
     } else {
       this.liveView = view === 'tv' ? 'tv' : 'orbit';
-      this.tvValid = false;
+      this.tv.invalidate();
     }
     this.hud.message(`Camera: ${view}`, 1);
   }
@@ -785,7 +563,7 @@ export class RaceSession {
 
   private setReplayCam(view: ReplayCamMode): void {
     this.replayCam = view;
-    this.tvValid = false;
+    this.tv.invalidate();
     if (isFollowCam(this.replayCam)) {
       this.cam.mode = this.replayCam;
       this.cam.snap();
@@ -799,7 +577,7 @@ export class RaceSession {
       this.freeCam.dispose();
       this.freeCam = null;
     }
-    this.tvValid = false;
+    this.tv.invalidate();
     this.hud.message(`Camera: ${this.replayCam}`, 1);
   }
 
@@ -853,13 +631,13 @@ export class RaceSession {
     // Callouts for the nitrous the player's style earned this tick (ui/hud/boostCallouts.ts).
     this.hud.callouts.tick(r.cars[0].state);
     this.chaseCall = policeChaseCall(r);
-    this.sfx?.syncCountdown(r);
+    this.audio.sfx?.syncCountdown(r);
     this.handleEvents();
     if (this.rumble) {
       if (this.settings.rumble && r.phase !== 'finished') this.rumble.tick(r);
       else this.rumble.stop();
     }
-    this.emitSparks();
+    emitSparks(this.sparks, this.race, this.camPos, this.time);
     {
       const cam = (this.lastCamera ?? this.cam.camera).position;
       this.tireFx.tick(r.cars, r.world, cam.x, cam.z, this.time, DT);
@@ -914,89 +692,6 @@ export class RaceSession {
     return out;
   }
 
-  /**
-   * Sparks from this tick's car telemetry, for cars near the camera: a fan
-   * trailing from the contact while a car scrapes a wall or rail, and a spray
-   * out from under the corner that bottomed out (landings, crests, kickers).
-   */
-  private emitSparks(): void {
-    const cam = (this.lastCamera ?? this.cam.camera).position;
-    const w = this.race.world;
-    for (const rc of this.race.cars) {
-      const c = rc.state;
-      if ((c.x - cam.x) ** 2 + (c.z - cam.z) ** 2 > SPARK.range * SPARK.range) continue;
-      if ((c.scrapeNx || c.scrapeNz) && c.scrape > SPARK.scrapeMin) {
-        const g = w.heightAt(c.scrapeX, c.scrapeZ);
-        const tx = -c.scrapeNz;
-        const tz = c.scrapeNx;
-        const back = -(c.vx * tx + c.vz * tz) * SPARK.carry;
-        const n = Math.min(SPARK.scrapeMax, c.scrape * SPARK.scrapePerMs);
-        const y = g + SPARK.scrapeHeight[0] + Math.random() * (SPARK.scrapeHeight[1] - SPARK.scrapeHeight[0]);
-        this.sparks.emit(this.time, c.scrapeX + c.scrapeNx * 0.06, y, c.scrapeZ + c.scrapeNz * 0.06, tx * back + c.scrapeNx * SPARK.outward, 1.6, tz * back + c.scrapeNz * SPARK.outward, 2, n, g);
-      }
-      if (c.bottomOut > SPARK.bottomMin && c.speed > SPARK.bottomSpeed) {
-        const fx = Math.sin(c.yaw);
-        const fz = Math.cos(c.yaw);
-        let wu = 0;
-        let wv = 0;
-        if (c.bottomWheel >= 0) {
-          // Just outboard of that wheel, so the spray clears the body.
-          const wh = rc.tuning.geometry.wheels[c.bottomWheel];
-          wv = wh[0] * 1.15;
-          wu = wh[2] * 0.8;
-        }
-        const x = c.x + fx * wu + fz * wv;
-        const z = c.z + fz * wu - fx * wv;
-        const g = w.heightAt(x, z);
-        const n = Math.min(SPARK.bottomMax, 3 + c.bottomOut * SPARK.bottomPerM * Math.min(1, c.speed / 25));
-        const side = wv < 0 ? -1 : wv > 0 ? 1 : 0;
-        this.sparks.emit(this.time, x, g + 0.04, z, -c.vx * SPARK.carry * 0.7 + fz * side * SPARK.outward, 1.5, -c.vz * SPARK.carry * 0.7 - fx * side * SPARK.outward, 2.2, n, g);
-      }
-    }
-  }
-
-  /** A hard hit on a wall or rail: one burst off the contact, bigger the harder the hit (impact m/s). */
-  private sparkBurst(car: number, impact: number): void {
-    const rc = this.race.cars[car];
-    const c = rc?.state;
-    if (!c || !(c.scrapeNx || c.scrapeNz)) return;
-    const cam = (this.lastCamera ?? this.cam.camera).position;
-    if ((c.x - cam.x) ** 2 + (c.z - cam.z) ** 2 > SPARK.range * SPARK.range) return;
-    const g = this.race.world.heightAt(c.scrapeX, c.scrapeZ);
-    const out = 1 + impact * 0.25;
-    const n = Math.min(SPARK.burstMax, 8 + impact * SPARK.burstPerMs);
-    this.sparks.emit(this.time, c.scrapeX + c.scrapeNx * 0.08, g + 0.45, c.scrapeZ + c.scrapeNz * 0.08, c.vx * 0.4 + c.scrapeNx * out, 2, c.vz * 0.4 + c.scrapeNz * out, 3.2, n, g);
-  }
-
-  /** A car slamming into a cyan barrier: the piece's panel cracks where it was hit, wider the harder the hit (m/s), and spits sparks. */
-  private crackRail(car: number, impact: number): void {
-    if (impact < RAIL_CRACK.min) return;
-    const c = this.race.cars[car]?.state;
-    if (!c || !(c.scrapeNx || c.scrapeNz)) return;
-    const k = Math.min(1, (impact - RAIL_CRACK.min) / (RAIL_CRACK.full - RAIL_CRACK.min));
-    const crack = this.night.arrows.crackRail(this.race.rails, c.scrapeX, c.scrapeZ, k, this.time);
-    if (!crack) return;
-    const cam = (this.lastCamera ?? this.cam.camera).position;
-    if ((crack.x - cam.x) ** 2 + (crack.z - cam.z) ** 2 > SPARK.range * SPARK.range) return;
-    const out = 1.5 + impact * 0.12;
-    const n = RAIL_CRACK.burst[0] + (RAIL_CRACK.burst[1] - RAIL_CRACK.burst[0]) * k;
-    this.sparks.emit(this.time, crack.x, crack.y, crack.z, crack.nx * out, 2.4, crack.nz * out, 2.6, n, this.race.world.heightAt(crack.x, crack.z));
-  }
-
-  /** Cracked barrier panels near the camera short out now and then: a few sparks off the crack (dt s, the render frame). */
-  private spitRailSparks(dt: number): void {
-    const cracks = this.night.arrows.railCracks;
-    if (!cracks.length || dt <= 0) return;
-    const cam = (this.lastCamera ?? this.cam.camera).position;
-    for (const c of cracks) {
-      if ((c.x - cam.x) ** 2 + (c.z - cam.z) ** 2 > SPARK.range * SPARK.range) continue;
-      const rate = RAIL_CRACK.spit[0] + (RAIL_CRACK.spit[1] - RAIL_CRACK.spit[0]) * c.strength;
-      if (Math.random() >= rate * dt) continue;
-      const n = RAIL_CRACK.spitCount[0] + Math.random() * (RAIL_CRACK.spitCount[1] - RAIL_CRACK.spitCount[0]) * (0.5 + c.strength * 0.5);
-      this.sparks.emit(this.time, c.x, c.y, c.z, c.nx * 1.2, 0.6, c.nz * 1.2, 1.4, n, this.race.world.heightAt(c.x, c.z));
-    }
-  }
-
   /** Gate position for crowd sounds: the start line or the finish line (the same gate on circuits). */
   private gatePos(at: 'start' | 'finish'): THREE.Vector3 | null {
     const gates = this.night.city.finishLine.gates;
@@ -1010,7 +705,7 @@ export class RaceSession {
     fl.fireworks('start');
     this.night.crowds.cheer('start', 1);
     const g = this.gatePos('start');
-    if (g) this.sfx?.crowdCheer(g.x, g.z, 1, true);
+    if (g) this.audio.sfx?.crowdCheer(g.x, g.z, 1, true);
   }
 
   /**
@@ -1051,10 +746,10 @@ export class RaceSession {
     const r = this.race;
     for (; this.eventIndex < r.events.length; this.eventIndex++) {
       const e = r.events[this.eventIndex];
-      this.sfx?.raceEvent(e, r);
+      this.audio.sfx?.raceEvent(e, r);
       this.rumble?.event(e);
-      if (e.type === 'wall') this.sparkBurst(e.car, e.value ?? 0);
-      if (e.type === 'wall' && e.kind === 'rail') this.crackRail(e.car, e.value ?? 0);
+      if (e.type === 'wall') sparkBurst(this.sparks, this.race, this.camPos, this.time, e.car, e.value ?? 0);
+      if (e.type === 'wall' && e.kind === 'rail') crackRail(this.sparks, this.night, this.race, this.camPos, this.time, e.car, e.value ?? 0);
       // Rivals crossing the finish get a smaller cheer.
       if (e.type === 'finish' && e.car !== 0 && !this.openWorld) this.night.crowds.cheer('finish', 0.8);
       // A rival slamming into the player shakes the player's camera too.
@@ -1085,7 +780,7 @@ export class RaceSession {
             if (!this.openWorld) {
               this.night.crowds.cheer('lap', 1);
               const g = this.gatePos('finish');
-              if (g) this.sfx?.crowdCheer(g.x, g.z, 1, true);
+              if (g) this.audio.sfx?.crowdCheer(g.x, g.z, 1, true);
             }
           }
           break;
@@ -1097,7 +792,7 @@ export class RaceSession {
             this.night.city.finishLine.fireworks('finish');
             this.night.crowds.cheer('finish', 1.5);
             const g = this.gatePos('finish');
-            if (g) this.sfx?.crowdCheer(g.x, g.z, 1.6, true);
+            if (g) this.audio.sfx?.crowdCheer(g.x, g.z, 1.6, true);
           }
           if (this.cineOn) this.input.setTouchVisible(false);
           break;
@@ -1157,7 +852,7 @@ export class RaceSession {
     this.night.syncDistricts(Math.max(0, r.tick - 1 + (this.paused ? 1 : alpha)), !this.paused, r.brokenArms);
     this.night.update(this.time);
     this.hazards.update(r);
-    this.spitRailSparks(this.paused ? 0 : dt);
+    spitRailSparks(this.sparks, this.night, this.race, this.camPos, this.time, this.paused ? 0 : dt);
     // Corner rail pieces shoved by hits this race.
     this.night.arrows.syncRails(r.rails);
     this.night.city.finishLine.update(this.time);
@@ -1180,69 +875,9 @@ export class RaceSession {
     this.lift += (lift - this.lift) * (1 - Math.exp(-dt * (lift > this.lift ? MUSIC_LIFT.in : MUSIC_LIFT.out)));
     if (lift === 1 && this.lift < 1.001) this.lift = 1;
     this.updateHud(dt);
-    this.updateEngines(poses, camera, dt);
-    this.updateSfx(poses, camera, dt);
+    this.audio.updateEngines(poses, camera, dt, this.paused);
+    this.audio.updateSfx(poses, camera, dt, this.paused, this.time, !this.isReplay && !this.paused && this.input.hornHeld());
     this.gr.render(this.night.scene, camera, dt);
-  }
-
-  /** Nitrous and scrape loops, the listener for one-shots, and the horn with its headlight flash. */
-  private updateSfx(poses: Snap[], camera: THREE.PerspectiveCamera, dt: number): void {
-    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-    this.sfx?.setListener(camera.position.x, camera.position.z, right.x, right.z);
-    const cars = poses.map((p, i) => {
-      const g = this.race.cars[i].tuning.geometry;
-      return { x: p.x, z: p.z, yaw: p.yaw, vx: p.vx, vz: p.vz, nitro: p.nitro, halfLength: g.halfLength, halfWidth: g.halfWidth };
-    });
-    this.sfx?.updateCars(cars, this.race.world, dt, this.paused);
-    // Crowds react to the racers' (sim) poses and are heard from the camera.
-    const cc = this.crowdCars;
-    for (let i = 0; i < cc.length; i++) {
-      const p = poses[i];
-      cc[i].x = p.x;
-      cc[i].z = p.z;
-      cc[i].speed = p.speed;
-    }
-    this.night.crowds.update(this.time, this.paused ? 0 : dt, cc, camera.position.x, camera.position.z);
-    this.sfx?.updateCrowds(this.night.crowds.spots, this.paused);
-    // A section erupting as racers pass: a burst of cheering and applause from it (at most every few seconds).
-    if (!this.paused) {
-      const spots = this.night.crowds.spots;
-      for (let i = 0; i < spots.length; i++) {
-        const s = spots[i];
-        if (s.kind !== 'section') continue;
-        const was = this.sectionLevel[i] ?? 0;
-        this.sectionLevel[i] = s.level;
-        if (s.level > SECTION_CHEER_LEVEL && was <= SECTION_CHEER_LEVEL && this.time > (this.sectionCheerAt[i] ?? -1e9) + SECTION_CHEER_GAP) {
-          this.sectionCheerAt[i] = this.time;
-          this.sfx?.crowdCheer((s.ax + s.bx) / 2, (s.az + s.bz) / 2, 0.55, true);
-        }
-      }
-    }
-    // Horn (live races only, never recorded) flashes the player's headlights while held.
-    const horn = !this.isReplay && !this.paused && this.input.hornHeld();
-    this.sfx?.horn(horn);
-    this.flash = horn ? Math.min(1, this.flash + dt / 0.04) : Math.max(0, this.flash - dt / 0.12);
-    this.views[0].flashHeadlights(this.flash);
-  }
-
-  private updateEngines(poses: Snap[], camera: THREE.PerspectiveCamera, dt: number): void {
-    if (!this.engines.length) return;
-    if (this.paused) {
-      this.engines.forEach((e) => e.silence());
-      return;
-    }
-    const camPos = camera.position;
-    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-    this.engines.forEach((voice, i) => {
-      const p = poses[i];
-      const rc = this.race.cars[i];
-      const dx = p.x - camPos.x;
-      const dz = p.z - camPos.z;
-      const d = Math.hypot(dx, dz);
-      const proximity = i === 0 ? 1 : 1 / (1 + (d / 14) ** 2);
-      const pan = i === 0 ? 0 : (dx * right.x + dz * right.z) / Math.max(1, d);
-      voice.update({ rpm: p.rpm, redline: rc.tuning.engine.redline, throttle: p.throttle, nitro: p.nitro, proximity, pan: pan * 0.8, shifting: p.shifting, cut: p.cut, dt });
-    });
   }
 
   /** Intro fly-in and finish hero shot (and the menu's handoff swing), layered over the chase camera. */
@@ -1293,37 +928,7 @@ export class RaceSession {
       return cam;
     }
     // TV: a roadside camera ahead of the car that tracks it as it passes.
-    const d = this.tvPoint.distanceTo(new THREE.Vector3(p.x, p.y, p.z));
-    if (!this.tvValid || d > 70) {
-      const side = (this.tvSide = -this.tvSide);
-      if (this.race.world.openWorld) {
-        // Open world: off the route, so a point ahead along the car's heading, pulled in front of any wall.
-        const fx = Math.sin(p.yaw);
-        const fz = Math.cos(p.yaw);
-        const pt = new THREE.Vector3(p.x + fx * 40 + fz * 5 * side, 0, p.z + fz * 40 - fx * 5 * side);
-        this.cam.keepOutOfWalls(p.x, p.z, pt, 3.2, 0);
-        pt.y = Math.max(pt.y, this.race.world.heightAt(pt.x, pt.z) + 3.2);
-        this.tvPoint.copy(pt);
-      } else {
-        // Next roadside camera: on the route ahead, near the curb, so it is never inside a building.
-        const route = this.race.world.route;
-        const rc = this.race.cars[0];
-        const ahead = routeSample(route, rc.rawS + 45);
-        const half = route.segWidth[ahead.seg] / 2 - 1;
-        const x = ahead.x + ahead.tz * half * side;
-        const z = ahead.z - ahead.tx * half * side;
-        this.tvPoint.set(x, this.race.world.heightAt(x, z) + 3.2, z);
-      }
-      this.tvValid = true;
-    }
-    cam.position.copy(this.tvPoint);
-    cam.lookAt(p.x, p.y + 0.7, p.z);
-    const fov = Math.max(18, Math.min(60, 1400 / Math.max(10, d)));
-    if (Math.abs(cam.fov - fov) > 0.1) {
-      cam.fov = fov;
-      cam.updateProjectionMatrix();
-    }
-    return cam;
+    return this.tv.place(cam, this.cam, this.race, p);
   }
 
   /** Car markers for the minimap: the field, then the ghost. */
@@ -1339,59 +944,12 @@ export class RaceSession {
   private trafficDots(): HudCar[] {
     if (!this.openWorld || !this.race.traffic) return [];
     const p = this.curr[0];
-    const out: HudCar[] = [];
-    const t = this.trafficCurr;
-    for (let o = 0; o < t.length; o += TRAFFIC_SNAP) {
-      if (t[o + 3] < 0 || (t[o] - p.x) ** 2 + (t[o + 1] - p.z) ** 2 > TRAFFIC_DOT_RANGE ** 2) continue;
-      out.push({ x: t[o], z: t[o + 1], yaw: t[o + 2], isPlayer: false, isTraffic: true });
-    }
-    return out;
+    return trafficDotCars(this.trafficCurr, p.x, p.z);
   }
 
   private updateHud(dt: number): void {
-    const r = this.race;
-    const rc = r.cars[0];
-    const c = rc.state;
-    const countdownLeft = r.countdownTicks - r.tick;
-    const countdown = countdownLeft > 0 ? Math.ceil(countdownLeft / 60) : countdownLeft > -60 ? 0 : null;
-    const st = standings(r);
-    const data: HudData = {
-      mode: r.config.mode,
-      position: st.findIndex((s) => s.car.index === 0) + 1,
-      carCount: r.cars.length,
-      lap: rc.lap,
-      laps: r.config.laps,
-      raceTime: rc.finished ? ticksToSeconds(rc.finishTick - r.countdownTicks) : raceTime(r),
-      bestLap: rc.bestLap ? ticksToSeconds(rc.bestLap) : null,
-      lastLap: rc.lapTimes.length ? ticksToSeconds(rc.lapTimes[rc.lapTimes.length - 1]) : null,
-      speedMph: mph(c.speed),
-      rpm: c.rpm,
-      redline: rc.tuning.engine.redline,
-      gear: c.gear,
-      manual: c.manualGearbox,
-      nitro: c.nitro,
-      nitroActive: c.nitroActive,
-      nitroStage: c.nitroStage,
-      throttle: c.throttle,
-      launchRpm: rc.tuning.launch.twoStepRpm || undefined,
-      boost: rc.tuning.engine.turbo ? c.boost : undefined,
-      antilag: c.antilag,
-      countdown,
-      wrongWay: rc.wrongWay,
-      progress: Math.max(0, rc.dist) / r.distance,
-      drift: r.config.mode === 'drift' ? { total: r.drift.total, current: r.drift.current, multiplier: r.drift.multiplier, zoneBonus: r.drift.zoneBonus } : undefined,
-      cars: this.mapCars(),
-      ghost: !!this.ghostRace,
-    };
-    const zone = driftZoneStatus(r, 0);
-    if (zone) data.zone = { mul: r.config.mode === 'drift' ? DRIFT_ZONES.scoreMul : DRIFT_ZONES.refillMul, nitro: r.config.mode !== 'drift', left: zone.left, resting: zone.resting };
-    // The waypoint race points the waypoint chip and the minimap at the next target.
-    const target = r.config.mode === 'waypoint' && !rc.finished ? r.world.route.waypoints?.[rc.nextCheckpoint] : undefined;
-    if (target) {
-      const n = r.world.route.waypoints!.length - 1;
-      data.waypoint = target;
-      data.waypointLabel = rc.nextCheckpoint < n ? `Waypoint ${rc.nextCheckpoint + 1}/${n}` : 'Finish';
-    }
+    const c = this.race.cars[0].state;
+    const data = raceHudData(this.race, this.mapCars(), !!this.ghostRace);
     if (this.openWorld) {
       this.topMph = Math.max(this.topMph, mph(c.speed));
       this.updateArea(c.x, c.z, dt);
@@ -1443,9 +1001,7 @@ export class RaceSession {
     this.tireFx.dispose();
     this.beacons?.dispose();
     this.traffic?.dispose();
-    this.engines.forEach((e) => e.dispose());
-    this.night.city.finishLine.onFirework = null;
-    this.sfx?.dispose();
+    this.audio.dispose();
     this.rumble?.stop();
     this.cine.dispose();
     this.carLight.removeFromParent();
