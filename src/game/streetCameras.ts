@@ -25,14 +25,21 @@
  *    and renders through a copy pulled in front of walls and under roofs, so
  *    the player's own zoom is never lost to a passing building.
  * Every camera stays out of the buildings and under anything overhead
- * (render/camera/camera.ts wallHit, render/camera/ceilings.ts clampCeiling). Render only.
+ * (render/camera/camera.ts wallHit, render/camera/ceilings.ts clampCeiling).
+ * The showreel holds its line through the street's clutter: posts, trees,
+ * pillars, barriers and low walls may pass in front of it, and only a mass
+ * it could end up inside (a building, a tunnel's rock, a car park) pulls it
+ * in, eased so even that never jumps. Render only.
  */
 import * as THREE from 'three';
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { World } from '../city/world';
+import type { Wall } from '../city/blocks';
+import type { WallLook } from '../city/districts/types';
 import type { CarPose } from '../render/car/carView';
 import { wallHit } from '../render/camera/camera';
 import { clampCeiling } from '../render/camera/ceilings';
+import { damp } from '../shared/anim';
 import type { PathSample } from './cruise';
 import type { StreetStage } from './streetStage';
 
@@ -48,6 +55,18 @@ type Frame = Pick<CarPose, 'x' | 'y' | 'z' | 'yaw'>;
  * high it swoops (m), how far the lens widens (degrees) and the speed blur.
  */
 const GLIDE = { dur: 0.95, ref: 38, maxDur: 1.9, rise: 1.2, fov: 7, blur: 0.45 } as const;
+
+/**
+ * The showreel's pull in front of a mass between it and the car: how fast it
+ * eases in when one comes between them and back out once it has gone (1/s),
+ * the least of the way out it keeps, the gap left in front of the wall (as a
+ * fraction of the line) and how far it rises at full pull (m).
+ */
+const PULL = { inRate: 9, outRate: 1.4, min: 0.2, margin: 0.06, lift: 1.2 } as const;
+
+/** The walls the showreel will not shoot through: masses a camera could end up inside. Everything else may pass in front of it. */
+const MASSES: ReadonlySet<WallLook> = new Set<WallLook>(['building', 'boundary', 'tunnel', 'rock', 'bluff', 'carPark', 'marketFront', 'highway']);
+const isMass = (w: Wall) => w.kind === 'wall' && !w.solid && w.look !== undefined && MASSES.has(w.look);
 
 interface Shot {
   name: string;
@@ -198,6 +217,8 @@ export class ShowreelCamera {
   private glideLift = 0;
   private readonly glideFrame: Frame = { x: 0, y: 0, z: 0, yaw: 0 };
   private readonly goalLocal: Local = [0, 0, 0];
+  /** How far out along the line from the car the camera stands (1: where the shot puts it), eased (PULL); NaN: take the next one as it is. */
+  private pull = NaN;
 
   /** Start the reel over on its opener, for a newly built street with the car on the start line. */
   open(): void {
@@ -209,6 +230,7 @@ export class ShowreelCamera {
   cut(): void {
     this.t = Infinity;
     this.blend = 1;
+    this.pull = NaN;
   }
 
   /** The current mode: the shot loop or a held move. */
@@ -225,6 +247,7 @@ export class ShowreelCamera {
     if (mode === this.mode && blend) return;
     const p = this.stage?.pose;
     this.blend = 1;
+    if (!blend) this.pull = NaN;
     if (p && blend) {
       toLocal(p, this.camera.position, this.fromCam);
       toLocal(p, this.look, this.fromLook);
@@ -284,14 +307,12 @@ export class ShowreelCamera {
       } else {
         toWorld(p, s.cam(u, this.side, this.local), pos);
         toWorld(p, s.look(u, this.side, this.local), look);
-        this.keepClear(stage.world, p, pos);
       }
     } else {
       const m = MOVES[this.mode];
       fov = m.fov;
       toWorld(p, m.cam(this.moveT, this.side, this.local), pos);
       toWorld(p, m.look(this.moveT, this.side, this.local), look);
-      this.keepClear(stage.world, p, pos);
     }
     const cam = this.camera;
     if (this.blend < 1) {
@@ -301,7 +322,6 @@ export class ShowreelCamera {
       pos.lerpVectors(toWorld(p, this.fromCam, this.tmp), pos, e);
       look.lerpVectors(toWorld(p, this.fromLook, this.tmp), look, e);
       fov = this.fromFov + (fov - this.fromFov) * e;
-      this.keepClear(stage.world, p, pos);
     }
     let frame: Frame = p;
     let frameS = stage.s;
@@ -320,8 +340,10 @@ export class ShowreelCamera {
       toLocal(p, look, g);
       toWorld(frame, at(this.local, lerp(b[0], g[0], e), lerp(b[1], g[1], e), lerp(b[2], g[2], e) + 0.5 * GLIDE.rise * arc), look);
       fov += GLIDE.fov * arc;
-      this.keepClear(stage.world, frame, pos);
     }
+    // The roadside camera was stood clear of the street and holds still while the car drives past it.
+    if (this.mode === 'reel' && SHOTS[this.index].name === 'roadside' && this.blend >= 1 && this.glide >= 1) this.pull = NaN;
+    else this.keepClear(stage.world, frame, pos, dt);
     this.lastFrame.x = frame.x;
     this.lastFrame.y = frame.y;
     this.lastFrame.z = frame.z;
@@ -400,7 +422,10 @@ export class ShowreelCamera {
     this.t = 0;
     const s = SHOTS[this.index];
     const p = stage.pose;
-    if (!flowed) this.side = -this.side;
+    if (!flowed) {
+      this.side = -this.side;
+      this.pull = NaN;
+    }
     if (s.sided && !flowed) {
       // A flowing shot settles where the next one starts, so that is where it needs the room.
       const room = (side: number) => {
@@ -429,14 +454,21 @@ export class ShowreelCamera {
     clampCeiling(stage.world, this.fixed);
   }
 
-  /** Pull a camera in front of any wall between it and the car, keep it off the ground and under roofs. */
-  private keepClear(world: World, p: Frame, pos: THREE.Vector3): void {
-    const hit = wallHit(world, p.x, p.z, pos.x, pos.z, this.scratch);
-    if (hit < 1) {
-      const t = Math.max(0.2, hit - 0.06);
+  /**
+   * Pull a camera in front of a mass between it and the car (eased, PULL), keep it off the ground and under roofs.
+   * Only masses count (MASSES): a lamp post or a tree trunk crossing the line used to snap the camera in and back
+   * out within a few frames.
+   */
+  private keepClear(world: World, p: Frame, pos: THREE.Vector3, dt: number): void {
+    const hit = wallHit(world, p.x, p.z, pos.x, pos.z, this.scratch, undefined, isMass);
+    const want = hit < 1 ? Math.max(PULL.min, hit - PULL.margin) : 1;
+    if (Number.isNaN(this.pull)) this.pull = want;
+    else this.pull += (want - this.pull) * damp(want < this.pull ? PULL.inRate : PULL.outRate, dt);
+    const t = this.pull;
+    if (t < 1) {
       pos.x = p.x + (pos.x - p.x) * t;
       pos.z = p.z + (pos.z - p.z) * t;
-      pos.y += (1 - t) * 1.2;
+      pos.y += (1 - t) * PULL.lift;
     }
     pos.y = Math.max(pos.y, world.heightAt(pos.x, pos.z) + 0.3);
     clampCeiling(world, pos);

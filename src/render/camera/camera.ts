@@ -22,6 +22,7 @@
  */
 import * as THREE from 'three';
 import type { World } from '../../city/world';
+import type { Wall } from '../../city/blocks';
 import type { CarPose } from '../car/carView';
 import { clampCeiling } from './ceilings';
 import { NITRO_STAGES } from '../../sim/tuning';
@@ -595,9 +596,9 @@ export class ChaseCamera {
  * With `y` (the followed car's body height) a low wall it passes over
  * (Wall.top), a deck's parapet it passes under (Wall.bottom) or a column
  * under the expressway's deck it drives over (Wall.under) does not count.
- * `scratch` is reused for the grid query.
+ * With `only`, walls it rejects do not count either. `scratch` is reused for the grid query.
  */
-export function wallHit(w: World, ax: number, az: number, bx: number, bz: number, scratch: number[], y?: number): number {
+export function wallHit(w: World, ax: number, az: number, bx: number, bz: number, scratch: number[], y?: number, only?: (s: Wall) => boolean): number {
   w.wallGrid.query(Math.min(ax, bx) - 1, Math.min(az, bz) - 1, Math.max(ax, bx) + 1, Math.max(az, bz) + 1, scratch);
   let best = 1;
   const dx = bx - ax;
@@ -605,6 +606,7 @@ export function wallHit(w: World, ax: number, az: number, bx: number, bz: number
   for (const id of scratch) {
     const s = w.walls[id];
     if (y !== undefined && ((s.top !== undefined && y > s.top) || (s.bottom !== undefined && y < s.bottom) || (s.under !== undefined && y > s.under))) continue;
+    if (only && !only(s)) continue;
     const ex = s.bx - s.ax;
     const ez = s.bz - s.az;
     const den = dx * ez - dz * ex;
