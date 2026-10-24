@@ -96,6 +96,21 @@ describe('street meets', () => {
     expect(carRows[0]).toBeGreaterThan(carRows[1] / 3);
   });
 
+  it('stay behind every leg of a bent rail, not just the leg they were laid out from', () => {
+    // Seed 821168008 (sprint): a closure tied onto a corner rail turns a block corner, and the strip laid off
+    // the first leg swung across the line of the second, putting people on its course side.
+    const w = createWorld(821168008, 'sprint');
+    const plan = planMeets(w, opts);
+    let bent = 0;
+    for (const zone of plan.zones) {
+      const chain = w.walls.filter((x) => x.kind === 'rail' && (x as RailWall).group === zone.rail) as RailWall[];
+      if (chain.some((c) => Math.abs(c.nx * chain[0].nx + c.nz * chain[0].nz) < 0.9)) bent++;
+      for (const p of zone.people) expect(depthBehind(chain, p.x, p.z)).toBeGreaterThan(RAIL.maxOffset + 0.2);
+      for (const ci of zone.cars) expect(depthBehind(chain, plan.cars[ci].x, plan.cars[ci].z)).toBeGreaterThan(RAIL.maxOffset + 2.4);
+    }
+    expect(bent).toBeGreaterThan(0);
+  });
+
   it('are empty in an open world', () => {
     const w = createWorld(7, 'circuit', undefined, { openWorld: true });
     const plan = planMeets(w, opts);

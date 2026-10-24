@@ -166,6 +166,32 @@ function chainAt(chain: Wall[], cum: number[], s: number): { x: number; z: numbe
   return { x: w.ax + (w.bx - w.ax) * t, z: w.az + (w.bz - w.az) * t, nx: w.nx, nz: w.nz };
 }
 
+/**
+ * How far (m) a point stands behind a rail chain: along the normal, reversed, from the nearest point on
+ * the chain, so positive is the far side from the course and negative is on the course side of the piece
+ * it is nearest. A strip laid off one leg of a bent chain swings across the line of the next leg and, near
+ * the bend, ends up on that leg's course side; only a test against the nearest piece sees that, and it
+ * holds for any bend and any number of legs (the distance to the chain alone cannot tell the sides apart).
+ */
+function depthBehind(chain: Wall[], x: number, z: number): number {
+  let best = Infinity;
+  let depth = 0;
+  for (const w of chain) {
+    const dx = w.bx - w.ax;
+    const dz = w.bz - w.az;
+    const l2 = dx * dx + dz * dz || 1;
+    const t = Math.max(0, Math.min(1, ((x - w.ax) * dx + (z - w.az) * dz) / l2));
+    const qx = x - (w.ax + dx * t);
+    const qz = z - (w.az + dz * t);
+    const d = qx * qx + qz * qz;
+    if (d < best) {
+      best = d;
+      depth = -(qx * w.nx + qz * w.nz);
+    }
+  }
+  return depth;
+}
+
 export function planMeets(world: World, opts: MeetOptions): MeetPlan {
   const plan: MeetPlan = { zones: [], cars: [] };
   if (world.openWorld || !opts.cars.length) return plan;
@@ -283,9 +309,10 @@ export function planMeets(world: World, opts: MeetOptions): MeetPlan {
         const off = dims.length / 2 - rad;
         const fx = Math.sin(yaw);
         const fz = Math.cos(yaw);
-        // Behind the packed crowd from every piece of the barrier (two segments meeting in a V), and on open ground.
-        let ok = !chain.some((w) => distToSegment(x, z, w.ax, w.az, w.bx, w.bz) < d0 + MEET.carClear);
-        for (let k = -1; k <= 1 && ok; k++) ok = free(x + fx * off * k, z + fz * off * k, rad, true);
+        // Behind the packed crowd, on the far side of every piece of the barrier (a bend swings a strip across
+        // the next leg's line), with every circle of the car behind the barrier's reach, and on open ground.
+        let ok = depthBehind(chain, x, z) >= d0 + MEET.carClear;
+        for (let k = -1; k <= 1 && ok; k++) ok = depthBehind(chain, x + fx * off * k, z + fz * off * k) >= d0 + rad && free(x + fx * off * k, z + fz * off * k, rad, true);
         if (!ok) continue;
         for (let k = -1; k <= 1; k++) taken.add(x + fx * off * k, z + fz * off * k, rad);
         zone.cars.push(plan.cars.length);
@@ -307,8 +334,9 @@ export function planMeets(world: World, opts: MeetOptions): MeetPlan {
         const d = depth + rng.range(-0.1, 0.1);
         const x = p.x - p.nx * d;
         const z = p.z - p.nz * d;
-        // Clear of every piece of the barrier, not just the one it stands behind (two segments meeting in a V).
-        if (!free(x, z, 0.3) || chain.some((w) => distToSegment(x, z, w.ax, w.az, w.bx, w.bz) < d0 + 0.25)) continue;
+        // Behind every piece of the barrier, not just the one it was laid out from: past a bend the strip off
+        // one leg reaches the course side of the next.
+        if (depthBehind(chain, x, z) < d0 + 0.25 || !free(x, z, 0.3)) continue;
         taken.add(x, z, 0.21);
         const y = world.heightAt(x, z) + (world.surfaceAt(x, z) === 'road' ? 0 : CITY.curbHeight);
         zone.people.push({ x, y, z, yaw: Math.atan2(p.nx, p.nz) + rng.range(-0.45, 0.45) });
