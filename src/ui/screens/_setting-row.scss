@@ -34,7 +34,8 @@
   line-height: 1.45;
   color: var(--muted);
 }
-/* One device's bindings: the keys (alternatives) in a column beside what they do. */
+/* One device's bindings: the keys (alternatives, combos joined by a plus) in a column beside what they do, in
+   groups under the garage's section titles across both columns. */
 .controls-list {
   display: grid;
   grid-template-columns: max-content 1fr;
@@ -42,6 +43,13 @@
   align-items: center;
   font-size: 14px;
   color: var(--soft);
+  &__group {
+    grid-column: 1 / -1;
+    margin-top: 8px;
+    &:first-child {
+      margin-top: 0;
+    }
+  }
   &__keys {
     display: flex;
     flex-wrap: wrap;

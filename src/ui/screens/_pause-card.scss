@@ -1,0 +1,75 @@
+/* The pause screen's card (pause.ts): what is paused, shaped like the menu's event card and the garage's build
+   card. The race type as the kicker, the event's name in the white-to-peach, lap and place, the course drawn in
+   the type's color in a well with every car where it stands (a compass for the open city), and Resume, the
+   screen's main action, at the size of the rows under it. Warm light falls on it from the top corners, with a
+   wash of the type's color. */
+@use '../styles/abstracts/media';
+@use '../styles/abstracts/mixins';
+@use '../styles/abstracts/palette';
+.pause-card {
+  @include mixins.chamfer(12px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px 16px;
+  @include mixins.plate(
+    (
+      var(--card-top),
+      radial-gradient(120% 60% at 100% 0%, rgba(var(--mode-rgb), 0.1), transparent 60%),
+      radial-gradient(90% 55% at 0% 0%, palette.alpha(orange, 0.1), transparent 65%),
+      var(--plate)
+    )
+  );
+  @include media.short {
+    gap: 4px;
+    padding: 10px 14px 12px;
+  }
+  > .label {
+    min-height: 24px;
+    > svg {
+      color: var(--mode);
+    }
+  }
+  &__name {
+    margin: 0;
+    padding-right: 0.06em;
+    font: 900 32px/1.02 var(--display);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    overflow-wrap: anywhere;
+    @include mixins.gradient-text(var(--title-ink));
+    @include media.phone {
+      font-size: 26px;
+    }
+    @include media.short {
+      font-size: 28px;
+    }
+  }
+  > .course-facts {
+    font-size: 14px;
+    color: var(--muted);
+  }
+  /* The menu's map well (_event-map.scss), lit from below in the type's color. */
+  &__art {
+    @include mixins.chamfer;
+    display: grid;
+    place-items: center;
+    height: clamp(96px, 16vh, 140px);
+    margin: 8px 0 2px;
+    padding: 10px;
+    color: var(--mode);
+    background: radial-gradient(70% 100% at 50% 110%, rgba(var(--mode-rgb), 0.16), transparent 70%), var(--well);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.5);
+    > .course-art {
+      width: 100%;
+      height: 100%;
+    }
+  }
+  /* The rows' label size (_pause-screen.scss), so Resume reads as one of them, like Race on the event card. */
+  &__go {
+    margin-top: 6px;
+    font-size: 20px;
+  }
+}

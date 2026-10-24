@@ -64,12 +64,12 @@ describe('build validation', () => {
     b.visual.calipers = { color: '#ffcc1f', finish: 'pearl', match: true };
     b.visual.underglow = { enabled: true, color: '#ff00aa', color2: '#00ffaa', pattern: 'chase', brightness: 1.4, speed: 2, size: 1.2 };
     b.visual.stance = { front: { rideHeight: -0.045, camber: -3.5, offset: 0.015, wheelSize: 1.05 }, rear: { rideHeight: -0.02, camber: -7, offset: 0.05, wheelSize: 1.2 } };
-    b.performance = { suspension: 1, gearing: 5, differential: 4, brakeBalance: 2, launchRpm: 4500 };
+    b.performance = { suspension: 1, gearing: 5, differential: 4, brakeBalance: 2, launchRpm: 4500, antilagRpm: 5250 };
     const code = await encodeShareCode(b);
     expect(code.length).toBeLessThan(700);
     const back = await decodeShareCode(code);
     expect(back).toEqual(validateBuild(b));
-    expect(back!.performance).toEqual({ suspension: 1, gearing: 5, differential: 4, brakeBalance: 2, launchRpm: 4500 });
+    expect(back!.performance).toEqual({ suspension: 1, gearing: 5, differential: 4, brakeBalance: 2, launchRpm: 4500, antilagRpm: 5250 });
     expect(await decodeShareCode('garbage!!')).toBeNull();
   });
 

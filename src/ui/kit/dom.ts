@@ -123,9 +123,10 @@ export function specChip(t: SpecBadge, i: number, cls = ''): HTMLElement {
   return c;
 }
 
-/** Key caps: a `<kbd>` per key with `sep` between them (the help rows ' ', the controls list ' / '). */
+/** Key caps: a `<kbd>` per key with `sep` between them (the help rows ' ', the controls list ' / '); a combo written 'W + S' is its caps joined by a plus. */
 export function keyCaps(keys: readonly string[], sep = ''): (HTMLElement | string)[] {
-  return keys.flatMap((k, i) => (i && sep ? [sep, h('kbd', {}, k)] : [h('kbd', {}, k)]));
+  const caps = (k: string) => k.split(' + ').flatMap((c, j) => (j ? ['+', h('kbd', {}, c)] : [h('kbd', {}, c)]));
+  return keys.flatMap((k, i) => (i && sep ? [sep, ...caps(k)] : caps(k)));
 }
 
 /** A link to another site (the credits), opened in a new tab that gets neither this page nor its address. */

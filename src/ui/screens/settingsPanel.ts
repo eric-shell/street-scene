@@ -94,10 +94,16 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
       label: 'Controls',
       icon: Keyboard,
       rows: () => {
-        // One device's bindings at a time: a key column and an action column read faster than a run-on line.
+        // One device's bindings at a time, in groups under the garage's section titles: a key column and an
+        // action column read faster than a run-on line.
         const list = h('div', { class: 'controls-list' });
         const show = (device: keyof typeof CONTROLS) =>
-          list.replaceChildren(...CONTROLS[device].flatMap(([keys, action]) => [h('span', { class: 'controls-list__keys' }, ...keyCaps(keys, ' / ')), h('span', {}, action)]));
+          list.replaceChildren(
+            ...CONTROLS[device].flatMap(([group, rows]) => [
+              h('div', { class: 'section-title controls-list__group' }, group),
+              ...rows.flatMap(([keys, action]) => [h('span', { class: 'controls-list__keys' }, ...keyCaps(keys, ' / ')), h('span', {}, action)]),
+            ]),
+          );
         show('keyboard');
         return [
           settingRow('Gamepad rumble', toggle('rumble'), 'Hits, landings, rough ground, nitrous'),
@@ -151,43 +157,102 @@ export function onOff(value: boolean, onChange: (v: boolean) => void): HTMLEleme
   );
 }
 
-/** Bindings per device for the settings' Controls page: keys (alternatives) and what they do. */
-const CONTROLS: Record<'keyboard' | 'gamepad' | 'touch', [string[], string][]> = {
+/** Bindings per device for the settings' Controls page, in groups: keys (alternatives; 'W + S' a combo) and what they do. */
+const CONTROLS: Record<'keyboard' | 'gamepad' | 'touch', [string, [string[], string][]][]> = {
   keyboard: [
-    [['W', '↑'], 'Throttle'],
-    [['S', '↓'], 'Brake, reverse'],
-    [['A', 'D'], 'Steer'],
-    [['Space'], 'Handbrake'],
-    [['N'], 'Nitrous'],
-    [['Shift'], 'Horn (hold for a long blast)'],
-    [['Q', 'E'], 'Shift down, up (manual)'],
-    [['R'], 'Reset car'],
-    [['C'], 'Camera'],
-    [['H'], 'Hide the HUD'],
-    [['?'], 'Keys and tips for the screen'],
-    [['Esc'], 'Pause'],
-    [['M'], 'Mute music'],
-    [['[', ']'], 'Previous, next track'],
-    [['`', 'F2'], 'Physics panel (debug mode)'],
-    [['F3'], 'Camera panel (debug mode)'],
+    [
+      'Driving',
+      [
+        [['W', '↑'], 'Throttle'],
+        [['S', '↓'], 'Brake, reverse'],
+        [['A', 'D'], 'Steer'],
+        [['Space'], 'Handbrake'],
+        [['N'], 'Nitrous'],
+        [['Q', 'E'], 'Shift down, up (manual)'],
+        [['G'], 'Horn (hold for a long blast)'],
+        [['R'], 'Reset car'],
+      ],
+    ],
+    [
+      'Launch',
+      [
+        [['W'], 'Two-step: hold at the line (Launch RPM)'],
+        [['W + S'], 'Line lock: burnout while standing'],
+        [['Shift + W'], 'Rolling antilag: hold boost on the move (turbo)'],
+      ],
+    ],
+    [
+      'View',
+      [
+        [['C'], 'Camera'],
+        [['H'], 'Hide the HUD'],
+        [['?'], 'Keys and tips for the screen'],
+        [['Esc'], 'Pause'],
+      ],
+    ],
+    [
+      'Music',
+      [
+        [['M'], 'Mute music'],
+        [['[', ']'], 'Previous, next track'],
+      ],
+    ],
+    [
+      'Debug mode',
+      [
+        [['`', 'F2'], 'Physics panel'],
+        [['F3'], 'Camera panel'],
+      ],
+    ],
   ],
   gamepad: [
-    [['Left stick'], 'Steer'],
-    [['RT', 'LT'], 'Throttle, brake'],
-    [['X'], 'Handbrake'],
-    [['A', 'B'], 'Nitrous'],
-    [['LB', 'RB'], 'Shift down, up'],
-    [['Y'], 'Reset car'],
-    [['Back'], 'Camera'],
-    [['Start'], 'Pause'],
-    [['D-pad', 'Left stick'], 'Move around menus'],
-    [['A'], 'Press'],
-    [['B', 'Start'], 'Back, resume'],
+    [
+      'Driving',
+      [
+        [['Left stick'], 'Steer'],
+        [['RT', 'LT'], 'Throttle, brake'],
+        [['X'], 'Handbrake'],
+        [['A', 'B'], 'Nitrous'],
+        [['LB', 'RB'], 'Shift down, up'],
+        [['Right stick click'], 'Horn'],
+        [['Y'], 'Reset car'],
+      ],
+    ],
+    [
+      'Launch',
+      [
+        [['RT'], 'Two-step: hold at the line (Launch RPM)'],
+        [['RT + LT'], 'Line lock: burnout while standing'],
+        [['Left stick click + RT'], 'Rolling antilag: hold boost on the move (turbo)'],
+      ],
+    ],
+    [
+      'Menus',
+      [
+        [['Back'], 'Camera'],
+        [['Start'], 'Pause'],
+        [['D-pad', 'Left stick'], 'Move around menus'],
+        [['A'], 'Press'],
+        [['B', 'Start'], 'Back, resume'],
+      ],
+    ],
   ],
   touch: [
-    [['Left half'], 'Drag to steer'],
-    [['Right side'], 'Pedals, handbrake, nitrous'],
-    [['Top right'], 'Pause, camera, reset'],
+    [
+      'Driving',
+      [
+        [['Left half'], 'Drag to steer'],
+        [['Right side'], 'Pedals, handbrake, nitrous'],
+        [['Top right'], 'Pause, camera, reset'],
+      ],
+    ],
+    [
+      'Launch',
+      [
+        [['GAS'], 'Two-step: hold at the line'],
+        [['GAS + BRAKE'], 'Line lock: burnout while standing'],
+      ],
+    ],
   ],
 };
 

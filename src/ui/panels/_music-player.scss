@@ -40,7 +40,8 @@
     display: flex;
   }
   &__disc.is-spinning svg,
-  &__pill svg.is-spinning {
+  &__pill svg.is-spinning,
+  &__chip svg.is-spinning {
     animation: music-player-spin 2.4s linear infinite;
   }
   &__meta {
@@ -100,7 +101,11 @@
     color: var(--muted);
   }
 
-  &__pill {
+  /* The minimized player, and its twin, a race's now-playing chip (controls via M, [ and ]) in the top right
+     corner: the same plate, size and spinning disc, so the reduced player reads the same on every screen.
+     Touch screens drop the chip to keep the corner clear. */
+  &__pill,
+  &__chip {
     @include mixins.chamfer;
     position: absolute;
     right: mixins.safe(right, var(--gutter));
@@ -122,28 +127,11 @@
   &__pill-label {
     @include mixins.ellipsis;
   }
-
-  /* A race's now-playing chip (controls via M, [ and ]); touch screens drop it to keep the corner clear. */
   &__chip {
-    @include mixins.chamfer(6px);
-    position: absolute;
     top: mixins.safe(top, var(--gutter));
-    right: mixins.safe(right, var(--gutter));
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    max-width: min(320px, 40vw);
-    padding: 6px 12px;
-    font-size: 13px;
-    color: var(--muted);
-    @include mixins.plate($radius: null);
-    svg {
-      color: var(--accent);
-      flex: none;
-    }
-  }
-  &__chip-label {
-    @include mixins.ellipsis;
+    bottom: auto;
+    cursor: default;
+    pointer-events: none;
   }
   &[data-mode='compact'] .music-player__chip {
     @include media.touch {
@@ -198,8 +186,22 @@
     margin: 6px 0 0;
   }
 
-  /* Banner placement per screen: under the HUD's top in a race and the drone, and beside a rail in the top
-     right corner of the scene (the garage's switch and camera sit at the bottom of the view). */
+  /* The menu and a paused or finished race keep the player (card or pill) in the top right corner, where a
+     race's chip stands, so the music and the help beside it (dock) stay in one spot from the menu through the
+     race. */
+  &[data-context='menu'],
+  &[data-context='race'] {
+    .music-player__card,
+    .music-player__pill {
+      top: mixins.safe(top, var(--gutter));
+      bottom: auto;
+    }
+  }
+
+  /* Banner placement per screen: low in the middle in the menu, a race and the drone (the player and the
+     HUD's top keep the top), and beside the rail in the top right corner of the garage's scene (its switch
+     and camera sit at the bottom of the view). */
+  &[data-context='menu'],
   &[data-context='race'],
   &[data-context='drone'] {
     .music-player__banner {
@@ -207,8 +209,7 @@
       bottom: calc(#{mixins.safe(bottom, var(--gutter))} + 36px);
     }
   }
-  &[data-context='garage'],
-  &[data-context='menu'] {
+  &[data-context='garage'] {
     .music-player__banner {
       left: auto;
       /* The same inset from the top as the player keeps from the bottom. */
@@ -226,9 +227,8 @@
       bottom: auto;
     }
   }
-  /* After that top: narrow screens center it under the top edge on both. */
-  &[data-context='garage'],
-  &[data-context='menu'] {
+  /* After that top: narrow screens center it under the top edge. */
+  &[data-context='garage'] {
     .music-player__banner.is-visible {
       transform: translate(0, 0);
     }

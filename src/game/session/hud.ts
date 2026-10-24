@@ -78,8 +78,10 @@ export function helpSections(mode: RaceMode, isReplay: boolean, openWorld: boole
     { keys: ['A', 'D'], label: 'Steer' },
     { keys: ['Space'], label: 'Handbrake' },
     { keys: ['N'], label: 'Nitrous' },
-    { keys: ['Shift'], label: 'Horn' },
+    { keys: ['G'], label: 'Horn' },
     { keys: ['Q', 'E'], label: 'Shift down, up (manual gearbox)' },
+    { keys: ['W + S'], label: 'Line lock burnout (standing)' },
+    { keys: ['Shift + W'], label: 'Rolling antilag (turbo, on the move)' },
     { keys: ['R'], label: 'Reset the car' },
   ];
   const view: HelpKey[] = [

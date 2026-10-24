@@ -75,7 +75,7 @@
       "tcMaxSlipDeg": 9
     },
     "launch": {
-      "_": "Launch control and the pedal combos (car.ts): the two-step rev cut at the line, line lock burnouts and rolling antilag. twoStepRpm is the build's Launch RPM (0 = off); applyBuild writes it, so leave it 0 here. defaultRpm is the car's stock pick, the Launch RPM a new garage build (or a saved one from before launch control) starts on; 0 = off. Set per car from what owners of its donor launch at.",
+      "_": "Launch control (car.ts): the two-step rev cut at the line, line lock burnouts (gas and brake standing) and rolling antilag (its own held button, with the gas, rolling). twoStepRpm is the build's Launch RPM (0 = off); applyBuild writes it, so leave it 0 here. defaultRpm is the car's stock pick, the Launch RPM a new garage build (or a saved one from before launch control) starts on; 0 = off. Set per car from what owners of its donor launch at. antilagRpm is the car's stock rolling antilag rpm, a separate setting from the two-step as on the ECUs that have both (Haltech's Rolling Anti-lag holds its own fixed limit): a build's Antilag RPM (the Tune tab, turbo cars only) replaces it, 0 = off. Hold it where the turbos are on full boost and the engine near its torque peak, so the release pulls at once.",
       "twoStepRpm": 0,
       "defaultRpm": 0,
       "twoStepDepth": 350,
@@ -215,7 +215,9 @@
       "tires": { "gripFront": 1.6, "gripRear": 1.35 },
       "launch": {
         "_": "FD owners on the stock sequential twins report a weak, boostless launch around 4,000 rpm (the turbo handover) and better ones from about 5,000; past 7,500 is called abuse. 5,000 clears the handover without lighting up the rear tires of the lightest, RWD car.",
-        "defaultRpm": 5000
+        "defaultRpm": 5000,
+        "_antilag": "Rolling antilag at the 13B-REW's torque peak (5,500): a clear 1,000 rpm past the sequential twins' 4,000 to 4,500 handover, so both turbos are lit when the brake comes off.",
+        "antilagRpm": 5500
       }
     },
     "protoWagon": {
@@ -247,7 +249,9 @@
       "aero": { "drag": 0.42 },
       "launch": {
         "_": "B5 S4 and RS4 2.7T owners launch at 3,000 to 4,000 rpm (bogs under 3,000, spins over 3,500 to 4,000 on a clutch dump); a two-step at 4,000 holds the twins on boost and the even AWD split takes the torque.",
-        "defaultRpm": 4000
+        "defaultRpm": 4000,
+        "_antilag": "Rolling antilag at 4,500: the K03 twins are on full boost from about 3,000, and the 2.7T still makes 95% of its peak torque there, with room in the gear for the pull.",
+        "antilagRpm": 4500
       }
     },
     "proto": {

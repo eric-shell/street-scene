@@ -154,6 +154,7 @@ const SHORT: Record<string, string> = {
   differential: 'df',
   brakeBalance: 'bb',
   launchRpm: 'lr',
+  antilagRpm: 'al',
   // Legacy (the retired component upgrades) tier keys stay in the table so old codes decode: their tiers are
   // dropped and the build starts on the stock setup (sim/build.ts validatePerformance).
   engine: 'e',

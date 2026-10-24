@@ -499,27 +499,33 @@ describe('launch control and the pedal combos', () => {
     expect(fc.spinRear).toBe(0);
   });
 
-  it('gas and brake rolling is antilag on a turbo car only: boost pinned, no drive, and full boost on release', () => {
+  it('the antilag button and the gas rolling is antilag on a turbo car only: boost pinned at its own rpm, no drive, and full boost on release', () => {
     expect(getBaseTuning('protoCoupe').engine.turbo).toBe(true);
     expect(getBaseTuning('proto').engine.turbo).toBe(false);
-    const roll = (carId: string) => {
-      const t = applyBuild(getBaseTuning(carId), stockPerformance());
+    const roll = (carId: string, held: Partial<Parameters<typeof input>[0]> = { antilag: true }, perf = stockPerformance()) => {
+      const t = applyBuild(getBaseTuning(carId), perf);
       const c = createCar(0, 0, 0, 0);
       for (let i = 0; i < 180; i++) stepCar(c, t, input({ throttle: 1 }), { world });
       const before = c.speed;
-      let held = 0;
+      let n = 0;
       for (let i = 0; i < 30; i++) {
-        stepCar(c, t, input({ throttle: 1, brake: 1 }), { world });
-        if (c.antilag) held++;
+        stepCar(c, t, input({ throttle: 1, ...held }), { world });
+        if (c.antilag) n++;
       }
-      return { c, t, before, held };
+      return { c, t, before, held: n };
     };
     const turbo = roll('protoCoupe');
     expect(turbo.held).toBe(30);
     expect(turbo.c.boost).toBe(1);
-    expect(turbo.c.speed).toBeLessThan(turbo.before - 3);
+    expect(turbo.c.speed).toBeLessThan(turbo.before);
+    expect(turbo.t.launch.antilagRpm).toBe(5500);
     expect(turbo.c.rpm).toBeGreaterThan(turbo.t.launch.antilagRpm - turbo.t.launch.twoStepDepth - 1);
-    // Off the brake: boost stays pinned for the hold, then the spool model takes over.
+    // Its own set point, not the launch rpm's; gas and brake rolling is not antilag; Off turns the button off.
+    const own = roll('protoCoupe', { antilag: true }, { ...stockPerformance(), launchRpm: 3000, antilagRpm: 6000 });
+    expect(own.c.rpm).toBeGreaterThan(6000 - own.t.launch.twoStepDepth - 1);
+    expect(roll('protoCoupe', { brake: 1 }).held).toBe(0);
+    expect(roll('protoCoupe', { antilag: true }, { ...stockPerformance(), antilagRpm: 0 }).held).toBe(0);
+    // Off the button: boost stays pinned for the hold, then the spool model takes over.
     stepCar(turbo.c, turbo.t, input({ throttle: 1 }), { world });
     expect(turbo.c.antilag).toBe(false);
     expect(turbo.c.boost).toBe(1);

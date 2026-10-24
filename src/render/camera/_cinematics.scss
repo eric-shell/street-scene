@@ -1,6 +1,8 @@
 /* The race's start and finish shots (cinematics.ts): the HUD fades for them (.hud.is-intro, .is-outro but
    for its message, .is-handoff; .is-revealing times the fade back in), the letterbox bars slide in, the
-   fly-in's title card names the seed's event, and a hint says how to skip. */
+   fly-in's title card names the seed's event, and a hint says how to skip. While the letterbox is up
+   (body.is-letterboxed) nothing else is on screen but the countdown and the finish message; when it lifts,
+   everything fades back in once the bars have slid away (body.is-unboxing). */
 @use '../../ui/styles/abstracts/mixins';
 /* Each part's opacity is the shot's alone: the HUD's own animations fade with filter: opacity() (_hud.scss),
    and these rules come after every HUD rule that sets one. */
@@ -95,5 +97,29 @@
     text-transform: uppercase;
     color: rgba(252, 252, 250, 0.85);
     text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85);
+  }
+}
+/* Paused mid fly-in: the title card and the skip hint step aside for the pause screen (they come back on resume). */
+body:has(.pause-screen) {
+  .cinematic-title,
+  .cinematic-skip {
+    visibility: hidden;
+  }
+}
+/* The letterbox's screen: everything on the UI layer and the music player steps aside, except the shot's own
+   parts, the countdown and the finish message, the screens over the race (pause, results), the debug panels
+   and the touch controls (the gas has to be there for the two-step through the countdown). */
+$boxed: "#ui > :not(.hud, .cinematic-skip, .cinematic-bars, .cinematic-title, .screen, .tuning-panel, .touch-controls), .music-player, .hud > :not(.hud__countdown, .hud__message)";
+body.is-letterboxed {
+  #{$boxed} {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+}
+/* The bars slide out (0.6s, .cinematic-bars), then everything fades back in. */
+body.is-unboxing {
+  #{$boxed} {
+    transition: opacity 0.6s ease 0.6s;
   }
 }

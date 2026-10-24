@@ -73,6 +73,8 @@ interface CarFramePose {
 /** How long the HUD's fade in keeps its transition after the handoff settles (s), and the most one frame advances the swing (s). */
 const REVEAL = 1.2;
 const MAX_STEP = 0.1;
+/** How long everything on screen takes to come back once the letterbox lifts (ms): the bars' slide out, then the fade in (body.is-unboxing, _cinematics.scss). */
+const UNBOX_MS = 1300;
 
 /** The showreel's shot, where it must be on screen a few seconds before the player gets a HUD. */
 export interface HandoffShot {
@@ -112,6 +114,7 @@ export class RaceCinematics {
   private yawS = 0;
   readonly hint: HTMLElement | null = null;
   private bars: HTMLElement | null = null;
+  private unboxTimer = 0;
   /** The event title card over the fly-in (absent in the open world). */
   private title: HTMLElement | null = null;
 
@@ -164,7 +167,7 @@ export class RaceCinematics {
     this.phase = 'intro';
     this.skipFrom = null;
     this.hint?.classList.add('is-visible');
-    this.bars?.classList.add('is-visible');
+    this.letterbox(true);
   }
 
   /**
@@ -263,7 +266,7 @@ export class RaceCinematics {
     this.phase = 'none';
     this.skipFrom = null;
     this.hint?.classList.remove('is-visible');
-    this.bars?.classList.remove('is-visible');
+    this.letterbox(false);
   }
 
   /** Begin the finish shot from wherever the camera is now. */
@@ -280,14 +283,14 @@ export class RaceCinematics {
     const left = this.cam.wallHit(p.x, p.z, p.x + fz * r, p.z - fx * r);
     const right = this.cam.wallHit(p.x, p.z, p.x - fz * r, p.z + fx * r);
     this.side = left >= right ? 1 : -1;
-    this.bars?.classList.add('is-visible');
+    this.letterbox(true);
     this.hint?.classList.add('is-visible');
   }
 
   /** Drop the skip hint and letterbox (results are up); the camera keeps orbiting. */
   settle(): void {
     this.hint?.classList.remove('is-visible');
-    this.bars?.classList.remove('is-visible');
+    this.letterbox(false);
   }
 
   /** Override the camera for the finish shot. Call after the chase camera update. */
@@ -378,7 +381,25 @@ export class RaceCinematics {
     hud.classList.toggle('is-revealing', handoff || this.reveal > 0);
   }
 
+  /**
+   * The letterbox in or out. While it is up everything on screen steps aside but the shot's own parts, the
+   * countdown and the finish message (body.is-letterboxed); when it lifts, it all fades back in after the
+   * bars have slid away (body.is-unboxing for UNBOX_MS).
+   */
+  private letterbox(on: boolean): void {
+    if (!this.bars) return;
+    this.bars.classList.toggle('is-visible', on);
+    const body = document.body.classList;
+    if (body.contains('is-letterboxed') === on) return;
+    body.toggle('is-letterboxed', on);
+    body.toggle('is-unboxing', !on);
+    clearTimeout(this.unboxTimer);
+    if (!on) this.unboxTimer = window.setTimeout(() => body.remove('is-unboxing'), UNBOX_MS);
+  }
+
   dispose(): void {
+    clearTimeout(this.unboxTimer);
+    document.body.classList.remove('is-letterboxed', 'is-unboxing');
     this.hint?.remove();
     this.bars?.remove();
     this.title?.remove();

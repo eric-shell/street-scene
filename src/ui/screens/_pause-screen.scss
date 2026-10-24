@@ -1,13 +1,22 @@
-/* The pause screen (pause.ts pauseMenu): a rail over the dimmed race in the main menu's language: the type's
-   chip, the ticket of what is paused, Resume, then rows in their hues. Its column does not scroll (the
+/* The pause screen (pause.ts pauseMenu): a rail over the dimmed race in the main menu's and the garage's
+   language: the card of what is paused with Resume on it, then rows in their hues. Like them it keeps the
+   rail's box for framing but draws only a scrim in it, no column and no edge: the card, the rows and the
+   settings are plates of their own, and the race shows between them. Its column does not scroll (the
    settings page scrolls inside its card), so a step sliding in is never clipped at the column's edge; very
-   short screens fall back to a scrolling column. The rail slides in from the left edge over the race (the
+   short screens fall back to a scrolling column. The scrim slides in from the left edge over the race (the
    results rail arrives the same way, rail-in); Resume glints on its own every few seconds, like the menu's
    main action. */
 @use '../styles/abstracts/media';
+@use '../styles/abstracts/palette';
 .pause-screen {
-  > .rail__bg,
+  /* The menu's scrim, a touch darker: the paused race behind it is already dimmed but can be bright. */
+  > .rail__bg {
+    background: linear-gradient(90deg, palette.alpha(bg0, 0.7), palette.alpha(bg0, 0.45) 70%, palette.alpha(bg0, 0));
+  }
   > .rail__edge {
+    display: none;
+  }
+  > .rail__bg {
     @include media.motion {
       animation: rail-in 0.42s var(--ease-out) both;
     }
@@ -24,6 +33,31 @@
   .rail__step {
     filter: var(--plate-drop);
   }
+  /* What stands straight on the race keeps the menu's dark halo; the back button is a plate like the cards. */
+  .screen-head__title {
+    text-shadow: var(--halo);
+  }
+  .screen-head .btn {
+    background: var(--plate);
+    &:hover,
+    &:focus-visible {
+      background: var(--plate-hover);
+    }
+  }
+  /* The rows a step up, like the menu's home places (_menu.scss). */
+  .nav-row__label {
+    font-size: 20px;
+    line-height: 1;
+  }
+  .nav-row__text {
+    gap: 5px;
+  }
+}
+/* The race's own HUD steps aside while paused: with no column to cover it, its card would show through the
+   rail's scrim behind the pause card. */
+body:has(.pause-screen) :is(.hud, .hud-card) {
+  opacity: 0;
+  pointer-events: none;
 }
 @keyframes rail-in {
   from {

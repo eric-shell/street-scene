@@ -1,15 +1,16 @@
 /**
  * The pause screen: a rail over the dimmed race (ui/rail/rail.ts) in the main
- * menu's language. Styled by _pause-screen.scss; the ticket is the menu's
- * race ticket (ui/menu/), the settings step the shared settings panel.
+ * menu's and the garage's language. Styled by _pause-screen.scss and
+ * _pause-card.scss; the settings step is the shared settings panel.
  */
-import { btn, chip, h } from '../kit/dom';
-import { ChevronsRight, Compass, MapPinned, Pause, Play, RotateCcw, Route, Settings as SettingsIcon, Wind, X, type IconNode } from '../kit/icons';
+import { btn, h } from '../kit/dom';
+import { ChevronsRight, Compass, MapPinned, Pause, Play, RotateCcw, Route, Settings as SettingsIcon, Wind, X, icon, type IconNode } from '../kit/icons';
 import type { RaceType, Settings } from '../settings';
 import { RailSteps, navRow, railScreen, screenHead, type Hue } from '../rail/rail';
 import { Help, MUSIC_KEYS } from '../panels/help';
 import type { ArtCar } from '../menu/menuMaps';
-import { raceTicket } from '../menu/raceTicket';
+import { courseArt } from '../menu/menuMaps';
+import { courseFacts } from '../menu/raceTicket';
 import type { Route as RaceRoute } from '../../city/route';
 import type { MusicPlayer } from '../../audio/musicPlayer';
 import { settingsPanel } from './settingsPanel';
@@ -47,10 +48,12 @@ export interface PauseAction {
 const TYPE_ICON: Record<RaceType, IconNode> = { circuit: RotateCcw, sprint: Route, drag: ChevronsRight, waypoint: MapPinned, drift: Wind, roam: Compass };
 
 /**
- * Pause: a rail over the dimmed race in the main menu's language. The header
- * carries the race type's chip; a ticket says what is paused (the course drawn
- * small with every car where it stands, the event, lap, place); Resume is the
- * screen's main action and glints; the other actions are rows in their own
+ * Pause: a rail over the dimmed race in the main menu's and the garage's
+ * language: no column, only a scrim, the parts plates of their own. A card
+ * shaped like the menu's event card and the garage's build card says what is
+ * paused (the race type as its kicker, the event's name, lap and place, the
+ * course drawn with every car where it stands) and ends in Resume, the
+ * screen's main action, which glints; the other actions are rows in their own
  * hues like the menu's places (restart orange, a new city green, settings
  * purple, quit red). Settings is a step of its own on the same rail, sliding
  * in like the menu's steps, so Escape there comes back to the pause list
@@ -89,10 +92,19 @@ export function pauseMenu(o: {
   const t = o.ticket;
   let step: 'pause' | 'settings' = 'pause';
   const steps = new RailSteps(col);
+  const card = (): HTMLElement =>
+    h(
+      'section',
+      { class: `pause-card mode-${t.mode}`, 'aria-label': 'What is paused' },
+      h('span', { class: 'label label--kicker' }, icon(TYPE_ICON[t.mode], { size: 14 }), t.title),
+      h('h3', { class: 'pause-card__name' }, t.event ?? t.title),
+      courseFacts(t.facts),
+      h('div', { class: 'pause-card__art' }, t.route ? courseArt(t.route, t.mode, 320, 110, t.cars) : icon(Compass, { size: 40 })),
+      btn(Play, 'Resume', o.onResume, '--large --primary --cta pause-card__go pause-screen__resume'),
+    );
   const pause = (): HTMLElement[] => [
-    screenHead({ icon: Pause, title: 'Paused', aside: chip(t.title, TYPE_ICON[t.mode], `--mode mode-${t.mode}`) }),
-    raceTicket({ mode: t.mode, title: t.title, label: 'What is paused', facts: t.facts, route: t.route ?? null, cars: t.cars, kicker: t.event, cls: `mode-${t.mode}` }),
-    btn(Play, 'Resume', o.onResume, '--large --primary --cta pause-screen__resume'),
+    screenHead({ icon: Pause, title: 'Paused' }),
+    card(),
     h(
       'nav',
       { class: 'nav-list', 'aria-label': 'Paused' },

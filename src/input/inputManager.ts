@@ -99,9 +99,8 @@ export class InputManager {
         case 'KeyE':
           this.shiftLatch = 1;
           break;
-        // The horn is Shift (H hides the HUD everywhere, ui/hud/hudCard.ts).
-        case 'ShiftLeft':
-        case 'ShiftRight':
+        // The horn is G (H hides the HUD everywhere, ui/hud/hudCard.ts); Shift stays free for something bigger.
+        case 'KeyG':
           this.emit('horn');
           break;
         case 'KeyR':
@@ -115,9 +114,9 @@ export class InputManager {
     else this.keys.delete(e.code);
   }
 
-  /** Horn held (Shift or right stick click). Not recorded: replays never honk. */
+  /** Horn held (G or right stick click). Not recorded: replays never honk. */
   hornHeld(): boolean {
-    return this.enabled && (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || this.padHorn);
+    return this.enabled && (this.keys.has('KeyG') || this.padHorn);
   }
 
   releaseAll(): void {
@@ -137,7 +136,7 @@ export class InputManager {
 
   /** Produce exactly one frame. Call once per sim tick with the fixed dt. */
   sample(dt: number): InputFrame {
-    if (!this.enabled) return { throttle: 0, brake: 0, steer: 0, handbrake: false, nitrous: false, shift: 0, reset: false };
+    if (!this.enabled) return { throttle: 0, brake: 0, steer: 0, handbrake: false, nitrous: false, shift: 0, reset: false, antilag: false };
     const left = this.k('KeyA', 'ArrowLeft');
     const right = this.k('KeyD', 'ArrowRight');
     const steerTarget = (right ? 1 : 0) - (left ? 1 : 0);
@@ -153,6 +152,8 @@ export class InputManager {
       nitrous: this.k('KeyN'),
       shift: this.shiftLatch,
       reset: this.resetLatch,
+      // Rolling antilag is a held button, as on the ECUs that have it: Shift.
+      antilag: this.k('ShiftLeft', 'ShiftRight'),
     };
     this.shiftLatch = 0;
     this.resetLatch = false;
@@ -182,6 +183,7 @@ export class InputManager {
       frame.brake = Math.max(frame.brake, b(6));
       frame.handbrake ||= pressed(2);
       frame.nitrous ||= pressed(0) || pressed(1);
+      frame.antilag ||= pressed(10);
       const edge = (i: number) => pressed(i) && !this.gamepadPrev[i];
       if (edge(5)) frame.shift = 1;
       if (edge(4)) frame.shift = -1;

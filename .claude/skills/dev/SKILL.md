@@ -18,4 +18,4 @@ argument-hint: [?race=circuit|sprint|drift | ?freeroam | ?garage | ?drone] [&see
 7. Performance: the `?fps` meter reads like `117 fps · 8.5 ms · Auto (High) 6/8 aim 120`. Targets (CLAUDE.md): aim 120 fps, hold 60, never below 30. A frame time pinned at the display's refresh (8.3 or 16.7 ms) means headroom; above 16.7 ms at Medium is a regression to fix, above 33 ms a bug. `?quality=high&fps` is the stress check, `?quality=auto&fps` the default path; `window.__nr.autoQ.stats` has the controller's median, p90 and slow fraction, and `.aim` the frame time it is aiming at. Compare before and after a change on the same seed and camera.
 8. Stop the background server when you are done unless the user is using it.
 
-Keys: W/S throttle and brake, A/D steer, Space handbrake, Shift nitrous, R reset, C camera, Esc pause, ` tuning panel and F3 camera panel (debug mode only). README.md has the full table.
+Keys: W/S throttle and brake, A/D steer, Space handbrake, N nitrous, G horn, R reset, C camera, Esc pause, ` tuning panel and F3 camera panel (debug mode only). README.md has the full table.

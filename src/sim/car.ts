@@ -97,12 +97,12 @@ export interface CarState {
   /** Seconds left of a clutch kick's extra torque. */
   clutchKick: number;
   /**
-   * Launch control and the pedal combos (launch tuning). twoStepCut: seconds left of the current rev cut
+   * Launch control (launch tuning). twoStepCut: seconds left of the current rev cut
    * (> 0 while the two-step or antilag has the spark off: the stutter the tach and the engine voice show).
    * lineLock: throttle and brake together at a standstill, the brakes holding the undriven axle while the
-   * driven wheels spin (a burnout). antilag: the same combo rolling in a turbo car, the engine held at
-   * revs with boost pinned and no drive. boost: turbo spool, 0 (off boost) .. 1 (full), always 0 on a
-   * naturally aspirated car. antilagHold: seconds boost stays pinned after the brake comes off antilag.
+   * driven wheels spin (a burnout). antilag: the antilag button and the throttle rolling in a turbo
+   * car, the engine held at its antilag rpm with boost pinned and no drive. boost: turbo spool, 0 (off boost) .. 1 (full), always 0 on a
+   * naturally aspirated car. antilagHold: seconds boost stays pinned after the antilag button is let go.
    */
   twoStepCut: number;
   lineLock: boolean;
@@ -374,17 +374,19 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
   let rpmTarget = Math.max(axleRpm, lowGear ? clutchRpm : t.engine.idleRpm);
   if (c.shiftTimer > 0) rpmTarget = Math.max(t.engine.idleRpm, axleRpm);
   if (clutchIn) rpmTarget = t.engine.idleRpm + drive * (t.engine.redline - t.engine.idleRpm);
-  // The pedal combos (launch tuning). Throttle and brake together: standing, a line lock (the brakes hold
-  // the undriven axle, the driven wheels spin: a burnout); rolling in a turbo car, antilag (the clutch
-  // slips, the engine is held at revs with boost pinned, the brakes drag the speed). The two-step is
-  // armed at a standstill while a launch rpm is set: a hard cut that bounces the revs under it (the
-  // countdown's launch control, gridRev), so the car leaves the line from exactly those revs.
+  // Launch control (launch tuning). Throttle and brake together standing is a line lock (the brakes hold
+  // the undriven axle, the driven wheels spin: a burnout). The antilag button held with the throttle down,
+  // rolling in a turbo car, is rolling antilag (the clutch slips, the engine is held at its antilag rpm with
+  // boost pinned; off with no antilag rpm), a button of its own as on the ECUs that have it. The two-step
+  // is armed at a standstill while a launch rpm is set: a hard cut that bounces the revs under it (the
+  // countdown's launch control, gridRev), so the car leaves the line from exactly those revs. Each holds
+  // its own set point, as an ECU's launch and rolling antilag limits do.
   const L = t.launch;
-  const combo = c.gear > 0 && inp.throttle > L.pedalThreshold && inp.brake > L.pedalThreshold;
+  const gas = c.gear > 0 && inp.throttle > L.pedalThreshold;
   const standing = speed < L.lineLockSpeed;
-  c.lineLock = combo && standing;
-  c.antilag = combo && !standing && t.engine.turbo && !clutchIn;
-  const holdRpm = L.twoStepRpm > 0 ? L.twoStepRpm : L.antilagRpm;
+  c.lineLock = gas && inp.brake > L.pedalThreshold && standing;
+  c.antilag = gas && inp.antilag && !standing && t.engine.turbo && !clutchIn && L.antilagRpm > 0;
+  const holdRpm = c.antilag ? L.antilagRpm : L.twoStepRpm;
   const armed = L.twoStepRpm > 0 && c.gear > 0 && standing && drive > L.pedalThreshold && !clutchIn;
   if (c.antilag) rpmTarget = Math.max(axleRpm, holdRpm);
   else if (armed) rpmTarget = Math.max(rpmTarget, holdRpm);
@@ -520,7 +522,7 @@ function twoStep(c: CarState, set: number, L: CarTuning['launch'], dt: number, w
 /**
  * Turbo spool for a turbocharged car: boost builds under load above spoolRpmFrac of the redline in
  * spoolTime and bleeds off the throttle in spoolDownTime. Antilag pins it at full and keeps it there
- * antilagHold after the brake comes off, so the release is on full boost at once.
+ * antilagHold after the antilag button is let go, so the release is on full boost at once.
  */
 function spoolTurbo(c: CarState, t: CarTuning, drive: number, dt: number): void {
   const L = t.launch;

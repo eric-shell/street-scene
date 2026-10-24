@@ -51,4 +51,4 @@ export function carSnapshot(r: RaceState): string {
   return JSON.stringify(r.cars.map((c) => ({ s: c.state, d: c.dist, lap: c.lap, f: c.finished, ft: c.finishTick, lt: c.lapTimes })));
 }
 
-export const input = (p: Partial<InputFrame>): InputFrame => ({ throttle: 0, brake: 0, steer: 0, handbrake: false, nitrous: false, shift: 0, reset: false, ...p });
+export const input = (p: Partial<InputFrame>): InputFrame => ({ throttle: 0, brake: 0, steer: 0, handbrake: false, nitrous: false, shift: 0, reset: false, antilag: false, ...p });

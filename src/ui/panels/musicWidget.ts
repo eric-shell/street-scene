@@ -2,7 +2,7 @@
  * Music player UI. Always shows credit for the current track: title, artist,
  * album, source and license, each linked. Modes:
  *  - full: player card (menu, garage, drone); can be minimized to a pill
- *  - compact: a now-playing chip for races (controls via M, [ and ])
+ *  - compact: races show the minimized pill's twin in the top right, a now-playing chip (controls via M, [ and ])
  *  - hidden
  * A "now playing" banner with full credit appears whenever the track changes.
  * Styled by _music-player.scss and, for the library dialog, _music-library.scss.
@@ -105,7 +105,7 @@ export class MusicWidget {
     );
     this.pill = h('button', { class: 'music-player__pill panel', type: 'button', 'aria-label': 'Show music player' }) as HTMLButtonElement;
     this.pill.addEventListener('click', () => player.setMinimized(false));
-    this.chip = h('div', { class: 'music-player__chip' });
+    this.chip = h('div', { class: 'music-player__chip panel', role: 'status', 'aria-label': 'Now playing' });
     this.banner = h('div', { class: 'music-player__banner panel', 'aria-live': 'polite' });
     this.root = h('div', { class: 'music-player' }, this.card, this.pill, this.chip, this.banner);
     parent.append(this.root);
@@ -202,8 +202,10 @@ export class MusicWidget {
     this.shuffleBtn.classList.toggle('btn--primary', p.shuffle);
     this.vol.value = String(p.muted ? 0 : p.volume);
     this.disc.classList.toggle('is-spinning', p.playing);
-    this.pill.replaceChildren(icon(p.playing ? Disc3 : Music, { size: 18, className: p.playing ? 'is-spinning' : '' }), h('span', { class: 'music-player__pill-label' }, t.title));
-    this.chip.replaceChildren(icon(p.muted ? VolumeX : Music, { size: 14 }), h('span', { class: 'music-player__chip-label' }, `${t.title} — ${t.artist}`));
+    // The race's chip is the pill to the letter (muted shows as such, since only M can unmute it there).
+    const pillIcon = () => icon(p.muted ? VolumeX : p.playing ? Disc3 : Music, { size: 18, className: p.playing && !p.muted ? 'is-spinning' : '' });
+    this.pill.replaceChildren(pillIcon(), h('span', { class: 'music-player__pill-label' }, t.title));
+    this.chip.replaceChildren(pillIcon(), h('span', { class: 'music-player__pill-label' }, t.title));
     this.renderTime();
   }
 

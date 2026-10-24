@@ -52,7 +52,7 @@ export interface CarTuning {
     /** Turbocharged (the manifest's engine spec, not drivingParams.json): boost spools with lag and rolling antilag holds it. */
     turbo: boolean;
   };
-  /** Launch control and the pedal combos (car.ts): the two-step at the line, line lock burnouts, rolling antilag, turbo spool. */
+  /** Launch control (car.ts): the two-step at the line, line lock burnouts, rolling antilag, turbo spool. */
   launch: {
     /** The build's launch rpm the two-step holds the engine at (rpm); 0 = off. applyBuild writes it from the garage's Tune tab. */
     twoStepRpm: number;
@@ -62,13 +62,13 @@ export interface CarTuning {
     twoStepDepth: number;
     /** How long each cut keeps the spark off (s): with the depth, the stutter's rate. */
     twoStepCutTime: number;
-    /** Throttle and brake both past this (0..1) is the pedal combo: line lock standing, antilag rolling. */
+    /** A pedal past this (0..1) counts as pressed for launch control: the two-step, line lock (throttle and brake) and antilag (throttle). */
     pedalThreshold: number;
-    /** Under this speed (m/s) the combo is a line lock burnout and the two-step is armed; over it, antilag. */
+    /** Under this speed (m/s) throttle and brake is a line lock burnout and the two-step is armed; over it the antilag button works. */
     lineLockSpeed: number;
-    /** Rolling antilag holds the engine here (rpm) when no launch rpm is set. */
+    /** Rolling antilag holds the engine here (rpm; 0 = off): the car's stock pick, replaced by a build's Antilag RPM (applyBuild). */
     antilagRpm: number;
-    /** Boost stays pinned at full this long after the brake comes off antilag (s). */
+    /** Boost stays pinned at full this long after the antilag button is let go (s). */
     antilagHold: number;
     /** Turbo cars: boost spools from nothing to full in this long under load (s). */
     spoolTime: number;

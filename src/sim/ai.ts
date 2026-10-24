@@ -251,7 +251,7 @@ export function aiInput(r: RaceState, rc: RaceCar): InputFrame {
     ai.watchDist = rc.dist;
   }
 
-  return { throttle, brake, steer, handbrake: false, nitrous, shift: 0, reset };
+  return { throttle, brake, steer, handbrake: false, nitrous, shift: 0, reset, antilag: false };
 }
 
 function pursuitSteer(rc: RaceCar, tx: number, tz: number): number {

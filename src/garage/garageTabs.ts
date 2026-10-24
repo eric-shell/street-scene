@@ -11,7 +11,7 @@ import { CarAssetLibrary, MANIFEST, manifestCar, partsFor } from '../render/car/
 import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
 import { AXLES, Axle, AxleStance, CarBuild, GLOW_PATTERNS, STANCE_LIMITS, TireShape, VinylShape } from '../shared/carBuild';
 import { SELECTABLE_CAR_IDS, SETUP_SLIDERS, getBaseTuning } from '../sim/tuning';
-import { LAUNCH_RPM, defaultLaunchRpm, maxLaunchRpm, tuningForBuild } from '../sim/build';
+import { LAUNCH_RPM, defaultAntilagRpm, defaultLaunchRpm, maxLaunchRpm, tuningForBuild } from '../sim/build';
 import { FEATURES } from '../shared/features';
 import { specBadges } from '../shared/carSpec';
 import { h, segmented, toast } from '../ui/kit/dom';
@@ -130,8 +130,9 @@ export function renderTabContent(host: TabHost): void {
         b.carId,
         (id) => {
           if (id === b.carId) return;
-          // A launch rpm left on the old car's stock pick follows the new car's; one the player chose stays (applyBuild clamps it).
+          // A launch or antilag rpm left on the old car's stock pick follows the new car's; one the player chose stays (applyBuild clamps it).
           if (b.performance.launchRpm === defaultLaunchRpm(b.carId)) b.performance.launchRpm = defaultLaunchRpm(id);
+          if ((b.performance.antilagRpm ?? defaultAntilagRpm(b.carId)) === defaultAntilagRpm(b.carId)) b.performance.antilagRpm = defaultAntilagRpm(id);
           b.carId = id;
           // Parts are per car; wheels are universal and stay.
           const wheels = v.parts.wheels;
@@ -426,20 +427,26 @@ function renderPerformance(host: TabHost): void {
   // the new setup's in place: re-rendering the tab would take focus off the notch the keyboard or pad is on.
   let stats = statLines(b);
   host.body.append(section('Stats', stats));
-  // Launch control: the rpm the two-step holds at the line while the throttle is down through the countdown.
-  // One slider: its bottom step is Off (free revs), then LAUNCH_RPM.min up to the car's redline less the cut's depth.
+  // Launch control: the rpm the two-step holds at the line while the throttle is down through the countdown,
+  // and on a turbo car the rpm rolling antilag holds (its own limit, as on an ECU). Each slider's bottom step
+  // is Off, then LAUNCH_RPM.min up to the car's redline less the cut's depth.
   const off = LAUNCH_RPM.min - LAUNCH_RPM.step;
-  const top = maxLaunchRpm(tuningForBuild(b.carId, b.performance));
-  const stock = defaultLaunchRpm(b.carId);
-  const rpmLabel = (x: number) => (x <= off ? 'Off' : x === stock ? `${x} rpm · stock` : `${x} rpm`);
+  const t = tuningForBuild(b.carId, b.performance);
+  const top = maxLaunchRpm(t);
+  const rpmSlider = (label: string, value: number, stock: number, set: (x: number) => void, note: string) => [
+    slider(label, value || off, off, top, LAUNCH_RPM.step, (x) => (x <= off ? 'Off' : x === stock ? `${x} rpm · stock` : `${x} rpm`), (x) => {
+      set(x <= off ? 0 : x);
+      host.changed(true);
+    }),
+    h('div', { class: 'muted garage-note' }, note),
+  ];
   host.body.append(
     section(
       'Launch',
-      slider('Launch RPM', b.performance.launchRpm || off, off, top, LAUNCH_RPM.step, rpmLabel, (x) => {
-        b.performance.launchRpm = x <= off ? 0 : x;
-        host.changed(true);
-      }),
-      h('div', { class: 'muted garage-note' }, 'Hold the gas through the countdown and the two-step bounces the engine here, so you leave the line from these revs. Gas and brake together: a burnout standing, antilag rolling on a turbo car.'),
+      ...rpmSlider('Launch RPM', b.performance.launchRpm, defaultLaunchRpm(b.carId), (x) => (b.performance.launchRpm = x), 'Two-step: hold the gas at the line and the revs wait here.'),
+      ...(t.engine.turbo
+        ? rpmSlider('Antilag RPM', b.performance.antilagRpm ?? defaultAntilagRpm(b.carId), defaultAntilagRpm(b.carId), (x) => (b.performance.antilagRpm = x), 'Hold Shift and the gas while rolling: revs held here, boost kept up.')
+        : []),
     ),
   );
   // The setup: four sliders, each a trade (sim/build.ts applyBuild), position 3 the stock car.

@@ -1,7 +1,7 @@
 /**
  * The performance half of a car build (shared/carBuild.ts holds the whole build and its visual half): the
  * garage Tune tab's four setup sliders (suspension, gear ratio, differential, brake balance: five positions
- * each, 3 the stock car) and its launch rpm, and applyBuild, the only way the sim reads a build. The sliders
+ * each, 3 the stock car), its launch rpm and its antilag rpm, and applyBuild, the only way the sim reads a build. The sliders
  * trade one thing for another rather than add performance, so a setup suits a track, not a tier. Validation
  * clamps imported positions, and a build saved with the retired component upgrades starts on the stock setup.
  */
@@ -9,10 +9,14 @@ import { CarTuning, SETUP, SETUP_SLIDERS, STOCK_POSITION, getBaseTuning, type Se
 import { clamp01, pow } from './math';
 import { num, obj } from '../shared/validate';
 
-/** A position per setup slider (1 left .. 5 right, 3 stock), plus the launch rpm the two-step holds at the line (rpm; 0 = off, free revs). */
-export type PerformanceBuild = Record<SetupSlider, SetupPosition> & { launchRpm: number };
+/**
+ * A position per setup slider (1 left .. 5 right, 3 stock), plus the launch rpm the two-step holds at the line
+ * (rpm; 0 = off, free revs) and the rpm rolling antilag holds a turbo car at (rpm; 0 = off; missing keeps the
+ * car's own, as race configs, replays and the AI's builds from before the setting do).
+ */
+export type PerformanceBuild = Record<SetupSlider, SetupPosition> & { launchRpm: number; antilagRpm?: number };
 
-/** The Tune tab's launch rpm picks: off, then LAUNCH_RPM.min up to the car's redline less the two-step's depth, in LAUNCH_RPM.step. */
+/** The Tune tab's launch and antilag rpm picks: off, then LAUNCH_RPM.min up to the car's redline less the two-step's depth, in LAUNCH_RPM.step. */
 export const LAUNCH_RPM = { min: 2500, step: 250 } as const;
 
 /**
@@ -27,14 +31,15 @@ export function maxLaunchRpm(t: CarTuning): number {
   return Math.floor((t.engine.redline - t.launch.twoStepDepth) / LAUNCH_RPM.step) * LAUNCH_RPM.step;
 }
 
-/** The stock build: every slider at the stock position, and the car's stock launch rpm when a car is named (off without one). */
+/** The stock build: every slider at the stock position, and the car's stock launch and antilag rpm when a car is named (launch off and the car's own antilag without one). */
 export function stockPerformance(carId?: string): PerformanceBuild {
   const p = { launchRpm: carId ? defaultLaunchRpm(carId) : 0 } as PerformanceBuild;
+  if (carId) p.antilagRpm = defaultAntilagRpm(carId);
   for (const s of SETUP_SLIDERS) p[s] = STOCK_POSITION;
   return p;
 }
 
-/** Whether every slider is on the stock position (the launch rpm aside): the build drives on the car's own tuning. */
+/** Whether every slider is on the stock position (the launch and antilag rpm aside): the build drives on the car's own tuning. */
 export function isStockSetup(perf: PerformanceBuild): boolean {
   return SETUP_SLIDERS.every((s) => perf[s] === STOCK_POSITION);
 }
@@ -75,14 +80,21 @@ export function applyBuild(base: CarTuning, perf: PerformanceBuild): CarTuning {
   t.drivetrain.diffOpen = clamp01(t.drivetrain.diffOpen + SETUP.differential.open[d]);
   t.drivetrain.diffLock = clamp01(t.drivetrain.diffLock + SETUP.differential.lock[d]);
   t.brakes.frontBias = clamp01(t.brakes.frontBias + SETUP.brakeBalance.frontBiasAdd[p.brakeBalance - 1]);
-  // The launch rpm is the one build setting the sim reads as is: clamped under the redline.
-  t.launch.twoStepRpm = p.launchRpm > 0 ? Math.min(Math.max(p.launchRpm, LAUNCH_RPM.min), maxLaunchRpm(t)) : 0;
+  // The launch and antilag rpm are the build settings the sim reads as is: clamped under the redline.
+  const rpm = (x: number) => (x > 0 ? Math.min(Math.max(x, LAUNCH_RPM.min), maxLaunchRpm(t)) : 0);
+  t.launch.twoStepRpm = rpm(p.launchRpm);
+  if (p.antilagRpm !== undefined) t.launch.antilagRpm = rpm(p.antilagRpm);
   return t;
 }
 
 /** A car's stock launch rpm (drivingParams.json launch.defaultRpm; 0 = off), where its donor's owners launch. */
 export function defaultLaunchRpm(carId: string): number {
   return getBaseTuning(carId).launch.defaultRpm;
+}
+
+/** A car's stock rolling antilag rpm (drivingParams.json launch.antilagRpm; 0 = off): on boost, near its torque peak. */
+export function defaultAntilagRpm(carId: string): number {
+  return getBaseTuning(carId).launch.antilagRpm;
 }
 
 export function tuningForBuild(carId: string, perf: PerformanceBuild): CarTuning {
@@ -93,7 +105,8 @@ export function tuningForBuild(carId: string, perf: PerformanceBuild): CarTuning
  * Clamp an imported performance build: each slider to a whole position (missing ones stock), and every
  * slider stock for a build from before the sliders (RETIRED_UPGRADES). A build with no launch rpm (saved
  * before launch control) takes the car's stock one when the car is named (the garage), else off (the sim,
- * so race configs, replays and the AI's builds stay as they were); an explicit 0 is always off.
+ * so race configs, replays and the AI's builds stay as they were); an explicit 0 is always off. The antilag
+ * rpm likewise: missing takes the car's stock one in the garage and stays missing (the car's own) in the sim.
  */
 export function validatePerformance(v: unknown, carId?: string): PerformanceBuild {
   const o = obj(v);
@@ -101,6 +114,8 @@ export function validatePerformance(v: unknown, carId?: string): PerformanceBuil
   if (!RETIRED_UPGRADES.some((c) => c in o)) for (const s of SETUP_SLIDERS) p[s] = Math.round(num(o[s], 1, 5, STOCK_POSITION)) as SetupPosition;
   // Off, or a step of the Tune tab's slider; applyBuild clamps it under the car's redline.
   const lr = num(o.launchRpm, 0, 12000, carId ? defaultLaunchRpm(carId) : 0);
-  p.launchRpm = lr >= LAUNCH_RPM.min ? Math.round(lr / LAUNCH_RPM.step) * LAUNCH_RPM.step : 0;
+  const step = (x: number) => (x >= LAUNCH_RPM.min ? Math.round(x / LAUNCH_RPM.step) * LAUNCH_RPM.step : 0);
+  p.launchRpm = step(lr);
+  if (o.antilagRpm !== undefined || carId) p.antilagRpm = step(num(o.antilagRpm, 0, 12000, carId ? defaultAntilagRpm(carId) : 0));
   return p;
 }
