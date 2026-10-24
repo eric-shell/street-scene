@@ -48,6 +48,7 @@ import { HudCard } from '../ui/hud/hudCard';
 import { Help, MUSIC_KEYS, type HelpKey, type HelpSection } from '../ui/panels/help';
 import { btn } from '../ui/kit/dom';
 import type { Vec2 } from '../sim/math';
+import type { Aspiration } from '../shared/carSpec';
 import { Settings } from '../ui/settings';
 import { formatTime } from '../ui/kit/format';
 import { mph } from '../ui/kit/units';
@@ -286,6 +287,8 @@ export class RaceSession {
   /** Open world HUD: props the player broke, top speed (mph), the district shown and the one being entered. */
   private smashed = 0;
   private topMph = 0;
+  /** The player's engine aspiration (the HUD hides the boost gauge of a naturally aspirated car), read from the manifest once. */
+  private aspiration?: Aspiration;
   private areaName = 'Downtown';
   private areaNext = '';
   private areaFor = 0;
@@ -1374,6 +1377,7 @@ export class RaceSession {
       nitroStage: c.nitroStage,
       throttle: c.throttle,
       launchRpm: rc.tuning.launch.twoStepRpm || undefined,
+      aspiration: (this.aspiration ??= manifestCar(rc.carId).engine.aspiration),
       boost: rc.tuning.engine.turbo ? c.boost : undefined,
       antilag: c.antilag,
       countdown,

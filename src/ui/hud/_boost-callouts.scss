@@ -16,11 +16,13 @@
   flex-direction: column;
   align-items: flex-end;
   gap: 2px;
-  /* Touch moves the cluster to the top right corner: the callouts hang under it instead. */
+  /* Touch in landscape moves the cluster to the top right corner: the callouts hang under it instead. */
   @include media.touch {
-    bottom: auto;
-    top: 100%;
-    margin: 10px 0 0;
+    @media (orientation: landscape) {
+      bottom: auto;
+      top: 100%;
+      margin: 10px 0 0;
+    }
   }
 }
 .boost-callout {
