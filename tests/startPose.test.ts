@@ -136,8 +136,10 @@ describe('the cruise at the wheel', () => {
         const d = cruiseFor(seed, s0, 12);
         // The lane line rounds a right angle in 3-5 m, which full lock cannot quite follow: the car runs up to
         // about 1.9 m wide there (still on the road), well under 1 m everywhere else. The curved grid's
-        // sharper corners (a turn of up to about 115 degrees, roadGraph.ts CITY.warp) take it to about 2.4 m.
-        expect(d.worst, `seed ${seed} from ${s0}: lane error`).toBeLessThan(2.6);
+        // sharper corners (a turn of up to about 115 degrees, roadGraph.ts CITY.warp) take it to about 2.7 m
+        // (2.4 m before the grip pass, when the cars oversteered a little below the limit and so turned
+        // tighter than the lock asked for).
+        expect(d.worst, `seed ${seed} from ${s0}: lane error`).toBeLessThan(2.9);
         expect(d.events, `seed ${seed} from ${s0}: hits`).toEqual([]);
         // Held near the cruise speed, bar the corners and gates it slows for.
         expect(d.speed, `seed ${seed} from ${s0}: speed`).toBeGreaterThan(3);
