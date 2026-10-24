@@ -25,8 +25,7 @@
  * lantern post beyond it, a planter pot before each flare and bollards along
  * the flared curbs.
  *
- * Content to add (render/districts/park.ts): hedges, a pond or playground,
- * better trees.
+ * Content to add (render/districts/park.ts): hedges, a pond or playground.
  */
 import { CITY } from '../config';
 import { MOUTH_REACH, bayHi, bayInset, bayLo, bayPoint, mouthBay } from '../busBays';

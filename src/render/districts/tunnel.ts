@@ -34,7 +34,8 @@ import { smooth01 } from '../../city/districts/geom';
 import { Rng } from '../../sim/prng';
 import { GeoBuilder } from '../geoBuilder';
 import type { DistrictKit, DistrictRenderer } from './kit';
-import { col, cylinder, wallBox } from './kit';
+import { col, wallBox } from './kit';
+import { tree } from './trees';
 import { BakedBuilder, CLEARANCE_CELL, bakedMaterial, frameBox, frameCylinderU, frameWall, makeStructureSigns, nameCell, signPanel } from './structureFx';
 import { washMaterial } from '../materialFx';
 import { ridgeRawAt } from '../../city/districts/tunnel';
@@ -588,14 +589,6 @@ function ridgeRock(kit: DistrictKit, bb: BakedBuilder, signs: GeoBuilder, a: Are
     const gy = (over ? rockAt(world, r, q.x, q.z) : world.heightAt(q.x, q.z)) - y;
     const gv = (over ? rockAt(world, r, o.x, o.z) : world.heightAt(o.x, o.z)) - y;
     if (Math.hypot(gy, gv) / e > 0.75) continue;
-    treeAt(kit, p.x, y, p.z, rng.range(1.6, 2.8), rng.range(6, 11), rng.next());
+    tree(kit, p.x, p.z, rng.range(1.6, 2.8), rng.range(6, 11), { y, conifer: 0.6 });
   }
-}
-
-/** A low poly tree standing at height y (kit.tree stands on the terrain, which is cut away over the bore). */
-function treeAt(kit: DistrictKit, x: number, y: number, z: number, size: number, height: number, tint: number): void {
-  cylinder(kit.solid, x, z, 0.28, y - 0.2, y + height * 0.45, 5, col(0x3a2c22), false);
-  const leaf = col(0x1f4a2c, 0.8 + tint * 0.4);
-  cylinder(kit.foliage, x, z, size, y + height * 0.35, y + height * 0.8, 6, leaf, true, size * 0.35);
-  cylinder(kit.foliage, x, z, size * 0.7, y + height * 0.7, y + height, 6, leaf.clone().multiplyScalar(1.15), true, 0.05);
 }

@@ -29,6 +29,8 @@ export interface DistrictKit {
   glow: GeoBuilder;
   /** Lit, vertex colored foliage. */
   foliage: GeoBuilder;
+  /** The trees (trees.ts): lit, vertex colored, uv = sway weight and phase for the wind. */
+  trees: GeoBuilder;
   /** Extra objects (instanced meshes, animated parts). */
   group: THREE.Group;
   /** City walls (kind 'wall') by look. */
@@ -247,15 +249,6 @@ export function groundLine(kit: DistrictKit, gb: GeoBuilder, a: Vec2, b: Vec2, w
     groundVertex(kit, gb, a.x - nx, a.z - nz, lift, color),
   ];
   gb.quadFacing(v[0], v[1], v[2], v[3], 0, 1, 0);
-}
-
-/** Low poly tree: trunk + two stacked cones of foliage. */
-export function tree(kit: DistrictKit, x: number, z: number, size: number, height: number, tint: number): void {
-  const y = kit.h(x, z);
-  cylinder(kit.solid, x, z, 0.28, y - 0.2, y + height * 0.45, 5, col(0x3a2c22), false);
-  const leaf = col(0x1f4a2c, 0.8 + tint * 0.4);
-  cylinder(kit.foliage, x, z, size, y + height * 0.35, y + height * 0.8, 6, leaf, true, size * 0.35);
-  cylinder(kit.foliage, x, z, size * 0.7, y + height * 0.7, y + height, 6, leaf.clone().multiplyScalar(1.15), true, 0.05);
 }
 
 /** Route shortcut bulbs: hot pink with amber, the shortcut sign's colours (the alleys, the river's ramp mouths, the car parks' entries). */

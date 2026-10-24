@@ -18,7 +18,8 @@ import { circlePolygon } from '../../city/districts/geom';
 import type { Vec2 } from '../../sim/math';
 import type { GeoBuilder } from '../geoBuilder';
 import type { DistrictKit, DistrictRenderer } from './kit';
-import { col, cylinder, groundLine, groundVertex, prism, tree } from './kit';
+import { col, cylinder, groundLine, groundVertex, prism } from './kit';
+import { tree } from './trees';
 
 /** Pieces around an island (vertices per ring of the draped ground, of a curb or basin wall). */
 const SEGS = 40;
@@ -155,7 +156,7 @@ export const roundaboutRenderer: DistrictRenderer = {
       }
       // Solid pieces: trunks, the basin, the centrepiece.
       for (const p of b.props) {
-        if (p.kind === 'tree') tree(kit, p.x, p.z, p.size, p.height, (p.yaw % 1) * 0.5);
+        if (p.kind === 'tree') tree(kit, p.x, p.z, p.size, p.height, { conifer: 0.1 });
         else if (p.kind === 'basin') {
           // A level basin rim standing 0.85 m over the floor, blue water glowing just under it, a small jet.
           const T = kit.h(p.x, p.z) + p.height;

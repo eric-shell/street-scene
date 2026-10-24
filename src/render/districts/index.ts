@@ -12,6 +12,7 @@ import { TICK_HZ } from '../../sim/constants';
 import { GeoBuilder } from '../geoBuilder';
 import { fadeSubPixel } from '../materialFx';
 import type { DistrictKit, DistrictRenderer } from './kit';
+import { treeMaterial } from './trees';
 import { alleyRenderer } from './alley';
 import { hillsRenderer } from './hills';
 import { downtownRenderer } from './downtown';
@@ -90,6 +91,7 @@ export function buildDistrictMeshes(world: World, opts: { quality?: Quality } = 
     paint: new GeoBuilder(true),
     glow: new GeoBuilder(true),
     foliage: new GeoBuilder(true),
+    trees: new GeoBuilder(true),
     group,
     walls,
     builds: world.districts.builds,
@@ -119,6 +121,7 @@ export function buildDistrictMeshes(world: World, opts: { quality?: Quality } = 
   add(kit.paint, 'districtPaint', new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, emissive: 0x111216, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
   add(kit.solid, 'districtSolid', new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, envMapIntensity: 0.5 }));
   add(kit.foliage, 'districtFoliage', new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true }));
+  add(kit.trees, 'districtTrees', treeMaterial(kit));
   const glow = new THREE.MeshBasicMaterial({ vertexColors: true });
   glow.color.setScalar(1.6);
   // Small emitters (pavement lights, floods, lamps) fade with pixel coverage instead of flickering far away.
