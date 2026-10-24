@@ -743,7 +743,7 @@ describe('landings, banks and brakes', () => {
     }
   });
 
-  it('brakes hard: 160 km/h to a stop in under 60 m, shorter with upgraded brakes', () => {
+  it('brakes hard: 160 km/h to a stop in under 60 m, longer with the brakes biased to the rear', () => {
     const stop = (t: CarTuning) => {
       const c = createCar(0, 0, 0, 0);
       c.vz = 160 / 3.6;
@@ -753,7 +753,8 @@ describe('landings, banks and brakes', () => {
     for (const id of SELECTABLE_CAR_IDS) {
       const stock = stop(getBaseTuning(id));
       expect(stock, id).toBeLessThan(60);
-      expect(stop(applyBuild(getBaseTuning(id), { ...stockPerformance(), brakes: 3 })), id).toBeLessThan(stock - 5);
+      // Rear bias asks the rear tires, unloaded under braking, for more than they hold.
+      expect(stop(applyBuild(getBaseTuning(id), { ...stockPerformance(), brakeBalance: 1 })), id).toBeGreaterThan(stock + 1);
     }
   });
 });

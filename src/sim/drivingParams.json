@@ -5,7 +5,7 @@
     "cars.<id>: per car overrides, merged over base. Write absolute values (e.g. \"mass\": 2000), only the keys that differ. Nested objects merge key by key, arrays (torqueCurve, ratios) replace the whole array.",
     "Keys starting with _ are comments and are ignored. Unknown keys fail loudly at startup, so typos never go unnoticed.",
     "drivetrain.layout is \"rwd\", \"awd\" or \"fwd\". awdFrontShare is the AWD torque share sent to the front axle (0.4 = 40/60).",
-    "performanceParts: garage upgrade tiers, index 0 stock, 1 street, 2 pro, 3 extreme. applyBuild() in build.ts applies them over the car tuning.",
+    "setup: the garage Tune tab's four sliders (suspension, gear ratio, differential, brake balance), five positions each with position 3 the stock car. applyBuild() in build.ts lays them over the car tuning.",
     "Geometry (wheel positions, size) comes from src/assets/carManifest.json, not from here.",
     "Physics tuning panel (Settings > Developer > Debug mode): Copy JSON exports `fileOverride`, a block you can paste into cars.<id> here. Editing this file discards stale tuning saved in the browser."
   ],
@@ -14,8 +14,11 @@
     "yawInertiaScale": 0.85,
     "cgHeight": 0.4,
     "drivetrain": {
+      "_": "diffOpen and diffLock are the driven axles' differential (car.ts updateAxles), 0 and 0 for the stock axle; the Tune tab's Differential slider adds to them (setup.differential).",
       "layout": "rwd",
-      "awdFrontShare": 0.4
+      "awdFrontShare": 0.4,
+      "diffOpen": 0,
+      "diffLock": 0
     },
     "engine": {
       "idleRpm": 900,
@@ -235,16 +238,29 @@
       "_name": "Proto RS: procedural placeholder used by tests and the asset pipeline. Not selectable. Uses base as is."
     }
   },
-  "performanceParts": {
-    "engine": { "torqueMul": [1, 1.07, 1.15, 1.25], "redlineAdd": [0, 200, 450, 700] },
-    "turbo": { "torqueMul": [1, 1.08, 1.17, 1.28], "highRpmBoost": [0, 0.04, 0.08, 0.13] },
-    "exhaust": { "torqueMul": [1, 1.03, 1.05, 1.08] },
-    "transmission": { "shiftTime": [0.22, 0.16, 0.11, 0.07], "finalDriveMul": [1, 0.98, 0.95, 0.92] },
-    "tires": { "gripMul": [1, 1.04, 1.08, 1.13] },
-    "suspension": { "frequencyMul": [1, 1.12, 1.25, 1.38], "gripMul": [1, 1.015, 1.03, 1.045], "steerRateMul": [1, 1.06, 1.12, 1.18] },
-    "brakes": { "forceMul": [1, 1.12, 1.25, 1.4] },
-    "weight": { "massMul": [1, 0.96, 0.92, 0.87] },
-    "nitrous": { "capacity": [3.6, 3.9, 4.7, 5.6], "force": [5500, 4100, 4700, 5400] }
+  "setup": {
+    "_readme": "The garage Tune tab's four sliders (applyBuild() in build.ts lays them over the car tuning). Each table holds one entry per position, left to right (1..5). Position 3 is the stock car: every *Mul table holds exactly 1 there and every other table 0 (tuning.ts throws otherwise), so a stock build is bit for bit the car's own tuning and the AI, stock replays and bests are unchanged.",
+    "suspension": {
+      "_": "Soft (1) to Stiff (5). Springs (frequencyMul on suspension.frequency) and travel to the bump stop (travelMul): soft leans more and rides over kerbs on long travel, stiff sits flat but bottoms out (sparks) on a kerb taken at speed. steerRateMul: how quickly the front wheels turn in. Grip: roadGripMul on the tires (tarmac and paving), roughGripMul is the grip on dirt, grass and cobbles relative to stock, where soft keeps the tires on the ground and stiff skips over it.",
+      "frequencyMul": [0.86, 0.93, 1, 1.12, 1.25],
+      "travelMul": [1.3, 1.15, 1, 0.8, 0.6],
+      "steerRateMul": [0.9, 0.95, 1, 1.06, 1.12],
+      "roadGripMul": [0.97, 0.985, 1, 1.015, 1.03],
+      "roughGripMul": [1.1, 1.05, 1, 0.94, 0.88]
+    },
+    "gearing": {
+      "_": "Short (1) to Long (5): finalDriveMul on gearbox.finalDrive, every gear. The stock cars are drag limited with an overdrive top gear (measured: final drive moves 0-100 only by where the shifts fall), so the readable effect is the limiter: short gears run out sooner (lower top speed in top gear, and on nitrous), long ones leave room to keep pulling past the stock top speed on nitrous and in a slipstream, and launch softer.",
+      "finalDriveMul": [1.2, 1.1, 1, 0.92, 0.85]
+    },
+    "differential": {
+      "_": "Open (1) to Locked (5), added to the car's drivetrain.diffOpen and diffLock (car.ts updateAxles; 0 and 0 is the stock axle, which turns both wheels together like a well behaved limited slip). open: an open differential gives each wheel the same torque, so drive past twice what the lighter wheel holds breaks that wheel loose and the axle passes on only twice its sliding force; open is how far of the way there. Stable, but drive fades as a corner lifts the inside wheel and a powered slide dies. lock: the force pair a locked axle makes in a turn while it grips, as a share of the axle's grip at the peak slip: it resists the rotation (push on turn in, steadier and harder drive out of a turn) and uses up the inside wheel's grip, so once the axle lets go both wheels spin together and hold the slide as the stock axle does.",
+      "open": [0.8, 0.4, 0, 0, 0],
+      "lock": [0, 0, 0, 0.3, 0.6]
+    },
+    "brakeBalance": {
+      "_": "Rear (1) to Front (5): frontBiasAdd moves brakes.frontBias. Rear bias makes the rear tires do more of the stopping, which costs them side grip and rotates the car on the brakes (trail braking into a slide) but locks the lighter rear sooner (longer stops); front bias stops straight and stable on grippy tarmac.",
+      "frontBiasAdd": [-0.18, -0.09, 0, 0.06, 0.12]
+    }
   },
   "traffic": {
     "_": "Ambient traffic (src/sim/traffic.ts): civilian cars driven kinematically along street lanes, keeping right, and solid passive bodies once struck. Speeds m/s, accelerations m/s^2, lengths m, masses kg.",
