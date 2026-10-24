@@ -165,13 +165,15 @@ export class StreetStage {
    * stands (game/session.ts). The circuit's dressing goes, since the open
    * world has none of it: barriers and the street meets behind them, corner
    * rails and route arrows, the crowds. The stage's own car, the rest of the
-   * convoy and the key light leave the scene for the session's, and the stage
+   * convoy, their drivers and the key light leave the scene for the session's, and the stage
    * stands still until reclaim() puts everything back.
    */
   lend(): NightScene {
     this.lent = true;
     this.dropConvoy();
     if (this.lead.view) this.lead.view.root.visible = false;
+    // The drivers go with their cars: the stage stops placing them while lent, so they would sit where the convoy was.
+    this.drivers.group.visible = false;
     this.carLight.visible = false;
     const n = this.night;
     n.crowds.setEnabled(false);
@@ -194,6 +196,7 @@ export class StreetStage {
     this.down.length = 0;
     n.props.update(0, this.time, this.broken, []);
     if (this.lead.view) this.lead.view.root.visible = true;
+    this.drivers.group.visible = true;
     this.carLight.visible = true;
     this.place(0);
   }

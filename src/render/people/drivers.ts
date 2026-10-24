@@ -120,12 +120,12 @@ export class Drivers {
     for (let i = 0; i < max; i++) this.people.setLook(i, driverLook(i));
   }
 
-  /** Seat a driver in each view for its pose this frame (views beyond the field's size go without). */
+  /** Seat a driver in each view for its pose this frame (views beyond the field's size go without, and a hidden car's driver hides with it: the reset blink). */
   update(views: readonly CarView[], poses: readonly CarPose[]): void {
     const p = this.pose;
     for (let i = 0; i < this.people.max; i++) {
       const view = views[i];
-      if (!view) {
+      if (!view || !view.root.visible) {
         this.people.hide(i);
         continue;
       }

@@ -66,8 +66,14 @@ import { REPLAY_CAMS, VIEW_KEYS, isFollowCam, bindOrbitDrag, TvCamera, type Repl
 
 export type { ReplayCamMode };
 
-/** Blinks per second of a car passing through the others after a reset. */
-const RESET_BLINK_HZ = 7;
+/**
+ * Blinks per second of a car passing through the others after a reset, half
+ * on and half off: the steady 4 Hz arcade racers have always used. Timed by
+ * the sim's countdown, not the frame clock, so every blink is the same
+ * whole number of ticks at any frame rate (no beat against the display) and
+ * it holds still in a pause.
+ */
+const RESET_BLINK_HZ = 4;
 
 /** The circuit gantry sign switches to the next label this many ticks after the player passes under it. */
 const SIGN_DELAY = 70;
@@ -833,8 +839,8 @@ export class RaceSession {
     const poses = this.curr.map((c, i) => lerpSnap(this.prev[i], c, this.paused ? 1 : alpha));
     this.views.forEach((v, i) => {
       v.update(poses[i], this.time);
-      // A car just reset blinks while it passes through the others (on the session clock, so it holds still in a pause).
-      v.root.visible = poses[i].passThrough <= 0 || (this.time * RESET_BLINK_HZ) % 1 < 0.6;
+      // A car just reset blinks while it passes through the others, shown first (the half cycle's offset).
+      v.root.visible = poses[i].passThrough <= 0 || (poses[i].passThrough * RESET_BLINK_HZ + 0.5) % 1 < 0.5;
     });
     this.drivers.update(this.views, poses);
     if (this.ghostView && this.ghostPrev && this.ghostCurr) this.ghostView.update(lerpSnap(this.ghostPrev, this.ghostCurr, alpha), this.time);
