@@ -87,13 +87,21 @@ export interface CarTuning {
   };
   /**
    * One grip curve over the normalized slip vector (sideways slip over peakSlipDeg, slip ratio over
-   * peakSlipRatio): linear to the peak at length 1, down to the sliding grip at fullSlideDeg / peakSlipDeg.
+   * peakSlipRatio): rising to the peak at length 1 (shaped per axle by roundingFront / roundingRear), down
+   * to the sliding grip at fullSlideDeg / peakSlipDeg.
    */
   tires: {
     gripFront: number;
     gripRear: number;
     /** Slip angle of peak grip (deg). */
     peakSlipDeg: number;
+    /**
+     * Shape of the rise to the peak, per axle (0..1): 0 a straight line, 1 twice as steep at zero slip and
+     * flat into the peak. Higher = sharper response and less slip in ordinary corners; the peak and the
+     * slide past it are unchanged. A rear above the front keeps the car stable below the limit.
+     */
+    roundingFront: number;
+    roundingRear: number;
     /** Slip ratio (tread speed over road speed, minus one) of peak grip. */
     peakSlipRatio: number;
     /** Slip angle where grip has fallen to slideGrip. */
