@@ -183,6 +183,19 @@ export function planRoadworks(ctx: PlanContext, routes: readonly CarveRoute[]): 
     return { route, nodes: new Set(r.nodes), edges: new Set(route.edges) };
   });
   const onRoute = (i: number, e: number) => built[i].edges.has(e);
+  /** Room between the two junctions' curb corners (the mouth points, measured along the street): [lo, hi] (m from node a). */
+  const span = (ei: number): [number, number] => {
+    const e = g.edges[ei];
+    const f = frame(g, ei, 1);
+    const m = mouths[ei];
+    const along = (p: Vec2) => (p.x - g.nodes[e.a].x) * f.d.x + (p.z - g.nodes[e.a].z) * f.d.z;
+    // A bend node is no junction: the closure may run right up to the piece's end there (its frame is
+    // this piece's, so it never crosses onto the next; the racing line and the traffic lanes clamp
+    // their lead-ins to the piece).
+    const lo = isBendNode(g, e.a) ? 0 : Math.max(along(m.aP.curb), along(m.aN.curb)) + C.mouthClear;
+    const hi = isBendNode(g, e.b) ? f.len : Math.min(along(m.bP.curb), along(m.bN.curb)) - C.mouthClear;
+    return [lo, hi];
+  };
   // Plain streets nobody claimed, long enough, never a closed side street of either route.
   const candidates: number[] = [];
   for (const e of g.edges) {
@@ -193,6 +206,9 @@ export function planRoadworks(ctx: PlanContext, routes: readonly CarveRoute[]): 
     if (street.length < C.minEdge) continue;
     const ends = [street.nodes[0], street.nodes[street.nodes.length - 1]];
     if (built.some((b, i) => !onRoute(i, e.id) && ends.some((n) => b.nodes.has(n)))) continue;
+    // A piece too short for the shortest closure never takes one: leave it out so the tries go to streets that can.
+    const [lo, hi] = span(e.id);
+    if (hi - lo < C.work[0] + 2 * C.taper[0]) continue;
     candidates.push(e.id);
   }
   const placed: { x: number; z: number; edge: number }[] = [];
@@ -207,14 +223,7 @@ export function planRoadworks(ctx: PlanContext, routes: readonly CarveRoute[]): 
     const taper = rng.range(C.taper[0], C.taper[1]);
     let work = rng.range(C.work[0], C.work[1]);
     const f = frame(g, ei, side);
-    // Room between the two junctions' curb corners (the mouth points, measured along the street).
-    const m = mouths[ei];
-    const along = (p: Vec2) => (p.x - g.nodes[e.a].x) * f.d.x + (p.z - g.nodes[e.a].z) * f.d.z;
-    // A bend node is no junction: the closure may run right up to the piece's end there (its frame is
-    // this piece's, so it never crosses onto the next; the racing line and the traffic lanes clamp
-    // their lead-ins to the piece).
-    const lo = isBendNode(g, e.a) ? 0 : Math.max(along(m.aP.curb), along(m.aN.curb)) + C.mouthClear;
-    const hi = isBendNode(g, e.b) ? f.len : Math.min(along(m.bP.curb), along(m.bN.curb)) - C.mouthClear;
+    const [lo, hi] = span(ei);
     const room = hi - lo - 2 * taper;
     if (room < C.work[0]) return false;
     work = Math.min(work, room);

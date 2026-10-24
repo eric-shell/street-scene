@@ -539,6 +539,43 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     out.push({ nx: (x - px) / d, nz: (z - pz) / d, depth: r - d, px, pz, kind });
   }
 
+  /** Whether a wall stands for a car body at height y (m): low walls flown over, parapets and decks passed under. */
+  function standsFor(w: Wall, y: number): boolean {
+    // A low wall (a car park's lip face) is flown over by a car above its top; a deck's parapet is
+    // passed under by a car on the channel floor below its bottom.
+    if (w.top !== undefined && y > w.top) return false;
+    if (w.bottom !== undefined && y < w.bottom) return false;
+    // A column (or anything) under the highway's deck is nothing to a car up on the deck.
+    return w.under === undefined || y <= w.under;
+  }
+
+  /**
+   * Whether the way from (x, z) to (px, pz), a point on wall `self`, comes in through the front of
+   * another wall standing for height y: the circle is out in the open past the far face of a solid
+   * thinner than the anti tunnelling band, not inside it.
+   */
+  function pastFarFace(self: number, x: number, z: number, px: number, pz: number, y: number): boolean {
+    const dx = px - x;
+    const dz = pz - z;
+    for (const id of scratch) {
+      const w = walls[id];
+      if (id === self || w.solid || !standsFor(w, y)) continue;
+      // Entering from its front: heading against its normal.
+      if (dx * w.nx + dz * w.nz >= 0) continue;
+      const ex = w.bx - w.ax;
+      const ez = w.bz - w.az;
+      const den = dx * ez - dz * ex;
+      if (Math.abs(den) < 1e-12) continue;
+      const t = ((w.ax - x) * ez - (w.az - z) * ex) / den;
+      const u = ((w.ax - x) * dz - (w.az - z) * dx) / den;
+      // A little past either end of the wall: at a sliver's tip the two faces meet at a corner, to a
+      // few cm (the block ring and the alley's walls are traced separately).
+      const slack = 0.1 / sqrt(ex * ex + ez * ez);
+      if (t > 0 && t <= 1 + 1e-6 && u >= -slack && u <= 1 + slack) return true;
+    }
+    return false;
+  }
+
   function collideCircle(x: number, z: number, r: number, out: Contact[], y = -Infinity): number {
     out.length = 0;
     wallGrid.query(x - r - 3, z - r - 3, x + r + 3, z + r + 3, scratch);
@@ -547,12 +584,7 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     let lastSolid: Solid | undefined;
     for (const id of scratch) {
       const w = walls[id];
-      // A low wall (a car park's lip face) is flown over by a car above its top; a deck's parapet is
-      // passed under by a car on the channel floor below its bottom.
-      if (w.top !== undefined && y > w.top) continue;
-      if (w.bottom !== undefined && y < w.bottom) continue;
-      // A column (or anything) under the highway's deck is nothing to a car up on the deck.
-      if (w.under !== undefined && y > w.under) continue;
+      if (!standsFor(w, y)) continue;
       if (w.solid) {
         if (w.solid !== lastSolid) collideSolid(w.solid, w.kind, x, z, r, out);
         lastSolid = w.solid;
@@ -565,8 +597,11 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
       const dz = z - cz;
       const sd = dx * w.nx + dz * w.nz;
       // One sided: a center up to 3 m behind the wall still gets pushed back,
-      // which stops fast cars tunnelling through.
+      // which stops fast cars tunnelling through. Unless it is already out through the solid's far
+      // face (a sliver of block between an alley and a street meeting at a shallow angle): pushing it
+      // back from there would haul a car in the open through the solid.
       if (sd < -3 || sd >= r) continue;
+      if (sd < 0 && pastFarFace(id, x, z, cx, cz, y)) continue;
       let nx = w.nx;
       let nz = w.nz;
       let depth = r - sd;

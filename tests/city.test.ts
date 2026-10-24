@@ -1409,6 +1409,7 @@ describe('route shortcut shapes', () => {
         const events = r.events.length;
         let vLip = 0;
         let airborne = false;
+        let takeoffLat = 0;
         let landed: { s: number; lat: number; surface: string } | null = null;
         let since = 0;
         for (let k = 0; k < 60 * 6 && since < 90; k++) {
@@ -1416,7 +1417,10 @@ describe('route shortcut shapes', () => {
           const s = (c.x - O.x) * ux + (c.z - O.z) * uz;
           const air = c.y - r.world.heightAt(c.x, c.z);
           if (!airborne && s >= sLip - 0.1 && s < sLip + 0.5) vLip = Math.hypot(c.vx, c.vz);
-          if (s > sLip && air > 0.25) airborne = true;
+          if (!airborne && s > sLip && air > 0.25) {
+            airborne = true;
+            takeoffLat = -(c.x - O.x) * uz + (c.z - O.z) * ux;
+          }
           if (airborne && !landed && air < 0.08 && s > sLip + 2) landed = { s: s - sLip, lat: -(c.x - O.x) * uz + (c.z - O.z) * ux, surface: r.world.surfaceAt(c.x, c.z) };
           if (landed) since++;
         }
@@ -1429,8 +1433,9 @@ describe('route shortcut shapes', () => {
         expect(landed, `${seed} ${kmh} never landed`).not.toBeNull();
         expect(landed!.s).toBeGreaterThan(10);
         expect(landed!.s).toBeLessThanOrEqual(area.params.landMax);
-        // (A leg across a hillside drifts a little in the air: up to about 8% cross slope on the curved grid.)
-        expect(Math.abs(landed!.lat)).toBeLessThan(2.5);
+        // (A leg across a hillside drifts off its line on the approach and a little more in the air: up to
+        // about 8% cross slope on the curved grid. The flight is measured from the takeoff.)
+        expect(Math.abs(landed!.lat - takeoffLat), `${seed} ${kmh}`).toBeLessThan(2.5);
         expect(['road', 'cobble', 'sidewalk']).toContain(landed!.surface);
         let broken = 0;
         for (const p of lipFence) broken += r.brokenProps[p.id];

@@ -38,7 +38,7 @@ import type { Area, BuildContext, DistrictModule, PlanContext } from './types';
 import type { BlockFace } from '../blocks';
 import type { PropKind } from '../props';
 import { COBBLE_PRIORITY, emptyBuild } from './types';
-import { circlePolygon, distToPolygonEdge, pointInPolygon, polygonArea, polygonBounds, polygonCentroid, smooth01, type Smooth, solidWalls } from './geom';
+import { circlePolygon, clipConvex, distToPolygonEdge, pointInPolygon, polygonArea, polygonBounds, polygonCentroid, smooth01, type Smooth, solidWalls } from './geom';
 import { type PassClear, type PassCorner, type PlannedRoute, alongStreet, blockCorners, leaving, routeCorners, sharpestBend, streetEdges } from './passes';
 
 /** Scratch for the terrain's smoothsteps (queried per wheel per substep, so nothing allocates). */
@@ -107,10 +107,15 @@ function insetRing(ring: { x: number; z: number }[], d: number): { x: number; z:
     const t = ((b.x - a.x) * b.dz - (b.z - a.z) * b.dx) / den;
     out.push({ x: a.x + a.dx * t, z: a.z + a.dz * t });
   }
-  if (out.length < 3) return null;
   // Collapsed or flipped (the inset passed the middle): every point must sit d inside the original.
-  for (const p of out) if (!pointInPolygon(p.x, p.z, ring) || distToPolygonEdge(p.x, p.z, ring) < d - 0.5) return null;
-  return out;
+  const inside = (r: { x: number; z: number }[]) => r.length >= 3 && r.every((p) => pointInPolygon(p.x, p.z, ring) && distToPolygonEdge(p.x, p.z, ring) >= d - 0.5);
+  if (inside(out)) return out;
+  // A side shorter than its corners' inset vanishes, and its neighbours' crossing lands outside: clip the
+  // ring by every moved side instead (the block is on their right), dropping the slivers that leaves.
+  let clip = ring;
+  for (const L of lines) if (clip.length) clip = clipConvex(clip, L, { x: L.x + L.dx, z: L.z + L.dz }, -1);
+  const kept = clip.filter((p, i) => Math.hypot(p.x - clip[(i + 1) % clip.length].x, p.z - clip[(i + 1) % clip.length].z) >= 1);
+  return inside(kept) ? kept : null;
 }
 
 /** A pass picked for a corner: how far out it leaves and rejoins the street (m), its middle's pull and its sharpest bend (rad). */
