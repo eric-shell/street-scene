@@ -4,7 +4,7 @@
  * deterministic.
  *
  *  - A street-local frame: origin on a street's centerline, u along it, v
- *    across it along (-uz, ux), so a bore, a deck or a gantry is a few numbers.
+ *    across it along (-uz, ux), so a bore or a deck is a few numbers.
  *  - How far a junction reaches along each street that meets it: its curbs
  *    and sidewalk corners, a route closure standing ROUTE.barrierSetbackHeadOn
  *    into the street, and the corner rails that run ROUTE.railReach past the
@@ -12,7 +12,8 @@
  *    turns at is only known per race, so a structure keeps clear of every
  *    junction's full reach, like the El's columns (subway.ts).
  *  - What a structure keeps away from: the river channel (bridges, ramps and
- *    banks), the El (its deck and columns), hill slopes (their grades would
+ *    banks), the El (its deck and columns), the elevated highway (its deck,
+ *    columns and ramps), hill slopes (their grades would
  *    tilt a bore or a deck), roundabouts (their rings are wider than their
  *    streets) and the other structures.
  */
@@ -169,6 +170,8 @@ export interface SiteHazards {
   taken: { x: number; z: number; r: number }[];
   /** Bluffs' whole footprints (bluff.ts): their own ground, ramps and the El at grade. */
   bluffs?: Vec2[][];
+  /** The elevated highway's deck outline and ramps (districts/highway/). */
+  highway?: Vec2[][];
 }
 
 export function siteHazards(ctx: PlanContext): SiteHazards {
@@ -195,10 +198,11 @@ export function siteHazards(ctx: PlanContext): SiteHazards {
     rings: ctx.graph.nodes.filter((n) => n.ring),
     taken,
     bluffs: ctx.areas.filter((a) => a.kind === 'bluff').map((a) => bluffFootprint(a)),
+    highway: ctx.areas.filter((a) => a.kind === 'highway' && a.polygon.length >= 3).map((a) => a.polygon),
   };
 }
 
-/** Record a structure's path (a deck line, a gantry's legs) as circles of radius r every few meters. */
+/** Record a structure's path (a deck line) as circles of radius r every few meters. */
 export function takePath(taken: SiteHazards['taken'], path: readonly Vec2[], r: number): void {
   for (let i = 0; i < path.length; i++) {
     const p = path[i];
@@ -212,8 +216,8 @@ export function takePath(taken: SiteHazards['taken'], path: readonly Vec2[], r: 
 
 /**
  * Is (x, z) at least `margin` m clear of the river channel (its top edge), the
- * El's deck, every hill's slope, every roundabout's ring and the structures
- * planned so far?
+ * El's deck, the highway's deck and ramps, every hill's slope, every
+ * roundabout's ring and the structures planned so far?
  */
 export function siteClear(hz: SiteHazards, x: number, z: number, margin: number): boolean {
   for (const r of hz.rivers) {
@@ -225,6 +229,7 @@ export function siteClear(hz: SiteHazards, x: number, z: number, margin: number)
   for (const n of hz.rings) if ((n.x - x) ** 2 + (n.z - z) ** 2 < (n.ring!.outer + CITY.sidewalk + margin) ** 2) return false;
   for (const t of hz.taken) if ((t.x - x) ** 2 + (t.z - z) ** 2 < (t.r + margin) ** 2) return false;
   for (const p of hz.bluffs ?? []) if (pointInPolygon(x, z, p) || distToPolygonEdge(x, z, p) < margin) return false;
+  for (const p of hz.highway ?? []) if (pointInPolygon(x, z, p) || distToPolygonEdge(x, z, p) < margin) return false;
   return true;
 }
 

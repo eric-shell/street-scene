@@ -359,7 +359,7 @@ export function parkPasses(g: RoadGraph, area: Area): ParkPass[] {
 /** Blocks that can hold a park: unclaimed, sized for it, no bridge or shortcut on their ring, clear of the linear areas, convex. */
 function parkFaces(ctx: Pick<PlanContext, 'graph' | 'areas' | 'claims' | 'faces'>): BlockFace[] {
   const g = ctx.graph;
-  const others = ctx.areas.filter((a) => a.kind === 'river' || a.kind === 'subway' || a.kind === 'backAlley' || a.kind === 'alley');
+  const others = ctx.areas.filter((a) => a.kind === 'river' || a.kind === 'subway' || a.kind === 'highway' || a.kind === 'backAlley' || a.kind === 'alley');
   return ctx.faces().filter((f) => {
     if (f.outer || f.area < CFG.minArea || f.area > CFG.maxArea || ctx.claims.face.has(f.id)) return false;
     if (f.edges.some((e) => g.edges[e].shortcut || g.edges[e].bridge || ctx.claims.edge.has(e))) return false;

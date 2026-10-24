@@ -12,7 +12,8 @@
  * Order matters and is fixed: the river first (it decides bridges), then the
  * subway (claims a street column), roundabouts, alleys, the bluff (moves part
  * of the El off its street; before the routes, which run over its level
- * crossing), back alleys (the last
+ * crossing), the elevated highway (claims a street row and its ramps' blocks,
+ * keeping off everything planned before it), back alleys (the last
  * module allowed to change the graph topology, so face ids stay stable), the
  * monument plaza (before the parks: it takes a block the routes turn round,
  * for its race passes), parks (claim faces), hills (claim clusters of faces and keep
@@ -43,6 +44,7 @@ import { monumentModule } from './monument';
 import { hillsModule } from './hills';
 import { tunnelModule } from './tunnel';
 import { overpassModule } from './overpass';
+import { highwayModule } from './highway/highway';
 import { waterfrontModule } from './waterfront';
 import { lakeModule } from './lake';
 import { downtownModule } from './downtown';
@@ -58,6 +60,7 @@ export const DISTRICT_MODULES: readonly DistrictModule[] = [
   roundaboutModule,
   alleyModule,
   bluffModule,
+  highwayModule,
   backAlleyModule,
   marketModule,
   carParkModule,
@@ -97,6 +100,7 @@ const AREA_PRIORITY: Record<AreaKind, number> = {
   roadworks: 11,
   bluff: 3,
   carPark: 11,
+  highway: 4,
   waterfront: 2,
   lake: 2,
 };

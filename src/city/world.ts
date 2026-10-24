@@ -23,6 +23,7 @@ import { bayRoadDistance, baysByEdge } from './busBays';
 import { CityEvent, EventFlavourId, eventOffer, eventRoutePreference, pickEventFlavour, resolveEvent, routeEdges } from './events';
 import type { GateSet } from '../sim/gates';
 import { LevelCrossing, addLevelCrossings } from './levelCrossings';
+import { highwayGates, settleHighway, settleHighwayWalls } from './districts/highway/settle';
 
 /** Routes tried (the first pick, then alternatives) until one has room for a shortcut. */
 const ROUTE_TRIES = 12;
@@ -180,7 +181,9 @@ export interface World extends City {
    * (districts/types.ts DeckSpan): with `y`, the querying car body's height
    * (m), the channel floor is returned when the body is nearer to it than to
    * the deck (below their midpoint); without `y` the deck, as everywhere
-   * else (render draping, traffic, props and every other caller).
+   * else (render draping, traffic, props and every other caller). Over the
+   * elevated highway it is the other way up: the terrain is the street, and
+   * with `y` the deck (or an on-ramp) is returned for a body nearer to it.
    */
   heightAt(x: number, z: number, y?: number): number;
   /**
@@ -193,8 +196,14 @@ export interface World extends City {
   slopeAt(x: number, z: number, y?: number): { gx: number; gz: number };
   /** Surface under a point; `y` as for heightAt (the river's floor and trickle below a deck, the street on it). */
   surfaceAt(x: number, z: number, y?: number): Surface;
-  /** True inside a bridge deck's footprint over the river channel, where two levels stack (resets keep off it). */
+  /**
+   * True inside a bridge deck's footprint over the river channel, where two levels stack and the
+   * terrain is the deck (resets keep off it). Not under the highway: there the terrain is the street,
+   * where a reset to the road belongs.
+   */
   twoLevels(x: number, z: number): boolean;
+  /** True when a body at height y over (x, z) drives an upper level: the highway's deck or one of its ramps. */
+  upperLevel(x: number, z: number, y: number): boolean;
   /** Walls touching a circle; `y` (the car body's height, m) lets it pass over low walls (Wall.top) and under high ones (Wall.bottom). */
   collideCircle(x: number, z: number, r: number, out: Contact[], y?: number): number;
   collideBox(cx: number, cz: number, yaw: number, halfLength: number, halfWidth: number, out: Contact[], y?: number): number;
@@ -214,9 +223,13 @@ export interface World extends City {
 export function createCity(seed: number): City {
   const { graph, districts, routeNodes, event } = planRoads(seed);
   const terrain = createTerrain(seed, districts.heightMods);
-  // The river's level walls (parapets, piers, abutments) take their heights from the finished terrain.
+  // The river's level walls (parapets, piers, abutments) take their heights from the finished terrain,
+  // and so do the highway's deck, its ramps and their walls.
   settleRiver(graph, districts.areas, districts.builds, terrain);
+  settleHighway(districts.areas, districts.builds, terrain);
   const blocks = generateBlocks(seed, graph, terrain, districts.blocksInput);
+  // Every wall under the highway's deck stops only cars beneath it.
+  settleHighwayWalls(districts.areas, districts.builds, blocks.walls);
   settleCarParks(districts.areas, districts.builds, terrain);
   settleAlleyLips(districts.areas, districts.builds, terrain);
   districts.finalize();
@@ -471,7 +484,8 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
   sealBarriers(city, barrierGroups, rails);
   const closures = closureRails(barrierGroups, rails);
   // A car park that is the other route's shortcut has its ramp shuttered (open world: all open).
-  const gates = openWorld ? [] : carParkGates(city.districts.areas, ROUTE_INDEX[kind]);
+  // The highway's ramps are shut in a race (it is no part of any route), open in free roam.
+  const gates = openWorld ? [] : carParkGates(city.districts.areas, ROUTE_INDEX[kind]).concat(highwayGates(city.districts.areas));
   const walls = blocks.walls.concat(rails, closures, gates);
   const props = blocks.props;
   const propGrid = buildPropGrid(graph, props);
@@ -537,6 +551,8 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
       // passed under by a car on the channel floor below its bottom.
       if (w.top !== undefined && y > w.top) continue;
       if (w.bottom !== undefined && y < w.bottom) continue;
+      // A column (or anything) under the highway's deck is nothing to a car up on the deck.
+      if (w.under !== undefined && y > w.under) continue;
       if (w.solid) {
         if (w.solid !== lastSolid) collideSolid(w.solid, w.kind, x, z, r, out);
         lastSolid = w.solid;
@@ -592,17 +608,45 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
       // Low walls (car park lips) are launched over, not skimmed; a deck's parapet is nothing to a car under it.
       if (w.top !== undefined) continue;
       if (w.bottom !== undefined && y < w.bottom) continue;
+      if (w.under !== undefined && y > w.under) continue;
       const d = distToSegment(x, z, w.ax, w.az, w.bx, w.bz);
       if (d < best) best = d;
     }
     return best;
   }
 
-  // ---- Two drivable levels under the river's bridge decks (districts/types.ts DeckSpan).
+  // ---- Two drivable levels (districts/types.ts DeckSpan): the river's bridge decks over the channel
+  // (`lower`) and the highway's deck and ramps over the streets (`upper`), indexed in a coarse grid of
+  // span ids so a query visits the few spans of its cell, first in list order as a scan would.
   const spans = city.districts.builds.flatMap((b) => b.decks).map((d) => ({ d, ...polygonBounds(d.polygon) }));
+  const SPAN_CELL = 24;
+  let spanX0 = Infinity;
+  let spanZ0 = Infinity;
+  let spanX1 = -Infinity;
+  let spanZ1 = -Infinity;
+  for (const s of spans) {
+    spanX0 = Math.min(spanX0, s.minX);
+    spanZ0 = Math.min(spanZ0, s.minZ);
+    spanX1 = Math.max(spanX1, s.maxX);
+    spanZ1 = Math.max(spanZ1, s.maxZ);
+  }
+  const spanCols = spans.length ? Math.max(1, Math.ceil((spanX1 - spanX0) / SPAN_CELL)) : 0;
+  const spanRows = spans.length ? Math.max(1, Math.ceil((spanZ1 - spanZ0) / SPAN_CELL)) : 0;
+  const spanCells: number[][] = Array.from({ length: spanCols * spanRows }, () => []);
+  spans.forEach((s, id) => {
+    const i0 = Math.max(0, Math.floor((s.minX - spanX0) / SPAN_CELL));
+    const i1 = Math.min(spanCols - 1, Math.floor((s.maxX - spanX0) / SPAN_CELL));
+    const j0 = Math.max(0, Math.floor((s.minZ - spanZ0) / SPAN_CELL));
+    const j1 = Math.min(spanRows - 1, Math.floor((s.maxZ - spanZ0) / SPAN_CELL));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) spanCells[j * spanCols + i].push(id);
+  });
   const levelSample: HeightSample = { h: 0, gx: 0, gz: 0 };
+  const upperSample: HeightSample = { h: 0, gx: 0, gz: 0 };
   function spanAt(x: number, z: number): DeckSpan | null {
-    for (const s of spans) {
+    if (x < spanX0 || z < spanZ0 || x > spanX1 || z > spanZ1) return null;
+    const cell = spanCells[Math.min(spanRows - 1, Math.floor((z - spanZ0) / SPAN_CELL)) * spanCols + Math.min(spanCols - 1, Math.floor((x - spanX0) / SPAN_CELL))];
+    for (const id of cell) {
+      const s = spans[id];
       if (x < s.minX || x > s.maxX || z < s.minZ || z > s.maxZ) continue;
       if (pointInPolygon(x, z, s.d.polygon)) return s.d;
     }
@@ -620,27 +664,51 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     levelSample.h = 0;
     levelSample.gx = 0;
     levelSample.gz = 0;
-    const rise = s.lower(x, z, levelSample);
+    const rise = s.lower!(x, z, levelSample);
     // Where the two levels meet (the bank tops under the deck's ends, the floor beyond the deck's
     // edge) the lower one is the terrain itself, gradient included, so no special case is needed.
     return y <= h + rise - s.depth / 2;
   }
+  /**
+   * Whether a body at height y over (x, z) inside an upper span s drives its upper level (its height
+   * and gradient left in upperSample): always on a solid one (a ramp's walled body), else when the
+   * body is nearer the upper level than the terrain h beneath. Where the two meet (a ramp's top over
+   * the sidewalk) they are one height, so the choice there never jumps.
+   */
+  function upperOn(s: DeckSpan, x: number, z: number, y: number, h: number): boolean {
+    s.upper!(x, z, upperSample);
+    return s.solid === true || 2 * y > h + upperSample.h;
+  }
   function lowerLevel(x: number, z: number, y: number | undefined, h: number): boolean {
     if (y === undefined || !spans.length) return false;
     const s = spanAt(x, z);
-    return s !== null && lowerOn(s, x, z, y, h);
+    return s !== null && s.lower !== undefined && lowerOn(s, x, z, y, h);
   }
   function heightAt(x: number, z: number, y?: number): number {
     const h = terrain.heightAt(x, z);
-    return lowerLevel(x, z, y, h) ? h + levelSample.h : h;
+    if (y === undefined || !spans.length) return h;
+    const s = spanAt(x, z);
+    if (s === null) return h;
+    if (s.lower) return lowerOn(s, x, z, y, h) ? h + levelSample.h : h;
+    return upperOn(s, x, z, y, h) ? upperSample.h : h;
   }
   function slopeAt(x: number, z: number, y?: number): { gx: number; gz: number } {
     const s = terrain.slopeAt(x, z);
-    if (y === undefined || !spans.length || !lowerLevel(x, z, y, terrain.heightAt(x, z))) return s;
+    if (y === undefined || !spans.length) return s;
+    const sp = spanAt(x, z);
+    if (sp !== null && sp.upper) return upperOn(sp, x, z, y, terrain.heightAt(x, z)) ? { gx: upperSample.gx, gz: upperSample.gz } : s;
+    if (!lowerLevel(x, z, y, terrain.heightAt(x, z))) return s;
     return { gx: s.gx + levelSample.gx, gz: s.gz + levelSample.gz };
   }
   function twoLevels(x: number, z: number): boolean {
-    return spans.length > 0 && spanAt(x, z) !== null;
+    if (!spans.length) return false;
+    const s = spanAt(x, z);
+    return s !== null && s.lower !== undefined;
+  }
+  function upperLevel(x: number, z: number, y: number): boolean {
+    if (!spans.length) return false;
+    const s = spanAt(x, z);
+    return s !== null && s.upper !== undefined && upperOn(s, x, z, y, terrain.heightAt(x, z));
   }
 
   /** Bus bays and path mouths by edge (busBays.ts): their stretch of sidewalk is road, with a curb of its own. */
@@ -676,7 +744,10 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     streetWalk = walk;
   }
   function surfaceAt(x: number, z: number, y?: number): Surface {
-    const span = spans.length ? spanAt(x, z) : null;
+    const found = spans.length ? spanAt(x, z) : null;
+    // On the highway's deck or a ramp: road. Under it, the street as anywhere.
+    if (found && found.upper && y !== undefined && upperOn(found, x, z, y, terrain.heightAt(x, z))) return 'road';
+    const span = found && found.lower ? found : null;
     // Under a deck: the channel's own patches (its concrete, the trickle) below, the street above
     // (the channel edges running beneath are no part of the deck's classification).
     const patch = city.districts.surfaceAt(x, z);
@@ -746,7 +817,10 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
 
   function driveHeightAt(x: number, z: number, y?: number): number {
     const h = terrain.heightAt(x, z);
-    const span = spans.length ? spanAt(x, z) : null;
+    const found = spans.length ? spanAt(x, z) : null;
+    // The highway's deck and ramps have no curbs (their barriers and walls stand on them).
+    if (found && found.upper && y !== undefined && upperOn(found, x, z, y, h)) return upperSample.h;
+    const span = found && found.lower ? found : null;
     // The channel floor under a deck has no curbs: the deck's sidewalks are above it.
     if (span && y !== undefined && lowerOn(span, x, z, y, h)) return h + levelSample.h;
     return h + curbLift(x, z, span);
@@ -820,6 +894,7 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     slopeAt,
     surfaceAt,
     twoLevels,
+    upperLevel,
     collideCircle,
     collideBox,
     wallClearance,

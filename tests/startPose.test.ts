@@ -122,12 +122,16 @@ describe('the cruise at the wheel', () => {
       s = cruise.drive(s, c.x, c.z, c.yaw, c.speed, r.tick * DT, { wheelbase: rc.tuning.geometry.wheelbase, steerLimit: limit }, frame);
       stepRace(r, frame);
       const p = cruise.path.sample(s, probe);
-      worst = Math.max(worst, Math.hypot(c.x - p.x, c.z - p.z));
+      // Until a civilian car runs into it: the cruise keeps its lane, it does not dodge traffic (see the events below).
+      if (!r.events.some((e) => e.type === 'crash' && (e as { traffic?: number }).traffic !== undefined)) worst = Math.max(worst, Math.hypot(c.x - p.x, c.z - p.z));
       if (i > TICK_HZ) slowest = Math.min(slowest, c.speed);
     }
-    return { worst, slowest, // Walls, resets and crashes into the city; a civilian car in the lane is the player's to dodge (the cruise
-    // follows its lane and never steers round traffic, as the menu car never had to).
-    events: r.events.filter((e) => (e.type === 'wall' || e.type === 'reset' || e.type === 'crash') && (e as { traffic?: number }).traffic === undefined), speed: rc.state.speed, r };
+    // Walls, resets and crashes into the city, up to a civilian car running into it: a civilian car in the lane is the
+    // player's to dodge (the cruise follows its lane and never steers round traffic, as the menu car never had to), and
+    // where one shoves the car off its lane the hits that follow are the crash's.
+    const hit = r.events.find((e) => e.type === 'crash' && (e as { traffic?: number }).traffic !== undefined);
+    const until = hit ? hit.tick : Infinity;
+    return { worst, slowest, events: r.events.filter((e) => e.tick < until && (e.type === 'wall' || e.type === 'reset' || e.type === 'crash') && (e as { traffic?: number }).traffic === undefined), speed: rc.state.speed, r };
   }
 
   it('keeps the car on the lane at the cruise speed, clear of walls, from several points on several cities', () => {

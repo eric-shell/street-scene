@@ -23,6 +23,7 @@ import { feetLabel, speedLabel } from '../ui/kit/units';
 import { bearingDeg, compassPoint } from '../ui/map/places';
 import { clamp, wrapAngle } from '../sim/math';
 import { damp } from '../shared/anim';
+import { clampCeiling } from '../render/camera/ceilings';
 
 export interface DroneOptions {
   /** Start pose (world position, yaw and pitch in rad); default behind and above the grid. */
@@ -342,6 +343,9 @@ export class DroneMode {
       if (this.vel.y < 0) this.vel.y = 0;
     }
     this.pos.y = Math.min(this.pos.y, DRONE.ceiling);
+    // Never inside a deck (the elevated highway's, a viaduct's, a bridge's): out over it or under it,
+    // whichever is nearer, so the drone flies along the highway or beneath it.
+    clampCeiling(this.world, this.pos, DRONE.clearance);
     // Gentle hover bob.
     const bob = Math.sin(this.time * DRONE.bobRate) * DRONE.bob;
     this.camera.position.set(this.pos.x, this.pos.y + bob, this.pos.z);
