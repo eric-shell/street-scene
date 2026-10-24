@@ -9,6 +9,10 @@
  * after which the real one is shown and the splash removed, so the swap is
  * invisible. The rule pulses on the splash and settles as it lands on the
  * menu's own rule.
+ * The landing lights the nitrous: the splash's street floors it with its edges
+ * burning through the stage colors, and the menu city revealed under it starts
+ * in the race's own nitrous warp (post.ts) at the top stage, which eases out as
+ * the title settles (`nitro`, applied by main.ts).
  * Only a page load that lands on the menu shows it; deep links skip it. CSS
  * (_splash.scss: `.splash`, `.menu.is-pending`, `.menu.is-arriving`) does the flash-in, the impact flash and shake
  * and the hazard tape under the title; splashFx.ts draws the night road, traffic,
@@ -26,6 +30,12 @@ export interface Splash {
   hold(menuRoot: HTMLElement | null): void;
   /** Fly the title onto the menu's title block, fade the black out and remove the splash. */
   land(menuRoot: HTMLElement | null): Promise<void>;
+  /**
+   * The nitrous warp the menu city wears as the title lands, at `now` (performance.now() ms): the warp
+   * amount (post.ts `setNitroFx`, 0 before the landing), the stage glow (1..3) and the speed blur riding
+   * with it (0..1); null once it has burned out.
+   */
+  nitro(now: number): { warp: number; stage: number; blur: number } | null;
 }
 
 const TITLE = TITLE_WORDS.join(' ');
@@ -49,6 +59,11 @@ const SPLASH = {
   horizonMax: 0.86,
   /** The rule under the title stops pulsing and settles to full strength this fast once the flight starts (s). */
   ruleSettle: 0.25,
+  /** The menu city's nitrous on landing: its peak warp (the top stage's), the stage climbing 1 to 3 over `climb` (s), held at full for `hold` (s), then easing out at `out` (1/s) like a burn ending. */
+  nitroPeak: 1.4,
+  nitroClimb: 0.45,
+  nitroHold: 0.55,
+  nitroOut: 2.5,
 } as const;
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -89,6 +104,8 @@ export function showSplash(parent: HTMLElement): Splash {
   const root = h('div', { class: 'splash', role: 'presentation' }, bg, canvas, flash, block);
   parent.append(root);
   let fx: SplashFx | null = null;
+  /** When the landing started (performance.now() ms), null before it or with reduced motion. */
+  let landedAt: number | null = null;
 
   let from = '';
   const intro = (async () => {
@@ -128,6 +145,7 @@ export function showSplash(parent: HTMLElement): Splash {
       if (menu && head && !reduced) {
         // The rest of the menu assembles around the title while it flies in.
         menu.classList.add('is-arriving');
+        landedAt = performance.now();
         const to = head.getBoundingClientRect();
         anims.push(block.animate([{ transform: from }, { transform: `translate(${to.left}px, ${to.top}px) scale(1)` }], { duration: ms, easing: 'cubic-bezier(0.7, 0, 0.25, 1)', fill: 'forwards' }));
         anims.push(bg.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms, easing: 'ease-in-out', fill: 'forwards' }));
@@ -146,6 +164,15 @@ export function showSplash(parent: HTMLElement): Splash {
       menu?.classList.remove('is-arriving');
       fx?.stop();
       root.remove();
+    },
+    nitro(now) {
+      if (landedAt === null) return reduced ? null : { warp: 0, stage: 1, blur: 0 };
+      const t = Math.max(0, (now - landedAt) / 1000);
+      const kick = 1 - Math.exp(-t * 12);
+      const out = t < SPLASH.nitroHold ? 1 : Math.exp(-(t - SPLASH.nitroHold) * SPLASH.nitroOut);
+      const blur = kick * out;
+      if (t > SPLASH.nitroHold && blur < 0.002) return null;
+      return { warp: SPLASH.nitroPeak * blur, stage: 1 + 2 * Math.min(1, t / SPLASH.nitroClimb), blur };
     },
   };
 }

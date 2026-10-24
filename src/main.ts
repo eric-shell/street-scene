@@ -38,7 +38,7 @@ import { resultsScreen } from './ui/screens/results';
 import { placeName } from './ui/map/places';
 import { railInset } from './ui/rail/rail';
 import { mainMenu, type MainMenu, type MenuStep } from './ui/menu/menu';
-import { showSplash } from './ui/splash/splash';
+import { showSplash, type Splash } from './ui/splash/splash';
 import { toast } from './ui/kit/dom';
 import { Check, Info, Shuffle } from './ui/kit/icons';
 import { courseFor, openFullMap, type FullMap, type WaypointStore } from './ui/map/fullMap';
@@ -126,6 +126,8 @@ let garageScreen: { render(dt: number): void; dispose(): void } | null = null;
 // the free camera fly over it, and the garage's Street view drives it.
 // ---------------------------------------------------------------------------
 let stage: StreetStage | null = null;
+/** The boot splash while its landing's nitrous still warps the menu city (renderStage), then null. */
+let arrival: Splash | null = null;
 /** The event's courses, built from the stage's city (the stage drives the circuit); the menu's race step draws them all. */
 let stageCourses: CourseRoutes | null = null;
 /** The open world over the stage's city, with its traffic net built: what free roam taken over from the menu drives in, ready before it is asked for. */
@@ -191,12 +193,22 @@ function ensureStage(): StreetStage {
   return stage;
 }
 
+/** The landing's nitrous has burned out (or the menu was left before it did): clear the warp. */
+function endArrival(): void {
+  arrival = null;
+  gr.post.setNitroFx(0, 0);
+}
+
 /** The menu: the car cruises on, the showreel films it and the menu's maps follow it. */
 function renderStage(dt: number): void {
   if (!stage) return;
   stage.step(dt);
   showreel.update(stage, dt);
-  stage.render(gr, showreel.camera, dt, showreel.blur);
+  // Landing from the splash, the city starts in the nitrous warp (with its speed blur, as in a race) and eases out of it.
+  const nitro = arrival?.nitro(performance.now()) ?? null;
+  if (arrival && !nitro) endArrival();
+  if (nitro && settings.radialBlur) gr.post.setNitroFx(nitro.warp, performance.now() / 1000, nitro.stage);
+  stage.render(gr, showreel.camera, dt, Math.max(showreel.blur, nitro?.blur ?? 0));
   if (menu && overlay === menuEl && !cinematic) menu.frame(stage.pose);
 }
 
@@ -870,6 +882,7 @@ const loop = new FixedStepLoop({
     const padUi = state === 'menu' || state === 'garage' || (state === 'race' && !!session && (session.paused || session.race.phase === 'finished') && !session.droneActive);
     padNav.poll(dt, padUi);
     if (padUi) input.swallowPad();
+    if (arrival && state !== 'menu') endArrival();
     if (state === 'race' && session) {
       session.render(alpha, dt);
       if (session.droneActive !== photoDrone) {
@@ -949,6 +962,7 @@ async function boot(): Promise<void> {
     splash.hold(overlay);
     await splash.intro;
     splashWarmup = null;
+    arrival = splash;
     await splash.land(overlay);
   }
   notice?.();
