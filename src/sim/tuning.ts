@@ -88,6 +88,16 @@ export interface CarTuning {
     upshiftRpmFrac: number;
     downshiftRpmFrac: number;
     reverseMaxSpeed: number;
+    /**
+     * The Gear Ratio slider's arcade term (setup.gearing.torqueBonus; 0 = stock, applyBuild writes it): extra
+     * engine torque as a fraction, + on short gears, - on long ones, full up to torqueBonusFadeStart and gone
+     * by torqueBonusFadeEnd, so it shapes corner exits and never the drag top speed (docs/handling.md, Simcade).
+     */
+    torqueBonus: number;
+    /** Road speed the gearing bonus starts fading at (m/s). */
+    torqueBonusFadeStart: number;
+    /** Road speed the gearing bonus has faded out by (m/s). */
+    torqueBonusFadeEnd: number;
   };
   /**
    * One grip curve over the normalized slip vector (sideways slip over peakSlipDeg, slip ratio over
@@ -270,13 +280,13 @@ export const STOCK_POSITION: SetupPosition = 3;
 type SetupRow = readonly [number, number, number, number, number];
 export interface SetupTables {
   suspension: { frequencyMul: SetupRow; travelMul: SetupRow; steerRateMul: SetupRow; roadGripMul: SetupRow; roughGripMul: SetupRow };
-  gearing: { finalDriveMul: SetupRow };
+  gearing: { finalDriveMul: SetupRow; firstGearMul: SetupRow; torqueBonus: SetupRow };
   differential: { open: SetupRow; lock: SetupRow };
   brakeBalance: { frontBiasAdd: SetupRow };
 }
 const SETUP_KEYS: { [S in SetupSlider]: readonly (keyof SetupTables[S])[] } = {
   suspension: ['frequencyMul', 'travelMul', 'steerRateMul', 'roadGripMul', 'roughGripMul'],
-  gearing: ['finalDriveMul'],
+  gearing: ['finalDriveMul', 'firstGearMul', 'torqueBonus'],
   differential: ['open', 'lock'],
   brakeBalance: ['frontBiasAdd'],
 };
@@ -417,6 +427,7 @@ export function getBaseTuning(carId: string): CarTuning {
     t.engine.turbo = (manifest.cars as ManifestCar[]).find((c) => c.id === id)?.engine?.aspiration === 'turbo';
     if (!DRIVETRAIN_LAYOUTS.includes(t.drivetrain.layout)) throw new Error(`drivingParams.json: cars.${id}.drivetrain.layout must be one of ${DRIVETRAIN_LAYOUTS.join(', ')}`);
     if (t.nitrous.stagePower.length !== NITRO_STAGES || t.nitrous.chainRefill.length !== NITRO_STAGES) throw new Error(`drivingParams.json: cars.${id}.nitrous.stagePower and chainRefill need ${NITRO_STAGES} entries, one per stage`);
+    if (!(t.gearbox.torqueBonusFadeEnd > t.gearbox.torqueBonusFadeStart)) throw new Error(`drivingParams.json: cars.${id}.gearbox.torqueBonusFadeEnd must be above torqueBonusFadeStart`);
     resolved.set(id, t);
   }
   return deepClone(t);

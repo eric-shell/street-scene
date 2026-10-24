@@ -184,6 +184,8 @@ describe('setup sliders', () => {
     expect(() => validateSetup({ ...good, gearing: { finalDriveMul: [1.2, 1.1, 1, 0.9, 0.8], shiftTime: [0, 0, 0, 0, 0] } })).toThrow(/unknown key/);
     expect(() => validateSetup({ ...good, gearing: { finalDriveMul: [1.2, 1.1, 1.05, 0.9, 0.8] } })).toThrow(/must hold 1 at position 3/);
     expect(() => validateSetup({ ...good, gearing: { finalDriveMul: [1.1, 1, 0.9] } })).toThrow(/5 numbers/);
+    expect(() => validateSetup({ ...good, gearing: { ...good.gearing, torqueBonus: [0.06, 0.03, 0.01, -0.03, -0.06] } })).toThrow(/must hold 0 at position 3/);
+    expect(() => validateSetup({ ...good, gearing: { finalDriveMul: good.gearing.finalDriveMul, firstGearMul: good.gearing.firstGearMul } })).toThrow(/torqueBonus" needs 5 numbers/);
     expect(() => validateSetup({ ...good, differential: { open: [0.8, 0.4, 0, 0, 0] } })).toThrow(/needs 5 numbers/);
   });
 
@@ -216,24 +218,63 @@ describe('setup sliders', () => {
     }
   });
 
-  it('gear ratio: short gears hit the limiter sooner, long ones launch softer', () => {
-    // The hatch tops out against the drag in its top gear: short gearing puts the limiter under that.
-    expect(measureStats(tuned('protoHatch', 'gearing', 1)).topSpeed).toBeLessThan(measureStats(tuned('protoHatch', 'gearing', 3)).topSpeed - 7);
-    for (const id of ['proto', 'protoCoupe']) expect(measureStats(tuned(id, 'gearing', 5)).zeroTo100, id).toBeGreaterThan(measureStats(tuned(id, 'gearing', 3)).zeroTo100 + 0.2);
-    // A full tank burned down a long straight: a long box keeps pulling where the stock one runs into its limiter.
-    const nitroTop = (t: CarTuning) => {
+  it('gear ratio: short gears pull harder out of corners and run into the limiter, long ones keep pulling on nitrous', () => {
+    /** A corner exit: braked from 130 to 60 km/h (the automatic shifts down on the way), then floored to 140 (s). */
+    const exit = (t: CarTuning) => {
+      const c = rollTo(t, 130);
+      for (let i = 0; i < 600 && c.speed * 3.6 > 60; i++) stepCar(c, t, input({ brake: 0.6 }), { world });
+      let i = 0;
+      for (; i < 60 * 30 && c.speed * 3.6 < 140; i++) stepCar(c, t, input({ throttle: 1 }), { world });
+      return i / 60;
+    };
+    /** A full tank burned down a long straight from 8 s of full throttle: the top speed and the seconds from 200 to 280 km/h. */
+    const nitroRun = (t: CarTuning) => {
       const c = createCar(0, 0, 0, 0);
       c.nitro = 3;
       let top = 0;
+      let at200 = 0;
+      let at280 = 0;
       for (let i = 0; i < 60 * 30; i++) {
         stepCar(c, t, input({ throttle: 1, nitrous: i > 8 * 60 }), { world });
-        top = Math.max(top, c.speed);
+        top = Math.max(top, c.speed * 3.6);
+        if (!at200 && c.speed * 3.6 >= 200) at200 = i;
+        if (!at280 && c.speed * 3.6 >= 280) at280 = i;
       }
-      return top * 3.6;
+      return { top, pull: (at280 - at200) / 60 };
     };
-    const stock = nitroTop(tuned('protoHatch', 'gearing', 3));
-    expect(nitroTop(tuned('protoHatch', 'gearing', 5))).toBeGreaterThan(stock + 5);
-    expect(nitroTop(tuned('protoHatch', 'gearing', 1))).toBeLessThan(stock - 10);
+    for (const id of ['protoHatch', 'protoCoupe', 'protoWagon']) {
+      const st = SETUP_POSITIONS.map((p) => measureStats(tuned(id, 'gearing', p)));
+      // The garage's 0-60 slows one step at a time to the right (the torque bonus, with first gear where it was).
+      for (let i = 1; i < st.length; i++) expect(st[i].zeroTo60, `${id} ${i + 1}`).toBeGreaterThan(st[i - 1].zeroTo60);
+      // Short tops out on its limiter, well under the drag top speed; Long holds the drag top speed (the bonus has faded by then).
+      expect(st[0].topSpeed, id).toBeLessThan(st[2].topSpeed * 0.93);
+      expect(st[4].topSpeed, id).toBeGreaterThan(st[2].topSpeed * 0.97);
+      const ex = [1, 3, 5].map((p) => exit(tuned(id, 'gearing', p as SetupPosition)));
+      expect(ex[0], id).toBeLessThan(ex[1] * 0.95);
+      expect(ex[2], id).toBeGreaterThan(ex[1] * 1.05);
+      // On nitrous the push goes on past the limiter, so every position stays strong; the long box keeps the engine pulling past the stock limiter.
+      const [short, stock, long] = [1, 3, 5].map((p) => nitroRun(tuned(id, 'gearing', p as SetupPosition)));
+      expect(long.top, id).toBeGreaterThan(stock.top + 5);
+      expect(short.top, id).toBeLessThan(stock.top - 5);
+      expect(short.top, id).toBeGreaterThan(st[2].topSpeed * 1.25);
+      expect(long.pull, id).toBeLessThan(stock.pull * 0.85);
+      expect(short.pull, id).toBeGreaterThan(stock.pull * 1.15);
+    }
+  });
+
+  it('the gearing torque bonus works out of corners and is gone by top speed', () => {
+    const t = getBaseTuning('protoHatch');
+    const bonus = { ...t, gearbox: { ...t.gearbox, torqueBonus: 0.06 } };
+    /** One tick on full throttle from a car rolling at `kmh` in its gear: the speed gained (m/s). */
+    const gain = (tt: CarTuning, kmh: number) => {
+      const c = createCar(0, 0, 0, 0);
+      for (let i = 0; i < 60 * 60 && c.speed * 3.6 < kmh; i++) stepCar(c, t, input({ throttle: 1 }), { world });
+      const v0 = c.speed;
+      stepCar(c, tt, input({ throttle: 1 }), { world });
+      return c.speed - v0;
+    };
+    expect(gain(bonus, 90)).toBeGreaterThan(gain(t, 90) * 1.04);
+    expect(gain(bonus, t.gearbox.torqueBonusFadeEnd * 3.6 + 1)).toBe(gain(t, t.gearbox.torqueBonusFadeEnd * 3.6 + 1));
   });
 
   it('brake balance: rear bias rotates the car on the brakes and stops longer, front bias stops straight', () => {

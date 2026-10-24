@@ -1,6 +1,23 @@
 # Handling: tires, wheelspin and the drift
 
-How a car grips, spins its wheels and drifts in `src/sim/car.ts`, the numbers behind it in `src/sim/drivingParams.json`, and the sources they were set from. The aim is realistic mechanics with an arcade delivery, in the spirit of Forza Horizon's Standard steering: the physics does the work, a few aids keep it fun.
+How a car grips, spins its wheels, drifts and gears in `src/sim/car.ts`, the numbers behind it in `src/sim/drivingParams.json`, and the sources they were set from. The aim is realistic mechanics with an arcade delivery, in the spirit of Forza Horizon's Standard steering: the physics does the work, a few aids keep it fun.
+
+## Simcade
+
+The physics is simcade: realistic foundations with an arcade feel. The foundations are real: the tire model (one grip curve over the normalized slip vector, the friction circle), load transfer, a top speed the drag sets, real gearing (each car's donor gearbox and an engine geared to its wheels), brake bias, and the differential's behaviour. Wherever realism would make the game less fun or less readable, an arcade aid sits on top of them, and it is named as one.
+
+The rule for tuning: start from the real behaviour and measure it (`/tune`). Only where it does not deliver the intended feel, add an arcade term: one clearly labelled number in `drivingParams.json` (its `_` comment says it is an arcade term), validated in `tuning.ts`, neutral when off. Never fake the foundation: no grip that hides a balance problem, no force that moves the drag top speed, no gearing that is not a gearbox.
+
+Today's arcade terms:
+
+- **Anti spin aid** (`drift.maxSlipDeg`, `assistTorque`): past 55 degrees of body slip a torque turns the nose back toward the direction of travel.
+- **Yaw damping** (`drift.yawDamping`, `yawDampingLowSpeed`): always on, like Standard steering's stability layer, and stronger at a crawl so a car cannot pirouette.
+- **Steering help** (`steering.counterSteerAllowance`, `highSpeedDeg`, `fadeSpeed`): extra lock into a slide so full lock always reaches the direction of travel, and less lock at speed in place of a front slip angle assist.
+- **Brakes** (`brakes.assistDecel`, `tires.minLateralShare`): a deceleration on top of the tires that uses no cornering grip, and an ABS that never locks and always leaves some steering.
+- **Clutch tricks** (`traction.launchBoost`, `clutchKickSpeed`, `drift.clutchKickTime`): a clutch dump adds the flywheel's torque; a throttle stab after a lift while steering breaks the driven wheels loose. The handbrake drops the clutch on a car that drives the rear, as Forza does.
+- **Nitrous** (`nitrous.*`): a push along the car on top of extra engine torque, in three stages, refilled by style (drifts, near misses, slipstreams, wrecks). The push carries on past the limiter, so nitrous never dies on it.
+- **Gearing torque bonus** (`setup.gearing.torqueBonus`, written to `gearbox.torqueBonus`): plus 6% of engine torque on Short gearing to minus 6% on Long, fading out between 140 and 200 km/h (Gearing).
+- **Forgiving limits** (`tires.loadCap`, `tires.slideGrip` and `slideGripLong`, `suspension.airLevel`, `collision.resetPassThrough`): grip that stops growing under a hard landing, sliding grip at the arcade end of dry tarmac, a body that levels out in the air, and a car that passes through the others for a moment after a reset.
 
 ## The tire
 
@@ -88,6 +105,31 @@ The coupe drifts as it did: handbrake, clutch kick, a trail-brake entry and powe
 - **AWD drift aids**: a clutch kick that breaks the rear loose more than the front, and a centre differential that can send more to the rear.
 - **The differential between the wheels of an axle** (each axle is locked now, the drift setup; another pass is adding it).
 
+## Gearing
+
+The Gear Ratio slider (Short 1 to Long 5) used to scale the final drive alone, and players could barely feel it. Every stock car topped out against the drag well under its limiter, so Long added nothing without nitrous; an automatic keeps the revs in the same band at any final drive, so 0 to 100 moved about 3% either way, by where the shifts fell; and the coupe's 0.72 overdrive fifth left its top speed at 73% of the redline, so shorter gears made it faster.
+
+**Stock gearing.** Each car has its donor's ratios (the R32's six speed, the FD3S's first four gears and its Type RZ final drive, Audi's 01E), with the final drive (and the coupe's fifth, 0.88) set so the top gear runs into its limiter at about the car's slipstream top speed: 1.1 times the drag top speed, which then comes at 92% of the redline, on each engine's power peak or plateau. That point is deliberate:
+
+- The drag top speed is at its most there (on the hatch it moves under 1% anywhere from 1.05 to 1.2 times; the coupe gains 3.4% from a fifth that reaches its power plateau).
+- A slipstream (30% less drag) runs the stock car up to just under its limiter, so the tow's whole gain is kept.
+- Nitrous runs into the limiter partway through a full tank, but its push carries on past it, so the nitrous top speed falls only about 1% (the coupe 5%, from 343 to 327 km/h: its overdrive had left 319 km/h of room).
+- The slider then moves the limiter across the range players notice: Short to 0.92 of the drag top speed (a lower top speed, on the limiter), Long to 1.3 (room for nitrous to keep pulling).
+
+Tried and dropped: the limiter at 1.16 with a 1.25 short end (the old hatch and wagon point) made the hatch's position 2 faster at the top than stock (its power rises to the redline) and broke the wagon's 0 to 60 order.
+
+**The slider** (`setup.gearing`). `finalDriveMul` 1.2 / 1.1 / 1 / 0.92 / 0.85 moves the top gear and its limiter. `firstGearMul` (1 throughout) holds first gear where it is and the gears between blend evenly, closer on Short and wider on Long, so no position adds a shift before 100 km/h and the garage's 0 to 60 moves one way along the slider. Real gearing alone moves a corner exit by 3% at most, so `torqueBonus` is the arcade term (Simcade): plus 6 / 3 / 0 / minus 3 / 6% of engine torque, full up to `gearbox.torqueBonusFadeStart` (39 m/s, 140 km/h) and faded out by `torqueBonusFadeEnd` (56 m/s, 200 km/h) on a smoothstep, so it shapes corner exits and never the drag top speed. Measured headless (flat world, stock setups otherwise; nitrous is a full tank held from 8 s of full throttle; the exit is braked from 130 to 60 km/h, then floored):
+
+| Position 1 / 3 / 5 | Hatch | Coupe | Wagon |
+|---|---|---|---|
+| Top speed, km/h (the garage's) | 203 / 224 / 219 | 211 / 234 / 233 | 206 / 227 / 225 |
+| On nitrous, km/h | 299 / 307 / 319 | 319 / 327 / 338 | 294 / 304 / 317 |
+| 200 to 280 on nitrous, s | 9.0 / 7.1 / 5.2 | 6.8 / 5.1 / 4.1 | 9.6 / 7.5 / 5.4 |
+| 0 to 100, s | 5.97 / 6.35 / 6.77 | 5.02 / 5.32 / 5.67 | 5.65 / 6.02 / 6.42 |
+| Corner exit 60 to 140, s | 8.85 / 9.45 / 10.25 | 6.80 / 7.43 / 8.23 | 8.23 / 8.88 / 9.60 |
+
+Long's drag top speed stays within 2.5% of stock: a taller top gear meets the drag at lower revs, so a slipstream alone takes it no faster than stock (the foundation, kept). AI races on today's city routes never pass 185 km/h, so there Short is about 0.4% quicker and Long 0.7% slower; Long pays off on long straights and nitrous runs.
+
 ## Numbers
 
 | Parameter | Value | Why |
@@ -108,6 +150,9 @@ The coupe drifts as it did: handbrake, clutch kick, a trail-brake entry and powe
 | `nitrous.force` / `torqueMul` | 5500 N / 1.35 | Was 3600 / 1.25. The push along the car is what tells at speed, where the engine's torque no longer can: stage 1 at 160 km/h now adds about 3 m/s² on a stock hatch (was 1.8), and 100 to 200 km/h on a full tank takes 4.2 s (was 6.2). |
 | `nitrous.stagePower` | 1 / 1.15 / 1.3 | Was 1 / 1.1 / 1.2: the upper stages kick harder. |
 | `nitrous.capacity` | 3.6 s per stage | Was 3.2. A stage is worth about 60 km/h from 100 (was 35). |
+| `gearbox.ratios` / `finalDrive` | hatch 3.36 / 2.09 / 1.47 / 1.10 / 0.87 / 0.73 × 4.4; coupe 3.483 / 2.015 / 1.391 / 1.000 / 0.88 × 4.3; wagon 3.5 / 1.88 / 1.32 / 1.034 / 0.857 / 0.73 × 4.375 | Was the generic 3.25 / 2.15 / 1.6 / 1.25 / 1.02 / 0.85 × 3.6 (hatch) and × 3.62 (wagon), coupe 3.48 / 2.02 / 1.39 / 1.0 / 0.72 × 4.3. Donor spacing, the top gear's limiter at the slipstream top speed (Gearing). |
+| `setup.gearing.finalDriveMul` / `firstGearMul` | 1.2 / 1.1 / 1 / 0.92 / 0.85; 1 throughout | The top gear's limiter at 0.92 to 1.3 times the drag top speed; first gear held, the gears between blended evenly. |
+| `setup.gearing.torqueBonus` | +0.06 / +0.03 / 0 / -0.03 / -0.06 | The arcade term: with the real gearing, corner exits come out 6 to 9% quicker on Short and 8 to 11% slower on Long; it is gone between `gearbox.torqueBonusFadeStart` and `torqueBonusFadeEnd` (39 and 56 m/s). |
 
 ## Measuring
 
@@ -137,3 +182,9 @@ Grip and drift pass:
 - Magic Formula lateral and longitudinal shape factors (C 1.3 and 1.9): https://help.juliahub.com/dyad/dev/stdlib/MultibodyComponents/components/PacejkaSlippingWheel.html and https://en.wikipedia.org/wiki/Hans_B._Pacejka
 - Understeer gradient and the oversteering car's critical speed: https://en.wikipedia.org/wiki/Understeer_and_oversteer (Gillespie, *Fundamentals of Vehicle Dynamics*, for `K = Wf/Cf - Wr/Cr` and `v_crit = sqrt(g L / -K)`)
 - Tire load sensitivity: https://en.wikipedia.org/wiki/Tire_load_sensitivity
+
+Gearing pass (spec listings and owners' forums, not factory sheets; the R32's fourth gear is not in its listing):
+
+- RX-7 FD3S five speed, 3.483 / 2.015 / 1.391 / 1.000, final drive 4.100 (Type R) and 4.300 (Type RZ): https://carfromjapan.com/specifications/mazda/rx7/5813aa222afaa2c4b286b001 and https://carfromjapan.com/specifications/mazda/rx-7/5813aa2b2afaa2c4b286b005
+- Golf R32 six speed, 3.36 / 2.09 / 1.47 / 0.87 / 0.73: https://www.supercars.net/blog/2006-volkswagen-golf-r32
+- Audi 01E six speed, 3.5 / 1.88 / 1.32 / 1.034 / 0.857 on a 4.11 final drive (S4, S6): https://www.gt40s.com/threads/batch-of-audi-01e-6-speeds.31761; the S2 and RS2's 0.730 sixth: https://www.audiworld.com/forums/performance-tuning-10/anyway-change-gear-ratio-1967261/; the allroad's 4.375 final drive: https://12v.org/urs/charlie_smith/01E/ind5.html

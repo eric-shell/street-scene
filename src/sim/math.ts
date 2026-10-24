@@ -17,6 +17,7 @@ export const sqrt = (x: number): number => Math.sqrt(x);
 export const abs = (x: number): number => (x < 0 ? -x : x);
 export const sign = (x: number): number => (x > 0 ? 1 : x < 0 ? -1 : 0);
 export const exp = (x: number): number => Math.exp(x);
+export const pow = (x: number, y: number): number => Math.pow(x, y);
 
 export function clamp(x: number, lo: number, hi: number): number {
   return x < lo ? lo : x > hi ? hi : x;
