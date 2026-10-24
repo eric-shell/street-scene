@@ -95,7 +95,7 @@ export function helpSections(mode: RaceMode, isReplay: boolean, openWorld: boole
     : mode === 'drift'
       ? ['Drift zones multiply the points you score inside them.']
       : mode === 'waypoint'
-        ? ['Any streets go: the chip and the beacons point to the next waypoint.', 'Drift zones refill nitrous faster while you slide through them.']
+        ? ['Hit the waypoints in any order, by any streets: the arrow up top points to the nearest one left.', 'Drift zones refill nitrous faster while you slide through them.']
         : ['Drift zones refill nitrous faster while you slide through them.'];
   return [
     ...(isReplay ? [] : [{ title: 'Driving', keys: driving }]),
@@ -143,8 +143,8 @@ export function raceHudData(r: RaceState, cars: HudCar[], ghost: boolean, aspira
   };
   const zone = driftZoneStatus(r, 0);
   if (zone) data.zone = { mul: r.config.mode === 'drift' ? DRIFT_ZONES.scoreMul : DRIFT_ZONES.refillMul, nitro: r.config.mode !== 'drift', left: zone.left, resting: zone.resting };
-  // The waypoint race points the waypoint chip and the minimap at the next target.
-  const target = r.config.mode === 'waypoint' && !rc.finished ? r.world.route.waypoints?.[rc.nextCheckpoint] : undefined;
+  // The waypoint race points the compass and the minimap at the player's target (the nearest waypoint left).
+  const target = r.config.mode === 'waypoint' && !rc.finished ? r.world.route.waypoints?.[rc.waypointTarget] : undefined;
   if (target) {
     const n = r.world.route.waypoints!.length - 1;
     data.waypoint = target;

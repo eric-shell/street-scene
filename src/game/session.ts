@@ -827,7 +827,7 @@ export class RaceSession {
       this.sparks.update(this.time, (2 * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, px));
       this.tireFx.update(this.time);
     }
-    this.beacons?.update(this.race.cars[0].nextCheckpoint, this.time);
+    this.beacons?.update(this.race.cars[0], this.time);
     this.alpha = alpha;
     const r = this.race;
     const poses = this.curr.map((c, i) => lerpSnap(this.prev[i], c, this.paused ? 1 : alpha));

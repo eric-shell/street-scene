@@ -113,6 +113,10 @@ export interface RaceCar {
   lapTimes: number[];
   bestLap: number;
   nextCheckpoint: number;
+  /** Waypoint races: the waypoints (route.waypoints, the finish excluded) this car has reached, a bit each. */
+  waypointsReached: number;
+  /** Waypoint races: the target this car is heading for, an index into route.waypoints (the finish once every waypoint is reached). */
+  waypointTarget: number;
   finished: boolean;
   finishTick: number;
   wrongWayTime: number;
@@ -306,6 +310,8 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
       lapTimes: [],
       bestLap: 0,
       nextCheckpoint: 0,
+      waypointsReached: 0,
+      waypointTarget: 0,
       finished: false,
       finishTick: 0,
       wrongWayTime: 0,
@@ -742,37 +748,78 @@ function viaEdge(w: World, t: RouteWaypoint, eid: number, x: number, z: number):
   return e.id === t.edge ? Math.min(via, abs(u - t.along)) : via;
 }
 
+/** Waypoint races: the player's target switches to another waypoint only once it is this much nearer by road (m), so two about as far do not flicker. */
+export const WAYPOINT_RACE = { switchMargin: 20 } as const;
+
 /**
- * Waypoint race progress: the targets (route.waypoints, the finish line last)
- * count in order once a car drives within their radius, down whatever streets
- * it took ('checkpoint' events, value = targets reached). The distance the
- * standings and the HUD read is the route distance of the next target less
- * the distance by road still to go to it (roadDistance), never behind the
- * target last reached: the AI's progress watch and the standings both need it
- * to grow as a car closes in, whichever way it goes.
+ * Waypoint race progress: the waypoints (route.waypoints but the last) count
+ * in any order once a car drives within their radius, down whatever streets it
+ * took, and the finish line (the last target) once all of them are reached
+ * ('checkpoint' events, value = targets reached; nextCheckpoint is that count).
+ * The player heads for the nearest waypoint left by road (waypointTarget, what
+ * the HUD's arrow points at), the AI for the next one along the suggested
+ * route. The distance the standings and the HUD read is the route distance of
+ * the k-th target (k = targets reached; for the AI, the target's own index)
+ * less the distance by road still to go to the target, never behind the
+ * (k-1)-th: the AI's progress watch and the standings both need it to grow as
+ * a car closes in, whichever way it goes.
  * The player is free of the route (lost only off every street, as in free
  * roam); the AI drives the suggested route and keeps the route's checks.
  */
 function updateWaypoints(r: RaceState, rc: RaceCar, p: RouteProgress): void {
   const route = r.world.route;
   const targets = route.waypoints ?? [];
+  const n = targets.length - 1;
   const c = rc.state;
   if (rc.lap === 0) {
     rc.lap = 1;
     rc.lapStartTick = r.countdownTicks;
   }
-  let t = targets[rc.nextCheckpoint];
-  while (t && (c.x - t.x) ** 2 + (c.z - t.z) ** 2 <= t.radius * t.radius) {
+  const inside = (t: RouteWaypoint) => (c.x - t.x) ** 2 + (c.z - t.z) ** 2 <= t.radius * t.radius;
+  for (let i = 0; i < n; i++) {
+    if (rc.waypointsReached & (1 << i) || !inside(targets[i])) continue;
+    rc.waypointsReached |= 1 << i;
     rc.nextCheckpoint++;
     r.events.push({ tick: r.tick, type: 'checkpoint', car: rc.index, value: rc.nextCheckpoint });
-    t = targets[rc.nextCheckpoint];
   }
-  if (!t) {
+  if (rc.nextCheckpoint === n && inside(targets[n])) {
+    rc.nextCheckpoint++;
+    r.events.push({ tick: r.tick, type: 'checkpoint', car: rc.index, value: rc.nextCheckpoint });
+  }
+  if (rc.nextCheckpoint > n) {
     rc.dist = r.distance;
     return finishCar(r, rc);
   }
-  const reached = rc.nextCheckpoint > 0 ? targets[rc.nextCheckpoint - 1].s - route.startS : -Infinity;
-  rc.dist = Math.max(reached, t.s - route.startS - roadDistance(r.world, t, c.x, c.z));
+  let k = rc.nextCheckpoint;
+  let d: number;
+  if (rc.nextCheckpoint === n) {
+    rc.waypointTarget = n;
+    d = roadDistance(r.world, targets[n], c.x, c.z);
+  } else if (rc.isPlayer) {
+    // The nearest waypoint left by road, the current target kept unless another is clearly nearer.
+    const cur = rc.waypointsReached & (1 << rc.waypointTarget) || rc.waypointTarget >= n ? -1 : rc.waypointTarget;
+    let best = cur;
+    d = cur < 0 ? Infinity : roadDistance(r.world, targets[cur], c.x, c.z);
+    const keep = d - WAYPOINT_RACE.switchMargin;
+    let bestD = cur < 0 ? Infinity : keep;
+    for (let i = 0; i < n; i++) {
+      if (i === cur || rc.waypointsReached & (1 << i)) continue;
+      const di = roadDistance(r.world, targets[i], c.x, c.z);
+      if (di < bestD) {
+        bestD = di;
+        best = i;
+        d = di;
+      }
+    }
+    rc.waypointTarget = best;
+  } else {
+    let i = 0;
+    while (rc.waypointsReached & (1 << i)) i++;
+    rc.waypointTarget = k = i;
+    d = roadDistance(r.world, targets[i], c.x, c.z);
+  }
+  const reached = k > 0 ? targets[k - 1].s - route.startS : -Infinity;
+  rc.dist = Math.max(reached, targets[k].s - route.startS - d);
   if (rc.isPlayer) updateOpenWorld(r, rc);
   else updateLost(r, rc, p);
 }

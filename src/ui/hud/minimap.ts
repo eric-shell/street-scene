@@ -1,12 +1,12 @@
 /**
  * Minimap: a round, heading-up map canvas centred on a viewpoint, drawing the
- * district layers (AREA_MAP_STYLE), the street network, the route with its
- * shortcuts (dim pink dashes; a one-way shortcut, a jump exit or a car park,
+ * district layers (AREA_MAP_STYLE), the street network, the route (none in a
+ * waypoint race, where the player picks the streets) with its shortcuts (dim pink dashes; a one-way shortcut, a jump exit or a car park,
  * carries the city map's chevrons the drivable way, ui/map/cityMap.ts), the
  * bluff's crest as the same cliff symbol, closures and car markers. The race HUD centres it on the player's car; the drone
  * centres it on itself with a view cone and a north mark, and zooms out as it
  * climbs, so the same map serves both. In free roam it also shows the waypoint
- * set on the full map: a pin where it is, or an arrow on the rim pointing to
+ * set on the full map (in a waypoint race, the player's target): a pin where it is, or an arrow on the rim pointing to
  * it while it is off the map. The Path2D layers are built once per
  * world, so a frame is a handful of strokes. Render only.
  */
@@ -108,10 +108,13 @@ export class Minimap {
       this.roads.lineTo(b.x, b.z);
     }
     this.buildAreaLayers(world);
+    // A waypoint race draws no route: its route is only the AI's suggestion, and the player picks the streets
+    // (and the order), with the HUD's arrow and the target's pin to go by.
+    const suggestion = world.route.kind === 'waypoint';
     this.routePath = new Path2D();
-    world.route.points.forEach((p, i) => (i ? this.routePath.lineTo(p.x, p.z) : this.routePath.moveTo(p.x, p.z)));
+    if (!suggestion) world.route.points.forEach((p, i) => (i ? this.routePath.lineTo(p.x, p.z) : this.routePath.moveTo(p.x, p.z)));
     this.shortcuts = new Path2D();
-    for (const sc of world.route.shortcuts) {
+    for (const sc of suggestion ? [] : world.route.shortcuts) {
       sc.points.forEach((p, i) => (i ? this.shortcuts.lineTo(p.x, p.z) : this.shortcuts.moveTo(p.x, p.z)));
       // A jump exit runs on past its mouth: the flight down onto the street. It is driven toward its lip only.
       const a = shortcutArea(world.areas, sc);

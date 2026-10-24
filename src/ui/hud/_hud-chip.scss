@@ -1,7 +1,7 @@
 /* The chips under the HUD card (hud.ts): small chamfered plates like the card, an icon and a value. The
    ghost's, in its purple; the drift zone's (sim/driftZones.ts), yellow while the zone pays, its meter the
-   bonus left in this visit; the waypoint's, how far the waypoint is and an arrow turned like the minimap,
-   in the pin's yellow (a waypoint race's next target in the type's cyan). */
+   bonus left in this visit; the waypoint's, how far the free roam waypoint is and an arrow turned like the
+   minimap, in the pin's yellow (a waypoint race points the way with the compass, _hud-compass.scss). */
 @use '../styles/abstracts/media';
 @use '../styles/abstracts/mixins';
 @use '../styles/abstracts/palette';
@@ -91,16 +91,8 @@
   &--waypoint {
     display: none;
     border-color: palette.alpha(yellow, 0.35);
-    .hud--open-world &.is-visible,
-    .hud--waypoint-race &.is-visible {
+    .hud--open-world &.is-visible {
       display: flex;
-    }
-    /* The waypoint race's next target wears the type's cyan (free roam's own pin stays yellow). */
-    .hud--waypoint-race & {
-      border-color: palette.alpha(cyan, 0.4);
-    }
-    .hud--waypoint-race & :is(.hud-chip__icon, .hud-chip__arrow) {
-      color: var(--cyan);
     }
     .hud-chip__icon {
       color: var(--accent-2);

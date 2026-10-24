@@ -113,6 +113,40 @@ describe('waypoint race', () => {
     expect(r.cars.length).toBe(4);
   });
 
+  it('counts the waypoints in any order and the finish only after all of them; the player heads for the nearest left', () => {
+    const r = createRace(raceConfig(SEEDS[0], 'waypoint', 0));
+    const wps = r.world.route.waypoints!;
+    const n = wps.length - 1;
+    while (r.tick < r.countdownTicks) stepRace(r, NEUTRAL_INPUT);
+    const me = r.cars[0];
+    const park = (x: number, z: number) => {
+      const c = me.state;
+      c.x = x;
+      c.z = z;
+      c.y = r.world.driveHeightAt(x, z);
+      c.vx = c.vz = c.yawRate = 0;
+      stepRace(r, NEUTRAL_INPUT);
+    };
+    park(wps[n].x, wps[n].z);
+    expect(me.finished).toBe(false);
+    expect(me.nextCheckpoint).toBe(0);
+    const order = [2, 0, 3, 1];
+    order.forEach((i, k) => {
+      park(wps[i].x, wps[i].z);
+      expect(me.nextCheckpoint).toBe(k + 1);
+      expect(me.waypointsReached & (1 << i)).toBeTruthy();
+    });
+    expect(me.waypointTarget).toBe(n);
+    park(wps[n].x, wps[n].z);
+    expect(me.finished).toBe(true);
+    // Fresh race: from the start the target is the waypoint nearest by road.
+    const r2 = createRace(raceConfig(SEEDS[0], 'waypoint', 0));
+    while (r2.tick <= r2.countdownTicks) stepRace(r2, NEUTRAL_INPUT);
+    const c = r2.cars[0].state;
+    const roads = wps.slice(0, n).map((t) => roadDistance(r2.world, t, c.x, c.z));
+    expect(r2.cars[0].waypointTarget).toBe(roads.indexOf(Math.min(...roads)));
+  });
+
   it('the field reaches every waypoint in order and finishes, and the race replays bit for bit', () => {
     const cfg = raceConfig(SEEDS[1], 'waypoint', 3);
     const r = runAutopilot(cfg, 400, true);

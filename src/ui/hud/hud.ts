@@ -4,7 +4,8 @@
  * which the drone shares). Every mode leads with the HUD card the drone
  * shares (hudCard.ts): free roam's district and readouts, a race's place, lap
  * or progress, time and best in its type's hue; the ghost, drift zone and
- * waypoint chips stand under it. The dial cluster in the bottom right is the
+ * waypoint chips stand under it (a waypoint race points the way with the
+ * compass at the top center instead: an arrow to the player's target). The dial cluster in the bottom right is the
  * tachometer with the speed in it, the boost gauge beside it (a naturally
  * aspirated car has none, so it is hidden and the cluster closes up) and the
  * nitrous gauge under them: one cell per stage in its own color, which the
@@ -152,6 +153,12 @@ export class Hud {
   private wpText: HTMLElement;
   private wpDir: HTMLElement;
   private wpAngle = NaN;
+  /** The waypoint race's compass, its label and distance, its arrow, and the arrow's smoothed angle (rad). */
+  private compassEl: HTMLElement;
+  private compassLabel: HTMLElement;
+  private compassDistance: HTMLElement;
+  private compassArrow: HTMLElement;
+  private compassAngle = NaN;
   private msgTimer = 0;
   private lastCountdown: number | null = null;
   /** A click on the minimap opens the full city map (the session sets this). */
@@ -167,6 +174,7 @@ export class Hud {
         <div class="hud-chip hud-chip--waypoint"><span class="hud-chip__icon"></span><b class="hud-chip__value"></b><span class="hud-chip__arrow"></span></div>
       </div>
       <div class="hud__progress"><div class="hud__progress-fill"></div></div>
+      <div class="hud-compass"><span class="hud-compass__arrow"></span><span class="hud-compass__label"></span><b class="hud-compass__distance"></b></div>
       <div class="hud__countdown"></div>
       <div class="hud__message"></div>
       <div class="hud__wrong-way"><span class="hud__wrong-way-icon"></span>WRONG WAY</div>
@@ -191,6 +199,11 @@ export class Hud {
     this.wpEl = q('.hud-chip--waypoint');
     this.wpText = q('.hud-chip--waypoint .hud-chip__value');
     this.wpDir = q('.hud-chip__arrow');
+    this.compassEl = q('.hud-compass');
+    this.compassLabel = q('.hud-compass__label');
+    this.compassDistance = q('.hud-compass__distance');
+    this.compassArrow = q('.hud-compass__arrow');
+    this.compassArrow.appendChild(icon(Navigation2, { size: 44 }));
     q('.hud__wrong-way-icon').appendChild(icon(TriangleAlert, { size: 28 }));
     q('.nitro-gauge__icon').appendChild(icon(Zap, { size: 18 }));
     this.ghostEl = q('.hud-chip--ghost');
@@ -233,7 +246,6 @@ export class Hud {
 
   update(d: HudData, dt: number): void {
     this.root.classList.toggle('hud--open-world', !!d.openWorld);
-    this.root.classList.toggle('hud--waypoint-race', d.mode === 'waypoint' && !d.openWorld);
     const card = this.card;
     if (card && d.openWorld) {
       card.setStatus(d.openWorld.area);
@@ -270,7 +282,7 @@ export class Hud {
       if (this.msgTimer <= 0) this.msgEl.classList.remove('is-visible');
     }
     this.updateZone(d);
-    this.updateWaypoint(d);
+    this.updateWaypoint(d, dt);
     if (d.drift) {
       this.driftEl.style.display = '';
       this.driftEl.innerHTML = `<div class="drift-score__total">${Math.round(d.drift.total).toLocaleString()}</div>${
@@ -330,21 +342,40 @@ export class Hud {
   /**
    * The waypoint chip: how far, and an arrow turned heading up like the
    * minimap (the waypoint's bearing less the car's heading). Writes the DOM
-   * only when the text or the angle changes.
+   * only when the text or the angle changes. A waypoint race shows the
+   * compass instead, its arrow eased (frame-rate independent) so it swings
+   * rather than snaps when the target changes.
    */
-  private updateWaypoint(d: HudData): void {
+  private updateWaypoint(d: HudData, dt: number): void {
     const w = d.waypoint;
     const me = w ? d.cars.find((c) => c.isPlayer) : undefined;
-    this.wpEl.classList.toggle('is-visible', !!me);
+    const race = d.mode === 'waypoint' && !d.openWorld;
+    this.wpEl.classList.toggle('is-visible', !!me && !race);
+    this.compassEl.classList.toggle('is-visible', !!me && race);
     if (!w || !me) return;
     const dx = w.x - me.x;
     const dz = w.z - me.z;
+    if (race) return this.updateCompass(d.waypointLabel ?? 'Waypoint', Math.hypot(dx, dz), Math.atan2(-dx, dz) + me.yaw, dt);
     const text = `${d.waypointLabel ?? 'Waypoint'} · ${formatDistance(Math.hypot(dx, dz))}`;
     if (this.wpText.textContent !== text) this.wpText.textContent = text;
     const a = Math.atan2(-dx, dz) + me.yaw;
     if (!(Math.abs(Math.atan2(Math.sin(a - this.wpAngle), Math.cos(a - this.wpAngle))) < 0.01)) {
       this.wpAngle = a;
       this.wpDir.style.transform = `rotate(${a.toFixed(3)}rad)`;
+    }
+  }
+
+  /** The compass: what the target is, how far (m), and the arrow toward it (rad, 0 = straight ahead). */
+  private updateCompass(label: string, distance: number, a: number, dt: number): void {
+    if (this.compassLabel.textContent !== label) this.compassLabel.textContent = label;
+    const text = formatDistance(distance);
+    if (this.compassDistance.textContent !== text) this.compassDistance.textContent = text;
+    const prev = this.compassAngle;
+    const delta = Math.atan2(Math.sin(a - prev), Math.cos(a - prev));
+    const next = Number.isNaN(prev) ? a : prev + delta * damp(1 / 0.08, dt);
+    if (Number.isNaN(prev) || Math.abs(next - prev) > 0.002) {
+      this.compassAngle = next;
+      this.compassArrow.style.transform = `rotate(${next.toFixed(3)}rad)`;
     }
   }
 
