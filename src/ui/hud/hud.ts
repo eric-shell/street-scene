@@ -8,13 +8,14 @@
  * compass at the top center instead: an arrow to the player's target). The dial cluster in the bottom right is the
  * tachometer with the speed in it, the boost gauge beside it (a naturally
  * aspirated car has none, so it is hidden and the cluster closes up) and the
- * nitrous gauge under them: one cell per stage in its own color, which the
- * callouts over the cluster (boostCallouts.ts) name the style that fills.
+ * nitrous gauge under them: one bar where each stage fills in its own color
+ * over the full one below, and a pip per full stage, while the callouts over
+ * the cluster (boostCallouts.ts) name the style that fills it.
  * Reads a snapshot each frame; never touches the sim.
  */
 import type { World } from '../../city/world';
 import type { RaceMode } from '../../sim/race';
-import { nitroFullStages } from '../../sim/car';
+import { nitroFullStages, nitroTopStage } from '../../sim/car';
 import { NITRO_STAGES } from '../../sim/tuning';
 import { BoostCallouts } from './boostCallouts';
 import { damp } from '../../shared/anim';
@@ -23,6 +24,7 @@ import { clamp01 } from '../../sim/math';
 import { BoostGauge, Tachometer } from './dials';
 import { TriangleAlert, Zap, Ghost, icon, Disc3, MapPin, Navigation2, RotateCcw, Route, ChevronsRight, MapPinned, Wind, type IconNode } from '../kit/icons';
 import { formatTime } from '../kit/format';
+import { prefersReducedMotion } from '../kit/dom';
 import type { HudCard } from './hudCard';
 import type { Help } from '../panels/help';
 import type { Hue } from '../rail/rail';
@@ -112,10 +114,12 @@ export class Hud {
   private msgEl: HTMLElement;
   private wrongEl: HTMLElement;
   private nitroBox: HTMLElement;
-  private nitroCells: HTMLElement[];
+  private nitroBar: HTMLElement;
   private nitroFills: HTMLElement[];
-  /** What the nitrous gauge shows, so its DOM is written only on a change: each cell's fill (hundredths), the full stages, the stage burning, the state. */
+  private nitroPips: HTMLElement[];
+  /** What the nitrous gauge shows, so its DOM is written only on a change: each stage's fill (hundredths), the top stage, the full stages, the stage burning, the state. */
   private nitroShown: number[] = Array.from({ length: NITRO_STAGES }, () => -1);
+  private nitroTop = -1;
   private nitroFull = -1;
   private nitroBurn = -1;
   private nitroState = '';
@@ -184,7 +188,7 @@ export class Hud {
           <canvas class="hud__boost" width="120" height="120"></canvas>
           <canvas class="hud__tach" width="220" height="220"></canvas>
         </div>
-        <div class="nitro-gauge"><span class="nitro-gauge__icon"></span><span class="nitro-gauge__cells">${'<span class="nitro-gauge__cell"><i class="nitro-gauge__fill"></i></span>'.repeat(NITRO_STAGES)}</span></div>
+        <div class="nitro-gauge"><span class="nitro-gauge__icon"></span><span class="nitro-gauge__bar">${'<i class="nitro-gauge__fill"></i>'.repeat(NITRO_STAGES)}</span><span class="nitro-gauge__pips">${'<i class="nitro-gauge__pip"></i>'.repeat(NITRO_STAGES)}</span></div>
       </div>
     `;
     parent.appendChild(this.root);
@@ -211,8 +215,9 @@ export class Hud {
     this.msgEl = q('.hud__message');
     this.wrongEl = q('.hud__wrong-way');
     this.nitroBox = q('.nitro-gauge');
-    this.nitroCells = [...this.root.querySelectorAll<HTMLElement>('.nitro-gauge__cell')];
+    this.nitroBar = q('.nitro-gauge__bar');
     this.nitroFills = [...this.root.querySelectorAll<HTMLElement>('.nitro-gauge__fill')];
+    this.nitroPips = [...this.root.querySelectorAll<HTMLElement>('.nitro-gauge__pip')];
     q('.hud__bottom-right').append(this.callouts.el);
     this.driftEl = q('.drift-score');
     this.progressFill = q('.hud__progress-fill');
@@ -297,29 +302,43 @@ export class Hud {
   }
 
   /**
-   * The nitrous gauge: a cell per stage, each filling in its own color (cyan, purple, then the hot pink
-   * red) as the tank charges, and the one burning glows; the icon lights once a full stage is in the tank
-   * (_nitro-gauge.scss reads the data attributes). Writes the DOM only when a fill (in hundredths), the
-   * full stages, the burning stage or the state changes.
+   * The nitrous gauge: one bar where each stage fills in its own color (cyan, purple, then the hot pink
+   * red) over the full stage below it, so the color on top is the stage the tank is in and a burn drains
+   * it back to the one under it. Each fill slides in from the left (a translate, so its bright leading
+   * edge keeps its width); the pips count the full stages, and a stage coming full flashes the bar and pops
+   * its pip (skipped under reduced motion). _nitro-gauge.scss reads the data attributes. Writes the DOM only
+   * when a fill (in hundredths), the top or full stages, the burning stage or the state changes.
    */
   private updateNitro(d: HudData): void {
     const full = nitroFullStages(d.nitro);
+    const top = nitroTopStage(d.nitro);
     const burn = d.nitroActive ? d.nitroStage : 0;
     for (let i = 0; i < NITRO_STAGES; i++) {
       const fill = Math.round(clamp01(d.nitro - i) * 100);
       if (fill !== this.nitroShown[i]) {
         this.nitroShown[i] = fill;
-        this.nitroFills[i].style.transform = `scaleX(${fill / 100})`;
+        this.nitroFills[i].style.transform = `translateX(${fill - 100}%)`;
       }
     }
+    if (top !== this.nitroTop) {
+      this.nitroTop = top;
+      this.nitroBox.dataset.top = String(top);
+    }
     if (full !== this.nitroFull) {
+      // A stage just came full (not the first draw, not a drain): flash the bar and pop its pip.
+      if (this.nitroFull >= 0 && full > this.nitroFull && !prefersReducedMotion()) {
+        this.nitroBar.animate([{ filter: 'brightness(2.2)' }, { filter: 'brightness(1)' }], { duration: 520, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)' });
+        this.nitroPips[full - 1].animate([{ transform: 'skewX(-14deg) scale(1.9)' }, { transform: 'skewX(-14deg) scale(1)' }], { duration: 420, easing: 'cubic-bezier(0.3, 1.6, 0.5, 1)' });
+      }
       this.nitroFull = full;
       this.nitroBox.dataset.full = String(full);
-      this.nitroCells.forEach((cell, i) => cell.classList.toggle('is-full', i < full));
+      this.nitroPips.forEach((pip, i) => pip.classList.toggle('is-full', i < full));
     }
     if (burn !== this.nitroBurn) {
       this.nitroBurn = burn;
-      this.nitroCells.forEach((cell, i) => cell.classList.toggle('is-burning', i === burn - 1));
+      this.nitroBox.dataset.burn = String(burn);
+      this.nitroFills.forEach((fill, i) => fill.classList.toggle('is-burning', i === burn - 1));
+      this.nitroPips.forEach((pip, i) => pip.classList.toggle('is-burning', i === burn - 1));
     }
     const state = burn > 0 ? 'burning' : d.nitro < 0.02 ? 'empty' : full >= 1 ? 'ready' : 'charging';
     if (state !== this.nitroState) {

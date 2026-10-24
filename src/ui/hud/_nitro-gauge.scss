@@ -1,16 +1,21 @@
 /* The nitrous gauge under the dials (hud.ts), as wide as the tachometer above it (--tach). The tank holds
    three stages, each in its own color: cyan, purple, then the hot pink red (ui/kit/palette.ts
-   NITRO_STAGE_COLORS lists the same; $stages here, which the callouts read too). A slanted cell per stage,
-   outlined in its color so the three read before any is filled, fills left to right as the tank charges
-   (the fill is a scaleX the TS writes) and takes its full look once it is whole (.is-full). Burning drains
-   the top stage first: its cell glows and pulses (.is-burning). The icon says the tank's state
-   (data-state: empty, charging, ready, burning) in the color of the highest full stage (data-full). */
+   NITRO_STAGE_COLORS lists the same; $stages here, which the callouts read too). They share one slanted
+   bar and overlap: each stage's fill slides in from the left over the full stage below it (the TS writes
+   a translateX), with a bright leading edge and a shadow that lifts it off the layer under it, so the
+   color on top is the stage the tank is in (data-top, which also tints the bar's rim). A burn drains the
+   top layer back to the one below: it brightens and pulses (.is-burning) and the bar glows in its color
+   (data-burn). The pips count the full stages, each lit in its own color (.is-full); the icon says the
+   tank's state (data-state: empty, charging, ready, burning) in the color of the highest full stage
+   (data-full). A gloss and quarter marks lie over the fills. */
 @use 'sass:color';
 @use 'sass:list';
 @use '../styles/abstracts/media';
 @use '../styles/abstracts/palette';
 
 $stages: ('cyan', 'purple', 'red');
+/* The slant the bar and the pips share. */
+$skew: skewX(-14deg);
 
 .nitro-gauge {
   display: flex;
@@ -19,6 +24,8 @@ $stages: ('cyan', 'purple', 'red');
   width: var(--tach);
   filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.7)) drop-shadow(0 0 5px rgba(0, 0, 0, 0.5));
   @include palette.tint(ready, cyan);
+  @include palette.tint(top, cyan);
+  @include palette.tint(burn, cyan);
   &__icon {
     flex: none;
     display: grid;
@@ -34,65 +41,114 @@ $stages: ('cyan', 'purple', 'red');
   &[data-state='charging'] &__icon {
     color: var(--muted);
   }
-  &[data-state='ready'] &__icon,
-  &[data-state='burning'] &__icon {
+  &[data-state='ready'] &__icon {
     color: var(--ready);
   }
   &[data-state='burning'] &__icon {
     color: var(--text);
-    filter: drop-shadow(0 0 5px var(--ready));
+    filter: drop-shadow(0 0 5px var(--burn));
   }
-  &__cells {
-    flex: 1;
-    display: flex;
-    gap: 5px;
-    /* The slant leans the cells' outer corners out; keep the first one clear of the icon. */
-    padding-left: 3px;
-  }
-  &__cell {
-    @include palette.tint(stage, cyan);
-    --stage-light: #{color.mix(#fff, palette.get(cyan), 45%)};
+  &__bar {
     flex: 1;
     position: relative;
-    height: 14px;
+    height: 13px;
+    /* The slant leans the bar's outer corners out; keep it clear of the icon. */
+    margin-left: 3px;
     overflow: hidden;
-    transform: skewX(-14deg);
-    background: palette.alpha(bg0, 0.8);
-    border: 1px solid rgba(var(--stage-rgb), 0.55);
-    &.is-full {
-      border-color: var(--stage);
+    transform: $skew;
+    background: palette.alpha(bg0, 0.82);
+    border: 1px solid rgba(var(--top-rgb), 0.5);
+    border-radius: 2px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    /* Over the fills: a gloss across the top half and faint marks at the quarters. */
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.04) 50%, rgba(0, 0, 0, 0.18)),
+        linear-gradient(90deg, transparent calc(25% - 0.5px), rgba(0, 0, 0, 0.35) calc(25% - 0.5px), rgba(0, 0, 0, 0.35) calc(25% + 0.5px), transparent calc(25% + 0.5px)),
+        linear-gradient(90deg, transparent calc(50% - 0.5px), rgba(0, 0, 0, 0.35) calc(50% - 0.5px), rgba(0, 0, 0, 0.35) calc(50% + 0.5px), transparent calc(50% + 0.5px)),
+        linear-gradient(90deg, transparent calc(75% - 0.5px), rgba(0, 0, 0, 0.35) calc(75% - 0.5px), rgba(0, 0, 0, 0.35) calc(75% + 0.5px), transparent calc(75% + 0.5px));
+      pointer-events: none;
     }
-    &.is-burning {
-      box-shadow: 0 0 12px var(--stage);
-    }
+  }
+  &:not([data-top='0']) &__bar {
+    border-color: rgba(var(--top-rgb), 0.85);
+  }
+  &:not([data-burn='0']) &__bar {
+    border-color: var(--burn);
+    box-shadow: 0 0 12px rgba(var(--burn-rgb), 0.85);
   }
   &__fill {
+    @include palette.tint(stage, cyan);
+    --stage-light: #{color.mix(#fff, palette.get(cyan), 60%)};
     position: absolute;
     inset: 0;
-    transform-origin: 0 50%;
-    transform: scaleX(0);
-    background: linear-gradient(90deg, rgba(var(--stage-rgb), 0.78), var(--stage));
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, rgba(var(--stage-rgb), 0.55), rgba(var(--stage-rgb), 0.9) 70%, var(--stage) calc(100% - 3px), var(--stage-light) calc(100% - 3px));
+    /* Lifts the layer off the full stage under it, where it ends. */
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.55);
+    &.is-burning {
+      background: linear-gradient(90deg, rgba(var(--stage-rgb), 0.85), var(--stage) calc(100% - 3px), #fff calc(100% - 3px));
+      @include media.motion {
+        animation: nitro-gauge-burn 0.45s ease-in-out infinite alternate;
+      }
+    }
   }
-  &__cell.is-burning &__fill {
-    background: linear-gradient(90deg, var(--stage), var(--stage-light));
-    @include media.motion {
-      animation: nitro-gauge-burn 0.45s ease-in-out infinite alternate;
+  &__pips {
+    flex: none;
+    display: flex;
+    gap: 3px;
+  }
+  &__pip {
+    @include palette.tint(stage, cyan);
+    width: 6px;
+    height: 13px;
+    transform: $skew;
+    background: palette.alpha(bg0, 0.82);
+    border: 1px solid rgba(var(--stage-rgb), 0.35);
+    border-radius: 1px;
+    transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s;
+    &.is-full {
+      background: var(--stage);
+      border-color: color.mix(#fff, palette.get(cyan), 50%);
+      box-shadow: 0 0 6px rgba(var(--stage-rgb), 0.7);
+    }
+    &.is-burning {
+      border-color: var(--stage);
+      box-shadow: 0 0 9px var(--stage);
+      @include media.motion {
+        animation: nitro-gauge-burn 0.45s ease-in-out infinite alternate;
+      }
     }
   }
   @for $i from 1 through list.length($stages) {
     $name: list.nth($stages, $i);
-    &__cell:nth-child(#{$i}) {
+    &__fill:nth-child(#{$i}) {
       @include palette.tint(stage, $name);
-      --stage-light: #{color.mix(#fff, palette.get($name), 45%)};
+      --stage-light: #{color.mix(#fff, palette.get($name), 60%)};
+    }
+    &__pip:nth-child(#{$i}) {
+      @include palette.tint(stage, $name);
+      &.is-full {
+        border-color: color.mix(#fff, palette.get($name), 50%);
+      }
+    }
+    &[data-top='#{$i}'] {
+      @include palette.tint(top, $name);
+    }
+    &[data-burn='#{$i}'] {
+      @include palette.tint(burn, $name);
     }
     &[data-full='#{$i}'] {
       @include palette.tint(ready, $name);
     }
   }
 }
-/* The burning cell's fill breathes between its color and a brighter wash; under reduced motion it holds the bright one. */
+/* The burning layer and its pip breathe between their color and a brighter wash; under reduced motion they hold steady. */
 @keyframes nitro-gauge-burn {
   to {
-    filter: brightness(1.35);
+    filter: brightness(1.4);
   }
 }

@@ -2,8 +2,10 @@
  * The race HUD's two canvas dials: the tachometer, which is also the speedometer (speed is the big number,
  * the gear above it), and the boost gauge a forced induction car wears beside it (the gauge is not built
  * for a naturally aspirated one, hud.ts). Both are arcs, not needles: the lit arc is the reading, a short
- * white bar across the ring marks its head, and the middle of the dial is left to the numbers, so nothing
- * crosses the speed. The nitrous glow rings the tachometer too, so every car shows it burning.
+ * white bar across the ring marks its head, and the middle of the dial is left to the readings, so nothing
+ * crosses the speed. The scale's numerals stand outside the ring and its ticks inside it, which keeps the
+ * middle a clear circle the readings are sized to fit. The nitrous glow rings the tachometer's face too, so
+ * every car shows it burning.
  *
  * Drawing is cheap on purpose. A dial is drawn in fixed logical units onto a backing store that follows its
  * CSS size and the device pixel ratio (crisp at any size), only when something it shows has changed (the
@@ -170,7 +172,11 @@ export interface TachReading {
   glowStage: number;
 }
 
-const TACH = { size: 220, c: 110, r: 92, ring: 9 } as const;
+/**
+ * The tachometer's layout (logical units): the ring's radius and width, the numerals' radius outside it, and
+ * the face's. Inside the ticks a circle of about 66 is clear, which the gear, the speed and its caption fit.
+ */
+const TACH = { size: 220, c: 110, r: 80, ring: 9, numerals: 98, face: 108 } as const;
 
 /** The tachometer and speedometer. */
 export class Tachometer {
@@ -204,7 +210,7 @@ export class Tachometer {
     d.see(11, d.cssSize < 170 ? 1 : 0);
     if (!d.dirty()) return;
 
-    const { c: cx, r: R, ring } = TACH;
+    const { c: cx, r: R, ring, numerals, face } = TACH;
     const cy = cx;
     const c = d.begin();
     const ang = (rpm: number): number => A0 + SWEEP * clamp01(rpm / maxRpm);
@@ -215,7 +221,7 @@ export class Tachometer {
     // Face, with the limiter's wash and the nitrous ring outside it.
     c.fillStyle = INK.face;
     c.beginPath();
-    c.arc(cx, cy, R + 11, 0, TAU);
+    c.arc(cx, cy, face, 0, TAU);
     c.fill();
     if (flash) {
       c.fillStyle = INK.redWash;
@@ -226,10 +232,10 @@ export class Tachometer {
     c.stroke();
     if (glow > 0) {
       const stage = Math.max(0, Math.min(GLOW_RING.length - 1, t.glowStage - 1));
-      c.lineWidth = 9;
+      c.lineWidth = 7;
       c.strokeStyle = GLOW_HALO[stage][glow];
       c.beginPath();
-      c.arc(cx, cy, R + 12, 0, TAU);
+      c.arc(cx, cy, face - 1.5, 0, TAU);
       c.stroke();
       c.lineWidth = 3;
       c.strokeStyle = GLOW_RING[stage][glow];
@@ -257,10 +263,10 @@ export class Tachometer {
       c.stroke();
     }
 
-    // Ticks every half thousand, numerals every thousand. The small dial (a phone's) drops the half ticks and
-    // numbers every other thousand, bigger, so what is left stays legible at its size.
+    // Ticks every half thousand inside the ring, numerals every thousand outside it. The small dial (a phone's)
+    // drops the half ticks and numbers every other thousand, bigger, so what is left stays legible at its size.
     const compact = d.cssSize < 170;
-    c.font = `700 ${compact ? 15 : 13}px ${FONT}`;
+    c.font = `700 ${compact ? 16 : 13}px ${FONT}`;
     c.textAlign = 'center';
     c.textBaseline = 'middle';
     for (let k = 0; k <= maxRpm / 500; k++) {
@@ -270,34 +276,35 @@ export class Tachometer {
       const a = ang(rpm);
       c.strokeStyle = rpm >= t.redline ? INK.red : INK.tick;
       c.lineWidth = major ? 2.5 : 1.5;
-      spoke(c, cx, cy, a, R - (major ? 15 : 11), R - 6);
+      spoke(c, cx, cy, a, R - (major ? 13 : 10), R - 2);
       if (major && (!compact || k % 4 === 0)) {
         c.fillStyle = rpm >= t.redline ? INK.red : INK.numeral;
-        c.fillText(String(rpm / 1000), cx + Math.cos(a) * (R - 28), cy + Math.sin(a) * (R - 28));
+        c.fillText(String(rpm / 1000), cx + Math.cos(a) * numerals, cy + Math.sin(a) * numerals);
       }
     }
     // The launch rpm: a yellow notch where the two-step holds the needle at the line.
     if (t.launchRpm > 0) {
       c.strokeStyle = INK.yellow;
       c.lineWidth = 3;
-      spoke(c, cx, cy, ang(t.launchRpm), R - 15, R + 7);
+      spoke(c, cx, cy, ang(t.launchRpm), R - 13, R + ring / 2 + 3);
     }
-    head(c, cx, cy, aRpm, R - 18, R + 7, 3.5);
+    head(c, cx, cy, aRpm, R - 14, R + ring / 2 + 3, 3.5);
 
-    // The middle: gear over speed over its unit, and what a manual driver needs to hear.
+    // The middle: gear over speed over its unit, and what a manual driver needs to hear (the caption sits in
+    // the open bottom of the sweep, so it has the most room).
     c.fillStyle = flash || warn >= 14 ? INK.red : INK.gear;
-    c.font = `900 ${compact ? 26 : 30}px ${FONT}`;
-    c.fillText(t.gear < 0 ? 'R' : t.gear === 0 ? 'N' : String(t.gear), cx, cy - (compact ? 41 : 46));
+    c.font = `900 ${compact ? 28 : 26}px ${FONT}`;
+    c.fillText(t.gear < 0 ? 'R' : t.gear === 0 ? 'N' : String(t.gear), cx, cy - 40);
     c.fillStyle = INK.text;
-    c.font = `900 56px ${FONT}`;
-    c.fillText(String(speed), cx, cy + 6);
+    c.font = `900 ${compact ? 54 : 50}px ${FONT}`;
+    c.fillText(String(speed), cx, cy + 4);
     c.fillStyle = INK.caption;
-    c.font = `700 13px ${FONT}`;
-    c.fillText('MPH', cx, cy + 40);
+    c.font = `700 ${compact ? 14 : 12}px ${FONT}`;
+    c.fillText('MPH', cx, cy + 36);
     if (t.manual) {
       c.fillStyle = shift ? INK.red : INK.caption;
-      c.font = `800 12px ${FONT}`;
-      c.fillText(shift ? 'SHIFT' : 'MANUAL', cx, cy + 59);
+      c.font = `800 ${compact ? 13 : 11}px ${FONT}`;
+      c.fillText(shift ? 'SHIFT' : 'MANUAL', cx, cy + 56);
     }
   }
 
@@ -318,7 +325,8 @@ export interface BoostReading {
   blowOff: boolean;
 }
 
-const BOOST = { size: 120, c: 60, r: 46, ring: 7, lo: -1, hi: 2, redFrom: 1.6 } as const;
+/** The boost gauge's layout (logical units, numerals outside the ring like the tachometer's) and its scale (bar). */
+const BOOST = { size: 120, c: 60, r: 38, ring: 6, numerals: 49, face: 58, lo: -1, hi: 2, redFrom: 1.6 } as const;
 
 /** The boost gauge: vacuum dim on the left of the zero mark, pressure lit to the right of it, red beyond 1.6 bar. */
 export class BoostGauge {
@@ -340,7 +348,7 @@ export class BoostGauge {
     d.see(5, d.cssSize < 100 ? 1 : 0);
     if (!d.dirty()) return;
 
-    const { c: cx, r: R, ring, lo, hi, redFrom } = BOOST;
+    const { c: cx, r: R, ring, numerals, face, lo, hi, redFrom } = BOOST;
     const cy = cx;
     const c = d.begin();
     const ang = (v: number): number => A0 + SWEEP * clamp01((v - lo) / (hi - lo));
@@ -349,17 +357,17 @@ export class BoostGauge {
 
     c.fillStyle = INK.face;
     c.beginPath();
-    c.arc(cx, cy, R + 9, 0, TAU);
+    c.arc(cx, cy, face, 0, TAU);
     c.fill();
     c.lineWidth = 1;
     c.strokeStyle = INK.rim;
     c.stroke();
     if (lit) {
       const stage = Math.max(0, Math.min(GLOW_RING.length - 1, b.glowStage - 1));
-      c.lineWidth = 7;
+      c.lineWidth = 5;
       c.strokeStyle = GLOW_HALO[stage][glow];
       c.beginPath();
-      c.arc(cx, cy, R + 10, 0, TAU);
+      c.arc(cx, cy, face - 1, 0, TAU);
       c.stroke();
       c.lineWidth = 2.5;
       c.strokeStyle = GLOW_RING[stage][glow];
@@ -399,9 +407,10 @@ export class BoostGauge {
       c.stroke();
     }
 
-    // Ticks every half bar, numerals on the whole ones (the small gauge keeps the whole ticks only); the zero mark is the longest.
+    // Ticks every half bar inside the ring, numerals on the whole ones outside it (the small gauge keeps the
+    // whole ticks only); the zero mark is the longest.
     const compact = d.cssSize < 100;
-    c.font = `700 10px ${FONT}`;
+    c.font = `700 9.5px ${FONT}`;
     c.textAlign = 'center';
     c.textBaseline = 'middle';
     for (let k = lo * 2; k <= hi * 2; k++) {
@@ -410,21 +419,21 @@ export class BoostGauge {
       if (!major && compact) continue;
       c.strokeStyle = k === 0 ? INK.needle : INK.tick;
       c.lineWidth = k === 0 ? 2.5 : major ? 2 : 1.2;
-      spoke(c, cx, cy, a, R - (k === 0 ? 13 : major ? 11 : 8), R - 5);
+      spoke(c, cx, cy, a, R - (k === 0 ? 10 : major ? 8 : 6), R - 1);
       if (major && !compact) {
         c.fillStyle = INK.numeral;
-        c.fillText(String(k / 2), cx + Math.cos(a) * (R - 20), cy + Math.sin(a) * (R - 20));
+        c.fillText(String(k / 2), cx + Math.cos(a) * numerals, cy + Math.sin(a) * numerals);
       }
     }
-    head(c, cx, cy, ang(v), R - 13, R + 6, 3);
+    head(c, cx, cy, ang(v), R - 10, R + ring / 2 + 3, 3);
 
-    // The reading, and what the valve or the antilag is doing.
+    // The reading over its unit, like the speed's, or what the valve or the antilag is doing.
     c.fillStyle = v > redFrom ? INK.red : lit ? INK.text : v > 0.02 ? INK.orange : INK.caption;
-    c.font = `900 24px ${FONT}`;
-    c.fillText((bar > 0 ? '+' : '') + bar.toFixed(1), cx, cy + 2);
+    c.font = `900 ${compact ? 22 : 20}px ${FONT}`;
+    c.fillText((bar > 0 ? '+' : '') + bar.toFixed(1), cx, cy + 1);
     c.fillStyle = b.antilag ? INK.yellow : INK.caption;
-    c.font = `800 ${compact ? 12 : 10.5}px ${FONT}`;
-    c.fillText(b.antilag ? 'ANTILAG' : b.blowOff ? 'BLOW OFF' : 'BOOST BAR', cx, cy + 26);
+    c.font = `800 ${compact ? 11 : 9.5}px ${FONT}`;
+    c.fillText(b.antilag ? 'ANTILAG' : b.blowOff ? 'BLOW OFF' : 'BAR', cx, cy + 21);
   }
 
   dispose(): void {
