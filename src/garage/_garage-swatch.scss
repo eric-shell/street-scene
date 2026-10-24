@@ -1,8 +1,8 @@
-/* Colors (garageUi.ts paint, wheels, neon and vinyl): rows of preset swatches beside a color well, and the dot
+/* Colors (garageTabs.ts and garageVinyls.ts: paint, wheels, neon and vinyl): rows of preset swatches beside a color well, and the dot
    that shows a vinyl layer's color in its row (or the body's on a matched accent). */
 @use '../ui/styles/abstracts/mixins';
 @use '../ui/styles/abstracts/palette';
-/* A paint picker (garageUi.ts paintPicker) redraws inside its own box; the box leaves its rows to the section's
+/* A paint picker (garageWidgets.ts paintPicker) redraws inside its own box; the box leaves its rows to the section's
    column and gap. */
 .garage-paint {
   display: contents;

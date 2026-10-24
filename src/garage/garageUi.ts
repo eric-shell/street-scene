@@ -25,94 +25,39 @@
  * and section hairlines take it through `data-tab` on the root), spec tags and
  * stat bars in the palette, a sheen on whatever is hovered, and the rail's parts
  * rising in as the roller door rolls up on the garage.
+ *
+ * This file is the screen: its steps, the build card and slots, saving, dialogs
+ * and input. The pieces beside it are garageWidgets.ts (the pickers, sliders and
+ * stat lines every tab is made of), garageTabs.ts (what each tab shows and the
+ * TabHost it asks the screen for) and garageVinyls.ts (the Vinyls tab and
+ * placing a layer on the car).
  */
 import type { GameRenderer } from '../render/scene';
-import { CarAssetLibrary, MANIFEST, manifestCar, partsFor } from '../render/car/carAssets';
-import { GarageScene } from './garageScene';
+import { CarAssetLibrary, manifestCar } from '../render/car/carAssets';
 import type { StreetStage } from '../game/streetStage';
 import type { Quality } from '../ui/settings';
 import { RailSteps, railInset, screenHead } from '../ui/rail/rail';
-import { Help, MUSIC_KEYS, type HelpKey } from '../ui/panels/help';
+import { Help, MUSIC_KEYS } from '../ui/panels/help';
+import type { HelpKey } from '../ui/panels/help';
 import { uiWhoosh } from '../audio/uiSound';
-import { GaragePrefs, GarageState, MAX_SLOTS, Presentation, addSlot, decodeShareCode, encodeShareCode, freshBuild, importBuild, loadGaragePrefs, saveGaragePrefs, shareUrl } from './storage';
-import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PART_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
-import { AXLES, Axle, AxleStance, BUILD_NAME_MAX, CarBuild, DEFAULT_BUILD_NAME, DecalLayer, GLOW_PATTERNS, MAX_DECALS, PAINT_FINISHES, Paint, AccentPaint, STANCE_LIMITS, TireShape, VINYL_SHAPES, VinylShape, validateBuild } from '../shared/carBuild';
-import { DEFAULT_CAR_ID, PERFORMANCE_CATEGORIES, PerformanceCategory, SELECTABLE_CAR_IDS, TIER_NAMES, Tier, getBaseTuning } from '../sim/tuning';
-import { LAUNCH_RPM, defaultLaunchRpm, maxLaunchRpm, tuningForBuild } from '../sim/build';
-import { FEATURES } from '../shared/features';
-import { specBadges, type SpecBadge } from '../shared/carSpec';
-import { measureStats, statBars, type CarStats } from '../sim/stats';
-import { SHAPE_LABELS } from '../render/car/decals';
+import { PART_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
+import { Axle, BUILD_NAME_MAX, CarBuild, DEFAULT_BUILD_NAME, VinylShape, validateBuild } from '../shared/carBuild';
+import { DEFAULT_CAR_ID, getBaseTuning } from '../sim/tuning';
+import { tuningForBuild } from '../sim/build';
+import { specBadges } from '../shared/carSpec';
 import { btn, chip, h, iconBtn, isTyping, scrollHint, segmented, sheen, specChip, toast } from '../ui/kit/dom';
 import { door, transitioning } from '../ui/transitions/transitions';
-import { KMH_PER_MPH, M_PER_FT } from '../ui/kit/units';
-import {
-  ArrowUpDown,
-  Car,
-  Check,
-  ChevronRight,
-  Copy,
-  Disc3,
-  Download,
-  Eye,
-  FlipHorizontal2,
-  Gauge,
-  Hammer,
-  Layers,
-  MousePointerClick,
-  Paintbrush,
-  Pencil,
-  Plus,
-  Save,
-  Share2,
-  Trash2,
-  Undo2,
-  Upload,
-  Wind,
-  Wrench,
-  X,
-  Zap,
-  Box,
-  Sparkles,
-  Route,
-  Video,
-  Warehouse,
-  icon,
-  IconNode,
-} from '../ui/kit/icons';
-import { Link2, Link2Off } from 'lucide';
-
-type Tab = 'model' | 'stance' | 'wheels' | 'body' | 'paint' | 'vinyl' | 'tint' | 'neon' | 'tune';
+import { Car, Check, ChevronRight, Copy, Download, Hammer, MousePointerClick, Paintbrush, Pencil, Plus, Save, Share2, Trash2, Undo2, Upload, Wrench, X, Route, Video, Warehouse, icon, IconNode } from '../ui/kit/icons';
+import { GarageScene } from './garageScene';
+import { GaragePrefs, GarageState, MAX_SLOTS, Presentation, addSlot, decodeShareCode, encodeShareCode, freshBuild, importBuild, loadGaragePrefs, saveGaragePrefs, shareUrl } from './storage';
+import { section, statLines } from './garageWidgets';
+import type { Child } from './garageWidgets';
+import { AUTHORS, renderTabContent, TABS } from './garageTabs';
+import type { Tab, TabHost } from './garageTabs';
+import { placeDecal } from './garageVinyls';
 
 /** The garage's steps: pick a build, then customize it. */
 type Step = 'builds' | 'build';
-
-const TABS: { id: Tab; label: string; icon: IconNode }[] = [
-  { id: 'model', label: 'Model', icon: Car },
-  { id: 'stance', label: 'Stance', icon: ArrowUpDown },
-  { id: 'wheels', label: 'Wheels', icon: Disc3 },
-  { id: 'body', label: 'Body', icon: Hammer },
-  { id: 'paint', label: 'Paint', icon: Paintbrush },
-  ...(FEATURES.vinyls ? [{ id: 'vinyl' as Tab, label: 'Vinyls', icon: Layers }] : []),
-  { id: 'tint', label: 'Tint', icon: Eye },
-  { id: 'neon', label: 'Neon', icon: Sparkles },
-  { id: 'tune', label: 'Tune', icon: Gauge },
-];
-
-/** Model author shown under a car's name, by manifest `source`. */
-const AUTHORS: Record<string, string | undefined> = { icemaan: 'IceMaan', eshell: 'eshell' };
-
-const PERF_ICONS: Record<PerformanceCategory, IconNode> = {
-  engine: Wrench,
-  turbo: Wind,
-  exhaust: Wind,
-  transmission: Gauge,
-  tires: Disc3,
-  suspension: ArrowUpDown,
-  brakes: Disc3,
-  weight: Box,
-  nitrous: Zap,
-};
 
 export interface GarageCallbacks {
   onChange(g: GarageState): void;
@@ -127,39 +72,6 @@ export interface GarageStage {
   quality: Quality;
 }
 
-/** A label from a lower case id: "metallic" reads "Metallic". */
-const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-
-/** Measured stats per car and performance build: measuring drives the sim for up to a minute of game time. */
-const statsCache = new Map<string, CarStats>();
-function statsFor(b: CarBuild): CarStats {
-  const key = `${b.carId}:${PERFORMANCE_CATEGORIES.map((c) => b.performance[c]).join('')}:${b.performance.launchRpm}`;
-  let st = statsCache.get(key);
-  if (!st) statsCache.set(key, (st = measureStats(tuningForBuild(b.carId, b.performance))));
-  return st;
-}
-
-/** The measured stats the build card and the Tune tab show, in order, each bar in its ink (`.ink-*` in _tune-stat.scss). */
-const STATS: readonly { ink: string; bar: keyof ReturnType<typeof statBars>; name: string; value: (s: CarStats) => string }[] = [
-  { ink: 'speed', bar: 'topSpeed', name: 'Top speed', value: (s) => `${Math.round(s.topSpeed / KMH_PER_MPH)} mph` },
-  { ink: 'accel', bar: 'acceleration', name: '0-60', value: (s) => `${s.zeroTo60.toFixed(2)} s` },
-  { ink: 'grip', bar: 'handling', name: 'Grip', value: (s) => `${s.grip.toFixed(2)} g` },
-  { ink: 'nitrous', bar: 'nitrous', name: 'Nitrous', value: (s) => `${s.nitrous.toFixed(1)} kN·s` },
-];
-
-/** A build's measured stats: a line each, the measure, its bar in its ink and the value in yellow. */
-function statLines(b: CarBuild): HTMLElement {
-  const st = statsFor(b);
-  const bars = statBars(st);
-  return h(
-    'div',
-    { class: 'car-card__stats' },
-    ...STATS.map((t) =>
-      h('div', { class: `car-card__stat ink-${t.ink}` }, h('span', { class: 'car-card__stat-name' }, t.name), h('span', { class: 'stat-bar' }, h('span', { class: 'stat-bar__fill', style: `width:${bars[t.bar] * 100}%` })), h('span', { class: 'car-card__stat-value' }, t.value(st))),
-    ),
-  );
-}
-
 /** Keys that hold the gas in the garage (W, Up or Space; the help lists them). */
 const GAS_KEYS = ['KeyW', 'ArrowUp', 'Space'];
 /** The race's steering keys turn the front wheels on the turntable. */
@@ -171,181 +83,8 @@ const DRIVE_KEYS = [...GAS_KEYS, ...LEFT_KEYS, ...RIGHT_KEYS];
 // The tabs' controls
 // ---------------------------------------------------------------------------
 
-type Child = Node | false | null;
-
-/**
- * A group: a plate with the tab's hue on its hairline, a section title (the
- * menu cards' yellow caps over a hairline) and its controls. Icons are for the
- * tabs only.
- */
-const section = (label: string, ...children: Child[]) => h('div', { class: 'garage-section' }, h('div', { class: 'section-title' }, label), ...children);
-
-/** A swatch: a chamfered chip of color, marked while it is the color in use. */
-function swatch(hex: string, current: string, onPick: (el: HTMLElement) => void): HTMLElement {
-  const s = h('button', { type: 'button', class: `garage-swatch${hex.toLowerCase() === current.toLowerCase() ? ' is-selected' : ''}`, style: `--swatch:${hex}`, title: hex, 'aria-label': hex }, sheen());
-  s.addEventListener('click', () => onPick(s));
-  return s;
-}
-
-function color(value: string, onInput: (c: string) => void): HTMLInputElement {
-  const el = h('input', { type: 'color', value }) as HTMLInputElement;
-  el.addEventListener('input', () => onInput(el.value));
-  return el;
-}
-
-/**
- * Preset swatches per colored surface: the body's loud street colors (two rows), wheel metals, caliper brights,
- * neon. The swatches sit nine to a row (_garage-swatch.scss), so every list is a multiple of nine: no row half full.
- */
-const PRESETS = {
-  body: [
-    ...['#d11f3f', '#ff6a00', '#ffcc1f', '#3dff9a', '#19e6ff', '#1f6bff', '#8b3dff', '#ff3df2', '#f2f2f2'],
-    ...['#7a0f22', '#b84a12', '#c9a227', '#1f7a4d', '#0f6f80', '#14306e', '#9aa3ad', '#2a2c33', '#0b0b0d'],
-  ],
-  wheels: ['#c9ced8', '#e8eaee', '#7d838c', '#3a3d44', '#1a1b1f', '#f2f2f2', '#b08d57', '#d4af37', '#d11f3f'],
-  calipers: ['#c41e3a', '#ffcc1f', '#ff6a00', '#1f6bff', '#3dff9a', '#ff3df2', '#d4af37', '#f2f2f2', '#1a1b1f'],
-  glow: ['#00e5ff', '#ff3df2', '#7cff4f', '#ffe14d', '#ff2e5b', '#7a5cff', '#ffffff', '#ff8a00', '#ff1a1a'],
-} as const;
-
-/**
- * A color well and its preset swatches, kept in step: a swatch sets the well and is marked, a color from
- * the well marks none. `preset` says whether a swatch picked it.
- */
-function colorPicker(value: string, presets: readonly string[], onInput: (c: string, preset: boolean) => void): HTMLElement {
-  const sw = h('div', { class: 'garage-swatches' });
-  const well = color(value, (c) => {
-    sw.querySelectorAll('.garage-swatch.is-selected').forEach((x) => x.classList.remove('is-selected'));
-    onInput(c, false);
-  });
-  for (const p of presets) {
-    sw.append(
-      swatch(p, value, (s) => {
-        well.value = p;
-        sw.querySelectorAll('.garage-swatch').forEach((x) => x.classList.toggle('is-selected', x === s));
-        onInput(p, true);
-      }),
-    );
-  }
-  return h('div', { class: 'row' }, well, sw);
-}
-
-/**
- * Every paint's controls (body, wheels, calipers): its color over its finish, edited in place, then onChange.
- * An accent (wheels, calipers) gets a Match body toggle beside any `tools`: matched, it wears the body's paint
- * and shows that instead of its controls; unmatched, it starts from the body's paint, so nothing jumps.
- */
-function paintPicker(paint: Paint | AccentPaint, presets: readonly string[], onChange: () => void, accent?: { body: Paint; tools?: Node[] }): HTMLElement {
-  const root = h('div', { class: 'garage-paint' });
-  const a = accent && 'match' in paint ? paint : null;
-  const draw = () => {
-    const tools: Node[] = [...(accent?.tools ?? [])];
-    if (accent && a) {
-      tools.push(
-        toggle(Paintbrush, 'Match body', a.match, a.match ? 'Wearing the body paint' : 'Wear the body paint', () => {
-          a.match = !a.match;
-          if (!a.match) Object.assign(a, { color: accent.body.color, finish: accent.body.finish });
-          onChange();
-          draw();
-        }),
-      );
-    }
-    root.replaceChildren(
-      ...(tools.length ? [h('div', { class: 'row' }, ...tools)] : []),
-      ...(accent && a?.match
-        ? [h('div', { class: 'muted garage-note' }, h('span', { class: 'garage-dot', style: `background:${accent.body.color}` }), `Body paint · ${capital(accent.body.finish)}`)]
-        : [
-            colorPicker(paint.color, presets, (c) => {
-              paint.color = c;
-              onChange();
-            }),
-            segmented(
-              PAINT_FINISHES.map((f) => ({ value: f, label: capital(f) })),
-              paint.finish,
-              (f) => {
-                paint.finish = f;
-                onChange();
-              },
-            ),
-          ]),
-    );
-  };
-  draw();
-  return root;
-}
-
-/**
- * A garage toggle (front and rear linked, match body, mirror): a short label that never changes, so the
- * button keeps its size, lit in the tab's hue while on (_garage-toggle.scss); the title says it in full.
- */
-function toggle(ico: IconNode, label: string, on: boolean, title: string, onClick: () => void): HTMLButtonElement {
-  const b = btn(ico, label, onClick, `--small garage-toggle${on ? ' --primary' : ''}`);
-  b.title = title;
-  b.setAttribute('aria-pressed', String(on));
-  return b;
-}
-
-/** A row in a group: the name on the left, its control on the right (the settings' rows). */
-const field = (label: string, control: Node) => h('div', { class: 'garage-row' }, h('span', { class: 'garage-row__name' }, label), control);
-
-/** A slider on one line: its name, the track and the value in yellow, so a group of them stays short. */
-function slider(label: string, value: number, min: number, max: number, step: number, fmt: (x: number) => string, onInput: (x: number) => void): HTMLElement {
-  const out = h('span', { class: 'garage-value' }, fmt(value));
-  const el = h('input', { type: 'range', min, max, step, value, 'aria-label': label }) as HTMLInputElement;
-  el.addEventListener('input', () => {
-    const x = Number(el.value);
-    out.textContent = fmt(x);
-    onInput(x);
-  });
-  return h('label', { class: 'garage-slider' }, h('span', { class: 'garage-slider__name' }, label), el, out);
-}
-
-/** One pick in a list: its name, a sub line, and spec tags (drivetrain code, engine) on their own row, each in its ink. */
-interface Choice<T> {
-  value: T;
-  label: string;
-  sub?: string;
-  tags?: SpecBadge[];
-  /** Extra content after the label (a layer's color dot). */
-  extra?: Node;
-}
-
-/** A list of picks (`grid`: two to a row), the current one marked; a click marks it and calls onPick. */
-function choiceList<T extends string | number | null>(items: Choice<T>[], current: T, onPick: (x: T) => void, grid = false): HTMLElement {
-  const list = h('div', { class: grid ? 'garage-grid' : 'garage-list' });
-  for (const it of items) {
-    // Hover a spec tag for its long form.
-    const tags = it.tags?.length ? h('span', { class: 'garage-item__tags' }, ...it.tags.map((t, i) => specChip(t, i, '--small'))) : null;
-    const el = h(
-      'button',
-      { type: 'button', class: `garage-item${it.value === current ? ' is-selected' : ''}${tags ? ' garage-item--car' : ''}` },
-      h('span', { class: 'garage-item__label' }, it.label),
-      it.sub ? h('span', { class: 'garage-item__sub muted' }, it.sub) : null,
-      it.extra ?? null,
-      tags,
-      sheen(),
-    );
-    el.addEventListener('click', () => {
-      list.querySelectorAll('.garage-item').forEach((x) => x.classList.remove('is-selected'));
-      el.classList.add('is-selected');
-      onPick(it.value);
-    });
-    list.append(el);
-  }
-  return list;
-}
-
-/** The tire shapes as the Wheels tab lists them (TIRE_SHAPES' order, render/car/tireShapes.ts draws them). */
-const TIRE_CHOICES: Choice<TireShape>[] = [
-  { value: 'standard', label: 'Standard', sub: 'Square sidewall' },
-  { value: 'stretched', label: 'Stretched', sub: 'Angled sidewall' },
-];
-
 /** How long the Save button stays green after a save (ms), before it eases back to Saved. */
 const SAVED_FLASH_MS = 5000;
-
-/** Slider readouts: a length (m) in cm, a factor as a percent. */
-const cm = (x: number) => `${Math.round(x * 100)} cm`;
-const percent = (x: number) => `${Math.round(x * 100)}%`;
 
 /** Where a step stands (pips like the menu's race flow), then anything else for the header's right. */
 const progress = (at: number, ...aside: Child[]) =>
@@ -356,21 +95,26 @@ const progress = (at: number, ...aside: Child[]) =>
     ...aside,
   );
 
-export class GarageScreen {
-  private scene: GarageScene;
+/**
+ * The garage screen. The members the tab builders reach (`scene`, `body`, `tab`, `bodySlot`, `wheelAxle`,
+ * `selectedDecal`, `placing`, `prefs`, `assets`, `availability`, `build`, `changed`, `renderTab`) are not
+ * private: garageTabs.ts and garageVinyls.ts see the screen only through TabHost.
+ */
+export class GarageScreen implements TabHost {
+  scene: GarageScene;
   private root: HTMLElement;
-  private body: HTMLElement;
+  body: HTMLElement;
   /** The body inside its scroll hints (fades and the more-below chevron), as the step lays it out. */
   private readonly bodyView: HTMLElement;
   private tabBar: HTMLElement;
-  private tab: Tab = 'model';
+  tab: Tab = 'model';
   private step: Step = 'builds';
   /** The steps, sliding in the rail's column above the Save button. */
   private readonly steps: RailSteps;
   /** The Body tab's part slot on show: one at a time, so the tab never scrolls through all of them. */
-  private bodySlot: PartSlot = 'body';
+  bodySlot: PartSlot = 'body';
   /** The axle the Wheels tab's wheel and tire picks dress while front and rear are unlinked. */
-  private wheelAxle: Axle = 'front';
+  wheelAxle: Axle = 'front';
   /** The current slot as last saved (JSON): the build differs from it while it has unsaved changes. */
   private savedJson: string;
   /** The Save button and the discard button beside it, under both steps. */
@@ -380,12 +124,12 @@ export class GarageScreen {
   private shownDirty: boolean | null = null;
   /** The garage's dialog while one is up (unsaved changes, share, delete). */
   private dialog: HTMLElement | null = null;
-  private selectedDecal = -1;
-  private placing: { shape: VinylShape; index: number } | null = null;
+  selectedDecal = -1;
+  placing: { shape: VinylShape; index: number } | null = null;
   private devMode = new URLSearchParams(location.search).has('dev');
   private abort = new AbortController();
   private pointerDown: { x: number; y: number } | null = null;
-  private prefs: GaragePrefs = loadGaragePrefs();
+  prefs: GaragePrefs = loadGaragePrefs();
   /** Drive keys held now (gas and steering). */
   private driveKeys = new Set<string>();
   private tabInTimer = 0;
@@ -430,10 +174,10 @@ export class GarageScreen {
 
   constructor(
     gr: GameRenderer,
-    private readonly assets: CarAssetLibrary,
+    readonly assets: CarAssetLibrary,
     private readonly uiRoot: HTMLElement,
     private garage: GarageState,
-    private readonly availability: Record<string, boolean>,
+    readonly availability: Record<string, boolean>,
     private readonly cb: GarageCallbacks,
     stage: GarageStage,
   ) {
@@ -524,7 +268,7 @@ export class GarageScreen {
         if (!d || !this.placing || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6) return;
         const hit = this.scene.pick(e.clientX, e.clientY);
         if (!hit) return toast('Click on the painted body', MousePointerClick);
-        this.placeDecal(hit.pos, hit.normal);
+        placeDecal(this, hit.pos, hit.normal);
       },
       o,
     );
@@ -588,7 +332,7 @@ export class GarageScreen {
     this.root.classList.toggle('is-dev', this.devMode);
   }
 
-  private get build(): CarBuild {
+  get build(): CarBuild {
     return this.garage.slots[this.garage.current];
   }
 
@@ -839,7 +583,7 @@ export class GarageScreen {
   }
 
   /** Apply the current build to the preview and mark it unsaved. Resolves when the preview is up to date. */
-  private changed(rerender = false): Promise<unknown> {
+  changed(rerender = false): Promise<unknown> {
     const ready = this.scene.setCar(this.build.carId, this.build.visual);
     this.configureEngine();
     // The card and slots are the Builds step's; the tabs are Customize's.
@@ -1020,491 +764,11 @@ export class GarageScreen {
     del.focus();
   }
 
-  private renderTab(): void {
+  renderTab(): void {
     // A re-render within the tab (a tier picked, a slot added) keeps the scroll; emptying the body would reset it.
     const scroll = this.body.scrollTop;
-    this.renderTabContent();
+    renderTabContent(this);
     this.body.scrollTop = scroll;
-  }
-
-  private renderTabContent(): void {
-    this.body.replaceChildren();
-    const b = this.build;
-    const v = b.visual;
-    // Wheel size steps in whole inches once the wheel is measured; the build keeps the size factor, so the
-    // slider converts both ways (the inches a factor gives depend on the car and the wheel model).
-    const car = this.scene.car?.wheelsReady ? this.scene.car : null;
-    const id = (x: number) => x;
-    // Per axle sliders. While front and rear are linked (the Stance tab's link, or the Wheels tab's for wheel
-    // size), moving one moves its partner too.
-    const partners = new Map<string, { el: HTMLInputElement; out: HTMLElement; fmt: (x: number) => string; toUi: (x: number) => number }>();
-    const axleSlider = (axle: Axle, key: keyof AxleStance, short = false, link = this.prefs.linkAxles) => {
-      const L = STANCE_LIMITS[key];
-      const spec = {
-        rideHeight: { label: 'Ride height', min: L[0], max: L[1], step: 0.005, fmt: cm, toUi: id, fromUi: id },
-        camber: { label: 'Camber', min: L[0], max: L[1], step: 0.5, fmt: (x: number) => `${x}°`, toUi: id, fromUi: id },
-        offset: { label: 'Wheel offset', min: L[0], max: L[1], step: 0.005, fmt: cm, toUi: id, fromUi: id },
-        wheelSize: car
-          ? (() => {
-              // Front and rear may wear different wheels, so each axle measures its own.
-              const ax = axle === 'front' ? 0 : 1;
-              const min = Math.ceil(car.wheelInches(L[0], ax) - 1e-6);
-              const max = Math.floor(car.wheelInches(L[1], ax) + 1e-6);
-              return { label: 'Wheel size', min, max, step: 1, fmt: (x: number) => `${x} in`, toUi: (x: number) => Math.max(min, Math.min(max, Math.round(car.wheelInches(x, ax)))), fromUi: (x: number) => car.wheelSizeForInches(x, ax) };
-            })()
-          : { label: 'Wheel size', min: L[0], max: L[1], step: 0.01, fmt: percent, toUi: id, fromUi: id },
-      }[key];
-      const label = short ? spec.label : `${axle === 'front' ? 'Front' : 'Rear'}`;
-      const el = slider(label, spec.toUi(v.stance[axle][key]), spec.min, spec.max, spec.step, spec.fmt, (ui) => {
-        const x = spec.fromUi(ui);
-        v.stance[axle][key] = x;
-        if (link) {
-          const other: Axle = axle === 'front' ? 'rear' : 'front';
-          v.stance[other][key] = x;
-          const p = partners.get(`${other}.${key}`);
-          if (p) {
-            p.el.value = String(p.toUi(x));
-            p.out.textContent = p.fmt(p.toUi(x));
-          }
-        }
-        this.changed();
-      });
-      partners.set(`${axle}.${key}`, { el: el.querySelector('input') as HTMLInputElement, out: el.querySelector('.garage-value') as HTMLElement, fmt: spec.fmt, toUi: spec.toUi });
-      return el;
-    };
-
-    switch (this.tab) {
-      case 'model': {
-        // Only real, imported cars; a disabled tile at the end promises more.
-        const imported = MANIFEST.cars.filter((c) => SELECTABLE_CAR_IDS.includes(c.id) && this.availability[c.id] !== false);
-        const cars = imported.length ? imported : MANIFEST.cars.filter((c) => SELECTABLE_CAR_IDS.includes(c.id));
-        const list = choiceList(
-          cars.map((c) => ({ value: c.id, label: c.displayName, sub: AUTHORS[c.source], tags: specBadges(c.engine, getBaseTuning(c.id).drivetrain.layout) })),
-          b.carId,
-          (id) => {
-            if (id === b.carId) return;
-            // A launch rpm left on the old car's stock pick follows the new car's; one the player chose stays (applyBuild clamps it).
-            if (b.performance.launchRpm === defaultLaunchRpm(b.carId)) b.performance.launchRpm = defaultLaunchRpm(id);
-            b.carId = id;
-            // Parts are per car; wheels are universal and stay.
-            const wheels = v.parts.wheels;
-            v.parts = wheels ? { wheels } : {};
-            v.decals = [];
-            // Say hello: a short blip of the new car's engine (and the body rocks with it).
-            void this.changed().then(() => this.scene.blip());
-          },
-        );
-        const soon = h('div', { class: 'garage-item garage-item--soon', 'aria-disabled': 'true', title: 'More models coming soon' }, h('span', { class: 'garage-item__label' }, 'More models soon'), h('span', { class: 'garage-item__sub muted' }, 'Coming soon'));
-        soon.addEventListener('click', () => toast('More cars are on the way', Car));
-        list.append(soon);
-        this.body.append(section('Model', list, h('div', { class: 'muted garage-note' }, 'A new car starts from its stock body; the wheels stay.')));
-        break;
-      }
-      case 'body': {
-        // One part slot at a time: the slots as a segmented pick (a dot on those with a part fitted), then its parts.
-        const slots: PartSlot[] = ['body', ...BODY_PART_SLOTS];
-        const slot = this.bodySlot;
-        const parts = partsFor(b.carId, slot);
-        const optional = OPTIONAL_SLOTS.includes(slot);
-        const items: { value: string | null; label: string; sub?: string }[] = [{ value: null, label: optional ? 'None' : 'Stock' }, ...parts.map((p) => ({ value: p.id, label: p.displayName, sub: `${p.tris} tris` }))];
-        const dev = [...this.assets.devParts.entries()].filter(([, d]) => d.slot === slot).map(([id, d]) => ({ value: id, label: d.name, sub: 'Dev preview' }));
-        items.push(...dev);
-        const pick = segmented(
-          slots.map((s) => ({ value: s, label: `${SLOT_LABELS[s]}${v.parts[s] ? ' •' : ''}` })),
-          slot,
-          (s) => {
-            this.bodySlot = s;
-            this.renderTab();
-          },
-        );
-        this.body.append(
-          section('Part', pick),
-          section(
-            SLOT_LABELS[slot],
-            items.length > 1
-              ? choiceList(items, v.parts[slot] ?? null, (id) => {
-                  v.parts[slot] = id;
-                  void this.changed(true);
-                })
-              : h('div', { class: 'muted garage-note garage-note--empty' }, slot === 'body' ? 'Only the stock body for this car.' : 'No parts for this slot yet. See docs/partsAuthoring.md to add one.'),
-          ),
-        );
-        break;
-      }
-      case 'paint': {
-        this.body.append(
-          section('Body paint', paintPicker(v.paint, PRESETS.body, () => this.changed())),
-          section(
-            'Trim color',
-            color(v.trimColor, (c) => {
-              v.trimColor = c;
-              this.changed();
-            }),
-          ),
-        );
-        break;
-      }
-      case 'wheels': {
-        const wheels = partsFor(b.carId, 'wheels');
-        const w = v.wheels;
-        // One axle switch scopes the tab: linked, every pick equips all four (the rear copies the front);
-        // unlinked, the Front / Rear switch says which pair the wheel, size, tire and paint picks dress.
-        const linked = this.prefs.linkWheels;
-        const rear = !linked && this.wheelAxle === 'rear';
-        const axle: Axle = rear ? 'rear' : 'front';
-        const front = v.parts.wheels ?? manifestCar(b.carId).defaultWheel;
-        const title = (name: string) => (linked ? capital(name) : `${capital(axle)} ${name}`);
-        this.body.append(
-          section(
-            'Axles',
-            h(
-              'div',
-              { class: 'row' },
-              this.wheelLinkToggle(),
-              linked
-                ? h('span', { class: 'muted garage-note' }, 'Every pick equips all four wheels.')
-                : segmented(
-                    AXLES.map((a) => ({ value: a, label: capital(a) })),
-                    this.wheelAxle,
-                    (a) => {
-                      this.wheelAxle = a;
-                      this.renderTab();
-                    },
-                  ),
-            ),
-          ),
-          section(
-            title('wheel'),
-            choiceList(
-              wheels.map((p) => ({ value: p.id, label: p.displayName })),
-              rear ? (w.rearPart ?? front) : front,
-              (id) => {
-                if (rear) w.rearPart = id;
-                else {
-                  // Linked, the rear follows the front; unlinked, it keeps the wheel it wore.
-                  w.rearPart = linked ? null : (w.rearPart ?? front);
-                  v.parts.wheels = id;
-                }
-                // Each wheel model has its own profile: re-render so the inch range fits the new one.
-                void this.changed().then(() => this.tab === 'wheels' && this.renderTab());
-              },
-              true,
-            ),
-          ),
-          section(title('size'), axleSlider(axle, 'wheelSize', true, linked), h('div', { class: 'muted garage-note' }, 'Bigger wheels, thinner sidewalls.')),
-          section(
-            title('tire'),
-            choiceList(
-              TIRE_CHOICES,
-              rear ? w.rearTire : w.tire,
-              (t) => {
-                if (rear) w.rearTire = t;
-                else {
-                  w.tire = t;
-                  if (linked) w.rearTire = t;
-                }
-                this.changed();
-              },
-              true,
-            ),
-          ),
-          section(
-            title('paint'),
-            paintPicker(
-              rear ? w.rearPaint : w.paint,
-              PRESETS.wheels,
-              () => {
-                if (linked) w.rearPaint = { ...w.paint };
-                this.changed();
-              },
-              { body: v.paint },
-            ),
-          ),
-          // One caliper paint for all four corners, whatever the axle switch says.
-          section('Calipers', paintPicker(v.calipers, PRESETS.calipers, () => this.changed(), { body: v.paint })),
-        );
-        break;
-      }
-      case 'vinyl':
-        this.renderVinyls();
-        break;
-      case 'stance': {
-        this.body.append(
-          section('Ride height', this.linkToggle(), ...AXLES.map((a) => axleSlider(a, 'rideHeight')), h('div', { class: 'muted garage-note' }, 'Visual only. Front and rear apart rake the car.')),
-          ...AXLES.map((a) => section(capital(a), ...(['camber', 'offset'] as const).map((k) => axleSlider(a, k, true)))),
-        );
-        break;
-      }
-      case 'tint': {
-        this.body.append(
-          section(
-            'Window tint',
-            slider('Darkness', v.tint.darkness, 0, 0.95, 0.01, percent, (x) => {
-              v.tint.darkness = x;
-              this.changed();
-            }),
-            field(
-              'Tint color',
-              color(v.tint.color, (c) => {
-                v.tint.color = c;
-                this.changed();
-              }),
-            ),
-          ),
-        );
-        break;
-      }
-      case 'neon': {
-        const g = v.underglow;
-        this.body.append(
-          section(
-            'Underglow',
-            field(
-              'Lights',
-              segmented(
-                [
-                  { value: 'off', label: 'Off' },
-                  { value: 'on', label: 'On' },
-                ],
-                g.enabled ? 'on' : 'off',
-                (x) => {
-                  g.enabled = x === 'on';
-                  this.changed();
-                },
-              ),
-            ),
-            segmented(
-              GLOW_PATTERNS.map((p) => ({ value: p, label: capital(p) })),
-              g.pattern,
-              (p) => {
-                g.pattern = p;
-                g.enabled = true;
-                this.changed();
-              },
-            ),
-            h('div', { class: 'muted garage-note' }, 'Alternate and chase use both colors.'),
-          ),
-          section(
-            'Colors',
-            // A swatch re-renders so the Lights switch shows the glow it turned on; the well cannot (it would close mid drag).
-            h('span', { class: 'garage-row__name' }, 'Primary'),
-            colorPicker(g.color, PRESETS.glow, (c, preset) => {
-              g.color = c;
-              g.enabled = true;
-              this.changed(preset);
-            }),
-            h('span', { class: 'garage-row__name' }, 'Secondary'),
-            colorPicker(g.color2, PRESETS.glow, (c) => {
-              g.color2 = c;
-              this.changed();
-            }),
-          ),
-          section(
-            'Glow',
-            slider('Brightness', g.brightness, 0.2, 2, 0.05, percent, (x) => {
-              g.brightness = x;
-              this.changed();
-            }),
-            slider('Speed', g.speed, 0.25, 3, 0.05, (x) => `${x.toFixed(2)}x`, (x) => {
-              g.speed = x;
-              this.changed();
-            }),
-            slider('Spread', g.size, 0.6, 1.6, 0.05, percent, (x) => {
-              g.size = x;
-              this.changed();
-            }),
-          ),
-        );
-        break;
-      }
-      case 'tune':
-        this.renderPerformance();
-        break;
-    }
-  }
-
-  /** "Link front and rear" convenience toggle for the per axle sliders. */
-  private linkToggle(): HTMLElement {
-    const linked = this.prefs.linkAxles;
-    return toggle(
-      linked ? Link2 : Link2Off,
-      'Link',
-      linked,
-      linked ? 'Front and rear linked' : 'Front and rear separate',
-      () => {
-        this.prefs.linkAxles = !linked;
-        saveGaragePrefs(this.prefs);
-        if (this.prefs.linkAxles) {
-          // Linking starts from matching axles: the rear takes the front's settings.
-          const s = this.build.visual.stance;
-          s.rear = { ...s.front };
-          this.changed();
-          toast('Rear now matches front', Link2);
-        }
-        this.renderTab();
-      },
-    );
-  }
-
-  /** The Wheels tab's link: linked, front and rear wear the same wheel, size, tire and paint; unlinked, each axle picks its own. */
-  private wheelLinkToggle(): HTMLElement {
-    const linked = this.prefs.linkWheels;
-    return toggle(
-      linked ? Link2 : Link2Off,
-      'Link',
-      linked,
-      linked ? 'Front and rear wheels the same' : 'Front and rear wheels separate',
-      () => {
-        this.prefs.linkWheels = !linked;
-        saveGaragePrefs(this.prefs);
-        const w = this.build.visual.wheels;
-        if (this.prefs.linkWheels) {
-          // Linking starts from matching axles: the rear takes the front's wheel, size, tire and paint.
-          w.rearPart = null;
-          w.rearTire = w.tire;
-          w.rearPaint = { ...w.paint };
-          this.build.visual.stance.rear.wheelSize = this.build.visual.stance.front.wheelSize;
-          void this.changed().then(() => this.tab === 'wheels' && this.renderTab());
-          toast('Rear wheels now match front', Link2);
-        } else this.wheelAxle = 'front';
-        this.renderTab();
-      },
-    );
-  }
-
-
-  private renderVinyls(): void {
-    const v = this.build.visual;
-    const full = v.decals.length >= MAX_DECALS;
-    const shapes = h('div', { class: 'garage-grid' });
-    for (const shape of VINYL_SHAPES) {
-      const b = h('button', { type: 'button', class: `garage-item${this.placing?.shape === shape ? ' is-selected' : ''}` }, SHAPE_LABELS[shape], sheen());
-      if (full) b.setAttribute('disabled', '');
-      b.addEventListener('click', () => {
-        this.placing = { shape, index: -1 };
-        this.renderTab();
-        toast('Click on the car to place the vinyl', MousePointerClick);
-      });
-      shapes.append(b);
-    }
-    this.body.append(section(`Add vinyl (${v.decals.length}/${MAX_DECALS})`, shapes, this.placing ? h('div', { class: 'garage-note' }, icon(MousePointerClick, { size: 14 }), 'Click on the painted body to place it') : null));
-    if (!v.decals.length) return;
-    const layers = choiceList(
-      v.decals.map((d, i) => ({ value: i, label: `${i + 1}. ${SHAPE_LABELS[d.shape]}`, extra: h('span', { class: 'garage-dot', style: `background:${d.color}` }) })),
-      this.selectedDecal,
-      (i) => {
-        this.selectedDecal = i;
-        this.renderTab();
-      },
-    );
-    this.body.append(section('Layers', layers));
-    const d = v.decals[this.selectedDecal];
-    if (!d) return;
-    const update = () => this.changed();
-    this.body.append(
-      section(
-        'Selected layer',
-        h(
-          'div',
-          { class: 'row' },
-          color(d.color, (c) => {
-            d.color = c;
-            update();
-          }),
-          toggle(FlipHorizontal2, 'Mirror', d.mirror, d.mirror ? 'Mirrored to the other side' : 'Mirror to the other side', () => {
-            d.mirror = !d.mirror;
-            update();
-            this.renderTab();
-          }),
-          btn(MousePointerClick, 'Move', () => {
-            this.placing = { shape: d.shape, index: this.selectedDecal };
-            toast('Click on the car to move the vinyl', MousePointerClick);
-          }, '--small'),
-          iconBtn(Trash2, 'Delete layer', () => {
-            v.decals.splice(this.selectedDecal, 1);
-            this.selectedDecal = -1;
-            this.changed(true);
-          }, '--small'),
-        ),
-        slider('Scale', d.scale, 0.2, 3, 0.05, (x) => `${(x / M_PER_FT).toFixed(1)} ft`, (x) => {
-          d.scale = x;
-          update();
-        }),
-        slider('Rotation', d.rotation, -180, 180, 1, (x) => `${x}°`, (x) => {
-          d.rotation = x;
-          update();
-        }),
-        d.shape === 'number' &&
-          (() => {
-            const t = h('input', { type: 'text', value: d.text ?? '7', maxlength: 2, inputmode: 'numeric', style: 'width:70px' }) as HTMLInputElement;
-            t.addEventListener('input', () => {
-              d.text = t.value.replace(/[^0-9]/g, '').slice(0, 2) || '7';
-              update();
-            });
-            return h('div', { class: 'row' }, h('span', {}, 'Number'), t);
-          })(),
-      ),
-    );
-  }
-
-  private placeDecal(pos: [number, number, number], normal: [number, number, number]): void {
-    const v = this.build.visual;
-    const p = this.placing!;
-    if (p.index >= 0 && v.decals[p.index]) {
-      v.decals[p.index].pos = pos;
-      v.decals[p.index].normal = normal;
-    } else {
-      if (v.decals.length >= MAX_DECALS) return;
-      const layer: DecalLayer = { shape: p.shape, color: '#ffffff', pos, normal, rotation: 0, scale: p.shape === 'stripe' || p.shape === 'twinStripe' ? 1.6 : 0.8, mirror: Math.abs(normal[0]) > 0.6, text: p.shape === 'number' ? '7' : undefined };
-      v.decals.push(layer);
-      this.selectedDecal = v.decals.length - 1;
-    }
-    this.placing = null;
-    this.changed(true);
-  }
-
-  private renderPerformance(): void {
-    const b = this.build;
-    // The build card's stat lines, so the stats and every upgrade fit the column together.
-    this.body.append(section('Stats', statLines(b)));
-    // Launch control: the rpm the two-step holds at the line while the throttle is down through the countdown.
-    // One slider: its bottom step is Off (free revs), then LAUNCH_RPM.min up to the car's redline less the cut's depth.
-    const off = LAUNCH_RPM.min - LAUNCH_RPM.step;
-    const top = maxLaunchRpm(tuningForBuild(b.carId, b.performance));
-    const stock = defaultLaunchRpm(b.carId);
-    const rpmLabel = (x: number) => (x <= off ? 'Off' : x === stock ? `${x} rpm · stock` : `${x} rpm`);
-    this.body.append(
-      section(
-        'Launch',
-        slider('Launch RPM', b.performance.launchRpm || off, off, top, LAUNCH_RPM.step, rpmLabel, (x) => {
-          b.performance.launchRpm = x <= off ? 0 : x;
-          this.changed(true);
-        }),
-        h('div', { class: 'muted garage-note' }, 'Hold the gas through the countdown and the two-step bounces the engine here, so you leave the line from these revs. Gas and brake together: a burnout standing, antilag rolling on a turbo car.'),
-      ),
-    );
-    // One group of upgrades, a row per part: its icon and name, then the tiers.
-    this.body.append(
-      section(
-        'Upgrades',
-        ...PERFORMANCE_CATEGORIES.map((cat) =>
-          h(
-            'div',
-            { class: 'garage-row garage-row--tier' },
-            h('span', { class: 'garage-row__name' }, icon(PERF_ICONS[cat], { size: 15 }), capital(cat)),
-            segmented(
-              TIER_NAMES.map((n, i) => ({ value: String(i), label: n })),
-              String(b.performance[cat]),
-              (x) => {
-                b.performance[cat] = Number(x) as Tier;
-                this.changed(true);
-              },
-            ),
-          ),
-        ),
-      ),
-    );
-    this.body.append(h('div', { class: 'muted garage-note' }, 'Everything is unlocked in this proof of concept. Visual parts never change performance.'));
   }
 
   /**

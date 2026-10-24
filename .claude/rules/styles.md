@@ -3,6 +3,9 @@ paths:
   - "src/**/*.scss"
   - "src/ui/**/*.ts"
   - "src/garage/garageUi.ts"
+  - "src/garage/garageTabs.ts"
+  - "src/garage/garageVinyls.ts"
+  - "src/garage/garageWidgets.ts"
 ---
 # Stylesheet and UI markup (SCSS compiled by Vite through sass-embedded; plain DOM built in TS)
 
