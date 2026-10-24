@@ -149,7 +149,7 @@ src/
   render/            three.js only, reads state: scene, cityMeshes, facadeKit, lighting,
                      lightFx, post, carView, carAssets, carMaterials, decals, camera,
                      routeArrows, roadblocks, autoQuality (frame budget + auto graphics)
-  garage/            garageScene, showroom (the studio), garageUi, storage (slots + share codes)
+  garage/            garageScene, showroom (the studio; props/ and textures/ build its dressing), garageUi + garageTabs/garageWidgets/garageVinyls/setupSliders, storage (slots + share codes)
   game/              session (race on screen), drone, streetStage + streetCameras
                      (the menu's car cruising the event city, the garage's Street view)
   input/             keyboard/gamepad manager, touch controls
