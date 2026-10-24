@@ -49,9 +49,9 @@ import type { RaceType } from './ui/settings';
 import { installUiSounds } from './audio/uiSound';
 import { DRAG_OPPONENTS, POINT_TO_POINT, RaceConfig, RaceEntrant, RaceMode, positionOf, standings, ticksToSeconds } from './sim/race';
 import { loadTrafficAssets } from './render/traffic/traffic';
-import { PerformanceBuild } from './sim/build';
+import { stockPerformance } from './sim/build';
 import { CarBuild, VisualBuild, defaultVisual, PAINT_FINISHES } from './shared/carBuild';
-import { DEFAULT_CAR_ID, PERFORMANCE_CATEGORIES, SELECTABLE_CAR_IDS, Tier, getBaseTuning } from './sim/tuning';
+import { DEFAULT_CAR_ID, SELECTABLE_CAR_IDS, getBaseTuning } from './sim/tuning';
 import { specBadges } from './shared/carSpec';
 import { GarageState, decodeShareCode, loadGarage, saveGarage } from './garage/storage';
 import { ReplayData, decodeLog, encodeLog, loadBest, loadGhost, loadLastReplay, saveGhost, saveLastReplay, submitBest } from './replay/replay';
@@ -556,19 +556,17 @@ const AI_NAMES = ['Kenji', 'Vex', 'Rook', 'Mira', 'Dash', 'Nova', 'Juno', 'Sato'
 /** A fresh seed for the rivals' personalities (RaceConfig.aiSeed): every race start, retry and restart drives differently. */
 const rivalSeed = (): number => Math.floor(Math.random() * 0x7fffffff);
 
-function opponentEntrants(seed: number, count: number, player: PerformanceBuild): { entrants: RaceEntrant[]; visuals: VisualBuild[] } {
+/** The rivals: their names, cars and looks rolled from the seed. They drive stock setups, the tuning the AI is balanced on. */
+function opponentEntrants(seed: number, count: number): { entrants: RaceEntrant[]; visuals: VisualBuild[] } {
   const rng = new Rng(seed ^ 0x51ce);
   const cars = SELECTABLE_CAR_IDS.filter((id) => availability[id]);
   if (!cars.length) cars.push(DEFAULT_CAR_ID);
-  const avgTier = PERFORMANCE_CATEGORIES.reduce((s, c) => s + player[c], 0) / PERFORMANCE_CATEGORIES.length;
   const names = rng.shuffle(AI_NAMES.slice());
   const entrants: RaceEntrant[] = [];
   const visuals: VisualBuild[] = [];
   for (let i = 0; i < count; i++) {
-    const perf = {} as PerformanceBuild;
-    for (const c of PERFORMANCE_CATEGORIES) perf[c] = Math.max(0, Math.min(3, Math.round(avgTier + rng.range(-0.6, 0.6)))) as Tier;
     const carId = cars[rng.int(0, cars.length - 1)];
-    entrants.push({ name: names[i], carId, performance: perf });
+    entrants.push({ name: names[i], carId, performance: stockPerformance() });
     const v = defaultVisual();
     v.paint.color = '#' + new THREE.Color().setHSL(rng.next(), 0.8, 0.5).getHexString();
     v.paint.finish = rng.pick(PAINT_FINISHES);
@@ -586,7 +584,7 @@ function startRace(mode: RaceMode): void {
   const build = currentBuild();
   // A drag is always head to head.
   const count = mode === 'drift' ? 0 : mode === 'drag' ? DRAG_OPPONENTS : settings.opponents;
-  const opp = opponentEntrants(seed, count, build.performance);
+  const opp = opponentEntrants(seed, count);
   const config: RaceConfig = {
     seed,
     mode,

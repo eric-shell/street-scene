@@ -1,0 +1,58 @@
+/* A Tune tab setup slider (setupSliders.ts): its name and icon over the position in yellow, then five numbered
+   notches (the kit's segmented control, the picked one in the tab's hue) between the two ends' names, and a
+   line on what the position does, two lines tall so the rows hold still as it changes. Rows after the first
+   take a hairline above, like the groups' rows. */
+@use '../ui/styles/abstracts/media';
+.setup-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  & + & {
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+  }
+  &__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  &__name {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    font-size: 14px;
+    color: var(--soft);
+    > svg {
+      color: var(--hue);
+    }
+  }
+  &__track {
+    display: grid;
+    grid-template-columns: 50px minmax(0, 1fr) 50px;
+    align-items: center;
+    gap: 8px;
+  }
+  &__end {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    &--right {
+      text-align: right;
+    }
+  }
+  &__notches .segmented__option {
+    min-height: 30px;
+    @include media.touch {
+      min-height: 40px;
+    }
+  }
+  &__hint {
+    font-size: 13px;
+    line-height: 1.35;
+    min-height: 2.7em;
+  }
+}

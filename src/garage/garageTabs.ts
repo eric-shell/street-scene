@@ -10,17 +10,18 @@ import { Link2, Link2Off } from 'lucide';
 import { CarAssetLibrary, MANIFEST, manifestCar, partsFor } from '../render/car/carAssets';
 import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
 import { AXLES, Axle, AxleStance, CarBuild, GLOW_PATTERNS, STANCE_LIMITS, TireShape, VinylShape } from '../shared/carBuild';
-import { PERFORMANCE_CATEGORIES, PerformanceCategory, SELECTABLE_CAR_IDS, TIER_NAMES, Tier, getBaseTuning } from '../sim/tuning';
+import { SELECTABLE_CAR_IDS, SETUP_SLIDERS, getBaseTuning } from '../sim/tuning';
 import { LAUNCH_RPM, defaultLaunchRpm, maxLaunchRpm, tuningForBuild } from '../sim/build';
 import { FEATURES } from '../shared/features';
 import { specBadges } from '../shared/carSpec';
 import { h, segmented, toast } from '../ui/kit/dom';
-import { ArrowUpDown, Car, Disc3, Eye, Gauge, Hammer, Layers, Paintbrush, Wind, Wrench, Zap, Box, Sparkles, icon, IconNode } from '../ui/kit/icons';
+import { ArrowUpDown, Car, Disc3, Eye, Gauge, Hammer, Layers, Paintbrush, Sparkles, IconNode } from '../ui/kit/icons';
 import { GarageScene } from './garageScene';
 import { GaragePrefs, saveGaragePrefs } from './storage';
 import { capital, choiceList, cm, color, colorPicker, field, paintPicker, percent, PRESETS, section, slider, statLines, toggle } from './garageWidgets';
 import type { Choice } from './garageWidgets';
 import { renderVinyls } from './garageVinyls';
+import { setupSlider } from './setupSliders';
 
 export type Tab = 'model' | 'stance' | 'wheels' | 'body' | 'paint' | 'vinyl' | 'tint' | 'neon' | 'tune';
 
@@ -38,18 +39,6 @@ export const TABS: { id: Tab; label: string; icon: IconNode }[] = [
 
 /** Model author shown under a car's name, by manifest `source`. */
 export const AUTHORS: Record<string, string | undefined> = { icemaan: 'IceMaan', eshell: 'eshell' };
-
-const PERF_ICONS: Record<PerformanceCategory, IconNode> = {
-  engine: Wrench,
-  turbo: Wind,
-  exhaust: Wind,
-  transmission: Gauge,
-  tires: Disc3,
-  suspension: ArrowUpDown,
-  brakes: Disc3,
-  weight: Box,
-  nitrous: Zap,
-};
 
 /** The tire shapes as the Wheels tab lists them (TIRE_SHAPES' order, render/car/tireShapes.ts draws them). */
 const TIRE_CHOICES: Choice<TireShape>[] = [
@@ -430,11 +419,13 @@ function wheelLinkToggle(host: TabHost): HTMLElement {
   );
 }
 
-/** The Tune tab: the stat lines, launch control and a tier pick per upgrade. */
+/** The Tune tab: the stat lines, launch control and the four setup sliders. */
 function renderPerformance(host: TabHost): void {
   const b = host.build;
-  // The build card's stat lines, so the stats and every upgrade fit the column together.
-  host.body.append(section('Stats', statLines(b)));
+  // The build card's stat lines, so the stats and the setup fit the column together. A slider swaps them for
+  // the new setup's in place: re-rendering the tab would take focus off the notch the keyboard or pad is on.
+  let stats = statLines(b);
+  host.body.append(section('Stats', stats));
   // Launch control: the rpm the two-step holds at the line while the throttle is down through the countdown.
   // One slider: its bottom step is Off (free revs), then LAUNCH_RPM.min up to the car's redline less the cut's depth.
   const off = LAUNCH_RPM.min - LAUNCH_RPM.step;
@@ -451,26 +442,20 @@ function renderPerformance(host: TabHost): void {
       h('div', { class: 'muted garage-note' }, 'Hold the gas through the countdown and the two-step bounces the engine here, so you leave the line from these revs. Gas and brake together: a burnout standing, antilag rolling on a turbo car.'),
     ),
   );
-  // One group of upgrades, a row per part: its icon and name, then the tiers.
+  // The setup: four sliders, each a trade (sim/build.ts applyBuild), position 3 the stock car.
   host.body.append(
     section(
-      'Upgrades',
-      ...PERFORMANCE_CATEGORIES.map((cat) =>
-        h(
-          'div',
-          { class: 'garage-row garage-row--tier' },
-          h('span', { class: 'garage-row__name' }, icon(PERF_ICONS[cat], { size: 15 }), capital(cat)),
-          segmented(
-            TIER_NAMES.map((n, i) => ({ value: String(i), label: n })),
-            String(b.performance[cat]),
-            (x) => {
-              b.performance[cat] = Number(x) as Tier;
-              host.changed(true);
-            },
-          ),
-        ),
+      'Setup',
+      ...SETUP_SLIDERS.map((s) =>
+        setupSlider(s, b.performance[s], (p) => {
+          b.performance[s] = p;
+          const next = statLines(b);
+          stats.replaceWith(next);
+          stats = next;
+          host.changed();
+        }),
       ),
     ),
   );
-  host.body.append(h('div', { class: 'muted garage-note' }, 'Everything is unlocked in this proof of concept. Visual parts never change performance.'));
+  host.body.append(h('div', { class: 'muted garage-note' }, 'Position 3 on every slider is the stock car. Visual parts never change performance.'));
 }

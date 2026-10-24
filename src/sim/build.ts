@@ -1,50 +1,69 @@
 /**
- * The performance half of a car build (shared/carBuild.ts holds the whole build and its visual half): a tier
- * per part category, and applyBuild, the only way the sim reads a build. Validation clamps imported tiers.
+ * The performance half of a car build (shared/carBuild.ts holds the whole build and its visual half): the
+ * garage Tune tab's four setup sliders (suspension, gear ratio, differential, brake balance: five positions
+ * each, 3 the stock car) and its launch rpm, and applyBuild, the only way the sim reads a build. The sliders
+ * trade one thing for another rather than add performance, so a setup suits a track, not a tier. Validation
+ * clamps imported positions, and a build saved with the retired component upgrades starts on the stock setup.
  */
-import { CarTuning, PART_TIERS, PERFORMANCE_CATEGORIES, Tier, getBaseTuning, type PerformanceCategory } from './tuning';
+import { CarTuning, SETUP, SETUP_SLIDERS, STOCK_POSITION, getBaseTuning, type SetupPosition, type SetupSlider } from './tuning';
+import { clamp01 } from './math';
 import { num, obj } from '../shared/validate';
 
-/** A tier per part category, plus the launch rpm the two-step holds at the line (rpm; 0 = off, free revs). */
-export type PerformanceBuild = Record<PerformanceCategory, Tier> & { launchRpm: number };
+/** A position per setup slider (1 left .. 5 right, 3 stock), plus the launch rpm the two-step holds at the line (rpm; 0 = off, free revs). */
+export type PerformanceBuild = Record<SetupSlider, SetupPosition> & { launchRpm: number };
 
 /** The Tune tab's launch rpm picks: off, then LAUNCH_RPM.min up to the car's redline less the two-step's depth, in LAUNCH_RPM.step. */
 export const LAUNCH_RPM = { min: 2500, step: 250 } as const;
+
+/**
+ * The component upgrades' categories (tiers 0..3), retired for the setup sliders. A saved build or share
+ * code holding them predates the sliders: its tiers are dropped and it starts on the stock setup (its old
+ * `suspension` tier is not a slider position).
+ */
+const RETIRED_UPGRADES = ['engine', 'turbo', 'exhaust', 'transmission', 'tires', 'brakes', 'weight', 'nitrous'] as const;
 
 /** The highest launch rpm a car's build can set: the two-step needs its depth of room under the redline. */
 export function maxLaunchRpm(t: CarTuning): number {
   return Math.floor((t.engine.redline - t.launch.twoStepDepth) / LAUNCH_RPM.step) * LAUNCH_RPM.step;
 }
 
-/** The stock build: every category at tier 0, and the car's stock launch rpm when a car is named (off without one). */
+/** The stock build: every slider at the stock position, and the car's stock launch rpm when a car is named (off without one). */
 export function stockPerformance(carId?: string): PerformanceBuild {
   const p = { launchRpm: carId ? defaultLaunchRpm(carId) : 0 } as PerformanceBuild;
-  for (const c of PERFORMANCE_CATEGORIES) p[c] = 0;
+  for (const s of SETUP_SLIDERS) p[s] = STOCK_POSITION;
   return p;
 }
 
-/** Pure: derive the tuning the sim uses from base tuning and performance parts. */
+/** Whether every slider is on the stock position (the launch rpm aside): the build drives on the car's own tuning. */
+export function isStockSetup(perf: PerformanceBuild): boolean {
+  return SETUP_SLIDERS.every((s) => perf[s] === STOCK_POSITION);
+}
+
+/**
+ * Pure: derive the tuning the sim uses from the car's base tuning and its setup. Every table holds the
+ * identity at the stock position (tuning.ts checks), so a stock setup is the base tuning bit for bit.
+ */
 export function applyBuild(base: CarTuning, perf: PerformanceBuild): CarTuning {
   const t: CarTuning = JSON.parse(JSON.stringify(base));
   const p = validatePerformance(perf);
-  t.engine.torqueMul *= PART_TIERS.engine.torqueMul[p.engine] * PART_TIERS.turbo.torqueMul[p.turbo] * PART_TIERS.exhaust.torqueMul[p.exhaust];
-  t.engine.redline += PART_TIERS.engine.redlineAdd[p.engine];
-  // Turbo adds more at the top of the rev range.
-  const boost = PART_TIERS.turbo.highRpmBoost[p.turbo];
-  t.engine.torqueCurve = t.engine.torqueCurve.map(([rpm, nm]) => [rpm, nm * (1 + boost * Math.max(0, (rpm - 3000) / 4000))]);
-  t.gearbox.shiftTime = PART_TIERS.transmission.shiftTime[p.transmission];
-  t.gearbox.finalDrive *= PART_TIERS.transmission.finalDriveMul[p.transmission];
-  const grip = PART_TIERS.tires.gripMul[p.tires] * PART_TIERS.suspension.gripMul[p.suspension];
-  t.tires.gripFront *= grip;
-  t.tires.gripRear *= grip;
-  t.suspension.frequency *= PART_TIERS.suspension.frequencyMul[p.suspension];
-  t.steering.rateDegPerSec *= PART_TIERS.suspension.steerRateMul[p.suspension];
-  t.brakes.force *= PART_TIERS.brakes.forceMul[p.brakes];
-  t.brakes.assistDecel *= PART_TIERS.brakes.forceMul[p.brakes];
-  t.mass *= PART_TIERS.weight.massMul[p.weight];
-  t.nitrous.capacity = PART_TIERS.nitrous.capacity[p.nitrous];
-  t.nitrous.force = PART_TIERS.nitrous.force[p.nitrous];
-  // The launch rpm is the one build setting the sim reads as is: clamped under the (upgraded) redline.
+  // Suspension: springs, travel, turn in, and the grip it finds on smooth and on rough ground.
+  const sus = SETUP.suspension;
+  const k = p.suspension - 1;
+  t.suspension.frequency *= sus.frequencyMul[k];
+  t.suspension.travel *= sus.travelMul[k];
+  t.steering.rateDegPerSec *= sus.steerRateMul[k];
+  t.tires.gripFront *= sus.roadGripMul[k];
+  t.tires.gripRear *= sus.roadGripMul[k];
+  // Surface grips multiply the tires' (car.ts), so the rough ones take their own factor over the road's.
+  const rough = sus.roughGripMul[k] / sus.roadGripMul[k];
+  t.surface.offroadGrip *= rough;
+  t.surface.cobbleGrip *= rough;
+  t.gearbox.finalDrive *= SETUP.gearing.finalDriveMul[p.gearing - 1];
+  const d = p.differential - 1;
+  t.drivetrain.diffOpen = clamp01(t.drivetrain.diffOpen + SETUP.differential.open[d]);
+  t.drivetrain.diffLock = clamp01(t.drivetrain.diffLock + SETUP.differential.lock[d]);
+  t.brakes.frontBias = clamp01(t.brakes.frontBias + SETUP.brakeBalance.frontBiasAdd[p.brakeBalance - 1]);
+  // The launch rpm is the one build setting the sim reads as is: clamped under the redline.
   t.launch.twoStepRpm = p.launchRpm > 0 ? Math.min(Math.max(p.launchRpm, LAUNCH_RPM.min), maxLaunchRpm(t)) : 0;
   return t;
 }
@@ -59,14 +78,15 @@ export function tuningForBuild(carId: string, perf: PerformanceBuild): CarTuning
 }
 
 /**
- * Clamp an imported performance build. A build with no launch rpm (saved before launch control) takes the
- * car's stock one when the car is named (the garage), else off (the sim, so race configs, replays and the
- * AI's builds stay as they were); an explicit 0 is always off.
+ * Clamp an imported performance build: each slider to a whole position (missing ones stock), and every
+ * slider stock for a build from before the sliders (RETIRED_UPGRADES). A build with no launch rpm (saved
+ * before launch control) takes the car's stock one when the car is named (the garage), else off (the sim,
+ * so race configs, replays and the AI's builds stay as they were); an explicit 0 is always off.
  */
 export function validatePerformance(v: unknown, carId?: string): PerformanceBuild {
   const o = obj(v);
   const p = stockPerformance();
-  for (const c of PERFORMANCE_CATEGORIES) p[c] = Math.round(num(o[c], 0, 3, 0)) as Tier;
+  if (!RETIRED_UPGRADES.some((c) => c in o)) for (const s of SETUP_SLIDERS) p[s] = Math.round(num(o[s], 1, 5, STOCK_POSITION)) as SetupPosition;
   // Off, or a step of the Tune tab's slider; applyBuild clamps it under the car's redline.
   const lr = num(o.launchRpm, 0, 12000, carId ? defaultLaunchRpm(carId) : 0);
   p.launchRpm = lr >= LAUNCH_RPM.min ? Math.round(lr / LAUNCH_RPM.step) * LAUNCH_RPM.step : 0;

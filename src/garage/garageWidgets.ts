@@ -6,7 +6,7 @@
  * helpers; the garage partials beside this file style them.
  */
 import { CarBuild, PAINT_FINISHES, Paint, AccentPaint } from '../shared/carBuild';
-import { PERFORMANCE_CATEGORIES } from '../sim/tuning';
+import { SETUP_SLIDERS } from '../sim/tuning';
 import { tuningForBuild } from '../sim/build';
 import type { SpecBadge } from '../shared/carSpec';
 import { measureStats, statBars } from '../sim/stats';
@@ -18,10 +18,10 @@ import { Paintbrush, IconNode } from '../ui/kit/icons';
 /** A label from a lower case id: "metallic" reads "Metallic". */
 export const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** Measured stats per car and performance build: measuring drives the sim for up to a minute of game time. */
+/** Measured stats per car and performance build (its setup and launch rpm): measuring drives the sim for up to a minute of game time. */
 const statsCache = new Map<string, CarStats>();
 function statsFor(b: CarBuild): CarStats {
-  const key = `${b.carId}:${PERFORMANCE_CATEGORIES.map((c) => b.performance[c]).join('')}:${b.performance.launchRpm}`;
+  const key = `${b.carId}:${SETUP_SLIDERS.map((s) => b.performance[s]).join('')}:${b.performance.launchRpm}`;
   let st = statsCache.get(key);
   if (!st) statsCache.set(key, (st = measureStats(tuningForBuild(b.carId, b.performance))));
   return st;
