@@ -8,7 +8,7 @@
  * as records).
  */
 import { CarTuning, DRIVETRAIN_LAYOUTS, DrivetrainLayout, getBaseTuning, getByPath, setByPath, tuningHash } from '../../sim/tuning';
-import { PerformanceBuild, applyBuild } from '../../sim/build';
+import { PerformanceBuild, applyBuild, isStockSetup } from '../../sim/build';
 import { btn, h, iconBtn, toast } from '../kit/dom';
 import { Check, Copy, Download, RotateCcw, SlidersHorizontal, Upload, X, icon } from '../kit/icons';
 
@@ -33,6 +33,8 @@ export const PARAM_INFO: Record<string, ParamInfo> = {
   yawInertiaScale: P(0.5, 2, 0.05, 'Resistance to rotating. Higher = lazier, more stable turn in; lower = twitchier.'),
   cgHeight: P(0.2, 1, 0.01, 'Center of gravity height. Higher = more weight transfer, body roll and pitch.'),
   'drivetrain.awdFrontShare': P(0, 1, 0.01, 'AWD only: torque share sent to the front axle. Higher = more understeer, less power oversteer.'),
+  'drivetrain.diffOpen': P(0, 1, 0.01, 'Open differential: past twice what the lighter driven wheel grips, drive drops toward twice its sliding force. Higher = drive fades as a corner or a kerb lifts the inside wheel; steadier, slides die out.'),
+  'drivetrain.diffLock': P(0, 1, 0.01, 'Locked differential: the driven axle fights the turn with up to this share of its grip per wheel while it grips. Higher = pushes on turn in, steadier and harder drive out of a turn.'),
   'engine.idleRpm': P(500, 1500, 10, 'Idle engine speed. Mostly affects sound and pull away from a stop.'),
   'engine.redline': P(5000, 10000, 50, 'Rev limit. Higher = each gear reaches more speed before the limiter.'),
   'engine.torqueMul': P(0.5, 2.5, 0.01, 'Scales the whole torque curve. Higher = more power everywhere.'),
@@ -291,10 +293,10 @@ export class TuningPanel {
 
   show(tuning: CarTuning, performance: PerformanceBuild, onChange: () => void): void {
     this.close();
-    // Baseline = this car with its performance parts, before any manual tuning.
+    // Baseline = this car with its Tune tab setup, before any manual tuning.
     const base = applyBuild(getBaseTuning(tuning.carId), performance);
     const params = tuningParams(base);
-    const stockParts = Object.values(performance).every((v) => v === 0);
+    const stockSetup = isStockSetup(performance);
     const changed = (): TuningValues => {
       const out: TuningValues = {};
       if (tuning.drivetrain.layout !== base.drivetrain.layout) out[LAYOUT_PATH] = tuning.drivetrain.layout;
@@ -313,8 +315,8 @@ export class TuningPanel {
           carId: tuning.carId,
           performance,
           changed: c,
-          // Paste into cars.<carId> of src/sim/drivingParams.json (only meaningful with stock parts).
-          fileOverride: stockParts ? fileOverride(tuning, c) : 'Only exported with stock performance parts (tuning values include the upgrades).',
+          // Paste into cars.<carId> of src/sim/drivingParams.json (only meaningful on the stock setup).
+          fileOverride: stockSetup ? fileOverride(tuning, c) : 'Only exported on the stock setup (tuning values include the Tune sliders).',
           tuning,
         },
         null,

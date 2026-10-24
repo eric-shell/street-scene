@@ -37,8 +37,9 @@ import { uiWhoosh } from '../audio/uiSound';
 import { GaragePrefs, GarageState, MAX_SLOTS, Presentation, addSlot, decodeShareCode, encodeShareCode, freshBuild, importBuild, loadGaragePrefs, saveGaragePrefs, shareUrl } from './storage';
 import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PART_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
 import { AXLES, Axle, AxleStance, BUILD_NAME_MAX, CarBuild, DEFAULT_BUILD_NAME, DecalLayer, GLOW_PATTERNS, MAX_DECALS, PAINT_FINISHES, Paint, AccentPaint, STANCE_LIMITS, TireShape, VINYL_SHAPES, VinylShape, validateBuild } from '../shared/carBuild';
-import { DEFAULT_CAR_ID, PERFORMANCE_CATEGORIES, PerformanceCategory, SELECTABLE_CAR_IDS, TIER_NAMES, Tier, getBaseTuning } from '../sim/tuning';
+import { DEFAULT_CAR_ID, SELECTABLE_CAR_IDS, SETUP_SLIDERS, getBaseTuning } from '../sim/tuning';
 import { LAUNCH_RPM, defaultLaunchRpm, maxLaunchRpm, tuningForBuild } from '../sim/build';
+import { setupSlider } from './setupSliders';
 import { FEATURES } from '../shared/features';
 import { specBadges, type SpecBadge } from '../shared/carSpec';
 import { measureStats, statBars, type CarStats } from '../sim/stats';
@@ -68,11 +69,8 @@ import {
   Trash2,
   Undo2,
   Upload,
-  Wind,
   Wrench,
   X,
-  Zap,
-  Box,
   Sparkles,
   Route,
   Video,
@@ -102,18 +100,6 @@ const TABS: { id: Tab; label: string; icon: IconNode }[] = [
 /** Model author shown under a car's name, by manifest `source`. */
 const AUTHORS: Record<string, string | undefined> = { icemaan: 'IceMaan', eshell: 'eshell' };
 
-const PERF_ICONS: Record<PerformanceCategory, IconNode> = {
-  engine: Wrench,
-  turbo: Wind,
-  exhaust: Wind,
-  transmission: Gauge,
-  tires: Disc3,
-  suspension: ArrowUpDown,
-  brakes: Disc3,
-  weight: Box,
-  nitrous: Zap,
-};
-
 export interface GarageCallbacks {
   onChange(g: GarageState): void;
   onExit(): void;
@@ -130,10 +116,10 @@ export interface GarageStage {
 /** A label from a lower case id: "metallic" reads "Metallic". */
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** Measured stats per car and performance build: measuring drives the sim for up to a minute of game time. */
+/** Measured stats per car and performance build (its setup and launch rpm): measuring drives the sim for up to a minute of game time. */
 const statsCache = new Map<string, CarStats>();
 function statsFor(b: CarBuild): CarStats {
-  const key = `${b.carId}:${PERFORMANCE_CATEGORIES.map((c) => b.performance[c]).join('')}:${b.performance.launchRpm}`;
+  const key = `${b.carId}:${SETUP_SLIDERS.map((s) => b.performance[s]).join('')}:${b.performance.launchRpm}`;
   let st = statsCache.get(key);
   if (!st) statsCache.set(key, (st = measureStats(tuningForBuild(b.carId, b.performance))));
   return st;
@@ -1465,8 +1451,10 @@ export class GarageScreen {
 
   private renderPerformance(): void {
     const b = this.build;
-    // The build card's stat lines, so the stats and every upgrade fit the column together.
-    this.body.append(section('Stats', statLines(b)));
+    // The build card's stat lines, so the stats and the setup fit the column together. A slider swaps them for
+    // the new setup's in place: re-rendering the tab would take focus off the notch the keyboard or pad is on.
+    let stats = statLines(b);
+    this.body.append(section('Stats', stats));
     // Launch control: the rpm the two-step holds at the line while the throttle is down through the countdown.
     // One slider: its bottom step is Off (free revs), then LAUNCH_RPM.min up to the car's redline less the cut's depth.
     const off = LAUNCH_RPM.min - LAUNCH_RPM.step;
@@ -1483,28 +1471,22 @@ export class GarageScreen {
         h('div', { class: 'muted garage-note' }, 'Hold the gas through the countdown and the two-step bounces the engine here, so you leave the line from these revs. Gas and brake together: a burnout standing, antilag rolling on a turbo car.'),
       ),
     );
-    // One group of upgrades, a row per part: its icon and name, then the tiers.
+    // The setup: four sliders, each a trade (sim/build.ts applyBuild), position 3 the stock car.
     this.body.append(
       section(
-        'Upgrades',
-        ...PERFORMANCE_CATEGORIES.map((cat) =>
-          h(
-            'div',
-            { class: 'garage-row garage-row--tier' },
-            h('span', { class: 'garage-row__name' }, icon(PERF_ICONS[cat], { size: 15 }), capital(cat)),
-            segmented(
-              TIER_NAMES.map((n, i) => ({ value: String(i), label: n })),
-              String(b.performance[cat]),
-              (x) => {
-                b.performance[cat] = Number(x) as Tier;
-                this.changed(true);
-              },
-            ),
-          ),
+        'Setup',
+        ...SETUP_SLIDERS.map((s) =>
+          setupSlider(s, b.performance[s], (p) => {
+            b.performance[s] = p;
+            const next = statLines(b);
+            stats.replaceWith(next);
+            stats = next;
+            this.changed();
+          }),
         ),
       ),
     );
-    this.body.append(h('div', { class: 'muted garage-note' }, 'Everything is unlocked in this proof of concept. Visual parts never change performance.'));
+    this.body.append(h('div', { class: 'muted garage-note' }, 'Position 3 on every slider is the stock car. Visual parts never change performance.'));
   }
 
   /**
