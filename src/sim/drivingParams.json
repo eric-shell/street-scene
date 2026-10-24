@@ -48,9 +48,12 @@
       "reverseMaxSpeed": 14
     },
     "tires": {
-      "gripFront": 1.62,
-      "gripRear": 1.28,
+      "_": "Grip in ordinary corners comes from the rise to the peak, the slides from past it (docs/handling.md). roundingRear above roundingFront makes the rear answer sooner, so the car is stable below the limit even with gripRear under gripFront; that lower rear peak still lets go first at the limit, which is where the drifts start.",
+      "gripFront": 1.58,
+      "gripRear": 1.34,
       "peakSlipDeg": 12,
+      "roundingFront": 0.5,
+      "roundingRear": 1,
       "peakSlipRatio": 0.12,
       "fullSlideDeg": 25,
       "slideGrip": 0.53,
@@ -110,10 +113,10 @@
       "downforce": 0.5
     },
     "nitrous": {
-      "capacity": 3.2,
-      "force": 3600,
-      "torqueMul": 1.25,
-      "stagePower": [1, 1.1, 1.2],
+      "capacity": 3.6,
+      "force": 5500,
+      "torqueMul": 1.35,
+      "stagePower": [1, 1.15, 1.3],
       "chainRefill": [0.3333, 0.6667, 1],
       "refillDrift": 0.09,
       "refillNearMiss": 0.18,
@@ -171,7 +174,7 @@
         "torqueMul": 0.86
       },
       "gearbox": { "finalDrive": 3.6 },
-      "tires": { "gripFront": 1.62, "gripRear": 1.36 },
+      "tires": { "gripFront": 1.58, "gripRear": 1.41 },
       "launch": {
         "_": "R32 owners launch near the VR6's torque peak (2,800 to 3,200 rpm); the DSG cars' launch control is reported at 2,500 to 3,500. An NA engine on an AWD grip launch wants the plateau, not more: the cut bounces it 3,150 to 3,500.",
         "defaultRpm": 3500
@@ -197,7 +200,7 @@
         "torqueMul": 0.8
       },
       "gearbox": { "ratios": [3.48, 2.02, 1.39, 1.0, 0.72], "finalDrive": 4.3 },
-      "tires": { "gripFront": 1.64, "gripRear": 1.3 },
+      "tires": { "gripFront": 1.6, "gripRear": 1.35 },
       "launch": {
         "_": "FD owners on the stock sequential twins report a weak, boostless launch around 4,000 rpm (the turbo handover) and better ones from about 5,000; past 7,500 is called abuse. 5,000 clears the handover without lighting up the rear tires of the lightest, RWD car.",
         "defaultRpm": 5000
@@ -224,7 +227,7 @@
         "launchRpm": 3500
       },
       "gearbox": { "finalDrive": 3.62 },
-      "tires": { "gripFront": 1.6, "gripRear": 1.38 },
+      "tires": { "gripFront": 1.56, "gripRear": 1.42 },
       "aero": { "drag": 0.42 },
       "launch": {
         "_": "B5 S4 and RS4 2.7T owners launch at 3,000 to 4,000 rpm (bogs under 3,000, spins over 3,500 to 4,000 on a clutch dump); a two-step at 4,000 holds the twins on boost and the even AWD split takes the torque.",

@@ -51,6 +51,8 @@ export const PARAM_INFO: Record<string, ParamInfo> = {
   'tires.gripFront': P(0.6, 2.2, 0.01, 'Front tire grip. Higher = sharper turn in; lower = more understeer.'),
   'tires.gripRear': P(0.6, 2.2, 0.01, 'Rear tire grip. Lower = looser rear, easier oversteer.'),
   'tires.peakSlipDeg': P(3, 20, 0.5, 'Slip angle of peak grip. Higher = softer, more progressive tires.'),
+  'tires.roundingFront': P(0, 1, 0.05, 'Front tires: shape of the rise to peak grip. 0 = a straight line; higher = sharper turn in and less slip below the limit, same peak and slide.'),
+  'tires.roundingRear': P(0, 1, 0.05, 'Rear tires: shape of the rise to peak grip. Higher = a more settled rear in ordinary corners; above the front keeps the car stable below the limit.'),
   'tires.peakSlipRatio': P(0.05, 0.4, 0.01, 'Wheel slip (tread speed over road speed, minus one) of peak grip. Higher = more wheelspin before the tires let go.'),
   'tires.fullSlideDeg': P(10, 60, 1, 'Slip angle where grip has dropped to slideGrip. Lower = snappier breakaway.'),
   'tires.slideGrip': P(0.3, 1, 0.01, 'Grip left when sliding sideways. Lower = slides grow and are harder to catch.'),

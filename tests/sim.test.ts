@@ -203,6 +203,8 @@ describe('driving parameters file', () => {
     // export's car, the retired Proto Compact, drove base on a final drive shortened for its 0.31 m tire.)
     // Counter steer lock was later allowed to reach the direction of travel at any slip angle; the drift
     // aids and the handbrake were remodelled on real wheel speed (the fixture carries the surviving keys).
+    // The grip pass (docs/handling.md) moved grip from the front axle to the rear with a rounded rise to
+    // the peak, and nitrous was made stronger.
     const t = getBaseTuning('proto');
     const expected = {
       ...exported.tuning,
@@ -211,6 +213,8 @@ describe('driving parameters file', () => {
       surface: { ...exported.tuning.surface, sidewalkGrip: 1 },
       brakes: { ...exported.tuning.brakes, force: 16250, frontBias: 0.68 },
       steering: { ...exported.tuning.steering, counterSteerAllowance: 1 },
+      tires: { ...exported.tuning.tires, gripFront: 1.58, gripRear: 1.34 },
+      nitrous: { ...exported.tuning.nitrous, capacity: 3.6, force: 5500, torqueMul: 1.35 },
     };
     expect(t).toMatchObject(expected);
   });

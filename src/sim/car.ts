@@ -598,8 +598,8 @@ interface Controls {
   boostForce: number;
 }
 
-/** Grip over the length of a normalized slip vector, given the sideways share of that vector (0..1). */
-type GripCurve = (rho: number, latShare: number) => number;
+/** Grip over the length of a normalized slip vector, given the sideways share of that vector (0..1) and the axle (0 front, 1 rear). */
+type GripCurve = (rho: number, latShare: number, axle: number) => number;
 
 const wFmax = [0, 0, 0, 0];
 const wLong = [0, 0, 0, 0];
@@ -660,7 +660,7 @@ function updateAxles(c: CarState, t: CarTuning, ctl: Controls, gripAt: GripCurve
       roll += k * wLong[i];
       grip += wFmax[i];
       const rho1 = sqrt(1 + wSy[i] * wSy[i]);
-      const capI = (gripAt(rho1, (wSy[i] * wSy[i]) / (rho1 * rho1)) * wFmax[i]) / rho1;
+      const capI = (gripAt(rho1, (wSy[i] * wSy[i]) / (rho1 * rho1), a) * wFmax[i]) / rho1;
       cap += capI;
       capLo = Math.min(capLo, capI);
       // Traction control keeps the slip vector inside the peak, where drive costs no cornering grip, with
@@ -711,7 +711,7 @@ function updateAxles(c: CarState, t: CarTuning, ctl: Controls, gripAt: GripCurve
           if (wFmax[i] === 0) continue;
           const sx = (ws - wLong[i]) / Math.max(abs(wLong[i]), SLIP_REF_SPEED) / peakK;
           const rho = sqrt(sx * sx + wSy[i] * wSy[i]);
-          if (rho > 0) Fx += (gripAt(rho, (wSy[i] * wSy[i]) / (rho * rho)) * wFmax[i] * sx) / rho;
+          if (rho > 0) Fx += (gripAt(rho, (wSy[i] * wSy[i]) / (rho * rho), a) * wFmax[i] * sx) / rho;
         }
         ws += (h * R * (T - R * Fx)) / I;
       }
@@ -930,8 +930,14 @@ function tireForces(c: CarState, t: CarTuning, ctl: Controls, h: number, vLong: 
   // Grip over the length of the normalized slip vector (1 = the peak): up to the peak, then down to what a
   // sliding tire keeps, which is slideGrip sideways and slideGripLong lengthways (a spinning or locked
   // wheel keeps most of its forward bite, sideways slides are looser), by the direction of the slip.
-  const gripAt: GripCurve = (rho, latShare) => {
-    if (rho < 1) return rho;
+  // The rise is the axle's rounding: a straight line at 0, at 1 twice as steep at zero slip and flat into
+  // the peak (the Magic Formula's shape). Only the grip below the peak changes: slides and drifts happen
+  // past it. A rear rounded more than the front answers sooner, so the car is stable in ordinary corners,
+  // while its lower peak still lets go first at the limit (docs/handling.md).
+  const roundF = t.tires.roundingFront;
+  const roundR = t.tires.roundingRear;
+  const gripAt: GripCurve = (rho, latShare, axle) => {
+    if (rho < 1) return rho * (1 + (axle === 0 ? roundF : roundR) * (1 - rho));
     return 1 - (1 - lerp(t.tires.slideGripLong, t.tires.slideGrip, latShare)) * Math.min(1, (rho - 1) / (rhoFull - 1));
   };
   // Pass 1: each wheel's road velocity in its own frame, its grip and its sideways slip.
@@ -993,7 +999,7 @@ function tireForces(c: CarState, t: CarTuning, ctl: Controls, h: number, vLong: 
     let sx = axleHold[a] ? axleT[a] / (axleCap[a] * R) : wKappa[i] / peakK;
     if (lockF !== 0) sx += lockF / axleCap[a];
     const rho = sqrt(sx * sx + sy * sy);
-    const mag = rho > 0 ? gripAt(rho, (sy * sy) / (rho * rho)) * Fmax : 0;
+    const mag = rho > 0 ? gripAt(rho, (sy * sy) / (rho * rho), a) * Fmax : 0;
     let Fx = axleHold[a] ? (axleT[a] / R) * (Fmax / axleGrip[a]) : rho > 0 ? (mag * sx) / rho : 0;
     if (lockF !== 0) Fx += (lockF * Fmax) / axleGrip[a];
     let Fy = rho > 0 ? -sign(alpha) * ((mag * sy) / rho) : 0;
