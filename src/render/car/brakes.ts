@@ -64,11 +64,12 @@ export const BRAKE = {
   glow: 0.45,
   /**
    * How fast the rotors heat while braking and cool once off the brakes (1/s): a few seconds of hard
-   * braking before a visible glow, a long fade back to bare steel. The glow follows the square of the
-   * heat, so a tap of the brakes barely warms them.
+   * braking before a visible glow, then a quick fade back to bare steel (the glow is mostly gone within
+   * about 4 s) so it reads as the last stop, not a trail behind the whole lap. The glow follows the
+   * square of the heat, so a tap of the brakes barely warms them.
    */
   heatUp: 0.3,
-  coolDown: 0.06,
+  coolDown: 0.4,
 } as const;
 
 /** Texture size (px) and the plain point of the friction ring that the rotor's edge and the hat's sides sample. */

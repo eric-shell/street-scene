@@ -141,7 +141,7 @@ export class CarView {
   private popAt: number[] = [];
   private popSize: number[] = [];
   private lastTime = 0;
-  /** Rotor heat, 0 cold to 1 glowing: builds under braking and fades slowly once off the brakes (BRAKE.heatUp / coolDown). */
+  /** Rotor heat, 0 cold to 1 glowing: builds under braking and fades quickly once off the brakes (BRAKE.heatUp / coolDown). */
   private rotorHeat = 0;
   private beam: THREE.Mesh;
   /** The rear license plate (plate.ts), seated on the bumper after every load; null headless or when opted out. */
