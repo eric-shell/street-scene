@@ -5,10 +5,11 @@
  * minimap's hues). The layers are built once per world as Path2D in world
  * meters (blocks, district fills and outlines per kind, building footprints,
  * streets grouped by ink and width, roundabouts, the bluff's terrace, the El,
- * tunnels and overpasses, the race route), so drawing the whole city at any
- * center and zoom is a few dozen fills and strokes; layersOf() shares one set
- * per world between the maps. A view says where the map looks: the world
- * point at the canvas center, device pixels per meter and the canvas size.
+ * the expressway (highwayLine), tunnels and overpasses, the race route), so
+ * drawing the whole city at any center and zoom is a few dozen fills and
+ * strokes; layersOf() shares one set per world between the maps. A view
+ * says where the map looks: the world point at the canvas center, device
+ * pixels per meter and the canvas size.
  *
  * Two symbols are sized in screen pixels and so traced per draw (cheap, a few
  * hundred segments): the chevrons that mark a one-way shortcut, and the cliff
@@ -25,7 +26,7 @@
 import type { World } from '../../city/world';
 import type { Area, AreaKind } from '../../city/districts/types';
 import { isRiverEdge } from '../../city/roadGraph';
-import { highwayRamp } from '../../city/districts/highway/shape';
+import { HIGHWAY_HALF, deckCurve, deckPoint, highwayRamp } from '../../city/districts/highway/shape';
 import { axisAt } from '../../city/districts/highway/rampAxis';
 import { pointInPolygon } from '../../city/districts/geom';
 import { bluffShape, bluffUV, envelope, type BluffShape } from '../../city/districts/bluff';
@@ -72,9 +73,12 @@ export const KINDS: Partial<Record<AreaKind, KindStyle>> = {
   roadworks: { label: 'Roadworks', ink: PALETTE.yellow, fill: rgba('yellow', 0.55), width: 1, tag: false },
 };
 
-/** Infill drawn and counted as places; verges and planters are frontage dressing, too small to read on the map. */
+/**
+ * Infill drawn and counted as places; verges and planters are frontage dressing, too small to read on the map.
+ * The expressway is its deck: its ramps and the alleys under its lanes and ramps are no places of their own.
+ */
 const PLACES = new Set(['lot', 'plaza', 'cornerPlaza']);
-export const shownOnMap = (a: Area): boolean => (a.kind !== 'infill' || PLACES.has(a.variant)) && !(a.kind === 'highway' && a.variant === 'ramp');
+export const shownOnMap = (a: Area): boolean => (a.kind !== 'infill' || PLACES.has(a.variant)) && !(a.kind === 'highway' && (a.variant === 'ramp' || a.variant === 'alley'));
 
 /** Map inks outside the district kinds. */
 export const MAP_INK = {
@@ -417,8 +421,7 @@ export class CityLayers {
         this.areaPaths.set(a.id, t.ground);
         this.bluffs.push(a);
       } else if (a.kind === 'subway' && a.path.length > 1) line(this.el, a.path);
-      else if (a.kind === 'highway' && a.variant === 'deck' && a.path.length > 1) line(this.highway, a.path);
-      else if (a.kind === 'highway' && a.variant === 'ramp') line(this.highway, rampLine(a));
+      else if (a.kind === 'highway') line(this.highway, highwayLine(a));
       else if (a.kind === 'tunnel' && a.path.length > 1) {
         const e = g.edges[a.params.edge];
         const width = e ? e.width : 10;
@@ -435,12 +438,13 @@ export class CityLayers {
     }
   }
 
-  /** An area's outline as a path (world meters), built on first use (a bluff's is its terrace, not its claim). */
+  /** An area's outline as a path (world meters), built on first use (a bluff's is its terrace, not its claim; the expressway's its drivable deck). */
   areaPath(a: Area): Path2D {
     let p = this.areaPaths.get(a.id);
     if (!p) {
       p = new Path2D();
-      if (a.polygon.length >= 3) ring(p, a.polygon);
+      if (a.kind === 'highway' && a.variant === 'deck') ring(p, deckOutline(a));
+      else if (a.polygon.length >= 3) ring(p, a.polygon);
       else if (a.path.length > 1) line(p, a.path);
       this.areaPaths.set(a.id, p);
     }
@@ -596,6 +600,40 @@ function ring(p: Path2D, pts: readonly Vec2[]): void {
   p.closePath();
 }
 
+/** A highway deck's drivable stretch, between its end loops (HighwayDeck sW, sE: the deck area's params), every `step` m or less (s, m). */
+function deckStations(a: Area, step: number): number[] {
+  const s0 = a.params.sW;
+  const s1 = a.params.sE;
+  const n = Math.max(1, Math.ceil((s1 - s0) / step));
+  return Array.from({ length: n + 1 }, (_, k) => s0 + ((s1 - s0) * k) / n);
+}
+
+/**
+ * A highway area's line on the maps (this one's and the minimap's): a deck's centerline over its drivable
+ * stretch (its smoothed curve between the end loops, not the planned path, which runs on past them), a
+ * ramp's or an end loop's axis; none for an alley (paving under a lane or a ramp, not the road on them).
+ */
+export function highwayLine(a: Area): Vec2[] {
+  if (a.variant === 'ramp') return rampLine(a);
+  if (a.variant !== 'deck') return [];
+  const c = deckCurve(a);
+  return deckStations(a, 8).map((s) => deckPoint(c, s, 0));
+}
+
+const outlines = new WeakMap<Area, Vec2[]>();
+
+/** A highway deck's outline over its drivable stretch, its half width each side: its highlight and how far it is. */
+export function deckOutline(a: Area): Vec2[] {
+  let o = outlines.get(a);
+  if (!o) {
+    const c = deckCurve(a);
+    const st = deckStations(a, 8);
+    o = [...st.map((s) => deckPoint(c, s, -HIGHWAY_HALF)), ...st.reverse().map((s) => deckPoint(c, s, HIGHWAY_HALF))];
+    outlines.set(a, o);
+  }
+  return o;
+}
+
 /** A highway ramp's center line, foot to deck (districts/highway/rampAxis.ts axis), every few meters. */
 function rampLine(a: Area): Vec2[] {
   const ax = highwayRamp(a).axis;
@@ -625,7 +663,7 @@ export function tagWeight(a: Area): number {
 
 /** Where an area's tag goes: along a linear area's path, the middle of an alley, the centroid of anything else. */
 export function tagAnchor(world: World, a: Area): Vec2 | null {
-  if (a.kind === 'river' || a.kind === 'subway' || a.kind === 'highway') return along(a.path, a.kind === 'river' ? 0.3 : a.kind === 'highway' ? 0.4 : 0.7);
+  if (a.kind === 'river' || a.kind === 'subway' || a.kind === 'highway') return along(a.kind === 'highway' ? highwayLine(a) : a.path, a.kind === 'river' ? 0.3 : a.kind === 'highway' ? 0.4 : 0.7);
   if (a.kind === 'alley') {
     const g = world.graph;
     const e = g.edges[a.edges[a.edges.length >> 1]];
@@ -678,12 +716,14 @@ export interface NearPoint {
 
 /**
  * The point of an area nearest to (x, z), for "how far is the river": the
- * point itself inside the area's footprint, else the closest point of its
- * outline, or of its centerline when it has no footprint. Infinitely far for
- * an area with neither. Writes into `out`.
+ * point itself inside the area's footprint (the expressway's: its drivable
+ * deck, deckOutline), else the closest point of its outline, or of its
+ * centerline when it has no footprint. Infinitely far for an area with
+ * neither. Writes into `out`.
  */
 export function nearestOnArea(a: Area, x: number, z: number, out: NearPoint = { x: 0, z: 0, d: 0 }): NearPoint {
-  const poly = a.polygon.length >= 3 ? a.polygon : null;
+  const own = a.kind === 'highway' && a.variant === 'deck' ? deckOutline(a) : a.polygon;
+  const poly = own.length >= 3 ? own : null;
   out.x = x;
   out.z = z;
   out.d = 0;

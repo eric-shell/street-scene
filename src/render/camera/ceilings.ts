@@ -3,8 +3,9 @@
  * above them (an air rights building, a ridge's rock), viaduct decks, a car
  * park garage's levels over its drivable floor and ramp, the bridge decks
  * over the river channel (slab and girders over the floor), and the elevated
- * highway: its deck (a camera under it stays under, one following a car up
- * there stays above) and its ramps (an embankment: out over the top).
+ * highway: its deck between the end loops, widened over the interchanges'
+ * lanes (a camera under it stays under, one following a car up there stays
+ * above), and its ramps and loops (an embankment: out over the top).
  * The chase camera rides 2-4 m over the car, but an orbit drag or a wall
  * pull-in (camera.ts wallLift) can lift it into a deck or a tunnel's roof,
  * and the intro fly-in can pass through one: keepOutOfWalls
@@ -18,7 +19,7 @@
 import type * as THREE from 'three';
 import type { World } from '../../city/world';
 import { toLocal } from '../../city/districts/structures';
-import { HIGHWAY_HALF, deckTopAt, deckUnderAt, highwayDeck } from '../../city/districts/highway/shape';
+import { HIGHWAY_HALF, deckExtent, deckTopAt, deckUnderAt, highwayDeck } from '../../city/districts/highway/shape';
 import { axisPoint, projectAxis, rampHeight } from '../../city/districts/highway/rampAxis';
 import { RAIL } from '../../city/railCurve';
 import { CITY } from '../../city/config';
@@ -125,11 +126,14 @@ function build(world: World): Overhead[] {
       const d = highwayDeck(a, world.areas);
       if (!d.settled) continue;
       const c = d.curve;
-      // In stretches of a few samples: the nearest sample's normal says how far across the deck a point is.
+      // In stretches of a few samples over the drivable stretch (sW to sE: nothing runs on past the loops):
+      // the nearest sample's normal says how far across the deck a point is, out to its widening over a lane.
       const CH = 10;
-      const reach = HIGHWAY_HALF + 2 * CITY.districts.highway.rampHalf + 1.5;
-      for (let k0 = 1; k0 < c.n - 1; k0 += CH) {
-        const k1 = Math.min(c.n - 1, k0 + CH);
+      const reach = HIGHWAY_HALF + 1.5 + Math.max(0, ...d.ramps.filter((r) => !r.loop).map((r) => 2 * r.half));
+      const kA = Math.max(1, Math.floor(d.sW / RAIL.step));
+      const kB = Math.min(c.n - 1, Math.ceil(d.sE / RAIL.step));
+      for (let k0 = kA; k0 < kB; k0 += CH) {
+        const k1 = Math.min(kB, k0 + CH);
         const pts: { x: number; z: number }[] = [];
         for (let k = k0; k <= k1; k++) pts.push({ x: c.x[k], z: c.z[k] });
         out.push({
@@ -145,22 +149,27 @@ function build(world: World): Overhead[] {
               }
             }
             const along = (x - c.x[best]) * c.tx[best] + (z - c.z[best]) * c.tz[best];
-            const lat = Math.abs(-(x - c.x[best]) * c.tz[best] + (z - c.z[best]) * c.tx[best]);
-            if (Math.abs(along) > RAIL.step || lat > HIGHWAY_HALF + 0.3) return false;
+            // Right of travel toward +s (shape.ts deckPoint's sign).
+            const lat = -(x - c.x[best]) * c.tz[best] + (z - c.z[best]) * c.tx[best];
+            if (Math.abs(along) > RAIL.step) return false;
             const sv = best * RAIL.step + along;
+            if (sv < d.sW || sv > d.sE || Math.abs(lat) > deckExtent(d, sv, lat >= 0 ? 1 : -1) + 0.3) return false;
             s.bottom = deckUnderAt(d, sv);
             s.top = deckTopAt(d, sv) + 1.1;
             return true;
           },
         });
       }
-      // Its ramps: an embankment up to the bridge stretch at the top (out over the top), then a bridge.
+      // Its ramps and end loops: an embankment up to the bridge stretch at the top (out over the top), then
+      // a bridge. A loop's box holds its turn's center, so its whole circle is in it; a slip ramp's holds
+      // its polyline axis (it has no turn: its center reads 0).
       for (const r of d.ramps) {
         const ax = r.axis;
         const ap = axisPoint();
         const sample = { h: 0, gx: 0, gz: 0 };
-        const hw = CITY.districts.highway.rampHalf + 0.5;
-        const pts: { x: number; z: number }[] = [{ x: ax.fx, z: ax.fz }, { x: ax.ex, z: ax.ez }, { x: ax.cx, z: ax.cz }];
+        const hw = r.half + 0.5;
+        const poly = ax.poly;
+        const pts: { x: number; z: number }[] = poly ? poly.x.map((x, i) => ({ x, z: poly.z[i] })) : [{ x: ax.fx, z: ax.fz }, { x: ax.ex, z: ax.ez }, { x: ax.cx, z: ax.cz }];
         out.push({
           ...bbox(pts, ax.r + hw + 2),
           at(x, z, s) {

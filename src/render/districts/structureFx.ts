@@ -4,9 +4,9 @@
  * their own lamps, an additive wash for the light those lamps throw on the
  * road, one canvas atlas for every sign they carry (tunnel name boards,
  * clearance plates, gantry direction signs, message boards, the highway's
- * on-ramp and exit signs) and the sign gantry itself (signGantry: a truss
- * on two legs carrying direction signs for the traffic coming each way,
- * which the elevated highway puts across its carriageways).
+ * on-ramp, exit, wrong way and end signs) and the sign gantry itself
+ * (signGantry: a truss on two legs carrying direction signs for the traffic
+ * coming each way, which the elevated highway puts across its carriageways).
  *
  * Baked light: a tunnel at night is lit by its own fixtures, not the sky, so
  * its walls and ceiling carry a per vertex light level (`bake`, 0..1) that the
@@ -226,10 +226,10 @@ export const CLOSED_CELL: Cell = cellAt(1, 3);
 export const gantryCell = (i: number): Cell => cellAt(i % 2, 4 + Math.floor(i / 2));
 /** Message board i. */
 export const boardCell = (i: number): Cell => cellAt(i % 2, 7);
-/** The highway's on-ramp sign at a ramp's mouth, and its exit tab. */
+/** The highway's on-ramp sign at an up ramp's mouth, and its EXIT sign before an off-ramp's lane. */
 export const RAMP_CELL: Cell = cellAt(0, 8);
 export const EXIT_CELL: Cell = cellAt(1, 8);
-/** WRONG WAY (facing a car going down a ramp's up lane) and the END of the expressway at its closures. */
+/** WRONG WAY (at a down ramp's mouth, facing a car about to drive up it) and END EXPRESSWAY before each end, where all traffic leaves on the loops. */
 export const WRONG_WAY_CELL: Cell = cellAt(0, 9);
 export const END_CELL: Cell = cellAt(1, 9);
 
@@ -414,8 +414,8 @@ export function makeStructureSigns(): THREE.CanvasTexture {
     green(x, y);
     fit('END EXPRESSWAY', CELL_W - 80, 54);
     g.fillText('END EXPRESSWAY', x + CELL_W / 2, y + 48);
-    fit('CITY LIMIT  ROAD CLOSED', CELL_W - 80, 30, 'normal');
-    g.fillText('CITY LIMIT  ROAD CLOSED', x + CELL_W / 2, y + 96);
+    fit('ALL TRAFFIC EXIT', CELL_W - 80, 30, 'normal');
+    g.fillText('ALL TRAFFIC EXIT', x + CELL_W / 2, y + 96);
   }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;

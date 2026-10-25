@@ -3,10 +3,12 @@
  * its heights once the terrain exists (the ground across it dilated and
  * smoothed along it plus the clearance, with a hump over the El's trains from
  * the El's own track curve), then every barrier, column and ramp wall its
- * level and every ramp its profile; settleHighwayWalls makes every other wall
- * under the deck one only cars below meet. In a race the ramps are shut at
- * their mouths (highwayGates); a reset up on the highway puts the car back on
- * the deck (highwayResetPose). Called by world.ts and sim/race.ts.
+ * level and every ramp and loop its profile; settleHighwayWalls makes every
+ * other wall under the deck or a ramp one only cars below meet (an alley's
+ * back wall too). In a race the ramps and loops are shut at their mouths and
+ * the alleys where they open onto a cross street the route does not take
+ * (highwayGates); a reset up on the highway puts the car back on the deck
+ * (highwayResetPose). Called by world.ts and sim/race.ts.
  */
 import { CITY } from '../../config';
 import type { Wall } from '../../blocks';
@@ -17,7 +19,8 @@ import { distToPolygonEdge, pointInPolygon, polygonBounds, solidWalls } from '..
 import { elCurve } from '../subway';
 import { RAIL, curvePoint, projectOnCurve, sampleCurve } from '../../railCurve';
 import { axisAt, rampHeightAlong, solveGrade } from './rampAxis';
-import { HALF, deckPoint, deckTopAt, deckUnderAt, highwayDeck, highwayRamp, laneCenter, rightOf } from './shape';
+import { HALF, deckPoint, deckTopAt, deckUnderAt, highwayDeck, highwayRamp, laneCenter, laneRange, rightOf, vStart } from './shape';
+import { alleyMouths } from './alleys';
 import { pending, rampPending } from './build';
 
 const CFG = CITY.districts.highway;
@@ -103,16 +106,19 @@ export function settleHighway(areas: readonly Area[], builds: readonly AreaBuild
         else w.under = h;
       }
     }
-    // The ramps: from the ground at the foot to the deck's top and grade at the gore nose.
+    // The ramps and loops: from the ground at the foot to the deck's top and grade at E (its grade along
+    // the axis's way there, foot to E).
     for (const r of deck.ramps) {
       const ax = r.axis;
       const pr = r.profile;
-      pr.y0 = terrain.heightAt(ax.fx, ax.fz);
-      const sl = terrain.slopeAt(ax.fx, ax.fz);
-      pr.g0 = sl.gx * ax.dx + sl.gz * ax.dz;
+      // The profile's foot: where a slip ramp's run along the street ends (a loop's foot itself).
+      const f0 = axisAt(ax, pr.flat);
+      pr.y0 = terrain.heightAt(f0.x, f0.z);
+      const sl = terrain.slopeAt(f0.x, f0.z);
+      pr.g0 = sl.gx * f0.tx + sl.gz * f0.tz;
       pr.y1 = deckTopAt(deck, r.sa);
-      pr.g1 = ((deckTopAt(deck, r.sa + 1) - deckTopAt(deck, r.sa - 1)) / 2) * r.side;
-      pr.grade = solveGrade(ax.length, pr.y0, pr.g0, pr.y1, pr.g1, pr.e0, pr.e1);
+      pr.g1 = ((deckTopAt(deck, r.sa + 1) - deckTopAt(deck, r.sa - 1)) / 2) * r.along;
+      pr.grade = solveGrade(ax.length - pr.flat, pr.y0, pr.g0, pr.y1, pr.g1, pr.e0, pr.e1);
       pr.ready = true;
       r.terrain = terrain;
       for (const p of rampPending.get(builds[r.area.id]) ?? []) {
@@ -145,7 +151,7 @@ export function settleHighway(areas: readonly Area[], builds: readonly AreaBuild
  * where the deck runs through a block, district walls) stops only cars below it: Wall.under from the
  * deck over it. Called by createCity once the blocks' walls exist.
  */
-export function settleHighwayWalls(areas: readonly Area[], builds: readonly AreaBuild[], walls: readonly Wall[]): void {
+export function settleHighwayWalls(areas: readonly Area[], builds: readonly AreaBuild[], walls: readonly Wall[], terrain: Terrain): void {
   const spans: { d: DeckSpan; minX: number; minZ: number; maxX: number; maxZ: number }[] = [];
   for (const a of areas) {
     if (a.kind !== 'highway') continue;
@@ -192,7 +198,8 @@ export function settleHighwayWalls(areas: readonly Area[], builds: readonly Area
     }
     return h;
   };
-  const own = (w: Wall) => w.area !== undefined && areas[w.area]?.kind === 'highway';
+  // The highway's own structure has its levels already (settleHighway); an alley's back wall is a city wall.
+  const own = (w: Wall) => w.look === 'highway' && w.area !== undefined && areas[w.area]?.kind === 'highway';
   // A solid's faces move together (World.collideCircle handles a solid as one body).
   const solids = new Map<object, Wall[]>();
   for (const w of walls) {
@@ -202,44 +209,71 @@ export function settleHighwayWalls(areas: readonly Area[], builds: readonly Area
     list.push(w);
   }
   const free = (w: Wall) => w.under === undefined && w.bottom === undefined && w.top === undefined && !own(w);
+  /**
+   * Where a wall stops being one (m): out of reach of a car on the deck or ramp above (h), and over a car
+   * on the ground beneath even where a slip ramp's bridge runs low over it, its first meters past the
+   * embankment (the lower of the two wins only where the bridge is that low).
+   */
+  const underFor = (w: Wall, h: number) => {
+    const ground = Math.max(terrain.heightAt(w.ax, w.az), terrain.heightAt(w.bx, w.bz));
+    return Math.min(h - 0.6, Math.max(h - BARRIER_REACH - 1, ground + 2));
+  };
   for (const w of walls) {
     if (w.solid || !free(w)) continue;
     const h = lowest(w);
-    if (Number.isFinite(h)) w.under = h - BARRIER_REACH - 1;
+    if (Number.isFinite(h)) w.under = underFor(w, h);
   }
   for (const faces of solids.values()) {
     if (!faces.every(free)) continue;
     let h = Infinity;
     for (const f of faces) h = Math.min(h, lowest(f));
     if (!Number.isFinite(h)) continue;
-    for (const f of faces) f.under = h - BARRIER_REACH - 1;
+    for (const f of faces) f.under = underFor(f, h);
   }
 }
 
-/** In a race the ramps are shut at their mouths (two sided slabs across them, drawn as cyan barriers); open in free roam. */
-export function highwayGates(areas: readonly Area[]): Wall[] {
+/**
+ * In a race the ramps and loops are shut at their mouths (two sided slabs across them, drawn as cyan
+ * barriers), and every alley where it opens onto a cross street that is not one of the route's
+ * `routeEdges` (a closure there would have a way round it); all open in free roam.
+ */
+export function highwayGates(areas: readonly Area[], routeEdges: ReadonlySet<number>): Wall[] {
   const out: Wall[] = [];
   for (const a of areas) {
-    if (a.kind !== 'highway' || a.variant !== 'ramp') continue;
-    const ax = highwayRamp(a).axis;
-    const q0 = axisAt(ax, 1.4);
-    const q1 = axisAt(ax, 2.0);
-    const v = CFG.rampHalf + 0.4;
-    const slab = [
-      { x: q0.x + q0.tz * v, z: q0.z - q0.tx * v },
-      { x: q1.x + q1.tz * v, z: q1.z - q1.tx * v },
-      { x: q1.x - q1.tz * v, z: q1.z + q1.tx * v },
-      { x: q0.x - q0.tz * v, z: q0.z + q0.tx * v },
-    ];
-    out.push(...solidWalls(slab, 'highway', a.id));
+    if (a.kind !== 'highway') continue;
+    if (a.variant === 'ramp') {
+      const r = highwayRamp(a);
+      const ax = r.axis;
+      // Across a loop's mouth, or a slip ramp's band where it leaves its run along the street.
+      const q0 = axisAt(ax, r.flat + 1.4);
+      const q1 = axisAt(ax, r.flat + 2.0);
+      const v = r.half + 0.4;
+      const slab = [
+        { x: q0.x + q0.tz * v, z: q0.z - q0.tx * v },
+        { x: q1.x + q1.tz * v, z: q1.z - q1.tx * v },
+        { x: q1.x - q1.tz * v, z: q1.z + q1.tx * v },
+        { x: q0.x - q0.tz * v, z: q0.z + q0.tx * v },
+      ];
+      out.push(...solidWalls(slab, 'highway', a.id));
+    } else if (a.variant === 'alley') {
+      for (const m of alleyMouths(a)) {
+        if (m.edge < 0 || routeEdges.has(m.edge)) continue;
+        const len = Math.hypot(m.b.x - m.a.x, m.b.z - m.a.z);
+        if (len < 0.5) continue;
+        // Across the opening along the cross street's building line, a little into the alley.
+        const nx = (-(m.b.z - m.a.z) / len) * 0.3;
+        const nz = ((m.b.x - m.a.x) / len) * 0.3;
+        out.push(...solidWalls([{ x: m.a.x - nx, z: m.a.z - nz }, { x: m.b.x - nx, z: m.b.z - nz }, { x: m.b.x + nx, z: m.b.z + nz }, { x: m.a.x + nx, z: m.a.z + nz }], 'highway', a.id));
+      }
+    }
   }
   return out;
 }
 
 /**
  * A reset on the highway (free roam): onto the slow (outer) lane of the carriageway the car was heading
- * along, at the nearest point of the deck clear of the closures and the ramps' merges, facing along
- * it, at the deck's height. Null when the world has no highway.
+ * along, at the nearest point of the deck clear of its ends' V and the ramps' lanes, facing along it,
+ * at the deck's height. Null when the world has no highway.
  */
 export function highwayResetPose(areas: readonly Area[], x: number, z: number, yaw: number): { x: number; z: number; yaw: number; y: number } | null {
   let best: { x: number; z: number; yaw: number; y: number } | null = null;
@@ -250,14 +284,18 @@ export function highwayResetPose(areas: readonly Area[], x: number, z: number, y
     if (!d.settled) continue;
     const c = d.curve;
     const pr = projectOnCurve(c, x, z);
-    let s = Math.max(d.sW + 30, Math.min(d.sE - 30, pr.s));
+    const s0 = vStart(d, -1) + 20;
+    const s1 = vStart(d, 1) - 20;
+    let s = Math.max(s0, Math.min(s1, pr.s));
     const P = curvePoint();
     sampleCurve(c, s, P);
     const dir = sin(yaw) * P.tx + cos(yaw) * P.tz >= 0 ? 1 : -1;
     for (const r of d.ramps) {
-      const lo = Math.min(r.sa, r.sb) - 12;
-      const hi = Math.max(r.sa, r.sb) + 12;
-      if (s >= lo && s <= hi) s = dir > 0 ? Math.min(d.sE - 30, hi + 6) : Math.max(d.sW + 30, lo - 6);
+      const lane = laneRange(r);
+      if (!lane) continue;
+      const lo = Math.min(lane[0], r.sa) - 12;
+      const hi = Math.max(lane[1], r.sa) + 12;
+      if (s >= lo && s <= hi) s = dir > 0 ? Math.min(s1, hi + 6) : Math.max(s0, lo - 6);
     }
     sampleCurve(c, s, P);
     const lat = laneCenter(CFG.lanes - 1);

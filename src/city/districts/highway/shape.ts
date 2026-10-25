@@ -2,14 +2,16 @@
  * The elevated highway as everything downstream reads it (highway.ts plans
  * it): the deck's smoothed line (deckCurve, railCurve.ts's resampling of the
  * planned path) and the deck once settled on the terrain (HighwayDeck: its
- * underside and top per curve sample, the closures, the El crossing, its
- * ramps), a ramp's axis and profile (HighwayRamp), and the shared measures:
- * where the deck is widened onto a ramp's merge and its barrier opens, the
- * ramp's outline, its lane's outer wall along the merge, the frontage under
- * its top, the curb cut at its mouth, the deck's cross section (lanes and
- * shoulders) and the gaps in its median. The build, the settle step, the
- * renderer, the cameras and the resets all read these, so they agree. One
- * object per area (WeakMaps keyed by the area), pure and deterministic.
+ * underside and top per curve sample, its drivable stretch between the end
+ * loops, the El crossing, its ramps), a ramp's axis and profile (HighwayRamp:
+ * an on- or off-ramp beside the deck, or one of the loops at its ends), and
+ * the shared measures: where the deck is widened onto a ramp's lane and its
+ * barrier opens, the ramp's outline, its lane's outer wall, the frontage
+ * under its top, the curb cut at its mouth, the V where the median ends
+ * between an end's loops, the deck's cross section (lanes and shoulders) and
+ * the gaps in its median. The build, the settle step, the renderer, the
+ * cameras and the resets all read these, so they agree. One object per area
+ * (WeakMaps keyed by the area), pure and deterministic.
  */
 import { CITY } from '../../config';
 import type { RoadGraph } from '../../roadGraph';
@@ -19,7 +21,7 @@ import type { Terrain } from '../../terrain';
 import { Vec2, sqrt } from '../../../sim/math';
 import type { Area } from '../types';
 import { RAIL, RailCurve, buildRailCurve, curvePoint, projectOnCurve, sampleCurve } from '../../railCurve';
-import { RampAxis, RampProfile, axisAt } from './rampAxis';
+import { RampAxis, RampProfile, axisAt, polyAxis } from './rampAxis';
 
 const CFG = CITY.districts.highway;
 
@@ -47,11 +49,13 @@ export const CLOSURE_GAP = 3.5;
 /** Barrier walls stand this far inside the deck's edge (m): a car's wheels never sample past the span. */
 export const BARRIER_IN = 0.45;
 
-/** The closure at each end stands this far past the end row's boundary junction, outward (m). */
-const END_PAST = 12;
+/** A ramp's walls: thin two sided slabs this thick (m), just outside its half width. */
+export const RAMP_WALL = 0.35;
 
-/** A ramp's lane: full width alongside the deck over `merge` m, then a taper back to its edge over `taper` m. */
+/** An on-ramp's lane: full width alongside the deck over `merge` m, then a taper back to its edge over `taper` m; an off-ramp's the same way round. */
 export const MERGE = CFG.rampMerge;
+
+export const DIVERGE = CFG.rampDiverge;
 
 export const TAPER = CFG.rampTaper;
 
@@ -62,8 +66,16 @@ export const TAPER = CFG.rampTaper;
  */
 export const GORE = CFG.rampGore;
 
+/**
+ * An end loop's E, across the deck from its centerline (m): its inner wall (the side its turn bends to)
+ * runs on from the deck's outer barrier, so the outgoing carriageway's outer edge carries straight on
+ * into the loop and the incoming one's straight out of it; the median's barriers fan out over the V to
+ * its outer wall.
+ */
+export const LOOP_AT = HALF - BARRIER_IN - RAMP_WALL / 2 - CFG.loopHalf;
+
 /** The mouth's curb cut flares this much at each end (m). */
-export const MOUTH_TAPER = 6;
+export const MOUTH_TAPER = 9;
 
 /** Streets the deck follows or a ramp leaves from. */
 export const PLAIN = new Set(['street', 'avenue', 'boulevard', 'diagonal']);
@@ -88,6 +100,26 @@ export function deckCurve(area: Area): RailCurve {
   let c = curves.get(area);
   if (!c) curves.set(area, (c = buildRailCurve(area.path, 1, 0, () => 0)));
   return c;
+}
+
+/**
+ * railCurve.ts projectOnCurve over only the samples within `reach` m of s0 along the curve: the planners
+ * ask it of thousands of points that all lie by one stretch of the deck.
+ */
+export function projectNear(c: RailCurve, x: number, z: number, s0: number, reach: number): { s: number; lateral: number } {
+  const i0 = Math.max(0, Math.floor((s0 - reach) / RAIL.step));
+  const i1 = Math.min(c.n - 1, Math.ceil((s0 + reach) / RAIL.step));
+  let best = i0;
+  let bestD = Infinity;
+  for (let i = i0; i <= i1; i++) {
+    const d = (c.x[i] - x) ** 2 + (c.z[i] - z) ** 2;
+    if (d < bestD) {
+      bestD = d;
+      best = i;
+    }
+  }
+  const along = (x - c.x[best]) * c.tx[best] + (z - c.z[best]) * c.tz[best];
+  return { s: Math.max(0, Math.min(c.length, best * RAIL.step + along)), lateral: ((x - c.x[best]) * -c.tz[best] + (z - c.z[best]) * c.tx[best]) * c.pillarRight };
 }
 
 /** Right of travel along a unit direction (sim/math yaw convention, structures.ts Frame). */
@@ -115,12 +147,12 @@ export interface HighwayDeck {
   /** Underside and top (road surface) of the deck per curve sample (m, absolute; 0 until settled). */
   under: Float64Array;
   top: Float64Array;
-  /** The drivable stretch between the end closures (s along the curve, m). */
+  /** The drivable stretch, between the end loops' E at either end (s along the curve, m). */
   sW: number;
   sE: number;
   /** Where the deck crosses the El (s, m; NaN without), and the hump's half reach there (m). */
   sEl: number;
-  /** This deck's ramps. */
+  /** This deck's ramps: the interchanges' on- and off-ramps and the end loops. */
   ramps: HighwayRamp[];
   settled: boolean;
 }
@@ -130,7 +162,23 @@ export interface HighwayRamp {
   area: Area;
   axis: RampAxis;
   profile: RampProfile;
+  /** The side of the deck it stands on (+1: right of the deck's +s direction). */
   side: 1 | -1;
+  /**
+   * Which way along the deck (+1: toward +s) its axis runs at E, foot to E, and its lane on from there:
+   * the way traffic on its side runs for an on-ramp, the other way for an off-ramp (its traffic runs E
+   * to foot), and inward from the deck's end for an end loop.
+   */
+  along: 1 | -1;
+  /** An on-ramp (traffic foot to E: up) or an off-ramp (E to foot: down). */
+  on: boolean;
+  /** One of the loops at the deck's ends: E in the carriageway where the deck ends, no lane beside it. */
+  loop: boolean;
+  /** Half width between its walls (m). */
+  half: number;
+  /** A slip ramp's run along the street at its level, foot first (m; 0 for a loop): its walls start past it. */
+  flat: number;
+  /** E along the deck (the gore nose, or the deck's end for a loop) and the far end of its lane (s, m; sb = sa for a loop). */
   sa: number;
   sb: number;
   /** The row street's building line from the deck's centerline (m), and where the ramp's block ends along the deck (s, m). */
@@ -151,9 +199,27 @@ export function highwayRamp(area: Area): HighwayRamp {
   let r = rampShapes.get(area);
   if (r) return r;
   const p = area.params;
-  const axis: RampAxis = { fx: p.fx, fz: p.fz, dx: p.dx, dz: p.dz, a: p.a, cx: p.cx, cz: p.cz, r: p.r, sweep: p.sweep, phi0: p.phi0, ex: p.ex, ez: p.ez, tx: p.tx, tz: p.tz, length: p.length };
-  const profile: RampProfile = { y0: 0, g0: 0, y1: 0, g1: 0, grade: 0, e0: CFG.rampFootEase, e1: CFG.rampTopEase, blend: 14, ready: false };
-  r = { area, axis, profile, side: p.side > 0 ? 1 : -1, sa: p.sa, sb: p.sb, building: p.building, sBlock: p.sBlock, uSolid: p.uSolid, terrain: null };
+  // A slip ramp's axis is the polyline its area's path holds; a loop's the leg and arc in its params.
+  const axis: RampAxis = p.loop === 1 ? { fx: p.fx, fz: p.fz, dx: p.dx, dz: p.dz, a: p.a, cx: p.cx, cz: p.cz, r: p.r, sweep: p.sweep, phi0: p.phi0, ex: p.ex, ez: p.ez, tx: p.tx, tz: p.tz, length: p.length } : polyAxis(area.path);
+  const ease = p.loop === 1 ? [CFG.loopEase, CFG.loopEase] : [CFG.slipFootEase, CFG.rampTopEase];
+  const profile: RampProfile = { y0: 0, g0: 0, y1: 0, g1: 0, grade: 0, e0: ease[0], e1: ease[1], blend: p.flat + 14, flat: p.flat, ready: false };
+  r = {
+    area,
+    axis,
+    profile,
+    side: p.side > 0 ? 1 : -1,
+    along: p.along > 0 ? 1 : -1,
+    on: p.on === 1,
+    loop: p.loop === 1,
+    half: p.half,
+    flat: p.flat,
+    sa: p.sa,
+    sb: p.sb,
+    building: p.building,
+    sBlock: p.sBlock,
+    uSolid: p.uSolid,
+    terrain: null,
+  };
   rampShapes.set(area, r);
   return r;
 }
@@ -164,20 +230,14 @@ export function highwayDeck(area: Area, areas: readonly Area[]): HighwayDeck {
   if (d) return d;
   const curve = deckCurve(area);
   const n = curve.n;
-  const W = CITY.gridW;
-  // The closures stand END_PAST beyond the end columns' junctions (path[at0], path[at(W-1)]), outward.
-  const p0 = area.path[area.params.at0];
-  const p1 = area.path[area.params[`at${W - 1}`]];
-  const s0 = projectOnCurve(curve, p0.x, p0.z).s - END_PAST;
-  const s1 = projectOnCurve(curve, p1.x, p1.z).s + END_PAST;
   const cross = elCrossings(area.path, areas);
   d = {
     area,
     curve,
     under: new Float64Array(n),
     top: new Float64Array(n),
-    sW: Math.max(RAIL.step, s0),
-    sE: Math.min(curve.length - RAIL.step, s1),
+    sW: area.params.sW,
+    sE: area.params.sE,
     sEl: cross.length ? projectOnCurve(curve, cross[0].x, cross[0].z).s : NaN,
     ramps: areas.filter((a) => a.kind === 'highway' && a.variant === 'ramp' && a.params.deck === area.id).map(highwayRamp),
     settled: false,
@@ -200,28 +260,32 @@ export function deckUnderAt(d: HighwayDeck, s: number): number {
   return d.under[i] + (d.under[i + 1] - d.under[i]) * (f - i);
 }
 
-/** The stretch of the deck widened onto a ramp's lane: from the gore's end to the taper's (s, low to high). */
-export function mergeRange(r: HighwayRamp): [number, number] {
-  const g = r.sa + r.side * GORE;
+/** A side ramp's lane at full width alongside the deck before its taper (m). */
+export const laneLength = (r: { on: boolean }): number => (r.on ? MERGE : DIVERGE);
+
+/** The stretch of the deck widened onto a side ramp's lane: from the gore's end to the taper's (s, low to high); null for a loop. */
+export function laneRange(r: HighwayRamp): [number, number] | null {
+  if (r.loop) return null;
+  const g = r.sa + r.along * GORE;
   return [Math.min(g, r.sb), Math.max(g, r.sb)];
 }
 
-/** Lateral extent of the deck's surface on side `side` (+1 right of +s) at s: its half width, widened over a ramp's merge. */
+/** Lateral extent of the deck's surface on side `side` (+1 right of +s) at s: its half width, widened over a ramp's lane. */
 export function deckExtent(d: HighwayDeck, s: number, side: 1 | -1): number {
   for (const r of d.ramps) {
     if (r.side !== side) continue;
-    const [lo, hi] = mergeRange(r);
-    if (s >= lo && s <= hi) return HALF + 2 * CFG.rampHalf + 1;
+    const lane = laneRange(r);
+    if (lane && s >= lane[0] && s <= lane[1]) return HALF + 2 * r.half + 1;
   }
   return HALF;
 }
 
-/** Whether the deck's barrier on `side` opens over [s0, s1]: the whole chunk lies in a ramp's merge. */
+/** Whether the deck's barrier on `side` opens over [s0, s1]: the whole chunk lies in a ramp's lane. */
 export function barrierOpen(d: HighwayDeck, s0: number, s1: number, side: 1 | -1): boolean {
   for (const r of d.ramps) {
     if (r.side !== side) continue;
-    const [lo, hi] = mergeRange(r);
-    if (s0 >= lo && s1 <= hi) return true;
+    const lane = laneRange(r);
+    if (lane && s0 >= lane[0] && s1 <= lane[1]) return true;
   }
   return false;
 }
@@ -232,38 +296,65 @@ export function deckPoint(curve: RailCurve, s: number, v: number, P = curvePoint
   return { x: P.x - P.tz * v, z: P.z + P.tx * v };
 }
 
-/** The ramp outline grown by `grow` (m) past its walls: the axis's two edges, the merge along the deck and its taper. */
-export function rampOutline(ax: RampAxis, curve: RailCurve, side: number, sa: number, sb: number, grow: number): Vec2[] {
+/**
+ * The ramp outline grown by `grow` (m) past its walls: the axis's two edges, and for a side ramp its lane
+ * along the deck and the taper (`along`: the way the lane runs on from E; sa, sb: E and the lane's end).
+ */
+export function rampOutline(ax: RampAxis, curve: RailCurve, side: number, along: number, sa: number, sb: number, grow: number, half: number, loop: boolean): Vec2[] {
   const P = curvePoint();
-  const inner: Vec2[] = [];
-  const outer: Vec2[] = [];
-  const hw = CFG.rampHalf + grow;
-  // The inner side (toward the deck): the left of travel when the deck lies to the left at E.
-  sampleCurve(curve, sa, P);
-  const innerSign = (P.x - ax.ex) * -ax.tz + (P.z - ax.ez) * ax.tx > 0 ? 1 : -1;
+  const left: Vec2[] = [];
+  const right: Vec2[] = [];
+  const hw = half + grow;
   const nU = Math.max(2, Math.ceil(ax.length / 4));
   for (let k = 0; k <= nU; k++) {
     const q = axisAt(ax, (ax.length * k) / nU);
-    inner.push({ x: q.x - q.tz * hw * innerSign, z: q.z + q.tx * hw * innerSign });
-    outer.push({ x: q.x + q.tz * hw * innerSign, z: q.z - q.tx * hw * innerSign });
+    left.push({ x: q.x - q.tz * hw, z: q.z + q.tx * hw });
+    right.push({ x: q.x + q.tz * hw, z: q.z - q.tx * hw });
   }
-  // Along the merge: the deck's edge to the taper's end, back along the lane's outer edge.
+  if (loop) return [...left, ...right.reverse()];
+  // The inner side (toward the deck): the left of travel when the deck lies to the left at E.
+  sampleCurve(curve, sa, P);
+  const innerSign = (P.x - ax.ex) * -ax.tz + (P.z - ax.ez) * ax.tx > 0 ? 1 : -1;
+  const inner = innerSign > 0 ? left : right;
+  const outer = innerSign > 0 ? right : left;
+  // Along the lane: the deck's edge to the taper's end, back along the lane's outer edge.
   const off = (s: number, v: number): Vec2 => deckPoint(curve, s, v * side, P);
-  const mergeEdge: Vec2[] = [];
-  const mergeOuter: Vec2[] = [];
+  const laneEdge: Vec2[] = [];
+  const laneOuter: Vec2[] = [];
   const n = Math.max(2, Math.ceil(Math.abs(sb - sa) / 6));
-  const taperFrom = sb - side * TAPER;
-  const full = 2 * CFG.rampHalf + grow;
+  const taperFrom = sb - along * TAPER;
+  const full = 2 * half + grow;
   for (let k = 0; k <= n; k++) {
     const s = sa + ((sb - sa) * k) / n;
-    mergeEdge.push(off(s, HALF - grow));
-    const t = side > 0 ? (s - taperFrom) / TAPER : (taperFrom - s) / TAPER;
-    mergeOuter.push(off(s, HALF + (t <= 0 ? full : full * (1 - Math.min(1, t))) + grow * Math.min(1, Math.max(0, t))));
+    laneEdge.push(off(s, HALF - grow));
+    const t = (along * (s - taperFrom)) / TAPER;
+    laneOuter.push(off(s, HALF + (t <= 0 ? full : full * (1 - Math.min(1, t))) + grow * Math.min(1, Math.max(0, t))));
   }
-  return [...inner, ...mergeEdge.slice(1), ...mergeOuter.reverse().slice(0, -1), ...outer.reverse()];
+  return [...inner, ...laneEdge.slice(1), ...laneOuter.reverse().slice(0, -1), ...outer.reverse()];
 }
 
-/** Which sign of v (left of travel) the deck lies on at a ramp's top. */
+/**
+ * An end loop's whole footprint grown by `grow` (m): its band, and the infield it wraps closed off by the
+ * chord from E back to where the arc starts, so nothing is planned or built inside the loop either.
+ */
+export function loopFootprint(ax: RampAxis, half: number, grow: number): Vec2[] {
+  const w = half + grow;
+  // projectAxis's v: the arc's center lies on the side of the sweep's sign.
+  const cs = ax.sweep > 0 ? 1 : -1;
+  const at = (u: number, v: number): Vec2 => {
+    const q = axisAt(ax, u);
+    return { x: q.x - q.tz * v, z: q.z + q.tx * v };
+  };
+  const out: Vec2[] = [];
+  const nU = Math.max(2, Math.ceil(ax.length / 4));
+  for (let k = 0; k <= nU; k++) out.push(at((ax.length * k) / nU, -cs * w));
+  out.push(at(ax.length, cs * w));
+  const nLeg = Math.max(1, Math.ceil(ax.a / 4));
+  for (let k = nLeg; k >= 0; k--) out.push(at((ax.a * k) / nLeg, cs * w));
+  return out;
+}
+
+/** Which sign of v (left of travel, foot to E) the deck's centerline lies on at a ramp's top. */
 export function rampInnerSign(ramp: HighwayRamp, curve: RailCurve): 1 | -1 {
   const ax = ramp.axis;
   const P = curvePoint();
@@ -271,22 +362,23 @@ export function rampInnerSign(ramp: HighwayRamp, curve: RailCurve): 1 | -1 {
   return (P.x - ax.ex) * -ax.tz + (P.z - ax.ez) * ax.tx > 0 ? 1 : -1;
 }
 
-/** The lane's outer wall from the deck's centerline at s (m): full width over the merge, the taper back, then the deck's edge. */
+/** The lane's outer wall from the deck's centerline at s (m): full width alongside, the taper back, then the deck's edge. */
 export function rampOuterAt(ramp: HighwayRamp, s: number): number {
-  const taperFrom = ramp.sb - ramp.side * TAPER;
-  const t = ramp.side > 0 ? (s - taperFrom) / TAPER : (taperFrom - s) / TAPER;
-  const w = 2 * CFG.rampHalf + 0.175;
+  const taperFrom = ramp.sb - ramp.along * TAPER;
+  const t = (ramp.along * (s - taperFrom)) / TAPER;
+  const w = 2 * ramp.half + RAMP_WALL / 2;
   return HALF + (t <= 0 ? w : t >= 1 ? -BARRIER_IN : w - (w + BARRIER_IN) * t);
 }
 
 /**
- * The stretch of the row street's frontage under the ramp's bridge stretch in its own block, to the
+ * The stretch of the row street's frontage under a side ramp's bridge stretch in its own block, to the
  * block's corner (s along the deck, low to high), or null when the ramp's inner edge keeps off the
- * building line there (it reaches the deck's edge past the cross street).
+ * building line there (it reaches the deck's edge past the cross street) or for a loop.
  */
 export function rampFront(ramp: HighwayRamp, curve: RailCurve): [number, number] | null {
+  if (ramp.loop || ramp.flat > 0) return null;
   const sx = frontStart(ramp, curve, rampInnerSign(ramp, curve));
-  if (Number.isNaN(sx) || (sx - ramp.sBlock) * ramp.side > -2) return null;
+  if (Number.isNaN(sx) || (sx - ramp.sBlock) * ramp.along > -2) return null;
   return [Math.min(sx, ramp.sBlock), Math.max(sx, ramp.sBlock)];
 }
 
@@ -295,7 +387,7 @@ function frontStart(ramp: HighwayRamp, curve: RailCurve, innerSign: number): num
   const ax = ramp.axis;
   for (let u = Math.max(0, ramp.uSolid - 10); u <= ax.length; u += 1) {
     const q = axisAt(ax, u);
-    const v = innerSign * (CFG.rampHalf + 0.5);
+    const v = innerSign * (ramp.half + 0.5);
     const p = { x: q.x - q.tz * v, z: q.z + q.tx * v };
     const pr = projectOnCurve(curve, p.x, p.z);
     if (Math.abs(pr.lateral) <= ramp.building + 1.5) return pr.s;
@@ -303,12 +395,34 @@ function frontStart(ramp: HighwayRamp, curve: RailCurve, innerSign: number): num
   return NaN;
 }
 
+/**
+ * Where the median ends at either end of the deck (s, m): the V between the end's loops starts
+ * CFG.loopGore before the deck's end, its barriers fanning out to the loops' outer walls.
+ */
+export const vStart = (d: HighwayDeck, end: -1 | 1): number => (end < 0 ? d.sW + CFG.loopGore : d.sE - CFG.loopGore);
+
+/**
+ * The V's barrier on each side at s (m from the centerline, 0 where there is none): from the median's
+ * edge where the V starts to the loop's outer wall at the deck's end, eased so it leaves the median's
+ * line tangent to it.
+ */
+export function vGoreAt(d: HighwayDeck, s: number): number {
+  const to = LOOP_AT - CFG.loopHalf - RAMP_WALL / 2;
+  for (const end of [-1, 1] as const) {
+    const t = (end * (s - vStart(d, end))) / CFG.loopGore;
+    if (t < -1e-9 || t > 1 + 1e-9) continue;
+    const k = Math.min(1, Math.max(0, t));
+    return CFG.median / 2 + (to - CFG.median / 2) * k * k;
+  }
+  return 0;
+}
+
 const gaps = new WeakMap<HighwayDeck, [number, number][]>();
 
 /**
  * The median's crossovers (s ranges along the deck, low to high): a gap about every
- * CFG.crossoverEvery m between the closures, nudged along (or left out) to keep crossoverClear from
- * every ramp's top and merge and from the closures, so a car can swing round to the other carriageway.
+ * CFG.crossoverEvery m between the end loops' V, nudged along (or left out) to keep crossoverClear from
+ * every side ramp's top and lane, so a car can swing round to the other carriageway at speed.
  */
 export function medianGaps(d: HighwayDeck): [number, number][] {
   let out = gaps.get(d);
@@ -316,17 +430,20 @@ export function medianGaps(d: HighwayDeck): [number, number][] {
   out = [];
   const half = CFG.crossoverLength / 2;
   const clear = CFG.crossoverClear;
+  const lo = vStart(d, -1) + clear;
+  const hi = vStart(d, 1) - clear;
   const blocked = (s: number) =>
-    s - half < d.sW + 2 * clear ||
-    s + half > d.sE - 2 * clear ||
+    s - half < lo ||
+    s + half > hi ||
     d.ramps.some((r) => {
-      const lo = Math.min(r.sa, r.sb) - clear;
-      const hi = Math.max(r.sa, r.sb) + clear;
-      return s + half > lo && s - half < hi;
+      if (r.loop) return false;
+      const a = Math.min(r.sa, r.sb) - clear;
+      const b = Math.max(r.sa, r.sb) + clear;
+      return s + half > a && s - half < b;
     });
-  for (let s = d.sW + CFG.crossoverEvery / 2; s < d.sE; s += CFG.crossoverEvery) {
+  for (let s = lo + CFG.crossoverEvery / 2; s < hi; s += CFG.crossoverEvery) {
     let at = NaN;
-    for (const k of [0, 1, -1, 2, -2, 3, -3]) {
+    for (const k of [0, 1, -1, 2, -2, 3, -3, 4, -4]) {
       const t = s + k * 25;
       if (blocked(t) || out.some(([a, b]) => t - half < b + CFG.crossoverEvery / 2 && t + half > a - CFG.crossoverEvery / 2)) continue;
       at = t;
@@ -344,11 +461,31 @@ export function inMedianGap(d: HighwayDeck, s: number, pad = 0): boolean {
   return false;
 }
 
+/**
+ * The curb cut beside a slip ramp's run along the street (from a to b on the street's building line,
+ * the nose's tip to the run's end) on the street's piece `edge`: the block side it opens on and the cut
+ * along its curb with `taper` m flares (busBays.ts mouthBay), or null when it would leave the piece.
+ */
+export function slipCut(g: RoadGraph, mouths: EdgeMouths[], edge: number, a: Vec2, b: Vec2, taper: number): { side: 1 | -1; s0: number; s1: number } | null {
+  const sides = edgeSides(g, mouths, edge);
+  const mx = (a.x + b.x) / 2;
+  const mz = (a.z + b.z) / 2;
+  const side: 1 | -1 = sides[0].inward.x * (mx - sides[0].from.x) + sides[0].inward.z * (mz - sides[0].from.z) > 0 ? 1 : -1;
+  const sd = sides[side === 1 ? 0 : 1];
+  const ux = sd.to.x - sd.from.x;
+  const uz = sd.to.z - sd.from.z;
+  const ul = sqrt(ux * ux + uz * uz) || 1;
+  const at = (p: Vec2) => ((p.x - sd.from.x) * ux + (p.z - sd.from.z) * uz) / ul;
+  const s0 = Math.min(at(a), at(b)) - taper;
+  const s1 = Math.max(at(a), at(b)) + taper;
+  return s0 < 1 || s1 > ul - 1 ? null : { side, s0, s1 };
+}
+
 /** The curb cut of a ramp's mouth on its foot street's piece: the block side it opens on and the cut along its curb (busBays.ts mouthBay), or null if it would leave the piece. */
-export function mouthCut(g: RoadGraph, mouths: EdgeMouths[], edge: number, ax: RampAxis): { side: 1 | -1; s0: number; s1: number } | null {
+export function mouthCut(g: RoadGraph, mouths: EdgeMouths[], edge: number, ax: RampAxis, half: number): { side: 1 | -1; s0: number; s1: number } | null {
   const fe = g.edges[edge];
   const sinA = Math.abs(ax.dx * (g.nodes[fe.b].z - g.nodes[fe.a].z) - ax.dz * (g.nodes[fe.b].x - g.nodes[fe.a].x)) / (fe.length || 1);
-  const halfMouth = (CFG.rampHalf + 1) / Math.max(0.3, sinA);
+  const halfMouth = (half + 1) / Math.max(0.3, sinA);
   const sides = edgeSides(g, mouths, edge);
   const side: 1 | -1 = sides[0].inward.x * ax.dx + sides[0].inward.z * ax.dz > 0 ? 1 : -1;
   const sd = sides[side === 1 ? 0 : 1];
@@ -361,4 +498,4 @@ export function mouthCut(g: RoadGraph, mouths: EdgeMouths[], edge: number, ax: R
   return s0 < 1 || s1 > ul - 1 ? null : { side, s0, s1 };
 }
 
-export { HALF as HIGHWAY_HALF, TAPER as RAMP_TAPER, GORE as RAMP_GORE };
+export { HALF as HIGHWAY_HALF };

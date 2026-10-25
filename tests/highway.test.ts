@@ -5,16 +5,18 @@ import type { City, World } from '../src/city/world';
 import { Rng } from '../src/sim/prng';
 import { riverCenter } from '../src/city/districts/river';
 import { polygonBounds, pointInPolygon } from '../src/city/districts/geom';
-import { HIGHWAY_HALF, deckTopAt, deckUnderAt, highwayDeck } from '../src/city/districts/highway/shape';
-import type { HighwayDeck } from '../src/city/districts/highway/shape';
+import { HIGHWAY_HALF, LOOP_AT, deckPoint, deckTopAt, deckUnderAt, highwayDeck, laneCenter } from '../src/city/districts/highway/shape';
+import type { HighwayDeck, HighwayRamp } from '../src/city/districts/highway/shape';
 import { highwayRolled } from '../src/city/districts/highway/line';
 import { highwayGates } from '../src/city/districts/highway/settle';
+import { alleyMouths } from '../src/city/districts/highway/alleys';
 import { axisAt, rampHeightAlong } from '../src/city/districts/highway/rampAxis';
 import { curvePoint, projectOnCurve, sampleCurve } from '../src/city/railCurve';
 import { elCurve } from '../src/city/districts/subway';
 import { createRace, resetToStreet, stepRace } from '../src/sim/race';
 import { GRAVITY } from '../src/sim/tuning';
 import { clamp, sin, cos } from '../src/sim/math';
+import type { Vec2 } from '../src/sim/math';
 import type { Area } from '../src/city/districts/types';
 import { input, raceConfig } from './helpers';
 
@@ -59,14 +61,15 @@ describe('elevated highway (plan)', () => {
     }
   });
 
-  it('crosses the whole map along its rows, swinging once or twice, clear of the river, the same way every time', () => {
+  it('crosses the map along its rows, swinging once or twice, clear of the river, a loop pair at each end and its interchanges an off-ramp beside an on-ramp, the same way every time', () => {
+    let withInterchange = 0;
     for (const seed of highwaySeeds(5, 10)) {
       const plan = planRoads(seed);
       const areas = plan.districts.areas.filter((a) => a.kind === 'highway');
       const deck = deckOf(areas)!;
       const g = plan.graph;
       const p = deck.path;
-      // West to east, from past one map edge to past the other.
+      // West to east, its line planned from past one map edge to past the other.
       const xs = [p[0].x, p[p.length - 1].x].sort((a, b) => a - b);
       expect(xs[0]).toBeLessThan(g.bounds.minX);
       expect(xs[1]).toBeGreaterThan(g.bounds.maxX);
@@ -80,17 +83,40 @@ describe('elevated highway (plan)', () => {
           expect(Math.abs(q.z - riverCenter(r.params, q.x))).toBeGreaterThan(r.params.top + HIGHWAY_HALF);
         }
       }
-      // Two to four ramps, each its own area on the deck's side.
+      // A loop pair at each end of the drivable deck: one down off the outgoing carriageway, one up onto
+      // the incoming one, on opposite sides of the street beneath.
       const ramps = areas.filter((a) => a.variant === 'ramp');
-      expect(ramps.length).toBeGreaterThanOrEqual(CFG.ramps[0]);
-      expect(ramps.length).toBeLessThanOrEqual(CFG.ramps[1]);
       for (const r of ramps) {
         expect(r.params.deck).toBe(deck.id);
         expect(r.params.grade).toBeLessThanOrEqual(CFG.rampGrade[1]);
       }
+      const loops = ramps.filter((r) => r.params.loop === 1);
+      expect(loops.length).toBe(4);
+      for (const end of [deck.params.sW, deck.params.sE]) {
+        const at = loops.filter((l) => l.params.sa === end);
+        expect(at.length).toBe(2);
+        expect(at.map((l) => l.params.on).sort()).toEqual([0, 1]);
+        expect(at[0].params.side).toBe(-at[1].params.side);
+      }
+      expect(deck.params.sE - deck.params.sW).toBeGreaterThan(700);
+      // Interchanges: on one side, an off-ramp coming down to the street just before a junction and an
+      // on-ramp going up from it just past (or past the next one), their runs along the street close.
+      const slips = ramps.filter((r) => r.params.loop !== 1);
+      expect(slips.length).toBe(2 * deck.params.interchanges);
+      expect(deck.params.interchanges).toBeLessThanOrEqual(CFG.interchanges[1]);
+      if (deck.params.interchanges > 0) withInterchange++;
+      for (const off of slips.filter((r) => r.params.on === 0)) {
+        const near = slips.filter((r) => r.params.on === 1 && r.params.side === off.params.side).map((r) => Math.hypot(r.params.fx - off.params.fx, r.params.fz - off.params.fz));
+        expect(Math.min(...near)).toBeLessThan(300);
+        // Down the way that side's traffic runs: its axis (foot to E) runs against it.
+        expect(off.params.along).toBe(-off.params.side);
+      }
+      for (const on of slips.filter((r) => r.params.on === 1)) expect(on.params.along).toBe(on.params.side);
       const again = planRoads(seed).districts.areas.filter((a) => a.kind === 'highway');
       expect(JSON.stringify(again)).toBe(JSON.stringify(areas));
     }
+    // Nearly every city has room for an interchange (a city without one still has its loops at both ends).
+    expect(withInterchange).toBeGreaterThanOrEqual(8);
   });
 });
 
@@ -127,24 +153,23 @@ describe('elevated highway (levels)', () => {
     }
   });
 
-  it('ramps climb from their mouth to the deck at a comfortable grade, flush at both ends, no launch at the crest', () => {
+  it('ramps and loops climb from their mouth to the deck at a comfortable grade, flush at both ends, no launch at the crest', () => {
     for (const { world: w, deck: d } of worlds) {
-      expect(d.ramps.length).toBeGreaterThanOrEqual(CFG.ramps[0]);
-      expect(d.ramps.length).toBeLessThanOrEqual(CFG.ramps[1]);
+      expect(d.ramps.filter((r) => r.loop).length).toBe(4);
       for (const r of d.ramps) {
         const ax = r.axis;
         const pr = r.profile;
         expect(pr.ready).toBe(true);
         expect(pr.grade).toBeLessThanOrEqual(CFG.rampGrade[1]);
         expect(pr.grade).toBeGreaterThan(0.03);
-        // Vertical curves: a car leaves the ground over a crest of curvature k at sqrt(g / k). The fastest a
-        // car takes the ramp's turn (radius r at 1.6 g) plus a margin stays under that at the top; at the
-        // foot the sag adds under 1 g at that speed (no bottoming out).
+        // Vertical curves: a car leaves the ground over a crest of curvature k at sqrt(g / k). A loop's turn
+        // holds a car to what radius r takes at 1.6 g (plus a margin); a slip ramp runs straight, taken at
+        // 40 m/s. Up to that the top's crest keeps it down, and the foot's sag adds under 1 g.
         const crest = Math.abs(pr.grade - pr.g1) / pr.e1;
         const sag = Math.abs(pr.grade - pr.g0) / pr.e0;
-        const vTurn = Math.sqrt(1.6 * GRAVITY * ax.r) + 8;
-        expect(Math.sqrt(GRAVITY / crest)).toBeGreaterThan(vTurn);
-        expect((vTurn * vTurn * sag) / GRAVITY).toBeLessThan(1);
+        const v = r.loop ? Math.sqrt(1.6 * GRAVITY * ax.r) + 8 : 40;
+        expect(Math.sqrt(GRAVITY / crest)).toBeGreaterThan(v);
+        expect((v * v * sag) / GRAVITY).toBeLessThan(1);
         // The world's surface along the axis is the profile, continuous, flush with the street at the mouth
         // and with the deck at the top.
         let prev = NaN;
@@ -159,6 +184,43 @@ describe('elevated highway (levels)', () => {
         const foot = axisAt(ax, 0.2);
         expect(Math.abs(w.heightAt(foot.x, foot.z, 0) - w.heightAt(foot.x, foot.z))).toBeLessThan(0.05);
         expect(Math.abs(rampHeightAlong(ax, pr, ax.length).y - deckTopAt(d, r.sa))).toBeLessThan(0.01);
+        // A slip ramp runs along the street at its level before it climbs.
+        if (!r.loop) expect(rampHeightAlong(ax, pr, r.flat).y - w.heightAt(axisAt(ax, r.flat).x, axisAt(ax, r.flat).z)).toBeLessThan(0.1);
+        // Across its mouth, edge to edge, a car stays at the street's level.
+        for (let u = 0; u <= 4; u += 1) {
+          const q = axisAt(ax, u);
+          for (let v = -r.half; v <= r.half + 1e-9; v += r.half / 3) {
+            const x = q.x - q.tz * v;
+            const z = q.z + q.tx * v;
+            const ground = w.heightAt(x, z);
+            expect(Math.abs(w.heightAt(x, z, ground + 0.5) - ground), `mouth u ${u} v ${v.toFixed(1)}`).toBeLessThan(0.6);
+          }
+        }
+      }
+    }
+  });
+
+  it('ends in its loops with no wall across the deck: the carriageways run straight on into them', () => {
+    for (const { world: w, deck: d } of worlds) {
+      for (const [sEnd, out] of [
+        [d.sW, -1],
+        [d.sE, 1],
+      ] as const) {
+        // The outgoing carriageway is the one whose traffic runs toward this end: on the right of it.
+        const side = out;
+        for (let back = 60; back >= 2; back -= 2) {
+          const s = sEnd - out * back;
+          const top = deckTopAt(d, s);
+          for (const k of [1, 2]) {
+            const p = deckPoint(d.curve, s, side * laneCenter(k));
+            expect(w.wallClearance(p.x, p.z, 1.5, top + 0.4), `end ${out} back ${back} lane ${k}`).toBeGreaterThanOrEqual(1.5 - 1e-9);
+          }
+        }
+        // E of both loops lies in its carriageway at the deck's end, LOOP_AT out from the centerline.
+        for (const r of d.ramps.filter((x) => x.loop && x.sa === sEnd)) {
+          const e = deckPoint(d.curve, sEnd, r.side * LOOP_AT);
+          expect(Math.hypot(r.axis.ex - e.x, r.axis.ez - e.z)).toBeLessThan(0.05);
+        }
       }
     }
   });
@@ -175,9 +237,12 @@ describe('elevated highway (levels)', () => {
         const mx = (wall.ax + wall.bx) / 2;
         const mz = (wall.az + wall.bz) / 2;
         const ground = w.heightAt(mx, mz);
-        if (wall.bottom !== undefined) expect(wall.bottom).toBeGreaterThan(ground + 6);
+        // The deck's barriers stand well up; a ramp's walls from where its bridge is 4 m up (settle.ts),
+        // over a car on the ground beneath.
+        if (wall.bottom !== undefined) expect(wall.bottom).toBeGreaterThan(ground + (wall.area === d.area.id ? 6 : 1.3));
+        // Columns stop cars below the deck, or a ramp's low bridge, all the way up past a car's roof.
         if (wall.under !== undefined) {
-          expect(wall.under).toBeGreaterThan(ground + 6);
+          expect(wall.under).toBeGreaterThan(ground + (wall.area === d.area.id ? 6 : 1.8));
           expect(wall.under).toBeLessThan(ground + 30);
         }
       }
@@ -211,7 +276,7 @@ describe('elevated highway (levels)', () => {
         expect(w.collideCircle(cx, cz, 0.6, contacts, ground + 0.4)).toBe(0);
         checked++;
       }
-      expect(checked).toBeGreaterThan(50);
+      expect(checked).toBeGreaterThan(30);
     }
   });
 
@@ -273,53 +338,146 @@ describe('elevated highway (over the El)', () => {
   });
 });
 
-describe('elevated highway (driving)', () => {
-  it('a car drives up a ramp onto the deck on the ground all the way, the same way twice', () => {
-    const { world: w, deck: d } = worlds[0];
-    const r = d.ramps[0];
-    const ax = r.axis;
-    const run = () => {
-      const start = axisAt(ax, -12);
-      const cfg = { ...raceConfig(w.seed, 'circuit', 0), openWorld: true, start: { x: start.x, z: start.z, yaw: Math.atan2(ax.dx, ax.dz), speed: 14, tick: 0 } };
-      const race = createRace(cfg, w);
-      const c = race.cars[0].state;
-      let airborne = 0;
-      let bottom = 0;
-      let up = false;
-      for (let t = 0; t < 60 * 20 && !up; t++) {
-        // Pure pursuit along the axis, 14 m ahead, at a steady 20 m/s.
-        let best = 0;
-        let bd = Infinity;
-        for (let u = -15; u <= ax.length + 40; u += 1) {
-          const q = axisAt(ax, u);
-          const dd = (q.x - c.x) ** 2 + (q.z - c.z) ** 2;
-          if (dd < bd) {
-            bd = dd;
-            best = u;
-          }
-        }
-        const tgt = axisAt(ax, best + 14);
-        const fx = sin(c.yaw);
-        const fz = cos(c.yaw);
-        const dx = tgt.x - c.x;
-        const dz = tgt.z - c.z;
-        const v = dx * fz - dz * fx;
-        const steer = clamp((-2.5 * v) / Math.max(4, dx * fx + dz * fz), -1, 1);
-        stepRace(race, input({ throttle: c.speed < 20 ? 1 : 0, brake: c.speed > 23 ? 0.5 : 0, steer }));
-        if (best > 2 && best < ax.length + 10 && c.wheels.every((wh) => !wh.contact)) airborne++;
-        bottom = Math.max(bottom, c.bottomOut);
-        up = best > ax.length + 25 && w.upperLevel(c.x, c.z, c.y);
+/**
+ * Drive a car along a polyline by pure pursuit at about `speed` m/s, from its first point: whether it ever
+ * flew (no wheel on the ground), how hard it bottomed out, how far along it got (index of the nearest
+ * point) and the car as it ended, its snapshot to compare runs by.
+ */
+function drivePath(w: World, path: readonly Vec2[], speed: number, seconds: number, y?: number) {
+  const a = path[0];
+  const b = path[1];
+  // Up on the deck when the path starts there (`y`: its top), else in the street.
+  const cfg = { ...raceConfig(w.seed, 'circuit', 0), openWorld: true, start: { x: a.x, z: a.z, yaw: Math.atan2(b.x - a.x, b.z - a.z), speed: speed * 0.7, tick: 0, ...(y === undefined ? {} : { y: y + 0.3 }) } };
+  const race = createRace(cfg, w);
+  const c = race.cars[0].state;
+  let airborne = 0;
+  let bottom = 0;
+  let k = 0;
+  for (let t = 0; t < 60 * seconds && k < path.length - 4; t++) {
+    // The nearest point a little ahead of the last, then a point about 12 m on.
+    let bd = Infinity;
+    const k0 = k;
+    for (let i = k0; i < Math.min(path.length, k0 + 12); i++) {
+      const dd = (path[i].x - c.x) ** 2 + (path[i].z - c.z) ** 2;
+      if (dd < bd) {
+        bd = dd;
+        k = i;
       }
-      return { up, airborne, bottom, snap: JSON.stringify(c) };
-    };
+    }
+    let j = k;
+    let ahead = 0;
+    while (j + 1 < path.length && ahead < 12) {
+      ahead += Math.hypot(path[j + 1].x - path[j].x, path[j + 1].z - path[j].z);
+      j++;
+    }
+    const tgt = path[j];
+    const fx = sin(c.yaw);
+    const fz = cos(c.yaw);
+    const dx = tgt.x - c.x;
+    const dz = tgt.z - c.z;
+    const v = dx * fz - dz * fx;
+    const steer = clamp((-2.5 * v) / Math.max(4, dx * fx + dz * fz), -1, 1);
+    stepRace(race, input({ throttle: c.speed < speed ? 1 : 0, brake: c.speed > speed + 3 ? 0.6 : 0, steer }));
+    if (c.wheels.every((wh) => !wh.contact)) airborne++;
+    bottom = Math.max(bottom, c.bottomOut);
+  }
+  return { airborne, bottom, k, car: c, snap: JSON.stringify(c) };
+}
+
+/** A path along the deck at lateral v from s0 to s1, every 3 m. */
+function alongDeck(d: HighwayDeck, s0: number, s1: number, v: number): Vec2[] {
+  const out: Vec2[] = [];
+  const n = Math.max(1, Math.ceil(Math.abs(s1 - s0) / 3));
+  for (let k = 0; k <= n; k++) out.push(deckPoint(d.curve, s0 + ((s1 - s0) * k) / n, v));
+  return out;
+}
+
+/** A path along a ramp's axis from u0 to u1 (either way), every 3 m. */
+function alongRamp(r: HighwayRamp, u0: number, u1: number): Vec2[] {
+  const out: Vec2[] = [];
+  const n = Math.max(1, Math.ceil(Math.abs(u1 - u0) / 3));
+  for (let k = 0; k <= n; k++) {
+    const q = axisAt(r.axis, u0 + ((u1 - u0) * k) / n);
+    out.push({ x: q.x, z: q.z });
+  }
+  return out;
+}
+
+/** The first world with a ramp that passes the test. */
+function withRamp(test: (r: HighwayRamp) => boolean): { world: World; deck: HighwayDeck; ramp: HighwayRamp } {
+  for (const { world, deck } of worlds) {
+    const ramp = deck.ramps.find(test);
+    if (ramp) return { world, deck, ramp };
+  }
+  throw new Error('no such ramp');
+}
+
+describe('elevated highway (driving)', () => {
+  // The street beneath the deck: its outer lane each way, out from the centerline (m).
+  const streetLane = HIGHWAY_HALF - CITY.sidewalk - 3;
+
+  it('a car slips off the street onto an on-ramp and up onto the deck, on the ground all the way, the same way twice', () => {
+    const { world: w, deck: d, ramp: r } = withRamp((x) => !x.loop && x.on);
+    const sf = projectOnCurve(d.curve, r.axis.fx, r.axis.fz).s;
+    const S = r.side;
+    const A = r.along;
+    // Along the street's outer lane toward the ramp's run, across the cut sidewalk onto it, up it, along its lane onto the deck.
+    const path = [...alongDeck(d, sf - A * 50, sf - A * 4, S * streetLane), ...alongRamp(r, r.flat * 0.6, r.axis.length), ...alongDeck(d, r.sa + A * 6, r.sa + A * 36, S * (HIGHWAY_HALF + r.half - 2)), ...alongDeck(d, r.sa + A * 70, r.sa + A * 160, S * laneCenter(2))];
+    const run = () => drivePath(w, path, 18, 30);
     const a = run();
-    expect(a.up).toBe(true);
+    expect(a.k).toBeGreaterThan(path.length - 8);
     expect(a.airborne).toBe(0);
     expect(a.bottom).toBeLessThan(0.02);
+    expect(w.upperLevel(a.car.x, a.car.z, a.car.y)).toBe(true);
     expect(run().snap).toBe(a.snap);
   });
 
-  it('a reset up on the deck puts the car back on the deck; a race shuts the ramps, free roam opens them', () => {
+  it('a car takes an off-ramp down off the deck and slips into the street beneath going the same way', () => {
+    const { world: w, deck: d, ramp: r } = withRamp((x) => !x.loop && !x.on);
+    const sf = projectOnCurve(d.curve, r.axis.fx, r.axis.fz).s;
+    const S = r.side;
+    const A = r.along;
+    // Traffic runs E to foot, against the axis: along the deck's outer lane into the lane, down the ramp, out onto the street.
+    // Into the lane once it is at full width (past its taper), along it to E, down the ramp, out onto the street.
+    const path = [...alongDeck(d, r.sb + A * 90, r.sb + A * 10, S * laneCenter(2)), ...alongDeck(d, r.sb - A * CFG.rampTaper, r.sa + A * 4, S * (HIGHWAY_HALF + r.half - 1.5)), ...alongRamp(r, r.axis.length, r.flat * 0.5), ...alongDeck(d, sf + A * 2, sf - A * 60, S * streetLane)];
+    const a = drivePath(w, path, 18, 30, deckTopAt(d, r.sb + A * 90));
+    expect(a.k).toBeGreaterThan(path.length - 8);
+    expect(a.airborne).toBe(0);
+    expect(a.bottom).toBeLessThan(0.02);
+    expect(w.upperLevel(a.car.x, a.car.z, a.car.y)).toBe(false);
+    expect(Math.abs(a.car.y - w.heightAt(a.car.x, a.car.z))).toBeLessThan(0.3);
+  });
+
+  it('a car leaves the deck at its end on the exit loop and lands on the street beneath it', () => {
+    const { world: w, deck: d, ramp: r } = withRamp((x) => x.loop && !x.on);
+    const out = r.sa === d.sE ? 1 : -1;
+    const foot = axisAt(r.axis, 0);
+    // Off the leg's end into the street beneath, then along it.
+    const into = { x: foot.x - foot.tx * 9, z: foot.z - foot.tz * 9 };
+    const sIn = projectOnCurve(d.curve, into.x, into.z).s;
+    // Right off the leg into the street's lanes running out toward the end, on the near side.
+    const path = [...alongDeck(d, r.sa - out * 90, r.sa, r.side * LOOP_AT), ...alongRamp(r, r.axis.length, 0), into, ...alongDeck(d, sIn + out * 6, sIn + out * 50, r.side * streetLane)];
+    const a = drivePath(w, path, 11, 40, deckTopAt(d, r.sa - out * 90));
+    expect(a.k).toBeGreaterThan(path.length - 8);
+    expect(a.airborne).toBe(0);
+    expect(w.upperLevel(a.car.x, a.car.z, a.car.y)).toBe(false);
+    expect(Math.abs(a.car.y - w.heightAt(a.car.x, a.car.z))).toBeLessThan(0.3);
+  });
+
+  it('a car climbs the entry loop from the street beneath onto the deck', () => {
+    const { world: w, deck: d, ramp: r } = withRamp((x) => x.loop && x.on);
+    const into = r.sa === d.sE ? -1 : 1;
+    const foot = axisAt(r.axis, 0);
+    const street = { x: foot.x - foot.tx * 10, z: foot.z - foot.tz * 10 };
+    const sSt = projectOnCurve(d.curve, street.x, street.z).s;
+    const path = [...alongDeck(d, sSt - into * 50, sSt - into * 12, r.side * streetLane), street, ...alongRamp(r, 0, r.axis.length), ...alongDeck(d, r.sa + into * 4, r.sa + into * 90, r.side * LOOP_AT)];
+    const a = drivePath(w, path, 11, 40);
+    expect(a.k).toBeGreaterThan(path.length - 8);
+    expect(a.airborne).toBe(0);
+    expect(w.upperLevel(a.car.x, a.car.z, a.car.y)).toBe(true);
+  });
+
+  it('a reset up on the deck puts the car back on the deck; a race shuts the ramps and loops and the alleys onto streets off the route, free roam opens them', () => {
     const { world: w, deck: d, city } = worlds[1];
     const P = curvePoint();
     const s = (d.sW + d.sE) / 2;
@@ -334,13 +492,42 @@ describe('elevated highway (driving)', () => {
     expect(w.upperLevel(c.x, c.z, c.y)).toBe(true);
     expect(Math.abs(c.y - w.heightAt(c.x, c.z, c.y))).toBeLessThan(0.05);
     expect(w.wallClearance(c.x, c.z, 3, c.y)).toBeGreaterThan(1.5);
-    // A race shuts every ramp at its mouth; free roam leaves them open.
-    const gates = highwayGates(w.areas);
-    expect(gates.length).toBeGreaterThan(0);
+    // A race shuts every ramp and loop at its mouth, and an alley's mouth onto a street the route does not
+    // take; free roam leaves them open.
     const racing = createWorld(w.seed, 'circuit', city);
+    const route = new Set(racing.route.edges);
+    const gates = highwayGates(w.areas, route);
+    expect(gates.length).toBeGreaterThanOrEqual(d.ramps.length * 4);
+    const alleyGates = w.areas.filter((a) => a.kind === 'highway' && a.variant === 'alley').flatMap((a) => alleyMouths(a)).filter((m) => m.edge >= 0 && !route.has(m.edge)).length;
+    expect(gates.length).toBe(d.ramps.length * 4 + alleyGates * 4);
     const shut = racing.walls.filter((x) => x.look === 'highway' && x.bottom === undefined && x.under === undefined && gates.some((g) => g.ax === x.ax && g.az === x.az));
     expect(shut.length).toBe(gates.length);
     expect(w.walls.some((x) => gates.some((g) => g.ax === x.ax && g.az === x.az && g.bx === x.bx))).toBe(false);
+  });
+});
+
+describe('elevated highway (alleys)', () => {
+  it('opens the frontage under its lanes into alleys: paved, open to the street beneath, walled at the back', () => {
+    let alleys = 0;
+    for (const { world: w, deck: d } of worlds) {
+      for (const a of w.areas.filter((x) => x.kind === 'highway' && x.variant === 'alley')) {
+        alleys++;
+        const side = a.params.side;
+        const mid = (a.params.s0 + a.params.s1) / 2;
+        // Along its middle third: road underfoot, and nothing between the street beneath's sidewalk and the
+        // back wall (the bents' columns stand on the sidewalk, clear of a car's line in).
+        for (let s = mid - (a.params.s1 - a.params.s0) / 6; s <= mid + (a.params.s1 - a.params.s0) / 6; s += 4) {
+          const p = deckPoint(d.curve, s, side * (HIGHWAY_HALF + CFG.alleyDepth / 2));
+          const ground = w.heightAt(p.x, p.z);
+          expect(w.surfaceAt(p.x, p.z, ground + 0.3)).toBe('road');
+          expect(w.wallClearance(p.x, p.z, 5, ground + 0.4), `alley at ${s.toFixed(0)}`).toBeGreaterThan(CFG.alleyDepth / 2 - 0.6);
+        }
+        // Its back wall stands where its polygon ends, a city wall that stops street cars.
+        const back = w.walls.filter((x) => x.area === a.id && x.look === 'boundary');
+        expect(back.length).toBeGreaterThan(5);
+      }
+    }
+    expect(alleys).toBeGreaterThan(0);
   });
 });
 

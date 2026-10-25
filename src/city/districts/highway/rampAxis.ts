@@ -1,15 +1,19 @@
 /**
- * The elevated highway's on-ramps as geometry (rampPlan.ts plans them,
- * build.ts builds them): a two lane road from a mouth on the street parallel to the
- * deck's, up through the block between the two, onto the deck.
+ * The elevated highway's ramps as geometry (rampPlan.ts and loopPlan.ts plan
+ * them, build.ts builds them): a two lane road from a mouth on a street up
+ * onto the deck. An on-ramp and an off-ramp are the same shape (an off-ramp's
+ * traffic just runs the other way, foot to E reversed).
  *
- * The centerline (the axis) is a straight leg from the foot (on the foot
- * street's building line, heading into the block) and one circular arc that
- * turns it onto the deck's line: it ends at E, beside the deck's edge, heading
- * the way the traffic on that side of the deck runs (right hand traffic), and
- * from there the ramp's lane is the deck widened (the merge, then a taper back
- * to the deck's edge). Straight plus arc, so the distance along the axis (u)
- * and across it (v) of any point are exact, gradients included.
+ * An end loop's centerline (the axis) is a straight leg from the foot (on the
+ * street's building line, heading into the block) and one circular arc of
+ * about three quarters of a circle that turns it onto the deck's line, ending
+ * at E in the carriageway where the deck ends. Straight plus arc, so the
+ * distance along the axis (u) and across it (v) of any point are exact,
+ * gradients included. An interchange's slip ramp runs alongside the deck
+ * instead, curves and all, so its axis is a polyline (AxisPoly) along the
+ * deck's edge from its foot beside the street beneath to E, where its lane
+ * runs on as the deck widened (the lane at full width, then a taper back to
+ * the deck's edge).
  *
  * The surface (rampHeight) is an absolute height along u, flat across: from
  * the ground at the foot (eased in over a vertical curve, `footEase`) at a
@@ -47,6 +51,36 @@ export interface RampAxis {
   tz: number;
   /** Axis length, foot to E (m). */
   length: number;
+  /** A slip ramp's axis as a polyline (in place of the leg and arc, which it leaves at zero). */
+  poly?: AxisPoly;
+}
+
+/** A polyline axis, foot to E: its points, unit tangents and the distance along it from the foot (m), every few meters. */
+export interface AxisPoly {
+  x: number[];
+  z: number[];
+  tx: number[];
+  tz: number[];
+  u: number[];
+}
+
+/** A slip ramp's axis through these points, foot first (a few meters apart, smooth). */
+export function polyAxis(pts: readonly Vec2[]): RampAxis {
+  const n = pts.length;
+  const p: AxisPoly = { x: [], z: [], tx: [], tz: [], u: [] };
+  let u = 0;
+  for (let k = 0; k < n; k++) {
+    if (k > 0) u += sqrt((pts[k].x - pts[k - 1].x) ** 2 + (pts[k].z - pts[k - 1].z) ** 2);
+    const a = pts[Math.max(0, k - 1)];
+    const b = pts[Math.min(n - 1, k + 1)];
+    const l = sqrt((b.x - a.x) ** 2 + (b.z - a.z) ** 2) || 1;
+    p.x.push(pts[k].x);
+    p.z.push(pts[k].z);
+    p.tx.push((b.x - a.x) / l);
+    p.tz.push((b.z - a.z) / l);
+    p.u.push(u);
+  }
+  return { fx: p.x[0], fz: p.z[0], dx: p.tx[0], dz: p.tz[0], a: u, cx: 0, cz: 0, r: 0, sweep: 0, phi0: 0, ex: p.x[n - 1], ez: p.z[n - 1], tx: p.tx[n - 1], tz: p.tz[n - 1], length: u, poly: p };
 }
 
 /** The ramp's surface profile along the axis (absolute heights, m). */
@@ -64,45 +98,17 @@ export interface RampProfile {
   e1: number;
   /** The blend into the terrain across the mouth reaches this far along the axis (m). */
   blend: number;
+  /** A slip ramp runs this far along the street at its level first (m): the profile's foot is this far up the axis. */
+  flat: number;
   /** Set once the terrain exists (settle); a ramp read before that is flat at 0. */
   ready: boolean;
-}
-
-/** Signed angle a - b wrapped to (-pi, pi]. */
-function wrap(a: number): number {
-  let d = a;
-  while (d <= -Math.PI) d += 2 * Math.PI;
-  while (d > Math.PI) d -= 2 * Math.PI;
-  return d;
-}
-
-/**
- * The axis from E (the end beside the deck, tangent t), radius r, the straight leg's direction d (into
- * the block, toward the deck) and its length a. The arc's center is on the far side of E from the deck
- * (`away`: unit, from the deck toward the foot street), so it bends from d onto t.
- */
-export function rampAxis(E: Vec2, t: Vec2, away: Vec2, r: number, d: Vec2, a: number): RampAxis {
-  const cx = E.x + away.x * r;
-  const cz = E.z + away.z * r;
-  // The radius at E is -away; the tangent there is t. The start of the arc has tangent d, its radius
-  // turned the same way from d as -away is from t.
-  const sense = (-away.x) * t.z - (-away.z) * t.x;
-  // rot(radius) = tangent with rot = (x, z) -> (-z, x) when sense > 0, else (z, -x); its inverse on d.
-  const rx = sense > 0 ? d.z : -d.z;
-  const rz = sense > 0 ? -d.x : d.x;
-  const sx = cx + rx * r;
-  const sz = cz + rz * r;
-  const phi0 = atan2(rz, rx);
-  const phi1 = atan2(-away.z, -away.x);
-  // Counterclockwise (the tangent is the radius turned +90 degrees) the angle grows from phi0 to phi1.
-  const sweep = sense > 0 ? wrapPositive(phi1 - phi0) : -wrapPositive(phi0 - phi1);
-  return { fx: sx - d.x * a, fz: sz - d.z * a, dx: d.x, dz: d.z, a, cx, cz, r, sweep, phi0, ex: E.x, ez: E.z, tx: t.x, tz: t.z, length: a + r * Math.abs(sweep) };
 }
 
 /**
  * The axis from a foot F to E (tangent t there, the arc's center `away` * r beyond E): the straight leg
  * is the tangent from F to that circle that runs on into the arc the way it turns. Null when F lies
- * inside the circle.
+ * inside the circle. The arc turns as far as it has to: a little past square for a side ramp, about
+ * three quarters of a circle for an end loop whose foot lies back beside the circle.
  */
 export function rampAxisFrom(F: Vec2, E: Vec2, t: Vec2, away: Vec2, r: number): RampAxis | null {
   const cx = E.x + away.x * r;
@@ -159,15 +165,22 @@ export function axisPoint(): AxisPoint {
   return { u: 0, v: 0, ux: 0, uz: 0, vx: 0, vz: 0 };
 }
 
-/** Project (x, z) onto the axis: the straight leg (and on before the foot), the arc, or on past E along its tangent. */
-export function projectAxis(ax: RampAxis, x: number, z: number, out: AxisPoint): AxisPoint {
+/**
+ * Project (x, z) onto the axis: the arc where the point lies within its turn (the angle read the whole
+ * way round from the arc's start, so a loop's three quarter turn reads as one), else the nearer of the
+ * straight leg (on back before the foot) and the line on past E along its tangent. A polyline axis is
+ * read off its nearest piece (only the pieces within 16 m of u = `near` when that is given: a span knows
+ * where along the ramp it lies), on along its end tangents past either end.
+ */
+export function projectAxis(ax: RampAxis, x: number, z: number, out: AxisPoint, near = NaN): AxisPoint {
+  if (ax.poly) return projectPoly(ax.poly, x, z, out, near);
   const px = x - ax.cx;
   const pz = z - ax.cz;
   const rho = sqrt(px * px + pz * pz) || 1e-9;
   const s = ax.sweep > 0 ? 1 : -1;
-  const psi = s * wrap(atan2(pz, px) - ax.phi0);
   const turn = Math.abs(ax.sweep);
-  if (psi >= 0 && psi <= turn && rho < 2 * ax.r) {
+  const psi = wrapPositive(s * (atan2(pz, px) - ax.phi0));
+  if (psi <= turn && rho < 2 * ax.r) {
     out.u = ax.a + ax.r * psi;
     // Counterclockwise: the center is on the left, so nearer it is left (v > 0).
     out.v = s * (ax.r - rho);
@@ -178,21 +191,27 @@ export function projectAxis(ax: RampAxis, x: number, z: number, out: AxisPoint):
     return out;
   }
   // Left normal of a direction (x, z): (-z, x).
-  if (psi > turn && psi < turn + Math.PI / 2) {
-    const qx = x - ax.ex;
-    const qz = z - ax.ez;
-    out.u = ax.length + qx * ax.tx + qz * ax.tz;
-    out.v = -qx * ax.tz + qz * ax.tx;
+  const ex = x - ax.ex;
+  const ez = z - ax.ez;
+  const qx = x - ax.fx;
+  const qz = z - ax.fz;
+  const vE = -ex * ax.tz + ez * ax.tx;
+  const vF = -qx * ax.dz + qz * ax.dx;
+  // Past E only just ahead of it, as far as any span reaches (the leg's line runs on behind the foot), and
+  // never for a span that lies back along the axis: a loop's foot lies beside the line past its E, nearer
+  // it across than the leg's own line at the mouth's corners.
+  const pastE = ex * ax.tx + ez * ax.tz;
+  if (pastE > 0 && pastE < 25 && !(near < ax.length - 10) && Math.abs(vE) < Math.abs(vF)) {
+    out.u = ax.length + ex * ax.tx + ez * ax.tz;
+    out.v = vE;
     out.ux = ax.tx;
     out.uz = ax.tz;
     out.vx = -ax.tz;
     out.vz = ax.tx;
     return out;
   }
-  const qx = x - ax.fx;
-  const qz = z - ax.fz;
   out.u = qx * ax.dx + qz * ax.dz;
-  out.v = -qx * ax.dz + qz * ax.dx;
+  out.v = vF;
   out.ux = ax.dx;
   out.uz = ax.dz;
   out.vx = -ax.dz;
@@ -200,8 +219,46 @@ export function projectAxis(ax: RampAxis, x: number, z: number, out: AxisPoint):
   return out;
 }
 
+function projectPoly(p: AxisPoly, x: number, z: number, out: AxisPoint, near: number): AxisPoint {
+  const n = p.u.length;
+  let best = Infinity;
+  let bk = 0;
+  let bt = 0;
+  for (let k = 0; k + 1 < n; k++) {
+    if (!Number.isNaN(near) && (p.u[k + 1] < near - 16 || p.u[k] > near + 16)) continue;
+    const sx = p.x[k + 1] - p.x[k];
+    const sz = p.z[k + 1] - p.z[k];
+    const l2 = sx * sx + sz * sz || 1e-9;
+    // Unclamped at the ends of the line: on before the foot and on past E.
+    let t = ((x - p.x[k]) * sx + (z - p.z[k]) * sz) / l2;
+    if (k > 0) t = Math.max(0, t);
+    if (k + 2 < n) t = Math.min(1, t);
+    const dx = p.x[k] + sx * t - x;
+    const dz = p.z[k] + sz * t - z;
+    const d = dx * dx + dz * dz;
+    if (d < best) {
+      best = d;
+      bk = k;
+      bt = t;
+    }
+  }
+  const sx = p.x[bk + 1] - p.x[bk];
+  const sz = p.z[bk + 1] - p.z[bk];
+  const l = sqrt(sx * sx + sz * sz) || 1e-9;
+  const ux = sx / l;
+  const uz = sz / l;
+  out.u = p.u[bk] + bt * l;
+  out.v = -(x - p.x[bk]) * uz + (z - p.z[bk]) * ux;
+  out.ux = ux;
+  out.uz = uz;
+  out.vx = -uz;
+  out.vz = ux;
+  return out;
+}
+
 /** The axis point and unit tangent at distance u along it (clamped to the foot; on past E along its tangent). */
 export function axisAt(ax: RampAxis, u: number): { x: number; z: number; tx: number; tz: number } {
+  if (ax.poly) return polyAt(ax.poly, ax.length, u);
   if (u <= ax.a) return { x: ax.fx + ax.dx * u, z: ax.fz + ax.dz * u, tx: ax.dx, tz: ax.dz };
   if (u >= ax.length) return { x: ax.ex + ax.tx * (u - ax.length), z: ax.ez + ax.tz * (u - ax.length), tx: ax.tx, tz: ax.tz };
   const s = ax.sweep > 0 ? 1 : -1;
@@ -212,9 +269,29 @@ export function axisAt(ax: RampAxis, u: number): { x: number; z: number; tx: num
   return { x: ax.cx + c * ax.r, z: ax.cz + n * ax.r, tx: -n * s, tz: c * s };
 }
 
-/** Height along the axis without the mouth's blend (m) and its slope d/du. */
-function along(p: RampProfile, L: number, u: number, out: { y: number; g: number }): void {
+function polyAt(p: AxisPoly, L: number, u: number): { x: number; z: number; tx: number; tz: number } {
+  const n = p.u.length;
+  if (u <= 0) return { x: p.x[0] + p.tx[0] * u, z: p.z[0] + p.tz[0] * u, tx: p.tx[0], tz: p.tz[0] };
+  if (u >= L) return { x: p.x[n - 1] + p.tx[n - 1] * (u - L), z: p.z[n - 1] + p.tz[n - 1] * (u - L), tx: p.tx[n - 1], tz: p.tz[n - 1] };
+  let lo = 0;
+  let hi = n - 1;
+  while (hi - lo > 1) {
+    const m = (lo + hi) >> 1;
+    if (p.u[m] <= u) lo = m;
+    else hi = m;
+  }
+  const t = (u - p.u[lo]) / (p.u[hi] - p.u[lo] || 1e-9);
+  const tx = p.tx[lo] + (p.tx[hi] - p.tx[lo]) * t;
+  const tz = p.tz[lo] + (p.tz[hi] - p.tz[lo]) * t;
+  const tl = sqrt(tx * tx + tz * tz) || 1;
+  return { x: p.x[lo] + (p.x[hi] - p.x[lo]) * t, z: p.z[lo] + (p.z[hi] - p.z[lo]) * t, tx: tx / tl, tz: tz / tl };
+}
+
+/** Height along the axis without the mouth's blend (m) and its slope d/du; a slip ramp's run along the street first (`flat`). */
+function along(p: RampProfile, L0: number, u0: number, out: { y: number; g: number }): void {
   const { y0, g0, grade: G, e0, e1, y1, g1 } = p;
+  const L = L0 - p.flat;
+  const u = u0 - p.flat;
   if (u <= 0) {
     out.y = y0 + g0 * u;
     out.g = g0;

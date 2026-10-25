@@ -898,12 +898,16 @@ export const CITY = {
     },
     /**
      * Elevated highway (src/city/districts/highway/): an expressway on a deck
-     * crossing the whole map west to east along a row street, swinging to the
-     * next row once or twice on a diagonal street of its own, drivable in free
-     * roam from its on-ramps (closed in races). Every street under the deck is
-     * widened to carry it, so cars drive under it all the way along; deck and
-     * street are two levels (districts/types.ts DeckSpan) and its columns
-     * stand on the sidewalks.
+     * crossing the city west to east along a row street, swinging to the next
+     * row once or twice on a diagonal street of its own, drivable in free roam
+     * (closed in races). At each end both carriageways leave it on cloverleaf
+     * loops down to the street beneath; along it, interchanges (an off-ramp
+     * and the on-ramp right after it, slip ramps alongside the deck) lead
+     * down to and up from that street. Every street under the deck is widened
+     * to carry it, so cars
+     * drive under it all the way along; deck and street are two levels
+     * (districts/types.ts DeckSpan), its columns stand on the sidewalks, and
+     * the frontage under the ramps' lanes is an alley.
      */
     highway: {
       enabled: true,
@@ -930,8 +934,6 @@ export const CITY = {
       columnSetback: 2,
       columnSize: 1.3,
       bentSpacing: 34,
-      /** Render-only hammerhead columns carrying the deck on into the fog past the closures: radius (m). */
-      pierRadius: 1.2,
       /**
        * Swings to the next row [min, max] per seed, each a straight diagonal street of its own across
        * one block, corner to corner (about 45 degrees off the row, like the city's diagonal avenues: a
@@ -945,37 +947,69 @@ export const CITY = {
       swingSectorDeg: 25,
       /** Near a swing's turns (where the deck cuts the corner), buildings and infill keep this far beyond the deck's edges (m). */
       blockMargin: 3,
-      /** Median crossovers: a gap in the median about this far apart (m), this long (m), clear of the ramps' merges and the closures by `crossoverClear` (m). */
-      crossoverEvery: 360,
-      crossoverLength: 30,
-      crossoverClear: 60,
       /**
-       * On-ramps per highway [min, max]: a two lane road from a parallel street up through a block,
-       * over the cross street at its far end on a short bridge, onto the deck's edge and merging.
+       * Median crossovers: a gap in the median about this far apart (m), this long (m: room to swing
+       * across at speed), clear of the ramps' lanes and the end loops' V by `crossoverClear` (m).
        */
-      ramps: [2, 4],
+      crossoverEvery: 330,
+      crossoverLength: 80,
+      crossoverClear: 40,
+      /**
+       * Interchanges per highway [min, max]: by a junction of the street beneath, on one side of the deck,
+       * an off-ramp coming down alongside the deck to run along the street at its level just before the
+       * junction and slip into its lanes, and the on-ramp peeling off the street just after it to climb
+       * alongside and merge. Two lane one way roads, their lanes along the deck's edge beyond.
+       */
+      interchanges: [1, 3],
+      /**
+       * A slip ramp's run along the street at its level, beside the cut sidewalk (m), the grade it climbs
+       * at where the deck has room for it (rise per m), and its vertical curve at the foot (m: shorter than
+       * the top's, where it meets the deck at full speed).
+       */
+      slipFlat: 18,
+      slipGrade: 0.095,
+      slipFootEase: 30,
       /**
        * Ramp: half width between its walls (m), grade caps (rise per m: the gentle one every line is tried
-       * at first, the steeper one only for a hilly city where no line has its ramps under the first),
-       * vertical curves at the foot and the top (m).
+       * at first, the steeper one only for a hilly city where no line has its ramps under the first), and
+       * a slip ramp's vertical curve at its top (m), where a car meets it at full speed off the deck.
        */
       rampHalf: 4.2,
       rampGrade: [0.125, 0.15],
-      rampFootEase: 44,
       rampTopEase: 52,
-      /** Turn radii tried for a ramp's curve onto the deck (m). */
-      rampRadius: [60, 75, 95, 120],
-      /** The ramp reaches the deck's edge this far past the next block's corner (m, the gentlest that fits): its top bridges the cross street. */
-      rampPast: [6, 18, -24],
-      /** The merge: the ramp's inner wall on along the deck's edge (the gore, m), the lane alongside at full width (m), and its taper back to the deck's edge (m). */
-      rampGore: 14,
-      rampMerge: 32,
-      rampTaper: 48,
-      /** The ramp's mouth keeps this far from its street's junctions (m, beyond their closure reach). */
-      rampMouthClear: 2,
-      /** A ramp's top keeps this far from the El crossing along the deck (m; its hump is planned for), and ramps this far from each other (m). */
+      /**
+       * The lanes along the deck's edge: the ramp's inner wall runs on along the deck's edge (the gore,
+       * m), then an on-ramp's acceleration lane runs alongside at full width (m) and an off-ramp's
+       * deceleration lane (m), either tapering back to the deck's edge (m) at its far end.
+       */
+      rampGore: 8,
+      rampMerge: 100,
+      rampDiverge: 80,
+      rampTaper: 50,
+      /** Where the deck has no room for a lane's full length it is cut short, to no less than this at full width (m). */
+      rampLaneMin: 30,
+      /** A ramp's top keeps this far from the El crossing along the deck (m; its hump is planned for), and lanes on one side of the deck this far apart (m). */
       rampElClear: 60,
-      rampGap: 100,
+      rampGap: 40,
+      /**
+       * The end loops (cloverleaf leaves): at each end of the deck the outgoing carriageway curls off to
+       * its right on a loop of about 270 degrees down to the street beneath, and the incoming one comes up
+       * on its mirror across the street. Half width between the walls (m), the radii tried (m, the widest
+       * that fits), and the V between them (m): where the median ends and its barriers fan out to the
+       * loops' outer walls.
+       */
+      loopHalf: 6,
+      loopRadius: [46, 42, 38, 34, 30],
+      loopGore: 45,
+      /**
+       * A loop's vertical curves at its foot and its top (m): far shorter than a side ramp's, since its
+       * turn holds a car to well under the speed either would launch or bottom it out at.
+       */
+      loopEase: 24,
+      /** A loop's or slip ramp's mouth keeps this far past the cross street's corner along the street beneath (m): it is shut in a race, so no closure or corner rail meets it. */
+      loopMouthClear: 5,
+      /** The alleys under the lanes: paved from the building line this deep (m), walled at the back. */
+      alleyDepth: 7.6,
       /** Sign gantries over the carriageway about this far apart along the deck (m). */
       signEvery: 360,
     },

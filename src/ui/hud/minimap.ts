@@ -14,7 +14,7 @@ import type { World } from '../../city/world';
 import { AREA_MAP_STYLE, type Area, AreaKind, AreaMapStyle } from '../../city/districts/types';
 import { ROUTE_INDEX, carParks } from '../../city/districts/carPark';
 import { shortcutArea } from '../../city/districts/alleyDressing';
-import { CHEVRON, CLIFF, chevronPath, cliffPath, terracePaths, type OneWay } from '../map/cityMap';
+import { CHEVRON, CLIFF, chevronPath, cliffPath, highwayLine, terracePaths, type OneWay } from '../map/cityMap';
 import { PALETTE, rgba } from '../kit/palette';
 
 /** Map inks (Monokai Pro, ui/kit/palette.ts), built once: orange is the route, yellow the closures. */
@@ -170,7 +170,8 @@ export class Minimap {
         p.moveTo(a.params.x + a.params.island, a.params.z);
         p.arc(a.params.x, a.params.z, a.params.island, 0, Math.PI * 2);
       } else if (a.kind === 'subway' || a.kind === 'highway' || a.kind === 'tunnel' || a.kind === 'overpass') {
-        a.path.forEach((q, i) => (i ? p.lineTo(q.x, q.z) : p.moveTo(q.x, q.z)));
+        // The expressway as the city map draws it: its deck between the end loops and its ramps' axes, none of its alleys.
+        (a.kind === 'highway' ? highwayLine(a) : a.path).forEach((q, i) => (i ? p.lineTo(q.x, q.z) : p.moveTo(q.x, q.z)));
       } else if (a.kind === 'hills') {
         // A contour around the rise.
         a.polygon.forEach((q, i) => (i ? p.lineTo(q.x, q.z) : p.moveTo(q.x, q.z)));

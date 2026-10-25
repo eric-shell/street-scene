@@ -10,7 +10,7 @@ import { polygonBounds } from '../../city/districts/geom';
 import type { Area, AreaKind } from '../../city/districts/types';
 import type { World } from '../../city/world';
 import type { Vec2 } from '../../sim/math';
-import { KINDS, MAP_INK, shownOnMap, tagAnchor } from './cityMap';
+import { KINDS, MAP_INK, deckOutline, shownOnMap, tagAnchor } from './cityMap';
 import { bem, h, iconBtn } from '../kit/dom';
 import { Eye, EyeOff, LocateFixed, MapPin, MapPinned, Navigation, icon, type IconNode } from '../kit/icons';
 import { PALETTE } from '../kit/palette';
@@ -111,7 +111,8 @@ export function buildPlaces(world: World, driftAreas: ReadonlySet<number>, on: P
   const rows: PlaceRow[] = [];
   for (const a of world.areas) {
     if (!shownOnMap(a) || !(KINDS[a.kind]?.tag || driftAreas.has(a.id))) continue;
-    const pts = a.polygon.length >= 3 ? a.polygon : a.path;
+    // The expressway's deck by its drivable stretch (its planned polygon runs on past its end loops).
+    const pts = a.kind === 'highway' && a.variant === 'deck' ? deckOutline(a) : a.polygon.length >= 3 ? a.polygon : a.path;
     if (!pts.length) continue;
     const span = polygonBounds(pts);
     const at = tagAnchor(world, a) ?? { x: (span.minX + span.maxX) / 2, z: (span.minZ + span.maxZ) / 2 };
