@@ -12,14 +12,23 @@
  *    bottom rail, its neon sign flickers on, the garage (or the street) is set
  *    up behind it, and it rolls back up. Into and out of the garage, and
  *    between its Garage and Street views.
- * Both run the work as a callback and resolve once the new screen shows; a
+ *  - shift: a new city behind the menu. The city on screen floors its nitrous
+ *    (the race's warp, post.ts, climbing to the top stage) while the frame
+ *    closes in from the edges, rimmed in the stage colors, onto a dark card
+ *    naming the city coming (its seed); the city is built behind the card,
+ *    whose speed rays keep turning on the compositor while the build holds the
+ *    main thread; then the card opens out from the middle onto the new city,
+ *    which arrives in the same warp easing out (the splash landing's curve)
+ *    while the menu's cards rise in. The nitrous is a NitroSource the caller
+ *    applies to the city per frame, as it does the splash's.
+ * All three run the work as a callback and resolve once the new screen shows; a
  * transition asked for while one runs is ignored (a double click). The overlay
  * covers everything, the music widget included, and swallows pointer and key
- * presses while it is up. Reduced motion swaps both for a short fade.
- * Styled by _cover.scss, _wipe.scss and _door.scss beside this file.
+ * presses while it is up. Reduced motion swaps them for a short fade.
+ * Styled by _cover.scss, _wipe.scss, _door.scss and _shift.scss beside this file.
  */
 import { h } from '../kit/dom';
-import { uiDoorDown, uiDoorUp, uiWipe } from '../../audio/uiSound';
+import { uiDoorDown, uiDoorUp, uiWhoosh, uiWipe } from '../../audio/uiSound';
 
 /** Timings (ms) and the bands' slant (deg). */
 const T = {
@@ -33,7 +42,24 @@ const T = {
   /** The door stays shut at least this long, so its sign reads. */
   doorHold: 260,
   fade: 220,
+  /** The shift: the city flooring it and the frame closing (ms), the card held at least this long (ms), the frame opening onto the new city (ms). */
+  shiftIn: 560,
+  shiftHold: 380,
+  shiftOut: 620,
 } as const;
+
+/** The shift's nitrous: the peak warp (the top stage's, post.ts NITRO_FX.stageWarp), held this long into the new city (s), then easing out at this rate (1/s) like a burn ending. */
+const SHIFT_NITRO = { peak: 1.4, hold: 0.35, out: 2.6 } as const;
+
+/** A transition's nitrous on the city behind it at `now` (performance.now() ms): the warp (post.ts setNitroFx), the stage glow (1..3) and the speed blur riding with it (0..1); null once it has burned out. */
+export interface NitroFrame {
+  warp: number;
+  stage: number;
+  blur: number;
+}
+export interface NitroSource {
+  nitro(now: number): NitroFrame | null;
+}
 
 /** What the wipe's card says: the event (small, over), the title, a drawing (the course) and a line of facts under it. */
 export interface WipeCard {
@@ -190,4 +216,71 @@ export function door(sign: string, work: () => void | Promise<void>): Promise<vo
     },
     T.doorHold,
   );
+}
+
+/**
+ * The shift to a new city behind the menu: `burn` gets the nitrous to put on
+ * the city (the one leaving, then the one arriving) at once, the frame closes
+ * onto the card, the work builds the new city, and `reveal` runs as the frame
+ * opens onto it (the menu's cards rising in).
+ */
+export function shift(card: WipeCard, work: () => void | Promise<void>, burn: (src: NitroSource) => void, reveal?: () => void): Promise<void> {
+  if (busy) return Promise.resolve();
+  if (reduced()) return fade(work);
+  const from = performance.now();
+  let arrived: number | null = null;
+  burn({
+    nitro(now) {
+      if (arrived === null) {
+        // Flooring it as the frame closes, held at the top stage while the card covers the build.
+        const k = Math.min(1, (now - from) / T.shiftIn);
+        const e = k * k * (3 - 2 * k);
+        return { warp: SHIFT_NITRO.peak * e, stage: 1 + 2 * e, blur: e };
+      }
+      const t = Math.max(0, (now - arrived) / 1000);
+      const out = t < SHIFT_NITRO.hold ? 1 : Math.exp(-(t - SHIFT_NITRO.hold) * SHIFT_NITRO.out);
+      return out < 0.002 ? null : { warp: SHIFT_NITRO.peak * out, stage: 3, blur: out };
+    },
+  });
+  const iris = h('div', { class: 'shift__iris' });
+  const field = h('div', { class: 'shift__field' }, h('div', { class: 'shift__rays' }));
+  const content = h(
+    'div',
+    { class: 'shift__card' },
+    card.kicker && h('div', { class: 'shift__kicker' }, card.kicker),
+    h('div', { class: 'shift__title' }, card.title),
+    h('div', { class: 'shift__rule' }),
+    card.sub && h('div', { class: 'shift__sub' }, card.sub),
+  );
+  const overlay = h('div', { class: 'shift', role: 'presentation' }, iris, field, content);
+  // The iris's radius: past the corners (the city whole) down to below nothing (the rim gone into the dark).
+  const open = { '--iris': '64vmax' };
+  const shut = { '--iris': '-18vmax' };
+  return run(
+    overlay,
+    async () => {
+      uiWipe();
+      content.classList.add('is-entering');
+      await Promise.all([
+        iris.animate([open, shut], { duration: T.shiftIn, easing: 'cubic-bezier(0.5, 0, 0.75, 0.6)', fill: 'forwards' }).finished,
+        field.animate([{ opacity: 0 }, { opacity: 0, offset: 0.6 }, { opacity: 1 }], { duration: T.shiftIn, easing: 'ease-in', fill: 'forwards' }).finished,
+      ]);
+    },
+    work,
+    async () => {
+      arrived = performance.now();
+      reveal?.();
+      uiWhoosh();
+      content.classList.remove('is-entering');
+      content.classList.add('is-leaving');
+      await Promise.all([
+        field.animate([{ opacity: 1 }, { opacity: 0 }], { duration: T.shiftOut * 0.4, easing: 'ease-out', fill: 'forwards' }).finished,
+        iris.animate([shut, open], { duration: T.shiftOut, easing: 'cubic-bezier(0.25, 0.4, 0.3, 1)', fill: 'forwards' }).finished,
+      ]);
+    },
+    T.shiftHold,
+  ).finally(() => {
+    // A build that threw still lets the warp burn out.
+    arrived ??= performance.now();
+  });
 }

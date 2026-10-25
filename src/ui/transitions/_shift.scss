@@ -1,0 +1,154 @@
+/* The shift to a new city (transitions.ts shift): an iris closing in from the screen's edges, rimmed in the
+   nitrous stages' colors (cyan, purple, hot pink) as the city floors it, onto a dark field whose speed rays
+   turn on the compositor while the new city builds, under a card naming it (the seed over a rule whose sheen
+   keeps running). The card flies apart toward the viewer (.is-leaving) as the iris opens onto the new city,
+   and the new menu's cards rise in (.menu.is-reseeded, set by main.ts for the reveal). */
+@use '../styles/abstracts/media';
+@use '../styles/abstracts/mixins';
+@use '../styles/abstracts/palette';
+/* Registered so the iris's radius animates rather than flipping halfway (an initial value cannot be in
+   viewport units, so the open radius is set on the iris itself). */
+@property --iris {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+.shift {
+  display: grid;
+  place-items: center;
+  &__iris,
+  &__field {
+    position: absolute;
+    inset: 0;
+  }
+  &__iris {
+    --iris: 64vmax;
+    background: radial-gradient(
+      circle at 50% 50%,
+      transparent var(--iris),
+      #{palette.alpha(cyan, 0.3)} calc(var(--iris) + 2vmax),
+      #{palette.alpha(purple, 0.5)} calc(var(--iris) + 5vmax),
+      #{palette.alpha(pink, 0.65)} calc(var(--iris) + 8vmax),
+      var(--bg0) calc(var(--iris) + 17vmax)
+    );
+  }
+  &__field {
+    overflow: hidden;
+    opacity: 0;
+    background:
+      radial-gradient(42% 36% at 50% 50%, palette.alpha(purple, 0.16), transparent 70%),
+      var(--bg0);
+  }
+  /* Thin rays from the middle, faded at the center and the corners; 120vmax is past every corner of the screen. */
+  &__rays {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 120vmax;
+    height: 120vmax;
+    margin: -60vmax 0 0 -60vmax;
+    background: repeating-conic-gradient(rgba(255, 255, 255, 0.07) 0 0.4deg, transparent 0.4deg 5deg);
+    mask-image: radial-gradient(closest-side, transparent 14%, #000 45%, transparent 100%);
+    @include media.motion {
+      animation: shift-rays 14s linear infinite;
+    }
+  }
+  &__card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    max-width: calc(100vw - 32px);
+    text-align: center;
+    &.is-entering > * {
+      animation: shift-text-in 0.45s var(--ease-out) 0.34s backwards;
+    }
+    &.is-entering > .shift__title {
+      animation-delay: 0.4s;
+    }
+    &.is-entering > .shift__rule {
+      animation: shift-rule 0.5s var(--ease-out) 0.46s forwards;
+    }
+    &.is-entering > .shift__sub {
+      animation-delay: 0.5s;
+    }
+    &.is-leaving {
+      animation: shift-text-out 0.38s ease-in forwards;
+    }
+  }
+  &__kicker {
+    font: 800 14px var(--font);
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--accent-2);
+  }
+  &__title {
+    font: italic 900 clamp(40px, 8vw, 96px) / 0.95 var(--logo);
+    letter-spacing: -0.01em;
+    padding: 0 0.12em;
+    overflow-wrap: anywhere;
+    @include mixins.gradient-text(var(--logo-ink));
+  }
+  /* The rule draws on, then a sheen runs along it for as long as the build takes. */
+  &__rule {
+    position: relative;
+    overflow: hidden;
+    width: min(360px, 56vw);
+    height: 3px;
+    background: var(--rule);
+    transform: scaleX(0);
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      width: 30%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.85), transparent);
+      @include media.motion {
+        animation: shift-sheen 0.9s ease-in-out 0.8s infinite backwards;
+      }
+    }
+  }
+  &__sub {
+    font: 600 13px var(--font);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--soft);
+  }
+}
+/* The new city's menu: its cards rise in as the iris opens (the title lockup never left). */
+.menu.is-reseeded > .rail__step > * {
+  @include media.motion {
+    animation: rise-in 0.5s var(--ease-out) calc(120ms + var(--i, 0) * 60ms) both;
+  }
+}
+@keyframes shift-rays {
+  to {
+    transform: rotate(1turn);
+  }
+}
+@keyframes shift-text-in {
+  from {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+}
+@keyframes shift-text-out {
+  to {
+    opacity: 0;
+    transform: scale(1.7);
+  }
+}
+@keyframes shift-rule {
+  to {
+    transform: none;
+  }
+}
+@keyframes shift-sheen {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}

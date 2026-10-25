@@ -38,12 +38,12 @@ import { resultsScreen } from './ui/screens/results';
 import { placeName } from './ui/map/places';
 import { railInset } from './ui/rail/rail';
 import { mainMenu, type MainMenu, type MenuStep } from './ui/menu/menu';
-import { showSplash, type Splash } from './ui/splash/splash';
+import { showSplash } from './ui/splash/splash';
 import { toast } from './ui/kit/dom';
 import { Check, Info, Shuffle } from './ui/kit/icons';
 import { courseFor, openFullMap, type FullMap, type WaypointStore } from './ui/map/fullMap';
 import type { Vec2 } from './sim/math';
-import { door, transitioning, wipe, type WipeCard } from './ui/transitions/transitions';
+import { door, shift, transitioning, wipe, type NitroSource, type WipeCard } from './ui/transitions/transitions';
 import { courseArt, courseRoute, type CourseRoutes } from './ui/menu/menuMaps';
 import type { RaceType } from './ui/settings';
 import { installUiSounds } from './audio/uiSound';
@@ -127,8 +127,8 @@ let garageScreen: { render(dt: number): void; dispose(): void } | null = null;
 // the free camera fly over it, and the garage's Street view drives it.
 // ---------------------------------------------------------------------------
 let stage: StreetStage | null = null;
-/** The boot splash while its landing's nitrous still warps the menu city (renderStage), then null. */
-let arrival: Splash | null = null;
+/** The nitrous warping the menu city as it arrives (renderStage): the boot splash's landing or the shift to a new city, null once burned out. */
+let arrival: NitroSource | null = null;
 /** The event's courses, built from the stage's city (the stage drives the circuit); the menu's race step draws them all. */
 let stageCourses: CourseRoutes | null = null;
 /** The open world over the stage's city, with its traffic net built: what free roam taken over from the menu drives in, ready before it is asked for. */
@@ -402,13 +402,25 @@ function showMenu(step: MenuStep = 'home'): void {
     onMap: openMenuMap,
     waypoint: () => waypointFor(st.world.seed).get(),
     onSeed: (s) => {
-      isDaily = s === null;
-      seedStr = s ?? dailySeed();
-      const u = new URL(location.href);
-      if (isDaily) u.searchParams.delete('seed');
-      else u.searchParams.set('seed', seedStr);
-      history.replaceState(null, '', u);
-      showMenu();
+      const next = s ?? dailySeed();
+      const use = () => {
+        isDaily = s === null;
+        seedStr = next;
+        const u = new URL(location.href);
+        if (isDaily) u.searchParams.delete('seed');
+        else u.searchParams.set('seed', seedStr);
+        history.replaceState(null, '', u);
+        showMenu();
+      };
+      // The same city again needs no build, so no shift: the menu just shows the seed as typed.
+      if (seedFromString(next) === st.world.seed) return use();
+      // The city floors it into the dark, the new one builds behind the seed's card and arrives in the warp, its menu rising in.
+      const card = { kicker: s === null ? "Today's event" : 'New city', title: `#${next}`, sub: 'Building the streets' };
+      void shift(card, use, (src) => (arrival = src), () => {
+        const el = menuEl?.querySelector('.menu');
+        el?.classList.add('is-reseeded');
+        setTimeout(() => el?.classList.remove('is-reseeded'), 1200);
+      });
     },
     onHideUi: () => setCinematic(true),
     onStep: (s) => showreel.setMode(STEP_CAMERA[s]),
