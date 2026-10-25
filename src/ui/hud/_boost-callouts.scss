@@ -3,7 +3,7 @@
    the stage they went into (data-stage, the gauge's $stages, then its $overdrive gold for the spill past a
    full tank), and a stage filling, overdrive banking full or a chain refill (data-kind) is the stage's own
    news, its name in that color too. Stage 3 (Max) and a full overdrive are the big calls (--big): larger,
-   slammed in with a flash. A crash that cost nitrous reads red, name and loss. */
+   slammed in with a flash. A crash that cost nitrous, or a reset that emptied it, reads red, name and loss. */
 @use 'sass:list';
 @use '../styles/abstracts/media';
 @use '../styles/abstracts/palette';
@@ -44,7 +44,8 @@
   &[data-stage='#{list.length(nitro-gauge.$stages) + 1}'] {
     @include palette.tint(stage, nitro-gauge.$overdrive);
   }
-  &[data-kind='crash'] {
+  &[data-kind='crash'],
+  &[data-kind='reset'] {
     @include palette.tint(stage, red);
   }
   &__label {
@@ -62,7 +63,8 @@
   &[data-kind='stage'] &__label,
   &[data-kind='overdrive'] &__label,
   &[data-kind='chain'] &__label,
-  &[data-kind='crash'] &__label {
+  &[data-kind='crash'] &__label,
+  &[data-kind='reset'] &__label {
     color: var(--stage);
   }
   &[data-kind='stage'] &__label {

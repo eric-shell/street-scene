@@ -192,6 +192,21 @@ describe('nitrous stages', () => {
     expect(a.nitroLoss + b.nitroLoss).toBe(0);
   });
 
+  it('a reset empties the tank and overdrive; the reset telemetry lasts one tick', () => {
+    const r = createRace(raceConfig(5, 'drag', 0));
+    while (r.tick < r.countdownTicks) stepRace(r, input({}));
+    const c = r.cars[0].state;
+    c.nitro = 2.5;
+    c.nitroOver = 0.3;
+    stepRace(r, input({ reset: true }));
+    expect(r.cars[0].tuning.nitrous.resetLoss).toBe(1);
+    expect(c.nitro).toBe(0);
+    expect(c.nitroOver).toBe(0);
+    expect(c.nitroReset).toBeCloseTo(2.8, 12);
+    stepRace(r, input({}));
+    expect(c.nitroReset).toBe(0);
+  });
+
   it('burns the top stage first, each a little harder than the one below', () => {
     const plain = rolling(0);
     hold(plain, 1);

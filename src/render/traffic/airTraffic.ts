@@ -9,11 +9,12 @@
  *  - a blimp drifting round downtown with an LED band scrolling event and
  *    sponsor words along both flanks;
  *  - a police helicopter (black and white, red and blue light bar) that
- *    patrols high and, on the last lap, comes in low to chase the leader with
- *    a strong white searchlight (policeChase.ts says when and whom; the
- *    follow is integrated with frame time, see buildPoliceHeli);
- * (airliners and meteors are sky sprites in backdrop.ts). Five draw calls:
- * the two helicopters, their searchlights, the blimp. The bodies share one
+ *    patrols high and, on the last lap, comes in low to chase the leader,
+ *    light bar flashing but no searchlight, so the finish stays the racers'
+ *    (policeChase.ts says when and whom; the follow is integrated with frame
+ *    time, see buildPoliceHeli);
+ * (airliners and meteors are sky sprites in backdrop.ts). Four draw calls:
+ * the two helicopters, the news helicopter's searchlight, the blimp. The bodies share one
  * lit material whose shader spins the rotor blades and lights the lamps, the
  * light bar and the LED band from the clock, so nothing is moved per frame
  * but a few matrices.
@@ -505,11 +506,10 @@ function airMaterial(led: THREE.Texture): { material: THREE.MeshStandardMaterial
 
 /**
  * Segments round the searchlight cone and spot, rings out from the pool's center (enough to follow a crest
- * or a dip across it), the index count of the cone part of beamGeometry() and its first pool vertex.
+ * or a dip across it), and the first pool vertex of beamGeometry().
  */
 const BEAM_SEGS = 28;
 const POOL_RINGS = 5;
-const CONE_INDICES = BEAM_SEGS * 6;
 const POOL_FIRST = BEAM_SEGS * 2;
 const POOL_VERTS = 1 + POOL_RINGS * BEAM_SEGS;
 
@@ -638,7 +638,7 @@ const beamFrag = /* glsl */ `
   }
 `;
 
-/** Searchlight cone and ground spot as one mesh; the cone is the first CONE_INDICES indices (a pool only mesh draws the rest). */
+/** Searchlight cone and ground spot as one mesh; the cone is the first BEAM_SEGS * 6 indices, the pool the rest. */
 function beamGeometry(): THREE.BufferGeometry {
   const segs = BEAM_SEGS;
   const ring: number[] = [];
@@ -798,13 +798,12 @@ function policeGeometry(): THREE.BufferGeometry {
   return b.build();
 }
 
-/** The police helicopter and its searchlight (policeChase.ts has its brief). */
+/** The police helicopter (policeChase.ts has its brief). */
 export interface PoliceHeli {
   mesh: THREE.Mesh;
-  beam: THREE.Mesh;
   /** The leader to follow this frame (null: patrol or leave). */
   chase(target: ChaseTarget | null): void;
-  /** Per frame with the scene clock (s): the follow, the pose, the lights and the beam. */
+  /** Per frame with the scene clock (s): the follow, the pose and the lights. */
   update(time: number): void;
   /** Per render: the rotor sound follows the camera. */
   view(camera: THREE.Camera): void;
@@ -819,12 +818,9 @@ export interface PoliceHeli {
  * and beside the leader, acceleration and speed capped, integrated in 60 Hz
  * substeps of the frame time (the same at 30, 60 and 120 fps): it eases in,
  * trails with lag and banks into the acceleration across its nose, light bar
- * flashing; the searchlight cone and pool lock onto the leader once in reach.
- * Handed null again it flies the same follow back onto its loop and rejoins
- * it. Low quality draws only the searchlight's ground pool. No real light: a
- * SpotLight would add a light to every lit shader in the city (and recompile
- * them all when it appears) for a pool the additive spot already fakes. Per
- * frame: one loop lookup, a few spring substeps, two matrices, no allocation.
+ * flashing. Handed null again it flies the same follow back onto its loop
+ * and rejoins it. Per frame: one loop lookup, a few spring substeps, a matrix,
+ * no allocation.
  */
 /**
  * The lowest the police helicopter may fly at a point (m): over the tallest
@@ -868,23 +864,12 @@ function roofline(world: World): (x: number, z: number) => number {
 
 export function buildPoliceHeli(
   world: World,
-  opts: { quality: Quality; fogDensity: number; material: THREE.Material; uniforms: Record<string, THREE.IUniform>; glow: THREE.Texture; flashes?: () => boolean },
+  opts: { material: THREE.Material; uniforms: Record<string, THREE.IUniform>; flashes?: () => boolean },
 ): PoliceHeli {
   const P = POLICE;
   const geo = policeGeometry();
   const mesh = new THREE.Mesh(geo, opts.material);
   mesh.name = 'policeHelicopter';
-  const beamMat = beamMaterial({ radius: P.beamRadius, spotR: P.spotR, color: new THREE.Color(0.92, 0.96, 1.0), intensity: 0, fogDensity: opts.fogDensity, glow: opts.glow });
-  const beamGeo = beamGeometry();
-  // Low: only the pool on the ground (the cone is a big transparent overdraw when the camera is under it).
-  if (opts.quality === 'low') beamGeo.setDrawRange(CONE_INDICES, Infinity);
-  const beam = new THREE.Mesh(beamGeo, beamMat);
-  beam.name = 'policeSearchlight';
-  beam.frustumCulled = false;
-  beam.renderOrder = 3;
-  beam.visible = false;
-  const apex = beamMat.uniforms.uApex.value as THREE.Vector3;
-  const aim = beamMat.uniforms.uTarget.value as THREE.Vector3;
 
   const loop: Loop = buildLoop(policeWaypoints(world, world.seed));
   const floorAt = roofline(world);
@@ -905,10 +890,6 @@ export function buildPoliceHeli(
   let bank = 0;
   let pitch = 0;
   let lights = 0;
-  let beamOn = 0;
-  let aimed = false;
-  // The leader's height (m), so the pool lands on the deck it drives where two levels stack.
-  let aimLevel: number | undefined;
   let last = -1;
   const e = new THREE.Euler();
 
@@ -998,27 +979,10 @@ export function buildPoliceHeli(
       pitch += (-Math.asin(Math.max(-1, Math.min(1, lf.y))) * 0.6 - pitch) * k;
     }
     mesh.quaternion.setFromEuler(e.set(pitch, yaw, bank, 'YXZ'));
-    // Lights while engaged on a chase; the beam once the leader is in reach.
-    const fade = 1 - Math.exp(-dt / P.fade);
-    lights += ((engaged && target ? 1 : 0) - lights) * fade;
+    // Lights while engaged on a chase.
+    lights += ((engaged && target ? 1 : 0) - lights) * (1 - Math.exp(-dt / P.fade));
     opts.uniforms.uPolice.value = lights;
     opts.uniforms.uPoliceSoft.value = opts.flashes && !opts.flashes() ? 1 : 0;
-    const reach = target ? Math.hypot(target.x - mesh.position.x, target.z - mesh.position.z) : Infinity;
-    beamOn += ((target && engaged && reach < P.reach ? 1 : 0) - beamOn) * fade;
-    if (target) {
-      // The aim trails the leader a little: an operator tracking by hand.
-      const ka = aimed ? 1 - Math.exp(-dt / P.aimLag) : 1;
-      aim.x += (target.x - aim.x) * ka;
-      aim.z += (target.z - aim.z) * ka;
-      aimed = true;
-      aimLevel = target.y;
-    }
-    aim.y = world.heightAt(aim.x, aim.z, aimLevel);
-    apex.set(mesh.position.x, mesh.position.y - 1.1, mesh.position.z);
-    beamMat.uniforms.uIntensity.value = P.intensity * beamOn;
-    beam.visible = beamOn > 0.01;
-    if (beam.visible) drapePool(beamGeo, world, aim, P.spotR, aimLevel);
-    if (!beam.visible && !target) aimed = false;
   };
   update(0);
 
@@ -1046,7 +1010,6 @@ export function buildPoliceHeli(
 
   return {
     mesh,
-    beam,
     chase(t) {
       target = t;
     },
@@ -1057,8 +1020,6 @@ export function buildPoliceHeli(
       rotor?.dispose();
       rotor = null;
       geo.dispose();
-      beamGeo.dispose();
-      beamMat.dispose();
     },
   };
 }
@@ -1102,8 +1063,8 @@ export function buildAirTraffic(world: World, opts: { quality: Quality; fogDensi
   beam.renderOrder = 3;
   group.add(beam);
   // The police helicopter: patrols high, chases the leader on the last lap.
-  const police = buildPoliceHeli(world, { quality: opts.quality, fogDensity: opts.fogDensity, material, uniforms, glow, flashes: opts.flashes });
-  group.add(police.mesh, police.beam);
+  const police = buildPoliceHeli(world, { material, uniforms, flashes: opts.flashes });
+  group.add(police.mesh);
 
   const loop = buildLoop(heliWaypoints(world, seed));
   const pose: HeliPose = { pos: { x: 0, y: 0, z: 0 }, fwd: { x: 0, y: 0, z: 1 }, bank: 0 };

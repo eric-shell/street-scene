@@ -1,8 +1,9 @@
-/* The screens over a race and the settings they share: pause, results, setting rows, the settings panel and
+/* The screens over a race and the settings they share: pause, results and its card, setting rows, the settings panel and
    its card, the loading card. In cascade order. */
 @use 'pause-screen';
 @use 'pause-card';
 @use 'results-screen';
+@use 'results-card';
 @use 'setting-row';
 @use 'settings';
 @use 'loading';

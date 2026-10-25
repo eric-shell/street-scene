@@ -6,7 +6,8 @@
  * counts up while it pays and holds a moment after; filling a stage, banking
  * a full overdrive and a chain refill are one shot calls; a wreck (a prop
  * knocked down) is live too, so a row of cans counts up as one call, and so is
- * a crash into a wall, barrier or rail, counting what it cost. Points are
+ * a crash into a wall, barrier or rail, counting what it cost; a reset is a one
+ * shot call of what it emptied (not held against the style score). Points are
  * thousandths of a stage (+1,000 is a whole stage, one bar length; a full tank
  * is 3,000), colored by the stage they went into (4 is overdrive, the spill
  * past a full tank): big numbers read as a payout where hundredths read as a meter.
@@ -16,7 +17,7 @@
  * and every thousand chimes and pulses the callout.
  *
  * Fed once per sim tick from the player's CarState telemetry (nitroGain,
- * nitroLoss, nitroChain, nitro, nitroOver), so a replay calls the same things
+ * nitroLoss, nitroReset, nitroChain, nitro, nitroOver), so a replay calls the same things
  * and tallies the same style score (`tally`, the results screen's); the timers
  * and the roll run on frame time. Cues (`onCue`) go to the session's sounds and
  * rumble. Plain DOM in the HUD's dial cluster (_boost-callouts.scss): one
@@ -57,11 +58,11 @@ const CALLOUT = {
 export const OVERDRIVE_STAGE = NITRO_STAGES + 1;
 
 type LiveKind = 'drift' | 'nearMiss' | 'draft' | 'wreck' | 'crash';
-type Kind = LiveKind | 'chain' | 'stage' | 'overdrive';
+type Kind = LiveKind | 'chain' | 'stage' | 'overdrive' | 'reset';
 /** Where the style score's points came from: every live kind (crash counts against it). */
 export type StyleSource = LiveKind;
 
-const NAME: Record<LiveKind | 'chain', string> = { drift: 'Drift', nearMiss: 'Near miss', draft: 'Slipstream', wreck: 'Wreck', crash: 'Crash', chain: 'Chain boost' };
+const NAME: Record<LiveKind | 'chain' | 'reset', string> = { drift: 'Drift', nearMiss: 'Near miss', draft: 'Slipstream', wreck: 'Wreck', crash: 'Crash', chain: 'Chain boost', reset: 'Reset' };
 
 /**
  * What the callouts tell the sounds and rumble: `tick` as a number rolls past
@@ -115,8 +116,8 @@ export class BoostCallouts {
     this.el.className = 'boost-callouts';
   }
 
-  /** One sim tick of the player's car: what each style source paid, any crash or chain refill, the tank and overdrive (`overCap`, nitrous.overdriveCap). */
-  tick(c: Pick<CarState, 'nitro' | 'nitroOver' | 'nitroChain' | 'nitroGain' | 'nitroLoss'>, overCap: number): void {
+  /** One sim tick of the player's car: what each style source paid, any crash, reset or chain refill, the tank and overdrive (`overCap`, nitrous.overdriveCap). */
+  tick(c: Pick<CarState, 'nitro' | 'nitroOver' | 'nitroChain' | 'nitroGain' | 'nitroLoss' | 'nitroReset'>, overCap: number): void {
     const full = nitroFullStages(c.nitro);
     // Points land in the stage being filled, overdrive once the tank is full.
     const filling = Math.min(OVERDRIVE_STAGE, full + 1);
@@ -127,6 +128,7 @@ export class BoostCallouts {
     this.pay('wreck', g.wreck, filling, false);
     if (c.nitroLoss > 0 && !this.items.some((x) => x.kind === 'crash' && !x.out)) this.onCue?.({ kind: 'crash' });
     this.pay('crash', c.nitroLoss, filling, false);
+    if (c.nitroReset > 0) this.shot('reset', c.nitroReset, filling);
     const overFull = c.nitroOver >= overCap - CALLOUT.fullSlack;
     if (c.nitroChain > 0) this.shot('chain', c.nitroChain, 1);
     // A stage that filled from style (a chain's refill is called as the chain).
@@ -171,16 +173,17 @@ export class BoostCallouts {
     }
   }
 
-  private shot(kind: 'chain' | 'stage' | 'overdrive', amount: number, stage: number): void {
+  private shot(kind: 'chain' | 'stage' | 'overdrive' | 'reset', amount: number, stage: number): void {
     const big = kind === 'overdrive' || (kind === 'stage' && stage === NITRO_STAGES);
     const it: Callout = { kind, amount, life: big ? CALLOUT.bigShot : CALLOUT.shot, zone: false, stage, el: null, pts: null, rolling: 0, shown: -1, out: false };
     this.items.push(it);
-    if (kind === 'chain') this.show(it, NAME.chain);
+    if (kind === 'chain' || kind === 'reset') this.show(it, NAME[kind]);
     else if (kind === 'overdrive') this.show(it, 'Overdrive', 'Ready');
     else this.show(it, `Stage ${stage}`, stage === NITRO_STAGES ? 'Max' : 'Ready');
     if (big) it.el!.classList.add('boost-callout--big');
     if (kind === 'stage') this.onCue?.({ kind: 'stage', stage });
     else if (kind === 'overdrive') this.onCue?.({ kind: 'overdrive' });
+    else if (kind === 'reset') this.onCue?.({ kind: 'crash' });
   }
 
   /** Start a callout's fade: it no longer takes points, and a source that pays again gets a new one. */
@@ -211,7 +214,7 @@ export class BoostCallouts {
     for (const shots of [true, false]) {
       for (const x of older) {
         if (extra <= 0) return;
-        if (!x.out && (x.kind === 'chain' || x.kind === 'stage' || x.kind === 'overdrive') === shots) {
+        if (!x.out && (x.kind === 'chain' || x.kind === 'stage' || x.kind === 'overdrive' || x.kind === 'reset') === shots) {
           this.fade(x);
           extra--;
         }
@@ -222,7 +225,7 @@ export class BoostCallouts {
   /**
    * Ease the number on screen toward what the callout has paid (frame-rate independent), writing it only
    * when the whole number changes; cue a tick for every hundred it rolls past and a chime (and a pulse)
-   * for every thousand. A crash counts its loss with a minus and never chimes.
+   * for every thousand. A crash or a reset counts its loss with a minus and never chimes.
    */
   private roll(it: Callout, dt: number): void {
     if (!it.pts || it.kind === 'stage' || it.kind === 'overdrive') return;
@@ -234,8 +237,9 @@ export class BoostCallouts {
     const n = Math.round(it.rolling);
     if (n === it.shown) return;
     it.shown = n;
-    it.pts.textContent = `${it.kind === 'crash' ? '−' : '+'}${n.toLocaleString('en-US')}`;
-    if (it.kind === 'crash') return;
+    const loss = it.kind === 'crash' || it.kind === 'reset';
+    it.pts.textContent = `${loss ? '−' : '+'}${n.toLocaleString('en-US')}`;
+    if (loss) return;
     const thousands = Math.floor(it.rolling / CALLOUT.chime);
     if (thousands > Math.floor(from / CALLOUT.chime)) {
       this.onCue?.({ kind: 'chime', thousands });

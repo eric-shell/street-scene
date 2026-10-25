@@ -574,6 +574,7 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
   for (let i = 0; i < r.cars.length; i++) {
     const rc = r.cars[i];
     const inp = inputs[i];
+    rc.state.nitroReset = 0;
     if (inp.reset && rc.resetCooldown <= 0) resetToRoad(r, rc);
     stepEnv.world = r.world;
     stepCar(rc.state, rc.tuning, inp, stepEnv);

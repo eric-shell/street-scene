@@ -2,7 +2,7 @@
  * The police helicopter's brief, pure and render side: its tuning (POLICE),
  * when it chases and whom (policeChaseCall, a read of RaceState that never
  * writes it), and its patrol loop's waypoints. The helicopter itself (body,
- * light bar, searchlight, the follow) is drawn by airTraffic.ts; the session
+ * light bar, the follow) is drawn by airTraffic.ts; the session
  * asks for the call every tick and hands the leader's interpolated pose over.
  *
  * Patrol until the leader starts the last lap of a circuit of two laps or
@@ -57,18 +57,7 @@ export const POLICE = {
   roofSpire: 1.25,
   roofClear: 10,
   roofLook: [0.6, 1.4, 2.6],
-  /**
-   * Searchlight: cone radius at the target (m), ground pool radius (m), brightness, reach (m), aim lag (s).
-   * The brightness is set for a beam seen from the leader's chase camera, which stands in it for the whole
-   * chase: a hard white spot on the road, not a flash across the frame (airTraffic.ts beamFrag fades the
-   * pool further as the camera closes on it).
-   */
-  beamRadius: 4.2,
-  spotR: 7.8,
-  intensity: 0.5,
-  reach: 240,
-  aimLag: 0.12,
-  /** Lights and beam fade on and off over about this long (s). */
+  /** The light bar fades on and off over about this long (s). */
   fade: 0.5,
   /** Rotor voice (audio/sceneVoices.ts HeliRotor): a faster, harder chop than the news helicopter's. */
   rotor: { bladeHz: 12.8, bodyHz: 250, whineHz: 2100, level: 0.4 },

@@ -217,6 +217,8 @@ export interface CarTuning {
     crashFullImpact: number;
     /** Stages the hardest crash costs, overdrive first. */
     crashLoss: number;
+    /** Share of the tank and overdrive a reset or tow costs (0..1; 1 = all of it, 0 = resets are free). */
+    resetLoss: number;
   };
   /** Arcade drift aids on top of the tire model. */
   drift: {

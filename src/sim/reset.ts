@@ -3,7 +3,9 @@
  * crossing's tracks (sim/levelCrossing.ts). The car stands still
  * where it is put (placeCar), gets a second's cooldown before the next reset, a few seconds passing through
  * other cars (collision.resetPassThrough, as racing games do, so a reset never lands in a pile up), its stuck
- * and wrong way timers cleared, and the race a 'reset' event. Pure and deterministic.
+ * and wrong way timers cleared, and the race a 'reset' event. It costs nitrous (nitrous.resetLoss, the whole
+ * tank and overdrive as tuned), so a reset is a way out of trouble rather than a free shortcut past it.
+ * Pure and deterministic.
  */
 import type { RaceCar, RaceState } from './race';
 import { placeCar } from './car';
@@ -15,6 +17,13 @@ import { placeCar } from './car';
  */
 export function relocateCar(r: RaceState, rc: RaceCar, x: number, z: number, yaw: number, tow = false, y?: number): void {
   placeCar(rc.state, x, z, yaw, r.world, y);
+  const c = rc.state;
+  const keep = 1 - rc.tuning.nitrous.resetLoss;
+  c.nitroReset += (c.nitro + c.nitroOver) * (1 - keep);
+  c.nitro *= keep;
+  c.nitroOver *= keep;
+  // A button held through the reset counts its chain from what is left, not from the tank it had.
+  c.nitroRun = -1;
   rc.resetCooldown = 1;
   rc.passThrough = rc.tuning.collision.resetPassThrough;
   rc.stuckTime = 0;

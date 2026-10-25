@@ -133,7 +133,9 @@
       "overdrivePower": 1.25,
       "crashMinImpact": 6,
       "crashFullImpact": 20,
-      "crashLoss": 0.75
+      "crashLoss": 0.75,
+      "_resetLoss": "Share of the tank and overdrive a reset (the reset key, the stuck and lost resets, a tow off the tracks) costs: 1 empties both, 0 makes resets free (reset.ts relocateCar).",
+      "resetLoss": 1
     },
     "drift": {
       "clutchKickTime": 0.45,

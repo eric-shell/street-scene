@@ -114,6 +114,7 @@ export const PARAM_INFO: Record<string, ParamInfo> = {
   'nitrous.crashMinImpact': P(0, 30, 0.5, 'Impact speed (m/s, along the normal) of a wall, barrier, rail or car hit where crashes start to cost nitrous.'),
   'nitrous.crashFullImpact': P(1, 60, 0.5, 'Impact speed (m/s) at which a crash costs the whole crash loss. Must stay above the minimum.'),
   'nitrous.crashLoss': P(0, 3, 0.05, 'Stages the hardest crash costs, overdrive first. 0 = crashes are free.'),
+  'nitrous.resetLoss': P(0, 1, 0.05, 'Share of the tank and overdrive a reset costs. 1 = a reset empties it, 0 = resets are free.'),
   'drift.clutchKickTime': P(0.05, 1.5, 0.01, 'How long a clutch kick keeps feeding extra torque, s.'),
   'drift.maxSlipDeg': P(20, 80, 1, 'Slide angle where the anti spin aid pushes back. Lower = harder to spin out.'),
   'drift.assistTorque': P(0, 60000, 250, 'Strength of the anti spin aid past maxSlipDeg. Higher = stronger catch.'),

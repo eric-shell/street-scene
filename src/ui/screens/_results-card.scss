@@ -1,0 +1,90 @@
+/* The results screen's card (results.ts resultsScreen): how it went, shaped like the pause card and the menu's
+   event card. The race type as the kicker, the event's name in the white-to-peach, the place or score struck
+   in with its trophy and a new best's sticker, the note when dev tuning kept the run from saving, the
+   standings in a well like the pause card's course, and Retry, the screen's main action, at the size of the
+   rows under it. Warm light falls on it from the top corners, with a wash of the type's color. */
+@use '../styles/abstracts/media';
+@use '../styles/abstracts/mixins';
+@use '../styles/abstracts/palette';
+.results-card {
+  @include mixins.chamfer(12px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px 16px;
+  @include mixins.plate(
+    (
+      var(--card-top),
+      radial-gradient(120% 60% at 100% 0%, rgba(var(--mode-rgb), 0.1), transparent 60%),
+      radial-gradient(90% 55% at 0% 0%, palette.alpha(orange, 0.1), transparent 65%),
+      var(--plate)
+    )
+  );
+  @include media.short {
+    gap: 4px;
+    padding: 10px 14px 12px;
+  }
+  > .label {
+    min-height: 24px;
+    > svg {
+      color: var(--mode);
+    }
+  }
+  &__name {
+    margin: 0;
+    padding-right: 0.06em;
+    font: 900 32px/1.02 var(--display);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    overflow-wrap: anywhere;
+    @include mixins.gradient-text(var(--title-ink));
+    @include media.phone {
+      font-size: 26px;
+    }
+    @include media.short {
+      font-size: 28px;
+    }
+  }
+  /* The place or score: the trophy (or medal) in the secondary color, the headline struck in, a new best beside it. */
+  &__place {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 2px;
+    > svg {
+      flex: none;
+      color: var(--accent-2);
+    }
+  }
+  &__score {
+    font: 900 26px/1 var(--display);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-variant-numeric: tabular-nums;
+    color: var(--accent-2);
+    @include media.motion {
+      animation: results-title-strike 0.6s var(--ease-out) 0.25s both;
+    }
+  }
+  &__note {
+    margin: 0;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  /* The menu's map well (_event-map.scss), lit from below in the type's color. */
+  &__standings {
+    @include mixins.chamfer;
+    margin: 8px 0 2px;
+    padding: 2px 4px;
+    background: radial-gradient(70% 100% at 50% 110%, rgba(var(--mode-rgb), 0.12), transparent 70%), var(--well);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.5);
+  }
+  /* The rows' label size, so Retry reads as one of them, like Resume on the pause card. */
+  &__go {
+    margin-top: 6px;
+    font-size: 20px;
+  }
+}

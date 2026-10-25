@@ -96,6 +96,8 @@ export interface CarState {
   nitroChain: number;
   nitroGain: { drift: number; nearMiss: number; draft: number; zone: number; wreck: number };
   nitroLoss: number;
+  /** Tank and overdrive a reset or tow took this tick (stages, 0 when none; reset.ts sets it, race.ts zeroes it each tick). */
+  nitroReset: number;
   /** Drive pedal actually applied this tick (0..1), for engine sound and telemetry. */
   throttle: number;
   /** Seconds left of a clutch kick's extra torque. */
@@ -179,6 +181,7 @@ export function createCar(x: number, z: number, yaw: number, y: number): CarStat
     nitroChain: 0,
     nitroGain: { drift: 0, nearMiss: 0, draft: 0, zone: 0, wreck: 0 },
     nitroLoss: 0,
+    nitroReset: 0,
     throttle: 0,
     clutchKick: 0,
     twoStepCut: 0,

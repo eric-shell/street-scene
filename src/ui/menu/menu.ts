@@ -196,12 +196,12 @@ const GRID_MOVES: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, Arrow
 /** How deep each step sits, so a move deeper slides forward (left) and a move out slides back. */
 const STEP_DEPTH: Record<MenuStep, number> = { home: 0, race: 1, settings: 1, setup: 2 };
 
-/** A row of the home menu's list (its element class names the place, for focus). */
 /** Today's event's date as its seed counts it (the UTC day, seed.ts dailySeed): "Sat, Oct 24". */
 function todayLabel(now = new Date()): string {
   return now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
 
+/** A row of the home menu's list (its element class names the place, for focus). */
 function navItem(kind: keyof typeof PLACES_INFO, sub: string, onClick: () => void, label: string | Node = PLACES_INFO[kind].label): HTMLButtonElement {
   const info = PLACES_INFO[kind];
   return navRow(info.icon, label, sub, info.hue, onClick, `menu__${kind}`);
