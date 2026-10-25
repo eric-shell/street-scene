@@ -22,6 +22,7 @@ import * as THREE from 'three';
 import type { World } from '../../city/world';
 import { routeSample } from '../../city/route';
 import { Rng, deriveSeed } from '../../sim/prng';
+import { wrapIndex } from '../../sim/math';
 import type { Quality } from '../../ui/settings';
 import { HeliRotor } from '../../audio/sceneVoices';
 import { GeoBuilder } from '../geoBuilder';
@@ -510,6 +511,20 @@ const BEAM_SEGS = 28;
 const POOL_RINGS = 5;
 const CONE_INDICES = BEAM_SEGS * 6;
 const POOL_FIRST = BEAM_SEGS * 2;
+const POOL_VERTS = 1 + POOL_RINGS * BEAM_SEGS;
+
+/**
+ * How the pool drapes (drapePool). lift: over the ground (m), clearing the sidewalk (CITY.curbHeight 0.09).
+ * chord: the road mesh's step (m, cityMeshes strip and fan): in a dip its straight pieces sit above the
+ * ground the sim samples, by up to a tenth of a meter on a city grade change, and would cut the pool in
+ * patches, so the pool rises by that chord's sag there (sagMax at most). cliff, cliffSlope: a step between
+ * neighbouring pool vertices of more than cliff + cliffSlope × their spacing (m) is a deck edge, a channel
+ * wall or a ramp's side, not a road: the pool stops there instead of hanging a sheet of light down it.
+ */
+const POOL = { lift: 0.16, chord: 6, sagMax: 0.5, cliff: 0.3, cliffSlope: 0.5 } as const;
+/** drapePool's scratch: each pool vertex's ground height (m) and its draped height (m). */
+const poolRaw = new Float32Array(POOL_VERTS);
+const poolY = new Float32Array(POOL_VERTS);
 
 /**
  * The searchlight material: an additive cone and ground pool between uApex and uTarget, faded by fog, and
@@ -544,6 +559,7 @@ const beamVert = /* glsl */ `
   attribute float aT;
   attribute float aPart;
   attribute float aLift;
+  attribute float aFade;
   uniform vec3 uApex;
   uniform vec3 uTarget;
   uniform float uRadius;
@@ -554,6 +570,7 @@ const beamVert = /* glsl */ `
   varying float vEdge;
   varying float vDist;
   varying float vNear;
+  varying float vFade;
   void main() {
     vec3 beam = uTarget - uApex;
     vec3 b = normalize(beam);
@@ -567,7 +584,7 @@ const beamVert = /* glsl */ `
       pos = mix(uApex, uTarget + ring * uRadius, aT);
       n = ring;
     } else {
-      pos = uTarget + vec3(aRing.x, 0.0, aRing.y) * uSpotR * aT + vec3(0.0, aLift + 0.12, 0.0);
+      pos = uTarget + vec3(aRing.x, 0.0, aRing.y) * uSpotR * aT + vec3(0.0, aLift, 0.0);
       n = vec3(0.0, 1.0, 0.0);
     }
     vec3 toCam = normalize(cameraPosition - pos);
@@ -582,6 +599,7 @@ const beamVert = /* glsl */ `
     vUv = aRing * 0.5 * aT + 0.5;
     vT = aT;
     vPart = aPart;
+    vFade = aFade;
     vec4 mv = viewMatrix * vec4(pos, 1.0);
     vDist = length(mv.xyz);
     gl_Position = projectionMatrix * mv;
@@ -599,6 +617,7 @@ const beamFrag = /* glsl */ `
   varying float vEdge;
   varying float vDist;
   varying float vNear;
+  varying float vFade;
   void main() {
     float fog = exp(-uFogDensity * uFogDensity * vDist * vDist);
     float a;
@@ -611,7 +630,7 @@ const beamFrag = /* glsl */ `
       a = along * body * 0.11;
     } else {
       // A soft pool: the glow sprite's falloff steepened so the bright core stays small.
-      a = pow(texture2D(uGlow, vUv).r, 1.5);
+      a = pow(texture2D(uGlow, vUv).r, 1.5) * vFade;
     }
     // Standing in the light, the pool and cone fall to a floor instead of filling the frame.
     a *= mix(0.3, 1.0, vNear);
@@ -664,6 +683,7 @@ function beamGeometry(): THREE.BufferGeometry {
   geo.setAttribute('aT', new THREE.Float32BufferAttribute(t, 1));
   geo.setAttribute('aPart', new THREE.Float32BufferAttribute(part, 1));
   geo.setAttribute('aLift', new THREE.Float32BufferAttribute(new Float32Array(part.length), 1).setUsage(THREE.DynamicDrawUsage));
+  geo.setAttribute('aFade', new THREE.Float32BufferAttribute(new Float32Array(part.length).fill(1), 1).setUsage(THREE.DynamicDrawUsage));
   geo.setIndex(idx);
   return geo;
 }
@@ -671,19 +691,66 @@ function beamGeometry(): THREE.BufferGeometry {
 /**
  * Lay the pool on the ground: each pool vertex's height over the target from the world's height under it.
  * A flat disc at the target's height sinks into a climbing road on one side, so a slope or a crest cut a
- * straight edge across the pool. The 0.12 m lift in beamVert clears the curb (CITY.curbHeight) and the
- * chords between samples. `level` (m) picks the deck the target is on where two levels stack (heightAt's y).
- * Per frame: a heightAt per pool vertex (141) and one small buffer upload.
+ * straight edge across the pool. Rings go out from the center: a vertex a cliff away from its inner
+ * neighbour, or from a ring neighbour nearer the target's height, keeps the inner height and goes dark
+ * (aFade), so the pool ends at a deck's edge or a channel wall instead of hanging down it. Then each
+ * vertex rises POOL.lift plus the sag the road mesh's chord has over its neighbours (POOL). `level` (m)
+ * picks the deck the target is on where two levels stack (heightAt's y).
+ * Per frame: a heightAt per pool vertex (141), a few passes over them and two small buffer uploads.
  */
 function drapePool(geo: THREE.BufferGeometry, world: World, target: THREE.Vector3, spotR: number, level?: number): void {
   const dir = geo.getAttribute('aRing') as THREE.BufferAttribute;
-  const t = geo.getAttribute('aT') as THREE.BufferAttribute;
   const lift = geo.getAttribute('aLift') as THREE.BufferAttribute;
-  for (let i = POOL_FIRST; i < lift.count; i++) {
-    const r = t.getX(i) * spotR;
-    lift.setX(i, world.heightAt(target.x + dir.getX(i) * r, target.z + dir.getY(i) * r, level) - target.y);
+  const fade = geo.getAttribute('aFade') as THREE.BufferAttribute;
+  const segs = BEAM_SEGS;
+  const dr = spotR / POOL_RINGS;
+  const ty = target.y;
+  const ring = (r: number, k: number): number => 1 + (r - 1) * segs + wrapIndex(k, segs, true);
+  poolRaw[0] = poolY[0] = ty;
+  fade.setX(POOL_FIRST, 1);
+  for (let r = 1; r <= POOL_RINGS; r++) {
+    const rad = r * dr;
+    for (let k = 0; k < segs; k++) {
+      const i = POOL_FIRST + ring(r, k);
+      poolRaw[ring(r, k)] = world.heightAt(target.x + dir.getX(i) * rad, target.z + dir.getY(i) * rad, level);
+    }
+    const stepR = POOL.cliff + POOL.cliffSlope * dr;
+    const stepT = POOL.cliff + POOL.cliffSlope * ((2 * Math.PI * rad) / segs);
+    for (let k = 0; k < segs; k++) {
+      const j = ring(r, k);
+      const inner = r === 1 ? 0 : j - segs;
+      const y = poolRaw[j];
+      const a = poolRaw[ring(r, k - 1)];
+      const b = poolRaw[ring(r, k + 1)];
+      const off = Math.abs(y - ty);
+      const cut =
+        Math.abs(y - poolY[inner]) > stepR ||
+        (Math.abs(y - a) > stepT && off > Math.abs(a - ty)) ||
+        (Math.abs(y - b) > stepT && off > Math.abs(b - ty));
+      poolY[j] = cut ? poolY[inner] : y;
+      fade.setX(POOL_FIRST + j, cut ? 0 : 1);
+    }
+  }
+  // The chord's sag over a vertex from a pair of neighbours `span` (m) either side, scaled to POOL.chord.
+  const sagOf = (a: number, b: number, j: number, span: number): number => {
+    if (fade.getX(POOL_FIRST + a) === 0 || fade.getX(POOL_FIRST + b) === 0) return 0;
+    const k = POOL.chord / (2 * span);
+    return ((poolY[a] + poolY[b]) / 2 - poolY[j]) * k * k;
+  };
+  let sag = 0;
+  for (let k = 0; k < segs / 2; k++) sag = Math.max(sag, sagOf(ring(1, k), ring(1, k + segs / 2), 0, dr));
+  lift.setX(POOL_FIRST, POOL.lift + Math.min(POOL.sagMax, sag));
+  for (let r = 1; r <= POOL_RINGS; r++) {
+    const tang = (2 * Math.PI * r * dr) / segs;
+    for (let k = 0; k < segs; k++) {
+      const j = ring(r, k);
+      sag = Math.max(0, sagOf(ring(r, k - 1), ring(r, k + 1), j, tang));
+      if (r < POOL_RINGS) sag = Math.max(sag, sagOf(r === 1 ? 0 : j - segs, j + segs, j, dr));
+      lift.setX(POOL_FIRST + j, poolY[j] - ty + POOL.lift + Math.min(POOL.sagMax, sag));
+    }
   }
   lift.needsUpdate = true;
+  fade.needsUpdate = true;
 }
 
 /** The police livery on the shared helicopter shape: black body, white doors and boom band, light bar, searchlight pod. */
@@ -1073,8 +1140,9 @@ export function buildAirTraffic(world: World, opts: { quality: Quality; fogDensi
       tz = pose.pos.z + dz * k;
     }
     apex.set(pose.pos.x, pose.pos.y - 1.1, pose.pos.z);
-    target.set(tx, world.heightAt(tx, tz), tz);
-    drapePool(beamGeo, world, target, spotR);
+    // The light lands on whatever is on top: the expressway's deck over the street it crosses.
+    target.set(tx, world.heightAt(tx, tz, Infinity), tz);
+    drapePool(beamGeo, world, target, spotR, Infinity);
     blimpPoseAt(bp, time, blimpPose);
     blimp.position.set(blimpPose.pos.x, blimpPose.pos.y, blimpPose.pos.z);
     blimp.quaternion.copy(q.setFromEuler(e.set(0, blimpPose.yaw, 0, 'YXZ')));
