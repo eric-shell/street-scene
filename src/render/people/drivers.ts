@@ -45,7 +45,9 @@ const WHEEL = { ahead: 0.38, up: 0.28, r: 0.17, tilt: 0.4 } as const;
 const SEATS: Record<string, Seat> = {
   protoHatch: { x: 0.38, y: 0.48, z: -0.28, lean: -0.22 },
   // The Coupe's wheel is low and well ahead of its seat (the RX-7's long cabin): the driver sits forward to it.
-  protoCoupe: { x: 0.38, y: 0.46, z: -0.42, lean: 0.12, wheel: { ahead: 0.55, up: 0.2 } },
+  // Leaning forward lifts the head, and the headliner is only 1.235 m up, so the hips sit low in the cushion
+  // (its top is 0.41 m): the cap clears the headliner by 3.5 cm. The wheel stays put in the cabin (z 0.13, y 0.66).
+  protoCoupe: { x: 0.38, y: 0.38, z: -0.4, lean: 0.12, wheel: { ahead: 0.53, up: 0.28 } },
   protoWagon: { x: 0.38, y: 0.47, z: -0.18, lean: -0.22 },
 };
 const DEFAULT_SEAT: Seat = { x: 0.38, y: 0.47, z: -0.3, lean: -0.22 };
