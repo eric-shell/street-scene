@@ -5,13 +5,15 @@
  * _setting-row.scss (rows, notes, the controls list).
  */
 import { h, keyCaps, link, segmented, selectTab, tab } from '../kit/dom';
-import { Code, Gamepad2, Heart, Keyboard, Monitor, Smartphone, Volume2, type IconNode } from '../kit/icons';
+import { CircleUser, Code, Gamepad2, Heart, Keyboard, Monitor, Smartphone, Volume2, type IconNode } from '../kit/icons';
 import type { Quality, Settings } from '../settings';
 import type { MusicPlayer } from '../../audio/musicPlayer';
 import { musicCredits } from '../panels/musicWidget';
 import trafficModels from '../../assets/trafficModels.json';
 import plantModels from '../../assets/plantModels.json';
 import { BUILD_VERSION } from '../../version';
+import { accountsEnabled } from '../../account/account';
+import { accountPage } from './accountPage';
 
 /** A settings page: its tab and the rows it shows. */
 interface SettingsPage {
@@ -25,7 +27,7 @@ interface SettingsPage {
 let lastPage = 'display';
 
 /**
- * Settings: a row of tabs (display, sound, controls, developer, credits) over
+ * Settings: a row of tabs (display, sound, controls, account when the build has accounts, developer, credits) over
  * the open page, so nothing needs a long scroll and the panel fits the rail's
  * column. Race options (rivals, difficulty, gearbox, traction control) live on
  * the menu's race step instead. Used on the menu's settings step and on the
@@ -42,7 +44,7 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
     r.addEventListener('input', () => onInput(Number(r.value)));
     return r;
   };
-  const pages: SettingsPage[] = [
+  const all: (SettingsPage | false)[] = [
     {
       id: 'display',
       label: 'Display',
@@ -120,6 +122,7 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
         ];
       },
     },
+    accountsEnabled() && { id: 'account', label: 'Account', icon: CircleUser, rows: accountPage },
     {
       id: 'developer',
       label: 'Developer',
@@ -128,6 +131,7 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
     },
     { id: 'credits', label: 'Credits', icon: Heart, rows: credits },
   ];
+  const pages = all.filter((p): p is SettingsPage => !!p);
   const pane = h('div', { class: 'settings__pane', role: 'tabpanel' });
   const tabs = pages.map((p) => tab(p.icon, h('span', {}, p.label), () => open(p), 'settings__tab'));
   const open = (p: SettingsPage) => {

@@ -57,11 +57,14 @@ import { damp } from './shared/anim';
 import { GarageState, decodeShareCode, loadGarage, saveGarage } from './garage/storage';
 import { ReplayData, decodeLog, encodeLog, loadBest, loadGhost, loadLastReplay, loadStyleBest, saveGhost, saveLastReplay, submitBest, submitStyleBest } from './replay/replay';
 import { styleTotal } from './ui/hud/boostCallouts';
+import { accountReady } from './account/account';
 
 type State = 'menu' | 'race' | 'garage' | 'freefly' | 'drone';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const uiRoot = document.getElementById('ui') as HTMLElement;
+// A signed-in player's newest save (from another device) lands in local storage before anything reads it.
+await accountReady;
 const settings: Settings = loadSettings();
 const params = new URLSearchParams(location.search);
 const qp = params.get('quality');

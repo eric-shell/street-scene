@@ -16,9 +16,12 @@
     "audit": "tsx scripts/auditCar.ts",
     "music": "tsx scripts/importMusic.ts",
     "traffic": "tsx scripts/buildTraffic.ts",
-    "plant": "tsx scripts/buildPlant.ts"
+    "plant": "tsx scripts/buildPlant.ts",
+    "db:init": "tsx scripts/dbInit.ts"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.2.0",
+    "jose": "^6.2.13",
     "lucide": "^1.59.0",
     "three": "^0.186.1"
   },

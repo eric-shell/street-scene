@@ -1,0 +1,32 @@
+/* The settings' Account page (accountPage.ts): Google's Sign in button (its own iframe, sized by Google) with
+   a sign-in error under it, or the player's row, the cloud save's state and the note on what syncs. */
+.account {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  /* Holds the button's height while Google's script loads, so the page does not jump. */
+  &__google {
+    min-height: 44px;
+  }
+  &__error {
+    margin: 0;
+    font-size: 13px;
+    color: var(--red);
+    &:empty {
+      display: none;
+    }
+  }
+  &__status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    color: var(--soft);
+    &.is-synced {
+      color: var(--green);
+    }
+    &.is-offline {
+      color: var(--muted);
+    }
+  }
+}

@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitest/config';
 import { execSync } from 'node:child_process';
 import pkg from './package.json' with { type: 'json' };
+import { apiDev } from './scripts/apiDev.ts';
 
 function gitHash(): string {
   try {
@@ -11,6 +12,8 @@ function gitHash(): string {
 }
 
 export default defineConfig({
+  // The account API (api/*.ts, Vercel functions) on the dev server too.
+  plugins: [apiDev()],
   server: { host: true, port: 5175, strictPort: true },
   build: { target: 'es2022', chunkSizeWarningLimit: 1500 },
   // DevTools traces every style rule back to its .scss partial (dev only; builds ship no maps).

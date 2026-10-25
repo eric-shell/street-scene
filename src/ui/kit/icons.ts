@@ -80,6 +80,12 @@ export {
   Undo2,
   Users,
   Code,
+  // The settings' Account page.
+  CircleUser,
+  Cloud,
+  CloudCheck,
+  CloudOff,
+  LogOut,
   Pencil,
   Warehouse,
   // The menu's city features and maps.
