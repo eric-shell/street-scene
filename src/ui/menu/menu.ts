@@ -55,7 +55,6 @@ import {
   TrainFront,
   Gauge,
   Trees,
-  Undo2,
   Users,
   Video,
   Waves,
@@ -196,6 +195,9 @@ const GRID_MOVES: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, Arrow
 /** How deep each step sits, so a move deeper slides forward (left) and a move out slides back. */
 const STEP_DEPTH: Record<MenuStep, number> = { home: 0, race: 1, settings: 1, setup: 2 };
 
+/** A random city's seed. */
+const randomSeed = (): string => String(Math.floor(Math.random() * 1e8));
+
 /** Today's event's date as its seed counts it (the UTC day, seed.ts dailySeed): "Sat, Oct 24". */
 function todayLabel(now = new Date()): string {
   return now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
@@ -275,7 +277,7 @@ export function mainMenu(o: MenuOptions): MainMenu {
       box.replaceChildren(
         h('span', { class: 'seed-control__value', title: 'City seed' }, `#${o.seed}`),
         iconBtn(Pencil, 'Type a seed', edit, '--small --ghost'),
-        iconBtn(Shuffle, 'Random city', () => o.onSeed(String(Math.floor(Math.random() * 1e8))), '--small --ghost'),
+        iconBtn(Shuffle, 'Random city', () => o.onSeed(randomSeed()), '--small --ghost'),
       );
     const edit = () => {
       const input = h('input', { type: 'text', class: 'mono seed-control__input', value: o.seed, maxlength: 32, 'aria-label': 'Seed', placeholder: 'Type a seed' }) as HTMLInputElement;
@@ -302,9 +304,23 @@ export function mainMenu(o: MenuOptions): MainMenu {
     const enter = btn(Flag, 'Race', () => go('race'), '--large --primary --cta event-card__go');
     enter.title = 'Pick the race type and rivals, then start';
     enter.append(icon(ChevronRight, { size: 20 }));
-    // Away from today's city, the way back stands beside Race: as plain as Race, dated so it reads as today's.
-    const today = !o.isDaily && btn(Undo2, "Today's race", () => o.onSeed(null), '--large event-card__today', todayLabel());
-    if (today) today.title = "Back to today's event city";
+    // Today's city or one of your own, a switch in the kicker's place: Today goes back to today's event,
+    // Custom rolls a random city (the seed's pencil types one). Picking the city already up does nothing.
+    const pick = segmented(
+      [
+        { value: 'today', label: 'Today', icon: Calendar },
+        { value: 'custom', label: 'Custom', icon: Shuffle },
+      ] as const,
+      o.isDaily ? 'today' : 'custom',
+      (v) => {
+        if (v === 'today' && !o.isDaily) o.onSeed(null);
+        else if (v === 'custom' && o.isDaily) o.onSeed(randomSeed());
+      },
+      'event-card__pick',
+    );
+    pick.setAttribute('aria-label', 'Event city');
+    (pick.children[0] as HTMLElement).title = `Today's event · ${todayLabel()}`;
+    (pick.children[1] as HTMLElement).title = o.isDaily ? 'A random city of your own' : 'A city of your own';
     overview = new CityOverview(o.world);
     const map = h(
       'button',
@@ -318,12 +334,12 @@ export function mainMenu(o: MenuOptions): MainMenu {
     return h(
       'section',
       { class: 'event-card', 'aria-label': 'Event' },
-      h('div', { class: 'event-card__top' }, h('span', { class: 'label label--kicker' }, icon(Calendar, { size: 14 }), o.isDaily ? 'Event of the day' : 'Custom event'), seedControl()),
+      h('div', { class: 'event-card__top' }, pick, seedControl()),
       h('h2', { class: 'event-card__name' }, o.event?.name ?? 'Street race'),
       o.event && h('p', { class: 'event-card__tagline' }, o.event.tagline),
       map,
       cityFeatures(o.world),
-      today ? h('div', { class: 'event-card__actions' }, enter, today) : enter,
+      enter,
     );
   };
 
@@ -617,7 +633,7 @@ export function mainMenu(o: MenuOptions): MainMenu {
     settings: [{ keys: ['Esc'], label: 'Back' }, hideUi],
   };
   const TIPS: Record<MenuStep, string[]> = {
-    home: ["Every day brings a new event city. Beside its name the pencil types a seed of your own and shuffle rolls a random city; Today's race beside Race brings you back.", 'The live map opens the whole city; a waypoint set there carries into free roam.'],
+    home: ['Every day brings a new event city. Custom (or shuffle, beside the seed) rolls a random city and the pencil types a seed of your own; Today brings you back.', 'The live map opens the whole city; a waypoint set there carries into free roam.'],
     race: ['Each type draws its course on the card, with your best on this event.'],
     setup: ['Your car opens the garage\'s builds; each one you pick joins the line of cars on the street.', 'Rivals and driving aids are remembered for your next race.'],
     settings: ['Controls lists every key, gamepad button and touch control.'],
