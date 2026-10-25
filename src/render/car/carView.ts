@@ -18,6 +18,7 @@ import { latheTire, measureTire } from './tireShapes';
 import { PLATE, buildPlateGeometry, createPlateMaterial, drawPlate, plateTexture, seatPlate } from './plate';
 import { maskVehicleMesh, underVehicles } from '../vehicleMask';
 import { Disposer } from '../disposer';
+import { WheelClip } from './wheelClip';
 
 export interface CarPose {
   x: number;
@@ -151,6 +152,12 @@ export class CarView {
   private loadToken = 0;
   /** The car's own effect materials (underglow, headlight pool, flames, pops); the shared car materials go with disposeCarMaterials. */
   private readonly owned = new Disposer();
+  /** Hides whatever part of a wheel comes up through the body (wheelClip.ts), measured whenever the body's parts change. */
+  private readonly clip: WheelClip;
+  /** The parts the clip last measured ("" before the first measure). */
+  private clipParts = '';
+  /** The wheels' own copies of body materials they share (Chrome, Black...), so the clip never reaches the body. */
+  private readonly wheelCopies = new Map<THREE.Material, THREE.Material>();
 
   constructor(
     carId: string,
@@ -183,6 +190,9 @@ export class CarView {
     }
 
     const { track } = this.owned;
+    this.clip = track(new WheelClip(this.car, this.body));
+    // Tire and wheel paints are the wheels' alone; the clip goes straight on them.
+    for (const m of [this.materials.Tire, this.materials.Rim, this.materials.RimRear]) this.clip.clipMaterial(m);
     // Underglow: a shader glow on the road around the footprint, plus an optional real light.
     this.underglowMat = track(new THREE.ShaderMaterial({
       uniforms: {
@@ -383,6 +393,22 @@ export class CarView {
     }
     this.updateHiddenBaseMeshes();
     this.seatPlate();
+    const parts = [...BODY_PART_SLOTS, 'body' as PartSlot].map((slot) => v.parts[slot] ?? '').join('|');
+    if (parts !== this.clipParts) {
+      this.clipParts = parts;
+      const glass = this.materials.Glass;
+      const shared = new Set<THREE.Material>(Object.values(this.materials));
+      this.clip.measure((mesh) => {
+        if (!visibleInTree(mesh, this.body)) return false;
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        return mats.every((m) => shared.has(m) && m !== glass);
+      });
+    }
+    for (const [src, copy] of this.wheelCopies) {
+      // Trim follows the build's trim color; the rest of what the copies share never changes.
+      const color = (src as THREE.MeshStandardMaterial).color;
+      if (color) (copy as THREE.MeshStandardMaterial).color.copy(color);
+    }
 
     // Wheels, per axle: the rear wears the front's wheel unless it has one of its own.
     const frontWheel = v.parts.wheels ?? this.car.defaultWheel;
@@ -520,8 +546,9 @@ export class CarView {
         radii.push(Math.hypot(pos.getY(k), pos.getZ(k)));
         if (!isTire) otherX.push(pos.getX(k));
       }
-      // The rear axle wears its own wheel material (wheel color).
-      const material = axle === 1 ? (Array.isArray(mesh.material) ? mesh.material.map(this.rearMat) : this.rearMat(mesh.material)) : mesh.material;
+      // The rear axle wears its own wheel material (wheel color); everything wears a clipped material.
+      const own = axle === 1 ? this.rearWheelMat : this.wheelMat;
+      const material = Array.isArray(mesh.material) ? mesh.material.map(own) : own(mesh.material);
       const out = new THREE.Mesh(geo, material);
       out.name = mesh.name;
       maskVehicleMesh(out);
@@ -547,6 +574,9 @@ export class CarView {
       holder.userData.baseScale = baseScale;
       this.wheelSpins[i].add(holder);
       this.wheelModels[i] = holder;
+      holder.traverse((o) => {
+        if ((o as THREE.Mesh).isMesh) this.clip.watch(o as THREE.Mesh);
+      });
     }
     this.bakeBrakes(axle);
   }
@@ -580,7 +610,18 @@ export class CarView {
     }
   }
 
-  private readonly rearMat = (m: THREE.Material) => (m === this.materials.Rim ? this.materials.RimRear : m);
+  /** A wheel mesh's material: the tire and wheel paints as they are, a clipped copy of anything the body also wears. */
+  private readonly wheelMat = (m: THREE.Material): THREE.Material => {
+    if (m === this.materials.Tire || m === this.materials.Rim || m === this.materials.RimRear) return m;
+    let copy = this.wheelCopies.get(m);
+    if (!copy) {
+      copy = this.owned.track(m.clone());
+      this.clip.clipMaterial(copy);
+      this.wheelCopies.set(m, copy);
+    }
+    return copy;
+  };
+  private readonly rearWheelMat = (m: THREE.Material) => this.wheelMat(m === this.materials.Rim ? this.materials.RimRear : m);
 
   /** Remap one axle's wheel meshes for a wheel size (tire outer diameter stays). */
   private applyWheelSize(axle: 0 | 1, size: number): void {
