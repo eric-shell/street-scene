@@ -25,156 +25,12 @@
               "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/unlimited/"
             },
             {
-              "id": "1000-handz/electronic-gaming-instrumentals/2",
-              "title": "Vortex",
-              "number": 2,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/02-vortex.mp3",
-              "duration": 177.2,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/vortex-3/"
-            },
-            {
-              "id": "1000-handz/electronic-gaming-instrumentals/3",
-              "title": "March On",
-              "number": 3,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/03-march-on.mp3",
-              "duration": 123.6,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/march-on/"
-            },
-            {
-              "id": "1000-handz/electronic-gaming-instrumentals/4",
-              "title": "Reps",
-              "number": 4,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/04-reps.mp3",
-              "duration": 128.5,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/reps/"
-            },
-            {
-              "id": "1000-handz/electronic-gaming-instrumentals/5",
-              "title": "S.E.A.L",
-              "number": 5,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/05-s-e-a-l.mp3",
-              "duration": 132,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/seal/"
-            },
-            {
               "id": "1000-handz/electronic-gaming-instrumentals/6",
               "title": "Serious Play",
               "number": 6,
               "file": "music/1000-handz/electronic-gaming-instrumentals/06-serious-play.mp3",
               "duration": 138,
               "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/serious-play/"
-            },
-            {
-              "id": "1000-handz/electronic-gaming-instrumentals/7",
-              "title": "Loyalty",
-              "number": 7,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/07-loyalty.mp3",
-              "duration": 185.2,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/loyalty-3/"
-            },
-            {
-              "id": "1000-handz/electronic-gaming-instrumentals/8",
-              "title": "Motherboard",
-              "number": 8,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/08-motherboard.mp3",
-              "duration": 116.4,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/motherboard-1/"
-            },
-            {
-              "id": "1000-handz/electronic-gaming-instrumentals/9",
-              "title": "Peculiar",
-              "number": 9,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/09-peculiar.mp3",
-              "duration": 128,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/peculiar/"
-            },
-            {
-              "id": "1000-handz/electronic-gaming-instrumentals/10",
-              "title": "Labyrinth",
-              "number": 10,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/10-labyrinth.mp3",
-              "duration": 81.9,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/labyrinth-2/"
-            },
-            {
-              "id": "1000-handz/electronic-gaming-instrumentals/11",
-              "title": "Smoothie",
-              "number": 11,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/11-smoothie.mp3",
-              "duration": 135.9,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/smoothie-1/"
-            },
-            {
-              "id": "1000-handz/electronic-gaming-instrumentals/12",
-              "title": "Recharge",
-              "number": 12,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/12-recharge.mp3",
-              "duration": 138.7,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/recharge-1/"
-            },
-            {
-              "id": "1000-handz/electronic-gaming-instrumentals/13",
-              "title": "Light My Soul",
-              "number": 13,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/13-light-my-soul.mp3",
-              "duration": 196.4,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/light-my-soul/"
-            },
-            {
-              "id": "1000-handz/electronic-gaming-instrumentals/14",
-              "title": "Galactic",
-              "number": 14,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/14-galactic.mp3",
-              "duration": 236.8,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/galactic/"
-            },
-            {
-              "id": "1000-handz/electronic-gaming-instrumentals/15",
-              "title": "Keep Going",
-              "number": 15,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/15-keep-going.mp3",
-              "duration": 132.4,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/keep-going-2/"
-            },
-            {
-              "id": "1000-handz/electronic-gaming-instrumentals/16",
-              "title": "Call me",
-              "number": 16,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/16-call-me.mp3",
-              "duration": 150.1,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/call-me-1/"
-            },
-            {
-              "id": "1000-handz/electronic-gaming-instrumentals/17",
-              "title": "Fine Instruments",
-              "number": 17,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/17-fine-instruments.mp3",
-              "duration": 133.8,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/fine-instruments/"
-            },
-            {
-              "id": "1000-handz/electronic-gaming-instrumentals/18",
-              "title": "Wander",
-              "number": 18,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/18-wander.mp3",
-              "duration": 174.6,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/wander/"
-            },
-            {
-              "id": "1000-handz/electronic-gaming-instrumentals/19",
-              "title": "Moth",
-              "number": 19,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/19-moth.mp3",
-              "duration": 82.7,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/moth/"
-            },
-            {
-              "id": "1000-handz/electronic-gaming-instrumentals/20",
-              "title": "Take Off",
-              "number": 20,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/20-take-off.mp3",
-              "duration": 146.7,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/take-off-2/"
             },
             {
               "id": "1000-handz/electronic-gaming-instrumentals/21",
@@ -191,14 +47,6 @@
               "file": "music/1000-handz/electronic-gaming-instrumentals/22-renegade.mp3",
               "duration": 172.8,
               "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/renegade-1/"
-            },
-            {
-              "id": "1000-handz/electronic-gaming-instrumentals/23",
-              "title": "Saturn ft. ADG",
-              "number": 23,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/23-saturn-ft-adg.mp3",
-              "duration": 203.3,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/saturn-ft-adg/"
             },
             {
               "id": "1000-handz/electronic-gaming-instrumentals/24",
@@ -225,36 +73,12 @@
               "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/cheat-code/"
             },
             {
-              "id": "1000-handz/electronic-gaming-instrumentals/27",
-              "title": "Rhino",
-              "number": 27,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/27-rhino.mp3",
-              "duration": 120,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/rhino/"
-            },
-            {
-              "id": "1000-handz/electronic-gaming-instrumentals/28",
-              "title": "Abundance",
-              "number": 28,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/28-abundance.mp3",
-              "duration": 256,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/abundance/"
-            },
-            {
               "id": "1000-handz/electronic-gaming-instrumentals/29",
               "title": "Closed Off",
               "number": 29,
               "file": "music/1000-handz/electronic-gaming-instrumentals/29-closed-off.mp3",
               "duration": 202.1,
               "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/closed-off/"
-            },
-            {
-              "id": "1000-handz/electronic-gaming-instrumentals/30",
-              "title": "Infinity",
-              "number": 30,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/30-infinity.mp3",
-              "duration": 165,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/infinity-7/"
             },
             {
               "id": "1000-handz/electronic-gaming-instrumentals/31",
@@ -265,14 +89,6 @@
               "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/mood-2/"
             },
             {
-              "id": "1000-handz/electronic-gaming-instrumentals/32",
-              "title": "Industry",
-              "number": 32,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/32-industry.mp3",
-              "duration": 150,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/industry/"
-            },
-            {
               "id": "1000-handz/electronic-gaming-instrumentals/33",
               "title": "Dark Side",
               "number": 33,
@@ -281,68 +97,12 @@
               "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/dark-side-1/"
             },
             {
-              "id": "1000-handz/electronic-gaming-instrumentals/34",
-              "title": "Contact",
-              "number": 34,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/34-contact.mp3",
-              "duration": 204.6,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/contact-2/"
-            },
-            {
-              "id": "1000-handz/electronic-gaming-instrumentals/35",
-              "title": "Phantomm",
-              "number": 35,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/35-phantomm.mp3",
-              "duration": 140.8,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/phantomm/"
-            },
-            {
-              "id": "1000-handz/electronic-gaming-instrumentals/36",
-              "title": "Divine [D&B edit]",
-              "number": 36,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/36-divine-dandb-edit.mp3",
-              "duration": 163.8,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/divine-db-edit/"
-            },
-            {
               "id": "1000-handz/electronic-gaming-instrumentals/37",
               "title": "36 Chambers",
               "number": 37,
               "file": "music/1000-handz/electronic-gaming-instrumentals/37-36-chambers.mp3",
               "duration": 216.8,
               "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/36-chambers/"
-            },
-            {
-              "id": "1000-handz/electronic-gaming-instrumentals/38",
-              "title": "Baby Stepz",
-              "number": 38,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/38-baby-stepz.mp3",
-              "duration": 85.3,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/baby-stepz/"
-            },
-            {
-              "id": "1000-handz/electronic-gaming-instrumentals/39",
-              "title": "Work It Out",
-              "number": 39,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/39-work-it-out.mp3",
-              "duration": 153.8,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/work-it-out-1/"
-            },
-            {
-              "id": "1000-handz/electronic-gaming-instrumentals/40",
-              "title": "Kraken",
-              "number": 40,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/40-kraken.mp3",
-              "duration": 261.8,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/kraken/"
-            },
-            {
-              "id": "1000-handz/electronic-gaming-instrumentals/41",
-              "title": "Sharpens Steel",
-              "number": 41,
-              "file": "music/1000-handz/electronic-gaming-instrumentals/41-sharpens-steel.mp3",
-              "duration": 154.6,
-              "url": "https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/sharpens-steel/"
             },
             {
               "id": "1000-handz/electronic-gaming-instrumentals/42",
