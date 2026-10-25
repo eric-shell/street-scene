@@ -1,6 +1,6 @@
 /* The event card on home (menu.ts eventCard): what tonight's event is, the city it runs in (a live map and its
-   notable districts) and the way in. It names no race type; the race step does. Warm light falls on it from
-   the top corners. */
+   notable districts) and the way in, beside the way back to today's race on a city of your own. It names no
+   race type; the race step does. Warm light falls on it from the top corners. */
 @use '../styles/abstracts/media';
 @use '../styles/abstracts/mixins';
 @use '../styles/abstracts/palette';
@@ -68,6 +68,48 @@
     }
     @media (max-height: 780px) {
       margin-top: 4px;
+    }
+  }
+  /* Away from today's city: Race and the way back to today's share the row (menu.ts eventCard). */
+  &__actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+    > .event-card__go {
+      flex: 1;
+      min-width: 0;
+      margin-top: 0;
+    }
+    @media (max-height: 780px) {
+      margin-top: 4px;
+    }
+  }
+  /* Today's race: a plain plate as tall as Race, in the seed's yellow, the date under its name. Compound with
+     .btn so it outweighs the kit's states. */
+  &__today.btn {
+    flex: none;
+    width: auto;
+    gap: 8px;
+    padding: 6px 14px 6px 12px;
+    border-color: palette.alpha(yellow, 0.35);
+    white-space: nowrap;
+    > svg {
+      color: var(--accent-2);
+    }
+    .btn__label {
+      font: 800 14px var(--font);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent-2);
+    }
+    .btn__sub {
+      margin-top: 1px;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+    }
+    &:hover,
+    &:focus-visible {
+      border-color: var(--accent-2);
     }
   }
   /* What makes this city: chips in their districts' map inks (.chip--ink), a legend of the map above them. */

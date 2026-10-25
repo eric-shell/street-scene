@@ -102,6 +102,8 @@ export class MusicPlayer {
   private duck = 1;
   /** Gain over the slider (1 = none): the race session's nitrous swell. */
   private lift = 1;
+  /** Gain under the slider (1 = none): the menu's dip while it shifts to a new city. */
+  private dip = 1;
   private saveTimer = 0;
   private errors = 0;
 
@@ -329,10 +331,21 @@ export class MusicPlayer {
     this.applyVolume();
   }
 
+  /**
+   * Dip the music under its slider by a gain (1 = none): a dip the caller
+   * eases, set every frame (writes only when it moves).
+   */
+  setDip(gain: number): void {
+    const g = Math.max(0, Math.min(1, gain));
+    if (Math.abs(g - this.dip) < 1e-3 && (g !== 1 || this.dip === 1)) return;
+    this.dip = g;
+    this.applyVolume();
+  }
+
   private applyVolume(): void {
     // Perceptual curve so the slider feels linear.
     const v = this.s.muted ? 0 : this.s.volume * this.s.volume;
-    this.audio.volume = Math.min(1, v * this.duck * this.lift);
+    this.audio.volume = Math.min(1, v * this.duck * this.lift * this.dip);
   }
 
   private load(): Persisted {

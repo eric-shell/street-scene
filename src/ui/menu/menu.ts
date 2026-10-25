@@ -2,8 +2,9 @@
  * The main menu, in steps so no pane tries to do everything, on the rail
  * (ui/rail/rail.ts) beside the event city, where the player's car cruises the
  * route. Home is the title block over the event card (tonight's event: its
- * name and tagline, the seed with edit, shuffle and back-to-today, the city as
- * a tilted live map with what makes it this city, and the way into the race)
+ * name and tagline, the seed with edit and shuffle, the city as a tilted live
+ * map with what makes it this city, and the way into the race, with the way
+ * back to today's race beside it on a city of your own)
  * over a list of the other places: Garage, Explore (the drone flyover) and
  * Settings. Home says nothing about the race itself, so no type is implied
  * before the player picks one. A race takes three steps, each short enough
@@ -196,6 +197,11 @@ const GRID_MOVES: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, Arrow
 const STEP_DEPTH: Record<MenuStep, number> = { home: 0, race: 1, settings: 1, setup: 2 };
 
 /** A row of the home menu's list (its element class names the place, for focus). */
+/** Today's event's date as its seed counts it (the UTC day, seed.ts dailySeed): "Sat, Oct 24". */
+function todayLabel(now = new Date()): string {
+  return now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
 function navItem(kind: keyof typeof PLACES_INFO, sub: string, onClick: () => void, label: string | Node = PLACES_INFO[kind].label): HTMLButtonElement {
   const info = PLACES_INFO[kind];
   return navRow(info.icon, label, sub, info.hue, onClick, `menu__${kind}`);
@@ -270,7 +276,6 @@ export function mainMenu(o: MenuOptions): MainMenu {
         h('span', { class: 'seed-control__value', title: 'City seed' }, `#${o.seed}`),
         iconBtn(Pencil, 'Type a seed', edit, '--small --ghost'),
         iconBtn(Shuffle, 'Random city', () => o.onSeed(String(Math.floor(Math.random() * 1e8))), '--small --ghost'),
-        ...(o.isDaily ? [] : [iconBtn(Undo2, "Back to today's event", () => o.onSeed(null), '--small --ghost')]),
       );
     const edit = () => {
       const input = h('input', { type: 'text', class: 'mono seed-control__input', value: o.seed, maxlength: 32, 'aria-label': 'Seed', placeholder: 'Type a seed' }) as HTMLInputElement;
@@ -297,6 +302,9 @@ export function mainMenu(o: MenuOptions): MainMenu {
     const enter = btn(Flag, 'Race', () => go('race'), '--large --primary --cta event-card__go');
     enter.title = 'Pick the race type and rivals, then start';
     enter.append(icon(ChevronRight, { size: 20 }));
+    // Away from today's city, the way back stands beside Race: as plain as Race, dated so it reads as today's.
+    const today = !o.isDaily && btn(Undo2, "Today's race", () => o.onSeed(null), '--large event-card__today', todayLabel());
+    if (today) today.title = "Back to today's event city";
     overview = new CityOverview(o.world);
     const map = h(
       'button',
@@ -315,7 +323,7 @@ export function mainMenu(o: MenuOptions): MainMenu {
       o.event && h('p', { class: 'event-card__tagline' }, o.event.tagline),
       map,
       cityFeatures(o.world),
-      enter,
+      today ? h('div', { class: 'event-card__actions' }, enter, today) : enter,
     );
   };
 
@@ -609,7 +617,7 @@ export function mainMenu(o: MenuOptions): MainMenu {
     settings: [{ keys: ['Esc'], label: 'Back' }, hideUi],
   };
   const TIPS: Record<MenuStep, string[]> = {
-    home: ['Every day brings a new event city. Beside its name the pencil types a seed of your own and shuffle rolls a random city.', 'The live map opens the whole city; a waypoint set there carries into free roam.'],
+    home: ["Every day brings a new event city. Beside its name the pencil types a seed of your own and shuffle rolls a random city; Today's race beside Race brings you back.", 'The live map opens the whole city; a waypoint set there carries into free roam.'],
     race: ['Each type draws its course on the card, with your best on this event.'],
     setup: ['Your car opens the garage\'s builds; each one you pick joins the line of cars on the street.', 'Rivals and driving aids are remembered for your next race.'],
     settings: ['Controls lists every key, gamepad button and touch control.'],

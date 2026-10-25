@@ -53,6 +53,7 @@ import { stockPerformance } from './sim/build';
 import { CarBuild, VisualBuild, defaultVisual, PAINT_FINISHES } from './shared/carBuild';
 import { DEFAULT_CAR_ID, SELECTABLE_CAR_IDS, getBaseTuning } from './sim/tuning';
 import { specBadges } from './shared/carSpec';
+import { damp } from './shared/anim';
 import { GarageState, decodeShareCode, loadGarage, saveGarage } from './garage/storage';
 import { ReplayData, decodeLog, encodeLog, loadBest, loadGhost, loadLastReplay, loadStyleBest, saveGhost, saveLastReplay, submitBest, submitStyleBest } from './replay/replay';
 import { styleTotal } from './ui/hud/boostCallouts';
@@ -416,11 +417,14 @@ function showMenu(step: MenuStep = 'home'): void {
       if (seedFromString(next) === st.world.seed) return use();
       // The city floors it into the dark, the new one builds behind the seed's card and arrives in the warp, its menu rising in.
       const card = { kicker: s === null ? "Today's event" : 'New city', title: `#${next}`, sub: 'Building the streets' };
+      musicDip.on = true;
       void shift(card, use, (src) => (arrival = src), () => {
+        // The music comes back up with the new city.
+        musicDip.on = false;
         const el = menuEl?.querySelector('.menu');
         el?.classList.add('is-reseeded');
         setTimeout(() => el?.classList.remove('is-reseeded'), 1200);
-      });
+      }).finally(() => (musicDip.on = false));
     },
     onHideUi: () => setCinematic(true),
     onStep: (s) => showreel.setMode(STEP_CAMERA[s]),
@@ -892,11 +896,18 @@ let photoDrone = false;
  */
 let splashWarmup: number | null = null;
 
+/** The music dips a little while the menu shifts to a new city (MusicPlayer.setDip): the gain, how fast it eases (1/s), and where it is now. */
+const MUSIC_DIP = { gain: 0.6, rate: 5 } as const;
+const musicDip = { on: false, gain: 1 };
+
 const loop = new FixedStepLoop({
   tick() {
     if (state === 'race') session?.tick();
   },
   render(alpha, dt) {
+    musicDip.gain += ((musicDip.on ? MUSIC_DIP.gain : 1) - musicDip.gain) * damp(MUSIC_DIP.rate, dt);
+    if (!musicDip.on && musicDip.gain > 0.999) musicDip.gain = 1;
+    music.setDip(musicDip.gain);
     // The pad works the screens whenever no car (or drone) is reading it.
     const padUi = state === 'menu' || state === 'garage' || (state === 'race' && !!session && (session.paused || session.race.phase === 'finished') && !session.droneActive);
     padNav.poll(dt, padUi);
