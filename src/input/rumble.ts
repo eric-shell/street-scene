@@ -4,7 +4,9 @@
  * and runs once per sim tick, so it feels the same at any frame rate. Nothing
  * is recorded, so replays and ghosts never rumble. The strong (low frequency)
  * motor carries hits and landings, the weak (high frequency) one the texture:
- * rough ground, wheelspin, scraping a wall, the rev limiter, nitrous.
+ * rough ground, wheelspin, scraping a wall, the rev limiter, nitrous. The
+ * nitrous callouts' rewards kick both (boostCue): a thousand points, a stage
+ * coming full, harder for Max and a full overdrive.
  *
  * `vibrationActuator.playEffect('dual-rumble')` (Chrome, Edge) replaces the
  * running effect on every call, so a short effect is re-armed every few ticks
@@ -14,6 +16,7 @@
  * nothing.
  */
 import type { RaceEvent, RaceState } from '../sim/race';
+import type { BoostCue } from '../ui/hud/boostCallouts';
 import type { Surface } from '../city/districts/types';
 
 const RUMBLE = {
@@ -48,6 +51,11 @@ const RUMBLE = {
   nitroStrong: 0.12,
   nitroWeak: 0.2,
   nitroStage: [1, 1.3, 1.6],
+  /** Reward kicks (strong, weak) from the nitrous callouts: a thousand points, a stage, Max (stage 3) and a full overdrive. */
+  chime: [0.08, 0.3],
+  stage: [0.2, 0.35],
+  max: [0.5, 0.6],
+  overdrive: [0.55, 0.7],
   /** Under this both motors are off. */
   floor: 0.03,
 } as const;
@@ -79,6 +87,14 @@ export class Rumble {
       this.hit = Math.max(this.hit, RUMBLE.prop / 2);
       this.knock = Math.max(this.knock, RUMBLE.prop);
     }
+  }
+
+  /** A nitrous callout's reward: a kick that fades like a hit (ticks and crashes kick nothing; the wall event already rumbles). */
+  boostCue(cue: BoostCue): void {
+    const k = cue.kind === 'chime' ? RUMBLE.chime : cue.kind === 'stage' ? (cue.stage >= 3 ? RUMBLE.max : RUMBLE.stage) : cue.kind === 'overdrive' ? RUMBLE.overdrive : null;
+    if (!k) return;
+    this.hit = Math.max(this.hit, k[0]);
+    this.knock = Math.max(this.knock, k[1]);
   }
 
   /** Once per sim tick, after the tick's events: the player's car through the pad. */

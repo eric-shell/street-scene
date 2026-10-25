@@ -131,6 +131,7 @@ export function raceHudData(r: RaceState, cars: HudCar[], ghost: boolean, aspira
     nitro: c.nitro,
     nitroActive: c.nitroActive,
     nitroStage: c.nitroStage,
+    nitroOver: rc.tuning.nitrous.overdriveCap > 0 ? c.nitroOver / rc.tuning.nitrous.overdriveCap : 0,
     throttle: c.throttle,
     launchRpm: rc.tuning.launch.twoStepRpm || undefined,
     aspiration,

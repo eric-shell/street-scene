@@ -78,6 +78,21 @@ export function submitBest(seed: number, mode: RaceMode, rec: BestRecord): boole
   return better;
 }
 
+const styleKey = (seed: number, mode: RaceMode) => `style.${seed}.${mode}`;
+
+/** The best style score (the nitrous callouts' points, boostCallouts.ts styleTotal) on this event, 0 when none. */
+export function loadStyleBest(seed: number, mode: RaceMode): number {
+  const n = Number(safeGet(styleKey(seed, mode)));
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Save a style score if it beats the best. Returns true when it is a new best. */
+export function submitStyleBest(seed: number, mode: RaceMode, score: number): boolean {
+  if (score <= 0 || score <= loadStyleBest(seed, mode)) return false;
+  safeSet(styleKey(seed, mode), String(Math.round(score)));
+  return true;
+}
+
 export function loadGhost(seed: number, mode: RaceMode): ReplayData | null {
   const raw = safeGet(ghostKey(seed, mode));
   if (!raw) return null;

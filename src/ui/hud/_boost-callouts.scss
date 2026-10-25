@@ -1,7 +1,9 @@
 /* The callouts over the dial cluster (boostCallouts.ts): every way of earning nitrous names itself as it
    pays. They stack up from the cluster, the newest nearest the gauge; a callout's points take the color of
-   the stage they went into (data-stage, the gauge's $stages), and a stage filling or a chain refill
-   (data-kind) is the stage's own news, its name in that color too. */
+   the stage they went into (data-stage, the gauge's $stages, then its $overdrive gold for the spill past a
+   full tank), and a stage filling, overdrive banking full or a chain refill (data-kind) is the stage's own
+   news, its name in that color too. Stage 3 (Max) and a full overdrive are the big calls (--big): larger,
+   slammed in with a flash. A crash that cost nitrous reads red, name and loss. */
 @use 'sass:list';
 @use '../styles/abstracts/media';
 @use '../styles/abstracts/palette';
@@ -39,30 +41,48 @@
       @include palette.tint(stage, list.nth(nitro-gauge.$stages, $i));
     }
   }
+  &[data-stage='#{list.length(nitro-gauge.$stages) + 1}'] {
+    @include palette.tint(stage, nitro-gauge.$overdrive);
+  }
+  &[data-kind='crash'] {
+    @include palette.tint(stage, red);
+  }
   &__label {
     font: 900 15px var(--display);
     letter-spacing: 0.1em;
     text-transform: uppercase;
   }
   &__points {
-    min-width: 3ch;
+    min-width: 6ch;
     text-align: right;
     font: 700 19px var(--mono);
     font-variant-numeric: tabular-nums;
     color: var(--stage);
   }
   &[data-kind='stage'] &__label,
-  &[data-kind='chain'] &__label {
+  &[data-kind='overdrive'] &__label,
+  &[data-kind='chain'] &__label,
+  &[data-kind='crash'] &__label {
     color: var(--stage);
   }
   &[data-kind='stage'] &__label {
     font-size: 19px;
   }
-  &[data-kind='stage'] &__points {
+  &[data-kind='stage'] &__points,
+  &[data-kind='overdrive'] &__points {
     font: 900 13px var(--display);
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--text);
+  }
+  &--big &__label {
+    font-size: 26px;
+    text-shadow: var(--hud-halo), 0 0 14px rgba(var(--stage-rgb), 0.8);
+  }
+  &--big {
+    @include media.motion {
+      animation: boost-callout-slam 0.5s cubic-bezier(0.2, 1.4, 0.4, 1);
+    }
   }
   &.is-leaving {
     opacity: 0;
@@ -75,6 +95,9 @@
     &__points,
     &[data-kind='stage'] &__label {
       font-size: 16px;
+    }
+    &--big &__label {
+      font-size: 21px;
     }
   }
   /* Reduced motion: the callout fades out without the lift. */
@@ -93,5 +116,21 @@
   to {
     opacity: 1;
     transform: none;
+  }
+}
+/* The big calls slam in from oversized with a white flash that settles into the stage's color. */
+@keyframes boost-callout-slam {
+  0% {
+    opacity: 0;
+    transform: scale(2.2);
+    filter: brightness(3);
+  }
+  45% {
+    opacity: 1;
+    transform: scale(0.94);
+  }
+  to {
+    transform: none;
+    filter: none;
   }
 }

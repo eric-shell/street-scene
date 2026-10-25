@@ -54,7 +54,8 @@ import { CarBuild, VisualBuild, defaultVisual, PAINT_FINISHES } from './shared/c
 import { DEFAULT_CAR_ID, SELECTABLE_CAR_IDS, getBaseTuning } from './sim/tuning';
 import { specBadges } from './shared/carSpec';
 import { GarageState, decodeShareCode, loadGarage, saveGarage } from './garage/storage';
-import { ReplayData, decodeLog, encodeLog, loadBest, loadGhost, loadLastReplay, saveGhost, saveLastReplay, submitBest } from './replay/replay';
+import { ReplayData, decodeLog, encodeLog, loadBest, loadGhost, loadLastReplay, loadStyleBest, saveGhost, saveLastReplay, submitBest, submitStyleBest } from './replay/replay';
+import { styleTotal } from './ui/hud/boostCallouts';
 
 type State = 'menu' | 'race' | 'garage' | 'freefly' | 'drone';
 
@@ -681,7 +682,7 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
   }
   const s = session;
   (window as unknown as Record<string, unknown>).__nr = { session: s, gr, autoQ };
-  s.onFinish = ({ race, tuned }) => {
+  s.onFinish = ({ race, tuned, style }) => {
     if (s !== session) return;
     if (kind === 'roam') return wipeToMenu();
     syncMusicMode();
@@ -696,9 +697,12 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
       date: new Date().toISOString(),
     };
     let newBest = false;
+    const styleBest = loadStyleBest(race.config.seed, race.config.mode);
+    let newStyleBest = false;
     if (!replay) {
       saveLastReplay(data);
       if (!tuned) {
+        newStyleBest = submitStyleBest(race.config.seed, race.config.mode, styleTotal(style));
         newBest = submitBest(race.config.seed, race.config.mode, { time: me.time, score: race.drift.total, carId: race.config.player.carId, date: data.date });
         if (newBest && race.config.opponents.length === 0) saveGhost(race.config.seed, race.config.mode, data);
       }
@@ -718,6 +722,9 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
         position: me.position,
         driftScore: race.drift.total,
         newBest,
+        style,
+        styleBest,
+        newStyleBest,
         tuned,
         onRetry: () =>
           void wipe({ kicker: race.world.event?.name, title: 'Retry', sub: MODE_NAME[race.config.mode] }, () =>

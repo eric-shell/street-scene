@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createCar, gridRev, placeCar, refillNitrous, stepCar } from '../src/sim/car';
+import { crashNitrous, createCar, fillNitrous, gridRev, placeCar, refillNitrous, stepCar } from '../src/sim/car';
 import type { CarState } from '../src/sim/car';
 import { applyBuild, stockPerformance } from '../src/sim/build';
 import { CAR_IDS, CarTuning, NITRO_STAGES, SELECTABLE_CAR_IDS, driveSplit, getBaseTuning, tuningHash } from '../src/sim/tuning';
@@ -118,9 +118,78 @@ describe('nitrous stages', () => {
       level = c.nitro;
     }
     expect(c.nitro).toBe(NITRO_STAGES);
-    // A full tank takes no more, and no callout claims any.
+    // Past a full tank style banks overdrive, up to its cap; then it takes no more, and no callout claims any.
+    expect(c.nitroOver).toBe(t.nitrous.overdriveCap);
     refillNitrous(c, t);
     expect(c.nitroGain.drift + c.nitroGain.nearMiss).toBe(0);
+  });
+
+  it('only the spill past a full tank goes to overdrive', () => {
+    const c = createCar(0, 0, 0, 0);
+    c.nitro = 2.9;
+    expect(fillNitrous(c, t, 0.05)).toBeCloseTo(0.05, 12);
+    expect(c.nitroOver).toBe(0);
+    expect(fillNitrous(c, t, 0.25)).toBeCloseTo(0.25, 12);
+    expect(c.nitro).toBe(NITRO_STAGES);
+    expect(c.nitroOver).toBeCloseTo(0.2, 12);
+  });
+
+  it('overdrive burns with the tank and pushes every stage harder', () => {
+    const plain = rolling(3);
+    hold(plain, 1);
+    const hot = rolling(3);
+    hot.nitroOver = t.nitrous.overdriveCap;
+    hold(hot, 1);
+    expect(hot.speed).toBeGreaterThan(plain.speed + 0.3);
+    // It drains at the tank's rate, alongside it.
+    expect(hot.nitroOver).toBeCloseTo(t.nitrous.overdriveCap - 1 / t.nitrous.capacity, 1);
+    expect(hot.nitro).toBeCloseTo(plain.nitro, 9);
+  });
+
+  it('a crash into a wall costs nitrous by its impact, overdrive first; a tap costs nothing', () => {
+    const n = t.nitrous;
+    const c = createCar(0, 0, 0, 0);
+    c.nitro = 2;
+    c.nitroOver = 0.2;
+    crashNitrous(c, t, n.crashMinImpact);
+    expect(c.nitroLoss).toBe(0);
+    expect(c.nitro).toBe(2);
+    crashNitrous(c, t, n.crashFullImpact * 3);
+    expect(c.nitroLoss).toBeCloseTo(n.crashLoss, 12);
+    expect(c.nitroOver).toBe(0);
+    expect(c.nitro).toBeCloseTo(2 - (n.crashLoss - 0.2), 12);
+    // Halfway between the thresholds costs half, and never more than the tank holds (the loss adds up within a tick; race.ts zeroes it).
+    c.nitroLoss = 0;
+    crashNitrous(c, t, (n.crashMinImpact + n.crashFullImpact) / 2);
+    expect(c.nitroLoss).toBeCloseTo(n.crashLoss / 2, 12);
+    c.nitro = 0.1;
+    c.nitroLoss = 0;
+    crashNitrous(c, t, n.crashFullImpact);
+    expect(c.nitroLoss).toBeCloseTo(0.1, 12);
+    expect(c.nitro).toBe(0);
+  });
+
+  it('racers crashing into each other both pay nitrous; the loss telemetry lasts one tick', () => {
+    const cfg = raceConfig(5, 'drag', 1);
+    const r = createRace(cfg);
+    while (r.tick < r.countdownTicks) stepRace(r, input({}));
+    const [a, b] = r.cars.map((rc) => rc.state);
+    a.nitro = b.nitro = 2;
+    // Side by side on the grid: slam the player sideways into the rival.
+    const side = Math.sign((b.x - a.x) * Math.cos(a.yaw) - (b.z - a.z) * Math.sin(a.yaw)) || 1;
+    a.vx = Math.cos(a.yaw) * 25 * side;
+    a.vz = -Math.sin(a.yaw) * 25 * side;
+    let lossA = 0;
+    let lossB = 0;
+    for (let i = 0; i < 30 && !(lossA && lossB); i++) {
+      stepRace(r, input({}));
+      lossA += a.nitroLoss;
+      lossB += b.nitroLoss;
+    }
+    expect(lossA).toBeGreaterThan(0);
+    expect(lossB).toBeGreaterThan(0);
+    stepRace(r, input({}));
+    expect(a.nitroLoss + b.nitroLoss).toBe(0);
   });
 
   it('burns the top stage first, each a little harder than the one below', () => {

@@ -46,6 +46,7 @@ import { placeName } from '../ui/map/places';
 import { toast } from '../ui/kit/dom';
 import { MapPinned } from '../ui/kit/icons';
 import { HudCard } from '../ui/hud/hudCard';
+import type { StyleTally } from '../ui/hud/boostCallouts';
 import { Help } from '../ui/panels/help';
 import type { Vec2 } from '../sim/math';
 import type { Aspiration } from '../shared/carSpec';
@@ -137,6 +138,8 @@ export interface SessionOptions {
 export interface FinishInfo {
   race: RaceState;
   tuned: boolean;
+  /** The player's style score by source, as the nitrous callouts tallied it (points). */
+  style: StyleTally;
 }
 
 export class RaceSession {
@@ -361,6 +364,11 @@ export class RaceSession {
     this.carLight = new KeyLight();
     this.night.scene.add(this.carLight);
     this.audio = new SessionAudio(settings, this.race, this.views, this.night);
+    // The callouts' reward cues: a tick, chime or fanfare from the effects, a kick through the pad.
+    this.hud.callouts.onCue = (cue) => {
+      this.audio.sfx?.boostCue(cue);
+      if (this.settings.rumble) this.rumble?.boostCue(cue);
+    };
     this.curr = this.race.cars.map((c) => snap(c));
     this.prev = this.curr.map((s) => ({ ...s }));
     if (!this.openWorld) this.updateCelebrations();
@@ -638,8 +646,8 @@ export class RaceSession {
       stepRace(this.ghostRace, gt < this.ghostLog.length ? unpackInput(this.ghostLog[gt]) : { ...NEUTRAL_INPUT, brake: 1 });
       this.ghostCurr = snap(this.ghostRace.cars[0]);
     }
-    // Callouts for the nitrous the player's style earned this tick (ui/hud/boostCallouts.ts).
-    this.hud.callouts.tick(r.cars[0].state);
+    // Callouts for the nitrous the player's style earned or a crash cost this tick (ui/hud/boostCallouts.ts), and the style score they tally, until the line.
+    if (!r.cars[0].finished) this.hud.callouts.tick(r.cars[0].state, r.cars[0].tuning.nitrous.overdriveCap);
     this.chaseCall = policeChaseCall(r);
     this.audio.sfx?.syncCountdown(r);
     this.handleEvents();
@@ -672,7 +680,7 @@ export class RaceSession {
     if (this.finishedAt >= 0 && !this.resultsShown && this.onFinish && (this.skipFinish || r.tick - this.finishedAt >= Math.round(delay / DT))) {
       this.resultsShown = true;
       this.cine.settle();
-      this.onFinish({ race: r, tuned: this.tuned });
+      this.onFinish({ race: r, tuned: this.tuned, style: { ...this.hud.callouts.tally } });
     }
   }
 

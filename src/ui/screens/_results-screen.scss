@@ -136,6 +136,61 @@
     white-space: nowrap;
   }
 }
+/* The style score (results.ts styleBlock): the total counting up in the overdrive gold beside its best, then
+   a line per source that paid, crashes in red against it. */
+.results-style {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  @include media.motion {
+    animation: results-row-in 0.42s var(--ease-out) 0.35s both;
+  }
+  &__head {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  &__total {
+    font: 900 32px / 1 var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--accent-2);
+  }
+  &__best {
+    font: 700 13px var(--display);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  &__list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px 16px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    @include media.phone {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  &__item {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--line);
+    font-size: 14px;
+    color: var(--muted);
+    > b {
+      font: 700 14px var(--mono);
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+    }
+    &--crash > b {
+      color: var(--red);
+    }
+  }
+}
 @keyframes results-title-strike {
   0% {
     opacity: 0;

@@ -11,6 +11,10 @@
  *  - loops: nitrous jet whoosh (sweeping filtered noise + turbine whine) and
  *    a wall/rail scrape while a car grinds along a wall.
  *  - the horn (dual tone), the countdown beeps and firework booms.
+ *  - the nitrous callouts' rewards (boostCue): a tick climbing a scale as a
+ *    callout's points roll past each hundred, a chime at each thousand, an
+ *    arpeggio for a stage coming full (a fanfare for Max), a rising sweep for a
+ *    full overdrive and a falling blip when a crash costs nitrous.
  *  - standalone voices a scene owns: the train rumble, the helicopter
  *    rotors and the thunder of the lightning on rain nights.
  * Crowd recordings (public/sfx, loaded lazily and decoded once per app):
@@ -32,7 +36,8 @@ import type { Contact, World } from '../city/world';
 import { TICK_HZ } from '../sim/constants';
 import { CROWD_OFF, CROWD_ON, CROWD_REF, CROWD_SHOT_GAIN, CrowdLoop, MAX_CROWD_LOOPS, loadClip, type SfxCrowdSpot } from './crowdAudio';
 import { PROP_SOUND, SFX_BANKS, renderImpact, rnd, type SfxBank, type WallHitKind } from './sfxRecipes';
-import { BEEP_LEVEL, FIREWORK_LEVEL, HornVoice, IMPACT_LEVEL, NITRO_LEVEL, NitroVoice, ScrapeLoop } from './sfxVoices';
+import { BEEP_LEVEL, FIREWORK_LEVEL, HornVoice, IMPACT_LEVEL, NITRO_LEVEL, NitroVoice, REWARD_LEVEL, ScrapeLoop } from './sfxVoices';
+import type { BoostCue } from '../ui/hud/boostCallouts';
 
 type Bank = SfxBank;
 
@@ -58,6 +63,17 @@ export interface SfxCar {
 const VARIANTS = 3;
 const MAX_VOICES = 14;
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
+
+/** The reward cues' notes and spacing: semitones over `base` (Hz), the major scale a callout's ticks climb within each thousand. */
+const REWARD = {
+  base: 880,
+  scale: [0, 2, 4, 5, 7, 9, 11, 12, 14],
+  /** Ticks closer than this (s) are dropped, so a fast roll is a run of clicks, not a buzz. */
+  tickGap: 0.035,
+  /** A stage's arpeggio rises by these semitones over its root, stage 1's root at base x 1.19 (a minor third up) and each stage a third higher. */
+  arpeggio: [0, 4, 7, 12],
+} as const;
+const semis = (n: number) => REWARD.base * Math.pow(2, n / 12);
 
 // ---------- the effects player ----------
 
@@ -103,6 +119,9 @@ export class Sfx {
   /** Crowd one-shots still playing (faded out on dispose). */
   private crowdShots: GainNode[] = [];
   private lastCount: number | null = null;
+  /** The reward cues' lowpass into the effects bus, and when the last tick played (ctx time). */
+  private readonly reward: BiquadFilterNode;
+  private lastTick = 0;
   private warmTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
 
@@ -113,6 +132,10 @@ export class Sfx {
     this.bus = h.effectsBus;
     this.ambience = h.ambienceBus;
     this.noise = h.noise;
+    this.reward = this.ctx.createBiquadFilter();
+    this.reward.type = 'lowpass';
+    this.reward.frequency.value = 6500;
+    this.reward.connect(this.bus);
     // Render the impact variants in the background, one per slice, so the first crash has no hitch.
     const pending: Bank[] = [];
     for (let v = 0; v < VARIANTS; v++) pending.push(...SFX_BANKS);
@@ -277,6 +300,62 @@ export class Sfx {
       o.onended = () => og.disconnect();
     }
     setTimeout(() => g.disconnect(), (dur + 0.2) * 1000);
+  }
+
+  /** A nitrous callout's reward (ui/hud/boostCallouts.ts BoostCue), centred: the player's own news. */
+  boostCue(cue: BoostCue): void {
+    if (this.disposed) return;
+    const L = REWARD_LEVEL;
+    switch (cue.kind) {
+      case 'tick': {
+        const now = this.ctx.currentTime;
+        if (now - this.lastTick < REWARD.tickGap) return;
+        this.lastTick = now;
+        const n = REWARD.scale[Math.max(0, Math.min(REWARD.scale.length - 1, (cue.step % 10) - 1))] + 12;
+        return this.tone(semis(n), semis(n), 0, 0.05, 'triangle', L * 0.35);
+      }
+      case 'chime': {
+        const up = Math.min(12, (cue.thousands - 1) * 2);
+        this.tone(semis(24 + up), semis(24 + up), 0, 0.4, 'sine', L * 0.7);
+        this.tone(semis(31 + up), semis(31 + up), 0.06, 0.5, 'triangle', L * 0.45);
+        return;
+      }
+      case 'stage': {
+        const root = 3 + (cue.stage - 1) * 4;
+        const max = cue.stage >= 3;
+        REWARD.arpeggio.forEach((a, i) => this.tone(semis(root + a), semis(root + a), i * (max ? 0.07 : 0.05), max ? 0.55 : 0.22, max ? 'sawtooth' : 'triangle', L * (max ? 0.45 : 0.55)));
+        if (max) for (const a of [12, 16, 19]) this.tone(semis(root + a), semis(root + a), 0.3, 0.9, 'triangle', L * 0.4);
+        return;
+      }
+      case 'overdrive':
+        this.tone(semis(-12), semis(24), 0, 0.45, 'sawtooth', L * 0.35);
+        for (const a of [19, 23, 26, 31]) this.tone(semis(a), semis(a), 0.38, 0.85, 'triangle', L * 0.4);
+        return;
+      case 'crash':
+        this.tone(semis(7), semis(-17), 0, 0.3, 'square', L * 0.3);
+        return;
+    }
+  }
+
+  /** One enveloped oscillator into the reward lowpass, `start` s from now, gliding f0 to f1 (Hz) over `dur` s. */
+  private tone(f0: number, f1: number, start: number, dur: number, type: OscillatorType, level: number): void {
+    const ctx = this.ctx;
+    const t = ctx.currentTime + start;
+    const o = ctx.createOscillator();
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t);
+    if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(level, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(this.reward);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+    o.onended = () => {
+      o.disconnect();
+      g.disconnect();
+    };
   }
 
   /**
@@ -479,6 +558,7 @@ export class Sfx {
     this.nitro.forEach((n) => n?.dispose());
     this.scrape.forEach((s) => s?.dispose());
     this.hornVoice?.dispose();
+    this.reward.disconnect();
     this.crowdLoops.forEach((c) => c?.dispose());
     this.crowdLoops = [];
     for (const g of this.crowdShots) {

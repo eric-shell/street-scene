@@ -10,14 +10,16 @@ import type { SfxPos } from './sfx';
  * throttle (about -17 dBFS RMS at the defaults; docs/audioMix.md has the
  * measurements): a hard crash peaks 10 dB over the engine's RMS, nitrous sits
  * just under the engine, the horn and the countdown beeps cut through it, a
- * firework pops like a distant crash. A centred mono source loses 3 dB in its
- * panner, which these allow for.
+ * firework pops like a distant crash, and the nitrous callouts' rewards
+ * (sfx.ts boostCue) sit at the beeps' level or under, ticks well under. A
+ * centred mono source loses 3 dB in its panner, which these allow for.
  */
 export const IMPACT_LEVEL = 2;
 export const NITRO_LEVEL = 1.2;
 export const HORN_LEVEL = 0.6;
 export const BEEP_LEVEL = 0.45;
 export const FIREWORK_LEVEL = 1.1;
+export const REWARD_LEVEL = 0.4;
 
 /** Nitrous: a jet like whoosh that climbs in pitch while held. */
 export class NitroVoice {

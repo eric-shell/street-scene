@@ -85,13 +85,17 @@ export interface CarState {
   nitroStage: number;
   /** Full stages in the tank when the nitrous button went down (they set the chain refill), -1 while it is up. */
   nitroRun: number;
+  /** Overdrive banked past a full tank (stages, 0..nitrous.overdriveCap): it burns with the tank at overdrivePower. */
+  nitroOver: number;
   /**
    * Telemetry for the HUD's callouts, written by the sim and never read by it:
    * the stages a chain put back this tick (0 when none), and what each style
-   * source put in the tank this tick (stages, after the tank's cap; wreck is what props.ts paid).
+   * source put in the tank and overdrive this tick (stages, after their caps; wreck is what props.ts paid),
+   * and what crashes into walls, barriers, rails and other racers took this tick (stages, 0 when none; race.ts zeroes it each tick).
    */
   nitroChain: number;
   nitroGain: { drift: number; nearMiss: number; draft: number; zone: number; wreck: number };
+  nitroLoss: number;
   /** Drive pedal actually applied this tick (0..1), for engine sound and telemetry. */
   throttle: number;
   /** Seconds left of a clutch kick's extra torque. */
@@ -171,8 +175,10 @@ export function createCar(x: number, z: number, yaw: number, y: number): CarStat
     nitroActive: false,
     nitroStage: 0,
     nitroRun: -1,
+    nitroOver: 0,
     nitroChain: 0,
     nitroGain: { drift: 0, nearMiss: 0, draft: 0, zone: 0, wreck: 0 },
+    nitroLoss: 0,
     throttle: 0,
     clutchKick: 0,
     twoStepCut: 0,
@@ -398,12 +404,15 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
   // Nitrous burns the top stage in the tank first, at that stage's power. Holding the button until the tank
   // runs dry, from at least one full stage, chains: chainRefill puts some back and the burn goes on (a chain
   // of a whole stage can chain once more). Letting go ends the run; a dip off the throttle only pauses it.
+  // Overdrive burns alongside at the same rate, every stage hotter while it lasts.
   if (!inp.nitrous) c.nitroRun = -1;
   else if (c.nitroRun < 0) c.nitroRun = nitroFullStages(c.nitro);
   c.nitroChain = 0;
   c.nitroActive = inp.nitrous && c.nitro > 0 && c.gear > 0 && drive > 0.2;
   c.nitroStage = c.nitroActive ? nitroTopStage(c.nitro) : 0;
+  const overdrive = c.nitroActive && c.nitroOver > 0;
   if (c.nitroActive) {
+    if (overdrive) c.nitroOver = Math.max(0, c.nitroOver - dt / t.nitrous.capacity);
     c.nitro -= dt / t.nitrous.capacity;
     if (c.nitro <= 0) {
       const refill = c.nitroRun > 0 ? t.nitrous.chainRefill[c.nitroRun - 1] : 0;
@@ -412,7 +421,7 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
       c.nitroRun = nitroFullStages(refill);
     }
   }
-  const boostPower = c.nitroActive ? t.nitrous.stagePower[c.nitroStage - 1] : 0;
+  const boostPower = c.nitroActive ? t.nitrous.stagePower[c.nitroStage - 1] * (overdrive ? t.nitrous.overdrivePower : 1) : 0;
 
   let engineTorque = 0;
   if (c.shiftTimer === 0 && !clutchIn && !c.antilag) {
@@ -1098,6 +1107,36 @@ export function nitroTopStage(nitro: number): number {
   return nitro > NITRO_EPS ? Math.min(NITRO_STAGES, Math.ceil(nitro - NITRO_EPS)) : 0;
 }
 
+/**
+ * Put `amount` stages of style refill into the tank, the spill past a full tank
+ * into overdrive, both capped. Returns what they took (stages).
+ */
+export function fillNitrous(c: CarState, t: CarTuning, amount: number): number {
+  const tank = c.nitro;
+  const over = c.nitroOver;
+  c.nitro = Math.min(NITRO_STAGES, tank + amount);
+  if (c.nitro === NITRO_STAGES) c.nitroOver = Math.min(t.nitrous.overdriveCap, over + amount - (c.nitro - tank));
+  return c.nitro - tank + (c.nitroOver - over);
+}
+
+/**
+ * A crash (a wall, barrier or rail hit, the tick's hardest, or a hit on another
+ * racer: `impact` m/s along the normal) costs nitrous, overdrive first, then the
+ * tank's top stage down, adding to the tick's loss telemetry (race.ts zeroes it
+ * before the world collision).
+ */
+export function crashNitrous(c: CarState, t: CarTuning, impact: number): void {
+  const n = t.nitrous;
+  if (impact <= n.crashMinImpact) return;
+  let loss = n.crashLoss * Math.min(1, (impact - n.crashMinImpact) / (n.crashFullImpact - n.crashMinImpact));
+  const over = Math.min(c.nitroOver, loss);
+  c.nitroOver -= over;
+  loss -= over;
+  const tank = Math.min(c.nitro, loss);
+  c.nitro -= tank;
+  c.nitroLoss += over + tank;
+}
+
 /** The drift refill reaches its full rate at this slip angle (rad). */
 const FULL_REFILL_SLIP = 30 * DEG;
 
@@ -1115,10 +1154,8 @@ export function refillNitrous(c: CarState, t: CarTuning): void {
   const near = c.nearMiss ? t.nitrous.refillNearMiss : 0;
   const draft = c.drafting ? t.nitrous.refillDraft : 0;
   const add = drift + near + draft;
-  const before = c.nitro;
-  c.nitro = Math.min(NITRO_STAGES, c.nitro + add * DT);
-  // Telemetry: each source's share of what the tank took (stages driftZones.ts adds go in .zone).
-  const k = add > 0 ? (c.nitro - before) / add : 0;
+  // Telemetry: each source's share of what the tank and overdrive took (stages driftZones.ts adds go in .zone).
+  const k = add > 0 ? fillNitrous(c, t, add * DT) / add : 0;
   const g = c.nitroGain;
   g.drift = drift * k;
   g.nearMiss = near * k;

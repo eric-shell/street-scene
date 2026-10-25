@@ -127,7 +127,13 @@
       "refillDraft": 0.07,
       "wreckBonus": 0.12,
       "wreckFullMass": 500,
-      "draftDragMul": 0.7
+      "draftDragMul": 0.7,
+      "_overdrive": "Style past a full tank fills overdrive (car.ts fillNitrous), up to overdriveCap stages of it: it burns alongside the tank at the same rate and multiplies the burning stage's power by overdrivePower, so a full tank is worth topping up. A hit on a wall, barrier, rail or another racer at crashMinImpact m/s or harder (normal impact speed; both cars in a crash pay) loses nitrous, overdrive first: crashLoss stages at crashFullImpact and over, linear between.",
+      "overdriveCap": 1,
+      "overdrivePower": 1.25,
+      "crashMinImpact": 6,
+      "crashFullImpact": 20,
+      "crashLoss": 0.75
     },
     "drift": {
       "clutchKickTime": 0.45,

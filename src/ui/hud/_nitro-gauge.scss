@@ -7,13 +7,18 @@
    top layer back to the one below: it brightens and pulses (.is-burning) and the bar glows in its color
    (data-burn). The pips count the full stages, each lit in its own color (.is-full); the icon says the
    tank's state (data-state: empty, charging, ready, burning) in the color of the highest full stage
-   (data-full). A gloss and quarter marks lie over the fills. */
+   (data-full). A gloss and quarter marks lie over the fills. Overdrive, the style banked past a full
+   tank, is a gold strip along the bar's foot (__over, its translateX from the TS); once there is any the
+   bar's rim turns gold (data-over: 0 none, 1 some, 2 banked full, when it breathes), and while it burns
+   the bar glows gold over the stage's glow (.is-overdrive). */
 @use 'sass:color';
 @use 'sass:list';
 @use '../styles/abstracts/media';
 @use '../styles/abstracts/palette';
 
 $stages: ('cyan', 'purple', 'red');
+/* Overdrive's color, the callouts' fourth stage. */
+$overdrive: 'yellow';
 /* The slant the bar and the pips share. */
 $skew: skewX(-14deg);
 
@@ -80,6 +85,30 @@ $skew: skewX(-14deg);
     border-color: var(--burn);
     box-shadow: 0 0 12px rgba(var(--burn-rgb), 0.85);
   }
+  &__over {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 4px;
+    z-index: 1;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, palette.alpha($overdrive, 0.6), palette.get($overdrive) calc(100% - 3px), #fff calc(100% - 3px));
+    box-shadow: 0 0 6px palette.alpha($overdrive, 0.9);
+  }
+  &:not([data-over='0']) &__bar {
+    border-color: palette.get($overdrive);
+  }
+  &[data-over='2'] &__bar {
+    box-shadow: 0 0 10px palette.alpha($overdrive, 0.7);
+    @include media.motion {
+      animation: nitro-gauge-overdrive 0.9s ease-in-out infinite alternate;
+    }
+  }
+  &.is-overdrive &__bar {
+    border-color: #fff;
+    box-shadow: 0 0 12px rgba(var(--burn-rgb), 0.85), 0 0 22px palette.alpha($overdrive, 0.9);
+  }
   &__fill {
     @include palette.tint(stage, cyan);
     --stage-light: #{color.mix(#fff, palette.get(cyan), 60%)};
@@ -144,6 +173,12 @@ $skew: skewX(-14deg);
     &[data-full='#{$i}'] {
       @include palette.tint(ready, $name);
     }
+  }
+}
+/* A banked full overdrive breathes its gold glow. */
+@keyframes nitro-gauge-overdrive {
+  to {
+    box-shadow: 0 0 18px palette.alpha($overdrive, 1);
   }
 }
 /* The burning layer and its pip breathe between their color and a brighter wash; under reduced motion they hold steady. */

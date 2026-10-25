@@ -48,6 +48,7 @@ Measured at the output with every level at its default, each source alone and ri
 | garbage can 12 m/s | −23 | −21 | −20 | |
 | bush 12 m/s | −30 | −27 | −25 | leafy, quiet by design |
 | countdown beep / go | −19 | −15 | −15 | heard over an idling grid |
+| nitrous callout rewards (sfx.ts boostCue) | not measured | | | set by ear at `REWARD_LEVEL` 0.4, under the beeps; ticks at a third of that |
 | firework (close) | −21 | −15 | −14 | a distant crash |
 | horn | −24 | −18 | −18 | cuts through the engine |
 | nitrous | −30 | −21 | −21 | just under the engine, it was buried |

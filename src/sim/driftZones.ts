@@ -24,9 +24,9 @@ import type { World } from '../city/world';
 import type { Area } from '../city/districts/types';
 import { pointInPolygon, polygonBounds } from '../city/districts/geom';
 import type { Vec2 } from './math';
-import { driftRefillRate } from './car';
+import { driftRefillRate, fillNitrous } from './car';
 import { DT, TICK_HZ } from './constants';
-import { DRIFT_ZONES, NITRO_STAGES } from './tuning';
+import { DRIFT_ZONES } from './tuning';
 import type { RaceState } from './race';
 
 export type DriftZoneKind = 'plaza' | 'lot';
@@ -156,9 +156,8 @@ export function stepDriftZones(r: RaceState): void {
     v.scoreMul = Z.scoreMul;
     v.timeLeft = Math.max(0, v.timeLeft - DT);
     // The regular refill already ran this tick; the zone adds (refillMul - 1) of it, up to the visit's cap.
-    const extra = Math.min(driftRefillRate(c, rc.tuning) * (Z.refillMul - 1) * DT, v.refillLeft, NITRO_STAGES - c.nitro);
+    const extra = fillNitrous(c, rc.tuning, Math.min(driftRefillRate(c, rc.tuning) * (Z.refillMul - 1) * DT, v.refillLeft));
     if (extra > 0) {
-      c.nitro += extra;
       c.nitroGain.zone = extra;
       v.refillLeft -= extra;
     }

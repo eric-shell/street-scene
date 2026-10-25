@@ -76,6 +76,8 @@ export interface HudData {
   nitroActive: boolean;
   /** The stage burning (1..NITRO_STAGES), 0 when not boosting. */
   nitroStage: number;
+  /** Overdrive banked past a full tank, as a share of its cap (0..1). */
+  nitroOver: number;
   /** Throttle 0..1, drives the boost gauge (vacuum off throttle). */
   throttle?: number;
   /** The build's launch rpm (the two-step's set point), marked on the tach; missing when off. */
@@ -123,6 +125,11 @@ export class Hud {
   private nitroFull = -1;
   private nitroBurn = -1;
   private nitroState = '';
+  /** Overdrive's strip, its fill shown (hundredths), its data-over level and whether a burn has it. */
+  private nitroOverEl: HTMLElement;
+  private nitroOverShown = -1;
+  private nitroOverLevel = -1;
+  private nitroOverBurn = false;
   /** Callouts for the style that fills the tank, over the dial cluster; the session feeds them each tick. */
   readonly callouts = new BoostCallouts();
   /** Antilag is holding boost (the gauge's caption). */
@@ -188,7 +195,7 @@ export class Hud {
           <canvas class="hud__boost" width="120" height="120"></canvas>
           <canvas class="hud__tach" width="220" height="220"></canvas>
         </div>
-        <div class="nitro-gauge"><span class="nitro-gauge__icon"></span><span class="nitro-gauge__bar">${'<i class="nitro-gauge__fill"></i>'.repeat(NITRO_STAGES)}</span><span class="nitro-gauge__pips">${'<i class="nitro-gauge__pip"></i>'.repeat(NITRO_STAGES)}</span></div>
+        <div class="nitro-gauge"><span class="nitro-gauge__icon"></span><span class="nitro-gauge__bar">${'<i class="nitro-gauge__fill"></i>'.repeat(NITRO_STAGES)}<i class="nitro-gauge__over"></i></span><span class="nitro-gauge__pips">${'<i class="nitro-gauge__pip"></i>'.repeat(NITRO_STAGES)}</span></div>
       </div>
     `;
     parent.appendChild(this.root);
@@ -218,6 +225,7 @@ export class Hud {
     this.nitroBar = q('.nitro-gauge__bar');
     this.nitroFills = [...this.root.querySelectorAll<HTMLElement>('.nitro-gauge__fill')];
     this.nitroPips = [...this.root.querySelectorAll<HTMLElement>('.nitro-gauge__pip')];
+    this.nitroOverEl = q('.nitro-gauge__over');
     q('.hud__bottom-right').append(this.callouts.el);
     this.driftEl = q('.drift-score');
     this.progressFill = q('.hud__progress-fill');
@@ -306,8 +314,10 @@ export class Hud {
    * red) over the full stage below it, so the color on top is the stage the tank is in and a burn drains
    * it back to the one under it. Each fill slides in from the left (a translate, so its bright leading
    * edge keeps its width); the pips count the full stages, and a stage coming full flashes the bar and pops
-   * its pip (skipped under reduced motion). _nitro-gauge.scss reads the data attributes. Writes the DOM only
-   * when a fill (in hundredths), the top or full stages, the burning stage or the state changes.
+   * its pip (skipped under reduced motion). Overdrive is a gold strip along the bar's foot that a full tank
+   * spills into, flashing the bar gold when it banks full. _nitro-gauge.scss reads the data attributes.
+   * Writes the DOM only when a fill (in hundredths), the top or full stages, the burning stage, overdrive or
+   * the state changes.
    */
   private updateNitro(d: HudData): void {
     const full = nitroFullStages(d.nitro);
@@ -339,6 +349,24 @@ export class Hud {
       this.nitroBox.dataset.burn = String(burn);
       this.nitroFills.forEach((fill, i) => fill.classList.toggle('is-burning', i === burn - 1));
       this.nitroPips.forEach((pip, i) => pip.classList.toggle('is-burning', i === burn - 1));
+    }
+    const over = Math.round(clamp01(d.nitroOver) * 100);
+    if (over !== this.nitroOverShown) {
+      this.nitroOverShown = over;
+      this.nitroOverEl.style.transform = `translateX(${over - 100}%)`;
+    }
+    const overLevel = over >= 100 ? 2 : over > 0 ? 1 : 0;
+    if (overLevel !== this.nitroOverLevel) {
+      if (overLevel === 2 && this.nitroOverLevel >= 0 && !prefersReducedMotion()) {
+        this.nitroBar.animate([{ filter: 'brightness(2.6) saturate(1.4)' }, { filter: 'none' }], { duration: 700, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)' });
+      }
+      this.nitroOverLevel = overLevel;
+      this.nitroBox.dataset.over = String(overLevel);
+    }
+    const overBurn = burn > 0 && over > 0;
+    if (overBurn !== this.nitroOverBurn) {
+      this.nitroOverBurn = overBurn;
+      this.nitroBox.classList.toggle('is-overdrive', overBurn);
     }
     const state = burn > 0 ? 'burning' : d.nitro < 0.02 ? 'empty' : full >= 1 ? 'ready' : 'charging';
     if (state !== this.nitroState) {

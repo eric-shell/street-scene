@@ -207,6 +207,16 @@ export interface CarTuning {
     /** Effective prop mass (kg, mass * anchor) at and above which a wreck pays the whole bonus. */
     wreckFullMass: number;
     draftDragMul: number;
+    /** Most overdrive style can bank past a full tank (stages). */
+    overdriveCap: number;
+    /** Boost power multiplier while overdrive burns. */
+    overdrivePower: number;
+    /** Normal impact speed (m/s) of a wall, barrier, rail or racer hit at which a crash starts to cost nitrous. */
+    crashMinImpact: number;
+    /** Normal impact speed (m/s) at and above which a crash costs the whole crashLoss. */
+    crashFullImpact: number;
+    /** Stages the hardest crash costs, overdrive first. */
+    crashLoss: number;
   };
   /** Arcade drift aids on top of the tire model. */
   drift: {
@@ -427,6 +437,7 @@ export function getBaseTuning(carId: string): CarTuning {
     t.engine.turbo = (manifest.cars as ManifestCar[]).find((c) => c.id === id)?.engine?.aspiration === 'turbo';
     if (!DRIVETRAIN_LAYOUTS.includes(t.drivetrain.layout)) throw new Error(`drivingParams.json: cars.${id}.drivetrain.layout must be one of ${DRIVETRAIN_LAYOUTS.join(', ')}`);
     if (t.nitrous.stagePower.length !== NITRO_STAGES || t.nitrous.chainRefill.length !== NITRO_STAGES) throw new Error(`drivingParams.json: cars.${id}.nitrous.stagePower and chainRefill need ${NITRO_STAGES} entries, one per stage`);
+    if (!(t.nitrous.crashFullImpact > t.nitrous.crashMinImpact)) throw new Error(`drivingParams.json: cars.${id}.nitrous.crashFullImpact must be above crashMinImpact`);
     if (!(t.gearbox.torqueBonusFadeEnd > t.gearbox.torqueBonusFadeStart)) throw new Error(`drivingParams.json: cars.${id}.gearbox.torqueBonusFadeEnd must be above torqueBonusFadeStart`);
     resolved.set(id, t);
   }

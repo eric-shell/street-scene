@@ -11,7 +11,7 @@ import { createCity, createWorld, World, City, RouteProgress } from '../city/wor
 import { GridSlot, Route, RouteKind, RouteWaypoint, routeSample } from '../city/route';
 import { carParkProgress, onCarPark } from '../city/districts/carPark';
 import { highwayResetPose } from '../city/districts/highway/settle';
-import { CarState, createCar, gridRev, groundPitch, groundRoll, refillNitrous, steerLimit, stepCar, wheelRpm, type StepEnv } from './car';
+import { CarState, crashNitrous, createCar, gridRev, groundPitch, groundRoll, refillNitrous, steerLimit, stepCar, wheelRpm, type StepEnv } from './car';
 import { relocateCar } from './reset';
 import { WorldHit, carsOverlap, collideCarWithWorld, collideCars, detectNearMiss } from './collision';
 import { CRASH_EVENT, DT, TICK_HZ } from './constants';
@@ -581,6 +581,9 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
   const hit: WorldHit = { speed: 0, kind: 'wall' };
   for (const rc of r.cars) {
     rc.state.impact = collideCarWithWorld(rc.state, rc.tuning, r.world, hit, r.rails, r.tick);
+    // A hard hit on a wall, barrier or rail costs nitrous, and so does one on another racer below (props and traffic do not).
+    rc.state.nitroLoss = 0;
+    crashNitrous(rc.state, rc.tuning, hit.speed);
     if (hit.speed > WALL_EVENT_SPEED && r.tick - r.hitTicks.wall[rc.index] >= CRASH_EVENT.gap) {
       r.hitTicks.wall[rc.index] = r.tick;
       r.events.push({ tick: r.tick, type: 'wall', car: rc.index, kind: hit.kind, value: hit.speed });
@@ -599,6 +602,9 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
       if (imp > 0) {
         r.cars[i].state.impact = Math.max(r.cars[i].state.impact, imp);
         r.cars[j].state.impact = Math.max(r.cars[j].state.impact, imp);
+        // Both racers in a hard crash pay nitrous for it, whoever hit whom.
+        crashNitrous(r.cars[i].state, r.cars[i].tuning, imp);
+        crashNitrous(r.cars[j].state, r.cars[j].tuning, imp);
         const pair = i * r.cars.length + j;
         if (imp > CRASH_EVENT.speed && r.tick - r.hitTicks.pair[pair] >= CRASH_EVENT.gap) {
           r.hitTicks.pair[pair] = r.tick;

@@ -1,14 +1,16 @@
 /**
  * The results screen: a rail beside the finish shots (ui/rail/rail.ts) with
- * the headline (place or score), a new best, the standings and what next.
- * Styled by _results-screen.scss.
+ * the headline (place or score), a new best, the standings, the style score
+ * (the nitrous callouts' points, counted up from 0 with what paid them and what
+ * crashes cost, beside the event's best) and what next. Styled by _results-screen.scss.
  */
-import { btn, h } from '../kit/dom';
+import { btn, h, prefersReducedMotion } from '../kit/dom';
 import { Flag, Medal, RotateCcw, Sparkles, Trophy, Video, Wrench, X, icon } from '../kit/icons';
 import { formatTime, ordinal } from '../kit/format';
 import { railScreen } from '../rail/rail';
 import { Help } from '../panels/help';
 import type { RaceMode } from '../../sim/race';
+import { styleTotal, type StyleSource, type StyleTally } from '../hud/boostCallouts';
 
 export interface ResultRow {
   name: string;
@@ -21,6 +23,46 @@ export interface ResultRow {
 
 const MODE_LABEL: Record<RaceMode, string> = { circuit: 'Circuit', sprint: 'Sprint', drag: 'Drag', waypoint: 'Waypoint', drift: 'Drift' };
 
+/** The style score's lines, in this order (zero lines are left out); crashes count against it. */
+const STYLE_LINES: [StyleSource, string][] = [
+  ['drift', 'Drifts'],
+  ['nearMiss', 'Near misses'],
+  ['draft', 'Slipstream'],
+  ['wreck', 'Wrecks'],
+  ['crash', 'Crashes'],
+];
+/** How long the style total counts up (s), after the screen's own entrance. */
+const STYLE_COUNT = { delay: 0.45, time: 1.2 } as const;
+
+const pts = (n: number) => Math.round(n).toLocaleString('en-US');
+
+/** The style score: the total counting up, its best or a new one, and a line per source that paid. */
+function styleBlock(tally: StyleTally, best: number, newBest: boolean): HTMLElement {
+  const total = styleTotal(tally);
+  const value = h('b', { class: 'results-style__total' }, pts(prefersReducedMotion() ? total : 0));
+  const list = h('ul', { class: 'results-style__list' });
+  for (const [k, label] of STYLE_LINES) {
+    if (Math.round(tally[k]) <= 0) continue;
+    list.append(h('li', { class: k === 'crash' ? 'results-style__item results-style__item--crash' : 'results-style__item' }, h('span', {}, label), h('b', {}, `${k === 'crash' ? '−' : '+'}${pts(tally[k])}`)));
+  }
+  if (!prefersReducedMotion() && total > 0) {
+    const start = performance.now() + STYLE_COUNT.delay * 1000;
+    const step = (now: number) => {
+      if (!value.isConnected && now > start) return;
+      const k = Math.max(0, Math.min(1, (now - start) / (STYLE_COUNT.time * 1000)));
+      value.textContent = pts(total * (1 - Math.pow(1 - k, 3)));
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+  return h(
+    'div',
+    { class: 'results-style' },
+    h('div', { class: 'results-style__head' }, value, newBest ? h('span', { class: 'results-screen__badge' }, icon(Sparkles, { size: 14 }), 'Style best') : best > 0 && h('span', { class: 'results-style__best' }, `Best ${pts(best)}`)),
+    list,
+  );
+}
+
 /** Results: a rail beside the finish shots with the headline (place or score), a new best, the standings and what next. */
 export function resultsScreen(o: {
   mode: RaceMode;
@@ -30,6 +72,10 @@ export function resultsScreen(o: {
   position: number;
   driftScore?: number;
   newBest: boolean;
+  /** The player's style score by source (points), the event's best before this run, and whether this run beat it. */
+  style: StyleTally;
+  styleBest: number;
+  newStyleBest: boolean;
   tuned: boolean;
   onRetry(): void;
   onReplay(): void;
@@ -64,6 +110,8 @@ export function resultsScreen(o: {
     ),
     !drift && h('div', { class: 'section-title' }, 'Standings'),
     !drift && table,
+    h('div', { class: 'section-title' }, 'Style'),
+    styleBlock(o.style, o.styleBest, o.newStyleBest),
     h('div', { class: 'results-screen__actions' }, retry, btn(Video, 'Replay', o.onReplay), btn(Wrench, 'Garage', o.onGarage), btn(X, 'Menu', o.onMenu)),
   );
   const help = new Help({

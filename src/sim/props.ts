@@ -16,9 +16,8 @@
 import { PROP_DEFS } from '../city/props';
 import type { RaceCar, RaceState } from './race';
 import { abs, sin, cos, sqrt } from './math';
-import { yawInertia } from './car';
+import { fillNitrous, yawInertia } from './car';
 import { LEVEL_GAP } from './constants';
-import { NITRO_STAGES } from './tuning';
 
 /** Fraction of the off center angular impulse applied as yaw (a nudge, not a spin). */
 const YAW_NUDGE = 0.35;
@@ -146,11 +145,7 @@ export function collideCarWithProps(r: RaceState, rc: RaceCar): number {
     r.events.push({ tick: r.tick, type: 'prop', car: rc.index, value: id });
     // The wreck pays nitrous: the whole bonus for anything as heavy as wreckFullMass, sqrt scaled below it.
     const bonus = t.nitrous.wreckBonus * Math.min(1, sqrt(mp / t.nitrous.wreckFullMass));
-    const gain = Math.min(bonus, NITRO_STAGES - c.nitro);
-    if (gain > 0) {
-      c.nitro += gain;
-      c.nitroGain.wreck += gain;
-    }
+    c.nitroGain.wreck += fillNitrous(c, t, bonus);
     impact = Math.max(impact, dv * IMPACT_PER_DV);
   }
   return impact;
