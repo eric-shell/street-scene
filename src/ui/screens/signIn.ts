@@ -3,7 +3,10 @@
  * accounts, and only while signed out):
  *  - signInRow: a place row in the menu's style (rail.ts navRow) that says what an account keeps, or, when
  *    an account signed in on this device before, greets it by name with its picture in the badge; the
- *    menu's home opens Settings on Account with it, the results screen opens the dialog.
+ *    results screen opens the dialog with it.
+ *  - accountRow: the menu home's row, in both states: signInRow signed out, the player (picture, name, the
+ *    cloud save's state and email) signed in, swapping in place as the account changes; it opens Settings
+ *    on Account.
  *  - signInContent: Google's button, as wide as its box, over what an account keeps: the top of the Account
  *    page while signed out, and the dialog's body.
  *  - openSignInDialog: that content in a kit dialog over a screen, closed by its button, a click outside,
@@ -12,12 +15,19 @@
  * unsaved work (the garage) settles it before it opens the dialog.
  */
 import { h, iconBtn, toast } from '../kit/dom';
-import { CircleUser, CloudCheck, X, icon } from '../kit/icons';
+import { CircleUser, Cloud, CloudCheck, CloudOff, X, icon, type IconNode } from '../kit/icons';
 import { navRow } from '../rail/rail';
-import { accountState, accountsEnabled, lastPlayer, onAccountChange, renderGoogleButton } from '../../account/account';
+import { accountState, accountsEnabled, lastPlayer, onAccountChange, renderGoogleButton, type SyncStatus } from '../../account/account';
 
 /** What an account keeps, in the row's sub. */
 export const SIGN_IN_PITCH = 'Keep your customized vehicles and progress';
+
+/** The cloud save's states as the account row and the Account page name them. */
+export const SYNC_STATUS: Record<SyncStatus, { label: string; icon: IconNode }> = {
+  synced: { label: 'Synced', icon: CloudCheck },
+  saving: { label: 'Saving…', icon: Cloud },
+  offline: { label: 'Offline', icon: CloudOff },
+};
 
 /** Whether to ask: a build with accounts and nobody signed in. */
 export function wantsSignIn(): boolean {
@@ -42,16 +52,56 @@ export function onSignedIn(el: HTMLElement, fn: () => void): void {
  */
 export function signInRow(onClick: () => void, cls = ''): HTMLButtonElement | null {
   if (!wantsSignIn()) return null;
+  const row = signedOutRow(onClick, cls);
+  onSignedIn(row, () => row.remove());
+  return row;
+}
+
+/** The signed-out row as it stands now. */
+function signedOutRow(onClick: () => void, cls: string): HTMLButtonElement {
   const last = lastPlayer();
-  const first = last?.name.split(/\s+/)[0];
+  const first = firstName(last?.name);
   const row = navRow(CircleUser, first ? `Continue as ${first}` : 'Sign in', last ? last.email : SIGN_IN_PITCH, 'yellow', onClick, cls);
   if (last) row.title = `Sign in again as ${last.name || last.email}: ${SIGN_IN_PITCH.toLowerCase()}`;
-  if (last?.picture) {
-    const badge = row.querySelector('.nav-row__badge')!;
-    // Google's image host refuses some requests that carry a referrer.
-    const img = h('img', { class: 'nav-row__avatar', referrerpolicy: 'no-referrer', alt: '', src: last.picture, onload: () => badge.replaceChildren(img) });
-  }
-  onSignedIn(row, () => row.remove());
+  avatar(row, last?.picture);
+  return row;
+}
+
+const firstName = (name: string | undefined): string | undefined => name?.split(/\s+/)[0] || undefined;
+
+/** Puts the player's picture in a row's badge once it loads (the icon stays if it does not). */
+function avatar(row: HTMLElement, picture: string | undefined): void {
+  if (!picture) return;
+  const badge = row.querySelector('.nav-row__badge')!;
+  // Google's image host refuses some requests that carry a referrer.
+  const img = h('img', { class: 'nav-row__avatar', referrerpolicy: 'no-referrer', alt: '', src: picture, onload: () => badge.replaceChildren(img) });
+}
+
+/**
+ * The menu home's account row, or null on a build without accounts: Sign in (or Continue as) while signed
+ * out; signed in, the player's picture and first name over the cloud save's state and their email. It
+ * redraws itself in place when the account or the sync state changes, keeping focus.
+ */
+export function accountRow(onClick: () => void, cls = ''): HTMLButtonElement | null {
+  if (!accountsEnabled()) return null;
+  const draw = (): HTMLButtonElement => {
+    const { player, status } = accountState();
+    if (!player) return signedOutRow(onClick, cls);
+    const last = lastPlayer();
+    const row = navRow(CircleUser, firstName(player.name) ?? player.email, `${SYNC_STATUS[status].label} · ${player.email}`, 'yellow', onClick, cls);
+    row.title = 'Your account: the plate name, the cloud save and Sign out';
+    avatar(row, last?.email === player.email ? last.picture : undefined);
+    return row;
+  };
+  let row = draw();
+  const off = onAccountChange(() => {
+    if (!row.isConnected) return off();
+    const next = draw();
+    const focused = document.activeElement === row;
+    row.replaceWith(next);
+    row = next;
+    if (focused) row.focus({ preventScroll: true });
+  });
   return row;
 }
 

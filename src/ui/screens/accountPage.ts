@@ -5,17 +5,11 @@
  * signed in, the plate name, then who, the sync state and Sign out. Redraws its account part when the account changes. Styled by _account.scss.
  */
 import { btn, h } from '../kit/dom';
-import { Cloud, CloudCheck, CloudOff, LogOut, icon } from '../kit/icons';
-import { accountState, onAccountChange, signOut, type SyncStatus } from '../../account/account';
+import { LogOut, icon } from '../kit/icons';
+import { accountState, onAccountChange, signOut } from '../../account/account';
 import { PLATE_MAX, plateText, type Settings } from '../settings';
 import { settingRow } from './settingsPanel';
-import { signInContent } from './signIn';
-
-const STATUS: Record<SyncStatus, { label: string; icon: typeof Cloud }> = {
-  synced: { label: 'Synced', icon: CloudCheck },
-  saving: { label: 'Saving…', icon: Cloud },
-  offline: { label: 'Offline', icon: CloudOff },
-};
+import { SYNC_STATUS, signInContent } from './signIn';
 
 /** A plate name suggested from the account's name (its first word), for the field's placeholder. */
 const suggestedPlate = (name: string | undefined): string => plateText(name?.split(/\s+/)[0] ?? '').trim() || 'MY PLATE';
@@ -43,7 +37,7 @@ export function accountPage(s: Settings, onChange: (s: Settings) => void): HTMLE
       root.replaceChildren(...signInContent(), plate);
       return;
     }
-    const s = STATUS[status];
+    const s = SYNC_STATUS[status];
     const out = btn(LogOut, 'Sign out', () => {
       out.disabled = true;
       void signOut();

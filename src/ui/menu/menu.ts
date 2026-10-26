@@ -5,8 +5,9 @@
  * name and tagline, the seed with edit and shuffle, the city as a tilted live
  * map with what makes it this city, and the way into the race) over a list
  * of the other places: Garage, Explore (the drone flyover) and Settings.
- * Signed out on a build with accounts, a Sign in row in the list's style
- * stands above the event card and opens Settings on its Account page. Home says nothing about the race itself, so no type is implied
+ * On a build with accounts, an account row in the list's style stands above
+ * the event card (Sign in, or who is signed in and their cloud save) and
+ * opens Settings on its Account page. Home says nothing about the race itself, so no type is implied
  * before the player picks one. A race takes three steps, each short enough
  * to fit the column without scrolling: home, then the race step (the types in
  * a grid of two rows over the course card, each type's course drawn on in its own color as
@@ -83,7 +84,7 @@ import type { BestRecord } from '../../replay/replay';
 import type { MusicPlayer } from '../../audio/musicPlayer';
 import type { SpecBadge } from '../../shared/carSpec';
 import { uiBlip, uiWhoosh } from '../../audio/uiSound';
-import { signInRow } from '../screens/signIn';
+import { accountRow } from '../screens/signIn';
 
 /** The title's words: one line, sized to the menu's column in the menu and on the splash alike (`.title-lockup__title .logo` in _title-lockup.scss). */
 export const TITLE_WORDS = ['STREET', 'SCENE'] as const;
@@ -334,8 +335,8 @@ export function mainMenu(o: MenuOptions): MainMenu {
   };
 
   const home = (): HTMLElement[] => [
-    // Signed out on a build with accounts: Sign in above the event card, into Settings on its Account page, where Google's button is.
-    ...[signInRow(() => go('settings', true, 'account'), 'menu__account')].filter((r) => r !== null),
+    // On a build with accounts, the account above the event card (Sign in, or who is signed in), into Settings on its Account page.
+    ...[accountRow(() => go('settings', true, 'account'), 'menu__account')].filter((r) => r !== null),
     eventCard(),
     h(
       'nav',
