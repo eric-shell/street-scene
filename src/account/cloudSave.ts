@@ -62,6 +62,31 @@ export function applySave(blob: SaveBlob): boolean {
   return changed;
 }
 
+/** The garage's key, and its slot cap (garage/storage.ts MAX_SLOTS, not imported: that module pulls in the car assets). */
+const GARAGE_KEY = 'garage.v1';
+const MAX_SLOTS = 6;
+
+/**
+ * Adds this device's garage builds the downloaded save lacks to it (after the account's own, up to the slot
+ * cap), so signing in on a device whose garage belonged to no account moves its cars into the account
+ * instead of writing over them. Returns how many builds joined; the caller uploads the result.
+ */
+export function joinLocalBuilds(blob: SaveBlob): number {
+  const local = parse(loadText(GARAGE_KEY)) as { slots?: unknown } | undefined;
+  const mine = Array.isArray(local?.slots) ? local.slots : [];
+  if (!mine.length) return 0;
+  const cloud = blob.keys?.[GARAGE_KEY] as { slots?: unknown } | undefined;
+  // The account has no garage yet: this device's goes up whole.
+  if (!cloud || !Array.isArray(cloud.slots)) {
+    blob.keys = { ...blob.keys, [GARAGE_KEY]: local };
+    return mine.length;
+  }
+  const have = new Set(cloud.slots.map((b) => JSON.stringify(b)));
+  const joining = mine.filter((b) => !have.has(JSON.stringify(b))).slice(0, Math.max(0, MAX_SLOTS - cloud.slots.length));
+  cloud.slots = [...cloud.slots, ...joining];
+  return joining.length;
+}
+
 /** Calls `fn` whenever the game writes one of the synced keys. */
 export function watchSynced(fn: () => void): void {
   onSaved((key) => !applying && SYNCED.includes(key) && fn());

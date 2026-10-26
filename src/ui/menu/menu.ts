@@ -3,9 +3,9 @@
  * (ui/rail/rail.ts) beside the event city, where the player's car cruises the
  * route. Home is the title block over the event card (tonight's event: its
  * name and tagline, the seed with edit and shuffle, the city as a tilted live
- * map with what makes it this city, and the way into the race, with the way
- * back to today's race beside it on a city of your own)
- * over a list of the other places: Garage, Explore (the drone flyover) and
+ * map with what makes it this city, and the way into the race) over a list
+ * of the other places: Garage, Sign in (signed out, on a build with accounts:
+ * it opens Settings on its Account page), Explore (the drone flyover) and
  * Settings. Home says nothing about the race itself, so no type is implied
  * before the player picks one. A race takes three steps, each short enough
  * to fit the column without scrolling: home, then the race step (the types in
@@ -30,6 +30,7 @@ import {
   Anchor,
   Calendar,
   Check,
+  CircleUser,
   ChevronRight,
   ChevronsRight,
   ChevronsUpDown,
@@ -72,7 +73,6 @@ import { formatTime } from '../kit/format';
 import { roadDistance } from '../kit/units';
 import { CityOverview, CourseMap, courseRoute, type CourseRoutes, type MapPose } from './menuMaps';
 import { courseBest, courseFacts, raceTicket } from './raceTicket';
-import { signInCard } from './signInCard';
 import { KINDS, layersOf } from '../map/cityMap';
 import { DRAG_OPPONENTS, MAX_OPPONENTS, type RaceMode } from '../../sim/race';
 import { driftZones } from '../../sim/driftZones';
@@ -84,6 +84,7 @@ import type { BestRecord } from '../../replay/replay';
 import type { MusicPlayer } from '../../audio/musicPlayer';
 import type { SpecBadge } from '../../shared/carSpec';
 import { uiBlip, uiWhoosh } from '../../audio/uiSound';
+import { accountState, accountsEnabled, onAccountChange } from '../../account/account';
 
 /** The title's words: one line, sized to the menu's column in the menu and on the splash alike (`.title-lockup__title .logo` in _title-lockup.scss). */
 export const TITLE_WORDS = ['STREET', 'SCENE'] as const;
@@ -185,6 +186,7 @@ const FEATURES: { kind: AreaKind; icon: IconNode; one: string; many?: (n: number
 /** The other places on home, each in its own hue (rail.ts navRow). */
 const PLACES_INFO = {
   garage: { icon: Wrench, label: 'Garage', hue: 'orange' },
+  account: { icon: CircleUser, label: 'Sign in', hue: 'yellow' },
   explore: { icon: Drone, label: 'Explore', hue: 'cyan' },
   settings: { icon: SettingsIcon, label: 'Settings', hue: 'purple' },
 } as const;
@@ -271,7 +273,10 @@ export function mainMenu(o: MenuOptions): MainMenu {
     return b ? (m === 'drift' ? `${Math.round(b.score ?? 0).toLocaleString()} pts` : formatTime(b.time)) : null;
   };
 
-  /** The seed: a chip with quiet actions; editing swaps the chip for a field (Enter applies, Escape cancels). */
+  /**
+   * The seed: a chip with quiet actions (type one, roll a random city, and on a city of your own the way back
+   * to today's); editing swaps the chip for a field (Enter applies, Escape cancels).
+   */
   const seedControl = (): HTMLElement => {
     const box = h('div', { class: 'seed-control' });
     const show = () =>
@@ -279,6 +284,7 @@ export function mainMenu(o: MenuOptions): MainMenu {
         h('span', { class: 'seed-control__value', title: 'City seed' }, `#${o.seed}`),
         iconBtn(Pencil, 'Type a seed', edit, '--small --ghost'),
         iconBtn(Shuffle, 'Random city', () => o.onSeed(randomSeed()), '--small --ghost'),
+        ...(o.isDaily ? [] : [iconBtn(Calendar, `Back to today's event · ${todayLabel()}`, () => o.onSeed(null), '--small --ghost')]),
       );
     const edit = () => {
       const input = h('input', { type: 'text', class: 'mono seed-control__input', value: o.seed, maxlength: 32, 'aria-label': 'Seed', placeholder: 'Type a seed' }) as HTMLInputElement;
@@ -305,23 +311,8 @@ export function mainMenu(o: MenuOptions): MainMenu {
     const enter = btn(Flag, 'Race', () => go('race'), '--large --primary --cta event-card__go');
     enter.title = 'Pick the race type and rivals, then start';
     enter.append(icon(ChevronRight, { size: 20 }));
-    // Today's city or one of your own, a switch in the kicker's place: Today goes back to today's event,
-    // Custom rolls a random city (the seed's pencil types one). Picking the city already up does nothing.
-    const pick = segmented(
-      [
-        { value: 'today', label: 'Today', icon: Calendar },
-        { value: 'custom', label: 'Custom', icon: Shuffle },
-      ] as const,
-      o.isDaily ? 'today' : 'custom',
-      (v) => {
-        if (v === 'today' && !o.isDaily) o.onSeed(null);
-        else if (v === 'custom' && o.isDaily) o.onSeed(randomSeed());
-      },
-      'event-card__pick',
-    );
-    pick.setAttribute('aria-label', 'Event city');
-    (pick.children[0] as HTMLElement).title = `Today's event · ${todayLabel()}`;
-    (pick.children[1] as HTMLElement).title = o.isDaily ? 'A random city of your own' : 'A city of your own';
+    // Whose city this is, as the kicker: today's (dated) or one of your own; the seed's actions beside it change it.
+    const kicker = h('span', { class: 'label label--kicker' }, icon(o.isDaily ? Calendar : Shuffle, { size: 14 }), o.isDaily ? `Today · ${todayLabel()}` : 'Custom city');
     overview = new CityOverview(o.world);
     const map = h(
       'button',
@@ -335,7 +326,7 @@ export function mainMenu(o: MenuOptions): MainMenu {
     return h(
       'section',
       { class: 'event-card', 'aria-label': 'Event' },
-      h('div', { class: 'event-card__top' }, pick, seedControl()),
+      h('div', { class: 'event-card__top' }, kicker, seedControl()),
       h('h2', { class: 'event-card__name' }, o.event?.name ?? 'Street race'),
       o.event && h('p', { class: 'event-card__tagline' }, o.event.tagline),
       map,
@@ -344,15 +335,28 @@ export function mainMenu(o: MenuOptions): MainMenu {
     );
   };
 
+  /** Signed out on a build with accounts: Sign in, under Garage (what it keeps), into Settings on its Account page, where Google's button is. Gone once signed in. */
+  const signInItem = (): HTMLButtonElement | null => {
+    if (!accountsEnabled() || accountState().player) return null;
+    const row = navItem('account', 'Keep your customized vehicles and progress', () => go('settings', true, 'account'));
+    const off = onAccountChange(() => {
+      if (!row.isConnected) off();
+      else if (accountState().player) {
+        off();
+        row.remove();
+      }
+    });
+    return row;
+  };
+
   const home = (): HTMLElement[] => [
-    // Signed out on a build with accounts: the sign-in prompt first.
-    ...signInCard(),
     eventCard(),
     h(
       'nav',
       { class: 'nav-list', 'aria-label': 'Main menu' },
       // The build in use under Garage, its spec tags beside the word.
       navItem('garage', `${o.builds[build].name} · ${o.builds[build].car}`, o.onGarage, h('span', { class: 'build-line' }, h('span', { class: 'build-line__name' }, PLACES_INFO.garage.label), buildTags(o.builds[build]))),
+      signInItem(),
       navItem('explore', 'Fly a drone over the event city', o.onDrone),
       navItem('settings', 'Display, sound, controls', () => go('settings')),
     ),
@@ -625,7 +629,9 @@ export function mainMenu(o: MenuOptions): MainMenu {
     ];
   };
 
-  const settings = (): HTMLElement[] => [screenHead({ icon: SettingsIcon, title: 'Settings', back: () => go('home') }), settingsPanel(s, o.onSettings, o.music)];
+  /** The settings page go() was asked to open on (Sign in opens Account), else the last one seen. */
+  let settingsPage: string | undefined;
+  const settings = (): HTMLElement[] => [screenHead({ icon: SettingsIcon, title: 'Settings', back: () => go('home') }), settingsPanel(s, o.onSettings, o.music, settingsPage)];
 
   // Hide the menu is a button in the panel too, for touch screens.
   const hideUi: HelpKey = { keys: ['H'], label: 'Hide the menu and watch the city', action: () => o.onHideUi() };
@@ -636,7 +642,7 @@ export function mainMenu(o: MenuOptions): MainMenu {
     settings: [{ keys: ['Esc'], label: 'Back' }, hideUi],
   };
   const TIPS: Record<MenuStep, string[]> = {
-    home: ['Every day brings a new event city. Custom (or shuffle, beside the seed) rolls a random city and the pencil types a seed of your own; Today brings you back.', 'The live map opens the whole city; a waypoint set there carries into free roam.'],
+    home: ["Every day brings a new event city. Beside its seed, shuffle rolls a random city and the pencil types a seed of your own; on a city of your own, the calendar brings you back to today's.", 'The live map opens the whole city; a waypoint set there carries into free roam.'],
     race: ['Each type draws its course on the card, with your best on this event.'],
     setup: ['Your car opens the garage\'s builds; each one you pick joins the line of cars on the street.', 'Rivals and driving aids are remembered for your next race.'],
     settings: ['Controls lists every key, gamepad button and touch control.'],
@@ -660,8 +666,10 @@ export function mainMenu(o: MenuOptions): MainMenu {
     const body = h('div', { class: 'menu-screen__body' }, ...parts.slice(head, parts.length - foot));
     return [...parts.slice(0, head), scrollHint(body, 'menu-screen__scroll'), ...parts.slice(parts.length - foot)];
   };
-  function go(next: MenuStep, animate = true): void {
+  function go(next: MenuStep, animate = true, page?: string): void {
     const from = step;
+    const fromPage = settingsPage;
+    settingsPage = page;
     step = next;
     root.dataset.step = next;
     if (next !== 'race' && next !== 'setup') delete root.dataset.mode;
@@ -681,7 +689,7 @@ export function mainMenu(o: MenuOptions): MainMenu {
     if (!animate) return;
     // Keep keyboard and gamepad focus on the menu: the step's main action, or where the player came back from.
     const focus = {
-      home: from === 'settings' ? '.menu__settings' : '.event-card__go',
+      home: from === 'settings' ? (fromPage === 'account' ? '.menu__account' : '.menu__settings') : '.event-card__go',
       race: '.step-foot__next',
       setup: '.step-foot__start',
       settings: '.settings__tab.is-selected',

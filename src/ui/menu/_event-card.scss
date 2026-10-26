@@ -1,6 +1,6 @@
 /* The event card on home (menu.ts eventCard): what tonight's event is, the city it runs in (a live map and its
-   notable districts) and the way in, under a Today | Custom switch beside the seed. It names no race type;
-   the race step does. Warm light falls on it from the top corners. */
+   notable districts) and the way in, under a kicker naming whose city it is (today's or your own) beside the
+   seed and its actions. It names no race type; the race step does. Warm light falls on it from the top corners. */
 @use '../styles/abstracts/media';
 @use '../styles/abstracts/mixins';
 @use '../styles/abstracts/palette';
@@ -30,15 +30,8 @@
     justify-content: space-between;
     gap: 10px;
     min-height: 32px;
-  }
-  /* Today | Custom in the kicker's place: the kicker's size, the pick in the accent sweep. */
-  &__pick {
-    flex: none;
-    .segmented__option {
-      padding: 4px 10px;
-      font: 800 12px var(--font);
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
+    .label {
+      flex: none;
     }
   }
   &__name {

@@ -5,11 +5,12 @@
  * on local storage alone, exactly as when signed out.
  *
  * Sync rule: the server's save wins, except over edits this device made for the same account that never
- * reached it (offline, or the tab closed mid-upload); those go up instead. Edits upload a few seconds after
- * the last change, and at once when the tab is hidden.
+ * reached it (offline, or the tab closed mid-upload); those go up instead. A device signing in for the first
+ * time keeps its garage: its builds join the account's (cloudSave.ts joinLocalBuilds) rather than vanish under
+ * it. Edits upload a few seconds after the last change, and at once when the tab is hidden.
  */
 import { loadJson, saveJson } from '../shared/store';
-import { applySave, collectSave, watchSynced, type SaveBlob } from './cloudSave';
+import { applySave, collectSave, joinLocalBuilds, watchSynced, type SaveBlob } from './cloudSave';
 
 export interface Player {
   /** Google's account id. */
@@ -90,8 +91,11 @@ function api(method: string, body?: unknown, keepalive = false, signal?: AbortSi
 function reconcile(r: AccountReply): boolean {
   const mine = meta.owner === r.player.id;
   if (r.save && !(mine && meta.dirty)) {
+    // A save that belonged to no account (this device's first sign-in) brings its builds along into the account's garage.
+    const joined = meta.owner === null ? joinLocalBuilds(r.save) : 0;
     const updated = applySave(r.save);
-    changed({ player: r.player, owner: r.player.id, savedAt: r.savedAt, dirty: false }, 'synced');
+    changed({ player: r.player, owner: r.player.id, savedAt: r.savedAt, dirty: joined > 0 }, joined ? 'saving' : 'synced');
+    if (joined) void push();
     return updated;
   }
   // The account has no save yet (its first device), or this device holds its newest edits: upload them.

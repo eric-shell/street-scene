@@ -31,9 +31,9 @@ let lastPage = 'display';
  * the open page, so nothing needs a long scroll and the panel fits the rail's
  * column. Race options (rivals, difficulty, gearbox, traction control) live on
  * the menu's race step instead. Used on the menu's settings step and on the
- * pause screen's.
+ * pause screen's. It opens on `page` when given (the menu's Sign in opens Account), else the last page seen.
  */
-export function settingsPanel(s: Settings, onChange: (s: Settings) => void, music?: MusicPlayer): HTMLElement {
+export function settingsPanel(s: Settings, onChange: (s: Settings) => void, music?: MusicPlayer, page?: string): HTMLElement {
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => {
     s[k] = v;
     onChange(s);
@@ -140,7 +140,7 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
     pane.replaceChildren(...p.rows().filter((r): r is HTMLElement => !!r));
     pane.setAttribute('aria-label', p.label);
   };
-  open(pages.find((p) => p.id === lastPage) ?? pages[0]);
+  open(pages.find((p) => p.id === (page ?? lastPage)) ?? pages[0]);
   return h('div', { class: 'settings' }, h('nav', { class: 'tabs settings__tabs', role: 'tablist', 'aria-label': 'Settings pages' }, ...tabs), pane);
 }
 
