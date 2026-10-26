@@ -92,7 +92,7 @@ const firstName = (name: string | undefined): string | undefined => name?.split(
 export function welcome(): string {
   const player = accountState().player;
   const name = firstName(player?.name) ?? player?.email ?? '';
-  return isNewAccount() ? `Welcome ${name}!` : `Welcome back ${name}`;
+  return isNewAccount() ? `Welcome ${name}!` : `Welcome back ${name}!`;
 }
 
 /** Puts the player's picture in a row's badge once it loads, the whole badge (what was there stays if it does not). */
