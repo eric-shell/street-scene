@@ -8,7 +8,7 @@ Signed-in testers get their garage, garage prefs and settings (minus this device
 - `db/schema.sql`: one table, `players` (Google `sub`, email, name, the save as JSONB, stamps). `npm run db:init` applies it.
 - `src/account/account.ts`: session state, the sync rule, Google's button. `cloudSave.ts`: which store keys sync and how a download merges. `main.ts` awaits `accountReady` before reading saved state (only signed-in players wait, 3 s at most).
 - `src/ui/screens/accountPage.ts`: the Settings → Account tab, shown only when the build has a client id.
-- `src/ui/menu/menu.ts`: signed out, home's list has a Sign in row under Garage that opens Settings on the Account tab.
+- `src/ui/menu/menu.ts`: signed out, home has a Sign in row (in the style of its list) above the event card that opens Settings on the Account tab.
 - A device's first sign-in keeps its garage: when the account already has a save, the device's builds it lacks join the account's garage (up to the six slots) and upload, instead of being written over (`cloudSave.ts` `joinLocalBuilds`).
 - `scripts/apiDev.ts`: serves `api/` from `npm run dev`, with `.env.local` in `process.env`.
 

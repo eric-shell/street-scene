@@ -4,9 +4,9 @@
  * route. Home is the title block over the event card (tonight's event: its
  * name and tagline, the seed with edit and shuffle, the city as a tilted live
  * map with what makes it this city, and the way into the race) over a list
- * of the other places: Garage, Sign in (signed out, on a build with accounts:
- * it opens Settings on its Account page), Explore (the drone flyover) and
- * Settings. Home says nothing about the race itself, so no type is implied
+ * of the other places: Garage, Explore (the drone flyover) and Settings.
+ * Signed out on a build with accounts, a Sign in row in the list's style
+ * stands above the event card and opens Settings on its Account page. Home says nothing about the race itself, so no type is implied
  * before the player picks one. A race takes three steps, each short enough
  * to fit the column without scrolling: home, then the race step (the types in
  * a grid of two rows over the course card, each type's course drawn on in its own color as
@@ -335,7 +335,7 @@ export function mainMenu(o: MenuOptions): MainMenu {
     );
   };
 
-  /** Signed out on a build with accounts: Sign in, under Garage (what it keeps), into Settings on its Account page, where Google's button is. Gone once signed in. */
+  /** Signed out on a build with accounts: Sign in, above the event card, into Settings on its Account page, where Google's button is. Gone once signed in. */
   const signInItem = (): HTMLButtonElement | null => {
     if (!accountsEnabled() || accountState().player) return null;
     const row = navItem('account', 'Keep your customized vehicles and progress', () => go('settings', true, 'account'));
@@ -350,13 +350,13 @@ export function mainMenu(o: MenuOptions): MainMenu {
   };
 
   const home = (): HTMLElement[] => [
+    ...[signInItem()].filter((r) => r !== null),
     eventCard(),
     h(
       'nav',
       { class: 'nav-list', 'aria-label': 'Main menu' },
       // The build in use under Garage, its spec tags beside the word.
       navItem('garage', `${o.builds[build].name} · ${o.builds[build].car}`, o.onGarage, h('span', { class: 'build-line' }, h('span', { class: 'build-line__name' }, PLACES_INFO.garage.label), buildTags(o.builds[build]))),
-      signInItem(),
       navItem('explore', 'Fly a drone over the event city', o.onDrone),
       navItem('settings', 'Display, sound, controls', () => go('settings')),
     ),
