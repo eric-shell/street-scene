@@ -145,6 +145,7 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
     lastPage = p.id;
     selectTab(tabs, tabs[pages.indexOf(p)]);
     pane.replaceChildren(...p.rows().filter((r): r is HTMLElement => !!r));
+    pane.scrollTop = 0; // a new page starts at its top, not at the last page's scroll
     pane.setAttribute('aria-label', p.label);
   };
   open(pages.find((p) => p.id === (page ?? lastPage)) ?? pages[0]);
