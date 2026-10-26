@@ -47,8 +47,16 @@ const FADE = CITY.districts.backAlley.jumpFade;
  * to `beyond` past the fade, where the ground is level again.
  */
 const CHEEK = { in: 0.3, out: 0.12, lift: 0.05, drape: 0.05, steps: 3, beyond: 0.3 } as const;
-/** The lip block's hazard band: this tall along its top edge (m). */
+/** The lip block's hazard band: this tall along its top edge (m), in stripes this wide. */
 const LIP_BAND = 0.3;
+const LIP_STRIPE = 0.45;
+/** Hazard lamps along the lip's top edge: one every this far across (m). */
+const LIP_LAMP_STEP = 0.75;
+/**
+ * The barricade on each abutment beside a jump exit's lip: boards this wide (m) on two posts, the
+ * boards' heights (m), the posts' height (m) and how far back from the lip it stands (m).
+ */
+const BARRICADE = { width: 1.3, boards: [0.5, 0.85, 1.2], board: 0.2, post: 1.42, back: 0.7 } as const;
 
 /** Light pools under shortcut string lights: spacing along the alley and length (m), colour (additive). */
 const POOL = { step: 9, length: 11, color: 0xff9a6a, strength: 0.5 } as const;
@@ -142,6 +150,13 @@ const HAZARD = col(0xf2b81c);
 const DARK = col(0x15161a);
 const CONCRETE = col(0x5a5b60);
 const COPING = col(0x6e6f74);
+/** A jump exit's abutments: poured concrete, paler than the alley's cheek walls so the structure reads. */
+const POURED = col(0x7a7b80);
+const POURED_TOP = col(0x8c8d92);
+/** Reflective sheeting on the lip band and the barricades: dim in the glow builder, so it reads at night without blooming. */
+const SHEET_YELLOW = col(0xffc21a, 0.42);
+const SHEET_DARK = col(0x101012, 0.2);
+const POST = col(0xd4d6dc);
 
 /**
  * A steel deck over a profile along a leg (origin a, direction u), from s0 to
@@ -150,9 +165,12 @@ const COPING = col(0x6e6f74);
  * a plate over the road, stepping a curb up over the alley's sidewalk strips.
  * Either side, a cheek wall: a coping along the deck's edge and the battered
  * face below it, draped over the fade band where the profile dies out behind
- * the building line, out to level ground.
+ * the building line, out to level ground. With `abutment` the cheek is
+ * poured concrete instead: its top carries the coping's height right across
+ * the fade band and its outer face drops plumb to the ground beyond it, so
+ * the draped slope is boxed in (a jump exit's ramp, which stands taller).
  */
-function deck(kit: DistrictKit, ax: number, az: number, ux: number, uz: number, s0: number, s3: number, hw: number, profile: (s: number) => { h: number; dh: number }, band: (s: number) => boolean, extra: number[] = []): void {
+function deck(kit: DistrictKit, ax: number, az: number, ux: number, uz: number, s0: number, s3: number, hw: number, profile: (s: number) => { h: number; dh: number }, band: (s: number) => boolean, extra: number[] = [], abutment = false): void {
   const lx = -uz;
   const lz = ux;
   const stations: number[] = [];
@@ -173,7 +191,10 @@ function deck(kit: DistrictKit, ax: number, az: number, ux: number, uz: number, 
   ];
   // Across a cheek, from the coping's inner edge out: the coping, then the batter strips to level ground.
   const batter: number[] = [];
-  for (let k = 0; k <= CHEEK.steps; k++) batter.push(hw + CHEEK.out + ((FADE + CHEEK.beyond - CHEEK.out) * k) / CHEEK.steps);
+  if (!abutment) for (let k = 0; k <= CHEEK.steps; k++) batter.push(hw + CHEEK.out + ((FADE + CHEEK.beyond - CHEEK.out) * k) / CHEEK.steps);
+  // An abutment's top reaches past the whole fade band; its foot sinks below the ground there.
+  const out = abutment ? FADE + CHEEK.beyond : CHEEK.out;
+  const [faceCol, topCol] = abutment ? [POURED, POURED_TOP] : [CONCRETE, COPING];
   let prev: number[] | null = null;
   let prevCheeks: number[][][] | null = null;
   let prevS = s0;
@@ -197,18 +218,18 @@ function deck(kit: DistrictKit, ax: number, az: number, ux: number, uz: number, 
       const edge = at(side * hw);
       const yCope = kit.h(edge.x, edge.z) + WALK_LIFT + CHEEK.lift;
       const inner = at(side * (hw - CHEEK.in));
-      const outer = at(side * (hw + CHEEK.out));
-      const yFoot = kit.h(outer.x, outer.z) + CHEEK.drape;
+      const outer = at(side * (hw + out));
+      const yFoot = kit.h(outer.x, outer.z) + (abutment ? -0.3 : CHEEK.drape);
       const ox = lx * side;
       const oz = lz * side;
       const cope = [
-        gb.vertex(inner.x, yCope, inner.z, nx, ny, nz, 0, 0, COPING),
-        gb.vertex(outer.x, yCope, outer.z, nx, ny, nz, 0, 0, COPING),
-        // The outer face, from the coping down to the batter's top, and the inner face down to the deck.
-        gb.vertex(outer.x, yCope, outer.z, ox, 0, oz, 0, 0, CONCRETE),
-        gb.vertex(outer.x, yFoot, outer.z, ox, 0, oz, 0, 0, CONCRETE),
-        gb.vertex(inner.x, yCope, inner.z, -ox, 0, -oz, 0, 0, CONCRETE),
-        gb.vertex(inner.x, kit.h(inner.x, inner.z) + WALK_LIFT, inner.z, -ox, 0, -oz, 0, 0, CONCRETE),
+        gb.vertex(inner.x, yCope, inner.z, nx, ny, nz, 0, 0, topCol),
+        gb.vertex(outer.x, yCope, outer.z, nx, ny, nz, 0, 0, topCol),
+        // The outer face, from the coping down to the batter's top (an abutment's to the ground), and the inner face down to the deck.
+        gb.vertex(outer.x, yCope, outer.z, ox, 0, oz, 0, 0, faceCol),
+        gb.vertex(outer.x, yFoot, outer.z, ox, 0, oz, 0, 0, faceCol),
+        gb.vertex(inner.x, yCope, inner.z, -ox, 0, -oz, 0, 0, faceCol),
+        gb.vertex(inner.x, kit.h(inner.x, inner.z) + WALK_LIFT, inner.z, -ox, 0, -oz, 0, 0, faceCol),
       ];
       const face = batter.map((l) => {
         const q = at(side * l);
@@ -248,7 +269,56 @@ function rampDeck(kit: DistrictKit, ax: number, az: number, ux: number, uz: numb
     hw,
     (s) => jumpRampProfile(Math.min(s, lip) - toe, length, rise),
     (s) => s - toe < 0.6 || lip - s < 0.9,
+    [],
+    true,
   );
+}
+
+/**
+ * A barricade standing on an abutment beside the lip, facing out along `f`: two white posts, three
+ * boards in yellow and black reflective stripes across them, a blinking amber lamp on each post.
+ */
+function barricade(kit: DistrictKit, x: number, z: number, y: number, fx: number, fz: number): void {
+  const lx = -fz;
+  const lz = fx;
+  const hw = BARRICADE.width / 2;
+  for (const k of [-1, 1]) {
+    const px = x + lx * k * (hw - 0.12);
+    const pz = z + lz * k * (hw - 0.12);
+    orientedBox(kit.solid, px - lx * 0.04 - fx * 0.04, pz - lz * 0.04 - fz * 0.04, px + lx * 0.04 - fx * 0.04, pz + lz * 0.04 - fz * 0.04, fx * 0.08, fz * 0.08, y - 0.1, y + BARRICADE.post, POST);
+    cylinder(kit.solid, px, pz, 0.1, y + BARRICADE.post, y + BARRICADE.post + 0.05, 6, DARK);
+    cylinder(kit.hazard, px, pz, 0.085, y + BARRICADE.post + 0.05, y + BARRICADE.post + 0.2, 6, DARK);
+  }
+  // Each board striped on the diagonal (stripes slanting down toward the middle, as on a real barricade),
+  // both faces, the stripes clipped to the board's ends.
+  const gb = kit.glow;
+  const w = 0.24;
+  const h = BARRICADE.board;
+  for (const by of BARRICADE.boards) {
+    const y0 = y + by;
+    for (const [face, off] of [
+      [1, 0.065],
+      [-1, 0.035],
+    ] as const) {
+      for (let k = -8; k <= 8; k++) {
+        // Bottom edge [a, a + w] along the board, the top edge shifted by the slant toward the outer end.
+        const a = k * w - w / 2;
+        const sl = Math.sign(a + w / 2) * h || h;
+        const pts = [
+          [a, 0],
+          [a + w, 0],
+          [a + w + sl, h],
+          [a + sl, h],
+        ].map(([t, v]) => [Math.max(-hw, Math.min(hw, t)), v] as const);
+        if (Math.max(...pts.map((p) => p[0])) - Math.min(...pts.map((p) => p[0])) < 0.01) continue;
+        const c = k % 2 ? SHEET_DARK : SHEET_YELLOW;
+        const ids = pts.map(([t, v]) => gb.vertex(x + lx * t + fx * off, y0 + v, z + lz * t + fz * off, fx * face, 0, fz * face, 0, 0, c));
+        gb.quadFacing(ids[0], ids[1], ids[2], ids[3], fx * face, 0, fz * face);
+      }
+    }
+    // The board's edges and back plate, dark.
+    orientedBox(kit.solid, x - lx * hw + fx * 0.04, z - lz * hw + fz * 0.04, x + lx * hw + fx * 0.04, z + lz * hw + fz * 0.04, fx * 0.02, fz * 0.02, y0, y0 + h, DARK);
+  }
 }
 
 /**
@@ -267,8 +337,23 @@ function lipFace(kit: DistrictKit, wall: Wall, depth: number, ext: number, top: 
   const bx = wall.bx + dx;
   const bz = wall.bz + dz;
   const base = Math.min(kit.h(ax + wall.nx, az + wall.nz), kit.h(bx + wall.nx, bz + wall.nz)) - 0.3;
-  orientedBox(kit.solid, ax, az, bx, bz, -wall.nx * depth, -wall.nz * depth, base, top - LIP_BAND, CONCRETE);
+  orientedBox(kit.solid, ax, az, bx, bz, -wall.nx * depth, -wall.nz * depth, base, top - LIP_BAND, POURED);
   orientedBox(kit.solid, ax, az, bx, bz, -wall.nx * depth, -wall.nz * depth, top - LIP_BAND, top, HAZARD);
+  // The band's reflective stripes on the street face (a hair proud of it), and the hazard lamps along its top edge.
+  const span = Math.hypot(bx - ax, bz - az);
+  const tx = (bx - ax) / span;
+  const tz = (bz - az) / span;
+  const n = Math.max(2, Math.round(span / LIP_STRIPE));
+  for (let i = 0; i < n; i++) {
+    const t0 = (span * i) / n;
+    const t1 = (span * (i + 1)) / n;
+    orientedBox(kit.glow, ax + tx * t0 + wall.nx * 0.02, az + tz * t0 + wall.nz * 0.02, ax + tx * t1 + wall.nx * 0.02, az + tz * t1 + wall.nz * 0.02, -wall.nx * 0.01, -wall.nz * 0.01, top - LIP_BAND + 0.03, top - 0.03, i % 2 ? SHEET_DARK : SHEET_YELLOW);
+  }
+  const lamps = Math.max(2, Math.round(span / LIP_LAMP_STEP));
+  for (let i = 0; i <= lamps; i++) {
+    const t = 0.25 + ((span - 0.5) * i) / lamps;
+    cylinder(kit.hazard, ax + tx * t - wall.nx * 0.12, az + tz * t - wall.nz * 0.12, 0.07, top - 0.02, top + 0.05, 6, DARK);
+  }
 }
 
 function kickerDeck(kit: DistrictKit, ax: number, az: number, ux: number, uz: number, center: number, ramp: number, top: number, height: number, hw: number): void {
@@ -379,6 +464,17 @@ export const alleyRenderer: DistrictRenderer = {
             if (w.area !== a.id) continue;
             const depth = ((w.ax + w.bx) / 2 - o.x) * ux + ((w.az + w.bz) / 2 - o.z) * uz - lip;
             lipFace(kit, w, Math.max(0.5, depth) + 0.05, FADE + CHEEK.beyond, top);
+          }
+          // A barricade on each abutment just back from the lip, outside the alley's walls (nothing reaches
+          // it), facing the street the car flies out over.
+          const sb = lip - BARRICADE.back;
+          for (const side of [-1, 1]) {
+            const l = side * (hw + (FADE + CHEEK.beyond) / 2);
+            const bx = o.x + ux * sb - uz * l;
+            const bz = o.z + uz * sb + ux * l;
+            const ex = o.x + ux * sb - uz * side * hw;
+            const ez = o.z + uz * sb + ux * side * hw;
+            barricade(kit, bx, bz, kit.h(ex, ez) + WALK_LIFT + CHEEK.lift, ux, uz);
           }
         }
       }

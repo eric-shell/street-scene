@@ -212,7 +212,7 @@ function pickWeighted(rng: Rng, weights: number[]): number {
 }
 
 /** Style for a region and height (m). */
-function styleFor(region: Region, h: number, rng: Rng): StyleId {
+export function styleFor(region: Region, h: number, rng: Rng): StyleId {
   const r = rng.next();
   switch (region) {
     case 'nyc':
@@ -231,7 +231,16 @@ function styleFor(region: Region, h: number, rng: Rng): StyleId {
 /** Low rise styles that may be pulled down to a terrace height (m above baseY, cap). */
 const TERRACE_CAP: Partial<Record<StyleId, number>> = { rowhouse: 13.2, victorian: 18.6, brownstone: 22.2 };
 
+/** One plan per world: the buildings, the boundary walls and the backlots all read it (callers never mutate it). */
+const planned = new WeakMap<World, BuildingPlan[]>();
+
 export function planArchitecture(world: World): BuildingPlan[] {
+  let plans = planned.get(world);
+  if (!plans) planned.set(world, (plans = planOnce(world)));
+  return plans;
+}
+
+function planOnce(world: World): BuildingPlan[] {
   const B = world.blocks.buildings;
   const g = world.graph;
   const rng = new Rng((world.seed ^ 0xa4c417) >>> 0 || 1);

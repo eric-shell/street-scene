@@ -3,7 +3,8 @@
  * pockets and verges (concrete at sidewalk level, verges a warmer paver),
  * alley bays (the alley's cobbles, their tapered walls the yard walls of the
  * frontage), raised planters, fountains, low curbs around lots, and the low
- * 'boundary' walls that close every other gap in the street frontage. The clutter in
+ * 'boundary' walls that close every other gap in the street frontage
+ * (boundaryWalls.ts: in the neighbourhood's finish, with piers and lanterns). The clutter in
  * the pockets is destructible and drawn by render/street/props.ts; this only lays a
  * mulch bed under the greenery (it stays when a bush is ploughed through).
  * Lantern posts are props too; their light is render/street/areaLights.ts.
@@ -12,6 +13,7 @@
 import { CITY } from '../../city/config';
 import type { DistrictRenderer } from './kit';
 import { col, cylinder, drapeConvex, groundLine, prism, wallBox } from './kit';
+import { boundaryWalls } from './boundaryWalls';
 
 export const infillRenderer: DistrictRenderer = {
   kinds: ['infill'],
@@ -47,7 +49,7 @@ export const infillRenderer: DistrictRenderer = {
         cylinder(kit.solid, p.x, p.z, 0.35, y, y + 2.2, 8, col(0x8a8c96));
       }
     }
-    for (const w of kit.walls.get('boundary') ?? []) wallBox(kit, kit.solid, w, 0.35, 1.1, col(0x4a4c55));
+    boundaryWalls(kit, kit.walls.get('boundary') ?? []);
     for (const w of kit.walls.get('lotEdge') ?? []) wallBox(kit, kit.solid, w, 0.4, 0.45, col(0x5a5c66));
   },
 };

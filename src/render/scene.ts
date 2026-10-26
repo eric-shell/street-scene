@@ -27,6 +27,7 @@ import { highwayLamps } from './districts/highway';
 import { harborSea } from './districts/waterfront';
 import { GROUND_PAINT_ORDER, underVehicles } from './vehicleMask';
 import { damp } from '../shared/anim';
+import { buildWallOverlay } from './wallOverlay';
 
 /** Retro mode's render height (px): the view is drawn this many pixels tall and scaled up. */
 const RETRO_HEIGHT = 240;
@@ -170,7 +171,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   const city = buildCityMeshes(world, { detail: settings.quality });
   scene.add(city.group);
   // District dressing (lots, plazas, parks, river, roundabouts, subway) and the distant mountains.
-  const districts = buildDistrictMeshes(world, { quality: settings.quality });
+  const districts = buildDistrictMeshes(world, { quality: settings.quality, hazardLamp: city.barrierLampMaterial });
   scene.add(districts.group);
   const bounds = world.graph.bounds;
   const backdrop = buildBackdrop(world.seed, {
@@ -243,6 +244,9 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   const crowdQ = CROWD_QUALITY[settings.quality];
   const crowds = buildCrowds(world, world.openWorld ? [] : city.finishLine.gates, { ...crowdQ, drawDistance: meetQ.crowdDraw, meet, sections: planMarketCrowd(world, crowdQ.density) });
   scene.add(crowds.group);
+  // Dev builds: `?walls` draws the sim's collision over the scene (wallOverlay.ts).
+  const walls = import.meta.env.DEV && new URLSearchParams(location.search).has('walls') ? buildWallOverlay(world) : null;
+  if (walls) scene.add(walls.group);
   stabilizeSmallEmitters(city);
   keepGroundLayersUnderVehicles(scene);
   // Every material that fogs itself in a shader now gets the mood's fog.
@@ -287,6 +291,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
       crowds.dispose();
       weather.dispose();
       air.dispose();
+      walls?.dispose();
     },
   };
 }

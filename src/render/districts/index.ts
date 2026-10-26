@@ -66,7 +66,13 @@ export interface DistrictMeshes {
   dispose(): void;
 }
 
-export function buildDistrictMeshes(world: World, opts: { quality?: Quality } = {}): DistrictMeshes {
+export interface DistrictMeshOpts {
+  quality?: Quality;
+  /** The scene's blinking amber (cityMeshes barrierLampMaterial, animated by the scene) for kit.hazard; a steady amber without. */
+  hazardLamp?: THREE.Material;
+}
+
+export function buildDistrictMeshes(world: World, opts: DistrictMeshOpts = {}): DistrictMeshes {
   const group = new THREE.Group();
   group.name = 'districts';
   const disposables: { dispose(): void }[] = [];
@@ -90,6 +96,7 @@ export function buildDistrictMeshes(world: World, opts: { quality?: Quality } = 
     ground: new GeoBuilder(true),
     paint: new GeoBuilder(true),
     glow: new GeoBuilder(true),
+    hazard: new GeoBuilder(),
     foliage: new GeoBuilder(true),
     trees: new GeoBuilder(true),
     group,
@@ -127,6 +134,12 @@ export function buildDistrictMeshes(world: World, opts: { quality?: Quality } = 
   // Small emitters (pavement lights, floods, lamps) fade with pixel coverage instead of flickering far away.
   fadeSubPixel(glow, 0.35, 0.3);
   add(kit.glow, 'districtGlow', glow);
+  if (kit.hazard.vertexCount) {
+    // The scene owns (and disposes) the shared blink; only a stand-in made here is this build's.
+    const m = new THREE.Mesh(kit.track(kit.hazard.build()), opts.hazardLamp ?? kit.track(new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffa020).multiplyScalar(3) })));
+    m.name = 'districtHazard';
+    group.add(m);
+  }
   return {
     group,
     update(time) {

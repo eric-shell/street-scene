@@ -27,6 +27,12 @@ export interface DistrictKit {
   paint: GeoBuilder;
   /** Unlit, vertex colored, bright: lamps, water shimmer (blooms). */
   glow: GeoBuilder;
+  /**
+   * Blinking amber warning lamps (geometry only: the colour is the material's). Drawn with the scene's
+   * hazard blink, the one the route barriers' beacons use, so every jump lip, gore nose and barricade
+   * in the city flashes in step with them: amber blinking means a hazard, wherever it stands.
+   */
+  hazard: GeoBuilder;
   /** Lit, vertex colored foliage. */
   foliage: GeoBuilder;
   /** The trees (trees.ts): lit, vertex colored, uv = sway weight and phase for the wind. */

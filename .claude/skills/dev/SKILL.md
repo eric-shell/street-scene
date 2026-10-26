@@ -9,7 +9,7 @@ argument-hint: [?race=circuit|sprint|drift | ?freeroam | ?garage | ?drone] [&see
 2. Start `npm run dev` with `run_in_background: true` and wait for its `Local:   http://localhost:5175/` line. The port is pinned (`strictPort`): if something else holds it, say so rather than changing the port.
 3. Open `http://localhost:5175/` with params as needed:
    - `?race=circuit|sprint|drift` straight into a race (3 laps / point to point / 2 laps); `?freeroam` (open world, no rules); `?garage`; `?drone` (these skip the boot splash; a plain load shows it for about 3 s before the menu)
-   - `?seed=<anything>` for a fixed city (default is the UTC date); `?quality=low|medium|high|auto`; `?fps` (meter: fps, frame time, auto level and aim)
+   - `?seed=<anything>` for a fixed city (default is the UTC date); `?quality=low|medium|high|auto`; `?fps` (meter: fps, frame time, auto level and aim); `?walls` (dev builds: every sim wall drawn at the height a car meets it, coloured by look, the 3 m push-back band behind one sided walls in red, prop collision rings; `render/wallOverlay.ts`)
    - `?dev` garage dev mode (Ctrl+Shift+D, then drag a GLB onto the window to try a part); `?build=<share code>`
    - Debug mode (Settings > Developer, `debugMode` in `nightrun.settings.v1`): physics (` / F2) and camera (F3) tuning panels in races and free roam; free roam applies the car's saved physics tuning
 4. In the page, `window.__nr` exposes the live objects: `{ world, gr, backdrop }` on the menu, `{ session, gr }` in a race (`session.race` is the `RaceState`, `session.race.cars[0].state` the player car), `{ garageScreen, gr }` in the garage. Use it from the console instead of adding debug code.

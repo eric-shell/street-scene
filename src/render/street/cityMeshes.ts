@@ -524,7 +524,8 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
 
   // ---------- Hazard lamp material ----------
   // Closures are cyan rail pieces now (routeArrows.ts); this blinking amber (animated by the scene) is
-  // shared by the beacons on their posts and the hazards of the parked meet cars.
+  // shared by the beacons on their posts, the hazards of the parked meet cars and every district's hazard
+  // lamps (jump lips, gore noses, barricades: render/districts/kit.ts hazard).
   const barrierLampMaterial = track(new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffa020).multiplyScalar(3) }));
 
   // ---------- Start / finish line ----------

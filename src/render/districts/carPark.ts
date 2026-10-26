@@ -130,7 +130,6 @@ const HAZARD_DARK = col(0x15161a);
 const STRIP = col(0xe8f0ff, 1.05);
 /** The strips of the other levels, seen from the street through the open sides: these sell the garage as lit. */
 const STRIP_OUTER = col(0xe8f0ff, 1.9);
-const LIP_LAMP = col(0xffb35c, 2.4);
 const ROOF_LAMP = col(0xffe2b0, 2);
 /** The booth's glass: lit from inside, dim enough that bloom leaves it a kiosk and not a lightbox. */
 const BOOTH_GLASS = col(0xffd9a0, 0.5);
@@ -608,7 +607,8 @@ function buildOne(kit: DistrictKit, bb: BakedBuilder, signs: GeoBuilder, g: CarP
   for (let v = -g.hc + 0.4; v <= g.hc - 0.3; v += 0.6) {
     const p = W(frontU(g, v) + 0.12, v);
     const y = kit.h(p.x, p.z);
-    cylinder(kit.glow, p.x, p.z, 0.09, y - 0.05, y + 0.06, 5, LIP_LAMP);
+    // The scene's hazard blink, as on every jump lip in the city (kit.hazard).
+    cylinder(kit.hazard, p.x, p.z, 0.09, y - 0.05, y + 0.06, 5, CONCRETE_DARK);
   }
 
   // ---------- Lamp posts: inside every other facade column on the roof, the apron's on the podium floor ----------

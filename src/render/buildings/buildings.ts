@@ -38,6 +38,7 @@ import { GROUND_BAYS, GROUND_H, PODIUM_FLOOR_H, PodiumOutput, addPodiumFace, pod
 import { LAYER, MODULE, facadeAtlas } from './facadeAtlas';
 import { createFacadeMaterials, TRIM_COLORS } from './facadeMaterial';
 import { BuildingPlan, STYLES, StyleDef, planArchitecture } from './architecture';
+import { planBacklots } from './backlots';
 import { NEON_COLORS } from '../textures/textures';
 import { BLD, DETAIL, FLOOD, PASTEL_NEON, LED, WHITE, NO_GLOW, wash, ShellGeo, Frame, edgeNormal, boxOutline, roundedOutline, lbox, cap, facet, walls, neonRing, neonPost, cornice, colorOf } from './buildingKit';
 import type { Skin, Out, Detail } from './buildingKit';
@@ -184,6 +185,11 @@ export function buildBuildings(world: World, podium: PodiumOutput, opts: { detai
   const scratch: number[] = [];
   const B = recessCoplanar(world.blocks.buildings, plans);
   for (let i = 0; i < B.length; i++) buildOne(o, B[i], plans[i], det, (x, z) => corridorClearance(g, world.blocks.edgeGrid, x, z, scratch) < 2, world.heightAt);
+  // The blocks' middles (backlots.ts), Medium and up: no street fronts, so no shops or stoops on them.
+  if (opts.detail !== 'low') {
+    const back = planBacklots(world, plans);
+    for (let i = 0; i < back.buildings.length; i++) buildOne(o, back.buildings[i], back.plans[i], det, () => false, world.heightAt, true);
+  }
 
   const disposables: { dispose(): void }[] = [mats];
   const track = <T extends { dispose(): void }>(x: T): T => {
@@ -302,8 +308,8 @@ function plinth(o: Out, F: Frame, base: Vec2[], street: number, groundAt: (x: nu
   }
 }
 
-/** Everything for one building. */
-function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[Detail], streetAt: (x: number, z: number) => boolean, groundAt: (x: number, z: number) => number): void {
+/** Everything for one building; a backlot (backlots.ts: no street, seen over walls and from above) has no podium, its shaft runs down to the ground. */
+function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[Detail], streetAt: (x: number, z: number) => boolean, groundAt: (x: number, z: number) => number, backlot = false): void {
   const S = STYLES[plan.style];
   const rng = new Rng((plan.seed ^ 0x6b1d5) >>> 0 || 1);
   const F = new Frame(b.x, b.z, b.yaw);
@@ -323,7 +329,7 @@ function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[
   const fh = m.floor;
   const maxKit = Math.max(0, Math.floor((plan.h - 0.6 - GROUND_H) / PODIUM_FLOOR_H) - 1);
   const kit = Math.min(maxKit, rng.int(S.kitFloors[0], S.kitFloors[1]));
-  const y0 = street + podiumHeight(kit);
+  const y0 = backlot ? street : street + podiumHeight(kit);
   const want = b.baseY + plan.h;
   let nF = Math.max(1, Math.round((want - y0) / fh));
   nF = Math.max(nF, Math.ceil((b.baseY + plan.flush - y0) / fh - 1e-6));
@@ -361,7 +367,7 @@ function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[
 
   // ----- Podium -----
   const ext = podiumExtrusions(rng, kit);
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < (backlot ? 0 : 4); i++) {
     const p = base[i];
     const q = base[(i + 1) % 4];
     const n = edgeNormal(p, q);

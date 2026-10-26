@@ -562,6 +562,17 @@ function deck(kit: DistrictKit, area: Area, d: HighwayDeck, signs: GeoBuilder, w
       if (w < 0.6) continue;
       for (const sd of [1, -1]) band(paint, c, sp, sa, -cw, cw, top(sp) + 0.02, top(sa) + 0.02, C.white, true, sd * w - cw, sd * w + cw);
     }
+    // Hazard lamps (the scene's blink, kit.hazard): a pair on the V's nose facing the traffic that splits
+    // round it, and a row along the parapet closing the gore at the deck's end.
+    const nose = s0 + end * 0.4;
+    for (const sd of [1, -1]) {
+      const q = at(c, nose, sd * vGore(d, nose));
+      cylinder(kit.hazard, q.x, q.z, 0.1, top(nose) + HW.medianH, top(nose) + HW.medianH + 0.16, 6, C.barrier);
+    }
+    for (let k = -2; k <= 2; k++) {
+      const q = at(c, s1 - end * HW.barrierW * 0.5, (k / 2) * (g - 0.3));
+      cylinder(kit.hazard, q.x, q.z, 0.1, top(s1) + HW.medianH, top(s1) + HW.medianH + 0.16, 6, C.barrier);
+    }
   }
 
   // ----- Lane lines: the inner edge's yellow, the dashed dividers, the outer edge (dashed along a lane,

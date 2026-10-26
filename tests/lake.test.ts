@@ -285,6 +285,7 @@ describe('lake (renderer)', () => {
         ground: new GeoBuilder(true),
         paint: new GeoBuilder(true),
         glow: new GeoBuilder(true),
+        hazard: new GeoBuilder(),
         foliage: new GeoBuilder(true),
         trees: new GeoBuilder(true),
         group: new THREE.Group(),
