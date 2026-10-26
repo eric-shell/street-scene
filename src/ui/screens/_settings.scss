@@ -1,9 +1,10 @@
 /* The settings panel (settingsPanel.ts): tabs over the open page, whose rows rise in when its tab opens (the
-   pane is rebuilt only then), and the build version at the foot of the credits. On the main menu's and the
-   pause screen's rails it is a card over the city: narrow screens run the five tabs wider than the card's
-   padding so they still fit across the column; wide screens let the card reach past the column (the pause
-   rail widens to keep it on the rail) with the tabs in a list down its left, the open one a lit plate with
-   the rule down its edge. Those columns do not scroll, so a long page (credits, controls) scrolls inside
+   pane is rebuilt only then), and the credits (a titled group per kind of work, each credit its in-game name
+   beside the work and its author) with the build version at their foot. On the main menu's and the pause
+   screen's rails it is a card over the city: narrow screens run the five tabs wider than the card's padding
+   so they still fit across the column; wide screens let the card reach past the column (the pause rail
+   widens to keep it on the rail) with the tabs in a list down its left, the open one a lit plate with the
+   rule down its edge. Those columns do not scroll, so a long page (credits, controls) scrolls inside
    the card. */
 @use '../styles/abstracts/media';
 @use '../styles/abstracts/mixins';
@@ -41,15 +42,81 @@
       align-self: flex-start;
     }
   }
+  /* Credits: a titled group per kind of work, each a two-column list (the in-game name, dim, beside the
+     linked work over its author and licence) and a note on what was changed. */
   &__credits {
-    line-height: 1.6;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
     font-size: 14px;
+    line-height: 1.45;
     color: var(--soft);
-    p {
-      margin: 0 0 10px;
-    }
     a {
       color: var(--accent);
+      text-decoration-color: transparent;
+      transition: text-decoration-color var(--t-fast);
+      &:hover {
+        text-decoration-color: currentColor;
+      }
+    }
+  }
+  &__credit-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    > .section-title {
+      margin-top: 0;
+    }
+  }
+  &__credit-list {
+    display: grid;
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 9px 16px;
+  }
+  &__credit-use {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--dim);
+    padding-top: 2px;
+  }
+  &__credit-work {
+    min-width: 0;
+    color: var(--text);
+    overflow-wrap: anywhere;
+  }
+  &__credit-meta {
+    font-size: 12px;
+    color: var(--dim);
+    a {
+      color: var(--soft);
+    }
+    b {
+      font-weight: 600;
+      color: var(--soft);
+    }
+    summary {
+      margin-top: 4px;
+      cursor: pointer;
+      color: var(--soft);
+    }
+  }
+  &__credit-change,
+  &__credit-note {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  &__credit-note {
+    margin: 0;
+    line-height: 1.5;
+  }
+  &__credit-tracks {
+    columns: 2;
+    font-size: 12.5px;
+    margin: 6px 0 0;
+    padding-left: 22px;
+    @include media.narrow {
+      columns: 1;
     }
   }
   &__version {

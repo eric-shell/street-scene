@@ -7,8 +7,7 @@
 import { h, keyCaps, link, segmented, selectTab, tab } from '../kit/dom';
 import { CircleUser, Code, Gamepad2, Heart, Keyboard, Monitor, ShieldCheck, Smartphone, Volume2, type IconNode } from '../kit/icons';
 import type { Quality, Settings } from '../settings';
-import type { MusicPlayer } from '../../audio/musicPlayer';
-import { musicCredits } from '../panels/musicWidget';
+import { MUSIC_CATALOG, type MusicPlayer } from '../../audio/musicPlayer';
 import trafficModels from '../../assets/trafficModels.json';
 import plantModels from '../../assets/plantModels.json';
 import { BUILD_VERSION } from '../../version';
@@ -290,27 +289,62 @@ const DONOR_CREDITS: { use: string; title: string; uid: string; author: string }
   { use: 'Kagero wheels', title: 'WORK IMPORT LABEL AL4', uid: '593aed74677d49ff953e068debce4b87', author: 'jonver87' },
 ];
 
-/** The credits page of the settings, with the build version at the foot. */
+/** One credit in a credits group: what it is in the game, beside the work (linked) over its author and licence. */
+function credit(use: string, work: HTMLElement | string, ...meta: (Node | string)[]): HTMLElement[] {
+  return [h('span', { class: 'settings__credit-use' }, use), h('div', { class: 'settings__credit-work' }, work, h('div', { class: 'settings__credit-meta' }, ...meta))];
+}
+
+/** "by Author · Licence", each linked when it has a page. */
+function byLine(author: Node | string, licence: Node | string, ...more: (Node | string)[]): (Node | string)[] {
+  return ['by ', author, ...more.flatMap((m) => [' · ', m]), ' · ', licence];
+}
+
+/** A titled group of credits, with an optional note on what was changed under it. */
+function creditGroup(title: string, rows: HTMLElement[], note?: string): HTMLElement {
+  return h(
+    'section',
+    { class: 'settings__credit-group' },
+    h('div', { class: 'section-title' }, title),
+    rows.length ? h('div', { class: 'settings__credit-list' }, ...rows) : null,
+    note ? h('p', { class: 'settings__credit-note' }, note) : null,
+  );
+}
+
+/** The credits page of the settings, with the build version at the foot: each kind of borrowed work in its own
+ * group, one credit a row (the in-game name beside the linked work, its author and licence under it), so the
+ * attributions CC BY asks for scan as a list rather than a wall of sentences. */
 function credits(): HTMLElement[] {
+  const donor = (c: (typeof DONOR_CREDITS)[number]) =>
+    credit(c.use.replace(/ wheels$/, ''), link(`https://sketchfab.com/3d-models/${c.uid}`, c.title), ...byLine(link(`https://sketchfab.com/${c.author}`, c.author), link(CC_BY, 'CC BY 4.0')));
+  const model = (use: string, c: { title: string; url: string; creator: string; creatorUrl: string; license: string; licenseUrl: string; changes: string }) =>
+    credit(use, link(c.url, c.title), ...byLine(link(c.creatorUrl, c.creator), link(c.licenseUrl, c.license)), h('div', { class: 'settings__credit-change' }, `${c.changes}.`));
+  const albums = MUSIC_CATALOG.artists.flatMap((artist) =>
+    artist.albums.flatMap((album) =>
+      credit(
+        `${album.tracks.length} tracks`,
+        link(album.url, album.title),
+        ...byLine(link(artist.url, artist.name), link(album.licenseUrl, album.license), link(album.sourceUrl, album.source)),
+        h('details', {}, h('summary', {}, 'Track list'), h('ol', { class: 'settings__credit-tracks' }, ...album.tracks.map((t) => h('li', { value: t.number }, link(t.url, t.title))))),
+      ),
+    ),
+  );
+  const pixabay = 'Pixabay Content License';
   return [
     h(
       'div',
       { class: 'settings__credits' },
-      ...DONOR_CREDITS.map((c) =>
-        h('p', {}, `${c.use}: `, link(`https://sketchfab.com/3d-models/${c.uid}`, `"${c.title}"`), ' by ', link(`https://sketchfab.com/${c.author}`, h('b', {}, c.author)), ', ', link(CC_BY, 'CC BY 4.0'), '.'),
-      ),
-      h('p', { class: 'muted' }, 'Changes: the cars are reduced to about 8,000 triangles at their true size, with badges, antennas, wipers and interiors removed and their materials remapped; the wheels are reduced, fitted to one shared tire and center cap, and some wear a turned lip. Every car and wheel ships under a fictional name.'),
-      ...trafficModels.credits.map((c) =>
-        h('p', {}, 'Traffic: ', link(c.url, `"${c.title}"`), ' by ', link(c.creatorUrl, h('b', {}, c.creator)), ', ', link(c.licenseUrl, c.license), `. ${c.changes}.`),
-      ),
-      ...plantModels.credits.map((c) =>
-        h('p', {}, 'Roadworks: ', link(c.url, `"${c.title}"`), ' by ', link(c.creatorUrl, h('b', {}, c.creator)), ', ', link(c.licenseUrl, c.license), `. ${c.changes}.`),
-      ),
-      h('p', {}, 'Icons: ', h('b', {}, 'Lucide'), ' (lucide.dev), ISC license.'),
-      musicCredits(),
-      h('p', {}, 'Crowd sound effects from ', h('b', {}, 'freesound_community'), ' (Pixabay): "applause" (freesound_community-applause-70507.mp3) and "crowd cheering" (freesound_community-crowd-cheering-6229.mp3), Pixabay Content License.'),
-      h('p', { class: 'muted' }, 'The engine voices are synthesized in the browser after the pulse train model of ', h('b', {}, 'Engine Simulator'), ' by Ange Yaghi (github.com/ange-yaghi/engine-sim, MIT): every cylinder fires in its order and its pulse travels its own header before the pipe colors it.'),
-      h('p', {}, 'Built with three.js, Vite and glTF Transform. City, signs and vinyls are generated procedurally. All shop and sponsor names are fictional.'),
+      creditGroup('Cars', DONOR_CREDITS.filter((c) => !c.use.endsWith(' wheels')).flatMap(donor), 'Reduced to about 8,000 triangles at their true size, with badges, antennas, wipers and interiors removed and their materials remapped. Every car ships under a fictional name.'),
+      creditGroup('Wheels', DONOR_CREDITS.filter((c) => c.use.endsWith(' wheels')).flatMap(donor), 'Reduced and fitted to one shared tire and center cap; some wear a turned lip. Every wheel ships under a fictional name.'),
+      creditGroup('City', [...trafficModels.credits.flatMap((c) => model('Traffic', c)), ...plantModels.credits.flatMap((c) => model('Roadworks', c))]),
+      creditGroup('Music', albums, 'Transcoded to 128 kbps and loudness normalized; otherwise unmodified.'),
+      creditGroup('Sound', [
+        ...credit('Crowd', '"applause", "crowd cheering"', 'by ', h('b', {}, 'freesound_community'), ' (Pixabay) · ', pixabay),
+        ...credit('Engines', link('https://github.com/ange-yaghi/engine-sim', 'Engine Simulator'), 'pulse train model by ', h('b', {}, 'Ange Yaghi'), ' · MIT'),
+      ], 'The engine voices are synthesized in the browser: every cylinder fires in its order and its pulse travels its own header before the pipe colors it.'),
+      creditGroup('Built with', [
+        ...credit('Engine', 'three.js, Vite, glTF Transform'),
+        ...credit('Icons', link('https://lucide.dev', 'Lucide'), 'ISC license'),
+      ], 'City, signs and vinyls are generated procedurally. All shop and sponsor names are fictional.'),
     ),
     h('div', { class: 'settings__version' }, BUILD_VERSION),
   ];

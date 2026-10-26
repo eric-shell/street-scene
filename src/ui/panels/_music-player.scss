@@ -179,13 +179,6 @@
     font-weight: 600;
   }
 
-  /* The credits screen's music credits (musicCredits). */
-  &__credits-tracks {
-    columns: 2;
-    font-size: 13px;
-    margin: 6px 0 0;
-  }
-
   /* The menu and a paused or finished race keep the player (card or pill) in the top right corner, where a
      race's chip stands, so the music and the help beside it (dock) stay in one spot from the menu through the
      race. */

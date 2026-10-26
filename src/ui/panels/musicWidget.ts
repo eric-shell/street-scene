@@ -278,33 +278,3 @@ export class MusicWidget {
     document.getElementById('ui')!.append(this.library);
   }
 }
-
-/** Music credits block for the credits screen. */
-export function musicCredits(): HTMLElement {
-  const wrap = h('div', { class: 'music-player__credits-block' });
-  for (const artist of MUSIC_CATALOG.artists) {
-    for (const album of artist.albums) {
-      const details = h('details', {}, h('summary', {}, `${album.tracks.length} tracks`));
-      const ol = h('ol', { class: 'music-player__credits-tracks' });
-      for (const t of album.tracks) ol.append(h('li', { value: t.number }, link(t.url, t.title)));
-      details.append(ol);
-      wrap.append(
-        h(
-          'p',
-          {},
-          'Music: ',
-          link(album.url, `"${album.title}"`),
-          ' by ',
-          link(artist.url, artist.name),
-          ', from ',
-          link(album.sourceUrl, album.source),
-          ', licensed under ',
-          link(album.licenseUrl, album.license),
-          '. Transcoded to 128 kbps and loudness normalized; otherwise unmodified.',
-        ),
-        details,
-      );
-    }
-  }
-  return wrap;
-}

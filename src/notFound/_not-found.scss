@@ -1,7 +1,7 @@
 /* The 404 page (notFound.ts): the street canvas filling the screen, the Wrong turn card over its top left (across
-   the top on a phone), the drift readout at the bottom centre with its banked or crashed callout, and the keys
-   or touch hint under it. The card and readout take no pointer events outside their own boxes, so a finger
-   anywhere else drives. */
+   the top on a phone; its words centred over the buttons), the drift readout at the bottom centre with its
+   banked or crashed callout, and the keys or touch hint under it. The card and readout take no pointer events
+   outside their own boxes, so a finger anywhere else drives. */
 @use '../ui/styles/abstracts/media';
 @use '../ui/styles/abstracts/mixins';
 @use '../ui/styles/abstracts/palette';
@@ -75,10 +75,11 @@ body {
   &__logo {
     font-size: 22px;
     text-decoration: none;
-    align-self: flex-start;
+    align-self: center;
   }
   &__code {
     margin: 6px 0 0;
+    text-align: center;
     font: italic 900 clamp(64px, 12vw, 104px) / 0.9 var(--logo);
     letter-spacing: -0.03em;
     @include mixins.gradient-text(var(--logo-ink));
@@ -89,6 +90,7 @@ body {
   }
   &__title {
     margin: 0;
+    text-align: center;
     font: 900 24px var(--display);
     @include media.phone {
       font-size: 20px;
@@ -102,6 +104,7 @@ body {
   }
   &__text {
     margin: 0 0 8px;
+    text-align: center;
     font: 500 15px/1.45 var(--font);
     color: var(--soft);
     @include media.phone {
