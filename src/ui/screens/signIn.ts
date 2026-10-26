@@ -5,8 +5,9 @@
  *    badge, over what an account keeps (counting the garage's builds where the caller knows them), or, when
  *    an account signed in on this device before, Continue as its first name with its picture in the badge;
  *    the results screen opens the dialog with it.
- *  - accountRow: the menu home's row, in both states: signInRow signed out, the player (picture, name, the
- *    cloud save's state and email) signed in, swapping in place as the account changes; it opens Settings
+ *  - accountRow: the menu home's row, in both states: signInRow signed out, the player signed in (picture,
+ *    Welcome and their first name on the visit that created the account, Welcome back after, over the cloud
+ *    save's state and email), swapping in place as the account changes; it opens Settings
  *    on Account.
  *  - signInContent: Google's button, as wide as its box, over what an account keeps: the top of the Account
  *    page while signed out, and the dialog's body.
@@ -18,7 +19,7 @@
 import { h, iconBtn, toast } from '../kit/dom';
 import { CircleUser, Cloud, CloudCheck, CloudOff, X, icon, type IconNode } from '../kit/icons';
 import { navRow } from '../rail/rail';
-import { accountState, accountsEnabled, lastPlayer, onAccountChange, renderGoogleButton, type SyncStatus } from '../../account/account';
+import { accountState, accountsEnabled, isNewAccount, lastPlayer, onAccountChange, renderGoogleButton, type SyncStatus } from '../../account/account';
 
 /** What an account keeps, in the row's sub. */
 export const SIGN_IN_PITCH = 'Keep your customized vehicles and progress';
@@ -87,6 +88,13 @@ function signedOutRow(onClick: () => void, cls: string, builds?: number): HTMLBu
 
 const firstName = (name: string | undefined): string | undefined => name?.split(/\s+/)[0] || undefined;
 
+/** The greeting for the signed-in player: Welcome on the visit that created the account, Welcome back after. */
+export function welcome(): string {
+  const player = accountState().player;
+  const name = firstName(player?.name) ?? player?.email ?? '';
+  return isNewAccount() ? `Welcome ${name}!` : `Welcome back ${name}`;
+}
+
 /** Puts the player's picture in a row's badge once it loads, the whole badge (what was there stays if it does not). */
 function avatar(row: HTMLElement, picture: string | undefined): void {
   if (!picture) return;
@@ -115,7 +123,7 @@ export function accountRow(onClick: () => void, cls = '', builds?: number): HTML
     const { player, status } = accountState();
     if (!player) return signedOutRow(onClick, cls, builds);
     const last = lastPlayer();
-    const row = navRow(CircleUser, firstName(player.name) ?? player.email, `${SYNC_STATUS[status].label} · ${player.email}`, 'yellow', onClick, cls);
+    const row = navRow(CircleUser, welcome(), `${SYNC_STATUS[status].label} · ${player.email}`, 'yellow', onClick, cls);
     row.title = 'Your account: the plate name, the cloud save and Sign out';
     avatar(row, last?.email === player.email ? last.picture : undefined);
     return row;
@@ -167,6 +175,6 @@ export function openSignInDialog(host: HTMLElement): void {
   host.append(dialog);
   onSignedIn(dialog, () => {
     close();
-    toast('Signed in: your garage is saved to your account', CloudCheck);
+    toast(`${welcome()} · your garage is saved to your account`, CloudCheck);
   });
 }

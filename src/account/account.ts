@@ -73,6 +73,14 @@ export function accountState(): { player: Player | null; status: SyncStatus } {
   return { player: meta.player, status };
 }
 
+/** Set by a sign-in that created the account (the server had no save for it yet): this page load is its first visit. */
+let newAccount = false;
+
+/** Whether the account was created on this page load, so the menu says Welcome rather than Welcome back. */
+export function isNewAccount(): boolean {
+  return newAccount && meta.player !== null;
+}
+
 /** The account last signed in on this device (signed in now or not), or null for none yet. */
 export function lastPlayer(): LastPlayer | null {
   return meta.last;
@@ -187,6 +195,7 @@ async function signIn(credential: string): Promise<string | null> {
     const res = await api('POST', { credential });
     const data = (await res.json()) as AccountReply & { error?: string };
     if (!res.ok) return data.error ?? 'Sign-in failed';
+    newAccount = data.save === null;
     const reload = reconcile(data);
     changed({ last: { name: data.player.name, email: data.player.email, picture: tokenPicture(credential) } });
     if (reload) location.reload();
