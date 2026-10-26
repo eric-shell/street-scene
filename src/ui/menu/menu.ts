@@ -120,6 +120,7 @@ export interface MenuOptions {
   build: number;
   /** The setup step picked another build: the garage's current slot (and the car on the street) follows it. */
   onBuild(i: number): void;
+  /** A last race to watch again; the button is enabled only with one. */
   hasReplay: boolean;
   /** A copy of the settings: the race and settings steps change it and report each change through onSettings. */
   settings: Settings;
@@ -130,7 +131,8 @@ export interface MenuOptions {
   /** Start the picked race type with the race options in `settings`. */
   onRace(type: RaceType): void;
   onGarage(): void;
-  onReplay(): void;
+  /** Watch the last race again; no Replay button without it (FEATURES.replays off). */
+  onReplay?: () => void;
   /** Explore: the drone flyover of the event city. */
   onDrone(): void;
   /** Open the full city map over the menu: the whole city, or on a race type's course (the race step's map). */
@@ -395,8 +397,8 @@ export function mainMenu(o: MenuOptions): MainMenu {
     const courseCard = h('section', { class: 'course-card', 'aria-label': 'Course' }, courseHead, course.el);
     const next = btn(SlidersHorizontal, '', () => go('setup'), '--large --primary --cta step-foot__next');
     next.append(icon(ChevronRight, { size: 20 }));
-    const replay = btn(Video, 'Replay', o.onReplay, 'step-foot__replay', o.hasReplay ? 'Last race' : 'No race yet');
-    if (!o.hasReplay) replay.setAttribute('disabled', '');
+    const replay = o.onReplay ? btn(Video, 'Replay', o.onReplay, 'step-foot__replay', o.hasReplay ? 'Last race' : 'No race yet') : null;
+    if (replay && !o.hasReplay) replay.setAttribute('disabled', '');
     const refresh = (animate: boolean) => {
       const t = s.raceType;
       root.dataset.mode = t;

@@ -64,6 +64,7 @@ import { beginDrive, driveFrame, endDrive, setQualityReader } from './analytics/
 import { initAnalytics, track } from './analytics/telemetry';
 import { installErrorReporting, reportError } from './analytics/errors';
 import { loadText, saveText } from './shared/store';
+import { FEATURES } from './shared/features';
 
 type State = 'menu' | 'race' | 'garage' | 'freefly' | 'drone';
 
@@ -423,17 +424,19 @@ function showMenu(step: MenuStep = 'home'): void {
       // The slot's car joins the convoy behind the line, or the camera glides to it if it is already there (StreetStage.setBuild's hop).
       void st.setBuild(currentBuild(), { key: i, hop: true });
     },
-    hasReplay: !!loadLastReplay(),
+    hasReplay: FEATURES.replays && !!loadLastReplay(),
     settings: { ...settings },
     music,
     step,
     onSettings: applySettings,
     onRace: launch,
     onGarage: () => void openGarage(),
-    onReplay: () => {
-      const r = loadLastReplay();
-      if (r) void wipe({ kicker: MODE_NAME[r.config.mode], title: 'Replay', sub: 'Your last race' }, () => startReplay(r));
-    },
+    onReplay: FEATURES.replays
+      ? () => {
+          const r = loadLastReplay();
+          if (r) void wipe({ kicker: MODE_NAME[r.config.mode], title: 'Replay', sub: 'Your last race' }, () => startReplay(r));
+        }
+      : undefined,
     onDrone: exploreFromMenu,
     onMap: openMenuMap,
     waypoint: () => waypointFor(st.world.seed).get(),
@@ -767,7 +770,7 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
     const styleBest = loadStyleBest(race.config.seed, race.config.mode);
     let newStyleBest = false;
     if (!replay) {
-      saveLastReplay(data);
+      if (FEATURES.replays) saveLastReplay(data);
       if (!tuned) {
         newStyleBest = submitStyleBest(race.config.seed, race.config.mode, styleTotal(style));
         newBest = submitBest(race.config.seed, race.config.mode, { time: me.time, score: race.drift.total, carId: race.config.player.carId, date: data.date });
@@ -812,7 +815,7 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
           void wipe({ kicker: race.world.event?.name, title: 'Retry', sub: MODE_NAME[race.config.mode] }, () =>
             replay ? startReplay(replay) : runSession({ ...race.config, aiSeed: rivalSeed() }, visuals, null, race.config.opponents.length ? null : loadGhost(race.config.seed, race.config.mode), 'race'),
           ),
-        onReplay: () => void wipe({ kicker: race.world.event?.name, title: 'Replay', sub: MODE_NAME[race.config.mode] }, () => startReplay(replay ?? data)),
+        onReplay: FEATURES.replays ? () => void wipe({ kicker: race.world.event?.name, title: 'Replay', sub: MODE_NAME[race.config.mode] }, () => startReplay(replay ?? data)) : undefined,
         onGarage: () => void openGarage(),
         onMenu: wipeToMenu,
       }),

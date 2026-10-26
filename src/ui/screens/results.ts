@@ -93,7 +93,8 @@ export function resultsScreen(o: {
   /** Send this result as a challenge link; no row without it (replays, tuned runs, a city off the event). */
   onChallenge?: () => void;
   onRetry(): void;
-  onReplay(): void;
+  /** Watch the run again; no row without it (FEATURES.replays off). */
+  onReplay?: () => void;
   onGarage(): void;
   onMenu(): void;
 }): HTMLElement {
@@ -144,7 +145,7 @@ export function resultsScreen(o: {
         { class: 'nav-list', 'aria-label': 'What next' },
         signInRow(() => openSignInDialog(root)),
         o.onChallenge && navRow(Share2, 'Challenge a friend', 'Send a link to beat this', 'green', o.onChallenge),
-        navRow(Video, 'Replay', 'Watch the run again', 'cyan', o.onReplay),
+        o.onReplay && navRow(Video, 'Replay', 'Watch the run again', 'cyan', o.onReplay),
         navRow(Wrench, 'Garage', 'Tune or change the car', 'orange', o.onGarage),
         navRow(X, 'Menu', 'Back to the event', 'red', o.onMenu),
       ),
@@ -154,7 +155,7 @@ export function resultsScreen(o: {
     title: 'Results',
     sections: () => [
       { title: 'Keys', keys: [{ keys: ['Enter'], label: 'Retry' }] },
-      { title: 'Tips', tips: ['Replay watches the run again; C changes the camera.', 'Racing solo, your best on this event drives beside you as a ghost.'] },
+      { title: 'Tips', tips: [...(o.onReplay ? ['Replay watches the run again; C changes the camera.'] : []), 'Racing solo, your best on this event drives beside you as a ghost.'] },
     ],
   });
   const root = railScreen('results-screen --scrim', col, help.el);
