@@ -304,7 +304,7 @@ function credits(): HTMLElement[] {
       musicCredits(),
       h('p', {}, 'Crowd sound effects from ', h('b', {}, 'freesound_community'), ' (Pixabay): "applause" (freesound_community-applause-70507.mp3) and "crowd cheering" (freesound_community-crowd-cheering-6229.mp3), Pixabay Content License.'),
       h('p', { class: 'muted' }, 'The engine voices are synthesized in the browser after the pulse train model of ', h('b', {}, 'Engine Simulator'), ' by Ange Yaghi (github.com/ange-yaghi/engine-sim, MIT): every cylinder fires in its order and its pulse travels its own header before the pipe colors it.'),
-      h('p', {}, 'Built with three.js, Vite and glTF Transform. City, signs, vinyls and the Proto RS are generated procedurally. All shop and sponsor names are fictional.'),
+      h('p', {}, 'Built with three.js, Vite and glTF Transform. City, signs and vinyls are generated procedurally. All shop and sponsor names are fictional.'),
     ),
     h('div', { class: 'settings__version' }, BUILD_VERSION),
   ];

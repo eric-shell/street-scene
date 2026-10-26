@@ -58,11 +58,13 @@ export default defineConfig({
   build: {
     target: 'es2022',
     chunkSizeWarningLimit: 1500,
-    // Two pages: the game, and the admin dashboard with its own chunks (React and visx stay out of the game's).
+    // Three pages: the game, the admin dashboard with its own chunks (React and visx stay out of the game's), and
+    // the 404 page, which Vercel serves as dist/404.html for any path that is not a file.
     rolldownOptions: {
       input: {
         main: fileURLToPath(new URL('./index.html', import.meta.url)),
         dashboard: fileURLToPath(new URL('./dashboard.html', import.meta.url)),
+        notFound: fileURLToPath(new URL('./404.html', import.meta.url)),
       },
     },
   },

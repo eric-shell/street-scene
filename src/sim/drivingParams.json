@@ -1,7 +1,7 @@
 {
   "_readme": [
     "Street Scene driving parameters: the ONE file that holds every car physics number.",
-    "base: the shared tuning every car starts from (a front inline 6, rear wheel drive; the retired Proto Compact drove on it, and tests drive it as `proto`).",
+    "base: the shared tuning every car starts from (a front inline 6, rear wheel drive; the retired Proto Compact drove on it, and the physics tests drive it as is through baseTuning() in tests/helpers.ts).",
     "cars.<id>: per car overrides, merged over base. Write absolute values (e.g. \"mass\": 2000), only the keys that differ. Nested objects merge key by key, arrays (torqueCurve, ratios) replace the whole array.",
     "Keys starting with _ are comments and are ignored. Unknown keys fail loudly at startup, so typos never go unnoticed.",
     "drivetrain.layout is \"rwd\", \"awd\" or \"fwd\". awdFrontShare is the AWD torque share sent to the front axle (0.4 = 40/60).",
@@ -38,7 +38,7 @@
       "inertia": 0.15
     },
     "gearbox": {
-      "_": "The selectable cars set their own ratios and final drive (cars.<id>.gearbox), each top gear running into its limiter at about the car's slipstream top speed, 1.1 times its drag top speed (docs/handling.md, Gearing); these generic ones are the proto's. torqueBonus is the Gear Ratio slider's arcade term, 0 here (applyBuild writes setup.gearing.torqueBonus): extra engine torque, full up to torqueBonusFadeStart and gone by torqueBonusFadeEnd (m/s: 140 and 200 km/h), so it shapes corner exits and never the drag top speed.",
+      "_": "The selectable cars set their own ratios and final drive (cars.<id>.gearbox), each top gear running into its limiter at about the car's slipstream top speed, 1.1 times its drag top speed (docs/handling.md, Gearing); these generic ones are base's. torqueBonus is the Gear Ratio slider's arcade term, 0 here (applyBuild writes setup.gearing.torqueBonus): extra engine torque, full up to torqueBonusFadeStart and gone by torqueBonusFadeEnd (m/s: 140 and 200 km/h), so it shapes corner exits and never the drag top speed.",
       "ratios": [3.25, 2.15, 1.6, 1.25, 1.02, 0.85],
       "reverseRatio": 3.4,
       "finalDrive": 3.9,
@@ -261,9 +261,6 @@
         "_antilag": "Rolling antilag at 4,500: the K03 twins are on full boost from about 3,000, and the 2.7T still makes 95% of its peak torque there, with room in the gear for the pull.",
         "antilagRpm": 4500
       }
-    },
-    "proto": {
-      "_name": "Proto RS: procedural placeholder used by tests and the asset pipeline. Not selectable. Uses base as is."
     }
   },
   "setup": {

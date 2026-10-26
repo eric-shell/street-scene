@@ -29,7 +29,7 @@ const SIZE_MAX = 1.25;
  * using the Tire material, `other` everything else (wheel face, chrome, black).
  * IceMaan wheels: the tire's innermost ring in the outer band is the bead.
  * Wheels whose tire is a closed cylinder (tire verts only at the center
- * and the tread, e.g. Proto RS and the placeholder) use the wheel's edge.
+ * and the tread, e.g. the code-built placeholder) use the wheel's edge.
  */
 export function detectProfile(tire: ArrayLike<number>, other: ArrayLike<number>): WheelProfile {
   let outer = 0;

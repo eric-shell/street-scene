@@ -8,7 +8,7 @@ allowed-tools: Bash(npx tsx .claude/skills/tune/measure.ts *), Bash(npx tsx .cla
 
 Every number lives in `src/sim/drivingParams.json`; `src/sim/tuning.ts` only types, merges and validates it (unknown keys or wrong types throw at startup). Read the file's `_readme` first.
 
-- `base` is a front inline 6, RWD, driven as is by the Proto RS placeholder (`proto`), which the tests use. `cars.<id>` holds absolute overrides merged key by key; arrays (`torqueCurve`, `ratios`) replace whole. `drivetrain.layout` is `rwd`, `awd` or `fwd` (`awdFrontShare` for AWD).
+- `base` is a front inline 6, RWD, which no shipped car drives as is; the physics tests drive it through `baseTuning()` (tests/helpers.ts). `cars.<id>` holds absolute overrides merged key by key; arrays (`torqueCurve`, `ratios`) replace whole. `drivetrain.layout` is `rwd`, `awd` or `fwd` (`awdFrontShare` for AWD).
 - `setup.<slider>.<table>[position - 1]` are the garage Tune tab's sliders (suspension, gearing, differential, brakeBalance; positions 1..5 left to right) that `applyBuild()` in `build.ts` lays over the car tuning. Position 3 is the stock car: `*Mul` tables hold 1 there and the others 0, which `tuning.ts` enforces, so stock stays bit for bit. The differential's tables add to `drivetrain.diffOpen` / `diffLock` (0 on every stock car), read by `car.ts` updateAxles.
 - Geometry (wheel positions, radius) comes from `src/assets/carManifest.json`, not from here.
 - A parameter's meaning and slider range is `PARAM_INFO` in `src/ui/panels/tuningPanel.ts`; a new numeric key needs an entry there.

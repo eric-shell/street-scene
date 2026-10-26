@@ -201,56 +201,6 @@
           -2.19
         ]
       ]
-    },
-    {
-      "id": "proto",
-      "displayName": "Proto RS",
-      "source": "placeholder",
-      "provisional": false,
-      "file": "cars/proto.glb",
-      "baseBodyNode": "Body",
-      "wheelNodes": [],
-      "wheelRadius": 0.33,
-      "wheelWidth": 0.24,
-      "wheels": {
-        "FL": [
-          0.8,
-          0.33,
-          1.32
-        ],
-        "FR": [
-          -0.8,
-          0.33,
-          1.32
-        ],
-        "RL": [
-          0.8,
-          0.33,
-          -1.32
-        ],
-        "RR": [
-          -0.8,
-          0.33,
-          -1.32
-        ]
-      },
-      "wheelbase": 2.64,
-      "trackFront": 1.6,
-      "trackRear": 1.6,
-      "dimensions": {
-        "length": 4.36,
-        "width": 1.82,
-        "height": 1.3
-      },
-      "materialMap": {},
-      "defaultWheel": "wheel_shinobi",
-      "defaultPaint": "#d11f3f",
-      "selectable": false,
-      "engine": {
-        "layout": "I4",
-        "aspiration": "na",
-        "position": "front"
-      }
     }
   ]
 }

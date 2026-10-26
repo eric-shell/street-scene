@@ -14,8 +14,7 @@
  *  5. Write cars to public/cars/ and parts (body kits, bumpers, skirts,
  *     spoilers, wheels) to public/parts/, optimized with glTF Transform
  *     (dedup, weld, Meshopt).
- *  6. Generate the Proto RS placeholder car and parts.
- *  7. Update src/assets/carManifest.json and src/assets/partsCatalog.json,
+ *  6. Update src/assets/carManifest.json and src/assets/partsCatalog.json,
  *     write assets/inspect.md, then run parts validation (fails loudly).
  */
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -28,7 +27,6 @@ import { MeshoptEncoder } from 'meshoptimizer';
 import { MATERIAL_NAMES, PartEntry, PartsCatalog, partFileName } from '../src/shared/parts';
 import { createIO, formatInfo, inspectDocument } from './inspectAsset';
 import { apply, bakeTransforms, triangles, lowestHit, bounds, centroid, mul, positions, renameMaterials, rotY, scaleM, transformAll, translate, triangleCount, Mat4 } from './gltfUtil';
-import { protoBase, protoParts } from './placeholderCar';
 import { validateCatalog } from './validateParts';
 
 const ROOT = process.cwd();
@@ -361,31 +359,6 @@ async function main(): Promise<void> {
   const inspectSections: string[] = [];
   const splitNeeded: string[] = [];
   const sizeReport: string[] = [];
-
-  // ----- Proto placeholder -----
-  {
-    const base = protoBase();
-    const r = await writeOptimized(io, base, join(PUBLIC, 'cars/proto.glb'));
-    let total = r.bytes;
-    for (const p of protoParts()) {
-      const file = p.slot === 'wheels' ? `parts/${p.id}.glb` : `parts/${partFileName('proto', p.slot, p.id.replace(/^proto_[a-zA-Z]+_/, ''))}`;
-      const w = await writeOptimized(io, p.doc, join(PUBLIC, file));
-      total += w.bytes;
-      generated.push({
-        id: p.id,
-        displayName: p.name,
-        carId: p.slot === 'wheels' ? 'universal' : 'proto',
-        slot: p.slot,
-        file,
-        hides: p.hides,
-        materialSlots: materialSlotsOf(p.doc),
-        tris: w.tris,
-        generated: true,
-      } as PartEntry);
-    }
-    sizeReport.push(`| proto | ${(total / 1024).toFixed(1)} KB |`);
-    log(`proto placeholder written (${(total / 1024).toFixed(1)} KB)`);
-  }
 
   // ----- Authored cars (assets/source/eshell) -----
   // `wheels/wheels.blend` is the shared wheel set, not a car (below).

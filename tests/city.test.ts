@@ -14,12 +14,11 @@ import { riverCenter } from '../src/city/districts/river';
 import { LOST, createRace, stepRace } from '../src/sim/race';
 import { NEUTRAL_INPUT } from '../src/sim/input';
 import { DT } from '../src/sim/constants';
-import { raceConfig } from './helpers';
+import { raceConfig, baseTuning } from './helpers';
 import { PROP_DEFS, isStreetProp } from '../src/city/props';
 import { LANE } from '../src/city/districts/alleyDressing';
 import type { RailWall } from '../src/city/routeRails';
 import { createCar, stepCar } from '../src/sim/car';
-import { getBaseTuning } from '../src/sim/tuning';
 import type { World } from '../src/city/world';
 
 /** Proper crossing of segments ab and cd. */
@@ -767,7 +766,7 @@ describe('districts', () => {
           const c = createCar(x, z, Math.atan2(ux, uz), w.heightAt(x, z));
           c.vx = ux * 24;
           c.vz = uz * 24;
-          const t = getBaseTuning('proto');
+          const t = baseTuning();
           let air = 0;
           let best = 0;
           for (let k = 0; k < 4 * 60; k++) {
@@ -1214,7 +1213,7 @@ describe('route shortcuts', () => {
     }
     expect(crawled).toBe(4);
     // At speed a panel costs only a few percent: v' = v * m / (m + m_panel).
-    const m = getBaseTuning('proto').mass;
+    const m = baseTuning().mass;
     expect(m / (m + PROP_DEFS.fencePanel.mass * PROP_DEFS.fencePanel.anchor)).toBeGreaterThan(0.97);
   });
 

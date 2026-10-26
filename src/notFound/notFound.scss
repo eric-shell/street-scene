@@ -1,0 +1,8 @@
+/*
+ * The 404 page's stylesheet (notFound.ts imports it): the game's tokens and kit (buttons, type, kbd caps), not
+ * its document layer or any game screen, then the page's one block. Naming and nesting follow
+ * ui/styles/main.scss: BEM blocks, is-* states, one rule per block, no !important.
+ */
+@use '../ui/styles/base/tokens';
+@use '../ui/kit';
+@use 'not-found';

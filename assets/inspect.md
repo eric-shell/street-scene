@@ -8,7 +8,6 @@ Authored cars: protoCoupe, protoHatch, protoWagon. FBX cars with source files: n
 
 | Car | Size |
 |---|---|
-| proto | 56.1 KB |
 | protoCoupe | 593.1 KB |
 | protoHatch | 534.8 KB |
 | protoWagon | 590.8 KB |

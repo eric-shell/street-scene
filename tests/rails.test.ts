@@ -10,7 +10,7 @@ import { getBaseTuning } from '../src/sim/tuning';
 import { RAIL, createRailState, maxRailGap, pushRailPiece, railLayout } from '../src/sim/rails';
 import { createRace, stepRace } from '../src/sim/race';
 import { distToSegment, segmentT } from '../src/sim/math';
-import { input, raceConfig, replayLog } from './helpers';
+import { input, raceConfig, replayLog, baseTuning } from './helpers';
 
 const cross = (ax: number, az: number, bx: number, bz: number, cx: number, cz: number, dx: number, dz: number) => {
   const den = (bx - ax) * (dz - cz) - (bz - az) * (dx - cx);
@@ -175,7 +175,7 @@ describe('corner rails', () => {
   function scrapeFrom(w: ReturnType<typeof createWorld>, wall: RailWall, withRails: boolean) {
     const tx = (wall.bx - wall.ax) / Math.hypot(wall.bx - wall.ax, wall.bz - wall.az);
     const tz = (wall.bz - wall.az) / Math.hypot(wall.bx - wall.ax, wall.bz - wall.az);
-    const t = getBaseTuning('proto');
+    const t = baseTuning();
     const state = withRails ? createRailState(w) : undefined;
     // 10 degrees into the rail at 25 m/s, starting just off it.
     const ang = 10 * (Math.PI / 180);
@@ -226,7 +226,7 @@ describe('corner rails', () => {
 
   it('the step where a dented piece meets a straight one catches a car scraping along', () => {
     const w = createWorld(20261019, 'circuit');
-    const t = getBaseTuning('proto');
+    const t = baseTuning();
     const run = (dent: boolean) => {
       const s = createRailState(w);
       const l = s.layout;
@@ -280,7 +280,7 @@ describe('corner rails', () => {
       expect(maxRailGap(s)).toBeLessThanOrEqual(RAIL.maxGap + 1e-9);
     }
     for (let p = 0; p < l.count; p++) expect(Math.hypot(s.dx[p], s.dz[p])).toBeLessThanOrEqual(RAIL.maxOffset + 1e-9);
-    expect(RAIL.maxGap).toBeLessThanOrEqual(Math.min(...['proto', 'protoHatch'].map((id) => getBaseTuning(id).geometry.halfWidth * 2)) / 8);
+    expect(RAIL.maxGap).toBeLessThanOrEqual(Math.min(...['protoHatch', 'protoCoupe', 'protoWagon'].map((id) => getBaseTuning(id).geometry.halfWidth * 2)) / 8);
   });
 
   it('a race that dents the rails replays identically', () => {

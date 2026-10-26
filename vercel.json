@@ -1,4 +1,14 @@
 {
   "crons": [{ "path": "/api/admin", "schedule": "0 4 * * *" }],
-  "rewrites": [{ "source": "/dashboard", "destination": "/dashboard.html" }]
+  "rewrites": [{ "source": "/dashboard", "destination": "/dashboard.html" }],
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    },
+    {
+      "source": "/(cars|parts|traffic|music|sfx|plant)/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600, stale-while-revalidate=86400" }]
+    }
+  ]
 }

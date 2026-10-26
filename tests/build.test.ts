@@ -8,13 +8,19 @@ import type { World } from '../src/city/world';
 import { decodeShareCode, encodeShareCode } from '../src/garage/storage';
 import { validateCatalog } from '../scripts/validateParts';
 import { createRace } from '../src/sim/race';
-import { carSnapshot, flatWorld, input, raceConfig, runAutopilot } from './helpers';
+import { baseTuning, carSnapshot, flatWorld, input, raceConfig, runAutopilot } from './helpers';
 import { MAX_BEAD, beadForSize, detectProfile, remapWheel, sizeForBead } from '../src/render/car/wheelFit';
 import { BlipScript, RevModel } from '../src/garage/revModel';
 
 /** The stock setup with one slider moved. */
 const setup = (slider: SetupSlider, p: SetupPosition, launchRpm = 0): PerformanceBuild => ({ ...stockPerformance(), launchRpm, [slider]: p });
-const tuned = (carId: string, slider: SetupSlider, p: SetupPosition) => tuningForBuild(carId, setup(slider, p));
+/** A car (a shipped id, or a tuning such as baseTuning()) with one setup slider moved. */
+const tuned = (car: string | CarTuning, slider: SetupSlider, p: SetupPosition) => (typeof car === 'string' ? tuningForBuild(car, setup(slider, p)) : applyBuild(car, setup(slider, p)));
+/** The sliders are checked on the plain base tuning (RWD) and on the default car (AWD). */
+const SLIDER_CARS: [string, CarTuning][] = [
+  ['base', baseTuning()],
+  ['protoHatch', getBaseTuning('protoHatch')],
+];
 /** A build saved with the retired component upgrades (every tier at 2). */
 const LEGACY_TIERS = { engine: 2, turbo: 2, exhaust: 2, transmission: 2, tires: 2, suspension: 2, brakes: 2, weight: 2, nitrous: 2 };
 
@@ -278,13 +284,13 @@ describe('setup sliders', () => {
   });
 
   it('brake balance: rear bias rotates the car on the brakes and stops longer, front bias stops straight', () => {
-    for (const id of ['proto', 'protoHatch']) {
+    for (const [id, car] of SLIDER_CARS) {
       // Trail braking: brake and steer together from 90 km/h for a second.
-      const turn = (p: SetupPosition) => heading(tuned(id, 'brakeBalance', p), 90, 60, { brake: 0.8, steer: 0.5 });
+      const turn = (p: SetupPosition) => heading(tuned(car, 'brakeBalance', p), 90, 60, { brake: 0.8, steer: 0.5 });
       expect(turn(1), id).toBeGreaterThan(turn(3) * 1.08);
       expect(turn(5), id).toBeLessThan(turn(3) * 0.92);
       const stop = (p: SetupPosition) => {
-        const t = tuned(id, 'brakeBalance', p);
+        const t = tuned(car, 'brakeBalance', p);
         const c = rollTo(t, 100);
         const z0 = c.z;
         for (let i = 0; i < 600 && c.speed > 0.3; i++) stepCar(c, t, input({ brake: 1 }), { world });
@@ -316,11 +322,12 @@ describe('setup sliders', () => {
       }
       return held / 60;
     };
-    expect(drift(tuned('proto', 'differential', 1))).toBeLessThan(drift(tuned('proto', 'differential', 3)) - 0.5);
-    expect(drift(tuned('proto', 'differential', 5))).toBeGreaterThan(drift(tuned('proto', 'differential', 3)) - 0.1);
+    const rwd = baseTuning();
+    expect(drift(tuned(rwd, 'differential', 1))).toBeLessThan(drift(tuned(rwd, 'differential', 3)) - 0.5);
+    expect(drift(tuned(rwd, 'differential', 5))).toBeGreaterThan(drift(tuned(rwd, 'differential', 3)) - 0.1);
     // Turn in off the throttle at 90 km/h: the locked axle fights the rotation.
-    for (const id of ['proto', 'protoHatch']) {
-      const turn = (p: SetupPosition) => heading(tuned(id, 'differential', p), 90, 48, { steer: 0.6 });
+    for (const [id, car] of SLIDER_CARS) {
+      const turn = (p: SetupPosition) => heading(tuned(car, 'differential', p), 90, 48, { steer: 0.6 });
       expect(turn(5), id).toBeLessThan(turn(3) * 0.975);
       expect(turn(4), id).toBeLessThan(turn(3));
     }
@@ -349,10 +356,10 @@ describe('setup sliders', () => {
       }
       return over;
     };
-    for (const id of ['proto', 'protoHatch']) {
-      const soft = tuned(id, 'suspension', 1);
-      const stock = tuned(id, 'suspension', 3);
-      const stiff = tuned(id, 'suspension', 5);
+    for (const [id, car] of SLIDER_CARS) {
+      const soft = tuned(car, 'suspension', 1);
+      const stock = tuned(car, 'suspension', 3);
+      const stiff = tuned(car, 'suspension', 5);
       expect(rollAt60(stiff), id).toBeLessThan(rollAt60(stock) * 0.8);
       expect(rollAt60(soft), id).toBeGreaterThan(rollAt60(stock) * 1.15);
       expect(heading(stiff, 90, 48, { steer: 0.6 }), id).toBeGreaterThan(heading(soft, 90, 48, { steer: 0.6 }));
@@ -391,7 +398,7 @@ describe('wheel size keeps the tire outer diameter', () => {
   it('finds the bead where the tire meets the wheel', () => {
     expect(profile.outer).toBeCloseTo(1, 5);
     expect(profile.bead).toBeCloseTo(0.792, 3);
-    // Closed cylinder tires (Proto RS, placeholder) fall back to the wheel's edge.
+    // Closed cylinder tires (a code-built placeholder car's) fall back to the wheel's edge.
     expect(detectProfile([0, 1, 1, 1], [0.7, 0.69, 0.14]).bead).toBeCloseTo(0.7, 5);
   });
 

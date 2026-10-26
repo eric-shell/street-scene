@@ -12,7 +12,7 @@ import { packInput, quantizeInput, unpackInput } from '../src/sim/input';
 import { applySavedTuning, importValues, tuningParams } from '../src/ui/panels/tuningPanel';
 import type { Contact, World } from '../src/city/world';
 import exported from './fixtures/s64-tuning-export.json';
-import { carSnapshot, flatWorld, input, raceConfig, replayLog, runAutopilot } from './helpers';
+import { carSnapshot, flatWorld, input, raceConfig, replayLog, runAutopilot, baseTuning } from './helpers';
 
 describe('input frames', () => {
   it('pack and unpack quantized frames losslessly', () => {
@@ -25,7 +25,7 @@ describe('car physics', () => {
   const world = flatWorld();
 
   function accelerate(seconds: number, nitro: boolean) {
-    const t = getBaseTuning('proto');
+    const t = baseTuning();
     const c = createCar(0, 0, 0, 0);
     for (let i = 0; i < seconds * 60; i++) stepCar(c, t, input({ throttle: 1, nitrous: nitro }), { world });
     return c;
@@ -47,7 +47,7 @@ describe('car physics', () => {
   });
 
   it('handbrake breaks the rear loose and the car can hold a drift', () => {
-    const t = getBaseTuning('proto');
+    const t = baseTuning();
     const c = createCar(0, 0, 0, 0);
     for (let i = 0; i < 5 * 60; i++) stepCar(c, t, input({ throttle: 1 }), { world });
     const entry = c.speed;
@@ -68,7 +68,7 @@ describe('car physics', () => {
   });
 
   it('brakes to a stop and reverses', () => {
-    const t = getBaseTuning('proto');
+    const t = baseTuning();
     const c = createCar(0, 0, 0, 0);
     for (let i = 0; i < 120; i++) stepCar(c, t, input({ throttle: 1 }), { world });
     for (let i = 0; i < 300; i++) stepCar(c, t, input({ brake: 1 }), { world });
@@ -79,7 +79,7 @@ describe('car physics', () => {
 
 describe('nitrous stages', () => {
   const world = flatWorld();
-  const t = getBaseTuning('proto');
+  const t = baseTuning();
 
   /** A car rolling at 20 m/s with `nitro` stages in the tank. */
   function rolling(nitro: number): CarState {
@@ -280,7 +280,7 @@ describe('nitrous stages', () => {
 });
 
 describe('driving parameters file', () => {
-  it('the base car (proto) resolves to the latest exported tuning (plus deliberate edits since)', () => {
+  it('the base tuning resolves to the latest exported tuning (plus deliberate edits since)', () => {
     // Sidewalks were later set to road traction on purpose, and the brakes made much stronger (more
     // tire force, a touch more front bias, plus the arcade assist the export predates). The export
     // predates the rename from s64 and the shared wheel size; geometry comes from the manifest. (The
@@ -289,7 +289,7 @@ describe('driving parameters file', () => {
     // aids and the handbrake were remodelled on real wheel speed (the fixture carries the surviving keys).
     // The grip pass (docs/handling.md) moved grip from the front axle to the rear with a rounded rise to
     // the peak, and nitrous was made stronger.
-    const t = getBaseTuning('proto');
+    const t = baseTuning();
     const expected = {
       ...exported.tuning,
       carId: t.carId,
@@ -332,7 +332,7 @@ describe('driving parameters file', () => {
   });
 
   it('every tuning parameter in the panel has a tooltip', () => {
-    for (const p of tuningParams(getBaseTuning('proto'))) expect(p.tip, p.path).not.toMatch(/^No description/);
+    for (const p of tuningParams(baseTuning())) expect(p.tip, p.path).not.toMatch(/^No description/);
   });
 
   it('the panel imports its own export format exactly', () => {
@@ -340,8 +340,8 @@ describe('driving parameters file', () => {
     applySavedTuning(t, importValues(exported, 'protoHatch'));
     expect(t).toMatchObject({ ...exported.tuning, carId: 'protoHatch', geometry: getBaseTuning('protoHatch').geometry });
     // drivingParams.json style nested blocks work too.
-    const u = getBaseTuning('proto');
-    expect(applySavedTuning(u, importValues({ tires: { gripRear: 1.1 }, drivetrain: { layout: 'awd' } }, 'proto'))).toBe(2);
+    const u = baseTuning();
+    expect(applySavedTuning(u, importValues({ tires: { gripRear: 1.1 }, drivetrain: { layout: 'awd' } }, 'protoHatch'))).toBe(2);
     expect(u.tires.gripRear).toBe(1.1);
     expect(u.drivetrain.layout).toBe('awd');
   });
@@ -389,7 +389,7 @@ describe('wheelspin and traction control', () => {
   }
 
   it('a high rev launch spins the rear wheels without traction control, not with it', () => {
-    const t = getBaseTuning('proto');
+    const t = baseTuning();
     const off = launch(t, false);
     const on = launch(t, true);
     expect(off.spinTicks).toBeGreaterThan(15);
@@ -398,7 +398,7 @@ describe('wheelspin and traction control', () => {
   });
 
   it('full throttle mid corner gives power oversteer without traction control, not with it', () => {
-    const t = getBaseTuning('proto');
+    const t = baseTuning();
     const off = cornerExit(t, false);
     const on = cornerExit(t, true);
     expect(off.spinTicks).toBeGreaterThan(20);
@@ -408,7 +408,7 @@ describe('wheelspin and traction control', () => {
   });
 
   it('wheelspin happens on the driven axle only', () => {
-    const fwd = getBaseTuning('proto');
+    const fwd = baseTuning();
     fwd.drivetrain.layout = 'fwd';
     const c = createCar(0, 0, 0, 0);
     for (let i = 0; i < 30; i++) stepCar(c, fwd, input({}), { world });
@@ -423,8 +423,8 @@ describe('wheelspin and traction control', () => {
   });
 
   it('AWD launches with less wheelspin than RWD', () => {
-    const rwd = getBaseTuning('proto');
-    const awd = getBaseTuning('proto');
+    const rwd = baseTuning();
+    const awd = baseTuning();
     awd.drivetrain.layout = 'awd';
     expect(launch(awd, false).spinTicks).toBeLessThan(launch(rwd, false).spinTicks);
   });
@@ -443,7 +443,7 @@ describe('drifting and the handbrake', () => {
 
   /** First gear flick, then a scripted hold: throttle with a little counter steer. Returns the car. */
   function flickAndHold(throttle: number, holdTicks: number): CarState {
-    const t = getBaseTuning('proto');
+    const t = baseTuning();
     const c = createCar(0, 0, 0, 0);
     for (let i = 0; i < 150; i++) stepCar(c, t, input({ throttle: 1 }), { world });
     c.manualGearbox = true;
@@ -453,7 +453,7 @@ describe('drifting and the handbrake', () => {
   }
 
   it('throttle in a slide spins the rear wheels up to the limiter, and lifting hooks them back up', () => {
-    const t = getBaseTuning('proto');
+    const t = baseTuning();
     // The gearing this was written for: the retired Proto Compact's final drive, 4.32 on a 0.31 m tire.
     // On base's taller gearing the slide settles torque limited short of the limiter.
     t.gearbox.finalDrive = 4.32 * t.geometry.wheelRadius / 0.31;
@@ -485,7 +485,7 @@ describe('drifting and the handbrake', () => {
   });
 
   it('the handbrake locks the rear wheels, turns the car in with the steering, and revs the engine free', () => {
-    const t = getBaseTuning('proto');
+    const t = baseTuning();
     const c = createCar(0, 0, 0, 0);
     for (let i = 0; i < 240; i++) stepCar(c, t, input({ throttle: 1 }), { world });
     for (let i = 0; i < 30; i++) {
@@ -502,7 +502,7 @@ describe('drifting and the handbrake', () => {
   });
 
   it('handbrake and brake together stop the car along its path: no reverse, no swivel', () => {
-    const t = getBaseTuning('proto');
+    const t = baseTuning();
     const c = createCar(0, 0, 0, 0);
     for (let i = 0; i < 300; i++) stepCar(c, t, input({ throttle: 1 }), { world });
     let minYawRate = Infinity;
@@ -532,7 +532,7 @@ describe('launch control and the pedal combos', () => {
   const withLaunch = (carId: string, launchRpm: number) => applyBuild(getBaseTuning(carId), { ...stockPerformance(), launchRpm });
 
   it('the two-step bounces the engine under the launch rpm on the grid; off, the grid revs as it always has', () => {
-    const t = withLaunch('proto', 5000);
+    const t = withLaunch('protoHatch', 5000);
     expect(t.launch.twoStepRpm).toBe(5000);
     const c = createCar(0, 0, 0, 0);
     let cuts = 0;
@@ -551,7 +551,7 @@ describe('launch control and the pedal combos', () => {
     expect(cuts).toBeLessThan(80);
     expect(c.lineLock).toBe(false);
     const free = createCar(0, 0, 0, 0);
-    const stock = applyBuild(getBaseTuning('proto'), stockPerformance());
+    const stock = applyBuild(baseTuning(), stockPerformance());
     for (let i = 0; i < 120; i++) gridRev(free, stock, input({ throttle: 1 }), DT);
     expect(free.rpm).toBeCloseTo(stock.engine.redline * 0.85, 0);
     expect(free.twoStepCut).toBe(0);
@@ -559,7 +559,7 @@ describe('launch control and the pedal combos', () => {
   });
 
   it('gas and brake standing is a line lock: the driven wheels spin, the car stays put, in the countdown too', () => {
-    const t = applyBuild(getBaseTuning('proto'), stockPerformance());
+    const t = applyBuild(baseTuning(), stockPerformance());
     const c = createCar(0, 0, 0, 0);
     for (let i = 0; i < 120; i++) stepCar(c, t, input({ throttle: 1, brake: 1 }), { world });
     expect(c.lineLock).toBe(true);
@@ -585,7 +585,7 @@ describe('launch control and the pedal combos', () => {
 
   it('the antilag button and the gas rolling is antilag on a turbo car only: boost pinned at its own rpm, no drive, and full boost on release', () => {
     expect(getBaseTuning('protoCoupe').engine.turbo).toBe(true);
-    expect(getBaseTuning('proto').engine.turbo).toBe(false);
+    expect(getBaseTuning('protoHatch').engine.turbo).toBe(false);
     const roll = (carId: string, held: Partial<Parameters<typeof input>[0]> = { antilag: true }, perf = stockPerformance()) => {
       const t = applyBuild(getBaseTuning(carId), perf);
       const c = createCar(0, 0, 0, 0);
@@ -619,7 +619,7 @@ describe('launch control and the pedal combos', () => {
     expect(turbo.c.antilag).toBe(false);
     expect(turbo.c.lineLock).toBe(true);
     expect(turbo.c.spinRear).toBeGreaterThan(0.5);
-    const na = roll('proto');
+    const na = roll('protoHatch');
     expect(na.held).toBe(0);
     expect(na.c.boost).toBe(0);
   });
@@ -661,7 +661,7 @@ describe('collisions', () => {
 
   function scrape(kind: Contact['kind'] | null) {
     const world = kind ? wallWorld(kind) : flatWorld();
-    const t = getBaseTuning('proto');
+    const t = baseTuning();
     const c = createCar(3 - t.geometry.halfWidth, 0, 0, 0);
     c.vz = 35;
     c.vx = 1.5;
@@ -692,7 +692,7 @@ describe('collisions', () => {
   });
 
   it('reports spark telemetry (wall scrapes, bottoming out) that never feeds back into the physics', () => {
-    const t = getBaseTuning('proto');
+    const t = baseTuning();
     const run = (world: World, garbage: boolean) => {
       const c = createCar(3 - t.geometry.halfWidth, 0, 0, 0);
       c.vz = 35;
@@ -804,7 +804,7 @@ describe('landings, banks and brakes', () => {
   });
 
   it('lies over on a steep bank and holds a line along it with all four wheels down', () => {
-    const t = getBaseTuning('proto');
+    const t = baseTuning();
     const world = bankWorld();
     // Lanes on the bank (|z| m) and speeds (m/s): 31 degrees and the steepest 38.
     for (const [lane, v] of [

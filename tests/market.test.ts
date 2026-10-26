@@ -16,8 +16,7 @@ import { pointInPolygon } from '../src/city/districts/geom';
 import { marketEdges, marketLightPoints, planMarketCrowd } from '../src/render/districts/marketPlan';
 import { createRace, stepRace } from '../src/sim/race';
 import { NEUTRAL_INPUT } from '../src/sim/input';
-import { getBaseTuning } from '../src/sim/tuning';
-import { carSnapshot, raceConfig, replayLog, runAutopilot } from './helpers';
+import { carSnapshot, raceConfig, replayLog, runAutopilot, baseTuning } from './helpers';
 
 const CFG = CITY.districts.market;
 const MARKET_KINDS: readonly PropKind[] = ['marketStall', 'fruitCrates', 'foodCart'];
@@ -136,7 +135,7 @@ describe('night market', () => {
 
   it('keeps a clear lane down the middle, stalls along both curbs, crates off the curb and street furniture out', () => {
     // A stall costs a fast car a few percent of its speed and never holds a car that is moving.
-    const m = getBaseTuning('proto').mass;
+    const m = baseTuning().mass;
     for (const k of MARKET_KINDS) {
       expect(PROP_DEFS[k].breakSpeed).toBeLessThanOrEqual(0.5);
       expect(m / (m + PROP_DEFS[k].mass * PROP_DEFS[k].anchor)).toBeGreaterThan(0.94);

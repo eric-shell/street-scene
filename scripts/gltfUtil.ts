@@ -1,6 +1,6 @@
 /** Small glTF-Transform helpers shared by the asset scripts, and their Blender lookup. */
 import { spawnSync } from 'node:child_process';
-import { Document, Material, Mesh, Node, Primitive } from '@gltf-transform/core';
+import { Document, Node, Primitive } from '@gltf-transform/core';
 import { clearNodeTransform, flatten, prune, transformMesh } from '@gltf-transform/functions';
 
 export type Mat4 = number[];
@@ -106,29 +106,6 @@ export function renameMaterials(doc: Document, map: Record<string, string>, know
     else unknown.push(raw);
   }
   return unknown;
-}
-
-/** Create a single-node, single-mesh document from scratch (used for procedural placeholder parts). */
-export function newDoc(): { doc: Document; buffer: ReturnType<Document['createBuffer']> } {
-  const doc = new Document();
-  const buffer = doc.createBuffer();
-  doc.createScene('Scene');
-  return { doc, buffer };
-}
-
-export function material(doc: Document, name: string, cache: Map<string, Material>): Material {
-  let m = cache.get(name);
-  if (!m) {
-    m = doc.createMaterial(name).setBaseColorFactor([0.8, 0.8, 0.8, 1]);
-    cache.set(name, m);
-  }
-  return m;
-}
-
-export function addNode(doc: Document, name: string, mesh: Mesh): Node {
-  const node = doc.createNode(name).setMesh(mesh);
-  doc.getRoot().listScenes()[0].addChild(node);
-  return node;
 }
 
 /** All triangles (world space, baked transforms) as flat [ax,ay,az,bx,by,bz,cx,cy,cz] arrays. */

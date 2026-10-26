@@ -73,17 +73,22 @@ function channelChain(g: RoadGraph): number[] {
   return order;
 }
 
-/** An open world race on a seed (no opponents, no barriers), racing from tick 0 (every timed gate open). */
+/**
+ * An open world race on a seed (no opponents, no barriers), racing from tick 0 (every timed gate open). Traction
+ * control on, as these runs hold full throttle from rest with no steering: the test car's turbo RWD would spin up
+ * and yaw into a parapet, where a player would steer.
+ */
 function freeRoam(seed: number): RaceState {
-  const r = createRace({ ...raceConfig(seed, 'circuit', 0), openWorld: true });
+  const r = createRace({ ...raceConfig(seed, 'circuit', 0), openWorld: true, tractionControl: true });
   r.phase = 'racing';
   return r;
 }
 
 /** Drive the player car with full throttle for `ticks`, calling `check` after every tick. */
-function drive(r: RaceState, ticks: number, check: (tick: number) => void): void {
+/** Full throttle for `ticks`, steering by `steer` (-1 left to 1 right) when given, straight ahead without. */
+function drive(r: RaceState, ticks: number, check: (tick: number) => void, steer?: () => number): void {
   for (let i = 0; i < ticks; i++) {
-    stepRace(r, input({ throttle: 1 }));
+    stepRace(r, input({ throttle: 1, steer: steer?.() ?? 0 }));
     check(i);
   }
 }
@@ -414,6 +419,13 @@ describe('river channel racing', () => {
           expect(Math.abs(riverL(p, c.x, c.z))).toBeLessThan(p.floor);
           // From 3 s on, past the launch from rest (the bridge is 50 m ahead, reached at about 5 s).
           if (tick > 3 * TICK_HZ) minSpeed = Math.min(minSpeed, c.speed);
+        }, () => {
+          // The channel curves: aim at the centerline 15 m ahead, so a quicker car stays on the floor all the way too.
+          const ax = c.x + 15;
+          const dx = ax - c.x;
+          const dz = riverCenter(p, ax) - c.z;
+          const left = dx * Math.cos(c.yaw) - dz * Math.sin(c.yaw);
+          return Math.max(-1, Math.min(1, -left * 0.15));
         });
         expect(c.x, `stopped short under bridge ${br.edge} of seed ${seed}`).toBeGreaterThan(br.cx + 25);
         expect(minSpeed, `slowed under bridge ${br.edge} of seed ${seed}`).toBeGreaterThan(10);

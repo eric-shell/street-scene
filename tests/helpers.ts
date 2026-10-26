@@ -3,6 +3,25 @@ import { createRace, RaceConfig, RaceState, stepRace } from '../src/sim/race';
 import { createAi, autopilotInput } from '../src/sim/ai';
 import { stockPerformance, PerformanceBuild } from '../src/sim/build';
 import { InputFrame, unpackInput } from '../src/sim/input';
+import { geometryFromManifest, type CarTuning } from '../src/sim/tuning';
+import params from '../src/sim/drivingParams.json';
+
+/**
+ * The car whose geometry baseTuning() wears and the race configs' player drives: the Coupe, the shipped car closest
+ * to the retired Proto RS the scenario tests were written on (4.31 by 1.88 m against 4.36 by 1.82, rear wheel drive
+ * like base). The Hatch is 2.04 m wide and clips the level crossing arms and kerbs those tests thread.
+ */
+export const TEST_CAR = 'protoCoupe';
+
+/**
+ * drivingParams.json's `base` exactly, with no car's overrides, on TEST_CAR's geometry: the tuning the physics
+ * tests mean by "a car", so a change to one shipped car's overrides never moves them. Naturally aspirated, as
+ * base is (forced induction is a manifest flag, set by getBaseTuning for the real cars).
+ */
+export function baseTuning(): CarTuning {
+  const base = structuredClone(params.base) as unknown as CarTuning;
+  return { ...base, carId: TEST_CAR, geometry: geometryFromManifest(TEST_CAR), engine: { ...base.engine, turbo: false } };
+}
 
 /** Endless flat parking lot: no walls, road surface everywhere. */
 export function flatWorld(): World {
@@ -22,8 +41,8 @@ export function raceConfig(seed: number, mode: RaceConfig['mode'], opponents = 3
     seed,
     mode,
     laps,
-    player: { name: 'Player', carId: 'proto', performance: perf },
-    opponents: Array.from({ length: opponents }, (_, i) => ({ name: `AI ${i + 1}`, carId: ['proto', 'protoHatch'][i % 2], performance: stockPerformance() })),
+    player: { name: 'Player', carId: TEST_CAR, performance: perf },
+    opponents: Array.from({ length: opponents }, (_, i) => ({ name: `AI ${i + 1}`, carId: ['protoHatch', 'protoWagon'][i % 2], performance: stockPerformance() })),
     difficulty: 'medium',
     manualGearbox: false,
   };
