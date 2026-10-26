@@ -1,0 +1,30 @@
+/* The note under the Builds step's slots while signed out (garageUi.ts signInNote): where the builds live, in a
+   quiet line on a plate like the sections', and Sign in at its end in the account rows' yellow. */
+@use '../ui/styles/abstracts/mixins';
+@use '../ui/styles/abstracts/palette';
+.garage-note {
+  @include mixins.chamfer(9px);
+  @include mixins.plate(var(--plate));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 14px;
+  font-size: 13px;
+  color: var(--muted);
+  > svg {
+    flex: none;
+  }
+  &__text {
+    flex: 1;
+    min-width: 0;
+  }
+  &__go {
+    flex: none;
+    border-color: palette.alpha(yellow, 0.35);
+    color: var(--accent-2);
+    &:hover,
+    &:focus-visible {
+      border-color: var(--accent-2);
+    }
+  }
+}

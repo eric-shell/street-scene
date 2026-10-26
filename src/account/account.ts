@@ -19,6 +19,14 @@ export interface Player {
   name: string;
 }
 
+/** The account last signed in on this device, kept after signing out so the sign-in prompts can greet it. */
+export interface LastPlayer {
+  name: string;
+  email: string;
+  /** Google's profile picture URL (from the sign-in token; the server keeps none). */
+  picture?: string;
+}
+
 /** api/account.ts's reply to GET and POST. */
 interface AccountReply {
   player: Player;
@@ -36,6 +44,8 @@ interface Meta {
   savedAt: string | null;
   /** The local save has edits for `owner` the server has not got. */
   dirty: boolean;
+  /** Who signed in here last; kept after signing out. */
+  last: LastPlayer | null;
 }
 
 export type SyncStatus = 'synced' | 'saving' | 'offline';
@@ -47,7 +57,7 @@ const BOOT_WAIT_MS = 3000;
 /** Quiet time after the last edit before uploading (ms): one request per burst of slider drags. */
 const PUSH_DELAY_MS = 3000;
 
-let meta: Meta = { player: null, owner: null, savedAt: null, dirty: false, ...loadJson<Partial<Meta>>(META_KEY, {}) };
+let meta: Meta = { player: null, owner: null, savedAt: null, dirty: false, last: null, ...loadJson<Partial<Meta>>(META_KEY, {}) };
 let status: SyncStatus = 'synced';
 /** Counts edits, so an upload that finishes after a newer edit leaves the save dirty. */
 let edits = 0;
@@ -61,6 +71,11 @@ export function accountsEnabled(): boolean {
 
 export function accountState(): { player: Player | null; status: SyncStatus } {
   return { player: meta.player, status };
+}
+
+/** The account last signed in on this device (signed in now or not), or null for none yet. */
+export function lastPlayer(): LastPlayer | null {
+  return meta.last;
 }
 
 /** Calls `fn` when the player or the sync status changes; returns the unsubscribe. */
@@ -90,6 +105,8 @@ function api(method: string, body?: unknown, keepalive = false, signal?: AbortSi
 /** Takes the server's account and save in; true when the local save changed (a running game must reload). */
 function reconcile(r: AccountReply): boolean {
   const mine = meta.owner === r.player.id;
+  const picture = meta.last?.email === r.player.email ? meta.last.picture : undefined;
+  meta.last = { name: r.player.name, email: r.player.email, picture };
   if (r.save && !(mine && meta.dirty)) {
     // A save that belonged to no account (this device's first sign-in) brings its builds along into the account's garage.
     const joined = meta.owner === null ? joinLocalBuilds(r.save) : 0;
@@ -154,13 +171,25 @@ if (accountsEnabled()) {
   document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && void push(true));
 }
 
+/** The profile picture in a Google ID token's payload (it is signed, but only the server needs to check that). */
+function tokenPicture(credential: string): string | undefined {
+  try {
+    const payload = JSON.parse(atob(credential.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))) as { picture?: unknown };
+    return typeof payload.picture === 'string' ? payload.picture : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Signs in with a Google ID token; resolves to an error message, or null on success. Reloads when the account brought a different save. */
 async function signIn(credential: string): Promise<string | null> {
   try {
     const res = await api('POST', { credential });
     const data = (await res.json()) as AccountReply & { error?: string };
     if (!res.ok) return data.error ?? 'Sign-in failed';
-    if (reconcile(data)) location.reload();
+    const reload = reconcile(data);
+    changed({ last: { name: data.player.name, email: data.player.email, picture: tokenPicture(credential) } });
+    if (reload) location.reload();
     return null;
   } catch {
     return 'Could not reach the server';
@@ -209,11 +238,18 @@ function loadGis(): Promise<Gis> {
   return gis;
 }
 
-/** Draws Google's Sign in button into `el` (`size` large, 40 px, or medium, 32 px); a failed sign-in (or the script not loading) goes to `onError`. */
-export function renderGoogleButton(el: HTMLElement, onError: (message: string) => void, size: 'large' | 'medium' = 'large'): void {
+/** The widths Google draws its button at (px). */
+const GIS_WIDTH = { min: 200, max: 400 } as const;
+
+/**
+ * Draws Google's Sign in button into `el`, 40 px tall and as wide as `el` (within the 200 to 400 px Google
+ * allows; measured when the script is ready, by then `el` is on the page); a failed sign-in (or the script
+ * not loading) goes to `onError`.
+ */
+export function renderGoogleButton(el: HTMLElement, onError: (message: string) => void): void {
   reportError = onError;
   loadGis().then(
-    (g) => g.accounts.id.renderButton(el, { type: 'standard', theme: 'filled_black', size, shape: 'rectangular', text: 'signin_with', width: size === 'large' ? 260 : 200 }),
+    (g) => g.accounts.id.renderButton(el, { type: 'standard', theme: 'filled_black', size: 'large', shape: 'rectangular', text: 'signin_with', width: Math.round(Math.min(GIS_WIDTH.max, Math.max(GIS_WIDTH.min, el.clientWidth || 260))) }),
     (e: Error) => onError(e.message),
   );
 }

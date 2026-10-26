@@ -1,9 +1,25 @@
-/* The settings' Account page (accountPage.ts): Google's Sign in button (its own iframe, sized by Google) with
-   a sign-in error under it, or the player's row, the cloud save's state and the note on what syncs. */
+/* The settings' Account page (accountPage.ts) and the sign-in dialog (signIn.ts): the plate name field, then
+   Google's Sign in button (its own iframe, sized by Google) with a sign-in error under it, or the player's
+   row, the cloud save's state and the note on what syncs. */
 .account {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  /* The plate name, typed onto a plate: the seed's yellow in wide set capitals, as long as the longest name.
+     Under the block so it outweighs the kit's input[type='text']. */
+  .account__plate {
+    width: calc(8ch + 3em);
+    padding: 7px 10px;
+    font: 800 16px var(--mono);
+    letter-spacing: 0.18em;
+    text-align: center;
+    text-transform: uppercase;
+    color: var(--accent-2);
+    &::placeholder {
+      color: var(--muted);
+      opacity: 0.6;
+    }
+  }
   /* Holds the button's height while Google's script loads, so the page does not jump. */
   &__google {
     min-height: 44px;

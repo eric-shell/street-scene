@@ -11,6 +11,7 @@ import { ChevronsRight, MapPinned, Medal, RotateCcw, Route, Sparkles, Trophy, Vi
 import { formatTime, ordinal } from '../kit/format';
 import { navRow, railScreen } from '../rail/rail';
 import { Help } from '../panels/help';
+import { openSignInDialog, signInRow } from './signIn';
 import type { RaceMode } from '../../sim/race';
 import { styleTotal, type StyleSource, type StyleTally } from '../hud/boostCallouts';
 
@@ -73,7 +74,8 @@ function styleBlock(tally: StyleTally, best: number, newBest: boolean): HTMLElem
  * like the pause card says how it went (the race type as its kicker, the event's name, the place or score
  * with a new best on it, the standings) and ends in Retry, the screen's main action, which glints; the style
  * score is a card of its own under it, and the way on is rows in their hues like the pause screen's (replay
- * cyan, the garage orange as on the menu, the menu red like quit).
+ * cyan, the garage orange as on the menu, the menu red like quit), after Sign in (yellow, signed out only:
+ * the sign-in dialog over the results) while a good run is fresh.
  */
 export function resultsScreen(o: {
   mode: RaceMode;
@@ -138,6 +140,7 @@ export function resultsScreen(o: {
       h(
         'nav',
         { class: 'nav-list', 'aria-label': 'What next' },
+        signInRow(() => openSignInDialog(root)),
         navRow(Video, 'Replay', 'Watch the run again', 'cyan', o.onReplay),
         navRow(Wrench, 'Garage', 'Tune or change the car', 'orange', o.onGarage),
         navRow(X, 'Menu', 'Back to the event', 'red', o.onMenu),

@@ -47,7 +47,8 @@ import { tuningForBuild } from '../sim/build';
 import { specBadges } from '../shared/carSpec';
 import { btn, chip, h, iconBtn, isTyping, scrollHint, segmented, sheen, specChip, toast } from '../ui/kit/dom';
 import { door, transitioning } from '../ui/transitions/transitions';
-import { Car, Check, ChevronRight, Copy, Download, Hammer, MousePointerClick, Paintbrush, Pencil, Plus, Save, Share2, Trash2, Undo2, Upload, Wrench, X, Route, Video, Warehouse, icon, IconNode } from '../ui/kit/icons';
+import { openSignInDialog, onSignedIn, wantsSignIn } from '../ui/screens/signIn';
+import { Car, Check, ChevronRight, CircleUser, CloudOff, Copy, Download, Hammer, MousePointerClick, Paintbrush, Pencil, Plus, Save, Share2, Trash2, Undo2, Upload, Wrench, X, Route, Video, Warehouse, icon, IconNode } from '../ui/kit/icons';
 import { GarageScene } from './garageScene';
 import { GaragePrefs, GarageState, MAX_SLOTS, Presentation, addSlot, decodeShareCode, encodeShareCode, freshBuild, importBuild, loadGaragePrefs, saveGaragePrefs, shareUrl } from './storage';
 import { section, statLines } from './garageWidgets';
@@ -393,7 +394,25 @@ export class GarageScreen implements TabHost {
       screenHead({ icon: Wrench, title: 'Garage', back: () => this.exit(), backLabel: 'Back to menu (Esc)', aside: progress(1, iconBtn(Upload, 'Import a build code', () => this.openShare(true), '--small --ghost')) }),
       this.carCard,
       section(`Builds · ${this.garage.slots.length} of ${MAX_SLOTS}`, this.slotsEl),
+      ...[this.signInNote()].filter((n) => n !== null),
     ];
+  }
+
+  /**
+   * Signed out on a build with accounts, under the builds: they live on this device only, and Sign in opens
+   * the sign-in dialog, once the build's changes are saved or dropped (signing in can reload the page).
+   */
+  private signInNote(): HTMLElement | null {
+    if (!wantsSignIn()) return null;
+    const note = h(
+      'div',
+      { class: 'garage-note' },
+      icon(CloudOff, { size: 16 }),
+      h('span', { class: 'garage-note__text' }, 'Your builds are saved on this device only'),
+      btn(CircleUser, 'Sign in', () => this.whenSaved(() => openSignInDialog(this.uiRoot)), '--small garage-note__go'),
+    );
+    onSignedIn(note, () => note.remove());
+    return note;
   }
 
   /** Step two: the build's name, the tabs and the open tab's groups. */

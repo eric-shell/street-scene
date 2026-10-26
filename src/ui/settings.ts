@@ -44,6 +44,8 @@ export interface Settings {
   rumble: boolean;
   /** Debug mode: the live physics (` / F2) and camera (F3) tuning panels in races and free roam, and free roam drives on the saved physics tuning. */
   debugMode: boolean;
+  /** The player's name as a license plate can carry it (plateText: A–Z, 0–9, spaces and hyphens, PLATE_MAX long); the plates will show it. Empty: none chosen. Set on Settings › Account and synced with the account. */
+  username: string;
 }
 
 const KEY = 'settings.v1';
@@ -69,7 +71,21 @@ export const DEFAULT_SETTINGS: Settings = {
   flashEffects: true,
   rumble: true,
   debugMode: false,
+  username: '',
 };
+
+/** The longest plate name (characters), what a US plate holds. */
+export const PLATE_MAX = 8;
+
+/** Text as a plate can carry it: upper case A–Z, 0–9, single spaces and hyphens, at most PLATE_MAX long (not trimmed, so typing a space works). */
+export function plateText(text: string): string {
+  return text
+    .toUpperCase()
+    .replace(/[^A-Z0-9 -]/g, '')
+    .replace(/ {2,}/g, ' ')
+    .replace(/^ +/, '')
+    .slice(0, PLATE_MAX);
+}
 
 export function loadSettings(): Settings {
   const parsed = loadJson<Partial<Settings> | null>(KEY, null);
@@ -91,6 +107,7 @@ export function loadSettings(): Settings {
   if (typeof parsed.debugMode !== 'boolean') s.debugMode = !!(legacy.debugTuningPanel || legacy.debugCameraPanel);
   delete (s as Partial<typeof legacy>).debugTuningPanel;
   delete (s as Partial<typeof legacy>).debugCameraPanel;
+  s.username = typeof s.username === 'string' ? plateText(s.username).trim() : '';
   for (const k of VOLUMES) {
     s[k] = clamp01(Number(s[k]));
     if (!Number.isFinite(s[k])) s[k] = DEFAULT_SETTINGS[k];

@@ -24,14 +24,14 @@ interface SettingsPage {
 }
 
 /** The page the settings panel opened on last, so it reopens where the player left it (this visit only). */
-let lastPage = 'display';
+let lastPage: string | null = null;
 
 /**
- * Settings: a row of tabs (display, sound, controls, account when the build has accounts, developer, credits) over
+ * Settings: a row of tabs (account when the build has accounts, display, sound, controls, developer, credits) over
  * the open page, so nothing needs a long scroll and the panel fits the rail's
  * column. Race options (rivals, difficulty, gearbox, traction control) live on
  * the menu's race step instead. Used on the menu's settings step and on the
- * pause screen's. It opens on `page` when given (the menu's Sign in opens Account), else the last page seen.
+ * pause screen's. It opens on `page` when given (the menu's Sign in opens Account), else the last page seen, else the first.
  */
 export function settingsPanel(s: Settings, onChange: (s: Settings) => void, music?: MusicPlayer, page?: string): HTMLElement {
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => {
@@ -45,6 +45,7 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
     return r;
   };
   const all: (SettingsPage | false)[] = [
+    accountsEnabled() && { id: 'account', label: 'Account', icon: CircleUser, rows: () => accountPage(s, onChange) },
     {
       id: 'display',
       label: 'Display',
@@ -122,7 +123,6 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
         ];
       },
     },
-    accountsEnabled() && { id: 'account', label: 'Account', icon: CircleUser, rows: accountPage },
     {
       id: 'developer',
       label: 'Developer',

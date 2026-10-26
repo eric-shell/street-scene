@@ -30,7 +30,6 @@ import {
   Anchor,
   Calendar,
   Check,
-  CircleUser,
   ChevronRight,
   ChevronsRight,
   ChevronsUpDown,
@@ -84,7 +83,7 @@ import type { BestRecord } from '../../replay/replay';
 import type { MusicPlayer } from '../../audio/musicPlayer';
 import type { SpecBadge } from '../../shared/carSpec';
 import { uiBlip, uiWhoosh } from '../../audio/uiSound';
-import { accountState, accountsEnabled, onAccountChange } from '../../account/account';
+import { signInRow } from '../screens/signIn';
 
 /** The title's words: one line, sized to the menu's column in the menu and on the splash alike (`.title-lockup__title .logo` in _title-lockup.scss). */
 export const TITLE_WORDS = ['STREET', 'SCENE'] as const;
@@ -186,7 +185,6 @@ const FEATURES: { kind: AreaKind; icon: IconNode; one: string; many?: (n: number
 /** The other places on home, each in its own hue (rail.ts navRow). */
 const PLACES_INFO = {
   garage: { icon: Wrench, label: 'Garage', hue: 'orange' },
-  account: { icon: CircleUser, label: 'Sign in', hue: 'yellow' },
   explore: { icon: Drone, label: 'Explore', hue: 'cyan' },
   settings: { icon: SettingsIcon, label: 'Settings', hue: 'purple' },
 } as const;
@@ -335,22 +333,9 @@ export function mainMenu(o: MenuOptions): MainMenu {
     );
   };
 
-  /** Signed out on a build with accounts: Sign in, above the event card, into Settings on its Account page, where Google's button is. Gone once signed in. */
-  const signInItem = (): HTMLButtonElement | null => {
-    if (!accountsEnabled() || accountState().player) return null;
-    const row = navItem('account', 'Keep your customized vehicles and progress', () => go('settings', true, 'account'));
-    const off = onAccountChange(() => {
-      if (!row.isConnected) off();
-      else if (accountState().player) {
-        off();
-        row.remove();
-      }
-    });
-    return row;
-  };
-
   const home = (): HTMLElement[] => [
-    ...[signInItem()].filter((r) => r !== null),
+    // Signed out on a build with accounts: Sign in above the event card, into Settings on its Account page, where Google's button is.
+    ...[signInRow(() => go('settings', true, 'account'), 'menu__account')].filter((r) => r !== null),
     eventCard(),
     h(
       'nav',
