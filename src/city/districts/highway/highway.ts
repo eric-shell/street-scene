@@ -27,7 +27,11 @@
  *    V and both carriageways leave it on cloverleaf loops of three quarters
  *    of a circle, one through the block on each side: the outgoing one curls
  *    off to its right down to a mouth on the street beneath the deck, the
- *    incoming one climbs from a mouth across that street on its mirror.
+ *    incoming one climbs from a mouth across that street on its mirror. Each
+ *    mouth is a junction on that street (layMouths: a stub of kind 'mouth' out
+ *    to the loop's foot), and where the two face each other across it, as
+ *    they mostly do, one crossroads of their own: lights, crosswalks, and a
+ *    car coming down one loop may carry straight on up the other.
  *  - interchanges (rampPlan.ts, CFG.interchanges): slip ramps, the way an
  *    expressway over a street meets the street beneath. By a junction, on
  *    one side, an off-ramp leaves the deck on a long deceleration lane and
@@ -55,11 +59,12 @@
  *    the corner there), beside a block of street left at its width (an alley
  *    ends on it: its mouth stays as it was, the deck overhangs the frontage),
  *    nor on a ramp's or a loop's right of way, beside its lane or in an alley.
- *  - in a race the ramps and loops are closed at their mouths (highwayGates,
- *    drawn as a cyan barrier), and so is an alley's mouth onto a cross street
- *    the route does not take: the deck crosses route streets in the open and
- *    is not in the road graph, so routes never use it (they may well run
- *    under it); in free roam (an open world) it is open.
+ *  - in a race an alley's mouth onto a cross street the route does not take
+ *    is closed (highwayGates, drawn as a cyan barrier); the ramps and loops
+ *    stay open, though the deck is no part of any route: it crosses route
+ *    streets in the open and is not in the road graph, so routes never use
+ *    it (they may well run under it), and a racer who climbs onto it is off
+ *    the course until a reset puts it back on the route.
  *
  * Planned right after the bluff (districts/index.ts): it keeps off the river
  * channel, the bluff, roundabouts and alleys, edits the graph (the widening,
@@ -80,10 +85,10 @@
  * interchanges, the graph edit, the areas and claims.
  */
 import { CITY } from '../../config';
-import { addEdge, chainFrom, roadDims } from '../../roadGraph';
+import { addEdge, addNode, chainFrom, roadDims, splitEdge } from '../../roadGraph';
 import type { RoadEdge } from '../../roadGraph';
 import type { Rng } from '../../../sim/prng';
-import type { Vec2 } from '../../../sim/math';
+import { type Vec2, distToSegment, segmentT } from '../../../sim/math';
 import type { DistrictModule, PlanContext } from '../types';
 import { GORE, HALF, UNDER_WIDTH } from './shape';
 import { LinePlan, Swing, hazards, highwayRows, outline, planLine } from './line';
@@ -201,8 +206,88 @@ function layStreets(ctx: PlanContext, line: LinePlan): number[] {
   return laid;
 }
 
+/**
+ * Each end loop's mouth as a junction on the street beneath the deck: the street split where the foot
+ * stands off it (a new node on its centerline, the foot square out from it on the building line) and a
+ * stub of kind 'mouth' out to the foot, as wide as the loop and without sidewalks, so the junction's
+ * corners cut the street's sidewalk just where the loop's walls begin. Two loops whose feet face each
+ * other across the street share the node: a crossroads. Returns the new pieces of the deck's streets
+ * (`deckEdges`, which grows with them) and the junctions, and each loop's stub and foot node (its own).
+ * A piece split off a street some area planned before holds (the El's) is that area's, as the rest is.
+ */
+function layMouths(ctx: PlanContext, loops: readonly RampPlan[], deckEdges: Set<number>): { pieces: number[]; nodes: number[]; stubs: Map<RampPlan, { edge: number; node: number }> } {
+  const g = ctx.graph;
+  const pieces: number[] = [];
+  const nodes: number[] = [];
+  const stubs = new Map<RampPlan, { edge: number; node: number }>();
+  // Every piece split off or reshaped (a moved bend node's) so far: a later foot may stand on one.
+  const made: number[] = [];
+  for (const r of loops) {
+    if (r.footD === undefined) continue;
+    const e0 = g.edges[r.edge];
+    const A = g.nodes[e0.a];
+    const B0 = g.nodes[e0.b];
+    // The foot's place on the street's centerline, measured on the piece as planned (a split since keeps
+    // its node a, so a later split finds its point on whichever piece now holds it).
+    const len = Math.hypot(B0.x - A.x, B0.z - A.z) || 1;
+    const P = { x: A.x + ((B0.x - A.x) / len) * r.footD, z: A.z + ((B0.z - A.z) / len) * r.footD };
+    let node = nodes.find((n) => Math.hypot(g.nodes[n].x - P.x, g.nodes[n].z - P.z) < 0.5) ?? -1;
+    if (node < 0) {
+      // The piece nearest the place (a moved bend node shifts its pieces a hair off the planned line).
+      let on = -1;
+      let best = 1;
+      for (const id of [r.edge, ...made]) {
+        const e = g.edges[id];
+        const d = distToSegment(P.x, P.z, g.nodes[e.a].x, g.nodes[e.a].z, g.nodes[e.b].x, g.nodes[e.b].z);
+        if (d < best) {
+          best = d;
+          on = id;
+        }
+      }
+      if (on < 0) continue;
+      const e = g.edges[on];
+      // A bend node of the street (a piece's end where the warp turns it a little) within the stub's reach
+      // becomes the junction, moved onto the foot's place: split beside it, its corner would stand in the
+      // stub's mouth and fold the block's frontage back across it.
+      const bend = [e.a, e.b].find((id) => g.nodes[id].gi < 0 && g.nodes[id].edges.length === 2 && Math.hypot(g.nodes[id].x - P.x, g.nodes[id].z - P.z) < r.half + 3);
+      if (bend !== undefined) {
+        const b = g.nodes[bend];
+        b.x = P.x;
+        b.z = P.z;
+        for (const id of b.edges) {
+          const ed = g.edges[id];
+          ed.length = Math.hypot(g.nodes[ed.a].x - g.nodes[ed.b].x, g.nodes[ed.a].z - g.nodes[ed.b].z);
+          made.push(id);
+        }
+        node = bend;
+      } else {
+        const a = g.nodes[e.a];
+        const b = g.nodes[e.b];
+        node = splitEdge(g, on, Math.max(0.02, Math.min(0.98, segmentT(P.x, P.z, a.x, a.z, b.x, b.z))));
+        const piece = g.edges.length - 1;
+        made.push(piece);
+        const owner = ctx.claims.edge.get(on);
+        if (deckEdges.has(on)) {
+          deckEdges.add(piece);
+          pieces.push(piece);
+        } else if (owner !== undefined) {
+          ctx.claims.edge.set(piece, owner);
+          ctx.areas[owner].edges.push(piece);
+        }
+      }
+      nodes.push(node);
+    }
+    const foot = addNode(g, r.axis.fx, r.axis.fz);
+    const edge = addEdge(g, node, foot, 'mouth', { width: 2 * r.half, lanes: 2, sidewalk: 0 });
+    stubs.set(r, { edge, node: foot });
+  }
+  ctx.graphChanged();
+  return { pieces, nodes, stubs };
+}
+
 function commit(ctx: PlanContext, line: LinePlan, site: RampSite, ends: EndPlan[], pairs: RampPlan[][], rng: Rng): void {
   const laid = layStreets(ctx, line);
+  const mouths = layMouths(ctx, ends.flatMap((e) => e.loops), new Set([...line.edges, ...laid]));
   const ramps = [...ends.flatMap((e) => e.loops), ...pairs.flat()];
   const params: Record<string, number> = {
     deckWidth: CFG.deckWidth,
@@ -230,8 +315,9 @@ function commit(ctx: PlanContext, line: LinePlan, site: RampSite, ends: EndPlan[
     params[`narrow${k}bx`] = B.x;
     params[`narrow${k}bz`] = B.z;
   });
+  params.crossroads = ends.filter((e) => e.cross).length;
   const deck = ctx.addArea(
-    { kind: 'highway', variant: 'deck', polygon: outline(line.path, HALF), path: line.path, nodes: line.nodes, edges: [...line.edges, ...laid], faces: [], params },
+    { kind: 'highway', variant: 'deck', polygon: outline(line.path, HALF), path: line.path, nodes: [...line.nodes, ...mouths.nodes], edges: [...line.edges, ...laid, ...mouths.pieces], faces: [], params },
     line.offStreet * CFG.deckWidth,
   );
   // The column streets at a swing's junctions, block by block: no back alley or market crowds the turn.
@@ -249,14 +335,15 @@ function commit(ctx: PlanContext, line: LinePlan, site: RampSite, ends: EndPlan[
       for (let u = 0; u < ax.length; u += 8) path.push(axisAt(ax, u));
       path.push(axisAt(ax, ax.length));
     }
+    const stub = mouths.stubs.get(r);
     const area = ctx.addArea(
       {
         kind: 'highway',
         variant: 'ramp',
         polygon: r.polygon,
         path: path.map((q) => ({ x: q.x, z: q.z })),
-        nodes: [],
-        edges: r.footEdges.filter((e) => !ctx.claims.edge.has(e)),
+        nodes: stub ? [stub.node] : [],
+        edges: [...r.footEdges.filter((e) => !ctx.claims.edge.has(e)), ...(stub ? [stub.edge] : [])],
         faces: [],
         params: {
           deck: deck.id,
@@ -285,6 +372,8 @@ function commit(ctx: PlanContext, line: LinePlan, site: RampSite, ends: EndPlan[
           tz: ax.tz,
           length: ax.length,
           edge: r.edge,
+          // A loop's mouth stub (RoadKind 'mouth', layMouths), -1 without one.
+          mouth: stub?.edge ?? -1,
           mouthSide: r.mouthSide,
           m0: r.m0,
           m1: r.m1,

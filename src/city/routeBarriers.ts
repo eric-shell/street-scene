@@ -169,7 +169,10 @@ function mouthBarrier(g: RoadGraph, mouths: EdgeMouths[], edge: number, node: nu
       const [ca, cb] = latOf(p) < latOf(q) ? [p, q] : [q, p];
       const sealA = nearestOn(inMouth, ca).d < ROUTE.barrierTieSeal;
       const sealB = nearestOn(inMouth, cb).d < ROUTE.barrierTieSeal;
-      if (sealA && sealB) return { edge, node, k, a: at(dNat, -half), b: at(dNat, half), d: dNat, railed: true };
+      // Railed only where a rail really runs across the mouth (railAcross): rails that each end at one of its
+      // corners, or one that passes both and crosses the street beyond, leave it open between them.
+      const closure = { edge, node, k, a: at(dNat, -half), b: at(dNat, half), d: dNat, railed: railAcross(n, dx, dz, reach, inMouth) };
+      if (sealA && sealB) return closure;
       // A tie from the street's edge at the open corner on lateral side `lat` to the rail, or null where the rail is right there.
       const tie = (lat: number): { E: Vec2; R: Vec2 } | null => {
         const E = at(dNat, lat);
@@ -185,7 +188,7 @@ function mouthBarrier(g: RoadGraph, mouths: EdgeMouths[], edge: number, node: nu
       const fromA = tA && { edge, node, k, a: tA.E, b: tA.R, d: dNat, railed: false, tie: 'b' as const, inside };
       const fromB = tB && { edge, node, k, a: tB.R, b: tB.E, d: dNat, railed: false, tie: 'a' as const, inside };
       if (fromA && fromB) return { ...fromA, second: fromB };
-      return fromA ?? fromB ?? { edge, node, k, a: at(dNat, -half), b: at(dNat, half), d: dNat, railed: true };
+      return fromA ?? fromB ?? closure;
     }
   }
   // Past neither corner: stay behind any corner rail crossing the mouth, so the barrier never
@@ -213,6 +216,9 @@ function mouthBarrier(g: RoadGraph, mouths: EdgeMouths[], edge: number, node: nu
   }
   let railed = false;
   for (const g of span.values()) if (g.lo <= -half + 1.5 && g.hi >= half - 1.5) railed = true;
+  // A rail group with ends either side of the mouth may still cross the street out past it (a corner rail
+  // round a swing's sharp junction): only one across it within reach closes it.
+  railed &&= railAcross(n, dx, dz, Math.min(60, Math.max(dl / 2, d0 + 0.5)), rails);
   const cx = n.x + dx * d;
   const cz = n.z + dz * d;
   // (-dz, dx) points toward the next edge in the node's angular order, so a -> b runs counterclockwise.
@@ -247,6 +253,12 @@ function segCross(p0: Vec2, p1: Vec2, q0: Vec2, q1: Vec2): number | null {
   const s = lineIntersectT(q0, e, p0, d);
   if (s === null || s <= 0 || s >= 1) return null;
   return t;
+}
+
+/** Whether a rail piece crosses the side street's centerline from node n out to `reach` along (dx, dz). */
+function railAcross(n: Vec2, dx: number, dz: number, reach: number, rails: readonly Wall[]): boolean {
+  const far = { x: n.x + dx * reach, z: n.z + dz * reach };
+  return rails.some((w) => segCross(n, far, { x: w.ax, z: w.az }, { x: w.bx, z: w.bz }) !== null);
 }
 
 /**

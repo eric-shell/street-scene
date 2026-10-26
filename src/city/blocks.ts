@@ -16,7 +16,7 @@
  * river's own trench and bank walls are the collision there).
  */
 import { CITY } from './config';
-import { Chain, RoadGraph, RoadEdge, RoadNode, isBendNode, isRiverEdge, otherNode, sectorAngle } from './roadGraph';
+import { Chain, RoadGraph, RoadEdge, RoadNode, isBendNode, isMouthEdge, isRiverEdge, otherNode, sectorAngle } from './roadGraph';
 import { SpatialGrid } from './spatial';
 import { Terrain } from './terrain';
 import { Prop, edgeSides, generateProps, lightStations } from './props';
@@ -334,7 +334,8 @@ export function computeSectors(g: RoadGraph): Sector[][] {
       const eB = g.edges[n.edges[(k + 1) % m]];
       const dA = edgeDir(g, eA, n.id);
       const dB = edgeDir(g, eB, n.id);
-      const angle = sectorAngle(g, n, k);
+      // A loop mouth's dead end (its foot on the building line) is cut square across: the loop carries on.
+      const angle = m === 1 && isMouthEdge(eA) ? Math.PI : sectorAngle(g, n, k);
       const p = { x: n.x, z: n.z };
       const oA = eA.width / 2;
       const oB = eB.width / 2;
@@ -661,8 +662,8 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
   };
 
   g.edges.forEach((e, ei) => {
-    // Back alleys run between the backs of the street buildings; the river's edges are not streets.
-    if (e.kind === 'backAlley' || isRiverEdge(e)) return;
+    // Back alleys run between the backs of the street buildings; the river's edges and loop mouths are not streets.
+    if (e.kind === 'backAlley' || isRiverEdge(e) || isMouthEdge(e)) return;
     const m = mouths[ei];
     const a = g.nodes[e.a];
     const b = g.nodes[e.b];
@@ -726,8 +727,8 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
     for (const id of bscratch) if (insideBuilding(buildings[id], x, z, margin)) return true;
     return false;
   };
-  /** Nodes on the river's channel or a ramp: their sector corners are open ground too. */
-  const riverNode = g.nodes.map((n) => n.edges.some((eid) => isRiverEdge(g.edges[eid])));
+  /** Nodes on the river's channel or a ramp, and a loop mouth's dead end: their sector corners are open ground too. */
+  const riverNode = g.nodes.map((n) => n.edges.some((eid) => isRiverEdge(g.edges[eid])) || (n.edges.length === 1 && isMouthEdge(g.edges[n.edges[0]])));
   /** Per face, per ring segment: sample classes. */
   const classes: Int16Array[][] = faces.map((f) =>
     f.ring.map((p, i) => {
@@ -736,9 +737,10 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
       const n = Math.max(1, Math.round(len / FRONT_STEP));
       const out = new Int16Array(n);
       if (len < 1e-6) return out;
-      // Along a channel or ramp edge, or around a corner of one: the river draws its own walls there.
+      // Along a channel or ramp edge, or around a corner of one: the river draws its own walls there. Across
+      // a loop mouth: the loop's walls carry on from it.
       const se = f.segEdge[i];
-      if (se >= 0 ? isRiverEdge(g.edges[se]) : riverNode[f.vertNode[i]]) {
+      if (se >= 0 ? isRiverEdge(g.edges[se]) || isMouthEdge(g.edges[se]) : riverNode[f.vertNode[i]]) {
         out.fill(OPEN);
         return out;
       }
@@ -938,7 +940,7 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
     return false;
   };
   g.edges.forEach((e, ei) => {
-    if (e.kind === 'backAlley' || isRiverEdge(e)) return;
+    if (e.kind === 'backAlley' || isRiverEdge(e) || isMouthEdge(e)) return;
     const A = g.nodes[e.a];
     const B = g.nodes[e.b];
     for (const side of edgeSides(g, mouths, ei)) {

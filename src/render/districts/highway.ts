@@ -47,9 +47,9 @@
  *  - the alleys under the lanes and the slip ramps' bridges: the sim's
  *    paving pieces in asphalt with an edge line along the back wall (the
  *    wall is the city's boundary wall, infill.ts draws it);
- *  - in a race (settle.ts highwayGates: every loop shut at its mouth, every
- *    slip ramp where it leaves its run, an alley where it opens onto a
- *    street off the route) a cyan barrier across every gate.
+ *  - in a race (settle.ts highwayGates: an alley where it opens onto a
+ *    street off the route) a cyan barrier across every gate; the ramps and
+ *    loops stay open.
  * Everything merges into the kit's solid, ground, paint, glow and tree
  * builders; signs and the light pools are one mesh each for the whole city.
  * Built once per scene: nothing here runs per frame. Low draws coarser deck
@@ -916,12 +916,18 @@ function ramp(kit: DistrictKit, d: HighwayDeck, r: HighwayRamp, signs: GeoBuilde
     const ii = [solid.vertex(pa.x, ya0, pa.z, fx, 0, fz, 0, 0, C.wall), solid.vertex(pb.x, yb0, pb.z, fx, 0, fz, 1, 0, C.wall), solid.vertex(pb.x, yb1, pb.z, fx, 0, fz, 1, 1, C.wall), solid.vertex(pa.x, ya1, pa.z, fx, 0, fz, 0, 1, C.wall)];
     solid.quadFacing(ii[0], ii[1], ii[2], ii[3], fx, 0, fz);
   };
+  // In the sim's 4 m pieces (build.ts), each a plain wall to the ground on the embankment and wherever its
+  // stretch of bridge is under 4 m up (settle.ts: too low to drive under, so it stops street cars too); only
+  // a higher bridge's is a parapet that cars beneath pass under.
+  const SIM_PIECE = 4;
   for (const k of [-1, 1]) {
     const end = k === inner && slip ? L + GORE : L;
     const from = wallFrom(r, c, k, inner);
-    for (let u = from; u < end - 1e-6; u += step) {
-      const e = Math.min(end, u + step);
-      const bridge = u >= uc;
+    for (let u = from; u < end - 1e-6; u += SIM_PIECE) {
+      const e = Math.min(end, u + SIM_PIECE);
+      const mid = (u + e) / 2;
+      const foot = axisAt(ax, mid);
+      const bridge = mid >= r.uSolid && surf(mid, 0).y - kit.h(foot.x, foot.z) >= 4;
       const v0 = k * hw;
       const v1 = k * (hw + wt);
       const p0 = surf(u, v0);
@@ -1046,13 +1052,6 @@ function ramp(kit: DistrictKit, d: HighwayDeck, r: HighwayRamp, signs: GeoBuilde
     const s = surf(us, vs * (hw - 1.6));
     signPanel(signs, s.x, y + 3.4, s.z, -q.tx, -q.tz, 4.4, 1.3, r.on ? RAMP_CELL : WRONG_WAY_CELL, col(0xffffff, 0.9));
     cylinder(kit.glow, s.x - q.tx * 0.3, s.z - q.tz * 0.3, 0.12, y + 4.15, y + 4.3, 6, LAMP.head, true);
-  }
-  // Closed in a race: a cyan barrier where the sim's gate stands (highwayGates): across a loop's mouth, or a
-  // slip ramp's band where it leaves its run along the street.
-  if (!kit.world.openWorld) {
-    const ug = r.flat + 1.7;
-    const q = axisAt(ax, ug);
-    gateBarrier(kit, signs, surf(ug, -(hw + 0.4)), surf(ug, hw + 0.4), -q.tx, -q.tz);
   }
   if (r.loop) infield(kit, r);
 }

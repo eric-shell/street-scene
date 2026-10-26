@@ -348,17 +348,27 @@ describe('waterfront (race)', () => {
   });
 
   it('rivals racing along the quay never reach the water', () => {
-    // A seed whose sprint runs down the street along the quay (the harbor goes where the races run, CFG.raceBonus).
-    const seed = 1265014699;
-    const city = createCity(seed);
-    const w = createWorld(seed, 'sprint', city);
-    const a = harborOf(city.districts.areas)!;
-    const p = a.params;
-    const along = (x: number, z: number) => {
+    // The first harbor city (from a stream) whose sprint runs down the street along the quay (the harbor goes
+    // where the races run, CFG.raceBonus).
+    const rng = new Rng(1265);
+    let found: { seed: number; w: ReturnType<typeof createWorld>; a: NonNullable<ReturnType<typeof harborOf>> } | null = null;
+    const alongOf = (a: NonNullable<ReturnType<typeof harborOf>>) => (x: number, z: number) => {
       const { u, v } = uv(a, x, z);
-      return u > p.pa && u < p.pb ? coastV(p, u) - v : Infinity;
+      return u > a.params.pa && u < a.params.pb ? coastV(a.params, u) - v : Infinity;
     };
-    expect(Math.min(...w.route.points.map((q) => along(q.x, q.z)))).toBeLessThan(30);
+    for (let i = 0; i < 60 && !found; i++) {
+      const seed = rng.int(0, 0x7fffffff);
+      const city = createCity(seed);
+      const h = harborOf(city.districts.areas);
+      if (!h) continue;
+      const cand = createWorld(seed, 'sprint', city);
+      const along = alongOf(h);
+      if (Math.min(...cand.route.points.map((q) => along(q.x, q.z))) < 30) found = { seed, w: cand, a: h };
+    }
+    expect(found).not.toBeNull();
+    const { seed, w, a } = found!;
+    const p = a.params;
+    const along = alongOf(a);
     const race = createRace(raceConfig(seed, 'sprint', 4), w);
     let nearest = Infinity;
     for (let t = 0; t < 60 * 150 && !race.cars.slice(1).every((c) => c.finished); t++) {

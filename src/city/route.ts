@@ -443,7 +443,8 @@ export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[], 
   const routeNodeSet = new Set(nodes);
   for (const nid of routeNodeSet) {
     for (const eid of g.nodes[nid].edges) {
-      if (!onRoute.has(eid) && !open.has(eid)) route.closedStreets.push({ edge: eid, node: nid });
+      // A loop mouth stays open: the expressway's ramps and loops are never barriered (highway/settle.ts highwayGates).
+      if (!onRoute.has(eid) && !open.has(eid) && g.edges[eid].kind !== 'mouth') route.closedStreets.push({ edge: eid, node: nid });
     }
   }
   return route;

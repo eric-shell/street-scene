@@ -77,8 +77,9 @@ describe('city generation', () => {
     expect(c.blocks.buildings.length).toBeGreaterThan(300);
     expect(c.blocks.walls.length).toBeGreaterThan(400);
     expect(c.blocks.streetlights.length).toBeGreaterThan(200);
-    // No dead ends, except the stubs of the river channel's floor past its last entrance.
-    for (const n of c.graph.nodes) if (!n.edges.every((e) => c.graph.edges[e].kind === 'channel')) expect(n.edges.length).toBeGreaterThanOrEqual(2);
+    // No dead ends, except the stubs of the river channel's floor past its last entrance and an expressway
+    // loop's mouth, whose foot the loop carries on from.
+    for (const n of c.graph.nodes) if (!n.edges.every((e) => c.graph.edges[e].kind === 'channel' || c.graph.edges[e].kind === 'mouth')) expect(n.edges.length).toBeGreaterThanOrEqual(2);
   });
 
   it('routes are connected, closed and edge-unique across 200 seeds', () => {
@@ -548,9 +549,10 @@ describe('districts', () => {
             const a = g.nodes[e.a];
             const b = g.nodes[e.b];
             // Beside the road (not the round caps past the nodes, nor the curb step where a
-            // narrow alley runs on into a wider street right at the node).
+            // narrow alley runs on into a wider street right at the node). An expressway loop's mouth
+            // stub ends at its foot (b), where the loop's walls and a race's gate across it begin.
             const t = segmentT(x, z, a.x, a.z, b.x, b.z);
-            if (t * e.length < 1.5 || (1 - t) * e.length < 1.5) continue;
+            if (t * e.length < 1.5 || (1 - t) * e.length < (e.kind === 'mouth' ? 4 : 1.5)) continue;
             expect(distToSegment(x, z, a.x, a.z, b.x, b.z)).toBeGreaterThan(e.width / 2 - 0.05);
           }
           for (const n of g.nodes) if (n.ring) expect(Math.hypot(x - n.x, z - n.z) < n.ring.outer - 0.05 && Math.hypot(x - n.x, z - n.z) > n.ring.island + 0.05).toBe(false);

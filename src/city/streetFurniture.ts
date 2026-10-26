@@ -56,7 +56,7 @@ export function furnishStreets(seed: number, g: RoadGraph, mouths: EdgeMouths[],
   const cz = (g.bounds.minZ + g.bounds.maxZ) / 2;
   g.edges.forEach((e, ei) => {
     // Plain streets only: alleys are too narrow for it, bridges have parapets, shortcuts are building sites.
-    if (e.kind === 'backAlley' || e.kind === 'alley' || isRiverEdge(e) || e.bridge || e.shortcut) return;
+    if (e.kind === 'backAlley' || e.kind === 'alley' || e.kind === 'mouth' || isRiverEdge(e) || e.bridge || e.shortcut) return;
     const A = g.nodes[e.a];
     const B = g.nodes[e.b];
     const mx = (A.x + B.x) / 2;

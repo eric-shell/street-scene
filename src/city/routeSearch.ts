@@ -32,8 +32,8 @@ function randomWeights(g: RoadGraph, rng: Rng, bias?: (edge: number) => number):
     // squeeze through one, and the river channel most of all: a race that can dive in, does.
     const kindBias = e.kind === 'boulevard' ? 0.7 : e.kind === 'diagonal' ? 0.75 : e.kind === 'avenue' ? 0.85 : e.kind === 'alley' ? 0.78 : e.kind === 'channel' ? ROUTE.channelBias : 1;
     const r = rng.range(0.45, 1.9);
-    // Back alley shortcuts are never part of a route (Infinity is never relaxed).
-    w[i] = e.shortcut ? Infinity : e.length * kindBias * r * (bias ? bias(i) : 1);
+    // Back alley shortcuts and loop mouths are never part of a route (Infinity is never relaxed).
+    w[i] = e.shortcut || e.kind === 'mouth' ? Infinity : e.length * kindBias * r * (bias ? bias(i) : 1);
   });
   return w;
 }
@@ -291,7 +291,7 @@ export function findWaypointNodes(g: RoadGraph, seed: number, prefer?: (nodes: n
   const n = g.nodes.length;
   // Plain distances: the suggestion is the quick way, not the scenic one.
   const w = new Float64Array(g.edges.length);
-  g.edges.forEach((e, i) => (w[i] = e.shortcut ? Infinity : e.length));
+  g.edges.forEach((e, i) => (w[i] = e.shortcut || e.kind === 'mouth' ? Infinity : e.length));
   // Stops are junctions: never a bend node partway along a street (roadGraph.ts).
   const plain = (id: number) => !g.nodes[id].ring && !isChannelNode(g, id) && !isBendNode(g, id);
   const far = (a: number, b: number, lo: number, hi: number) => {

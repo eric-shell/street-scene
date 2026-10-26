@@ -25,8 +25,14 @@ import { atan2, DEG, sin, sqrt, TAU } from '../sim/math';
  * of its entrances; 'ramp': an entrance, from a street down to a channel node
  * (districts/river.ts). Channel and ramp edges have no sidewalks, curbs,
  * frontage or buildings: blocks.ts treats them as open ground the river draws.
+ * 'mouth': where an expressway loop meets the street beneath the deck
+ * (districts/highway/): a stub from a junction on that street out to the
+ * loop's foot on the building line, a dead end the loop carries on from. As
+ * wide as the loop, no sidewalks (the junction's corners cut the street's),
+ * no frontage or buildings; never routed, nor closed off by the route (the
+ * loop's own gates shut it in a race).
  */
-export type RoadKind = 'street' | 'avenue' | 'diagonal' | 'boulevard' | 'alley' | 'backAlley' | 'channel' | 'ramp';
+export type RoadKind = 'street' | 'avenue' | 'diagonal' | 'boulevard' | 'alley' | 'backAlley' | 'channel' | 'ramp' | 'mouth';
 
 /** Curb to curb width, lanes and sidewalk of a kind made from the CITY tables (channel and ramp edges are sized by the river). */
 export interface RoadDims {
@@ -39,13 +45,16 @@ export interface RoadDims {
 export type StreetKind = keyof typeof CITY.width;
 
 export function roadDims(kind: RoadKind): RoadDims {
-  if (kind === 'channel' || kind === 'ramp') throw new Error(`${kind} edges are sized by their district`);
+  if (kind === 'channel' || kind === 'ramp' || kind === 'mouth') throw new Error(`${kind} edges are sized by their district`);
   const k = kind as StreetKind;
   return { width: CITY.width[k], lanes: CITY.lanes[k], sidewalk: CITY.sidewalkWidth[k] };
 }
 
 /** An edge the river owns: the channel floor or an entrance ramp. */
 export const isRiverEdge = (e: { kind: RoadKind }): boolean => e.kind === 'channel' || e.kind === 'ramp';
+
+/** An expressway loop's mouth stub (see RoadKind). */
+export const isMouthEdge = (e: { kind: RoadKind }): boolean => e.kind === 'mouth';
 
 /** Roundabout geometry at a node (districts/roundabout.ts). */
 export interface RoundaboutRing {
@@ -133,7 +142,7 @@ export interface WarpTerm {
 }
 
 /** The seed's warp terms (phases from the 'warp' stream): what warpField sums, for anything that must follow the rows (the river channel). */
-function warpTerms(seed: number): WarpTerm[] {
+export function warpTerms(seed: number): WarpTerm[] {
   const rng = new Rng(deriveSeed(seed, 'warp'));
   return CITY.warp.map((t) => ({ amp: t.amp, k: TAU / t.wavelength, px: rng.range(0, TAU), pz: rng.range(0, TAU) }));
 }

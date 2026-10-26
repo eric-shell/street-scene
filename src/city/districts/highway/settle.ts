@@ -7,7 +7,7 @@
  * other wall under the deck or a ramp one only cars below meet (an alley's
  * back wall too). In a race the ramps and loops are shut at their mouths and
  * the alleys where they open onto a cross street the route does not take
- * (highwayGates); a reset up on the highway puts the car back on the deck
+ * (highwayGates: the alleys only); a reset up on the highway puts the car back on the deck
  * (highwayResetPose). Called by world.ts and sim/race.ts.
  */
 import { CITY } from '../../config';
@@ -19,7 +19,7 @@ import { distToPolygonEdge, pointInPolygon, polygonBounds, solidWalls } from '..
 import { elCurve } from '../subway';
 import { RAIL, curvePoint, projectOnCurve, sampleCurve } from '../../railCurve';
 import { axisAt, rampHeightAlong, solveGrade } from './rampAxis';
-import { HALF, deckPoint, deckTopAt, deckUnderAt, highwayDeck, highwayRamp, laneCenter, laneRange, rightOf, vStart } from './shape';
+import { HALF, deckPoint, deckTopAt, deckUnderAt, highwayDeck, laneCenter, laneRange, rightOf, vStart } from './shape';
 import { alleyMouths } from './alleys';
 import { pending, rampPending } from './build';
 
@@ -233,29 +233,16 @@ export function settleHighwayWalls(areas: readonly Area[], builds: readonly Area
 }
 
 /**
- * In a race the ramps and loops are shut at their mouths (two sided slabs across them, drawn as cyan
- * barriers), and every alley where it opens onto a cross street that is not one of the route's
- * `routeEdges` (a closure there would have a way round it); all open in free roam.
+ * In a race every alley where it opens onto a cross street that is not one of the route's `routeEdges`
+ * is shut (a closure there would have a way round it); open in free roam. The ramps and loops stay open
+ * in a race too: no barrier across a ramp (a racer who takes one is off the course, and a reset puts it
+ * back on the route).
  */
 export function highwayGates(areas: readonly Area[], routeEdges: ReadonlySet<number>): Wall[] {
   const out: Wall[] = [];
   for (const a of areas) {
     if (a.kind !== 'highway') continue;
-    if (a.variant === 'ramp') {
-      const r = highwayRamp(a);
-      const ax = r.axis;
-      // Across a loop's mouth, or a slip ramp's band where it leaves its run along the street.
-      const q0 = axisAt(ax, r.flat + 1.4);
-      const q1 = axisAt(ax, r.flat + 2.0);
-      const v = r.half + 0.4;
-      const slab = [
-        { x: q0.x + q0.tz * v, z: q0.z - q0.tx * v },
-        { x: q1.x + q1.tz * v, z: q1.z - q1.tx * v },
-        { x: q1.x - q1.tz * v, z: q1.z + q1.tx * v },
-        { x: q0.x - q0.tz * v, z: q0.z + q0.tx * v },
-      ];
-      out.push(...solidWalls(slab, 'highway', a.id));
-    } else if (a.variant === 'alley') {
+    if (a.variant === 'alley') {
       for (const m of alleyMouths(a)) {
         if (m.edge < 0 || routeEdges.has(m.edge)) continue;
         const len = Math.hypot(m.b.x - m.a.x, m.b.z - m.a.z);

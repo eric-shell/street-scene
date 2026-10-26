@@ -19,6 +19,14 @@
  * infield stay in its block and whose last stretch (out over the row street,
  * onto the deck's end) clears the street beneath, all of it clear of the El,
  * the river, a bluff and the roundabouts.
+ *
+ * The two loops of an end are mirror images across the row street, so their
+ * feet are paired where they can be: both at the same place along the street,
+ * their legs square to it, so their mouths face each other across it and,
+ * with the street, make a crossroads of their own (highway.ts layMouths puts a
+ * junction there): a car coming down one loop can carry straight on across
+ * into the other. An end where no such pair fits keeps its first loops, each
+ * mouth a T junction of its own.
  */
 import { CITY } from '../../config';
 import type { BlockFace } from '../../blocks';
@@ -40,7 +48,25 @@ export interface EndPlan {
   /** The deck's end along the curve (s, m). */
   s: number;
   loops: RampPlan[];
+  /** Both loops' feet at the same place along the row street: their mouths face each other, a crossroads. */
+  cross: boolean;
 }
+
+/** A loop that fits, its foot (`edge:d`) and how square its leg meets the street (sine of the angle). */
+interface Fit {
+  plan: RampPlan;
+  key: string;
+  square: number;
+}
+
+/** A paired loop's leg meets the street at least this square (sine of the angle): a crossroads, not a skew. */
+const SQUARE = 0.9;
+
+/** Outgoing feet that fit tried for a facing incoming loop per layout before moving on. */
+const PAIR_TRIES = 3;
+
+/** Once both loops fit somewhere, the pair is looked for over this many more layouts (3 m each) before settling for that first one. */
+const PAIR_REACH = 10;
 
 /** How far a loop may turn (rad): about three quarters of a circle, its leg square to the street or leaning a little either way. */
 const SWEEP: [number, number] = [228 * DEG, 300 * DEG];
@@ -91,29 +117,53 @@ function endIn(site: RampSite, i: number, end: -1 | 1, cap: number): EndPlan | n
     }
     return null;
   };
-  const faces = { out: faceOn(end), in: faceOn(end > 0 ? -1 : 1) };
-  if (!faces.out || !faces.in) return null;
+  const fOut = faceOn(end);
+  const fIn = faceOn(end > 0 ? -1 : 1);
+  if (!fOut || !fIn) return null;
   const h = CFG.loopHalf + 1;
+  const inSide = end > 0 ? -1 : 1;
+  // The first layout where both loops fit, kept in case no pair across from each other does near it.
+  let first: EndPlan | null = null;
+  // Whether each loop's disc fits a layout, for the incoming loop's tries at one foot after another.
+  const discs = new Map<string, boolean>();
+  let since = 0;
   for (const R of CFG.loopRadius) {
     // From as far out as the loop's disc allows, inward: the deck reaching as far as it can.
     const sOut = end > 0 ? sB - R - h - 10 : sA + R + h + 10;
     const sIn = end > 0 ? sA + R + 20 : sB - R - 20;
     for (let s = sOut; (s - sIn) * end >= 0; s -= end * 3) {
-      const out = fitLoop(site, i, end, end, s, R, faces.out, cap);
-      if (!out) continue;
-      const inn = fitLoop(site, i, end, end > 0 ? -1 : 1, s, R, faces.in, cap);
-      if (!inn) continue;
-      return { end, s, loops: [out, inn] };
+      if (first && ++since > PAIR_REACH) return first;
+      // The outgoing loop's feet in its own order of preference (squarest first), each square one tried
+      // for the incoming loop at the same foot, until a pair fits.
+      let firstOut: Fit | null = null;
+      let pair: Fit[] | null = null;
+      let tries = 0;
+      fitLoop(site, i, end, end, s, R, fOut, cap, null, discs, (o) => {
+        firstOut ??= o;
+        if (o.square < SQUARE) return ++tries >= PAIR_TRIES;
+        let m: Fit | null = null;
+        fitLoop(site, i, end, inSide, s, R, fIn, cap, new Set([o.key]), discs, (x) => ((m = x), true));
+        if (m && (m as Fit).square >= SQUARE) pair = [o, m];
+        return !!pair || ++tries >= PAIR_TRIES;
+      });
+      if (pair) return { end, s, loops: [(pair as Fit[])[0].plan, (pair as Fit[])[1].plan], cross: true };
+      if (firstOut && !first) {
+        let inn: Fit | null = null;
+        fitLoop(site, i, end, inSide, s, R, fIn, cap, null, discs, (x) => ((inn = x), true));
+        if (inn) first = { end, s, loops: [(firstOut as Fit).plan, (inn as Fit).plan], cross: false };
+      }
     }
   }
-  return null;
+  return first;
 }
 
 /**
- * The loop on `side` of the deck's end at sEnd in block i, radius R, or null: outgoing (down) on the
- * end's own side (traffic there runs out toward the end), incoming (up) on the other.
+ * The loops on `side` of the deck's end at sEnd in block i, radius R, that fit, one per foot in order of
+ * preference (only the feet in `only`), each handed to `take` until it returns true: outgoing (down) on
+ * the end's own side (traffic there runs out toward the end), incoming (up) on the other. `discs`
+ * remembers which layouts the loop's disc fits (it does not depend on the foot).
  */
-function fitLoop(site: RampSite, i: number, end: -1 | 1, side: 1 | -1, sEnd: number, R: number, face: BlockFace, cap: number): RampPlan | null {
+function fitLoop(site: RampSite, i: number, end: -1 | 1, side: 1 | -1, sEnd: number, R: number, face: BlockFace, cap: number, only: ReadonlySet<string> | null, discs: Map<string, boolean>, take: (fit: Fit) => boolean): void {
   const { ctx, hz, line, curve, terrain, mouths } = site;
   const g = ctx.graph;
   const on = side !== end;
@@ -139,9 +189,27 @@ function fitLoop(site: RampSite, i: number, end: -1 | 1, side: 1 | -1, sEnd: num
     return m;
   };
   const ends = [row.nodes[0], row.nodes[row.nodes.length - 1]].map((n) => ({ s: projectOnCurve(curve, g.nodes[n].x, g.nodes[n].z).s, reach: crossReach(n) + CFG.loopMouthClear }));
+  // The loop's circle in the block (but where it turns out over the street beneath near E) and clear of
+  // the hazards, before any foot is tried: most layouts fail here, cheaply.
+  const inFace = (x: number, z: number) => pointInPolygon(x, z, face.ring) && distToPolygonEdge(x, z, face.ring) >= BLOCK_IN;
+  const cx = E.x + away.x * R;
+  const cz = E.z + away.z * R;
+  const discKey = `${side}:${sEnd}:${R}`;
+  if (!discs.has(discKey)) {
+    let ok = true;
+    for (let k = 0; k < 24 && ok; k++) {
+      const a = (k / 24) * 2 * Math.PI;
+      const x = cx + Math.cos(a) * (R + half + 0.6);
+      const z = cz + Math.sin(a) * (R + half + 0.6);
+      if (!clearAt(hz, x, z, 6) || elDistance(hz, x, z) < CITY.districts.subway.deckWidth / 2 + 4) ok = false;
+      else if (Math.abs(projectNear(curve, x, z, sEnd, 160).lateral) > HALF + 1.2 && !inFace(x, z)) ok = false;
+    }
+    discs.set(discKey, ok);
+  }
+  if (!discs.get(discKey)) return;
   // Feet along the row street's building line once it is widened (HALF out from each piece's line), in
   // the stretch where the loop's leg meets it, the ones nearest a square leg first.
-  const feet: { p: Vec2; edge: number; s: number }[] = [];
+  const feet: { p: Vec2; edge: number; d: number; s: number }[] = [];
   for (const eid of row.edges) {
     const e = g.edges[eid];
     const a = g.nodes[e.a];
@@ -154,26 +222,14 @@ function fitLoop(site: RampSite, i: number, end: -1 | 1, side: 1 | -1, sEnd: num
     const nx = -uz * k;
     const nz = ux * k;
     for (let d = 1; d < len - 1; d += 2) {
+      if (only && !only.has(`${eid}:${d}`)) continue;
       const p = { x: a.x + ux * d + nx * HALF, z: a.z + uz * d + nz * HALF };
       const s = projectNear(curve, p.x, p.z, sEnd, 200).s;
       const back = (sEnd - s) * end;
-      if (back > R - 16 && back < R + 34) feet.push({ p, edge: eid, s });
+      if (back > R - 16 && back < R + 34) feet.push({ p, edge: eid, d, s });
     }
   }
   feet.sort((p, q) => Math.abs((sEnd - p.s) * end - R) - Math.abs((sEnd - q.s) * end - R));
-  // The loop's circle in the block (but where it turns out over the street beneath near E) and clear of
-  // the hazards, before any foot is tried: most layouts fail here, cheaply.
-  const inFace = (x: number, z: number) => pointInPolygon(x, z, face.ring) && distToPolygonEdge(x, z, face.ring) >= BLOCK_IN;
-  const cx = E.x + away.x * R;
-  const cz = E.z + away.z * R;
-  for (let k = 0; k < 24; k++) {
-    const a = (k / 24) * 2 * Math.PI;
-    const x = cx + Math.cos(a) * (R + half + 0.6);
-    const z = cz + Math.sin(a) * (R + half + 0.6);
-    if (!clearAt(hz, x, z, 6) || elDistance(hz, x, z) < CITY.districts.subway.deckWidth / 2 + 4) return null;
-    if (Math.abs(projectNear(curve, x, z, sEnd, 160).lateral) <= HALF + 1.2) continue;
-    if (!inFace(x, z)) return null;
-  }
   const y1 = plannedTop(site, sEnd);
   const ap = axisPoint();
   for (const f of feet) {
@@ -227,7 +283,7 @@ function fitLoop(site: RampSite, i: number, end: -1 | 1, side: 1 | -1, sEnd: num
       if (!ok) break;
     }
     if (!ok) continue;
-    return {
+    const plan: RampPlan = {
       axis: ax,
       side,
       on,
@@ -238,6 +294,7 @@ function fitLoop(site: RampSite, i: number, end: -1 | 1, side: 1 | -1, sEnd: num
       sa: sEnd,
       sb: sEnd,
       edge: f.edge,
+      footD: f.d,
       mouthSide: cut.side,
       m0: cut.s0,
       m1: cut.s1,
@@ -250,6 +307,6 @@ function fitLoop(site: RampSite, i: number, end: -1 | 1, side: 1 | -1, sEnd: num
       rise: y1 - y0,
       grade,
     };
+    if (take({ plan, key: `${f.edge}:${f.d}`, square: sinA })) return;
   }
-  return null;
 }

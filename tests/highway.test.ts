@@ -477,7 +477,7 @@ describe('elevated highway (driving)', () => {
     expect(w.upperLevel(a.car.x, a.car.z, a.car.y)).toBe(true);
   });
 
-  it('a reset up on the deck puts the car back on the deck; a race shuts the ramps and loops and the alleys onto streets off the route, free roam opens them', () => {
+  it('a reset up on the deck puts the car back on the deck; a race shuts the alleys onto streets off the route and leaves the ramps and loops open, free roam opens everything', () => {
     const { world: w, deck: d, city } = worlds[1];
     const P = curvePoint();
     const s = (d.sW + d.sE) / 2;
@@ -492,14 +492,15 @@ describe('elevated highway (driving)', () => {
     expect(w.upperLevel(c.x, c.z, c.y)).toBe(true);
     expect(Math.abs(c.y - w.heightAt(c.x, c.z, c.y))).toBeLessThan(0.05);
     expect(w.wallClearance(c.x, c.z, 3, c.y)).toBeGreaterThan(1.5);
-    // A race shuts every ramp and loop at its mouth, and an alley's mouth onto a street the route does not
-    // take; free roam leaves them open.
+    // A race shuts an alley's mouth onto a street the route does not take, and no ramp or loop (nothing
+    // stands across one); free roam leaves everything open.
     const racing = createWorld(w.seed, 'circuit', city);
     const route = new Set(racing.route.edges);
     const gates = highwayGates(w.areas, route);
-    expect(gates.length).toBeGreaterThanOrEqual(d.ramps.length * 4);
     const alleyGates = w.areas.filter((a) => a.kind === 'highway' && a.variant === 'alley').flatMap((a) => alleyMouths(a)).filter((m) => m.edge >= 0 && !route.has(m.edge)).length;
-    expect(gates.length).toBe(d.ramps.length * 4 + alleyGates * 4);
+    expect(gates.length).toBe(alleyGates * 4);
+    const ramps = new Set(w.areas.filter((a) => a.kind === 'highway' && a.variant === 'ramp').map((a) => a.id));
+    expect(gates.some((g) => g.area !== undefined && ramps.has(g.area))).toBe(false);
     const shut = racing.walls.filter((x) => x.look === 'highway' && x.bottom === undefined && x.under === undefined && gates.some((g) => g.ax === x.ax && g.az === x.az));
     expect(shut.length).toBe(gates.length);
     expect(w.walls.some((x) => gates.some((g) => g.ax === x.ax && g.az === x.az && g.bx === x.bx))).toBe(false);

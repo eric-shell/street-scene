@@ -29,7 +29,7 @@ function sweep(count: number, from = 4242): { seed: number; areas: number }[] {
   return out;
 }
 
-const SWEEP = sweep(60);
+const SWEEP = sweep(150);
 const WITH = SWEEP.filter((s) => s.areas > 0).map((s) => s.seed);
 
 /** Unit tangent of the landing street (C to its far node). */
@@ -155,8 +155,9 @@ describe('car park shortcut', () => {
   it('plans car parks on a fair share of seeds, deterministically, chute on the landing street and its landing straight clear', () => {
     // Measured share over this sweep (README decisions log): about a quarter of the seeds before the
     // river channel ran the whole map, a tenth since (routes spend their corners on long dives), and
-    // two or three in a hundred on the curved grid (few corners leave a block square behind them).
-    expect(WITH.length / SWEEP.length).toBeGreaterThan(0.015);
+    // two or three in a hundred on the curved grid (few corners leave a block square behind them), one or two
+    // since the expressway's loop mouths became junctions and re-rolled those cities' routes.
+    expect(WITH.length / SWEEP.length).toBeGreaterThan(0.01);
     // The straight-line launch bound the chute guarantees.
     expect(LAUNCH_BOUND * DEG).toBeLessThan(6.5);
     let worstAxis = 0;

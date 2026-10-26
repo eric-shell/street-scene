@@ -28,11 +28,29 @@
  * a cluster that does not fit is tried again as its route block alone
  * (a smaller plateau whose slopes reach less far), and each starts from the
  * tallest height before lowering to fit.
+ *
+ * San Francisco (variant 'terraced', CFG.terraced): on a few seeds, one of
+ * the hills is a stepped pyramid instead, centred on a summit junction. The
+ * junction stands on a level table at the top; the four streets out of it
+ * drop a step to the ring of junctions one block out, which stand level on
+ * a terrace of their own, the streets along it level too; the streets on out
+ * drop another step to the ring two blocks out, back at the ground. Every
+ * junction sits on a table and every street between climbs on a ramp eased
+ * at both ends, steeper than a plain hill (12-15%): a fast car leaves the
+ * ground cresting onto each table, the San Francisco chase. The contours are
+ * a rounded square (a p-norm, C1 with an exact gradient) so the rings'
+ * corner junctions are level too. Planned first, from its own stream so a
+ * seed without one keeps its hills; the other hills keep off it, and so does
+ * everything that keeps off a slope (it presents itself to them as a disc
+ * holding all of it: plateauDistance with no plateau). Never on the route's
+ * start, and on a route where it fits: the jumps are the point.
  */
 import { CITY } from '../config';
 import type { BlockFace } from '../blocks';
-import { Vec2, atan2, cos, sin, sqrt } from '../../sim/math';
-import type { Area, DistrictModule, HeightSample } from './types';
+import { type WarpTerm, warpTerms } from '../roadGraph';
+import { Vec2, atan2, cos, pow, sin, sqrt } from '../../sim/math';
+import { Rng, deriveSeed } from '../../sim/prng';
+import type { Area, DistrictModule, HeightSample, PlanContext } from './types';
 import { emptyBuild } from './types';
 import { pointInPolygon, polygonCentroid, smooth01, type Smooth } from './geom';
 import { riverCenter } from './river';
@@ -42,6 +60,7 @@ import { bluffFootprint } from './bluff';
 const SMOOTH: Smooth = { v: 0, d: 0 };
 
 const CFG = CITY.districts.hills;
+const TER = CFG.terraced;
 
 /** A hill's plateau rectangle (local frame: u along, v across) and its profile. */
 export interface HillShape {
@@ -56,14 +75,185 @@ export interface HillShape {
   /** Summit height (m, negative for a basin) and slope width (m). */
   h: number;
   w: number;
+  /** A terraced hill's steps (the plateau is then its summit junction alone, distances are its rounded square's, and w its reach). */
+  terrace?: Terrace;
 }
 
-/** Distance from (x, z) to the plateau rectangle (0 inside, with `inner` the distance to its edge), plus local coordinates. */
+/**
+ * A terraced hill's steps (CFG.terraced): `tiers` drops of `step` m, one a block out from the summit. They
+ * are laid out on the city's grid before its warp (roadGraph.ts warpField: the streets were laid on a
+ * square grid of CITY.spacing and then bent by it), where the rings of junctions really are square: a
+ * point is taken back there (unwarp), measured from the summit, and its gradient carried forward through
+ * the warp's Jacobian.
+ */
+export interface Terrace {
+  tiers: number;
+  step: number;
+  /** Level table either side of each ring of junctions (m), and the vertical curve at each end of a ramp (m). */
+  flat: number;
+  ease: number;
+  /** Exponent of the rounded square the contours follow (a power of two). */
+  p: number;
+  /** The summit on the unwarped grid (m), and the seed's warp. */
+  X: number;
+  Z: number;
+  warp: WarpTerm[];
+}
+
+/** How far out a terraced hill reaches (rounded square distance on the unwarped grid, m): its last ramp's foot. */
+export const terraceReach = (t: { tiers: number; flat: number }): number => t.tiers * CITY.spacing - t.flat;
+
+/** Scratch for unwarp: the point on the unwarped grid and the warp's two cross derivatives there. */
+const UNWARP = { X: 0, Z: 0, a: 0, b: 0 };
+
+/**
+ * World (x, z) back to the unwarped grid: the warp moves x by waves of z and z by waves of x, bending by
+ * at most about a quarter (CITY.warp), so each step of a fixed point iteration cuts the error to a
+ * quarter: ten take its 40 m down to a twentieth of a millimetre. Leaves
+ * a = dx/dZ and b = dz/dX there (the warp's Jacobian is [[1, a], [b, 1]]).
+ */
+function unwarp(terms: readonly WarpTerm[], x: number, z: number): typeof UNWARP {
+  let X = x;
+  let Z = z;
+  for (let i = 0; i < 10; i++) {
+    let dx = 0;
+    let dz = 0;
+    for (const t of terms) {
+      dx += t.amp * sin(Z * t.k + t.px);
+      dz += t.amp * sin(X * t.k + t.pz);
+    }
+    X = x - dx;
+    Z = z - dz;
+  }
+  let a = 0;
+  let b = 0;
+  for (const t of terms) {
+    a += t.amp * t.k * cos(Z * t.k + t.px);
+    b += t.amp * t.k * cos(X * t.k + t.pz);
+  }
+  UNWARP.X = X;
+  UNWARP.Z = Z;
+  UNWARP.a = a;
+  UNWARP.b = b;
+  return UNWARP;
+}
+
+/** q^p for p a power of two, by squaring (q >= 0). */
+function powP(q: number, p: number): number {
+  for (let k = 1; k < p; k *= 2) q *= q;
+  return q;
+}
+
+/** Rounded square distance on the unwarped grid from the summit, from offsets (m). */
+function roundedSquare(t: Terrace, du: number, dv: number): number {
+  const m = Math.max(Math.abs(du), Math.abs(dv));
+  if (m < 1e-9) return 0;
+  const s = powP(Math.abs(du) / m, t.p) + powP(Math.abs(dv) / m, t.p);
+  return m * pow(s, 1 / t.p);
+}
+
+/**
+ * Drop below a terraced hill's summit at rounded square distance d (m), and its derivative: level on the
+ * summit's table and every ring's, a ramp between eased over t.ease at both ends (constant grade between).
+ */
+function terraceDrop(t: Terrace, d: number, out: Smooth): void {
+  const L = CITY.spacing;
+  const R = L - 2 * t.flat;
+  const e = t.ease;
+  const G = t.step / (R - e);
+  const k = Math.floor((d + t.flat) / L);
+  out.d = 0;
+  if (k >= t.tiers) {
+    out.v = t.tiers * t.step;
+    return;
+  }
+  const r = d - (k * L + t.flat);
+  out.v = k * t.step;
+  if (r <= 0) return;
+  if (r >= R) {
+    out.v += t.step;
+  } else if (r < e) {
+    out.v += (G * r * r) / (2 * e);
+    out.d = (G * r) / e;
+  } else if (r <= R - e) {
+    out.v += (G * e) / 2 + G * (r - e);
+    out.d = G;
+  } else {
+    out.v += t.step - (G * (R - r) * (R - r)) / (2 * e);
+    out.d = (G * (R - r)) / e;
+  }
+}
+
+/** Height and exact gradient of a terraced hill at (x, z). */
+function terraceAt(s: HillShape, t: Terrace, x: number, z: number, out: HeightSample): void {
+  // Queried per wheel per substep over a wide box: one step of the inversion (within the warp's bend times
+  // its reach of the truth, CITY.warp) settles most points outside before the full one runs.
+  let dx = 0;
+  let dz = 0;
+  for (const k of t.warp) {
+    dx += k.amp * sin(z * k.k + k.px);
+    dz += k.amp * sin(x * k.k + k.pz);
+  }
+  const far = terraceReach(t) + 12;
+  if (Math.abs(x - dx - t.X) >= far || Math.abs(z - dz - t.Z) >= far) return;
+  const w = unwarp(t.warp, x, z);
+  const du = w.X - t.X;
+  const dv = w.Z - t.Z;
+  const reach = terraceReach(t);
+  if (Math.abs(du) >= reach || Math.abs(dv) >= reach) return;
+  const d = roundedSquare(t, du, dv);
+  if (d >= reach) return;
+  terraceDrop(t, d, SMOOTH);
+  out.h += s.h - SMOOTH.v;
+  if (SMOOTH.d === 0 || d < 1e-9) return;
+  // On the unwarped grid: d(d)/d(du) = sign(du) (|du| / d)^(p - 1), the same along v; then through the
+  // inverse of the warp's Jacobian, transposed.
+  const hX = -SMOOTH.d * (du < 0 ? -1 : 1) * pow(Math.abs(du) / d, t.p - 1);
+  const hZ = -SMOOTH.d * (dv < 0 ? -1 : 1) * pow(Math.abs(dv) / d, t.p - 1);
+  const det = 1 - w.a * w.b;
+  out.gx += (hX - w.b * hZ) / det;
+  out.gz += (hZ - w.a * hX) / det;
+}
+
+/** A terraced hill's outline: its rounded square contour `dist` m out from the summit, bent by the warp. */
+function terraceOutline(t: Terrace, dist: number): Vec2[] {
+  const pts: Vec2[] = [];
+  for (let i = 0; i < 64; i++) {
+    const ang = (i / 64) * 2 * Math.PI;
+    const c = cos(ang);
+    const sn = sin(ang);
+    const r = dist / roundedSquare(t, c, sn);
+    const X = t.X + c * r;
+    const Z = t.Z + sn * r;
+    let dx = 0;
+    let dz = 0;
+    for (const w of t.warp) {
+      dx += w.amp * sin(Z * w.k + w.px);
+      dz += w.amp * sin(X * w.k + w.pz);
+    }
+    pts.push({ x: X + dx, z: Z + dz });
+  }
+  return pts;
+}
+
+/**
+ * Distance from (x, z) to the plateau rectangle (0 inside, with `inner` the distance to its edge), plus local
+ * coordinates; for a terraced hill, its rounded square distance from the summit, so `d < w` is on its slopes
+ * for every keep-out alike.
+ */
 export function plateauDistance(s: HillShape, x: number, z: number): { d: number; inner: number; pu: number; pv: number; dx: number; dz: number } {
   const rx = x - s.cx;
   const rz = z - s.cz;
   const pu = rx * s.ux + rz * s.uz;
   const pv = -rx * s.uz + rz * s.ux;
+  if (s.terrace) {
+    const t = s.terrace;
+    const w = unwarp(t.warp, x, z);
+    const du = w.X - t.X;
+    const dv = w.Z - t.Z;
+    const d = roundedSquare(t, du, dv);
+    return { d, inner: -d, pu: du, pv: dv, dx: Math.abs(du), dz: Math.abs(dv) };
+  }
   const dx = Math.max(0, Math.abs(pu) - s.a);
   const dz = Math.max(0, Math.abs(pv) - s.b);
   return { d: sqrt(dx * dx + dz * dz), inner: Math.min(s.a - Math.abs(pu), s.b - Math.abs(pv)), pu, pv, dx, dz };
@@ -71,6 +261,7 @@ export function plateauDistance(s: HillShape, x: number, z: number): { d: number
 
 /** Height and exact gradient of the hill at (x, z). */
 export function hillAt(s: HillShape, x: number, z: number, out: HeightSample): void {
+  if (s.terrace) return terraceAt(s, s.terrace, x, z, out);
   const q = plateauDistance(s, x, z);
   if (q.d >= s.w) return;
   const m = smooth01(0, s.w, q.d, SMOOTH);
@@ -133,8 +324,11 @@ function samplePath(path: readonly Vec2[], step: number): Vec2[] {
 
 export function shapeOf(area: Area): HillShape {
   const p = area.params;
-  return { cx: p.cx, cz: p.cz, ux: p.ux, uz: p.uz, a: p.a, b: p.b, h: p.h, w: p.w };
+  const s: HillShape = { cx: p.cx, cz: p.cz, ux: p.ux, uz: p.uz, a: p.a, b: p.b, h: p.h, w: p.w };
+  if (area.variant === 'terraced') s.terrace = { tiers: p.tiers, step: p.step, flat: p.flat, ease: p.ease, p: p.p, X: p.X, Z: p.Z, warp: warpTerms(p.seed) };
+  return s;
 }
+
 
 export const hillsModule: DistrictModule = {
   kind: 'hills',
@@ -208,6 +402,13 @@ export const hillsModule: DistrictModule = {
       }
       return true;
     };
+
+    // San Francisco now and then (see the header), first, so the others keep off it.
+    const terraced = planTerraced(ctx, faces, eligible, fits);
+    if (terraced) {
+      for (const f of terraced.faces) taken.add(f);
+      made.push(shapeOf(terraced));
+    }
 
     const order = faces.filter(eligible).map((f) => f.id);
     rng.shuffle(order);
@@ -316,6 +517,15 @@ export const hillsModule: DistrictModule = {
   build(_ctx, area) {
     const b = emptyBuild();
     const s = shapeOf(area);
+    if (s.terrace) {
+      // The rounded square's corners stand 1.39 times its reach out on the unwarped grid, and the warp moves
+      // a point there from the summit by its waves' difference, at most about a quarter again (CITY.warp).
+      const t = s.terrace;
+      const r = 1.8 * terraceReach(t) + 2;
+      b.heightMods.push({ minX: s.cx - r, minZ: s.cz - r, maxX: s.cx + r, maxZ: s.cz + r, add: (x, z, out) => terraceAt(s, t, x, z, out) });
+      b.hints.push({ kind: 'hill', points: [{ x: s.cx, z: s.cz }, { x: s.ux, z: s.uz }], values: [s.a, s.b, s.h, s.w] });
+      return b;
+    }
     // Bounding box of the rectangle grown by the slope width (the rounded corners stay inside it).
     let minX = Infinity;
     let minZ = Infinity;
@@ -338,3 +548,78 @@ export const hillsModule: DistrictModule = {
     return b;
   },
 };
+
+/**
+ * The terraced hill, on a seed that rolls it (CFG.terraced.chance, its own stream): a summit junction a
+ * couple of blocks in from the map's edge, a plain four way crossing not held by anything, whose hill
+ * fits clear of everything level (the same keep-outs as any hill's, against the disc holding it) and
+ * whose rings of junctions all land on their tables. Junctions the routes run through come first, so the
+ * races take its jumps, but no route starts on its slopes (the grid stands level). Claims the free blocks
+ * whose middles it lifts.
+ */
+function planTerraced(ctx: PlanContext, faces: readonly BlockFace[], eligible: (f: BlockFace) => boolean, fits: (s: HillShape) => boolean): Area | null {
+  const rng = new Rng(deriveSeed(ctx.seed, 'district:hills:terraced'));
+  if (!rng.chance(TER.chance)) return null;
+  const g = ctx.graph;
+  const W = CITY.gridW;
+  const H = CITY.gridH;
+  const step = rng.range(TER.step[0], TER.step[1]);
+  const routes = ctx.event?.routes ?? [];
+  const onRoute = new Set(routes.flatMap((r) => r.nodes));
+  const starts = routes.map((r) => g.nodes[r.nodes[0]]).filter(Boolean);
+  const candidates = g.nodes.filter((n) => n.gi >= 2 && n.gi <= W - 3 && n.gj >= 2 && n.gj <= H - 3 && n.edges.length === 4 && !n.ring && !ctx.claims.node.has(n.id));
+  rng.shuffle(candidates);
+  candidates.sort((a, b) => (onRoute.has(b.id) ? 1 : 0) - (onRoute.has(a.id) ? 1 : 0));
+  const warp = warpTerms(ctx.seed);
+  const reach = terraceReach(TER);
+  for (const n of candidates) {
+    const c = unwarp(warp, n.x, n.z);
+    const t: Terrace = { tiers: TER.tiers, step, flat: TER.flat, ease: TER.ease, p: TER.p, X: c.X, Z: c.Z, warp };
+    const shape: HillShape = { cx: n.x, cz: n.z, ux: 1, uz: 0, a: 0, b: 0, h: TER.tiers * step, w: reach, terrace: t };
+    const local = (x: number, z: number) => plateauDistance(shape, x, z).d;
+    // Every grid junction of the rings on its table (their jitter, CITY.jitter, and any planner's nudge
+    // within it), and the next ring out on the ground, else not here.
+    const L = CITY.spacing;
+    const table = TER.flat - 3;
+    let level = true;
+    for (const m of g.nodes) {
+      if (m.gi < 0 || m.id === n.id) continue;
+      const k = Math.max(Math.abs(m.gi - n.gi), Math.abs(m.gj - n.gj));
+      if (k > TER.tiers + 1) continue;
+      const d = local(m.x, m.z);
+      if (k < TER.tiers ? Math.abs(d - k * L) > table : d < reach + 3) {
+        level = false;
+        break;
+      }
+    }
+    if (!level) continue;
+    // The grid stands level: no route starts on its slopes.
+    if (starts.some((p) => local(p.x, p.z) < reach + 20)) continue;
+    // Its blocks: those whose middles stand on the terraces, the summit's four at least (whatever holds one
+    // keeps its own level ground off the slopes through `fits`).
+    const blocks = faces.filter((f) => {
+      if (f.outer) return false;
+      const m = polygonCentroid(f.ring);
+      return local(m.x, m.z) < reach - 20;
+    });
+    if (blocks.filter((f) => f.corners.some((k) => k.node === n.id)).length < 4) continue;
+    const mine = blocks.filter(eligible);
+    const total = mine.reduce((m, f) => m + f.area, 0);
+    if (ctx.budget.used + total > ctx.budget.total) continue;
+    if (!fits(shape)) continue;
+    return ctx.addArea(
+      {
+        kind: 'hills',
+        variant: 'terraced',
+        polygon: terraceOutline(t, reach - 6),
+        path: [],
+        nodes: [n.id],
+        edges: [],
+        faces: mine.map((f) => f.id),
+        params: { cx: n.x, cz: n.z, ux: 1, uz: 0, a: 0, b: 0, h: shape.h, w: reach, yaw: 0, blocks: mine.length, tiers: t.tiers, step, flat: t.flat, ease: t.ease, p: t.p, X: t.X, Z: t.Z, seed: ctx.seed },
+      },
+      total,
+    );
+  }
+  return null;
+}

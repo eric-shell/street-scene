@@ -77,6 +77,8 @@ export interface RampPlan {
   sb: number;
   /** The street piece its mouth is cut in, and the cut (busBays.ts mouthBay; a slip ramp's is cut when built). */
   edge: number;
+  /** A loop's foot: this far along `edge` from its node a (m), out on the building line; its mouth is a junction there (highway.ts layMouths). */
+  footD?: number;
   mouthSide: 1 | -1;
   m0: number;
   m1: number;

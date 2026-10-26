@@ -211,6 +211,17 @@ export function buildDeck(ctx: BuildContext, area: Area): AreaBuild {
   const k1 = Math.ceil(sE / RAIL.step);
   const H = HALF;
   const IN = BARRIER_IN;
+  // Where a slip ramp climbs alongside (from its foot to E, s along the deck): there the barrier is a thin
+  // solid, not a one sided wall. A one sided wall pushes back whatever is up to 3 m behind it (world.ts,
+  // against tunnelling), and behind this one runs the ramp's inner lane: once the ramp climbed to the
+  // barrier's reach, cars on it were hauled sideways into their own wall. The ramp's inner wall stands
+  // right behind, so nothing can tunnel through here anyway.
+  const beside: { side: 1 | -1; lo: number; hi: number }[] = deck.ramps
+    .filter((r) => !r.loop)
+    .map((r) => {
+      const sf = projectOnCurve(curve, r.area.params.fx, r.area.params.fz).s;
+      return { side: r.side, lo: Math.min(sf, r.sa) - 4, hi: Math.max(sf, r.sa) + 4 };
+    });
   for (let k = k0; k < k1; k += CHUNK) {
     const ka = k;
     const kb = Math.min(k1, k + CHUNK);
@@ -226,6 +237,15 @@ export function buildDeck(ctx: BuildContext, area: Area): AreaBuild {
     // Barriers along both edges, open where a ramp merges.
     for (const side of [1, -1] as const) {
       if (barrierOpen(deck, s0, s1, side)) continue;
+      if (beside.some((r) => r.side === side && s1 > r.lo && s0 < r.hi)) {
+        // Its face on the barrier's line, 0.3 m thick toward the deck's edge.
+        const slab = thinSlab(deckPoint(curve, s0, side * (H - IN + 0.15)), deckPoint(curve, s1, side * (H - IN + 0.15)), 0.3);
+        if (!slab) continue;
+        const walls = solidWalls(slab, 'highway', area.id);
+        b.walls.push(...walls);
+        todo.push({ walls, s: sm, kind: 'bottom' });
+        continue;
+      }
       const a = deckPoint(curve, s0, side * (H - IN));
       const c = deckPoint(curve, s1, side * (H - IN));
       const len = sqrt((c.x - a.x) ** 2 + (c.z - a.z) ** 2) || 1;
@@ -471,8 +491,14 @@ export function buildRamp(ctx: BuildContext, area: Area): AreaBuild {
   if (slip) {
     b.openings.push(strip(-SLIP_NOSE - 1, Math.max(ramp.flat, ramp.uSolid), hw + 1));
     b.surfaces.push({ surface: 'road', polygon: [...nosePoly, ...strip(0, ramp.flat + 2, hw)], priority: 2, area: area.id });
-  } else b.openings.push(strip(-8, 4, hw + 1));
-  const cuts = slip ? slipCut(g, ctx.mouths, area.params.edge, edgePt(-SLIP_NOSE, innerSign * hw), edgePt(ramp.flat, innerSign * hw), MOUTH_TAPER) : mouthCut(g, ctx.mouths, area.params.edge, ax, hw);
+  } else {
+    b.openings.push(strip(-8, 4, hw + 1));
+    // And wherever the embankment's lane reaches over its block's frontage line (a loop may, a little):
+    // the frontage there would stand up through the lane, an invisible wall a car on the loop runs into.
+    b.openings.push(strip(4, Math.min(L, ramp.uSolid + 6), hw + RAMP_WALL + 0.6));
+  }
+  // A loop whose mouth is a junction (its stub, highway.ts layMouths) needs no cut: the junction's corners are it.
+  const cuts = slip ? slipCut(g, ctx.mouths, area.params.edge, edgePt(-SLIP_NOSE, innerSign * hw), edgePt(ramp.flat, innerSign * hw), MOUTH_TAPER) : (area.params.mouth ?? -1) >= 0 ? [] : mouthCut(g, ctx.mouths, area.params.edge, ax, hw);
   for (const cut of cuts) {
     b.hints.push({ kind: 'mouth', points: [], values: [cut.edge, cut.side, cut.s0, cut.s1, MOUTH_TAPER] });
     // Nothing of the street furniture's on the cut (it is road now): circles over it, as a park path's mouth.

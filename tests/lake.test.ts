@@ -99,8 +99,8 @@ describe('lake (plan)', () => {
       }
       // No dead ends, still one network, grid junctions where every planner looks for them.
       expect(graphIsConnected(g)).toBe(true);
-      // (The river's channel ends at its tunnel portals: its only dead ends.)
-      for (const n of g.nodes) if (!n.edges.some((e) => isRiverEdge(g.edges[e]))) expect(n.edges.length).toBeGreaterThanOrEqual(2);
+      // (The river's channel ends at its tunnel portals and an expressway loop's mouth at its foot: the only dead ends.)
+      for (const n of g.nodes) if (!n.edges.some((e) => isRiverEdge(g.edges[e]) || g.edges[e].kind === 'mouth')) expect(n.edges.length).toBeGreaterThanOrEqual(2);
       for (const n of g.nodes) if (n.gi >= 0) expect(g.nodes[n.gj * CITY.gridW + n.gi]).toBe(n);
       // Its shore streets and junctions are its own: nothing planned later took one.
       for (const e of lake.edges) expect(a.districts.areas.some((x) => x !== lake && x.kind !== 'downtown' && x.edges.includes(e))).toBe(false);
@@ -238,12 +238,16 @@ describe('lake (city)', () => {
   });
 
   it('the AI field drives the shore road round it, never into the water', () => {
-    // A route along a shore: the first lake city (from a stream) whose circuit or sprint has a node on the shore road.
+    // A route along a shore: the first lake city (from a stream) whose circuit or sprint drives a piece of
+    // the shore road (two shore nodes in a row; one alone may only be a corner it crosses).
     let pick: { seed: number; kind: 'circuit' | 'sprint' } | null = null;
     for (const seed of lakeSeeds(41, 12)) {
       const plan = planRoads(seed);
       const lake = lakeOf(plan.districts.areas)!;
-      for (const kind of ['circuit', 'sprint'] as const) if (!pick && plan.routeNodes[kind].some((n) => lake.nodes.includes(n))) pick = { seed, kind };
+      for (const kind of ['circuit', 'sprint'] as const) {
+        const ns = plan.routeNodes[kind];
+        if (!pick && ns.some((n, i) => i > 0 && lake.nodes.includes(n) && lake.nodes.includes(ns[i - 1]))) pick = { seed, kind };
+      }
       if (pick) break;
     }
     expect(pick).not.toBeNull();

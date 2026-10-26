@@ -743,6 +743,16 @@ export const CITY = {
       overlap: 0.2,
       /** The area polygon (minimap, areaAt) reaches this fraction of the slope width out from the plateau. */
       reach: 0.85,
+      /**
+       * San Francisco (hills.ts terraced): on this share of seeds, rolled from a stream of its own, one hill
+       * is a stepped pyramid on a summit junction instead: `tiers` steps of `step` m (min, max) down to the
+       * rings of junctions one and two blocks out, every junction on a level table `flat` m either side of
+       * it, the streets between climbing on a ramp eased over `ease` m at each end (the crest a fast car
+       * takes off from), contours a rounded square (exponent `p`, a power of two: the rings' corner junctions
+       * stand 2^(1/p) further out). The ramps' grade is the step over the block less the tables and an
+       * ease: 10-13 m over 84 m, 12-15.5%; a crest eased over 10 m throws a car from about 90 km/h.
+       */
+      terraced: { chance: 0.3, tiers: 2, step: [10, 13], flat: 23, ease: 10, p: 32 },
     },
     /**
      * Monument: one plaza block near the center with a floodlit landmark on a

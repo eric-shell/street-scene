@@ -5,11 +5,19 @@ import { MAX_OPPONENTS, createRace, standings, stepRace } from '../src/sim/race'
 import { autopilotInput, createAi } from '../src/sim/ai';
 
 describe('AI opponents', () => {
-  it('complete every route for 50 random seeds without getting stuck', () => {
+  // Fifty random seeds in two halves of one stream, each well inside the per test time limit under a full
+  // suite's load.
+  const ROUTE_SEEDS = (() => {
     const rng = new Rng(2024);
+    return Array.from({ length: 50 }, () => rng.int(0, 0x7fffffff));
+  })();
+  it.each([
+    [0, 25],
+    [25, 50],
+  ])('complete every route for random seeds %i to %i without getting stuck', (from, to) => {
     const failures: string[] = [];
-    for (let i = 0; i < 50; i++) {
-      const seed = rng.int(0, 0x7fffffff);
+    for (let i = from; i < to; i++) {
+      const seed = ROUTE_SEEDS[i];
       const mode = i % 2 === 0 ? 'circuit' : 'sprint';
       const r = runAutopilot(raceConfig(seed, mode, 3, undefined, 1), 420, true);
       for (const car of r.cars.slice(1)) {

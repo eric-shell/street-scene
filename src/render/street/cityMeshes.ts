@@ -137,8 +137,9 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
   const g = world.graph;
   const { sectors, mouths } = world.blocks;
   // The river draws its channel floor and ramps itself (render/districts/river.ts): no asphalt, markings,
-  // curbs or sidewalks on its edges, nor at the nodes that only join them.
-  const riverOnly = g.nodes.map((n) => n.edges.every((eid) => isRiverEdge(g.edges[eid])));
+  // curbs or sidewalks on its edges, nor at the nodes that only join them. A loop mouth's dead end (the
+  // foot of an expressway loop) has no junction either: the loop's road carries on from it.
+  const riverOnly = g.nodes.map((n) => n.edges.every((eid) => isRiverEdge(g.edges[eid]) || g.edges[eid].kind === 'mouth'));
   g.nodes.forEach((n, ni) => {
     if (riverOnly[ni]) return;
     const ring: Vec2[] = [];

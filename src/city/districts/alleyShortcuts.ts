@@ -14,7 +14,7 @@ import { Rng } from '../../sim/prng';
 import { pointInPolygon } from './geom';
 import type { Area, PlanContext } from './types';
 import { alleyFlightReach, pathCum, chainBackwards, routeChains, chainNodes, corridor, RAD, unit } from './alleyPath';
-import { distToPath } from './geom';
+import { distToPath, distToPolygonEdge } from './geom';
 
 /** A route shortcut's mouth due within MOUTH_SNAP (m) of a bend node of its street lands on the bend node. */
 const MOUTH_SNAP = 10;
@@ -456,7 +456,13 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
       }
     }
     for (const a of blocked) {
-      for (let k = 0; k <= steps; k++) if (pointInPolygon(A.x + ((B.x - A.x) * k) / steps, A.z + ((B.z - A.z) * k) / steps, a.polygon)) return false;
+      // The expressway's ramps have their walls just outside their outlines: the whole cut keeps off them.
+      const reach = a.kind === 'highway' ? hwAll + 1 : 0;
+      for (let k = 0; k <= steps; k++) {
+        const x = A.x + ((B.x - A.x) * k) / steps;
+        const z = A.z + ((B.z - A.z) * k) / steps;
+        if (pointInPolygon(x, z, a.polygon) || (reach > 0 && distToPolygonEdge(x, z, a.polygon) < reach)) return false;
+      }
     }
     // Sites held for a car park (its block, frontage, driveway and flight).
     for (const poly of ctx.keepOut ?? []) {

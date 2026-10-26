@@ -111,7 +111,12 @@ describe('chevrons on the cyan barriers', () => {
         // (a rail at the very start or end of a sprint, where both ends clamp to the same point, says nothing).
         const first = layout.first[pieces[0]];
         const last = layout.first[pieces[pieces.length - 1]] + layout.subs[pieces[pieces.length - 1]] - 1;
-        let ds = world.routeProgress(layout.bx[last], layout.bz[last]).s - world.routeProgress(layout.ax[first], layout.az[first]).s;
+        const pa = world.routeProgress(layout.ax[first], layout.az[first]);
+        const pb = world.routeProgress(layout.bx[last], layout.bz[last]);
+        // A corner a park or plaza pass cuts: the racing line runs tens of meters inside the street's rail,
+        // where a projection onto it says nothing about the rail's direction.
+        if (Math.abs(pa.lateral) > 30 || Math.abs(pb.lateral) > 30) continue;
+        let ds = pb.s - pa.s;
         if (route.closed) ds = ((ds % total) + total) % total;
         if (Math.abs(ds) < 1e-6) continue;
         chains++;
