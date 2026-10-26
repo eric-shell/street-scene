@@ -1,7 +1,10 @@
 /**
  * Everything at infinity: two low poly mountain silhouette rings (a hazy far
  * ridge and a darker near one) that follow the camera like a skybox, radio
- * masts on the highest peaks, and the sky sprites: the star field, the moon
+ * masts on the highest peaks (where a harbor faces open water, the `sea`
+ * window: the near ridge sinks under the water there and the far one drops to
+ * a low far shore strung with the lights of a town across the bay), and the
+ * sky sprites: the star field, the moon
  * with its phase (and a halo in haze), the red beacons on the masts, airliners
  * crossing high up as clusters of nav lights and strobes, and the odd meteor.
  * The sprites are one instanced mesh whose vertex shader does all the motion
@@ -28,6 +31,11 @@ export interface BackdropOptions {
   /** City centre (m): airliners cross over it. */
   centerX: number;
   centerZ: number;
+  /**
+   * Open water (a harbor, render/districts/waterfront.ts harborSea): the directions it fills as seen from
+   * the city (ridge angles, rad, x = cos and z = sin, `from` to `to` counterclockwise) and its level (m).
+   */
+  sea?: { from: number; to: number; level: number };
 }
 
 export interface Backdrop {
@@ -55,11 +63,28 @@ export const SKY = {
   meteor: { interval: 34, duration: [0.6, 1.1] as [number, number], speed: 900, radius: 1750, size: [60, 110] as [number, number] },
   /** Mast beacons blink on this period (s). */
   beaconPeriod: 1.6,
+  /**
+   * Across open water: the ridges ease into the window over `feather` rad; the near ridge sinks `sink` m
+   * under the water, the far one keeps `shore` of its height (at least `shoreMin` m over the water) as the
+   * far shore, with `lights` town lights along its foot, `lightSize` m wide [min, max].
+   */
+  sea: { feather: 0.2, sink: 6, shore: 0.3, shoreMin: 16, lights: 70, lightSize: [4, 9] as [number, number] },
 } as const;
 
 const SEGMENTS = 180;
 
-function ridge(rng: Rng, radius: number, base: number, peak: number, rough: number, bottom: THREE.Color, top: THREE.Color): { geo: THREE.BufferGeometry; heights: number[] } {
+/** How far into the sea window angle t lies, 0 outside to 1 a feather inside its edges. */
+function seaWeight(sea: BackdropOptions['sea'], t: number): number {
+  if (!sea) return 0;
+  const span = (((sea.to - sea.from) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+  const a = (((t - sea.from) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+  if (a > span) return 0;
+  const f = SKY.sea.feather;
+  const e = Math.min(a, span - a) / f;
+  return e >= 1 ? 1 : e * e * (3 - 2 * e);
+}
+
+function ridge(rng: Rng, radius: number, base: number, peak: number, rough: number, bottom: THREE.Color, top: THREE.Color, shape?: (t: number, h: number) => number): { geo: THREE.BufferGeometry; heights: number[] } {
   // Sum of a few seeded sines around the circle plus jagged noise: a skyline.
   const waves = Array.from({ length: 5 }, (_, i) => ({ k: [2, 3, 5, 9, 17][i] + rng.int(0, 2), a: rng.range(0.4, 1) / (i + 1), p: rng.range(0, Math.PI * 2) }));
   const heights: number[] = [];
@@ -68,7 +93,8 @@ function ridge(rng: Rng, radius: number, base: number, peak: number, rough: numb
     let v = 0;
     for (const w of waves) v += w.a * Math.sin(t * w.k + w.p);
     v = 0.5 + v * 0.35 + (rng.next() - 0.5) * rough;
-    heights.push(base + Math.max(0.05, v) * peak);
+    const h = base + Math.max(0.05, v) * peak;
+    heights.push(shape ? shape(t, h) : h);
   }
   const pos: number[] = [];
   const colors: number[] = [];
@@ -117,7 +143,7 @@ function box(gb: GeoBuilder, cx: number, cy: number, cz: number, sx: number, sy:
 }
 
 /** Sprite kinds, matched in the vertex shader. */
-const KIND = { star: 0, steady: 1, beacon: 2, strobe: 3, meteor: 4, plane: 5 } as const;
+const KIND = { star: 0, steady: 1, beacon: 2, strobe: 3, meteor: 4, plane: 5, lamp: 6 } as const;
 
 const spriteVert = /* glsl */ `
   attribute vec2 corner;
@@ -160,6 +186,9 @@ const spriteVert = /* glsl */ `
       center = iPos + iAxis * iAnim.w * age;
       bright = (age < 0.0 || age > iAnim.z) ? 0.0 : uStars * sin(life * 3.1416);
       if (bright <= 0.0) size = vec2(0.0);
+    } else if (kind > 5.5) {
+      // A far shore's town light: steady, whatever the moon does.
+      bright = iAnim.y;
     } else {
       // Airliner light: the plane runs its straight path once per period, lights offset in its frame.
       float progress = mod(uTime + iAnim.w, iAnim.z) * iAnim.y;
@@ -227,8 +256,12 @@ export function buildBackdrop(seed: number, opts: BackdropOptions = { fogColor: 
   tint.setRGB(Math.min(2, Math.max(0.6, tint.r)), Math.min(2, Math.max(0.6, tint.g)), Math.min(2, Math.max(0.6, tint.b)));
   // Both sides render: the ring is seen from inside.
   const mat = new THREE.MeshBasicMaterial({ vertexColors: true, fog: false, side: THREE.DoubleSide });
-  const far = ridge(rng, 1950, 40, 260, 0.08, fog.clone().multiplyScalar(1.1), new THREE.Color(0x2a2448).multiply(tint));
-  const near = ridge(rng, 1700, 10, 150, 0.14, fog.clone().multiplyScalar(0.7), new THREE.Color(0x15152c).multiply(tint));
+  // Across open water the near ridge sinks under it and the far one is a low far shore.
+  const sea = opts.sea;
+  const sunk = sea ? (t: number, h: number) => h + (sea.level - SKY.sea.sink - h) * seaWeight(sea, t) : undefined;
+  const shore = sea ? (t: number, h: number) => h + (Math.max(sea.level + SKY.sea.shoreMin, h * SKY.sea.shore) - h) * seaWeight(sea, t) : undefined;
+  const far = ridge(rng, 1950, 40, 260, 0.08, fog.clone().multiplyScalar(1.1), new THREE.Color(0x2a2448).multiply(tint), shore);
+  const near = ridge(rng, 1700, 10, 150, 0.14, fog.clone().multiplyScalar(0.7), new THREE.Color(0x15152c).multiply(tint), sunk);
   const farMesh = new THREE.Mesh(far.geo, mat);
   const nearMesh = new THREE.Mesh(near.geo, mat);
   farMesh.renderOrder = -2;
@@ -307,6 +340,26 @@ export function buildBackdrop(seed: number, opts: BackdropOptions = { fogColor: 
     light([0, 17, 0, 0], [0.15, 2.2, 0.3], 9);
     light([-19, 0, 3, 1], [2.5, 2.5, 2.5], 11);
     light([4, 0, -1.5, 2], [2.4, 0.2, 0.1], 8);
+  }
+  // The far shore's town lights along the foot of the far ridge across the water (a stream of their own).
+  if (sea) {
+    const srng = new Rng(deriveSeed(seed, 'farShore'));
+    const span = (((sea.to - sea.from) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    for (let k = 0; k < SKY.sea.lights; k++) {
+      const t = sea.from + srng.range(0.1, 0.9) * span;
+      if (seaWeight(sea, t) < 0.9) continue;
+      const r = 1925;
+      const s = srng.range(SKY.sea.lightSize[0], SKY.sea.lightSize[1]);
+      const warm = srng.next();
+      sprites.push({
+        pos: [Math.cos(t) * r, sea.level + srng.range(2, 14), Math.sin(t) * r],
+        size: [s, s],
+        tile: SKY_TILES.strobe,
+        // Dimmer the hazier the night (the mood's star visibility).
+        anim: [KIND.lamp, srng.range(0.25, 0.7) * (0.35 + 0.65 * opts.stars), 0, 0],
+        color: [1, 0.7 + 0.2 * warm, 0.4 + 0.3 * warm],
+      });
+    }
   }
   // Two meteor slots the scheduler rewrites.
   const meteorSlot = sprites.length;

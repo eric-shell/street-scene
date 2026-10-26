@@ -17,7 +17,8 @@ export interface LightFx {
   dispose(): void;
 }
 
-const streakVert = /* glsl */ `
+/** The reflection streak's shaders (instanced: iPos at the reflecting surface, iColor, iSize = width and the light's height over it), shared with the harbor's water (render/districts/waterfront.ts). */
+export const streakVert = /* glsl */ `
   attribute vec3 iPos;
   attribute vec3 iColor;
   attribute vec2 iSize;
@@ -45,7 +46,7 @@ const streakVert = /* glsl */ `
   }
 `;
 
-const streakFrag = /* glsl */ `
+export const streakFrag = /* glsl */ `
   varying vec2 vUv;
   varying vec3 vColor;
   varying float vFog;

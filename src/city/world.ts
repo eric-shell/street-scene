@@ -261,8 +261,9 @@ const POCKETS = new Set(['cornerPlaza', 'plaza', 'verge', 'lot', 'alleyBay']);
  * A tie's end at a corner rail (routeBarriers.ts) already closes: it stays.
  */
 function sealBarriers(city: City, groups: BarrierGroup[], rails: readonly RailWall[]): void {
-  // The alleys under the expressway's lanes are pockets too, open to the street beneath all along.
-  const pockets = city.districts.areas.filter((a) => (a.kind === 'infill' && POCKETS.has(a.variant)) || (a.kind === 'highway' && a.variant === 'alley'));
+  // The alleys under the expressway's lanes are pockets too, open to the street beneath all along, and so is a
+  // harbor's quay (sealed out to its railing, districts/waterfront.ts).
+  const pockets = city.districts.areas.filter((a) => (a.kind === 'infill' && POCKETS.has(a.variant)) || (a.kind === 'highway' && a.variant === 'alley') || a.kind === 'waterfront');
   /** The corner rail group a barrier end leans on (a tie's rail end), or -1. */
   const railAt = (x: number, z: number): number => rails.find((r) => distToSegment(x, z, r.ax, r.az, r.bx, r.bz) < ROUTE.barrierTieGap + 0.2)?.group ?? -1;
   /** The pocket a barrier end opens into, carrying on along the barrier (from its other end). */
@@ -808,10 +809,10 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
   });
   const CURB_IN = CITY.curbRamp.road;
   const CURB_SPAN = CITY.curbRamp.road + CITY.curbRamp.walk;
-  /** Paving a district draws at curb height: plazas, corner pockets and verges, the monument plaza. */
+  /** Paving a district draws at curb height: plazas, corner pockets and verges, the monument plaza, a harbor's quay. */
   const raisedPatch = (area: number): boolean => {
     const a = city.districts.areas[area];
-    return a.kind === 'monument' || (a.kind === 'infill' && a.variant !== 'lot' && a.variant !== 'planter');
+    return a.kind === 'monument' || a.kind === 'waterfront' || (a.kind === 'infill' && a.variant !== 'lot' && a.variant !== 'planter');
   };
   /**
    * Curb lift under a point (m). The street classification is surfaceAt's

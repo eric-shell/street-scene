@@ -14,6 +14,7 @@ import type { World } from '../city/world';
 import type { NightScene } from '../render/scene';
 import type { GameRenderer } from '../render/scene';
 import { routeSample } from '../city/route';
+import { harborSurfaceAt } from '../city/districts/waterfrontShape';
 import { h, btn } from '../ui/kit/dom';
 import { HudCard } from '../ui/hud/hudCard';
 import { Help, MUSIC_KEYS, helpOpen } from '../ui/panels/help';
@@ -336,8 +337,8 @@ export class DroneMode {
       const lateral = this.vel.dot(right) / Math.max(1, max);
       this.roll += (-lateral * DRONE.bank - this.roll) * damp(DRONE.bankRate, dt);
     }
-    // Stay above ground.
-    const floor = this.world.heightAt(this.pos.x, this.pos.z) + DRONE.clearance;
+    // Stay above ground, and above a harbor's water (districts/waterfront.ts).
+    const floor = Math.max(this.world.heightAt(this.pos.x, this.pos.z), harborSurfaceAt(this.world.areas, this.pos.x, this.pos.z)) + DRONE.clearance;
     if (this.pos.y < floor) {
       this.pos.y = floor;
       if (this.vel.y < 0) this.vel.y = 0;
@@ -352,7 +353,7 @@ export class DroneMode {
     this.camera.rotation.set(this.pitch, this.yaw + Math.PI, 0, 'YXZ');
     this.camera.rotateZ(-this.roll);
 
-    const alt = this.pos.y - this.world.heightAt(this.pos.x, this.pos.z);
+    const alt = this.pos.y - Math.max(this.world.heightAt(this.pos.x, this.pos.z), harborSurfaceAt(this.world.areas, this.pos.x, this.pos.z));
     this.card.setStat(0, feetLabel(alt));
     this.card.setStat(1, speedLabel(this.tour ? TOUR.speed : this.vel.length()));
     // The heading the drone looks along, on the maps' compass.

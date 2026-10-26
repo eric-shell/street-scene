@@ -47,7 +47,7 @@ import type { Area, AreaKind } from '../../city/districts/types';
 import { routeSample, type Route as RaceRoute, type RouteSample } from '../../city/route';
 import { driftZones } from '../../sim/driftZones';
 import type { Vec2 } from '../../sim/math';
-import { CityLayers, KINDS, MAP_INK, layersOf, mapToWorld, mapX, mapY, nearestOnArea, shownOnMap, type CityDrawOptions, type MapView } from './cityMap';
+import { CityLayers, KINDS, MAP_INK, areaUnder, layersOf, mapToWorld, mapX, mapY, nearestOnArea, shownOnMap, type CityDrawOptions, type MapView } from './cityMap';
 import { btn, chip, h, iconBtn } from '../kit/dom';
 import { Flag, Hash, Landmark, Layers, LocateFixed, MapIcon, MapPinOff, MapPinned, Maximize2, Route, X, ZoomIn, ZoomOut, icon } from '../kit/icons';
 import type { MapCar } from '../hud/minimap';
@@ -804,7 +804,7 @@ export class FullMap {
       if (Math.hypot(sx - mapX(v, this.start.x), sy - mapY(v, this.start.z)) < UI.markHit * dpr) return { kind: 'mark', finish: false };
       if (this.finish && Math.hypot(sx - mapX(v, this.finish.x), sy - mapY(v, this.finish.z)) < UI.markHit * dpr) return { kind: 'mark', finish: true };
     }
-    return { kind: 'area', area: this.world.areaAt(wx, wz) };
+    return { kind: 'area', area: areaUnder(this.world, wx, wz) };
   }
 
   /** The card's contents for what is under the pointer; only touches the DOM when they change. */

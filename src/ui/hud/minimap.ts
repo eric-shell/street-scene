@@ -14,13 +14,16 @@ import type { World } from '../../city/world';
 import { AREA_MAP_STYLE, type Area, AreaKind, AreaMapStyle } from '../../city/districts/types';
 import { ROUTE_INDEX, carParks } from '../../city/districts/carPark';
 import { shortcutArea } from '../../city/districts/alleyDressing';
-import { CHEVRON, CLIFF, chevronPath, cliffPath, highwayLine, terracePaths, type OneWay } from '../map/cityMap';
+import { CHEVRON, CLIFF, MAP_WATER_REACH, chevronPath, cliffPath, highwayLine, terracePaths, type OneWay } from '../map/cityMap';
+import { harborWater } from '../../city/districts/waterfrontShape';
 import { PALETTE, rgba } from '../kit/palette';
 
 /** Map inks (Monokai Pro, ui/kit/palette.ts), built once: orange is the route, yellow the closures. */
 const INK = {
   face: rgba('bg0', 0.78),
   road: rgba('muted', 0.24),
+  /** A harbor's quay, between the face and the roads. */
+  quay: rgba('muted', 0.13),
   route: PALETTE.orange,
   /** Route shortcuts: the back alleys the route opens, a dim pink that is there when looked for, not a second route. */
   shortcut: rgba('red', 0.42),
@@ -149,8 +152,23 @@ export class Minimap {
       if (!p) m.set(k, (p = new Path2D()));
       return p;
     };
+    let quays: Path2D | null = null;
     for (const a of world.areas) {
       const st = AREA_MAP_STYLE[a.kind];
+      if (a.kind === 'waterfront') {
+        // The water out past the rim (the city map's reach), the quay as paving beside it.
+        const water = harborWater(a, MAP_WATER_REACH);
+        if (st.fill) {
+          const p = get(fills, a.kind);
+          water.forEach((q, i) => (i ? p.lineTo(q.x, q.z) : p.moveTo(q.x, q.z)));
+          p.closePath();
+        }
+        quays ??= new Path2D();
+        const q = quays;
+        a.polygon.forEach((pt, i) => (i ? q.lineTo(pt.x, pt.z) : q.moveTo(pt.x, pt.z)));
+        q.closePath();
+        continue;
+      }
       if (a.kind === 'bluff') {
         // The terrace's high ground, not its claim; the crest is traced per zoom (draw).
         if (st.fill) get(fills, a.kind).addPath(terracePaths(a).ground);
@@ -185,6 +203,7 @@ export class Minimap {
       }
     }
     for (const [k, path] of fills) this.areaFills.push({ path, style: AREA_MAP_STYLE[k] });
+    if (quays) this.areaFills.push({ path: quays, style: { fill: INK.quay } });
     // Order: alleys and shortcuts under the subway and roundabout outlines.
     const order: AreaKind[] = ['hills', 'backAlley', 'alley', 'roundabout', 'subway', 'highway', 'overpass', 'tunnel'];
     for (const k of order) {

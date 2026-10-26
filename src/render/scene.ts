@@ -24,6 +24,7 @@ import { AirTraffic, buildAirTraffic } from './traffic/airTraffic';
 import { buildAreaLights } from './street/areaLights';
 import { marketLightPoints, planMarketCrowd } from './districts/marketPlan';
 import { highwayLamps } from './districts/highway';
+import { harborSea } from './districts/waterfront';
 import { GROUND_PAINT_ORDER, underVehicles } from './vehicleMask';
 import { damp } from '../shared/anim';
 
@@ -180,6 +181,8 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     moonPhase: weather.moonPhase,
     centerX: (bounds.minX + bounds.maxX) / 2,
     centerZ: (bounds.minZ + bounds.maxZ) / 2,
+    // A harbor's open water runs out to a low far shore (districts/waterfront.ts).
+    sea: harborSea(world) ?? undefined,
   });
   scene.add(backdrop.group);
   // Street level polish: road decals, puddles, posters, blade signs, banners, steam (pasted onto the drawn podiums).

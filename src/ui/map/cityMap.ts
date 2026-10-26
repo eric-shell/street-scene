@@ -20,6 +20,10 @@
  * exit runs both ways and gets the plain shortcut ink. The minimap
  * (ui/hud/minimap.ts) draws the same marks with chevronPath and cliffPath.
  *
+ * A harbor (districts/waterfront.ts) is its open water, filled out past the
+ * map's edge on its side (harborWater with MAP_WATER_REACH), and its quay,
+ * jetties and breakwater as paving; its warehouses are buildings.
+ *
  * Orientation matches the minimap and the drone: north (+Z) is up, which puts
  * world +X on the left, as the city looks from above. Render only.
  */
@@ -31,6 +35,7 @@ import { axisAt } from '../../city/districts/highway/rampAxis';
 import { pointInPolygon } from '../../city/districts/geom';
 import { bluffShape, bluffUV, envelope, type BluffShape } from '../../city/districts/bluff';
 import { carParkGeo } from '../../city/districts/carPark';
+import { coastPoint, harborWater } from '../../city/districts/waterfrontShape';
 import { CITY } from '../../city/config';
 import type { Vec2 } from '../../sim/math';
 import { PALETTE, rgba } from '../kit/palette';
@@ -80,12 +85,17 @@ export const KINDS: Partial<Record<AreaKind, KindStyle>> = {
 const PLACES = new Set(['lot', 'plaza', 'cornerPlaza']);
 export const shownOnMap = (a: Area): boolean => (a.kind !== 'infill' || PLACES.has(a.variant)) && !(a.kind === 'highway' && (a.variant === 'ramp' || a.variant === 'alley'));
 
+/** A harbor's water reaches this far out past its coast on every map (m): past any view's edge. */
+export const MAP_WATER_REACH = 4000;
+
 /** Map inks outside the district kinds. */
 export const MAP_INK = {
   ground: '#141315',
   block: '#232125',
   building: '#322f35',
   road: '#57545a',
+  /** A harbor's quay, jetties and breakwaters: paving between the blocks and the roads. */
+  quay: 'rgba(147, 146, 147, 0.26)',
   channel: rgba('cyan', 0.42),
   shortcut: rgba('red', 0.75),
   route: rgba('orange', 0.75),
@@ -326,6 +336,8 @@ export class CityLayers {
   /** One path per district kind with a fill, in legend order of first appearance. */
   readonly fills: { kind: AreaKind; path: Path2D }[] = [];
   readonly streets: StreetGroup[] = [];
+  /** Harbor quays, jetties and breakwaters (their water is the waterfront's fill). */
+  readonly quays = new Path2D();
   readonly ringRoads = new Path2D();
   readonly pavedIslands = new Path2D();
   readonly plantedIslands = new Path2D();
@@ -356,6 +368,16 @@ export class CityLayers {
       if (!st?.fill || a.polygon.length < 3 || a.kind === 'roundabout' || a.kind === 'bluff' || !shownOnMap(a)) continue;
       let p = fills.get(a.kind);
       if (!p) fills.set(a.kind, (p = new Path2D()));
+      if (a.kind === 'waterfront') {
+        // The water out past the map's edge; the quay and what stands out on the water as paving, the sheds as buildings.
+        ring(p, harborWater(a, MAP_WATER_REACH));
+        ring(this.quays, a.polygon);
+        for (const h of world.districts.builds[a.id]?.hints ?? []) {
+          if (h.kind === 'jetty' || h.kind === 'mole') ring(this.quays, strip(h.points[0], h.points[1], h.values[0] * (h.kind === 'mole' ? 0.5 : 1)));
+          else if (h.kind === 'warehouse') ring(this.buildings, h.points);
+        }
+        continue;
+      }
       ring(p, a.polygon);
     }
     for (const [kind, path] of fills) this.fills.push({ kind, path });
@@ -444,7 +466,10 @@ export class CityLayers {
     if (!p) {
       p = new Path2D();
       if (a.kind === 'highway' && a.variant === 'deck') ring(p, deckOutline(a));
-      else if (a.polygon.length >= 3) ring(p, a.polygon);
+      else if (a.kind === 'waterfront') {
+        ring(p, harborWater(a, MAP_WATER_REACH));
+        ring(p, a.polygon);
+      } else if (a.polygon.length >= 3) ring(p, a.polygon);
       else if (a.path.length > 1) line(p, a.path);
       this.areaPaths.set(a.id, p);
     }
@@ -489,6 +514,10 @@ export class CityLayers {
           c.globalAlpha = 1;
         }
       }
+    }
+    if (o.districts !== false && !o.hidden?.has('waterfront')) {
+      c.fillStyle = ink.quay;
+      c.fill(this.quays);
     }
     if (o.buildings !== false) {
       c.fillStyle = ink.building;
@@ -643,14 +672,45 @@ function rampLine(a: Area): Vec2[] {
   return pts;
 }
 
+/** A rectangle from a to b, `width` m across (a jetty, a breakwater). */
+function strip(a: Vec2, b: Vec2, width: number): Vec2[] {
+  const l = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+  const nx = (-(b.z - a.z) / l) * (width / 2);
+  const nz = ((b.x - a.x) / l) * (width / 2);
+  return [
+    { x: a.x + nx, z: a.z + nz },
+    { x: b.x + nx, z: b.z + nz },
+    { x: b.x - nx, z: b.z - nz },
+    { x: a.x - nx, z: a.z - nz },
+  ];
+}
+
+/**
+ * The area under a point as the maps name it: World.areaAt (what the sim's raster says), else a harbor whose
+ * open water it is (out past the raster, where areaAt has nothing).
+ */
+export function areaUnder(world: World, x: number, z: number): Area | null {
+  const a = world.areaAt(x, z);
+  if (a) return a;
+  for (const h of world.areas) {
+    if (h.kind !== 'waterfront') continue;
+    let water = waters.get(h);
+    if (!water) waters.set(h, (water = harborWater(h, MAP_WATER_REACH, 24)));
+    if (pointInPolygon(x, z, water)) return h;
+  }
+  return null;
+}
+
+const waters = new WeakMap<Area, Vec2[]>();
+
 /** Append an open polyline to a path. */
 function line(p: Path2D, pts: readonly Vec2[]): void {
   pts.forEach((q, i) => (i ? p.lineTo(q.x, q.z) : p.moveTo(q.x, q.z)));
 }
 
-/** Tag priority: area for the filled kinds, length for the linear ones (the river and the El always first). */
+/** Tag priority: area for the filled kinds, length for the linear ones (the river, the El and the harbor always first). */
 export function tagWeight(a: Area): number {
-  if (a.kind === 'river' || a.kind === 'subway' || a.kind === 'highway') return 1e9;
+  if (a.kind === 'river' || a.kind === 'subway' || a.kind === 'highway' || a.kind === 'waterfront') return 1e9;
   if (a.polygon.length < 3) return 0;
   let s = 0;
   for (let i = 0; i < a.polygon.length; i++) {
@@ -661,8 +721,9 @@ export function tagWeight(a: Area): number {
   return Math.abs(s / 2);
 }
 
-/** Where an area's tag goes: along a linear area's path, the middle of an alley, the centroid of anything else. */
+/** Where an area's tag goes: along a linear area's path, the middle of an alley, out on a harbor's water off the middle of its quay, the centroid of anything else. */
 export function tagAnchor(world: World, a: Area): Vec2 | null {
+  if (a.kind === 'waterfront') return coastPoint(a, (a.params.pa + a.params.pb) / 2, 70);
   if (a.kind === 'river' || a.kind === 'subway' || a.kind === 'highway') return along(a.kind === 'highway' ? highwayLine(a) : a.path, a.kind === 'river' ? 0.3 : a.kind === 'highway' ? 0.4 : 0.7);
   if (a.kind === 'alley') {
     const g = world.graph;
