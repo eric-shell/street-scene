@@ -12,7 +12,7 @@ import { GridSlot, Route, RouteKind, RouteWaypoint, routeSample } from '../city/
 import { carParkProgress, onCarPark } from '../city/districts/carPark';
 import { highwayResetPose } from '../city/districts/highway/settle';
 import { CarState, crashNitrous, createCar, gridRev, groundPitch, groundRoll, refillNitrous, steerLimit, stepCar, wheelRpm, type StepEnv } from './car';
-import { relocateCar } from './reset';
+import { relocateCar, teleportCar } from './reset';
 import { WorldHit, carsOverlap, collideCarWithWorld, collideCars, detectNearMiss } from './collision';
 import { CRASH_EVENT, DT, TICK_HZ } from './constants';
 import { InputFrame, NEUTRAL_INPUT, packInput, quantizeInput } from './input';
@@ -424,25 +424,49 @@ const RESET_OFF_DECK = { step: 8, tries: 6 } as const;
  * way along it closest to the car's heading, clear of the intersections.
  */
 export function resetToStreet(r: RaceState, rc: RaceCar): void {
-  const g = r.world.graph;
   const c = rc.state;
   // Up on the highway (its deck or a ramp): back onto the deck, on the level it was on.
   if (r.world.upperLevel(c.x, c.z, c.y)) {
     const up = highwayResetPose(r.world.areas, c.x, c.z, c.yaw);
     if (up) return relocateCar(r, rc, up.x, up.z, up.yaw, false, up.y + 0.5);
   }
+  const p = streetPose(r.world, c.x, c.z, c.yaw);
+  if (p) relocateCar(r, rc, p.x, p.z, p.yaw);
+}
+
+/**
+ * Free roam's teleport (the city map's waypoint, game/session.ts): the player
+ * put down on the street nearest (x, z) as a reset would put it there, facing
+ * the way along it closest to its heading, but with its nitrous kept. Open
+ * world only (a race has its course to drive); false when it did nothing.
+ */
+export function teleportToStreet(r: RaceState, rc: RaceCar, x: number, z: number): boolean {
+  if (!r.config.openWorld) return false;
+  const p = streetPose(r.world, x, z, rc.state.yaw);
+  if (!p) return false;
+  teleportCar(r, rc, p.x, p.z, p.yaw);
+  return true;
+}
+
+/**
+ * The pose on the right hand lane of the street nearest (x, z), facing the way
+ * along it closest to `yaw`, at least a margin from either junction and off a
+ * bridge deck's footprint; null on a city without streets.
+ */
+function streetPose(w: World, x: number, z: number, yaw: number): { x: number; z: number; yaw: number } | null {
+  const g = w.graph;
   let best = -1;
   let bestD = Infinity;
   for (const e of g.edges) {
     const a = g.nodes[e.a];
     const b = g.nodes[e.b];
-    const d = distToSegment(c.x, c.z, a.x, a.z, b.x, b.z);
+    const d = distToSegment(x, z, a.x, a.z, b.x, b.z);
     if (d < bestD) {
       bestD = d;
       best = e.id;
     }
   }
-  if (best < 0) return;
+  if (best < 0) return null;
   const e = g.edges[best];
   const a = g.nodes[e.a];
   const b = g.nodes[e.b];
@@ -450,21 +474,21 @@ export function resetToStreet(r: RaceState, rc: RaceCar): void {
   let tx = (b.x - a.x) / len;
   let tz = (b.z - a.z) / len;
   const margin = Math.min(15, len / 3);
-  let u = clamp((c.x - a.x) * tx + (c.z - a.z) * tz, margin, len - margin);
+  let u = clamp((x - a.x) * tx + (z - a.z) * tz, margin, len - margin);
   let px = a.x + tx * u;
   let pz = a.z + tz * u;
   // Off a bridge deck's footprint (two levels there), either way along the street.
-  for (let k = 1; k <= RESET_OFF_DECK.tries && r.world.twoLevels(px, pz); k++) {
+  for (let k = 1; k <= RESET_OFF_DECK.tries && w.twoLevels(px, pz); k++) {
     u = clamp(u + (k % 2 ? k : -k) * RESET_OFF_DECK.step, margin, len - margin);
     px = a.x + tx * u;
     pz = a.z + tz * u;
   }
-  if (sin(c.yaw) * tx + cos(c.yaw) * tz < 0) {
+  if (sin(yaw) * tx + cos(yaw) * tz < 0) {
     tx = -tx;
     tz = -tz;
   }
   const lateral = -Math.min(2, e.width * 0.175);
-  relocateCar(r, rc, px + tz * lateral, pz - tx * lateral, yawOf(tx, tz));
+  return { x: px + tz * lateral, z: pz - tx * lateral, yaw: yawOf(tx, tz) };
 }
 
 /** Open world: no laps, checkpoints or wrong way; only a car lost off the road network is put back. */

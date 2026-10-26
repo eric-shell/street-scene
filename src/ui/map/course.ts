@@ -27,6 +27,8 @@ export interface FullMapOptions {
    * share one per event city; without it the map sets none.
    */
   waypoint?: WaypointStore;
+  /** Free roam: put the car down at the waypoint (the waypoint card's Teleport button, or T); the owner closes the map. Without it the map offers none. */
+  teleport?(at: Vec2): void;
   /** Header chips: the event's name and the seed. */
   event?: string;
   seed?: string;

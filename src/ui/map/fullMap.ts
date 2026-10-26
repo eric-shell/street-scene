@@ -6,7 +6,9 @@
  * lights up with a card naming it (how far and which way from you, drift zone,
  * shortcut), the legend lights a kind of place up or hides it, the Places tab
  * lists the notable places by distance and flies to them, and in free roam a
- * click drops a waypoint the HUD then points to (the chip and the minimap).
+ * click drops a waypoint the HUD then points to (the chip and the minimap),
+ * locked to the nearest road node so it always marks a place a car can reach,
+ * and the waypoint's card (or T) teleports the car to it.
  *
  * Drawing. The city itself (the cityMap.ts layers, the same inks as every
  * other map) is rasterized into two cached bitmaps: the fitted whole city, and
@@ -47,9 +49,9 @@ import type { Area, AreaKind } from '../../city/districts/types';
 import { routeSample, type Route as RaceRoute, type RouteSample } from '../../city/route';
 import { driftZones } from '../../sim/driftZones';
 import type { Vec2 } from '../../sim/math';
-import { CityLayers, KINDS, MAP_INK, areaUnder, layersOf, mapToWorld, mapX, mapY, nearestOnArea, shownOnMap, type CityDrawOptions, type MapView } from './cityMap';
+import { CityLayers, KINDS, MAP_INK, areaUnder, layersOf, mapToWorld, mapX, mapY, nearestOnArea, nearestRoadNode, shownOnMap, type CityDrawOptions, type MapView } from './cityMap';
 import { btn, chip, h, iconBtn } from '../kit/dom';
-import { Flag, Hash, Landmark, Layers, LocateFixed, MapIcon, MapPinOff, MapPinned, Maximize2, Route, X, ZoomIn, ZoomOut, icon } from '../kit/icons';
+import { Flag, Hash, Landmark, Layers, LocateFixed, MapIcon, MapPinOff, MapPinned, Maximize2, Route, X, Zap, ZoomIn, ZoomOut, icon } from '../kit/icons';
 import type { MapCar } from '../hud/minimap';
 import { PALETTE, rgba, type PaletteColor } from '../kit/palette';
 import { CITY_NAME, bearingDeg, compassPoint, distanceLabel, placeAt, placeLine } from './places';
@@ -256,6 +258,7 @@ export class FullMap {
       { class: 'map-waypoint', hidden: true },
       h('span', { class: 'map-waypoint__icon' }, icon(MapPinned, { size: 18 })),
       h('span', { class: 'map-waypoint__text' }, h('b', { class: 'map-waypoint__title' }, 'Waypoint'), this.wpFar),
+      opts.teleport ? btn(Zap, 'Teleport', () => this.teleport(), '--small map-waypoint__teleport') : null,
       btn(MapPinOff, 'Clear', () => this.setWaypoint(null), '--small map-waypoint__clear'),
     );
     const side = h('aside', { class: 'map-side' }, h('div', { class: 'tabs map-side__tabs', role: 'tablist' }, this.legendTab, this.placesTab), this.legendPane, this.placesPane, this.wpCard);
@@ -288,6 +291,7 @@ export class FullMap {
         key(['Scroll'], 'Zoom'),
         key(['Drag'], 'Pan'),
         opts.waypoint ? key(['Click'], 'Waypoint') : key(['Dbl click'], 'Zoom in'),
+        ...(opts.teleport ? [key(['T'], 'Teleport')] : []),
         key(['F'], 'Whole city'),
         key(['C'], 'Find me'),
         key(['Tab', 'Esc'], 'Close'),
@@ -1102,6 +1106,9 @@ export class FullMap {
       case 'KeyC':
         if (!e.repeat) this.findMe();
         return;
+      case 'KeyT':
+        if (!e.repeat) this.teleport();
+        return;
       case 'ArrowLeft':
       case 'ArrowRight':
       case 'ArrowUp':
@@ -1167,9 +1174,10 @@ export class FullMap {
     this.dirty = true;
   }
 
+  /** Set the waypoint on the road node nearest `p` (a click, a tap, a place's pin button), or clear it. */
   private setWaypoint(p: Vec2 | null): void {
     if (!this.opts.waypoint) return;
-    this.wp = p ? { x: p.x, z: p.z } : null;
+    this.wp = p ? nearestRoadNode(this.world, p.x, p.z) : null;
     this.opts.waypoint.set(this.wp);
     if (p) this.dropT = this.reduced ? DROP_END : 0;
     this.syncWaypoint();
@@ -1254,6 +1262,11 @@ export class FullMap {
     if (key !== 'route') this.overview.ok = this.detail.ok = false;
     this.hoverDirty = true;
     this.dirty = true;
+  }
+
+  /** Free roam: hand the waypoint to the owner to put the car down there (it closes the map). */
+  private teleport(): void {
+    if (this.wp && this.opts.teleport) this.opts.teleport(this.wp);
   }
 
   private flyToWaypoint(): void {

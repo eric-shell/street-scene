@@ -93,7 +93,7 @@ export function helpSections(mode: RaceMode, isReplay: boolean, openWorld: boole
     { keys: ['Esc'], label: 'Pause' },
   ];
   const tips = openWorld
-    ? ['Set a waypoint on the city map: the chip under the card points the way.', 'The card counts everything you smash on the way.']
+    ? ['Set a waypoint on the city map: the chip under the card points the way, or T on the map teleports you there.', 'The card counts everything you smash on the way.']
     : mode === 'drift'
       ? ['Drift zones multiply the points you score inside them.']
       : mode === 'waypoint'

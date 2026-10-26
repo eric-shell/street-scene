@@ -859,3 +859,24 @@ export function nearestOnArea(a: Area, x: number, z: number, out: NearPoint = { 
   out.d = Math.sqrt(best);
   return out;
 }
+
+/**
+ * The road node (a junction, a bend or a roundabout, World.graph) nearest
+ * (x, z): where the full map locks a waypoint, so a pin dropped on a roof or
+ * in the river still marks a place on the streets a car can drive to. (x, z)
+ * itself on a city without streets.
+ */
+export function nearestRoadNode(world: World, x: number, z: number): Vec2 {
+  let best = Infinity;
+  const out = { x, z };
+  for (const n of world.graph.nodes) {
+    if (!n.edges.length) continue;
+    const d2 = (n.x - x) ** 2 + (n.z - z) ** 2;
+    if (d2 < best) {
+      best = d2;
+      out.x = n.x;
+      out.z = n.z;
+    }
+  }
+  return out;
+}

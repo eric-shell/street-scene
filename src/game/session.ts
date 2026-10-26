@@ -14,7 +14,7 @@
  * audio.ts (engine voices, sound effects and their per frame feeds).
  */
 import * as THREE from 'three';
-import { createRace, RaceConfig, RaceState, raceTime, stepRace, ticksToSeconds } from '../sim/race';
+import { createRace, RaceConfig, RaceState, raceTime, stepRace, teleportToStreet, ticksToSeconds } from '../sim/race';
 import { InputFrame, NEUTRAL_INPUT, unpackInput } from '../sim/input';
 import { VisualBuild } from '../shared/carBuild';
 import { DT, TICK_HZ } from '../sim/constants';
@@ -44,7 +44,7 @@ import { Hud, HudCar, RACE_CARD } from '../ui/hud/hud';
 import { courseFor, openFullMap, type FullMap, type WaypointStore } from '../ui/map/fullMap';
 import { placeAt } from '../ui/map/places';
 import { toast } from '../ui/kit/dom';
-import { MapPinned } from '../ui/kit/icons';
+import { MapPinned, Zap } from '../ui/kit/icons';
 import { HudCard } from '../ui/hud/hudCard';
 import type { StyleTally } from '../ui/hud/boostCallouts';
 import { Help } from '../ui/panels/help';
@@ -456,8 +456,9 @@ export class RaceSession {
    * Tab or a click on the minimap opens the full city map over the paused
    * session (the same map as the menu's, through openFullMap); Tab, Escape,
    * its close button or the backdrop close it. In free roam a click on the
-   * map sets the waypoint the HUD then points to; a race shows its course in
-   * its type's color instead (its waypoints are the race's own).
+   * map sets the waypoint the HUD then points to, and the waypoint's card can
+   * teleport the car there; a race shows its course in its type's color
+   * instead (its waypoints are the race's own).
    */
   toggleMap(): void {
     if (this.fullMap) return this.closeMap();
@@ -470,7 +471,7 @@ export class RaceSession {
     this.fullMap = openFullMap(this.uiRoot, world, { x: p.x, z: p.z, yaw: p.yaw, isPlayer: true }, {
       onClose: () => this.closeMap(),
       ...(this.openWorld
-        ? { waypoint: { get: () => this.wp.get(), set: (w: Vec2 | null) => this.setWaypoint(w) } }
+        ? { waypoint: { get: () => this.wp.get(), set: (w: Vec2 | null) => this.setWaypoint(w) }, teleport: (w: Vec2) => this.teleport(w) }
         : { course: courseFor(this.race.config.mode, world.route) }),
       event: world.event?.name,
       seed: this.opts.seedText ?? String(this.opts.config.seed),
@@ -497,6 +498,26 @@ export class RaceSession {
     this.wp.set(w ? { x: w.x, z: w.z } : null);
     const p = this.curr[0];
     this.waypointArmed = !!w && Math.hypot(w.x - p.x, w.z - p.z) > WAYPOINT.reach;
+  }
+
+  /**
+   * Free roam's teleport, from the city map: the car is put down on the street
+   * nearest `w` (sim teleportToStreet, between ticks while the map holds the
+   * sim), the waypoint there is spent, the map closes and the camera cuts to
+   * the car rather than sweeping across the city. Traffic refills the bubble
+   * around it from its spawn ring (sim/traffic.ts recycles the cars left far behind).
+   */
+  private teleport(w: Vec2): void {
+    const r = this.race;
+    if (!this.openWorld || this.isReplay || !teleportToStreet(r, r.cars[0], w.x, w.z)) return;
+    this.curr = r.cars.map((c) => snap(c));
+    this.prev = this.curr;
+    this.wp.set(null);
+    this.waypointArmed = false;
+    this.closeMap();
+    this.cam.snap();
+    const c = r.cars[0].state;
+    toast(`Teleported to ${placeAt(r.world, c.x, c.z).name}`, Zap);
   }
 
   /** Driving up to the waypoint clears it, with a toast. */
