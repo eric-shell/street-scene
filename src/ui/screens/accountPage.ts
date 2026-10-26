@@ -28,24 +28,35 @@ function plateRow(s: Settings, onChange: (s: Settings) => void): HTMLElement {
 }
 
 export function accountPage(s: Settings, onChange: (s: Settings) => void): HTMLElement[] {
-  const root = h('div', { class: 'account' });
+  // The plate stays put between the account's two parts (signed out above it, signed in below it): redrawing
+  // never moves the field, so typing in it (each key saves the settings, which sets the sync state going)
+  // keeps its focus.
+  const above = h('div', { class: 'account__part' });
+  const below = h('div', { class: 'account__part' });
   const plate = plateRow(s, onChange);
+  const root = h('div', { class: 'account' }, above, plate, below);
+  /** What the parts show, so a change that leaves it as it is redraws nothing (Google's button included). */
+  let shown = '';
   const draw = () => {
     const { player, status } = accountState();
+    const now = player ? `${player.id} ${status}` : 'out';
+    if (now === shown) return;
+    shown = now;
     plate.querySelector<HTMLInputElement>('.account__plate')!.placeholder = suggestedPlate(player?.name);
     if (!player) {
-      root.replaceChildren(...signInContent(), plate);
+      above.replaceChildren(...signInContent());
+      below.replaceChildren();
       return;
     }
-    const s = SYNC_STATUS[status];
+    const st = SYNC_STATUS[status];
     const out = btn(LogOut, 'Sign out', () => {
       out.disabled = true;
       void signOut();
     });
-    root.replaceChildren(
-      plate,
+    above.replaceChildren();
+    below.replaceChildren(
       settingRow(player.name || player.email, out, player.email),
-      settingRow('Cloud save', h('span', { class: `account__status is-${status}` }, icon(s.icon, { size: 16 }), s.label)),
+      settingRow('Cloud save', h('span', { class: `account__status is-${status}` }, icon(st.icon, { size: 16 }), st.label)),
       h('p', { class: 'setting-note' }, 'Your garage, plate name and settings follow you to any device you sign in on. Replays and best times stay on this one.'),
     );
   };

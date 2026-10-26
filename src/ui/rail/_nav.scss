@@ -31,6 +31,13 @@
     clip-path: var(--chamfer-sm);
     transition: background var(--t-fast), color var(--t-fast), transform var(--t-med) var(--ease-out);
   }
+  /* Sign in with Google (ui/screens/signIn.ts): Google's G on white, as on Google's own buttons, hovered or not. */
+  &__badge--google {
+    background: #fff;
+  }
+  &__mark {
+    display: grid;
+  }
   /* A face in the badge's place of an icon (a returning player's Sign in, ui/screens/signIn.ts): the whole
      badge, cut with it. */
   &__avatar {
@@ -70,6 +77,9 @@
       color: var(--on-accent);
       background: var(--hue);
       transform: scale(1.06);
+    }
+    .nav-row__badge--google {
+      background: #fff;
     }
     > svg {
       color: var(--hue);

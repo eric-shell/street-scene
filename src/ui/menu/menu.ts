@@ -336,7 +336,7 @@ export function mainMenu(o: MenuOptions): MainMenu {
 
   const home = (): HTMLElement[] => [
     // On a build with accounts, the account above the event card (Sign in, or who is signed in), into Settings on its Account page.
-    ...[accountRow(() => go('settings', true, 'account'), 'menu__account')].filter((r) => r !== null),
+    ...[accountRow(() => go('settings', true, 'account'), 'menu__account', o.builds.length)].filter((r) => r !== null),
     eventCard(),
     h(
       'nav',

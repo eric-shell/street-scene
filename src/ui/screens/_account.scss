@@ -5,6 +5,15 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+  /* The signed-out part over the plate name, or the signed-in part under it (accountPage.ts); the empty one takes no gap. */
+  &__part {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    &:empty {
+      display: none;
+    }
+  }
   /* The plate name, typed onto a plate: the seed's yellow in wide set capitals, as long as the longest name.
      Under the block so it outweighs the kit's input[type='text']. */
   .account__plate {
