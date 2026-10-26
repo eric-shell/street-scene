@@ -10,19 +10,21 @@
  * wardrobe with a cap and gloves, the same per car index. Render only.
  */
 import * as THREE from 'three';
-import { BODY, People, WEAR, standingPose } from './person';
+import { BODY, People, WEAR, plantFeet, standingPose } from './person';
 import type { PersonArm, PersonPose } from './person';
 import { streetLook } from './looks';
 import type { CarPose, CarView } from '../car/carView';
 import type { Disposable } from '../disposer';
 import { clamp } from '../../sim/math';
 
-/** A seat in car space: the hips left of center (+x), their height and distance ahead of the car's center (m), the recline (rad, negative leans back), and the wheel's place when the car's own is worth reaching for (else WHEEL). */
+/** A seat in car space: the hips left of center (+x), their height and distance ahead of the car's center (m), the recline (rad, negative leans back), the footwell (the floor's height and the ankles' distance ahead of the hips, m), and the wheel's place when the car's own is worth reaching for (else WHEEL). */
 interface Seat {
   x: number;
   y: number;
   z: number;
   lean: number;
+  floor: number;
+  feet: number;
   wheel?: { ahead: number; up: number };
 }
 /**
@@ -39,32 +41,35 @@ const WHEEL = { ahead: 0.38, up: 0.28, r: 0.17, tilt: 0.4 } as const;
  * little into the cushion (the pelvis is hidden by it) and a hand's width
  * ahead of the seat back, reclined just enough that the head clears the roof
  * (the character is 1.75 m tall; a car's cabin is a little under 1.2 m
- * inside) without pulling the shoulders out of the wheel's reach. Measured
- * from the shipped GLBs' Interior faces: cushion top and seat back.
+ * inside) without pulling the shoulders out of the wheel's reach. The legs
+ * reach forward to the footwell floor, the heels under the pedals: these
+ * cabins are low (the cushion a hand or two above the floor), so a chair's
+ * hanging shins would put the feet through the floor. The ankles go as far
+ * forward as the dash's underside allows, the knees just under the wheel.
+ * Measured from the shipped GLBs' faces: cushion top, seat back, footwell
+ * floor and dash.
  */
 const SEATS: Record<string, Seat> = {
-  protoHatch: { x: 0.38, y: 0.48, z: -0.28, lean: -0.22 },
+  // The footwell floor (0.22) sits below the cabin floor under the seat (0.29); a pedal block stands at z 0.7.
+  protoHatch: { x: 0.38, y: 0.48, z: -0.28, lean: -0.22, floor: 0.22, feet: 0.82 },
   // The Coupe's wheel is low and well ahead of its seat (the RX-7's long cabin): the driver sits forward to it.
   // Leaning forward lifts the head, and the headliner is only 1.235 m up, so the hips sit low in the cushion
   // (its top is 0.41 m): the cap clears the headliner by 3.5 cm. The wheel stays put in the cabin (z 0.13, y 0.66).
-  protoCoupe: { x: 0.38, y: 0.38, z: -0.4, lean: 0.12, wheel: { ahead: 0.53, up: 0.28 } },
-  protoWagon: { x: 0.38, y: 0.47, z: -0.18, lean: -0.22 },
+  // Its floor (0.29) is barely below the hips, so the legs lie almost flat, reaching long to keep the knees under the low wheel.
+  protoCoupe: { x: 0.38, y: 0.38, z: -0.4, lean: 0.12, floor: 0.29, feet: 0.85, wheel: { ahead: 0.53, up: 0.28 } },
+  // The dash hangs low (0.54 at z 0.8): the toes stop short of it.
+  protoWagon: { x: 0.38, y: 0.47, z: -0.18, lean: -0.22, floor: 0.24, feet: 0.8 },
 };
-const DEFAULT_SEAT: Seat = { x: 0.38, y: 0.47, z: -0.3, lean: -0.22 };
+const DEFAULT_SEAT: Seat = { x: 0.38, y: 0.47, z: -0.3, lean: -0.22, floor: 0.24, feet: 0.8 };
 /** Steer angle (rad) that turns the wheel fully for the hands, and how far round the rim they go there (rad). */
 const FULL_LOCK = 0.5;
 const GRIP_TURN = 1.1;
 
-/** Seated, feet to the pedals; the hips' height and recline come from the seat and the arms are solved to the wheel each frame. */
+/** Seated, feet to the pedals; the hips' height, recline and legs come from the seat and the arms are solved to the wheel each frame. */
 function seatedPose(): PersonPose {
   const p = standingPose();
-  p.hipY = 0;
   p.lean = DEFAULT_SEAT.lean;
   p.headPitch = 0.08;
-  p.legs = [
-    [1.3, 1.25],
-    [1.3, 1.25],
-  ];
   return p;
 }
 
@@ -134,8 +139,11 @@ export class Drivers {
       // The body carries the car's pitch and roll; its world matrix is one frame stale until asked.
       view.body.updateWorldMatrix(true, false);
       const seat = SEATS[view.car.id] ?? DEFAULT_SEAT;
-      this.seat.makeTranslation(seat.x, seat.y, seat.z);
+      // Stood on the footwell floor with the hips raised to the seat, so the feet plant on it.
+      this.seat.makeTranslation(seat.x, seat.floor, seat.z);
       this.root.multiplyMatrices(view.body.matrixWorld, this.seat);
+      p.hipY = seat.y - seat.floor;
+      plantFeet(p, seat.feet, seat.feet);
       p.lean = seat.lean;
       // Reclined, the head would tip back with the spine: bring it level and a little down to the road.
       p.headPitch = 0.08 - seat.lean;
