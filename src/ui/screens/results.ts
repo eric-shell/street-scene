@@ -7,7 +7,7 @@
  * as rows. Styled by _results-screen.scss and _results-card.scss.
  */
 import { btn, h, prefersReducedMotion } from '../kit/dom';
-import { ChevronsRight, MapPinned, Medal, RotateCcw, Route, Share2, Sparkles, Trophy, Video, Wind, Wrench, X, icon, type IconNode } from '../kit/icons';
+import { ChevronsRight, Flag, MapPinned, Medal, RotateCcw, Route, Share2, Sparkles, Trophy, Video, Wind, Wrench, X, icon, type IconNode } from '../kit/icons';
 import { formatTime, ordinal } from '../kit/format';
 import { navRow, railScreen } from '../rail/rail';
 import { Help } from '../panels/help';
@@ -90,6 +90,8 @@ export function resultsScreen(o: {
   styleBest: number;
   newStyleBest: boolean;
   tuned: boolean;
+  /** How this run stands against a challenge link's mark (main.ts challengeResult), or null off one. */
+  challenge?: { beaten: boolean; text: string } | null;
   /** Send this result as a challenge link; no row without it (replays, tuned runs, a city off the event). */
   onChallenge?: () => void;
   onRetry(): void;
@@ -128,6 +130,7 @@ export function resultsScreen(o: {
       h('span', { class: 'results-card__score' }, headline),
       o.newBest && h('span', { class: 'results-screen__badge' }, icon(Sparkles, { size: 14 }), 'New best'),
     ),
+    o.challenge && h('p', { class: `results-card__challenge${o.challenge.beaten ? ' is-beaten' : ''}` }, icon(o.challenge.beaten ? Trophy : Flag, { size: 16 }), o.challenge.text),
     o.tuned && h('p', { class: 'results-card__note' }, 'Dev tuning was changed during this run, so it was not saved.'),
     !drift && h('div', { class: 'results-card__standings' }, table),
     retry,

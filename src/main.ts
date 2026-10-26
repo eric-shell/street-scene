@@ -813,6 +813,7 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
         styleBest,
         newStyleBest,
         tuned,
+        challenge: replay ? null : challengeResult(race.config.seed, race.config.mode, me.time, race.drift.total),
         // A live, untuned run on the event's city can be sent on: the link opens the same race on the same streets.
         onChallenge: FEATURES.challenges && !replay && !tuned && race.config.seed === seedFromString(seedStr) ? () => void challenge(race.config.mode, me.time, race.drift.total) : undefined,
         onRetry: () =>
@@ -869,6 +870,21 @@ async function challenge(mode: RaceMode, time: number, score: number): Promise<v
   } catch {
     toast('The clipboard is blocked here', Info);
   }
+}
+
+/** The mark a challenge link set (s, or drift points) on its race: every finish of that race is held against it this visit. */
+let challengeMark: { seed: number; mode: RaceMode; mark: number } | null = null;
+
+/** How a finish stands against the challenge's mark, for the results card; null off the challenged race. */
+function challengeResult(seed: number, mode: RaceMode, time: number, score: number): { beaten: boolean; text: string } | null {
+  if (!challengeMark || challengeMark.seed !== seed || challengeMark.mode !== mode) return null;
+  const { mark } = challengeMark;
+  if (mode === 'drift') {
+    const gap = Math.round(Math.abs(score - mark)).toLocaleString();
+    return score > mark ? { beaten: true, text: `Challenge beaten by ${gap} pts` } : { beaten: false, text: `${gap} pts short of the challenge’s ${resultText(mode, mark)}` };
+  }
+  const gap = `${Math.abs(time - mark).toFixed(2)} s`;
+  return time < mark ? { beaten: true, text: `Challenge beaten by ${gap}` } : { beaten: false, text: `${gap} short of the challenge’s ${resultText(mode, mark)}` };
 }
 
 /** True until the first race on this device: that one opens the keys panel as the countdown starts. */
@@ -1100,6 +1116,7 @@ async function boot(): Promise<void> {
   // A challenge link (results' Challenge a friend): the mark to beat, once.
   const beat = Number(params.get('beat'));
   if (directMode && beat > 0) {
+    challengeMark = { seed: seedFromString(seedStr), mode: directMode, mark: beat };
     notice = () => toast(`Challenge: beat ${resultText(directMode, beat)}`, Trophy);
     const u = new URL(location.href);
     u.searchParams.delete('beat');

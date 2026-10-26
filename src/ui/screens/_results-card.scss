@@ -67,6 +67,25 @@
       animation: results-title-strike 0.6s var(--ease-out) 0.25s both;
     }
   }
+  /* A challenge link's verdict: green and a trophy when beaten, the muted gap when not. */
+  &__challenge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    font: 700 14px var(--font);
+    color: var(--soft);
+    > svg {
+      flex: none;
+      color: var(--muted);
+    }
+    &.is-beaten {
+      color: var(--green);
+      > svg {
+        color: var(--green);
+      }
+    }
+  }
   &__note {
     margin: 0;
     font-size: 13px;
