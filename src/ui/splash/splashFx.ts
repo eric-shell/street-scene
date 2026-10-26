@@ -962,7 +962,9 @@ export function startSplashFx(canvas: HTMLCanvasElement, layout: SplashFxLayout)
 
     // Nitrous: the frame's edges burn in, climbing cyan, purple, then red, as in a race's warp (render/post.ts).
     if (warping) {
-      const k = (t - warpAt) / FX.warpStage;
+      // Clamped: warpAt is stamped with performance.now(), but the frame's t is its rAF timestamp (when the frame
+      // began), which can fall just before it; a negative k would floor to stage -1 and an undefined color.
+      const k = Math.max(0, (t - warpAt) / FX.warpStage);
       const stage = Math.min(2, Math.floor(k));
       const a = Math.min(1, k * 1.5);
       const r = Math.hypot(W, H) / 2;
