@@ -18,7 +18,7 @@ import { circlePolygon } from '../../city/districts/geom';
 import type { Vec2 } from '../../sim/math';
 import type { GeoBuilder } from '../geoBuilder';
 import type { DistrictKit, DistrictRenderer } from './kit';
-import { col, cylinder, groundLine, groundVertex, prism } from './kit';
+import { col, cylinder, fountainBasin, groundLine, groundVertex, prism, ringWall } from './kit';
 import { tree } from './trees';
 
 /** Pieces around an island (vertices per ring of the draped ground, of a curb or basin wall). */
@@ -29,34 +29,6 @@ const RING_STEP = 1.2;
 const STUD_SPACING = 3;
 /** Cobble path pieces (m) so the paint follows the garden's rise. */
 const PATH_PIECE = 1.5;
-
-/**
- * Ring wall of radius r around (x, z): its foot `sink` below the ground at
- * every vertex, its top at top(groundY) (a level basin rim or a draped curb),
- * capped with a flat rim `rim` wide on the inside.
- */
-function ringWall(kit: DistrictKit, gb: GeoBuilder, x: number, z: number, r: number, sink: number, top: (y: number) => number, rim: number, color: THREE.Color): void {
-  const foot: number[] = [];
-  const head: number[] = [];
-  const inner: number[] = [];
-  for (let i = 0; i <= SEGS; i++) {
-    const a = (i / SEGS) * Math.PI * 2;
-    const c = Math.cos(a);
-    const s = Math.sin(a);
-    const px = x + c * r;
-    const pz = z + s * r;
-    const y = kit.h(px, pz);
-    const t = top(y);
-    foot.push(gb.vertex(px, y - sink, pz, c, 0, s, i / SEGS, 0, color));
-    head.push(gb.vertex(px, t, pz, c, 0, s, i / SEGS, 1, color));
-    inner.push(gb.vertex(x + c * (r - rim), t, z + s * (r - rim), 0, 1, 0, i / SEGS, 1, color));
-  }
-  for (let i = 0; i < SEGS; i++) {
-    const a = ((i + 0.5) / SEGS) * Math.PI * 2;
-    gb.quadFacing(foot[i], foot[i + 1], head[i + 1], head[i], Math.cos(a), 0, Math.sin(a));
-    gb.quadFacing(head[i], head[i + 1], inner[i + 1], inner[i], 0, 1, 0);
-  }
-}
 
 /**
  * Ground draped over the island's profile between two radii: vertices on
@@ -157,14 +129,8 @@ export const roundaboutRenderer: DistrictRenderer = {
       // Solid pieces: trunks, the basin, the centrepiece.
       for (const p of b.props) {
         if (p.kind === 'tree') tree(kit, p.x, p.z, p.size, p.height, { conifer: 0.1 });
-        else if (p.kind === 'basin') {
-          // A level basin rim standing 0.85 m over the floor, blue water glowing just under it, a small jet.
-          const T = kit.h(p.x, p.z) + p.height;
-          ringWall(kit, kit.solid, p.x, p.z, p.size, 0.3, () => T, 0.45, col(0x6f717c));
-          cylinder(kit.glow, p.x, p.z, p.size - 0.45, T - 0.17, T - 0.15, 24, col(0x2a6cff, 0.8));
-          cylinder(kit.solid, p.x, p.z, 0.3, T - 0.3, T + 0.7, 8, col(0x8a8c96), true, 0.42);
-          cylinder(kit.glow, p.x, p.z, 0.14, T + 0.7, T + 2.1, 6, col(0x9fd0ff, 1.4), true, 0.04);
-        } else if (p.kind === 'sculpture' || p.kind === 'urn') centrepiece(kit, p.kind, p.x, p.z, p.size, p.height);
+        else if (p.kind === 'basin') fountainBasin(kit, p.x, p.z, p.size, p.height);
+        else if (p.kind === 'sculpture' || p.kind === 'urn') centrepiece(kit, p.kind, p.x, p.z, p.size, p.height);
       }
     }
   },

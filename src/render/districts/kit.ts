@@ -242,6 +242,50 @@ export function cylinder(gb: GeoBuilder, x: number, z: number, r: number, y0: nu
   for (let i = 0; i < n; i++) gb.triFacing(c, top[i], top[(i + 1) % n], 0, 1, 0);
 }
 
+/**
+ * Ring wall of radius r around (x, z) in `segs` pieces: its foot `sink` below the ground at every vertex,
+ * its top at top(groundY) (a level basin rim or a draped curb), capped with a flat rim `rim` wide inside.
+ */
+export function ringWall(kit: DistrictKit, gb: GeoBuilder, x: number, z: number, r: number, sink: number, top: (y: number) => number, rim: number, color: THREE.Color, segs = 40): void {
+  const foot: number[] = [];
+  const head: number[] = [];
+  const inner: number[] = [];
+  for (let i = 0; i <= segs; i++) {
+    const a = (i / segs) * Math.PI * 2;
+    const c = Math.cos(a);
+    const s = Math.sin(a);
+    const px = x + c * r;
+    const pz = z + s * r;
+    const y = kit.h(px, pz);
+    const t = top(y);
+    foot.push(gb.vertex(px, y - sink, pz, c, 0, s, i / segs, 0, color));
+    head.push(gb.vertex(px, t, pz, c, 0, s, i / segs, 1, color));
+    inner.push(gb.vertex(x + c * (r - rim), t, z + s * (r - rim), 0, 1, 0, i / segs, 1, color));
+  }
+  for (let i = 0; i < segs; i++) {
+    const a = ((i + 0.5) / segs) * Math.PI * 2;
+    gb.quadFacing(foot[i], foot[i + 1], head[i + 1], head[i], Math.cos(a), 0, Math.sin(a));
+    gb.quadFacing(head[i], head[i + 1], inner[i + 1], inner[i], 0, 1, 0);
+  }
+}
+
+/**
+ * A fountain on a solid basin of radius r (the sim's ring wall): a level stone rim `height` m over the
+ * ground, blue water glowing just under it, a pedestal and a lit jet. The roundabout plaza's and every
+ * plaza's in the infill, so the city's fountains are one kind.
+ */
+export function fountainBasin(kit: DistrictKit, x: number, z: number, r: number, height: number): void {
+  const T = kit.h(x, z) + height;
+  ringWall(kit, kit.solid, x, z, r, 0.3, () => T, Math.min(0.45, r * 0.3), BASIN_STONE, r < 2.5 ? 20 : 40);
+  cylinder(kit.glow, x, z, r - Math.min(0.45, r * 0.3), T - 0.17, T - 0.15, r < 2.5 ? 16 : 24, BASIN_WATER);
+  cylinder(kit.solid, x, z, 0.3, T - 0.3, T + 0.7, 8, BASIN_PEDESTAL, true, 0.42);
+  cylinder(kit.glow, x, z, 0.14, T + 0.7, T + 0.7 + Math.min(1.4, r * 0.6), 6, BASIN_JET, true, 0.04);
+}
+const BASIN_STONE = col(0x6f717c);
+const BASIN_WATER = col(0x2a6cff, 0.8);
+const BASIN_PEDESTAL = col(0x8a8c96);
+const BASIN_JET = col(0x9fd0ff, 1.4);
+
 /** Flat strip on the ground from a to b (paint lines). */
 export function groundLine(kit: DistrictKit, gb: GeoBuilder, a: Vec2, b: Vec2, width: number, lift: number, color: THREE.Color): void {
   const len = Math.hypot(b.x - a.x, b.z - a.z);

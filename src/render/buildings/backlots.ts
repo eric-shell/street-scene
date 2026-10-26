@@ -16,7 +16,8 @@
  * plaza, alley, ramp, deck or right of way of any district), outside every
  * district exclusion and opening, BACK m behind the block's frontage (the
  * wall line every car meets first), CLEAR m from any wall the sim has and
- * GAP m from every street building. The block is packed greedily with
+ * GAP m from every street building (and off the hilltop lookout's terrace,
+ * hillLookout.ts). The block is packed greedily with
  * rectangles on a grid in its own frame (along its longest side), every
  * choice from a seeded stream, so the menu city and the race draw the same
  * backlots.
@@ -30,6 +31,7 @@ import { Rng, deriveSeed } from '../../sim/prng';
 import type { Vec2 } from '../../sim/math';
 import type { BuildingPlan, Region } from './architecture';
 import { styleFor } from './architecture';
+import { cityWallClearance, lookoutSite } from '../districts/hillLookout';
 
 const BACKLOT = {
   /** Grid cell of the packing (m). */
@@ -107,14 +109,19 @@ export function planBacklots(world: World, streetPlans: readonly BuildingPlan[])
     for (const p of b.openings) if (p.length >= 3) keepOut.add({ polygon: p });
   }
 
+  // The hilltop lookout's terrace (render/districts/hillLookout.ts) stays clear; walls are the city's own
+  // (the menu city and every race on it get the same backlots).
+  const lookout = lookoutSite(world);
+  const clearance = cityWallClearance(world);
   /** Whether a point may carry a backlot: plain block ground, inside the block, away from everything a car meets. */
   const free = (ring: Vec2[], x: number, z: number): boolean => {
     if (!pointInPolygon(x, z, ring) || distToPolygonEdge(x, z, ring) < BACKLOT.back) return false;
+    if (lookout && Math.hypot(x - lookout.x, z - lookout.z) < lookout.r + 3) return false;
     const a = world.areaAt(x, z);
     if (!a || (a.kind !== 'downtown' && a.kind !== 'hills')) return false;
     if (keepOut.first(x, z)) return false;
     if (built(x, z, BACKLOT.gap)) return false;
-    return world.wallClearance(x, z, BACKLOT.clear + 0.5) >= BACKLOT.clear;
+    return clearance(x, z, BACKLOT.clear + 0.5) >= BACKLOT.clear;
   };
 
   const faces = world.areas.filter((a) => a.kind === 'downtown' || a.kind === 'hills').flatMap((a) => a.faces);
