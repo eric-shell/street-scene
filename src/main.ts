@@ -40,7 +40,9 @@ import { railInset } from './ui/rail/rail';
 import { mainMenu, type MainMenu, type MenuStep } from './ui/menu/menu';
 import { showSplash } from './ui/splash/splash';
 import { toast } from './ui/kit/dom';
-import { Check, Info, Shuffle } from './ui/kit/icons';
+import { Check, Info, Share2, Shuffle, Trophy } from './ui/kit/icons';
+import { formatTime } from './ui/kit/format';
+import { showFatal } from './ui/screens/fatal';
 import { courseFor, openFullMap, type FullMap, type WaypointStore } from './ui/map/fullMap';
 import type { Vec2 } from './sim/math';
 import { door, shift, transitioning, wipe, type NitroSource, type WipeCard } from './ui/transitions/transitions';
@@ -60,11 +62,15 @@ import { styleTotal } from './ui/hud/boostCallouts';
 import { accountReady } from './account/account';
 import { beginDrive, driveFrame, endDrive, setQualityReader } from './analytics/drive';
 import { initAnalytics, track } from './analytics/telemetry';
+import { installErrorReporting, reportError } from './analytics/errors';
+import { loadText, saveText } from './shared/store';
 
 type State = 'menu' | 'race' | 'garage' | 'freefly' | 'drone';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const uiRoot = document.getElementById('ui') as HTMLElement;
+// From the first line, so a crash anywhere in boot is reported (once analytics is up) rather than a silent black page.
+installErrorReporting(() => state);
 // A signed-in player's newest save (from another device) lands in local storage before anything reads it.
 await accountReady;
 const settings: Settings = loadSettings();
@@ -77,7 +83,29 @@ if (qp === 'low' || qp === 'medium' || qp === 'high') {
   settings.quality = qp;
   settings.autoQuality = false;
 } else if (qp === 'auto') settings.autoQuality = true;
-const gr = new GameRenderer(canvas, settings);
+const gr = await startRenderer();
+// The GPU can take the context back (low memory, a phone's long background stint). three.js would carry on drawing
+// nothing over lost textures and targets, so say so and offer the reload instead of a frozen frame.
+canvas.addEventListener('webglcontextlost', () => {
+  reportError('context_lost', 'WebGL context lost');
+  showFatal('context');
+  loop.stop();
+});
+
+/**
+ * The renderer, or the can't-draw card when this browser has no WebGL (three.js throws creating the context). The
+ * boot stops there for good: the returned promise never settles, so nothing after it runs without a renderer.
+ */
+async function startRenderer(): Promise<GameRenderer> {
+  try {
+    return new GameRenderer(canvas, settings);
+  } catch (err) {
+    initAnalytics(null);
+    reportError('webgl', err);
+    showFatal('webgl');
+    return new Promise(() => {});
+  }
+}
 
 // Auto graphics: start from this device's last good level, else a heuristic guess.
 const device = readDeviceInfo(gr.renderer.getContext());
@@ -687,6 +715,7 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
     // Free roam steers to the city's waypoint, which the menu's map may already have set.
     waypoint: kind === 'roam' ? waypointFor(config.seed) : undefined,
     seedText: config.seed === seedFromString(seedStr) ? seedStr : undefined,
+    firstRunHelp: kind === 'race' && !replay && firstRace(),
     ...extra,
     onQuit: wipeToMenu,
     onPause: togglePause,
@@ -777,6 +806,8 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
         styleBest,
         newStyleBest,
         tuned,
+        // A live, untuned run on the event's city can be sent on: the link opens the same race on the same streets.
+        onChallenge: !replay && !tuned && race.config.seed === seedFromString(seedStr) ? () => void challenge(race.config.mode, me.time, race.drift.total) : undefined,
         onRetry: () =>
           void wipe({ kicker: race.world.event?.name, title: 'Retry', sub: MODE_NAME[race.config.mode] }, () =>
             replay ? startReplay(replay) : runSession({ ...race.config, aiSeed: rivalSeed() }, visuals, null, race.config.opponents.length ? null : loadGhost(race.config.seed, race.config.mode), 'race'),
@@ -795,6 +826,51 @@ let pauseScreen: PauseScreen | null = null;
 const MODE_NAME: Record<RaceMode, string> = { circuit: 'Circuit', sprint: 'Sprint', drag: 'Drag', waypoint: 'Waypoint', drift: 'Drift' };
 /** Every race mode, for ?race=<mode> deep links. */
 const RACE_MODES = Object.keys(MODE_NAME) as RaceMode[];
+
+/** A race result as a challenge to beat: a time, or a drift's points. */
+function resultText(mode: RaceMode, beat: number): string {
+  return mode === 'drift' ? `${Math.round(beat).toLocaleString()} pts` : formatTime(beat);
+}
+
+/**
+ * Send this result as a link that drops a friend into the same race on the same city (`?seed=&race=`), with the
+ * mark to beat (`beat`, s or drift points) and `utm_source=challenge` so the arrivals show on the dashboard. The
+ * share sheet on touch screens, the clipboard elsewhere.
+ */
+async function challenge(mode: RaceMode, time: number, score: number): Promise<void> {
+  const beat = mode === 'drift' ? Math.round(score) : Math.round(time * 1000) / 1000;
+  const u = new URL(location.origin + location.pathname);
+  u.searchParams.set('seed', seedStr);
+  u.searchParams.set('race', mode);
+  u.searchParams.set('beat', String(beat));
+  u.searchParams.set('utm_source', 'challenge');
+  const text = `Beat my ${resultText(mode, beat)} ${MODE_NAME[mode].toLowerCase()} in Street Scene`;
+  const seed = seedFromString(seedStr);
+  if (typeof navigator.share === 'function' && matchMedia('(pointer: coarse)').matches) {
+    try {
+      await navigator.share({ title: 'Street Scene', text, url: u.toString() });
+      track('race_share', { mode, seed, via: 'share' });
+    } catch {
+      /* the sheet was dismissed */
+    }
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(`${text}: ${u}`);
+    track('race_share', { mode, seed, via: 'copy' });
+    toast('Challenge link copied', Share2);
+  } catch {
+    toast('The clipboard is blocked here', Info);
+  }
+}
+
+/** True until the first race on this device: that one opens the keys panel as the countdown starts. */
+function firstRace(): boolean {
+  // Touch screens skip it (their controls are on screen), and so do the e2e runs, whose every profile is new.
+  if (loadText('seenControls') || matchMedia('(hover: none)').matches || navigator.webdriver) return false;
+  saveText('seenControls', '1');
+  return true;
+}
 
 /**
  * What the pause screen's ticket says is paused: the event, the type in its
@@ -1014,6 +1090,14 @@ async function boot(): Promise<void> {
     history.replaceState(null, '', u);
   }
   loading?.remove();
+  // A challenge link (results' Challenge a friend): the mark to beat, once.
+  const beat = Number(params.get('beat'));
+  if (directMode && beat > 0) {
+    notice = () => toast(`Challenge: beat ${resultText(directMode, beat)}`, Trophy);
+    const u = new URL(location.href);
+    u.searchParams.delete('beat');
+    history.replaceState(null, '', u);
+  }
   if (directMode) startRace(directMode);
   else if (params.has('garage')) void openGarage(false);
   else if (params.has('drone')) startDrone();

@@ -79,14 +79,18 @@ create index if not exists page_views_visitor_idx on page_views (visitor_id, cre
 create index if not exists page_views_session_idx on page_views (session_id);
 
 -- The game's events: src/shared/analytics.ts is the vocabulary and each type's metadata. Widening the list
--- means dropping and re-adding this constraint on a live database (create table if not exists leaves it).
+-- means editing both checks below: create table if not exists leaves a live table's check alone, so the
+-- drop and re-add after it carries the new list to an existing database (npm run db:init).
 create table if not exists visitor_events (
   id         bigserial primary key,
   visitor_id uuid not null references visitors(id) on delete cascade,
   session_id uuid references visitor_sessions(id) on delete set null,
-  type       text not null check (type in ('race_start', 'race_finish', 'race_quit', 'garage_open', 'build_save', 'build_share', 'build_import', 'sign_in', 'sign_out', 'perf')),
+  type       text not null check (type in ('race_start', 'race_finish', 'race_quit', 'garage_open', 'build_save', 'build_share', 'build_import', 'sign_in', 'sign_out', 'perf', 'race_share', 'error')),
   metadata   jsonb,
   created_at timestamptz not null default now()
 );
+alter table visitor_events drop constraint if exists visitor_events_type_check;
+alter table visitor_events add constraint visitor_events_type_check
+  check (type in ('race_start', 'race_finish', 'race_quit', 'garage_open', 'build_save', 'build_share', 'build_import', 'sign_in', 'sign_out', 'perf', 'race_share', 'error'));
 create index if not exists visitor_events_visitor_created_idx on visitor_events (visitor_id, created_at desc);
 create index if not exists visitor_events_type_created_idx on visitor_events (type, created_at desc);

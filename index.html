@@ -9,6 +9,13 @@
     <link rel="canonical" href="https://street-scene.vercel.app/" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- Add to Home Screen opens the game full screen, with no browser bars over the HUD. Its start_url tags those
+         launches utm_source=homescreen for the dashboard. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Street Scene" />
     <!-- Link previews (iMessage, Slack, Discord, X, LinkedIn, Facebook). Crawlers don't run JS, so these must be static
          and absolute. street-scene-card.jpg is the race intro's opening drone shot (seed rain39, a rain night) under the nitrous warp, with start fireworks at 1200x630 with the title; a new image gets a new name, since previews cache by URL. -->
     <meta property="og:type" content="website" />
@@ -49,6 +56,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,slnt,wght@6..144,-10..0,100..1000&display=swap" rel="stylesheet" />
   </head>
   <body>
+    <noscript>
+      <p style="margin: 0; padding: 40vh 16px 0; min-height: 100vh; box-sizing: border-box; text-align: center; font: 600 16px/1.5 system-ui, sans-serif; color: #fcfcfa; background: #19181a">Street Scene is a 3D racing game and needs JavaScript. Turn it on for this site and reload.</p>
+    </noscript>
     <canvas id="game"></canvas>
     <div id="ui"></div>
     <script type="module" src="/src/main.ts"></script>

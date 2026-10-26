@@ -117,6 +117,8 @@ export interface SessionOptions {
   seedText?: string;
   /** A world already built for this config (same seed, route kind and open world flag): createRace reuses it instead of building one. */
   world?: World;
+  /** The player's first race on this device: the keys panel opens as the countdown starts, and the countdown waits under it. */
+  firstRunHelp?: boolean;
   /**
    * Free roam taken over from the menu (main.ts): the session drives in the
    * street stage's own scene, borrowed with stage.lend() and given back on
@@ -437,7 +439,7 @@ export class RaceSession {
     if (this.cine.phase === 'intro') {
       if (this.preRoll > 0) {
         this.preRoll = 0;
-        this.input.setTouchVisible(true);
+        this.introDone();
       }
       this.cine.skip();
     } else if (this.finishedAt >= 0 && !this.resultsShown) this.skipFinish = true;
@@ -471,6 +473,12 @@ export class RaceSession {
       event: world.event?.name,
       seed: this.opts.seedText ?? String(this.opts.config.seed),
     });
+  }
+
+  /** The intro shot is over and the countdown starts: touch controls back, and a first race's keys panel. */
+  private introDone(): void {
+    this.input.setTouchVisible(true);
+    if (this.opts.firstRunHelp && !this.isReplay) this.help.show();
   }
 
   /** The drive (or the race) pauses under the help panel, as under the map (keys there never reach the car). */
@@ -614,7 +622,7 @@ export class RaceSession {
     const r = this.race;
     if (this.preRoll > 0) {
       // Pre-countdown intro shot: hold the sim (and ghost) at tick 0.
-      if (--this.preRoll === 0) this.input.setTouchVisible(true);
+      if (--this.preRoll === 0) this.introDone();
       return;
     }
     let frame = NEUTRAL_INPUT;

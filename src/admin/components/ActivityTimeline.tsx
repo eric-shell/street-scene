@@ -10,12 +10,13 @@
  * frame rates across visits.
  */
 import type { ReactNode } from 'react';
-import { CircleUser, Download, Eye, Flag, Gauge, LogOut, Save, Share2, Tag, Trophy, Warehouse, X, type IconNode } from 'lucide';
+import { CircleUser, Download, Eye, Flag, Gauge, LogOut, Save, Share2, Tag, TriangleAlert, Trophy, Warehouse, X, type IconNode } from 'lucide';
 import type { PageView, VisitorEvent, VisitorSession } from '../../../api/_lib/adminTypes';
 import { FpsBadge } from '../charts/FrameRate';
 import { formatClock, formatDuration, formatLong, formatRaceTime, ordinal } from '../lib/dateFormat';
 import { MODES, TIER_LABEL, carName, isMode, modeLabel } from '../lib/gameVocab';
 import { Icon } from './Icon';
+import type { ErrorMeta } from '../../shared/analytics';
 
 /** A race type as the game's chip: its icon and name in its color (base/_tokens.scss .mode-*, kit chip--mode). */
 function ModeChip({ mode }: { mode: string }) {
@@ -30,6 +31,8 @@ function ModeChip({ mode }: { mode: string }) {
 const QUIT_REASON = { quit: 'quit from pause', restart: 'restarted', pagehide: 'closed the page' } as const;
 
 /** One event as a timeline line: its icon, what happened and the details that matter for its type. */
+const ERROR_KIND: Record<ErrorMeta['kind'], string> = { error: 'Error', rejection: 'Unhandled rejection', webgl: 'No WebGL', context_lost: 'Graphics reset' };
+
 function describe(e: VisitorEvent): { icon: IconNode; tone?: 'good' | 'bad'; body: ReactNode } {
   switch (e.type) {
     case 'race_start': {
@@ -94,6 +97,22 @@ function describe(e: VisitorEvent): { icon: IconNode; tone?: 'good' | 'bad'; bod
       return { icon: CircleUser, tone: 'good', body: <>Signed in{e.metadata.newAccount ? ', a new account' : ''}</> };
     case 'sign_out':
       return { icon: LogOut, body: <>Signed out</> };
+    case 'race_share':
+      return { icon: Share2, tone: 'good', body: <>Sent a <ModeChip mode={e.metadata.mode} /> challenge<span className="timeline-entry__dim"> · {e.metadata.via === 'share' ? 'share sheet' : 'copied link'}</span></> };
+    case 'error': {
+      const m = e.metadata;
+      return {
+        icon: TriangleAlert,
+        tone: 'bad',
+        body: (
+          <>
+            <strong>{ERROR_KIND[m.kind]}</strong> {m.message}
+            {m.screen ? <span className="timeline-entry__dim"> · on the {m.screen}</span> : null}
+            {m.stack ? <pre className="timeline-entry__stack">{m.stack}</pre> : null}
+          </>
+        ),
+      };
+    }
     case 'perf': {
       const m = e.metadata;
       return {

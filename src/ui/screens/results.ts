@@ -7,7 +7,7 @@
  * as rows. Styled by _results-screen.scss and _results-card.scss.
  */
 import { btn, h, prefersReducedMotion } from '../kit/dom';
-import { ChevronsRight, MapPinned, Medal, RotateCcw, Route, Sparkles, Trophy, Video, Wind, Wrench, X, icon, type IconNode } from '../kit/icons';
+import { ChevronsRight, MapPinned, Medal, RotateCcw, Route, Share2, Sparkles, Trophy, Video, Wind, Wrench, X, icon, type IconNode } from '../kit/icons';
 import { formatTime, ordinal } from '../kit/format';
 import { navRow, railScreen } from '../rail/rail';
 import { Help } from '../panels/help';
@@ -90,6 +90,8 @@ export function resultsScreen(o: {
   styleBest: number;
   newStyleBest: boolean;
   tuned: boolean;
+  /** Send this result as a challenge link; no row without it (replays, tuned runs, a city off the event). */
+  onChallenge?: () => void;
   onRetry(): void;
   onReplay(): void;
   onGarage(): void;
@@ -141,6 +143,7 @@ export function resultsScreen(o: {
         'nav',
         { class: 'nav-list', 'aria-label': 'What next' },
         signInRow(() => openSignInDialog(root)),
+        o.onChallenge && navRow(Share2, 'Challenge a friend', 'Send a link to beat this', 'green', o.onChallenge),
         navRow(Video, 'Replay', 'Watch the run again', 'cyan', o.onReplay),
         navRow(Wrench, 'Garage', 'Tune or change the car', 'orange', o.onGarage),
         navRow(X, 'Menu', 'Back to the event', 'red', o.onMenu),

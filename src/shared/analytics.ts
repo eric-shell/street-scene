@@ -110,6 +110,28 @@ export interface PerfMeta {
   frames: number;
 }
 
+/** A race result was sent as a challenge link (results screen): `?seed=&race=&beat=` tagged `utm_source=challenge`. */
+export interface RaceShareMeta {
+  mode: RaceType;
+  seed: number;
+  /** The native share sheet (touch screens) or the clipboard. */
+  via: 'share' | 'copy';
+}
+
+/**
+ * Something broke in the player's browser: an uncaught error or rejection (analytics/errors.ts), no WebGL at boot,
+ * or the GPU dropping the context mid game. A handful per page at most, each message once.
+ */
+export interface ErrorMeta {
+  kind: 'error' | 'rejection' | 'webgl' | 'context_lost';
+  /** The error's message, cut to 300 characters. */
+  message: string;
+  /** The top few stack frames with the page's origin stripped, cut to 600 characters. */
+  stack?: string;
+  /** The screen it happened on (main.ts's state: menu, race, garage, drone, freefly). */
+  screen?: string;
+}
+
 /** Every event type and its metadata. */
 export interface EventMetaMap {
   race_start: RaceStartMeta;
@@ -122,12 +144,14 @@ export interface EventMetaMap {
   sign_in: SignInMeta;
   sign_out: SignOutMeta;
   perf: PerfMeta;
+  race_share: RaceShareMeta;
+  error: ErrorMeta;
 }
 
 export type EventType = keyof EventMetaMap;
 
 /** In the order of db/schema.sql's check constraint; keep the two in step. */
-export const EVENT_TYPES: readonly EventType[] = ['race_start', 'race_finish', 'race_quit', 'garage_open', 'build_save', 'build_share', 'build_import', 'sign_in', 'sign_out', 'perf'];
+export const EVENT_TYPES: readonly EventType[] = ['race_start', 'race_finish', 'race_quit', 'garage_open', 'build_save', 'build_share', 'build_import', 'sign_in', 'sign_out', 'perf', 'race_share', 'error'];
 
 export function isEventType(v: unknown): v is EventType {
   return typeof v === 'string' && (EVENT_TYPES as readonly string[]).includes(v);

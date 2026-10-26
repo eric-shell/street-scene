@@ -123,6 +123,14 @@
     color: var(--accent-2);
     font-weight: 700;
   }
+  /* An error event's top frames, under its message. */
+  &__stack {
+    margin: 4px 0 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font: 500 11px/16px ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    color: var(--muted);
+  }
   &__path {
     font: 600 12px/20px ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
     color: var(--soft);
