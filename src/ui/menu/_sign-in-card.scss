@@ -1,0 +1,54 @@
+/* The sign-in prompt over home's event card (signInCard.ts): why on the left, Google's button (its own iframe,
+   sized by Google) and Not now on the right, a sign-in error under them. One row on a wide column; narrow
+   ones put the button under the text; short screens (as the event card's) keep only the title beside it. */
+@use '../styles/abstracts/mixins';
+.sign-in-card {
+  @include mixins.chamfer(12px);
+  @include mixins.plate((var(--card-top), var(--plate)));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 8px 10px 16px;
+  @media (max-height: 780px) {
+    padding-block: 6px;
+  }
+  &__text {
+    flex: 1 1 180px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  &__title {
+    font: 800 12px var(--font);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  &__body {
+    font-size: 13px;
+    line-height: 1.35;
+    color: var(--soft);
+    @media (max-height: 780px) {
+      display: none;
+    }
+  }
+  /* Holds the button's height while Google's script loads, so home does not jump. */
+  &__google {
+    flex: none;
+    min-height: 32px;
+  }
+  &__close {
+    flex: none;
+  }
+  &__error {
+    flex-basis: 100%;
+    margin: 0;
+    font-size: 13px;
+    color: var(--red);
+    &:empty {
+      display: none;
+    }
+  }
+}

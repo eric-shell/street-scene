@@ -8,6 +8,7 @@ Signed-in testers get their garage, garage prefs and settings (minus this device
 - `db/schema.sql`: one table, `players` (Google `sub`, email, name, the save as JSONB, stamps). `npm run db:init` applies it.
 - `src/account/account.ts`: session state, the sync rule, Google's button. `cloudSave.ts`: which store keys sync and how a download merges. `main.ts` awaits `accountReady` before reading saved state (only signed-in players wait, 3 s at most).
 - `src/ui/screens/accountPage.ts`: the Settings → Account tab, shown only when the build has a client id.
+- `src/ui/menu/signInCard.ts`: the sign-in prompt at the top of the menu's home step for signed-out players (the splash takes no input, so this is the first place to act); Not now hides it until the next page load.
 - `scripts/apiDev.ts`: serves `api/` from `npm run dev`, with `.env.local` in `process.env`.
 
 ## Free tier budget

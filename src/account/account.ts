@@ -184,7 +184,7 @@ let gis: Promise<Gis> | null = null;
 /** Where the current button reports a failed sign-in. */
 let reportError: (message: string) => void = () => undefined;
 
-/** Loads Google's script once (on the first Account page visit, so signed-out boots never fetch it). */
+/** Loads Google's script once, when the first Sign in button is drawn. */
 function loadGis(): Promise<Gis> {
   gis ??= new Promise<Gis>((resolve, reject) => {
     const s = document.createElement('script');
@@ -205,11 +205,11 @@ function loadGis(): Promise<Gis> {
   return gis;
 }
 
-/** Draws Google's Sign in button into `el`; a failed sign-in (or the script not loading) goes to `onError`. */
-export function renderGoogleButton(el: HTMLElement, onError: (message: string) => void): void {
+/** Draws Google's Sign in button into `el` (`size` large, 40 px, or medium, 32 px); a failed sign-in (or the script not loading) goes to `onError`. */
+export function renderGoogleButton(el: HTMLElement, onError: (message: string) => void, size: 'large' | 'medium' = 'large'): void {
   reportError = onError;
   loadGis().then(
-    (g) => g.accounts.id.renderButton(el, { type: 'standard', theme: 'filled_black', size: 'large', shape: 'rectangular', text: 'signin_with', width: 260 }),
+    (g) => g.accounts.id.renderButton(el, { type: 'standard', theme: 'filled_black', size, shape: 'rectangular', text: 'signin_with', width: size === 'large' ? 260 : 200 }),
     (e: Error) => onError(e.message),
   );
 }

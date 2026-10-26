@@ -72,6 +72,7 @@ import { formatTime } from '../kit/format';
 import { roadDistance } from '../kit/units';
 import { CityOverview, CourseMap, courseRoute, type CourseRoutes, type MapPose } from './menuMaps';
 import { courseBest, courseFacts, raceTicket } from './raceTicket';
+import { signInCard } from './signInCard';
 import { KINDS, layersOf } from '../map/cityMap';
 import { DRAG_OPPONENTS, MAX_OPPONENTS, type RaceMode } from '../../sim/race';
 import { driftZones } from '../../sim/driftZones';
@@ -344,6 +345,8 @@ export function mainMenu(o: MenuOptions): MainMenu {
   };
 
   const home = (): HTMLElement[] => [
+    // Signed out on a build with accounts: the sign-in prompt first.
+    ...signInCard(),
     eventCard(),
     h(
       'nav',
