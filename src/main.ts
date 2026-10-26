@@ -35,7 +35,7 @@ import { CameraPanel, applySavedCameraParams } from './ui/panels/cameraPanel';
 import { loadingScreen } from './ui/screens/loading';
 import { pauseMenu, type PauseScreen, type PauseTicket } from './ui/screens/pause';
 import { resultsScreen } from './ui/screens/results';
-import { placeName } from './ui/map/places';
+import { placeAt } from './ui/map/places';
 import { railInset } from './ui/rail/rail';
 import { mainMenu, type MainMenu, type MenuStep } from './ui/menu/menu';
 import { showSplash } from './ui/splash/splash';
@@ -904,7 +904,7 @@ function pauseTicket(s: RaceSession): PauseTicket {
   const r = s.race;
   const event = r.world.event?.name;
   const me = r.cars[0].state;
-  if (sessionKind === 'roam') return { event, title: 'Free roam', mode: 'roam', facts: ['The whole city', `In ${placeName(r.world.areaAt(me.x, me.z))}`] };
+  if (sessionKind === 'roam') return { event, title: 'Free roam', mode: 'roam', facts: ['The whole city', `In ${placeAt(r.world, me.x, me.z).name}`] };
   const mode = r.config.mode;
   const facts: string[] = [];
   if (!POINT_TO_POINT.has(mode)) facts.push(`Lap ${Math.min(r.config.laps, Math.max(1, r.cars[0].lap))}/${r.config.laps}`);

@@ -1,12 +1,14 @@
 /**
  * The full map's tuning, inks and the small helpers its parts share (the
  * camera, the painters, the name tags and the side panel): motion and
- * interaction numbers, overlay colors, the legend's order, which areas are
- * shortcuts or minor places, the pin's shape and the compass rose.
+ * interaction numbers, overlay colors, the legend's sections and the layers
+ * in them, which areas are shortcuts or minor places, the pin's shape and the
+ * compass rose.
  */
 import type { Area, AreaKind } from '../../city/districts/types';
 import type { Vec2 } from '../../sim/math';
-import { KINDS, MAP_INK, shownOnMap } from './cityMap';
+import { KINDS, MAP_INK } from './cityMap';
+import { isNamedPlace } from './placeNames';
 import { PALETTE, rgba } from '../kit/palette';
 import { M_PER_FT, M_PER_MI } from '../kit/units';
 
@@ -95,15 +97,55 @@ export const INK = {
   font: MAP_INK.font,
 } as const;
 
-/** Legend order; kinds missing from the city are left out. */
-export const LEGEND_ORDER: AreaKind[] = ['park', 'river', 'lake', 'waterfront', 'subway', 'highway', 'alley', 'backAlley', 'roundabout', 'hills', 'monument', 'tunnel', 'overpass', 'carPark', 'market', 'infill', 'roadworks', 'bluff'];
+/** A legend row that shows and hides district kinds: kinds that read as one thing share a row (the water, the high ground). */
+export interface LegendLayer {
+  key: LayerKey;
+  label: string;
+  kinds: readonly AreaKind[];
+}
+export type LayerKey = 'park' | 'water' | 'high' | 'monument' | 'market' | 'carPark' | 'infill' | 'subway' | 'highway' | 'alley' | 'backAlley' | 'tunnel' | 'overpass' | 'roundabout' | 'roadworks';
 
-/** What a legend row stands for: a district kind, or one of the map's own layers. */
-export type LegendKey = AreaKind | 'you' | 'route' | 'shortcut' | 'waypoint';
+/** The legend's district sections in order; layers missing from the city are left out, and a section with none. */
+export const LEGEND_SECTIONS: readonly { title: string; layers: readonly LegendLayer[] }[] = [
+  {
+    title: 'Places',
+    layers: [
+      { key: 'park', label: 'Parks', kinds: ['park'] },
+      { key: 'water', label: 'Water', kinds: ['river', 'lake', 'waterfront'] },
+      { key: 'high', label: 'High ground', kinds: ['hills', 'bluff'] },
+      { key: 'monument', label: 'Monuments', kinds: ['monument'] },
+      { key: 'market', label: 'Night markets', kinds: ['market'] },
+      { key: 'carPark', label: 'Parking garages', kinds: ['carPark'] },
+      { key: 'infill', label: 'Plazas and lots', kinds: ['infill'] },
+    ],
+  },
+  {
+    title: 'Streets',
+    layers: [
+      { key: 'subway', label: 'The El', kinds: ['subway'] },
+      { key: 'highway', label: 'Expressway', kinds: ['highway'] },
+      { key: 'alley', label: 'Raceway alleys', kinds: ['alley'] },
+      { key: 'backAlley', label: 'Back alleys', kinds: ['backAlley'] },
+      { key: 'tunnel', label: 'Tunnels', kinds: ['tunnel'] },
+      { key: 'overpass', label: 'Overpasses', kinds: ['overpass'] },
+      { key: 'roundabout', label: 'Roundabouts', kinds: ['roundabout'] },
+      { key: 'roadworks', label: 'Roadworks', kinds: ['roadworks'] },
+    ],
+  },
+];
+const LAYERS = new Map<string, LegendLayer>(LEGEND_SECTIONS.flatMap((s) => s.layers.map((l) => [l.key, l] as const)));
+
+/** What a legend row stands for: a layer of district kinds, one neighbourhood (`hood:<id>`), all of their borders, or one of the map's own marks. */
+export type LegendKey = LayerKey | 'you' | 'route' | 'shortcut' | 'waypoint' | 'hoods' | `hood:${number}`;
+
+/** The district kinds a legend row shows and hides (none for the map's own marks and the neighbourhoods). */
+export const kindsOf = (key: LegendKey | null): readonly AreaKind[] => (key && LAYERS.get(key)?.kinds) || [];
+/** The neighbourhood a legend row stands for, or -1. */
+export const hoodKey = (key: LegendKey | null): number => (key?.startsWith('hood:') ? Number(key.slice(5)) : -1);
 
 export const isShortcut = (a: Area) => a.kind === 'backAlley' && a.variant === 'routeShortcut';
 /** Small places tagged only once zoomed in. */
-export const isMinor = (a: Area) => a.kind === 'roundabout' || a.kind === 'overpass' || a.kind === 'roadworks' || isShortcut(a) || (a.kind === 'infill' && shownOnMap(a));
+export const isMinor = (a: Area) => a.kind === 'roundabout' || a.kind === 'overpass' || a.kind === 'roadworks' || isShortcut(a) || (a.kind === 'infill' && isNamedPlace(a));
 
 export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 export const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -111,13 +153,6 @@ export const easeOut = (t: number) => 1 - (1 - t) ** 3;
 export const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 /** A drop that lands, bounces once and settles. */
 export const bounceOut = (t: number) => (t < 0.62 ? (t / 0.62) ** 2 : 1 - 0.22 * Math.sin(((t - 0.62) / 0.38) * Math.PI) * (1 - (t - 0.62) / 0.38));
-
-/** A kind's legend label as a note under a place's name, unless it only says the name again ("Park" is in "Parks"). */
-export function kindNote(name: string, label: string): string {
-  const n = name.toLowerCase();
-  const l = label.toLowerCase();
-  return label && !l.startsWith(n) && !n.startsWith(l) ? label : '';
-}
 
 /** Grid column name: A..Z, then AA, AB... */
 export const colName = (i: number) => (i < 26 ? String.fromCharCode(65 + i) : String.fromCharCode(64 + Math.floor(i / 26)) + String.fromCharCode(65 + (i % 26)));

@@ -81,6 +81,21 @@ export function lightPath(c: CanvasRenderingContext2D, path: Path2D, ink: string
   c.globalAlpha = 1;
 }
 
+/** A neighbourhood lit by `amt`: its blocks washed light, the streets around it traced over a soft band (world transform set). */
+export function lightHood(c: CanvasRenderingContext2D, p: { blocks: Path2D; rim: Path2D }, amt: number, px: number): void {
+  c.fillStyle = INK.player;
+  c.globalAlpha = amt * 0.1;
+  c.fill(p.blocks);
+  c.strokeStyle = INK.player;
+  c.lineWidth = 9 * px;
+  c.globalAlpha = amt * 0.16;
+  c.stroke(p.rim);
+  c.lineWidth = 2.2 * px;
+  c.globalAlpha = amt * 0.9;
+  c.stroke(p.rim);
+  c.globalAlpha = 1;
+}
+
 /** The coordinate grid over the city: 200 m cells, 100 m lines between them once there is room. */
 export function drawGrid(c: CanvasRenderingContext2D, v: MapView, g: Bounds, dpr: number): void {
   const x0 = g.maxX + MAP_PAD;

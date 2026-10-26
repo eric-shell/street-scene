@@ -1,17 +1,78 @@
-/* The full map's legend (sidePanel.ts buildLegend): what this city has, a row per kind with its swatch, name and
-   count. A row lights its kind up on the map while hovered; a click hides or shows the layer (a hidden layer's
-   row fades, its eye shut and always showing), You finds you and Waypoint flies to it. On narrow screens the
+/* The full map's legend (sidePanel.ts buildLegend): the map's own marks, then the city's neighbourhoods and its
+   places and streets in sections under small headings. A layer row has its swatch, name and count; it lights its
+   kinds up on the map while hovered, and a click hides or shows them (a hidden layer's row fades, its eye shut and
+   always showing); You finds you and Waypoint flies to it. The neighbourhoods are named buttons that wrap like
+   chips: one lights up while hovered, a click flies to it, and yours carries the accent. On narrow screens the
    rows run two across and the eyes always show. */
 @use '../styles/abstracts/media';
 @use '../styles/abstracts/mixins';
 @use 'map-media';
 .map-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   @include map-media.narrow {
-    flex-direction: row;
-    flex-wrap: wrap;
+    gap: 8px;
   }
-  @include map-media.landscape-phone {
+  &__list {
+    @include map-media.narrow {
+      flex-direction: row;
+      flex-wrap: wrap;
+    }
+    @include map-media.landscape-phone {
+      flex-direction: column;
+    }
+  }
+  &__section {
+    display: flex;
     flex-direction: column;
+    gap: 4px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+    @include media.motion {
+      animation: map-side-row-in 0.34s var(--ease-out) backwards;
+      animation-delay: calc(0.16s + var(--i, 0) * 0.028s);
+    }
+    @include map-media.narrow {
+      padding-top: 6px;
+    }
+  }
+  &__heading {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin: 0 8px 2px;
+    font: 900 11px var(--display);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  &__heading-count {
+    font: 800 11px var(--mono);
+    letter-spacing: 0;
+    color: var(--accent-2);
+  }
+  /* The neighbourhoods by name, wrapping like chips under their borders' row. */
+  &__hoods {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 2px 4px 0;
+  }
+  &__hood {
+    @include media.motion {
+      animation: map-side-row-in 0.34s var(--ease-out) backwards;
+      animation-delay: calc(0.16s + var(--i, 0) * 0.028s);
+    }
+    width: auto;
+    padding: 3px 9px;
+    font: 700 12px var(--font);
+    color: var(--soft);
+    border-color: var(--line);
+    &.is-here {
+      color: var(--accent);
+      border-color: var(--accent);
+    }
   }
   &__row {
     @include media.motion {
@@ -86,7 +147,8 @@
   }
 }
 /* A row's swatch in its layer's ink (sidePanel.ts sets the colors inline): an area's fill, a street's line or
-   dashed line, a line with a chevron (the shortcuts, when one is driven one way), a roundabout's ring, or an icon. */
+   dashed line, a line with a chevron (the shortcuts, when one is driven one way), a roundabout's ring, the dotted
+   neighbourhood border, or an icon. */
 .map-swatch {
   width: 22px;
   height: 14px;
@@ -123,6 +185,10 @@
   &--dash {
     height: 0;
     border-top: 4px dashed;
+  }
+  &--border {
+    height: 0;
+    border-top: 3px dotted;
   }
   &--ring {
     width: 14px;

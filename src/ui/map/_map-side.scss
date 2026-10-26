@@ -31,7 +31,7 @@
     }
   }
 }
-.map-legend,
+.map-legend__list,
 .map-places {
   list-style: none;
   margin: 0;
@@ -41,6 +41,7 @@
   gap: 2px;
 }
 .map-legend__button,
+.map-legend__hood,
 .map-places__button {
   position: relative;
   width: 100%;

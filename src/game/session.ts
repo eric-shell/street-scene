@@ -42,7 +42,7 @@ import { InputManager } from '../input/inputManager';
 import { Rumble } from '../input/rumble';
 import { Hud, HudCar, RACE_CARD } from '../ui/hud/hud';
 import { courseFor, openFullMap, type FullMap, type WaypointStore } from '../ui/map/fullMap';
-import { placeName } from '../ui/map/places';
+import { placeAt } from '../ui/map/places';
 import { toast } from '../ui/kit/dom';
 import { MapPinned } from '../ui/kit/icons';
 import { HudCard } from '../ui/hud/hudCard';
@@ -190,7 +190,9 @@ export class RaceSession {
   private topMph = 0;
   /** The player's engine aspiration (the HUD hides the boost gauge of a naturally aspirated car), read from the manifest once. */
   private aspiration?: Aspiration;
-  private areaName = 'Downtown';
+  private areaName = '';
+  /** The neighbourhood last announced: coming back to it from one of its places says nothing. */
+  private hoodName = '';
   private areaNext = '';
   private areaFor = 0;
   private blur = 0;
@@ -987,24 +989,26 @@ export class RaceSession {
     this.hud.update(data, dt);
   }
 
-  /** Track the district under the player; a new one is announced once the car settles in it. */
+  /** Track the place under the player; a new one is announced once the car settles in it. */
   private updateArea(x: number, z: number, dt: number): void {
-    const a = this.race.world.areaAt(x, z);
-    const name = placeName(a);
+    const p = placeAt(this.race.world, x, z);
+    const name = p.name;
     if (name === this.areaName) {
       this.areaNext = '';
       return;
     }
     if (name !== this.areaNext) {
       this.areaNext = name;
-      this.areaFor = 0;
+      // The first place (the spawn) needs no settling.
+      this.areaFor = this.areaName ? 0 : AREA_SETTLE;
     }
     this.areaFor += dt;
     if (this.areaFor < AREA_SETTLE) return;
     this.areaName = name;
     this.areaNext = '';
-    // Only the notable places get a callout; the plazas and lots just update the chip.
-    if (a && a.kind !== 'infill' && a.kind !== 'downtown') this.hud.message(name, 1.6);
+    // The notable places and a new neighbourhood get a callout; the plazas and lots just update the chip.
+    if (p.area ? p.area.kind !== 'infill' : p.hood.name !== this.hoodName) this.hud.message(name, 1.6);
+    this.hoodName = p.hood.name;
   }
 
   dispose(): void {

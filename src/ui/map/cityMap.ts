@@ -5,7 +5,8 @@
  * minimap's hues). The layers are built once per world as Path2D in world
  * meters (blocks, district fills and outlines per kind, building footprints,
  * streets grouped by ink and width, roundabouts, the bluff's terrace, the El,
- * the expressway (highwayLine), tunnels and overpasses, the race route), so
+ * the expressway (highwayLine), tunnels and overpasses, the race route, the
+ * neighbourhood borders down the streets between them), so
  * drawing the whole city at any center and zoom is a few dozen fills and
  * strokes; layersOf() shares one set per world between the maps. A view
  * says where the map looks: the world point at the canvas center, device
@@ -39,11 +40,10 @@ import { coastPoint, harborWater } from '../../city/districts/waterfrontShape';
 import { CITY } from '../../city/config';
 import type { Vec2 } from '../../sim/math';
 import { PALETTE, rgba } from '../kit/palette';
+import { hoodPlan, type Neighbourhood } from './neighbourhoods';
 
 /** How a district kind reads on the map and in the legend. */
 export interface KindStyle {
-  /** Legend entry (plural). */
-  label: string;
   /** Tag text, legend swatch and outline ink. */
   ink: string;
   /** Area fill; kinds without one are drawn as lines along their streets or path. */
@@ -56,26 +56,26 @@ export interface KindStyle {
 }
 
 export const KINDS: Partial<Record<AreaKind, KindStyle>> = {
-  park: { label: 'Parks', ink: PALETTE.green, fill: rgba('green', 0.3), width: 1.5, tag: true },
-  river: { label: 'River channel', ink: PALETTE.cyan, fill: rgba('cyan', 0.26), width: 1.5, tag: true },
-  lake: { label: 'Lake', ink: PALETTE.cyan, fill: rgba('cyan', 0.3), width: 1.5, tag: true },
-  waterfront: { label: 'Waterfront', ink: PALETTE.cyan, fill: rgba('cyan', 0.22), width: 1.5, tag: true },
-  monument: { label: 'Monument plaza', ink: PALETTE.yellow, fill: rgba('yellow', 0.3), width: 1.5, tag: true },
-  market: { label: 'Night market', ink: PALETTE.red, fill: rgba('red', 0.34), width: 1.5, tag: true },
-  carPark: { label: 'Car parks', ink: rgba('red', 0.6), fill: rgba('soft', 0.24), width: 1.5, tag: true },
-  hills: { label: 'The hills', ink: PALETTE.soft, fill: rgba('soft', 0.07), width: 1.5, dash: [6, 5], tag: true },
-  subway: { label: 'Under the El', ink: PALETTE.cyan, width: 4, dash: [9, 6], tag: true },
+  park: { ink: PALETTE.green, fill: rgba('green', 0.3), width: 1.5, tag: true },
+  river: { ink: PALETTE.cyan, fill: rgba('cyan', 0.26), width: 1.5, tag: true },
+  lake: { ink: PALETTE.cyan, fill: rgba('cyan', 0.3), width: 1.5, tag: true },
+  waterfront: { ink: PALETTE.cyan, fill: rgba('cyan', 0.22), width: 1.5, tag: true },
+  monument: { ink: PALETTE.yellow, fill: rgba('yellow', 0.3), width: 1.5, tag: true },
+  market: { ink: PALETTE.red, fill: rgba('red', 0.34), width: 1.5, tag: true },
+  carPark: { ink: rgba('red', 0.6), fill: rgba('soft', 0.24), width: 1.5, tag: true },
+  hills: { ink: PALETTE.soft, fill: rgba('soft', 0.07), width: 1.5, dash: [6, 5], tag: true },
+  subway: { ink: PALETTE.cyan, width: 4, dash: [9, 6], tag: true },
   // The elevated highway: a wide pale band along its deck line and up its ramps (solid where the El is dashed).
-  highway: { label: 'Expressway', ink: rgba('text', 0.55), width: 6, tag: true },
+  highway: { ink: rgba('text', 0.55), width: 6, tag: true },
   // The terrace: its high ground filled, the foot of its slopes dashed; the crest is the cliff symbol (cliffPath).
-  bluff: { label: 'The bluff', ink: PALETTE.orange, fill: rgba('orange', 0.1), width: 1.2, dash: [3, 4], tag: true },
-  alley: { label: 'Raceway alleys', ink: PALETTE.purple, tag: true },
-  backAlley: { label: 'Back alleys', ink: rgba('soft', 0.55), tag: false },
-  roundabout: { label: 'Roundabouts', ink: PALETTE.soft, tag: false },
-  infill: { label: 'Plazas and lots', ink: PALETTE.soft, fill: rgba('soft', 0.2), tag: false },
-  tunnel: { label: 'Tunnels', ink: PALETTE.soft, fill: rgba('muted', 0.22), width: 1.5, dash: [4, 3], tag: true },
-  overpass: { label: 'Overpasses', ink: PALETTE.muted, width: 3, dash: [3, 3], tag: false },
-  roadworks: { label: 'Roadworks', ink: PALETTE.yellow, fill: rgba('yellow', 0.55), width: 1, tag: false },
+  bluff: { ink: PALETTE.orange, fill: rgba('orange', 0.1), width: 1.2, dash: [3, 4], tag: true },
+  alley: { ink: PALETTE.purple, tag: true },
+  backAlley: { ink: rgba('soft', 0.55), tag: false },
+  roundabout: { ink: PALETTE.soft, tag: false },
+  infill: { ink: PALETTE.soft, fill: rgba('soft', 0.2), tag: false },
+  tunnel: { ink: PALETTE.soft, fill: rgba('muted', 0.22), width: 1.5, dash: [4, 3], tag: true },
+  overpass: { ink: PALETTE.muted, width: 3, dash: [3, 3], tag: false },
+  roadworks: { ink: PALETTE.yellow, fill: rgba('yellow', 0.55), width: 1, tag: false },
 };
 
 /**
@@ -103,6 +103,10 @@ export const MAP_INK = {
   planter: rgba('green', 0.45),
   player: PALETTE.text,
   tagBg: rgba('bg0', 0.86),
+  /** Neighbourhood borders: dots down the middle of the street over a faint band, and the names. */
+  border: rgba('text', 0.82),
+  borderBand: rgba('text', 0.1),
+  hoodName: rgba('text', 0.62),
   font: '"Google Sans Flex", system-ui, sans-serif',
 };
 export type MapInk = typeof MAP_INK;
@@ -316,6 +320,8 @@ export interface CityDrawOptions {
   hidden?: ReadonlySet<AreaKind>;
   /** The race shortcuts in their own ink (default: shown with the back alleys, hidden with them). */
   shortcuts?: boolean;
+  /** The neighbourhood borders (default false: the menu's small maps leave them out). */
+  neighbourhoods?: boolean;
   /** Thinnest a street is drawn (CSS px; default 2.2). */
   minStreet?: number;
   /** Ink overrides, for a quieter or brighter map. */
@@ -355,9 +361,12 @@ export class CityLayers {
   readonly tunnels = new Path2D();
   readonly overpasses = new Path2D();
   readonly route = new Path2D();
+  /** The streets between two neighbourhoods, along their centerlines. */
+  readonly borders = new Path2D();
   /** Total street length (m), for the menu's "miles of streets". */
   readonly streetLength: number;
   private readonly areaPaths = new Map<number, Path2D>();
+  private readonly hoodPaths = new Map<number, { blocks: Path2D; rim: Path2D }>();
 
   constructor(readonly world: World) {
     const g = world.graph;
@@ -453,6 +462,11 @@ export class CityLayers {
         line(this.tunnels, a.path);
       } else if (a.kind === 'overpass' && a.path.length > 1) line(this.overpasses, a.path);
     }
+    for (const e of hoodPlan(world).borders) {
+      const ed = g.edges[e];
+      this.borders.moveTo(g.nodes[ed.a].x, g.nodes[ed.a].z);
+      this.borders.lineTo(g.nodes[ed.b].x, g.nodes[ed.b].z);
+    }
     const pts = world.route.points;
     if (pts.length > 1) {
       line(this.route, pts);
@@ -472,6 +486,23 @@ export class CityLayers {
       } else if (a.polygon.length >= 3) ring(p, a.polygon);
       else if (a.path.length > 1) line(p, a.path);
       this.areaPaths.set(a.id, p);
+    }
+    return p;
+  }
+
+  /** A neighbourhood as paths (world meters), built on first use: its blocks, and the streets around it. */
+  hoodPath(hd: Neighbourhood): { blocks: Path2D; rim: Path2D } {
+    let p = this.hoodPaths.get(hd.id);
+    if (!p) {
+      const g = this.world.graph;
+      p = { blocks: new Path2D(), rim: new Path2D() };
+      for (const f of hd.faces) ring(p.blocks, this.world.blocks.faces[f].ring);
+      for (const e of hd.rim) {
+        const ed = g.edges[e];
+        p.rim.moveTo(g.nodes[ed.a].x, g.nodes[ed.a].z);
+        p.rim.lineTo(g.nodes[ed.b].x, g.nodes[ed.b].z);
+      }
+      this.hoodPaths.set(hd.id, p);
     }
     return p;
   }
@@ -603,6 +634,17 @@ export class CityLayers {
         c.setLineDash(st.dash!.map((d) => d * px));
         c.stroke(this.overpasses);
       }
+      c.setLineDash([]);
+    }
+    if (o.neighbourhoods) {
+      // Over the streets they run down: a faint band, then round dots.
+      c.strokeStyle = ink.borderBand;
+      c.lineWidth = 10 * px;
+      c.stroke(this.borders);
+      c.strokeStyle = ink.border;
+      c.lineWidth = 2.8 * px;
+      c.setLineDash([0, 6 * px]);
+      c.stroke(this.borders);
       c.setLineDash([]);
     }
     if (o.route !== false) {

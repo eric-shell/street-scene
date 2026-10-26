@@ -52,14 +52,16 @@ import { btn, chip, h, iconBtn } from '../kit/dom';
 import { Flag, Hash, Landmark, Layers, LocateFixed, MapIcon, MapPinOff, MapPinned, Maximize2, Route, X, ZoomIn, ZoomOut, icon } from '../kit/icons';
 import type { MapCar } from '../hud/minimap';
 import { PALETTE, rgba, type PaletteColor } from '../kit/palette';
-import { CITY_NAME, bearingDeg, compassPoint, distanceLabel, placeName } from './places';
+import { CITY_NAME, bearingDeg, compassPoint, distanceLabel, placeAt, placeLine } from './places';
+import { isNamedPlace } from './placeNames';
+import { hoodPlan, type Neighbourhood } from './neighbourhoods';
 import { MapCamera } from './camera';
-import { blit, cellName, covers, drawEdgeArrow, drawEdges, drawGrid, drawPlayer, drawRevealRing, lightPath, makeSprites, newRaster, offView, worldTransform, type Raster, type Sprites } from './draw';
+import { blit, cellName, covers, drawEdgeArrow, drawEdges, drawGrid, drawPlayer, drawRevealRing, lightHood, lightPath, makeSprites, newRaster, offView, worldTransform, type Raster, type Sprites } from './draw';
 import { buildLegend, buildPlaces, type PlaceRow } from './sidePanel';
 import { NameTags } from './tags';
 import { MapTip } from './tip';
 import type { FullMapOptions } from './course';
-import { DROP_END, INK, NO_DASH, PASS_KEYS, PIN, PULSE_RINGS, ROSE_SVG, UI, bounceOut, clamp01, easeOut, inkOf, isShortcut, kindNote, type LegendKey } from './tuning';
+import { DROP_END, INK, NO_DASH, PASS_KEYS, PIN, PULSE_RINGS, ROSE_SVG, UI, bounceOut, clamp01, easeOut, hoodKey, inkOf, isShortcut, kindsOf, type LegendKey } from './tuning';
 
 export { courseFor } from './course';
 export type { FullMapOptions, WaypointStore } from './course';
@@ -68,6 +70,10 @@ const TMP: Vec2 = { x: 0, z: 0 };
 
 /** What the pointer is over. */
 type Hover = { kind: 'area'; area: Area | null } | { kind: 'me' } | { kind: 'pin' } | { kind: 'mark'; finish: boolean };
+
+/** What lights up on the map: a place, or a neighbourhood. */
+type Spot = Area | Neighbourhood;
+const isHood = (s: Spot): s is Neighbourhood => 'rim' in s;
 
 /**
  * Open the city map over `parent`: the one way every screen opens it (a race's
@@ -111,7 +117,7 @@ export class FullMap {
   private readonly legendPane: HTMLElement;
   private readonly placesPane: HTMLElement;
   private readonly placesList: HTMLUListElement;
-  private readonly rows: Map<LegendKey, HTMLLIElement>;
+  private readonly rows: Map<LegendKey, HTMLElement>;
   private readonly wpCard: HTMLElement;
   private readonly wpFar: HTMLElement;
   private places: PlaceRow[] | null = null;
@@ -119,11 +125,11 @@ export class FullMap {
   // Map state.
   private readonly hidden = new Set<AreaKind>();
   private showRoute = true;
-  private readonly drawOpts: CityDrawOptions = { dpr: 1, route: false, shortcuts: true };
+  private readonly drawOpts: CityDrawOptions = { dpr: 1, route: false, shortcuts: true, neighbourhoods: true };
   private readonly overview = newRaster();
   private readonly detail = newRaster();
   private readonly names: NameTags;
-  private readonly kindPaths = new Map<AreaKind | 'shortcut', Path2D>();
+  private readonly kindPaths = new Map<LegendKey, Path2D>();
   private readonly driftAreas: Set<number>;
   /** The course drawn (none for free roam's whole city), its color and its name in the legend and cards. */
   private readonly route: RaceRoute | null;
@@ -136,7 +142,7 @@ export class FullMap {
   private bands: { top: CanvasGradient; left: CanvasGradient } | null = null;
   private readonly dashes: number[] = [UI.dash, UI.gap];
   /** Canvas fonts at the pixel ratio, and the furniture over the canvas tags keep clear of (device px), set on resize. */
-  private readonly font = { tag: '', minor: '', you: '', grid: '', scale: '' };
+  private readonly font = { tag: '', minor: '', hood: '', you: '', grid: '', scale: '' };
   private readonly furniture = new Float32Array(8);
   private wp: Vec2 | null;
   private dpr = 1;
@@ -164,15 +170,17 @@ export class FullMap {
   private readonly ptr = { x: 0, y: 0, in: false };
   private hoverDirty = false;
   private hover: Hover = { kind: 'area', area: null };
-  /** The area under the pointer, and the one lit (it stays lit while fading out). */
-  private hoverTarget: Area | null = null;
-  private hoverArea: Area | null = null;
+  /** The place or neighbourhood under the pointer, and the one lit (it stays lit while fading out). */
+  private hoverTarget: Spot | null = null;
+  private hoverArea: Spot | null = null;
   private hoverAmt = 0;
   private legendKey: LegendKey | null = null;
   private legendShown: LegendKey | null = null;
   private legendAmt = 0;
   private placeHover: Area | null = null;
-  private pulse: { area: Area; t: number } | null = null;
+  private pulse: { spot: Spot; t: number } | null = null;
+  /** The neighbourhood you are in, marked in the legend. */
+  private hereHood = -1;
   private readonly held = new Set<string>();
   private cursor = '';
 
@@ -227,6 +235,7 @@ export class FullMap {
     const legend = buildLegend(world, route ? { ink: PALETTE[this.routeInk], label: this.routeLabel } : null, {
       find: () => this.findMe(),
       flyToWaypoint: () => this.flyToWaypoint(),
+      flyToHood: (hd) => this.flyToSpan(hd.span, hd),
       toggle: (key, li, b) => this.toggleLayer(key, li, b),
       hover: (key, on) => {
         if (on) this.legendKey = key;
@@ -234,7 +243,7 @@ export class FullMap {
       },
     });
     this.rows = legend.rows;
-    this.legendPane = h('div', { class: 'map-side__pane', role: 'tabpanel' }, legend.list);
+    this.legendPane = h('div', { class: 'map-side__pane', role: 'tabpanel' }, legend.el);
     this.placesList = h('ul', { class: 'map-places' });
     this.placesPane = h('div', { class: 'map-side__pane', role: 'tabpanel', hidden: true }, this.placesList);
     this.legendTab = h('button', { class: 'tabs__tab is-selected', type: 'button', role: 'tab', 'aria-selected': 'true' }, icon(Layers, { size: 15 }), 'Legend');
@@ -366,6 +375,7 @@ export class FullMap {
     const f = this.font;
     f.tag = `700 ${11 * dpr}px ${INK.font}`;
     f.minor = `600 ${10 * dpr}px ${INK.font}`;
+    f.hood = `800 ${10 * dpr}px ${INK.font}`;
     f.you = `800 ${10 * dpr}px ${INK.font}`;
     f.grid = `700 ${10 * dpr}px ${INK.font}`;
     f.scale = `700 ${11 * dpr}px ${INK.font}`;
@@ -579,24 +589,26 @@ export class FullMap {
       c.fillStyle = INK.veil;
       c.fillRect(0, 0, v.w, v.h);
       c.globalAlpha = 1;
-      if (key !== 'you' && key !== 'route' && key !== 'waypoint') {
-        const ink = key === 'shortcut' ? MAP_INK.shortcut : (KINDS[key]?.ink ?? PALETTE.soft);
-        worldTransform(c, v);
-        lightPath(c, this.kindPath(key), ink, key === 'shortcut' ? undefined : KINDS[key]?.fill, this.legendAmt, px, true);
-      }
+      worldTransform(c, v);
+      const hood = hoodKey(key);
+      const kinds = kindsOf(key);
+      if (hood >= 0) this.lightSpot(c, hoodPlan(this.world).hoods[hood], this.legendAmt, px);
+      else if (key === 'hoods') lightPath(c, this.layers.borders, PALETTE.text, undefined, this.legendAmt, px, false);
+      else if (key === 'shortcut') lightPath(c, this.kindPath(key), MAP_INK.shortcut, undefined, this.legendAmt, px, true);
+      else if (kinds.length) lightPath(c, this.kindPath(key), KINDS[kinds[0]]?.ink ?? PALETTE.soft, KINDS[kinds[0]]?.fill, this.legendAmt, px, true);
     }
     const lit = this.placeHover ?? this.hoverArea;
-    if (lit && (this.placeHover || this.hoverAmt > 0.003) && !this.hidden.has(lit.kind)) {
+    if (lit && (this.placeHover || this.hoverAmt > 0.003) && (isHood(lit) ? this.drawOpts.neighbourhoods : !this.hidden.has(lit.kind))) {
       worldTransform(c, v);
-      lightPath(c, this.layers.areaPath(lit), inkOf(lit), KINDS[lit.kind]?.fill, this.placeHover ? 1 : this.hoverAmt, px, lit.polygon.length >= 3);
+      this.lightSpot(c, lit, this.placeHover ? 1 : this.hoverAmt, px);
     }
     const p = this.pulse;
     if (p) {
-      const path = this.layers.areaPath(p.area);
-      const ink = inkOf(p.area);
+      const path = isHood(p.spot) ? this.layers.hoodPath(p.spot).rim : this.layers.areaPath(p.spot);
+      const ink = isHood(p.spot) ? PALETTE.text : inkOf(p.spot);
       worldTransform(c, v);
       const fadeOut = 1 - clamp01((p.t - (UI.pulse - 0.4)) / 0.4);
-      lightPath(c, path, ink, KINDS[p.area.kind]?.fill, fadeOut, px, p.area.polygon.length >= 3);
+      this.lightSpot(c, p.spot, fadeOut, px);
       if (!this.reduced) {
         // Two rings of light running out from the outline.
         for (const off of PULSE_RINGS) {
@@ -612,13 +624,20 @@ export class FullMap {
     }
   }
 
-  /** Every shown area of a legend kind as one path (the race shortcuts are their own). */
-  private kindPath(key: AreaKind | 'shortcut'): Path2D {
+  /** A place, or a neighbourhood (its blocks and the streets around it), lit by `amt`. */
+  private lightSpot(c: CanvasRenderingContext2D, s: Spot, amt: number, px: number): void {
+    if (isHood(s)) lightHood(c, this.layers.hoodPath(s), amt, px);
+    else lightPath(c, this.layers.areaPath(s), inkOf(s), KINDS[s.kind]?.fill, amt, px, s.polygon.length >= 3);
+  }
+
+  /** Every shown area of a legend layer as one path (the race shortcuts are their own). */
+  private kindPath(key: LegendKey): Path2D {
     let p = this.kindPaths.get(key);
     if (!p) {
       p = new Path2D();
+      const kinds = kindsOf(key);
       for (const a of this.world.areas) {
-        if (!shownOnMap(a) || (key === 'shortcut' ? !isShortcut(a) : a.kind !== key || (key === 'backAlley' && isShortcut(a)))) continue;
+        if (!shownOnMap(a) || (a.kind === 'infill' && !isNamedPlace(a)) || (key === 'shortcut' ? !isShortcut(a) : !kinds.includes(a.kind) || (a.kind === 'backAlley' && isShortcut(a)))) continue;
         p.addPath(this.layers.areaPath(a));
       }
       this.kindPaths.set(key, p);
@@ -743,7 +762,7 @@ export class FullMap {
     t.reserve(0, v.h - 44 * dpr, 150 * dpr, v.h);
     const fade = this.reduced ? 1 : 1 - Math.exp(-UI.tagFade * (this.time - this.tagTime));
     this.tagTime = this.time;
-    t.draw(c, v, { dpr, zoom: this.cam.zoom, font: this.font, hidden: this.hidden, shortcuts: !!this.drawOpts.shortcuts, lit: this.legendShown, litAmt: this.legendAmt, fade });
+    t.draw(c, v, { dpr, zoom: this.cam.zoom, font: this.font, hidden: this.hidden, shortcuts: !!this.drawOpts.shortcuts, hoods: !!this.drawOpts.neighbourhoods, lit: this.legendShown, litAmt: this.legendAmt, fade });
   }
 
   // ---------- hover and the card ----------
@@ -774,13 +793,19 @@ export class FullMap {
       wz = w.z;
       hv = this.hitTest(sx, sy, wx, wz);
     }
-    const area = hv.kind === 'area' && hv.area && !this.hidden.has(hv.area.kind) && KINDS[hv.area.kind] && shownOnMap(hv.area) ? hv.area : null;
-    this.setHover(hv, area);
+    // A named place lights up; anywhere else (a plain block, a street, a hidden layer) its neighbourhood does.
+    let spot: Spot | null = null;
+    if (hv.kind === 'area') {
+      const a = hv.area;
+      if (a && isNamedPlace(a) && !this.hidden.has(a.kind) && KINDS[a.kind] && shownOnMap(a)) spot = a;
+      else if (this.drawOpts.neighbourhoods && this.world.graph.edges.length) spot = placeAt(this.world, wx, wz, a).hood;
+    }
+    this.setHover(hv, spot);
     this.fillTip(hv, wx, wz);
     this.tip.place(show.x, show.y, this.cam.view.w / this.dpr, this.cam.view.h / this.dpr);
   }
 
-  private setHover(hv: Hover, area: Area | null): void {
+  private setHover(hv: Hover, area: Spot | null): void {
     const was = this.hover;
     const same = was.kind === hv.kind && (hv.kind !== 'area' || (was.kind === 'area' && was.area === hv.area)) && (hv.kind !== 'mark' || (was.kind === 'mark' && was.finish === hv.finish));
     this.hover = hv;
@@ -816,11 +841,12 @@ export class FullMap {
     let at: Vec2 = { x: wx, z: wz };
     let far = '';
     let bearing = 0;
+    let hood: Neighbourhood | null = null;
     if (hv.kind === 'me') {
       // You: where you are and which way the car faces.
       name = 'You';
       ink = PALETTE.orange;
-      kind = `In ${placeName(this.world.areaAt(this.me.x, this.me.z))}`;
+      kind = `In ${placeAt(this.world, this.me.x, this.me.z).name}`;
       at = this.me;
       bearing = bearingDeg(Math.sin(this.me.yaw), Math.cos(this.me.yaw));
       far = `Heading ${compassPoint(Math.sin(this.me.yaw), Math.cos(this.me.yaw))}`;
@@ -835,10 +861,13 @@ export class FullMap {
       kind = this.routeLabel;
       at = p;
     } else {
-      area = hv.kind === 'area' ? hv.area : null;
-      name = area && isShortcut(area) ? (area.params.jumpExit ? 'One-way shortcut' : 'Race shortcut') : placeName(area);
-      ink = inkOf(area);
-      kind = area ? kindNote(name, isShortcut(area) ? 'Race shortcuts' : (KINDS[area.kind]?.label ?? '')) : '';
+      // A named place, else the neighbourhood around the point.
+      const p = placeAt(this.world, wx, wz, hv.kind === 'area' ? hv.area : null);
+      area = p.area;
+      name = p.name;
+      ink = area ? inkOf(area) : PALETTE.text;
+      kind = area ? placeLine(this.world, area) : 'Neighbourhood';
+      hood = p.hood;
     }
     const dx = at.x - this.me.x;
     const dz = at.z - this.me.z;
@@ -849,7 +878,7 @@ export class FullMap {
     const cell = cellName(this.world.graph.bounds, at.x, at.z);
     const drift = !!area && this.driftAreas.has(area.id);
     const short = !!area && isShortcut(area);
-    const here = !!area && hv.kind === 'area' && this.world.areaAt(this.me.x, this.me.z) === area;
+    const here = hv.kind === 'area' && (area ? this.world.areaAt(this.me.x, this.me.z) === area : !!hood && hood.id === this.hereHood);
     const pinned = !!this.pinned;
     const canSet = !!this.opts.waypoint;
     const act = pinned ? '' : hv.kind === 'me' ? 'Click to center the map on you' : !canSet ? '' : hv.kind === 'pin' ? 'Click to clear the waypoint' : 'Click to drop a waypoint here';
@@ -1124,16 +1153,17 @@ export class FullMap {
     this.findBtn.classList.toggle('is-active', on);
   }
 
-  /** Fly to a place, framing it, and pulse its outline. */
-  private flyToPlace(p: PlaceRow): void {
+  /** Fly to a place or a neighbourhood, framing its span, and pulse its outline. */
+  private flyToSpan(span: PlaceRow['span'], spot: Spot): void {
     this.setFollow(false);
     const v = this.cam.view;
     const fit = this.cam.fit.scale;
-    const bw = Math.max(40, p.span.maxX - p.span.minX);
-    const bh = Math.max(40, p.span.maxZ - p.span.minZ);
-    const s = Math.max(UI.placeMin * fit, Math.min(UI.placeMax * fit, Math.min((v.w * 0.5) / bw, (v.h * 0.5) / bh)));
-    this.cam.flyTo((p.span.minX + p.span.maxX) / 2, (p.span.minZ + p.span.maxZ) / 2, s, this.reduced);
-    this.pulse = { area: p.area, t: 0 };
+    const bw = Math.max(40, span.maxX - span.minX);
+    const bh = Math.max(40, span.maxZ - span.minZ);
+    // A neighbourhood is framed whole (it may need less than a place's least zoom).
+    const s = Math.max((isHood(spot) ? 1 : UI.placeMin) * fit, Math.min(UI.placeMax * fit, Math.min((v.w * (isHood(spot) ? 0.8 : 0.5)) / bw, (v.h * (isHood(spot) ? 0.8 : 0.5)) / bh)));
+    this.cam.flyTo((span.minX + span.maxX) / 2, (span.minZ + span.maxZ) / 2, s, this.reduced);
+    this.pulse = { spot, t: 0 };
     this.dirty = true;
   }
 
@@ -1167,7 +1197,13 @@ export class FullMap {
   }
 
   private updateHere(): void {
-    const name = placeName(this.world.areaAt(this.me.x, this.me.z));
+    const p = placeAt(this.world, this.me.x, this.me.z);
+    if (p.hood.id !== this.hereHood) {
+      this.rows.get(`hood:${this.hereHood}`)?.classList.remove('is-here');
+      this.rows.get(`hood:${p.hood.id}`)?.classList.add('is-here');
+      this.hereHood = p.hood.id;
+    }
+    const name = p.area ? `${p.name}, ${p.hood.name}` : p.name;
     if (name === this.hereName) return;
     this.hereName = name;
     this.hereEl.textContent = name;
@@ -1203,11 +1239,15 @@ export class FullMap {
     let on: boolean;
     if (key === 'route') on = this.showRoute = !this.showRoute;
     else if (key === 'shortcut') on = this.drawOpts.shortcuts = !this.drawOpts.shortcuts;
-    else if (key === 'you' || key === 'waypoint') return;
+    else if (key === 'hoods') on = this.drawOpts.neighbourhoods = !this.drawOpts.neighbourhoods;
     else {
-      on = this.hidden.has(key);
-      if (on) this.hidden.delete(key);
-      else this.hidden.add(key);
+      const kinds = kindsOf(key);
+      if (!kinds.length) return;
+      on = this.hidden.has(kinds[0]);
+      for (const k of kinds) {
+        if (on) this.hidden.delete(k);
+        else this.hidden.add(k);
+      }
     }
     li.classList.toggle('is-off', !on);
     b.setAttribute('aria-pressed', String(on));
@@ -1226,7 +1266,7 @@ export class FullMap {
   /** The Places tab: the notable places (and the drift zones), sorted nearest first when it opens. */
   private buildPlaces(): void {
     const rows = (this.places = buildPlaces(this.world, this.driftAreas, {
-      fly: (r) => this.flyToPlace(r),
+      fly: (r) => this.flyToSpan(r.span, r.area),
       hover: (a) => this.hoverPlace(a),
       setWaypoint: this.opts.waypoint ? (at) => this.setWaypoint(at) : undefined,
     }));

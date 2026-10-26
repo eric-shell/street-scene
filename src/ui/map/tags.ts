@@ -4,12 +4,19 @@
  * dropped where it would cover one already placed or a rectangle reserved
  * for the markers and the map's furniture, so zooming in (the places spread
  * out) fits more of them; tags fade in and out as they fit or not.
+ *
+ * The neighbourhoods' names come between the places and the minor ones, in
+ * spaced capitals without a plate, as a street map letters its districts:
+ * each tries its blocks nearest its middle first, then the next, so a view
+ * that cuts a neighbourhood off still names it where it shows.
  */
 import type { Area, AreaKind } from '../../city/districts/types';
 import type { World } from '../../city/world';
 import { KINDS, MAP_INK, mapX, mapY, shownOnMap, tagAnchor, tagWeight, type MapView } from './cityMap';
-import { placeName } from './places';
-import { UI, inkOf, isMinor, isShortcut, type LegendKey } from './tuning';
+import { PALETTE } from '../kit/palette';
+import { hoodOf, hoodPlan, type Neighbourhood } from './neighbourhoods';
+import { crossesTown, placeName } from './places';
+import { UI, hoodKey, inkOf, isMinor, isShortcut, kindsOf, type LegendKey } from './tuning';
 
 /** A place's name tag. */
 interface Tag {
@@ -20,6 +27,8 @@ interface Tag {
   x: number;
   z: number;
   minor: boolean;
+  /** The neighbourhood it is in, -1 for one crossing town (a lit neighbourhood keeps its own places bright). */
+  hood: number;
   /** Text width at the tag's font (device px; 0 until measured). */
   w: number;
   /** Shown amount (fades in and out as it fits or not) and where it was last drawn (device px). */
@@ -34,10 +43,12 @@ export interface TagFrame {
   /** Zoom in multiples of the fitted city. */
   zoom: number;
   /** Canvas fonts at the pixel ratio. */
-  font: { tag: string; minor: string };
+  font: { tag: string; minor: string; hood: string };
   /** Kinds hidden in the legend, and whether the race shortcuts show. */
   hidden: ReadonlySet<AreaKind>;
   shortcuts: boolean;
+  /** Whether the neighbourhoods are shown (their borders and names). */
+  hoods: boolean;
   /** The legend row lit, and how much (0..1): the other tags dim. */
   lit: LegendKey | null;
   litAmt: number;
@@ -45,8 +56,26 @@ export interface TagFrame {
   fade: number;
 }
 
+/** A neighbourhood's name. */
+interface HoodTag {
+  hood: Neighbourhood;
+  text: string;
+  w: number;
+  alpha: number;
+  sx: number;
+  sy: number;
+  /** The anchor it stands at (index into hood.anchors), tried first next frame so it stays put. */
+  at: number;
+}
+
+/** A neighbourhood's name tries at most this many of its blocks. */
+const HOOD_TRIES = 14;
+
 export class NameTags {
   private readonly tags: Tag[] = [];
+  /** The tags before this index are the major places (the minor ones follow). */
+  private majors = 0;
+  private readonly hoods: HoodTag[];
   /** Placed rectangles this frame (x0, y0, x1, y1 in device px), tags and what they keep clear of. */
   private readonly placed: Float32Array;
   private placedN = 0;
@@ -60,15 +89,18 @@ export class NameTags {
     ] as const) {
       for (const a of list) {
         const p = tagAnchor(world, a);
-        if (p) this.tags.push({ area: a, text: isShortcut(a) ? 'Shortcut' : placeName(a), ink: inkOf(a), x: p.x, z: p.z, minor: small, w: 0, alpha: 0, sx: 0, sy: 0 });
+        if (p) this.tags.push({ area: a, text: placeName(world, a), ink: inkOf(a), x: p.x, z: p.z, minor: small, hood: crossesTown(a) ? -1 : hoodOf(world, a).id, w: 0, alpha: 0, sx: 0, sy: 0 });
       }
+      if (!small) this.majors = this.tags.length;
     }
-    this.placed = new Float32Array(4 * (this.tags.length + 12));
+    this.hoods = hoodPlan(world).hoods.map((hood) => ({ hood, text: hood.name.toUpperCase(), w: 0, alpha: 0, sx: 0, sy: 0, at: 0 }));
+    this.placed = new Float32Array(4 * (this.tags.length + this.hoods.length + 12));
   }
 
   /** The fonts changed (a new pixel ratio): measure every tag again. */
   remeasure(): void {
     for (const t of this.tags) t.w = 0;
+    for (const t of this.hoods) t.w = 0;
   }
 
   /** Start a frame's layout: nothing placed yet. */
@@ -96,7 +128,11 @@ export class NameTags {
     const { dpr, lit } = f;
     const H = 18 * dpr;
     const hm = 15 * dpr;
-    for (const t of this.tags) {
+    const litKinds = kindsOf(lit);
+    const litHood = hoodKey(lit);
+    for (let i = 0; i < this.tags.length; i++) {
+      if (i === this.majors) this.drawHoods(c, v, f);
+      const t = this.tags[i];
       let goal = 0;
       const font = t.minor ? f.font.minor : f.font.tag;
       if ((!t.minor || f.zoom >= UI.minorZoom) && !f.hidden.has(t.area.kind) && !(isShortcut(t.area) && !f.shortcuts)) {
@@ -124,8 +160,74 @@ export class NameTags {
         t.sx = mapX(v, t.x);
         t.sy = mapY(v, t.z);
       }
-      const dim = lit && lit !== 'you' && lit !== 'route' && lit !== 'waypoint' ? (t.area.kind === lit || (lit === 'shortcut' && isShortcut(t.area)) ? 1 : 1 - 0.75 * f.litAmt) : lit ? 1 - 0.6 * f.litAmt : 1;
+      const own = litKinds.includes(t.area.kind) || (lit === 'shortcut' && isShortcut(t.area)) || litHood === t.hood;
+      const dim = !lit ? 1 : own ? 1 : 1 - (litKinds.length || litHood >= 0 || lit === 'shortcut' ? 0.75 : 0.6) * f.litAmt;
       drawTag(c, t, font, dim * t.alpha, dpr);
+    }
+    if (this.majors === this.tags.length) this.drawHoods(c, v, f);
+  }
+
+  /** The neighbourhoods' names: each at the first of its blocks (the one it stood at last first) where it fits. */
+  private drawHoods(c: CanvasRenderingContext2D, v: MapView, f: TagFrame): void {
+    const { dpr, lit } = f;
+    const th = 14 * dpr;
+    const spacing = `${1.6 * dpr}px`;
+    for (const t of this.hoods) {
+      let goal = 0;
+      if (f.hoods) {
+        if (!t.w) {
+          c.font = f.font.hood;
+          c.letterSpacing = spacing;
+          t.w = c.measureText(t.text).width;
+          c.letterSpacing = '0px';
+        }
+        const w = t.w + 8 * dpr;
+        const n = Math.min(HOOD_TRIES, t.hood.anchors.length);
+        for (let k = -1; k < n; k++) {
+          const i = k < 0 ? t.at : k;
+          if (k === t.at || i >= t.hood.anchors.length) continue;
+          const p = t.hood.anchors[i];
+          const sx = mapX(v, p.x);
+          const sy = mapY(v, p.z);
+          const x0 = sx - w / 2;
+          const y0 = sy - th / 2;
+          if (x0 > 24 * dpr && y0 > 24 * dpr && x0 + w < v.w - 4 * dpr && y0 + th < v.h - 4 * dpr && this.free(x0, y0, x0 + w, y0 + th, 4 * dpr)) {
+            this.reserve(x0, y0, x0 + w, y0 + th);
+            goal = 1;
+            // A name moving to another block fades in there rather than sliding.
+            if (i !== t.at) t.alpha = 0;
+            t.at = i;
+            t.sx = sx;
+            t.sy = sy;
+            break;
+          }
+        }
+      }
+      t.alpha = Math.abs(goal - t.alpha) < 0.01 ? goal : t.alpha + (goal - t.alpha) * f.fade;
+      if (t.alpha < 0.01) continue;
+      if (goal === 0) {
+        const p = t.hood.anchors[t.at];
+        t.sx = mapX(v, p.x);
+        t.sy = mapY(v, p.z);
+      }
+      const own = lit === `hood:${t.hood.id}` || lit === 'hoods';
+      const dim = !lit || own ? 1 : 1 - 0.7 * f.litAmt;
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.globalAlpha = t.alpha * dim;
+      c.font = f.font.hood;
+      c.letterSpacing = spacing;
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.lineJoin = 'round';
+      c.strokeStyle = MAP_INK.tagBg;
+      c.lineWidth = 3.5 * dpr;
+      // The spacing trails the last letter too: half of it back keeps the name centered.
+      const x = t.sx + 0.8 * dpr;
+      c.strokeText(t.text, x, t.sy + 0.5 * dpr);
+      c.fillStyle = own && f.litAmt > 0 ? PALETTE.text : MAP_INK.hoodName;
+      c.fillText(t.text, x, t.sy + 0.5 * dpr);
+      c.letterSpacing = '0px';
+      c.globalAlpha = 1;
     }
   }
 }
