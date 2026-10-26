@@ -26,8 +26,10 @@
  * the outline to the railing. A recess of the outline deeper than
  * CFG.maxDepth (an outer street missing, so the outline dips a block in) is a
  * warehouse: its frontage gets the 'warehouse' look and its back wall stands
- * on the quay, so the quay stays one even strip and a closure's seal across
- * it (world.ts sealBarriers) always reaches the railing.
+ * on the quay, so the quay stays one even strip. In a race the quay is closed
+ * off along its whole open frontage (quayGates, world.ts createWorld), so no
+ * closure on the street beside it can be driven round across it; free roam
+ * has it open.
  *
  * The water is a plane tilted gently along the coast (a least squares fit of
  * the quay's height, tilt capped at CFG.maxTilt), CFG.freeboard below the
@@ -41,9 +43,10 @@ import { RAIL } from '../railCurve';
 import type { PropKind } from '../props';
 import { type Vec2, atan2, sqrt } from '../../sim/math';
 import { Rng, deriveSeed } from '../../sim/prng';
-import type { DistrictModule, PlanContext } from './types';
+import type { Wall } from '../blocks';
+import type { Area, AreaBuild, DistrictModule, PlanContext } from './types';
 import { emptyBuild } from './types';
-import { polygonArea, polyWalls } from './geom';
+import { polygonArea, polyWalls, solidWalls } from './geom';
 import { HARBOR_SIDES, type HarborFrame, coastNormal, coastSlope, coastV, framePoint, frameU, frameV, harborLowering, harborWater } from './waterfrontShape';
 
 const CFG = CITY.districts.waterfront;
@@ -337,6 +340,46 @@ function fitSide(ctx: PlanContext, ring: readonly Vec2[], side: number, base: Te
   return { side, f, prof, cA, cB, coast, pa, pb, openA, openB, w0, wt, wu0: fa, wu1: fb, score };
 }
 
+/** Thickness (m) and longest piece (m) of a race's gates along the quay's frontage. */
+const GATE = { thick: 0.4, piece: 3 } as const;
+
+/**
+ * A race closes the quay: a line of race night barriers along its whole open frontage (the 'frontage' hints:
+ * the quay's back wherever it meets a street), standing on the quay just behind the outer sidewalk's back. A
+ * closure on the street beside it can then never be driven round across the quay, however deep the quay or
+ * however the closure meets it (a barrier, a tie to a corner rail, a corner rail across a mouth). Free roam
+ * leaves the quay open. Thin solids (Wall.solid: the street and the quay are both drivable), look 'quayGate'
+ * (render/districts/waterfront.ts draws them), pieces of at most GATE.piece m.
+ */
+export function quayGates(areas: readonly Area[], builds: readonly AreaBuild[]): Wall[] {
+  const out: Wall[] = [];
+  for (const a of areas) {
+    if (a.kind !== 'waterfront') continue;
+    for (const h of builds[a.id]?.hints ?? []) {
+      if (h.kind !== 'frontage') continue;
+      const pts = h.points;
+      for (let i = 0; i + 1 < pts.length; i++) {
+        const p = pts[i];
+        const q = pts[i + 1];
+        const len = sqrt((q.x - p.x) ** 2 + (q.z - p.z) ** 2);
+        if (len < 0.05) continue;
+        // The quay lies to the left of its back chain (it runs with u, the sea to its left).
+        const nx = (-(q.z - p.z) / len) * GATE.thick;
+        const nz = ((q.x - p.x) / len) * GATE.thick;
+        const n = Math.ceil(len / GATE.piece);
+        for (let k = 0; k < n; k++) {
+          const ax = p.x + ((q.x - p.x) * k) / n;
+          const az = p.z + ((q.z - p.z) * k) / n;
+          const bx = p.x + ((q.x - p.x) * (k + 1)) / n;
+          const bz = p.z + ((q.z - p.z) * (k + 1)) / n;
+          out.push(...solidWalls([{ x: ax, z: az }, { x: bx, z: bz }, { x: bx + nx, z: bz + nz }, { x: ax + nx, z: az + nz }], 'quayGate', a.id));
+        }
+      }
+    }
+  }
+  return out;
+}
+
 /** Whether a seed rolls a harbor: the first draw of the module's own stream (the plan may still find no side free enough). */
 export function waterfrontRolled(seed: number): boolean {
   return CFG.enabled && new Rng(deriveSeed(seed, 'district:waterfront')).chance(CFG.chance);
@@ -437,6 +480,26 @@ export const waterfrontModule: DistrictModule = {
     b.walls.push(...polyWalls([endA, at(p.pa, coast(p.pa) - CFG.railInset)], true, 'quayFence', id, false));
     b.walls.push(...polyWalls([at(p.pb, coast(p.pb) - CFG.railInset), endB], true, 'quayFence', id, false));
     b.reserved.push({ x: endA.x, z: endA.z, r: 1.6 }, { x: endB.x, z: endB.z, r: 1.6 });
+
+    // The open frontage, the quay's back where it meets the streets (not a shed's back wall), for a race's gates.
+    {
+      const back = quay.slice(0, p.nBack);
+      const inShed = (q: Vec2) => {
+        const u = frameU(f, q.x, q.z);
+        return sheds.some(([a, c]) => u > a + 0.005 && u < c - 0.005);
+      };
+      let chain: Vec2[] = [];
+      for (let i = 0; i + 1 < back.length; i++) {
+        if (inShed(back[i]) && inShed(back[i + 1])) {
+          if (chain.length > 1) b.hints.push({ kind: 'frontage', points: chain, values: [] });
+          chain = [];
+          continue;
+        }
+        if (!chain.length) chain.push(back[i]);
+        chain.push(back[i + 1]);
+      }
+      if (chain.length > 1) b.hints.push({ kind: 'frontage', points: chain, values: [] });
+    }
 
     // Warehouses in the recesses: their frontage takes the shed's look, their back wall faces the quay.
     for (const [a, c] of sheds) {

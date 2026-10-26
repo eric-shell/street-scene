@@ -18,7 +18,9 @@ import type { Wall } from '../src/city/blocks';
 import type { WallLook } from '../src/city/districts/types';
 import { waterfrontRolled } from '../src/city/districts/waterfront';
 import { createRace, stepRace } from '../src/sim/race';
-import { input, raceConfig } from './helpers';
+import { createCar, stepCar } from '../src/sim/car';
+import { collideCarWithWorld } from '../src/sim/collision';
+import { baseTuning, input, raceConfig } from './helpers';
 
 const CFG = CITY.districts.waterfront;
 
@@ -265,6 +267,85 @@ describe('waterfront (sim)', () => {
 });
 
 describe('waterfront (race)', () => {
+  it('a race closes the quay along its whole frontage: no closure can be driven round across it', () => {
+    let closures = 0;
+    let stopped = 0;
+    let entered = 0;
+    for (const seed of harborSeeds(53, 8)) {
+      const city = createCity(seed);
+      const a = harborOf(city.districts.areas)!;
+      const fronts = city.districts.builds[a.id].hints.filter((h) => h.kind === 'frontage');
+      expect(fronts.length).toBeGreaterThan(0);
+      const open = createWorld(seed, 'circuit', city, { openWorld: true });
+      // Free roam leaves the quay open: no gates.
+      expect(open.walls.some((w) => w.look === 'quayGate')).toBe(false);
+      for (const kind of ['circuit', 'sprint'] as const) {
+        const w = createWorld(seed, kind, city);
+        const gates = w.walls.filter((x) => x.look === 'quayGate' && x.area === a.id);
+        const near = (x: number, z: number, r: number) => gates.some((g) => distToSegment(x, z, g.ax, g.az, g.bx, g.bz) < r);
+        // The barriers stand along every metre of the open frontage, without a gap a car could pass.
+        for (const h of fronts) {
+          const pts = h.points;
+          for (let i = 0; i + 1 < pts.length; i++) {
+            const len = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].z - pts[i].z);
+            for (let s = 0; s <= len; s += 0.5) {
+              const t = len > 0 ? s / len : 0;
+              expect(near(pts[i].x + (pts[i + 1].x - pts[i].x) * t, pts[i].z + (pts[i + 1].z - pts[i].z) * t, 0.05)).toBe(true);
+            }
+          }
+        }
+        // Every closure next to the quay (a barrier piece ending at its frontage) meets that line of barriers.
+        for (const gr of w.barrierGroups) {
+          for (const piece of gr.walls) {
+            for (const [x, z] of [
+              [piece.ax, piece.az],
+              [piece.bx, piece.bz],
+            ]) {
+              const p = a.params;
+              const u = frameU(harborFrame(a), x, z);
+              if (u < p.pa || u > p.pb || !pointInPolygon(x + p.vx * 1.2, z + p.vz * 1.2, a.polygon)) continue;
+              closures++;
+              expect(near(x, z, 1)).toBe(true);
+            }
+          }
+        }
+        // Driven flat out at the quay from the street anywhere along it, a car is stopped at the frontage
+        // (and in free roam drives straight onto the quay).
+        if (kind !== 'circuit') continue;
+        const t = baseTuning();
+        for (const h of fronts) {
+          for (let i = 1; i + 1 < h.points.length; i += Math.max(1, Math.floor(h.points.length / 4))) {
+            const q = h.points[i];
+            const r = h.points[i + 1];
+            const len = Math.hypot(r.x - q.x, r.z - q.z);
+            if (len < 1) continue;
+            // In onto the street's sidewalk, square to the frontage, facing the quay.
+            const nx = -(r.z - q.z) / len;
+            const nz = (r.x - q.x) / len;
+            for (const world of [w, open]) {
+              const c = createCar(q.x - nx * 7, q.z - nz * 7, Math.atan2(nx, nz), world.heightAt(q.x - nx * 7, q.z - nz * 7));
+              c.vx = nx * 18;
+              c.vz = nz * 18;
+              let on = false;
+              for (let k = 0; k < 90; k++) {
+                stepCar(c, t, input({ throttle: 1 }), { world });
+                collideCarWithWorld(c, t, world);
+                if (pointInPolygon(c.x, c.z, a.polygon)) on = true;
+              }
+              if (world === w) {
+                expect(on).toBe(false);
+                stopped++;
+              } else if (on) entered++;
+            }
+          }
+        }
+      }
+    }
+    expect(closures).toBeGreaterThan(0);
+    expect(stopped).toBeGreaterThan(20);
+    expect(entered).toBeGreaterThan(stopped / 2);
+  });
+
   it('rivals racing along the quay never reach the water', () => {
     // A seed whose sprint runs down the street along the quay (the harbor goes where the races run, CFG.raceBonus).
     const seed = 1265014699;

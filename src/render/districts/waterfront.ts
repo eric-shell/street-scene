@@ -9,9 +9,10 @@
  *  - the sea wall: its face from the coping down under the water, rubber
  *    fenders on it, mooring bollards on the coping, and the galvanized railing
  *    (the sim's 'quayRail') with a striped gate wherever a jetty meets it;
- *  - the security fences closing the quay's ends ('quayFence') and the
- *    warehouse sheds in the frontage's recesses ('warehouse': their frontage
- *    and back walls, a flat roof, lit windows and a roller door to the quay);
+ *  - the security fences closing the quay's ends ('quayFence'), the race
+ *    night barriers closing it off along its frontage in a race ('quayGate'),
+ *    and the warehouse sheds in the frontage's recesses ('warehouse': their
+ *    frontage and back walls, a flat roof, lit windows and a roller door);
  *  - the water: one opaque dark mirror (the river's water look) from the sea
  *    wall out past the far ridge of the backdrop (render/sky/backdrop.ts sinks
  *    its near ridge on this side, so the water meets a low far shore), and the
@@ -41,10 +42,10 @@ import { Rng } from '../../sim/prng';
 import { GeoBuilder } from '../geoBuilder';
 import { streakFrag, streakVert } from '../street/lightFx';
 import type { DistrictKit, DistrictRenderer } from './kit';
-import { col, cylinder, groundLine, groundVertex, wallBox } from './kit';
+import { col, cylinder, groundLine, groundVertex, prism, wallBox } from './kit';
 
 /** The wall looks this renderer draws (every wall the waterfront district builds carries one). */
-export const WATERFRONT_LOOKS = ['quayRail', 'quayFence', 'warehouse'] as const;
+export const WATERFRONT_LOOKS = ['quayRail', 'quayFence', 'warehouse', 'quayGate'] as const;
 
 const CFG = CITY.districts.waterfront;
 
@@ -63,6 +64,8 @@ const LOOK = {
   gateWhite: col(0xd8d8d0),
   fence: col(0x2c3036),
   fencePost: col(0x6c7078),
+  gatePanel: col(0x6a7078),
+  gateBand: col(0x3ad6e8, 0.9),
   shedWall: [col(0x5a3a30), col(0x34465a), col(0x4a4e44)],
   shedRoof: col(0x3e4448),
   door: col(0x8a8c80),
@@ -252,6 +255,13 @@ function buildHarbor(kit: DistrictKit, a: Area): void {
   for (const w of kit.walls.get('quayFence') ?? []) {
     if (w.area !== a.id) continue;
     fence(kit, w);
+  }
+  // ----- In a race, the barriers closing the quay off along its frontage (one per solid piece).
+  const gates = new Set<Wall['solid']>();
+  for (const w of kit.walls.get('quayGate') ?? []) {
+    if (w.area !== a.id || !w.solid || gates.has(w.solid)) continue;
+    gates.add(w.solid);
+    gate(kit, w.solid.faces.map((q) => ({ x: q.ax, z: q.az })));
   }
   // ----- Warehouses in the recesses.
   for (const h of b.hints) if (h.kind === 'warehouse') shed(kit, a, h, f, rng);
@@ -528,6 +538,19 @@ function fence(kit: DistrictKit, w: Wall): void {
   }
   const m = { x: (w.ax + w.bx) / 2 + w.nx * 0.06, z: (w.az + w.bz) / 2 + w.nz * 0.06 };
   solidBox(kit.solid, { x: m.x - dx * 0.6, z: m.z - dz * 0.6 }, { x: m.x + dx * 0.6, z: m.z + dz * 0.6 }, w.nx * 0.03, w.nz * 0.03, h(m.x, m.z) + 1.1, h(m.x, m.z) + 1.9, LOOK.safety);
+}
+
+/** A race night barrier piece on its solid's outline: a galvanized panel with a cyan reflective band along the top (the closures' colour). */
+function gate(kit: DistrictKit, poly: Vec2[]): void {
+  prism(kit, kit.solid, poly, 1.05, LOOK.gatePanel, LOOK.rail, 0.05);
+  let y = -Infinity;
+  for (const q of poly) y = Math.max(y, kit.h(q.x, q.z));
+  // The band: along the street side (the piece's first edge, on the frontage), just under the top.
+  const [p0, p1, p2] = poly;
+  const len = Math.hypot(p1.x - p0.x, p1.z - p0.z) || 1;
+  const ox = ((p2.x - p1.x) / Math.hypot(p2.x - p1.x, p2.z - p1.z)) * -0.02;
+  const oz = ((p2.z - p1.z) / Math.hypot(p2.x - p1.x, p2.z - p1.z)) * -0.02;
+  if (len > 0.3) solidBox(kit.glow, { x: p0.x + ox, z: p0.z + oz }, { x: p1.x + ox, z: p1.z + oz }, ox, oz, y + CITY.curbHeight + 0.82, y + CITY.curbHeight + 0.94, LOOK.gateBand);
 }
 
 /** A warehouse shed: its walls on the sim's warehouse walls up to a flat roof over its outline, lit windows and a door to the quay. */
