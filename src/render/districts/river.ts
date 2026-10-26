@@ -123,6 +123,14 @@ const TINT = {
 } as const;
 
 
+/**
+ * Water as the city draws it (the river's trickle and puddles, the lake): a dark mirror, vertex tinted,
+ * that the sky and the city's lights reflect in, see-through enough to hint at the bed under it.
+ */
+export function waterMaterial(): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.08, metalness: 0.95, transparent: true, opacity: 0.86, envMapIntensity: 2.4, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+}
+
 export const riverRenderer: DistrictRenderer = {
   kinds: ['river'],
   build(kit, areas) {
@@ -710,12 +718,7 @@ function buildChannel(kit: DistrictKit, a: Area): void {
     1,
   );
   add(fence, 'riverFence', new THREE.MeshStandardMaterial({ map: tex.chainlink, alphaTest: 0.45, side: THREE.DoubleSide, vertexColors: true, roughness: 0.45, metalness: 0.75, envMapIntensity: 0.7 }));
-  add(
-    wet,
-    'riverWater',
-    new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.08, metalness: 0.95, transparent: true, opacity: 0.86, envMapIntensity: 2.4, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
-    1,
-  );
+  add(wet, 'riverWater', waterMaterial(), 1);
   add(pools, 'riverLightPools', new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }), 2);
 }
 

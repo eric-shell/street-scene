@@ -134,7 +134,11 @@ describe('curbs', () => {
         const rr = (outer + island) / 2;
         expect(lift(w, x + c * rr, z + s * rr)).toBe(0);
         const rw = outer + CITY.sidewalk / 2;
-        if (w.surfaceAt(x + c * rw, z + s * rw) === 'sidewalk') expect(lift(w, x + c * rw, z + s * rw)).toBeCloseTo(CITY.curbHeight, 9);
+        // On the ring's sidewalk, not on the curb ramp of a spoke's street meeting it.
+        const px = x + c * rw;
+        const pz = z + s * rw;
+        const paved = [[0, 0], [0.3, 0], [-0.3, 0], [0, 0.3], [0, -0.3]].every(([dx, dz]) => w.surfaceAt(px + dx, pz + dz) === 'sidewalk');
+        if (paved) expect(lift(w, px, pz)).toBeCloseTo(CITY.curbHeight, 9);
       }
     }
   });

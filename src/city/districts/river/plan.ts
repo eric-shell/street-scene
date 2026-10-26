@@ -18,6 +18,7 @@ import { type Ramp, type RampPlan, rampAlong, rampsOf } from './ramps';
 import { STREET_KINDS, bridgesOf, chainOf, crosses, crossingT } from './bridges';
 
 const CFG = CITY.districts.river;
+const LAKE = CITY.districts.lake;
 
 /** A bell mouth's plinth keeps this far (m) inside the room to the next corridor; the room is capped at MOUTH_ROOM (m). */
 const MOUTH_MARGIN = 2;
@@ -29,6 +30,7 @@ export function planRiver(ctx: PlanContext): void {
   const rng = ctx.rng;
   if (!rng.chance(CFG.chance)) return;
   const g = ctx.graph;
+  const lakes = ctx.areas.filter((a) => a.kind === 'lake');
   const F = CFG.floorHalf;
   const T = F + CFG.bankWidth;
   const H = CITY.gridH;
@@ -77,6 +79,21 @@ export function planRiver(ctx: PlanContext): void {
       }
       return sum / n;
     };
+  };
+  /**
+   * The lake (carved before the river) all on one side of the band, its shore well off it, so no bank
+   * street is a shore street. The lake was put where the river would run without it (lake.ts), so this
+   * only turns away rows that ran through its blocks.
+   */
+  const lakeClear = (p: Record<string, number>): boolean => {
+    for (const lk of lakes) {
+      const s0 = riverL(p, lk.polygon[0].x, lk.polygon[0].z) > 0;
+      for (const q of lk.polygon) {
+        const l = riverL(p, q.x, q.z);
+        if (l > 0 !== s0 || Math.abs(l) < T + LAKE.riverClear) return false;
+      }
+    }
+    return true;
   };
   /** Junctions clear of the band, every street either crossing it squarely or well away from it. */
   const bandClear = (p: Record<string, number>): boolean => {
@@ -337,6 +354,8 @@ export function planRiver(ctx: PlanContext): void {
       }
       if (!bandClear(p)) continue;
       const ent = planEntrances(p);
+      // After the entrances' draws: the stream runs on as it would with no lake.
+      if (!lakeClear(p)) continue;
       const score = ent.quarters * 100 + ent.count;
       if (!best || score > best.score) best = { p, ent, score, row: j };
       if (ent.quarters === 4 && ent.count >= CFG.entrances[0]) break rowLoop;
@@ -348,8 +367,8 @@ export function planRiver(ctx: PlanContext): void {
   // Every street over the channel runs straight from bank junction to bank junction, and so does
   // every street of the two bank rows: their pieces through bend nodes (roadGraph.ts) merge back
   // into one edge, so a bridge deck, a ford's ramps and a side ramp's T each sit on
-  // one straight edge. The river plans first, so no district holds an id yet; the entrances are
-  // planned again on the merged streets.
+  // one straight edge. The river plans first, so only the lake's claims hold ids yet (graphChanged
+  // carries them through the renumbering); the entrances are planned again on the merged streets.
   {
     const bp = best.p;
     const row = best.row;
@@ -360,8 +379,8 @@ export function planRiver(ctx: PlanContext): void {
     };
     const over = streetChains(g).filter((c) => c.edges.length > 1 && (bank(c) || c.edges.some((id) => crosses(bp, g.nodes[g.edges[id].a], g.nodes[g.edges[id].b]))));
     if (over.length) {
-      mergeChains(g, over);
-      ctx.graphChanged();
+      // The lake carved before the river (districts/index.ts): its claims follow the renumbering.
+      ctx.graphChanged(mergeChains(g, over));
       best.ent = planEntrances(bp);
     }
   }

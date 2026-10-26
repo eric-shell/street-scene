@@ -1072,7 +1072,50 @@ export const CITY = {
       mastStep: 9,
     },
     waterfront: { enabled: false },
-    lake: { enabled: false },
+    /**
+     * Lake: two to four adjacent blocks merged into one body of water by deleting the streets
+     * between them (src/city/districts/lake.ts); the streets round it are the shore road, a paved
+     * promenade runs inside them to a railing, and the ground behind it falls to the water.
+     */
+    lake: {
+      enabled: true,
+      /** Chance per city (its own stream); a city with no cluster of blocks that fits gets none. */
+      chance: 0.36,
+      /** Blocks merged [min, max]: each a plain four sided grid block of park size (m^2), at least edgeCells blocks in from the map edge. */
+      blocks: [2, 4],
+      minArea: 9000,
+      maxArea: 26000,
+      edgeCells: 1,
+      /** Seed blocks tried before the city goes without. */
+      tries: 30,
+      /** Promenade inside the outer sidewalk line, paved at curb height (m); the railing stands on its inner edge. */
+      promenade: 6,
+      /** Stone coping behind the railing before the bank drops (m), and the bank's width down to the bed (m). */
+      coping: 0.8,
+      bank: 8,
+      /** The water stands this far under the lowest point of the coping (m), over a bed this deep (m). */
+      freeboard: 1.1,
+      depth: 2.5,
+      /**
+       * The river keeps its band (bank top) this far off the shore (m): the lake is never between or
+       * along its bank streets. Hill slopes, the bluff and the El's swings keep `clearance` off (m).
+       */
+      riverClear: 90,
+      clearance: 15,
+      /** On a seed that rolls the expressway, the lake's shore keeps off the first this many rows its line is tried on. */
+      highwayRows: 2,
+      /** Lantern posts along the promenade by the railing, about this far apart (m); a bench between each pair, facing the water. */
+      lampSpacing: 26,
+      /** Trees along the promenade between the lamps (m apart), kept this far from the shore's corners (m); trunk radius (m). */
+      treeSpacing: 52,
+      treeCornerClear: 28,
+      treeRadius: 0.4,
+      /** The jetty off the middle of the longest straight shore: length out over the water [min, max] and width (m). */
+      jetty: [16, 26],
+      jettyWidth: 2.6,
+      /** Lakes this wide or more (m, the room around the middle) get a fountain jet. */
+      fountainRoom: 45,
+    },
   },
 } as const;
 

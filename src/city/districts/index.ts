@@ -9,8 +9,14 @@
  * modules (infill) once buildings exist. finalize() indexes surfaces and
  * rasterizes areas for fast areaAt queries.
  *
- * Order matters and is fixed: the river first (it decides bridges), then the
- * subway (claims a street column), roundabouts, alleys, the bluff (moves part
+ * Order matters and is fixed. Before anything plans, the lake carves (its
+ * carve step, DistrictModule.carve): it deletes the streets between its
+ * blocks, which renumbers every node and edge id, so it goes while nobody
+ * holds one; it claims its shore streets and nodes then, and everything
+ * planned after keeps off them (the river, the El's swings, the bluff and the
+ * hills keep off its water too). Then the river (it decides bridges; its own
+ * chain merge renumbers again, carrying the lake's claims through
+ * graphChanged), the subway (claims a street column), roundabouts, alleys, the bluff (moves part
  * of the El off its street; before the routes, which run over its level
  * crossing), the elevated highway (claims a street row and its ramps' blocks,
  * keeping off everything planned before it), back alleys (the last
@@ -24,10 +30,12 @@
  * right after back alleys (route shortcuts); the night market, which goes on
  * the routes it picked (PlanContext.event), is planned right after it. Car
  * parks are planned in the hook too (they need both routes); they claim their
- * block only after the night market's graph edit, in carParkModule's plan.
+ * block only after the night market's graph edit, in carParkModule's plan,
+ * and the lake claims its merged block right after them (the first slot with
+ * the topology final), before anything else that claims blocks could take it.
  */
 import { CITY } from '../config';
-import type { RoadGraph } from '../roadGraph';
+import type { RoadGraph, Renumber } from '../roadGraph';
 import { sortNodeEdges } from '../roadGraph';
 import { BlockFace, Sector, computeFaces, computeMouths, computeSectors } from '../blocks';
 import { Rng, deriveSeed } from '../../sim/prng';
@@ -64,13 +72,14 @@ export const DISTRICT_MODULES: readonly DistrictModule[] = [
   backAlleyModule,
   marketModule,
   carParkModule,
+  // Claims its block here; its streets were deleted in its carve step, before the river.
+  lakeModule,
   monumentModule,
   parkModule,
   hillsModule,
   tunnelModule,
   overpassModule,
   waterfrontModule,
-  lakeModule,
   downtownModule,
   infillModule,
   roadworksModule,
@@ -141,8 +150,9 @@ function makeContext(seed: number, g: RoadGraph, areas: Area[], claims: Claims, 
       if (!faces) faces = computeFaces(g, this.sectors());
       return faces;
     },
-    graphChanged() {
+    graphChanged(renumber) {
       if (claims.face.size) throw new Error('graph edited after faces were claimed');
+      if (renumber) renumberClaims(areas, claims, renumber);
       sortNodeEdges(g);
       faces = null;
       sectors = null;
@@ -157,6 +167,23 @@ function makeContext(seed: number, g: RoadGraph, areas: Area[], claims: Claims, 
       return area;
     },
   };
+}
+
+/** Carry the planned areas' node and edge lists and the node and edge claims through an id compaction (dropping removed ones). */
+function renumberClaims(areas: Area[], claims: Claims, r: Renumber): void {
+  const map = (ids: number[], to: Int32Array) => ids.map((id) => to[id]).filter((id) => id >= 0);
+  for (const a of areas) {
+    a.nodes = map(a.nodes, r.node);
+    a.edges = map(a.edges, r.edge);
+  }
+  for (const [held, to] of [
+    [claims.node, r.node],
+    [claims.edge, r.edge],
+  ] as const) {
+    const old = [...held];
+    held.clear();
+    for (const [id, area] of old) if (to[id] >= 0) held.set(to[id], area);
+  }
 }
 
 export interface PlanHooks {
@@ -177,6 +204,8 @@ export function planDistricts(seed: number, g: RoadGraph, hooks: PlanHooks = {})
   const budget = { total: blockArea * CITY.districts.maxSpecialFraction, used: 0 };
   let lastCtx: PlanContext | null = null;
   let event: PlannedEvent | undefined;
+  // Lifecycle step 0 (types.ts): street deletions, while no area holds an id.
+  for (const m of DISTRICT_MODULES) if (m.phase === 'graph' && m.carve) m.carve(makeContext(seed, g, areas, claims, budget, m.kind));
   for (const m of DISTRICT_MODULES) {
     if (m.phase !== 'graph') continue;
     const ctx = makeContext(seed, g, areas, claims, budget, m.kind);

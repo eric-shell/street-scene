@@ -637,13 +637,50 @@ export function chainCum(g: RoadGraph, c: Chain): number[] {
 }
 
 /**
+ * Where every node and edge went when an edit compacted the graph's ids: old id to new id, -1 for one
+ * removed. districts/index.ts carries the claims and the planned areas' node and edge lists through it
+ * (PlanContext.graphChanged); ids kept anywhere else (an area's params) are not remapped.
+ */
+export interface Renumber {
+  node: Int32Array;
+  edge: Int32Array;
+}
+
+/** Drop the marked nodes and edges, renumber the rest in order and sort the node edges. */
+function compactGraph(g: RoadGraph, deadNode: Uint8Array, deadEdge: Uint8Array): Renumber {
+  const node = new Int32Array(g.nodes.length).fill(-1);
+  const nodes: RoadNode[] = [];
+  for (const n of g.nodes) {
+    if (deadNode[n.id]) continue;
+    node[n.id] = nodes.length;
+    n.id = nodes.length;
+    nodes.push(n);
+  }
+  const edge = new Int32Array(g.edges.length).fill(-1);
+  const edges: RoadEdge[] = [];
+  for (const e of g.edges) {
+    if (deadEdge[e.id]) continue;
+    edge[e.id] = edges.length;
+    e.id = edges.length;
+    e.a = node[e.a];
+    e.b = node[e.b];
+    edges.push(e);
+  }
+  g.nodes = nodes;
+  g.edges = edges;
+  sortNodeEdges(g);
+  return { node, edge };
+}
+
+/**
  * Merge chains back into single straight edges from junction to junction: the first piece of each
  * keeps its kind and widths and now runs the whole way, the other pieces and the bend nodes between
- * go, and every id is compacted (edges and nodes renumbered in order). Only safe while nothing holds
- * node or edge ids: the river planner, first of the districts, straightens its crossing streets
- * this way so its ford ramps can split them the way they always did. Sorts the node edges.
+ * go, and every id is compacted (edges and nodes renumbered in order). Only safe while no id is held
+ * where the renumbering cannot reach it (the planned areas' node and edge lists are carried through
+ * by PlanContext.graphChanged): the river planner straightens its crossing streets this way so its
+ * ford ramps can split them the way they always did. Sorts the node edges.
  */
-export function mergeChains(g: RoadGraph, list: readonly Chain[]): void {
+export function mergeChains(g: RoadGraph, list: readonly Chain[]): Renumber {
   const deadEdge = new Uint8Array(g.edges.length);
   const deadNode = new Uint8Array(g.nodes.length);
   for (const c of list) {
@@ -663,25 +700,31 @@ export function mergeChains(g: RoadGraph, list: readonly Chain[]): void {
     for (let i = 1; i < c.edges.length; i++) deadEdge[c.edges[i]] = 1;
     for (let i = 1; i + 1 < c.nodes.length; i++) deadNode[c.nodes[i]] = 1;
   }
-  const nodeMap = new Int32Array(g.nodes.length).fill(-1);
-  const nodes: RoadNode[] = [];
-  for (const n of g.nodes) {
-    if (deadNode[n.id]) continue;
-    nodeMap[n.id] = nodes.length;
-    n.id = nodes.length;
-    nodes.push(n);
-  }
-  const edges: RoadEdge[] = [];
+  return compactGraph(g, deadNode, deadEdge);
+}
+
+/**
+ * Delete streets: the given edges go, and with them every node they leave with no edge at all (the
+ * bend nodes along a removed street); every id is compacted as mergeChains does. A grid junction is
+ * never left alone (its id is j * gridW + i, which other planners rely on): that throws. The lake
+ * (districts/lake.ts) merges its blocks this way, before any other district plans.
+ */
+export function removeEdges(g: RoadGraph, ids: Iterable<number>): Renumber {
+  const deadEdge = new Uint8Array(g.edges.length);
+  for (const id of ids) deadEdge[id] = 1;
+  const left = new Int32Array(g.nodes.length);
   for (const e of g.edges) {
     if (deadEdge[e.id]) continue;
-    e.id = edges.length;
-    e.a = nodeMap[e.a];
-    e.b = nodeMap[e.b];
-    edges.push(e);
+    left[e.a]++;
+    left[e.b]++;
   }
-  g.nodes = nodes;
-  g.edges = edges;
-  sortNodeEdges(g);
+  const deadNode = new Uint8Array(g.nodes.length);
+  for (const n of g.nodes) {
+    if (left[n.id] || !n.edges.length) continue;
+    if (n.gi >= 0) throw new Error(`removing streets would strand grid junction ${n.gi}, ${n.gj}`);
+    deadNode[n.id] = 1;
+  }
+  return compactGraph(g, deadNode, deadEdge);
 }
 
 /** Heading change (rad, 0..pi) a route makes at `node` coming from `prev` and leaving for `next`; 0 when the three are collinear. */
