@@ -343,12 +343,11 @@ describe('elevated highway (over the El)', () => {
  * flew (no wheel on the ground), how hard it bottomed out, how far along it got (index of the nearest
  * point) and the car as it ended, its snapshot to compare runs by.
  */
-function drivePath(w: World, path: readonly Vec2[], speed: number, seconds: number, y?: number, carId?: string) {
+function drivePath(w: World, path: readonly Vec2[], speed: number, seconds: number, y?: number) {
   const a = path[0];
   const b = path[1];
   // Up on the deck when the path starts there (`y`: its top), else in the street.
-  const base = raceConfig(w.seed, 'circuit', 0);
-  const cfg = { ...base, player: { ...base.player, carId: carId ?? base.player.carId }, openWorld: true, start: { x: a.x, z: a.z, yaw: Math.atan2(b.x - a.x, b.z - a.z), speed: speed * 0.7, tick: 0, ...(y === undefined ? {} : { y: y + 0.3 }) } };
+  const cfg = { ...raceConfig(w.seed, 'circuit', 0), openWorld: true, start: { x: a.x, z: a.z, yaw: Math.atan2(b.x - a.x, b.z - a.z), speed: speed * 0.7, tick: 0, ...(y === undefined ? {} : { y: y + 0.3 }) } };
   const race = createRace(cfg, w);
   const c = race.cars[0].state;
   let airborne = 0;
@@ -441,9 +440,7 @@ describe('elevated highway (driving)', () => {
     // Traffic runs E to foot, against the axis: along the deck's outer lane into the lane, down the ramp, out onto the street.
     // Into the lane once it is at full width (past its taper), along it to E, down the ramp, out onto the street.
     const path = [...alongDeck(d, r.sb + A * 90, r.sb + A * 10, S * laneCenter(2)), ...alongDeck(d, r.sb - A * CFG.rampTaper, r.sa + A * 4, S * (HIGHWAY_HALF + r.half - 1.5)), ...alongRamp(r, r.axis.length, r.flat * 0.5), ...alongDeck(d, sf + A * 2, sf - A * 60, S * streetLane)];
-    // On the Hatch: the Coupe (the tests' car) floats about 0.18 s over this ramp's top at 65 km/h, which the
-    // retired Proto RS and the Hatch never did (2026-10-26, open: the Coupe's springs or the crest).
-    const a = drivePath(w, path, 18, 30, deckTopAt(d, r.sb + A * 90), 'protoHatch');
+    const a = drivePath(w, path, 18, 30, deckTopAt(d, r.sb + A * 90));
     expect(a.k).toBeGreaterThan(path.length - 8);
     expect(a.airborne).toBe(0);
     expect(a.bottom).toBeLessThan(0.02);

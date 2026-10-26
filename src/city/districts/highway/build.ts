@@ -466,17 +466,17 @@ export function buildRamp(ctx: BuildContext, area: Area): AreaBuild {
   // The mouth: the frontage across it goes, the curb is cut the sidewalk deep (busBays.ts mouthBay) in
   // the final graph's curb frame, and street furniture keeps off it. A slip ramp's runs along the street:
   // the frontage goes all along its run and embankment (its walls stand there instead), its run and nose
-  // are road, and the curb is cut beside them where that fits in one piece of the street.
+  // are road, and the curb is cut beside them along the street, on through its bend nodes (slipCut).
   const nosePoly = [edgePt(-SLIP_NOSE, innerSign * hw), edgePt(0, -innerSign * hw), edgePt(0, innerSign * hw)];
   if (slip) {
     b.openings.push(strip(-SLIP_NOSE - 1, Math.max(ramp.flat, ramp.uSolid), hw + 1));
     b.surfaces.push({ surface: 'road', polygon: [...nosePoly, ...strip(0, ramp.flat + 2, hw)], priority: 2, area: area.id });
   } else b.openings.push(strip(-8, 4, hw + 1));
-  const cut = slip ? slipCut(g, ctx.mouths, area.params.edge, edgePt(-SLIP_NOSE, innerSign * hw), edgePt(ramp.flat, innerSign * hw), MOUTH_TAPER) : mouthCut(g, ctx.mouths, area.params.edge, ax, hw);
-  if (cut) {
-    b.hints.push({ kind: 'mouth', points: [], values: [area.params.edge, cut.side, cut.s0, cut.s1, MOUTH_TAPER] });
+  const cuts = slip ? slipCut(g, ctx.mouths, area.params.edge, edgePt(-SLIP_NOSE, innerSign * hw), edgePt(ramp.flat, innerSign * hw), MOUTH_TAPER) : mouthCut(g, ctx.mouths, area.params.edge, ax, hw);
+  for (const cut of cuts) {
+    b.hints.push({ kind: 'mouth', points: [], values: [cut.edge, cut.side, cut.s0, cut.s1, MOUTH_TAPER] });
     // Nothing of the street furniture's on the cut (it is road now): circles over it, as a park path's mouth.
-    const bay = mouthBay(g, ctx.mouths, -1, area.params.edge, cut.side, cut.s0, cut.s1, MOUTH_TAPER);
+    const bay = mouthBay(g, ctx.mouths, -1, cut.edge, cut.side, cut.s0, cut.s1, MOUTH_TAPER);
     const depth = bay.depth - MOUTH_REACH;
     for (let s = bayLo(bay); s <= bayHi(bay) + 1e-6; s += 2) for (const v of [0.6, depth / 2, depth - 0.6]) if (v < bayInset(bay, s) + 0.6) b.reserved.push({ ...bayPoint(bay, s, v), r: 1.2 });
   }

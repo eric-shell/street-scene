@@ -189,11 +189,11 @@ function fitLoop(site: RampSite, i: number, end: -1 | 1, side: 1 | -1, sEnd: num
     const fe = g.edges[f.edge];
     const sinA = Math.abs(ax.dx * (g.nodes[fe.b].z - g.nodes[fe.a].z) - ax.dz * (g.nodes[fe.b].x - g.nodes[fe.a].x)) / (fe.length || 1);
     if (sinA < 0.6) continue;
-    // The mouth clear of the row street's junctions at both ends of the block (its curb cut is made where
-    // it fits in one piece of the street; else a car rolls over the low curb).
+    // The mouth clear of the row street's junctions at both ends of the block (its curb cut runs on through
+    // the street's bend nodes; past a junction it is not made, and a car rolls over the low curb).
     const halfMouth = (half + 1) / sinA;
     if (ends.some((n) => Math.abs(f.s - n.s) - halfMouth < n.reach)) continue;
-    const cut = mouthCut(g, mouths, f.edge, ax, half) ?? { side: 1 as const, s0: 0, s1: 0 };
+    const cut = mouthCut(g, mouths, f.edge, ax, half)[0] ?? { side: 1 as const, s0: 0, s1: 0 };
     const profile: RampProfile = { y0, g0: 0, y1, g1: 0, grade, e0: CFG.loopEase, e1: CFG.loopEase, blend: 14, flat: 0, ready: true };
     // Where the embankment ends: both edges in the block from where the leg's edges clear the mouth on,
     // up to where the loop turns out over the street beneath near its top.

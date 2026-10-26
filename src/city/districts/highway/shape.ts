@@ -14,6 +14,7 @@
  * (WeakMaps keyed by the area), pure and deterministic.
  */
 import { CITY } from '../../config';
+import { isBendNode } from '../../roadGraph';
 import type { RoadGraph } from '../../roadGraph';
 import type { EdgeMouths } from '../../blocks';
 import { edgeSides } from '../../props';
@@ -461,41 +462,83 @@ export function inMedianGap(d: HighwayDeck, s: number, pad = 0): boolean {
   return false;
 }
 
-/**
- * The curb cut beside a slip ramp's run along the street (from a to b on the street's building line,
- * the nose's tip to the run's end) on the street's piece `edge`: the block side it opens on and the cut
- * along its curb with `taper` m flares (busBays.ts mouthBay), or null when it would leave the piece.
- */
-export function slipCut(g: RoadGraph, mouths: EdgeMouths[], edge: number, a: Vec2, b: Vec2, taper: number): { side: 1 | -1; s0: number; s1: number } | null {
-  const sides = edgeSides(g, mouths, edge);
-  const mx = (a.x + b.x) / 2;
-  const mz = (a.z + b.z) / 2;
-  const side: 1 | -1 = sides[0].inward.x * (mx - sides[0].from.x) + sides[0].inward.z * (mz - sides[0].from.z) > 0 ? 1 : -1;
-  const sd = sides[side === 1 ? 0 : 1];
-  const ux = sd.to.x - sd.from.x;
-  const uz = sd.to.z - sd.from.z;
-  const ul = sqrt(ux * ux + uz * uz) || 1;
-  const at = (p: Vec2) => ((p.x - sd.from.x) * ux + (p.z - sd.from.z) * uz) / ul;
-  const s0 = Math.min(at(a), at(b)) - taper;
-  const s1 = Math.max(at(a), at(b)) + taper;
-  return s0 < 1 || s1 > ul - 1 ? null : { side, s0, s1 };
+/** A curb cut on one piece of a street: the block side it opens on (1: the P side) and its stretch along that side's curb (m). */
+export interface CurbCut {
+  edge: number;
+  side: 1 | -1;
+  s0: number;
+  s1: number;
 }
 
-/** The curb cut of a ramp's mouth on its foot street's piece: the block side it opens on and the cut along its curb (busBays.ts mouthBay), or null if it would leave the piece. */
-export function mouthCut(g: RoadGraph, mouths: EdgeMouths[], edge: number, ax: RampAxis, half: number): { side: 1 | -1; s0: number; s1: number } | null {
-  const fe = g.edges[edge];
-  const sinA = Math.abs(ax.dx * (g.nodes[fe.b].z - g.nodes[fe.a].z) - ax.dz * (g.nodes[fe.b].x - g.nodes[fe.a].x)) / (fe.length || 1);
-  const halfMouth = (half + 1) / Math.max(0.3, sinA);
-  const sides = edgeSides(g, mouths, edge);
-  const side: 1 | -1 = sides[0].inward.x * ax.dx + sides[0].inward.z * ax.dz > 0 ? 1 : -1;
-  const sd = sides[side === 1 ? 0 : 1];
+/**
+ * A curb cut laid from street piece `edge` on through its bend nodes. `span` gives the cut on one piece (and the
+ * length of that side's curb); wherever it runs past a piece's end that is a bend node, the next piece gets its
+ * part too, each part running past the shared node (busBays.ts PIECE_OVERLAP joins them), as a park path's mouth
+ * does. A ramp is longer than most pieces of its street, so its cut usually lies across a bend. Empty when it
+ * would run into a junction: no cut, and a car rolls over the curb.
+ */
+function cutThroughBends(g: RoadGraph, edge: number, span: (ei: number) => CurbCut & { len: number }): CurbCut[] {
+  const out: CurbCut[] = [];
+  const seen = new Set<number>();
+  const visit = (ei: number): boolean => {
+    if (seen.has(ei)) return true;
+    seen.add(ei);
+    const { len, ...cut } = span(ei);
+    out.push(cut);
+    // A side runs from the curb at the piece's a end to its b end (props.ts edgeSides).
+    const e = g.edges[ei];
+    for (const [over, node] of [
+      [cut.s0 < 1, e.a],
+      [cut.s1 > len - 1, e.b],
+    ] as const) {
+      if (!over) continue;
+      if (!isBendNode(g, node)) return false;
+      const next = g.nodes[node].edges.find((x) => x !== ei);
+      if (next === undefined || !visit(next)) return false;
+    }
+    return true;
+  };
+  return visit(edge) ? out : [];
+}
+
+/** A side's curb frame: its length and the distance along it (m) of a point's foot. */
+function curbFrame(sd: { from: Vec2; to: Vec2 }): { len: number; at: (p: Vec2) => number } {
   const ux = sd.to.x - sd.from.x;
   const uz = sd.to.z - sd.from.z;
-  const ul = sqrt(ux * ux + uz * uz) || 1;
-  const sc = ((ax.fx - sd.from.x) * ux + (ax.fz - sd.from.z) * uz) / ul;
-  const s0 = sc - halfMouth - MOUTH_TAPER;
-  const s1 = sc + halfMouth + MOUTH_TAPER;
-  return s0 < 1 || s1 > ul - 1 ? null : { side, s0, s1 };
+  const len = sqrt(ux * ux + uz * uz) || 1;
+  return { len, at: (p) => ((p.x - sd.from.x) * ux + (p.z - sd.from.z) * uz) / len };
+}
+
+/**
+ * The curb cut beside a slip ramp's run along the street (from a to b on the street's building line, the
+ * nose's tip to the run's end), from the street's piece `edge` on through its bend nodes, with `taper` m
+ * flares (busBays.ts mouthBay).
+ */
+export function slipCut(g: RoadGraph, mouths: EdgeMouths[], edge: number, a: Vec2, b: Vec2, taper: number): CurbCut[] {
+  const mid = { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 };
+  return cutThroughBends(g, edge, (ei) => {
+    const sides = edgeSides(g, mouths, ei);
+    // Which side of the street the run is on, from its centerline: a side's `inward` points from its curb toward
+    // the road (bayPoint), so the P side's points across the street to the N side.
+    const c = g.nodes[g.edges[ei].a];
+    const side: 1 | -1 = sides[0].inward.x * (mid.x - c.x) + sides[0].inward.z * (mid.z - c.z) > 0 ? -1 : 1;
+    const { len, at } = curbFrame(sides[side === 1 ? 0 : 1]);
+    return { edge: ei, side, s0: Math.min(at(a), at(b)) - taper, s1: Math.max(at(a), at(b)) + taper, len };
+  });
+}
+
+/** The curb cut of a ramp's mouth (a loop's foot), from its foot street's piece `edge` on through its bend nodes. */
+export function mouthCut(g: RoadGraph, mouths: EdgeMouths[], edge: number, ax: RampAxis, half: number): CurbCut[] {
+  return cutThroughBends(g, edge, (ei) => {
+    const fe = g.edges[ei];
+    const sinA = Math.abs(ax.dx * (g.nodes[fe.b].z - g.nodes[fe.a].z) - ax.dz * (g.nodes[fe.b].x - g.nodes[fe.a].x)) / (fe.length || 1);
+    const halfMouth = (half + 1) / Math.max(0.3, sinA);
+    const sides = edgeSides(g, mouths, ei);
+    const side: 1 | -1 = sides[0].inward.x * ax.dx + sides[0].inward.z * ax.dz > 0 ? 1 : -1;
+    const { len, at } = curbFrame(sides[side === 1 ? 0 : 1]);
+    const sc = at({ x: ax.fx, z: ax.fz });
+    return { edge: ei, side, s0: sc - halfMouth - MOUTH_TAPER, s1: sc + halfMouth + MOUTH_TAPER, len };
+  });
 }
 
 export { HALF as HIGHWAY_HALF };
