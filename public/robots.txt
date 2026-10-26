@@ -2,3 +2,5 @@
 User-agent: *
 Disallow: /dashboard
 Disallow: /api/
+
+Sitemap: https://street-scene.vercel.app/sitemap.xml
