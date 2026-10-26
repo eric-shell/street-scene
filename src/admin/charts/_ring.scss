@@ -1,0 +1,92 @@
+/* The partition ring and its legend (charts/Ring.tsx, ViewportMix.tsx): a square ring at most 168 px across
+   with its number in the middle, then a legend that reserves four 16 px rows, then a caption at the foot. The
+   ring's svg overflows visibly so nothing at its edge is shaved. */
+.ring-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+  &__caption {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+    margin: auto 0 0;
+    font-size: 11px;
+    line-height: 15px;
+    text-align: center;
+    color: var(--muted);
+  }
+}
+.ring {
+  position: relative;
+  width: 100%;
+  max-width: 168px;
+  &__svg {
+    display: block;
+    width: 100%;
+    overflow: visible;
+  }
+  &__centre {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+  &__value {
+    font: 900 30px/1 var(--display);
+    color: var(--text);
+  }
+  &__sub {
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+}
+.chart-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 4 * 16px + 3 * 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  &__row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 16px;
+    font-size: 12px;
+  }
+  &__swatch {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    &.is-dim {
+      opacity: 0.35;
+    }
+  }
+  &__label {
+    flex: 1;
+    min-width: 0;
+    color: var(--soft);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  &__value {
+    flex: none;
+    color: var(--text);
+    font-weight: 700;
+  }
+  &__dim {
+    color: var(--muted);
+    font-weight: 500;
+  }
+}

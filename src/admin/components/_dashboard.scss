@@ -1,0 +1,158 @@
+/* The dashboard page (components/Dashboard.tsx): a centred column with the page gutter, the header (the
+   logo's italic over the page's title, the poll's heartbeat and the two actions), then its sections, each
+   under a yellow section title with a note on the right saying how its numbers are scoped. The totals row is
+   two-up on a phone, four-up when wide, and from 1280 px the visitors-per-day plot joins the four tiles on one
+   line. */
+@use '../../ui/styles/abstracts/media';
+@use '../../ui/styles/abstracts/mixins';
+.dashboard {
+  --page-gutter: 16px;
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 28px var(--page-gutter) 56px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  @include media.wide {
+    --page-gutter: 24px;
+  }
+  @media (min-width: 1280px) {
+    --page-gutter: 32px;
+  }
+  &__header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  &__brand {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  &__logo {
+    font-size: 22px;
+  }
+  &__title {
+    margin: 0;
+    font-size: clamp(26px, 4vw, 34px);
+    line-height: 1.05;
+  }
+  &__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  &__who {
+    font-size: 12px;
+    color: var(--muted);
+    @include mixins.ellipsis;
+    max-width: 220px;
+  }
+  &__pulse {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--soft);
+    padding-right: 4px;
+    &::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      background: var(--green);
+    }
+    &.is-loading::before {
+      background: var(--accent);
+      @include media.motion {
+        animation: skeleton-breathe 0.9s ease-in-out infinite;
+      }
+    }
+  }
+  &__section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+    scroll-margin-top: 16px;
+  }
+  &__section-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+    > .section-title {
+      flex: 1 1 200px;
+      margin: 0;
+    }
+  }
+  &__section-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+  }
+  &__scope {
+    margin: 0;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  &__new {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--soft);
+  }
+  &__totals {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    @include media.wide {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    @media (min-width: 1280px) {
+      grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 2.2fr);
+    }
+  }
+  &__chart-tile {
+    @include mixins.chamfer(12px);
+    @include mixins.plate((var(--card-top), var(--panel)), null);
+    grid-column: 1 / -1;
+    min-width: 0;
+    min-height: 126px;
+    padding: 14px 16px 12px;
+    @media (min-width: 1280px) {
+      grid-column: auto;
+    }
+  }
+}
+/* The new-since-last-visit mark: a small square of the accent, beside the heading and on each new row (too small to chamfer: cut, it reads as a slash). */
+.new-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  &.is-filled {
+    background: var(--accent);
+  }
+}
+.toaster {
+  position: fixed;
+  z-index: 60;
+  pointer-events: none;
+}
+.toast {
+  &--success > svg {
+    color: var(--green);
+  }
+  &--error > svg {
+    color: var(--red);
+  }
+}

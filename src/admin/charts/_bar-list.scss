@@ -1,0 +1,52 @@
+/* A ranked bar list (charts/BarList.tsx): label, track, value in 16 px rows. The label column is a fixed share
+   of the row and truncates; its card's min-width: 0 (components/_chart-frame.scss) is what lets it. Square
+   bars with a 2 px end, the game's hard edges; a non-zero row always draws at least 3 px. */
+@use '../../ui/styles/abstracts/mixins';
+.bar-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  &__row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 16px;
+    font-size: 12px;
+    line-height: 16px;
+  }
+  &__label {
+    flex: none;
+    width: 38%;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--soft);
+  }
+  &__text {
+    min-width: 0;
+    @include mixins.ellipsis;
+  }
+  &__track {
+    flex: 1;
+    min-width: 0;
+    height: 8px;
+    background: rgba(252, 252, 250, 0.07);
+  }
+  &__fill {
+    display: block;
+    height: 100%;
+    min-width: 3px;
+    border-radius: 0 2px 2px 0;
+  }
+  &__value {
+    flex: none;
+    min-width: 2ch;
+    text-align: right;
+    color: var(--text);
+    font-weight: 700;
+  }
+}

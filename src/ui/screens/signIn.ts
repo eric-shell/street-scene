@@ -17,7 +17,8 @@
  * unsaved work (the garage) settles it before it opens the dialog.
  */
 import { h, iconBtn, toast } from '../kit/dom';
-import { CircleUser, Cloud, CloudCheck, CloudOff, X, icon, type IconNode } from '../kit/icons';
+import { privacyPage } from './privacyPage';
+import { CircleUser, Cloud, CloudCheck, CloudOff, ShieldCheck, X, icon, type IconNode } from '../kit/icons';
 import { navRow } from '../rail/rail';
 import { accountState, accountsEnabled, isNewAccount, lastPlayer, onAccountChange, renderGoogleButton, type SyncStatus } from '../../account/account';
 
@@ -145,7 +146,38 @@ export function signInContent(): HTMLElement[] {
   const error = h('p', { class: 'account__error', role: 'alert' });
   const google = h('div', { class: 'account__google' });
   renderGoogleButton(google, (m) => (error.textContent = m));
-  return [google, error, h('p', { class: 'setting-note' }, 'Keep your garage, your plate name and your settings on every device you play on. Tester accounts only.')];
+  return [
+    google,
+    error,
+    h('p', { class: 'setting-note' }, 'Keep your garage, your plate name and your settings on every device you play on. Tester accounts only.'),
+    h('button', { class: 'privacy__link', type: 'button', onclick: openPrivacyDialog }, 'What the game collects'),
+  ];
+}
+
+/** The Privacy page (the Settings tab's own content) in a dialog over the UI, for places that have no Settings to open. */
+function openPrivacyDialog(): void {
+  const close = () => {
+    dialog.remove();
+    window.removeEventListener('keydown', onKey, true);
+  };
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    close();
+  };
+  const dialog = h(
+    'div',
+    { class: 'screen screen--center screen--dim', onclick: (e: Event) => e.target === dialog && close() },
+    h(
+      'div',
+      { class: 'dialog panel', role: 'dialog', 'aria-label': 'Privacy' },
+      h('h2', { class: 'title dialog__title' }, icon(ShieldCheck, { size: 22 }), 'Privacy', h('span', { class: 'dialog__spacer' }), iconBtn(X, 'Close', close, '--small')),
+      ...privacyPage(),
+    ),
+  );
+  window.addEventListener('keydown', onKey, true);
+  (document.getElementById('ui') ?? document.body).append(dialog);
 }
 
 /** The sign-in dialog over `host` (a screen); it closes itself once the player signs in. */

@@ -58,6 +58,8 @@ import { GarageState, decodeShareCode, loadGarage, saveGarage } from './garage/s
 import { ReplayData, decodeLog, encodeLog, loadBest, loadGhost, loadLastReplay, loadStyleBest, saveGhost, saveLastReplay, submitBest, submitStyleBest } from './replay/replay';
 import { styleTotal } from './ui/hud/boostCallouts';
 import { accountReady } from './account/account';
+import { beginDrive, driveFrame, endDrive, setQualityReader } from './analytics/drive';
+import { initAnalytics, track } from './analytics/telemetry';
 
 type State = 'menu' | 'race' | 'garage' | 'freefly' | 'drone';
 
@@ -87,6 +89,7 @@ const autoQ = new AutoQualityController(autoStart(), {
   onChange: () => applyAutoQuality(),
   onStable: (level) => saveRememberedLevel(deviceId, level),
 });
+setQualityReader(() => ({ level: autoQ.level, auto: settings.autoQuality, aim: autoQ.aim }));
 function applyAutoQuality(): void {
   if (!settings.autoQuality) return;
   const lv = QUALITY_LEVELS[autoQ.level];
@@ -355,6 +358,7 @@ function showMenu(step: MenuStep = 'home'): void {
   state = 'menu';
   clearTimeout(liftoff);
   liftoff = 0;
+  endDrive('quit');
   session?.dispose();
   session = null;
   garageScreen?.dispose();
@@ -541,7 +545,7 @@ function applySettings(s: Settings): void {
  * down, and it rolls up on the workshop. A deep link opens it behind the loading card instead.
  */
 function openGarage(viaDoor = true): Promise<void> {
-  if (!viaDoor) return enterGarage();
+  if (!viaDoor) return enterGarage(false);
   if (state === 'menu') {
     closeMenuMap();
     showreel.setMode('push');
@@ -549,8 +553,9 @@ function openGarage(viaDoor = true): Promise<void> {
   return door('Garage', enterGarage);
 }
 
-async function enterGarage(): Promise<void> {
+async function enterGarage(viaDoor = true): Promise<void> {
   const { GarageScreen } = await import('./garage/garageUi');
+  endDrive('quit');
   session?.dispose();
   session = null;
   dev.close();
@@ -560,6 +565,7 @@ async function enterGarage(): Promise<void> {
   setOverlay(null);
   garageScreen?.dispose();
   state = 'garage';
+  track('garage_open', { viaDoor });
   garageScreen = new GarageScreen(
     gr,
     assets,
@@ -701,6 +707,19 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
   }
   const s = session;
   (window as unknown as Record<string, unknown>).__nr = { session: s, gr, autoQ };
+  beginDrive(
+    {
+      mode: kind === 'roam' ? 'roam' : config.mode,
+      seed: config.seed,
+      ...(config.seed === seedFromString(seedStr) ? { seedText: seedStr.slice(0, 40) } : {}),
+      carId: config.player.carId,
+      opponents: config.opponents.length,
+      difficulty: config.difficulty,
+      replay: !!replay,
+      ghost: !!ghost,
+    },
+    () => (kind === 'roam' ? undefined : Math.max(0, Math.min(1, s.race.cars[0].dist / s.race.distance))),
+  );
   s.onFinish = ({ race, tuned, style }) => {
     if (s !== session) return;
     if (kind === 'roam') return wipeToMenu();
@@ -726,6 +745,19 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
         if (newBest && race.config.opponents.length === 0) saveGhost(race.config.seed, race.config.mode, data);
       }
     }
+    if (!replay) {
+      track('race_finish', {
+        mode: race.config.mode,
+        seed: race.config.seed,
+        carId: race.config.player.carId,
+        timeMs: Math.round(me.time * 1000),
+        place: me.position,
+        entrants: race.cars.length,
+        personalBest: newBest,
+        ...(race.config.mode === 'drift' ? { score: Math.round(race.drift.total) } : {}),
+      });
+    }
+    endDrive('finished');
     setOverlay(
       resultsScreen({
         mode: race.config.mode,
@@ -918,6 +950,7 @@ const loop = new FixedStepLoop({
     if (arrival && state !== 'menu') endArrival();
     if (state === 'race' && session) {
       session.render(alpha, dt);
+      driveFrame(dt, !session.paused && session.race.phase !== 'finished' && !session.droneActive);
       if (session.droneActive !== photoDrone) {
         photoDrone = session.droneActive;
         syncMusicMode();
@@ -949,6 +982,7 @@ const loop = new FixedStepLoop({
 });
 
 async function boot(): Promise<void> {
+  initAnalytics({ gpu: device.gpu, dpr: device.dpr, cores: device.cores, memoryGb: device.memoryGb, touch: device.touch });
   applyAutoQuality();
   // Every control ticks under the pointer and clicks when pressed, on every screen.
   installUiSounds();
@@ -972,6 +1006,7 @@ async function boot(): Promise<void> {
       if (garage.slots.length > 6) garage.slots.shift();
       garage.current = garage.slots.length - 1;
       saveGarage(garage);
+      track('build_import', { carId: b.carId });
       notice = () => toast(`Loaded shared build "${b.name}"`, Check);
     } else notice = () => toast('That build code could not be read', Info);
     const u = new URL(location.href);

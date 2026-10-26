@@ -1,0 +1,104 @@
+/* Race modes (charts/ModeChart.tsx): one row per race type in its own color (--mode from the row's .mode-* theme class, muted for a type this build does not know), the name
+   and icon over a bar of starts split into finished (solid), quit (the mode's color hatched at 45 degrees, a
+   texture so the split never rests on color) and no end recorded (the bare track), then the counts. */
+@use '../../ui/styles/abstracts/mixins';
+.mode-chart {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  &__row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+  &__head,
+  &__stats {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    font-size: 12px;
+    line-height: 16px;
+  }
+  &__name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 800;
+    color: var(--text);
+    min-width: 0;
+    > svg {
+      color: var(--mode, var(--muted));
+    }
+  }
+  &__starts {
+    flex: none;
+    font-weight: 700;
+    color: var(--text);
+  }
+  &__dim {
+    color: var(--muted);
+    font-weight: 500;
+  }
+  &__track {
+    display: flex;
+    gap: 2px;
+    height: 10px;
+    min-width: 3px;
+  }
+  &__finished {
+    background: var(--mode, var(--muted));
+    min-width: 2px;
+  }
+  &__quit {
+    min-width: 2px;
+    background: repeating-linear-gradient(45deg, var(--mode, var(--muted)) 0 2px, transparent 2px 5px);
+    box-shadow: inset 0 0 0 1px var(--mode, var(--muted));
+  }
+  &__open {
+    min-width: 2px;
+    background: rgba(252, 252, 250, 0.12);
+  }
+  &__stats {
+    color: var(--soft);
+    font-size: 11px;
+    line-height: 14px;
+  }
+  &__time {
+    flex: none;
+    color: var(--muted);
+  }
+  &__legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 6px;
+    margin: auto 0 0;
+    font-size: 11px;
+    line-height: 14px;
+    color: var(--muted);
+  }
+  &__key {
+    width: 14px;
+    height: 8px;
+    margin-left: 6px;
+    &:first-child {
+      margin-left: 0;
+    }
+    &--finished {
+      background: var(--soft);
+    }
+    &--quit {
+      background: repeating-linear-gradient(45deg, var(--soft) 0 2px, transparent 2px 5px);
+      box-shadow: inset 0 0 0 1px var(--soft);
+    }
+    &--open {
+      background: rgba(252, 252, 250, 0.12);
+    }
+  }
+}

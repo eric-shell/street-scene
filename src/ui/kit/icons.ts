@@ -82,6 +82,7 @@ export {
   Code,
   // The settings' Account page.
   CircleUser,
+  ShieldCheck,
   Cloud,
   CloudCheck,
   CloudOff,

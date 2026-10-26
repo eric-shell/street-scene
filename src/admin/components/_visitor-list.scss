@@ -1,0 +1,347 @@
+/* The visitor rows (components/VisitorList.tsx): the sort bar, the cards below 721 px, the folding table in its
+   own horizontal scroller, the drawer's open and close, and the pager.
+
+   The table is table-layout: fixed, each column's width read from the custom properties VisitorColumns sets
+   per breakpoint (lib/visitorColumns.ts holds the widths; 1024 and 1280 here are its BREAKPOINTS), the
+   Location column taking what is left. Its min-width keeps Location real width at the narrowest table; the
+   scroller, not the page, takes any overflow. */
+@use '../../ui/styles/abstracts/media';
+@use '../../ui/styles/abstracts/mixins';
+@use '../../ui/styles/abstracts/palette';
+.visitor-list {
+  &__sort {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  &__sort-row {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    max-width: 384px;
+  }
+  &__select {
+    flex: 1;
+    min-width: 0;
+    min-height: 36px;
+  }
+  &__cards {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  &__scroller {
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  &__pager {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  &__range {
+    margin: 0;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  &__pages {
+    display: flex;
+    gap: 6px;
+  }
+}
+.visitor-table {
+  width: 100%;
+  min-width: 44rem;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 20px;
+  &--xl {
+    min-width: 70rem;
+  }
+  &__head {
+    width: var(--col-md);
+    padding: 8px 16px 8px 0;
+    text-align: left;
+    border-bottom: 1px solid var(--line-strong);
+    @media (min-width: 1024px) {
+      width: var(--col-lg);
+    }
+    @media (min-width: 1280px) {
+      width: var(--col-xl);
+    }
+    &:first-child {
+      padding-left: 12px;
+    }
+    &--right {
+      text-align: right;
+    }
+  }
+  &__sort {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0;
+    font: 800 11px/16px var(--font);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: none;
+    border: 0;
+    cursor: pointer;
+    .visitor-table__head--right & {
+      flex-direction: row-reverse;
+    }
+    > svg {
+      opacity: 0;
+      transition: opacity var(--t-fast);
+    }
+    &:hover,
+    &:focus-visible {
+      color: var(--text);
+      outline: none;
+      > svg {
+        opacity: 0.5;
+      }
+    }
+    &.is-active {
+      color: var(--accent-2);
+      > svg {
+        opacity: 1;
+      }
+    }
+  }
+  &__row {
+    cursor: pointer;
+    border-bottom: 1px solid var(--line);
+    transition: background var(--t-fast);
+    &:hover {
+      background: rgba(252, 252, 250, 0.035);
+    }
+    &:focus-visible {
+      outline: none;
+      box-shadow: inset 2px 0 0 var(--accent-2);
+    }
+    &.is-open {
+      background: rgba(252, 252, 250, 0.06);
+      box-shadow: inset 2px 0 0 var(--accent);
+      border-bottom-color: transparent;
+    }
+  }
+  &__cell {
+    padding: 12px 16px 12px 0;
+    vertical-align: top;
+    color: var(--soft);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    &:first-child {
+      padding-left: 12px;
+    }
+    &--right {
+      text-align: right;
+    }
+    &--visitor,
+    &--flags {
+      white-space: normal;
+    }
+  }
+  &__line {
+    display: block;
+    color: var(--text);
+  }
+  &__subline {
+    display: block;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    &.is-good {
+      color: var(--green);
+    }
+  }
+  &__dash {
+    color: var(--dim);
+  }
+  &__drawer > td {
+    padding: 0;
+    border-bottom: 1px solid var(--line);
+  }
+}
+.visitor-id {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  &__note {
+    display: flex;
+    flex: none;
+    color: var(--accent-2);
+  }
+}
+.middle-truncate {
+  display: flex;
+  min-width: 0;
+  font: 700 12px/16px ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  color: var(--text);
+  &__head {
+    @include mixins.ellipsis;
+  }
+  &__tail {
+    flex: none;
+  }
+}
+.location-value {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  &__label {
+    @include mixins.ellipsis;
+  }
+  > svg {
+    color: var(--accent-2);
+  }
+}
+.player-value {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  &__name {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    font-weight: 700;
+    color: var(--text);
+    > svg {
+      color: var(--green);
+    }
+  }
+  &__text {
+    @include mixins.ellipsis;
+  }
+  &__email {
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--muted);
+    @include mixins.ellipsis;
+  }
+}
+/* A phone's visitor: the whole card is the tap target. */
+.visitor-card {
+  @include mixins.chamfer(9px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 12px;
+  font: inherit;
+  text-align: left;
+  color: var(--soft);
+  background: rgba(252, 252, 250, 0.03);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  &:hover,
+  &:focus-visible {
+    border-color: var(--accent-line);
+    outline: none;
+  }
+  &:focus-visible {
+    border-color: var(--accent-2);
+    box-shadow: var(--ring);
+  }
+  &.is-open {
+    border-color: var(--accent);
+    background: rgba(252, 252, 250, 0.06);
+  }
+  &__head,
+  &__body,
+  &__foot {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+  }
+  &__head {
+    align-items: center;
+  }
+  &__seen {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    line-height: 16px;
+  }
+  &__body {
+    align-items: flex-end;
+    > .visitor-tags {
+      flex: none;
+      max-width: 50%;
+      justify-content: flex-end;
+    }
+  }
+  &__identity {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+  }
+  &__location {
+    min-width: 0;
+    line-height: 20px;
+  }
+  &__foot {
+    align-items: center;
+    padding-top: 8px;
+    font-size: 12px;
+    line-height: 16px;
+    border-top: 1px solid var(--line);
+  }
+  &__races {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+}
+/* The drawer opening and closing: grid rows from 0fr to 1fr (its height is unknown until the fetch lands). With
+   reduced motion it just appears, and a closing one collapses at once and unmounts on its timer. */
+.detail-collapse {
+  display: grid;
+  grid-template-rows: 1fr;
+  &.is-closing {
+    grid-template-rows: 0fr;
+  }
+  @include media.motion {
+    animation: detail-expand 0.26s var(--ease-out);
+    &.is-closing {
+      animation: detail-collapse 0.26s var(--ease-out);
+    }
+  }
+  &__inner {
+    min-height: 0;
+    overflow: hidden;
+  }
+}
+@keyframes detail-expand {
+  from {
+    grid-template-rows: 0fr;
+  }
+}
+@keyframes detail-collapse {
+  from {
+    grid-template-rows: 1fr;
+  }
+}

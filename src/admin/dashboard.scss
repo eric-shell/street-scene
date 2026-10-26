@@ -1,0 +1,13 @@
+/*
+ * The admin dashboard's stylesheet (src/admin/main.tsx imports it): the game's visual language on a scrolling
+ * document. It takes the game's tokens (Monokai Pro on #19181a, the chamfer, the rule, the accent hairline over
+ * every card) and its kit (buttons, chips, segmented controls, tabs, toasts, form fields, type), but not the
+ * game's document layer, which locks the page to one fixed screen for the 3D canvas, nor any game screen.
+ * Then its own blocks, each partial beside the component that builds it, in cascade order. Naming and nesting
+ * follow ui/styles/main.scss: BEM blocks, is-* states, one rule per block, no !important.
+ */
+@use '../ui/styles/base/tokens';
+@use '../ui/kit';
+@use 'document';
+@use 'components';
+@use 'charts';

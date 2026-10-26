@@ -1,0 +1,45 @@
+/* The settings' Privacy page (privacyPage.ts): the note under the sharing switch, in headed groups of a
+   sentence or a short list. */
+.privacy {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--soft);
+  &__group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    p,
+    ul {
+      margin: 0;
+    }
+    ul {
+      padding-left: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+  }
+  &__title {
+    margin: 0;
+  }
+  /* The quiet link under the sign-in button (signIn.ts). */
+  &__link {
+    align-self: flex-start;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 12px;
+    color: var(--muted);
+    text-decoration: underline;
+    cursor: pointer;
+    &:hover,
+    &:focus-visible {
+      color: var(--accent);
+    }
+  }
+}

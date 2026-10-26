@@ -1,0 +1,42 @@
+/* The insight grid (components/InsightsPanel.tsx): one column on a phone, two when wide, six from 1280 px so
+   cards take halves, thirds and two thirds. The hourly strip and the session times take the full width at
+   two columns, where a half-width neighbour would leave a hole. */
+@use '../../ui/styles/abstracts/media';
+.insights {
+  &__grid {
+    display: grid;
+    gap: 12px;
+    @include media.wide {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    @media (min-width: 1280px) {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+  }
+  &__card {
+    @include media.wide {
+      &--two-thirds,
+      &--third-full {
+        grid-column: span 2;
+      }
+    }
+    @media (min-width: 1280px) {
+      &--half {
+        grid-column: span 3;
+      }
+      &--third,
+      &--third-full {
+        grid-column: span 2;
+      }
+      &--two-thirds {
+        grid-column: span 4;
+      }
+    }
+  }
+  &__empty {
+    gap: 4px;
+    > p {
+      margin: 0;
+    }
+  }
+}

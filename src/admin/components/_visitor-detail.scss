@@ -1,0 +1,101 @@
+/* The drawer under an open row (components/VisitorDetail.tsx): a sunken well (the game's --well, as under a
+   menu map) so it reads as hanging off its row rather than as another card, the meta grid beside the close
+   button, the kit's tabs, the pane, and the edit footer. */
+@use '../../ui/styles/abstracts/media';
+@use '../../ui/styles/abstracts/mixins';
+@use '../../ui/styles/abstracts/palette';
+.visitor-detail {
+  padding: 16px;
+  background: var(--well);
+  border-left: 2px solid var(--accent);
+  white-space: normal;
+  @include media.wide {
+    padding: 20px;
+  }
+  .visitor-list__cards & {
+    margin-top: -1px;
+    border: 1px solid var(--accent);
+    border-top: 0;
+  }
+  &__head {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 16px;
+    > .btn {
+      flex: none;
+    }
+  }
+  &__pane {
+    padding-top: 12px;
+  }
+  &__edit {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+    > .label:not(:first-child) {
+      margin-top: 10px;
+    }
+  }
+  &__input {
+    width: 100%;
+    min-height: 38px;
+    font: 500 14px/20px var(--font);
+    color: var(--text);
+    background: palette.alpha(bg0, 0.85);
+    border: 1px solid var(--line-control);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    &:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent);
+    }
+    &::placeholder {
+      color: var(--muted);
+    }
+  }
+  &__notes {
+    resize: vertical;
+    min-height: 78px;
+  }
+  &__hint {
+    margin: 0;
+    font-size: 11px;
+    line-height: 16px;
+    color: var(--muted);
+  }
+  &__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  /* Destructive looks destructive before it is clicked: the game's red on the button's border and icon. */
+  &__delete.btn {
+    color: var(--red);
+    border-color: palette.alpha(red, 0.45);
+    > svg {
+      color: var(--red);
+    }
+    &:hover,
+    &:focus-visible {
+      border-color: var(--red);
+      background: palette.alpha(red, 0.12);
+      > svg {
+        color: var(--red);
+      }
+    }
+  }
+  &__loading {
+    > .tabs {
+      pointer-events: none;
+    }
+    .visitor-detail__edit .skeleton-line:first-child + .skeleton {
+      margin-top: 0;
+    }
+  }
+}

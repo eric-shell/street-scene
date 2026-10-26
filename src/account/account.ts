@@ -9,6 +9,7 @@
  * time keeps its garage: its builds join the account's (cloudSave.ts joinLocalBuilds) rather than vanish under
  * it. Edits upload a few seconds after the last change, and at once when the tab is hidden.
  */
+import { track } from '../analytics/telemetry';
 import { loadJson, saveJson } from '../shared/store';
 import { applySave, collectSave, joinLocalBuilds, watchSynced, type SaveBlob } from './cloudSave';
 
@@ -196,6 +197,7 @@ async function signIn(credential: string): Promise<string | null> {
     const data = (await res.json()) as AccountReply & { error?: string };
     if (!res.ok) return data.error ?? 'Sign-in failed';
     newAccount = data.save === null;
+    track('sign_in', { newAccount });
     const reload = reconcile(data);
     changed({ last: { name: data.player.name, email: data.player.email, picture: tokenPicture(credential) } });
     if (reload) location.reload();
@@ -209,6 +211,7 @@ async function signIn(credential: string): Promise<string | null> {
 export async function signOut(): Promise<void> {
   await push();
   await api('DELETE').catch(() => undefined);
+  track('sign_out', {});
   changed({ player: null }, 'synced');
 }
 

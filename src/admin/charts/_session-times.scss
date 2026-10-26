@@ -1,0 +1,33 @@
+/* Median engaged and driving time (charts/SessionTimes.tsx): two figures side by side, the game's heavy numbers
+   over caps labels, split by a hairline. */
+.session-times {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  flex: 1;
+  align-content: center;
+  &__item {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    & + & {
+      border-left: 1px solid var(--line);
+      padding-left: 16px;
+    }
+  }
+  &__label {
+    font: 700 11px/16px var(--font);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  &__value {
+    font: 900 28px/34px var(--display);
+    color: var(--text);
+  }
+  &__sub {
+    font-size: 11px;
+    line-height: 16px;
+    color: var(--muted);
+  }
+}

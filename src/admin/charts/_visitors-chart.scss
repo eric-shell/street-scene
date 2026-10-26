@@ -1,0 +1,30 @@
+/* New visitors per day (charts/VisitorsChart.tsx), in the totals row: the caption, a plot that fills what the
+   row's height leaves (at least 56 px), and the first and last dates under it. */
+.visitors-chart {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  min-width: 0;
+  &__plot {
+    flex: 1;
+    min-height: 56px;
+    position: relative;
+  }
+  &__svg {
+    display: block;
+    overflow: visible;
+  }
+  &__ceiling {
+    font: 600 10px var(--font);
+    fill: var(--muted);
+  }
+  &__axis {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    line-height: 15px;
+    color: var(--muted);
+  }
+}

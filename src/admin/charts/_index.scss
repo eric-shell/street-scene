@@ -1,0 +1,9 @@
+/* The charts, in cascade order (each partial beside the chart that builds it). */
+@use 'bar-list';
+@use 'funnel';
+@use 'mode-chart';
+@use 'fps-chart';
+@use 'ring';
+@use 'hour-strip';
+@use 'visitors-chart';
+@use 'session-times';

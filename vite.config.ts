@@ -1,5 +1,8 @@
 import { defineConfig } from 'vitest/config';
+import type { Plugin, PluginOption } from 'vite';
+import react from '@vitejs/plugin-react';
 import { execSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import pkg from './package.json' with { type: 'json' };
 import { apiDev } from './scripts/apiDev.ts';
 
@@ -11,11 +14,58 @@ function gitHash(): string {
   }
 }
 
+/**
+ * The admin dashboard (src/admin/, React) is its own page, so players never download React: `/dashboard`
+ * serves dashboard.html on the dev and preview servers, as vercel.json's rewrite does in production.
+ */
+function dashboardRoute(): Plugin {
+  const rewrite = (req: { url?: string }, _res: unknown, next: () => void) => {
+    if (req.url && /^\/dashboard\/?(?:\?|$)/.test(req.url)) req.url = req.url.replace(/^\/dashboard\/?/, '/dashboard.html');
+    next();
+  };
+  return {
+    name: 'dashboard-route',
+    configureServer(server) {
+      server.middlewares.use(rewrite);
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(rewrite);
+    },
+  };
+}
+
+/**
+ * React's plugin for the dashboard only: its transform runs on src/admin, and its Fast Refresh preamble is
+ * injected into dashboard.html alone, so the game's page and modules are built exactly as before.
+ */
+function reactForDashboard(): PluginOption[] {
+  const onlyDashboard = (p: Plugin): Plugin => {
+    const hook = p.transformIndexHtml;
+    if (!hook) return p;
+    const handler = typeof hook === 'function' ? hook : hook.handler;
+    const scoped: typeof handler = function (this: unknown, html, ctx) {
+      return ctx.path.endsWith('dashboard.html') ? (handler as (this: unknown, h: string, c: typeof ctx) => ReturnType<typeof handler>).call(this, html, ctx) : html;
+    } as typeof handler;
+    return { ...p, transformIndexHtml: typeof hook === 'function' ? scoped : { ...hook, handler: scoped } };
+  };
+  return (react({ include: /\/src\/admin\/.*\.tsx?$/ }) as Plugin[]).map(onlyDashboard);
+}
+
 export default defineConfig({
   // The account API (api/*.ts, Vercel functions) on the dev server too.
-  plugins: [apiDev()],
+  plugins: [apiDev(), dashboardRoute(), ...reactForDashboard()],
   server: { host: true, port: 5175, strictPort: true },
-  build: { target: 'es2022', chunkSizeWarningLimit: 1500 },
+  build: {
+    target: 'es2022',
+    chunkSizeWarningLimit: 1500,
+    // Two pages: the game, and the admin dashboard with its own chunks (React and visx stay out of the game's).
+    rolldownOptions: {
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        dashboard: fileURLToPath(new URL('./dashboard.html', import.meta.url)),
+      },
+    },
+  },
   // DevTools traces every style rule back to its .scss partial (dev only; builds ship no maps).
   css: { devSourcemap: true },
   define: {

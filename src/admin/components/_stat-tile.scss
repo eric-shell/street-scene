@@ -1,0 +1,58 @@
+/* A totals tile (components/StatTile.tsx): a chamfered plate under the accent hairline, the number big and
+   heavy like the game's results, the meter a 4 px track. Every tile reserves the meter's row, meter or not,
+   so the row's tiles (and their skeletons) share one height. */
+@use '../../ui/styles/abstracts/mixins';
+.stat-tile {
+  @include mixins.chamfer(12px);
+  @include mixins.plate((var(--card-top), var(--panel)), null);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 14px 16px 12px;
+  &__label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 16px;
+    font: 700 11px/16px var(--font);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    > svg {
+      color: var(--accent);
+    }
+  }
+  &__value {
+    margin-top: 6px;
+    font: 900 26px/30px var(--display);
+    letter-spacing: 0.01em;
+    color: var(--text);
+  }
+  &__meter {
+    display: block;
+    height: 4px;
+    margin-top: 8px;
+    background: rgba(252, 252, 250, 0.07);
+  }
+  &__meter-fill {
+    display: block;
+    height: 100%;
+    min-width: 3px;
+  }
+  &__sub {
+    margin-top: 6px;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--soft);
+    @include mixins.ellipsis;
+  }
+  &.is-loading {
+    gap: 0;
+    .skeleton-line:nth-child(2) {
+      margin-top: 6px;
+    }
+    .skeleton-line:last-child {
+      margin-top: 6px;
+    }
+  }
+}

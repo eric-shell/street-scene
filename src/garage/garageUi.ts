@@ -50,6 +50,7 @@ import { door, transitioning } from '../ui/transitions/transitions';
 import { openSignInDialog, onSignedIn, wantsSignIn } from '../ui/screens/signIn';
 import { Car, Check, ChevronRight, CircleUser, CloudOff, Copy, Download, Hammer, MousePointerClick, Paintbrush, Pencil, Plus, Save, Share2, Trash2, Undo2, Upload, Wrench, X, Route, Video, Warehouse, icon, IconNode } from '../ui/kit/icons';
 import { GarageScene } from './garageScene';
+import { track } from '../analytics/telemetry';
 import { GaragePrefs, GarageState, MAX_SLOTS, Presentation, addSlot, decodeShareCode, encodeShareCode, freshBuild, importBuild, loadGaragePrefs, saveGaragePrefs, shareUrl } from './storage';
 import { section, statLines } from './garageWidgets';
 import type { Child } from './garageWidgets';
@@ -638,6 +639,7 @@ export class GarageScreen implements TabHost {
   private save(): void {
     if (!this.isDirty()) return;
     this.persist();
+    track('build_save', { carId: this.build.carId, slot: this.garage.current });
     toast(`Saved "${this.build.name}" to slot ${this.garage.current + 1}`, Check);
     // The Saved plate flashes green, then eases back (_garage.scss); an edit before then ends it (updateSaveState).
     this.saveBtn.classList.add('is-saved');
@@ -803,6 +805,12 @@ export class GarageScreen implements TabHost {
    */
   private openShare(focusImport: boolean): void {
     const codeOut = h('input', { type: 'text', readonly: true, placeholder: 'Press Export to create a code', style: 'width:100%' }) as HTMLInputElement;
+    // One build_share per dialog, however many times the code is made or copied.
+    let announced = false;
+    const shared = (): void => {
+      if (!announced) track('build_share', { carId: this.build.carId });
+      announced = true;
+    };
     const importIn = h('input', { type: 'text', placeholder: 'Paste a build code or link', style: 'width:100%' }) as HTMLInputElement;
     this.openDialog(
       Share2,
@@ -815,10 +823,12 @@ export class GarageScreen implements TabHost {
         { class: 'row' },
         btn(Download, 'Export', async () => {
           codeOut.value = await encodeShareCode(this.build);
+          shared();
         }, '--small --primary'),
         btn(Copy, 'Copy link', async () => {
           const code = codeOut.value || (await encodeShareCode(this.build));
           codeOut.value = code;
+          shared();
           try {
             await navigator.clipboard.writeText(shareUrl(code));
             toast('Share link copied', Check);
@@ -847,6 +857,7 @@ export class GarageScreen implements TabHost {
           // A new slot while there is room, else it replaces the build in use: either way the build in use is left.
           this.whenSaved(() => {
             importBuild(this.garage, imported);
+            track('build_import', { carId: imported.carId });
             this.selectedDecal = -1;
             this.persist();
             void this.changed(true);

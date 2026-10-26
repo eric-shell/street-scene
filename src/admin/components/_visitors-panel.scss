@@ -1,0 +1,150 @@
+/* The visitor panel's frame and toolbar (components/VisitorsPanel.tsx): one plate holding the search row, the
+   filter row and the rows, dimmed while a refetch is in flight instead of flashing a skeleton. The filter
+   toggle is a chamfered chip button, the accent fill when pressed (the way a selected segment reads). */
+@use '../../ui/styles/abstracts/media';
+@use '../../ui/styles/abstracts/mixins';
+@use '../../ui/styles/abstracts/palette';
+.visitors {
+  @include mixins.chamfer(12px);
+  @include mixins.plate((var(--card-top), var(--panel)), null);
+  min-width: 0;
+  transition: opacity 0.3s;
+  &.is-refreshing {
+    opacity: 0.45;
+  }
+  &__search {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--line);
+    > svg {
+      color: var(--muted);
+    }
+  }
+  &__search-input {
+    flex: 1;
+    min-width: 0;
+    height: 28px;
+    padding: 0;
+    font: 600 14px var(--font);
+    color: var(--text);
+    background: transparent;
+    border: 0;
+    outline: none;
+    &::placeholder {
+      color: var(--muted);
+    }
+  }
+  &__count {
+    flex: none;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  &__clear {
+    display: flex;
+    padding: 6px;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    &:hover,
+    &:focus-visible {
+      color: var(--text);
+      outline: none;
+    }
+  }
+  &__filters {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--line);
+    @include media.wide {
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px 16px;
+      padding: 10px 16px;
+    }
+  }
+  &__group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    @include media.wide {
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+  }
+  &__toggles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  &__select {
+    width: 100%;
+    min-height: 40px;
+  }
+  &__body {
+    padding: 12px 16px 16px;
+  }
+  &__empty {
+    margin: 0;
+    color: var(--muted);
+  }
+}
+.filter-toggle {
+  @include mixins.chamfer(6px);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  font: 700 12px var(--font);
+  letter-spacing: 0.03em;
+  color: var(--soft);
+  background: var(--surface);
+  border: 1px solid var(--line-control);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  @include media.wide {
+    min-height: 30px;
+    padding: 0 10px;
+  }
+  > svg {
+    color: var(--muted);
+  }
+  &:hover,
+  &:focus-visible {
+    color: var(--text);
+    border-color: var(--accent-line);
+    outline: none;
+  }
+  &:focus-visible {
+    border-color: var(--accent-2);
+    box-shadow: var(--ring);
+  }
+  &.is-pressed {
+    color: var(--on-accent);
+    background: var(--accent-grad);
+    border-color: transparent;
+    > svg {
+      color: var(--on-accent);
+    }
+  }
+  &:disabled {
+    cursor: default;
+    color: var(--dim);
+    border-color: var(--line);
+    background: transparent;
+    > svg {
+      color: palette.alpha(text, 0.4);
+    }
+  }
+}

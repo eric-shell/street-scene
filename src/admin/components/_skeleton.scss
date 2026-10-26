@@ -1,0 +1,68 @@
+/* Loading placeholders (components/Skeleton.tsx): grey bars inside the line boxes of the text they stand for,
+   breathing slowly while their panel loads (only with motion allowed). */
+@use '../../ui/styles/abstracts/media';
+.skeleton {
+  display: block;
+  flex: none;
+  border-radius: var(--radius-sm);
+  background: rgba(252, 252, 250, 0.09);
+  @include media.motion {
+    animation: skeleton-breathe 1.6s ease-in-out infinite;
+  }
+  &--pill {
+    clip-path: var(--chamfer-sm);
+  }
+  &--grow {
+    flex: 1;
+    min-width: 0;
+  }
+  &--end {
+    margin-left: auto;
+  }
+  &--centre {
+    margin: 0 auto;
+  }
+}
+.skeleton-line {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  &--right {
+    justify-content: flex-end;
+  }
+}
+.skeleton-stroke {
+  stroke: rgba(252, 252, 250, 0.09);
+}
+/* The rows of a bar or row chart while loading: BarList's 16 px rows 8 px apart, the taller charts' 48 px ones
+   12 px apart (see InsightBodySkeleton). */
+.skeleton-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.skeleton-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  &__row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 16px;
+  }
+  &--tall {
+    gap: 12px;
+    .skeleton-rows__row {
+      height: 48px;
+    }
+  }
+}
+@keyframes skeleton-breathe {
+  50% {
+    opacity: 0.45;
+  }
+}

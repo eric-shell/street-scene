@@ -1,0 +1,61 @@
+/* The visitor facts (components/VisitorMetaGrid.tsx): one column on a phone, two, then three; each fact an
+   icon in a small chamfered well beside a caps label over its value. Values wrap rather than truncate (a GPU
+   string or an email is read here, not scanned). */
+@use '../../ui/styles/abstracts/media';
+@use '../../ui/styles/abstracts/mixins';
+.meta-grid {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 12px 24px;
+  @media (min-width: 560px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  @media (min-width: 1024px) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.meta-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  &__icon {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    color: var(--accent);
+    background: rgba(252, 252, 250, 0.07);
+    clip-path: var(--chamfer-sm);
+  }
+  &__text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  &__label {
+    font: 700 10px/14px var(--font);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  &__value {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0 6px;
+    font: 600 13px/18px var(--font);
+    color: var(--text);
+    overflow-wrap: anywhere;
+    &--mono {
+      font: 600 12px/18px ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    }
+  }
+  &__dim {
+    color: var(--muted);
+    font-weight: 500;
+  }
+}

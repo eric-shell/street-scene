@@ -1,0 +1,4 @@
+# The game is public; the admin dashboard and the API are not pages to index.
+User-agent: *
+Disallow: /dashboard
+Disallow: /api/

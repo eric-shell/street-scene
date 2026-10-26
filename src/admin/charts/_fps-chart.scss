@@ -1,0 +1,104 @@
+/* Frame rate (charts/FrameRate.tsx): rows of median fps on a shared scale, the 30 floor and the 60 hold drawn
+   through every track as hairlines and named once above them; and the status badge, a word with its icon in
+   the ink of what it means (green holds, yellow under 60, red under 30), never a fill. */
+@use '../../ui/styles/abstracts/mixins';
+.fps-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  &__axis {
+    position: relative;
+    height: 14px;
+  }
+  &__tick {
+    position: absolute;
+    top: 0;
+    transform: translateX(-50%);
+    font-size: 10px;
+    line-height: 14px;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  &__rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  &__row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+  &__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    font-size: 12px;
+    line-height: 18px;
+  }
+  &__label {
+    min-width: 0;
+    font-weight: 700;
+    color: var(--text);
+    @include mixins.ellipsis;
+  }
+  &__value {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 800;
+    color: var(--text);
+  }
+  &__track {
+    position: relative;
+    display: block;
+    height: 10px;
+    background: rgba(252, 252, 250, 0.07);
+  }
+  &__fill {
+    display: block;
+    height: 100%;
+    min-width: 3px;
+    border-radius: 0 2px 2px 0;
+  }
+  &__line {
+    position: absolute;
+    top: -3px;
+    bottom: -3px;
+    width: 1px;
+    background: var(--text);
+    opacity: 0.55;
+  }
+  &__sub {
+    font-size: 11px;
+    line-height: 14px;
+    color: var(--muted);
+    @include mixins.ellipsis;
+  }
+}
+.fps-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 800 10px/14px var(--font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  &--holds {
+    color: var(--green);
+  }
+  &--under-hold {
+    color: var(--accent-2);
+  }
+  &--under-floor {
+    color: var(--red);
+  }
+}

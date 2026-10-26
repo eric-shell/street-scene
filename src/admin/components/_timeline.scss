@@ -1,0 +1,146 @@
+/* The activity timeline, race log and frame-rate log (components/ActivityTimeline.tsx): session blocks on a
+   faint plate, each a header (when, engaged, driving, views, viewport, the build hash as a mono tag, how it
+   arrived) over its entries; an entry is an icon in its tone, the line, and the time on the right. The pane
+   scrolls on its own past 28rem so a long history never pushes the edit footer off the page. */
+@use '../../ui/styles/abstracts/media';
+@use '../../ui/styles/abstracts/mixins';
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 28rem;
+  padding-right: 4px;
+  @include mixins.scroll-y;
+  &--flat {
+    max-height: 28rem;
+    @include mixins.scroll-y;
+  }
+  &__empty {
+    margin: 0;
+    font-size: 13px;
+    color: var(--muted);
+  }
+}
+.timeline-session {
+  @include mixins.chamfer(9px);
+  padding: 10px 12px;
+  background: rgba(252, 252, 250, 0.035);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  &--orphans {
+    border-style: dashed;
+  }
+  &__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 14px;
+    margin-bottom: 6px;
+    font-size: 12px;
+    line-height: 18px;
+  }
+  &__when {
+    font-weight: 800;
+    color: var(--text);
+  }
+  &__stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 12px;
+    color: var(--soft);
+  }
+  &__build {
+    padding: 0 5px;
+    font: 600 11px/16px ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    color: var(--purple);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+  }
+  &__from {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+    flex-basis: 100%;
+    min-width: 0;
+    color: var(--muted);
+    overflow-wrap: anywhere;
+  }
+  &__utm {
+    color: var(--soft);
+  }
+  &__entries {
+    list-style: none;
+    margin: 0;
+    padding: 6px 0 0;
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid var(--line);
+  }
+}
+.timeline-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  padding: 3px 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--soft);
+  &__icon {
+    flex: none;
+    display: flex;
+    height: 20px;
+    align-items: center;
+    color: var(--muted);
+  }
+  &--good &__icon {
+    color: var(--green);
+  }
+  &--bad &__icon {
+    color: var(--red);
+  }
+  &--view {
+    color: var(--muted);
+  }
+  /* Inline flow, not flex: text and chips wrap as one sentence, punctuation tight against what it follows. */
+  &__body {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    > strong {
+      color: var(--text);
+    }
+    > .chip,
+    > .fps-status {
+      vertical-align: -3px;
+    }
+  }
+  &__dim {
+    color: var(--muted);
+  }
+  &__best {
+    color: var(--accent-2);
+    font-weight: 700;
+  }
+  &__path {
+    font: 600 12px/20px ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    color: var(--soft);
+  }
+  &__time {
+    flex: none;
+    font-size: 11px;
+    line-height: 20px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  /* On a phone the time takes its own line under the entry, so the line itself keeps the width. */
+  @include media.narrow {
+    flex-wrap: wrap;
+    &__time {
+      flex-basis: 100%;
+      padding-left: 21px;
+      line-height: 14px;
+    }
+  }
+}

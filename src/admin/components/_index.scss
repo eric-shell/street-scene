@@ -1,0 +1,13 @@
+/* The dashboard's components, in cascade order (each partial beside the component that builds it). */
+@use 'skeleton';
+@use 'dashboard';
+@use 'stat-tile';
+@use 'chart-frame';
+@use 'insights';
+@use 'visitors-panel';
+@use 'visitor-list';
+@use 'visitor-tag';
+@use 'visitor-detail';
+@use 'meta-grid';
+@use 'timeline';
+@use 'sign-in';

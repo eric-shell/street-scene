@@ -1,0 +1,55 @@
+/* The play funnel (charts/PlayFunnel.tsx): a label over each bar, the count and share on the right, and the
+   step's conversion from the one above under the bar. Bars start at a common baseline on the left, so the
+   narrowing reads straight down the card. */
+.funnel {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  &__step {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+  &__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 12px;
+    line-height: 16px;
+  }
+  &__label {
+    color: var(--soft);
+    font-weight: 600;
+  }
+  &__value {
+    color: var(--text);
+    font-weight: 800;
+  }
+  &__share {
+    color: var(--muted);
+    font-weight: 600;
+  }
+  &__track {
+    display: block;
+    height: 10px;
+    background: rgba(252, 252, 250, 0.07);
+  }
+  &__fill {
+    display: block;
+    height: 100%;
+    border-radius: 0 2px 2px 0;
+  }
+  &__rate {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    line-height: 14px;
+    color: var(--muted);
+  }
+}

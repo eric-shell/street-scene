@@ -1,0 +1,4 @@
+{
+  "crons": [{ "path": "/api/admin", "schedule": "0 4 * * *" }],
+  "rewrites": [{ "source": "/dashboard", "destination": "/dashboard.html" }]
+}

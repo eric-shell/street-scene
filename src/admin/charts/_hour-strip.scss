@@ -1,0 +1,55 @@
+/* Sessions by hour (charts/HourlyActivity.tsx): 24 flat columns over a hairline baseline and a four-tick axis.
+   2 px gutters (4 px when wide), 72 px tall (96 px when the card is wide enough to make that a shape rather
+   than a flat strip). A hovered column washes its full height so the hit target shows. */
+@use '../../ui/styles/abstracts/media';
+.hour-strip {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  &__columns {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 72px;
+    @include media.wide {
+      height: 96px;
+      gap: 4px;
+    }
+  }
+  &__column {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    align-items: flex-end;
+    &.is-hovered {
+      background: rgba(252, 252, 250, 0.06);
+    }
+  }
+  &__bar {
+    display: block;
+    width: 100%;
+    border-radius: 2px 2px 0 0;
+    &.is-empty {
+      opacity: 0.45;
+    }
+  }
+  &__baseline {
+    height: 1px;
+    background: var(--line-strong);
+  }
+  &__axis {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    font-size: 11px;
+    line-height: 15px;
+    color: var(--muted);
+  }
+}
+/* Centred over its bar and anchored by its own bottom edge, so it never covers the mark it reports. */
+.chart-tooltip--above {
+  transform: translate(-50%, calc(-100% - 8px));
+}
