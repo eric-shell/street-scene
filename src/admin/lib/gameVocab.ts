@@ -10,6 +10,7 @@
 import { ChevronsRight, Compass, MapPinned, RotateCcw, Route, Wind, type IconNode } from 'lucide';
 import manifest from '../../assets/carManifest.json';
 import { FRAME_BUDGET } from '../../render/frameBudget';
+import type { ErrorMeta } from '../../shared/analytics';
 import type { PaletteColor } from '../../ui/kit/palette';
 import type { RaceType } from '../../ui/settings';
 
@@ -47,6 +48,9 @@ const CAR_NAMES = new Map(manifest.cars.map((c) => [c.id, c.displayName]));
 export function carName(id: string): string {
   return CAR_NAMES.get(id) ?? id;
 }
+
+/** What broke, as the timeline and the Errors card name it (shared/analytics.ts ErrorMeta). */
+export const ERROR_KIND: Record<ErrorMeta['kind'], string> = { error: 'Error', rejection: 'Unhandled rejection', webgl: 'No WebGL', context_lost: 'Graphics reset' };
 
 export type Tier = 'low' | 'medium' | 'high';
 export const TIERS: readonly Tier[] = ['low', 'medium', 'high'];

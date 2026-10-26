@@ -15,7 +15,7 @@
  * require a JSON body. All SQL is parameterized through the tagged template.
  */
 import { timingSafeEqual } from 'node:crypto';
-import type { AdminSessionPayload, GpuRow, InsightsPayload, LinkedPlayer, PageView, Visitor, VisitorDetailPayload, VisitorEvent, VisitorListPayload, VisitorPatch, VisitorSession, VisitorSummary } from './_lib/adminTypes.js';
+import type { AdminSessionPayload, ErrorRow, GpuRow, InsightsPayload, LinkedPlayer, PageView, Visitor, VisitorDetailPayload, VisitorEvent, VisitorListPayload, VisitorPatch, VisitorSession, VisitorSummary } from './_lib/adminTypes.js';
 import { SYNTHETIC_CAMPAIGN } from './_lib/adminTypes.js';
 import { requireAdmin } from './_lib/admin.js';
 import { sql } from './_lib/db.js';
@@ -41,6 +41,15 @@ function ymd(v: unknown): string {
   const d = v instanceof Date ? v : new Date(String(v));
   return Number.isNaN(d.valueOf()) ? '1970-01-01' : d.toISOString().slice(0, 10);
 }
+
+/** A timestamp column as ISO text: the driver hands back a Date or a string. */
+function iso(v: unknown): string {
+  const d = v instanceof Date ? v : new Date(String(v));
+  return Number.isNaN(d.valueOf()) ? new Date(0).toISOString() : d.toISOString();
+}
+
+const ERROR_KINDS: readonly ErrorRow['kind'][] = ['error', 'rejection', 'webgl', 'context_lost'];
+const asErrorKind = (v: unknown): ErrorRow['kind'] => (ERROR_KINDS.includes(v as ErrorRow['kind']) ? (v as ErrorRow['kind']) : 'error');
 
 type Tier = 'low' | 'medium' | 'high';
 const asTier = (v: unknown): Tier | null => (v === 'low' || v === 'medium' || v === 'high' ? v : null);
@@ -277,7 +286,7 @@ async function insights(days: number): Promise<Response> {
   // Window predicates repeat the same make_interval on purpose: one parameter, one meaning, no JS-side cutoff.
   // The play funnel is built so each step is intersected with the one before it, and therefore can never be
   // wider than it. Replays (metadata replay = true) are not a player starting a race, so they are excluded.
-  const [sessionRows, funnelRows, modeRows, carRows, seedRows, tierRows, gpuRows, sourceRows, hourRows, dayRows] = (await db.transaction([
+  const [sessionRows, funnelRows, modeRows, carRows, seedRows, tierRows, gpuRows, sourceRows, hourRows, dayRows, errorRows] = (await db.transaction([
     db`
       select
         count(*)::int                                                       as total,
@@ -437,6 +446,20 @@ async function insights(days: number): Promise<Response> {
       group by gs
       order by gs
     `,
+    // Crash reports by message; reports counts every row in the window, before the cap.
+    db`
+      select metadata->>'kind' as kind, left(coalesce(metadata->>'message', ''), 300) as message,
+             count(*)::int as count, count(distinct visitor_id)::int as visitors,
+             min(created_at) as first_seen, max(created_at) as last_seen,
+             (array_agg(metadata->>'stack' order by created_at desc) filter (where metadata->>'stack' is not null))[1] as stack,
+             coalesce(array_agg(distinct metadata->>'screen') filter (where metadata->>'screen' is not null), '{}') as screens,
+             sum(count(*)) over ()::int as reports
+      from visitor_events
+      where type = 'error' and created_at >= now() - make_interval(days => ${days})
+      group by 1, 2
+      order by count desc, last_seen desc
+      limit ${LIMIT}
+    `,
   ])) as Row[][];
 
   const s = sessionRows[0] ?? {};
@@ -483,6 +506,17 @@ async function insights(days: number): Promise<Response> {
     sources: sourceRows.map((r) => ({ host: str(r.host), tagged: r.tagged === true, sessions: num(r.sessions) })),
     hourly: Array.from({ length: 24 }, (_, hour) => ({ hour, sessions: byHour.get(hour) ?? 0 })),
     days: dayRows.map((r) => ({ date: ymd(r.date), visitors: num(r.visitors) })),
+    errors: errorRows.map((r) => ({
+      kind: asErrorKind(r.kind),
+      message: str(r.message),
+      count: num(r.count),
+      visitors: num(r.visitors),
+      firstSeen: iso(r.first_seen),
+      lastSeen: iso(r.last_seen),
+      stack: typeof r.stack === 'string' ? r.stack : null,
+      screens: Array.isArray(r.screens) ? r.screens.filter((x): x is string => typeof x === 'string') : [],
+    })),
+    errorReports: num(errorRows[0]?.reports),
   };
   return json(payload);
 }

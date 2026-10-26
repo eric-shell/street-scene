@@ -4,7 +4,7 @@
  * started, finished and quit, garage saves, sign-ins, and frame rate per device. Timestamps are ISO strings;
  * every count is a number (cast sums to `::float8` in SQL, since the Neon driver returns int8 as a string).
  */
-import type { EventMetaMap, EventType } from '../../src/shared/analytics.js';
+import type { ErrorMeta, EventMetaMap, EventType } from '../../src/shared/analytics.js';
 
 /** Campaign tag our own synthetic traffic carries (`utm_campaign`); the dashboard's `Test` tag keys off it. */
 export const SYNTHETIC_CAMPAIGN = 'synthetic-test';
@@ -249,6 +249,21 @@ export interface HourRow {
   sessions: number;
 }
 
+/** One crash message over the window: `error` events grouped by kind and message, most reported first. */
+export interface ErrorRow {
+  kind: ErrorMeta['kind'];
+  message: string;
+  /** Reports (each page sends a message once). */
+  count: number;
+  visitors: number;
+  firstSeen: string;
+  lastSeen: string;
+  /** The newest report's top stack frames, when it had any. */
+  stack: string | null;
+  /** The screens it happened on (menu, race, garage, drone, freefly). */
+  screens: string[];
+}
+
 /** `GET op=insights&days=` (7, 30 or 90; default 30). Server-side aggregates, unfiltered by the client's toggles. */
 export interface InsightsPayload {
   /** Size of the aggregate window, in days. */
@@ -272,4 +287,7 @@ export interface InsightsPayload {
   hourly: HourRow[];
   /** New visitors per day, zero-filled across the window. */
   days: StatDay[];
+  /** The most reported crash messages, and every report in the window (the rows are capped, the total is not). */
+  errors: ErrorRow[];
+  errorReports: number;
 }

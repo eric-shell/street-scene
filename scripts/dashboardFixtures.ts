@@ -393,5 +393,12 @@ function buildInsights(visitors: VisitorSummary[], sessions: (VisitorSession & {
       const date = iso(now - (windowDays - 1 - i) * DAY).slice(0, 10);
       return { date, visitors: firsts.get(date) ?? 0 };
     }),
+    // A fixed spread of crash reports: a long message to truncate, a browser report with no stack, a one-off.
+    errors: [
+      { kind: 'error', message: "TypeError: Cannot read properties of undefined (reading 'position') while the garage swapped the wheel set on a car still loading", count: 14, visitors: 6, firstSeen: iso(now - 5 * DAY), lastSeen: iso(now - 2 * 3_600_000), stack: "TypeError: Cannot read properties of undefined (reading 'position')\n    at CarView.setWheels (/assets/main-abc123.js:1:48211)\n    at GarageScreen.apply (/assets/main-abc123.js:1:90412)", screens: ['garage'] },
+      { kind: 'webgl', message: 'Error: Error creating WebGL context.', count: 3, visitors: 3, firstSeen: iso(now - 9 * DAY), lastSeen: iso(now - DAY), stack: null, screens: [] },
+      { kind: 'rejection', message: 'AbortError: The play() request was interrupted by a call to pause().', count: 1, visitors: 1, firstSeen: iso(now - 3 * DAY), lastSeen: iso(now - 3 * DAY), stack: null, screens: ['menu', 'race'] },
+    ],
+    errorReports: 18,
   };
 }

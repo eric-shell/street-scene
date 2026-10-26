@@ -7,7 +7,7 @@
  *
  * Six columns when wide so cards can take halves, thirds and two thirds: the funnel and the modes share the top
  * row, then frame rate by tier, by GPU and the viewport ring, the three rank lists, and the hourly strip
- * beside the session times. SPANS and SHAPES are read by the real grid and its skeleton alike, so the loaded
+ * beside the session times, then the Errors card across the whole width. SPANS and SHAPES are read by the real grid and its skeleton alike, so the loaded
  * panel lands exactly where the placeholder was.
  */
 import { Car, Globe, MapPinned } from 'lucide';
@@ -22,6 +22,7 @@ import { ViewportMix } from '../charts/ViewportMix';
 import { formatHour, labelSource, localHourOffset } from '../lib/chartTheme';
 import { TIER_LABEL, carName } from '../lib/gameVocab';
 import { ChartFrame } from './ChartFrame';
+import { ErrorList } from './ErrorList';
 import { Segmented } from './Controls';
 import { Icon } from './Icon';
 import { InsightBodySkeleton, Line, type InsightShape } from './Skeleton';
@@ -32,7 +33,7 @@ export const DEFAULT_INSIGHT_DAYS: InsightDays = 30;
 
 /** Each card's span modifier and skeleton shape, in DOM order. */
 /** Row counts are what a populated window shows: all six modes, the three tiers, six GPUs, eight sources (each card stretches to its row's tallest). */
-const CARDS: readonly { span: 'half' | 'third' | 'two-thirds' | 'third-full'; shape: InsightShape; rows?: number; axis?: boolean; legend?: boolean }[] = [
+const CARDS: readonly { span: 'half' | 'third' | 'two-thirds' | 'third-full' | 'full'; shape: InsightShape; rows?: number; axis?: boolean; legend?: boolean }[] = [
   { span: 'half', shape: 'rows', rows: 5 },
   { span: 'half', shape: 'rows', rows: 6, legend: true },
   { span: 'third', shape: 'rows', rows: 3, axis: true },
@@ -44,6 +45,7 @@ const CARDS: readonly { span: 'half' | 'third' | 'two-thirds' | 'third-full'; sh
   { span: 'two-thirds', shape: 'hours' },
   // The last card: a third beside the hourly strip at six columns, the whole row at two (alone it would leave a hole).
   { span: 'third-full', shape: 'pair' },
+  { span: 'full', shape: 'rows', rows: 3 },
 ];
 
 const span = (i: number) => `insights__card insights__card--${CARDS[i].span}`;
@@ -144,6 +146,10 @@ export function InsightsPanel({ data, days, onDaysChange }: { data: InsightsPayl
 
           <ChartFrame title="Time per session" meta={plural(data.sessions.total, 'session')} className={span(9)}>
             <SessionTimes sessions={data.sessions} />
+          </ChartFrame>
+
+          <ChartFrame title="Errors" meta={data.errorReports ? plural(data.errorReports, 'report') : 'crash reports'} className={span(10)}>
+            <ErrorList rows={data.errors} />
           </ChartFrame>
         </div>
       )}

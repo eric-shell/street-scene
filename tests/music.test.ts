@@ -28,7 +28,8 @@ describe('music catalog', () => {
         }
       }
     }
-    expect(tracks).toBeGreaterThanOrEqual(42);
+    // The soundtrack is the 1000 Handz album trimmed to twelve (de3ed9f): a rebuild that loses any fails here.
+    expect(tracks).toBeGreaterThanOrEqual(12);
   });
 
   it('has the opening track every session starts on', () => {

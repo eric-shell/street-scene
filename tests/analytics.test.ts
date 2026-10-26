@@ -185,6 +185,11 @@ describe('admin API', () => {
   });
 
   it('aggregates the insights with a funnel that never widens', async () => {
+    // Crash reports: one message from two visitors (the newer report's stack wins), one browser report with none.
+    const err = (visitor: string, meta: object, ago: string) => pg.query(`insert into visitor_events (visitor_id, type, metadata, created_at) values ($1, 'error', $2::jsonb, now() - $3::interval)`, [visitor, JSON.stringify(meta), ago]);
+    await err(V, { kind: 'error', message: 'TypeError: x is undefined', stack: 'old stack', screen: 'garage' }, '2 hours');
+    await err(V2, { kind: 'error', message: 'TypeError: x is undefined', stack: 'new stack', screen: 'race' }, '1 hour');
+    await err(V2, { kind: 'webgl', message: 'Error creating WebGL context.' }, '3 hours');
     for (const days of [7, 90]) expect((await call('GET', `?op=insights&days=${days}`, { cookie: adminCookie() })).status).toBe(200);
     const { status, json } = await call<InsightsPayload>('GET', '?op=insights&days=30', { cookie: adminCookie() });
     expect(status).toBe(200);
@@ -194,6 +199,11 @@ describe('admin API', () => {
     expect(json.sources).toEqual([{ host: 'discord', tagged: true, sessions: 2 }]);
     expect(json.hourly).toHaveLength(24);
     expect(json.days).toHaveLength(30);
+    expect(json.errorReports).toBe(3);
+    expect(json.errors.map(({ firstSeen, lastSeen, ...e }) => (expect(Date.parse(lastSeen)).toBeGreaterThanOrEqual(Date.parse(firstSeen)), { ...e, screens: [...e.screens].sort() }))).toEqual([
+      { kind: 'error', message: 'TypeError: x is undefined', count: 2, visitors: 2, stack: 'new stack', screens: ['garage', 'race'] },
+      { kind: 'webgl', message: 'Error creating WebGL context.', count: 1, visitors: 1, stack: null, screens: [] },
+    ]);
   });
 
   it('prunes only with the cron secret', async () => {

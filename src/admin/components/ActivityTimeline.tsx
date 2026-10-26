@@ -14,9 +14,8 @@ import { CircleUser, Download, Eye, Flag, Gauge, LogOut, Save, Share2, Tag, Tria
 import type { PageView, VisitorEvent, VisitorSession } from '../../../api/_lib/adminTypes';
 import { FpsBadge } from '../charts/FrameRate';
 import { formatClock, formatDuration, formatLong, formatRaceTime, ordinal } from '../lib/dateFormat';
-import { MODES, TIER_LABEL, carName, isMode, modeLabel } from '../lib/gameVocab';
+import { ERROR_KIND, MODES, TIER_LABEL, carName, isMode, modeLabel } from '../lib/gameVocab';
 import { Icon } from './Icon';
-import type { ErrorMeta } from '../../shared/analytics';
 
 /** A race type as the game's chip: its icon and name in its color (base/_tokens.scss .mode-*, kit chip--mode). */
 function ModeChip({ mode }: { mode: string }) {
@@ -31,8 +30,6 @@ function ModeChip({ mode }: { mode: string }) {
 const QUIT_REASON = { quit: 'quit from pause', restart: 'restarted', pagehide: 'closed the page' } as const;
 
 /** One event as a timeline line: its icon, what happened and the details that matter for its type. */
-const ERROR_KIND: Record<ErrorMeta['kind'], string> = { error: 'Error', rejection: 'Unhandled rejection', webgl: 'No WebGL', context_lost: 'Graphics reset' };
-
 function describe(e: VisitorEvent): { icon: IconNode; tone?: 'good' | 'bad'; body: ReactNode } {
   switch (e.type) {
     case 'race_start': {
