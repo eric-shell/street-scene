@@ -15,6 +15,7 @@ import { BUILD_VERSION } from '../../version';
 import { accountsEnabled } from '../../account/account';
 import { accountPage } from './accountPage';
 import { privacyPage } from './privacyPage';
+import { FEATURES } from '../../shared/features';
 
 /** A settings page: its tab and the rows it shows. */
 interface SettingsPage {
@@ -124,12 +125,16 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
         ];
       },
     },
-    {
-      id: 'developer',
-      label: 'Developer',
-      icon: Code,
-      rows: () => [settingRow('Debug mode', toggle('debugMode'), 'Physics (` or F2) and camera (F3) tuning panels in races and free roam')],
-    },
+    ...(FEATURES.devTools
+      ? [
+          {
+            id: 'developer',
+            label: 'Developer',
+            icon: Code,
+            rows: () => [settingRow('Debug mode', toggle('debugMode'), 'Physics (` or F2) and camera (F3) tuning panels in races and free roam')],
+          },
+        ]
+      : []),
     { id: 'privacy', label: 'Privacy', icon: ShieldCheck, rows: privacyPage },
     { id: 'credits', label: 'Credits', icon: Heart, rows: credits },
   ];

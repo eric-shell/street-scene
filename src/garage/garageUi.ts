@@ -57,6 +57,7 @@ import type { Child } from './garageWidgets';
 import { AUTHORS, renderTabContent, TABS } from './garageTabs';
 import type { Tab, TabHost } from './garageTabs';
 import { placeDecal } from './garageVinyls';
+import { FEATURES } from '../shared/features';
 
 /** The garage's steps: pick a build, then customize it. */
 type Step = 'builds' | 'build';
@@ -310,7 +311,7 @@ export class GarageScreen implements TabHost {
     window.addEventListener(
       'keydown',
       (e) => {
-        if (e.code === 'KeyD' && e.ctrlKey && e.shiftKey) {
+        if (e.code === 'KeyD' && e.ctrlKey && e.shiftKey && FEATURES.devTools) {
           this.devMode = !this.devMode;
           toast(this.devMode ? 'Dev mode: drop a .glb part onto the window' : 'Dev mode off', Upload);
           this.root.classList.toggle('is-dev', this.devMode);

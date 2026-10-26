@@ -128,6 +128,10 @@ function applyAutoQuality(): void {
   // because a light count change recompiles every lit shader mid race.
   for (const n of [stage?.night, session?.night]) if (n && n.lighting.poolSize > lv.pointLights) n.lighting.setPoolSize(lv.pointLights);
 }
+/** Debug mode (the tuning panels): a saved setting, honoured only where the dev tools exist (npm run dev). */
+function debugOn(): boolean {
+  return FEATURES.devTools && settings.debugMode;
+}
 function persistSettings(): void {
   saveSettings(urlQualityOverride ? { ...settings, ...storedQuality } : settings);
 }
@@ -566,8 +570,8 @@ function applySettings(s: Settings): void {
   audioHub()?.applyLevels(settings);
   // Debug mode shows both tuning panels in the running session, or takes them away.
   if (debugChanged) {
-    toggleTuningPanel(settings.debugMode);
-    toggleCameraPanel(settings.debugMode);
+    toggleTuningPanel(debugOn());
+    toggleCameraPanel(debugOn());
   }
 }
 
@@ -727,13 +731,13 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
   sessionKind = kind;
   syncMusicMode();
   loop.resetAccumulator();
-  if (kind === 'roam' && settings.debugMode) {
+  if (kind === 'roam' && debugOn()) {
     // Free roam in debug mode is the tuning ground: apply this car's saved physics tuning.
     const player = session.race.cars[0];
     if (applySavedTuning(player.tuning, loadSavedTuning(player.carId)) > 0) session.tuned = true;
   }
   // Debug mode opens both tuning panels (` / F2 and F3 hide and show them).
-  if (settings.debugMode) {
+  if (debugOn()) {
     toggleTuningPanel(true);
     toggleCameraPanel(true);
   }
@@ -810,7 +814,7 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
         newStyleBest,
         tuned,
         // A live, untuned run on the event's city can be sent on: the link opens the same race on the same streets.
-        onChallenge: !replay && !tuned && race.config.seed === seedFromString(seedStr) ? () => void challenge(race.config.mode, me.time, race.drift.total) : undefined,
+        onChallenge: FEATURES.challenges && !replay && !tuned && race.config.seed === seedFromString(seedStr) ? () => void challenge(race.config.mode, me.time, race.drift.total) : undefined,
         onRetry: () =>
           void wipe({ kicker: race.world.event?.name, title: 'Retry', sub: MODE_NAME[race.config.mode] }, () =>
             replay ? startReplay(replay) : runSession({ ...race.config, aiSeed: rivalSeed() }, visuals, null, race.config.opponents.length ? null : loadGhost(race.config.seed, race.config.mode), 'race'),
@@ -969,14 +973,14 @@ function toggleTuningPanel(show = !dev.open): void {
   dev.show(s.race.cars[0].tuning, s.race.config.player.performance, () => (s.tuned = true));
 }
 // The panel keys only work in debug mode.
-input.on('dev', () => settings.debugMode && toggleTuningPanel());
+input.on('dev', () => debugOn() && toggleTuningPanel());
 /** Show or hide the camera tuning panel during a race, replays included (no argument = toggle). */
 function toggleCameraPanel(show = !camPanel.open): void {
   if (state !== 'race' || !session) return;
   if (!show) return camPanel.close();
   if (!camPanel.open) camPanel.show();
 }
-input.on('cameraPanel', () => settings.debugMode && toggleCameraPanel());
+input.on('cameraPanel', () => debugOn() && toggleCameraPanel());
 input.on('freecam', () => {
   if (state === 'freefly') {
     fly?.dispose();
