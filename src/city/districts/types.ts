@@ -55,7 +55,7 @@ export type AreaKind =
   | 'bluff'
   | 'carPark'
   | 'highway'
-  // Reserved unique features (planned later, disabled in config).
+  // Water: one side of the map as a harbor, a lake of merged blocks.
   | 'waterfront'
   | 'lake';
 
@@ -113,6 +113,9 @@ export const COBBLE_PRIORITY = 6;
  * alleyLip: the face under a route shortcut's jump exit lip, toward the street (Wall.top: the launching car passes over it) (alley).
  * gatePier: a stone pier each side of a race path's opening at the park edge (park).
  * lakeRail: the railing on the coping between the lake's promenade and its water, the gate onto the jetty in it (lake).
+ * quayRail / quayFence / warehouse: the railing along a harbor's sea wall, the fences closing its quay's ends,
+ *   and a warehouse shed's walls where the quay passes a recess of the frontage (waterfront).
+ * quayGate: race night barriers closing a harbor's quay off along its frontage, in a race only (waterfront quayGates).
  */
 export type WallLook =
   | 'building'
@@ -142,9 +145,13 @@ export type WallLook =
   | 'alleyLip'
   | 'gatePier'
   | 'highway'
-  | 'lakeRail';
+  | 'lakeRail'
+  | 'quayRail'
+  | 'quayFence'
+  | 'warehouse'
+  | 'quayGate';
 
-export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark', 'alleyLip', 'gatePier', 'highway', 'lakeRail'];
+export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark', 'alleyLip', 'gatePier', 'highway', 'lakeRail', 'quayRail', 'quayFence', 'warehouse', 'quayGate'];
 
 export interface Area {
   /** Index into CityDistricts.areas. */

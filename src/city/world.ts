@@ -24,6 +24,7 @@ import { CityEvent, EventFlavourId, eventOffer, eventRoutePreference, pickEventF
 import type { GateSet } from '../sim/gates';
 import { LevelCrossing, addLevelCrossings } from './levelCrossings';
 import { highwayGates, settleHighway, settleHighwayWalls } from './districts/highway/settle';
+import { quayGates } from './districts/waterfront';
 
 /** Routes tried (the first pick, then alternatives) until one has room for a shortcut. */
 const ROUTE_TRIES = 12;
@@ -346,7 +347,8 @@ const POCKETS = new Set(['cornerPlaza', 'plaza', 'verge', 'lot', 'alleyBay']);
  * A tie's end at a corner rail (routeBarriers.ts) already closes: it stays.
  */
 function sealBarriers(city: City, groups: BarrierGroup[], rails: readonly RailWall[]): void {
-  // The alleys under the expressway's lanes are pockets too, open to the street beneath all along.
+  // The alleys under the expressway's lanes are pockets too, open to the street beneath all along. (A harbor's
+  // quay is no pocket: a race closes its whole frontage, districts/waterfront.ts quayGates.)
   const pockets = city.districts.areas.filter((a) => (a.kind === 'infill' && POCKETS.has(a.variant)) || (a.kind === 'highway' && a.variant === 'alley') || a.kind === 'lake');
   /** The corner rail group a barrier end leans on (a tie's rail end), or -1. */
   const railAt = (x: number, z: number): number => rails.find((r) => distToSegment(x, z, r.ax, r.az, r.bx, r.bz) < ROUTE.barrierTieGap + 0.2)?.group ?? -1;
@@ -576,7 +578,8 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
   // A car park that is the other route's shortcut has its ramp shuttered (open world: all open).
   // The highway's ramps are shut in a race (it is no part of any route), and its alleys where they open
   // onto a street the route does not take; all open in free roam.
-  const gates = openWorld ? [] : carParkGates(city.districts.areas, ROUTE_INDEX[kind]).concat(highwayGates(city.districts.areas, new Set(route.edges)));
+  // A harbor's quay is closed off along its frontage for a race, so no closure is ever driven round across it.
+  const gates = openWorld ? [] : carParkGates(city.districts.areas, ROUTE_INDEX[kind]).concat(highwayGates(city.districts.areas, new Set(route.edges)), quayGates(city.districts.areas, city.districts.builds));
   const walls = blocks.walls.concat(rails, closures, gates);
   const props = blocks.props;
   const propGrid = buildPropGrid(graph, props);
@@ -897,10 +900,10 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
   });
   const CURB_IN = CITY.curbRamp.road;
   const CURB_SPAN = CITY.curbRamp.road + CITY.curbRamp.walk;
-  /** Paving a district draws at curb height: plazas, corner pockets and verges, the monument plaza, the lake's promenade. */
+  /** Paving a district draws at curb height: plazas, corner pockets and verges, the monument plaza, the lake's promenade, a harbor's quay. */
   const raisedPatch = (area: number): boolean => {
     const a = city.districts.areas[area];
-    return a.kind === 'monument' || a.kind === 'lake' || (a.kind === 'infill' && a.variant !== 'lot' && a.variant !== 'planter');
+    return a.kind === 'monument' || a.kind === 'lake' || a.kind === 'waterfront' || (a.kind === 'infill' && a.variant !== 'lot' && a.variant !== 'planter');
   };
   /**
    * Curb lift under a point (m). The street classification is surfaceAt's

@@ -1071,7 +1071,92 @@ export const CITY = {
       /** Lantern masts on the rail every mastStep m, alternating sides (render/districts/market.ts strings). */
       mastStep: 9,
     },
-    waterfront: { enabled: false },
+    /**
+     * Waterfront (src/city/districts/waterfront.ts): one side of the map
+     * becomes a harbor. Past the outermost street the frontage opens onto a
+     * drivable quay, a railing runs along the sea wall, and beyond it the
+     * ground drops under open water out to the horizon, with jetties, gantry
+     * cranes, container stacks and a moored ship as its skyline.
+     */
+    waterfront: {
+      enabled: true,
+      /** Chance per city, the first draw of the module's own stream; a city whose every side is crossed (the El, the river, the expressway) gets none. */
+      chance: 0.36,
+      /**
+       * The sea wall: the outer frontage's furthest reach within `dilate` m along the side, box smoothed
+       * over `smoothSpan` m, sampled every `step` m, plus `quayWidth` m (the narrowest the quay gets: the
+       * samples are pushed out wherever the smoothing cut inside it).
+       */
+      quayWidth: 13,
+      dilate: 70,
+      smoothSpan: 120,
+      step: 16,
+      /** The quay reaches at most this far back from the sea wall (m): a deeper recess of the frontage (a missing outer street) is a warehouse. */
+      maxDepth: 34,
+      /** A recess shallower than this past maxDepth (m: beside a roundabout's bulge, say), or narrower than `shedMinWidth` (m), stays quay. */
+      shedMinDepth: 18,
+      shedMinWidth: 24,
+      /** Warehouse sheds: eaves height range (m). */
+      shedHeight: [8, 12],
+      /** The quay runs at least this far along its side (m). */
+      minLength: 520,
+      /** The El and its run-off, the river's channel end, the expressway's deck: anything else past the frontage keeps this far along the side from the harbor (m). */
+      clearance: 45,
+      /**
+       * A side the races run along wins: its score gains `raceBonus` (m of quay) per route node (either route,
+       * up to 12) within `raceReach` m in from the quay's back.
+       */
+      raceBonus: 45,
+      raceReach: 22,
+      /**
+       * The water: the least height of the quay over it (m), its depth at the sea wall (m), and the
+       * steepest tilt along the coast (rise per m) it follows the ground with, so a long side does not
+       * stand its wall metres high at one end. The sea wall's face drops over `wallFall` m.
+       */
+      freeboard: 1.7,
+      depth: 4,
+      maxTilt: 0.012,
+      wallFall: 1.2,
+      /**
+       * Open water reaches `reach` m out (the lowered ground; the far edge fades back over `fadeOut` m) and,
+       * past an open end of the side, runs on along the coast for `runOn` m: a render only quay beyond the
+       * city's corner, `quayRun` m of it furnished.
+       */
+      reach: 760,
+      fadeOut: 120,
+      runOn: 820,
+      quayRun: 360,
+      /** A closed end's breakwater: the ground falls across it over `mole` m (m), and it runs out [min, max] m. */
+      mole: 16,
+      moleLength: [150, 260],
+      /** The railing stands this far in from the quay's edge (m). */
+      railInset: 0.5,
+      /** Quay lanterns (destructible park lamps) every `lampStep` m along the edge, this far in from it (m). */
+      lampStep: 32,
+      lampInset: 1.8,
+      /** Dock clutter (crates, barrels, pallets): chance of a cluster between two lamps, and pieces in one [min, max]. */
+      clutterChance: 0.4,
+      clutter: [2, 5],
+      /**
+       * Jetties (render only, behind the railing's closed gates) [min, max] per harbor, their length and
+       * width [min, max] (m), at least `jettyGap` m apart along the coast.
+       */
+      jetties: [2, 4],
+      jettyLength: [50, 95],
+      jettyWidth: [18, 26],
+      jettyGap: 150,
+      /** Gantry cranes: rail gauge (m), height of the boom (m) [min, max]; per jetty [min, max], and along a run on quay every `craneStep` m. */
+      craneGauge: 16,
+      craneHeight: [38, 52],
+      cranesPerJetty: [1, 2],
+      craneStep: 70,
+      /** Chance a jetty has a ship moored alongside, and a ship's length [min, max] (m). */
+      shipChance: 0.6,
+      shipLength: [110, 170],
+      /** Channel buoys out on the water [min, max], and how far out they float [min, max] (m). */
+      buoys: [3, 6],
+      buoyReach: [60, 260],
+    },
     /**
      * Lake: two to four adjacent blocks merged into one body of water by deleting the streets
      * between them (src/city/districts/lake.ts); the streets round it are the shore road, a paved
