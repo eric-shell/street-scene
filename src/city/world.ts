@@ -18,7 +18,7 @@ import { settleRiver } from './districts/river';
 import { CityDistricts, districtModule, planDistricts } from './districts';
 import { settleAlleyLips, shortcutJumpRails } from './districts/alleyDressing';
 import { carveRouteShortcuts, hasShortcutSpot, qualifiedCount } from './districts/alleyShortcuts';
-import { ROUTE_INDEX, carParkGates, carParkRails, carParkSites, planCarParks, settleCarParks } from './districts/carPark';
+import { ROUTE_INDEX, carParkGates, carParkRails, carParkSites, planCarParks, railsClearOf, settleCarParks } from './districts/carPark';
 import { bayRoadDistance, baysByEdge } from './busBays';
 import { CityEvent, EventFlavourId, eventOffer, eventRoutePreference, pickEventFlavour, resolveEvent, routeEdges } from './events';
 import type { GateSet } from '../sim/gates';
@@ -250,6 +250,89 @@ function awayFromRoundabouts<T extends Wall>(graph: RoadGraph, rails: T[]): T[] 
   return rails.filter((w) => !bad.has(w.group ?? -1));
 }
 
+/**
+ * No corner rail across the racing line itself: rails stand on the outside of the route's turns at its
+ * nodes, but a race pass (a park's path or the monument plaza's, route.ts RoutePass) can rejoin the street
+ * right before the next turn, from that turn's outside. The pieces the line crosses (and those within a
+ * car's half width of the crossing) come out, the rest of each rail stays (railsClearOf). Elsewhere a no-op.
+ */
+function railsOffRoute<T extends Wall>(route: Route, rails: T[]): T[] {
+  const pts = route.points;
+  const zones: Vec2[][] = [];
+  const half = 1.5;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    const minX = Math.min(a.x, b.x);
+    const maxX = Math.max(a.x, b.x);
+    const minZ = Math.min(a.z, b.z);
+    const maxZ = Math.max(a.z, b.z);
+    const hit = rails.some((w) => Math.max(w.ax, w.bx) >= minX && Math.min(w.ax, w.bx) <= maxX && Math.max(w.az, w.bz) >= minZ && Math.min(w.az, w.bz) <= maxZ && segmentsCross(a, b, w));
+    if (!hit) continue;
+    const l = sqrt((b.x - a.x) ** 2 + (b.z - a.z) ** 2) || 1;
+    const nx = (-(b.z - a.z) / l) * half;
+    const nz = ((b.x - a.x) / l) * half;
+    zones.push([
+      { x: a.x + nx, z: a.z + nz },
+      { x: b.x + nx, z: b.z + nz },
+      { x: b.x - nx, z: b.z - nz },
+      { x: a.x - nx, z: a.z - nz },
+    ]);
+  }
+  return railsClearOf(zones, rails);
+}
+
+/** Whether segment a-b properly crosses wall w. */
+function segmentsCross(a: Vec2, b: Vec2, w: Wall): boolean {
+  const den = (b.x - a.x) * (w.bz - w.az) - (b.z - a.z) * (w.bx - w.ax);
+  if (Math.abs(den) < 1e-9) return false;
+  const t = ((w.ax - a.x) * (w.bz - w.az) - (w.az - a.z) * (w.bx - w.ax)) / den;
+  const u = ((w.ax - a.x) * (b.z - a.z) - (w.az - a.z) * (b.x - a.x)) / den;
+  return t > 0 && t < 1 && u > 0 && u < 1;
+}
+
+/**
+ * Carry a closure's end (`atA`: its a end) across a lake's promenade to the railing's nearest point, just
+ * short of it. Along the closure's own line would do mid-side, but a closure meeting the block at a
+ * corner of its promenade runs on along the promenade, never to the railing. False when the railing is
+ * further than a promenade's width and then some (the end is no shore closure's).
+ */
+function sealToRailing(city: City, lake: Area, w: Wall, atA: boolean, gr: BarrierGroup): boolean {
+  const ex = atA ? w.ax : w.bx;
+  const ez = atA ? w.az : w.bz;
+  const ox = atA ? w.bx : w.ax;
+  const oz = atA ? w.bz : w.az;
+  let best = Infinity;
+  let px = 0;
+  let pz = 0;
+  for (const c of city.blocks.walls) {
+    if (c.area !== lake.id || c.look !== 'lakeRail') continue;
+    const t = segmentT(ex, ez, c.ax, c.az, c.bx, c.bz);
+    const x = c.ax + (c.bx - c.ax) * t;
+    const z = c.az + (c.bz - c.az) * t;
+    const d = sqrt((x - ex) ** 2 + (z - ez) ** 2);
+    if (d < best) {
+      best = d;
+      px = x;
+      pz = z;
+    }
+  }
+  if (best < 0.1 || best > CITY.districts.lake.promenade * 2.5) return false;
+  const k = (best - 0.05) / best;
+  const nx = ex + (px - ex) * k;
+  const nz = ez + (pz - ez) * k;
+  const before = sqrt((ex - ox) ** 2 + (ez - oz) ** 2);
+  if (atA) {
+    w.ax = nx;
+    w.az = nz;
+  } else {
+    w.bx = nx;
+    w.bz = nz;
+  }
+  gr.length += sqrt((nx - ox) ** 2 + (nz - oz) ** 2) - before;
+  return true;
+}
+
 /** Drivable infill (corner pockets, plazas, verges, lots, alley bays) whose frontage is open to the street. */
 const POCKETS = new Set(['cornerPlaza', 'plaza', 'verge', 'lot', 'alleyBay']);
 
@@ -258,11 +341,13 @@ const POCKETS = new Set(['cornerPlaza', 'plaza', 'verge', 'lot', 'alleyBay']);
  * pocket opens right there, carry the barrier on across the pocket to its
  * far side, so the pocket is no way around the closure (and nobody drives
  * through the parked cars behind it). Parks stay open: they are shortcuts.
+ * A lake's promenade is a pocket all round its block: a closure of a shore
+ * street carries on across it to the railing (sealToRailing).
  * A tie's end at a corner rail (routeBarriers.ts) already closes: it stays.
  */
 function sealBarriers(city: City, groups: BarrierGroup[], rails: readonly RailWall[]): void {
   // The alleys under the expressway's lanes are pockets too, open to the street beneath all along.
-  const pockets = city.districts.areas.filter((a) => (a.kind === 'infill' && POCKETS.has(a.variant)) || (a.kind === 'highway' && a.variant === 'alley'));
+  const pockets = city.districts.areas.filter((a) => (a.kind === 'infill' && POCKETS.has(a.variant)) || (a.kind === 'highway' && a.variant === 'alley') || a.kind === 'lake');
   /** The corner rail group a barrier end leans on (a tie's rail end), or -1. */
   const railAt = (x: number, z: number): number => rails.find((r) => distToSegment(x, z, r.ax, r.az, r.bx, r.bz) < ROUTE.barrierTieGap + 0.2)?.group ?? -1;
   /** The pocket a barrier end opens into, carrying on along the barrier (from its other end). */
@@ -298,6 +383,10 @@ function sealBarriers(city: City, groups: BarrierGroup[], rails: readonly RailWa
         if (!pocket) continue;
         const rail = railAt(ox, oz);
         if (rail >= 0 && (tiesInto.get(`${rail}:${pocket.id}`) ?? 0) > 1) continue;
+        if (pocket.kind === 'lake') {
+          if (sealToRailing(city, pocket, w, atA, gr)) sealed.push(w);
+          continue;
+        }
         // Farthest crossing of the ray with the pocket outline: where it leaves the pocket.
         let reach = 0;
         const P = pocket.polygon;
@@ -479,8 +568,8 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
   const route = createRoute(city, kind);
   const { graph, blocks, terrain } = city;
   const openWorld = opts.openWorld === true;
-  // Corner rails, minus the pieces the flights off the route's car park and jump exits would cross.
-  const rails = openWorld ? [] : carParkRails(city.districts.areas, ROUTE_INDEX[kind], shortcutJumpRails(route, city.districts.areas, awayFromRoundabouts(graph, routeRails(graph, route, blocks))));
+  // Corner rails, minus the pieces the flights off the route's car park and jump exits would cross, and any across the line.
+  const rails = openWorld ? [] : railsOffRoute(route, carParkRails(city.districts.areas, ROUTE_INDEX[kind], shortcutJumpRails(route, city.districts.areas, awayFromRoundabouts(graph, routeRails(graph, route, blocks)))));
   const barrierGroups = openWorld ? [] : routeBarrierGroups(graph, blocks.mouths, route, rails, city.districts.areas.find((a) => a.kind === 'river')?.params, blocks.walls);
   sealBarriers(city, barrierGroups, rails);
   const closures = closureRails(barrierGroups, rails);
@@ -808,10 +897,10 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
   });
   const CURB_IN = CITY.curbRamp.road;
   const CURB_SPAN = CITY.curbRamp.road + CITY.curbRamp.walk;
-  /** Paving a district draws at curb height: plazas, corner pockets and verges, the monument plaza. */
+  /** Paving a district draws at curb height: plazas, corner pockets and verges, the monument plaza, the lake's promenade. */
   const raisedPatch = (area: number): boolean => {
     const a = city.districts.areas[area];
-    return a.kind === 'monument' || (a.kind === 'infill' && a.variant !== 'lot' && a.variant !== 'planter');
+    return a.kind === 'monument' || a.kind === 'lake' || (a.kind === 'infill' && a.variant !== 'lot' && a.variant !== 'planter');
   };
   /**
    * Curb lift under a point (m). The street classification is surfaceAt's

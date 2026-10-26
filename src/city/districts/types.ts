@@ -7,6 +7,10 @@
  * DistrictModule, with a matching renderer in src/render/districts/<kind>.ts.
  *
  * Lifecycle (all pure and deterministic, see index.ts):
+ *  0. carve: before anything plans, a module that deletes streets (the lake)
+ *     does so here, in registry order: deleting renumbers every node and edge
+ *     id, so it must happen while no other area holds one. Its areas' node and
+ *     edge claims are carried through later renumbering edits (graphChanged).
  *  1. plan, phase 'graph': right after the road graph, modules claim nodes,
  *     edges and block faces (and may edit the graph: widths, new edges,
  *     roundabout rings, bridge flags). Order is fixed by the registry.
@@ -26,7 +30,7 @@
  */
 import type { Vec2 } from '../../sim/math';
 import type { Rng } from '../../sim/prng';
-import type { RoadGraph } from '../roadGraph';
+import type { RoadGraph, Renumber } from '../roadGraph';
 import type { BlockFace, Building, EdgeMouths, Sector, Wall } from '../blocks';
 import type { Terrain } from '../terrain';
 import type { DistrictPropSpec } from '../props';
@@ -108,6 +112,7 @@ export const COBBLE_PRIORITY = 6;
  * carPark: a multi-storey car park's parapets, facades, chute and ramp walls, and the low face under its lip (carPark).
  * alleyLip: the face under a route shortcut's jump exit lip, toward the street (Wall.top: the launching car passes over it) (alley).
  * gatePier: a stone pier each side of a race path's opening at the park edge (park).
+ * lakeRail: the railing on the coping between the lake's promenade and its water, the gate onto the jetty in it (lake).
  */
 export type WallLook =
   | 'building'
@@ -136,9 +141,10 @@ export type WallLook =
   | 'carPark'
   | 'alleyLip'
   | 'gatePier'
-  | 'highway';
+  | 'highway'
+  | 'lakeRail';
 
-export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark', 'alleyLip', 'gatePier', 'highway'];
+export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark', 'alleyLip', 'gatePier', 'highway', 'lakeRail'];
 
 export interface Area {
   /** Index into CityDistricts.areas. */
@@ -335,8 +341,12 @@ export interface PlanContext {
   budget: { total: number; used: number };
   /** Register an area: assigns its id and records its node/edge/face claims. */
   addArea(a: Omit<Area, 'id'>, footprint?: number): Area;
-  /** Call after editing the graph (sorts node edges, invalidates faces and sectors). */
-  graphChanged(): void;
+  /**
+   * Call after editing the graph (sorts node edges, invalidates faces and sectors). After an edit that
+   * compacted the ids (roadGraph.ts mergeChains, removeEdges), pass its Renumber: every planned area's
+   * node and edge lists and the node and edge claims follow it (ids in params do not).
+   */
+  graphChanged(renumber?: Renumber): void;
   /** Present for 'late' modules only. */
   late?: LateContext;
   /** Present for the modules planned after the topology hook, when it returned one. */
@@ -359,6 +369,13 @@ export interface BuildContext {
 export interface DistrictModule {
   kind: AreaKind;
   phase: 'graph' | 'late';
+  /**
+   * Delete streets before any module plans (lifecycle step 0): the only place a module may, since
+   * deleting renumbers every id. Areas it adds hold node and edge claims (carried through later
+   * renumbering by graphChanged) but no face: faces change with every later graph edit, so the
+   * module claims its block in plan, at its slot in the registry. Optional; graph phase only.
+   */
+  carve?(ctx: PlanContext): void;
   /** Claim space and create areas (through ctx.addArea). Must be deterministic. */
   plan(ctx: PlanContext): void;
   /** Build one of this module's areas. */

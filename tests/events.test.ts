@@ -89,7 +89,8 @@ describe('event flavours', () => {
     }
     expect(Object.keys(counts).length).toBe(FLAVOURS.length);
     for (const id of FLAVOURS) expect(counts[id] ?? 0, id).toBeLessThanOrEqual(80);
-    expect(fallbacks).toBeLessThanOrEqual(12);
+    // (Lakes take blocks a Hill Climb's hills or a Grand Tour's sights would use: 10 of these 200 fall back without them, 13 with.)
+    expect(fallbacks).toBeLessThanOrEqual(14);
     // Seeds rarely share a title.
     expect(titles.size).toBeGreaterThanOrEqual(190);
   });

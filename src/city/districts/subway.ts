@@ -58,7 +58,7 @@ import { Vec2, atan2, distToSegment, sqrt, yawOf } from '../../sim/math';
 import { Rng } from '../../sim/prng';
 import type { Area, AreaBuild, BuildContext, DistrictModule, PlanContext } from './types';
 import { emptyBuild } from './types';
-import { circlePolygon, solidWalls } from './geom';
+import { circlePolygon, distToPolygonEdge, pointInPolygon, solidWalls } from './geom';
 import { riverCenter } from './river';
 import { bluffGround, bluffOf, bluffShape } from './bluff';
 import { createTerrain } from '../terrain';
@@ -726,12 +726,14 @@ function planSwings(ctx: PlanContext, rng: Rng, c0: number, side: number, want: 
  * The path of a line with the given column per row and swings, or null when
  * it does not fit: a claimed node on its way, too many missing streets, a
  * swing whose curve is too tight, crosses a row street near a junction or a
- * bridge, runs near a diagonal avenue or the river.
+ * bridge, runs near a diagonal avenue, the river or the lake.
  */
 function planLine(ctx: PlanContext, side: number, cols: readonly number[], swings: readonly Swing[]): LinePlan | null {
   const g = ctx.graph;
   const H = CITY.gridH;
   const rivers = ctx.areas.filter((a) => a.kind === 'river');
+  // A swing crosses blocks diagonally: never over the lake (its line's own columns meet the lake's claimed shore nodes).
+  const lakes = ctx.areas.filter((a) => a.kind === 'lake');
   const chains = new Map<number, Chain | null>();
   /** The street from (c, j) to (c, j + 1), walked once. */
   const streetAt = (c: number, j: number): Chain | null => {
@@ -855,6 +857,7 @@ function planLine(ctx: PlanContext, side: number, cols: readonly number[], swing
       for (const p of pts) if (distToSegment(p.x, p.z, a.x, a.z, c.x, c.z) < DIAGONAL_CLEAR) return null;
     }
     for (const rv of rivers) for (const p of pts) if (Math.abs(p.z - riverCenter(rv.params, p.x)) < rv.params.top + RIVER_CLEAR) return null;
+    for (const lk of lakes) for (const p of pts) if (pointInPolygon(p.x, p.z, lk.polygon) || distToPolygonEdge(p.x, p.z, lk.polygon) < CITY.districts.lake.clearance) return null;
     return { pts, at, crossed };
   };
 

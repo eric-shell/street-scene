@@ -86,7 +86,7 @@ import type { Rng } from '../../../sim/prng';
 import type { Vec2 } from '../../../sim/math';
 import type { DistrictModule, PlanContext } from '../types';
 import { GORE, HALF, UNDER_WIDTH } from './shape';
-import { LinePlan, Swing, hazards, outline, planLine } from './line';
+import { LinePlan, Swing, hazards, highwayRows, outline, planLine } from './line';
 import { RampPlan, RampSite, SLIP_NOSE, planInterchanges, rampSite, siteBase } from './rampPlan';
 import { EndPlan, planEnds } from './loopPlan';
 import { Stretch, alleyArea, buildAlley, planAlleys } from './alleys';
@@ -107,11 +107,7 @@ export const highwayModule: DistrictModule = {
     const W = CITY.gridW;
     const H = CITY.gridH;
     const hz = hazards(ctx);
-    const rowsOrder: number[] = [];
-    for (let j = 2; j <= H - 3; j++) rowsOrder.push(j);
-    rng.shuffle(rowsOrder);
-    // Rows next to the edges come last: a highway along the map's rim is seen by few races.
-    rowsOrder.push(1, H - 2);
+    const rowsOrder = highwayRows(rng);
     const want = rng.int(CFG.swings[0], CFG.swings[1]);
     const wantPairs = rng.int(CFG.interchanges[0], CFG.interchanges[1]);
     const rowsWith = (r0: number, swings: readonly Swing[]): number[] => {

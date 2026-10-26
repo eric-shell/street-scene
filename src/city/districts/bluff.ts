@@ -32,7 +32,7 @@
  * Planned after the subway, the roundabouts and the alleys and before the
  * back alleys and the routes (districts/index.ts): it edits the subway area's
  * path and polygon and tells its build where the detour runs (params.bluff),
- * keeps clear of roundabouts and the river, and claims the streets it
+ * keeps clear of roundabouts, the river and the lake, and claims the streets it
  * reshapes (ramps, dips, the crest) and the nodes on it, so back alleys,
  * route shortcuts, parks and the monument keep off; the hills keep off its
  * whole footprint (hills.ts). Height: one modifier with an exact analytic
@@ -48,7 +48,7 @@ import type { Terrain } from '../terrain';
 import { RAIL, buildRailCurve } from '../railCurve';
 import type { Area, DistrictModule, HeightSample, PlanContext } from './types';
 import { emptyBuild } from './types';
-import { pointInPolygon, smooth01v } from './geom';
+import { distToPolygonEdge, pointInPolygon, smooth01v } from './geom';
 import { riverCenter } from './river';
 import { applyElDetour, elColumnAt, elDetourPath, elStreetEdges, gridNode } from './subway';
 
@@ -758,6 +758,12 @@ function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | 
       const sgn = (p: Vec2) => (p.z - riverCenter(rv.params, p.x) > 0 ? 1 : -1);
       const s0 = sgn(probes[0]);
       for (const p of probes) if (sgn(p) !== s0 || Math.abs(p.z - riverCenter(rv.params, p.x)) < rv.params.top + 20) ok = false;
+    }
+    // Clear of the lake, which stands level (lake.ts): nothing of the terrace or the right of way near its block.
+    for (const lk of ctx.areas) {
+      if (lk.kind !== 'lake') continue;
+      for (const p of probes) if (pointInPolygon(p.x, p.z, lk.polygon) || distToPolygonEdge(p.x, p.z, lk.polygon) < CITY.districts.lake.clearance) ok = false;
+      for (const q of lk.polygon) if (pointInPolygon(q.x, q.z, rim)) ok = false;
     }
     if (!ok) continue;
     // Nodes in the footprint: unclaimed (the El's own column is the subway's).

@@ -161,6 +161,8 @@ export const hillsModule: DistrictModule = {
         return { poly, rim: samplePath([...poly, poly[0]], 10) };
       });
     const carParks = ctx.areas.filter((a) => a.kind === 'carPark');
+    // A lake (lake.ts) stands level whatever the ground does: slopes keep off its block, promenade and all.
+    const lakes = ctx.areas.filter((a) => a.kind === 'lake').map((a) => samplePath([...a.polygon, a.polygon[0]], 10));
     const rings = g.nodes.filter((n) => n.ring);
     const byEdge = new Map<number, number[]>();
     for (const f of faces) {
@@ -198,6 +200,7 @@ export const hillsModule: DistrictModule = {
       }
       // A car park's ramp climbs a fixed height to a roof at a fixed height over the ground: no slope under it.
       for (const c of carParks) for (const p of c.polygon) if (plateauDistance(s, p.x, p.z).d < reach) return false;
+      for (const rim of lakes) for (const p of rim) if (plateauDistance(s, p.x, p.z).d < s.w + CITY.districts.lake.clearance) return false;
       for (const o of made) {
         const apart = (1 - CFG.overlap) * (s.w + o.w);
         for (const p of hillOutline(o, 0)) if (plateauDistance(s, p.x, p.z).d < apart) return false;

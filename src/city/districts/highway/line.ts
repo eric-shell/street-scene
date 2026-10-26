@@ -56,6 +56,21 @@ export function highwayRolled(seed: number): boolean {
   return CFG.enabled && new Rng(deriveSeed(seed, 'district:highway')).chance(CFG.chance);
 }
 
+/**
+ * The rows the plan tries a line on, in its order: the middle rows shuffled by `rng` (the module's own
+ * stream, right after its roll), then the two next to the map's edges. Shared with the lake, which keeps
+ * its shore off the first of them on a seed that rolls a highway (lake.ts).
+ */
+export function highwayRows(rng: Rng): number[] {
+  const H = CITY.gridH;
+  const rows: number[] = [];
+  for (let j = 2; j <= H - 3; j++) rows.push(j);
+  rng.shuffle(rows);
+  // Rows next to the edges come last: a highway along the map's rim is seen by few races.
+  rows.push(1, H - 2);
+  return rows;
+}
+
 /** A swing: the line leaves row `from` at column i0 and joins row `to` at column i1 = i0 + 1, on a diagonal across the block between. */
 export interface Swing {
   i0: number;
