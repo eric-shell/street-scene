@@ -1,13 +1,15 @@
 /**
  * Garage slots in localStorage and short share codes. A share code is the
  * build JSON with short keys, deflate-compressed and base64url encoded, so it
- * fits in a URL parameter (?build=...). Imported builds are always validated.
+ * fits in a URL parameter (?build=...). Imported builds are always validated. A player with no saved garage
+ * starts on a random street build (randomBuild), drawn again on every page load until they keep one.
  */
-import { CarBuild, DEFAULT_BUILD_NAME, defaultBuild, validateBuild } from '../shared/carBuild';
+import { AXLES, CarBuild, DEFAULT_BUILD_NAME, GLOW_PATTERNS, defaultBuild, validateBuild, type AxleStance, type PaintFinish } from '../shared/carBuild';
 import { loadJson, saveJson } from '../shared/store';
 import { DEFAULT_CAR_ID } from '../sim/tuning';
 import { defaultLaunchRpm } from '../sim/build';
-import { manifestCar } from '../render/car/carAssets';
+import { manifestCar, partsFor } from '../render/car/carAssets';
+import { PRESETS } from './garageWidgets';
 
 export const MAX_SLOTS = 6;
 const KEY = 'garage.v1';
@@ -29,6 +31,60 @@ export function freshBuild(carId = DEFAULT_CAR_ID, name = DEFAULT_BUILD_NAME): C
   return b;
 }
 
+/**
+ * Each car's street fitment, taken from builds dialled in by eye in the garage: low, cambered, the wheel
+ * filling the arch with no poke or rub. Every wheel fits every car the same way (docs/carWheels.md), so the
+ * wheel style is free and only the stance is per car.
+ */
+const STREET_FITS: Record<string, Record<(typeof AXLES)[number], AxleStance>> = {
+  protoHatch: {
+    front: { rideHeight: -0.08, camber: -3, offset: 0.035, wheelSize: 1.118 },
+    rear: { rideHeight: -0.08, camber: -5, offset: 0.035, wheelSize: 1.118 },
+  },
+  protoCoupe: {
+    front: { rideHeight: -0.085, camber: -2.5, offset: 0.065, wheelSize: 1.063 },
+    rear: { rideHeight: -0.08, camber: -4.5, offset: 0.05, wheelSize: 1.063 },
+  },
+  protoWagon: {
+    front: { rideHeight: -0.065, camber: -3.5, offset: 0.05, wheelSize: 1.09 },
+    rear: { rideHeight: -0.03, camber: -4, offset: 0.065, wheelSize: 1.09 },
+  },
+};
+
+const pick = <T>(list: readonly T[]): T => list[Math.floor(Math.random() * list.length)];
+const between = (lo: number, hi: number) => Math.round((lo + Math.random() * (hi - lo)) * 100) / 100;
+
+/**
+ * A random street build for a new player: one of the fitted cars on its fitment and stretched tires, then a
+ * random wheel, paints from the garage's swatches, tint and underglow. Visual only: the setup stays stock.
+ */
+export function randomBuild(name = DEFAULT_BUILD_NAME): CarBuild {
+  const carId = pick(Object.keys(STREET_FITS));
+  const b = freshBuild(carId, name);
+  const v = b.visual;
+  const fit = STREET_FITS[carId];
+  v.stance = { front: { ...fit.front }, rear: { ...fit.rear } };
+  v.parts.wheels = pick(partsFor(carId, 'wheels')).id;
+  v.wheels.tire = v.wheels.rearTire = 'stretched';
+  // Finishes repeat to weight the draw toward the common ones.
+  v.paint = { color: pick(PRESETS.body), finish: pick<PaintFinish>(['gloss', 'metallic', 'metallic', 'pearl', 'candy', 'matte']) };
+  v.wheels.paint = { color: pick(PRESETS.wheels), finish: pick<PaintFinish>(['metallic', 'gloss', 'matte']), match: false };
+  v.wheels.rearPaint = { ...v.wheels.paint };
+  v.calipers = Math.random() < 0.25 ? { ...v.paint, match: true } : { color: pick(PRESETS.calipers), finish: pick<PaintFinish>(['gloss', 'candy', 'metallic']), match: false };
+  v.tint.darkness = between(0.45, 0.85);
+  const glow = pick(PRESETS.glow);
+  v.underglow = {
+    enabled: true,
+    color: glow,
+    color2: pick(PRESETS.glow.filter((c) => c !== glow)),
+    pattern: pick(GLOW_PATTERNS),
+    brightness: between(0.45, 0.8),
+    speed: between(0.75, 2),
+    size: between(1, 1.1),
+  };
+  return b;
+}
+
 export function loadGarage(): GarageState {
   try {
     const parsed = loadJson<{ current?: unknown; slots?: unknown; migration?: unknown } | null>(KEY, null);
@@ -45,7 +101,8 @@ export function loadGarage(): GarageState {
   } catch {
     /* a slot that fails validation: fall through to the default */
   }
-  return { current: 0, slots: [freshBuild(DEFAULT_CAR_ID, 'Garage')] };
+  // Not saved: until the player keeps it (picks a build on the menu or changes it in the garage), the next page load draws another.
+  return { current: 0, slots: [randomBuild('Garage')] };
 }
 
 export function saveGarage(g: GarageState): boolean {
