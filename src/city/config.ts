@@ -1486,6 +1486,111 @@ export const PARKING = {
 } as const;
 
 /**
+ * Open-air parking lots (districts/parkingLot.ts): a strip of a block, a third to the whole block deep,
+ * or the whole block, of flat asphalt with painted bays in rows, parked cars (sim bodies, see
+ * parking.ts), a ticket booth, lamps, tree islands and a fenced edge with curb cuts on the street.
+ * Everything is metres unless noted; the layout (districts/parkingLot/layout.ts) is a pure function of the
+ * lot's polygon and its params, so the sim, the renderer and the tests read the same lot.
+ */
+export const PARKING_LOT = {
+  enabled: true,
+  /** Lots per seed: the weights of one, two and three (a seed with fewer fitting blocks gets what fits). */
+  countWeights: [0.4, 0.4, 0.2],
+  /** Blocks that qualify: face area window (m^2), and the ground under them: steepest grade (rise per m) and height spread (m). */
+  faceArea: [9000, 30000],
+  maxGrade: 0.05,
+  maxRise: 5,
+  /** The streets a lot may front: plain streets only (no alley, shortcut, bridge or river edge). */
+  edgeKinds: ['street', 'avenue', 'diagonal', 'boulevard'],
+  /**
+   * Where lots go: a site weighs baseWeight + edgeBoost at the edge of downtown (the downtown factor
+   * edgeAt, edgeWidth wide: neither the towers nor the far outskirts), and nearBoost more within
+   * nearReach of a harbor, night market, monument or car park (places people drive to and leave a car).
+   */
+  baseWeight: 0.35,
+  edgeBoost: 1.2,
+  edgeAt: 0.35,
+  edgeWidth: 0.3,
+  nearKinds: ['waterfront', 'market', 'monument', 'carPark'],
+  nearReach: 260,
+  nearBoost: 1,
+  /** Share of lots that take the whole block (the rest are a strip along one street side). */
+  fullChance: 0.3,
+  /** A strip is this share of the block's depth from its street side (min, max); a lot shorter than minDepth or smaller than minArea (m^2) is not worth a lot. */
+  depthShare: [0.4, 0.85],
+  minDepth: 44,
+  minArea: 3500,
+  /**
+   * The street side a lot fronts is a run of straight pieces at least this long (m) from end to end and
+   * bending less than frontBend (rad) at any joint and frontBow (m) off its chord.
+   */
+  minSide: 56,
+  frontBend: 0.2,
+  frontBow: 4,
+  /** Races: the lot keeps this far from every route node (m: its closed side streets and their meets) and from the route's streets. */
+  routeNodeClear: 60,
+  /** The lot keeps this far from another district's outline (m), from a street that is no plain street (an alley, the El's, a highway's; m) and from a junction another district holds (m). */
+  districtClear: 12,
+  badStreetClear: 20,
+  alleyMouthClear: 40,
+  routeEdgeClear: 22,
+  /** A strip leaves the buildings behind it this much (m) beyond its back fence, and at least minRest of the block's depth is left them (else the lot takes the whole block). */
+  backClear: 6,
+  minRest: 22,
+  /**
+   * Bays: width along the row and depth (m), the aisle between rows (m), the lane round the
+   * edge of the bay field (m, beside the fences), and the open forecourt behind the entrance (m deep,
+   * with the booth island; the drift zone's apron).
+   */
+  bayWidth: 2.7,
+  bayDepth: 5.6,
+  aisle: 6.5,
+  lane: 6.5,
+  forecourt: 22,
+  /** The back strip behind a strip lot's last row (m): the service edge where the dumpsters and cart corrals stand. */
+  serviceStrip: 4,
+  /** Fence: thickness (m, the solid's body, inward from the lot's edge), its drawn height, post spacing (m), and longest piece of solid (m). */
+  fence: { thickness: 0.6, height: 2.1, kerb: 0.45, postGap: 3, piece: 9 },
+  /** Curb cuts (busBays.ts mouthBay): the cut's width at full depth, the flare each side, room kept from a street piece's ends (m), the room between the entrance's and the exit's middles beyond one width, a lone cut's width where no pair fits, and extra cuts on other sides no shorter than extraMinSide. */
+  cut: { width: 6.4, flare: 3.5, endClear: 6, pairGap: 10, extra: 2, extraMinSide: 30, single: 8 },
+  /** The booth island between the entrance and the exit: width across, length into the lot (m), and the booth on it. */
+  island: { width: 3, length: 7, boothWidth: 2, boothDepth: 2.6, boothHeight: 2.7, kerb: 0.4 },
+  /** Tree islands: every this many bays a bay-wide strip of a double row is planted (a solid trunk, radius m), every other one with a lamp. */
+  islandEvery: 11,
+  trunkRadius: 0.25,
+  /** Lamps along the fences: spacing (m) and how far inside the fence face (m); none within lampCutClear of a curb cut's middle. */
+  lampSpacing: 26,
+  lampInset: 1.5,
+  lampCutClear: 6,
+  /** Cars: share of the bays taken (min, max per lot), the share parked backed in, seeded yaw and sideways jitter (rad, m), and the gap kept to the back line (m). */
+  occupancy: [0.45, 0.7],
+  backIn: 0.12,
+  yawJitter: 0.03,
+  sideJitter: 0.1,
+  backGap: 0.3,
+  /** Kinds parked and their mix, with the body half length (m, drivingParams.json traffic.kinds): the kerb's mix plus the occasional van. */
+  kinds: [
+    { name: 'sedan', share: 0.18, halfLength: 2.45 },
+    { name: 'wagon', share: 0.07, halfLength: 2.47 },
+    { name: 'hatch', share: 0.13, halfLength: 2.23 },
+    { name: 'compact', share: 0.11, halfLength: 1.83 },
+    { name: 'coupe', share: 0.06, halfLength: 2.38 },
+    { name: 'minivan', share: 0.08, halfLength: 2.59 },
+    { name: 'pickup', share: 0.1, halfLength: 2.9 },
+    { name: 'suv', share: 0.13, halfLength: 2.6 },
+    { name: 'offroad', share: 0.04, halfLength: 2.21 },
+    { name: 'taxi', share: 0.02, halfLength: 2.66 },
+    { name: 'postvan', share: 0.05, halfLength: 2.79 },
+    { name: 'serviceTruck', share: 0.03, halfLength: 2.76 },
+  ],
+  /** Service edge: dumpsters (2 to 3), bags by each, cart corrals (1 to 2; a corral is this long by this wide, m). */
+  corral: { length: 5, width: 2.2 },
+  /** The drift zone (sim/driftZones.ts): the forecourt from this far in (m, past the booth island), kept this far off the fences (m). */
+  zoneFrom: 8.5,
+  zoneInset: 1.5,
+} as const;
+
+/**
  * Sidewalk trees (streetTrees.ts): solid trunks on the sidewalks of plain streets, avenues, boulevards
  * and diagonals, with a canopy that overhangs the walk. Every trunk is a sim solid (wall look 'tree'),
  * so a car that climbs the curb meets it.

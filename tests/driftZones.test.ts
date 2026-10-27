@@ -78,7 +78,8 @@ describe('drift zones', () => {
     for (const z of zones) {
       const a = r.world.areas[z.area];
       expect(driftZoneKind(a)).toBe(z.kind);
-      if (z.kind === 'lot') {
+      // (A parking lot district's zone is its forecourt, sized by the lot planner: tests/parkingLots.test.ts.)
+      if (z.kind === 'lot' && a.kind === 'infill') {
         expect(a.params.depth).toBeGreaterThanOrEqual(DRIFT_ZONES.minLotDepth);
         expect(a.params.length * a.params.depth).toBeGreaterThanOrEqual(DRIFT_ZONES.minLotArea);
       }

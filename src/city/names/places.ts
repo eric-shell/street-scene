@@ -32,6 +32,7 @@ const KIND_NOUNS: Partial<Record<Area['kind'], string>> = {
   market: 'Night market',
   roadworks: 'Roadworks',
   carPark: 'Parking garage',
+  parkingLot: 'Parking lot',
   waterfront: 'Harbor',
   lake: 'Lake',
 };

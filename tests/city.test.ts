@@ -311,6 +311,8 @@ describe('city generation', () => {
   });
 
   it('places street furniture on sidewalks without overlaps', () => {
+    // The corner infill lots are few (about two a city, fewer where a parking lot takes the block): at least one among the seeds.
+    let infillLots = 0;
     for (const seed of [42, 20261019, 777]) {
       const w = createWorld(seed, 'circuit');
       const props = w.blocks.props;
@@ -348,7 +350,7 @@ describe('city generation', () => {
       expect(pockets.filter((a) => lanterns.some((p) => p.area === a.id)).length).toBeGreaterThanOrEqual(pockets.length * 0.95);
       // Parking lots are lit too: a row of posts along the back, about one per lotLampSpacing, at least two.
       const lots = w.areas.filter((a) => a.kind === 'infill' && a.variant === 'lot');
-      expect(lots.length).toBeGreaterThan(0);
+      infillLots += lots.length;
       for (const a of lots) {
         const n = lanterns.filter((p) => p.area === a.id).length;
         expect(n, `${seed} lot ${a.id}`).toBeGreaterThanOrEqual(Math.max(2, Math.floor(a.params.lu / CITY.districts.infill.lotLampSpacing)));
@@ -392,6 +394,7 @@ describe('city generation', () => {
       }
       expect(JSON.stringify(createWorld(seed, 'circuit').props)).toBe(JSON.stringify(props));
     }
+    expect(infillLots).toBeGreaterThan(0);
   });
 
   it('terrain rolls noticeably with gentle grades and an exact slope', () => {

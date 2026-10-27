@@ -35,6 +35,7 @@ import { waterfrontRenderer } from './waterfront';
 import { roadworksRenderer } from './roadworks';
 import { driftZoneRenderer } from './driftZones';
 import { carParkRenderer } from './carPark';
+import { parkingLotRenderer } from './parkingLot';
 
 export const DISTRICT_RENDERERS: readonly DistrictRenderer[] = [
   downtownRenderer,
@@ -51,6 +52,7 @@ export const DISTRICT_RENDERERS: readonly DistrictRenderer[] = [
   tunnelRenderer,
   overpassRenderer,
   carParkRenderer,
+  parkingLotRenderer,
   waterfrontRenderer,
   lakeRenderer,
   marketRenderer,

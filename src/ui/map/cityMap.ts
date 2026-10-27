@@ -73,6 +73,8 @@ export const KINDS: Partial<Record<AreaKind, KindStyle>> = {
   backAlley: { ink: rgba('soft', 0.55), tag: false },
   roundabout: { ink: PALETTE.soft, tag: false },
   infill: { ink: PALETTE.soft, fill: rgba('soft', 0.2), tag: false },
+  // The big open-air lots are places of their own (named, tagged), in the infill lots' grey.
+  parkingLot: { ink: PALETTE.soft, fill: rgba('soft', 0.26), width: 1.2, tag: true },
   tunnel: { ink: PALETTE.soft, fill: rgba('muted', 0.22), width: 1.5, dash: [4, 3], tag: true },
   overpass: { ink: PALETTE.muted, width: 3, dash: [3, 3], tag: false },
   roadworks: { ink: PALETTE.yellow, fill: rgba('yellow', 0.55), width: 1, tag: false },

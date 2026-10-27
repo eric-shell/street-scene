@@ -52,17 +52,23 @@ import { ROAD_Y } from '../street/cityMeshes';
 import { maskVehicleMesh, underVehicles } from '../vehicleMask';
 
 /**
- * Per tier: most moving cars drawn, their draw distance (m), headlight pools on the road; most kerb parked
- * cars drawn and theirs (m). Draw counts only: the sim's fleet and kerbs are the replayed config's.
+ * Per tier: most moving cars drawn, their draw distance (m), headlight pools on the road; most parked
+ * cars drawn and theirs (m), and the parked cars more while the camera is at a parking lot (`lotParked`,
+ * LOT_REACH): a lot is a few hundred bodies packed in rows, and the nearest dozens alone would leave the
+ * rows beyond a stone's throw empty, hits a car would still take. Draw counts only: the sim's fleet and
+ * kerbs and lots are the replayed config's.
  */
-export const TRAFFIC_QUALITY: Record<Quality, { cars: number; drawDistance: number; beams: boolean; parked: number; parkedDistance: number }> = {
-  low: { cars: 14, drawDistance: 200, beams: false, parked: 24, parkedDistance: 110 },
-  medium: { cars: 26, drawDistance: 280, beams: true, parked: 60, parkedDistance: 180 },
-  high: { cars: 44, drawDistance: 360, beams: true, parked: 120, parkedDistance: 260 },
+export const TRAFFIC_QUALITY: Record<Quality, { cars: number; drawDistance: number; beams: boolean; parked: number; lotParked: number; parkedDistance: number }> = {
+  low: { cars: 14, drawDistance: 200, beams: false, parked: 24, lotParked: 16, parkedDistance: 110 },
+  medium: { cars: 26, drawDistance: 280, beams: true, parked: 60, lotParked: 36, parkedDistance: 180 },
+  high: { cars: 44, drawDistance: 360, beams: true, parked: 120, lotParked: 60, parkedDistance: 260 },
 };
 
+/** The camera counts as at a parking lot within this far (m) of the lot's outline's middle, beyond its reach. */
+const LOT_REACH = 60;
+
 /** Instance slots a view needs at most: the largest tier's picks. */
-const MAX_DRAWN = Math.max(...Object.values(TRAFFIC_QUALITY).map((q) => q.cars + q.parked));
+const MAX_DRAWN = Math.max(...Object.values(TRAFFIC_QUALITY).map((q) => q.cars + q.parked + q.lotParked));
 
 /** Snapshot layout per car: x, z, yaw, kind (-1 gone), born tick, flags (1 braking, 2 struck, 4 kerb parked, struck or not). */
 export const TRAFFIC_SNAP = 6;
@@ -277,6 +283,8 @@ export class TrafficView {
   private readonly pickPD: number[] = [];
   /** Instance slots: every car up to the largest tier's picks. */
   private readonly slots: number;
+  /** The parking lots: middle and reach (m) of each, for the extra parked picks near one. */
+  private readonly lots: { x: number; z: number; r: number }[];
   private readonly m = new THREE.Matrix4();
   private readonly lm = new THREE.Matrix4();
   private readonly q = new THREE.Quaternion();
@@ -291,6 +299,13 @@ export class TrafficView {
   ) {
     this.group.name = 'traffic';
     this.slots = Math.max(1, Math.min(count, MAX_DRAWN));
+    this.lots = world.areas
+      .filter((a) => a.kind === 'parkingLot')
+      .map((a) => {
+        const x = a.polygon.reduce((t, p) => t + p.x, 0) / a.polygon.length;
+        const z = a.polygon.reduce((t, p) => t + p.z, 0) / a.polygon.length;
+        return { x, z, r: Math.max(...a.polygon.map((p) => Math.hypot(p.x - x, p.z - z))) + LOT_REACH };
+      });
     const lampMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     // Tiny HDR emitters flicker in the distance without this (see lightFx.ts).
     fadeSubPixel(lampMat, 0.12, 0.3);
@@ -368,6 +383,9 @@ export class TrafficView {
     const n = Math.floor(curr.length / TRAFFIC_SNAP);
     const maxD2 = q.drawDistance * q.drawDistance;
     const maxP2 = q.parkedDistance * q.parkedDistance;
+    // More parked cars drawn while the camera is at a lot (and the moving ones fewer, so the slots hold).
+    const atLot = this.lots.some((l) => (l.x - cam.x) ** 2 + (l.z - cam.z) ** 2 < l.r * l.r);
+    const parkedMax = q.parked + (atLot ? q.lotParked : 0);
     // Nearest `q.cars` moving cars within the draw distance and nearest `q.parked` kerb cars within theirs.
     const pick = this.pick;
     const pickD = this.pickD;
@@ -382,7 +400,7 @@ export class TrafficView {
       if (curr[o + 3] < 0) continue;
       const d2 = (curr[o] - cam.x) ** 2 + (curr[o + 1] - cam.z) ** 2;
       if (curr[o + 5] & 4) {
-        if (d2 <= maxP2) nearest(pickP, pickPD, q.parked, i, d2);
+        if (d2 <= maxP2) nearest(pickP, pickPD, parkedMax, i, d2);
       } else if (d2 <= maxD2) nearest(pick, pickD, q.cars, i, d2);
     }
     for (const i of pickP) pick.push(i);

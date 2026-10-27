@@ -1,5 +1,6 @@
 /**
- * Drift zones: the monument plaza and the bigger parking lots, open paving
+ * Drift zones: the monument plaza, the bigger parking lots and the forecourt of every parking lot district
+ * (districts/parkingLot.ts: the open apron behind its entrance, clear of the bays and their cars), open paving
  * where a slide has room. Drifting inside one pays a bonus: drift points count
  * DRIFT_ZONES.scoreMul times (drift mode, RaceState.drift) and the nitrous a
  * drift refills comes refillMul times as fast (every mode and every car, AI
@@ -23,6 +24,7 @@
 import type { World } from '../city/world';
 import type { Area } from '../city/districts/types';
 import { pointInPolygon, polygonBounds } from '../city/districts/geom';
+import { lotZone } from '../city/districts/parkingLot/layout';
 import type { Vec2 } from './math';
 import { driftRefillRate, fillNitrous } from './car';
 import { DT, TICK_HZ } from './constants';
@@ -37,7 +39,7 @@ export interface DriftZone {
   /** The district area it lies on (World.areas id). */
   area: number;
   kind: DriftZoneKind;
-  /** Outline (the area's polygon, XZ m). */
+  /** Outline (the area's polygon, or a parking lot's forecourt, XZ m). */
   polygon: Vec2[];
   /** Bounding box of the outline (m). */
   minX: number;
@@ -69,9 +71,10 @@ export interface DriftZoneState {
   readyTick: number[];
 }
 
-/** What kind of zone an area is, or null: the monument plaza, and lots big enough to hold a slide. */
+/** What kind of zone an area is, or null: the monument plaza, and lots big enough to hold a slide (a parking lot district's forecourt). */
 export function driftZoneKind(a: Area): DriftZoneKind | null {
   if (a.kind === 'monument') return 'plaza';
+  if (a.kind === 'parkingLot') return lotZone(a) ? 'lot' : null;
   if (a.kind !== 'infill' || a.variant !== 'lot') return null;
   const depth = a.params.depth ?? 0;
   const length = a.params.length ?? 0;
@@ -92,8 +95,10 @@ export function driftZones(world: Pick<World, 'areas'>): DriftZone[] {
   for (const a of areas) {
     const kind = driftZoneKind(a);
     if (!kind || a.polygon.length < 3) continue;
-    const bb = polygonBounds(a.polygon);
-    zones.push({ index: zones.length, area: a.id, kind, polygon: a.polygon, ...bb });
+    // A parking lot's zone is its forecourt, not the whole lot with its parked cars.
+    const polygon = a.kind === 'parkingLot' ? lotZone(a)! : a.polygon;
+    const bb = polygonBounds(polygon);
+    zones.push({ index: zones.length, area: a.id, kind, polygon, ...bb });
   }
   cache.set(areas, zones);
   return zones;

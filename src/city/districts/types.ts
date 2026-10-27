@@ -54,6 +54,7 @@ export type AreaKind =
   | 'roadworks'
   | 'bluff'
   | 'carPark'
+  | 'parkingLot'
   | 'highway'
   // Water: one side of the map as a harbor, a lake of merged blocks.
   | 'waterfront'
@@ -119,6 +120,8 @@ export const COBBLE_PRIORITY = 6;
  *   and a warehouse shed's walls where the quay passes a recess of the frontage (waterfront).
  * quayGate: race night barriers closing a harbor's quay off along its frontage, in a race only (waterfront quayGates).
  * plaza: a plaza's centrepiece (a statue on its plinth, a clock column, a kiosk) (infill, plazaDressing.ts; drawn by render/districts/plazaDressing.ts).
+ * lotFence / lotKiosk: an open-air parking lot's fence (a low kerb wall under chain link, solid both sides) round its street and back edges, and its solid furniture:
+ *   the ticket booth's island, the cart corrals (parkingLot).
  */
 export type WallLook =
   | 'building'
@@ -155,9 +158,11 @@ export type WallLook =
   | 'quayFence'
   | 'warehouse'
   | 'quayGate'
-  | 'plaza';
+  | 'plaza'
+  | 'lotFence'
+  | 'lotKiosk';
 
-export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark', 'alleyLip', 'gatePier', 'hedge', 'jetty', 'highway', 'lakeRail', 'quayRail', 'quayFence', 'warehouse', 'quayGate', 'plaza'];
+export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark', 'alleyLip', 'gatePier', 'hedge', 'jetty', 'highway', 'lakeRail', 'quayRail', 'quayFence', 'warehouse', 'quayGate', 'plaza', 'lotFence', 'lotKiosk'];
 
 export interface Area {
   /** Index into CityDistricts.areas. */
@@ -430,6 +435,8 @@ export const AREA_MAP_STYLE: Record<AreaKind, AreaMapStyle> = {
   // The escarpment: its terrace filled and its crest as a cliff line with ticks down the face (ui/map/cityMap.ts cliffPath; the width is in screen px).
   bluff: { fill: 'rgba(252,152,103,0.08)', stroke: 'rgba(252,152,103,0.55)', width: 1.5 },
   carPark: { fill: 'rgba(147,146,147,0.22)', stroke: 'rgba(255,97,136,0.4)', width: 1.5 },
+  // An open-air lot: a pale grey patch like the infill lots, a little stronger for its size.
+  parkingLot: { fill: 'rgba(147,146,147,0.2)', stroke: 'rgba(147,146,147,0.32)', width: 1.2 },
   // The freeway: a wide pale band (the deck line), solid where the El is dashed.
   highway: { stroke: 'rgba(252,252,250,0.32)', width: 9 },
   waterfront: { fill: 'rgba(120,220,232,0.14)' },

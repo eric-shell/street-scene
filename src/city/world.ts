@@ -540,6 +540,10 @@ function stripStreet(city: City, edge: number): boolean {
     const a = city.districts.areaAt(A.x + (B.x - A.x) * t, A.z + (B.z - A.z) * t);
     if (a && OFF_STRIP.has(a.kind) && !(e.bridge && a.kind === 'river')) return false;
   }
+  // A parking lot's block: its curb cuts open onto these streets, and the closures and meets of a race that turned at one of its
+  // corners would front it (the planned routes keep off it, parkingLot/plan.ts).
+  const lotFace = (a: Area) => city.blocks.faces[a.params.face];
+  if (city.districts.areas.some((a) => a.kind === 'parkingLot' && (lotFace(a).edges.includes(edge) || lotFace(a).corners.some((c) => c.node === e.a || c.node === e.b)))) return false;
   // A lane closure is fine where its barriers stand clear of the drag lane on their side.
   return !city.districts.areas.some((a) => a.kind === 'roadworks' && a.params.edge === edge && e.width / 2 - a.params.close - ROADWORKS.barrierReach < STRIP_CLEAR);
 }

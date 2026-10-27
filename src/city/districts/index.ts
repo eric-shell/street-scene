@@ -60,6 +60,7 @@ import { downtownModule } from './downtown';
 import { infillModule } from './infill';
 import { marketModule } from './market';
 import { roadworksModule } from './roadworks';
+import { parkingLotModule } from './parkingLot';
 import { carParkModule, CAR_HALF, carParks, flightCorridor } from './carPark';
 import { jumpFlightZone } from './alleyDressing';
 
@@ -82,6 +83,8 @@ export const DISTRICT_MODULES: readonly DistrictModule[] = [
   tunnelModule,
   overpassModule,
   waterfrontModule,
+  // After every module that claims blocks, before downtown takes the rest: a lot is part of a block the others left.
+  parkingLotModule,
   downtownModule,
   infillModule,
   roadworksModule,
@@ -111,6 +114,7 @@ const AREA_PRIORITY: Record<AreaKind, number> = {
   roadworks: 11,
   bluff: 3,
   carPark: 11,
+  parkingLot: 8,
   highway: 4,
   waterfront: 2,
   lake: 2,

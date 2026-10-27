@@ -23,9 +23,10 @@ describe('small solids', () => {
       const done = new Set<Solid>();
       for (const wall of w.blocks.walls) {
         const s = wall.solid;
-        // Car park parapets are long slabs meeting at their corners (a probe there touches both): carPark.test.ts covers them.
+        // Car park parapets and parking lot fences are long slabs meeting at their corners (a probe there touches both): carPark.test.ts
+        // and parkingLots.test.ts cover them.
         // So are the elevated highway's barriers, median and ramp walls (highway.test.ts); its columns are probed here.
-        if (!s || done.has(s) || wall.look === 'carPark' || (wall.look === 'highway' && wall.under === undefined)) continue;
+        if (!s || done.has(s) || wall.look === 'carPark' || wall.look === 'lotFence' || (wall.look === 'highway' && wall.under === undefined)) continue;
         done.add(s);
         looks.add(wall.look!);
         const cx = s.faces.reduce((t, f) => t + f.ax, 0) / s.faces.length;
