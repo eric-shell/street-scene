@@ -13,6 +13,7 @@ import * as THREE from 'three';
 import { Rng } from '../../sim/prng';
 import { GeoBuilder } from '../geoBuilder';
 import { kelvin } from '../textures/textures';
+import { DETAIL, type Detail } from './buildingKit';
 
 /** Ground floor bay variants: the first eight in atlas row 0, the residential and regional ones in row 2. */
 export const GROUND_BAYS = ['shopWarm', 'shopCool', 'arch', 'lobby', 'shutter', 'restaurant', 'masonry', 'neonShop', 'stoop', 'garage', 'arcade', 'bodega', 'decoShop'] as const;
@@ -464,10 +465,12 @@ export interface PodiumOutput {
   awnings: GeoBuilder;
   /** Additive light spill quads on the sidewalk (vertex colors). */
   spill: GeoBuilder;
+  /** Mullion form per graphics tier: a lone front plate or an open-backed box. */
+  mullion: 'plate' | 'box';
 }
 
-export function createPodiumOutput(): PodiumOutput {
-  return { walls: new GeoBuilder(true), trim: new GeoBuilder(true), awnings: new GeoBuilder(true), spill: new GeoBuilder(true) };
+export function createPodiumOutput(detail: Detail = 'medium'): PodiumOutput {
+  return { walls: new GeoBuilder(true), trim: new GeoBuilder(true), awnings: new GeoBuilder(true), spill: new GeoBuilder(true), mullion: DETAIL[detail].mullion };
 }
 
 const AWNING_COLORS = [0x8a1c2b, 0x1c4a8a, 0x1f6b3a, 0x7a5a12, 0x5a1f7a, 0x222222].map((c) => new THREE.Color(c));
@@ -496,7 +499,12 @@ export function podiumHeight(floors: number): number {
   return GROUND_H + floors * PODIUM_FLOOR_H;
 }
 
-function box(gb: GeoBuilder, cx: number, cy: number, cz: number, ux: number, uz: number, hw: number, hh: number, hd: number, color: THREE.Color): void {
+/** Faces of `box` to skip: the four sides in corner order (0 is the -w side, 2 the +w side, 1 and 3 the ends along u), then the top and bottom. */
+const SKIP_SIDE = [1, 2, 4, 8] as const;
+const SKIP_TOP = 16;
+const SKIP_BOTTOM = 32;
+
+function box(gb: GeoBuilder, cx: number, cy: number, cz: number, ux: number, uz: number, hw: number, hh: number, hd: number, color: THREE.Color, skip = 0): void {
   // oriented box: u along (ux, uz), w = outward normal (-uz, ux) * sign handled by caller
   const wx = -uz;
   const wz = ux;
@@ -508,6 +516,7 @@ function box(gb: GeoBuilder, cx: number, cy: number, cz: number, ux: number, uz:
   ];
   const pts = corners.map(([a, b]) => ({ x: cx + ux * a + wx * b, z: cz + uz * a + wz * b }));
   for (let i = 0; i < 4; i++) {
+    if (skip & SKIP_SIDE[i]) continue;
     const p = pts[i];
     const q = pts[(i + 1) % 4];
     const mx = (p.x + q.x) / 2 - cx;
@@ -525,6 +534,7 @@ function box(gb: GeoBuilder, cx: number, cy: number, cz: number, ux: number, uz:
     [cy + hh, 1],
     [cy - hh, -1],
   ] as [number, number][]) {
+    if (skip & (ny > 0 ? SKIP_TOP : SKIP_BOTTOM)) continue;
     const v = pts.map((p) => gb.vertex(p.x, y, p.z, 0, ny, 0, 0, 0, color));
     gb.quadFacing(v[0], v[1], v[2], v[3], 0, ny, 0);
   }
@@ -562,6 +572,8 @@ export function addPodiumFace(out: PodiumOutput, f: PodiumFace, floors: number, 
   // A building tends to repeat one storefront type with an occasional entrance (a lobby or an arch
   // where its set has one).
   const mainBay = f.front ? rng.pick(set) : 6;
+  // box() builds its +w side at +hd; skip the side that faces into the wall whichever way the face is wound.
+  const backSkip = -uz * f.nx + ux * f.nz > 0 ? SKIP_SIDE[0] : SKIP_SIDE[2];
   const entranceBay = f.front ? rng.int(0, bays - 1) : -1;
   const entrances = set.filter((v) => v === 2 || v === 3);
   const entranceType = entrances.length ? rng.pick(entrances) : rng.pick(set);
@@ -656,7 +668,21 @@ export function addPodiumFace(out: PodiumOutput, f: PodiumFace, floors: number, 
       }
       if (f.front && b > 0) {
         const p = { x: l.ax + ux * b * bayLen, z: l.az + uz * b * bayLen };
-        box(out.trim, p.x + f.nx * 0.12, (y0 + y1) / 2, p.z + f.nz * 0.12, ux, uz, 0.2, (y1 - y0) / 2, 0.14, trimColor);
+        if (out.mullion === 'plate') {
+          // One front quad where the box's front face would be (0.12 + 0.14 out), same width.
+          const px = p.x + f.nx * 0.26;
+          const pz = p.z + f.nz * 0.26;
+          const q = [
+            [px - ux * 0.2, y0, pz - uz * 0.2],
+            [px + ux * 0.2, y0, pz + uz * 0.2],
+            [px + ux * 0.2, y1, pz + uz * 0.2],
+            [px - ux * 0.2, y1, pz - uz * 0.2],
+          ].map(([qx, qy, qz]) => out.trim.vertex(qx, qy, qz, f.nx, 0, f.nz, 0, 0, trimColor));
+          out.trim.quadFacing(q[0], q[1], q[2], q[3], f.nx, 0, f.nz);
+        } else {
+          // Front and the two sides only: the back sits in the wall and the ends butt the ledge or the next mullion.
+          box(out.trim, p.x + f.nx * 0.12, (y0 + y1) / 2, p.z + f.nz * 0.12, ux, uz, 0.2, (y1 - y0) / 2, 0.14, trimColor, backSkip | SKIP_TOP | SKIP_BOTTOM);
+        }
       }
     }
     // Step between this level and the next (or the tower above the podium).
@@ -667,7 +693,7 @@ export function addPodiumFace(out: PodiumOutput, f: PodiumFace, floors: number, 
     if (level === 0 && floors > 0) {
       const cx = (l.ax + l.bx) / 2;
       const cz = (l.az + l.bz) / 2;
-      box(out.trim, cx + f.nx * 0.08, top + 0.06, cz + f.nz * 0.08, ux, uz, l.len / 2, 0.08, 0.1, trimColor);
+      box(out.trim, cx + f.nx * 0.08, top + 0.06, cz + f.nz * 0.08, ux, uz, l.len / 2, 0.08, 0.1, trimColor, backSkip | SKIP_SIDE[1] | SKIP_SIDE[3]);
     }
   }
   // Cornice at the top of the podium, at the top level's face line.
@@ -675,7 +701,7 @@ export function addPodiumFace(out: PodiumOutput, f: PodiumFace, floors: number, 
     const e = extAt(floors);
     const l = lineFor(e);
     const top = f.y0 + podiumHeight(floors);
-    box(out.trim, (l.ax + l.bx) / 2 + f.nx * 0.18, top + 0.2, (l.az + l.bz) / 2 + f.nz * 0.18, ux, uz, l.len / 2 + 0.2, 0.22, 0.2, trimColor);
+    box(out.trim, (l.ax + l.bx) / 2 + f.nx * 0.18, top + 0.2, (l.az + l.bz) / 2 + f.nz * 0.18, ux, uz, l.len / 2 + 0.2, 0.22, 0.2, trimColor, backSkip | SKIP_SIDE[1] | SKIP_SIDE[3]);
   }
   if (!f.front) return;
 
@@ -712,7 +738,7 @@ export function addPodiumFace(out: PodiumOutput, f: PodiumFace, floors: number, 
       out.awnings.quadFacing(vl[0], vl[1], vl[2], vl[3], f.nx, 0, f.nz);
     }
     if (name === 'lobby') {
-      box(out.trim, mx + f.nx * 1.2, f.y0 + GROUND_H - 0.6, mz + f.nz * 1.2, ux, uz, bayLen / 2 - 0.3, 0.12, 1.2, trimColor);
+      box(out.trim, mx + f.nx * 1.2, f.y0 + GROUND_H - 0.6, mz + f.nz * 1.2, ux, uz, bayLen / 2 - 0.3, 0.12, 1.2, trimColor, backSkip);
     }
     const spill = SPILL[name];
     if (spill !== undefined) {

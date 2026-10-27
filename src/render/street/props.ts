@@ -50,8 +50,10 @@ export interface PropRenderer {
   /**
    * Mirror the sim's broken flags. Props that broke since the last call come
    * apart, pushed by the nearest car. Cheap when nothing changed.
+   * `dirty` lists the prop ids that changed since the last call: only those are visited. Without it every
+   * prop is scanned (the menu stage, which stands props back up, and a session's first sync).
    */
-  update(dt: number, time: number, broken: ArrayLike<number> | undefined, cars: readonly CarMotion[]): void;
+  update(dt: number, time: number, broken: ArrayLike<number> | undefined, cars: readonly CarMotion[], dirty?: readonly number[]): void;
   dispose(): void;
 }
 
@@ -711,12 +713,16 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
 
   return {
     group,
-    update(dt, time, broken, cars) {
+    update(dt, time, broken, cars, dirty) {
       lensMat.uniforms.time.value = time;
       if (broken && broken.length === props.length) {
         let fresh = 0;
-        for (let i = 0; i < props.length; i++) if (!shown[i] && broken[i]) fresh++;
-        for (let i = 0; i < props.length; i++) {
+        if (dirty) fresh = dirty.length;
+        else for (let i = 0; i < props.length; i++) if (!shown[i] && broken[i]) fresh++;
+        const n = dirty ? dirty.length : props.length;
+        for (let j = 0; j < n; j++) {
+          const i = dirty ? dirty[j] : j;
+          if (i < 0 || i >= props.length) continue;
           const b = broken[i] ? 1 : 0;
           if (b === shown[i]) continue;
           shown[i] = b;

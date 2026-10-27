@@ -167,7 +167,7 @@ export class CarView {
      * The sim rests the tires on the ground; on the city's asphalt they would sink that far into it.
      * 0 (the garage floor) by default.
      */
-    opts: { headlights?: boolean; underglowLight?: boolean; envMap?: THREE.Texture | null; roadLift?: number; brakes?: boolean; plate?: string | null } = {},
+    opts: { headlights?: number; underglowLight?: boolean; envMap?: THREE.Texture | null; roadLift?: number; brakes?: boolean; plate?: string | null } = {},
   ) {
     this.materials = createCarMaterials(opts.envMap ?? null);
     this.car = manifestCar(carId);
@@ -262,9 +262,11 @@ export class CarView {
     this.beam = new THREE.Mesh(new THREE.PlaneGeometry(9, 22).rotateX(-Math.PI / 2).translate(0, GROUND_FX.beamY, dims.length / 2 + 10), beamMat);
     this.beam.renderOrder = 3;
     this.groundFx.add(this.beam);
-    if (opts.headlights) {
-      for (const side of [1, -1]) {
-        const spot = new THREE.SpotLight(0xeaf2ff, 90, 70, 0.42, 0.55, 1.3);
+    // One spot (the Low tier) sits between the lamps with a wider cone, so its pool covers what the pair's would.
+    const spots = opts.headlights ?? 0;
+    if (spots > 0) {
+      for (const side of spots === 1 ? [0] : [1, -1]) {
+        const spot = new THREE.SpotLight(0xeaf2ff, 90, 70, spots === 1 ? 0.5 : 0.42, 0.55, 1.3);
         spot.position.set(side * dims.width * 0.32, 0.7, dims.length / 2 - 0.2);
         spot.target.position.set(side * 0.5, 0, dims.length / 2 + 18);
         this.root.add(spot, spot.target);

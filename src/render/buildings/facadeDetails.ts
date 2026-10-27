@@ -139,7 +139,7 @@ export function balcony(o: Out, F: Frame, face: number, hw: number, hd: number, 
   const x1 = Math.max(pts[0].x, pts[1].x);
   const z0 = Math.min(pts[0].z, pts[1].z);
   const z1 = Math.max(pts[0].z, pts[1].z);
-  lbox(o.trim, F, x0, x1, z0, z1, y - 0.1, y + 0.1, slab);
+  lbox(o.trim, F, x0, x1, z0, z1, y - 0.1, y + 0.1, slab, true, 1 << face); // wall side is buried
   if (rail) {
     const ox = ff.n.x * (depth - 0.05);
     const oz = ff.n.z * (depth - 0.05);
@@ -157,7 +157,7 @@ export function eyebrow(o: Out, F: Frame, face: number, hw: number, hd: number, 
   if (s1 - s0 < 1) return;
   const a = { x: ff.p.x + ff.u.x * s0, z: ff.p.z + ff.u.z * s0 };
   const b = { x: ff.p.x + ff.u.x * s1 + ff.n.x * 0.6, z: ff.p.z + ff.u.z * s1 + ff.n.z * 0.6 };
-  lbox(o.trim, F, Math.min(a.x, b.x), Math.max(a.x, b.x), Math.min(a.z, b.z), Math.max(a.z, b.z), y, y + 0.1, color);
+  lbox(o.trim, F, Math.min(a.x, b.x), Math.max(a.x, b.x), Math.min(a.z, b.z), Math.max(a.z, b.z), y, y + 0.1, color, true, 1 << face); // wall side is buried
 }
 
 /** Deco fin: a vertical slab rising over the front parapet with a neon edge. */

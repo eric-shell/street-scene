@@ -29,6 +29,7 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { CopyShader } from 'three/examples/jsm/shaders/CopyShader.js';
+import type { Quality } from '../ui/settings';
 
 /**
  * Nitrous warp at full strength, all ramping from the edge of the middle 50% of
@@ -58,11 +59,15 @@ export const NITRO_FX = {
   ],
 } as const;
 
+/** Zoom blur taps per tier (the shader loop runs up to 11): the streak is fewer, coarser samples on weaker devices, jittered per pixel either way. */
+export const POST_TAPS: Record<Quality, number> = { low: 4, medium: 7, high: 11 };
+
 const FxShader = {
   uniforms: {
     tDiffuse: { value: null as THREE.Texture | null },
     vignette: { value: 0.35 },
     blur: { value: 0.0 },
+    uTaps: { value: 11 },
     center: { value: new THREE.Vector2(0.5, 0.55) },
     warp: { value: 0.0 },
     time: { value: 0.0 },
@@ -84,6 +89,7 @@ const FxShader = {
     uniform sampler2D tDiffuse;
     uniform float vignette;
     uniform float blur;
+    uniform int uTaps;
     uniform vec2 center;
     uniform float warp;
     uniform float time;
@@ -125,16 +131,20 @@ const FxShader = {
         vec2 dir = uv - center;
         float r = length(dir * vec2(1.25, 1.0));
         float w = pow(smoothstep(0.12, 0.85, r), 1.6);
-        float jit = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) / 11.0;
-        vec4 acc = c;
-        float total = 1.0;
-        for (int i = 1; i < 12; i++) {
-          float k = (float(i) - jit) / 11.0;
-          float wt = 1.0 - k * 0.5;
-          acc += texture2D(tDiffuse, uv - dir * zoom * w * k * 0.16) * wt;
-          total += wt;
+        // The centre of the frame (w ~ 0) has nothing to streak: skip the taps there.
+        if (w >= 0.02) {
+          float jit = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) / float(uTaps);
+          vec4 acc = c;
+          float total = 1.0;
+          for (int i = 1; i < 12; i++) {
+            if (i > uTaps) break;
+            float k = (float(i) - jit) / float(uTaps);
+            float wt = 1.0 - k * 0.5;
+            acc += texture2D(tDiffuse, uv - dir * zoom * w * k * 0.16) * wt;
+            total += wt;
+          }
+          c = acc / total;
         }
-        c = acc / total;
       }
       if (m > 0.0) {
         // Colour fringes split along the stretch.
@@ -366,7 +376,8 @@ export class PostFx {
   }
 
   /** Takes effect on the next setSize (GameRenderer always resizes after this). */
-  configure(opts: { bloom: boolean; bloomScale: number; bloomStrength: number; retro: boolean; msaa?: number }): void {
+  configure(opts: { bloom: boolean; bloomScale: number; bloomStrength: number; retro: boolean; msaa?: number; taps?: number }): void {
+    this.fx.uniforms.uTaps.value = Math.max(1, Math.min(11, Math.round(opts.taps ?? 11)));
     this.bloom.enabled = opts.bloom;
     this.bloom.scale = opts.bloomScale;
     this.bloomBase = opts.bloomStrength;

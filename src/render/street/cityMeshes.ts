@@ -433,8 +433,9 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
   // ---------- Buildings ----------
   // Regional architecture (architecture.ts plans the styles, buildings.ts builds them) over facade kit podiums.
   const neon = NEON_COLORS.map((c) => new THREE.Color(c));
-  const podium = createPodiumOutput();
-  const buildings = buildBuildings(world, podium, { detail: opts.detail ?? 'medium' });
+  const detail = opts.detail ?? 'medium';
+  const podium = createPodiumOutput(detail);
+  const buildings = buildBuildings(world, podium, { detail });
   disposables.push(buildings);
   for (const m of buildings.meshes) group.add(m);
   {

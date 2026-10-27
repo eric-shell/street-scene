@@ -9,6 +9,7 @@
  * another is already dark: no visible pop on the road or the cars.
  */
 import * as THREE from 'three';
+import type { Quality } from '../ui/settings';
 
 /**
  * Fog of a clear night: the defaults every self-fogging shader starts from.
@@ -17,6 +18,18 @@ import * as THREE from 'three';
  */
 export const FOG_COLOR = 0x0a0b1c;
 export const FOG_DENSITY = 0.0042;
+
+/**
+ * The player's real lights per graphics tier, fixed when a race (or the menu stage) is built: a light-count change
+ * recompiles every lit program, so it never follows auto quality mid-race. Each light is paid by every lit pixel.
+ * Low drops to one centred headlight spot and no underglow light; Medium keeps both spots; High adds the underglow.
+ * The headlight and underglow glows on the road (beam pool, ground plane) are meshes and stay on every tier.
+ */
+export const LIGHT_RIG: Record<Quality, { headlightSpots: 0 | 1 | 2; underglowLight: boolean; keyLight: boolean }> = {
+  low: { headlightSpots: 1, underglowLight: false, keyLight: true },
+  medium: { headlightSpots: 2, underglowLight: false, keyLight: true },
+  high: { headlightSpots: 2, underglowLight: true, keyLight: true },
+};
 
 /** Mood lighting: hemisphere sky colour and intensity, moon light intensity (weather.ts). */
 export interface MoodLighting {

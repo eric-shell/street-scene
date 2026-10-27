@@ -36,10 +36,10 @@ export const BLD = {
 } as const;
 
 /** Clutter density and optional details per graphics tier. */
-export const DETAIL: Record<Detail, { escapes: number; brackets: boolean; rails: boolean; clutter: number; live: boolean }> = {
-  low: { escapes: 0, brackets: false, rails: false, clutter: 0.45, live: false },
-  medium: { escapes: 0.75, brackets: false, rails: true, clutter: 0.8, live: true },
-  high: { escapes: 1, brackets: true, rails: true, clutter: 1, live: true },
+export const DETAIL: Record<Detail, { escapes: number; brackets: boolean; rails: boolean; clutter: number; live: boolean; mullion: 'plate' | 'box' }> = {
+  low: { escapes: 0, brackets: false, rails: false, clutter: 0.45, live: false, mullion: 'plate' },
+  medium: { escapes: 0.75, brackets: false, rails: true, clutter: 0.8, live: true, mullion: 'box' },
+  high: { escapes: 1, brackets: true, rails: true, clutter: 1, live: true, mullion: 'box' },
 };
 
 export const FLOOD = [0xfff1d6, 0xffd9a0, 0xffc870, 0x9fe8ff, 0xff9ad8, 0xc8b0ff].map((c) => new THREE.Color(c));
@@ -227,12 +227,18 @@ export interface Out {
   podium: PodiumOutput;
 }
 
-/** Axis aligned box in a building's local frame (y absolute). */
-export function lbox(gb: GeoBuilder, F: Frame, x0: number, x1: number, z0: number, z1: number, y0: number, y1: number, color: THREE.Color, bottom = true): void {
+/**
+ * Axis aligned box in a building's local frame (y absolute). `skip` is a bit
+ * mask over the four sides in boxOutline order (1 << 0 front z0, 1 right x1,
+ * 2 back z1, 3 left x0) for faces that sit against a wall or inside a
+ * neighbouring box; the vertices and triangles are not emitted at all.
+ */
+export function lbox(gb: GeoBuilder, F: Frame, x0: number, x1: number, z0: number, z1: number, y0: number, y1: number, color: THREE.Color, bottom = true, skip = 0): void {
   const o = boxOutline(x0, x1, z0, z1);
   const wx = o.map((p) => F.X(p.x, p.z));
   const wz = o.map((p) => F.Z(p.x, p.z));
   for (let i = 0; i < 4; i++) {
+    if (skip & (1 << i)) continue;
     const j = (i + 1) % 4;
     const n = edgeNormal(o[i], o[j]);
     const nx = F.NX(n.x, n.z);
@@ -428,10 +434,13 @@ export function neonPost(o: Out, F: Frame, x: number, z: number, y0: number, y1:
 /** Cornice: a projecting band around the selected faces of a box (local x0..x1, z0..z1). */
 export function cornice(o: Out, F: Frame, x0: number, x1: number, z0: number, z1: number, y: number, h: number, over: number, color: THREE.Color, faces: readonly boolean[]): void {
   // Faces in boxOutline order: 0 front (z0), 1 right (x1), 2 back (z1), 3 left (x0).
-  if (faces[0]) lbox(o.trim, F, x0 - (faces[3] ? over : 0), x1 + (faces[1] ? over : 0), z0 - over, z0 + 0.3, y - h, y, color);
-  if (faces[2]) lbox(o.trim, F, x0 - (faces[3] ? over : 0), x1 + (faces[1] ? over : 0), z1 - 0.3, z1 + over, y - h, y, color);
-  if (faces[1]) lbox(o.trim, F, x1 - 0.3, x1 + over, z0 + 0.3, z1 - 0.3, y - h, y, color);
-  if (faces[3]) lbox(o.trim, F, x0 - over, x0 + 0.3, z0 + 0.3, z1 - 0.3, y - h, y, color);
+  // Each piece's inner side is 0.3 m inside the wall, and where two pieces meet at a corner
+  // the side piece's end butts the long piece, so those faces are never seen.
+  const bit = (i: number) => 1 << i;
+  if (faces[0]) lbox(o.trim, F, x0 - (faces[3] ? over : 0), x1 + (faces[1] ? over : 0), z0 - over, z0 + 0.3, y - h, y, color, true, bit(2));
+  if (faces[2]) lbox(o.trim, F, x0 - (faces[3] ? over : 0), x1 + (faces[1] ? over : 0), z1 - 0.3, z1 + over, y - h, y, color, true, bit(0));
+  if (faces[1]) lbox(o.trim, F, x1 - 0.3, x1 + over, z0 + 0.3, z1 - 0.3, y - h, y, color, true, bit(3) | (faces[0] ? bit(0) : 0) | (faces[2] ? bit(2) : 0));
+  if (faces[3]) lbox(o.trim, F, x0 - over, x0 + 0.3, z0 + 0.3, z1 - 0.3, y - h, y, color, true, bit(1) | (faces[0] ? bit(0) : 0) | (faces[2] ? bit(2) : 0));
 }
 
 export function colorOf(hex: number, mul = 1): THREE.Color {

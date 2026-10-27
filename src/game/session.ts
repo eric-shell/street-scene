@@ -60,6 +60,7 @@ import { TRAFFIC_SNAP, TrafficView, snapTraffic } from '../render/traffic/traffi
 import { ChaseCall, policeChaseCall } from '../render/traffic/policeChase';
 import { HazardFx } from './hazardFx';
 import { KeyLight } from './keyLight';
+import { LIGHT_RIG } from '../render/lighting';
 import { SessionAudio } from './session/audio';
 import { type Snap, snap, lerpSnap } from './session/snap';
 import { emitSparks, sparkBurst, crackRail, spitRailSparks } from './session/sparks';
@@ -226,7 +227,11 @@ export class RaceSession {
   private traffic: TrafficView | null = null;
   private trafficPrev = new Float32Array(0);
   private trafficCurr = new Float32Array(0);
-  private carLight: KeyLight;
+  private carLight: KeyLight | null = null;
+  /** Prop ids the sim broke since the last render, handed to PropRenderer.update so it skips the full scan. */
+  private readonly brokenIds: number[] = [];
+  /** The first render syncs every prop (the scene may be a lent menu stage with props still down); later ones take the list. */
+  private propsSynced = false;
   private audio: SessionAudio;
   /** Gamepad rumble for the player's car; none in a replay. */
   private readonly rumble: Rumble | null;
@@ -329,11 +334,13 @@ export class RaceSession {
     const loads: Promise<void>[] = [];
     // Brake units are eight small draws per car: Medium and up (the Low tier keeps every car to its body and wheels).
     const brakes = settings.quality !== 'low';
+    // The real lights are fixed per tier here, like the brakes: a light-count change would recompile every lit program.
+    const rig = LIGHT_RIG[settings.quality];
     this.race.cars.forEach((rc, i) => {
       // In the menu's scene the player's car carries no real lights, like the menu's car it replaces: a new light
       // count would recompile every lit shader in the city (seconds of freeze). The beam and underglow glows stay.
       const lit = i === 0 && !hand;
-      const view = new CarView(rc.carId, assets, { headlights: lit, underglowLight: lit, envMap: gr.envMap, roadLift: ROAD_Y, brakes });
+      const view = new CarView(rc.carId, assets, { headlights: lit ? rig.headlightSpots : 0, underglowLight: lit && rig.underglowLight, envMap: gr.envMap, roadLift: ROAD_Y, brakes });
       this.night.scene.add(view.root);
       this.views.push(view);
       loads.push(view.load(opts.visuals[i] ?? opts.visuals[0]));
@@ -368,8 +375,10 @@ export class RaceSession {
     this.trails = new LightTrails(pd.width, pd.length);
     this.night.scene.add(this.trails.mesh);
     // The key light that rides above the player so cars read clearly at night.
-    this.carLight = new KeyLight();
-    this.night.scene.add(this.carLight);
+    if (rig.keyLight) {
+      this.carLight = new KeyLight();
+      this.night.scene.add(this.carLight);
+    }
     this.audio = new SessionAudio(settings, this.race, this.views, this.night);
     // The callouts' reward cues: a tick, chime or fanfare from the effects, a kick through the pad.
     this.hud.callouts.onCue = (cue) => {
@@ -801,6 +810,7 @@ export class RaceSession {
       const e = r.events[this.eventIndex];
       this.audio.sfx?.raceEvent(e, r);
       this.rumble?.event(e);
+      if (e.type === 'prop' && e.value !== undefined) this.brokenIds.push(e.value);
       if (e.type === 'wall') sparkBurst(this.sparks, this.race, this.camPos, this.time, e.car, e.value ?? 0);
       if (e.type === 'wall' && e.kind === 'rail') crackRail(this.sparks, this.night, this.race, this.camPos, this.time, e.car, e.value ?? 0);
       // Rivals crossing the finish get a smaller cheer.
@@ -895,7 +905,7 @@ export class RaceSession {
     } else camera = this.updateCamera(p, dt);
     this.lastCamera = camera;
     this.trails.update(this.views[0].root, camera, this.paused ? 0 : p.nitroStage, dt);
-    this.carLight.follow(p);
+    this.carLight?.follow(p);
     // The few real point lights follow the action, or the drone when it flies off.
     this.night.lighting.update(this.drone ? camera.position : new THREE.Vector3(p.x, p.y, p.z));
     // Last lap: the police helicopter follows the leader's interpolated pose.
@@ -910,7 +920,9 @@ export class RaceSession {
     this.night.arrows.syncRails(r.rails);
     this.night.city.finishLine.update(this.time);
     // Props mirror the sim's broken flags; fresh breaks come apart pushed by the nearest car.
-    this.night.props.update(this.paused ? 0 : dt, this.time, r.brokenProps, this.curr);
+    this.night.props.update(this.paused ? 0 : dt, this.time, r.brokenProps, this.curr, this.propsSynced ? this.brokenIds : undefined);
+    this.propsSynced = true;
+    this.brokenIds.length = 0;
     this.traffic?.update(this.trafficPrev, this.trafficCurr, this.paused ? 1 : alpha, camera, this.time, this.settings.quality, r.tick);
     // Progressive edge blur: grows with speed, much stronger while boosting (eased in and out).
     const target = this.settings.radialBlur && !this.paused ? Math.max(0, Math.min(1, (p.speed - 25) / 45)) * 0.4 + (p.nitro ? 1 : 0) : 0;
@@ -1059,8 +1071,8 @@ export class RaceSession {
     this.audio.dispose();
     this.rumble?.stop();
     this.cine.dispose();
-    this.carLight.removeFromParent();
-    this.carLight.dispose();
+    this.carLight?.removeFromParent();
+    this.carLight?.dispose();
     // A borrowed scene goes back to the menu's stage as it was; everything this session added has left it above.
     if (this.borrowed) this.opts.handoff?.stage.reclaim();
     else this.night.dispose();

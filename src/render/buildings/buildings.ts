@@ -281,6 +281,8 @@ function plinth(o: Out, F: Frame, base: Vec2[], street: number, groundAt: (x: nu
     const nz = F.NZ(n.x, n.z);
     const len = Math.hypot(q.x - p.x, q.z - p.z);
     const steps = Math.max(1, Math.ceil(len / 6));
+    // Ground height per step, then neighbouring steps within 12 cm of each other (the run takes the highest, so it never sinks below the ground) share one run.
+    const tops: number[] = [];
     for (let k = 0; k < steps; k++) {
       const t0 = k / steps;
       const t1 = (k + 1) / steps;
@@ -288,7 +290,19 @@ function plinth(o: Out, F: Frame, base: Vec2[], street: number, groundAt: (x: nu
       const az = F.Z(p.x + (q.x - p.x) * t0, p.z + (q.z - p.z) * t0);
       const bx = F.X(p.x + (q.x - p.x) * t1, p.z + (q.z - p.z) * t1);
       const bz = F.Z(p.x + (q.x - p.x) * t1, p.z + (q.z - p.z) * t1);
-      const top = Math.max(groundAt(ax + nx * 0.6, az + nz * 0.6), groundAt(bx + nx * 0.6, bz + nz * 0.6)) + 0.32;
+      tops.push(Math.max(groundAt(ax + nx * 0.6, az + nz * 0.6), groundAt(bx + nx * 0.6, bz + nz * 0.6)) + 0.32);
+    }
+    for (let k = 0; k < steps; ) {
+      let end = k + 1;
+      let top = tops[k];
+      while (end < steps && Math.abs(tops[end] - tops[k]) < 0.12) top = Math.max(top, tops[end++]);
+      const t0 = k / steps;
+      const t1 = end / steps;
+      k = end;
+      const ax = F.X(p.x + (q.x - p.x) * t0, p.z + (q.z - p.z) * t0);
+      const az = F.Z(p.x + (q.x - p.x) * t0, p.z + (q.z - p.z) * t0);
+      const bx = F.X(p.x + (q.x - p.x) * t1, p.z + (q.z - p.z) * t1);
+      const bz = F.Z(p.x + (q.x - p.x) * t1, p.z + (q.z - p.z) * t1);
       if (top < street + 0.4) continue;
       const v = [
         o.trim.vertex(ax + nx * out, y0, az + nz * out, nx, 0, nz, 0, 0, color),
