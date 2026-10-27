@@ -16,6 +16,8 @@ import { OCCLUSION, bakeOcclusion, occlusionFor, occlusionMaterial } from './bak
 import { buildFinishLines, FinishLines } from '../race/finishLine';
 import { STREETLIGHT_ARM, STREETLIGHT_POLE_H } from './props';
 import { createPodiumOutput, makeFacadeKitTextures } from '../buildings/facadeKit';
+import { FACE_PX, makeInteriorAtlas } from '../buildings/interiorAtlas';
+import { createPodiumMaterial } from '../buildings/podiumMaterial';
 import type { ShopFront } from '../people/idleSpots';
 import { buildBuildings, Detail } from '../buildings/buildings';
 import { neonMood } from '../textures/cityMood';
@@ -566,11 +568,15 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
   disposables.push(buildings);
   for (const m of buildings.meshes) group.add(m);
   {
-    const kit = makeFacadeKitTextures(world.seed);
-    const podiumMat = track(
-      new THREE.MeshStandardMaterial({ map: track(kit.map), emissiveMap: track(kit.emissive), emissive: 0xffffff, emissiveIntensity: 1.05, vertexColors: true, roughness: 0.6, metalness: 0.05, envMapIntensity: 0.7 }),
-    );
-    const pm = new THREE.Mesh(track(podium.walls.build()), podiumMat);
+    // Medium and High show a room behind the shop glass (interior mapping: interiorAtlas.ts, podiumMaterial.ts); Low is the flat bays.
+    const roomed = detail !== 'low';
+    const kit = makeFacadeKitTextures(world.seed, roomed);
+    if (kit.glass) track(kit.glass);
+    const rooms = roomed ? { atlas: track(makeInteriorAtlas(world.seed, detail)), px: FACE_PX[detail] } : null;
+    const podiumMat = track(createPodiumMaterial({ ...kit, map: track(kit.map), emissive: track(kit.emissive) }, rooms));
+    const wallsGeo = track(podium.walls.build());
+    if (podium.room) wallsGeo.setAttribute('aRoom', new THREE.Float32BufferAttribute(podium.room, 4));
+    const pm = new THREE.Mesh(wallsGeo, podiumMat);
     pm.name = 'podiums';
     group.add(pm);
     const tm = new THREE.Mesh(track(podium.trim.build()), track(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7 })));
