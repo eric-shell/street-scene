@@ -358,7 +358,7 @@ describe('level crossing', () => {
       rc.state.vx = -g.nx * 25;
       rc.state.vz = -g.nz * 25;
       let v0 = 0;
-      for (let i = 0; i < 75; i++) {
+      for (let i = 0; i < 90; i++) {
         if (i === 5) v0 = rc.state.speed;
         stepRace(r, input({ throttle: 0.6 }));
       }

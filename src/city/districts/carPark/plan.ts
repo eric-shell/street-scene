@@ -101,6 +101,19 @@ function driveBox(g: CarParkGeo): Vec2[] {
   return [W(g.u1, g.v0), W(g.u1, g.v1), ...g.front.map((f) => W(f.u, f.v)).reverse()];
 }
 
+/** How many of a polygon's edges the infinite line a-b crosses. */
+function lineCrossings(poly: Vec2[], a: Vec2, b: Vec2): number {
+  const dx = b.x - a.x;
+  const dz = b.z - a.z;
+  let n = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i];
+    const q = poly[(i + 1) % poly.length];
+    if (dx * (p.z - a.z) - dz * (p.x - a.x) > 0 !== dx * (q.z - a.z) - dz * (q.x - a.x) > 0) n++;
+  }
+  return n;
+}
+
 /** Whether a point is inside a polygon or within `tol` of its outline. */
 function inOrOn(p: Vec2, poly: Vec2[], tol: number): boolean {
   return pointInPolygon(p.x, p.z, poly) || distToPolygonEdge(p.x, p.z, poly) <= tol;
@@ -125,7 +138,9 @@ function footprintFor(ring: Vec2[], base: Vec2[] | null, g: CarParkGeo): Vec2[] 
   const a = area(base);
   if (a < minA) return null;
   if (a <= maxA) return holds(base) ? base : null;
-  if (!convexRing(ring)) return null;
+  // A bigger concave block (an L) is cut the same way as long as each cut line crosses it just twice
+  // (a clip leaves one piece then); one that would split it gets none.
+  const convex = convexRing(ring);
   // What the floor has to reach round the drive, in the frame (a clearance that runs out past a building
   // line the drive stands on is harmless: the cut there takes nothing).
   let uNeed = -Infinity;
@@ -137,10 +152,15 @@ function footprintFor(ring: Vec2[], base: Vec2[] | null, g: CarParkGeo): Vec2[] 
     vHi = Math.max(vHi, toV(g, p) + CFG.clear);
   }
   // u <= ub keeps the drive's side of the cut: (b - a) x (p - a) along the v axis is -du; along u it is dv.
-  const cutU = (poly: Vec2[], ub: number) => clipConvex(poly, W(ub, 0), W(ub, 1), 1);
+  let split = false;
+  const clip = (poly: Vec2[], a: Vec2, b: Vec2, side: 1 | -1) => {
+    if (!convex && lineCrossings(poly, a, b) > 2) split = true;
+    return clipConvex(poly, a, b, side);
+  };
+  const cutU = (poly: Vec2[], ub: number) => clip(poly, W(ub, 0), W(ub, 1), 1);
   const cutV = (poly: Vec2[], dv: number) => {
     const vc = (vLo + vHi) / 2;
-    return clipConvex(clipConvex(poly, W(0, vc - dv), W(1, vc - dv), 1), W(0, vc + dv), W(1, vc + dv), -1);
+    return clip(clip(poly, W(0, vc - dv), W(1, vc - dv), 1), W(0, vc + dv), W(1, vc + dv), -1);
   };
   let uMax = -Infinity;
   for (const p of base) uMax = Math.max(uMax, toU(g, p));
@@ -154,9 +174,11 @@ function footprintFor(ring: Vec2[], base: Vec2[] | null, g: CarParkGeo): Vec2[] 
       if (area(cutU(base, mid)) <= maxA) lo = mid;
       else hi = mid;
     }
+    split = false;
     poly = cutU(base, lo);
   } else {
     poly = cutU(base, uNeed);
+    if (split) return null;
     let lo = (vHi - vLo) / 2;
     if (area(cutV(poly, lo)) > maxA) return null;
     let hi = 400;
@@ -165,9 +187,10 @@ function footprintFor(ring: Vec2[], base: Vec2[] | null, g: CarParkGeo): Vec2[] 
       if (area(cutV(poly, mid)) <= maxA) lo = mid;
       else hi = mid;
     }
+    split = false;
     poly = cutV(poly, lo);
   }
-  return holds(poly) ? poly : null;
+  return !split && holds(poly) ? poly : null;
 }
 
 /**
@@ -393,20 +416,35 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
       const den = fl.x * along.x + fl.z * along.z;
       if (Math.abs(den) < 1e-6) continue;
       const mouth = CFG.chuteLength + CFG.chuteFunnel[0];
-      const targets = side !== 0 ? [0, 4, -2, CFG.turnRadius[0] - CFG.turnRadius[1], 8, 12].map((du) => mouth + CFG.turnRadius[1] + du) : [0, 3, -3, 6, -6];
+      const targets = side !== 0 ? [0, 4, -2, CFG.turnRadius[0] - CFG.turnRadius[1], 8, 12, 18, 26, 36].map((du) => mouth + CFG.turnRadius[1] + du) : [0, 3, -3, 6, -6];
       for (const target of targets) {
         const s = (target - (side !== 0 ? toU(frame, base) : toV(frame, base))) / den;
         feet.push({ x: base.x + fl.x * s, z: base.z + fl.z * s });
       }
       const edgeRoom = CFG.rampWidth / 2 + APRON.flareIn + 2;
+      // At a bend node the street goes straight on into the next piece (a few degrees off), so the apron may
+      // overhang it: the foot only keeps its own half width and a margin from that end, and the next
+      // piece joins the car park's claimed streets. The ring segment runs the piece's way (fwd) or against it.
+      const bendRoom = CFG.rampWidth / 2 + 2;
+      const fwd = fl.x * dY.x + fl.z * dY.z > 0;
+      const nextA = ia > 0 || r.closed ? edgeBetween(g, R[(ia - 1 + n) % n], R[ia]) : -1;
+      const nextB = ib + 1 < n || r.closed ? edgeBetween(g, R[ib], R[(ib + 1) % n]) : -1;
+      const bendA = isBendNode(g, R[ia]) && okStreet(nextA) && nextA !== eY;
+      const bendB = isBendNode(g, R[ib]) && okStreet(nextB) && nextB !== eY;
+      const roomStart = (fwd ? bendA : bendB) ? bendRoom : edgeRoom;
+      const roomEnd = (fwd ? bendB : bendA) ? bendRoom : edgeRoom;
       for (const foot of feet) {
         const s = (foot.x - base.x) * fl.x + (foot.z - base.z) * fl.z;
-        if (s < edgeRoom || s > fl.len - edgeRoom) continue;
+        if (s < roomStart || s > fl.len - roomEnd) continue;
         const at = (foot.x - Ya.x) * dY.x + (foot.z - Ya.z) * dY.z;
         if (at < clearA || at > dY.len - clearB) continue;
         const params = layout(side, foot, N);
         if (!params) continue;
-        const cand = validate(params, cum[ia] + at);
+        // The next pieces the apron reaches over.
+        const over: number[] = [];
+        if (bendA && (fwd ? s < edgeRoom : s > fl.len - edgeRoom)) over.push(nextA);
+        if (bendB && (fwd ? s > fl.len - edgeRoom : s < edgeRoom)) over.push(nextB);
+        const cand = validate(params, cum[ia] + at, over);
         if (cand) out.push(cand);
       }
 
@@ -539,7 +577,7 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
       }
 
       /** Check a layout against the block, the city and the route: a scored candidate, or null. */
-      function validate(params: Record<string, number>, sEntry: number): Candidate | null {
+      function validate(params: Record<string, number>, sEntry: number, over: number[]): Candidate | null {
         const geo = carParkGeo({ id: -1, kind: 'carPark', variant: '', polygon: [], path: [], nodes: [], edges: [], faces: [], params });
         // Fastest launch: turn limited for side entries (then the chute), a straight run-up for back ones.
         const runUp = geo.side !== 0 ? geo.lc + geo.cf : geo.u1 + geo.rl;
@@ -619,7 +657,7 @@ export function carParkCandidates(ctx: PlanContext, routes: CarveRoute[], ri: nu
         let path = lipBack + SCORE_LAND;
         for (let i = 1; i < geo.path.length; i++) path += unit(geo.path[i - 1], geo.path[i]).len;
         if (path > skip * (1 - CFG.minSave)) return null;
-        const edges = [...new Set([eY, eIn, ...C.edges, ...runEdges])];
+        const edges = [...new Set([eY, ...over, eIn, ...C.edges, ...runEdges])];
         return { face: fi, edges, params, outline: fp, path: geo.path, footprint: Math.abs(polygonArea(fp)), score: skip - path };
       }
     }

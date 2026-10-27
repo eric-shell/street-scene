@@ -313,7 +313,9 @@ export const CITY = {
     bluff: {
       enabled: true,
       /** Chance per city with an El. */
-      chance: 0.85,
+      chance: 1,
+      /** Also try the right of way on the El street's other side (away from the way the El swings) when the first side does not fit. */
+      mirror: true,
       /** Height of the step (m), [min, max]: the tallest that keeps the El clear of the low side streets wins. */
       height: [5.5, 7.5],
       /** Steepest grade of a street ramp up the face (the hills' cap) and of the gentle back and end slopes. */
@@ -348,7 +350,9 @@ export const CITY = {
     },
     roundabout: {
       enabled: true,
+      /** Roundabouts per city [min, max] (fewer place when the candidates run out), and the chance a city gets just one instead. */
       count: [2, 4],
+      singleChance: 0.2,
       /**
        * Outer curb radius range (m) and ring road width (outer curb to island): big circles with a
        * four lane ring, room to overtake around the island and carry speed through it.
@@ -886,6 +890,8 @@ export const CITY = {
      */
     tunnel: {
       enabled: true,
+      /** The chance a city has no tunnel at all (cities should not all look alike). */
+      noneChance: 0.2,
       /** Tunnels under a building per city [min, max], and the chance of one under a ridge. */
       buildings: [1, 2],
       ridgeChance: 0.65,
@@ -1068,7 +1074,7 @@ export const CITY = {
     market: {
       enabled: true,
       /** Chance a city has a market; up to `max` per city, a second one only for the route the first misses. */
-      chance: 0.85,
+      chance: 1,
       max: 2,
       /** Consecutive route street edges per market, each at least minEdge long, the run minLength to maxLength (m). */
       chain: [1, 3],

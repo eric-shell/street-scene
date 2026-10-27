@@ -210,6 +210,7 @@ export const tunnelModule: DistrictModule = {
     if (!CFG.enabled) return;
     const g = ctx.graph;
     const rng = ctx.rng;
+    if (rng.chance(CFG.noneChance)) return;
     const faces = ctx.faces();
     const sides = edgeFaces(faces);
     const mouths = computeMouths(g, ctx.sectors());

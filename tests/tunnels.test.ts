@@ -51,15 +51,19 @@ describe('tunnels and overpasses (city)', () => {
   it('most cities get a tunnel under a building, many a ridge and a viaduct; no sign gantries on the streets', () => {
     let ridges = 0;
     let viaducts = 0;
+    let buildings = 0;
     for (const c of cities) {
       const s = structures(c);
-      expect(s.filter((a) => a.variant === 'building').length).toBeGreaterThanOrEqual(1);
+      // Some cities sit tunnels out (CFG.noneChance): none of any kind then.
+      if (s.some((a) => a.kind === 'tunnel')) expect(s.filter((a) => a.variant === 'building').length).toBeGreaterThanOrEqual(1);
+      if (s.some((a) => a.variant === 'building')) buildings++;
       // The sign gantries hang over the elevated highway's carriageways now (render/districts/highway.ts).
       expect(s.filter((a) => a.variant === 'gantry').length).toBe(0);
       if (s.some((a) => a.variant === 'ridge')) ridges++;
       if (s.some((a) => a.variant === 'viaduct')) viaducts++;
     }
-    expect(ridges).toBeGreaterThan(cities.length * 0.3);
+    expect(buildings).toBeGreaterThan(cities.length * 0.6);
+    expect(ridges).toBeGreaterThan(cities.length * 0.2);
     expect(viaducts).toBeGreaterThan(cities.length * 0.5);
   });
 
@@ -271,9 +275,9 @@ describe('tunnels and overpasses (routes)', () => {
       if (s.some((a) => through(a))) covered++;
     }
     // Placed on the race routes when they are known (PlanContext.event): one race or the other runs through
-    // a tunnel on nearly every seed.
-    expect(tunnel / n).toBeGreaterThan(0.75);
-    expect(covered / n).toBeGreaterThan(0.8);
+    // a tunnel on most seeds (a fifth of the cities have no tunnel at all: CFG.noneChance).
+    expect(tunnel / n).toBeGreaterThan(0.5);
+    expect(covered / n).toBeGreaterThan(0.7);
   });
 
   it('starts, grids and finishes stay in the open, away from bores and decks', () => {

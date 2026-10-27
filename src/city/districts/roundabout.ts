@@ -51,7 +51,8 @@ export const roundaboutModule: DistrictModule = {
     if (!CFG.enabled) return;
     const g = ctx.graph;
     const rng = ctx.rng;
-    const count = rng.int(CFG.count[0], CFG.count[1]);
+    // Mostly the usual two to four; a city sometimes gets just the one (Ring Rush needs two: events.ts eventOffer).
+    const count = rng.chance(CFG.singleChance) ? 1 : rng.int(CFG.count[0], CFG.count[1]);
     const rivers = ctx.areas.filter((a) => a.kind === 'river');
     const candidates = g.nodes
       .filter((n) => {

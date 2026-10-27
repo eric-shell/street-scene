@@ -405,7 +405,13 @@ export const bluffModule: DistrictModule = {
     for (const c of cands) {
       // The right of way at rowOffset, or a little further out where that puts the crossing on a bend
       // node of the crest street (a street's bend nodes stand near its thirds, roadGraph.ts).
-      const pl = tryPlace(ctx, sub, base, c.r, c.o, CFG.rowOffset) ?? tryPlace(ctx, sub, base, c.r, c.o, CFG.rowOffset + ROW_OFFSET_STEP);
+      // On the side the El swings toward, else (CFG.mirror) across its street: a river, a lake or a diagonal
+      // on one side leaves the other free, which doubles the placements.
+      let pl: Placement | null = null;
+      for (const dir of CFG.mirror ? ([1, -1] as const) : ([1] as const)) {
+        pl = tryPlace(ctx, sub, base, c.r, c.o, CFG.rowOffset, dir) ?? tryPlace(ctx, sub, base, c.r, c.o, CFG.rowOffset + ROW_OFFSET_STEP, dir);
+        if (pl) break;
+      }
       if (!pl) continue;
       if (ctx.budget.used + pl.area > ctx.budget.total) continue;
       commit(ctx, sub, pl, c.r, c.o);
@@ -498,12 +504,14 @@ export const bluffModule: DistrictModule = {
  * does not fit (a missing street, a diagonal through it, the river, a ramp
  * or a dip too close to a junction, the El too low somewhere).
  */
-function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | -1, rowOffset: number): Placement | null {
+function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | -1, rowOffset: number, dir: 1 | -1): Placement | null {
   const g = ctx.graph;
   // The El must run straight on one column across the whole detour (it may swing to another column elsewhere).
   const c0 = elColumnAt(sub, r);
   const side = sub.params.side;
-  const c1 = c0 + side;
+  // The right of way's side of the El's street: the way it swings (dir 1) or the other.
+  const rowSide = side * dir;
+  const c1 = c0 + rowSide;
   if (c0 < 0 || c1 < 0 || c1 >= CITY.gridW) return null;
   const rows = { leg0: r - 2 * o, low: r - o, crest: r, dip: r + o, leg1: r + 2 * o };
   for (const j of [rows.leg0, rows.low, rows.dip, rows.leg1]) if (elColumnAt(sub, j) !== c0) return null;
@@ -550,7 +558,7 @@ function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | 
   const elNode = (j: number) => nodeAt(g, c0, j);
   const rowPoint = (j: number): Vec2 => {
     const n = elNode(j);
-    const px = n.x + side * rowOffset;
+    const px = n.x + rowSide * rowOffset;
     return { x: px, z: n.z };
   };
   const ra = rowPoint(rows.low);
