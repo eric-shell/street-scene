@@ -7,7 +7,7 @@
  * as rows. Styled by _results-screen.scss and _results-card.scss.
  */
 import { btn, h, prefersReducedMotion } from '../kit/dom';
-import { ChevronsRight, Flag, MapPinned, Medal, RotateCcw, Route, Share2, Sparkles, Trophy, Video, Wind, Wrench, X, icon, type IconNode } from '../kit/icons';
+import { ChevronsRight, Flag, MapPinned, Medal, RotateCcw, Route, Share2, Sparkles, Trophy, Video, Wind, Wrench, LogOut, icon, type IconNode } from '../kit/icons';
 import { formatTime, ordinal } from '../kit/format';
 import { navRow, railScreen } from '../rail/rail';
 import { Help } from '../panels/help';
@@ -150,7 +150,7 @@ export function resultsScreen(o: {
         o.onChallenge && navRow(Share2, 'Challenge a friend', 'Send a link to beat this', 'green', o.onChallenge),
         o.onReplay && navRow(Video, 'Replay', 'Watch the run again', 'cyan', o.onReplay),
         navRow(Wrench, 'Garage', 'Tune or change the car', 'orange', o.onGarage),
-        navRow(X, 'Menu', 'Back to the event', 'red', o.onMenu),
+        navRow(LogOut, 'Menu', 'Back to the event', 'red', o.onMenu),
       ),
     ),
   );

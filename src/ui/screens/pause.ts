@@ -4,7 +4,7 @@
  * _pause-card.scss; the settings step is the shared settings panel.
  */
 import { btn, h } from '../kit/dom';
-import { ChevronsRight, Compass, MapIcon, MapPinned, Pause, Play, RotateCcw, Route, Settings as SettingsIcon, Wind, X, icon, type IconNode } from '../kit/icons';
+import { ChevronsRight, Compass, MapIcon, MapPinned, Pause, Play, RotateCcw, Route, LogOut, Settings as SettingsIcon, Wind, icon, type IconNode } from '../kit/icons';
 import type { RaceType, Settings } from '../settings';
 import { RailSteps, navRow, railScreen, screenHead, type Hue } from '../rail/rail';
 import { Help, MUSIC_KEYS } from '../panels/help';
@@ -114,7 +114,7 @@ export function pauseMenu(o: {
       ...(o.extra ?? []).map((x) => navRow(x.icon, x.label, x.sub, x.hue, x.onClick)),
       ...(o.onMap ? [navRow(MapIcon, 'City map', t.mode === 'roam' ? 'Find a place, set a waypoint' : 'The course and where you are', 'cyan', o.onMap)] : []),
       navRow(SettingsIcon, 'Settings', 'Display, sound, controls', 'purple', () => show('settings'), 'pause-screen__settings'),
-      navRow(X, o.quitLabel ?? 'Quit to menu', o.quitSub ?? 'Leave this race', 'red', o.onQuit),
+      navRow(LogOut, o.quitLabel ?? 'Quit to menu', o.quitSub ?? 'Leave this race', 'red', o.onQuit),
     ),
   ];
   const settings = (): HTMLElement[] => [screenHead({ icon: SettingsIcon, title: 'Settings', back: () => show('pause') }), settingsPanel(o.settings, o.onSettings, o.music)];
