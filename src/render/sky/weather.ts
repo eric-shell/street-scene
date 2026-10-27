@@ -17,7 +17,11 @@
  *    two scrolling noise octaves for the wisps, faded close to the lens;
  *  - lightning on rain nights (lightning.ts): soft flashes of the sky, the
  *    lights and the rain, a bolt beyond the skyline and thunder after it.
- * Clear stays the most common mood: the neon night is the default look.
+ * Clear stays the most common mood: the neon night is the default look. The
+ * seed's home neighbourhood (cityIdentity.ts) multiplies the weights (misty
+ * San Francisco, wet Philadelphia) and leans the fog and the sky's horizon
+ * glow toward its light pollution hue at the mood's own luminance, so the
+ * moods still differ and the city still reads as its home.
  */
 import * as THREE from 'three';
 import type { World } from '../../city/world';
@@ -26,6 +30,7 @@ import type { Quality } from '../../ui/settings';
 import type { NightLighting } from '../lighting';
 import { makeMoodSky, makeNoiseTexture, MoodSkyParams } from './skyTextures';
 import { LIGHTNING, Lightning, buildLightning } from './lightning';
+import { cityIdentity } from '../cityIdentity';
 
 export type MoodId = 'clear' | 'hazy' | 'misty' | 'drizzle' | 'rain';
 
@@ -166,17 +171,38 @@ export const WEATHER = {
   envWet: 0.3,
 } as const;
 
-/** The mood of a seed: a weighted draw from its own random stream. */
+/** The mood of a seed: a draw from its own random stream, the base weights times its home's multipliers. */
 export function pickMood(seed: number): MoodId {
   const rng = new Rng(deriveSeed(seed, 'weather'));
+  const k = cityIdentity(seed).weather;
   let total = 0;
-  for (const id of MOOD_IDS) total += MOODS[id].weight;
+  for (const id of MOOD_IDS) total += MOODS[id].weight * k[id];
   let r = rng.next() * total;
   for (const id of MOOD_IDS) {
-    r -= MOODS[id].weight;
+    r -= MOODS[id].weight * k[id];
     if (r < 0) return id;
   }
   return 'clear';
+}
+
+/** `base` (sRGB hex) leaned toward `hue` by `k` (0..1) with base's own luminance kept, so a tint moves the colour, never how dark it is. */
+function leanToward(base: THREE.ColorRepresentation, hue: number, k: number): THREE.Color {
+  const lum = (c: THREE.Color) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+  const b = new THREE.Color(base);
+  const h = new THREE.Color(hue);
+  h.multiplyScalar(lum(b) / Math.max(1e-6, lum(h)));
+  return b.lerp(h, k);
+}
+
+/** A mood as the seed shows it: the fog colour and the sky's horizon glow leaned toward the home's tint (built once per scene). */
+function seedMood(seed: number, mood: MoodId): MoodDef {
+  const base = MOODS[mood];
+  const { tint } = cityIdentity(seed);
+  return {
+    ...base,
+    fogColor: leanToward(base.fogColor, tint.hue, tint.fog).getHex(),
+    sky: { ...base.sky, glow: `#${leanToward(base.sky.glow, tint.hue, tint.glow).getHexString()}` },
+  };
 }
 
 /** Moon phase 0..1 (0 new, 0.5 full) and the wind heading (rad) of a seed. */
@@ -320,6 +346,7 @@ function quadGeometry(corners: number[]): THREE.InstancedBufferGeometry {
 
 export interface Weather {
   readonly mood: MoodId;
+  /** The mood as this seed shows it (fog colour and sky glow tinted by the city identity). */
   readonly def: MoodDef;
   /** Moon phase 0..1 and wind heading (rad), shared with the backdrop and the air traffic. */
   readonly moonPhase: number;
@@ -343,7 +370,7 @@ export interface Weather {
 export function createWeather(world: World, opts: { quality: Quality; flashes?: () => boolean }): Weather {
   const seed = world.seed;
   const mood = pickMood(seed);
-  const def = MOODS[mood];
+  const def = seedMood(seed, mood);
   const { moonPhase, windHeading } = skyParams(seed);
   const sky = makeMoodSky(def.sky, seed);
   const fog = new THREE.FogExp2(def.fogColor, def.fogDensity);
