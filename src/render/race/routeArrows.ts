@@ -176,7 +176,8 @@ const signFrag = /* glsl */ `
   varying float vPhase;
   varying float vFade;
   void main() {
-    vec2 uv = vec2(vFlip > 0.0 ? vUv.x : 1.0 - vUv.x, vUv.y);
+    // Seen from behind the plane is mirrored; flipping u back keeps the chevrons pointing the same way in the world.
+    vec2 uv = vec2((vFlip > 0.0) == gl_FrontFacing ? vUv.x : 1.0 - vUv.x, vUv.y);
     vec4 tex = texture2D(map, uv);
     // Chevrons light up in a wave marching the way to go; the frame glows steady.
     float w = fract(uv.x * 1.2 - time * 1.3 + vPhase);
@@ -536,7 +537,8 @@ const railBoardFrag = /* glsl */ `
     return (1.0 - smoothstep(px * 0.4, px, off)) * (w / px);
   }
   void main() {
-    vec2 uv = vec2(vFlip > 0.0 ? vUv.x : 1.0 - vUv.x, vUv.y);
+    // Seen from behind the plane is mirrored; flipping u back keeps the chevrons pointing the same way in the world.
+    vec2 uv = vec2((vFlip > 0.0) == gl_FrontFacing ? vUv.x : 1.0 - vUv.x, vUv.y);
     vec4 tex = texture2D(map, uv);
     float w = fract(uv.x * 1.5 - time * 1.1 + vPhase);
     float march = 0.3 + 0.7 * pow(1.0 - w, 2.5);

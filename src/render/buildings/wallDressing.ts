@@ -9,12 +9,14 @@
  * paper and the dirt carry the lived in look on their own.
  *
  * Nothing here touches the road: blade signs hang 3.5 m up over the sidewalk
- * behind the collision wall line, banners cross at 6.5 m, and the rest is
+ * behind the collision wall line, banners cross at 4.8 to 6.6 m, and the rest is
  * flat on a facade. The facades stand an unknown few decimetres behind the
  * collision walls (podium extrusions), so every piece is placed by probing
- * the drawn podium geometry (wallProbe.ts); without that geometry only the
- * infill's low boundary walls, whose face is exact, get grimed. Three draw
- * calls: paint (one atlas), boxes, blade signs. Seeded, render only.
+ * the drawn podium geometry (wallProbe.ts) and a banner spans facade to facade, or post to post
+ * where the route runs through open ground with no facades (most closures); without that geometry only the
+ * infill's low boundary walls, whose face is exact, get grimed. Four draw
+ * calls: paint (one atlas), banner cloth (two faces, front-face only so the text reads forward from both
+ * sides), boxes, blade signs. Seeded, render only.
  *
  * The odds are not the same on every street: the race route is the city's main
  * drag (street/routeNearness.ts), so blade signs, paper and banners lean toward
@@ -22,7 +24,7 @@
  * home's drag strength) and the city total stays about where it was.
  */
 import * as THREE from 'three';
-import type { World } from '../../city/world';
+import type { Contact, World } from '../../city/world';
 import type { Building, Wall } from '../../city/blocks';
 import { corridorClearance, insideBuilding } from '../../city/blocks';
 import { CITY } from '../../city/config';
@@ -72,14 +74,31 @@ const DRESS = {
   acBox: [0.72, 0.56, 0.44],
   acHeights: [3.4, 8.5],
   pipeW: 0.11,
-  /** Banners: height over the road (m), sag (m), spacing along the route (m). */
-  bannerY: 6.6,
+  /**
+   * Banners: heights over the road to try, highest first (m; 4.8 m minus the sag still clears a truck and
+   * every gantry hangs above 6.5 m), sag (m), spacing along the route (m). Whatever the height, a banner
+   * only ever spans from facade to facade or post to post, beyond the sidewalk: it crosses over the road
+   * and never touches it.
+   */
+  bannerYs: [6.6, 6.0, 5.4, 4.8],
   bannerSag: 0.7,
   bannerH: 1.15,
   bannerGap: 140,
+  /** Banner posts, used where no two facades face each other: thickness (m), distance beyond the outer sidewalk line (m), widest ground height difference to the road (m). */
+  postW: 0.18,
+  postOut: 0.4,
+  postRise: 1.2,
+  /** A post is drawn only where the sim has a wall or solid within this radius of it (m). */
+  postBacking: 0.5,
+  /** No car centre may fit within this distance of a post (m), tested with a car's collision radius (m). */
+  postKeep: 0.9,
+  carRadius: 0.85,
 } as const;
 
 const SEED = 0x5a11;
+
+/** Surfaces a banner post may stand on: anywhere but the road itself and water. */
+const POST_GROUND: ReadonlySet<string> = new Set(['sidewalk', 'concrete', 'cobble', 'grass', 'offroad']);
 
 function uvOf(cell: AtlasCell, u0 = 0, u1 = 1): { u0: number; u1: number; v0: number; v1: number } {
   const W = WALL_ATLAS.w;
@@ -93,12 +112,24 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
   const h = world.heightAt;
   const paint = new GeoBuilder(true);
   const boxes = new GeoBuilder(true);
+  /** The banners' cloth, both faces (own mesh: front-face only material, see banner()). */
+  const cloth = new GeoBuilder(true);
   const blades = new GeoBuilder(true);
   const bladeFlick = new FlickList(world, 'blade');
   const lights: { pos: THREE.Vector3; color: THREE.Color }[] = [];
   const WHITE = new THREE.Color(1, 1, 1);
   const D = opts.density;
   const near = routeNearness(world);
+  const contacts: Contact[] = [];
+  /** Something stands at (x, z) (a wall within postBacking) and no car centre fits within postKeep of it (ring of probes with a car's radius), so a car never meets the post. */
+  const postBacked = (x: number, z: number): boolean => {
+    if (world.collideCircle(x, z, DRESS.postBacking, contacts) === 0) return false;
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2;
+      if (world.collideCircle(x + Math.cos(a) * DRESS.postKeep, z + Math.sin(a) * DRESS.postKeep, DRESS.carRadius, contacts) === 0) return false;
+    }
+    return true;
+  };
   const counts = { blades: 0, posters: 0, flyers: 0, banners: 0 };
   /** Paper density at a spot: more on the drag, less down the side streets (never so low that a step runs away). */
   const paperAt = (x: number, z: number) => Math.max(0.15, near.scale(DRAG.paper, x, z));
@@ -431,13 +462,44 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
       const lx = -smp.tz;
       const lz = smp.tx;
       const lat = half + CITY.sidewalk;
-      const y = h(smp.x, smp.z) + DRESS.bannerY;
-      const L = probe.probe(smp.x + lx * lat, smp.z + lz * lat, y, lx, lz, 1.8);
-      const lHit = L ? { x: smp.x + lx * (lat + L.d), z: smp.z + lz * (lat + L.d) } : null;
-      const R = probe.probe(smp.x - lx * lat, smp.z - lz * lat, y, -lx, -lz, 1.8);
-      if (!lHit || !R) continue;
-      const rHit = { x: smp.x - lx * (lat + R.d), z: smp.z - lz * (lat + R.d) };
-      banner(lHit.x, lHit.z, rHit.x, rHit.z, y, rng.int(0, 1));
+      const g0 = h(smp.x, smp.z);
+      // Facade to facade at the highest height both podiums reach (a podium is only 4.4 m on a ground floor
+      // building, 7.7 m and up with floors); the route's open stretches (highway, park, river
+      // bank) have no facades at all, so there it is post to post beyond the sidewalk.
+      let span: { ax: number; az: number; bx: number; bz: number; y: number } | null = null;
+      for (const up of DRESS.bannerYs) {
+        const y = g0 + up;
+        const L = probe.probe(smp.x + lx * lat, smp.z + lz * lat, y, lx, lz, 1.8);
+        if (!L) continue;
+        const lHit = { x: smp.x + lx * (lat + L.d), z: smp.z + lz * (lat + L.d) };
+        const R = probe.probe(smp.x - lx * lat, smp.z - lz * lat, y, -lx, -lz, 1.8);
+        if (!R) continue;
+        span = { ax: lHit.x, az: lHit.z, bx: smp.x - lx * (lat + R.d), bz: smp.z - lz * (lat + R.d), y };
+        break;
+      }
+      if (!span) {
+        const out = lat + DRESS.postOut;
+        const ax = smp.x + lx * out;
+        const az = smp.z + lz * out;
+        const bx = smp.x - lx * out;
+        const bz = smp.z - lz * out;
+        const ga = h(ax, az);
+        const gz = h(bx, bz);
+        if (Math.abs(ga - g0) > DRESS.postRise || Math.abs(gz - g0) > DRESS.postRise) continue;
+        if (!POST_GROUND.has(world.surfaceAt(ax, az)) || !POST_GROUND.has(world.surfaceAt(bx, bz))) continue;
+        // A drawn post must have a sim wall or solid behind it, or a car could drive through it (a ghost): the
+        // open ground of a park, plaza or river bank has none, so those stations get no banner.
+        const pa = postBacked(ax, az);
+        const pb = postBacked(bx, bz);
+        if (!pa || !pb) continue;
+        const y = g0 + DRESS.bannerYs[0];
+        span = { ax, az, bx, bz, y };
+        const dark = new THREE.Color(0x1d1d22);
+        for (const [x, z, gy] of [[ax, az, ga], [bx, bz, gz]]) {
+          orientedBox(boxes, x - smp.tx * DRESS.postW / 2, z - smp.tz * DRESS.postW / 2, x + smp.tx * DRESS.postW / 2, z + smp.tz * DRESS.postW / 2, lx * DRESS.postW, lz * DRESS.postW, gy - 0.2, y + DRESS.bannerH / 2 + 0.3, dark);
+        }
+      }
+      banner(span.ax, span.az, span.bx, span.bz, span.y, rng.int(0, 1));
       counts.banners++;
       placed.push(s);
     }
@@ -448,8 +510,6 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
     const uz = (bz - az) / span;
     const cell = wallCell('banner', i);
     const textW = DRESS.bannerH * (cell.w / cell.h);
-    const nx = -uz;
-    const nz = ux;
     const drop = (t: number) => y - DRESS.bannerSag * 4 * t * (1 - t);
     // Three parts: plain cloth, the text panel, plain cloth; the cloth samples the cell's left edge.
     const parts: [number, number, number, number][] = [
@@ -457,21 +517,35 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
       [(span - textW) / 2, (span + textW) / 2, 0, 1],
       [(span + textW) / 2, span, 0, 0.04],
     ];
-    for (const [s0, s1, u0, u1] of parts) {
-      const n = Math.max(1, Math.ceil((s1 - s0) / 1.5));
-      for (let k = 0; k < n; k++) {
-        const t0 = s0 + ((s1 - s0) * k) / n;
-        const t1 = s0 + ((s1 - s0) * (k + 1)) / n;
-        const uv = uvOf(cell, u0 + ((u1 - u0) * k) / n, u0 + ((u1 - u0) * (k + 1)) / n);
-        const y0a = drop(t0 / span) - DRESS.bannerH / 2;
-        const y0b = drop(t1 / span) - DRESS.bannerH / 2;
-        const a = paint.vertex(ax + ux * t0, y0a, az + uz * t0, nx, 0, nz, uv.u0, uv.v0);
-        const b = paint.vertex(ax + ux * t1, y0b, az + uz * t1, nx, 0, nz, uv.u1, uv.v0);
-        const c = paint.vertex(ax + ux * t1, y0b + DRESS.bannerH, az + uz * t1, nx, 0, nz, uv.u1, uv.v1);
-        const d = paint.vertex(ax + ux * t0, y0a + DRESS.bannerH, az + uz * t0, nx, 0, nz, uv.u0, uv.v1);
-        paint.quadFacing(a, b, c, d, nx, 0, nz);
-      }
+    // A face each way (the cloth material is front-face only, so exactly one shows from either side). The
+    // side whose reader runs against the cloth gets the lettered panel's u mirrored, so the text reads
+    // forward from both sides; a single double-sided quad shows its back mirrored.
+    for (const side of [1, -1]) {
+      const nx = -uz * side;
+      const nz = ux * side;
+      // This face reads along (nz, -nx); the text runs with the cloth (+u) when that is along +t.
+      const forward = nz * ux - nx * uz > 0;
+      parts.forEach(([s0, s1, u0, u1], part) => {
+        const n = Math.max(1, Math.ceil((s1 - s0) / 1.5));
+        for (let k = 0; k < n; k++) {
+          const t0 = s0 + ((s1 - s0) * k) / n;
+          const t1 = s0 + ((s1 - s0) * (k + 1)) / n;
+          const f0 = u0 + ((u1 - u0) * k) / n;
+          const f1 = u0 + ((u1 - u0) * (k + 1)) / n;
+          const [q0, q1] = part === 1 && !forward ? [1 - f0, 1 - f1] : [f0, f1];
+          const uv = uvOf(cell, q0, q1);
+          const y0a = drop(t0 / span) - DRESS.bannerH / 2;
+          const y0b = drop(t1 / span) - DRESS.bannerH / 2;
+          const a = cloth.vertex(ax + ux * t0, y0a, az + uz * t0, nx, 0, nz, uv.u0, uv.v0);
+          const b = cloth.vertex(ax + ux * t1, y0b, az + uz * t1, nx, 0, nz, uv.u1, uv.v0);
+          const c = cloth.vertex(ax + ux * t1, y0b + DRESS.bannerH, az + uz * t1, nx, 0, nz, uv.u1, uv.v1);
+          const d = cloth.vertex(ax + ux * t0, y0a + DRESS.bannerH, az + uz * t0, nx, 0, nz, uv.u0, uv.v1);
+          cloth.quadFacing(a, b, c, d, nx, 0, nz);
+        }
+      });
     }
+    const nx = -uz;
+    const nz = ux;
     // Ropes to the walls.
     const rope = new THREE.Color(0x121216);
     for (const [x, z] of [
@@ -503,6 +577,26 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
     });
     const m = new THREE.Mesh(paint.build(), mat);
     m.name = 'wallPaint';
+    meshes.push(m);
+  }
+  if (cloth.vertexCount) {
+    // Same paint as the posters, but front faces only: the banner carries its own mirrored back face.
+    const mat = new THREE.MeshStandardMaterial({
+      map: atlases.walls,
+      emissiveMap: atlases.walls,
+      emissive: 0xffffff,
+      emissiveIntensity: 0.04,
+      roughness: 0.85,
+      metalness: 0,
+      vertexColors: true,
+      transparent: true,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -4,
+    });
+    const m = new THREE.Mesh(cloth.build(), mat);
+    m.name = 'wallBanners';
     meshes.push(m);
   }
   if (boxes.vertexCount) {
