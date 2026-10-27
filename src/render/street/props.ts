@@ -19,15 +19,28 @@
  * Because the state is read back every frame from the sim's flags, a new
  * session (restart, replay) always starts consistent. Render only.
  *
+ * Culling by cell (the 200 m grid of cityChunks.ts): each kind's instances are
+ * sorted by grid cell, so every part mesh holds a cell as one contiguous run,
+ * and a full-order copy of every instance buffer (matrices, tints, the lenses'
+ * signal offsets) is the source of truth. view() picks the cells within the
+ * kind's cutoff of the camera's 100 m lattice square (radial, so turning the
+ * camera changes nothing, and snapped, so a drive changes the set about once a
+ * second) and, only then, copies their runs to the front of the GPU buffers, sets
+ * `count` and fits the bounding sphere to them, so three's frustum culling
+ * works too. ~40 draws stay ~40 draws; a break writes its instance in both
+ * copies. Tall far-visible kinds (lamp and signal poles, bus stops) cut where
+ * the fog closes, the rest at the quality's detailDistance.
+ *
  * The meshes of each part are in propGeometry.ts; this module places the
  * instances, runs the signal shader and breaks props apart.
  */
 import * as THREE from 'three';
 import type { World } from '../../city/world';
-import type { Prop } from '../../city/props';
+import type { Prop, PropKind } from '../../city/props';
 import type { Quality } from '../../ui/settings';
 import { FOG_DENSITY } from '../lighting';
 import { fadeSubPixel } from '../materialFx';
+import { chunkGrid, type ChunkGrid } from '../cityChunks';
 import { D_BOX, D_CYL, D_GLASS, D_GLOW, Debris, DebrisType } from './debris';
 import { shatterFurniture } from './streetFurniture';
 import { buildHydrantSpray } from './hydrantSpray';
@@ -54,8 +67,41 @@ export interface PropRenderer {
    * prop is scanned (the menu stage, which stands props back up, and a session's first sync).
    */
   update(dt: number, time: number, broken: ArrayLike<number> | undefined, cars: readonly CarMotion[], dirty?: readonly number[]): void;
+  /**
+   * Draw only the cells within reach of this camera: `detail` kinds out to detailDistance, `fog` kinds out to
+   * fogDistance (m; Infinity draws everything). Call once per render (scene.onBeforeRender); uploads only when
+   * the set of cells changes. Allocates nothing.
+   */
+  view(camera: THREE.Camera, detailDistance: number, fogDistance: number): void;
+  /** Dev stats: compactions run, and bytes uploaded by the last one. */
+  readonly cullStats: { compactions: number; lastBytes: number };
   dispose(): void;
 }
+
+/** Where a prop kind stops being drawn: at the quality's detail distance, or where the fog closes. */
+export type PropCullClass = 'detail' | 'fog';
+
+/**
+ * The tall kinds a driver reads from afar (lamp and signal poles, lit shelters) stay until the fog swallows
+ * them, so a row of lamp posts never pops in at 260 m; every other kind is small detail.
+ */
+export const PROP_CULL: Partial<Record<PropKind, PropCullClass>> = {
+  streetlight: 'fog',
+  trafficLight: 'fog',
+  busStop: 'fog',
+  parkLamp: 'fog',
+};
+
+export const PROP_CHUNKS = {
+  /**
+   * Lattice (m) the camera is snapped to: cells are picked by distance from the camera's lattice square, so the set
+   * changes at most once per lattice line crossed (about every 1.1 s at 90 m/s) instead of whenever the reach circle
+   * touches another cell row, for at most half a diagonal (about 70 m) of extra reach.
+   */
+  snap: 100,
+  /** Extra reach (m) before an already drawn cell is dropped, so a camera hovering on a lattice line does not re-upload every frame. */
+  hysteresis: 20,
+} as const;
 
 export interface PropRendererOptions {
   /** Geometry tier (ring segments, merged slats, fewer clumps); placement and hashing never depend on it. Default medium. */
@@ -65,6 +111,10 @@ export interface PropRendererOptions {
    * or streetlights.length + k for the k-th park lamp (parkLamps order).
    */
   onLamp?(light: number, on: boolean): void;
+  /** The culling grid (scene.ts shares the city chunks' one); default chunkGrid(world.graph.bounds). */
+  grid?: ChunkGrid;
+  /** Per-kind cull class over PROP_CULL (unlisted kinds are `detail`). */
+  cull?: Partial<Record<PropKind, PropCullClass>>;
 }
 
 /** The lantern posts of parks and plazas in light order: their lights follow the streetlights'. */
@@ -109,7 +159,7 @@ const lensFrag = /* glsl */ `
 
 // ---------------------------------------------------------------------------
 
-const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
+const ZERO = new THREE.Matrix4().makeScale(0, 0, 0).elements;
 const tmpTint = new THREE.Color();
 /** Debris spawner of one breaking prop: local offsets (prop frame), half extents, push along the hit, lift, spin. */
 type SpawnFn = (
@@ -133,7 +183,24 @@ const AD_TINTS = [0xff3df2, 0x19e6ff, 0xffb020, 0x7cff6a, 0xffffff, 0xff4060].ma
 
 interface PartRef {
   mesh: number;
+  /** Instance index in full (cell sorted) order. */
   index: number;
+}
+
+/** One part mesh culled by cell: its full-order buffers and where each cell's run lies in them. */
+interface CellMesh {
+  mesh: THREE.InstancedMesh;
+  cls: PropCullClass;
+  /** First instance of each cell's run, plus the end (length cells + 1). */
+  start: Uint32Array;
+  /** Current matrices (broken = zero scale), full order; the GPU buffer holds the drawn runs at its front. */
+  state: Float32Array;
+  color: Float32Array | null;
+  offset: Float32Array | null;
+  /** GPU slot of each full-order instance (-1: its cell is not drawn). */
+  slot: Int32Array;
+  /** Per-cell AABB of the instances' world bounds: minX, minY, minZ, maxX, maxY, maxZ (m). */
+  box: Float32Array;
 }
 
 interface TrafficFrame {
@@ -146,6 +213,23 @@ interface TrafficFrame {
   faz: number;
   fbx: number;
   fbz: number;
+}
+
+const _union = new THREE.Box3();
+const _cellBox = new THREE.Box3();
+
+/** Fit the mesh's bounding sphere to its drawn cells (all of them when bits is null), so three's frustum culling sees only those. */
+function fitBounds(cm: CellMesh, bits: Uint8Array | null): void {
+  _union.makeEmpty();
+  const b = cm.box;
+  for (let c = 0; c < cm.start.length - 1; c++) {
+    if ((bits && !bits[c]) || cm.start[c + 1] === cm.start[c]) continue;
+    const o = c * 6;
+    _cellBox.min.set(b[o], b[o + 1], b[o + 2]);
+    _cellBox.max.set(b[o + 3], b[o + 4], b[o + 5]);
+    _union.union(_cellBox);
+  }
+  if (!_union.isEmpty()) _union.getBoundingSphere(cm.mesh.boundingSphere!);
 }
 
 /** Direction helpers: local +Z of yaw is (sin, cos), local +X is (cos, -sin). */
@@ -174,12 +258,29 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
     new THREE.ShaderMaterial({ vertexShader: lensVert, fragmentShader: lensFrag, uniforms: { time: { value: 0 }, fogDensity: { value: FOG_DENSITY } } }),
   );
 
-  const byKind = (k: Prop['kind']) => props.filter((p) => p.kind === k);
+  const grid = opts.grid ?? chunkGrid(world.graph.bounds);
+  const cullOf = { ...PROP_CULL, ...opts.cull };
+  /** Each drawn kind's first index of every cell's run in its sorted list, plus the end. */
+  const runsOf = new Map<PropKind, Uint32Array>();
+  /** A kind's props, stable-sorted by grid cell so each cell is one run of instances (counting sort). */
+  const byKind = (k: PropKind): Prop[] => {
+    const list = props.filter((p) => p.kind === k);
+    const cells = list.map((p) => grid.cellOf(p.x, p.z));
+    const start = new Uint32Array(grid.count + 1);
+    for (const c of cells) start[c + 1]++;
+    for (let c = 0; c < grid.count; c++) start[c + 1] += start[c];
+    const at = start.slice(0, grid.count);
+    const out: Prop[] = new Array(list.length);
+    list.forEach((p, i) => (out[at[cells[i]]++] = p));
+    runsOf.set(k, start);
+    return out;
+  };
   const lights = byKind('streetlight');
   const traffic = byKind('trafficLight');
   const cans = byKind('garbageCan');
   const benches = byKind('bench');
   const stops = byKind('busStop');
+  // Light order, not draw order: the park lamps' meshes draw their own sorted list.
   const lanterns = parkLamps(world);
   // Light index of every lamp prop (-1 for the rest): streetlights by `light`, park lamps after them.
   const lightOf = new Int32Array(props.length).fill(-1);
@@ -187,17 +288,20 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
   lanterns.forEach((p, k) => (lightOf[p.id] = lights.length + k));
 
   const meshes: THREE.InstancedMesh[] = [];
+  /** The kind each mesh draws and its instances per prop (null: not culled by cell, the stumps). */
+  const kindOf: ({ kind: PropKind; per: number } | null)[] = [];
   const parts: PartRef[][] = props.map(() => []);
   /** Index of each pole in `poles` (-1 for the rest): picks its stump matrix. */
   const poleOf = new Int32Array(props.length).fill(-1);
   /** Slot of each broken pole's stump among the drawn ones (-1: standing), and the prop id in each slot. */
   const slotOf = new Int32Array(props.length).fill(-1);
   const idOf: number[] = [];
-  const addMesh = (name: string, geo: THREE.BufferGeometry, mat: THREE.Material, count: number): number => {
+  const addMesh = (name: string, geo: THREE.BufferGeometry, mat: THREE.Material, count: number, kind: PropKind | null, per = 1): number => {
     const m = new THREE.InstancedMesh(track(geo), mat, Math.max(1, count));
     m.count = count;
     m.name = name;
     meshes.push(m);
+    kindOf.push(kind ? { kind, per } : null);
     if (count > 0) group.add(m);
     return meshes.length - 1;
   };
@@ -218,8 +322,8 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
   // Streetlights.
   {
     const geo = streetlightGeo(q);
-    const solid = addMesh('streetlightPoles', geo.solid, solidMat, lights.length);
-    const lens = addMesh('streetlightLenses', geo.lens, lampLensMat, lights.length);
+    const solid = addMesh('streetlightPoles', geo.solid, solidMat, lights.length, 'streetlight');
+    const lens = addMesh('streetlightLenses', geo.lens, lampLensMat, lights.length, 'streetlight');
     lights.forEach((p, i) => {
       place(solid, i, p, p.x, p.y, p.z, p.yaw);
       place(lens, i, p, p.x, p.y, p.z, p.yaw);
@@ -231,10 +335,10 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
   const frames: TrafficFrame[] = traffic.map((p) => trafficFrame(world, p));
   const lensOffsets = new Float32Array(traffic.length * 3);
   {
-    const pole = addMesh('trafficPoles', trafficPoleGeo(q), solidMat, traffic.length);
-    const arm = addMesh('trafficArms', trafficArmGeo(), solidMat, traffic.length);
-    const head = addMesh('trafficHeads', trafficHeadGeo(), solidMat, traffic.length * 3);
-    const lens = addMesh('trafficLenses', trafficLensGeo(), lensMat, traffic.length * 3);
+    const pole = addMesh('trafficPoles', trafficPoleGeo(q), solidMat, traffic.length, 'trafficLight');
+    const arm = addMesh('trafficArms', trafficArmGeo(), solidMat, traffic.length, 'trafficLight');
+    const head = addMesh('trafficHeads', trafficHeadGeo(), solidMat, traffic.length * 3, 'trafficLight', 3);
+    const lens = addMesh('trafficLenses', trafficLensGeo(), lensMat, traffic.length * 3, 'trafficLight', 3);
     traffic.forEach((p, i) => {
       const f = frames[i];
       place(pole, i, p, p.x, p.y, p.z, p.yaw);
@@ -261,14 +365,13 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
       });
     });
     meshes[lens].geometry.setAttribute('aOffset', new THREE.InstancedBufferAttribute(lensOffsets, 1));
-    meshes[lens].frustumCulled = false;
   }
 
   // Stumps left behind by broken poles: capacity for every pole, but only the broken ones are drawn (count grows
   // with each break; a repair swaps the last stump into the freed slot). Never frustum culled: its bounds would
   // be computed over an empty or changing set.
   const poles = [...lights, ...traffic, ...lanterns];
-  const stump = addMesh('propStumps', stumpGeo(q), solidMat, poles.length);
+  const stump = addMesh('propStumps', stumpGeo(q), solidMat, poles.length, null);
   poles.forEach((p, i) => (poleOf[p.id] = i));
   meshes[stump].count = 0;
   meshes[stump].visible = false;
@@ -276,23 +379,23 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
 
   // Garbage cans, tinted per instance.
   {
-    const m = addMesh('garbageCans', canGeo(q), solidMat, cans.length);
+    const m = addMesh('garbageCans', canGeo(q), solidMat, cans.length, 'garbageCan');
     cans.forEach((p, i) => {
       place(m, i, p, p.x, p.y, p.z, p.yaw + hash01(p.id) * 6.28);
       meshes[m].setColorAt(i, CAN_TINTS[(hash01(p.id * 31) * CAN_TINTS.length) | 0]);
     });
   }
   {
-    const m = addMesh('benches', benchGeo(q), solidMat, benches.length);
+    const m = addMesh('benches', benchGeo(q), solidMat, benches.length, 'bench');
     benches.forEach((p, i) => place(m, i, p, p.x, p.y, p.z, p.yaw));
   }
   const adTint: THREE.Color[] = [];
   {
     const geo = busStopGeo();
-    const solid = addMesh('busStops', geo.solid, solidMat, stops.length);
-    const glass = addMesh('busStopGlass', geo.glass, glassMat, stops.length);
-    const ad = addMesh('busStopAds', geo.ad, adMat, stops.length);
-    const glow = addMesh('busStopLights', geo.glow, glowMat, stops.length);
+    const solid = addMesh('busStops', geo.solid, solidMat, stops.length, 'busStop');
+    const glass = addMesh('busStopGlass', geo.glass, glassMat, stops.length, 'busStop');
+    const ad = addMesh('busStopAds', geo.ad, adMat, stops.length, 'busStop');
+    const glow = addMesh('busStopLights', geo.glow, glowMat, stops.length, 'busStop');
     meshes[glass].renderOrder = 4;
     stops.forEach((p, i) => {
       for (const m of [solid, glass, ad, glow]) place(m, i, p, p.x, p.y, p.z, p.yaw);
@@ -309,7 +412,7 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
     if (!list.length) continue;
     const def = PARTS[kind]!;
     const matOf = { matte: matteMat, canopy: canopyMat, solid: solidMat, glow: glowMat, lamp: lampLensMat, glass: glassMat } as const;
-    const ids = def.parts.map((part, k) => addMesh(`${kind}${k}`, part.geo(q), matOf[part.mat], list.length));
+    const ids = def.parts.map((part, k) => addMesh(`${kind}${k}`, part.geo(q), matOf[part.mat], list.length, kind));
     // Glass after the opaque pass, like the bus shelters'.
     def.parts.forEach((part, k) => part.mat === 'glass' && (meshes[ids[k]].renderOrder = 4));
     list.forEach((p, i) => {
@@ -325,6 +428,153 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
 
   // Keep the intact matrices so a prop can be restored.
   const intact = meshes.map((m) => (m.instanceMatrix.array as Float32Array).slice());
+
+  // Cell culling: every kind's part meshes keep their full-order buffers and per-cell bounds. The GPU starts
+  // with everything drawn in full order (slot = index), so the first view() only has to drop cells.
+  const nCells = grid.count;
+  const cellOfMesh: (CellMesh | null)[] = meshes.map(() => null);
+  const cellMeshes: CellMesh[] = [];
+  /** Height range of every prop's bounds (m): a camera above or below it reaches fewer cells. */
+  let propMinY = Infinity;
+  let propMaxY = -Infinity;
+  {
+    const geoBox = new THREE.Box3();
+    const ib = new THREE.Box3();
+    meshes.forEach((m, mi) => {
+      const k = kindOf[mi];
+      if (!k || m.count === 0) return;
+      const runs = runsOf.get(k.kind)!;
+      const start = new Uint32Array(nCells + 1);
+      for (let c = 0; c <= nCells; c++) start[c] = runs[c] * k.per;
+      const box = new Float32Array(nCells * 6);
+      for (let c = 0; c < nCells; c++) {
+        box[c * 6] = box[c * 6 + 1] = box[c * 6 + 2] = Infinity;
+        box[c * 6 + 3] = box[c * 6 + 4] = box[c * 6 + 5] = -Infinity;
+      }
+      if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+      geoBox.copy(m.geometry.boundingBox!);
+      for (let c = 0; c < nCells; c++)
+        for (let i = start[c]; i < start[c + 1]; i++) {
+          m.getMatrixAt(i, mat4);
+          ib.copy(geoBox).applyMatrix4(mat4);
+          const o = c * 6;
+          box[o] = Math.min(box[o], ib.min.x);
+          box[o + 1] = Math.min(box[o + 1], ib.min.y);
+          box[o + 2] = Math.min(box[o + 2], ib.min.z);
+          box[o + 3] = Math.max(box[o + 3], ib.max.x);
+          box[o + 4] = Math.max(box[o + 4], ib.max.y);
+          box[o + 5] = Math.max(box[o + 5], ib.max.z);
+          propMinY = Math.min(propMinY, ib.min.y);
+          propMaxY = Math.max(propMaxY, ib.max.y);
+        }
+      const offset = m.geometry.getAttribute('aOffset') as THREE.InstancedBufferAttribute | undefined;
+      const cm: CellMesh = {
+        mesh: m,
+        cls: cullOf[k.kind] ?? 'detail',
+        start,
+        state: intact[mi].slice(),
+        color: m.instanceColor ? (m.instanceColor.array as Float32Array).slice() : null,
+        offset: offset ? (offset.array as Float32Array).slice() : null,
+        slot: Int32Array.from({ length: m.count }, (_, i) => i),
+        box,
+      };
+      cellOfMesh[mi] = cm;
+      cellMeshes.push(cm);
+      // Exact bounds (the default sphere would be computed once over the whole city), the lenses included.
+      m.frustumCulled = true;
+      m.boundingSphere = new THREE.Sphere();
+      fitBounds(cm, null);
+    });
+  }
+  /** Cells drawn now per class (1 = drawn); all of them until the first view(). */
+  const drawn: Record<PropCullClass, Uint8Array> = { detail: new Uint8Array(nCells).fill(1), fog: new Uint8Array(nCells).fill(1) };
+  const nextCells = new Uint8Array(nCells);
+  const wideCells = new Uint8Array(nCells);
+  const camPos = new THREE.Vector3();
+  const cullStats = { compactions: 0, lastBytes: 0 };
+
+  /** Write one instance's matrix (16 floats) into its full-order state and, when its cell is drawn, its GPU slot. */
+  const writeMatrix = (mi: number, i: number, src: ArrayLike<number>) => {
+    const m = meshes[mi];
+    const cm = cellOfMesh[mi];
+    const arr = m.instanceMatrix.array as Float32Array;
+    if (!cm) arr.set(src, i * 16);
+    else {
+      cm.state.set(src, i * 16);
+      const s = cm.slot[i];
+      if (s < 0) return;
+      arr.set(src, s * 16);
+      m.instanceMatrix.addUpdateRange(s * 16, 16);
+    }
+    m.instanceMatrix.needsUpdate = true;
+  };
+
+  /**
+   * Pick a class's cells within cut (m) of the camera's lattice square, keeping drawn ones until cut + hysteresis.
+   * The reach shrinks with the camera's height above (or depth below) every prop. Returns the first cell whose
+   * state changed (nCells: none).
+   */
+  const pickCells = (bits: Uint8Array, cut: number): number => {
+    const dy = Math.max(0, camPos.y - propMaxY, propMinY - camPos.y);
+    const far = cut + PROP_CHUNKS.hysteresis;
+    const L = PROP_CHUNKS.snap;
+    const sx = grid.minX + (Math.floor((camPos.x - grid.minX) / L) + 0.5) * L;
+    const sz = grid.minZ + (Math.floor((camPos.z - grid.minZ) / L) + 0.5) * L;
+    grid.cellsWithin(sx, sz, cut > dy ? Math.sqrt(cut * cut - dy * dy) : -1, nextCells, L / 2);
+    grid.cellsWithin(sx, sz, far > dy ? Math.sqrt(far * far - dy * dy) : -1, wideCells, L / 2);
+    let first = nCells;
+    for (let c = 0; c < nCells; c++) {
+      const v = nextCells[c] | (bits[c] & wideCells[c]);
+      if (v !== bits[c]) {
+        bits[c] = v;
+        if (first === nCells) first = c;
+      }
+    }
+    return first;
+  };
+
+  /**
+   * Copy the drawn cells' runs to the front of the mesh's GPU buffers. Cells before `from` kept their state, so their
+   * runs already sit where they belong and only the rest is copied and uploaded. Returns the bytes uploaded.
+   */
+  const compact = (cm: CellMesh, bits: Uint8Array, from: number): number => {
+    const m = cm.mesh;
+    const gm = m.instanceMatrix.array as Float32Array;
+    const gc = m.instanceColor ? (m.instanceColor.array as Float32Array) : null;
+    const offAttr = cm.offset ? (m.geometry.getAttribute('aOffset') as THREE.InstancedBufferAttribute) : null;
+    const go = offAttr ? (offAttr.array as Float32Array) : null;
+    let k = 0;
+    for (let c = 0; c < from; c++) if (bits[c]) k += cm.start[c + 1] - cm.start[c];
+    const k0 = k;
+    cm.slot.fill(-1, cm.start[from]);
+    for (let c = from; c < nCells; c++) {
+      const s = cm.start[c];
+      const e = cm.start[c + 1];
+      if (!bits[c] || e === s) continue;
+      gm.set(cm.state.subarray(s * 16, e * 16), k * 16);
+      if (gc && cm.color) gc.set(cm.color.subarray(s * 3, e * 3), k * 3);
+      if (go && cm.offset) go.set(cm.offset.subarray(s, e), k);
+      for (let i = s; i < e; i++) cm.slot[i] = k + i - s;
+      k += e - s;
+    }
+    m.count = k;
+    m.visible = k > 0;
+    fitBounds(cm, bits);
+    const n = k - k0;
+    if (n <= 0) return 0;
+    // Ranges add to any single-instance writes (breaks) pending this frame.
+    m.instanceMatrix.addUpdateRange(k0 * 16, n * 16);
+    m.instanceMatrix.needsUpdate = true;
+    if (m.instanceColor) {
+      m.instanceColor.addUpdateRange(k0 * 3, n * 3);
+      m.instanceColor.needsUpdate = true;
+    }
+    if (offAttr) {
+      offAttr.addUpdateRange(k0, n);
+      offAttr.needsUpdate = true;
+    }
+    return n * 4 * (16 + (gc ? 3 : 0) + (go ? 1 : 0));
+  };
   const stumpBase = new Float32Array(poles.length * 16);
   poles.forEach((p, i) => {
     quat.setFromAxisAngle(up, p.yaw);
@@ -343,10 +593,7 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
 
   const setBroken = (p: Prop, broken: boolean) => {
     for (const r of parts[p.id]) {
-      const m = meshes[r.mesh];
-      if (broken) m.setMatrixAt(r.index, ZERO);
-      else (m.instanceMatrix.array as Float32Array).set(intact[r.mesh].subarray(r.index * 16, r.index * 16 + 16), r.index * 16);
-      m.instanceMatrix.needsUpdate = true;
+      writeMatrix(r.mesh, r.index, broken ? ZERO : intact[r.mesh].subarray(r.index * 16, r.index * 16 + 16));
     }
     const pole = poleOf[p.id];
     if (pole >= 0) {
@@ -713,6 +960,21 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
 
   return {
     group,
+    cullStats,
+    view(camera, detailDistance, fogDistance) {
+      if (!cellMeshes.length) return;
+      camera.getWorldPosition(camPos);
+      const detail = pickCells(drawn.detail, detailDistance);
+      const fog = pickCells(drawn.fog, fogDistance);
+      if (detail === nCells && fog === nCells) return;
+      let bytes = 0;
+      for (const cm of cellMeshes) {
+        const from = cm.cls === 'detail' ? detail : fog;
+        if (from < nCells) bytes += compact(cm, drawn[cm.cls], from);
+      }
+      cullStats.compactions++;
+      cullStats.lastBytes = bytes;
+    },
     update(dt, time, broken, cars, dirty) {
       lensMat.uniforms.time.value = time;
       if (broken && broken.length === props.length) {

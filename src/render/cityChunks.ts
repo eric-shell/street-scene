@@ -21,6 +21,9 @@
  * quality's detailDistance, `sky` layers (the skyline) only by the frustum. The cutoff is view depth, not radial distance,
  * because FogExp2 fogs by -mvPosition.z. Runs separated by fewer than gapTris
  * triangles merge, trading a few hidden triangles for a draw call.
+ *
+ * The instanced street props cull on the same grid (street/props.ts: cellsWithin,
+ * fogCutoff), compacting each kind's drawn cells to the front of its buffers.
  */
 import * as THREE from 'three';
 
@@ -57,6 +60,17 @@ export interface ChunkGrid {
   count: number;
   /** The cell holding (x, z) (m); points outside the bounds go to the edge cells. */
   cellOf(x: number, z: number): number;
+  /**
+   * Mark in `out` (length count, cleared first) every cell whose ground rect lies within
+   * r (m) of (x, z), or of the square of half size pad (m) centred there, edge cells
+   * reaching out to infinity like cellOf. A negative r marks nothing. Allocates nothing.
+   */
+  cellsWithin(x: number, z: number, r: number, out: Uint8Array, pad?: number): void;
+}
+
+/** View depth (m) at which FogExp2 of this density has reached 1 - CHUNKS.fogEps (Infinity without fog). */
+export function fogCutoff(density: number): number {
+  return density > 0 ? Math.sqrt(Math.log(1 / CHUNKS.fogEps)) / density : Infinity;
 }
 
 export function chunkGrid(bounds: { minX: number; maxX: number; minZ: number; maxZ: number }, cell: number = CHUNKS.cell): ChunkGrid {
@@ -75,6 +89,26 @@ export function chunkGrid(bounds: { minX: number; maxX: number; minZ: number; ma
       const ix = Math.min(nx - 1, Math.max(0, Math.floor((x - minX) / cell)));
       const iz = Math.min(nz - 1, Math.max(0, Math.floor((z - minZ) / cell)));
       return iz * nx + ix;
+    },
+    cellsWithin(x, z, r, out, pad = 0) {
+      out.fill(0);
+      if (!(r >= 0)) return;
+      const ix0 = Math.min(nx - 1, Math.max(0, Math.floor((x - r - pad - minX) / cell)));
+      const ix1 = Math.min(nx - 1, Math.max(0, Math.floor((x + r + pad - minX) / cell)));
+      const iz0 = Math.min(nz - 1, Math.max(0, Math.floor((z - r - pad - minZ) / cell)));
+      const iz1 = Math.min(nz - 1, Math.max(0, Math.floor((z + r + pad - minZ) / cell)));
+      const r2 = r * r;
+      for (let iz = iz0; iz <= iz1; iz++) {
+        const lo = iz === 0 ? -Infinity : minZ + iz * cell;
+        const hi = iz === nz - 1 ? Infinity : minZ + (iz + 1) * cell;
+        const dz = Math.max(lo - pad - z, 0, z - pad - hi);
+        for (let ix = ix0; ix <= ix1; ix++) {
+          const l = ix === 0 ? -Infinity : minX + ix * cell;
+          const h = ix === nx - 1 ? Infinity : minX + (ix + 1) * cell;
+          const dx = Math.max(l - pad - x, 0, x - pad - h);
+          if (dx * dx + dz * dz <= r2) out[iz * nx + ix] = 1;
+        }
+      }
     },
   };
 }
@@ -229,7 +263,7 @@ export class CityChunks {
     _frustum.setFromProjectionMatrix(_m, camera.coordinateSystem);
     camera.getWorldPosition(_pos);
     camera.getWorldDirection(_fwd);
-    const fogCut = fogDensity > 0 ? Math.sqrt(Math.log(1 / CHUNKS.fogEps)) / fogDensity : Infinity;
+    const fogCut = fogCutoff(fogDensity);
     const n = this.grid.count;
     const fx = Math.abs(_fwd.x);
     const fy = Math.abs(_fwd.y);

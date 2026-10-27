@@ -30,7 +30,7 @@ import { harborSea } from './districts/waterfront';
 import { GROUND_PAINT_ORDER, underVehicles } from './vehicleMask';
 import { damp } from '../shared/anim';
 import { buildWallOverlay } from './wallOverlay';
-import { CityChunks, chunkGrid, type ChunkClass } from './cityChunks';
+import { CityChunks, chunkGrid, fogCutoff, type ChunkClass } from './cityChunks';
 
 /** Retro mode's render height (px): the view is drawn this many pixels tall and scaled up. */
 const RETRO_HEIGHT = 240;
@@ -236,13 +236,18 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     weather.view(camera, viewportHeight);
     air.view(camera);
     districts.view(camera);
-    chunks.view(camera, (scene.fog as THREE.FogExp2 | null)?.density ?? fogDensity, gr.profile.detailDistance);
+    const density = (scene.fog as THREE.FogExp2 | null)?.density ?? fogDensity;
+    chunks.view(camera, density, gr.profile.detailDistance);
+    // Props cull by the same grid: detail kinds at detailDistance, the tall ones where the fog closes.
+    if (chunks.enabled) props.view(camera, gr.profile.detailDistance, fogCutoff(density));
+    else props.view(camera, Infinity, Infinity);
   };
   // Broken lamps go dark: ground pool, reflection streak (streetlights) and the real light pool.
   const lampOff = new Uint8Array(lamps.length);
   const streetLamps = city.lampPositions.length;
   const props = buildProps(world, {
     quality: settings.quality,
+    grid: chunks.grid,
     onLamp(i, on) {
       if (i < 0 || i >= lampOff.length || lampOff[i] === (on ? 0 : 1)) return;
       lampOff[i] = on ? 0 : 1;
