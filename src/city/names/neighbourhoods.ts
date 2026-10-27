@@ -13,11 +13,11 @@
  * real neighbourhood lines do and a part never splits in two. A border is
  * then the street centerlines between blocks of different parts.
  */
-import type { World } from '../../city/world';
-import type { BlockFace } from '../../city/blocks';
-import type { Area } from '../../city/districts/types';
-import { isRiverEdge, type RoadEdge } from '../../city/roadGraph';
-import { pointInPolygon, polygonArea, polygonCentroid } from '../../city/districts/geom';
+import type { World } from '../world';
+import type { BlockFace } from '../blocks';
+import type { Area } from '../districts/types';
+import { isRiverEdge, type RoadEdge } from '../roadGraph';
+import { pointInPolygon, polygonArea, polygonCentroid } from '../districts/geom';
 import { Rng, deriveSeed } from '../../sim/prng';
 import type { Vec2 } from '../../sim/math';
 
@@ -72,6 +72,17 @@ export function hoodPlan(world: World): HoodPlan {
   let p = plans.get(world);
   if (!p) plans.set(world, (p = plan(world)));
   return p;
+}
+
+/** Trailing words a neighbourhood's stem drops ("Summit Heights" is Summit), as a shop or a street says where it is without the whole name. */
+const STEM_TAILS = new Set(['Heights', 'Row', 'Ward', 'Flats', 'Yards', 'Point', 'Quarter', 'Mile', 'Terrace', 'Center', 'City', 'Hollow', 'Landing', 'District']);
+
+/** The word a neighbourhood goes by on shop signs and billboards: its name without a leading The or Little and a generic tail ("Riverside", "Summit", "Lisbon"). */
+export function hoodStem(name: string): string {
+  let w = name.split(' ').filter(Boolean);
+  if (w.length > 1 && (w[0] === 'The' || w[0] === 'Little')) w = w.slice(1);
+  if (w.length > 1 && STEM_TAILS.has(w[w.length - 1])) w = w.slice(0, -1);
+  return w.join(' ');
 }
 
 /** The neighbourhood at a world point: the block's under it, else the nearest street's. */

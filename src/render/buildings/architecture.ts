@@ -7,7 +7,9 @@
  * of neighbourhoods (cells about 210 m across) gives each cell a primary and
  * a secondary region, weighted by place: New York toward downtown, San
  * Francisco up the hills, Miami along the water, Los Angeles toward the
- * sprawl at the edges, Philadelphia in the ring between. Buildings take their
+ * sprawl at the edges, Philadelphia in the ring between. The seed's home
+ * (cityIdentity.ts) weighs most in every cell, so it covers most of the city
+ * and the other four read as pockets. Buildings take their
  * cell's region (the neighbour's near a border, the secondary now and then, a
  * rare outlier anywhere), then a style from the region and their height:
  * brownstones and deco towers, Spanish revival and mid-century strips,
@@ -21,6 +23,7 @@ import { pointInPolygon } from '../../city/districts/geom';
 import type { Building } from '../../city/blocks';
 import { Rng } from '../../sim/prng';
 import { downtownFactor } from '../../city/roadGraph';
+import { cityIdentity } from '../cityIdentity';
 import type { FacadeLayer } from './facadeAtlas';
 import { MODULE } from './facadeAtlas';
 import type { GroundBay } from './facadeKit';
@@ -195,6 +198,9 @@ export const ARCH = {
   outlier: 0.03,
   /** Water within this distance of a cell center favors Miami (m). */
   waterReach: 260,
+  /** Cell weight multipliers for the seed's home region and for the other four (cityIdentity.ts). */
+  home: 2.5,
+  away: 0.6,
 } as const;
 
 const REGIONS: readonly Region[] = ['nyc', 'la', 'sf', 'philly', 'miami'];
@@ -255,6 +261,7 @@ function planOnce(world: World): BuildingPlan[] {
   const rng = new Rng((world.seed ^ 0xa4c417) >>> 0 || 1);
   const bx = g.bounds;
   const downtown = (x: number, z: number) => downtownFactor(g.plan, x, z);
+  const home = cityIdentity(world.seed).home;
 
   // Terrain range over the city, for "up the hill".
   let hMin = Infinity;
@@ -297,7 +304,7 @@ function planOnce(world: World): BuildingPlan[] {
       const wet = nearWater(x, z);
       const edge = 1 - f;
       const w = REGIONS.map((r) => {
-        const b = BASE_WEIGHT[r];
+        const b = BASE_WEIGHT[r] * (r === home ? ARCH.home : ARCH.away);
         switch (r) {
           case 'nyc':
             return b * (0.55 + 2.2 * f);

@@ -30,6 +30,7 @@ import { type RailLayout, RailState, railLayout } from '../../sim/rails';
 import { segmentT } from '../../sim/math';
 import { nearCarParkFlight } from '../../city/districts/carPark';
 import { Disposer } from '../disposer';
+import { HEIGHT_FOG_GLSL, HEIGHT_FOG_UNIFORMS } from '../heightFog';
 
 /** The route's cyan: rail panels, LED comets, ground glow and the floating signs. */
 const ROUTE_CYAN = 0x19e6ff;
@@ -145,6 +146,7 @@ const SIGN = { height: 5.8, aspect: 4, minWidth: 8, maxWidth: 14, fadeFar: [175,
 const signVert = /* glsl */ `
   uniform float time;
   uniform float fogDensity;
+  ${HEIGHT_FOG_GLSL}
   attribute float aFlip;
   attribute float aPhase;
   varying vec2 vUv;
@@ -159,7 +161,7 @@ const signVert = /* glsl */ `
     wp.y += sin(time * 1.3 + aPhase * 6.2832) * ${SIGN.hover.toFixed(2)};
     vec4 mv = viewMatrix * wp;
     float d = length(mv.xyz);
-    vFade = exp(-fogDensity * fogDensity * d * d * 0.5) * smoothstep(${SIGN.fadeFar[0].toFixed(1)}, ${SIGN.fadeFar[1].toFixed(1)}, d) * smoothstep(${SIGN.fadeNear[0].toFixed(1)}, ${SIGN.fadeNear[1].toFixed(1)}, d);
+    vFade = exp(-fogDensity * fogDensity * d * d * 0.5 * hfMulView(mv.xyz)) * smoothstep(${SIGN.fadeFar[0].toFixed(1)}, ${SIGN.fadeFar[1].toFixed(1)}, d) * smoothstep(${SIGN.fadeNear[0].toFixed(1)}, ${SIGN.fadeNear[1].toFixed(1)}, d);
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -346,6 +348,34 @@ export function routeSigns(world: World, barriers: BarrierInfo[]): Board[] {
   return signs;
 }
 
+/** Trim at the ends of a rail module (m), so neighbouring pieces show a joint; the first post stands just inside it. */
+const RAIL_GAP = 0.03;
+
+/**
+ * What glows over the route's rails, for the wet street's reflection streaks (street/lightFx.ts): the amber
+ * beacon on every fourth post (lightFx 'beacon', placed as buildRailMeshes places it) and the cyan chevron boards
+ * over closures and corners ('board', as wide as a third of the sign). A rail piece a hit has shoved keeps its
+ * streak where it stood.
+ */
+export function routeEmitters(world: World, barriers: BarrierInfo[]): { cls: 'beacon' | 'board'; pos: THREE.Vector3; color: THREE.Color; width?: number }[] {
+  const out: { cls: 'beacon' | 'board'; pos: THREE.Vector3; color: THREE.Color; width?: number }[] = [];
+  const amber = new THREE.Color(1, 0.63, 0.12);
+  const l = railLayout(world);
+  for (let p = 0; p < l.count; p += 4) {
+    const k = l.first[p];
+    const len = Math.hypot(l.bx[k] - l.ax[k], l.bz[k] - l.az[k]) || 1;
+    const ux = (l.bx[k] - l.ax[k]) / len;
+    const uz = (l.bz[k] - l.az[k]) / len;
+    const ta = Math.min(RAIL_GAP, len / 3);
+    const ax = l.ax[k] + ux * ta;
+    const az = l.az[k] + uz * ta;
+    out.push({ cls: 'beacon', pos: new THREE.Vector3(ax + ux * 0.1 + l.nx[k] * 0.04, world.heightAt(ax, az) + 1.58, az + uz * 0.1 + l.nz[k] * 0.04), color: amber });
+  }
+  const cyan = new THREE.Color(ROUTE_CYAN);
+  for (const b of routeSigns(world, barriers)) out.push({ cls: 'board', pos: new THREE.Vector3(b.x, b.y, b.z), color: cyan, width: Math.min(6, b.w / 3) });
+  return out;
+}
+
 export interface RouteArrowOptions {
   /** Blinking amber lamp material for the beacons on the rail posts (the scene animates it). */
   beacon?: THREE.Material;
@@ -375,7 +405,7 @@ export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classif
       new THREE.ShaderMaterial({
         vertexShader: signVert,
         fragmentShader: signFrag,
-        uniforms: { map: { value: signTex }, time: { value: 0 }, color: { value: new THREE.Color(ROUTE_CYAN) }, fogDensity: { value: FOG_DENSITY } },
+        uniforms: { map: { value: signTex }, time: { value: 0 }, color: { value: new THREE.Color(ROUTE_CYAN) }, fogDensity: { value: FOG_DENSITY }, ...HEIGHT_FOG_UNIFORMS },
         side: THREE.DoubleSide,
         transparent: true,
         depthWrite: false,
@@ -467,6 +497,7 @@ const railBoardVert = /* glsl */ `
   varying vec4 vCrack;
   varying float vLen;
   uniform float fogDensity;
+  ${HEIGHT_FOG_GLSL}
   void main() {
     vUv = uv;
     vFlip = aFlip;
@@ -475,7 +506,7 @@ const railBoardVert = /* glsl */ `
     vLen = aLen;
     vec4 mv = viewMatrix * modelMatrix * vec4(position, 1.0);
     float d = length(mv.xyz);
-    vFog = exp(-fogDensity * fogDensity * d * d * 0.5);
+    vFog = exp(-fogDensity * fogDensity * d * d * 0.5 * hfMulView(mv.xyz));
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -562,13 +593,14 @@ const railPanelVert = /* glsl */ `
   varying float vPhase;
   varying float vFog;
   uniform float fogDensity;
+  ${HEIGHT_FOG_GLSL}
   void main() {
     vUv = uv;
     vFlip = aFlip;
     vPhase = aPhase;
     vec4 mv = viewMatrix * modelMatrix * vec4(position, 1.0);
     float d = length(mv.xyz);
-    vFog = exp(-fogDensity * fogDensity * d * d * 0.5);
+    vFog = exp(-fogDensity * fogDensity * d * d * 0.5 * hfMulView(mv.xyz));
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -656,7 +688,7 @@ function buildRailMeshes(world: World, barriers: BarrierInfo[], tex: THREE.Textu
   const subU0 = new Float32Array(l.subCount);
   const subU1 = new Float32Array(l.subCount);
   const lens: number[] = [];
-  const gap = 0.03;
+  const gap = RAIL_GAP;
   /** Distance along the current rail chain (m), for the LED comets. */
   let chainS = 0;
   for (let p = 0; p < l.count; p++) {
@@ -816,19 +848,19 @@ function buildRailMeshes(world: World, barriers: BarrierInfo[], tex: THREE.Textu
   const panelMaterial = new THREE.ShaderMaterial({
     vertexShader: railBoardVert,
     fragmentShader: railBoardFrag,
-    uniforms: { map: { value: tex }, time: { value: 0 }, color: { value: new THREE.Color(ROUTE_CYAN) }, fogDensity: { value: FOG_DENSITY } },
+    uniforms: { map: { value: tex }, time: { value: 0 }, color: { value: new THREE.Color(ROUTE_CYAN) }, fogDensity: { value: FOG_DENSITY }, ...HEIGHT_FOG_UNIFORMS },
     side: THREE.DoubleSide,
   });
   const frameMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.4 });
   const ledMaterial = new THREE.ShaderMaterial({
     vertexShader: railPanelVert,
     fragmentShader: ledFrag,
-    uniforms: { time: { value: 0 }, color: { value: new THREE.Color(ROUTE_CYAN) }, fogDensity: { value: FOG_DENSITY } },
+    uniforms: { time: { value: 0 }, color: { value: new THREE.Color(ROUTE_CYAN) }, fogDensity: { value: FOG_DENSITY }, ...HEIGHT_FOG_UNIFORMS },
   });
   const poolMaterial = new THREE.ShaderMaterial({
     vertexShader: railPanelVert,
     fragmentShader: poolFrag,
-    uniforms: { time: { value: 0 }, color: { value: new THREE.Color(ROUTE_CYAN) }, fogDensity: { value: FOG_DENSITY } },
+    uniforms: { time: { value: 0 }, color: { value: new THREE.Color(ROUTE_CYAN) }, fogDensity: { value: FOG_DENSITY }, ...HEIGHT_FOG_UNIFORMS },
     transparent: true,
     depthWrite: false,
     blending: THREE.AdditiveBlending,

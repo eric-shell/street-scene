@@ -23,6 +23,8 @@ import * as THREE from 'three';
 import { FacadeAtlas } from './facadeAtlas';
 import { FOG_COLOR, FOG_DENSITY } from '../lighting';
 import { kelvin } from '../textures/textures';
+import { HEIGHT_FOG_GLSL, HEIGHT_FOG_UNIFORMS } from '../heightFog';
+import { DRAG } from '../street/routeNearness';
 
 /** Trim colors (sills, lintels, frames, mullions, cornices) by index, sRGB hex. */
 export const TRIM_COLORS = [0xf2eee6, 0xe6d8bc, 0xcfc6b4, 0x5a4a3a, 0x1c1d22, 0x9aa0a8, 0xf4c9d6, 0xc8f0e4, 0xd8c8f0, 0x2f5a4a, 0x7a2a22, 0xfff3c4, 0x3a4250, 0xb08850, 0x8fb8d8, 0xffffff] as const;
@@ -134,7 +136,12 @@ export function createFacadeMaterials(atlas: FacadeAtlas, opts: FacadeOptions): 
           vec2 unit = office > 0.5 ? vec2(floor(cell.x / 4.0), cell.y) : cell;
           float fh = fHash(vec2(cell.y * 1.31 + sd, sd * 0.71));
           float wh = fHash(unit + sd);
-          float pLit = office > 0.5 ? (fh < density ? 0.8 : 0.04) : density * (0.3 + 1.4 * fh * fh);
+          // The main drag (routeNearness.ts) lights its lowest shaft floors harder: flags above bit 9 hold the
+          // building's nearness bucket (0..3) and the module row its shaft starts on.
+          float nearK = mod(floor(fFlags / 512.0), 4.0) / 3.0;
+          float rowAbove = cell.y - mod(floor(fFlags / 4096.0), 16.0);
+          float lowLit = nearK * ${DRAG.lowFloorLit.toFixed(3)} * (rowAbove < 0.5 ? 1.0 : rowAbove < 1.5 ? 0.55 : 0.0);
+          float pLit = office > 0.5 ? (fh < density + lowLit ? 0.8 : 0.04) : density * (0.3 + 1.4 * fh * fh) + lowLit;
           float r = wh;
           #ifdef FACADE_LIVE
             float restless = step(0.93, fHash(cell * 1.73 + sd));
@@ -183,7 +190,7 @@ export function createFacadeMaterials(atlas: FacadeAtlas, opts: FacadeOptions): 
   facade.customProgramCacheKey = () => `facade:${opts.live ? 1 : 0}`;
 
   const aviation = new THREE.ShaderMaterial({
-    uniforms: { uTime: uniforms.uTime, fogColor: { value: new THREE.Color(FOG_COLOR) }, fogDensity: { value: FOG_DENSITY } },
+    uniforms: { uTime: uniforms.uTime, fogColor: { value: new THREE.Color(FOG_COLOR) }, fogDensity: { value: FOG_DENSITY }, ...HEIGHT_FOG_UNIFORMS },
     vertexShader: AVIATION_VERT,
     fragmentShader: AVIATION_FRAG,
     transparent: true,
@@ -209,6 +216,7 @@ const AVIATION_VERT = /* glsl */ `
   attribute vec2 light;
   uniform float uTime;
   uniform float fogDensity;
+  ${HEIGHT_FOG_GLSL}
   varying vec2 vCorner;
   varying float vI;
   void main() {
@@ -223,7 +231,7 @@ const AVIATION_VERT = /* glsl */ `
     float t = fract(uTime * 0.52 + light.x);
     float blink = smoothstep(0.0, 0.05, t) * (1.0 - smoothstep(0.28, 0.42, t));
     float on = light.y > 0.5 ? 0.75 : blink;
-    vI = on * exp(-fogDensity * fogDensity * dist * dist * 0.35);
+    vI = on * exp(-fogDensity * fogDensity * dist * dist * 0.35 * hfMulView(mv.xyz));
   }
 `;
 

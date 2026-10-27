@@ -7,21 +7,26 @@ import { World } from '../city/world';
 import { QUALITY, QualityProfile, Settings } from '../ui/settings';
 import { buildCityMeshes, CityMeshes } from './street/cityMeshes';
 import { buildLightFx, LightFx } from './street/lightFx';
+import { collectStreakEmitters } from './street/streakEmitters';
 import { fitLampPositions, LAMP_TONES, planLamps, toneColor } from './street/lampStyle';
 import { fadeSubPixel } from './materialFx';
 import { NightLighting } from './lighting';
-import { POST_TAPS, PostFx } from './post';
+import { NEUTRAL_GRADE, POST_GRAIN, POST_TAPS, PostFx, type GradeParams } from './post';
+import { cityIdentity } from './cityIdentity';
 import { makeNightEnvironment } from './textures/textures';
 import { buildRouteArrows, classifyBarriers, RouteArrows } from './race/routeArrows';
+import { buildParkedCars } from './traffic/parkedCars';
 import { MEET_VARIANTS, buildRoadblocks, parkedCars, type Roadblocks } from './race/roadblocks';
 import { MEET_QUALITY, planMeets } from './race/meetPlan';
 import { buildProps, PropRenderer } from './street/props';
 import { buildDistrictMeshes } from './districts';
 import { Backdrop, buildBackdrop } from './sky/backdrop';
-import { CROWD_QUALITY, buildCrowds, Crowds } from './race/crowds';
+import { CROWD_IMPOSTOR, CROWD_QUALITY, buildCrowds, Crowds } from './race/crowds';
 import { IDLE_QUALITY, buildIdlers, Idlers } from './people/idlers';
 import { planIdlers } from './people/idleSpots';
+import { buildWalkers, Walkers } from './people/walkers';
 import { buildStreetPolish } from './street/streetPolish';
+import { buildPlaceSigns } from './street/placeSigns';
 import { createWeather, Weather } from './sky/weather';
 import { AirTraffic, buildAirTraffic } from './traffic/airTraffic';
 import { buildAreaLights } from './street/areaLights';
@@ -32,9 +37,18 @@ import { GROUND_PAINT_ORDER, underVehicles } from './vehicleMask';
 import { damp } from '../shared/anim';
 import { buildWallOverlay } from './wallOverlay';
 import { CityChunks, chunkGrid, fogCutoff, type ChunkClass } from './cityChunks';
+import { FOG_HEIGHT, applyHeightFog } from './heightFog';
 
 /** Retro mode's render height (px): the view is drawn this many pixels tall and scaled up. */
 const RETRO_HEIGHT = 240;
+
+/**
+ * Each night scene's colour grade (its seed's city identity). The grade lives with the scene, not on the post
+ * chain, because one GameRenderer shows several scenes in turn: the menu city, a race of another seed built
+ * while the menu still shows, the garage's workshop (no grade). GameRenderer.render applies it whenever the
+ * rendered scene changes, so whichever scene is on screen wears its own.
+ */
+const sceneGrades = new WeakMap<THREE.Scene, GradeParams>();
 
 export class GameRenderer {
   readonly renderer: THREE.WebGLRenderer;
@@ -49,6 +63,8 @@ export class GameRenderer {
   /** Screen a menu rail covers (CSS px from the left and the bottom), eased toward frameTarget. */
   private frame = { left: 0, bottom: 0 };
   private frameTarget = { left: 0, bottom: 0 };
+  /** The scene whose grade the post chain holds. */
+  private gradedScene: THREE.Scene | null = null;
 
   constructor(readonly canvas: HTMLCanvasElement, settings: Settings) {
     this.settings = settings;
@@ -71,7 +87,7 @@ export class GameRenderer {
   applySettings(s: Settings): void {
     this.settings = s;
     const q = this.profile;
-    this.post.configure({ bloom: q.bloom, bloomScale: q.bloomScale, bloomStrength: q.bloomStrength, retro: s.retro, msaa: q.antialias ? 4 : 0, taps: POST_TAPS[s.quality] });
+    this.post.configure({ bloom: q.bloom, bloomScale: q.bloomScale, bloomStrength: q.bloomStrength, retro: s.retro, msaa: q.antialias ? 4 : 0, taps: POST_TAPS[s.quality], grain: POST_GRAIN[s.quality] });
     this.canvas.style.imageRendering = s.retro ? 'pixelated' : 'auto';
     this.resize();
   }
@@ -121,6 +137,11 @@ export class GameRenderer {
     }
   }
 
+  /** Tone mapping exposure for the next render (the zone adaptation, render/exposure.ts). */
+  setExposure(v: number): void {
+    this.renderer.toneMappingExposure = v;
+  }
+
   render(scene: THREE.Scene, camera: THREE.PerspectiveCamera, dt: number): void {
     if (Math.abs(camera.aspect - this.aspect) > 1e-4) {
       camera.aspect = this.aspect;
@@ -133,6 +154,10 @@ export class GameRenderer {
     f.bottom += (this.frameTarget.bottom - f.bottom) * k;
     if (Math.abs(f.left) > 0.5 || Math.abs(f.bottom) > 0.5) camera.setViewOffset(this.width, this.height, -f.left / 2, f.bottom / 2, this.width, this.height);
     else if (camera.view?.enabled) camera.clearViewOffset();
+    if (scene !== this.gradedScene) {
+      this.gradedScene = scene;
+      this.post.setGrade(sceneGrades.get(scene) ?? NEUTRAL_GRADE);
+    }
     this.post.setScene(scene, camera);
     this.post.render(dt);
   }
@@ -152,6 +177,8 @@ export interface NightScene {
   crowds: Crowds;
   /** Idle people around the city; feed it car poses every frame (idlers.update). */
   idlers: Idlers;
+  /** Pedestrians walking the sidewalks, their walk computed in the shader from the clock; feed it the same car poses (walkers.update). */
+  walkers: Walkers;
   /** The seed's weather mood: fog, sky, rain or mist (weather.ts). */
   weather: Weather;
   /** The news helicopter, its searchlight and the blimp (airTraffic.ts). */
@@ -170,6 +197,8 @@ export interface NightScene {
 export function createNightScene(world: World, gr: GameRenderer, settings: Settings): NightScene {
   const scene = new THREE.Scene();
   scene.environment = gr.envMap;
+  // The seed's colour grade, worn whenever this scene is the one rendered (the menu stage and a race alike).
+  sceneGrades.set(scene, cityIdentity(world.seed).grade);
   // The seed's mood first: it sets the fog every other build fogs itself with, the sky and the haze.
   // Flash effects (lightning, the police light bar) follow the live setting; off softens them.
   const flashes = () => settings.flashEffects !== false;
@@ -197,12 +226,19 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   // Street level polish: road decals, puddles, posters, blade signs, banners, steam (pasted onto the drawn podiums).
   const polish = buildStreetPolish(world, { quality: settings.quality, facades: (city.group.getObjectByName('podiums') as THREE.Mesh | undefined)?.geometry });
   scene.add(polish.group);
+  // The map's names in the world: street name blades on the junction poles and a gateway banner per neighbourhood (Medium and up).
+  const placeSigns = buildPlaceSigns(world, { quality: settings.quality, facades: (city.group.getObjectByName('podiums') as THREE.Mesh | undefined)?.geometry });
+  scene.add(placeSigns.group);
   // Each neighbourhood's post design and lamp colour: the lamp heads move to their design's reach and height, and the
   // pool, streak, point light and the props' lens tint all read the same plan.
   const lampPlan = planLamps(world);
   fitLampPositions(world, city.lampPositions, lampPlan);
   const lampTone = lampPlan.tone.map((t) => LAMP_TONES[t]);
-  const fx = buildLightFx(city.lampPositions, city.signLights, world.heightAt, fogDensity, lampTone.map((t) => ({ pool: toneColor(t.pool), streak: toneColor(t.streak) })));
+  // One culling grid for the big merged layers, the props and the light streaks (200 m cells).
+  const grid = chunkGrid(bounds);
+  // Everything else that glows streaks on the wet street too, graded by class (lightFx.ts STREAK_CLASSES).
+  const emitters = collectStreakEmitters(world, polish.lights, barriers, settings.quality);
+  const fx = buildLightFx(city.lampPositions, city.signLights, world.heightAt, fogDensity, lampTone.map((t) => ({ pool: toneColor(t.pool), streak: toneColor(t.streak) })), { grid, extra: emitters.list });
   fx.setStrength(0.42, 0.85);
   scene.add(fx.group);
   // Parks and plazas: a wash over the whole area and a pool under every lantern post.
@@ -231,10 +267,13 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   });
   const roadblocks = buildRoadblocks(world, meet, city.barrierLampMaterial, { drawDistance: meetQ.drawDistance });
   scene.add(roadblocks.group);
+  // Cars parked in the yards behind the frontage walls, where no car can go (districts/yards.ts); Medium and up.
+  const parked = buildParkedCars(world, { quality: settings.quality, grid });
+  scene.add(parked.group);
   const arrows = buildRouteArrows(world, barriers, { beacon: city.barrierLampMaterial });
   scene.add(arrows.group);
   // The big merged layers cull per 200 m cell (registered last, below).
-  const chunks = new CityChunks(chunkGrid(world.graph.bounds));
+  const chunks = new CityChunks(grid);
   if (import.meta.env.DEV && new URLSearchParams(location.search).get('cull') === 'off') chunks.enabled = false;
   // Parked cars cull per group against whatever camera renders the scene.
   scene.onBeforeRender = (r, _s, camera) => {
@@ -245,22 +284,35 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     air.view(camera);
     districts.view(camera);
     const density = (scene.fog as THREE.FogExp2 | null)?.density ?? fogDensity;
-    chunks.view(camera, density, gr.profile.detailDistance);
+    // Cull on the thinnest fog height fog leaves (FOG_HEIGHT.min), so a layer is fully fogged before it is cut.
+    const cullDensity = density * Math.sqrt(FOG_HEIGHT.min);
+    chunks.view(camera, cullDensity, gr.profile.detailDistance);
     // Props cull by the same grid: detail kinds at detailDistance, the tall ones where the fog closes.
-    if (chunks.enabled) props.view(camera, gr.profile.detailDistance, fogCutoff(density));
+    parked.view(camera, chunks.enabled ? fogCutoff(cullDensity) : Infinity);
+    if (chunks.enabled) props.view(camera, gr.profile.detailDistance, fogCutoff(cullDensity));
     else props.view(camera, Infinity, Infinity);
+    // The light pools and streaks cull on it too, all 'fog' class.
+    fx.view(camera, chunks.enabled ? fogCutoff(density) : Infinity);
   };
   // Broken lamps go dark: ground pool, reflection streak (streetlights) and the real light pool.
   const lampOff = new Uint8Array(lamps.length);
   const streetLamps = city.lampPositions.length;
   const props = buildProps(world, {
     quality: settings.quality,
-    grid: chunks.grid,
+    grid,
+    onBroken(id, broken) {
+      placeSigns.setPoleBroken(id, broken);
+      const at = emitters.ofProp.get(id);
+      if (at) for (const e of at) fx.setEmitterOn(fx.extraBase + e, !broken);
+    },
     onLamp(i, on) {
       if (i < 0 || i >= lampOff.length || lampOff[i] === (on ? 0 : 1)) return;
       lampOff[i] = on ? 0 : 1;
       if (i < streetLamps) fx.setLampOn(i, on);
-      else areaLights.setLampOn(i - streetLamps, on);
+      else {
+        areaLights.setLampOn(i - streetLamps, on);
+        fx.setEmitterOn(fx.extraBase + emitters.parkBase + i - streetLamps, on);
+      }
       lighting.setLamps(lamps.filter((_, k) => !lampOff[k]), lampColors.filter((_, k) => !lampOff[k]));
     },
   });
@@ -269,13 +321,16 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   const crowdQ = CROWD_QUALITY[settings.quality];
   const gates = world.openWorld ? [] : city.finishLine.gates;
   const markets = planMarketCrowd(world, crowdQ.density);
-  const crowds = buildCrowds(world, gates, { ...crowdQ, drawDistance: meetQ.crowdDraw, meet, sections: markets });
+  const crowds = buildCrowds(world, gates, { ...crowdQ, drawDistance: meetQ.crowdDraw, meet, sections: markets, renderer: gr.renderer, impostor: CROWD_IMPOSTOR[settings.quality] });
   scene.add(crowds.group);
   // Idle people: waiting, sitting and chatting around the city, off the route and away from the stands (people/idleSpots.ts).
   const idleQ = IDLE_QUALITY[settings.quality];
   const idlePlan = planIdlers(world, { density: idleQ.density, cap: idleQ.cap, shopFronts: city.shopFronts, avoid: { gates, meets: meet, markets } });
   const idlers = buildIdlers(world, idlePlan.people, { quality: settings.quality, warmth: idlePlan.warmth });
   scene.add(idlers.group);
+  // Pedestrians on the sidewalks (people/walkers.ts): their walk is the shader's, so nothing but the clock and two cars is written per frame.
+  const walkers = buildWalkers(world, { quality: settings.quality, warmth: idlePlan.warmth, avoid: { gates, meets: meet, markets } });
+  scene.add(walkers.group);
   // Dev builds: `?walls` draws the sim's collision over the scene (wallOverlay.ts).
   const walls = import.meta.env.DEV && new URLSearchParams(location.search).has('walls') ? buildWallOverlay(world) : null;
   if (walls) scene.add(walls.group);
@@ -283,6 +338,8 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   keepGroundLayersUnderVehicles(scene);
   // Every material that fogs itself in a shader now gets the mood's fog.
   weather.retuneFog(scene);
+  // Height fog for the built-in materials (the self-fogging shaders carry it themselves); after every builder that set an onBeforeCompile.
+  applyHeightFog(scene);
   // Last: stabilizeSmallEmitters reads each layer's material as a single one, and chunking wraps it in an array.
   chunks.addByName(scene, CHUNK_LAYERS);
   return {
@@ -296,6 +353,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     props,
     crowds,
     idlers,
+    walkers,
     weather,
     air,
     backdrop,
@@ -308,6 +366,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
       districts.update(time);
       backdrop.update(time);
       polish.update(time);
+      fx.update(time);
       weather.update(time);
       air.update(time);
       // Hazard blink with soft edges: a hard 3.2 / 0.6 square wave strobes the bloom.
@@ -319,13 +378,16 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
       districts.dispose();
       backdrop.dispose();
       polish.dispose();
+      placeSigns.dispose();
       fx.dispose();
       areaLights.dispose();
       arrows.dispose();
       roadblocks.dispose();
+      parked.dispose();
       props.dispose();
       crowds.dispose();
       idlers.dispose();
+      walkers.dispose();
       weather.dispose();
       air.dispose();
       walls?.dispose();
@@ -365,6 +427,9 @@ const CHUNK_LAYERS: Record<string, ChunkClass> = {
   districtPaint: 'detail',
   elevatedTies: 'detail',
   wallBoxes: 'detail',
+  stringLights: 'fog',
+  streetBlades: 'detail',
+  gatewayBanners: 'fog',
   // Additive light: order independent, so splitting it into runs changes nothing on screen.
   lightSpill: 'fog',
   areaLights: 'fog',

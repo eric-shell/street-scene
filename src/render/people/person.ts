@@ -350,11 +350,15 @@ const ROUGHNESS_GLSL = `pid == 7 ? 0.3 : pid == 3 || pid == 9 || pid == 10 ? 0.5
  * (the phone screen or glowstick) and `vec3 cloth` (the flag); `post` runs
  * with the final `transformed` position and may move it or scale
  * `vPersonGlow`. The default reads the pose from the pose0..3 attributes.
+ * `root` names a `mat4` the pose snippet has set: the person's placement,
+ * applied after the rig to positions and normals alike (the walkers, whose
+ * route along the street is computed in the shader).
  */
 export interface PersonShader {
   pars?: string;
   pose?: string;
   post?: string;
+  root?: string;
   /** A key for three's program cache, when `pars`/`pose`/`post` differ between materials. */
   key?: string;
 }
@@ -372,7 +376,7 @@ export function personMaterial(variant: PersonShader = {}): THREE.MeshStandardMa
         `vec3 itemGlow = vec3(0.0);
         vec3 cloth = vec3(0.6);
         ${pose}
-        mat4 rigM = rigBone(rig.x, p0, p1, p2, p3);
+        mat4 rigM = ${variant.root ? `${variant.root} * ` : ''}rigBone(rig.x, p0, p1, p2, p3);
         int worn = int(lookB.w + 0.5);
         int need = int(rig.z + 0.5);
         bool hidden = need > 0 && (worn & need) == 0;

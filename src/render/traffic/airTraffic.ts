@@ -31,6 +31,7 @@ import { makeLedTextTexture } from '../sky/skyTextures';
 import { makeRadialGlow } from '../textures/textures';
 import { pickSubset } from '../textures/cityMood';
 import { ChaseTarget, POLICE, policeWaypoints } from './policeChase';
+import { HEIGHT_FOG_GLSL, HEIGHT_FOG_UNIFORMS } from '../heightFog';
 
 export const AIR = {
   heli: {
@@ -552,6 +553,7 @@ function beamMaterial(opts: { radius: number; spotR: number; color: THREE.Color;
       uColor: { value: opts.color },
       uIntensity: { value: opts.intensity },
       uFogDensity: { value: opts.fogDensity },
+      ...HEIGHT_FOG_UNIFORMS,
     },
     transparent: true,
     depthWrite: false,
@@ -571,6 +573,8 @@ const beamVert = /* glsl */ `
   uniform vec3 uTarget;
   uniform float uRadius;
   uniform float uSpotR;
+  ${HEIGHT_FOG_GLSL}
+  varying float vHfMul;
   varying vec2 vUv;
   varying float vT;
   varying float vPart;
@@ -609,6 +613,7 @@ const beamVert = /* glsl */ `
     vFade = aFade;
     vec4 mv = viewMatrix * vec4(pos, 1.0);
     vDist = length(mv.xyz);
+    vHfMul = hfMul(pos);
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -618,6 +623,7 @@ const beamFrag = /* glsl */ `
   uniform vec3 uColor;
   uniform float uIntensity;
   uniform float uFogDensity;
+  varying float vHfMul;
   varying vec2 vUv;
   varying float vT;
   varying float vPart;
@@ -626,7 +632,7 @@ const beamFrag = /* glsl */ `
   varying float vNear;
   varying float vFade;
   void main() {
-    float fog = exp(-uFogDensity * uFogDensity * vDist * vDist);
+    float fog = exp(-uFogDensity * uFogDensity * vDist * vDist * vHfMul);
     float a;
     if (vPart < 0.5) {
       // Thickest through the middle of the beam, fading out to a soft silhouette. The max(): MSAA evaluates

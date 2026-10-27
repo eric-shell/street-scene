@@ -44,8 +44,9 @@ import type { Vec2 } from '../../sim/math';
 import { GeoBuilder } from '../geoBuilder';
 import { CurvePoint, RAIL, RailCurve, curvePoint, dirOn, projectOnCurve, sampleCurve, stationSwing, trackLateral } from '../../city/railCurve';
 import { elCurve } from '../../city/districts/subway';
+import { stationNames } from '../../city/names/stations';
 import { TICK_HZ } from '../../sim/constants';
-import { Band, STATION_NAMES, SUBWAY_SIGN, makeSteelAtlas, makeTieTexture, signBand, steelBand } from '../textures/railTextures';
+import { Band, STATION_SLOTS, SUBWAY_SIGN, makeSteelAtlas, makeTieTexture, signBand, steelBand } from '../textures/railTextures';
 import { createTrains } from '../traffic/trains';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { col, cylinder, groundVertex } from './kit';
@@ -321,7 +322,19 @@ export const subwayRenderer: DistrictRenderer = {
   kinds: ['subway'],
   build(kit, areas) {
     if (!areas.length) return;
-    const atlas = makeSteelAtlas();
+    // The curves first: the platform boards are lettered with the neighbourhood each station stands in (city/names/stations.ts).
+    const curves = areas.map((a) => elCurve(a, kit.builds[a.id], kit.h));
+    const boards: string[] = [];
+    curves.forEach((curve) => {
+      const at = curvePoint();
+      const names = stationNames(kit.world, curve.stations.map((st) => sampleCurve(curve, st.s, at)).map((p) => ({ x: p.x, z: p.z })));
+      curve.stations.forEach((st, i) => {
+        let k = boards.indexOf(names[i]);
+        if (k < 0 && boards.length < STATION_SLOTS) k = boards.push(names[i]) - 1;
+        st.name = k < 0 ? i % STATION_SLOTS : k;
+      });
+    });
+    const atlas = makeSteelAtlas(boards);
     kit.track(atlas.map);
     kit.track(atlas.emissive);
     const steel = new GeoBuilder(true);
@@ -329,11 +342,10 @@ export const subwayRenderer: DistrictRenderer = {
     const bed = new GeoBuilder(false);
     const lights: Light[] = [];
     const pools = new GeoBuilder(true);
-    for (const a of areas) {
+    for (const [ai, a] of areas.entries()) {
       const b = kit.builds[a.id];
       // The same curve the sim's level crossings time their gates on.
-      const curve = elCurve(a, b, kit.h);
-      curve.stations.forEach((st, i) => (st.name = ((a.params.seed ?? 0) + i) % STATION_NAMES.length));
+      const curve = curves[ai];
       buildLine(kit, a, curve, steel, open ? bed : null, lights, open ? pools : null);
       yards(kit, b.exclusions);
       const trains = createTrains(kit.group, curve, a.params.seed ?? 1, kit.quality, kit.track);

@@ -40,7 +40,7 @@ import { coastPoint, harborWater } from '../../city/districts/waterfrontShape';
 import { CITY } from '../../city/config';
 import type { Vec2 } from '../../sim/math';
 import { PALETTE, rgba } from '../kit/palette';
-import { hoodPlan, type Neighbourhood } from './neighbourhoods';
+import { hoodPlan, type Neighbourhood } from '../../city/names/neighbourhoods';
 
 /** How a district kind reads on the map and in the legend. */
 export interface KindStyle {

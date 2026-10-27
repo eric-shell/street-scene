@@ -38,6 +38,7 @@ import type { Quality } from '../../ui/settings';
 import modelsJson from '../../assets/trafficModels.json';
 import { kelvin, makeRadialGlow } from '../textures/textures';
 import { fadeSubPixel } from '../materialFx';
+import { applyHeightFog } from '../heightFog';
 import { floatGeometry } from '../gltfGeometry';
 import { ROAD_Y } from '../street/cityMeshes';
 import { maskVehicleMesh, underVehicles } from '../vehicleMask';
@@ -158,7 +159,7 @@ export function loadTrafficAssets(): Promise<TrafficAssets | null> {
 }
 
 /** Muted street paint for the tinted cars (the atlas holds their paint as grey). */
-const PAINTS = [0x9aa0a6, 0x3a3d42, 0x16171a, 0xd8d8d4, 0x1e2a44, 0x5a1a1f, 0x223a2c, 0x9c8b6e, 0x3f5468, 0xb8a98a, 0x6d7276, 0x2b2f3a, 0x7a2a22, 0x2f4a5a].map((c) => new THREE.Color(c));
+export const PAINTS = [0x9aa0a6, 0x3a3d42, 0x16171a, 0xd8d8d4, 0x1e2a44, 0x5a1a1f, 0x223a2c, 0x9c8b6e, 0x3f5468, 0xb8a98a, 0x6d7276, 0x2b2f3a, 0x7a2a22, 0x2f4a5a].map((c) => new THREE.Color(c));
 const WHITE = new THREE.Color(1, 1, 1);
 
 /** Lamp colours (HDR, for the bloom). Beacons glow dim, under the bloom, until a struck car flashes them. */
@@ -179,7 +180,7 @@ const BEACON_FLASH = 3;
 const PAINT_REF_LINEAR = new THREE.Color().setRGB(TRAFFIC_MODELS.paintRef, 0, 0, THREE.SRGBColorSpace).r;
 
 /** Body material: the atlas alpha is the paint mask the instance colour tints, never transparency. */
-function bodyMaterial(atlas: THREE.Texture): THREE.MeshStandardMaterial {
+export function bodyMaterial(atlas: THREE.Texture): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ map: atlas, metalness: 0.3, roughness: 0.5, envMapIntensity: 1.1 });
   m.onBeforeCompile = (s) => {
     s.fragmentShader = s.fragmentShader.replace(
@@ -265,6 +266,8 @@ export class TrafficView {
     }
     this.lampMesh.name = 'trafficLamps';
     this.beamMesh.name = 'trafficBeams';
+    // Built after the scene's height fog pass ran, so the views patch their own materials (idempotent).
+    applyHeightFog(this.group);
     void loadTrafficAssets().then((a) => a && !this.disposed && this.build(a));
   }
 
@@ -301,6 +304,7 @@ export class TrafficView {
     bodies.setColorAt(0, WHITE);
     this.bodies = bodies;
     this.decals = firstDecal !== null ? decals : null;
+    applyHeightFog(this.group);
   }
 
   /**

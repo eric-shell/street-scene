@@ -12,9 +12,9 @@
  * Small frontage pieces (corner plazas, verges, planters) and plain blocks
  * are not places: they are wherever their neighbourhood is.
  */
-import type { World } from '../../city/world';
-import type { Area } from '../../city/districts/types';
-import { tunnelName } from '../../city/districts/tunnel';
+import type { World } from '../world';
+import type { Area } from '../districts/types';
+import { tunnelName } from '../districts/tunnel';
 import { Rng, deriveSeed } from '../../sim/prng';
 import { hoodPlan, type HoodCharacter } from './neighbourhoods';
 
@@ -49,8 +49,8 @@ const HOODS: Record<HoodCharacter, readonly string[]> = {
   ],
 };
 
-/** Stems for the area names: surnames, trees, birds and stones, any of which can name a park or an alley. */
-const STEMS = [
+/** Stems for the area names: surnames, trees, birds and stones, any of which can name a park or an alley (the streets, streetNames.ts, draw from the ones left). */
+export const STEMS = [
   'Halsey', 'Marlowe', 'Kessler', 'Thorne', 'Delancey', 'Ashby', 'Corbin', 'Vance', 'Pike', 'Mercer',
   'Hollis', 'Draper', 'Lowell', 'Fairbanks', 'Sutter', 'Kearny', 'Calloway', 'Brannan', 'Whitlock', 'Garrison',
   'Holloway', 'Prescott', 'Langley', 'Sterling', 'Bishop', 'Carver', 'Dalton', 'Ellery', 'Fenwick', 'Granger',

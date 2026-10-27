@@ -4,6 +4,7 @@
  * fog rather than toward the fog color (washMaterial).
  */
 import * as THREE from 'three';
+import { heightFogShader } from './heightFog';
 
 /**
  * Small, very bright emitters (lamp lenses, roof neon, barrier lamps) shrink
@@ -51,17 +52,7 @@ export function washMaterial(): THREE.MeshBasicMaterial {
     polygonOffsetUnits: -2,
   });
   m.onBeforeCompile = (shader) => {
-    shader.fragmentShader = shader.fragmentShader.replace(
-      '#include <fog_fragment>',
-      `#ifdef USE_FOG
-        #ifdef FOG_EXP2
-          float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth );
-        #else
-          float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
-        #endif
-        gl_FragColor.rgb *= 1.0 - fogFactor;
-      #endif`,
-    );
+    heightFogShader(shader, true);
   };
   m.customProgramCacheKey = () => 'structureWash';
   return m;

@@ -36,12 +36,16 @@ import { SpatialGrid } from '../../city/spatial';
 import { GeoBuilder } from '../geoBuilder';
 import { GROUND_BAYS, GROUND_H, PODIUM_FLOOR_H, PodiumOutput, addPodiumFace, podiumExtrusions, podiumHeight } from './facadeKit';
 import { LAYER, MODULE, facadeAtlas } from './facadeAtlas';
-import { billboardAtlas } from '../textures/billboardAtlas';
+import { BILLBOARD_COLS, BILLBOARD_ROWS, billboardAtlas, billboardRows } from '../textures/billboardAtlas';
+import { hoodBrands } from '../textures/hoodBrands';
+import { hoodPlan } from '../../city/names/neighbourhoods';
 import { createFacadeMaterials, TRIM_COLORS } from './facadeMaterial';
 import { BuildingPlan, STYLES, StyleDef, planArchitecture } from './architecture';
 import { planBacklots } from './backlots';
 import { BLD, DETAIL, FLOOD, pastelNeon, neonColor, setNeonMood, LED, WHITE, NO_GLOW, wash, ShellGeo, Frame, edgeNormal, boxOutline, roundedOutline, lbox, cap, facet, walls, neonRing, neonPost, cornice, colorOf } from './buildingKit';
 import type { Skin, Out, Detail } from './buildingKit';
+import { FlickList, applyFlicker } from '../street/signage';
+import { DRAG, routeNearness } from '../street/routeNearness';
 import { waterTower, chimney, spire, pyramid, wedge, mansard, hipRoof, mast, light, roofLights, clutter, billboard } from './roofs';
 import { bayWindow, fireEscapes, balcony, eyebrow, fin } from './facadeDetails';
 
@@ -172,24 +176,46 @@ export function buildBuildings(world: World, podium: PodiumOutput, opts: { detai
   const atlas = facadeAtlas();
   const mats = createFacadeMaterials(atlas, { live: det.live });
   const plans = planArchitecture(world);
+  // A share of the billboards carry the ad of the neighbourhood they stand in (textures/hoodBrands.ts).
+  const brands = hoodBrands(world);
+  const edgeHood = hoodPlan(world).edgeHood;
+  const adCell = (i: number, b: Building): number => {
+    const hood = b.edge >= 0 ? edgeHood[b.edge] : -1;
+    return hood >= 0 && hood < brands.length && (Math.imul(i + 1, 0x9e3779b1) >>> 8) / 0x1000000 < BLD.hoodAdShare ? BILLBOARD_COLS * BILLBOARD_ROWS + hood : -1;
+  };
   const o: Out = {
     shell: new ShellGeo(),
     roofs: new GeoBuilder(true),
     trim: podium.trim,
     neon: new GeoBuilder(true),
+    flick: new FlickList(world, 'roof'),
     escapes: new GeoBuilder(),
     boards: new GeoBuilder(true),
+    boardRows: billboardRows(brands.length),
+    adCell: -1,
     lights: [],
     podium,
   };
   const g = world.graph;
   const scratch: number[] = [];
   const B = recessCoplanar(world.blocks.buildings, plans);
-  for (let i = 0; i < B.length; i++) buildOne(o, B[i], plans[i], det, (x, z) => corridorClearance(g, world.blocks.edgeGrid, x, z, scratch) < 2, world.heightAt);
+  // The main drag burns brighter than the side streets (street/routeNearness.ts): a window density multiplier per building, plus a nearness bucket for the lowest floors.
+  const near = routeNearness(world);
+  const dragOf = (b: Building, lowFloors: boolean): DragLight => ({
+    windows: near.scale(DRAG.windows, b.x, b.z),
+    bucket: lowFloors ? Math.round(near.at(b.x, b.z) * Math.min(1, near.strength) * FLAG_NEAR_MAX) : 0,
+  });
+  for (let i = 0; i < B.length; i++) {
+    o.adCell = adCell(i, B[i]);
+    buildOne(o, B[i], plans[i], det, (x, z) => corridorClearance(g, world.blocks.edgeGrid, x, z, scratch) < 2, world.heightAt, dragOf(B[i], true));
+  }
   // The blocks' middles (backlots.ts), Medium and up: no street fronts, so no shops or stoops on them.
   if (opts.detail !== 'low') {
     const back = planBacklots(world, plans);
-    for (let i = 0; i < back.buildings.length; i++) buildOne(o, back.buildings[i], back.plans[i], det, () => false, world.heightAt, true);
+    for (let i = 0; i < back.buildings.length; i++) {
+      o.adCell = adCell(i + B.length, back.buildings[i]);
+      buildOne(o, back.buildings[i], back.plans[i], det, () => false, world.heightAt, dragOf(back.buildings[i], false), true);
+    }
   }
 
   const disposables: { dispose(): void }[] = [mats];
@@ -207,7 +233,10 @@ export function buildBuildings(world: World, podium: PodiumOutput, opts: { detai
   if (o.neon.vertexCount) {
     const neonMat = track(new THREE.MeshBasicMaterial({ vertexColors: true }));
     neonMat.color.setScalar(1.5);
-    const m = new THREE.Mesh(track(o.neon.build()), neonMat);
+    applyFlicker(neonMat);
+    const neonGeo = track(o.neon.build());
+    neonGeo.setAttribute('aFlick', o.flick.attribute(o.neon.vertexCount));
+    const m = new THREE.Mesh(neonGeo, neonMat);
     m.name = 'roofNeon';
     meshes.push(m);
   }
@@ -220,7 +249,7 @@ export function buildBuildings(world: World, podium: PodiumOutput, opts: { detai
     meshes.push(m);
   }
   if (o.boards.vertexCount) {
-    const mat = track(new THREE.MeshBasicMaterial({ map: billboardAtlas(world.seed), vertexColors: true }));
+    const mat = track(new THREE.MeshBasicMaterial({ map: billboardAtlas(world.seed, brands.map((b) => b.ad)), vertexColors: true }));
     const m = new THREE.Mesh(track(o.boards.build()), mat);
     m.name = 'billboards';
     meshes.push(m);
@@ -323,8 +352,19 @@ function plinth(o: Out, F: Frame, base: Vec2[], street: number, groundAt: (x: nu
   }
 }
 
+/** How a building's windows lean toward the main drag: the density multiplier, and the nearness bucket (0..FLAG_NEAR_MAX, 0 for a backlot, whose ground floors nobody sees) that lifts its lowest floors. */
+interface DragLight {
+  windows: number;
+  bucket: number;
+}
+
+/** Skin flag layout above the office / trim / glass bits (facadeMaterial.ts decodes them): nearness bucket from bit 9, the shaft's first module row from bit 12. */
+const FLAG_NEAR = 512;
+const FLAG_NEAR_MAX = 3;
+const FLAG_BASE = 4096;
+
 /** Everything for one building; a backlot (backlots.ts: no street, seen over walls and from above) has no podium, its shaft runs down to the ground. */
-function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[Detail], streetAt: (x: number, z: number) => boolean, groundAt: (x: number, z: number) => number, backlot = false): void {
+function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[Detail], streetAt: (x: number, z: number) => boolean, groundAt: (x: number, z: number) => number, drag: DragLight, backlot = false): void {
   const S = STYLES[plan.style];
   const rng = new Rng((plan.seed ^ 0x6b1d5) >>> 0 || 1);
   const F = new Frame(b.x, b.z, b.yaw);
@@ -357,11 +397,14 @@ function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[
     const trim = rng.pick(S.trims);
     const glass = rng.pick(S.glass);
     const mm = MODULE[layer];
+    // The facade shader reads, above the office/trim/glass bits, how near the drag the building stands (so its lowest
+    // floors burn brighter) and which module row the shaft starts on (so it can tell those floors).
+    const baseRow = Math.max(0, Math.min(15, Math.round((y0 - vRef) / mm.floor)));
     return {
       layer: LAYER[layer],
       seed: (seed01 + rng.next() * 0.37) % 1,
-      lit: rng.range(S.lit[0], S.lit[1]) * litMul,
-      flags: office + 2 * trim + 32 * glass,
+      lit: rng.range(S.lit[0], S.lit[1]) * litMul * drag.windows,
+      flags: office + 2 * trim + 32 * glass + FLAG_NEAR * drag.bucket + FLAG_BASE * baseRow,
       tint: colorOf(tintHex, rng.range(0.88, 1.08)),
       bay: mm.bay,
       floor: mm.floor,

@@ -3,10 +3,13 @@
  * is in them. Two tools: `pickSubset` draws a seed's share of a text pool (neon names, blade signs, blimp
  * words) from its own derived stream, and `neonMood` biases the neon palettes toward a hue family by
  * weighting the picks, never by dropping colours, so every colour still shows up and a city just leans.
- * The hazard amber and the route's cyan are not drawn from these tables and stay as they are. Pure; the
- * menu city and the race share a seed, so they draw the same subset and the same mood.
+ * The family is drawn among the ones the seed's home neighbourhood favours (cityIdentity.ts), so Philadelphia
+ * glows amber-red and San Francisco white-blue. The hazard amber and the route's cyan are not drawn from these
+ * tables and stay as they are. Pure; the menu city and the race share a seed, so they draw the same subset and
+ * the same mood.
  */
 import { Rng, deriveSeed } from '../../sim/prng';
+import { cityIdentity } from '../cityIdentity';
 
 /** `n` entries of `pool` in a seeded order (the whole pool, reordered, when it has no more than `n`). */
 export function pickSubset<T>(pool: readonly T[], n: number, seed: number, label: string): T[] {
@@ -14,9 +17,11 @@ export function pickSubset<T>(pool: readonly T[], n: number, seed: number, label
   return rng.shuffle(pool.slice()).slice(0, n);
 }
 
+export type NeonFamily = 'magenta-cyan' | 'amber-red' | 'green-violet' | 'white-blue' | 'all-night';
+
 /** A hue family: the indices of NEON_COLORS and PASTEL_NEON it favours (see their orders below). */
 interface MoodDef {
-  name: string;
+  name: NeonFamily;
   neon: readonly number[];
   pastel: readonly number[];
 }
@@ -57,11 +62,12 @@ function weighted(count: number, favoured: readonly number[]): (r: number) => nu
 
 const moods = new Map<number, NeonMood>();
 
-/** The seed's neon mood, from `deriveSeed(seed, 'neon')`. */
+/** The seed's neon mood: one of its home's favoured families, drawn from `deriveSeed(seed, 'neon')`. */
 export function neonMood(seed: number): NeonMood {
   let m = moods.get(seed);
   if (!m) {
-    const def = MOODS[Math.floor(new Rng(deriveSeed(seed, 'neon')).next() * MOODS.length)];
+    const name = new Rng(deriveSeed(seed, 'neon')).pick(cityIdentity(seed).neon);
+    const def = MOODS.find((d) => d.name === name)!;
     m = { name: def.name, neon: weighted(8, def.neon), pastel: weighted(6, def.pastel) };
     if (moods.size > 8) moods.clear();
     moods.set(seed, m);

@@ -2,7 +2,7 @@
  * Weather and mood, one per seed and render only (the sim never knows, so
  * replays stay valid): a weighted pick among clear, hazy, misty, drizzle and
  * rain nights. The mood sets the fog (colour and density, also pushed into
- * every material that fogs itself in a shader), the sky dome, the hemisphere
+ * every material that fogs itself in a shader, plus the height fog's gain: render/heightFog.ts), the sky dome, the hemisphere
  * and moon light, how wet the streets read (environment reflections), how many
  * stars show and how the moon looks, plus three particle layers:
  *  - rain: one instanced mesh of short streaks wrapped in a box around the
@@ -17,15 +17,21 @@
  *    two scrolling noise octaves for the wisps, faded close to the lens;
  *  - lightning on rain nights (lightning.ts): soft flashes of the sky, the
  *    lights and the rain, a bolt beyond the skyline and thunder after it.
- * Clear stays the most common mood: the neon night is the default look.
+ * Clear stays the most common mood: the neon night is the default look. The
+ * seed's home neighbourhood (cityIdentity.ts) multiplies the weights (misty
+ * San Francisco, wet Philadelphia) and leans the fog and the sky's horizon
+ * glow toward its light pollution hue at the mood's own luminance, so the
+ * moods still differ and the city still reads as its home.
  */
 import * as THREE from 'three';
 import type { World } from '../../city/world';
 import { Rng, deriveSeed } from '../../sim/prng';
 import type { Quality } from '../../ui/settings';
 import type { NightLighting } from '../lighting';
+import { FOG_HEIGHT, setHeightFog } from '../heightFog';
 import { makeMoodSky, makeNoiseTexture, MoodSkyParams } from './skyTextures';
 import { LIGHTNING, Lightning, buildLightning } from './lightning';
+import { cityIdentity } from '../cityIdentity';
 
 export type MoodId = 'clear' | 'hazy' | 'misty' | 'drizzle' | 'rain';
 
@@ -46,6 +52,8 @@ export interface MoodDef {
   weight: number;
   fogColor: number;
   fogDensity: number;
+  /** Height fog contrast: how much denser the haze is at the river floor than at street level, before normalising to street (heightFog.ts); omitted = `FOG_HEIGHT.gain`. Stronger on damp nights. */
+  heightGain?: number;
   sky: MoodSkyParams;
   /** Star field 0..1, moon disc 0..1 and the haze halo around it 0..1. */
   stars: number;
@@ -82,6 +90,7 @@ export const MOODS: Record<MoodId, MoodDef> = {
     weight: 22,
     fogColor: 0x12101f,
     fogDensity: 0.0052,
+    heightGain: 1.4,
     sky: { zenith: '#03030c', mid: '#0d0b22', horizon: '#2c1b3e', below: '#17111f', glow: '#7c4634', glowStrength: 0.75, overcast: 0.25 },
     stars: 0.45,
     moon: 0.85,
@@ -97,6 +106,7 @@ export const MOODS: Record<MoodId, MoodDef> = {
     weight: 14,
     fogColor: 0x0e1020,
     fogDensity: 0.0066,
+    heightGain: 2.0,
     sky: { zenith: '#04050e', mid: '#0b0d20', horizon: '#1e1830', below: '#111020', glow: '#5c3a36', glowStrength: 0.6, overcast: 0.5 },
     stars: 0.12,
     moon: 0.4,
@@ -112,6 +122,7 @@ export const MOODS: Record<MoodId, MoodDef> = {
     weight: 12,
     fogColor: 0x0b0d1a,
     fogDensity: 0.0058,
+    heightGain: 1.6,
     sky: { zenith: '#030309', mid: '#090b1c', horizon: '#121020', below: '#0d0b16', glow: '#5a3630', glowStrength: 0.6, overcast: 0.8 },
     stars: 0,
     moon: 0.15,
@@ -166,17 +177,38 @@ export const WEATHER = {
   envWet: 0.3,
 } as const;
 
-/** The mood of a seed: a weighted draw from its own random stream. */
+/** The mood of a seed: a draw from its own random stream, the base weights times its home's multipliers. */
 export function pickMood(seed: number): MoodId {
   const rng = new Rng(deriveSeed(seed, 'weather'));
+  const k = cityIdentity(seed).weather;
   let total = 0;
-  for (const id of MOOD_IDS) total += MOODS[id].weight;
+  for (const id of MOOD_IDS) total += MOODS[id].weight * k[id];
   let r = rng.next() * total;
   for (const id of MOOD_IDS) {
-    r -= MOODS[id].weight;
+    r -= MOODS[id].weight * k[id];
     if (r < 0) return id;
   }
   return 'clear';
+}
+
+/** `base` (sRGB hex) leaned toward `hue` by `k` (0..1) with base's own luminance kept, so a tint moves the colour, never how dark it is. */
+function leanToward(base: THREE.ColorRepresentation, hue: number, k: number): THREE.Color {
+  const lum = (c: THREE.Color) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+  const b = new THREE.Color(base);
+  const h = new THREE.Color(hue);
+  h.multiplyScalar(lum(b) / Math.max(1e-6, lum(h)));
+  return b.lerp(h, k);
+}
+
+/** A mood as the seed shows it: the fog colour and the sky's horizon glow leaned toward the home's tint (built once per scene). */
+function seedMood(seed: number, mood: MoodId): MoodDef {
+  const base = MOODS[mood];
+  const { tint } = cityIdentity(seed);
+  return {
+    ...base,
+    fogColor: leanToward(base.fogColor, tint.hue, tint.fog).getHex(),
+    sky: { ...base.sky, glow: `#${leanToward(base.sky.glow, tint.hue, tint.glow).getHexString()}` },
+  };
 }
 
 /** Moon phase 0..1 (0 new, 0.5 full) and the wind heading (rad) of a seed. */
@@ -320,6 +352,7 @@ function quadGeometry(corners: number[]): THREE.InstancedBufferGeometry {
 
 export interface Weather {
   readonly mood: MoodId;
+  /** The mood as this seed shows it (fog colour and sky glow tinted by the city identity). */
   readonly def: MoodDef;
   /** Moon phase 0..1 and wind heading (rad), shared with the backdrop and the air traffic. */
   readonly moonPhase: number;
@@ -343,7 +376,7 @@ export interface Weather {
 export function createWeather(world: World, opts: { quality: Quality; flashes?: () => boolean }): Weather {
   const seed = world.seed;
   const mood = pickMood(seed);
-  const def = MOODS[mood];
+  const def = seedMood(seed, mood);
   const { moonPhase, windHeading } = skyParams(seed);
   const sky = makeMoodSky(def.sky, seed);
   const fog = new THREE.FogExp2(def.fogColor, def.fogDensity);
@@ -531,6 +564,8 @@ export function createWeather(world: World, opts: { quality: Quality; flashes?: 
     lightning,
     apply(scene, lighting) {
       scene.fog = fog;
+      // The haze that pools in the river channel and the low parks; shared uniforms, written here once per scene.
+      setHeightFog(FOG_HEIGHT.floor, FOG_HEIGHT.falloff, def.heightGain ?? FOG_HEIGHT.gain);
       scene.background = sky;
       scene.environmentIntensity = WEATHER.envDry + WEATHER.envWet * def.wet;
       lighting.setMood({ hemi: def.hemi, hemiIntensity: def.hemiIntensity, moonLight: def.moonLight });

@@ -15,6 +15,8 @@ import { GeoBuilder } from '../geoBuilder';
 import { PodiumOutput } from './facadeKit';
 import { neonMood } from '../textures/cityMood';
 import { NEON_COLORS } from '../textures/textures';
+import { FLICK, SIGNAGE } from '../street/signage';
+import type { FlickList } from '../street/signage';
 
 export type Detail = 'low' | 'medium' | 'high';
 
@@ -29,6 +31,8 @@ export const BLD = {
   decoSteps: [0.56, 0.72, 0.85, 0.93],
   /** Billboard panel aspect (width / height) matches the 4:1 atlas cells. */
   billboardAspect: 4,
+  /** Share of billboards that carry their neighbourhood's own ad (textures/hoodBrands.ts) instead of a brand from the pool. */
+  hoodAdShare: 0.5,
   /** Aviation lights above this roof height (m above street). */
   aviationAbove: 78,
   /** Walls of overlapping buildings closer than this (m) share a plane and would z-fight. */
@@ -234,8 +238,14 @@ export interface Out {
   roofs: GeoBuilder;
   trim: GeoBuilder;
   neon: GeoBuilder;
+  /** Flicker program of every `neon` vertex (signage.ts), filled ring by ring. */
+  flick: FlickList;
   escapes: GeoBuilder;
   boards: GeoBuilder;
+  /** Rows of the billboard atlas (it grows by a cell per neighbourhood ad, textures/billboardAtlas.ts billboardRows). */
+  boardRows: number;
+  /** Atlas cell of the neighbourhood ad the building being built carries if it gets a billboard (-1: any brand), set per building. */
+  adCell: number;
   lights: { x: number; y: number; z: number; phase: number; steady: number }[];
   podium: PodiumOutput;
 }
@@ -420,6 +430,9 @@ export function shellFacet(o: Out, skin: Skin, pts: P3[], uv: [number, number][]
 /** Thin emissive band just outside a local outline (neon tubes, LED crowns). */
 export function neonRing(o: Out, F: Frame, pts: Vec2[], y0: number, y1: number, color: THREE.Color, out = 0.07, faces?: (i: number) => boolean): void {
   const n = pts.length;
+  o.flick.fill(o.neon.vertexCount, 0);
+  const fl = o.flick.roll(SIGNAGE.flickerRoof);
+  const dead = fl > 0 ? o.flick.deadQuad(n) : -1;
   for (let i = 0; i < n; i++) {
     if (faces && !faces(i)) continue;
     const p = pts[i];
@@ -436,6 +449,7 @@ export function neonRing(o: Out, F: Frame, pts: Vec2[], y0: number, y1: number, 
     const c = o.neon.vertex(bx, y1, bz, nx, 0, nz, 0, 0, color);
     const d = o.neon.vertex(ax, y1, az, nx, 0, nz, 0, 0, color);
     o.neon.quadFacing(a, b, c, d, nx, 0, nz);
+    o.flick.fill(o.neon.vertexCount, i === dead ? FLICK.dead : fl);
   }
 }
 

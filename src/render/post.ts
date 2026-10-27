@@ -1,7 +1,20 @@
 /**
  * Post processing chain: scene (optional MSAA) -> bloom (neon) -> vignette +
- * speed radial blur + nitrous warp -> tone mapping/sRGB output -> optional
- * retro PS2 quantize + dither.
+ * speed radial blur + nitrous warp + colour grade -> tone mapping/sRGB output
+ * -> optional retro PS2 quantize + dither.
+ *
+ * Colour grade (setGrade): the seed's city identity (cityIdentity.ts) gives
+ * each city its night: lift, gamma and gain per channel, split toning (a
+ * shadow tint and a highlight tint, keyed on luminance), saturation and, at
+ * High only, film grain. It rides in the FxShader pass that already runs, so
+ * it costs a few dozen ALU per pixel and no extra pass. It runs before the
+ * OutputPass, on linear HDR: lift and gain are then true offsets and scales of
+ * light (an offset after ACES would grey the blacks and shift with exposure),
+ * and the split toning keys on a luminance curve that never saturates, so a
+ * neon tube at 30x and a lamp pool at 2x still sort as highlights. Tints are
+ * luminance neutral and both they and the saturation fade out on strongly
+ * saturated pixels: the grade lands on the warm, grimy city and leaves the
+ * neon, the route's cyan and the hazard amber electric.
  *
  * Nitrous warp (setNitroFx): outside the middle 50% of the screen the frame
  * turns fluid. It stretches outward (samples pulled toward the vanishing point,
@@ -62,6 +75,49 @@ export const NITRO_FX = {
 /** Zoom blur taps per tier (the shader loop runs up to 11): the streak is fewer, coarser samples on weaker devices, jittered per pixel either way. */
 export const POST_TAPS: Record<Quality, number> = { low: 4, medium: 7, high: 11 };
 
+/** Film grain per tier (a share of the grade's own grain): High only, it is a per pixel hash every frame for a look, not legibility. */
+export const POST_GRAIN: Record<Quality, number> = { low: 0, medium: 0, high: 1 };
+
+/** A colour grade (cityIdentity.ts per home). Tints are sRGB hex; everything else works on linear light. */
+export interface GradeParams {
+  /** Linear light added to the shadows per channel, fading out up the luminance key (a few thousandths: black stays black). */
+  lift: readonly [number, number, number];
+  /** Power on each linear channel (1 = none; under 1 lifts that channel's mids). */
+  gamma: readonly [number, number, number];
+  /** Scale on each linear channel (1 = none). */
+  gain: readonly [number, number, number];
+  /** Shadow tint (sRGB hex) and how far it pulls (0..1), luminance neutral. */
+  shadow: number;
+  shadowAmount: number;
+  /** Highlight tint (sRGB hex) and how far it pulls (0..1), luminance neutral. */
+  highlight: number;
+  highlightAmount: number;
+  /** Saturation of dull colours (1 = none); saturated colours keep theirs. */
+  saturation: number;
+  /** Film grain: the noise's share of the pixel's light (about +-half this), times POST_GRAIN of the tier. */
+  grain: number;
+}
+
+/** No grade: what scenes without a city (the garage's workshop) render with. */
+export const NEUTRAL_GRADE: GradeParams = {
+  lift: [0, 0, 0],
+  gamma: [1, 1, 1],
+  gain: [1, 1, 1],
+  shadow: 0xffffff,
+  shadowAmount: 0,
+  highlight: 0xffffff,
+  highlightAmount: 0,
+  saturation: 1,
+  grain: 0,
+};
+
+/**
+ * Grade constants: the linear luminance where the split toning crosses from shadow to highlight tint (a night
+ * frame lives mostly well below 0.18 grey, so the pivot sits lower), the chroma band over which saturated
+ * pixels are let off the tints and the saturation, and how much grain highlights keep (they show it least).
+ */
+export const GRADE = { pivot: 0.1, protect: [0.55, 0.95], grainHighlights: 0.35 } as const;
+
 const FxShader = {
   uniforms: {
     tDiffuse: { value: null as THREE.Texture | null },
@@ -80,6 +136,16 @@ const FxShader = {
     contrast: { value: NITRO_FX.contrast },
     edgeTint: { value: NITRO_FX.edgeTint },
     tint: { value: new THREE.Vector3(...NITRO_FX.stageTint[0]) },
+    gLift: { value: new THREE.Vector3(0, 0, 0) },
+    gGamma: { value: new THREE.Vector3(1, 1, 1) },
+    gGain: { value: new THREE.Vector3(1, 1, 1) },
+    gShadow: { value: new THREE.Vector3(1, 1, 1) },
+    gHigh: { value: new THREE.Vector3(1, 1, 1) },
+    gSat: { value: 1 },
+    gGrain: { value: 0 },
+    gSeed: { value: new THREE.Vector2() },
+    gPivot: { value: GRADE.pivot },
+    gProtect: { value: new THREE.Vector2(...GRADE.protect) },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -102,7 +168,18 @@ const FxShader = {
     uniform float contrast;
     uniform float edgeTint;
     uniform vec3 tint;
+    uniform vec3 gLift;
+    uniform vec3 gGamma;
+    uniform vec3 gGain;
+    uniform vec3 gShadow;
+    uniform vec3 gHigh;
+    uniform float gSat;
+    uniform float gGrain;
+    uniform vec2 gSeed;
+    uniform float gPivot;
+    uniform vec2 gProtect;
     varying vec2 vUv;
+    const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
     void main() {
       vec2 uv = vUv;
       vec2 dir0 = vUv - center;
@@ -158,6 +235,22 @@ const FxShader = {
         // A faint glow creeping in from the edges, in the stage's color.
         c.rgb += tint * edgeTint * warp * m * m;
       }
+      // Colour grade, on linear HDR (see the header for why before tone mapping).
+      vec3 g = pow(max(c.rgb * gGain, vec3(1e-7)), gGamma);
+      float gl = dot(g, LUMA);
+      // Luminance key: 0 in black, 0.5 at the pivot, toward 1 however bright (never clips like a 0..1 ramp would).
+      float key = gl / (gl + gPivot);
+      float mx = max(g.r, max(g.g, g.b));
+      float keep = smoothstep(gProtect.x, gProtect.y, (mx - min(g.r, min(g.g, g.b))) / max(mx, 1e-5));
+      g += gLift * (1.0 - key);
+      g *= mix(vec3(1.0), mix(gShadow, gHigh, key), 1.0 - keep);
+      g = max(vec3(0.0), mix(vec3(dot(g, LUMA)), g, mix(gSat, 1.0, keep)));
+      if (gGrain > 0.0) {
+        // Multiplicative, so black stays black; a fresh pattern every frame (gSeed), lighter in the highlights.
+        float n = fract(sin(dot(gl_FragCoord.xy + gSeed, vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+        g *= 1.0 + gGrain * n * (1.0 - key * (1.0 - ${GRADE.grainHighlights.toFixed(2)}));
+      }
+      c.rgb = g;
       vec2 q = vUv - 0.5;
       float v = 1.0 - vignette * smoothstep(0.25, 0.85, length(q * vec2(1.1, 1.0)) * 1.25);
       gl_FragColor = vec4(c.rgb * v, c.a);
@@ -350,6 +443,11 @@ export class PostFx {
   /** Bloom strength from the quality profile; nitrous scales it up from here. */
   private bloomBase = 0.9;
   private nitro = 0;
+  /** The grade's grain and the tier's share of it (POST_GRAIN). */
+  private grain = 0;
+  private grainTier = 0;
+  private grainFrame = 0;
+  private readonly gradeColor = new THREE.Color();
 
   constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {
     const size = renderer.getSize(new THREE.Vector2());
@@ -376,8 +474,10 @@ export class PostFx {
   }
 
   /** Takes effect on the next setSize (GameRenderer always resizes after this). */
-  configure(opts: { bloom: boolean; bloomScale: number; bloomStrength: number; retro: boolean; msaa?: number; taps?: number }): void {
+  configure(opts: { bloom: boolean; bloomScale: number; bloomStrength: number; retro: boolean; msaa?: number; taps?: number; grain?: number }): void {
     this.fx.uniforms.uTaps.value = Math.max(1, Math.min(11, Math.round(opts.taps ?? 11)));
+    this.grainTier = opts.grain ?? 0;
+    this.fx.uniforms.gGrain.value = this.grain * this.grainTier;
     this.bloom.enabled = opts.bloom;
     this.bloom.scale = opts.bloomScale;
     this.bloomBase = opts.bloomStrength;
@@ -391,6 +491,26 @@ export class PostFx {
     this.composer.setPixelRatio(pixelRatio);
     this.composer.setSize(w, h);
     this.retro.uniforms.resolution.value.set(w * pixelRatio, h * pixelRatio);
+  }
+
+  /** The colour grade of the scene being rendered (GameRenderer sets it whenever the rendered scene changes). */
+  setGrade(p: GradeParams): void {
+    const u = this.fx.uniforms;
+    (u.gLift.value as THREE.Vector3).fromArray(p.lift);
+    (u.gGamma.value as THREE.Vector3).fromArray(p.gamma);
+    (u.gGain.value as THREE.Vector3).fromArray(p.gain);
+    this.splitTint(u.gShadow.value as THREE.Vector3, p.shadow, p.shadowAmount);
+    this.splitTint(u.gHigh.value as THREE.Vector3, p.highlight, p.highlightAmount);
+    u.gSat.value = p.saturation;
+    this.grain = p.grain;
+    u.gGrain.value = this.grain * this.grainTier;
+  }
+
+  /** A split toning multiplier: the tint in linear light scaled to luminance 1 (so it shifts hue, not brightness), `amount` of the way from white. */
+  private splitTint(out: THREE.Vector3, hex: number, amount: number): void {
+    const c = this.gradeColor.setHex(hex);
+    const l = Math.max(1e-6, 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b);
+    out.set(1 + (c.r / l - 1) * amount, 1 + (c.g / l - 1) * amount, 1 + (c.b / l - 1) * amount);
   }
 
   setSpeedBlur(amount: number): void {
@@ -417,6 +537,11 @@ export class PostFx {
   }
 
   render(dt: number): void {
+    if (this.fx.uniforms.gGrain.value > 0) {
+      // A new grain pattern each frame: a pixel offset that walks a large prime stride (no clock, no allocation).
+      this.grainFrame = (this.grainFrame + 1) % 4096;
+      (this.fx.uniforms.gSeed.value as THREE.Vector2).set((this.grainFrame * 97) % 1024, (this.grainFrame * 61) % 1024);
+    }
     this.composer.render(dt);
   }
 }
