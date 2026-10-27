@@ -10,7 +10,7 @@
 import './ui/styles/main.scss';
 import * as THREE from 'three';
 import { FixedStepLoop } from './loop';
-import { createCity, createRoute, createWorld, type World } from './city/world';
+import { createCity, createWorld, type World } from './city/world';
 import { CITY } from './city/config';
 import { trafficNet } from './sim/traffic';
 import { seedFromString, Rng } from './sim/prng';
@@ -43,7 +43,7 @@ import { toast } from './ui/kit/dom';
 import { Check, Info, Share2, Shuffle, Trophy } from './ui/kit/icons';
 import { formatTime } from './ui/kit/format';
 import { showFatal } from './ui/screens/fatal';
-import { courseFor, openFullMap, type FullMap, type WaypointStore } from './ui/map/fullMap';
+import { courseFor, openFullMap, seedCourses, type FullMap, type WaypointStore } from './ui/map/fullMap';
 import type { Vec2 } from './sim/math';
 import { door, shift, transitioning, wipe, type NitroSource, type WipeCard } from './ui/transitions/transitions';
 import { courseArt, courseRoute, type CourseRoutes } from './ui/menu/menuMaps';
@@ -224,10 +224,10 @@ function ensureStage(): StreetStage {
     return stage;
   }
   stage?.dispose();
-  // The same world createWorld builds on its own, with the city kept for the other courses' routes.
+  // The same world createWorld builds on its own, with the city kept for the open world over it; the other courses are planned on it (seedCourses).
   const city = createCity(seed);
   stage = new StreetStage(gr, assets, createWorld(seed, 'circuit', city), settings);
-  stageCourses = { circuit: stage.world.route, sprint: createRoute(city, 'sprint'), drag: createRoute(city, 'drag'), waypoint: createRoute(city, 'waypoint') };
+  stageCourses = seedCourses(stage.world);
   // A few ms over the city that is already built, and its traffic net now (cached per world) rather than at the handoff.
   stageOpen = createWorld(seed, 'circuit', city, { openWorld: true });
   trafficNet(stageOpen);
