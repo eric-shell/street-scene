@@ -8,7 +8,7 @@
  * lists the notable places by distance and flies to them, and in free roam a
  * click drops a waypoint the HUD then points to (the chip and the minimap),
  * locked to the nearest road node so it always marks a place a car can reach,
- * and the waypoint's card (or T) teleports the car to it.
+ * and the waypoint's card, standing over its pin, (or T) teleports the car to it.
  *
  * Drawing. The city itself (the cityMap.ts layers, the same inks as every
  * other map) is rasterized into two cached bitmaps: the fitted whole city, and
@@ -124,6 +124,10 @@ export class FullMap {
   private readonly rows: Map<LegendKey, HTMLElement>;
   private readonly wpCard: HTMLElement;
   private readonly wpFar: HTMLElement;
+  /** The waypoint card's size (CSS px, 0: measure again), its last transform, and the box it covers (device px) that tags keep clear of. */
+  private wpSize = { w: 0, h: 0 };
+  private wpAt = '';
+  private readonly wpBox = new Float32Array(4);
   private places: PlaceRow[] | null = null;
   private placesOpen = false;
   // Map state.
@@ -263,12 +267,19 @@ export class FullMap {
     this.wpCard = h(
       'div',
       { class: 'map-waypoint', hidden: true },
-      h('span', { class: 'map-waypoint__icon' }, icon(MapPinned, { size: 18 })),
-      h('span', { class: 'map-waypoint__text' }, h('b', { class: 'map-waypoint__title' }, 'Waypoint'), this.wpFar),
-      opts.teleport ? btn(Zap, 'Teleport', () => this.teleport(), '--small map-waypoint__teleport') : null,
-      btn(MapPinOff, 'Clear', () => this.setWaypoint(null), '--small map-waypoint__clear'),
+      h(
+        'div',
+        { class: 'map-waypoint__card' },
+        h('span', { class: 'map-waypoint__icon' }, icon(MapPinned, { size: 18 })),
+        h('span', { class: 'map-waypoint__text' }, h('b', { class: 'map-waypoint__title' }, 'Waypoint'), this.wpFar),
+        opts.teleport ? btn(Zap, 'Teleport', () => this.teleport(), '--small map-waypoint__teleport') : null,
+        btn(MapPinOff, 'Clear', () => this.setWaypoint(null), '--small map-waypoint__clear'),
+      ),
+      h('i', { class: 'map-waypoint__stem' }),
     );
-    const side = h('aside', { class: 'map-side' }, h('div', { class: 'tabs map-side__tabs', role: 'tablist' }, this.legendTab, this.placesTab), this.legendPane, this.placesPane, this.wpCard);
+    // Under the pointer's card, which can name the pin it stands on.
+    this.stage.insertBefore(this.wpCard, this.tip.el);
+    const side = h('aside', { class: 'map-side' }, h('div', { class: 'tabs map-side__tabs', role: 'tablist' }, this.legendTab, this.placesTab), this.legendPane, this.placesPane);
     // Header and footer.
     this.hereEl = h('b', { class: 'full-map__here' });
     const chips: HTMLElement[] = [];
@@ -401,6 +412,7 @@ export class FullMap {
     this.bands = { top, left };
     if (!this.sprites || this.sprites.dpr !== dpr) this.sprites = makeSprites(dpr, PALETTE[this.routeInk], this.route?.closed === false, !!this.finish);
     this.tip.remeasure();
+    this.wpSize.w = 0;
     this.updateZoomUi();
     this.dirty = true;
   }
@@ -772,7 +784,46 @@ export class FullMap {
     const hot = this.hover.kind === 'pin' || this.legendShown === 'waypoint' ? 1.18 : 1;
     const pw = sp.pin.width * hot;
     const ph = sp.pin.height * hot;
-    c.drawImage(sp.pin, x - pw / 2, y - fall - (PIN.tip / PIN.h) * ph, pw, ph);
+    const top = y - fall - (PIN.tip / PIN.h) * ph;
+    c.drawImage(sp.pin, x - pw / 2, top, pw, ph);
+    this.placeWaypointCard(v, x, top, y);
+  }
+
+  /**
+   * The waypoint's card stands over its pin (x, the pin's top and its tip in
+   * device px), centered on it with a stem down to the head and kept inside
+   * the map; with no room above it hangs under the pin instead, and it hides
+   * while the pin is off the view (the edge arrow points there). The DOM is
+   * only written when the card moves.
+   */
+  private placeWaypointCard(v: MapView, x: number, top: number, tip: number): void {
+    const el = this.wpCard;
+    const dpr = this.dpr;
+    const off = offView(v, x, tip, dpr);
+    el.classList.toggle('is-off', off);
+    if (off) {
+      this.wpBox.fill(0);
+      return;
+    }
+    const sz = this.wpSize;
+    if (!sz.w) {
+      sz.w = el.offsetWidth;
+      sz.h = el.offsetHeight;
+    }
+    const W = v.w / dpr;
+    const cx = x / dpr;
+    const left = Math.max(8, Math.min(W - 8 - sz.w, cx - sz.w / 2));
+    let y = top / dpr - sz.h;
+    const below = y < 8;
+    if (below) y = tip / dpr + 6;
+    const at = `translate3d(${Math.round(left)}px, ${Math.round(y)}px, 0)`;
+    if (at !== this.wpAt) {
+      this.wpAt = at;
+      el.style.transform = at;
+      el.style.setProperty('--stem-x', `${Math.round(Math.max(10, Math.min(sz.w - 10, cx - left)))}px`);
+      el.classList.toggle('is-below', below);
+    }
+    this.wpBox.set([left * dpr, y * dpr, (left + sz.w) * dpr, (y + sz.h) * dpr]);
   }
 
   // ---------- name tags ----------
@@ -798,6 +849,9 @@ export class FullMap {
     }
     const F = this.furniture;
     t.reserve(F[0], F[1], F[2], F[3]);
+    // The waypoint's card where it stood last frame (it follows the pin, drawn after the tags).
+    const B = this.wpBox;
+    if (this.wp && B[2] > B[0]) t.reserve(B[0], B[1], B[2], B[3]);
     t.reserve(F[4], F[5], F[6], F[7]);
     t.reserve(0, v.h - 44 * dpr, 150 * dpr, v.h);
     const fade = this.reduced ? 1 : 1 - Math.exp(-UI.tagFade * (this.time - this.tagTime));
@@ -1228,6 +1282,9 @@ export class FullMap {
     const row = this.rows.get('waypoint');
     if (row) row.hidden = !on;
     this.wpCard.hidden = !on;
+    this.wpSize.w = 0;
+    this.wpAt = '';
+    if (!on) this.wpBox.fill(0);
     this.syncWaypointText();
   }
 
@@ -1235,7 +1292,13 @@ export class FullMap {
     const w = this.wp;
     if (!w) return;
     const text = distanceLabel(w.x - this.me.x, w.z - this.me.z);
-    if (this.wpFar.textContent !== text) this.wpFar.textContent = text;
+    if (this.wpFar.textContent !== text) {
+      this.wpFar.textContent = text;
+      // A longer distance widens the card: measure it again and redraw so it stays centered.
+      this.wpSize.w = 0;
+      this.wpAt = '';
+      this.dirty = true;
+    }
     const num = this.rows.get('waypoint')?.querySelector('.map-legend__count');
     if (num && num.textContent !== text) num.textContent = text;
   }
