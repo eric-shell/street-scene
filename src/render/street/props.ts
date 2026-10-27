@@ -44,17 +44,18 @@ import type { Prop, PropKind } from '../../city/props';
 import type { Quality } from '../../ui/settings';
 import { FOG_DENSITY } from '../lighting';
 import { fadeSubPixel } from '../materialFx';
-import { chunkGrid, type ChunkGrid } from '../cityChunks';
+import { chunkGrid, VIEW_LATTICE, type ChunkGrid } from '../cityChunks';
 import { D_BOX, D_CYL, D_GLASS, D_GLOW, Debris, DebrisType } from './debris';
 import { shatterFurniture } from './streetFurniture';
 import { buildHydrantSpray } from './hydrantSpray';
 import { LAMP_TONES, planLamps, toneColor } from './lampStyle';
+import { SIGNAL, type EmitterClass } from './lightFx';
 import { STUMP_H, TRAFFIC_POLE_H, TRAFFIC_ARM_Y, STREETLIGHT_POLE_H, STREETLIGHT_ARM, PARK_LAMP_H, PARK_LANTERN_Y, LAMP_DESIGNS, LAMP_DIMS, type LampDesign, col, streetlightGeo, stumpGeo, trafficPoleGeo, trafficArmGeo, trafficHeadGeo, trafficLensGeo, canGeo, benchGeo, busStopGeo, adTexture, PARTS, PART_KINDS, isFurniture, STALL } from './propGeometry';
 
 export { STREETLIGHT_POLE_H, STREETLIGHT_ARM, PARK_LAMP_H, PARK_LANTERN_Y };
 
-/** Signal cycle in seconds: green 0-9, amber 9-11, red 11-24 (the crossing direction is offset by half). */
-const CYCLE = 24;
+/** Signal cycle in seconds: green 0-9, amber 9-11, red 11-24 (the crossing direction is offset by half); lightFx.ts SIGNAL, which the lenses' streaks read too. */
+const CYCLE = SIGNAL.cycle;
 
 export interface CarMotion {
   x: number;
@@ -97,16 +98,8 @@ export const PROP_CULL: Partial<Record<PropKind, PropCullClass>> = {
   parkLamp: 'fog',
 };
 
-export const PROP_CHUNKS = {
-  /**
-   * Lattice (m) the camera is snapped to: cells are picked by distance from the camera's lattice square, so the set
-   * changes at most once per lattice line crossed (about every 1.1 s at 90 m/s) instead of whenever the reach circle
-   * touches another cell row, for at most half a diagonal (about 70 m) of extra reach.
-   */
-  snap: 100,
-  /** Extra reach (m) before an already drawn cell is dropped, so a camera hovering on a lattice line does not re-upload every frame. */
-  hysteresis: 20,
-} as const;
+/** The lattice and hysteresis the props pick their cells with (cityChunks.ts VIEW_LATTICE, shared with the light streaks). */
+export const PROP_CHUNKS = VIEW_LATTICE;
 
 export interface PropRendererOptions {
   /** Geometry tier (ring segments, merged slats, fewer clumps); placement and hashing never depend on it. Default medium. */
@@ -116,6 +109,8 @@ export interface PropRendererOptions {
    * or streetlights.length + k for the k-th park lamp (parkLamps order).
    */
   onLamp?(light: number, on: boolean): void;
+  /** Any prop broken (true) or put back (false), by prop id: the light streaks of shelters and signals follow their prop. */
+  onBroken?(id: number, broken: boolean): void;
   /** The culling grid (scene.ts shares the city chunks' one); default chunkGrid(world.graph.bounds). */
   grid?: ChunkGrid;
   /** Per-kind cull class over PROP_CULL (unlisted kinds are `detail`). */
@@ -139,7 +134,7 @@ const lensVert = /* glsl */ `
   void main() {
     vSlot = aSlot;
     float t = mod(time + aOffset, ${CYCLE.toFixed(1)});
-    float state = t < 9.0 ? 2.0 : (t < 11.0 ? 1.0 : 0.0);
+    float state = t < ${SIGNAL.green.toFixed(1)} ? 2.0 : (t < ${SIGNAL.amber.toFixed(1)} ? 1.0 : 0.0);
     vLit = 1.0 - step(0.5, abs(state - aSlot));
     vec4 mv = viewMatrix * modelMatrix * instanceMatrix * vec4(position, 1.0);
     float d = length(mv.xyz);
@@ -359,25 +354,10 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
       const f = frames[i];
       place(pole, i, p, p.x, p.y, p.z, p.yaw);
       place(arm, i, p, p.x, p.y + TRAFFIC_ARM_Y, p.z, Math.atan2(-f.az, f.ax), f.len);
-      const ya = yawOf(f.fax, f.faz);
-      const yb = yawOf(f.fbx, f.fbz);
-      const heads: [number, number, number, number][] = [
-        [p.x + f.ax * f.len * 0.55, p.y + TRAFFIC_ARM_Y - 0.66, p.z + f.az * f.len * 0.55, ya],
-        [p.x + f.ax * f.len * 0.92, p.y + TRAFFIC_ARM_Y - 0.66, p.z + f.az * f.len * 0.92, ya],
-        [p.x + f.fbx * 0.32, p.y + 3.1, p.z + f.fbz * 0.32, yb],
-      ];
-      // Per intersection offset; the direction crossing the reference axis runs half a cycle later.
-      const node = p.node ?? -1;
-      const base = node >= 0 ? hash01(node * 7919 + world.seed) * CYCLE : 0;
-      const ref = node >= 0 ? nodeAxis(world, node) : 0;
-      heads.forEach(([x, y, z, yaw], k) => {
-        place(head, i * 3 + k, p, x, y, z, yaw);
-        place(lens, i * 3 + k, p, x, y, z, yaw);
-        const fx = k < 2 ? f.fax : f.fbx;
-        const fz = k < 2 ? f.faz : f.fbz;
-        let d = Math.abs(Math.atan2(fx, fz) - ref) % Math.PI;
-        if (d > Math.PI / 2) d = Math.PI - d;
-        lensOffsets[i * 3 + k] = base + (d > Math.PI / 4 ? CYCLE / 2 : 0);
+      trafficHeads(world, p, f).forEach((h, k) => {
+        place(head, i * 3 + k, p, h.x, h.y, h.z, h.yaw);
+        place(lens, i * 3 + k, p, h.x, h.y, h.z, h.yaw);
+        lensOffsets[i * 3 + k] = h.offset;
       });
     });
     meshes[lens].geometry.setAttribute('aOffset', new THREE.InstancedBufferAttribute(lensOffsets, 1));
@@ -634,6 +614,7 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
       m.instanceMatrix.needsUpdate = true;
     }
     if (lightOf[p.id] >= 0) opts.onLamp?.(lightOf[p.id], !broken);
+    opts.onBroken?.(p.id, broken);
   };
 
   // ---------- Debris ----------
@@ -1046,6 +1027,74 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
       for (const d of disposables) d.dispose();
     },
   };
+}
+
+/** One signal head of a traffic light: where it hangs (m), its facing (yaw, rad) and its offset into the signal cycle (s). */
+interface TrafficHead {
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  offset: number;
+}
+
+/** The three heads of a traffic light (two under the arm, one on the pole), placed and phased; the lenses and their streaks share this. */
+function trafficHeads(world: World, p: Prop, f: TrafficFrame): TrafficHead[] {
+  const ya = yawOf(f.fax, f.faz);
+  const yb = yawOf(f.fbx, f.fbz);
+  const heads: [number, number, number, number][] = [
+    [p.x + f.ax * f.len * 0.55, p.y + TRAFFIC_ARM_Y - 0.66, p.z + f.az * f.len * 0.55, ya],
+    [p.x + f.ax * f.len * 0.92, p.y + TRAFFIC_ARM_Y - 0.66, p.z + f.az * f.len * 0.92, ya],
+    [p.x + f.fbx * 0.32, p.y + 3.1, p.z + f.fbz * 0.32, yb],
+  ];
+  // Per intersection offset; the direction crossing the reference axis runs half a cycle later.
+  const node = p.node ?? -1;
+  const base = node >= 0 ? hash01(node * 7919 + world.seed) * CYCLE : 0;
+  const ref = node >= 0 ? nodeAxis(world, node) : 0;
+  return heads.map(([x, y, z, yaw], k) => {
+    const fx = k < 2 ? f.fax : f.fbx;
+    const fz = k < 2 ? f.faz : f.fbz;
+    let d = Math.abs(Math.atan2(fx, fz) - ref) % Math.PI;
+    if (d > Math.PI / 2) d = Math.PI - d;
+    return { x, y, z, yaw, offset: base + (d > Math.PI / 4 ? CYCLE / 2 : 0) };
+  });
+}
+
+/** A glowing prop part that streaks on the wet street (lightFx.ts): which prop it belongs to (so a smashed one goes dark), where and how. */
+export interface PropEmitter {
+  /** Prop id. */
+  prop: number;
+  cls: EmitterClass;
+  /** World position (m) and colour. */
+  x: number;
+  y: number;
+  z: number;
+  color: THREE.Color;
+  /** A signal head's offset into the signal cycle (s); absent for a steady light. */
+  phase?: number;
+}
+
+/**
+ * The streaks of the props: per traffic light its far arm head and its pole head (the middle arm head sits right
+ * beside the far one), per bus shelter its cool light strip and its lit poster. Placed with the same helpers and
+ * offsets as the props' own meshes, so a streak sits under what it reflects.
+ */
+export function propEmitters(world: World): PropEmitter[] {
+  const out: PropEmitter[] = [];
+  const strip = new THREE.Color(0xcfe6ff);
+  for (const p of world.blocks.props ?? []) {
+    if (p.kind === 'trafficLight') {
+      const heads = trafficHeads(world, p, trafficFrame(world, p));
+      for (const k of [1, 2]) out.push({ prop: p.id, cls: 'signal', x: heads[k].x, y: heads[k].y, z: heads[k].z, color: strip, phase: heads[k].offset });
+    } else if (p.kind === 'busStop') {
+      // Local +Z is (sin yaw, cos yaw) and local +X is (cos yaw, -sin yaw), as for every placed part.
+      const sn = Math.sin(p.yaw);
+      const cs = Math.cos(p.yaw);
+      out.push({ prop: p.id, cls: 'shelter', x: p.x + sn * 0.82, y: p.y + 2.455, z: p.z + cs * 0.82, color: strip });
+      out.push({ prop: p.id, cls: 'shelter', x: p.x + cs * 1.55, y: p.y + 1.25, z: p.z - sn * 1.55, color: AD_TINTS[(hash01(p.id * 13) * AD_TINTS.length) | 0] });
+    }
+  }
+  return out;
 }
 
 /** Arm and head directions for a traffic light at a corner of its intersection. */

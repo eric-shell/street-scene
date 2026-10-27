@@ -40,6 +40,8 @@ export interface WallDressingOptions {
 
 export interface WallDressing {
   meshes: THREE.Mesh[];
+  /** The blade signs' glow: the centre of each panel (m, world) and its neon colour, for the wet street's reflection streaks (street/lightFx.ts). */
+  lights: { pos: THREE.Vector3; color: THREE.Color }[];
   dispose(): void;
 }
 
@@ -85,6 +87,7 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
   const boxes = new GeoBuilder(true);
   const blades = new GeoBuilder(true);
   const bladeFlick = new FlickList(world, 'blade');
+  const lights: { pos: THREE.Vector3; color: THREE.Color }[] = [];
   const WHITE = new THREE.Color(1, 1, 1);
   const D = opts.density;
 
@@ -370,6 +373,7 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
           blades.quadFacing(a, bb, c, d, nx, 0, nz);
         }
         bladeFlick.fill(blades.vertexCount, fl);
+        lights.push({ pos: new THREE.Vector3(sx + ox * ((o0 + o1) / 2), y, sz + oz * ((o0 + o1) / 2)), color: col });
         // Bracket: a dark bar from the wall into the panel's top edge.
         const bar = new THREE.Color(0x1a1a1f);
         orientedBox(boxes, sx - tx * 0.03, sz - tz * 0.03, sx + tx * 0.03, sz + tz * 0.03, ox * (o0 + 0.25), oz * (o0 + 0.25), y1 - 0.04, y1 + 0.02, bar);
@@ -489,6 +493,7 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
   }
   return {
     meshes,
+    lights,
     dispose() {
       for (const m of meshes) {
         m.geometry.dispose();
