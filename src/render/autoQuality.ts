@@ -33,13 +33,13 @@ export interface QualityLevel extends QualityProfile {
  * light count recompiles every lit shader.
  */
 export const QUALITY_LEVELS: QualityLevel[] = [
-  { tier: 'low', pixelRatioCap: 1, renderScale: 0.55, bloom: true, bloomScale: 0.25, bloomStrength: 0.75, pointLights: 0, antialias: false },
+  { tier: 'low', pixelRatioCap: 1, renderScale: 0.55, bloom: true, bloomScale: 0.25, bloomStrength: 0.75, pointLights: 0, antialias: false, detailDistance: 150 },
   { tier: 'low', ...QUALITY.low },
-  { tier: 'low', pixelRatioCap: 1.25, renderScale: 0.8, bloom: true, bloomScale: 0.35, bloomStrength: 0.8, pointLights: 0, antialias: false },
-  { tier: 'medium', pixelRatioCap: 1.25, renderScale: 0.85, bloom: true, bloomScale: 0.45, bloomStrength: 0.85, pointLights: 4, antialias: false },
+  { tier: 'low', pixelRatioCap: 1.25, renderScale: 0.8, bloom: true, bloomScale: 0.35, bloomStrength: 0.8, pointLights: 0, antialias: false, detailDistance: 220 },
+  { tier: 'medium', pixelRatioCap: 1.25, renderScale: 0.85, bloom: true, bloomScale: 0.45, bloomStrength: 0.85, pointLights: 4, antialias: false, detailDistance: 240 },
   { tier: 'medium', ...QUALITY.medium },
-  { tier: 'medium', pixelRatioCap: 1.75, renderScale: 0.95, bloom: true, bloomScale: 0.6, bloomStrength: 0.95, pointLights: 4, antialias: false },
-  { tier: 'high', pixelRatioCap: 2, renderScale: 0.9, bloom: true, bloomScale: 0.6, bloomStrength: 1.0, pointLights: 8, antialias: true },
+  { tier: 'medium', pixelRatioCap: 1.75, renderScale: 0.95, bloom: true, bloomScale: 0.6, bloomStrength: 0.95, pointLights: 4, antialias: false, detailDistance: 300 },
+  { tier: 'high', pixelRatioCap: 2, renderScale: 0.9, bloom: true, bloomScale: 0.6, bloomStrength: 1.0, pointLights: 8, antialias: true, detailDistance: 340 },
   { tier: 'high', ...QUALITY.high },
 ];
 

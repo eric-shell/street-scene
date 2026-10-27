@@ -135,10 +135,12 @@ export interface QualityProfile {
   pointLights: number;
   /** 4x MSAA on the scene pass (no renderer recreation needed). */
   antialias: boolean;
+  /** View depth past which the city's detail layers (paint, trim, small dressing) stop drawing (m; render/cityChunks.ts). */
+  detailDistance: number;
 }
 
 export const QUALITY: Record<Quality, QualityProfile> = {
-  low: { pixelRatioCap: 1, renderScale: 0.7, bloom: true, bloomScale: 0.25, bloomStrength: 0.75, pointLights: 0, antialias: false },
-  medium: { pixelRatioCap: 1.5, renderScale: 0.9, bloom: true, bloomScale: 0.5, bloomStrength: 0.9, pointLights: 4, antialias: false },
-  high: { pixelRatioCap: 2, renderScale: 1, bloom: true, bloomScale: 0.75, bloomStrength: 1.0, pointLights: 8, antialias: true },
+  low: { pixelRatioCap: 1, renderScale: 0.7, bloom: true, bloomScale: 0.25, bloomStrength: 0.75, pointLights: 0, antialias: false, detailDistance: 180 },
+  medium: { pixelRatioCap: 1.5, renderScale: 0.9, bloom: true, bloomScale: 0.5, bloomStrength: 0.9, pointLights: 4, antialias: false, detailDistance: 260 },
+  high: { pixelRatioCap: 2, renderScale: 1, bloom: true, bloomScale: 0.75, bloomStrength: 1.0, pointLights: 8, antialias: true, detailDistance: 380 },
 };

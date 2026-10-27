@@ -1,6 +1,7 @@
 // Hash the three.js scene a page builds: node scene-hash.mjs <baseURL> <out.txt> [scenario ...]
 // Per scenario one line per top-level object (name, type, child count) with a hash of its subtree: every
-// geometry's attributes and index (bytes), transforms, render order, visibility, material type and parameters
+// geometry's attributes and index (bytes; the triangle set where draw order cannot show, such as the layers
+// render/cityChunks.ts sorts by cell, whose camera-dependent groups are left out), transforms, render order, visibility, material type and parameters
 // (colors, numbers, uniforms) and canvas texture pixels. Math.random is seeded, so builds that roll cosmetic
 // randomness hash the same each run.
 import fs from 'node:fs'; import { createRequire } from 'node:module';
@@ -60,6 +61,19 @@ for (const name of names) {
       if (m.fragmentShader) h = str(h, m.fragmentShader + m.vertexShader);
       return h;
     };
+    // Order-independent index hash: each triangle rotated so its smallest index leads (winding kept), FNV-1a
+    // over the three, summed. Opaque and additive layers draw the same whatever their triangle order.
+    const triSet = (a) => {
+      let sum = 0;
+      for (let i = 0; i + 2 < a.length; i += 3) {
+        let x = a[i], y = a[i + 1], z = a[i + 2];
+        if (y < x && y <= z) { const t = x; x = y; y = z; z = t; } else if (z < x && z < y) { const t = z; z = y; y = x; x = t; }
+        let t = 2166136261; t = Math.imul(t ^ x, 16777619) >>> 0; t = Math.imul(t ^ y, 16777619) >>> 0; t = Math.imul(t ^ z, 16777619) >>> 0;
+        sum = (sum + t) >>> 0;
+      }
+      return sum;
+    };
+    const orderFree = (mat) => [].concat(mat).every((m) => !m.transparent || m.blending === 2 /* AdditiveBlending */);
     // One entry per object: geometry (G), local transform (M), materials without uniforms and their textures (T),
     // uniform values (U), instances (I), light (L). Paths use names and child indices.
     const out = [];
@@ -69,7 +83,14 @@ for (const name of names) {
     const matUniforms = (m) => { let h = 2166136261; if (m.uniforms) for (const k of Object.keys(m.uniforms).sort()) h = val(str(h, k), m.uniforms[k].value); return h; };
     const walk = (o, path) => {
       const e = { p: path };
-      if (o.geometry) { const g = o.geometry; let h = 2166136261; for (const k of Object.keys(g.attributes).sort()) h = buf(str(h, k), g.attributes[k].array); if (g.index) h = buf(str(h, 'index'), g.index.array); e.G = str(h, JSON.stringify(g.groups) + g.drawRange.start + ',' + g.drawRange.count).toString(16); }
+      if (o.geometry) {
+        const g = o.geometry; let h = 2166136261; for (const k of Object.keys(g.attributes).sort()) h = buf(str(h, k), g.attributes[k].array);
+        // A chunked layer's index is sorted by cell and its groups follow the camera, so hash the triangle set
+        // and leave the groups out; the same set hashing for any layer whose draw order cannot show.
+        const unordered = o.userData?.chunked || (!g.groups.length && orderFree(o.material));
+        if (g.index) h = unordered ? str(str(h, 'index'), String(triSet(g.index.array))) : buf(str(h, 'index'), g.index.array);
+        e.G = str(h, (o.userData?.chunked ? '[]' : JSON.stringify(g.groups)) + g.drawRange.start + ',' + g.drawRange.count).toString(16);
+      }
       e.M = val(str(2166136261, `${o.type}|${o.visible}|${o.renderOrder}|${o.frustumCulled}|${o.layers.mask}`), o.matrix).toString(16);
       if (o.material) { let t = 2166136261, u = 2166136261; for (const m of [].concat(o.material)) { t = str(t, String(matStatic(m))); u = str(u, String(matUniforms(m))); } e.T = t.toString(16); e.U = u.toString(16); }
       if (o.isInstancedMesh) { let h = buf(2166136261, o.instanceMatrix.array); if (o.instanceColor) h = buf(h, o.instanceColor.array); e.I = str(h, String(o.count)).toString(16); }
