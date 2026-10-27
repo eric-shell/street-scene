@@ -86,13 +86,20 @@ export interface TreeOpts {
   y?: number;
   /** Chance this one is a conifer (0..1). */
   conifer?: number;
+  /** The sim's trunk circle (m) when it is not the default 0.4: the wood below the crown is drawn inside it (the sidewalk trees' 0.25). */
+  trunk?: number;
 }
+
+/** The sim's default trunk circle (m): what TREE.flare and the trunk radii below are drawn inside. */
+const TRUNK_SIM = 0.4;
+/** Scale of the trunk's wood for a sim circle of `trunk` m (1 at the default; never fatter than it). */
+const trunkScale = (trunk?: number): number => (trunk === undefined ? 1 : Math.min(1, trunk / TRUNK_SIM));
 
 /**
  * A palm at (x, z), `height` m tall (trunk and crown): the Los Angeles and Miami street tree. The trunk is inside
  * the sim's 0.4 m trunk circle up to car height, like every tree's, and the fronds start above a car's roof.
  */
-export function palm(kit: DistrictKit, x: number, z: number, height: number, opts: Pick<TreeOpts, 'y'> = {}): void {
+export function palm(kit: DistrictKit, x: number, z: number, height: number, opts: Pick<TreeOpts, 'y' | 'trunk'> = {}): void {
   const y = opts.y ?? kit.h(x, z);
   const rng = new Rng((Math.imul(Math.round(x * 64), 83492791) ^ Math.imul(Math.round(z * 64), 19349663)) >>> 0);
   const d = TREE.detail[kit.quality];
@@ -105,7 +112,8 @@ export function palm(kit: DistrictKit, x: number, z: number, height: number, opt
   const bark = new THREE.Color(PALM.trunk).multiplyScalar(rng.range(0.85, 1.12));
   const scar = new THREE.Color(PALM.ring).multiplyScalar(rng.range(0.9, 1.1));
   // Ringed trunk: alternating bands, wider at the foot (a root flare that dies out within the first metres).
-  const radius = (t: number): number => Math.min(TREE.flare, TREE.flare * 0.55 * (1 - t) ** 3 + PALM_SHAPE.base * (1 - t) + PALM_SHAPE.top * t);
+  const ts = trunkScale(opts.trunk);
+  const radius = (t: number): number => ts * Math.min(TREE.flare, TREE.flare * 0.55 * (1 - t) ** 3 + PALM_SHAPE.base * (1 - t) + PALM_SHAPE.top * t);
   const bands = 7;
   for (let i = 0; i < bands; i++) {
     const t0 = i / bands;
@@ -170,9 +178,10 @@ export function tree(kit: DistrictKit, x: number, z: number, size: number, heigh
   const rng = new Rng((Math.imul(Math.round(x * 64), 73856093) ^ Math.imul(Math.round(z * 64), 19349663)) >>> 0);
   const d = TREE.detail[kit.quality];
   const phase = rng.range(0, 6.28);
-  if (rng.chance(opts.conifer ?? 0.2)) conifer(kit.trees, rng, d, x, y, z, size, height, phase);
-  else if (rng.chance(TREE.columnar)) broadleaf(kit.trees, rng, d, x, y, z, size * 0.5, height * 1.1, phase, true);
-  else broadleaf(kit.trees, rng, d, x, y, z, size, height, phase, false);
+  const ts = trunkScale(opts.trunk);
+  if (rng.chance(opts.conifer ?? 0.2)) conifer(kit.trees, rng, d, x, y, z, size, height, phase, ts);
+  else if (rng.chance(TREE.columnar)) broadleaf(kit.trees, rng, d, x, y, z, size * 0.5, height * 1.1, phase, true, ts);
+  else broadleaf(kit.trees, rng, d, x, y, z, size, height, phase, false, ts);
 }
 
 /**
@@ -215,7 +224,7 @@ interface V3 {
 /** Sway weight of a point `up` m over the roots of a tree `height` tall. */
 const weight = (up: number, height: number): number => clamp01(up / height) ** 2;
 
-function broadleaf(gb: GeoBuilder, rng: Rng, d: Detail, x: number, y: number, z: number, size: number, height: number, phase: number, columnar: boolean): void {
+function broadleaf(gb: GeoBuilder, rng: Rng, d: Detail, x: number, y: number, z: number, size: number, height: number, phase: number, columnar: boolean, ts = 1): void {
   const turning = !columnar && rng.chance(TREE.turning);
   const pal = turning ? rng.pick(LEAF.turning) : rng.pick(LEAF.broad);
   const dark = new THREE.Color(pal[0]);
@@ -261,7 +270,7 @@ function broadleaf(gb: GeoBuilder, rng: Rng, d: Detail, x: number, y: number, z:
   const sides = d.sides;
   const flare = d.flare ? 3 : 0;
   const pts: V3[] = [at(0, -0.2), at(0.02, 0.45), at(0.4, base * 0.45), at(1, base), at(1, base + ry * (columnar ? 1.2 : 0.6))];
-  const radii = [TREE.flare, 0.24 * k, 0.2 * k, 0.15 * k, 0.07];
+  const radii = [TREE.flare * ts, 0.24 * k * ts, 0.2 * k * ts, 0.15 * k * ts, 0.07];
   if (columnar) for (let i = 1; i < radii.length; i++) radii[i] *= 0.8;
   for (let i = 0; i < pts.length - 1; i++) {
     const c0 = bark.clone().multiplyScalar(i === 0 ? 0.7 : 1);
@@ -292,7 +301,7 @@ function broadleaf(gb: GeoBuilder, rng: Rng, d: Detail, x: number, y: number, z:
   }
 }
 
-function conifer(gb: GeoBuilder, rng: Rng, d: Detail, x: number, y: number, z: number, size: number, height: number, phase: number): void {
+function conifer(gb: GeoBuilder, rng: Rng, d: Detail, x: number, y: number, z: number, size: number, height: number, phase: number, ts = 1): void {
   const pal = rng.pick(LEAF.conifer);
   const dark = new THREE.Color(pal[0]);
   const light = new THREE.Color(pal[1]);
@@ -300,8 +309,8 @@ function conifer(gb: GeoBuilder, rng: Rng, d: Detail, x: number, y: number, z: n
   const top = y + height * 1.1;
   const skirt = y + Math.max(TREE.crownClear - 0.6, height * 0.16);
   const R = size * 0.85;
-  tube(gb, { x, y: y - 0.2, z }, { x, y: y + 0.4, z }, TREE.flare * 0.8, 0.2, d.sides, bark.clone().multiplyScalar(0.7), bark, 0, 0, phase, d.flare ? 3 : 0);
-  tube(gb, { x, y: y + 0.4, z }, { x, y: y + height * 0.75, z }, 0.2, 0.06, d.sides, bark, bark, 0, weight(height * 0.75, height * 1.1), phase, 0);
+  tube(gb, { x, y: y - 0.2, z }, { x, y: y + 0.4, z }, TREE.flare * 0.8 * ts, 0.2 * ts, d.sides, bark.clone().multiplyScalar(0.7), bark, 0, 0, phase, d.flare ? 3 : 0);
+  tube(gb, { x, y: y + 0.4, z }, { x, y: y + height * 0.75, z }, 0.2 * ts, 0.06, d.sides, bark, bark, 0, weight(height * 0.75, height * 1.1), phase, 0);
   const n = d.tiers;
   const span = top - skirt;
   const ring: number[] = [];

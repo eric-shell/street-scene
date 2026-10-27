@@ -21,9 +21,10 @@ import { SpatialGrid } from './spatial';
 import { Terrain } from './terrain';
 import { Prop, edgeSides, generateProps, lightStations } from './props';
 import { BusBay, mouthBay, planBusBays } from './busBays';
+import { StreetTree, planStreetTrees } from './streetTrees';
 import { Rng, deriveSeed } from '../sim/prng';
 import { DEG, Vec2, atan2, clamp, cos, distToSegment, lineIntersectT, sin, sqrt, TAU } from '../sim/math';
-import type { AreaBuild, Circle, FrontageRun, FrontLook, LateContext, WallLook } from './districts/types';
+import type { Area, AreaBuild, Circle, FrontageRun, FrontLook, LateContext, WallLook } from './districts/types';
 import { PolygonIndex } from './districts/geom';
 
 export type WallKind = 'wall' | 'barrier' | 'rail';
@@ -190,6 +191,8 @@ export interface CityBlocks {
   /** Bus bays (stretches where the curb steps back into the sidewalk for a bus stop) and the path mouths cut through it (busBays.ts). */
   bays: BusBay[];
   signs: SignAnchor[];
+  /** Sidewalk trees (streetTrees.ts): each is also a solid trunk among `walls` (look 'tree', no area). */
+  trees: StreetTree[];
   edgeGrid: SpatialGrid;
 }
 
@@ -199,6 +202,10 @@ export interface BlocksDistrictInput {
   builds: AreaBuild[];
   /** Runs the late modules on the void frontage; returns their builds. */
   late?: (ctx: LateContext) => AreaBuild[];
+  /** The planned areas (the list grows with the late modules): which streets a district claims, for the sidewalk trees. */
+  areas?: readonly Area[];
+  /** Polygons the sidewalk trees keep out of: a jump exit's flight and rollout. */
+  keepClear?: () => readonly Vec2[][];
 }
 
 const sub = (a: Vec2, b: Vec2): Vec2 => ({ x: a.x - b.x, z: a.z - b.z });
@@ -969,6 +976,13 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
   const clutter = [...districts.builds, ...lateBuilds].flatMap((b) => b.destructibles);
   const props = generateProps(seed, g, sectors, mouths, streetlights, terrain, edgeGrid, reserved, clutter, bays);
 
+  // Sidewalk trees: solid trunks among the walls, on the streets no district claims and no lane closure shuts.
+  const treeSkip = new Set<number>();
+  for (const a of districts.areas ?? []) if (a.kind !== 'alley' && a.kind !== 'backAlley') for (const ei of a.edges) treeSkip.add(ei);
+  for (const b of [...districts.builds, ...lateBuilds]) for (const h of b.hints) if (h.kind === 'roadworks') treeSkip.add(h.values[0]);
+  const treePlan = planStreetTrees({ seed, g, mouths, props, bays, reserved, walls, edgeGrid, terrain, skipEdges: treeSkip, keepClear: districts.keepClear?.() ?? [] });
+  for (const w of treePlan.walls) walls.push(w);
+
   // Neon sign anchors on building fronts, biased toward downtown.
   const signs: SignAnchor[] = [];
   const candidates = buildings.map((_, i) => i).filter((i) => buildings[i].h > 9);
@@ -1018,5 +1032,5 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
     });
   }
 
-  return { sectors, mouths, faces, walls, buildings, streetlights, props, bays, signs, edgeGrid };
+  return { sectors, mouths, faces, walls, buildings, streetlights, props, bays, signs, trees: treePlan.trees, edgeGrid };
 }

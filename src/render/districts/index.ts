@@ -15,6 +15,7 @@ import { bakeOcclusion, occlusionFor, occlusionMaterial } from '../street/bakedO
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { treeMaterial } from './trees';
 import { plantYardTrees } from './yards';
+import { plantStreetTrees } from './streetTrees';
 import { alleyRenderer } from './alley';
 import { hillsRenderer } from './hills';
 import { downtownRenderer } from './downtown';
@@ -121,6 +122,8 @@ export function buildDistrictMeshes(world: World, opts: DistrictMeshOpts = {}): 
   }
   // Trees in the yards behind the frontage walls, where no car can go (yards.ts).
   plantYardTrees(kit);
+  // Trees on the sidewalks, one on every trunk the sim has (streetTrees.ts).
+  plantStreetTrees(kit);
   const add = (gb: GeoBuilder, name: string, mat: THREE.Material, order = 0) => {
     if (!gb.vertexCount) return;
     const m = new THREE.Mesh(kit.track(gb.build()), kit.track(mat));
