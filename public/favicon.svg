@@ -1,20 +1,45 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <!-- "SS" in the logo's colors, pushed harder: heavy, skewed past italic, tilted up to the right and set so close the letters nearly touch; the second S carves a hairline out of the first so they still read as two. Paths, not text: a favicon cannot load the web font. -->
+  <!-- "SS" in the logo's colors: heavy, skewed past italic, tilted up to the right, the second S overlapping the first. Each letter has its own full keyline (k1/k2 are the spines stretched past their butt ends so the outline wraps the terminals too), so the second cuts a clean dark edge into the first; under both a plum extrusion drops down and right, and a lit edge runs along each stroke's upper left (the stroke masked by itself nudged down and right). The second S is its own path rather than a <use x>, which would restart the gradient. Paths, not text: a favicon cannot load the web font. -->
   <defs>
-    <path id="s1" d="M9.2 4.4C8.2 2.8 6.9 2 5.4 2 3.4 2 2 3.3 2 5.2c0 4.2 7 3.4 7 7.6 0 2-1.4 3.2-3.4 3.2-1.6 0-2.9-.8-3.8-2.4" fill="none"/>
-    <path id="s2" d="M19.2 4.4C18.2 2.8 16.9 2 15.4 2 13.4 2 12 3.3 12 5.2c0 4.2 7 3.4 7 7.6 0 2-1.4 3.2-3.4 3.2-1.6 0-2.9-.8-3.8-2.4" fill="none"/>
+    <path id="s1" d="M9.2 4.4C8.2 2.8 6.9 2 5.4 2 3.4 2 2 3.3 2 5.2c0 4.2 7 3.4 7 7.6 0 2-1.4 3.2-3.4 3.2-1.6 0-2.9-.8-3.8-2.4"/>
+    <path id="s2" d="M19.2 4.4C18.2 2.8 16.9 2 15.4 2 13.4 2 12 3.3 12 5.2c0 4.2 7 3.4 7 7.6 0 2-1.4 3.2-3.4 3.2-1.6 0-2.9-.8-3.8-2.4"/>
+    <path id="k1" d="M9.84 5.42 9.2 4.4C8.2 2.8 6.9 2 5.4 2 3.4 2 2 3.3 2 5.2c0 4.2 7 3.4 7 7.6 0 2-1.4 3.2-3.4 3.2-1.6 0-2.9-.8-3.8-2.4L1.21 12.55"/>
+    <path id="k2" d="M19.84 5.42 19.2 4.4C18.2 2.8 16.9 2 15.4 2 13.4 2 12 3.3 12 5.2c0 4.2 7 3.4 7 7.6 0 2-1.4 3.2-3.4 3.2-1.6 0-2.9-.8-3.8-2.4L11.21 12.55"/>
+    <g id="kk" stroke-width="6.4"><use href="#k1"/><use href="#k2"/></g>
     <linearGradient id="g" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="22" y2="4">
       <stop offset=".05" stop-color="#ffd866"/>
       <stop offset=".55" stop-color="#fc9867"/>
       <stop offset="1" stop-color="#ff6188"/>
     </linearGradient>
+    <linearGradient id="h" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="22" y2="4">
+      <stop offset="0" stop-color="#fffbe6"/>
+      <stop offset="1" stop-color="#ffd3de"/>
+    </linearGradient>
+    <radialGradient id="glow" gradientUnits="userSpaceOnUse" cx="16" cy="17" r="15">
+      <stop offset="0" stop-color="#ff6188" stop-opacity=".28"/>
+      <stop offset="1" stop-color="#ff6188" stop-opacity="0"/>
+    </radialGradient>
+    <mask id="m1" maskUnits="userSpaceOnUse" x="-8" y="-8" width="48" height="40">
+      <use href="#s1" stroke="#fff" stroke-width="4.4"/>
+      <use href="#k1" stroke="#000" stroke-width="4.6" transform="translate(.55 .7)"/>
+    </mask>
+    <mask id="m2" maskUnits="userSpaceOnUse" x="-8" y="-8" width="48" height="40">
+      <use href="#s2" stroke="#fff" stroke-width="4.4"/>
+      <use href="#k2" stroke="#000" stroke-width="4.6" transform="translate(.55 .7)"/>
+    </mask>
   </defs>
   <rect width="32" height="32" rx="7" fill="#19181a"/>
-  <g transform="translate(16 16) rotate(-9) skewX(-16) scale(1.25) translate(-10.5 -9)" stroke-width="4.4">
-    <use href="#s1" y=".8" stroke="#000" stroke-opacity=".55"/>
-    <use href="#s1" stroke="url(#g)"/>
-    <use href="#s2" stroke="#19181a" stroke-width="6.6"/>
-    <use href="#s2" y=".8" stroke="#000" stroke-opacity=".55"/>
-    <use href="#s2" stroke="url(#g)"/>
+  <rect width="32" height="32" rx="7" fill="url(#glow)"/>
+  <g transform="translate(16 16) rotate(-9) skewX(-16) scale(1.18) translate(-10.5 -9)" fill="none" stroke-linejoin="round">
+    <use href="#kk" stroke="#3a1424" transform="translate(.6 1.6)"/>
+    <use href="#kk" stroke="#6b2340" transform="translate(.45 1.2)"/>
+    <use href="#kk" stroke="#6b2340" transform="translate(.3 .8)"/>
+    <use href="#kk" stroke="#6b2340" transform="translate(.15 .4)"/>
+    <use href="#k1" stroke="#19181a" stroke-width="6.4"/>
+    <use href="#s1" stroke="url(#g)" stroke-width="4.4"/>
+    <use href="#s1" stroke="url(#h)" stroke-width="4.4" stroke-opacity=".8" mask="url(#m1)"/>
+    <use href="#k2" stroke="#19181a" stroke-width="6.4"/>
+    <use href="#s2" stroke="url(#g)" stroke-width="4.4"/>
+    <use href="#s2" stroke="url(#h)" stroke-width="4.4" stroke-opacity=".8" mask="url(#m2)"/>
   </g>
 </svg>
