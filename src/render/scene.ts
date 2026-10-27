@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { World } from '../city/world';
 import { QUALITY, QualityProfile, Settings } from '../ui/settings';
 import { buildCityMeshes, CityMeshes } from './street/cityMeshes';
-import { buildLightFx, LightFx } from './street/lightFx';
+import { buildLightFx, LIGHT_FX, LightFx } from './street/lightFx';
 import { collectStreakEmitters } from './street/streakEmitters';
 import { fitLampPositions, LAMP_TONES, planLamps, toneColor } from './street/lampStyle';
 import { fadeSubPixel } from './materialFx';
@@ -239,7 +239,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   // Everything else that glows streaks on the wet street too, graded by class (lightFx.ts STREAK_CLASSES).
   const emitters = collectStreakEmitters(world, polish.lights, barriers, settings.quality);
   const fx = buildLightFx(city.lampPositions, city.signLights, world.heightAt, fogDensity, lampTone.map((t) => ({ pool: toneColor(t.pool), streak: toneColor(t.streak) })), { grid, extra: emitters.list });
-  fx.setStrength(0.42, 0.85);
+  fx.setStrength(LIGHT_FX.pool, LIGHT_FX.streak);
   scene.add(fx.group);
   // Parks and plazas: a wash over the whole area and a pool under every lantern post.
   const areaLights = buildAreaLights(world);

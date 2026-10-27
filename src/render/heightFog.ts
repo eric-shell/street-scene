@@ -10,7 +10,9 @@
  *
  *     m(y) = max(HF_MIN, (1 + gain * exp(-(y - floor) / falloff)) / (1 + gain * exp(-(street - floor) / falloff)))
  *
- * i.e. density rising toward `floor` and decaying with altitude, normalised so m(street level) = 1: the
+ * i.e. density rising toward `floor` and decaying with altitude, normalised so m(street level) = 1 (the world's
+ * floor is its lowest drivable ground, `lowestGround`, and `falloff` and `gain` follow from it and the mood's
+ * `pool` ratio, see `setHeightFog`): the
  * street looks exactly as it did before height fog on every mood, the river channel below it thickens, and
  * decks, the bluff and the highway above it thin out (never below HF_MIN, so high ground is never fogless).
  * The average along a straight ray has a closed form (the exponential's integral over the segment, divided by
@@ -18,6 +20,13 @@
  * two ends, not a march. With gain 0 the multiplier is exactly 1 (plain FogExp2). Because m can be below 1,
  * the fog is thinner than the base up high, so culling by `fogCutoff` must use the density at the thinnest
  * point (see FOG_HEIGHT.min and render/scene.ts).
+ *
+ * The haze also takes colour. Dark fog is invisible against an unlit night, so where the multiplier rises
+ * above 1 the fog colour lifts toward the home's light pollution tint (`hfGlow`), by `FOG_HEIGHT.glow.amount`
+ * of the way at the floor and not at all at street level or above: a pool of lit haze in the channel, the
+ * street's colour unchanged. The lift reads the same ray average as the density (`hfFogColor`), so it lives in
+ * the shared GLSL; the built-in materials' fog chunk calls it, and so do the hand-written shaders that mix to
+ * the fog colour (they use the camera's height, `hfFogColorCam`: they are small effects close to it).
  *
  * Three ways in, by who owns the fog:
  *  - Built-in materials (`MeshStandard`, `MeshBasic`, points, sprites) use three's `fog_fragment` chunk.
@@ -31,15 +40,27 @@
  */
 import * as THREE from 'three';
 import { CITY } from '../city/config';
+import type { World } from '../city/world';
 
-/** Height fog defaults. The mood (render/sky/weather.ts `MoodDef.heightGain`) overrides `gain`. */
+/** Height fog defaults. The mood (render/sky/weather.ts `MoodDef.heightPool`) overrides `pool`. */
 export const FOG_HEIGHT = {
-  /** World height (m) where the haze is deepest: the river channel's floor, the lowest ground in a city. */
+  /** World height (m) of the deepest haze when a world has no low ground of its own (the river channel's depth); `lowestGround` replaces it per world. */
   floor: -CITY.districts.river.depth,
-  /** Altitude (m) over which the extra density falls to 1/e. */
-  falloff: 18,
-  /** Contrast: the extra density at `floor` over the base, before normalising to street level. Applies to the exponent (density squared). */
-  gain: 1.2,
+  /** Falloffs between street level and the floor: the haze is e^-spans (about a sixth) of its floor strength at the street, before normalising. */
+  spans: 1.8,
+  /** The falloff (m) stays between these, so a shallow world still gets a pool and a very deep one a gradient. */
+  falloff: [6, 18],
+  /** The fog exponent's multiplier at the floor over the street's (about 2.6x): applies to the exponent (density squared). Set per world and mood by `setHeightFog`, which turns it into the gain. */
+  pool: 2.6,
+  /** The pool ratio is capped at this share of its ceiling (street / floor haze, reached only by an endless gain), so a clamped falloff keeps the gain finite. */
+  poolCap: 0.85,
+  /** The floor stays between these (m): a world's lowest ground clamps to it. */
+  floorRange: [-20, -2],
+  /**
+   * The haze's colour: the fog lifts toward the home's tint (identity `tint.hue`, set per scene) scaled to this
+   * linear luminance, by `amount` of the way at the floor (scaling with the pool's depth, 0 at street level).
+   */
+  glow: { level: 0.28, amount: 1 },
   /** World height (m) where the multiplier is exactly 1: street level, so the city looks as it did without height fog. */
   street: 0,
   /**
@@ -59,9 +80,15 @@ export const HEIGHT_FOG = {
   /** World height (m) of the deepest haze. */
   floor: { value: FOG_HEIGHT.floor as number },
   /** Altitude (m) over which the haze falls to 1/e. */
-  falloff: { value: FOG_HEIGHT.falloff as number },
+  falloff: { value: FOG_HEIGHT.falloff[1] as number },
   /** Contrast of the haze; 0 is no height fog. */
   gain: { value: 0 },
+  /** 1 / (pool - 1): scales (m - 1) to 0..1 over the pool's depth, for the colour lift. */
+  poolK: { value: 0 },
+  /** The haze's colour (linear): the fog colour lifts toward it. */
+  glow: { value: new THREE.Color(0x000000) },
+  /** How far the colour lifts at the floor (0..1); 0 leaves the fog colour alone. */
+  lift: { value: 0 },
   /** 1 / (1 + gain * exp(-(street - floor) / falloff)): scales the raw multiplier to 1 at street level. */
   norm: { value: 1 },
   /** Lowest multiplier (FOG_HEIGHT.min). */
@@ -73,16 +100,54 @@ export const HEIGHT_FOG_UNIFORMS = {
   hfFloor: HEIGHT_FOG.floor,
   hfFalloff: HEIGHT_FOG.falloff,
   hfGain: HEIGHT_FOG.gain,
+  hfPoolK: HEIGHT_FOG.poolK,
+  hfGlow: HEIGHT_FOG.glow,
+  hfLift: HEIGHT_FOG.lift,
   hfNorm: HEIGHT_FOG.norm,
   hfMin: HEIGHT_FOG.min,
 };
 
-/** Set the haze for the scene about to render (on build and on a mood apply, never per frame). Metres. */
-export function setHeightFog(floor: number, falloff: number, gain: number): void {
+/**
+ * The lowest ground a car can be on in `world` (m): the least height over the road graph's nodes, the river
+ * channel's centreline and the lake's shore, kept inside FOG_HEIGHT.floorRange. A world with none of them
+ * deeper than the range's top gets the default floor. Called once per scene build.
+ */
+export function lowestGround(world: World): number {
+  const [deepest, shallowest] = FOG_HEIGHT.floorRange;
+  let low = Infinity;
+  for (const n of world.graph.nodes) low = Math.min(low, world.heightAt(n.x, n.z));
+  for (const a of world.areas) {
+    if (a.kind !== 'river' && a.kind !== 'lake') continue;
+    for (const p of a.path.length ? a.path : a.polygon) low = Math.min(low, world.heightAt(p.x, p.z));
+  }
+  if (!Number.isFinite(low) || low >= shallowest) return FOG_HEIGHT.floor;
+  return Math.max(deepest, low);
+}
+
+/**
+ * Set the haze for the scene about to render (on build and on a mood apply, never per frame). `floor` is the
+ * world's lowest ground (m, `lowestGround`), `pool` the fog exponent's multiplier there over the street's
+ * (FOG_HEIGHT.pool, the mood's), `glow` the haze's tint (sRGB hex, the home's light pollution hue; omitted
+ * or 0 keeps the fog colour). The falloff puts `FOG_HEIGHT.spans` of them between the street and the floor
+ * (kept inside FOG_HEIGHT.falloff), and the gain follows: with s = e^-(street - floor)/falloff,
+ * pool = (1 + gain) / (1 + gain * s), so gain = (pool - 1) / (1 - pool * s).
+ */
+export function setHeightFog(floor: number, pool: number, glow = 0): void {
+  const depth = Math.max(FOG_HEIGHT.street - floor, 1);
+  const [fMin, fMax] = FOG_HEIGHT.falloff;
+  const falloff = Math.min(fMax, Math.max(fMin, depth / FOG_HEIGHT.spans));
+  const s = Math.exp(-depth / falloff);
+  // The ceiling of the ratio is 1 / s: a shallow world cannot pool as hard as a canyon, whatever the mood asks.
+  const ratio = Math.max(1, Math.min(pool, (FOG_HEIGHT.poolCap / s)));
   HEIGHT_FOG.floor.value = floor;
-  HEIGHT_FOG.falloff.value = Math.max(0.5, falloff);
-  HEIGHT_FOG.gain.value = Math.max(0, gain);
-  HEIGHT_FOG.norm.value = 1 / (1 + HEIGHT_FOG.gain.value * Math.exp(-Math.max(FOG_HEIGHT.street - floor, 0) / HEIGHT_FOG.falloff.value));
+  HEIGHT_FOG.falloff.value = falloff;
+  HEIGHT_FOG.gain.value = (ratio - 1) / (1 - ratio * s);
+  HEIGHT_FOG.norm.value = 1 / (1 + HEIGHT_FOG.gain.value * s);
+  HEIGHT_FOG.poolK.value = ratio > 1 ? 1 / (ratio - 1) : 0;
+  // The tint at the glow's own linear luminance, so the lift moves how bright the haze is by `level`, whatever the hue.
+  const c = HEIGHT_FOG.glow.value.setHex(glow);
+  c.multiplyScalar(FOG_HEIGHT.glow.level / Math.max(1e-6, 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b));
+  HEIGHT_FOG.lift.value = glow ? FOG_HEIGHT.glow.amount : 0;
 }
 
 /**
@@ -99,13 +164,29 @@ uniform float hfFalloff;
 uniform float hfGain;
 uniform float hfNorm;
 uniform float hfMin;
-float hfMul(vec3 wp) {
+uniform float hfPoolK;
+uniform vec3 hfGlow;
+uniform float hfLift;
+// The multiplier before the HF_MIN floor: 1 at street level, up to the pool's ratio at the floor.
+float hfRaw(vec3 wp) {
   float y0 = max(cameraPosition.y - hfFloor, 0.0) / hfFalloff;
   float y1 = max(wp.y - hfFloor, 0.0) / hfFalloff;
   float dy = y1 - y0;
   // Mean of exp(-s) for s in [y0, y1]: (e^-y0 - e^-y1) / dy, its midpoint value when the ray is level.
   float mean = abs(dy) < 0.01 ? exp(-0.5 * (y0 + y1)) : (exp(-y0) - exp(-y1)) / dy;
-  return max((1.0 + hfGain * mean) * hfNorm, hfMin);
+  return (1.0 + hfGain * mean) * hfNorm;
+}
+float hfMul(vec3 wp) {
+  return max(hfRaw(wp), hfMin);
+}
+// The fog colour lifted toward the haze's tint by how deep in the pool the ray sits (0 at street level and above).
+vec3 hfFogColor(vec3 base, vec3 wp) {
+  float pool = clamp((hfRaw(wp) - 1.0) * hfPoolK, 0.0, 1.0);
+  return mix(base, hfGlow, pool * hfLift);
+}
+// The same at the camera's height, for small effects (smoke, steam, marks) that have no world position in the fragment.
+vec3 hfFogColorCam(vec3 base) {
+  return hfFogColor(base, cameraPosition);
 }
 float hfMulView(vec3 mv) {
   return hfMul(cameraPosition + transpose(mat3(viewMatrix)) * mv);
@@ -139,7 +220,7 @@ export function heightFogShader(shader: ShaderSource, additive = false): boolean
   shader.vertexShader = shader.vertexShader
     .replace('#include <fog_pars_vertex>', '#include <fog_pars_vertex>\n#ifdef USE_FOG\nvarying vec3 vHfWorld;\n#endif')
     .replace('#include <fog_vertex>', '#include <fog_vertex>\n#ifdef USE_FOG\nvHfWorld = cameraPosition + transpose(mat3(viewMatrix)) * mvPosition.xyz;\n#endif');
-  const blend = additive ? 'gl_FragColor.rgb *= 1.0 - fogFactor;' : 'gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );';
+  const blend = additive ? 'gl_FragColor.rgb *= 1.0 - fogFactor;' : 'gl_FragColor.rgb = mix( gl_FragColor.rgb, hfFogColor( fogColor, vHfWorld ), fogFactor );';
   shader.fragmentShader = shader.fragmentShader
     .replace('#include <fog_pars_fragment>', `#include <fog_pars_fragment>\n#ifdef USE_FOG\nvarying vec3 vHfWorld;\n${HEIGHT_FOG_GLSL}\n#endif`)
     .replace(

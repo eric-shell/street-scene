@@ -43,6 +43,14 @@ const DEFAULT_MOOD: MoodLighting = { hemi: 0x3a4a9a, hemiIntensity: 0.4, moonLig
 const MOON_HOME = new THREE.Vector3(-200, 400, 120);
 /** The point light of a sodium lamp (the colour every lamp had before neighbourhoods chose their own). */
 const SODIUM_LIGHT = new THREE.Color(0xffb36b);
+/**
+ * The real point light each of the nearest lamps casts. These are what lights the road beside the car (the
+ * fake pools in lightFx only add to it), and on the glossy asphalt a strong one turns into a flat white blob:
+ * 140 blew out the road next to the car on every lamp lit night (A/B on seeds 9, 3, 20261019 and wet 5: half of it
+ * keeps a visible falloff, the wet street still glows through the streaks and the env reflections).
+ * `intensity` is the peak at the focus (candela, before the pick fade), `distance` the cutoff (m), `decay` the exponent.
+ */
+export const LAMP_LIGHT = { intensity: 70, distance: 30, decay: 1.7 } as const;
 /** How often the pool re-picks its nearest lamps (ms; eight frames at 60 fps). */
 const REPICK_MS = (8 * 1000) / 60;
 
@@ -76,7 +84,6 @@ export class NightLighting {
   private readonly want = new Set<number>();
   private readonly free: number[] = [];
   private readonly incoming: number[] = [];
-  private static readonly INTENSITY = 140;
   private readonly hemi: THREE.HemisphereLight;
   private readonly moon: THREE.DirectionalLight;
   /** The mood a lightning flash adds on top of. */
@@ -143,7 +150,7 @@ export class NightLighting {
       l.dispose();
     }
     while (this.pool.length < n) {
-      const l = new THREE.PointLight(SODIUM_LIGHT, 0, 30, 1.7);
+      const l = new THREE.PointLight(SODIUM_LIGHT, 0, LAMP_LIGHT.distance, LAMP_LIGHT.decay);
       this.pool.push(l);
       this.group.add(l);
     }
@@ -209,7 +216,7 @@ export class NightLighting {
       }
       const d = Math.sqrt(reach2(this.lamps[lamp], focus));
       const w = Number.isFinite(this.cutoff) ? Math.max(0, Math.min(1, (this.cutoff - d) / band)) : 1;
-      this.pool[k].intensity = NightLighting.INTENSITY * w * w * (3 - 2 * w);
+      this.pool[k].intensity = LAMP_LIGHT.intensity * w * w * (3 - 2 * w);
     }
   }
 }

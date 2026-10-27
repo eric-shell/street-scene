@@ -28,7 +28,7 @@ import type { World } from '../../city/world';
 import { Rng, deriveSeed } from '../../sim/prng';
 import type { Quality } from '../../ui/settings';
 import type { NightLighting } from '../lighting';
-import { FOG_HEIGHT, setHeightFog } from '../heightFog';
+import { FOG_HEIGHT, lowestGround, setHeightFog } from '../heightFog';
 import { makeMoodSky, makeNoiseTexture, MoodSkyParams } from './skyTextures';
 import { LIGHTNING, Lightning, buildLightning } from './lightning';
 import { cityIdentity } from '../cityIdentity';
@@ -52,8 +52,8 @@ export interface MoodDef {
   weight: number;
   fogColor: number;
   fogDensity: number;
-  /** Height fog contrast: how much denser the haze is at the river floor than at street level, before normalising to street (heightFog.ts); omitted = `FOG_HEIGHT.gain`. Stronger on damp nights. */
-  heightGain?: number;
+  /** Height fog pool: how many times the fog exponent at the world's lowest ground is the street's (heightFog.ts setHeightFog); omitted = `FOG_HEIGHT.pool`. Deeper on damp nights. */
+  heightPool?: number;
   sky: MoodSkyParams;
   /** Star field 0..1, moon disc 0..1 and the haze halo around it 0..1. */
   stars: number;
@@ -90,7 +90,7 @@ export const MOODS: Record<MoodId, MoodDef> = {
     weight: 22,
     fogColor: 0x12101f,
     fogDensity: 0.0052,
-    heightGain: 1.4,
+    heightPool: 2.8,
     sky: { zenith: '#03030c', mid: '#0d0b22', horizon: '#2c1b3e', below: '#17111f', glow: '#7c4634', glowStrength: 0.75, overcast: 0.25 },
     stars: 0.45,
     moon: 0.85,
@@ -106,7 +106,7 @@ export const MOODS: Record<MoodId, MoodDef> = {
     weight: 14,
     fogColor: 0x0e1020,
     fogDensity: 0.0066,
-    heightGain: 2.0,
+    heightPool: 3,
     sky: { zenith: '#04050e', mid: '#0b0d20', horizon: '#1e1830', below: '#111020', glow: '#5c3a36', glowStrength: 0.6, overcast: 0.5 },
     stars: 0.12,
     moon: 0.4,
@@ -122,7 +122,7 @@ export const MOODS: Record<MoodId, MoodDef> = {
     weight: 12,
     fogColor: 0x0b0d1a,
     fogDensity: 0.0058,
-    heightGain: 1.6,
+    heightPool: 2.9,
     sky: { zenith: '#030309', mid: '#090b1c', horizon: '#121020', below: '#0d0b16', glow: '#5a3630', glowStrength: 0.6, overcast: 0.8 },
     stars: 0,
     moon: 0.15,
@@ -377,6 +377,9 @@ export function createWeather(world: World, opts: { quality: Quality; flashes?: 
   const seed = world.seed;
   const mood = pickMood(seed);
   const def = seedMood(seed, mood);
+  const { tint } = cityIdentity(seed);
+  // The haze pools in this world's lowest ground and takes the home's light pollution tint.
+  const floor = lowestGround(world);
   const { moonPhase, windHeading } = skyParams(seed);
   const sky = makeMoodSky(def.sky, seed);
   const fog = new THREE.FogExp2(def.fogColor, def.fogDensity);
@@ -564,8 +567,8 @@ export function createWeather(world: World, opts: { quality: Quality; flashes?: 
     lightning,
     apply(scene, lighting) {
       scene.fog = fog;
-      // The haze that pools in the river channel and the low parks; shared uniforms, written here once per scene.
-      setHeightFog(FOG_HEIGHT.floor, FOG_HEIGHT.falloff, def.heightGain ?? FOG_HEIGHT.gain);
+      // The haze that pools in the river channel and the low parks (lit by the home's tint); shared uniforms, written here once per scene.
+      setHeightFog(floor, def.heightPool ?? FOG_HEIGHT.pool, tint.hue);
       scene.background = sky;
       scene.environmentIntensity = WEATHER.envDry + WEATHER.envWet * def.wet;
       lighting.setMood({ hemi: def.hemi, hemiIntensity: def.hemiIntensity, moonLight: def.moonLight });
