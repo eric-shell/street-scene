@@ -280,7 +280,7 @@ export class CityOverview {
     c.lineCap = 'round';
     c.lineJoin = 'round';
     const g = this.world.graph;
-    const ink = kind === 'river' || kind === 'subway' ? PALETTE.cyan : kind === 'alley' ? PALETTE.purple : kind === 'hills' ? PALETTE.soft : kind === 'monument' ? PALETTE.yellow : PALETTE.orange;
+    const ink = kind === 'river' || kind === 'subway' ? PALETTE.cyan : kind === 'alley' ? PALETTE.blue : kind === 'hills' ? PALETTE.soft : kind === 'monument' ? PALETTE.yellow : PALETTE.orange;
     c.strokeStyle = ink;
     c.fillStyle = ink;
     for (const a of this.world.areas) {

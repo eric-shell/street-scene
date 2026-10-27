@@ -411,8 +411,8 @@ export interface AreaMapStyle {
 export const AREA_MAP_STYLE: Record<AreaKind, AreaMapStyle> = {
   // Monokai Pro tints (ui/kit/palette.ts) that stay clear of the orange route and yellow roadblocks.
   downtown: {},
-  alley: { stroke: 'rgba(171,157,242,0.35)', width: 5 },
-  backAlley: { stroke: 'rgba(147,146,147,0.12)', width: 4 },
+  alley: { stroke: 'rgba(110,164,255,0.35)', width: 5 },
+  backAlley: { stroke: 'rgba(255,122,217,0.14)', width: 4 },
   park: { fill: 'rgba(169,220,118,0.2)' },
   subway: { stroke: 'rgba(120,220,232,0.45)', width: 4, dash: [14, 10] },
   river: { fill: 'rgba(120,220,232,0.16)' },

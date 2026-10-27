@@ -69,8 +69,10 @@ export const KINDS: Partial<Record<AreaKind, KindStyle>> = {
   highway: { ink: rgba('text', 0.55), width: 6, tag: true },
   // The terrace: its high ground filled, the foot of its slopes dashed; the crest is the cliff symbol (cliffPath).
   bluff: { ink: PALETTE.orange, fill: rgba('orange', 0.1), width: 1.2, dash: [3, 4], tag: true },
-  alley: { ink: PALETTE.purple, tag: true },
-  backAlley: { ink: rgba('soft', 0.55), tag: false },
+  // The alleys wear the two hues no course and no road does: blue for the raceway alleys, a dim pink for the back alleys
+  // (purple is the drag strip, cyan the waypoint race, grey the streets; the race shortcuts keep their stronger red).
+  alley: { ink: PALETTE.blue, tag: true },
+  backAlley: { ink: rgba('pink', 0.5), tag: false },
   roundabout: { ink: PALETTE.soft, tag: false },
   infill: { ink: PALETTE.soft, fill: rgba('soft', 0.2), tag: false },
   tunnel: { ink: PALETTE.soft, fill: rgba('muted', 0.22), width: 1.5, dash: [4, 3], tag: true },
@@ -560,7 +562,7 @@ export class CityLayers {
     const hideShortcuts = o.shortcuts === undefined ? hideBack : !o.shortcuts;
     for (const grp of this.streets) {
       c.strokeStyle =
-        grp.ink === 'alley' ? (hideAlleys ? ink.road : PALETTE.purple) : grp.ink === 'backAlley' ? (hideBack ? ink.road : KINDS.backAlley!.ink) : grp.ink === 'shortcut' && hideShortcuts ? ink.road : ink[grp.ink];
+        grp.ink === 'alley' ? (hideAlleys ? ink.road : KINDS.alley!.ink) : grp.ink === 'backAlley' ? (hideBack ? ink.road : KINDS.backAlley!.ink) : grp.ink === 'shortcut' && hideShortcuts ? ink.road : ink[grp.ink];
       c.lineWidth = Math.max(grp.width, minStreet);
       c.stroke(grp.path);
     }
