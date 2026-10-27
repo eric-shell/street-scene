@@ -12,9 +12,9 @@
  * Small frontage pieces (corner plazas, verges, planters) and plain blocks
  * are not places: they are wherever their neighbourhood is.
  */
-import type { World } from '../../city/world';
-import type { Area } from '../../city/districts/types';
-import { tunnelName } from '../../city/districts/tunnel';
+import type { World } from '../world';
+import type { Area } from '../districts/types';
+import { tunnelName } from '../districts/tunnel';
 import { Rng, deriveSeed } from '../../sim/prng';
 import { hoodPlan, type HoodCharacter } from './neighbourhoods';
 

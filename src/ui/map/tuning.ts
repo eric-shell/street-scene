@@ -8,7 +8,7 @@
 import type { Area, AreaKind } from '../../city/districts/types';
 import type { Vec2 } from '../../sim/math';
 import { KINDS, MAP_INK } from './cityMap';
-import { isNamedPlace } from './placeNames';
+import { isNamedPlace } from '../../city/names/placeNames';
 import { PALETTE, rgba } from '../kit/palette';
 import { M_PER_FT, M_PER_MI } from '../kit/units';
 

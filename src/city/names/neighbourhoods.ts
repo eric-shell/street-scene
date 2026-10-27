@@ -13,11 +13,11 @@
  * real neighbourhood lines do and a part never splits in two. A border is
  * then the street centerlines between blocks of different parts.
  */
-import type { World } from '../../city/world';
-import type { BlockFace } from '../../city/blocks';
-import type { Area } from '../../city/districts/types';
-import { isRiverEdge, type RoadEdge } from '../../city/roadGraph';
-import { pointInPolygon, polygonArea, polygonCentroid } from '../../city/districts/geom';
+import type { World } from '../world';
+import type { BlockFace } from '../blocks';
+import type { Area } from '../districts/types';
+import { isRiverEdge, type RoadEdge } from '../roadGraph';
+import { pointInPolygon, polygonArea, polygonCentroid } from '../districts/geom';
 import { Rng, deriveSeed } from '../../sim/prng';
 import type { Vec2 } from '../../sim/math';
 

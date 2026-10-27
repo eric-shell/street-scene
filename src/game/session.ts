@@ -44,7 +44,7 @@ import { InputManager } from '../input/inputManager';
 import { Rumble } from '../input/rumble';
 import { Hud, HudCar, RACE_CARD } from '../ui/hud/hud';
 import { courseFor, openFullMap, type FullMap, type WaypointStore } from '../ui/map/fullMap';
-import { placeAt } from '../ui/map/places';
+import { placeAt } from '../city/names/places';
 import { toast } from '../ui/kit/dom';
 import { MapPinned, Zap } from '../ui/kit/icons';
 import { HudCard } from '../ui/hud/hudCard';
