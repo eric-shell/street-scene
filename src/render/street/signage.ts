@@ -410,8 +410,9 @@ export function buildSignageMeshes(world: World, plan: SignagePlan): SignageMesh
     const back = new THREE.Color(0x050507);
     for (const i of [...plan.clocks].sort((a, b) => a - b)) {
       const s = signs[i];
-      const ax = -s.nz;
-      const az = s.nx;
+      // The panel's +u runs to the viewer's right, (nz, -nx), so the hours come first and the digits read forward.
+      const ax = s.nz;
+      const az = -s.nx;
       const W = Math.min(s.w, SIGNAGE.clockMaxW);
       const H = Math.min(s.h, SIGNAGE.clockMaxH);
       const col = rng.chance(0.5) ? new THREE.Color(0xff3a22) : neon[mood.neon(rng.next())];

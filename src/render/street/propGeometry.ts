@@ -660,15 +660,16 @@ export function busStopGeo(): { solid: THREE.BufferGeometry; glass: THREE.Buffer
   const g = new GeoBuilder();
   box(g, 0, 1.3, -0.62, 3.02, 2.1, 0.025, col(0xffffff), false);
   box(g, -1.55, 1.3, -0.12, 0.025, 2.1, 0.92, col(0xffffff), false);
-  // Lit poster on both faces of the ad box.
+  // Lit poster on both faces of the ad box. A viewer on the +x face looks along -x, so their right is -z (and +z
+  // on the -x face, whose z is negated below): u runs from the z = 0.46 edge to the -0.5 edge so the text reads forward.
   const ad = new GeoBuilder();
   for (const side of [1, -1]) {
     const x = 1.55 + side * 0.082;
     const v = [
-      [-0.5, 0.35, 0, 0],
-      [0.46, 0.35, 1, 0],
-      [0.46, 2.15, 1, 1],
-      [-0.5, 2.15, 0, 1],
+      [-0.5, 0.35, 1, 0],
+      [0.46, 0.35, 0, 0],
+      [0.46, 2.15, 0, 1],
+      [-0.5, 2.15, 1, 1],
     ].map(([z, y, u, vv]) => ad.vertex(x, y, z * side, side, 0, 0, u, vv));
     ad.quadFacing(v[0], v[1], v[2], v[3], side, 0, 0);
   }
