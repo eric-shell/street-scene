@@ -78,6 +78,7 @@ import type { DistrictKit, DistrictRenderer } from './kit';
 import { col, cylinder, drapeConvex, groundLine, orientedBox } from './kit';
 import { tree } from './trees';
 import { washMaterial } from '../materialFx';
+import { drapedDisc, planeAlong } from '../street/groundPlane';
 
 const CFG = CITY.districts.highway;
 const HALF = HIGHWAY_HALF;
@@ -249,28 +250,9 @@ function bar(gb: GeoBuilder, c: RailCurve, s0: number, s1: number, v0: number, v
   side(gb, c, s0, s1, v1, y0, y0 + h, y1, y1 + h, 1, color, w1);
 }
 
-/** An additive light pool, draped on `y` (rings of a disc fading out). */
+/** An additive light pool, draped on `y` (rings of a disc fading out; groundPlane.ts). */
 function pool(gb: GeoBuilder, x: number, z: number, y: (x: number, z: number) => number, r: number, color: THREE.Color): void {
-  const tint = new THREE.Color();
-  const rings = 3;
-  const segs = 12;
-  const vertex = (px: number, pz: number, t: number) => gb.vertex(px, y(px, pz) + 0.06, pz, 0, 1, 0, 0, 0, tint.copy(color).multiplyScalar((1 - t * t) ** 2));
-  const mid = vertex(x, z, 0);
-  let prev: number[] = [];
-  for (let k = 1; k <= rings; k++) {
-    const t = k / rings;
-    const ring: number[] = [];
-    for (let i = 0; i < segs; i++) {
-      const a = (i / segs) * Math.PI * 2;
-      ring.push(vertex(x + Math.cos(a) * r * t, z + Math.sin(a) * r * t, t));
-    }
-    for (let i = 0; i < segs; i++) {
-      const j = (i + 1) % segs;
-      if (k === 1) gb.triFacing(mid, ring[i], ring[j], 0, 1, 0);
-      else gb.quadFacing(prev[i], prev[j], ring[j], ring[i], 0, 1, 0);
-    }
-    prev = ring;
-  }
+  drapedDisc(gb, x, z, y, { r, rings: 3, segs: 12, color }, 0.06);
 }
 
 export const highwayRenderer: DistrictRenderer = {
@@ -682,7 +664,10 @@ function deck(kit: DistrictKit, area: Area, d: HighwayDeck, signs: GeoBuilder, w
       orientedBox(kit.glow, q.x - P.tx * 0.5, q.z - P.tz * 0.5, q.x + P.tx * 0.5, q.z + P.tz * 0.5, -P.tz * 0.3 * sd, P.tx * 0.3 * sd, y - 0.22, y - 0.02, LAMP.head);
       if (wash) {
         const p = at(c, s, sd * laneCenter(1));
-        pool(wash, p.x, p.z, () => ty, HW.deckPool.r, HW.deckPool.color);
+        // The deck climbs and levels out along s (its ends meet the ramps' grade): the pool follows it, 13 m wide.
+        const tx = P.tx;
+        const tz = P.tz;
+        pool(wash, p.x, p.z, (x, z) => top(s + (x - p.x) * tx + (z - p.z) * tz), HW.deckPool.r, HW.deckPool.color);
       }
     }
   }
@@ -1027,9 +1012,9 @@ function ramp(kit: DistrictKit, d: HighwayDeck, r: HighwayRamp, signs: GeoBuilde
     orientedBox(solid, p.x, p.z, h.x, h.z, 0.08, 0.08, ty - 0.1, ty, C.steel);
     cylinder(kit.glow, h.x, h.z, 0.24, ty - 0.25, ty - 0.08, 6, LAMP.head, true);
     if (wash) {
+      // On the ramp's own surface: it climbs, so the pool is the plane along it, not a flat disc sinking into it.
       const g = surf(u, -inner * (hw - 2.4));
-      const ground = g.y;
-      pool(wash, g.x, g.z, () => ground, 7, HW.deckPool.color);
+      pool(wash, g.x, g.z, planeAlong(surf(u - 3, -inner * (hw - 2.4)), surf(u + 3, -inner * (hw - 2.4)), g), 7, HW.deckPool.color);
     }
   }
   // One way, two lanes: a dashed divider up the middle (Medium and up) and in both lanes the arrows the
