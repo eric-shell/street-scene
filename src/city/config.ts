@@ -1166,6 +1166,31 @@ export const CITY = {
       /** Channel buoys out on the water [min, max], and how far out they float [min, max] (m). */
       buoys: [3, 6],
       buoyReach: [60, 260],
+      /**
+       * The marina variant (a harbor that is leisure moorings, not working docks): the chance a waterfront is one
+       * (its own stream, so a harbor seed plans exactly as before). Floating pontoons [min, max] per marina, their
+       * spine length [min, max] and gangway width (m), at least `pontoonGap` m apart along the coast; the slips
+       * either side of a spine are `slipPitch` m apart and `slipLength` m [min, max] long, a boat in `slipFill` of them.
+       * The yacht club (width x depth over the water, m) and the fuel dock (length, m) stand clear of the pontoons by
+       * `clubClear` m; `bollardStep` m between the quay edge's bollards (destructible props); `bollardInset` m in from the edge; `stringStep` m between the
+       * string light posts along the railing; the boardwalk is `boardwalk` m wide, along the edge `boardwalkInset` m inside the railing's line.
+       */
+      marinaChance: 0.45,
+      pontoons: [2, 4],
+      pontoonLength: [34, 64],
+      gangway: 3.6,
+      pontoonGap: 85,
+      slipPitch: 6.4,
+      slipLength: [11, 15],
+      slipFill: 0.66,
+      club: [24, 13],
+      fuelLength: 20,
+      clubClear: 34,
+      bollardStep: 9,
+      stringStep: 26,
+      boardwalk: 3.4,
+      bollardInset: 1.2,
+      boardwalkInset: 0.9,
     },
     /**
      * Lake: two to four adjacent blocks merged into one body of water by deleting the streets

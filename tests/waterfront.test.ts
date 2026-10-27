@@ -27,18 +27,20 @@ const CFG = CITY.districts.waterfront;
 const harborOf = (areas: readonly Area[]) => areas.find((a) => a.kind === 'waterfront');
 
 /** Seeds (from a stream) whose city plans a harbor: rolled (cheap), then planned (planRoads only). */
-function harborSeeds(stream: number, want: number): number[] {
+function harborSeeds(stream: number, want: number, variant?: string): number[] {
   const rng = new Rng(stream);
   const out: number[] = [];
   for (let i = 0; i < 400 && out.length < want; i++) {
     const seed = rng.int(0, 0x7fffffff);
-    if (waterfrontRolled(seed) && harborOf(planRoads(seed).districts.areas)) out.push(seed);
+    if (!waterfrontRolled(seed)) continue;
+    const a = harborOf(planRoads(seed).districts.areas);
+    if (a && (!variant || a.variant === variant)) out.push(seed);
   }
   return out;
 }
 
 /** A few finished cities with a harbor, their circuit and sprint worlds and the harbor area. */
-const cities: { city: City; worlds: World[]; a: Area }[] = harborSeeds(31, 4).map((seed) => {
+const cities: { city: City; worlds: World[]; a: Area }[] = [...harborSeeds(31, 2, 'harbor'), ...harborSeeds(31, 2, 'marina')].map((seed) => {
   const city = createCity(seed);
   const worlds = [createWorld(seed, 'circuit', city), createWorld(seed, 'sprint', city)];
   return { city, worlds, a: harborOf(city.districts.areas)! };
@@ -130,6 +132,61 @@ describe('waterfront (plan)', () => {
         }
       }
     }
+  });
+});
+
+describe('waterfront (marina)', () => {
+  it('is a variant of about 45% of the waterfronts, the same every time, and leaves harbor seeds as they were', () => {
+    const rng = new Rng(4242);
+    const count = { harbor: 0, marina: 0 };
+    for (let i = 0; i < 400 && count.harbor + count.marina < 60; i++) {
+      const seed = rng.int(0, 0x7fffffff);
+      if (!waterfrontRolled(seed)) continue;
+      const a = harborOf(planRoads(seed).districts.areas);
+      if (!a) continue;
+      expect(['harbor', 'marina']).toContain(a.variant);
+      count[a.variant as 'harbor' | 'marina']++;
+      if (count.harbor + count.marina <= 4) expect(harborOf(planRoads(seed).districts.areas)!.variant).toBe(a.variant);
+    }
+    const share = count.marina / (count.harbor + count.marina);
+    expect(count.harbor + count.marina).toBe(60);
+    expect(share).toBeGreaterThan(0.25);
+    expect(share).toBeLessThan(0.65);
+  });
+
+  it('moors boats at pontoons behind the railing, with a club, a fuel dock and bollards; no jetty, crane or ship', () => {
+    const marinas = cities.filter((c) => c.a.variant === 'marina');
+    expect(marinas.length).toBeGreaterThanOrEqual(2);
+    for (const { city, a } of marinas) {
+      const b = city.districts.builds[a.id];
+      const p = a.params;
+      const kinds = new Set(b.props.map((x) => x.kind));
+      expect(b.hints.filter((h) => h.kind === 'pontoon').length).toBeGreaterThanOrEqual(1);
+      expect(b.hints.some((h) => h.kind === 'clubhouse')).toBe(true);
+      expect(b.hints.some((h) => h.kind === 'fuel')).toBe(true);
+      expect(b.hints.some((h) => h.kind === 'jetty')).toBe(false);
+      for (const k of ['crane', 'stack', 'ship']) expect(kinds.has(k)).toBe(false);
+      expect(kinds.has('sailboat') || kinds.has('yacht')).toBe(true);
+      expect(b.destructibles.filter((d) => d.kind === 'bollard').length).toBeGreaterThan(10);
+      // Every mooring is out past the sea wall, none on the quay.
+      for (const pr of b.props) {
+        if (!['sailboat', 'yacht', 'dinghy'].includes(pr.kind) || pr.kind === 'dinghy' && pr.height < 0.5) continue;
+        expect(frameV(harborFrame(a), pr.x, pr.z)).toBeGreaterThan(coastV(p, frameU(harborFrame(a), pr.x, pr.z)));
+      }
+      // Bollards stand on the quay, inside the railing, clear of the road.
+      for (const d of b.destructibles.filter((x) => x.kind === 'bollard')) {
+        const { u, v } = uv(a, d.x, d.z);
+        expect(v).toBeLessThan(coastV(p, u) - CFG.railInset);
+      }
+    }
+  });
+
+  it('plans and builds the same marina every time', () => {
+    const { city, a } = cities.find((c) => c.a.variant === 'marina')!;
+    const again = createCity(city.seed);
+    const b = harborOf(again.districts.areas)!;
+    expect(JSON.stringify(b)).toBe(JSON.stringify(a));
+    expect(JSON.stringify(again.districts.builds[b.id])).toBe(JSON.stringify(city.districts.builds[a.id]));
   });
 });
 
@@ -386,7 +443,7 @@ describe('waterfront (race)', () => {
 
 describe('waterfront (render)', () => {
   it('draws every wall it owns, the water out past the far ridge and the dressing, with no stray vertex', () => {
-    for (const { worlds, a } of cities.slice(0, 2)) {
+    for (const { worlds, a } of [cities[0], cities[cities.length - 1]]) {
       const world = worlds[0];
       const walls = new Map<WallLook, Wall[]>();
       for (const w of world.walls) if (w.kind === 'wall' && w.look) (walls.get(w.look) ?? walls.set(w.look, []).get(w.look)!).push(w);
@@ -431,6 +488,11 @@ describe('waterfront (render)', () => {
       const names = group.children.map((c) => c.name);
       expect(names).toContain('harborWater');
       expect(names).toContain('harborFlashers');
+      if (a.variant === 'marina') {
+        // The marina adds its boats and docks to the shared builders: more glow and paint than the same quay without it.
+        expect(kit.paint.vertexCount).toBeGreaterThan(200);
+        expect(kit.glow.vertexCount).toBeGreaterThan(1000);
+      }
       // The water reaches past the backdrop's far ridge (1950 m round the camera) from the quay's middle.
       const water = group.getObjectByName('harborWater') as THREE.Mesh;
       water.geometry.computeBoundingBox();

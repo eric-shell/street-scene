@@ -438,7 +438,9 @@ export const waterfrontModule: DistrictModule = {
     // The path is the sea wall's edge along the quay (architecture.ts reads waterside buildings off it).
     const path: Vec2[] = [];
     for (let u = s.pa; u <= s.pb + 1e-6; u += 16) path.push(framePoint(s.f, u, coastV(p, u)));
-    ctx.addArea({ kind: 'waterfront', variant: 'harbor', polygon, path, nodes: [], edges: [], faces: [], params: p }, footprint);
+    // Working docks or leisure moorings: its own stream, so a harbor seed plans and builds exactly as it did before the marina.
+    const variant = new Rng(deriveSeed(ctx.seed, 'waterfront:variant')).chance(CFG.marinaChance) ? 'marina' : 'harbor';
+    ctx.addArea({ kind: 'waterfront', variant, polygon, path, nodes: [], edges: [], faces: [], params: p }, footprint);
   },
 
   build(ctx, area) {
@@ -524,69 +526,72 @@ export const waterfrontModule: DistrictModule = {
 
     // Jetties along the coast (the quay's and the run on's), each behind a closed gate in the railing.
     const jetties: { u: number; len: number; w: number }[] = [];
-    const lo = p.openA ? p.pa - CFG.quayRun + 40 : p.pa + 50;
-    const hi = p.openB ? p.pb + CFG.quayRun - 40 : p.pb - 50;
-    const want = rng.int(CFG.jetties[0], CFG.jetties[1]);
-    for (let tries = 0; tries < 40 && jetties.length < want; tries++) {
-      const u = rng.range(lo, hi);
-      const w = rng.range(CFG.jettyWidth[0], CFG.jettyWidth[1]);
-      if (jetties.some((j) => Math.abs(j.u - u) < CFG.jettyGap)) continue;
-      // A jetty stands square to the coast: keep it where the coast runs nearly straight.
-      if (Math.abs(coastSlope(p, u - w) - coastSlope(p, u + w)) > 0.08) continue;
-      jetties.push({ u, len: rng.range(CFG.jettyLength[0], CFG.jettyLength[1]), w });
-    }
-    jetties.sort((x, y) => x.u - y.u);
     const prop = (kind: string, q: Vec2, yaw: number, size: number, height: number) => b.props.push({ kind, x: q.x, z: q.z, yaw, size, height, area: id });
     /** Out to sea, square to the wall at u, and its yaw (atan2(dx, dz)). */
     const seaward = (u: number) => {
       const { nx, nz } = coastNormal(p, u);
       return { nx, nz, yaw: atan2(nx, nz) };
     };
-    for (const j of jetties) {
-      const n = seaward(j.u);
-      const root = at(j.u, coast(j.u));
-      const tip = { x: root.x + n.nx * j.len, z: root.z + n.nz * j.len };
-      b.hints.push({ kind: 'jetty', points: [root, tip], values: [j.w] });
-      // The berth side (where a ship moors), +1 to the jetty's left looking out to sea.
-      const side = rng.chance(0.5) ? 1 : -1;
-      // Cranes astride the jetty's rails, booms out over the berth; container stacks between the rails clear of them.
-      const cranes = rng.int(CFG.cranesPerJetty[0], CFG.cranesPerJetty[1]);
-      const boom = atan2(-n.nz * side, n.nx * side);
-      const craneAt: number[] = [];
-      for (let k = 0; k < cranes; k++) {
-        const s = j.len * (cranes === 1 ? 0.55 : 0.35 + 0.4 * k);
-        craneAt.push(s);
-        prop('crane', { x: root.x + n.nx * s, z: root.z + n.nz * s }, boom, Math.min(CFG.craneGauge, j.w - 2) / 2, rng.range(CFG.craneHeight[0], CFG.craneHeight[1]));
+    if (area.variant === 'marina') marinaDocks(b, p, id, jetties, new Rng(deriveSeed(p.seed, 'marina')), seaward, at, coast);
+    else {
+      const lo = p.openA ? p.pa - CFG.quayRun + 40 : p.pa + 50;
+      const hi = p.openB ? p.pb + CFG.quayRun - 40 : p.pb - 50;
+      const want = rng.int(CFG.jetties[0], CFG.jetties[1]);
+      for (let tries = 0; tries < 40 && jetties.length < want; tries++) {
+        const u = rng.range(lo, hi);
+        const w = rng.range(CFG.jettyWidth[0], CFG.jettyWidth[1]);
+        if (jetties.some((j) => Math.abs(j.u - u) < CFG.jettyGap)) continue;
+        // A jetty stands square to the coast: keep it where the coast runs nearly straight.
+        if (Math.abs(coastSlope(p, u - w) - coastSlope(p, u + w)) > 0.08) continue;
+        jetties.push({ u, len: rng.range(CFG.jettyLength[0], CFG.jettyLength[1]), w });
       }
-      for (let s = 9; s < j.len - 8; s += 14) {
-        if (craneAt.some((c) => Math.abs(c - s) < 15) || !rng.chance(0.7)) continue;
-        prop('stack', { x: root.x + n.nx * s, z: root.z + n.nz * s }, n.yaw, 1, rng.int(1, 4));
+      jetties.sort((x, y) => x.u - y.u);
+      for (const j of jetties) {
+        const n = seaward(j.u);
+        const root = at(j.u, coast(j.u));
+        const tip = { x: root.x + n.nx * j.len, z: root.z + n.nz * j.len };
+        b.hints.push({ kind: 'jetty', points: [root, tip], values: [j.w] });
+        // The berth side (where a ship moors), +1 to the jetty's left looking out to sea.
+        const side = rng.chance(0.5) ? 1 : -1;
+        // Cranes astride the jetty's rails, booms out over the berth; container stacks between the rails clear of them.
+        const cranes = rng.int(CFG.cranesPerJetty[0], CFG.cranesPerJetty[1]);
+        const boom = atan2(-n.nz * side, n.nx * side);
+        const craneAt: number[] = [];
+        for (let k = 0; k < cranes; k++) {
+          const s = j.len * (cranes === 1 ? 0.55 : 0.35 + 0.4 * k);
+          craneAt.push(s);
+          prop('crane', { x: root.x + n.nx * s, z: root.z + n.nz * s }, boom, Math.min(CFG.craneGauge, j.w - 2) / 2, rng.range(CFG.craneHeight[0], CFG.craneHeight[1]));
+        }
+        for (let s = 9; s < j.len - 8; s += 14) {
+          if (craneAt.some((c) => Math.abs(c - s) < 15) || !rng.chance(0.7)) continue;
+          prop('stack', { x: root.x + n.nx * s, z: root.z + n.nz * s }, n.yaw, 1, rng.int(1, 4));
+        }
+        // A ship moored at the berth, its stern clear of the sea wall.
+        if (rng.chance(CFG.shipChance)) {
+          const len = rng.range(CFG.shipLength[0], CFG.shipLength[1]);
+          const beam = len * 0.15;
+          const o = side * (j.w / 2 + beam / 2 + 1.5);
+          const s = len / 2 + 6;
+          prop('ship', { x: root.x + n.nx * s - n.nz * o, z: root.z + n.nz * s + n.nx * o }, n.yaw + (rng.chance(0.5) ? 0 : Math.PI), len / 2, beam);
+        }
       }
-      // A ship moored at the berth, its stern clear of the sea wall.
-      if (rng.chance(CFG.shipChance)) {
-        const len = rng.range(CFG.shipLength[0], CFG.shipLength[1]);
-        const beam = len * 0.15;
-        const o = side * (j.w / 2 + beam / 2 + 1.5);
-        const s = len / 2 + 6;
-        prop('ship', { x: root.x + n.nx * s - n.nz * o, z: root.z + n.nz * s + n.nx * o }, n.yaw + (rng.chance(0.5) ? 0 : Math.PI), len / 2, beam);
-      }
-    }
-    // The run on quay past an open end: a row of cranes along its edge and container stacks behind.
-    for (const [open, u0, u1] of [
-      [p.openA, p.pa - CFG.quayRun, p.pa - 30],
-      [p.openB, p.pb + 30, p.pb + CFG.quayRun],
-    ] as const) {
-      if (!open) continue;
-      for (let u = u0 + rng.range(10, 30); u < u1; u += CFG.craneStep * rng.range(0.85, 1.2)) {
-        if (jetties.some((j) => Math.abs(j.u - u) < j.w / 2 + 14)) continue;
-        const n = seaward(u);
-        prop('crane', at(u, coast(u) - CFG.craneGauge / 2 - 1), n.yaw, CFG.craneGauge / 2, rng.range(CFG.craneHeight[0], CFG.craneHeight[1]));
-      }
-      // A stack is three rows of boxes wide (7.3 m): its near edge a couple of metres behind the cranes' landside rail.
-      for (let u = u0; u < u1; u += 15) {
-        if (!rng.chance(0.75)) continue;
-        const n = seaward(u);
-        prop('stack', at(u, coast(u) - CFG.craneGauge - 6.7), n.yaw + Math.PI / 2, 1, rng.int(1, 4));
+      // The run on quay past an open end: a row of cranes along its edge and container stacks behind.
+      for (const [open, u0, u1] of [
+        [p.openA, p.pa - CFG.quayRun, p.pa - 30],
+        [p.openB, p.pb + 30, p.pb + CFG.quayRun],
+      ] as const) {
+        if (!open) continue;
+        for (let u = u0 + rng.range(10, 30); u < u1; u += CFG.craneStep * rng.range(0.85, 1.2)) {
+          if (jetties.some((j) => Math.abs(j.u - u) < j.w / 2 + 14)) continue;
+          const n = seaward(u);
+          prop('crane', at(u, coast(u) - CFG.craneGauge / 2 - 1), n.yaw, CFG.craneGauge / 2, rng.range(CFG.craneHeight[0], CFG.craneHeight[1]));
+        }
+        // A stack is three rows of boxes wide (7.3 m): its near edge a couple of metres behind the cranes' landside rail.
+        for (let u = u0; u < u1; u += 15) {
+          if (!rng.chance(0.75)) continue;
+          const n = seaward(u);
+          prop('stack', at(u, coast(u) - CFG.craneGauge - 6.7), n.yaw + Math.PI / 2, 1, rng.int(1, 4));
+        }
       }
     }
     // A closed end's breakwater: a rubble mole out from the sea wall with a beacon at its tip.
@@ -623,6 +628,15 @@ export const waterfrontModule: DistrictModule = {
       b.destructibles.push({ kind: 'parkLamp', x: q.x, z: q.z, yaw: atan2(-n.nx, -n.nz), lift: curb, area: id });
     }
     const pieces: PropKind[] = ['crate', 'crate', 'barrel', 'pallets'];
+    // A marina's edge is bollards (mooring posts every few metres, clear of the gates and the lanterns) instead of dock clutter.
+    if (area.variant === 'marina') {
+      for (let u = p.pa + 6; u < p.pb - 4; u += CFG.bollardStep) {
+        if (gate(u) || lamps.some((l) => Math.abs(l - u) < 2.5)) continue;
+        const q = at(u, coast(u) - CFG.bollardInset);
+        b.destructibles.push({ kind: 'bollard', x: q.x, z: q.z, yaw: 0, lift: curb, area: id });
+      }
+      return b;
+    }
     for (let i = 0; i + 1 < lamps.length; i++) {
       if (!rng.chance(CFG.clutterChance)) continue;
       const u = (lamps[i] + lamps[i + 1]) / 2 + rng.range(-5, 5);
@@ -640,6 +654,103 @@ export const waterfrontModule: DistrictModule = {
     return b;
   },
 };
+
+/**
+ * A marina's moorings, in place of the working jetties (render only, each behind a closed gate in the railing, so
+ * `jetties` takes their roots for the lanterns, bollards and buoys to keep clear of): the yacht club on its deck
+ * over the water (hint 'clubhouse': root, values gate width, width, depth; dinghies pulled up on its deck and
+ * floating beside it are 'dinghy' props), the fuel dock ('fuel': root, tip, values gate width), and floating
+ * pontoons ('pontoon': root, tip, values gate width, spine width, slip length, slip pitch) with finger berths either
+ * side and the boats moored in them ('sailboat' / 'yacht' props: centre, yaw, size its length, height its beam).
+ * All of it stands where the coast runs nearly straight, at least clubClear m from one another.
+ */
+function marinaDocks(
+  b: AreaBuild,
+  p: Record<string, number>,
+  id: number,
+  jetties: { u: number; len: number; w: number }[],
+  rng: Rng,
+  seaward: (u: number) => { nx: number; nz: number; yaw: number },
+  at: (u: number, v: number) => Vec2,
+  coast: (u: number) => number,
+): void {
+  const lo = p.pa + 50;
+  const hi = p.pb - 50;
+  const straight = (u: number, w: number) => Math.abs(coastSlope(p, u - w) - coastSlope(p, u + w)) <= 0.08;
+  const free = (u: number, gap: number) => !jetties.some((j) => Math.abs(j.u - u) < gap);
+  const pick = (gap: number, half: number): number | null => {
+    for (let tries = 0; tries < 60; tries++) {
+      const u = rng.range(lo, hi);
+      if (free(u, gap) && straight(u, half)) return u;
+    }
+    return null;
+  };
+  const spineW = 2.4;
+
+  // The yacht club: a deck on piles over the water with the building at the quay's side and the terrace out to sea.
+  const [clubW, clubD] = CFG.club;
+  const uc = pick(CFG.clubClear, clubW / 2);
+  if (uc !== null) {
+    const n = seaward(uc);
+    const root = at(uc, coast(uc));
+    jetties.push({ u: uc, len: clubD, w: 5 });
+    b.hints.push({ kind: 'clubhouse', points: [root], values: [5, clubW, clubD] });
+    const d = { x: -n.nz, z: n.nx };
+    const dinghy = (s: number, o: number, afloat: number) =>
+      b.props.push({ kind: 'dinghy', x: root.x + n.nx * s + d.x * o, z: root.z + n.nz * s + d.z * o, yaw: n.yaw + (afloat ? rng.range(-0.6, 0.6) : (rng.chance(0.5) ? 0 : Math.PI) + rng.range(-0.15, 0.15)), size: rng.range(2.5, 3.3), height: afloat, area: id });
+    // Pulled up on the deck's ends, bottoms up on their racks, and tied off alongside it afloat.
+    for (const side of [-1, 1]) for (let k = 0, m = rng.int(1, 2); k < m; k++) dinghy(clubD - 3 - k * 3.2, side * (clubW / 2 - 2.2), 0);
+    for (let k = 0, m = rng.int(1, 3); k < m; k++) dinghy(clubD + 2 + rng.range(0, 1.5), rng.range(-clubW / 2 + 2, clubW / 2 - 2), 1);
+  }
+
+  // The fuel dock: a short float out from the wall with its pumps and canopy.
+  const uf = pick(CFG.clubClear, 8);
+  if (uf !== null) {
+    const n = seaward(uf);
+    const root = at(uf, coast(uf));
+    jetties.push({ u: uf, len: CFG.fuelLength, w: 3 });
+    b.hints.push({ kind: 'fuel', points: [root, { x: root.x + n.nx * CFG.fuelLength, z: root.z + n.nz * CFG.fuelLength }], values: [3] });
+  }
+
+  // Pontoons: a spine straight out, fingers every pitch, a boat in most of the slips either side.
+  const want = rng.int(CFG.pontoons[0], CFG.pontoons[1]);
+  const pitch = CFG.slipPitch;
+  let made = 0;
+  for (let tries = 0; tries < 80 && made < want; tries++) {
+    const u = rng.range(lo, hi);
+    const slipLen = rng.range(CFG.slipLength[0], CFG.slipLength[1]);
+    if (!free(u, Math.max(CFG.pontoonGap, CFG.clubClear)) || !straight(u, slipLen + 4)) continue;
+    const len = rng.range(CFG.pontoonLength[0], CFG.pontoonLength[1]);
+    jetties.push({ u, len, w: CFG.gangway });
+    made++;
+    const n = seaward(u);
+    const root = at(u, coast(u));
+    b.hints.push({ kind: 'pontoon', points: [root, { x: root.x + n.nx * len, z: root.z + n.nz * len }], values: [CFG.gangway, spineW, slipLen, pitch] });
+    const slips = Math.floor((len - 7) / pitch);
+    for (const side of [-1, 1]) {
+      const d = { x: -n.nz * side, z: n.nx * side };
+      const heading = atan2(d.x, d.z);
+      for (let k = 0; k < slips; k++) {
+        if (!rng.chance(CFG.slipFill)) continue;
+        const sail = rng.chance(0.6);
+        const length = sail ? rng.range(slipLen - 3.5, slipLen - 0.5) : rng.range(slipLen - 2.5, slipLen);
+        const beam = Math.min(pitch - 1.4, length * (sail ? 0.31 : 0.33));
+        const s = 7 + (k + 0.5) * pitch;
+        const o = spineW / 2 + length / 2 + 0.2;
+        b.props.push({
+          kind: sail ? 'sailboat' : 'yacht',
+          x: root.x + n.nx * s + d.x * o,
+          z: root.z + n.nz * s + d.z * o,
+          yaw: heading + (rng.chance(0.5) ? 0 : Math.PI),
+          size: length,
+          height: beam,
+          area: id,
+        });
+      }
+    }
+  }
+  jetties.sort((x, y) => x.u - y.u);
+}
 
 /**
  * The quay's outline: its back edge (the outline, or maxDepth in from the coast across a shed's recess)
