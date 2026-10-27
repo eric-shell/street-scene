@@ -65,6 +65,7 @@ const frag = /* glsl */ `
   uniform vec3 uAsphalt;
   uniform vec3 uConcrete;
   uniform vec3 fogColor;
+  ${HEIGHT_FOG_GLSL}
   uniform float uAlpha;
   varying float vEdge;
   varying float vAlpha;
@@ -74,7 +75,7 @@ const frag = /* glsl */ `
     // Soft shoulders: the tread's edges lay less rubber than its middle.
     float across = 1.0 - vEdge * vEdge;
     float a = vAlpha * uAlpha * smoothstep(0.0, 0.55, across);
-    vec3 col = mix(fogColor, mix(uAsphalt, uConcrete, vTint), vFog);
+    vec3 col = mix(hfFogColorCam(fogColor), mix(uAsphalt, uConcrete, vTint), vFog);
     gl_FragColor = vec4(col, a);
   }
 `;

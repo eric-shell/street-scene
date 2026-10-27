@@ -56,6 +56,8 @@ const GROUND_FX = {
   glowY: 0.06,
   /** Headlight pool over the ground (m). */
   beamY: 0.07,
+  /** The headlight pool's colour (additive, linear-ish): 0x6f7a8a at 0.7 so the road beside the car keeps a falloff instead of a white blob. */
+  beamColor: 0x4e5561,
   /** Body height over its rest (m) at which the underglow on the road has faded to half: it spreads and dims on a jump. */
   airHalf: 0.5,
 } as const;
@@ -257,7 +259,7 @@ export class CarView {
     }
 
     // Headlight beams: a soft additive pool on the road ahead (cheap), plus real spots for the player.
-    const beamMat = track(new THREE.MeshBasicMaterial({ map: glow(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, color: 0x6f7a8a }));
+    const beamMat = track(new THREE.MeshBasicMaterial({ map: glow(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, color: GROUND_FX.beamColor }));
     underVehicles(beamMat);
     this.beam = new THREE.Mesh(new THREE.PlaneGeometry(9, 22).rotateX(-Math.PI / 2).translate(0, GROUND_FX.beamY, dims.length / 2 + 10), beamMat);
     this.beam.renderOrder = 3;

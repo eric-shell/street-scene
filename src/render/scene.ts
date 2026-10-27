@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { World } from '../city/world';
 import { QUALITY, QualityProfile, Settings } from '../ui/settings';
 import { buildCityMeshes, CityMeshes } from './street/cityMeshes';
-import { buildLightFx, LightFx } from './street/lightFx';
+import { buildLightFx, LIGHT_FX, LightFx } from './street/lightFx';
 import { buildLampCones } from './street/lampCones';
 import { collectStreakEmitters } from './street/streakEmitters';
 import { fitLampPositions, LAMP_TONES, planLamps, toneColor } from './street/lampStyle';
@@ -49,7 +49,7 @@ const RETRO_HEIGHT = 240;
  * of wetness the weather adds on top (a night that turns wetter glows further on the road; one that dries dims,
  * and a seed that never turns keeps exactly these two numbers).
  */
-const FX_STRENGTH = { pool: 0.42, streak: 0.85, perWet: 0.6 } as const;
+const FX_STRENGTH = { pool: LIGHT_FX.pool, streak: LIGHT_FX.streak, perWet: 0.6 } as const;
 
 /**
  * Each night scene's colour grade (its seed's city identity). The grade lives with the scene, not on the post

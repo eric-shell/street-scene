@@ -104,6 +104,7 @@ const vert = /* glsl */ `
 const frag = /* glsl */ `
   uniform sampler2D map;
   uniform vec3 fogColor;
+  ${HEIGHT_FOG_GLSL}
   uniform vec2 uAlpha; // smoke, spray
   varying vec2 vUv;
   varying float vAlpha;
@@ -112,7 +113,7 @@ const frag = /* glsl */ `
   varying float vKind;
   void main() {
     float a = texture2D(map, vUv).a * vAlpha * mix(uAlpha.x, uAlpha.y, vKind);
-    gl_FragColor = vec4(mix(fogColor, vTint, vFog), a);
+    gl_FragColor = vec4(mix(hfFogColorCam(fogColor), vTint, vFog), a);
   }
 `;
 

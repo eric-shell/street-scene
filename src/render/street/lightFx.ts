@@ -73,6 +73,14 @@ const GRADE = {
 export const SIGNAL = { cycle: 24, green: 9, amber: 11 } as const;
 
 /**
+ * The scene's strengths for the two fake lights (setStrength): `pool` is the opacity of the additive ground pool under
+ * each streetlight, `streak` the multiplier on every reflection streak. The real lamp point lights (lighting.ts
+ * LAMP_LIGHT) carry the road's light now, so the pool sits a little under the first pass (0.42) and the streaks,
+ * the wet street's look, stay as they were.
+ */
+export const LIGHT_FX = { pool: 0.3, streak: 0.85 } as const;
+
+/**
  * What kind of emitter a streak belongs to. Width (m) is the quad's full width before the gaussian across it, so
  * the lit core is about a third of it. `heightScale` multiplies the emitter's height over the surface (m) before the
  * shader stretches the streak (2.4 times that, capped at three quarters of the distance to the camera): small

@@ -1006,9 +1006,10 @@ const FLASH_VERT = /* glsl */ `
 
 const FLASH_FRAG = /* glsl */ `
   uniform vec3 fogColor;
+  ${HEIGHT_FOG_GLSL}
   varying vec3 vColor;
   varying float vFog;
   void main() {
-    gl_FragColor = vec4(mix(fogColor, vColor, vFog), 1.0);
+    gl_FragColor = vec4(mix(hfFogColorCam(fogColor), vColor, vFog), 1.0);
   }
 `;

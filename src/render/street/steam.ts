@@ -68,13 +68,14 @@ const frag = /* glsl */ `
   uniform sampler2D map;
   uniform vec3 uColor;
   uniform vec3 fogColor;
+  ${HEIGHT_FOG_GLSL}
   uniform float uAlpha;
   varying vec2 vUv;
   varying float vAlpha;
   varying float vFog;
   void main() {
     float a = texture2D(map, vUv).a * vAlpha * uAlpha;
-    vec3 col = mix(fogColor, uColor, vFog);
+    vec3 col = mix(hfFogColorCam(fogColor), uColor, vFog);
     gl_FragColor = vec4(col, a);
   }
 `;
