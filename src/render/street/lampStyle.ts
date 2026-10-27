@@ -1,9 +1,13 @@
 /**
  * The look of every streetlight, per neighbourhood: which of the three post designs stands there (propGeometry
  * `LampDesign`) and what colour it burns (sodium amber, warm white, cool white LED). The region comes from the
- * building plan's Voronoi cells (architecture.ts `regionAt`), so a lamp matches the facades around it; a
- * per-seed twist (`deriveSeed(seed, 'lamps')`) now and then retrofits the whole city to LED, keeps it all
- * sodium, or swaps one region's colour and one region's post, so no two cities light the same way.
+ * building plan's Voronoi cells (architecture.ts `regionAt`), so a lamp matches the facades around it. Each
+ * region's defaults are its home profile's lamps (cityIdentity.ts `HOME_PROFILES`). A per-seed twist
+ * (`deriveSeed(seed, 'lamps')`) now and then takes the home's colour city-wide (all-sodium New York or
+ * Philadelphia, an LED San Francisco; Los Angeles and Miami never, their warm white everywhere would wash out the
+ * neighbourhood contrast), or swaps one other region's colour and one other region's post, so no two cities
+ * light the same way. The home itself is never swapped: its lamps are part of what the seed is, and a city-wide
+ * outcome can only ever agree with it.
  *
  * One plan per world, read by the props (post set and lens tint), lightFx (pool and streak colour) and the point
  * light pool (lighting.ts), so the pole, its lens, the pool on the ground and the real light always agree. The
@@ -13,6 +17,7 @@ import * as THREE from 'three';
 import type { World } from '../../city/world';
 import { Rng, deriveSeed } from '../../sim/prng';
 import { regionAt, type Region } from '../buildings/architecture';
+import { cityIdentity, HOME_PROFILES } from '../cityIdentity';
 import { LAMP_DESIGNS, LAMP_DIMS, STREETLIGHT_POLE_H, type LampDesign } from './propGeometry';
 
 export type LampTone = 'sodium' | 'warm' | 'cool';
@@ -26,12 +31,8 @@ export const LAMP_TONES: Record<LampTone, { lens: number; pool: number; streak: 
   cool: { lens: 0xd6e8ff, pool: 0xa9c8ff, streak: 0xaecbff, light: 0xbcd4ff },
 };
 
-/** The region defaults before the per-seed twist. */
-const REGION_TONE: Record<Region, LampTone> = { nyc: 'sodium', philly: 'sodium', la: 'warm', miami: 'warm', sf: 'cool' };
-const REGION_DESIGN: Record<Region, LampDesign> = { nyc: 'cobra', philly: 'historic', sf: 'historic', la: 'modern', miami: 'modern' };
-
-/** The per-seed twist odds: all-LED retrofit, an all-sodium city, one region's colour swapped, and (separately) one region's post swapped. */
-export const LAMP_TWIST = { retrofit: 0.1, allSodium: 0.1, regionTone: 0.35, regionDesign: 0.45 } as const;
+/** The per-seed twist odds: the home's colour city-wide (where its profile allows), one other region's colour swapped, and (separately) one other region's post swapped. */
+export const LAMP_TWIST = { citywide: 0.2, regionTone: 0.35, regionDesign: 0.45 } as const;
 
 export interface LampPlan {
   /** Per streetlight (CityBlocks.streetlights order). */
@@ -52,17 +53,23 @@ export function planLamps(world: World): LampPlan {
 
 function planOnce(world: World): LampPlan {
   const rng = new Rng(deriveSeed(world.seed, 'lamps'));
-  const regionTone = { ...REGION_TONE };
-  const regionDesign = { ...REGION_DESIGN };
+  const id = cityIdentity(world.seed);
+  const regionTone = {} as Record<Region, LampTone>;
+  const regionDesign = {} as Record<Region, LampDesign>;
+  for (const r of REGION_IDS) {
+    regionTone[r] = HOME_PROFILES[r].lamps.tone;
+    regionDesign[r] = HOME_PROFILES[r].lamps.design;
+  }
+  const others = REGION_IDS.filter((r) => r !== id.home);
   const roll = rng.next();
-  if (roll < LAMP_TWIST.retrofit) for (const r of REGION_IDS) regionTone[r] = 'cool';
-  else if (roll < LAMP_TWIST.retrofit + LAMP_TWIST.allSodium) for (const r of REGION_IDS) regionTone[r] = 'sodium';
-  else if (roll < LAMP_TWIST.retrofit + LAMP_TWIST.allSodium + LAMP_TWIST.regionTone) {
-    const r = rng.pick(REGION_IDS);
+  if (roll < LAMP_TWIST.citywide) {
+    if (id.lamps.citywide) for (const r of REGION_IDS) regionTone[r] = id.lamps.tone;
+  } else if (roll < LAMP_TWIST.citywide + LAMP_TWIST.regionTone) {
+    const r = rng.pick(others);
     regionTone[r] = rng.pick(TONE_IDS.filter((t) => t !== regionTone[r]));
   }
   if (rng.chance(LAMP_TWIST.regionDesign)) {
-    const r = rng.pick(REGION_IDS);
+    const r = rng.pick(others);
     regionDesign[r] = rng.pick(LAMP_DESIGNS.filter((d) => d !== regionDesign[r]));
   }
   const at = regionAt(world);

@@ -10,7 +10,8 @@ import { buildLightFx, LightFx } from './street/lightFx';
 import { fitLampPositions, LAMP_TONES, planLamps, toneColor } from './street/lampStyle';
 import { fadeSubPixel } from './materialFx';
 import { NightLighting } from './lighting';
-import { POST_TAPS, PostFx } from './post';
+import { NEUTRAL_GRADE, POST_GRAIN, POST_TAPS, PostFx, type GradeParams } from './post';
+import { cityIdentity } from './cityIdentity';
 import { makeNightEnvironment } from './textures/textures';
 import { buildRouteArrows, classifyBarriers, RouteArrows } from './race/routeArrows';
 import { MEET_VARIANTS, buildRoadblocks, parkedCars, type Roadblocks } from './race/roadblocks';
@@ -36,6 +37,14 @@ import { CityChunks, chunkGrid, fogCutoff, type ChunkClass } from './cityChunks'
 /** Retro mode's render height (px): the view is drawn this many pixels tall and scaled up. */
 const RETRO_HEIGHT = 240;
 
+/**
+ * Each night scene's colour grade (its seed's city identity). The grade lives with the scene, not on the post
+ * chain, because one GameRenderer shows several scenes in turn: the menu city, a race of another seed built
+ * while the menu still shows, the garage's workshop (no grade). GameRenderer.render applies it whenever the
+ * rendered scene changes, so whichever scene is on screen wears its own.
+ */
+const sceneGrades = new WeakMap<THREE.Scene, GradeParams>();
+
 export class GameRenderer {
   readonly renderer: THREE.WebGLRenderer;
   readonly post: PostFx;
@@ -49,6 +58,8 @@ export class GameRenderer {
   /** Screen a menu rail covers (CSS px from the left and the bottom), eased toward frameTarget. */
   private frame = { left: 0, bottom: 0 };
   private frameTarget = { left: 0, bottom: 0 };
+  /** The scene whose grade the post chain holds. */
+  private gradedScene: THREE.Scene | null = null;
 
   constructor(readonly canvas: HTMLCanvasElement, settings: Settings) {
     this.settings = settings;
@@ -71,7 +82,7 @@ export class GameRenderer {
   applySettings(s: Settings): void {
     this.settings = s;
     const q = this.profile;
-    this.post.configure({ bloom: q.bloom, bloomScale: q.bloomScale, bloomStrength: q.bloomStrength, retro: s.retro, msaa: q.antialias ? 4 : 0, taps: POST_TAPS[s.quality] });
+    this.post.configure({ bloom: q.bloom, bloomScale: q.bloomScale, bloomStrength: q.bloomStrength, retro: s.retro, msaa: q.antialias ? 4 : 0, taps: POST_TAPS[s.quality], grain: POST_GRAIN[s.quality] });
     this.canvas.style.imageRendering = s.retro ? 'pixelated' : 'auto';
     this.resize();
   }
@@ -138,6 +149,10 @@ export class GameRenderer {
     f.bottom += (this.frameTarget.bottom - f.bottom) * k;
     if (Math.abs(f.left) > 0.5 || Math.abs(f.bottom) > 0.5) camera.setViewOffset(this.width, this.height, -f.left / 2, f.bottom / 2, this.width, this.height);
     else if (camera.view?.enabled) camera.clearViewOffset();
+    if (scene !== this.gradedScene) {
+      this.gradedScene = scene;
+      this.post.setGrade(sceneGrades.get(scene) ?? NEUTRAL_GRADE);
+    }
     this.post.setScene(scene, camera);
     this.post.render(dt);
   }
@@ -175,6 +190,8 @@ export interface NightScene {
 export function createNightScene(world: World, gr: GameRenderer, settings: Settings): NightScene {
   const scene = new THREE.Scene();
   scene.environment = gr.envMap;
+  // The seed's colour grade, worn whenever this scene is the one rendered (the menu stage and a race alike).
+  sceneGrades.set(scene, cityIdentity(world.seed).grade);
   // The seed's mood first: it sets the fog every other build fogs itself with, the sky and the haze.
   // Flash effects (lightning, the police light bar) follow the live setting; off softens them.
   const flashes = () => settings.flashEffects !== false;
