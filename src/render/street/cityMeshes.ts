@@ -62,6 +62,8 @@ export interface CityMeshOptions {
 
 /** Asphalt over the sim's ground (m): cars are drawn this much higher so their tires stand on it (CarView roadLift). */
 export const ROAD_Y = 0.02;
+/** A roundabout's asphalt starts this far outside the island's radius (m): under the island's curb cap (0.25 m wide), so the slit between lawn and road never shows and the two never overlap. */
+const ISLAND_ROAD_MARGIN = 0.15;
 const MARK_Y = 0.045;
 /** Curb faces reach this far below the ground (m), under the road's edge. */
 const CURB_FOOT = 0.08;
@@ -220,12 +222,13 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
   // The river draws its channel floor and ramps itself (render/districts/river.ts): no asphalt, markings,
   // curbs or sidewalks on its edges, nor at the nodes that only join them. A loop mouth's dead end (the
   // foot of an expressway loop) has no junction either: the loop's road carries on from it.
+  const islandRadius = new Map<number, number>();
+  for (const a of world.areas) if (a.kind === 'roundabout') for (const ni of a.nodes) islandRadius.set(ni, a.params.island);
   const riverOnly = g.nodes.map((n) => n.edges.every((eid) => isRiverEdge(g.edges[eid]) || g.edges[eid].kind === 'mouth'));
   g.nodes.forEach((n, ni) => {
     if (riverOnly[ni]) return;
     const ring: Vec2[] = [];
     for (const s of sectors[ni]) for (const p of s.curb) ring.push(p);
-    const c = addGroundVertex(road, n.x, n.z, ROAD_Y, 10);
     let reach = 0;
     for (const p of ring) reach = Math.max(reach, Math.hypot(p.x - n.x, p.z - n.z));
     // Under or beside a deck's shadow the fan is cut finer, rings and arcs alike, so its edge shows.
@@ -247,13 +250,22 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     }
     // Concentric rings out to the curb (the last one is the curb ring itself), so a wide fan drapes.
     const bands = Math.max(1, Math.ceil(reach / (fine ? OC.rowStep : n.ring ? FAN_STEP_RING : FAN_STEP)));
-    let inner: number[] = [];
+    // A roundabout's island district paves its disc itself (districts/roundabout.ts): the asphalt starts at the island's edge, so no road lies under the island (and the island never competes with it in depth).
+    const isle = islandRadius.get(ni);
+    let t0 = 0;
+    if (isle) {
+      let rmin = Infinity;
+      for (const p of ring) rmin = Math.min(rmin, Math.hypot(p.x - n.x, p.z - n.z));
+      if (rmin > isle + ISLAND_ROAD_MARGIN) t0 = (isle + ISLAND_ROAD_MARGIN) / rmin;
+    }
+    let inner: number[] = t0 > 0 ? ring.map((p) => addGroundVertex(road, n.x + (p.x - n.x) * t0, n.z + (p.z - n.z) * t0, ROAD_Y, 10)) : [];
+    const c = t0 > 0 ? -1 : addGroundVertex(road, n.x, n.z, ROAD_Y, 10);
     for (let j = 1; j <= bands; j++) {
-      const t = j / bands;
+      const t = t0 + ((1 - t0) * j) / bands;
       const ids = ring.map((p) => addGroundVertex(road, n.x + (p.x - n.x) * t, n.z + (p.z - n.z) * t, ROAD_Y, 10));
       for (let i = 0; i < ids.length; i++) {
         const k = (i + 1) % ids.length;
-        if (j === 1) road.triFacing(c, ids[i], ids[k], 0, 1, 0);
+        if (j === 1 && c >= 0) road.triFacing(c, ids[i], ids[k], 0, 1, 0);
         else road.quadFacing(inner[i], ids[i], ids[k], inner[k], 0, 1, 0);
       }
       inner = ids;
