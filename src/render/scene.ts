@@ -20,7 +20,7 @@ import { MEET_QUALITY, planMeets } from './race/meetPlan';
 import { buildProps, PropRenderer } from './street/props';
 import { buildDistrictMeshes } from './districts';
 import { Backdrop, buildBackdrop } from './sky/backdrop';
-import { CROWD_QUALITY, buildCrowds, Crowds } from './race/crowds';
+import { CROWD_IMPOSTOR, CROWD_QUALITY, buildCrowds, Crowds } from './race/crowds';
 import { IDLE_QUALITY, buildIdlers, Idlers } from './people/idlers';
 import { planIdlers } from './people/idleSpots';
 import { buildStreetPolish } from './street/streetPolish';
@@ -308,7 +308,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   const crowdQ = CROWD_QUALITY[settings.quality];
   const gates = world.openWorld ? [] : city.finishLine.gates;
   const markets = planMarketCrowd(world, crowdQ.density);
-  const crowds = buildCrowds(world, gates, { ...crowdQ, drawDistance: meetQ.crowdDraw, meet, sections: markets });
+  const crowds = buildCrowds(world, gates, { ...crowdQ, drawDistance: meetQ.crowdDraw, meet, sections: markets, renderer: gr.renderer, impostor: CROWD_IMPOSTOR[settings.quality] });
   scene.add(crowds.group);
   // Idle people: waiting, sitting and chatting around the city, off the route and away from the stands (people/idleSpots.ts).
   const idleQ = IDLE_QUALITY[settings.quality];

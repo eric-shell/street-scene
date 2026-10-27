@@ -9,6 +9,13 @@
  * beyond the quality's lodNear; sections past the draw distance are not drawn at all, and
  * density and draw distance follow the graphics quality.
  *
+ * Far from the camera (CROWD_IMPOSTOR.distance, 40 to 90 m by quality) a person
+ * is no longer a mesh but a camera-facing quad from a sprite sheet baked from
+ * this very rig (people/impostors.ts): a third InstancedMesh per batch sharing
+ * the instance buffers, the far level fading out and the quad in over a band
+ * with complementary dithers, per person, so the switch does not pop. Where
+ * there is no renderer to bake with the stands keep the far level to the end.
+ *
  * Animation is all in the vertex shader: the person's pose is computed per
  * instance from one float ("excitement") and a phase: idle sway, weight
  * shifting and a glance around, clapping as it rises, arms up waving and
@@ -28,6 +35,8 @@ import { routeSample } from '../../city/route';
 import { distToSegment } from '../../sim/math';
 import type { Quality } from '../../ui/settings';
 import { WEAR, personGeometry, personMaterial, writeLook } from '../people/person';
+import { IMPOSTOR_DITHER_GLSL, bakeImpostors, impostorMaterial, impostorQuad, nearestImpostorLook } from '../people/impostors';
+import type { ImpostorPose, ImpostorSheet, ImpostorSpec } from '../people/impostors';
 import { streetLook } from '../people/looks';
 import { BACK, FWD, groundY, makePlacer, nearestCars, thin } from '../people/placer';
 import type { Placer } from '../people/placer';
@@ -67,6 +76,30 @@ export const CROWD_QUALITY: Record<Quality, { density: number; rows: number; lod
   high: { density: 1, rows: 3, lodNear: 45 },
 };
 
+/**
+ * Impostors per graphics quality: the distance (m) where a person becomes a sprite, the width (m) of the band round
+ * it where the far rig and the sprite dither into each other, and the sheet baked for it (people/impostors.ts: the
+ * texture's edge and a cell in px, the looks by what they hold, frames per pose, view angles). Sheet memory with
+ * mips: low 1.4 MB (512 px, 6 looks x 4 poses x 3 frames x 4 angles = 288 of 350 cells), medium 5.6 MB (1024 px,
+ * 10 looks x 4 x 4 x 4 = 640 of 720 cells), high 22.4 MB (2048 px, 12 looks x 4 x 4 x 8 = 1536 of 1792 cells).
+ */
+export const CROWD_IMPOSTOR: Record<Quality, ImpostorSpec & { distance: number; fade: number }> = {
+  low: { distance: 40, fade: 8, sheet: 512, cellW: 20, cellH: 36, plain: 3, phones: 1, flags: 1, sticks: 1, frames: 3, angles: 4 },
+  medium: { distance: 60, fade: 10, sheet: 1024, cellW: 28, cellH: 50, plain: 6, phones: 2, flags: 1, sticks: 1, frames: 4, angles: 4 },
+  high: { distance: 90, fade: 14, sheet: 2048, cellW: 36, cellH: 64, plain: 8, phones: 2, flags: 1, sticks: 1, frames: 4, angles: 8 },
+};
+
+/**
+ * The poses a sheet bakes: the rig's excitement for each (idle, clapping, arms up waving, jumping) and the period
+ * (s) of the motion that matters in it: the idle sway 2 pi / 1.1, the clap 2 pi / 9, the wave about 2 pi / 8.5.
+ */
+export const CROWD_IMPOSTOR_POSES: readonly ImpostorPose[] = [
+  { excite: 0, period: 5.7 },
+  { excite: 0.45, period: 0.7 },
+  { excite: 1, period: 0.75 },
+  { excite: 1.4, period: 0.75 },
+];
+
 export interface CrowdOptions {
   /** 0..1 people per meter scale (graphics quality). */
   density?: number;
@@ -78,6 +111,12 @@ export interface CrowdOptions {
   drawDistance?: number;
   /** A batch nearer than this to the camera (m, from its edge) draws the full person, further the far level. */
   lodNear?: number;
+  /** The renderer to bake the impostor sheet with; none (tests, the headless perf script) keeps the far rig out to the draw distance. */
+  renderer?: THREE.WebGLRenderer;
+  /** The quality's impostor distance, band and sheet; none draws no impostors. */
+  impostor?: ImpostorSpec & { distance: number; fade: number };
+  /** An already baked sheet instead of baking one (the headless LOD counts use a stand-in). */
+  sheet?: ImpostorSheet | null;
   /** More sections that belong to the city rather than to a meet (the night market's pens, marketPlan.ts), drawn like a meet's. */
   sections?: readonly (readonly MeetPerson[])[];
 }
@@ -86,6 +125,8 @@ export interface Crowds {
   group: THREE.Group;
   /** Audio stands; levels refresh in update(). */
   spots: CrowdSpot[];
+  /** The impostor sheet the stands draw past the impostor distance (its memory is `sheet.bytes`), or null when they keep the far rig. */
+  readonly sheet: ImpostorSheet | null;
   /** Number of spectators. */
   readonly count: number;
   /** Number of sections (stands away from the start / finish). */
@@ -109,6 +150,8 @@ const MAX_CARS = 4;
 const BATCH = 48;
 /** A batch switches level only this far (m) past lodNear, so people do not pop at the line. */
 const LOD_HYST = 4;
+/** A person is a point plus its body and a push away from cars: the slack (m) added to a batch's bounds before skipping a level. */
+const IMPOSTOR_MARGIN = 3;
 /** A meet with fewer people than this gets no stand. */
 const SECTION_MIN = 6;
 /** A racer this close excites people (m). */
@@ -190,13 +233,33 @@ const CROWD_POST = /* glsl */ `
   vPersonGlow *= clamp(28.0 / max(distance(cWorld, cameraPosition), 1.0), 0.15, 1.0);
 `;
 
-function crowdMaterial(uniforms: { uTime: { value: number }; uCars: { value: THREE.Vector4[] } }): THREE.MeshStandardMaterial {
-  const mat = personMaterial({ pars: CROWD_PARS, pose: CROWD_POSE, post: CROWD_POST, key: 'crowd' });
+/** The crowd's pose with the clock read from the instance (iData.z) instead of the uniform: the sheet bakes one frame per instance. */
+const BAKE_POSE = CROWD_POSE.replace('float cT = uTime;', 'float cT = iData.z;');
+
+/** The far level that fades into impostors: the person's distance to the camera, as a 0..1 fade (the impostor's own, people/impostors.ts). */
+const LITE_PARS = /* glsl */ `
+uniform vec2 uImp;
+varying float vImpFade;
+`;
+const LITE_POST = /* glsl */ `
+  float cImpDist = distance((modelMatrix * vec4(instanceMatrix[3].xyz, 1.0)).xyz, cameraPosition);
+  vImpFade = smoothstep(uImp.x - uImp.y, uImp.x + uImp.y, cImpDist);
+`;
+
+/** The crowd's material; `fade` is the far level's, which dithers out where the impostors dither in (uImp: distance and half band, m). */
+function crowdMaterial(uniforms: { uTime: { value: number }; uCars: { value: THREE.Vector4[] } }, fade?: { value: THREE.Vector2 }): THREE.MeshStandardMaterial {
+  const mat = personMaterial({ pars: fade ? CROWD_PARS + LITE_PARS : CROWD_PARS, pose: CROWD_POSE, post: fade ? CROWD_POST + LITE_POST : CROWD_POST, key: fade ? 'crowd-fade' : 'crowd' });
   const compile = mat.onBeforeCompile;
   mat.onBeforeCompile = (shader, renderer) => {
     shader.uniforms.uTime = uniforms.uTime;
     shader.uniforms.uCars = uniforms.uCars;
     compile(shader, renderer);
+    if (fade) {
+      shader.uniforms.uImp = fade;
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', `#include <common>\nvarying float vImpFade;\n${IMPOSTOR_DITHER_GLSL}`)
+        .replace('#include <color_fragment>', '#include <color_fragment>\nif (vImpFade > impNoise(gl_FragCoord.xy)) discard;');
+    }
   };
   return mat;
 }
@@ -305,6 +368,8 @@ function placeGate(world: World, gate: CrowdGate, rng: Rng, density: number, row
 interface Batch {
   mesh: THREE.InstancedMesh;
   lite: THREE.InstancedMesh;
+  /** The sprite level past the impostor distance, or null without a sheet. */
+  imp: THREE.InstancedMesh | null;
   excite: THREE.InstancedBufferAttribute;
   cx: number;
   cz: number;
@@ -344,7 +409,14 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
   const geo = personGeometry('crowd');
   const liteGeo = personGeometry('far');
   const uniforms = { uTime: { value: 0 }, uCars: { value: Array.from({ length: MAX_CARS }, () => new THREE.Vector4(1e6, 1e6, 0, 0)) } };
+  // The impostor sheet: baked once per page from the rig (or handed in); none keeps the far level to the draw distance.
+  const spec = opts.impostor;
+  const sheet = spec ? (opts.sheet !== undefined ? opts.sheet : opts.renderer ? bakeImpostors(opts.renderer, spec, CROWD_IMPOSTOR_POSES, { pars: CROWD_PARS, pose: BAKE_POSE, key: 'crowd' }) : null) : null;
+  const band = { value: new THREE.Vector2(spec?.distance ?? 1e6, (spec?.fade ?? 0) / 2) };
   const mat = crowdMaterial(uniforms);
+  const liteMat = sheet ? crowdMaterial(uniforms, band) : mat;
+  const impMat = sheet ? impostorMaterial(sheet, { uTime: uniforms.uTime, uImp: band }) : null;
+  const quad = sheet ? impostorQuad() : null;
   const stands: Stand[] = [];
   const spots: CrowdSpot[] = [];
   const dummy = new THREE.Object3D();
@@ -362,6 +434,7 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
     const people = input.slice().sort((p, q) => along(p) - along(q));
     const lookA = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);
     const lookB = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);
+    const lookIdx = new Float32Array(n);
     const data = new Float32Array(n * 4);
     const matrices = new Float32Array(n * 16);
     const excite = new Float32Array(n);
@@ -386,6 +459,7 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
       // Items: about 22% phones, 10% flags, 10% glowsticks.
       look.wear |= r < 0.22 ? WEAR.phone : r < 0.32 ? WEAR.flag : r < 0.42 ? WEAR.glowstick : 0;
       writeLook(lookA, lookB, i, look);
+      if (sheet) lookIdx[i] = nearestImpostorLook(sheet.looks, look);
       // Phase and style (how big a mover) for the shader's pose.
       data.set([rng.next(), rng.next(), 0, 0], i * 4);
       x[i] = p.x;
@@ -442,12 +516,29 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
       gl.setAttribute('lookB', bB);
       gl.setAttribute('iData', bData);
       gl.setAttribute('iExcite', bExcite);
-      const lite = new THREE.InstancedMesh(gl, mat, m);
+      const lite = new THREE.InstancedMesh(gl, liteMat, m);
       lite.name = mesh.name + 'Far';
       lite.instanceMatrix = mesh.instanceMatrix;
       lite.boundingSphere = mesh.boundingSphere?.clone() ?? null;
       lite.visible = false;
       group.add(lite);
+      // The impostor shares the instance buffers too; its look index is its own.
+      let imp: THREE.InstancedMesh | null = null;
+      if (quad && impMat) {
+        const gi = new THREE.BufferGeometry();
+        gi.setAttribute('position', quad.attributes.position);
+        gi.setIndex(quad.index);
+        gi.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 1.1, 0), 2.1);
+        gi.setAttribute('iData', bData);
+        gi.setAttribute('iExcite', bExcite);
+        gi.setAttribute('iLook', view(lookIdx, 1));
+        imp = new THREE.InstancedMesh(gi, impMat, m);
+        imp.name = mesh.name + 'Impostor';
+        imp.instanceMatrix = mesh.instanceMatrix;
+        imp.boundingSphere = mesh.boundingSphere?.clone() ?? null;
+        imp.visible = false;
+        group.add(imp);
+      }
       let bx = 0;
       let bz = 0;
       for (let i = s0; i < s0 + m; i++) {
@@ -458,7 +549,7 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
       bz /= m;
       let br = 0;
       for (let i = s0; i < s0 + m; i++) br = Math.max(br, Math.hypot(x[i] - bx, z[i] - bz));
-      batches.push({ mesh, lite, excite: bExcite, cx: bx, cz: bz, radius: br, near: false });
+      batches.push({ mesh, lite, imp, excite: bExcite, cx: bx, cz: bz, radius: br, near: false });
     }
     const spot0 = spots.length;
     for (const e of ends) {
@@ -491,9 +582,11 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
   // The menu backdrop never calls update(): keep the idle animation going from the render clock.
   let externalAt = -1;
   if (stands.length) {
-    stands[0].batches[0].mesh.onBeforeRender = stands[0].batches[0].lite.onBeforeRender = () => {
+    const first = stands[0].batches[0];
+    first.mesh.onBeforeRender = first.lite.onBeforeRender = () => {
       if (externalAt < 0 || performance.now() - externalAt > 500) uniforms.uTime.value = performance.now() / 1000;
     };
+    if (first.imp) first.imp.onBeforeRender = first.lite.onBeforeRender;
   }
 
   let enabled = true;
@@ -510,6 +603,8 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
     externalAt = performance.now();
     now = time;
     uniforms.uTime.value = time;
+    // The band is read from the table each update, so tuning it in a dev console takes effect at once.
+    if (spec) band.value.set(spec.distance, spec.fade / 2);
     const uc = uniforms.uCars.value;
     nearestCars(cars, lx, lz, MAX_CARS, uc);
     levelSum.fill(0);
@@ -530,7 +625,12 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
         const shown = !!cr.gate || bd < drawDistance;
         b.near = bd < lodNear + (b.near ? LOD_HYST : -LOD_HYST);
         b.mesh.visible = shown && b.near;
-        b.lite.visible = shown && !b.near;
+        if (b.imp && spec) {
+          // The far level fades out and the sprite in per person over distance +- fade / 2 (the shaders); a batch draws each only while some of its people can be inside its range, and the fade needs no hysteresis.
+          const dc = bd + b.radius;
+          b.lite.visible = shown && !b.near && dc - b.radius - IMPOSTOR_MARGIN < spec.distance + spec.fade / 2;
+          b.imp.visible = shown && dc + b.radius + IMPOSTOR_MARGIN > spec.distance - spec.fade / 2;
+        } else b.lite.visible = shown && !b.near;
       }
       // Drop finished waves.
       for (let w = cr.waves.length - 1; w >= 0; w--) {
@@ -589,6 +689,7 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
   return {
     group,
     spots,
+    sheet,
     count: total,
     sectionCount: stands.filter((s) => !s.gate).length,
     get enabled() {
@@ -611,11 +712,19 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
           b.mesh.dispose();
           b.lite.geometry.dispose();
           b.lite.dispose();
+          if (b.imp) {
+            b.imp.geometry.dispose();
+            b.imp.dispose();
+          }
         }
       }
       geo.dispose();
       liteGeo.dispose();
       mat.dispose();
+      if (liteMat !== mat) liteMat.dispose();
+      impMat?.dispose();
+      quad?.dispose();
+      // The sheet's texture belongs to the page (people/impostors.ts caches it per renderer): later scenes reuse it.
     },
   };
 }
