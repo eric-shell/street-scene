@@ -24,7 +24,6 @@ import { CityEvent, EventFlavourId, eventKeepOut, eventOffer, eventRoutePreferen
 import type { GateSet } from '../sim/gates';
 import { LevelCrossing, addLevelCrossings } from './levelCrossings';
 import { highwayGates, settleHighway, settleHighwayWalls } from './districts/highway/settle';
-import { quayGates } from './districts/waterfront';
 
 /** Routes tried (the first pick, then alternatives) until one has room for a shortcut. */
 const ROUTE_TRIES = 12;
@@ -353,7 +352,8 @@ const POCKETS = new Set(['cornerPlaza', 'plaza', 'verge', 'lot', 'alleyBay']);
  */
 function sealBarriers(city: City, groups: BarrierGroup[], rails: readonly RailWall[], gateWalls: readonly Wall[]): void {
   // The alleys under the expressway's lanes are pockets too, open to the street beneath all along. (A harbor's
-  // quay is no pocket: a race closes its whole frontage, districts/waterfront.ts quayGates.)
+  // quay is no pocket either: it is open ground the length of the city's edge, like a park, and a race leaves it
+  // open, districts/waterfront.ts. Its mouths are its own: a closure carried across it would wall the dock yard.)
   const pockets = city.districts.areas.filter((a) => (a.kind === 'infill' && POCKETS.has(a.variant)) || (a.kind === 'highway' && a.variant === 'alley') || a.kind === 'lake');
   /** The corner rail group a barrier end leans on (a tie's rail end), or -1. */
   const railAt = (x: number, z: number): number => rails.find((r) => distToSegment(x, z, r.ax, r.az, r.bx, r.bz) < ROUTE.barrierTieGap + 0.2)?.group ?? -1;
@@ -579,31 +579,17 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
   const route = createRoute(city, kind);
   const { graph, blocks, terrain } = city;
   const openWorld = opts.openWorld === true;
-  // A harbor's quay is closed off along its frontage for a race, so no closure is ever driven round across it.
-  const quay = openWorld ? [] : quayGates(city.districts.areas, city.districts.builds);
   // The highway alleys' gates are walls the closures must meet (not cross) too, so they exist before the barriers.
   const alleyGates = openWorld ? [] : highwayGates(city.districts.areas, new Set(route.edges));
-  // Corner rails, minus the pieces the flights off the route's car park and jump exits would cross, any across
-  // the line, and any through the quay's gates (a corner by the quay: the gate closes that stretch itself).
-  const quayZones = quay.map((w) => {
-    const l = Math.hypot(w.bx - w.ax, w.bz - w.az) || 1;
-    const nx = (-(w.bz - w.az) / l) * 0.6;
-    const nz = ((w.bx - w.ax) / l) * 0.6;
-    return [
-      { x: w.ax + nx, z: w.az + nz },
-      { x: w.bx + nx, z: w.bz + nz },
-      { x: w.bx - nx, z: w.bz - nz },
-      { x: w.ax - nx, z: w.az - nz },
-    ];
-  });
-  const rails = openWorld ? [] : railsClearOf(quayZones, railsOffRoute(route, carParkRails(city.districts.areas, ROUTE_INDEX[kind], shortcutJumpRails(route, city.districts.areas, awayFromRoundabouts(graph, routeRails(graph, route, blocks))))));
+  // Corner rails, minus the pieces the flights off the route's car park and jump exits would cross, and any across the line.
+  const rails = openWorld ? [] : railsOffRoute(route, carParkRails(city.districts.areas, ROUTE_INDEX[kind], shortcutJumpRails(route, city.districts.areas, awayFromRoundabouts(graph, routeRails(graph, route, blocks)))));
   const barrierGroups = openWorld ? [] : routeBarrierGroups(graph, blocks.mouths, route, rails, city.districts.areas.find((a) => a.kind === 'river')?.params, blocks.walls.concat(alleyGates));
   sealBarriers(city, barrierGroups, rails, alleyGates);
   const closures = closureRails(barrierGroups, rails);
   // A car park that is the other route's shortcut has its ramp shuttered (open world: all open).
   // The highway's ramps are shut in a race (it is no part of any route), and its alleys where they open
   // onto a street the route does not take; all open in free roam.
-  const gates = openWorld ? [] : carParkGates(city.districts.areas, ROUTE_INDEX[kind]).concat(alleyGates, quay);
+  const gates = openWorld ? [] : carParkGates(city.districts.areas, ROUTE_INDEX[kind]).concat(alleyGates);
   const walls = blocks.walls.concat(rails, closures, gates);
   const props = blocks.props;
   const propGrid = buildPropGrid(graph, props);

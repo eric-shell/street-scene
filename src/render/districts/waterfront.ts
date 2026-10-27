@@ -9,10 +9,13 @@
  *  - the sea wall: its face from the coping down under the water, rubber
  *    fenders on it, mooring bollards on the coping, and the galvanized railing
  *    (the sim's 'quayRail') with a striped gate wherever a jetty meets it;
- *  - the security fences closing the quay's ends ('quayFence'), the race
- *    night barriers closing it off along its frontage in a race ('quayGate'),
- *    and the warehouse sheds in the frontage's recesses ('warehouse': their
- *    frontage and back walls, a flat roof, lit windows and a roller door);
+ *  - the security fences closing the quay's ends ('quayFence') and the
+ *    warehouse sheds in the frontage's recesses ('warehouse': their frontage
+ *    and back walls, a flat roof, lit windows and a roller door);
+ *  - the dock yard on the quay (waterfrontYard.ts): containers ('container'),
+ *    forklifts ('forklift'), the mouths' gate posts ('quayPost') with their
+ *    strings and setts, ramp hazard bands, wear, gulls; the jetties' stacks and
+ *    the ships carry the seed's container liveries and shipping line marks;
  *  - the water: one opaque dark mirror (the river's water look) from the sea
  *    wall out past the far ridge of the backdrop (render/sky/backdrop.ts sinks
  *    its near ridge on this side, so the water meets a low far shore), and the
@@ -44,12 +47,13 @@ import { Rng } from '../../sim/prng';
 import { GeoBuilder } from '../geoBuilder';
 import { streakFrag, streakVert } from '../street/lightFx';
 import type { DistrictKit, DistrictRenderer } from './kit';
-import { col, cylinder, groundLine, groundVertex, prism, wallBox } from './kit';
+import { col, cylinder, groundLine, groundVertex, wallBox } from './kit';
 import { drawMarina } from './waterfrontMarina';
+import { containerLiveries, drawYard, markQuad, marksMesh } from './waterfrontYard';
 import { HEIGHT_FOG_GLSL, HEIGHT_FOG_UNIFORMS } from '../heightFog';
 
 /** The wall looks this renderer draws (every wall the waterfront district builds carries one). */
-export const WATERFRONT_LOOKS = ['quayRail', 'quayFence', 'warehouse', 'quayGate'] as const;
+export const WATERFRONT_LOOKS = ['quayRail', 'quayFence', 'warehouse', 'container', 'forklift', 'quayPost'] as const;
 
 const CFG = CITY.districts.waterfront;
 
@@ -68,8 +72,6 @@ const LOOK = {
   gateWhite: col(0xd8d8d0),
   fence: col(0x2c3036),
   fencePost: col(0x6c7078),
-  gatePanel: col(0x6a7078),
-  gateBand: col(0x3ad6e8, 0.9),
   shedWall: [col(0x5a3a30), col(0x34465a), col(0x4a4e44)],
   shedRoof: col(0x3e4448),
   door: col(0x8a8c80),
@@ -84,7 +86,6 @@ const LOOK = {
   rock: col(0x3a3836),
   rockLight: col(0x4c4946),
   beaconTower: col(0xd8d8d0),
-  container: [0x8a2a1e, 0x1f4f8a, 0x2a6a3a, 0xb06a1a, 0x7a7c80, 0xc8c8c0, 0x6a1a5a, 0xa88a2a, 0x1e6a70].map((c) => col(c)),
   hullLow: col(0x6a1e1a),
   hullHigh: col(0x16181c),
   shipDeck: col(0x3a3c3e),
@@ -263,13 +264,6 @@ function buildHarbor(kit: DistrictKit, a: Area): void {
     if (w.area !== a.id) continue;
     fence(kit, w);
   }
-  // ----- In a race, the barriers closing the quay off along its frontage (one per solid piece).
-  const gates = new Set<Wall['solid']>();
-  for (const w of kit.walls.get('quayGate') ?? []) {
-    if (w.area !== a.id || !w.solid || gates.has(w.solid)) continue;
-    gates.add(w.solid);
-    gate(kit, w.solid.faces.map((q) => ({ x: q.ax, z: q.az })));
-  }
   // ----- Warehouses in the recesses.
   for (const h of b.hints) if (h.kind === 'warehouse') shed(kit, a, h, f, rng);
 
@@ -297,12 +291,17 @@ function buildHarbor(kit: DistrictKit, a: Area): void {
     kit.group.add(mesh);
   }
 
+  // ----- The dock yard on the quay, in the seed's container liveries (shared with the stacks and the ships).
+  const liveries = containerLiveries(p.seed);
+  const marks = new GeoBuilder();
+  drawYard(kit, a, b, { boxAt, beam, lamp }, liveries, marks);
+
   // ----- Jetties, cranes, containers, ships, breakwaters, buoys.
   for (const j of jetties) jetty(kit, a, j, reflects);
   for (const pr of b.props) {
     if (pr.kind === 'crane') crane(kit, pr, deckY(pr.x, pr.z), flash, reflects, low);
-    else if (pr.kind === 'stack') stack(kit, pr, deckY(pr.x, pr.z));
-    else if (pr.kind === 'ship') ship(kit, a, pr, reflects);
+    else if (pr.kind === 'stack') stack(kit, pr, deckY(pr.x, pr.z), liveries, low ? null : marks);
+    else if (pr.kind === 'ship') ship(kit, a, pr, reflects, liveries);
     else if (pr.kind === 'buoy') buoy(kit, a, pr, flash, reflects);
   }
   for (const h of b.hints) if (h.kind === 'mole') mole(kit, a, h, flash, reflects);
@@ -317,6 +316,8 @@ function buildHarbor(kit: DistrictKit, a: Area): void {
     };
     drawMarina(kit, a, b, tools, low);
   }
+
+  marksMesh(kit, marks);
 
   // ----- The flashers: every warning light and buoy blinking on the scene clock, each at its own phase.
   if (flash.vertexCount) {
@@ -558,19 +559,6 @@ function fence(kit: DistrictKit, w: Wall): void {
   solidBox(kit.solid, { x: m.x - dx * 0.6, z: m.z - dz * 0.6 }, { x: m.x + dx * 0.6, z: m.z + dz * 0.6 }, w.nx * 0.03, w.nz * 0.03, h(m.x, m.z) + 1.1, h(m.x, m.z) + 1.9, LOOK.safety);
 }
 
-/** A race night barrier piece on its solid's outline: a galvanized panel with a cyan reflective band along the top (the closures' colour). */
-function gate(kit: DistrictKit, poly: Vec2[]): void {
-  prism(kit, kit.solid, poly, 1.05, LOOK.gatePanel, LOOK.rail, 0.05);
-  let y = -Infinity;
-  for (const q of poly) y = Math.max(y, kit.h(q.x, q.z));
-  // The band: along the street side (the piece's first edge, on the frontage), just under the top.
-  const [p0, p1, p2] = poly;
-  const len = Math.hypot(p1.x - p0.x, p1.z - p0.z) || 1;
-  const ox = ((p2.x - p1.x) / Math.hypot(p2.x - p1.x, p2.z - p1.z)) * -0.02;
-  const oz = ((p2.z - p1.z) / Math.hypot(p2.x - p1.x, p2.z - p1.z)) * -0.02;
-  if (len > 0.3) solidBox(kit.glow, { x: p0.x + ox, z: p0.z + oz }, { x: p1.x + ox, z: p1.z + oz }, ox, oz, y + CITY.curbHeight + 0.82, y + CITY.curbHeight + 0.94, LOOK.gateBand);
-}
-
 /** A warehouse shed: its walls on the sim's warehouse walls up to a flat roof over its outline, lit windows and a door to the quay. */
 function shed(kit: DistrictKit, a: Area, h: AreaHint, f: HarborFrame, rng: Rng): void {
   const poly = h.points;
@@ -789,8 +777,8 @@ function crane(kit: DistrictKit, pr: AreaProp, y0: number, flash: GeoBuilder, re
   reflects.push({ x: b1.x, y: boomY + 1.8, z: b1.z, c: LOOK.navRed.clone().multiplyScalar(0.25), w: 1.6 });
 }
 
-/** A container stack (prop: its centre, the boxes' long axis as yaw, tiers as height): three rows side by side, their own heights. */
-function stack(kit: DistrictKit, pr: AreaProp, y0: number): void {
+/** A container stack (prop: its centre, the boxes' long axis as yaw, tiers as height): three rows side by side, their own heights, the outer rows' top boxes marked. */
+function stack(kit: DistrictKit, pr: AreaProp, y0: number, liveries: { color: THREE.Color; mark: number }[], marks: GeoBuilder | null): void {
   const fx = Math.sin(pr.yaw);
   const fz = Math.cos(pr.yaw);
   const B = LOOK.box;
@@ -800,8 +788,9 @@ function stack(kit: DistrictKit, pr: AreaProp, y0: number): void {
     const x = pr.x + fz * row * (B.w + 0.12);
     const z = pr.z - fx * row * (B.w + 0.12);
     for (let k = 0; k < tiers; k++) {
-      const c = LOOK.container[(seed + row * 7 + k * 3) % LOOK.container.length];
-      boxAt(kit.solid, x, y0 + k * B.h, z, fx, fz, B.l / 2, B.w / 2, B.h - 0.04, c);
+      const lv = liveries[(seed + row * 7 + k * 3) % liveries.length];
+      boxAt(kit.solid, x, y0 + k * B.h, z, fx, fz, B.l / 2, B.w / 2, B.h - 0.04, lv.color);
+      if (marks && row !== 0 && k === tiers - 1) markQuad(marks, { x: x + fz * row * (B.w / 2 + 0.03), z: z - fx * row * (B.w / 2 + 0.03) }, { x: fx, z: fz }, { x: fz * row, z: -fx * row }, y0 + k * B.h + 0.9, lv.mark);
     }
   }
 }
@@ -811,7 +800,7 @@ function stack(kit: DistrictKit, pr: AreaProp, y0: number): void {
  * the hull in two bands from under the waterline, the deck, rows of containers, the bridge house aft with
  * lit windows, the funnel, masthead and running lights, floods along the deck.
  */
-function ship(kit: DistrictKit, a: Area, pr: AreaProp, reflects: Reflect[]): void {
+function ship(kit: DistrictKit, a: Area, pr: AreaProp, reflects: Reflect[], liveries: { color: THREE.Color; mark: number }[]): void {
   const L = pr.size;
   const B = pr.height / 2;
   const fx = Math.sin(pr.yaw);
@@ -854,7 +843,7 @@ function ship(kit: DistrictKit, a: Area, pr: AreaProp, reflects: Reflect[]): voi
       const o = -((cols - 1) * (box.w + 0.1)) / 2 + c * (box.w + 0.1);
       const q = pt(s + box.l / 2, o);
       const tiers = 2 + ((k += 7) % 3);
-      for (let t = 0; t < tiers; t++) boxAt(kit.solid, q.x, deck + t * box.h, q.z, fx, fz, box.l / 2, box.w / 2, box.h - 0.04, LOOK.container[(k + t * 5) % LOOK.container.length]);
+      for (let t = 0; t < tiers; t++) boxAt(kit.solid, q.x, deck + t * box.h, q.z, fx, fz, box.l / 2, box.w / 2, box.h - 0.04, liveries[(k + t * 5) % liveries.length].color);
     }
   }
   // The bridge house aft, its windows lit, the funnel behind it, a mast on top.

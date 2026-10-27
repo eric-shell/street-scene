@@ -5,7 +5,7 @@
  * one recipe per bank. Pure apart from Math.random (cosmetic), so the tests
  * render every bank headless; Sfx (sfx.ts) turns the samples into buffers.
  */
-import type { ConstructionPropKind, MarketPropKind, PropKind } from '../city/props';
+import type { ConstructionPropKind, DockPropKind, MarketPropKind, PropKind } from '../city/props';
 
 export type WallHitKind = 'wall' | 'barrier' | 'rail';
 /**
@@ -13,7 +13,7 @@ export type WallHitKind = 'wall' | 'barrier' | 'rail';
  * streetlights; construction pieces, most neighbourhood furniture and the night market's pieces
  * borrow the nearest material).
  */
-type PropSound = Exclude<PropKind, 'newsBox' | 'parkLamp' | 'bollard' | ConstructionPropKind | MarketPropKind | 'mailbox' | 'parkingMeter' | 'phoneBooth' | 'vendingMachine'>;
+type PropSound = Exclude<PropKind, 'newsBox' | 'parkLamp' | 'bollard' | ConstructionPropKind | MarketPropKind | DockPropKind | 'mailbox' | 'parkingMeter' | 'phoneBooth' | 'vendingMachine'>;
 export type SfxBank = 'crash' | WallHitKind | PropSound | 'firework';
 type Bank = SfxBank;
 export const PROP_SOUND: Record<PropKind, PropSound> = {
@@ -38,6 +38,9 @@ export const PROP_SOUND: Record<PropKind, PropSound> = {
   waterBarrier: 'barrel',
   sandbags: 'trashBags',
   pallets: 'crate',
+  // Dock clutter: a steel drum rings like a bin, a cable spool splinters like a crate.
+  drum: 'garbageCan',
+  cableSpool: 'crate',
   marketStall: 'cafeTable',
   fruitCrates: 'crate',
   foodCart: 'garbageCan',

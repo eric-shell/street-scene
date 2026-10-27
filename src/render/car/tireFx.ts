@@ -66,7 +66,7 @@ export const SPRAY_FX = {
 } as const;
 
 /** Surfaces rubber shows on, with how light the mark reads there (0 asphalt .. 1 concrete). */
-const MARK_TINT: Partial<Record<string, number>> = { road: 0, cobble: 0.15, concrete: 1, sidewalk: 0.9 };
+const MARK_TINT: Partial<Record<string, number>> = { road: 0, cobble: 0.15, concrete: 1, sidewalk: 0.9, quay: 0.95 };
 
 /** One wheel's strip and smoke state between ticks. */
 interface WheelTrack {

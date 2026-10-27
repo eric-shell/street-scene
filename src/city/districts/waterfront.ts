@@ -26,10 +26,14 @@
  * the outline to the railing. A recess of the outline deeper than
  * CFG.maxDepth (an outer street missing, so the outline dips a block in) is a
  * warehouse: its frontage gets the 'warehouse' look and its back wall stands
- * on the quay, so the quay stays one even strip. In a race the quay is closed
- * off along its whole open frontage (quayGates, world.ts createWorld), so no
- * closure on the street beside it can be driven round across it; free roam
- * has it open.
+ * on the quay, so the quay stays one even strip. The quay is open in every
+ * mode: a dock yard to drive (waterfrontYard.ts: mouths onto the streets,
+ * the lane along the water, loading ramps, a skid pad, the container lane,
+ * soft clutter to smash), paved 'quay' (dock concrete with a grip of its
+ * own). It used to be closed off along its frontage in a race by a line of
+ * race barriers drawn into the district's meshes; the menu's scene, built
+ * from the race world, lent that drawing to free roam, whose world had no
+ * such walls, so the harbor showed a wall a car drove straight through.
  *
  * The water is a plane tilted gently along the coast (a least squares fit of
  * the quay's height, tilt capped at CFG.maxTilt), CFG.freeboard below the
@@ -40,13 +44,12 @@
 import { CITY } from '../config';
 import { createTerrain, type Terrain } from '../terrain';
 import { RAIL } from '../railCurve';
-import type { PropKind } from '../props';
 import { type Vec2, atan2, sqrt } from '../../sim/math';
 import { Rng, deriveSeed } from '../../sim/prng';
-import type { Wall } from '../blocks';
-import type { Area, AreaBuild, DistrictModule, PlanContext } from './types';
+import type { AreaBuild, DistrictModule, PlanContext } from './types';
 import { emptyBuild } from './types';
-import { polygonArea, polyWalls, solidWalls } from './geom';
+import { polygonArea, polyWalls } from './geom';
+import { buildYard } from './waterfrontYard';
 import { HARBOR_SIDES, type HarborFrame, coastNormal, coastSlope, coastV, framePoint, frameU, frameV, harborLowering, harborWater } from './waterfrontShape';
 
 const CFG = CITY.districts.waterfront;
@@ -364,46 +367,6 @@ function fitSide(ctx: PlanContext, ring: readonly Vec2[], side: number, base: Te
   return { side, f, prof, cA, cB, coast, pa, pb, openA, openB, w0, wt, wu0: fa, wu1: fb, score };
 }
 
-/** Thickness (m) and longest piece (m) of a race's gates along the quay's frontage. */
-const GATE = { thick: 0.4, piece: 3 } as const;
-
-/**
- * A race closes the quay: a line of race night barriers along its whole open frontage (the 'frontage' hints:
- * the quay's back wherever it meets a street), standing on the quay just behind the outer sidewalk's back. A
- * closure on the street beside it can then never be driven round across the quay, however deep the quay or
- * however the closure meets it (a barrier, a tie to a corner rail, a corner rail across a mouth). Free roam
- * leaves the quay open. Thin solids (Wall.solid: the street and the quay are both drivable), look 'quayGate'
- * (render/districts/waterfront.ts draws them), pieces of at most GATE.piece m.
- */
-export function quayGates(areas: readonly Area[], builds: readonly AreaBuild[]): Wall[] {
-  const out: Wall[] = [];
-  for (const a of areas) {
-    if (a.kind !== 'waterfront') continue;
-    for (const h of builds[a.id]?.hints ?? []) {
-      if (h.kind !== 'frontage') continue;
-      const pts = h.points;
-      for (let i = 0; i + 1 < pts.length; i++) {
-        const p = pts[i];
-        const q = pts[i + 1];
-        const len = sqrt((q.x - p.x) ** 2 + (q.z - p.z) ** 2);
-        if (len < 0.05) continue;
-        // The quay lies to the left of its back chain (it runs with u, the sea to its left).
-        const nx = (-(q.z - p.z) / len) * GATE.thick;
-        const nz = ((q.x - p.x) / len) * GATE.thick;
-        const n = Math.ceil(len / GATE.piece);
-        for (let k = 0; k < n; k++) {
-          const ax = p.x + ((q.x - p.x) * k) / n;
-          const az = p.z + ((q.z - p.z) * k) / n;
-          const bx = p.x + ((q.x - p.x) * (k + 1)) / n;
-          const bz = p.z + ((q.z - p.z) * (k + 1)) / n;
-          out.push(...solidWalls([{ x: ax, z: az }, { x: bx, z: bz }, { x: bx + nx, z: bz + nz }, { x: ax + nx, z: az + nz }], 'quayGate', a.id));
-        }
-      }
-    }
-  }
-  return out;
-}
-
 /** Whether a seed rolls a harbor: the first draw of the module's own stream (the plan may still find no side free enough). */
 export function waterfrontRolled(seed: number): boolean {
   return CFG.enabled && new Rng(deriveSeed(seed, 'district:waterfront')).chance(CFG.chance);
@@ -487,9 +450,9 @@ export const waterfrontModule: DistrictModule = {
     // The ground past the sea wall, lowered under the water.
     b.heightMods.push(harborLowering(p, createTerrain(ctx.seed)));
 
-    // The quay: drivable paving at sidewalk level, open to the street all along its back.
+    // The quay: drivable dock paving at sidewalk level, open to the street all along its back.
     const quay = area.polygon;
-    b.surfaces.push({ surface: 'concrete', polygon: quay, priority: 2, area: id });
+    b.surfaces.push({ surface: 'quay', polygon: quay, priority: 2, area: id });
     b.exclusions.push(quay);
     b.openings.push(quay);
     // The open water, and no building anywhere past the coast (the breakwaters' ground included).
@@ -507,7 +470,7 @@ export const waterfrontModule: DistrictModule = {
     b.walls.push(...polyWalls([at(p.pb, coast(p.pb) - CFG.railInset), endB], true, 'quayFence', id, false));
     b.reserved.push({ x: endA.x, z: endA.z, r: 1.6 }, { x: endB.x, z: endB.z, r: 1.6 });
 
-    // The open frontage, the quay's back where it meets the streets (not a shed's back wall), for a race's gates.
+    // The open frontage, the quay's back where it meets the streets (not a shed's back wall).
     {
       const back = quay.slice(0, p.nBack);
       const inShed = (q: Vec2) => {
@@ -640,8 +603,8 @@ export const waterfrontModule: DistrictModule = {
       prop('buoy', at(u, coast(u) + out), 0, k % 2 ? 1 : 0, rng.range(0, 1));
     }
 
-    // Along the quay's edge: lanterns (destructible park lamps, lit by render/street/areaLights.ts) and
-    // clusters of dock clutter between them, clear of the jetties' gates and the end fences.
+    // Along the quay's edge: lanterns (destructible park lamps, lit by render/street/areaLights.ts), clear of
+    // the jetties' gates and the end fences.
     const curb = CITY.curbHeight;
     const gate = (u: number) => jetties.some((j) => Math.abs(j.u - u) < j.w / 2 + 3);
     const lamps: number[] = [];
@@ -651,30 +614,8 @@ export const waterfrontModule: DistrictModule = {
       const n = seaward(u);
       b.destructibles.push({ kind: 'parkLamp', x: q.x, z: q.z, yaw: atan2(-n.nx, -n.nz), lift: curb, area: id });
     }
-    const pieces: PropKind[] = ['crate', 'crate', 'barrel', 'pallets'];
-    // A marina's edge is bollards (mooring posts every few metres, clear of the gates and the lanterns) instead of dock clutter.
-    if (area.variant === 'marina') {
-      for (let u = p.pa + 6; u < p.pb - 4; u += CFG.bollardStep) {
-        if (gate(u) || lamps.some((l) => Math.abs(l - u) < 2.5)) continue;
-        const q = at(u, coast(u) - CFG.bollardInset);
-        b.destructibles.push({ kind: 'bollard', x: q.x, z: q.z, yaw: 0, lift: curb, area: id });
-      }
-      return b;
-    }
-    for (let i = 0; i + 1 < lamps.length; i++) {
-      if (!rng.chance(CFG.clutterChance)) continue;
-      const u = (lamps[i] + lamps[i + 1]) / 2 + rng.range(-5, 5);
-      if (gate(u)) continue;
-      const count = rng.int(CFG.clutter[0], CFG.clutter[1]);
-      for (let k = 0; k < count; k++) {
-        const uu = u + rng.range(-3, 3);
-        const vv = coast(uu) - rng.range(2.4, 5.5);
-        // Clear of the back of the quay: a car on the sidewalk never meets a crate at the frontage.
-        if (vv < innerAt(prof, p, sheds, uu) + 3) continue;
-        const q = at(uu, vv);
-        b.destructibles.push({ kind: rng.pick(pieces), x: q.x, z: q.z, yaw: rng.range(0, Math.PI * 2), lift: curb, area: id });
-      }
-    }
+    // The dock yard on the quay: mouths, fences, the lane and its clutter, ramps, the skid pad, containers, bollards, benches.
+    buildYard(ctx, { area, f, back: (u) => innerAt(prof, p, sheds, u), sheds, gates: jetties.map((j) => ({ u: j.u, half: j.w / 2 })), lamps }, b);
     return b;
   },
 };

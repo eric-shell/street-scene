@@ -64,12 +64,14 @@ export type AreaKind =
  * Ground surface under a point. 'road' / 'sidewalk' / 'offroad' are the
  * original three; districts add concrete (plazas, channel floor), grass
  * (parks, planter islands), water (the trickle in the river channel) and
- * cobble (the road strip of every alley, see districts/alley.ts).
+ * cobble (the road strip of every alley, see districts/alley.ts) and quay
+ * (a harbor's dock paving: dusty, oil stained concrete with a grip of its
+ * own, districts/waterfront.ts).
  */
-export type Surface = 'road' | 'sidewalk' | 'offroad' | 'concrete' | 'grass' | 'water' | 'cobble';
+export type Surface = 'road' | 'sidewalk' | 'offroad' | 'concrete' | 'grass' | 'water' | 'cobble' | 'quay';
 
 /** Which tuning entry (drivingParams.json `surface`) a surface drives with. */
-export type SurfacePhysics = 'road' | 'sidewalk' | 'offroad' | 'cobble';
+export type SurfacePhysics = 'road' | 'sidewalk' | 'offroad' | 'cobble' | 'quay';
 export const SURFACE_PHYSICS: Record<Surface, SurfacePhysics> = {
   road: 'road',
   sidewalk: 'sidewalk',
@@ -78,6 +80,7 @@ export const SURFACE_PHYSICS: Record<Surface, SurfacePhysics> = {
   grass: 'offroad',
   water: 'offroad',
   cobble: 'cobble',
+  quay: 'quay',
 };
 
 /** Surface patch priority of an alley's cobbled road strip: above the plain street classification (road 5). */
@@ -118,10 +121,12 @@ export const COBBLE_PRIORITY = 6;
  * lakeRail: the railing on the coping between the lake's promenade and its water, the gate onto the jetty in it (lake).
  * quayRail / quayFence / warehouse: the railing along a harbor's sea wall, the fences closing its quay's ends,
  *   and a warehouse shed's walls where the quay passes a recess of the frontage (waterfront).
- * quayGate: race night barriers closing a harbor's quay off along its frontage, in a race only (waterfront quayGates).
  * plaza: a plaza's centrepiece (a statue on its plinth, a clock column, a kiosk) (infill, plazaDressing.ts; drawn by render/districts/plazaDressing.ts).
  * lotFence / lotKiosk: an open-air parking lot's fence (a low kerb wall under chain link, solid both sides) round its street and back edges, and its solid furniture:
  *   the ticket booth's island, the cart corrals (parkingLot).
+ * container / forklift / quayPost: the dock yard's solids on the quay: shipping containers (stacked up to
+ *   three high) lining its container lane, parked forklifts, and the steel gate posts either side of a
+ *   mouth onto the quay that carry its string lights (waterfront, waterfrontYard.ts).
  */
 export type WallLook =
   | 'building'
@@ -157,12 +162,14 @@ export type WallLook =
   | 'quayRail'
   | 'quayFence'
   | 'warehouse'
-  | 'quayGate'
   | 'plaza'
   | 'lotFence'
-  | 'lotKiosk';
+  | 'lotKiosk'
+  | 'container'
+  | 'forklift'
+  | 'quayPost';
 
-export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark', 'alleyLip', 'gatePier', 'hedge', 'jetty', 'highway', 'lakeRail', 'quayRail', 'quayFence', 'warehouse', 'quayGate', 'plaza', 'lotFence', 'lotKiosk'];
+export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark', 'alleyLip', 'gatePier', 'hedge', 'jetty', 'highway', 'lakeRail', 'quayRail', 'quayFence', 'warehouse', 'plaza', 'lotFence', 'lotKiosk', 'container', 'forklift', 'quayPost'];
 
 export interface Area {
   /** Index into CityDistricts.areas. */

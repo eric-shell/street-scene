@@ -1,7 +1,7 @@
 /**
  * Minimap: a round, heading-up map canvas centred on a viewpoint, drawing the
  * district layers (AREA_MAP_STYLE), the street network, the route (none in a
- * waypoint race, where the player picks the streets) with its shortcuts (dim pink dashes; a one-way shortcut, a jump exit or a car park,
+ * waypoint race, where the player picks the streets) with its shortcuts (dim pink dashes, a harbor's quay lane among them; a one-way shortcut, a jump exit or a car park,
  * carries the city map's chevrons the drivable way, ui/map/cityMap.ts), the
  * bluff's crest as the same cliff symbol, closures and car markers. The race HUD centres it on the player's car; the drone
  * centres it on itself with a view cone and a north mark, and zooms out as it
@@ -137,6 +137,12 @@ export class Minimap {
       cp.path.forEach((p, i) => (i ? this.shortcuts.lineTo(p.x, p.z) : this.shortcuts.moveTo(p.x, p.z)));
       this.shortcuts.lineTo(cp.ox - cp.ux * (cp.lipBack + cp.landMax * 0.6), cp.oz - cp.uz * (cp.lipBack + cp.landMax * 0.6));
       this.oneWay.push({ pts: cp.path, width: cp.rhw * 2 });
+    }
+    // A harbor's quay lane: open ground along the water, end to end, that any race passing it may cut along.
+    for (const a of world.areas) {
+      if (a.kind !== 'waterfront') continue;
+      const lane = world.districts.builds[a.id]?.hints.find((h) => h.kind === 'quayLane');
+      lane?.points.forEach((p, i) => (i ? this.shortcuts.lineTo(p.x, p.z) : this.shortcuts.moveTo(p.x, p.z)));
     }
     // Closures: one marker per closure group (they are cyan rail pieces, like the corner rails).
     this.closed = (world.barrierGroups ?? []).map((gr) => ({ x: gr.x, z: gr.z }));

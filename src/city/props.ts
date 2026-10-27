@@ -7,7 +7,8 @@
  * news boxes, trash bags, the lantern posts lighting parks and plazas, and
  * the construction site pieces that fence off and fill route shortcuts:
  * fence panels, traffic cones, sawhorse barricades, water filled barriers,
- * sandbags and pallets). Generated once per city (deterministic, from the
+ * sandbags and pallets, and the harbor's dock clutter: oil drums and cable
+ * spools). Generated once per city (deterministic, from the
  * seed) and stored on CityBlocks.props. The sim tracks which props are broken
  * per race (RaceState.brokenProps) so replays reproduce every hit; the
  * renderer hides a broken prop's intact instance and spawns debris.
@@ -38,11 +39,13 @@ export type FurnitureKind = 'hydrant' | 'parkingMeter' | 'mailbox' | 'phoneBooth
 export type ConstructionPropKind = 'fencePanel' | 'trafficCone' | 'sawhorse' | 'waterBarrier' | 'sandbags' | 'pallets';
 /** Night market pieces (districts/market.ts): lantern lit awning stalls, fruit crates spilling off the curb, food carts. */
 export type MarketPropKind = 'marketStall' | 'fruitCrates' | 'foodCart';
+/** A harbor's dock clutter (districts/waterfrontYard.ts): steel oil drums in rows, wooden cable spools on their sides. */
+export type DockPropKind = 'drum' | 'cableSpool';
 /**
  * Clutter districts ask for (DistrictPropSpec): mostly soft, cheap to crash through. Park lamps light parks and
  * plazas (render/street/areaLights.ts); bollards fence the middle of a roundabout island (districts/roundabout.ts).
  */
-export type DistrictPropKind = 'bush' | 'planterPot' | 'cafeTable' | 'barrel' | 'crate' | 'dumpster' | 'newsBox' | 'trashBags' | 'parkLamp' | 'bollard' | ConstructionPropKind | MarketPropKind;
+export type DistrictPropKind = 'bush' | 'planterPot' | 'cafeTable' | 'barrel' | 'crate' | 'dumpster' | 'newsBox' | 'trashBags' | 'parkLamp' | 'bollard' | ConstructionPropKind | MarketPropKind | DockPropKind;
 export type PropKind = StreetPropKind | DistrictPropKind;
 
 export interface Prop {
@@ -143,6 +146,11 @@ export const PROP_DEFS: Record<PropKind, PropDef> = {
   marketStall: { radius: 1.1, mass: 55, height: 2.6, anchor: 1, breakSpeed: 0.3 },
   fruitCrates: { radius: 0.5, mass: 26, height: 0.85, anchor: 1, breakSpeed: 0.1 },
   foodCart: { radius: 0.75, mass: 85, height: 2.3, anchor: 1, breakSpeed: 0.5 },
+  // Dock clutter. A 200 litre steel drum with a little oil in it is a solid knock (about 4% of a 1.5 t car's
+  // speed) that still goes flying at any speed worth the name; a wooden cable spool on its side is a real hit,
+  // about a tenth of the speed, and holds a car that only nudges it.
+  drum: { radius: 0.32, mass: 70, height: 0.9, anchor: 1, breakSpeed: 0.7 },
+  cableSpool: { radius: 0.8, mass: 150, height: 1.5, anchor: 1, breakSpeed: 1.2 },
   // Neighbourhood furniture. A cast iron hydrant is a stubby, bolted lump: it holds a crawling car
   // and costs a fast one about a seventh of its speed (then gushes, render/street/hydrantSpray.ts). Parking
   // meters and mailboxes are light knocks; a phone booth or a vending machine is a real hit.

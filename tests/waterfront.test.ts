@@ -20,7 +20,9 @@ import { waterfrontRolled } from '../src/city/districts/waterfront';
 import { createRace, stepRace } from '../src/sim/race';
 import { createCar, stepCar } from '../src/sim/car';
 import { collideCarWithWorld } from '../src/sim/collision';
-import { baseTuning, input, raceConfig } from './helpers';
+import { baseTuning, carSnapshot, input, raceConfig } from './helpers';
+import { driftZones } from '../src/sim/driftZones';
+import type { Contact } from '../src/city/world';
 
 const CFG = CITY.districts.waterfront;
 
@@ -255,12 +257,15 @@ describe('waterfront (sim)', () => {
         const qw = { x: u * p.ux + out * p.vx, z: u * p.uz + out * p.vz };
         expect(w.surfaceAt(qw.x, qw.z)).toBe('water');
         expect(Math.abs(w.heightAt(qw.x, qw.z) - (waterLevel(p, u) - p.depth))).toBeLessThan(1e-6);
-        // On the quay (between its lanterns and clutter): concrete over the water by the freeboard, the plain landscape.
+        // On the quay (between its lanterns and clutter): dock paving (cobbles across a mouth) over the water by the
+        // freeboard, the plain landscape off the loading ramps.
+        const ramps = city.districts.builds[a.id].hints.filter((h) => h.kind === 'ramp');
+        const onRamp = ramps.some((h) => u > h.values[0] - 1 && u < h.values[0] + h.values[1] + 1);
         if (u > p.pa + 1 && u < p.pb - 1) {
           const back = c - rng.range(0.3, CFG.quayWidth - 1);
           const qq = { x: u * p.ux + back * p.vx, z: u * p.uz + back * p.vz };
-          expect(w.surfaceAt(qq.x, qq.z)).toBe('concrete');
-          expect(w.heightAt(qq.x, qq.z)).toBe(base.heightAt(qq.x, qq.z));
+          expect(['quay', 'cobble']).toContain(w.surfaceAt(qq.x, qq.z));
+          if (!onRamp) expect(w.heightAt(qq.x, qq.z)).toBe(base.heightAt(qq.x, qq.z));
           expect(w.heightAt(qq.x, qq.z)).toBeGreaterThan(waterLevel(p, u) + CFG.freeboard - 0.6);
           // Sidewalk height on the quay, like a plaza.
           expect(w.driveHeightAt(qq.x, qq.z)).toBeCloseTo(w.heightAt(qq.x, qq.z) + CITY.curbHeight, 6);
@@ -270,10 +275,12 @@ describe('waterfront (sim)', () => {
         const qa = { x: u * p.ux + any * p.vx, z: u * p.uz + any * p.vz };
         if (w.heightAt(qa.x, qa.z) < waterLevel(p, u) - 0.05 && any > c + p.fall) expect(w.surfaceAt(qa.x, qa.z)).toBe('water');
       }
-      // Slopes match heights across the wall's face, the fades and the open water.
+      // Slopes match heights across the wall's face, the fades, the open water and the loading ramps.
+      const ramps = city.districts.builds[a.id].hints.filter((h) => h.kind === 'ramp');
       for (let k = 0; k < 400; k++) {
-        const u = rng.range(p.eA0 + 1, p.eB1 - 1);
-        const v = coastV(p, u) + rng.range(-5, p.vf1 - coastV(p, u) + 5);
+        const r = ramps.length && k % 2 ? ramps[k % ramps.length].values : null;
+        const u = r ? rng.range(r[0] - 1, r[0] + r[1] + 1) : rng.range(p.eA0 + 1, p.eB1 - 1);
+        const v = r ? coastV(p, u) - rng.range(-1, r[2] + 1) : coastV(p, u) + rng.range(-5, p.vf1 - coastV(p, u) + 5);
         const x = u * p.ux + v * p.vx;
         const z = u * p.uz + v * p.vz;
         const s = w.slopeAt(x, z);
@@ -324,87 +331,46 @@ describe('waterfront (sim)', () => {
 });
 
 describe('waterfront (race)', () => {
-  it('a race closes the quay along its whole frontage: no closure can be driven round across it', () => {
-    let closures = 0;
-    let stopped = 0;
+  it('a race leaves the quay open, as free roam does: a car driven at it through a mouth gets on', () => {
     let entered = 0;
-    // A closure ending at the quay is rare (3 of 16 harbors), so two seeds that have one join the sample.
-    for (const seed of [...harborSeeds(53, 8), 2015527382, 548196328]) {
+    let tried = 0;
+    for (const seed of harborSeeds(53, 4)) {
       const city = createCity(seed);
       const a = harborOf(city.districts.areas)!;
-      const fronts = city.districts.builds[a.id].hints.filter((h) => h.kind === 'frontage');
-      expect(fronts.length).toBeGreaterThan(0);
-      const open = createWorld(seed, 'circuit', city, { openWorld: true });
-      // Free roam leaves the quay open: no gates.
-      expect(open.walls.some((w) => w.look === 'quayGate')).toBe(false);
-      for (const kind of ['circuit', 'sprint'] as const) {
-        const w = createWorld(seed, kind, city);
-        const gates = w.walls.filter((x) => x.look === 'quayGate' && x.area === a.id);
-        const near = (x: number, z: number, r: number) => gates.some((g) => distToSegment(x, z, g.ax, g.az, g.bx, g.bz) < r);
-        // The barriers stand along every metre of the open frontage, without a gap a car could pass.
-        for (const h of fronts) {
-          const pts = h.points;
-          for (let i = 0; i + 1 < pts.length; i++) {
-            const len = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].z - pts[i].z);
-            for (let s = 0; s <= len; s += 0.5) {
-              const t = len > 0 ? s / len : 0;
-              expect(near(pts[i].x + (pts[i + 1].x - pts[i].x) * t, pts[i].z + (pts[i + 1].z - pts[i].z) * t, 0.05)).toBe(true);
-            }
+      const b = city.districts.builds[a.id];
+      const t = baseTuning();
+      for (const world of [createWorld(seed, 'circuit', city), createWorld(seed, 'circuit', city, { openWorld: true })]) {
+        // Nothing race only on the quay: the same walls in a race as in free roam.
+        expect(world.walls.filter((w) => w.area === a.id).length).toBe(city.blocks.walls.filter((w) => w.area === a.id).length);
+        for (const h of b.hints.filter((x) => x.kind === 'quayMouth')) {
+          // From the street square to the frontage at the mouth's middle, facing the quay.
+          const [pa, pb] = h.points;
+          const m = { x: (pa.x + pb.x) / 2, z: (pa.z + pb.z) / 2 };
+          const nx = a.params.vx;
+          const nz = a.params.vz;
+          const c = createCar(m.x - nx * 16, m.z - nz * 16, Math.atan2(nx, nz), world.heightAt(m.x - nx * 16, m.z - nz * 16));
+          c.vx = nx * 14;
+          c.vz = nz * 14;
+          // On: in the quay and 3 m past the gate posts' line.
+          const past = uv(a, m.x, m.z).v + 3;
+          let on = false;
+          for (let k = 0; k < 120 && !on; k++) {
+            stepCar(c, t, input({ throttle: 0.6 }), { world });
+            collideCarWithWorld(c, t, world);
+            if (pointInPolygon(c.x, c.z, a.polygon) && uv(a, c.x, c.z).v > past) on = true;
           }
-        }
-        // Every closure next to the quay (a barrier piece ending at its frontage) meets that line of barriers.
-        for (const gr of w.barrierGroups) {
-          for (const piece of gr.walls) {
-            for (const [x, z] of [
-              [piece.ax, piece.az],
-              [piece.bx, piece.bz],
-            ]) {
-              const p = a.params;
-              const u = frameU(harborFrame(a), x, z);
-              if (u < p.pa || u > p.pb || !pointInPolygon(x + p.vx * 1.2, z + p.vz * 1.2, a.polygon)) continue;
-              closures++;
-              expect(near(x, z, 1)).toBe(true);
-            }
-          }
-        }
-        // Driven flat out at the quay from the street anywhere along it, a car is stopped at the frontage
-        // (and in free roam drives straight onto the quay).
-        if (kind !== 'circuit') continue;
-        const t = baseTuning();
-        for (const h of fronts) {
-          for (let i = 1; i + 1 < h.points.length; i += Math.max(1, Math.floor(h.points.length / 4))) {
-            const q = h.points[i];
-            const r = h.points[i + 1];
-            const len = Math.hypot(r.x - q.x, r.z - q.z);
-            if (len < 1) continue;
-            // In onto the street's sidewalk, square to the frontage, facing the quay.
-            const nx = -(r.z - q.z) / len;
-            const nz = (r.x - q.x) / len;
-            for (const world of [w, open]) {
-              const c = createCar(q.x - nx * 7, q.z - nz * 7, Math.atan2(nx, nz), world.heightAt(q.x - nx * 7, q.z - nz * 7));
-              c.vx = nx * 18;
-              c.vz = nz * 18;
-              let on = false;
-              for (let k = 0; k < 90; k++) {
-                stepCar(c, t, input({ throttle: 1 }), { world });
-                collideCarWithWorld(c, t, world);
-                if (pointInPolygon(c.x, c.z, a.polygon)) on = true;
-              }
-              if (world === w) {
-                expect(on).toBe(false);
-                stopped++;
-              } else if (on) entered++;
-            }
-          }
+          tried++;
+          if (on) entered++;
         }
       }
     }
-    expect(closures).toBeGreaterThan(0);
-    expect(stopped).toBeGreaterThan(20);
-    expect(entered).toBeGreaterThan(stopped / 2);
+    expect(tried).toBeGreaterThan(8);
+    // Square at the frontage from the street, through the middle of a mouth, a car reaches the lane along the water
+    // (a parked car or a hydrant on the way may stop the odd one).
+    expect(entered / tried).toBeGreaterThan(0.85);
   });
 
-  it('rivals racing along the quay never reach the water', () => {
+  it('rivals racing along the quay never reach the water, finish, and the race replays identically', () => {
     // The first harbor city (from a stream) whose sprint runs down the street along the quay (the harbor goes
     // where the races run, CFG.raceBonus). The route must pass well inside the bar the rivals are held to (30 m): a field's
     // racing line sits a few metres off the route's own line.
@@ -427,16 +393,24 @@ describe('waterfront (race)', () => {
     const { seed, w, a } = found!;
     const p = a.params;
     const along = alongOf(a);
-    const race = createRace(raceConfig(seed, 'sprint', 4), w);
     let nearest = Infinity;
-    for (let t = 0; t < 60 * 150 && !race.cars.slice(1).every((c) => c.finished); t++) {
-      stepRace(race, input({}));
-      for (const rc of race.cars.slice(1)) {
-        const { u, v } = uv(a, rc.state.x, rc.state.z);
-        expect(v).toBeLessThan(coastV(p, u) - 0.2);
-        nearest = Math.min(nearest, along(rc.state.x, rc.state.z));
+    const snaps: string[] = [];
+    for (let run = 0; run < 2; run++) {
+      const race = createRace(raceConfig(seed, 'sprint', 4), w);
+      for (let t = 0; t < 60 * 300 && !race.cars.slice(1).every((c) => c.finished); t++) {
+        stepRace(race, input({}));
+        if (run) continue;
+        for (const rc of race.cars.slice(1)) {
+          const { u, v } = uv(a, rc.state.x, rc.state.z);
+          expect(v).toBeLessThan(coastV(p, u) - 0.2);
+          nearest = Math.min(nearest, along(rc.state.x, rc.state.z));
+        }
       }
+      // Every rival finishes past the open quay, the same way both times.
+      expect(race.cars.slice(1).every((c) => c.finished)).toBe(true);
+      snaps.push(carSnapshot(race));
     }
+    expect(snaps[1]).toBe(snaps[0]);
     // They did race past it.
     expect(nearest).toBeLessThan(30);
   });
@@ -448,28 +422,8 @@ describe('waterfront (render)', () => {
       const world = worlds[0];
       const walls = new Map<WallLook, Wall[]>();
       for (const w of world.walls) if (w.kind === 'wall' && w.look) (walls.get(w.look) ?? walls.set(w.look, []).get(w.look)!).push(w);
-      const group = new THREE.Group();
-      const kit: DistrictKit = {
-        world,
-        h: world.heightAt,
-        solid: new GeoBuilder(true),
-        ground: new GeoBuilder(true),
-        paint: new GeoBuilder(true),
-        glow: new GeoBuilder(true),
-        hazard: new GeoBuilder(),
-        foliage: new GeoBuilder(true),
-        trees: new GeoBuilder(true),
-        group,
-        walls,
-        builds: world.districts.builds,
-        quality: 'high',
-        track: (x) => x,
-        animate: () => {},
-        view: () => {},
-        simTick: (t) => t * 60,
-        audible: () => false,
-        armBroken: () => false,
-      };
+      const kit = makeKit(world, walls);
+      const group = kit.group;
       // Drawn wall by wall: each of the harbor's walls adds geometry to the solid builder.
       for (const look of WATERFRONT_LOOKS) {
         const own = (walls.get(look) ?? []).filter((w) => w.area === a.id);
@@ -508,5 +462,213 @@ describe('waterfront (render)', () => {
       const t = sea.from + ((((sea.to - sea.from) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) / 2;
       expect(Math.cos(t) * p.vx + Math.sin(t) * p.vz).toBeGreaterThan(0.3);
     }
+  });
+});
+
+/** A district kit over a world (its walls by look) with fresh builders, as the scene builds one. */
+function makeKit(world: World, walls: Map<WallLook, Wall[]> = wallsByLook(world)): DistrictKit {
+  return {
+    world,
+    h: world.heightAt,
+    solid: new GeoBuilder(true),
+    ground: new GeoBuilder(true),
+    paint: new GeoBuilder(true),
+    glow: new GeoBuilder(true),
+    hazard: new GeoBuilder(),
+    foliage: new GeoBuilder(true),
+    trees: new GeoBuilder(true),
+    group: new THREE.Group(),
+    walls,
+    builds: world.districts.builds,
+    quality: 'high',
+    track: (x) => x,
+    animate: () => {},
+    view: () => {},
+    simTick: (t) => t * 60,
+    audible: () => false,
+    armBroken: () => false,
+  };
+}
+
+function wallsByLook(world: World): Map<WallLook, Wall[]> {
+  const walls = new Map<WallLook, Wall[]>();
+  for (const w of world.walls) if (w.kind === 'wall' && w.look) (walls.get(w.look) ?? walls.set(w.look, []).get(w.look)!).push(w);
+  return walls;
+}
+
+/**
+ * Cells (0.5 m) of a harbor's quay a car can stand on in `world`: flooded from the lane, through every cell
+ * clear of walls and solids at radius r (props are destructible, so they never stop the flood). Keyed i * 1e5 + j.
+ */
+function quayReach(world: World, a: Area, r: number): Set<number> {
+  const p = a.params;
+  const out: Contact[] = [];
+  const C = 0.5;
+  const key = (i: number, j: number) => i * 100000 + j;
+  const ok = new Map<number, boolean>();
+  const pass = (i: number, j: number) => {
+    const k = key(i, j);
+    let v = ok.get(k);
+    if (v === undefined) {
+      const x = i * C;
+      const z = j * C;
+      const { u, v: vv } = uv(a, x, z);
+      v = u > p.pa && u < p.pb && vv < coastV(p, u) && pointInPolygon(x, z, a.polygon) && world.collideCircle(x, z, r, out) === 0;
+      ok.set(k, v);
+    }
+    return v;
+  };
+  const reach = new Set<number>();
+  const stack: [number, number][] = [];
+  for (let u = p.pa + 5; u < p.pb - 5; u += 25) {
+    const d = (CFG.yard.lane[0] + CFG.yard.lane[1]) / 2;
+    stack.push([Math.round((u * p.ux + (coastV(p, u) - d) * p.vx) / C), Math.round((u * p.uz + (coastV(p, u) - d) * p.vz) / C)]);
+  }
+  while (stack.length) {
+    const [i, j] = stack.pop()!;
+    const k = key(i, j);
+    if (reach.has(k) || !pass(i, j)) continue;
+    reach.add(k);
+    stack.push([i + 1, j], [i - 1, j], [i, j + 1], [i, j - 1]);
+  }
+  return reach;
+}
+
+describe('waterfront (yard)', () => {
+  it('nothing drawn on the quay that a car drives through, nor a wall with nothing drawn, even with the race scene lent to free roam', () => {
+    // The menu's street stage is built from the race world and lends its scene to free roam (game/streetStage.ts lend),
+    // whose world is the open one: what the harbor draws in the race world must collide in the open world.
+    for (const { city, worlds, a } of cities) {
+      const open = createWorld(city.seed, 'circuit', city, { openWorld: true });
+      const kit = makeKit(worlds[0]);
+      waterfrontRenderer.build(kit, [a]);
+      const reach = quayReach(open, a, 0.7);
+      const key = (x: number, z: number) => Math.round(x / 0.5) * 100000 + Math.round(z / 0.5);
+      const drawn = new Set<number>();
+      const ghosts: string[] = [];
+      for (const gb of [kit.solid, kit.glow]) {
+        const P = gb.positions;
+        const I = gb.indices;
+        for (let t = 0; t + 2 < I.length; t += 3) {
+          const A = I[t] * 3;
+          const B = I[t + 1] * 3;
+          const Cc = I[t + 2] * 3;
+          const e1 = [P[B] - P[A], P[B + 1] - P[A + 1], P[B + 2] - P[A + 2]];
+          const e2 = [P[Cc] - P[A], P[Cc + 1] - P[A + 1], P[Cc + 2] - P[A + 2]];
+          const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+          const len = Math.hypot(n[0], n[1], n[2]);
+          // Upright faces only: the sides of whatever stands on the quay.
+          if (len < 1e-6 || Math.abs(n[1] / len) > 0.4) continue;
+          const steps = Math.min(24, Math.max(2, Math.ceil(Math.sqrt(len / 2) / 0.25)));
+          for (let s1 = 0; s1 <= steps; s1++) {
+            for (let s2 = 0; s2 <= steps - s1; s2++) {
+              const w1 = s1 / steps;
+              const w2 = s2 / steps;
+              const x = P[A] + e1[0] * w1 + e2[0] * w2;
+              const y = P[A + 1] + e1[1] * w1 + e2[1] * w2;
+              const z = P[A + 2] + e1[2] * w1 + e2[2] * w2;
+              const g = open.driveHeightAt(x, z);
+              // At a car body's height over the ground.
+              if (y < g + 0.25 || y > g + 1.2) continue;
+              drawn.add(key(x, z));
+              const i = Math.round(x / 0.5);
+              const j = Math.round(z / 0.5);
+              const k = (di: number, dj: number) => (i + di) * 100000 + (j + dj);
+              if (reach.has(k(0, 0)) && reach.has(k(1, 0)) && reach.has(k(-1, 0)) && reach.has(k(0, 1)) && reach.has(k(0, -1))) ghosts.push(`${x.toFixed(1)},${z.toFixed(1)}`);
+            }
+          }
+        }
+      }
+      expect(ghosts.slice(0, 5), `${city.seed} drawn but drivable through`).toEqual([]);
+      // Every wall the harbor owns has something drawn on it.
+      for (const w of open.walls) {
+        if (w.area !== a.id) continue;
+        const x = (w.ax + w.bx) / 2 - w.nx * 0.15;
+        const z = (w.az + w.bz) / 2 - w.nz * 0.15;
+        let hit = false;
+        for (let di = -1; di <= 1 && !hit; di++) for (let dj = -1; dj <= 1 && !hit; dj++) if (drawn.has(key(x + di * 0.5, z + dj * 0.5))) hit = true;
+        expect(hit, `${city.seed} ${w.look} at ${x.toFixed(1)},${z.toFixed(1)}`).toBe(true);
+      }
+    }
+  });
+
+  it('the quay is drivable end to end, and every mouth onto it is open', () => {
+    for (const { city, a } of cities) {
+      const open = createWorld(city.seed, 'circuit', city, { openWorld: true });
+      const p = a.params;
+      // A car's width clear of every wall and solid from one end of the quay to the other.
+      const reach = quayReach(open, a, 1.2);
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (const k of reach) {
+        const i = Math.round(k / 100000);
+        const j = k - i * 100000;
+        const u = uv(a, i * 0.5, j * 0.5).u;
+        lo = Math.min(lo, u);
+        hi = Math.max(hi, u);
+      }
+      expect(lo, `${city.seed}`).toBeLessThan(p.pa + 8);
+      expect(hi, `${city.seed}`).toBeGreaterThan(p.pb - 8);
+      const b = city.districts.builds[a.id];
+      const mouths = b.hints.filter((h) => h.kind === 'quayMouth');
+      expect(mouths.length, `${city.seed}`).toBeGreaterThan(0);
+      for (const h of mouths) {
+        // Across the mouth between its posts, clear of walls and props, on the quay and onto the sidewalk before it.
+        const [pa, pb] = h.points;
+        const span = Math.hypot(pb.x - pa.x, pb.z - pa.z);
+        for (let s = 1.5; s < span - 1.5; s += 1) {
+          for (const dv of [-3, 0, 3]) {
+            const x = pa.x + ((pb.x - pa.x) * s) / span + p.vx * dv;
+            const z = pa.z + ((pb.z - pa.z) * s) / span + p.vz * dv;
+            expect(open.collideCircle(x, z, 0.9, []), `${city.seed} mouth at ${x.toFixed(1)},${z.toFixed(1)}`).toBe(0);
+            expect(open.props.some((q) => Math.hypot(q.x - x, q.z - z) < q.radius + 0.6), `${city.seed} prop in the mouth at ${x.toFixed(1)},${z.toFixed(1)}`).toBe(false);
+          }
+        }
+      }
+    }
+  });
+
+  it('lays out a skid pad, loading ramps at 6%, and on working docks containers and forklifts off the lane', () => {
+    for (const { city, worlds, a } of cities) {
+      const w = worlds[0];
+      const p = a.params;
+      const b = city.districts.builds[a.id];
+      // The skid pad is a drift zone, clear of walls and props.
+      const pad = b.hints.find((h) => h.kind === 'skidPad');
+      expect(pad, `${city.seed}`).toBeDefined();
+      const zone = driftZones(w).find((z) => z.kind === 'dock');
+      expect(zone?.area).toBe(a.id);
+      const [cx, cz, r] = pad!.values;
+      expect(r).toBeGreaterThanOrEqual(CFG.yard.pad[0]);
+      expect(w.wallClearance(cx, cz, r + 2)).toBeGreaterThan(r);
+      expect(w.props.some((q) => Math.hypot(q.x - cx, q.z - cz) < r + q.radius)).toBe(false);
+      // Ramps: never steeper than about 6% along the quay, back to the plain quay at their ends.
+      for (const h of b.hints.filter((x) => x.kind === 'ramp')) {
+        const [u0, span] = h.values;
+        // The ramp's own slope: the world's less the landscape's.
+        const base = createTerrain(city.seed);
+        let steepest = 0;
+        for (let u = u0; u <= u0 + span; u += 0.5) {
+          const q = { x: u * p.ux + (coastV(p, u) - 6) * p.vx, z: u * p.uz + (coastV(p, u) - 6) * p.vz };
+          const sl = w.slopeAt(q.x, q.z);
+          const s0 = base.slopeAt(q.x, q.z);
+          steepest = Math.max(steepest, Math.abs((sl.gx - s0.gx) * p.ux + (sl.gz - s0.gz) * p.uz));
+        }
+        expect(steepest).toBeGreaterThan(0.05);
+        expect(steepest).toBeLessThan(0.066);
+      }
+      // Solids stand off the lane along the water.
+      for (const wall of w.walls) {
+        if (wall.area !== a.id || !wall.solid || (wall.look !== 'container' && wall.look !== 'forklift')) continue;
+        for (const q of [{ x: wall.ax, z: wall.az }, { x: wall.bx, z: wall.bz }]) {
+          const { u, v } = uv(a, q.x, q.z);
+          expect(coastV(p, u) - v).toBeGreaterThan(CFG.yard.lane[1] - 0.05);
+        }
+      }
+      const kinds = new Set(b.walls.map((x) => x.look));
+      if (a.variant === 'marina') expect(kinds.has('container')).toBe(false);
+    }
+    // Working docks get the container lane and a forklift (on the harbor cities that have the room).
+    expect(cities.filter((c) => c.a.variant === 'harbor').some((c) => c.city.districts.builds[c.a.id].walls.some((x) => x.look === 'container'))).toBe(true);
   });
 });
