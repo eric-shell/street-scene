@@ -40,6 +40,7 @@ import { sortNodeEdges } from '../roadGraph';
 import { BlockFace, Sector, computeFaces, computeMouths, computeSectors } from '../blocks';
 import { Rng, deriveSeed } from '../../sim/prng';
 import { PolygonIndex, pointInPolygon, polygonBounds } from './geom';
+import type { Vec2 } from '../../sim/math';
 import type { Area, AreaBuild, AreaKind, BuildContext, Claims, DistrictModule, HeightMod, LateContext, PlanContext, PlannedEvent, SurfacePatch } from './types';
 import { emptyBuild } from './types';
 import { riverModule } from './river';
@@ -59,7 +60,8 @@ import { downtownModule } from './downtown';
 import { infillModule } from './infill';
 import { marketModule } from './market';
 import { roadworksModule } from './roadworks';
-import { carParkModule } from './carPark';
+import { carParkModule, CAR_HALF, carParks, flightCorridor } from './carPark';
+import { jumpFlightZone } from './alleyDressing';
 
 /** Every module, in planning order. */
 export const DISTRICT_MODULES: readonly DistrictModule[] = [
@@ -123,7 +125,7 @@ export interface CityDistricts {
   /** All height modifiers of graph phase areas. */
   heightMods: HeightMod[];
   /** For generateBlocks: graph phase builds and the late module runner. */
-  blocksInput: { builds: AreaBuild[]; late: (ctx: LateContext) => AreaBuild[] };
+  blocksInput: { builds: AreaBuild[]; late: (ctx: LateContext) => AreaBuild[]; areas: readonly Area[]; keepClear: () => Vec2[][] };
   /** Area at a point (rasterized, RASTER_CELL m), or null on plain streets / outside. Call finalize first. */
   areaAt(x: number, z: number): Area | null;
   /** Highest priority surface patch at a point, or null. */
@@ -261,7 +263,16 @@ export function planDistricts(seed: number, g: RoadGraph, hooks: PlanHooks = {})
     areas,
     builds,
     heightMods,
-    blocksInput: { builds: graphBuilds, late },
+    blocksInput: {
+      builds: graphBuilds,
+      late,
+      areas,
+      // The sidewalk trees stay out of every jump exit's flight and its rollout on the landing street, and of a car park's launch and landing (a car lands and runs on across the street).
+      keepClear: () => [
+        ...areas.filter((a) => a.kind === 'backAlley' && a.params.jumpExit).map((a) => jumpFlightZone(a, a.params.landMax + CITY.districts.backAlley.route.jump.rollout, CAR_HALF + 1.5)),
+        ...carParks(areas).map((g) => flightCorridor(g, g.lipBack + g.landZone, CAR_HALF + 1.5)),
+      ],
+    },
     areaAt(x, z) {
       if (!raster) return null;
       const i = Math.floor((x - rx0) / RASTER_CELL);

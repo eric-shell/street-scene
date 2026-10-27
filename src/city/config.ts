@@ -1484,3 +1484,50 @@ export const PARKING = {
   /** District areas a slot never stands in (World.areaAt at its centre): the river's banks and ramps, a tunnel or viaduct, a market, roadworks. */
   offAreas: ['river', 'tunnel', 'overpass', 'market', 'roadworks', 'roundabout'] as const,
 } as const;
+
+/**
+ * Sidewalk trees (streetTrees.ts): solid trunks on the sidewalks of plain streets, avenues, boulevards
+ * and diagonals, with a canopy that overhangs the walk. Every trunk is a sim solid (wall look 'tree'),
+ * so a car that climbs the curb meets it.
+ */
+export const STREET_TREES = {
+  enabled: true,
+  /** Road kinds that get trees. */
+  kinds: ['street', 'avenue', 'diagonal', 'boulevard'],
+  /** Narrowest sidewalk (m, curb to building line) that takes a tree. */
+  minSidewalk: 3,
+  /** Spacing along a street side (m) by road kind: one tree about this often, before jitter. */
+  pitch: { street: 16, avenue: 16, diagonal: 16, boulevard: 12 },
+  /** Seeded jitter of a station along the curb (m, +/-) and the share of stations left empty. */
+  jitter: 3,
+  skip: 0.08,
+  /** Trunk radius (m): the sim's solid, a 6 sided prism round it. */
+  trunkRadius: 0.25,
+  trunkSides: 6,
+  /** Crown radius and total height range (m) the renderer draws. */
+  size: [1.9, 2.3],
+  height: [6.5, 8.5],
+  /** Distance the trunk keeps from the junction's curb corner, measured along the curb (m). */
+  junctionClear: 14,
+  /** Distance the trunk keeps from the nearest pole, signal or other furniture, centre to centre (m): at least this, or the prop's radius plus the trunk and `propGap`. */
+  propClear: 2.5,
+  propGap: 1.5,
+  /** Planted this share of the way from the curb to the building line (the outer third) ... */
+  across: 0.67,
+  /** ... but never nearer the facade than this (m), so the canopy does not sink into the building. */
+  facadeClear: 1.2,
+  /** Seeded jitter of the planting depth (m, +/-), inside the limits above. */
+  acrossJitter: 0.12,
+  /** Trees on one side keep at least this far from each other (m), also across a bend node. */
+  treeGap: 8,
+  /** Room kept from a bus bay or path mouth's asphalt, from a district structure, and from a non frontage wall (m, beyond the trunk). */
+  bayClear: 1.5,
+  reservedClear: 1,
+  wallClear: 1.5,
+  /** The frontage behind the trunk is probed this far to either side along the curb (m): a building must stand behind all three probes, so no tree blocks a lot or plaza opening. */
+  frontProbe: 2.5,
+  /** A second, inner row (a third of the way from the curb) on boulevards whose sidewalk is at least this wide (m). */
+  secondRowMin: 6,
+  /** Room kept from the road surface (m, beyond the trunk). */
+  roadClear: 0.5,
+} as const;

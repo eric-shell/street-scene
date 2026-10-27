@@ -392,7 +392,7 @@ export function settleAlleyLips(areas: readonly Area[], builds: readonly AreaBui
  * The flight corridor past a jump exit (world quad): from just behind the lip
  * `reach` m along the last leg, spreading at spreadDeg, padded `pad` m each side.
  */
-function jumpFlightZone(area: Area, reach: number, pad = 0): Vec2[] {
+export function jumpFlightZone(area: Area, reach: number, pad = 0): Vec2[] {
   const J = CITY.districts.backAlley.route.jump;
   const n = area.path.length;
   const O = area.path[n - 2];

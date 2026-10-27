@@ -55,7 +55,7 @@ describe('small solids', () => {
   it('stop a car that drives into a park tree on the side it came from, from any direction', () => {
     const w = createWorld(1, 'circuit', undefined, { openWorld: true });
     // Park trunks only: a roundabout island's trees stand inside its fence of pots and bollards, with no clear run up.
-    const trunks = [...new Set(w.blocks.walls.filter((x) => x.look === 'tree' && w.areas[x.area!].kind === 'park').map((x) => x.solid!))];
+    const trunks = [...new Set(w.blocks.walls.filter((x) => x.look === 'tree' && x.area !== undefined && w.areas[x.area].kind === 'park').map((x) => x.solid!))];
     let runs = 0;
     // Trunks in plan order until enough runs (the first parks' trunks may all stand on slopes or among lamps).
     for (const s of trunks) {
