@@ -6,6 +6,15 @@
  * oncoming traffic, an excavator digging over a row of steel road plates, a skip,
  * a light tower lighting the lot, pallets and sandbags against the curb.
  *
+ * Three variants per closure, picked from a sub-stream of the roadworks seed so the
+ * placement above never shifts: `lane` (the plant just described), `trench` (an open
+ * trench along the lane under steel plates, a trench box, spoil heaps, a pump and its
+ * hose, behind chain link fence with sawhorse lamps) and `resurfacing` (the lane milled
+ * and freshly laid, a road roller with its beacon, a line of cones in place of barriers,
+ * a FRESH TAR board). All three keep the same closure shape and reach, so the racing line
+ * (laneClosures) and the street's open lanes do not depend on the variant; the trench is
+ * paint only (the sim stays flat under the plates).
+ *
  * Collision rule: the plant is solid (convex 'roadworks' solids, drawn from
  * this build's hints by render/districts/roadworks.ts); everything along and
  * across the closure is a destructible that a car smashes through. A closure
@@ -60,11 +69,16 @@ export const ROADWORKS = {
   /** The racing line's car center keeps this far (m) from the barriers' reach, from this far (m) before the taper to as far past. */
   aiMargin: 2.3,
   aiLead: 10,
+  /** Variant weights per closure (the share of each; they need not sum to one). */
+  variants: { lane: 0.4, trench: 0.3, resurfacing: 0.3 },
   /** Plant keeps this far (m) from the curb and from the backs of the barriers. */
   plantClear: 0.35,
   /** Taper cones every ~this far (m); barriers this far apart (m, their radii plus the district prop gap); a sawhorse every this many. */
   coneStep: 2.2,
   barrierPitch: 2.1,
+  /** Trench fence panels end to end (m), and the resurfacing line's cones (m apart). */
+  fencePitch: 2.3,
+  coneLineStep: 1.15,
   sawhorseEvery: 4,
 } as const;
 
@@ -81,7 +95,28 @@ export const PLANT = {
   skip: { along: 3.4, across: 1.7 },
   excavator: { along: 4.562, across: 3.086, arm: 4.676, stick: [3.259, 4.676], center: -0.22, width: 1.205, minScale: 0.7 },
   lightTower: { along: 2.2, across: 1.3 },
+  /** Trench: the shoring box in the trench (across = the trench's width), the pump on the curb strip. */
+  trenchBox: { along: 2.4 },
+  pump: { along: 1.1, across: 0.8 },
+  /** Resurfacing: the road roller and the FRESH TAR board (its width across the lane). */
+  roller: { along: 4.4, across: 1.9 },
+  tarBoard: { along: 0.3, across: 2.0 },
 } as const;
+
+/** The three kinds of closure. */
+export type RoadworksVariant = keyof typeof ROADWORKS.variants;
+export const ROADWORKS_VARIANTS = Object.keys(ROADWORKS.variants) as RoadworksVariant[];
+
+/** Weighted pick from a closure's own sub-stream (so choosing never moves the placement's draws). */
+function pickVariant(rng: Rng): RoadworksVariant {
+  const total = ROADWORKS_VARIANTS.reduce((a, v) => a + ROADWORKS.variants[v], 0);
+  let r = rng.range(0, total);
+  for (const v of ROADWORKS_VARIANTS) {
+    r -= ROADWORKS.variants[v];
+    if (r < 0) return v;
+  }
+  return 'lane';
+}
 
 /** What the racing line must keep clear of: one closure in its street's frame. */
 export interface LaneClosure {
@@ -243,7 +278,7 @@ export function planRoadworks(ctx: PlanContext, routes: readonly CarveRoute[]): 
     // Right hand traffic: the N side (side -1) carries a -> b, so its oncoming end is at sA.
     const up = side === -1 ? 1 : -1;
     ctx.addArea(
-      { kind: 'roadworks', variant: 'lane', polygon, path: [f.at(sA - taper, 0), f.at(sB + taper, 0)], nodes: [], edges: [], faces: [], params: { edge: ei, side, sA, sB, taper, close, up } },
+      { kind: 'roadworks', variant: pickVariant(new Rng(deriveSeed(ctx.seed, `roadworks:variant:${ei}`))), polygon, path: [f.at(sA - taper, 0), f.at(sB + taper, 0)], nodes: [], edges: [], faces: [], params: { edge: ei, side, sA, sB, taper, close, up } },
       0,
     );
     placed.push({ x: mid.x, z: mid.z, edge: ei });
@@ -283,6 +318,7 @@ function buildRoadworks(ctx: BuildContext, area: Area): AreaBuild {
     b.destructibles.push({ kind, x: p.x, z: p.z, yaw, lift: 0, area: area.id });
   };
 
+  const variant = area.variant as RoadworksVariant;
   // Tapers: cones on a diagonal from near the curb out to the closure line, at both ends.
   const nc = Math.max(3, Math.round(T / C.coneStep));
   for (let k = 0; k <= nc; k++) {
@@ -290,65 +326,124 @@ function buildRoadworks(ctx: BuildContext, area: Area): AreaBuild {
     prop('trafficCone', -T + (T * k) / nc, v, rng.range(0, 6.28));
     prop('trafficCone', W + T - (T * k) / nc, v, rng.range(0, 6.28));
   }
-  // The closure line: water filled barriers end to end (lying along the lane), a sawhorse with its lamp every few.
-  let slot = 0;
-  for (let t = 1.4; t <= W - 1.4 + 1e-6; t += C.barrierPitch, slot++) {
-    if (slot % C.sawhorseEvery === C.sawhorseEvery - 1) prop('sawhorse', t, close - 0.35, alongYaw + rng.range(-0.05, 0.05));
-    else prop('waterBarrier', t, close - 0.3, alongYaw + rng.range(-0.03, 0.03));
+  // The closure line. Lane: water filled barriers end to end (lying along the lane), a sawhorse with its lamp every few.
+  // Trench: chain link fence panels between barrier ends, a sawhorse lamp every third. Resurfacing: just a line of cones.
+  if (variant === 'resurfacing') {
+    for (let t = 0.9; t <= W - 0.9 + 1e-6; t += C.coneLineStep) prop('trafficCone', t, close - 0.3, rng.range(0, 6.28));
+  } else if (variant === 'trench') {
+    const n = Math.max(2, Math.floor((W - 2.8) / C.fencePitch) + 1);
+    const pitch = (W - 2.8) / (n - 1);
+    for (let k = 0; k < n; k++) {
+      const kind: PropKind = k === 0 || k === n - 1 ? 'waterBarrier' : k % 3 === 2 ? 'sawhorse' : 'fencePanel';
+      prop(kind, 1.4 + pitch * k, close - 0.3, alongYaw + rng.range(-0.03, 0.03));
+    }
+  } else {
+    let slot = 0;
+    for (let t = 1.4; t <= W - 1.4 + 1e-6; t += C.barrierPitch, slot++) {
+      if (slot % C.sawhorseEvery === C.sawhorseEvery - 1) prop('sawhorse', t, close - 0.35, alongYaw + rng.range(-0.05, 0.05));
+      else prop('waterBarrier', t, close - 0.3, alongYaw + rng.range(-0.03, 0.03));
+    }
   }
 
-  // The plant, from the oncoming end: the arrow board first, the rest in a random order while it fits.
+  // The plant, from the oncoming end: the arrow board first, the rest by variant while it fits.
   const v0 = C.plantClear;
   const vMax = close - 0.6 - C.plantClear;
   /** A box wall from `t0` along and `va` across, `along` by `across` (m): its corner on the oncoming, curb side. */
   const box = (t0: number, va: number, along: number, across: number) => {
     for (const w of solidWalls(rectPolygon(f.at(S(t0), va), fwd, toRoad, along, across), 'roadworks', area.id)) b.walls.push(w);
   };
-  const solid = (kind: keyof typeof PLANT, t0: number, along: number, across: number, extra: number) => {
-    box(t0, v0, along, Math.min(across, vMax - v0));
-    const c = f.at(S(t0 + along / 2), v0 + Math.min(across, vMax - v0) / 2);
-    b.hints.push({ kind, points: [c, fwd, toRoad], values: [along, Math.min(across, vMax - v0), extra] });
+  /** A solid piece (wall box and render hint): `va` across from the curb, `across` clipped to the room left. */
+  const solid = (kind: string, t0: number, along: number, across: number, extra: number, va: number = v0) => {
+    const ac = Math.min(across, vMax - va);
+    box(t0, va, along, ac);
+    const c = f.at(S(t0 + along / 2), va + ac / 2);
+    b.hints.push({ kind, points: [c, fwd, toRoad], values: [along, ac, extra] });
+  };
+  /** A flat marking (no wall): `along` by `across` centred at `tc` along and `v` across. */
+  const mark = (kind: string, tc: number, v: number, along: number, across: number, extra = 0) => {
+    b.hints.push({ kind, points: [f.at(S(tc), v), fwd, toRoad], values: [along, across, extra] });
   };
   let t = 0.6;
   solid('arrowBoard', t, PLANT.arrowBoard.along, PLANT.arrowBoard.across, 0);
   t += PLANT.arrowBoard.along + rng.range(1, 1.8);
-  const order: (keyof typeof PLANT)[] = ['skip', 'excavator', 'lightTower'];
-  rng.shuffle(order);
   /** Free stretches left along the curb (t ranges), for the soft pieces. */
   const free: [number, number][] = [];
-  const X = PLANT.excavator;
-  // Full size where the closure has the room across, scaled to it where not.
-  const scale = Math.min(1, (vMax - v0) / X.across);
-  for (const kind of order) {
-    const k = kind === 'excavator' ? scale : 1;
-    if (k < X.minScale) continue;
-    const p = PLANT[kind];
-    const arm = kind === 'excavator' ? X.arm * k : 0;
-    const len = p.along * k + arm;
-    if (t + len > W - 0.6) continue;
-    // The excavator digs on its downstream side: arm, stick and plates there, body first; the hint's
-    // last value is its scale.
-    solid(kind, t, p.along * k, p.across * k, kind === 'excavator' ? k : 0);
-    if (kind === 'excavator') {
-      // The model's +x side is (fwd.z, -fwd.x): toward the road or the curb, by the side of the street.
-      const sx = fwd.z * toRoad.x - fwd.x * toRoad.z;
-      const vStick = v0 + (X.across / 2 + sx * X.center) * k;
-      box(t + (X.along + X.stick[0]) * k, vStick - (X.width / 2) * k, (X.stick[1] - X.stick[0]) * k, X.width * k);
-      const plates = 2;
-      const pw = Math.min(1.6, vMax - v0);
-      const pv = Math.min(Math.max(vStick, v0 + pw / 2), vMax - pw / 2);
-      for (let n = 0; n < plates; n++) {
-        const c = f.at(S(t + p.along * k + 0.2 + (arm / plates) * (n + 0.5)), pv);
-        b.hints.push({ kind: 'plate', points: [c, fwd, toRoad], values: [arm / plates - 0.05, pw, rng.range(-0.04, 0.04)] });
-      }
+
+  if (variant === 'trench') {
+    // An open trench on the road side of the strip, steel plates across it, the spoil and the pump on the curb side.
+    const tw = Math.min(1.7, Math.max(1, (vMax - v0) * 0.55));
+    const vT0 = vMax - tw;
+    const cw = vT0 - 0.1 - v0;
+    const tA = t;
+    const tB = W - 0.8;
+    mark('trench', (tA + tB) / 2, vT0 + tw / 2, tB - tA, tw);
+    // The shoring box at the downstream end, the plates between it and the oncoming end.
+    const boxT = tB - PLANT.trenchBox.along - 0.2;
+    solid('trenchBox', boxT, PLANT.trenchBox.along, tw, 0, vT0);
+    for (let p = tA + 0.8; p + 1.2 <= boxT - 0.8; p += 3.4) {
+      b.hints.push({ kind: 'plate', points: [f.at(S(p + 0.6), vT0 + tw / 2), fwd, toRoad], values: [1.2, tw + 0.5, rng.range(-0.04, 0.04)] });
     }
-    const gap = rng.range(1, 2);
-    free.push([t + len, t + len + gap]);
-    t += len + gap;
+    // Spoil heaps from the oncoming end, then the pump; the hose runs on down the curb strip.
+    let s = tA + 0.2;
+    const pumpAcross = Math.min(PLANT.pump.across, cw);
+    for (let k = 0; k < 3; k++) {
+      const len = rng.range(2.2, 3.2);
+      if (k > 0 && s + len + PLANT.pump.along + 0.6 > tB - 0.2) break;
+      solid('spoil', s, len, cw, rng.range(0.55, 0.85));
+      s += len + rng.range(0.3, 0.9);
+    }
+    solid('pump', s, PLANT.pump.along, pumpAcross, 0);
+    const hoseA = s + PLANT.pump.along + 0.1;
+    if (W - 0.5 - hoseA >= 1) mark('hose', (hoseA + W - 0.5) / 2, v0 + 0.25, W - 0.5 - hoseA, 0.09);
+  } else if (variant === 'resurfacing') {
+    // The lane milled for the oncoming part, freshly laid and rolled for the rest; the FRESH TAR board after the arrow board.
+    const millLen = W * 0.55;
+    mark('milled', W / 2, close / 2, W, close - 0.1, millLen);
+    solid('tarBoard', t, PLANT.tarBoard.along, PLANT.tarBoard.across, 0);
+    const tarEnd = t + PLANT.tarBoard.along;
+    const rollerT = Math.max(millLen + 0.4, tarEnd + 1.2);
+    const rv = Math.max(v0, (v0 + vMax) / 2 - PLANT.roller.across / 2);
+    if (rollerT + PLANT.roller.along <= W - 0.6) {
+      solid('roller', rollerT, PLANT.roller.along, PLANT.roller.across, 0, rv);
+      free.push([tarEnd + 0.8, rollerT - 0.8], [rollerT + PLANT.roller.along + 0.8, W - 0.6]);
+    } else free.push([tarEnd + 0.8, W - 0.6]);
+  } else {
+    const order: ('skip' | 'excavator' | 'lightTower')[] = ['skip', 'excavator', 'lightTower'];
+    rng.shuffle(order);
+    const X = PLANT.excavator;
+    // Full size where the closure has the room across, scaled to it where not.
+    const scale = Math.min(1, (vMax - v0) / X.across);
+    for (const kind of order) {
+      const k = kind === 'excavator' ? scale : 1;
+      if (k < X.minScale) continue;
+      const p = PLANT[kind];
+      const arm = kind === 'excavator' ? X.arm * k : 0;
+      const len = p.along * k + arm;
+      if (t + len > W - 0.6) continue;
+      // The excavator digs on its downstream side: arm, stick and plates there, body first; the hint's
+      // last value is its scale.
+      solid(kind, t, p.along * k, p.across * k, kind === 'excavator' ? k : 0);
+      if (kind === 'excavator') {
+        // The model's +x side is (fwd.z, -fwd.x): toward the road or the curb, by the side of the street.
+        const sx = fwd.z * toRoad.x - fwd.x * toRoad.z;
+        const vStick = v0 + (X.across / 2 + sx * X.center) * k;
+        box(t + (X.along + X.stick[0]) * k, vStick - (X.width / 2) * k, (X.stick[1] - X.stick[0]) * k, X.width * k);
+        const plates = 2;
+        const pw = Math.min(1.6, vMax - v0);
+        const pv = Math.min(Math.max(vStick, v0 + pw / 2), vMax - pw / 2);
+        for (let n = 0; n < plates; n++) {
+          const c = f.at(S(t + p.along * k + 0.2 + (arm / plates) * (n + 0.5)), pv);
+          b.hints.push({ kind: 'plate', points: [c, fwd, toRoad], values: [arm / plates - 0.05, pw, rng.range(-0.04, 0.04)] });
+        }
+      }
+      const gap = rng.range(1, 2);
+      free.push([t + len, t + len + gap]);
+      t += len + gap;
+    }
+    free.push([t, W - 0.6]);
   }
-  free.push([t, W - 0.6]);
-  // Soft pieces in what is left: pallets, sandbags and barrels against the curb.
-  const soft: PropKind[] = ['pallets', 'sandbags', 'barrel'];
+  // Soft pieces in what is left: pallets, sandbags and barrels against the curb (the trench has no strip to spare).
+  const soft: PropKind[] = variant === 'resurfacing' ? ['barrel', 'pallets'] : ['pallets', 'sandbags', 'barrel'];
   for (const [a, z] of free) {
     let s = a + 0.2;
     while (true) {

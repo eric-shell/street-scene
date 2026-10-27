@@ -220,7 +220,9 @@ describe('roadworks', () => {
         expect(e.width - P.close - ROADWORKS.barrierReach).toBeGreaterThan(7.5);
         const mine = c.blocks.props.filter((p) => p.area === a.id);
         expect(mine.filter((p) => p.kind === 'trafficCone').length).toBeGreaterThanOrEqual(8);
-        expect(mine.filter((p) => p.kind === 'waterBarrier').length).toBeGreaterThanOrEqual(5);
+        // The closure line: barriers (lane), fence and barrier ends (trench) or a line of cones (resurfacing).
+        if (a.variant === 'resurfacing') expect(mine.filter((p) => p.kind === 'trafficCone').length).toBeGreaterThanOrEqual(12);
+        else expect(mine.filter((p) => p.kind === 'waterBarrier' || p.kind === 'fencePanel').length).toBeGreaterThanOrEqual(a.variant === 'trench' ? 4 : 5);
         for (const p of mine) {
           const f = at(p.x, p.z);
           expect(f.v + p.radius, p.kind).toBeLessThanOrEqual(P.close + ROADWORKS.barrierReach + 1e-6);
