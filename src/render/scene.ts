@@ -7,6 +7,7 @@ import { World } from '../city/world';
 import { QUALITY, QualityProfile, Settings } from '../ui/settings';
 import { buildCityMeshes, CityMeshes } from './street/cityMeshes';
 import { buildLightFx, LightFx } from './street/lightFx';
+import { buildLampCones } from './street/lampCones';
 import { collectStreakEmitters } from './street/streakEmitters';
 import { fitLampPositions, LAMP_TONES, planLamps, toneColor } from './street/lampStyle';
 import { fadeSubPixel } from './materialFx';
@@ -241,6 +242,9 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   const fx = buildLightFx(city.lampPositions, city.signLights, world.heightAt, fogDensity, lampTone.map((t) => ({ pool: toneColor(t.pool), streak: toneColor(t.streak) })), { grid, extra: emitters.list });
   fx.setStrength(0.42, 0.85);
   scene.add(fx.group);
+  // On damp nights the nearest streetlamps show a cone of light in the air (lampCones.ts; none on clear nights or at Low).
+  const cones = buildLampCones(city.lampPositions, lampTone.map((t) => toneColor(t.pool)), world.heightAt, { quality: settings.quality, mood: weather.mood, fogDensity, grid });
+  if (cones) scene.add(cones.group);
   // Parks and plazas: a wash over the whole area and a pool under every lantern post.
   const areaLights = buildAreaLights(world);
   scene.add(areaLights.group);
@@ -293,6 +297,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     else props.view(camera, Infinity, Infinity);
     // The light pools and streaks cull on it too, all 'fog' class.
     fx.view(camera, chunks.enabled ? fogCutoff(density) : Infinity);
+    cones?.view(camera);
   };
   // Broken lamps go dark: ground pool, reflection streak (streetlights) and the real light pool.
   const lampOff = new Uint8Array(lamps.length);
@@ -308,7 +313,10 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     onLamp(i, on) {
       if (i < 0 || i >= lampOff.length || lampOff[i] === (on ? 0 : 1)) return;
       lampOff[i] = on ? 0 : 1;
-      if (i < streetLamps) fx.setLampOn(i, on);
+      if (i < streetLamps) {
+        fx.setLampOn(i, on);
+        cones?.setLampOn(i, on);
+      }
       else {
         areaLights.setLampOn(i - streetLamps, on);
         fx.setEmitterOn(fx.extraBase + emitters.parkBase + i - streetLamps, on);
@@ -380,6 +388,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
       polish.dispose();
       placeSigns.dispose();
       fx.dispose();
+      cones?.dispose();
       areaLights.dispose();
       arrows.dispose();
       roadblocks.dispose();

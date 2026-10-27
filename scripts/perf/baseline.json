@@ -3,50 +3,50 @@
  "tier": "medium",
  "camera": "route",
  "totals": {
-  "tris": 911713,
-  "verts": 1411457,
-  "drawCalls": 162,
-  "materials": 83,
-  "transparent": 30,
-  "additive": 20
+  "tris": 912033,
+  "verts": 1411697,
+  "drawCalls": 163,
+  "materials": 84,
+  "transparent": 31,
+  "additive": 21
  },
  "max": {
-  "tris": 1015855,
-  "verts": 1614808,
-  "drawCalls": 173
+  "tris": 1016175,
+  "verts": 1615048,
+  "drawCalls": 174
  },
  "samples": [
   {
    "s": 200,
    "totals": {
-    "tris": 735753,
-    "verts": 1084887,
-    "drawCalls": 154,
-    "materials": 75,
-    "transparent": 27,
-    "additive": 17
+    "tris": 736137,
+    "verts": 1085175,
+    "drawCalls": 155,
+    "materials": 76,
+    "transparent": 28,
+    "additive": 18
    }
   },
   {
    "s": 700,
    "totals": {
-    "tris": 983530,
-    "verts": 1534677,
-    "drawCalls": 173,
-    "materials": 90,
-    "transparent": 33,
-    "additive": 22
+    "tris": 983786,
+    "verts": 1534869,
+    "drawCalls": 174,
+    "materials": 91,
+    "transparent": 34,
+    "additive": 23
    }
   },
   {
    "s": 1200,
    "totals": {
-    "tris": 1015855,
-    "verts": 1614808,
-    "drawCalls": 160,
-    "materials": 85,
-    "transparent": 30,
-    "additive": 20
+    "tris": 1016175,
+    "verts": 1615048,
+    "drawCalls": 161,
+    "materials": 86,
+    "transparent": 31,
+    "additive": 21
    }
   }
  ],
@@ -1242,6 +1242,11 @@
    "tris": 384,
    "verts": 768,
    "draws": 0.3
+  },
+  "lampCones": {
+   "tris": 320,
+   "verts": 240,
+   "draws": 1
   },
   "riverDecals": {
    "tris": 316,
