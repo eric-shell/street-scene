@@ -955,6 +955,13 @@ function togglePause(): void {
       sessionKind === 'roam'
         ? [{ icon: Shuffle, label: 'New city', sub: 'Free roam in a city never seen', hue: 'green', onClick: () => void wipe({ title: 'New city', sub: 'Free roam · a city never seen' }, () => startFreeRoam(String(Math.floor(Math.random() * 1e8)))) }]
         : undefined,
+    // The map pauses the session itself and resumes it on close, so the pause screen steps aside for it.
+    onMap: session.isReplay
+      ? undefined
+      : () => {
+          togglePause();
+          session?.toggleMap();
+        },
     settings: { ...settings },
     onSettings: applySettings,
     music,

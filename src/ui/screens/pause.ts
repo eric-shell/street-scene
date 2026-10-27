@@ -4,7 +4,7 @@
  * _pause-card.scss; the settings step is the shared settings panel.
  */
 import { btn, h } from '../kit/dom';
-import { ChevronsRight, Compass, MapPinned, Pause, Play, RotateCcw, Route, Settings as SettingsIcon, Wind, X, icon, type IconNode } from '../kit/icons';
+import { ChevronsRight, Compass, MapIcon, MapPinned, Pause, Play, RotateCcw, Route, Settings as SettingsIcon, Wind, X, icon, type IconNode } from '../kit/icons';
 import type { RaceType, Settings } from '../settings';
 import { RailSteps, navRow, railScreen, screenHead, type Hue } from '../rail/rail';
 import { Help, MUSIC_KEYS } from '../panels/help';
@@ -54,8 +54,8 @@ const TYPE_ICON: Record<RaceType, IconNode> = { circuit: RotateCcw, sprint: Rout
  * paused (the race type as its kicker, the event's name, lap and place, the
  * course drawn with every car where it stands) and ends in Resume, the
  * screen's main action, which glints; the other actions are rows in their own
- * hues like the menu's places (restart orange, a new city green, settings
- * purple, quit red). Settings is a step of its own on the same rail, sliding
+ * hues like the menu's places (restart orange, a new city green, the city
+ * map cyan, settings purple, quit red). Settings is a step of its own on the same rail, sliding
  * in like the menu's steps, so Escape there comes back to the pause list
  * instead of resuming.
  */
@@ -72,6 +72,8 @@ export function pauseMenu(o: {
   quitSub?: string;
   /** Rows under Restart (free roam: a new city). */
   extra?: PauseAction[];
+  /** The city map row, another way to the map than Tab or the minimap (none: no row, as in a replay). */
+  onMap?(): void;
   /** The settings step works on this copy and reports every change. */
   settings: Settings;
   onSettings(s: Settings): void;
@@ -110,6 +112,7 @@ export function pauseMenu(o: {
       { class: 'nav-list', 'aria-label': 'Paused' },
       navRow(RotateCcw, o.restartLabel ?? 'Restart race', o.restartSub ?? 'Back to the grid', 'orange', o.onRestart),
       ...(o.extra ?? []).map((x) => navRow(x.icon, x.label, x.sub, x.hue, x.onClick)),
+      ...(o.onMap ? [navRow(MapIcon, 'City map', t.mode === 'roam' ? 'Find a place, set a waypoint' : 'The course and where you are', 'cyan', o.onMap)] : []),
       navRow(SettingsIcon, 'Settings', 'Display, sound, controls', 'purple', () => show('settings'), 'pause-screen__settings'),
       navRow(X, o.quitLabel ?? 'Quit to menu', o.quitSub ?? 'Leave this race', 'red', o.onQuit),
     ),
