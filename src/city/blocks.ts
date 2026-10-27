@@ -16,13 +16,13 @@
  * river's own trench and bank walls are the collision there).
  */
 import { CITY } from './config';
-import { Chain, RoadGraph, RoadEdge, RoadNode, isBendNode, isMouthEdge, isRiverEdge, otherNode, sectorAngle } from './roadGraph';
+import { Chain, RoadGraph, RoadEdge, RoadNode, downtownFactor, isBendNode, isMouthEdge, isRiverEdge, otherNode, sectorAngle } from './roadGraph';
 import { SpatialGrid } from './spatial';
 import { Terrain } from './terrain';
 import { Prop, edgeSides, generateProps, lightStations } from './props';
 import { BusBay, mouthBay, planBusBays } from './busBays';
 import { Rng, deriveSeed } from '../sim/prng';
-import { DEG, Vec2, atan2, clamp, cos, distToSegment, exp, lineIntersectT, sin, sqrt, TAU } from '../sim/math';
+import { DEG, Vec2, atan2, clamp, cos, distToSegment, lineIntersectT, sin, sqrt, TAU } from '../sim/math';
 import type { AreaBuild, Circle, FrontageRun, FrontLook, LateContext, WallLook } from './districts/types';
 import { PolygonIndex } from './districts/geom';
 
@@ -576,12 +576,8 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
 
   // Buildings behind the wall line.
   const buildings: Building[] = [];
-  const cx = (g.bounds.minX + g.bounds.maxX) / 2;
-  const cz = (g.bounds.minZ + g.bounds.maxZ) / 2;
-  const downtown = (x: number, z: number) => {
-    const r2 = ((x - cx) ** 2 + (z - cz) ** 2) / (CITY.downtownRadius * CITY.downtownRadius);
-    return exp(-r2);
-  };
+  // Round the plan's downtown centre (CityPlan.downtown), off the map's middle on most seeds.
+  const downtown = (x: number, z: number) => downtownFactor(g.plan, x, z);
 
   // Open corners: a share of junction corners keeps its buildings back, leaving a void the late
   // infill turns into a corner pocket of clutter racers can cut through. Own random stream, so the

@@ -1,6 +1,8 @@
 /**
- * Procedural road network: a jittered grid with some edges removed, a couple
- * of diagonal avenues and one wide boulevard, the whole grid then warped by a
+ * Procedural road network, laid out from the seed's CityPlan (cityPlan: grid
+ * size and spacing, where downtown sits, how many boulevards, avenues and
+ * diagonals, a superblock, how many streets go): a jittered grid with some
+ * edges removed, diagonal avenues and wide boulevards, the whole grid then warped by a
  * smooth field (CITY.warp) so streets sweep and junction angles vary, and every
  * grid street cut into CITY.bendSegments straight pieces through degree-2 bend
  * nodes that lie on the warped line (so a street is a chain of short edges
@@ -17,7 +19,7 @@
  */
 import { CITY } from './config';
 import { Rng, deriveSeed } from '../sim/prng';
-import { atan2, DEG, sin, sqrt, TAU } from '../sim/math';
+import { atan2, cos, DEG, exp, sin, sqrt, TAU } from '../sim/math';
 
 /**
  * 'alley': narrow raceway street. 'backAlley': skinny shortcut through a block
@@ -114,6 +116,111 @@ export interface RoadGraph {
   nodes: RoadNode[];
   edges: RoadEdge[];
   bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
+  /** The plan the grid was laid out from (cityPlan): its size, spacing and downtown. Never edited after. */
+  plan: CityPlan;
+}
+
+/** One superblock band (CityPlan.superblock): the streets of a grid row or column dropped across a few blocks. */
+export interface Superblock {
+  /** 'row': the row j = line loses its streets from column `from` to `from + cells`; 'col': column i = line from row `from`. */
+  axis: 'row' | 'col';
+  line: number;
+  from: number;
+  /** Blocks the band spans (each a street removed). */
+  cells: number;
+}
+
+/**
+ * The bones of one seed's city (CITY.plan): drawn from its own 'plan' stream before any street is
+ * laid, so every seed is its own city while each knob stays within what the planners and the camera
+ * expect. Grid junction ids stay j * gridW + i.
+ */
+export interface CityPlan {
+  /** Grid junctions along x (columns, gi 0..gridW - 1) and along z (rows, gj 0..gridH - 1). */
+  gridW: number;
+  gridH: number;
+  /** Distance between neighbouring grid junctions before jitter and warp (m). */
+  spacing: number;
+  /** Downtown's centre (m, world, through the warp): the tower core, the 'nyc' region and the street furniture's core gather round it. */
+  downtown: { x: number; z: number };
+  /** Rows (gj) laid as boulevards and columns (gi) laid as avenues, ascending. */
+  boulevardRows: number[];
+  avenueCols: number[];
+  /** Diagonal avenues the generator tries to lay. */
+  diagonals: number;
+  superblock: Superblock | null;
+  /** Share of ordinary grid streets the generator tries to remove. */
+  removeFraction: number;
+}
+
+/** Index drawn with the given weights (they need not sum to 1). */
+function weighted(rng: Rng, weights: readonly number[]): number {
+  let total = 0;
+  for (const w of weights) total += w;
+  let u = rng.next() * total;
+  for (let i = 0; i < weights.length; i++) {
+    u -= weights[i];
+    if (u < 0) return i;
+  }
+  return weights.length - 1;
+}
+
+/** `count` distinct values of [lo, hi] at least `gap` apart, ascending, drawn from `rng` (fewer when they cannot fit). */
+function spread(rng: Rng, lo: number, hi: number, count: number, gap: number): number[] {
+  const out: number[] = [];
+  for (let k = 0; k < count; k++) {
+    const free: number[] = [];
+    for (let v = lo; v <= hi; v++) if (out.every((o) => Math.abs(o - v) >= gap)) free.push(v);
+    if (!free.length) break;
+    out.push(free[rng.int(0, free.length - 1)]);
+  }
+  return out.sort((a, b) => a - b);
+}
+
+/** The seed's city plan (see CityPlan). Pure: the same seed always gives the same plan. */
+export function cityPlan(seed: number): CityPlan {
+  const P = CITY.plan;
+  const rng = new Rng(deriveSeed(seed, 'plan'));
+  const spacing = Math.round(rng.range(P.spacing[0], P.spacing[1]));
+  const span = rng.range(P.span[0], P.span[1]);
+  const count = (r: readonly [number, number]) => Math.min(r[1], Math.max(r[0], Math.round(span / spacing) + 1));
+  const W = count(P.gridW);
+  const H = count(P.gridH);
+  // Downtown: uniform over a disc of downtownOffset of the half size, through the warp like the junctions round it.
+  const half = (Math.min(W, H) - 1) * spacing * 0.5;
+  const ang = rng.range(0, TAU);
+  const rad = P.downtownOffset * half * sqrt(rng.next());
+  const downtown = warpField(seed)(rad * cos(ang), rad * sin(ang));
+  // Boulevards on the rows 2..H-3 (the old city's range), three rows apart; avenues on a column near
+  // each side and one through the middle, the side ones first (the old pair) and the middle the third.
+  const boulevardRows = spread(rng, 2, H - 3, 1 + weighted(rng, P.boulevards), 3);
+  // With three, the side ones keep a block clear of the middle one (two avenues side by side read as one wide street).
+  const nAve = 1 + weighted(rng, P.avenues);
+  const mid = rng.int(Math.floor((W - 1) / 2) - 1, Math.ceil((W - 1) / 2) + 1);
+  const left = rng.int(1, nAve === 3 ? Math.min(3, mid - 2) : 3);
+  const right = rng.int(nAve === 3 ? Math.max(W - 4, mid + 2) : W - 4, W - 2);
+  const avenueCols = (nAve === 1 ? [[left, mid, right][rng.int(0, 2)]] : nAve === 2 ? [left, right] : [left, mid, right]).sort((a, b) => a - b);
+  const diagonals = 1 + weighted(rng, P.diagonals);
+  // A superblock on an interior line that is neither a boulevard nor an avenue, its band clear of the map's edge.
+  let superblock: Superblock | null = null;
+  if (rng.chance(P.superblockChance)) {
+    const axis = rng.chance(0.5) ? 'row' : 'col';
+    const cells = rng.int(P.superblockCells[0], P.superblockCells[1]);
+    const lines: number[] = [];
+    const n = axis === 'row' ? H : W;
+    const keep = axis === 'row' ? boulevardRows : avenueCols;
+    for (let l = 2; l <= n - 3; l++) if (!keep.includes(l)) lines.push(l);
+    const along = axis === 'row' ? W : H;
+    if (lines.length && along - 2 - cells >= 1) superblock = { axis, line: lines[rng.int(0, lines.length - 1)], from: rng.int(1, along - 2 - cells), cells };
+  }
+  const removeFraction = rng.range(P.removeFraction[0], P.removeFraction[1]);
+  return { gridW: W, gridH: H, spacing, downtown, boulevardRows, avenueCols, diagonals, superblock, removeFraction };
+}
+
+/** How downtown a point is: 1 at the plan's downtown centre, falling off over CITY.downtownRadius (exp of minus the squared distance ratio). */
+export function downtownFactor(plan: CityPlan, x: number, z: number): number {
+  const R = CITY.downtownRadius;
+  return exp(-((x - plan.downtown.x) ** 2 + (z - plan.downtown.z) ** 2) / (R * R));
 }
 
 export function otherNode(e: RoadEdge, n: number): number {
@@ -161,13 +268,21 @@ export function warpField(seed: number): (x: number, z: number) => { x: number; 
 }
 
 export function generateRoadGraph(seed: number): RoadGraph {
+  const plan = cityPlan(seed);
   const rng = new Rng(deriveSeed(seed, 'roads'));
-  const W = CITY.gridW;
-  const H = CITY.gridH;
-  const S = CITY.spacing;
+  const W = plan.gridW;
+  const H = plan.gridH;
+  const S = plan.spacing;
 
-  const boulevardRow = rng.int(2, H - 3);
-  const avenueCols = new Set<number>([rng.int(1, 3), rng.int(W - 4, W - 2)]);
+  const boulevard = new Set(plan.boulevardRows);
+  const avenueCols = new Set(plan.avenueCols);
+  /** Streets the superblock drops: the row street from (i, j) east, or the column street from (i, j) north. */
+  const sb = plan.superblock;
+  const dropped = (i: number, j: number, row: boolean): boolean => {
+    if (!sb || (sb.axis === 'row') !== row) return false;
+    const [line, at] = row ? [j, i] : [i, j];
+    return line === sb.line && at >= sb.from && at < sb.from + sb.cells;
+  };
 
   const nodes: RoadNode[] = [];
   const nodeAt = (i: number, j: number) => j * W + i;
@@ -178,7 +293,7 @@ export function generateRoadGraph(seed: number): RoadGraph {
     for (let i = 0; i < W; i++) {
       let jx = rng.range(-CITY.jitter, CITY.jitter);
       let jz = rng.range(-CITY.jitter, CITY.jitter);
-      if (j === boulevardRow) jz = 0; // the boulevard and the avenues only sweep with the warp
+      if (boulevard.has(j)) jz = 0; // the boulevards and the avenues only sweep with the warp
       if (avenueCols.has(i)) jx = 0;
       const p = { x: (i - (W - 1) / 2) * S + jx, z: (j - (H - 1) / 2) * S + jz };
       flat.push(p);
@@ -202,25 +317,22 @@ export function generateRoadGraph(seed: number): RoadGraph {
   const proto: ProtoEdge[] = [];
   for (let j = 0; j < H; j++) {
     for (let i = 0; i < W; i++) {
-      if (i < W - 1) {
-        const boulevard = j === boulevardRow;
-        proto.push({ a: nodeAt(i, j), b: nodeAt(i + 1, j), kind: boulevard ? 'boulevard' : 'street' });
-      }
-      if (j < H - 1) {
-        const avenue = avenueCols.has(i);
-        proto.push({ a: nodeAt(i, j), b: nodeAt(i, j + 1), kind: avenue ? 'avenue' : 'street' });
-      }
+      if (i < W - 1 && !dropped(i, j, true)) proto.push({ a: nodeAt(i, j), b: nodeAt(i + 1, j), kind: boulevard.has(j) ? 'boulevard' : 'street' });
+      if (j < H - 1 && !dropped(i, j, false)) proto.push({ a: nodeAt(i, j), b: nodeAt(i, j + 1), kind: avenueCols.has(i) ? 'avenue' : 'street' });
     }
   }
 
-  // Diagonal avenues cut through cells corner to corner. One diagonal per cell max.
+  // Diagonal avenues cut through cells corner to corner. One diagonal per cell max. They run between
+  // interior junctions: on the map's outer ring a diagonal would meet the edge street at 45 degrees
+  // right where the city's boundary wall wraps the corner (and the alleys narrow the edge streets),
+  // and that wall would stand on its carriageway.
   const usedCells = new Set<number>();
-  for (let d = 0; d < CITY.diagonalCount; d++) {
+  for (let d = 0; d < plan.diagonals; d++) {
     for (let attempt = 0; attempt < 20; attempt++) {
       const len = rng.int(CITY.diagonalMinCells, CITY.diagonalMaxCells);
       const dir = rng.chance(0.5) ? 1 : -1;
-      const i0 = rng.int(0, W - 1 - len);
-      const j0 = dir > 0 ? rng.int(0, H - 1 - len) : rng.int(len, H - 1);
+      const i0 = rng.int(1, W - 2 - len);
+      const j0 = dir > 0 ? rng.int(1, H - 2 - len) : rng.int(len + 1, H - 2);
       const cells: number[] = [];
       for (let k = 0; k < len; k++) {
         const ci = i0 + k;
@@ -254,7 +366,7 @@ export function generateRoadGraph(seed: number): RoadGraph {
       length: sqrt((a.x - b.x) ** 2 + (a.z - b.z) ** 2),
     };
   });
-  const graph: RoadGraph = { nodes, edges, bounds: { minX: 0, maxX: 0, minZ: 0, maxZ: 0 } };
+  const graph: RoadGraph = { nodes, edges, bounds: { minX: 0, maxX: 0, minZ: 0, maxZ: 0 }, plan };
   sortNodeEdges(graph);
   pruneNarrowSectors(graph);
 
@@ -265,7 +377,7 @@ export function generateRoadGraph(seed: number): RoadGraph {
   capNodeDegree(graph, alive, degree);
   const candidates = graph.edges.filter((e) => e.kind === 'street').map((e) => e.id);
   rng.shuffle(candidates);
-  const target = Math.floor(candidates.length * CITY.removeFraction);
+  const target = Math.floor(candidates.length * plan.removeFraction);
   let removed = 0;
   for (const ei of candidates) {
     if (removed >= target) break;
@@ -715,7 +827,7 @@ export function mergeChains(g: RoadGraph, list: readonly Chain[]): Renumber {
 /**
  * Delete streets: the given edges go, and with them every node they leave with no edge at all (the
  * bend nodes along a removed street); every id is compacted as mergeChains does. A grid junction is
- * never left alone (its id is j * gridW + i, which other planners rely on): that throws. The lake
+ * never left alone (its id is j * plan.gridW + i, which other planners rely on): that throws. The lake
  * (districts/lake.ts) merges its blocks this way, before any other district plans.
  */
 export function removeEdges(g: RoadGraph, ids: Iterable<number>): Renumber {

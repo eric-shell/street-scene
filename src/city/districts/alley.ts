@@ -81,8 +81,9 @@ export const alleyModule: DistrictModule = {
     const rng = ctx.rng;
     const count = rng.int(cfg.count[0], cfg.count[1]);
     const at = gridIndex(g);
-    const cx = (g.bounds.minX + g.bounds.maxX) / 2;
-    const cz = (g.bounds.minZ + g.bounds.maxZ) / 2;
+    // Raceway alleys keep out of downtown's core (CityPlan.downtown, off the map's middle on most seeds).
+    const cx = g.plan.downtown.x;
+    const cz = g.plan.downtown.z;
     const chains: { nodes: number[]; edges: number[] }[] = [];
     for (const n of g.nodes) {
       if (n.gi < 0) continue;

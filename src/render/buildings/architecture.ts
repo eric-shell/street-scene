@@ -20,7 +20,7 @@ import type { World } from '../../city/world';
 import { pointInPolygon } from '../../city/districts/geom';
 import type { Building } from '../../city/blocks';
 import { Rng } from '../../sim/prng';
-import { CITY } from '../../city/config';
+import { downtownFactor } from '../../city/roadGraph';
 import type { FacadeLayer } from './facadeAtlas';
 import { MODULE } from './facadeAtlas';
 import type { GroundBay } from './facadeKit';
@@ -254,9 +254,7 @@ function planOnce(world: World): BuildingPlan[] {
   const g = world.graph;
   const rng = new Rng((world.seed ^ 0xa4c417) >>> 0 || 1);
   const bx = g.bounds;
-  const cx0 = (bx.minX + bx.maxX) / 2;
-  const cz0 = (bx.minZ + bx.maxZ) / 2;
-  const downtown = (x: number, z: number) => Math.exp(-((x - cx0) ** 2 + (z - cz0) ** 2) / (CITY.downtownRadius * CITY.downtownRadius));
+  const downtown = (x: number, z: number) => downtownFactor(g.plan, x, z);
 
   // Terrain range over the city, for "up the hill".
   let hMin = Infinity;

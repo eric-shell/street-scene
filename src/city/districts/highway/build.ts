@@ -62,7 +62,7 @@ export const rampPending = new WeakMap<AreaBuild, { walls: Wall[]; u: number; s:
 export function buildDeck(ctx: BuildContext, area: Area): AreaBuild {
   const b = emptyBuild();
   const g = ctx.graph;
-  const W = CITY.gridW;
+  const W = g.plan.gridW;
   const deck = highwayDeck(area, ctx.areas);
   const curve = deck.curve;
   const todo: Pending[] = [];

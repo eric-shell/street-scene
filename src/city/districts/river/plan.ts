@@ -33,7 +33,7 @@ export function planRiver(ctx: PlanContext): void {
   const lakes = ctx.areas.filter((a) => a.kind === 'lake');
   const F = CFG.floorHalf;
   const T = F + CFG.bankWidth;
-  const H = CITY.gridH;
+  const H = g.plan.gridH;
   const x0 = g.bounds.minX - 160;
   const x1 = g.bounds.maxX + 160;
   const step = CFG.centerStep;

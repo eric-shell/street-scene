@@ -13,14 +13,13 @@
  * keeps every piece on the sidewalk, out of the bus bays, off reserved
  * circles and clear of every other prop. Pure and deterministic.
  */
-import { CITY } from './config';
 import type { RoadGraph } from './roadGraph';
-import { isRiverEdge } from './roadGraph';
+import { downtownFactor, isRiverEdge } from './roadGraph';
 import type { EdgeMouths } from './blocks';
 import type { FurnitureKind } from './props';
 import { SETBACK, edgeSides, sidewalkGaps } from './props';
 import { Rng, deriveSeed } from '../sim/prng';
-import { atan2, exp, sqrt } from '../sim/math';
+import { atan2, sqrt } from '../sim/math';
 
 export const FURNITURE = {
   /** Neighbourhood by downtown factor: core above `core`, the ring above `mid`, outer below. */
@@ -52,8 +51,6 @@ type Single = keyof typeof FURNITURE.chance;
 export function furnishStreets(seed: number, g: RoadGraph, mouths: EdgeMouths[], tryPlace: (kind: FurnitureKind, x: number, z: number, yaw: number, edge: number) => boolean): void {
   const rng = new Rng(deriveSeed(seed, 'streetFurniture'));
   const F = FURNITURE;
-  const cx = (g.bounds.minX + g.bounds.maxX) / 2;
-  const cz = (g.bounds.minZ + g.bounds.maxZ) / 2;
   g.edges.forEach((e, ei) => {
     // Plain streets only: alleys are too narrow for it, bridges have parapets, shortcuts are building sites.
     if (e.kind === 'backAlley' || e.kind === 'alley' || e.kind === 'mouth' || isRiverEdge(e) || e.bridge || e.shortcut) return;
@@ -61,7 +58,7 @@ export function furnishStreets(seed: number, g: RoadGraph, mouths: EdgeMouths[],
     const B = g.nodes[e.b];
     const mx = (A.x + B.x) / 2;
     const mz = (A.z + B.z) / 2;
-    const f = exp(-((mx - cx) ** 2 + (mz - cz) ** 2) / (CITY.downtownRadius * CITY.downtownRadius));
+    const f = downtownFactor(g.plan, mx, mz);
     const tier = f > F.core ? 0 : f > F.mid ? 1 : 2;
     edgeSides(g, mouths, ei).forEach((side) => {
       const ax = side.to.x - side.from.x;

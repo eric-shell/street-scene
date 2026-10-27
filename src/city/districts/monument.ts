@@ -645,8 +645,9 @@ export function plazaPasses(g: RoadGraph, area: Area): RoutePass[] {
  */
 export function monumentSites(ctx: Pick<PlanContext, 'graph' | 'areas' | 'claims' | 'faces'>, reach: number): { f: BlockFace; d: number }[] {
   const g = ctx.graph;
-  const cx0 = (g.bounds.minX + g.bounds.maxX) / 2;
-  const cz0 = (g.bounds.minZ + g.bounds.maxZ) / 2;
+  // Round downtown's centre (CityPlan.downtown), wherever the seed put it.
+  const cx0 = g.plan.downtown.x;
+  const cz0 = g.plan.downtown.z;
   const rivers = ctx.areas.filter((a) => a.kind === 'river');
   return ctx
     .faces()

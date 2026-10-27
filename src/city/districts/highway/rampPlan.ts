@@ -119,7 +119,7 @@ export function siteBase(ctx: PlanContext): Pick<RampSite, 'terrain' | 'faces' |
 
 export function rampSite(ctx: PlanContext, hz: Hazards, line: LinePlan, base: Pick<RampSite, 'terrain' | 'faces' | 'mouths'>): RampSite {
   const g = ctx.graph;
-  const W = CITY.gridW;
+  const W = g.plan.gridW;
   const curve = buildRailCurve(line.path, 1, 0, () => 0);
   return {
     ctx,
@@ -379,8 +379,8 @@ export function slipRamp(site: RampSite, at: SlipJunction, side: 1 | -1, on: boo
  * lanes CFG.rampGap apart on each side, clear of the end loops. Null when fewer than `least` fit.
  */
 export function planInterchanges(site: RampSite, want: number, least: number, rng: Rng, cap: number, limits: [number, number], loops: readonly RampPlan[]): RampPlan[][] | null {
-  const W = CITY.gridW;
   const g = site.ctx.graph;
+  const W = g.plan.gridW;
   const clearOf = (r: RampPlan, others: readonly RampPlan[]) => others.every((l) => r.polygon.every((p) => !pointInPolygon(p.x, p.z, l.polygon) && distToPolygonEdge(p.x, p.z, l.polygon) > 3));
   // The junctions with the deck's street running on straight both ways, and each side's ramp by each.
   const junctions = Array.from({ length: W }, (_, i): SlipJunction | null => {

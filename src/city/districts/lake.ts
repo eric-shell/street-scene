@@ -160,7 +160,7 @@ function sharedSide(a: Cell, b: Cell): Chain | null {
 }
 
 function cloneGraph(g: RoadGraph): RoadGraph {
-  return { nodes: g.nodes.map((n) => ({ ...n, edges: n.edges.slice() })), edges: g.edges.map((e) => ({ ...e })), bounds: { ...g.bounds } };
+  return { nodes: g.nodes.map((n) => ({ ...n, edges: n.edges.slice() })), edges: g.edges.map((e) => ({ ...e })), bounds: { ...g.bounds }, plan: g.plan };
 }
 
 /**
@@ -205,8 +205,8 @@ export const lakeModule: DistrictModule = {
     const rng = ctx.rng;
     if (!rng.chance(CFG.chance)) return;
     const g = ctx.graph;
-    const W = CITY.gridW;
-    const H = CITY.gridH;
+    const W = g.plan.gridW;
+    const H = g.plan.gridH;
     const e0 = CFG.edgeCells;
     // Plain blocks: four sides, each corner a grid junction of one cell, park sized, convex.
     const cells = new Map<number, Cell>();
@@ -241,7 +241,7 @@ export const lakeModule: DistrictModule = {
       // Its stream as its plan draws it: the roll, then the row order.
       const hw = new Rng(deriveSeed(ctx.seed, 'district:highway'));
       hw.chance(CITY.districts.highway.chance);
-      for (const r of highwayRows(hw).slice(0, CFG.highwayRows)) keep.add(r);
+      for (const r of highwayRows(hw, H).slice(0, CFG.highwayRows)) keep.add(r);
     }
     for (const [key, c] of cells) if (keep.has(c.j) || keep.has(c.j + 1)) cells.delete(key);
     // And off the river's band, where it would run with no lake (its plan on a copy of the streets): the

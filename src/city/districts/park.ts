@@ -567,9 +567,11 @@ export const parkModule: DistrictModule = {
             const lamp = bayPoint(bay, out(ds + CFG.gateLampOut), depth + 1);
             b.destructibles.push({ kind: 'parkLamp', x: lamp.x, z: lamp.z, yaw: toRoad, lift: 0, area: id });
             decor.push({ x: lamp.x, z: lamp.z, r: 0.4 });
-            // On the sidewalk: a planter just before the flare starts, bollards along its curb.
-            const pot = bayPoint(bay, sg < 0 ? m.s0 - 1.1 : m.s1 + 1.1, depth * 0.55);
-            b.destructibles.push({ kind: 'planterPot', x: pot.x, z: pot.z, yaw: toRoad, lift: curb, area: id });
+            // On the sidewalk: a planter just before the flare starts (none where that is past the piece's
+            // end, out in the junction), bollards along its curb.
+            const potS = sg < 0 ? m.s0 - 1.1 : m.s1 + 1.1;
+            const pot = bayPoint(bay, potS, depth * 0.55);
+            if (potS >= lo && potS <= hi) b.destructibles.push({ kind: 'planterPot', x: pot.x, z: pot.z, yaw: toRoad, lift: curb, area: id });
             for (const t of [0.4, 0.75]) {
               const s = sg < 0 ? m.s0 + m.taper * t : m.s1 - m.taper * t;
               const v = bayInset(bay, s) + CFG.gateBollardBack;

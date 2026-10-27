@@ -109,10 +109,10 @@ export const highwayModule: DistrictModule = {
     const rng = ctx.rng;
     // The roll first, so the rate is the chance whatever the city (highwayRolled).
     if (!rng.chance(CFG.chance)) return;
-    const W = CITY.gridW;
-    const H = CITY.gridH;
+    const W = ctx.graph.plan.gridW;
+    const H = ctx.graph.plan.gridH;
     const hz = hazards(ctx);
-    const rowsOrder = highwayRows(rng);
+    const rowsOrder = highwayRows(rng, H);
     const want = rng.int(CFG.swings[0], CFG.swings[1]);
     const wantPairs = rng.int(CFG.interchanges[0], CFG.interchanges[1]);
     const rowsWith = (r0: number, swings: readonly Swing[]): number[] => {

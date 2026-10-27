@@ -61,8 +61,7 @@ export function highwayRolled(seed: number): boolean {
  * stream, right after its roll), then the two next to the map's edges. Shared with the lake, which keeps
  * its shore off the first of them on a seed that rolls a highway (lake.ts).
  */
-export function highwayRows(rng: Rng): number[] {
-  const H = CITY.gridH;
+export function highwayRows(rng: Rng, H: number): number[] {
   const rows: number[] = [];
   for (let j = 2; j <= H - 3; j++) rows.push(j);
   rng.shuffle(rows);
@@ -302,8 +301,8 @@ function layable(g: RoadGraph, hz: Hazards, a: number, b: number, half: number, 
  */
 export function planLine(ctx: PlanContext, hz: Hazards, rows: readonly number[], swings: readonly Swing[]): LinePlan | null {
   const g = ctx.graph;
-  const W = CITY.gridW;
-  const H = CITY.gridH;
+  const W = g.plan.gridW;
+  const H = g.plan.gridH;
   const chains = new Map<number, Chain | null>();
   const streetAt = (i: number, j: number): Chain | null => {
     if (i < 0 || i + 1 >= W || j < 0 || j >= H) return null;

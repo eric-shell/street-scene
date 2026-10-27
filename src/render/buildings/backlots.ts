@@ -26,7 +26,7 @@ import type { World } from '../../city/world';
 import type { Building } from '../../city/blocks';
 import { insideBuilding } from '../../city/blocks';
 import { PolygonIndex, distToPolygonEdge, pointInPolygon } from '../../city/districts/geom';
-import { CITY } from '../../city/config';
+import { downtownFactor } from '../../city/roadGraph';
 import { Rng, deriveSeed } from '../../sim/prng';
 import type { Vec2 } from '../../sim/math';
 import type { BuildingPlan, Region } from './architecture';
@@ -62,9 +62,7 @@ export function planBacklots(world: World, streetPlans: readonly BuildingPlan[])
   const B = world.blocks.buildings;
   const g = world.graph;
   const { minX, minZ, maxX, maxZ } = g.bounds;
-  const cx0 = (minX + maxX) / 2;
-  const cz0 = (minZ + maxZ) / 2;
-  const downtown = (x: number, z: number) => Math.exp(-((x - cx0) ** 2 + (z - cz0) ** 2) / (CITY.downtownRadius * CITY.downtownRadius));
+  const downtown = (x: number, z: number) => downtownFactor(g.plan, x, z);
 
   // Street buildings in a coarse grid, for the gap test and the nearest one's region.
   const CELL = 40;

@@ -79,7 +79,7 @@ const MIN_DECK = 700;
 
 /** Both ends of a line's deck with their loops, or null where an end has no room for them. */
 export function planEnds(site: RampSite, cap: number): EndPlan[] | null {
-  const W = CITY.gridW;
+  const W = site.ctx.graph.plan.gridW;
   const out: EndPlan[] = [];
   for (const end of [-1, 1] as const) {
     let found: EndPlan | null = null;
@@ -97,7 +97,7 @@ export function planEnds(site: RampSite, cap: number): EndPlan[] | null {
 function endIn(site: RampSite, i: number, end: -1 | 1, cap: number): EndPlan | null {
   const { ctx, line, curve } = site;
   const g = ctx.graph;
-  const H = CITY.gridH;
+  const H = g.plan.gridH;
   const j = line.rows[i];
   if (!site.rowChain(i, j)) return null;
   const A = gridNode(g, i, j);

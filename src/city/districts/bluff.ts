@@ -400,7 +400,7 @@ export const bluffModule: DistrictModule = {
     // Crest rows with two rows of the El on either side; the legs may sit on the map's edge rows, where the
     // El's run-off carries straight on (the El swings columns elsewhere, so the straight stretches are shorter).
     const cands: { r: number; o: 1 | -1 }[] = [];
-    for (let r = 2; r <= CITY.gridH - 3; r++) for (const o of [1, -1] as const) cands.push({ r, o });
+    for (let r = 2; r <= ctx.graph.plan.gridH - 3; r++) for (const o of [1, -1] as const) cands.push({ r, o });
     rng.shuffle(cands);
     for (const c of cands) {
       // The right of way at rowOffset, or a little further out where that puts the crossing on a bend
@@ -512,7 +512,7 @@ function tryPlace(ctx: PlanContext, sub: Area, base: Terrain, r: number, o: 1 | 
   // The right of way's side of the El's street: the way it swings (dir 1) or the other.
   const rowSide = side * dir;
   const c1 = c0 + rowSide;
-  if (c0 < 0 || c1 < 0 || c1 >= CITY.gridW) return null;
+  if (c0 < 0 || c1 < 0 || c1 >= g.plan.gridW) return null;
   const rows = { leg0: r - 2 * o, low: r - o, crest: r, dip: r + o, leg1: r + 2 * o };
   for (const j of [rows.leg0, rows.low, rows.dip, rows.leg1]) if (elColumnAt(sub, j) !== c0) return null;
   // The crest street between the El's column and the next must exist, plain and straight across:

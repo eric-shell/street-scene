@@ -157,7 +157,7 @@ interface LinePlan {
 
 /** The grid node at column i, row j. */
 export function gridNode(g: RoadGraph, i: number, j: number): RoadNode {
-  const guess = g.nodes[j * CITY.gridW + i];
+  const guess = g.nodes[j * g.plan.gridW + i];
   if (guess && guess.gi === i && guess.gj === j) return guess;
   for (const n of g.nodes) if (n.gi === i && n.gj === j) return n;
   throw new Error(`no grid node at column ${i}, row ${j}`);
@@ -321,14 +321,21 @@ function polylineCrossing(pts: readonly Vec2[], line: readonly Vec2[]): { i: num
   return null;
 }
 
+/** Grid rows the line crosses (the city plan's gridH): one anchor (params.at<j>) per row. */
+export function elRowCount(area: Area): number {
+  let n = 0;
+  while (area.params[`at${n}`] !== undefined) n++;
+  return n;
+}
+
 /** The line's column at each row (params.col<j>). */
 function rowColumns(area: Area): number[] {
-  return Array.from({ length: CITY.gridH }, (_, j) => elColumnAt(area, j));
+  return Array.from({ length: elRowCount(area) }, (_, j) => elColumnAt(area, j));
 }
 
 /** The line's anchor index at each row (params.at<j>). */
 function rowIndices(area: Area): number[] {
-  return Array.from({ length: CITY.gridH }, (_, j) => elRowIndex(area, j));
+  return Array.from({ length: elRowCount(area) }, (_, j) => elRowIndex(area, j));
 }
 
 /** The column (grid i) the line's street is on at grid row `row`, or -1 where it is swinging between columns. */
@@ -364,7 +371,7 @@ export function elDetourPath(area: Area, dj0: number, dj1: number, moved: Readon
   const legB = cubicPath(last, along, area.path[i1], unitBetween(area.path[i1], area.path[i1 + 1]), CFG.swingStep).slice(1, -1);
   const path = area.path.slice(0, i0 + 1).concat(legA, mid, legB, area.path.slice(i1));
   const at: number[] = [];
-  for (let j = 0; j < CITY.gridH; j++) {
+  for (let j = 0, n = elRowCount(area); j < n; j++) {
     const old = elRowIndex(area, j);
     if (old <= i0) at[j] = old;
     else if (old >= i1) at[j] = old - i1 + i0 + 1 + legA.length + mid.length + legB.length;
@@ -408,7 +415,7 @@ export const subwayModule: DistrictModule = {
     const rng = ctx.rng;
     if (!rng.chance(CFG.chance)) return;
     const cols: number[] = [];
-    for (let i = 1; i <= CITY.gridW - 2; i++) cols.push(i);
+    for (let i = 1; i <= ctx.graph.plan.gridW - 2; i++) cols.push(i);
     rng.shuffle(cols);
     const side = rng.chance(0.5) ? 1 : -1;
     const want = rng.int(CFG.swings[0], CFG.swings[1]);
@@ -452,7 +459,7 @@ export const subwayModule: DistrictModule = {
     const g = ctx.graph;
     const side = area.params.side;
     const r = CFG.pillarRadius;
-    const H = CITY.gridH;
+    const H = g.plan.gridH;
     const cols = rowColumns(area);
     const at = rowIndices(area);
     const dj0 = area.params.dj0 ?? Infinity;
@@ -654,8 +661,8 @@ export const subwayModule: DistrictModule = {
  * geometry fits; a second swing follows the first. Straight when none fits.
  */
 function planSwings(ctx: PlanContext, rng: Rng, c0: number, side: number, want: number): LinePlan | null {
-  const H = CITY.gridH;
-  const W = CITY.gridW;
+  const H = ctx.graph.plan.gridH;
+  const W = ctx.graph.plan.gridW;
   const colsWith = (swings: readonly Swing[]): number[] => {
     const cols = new Array<number>(H).fill(c0);
     for (const s of swings) {
@@ -730,7 +737,7 @@ function planSwings(ctx: PlanContext, rng: Rng, c0: number, side: number, want: 
  */
 function planLine(ctx: PlanContext, side: number, cols: readonly number[], swings: readonly Swing[]): LinePlan | null {
   const g = ctx.graph;
-  const H = CITY.gridH;
+  const H = g.plan.gridH;
   const rivers = ctx.areas.filter((a) => a.kind === 'river');
   // A swing crosses blocks diagonally: never over the lake (its line's own columns meet the lake's claimed shore nodes).
   const lakes = ctx.areas.filter((a) => a.kind === 'lake');
@@ -949,7 +956,7 @@ function planStations(
   if (!want) return [];
   const rng = new Rng(((area.params.seed ?? 0) >>> 0) || 1);
   const side = area.params.side;
-  const H = CITY.gridH;
+  const H = g.plan.gridH;
   const dj0 = area.params.dj0 ?? Infinity;
   const dj1 = area.params.dj1 ?? -Infinity;
   const bluff = bluffOf(ctx.areas, area);

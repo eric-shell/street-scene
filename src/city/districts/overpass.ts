@@ -133,8 +133,8 @@ export const overpassModule: DistrictModule = {
 function planViaduct(ctx: PlanContext, hz: SiteHazards, mouths: EdgeMouths[], traffic: Float64Array, race: { route: Set<number>; ends: Set<number> }): void {
   const g = ctx.graph;
   const rng = ctx.rng;
-  const W = CITY.gridW;
-  const H = CITY.gridH;
+  const W = g.plan.gridW;
+  const H = g.plan.gridH;
   const node = (i: number, j: number) => g.nodes[j * W + i];
   /** Center of the grid cell with corner (i, j). */
   const cell = (i: number, j: number): Vec2 => {

@@ -82,7 +82,7 @@ export interface HillShape {
 /**
  * A terraced hill's steps (CFG.terraced): `tiers` drops of `step` m, one a block out from the summit. They
  * are laid out on the city's grid before its warp (roadGraph.ts warpField: the streets were laid on a
- * square grid of CITY.spacing and then bent by it), where the rings of junctions really are square: a
+ * square grid of the plan's spacing and then bent by it), where the rings of junctions really are square: a
  * point is taken back there (unwarp), measured from the summit, and its gradient carried forward through
  * the warp's Jacobian.
  */
@@ -94,6 +94,8 @@ export interface Terrace {
   ease: number;
   /** Exponent of the rounded square the contours follow (a power of two). */
   p: number;
+  /** The city plan's grid spacing (m): a ring of junctions every L out from the summit. */
+  L: number;
   /** The summit on the unwarped grid (m), and the seed's warp. */
   X: number;
   Z: number;
@@ -101,7 +103,7 @@ export interface Terrace {
 }
 
 /** How far out a terraced hill reaches (rounded square distance on the unwarped grid, m): its last ramp's foot. */
-export const terraceReach = (t: { tiers: number; flat: number }): number => t.tiers * CITY.spacing - t.flat;
+export const terraceReach = (t: { tiers: number; flat: number; L: number }): number => t.tiers * t.L - t.flat;
 
 /** Scratch for unwarp: the point on the unwarped grid and the warp's two cross derivatives there. */
 const UNWARP = { X: 0, Z: 0, a: 0, b: 0 };
@@ -157,7 +159,7 @@ function roundedSquare(t: Terrace, du: number, dv: number): number {
  * summit's table and every ring's, a ramp between eased over t.ease at both ends (constant grade between).
  */
 function terraceDrop(t: Terrace, d: number, out: Smooth): void {
-  const L = CITY.spacing;
+  const L = t.L;
   const R = L - 2 * t.flat;
   const e = t.ease;
   const G = t.step / (R - e);
@@ -325,7 +327,7 @@ function samplePath(path: readonly Vec2[], step: number): Vec2[] {
 export function shapeOf(area: Area): HillShape {
   const p = area.params;
   const s: HillShape = { cx: p.cx, cz: p.cz, ux: p.ux, uz: p.uz, a: p.a, b: p.b, h: p.h, w: p.w };
-  if (area.variant === 'terraced') s.terrace = { tiers: p.tiers, step: p.step, flat: p.flat, ease: p.ease, p: p.p, X: p.X, Z: p.Z, warp: warpTerms(p.seed) };
+  if (area.variant === 'terraced') s.terrace = { tiers: p.tiers, step: p.step, flat: p.flat, ease: p.ease, p: p.p, L: p.L, X: p.X, Z: p.Z, warp: warpTerms(p.seed) };
   return s;
 }
 
@@ -357,6 +359,18 @@ export const hillsModule: DistrictModule = {
     const carParks = ctx.areas.filter((a) => a.kind === 'carPark');
     // A lake (lake.ts) stands level whatever the ground does: slopes keep off its block, promenade and all.
     const lakes = ctx.areas.filter((a) => a.kind === 'lake').map((a) => samplePath([...a.polygon, a.polygon[0]], 10));
+    // A back alley's jump exit (alleyShortcuts.ts) is sized for level ground (its run-up speed and flight
+    // reach): its last leg and the landing past its mouth keep off the slopes, or a terrace's ramp under the
+    // run-up stalls the car short of the lip.
+    const jumpRuns = ctx.areas
+      .filter((a) => a.kind === 'backAlley' && a.params.jumpExit && a.path.length >= 2)
+      .map((a) => {
+        const P = a.path[a.path.length - 2];
+        const B = a.path[a.path.length - 1];
+        const len = sqrt((B.x - P.x) ** 2 + (B.z - P.z) ** 2) || 1;
+        const reach = a.params.landMax ?? 0;
+        return samplePath([P, { x: B.x + ((B.x - P.x) / len) * reach, z: B.z + ((B.z - P.z) / len) * reach }], 6);
+      });
     const rings = g.nodes.filter((n) => n.ring);
     const byEdge = new Map<number, number[]>();
     for (const f of faces) {
@@ -395,6 +409,7 @@ export const hillsModule: DistrictModule = {
       // A car park's ramp climbs a fixed height to a roof at a fixed height over the ground: no slope under it.
       for (const c of carParks) for (const p of c.polygon) if (plateauDistance(s, p.x, p.z).d < reach) return false;
       for (const rim of lakes) for (const p of rim) if (plateauDistance(s, p.x, p.z).d < s.w + CITY.districts.lake.clearance) return false;
+      for (const path of jumpRuns) for (const p of path) if (plateauDistance(s, p.x, p.z).d < reach) return false;
       for (const o of made) {
         const apart = (1 - CFG.overlap) * (s.w + o.w);
         for (const p of hillOutline(o, 0)) if (plateauDistance(s, p.x, p.z).d < apart) return false;
@@ -561,9 +576,11 @@ function planTerraced(ctx: PlanContext, faces: readonly BlockFace[], eligible: (
   const rng = new Rng(deriveSeed(ctx.seed, 'district:hills:terraced'));
   if (!rng.chance(TER.chance)) return null;
   const g = ctx.graph;
-  const W = CITY.gridW;
-  const H = CITY.gridH;
-  const step = rng.range(TER.step[0], TER.step[1]);
+  const W = g.plan.gridW;
+  const H = g.plan.gridH;
+  // A tighter grid than the house one keeps the ramps' grade: the step shrinks with the ramp's run.
+  const L = g.plan.spacing;
+  const step = rng.range(TER.step[0], TER.step[1]) * Math.min(1, (L - 2 * TER.flat - TER.ease) / (CITY.spacing - 2 * TER.flat - TER.ease));
   const routes = ctx.event?.routes ?? [];
   const onRoute = new Set(routes.flatMap((r) => r.nodes));
   const starts = routes.map((r) => g.nodes[r.nodes[0]]).filter(Boolean);
@@ -571,15 +588,14 @@ function planTerraced(ctx: PlanContext, faces: readonly BlockFace[], eligible: (
   rng.shuffle(candidates);
   candidates.sort((a, b) => (onRoute.has(b.id) ? 1 : 0) - (onRoute.has(a.id) ? 1 : 0));
   const warp = warpTerms(ctx.seed);
-  const reach = terraceReach(TER);
+  const reach = terraceReach({ ...TER, L });
   for (const n of candidates) {
     const c = unwarp(warp, n.x, n.z);
-    const t: Terrace = { tiers: TER.tiers, step, flat: TER.flat, ease: TER.ease, p: TER.p, X: c.X, Z: c.Z, warp };
+    const t: Terrace = { tiers: TER.tiers, step, flat: TER.flat, ease: TER.ease, p: TER.p, L, X: c.X, Z: c.Z, warp };
     const shape: HillShape = { cx: n.x, cz: n.z, ux: 1, uz: 0, a: 0, b: 0, h: TER.tiers * step, w: reach, terrace: t };
     const local = (x: number, z: number) => plateauDistance(shape, x, z).d;
     // Every grid junction of the rings on its table (their jitter, CITY.jitter, and any planner's nudge
     // within it), and the next ring out on the ground, else not here.
-    const L = CITY.spacing;
     const table = TER.flat - 3;
     let level = true;
     for (const m of g.nodes) {
@@ -616,7 +632,7 @@ function planTerraced(ctx: PlanContext, faces: readonly BlockFace[], eligible: (
         nodes: [n.id],
         edges: [],
         faces: mine.map((f) => f.id),
-        params: { cx: n.x, cz: n.z, ux: 1, uz: 0, a: 0, b: 0, h: shape.h, w: reach, yaw: 0, blocks: mine.length, tiers: t.tiers, step, flat: t.flat, ease: t.ease, p: t.p, X: t.X, Z: t.Z, seed: ctx.seed },
+        params: { cx: n.x, cz: n.z, ux: 1, uz: 0, a: 0, b: 0, h: shape.h, w: reach, yaw: 0, blocks: mine.length, tiers: t.tiers, step, flat: t.flat, ease: t.ease, p: t.p, L: t.L, X: t.X, Z: t.Z, seed: ctx.seed },
       },
       total,
     );

@@ -1,8 +1,47 @@
 /** City generation constants. All distances in meters. */
 export const CITY = {
+  /**
+   * Nominal grid: what a seed's CityPlan (roadGraph.ts cityPlan) varies around. Code that plans or
+   * builds on a seed's grid reads its plan (RoadGraph.plan: gridW, gridH, spacing), never these; they
+   * stay as the house reference for lengths quoted in blocks (a drag's "blocks", a terrace's grade).
+   */
   gridW: 11,
   gridH: 11,
   spacing: 140,
+  /**
+   * Each seed's city plan (roadGraph.ts cityPlan, its own 'plan' stream): the bones that make one
+   * city unlike the next. The spacing (m) is drawn first, then a target span (m, junction to
+   * junction before the warp) and each axis gets the junction count nearest that span at that
+   * spacing, within its count range: the camera's far plane, the fog and the backdrop are sized for
+   * a city about 1.5 km across, so a tight grid has more blocks rather than a smaller map.
+   * gridW stays at 11: tests/city.test.ts, subway.test.ts and lake.test.ts index grid junctions as
+   * j * CITY.gridW + i. The generator and every planner read the plan's counts, so widening it to
+   * [10, 12] is this line once those tests read RoadGraph.plan.gridW.
+   */
+  plan: {
+    spacing: [132, 156] as const,
+    span: [1380, 1620] as const,
+    gridW: [11, 11] as const,
+    gridH: [11, 12] as const,
+    /**
+     * Downtown (the tower core, the 'nyc' architecture region, the street furniture's core) centres
+     * on a point up to this share of the grid's half size from the middle, uniform over the disc.
+     */
+    downtownOffset: 0.28,
+    /** Weights of 1, 2, ... boulevard rows, avenue columns and diagonal avenues (the old city: 1, 2, 2). */
+    boulevards: [0.7, 0.3] as const,
+    avenues: [0.25, 0.55, 0.2] as const,
+    diagonals: [0.25, 0.5, 0.25] as const,
+    /**
+     * Superblock: on this share of seeds one interior row or column loses its street across a band
+     * of `cells` blocks, so the blocks either side merge into double-length ones (degree and
+     * connectivity rules still hold: the cross streets carry on through).
+     */
+    superblockChance: 0.42,
+    superblockCells: [2, 3] as const,
+    /** Share of ordinary grid streets the generator tries to remove (min, max per seed). */
+    removeFraction: [0.1, 0.18] as const,
+  },
   /** Max random offset of grid nodes. Kept small so sectors stay wider than MIN_SECTOR_DEG. */
   jitter: 12,
   /**
@@ -25,9 +64,6 @@ export const CITY = {
    * a straight chord: 3 makes about 47 m pieces, bending about 1-3 degrees at each node.
    */
   bendSegments: 3,
-  /** Fraction of ordinary grid edges we try to remove. */
-  removeFraction: 0.14,
-  diagonalCount: 2,
   diagonalMinCells: 3,
   diagonalMaxCells: 5,
   minSectorDeg: 24,

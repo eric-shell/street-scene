@@ -185,8 +185,8 @@ function fitSide(ctx: PlanContext, ring: readonly Vec2[], side: number, base: Te
   const g = ctx.graph;
   const f = HARBOR_SIDES[side];
   const prof = ringProfile(ring, f);
-  const W = CITY.gridW;
-  const H = CITY.gridH;
+  const W = g.plan.gridW;
+  const H = g.plan.gridH;
   // The side's corner nodes: the grid's corners on its outer row or column.
   const onSide = (gi: number, gj: number) => (side === 0 ? gj === H - 1 : side === 1 ? gj === 0 : side === 2 ? gi === W - 1 : gi === 0);
   const corners = g.nodes.filter((n) => n.gi >= 0 && (n.gi === 0 || n.gi === W - 1) && (n.gj === 0 || n.gj === H - 1) && onSide(n.gi, n.gj));

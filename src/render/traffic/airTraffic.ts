@@ -221,10 +221,11 @@ export interface BlimpParams {
 
 export function blimpParams(world: World, seed: number): BlimpParams {
   const rng = new Rng(deriveSeed(seed, 'blimp'));
-  const b = world.graph.bounds;
+  // Round the city plan's downtown (off the map's middle on most seeds), a little to one side of its core.
+  const d = world.graph.plan.downtown;
   return {
-    cx: (b.minX + b.maxX) / 2 + rng.range(-180, 180),
-    cz: (b.minZ + b.maxZ) / 2 + rng.range(-180, 180),
+    cx: d.x + rng.range(-120, 120),
+    cz: d.z + rng.range(-120, 120),
     dir: rng.chance(0.5) ? 1 : -1,
     phase: rng.range(0, Math.PI * 2),
   };
