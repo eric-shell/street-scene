@@ -56,8 +56,13 @@ export interface HomeProfile {
 /**
  * The five homes. Weather multipliers average to about 1 per mood across the five (the aggregate stays within
  * 10% of the base weights, tests/weather.test.ts), and clear stays the most common mood in every home but San
- * Francisco, where it ties with mist. Grades are small on purpose: lift is a few thousandths of linear light
- * (black stays black), tints are luminance neutral and pull 8-20%, saturation only reaches dull colours.
+ * Francisco, where it ties with mist. Grades are small on purpose: lift is a few ten-thousandths of linear light
+ * (black stays black), tints are luminance neutral and pull 8-30%, saturation only reaches dull colours. Gamma
+ * sits a little above 1 and gain a little below it in every home: a night frame is mostly lamp pools, the road's
+ * sodium glow and bloom stacked on lifted shadows, and a lift alone (the first pass) made the shadows a haze.
+ * The contrast curve deepens the mid-shadows instead (frames measured A/B against no grade: mean luma -5% to
+ * -10%, black pixels up, lit windows and neon untouched), and the tints carry each home's colour in those
+ * mid-shadows. Miami, the most hazy, takes the most (gamma about 1.1, gain 0.93-0.96).
  */
 export const HOME_PROFILES = {
   /** Sodium cobra heads, amber-red or magenta-cyan neon, haze and drizzle; warm shadows, faintly teal highlights. */
@@ -67,14 +72,14 @@ export const HOME_PROFILES = {
     weather: { clear: 0.85, hazy: 1.35, misty: 0.8, drizzle: 1.5, rain: 0.9 },
     tint: { hue: 0xff9a4a, fog: 0.3, glow: 0.5 },
     grade: {
-      lift: [0.0016, 0.001, 0.0006],
-      gamma: [0.98, 1, 1.02],
-      gain: [1.02, 1, 0.98],
+      lift: [0.0006, 0.0004, 0.0002],
+      gamma: [1.04, 1.06, 1.08],
+      gain: [1, 0.98, 0.96],
       shadow: 0xff9a5a,
-      shadowAmount: 0.18,
+      shadowAmount: 0.26,
       highlight: 0x7fd6d0,
-      highlightAmount: 0.08,
-      saturation: 0.92,
+      highlightAmount: 0.1,
+      saturation: 0.94,
       grain: 0.06,
     },
     drag: 1.2,
@@ -86,14 +91,14 @@ export const HOME_PROFILES = {
     weather: { clear: 1.3, hazy: 1.3, misty: 0.6, drizzle: 0.5, rain: 0.4 },
     tint: { hue: 0xb07ad8, fog: 0.3, glow: 0.4 },
     grade: {
-      lift: [0.0018, 0.0008, 0.0024],
-      gamma: [0.98, 1, 0.97],
-      gain: [1.04, 1, 0.97],
+      lift: [0.0007, 0.0003, 0.001],
+      gamma: [1.04, 1.06, 1.03],
+      gain: [1.02, 0.98, 0.95],
       shadow: 0xa070ff,
-      shadowAmount: 0.2,
+      shadowAmount: 0.24,
       highlight: 0xffc080,
       highlightAmount: 0.12,
-      saturation: 0.96,
+      saturation: 0.98,
       grain: 0.04,
     },
     drag: 1,
@@ -105,14 +110,14 @@ export const HOME_PROFILES = {
     weather: { clear: 0.8, hazy: 0.85, misty: 2.4, drizzle: 1, rain: 0.7 },
     tint: { hue: 0x8aa6d0, fog: 0.35, glow: 0.5 },
     grade: {
-      lift: [0.0006, 0.001, 0.002],
-      gamma: [1.02, 1, 0.97],
-      gain: [0.97, 1, 1.04],
+      lift: [0.0002, 0.0004, 0.0008],
+      gamma: [1.08, 1.06, 1.03],
+      gain: [0.95, 0.98, 1.02],
       shadow: 0x6f9cff,
-      shadowAmount: 0.2,
+      shadowAmount: 0.24,
       highlight: 0xd8ecff,
       highlightAmount: 0.08,
-      saturation: 0.9,
+      saturation: 0.92,
       grain: 0.05,
     },
     drag: 0.7,
@@ -124,33 +129,33 @@ export const HOME_PROFILES = {
     weather: { clear: 0.8, hazy: 0.75, misty: 0.8, drizzle: 1.6, rain: 1.9 },
     tint: { hue: 0xc8a050, fog: 0.3, glow: 0.45 },
     grade: {
-      lift: [0.001, 0.0014, 0.0006],
-      gamma: [1, 0.98, 1.03],
-      gain: [1.03, 1.01, 0.95],
+      lift: [0.0004, 0.0006, 0.0002],
+      gamma: [1.06, 1.04, 1.09],
+      gain: [1.01, 0.99, 0.93],
       shadow: 0x7fa070,
-      shadowAmount: 0.18,
+      shadowAmount: 0.26,
       highlight: 0xffb050,
-      highlightAmount: 0.14,
-      saturation: 0.86,
+      highlightAmount: 0.16,
+      saturation: 0.88,
       grain: 0.09,
     },
     drag: 0.75,
   },
-  /** Warm white modern lamps, pastel magenta-cyan neon, haze or clear; pink shadows, teal highlights, a touch more colour. */
+  /** Warm white modern lamps, pastel magenta-cyan neon, haze or clear; pink in the mid-shadows only (almost no lift), teal highlights, a touch more colour. */
   miami: {
     lamps: { tone: 'warm', design: 'modern', citywide: false },
     neon: ['magenta-cyan', 'white-blue'],
     weather: { clear: 1.2, hazy: 1.35, misty: 0.4, drizzle: 0.5, rain: 1 },
     tint: { hue: 0xff6aa8, fog: 0.25, glow: 0.5 },
     grade: {
-      lift: [0.002, 0.0008, 0.0016],
-      gamma: [0.98, 1, 0.99],
-      gain: [1.02, 0.99, 1.02],
+      lift: [0.0005, 0.0002, 0.0005],
+      gamma: [1.1, 1.12, 1.1],
+      gain: [0.95, 0.93, 0.96],
       shadow: 0xff70b0,
-      shadowAmount: 0.2,
+      shadowAmount: 0.28,
       highlight: 0x60e0d8,
-      highlightAmount: 0.12,
-      saturation: 1.04,
+      highlightAmount: 0.14,
+      saturation: 1.06,
       grain: 0.03,
     },
     drag: 1.3,
