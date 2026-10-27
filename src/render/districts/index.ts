@@ -66,6 +66,8 @@ export interface DistrictMeshes {
   update(time: number): void;
   /** Call before each render with the camera rendering the scene. */
   view(camera: THREE.Camera): void;
+  /** Show or hide every race-only piece (kit.race): hidden while the scene is lent to a free roam, whose world has no walls under them. */
+  showRaceOnly(visible: boolean): void;
   /** Pose sim-timed parts (trains, level crossings) at a fractional sim tick from now on; `audible` lets bells ring; `brokenArms` is RaceState.brokenArms. */
   sync(tick: number, audible: boolean, brokenArms?: Uint8Array): void;
   dispose(): void;
@@ -80,6 +82,9 @@ export interface DistrictMeshOpts {
 export function buildDistrictMeshes(world: World, opts: DistrictMeshOpts = {}): DistrictMeshes {
   const group = new THREE.Group();
   group.name = 'districts';
+  const raceGroup = new THREE.Group();
+  raceGroup.name = 'districtRaceOnly';
+  group.add(raceGroup);
   const disposables: { dispose(): void }[] = [];
   const animations: ((time: number) => void)[] = [];
   const views: ((camera: THREE.Camera) => void)[] = [];
@@ -105,6 +110,7 @@ export function buildDistrictMeshes(world: World, opts: DistrictMeshOpts = {}): 
     foliage: new GeoBuilder(true),
     trees: new GeoBuilder(true),
     group,
+    race: { solid: new GeoBuilder(true), glow: new GeoBuilder(true), group: raceGroup },
     walls,
     builds: world.districts.builds,
     quality: opts.quality ?? 'medium',
@@ -126,18 +132,20 @@ export function buildDistrictMeshes(world: World, opts: DistrictMeshOpts = {}): 
   plantYardTrees(kit);
   // Trees on the sidewalks, one on every trunk the sim has (streetTrees.ts).
   plantStreetTrees(kit);
-  const add = (gb: GeoBuilder, name: string, mat: THREE.Material, order = 0) => {
+  const add = (gb: GeoBuilder, name: string, mat: THREE.Material, order = 0, into: THREE.Object3D = group) => {
     if (!gb.vertexCount) return;
     const m = new THREE.Mesh(kit.track(gb.build()), kit.track(mat));
     m.name = name;
     m.renderOrder = order;
-    group.add(m);
+    into.add(m);
   };
   // The ground under the El's deck (its yard through the blocks), the lots and plazas along facades: baked occlusion (street/bakedOcclusion.ts).
   bakeOcclusion(kit.ground, occlusionFor(world));
   add(kit.ground, 'districtGround', occlusionMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, envMapIntensity: 0.5, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })));
   add(kit.paint, 'districtPaint', new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, emissive: 0x111216, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
-  add(kit.solid, 'districtSolid', new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, envMapIntensity: 0.5 }));
+  const solid = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, envMapIntensity: 0.5 });
+  add(kit.solid, 'districtSolid', solid);
+  add(kit.race.solid, 'districtRaceSolid', solid, 0, raceGroup);
   add(kit.foliage, 'districtFoliage', new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true }));
   add(kit.trees, 'districtTrees', treeMaterial(kit));
   const glow = new THREE.MeshBasicMaterial({ vertexColors: true });
@@ -145,6 +153,7 @@ export function buildDistrictMeshes(world: World, opts: DistrictMeshOpts = {}): 
   // Small emitters (pavement lights, floods, lamps) fade with pixel coverage instead of flickering far away.
   fadeSubPixel(glow, 0.35, 0.3);
   add(kit.glow, 'districtGlow', glow);
+  add(kit.race.glow, 'districtRaceGlow', glow, 0, raceGroup);
   if (kit.hazard.vertexCount) {
     // The scene owns (and disposes) the shared blink; only a stand-in made here is this build's.
     const m = new THREE.Mesh(kit.track(kit.hazard.build()), opts.hazardLamp ?? kit.track(new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffa020).multiplyScalar(3) })));
@@ -159,6 +168,9 @@ export function buildDistrictMeshes(world: World, opts: DistrictMeshOpts = {}): 
     },
     view(camera) {
       for (const fn of views) fn(camera);
+    },
+    showRaceOnly(visible) {
+      raceGroup.visible = visible;
     },
     sync(tick, audible, brokenArms) {
       syncTick = tick;

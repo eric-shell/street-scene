@@ -177,7 +177,9 @@ export class StreetStage {
    * Hand the scene to a free roam session that carries on from the car as it
    * stands (game/session.ts). The circuit's dressing goes, since the open
    * world has none of it: barriers and the street meets behind them, corner
-   * rails and route arrows, the crowds. The stage's own car, the rest of the
+   * rails and route arrows, the crowds, and the districts' race-only pieces (the
+   * highway alleys' gates, a car park's shutter: kit.race) that the race world
+   * has a wall under and the open one does not. The stage's own car, the rest of the
    * convoy, their drivers and the key light leave the scene for the session's, and the stage
    * stands still until reclaim() puts everything back.
    */
@@ -192,6 +194,7 @@ export class StreetStage {
     n.crowds.setEnabled(false);
     n.roadblocks.group.visible = false;
     n.arrows.group.visible = false;
+    n.showRaceOnly(false);
     return n;
   }
 
@@ -203,6 +206,7 @@ export class StreetStage {
     n.crowds.setEnabled(true);
     n.roadblocks.group.visible = true;
     n.arrows.group.visible = true;
+    n.showRaceOnly(true);
     // NaN hands the El and the level crossings back to the scene clock (render/districts).
     n.syncDistricts(NaN, false);
     for (const id of this.down) this.broken[id] = 0;
