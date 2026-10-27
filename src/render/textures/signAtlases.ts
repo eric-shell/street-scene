@@ -34,12 +34,20 @@ export const SIGN_ATLAS_ROWS = 6;
 /** Cells in the sign atlas: how many of the pool's names a city carries. */
 export const SIGN_SLOTS = SIGN_ATLAS_COLS * SIGN_ATLAS_ROWS;
 
-/** White neon text on dark panels; tinted per sign with vertex colors. The seed picks which names fill the cells. */
-export function makeSignAtlas(seed: number): THREE.Texture {
+/** Rows of the sign atlas with `extra` neighbourhood shop names (hoodBrands.ts) after the seed's SIGN_SLOTS pool names. */
+export function signAtlasRows(extra: number): number {
+  return SIGN_ATLAS_ROWS + Math.ceil(extra / SIGN_ATLAS_COLS);
+}
+
+/**
+ * White neon text on dark panels; tinted per sign with vertex colors. The seed picks which pool names fill the
+ * first SIGN_SLOTS cells; `extra` (the neighbourhoods' own shops, textures/hoodBrands.ts) fill the cells after.
+ */
+export function makeSignAtlas(seed: number, extra: readonly string[] = []): THREE.Texture {
   const cw = 512;
   const chh = 128;
-  const [c, ctx] = canvas(cw * SIGN_ATLAS_COLS, chh * SIGN_ATLAS_ROWS);
-  pickSubset(SIGN_NAMES, SIGN_SLOTS, seed, 'signNames').forEach((name, i) => {
+  const [c, ctx] = canvas(cw * SIGN_ATLAS_COLS, chh * signAtlasRows(extra.length));
+  [...pickSubset(SIGN_NAMES, SIGN_SLOTS, seed, 'signNames'), ...extra].forEach((name, i) => {
     const x = (i % SIGN_ATLAS_COLS) * cw;
     const y = Math.floor(i / SIGN_ATLAS_COLS) * chh;
     ctx.fillStyle = '#0b0b10';

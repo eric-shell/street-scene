@@ -24,6 +24,7 @@ import { CROWD_IMPOSTOR, CROWD_QUALITY, buildCrowds, Crowds } from './race/crowd
 import { IDLE_QUALITY, buildIdlers, Idlers } from './people/idlers';
 import { planIdlers } from './people/idleSpots';
 import { buildStreetPolish } from './street/streetPolish';
+import { buildPlaceSigns } from './street/placeSigns';
 import { createWeather, Weather } from './sky/weather';
 import { AirTraffic, buildAirTraffic } from './traffic/airTraffic';
 import { buildAreaLights } from './street/areaLights';
@@ -221,6 +222,9 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   // Street level polish: road decals, puddles, posters, blade signs, banners, steam (pasted onto the drawn podiums).
   const polish = buildStreetPolish(world, { quality: settings.quality, facades: (city.group.getObjectByName('podiums') as THREE.Mesh | undefined)?.geometry });
   scene.add(polish.group);
+  // The map's names in the world: street name blades on the junction poles and a gateway banner per neighbourhood (Medium and up).
+  const placeSigns = buildPlaceSigns(world, { quality: settings.quality, facades: (city.group.getObjectByName('podiums') as THREE.Mesh | undefined)?.geometry });
+  scene.add(placeSigns.group);
   // Each neighbourhood's post design and lamp colour: the lamp heads move to their design's reach and height, and the
   // pool, streak, point light and the props' lens tint all read the same plan.
   const lampPlan = planLamps(world);
@@ -289,6 +293,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     quality: settings.quality,
     grid,
     onBroken(id, broken) {
+      placeSigns.setPoleBroken(id, broken);
       const at = emitters.ofProp.get(id);
       if (at) for (const e of at) fx.setEmitterOn(fx.extraBase + e, !broken);
     },
@@ -361,6 +366,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
       districts.dispose();
       backdrop.dispose();
       polish.dispose();
+      placeSigns.dispose();
       fx.dispose();
       areaLights.dispose();
       arrows.dispose();
@@ -408,6 +414,8 @@ const CHUNK_LAYERS: Record<string, ChunkClass> = {
   elevatedTies: 'detail',
   wallBoxes: 'detail',
   stringLights: 'fog',
+  streetBlades: 'detail',
+  gatewayBanners: 'fog',
   // Additive light: order independent, so splitting it into runs changes nothing on screen.
   lightSpill: 'fog',
   areaLights: 'fog',

@@ -12,7 +12,12 @@ import { canvas, canvasTex, fitFont } from './canvasKit';
 export const BILLBOARD_COLS = 2;
 export const BILLBOARD_ROWS = 8;
 
-interface Brand {
+/** Rows of the atlas with `extra` neighbourhood ads (hoodBrands.ts) after the 16 brand cells. */
+export function billboardRows(extra: number): number {
+  return BILLBOARD_ROWS + Math.ceil(extra / BILLBOARD_COLS);
+}
+
+export interface Brand {
   text: string;
   sub: string;
 }
@@ -183,21 +188,27 @@ const splitBoard: Draw = (g, x, y, ad, p) => {
 
 const TEMPLATES: readonly Draw[] = [headlineTag, logoBlob, phoneNumber, splitBoard];
 
-function makeBillboards(seed: number): THREE.CanvasTexture {
+function makeBillboards(seed: number, extra: readonly Brand[]): THREE.CanvasTexture {
   const rng = new Rng(deriveSeed(seed, 'roofAds'));
-  const [c, g] = canvas(CW * BILLBOARD_COLS, CH * BILLBOARD_ROWS);
+  const [c, g] = canvas(CW * BILLBOARD_COLS, CH * billboardRows(extra.length));
   const brands = rng.shuffle(BRANDS.slice());
   const palettes = rng.shuffle(PALETTES.slice());
-  for (let k = 0; k < BILLBOARD_COLS * BILLBOARD_ROWS; k++) {
+  // The 16 brand cells draw exactly as they always did; the neighbourhood ads come after, from a stream of their own.
+  const hoodRng = new Rng(deriveSeed(seed, 'hoodAds'));
+  const total = BILLBOARD_COLS * BILLBOARD_ROWS + extra.length;
+  for (let k = 0; k < total; k++) {
+    const hood = k >= BILLBOARD_COLS * BILLBOARD_ROWS;
+    const r = hood ? hoodRng : rng;
     const x = (k % BILLBOARD_COLS) * CW;
     const y = Math.floor(k / BILLBOARD_COLS) * CH;
-    const template = TEMPLATES[rng.int(0, TEMPLATES.length - 1)];
-    const phone = `555-${String(rng.int(0, 9999)).padStart(4, '0')}`;
+    const template = TEMPLATES[r.int(0, TEMPLATES.length - 1)];
+    const phone = `555-${String(r.int(0, 9999)).padStart(4, '0')}`;
     g.save();
     g.beginPath();
     g.rect(x, y, CW, CH);
     g.clip();
-    template(g, x, y, brands[k % brands.length], palettes[k % palettes.length], rng, phone);
+    const ad = hood ? extra[k - BILLBOARD_COLS * BILLBOARD_ROWS] : brands[k % brands.length];
+    template(g, x, y, ad, hood ? palettes[(k * 7) % palettes.length] : palettes[k % palettes.length], r, phone);
     g.restore();
     g.strokeStyle = 'rgba(0,0,0,0.6)';
     g.lineWidth = 6;
@@ -207,14 +218,15 @@ function makeBillboards(seed: number): THREE.CanvasTexture {
   return t;
 }
 
-const cache: { seed: number; tex: THREE.CanvasTexture }[] = [];
+const cache: { key: string; tex: THREE.CanvasTexture }[] = [];
 
-/** The seed's billboard atlas, drawn on first use. Like the shared facade atlas, nobody disposes it. */
-export function billboardAtlas(seed: number): THREE.CanvasTexture {
-  const hit = cache.find((e) => e.seed === seed);
+/** The seed's billboard atlas (with the neighbourhood ads, in order, after the brand cells), drawn on first use. Like the shared facade atlas, nobody disposes it. */
+export function billboardAtlas(seed: number, extra: readonly Brand[] = []): THREE.CanvasTexture {
+  const key = `${seed}|${extra.map((b) => b.text).join('|')}`;
+  const hit = cache.find((e) => e.key === key);
   if (hit) return hit.tex;
-  const tex = makeBillboards(seed);
-  cache.push({ seed, tex });
+  const tex = makeBillboards(seed, extra);
+  cache.push({ key, tex });
   if (cache.length > 2) cache.shift();
   return tex;
 }

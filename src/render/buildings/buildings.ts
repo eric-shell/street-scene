@@ -36,7 +36,9 @@ import { SpatialGrid } from '../../city/spatial';
 import { GeoBuilder } from '../geoBuilder';
 import { GROUND_BAYS, GROUND_H, PODIUM_FLOOR_H, PodiumOutput, addPodiumFace, podiumExtrusions, podiumHeight } from './facadeKit';
 import { LAYER, MODULE, facadeAtlas } from './facadeAtlas';
-import { billboardAtlas } from '../textures/billboardAtlas';
+import { BILLBOARD_COLS, BILLBOARD_ROWS, billboardAtlas, billboardRows } from '../textures/billboardAtlas';
+import { hoodBrands } from '../textures/hoodBrands';
+import { hoodPlan } from '../../city/names/neighbourhoods';
 import { createFacadeMaterials, TRIM_COLORS } from './facadeMaterial';
 import { BuildingPlan, STYLES, StyleDef, planArchitecture } from './architecture';
 import { planBacklots } from './backlots';
@@ -174,6 +176,13 @@ export function buildBuildings(world: World, podium: PodiumOutput, opts: { detai
   const atlas = facadeAtlas();
   const mats = createFacadeMaterials(atlas, { live: det.live });
   const plans = planArchitecture(world);
+  // A share of the billboards carry the ad of the neighbourhood they stand in (textures/hoodBrands.ts).
+  const brands = hoodBrands(world);
+  const edgeHood = hoodPlan(world).edgeHood;
+  const adCell = (i: number, b: Building): number => {
+    const hood = b.edge >= 0 ? edgeHood[b.edge] : -1;
+    return hood >= 0 && hood < brands.length && (Math.imul(i + 1, 0x9e3779b1) >>> 8) / 0x1000000 < BLD.hoodAdShare ? BILLBOARD_COLS * BILLBOARD_ROWS + hood : -1;
+  };
   const o: Out = {
     shell: new ShellGeo(),
     roofs: new GeoBuilder(true),
@@ -182,6 +191,8 @@ export function buildBuildings(world: World, podium: PodiumOutput, opts: { detai
     flick: new FlickList(world, 'roof'),
     escapes: new GeoBuilder(),
     boards: new GeoBuilder(true),
+    boardRows: billboardRows(brands.length),
+    adCell: -1,
     lights: [],
     podium,
   };
@@ -194,11 +205,17 @@ export function buildBuildings(world: World, podium: PodiumOutput, opts: { detai
     windows: near.scale(DRAG.windows, b.x, b.z),
     bucket: lowFloors ? Math.round(near.at(b.x, b.z) * Math.min(1, near.strength) * FLAG_NEAR_MAX) : 0,
   });
-  for (let i = 0; i < B.length; i++) buildOne(o, B[i], plans[i], det, (x, z) => corridorClearance(g, world.blocks.edgeGrid, x, z, scratch) < 2, world.heightAt, dragOf(B[i], true));
+  for (let i = 0; i < B.length; i++) {
+    o.adCell = adCell(i, B[i]);
+    buildOne(o, B[i], plans[i], det, (x, z) => corridorClearance(g, world.blocks.edgeGrid, x, z, scratch) < 2, world.heightAt, dragOf(B[i], true));
+  }
   // The blocks' middles (backlots.ts), Medium and up: no street fronts, so no shops or stoops on them.
   if (opts.detail !== 'low') {
     const back = planBacklots(world, plans);
-    for (let i = 0; i < back.buildings.length; i++) buildOne(o, back.buildings[i], back.plans[i], det, () => false, world.heightAt, dragOf(back.buildings[i], false), true);
+    for (let i = 0; i < back.buildings.length; i++) {
+      o.adCell = adCell(i + B.length, back.buildings[i]);
+      buildOne(o, back.buildings[i], back.plans[i], det, () => false, world.heightAt, dragOf(back.buildings[i], false), true);
+    }
   }
 
   const disposables: { dispose(): void }[] = [mats];
@@ -232,7 +249,7 @@ export function buildBuildings(world: World, podium: PodiumOutput, opts: { detai
     meshes.push(m);
   }
   if (o.boards.vertexCount) {
-    const mat = track(new THREE.MeshBasicMaterial({ map: billboardAtlas(world.seed), vertexColors: true }));
+    const mat = track(new THREE.MeshBasicMaterial({ map: billboardAtlas(world.seed, brands.map((b) => b.ad)), vertexColors: true }));
     const m = new THREE.Mesh(track(o.boards.build()), mat);
     m.name = 'billboards';
     meshes.push(m);

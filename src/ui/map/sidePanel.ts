@@ -19,9 +19,9 @@ import { KINDS, MAP_INK, deckOutline, shownOnMap, tagAnchor } from './cityMap';
 import { bem, h, iconBtn } from '../kit/dom';
 import { Eye, EyeOff, LocateFixed, MapPin, MapPinned, Navigation, icon, type IconNode } from '../kit/icons';
 import { PALETTE } from '../kit/palette';
-import { hoodPlan, type Neighbourhood } from './neighbourhoods';
-import { isNamedPlace } from './placeNames';
-import { placeLine, placeName } from './places';
+import { hoodPlan, type Neighbourhood } from '../../city/names/neighbourhoods';
+import { isNamedPlace } from '../../city/names/placeNames';
+import { placeLine, placeName } from '../../city/names/places';
 import { INK, LEGEND_SECTIONS, inkOf, isShortcut, type LegendKey } from './tuning';
 
 /** What the legend's rows do. */

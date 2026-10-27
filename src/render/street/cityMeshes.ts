@@ -19,6 +19,8 @@ import { createPodiumOutput, makeFacadeKitTextures } from '../buildings/facadeKi
 import type { ShopFront } from '../people/idleSpots';
 import { buildBuildings, Detail } from '../buildings/buildings';
 import { neonMood } from '../textures/cityMood';
+import { STEM_SHOPS_PER_HOOD, hoodBrands } from '../textures/hoodBrands';
+import { hoodAt } from '../../city/names/neighbourhoods';
 import { FlickList, SIGNAGE, applyFlicker, buildSignageMeshes, planSignage, setSignageTime } from './signage';
 import { DRAG, routeNearness } from './routeNearness';
 import { buildStringLights } from './stringLights';
@@ -28,8 +30,8 @@ import { BAY_DASH, BayDraw, bayMouth, drawBayAsphalt, drawBayPaint, drawBaySidew
 import {
   NEON_COLORS,
   SIGN_ATLAS_COLS,
-  SIGN_ATLAS_ROWS,
   SIGN_SLOTS,
+  signAtlasRows,
   COBBLE_TILE,
   makeAsphalt,
   makeCobble,
@@ -605,14 +607,21 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     const flick = new FlickList(world, 'podium');
     const plan = planSignage(world, detail);
     const near = routeNearness(world);
+    // A share of the signs name a shop after the neighbourhood they stand in (textures/hoodBrands.ts): its cells follow the pool's.
+    const brands = hoodBrands(world);
+    const stemShops = brands.flatMap((b) => b.shops);
     const cellW = 1 / SIGN_ATLAS_COLS;
-    const cellH = 1 / SIGN_ATLAS_ROWS;
+    const cellH = 1 / signAtlasRows(stemShops.length);
     for (let si = 0; si < world.blocks.signs.length; si++) {
       const s = world.blocks.signs[si];
       const fl = flick.roll(s.blade ? SIGNAGE.flickerBlade : SIGNAGE.flickerPodium);
       // A clock sign takes this sign's wall (signage.ts): no name sign under the panel.
       if (plan.clocks.has(si)) continue;
-      const idx = s.nameIndex % SIGN_SLOTS;
+      let idx = s.nameIndex % SIGN_SLOTS;
+      if ((Math.imul(si + 1, 0x9e3779b1) >>> 8) / 0x1000000 < SIGNAGE.hoodShopShare) {
+        const hood = hoodAt(world, s.x, s.z, null).id;
+        if (hood < brands.length) idx = SIGN_SLOTS + hood * STEM_SHOPS_PER_HOOD + (s.nameIndex % STEM_SHOPS_PER_HOOD);
+      }
       // The drag's signs burn brighter, the side streets' dimmer (routeNearness.ts); flicker only ever takes this away.
       const col = neon[mood.neon((s.colorIndex + 0.5) / 1024)].clone().multiplyScalar(near.scale(DRAG.signGain, s.x, s.z));
       const u0 = (idx % SIGN_ATLAS_COLS) * cellW;
@@ -651,7 +660,7 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
       flick.fill(sb.vertexCount, fl);
       signLights.push({ pos: new THREE.Vector3(s.x + s.nx * (s.blade ? s.w / 2 : 0.3), s.y, s.z + s.nz * (s.blade ? s.w / 2 : 0.3)), color: col.clone() });
     }
-    const signMat = track(new THREE.MeshBasicMaterial({ map: track(makeSignAtlas(world.seed)), vertexColors: true }));
+    const signMat = track(new THREE.MeshBasicMaterial({ map: track(makeSignAtlas(world.seed, stemShops)), vertexColors: true }));
     signMat.color.setScalar(2.6);
     applyFlicker(signMat);
     const signGeo = track(sb.build());

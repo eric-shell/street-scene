@@ -35,7 +35,7 @@ import { CameraPanel, applySavedCameraParams } from './ui/panels/cameraPanel';
 import { loadingScreen } from './ui/screens/loading';
 import { pauseMenu, type PauseScreen, type PauseTicket } from './ui/screens/pause';
 import { resultsScreen } from './ui/screens/results';
-import { placeAt } from './ui/map/places';
+import { placeAt } from './city/names/places';
 import { railInset } from './ui/rail/rail';
 import { mainMenu, type MainMenu, type MenuStep } from './ui/menu/menu';
 import { showSplash } from './ui/splash/splash';

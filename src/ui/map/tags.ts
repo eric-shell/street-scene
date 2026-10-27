@@ -14,8 +14,8 @@ import type { Area, AreaKind } from '../../city/districts/types';
 import type { World } from '../../city/world';
 import { KINDS, MAP_INK, mapX, mapY, shownOnMap, tagAnchor, tagWeight, type MapView } from './cityMap';
 import { PALETTE } from '../kit/palette';
-import { hoodOf, hoodPlan, type Neighbourhood } from './neighbourhoods';
-import { crossesTown, placeName } from './places';
+import { hoodOf, hoodPlan, type Neighbourhood } from '../../city/names/neighbourhoods';
+import { crossesTown, placeName } from '../../city/names/places';
 import { UI, hoodKey, inkOf, isMinor, isShortcut, kindsOf, type LegendKey } from './tuning';
 
 /** A place's name tag. */

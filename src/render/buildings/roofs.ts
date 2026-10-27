@@ -252,9 +252,11 @@ export function billboard(o: Out, F: Frame, x0: number, x1: number, z0: number, 
   back(-w / 2 - 0.15, w / 2 + 0.15, -0.25, 0, yb - 0.1, yb + h + 0.1);
   back(-w / 2, w / 2, 0, 0.8, yb - 0.25, yb - 0.15);
   // The ad, brighter toward the lamps along its top edge.
-  const cell = rng.int(0, BILLBOARD_COLS * BILLBOARD_ROWS - 1);
+  // The brand is always drawn (the stream stays as it was); a building chosen for its neighbourhood's ad takes that cell instead.
+  const drawn = rng.int(0, BILLBOARD_COLS * BILLBOARD_ROWS - 1);
+  const cell = o.adCell >= 0 ? o.adCell : drawn;
   const cu = 1 / BILLBOARD_COLS;
-  const cv = 1 / BILLBOARD_ROWS;
+  const cv = 1 / o.boardRows;
   const u0 = (cell % BILLBOARD_COLS) * cu;
   const v1 = 1 - Math.floor(cell / BILLBOARD_COLS) * cv;
   const v0 = v1 - cv;
