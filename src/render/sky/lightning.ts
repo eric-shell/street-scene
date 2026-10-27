@@ -234,8 +234,14 @@ export interface Lightning {
   group: THREE.Group;
   /** The scene and lights a flash lifts (weather.apply hands them over once the mood is set). */
   attach(scene: THREE.Scene, lighting: NightLighting): void;
-  /** Per frame with the scene clock (s); returns the flash level 0..1 shown (0 with flash effects off). */
-  update(time: number): number;
+  /**
+   * Per frame with the scene clock (s); returns the flash level 0..1 shown (0 with flash effects off). `on` false
+   * (the weather has not turned to rain yet, or has eased off) lets no strike through and no thunder sound, while
+   * the schedule itself stays the same pure function of seed and clock.
+   */
+  update(time: number, on?: boolean): number;
+  /** The environment intensity a flash lifts from (the weather retunes it as the streets get wetter or drier). */
+  setEnvBase(v: number): void;
   /** Per render: follow the camera, and remember which way is right for the thunder's pan. */
   view(camera: THREE.Camera): void;
   dispose(): void;
@@ -399,8 +405,8 @@ export function buildLightning(seed: number, opts: { quality: Quality; flashes?:
   const camRight = { x: 1, z: 0 };
   const level = { flash: 0, bolt: 0 };
 
-  const update = (time: number): number => {
-    const i = schedule.indexAt(time);
+  const update = (time: number, on = true): number => {
+    const i = on ? schedule.indexAt(time) : -1;
     let flash = 0;
     let boltLevel = 0;
     let s: Strike | null = null;
@@ -431,7 +437,7 @@ export function buildLightning(seed: number, opts: { quality: Quality; flashes?:
     if (s) lighting?.flash(flash, Math.sin(s.azimuth), Math.cos(s.azimuth), L.hemi, L.key);
     else lighting?.flash(0, 0, 1, 0, 0);
     // Thunder for every strike whose sound has arrived (skipped if the clock jumped well past it).
-    for (;;) {
+    while (on) {
       const h = schedule.get(heard);
       const arrive = h.t + h.distance / L.sound;
       if (arrive > time) break;
@@ -454,6 +460,9 @@ export function buildLightning(seed: number, opts: { quality: Quality; flashes?:
       envBase = sc.environmentIntensity;
     },
     update,
+    setEnvBase(v) {
+      envBase = v;
+    },
     view(camera) {
       camera.getWorldPosition(camPos);
       group.position.set(camPos.x, 0, camPos.z);

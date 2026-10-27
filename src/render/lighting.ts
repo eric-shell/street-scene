@@ -95,7 +95,10 @@ export class NightLighting {
 
   /** The weather mood: an overcast sky lights everything a little flatter and the moon fades. */
   setMood(m: MoodLighting): void {
-    this.mood = { ...m };
+    // In place: the weather retunes this every frame of a turn, so no allocation.
+    this.mood.hemi = m.hemi;
+    this.mood.hemiIntensity = m.hemiIntensity;
+    this.mood.moonLight = m.moonLight;
     this.hemi.color.setHex(m.hemi);
     this.hemi.intensity = m.hemiIntensity;
     this.moon.intensity = m.moonLight;
