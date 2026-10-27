@@ -60,6 +60,8 @@ export const PARAM_INFO: Record<string, ParamInfo> = {
   'tires.fullSlideDeg': P(10, 60, 1, 'Slip angle where grip has dropped to slideGrip. Lower = snappier breakaway.'),
   'tires.slideGrip': P(0.3, 1, 0.01, 'Grip left when sliding sideways. Lower = slides grow and are harder to catch.'),
   'tires.slideGripLong': P(0.3, 1, 0.01, 'Grip left when sliding lengthways (spinning or locked wheels). Lower = burnouts waste more acceleration, locked wheels stop worse.'),
+  'traction.handbrakeDump': P(0, 1, 0.05, 'Letting the handbrake go drops the clutch: how far the driven wheels jump toward the revving engine. Higher = the rear lights up at once (and shoves).'),
+  'tires.slideVelocityShare': P(0, 1, 0.05, 'In a full slide, how far the tire pushes against the way its rubber really slides. 1 = real friction (locked wheels drag along the path), 0 = along the slip numbers (sliding tires lean lengthways).'),
   'tires.minLateralShare': P(0, 1, 0.01, 'Side grip kept however hard the foot brake is used. Lower = brakes steal more cornering grip.'),
   'tires.rollingResistance': P(0, 40, 0.1, 'Rolling drag per m/s. Higher = coasts down faster.'),
   'tires.loadCap': P(1.2, 5, 0.05, 'Wheel load where grip stops growing, times the static load. Lower = landings and kerb hits kick the car less.'),

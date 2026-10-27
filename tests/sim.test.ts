@@ -68,9 +68,10 @@ describe('car physics', () => {
       worst = Math.max(worst, Math.abs(c.slipAngle));
     }
     expect(drifting).toBeGreaterThan(45);
-    // Drifts keep most of their speed and, held, never go round: this long a pull over-rotates the car
-    // (85° on base), and the anti spin aid past maxSlipDeg catches it short of a spin.
-    expect(c.speed).toBeGreaterThan(entry * 0.5);
+    // Drifts keep a good part of their speed (the sliding tires scrub it against the way they slide) and,
+    // held, never go round: this long a pull over-rotates the car, and the anti spin aid past maxSlipDeg
+    // catches it short of a spin.
+    expect(c.speed).toBeGreaterThan(entry * 0.4);
     expect(worst).toBeLessThan(90 * DEG);
     expect(c.vx * Math.sin(c.yaw) + c.vz * Math.cos(c.yaw)).toBeGreaterThan(0);
   });
@@ -196,6 +197,9 @@ describe('nitrous stages', () => {
     }
     expect(lossA).toBeGreaterThan(0);
     expect(lossB).toBeGreaterThan(0);
+    // Stopped where they are (still turning, they can swing into each other again), the next tick pays nothing.
+    a.vx = a.vz = b.vx = b.vz = 0;
+    a.yawRate = b.yawRate = 0;
     stepRace(r, input({}));
     expect(a.nitroLoss + b.nitroLoss).toBe(0);
   });
@@ -305,9 +309,9 @@ describe('driving parameters file', () => {
       geometry: t.geometry,
       surface: { ...exported.tuning.surface, sidewalkGrip: 1 },
       brakes: { ...exported.tuning.brakes, force: 16250, frontBias: 0.68 },
-      steering: { ...exported.tuning.steering, counterSteerAllowance: 0, counterLockDeg: 45 },
-      drift: { ...exported.tuning.drift, maxSlipDeg: 70 },
-      tires: { ...exported.tuning.tires, gripFront: 1.82, gripRear: 1.54, slideGrip: 0.58, slideGripLong: 0.6 },
+      steering: { ...exported.tuning.steering, counterSteerAllowance: 1, counterLockDeg: 38 },
+      drift: { ...exported.tuning.drift, maxSlipDeg: 70, clutchKickTime: 0 },
+      tires: { ...exported.tuning.tires, gripFront: 1.82, gripRear: 1.54, slideGrip: 0.5, slideGripLong: 0.6 },
       nitrous: { ...exported.tuning.nitrous, capacity: 3.6, force: 5500, torqueMul: 1.35 },
     };
     expect(t).toMatchObject(expected);
@@ -471,10 +475,10 @@ describe('drifting and the handbrake', () => {
       expect(c.wheelSpeedRear, id).toBeLessThan(1);
       const revs = c.rpm;
       stepCar(c, t, input({ throttle: 0.8, steer: -1 }), { world });
-      // The flywheel and the stopped wheels meet: the tread jumps most of the way to the road at once (past
-      // it on the rear drive coupe; an AWD car shares the flywheel with its front) and the engine is still
+      // The flywheel and the stopped wheels meet, handbrakeDump of the way: the tread jumps a good part of
+      // the way to the road at once (an AWD car shares the flywheel with its front) and the engine is still
       // near the revs it held (it gave up some of them, not all).
-      expect(c.wheelSpeedRear, id).toBeGreaterThan(forwardSpeed(c) * (driveSplit(t).front > 0 ? 0.6 : 1));
+      expect(c.wheelSpeedRear, id).toBeGreaterThan(forwardSpeed(c) * (driveSplit(t).front > 0 ? 0.3 : 0.45));
       expect(c.rpm, id).toBeGreaterThan(revs * 0.6);
     }
   });

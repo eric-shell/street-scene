@@ -60,8 +60,9 @@
       "roundingRear": 1,
       "peakSlipRatio": 0.12,
       "fullSlideDeg": 25,
-      "slideGrip": 0.58,
+      "slideGrip": 0.5,
       "slideGripLong": 0.6,
+      "slideVelocityShare": 1,
       "minLateralShare": 0.74,
       "rollingResistance": 5.8,
       "loadCap": 2.2
@@ -69,7 +70,9 @@
     "traction": {
       "wheelInertia": 1.2,
       "launchBoost": 1.2,
-      "clutchKickSpeed": 6,
+      "_clutch": "clutchKickSpeed and drift.clutchKickTime are the throttle stab clutch kick (a lift then a stab while steering hard): 0 and 0, off. On a keyboard every throttle tap mid drift fired it and shoved the car along its nose; the handbrake is the clutch kick now (it drops the clutch on the revving engine, handbrakeDump of the way to the flywheel's speed, car.ts dumpClutch).",
+      "clutchKickSpeed": 0,
+      "handbrakeDump": 0.5,
       "tcSlipTarget": 0.94,
       "tcMinDrive": 0.2,
       "tcMaxSlipDeg": 9
@@ -111,9 +114,9 @@
       "highSpeedDeg": 4,
       "fadeSpeed": 42,
       "rateDegPerSec": 150,
-      "_counter": "Counter steer (steering into a slide) maps linearly onto counterLockDeg of lock, a drift angle kit, at any slide angle; counterSteerAllowance (lock growing with the slide) is 0, so nothing chases the slide for the driver.",
-      "counterSteerAllowance": 0,
-      "counterLockDeg": 45
+      "_counter": "Counter steer (steering into a slide): full lock is counterLockDeg, a drift angle kit mapped linearly from the input, or the ordinary lock plus counterSteerAllowance of the slide angle, whichever is more (car.ts counterSteerLock). Through an ordinary drift (under about 24 degrees at drift speeds) that is the fixed 38: a held key (full lock on a keyboard) does not point the front wheels past the direction of travel and pull the car outward, as 45 did. Past it the lock reaches beyond the slide, because a front wheel only catches a slide when it points past the direction of travel: with the fixed 38 alone a slide past 40 degrees swung on to 75.",
+      "counterSteerAllowance": 1,
+      "counterLockDeg": 38
     },
     "aero": {
       "drag": 0.4,
@@ -142,7 +145,7 @@
     },
     "drift": {
       "_": "The aids (docs/handling.md, Simcade): yawDamping is always on, the same in a slide as on the grip, so the car's rotation answers the same way at any angle; the anti spin aid (assistTorque) only acts past maxSlipDeg, when the car is going round.",
-      "clutchKickTime": 0.45,
+      "clutchKickTime": 0,
       "maxSlipDeg": 70,
       "assistTorque": 22750,
       "yawDamping": 3250,

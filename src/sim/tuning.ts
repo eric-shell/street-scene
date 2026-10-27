@@ -126,6 +126,8 @@ export interface CarTuning {
     slideGrip: number;
     /** Grip of a tire sliding lengthways (spinning or locked, going straight), fraction of peak. */
     slideGripLong: number;
+    /** How far a tire in a full slide pushes against the way its rubber slides (1) rather than along its normalized slip vector (0); eased in from the peak (car.ts slideDir). */
+    slideVelocityShare: number;
     /** Lateral grip kept however hard the foot brake uses the friction circle (arcade ABS). */
     minLateralShare: number;
     rollingResistance: number;
@@ -138,6 +140,8 @@ export interface CarTuning {
     wheelInertia: number;
     /** Extra drive torque from dumping the clutch (launches, clutch kicks), at clutch slip = redline. */
     launchBoost: number;
+    /** How far a handbrake release takes the driven wheels toward the speed they share with the flywheel (0..1; car.ts dumpClutch). */
+    handbrakeDump: number;
     /** Tread speed a clutch kick adds to the driven wheels (m/s): the flywheel's energy dumped into them. */
     clutchKickSpeed: number;
     /** Traction control: max drive as a fraction of the forward force that keeps the tires inside their peak. */

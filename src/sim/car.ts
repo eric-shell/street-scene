@@ -250,6 +250,8 @@ export function placeCar(c: CarState, x: number, z: number, yaw: number, world: 
 const RPM_PER_RADS = 60 / TAU;
 /** How fast the free engine chases its target revs (rpm/s): the flywheel's response, not tuning. */
 const REV_RATE = 24000;
+/** How fast the driven wheels' tread follows the engine on the grid (m/s per s; twice it in a line lock): the countdown has no physics, only this. */
+const GRID_TREAD_RATE = 12;
 /** Share of the redline a free revving engine chases with the throttle floored: the grid's rev, and a line lock's before the driven wheels let go. */
 const FREE_REV_FRAC = 0.85;
 /** Most the body pitches or rolls away from the ground's own angle (rad): suspension geometry, not tuning. */
@@ -376,7 +378,10 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
       // The automatic shifts on the car's speed over the ground: not the wheels' (spinning wheels would
       // upshift a drift) and not the forward component alone (a sideways drift would drop into first).
       const rpmNow = wheelRpm(t, c.gear, speed);
-      if (c.gear < nGears && rpmNow > up && vLong > 0) {
+      // In a powered drift it holds its gear and the engine bounces off the limiter, as a drifter keeps it:
+      // an upshift mid drift drops the power the slide is held on.
+      const powerSlide = c.drifting && inp.throttle > 0.5;
+      if (c.gear < nGears && rpmNow > up && vLong > 0 && !powerSlide) {
         c.gear++;
         c.shiftTimer = t.gearbox.shiftTime;
       } else if (c.gear > 1 && !(c.wheelspin && inp.throttle > 0.5) && rpmNow < t.gearbox.downshiftRpmFrac * t.engine.redline && wheelRpm(t, c.gear - 1, speed) < up * 0.9) {
@@ -557,16 +562,18 @@ function lineLockSplit(t: CarTuning): { front: number; rear: number } {
 /**
  * The clutch dropped on a revving engine (the handbrake let go): the flywheel, crank and clutch, geared to
  * each driven axle by its share, and that axle's wheels meet at the speed that keeps their angular
- * momentum, so the engine's spin lights up the wheels as it does off a real handbrake. The engine then
- * turns with them (stepCar's rpm follows the axles). An axle already turning faster than the engine keeps
- * its speed.
+ * momentum, so the engine's spin lights up the wheels as it does off a real handbrake; handbrakeDump of
+ * the way there (a real clutch slips some of it away; all of it at once shoves the car along its nose).
+ * The engine then turns with them (stepCar's rpm follows the axles). An axle already turning faster than
+ * the engine keeps its speed.
  */
 function dumpClutch(c: CarState, t: CarTuning, split: { front: number; rear: number }, gearing: number): void {
   const R = t.geometry.wheelRadius;
   const tread = (c.rpm / RPM_PER_RADS / gearing) * R;
   const Ie = t.engine.inertia * gearing * gearing;
   const Iw = 2 * t.traction.wheelInertia;
-  const meet = (ws: number, share: number) => (share > 0 && tread > ws ? (Ie * share * tread + Iw * ws) / (Ie * share + Iw) : ws);
+  const k = t.traction.handbrakeDump;
+  const meet = (ws: number, share: number) => (share > 0 && tread > ws ? lerp(ws, (Ie * share * tread + Iw * ws) / (Ie * share + Iw), k) : ws);
   c.wheelSpeedFront = meet(c.wheelSpeedFront, split.front);
   c.wheelSpeedRear = meet(c.wheelSpeedRear, split.rear);
 }
@@ -636,7 +643,7 @@ export function gridRev(c: CarState, t: CarTuning, inp: InputFrame, dt: number):
   // The driven wheels' tread speed with the engine in first gear, the limiter's cut included.
   const gearing = gearRatio(t, 1) * t.gearbox.finalDrive;
   const tread = c.lineLock && c.twoStepCut === 0 ? (c.rpm / RPM_PER_RADS / gearing) * t.geometry.wheelRadius : 0;
-  const rate = (c.lineLock ? 4 : 2) * t.traction.clutchKickSpeed * dt;
+  const rate = (c.lineLock ? 2 : 1) * GRID_TREAD_RATE * dt;
   c.wheelSpeedFront = split.front > 0 ? approach(c.wheelSpeedFront, tread, rate) : 0;
   c.wheelSpeedRear = split.rear > 0 ? approach(c.wheelSpeedRear, tread, rate) : 0;
   const spin = (ws: number) => clamp(ws / Math.max(1, tread), 0, 1);
@@ -685,6 +692,35 @@ const wAlpha = [0, 0, 0, 0];
 const wSy = [0, 0, 0, 0];
 /** Slip ratio: tread speed over road speed, minus one. */
 const wKappa = [0, 0, 0, 0];
+/** The contact patch's sideways sliding over its lengthways road speed (tan of the slip angle, unsigned). */
+const wTan = [0, 0, 0, 0];
+/** slideDir's answer: the sliding tire's force direction, along the wheel (signed with the slip ratio) and across it (unsigned). */
+const slideF = { x: 0, y: 0 };
+
+/**
+ * Which way a tire past its peak pushes. Up to the peak it is the normalized slip vector (sx, sy), Beckman's
+ * combined grip, which shapes ordinary driving. Into the full slide (rho from 1 to rhoFull) it turns, by
+ * slideVelocityShare, to the way the rubber actually slides over the road, (kappa, tan alpha): Coulomb
+ * friction opposes the sliding velocity. The normalized vector divides the slip ratio by 0.12 and the slip
+ * angle by 12° (0.21 rad), so far past the peak it leans the force lengthways: a locked rear pushed back
+ * along the car's nose instead of along its path (the path bent toward the slide and the rear barely
+ * resisted swinging out), and a spinning rear in a drift kept only 44% of its force sideways at 35° where
+ * its sliding gives 70% (the car floated sideways on its own thrust). The same direction picks the sliding
+ * grip between slideGrip and slideGripLong: a drifting rear slides about 40% sideways, a launch's spinning
+ * tires not at all, where the normalized vector counted the drift 83% lengthways, the same as a launch.
+ */
+function slideDir(t: CarTuning, sx: number, sy: number, rho: number, kappa: number, tanA: number, rhoFull: number): void {
+  slideF.x = sx / rho;
+  slideF.y = sy / rho;
+  const p = sqrt(kappa * kappa + tanA * tanA);
+  const w = rho > 1 && p > 0 ? t.tires.slideVelocityShare * Math.min(1, (rho - 1) / (rhoFull - 1)) : 0;
+  if (w === 0) return;
+  const x = lerp(slideF.x, kappa / p, w);
+  const y = lerp(slideF.y, tanA / p, w);
+  const n = sqrt(x * x + y * y);
+  slideF.x = n > 0 ? x / n : 0;
+  slideF.y = n > 0 ? y / n : 0;
+}
 /** Per axle, from updateAxles: holding (not spinning), the torque it transmits, its forward capacity and its grip. */
 const axleHold = [false, false];
 const axleT = [0, 0];
@@ -786,9 +822,12 @@ function updateAxles(c: CarState, t: CarTuning, ctl: Controls, gripAt: GripCurve
         let Fx = 0;
         for (let i = a * 2; i < a * 2 + 2; i++) {
           if (wFmax[i] === 0) continue;
-          const sx = (ws - wLong[i]) / Math.max(abs(wLong[i]), SLIP_REF_SPEED) / peakK;
+          const kappa = (ws - wLong[i]) / Math.max(abs(wLong[i]), SLIP_REF_SPEED);
+          const sx = kappa / peakK;
           const rho = sqrt(sx * sx + wSy[i] * wSy[i]);
-          if (rho > 0) Fx += (gripAt(rho, (wSy[i] * wSy[i]) / (rho * rho), a) * wFmax[i] * sx) / rho;
+          if (rho === 0) continue;
+          slideDir(t, sx, wSy[i], rho, kappa, wTan[i], fullK / peakK);
+          Fx += gripAt(rho, slideF.y * slideF.y, a) * wFmax[i] * slideF.x;
         }
         ws += (h * R * (T - R * Fx)) / I;
       }
@@ -1036,6 +1075,7 @@ function tireForces(c: CarState, t: CarTuning, ctl: Controls, h: number, vLong: 
     wLong[i] = wl;
     wAlpha[i] = alpha;
     wSy[i] = abs(alpha) / peakA;
+    wTan[i] = abs(wt) / Math.max(abs(wl), SLIP_REF_SPEED);
   }
   // Pass 2: the axles (drive, wheelspin, handbrake), which sets each wheel's slip ratio.
   updateAxles(c, t, ctl, gripAt, h);
@@ -1076,10 +1116,17 @@ function tireForces(c: CarState, t: CarTuning, ctl: Controls, h: number, vLong: 
     let sx = axleHold[a] ? axleT[a] / (axleCap[a] * R) : wKappa[i] / peakK;
     if (lockF !== 0) sx += lockF / axleCap[a];
     const rho = sqrt(sx * sx + sy * sy);
-    const mag = rho > 0 ? gripAt(rho, (sy * sy) / (rho * rho), a) * Fmax : 0;
-    let Fx = axleHold[a] ? (axleT[a] / R) * (Fmax / axleGrip[a]) : rho > 0 ? (mag * sx) / rho : 0;
+    // A spinning or locked tire pushes against the way it slides (slideDir), and that way also picks its
+    // sliding grip between sideways and lengthways; a holding one goes by its slip vector.
+    if (rho > 0 && !axleHold[a]) slideDir(t, sx, sy, rho, wKappa[i], wTan[i], rhoFull);
+    else if (rho > 0) {
+      slideF.x = sx / rho;
+      slideF.y = sy / rho;
+    }
+    const mag = rho > 0 ? gripAt(rho, slideF.y * slideF.y, a) * Fmax : 0;
+    let Fx = axleHold[a] ? (axleT[a] / R) * (Fmax / axleGrip[a]) : rho > 0 ? mag * slideF.x : 0;
     if (lockF !== 0) Fx += (lockF * Fmax) / axleGrip[a];
-    let Fy = rho > 0 ? -sign(alpha) * ((mag * sy) / rho) : 0;
+    let Fy = rho > 0 ? -sign(alpha) * mag * slideF.y : 0;
     // Foot brake: split across the axle by load (EBD) so a light inside wheel does not lock, opposing wheel
     // motion and never reversing it within a step, on tires not already sliding lengthways (a locked or
     // spinning wheel has nothing more to give). It takes sideways grip by the friction circle but leaves
