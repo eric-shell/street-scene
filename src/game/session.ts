@@ -332,6 +332,7 @@ export class RaceSession {
     this.night.scene.add(this.sparks.mesh);
     this.tireFx = new TireFx(settings.quality, ROAD_Y);
     this.tireFx.meshes.forEach((m) => this.night.scene.add(m));
+    this.tireFx.setWet(this.night.weather.def.wet, this.night.lampSprayTone);
     if (this.race.config.mode === 'waypoint' && this.race.world.route.waypoints) {
       this.beacons = new WaypointBeacons(this.race.world);
       this.night.scene.add(this.beacons.group);

@@ -188,6 +188,8 @@ export interface NightScene {
   walkers: Walkers;
   /** The seed's weather mood: fog, sky, rain or mist (weather.ts). */
   weather: Weather;
+  /** The pool colour of the tone most streetlights burn (road spray takes it); linear. */
+  lampSprayTone: THREE.Color;
   /** The news helicopter, its searchlight and the blimp (airTraffic.ts). */
   air: AirTraffic;
   /** Mountains, masts and the sky sprites (backdrop.ts). */
@@ -241,6 +243,9 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   const lampPlan = planLamps(world);
   fitLampPositions(world, city.lampPositions, lampPlan);
   const lampTone = lampPlan.tone.map((t) => LAMP_TONES[t]);
+  const toneCount: Record<string, number> = {};
+  let sprayTone = lampPlan.tone[0] ?? 'sodium';
+  for (const t of lampPlan.tone) if ((toneCount[t] = (toneCount[t] ?? 0) + 1) > (toneCount[sprayTone] ?? 0)) sprayTone = t;
   // One culling grid for the big merged layers, the props and the light streaks (200 m cells).
   const grid = chunkGrid(bounds);
   // Everything else that glows streaks on the wet street too, graded by class (lightFx.ts STREAK_CLASSES).
@@ -362,6 +367,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     idlers,
     walkers,
     weather,
+    lampSprayTone: toneColor(LAMP_TONES[sprayTone].pool),
     air,
     backdrop,
     syncDistricts(tick, audible, brokenArms) {

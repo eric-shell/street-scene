@@ -8,7 +8,7 @@
  * of that is smoke, since a tire spinning against the road boils off far
  * more than one scrubbing sideways. Marks are laid for every car (a strip per
  * wheel, extended from where it ended last tick), smoke only near the camera.
- * Render only: never writes to the sim.
+ * On wet nights (`setWet`) the rear tires also throw road spray at speed, slip or not. Render only: never writes to the sim.
  */
 import * as THREE from 'three';
 import type { RaceCar } from '../../sim/race';
@@ -44,6 +44,27 @@ export const TIRE_FX = {
   spread: 0.8,
 } as const;
 
+/** Road spray (tireSmoke.ts SPRAY is how a puff looks; this is when and how many are born). */
+export const SPRAY_FX = {
+  /** Only cars this close to the camera spray (m); the mist is small, so nearer than smoke. */
+  range: 70,
+  /** Below this speed (m/s) no spray; it reaches full rate over `ramp` more. */
+  minSpeed: 10,
+  ramp: 28,
+  /** Wetness (Weather.def.wet) under which the road throws nothing, and the share of a full tail the first wet mood (drizzle) gets; rain (wet 1) gets all of it. */
+  minWet: 0.3,
+  floor: 0.3,
+  /** Puffs per second per rear tire at full speed in rain at Medium (scaled by the pool). */
+  puffsPerSecond: 30,
+  /** Puffs leave with this share of the car's velocity (m/s per m/s) and rise at lift (m/s) in drizzle, up to rooster (m/s) in rain, plus a scatter (m/s). */
+  carry: 0.55,
+  lift: 0.8,
+  rooster: 3.2,
+  spread: 0.7,
+  /** Share of a puff's peak opacity at full strength, per unit of the wet share. */
+  strength: 0.9,
+} as const;
+
 /** Surfaces rubber shows on, with how light the mark reads there (0 asphalt .. 1 concrete). */
 const MARK_TINT: Partial<Record<string, number>> = { road: 0, cobble: 0.15, concrete: 1, sidewalk: 0.9 };
 
@@ -57,6 +78,8 @@ interface WheelTrack {
   stamp: number;
   /** Fractional puffs carried to the next tick. */
   puffs: number;
+  /** Fractional spray puffs carried to the next tick. */
+  spray: number;
 }
 
 const F = new THREE.Vector3();
@@ -74,6 +97,11 @@ export class TireFx {
   private tracks: WheelTrack[][] = [];
   private readonly puffScale: number;
   private readonly lift: number;
+  /** How much of a full rooster tail the weather gives (0 = dry), and the lamp tone the mist takes (linear). */
+  private sprayWet = 0;
+  private sprayR = 1;
+  private sprayG = 0.7;
+  private sprayB = 0.4;
 
   /** `roadLift` is the asphalt's height over the sim's ground (m; cityMeshes ROAD_Y). */
   constructor(quality: TireMarkQuality, roadLift: number) {
@@ -84,6 +112,14 @@ export class TireFx {
     this.lift = roadLift + TIRE_MARKS.lift;
   }
 
+  /** The night's wetness (Weather.def.wet, 0..1) and the dominant lamp tone's pool colour (linear): once at setup. */
+  setWet(wet: number, tone: THREE.Color): void {
+    this.sprayWet = wet < SPRAY_FX.minWet ? 0 : SPRAY_FX.floor + (1 - SPRAY_FX.floor) * Math.min(1, (wet - SPRAY_FX.minWet) / (1 - SPRAY_FX.minWet));
+    this.sprayR = tone.r;
+    this.sprayG = tone.g;
+    this.sprayB = tone.b;
+  }
+
   /** Once per sim tick (dt s), after the step: lay this tick's rubber and smoke for every car; (camX, camZ) is the camera. */
   tick(cars: readonly RaceCar[], world: World, camX: number, camZ: number, time: number, dt: number): void {
     const cam2 = TIRE_FX.smokeRange * TIRE_FX.smokeRange;
@@ -92,7 +128,7 @@ export class TireFx {
       const c = rc.state;
       let tracks = this.tracks[ci];
       if (!tracks) {
-        tracks = [0, 1, 2, 3].map(() => ({ al: new THREE.Vector3(), ar: new THREE.Vector3(), laying: false, stamp: 0, puffs: 0 }));
+        tracks = [0, 1, 2, 3].map(() => ({ al: new THREE.Vector3(), ar: new THREE.Vector3(), laying: false, stamp: 0, puffs: 0, spray: 0 }));
         this.tracks[ci] = tracks;
       }
       const near = (c.x - camX) ** 2 + (c.z - camZ) ** 2 < cam2;
@@ -100,6 +136,7 @@ export class TireFx {
       F.set(Math.sin(c.yaw), 0, Math.cos(c.yaw));
       L.set(F.z, 0, -F.x);
       const geo = rc.tuning.geometry;
+      if (this.sprayWet > 0 && near) this.spray(rc, tracks, world, camX, camZ, time, dt);
       for (let i = 0; i < 4; i++) {
         const w = c.wheels[i];
         const tr = tracks[i];
@@ -171,6 +208,33 @@ export class TireFx {
           this.smoke.emit(time, C.x, C.y + 0.1, C.z, c.vx * TIRE_FX.carry - F.x * back, 0.4, c.vz * TIRE_FX.carry - F.z * back, TIRE_FX.spread + 0.6 * intensity, n, Math.min(1, strength));
         }
       }
+    }
+  }
+
+  /** Spray from the rear tires of a wet night's car at speed: behind each tire, streaming back with the car, higher the wetter. */
+  private spray(rc: RaceCar, tracks: WheelTrack[], world: World, camX: number, camZ: number, time: number, dt: number): void {
+    const c = rc.state;
+    const speed = c.speed;
+    if (speed < SPRAY_FX.minSpeed || (c.x - camX) ** 2 + (c.z - camZ) ** 2 > SPRAY_FX.range * SPRAY_FX.range) return;
+    const k = Math.min(1, (speed - SPRAY_FX.minSpeed) / SPRAY_FX.ramp);
+    const wet = this.sprayWet;
+    const geo = rc.tuning.geometry;
+    for (let i = 2; i < 4; i++) {
+      const w = c.wheels[i];
+      const tr = tracks[i];
+      if (!w.contact) {
+        tr.spray = 0;
+        continue;
+      }
+      tr.spray += SPRAY_FX.puffsPerSecond * this.puffScale * k * wet * dt;
+      const n = Math.floor(tr.spray);
+      if (n <= 0) continue;
+      tr.spray -= n;
+      const [wv, , wu] = geo.wheels[i];
+      const x = c.x + F.x * wu + L.x * wv;
+      const z = c.z + F.z * wu + L.z * wv;
+      const y = world.heightAt(x, z, c.y) + this.lift;
+      this.smoke.emitSpray(time, x, y + 0.1, z, c.vx * SPRAY_FX.carry, SPRAY_FX.lift + (SPRAY_FX.rooster - SPRAY_FX.lift) * wet * k, c.vz * SPRAY_FX.carry, SPRAY_FX.spread, n, Math.min(1, SPRAY_FX.strength * wet), this.sprayR, this.sprayG, this.sprayB);
     }
   }
 
