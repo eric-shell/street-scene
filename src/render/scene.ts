@@ -15,6 +15,7 @@ import { NEUTRAL_GRADE, POST_GRAIN, POST_TAPS, PostFx, type GradeParams } from '
 import { cityIdentity } from './cityIdentity';
 import { makeNightEnvironment } from './textures/textures';
 import { buildRouteArrows, classifyBarriers, RouteArrows } from './race/routeArrows';
+import { buildParkedCars } from './traffic/parkedCars';
 import { MEET_VARIANTS, buildRoadblocks, parkedCars, type Roadblocks } from './race/roadblocks';
 import { MEET_QUALITY, planMeets } from './race/meetPlan';
 import { buildProps, PropRenderer } from './street/props';
@@ -259,6 +260,9 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   });
   const roadblocks = buildRoadblocks(world, meet, city.barrierLampMaterial, { drawDistance: meetQ.drawDistance });
   scene.add(roadblocks.group);
+  // Cars parked in the yards behind the frontage walls, where no car can go (districts/yards.ts); Medium and up.
+  const parked = buildParkedCars(world, { quality: settings.quality, grid });
+  scene.add(parked.group);
   const arrows = buildRouteArrows(world, barriers, { beacon: city.barrierLampMaterial });
   scene.add(arrows.group);
   // The big merged layers cull per 200 m cell (registered last, below).
@@ -277,6 +281,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     const cullDensity = density * Math.sqrt(FOG_HEIGHT.min);
     chunks.view(camera, cullDensity, gr.profile.detailDistance);
     // Props cull by the same grid: detail kinds at detailDistance, the tall ones where the fog closes.
+    parked.view(camera, chunks.enabled ? fogCutoff(cullDensity) : Infinity);
     if (chunks.enabled) props.view(camera, gr.profile.detailDistance, fogCutoff(cullDensity));
     else props.view(camera, Infinity, Infinity);
     // The light pools and streaks cull on it too, all 'fog' class.
@@ -365,6 +370,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
       areaLights.dispose();
       arrows.dispose();
       roadblocks.dispose();
+      parked.dispose();
       props.dispose();
       crowds.dispose();
       idlers.dispose();

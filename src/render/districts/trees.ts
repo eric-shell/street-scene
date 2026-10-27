@@ -14,6 +14,12 @@
  * vertex's sway weight (0 at the roots, 1 at the crown) and phase, which the
  * material's vertex shader turns into a slow sway in the wind (off at Low).
  *
+ * A fourth species, the palm (a bare, ringed, swaying trunk under a crown of
+ * arched fronds), stands in the Los Angeles and Miami neighbourhoods. The
+ * fronds are flat ribbons folded along their rib and drawn from both sides
+ * (no alpha test, no extra material), so palms merge into the same builder
+ * and sway through the same vertex shader as every other tree.
+ *
  * The trunk stays inside the sim's 0.4 m trunk circle up to car height
  * (flare 0.36 m at the ground, the lean grows with height), and crowns start
  * high enough to clear a car's roof at the circle's edge.
@@ -26,11 +32,11 @@ import type { DistrictKit } from './kit';
 import type { Quality } from '../../ui/settings';
 
 const TREE = {
-  /** Trunk sides, leaf clumps [min, max] of a broadleaf crown, clump subdivision (0: 20 tris, 1: 80), limbs, conifer tiers and their points. */
+  /** Trunk sides, leaf clumps [min, max] of a broadleaf crown, clump subdivision (0: 20 tris, 1: 80), limbs, conifer tiers and their points, a palm's fronds and the stations along each. */
   detail: {
-    low: { sides: 5, clumps: [3, 4], subdiv: 0, limbs: 0, tiers: 3, points: 5, flare: false },
-    medium: { sides: 6, clumps: [5, 7], subdiv: 0, limbs: 3, tiers: 4, points: 6, flare: true },
-    high: { sides: 7, clumps: [6, 9], subdiv: 1, limbs: 4, tiers: 6, points: 7, flare: true },
+    low: { sides: 5, clumps: [3, 4], subdiv: 0, limbs: 0, tiers: 3, points: 5, flare: false, fronds: 6, stations: 4 },
+    medium: { sides: 6, clumps: [5, 7], subdiv: 0, limbs: 3, tiers: 4, points: 6, flare: true, fronds: 7, stations: 5 },
+    high: { sides: 7, clumps: [6, 9], subdiv: 1, limbs: 4, tiers: 6, points: 7, flare: true, fronds: 8, stations: 7 },
   },
   /** Share of the non-conifers that grow columnar, and of the broadleaves with pale plane tree bark. */
   columnar: 0.14,
@@ -70,12 +76,92 @@ const LEAF = {
   ],
 } as const;
 const BARK = { dark: 0x4a3a30, pale: 0x9a9486, conifer: 0x3e3029 } as const;
+/** Palm colours: the trunk's grey tan and its darker ring scars, the frond's base and tip (lit), and the coconut cluster under the crown. */
+const PALM = { trunk: 0x8a7a66, ring: 0x6a5a48, frond: [0x24462c, 0x6ea35a], alt: [0x2a4a22, 0x86ae56], nuts: 0x4a3a22 } as const;
+/** A palm's proportions: trunk base and top radius (m), frond length as a share of the height, its half width (m), droop (m) at the tip, lean (m) over the whole height. */
+const PALM_SHAPE = { base: 0.2, top: 0.12, length: [0.34, 0.46], half: 0.3, droop: 1.5, rise: 0.9, lean: 0.9 } as const;
 
 export interface TreeOpts {
   /** Ground height to stand on (m); the terrain under (x, z) when missing. */
   y?: number;
   /** Chance this one is a conifer (0..1). */
   conifer?: number;
+}
+
+/**
+ * A palm at (x, z), `height` m tall (trunk and crown): the Los Angeles and Miami street tree. The trunk is inside
+ * the sim's 0.4 m trunk circle up to car height, like every tree's, and the fronds start above a car's roof.
+ */
+export function palm(kit: DistrictKit, x: number, z: number, height: number, opts: Pick<TreeOpts, 'y'> = {}): void {
+  const y = opts.y ?? kit.h(x, z);
+  const rng = new Rng((Math.imul(Math.round(x * 64), 83492791) ^ Math.imul(Math.round(z * 64), 19349663)) >>> 0);
+  const d = TREE.detail[kit.quality];
+  const gb = kit.trees;
+  const phase = rng.range(0, 6.28);
+  // The trunk bows: a leaning curve in a random direction, more with height.
+  const la = rng.range(0, 6.28);
+  const lean = rng.range(0.3, 1) * PALM_SHAPE.lean * (height / 9);
+  const at = (t: number): V3 => ({ x: x + Math.cos(la) * lean * Math.max(0, t) ** 1.6, y: y + height * t, z: z + Math.sin(la) * lean * Math.max(0, t) ** 1.6 });
+  const bark = new THREE.Color(PALM.trunk).multiplyScalar(rng.range(0.85, 1.12));
+  const scar = new THREE.Color(PALM.ring).multiplyScalar(rng.range(0.9, 1.1));
+  // Ringed trunk: alternating bands, wider at the foot (a root flare that dies out within the first metres).
+  const radius = (t: number): number => Math.min(TREE.flare, TREE.flare * 0.55 * (1 - t) ** 3 + PALM_SHAPE.base * (1 - t) + PALM_SHAPE.top * t);
+  const bands = 7;
+  for (let i = 0; i < bands; i++) {
+    const t0 = i / bands;
+    const t1 = (i + 1) / bands;
+    const c = i % 2 === 0 ? bark : scar;
+    tube(gb, at(i === 0 ? -0.02 : t0), at(t1), radius(t0), radius(t1), d.sides, c, c, weight(height * t0, height), weight(height * t1, height), phase, i === 0 && d.flare ? 3 : 0);
+  }
+  // The crown: a knot of nuts under the fronds, then the fronds arching out and drooping.
+  const top = at(1);
+  const nuts = new THREE.Color(PALM.nuts);
+  blob(gb, rng, 0, { x: top.x, y: top.y - 0.15, z: top.z }, 0.3, 0.26, phase, height, y, () => nuts);
+  const a0 = rng.range(0, 6.28);
+  const lo = new THREE.Color(rng.chance(0.5) ? PALM.frond[0] : PALM.alt[0]);
+  const hi = new THREE.Color(rng.chance(0.5) ? PALM.frond[1] : PALM.alt[1]);
+  const tint = new THREE.Color();
+  for (let f = 0; f < d.fronds; f++) {
+    const a = a0 + (f / d.fronds) * Math.PI * 2 + rng.range(-0.2, 0.2);
+    const len = height * rng.range(PALM_SHAPE.length[0], PALM_SHAPE.length[1]);
+    const lift = rng.range(0.5, 1.2);
+    const droop = PALM_SHAPE.droop * rng.range(0.7, 1.3) * (len / 3);
+    const dx = Math.cos(a);
+    const dz = Math.sin(a);
+    // Frond frame: out along (dx, dz); sideways across it.
+    const sx = -dz;
+    const sz = dx;
+    const row: { l: number; r: number; rib: number }[] = [];
+    for (let i = 0; i < d.stations; i++) {
+      const u = i / (d.stations - 1);
+      const out = len * u;
+      const up = lift * Math.sin(u * Math.PI * 0.85) * PALM_SHAPE.rise - droop * u * u;
+      const half = PALM_SHAPE.half * Math.sin(Math.PI * Math.min(1, u * 0.9 + 0.1)) ** 0.7 * (len / 3);
+      const py = top.y + up;
+      const cx = top.x + dx * out;
+      const cz = top.z + dz * out;
+      const shade = tint.lerpColors(lo, hi, 0.25 + 0.7 * u).multiplyScalar(rng.range(0.92, 1.06)).clone();
+      const w = Math.min(1, weight(py - y, height) + 0.1 + 0.18 * u);
+      // A shallow V: the edges hang below the rib.
+      const sag = half * 0.35;
+      const nn = Math.hypot(dx * 0.3, 1, dz * 0.3);
+      const rib = gb.vertex(cx, py, cz, dx * 0.3 / nn, 1 / nn, dz * 0.3 / nn, w, phase + f * 0.3, shade);
+      const l = gb.vertex(cx + sx * half, py - sag, cz + sz * half, 0, 1, 0, w, phase + f * 0.3, shade);
+      const r = gb.vertex(cx - sx * half, py - sag, cz - sz * half, 0, 1, 0, w, phase + f * 0.3, shade);
+      row.push({ l, r, rib });
+    }
+    for (let i = 0; i + 1 < row.length; i++) {
+      const p = row[i];
+      const q = row[i + 1];
+      // Both sides of both halves of the folded blade.
+      for (const n of [1, -1]) {
+        gb.triFacing(p.rib, p.l, q.l, 0, n, 0);
+        gb.triFacing(p.rib, q.l, q.rib, 0, n, 0);
+        gb.triFacing(p.rib, q.r, p.r, 0, n, 0);
+        gb.triFacing(p.rib, q.rib, q.r, 0, n, 0);
+      }
+    }
+  }
 }
 
 /** A detailed tree at (x, z): crown radius about `size`, total height `height` (m). */
