@@ -483,7 +483,8 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
     dispose() {
       for (const m of meshes) {
         m.geometry.dispose();
-        (m.material as THREE.Material).dispose();
+        // A chunked layer (cityChunks.ts) carries its one material in an array.
+        for (const mat of ([] as THREE.Material[]).concat(m.material)) mat.dispose();
       }
     },
   };
