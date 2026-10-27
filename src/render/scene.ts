@@ -121,6 +121,11 @@ export class GameRenderer {
     }
   }
 
+  /** Tone mapping exposure for the next render (the zone adaptation, render/exposure.ts). */
+  setExposure(v: number): void {
+    this.renderer.toneMappingExposure = v;
+  }
+
   render(scene: THREE.Scene, camera: THREE.PerspectiveCamera, dt: number): void {
     if (Math.abs(camera.aspect - this.aspect) > 1e-4) {
       camera.aspect = this.aspect;

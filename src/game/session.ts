@@ -62,6 +62,7 @@ import { HazardFx } from './hazardFx';
 import { KeyLight } from './keyLight';
 import { LIGHT_RIG } from '../render/lighting';
 import { SessionAudio } from './session/audio';
+import { ExposureAdapt } from '../render/exposure';
 import { type Snap, snap, lerpSnap } from './session/snap';
 import { emitSparks, sparkBurst, crackRail, spitRailSparks } from './session/sparks';
 import { createHudCard, helpSections, raceHudData, trafficDotCars } from './session/hud';
@@ -159,6 +160,12 @@ export class RaceSession {
   tuned = false;
   onFinish: ((info: FinishInfo) => void) | null = null;
   private prev: Snap[];
+  /** Interpolated poses, reused every render frame. */
+  private poses: Snap[] = [];
+  private ghostPose: Snap | null = null;
+  /** Reused focus point for the lights and the exposure zone (m). */
+  private focus = new THREE.Vector3();
+  private exposure = new ExposureAdapt();
   private curr: Snap[];
   private ghostRace: RaceState | null = null;
   private ghostLog: number[] = [];
@@ -889,14 +896,20 @@ export class RaceSession {
     this.beacons?.update(this.race.cars[0], this.time);
     this.alpha = alpha;
     const r = this.race;
-    const poses = this.curr.map((c, i) => lerpSnap(this.prev[i], c, this.paused ? 1 : alpha));
+    const poses = this.poses;
+    // Reused pose objects, rebuilt only when the car count changes.
+    if (poses.length !== this.curr.length) poses.length = 0;
+    for (let i = 0; i < this.curr.length; i++) {
+      if (!poses[i]) poses[i] = { ...this.curr[i], comp: [], spin: [] };
+      lerpSnap(this.prev[i], this.curr[i], this.paused ? 1 : alpha, poses[i]);
+    }
     this.views.forEach((v, i) => {
       v.update(poses[i], this.time);
       // A car just reset blinks while it passes through the others, shown first (the half cycle's offset).
       v.root.visible = poses[i].passThrough <= 0 || (poses[i].passThrough * RESET_BLINK_HZ + 0.5) % 1 < 0.5;
     });
     this.drivers.update(this.views, poses);
-    if (this.ghostView && this.ghostPrev && this.ghostCurr) this.ghostView.update(lerpSnap(this.ghostPrev, this.ghostCurr, alpha), this.time);
+    if (this.ghostView && this.ghostPrev && this.ghostCurr) this.ghostView.update(lerpSnap(this.ghostPrev, this.ghostCurr, alpha, (this.ghostPose ??= { ...this.ghostCurr, comp: [], spin: [] })), this.time);
     const p = poses[0];
     let camera: THREE.PerspectiveCamera;
     if (this.drone) {
@@ -907,7 +920,11 @@ export class RaceSession {
     this.trails.update(this.views[0].root, camera, this.paused ? 0 : p.nitroStage, dt);
     this.carLight?.follow(p);
     // The few real point lights follow the action, or the drone when it flies off.
-    this.night.lighting.update(this.drone ? camera.position : new THREE.Vector3(p.x, p.y, p.z));
+    const focus = this.drone ? camera.position : this.focus.set(p.x, p.y, p.z);
+    this.night.lighting.update(focus);
+    // Eyes adapt to tunnels and cover: exposure and fog follow the zone under the drone's camera or the car.
+    this.exposure.update(this.race.world, focus.x, focus.y, focus.z, dt);
+    this.exposure.apply((v) => this.gr.setExposure(v), this.night.scene.fog as THREE.FogExp2 | null, this.night.weather.def.fogDensity);
     // Last lap: the police helicopter follows the leader's interpolated pose.
     const chase = this.chaseCall;
     this.night.air.chase(chase.phase === 'chase' ? (poses[chase.car] ?? null) : null);

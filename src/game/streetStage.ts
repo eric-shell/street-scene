@@ -44,6 +44,7 @@ import type { CarBuild } from '../shared/carBuild';
 import { clamp } from '../sim/math';
 import { LEVEL_GAP } from '../sim/constants';
 import { damp } from '../shared/anim';
+import { ExposureAdapt } from '../render/exposure';
 import type { Settings } from '../ui/settings';
 import type { CarMotion } from '../render/street/props';
 import { CRUISE, Cruise, newPathSample, type CruisePath } from './cruise';
@@ -137,6 +138,8 @@ export class StreetStage {
   private ambienceTried = false;
   private readonly sample = newPathSample();
   private readonly focus = new THREE.Vector3();
+  /** Eye adaptation to tunnels and cover under the cruising car (render/exposure.ts). */
+  private readonly exposure = new ExposureAdapt();
   private accel = 0;
   /** Lean added by the caller this frame (the garage's revs), rad. */
   private extraPitch = 0;
@@ -445,6 +448,9 @@ export class StreetStage {
   /** Render the stage through `camera`, with `blur` of speed blur (the showreel's glide between cars; off when the setting is). */
   render(gr: GameRenderer, camera: THREE.PerspectiveCamera, dt: number, blur = 0): void {
     gr.post.setSpeedBlur(this.settings.radialBlur ? blur : 0);
+    const p = this.pose;
+    this.exposure.update(this.world, p.x, p.y, p.z, dt);
+    this.exposure.apply((v) => gr.setExposure(v), this.night.scene.fog as THREE.FogExp2 | null, this.night.weather.def.fogDensity);
     gr.render(this.night.scene, camera, dt);
   }
 

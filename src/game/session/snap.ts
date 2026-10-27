@@ -56,28 +56,34 @@ const lerpAngle = (a: number, b: number, t: number) => {
   return a + d * t;
 };
 
-export function lerpSnap(a: Snap, b: Snap, t: number): Snap {
+/**
+ * Blend two snapshots by t. With `out` (same wheel count) it writes into that Snap and returns it, so the
+ * per-frame path allocates nothing; without, it returns a fresh one.
+ */
+export function lerpSnap(a: Snap, b: Snap, t: number, out?: Snap): Snap {
   const l = (x: number, y: number) => x + (y - x) * t;
-  return {
-    x: l(a.x, b.x),
-    y: l(a.y, b.y),
-    z: l(a.z, b.z),
-    yaw: lerpAngle(a.yaw, b.yaw, t),
-    pitch: l(a.pitch, b.pitch),
-    roll: l(a.roll, b.roll),
-    steer: l(a.steer, b.steer),
-    comp: a.comp.map((v, i) => l(v, b.comp[i])),
-    spin: a.spin.map((v, i) => lerpAngle(v, b.spin[i], t)),
-    braking: b.braking,
-    nitro: b.nitro,
-    nitroStage: b.nitroStage,
-    speed: l(a.speed, b.speed),
-    vx: l(a.vx, b.vx),
-    vz: l(a.vz, b.vz),
-    rpm: l(a.rpm, b.rpm),
-    throttle: l(a.throttle, b.throttle),
-    shifting: b.shifting,
-    cut: b.cut,
-    passThrough: b.passThrough,
-  };
+  const o = out ?? { ...b, comp: [], spin: [] };
+  o.x = l(a.x, b.x);
+  o.y = l(a.y, b.y);
+  o.z = l(a.z, b.z);
+  o.yaw = lerpAngle(a.yaw, b.yaw, t);
+  o.pitch = l(a.pitch, b.pitch);
+  o.roll = l(a.roll, b.roll);
+  o.steer = l(a.steer, b.steer);
+  for (let i = 0; i < b.comp.length; i++) {
+    o.comp[i] = l(a.comp[i], b.comp[i]);
+    o.spin[i] = lerpAngle(a.spin[i], b.spin[i], t);
+  }
+  o.braking = b.braking;
+  o.nitro = b.nitro;
+  o.nitroStage = b.nitroStage;
+  o.speed = l(a.speed, b.speed);
+  o.vx = l(a.vx, b.vx);
+  o.vz = l(a.vz, b.vz);
+  o.rpm = l(a.rpm, b.rpm);
+  o.throttle = l(a.throttle, b.throttle);
+  o.shifting = b.shifting;
+  o.cut = b.cut;
+  o.passThrough = b.passThrough;
+  return o;
 }
