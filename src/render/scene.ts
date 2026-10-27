@@ -34,6 +34,7 @@ import { GROUND_PAINT_ORDER, underVehicles } from './vehicleMask';
 import { damp } from '../shared/anim';
 import { buildWallOverlay } from './wallOverlay';
 import { CityChunks, chunkGrid, fogCutoff, type ChunkClass } from './cityChunks';
+import { FOG_HEIGHT, applyHeightFog } from './heightFog';
 
 /** Retro mode's render height (px): the view is drawn this many pixels tall and scaled up. */
 const RETRO_HEIGHT = 240;
@@ -272,9 +273,11 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     air.view(camera);
     districts.view(camera);
     const density = (scene.fog as THREE.FogExp2 | null)?.density ?? fogDensity;
-    chunks.view(camera, density, gr.profile.detailDistance);
+    // Cull on the thinnest fog height fog leaves (FOG_HEIGHT.min), so a layer is fully fogged before it is cut.
+    const cullDensity = density * Math.sqrt(FOG_HEIGHT.min);
+    chunks.view(camera, cullDensity, gr.profile.detailDistance);
     // Props cull by the same grid: detail kinds at detailDistance, the tall ones where the fog closes.
-    if (chunks.enabled) props.view(camera, gr.profile.detailDistance, fogCutoff(density));
+    if (chunks.enabled) props.view(camera, gr.profile.detailDistance, fogCutoff(cullDensity));
     else props.view(camera, Infinity, Infinity);
     // The light pools and streaks cull on it too, all 'fog' class.
     fx.view(camera, chunks.enabled ? fogCutoff(density) : Infinity);
@@ -319,6 +322,8 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   keepGroundLayersUnderVehicles(scene);
   // Every material that fogs itself in a shader now gets the mood's fog.
   weather.retuneFog(scene);
+  // Height fog for the built-in materials (the self-fogging shaders carry it themselves); after every builder that set an onBeforeCompile.
+  applyHeightFog(scene);
   // Last: stabilizeSmallEmitters reads each layer's material as a single one, and chunking wraps it in an array.
   chunks.addByName(scene, CHUNK_LAYERS);
   return {

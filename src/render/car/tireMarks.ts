@@ -13,6 +13,7 @@
  */
 import * as THREE from 'three';
 import { FOG_COLOR, FOG_DENSITY } from '../lighting';
+import { HEIGHT_FOG_GLSL, HEIGHT_FOG_UNIFORMS } from '../heightFog';
 
 export type TireMarkQuality = 'low' | 'medium' | 'high';
 
@@ -39,6 +40,7 @@ const vert = /* glsl */ `
   uniform float uLife;
   uniform float uFadeFrom;
   uniform float fogDensity;
+  ${HEIGHT_FOG_GLSL}
   varying float vEdge;
   varying float vAlpha;
   varying float vTint;
@@ -54,7 +56,7 @@ const vert = /* glsl */ `
     vAlpha = aData.y * (1.0 - smoothstep(uLife * uFadeFrom, uLife, age));
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     float fd = length(mv.xyz);
-    vFog = exp(-fogDensity * fogDensity * fd * fd);
+    vFog = exp(-fogDensity * fogDensity * fd * fd * hfMulView(mv.xyz));
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -120,6 +122,7 @@ export class TireMarks {
         uConcrete: { value: new THREE.Color(TIRE_MARKS.concrete) },
         fogColor: { value: new THREE.Color(FOG_COLOR) },
         fogDensity: { value: FOG_DENSITY },
+        ...HEIGHT_FOG_UNIFORMS,
       },
       transparent: true,
       depthWrite: false,

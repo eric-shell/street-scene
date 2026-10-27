@@ -12,6 +12,7 @@
 import * as THREE from 'three';
 import { FOG_COLOR, FOG_DENSITY } from '../lighting';
 import { makeSteamPuff } from '../textures/textures';
+import { HEIGHT_FOG_GLSL, HEIGHT_FOG_UNIFORMS } from '../heightFog';
 
 const SPRAY = {
   /** Gushers at once and drops per gusher. */
@@ -39,6 +40,7 @@ const vert = /* glsl */ `
   uniform vec2 uSize;
   uniform float uGravity;
   uniform float fogDensity;
+  ${HEIGHT_FOG_GLSL}
   varying vec2 vUv;
   varying float vAlpha;
   varying float vFog;
@@ -70,7 +72,7 @@ const vert = /* glsl */ `
     vec4 mv = viewMatrix * vec4(c, 1.0);
     mv.xy += position.xy * size;
     float fd = length(mv.xyz);
-    vFog = exp(-fogDensity * fogDensity * fd * fd);
+    vFog = exp(-fogDensity * fogDensity * fd * fd * hfMulView(mv.xyz));
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -135,6 +137,7 @@ export function buildHydrantSpray(): HydrantSpray {
       uColor: { value: new THREE.Color(0xa9b4bc) },
       fogColor: { value: new THREE.Color(FOG_COLOR) },
       fogDensity: { value: FOG_DENSITY },
+      ...HEIGHT_FOG_UNIFORMS,
     },
     transparent: true,
     depthWrite: false,

@@ -31,6 +31,7 @@ import type { Vec2 } from '../../sim/math';
 import { GeoBuilder } from '../geoBuilder';
 import { carParkStreetLamps } from '../districts/carPark';
 import { parkLamps } from './props';
+import { heightFogShader } from '../heightFog';
 
 const AREA_LIGHT = {
   /** Lantern pool radius (m), rings and segments of its disc (rings 2.5 m apart follow the lawn's rolls). */
@@ -221,17 +222,7 @@ export function buildAreaLights(world: World): AreaLights {
   });
   // Light added on top fades out with distance; mixing it toward the fog color would make far parks glow.
   mat.onBeforeCompile = (shader) => {
-    shader.fragmentShader = shader.fragmentShader.replace(
-      '#include <fog_fragment>',
-      `#ifdef USE_FOG
-        #ifdef FOG_EXP2
-          float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth );
-        #else
-          float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
-        #endif
-        gl_FragColor.rgb *= 1.0 - fogFactor;
-      #endif`,
-    );
+    heightFogShader(shader, true);
   };
   const mesh = new THREE.Mesh(geo, mat);
   mesh.name = 'areaLights';

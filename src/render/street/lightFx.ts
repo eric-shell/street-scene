@@ -27,6 +27,7 @@
 import * as THREE from 'three';
 import { VIEW_LATTICE, type ChunkGrid } from '../cityChunks';
 import { makeRadialGlow } from '../textures/textures';
+import { HEIGHT_FOG_GLSL, HEIGHT_FOG_UNIFORMS } from '../heightFog';
 
 /** Width of the light pool under a streetlight (m). */
 const POOL_SIZE = 19;
@@ -129,6 +130,7 @@ export const streakVert = /* glsl */ `
   varying vec3 vColor;
   varying float vFog;
   uniform float fogDensity;
+  ${HEIGHT_FOG_GLSL}
   void main() {
     vec2 toCam = cameraPosition.xz - iPos.xz;
     float dist = max(length(toCam), 0.001);
@@ -149,7 +151,7 @@ export const streakVert = /* glsl */ `
     #endif
     vec4 mv = viewMatrix * vec4(wp, 1.0);
     float fd = length(mv.xyz);
-    vFog = exp(-fogDensity * fogDensity * fd * fd);
+    vFog = exp(-fogDensity * fogDensity * fd * fd * hfMulView(mv.xyz));
     // fade streaks seen from above: reflections need a grazing angle
     float graze = clamp(1.0 - (cameraPosition.y - iPos.y) / max(dist, 1.0) * 0.6, 0.0, 1.0);
     vColor *= graze;
@@ -279,7 +281,7 @@ export function buildLightFx(
     vertexShader: streakVert,
     fragmentShader: streakFrag,
     defines: { SIGNAL: '' },
-    uniforms: { strength: { value: 0.9 }, fogDensity: { value: fogDensity }, time: { value: 0 } },
+    uniforms: { strength: { value: 0.9 }, fogDensity: { value: fogDensity }, time: { value: 0 }, ...HEIGHT_FOG_UNIFORMS },
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     transparent: true,

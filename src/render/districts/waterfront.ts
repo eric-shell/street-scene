@@ -46,6 +46,7 @@ import { streakFrag, streakVert } from '../street/lightFx';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { col, cylinder, groundLine, groundVertex, prism, wallBox } from './kit';
 import { drawMarina } from './waterfrontMarina';
+import { HEIGHT_FOG_GLSL, HEIGHT_FOG_UNIFORMS } from '../heightFog';
 
 /** The wall looks this renderer draws (every wall the waterfront district builds carries one). */
 export const WATERFRONT_LOOKS = ['quayRail', 'quayFence', 'warehouse', 'quayGate'] as const;
@@ -322,7 +323,7 @@ function buildHarbor(kit: DistrictKit, a: Area): void {
     const mat = new THREE.ShaderMaterial({
       vertexShader: FLASH_VERT,
       fragmentShader: FLASH_FRAG,
-      uniforms: { time: { value: 0 }, fogDensity: { value: 0.005 }, fogColor: { value: new THREE.Color(0x000000) } },
+      uniforms: { time: { value: 0 }, fogDensity: { value: 0.005 }, ...HEIGHT_FOG_UNIFORMS, fogColor: { value: new THREE.Color(0x000000) } },
       vertexColors: true,
     });
     const mesh = new THREE.Mesh(kit.track(flash.build()), kit.track(mat));
@@ -968,7 +969,7 @@ function streaks(kit: DistrictKit, a: Area, lights: readonly Reflect[]): THREE.M
   const mat = new THREE.ShaderMaterial({
     vertexShader: streakVert,
     fragmentShader: streakFrag,
-    uniforms: { strength: { value: 1 }, fogDensity: { value: 0.005 } },
+    uniforms: { strength: { value: 1 }, fogDensity: { value: 0.005 }, ...HEIGHT_FOG_UNIFORMS },
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     transparent: true,
@@ -988,6 +989,7 @@ function streaks(kit: DistrictKit, a: Area, lights: readonly Reflect[]): THREE.M
 const FLASH_VERT = /* glsl */ `
   uniform float time;
   uniform float fogDensity;
+  ${HEIGHT_FOG_GLSL}
   varying vec3 vColor;
   varying float vFog;
   void main() {
@@ -997,7 +999,7 @@ const FLASH_VERT = /* glsl */ `
     vColor = color * on;
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     float d = length(mv.xyz);
-    vFog = exp(-fogDensity * fogDensity * d * d);
+    vFog = exp(-fogDensity * fogDensity * d * d * hfMulView(mv.xyz));
     gl_Position = projectionMatrix * mv;
   }
 `;
