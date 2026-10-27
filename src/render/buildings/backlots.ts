@@ -17,7 +17,8 @@
  * district exclusion and opening, BACK m behind the block's frontage (the
  * wall line every car meets first), CLEAR m from any wall the sim has and
  * GAP m from every street building (and off the hilltop lookout's terrace,
- * hillLookout.ts). The block is packed greedily with
+ * hillLookout.ts) and BACKLOT.yardReach m from the yard trees and parked cars that stand behind the frontage walls
+ * (districts/yards.ts, drawn in the strip this leaves open). The block is packed greedily with
  * rectangles on a grid in its own frame (along its longest side), every
  * choice from a seeded stream, so the menu city and the race draw the same
  * backlots.
@@ -32,6 +33,7 @@ import type { Vec2 } from '../../sim/math';
 import type { BuildingPlan, Region } from './architecture';
 import { styleFor } from './architecture';
 import { cityWallClearance, lookoutSite } from '../districts/hillLookout';
+import { planYards } from '../districts/yards';
 
 const BACKLOT = {
   /** Grid cell of the packing (m). */
@@ -41,6 +43,8 @@ const BACKLOT = {
   /** Distance kept from any sim wall (m) and from every street building's footprint (m). */
   clear: 2,
   gap: 1.2,
+  /** Reach (m) of a grid cell round its centre, kept clear of the yard trees and parked cars: half the cell's diagonal and a little more. */
+  yardReach: 2.4,
   /** Footprint sides (m): the smallest worth a building, the largest one may grow to. */
   min: 9,
   max: [18, 34],
@@ -111,6 +115,7 @@ export function planBacklots(world: World, streetPlans: readonly BuildingPlan[])
   // (the menu city and every race on it get the same backlots).
   const lookout = lookoutSite(world);
   const clearance = cityWallClearance(world);
+  const yards = planYards(world);
   /** Whether a point may carry a backlot: plain block ground, inside the block, away from everything a car meets. */
   const free = (ring: Vec2[], x: number, z: number): boolean => {
     if (!pointInPolygon(x, z, ring) || distToPolygonEdge(x, z, ring) < BACKLOT.back) return false;
@@ -118,7 +123,7 @@ export function planBacklots(world: World, streetPlans: readonly BuildingPlan[])
     const a = world.areaAt(x, z);
     if (!a || (a.kind !== 'downtown' && a.kind !== 'hills')) return false;
     if (keepOut.first(x, z)) return false;
-    if (built(x, z, BACKLOT.gap)) return false;
+    if (built(x, z, BACKLOT.gap) || yards.blocked(x, z, BACKLOT.yardReach)) return false;
     return clearance(x, z, BACKLOT.clear + 0.5) >= BACKLOT.clear;
   };
 

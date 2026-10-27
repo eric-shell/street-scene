@@ -14,6 +14,7 @@ import { fadeSubPixel } from '../materialFx';
 import { bakeOcclusion, occlusionFor, occlusionMaterial } from '../street/bakedOcclusion';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { treeMaterial } from './trees';
+import { plantYardTrees } from './yards';
 import { alleyRenderer } from './alley';
 import { hillsRenderer } from './hills';
 import { downtownRenderer } from './downtown';
@@ -118,6 +119,8 @@ export function buildDistrictMeshes(world: World, opts: DistrictMeshOpts = {}): 
     const areas = world.areas.filter((a) => r.kinds.includes(a.kind));
     if (areas.length || r.kinds.includes('infill')) r.build(kit, areas);
   }
+  // Trees in the yards behind the frontage walls, where no car can go (yards.ts).
+  plantYardTrees(kit);
   const add = (gb: GeoBuilder, name: string, mat: THREE.Material, order = 0) => {
     if (!gb.vertexCount) return;
     const m = new THREE.Mesh(kit.track(gb.build()), kit.track(mat));
