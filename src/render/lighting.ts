@@ -41,6 +41,8 @@ export interface MoodLighting {
 /** A clear night's mood until the weather sets one, and where the moon light sits outside a lightning flash. */
 const DEFAULT_MOOD: MoodLighting = { hemi: 0x3a4a9a, hemiIntensity: 0.4, moonLight: 0.35 };
 const MOON_HOME = new THREE.Vector3(-200, 400, 120);
+/** The point light of a sodium lamp (the colour every lamp had before neighbourhoods chose their own). */
+const SODIUM_LIGHT = new THREE.Color(0xffb36b);
 /** How often the pool re-picks its nearest lamps (ms; eight frames at 60 fps). */
 const REPICK_MS = (8 * 1000) / 60;
 
@@ -60,6 +62,8 @@ export class NightLighting {
   readonly group = new THREE.Group();
   private pool: THREE.PointLight[] = [];
   private lamps: THREE.Vector3[] = [];
+  /** Colour of each lamp's light, parallel to `lamps` (missing: sodium amber). */
+  private colors: readonly THREE.Color[] = [];
   /** Lamp index lit by each pool light, -1 for none. */
   private assigned: number[] = [];
   /** Distance to the nearest lamp outside the pool. */
@@ -119,8 +123,10 @@ export class NightLighting {
     this.moon.position.set(dirX * 400, 520, dirZ * 400);
   }
 
-  setLamps(lamps: THREE.Vector3[]): void {
+  /** The lamps the pool may pick, and (parallel) the colour each one burns; lamps without one are sodium amber. */
+  setLamps(lamps: THREE.Vector3[], colors: readonly THREE.Color[] = []): void {
     this.lamps = lamps;
+    this.colors = colors;
     this.nextPick = 0;
     this.assigned = this.pool.map(() => -1);
   }
@@ -137,7 +143,7 @@ export class NightLighting {
       l.dispose();
     }
     while (this.pool.length < n) {
-      const l = new THREE.PointLight(0xffb36b, 0, 30, 1.7);
+      const l = new THREE.PointLight(SODIUM_LIGHT, 0, 30, 1.7);
       this.pool.push(l);
       this.group.add(l);
     }
@@ -188,7 +194,10 @@ export class NightLighting {
       for (const k of free) {
         const lamp = incoming.pop() ?? -1;
         this.assigned[k] = lamp;
-        if (lamp >= 0) this.pool[k].position.copy(this.lamps[lamp]);
+        if (lamp >= 0) {
+          this.pool[k].position.copy(this.lamps[lamp]);
+          this.pool[k].color.copy(this.colors[lamp] ?? SODIUM_LIGHT);
+        }
       }
     }
     const band = Number.isFinite(this.cutoff) ? Math.max(4, this.cutoff * 0.3) : 1;

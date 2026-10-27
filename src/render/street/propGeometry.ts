@@ -510,17 +510,55 @@ export const PARTS: Partial<Record<Prop['kind'], QualityPartsDef>> = { ...CLUTTE
 export const PART_KINDS = Object.keys(PARTS) as Prop['kind'][];
 export const isFurniture = (k: Prop['kind']): k is FurnitureKind => (FURNITURE_KINDS as readonly string[]).includes(k);
 
-export function streetlightGeo(q: Quality): { solid: THREE.BufferGeometry; lens: THREE.BufferGeometry } {
+/** The three post designs of a streetlight (neighbourhoods pick one, render/street/lampStyle.ts). */
+export type LampDesign = 'cobra' | 'historic' | 'modern';
+export const LAMP_DESIGNS: readonly LampDesign[] = ['cobra', 'historic', 'modern'];
+
+/**
+ * Per design: the post's height, how far the lamp head reaches out from the pole along the prop's facing, and the
+ * height of the light (m above the ground). lampStyle.ts places the pool, streak and point light from these, so
+ * the light always sits in the lamp it comes from.
+ */
+export const LAMP_DIMS: Record<LampDesign, { h: number; reach: number; lightY: number }> = {
+  cobra: { h: STREETLIGHT_POLE_H, reach: STREETLIGHT_ARM, lightY: STREETLIGHT_POLE_H - 0.4 },
+  historic: { h: 5.4, reach: 0, lightY: 5.65 },
+  modern: { h: 8.8, reach: 1.9, lightY: 8.8 - 0.4 },
+};
+
+/** The lens glows white here and takes its colour per instance (the lamp's tone): vertex colour times instance colour. */
+const LENS_GLOW = col(0xffffff, 4);
+
+/**
+ * A streetlight: `solid` (post, arm, housing) and `lens` (the glowing part, tinted per instance by the lamp's
+ * colour). Medium triangles per instance (solid + lens): cobra 42 + 12, historic 38 + 12, modern 38 + 12.
+ */
+export function streetlightGeo(q: Quality, design: LampDesign = 'cobra'): { solid: THREE.BufferGeometry; lens: THREE.BufferGeometry } {
   const s = new GeoBuilder(true);
-  const metal = col(0x2a2c33);
-  const H = STREETLIGHT_POLE_H;
-  const A = STREETLIGHT_ARM;
-  box(s, 0, 0.2, 0, 0.34, 0.4, 0.34, col(0x1c1d22));
-  cyl(s, 0, 0, 0, H, 0.13, 0.09, 6, metal, q, false); // a 9 cm stub top nobody sees from the road
-  boxFaces(s, 0, H - 0.1, A / 2, 0.1, 0.1, A, metal, PX | NX | PZ | PY); // the root end is inside the pole
-  box(s, 0, H - 0.25, A, 0.45, 0.16, 0.9, metal, false);
   const l = new GeoBuilder(true);
-  box(l, 0, H - 0.34, A, 0.36, 0.04, 0.75, col(0xffc27a, 4), false);
+  const metal = col(0x2a2c33);
+  const { h: H, reach: A } = LAMP_DIMS[design];
+  if (design === 'historic') {
+    // Cast iron post: a plinth, a tapering eight sided (fluted) shaft and a lantern with a hat on top of it.
+    const iron = col(0x1f2a2a);
+    box(s, 0, 0.25, 0, 0.44, 0.5, 0.44, col(0x17181c));
+    cyl(s, 0, 0, 0.5, H, 0.17, 0.09, 8, iron, q, false);
+    box(l, 0, H + 0.2, 0, 0.3, 0.4, 0.3, LENS_GLOW, false);
+    box(s, 0, H + 0.45, 0, 0.5, 0.1, 0.5, iron, false);
+  } else if (design === 'modern') {
+    // Slim square pole, a sleek arm and a flat LED bar under a thin housing.
+    const steel = col(0x4a4f58);
+    box(s, 0, 0.15, 0, 0.3, 0.3, 0.3, col(0x1c1d22));
+    boxFaces(s, 0, H / 2, 0, 0.14, H, 0.14, steel, PX | NX | PZ | NZ | PY);
+    boxFaces(s, 0, H - 0.12, A / 2, 0.09, 0.09, A, steel, PX | NX | PZ | PY); // the root end is inside the pole
+    box(s, 0, H - 0.2, A, 0.3, 0.07, 1.0, steel);
+    box(l, 0, H - 0.25, A, 0.22, 0.03, 0.9, LENS_GLOW, false);
+  } else {
+    box(s, 0, 0.2, 0, 0.34, 0.4, 0.34, col(0x1c1d22));
+    cyl(s, 0, 0, 0, H, 0.13, 0.09, 6, metal, q, false); // a 9 cm stub top nobody sees from the road
+    boxFaces(s, 0, H - 0.1, A / 2, 0.1, 0.1, A, metal, PX | NX | PZ | PY); // the root end is inside the pole
+    box(s, 0, H - 0.25, A, 0.45, 0.16, 0.9, metal, false);
+    box(l, 0, H - 0.34, A, 0.36, 0.04, 0.75, LENS_GLOW, false);
+  }
   return { solid: s.build(), lens: l.build() };
 }
 

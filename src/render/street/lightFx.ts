@@ -62,11 +62,20 @@ export const streakFrag = /* glsl */ `
   }
 `;
 
+/** What colour a lamp's ground pool and wet streak are (parallel to the lamp positions; missing = sodium amber). */
+export interface LampLook {
+  pool: THREE.Color;
+  streak: THREE.Color;
+}
+const SODIUM_POOL = new THREE.Color(0xffb46a);
+const SODIUM_STREAK = new THREE.Color(0xffb060);
+
 export function buildLightFx(
   lamps: THREE.Vector3[],
   signs: { pos: THREE.Vector3; color: THREE.Color }[],
   heightAt: (x: number, z: number) => number,
   fogDensity: number,
+  looks: readonly LampLook[] = [],
 ): LightFx {
   const group = new THREE.Group();
   group.name = 'lightFx';
@@ -77,7 +86,8 @@ export function buildLightFx(
   poolGeo.rotateX(-Math.PI / 2);
   const poolMat = new THREE.MeshBasicMaterial({
     map: glow,
-    color: new THREE.Color(0xffb46a),
+    // White: each pool's colour is its instance colour (the lamp's tone), one material for all.
+    color: 0xffffff,
     transparent: true,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
@@ -91,6 +101,7 @@ export function buildLightFx(
     const y = heightAt(p.x, p.z) + 0.2;
     m.makeScale(POOL_SIZE, 1, POOL_SIZE).setPosition(p.x, y, p.z);
     pools.setMatrixAt(i, m);
+    pools.setColorAt(i, looks[i]?.pool ?? SODIUM_POOL);
   });
   pools.name = 'streetPools';
   pools.frustumCulled = false;
@@ -99,7 +110,7 @@ export function buildLightFx(
 
   // Reflection streaks
   const all = [
-    ...lamps.map((p) => ({ pos: p, color: new THREE.Color(0xffb060).multiplyScalar(0.9), w: 1.6 })),
+    ...lamps.map((p, i) => ({ pos: p, color: (looks[i]?.streak ?? SODIUM_STREAK).clone().multiplyScalar(0.9), w: 1.6 })),
     ...signs.map((s) => ({ pos: s.pos, color: s.color.clone().multiplyScalar(1.3), w: 2.6 })),
   ];
   const base = new THREE.PlaneGeometry(1, 1.2);

@@ -31,6 +31,10 @@
  * copies. Tall far-visible kinds (lamp and signal poles, bus stops) cut where
  * the fog closes, the rest at the quality's detailDistance.
  *
+ * Streetlights come in three post designs (cobra, historic, modern; lampStyle.ts picks one and a lamp colour per
+ * neighbourhood). Each design is its own set of part meshes with its own cell runs, so the culling and the break
+ * handling treat them like any other kind; the lens takes the lamp's colour as its instance colour.
+ *
  * The meshes of each part are in propGeometry.ts; this module places the
  * instances, runs the signal shader and breaks props apart.
  */
@@ -44,7 +48,8 @@ import { chunkGrid, type ChunkGrid } from '../cityChunks';
 import { D_BOX, D_CYL, D_GLASS, D_GLOW, Debris, DebrisType } from './debris';
 import { shatterFurniture } from './streetFurniture';
 import { buildHydrantSpray } from './hydrantSpray';
-import { STUMP_H, TRAFFIC_POLE_H, TRAFFIC_ARM_Y, STREETLIGHT_POLE_H, STREETLIGHT_ARM, PARK_LAMP_H, PARK_LANTERN_Y, col, streetlightGeo, stumpGeo, trafficPoleGeo, trafficArmGeo, trafficHeadGeo, trafficLensGeo, canGeo, benchGeo, busStopGeo, adTexture, PARTS, PART_KINDS, isFurniture, STALL } from './propGeometry';
+import { LAMP_TONES, planLamps, toneColor } from './lampStyle';
+import { STUMP_H, TRAFFIC_POLE_H, TRAFFIC_ARM_Y, STREETLIGHT_POLE_H, STREETLIGHT_ARM, PARK_LAMP_H, PARK_LANTERN_Y, LAMP_DESIGNS, LAMP_DIMS, type LampDesign, col, streetlightGeo, stumpGeo, trafficPoleGeo, trafficArmGeo, trafficHeadGeo, trafficLensGeo, canGeo, benchGeo, busStopGeo, adTexture, PARTS, PART_KINDS, isFurniture, STALL } from './propGeometry';
 
 export { STREETLIGHT_POLE_H, STREETLIGHT_ARM, PARK_LAMP_H, PARK_LANTERN_Y };
 
@@ -260,11 +265,11 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
 
   const grid = opts.grid ?? chunkGrid(world.graph.bounds);
   const cullOf = { ...PROP_CULL, ...opts.cull };
-  /** Each drawn kind's first index of every cell's run in its sorted list, plus the end. */
-  const runsOf = new Map<PropKind, Uint32Array>();
-  /** A kind's props, stable-sorted by grid cell so each cell is one run of instances (counting sort). */
-  const byKind = (k: PropKind): Prop[] => {
-    const list = props.filter((p) => p.kind === k);
+  /** Each drawn group's first index of every cell's run in its sorted list, plus the end (a group is a kind, or a kind's lamp design). */
+  const runsOf = new Map<string, Uint32Array>();
+  /** A kind's props (those passing `keep`), stable-sorted by grid cell so each cell is one run of instances (counting sort). */
+  const byKind = (k: PropKind, key: string = k, keep?: (p: Prop) => boolean): Prop[] => {
+    const list = props.filter((p) => p.kind === k && (!keep || keep(p)));
     const cells = list.map((p) => grid.cellOf(p.x, p.z));
     const start = new Uint32Array(grid.count + 1);
     for (const c of cells) start[c + 1]++;
@@ -272,10 +277,16 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
     const at = start.slice(0, grid.count);
     const out: Prop[] = new Array(list.length);
     list.forEach((p, i) => (out[at[cells[i]]++] = p));
-    runsOf.set(k, start);
+    runsOf.set(key, start);
     return out;
   };
-  const lights = byKind('streetlight');
+  // Streetlights: one sorted list per post design; `lights` is all of them (design order) for the poles and lamp indices.
+  const lampPlan = planLamps(world);
+  const designOf: (LampDesign | undefined)[] = [];
+  for (const p of props) if (p.kind === 'streetlight') designOf[p.id] = lampPlan.design[p.light ?? p.id] ?? 'cobra';
+  const lightsOf = {} as Record<LampDesign, Prop[]>;
+  for (const d of LAMP_DESIGNS) lightsOf[d] = byKind('streetlight', `streetlight:${d}`, (p) => designOf[p.id] === d);
+  const lights = LAMP_DESIGNS.flatMap((d) => lightsOf[d]);
   const traffic = byKind('trafficLight');
   const cans = byKind('garbageCan');
   const benches = byKind('bench');
@@ -289,19 +300,19 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
 
   const meshes: THREE.InstancedMesh[] = [];
   /** The kind each mesh draws and its instances per prop (null: not culled by cell, the stumps). */
-  const kindOf: ({ kind: PropKind; per: number } | null)[] = [];
+  const kindOf: ({ kind: PropKind; key: string; per: number } | null)[] = [];
   const parts: PartRef[][] = props.map(() => []);
   /** Index of each pole in `poles` (-1 for the rest): picks its stump matrix. */
   const poleOf = new Int32Array(props.length).fill(-1);
   /** Slot of each broken pole's stump among the drawn ones (-1: standing), and the prop id in each slot. */
   const slotOf = new Int32Array(props.length).fill(-1);
   const idOf: number[] = [];
-  const addMesh = (name: string, geo: THREE.BufferGeometry, mat: THREE.Material, count: number, kind: PropKind | null, per = 1): number => {
+  const addMesh = (name: string, geo: THREE.BufferGeometry, mat: THREE.Material, count: number, kind: PropKind | null, per = 1, key: string = kind ?? ''): number => {
     const m = new THREE.InstancedMesh(track(geo), mat, Math.max(1, count));
     m.count = count;
     m.name = name;
     meshes.push(m);
-    kindOf.push(kind ? { kind, per } : null);
+    kindOf.push(kind ? { kind, key, per } : null);
     if (count > 0) group.add(m);
     return meshes.length - 1;
   };
@@ -320,13 +331,18 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
   };
 
   // Streetlights.
-  {
-    const geo = streetlightGeo(q);
-    const solid = addMesh('streetlightPoles', geo.solid, solidMat, lights.length, 'streetlight');
-    const lens = addMesh('streetlightLenses', geo.lens, lampLensMat, lights.length, 'streetlight');
-    lights.forEach((p, i) => {
+  for (const d of LAMP_DESIGNS) {
+    const list = lightsOf[d];
+    if (!list.length) continue;
+    const geo = streetlightGeo(q, d);
+    const key = `streetlight:${d}`;
+    const suffix = d === 'cobra' ? '' : `:${d}`;
+    const solid = addMesh(`streetlightPoles${suffix}`, geo.solid, solidMat, list.length, 'streetlight', 1, key);
+    const lens = addMesh(`streetlightLenses${suffix}`, geo.lens, lampLensMat, list.length, 'streetlight', 1, key);
+    list.forEach((p, i) => {
       place(solid, i, p, p.x, p.y, p.z, p.yaw);
       place(lens, i, p, p.x, p.y, p.z, p.yaw);
+      meshes[lens].setColorAt(i, toneColor(LAMP_TONES[lampPlan.tone[p.light ?? p.id] ?? 'sodium'].lens));
     });
   }
 
@@ -443,7 +459,7 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
     meshes.forEach((m, mi) => {
       const k = kindOf[mi];
       if (!k || m.count === 0) return;
-      const runs = runsOf.get(k.kind)!;
+      const runs = runsOf.get(k.key)!;
       const start = new Uint32Array(nCells + 1);
       for (let c = 0; c <= nCells; c++) start[c] = runs[c] * k.per;
       const box = new Float32Array(nCells * 6);
@@ -680,7 +696,8 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
     if (p.kind === 'streetlight' || p.kind === 'trafficLight' || p.kind === 'parkLamp') {
       const isLamp = p.kind === 'streetlight';
       const isLantern = p.kind === 'parkLamp';
-      const H = isLamp ? STREETLIGHT_POLE_H : isLantern ? PARK_LAMP_H : TRAFFIC_POLE_H;
+      const dim = LAMP_DIMS[designOf[p.id] ?? 'cobra'];
+      const H = isLamp ? dim.h : isLantern ? PARK_LAMP_H : TRAFFIC_POLE_H;
       const len = H - STUMP_H;
       // The pole topples about its broken base, top falling along the hit direction.
       const ox = p.x;
@@ -723,14 +740,21 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
         });
       };
       if (isLamp) {
-        const A = STREETLIGHT_ARM;
+        const A = dim.reach;
+        const design = designOf[p.id] ?? 'cobra';
+        const glowCol = col(LAMP_TONES[lampPlan.tone[p.light ?? p.id] ?? 'sodium'].lens, 3);
         const fx = Math.sin(p.yaw);
         const fz = Math.cos(p.yaw);
-        attached(D_BOX, p.x + fx * A * 0.5, p.y + H - 0.1, p.z + fz * A * 0.5, p.yaw, 0.05, 0.05, A / 2, metal, rnd(5, 6));
-        attached(D_BOX, p.x + fx * A, p.y + H - 0.25, p.z + fz * A, p.yaw, 0.225, 0.08, 0.45, metal, rnd(5, 6), 0.5);
-        attached(D_GLOW, p.x + fx * A, p.y + H - 0.36, p.z + fz * A, p.yaw, 0.17, 0.02, 0.33, col(0xffc27a, 3), rnd(4, 5), 1.5);
-        for (let k = 0; k < 7; k++) attached(D_GLASS, p.x + fx * A + rnd(-0.2, 0.2), p.y + H - 0.36, p.z + fz * A + rnd(-0.3, 0.3), rnd(0, 6.28), rnd(0.04, 0.1), 0.008, rnd(0.04, 0.12), col(0xfff0d8), rnd(2.5, 4), 3);
-        debris.burst(p.x + fx * A, p.y + H - 0.35, p.z + fz * A, dx, dz, 3, 14);
+        // Head: the housing and glowing lens of the design (cobra and modern hang under an arm, the historic lantern sits on the post).
+        const headY = design === 'historic' ? H + 0.45 : design === 'modern' ? H - 0.2 : H - 0.25;
+        const glowY = design === 'historic' ? H + 0.2 : design === 'modern' ? H - 0.25 : H - 0.36;
+        const half = design === 'historic' ? [0.25, 0.05, 0.25] : design === 'modern' ? [0.15, 0.035, 0.5] : [0.225, 0.08, 0.45];
+        const glowHalf = design === 'historic' ? [0.15, 0.2, 0.15] : design === 'modern' ? [0.11, 0.015, 0.45] : [0.17, 0.02, 0.33];
+        if (A > 0) attached(D_BOX, p.x + fx * A * 0.5, p.y + H - 0.1, p.z + fz * A * 0.5, p.yaw, 0.05, 0.05, A / 2, metal, rnd(5, 6));
+        attached(D_BOX, p.x + fx * A, p.y + headY, p.z + fz * A, p.yaw, half[0], half[1], half[2], metal, rnd(5, 6), 0.5);
+        attached(D_GLOW, p.x + fx * A, p.y + glowY, p.z + fz * A, p.yaw, glowHalf[0], glowHalf[1], glowHalf[2], glowCol, rnd(4, 5), 1.5);
+        for (let k = 0; k < 7; k++) attached(D_GLASS, p.x + fx * A + rnd(-0.2, 0.2), p.y + glowY, p.z + fz * A + rnd(-0.3, 0.3), rnd(0, 6.28), rnd(0.04, 0.1), 0.008, rnd(0.04, 0.12), col(0xfff0d8), rnd(2.5, 4), 3);
+        debris.burst(p.x + fx * A, p.y + glowY + 0.01, p.z + fz * A, dx, dz, 3, 14);
       } else if (isLantern) {
         const Y = PARK_LANTERN_Y;
         attached(D_CYL, p.x, p.y + Y + 0.4, p.z, p.yaw, 0.28, 0.06, 0.28, metal, rnd(5, 6), 0.8);

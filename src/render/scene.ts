@@ -7,6 +7,7 @@ import { World } from '../city/world';
 import { QUALITY, QualityProfile, Settings } from '../ui/settings';
 import { buildCityMeshes, CityMeshes } from './street/cityMeshes';
 import { buildLightFx, LightFx } from './street/lightFx';
+import { fitLampPositions, LAMP_TONES, planLamps, toneColor } from './street/lampStyle';
 import { fadeSubPixel } from './materialFx';
 import { NightLighting } from './lighting';
 import { POST_TAPS, PostFx } from './post';
@@ -196,7 +197,12 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   // Street level polish: road decals, puddles, posters, blade signs, banners, steam (pasted onto the drawn podiums).
   const polish = buildStreetPolish(world, { quality: settings.quality, facades: (city.group.getObjectByName('podiums') as THREE.Mesh | undefined)?.geometry });
   scene.add(polish.group);
-  const fx = buildLightFx(city.lampPositions, city.signLights, world.heightAt, fogDensity);
+  // Each neighbourhood's post design and lamp colour: the lamp heads move to their design's reach and height, and the
+  // pool, streak, point light and the props' lens tint all read the same plan.
+  const lampPlan = planLamps(world);
+  fitLampPositions(world, city.lampPositions, lampPlan);
+  const lampTone = lampPlan.tone.map((t) => LAMP_TONES[t]);
+  const fx = buildLightFx(city.lampPositions, city.signLights, world.heightAt, fogDensity, lampTone.map((t) => ({ pool: toneColor(t.pool), streak: toneColor(t.streak) })));
   fx.setStrength(0.42, 0.85);
   scene.add(fx.group);
   // Parks and plazas: a wash over the whole area and a pool under every lantern post.
@@ -206,7 +212,9 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   // then the night market's lantern strings and the expressway's lamps (never switched off, so they come last).
   const lamps = [...city.lampPositions, ...areaLights.lamps, ...marketLightPoints(world).map((p) => new THREE.Vector3(p.x, p.y, p.z)), ...highwayLamps(world)];
   const lighting = new NightLighting();
-  lighting.setLamps(lamps);
+  // Streetlights burn their neighbourhood's colour; every other lamp keeps the warm default.
+  const lampColors = lampTone.map((t) => toneColor(t.light));
+  lighting.setLamps(lamps, lampColors);
   lighting.setPoolSize(gr.profile.pointLights);
   scene.add(lighting.group);
   weather.apply(scene, lighting);
@@ -253,7 +261,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
       lampOff[i] = on ? 0 : 1;
       if (i < streetLamps) fx.setLampOn(i, on);
       else areaLights.setLampOn(i - streetLamps, on);
-      lighting.setLamps(lamps.filter((_, k) => !lampOff[k]));
+      lighting.setLamps(lamps.filter((_, k) => !lampOff[k]), lampColors.filter((_, k) => !lampOff[k]));
     },
   });
   scene.add(props.group);

@@ -240,6 +240,15 @@ export function planArchitecture(world: World): BuildingPlan[] {
   return plans;
 }
 
+/** The neighbourhood lookup of each planned world (the Voronoi cell's own region, without the per building blend). */
+const regionLookups = new WeakMap<World, (x: number, z: number) => Region>();
+
+/** The region of the neighbourhood cell at a point: street furniture (lamp posts and their colour) follows it. */
+export function regionAt(world: World): (x: number, z: number) => Region {
+  planArchitecture(world);
+  return regionLookups.get(world)!;
+}
+
 function planOnce(world: World): BuildingPlan[] {
   const B = world.blocks.buildings;
   const g = world.graph;
@@ -347,6 +356,8 @@ function planOnce(world: World): BuildingPlan[] {
     }
     return { a: cells[c1], b: cells[c2], gap: d2 - d1 };
   };
+
+  regionLookups.set(world, (x, z) => cellAt(x, z).a.primary);
 
   // Signs: the shaft stays flush up to their tops.
   const flush = new Float64Array(B.length);
