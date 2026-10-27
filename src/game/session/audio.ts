@@ -71,10 +71,10 @@ export class SessionAudio {
     // The city bed: scene clock, camera height, and the player's pedal (it ducks under the engine). A pause lets it fade out.
     if (!this.ambience && !this.ambienceTried) {
       const w = this.race.world;
-      this.ambience = CityAmbience.create(ambienceTraits(w.seed, this.night.weather.mood, w.areas));
+      this.ambience = CityAmbience.create(ambienceTraits(w.seed, this.night.weather.mood, w.areas, this.night.weather.timeline.turn?.to));
       this.ambienceTried = this.ambience !== null || !TrainRumble.blocked();
     }
-    if (!paused) this.ambience?.update(time, dt, camera.position.y, poses[0].throttle);
+    if (!paused) this.ambience?.update(time, dt, camera.position.y, poses[0].throttle, this.night.weather.live);
     this.sfx?.updateCars(cars, this.race.world, dt, paused);
     // Crowds react to the racers' (sim) poses and are heard from the camera.
     const cc = this.crowdCars;

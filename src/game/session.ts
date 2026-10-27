@@ -931,7 +931,7 @@ export class RaceSession {
     this.night.lighting.update(focus);
     // Eyes adapt to tunnels and cover: exposure and fog follow the zone under the drone's camera or the car.
     this.exposure.update(this.race.world, focus.x, focus.y, focus.z, dt);
-    this.exposure.apply((v) => this.gr.setExposure(v), this.night.scene.fog as THREE.FogExp2 | null, this.night.weather.def.fogDensity);
+    this.exposure.apply((v) => this.gr.setExposure(v), this.night.scene.fog as THREE.FogExp2 | null, this.night.weather.live.density);
     // Last lap: the police helicopter follows the leader's interpolated pose.
     const chase = this.chaseCall;
     this.night.air.chase(chase.phase === 'chase' ? (poses[chase.car] ?? null) : null);

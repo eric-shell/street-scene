@@ -382,10 +382,10 @@ export class StreetStage {
     this.night.update(this.time);
     // The same city bed as a race, on the stage clock (silent while lent to a free roam session, which has its own).
     if (!this.ambience && !this.ambienceTried) {
-      this.ambience = CityAmbience.create(ambienceTraits(this.world.seed, this.night.weather.mood, this.world.areas));
+      this.ambience = CityAmbience.create(ambienceTraits(this.world.seed, this.night.weather.mood, this.world.areas, this.night.weather.timeline.turn?.to));
       this.ambienceTried = this.ambience !== null || !TrainRumble.blocked();
     }
-    this.ambience?.update(this.time, dt, opts.focus?.y ?? this.pose.y, 0);
+    this.ambience?.update(this.time, dt, opts.focus?.y ?? this.pose.y, 0, this.night.weather.live);
     // The street furniture's own clock: the traffic signals, the props the cars knock over, debris and spray.
     this.knockProps();
     this.night.props.update(dt, this.time, this.broken, this.motions);
@@ -451,7 +451,7 @@ export class StreetStage {
     gr.post.setSpeedBlur(this.settings.radialBlur ? blur : 0);
     const p = this.pose;
     this.exposure.update(this.world, p.x, p.y, p.z, dt);
-    this.exposure.apply((v) => gr.setExposure(v), this.night.scene.fog as THREE.FogExp2 | null, this.night.weather.def.fogDensity);
+    this.exposure.apply((v) => gr.setExposure(v), this.night.scene.fog as THREE.FogExp2 | null, this.night.weather.live.density);
     gr.render(this.night.scene, camera, dt);
   }
 

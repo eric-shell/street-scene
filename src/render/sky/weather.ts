@@ -17,6 +17,13 @@
  *    two scrolling noise octaves for the wisps, faded close to the lens;
  *  - lightning on rain nights (lightning.ts): soft flashes of the sky, the
  *    lights and the rain, a bolt beyond the skyline and thunder after it.
+ * The night turns (weatherTimeline.ts): about a third of seeds step once to a neighbouring mood during the
+ * first minutes, and every parameter above is blended between the two moods as a pure function of the seed and
+ * the scene clock, so a replay turns the same way. The blend is pushed in two rates: what costs more than a
+ * uniform write (the fog colour and density into every self-fogging shader, the lights, the sky crossfade, the
+ * height fog) when the blend has moved a step, and the per-frame bits (rain drift and lean, gusts, the clouds
+ * crossing the moon) every frame. The rain pool is allocated for the wetter of the two moods and thinned by
+ * the live share. Lightning waits until the night is mostly rain.
  * Clear stays the most common mood: the neon night is the default look. The
  * seed's home neighbourhood (cityIdentity.ts) multiplies the weights (misty
  * San Francisco, wet Philadelphia) and leans the fog and the sky's horizon
@@ -26,12 +33,15 @@
 import * as THREE from 'three';
 import type { World } from '../../city/world';
 import { Rng, deriveSeed } from '../../sim/prng';
+import { lerp } from '../../sim/math';
 import type { Quality } from '../../ui/settings';
 import type { NightLighting } from '../lighting';
 import { FOG_HEIGHT, setHeightFog } from '../heightFog';
 import { makeMoodSky, makeNoiseTexture, MoodSkyParams } from './skyTextures';
 import { LIGHTNING, Lightning, buildLightning } from './lightning';
 import { cityIdentity } from '../cityIdentity';
+import { CumulativeIntegral, MoodBlend, WEATHER_TURN, WeatherTimeline, gustAt, moonVeil, weatherTimeline } from './weatherTimeline';
+import { WIND } from './wind';
 
 export type MoodId = 'clear' | 'hazy' | 'misty' | 'drizzle' | 'rain';
 
@@ -223,7 +233,7 @@ const rainVert = /* glsl */ `
   attribute vec2 corner;
   attribute vec3 aSeed;
   attribute float aVar;
-  uniform float uTime;
+  uniform vec3 uDrift;
   uniform vec3 uBox;
   uniform vec3 uHalf;
   uniform vec3 uVel;
@@ -238,7 +248,9 @@ const rainVert = /* glsl */ `
   void main() {
     // Drops fall through world space; wrapping them into the box around the camera keeps the
     // nearby ones in view without ever moving them with the camera.
-    vec3 p = aSeed * uBox + uVel * uTime;
+    // The wind and the fall speed change with the weather, so the drops sit where the integral of their velocity
+    // puts them (uDrift) rather than at velocity x time, which would jump whenever the velocity moved.
+    vec3 p = aSeed * uBox + uDrift;
     vec3 origin = cameraPosition - uHalf;
     vec3 rel = p - origin;
     rel -= floor(rel / uBox) * uBox;
@@ -350,10 +362,79 @@ function quadGeometry(corners: number[]): THREE.InstancedBufferGeometry {
   return geo;
 }
 
+/** The weather as it is right now (blended between the two moods of the turn), read by the scene each frame. */
+export interface LiveWeather {
+  /** How far the night has turned, 0 (the opening mood) to 1 (the turn's mood); 0 on a seed that never turns. */
+  turn: number;
+  /** Base fog density: what exposure.ts scales for tunnels (the scene's fog density is that times the zone's multiplier). */
+  density: number;
+  fogColor: THREE.Color;
+  /** Star field, moon disc and halo 0..1, and how much of the moon shows through drifting cloud (1 clear). */
+  stars: number;
+  moon: number;
+  halo: number;
+  veil: number;
+  /** How wet the streets read 0..1, and the sky's overcast 0..1. */
+  wet: number;
+  overcast: number;
+  /** The current gust factor (1 steady, up to about 2) and the trees' lean multiplier (WIND.sway). */
+  gust: number;
+  sway: number;
+}
+
+/** The turn's second sky as a dome around the camera: the same equirectangular lookup as the background, faded in over it. */
+const skyOverlayVert = /* glsl */ `
+  varying vec3 vDir;
+  void main() {
+    vDir = position;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const skyOverlayFrag = /* glsl */ `
+  uniform sampler2D uMap;
+  uniform float uAlpha;
+  uniform float uIntensity;
+  varying vec3 vDir;
+  void main() {
+    // The equirectangular lookup three.js's own background uses.
+    vec3 d = normalize(vDir);
+    vec2 uv = vec2(atan(d.z, d.x) * 0.15915494 + 0.5, asin(clamp(d.y, -1.0, 1.0)) * 0.31830989 + 0.5);
+    gl_FragColor = vec4(texture2D(uMap, uv).rgb * uIntensity, uAlpha);
+    #include <colorspace_fragment>
+  }
+`;
+
+/** The overlay dome's radius (m): beyond the ridges (1950), inside every camera's far plane like the sprites. */
+const SKY_OVERLAY_RADIUS = 2040;
+/** The blend moves in steps of 1/this when the costlier pushes run (fog into every shader, lights, sky); smaller than any visible step. */
+const BLEND_STEPS = 512;
+
+/** How a mood blends into the rain layer: absent rain counts as zero share and borrows the other mood's fall and wind. */
+function blendRain(a: RainDef | null, b: RainDef | null, t: number, out: RainDef): void {
+  const ra = a ?? b;
+  const rb = b ?? a;
+  if (!ra || !rb) {
+    out.share = out.alpha = out.splash = 0;
+    return;
+  }
+  out.share = lerp(a ? a.share : 0, b ? b.share : 0, t);
+  out.alpha = lerp(a ? a.alpha : 0, b ? b.alpha : 0, t);
+  out.splash = lerp(a ? a.splash : 0, b ? b.splash : 0, t);
+  out.fall = lerp(ra.fall, rb.fall, t);
+  out.wind = lerp(ra.wind, rb.wind, t);
+  out.headlight = lerp(ra.headlight, rb.headlight, t);
+}
+
 export interface Weather {
+  /** The seed's mood: where the night starts (the ambience bed, the exposure and the opening look follow it). */
   readonly mood: MoodId;
-  /** The mood as this seed shows it (fog colour and sky glow tinted by the city identity). */
+  /** The opening mood as this seed shows it (fog colour and sky glow tinted by the city identity). */
   readonly def: MoodDef;
+  /** When and where the night turns (weatherTimeline.ts). */
+  readonly timeline: WeatherTimeline;
+  /** The blended weather as of the last `update`. */
+  readonly live: LiveWeather;
   /** Moon phase 0..1 and wind heading (rad), shared with the backdrop and the air traffic. */
   readonly moonPhase: number;
   readonly windHeading: number;
@@ -361,11 +442,13 @@ export interface Weather {
   readonly fog: THREE.FogExp2;
   /** Rain, splash and mist layers (and the lightning on rain nights); add to the scene. */
   readonly group: THREE.Group;
-  /** Rain nights only: the strikes, their flashes and thunder. */
+  /** Nights that can be rain (the opening mood or the turn's): the strikes, their flashes and thunder. */
   readonly lightning: Lightning | null;
+  /** The blend at scene time `time` (s): `from` and `to` moods and how far across. For anything that listens to the weather (the ambience bed). */
+  moodAt(time: number, out?: MoodBlend): MoodBlend;
   /** Fog, background, environment intensity and the lights. */
   apply(scene: THREE.Scene, lighting: NightLighting): void;
-  /** Materials that fog themselves (shader uniforms fogDensity / fogColor) get the mood's fog; call once the scene is built. */
+  /** Materials that fog themselves (shader uniforms fogDensity / fogColor) get the mood's fog, and follow it as it turns; call once the scene is built. */
   retuneFog(scene: THREE.Scene): void;
   /** Per render: the layers follow the camera, the streaks follow its speed and the pixel size. */
   view(camera: THREE.Camera, viewportHeight: number): void;
@@ -377,18 +460,69 @@ export function createWeather(world: World, opts: { quality: Quality; flashes?: 
   const seed = world.seed;
   const mood = pickMood(seed);
   const def = seedMood(seed, mood);
+  const timeline = weatherTimeline(seed, mood);
+  const toMood = timeline.turn?.to ?? mood;
+  const defTo = toMood === mood ? def : seedMood(seed, toMood);
   const { moonPhase, windHeading } = skyParams(seed);
   const sky = makeMoodSky(def.sky, seed);
+  // The turn's second sky, crossfaded over the first by a dome (below). It is only ever magnified, so no mipmaps:
+  // the seam where the longitude wraps would otherwise pick the smallest mip along a line.
+  const skyTo = defTo !== def ? makeMoodSky(defTo.sky, seed) : null;
+  if (skyTo) {
+    skyTo.generateMipmaps = false;
+    skyTo.minFilter = THREE.LinearFilter;
+  }
   const fog = new THREE.FogExp2(def.fogColor, def.fogDensity);
   const group = new THREE.Group();
   group.name = 'weather';
-  const disposables: { dispose(): void }[] = [sky];
+  const disposables: { dispose(): void }[] = skyTo ? [sky, skyTo] : [sky];
   const rng = new Rng(deriveSeed(seed, 'rain'));
+  const dir = { x: Math.cos(windHeading), z: Math.sin(windHeading) };
 
-  // ----- Rain
+  // The blend, and the mood colours it mixes (linear, like the fog's own).
+  const blend: MoodBlend = { from: mood, to: toMood, t: 0 };
+  const fogA = new THREE.Color(def.fogColor);
+  const fogB = new THREE.Color(defTo.fogColor);
+  const hemiA = new THREE.Color(def.hemi);
+  const hemiB = new THREE.Color(defTo.hemi);
+  const hemiNow = new THREE.Color();
+  const live: LiveWeather = {
+    turn: 0,
+    density: def.fogDensity,
+    fogColor: fogA.clone(),
+    stars: def.stars,
+    moon: def.moon,
+    halo: def.halo,
+    veil: 1,
+    wet: def.wet,
+    overcast: def.sky.overcast,
+    gust: 1,
+    sway: WEATHER_TURN.wind[mood].sway,
+  };
+  const rainNow: RainDef = { share: 0, fall: 0, wind: 0, alpha: 0, headlight: 0, splash: 0 };
+  const rainRate: RainDef = { ...rainNow };
+  const rateBlend: MoodBlend = { from: mood, to: toMood, t: 0 };
+  const gustiness = (t: number): number => lerp(WEATHER_TURN.wind[mood].gusty, WEATHER_TURN.wind[toMood].gusty, t);
+  // The rain's displacement is the integral of its velocity: wind (with its gusts) along the heading, fall straight down.
+  const windPath = new CumulativeIntegral((t) => {
+    timeline.moodAt(t, rateBlend);
+    blendRain(def.rain, defTo.rain, rateBlend.t, rainRate);
+    return rainRate.wind * gustAt(seed, t, gustiness(rateBlend.t));
+  });
+  const fallPath = new CumulativeIntegral((t) => {
+    timeline.moodAt(t, rateBlend);
+    blendRain(def.rain, defTo.rain, rateBlend.t, rainRate);
+    return rainRate.fall;
+  });
+
+  // ----- Rain: the pool is the wetter of the two moods', the live share decides how much of it falls.
   let rainMat: THREE.ShaderMaterial | null = null;
-  const pool = Math.round(WEATHER.pool[opts.quality] * (def.rain?.share ?? 0));
-  if (def.rain && pool > 0) {
+  let rainGeo: THREE.InstancedBufferGeometry | null = null;
+  let rainMesh: THREE.Mesh | null = null;
+  const maxShare = Math.max(def.rain?.share ?? 0, defTo.rain?.share ?? 0);
+  const pool = Math.round(WEATHER.pool[opts.quality] * maxShare);
+  const startRain = def.rain ?? defTo.rain;
+  if (startRain && pool > 0) {
     const geo = quadGeometry([-0.5, 0, 0.5, 0, 0.5, 1, -0.5, 1]);
     const seeds = new Float32Array(pool * 3);
     const vars = new Float32Array(pool);
@@ -400,24 +534,25 @@ export function createWeather(world: World, opts: { quality: Quality; flashes?: 
     }
     geo.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seeds, 3));
     geo.setAttribute('aVar', new THREE.InstancedBufferAttribute(vars, 1));
-    geo.instanceCount = pool;
-    const wind = def.rain.wind;
+    blendRain(def.rain, defTo.rain, 0, rainNow);
+    geo.instanceCount = Math.round((pool * rainNow.share) / maxShare);
+    rainGeo = geo;
     rainMat = new THREE.ShaderMaterial({
       vertexShader: rainVert,
       fragmentShader: rainFrag,
       uniforms: {
-        uTime: { value: 0 },
+        uDrift: { value: new THREE.Vector3() },
         uBox: { value: new THREE.Vector3(WEATHER.box.x, WEATHER.box.y, WEATHER.box.z) },
         uHalf: { value: new THREE.Vector3(WEATHER.box.x / 2, WEATHER.below, WEATHER.box.z / 2) },
-        uVel: { value: new THREE.Vector3(Math.cos(windHeading) * wind, -def.rain.fall, Math.sin(windHeading) * wind) },
+        uVel: { value: new THREE.Vector3(dir.x * rainNow.wind, -rainNow.fall, dir.z * rainNow.wind) },
         uCamVel: { value: new THREE.Vector3() },
         uCamFwd: { value: new THREE.Vector3(0, 0, 1) },
         uShutter: { value: WEATHER.shutter },
         uWidth: { value: WEATHER.streakWidth },
         uPixel: { value: 0.002 },
-        uHeadlight: { value: def.rain.headlight },
+        uHeadlight: { value: rainNow.headlight },
         uColor: { value: new THREE.Color(0.5, 0.56, 0.72) },
-        uAlpha: { value: def.rain.alpha },
+        uAlpha: { value: rainNow.alpha },
       },
       transparent: true,
       depthWrite: false,
@@ -427,16 +562,21 @@ export function createWeather(world: World, opts: { quality: Quality; flashes?: 
     rain.name = 'rain';
     rain.frustumCulled = false;
     rain.renderOrder = 10;
+    rain.visible = geo.instanceCount > 0;
+    rainMesh = rain;
     group.add(rain);
     disposables.push(geo, rainMat);
   }
 
   // ----- Splashes: rings on the road around the camera, each respawned where it died.
   let splashMat: THREE.ShaderMaterial | null = null;
+  let splashGeo: THREE.InstancedBufferGeometry | null = null;
+  let splashMesh: THREE.Mesh | null = null;
   let splashPos: THREE.InstancedBufferAttribute | null = null;
   let splashBirth: THREE.InstancedBufferAttribute | null = null;
-  const splashes = Math.round(WEATHER.splashPool[opts.quality] * (def.rain?.splash ?? 0));
-  if (def.rain && splashes > 0) {
+  const maxSplash = Math.max(def.rain?.splash ?? 0, defTo.rain?.splash ?? 0);
+  const splashes = Math.round(WEATHER.splashPool[opts.quality] * maxSplash);
+  if (startRain && splashes > 0) {
     const geo = quadGeometry([-0.5, -0.5, 0.5, -0.5, 0.5, 0.5, -0.5, 0.5]);
     splashPos = new THREE.InstancedBufferAttribute(new Float32Array(splashes * 3), 3);
     splashBirth = new THREE.InstancedBufferAttribute(new Float32Array(splashes * 2), 2);
@@ -445,7 +585,8 @@ export function createWeather(world: World, opts: { quality: Quality; flashes?: 
     splashBirth.setUsage(THREE.DynamicDrawUsage);
     geo.setAttribute('aPos', splashPos);
     geo.setAttribute('aBirth', splashBirth);
-    geo.instanceCount = splashes;
+    geo.instanceCount = Math.round((splashes * rainNow.splash) / maxSplash);
+    splashGeo = geo;
     splashMat = new THREE.ShaderMaterial({
       vertexShader: splashVert,
       fragmentShader: splashFrag,
@@ -454,7 +595,7 @@ export function createWeather(world: World, opts: { quality: Quality; flashes?: 
         uLife: { value: WEATHER.splashLife },
         uSize: { value: WEATHER.splashSize },
         uColor: { value: new THREE.Color(0.6, 0.66, 0.8) },
-        uAlpha: { value: def.rain.alpha * 2.2 },
+        uAlpha: { value: rainNow.alpha * 2.2 },
       },
       transparent: true,
       depthWrite: false,
@@ -464,6 +605,8 @@ export function createWeather(world: World, opts: { quality: Quality; flashes?: 
     mesh.name = 'splashes';
     mesh.frustumCulled = false;
     mesh.renderOrder = 10;
+    mesh.visible = geo.instanceCount > 0;
+    splashMesh = mesh;
     group.add(mesh);
     disposables.push(geo, splashMat);
   }
@@ -473,24 +616,23 @@ export function createWeather(world: World, opts: { quality: Quality; flashes?: 
   let mistMat: THREE.ShaderMaterial | null = null;
   let mistPos: THREE.BufferAttribute | null = null;
   const mistCentre = new THREE.Vector2(Infinity, Infinity);
-  if (opts.quality === 'high' && def.mist > 0.15) {
+  if (opts.quality === 'high' && Math.max(def.mist, defTo.mist) > 0.15) {
     const n = WEATHER.mistGrid;
     const geo = new THREE.PlaneGeometry(WEATHER.mistSize, WEATHER.mistSize, n, n);
     geo.rotateX(-Math.PI / 2);
     mistPos = geo.attributes.position as THREE.BufferAttribute;
     mistPos.setUsage(THREE.DynamicDrawUsage);
     const noise = makeNoiseTexture(256, seed);
-    const c = new THREE.Color(def.fogColor);
     mistMat = new THREE.ShaderMaterial({
       vertexShader: mistVert,
       fragmentShader: mistFrag,
       uniforms: {
         uNoise: { value: noise },
         uTime: { value: 0 },
-        // Added light, so the layer lifts the dark road without dimming the lit patches.
-        uColor: { value: new THREE.Color(c.r * 1.6 + 0.09, c.g * 1.6 + 0.1, c.b * 1.5 + 0.14) },
+        // Added light, so the layer lifts the dark road without dimming the lit patches (set from the fog colour in `mistLight`).
+        uColor: { value: new THREE.Color() },
         uStrength: { value: 0.9 * def.mist },
-        uWind: { value: new THREE.Vector2(Math.cos(windHeading), Math.sin(windHeading)) },
+        uWind: { value: new THREE.Vector2(dir.x, dir.z) },
       },
       transparent: true,
       depthWrite: false,
@@ -501,12 +643,42 @@ export function createWeather(world: World, opts: { quality: Quality; flashes?: 
     mist.name = 'mist';
     mist.frustumCulled = false;
     mist.renderOrder = 9;
+    mist.visible = def.mist > 0.005;
     group.add(mist);
     disposables.push(geo, mistMat, noise);
   }
+  const mistLight = (c: THREE.Color): void => {
+    (mistMat?.uniforms.uColor.value as THREE.Color | undefined)?.setRGB(c.r * 1.6 + 0.09, c.g * 1.6 + 0.1, c.b * 1.5 + 0.14);
+  };
+  mistLight(fogA);
 
-  // ----- Lightning (rain nights): the flash lifts the sky, the lights and the streaks below.
-  const lightning = mood === 'rain' ? buildLightning(seed, { quality: opts.quality, flashes: opts.flashes }) : null;
+  // ----- The turn's second sky: a dome over the first, faded in as the weather turns.
+  let skyDome: THREE.Mesh | null = null;
+  let skyDomeMat: THREE.ShaderMaterial | null = null;
+  if (skyTo) {
+    const geo = new THREE.SphereGeometry(SKY_OVERLAY_RADIUS, 32, 16);
+    skyDomeMat = new THREE.ShaderMaterial({
+      vertexShader: skyOverlayVert,
+      fragmentShader: skyOverlayFrag,
+      uniforms: { uMap: { value: skyTo }, uAlpha: { value: 0 }, uIntensity: { value: 1 } },
+      side: THREE.BackSide,
+      transparent: true,
+      depthWrite: false,
+      toneMapped: false,
+      fog: false,
+    });
+    skyDome = new THREE.Mesh(geo, skyDomeMat);
+    skyDome.name = 'skyTurn';
+    skyDome.frustumCulled = false;
+    skyDome.renderOrder = -10;
+    skyDome.visible = false;
+    group.add(skyDome);
+    disposables.push(geo, skyDomeMat);
+  }
+
+  // ----- Lightning (rain nights): the flash lifts the sky, the lights and the streaks below. Built when the night is
+  // ever rain; strikes wait until it mostly is.
+  const lightning = mood === 'rain' || toMood === 'rain' ? buildLightning(seed, { quality: opts.quality, flashes: opts.flashes }) : null;
   if (lightning) group.add(lightning.group);
 
   const recentreMist = (x: number, z: number): void => {
@@ -533,8 +705,8 @@ export function createWeather(world: World, opts: { quality: Quality; flashes?: 
   let time = 0;
   let prevTime = -1;
   const respawnSplashes = (t: number): void => {
-    if (!splashPos || !splashBirth) return;
-    const n = splashPos.count;
+    if (!splashPos || !splashBirth || !splashGeo) return;
+    const n = splashGeo.instanceCount;
     let dirty = false;
     for (let i = 0; i < n; i++) {
       if (t - splashBirth.getX(i) < WEATHER.splashLife) continue;
@@ -553,16 +725,62 @@ export function createWeather(world: World, opts: { quality: Quality; flashes?: 
     }
   };
 
+  // ----- Pushing the blend. The scene, the lights and the self-fogging uniforms are known once apply / retuneFog ran.
+  let sceneRef: THREE.Scene | null = null;
+  let lightingRef: NightLighting | null = null;
+  let fogDensityUniforms: { value: unknown }[] = [];
+  let fogColorUniforms: { value: unknown }[] = [];
+  /** The blend step last pushed (-1: push again at the next update). */
+  let pushed = -1;
+  const pushBlend = (k: number): void => {
+    live.turn = k;
+    live.density = lerp(def.fogDensity, defTo.fogDensity, k);
+    live.fogColor.lerpColors(fogA, fogB, k);
+    live.stars = lerp(def.stars, defTo.stars, k);
+    live.moon = lerp(def.moon, defTo.moon, k);
+    live.halo = lerp(def.halo, defTo.halo, k);
+    live.wet = lerp(def.wet, defTo.wet, k);
+    live.overcast = lerp(def.sky.overcast, defTo.sky.overcast, k);
+    fog.color.copy(live.fogColor);
+    // Shaders that fog themselves: the uniform objects were collected once, so this is a few dozen writes.
+    for (const u of fogDensityUniforms) u.value = live.density;
+    for (const u of fogColorUniforms) (u.value as THREE.Color).copy(live.fogColor);
+    mistLight(live.fogColor);
+    if (mistMat) {
+      mistMat.uniforms.uStrength.value = 0.9 * lerp(def.mist, defTo.mist, k);
+      if (mist) mist.visible = mistMat.uniforms.uStrength.value > 0.005;
+    }
+    const gain = lerp(def.heightGain ?? FOG_HEIGHT.gain, defTo.heightGain ?? FOG_HEIGHT.gain, k);
+    setHeightFog(FOG_HEIGHT.floor, FOG_HEIGHT.falloff, gain);
+    const env = WEATHER.envDry + WEATHER.envWet * live.wet;
+    if (sceneRef) {
+      sceneRef.environmentIntensity = env;
+      sceneRef.background = skyTo && k >= 1 ? skyTo : sky;
+    }
+    lightning?.setEnvBase(env);
+    if (skyDome && skyDomeMat) {
+      skyDomeMat.uniforms.uAlpha.value = k;
+      skyDome.visible = k > 0 && k < 1;
+    }
+    hemiNow.lerpColors(hemiA, hemiB, k);
+    lightingRef?.setMood({ hemi: hemiNow.getHex(), hemiIntensity: lerp(def.hemiIntensity, defTo.hemiIntensity, k), moonLight: lerp(def.moonLight, defTo.moonLight, k) });
+  };
+
   return {
     mood,
     def,
+    timeline,
+    live,
     moonPhase,
     windHeading,
     sky,
     fog,
     group,
     lightning,
+    moodAt: (t, out) => timeline.moodAt(t, out),
     apply(scene, lighting) {
+      sceneRef = scene;
+      lightingRef = lighting;
       scene.fog = fog;
       // The haze that pools in the river channel and the low parks; shared uniforms, written here once per scene.
       setHeightFog(FOG_HEIGHT.floor, FOG_HEIGHT.falloff, def.heightGain ?? FOG_HEIGHT.gain);
@@ -570,22 +788,35 @@ export function createWeather(world: World, opts: { quality: Quality; flashes?: 
       scene.environmentIntensity = WEATHER.envDry + WEATHER.envWet * def.wet;
       lighting.setMood({ hemi: def.hemi, hemiIntensity: def.hemiIntensity, moonLight: def.moonLight });
       lightning?.attach(scene, lighting);
+      pushed = -1;
     },
     retuneFog(scene) {
+      const densities = new Set<{ value: unknown }>();
+      const colors = new Set<{ value: unknown }>();
       scene.traverse((o) => {
         const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
         if (!m) return;
         for (const mat of Array.isArray(m) ? m : [m]) {
           const u = (mat as THREE.ShaderMaterial).uniforms as Record<string, { value: unknown }> | undefined;
           if (!u) continue;
-          if (u.fogDensity && typeof u.fogDensity.value === 'number') u.fogDensity.value = def.fogDensity;
-          if (u.fogColor && u.fogColor.value instanceof THREE.Color) u.fogColor.value.setHex(def.fogColor);
+          if (u.fogDensity && typeof u.fogDensity.value === 'number') {
+            u.fogDensity.value = def.fogDensity;
+            densities.add(u.fogDensity);
+          }
+          if (u.fogColor && u.fogColor.value instanceof THREE.Color) {
+            u.fogColor.value.setHex(def.fogColor);
+            colors.add(u.fogColor);
+          }
         }
       });
+      fogDensityUniforms = [...densities];
+      fogColorUniforms = [...colors];
+      pushed = -1;
     },
     view(camera, viewportHeight) {
       lightning?.view(camera);
       camera.getWorldPosition(camPos);
+      skyDome?.position.copy(camPos);
       if (rainMat) {
         const cam = camera as THREE.PerspectiveCamera;
         const fov = cam.isPerspectiveCamera ? cam.fov : 60;
@@ -605,18 +836,50 @@ export function createWeather(world: World, opts: { quality: Quality; flashes?: 
         prevTime = time;
       }
       if (splashMat) respawnSplashes(time);
-      if (mist && (camPos.x - mistCentre.x) ** 2 + (camPos.z - mistCentre.y) ** 2 > WEATHER.mistRecentre ** 2) recentreMist(camPos.x, camPos.z);
+      if (mist && mist.visible && (camPos.x - mistCentre.x) ** 2 + (camPos.z - mistCentre.y) ** 2 > WEATHER.mistRecentre ** 2) recentreMist(camPos.x, camPos.z);
     },
     update(t) {
       time = t;
-      const flash = lightning ? lightning.update(t) : 0;
-      if (rainMat) {
-        rainMat.uniforms.uTime.value = t;
-        // The streaks catch a lightning flash.
-        rainMat.uniforms.uAlpha.value = (def.rain?.alpha ?? 0) * (1 + LIGHTNING.rain * flash);
+      timeline.moodAt(t, blend);
+      const k = blend.t;
+      const step = Math.round(k * BLEND_STEPS);
+      if (step !== pushed) {
+        pushed = step;
+        pushBlend(k);
       }
-      if (splashMat) splashMat.uniforms.uTime.value = t;
+      // The gust, the trees' lean and the clouds over the moon: functions of the clock, every frame.
+      const gust = gustAt(seed, t, gustiness(k));
+      live.gust = gust;
+      live.sway = lerp(WEATHER_TURN.wind[mood].sway, WEATHER_TURN.wind[toMood].sway, k) * gust;
+      WIND.sway.value = live.sway;
+      live.veil = moonVeil(seed, t, live.overcast);
+      // Lightning only once the night is mostly rain (to is rain and past half way, or rain easing off before half way).
+      const rainWeight = (mood === 'rain' ? 1 - k : 0) + (toMood === 'rain' && mood !== 'rain' ? k : 0);
+      const flash = lightning ? lightning.update(t, rainWeight > 0.5) : 0;
+      if (rainMat && rainGeo && rainMesh) {
+        blendRain(def.rain, defTo.rain, k, rainNow);
+        const count = Math.round((pool * rainNow.share) / maxShare);
+        rainGeo.instanceCount = count;
+        rainMesh.visible = count > 0;
+        const wind = rainNow.wind * gust;
+        const u = rainMat.uniforms;
+        (u.uVel.value as THREE.Vector3).set(dir.x * wind, -rainNow.fall, dir.z * wind);
+        const w = windPath.at(t);
+        (u.uDrift.value as THREE.Vector3).set(dir.x * w, -fallPath.at(t), dir.z * w);
+        u.uHeadlight.value = rainNow.headlight;
+        // The streaks catch a lightning flash.
+        u.uAlpha.value = rainNow.alpha * (1 + LIGHTNING.rain * flash);
+      }
+      if (splashMat && splashGeo) {
+        blendRain(def.rain, defTo.rain, k, rainNow);
+        splashGeo.instanceCount = Math.round((splashes * rainNow.splash) / maxSplash);
+        splashMat.uniforms.uTime.value = t;
+        splashMat.uniforms.uAlpha.value = rainNow.alpha * 2.2;
+        if (splashMesh) splashMesh.visible = splashGeo.instanceCount > 0;
+      }
       if (mistMat) mistMat.uniforms.uTime.value = t;
+      // The lightning flash brightens the sky dome (scene.backgroundIntensity); the second sky follows it.
+      if (skyDomeMat && sceneRef) skyDomeMat.uniforms.uIntensity.value = sceneRef.backgroundIntensity;
     },
     dispose() {
       lightning?.dispose();

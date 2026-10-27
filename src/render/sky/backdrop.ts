@@ -45,6 +45,11 @@ export interface Backdrop {
   /** Keep the ring centered on the camera (call before rendering); the viewport height keeps stars a few pixels wide. */
   follow(camera: THREE.Camera, viewportHeight?: number): void;
   update(time: number): void;
+  /**
+   * The weather's live sky (weather.ts, every frame it changes): star, moon and halo visibility 0..1, the cloud
+   * veil over the moon (1 clear to 0 hidden) and the haze colour the ridges are tinted toward. Uniform writes only.
+   */
+  setMood(m: { stars: number; moon: number; halo: number; veil: number; fogColor: THREE.Color }): void;
   dispose(): void;
 }
 
@@ -158,6 +163,8 @@ const spriteVert = /* glsl */ `
   uniform vec3 uGroupPos;
   uniform float uStars;
   uniform float uMoon;
+  uniform float uHalo;
+  uniform float uVeil;
   uniform float uPixel;
   uniform float uTiles;
   varying vec2 vUv;
@@ -173,7 +180,8 @@ const spriteVert = /* glsl */ `
       // Star: slow twinkle with a second, slower shimmer.
       bright = uStars * iAnim.w * (0.7 + 0.3 * sin(uTime * iAnim.z + iAnim.y * 6.2832)) * (0.8 + 0.2 * sin(uTime * iAnim.z * 0.37 + iAnim.y * 13.0));
     } else if (kind < 1.5) {
-      bright = iAnim.y * uMoon;
+      // The moon and (iAnim.z = 1) its halo; thin cloud dims the disc more than the glow around it.
+      bright = iAnim.y * uMoon * (iAnim.z > 0.5 ? uHalo * sqrt(uVeil) : uVeil);
     } else if (kind < 2.5) {
       bright = step(0.5, fract(uTime / iAnim.z + iAnim.y)) > 0.5 ? 1.0 : 0.05;
     } else if (kind < 3.5) {
@@ -322,7 +330,8 @@ export function buildBackdrop(seed: number, opts: BackdropOptions = { fogColor: 
     moonDir[2] = Math.sin(az) * Math.cos(el);
     const pos: [number, number, number] = [moonDir[0] * R, moonDir[1] * R, moonDir[2] * R];
     sprites.push({ pos, size: [SKY.moon.size, SKY.moon.size], tile: SKY_TILES.moon, anim: [KIND.steady, 1.15, 0, 0], color: [1, 0.98, 0.92] });
-    if (opts.halo > 0) sprites.push({ pos, size: [SKY.moon.haloSize, SKY.moon.haloSize], tile: SKY_TILES.halo, anim: [KIND.steady, 0.4 * opts.halo, 0, 0], color: [0.75, 0.8, 1] });
+    // Always there: the weather may bring the haze in later (uHalo scales it, 0 draws nothing).
+    sprites.push({ pos, size: [SKY.moon.haloSize, SKY.moon.haloSize], tile: SKY_TILES.halo, anim: [KIND.steady, 0.4, 1, 0], color: [0.75, 0.8, 1] });
   }
   // Airliners: straight crossings over the city, each a cluster of lights on the plane's frame.
   for (let k = 0; k < SKY.planes.count; k++) {
@@ -408,6 +417,8 @@ export function buildBackdrop(seed: number, opts: BackdropOptions = { fogColor: 
       uGroupPos: { value: new THREE.Vector3() },
       uStars: { value: opts.stars },
       uMoon: { value: opts.moon },
+      uHalo: { value: opts.halo },
+      uVeil: { value: 1 },
       uPixel: { value: 0.002 },
       uTiles: { value: SKY_TILE_COUNT },
       uAtlas: { value: atlas },
@@ -474,6 +485,17 @@ export function buildBackdrop(seed: number, opts: BackdropOptions = { fogColor: 
     update(time) {
       spriteMat.uniforms.uTime.value = time;
       schedule(time);
+    },
+    setMood(m) {
+      spriteMat.uniforms.uStars.value = m.stars;
+      spriteMat.uniforms.uMoon.value = m.moon;
+      spriteMat.uniforms.uHalo.value = m.halo;
+      spriteMat.uniforms.uVeil.value = m.veil;
+      // The ridges were baked at the opening mood's haze; the material colour carries the change since.
+      mat.color.setRGB(m.fogColor.r / Math.max(1e-4, fog.r), m.fogColor.g / Math.max(1e-4, fog.g), m.fogColor.b / Math.max(1e-4, fog.b));
+      mat.color.r = Math.min(2, Math.max(0.5, mat.color.r));
+      mat.color.g = Math.min(2, Math.max(0.5, mat.color.g));
+      mat.color.b = Math.min(2, Math.max(0.5, mat.color.b));
     },
     dispose() {
       far.geo.dispose();

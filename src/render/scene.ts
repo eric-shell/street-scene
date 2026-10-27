@@ -43,6 +43,13 @@ import { FOG_HEIGHT, applyHeightFog } from './heightFog';
 const RETRO_HEIGHT = 240;
 
 /**
+ * The street light pools' and reflection streaks' strength on the opening mood's streets, and how much each gains per unit
+ * of wetness the weather adds on top (a night that turns wetter glows further on the road; one that dries dims,
+ * and a seed that never turns keeps exactly these two numbers).
+ */
+const FX_STRENGTH = { pool: 0.42, streak: 0.85, perWet: 0.6 } as const;
+
+/**
  * Each night scene's colour grade (its seed's city identity). The grade lives with the scene, not on the post
  * chain, because one GameRenderer shows several scenes in turn: the menu city, a race of another seed built
  * while the menu still shows, the garage's workshop (no grade). GameRenderer.render applies it whenever the
@@ -239,7 +246,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   // Everything else that glows streaks on the wet street too, graded by class (lightFx.ts STREAK_CLASSES).
   const emitters = collectStreakEmitters(world, polish.lights, barriers, settings.quality);
   const fx = buildLightFx(city.lampPositions, city.signLights, world.heightAt, fogDensity, lampTone.map((t) => ({ pool: toneColor(t.pool), streak: toneColor(t.streak) })), { grid, extra: emitters.list });
-  fx.setStrength(0.42, 0.85);
+  fx.setStrength(FX_STRENGTH.pool, FX_STRENGTH.streak);
   scene.add(fx.group);
   // Parks and plazas: a wash over the whole area and a pool under every lantern post.
   const areaLights = buildAreaLights(world);
@@ -368,6 +375,10 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
       polish.update(time);
       fx.update(time);
       weather.update(time);
+      // The sky follows the weather (stars, moon, the cloud over it, the haze on the ridges), and wetter streets glow further.
+      backdrop.setMood(weather.live);
+      const wetter = 1 + FX_STRENGTH.perWet * (weather.live.wet - weather.def.wet);
+      fx.setStrength(FX_STRENGTH.pool * wetter, FX_STRENGTH.streak * wetter);
       air.update(time);
       // Hazard blink with soft edges: a hard 3.2 / 0.6 square wave strobes the bloom.
       const blink = 0.6 + 2.6 * THREE.MathUtils.smoothstep(Math.sin(time * 5), -0.35, 0.35);

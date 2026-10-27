@@ -29,6 +29,7 @@ import type { GeoBuilder } from '../geoBuilder';
 import { Rng } from '../../sim/prng';
 import { clamp01 } from '../../sim/math';
 import type { DistrictKit } from './kit';
+import { WIND } from '../sky/wind';
 import type { Quality } from '../../ui/settings';
 
 const TREE = {
@@ -187,7 +188,8 @@ export function tree(kit: DistrictKit, x: number, z: number, size: number, heigh
 /**
  * The trees' material: lit, flat shaded, vertex coloured, with a faint fill of the city's sky glow (a share of
  * the leaf colour added as emission, so a crown out of the lamps' reach still shows its clumps instead of a
- * black blot) and swaying in the wind on the scene clock (still at Low).
+ * black blot) and swaying in the wind on the scene clock (still at Low); the weather's gusts lean them further
+ * (`WIND.sway`, render/sky/wind.ts, one shared uniform).
  */
 export function treeMaterial(kit: DistrictKit): THREE.Material {
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
@@ -197,12 +199,13 @@ export function treeMaterial(kit: DistrictKit): THREE.Material {
     shader.fragmentShader = shader.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * ${TREE.glow.toFixed(3)};`);
     if (!sway) return;
     shader.uniforms.uTreeTime = time;
-    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTreeTime;').replace(
+    shader.uniforms.uTreeWind = WIND.sway;
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTreeTime;\nuniform float uTreeWind;').replace(
       '#include <begin_vertex>',
       `#include <begin_vertex>
       {
         // uv.x: sway weight (0 at the roots), uv.y: phase. A slow lean plus a quicker rustle.
-        float sw = uv.x * ${TREE.sway.toFixed(3)};
+        float sw = uv.x * ${TREE.sway.toFixed(3)} * uTreeWind;
         float t = uTreeTime;
         transformed.x += sw * (sin(t * ${TREE.swayRate[0].toFixed(2)} + uv.y) + 0.3 * sin(t * ${TREE.swayRate[1].toFixed(2)} + uv.y * 2.3));
         transformed.z += sw * 0.6 * cos(t * ${(TREE.swayRate[0] * 0.8).toFixed(2)} + uv.y * 1.3);

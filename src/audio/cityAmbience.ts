@@ -12,7 +12,8 @@
  *    waterfront and lake seeds. Each comes from a random bearing (stereo pan)
  *    through a low pass that dulls with distance.
  * The one-shots are scheduled on the scene clock from seeded Rng streams, so
- * a replay (same seed, same clock) hears the same night. The bed ducks a
+ * a replay (same seed, same clock) hears the same night. When the night turns (render/sky/weatherTimeline.ts)
+ * the hum, hiss and wind follow the blend, and gusts lift the wind. The bed ducks a
  * little under the engine at full throttle. Like the other scene voices it is
  * only created after a user gesture and its gain dies by itself unless the
  * next frame renews it. The level is set in docs/audioMix.md.
@@ -22,13 +23,15 @@ import { TrainRumble } from './sceneVoices';
 import { playSiren } from './siren';
 import { Rng, deriveSeed } from '../sim/prng';
 import { clamp01, lerp } from '../sim/math';
-import type { MoodId } from '../render/sky/weather';
+import type { LiveWeather, MoodId } from '../render/sky/weather';
 import type { Area } from '../city/districts/types';
 
 /** What a seed's city offers the bed. */
 export interface AmbienceTraits {
   seed: number;
   mood: MoodId;
+  /** The mood the night turns to (the weather timeline's), when it does: the bed builds the layers either mood needs. */
+  turnsTo?: MoodId;
   /** An elevated railway (the 'subway' district): a far train horn. */
   el: boolean;
   /** A harbor or a lake: gulls. */
@@ -36,8 +39,8 @@ export interface AmbienceTraits {
 }
 
 /** The traits of a built city: its seed, its mood and which districts it has. */
-export function ambienceTraits(seed: number, mood: MoodId, areas: readonly Area[]): AmbienceTraits {
-  return { seed, mood, el: areas.some((a) => a.kind === 'subway'), water: areas.some((a) => a.kind === 'waterfront' || a.kind === 'lake') };
+export function ambienceTraits(seed: number, mood: MoodId, areas: readonly Area[], turnsTo?: MoodId): AmbienceTraits {
+  return { seed, mood, turnsTo, el: areas.some((a) => a.kind === 'subway'), water: areas.some((a) => a.kind === 'waterfront' || a.kind === 'lake') };
 }
 
 /**
@@ -102,6 +105,15 @@ export class CityAmbience {
   private readonly rng = {} as Record<ShotKind, Rng>;
   private readonly nextAt = {} as Record<ShotKind, number>;
   private readonly bed: (typeof MOOD_BED)[MoodId];
+  /** The bed of the mood the night turns to (the opening bed when it never does). */
+  private readonly bedTo: (typeof MOOD_BED)[MoodId];
+  private hum!: GainNode;
+  private humLow!: BiquadFilterNode;
+  private humHigh!: BiquadFilterNode;
+  private hiss: GainNode | null = null;
+  private hissBand: BiquadFilterNode | null = null;
+  /** The turn last pushed to the hum and hiss (-1: none yet). */
+  private pushedTurn = -1;
   private lastTime = -1;
   private duck = 0;
 
@@ -120,6 +132,7 @@ export class CityAmbience {
     this.hub = h;
     const ctx = (this.ctx = h.ctx);
     this.bed = MOOD_BED[traits.mood];
+    this.bedTo = MOOD_BED[traits.turnsTo ?? traits.mood];
     this.kinds = SHOT_KINDS.filter((k) => (k !== 'trainHorn' || traits.el) && (k !== 'gull' || traits.water));
     for (const k of SHOT_KINDS) this.rng[k] = new Rng(deriveSeed(traits.seed, `ambience:${k}`));
     this.master = ctx.createGain();
@@ -159,7 +172,10 @@ export class CityAmbience {
     // Hum: slow noise through two low passes, breathing a little.
     const hum = ctx.createGain();
     hum.gain.value = this.bed.hum * 0.35;
-    noise('lowpass', this.bed.humHz, 0.7, 0.8).connect(filter('lowpass', this.bed.humHz * 1.6, 0.5)).connect(hum);
+    this.hum = hum;
+    this.humLow = noise('lowpass', this.bed.humHz, 0.7, 0.8);
+    this.humHigh = filter('lowpass', this.bed.humHz * 1.6, 0.5);
+    this.humLow.connect(this.humHigh).connect(hum);
     lfo(0.07, hum.gain.value * 0.15, hum.gain);
     hum.connect(this.out);
     // Mains rumble: 50 or 60 Hz by seed, with its second harmonic, faint.
@@ -177,11 +193,13 @@ export class CityAmbience {
     }
     rumble.connect(this.out);
     // Wet hiss (rain on tarmac, a trace of it in the haze).
-    if (this.bed.hiss > 0) {
+    if (this.bed.hiss > 0 || this.bedTo.hiss > 0) {
       const hiss = ctx.createGain();
       // A band this wide carries about five times the hum's amplitude, so it is trimmed to match.
       hiss.gain.value = this.bed.hiss * 0.05;
-      noise('bandpass', this.bed.hissHz, 0.5).connect(hiss).connect(this.out);
+      this.hiss = hiss;
+      this.hissBand = noise('bandpass', this.bed.hissHz, 0.5);
+      this.hissBand.connect(hiss).connect(this.out);
     }
     // Wind: band noise gusting on slow oscillators, scaled by height every frame.
     this.wind = ctx.createGain();
@@ -207,9 +225,10 @@ export class CityAmbience {
 
   /**
    * Feed it every frame. `time` is the scene clock (s; one-shots are scheduled on it so a replay hears the same),
-   * `height` the listener's height (m), `throttle` the player's pedal 0..1 (the bed ducks under the engine), `dt` seconds.
+   * `height` the listener's height (m), `throttle` the player's pedal 0..1 (the bed ducks under the engine), `dt` seconds,
+   * `weather` the live blend of the night (`turn` 0..1 between the opening mood and the one it turns to, and the current `gust`).
    */
-  update(time: number, dt: number, height: number, throttle: number): void {
+  update(time: number, dt: number, height: number, throttle: number, weather?: Pick<LiveWeather, 'turn' | 'gust'>): void {
     const now = this.ctx.currentTime;
     this.duck += (clamp01(throttle) - this.duck) * (1 - Math.exp(-dt / BED.duckRate));
     const g = this.master.gain;
@@ -217,7 +236,19 @@ export class CityAmbience {
     g.setTargetAtTime(1 - BED.duck * this.duck, now, 0.25);
     // Dead man's switch: silence unless the next frame renews it.
     g.setTargetAtTime(0, now + BED.deadMan, 0.3);
-    const w = this.bed.wind * clamp01((height - BED.windFrom) / (BED.windTo - BED.windFrom));
+    const turn = weather?.turn ?? 0;
+    if (Math.abs(turn - this.pushedTurn) > 0.004) {
+      // The hum and hiss follow the turn; a few dozen parameter ramps over the whole 40 to 90 s, not per frame.
+      this.pushedTurn = turn;
+      const a = this.bed;
+      const b = this.bedTo;
+      this.hum.gain.setTargetAtTime(lerp(a.hum, b.hum, turn) * 0.35, now, 0.6);
+      this.humLow.frequency.setTargetAtTime(lerp(a.humHz, b.humHz, turn), now, 0.6);
+      this.humHigh.frequency.setTargetAtTime(lerp(a.humHz, b.humHz, turn) * 1.6, now, 0.6);
+      this.hiss?.gain.setTargetAtTime(lerp(a.hiss, b.hiss, turn) * 0.05, now, 0.6);
+      this.hissBand?.frequency.setTargetAtTime(lerp(a.hissHz, b.hissHz, turn), now, 0.6);
+    }
+    const w = lerp(this.bed.wind, this.bedTo.wind, turn) * (weather?.gust ?? 1) * clamp01((height - BED.windFrom) / (BED.windTo - BED.windFrom));
     this.wind.gain.setTargetAtTime(w * (0.25 + 0.75 * w), now, 0.6);
     // A clock that went backwards (a restart) or leapt (a long stall) reschedules instead of firing a backlog.
     if (this.lastTime >= 0 && (time < this.lastTime - 0.5 || time > this.lastTime + 5)) for (const k of this.kinds) this.nextAt[k] = time + this.gap(k);
