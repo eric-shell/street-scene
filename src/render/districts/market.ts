@@ -25,6 +25,7 @@ import { GeoBuilder } from '../geoBuilder';
 import { MARKET_MAST, MarketEdgeView, MarketMast, marketEdges } from './marketPlan';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { col, cylinder, orientedBox, wallBox } from './kit';
+import { heightFogShader } from '../heightFog';
 
 const LOOK = {
   /** Crowd rail: height, post spacing, thickness into the pen (m) and colours. */
@@ -226,17 +227,7 @@ function lightWash(kit: DistrictKit, edges: readonly MarketEdgeView[]): void {
   );
   // Light added on top fades out with distance (as in areaLights.ts): mixing it toward the fog colour would make a far market glow.
   mat.onBeforeCompile = (shader) => {
-    shader.fragmentShader = shader.fragmentShader.replace(
-      '#include <fog_fragment>',
-      `#ifdef USE_FOG
-        #ifdef FOG_EXP2
-          float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth );
-        #else
-          float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
-        #endif
-        gl_FragColor.rgb *= 1.0 - fogFactor;
-      #endif`,
-    );
+    heightFogShader(shader, true);
   };
   const mesh = new THREE.Mesh(kit.track(gb.build()), mat);
   mesh.name = 'marketLight';

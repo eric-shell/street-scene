@@ -12,6 +12,7 @@
 import * as THREE from 'three';
 import { FOG_COLOR, FOG_DENSITY } from '../lighting';
 import { makeSteamPuff } from '../textures/textures';
+import { HEIGHT_FOG_GLSL, HEIGHT_FOG_UNIFORMS } from '../heightFog';
 
 export type TireSmokeQuality = 'low' | 'medium' | 'high';
 
@@ -40,6 +41,7 @@ const vert = /* glsl */ `
   uniform float uRise;
   uniform vec2 uSize;
   uniform float fogDensity;
+  ${HEIGHT_FOG_GLSL}
   varying vec2 vUv;
   varying float vAlpha;
   varying float vFog;
@@ -63,7 +65,7 @@ const vert = /* glsl */ `
     vec2 p = vec2(position.x * r.x - position.y * r.y, position.x * r.y + position.y * r.x) * size;
     mv.xy += p;
     float fd = length(mv.xyz);
-    vFog = exp(-fogDensity * fogDensity * fd * fd);
+    vFog = exp(-fogDensity * fogDensity * fd * fd * hfMulView(mv.xyz));
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -130,6 +132,7 @@ export class TireSmoke {
         uColor: { value: new THREE.Color(TIRE_SMOKE.color) },
         fogColor: { value: new THREE.Color(FOG_COLOR) },
         fogDensity: { value: FOG_DENSITY },
+        ...HEIGHT_FOG_UNIFORMS,
       },
       transparent: true,
       depthWrite: false,

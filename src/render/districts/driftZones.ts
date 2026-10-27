@@ -25,6 +25,7 @@ import { Rng } from '../../sim/prng';
 import { GeoBuilder } from '../geoBuilder';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { col, cylinder, groundLine } from './kit';
+import { heightFogShader } from '../heightFog';
 
 export const DRIFT_MARK = {
   /** Paint (lit), rubber (lit, dark), studs (unlit HDR, the glow material adds x1.6) and the edge wash (linear, additive). */
@@ -293,17 +294,7 @@ export const driftZoneRenderer: DistrictRenderer = {
     );
     // Added light fades out with distance instead of mixing toward the fog colour (as areaLights.ts).
     mat.onBeforeCompile = (shader) => {
-      shader.fragmentShader = shader.fragmentShader.replace(
-        '#include <fog_fragment>',
-        `#ifdef USE_FOG
-          #ifdef FOG_EXP2
-            float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth );
-          #else
-            float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
-          #endif
-          gl_FragColor.rgb *= 1.0 - fogFactor;
-        #endif`,
-      );
+      heightFogShader(shader, true);
     };
     const mesh = new THREE.Mesh(kit.track(wash.build()), mat);
     mesh.name = 'driftZoneWash';

@@ -30,6 +30,7 @@ import { type RailLayout, RailState, railLayout } from '../../sim/rails';
 import { segmentT } from '../../sim/math';
 import { nearCarParkFlight } from '../../city/districts/carPark';
 import { Disposer } from '../disposer';
+import { HEIGHT_FOG_GLSL, HEIGHT_FOG_UNIFORMS } from '../heightFog';
 
 /** The route's cyan: rail panels, LED comets, ground glow and the floating signs. */
 const ROUTE_CYAN = 0x19e6ff;
@@ -145,6 +146,7 @@ const SIGN = { height: 5.8, aspect: 4, minWidth: 8, maxWidth: 14, fadeFar: [175,
 const signVert = /* glsl */ `
   uniform float time;
   uniform float fogDensity;
+  ${HEIGHT_FOG_GLSL}
   attribute float aFlip;
   attribute float aPhase;
   varying vec2 vUv;
@@ -159,7 +161,7 @@ const signVert = /* glsl */ `
     wp.y += sin(time * 1.3 + aPhase * 6.2832) * ${SIGN.hover.toFixed(2)};
     vec4 mv = viewMatrix * wp;
     float d = length(mv.xyz);
-    vFade = exp(-fogDensity * fogDensity * d * d * 0.5) * smoothstep(${SIGN.fadeFar[0].toFixed(1)}, ${SIGN.fadeFar[1].toFixed(1)}, d) * smoothstep(${SIGN.fadeNear[0].toFixed(1)}, ${SIGN.fadeNear[1].toFixed(1)}, d);
+    vFade = exp(-fogDensity * fogDensity * d * d * 0.5 * hfMulView(mv.xyz)) * smoothstep(${SIGN.fadeFar[0].toFixed(1)}, ${SIGN.fadeFar[1].toFixed(1)}, d) * smoothstep(${SIGN.fadeNear[0].toFixed(1)}, ${SIGN.fadeNear[1].toFixed(1)}, d);
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -375,7 +377,7 @@ export function buildRouteArrows(world: World, barriers: BarrierInfo[] = classif
       new THREE.ShaderMaterial({
         vertexShader: signVert,
         fragmentShader: signFrag,
-        uniforms: { map: { value: signTex }, time: { value: 0 }, color: { value: new THREE.Color(ROUTE_CYAN) }, fogDensity: { value: FOG_DENSITY } },
+        uniforms: { map: { value: signTex }, time: { value: 0 }, color: { value: new THREE.Color(ROUTE_CYAN) }, fogDensity: { value: FOG_DENSITY }, ...HEIGHT_FOG_UNIFORMS },
         side: THREE.DoubleSide,
         transparent: true,
         depthWrite: false,
@@ -467,6 +469,7 @@ const railBoardVert = /* glsl */ `
   varying vec4 vCrack;
   varying float vLen;
   uniform float fogDensity;
+  ${HEIGHT_FOG_GLSL}
   void main() {
     vUv = uv;
     vFlip = aFlip;
@@ -475,7 +478,7 @@ const railBoardVert = /* glsl */ `
     vLen = aLen;
     vec4 mv = viewMatrix * modelMatrix * vec4(position, 1.0);
     float d = length(mv.xyz);
-    vFog = exp(-fogDensity * fogDensity * d * d * 0.5);
+    vFog = exp(-fogDensity * fogDensity * d * d * 0.5 * hfMulView(mv.xyz));
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -562,13 +565,14 @@ const railPanelVert = /* glsl */ `
   varying float vPhase;
   varying float vFog;
   uniform float fogDensity;
+  ${HEIGHT_FOG_GLSL}
   void main() {
     vUv = uv;
     vFlip = aFlip;
     vPhase = aPhase;
     vec4 mv = viewMatrix * modelMatrix * vec4(position, 1.0);
     float d = length(mv.xyz);
-    vFog = exp(-fogDensity * fogDensity * d * d * 0.5);
+    vFog = exp(-fogDensity * fogDensity * d * d * 0.5 * hfMulView(mv.xyz));
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -816,19 +820,19 @@ function buildRailMeshes(world: World, barriers: BarrierInfo[], tex: THREE.Textu
   const panelMaterial = new THREE.ShaderMaterial({
     vertexShader: railBoardVert,
     fragmentShader: railBoardFrag,
-    uniforms: { map: { value: tex }, time: { value: 0 }, color: { value: new THREE.Color(ROUTE_CYAN) }, fogDensity: { value: FOG_DENSITY } },
+    uniforms: { map: { value: tex }, time: { value: 0 }, color: { value: new THREE.Color(ROUTE_CYAN) }, fogDensity: { value: FOG_DENSITY }, ...HEIGHT_FOG_UNIFORMS },
     side: THREE.DoubleSide,
   });
   const frameMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.4 });
   const ledMaterial = new THREE.ShaderMaterial({
     vertexShader: railPanelVert,
     fragmentShader: ledFrag,
-    uniforms: { time: { value: 0 }, color: { value: new THREE.Color(ROUTE_CYAN) }, fogDensity: { value: FOG_DENSITY } },
+    uniforms: { time: { value: 0 }, color: { value: new THREE.Color(ROUTE_CYAN) }, fogDensity: { value: FOG_DENSITY }, ...HEIGHT_FOG_UNIFORMS },
   });
   const poolMaterial = new THREE.ShaderMaterial({
     vertexShader: railPanelVert,
     fragmentShader: poolFrag,
-    uniforms: { time: { value: 0 }, color: { value: new THREE.Color(ROUTE_CYAN) }, fogDensity: { value: FOG_DENSITY } },
+    uniforms: { time: { value: 0 }, color: { value: new THREE.Color(ROUTE_CYAN) }, fogDensity: { value: FOG_DENSITY }, ...HEIGHT_FOG_UNIFORMS },
     transparent: true,
     depthWrite: false,
     blending: THREE.AdditiveBlending,

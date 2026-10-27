@@ -38,6 +38,7 @@ import type { Quality } from '../../ui/settings';
 import modelsJson from '../../assets/trafficModels.json';
 import { kelvin, makeRadialGlow } from '../textures/textures';
 import { fadeSubPixel } from '../materialFx';
+import { applyHeightFog } from '../heightFog';
 import { floatGeometry } from '../gltfGeometry';
 import { ROAD_Y } from '../street/cityMeshes';
 import { maskVehicleMesh, underVehicles } from '../vehicleMask';
@@ -265,6 +266,8 @@ export class TrafficView {
     }
     this.lampMesh.name = 'trafficLamps';
     this.beamMesh.name = 'trafficBeams';
+    // Built after the scene's height fog pass ran, so the views patch their own materials (idempotent).
+    applyHeightFog(this.group);
     void loadTrafficAssets().then((a) => a && !this.disposed && this.build(a));
   }
 
@@ -301,6 +304,7 @@ export class TrafficView {
     bodies.setColorAt(0, WHITE);
     this.bodies = bodies;
     this.decals = firstDecal !== null ? decals : null;
+    applyHeightFog(this.group);
   }
 
   /**

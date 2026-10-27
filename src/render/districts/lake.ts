@@ -36,6 +36,7 @@ import type { DistrictKit, DistrictRenderer } from './kit';
 import { col, cylinder, groundVertex } from './kit';
 import { waterMaterial } from './river';
 import { tree } from './trees';
+import { heightFogShader } from '../heightFog';
 
 const CFG = CITY.districts.lake;
 
@@ -517,17 +518,7 @@ function streaks(kit: DistrictKit, lights: readonly { x: number; z: number; k: n
         vColor.rgb *= 0.55 + 0.45 * sin(uLakeTime * 2.3 + uv.x * 13.0 + position.x * 0.37 + position.z * 0.29);`,
       );
     // Additive light fades to black in fog, never toward the fog color (render/street/areaLights.ts).
-    shader.fragmentShader = shader.fragmentShader.replace(
-      '#include <fog_fragment>',
-      `#ifdef USE_FOG
-        #ifdef FOG_EXP2
-          float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth );
-        #else
-          float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
-        #endif
-        gl_FragColor.rgb *= 1.0 - fogFactor;
-      #endif`,
-    );
+    heightFogShader(shader, true);
   };
   mat.customProgramCacheKey = () => 'lake:streaks';
   kit.animate((t) => (time.value = t));

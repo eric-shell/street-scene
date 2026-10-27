@@ -50,6 +50,7 @@ import { shatterFurniture } from './streetFurniture';
 import { buildHydrantSpray } from './hydrantSpray';
 import { LAMP_TONES, planLamps, toneColor } from './lampStyle';
 import { STUMP_H, TRAFFIC_POLE_H, TRAFFIC_ARM_Y, STREETLIGHT_POLE_H, STREETLIGHT_ARM, PARK_LAMP_H, PARK_LANTERN_Y, LAMP_DESIGNS, LAMP_DIMS, type LampDesign, col, streetlightGeo, stumpGeo, trafficPoleGeo, trafficArmGeo, trafficHeadGeo, trafficLensGeo, canGeo, benchGeo, busStopGeo, adTexture, PARTS, PART_KINDS, isFurniture, STALL } from './propGeometry';
+import { HEIGHT_FOG_GLSL, HEIGHT_FOG_UNIFORMS } from '../heightFog';
 
 export { STREETLIGHT_POLE_H, STREETLIGHT_ARM, PARK_LAMP_H, PARK_LANTERN_Y };
 
@@ -136,6 +137,7 @@ const lensVert = /* glsl */ `
   varying vec3 vView;
   uniform float time;
   uniform float fogDensity;
+  ${HEIGHT_FOG_GLSL}
   void main() {
     vSlot = aSlot;
     float t = mod(time + aOffset, ${CYCLE.toFixed(1)});
@@ -143,7 +145,7 @@ const lensVert = /* glsl */ `
     vLit = 1.0 - step(0.5, abs(state - aSlot));
     vec4 mv = viewMatrix * modelMatrix * instanceMatrix * vec4(position, 1.0);
     float d = length(mv.xyz);
-    vFog = exp(-fogDensity * fogDensity * d * d * 0.5);
+    vFog = exp(-fogDensity * fogDensity * d * d * 0.5 * hfMulView(mv.xyz));
     vView = mv.xyz;
     gl_Position = projectionMatrix * mv;
   }
@@ -260,7 +262,7 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
   const glassMat = track(new THREE.MeshStandardMaterial({ color: 0x9fc6e0, roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide, envMapIntensity: 1.6 }));
   const adMat = track(new THREE.MeshBasicMaterial({ map: track(adTexture()) }));
   const lensMat = track(
-    new THREE.ShaderMaterial({ vertexShader: lensVert, fragmentShader: lensFrag, uniforms: { time: { value: 0 }, fogDensity: { value: FOG_DENSITY } } }),
+    new THREE.ShaderMaterial({ vertexShader: lensVert, fragmentShader: lensFrag, uniforms: { time: { value: 0 }, fogDensity: { value: FOG_DENSITY }, ...HEIGHT_FOG_UNIFORMS } }),
   );
 
   const grid = opts.grid ?? chunkGrid(world.graph.bounds);

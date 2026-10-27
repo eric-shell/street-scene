@@ -25,6 +25,7 @@ import { manifestCar } from '../render/car/carAssets';
 import { Drivers } from '../render/people/drivers';
 import { ROAD_Y } from '../render/street/cityMeshes';
 import { unmaskVehicle } from '../render/vehicleMask';
+import { applyHeightFog } from '../render/heightFog';
 import { LightTrails } from '../render/car/lightTrails';
 import { Sparks } from '../render/car/sparks';
 import { TireFx } from '../render/car/tireFx';
@@ -343,7 +344,8 @@ export class RaceSession {
       const view = new CarView(rc.carId, assets, { headlights: lit ? rig.headlightSpots : 0, underglowLight: lit && rig.underglowLight, envMap: gr.envMap, roadLift: ROAD_Y, brakes });
       this.night.scene.add(view.root);
       this.views.push(view);
-      loads.push(view.load(opts.visuals[i] ?? opts.visuals[0]));
+      // Rivals take the scene's height fog once their parts exist; the player's car sits too close for it to show.
+      loads.push(view.load(opts.visuals[i] ?? opts.visuals[0]).then(() => (i > 0 ? applyHeightFog(view.root) : undefined)));
     });
     this.drivers = new Drivers(this.race.cars.length);
     this.night.scene.add(this.drivers.group);
