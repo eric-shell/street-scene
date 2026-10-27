@@ -22,8 +22,9 @@
  * because FogExp2 fogs by -mvPosition.z. Runs separated by fewer than gapTris
  * triangles merge, trading a few hidden triangles for a draw call.
  *
- * The instanced street props cull on the same grid (street/props.ts: cellsWithin,
- * fogCutoff), compacting each kind's drawn cells to the front of its buffers.
+ * The instanced street props and the wet street's light pools and streaks cull on the same grid
+ * (street/props.ts, street/lightFx.ts: cellsWithin, fogCutoff, VIEW_LATTICE), compacting each kind's drawn
+ * cells to the front of its buffers.
  */
 import * as THREE from 'three';
 
@@ -38,6 +39,18 @@ export const CHUNKS = {
   gapTris: 4_000,
   /** AABB pad (m) for vertex shader motion (tree sway) and float slack. */
   pad: 0.5,
+} as const;
+
+/** How instanced layers (street props, light streaks) pick the cells they draw around the camera. */
+export const VIEW_LATTICE = {
+  /**
+   * Lattice (m) the camera is snapped to: cells are picked by distance from the camera's lattice square, so the set
+   * changes at most once per lattice line crossed (about every 1.1 s at 90 m/s) instead of whenever the reach circle
+   * touches another cell row, for at most half a diagonal (about 70 m) of extra reach.
+   */
+  snap: 100,
+  /** Extra reach (m) before an already drawn cell is dropped, so a camera hovering on a lattice line does not re-upload every frame. */
+  hysteresis: 20,
 } as const;
 
 /**

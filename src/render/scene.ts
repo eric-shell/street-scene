@@ -7,6 +7,7 @@ import { World } from '../city/world';
 import { QUALITY, QualityProfile, Settings } from '../ui/settings';
 import { buildCityMeshes, CityMeshes } from './street/cityMeshes';
 import { buildLightFx, LightFx } from './street/lightFx';
+import { collectStreakEmitters } from './street/streakEmitters';
 import { fitLampPositions, LAMP_TONES, planLamps, toneColor } from './street/lampStyle';
 import { fadeSubPixel } from './materialFx';
 import { NightLighting } from './lighting';
@@ -202,7 +203,11 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   const lampPlan = planLamps(world);
   fitLampPositions(world, city.lampPositions, lampPlan);
   const lampTone = lampPlan.tone.map((t) => LAMP_TONES[t]);
-  const fx = buildLightFx(city.lampPositions, city.signLights, world.heightAt, fogDensity, lampTone.map((t) => ({ pool: toneColor(t.pool), streak: toneColor(t.streak) })));
+  // One culling grid for the big merged layers, the props and the light streaks (200 m cells).
+  const grid = chunkGrid(bounds);
+  // Everything else that glows streaks on the wet street too, graded by class (lightFx.ts STREAK_CLASSES).
+  const emitters = collectStreakEmitters(world, polish.lights, barriers);
+  const fx = buildLightFx(city.lampPositions, city.signLights, world.heightAt, fogDensity, lampTone.map((t) => ({ pool: toneColor(t.pool), streak: toneColor(t.streak) })), { grid, extra: emitters.list });
   fx.setStrength(0.42, 0.85);
   scene.add(fx.group);
   // Parks and plazas: a wash over the whole area and a pool under every lantern post.
@@ -234,7 +239,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   const arrows = buildRouteArrows(world, barriers, { beacon: city.barrierLampMaterial });
   scene.add(arrows.group);
   // The big merged layers cull per 200 m cell (registered last, below).
-  const chunks = new CityChunks(chunkGrid(world.graph.bounds));
+  const chunks = new CityChunks(grid);
   if (import.meta.env.DEV && new URLSearchParams(location.search).get('cull') === 'off') chunks.enabled = false;
   // Parked cars cull per group against whatever camera renders the scene.
   scene.onBeforeRender = (r, _s, camera) => {
@@ -249,18 +254,27 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     // Props cull by the same grid: detail kinds at detailDistance, the tall ones where the fog closes.
     if (chunks.enabled) props.view(camera, gr.profile.detailDistance, fogCutoff(density));
     else props.view(camera, Infinity, Infinity);
+    // The light pools and streaks cull on it too, all 'fog' class.
+    fx.view(camera, chunks.enabled ? fogCutoff(density) : Infinity);
   };
   // Broken lamps go dark: ground pool, reflection streak (streetlights) and the real light pool.
   const lampOff = new Uint8Array(lamps.length);
   const streetLamps = city.lampPositions.length;
   const props = buildProps(world, {
     quality: settings.quality,
-    grid: chunks.grid,
+    grid,
+    onBroken(id, broken) {
+      const at = emitters.ofProp.get(id);
+      if (at) for (const e of at) fx.setEmitterOn(fx.extraBase + e, !broken);
+    },
     onLamp(i, on) {
       if (i < 0 || i >= lampOff.length || lampOff[i] === (on ? 0 : 1)) return;
       lampOff[i] = on ? 0 : 1;
       if (i < streetLamps) fx.setLampOn(i, on);
-      else areaLights.setLampOn(i - streetLamps, on);
+      else {
+        areaLights.setLampOn(i - streetLamps, on);
+        fx.setEmitterOn(fx.extraBase + emitters.parkBase + i - streetLamps, on);
+      }
       lighting.setLamps(lamps.filter((_, k) => !lampOff[k]), lampColors.filter((_, k) => !lampOff[k]));
     },
   });
@@ -308,6 +322,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
       districts.update(time);
       backdrop.update(time);
       polish.update(time);
+      fx.update(time);
       weather.update(time);
       air.update(time);
       // Hazard blink with soft edges: a hard 3.2 / 0.6 square wave strobes the bloom.

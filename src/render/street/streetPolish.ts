@@ -24,6 +24,8 @@ export interface StreetPolishOptions {
 
 export interface StreetPolish {
   group: THREE.Group;
+  /** The blade signs' glow, for the reflection streaks (buildings/wallDressing.ts). */
+  lights: { pos: THREE.Vector3; color: THREE.Color }[];
   update(time: number): void;
   dispose(): void;
 }
@@ -79,6 +81,7 @@ export function buildStreetPolish(world: World, opts: StreetPolishOptions): Stre
   }
   return {
     group,
+    lights: walls.lights,
     update(time) {
       steam?.update(time);
     },
