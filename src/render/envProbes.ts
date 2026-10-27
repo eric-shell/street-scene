@@ -156,7 +156,9 @@ const NONE: EnvProbes = { stats: { count: 0, ms: 0, bytes: 0, zones: [] }, updat
  */
 export function bakeEnvProbes(renderer: THREE.WebGLRenderer, scene: THREE.Scene, world: World, quality: Quality, hide: THREE.Object3D[]): EnvProbes {
   const size = ENV_PROBES.size[quality];
-  if (size <= 0) return NONE;
+  // Low keeps the panorama. So does a renderer that cannot draw a cube camera: the headless perf harness builds the
+  // scene through a stub renderer (scripts/perf/shim.ts) with no coordinate system, and the bake would throw.
+  if (size <= 0 || !renderer || typeof (renderer as Partial<THREE.WebGLRenderer>).coordinateSystem !== 'number') return NONE;
   const points = probePoints(world);
   const disposer = new Disposer();
   const t0 = performance.now();
