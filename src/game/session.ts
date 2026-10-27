@@ -29,6 +29,7 @@ import { applyHeightFog } from '../render/heightFog';
 import { LightTrails } from '../render/car/lightTrails';
 import { Sparks } from '../render/car/sparks';
 import { TireFx } from '../render/car/tireFx';
+import { Litter } from '../render/car/litter';
 import { WaypointBeacons } from '../render/race/waypointBeacons';
 import { CarAssetLibrary } from '../render/car/carAssets';
 import { CAMERA, ChaseCamera } from '../render/camera/camera';
@@ -234,6 +235,8 @@ export class RaceSession {
   private sparks: Sparks;
   /** Rubber on the road and tire smoke for every car losing traction (render/car/tireFx.ts). */
   private tireFx: TireFx;
+  /** Paper, leaves and cups lifted by the cars' wake (render/car/litter.ts). */
+  private litter: Litter;
   /** The waypoint race's columns of light over its waypoints (null in the other modes). */
   private readonly beacons: WaypointBeacons | null = null;
   /** Ambient traffic (render/traffic/traffic.ts) and its last two snapshots (TRAFFIC_SNAP floats per car), swapped every tick. */
@@ -333,6 +336,8 @@ export class RaceSession {
     this.tireFx = new TireFx(settings.quality, ROAD_Y);
     this.tireFx.meshes.forEach((m) => this.night.scene.add(m));
     this.tireFx.setWet(this.night.weather.def.wet, this.night.lampSprayTone);
+    this.litter = new Litter(settings.quality);
+    this.night.scene.add(this.litter.mesh);
     if (this.race.config.mode === 'waypoint' && this.race.world.route.waypoints) {
       this.beacons = new WaypointBeacons(this.race.world);
       this.night.scene.add(this.beacons.group);
@@ -718,6 +723,7 @@ export class RaceSession {
     {
       const cam = (this.lastCamera ?? this.cam.camera).position;
       this.tireFx.tick(r.cars, r.world, cam.x, cam.z, this.time, DT);
+      this.litter.tick(r.cars, r.world, cam.x, cam.z, this.time, DT);
     }
     // A sudden loss of speed (a hard hit on anything, a dumpster) shakes the camera hard; resets do not count.
     // Ploughing through soft props (bushes, tables, bags) costs a little speed too: that stays a light knock.
@@ -900,6 +906,7 @@ export class RaceSession {
       const px = this.gr.renderer.domElement.clientHeight || window.innerHeight;
       this.sparks.update(this.time, (2 * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, px));
       this.tireFx.update(this.time);
+      this.litter.update(this.time);
     }
     this.beacons?.update(this.race.cars[0], this.time);
     this.alpha = alpha;
@@ -1097,6 +1104,7 @@ export class RaceSession {
     this.trails.dispose();
     this.sparks.dispose();
     this.tireFx.dispose();
+    this.litter.dispose();
     this.beacons?.dispose();
     this.traffic?.dispose();
     this.audio.dispose();
