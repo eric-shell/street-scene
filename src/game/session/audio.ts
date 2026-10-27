@@ -11,8 +11,10 @@ import type { CarView } from '../../render/car/carView';
 import type { CrowdCar } from '../../render/race/crowds';
 import type { NightScene } from '../../render/scene';
 import type { Settings } from '../../ui/settings';
+import { TrainRumble } from '../../audio/sceneVoices';
 import { EngineVoice, audioHub } from '../../audio/engineAudio';
 import { Sfx } from '../../audio/sfx';
+import { CityAmbience, ambienceTraits } from '../../audio/cityAmbience';
 import { manifestCar } from '../../render/car/carAssets';
 import type { Snap } from './snap';
 
@@ -28,6 +30,9 @@ export class SessionAudio {
   /** Last heard excitement and last cheer time (s) per crowd section spot. */
   private readonly sectionLevel: number[] = [];
   private readonly sectionCheerAt: number[] = [];
+  /** The city's hum, wind and distant one-shots; made on the first frame after a user gesture. */
+  private ambience: CityAmbience | null = null;
+  private ambienceTried = false;
   /** Headlight flash level driven by the horn (render side only). */
   private flash = 0;
 
@@ -63,6 +68,13 @@ export class SessionAudio {
       const g = this.race.cars[i].tuning.geometry;
       return { x: p.x, z: p.z, yaw: p.yaw, vx: p.vx, vz: p.vz, nitro: p.nitro, halfLength: g.halfLength, halfWidth: g.halfWidth };
     });
+    // The city bed: scene clock, camera height, and the player's pedal (it ducks under the engine). A pause lets it fade out.
+    if (!this.ambience && !this.ambienceTried) {
+      const w = this.race.world;
+      this.ambience = CityAmbience.create(ambienceTraits(w.seed, this.night.weather.mood, w.areas));
+      this.ambienceTried = this.ambience !== null || !TrainRumble.blocked();
+    }
+    if (!paused) this.ambience?.update(time, dt, camera.position.y, poses[0].throttle);
     this.sfx?.updateCars(cars, this.race.world, dt, paused);
     // Crowds react to the racers' (sim) poses and are heard from the camera.
     const cc = this.crowdCars;
@@ -119,5 +131,6 @@ export class SessionAudio {
     this.engines.forEach((e) => e.dispose());
     this.night.city.finishLine.onFirework = null;
     this.sfx?.dispose();
+    this.ambience?.dispose();
   }
 }

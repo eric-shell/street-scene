@@ -1,6 +1,6 @@
 # The audio mix
 
-How every sound in the game is balanced against the others, what the player can set, and how the balance is kept as sounds are added. Code: `src/audio/engineAudio.ts` (`AudioHub`, the mixer: buses, calibration, levels, the limiter), `src/audio/sfx.ts` (the effects player; the drive's levels are at the top of `sfxVoices.ts`, the crowd clips' in `crowdAudio.ts`, the train, helicopter and thunder voices' in `sceneVoices.ts`), `src/audio/uiSound.ts` (menu sounds), `src/audio/musicPlayer.ts` (music, on its own element). Guard: `e2e/audioMix.spec.ts`. The engine voices themselves are in [engineSound.md](engineSound.md).
+How every sound in the game is balanced against the others, what the player can set, and how the balance is kept as sounds are added. Code: `src/audio/engineAudio.ts` (`AudioHub`, the mixer: buses, calibration, levels, the limiter), `src/audio/sfx.ts` (the effects player; the drive's levels are at the top of `sfxVoices.ts`, the crowd clips' in `crowdAudio.ts`, the train, helicopter and thunder voices' in `sceneVoices.ts`, the city bed's in `cityAmbience.ts`), `src/audio/uiSound.ts` (menu sounds), `src/audio/musicPlayer.ts` (music, on its own element). Guard: `e2e/audioMix.spec.ts`. The engine voices themselves are in [engineSound.md](engineSound.md).
 
 ## Buses and settings
 
@@ -16,7 +16,7 @@ music (an <audio> element, its own volume)
 |---|---|---|
 | engine | every `EngineVoice` (player and rivals) | Engine |
 | effects | impacts (car, wall, barrier, rail, props), scrapes, nitrous, horn, countdown beeps, fireworks | Effects |
-| ambience | crowd beds and cheers, train rumble, helicopters, thunder, the crossing bell | Ambience |
+| ambience | crowd beds and cheers, train rumble, helicopters, thunder, the crossing bell, the city bed (hum, wind, distant one-shots) | Ambience |
 | interface | menu ticks, presses, blips, whooshes, the wipe, the garage door | Interface |
 | master | the four above | Master |
 | music | the player | Music (in the player and here) |
@@ -59,6 +59,7 @@ Measured at the output with every level at its default, each source alone and ri
 | thunder, 200 m | −11 (peak −2) | −19 | −18 | level with the engine, the loudest thing it should be |
 | thunder, 1800 m | −13 | −25 | −25 | it was as loud as near; the distance curve now falls to a tenth at three times `near` |
 | crossing bell | −25 | −24 | −24 | |
+| city bed (clear night, hum and mains rumble) | none | −33.5 | −34 | 15 dB under the engine and 10 under a crowd bed: you notice it only when it stops. The wind (hazy, misty), rain hiss and the one-shots are trimmed to the same neighbourhood; the one-shots (a far siren, horn, dog, bottle, shutter, El train horn, gulls) are far and dulled by distance, and the bed ducks 30% (3 dB) under the player's full throttle |
 | menu press (peak) | −31 | −15 (RMS −32) | −32 | a click peaks over the music's −26; short sounds read low as RMS |
 | menu hover tick (peak) | −44 | −28 (RMS −48) | −48 | under the press, so sweeping a list is not a rattle |
 | menu step whoosh (peak) | −40 | −19 (RMS −32) | −32 | |

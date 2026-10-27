@@ -31,6 +31,8 @@
  * street) and free roam clear the line back to the one car.
  */
 import * as THREE from 'three';
+import { CityAmbience, ambienceTraits } from '../audio/cityAmbience';
+import { TrainRumble } from '../audio/sceneVoices';
 import type { World } from '../city/world';
 import { routeSample, type Route } from '../city/route';
 import { createNightScene, type GameRenderer, type NightScene } from '../render/scene';
@@ -130,6 +132,9 @@ export class StreetStage {
   private readonly carLight: KeyLight | null;
   /** The scene is out on loan to a free roam session (lend). */
   private lent = false;
+  /** The city's ambience bed (audio/cityAmbience.ts), made on the first step after a user gesture. */
+  private ambience: CityAmbience | null = null;
+  private ambienceTried = false;
   private readonly sample = newPathSample();
   private readonly focus = new THREE.Vector3();
   private accel = 0;
@@ -372,6 +377,12 @@ export class StreetStage {
     this.carLight?.follow(p);
     this.night.lighting.update(opts.focus ?? this.focus.set(p.x, p.y, p.z));
     this.night.update(this.time);
+    // The same city bed as a race, on the stage clock (silent while lent to a free roam session, which has its own).
+    if (!this.ambience && !this.ambienceTried) {
+      this.ambience = CityAmbience.create(ambienceTraits(this.world.seed, this.night.weather.mood, this.world.areas));
+      this.ambienceTried = this.ambience !== null || !TrainRumble.blocked();
+    }
+    this.ambience?.update(this.time, dt, opts.focus?.y ?? this.pose.y, 0);
     // The street furniture's own clock: the traffic signals, the props the cars knock over, debris and spray.
     this.knockProps();
     this.night.props.update(dt, this.time, this.broken, this.motions);
@@ -521,6 +532,7 @@ export class StreetStage {
     this.dropConvoy();
     this.lead.view?.dispose();
     this.lead.view = null;
+    this.ambience?.dispose();
     this.night.dispose();
   }
 }

@@ -38,6 +38,7 @@ const TARGETS: Record<string, [rms: number, tolerance: number]> = {
   thunderNear: [-18, 3],
   thunderFar: [-25, 4],
   bell: [-24, 3],
+  cityBed: [-34, 3],
   uiPress: [-32, 3],
   uiTick: [-48, 5],
   uiWhoosh: [-32, 3],
@@ -130,6 +131,9 @@ test('every sound sits where the mix puts it', async ({ page }) => {
     const bell = bellMod.WarningBell.create(); tap = bell.out; scale = MASTER * BUS;
     const bellRun = (async () => { const end = performance.now() + 1800; while (performance.now() < end) { bell.update(1, 0); await sleep(30); } })();
     await sleep(600); results.bell = await measure(900); await bellRun; await sleep(900);
+    const bed = (await import('/src/audio/cityAmbience.ts')).CityAmbience.create({ seed: 20261019, mood: 'clear', el: false, water: false }); tap = bed.out; scale = MASTER * BUS;
+    const bedRun = (async () => { const end = performance.now() + 2400; let t = 0; while (performance.now() < end) { t += 0.03; bed.update(t, 0.03, 0, 0); await sleep(30); } })();
+    await sleep(900); results.cityBed = await measure(900); await bedRun; bed.dispose(); await sleep(500);
     const voice = new audio.EngineVoice(manifest.cars.find((c) => c.id === 'protoHatch').engine, 0.26);
     tap = voice.pan; scale = MASTER * BUS;
     const drive = async (rpm, load, ms) => { const end = performance.now() + ms; let last = performance.now(); while (performance.now() < end) { const now = performance.now(); voice.update({ rpm, redline: 7200, throttle: load, nitro: false, proximity: 1, pan: 0, dt: (now - last) / 1000 }); last = now; await sleep(16); } };
@@ -162,6 +166,7 @@ test('every sound sits where the mix puts it', async ({ page }) => {
   const rms = (n: string) => db(levels[n].rms);
   expect(rms('crowdLoop'), 'a crowd bed stays under the engine').toBeLessThan(rms('engineMid') - 3);
   expect(rms('train'), 'a train bed stays under the engine').toBeLessThan(rms('engineMid') - 3);
+  expect(rms('cityBed'), 'the city bed sits well under the engine and the crowd').toBeLessThan(rms('crowdLoop') - 6);
   expect(db(levels.crash20.peak), 'a hard crash tops the engine').toBeGreaterThan(db(levels.engineMid.peak));
   expect(rms('thunderFar'), 'far thunder is far').toBeLessThan(rms('thunderNear') - 5);
   expect(db(levels.uiPress.peak), 'a menu press peaks over the menu music').toBeGreaterThan(-26);
