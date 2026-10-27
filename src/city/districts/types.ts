@@ -414,6 +414,30 @@ export interface DistrictModule {
   passes?(g: RoadGraph, area: Area): RoutePass[];
 }
 
+/** areaAt priority: more specific kinds win where footprints overlap. */
+export const AREA_PRIORITY: Record<AreaKind, number> = {
+  downtown: 1,
+  hills: 2,
+  park: 3,
+  subway: 4,
+  alley: 5,
+  backAlley: 6,
+  river: 7,
+  roundabout: 8,
+  infill: 9,
+  monument: 10,
+  tunnel: 11,
+  overpass: 4,
+  market: 11,
+  roadworks: 11,
+  bluff: 3,
+  carPark: 11,
+  parkingLot: 8,
+  highway: 4,
+  waterfront: 2,
+  lake: 2,
+};
+
 /** Minimap look per kind (ui/hud/hud.ts). Colors are CSS strings, widths in meters. */
 export interface AreaMapStyle {
   fill?: string;

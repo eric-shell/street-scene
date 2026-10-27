@@ -92,7 +92,6 @@ export const parkingLotModule: DistrictModule = {
       const lo = bayLo(bay);
       const hi = bayHi(bay);
       b.hints.push({ kind: 'mouth', points: bay.polygon, values: [c.road, c.side, c.s0, c.s1, c.taper] });
-      b.hints.push({ kind: 'lotCut', points: [], values: [c.road] });
       for (let s = lo; s <= hi + 1e-6; s += 2) for (const v of [0.6, depth / 2, depth - 0.6]) if (v < bayInset(bay, s) + 0.6) b.reserved.push({ ...bayPoint(bay, s, v), r: 1.2 });
     }
     return b;
