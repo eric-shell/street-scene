@@ -224,8 +224,12 @@ export function aiInput(r: RaceState, rc: RaceCar): InputFrame {
   ai.watchTime += DT;
   let noProgress = false;
   if (ai.watchTime >= AI.progressWindow) {
-    noProgress = rc.dist - ai.watchDist < AI.progressMin;
+    // Down a shortcut the race credits the skipped stretch only at the exit, and the alley may run
+    // against the nearest street: progress there is the alley's own samples passed, so a car rocking
+    // against a wall in it (too fast for the stuck timer) still gets reset.
+    noProgress = ai.detour >= 0 ? ai.didx === ai.watchIdx : rc.dist - ai.watchDist < AI.progressMin;
     ai.watchDist = rc.dist;
+    ai.watchIdx = ai.didx;
     ai.watchTime = 0;
   }
   if (gate.waiting) {
@@ -236,10 +240,8 @@ export function aiInput(r: RaceState, rc: RaceCar): InputFrame {
     ai.blocked = 0;
     noProgress = false;
   }
-  if (ai.detour >= 0 || plan.queued) {
-    // Down a shortcut the race credits the skipped stretch only at the exit, and the alley may run
-    // against the nearest street; in a queue the pace is the car ahead's: no progress to judge (the
-    // stuck timer still is).
+  if (plan.queued) {
+    // In a queue the pace is the car ahead's: no progress to judge (the stuck timer still is).
     ai.watchTime = 0;
     ai.watchDist = rc.dist;
     noProgress = false;

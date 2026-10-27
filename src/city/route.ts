@@ -99,11 +99,11 @@ export interface RouteShortcut {
  * A way off the streets a route takes (districts/monument.ts: across the monument plaza, round the
  * landmark or through the arch). Anchored at route node `node`: the driving polyline leaves the
  * street at a point `a` m from the node and rejoins it `b` m from `node2` (the node itself unless
- * given), following `points`, side A's street point first. `a` is measured back along `edgeA`
- * when positive, on along `edgeB` when negative (a pass that leaves and rejoins the same street);
- * `b` on along `edge2` (`edgeB` unless given). The route takes the pass when it drives through the
- * node between `edgeA` and `edgeB` (either way round; `edgeA` -1 matches any edge: the route only
- * has to run along `edgeB` there). A U cut names `node2`, the next junction the route turns at,
+ * given), following `points`, side A's street point first. `a` is measured back along `edgeA`,
+ * `b` on along `edge2` (`edgeB` unless given), so a pass always rejoins another street than the
+ * one it left (one back onto the same street is a cut a racer skips by driving straight on). The
+ * route takes the pass when it drives through the node between `edgeA` and `edgeB` (either way
+ * round). A U cut names `node2`, the next junction the route turns at,
  * and `edge2`, the street it leaves it by: both junctions give way to the pass. The graph is
  * untouched, so barriers, rails and progress by road still see the corner; only the racing line
  * cuts it. With `start`, a circuit may put its start line on the pass (buildRoute,
@@ -521,9 +521,8 @@ function takePass(g: RoadGraph, kind: RouteKind, nodes: number[], edges: number[
   if (i < 0 || waypoints.includes(p.node) || (!closed && (i === 0 || i === n - 1))) return;
   const eIn = edges[(i - 1 + m0) % m0];
   const eOut = edges[i % m0];
-  const any = p.edgeA < 0;
-  const fwd = eOut === p.edgeB && (any ? eIn !== p.edgeB : eIn === p.edgeA);
-  if (!fwd && !(eIn === p.edgeB && (any ? eOut !== p.edgeB : eOut === p.edgeA))) return;
+  const fwd = eOut === p.edgeB && eIn === p.edgeA;
+  if (!fwd && !(eIn === p.edgeB && eOut === p.edgeA)) return;
   const node2 = p.node2 ?? p.node;
   const k = nodePoint.get(p.node);
   const k2 = nodePoint.get(node2);
@@ -555,8 +554,7 @@ function takePass(g: RoadGraph, kind: RouteKind, nodes: number[], edges: number[
   const j = (fwd ? segA : segB) + 1;
   const m = fwd ? segB : segA;
   if (j < 1 || m + 2 > points.length || j > m + 1) return;
-  // Never into a pass already taken (a corner pass and a chicane along the same side both offered
-  // to this route): the first stands.
+  // Never into a pass already taken (two districts' passes offered along the same streets): the first stands.
   if (taken.some((t) => j <= t.to + 1 && m >= t.from - 1)) return;
   for (const [id, q] of nodePoint) {
     if (q < j || q > m || id === p.node || id === node2 || isBendNode(g, id)) continue;

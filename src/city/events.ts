@@ -43,7 +43,7 @@ import { turnAngle } from './route';
 import type { RoutePreference } from './routeSearch';
 import type { Area, HeightSample, PlanContext } from './districts/types';
 import { hillAt, hillSiteEdges, shapeOf } from './districts/hills';
-import { TOUR_REACH, monumentSites, plazaSides, plazaWraps } from './districts/monument';
+import { TOUR_REACH, monumentSites, plazaCorners, plazaSides, plazaWraps } from './districts/monument';
 import { parkCorners } from './districts/park';
 import { riverCenter } from './districts/river';
 import { Rng, deriveSeed } from '../sim/prng';
@@ -451,9 +451,10 @@ function openGround(v: Venue): boolean[] {
  * dive (every flavour but River Run, where the channel exists), a run over
  * the bluff's level crossing (where there is one, districts/bluff.ts) add one
  * each, and a block that can hold the monument plaza (where the monument is
- * enabled) one for a run along a side, two for wrapping it (a route along,
- * round or wrapping such a block gets a race pass across the plaza,
- * districts/monument.ts), so a route with everything wins, then the flavour
+ * enabled) one for a turn round one of its corners, two for wrapping it (a
+ * route turning round or wrapping such a block gets a race pass across the
+ * plaza, districts/monument.ts; one only running along a side gets none, as
+ * a pass off a street and back onto it is skipped by driving straight on), so a route with everything wins, then the flavour
  * alone, then the side wishes alone.
  */
 export function eventRoutePreference(id: EventFlavourId, ctx: SiteContext, closed: boolean): RoutePreference {
@@ -465,24 +466,31 @@ export function eventRoutePreference(id: EventFlavourId, ctx: SiteContext, close
   const cross = v.crossings.size > 0;
   const crosses = (edges: number[]) => edges.some((e) => v.crossings.has(e));
   const plazaStreets = CITY.districts.monument.enabled ? plazaSides(ctx, TOUR_REACH) : new Set<number>();
-  // The parks' race passes share the wish: a turn round a corner of a block that can hold a park (park.ts).
-  if (CITY.districts.park.enabled) for (const k of parkCorners(ctx)) plazaStreets.add(k.eA).add(k.eB);
+  // The corners a route may turn round for a pass: the plaza's, and the parks' (their race passes share the wish, park.ts).
+  const corners = [...(CITY.districts.monument.enabled ? plazaCorners(ctx, TOUR_REACH) : []), ...(CITY.districts.park.enabled ? parkCorners(ctx) : [])];
+  const turnKey = (node: number, a: number, b: number) => `${node}:${Math.min(a, b)}:${Math.max(a, b)}`;
+  const turns = new Set(corners.map((k) => turnKey(k.node, k.eA, k.eB)));
+  for (const k of corners) plazaStreets.add(k.eA).add(k.eB);
   const plaza = plazaStreets.size > 0;
   const wraps = plaza ? plazaWraps(ctx, TOUR_REACH) : new Set<string>();
   // The plaza wish: 2 for wrapping a block (turning at both ends of one of its sides: a U cut
-  // straight across the plaza), 1 for running along a side (a chicane or a corner pass).
+  // straight across the plaza), 1 for turning round one of its corners (a corner pass). Running
+  // along a side alone earns nothing: no pass may leave a street and come back onto it.
   const plazaWish = (nodes: number[], edges: number[]) => {
     if (!edges.some((e) => plazaStreets.has(e))) return 0;
     const n = nodes.length;
+    const m = edges.length;
     const turning = (i: number) => (closed || (i > 0 && i < n - 1)) && abs(turnAngle(g, nodes[(i - 1 + n) % n], nodes[i], nodes[(i + 1) % n])) > ROUTE.passStraightDeg * DEG;
+    let corner = false;
     let prev = -1;
     for (let i = 0; i < n + (closed ? 1 : 0); i++) {
       const id = nodes[i % n];
       if (isBendNode(g, id)) continue;
       if (prev >= 0 && turning(prev) && turning(i % n) && wraps.has(`${Math.min(nodes[prev], id)}-${Math.max(nodes[prev], id)}`)) return 2;
+      if (!corner && i < n && turning(i) && turns.has(turnKey(id, edges[(i - 1 + m) % m], edges[i % m]))) corner = true;
       prev = i % n;
     }
-    return 1;
+    return corner ? 1 : 0;
   };
   const sides = (dive ? 1 : 0) + (cross ? 1 : 0) + (plaza ? 2 : 0);
   const rate = (nodes: number[]) => {

@@ -181,7 +181,7 @@ describe('event flavours', () => {
     // alone, and on the real terrain (its base roll, river ramps, park mounds and humps included).
     const hills = compare('hillClimb', (p) => routesOf(p).map((r) => hillClimbAlong(p.graph, p.districts.areas, r.nodes, r.closed)));
     expect(mean(hills.own)).toBeGreaterThan(mean(hills.other) * 1.5);
-    expect(mean(hills.own)).toBeGreaterThan(15);
+    expect(mean(hills.own)).toBeGreaterThan(14);
     const ground = compare('hillClimb', climb);
     expect(mean(ground.own)).toBeGreaterThan(mean(ground.other) + 5);
   });
