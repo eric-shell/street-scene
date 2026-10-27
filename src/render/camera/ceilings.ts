@@ -28,6 +28,7 @@ import { carParkGeo } from '../../city/districts/carPark';
 import { garageSpan } from '../districts/carPark';
 import { bridgesOf, distToBridge, riverL } from '../../city/districts/river';
 import { deckUndersideAt } from '../districts/river';
+import { pointInPolygon } from '../../city/districts/geom';
 
 /** Room kept between the camera and a ceiling or a deck (m): the near plane and a little air. */
 export const CEILING_MARGIN = 0.45;
@@ -40,7 +41,14 @@ interface Overhead {
   maxZ: number;
   /** Writes the underside and top (m) at (x, z) into span; returns false outside the solid's footprint. */
   at(x: number, z: number, span: { bottom: number; top: number }): boolean;
+  /** A tunnel bore: what exposureOverhead reports as 'tunnel' rather than 'covered'. */
+  tunnel?: true;
+  /** Zone only (the El's deck): exposureOverhead reads it, clampCeiling skips it (its underside is not modelled). */
+  zoneOnly?: true;
 }
+
+/** What is over a point, for the exposure adaptation (render/exposure.ts). */
+export type Overhang = 'open' | 'covered' | 'tunnel';
 
 const cache = new WeakMap<World, Overhead[]>();
 const span = { bottom: 0, top: 0 };
@@ -72,6 +80,7 @@ function build(world: World): Overhead[] {
       const corners = [-1, 1].flatMap((su) => [-1, 1].map((sv) => ({ x: t.cx + t.ux * su * cover - t.uz * sv * t.front, z: t.cz + t.uz * su * cover + t.ux * sv * t.front })));
       out.push({
         ...bbox(corners, 1),
+        tunnel: true,
         at(x, z, s) {
           const l = toLocal(t, x, z);
           if (Math.abs(l.u) > cover || Math.abs(l.v) > t.front) return false;
@@ -94,6 +103,19 @@ function build(world: World): Overhead[] {
           if (along < 0 || along > v.length || Math.abs(lat) > v.half + 0.3) return false;
           s.bottom = line.a + line.b * along;
           s.top = s.bottom + v.depth + 1.1;
+          return true;
+        },
+      });
+    } else if (a.kind === 'subway' && a.variant === 'elevated') {
+      // The El's deck outline: the street under it is covered (exposure only; the cameras clear it by height).
+      const poly = a.polygon;
+      out.push({
+        ...bbox(poly, 1),
+        zoneOnly: true,
+        at(x, z, s) {
+          if (!pointInPolygon(x, z, poly)) return false;
+          s.bottom = Infinity;
+          s.top = Infinity;
           return true;
         },
       });
@@ -187,14 +209,35 @@ function build(world: World): Overhead[] {
   return out;
 }
 
+function overheadsOf(world: World): Overhead[] {
+  let list = cache.get(world);
+  if (!list) cache.set(world, (list = build(world)));
+  return list;
+}
+
+/**
+ * What is over the point (x, y, z): a tunnel bore, another cover (viaduct, highway deck, bridge, garage
+ * level, the El) or open sky. Bounding boxes first, so a typical frame runs a handful of box tests and,
+ * only inside one, the solid's own test. No allocation.
+ */
+export function overheadAt(world: World, x: number, y: number, z: number): Overhang {
+  let zone: Overhang = 'open';
+  for (const o of overheadsOf(world)) {
+    if (x < o.minX || x > o.maxX || z < o.minZ || z > o.maxZ) continue;
+    if (!o.at(x, z, span) || y >= span.bottom) continue;
+    if (o.tunnel) return 'tunnel';
+    zone = 'covered';
+  }
+  return zone;
+}
+
 /**
  * Move `pos` out of any overhead solid it is inside (with CEILING_MARGIN of
  * air): down under it when that is the nearer way out, else up over it.
  */
 export function clampCeiling(world: World, pos: THREE.Vector3, margin = CEILING_MARGIN): void {
-  let list = cache.get(world);
-  if (!list) cache.set(world, (list = build(world)));
-  for (const o of list) {
+  for (const o of overheadsOf(world)) {
+    if (o.zoneOnly) continue;
     if (pos.x < o.minX || pos.x > o.maxX || pos.z < o.minZ || pos.z > o.maxZ) continue;
     if (!o.at(pos.x, pos.z, span)) continue;
     const lo = span.bottom - margin;
