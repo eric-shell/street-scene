@@ -311,13 +311,19 @@ describe('setup sliders', () => {
       return c.speed - v0;
     };
     expect(exit(tuned('protoHatch', 'differential', 1))).toBeLessThan(exit(tuned('protoHatch', 'differential', 3)) * 0.85);
-    // A handbrake flick into a powered slide (RWD): the open axle cannot keep the rear spinning.
+    // A handbrake flick into a powered slide (RWD), held flat out with counter steer: the open axle cannot
+    // keep the rear spinning.
     const drift = (t: CarTuning) => {
       const c = rollTo(t, 70);
       let held = 0;
+      let last = 0;
       for (let i = 0; i < 240; i++) {
         const flick = i < 21;
-        stepCar(c, t, input({ steer: flick ? 1 : 0.25 * Math.sign(c.slipAngle || 1), handbrake: flick, throttle: flick ? 0.5 : 0.75 }), { world });
+        // Leading on how fast the angle moves, as a driver catches a swing.
+        const ahead = c.slipAngle + 0.25 * (c.slipAngle - last) * 60;
+        last = c.slipAngle;
+        const counter = Math.max(-1, Math.min(1, -ahead / ((40 * Math.PI) / 180)));
+        stepCar(c, t, input({ steer: flick ? 1 : counter, handbrake: flick, throttle: flick ? 0.5 : 1 }), { world });
         if (Math.abs(c.slipAngle) > (15 * Math.PI) / 180) held++;
       }
       return held / 60;

@@ -99,10 +99,20 @@ run('D. launch', [
 /** Slip angle the driver aims for in a held drift. */
 const TARGET = 30 * DEG;
 
-/** Counter steer toward the direction of travel and throttle on the slip error: a drifter holding `TARGET`. */
-function drifter(c: CarState): InputFrame {
-  const err = TARGET - Math.abs(c.slipAngle);
-  return inp({ steer: counter(c), throttle: Math.max(0, Math.min(1, 0.65 + 4 * err)) });
+/**
+ * A drifter holding `TARGET`: counter steer toward the direction of travel and throttle on the slip error,
+ * both leading on how fast the angle is changing (a driver catches a swing before it arrives), up to full
+ * lock. Each scenario gets its own (it remembers the last tick's slip).
+ */
+function makeDrifter(): (c: CarState) => InputFrame {
+  let last = 0;
+  return (c) => {
+    const rate = (c.slipAngle - last) * 60;
+    last = c.slipAngle;
+    const ahead = c.slipAngle + 0.25 * rate;
+    const err = TARGET - Math.abs(ahead);
+    return inp({ steer: Math.max(-1, Math.min(1, -ahead / (40 * DEG))), throttle: Math.max(0, Math.min(1, 0.65 + 4 * err)) });
+  };
 }
 
 /** Up to speed in a straight line. */
@@ -127,6 +137,7 @@ function linkedDrifts(): string {
   const c = createCar(0, 0, 0, 0);
   upTo(c, 80);
   for (let i = 0; i < 20; i++) stepCar(c, t, inp({ throttle: 0.6, steer: -1, handbrake: true }), { world });
+  let drifter = makeDrifter();
   let held1 = 0;
   const v0 = c.speed;
   for (let i = 0; i < 120; i++) {
@@ -140,11 +151,14 @@ function linkedDrifts(): string {
   let worst = 0;
   let held2 = 0;
   // The flick: a lift with the lock thrown the new way (the entry turned at -1), then power with the lock
-  // held until the rear swings through past 15°, then the drifter holds it.
+  // held until the rear swings through the middle, then the drifter catches and holds it.
   let swung = false;
   for (let i = 0; i < 240; i++) {
     const flicking = i < 12;
-    if (!swung && Math.sign(c.slipAngle) === -side && Math.abs(c.slipAngle) > 15 * DEG) swung = true;
+    if (!swung && !flicking && Math.sign(c.slipAngle) === -side && Math.abs(c.slipAngle) > 3 * DEG) {
+      swung = true;
+      drifter = makeDrifter();
+    }
     stepCar(c, t, flicking ? inp({ steer: 1 }) : swung ? drifter(c) : inp({ steer: 1, throttle: 1 }), { world });
     if (process.env.TRACE && i % 6 === 0) console.log(row(c, i));
     const other = Math.sign(c.slipAngle) === -side;

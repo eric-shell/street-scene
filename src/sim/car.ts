@@ -114,6 +114,8 @@ export interface CarState {
   lineLock: boolean;
   /** The antilag button has been held since the last line lock: the launch it lets go into is not antilag. */
   lineLockHeld: boolean;
+  /** The clutch is out for the handbrake (or still out through a shift after it): letting go dumps it (dumpClutch). */
+  clutchOut: boolean;
   antilag: boolean;
   boost: number;
   antilagHold: number;
@@ -189,6 +191,7 @@ export function createCar(x: number, z: number, yaw: number, y: number): CarStat
     twoStepCut: 0,
     lineLock: false,
     lineLockHeld: false,
+    clutchOut: false,
     antilag: false,
     boost: 0,
     antilagHold: 0,
@@ -233,7 +236,7 @@ export function placeCar(c: CarState, x: number, z: number, yaw: number, world: 
   c.clutchKick = 0;
   c.twoStepCut = 0;
   c.antilagHold = 0;
-  c.lineLock = c.lineLockHeld = c.antilag = false;
+  c.lineLock = c.lineLockHeld = c.clutchOut = c.antilag = false;
   c.spinFront = c.spinRear = 0;
   c.wheelSpeedFront = c.wheelSpeedRear = 0;
   c.gear = 1;
@@ -364,7 +367,9 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
       if (c.gear < nGears && rpmNow > up && vLong > 0) {
         c.gear++;
         c.shiftTimer = t.gearbox.shiftTime;
-      } else if (c.gear > 1 && rpmNow < t.gearbox.downshiftRpmFrac * t.engine.redline && wheelRpm(t, c.gear - 1, speed) < up * 0.9) {
+      } else if (c.gear > 1 && !(c.wheelspin && inp.throttle > 0.5) && rpmNow < t.gearbox.downshiftRpmFrac * t.engine.redline && wheelRpm(t, c.gear - 1, speed) < up * 0.9) {
+        // (A powered slide holds its gear, as a drifter does: the spinning wheels keep the revs up, and a
+        // downshift's clutch would hook them back up.)
         c.gear--;
         c.shiftTimer = t.gearbox.shiftTime * 0.6;
       }
@@ -393,6 +398,13 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
   // The handbrake locks the rear wheels, so a drivetrain that turns them drops the clutch (as Forza does):
   // the engine revs free and lets go with a bang on release. A front drive car keeps driving through it.
   const clutchIn = inp.handbrake && split.rear > 0;
+  // Letting the handbrake go drops the clutch on the revving engine: the flywheel's spin goes into the
+  // stopped rear (a shift in between waits for the clutch).
+  if (c.clutchOut && !clutchIn && c.shiftTimer === 0) {
+    if (c.gear > 0) dumpClutch(c, t, split, gearing);
+    c.clutchOut = false;
+  }
+  if (clutchIn) c.clutchOut = true;
   // In gear the engine turns with the driven wheels, spinning or not: wheelspin takes it to the limiter.
   const axleSpeed = split.front > 0 && split.rear > 0 ? (c.wheelSpeedFront + c.wheelSpeedRear) / 2 : split.front > 0 ? c.wheelSpeedFront : c.wheelSpeedRear;
   const axleRpm = (abs(axleSpeed) / t.geometry.wheelRadius) * gearing * RPM_PER_RADS;
@@ -531,6 +543,23 @@ function lineLockSplit(t: CarTuning): { front: number; rear: number } {
   if (t.drivetrain.layout !== 'awd') return split;
   const front = split.front * (1 - t.launch.lineLockRearShare);
   return { front, rear: 1 - front };
+}
+
+/**
+ * The clutch dropped on a revving engine (the handbrake let go): the flywheel, crank and clutch, geared to
+ * each driven axle by its share, and that axle's wheels meet at the speed that keeps their angular
+ * momentum, so the engine's spin lights up the wheels as it does off a real handbrake. The engine then
+ * turns with them (stepCar's rpm follows the axles). An axle already turning faster than the engine keeps
+ * its speed.
+ */
+function dumpClutch(c: CarState, t: CarTuning, split: { front: number; rear: number }, gearing: number): void {
+  const R = t.geometry.wheelRadius;
+  const tread = (c.rpm / RPM_PER_RADS / gearing) * R;
+  const Ie = t.engine.inertia * gearing * gearing;
+  const Iw = 2 * t.traction.wheelInertia;
+  const meet = (ws: number, share: number) => (share > 0 && tread > ws ? (Ie * share * tread + Iw * ws) / (Ie * share + Iw) : ws);
+  c.wheelSpeedFront = meet(c.wheelSpeedFront, split.front);
+  c.wheelSpeedRear = meet(c.wheelSpeedRear, split.rear);
 }
 
 /**
@@ -855,7 +884,11 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
 
   c.vx += (Fwx / m) * h;
   c.vz += (Fwz / m) * h;
-  c.yawRate += ((torque - t.drift.yawDamping * c.yawRate) / Iz) * h;
+  // Yaw damping is a stability layer for driving on the grip (Standard steering's): it fades out as the body
+  // slides past the tires' peak slip angle toward the full slide, down to yawDampingSlide of itself, so a
+  // drift's rotation is the tires' and the driver's to hold.
+  const slide = speed > 3 ? smoothstep(t.tires.peakSlipDeg * DEG, t.tires.fullSlideDeg * DEG, abs(atan2(vLat, abs(vLong)))) : 0;
+  c.yawRate += ((torque - t.drift.yawDamping * lerp(1, t.drift.yawDampingSlide, slide) * c.yawRate) / Iz) * h;
 
   // ---- drift aids ----
   const vLongN = c.vx * fx + c.vz * fz;

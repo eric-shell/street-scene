@@ -54,17 +54,25 @@ describe('car physics', () => {
     // Flick: steer left with the handbrake.
     for (let i = 0; i < 30; i++) stepCar(c, t, input({ throttle: 0.6, steer: -1, handbrake: true }), { world });
     expect(Math.abs(c.slipAngle)).toBeGreaterThan(15 * DEG);
-    // Hold it with counter steer and throttle.
+    // Hold it with counter steer and throttle, as a driver does: both leading on how fast the angle moves
+    // (the aids no longer hold a slide's angle, so a driver who does not catch it spins).
     let drifting = 0;
+    let last = c.slipAngle;
+    let worst = 0;
     for (let i = 0; i < 90; i++) {
-      const counter = Math.max(-1, Math.min(1, -c.slipAngle / (25 * DEG)));
-      stepCar(c, t, input({ throttle: 0.85, steer: counter * 0.6 }), { world });
+      const ahead = c.slipAngle + 0.25 * (c.slipAngle - last) * 60;
+      last = c.slipAngle;
+      const counter = Math.max(-1, Math.min(1, -ahead / (40 * DEG)));
+      stepCar(c, t, input({ throttle: Math.max(0, Math.min(1, 0.65 + 4 * (30 * DEG - Math.abs(ahead)))), steer: counter }), { world });
       if (c.drifting) drifting++;
+      worst = Math.max(worst, Math.abs(c.slipAngle));
     }
     expect(drifting).toBeGreaterThan(45);
-    // Drifts keep most of their speed and never spin out.
+    // Drifts keep most of their speed and, held, never go round: this long a pull over-rotates the car
+    // (85° on base), and the anti spin aid past maxSlipDeg catches it short of a spin.
     expect(c.speed).toBeGreaterThan(entry * 0.5);
-    expect(Math.abs(c.slipAngle)).toBeLessThan(70 * DEG);
+    expect(worst).toBeLessThan(90 * DEG);
+    expect(c.vx * Math.sin(c.yaw) + c.vz * Math.cos(c.yaw)).toBeGreaterThan(0);
   });
 
   it('brakes to a stop and reverses', () => {
@@ -299,6 +307,7 @@ describe('driving parameters file', () => {
       brakes: { ...exported.tuning.brakes, force: 16250, frontBias: 0.68 },
       steering: { ...exported.tuning.steering, counterSteerAllowance: 1 },
       yawInertiaScale: 0.75,
+      drift: { ...exported.tuning.drift, maxSlipDeg: 70 },
       tires: { ...exported.tuning.tires, gripFront: 1.82, gripRear: 1.54, slideGrip: 0.58, slideGripLong: 0.6 },
       nitrous: { ...exported.tuning.nitrous, capacity: 3.6, force: 5500, torqueMul: 1.35 },
     };
@@ -454,6 +463,23 @@ describe('drifting and the handbrake', () => {
     return c;
   }
 
+  it('letting the handbrake go dumps the revving engine into the rear: the wheels light up at once', () => {
+    for (const id of SELECTABLE_CAR_IDS) {
+      const t = getBaseTuning(id);
+      const c = createCar(0, 0, 0, 0);
+      for (let i = 0; i < 240; i++) stepCar(c, t, input({ throttle: 1 }), { world });
+      for (let i = 0; i < 20; i++) stepCar(c, t, input({ throttle: 0.8, steer: -1, handbrake: true }), { world });
+      expect(c.wheelSpeedRear, id).toBeLessThan(1);
+      const revs = c.rpm;
+      stepCar(c, t, input({ throttle: 0.8, steer: -1 }), { world });
+      // The flywheel and the stopped wheels meet: the tread jumps most of the way to the road at once (past
+      // it on the rear drive coupe; an AWD car shares the flywheel with its front) and the engine is still
+      // near the revs it held (it gave up some of them, not all).
+      expect(c.wheelSpeedRear, id).toBeGreaterThan(forwardSpeed(c) * (driveSplit(t).front > 0 ? 0.6 : 1));
+      expect(c.rpm, id).toBeGreaterThan(revs * 0.6);
+    }
+  });
+
   it('throttle in a slide spins the rear wheels up to the limiter, and lifting hooks them back up', () => {
     const t = baseTuning();
     // The gearing this was written for: the retired Proto Compact's final drive, 4.32 on a 0.31 m tire.
@@ -466,20 +492,25 @@ describe('drifting and the handbrake', () => {
     let maxRpm = 0;
     let maxRatio = 0;
     let maxSpin = 0;
+    let maxSlip = 0;
+    // Flat out, counter steering against the slide (with the aids out of a slide's way, a driver who does
+    // not counter steer spins).
+    const counter = () => Math.max(-1, Math.min(1, -c.slipAngle / (40 * DEG)));
     for (let i = 0; i < 90; i++) {
-      stepCar(c, t, input({ throttle: 1, steer: 0.3 }), { world });
+      stepCar(c, t, input({ throttle: 1, steer: counter() }), { world });
       maxRpm = Math.max(maxRpm, c.rpm);
       maxRatio = Math.max(maxRatio, c.wheelSpeedRear / Math.max(1, forwardSpeed(c)));
       maxSpin = Math.max(maxSpin, c.spinRear);
+      maxSlip = Math.max(maxSlip, Math.abs(c.slipAngle));
     }
     // The engine is locked to the spinning wheels: it climbs toward the limiter (the stock car settles torque
     // limited just under it in first) with the tread well ahead of the road.
     expect(maxRpm).toBeGreaterThan(t.engine.redline * 0.85);
     expect(maxRatio).toBeGreaterThan(1.5);
     expect(maxSpin).toBe(1);
-    expect(Math.abs(c.slipAngle)).toBeGreaterThan(30 * DEG);
+    expect(maxSlip).toBeGreaterThan(30 * DEG);
     // Lift: the tires pull the wheels back to road speed within 0.6 s, even against first gear's inertia.
-    for (let i = 0; i < 36; i++) stepCar(c, t, input({ steer: 0.3 }), { world });
+    for (let i = 0; i < 36; i++) stepCar(c, t, input({ steer: counter() }), { world });
     expect(c.spinRear).toBe(0);
     expect(c.wheelSpeedRear / Math.max(1, forwardSpeed(c))).toBeLessThan(1.15);
     // Undriven front wheels never spin.

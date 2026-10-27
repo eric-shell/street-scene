@@ -139,11 +139,13 @@
       "resetLoss": 1
     },
     "drift": {
+      "_": "The aids (docs/handling.md, Simcade): yawDamping is a stability layer for driving on the grip, faded to yawDampingSlide of itself as the body slides from tires.peakSlipDeg to fullSlideDeg of slip, so a drift's angle is the tires' and the driver's; the anti spin aid (assistTorque) only acts past maxSlipDeg, when the car is going round.",
       "clutchKickTime": 0.45,
-      "maxSlipDeg": 55,
+      "maxSlipDeg": 70,
       "assistTorque": 22750,
       "yawDamping": 3250,
-      "yawDampingLowSpeed": 4
+      "yawDampingLowSpeed": 4,
+      "yawDampingSlide": 0.2
     },
     "surface": {
       "sidewalkGrip": 1,

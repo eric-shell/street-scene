@@ -121,6 +121,7 @@ export const PARAM_INFO: Record<string, ParamInfo> = {
   'drift.assistTorque': P(0, 60000, 250, 'Strength of the anti spin aid past maxSlipDeg. Higher = stronger catch.'),
   'drift.yawDamping': P(0, 8000, 50, 'Always on rotation damping. Higher = calmer, less twitchy car.'),
   'drift.yawDampingLowSpeed': P(0, 20, 0.1, 'Extra rotation damping below 3 m/s. Higher = no pirouettes at a crawl.'),
+  'drift.yawDampingSlide': P(0, 1, 0.05, 'Share of the rotation damping left in a full slide. Lower = drifts rotate freely, the driver holds the angle.'),
   'surface.sidewalkGrip': P(0.2, 1, 0.01, 'Grip multiplier on sidewalks. Lower = slippery curbs.'),
   'surface.offroadGrip': P(0.2, 1, 0.01, 'Grip multiplier off road. Lower = slippery dirt.'),
   'surface.offroadDrag': P(0, 3000, 10, 'Extra drag off road, N. Higher = dirt slows you down more.'),
