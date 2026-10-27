@@ -1531,3 +1531,59 @@ export const STREET_TREES = {
   /** Room kept from the road surface (m, beyond the trunk). */
   roadClear: 0.5,
 } as const;
+
+/**
+ * Plaza furnishing (districts/plazaDressing.ts): what a plaza holds beyond the clutter its theme scatters,
+ * by the size of the pocket (its shorter side, m) and, on the monument plaza, by its edge. Every count and
+ * spacing is a ceiling the layout trims against what is already standing: pieces are placed in the order
+ * centrepiece, lantern ring, trees, benches, planters, bollards, cart, news boxes, each skipped where it
+ * would crowd a piece placed before it. An alley's mouth pocket (a racer cuts across it into the alley)
+ * takes nothing solid or hard. All lengths in m.
+ */
+export const PLAZA = {
+  enabled: true,
+  /** Shorter side a pocket needs for: one tree in its back, the rows (trees, benches, planters, corner boxes), a centrepiece, the large plaza's cart, bollards and strings. */
+  minTree: 5.5,
+  minRows: 7,
+  minCentre: 9.5,
+  minLarge: 12,
+  /** Strings of festoon lights between a pocket's lanterns need this much floor (m^2). */
+  stringArea: 110,
+  /** Centrepiece: the share of roomy pockets that get one, the weights of its kinds, and the solid's radius and height per kind. A fountain is the infill's own (kit.fountainBasin). */
+  centre: {
+    chance: 0.85,
+    kinds: { fountain: 3, statue: 3, clock: 2, kiosk: 2 },
+    statue: { radius: 1, height: 3.7 },
+    clock: { radius: 0.62, height: 4.6 },
+    kiosk: { radius: 1.35, height: 2.9 },
+    /** A fountain picked here is as wide as the infill's own: this share of the shorter side, clamped to [min, max]. */
+    fountain: { share: 0.16, min: 1.6, max: 3 },
+    /** Clear room round every centrepiece's edge (m): nothing else of the dressing stands closer, a car passes between. */
+    gap: 1.6,
+  },
+  /** Trees: centres this far in from the back and side walls, about `spacing` apart along them, never closer than `gap` to each other, and no nearer than `clear` to a lantern or a prop. */
+  tree: { inset: 2.3, spacing: 6.2, gap: 5, clear: 1.3, endClear: 1.8, size: [1.7, 2.1], height: [5.2, 6.8] },
+  /** Benches facing the middle: in from the walls, spacing along them, and the share given a bin beside. */
+  bench: { inset: 1.6, spacing: 6.4, endClear: 3, bin: 0.4 },
+  /** Planter pots in a row along the back, in from it, spaced; they fill the gaps between trees and benches. */
+  planter: { inset: 0.85, spacing: 2.8, endClear: 1.6 },
+  /** Bollards a car's width apart or more (spacing minus the post) in a line along the open frontage, this far in; only where the frontage is at least `minLen` long. */
+  bollard: { inset: 1.4, spacing: 4.6, minLen: 14, endClear: 3 },
+  /** A food cart near the back of a large cafe or market plaza, and the news boxes at the back corners. */
+  cart: { inset: 2.4, chance: 0.7 },
+  newsBox: { inset: 1.1 },
+  /** The lantern ring round a centrepiece: this far from its edge (m), on its diagonals. */
+  ring: { offset: 3.1 },
+  /** People: a standing group by the centrepiece (count [min, max], this far from its edge), and the largest number of groups a city holds. */
+  gather: { people: [2, 4], offset: 1.5, max: 20 },
+  /** Strands of lights between a plaza's lanterns: the lantern pairs' span [min, max], and the share of monument strands hung with bunting. */
+  strand: { span: [4.5, 24], bunting: 0.5 },
+  /** Clearance a hard piece keeps from the pocket's sides beyond its radius. */
+  edgeClear: 0.4,
+  /**
+   * The monument plaza: trees stand `inset` in from the plaza's edge midway between the lanterns, at
+   * least `lane` from a race pass's line (a car's width and the trunk beyond the line's half width),
+   * `clear` from any prop and `ring` from the landmark's benches; people gather at `groups` spots round the landmark.
+   */
+  monument: { inset: 4.4, lane: 2.4, clear: 1.8, ring: 3, groups: [2, 4], groupRing: 4 },
+} as const;

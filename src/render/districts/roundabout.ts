@@ -20,6 +20,7 @@ import type { GeoBuilder } from '../geoBuilder';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { col, cylinder, fountainBasin, groundLine, groundVertex, prism, ringWall } from './kit';
 import { tree } from './trees';
+import { drawStrands } from './plazaDressing';
 
 /** Pieces around an island (vertices per ring of the draped ground, of a curb or basin wall). */
 const SEGS = 40;
@@ -126,6 +127,7 @@ export const roundaboutRenderer: DistrictRenderer = {
           groundLine(kit, kit.paint, { x: A.x + (B.x - A.x) * t0, z: A.z + (B.z - A.z) * t0 }, { x: A.x + (B.x - A.x) * t1, z: A.z + (B.z - A.z) * t1 }, h.values[0], 0.08, cobble);
         }
       }
+      if (a.variant === 'plaza') drawStrands(kit, a, b);
       // Solid pieces: trunks, the basin, the centrepiece.
       for (const p of b.props) {
         if (p.kind === 'tree') tree(kit, p.x, p.z, p.size, p.height, { conifer: 0.1 });

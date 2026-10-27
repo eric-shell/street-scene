@@ -24,6 +24,7 @@ import type { DistrictKit, DistrictRenderer } from './kit';
 import { col, cylinder, drapeConvex, fountainBasin, groundLine, orientedBox, prism, wallBox } from './kit';
 import { boundaryWalls } from './boundaryWalls';
 import { cityWallClearance } from './hillLookout';
+import { drawPlazaDressing } from './plazaDressing';
 
 const PLANTER = { height: 0.7, coping: 0.22, side: col(0x67635d), cope: col(0x8e8a82), soil: col(0x2b1e15), shrubStep: 1.15, shrubs: 48 } as const;
 const SHRUB = [col(0x2f5a2c), col(0x3b6a33), col(0x29502e), col(0x466f35)];
@@ -156,6 +157,7 @@ export const infillRenderer: DistrictRenderer = {
         cylinder(kit.ground, d.x, d.z, d.kind === 'bush' ? 1 : 0.7, y - 0.02, y + 0.015, 8, mulch);
       }
       for (const p of b.props) if (p.kind === 'fountain') fountainBasin(kit, p.x, p.z, p.size, p.height);
+      if (a.variant === 'plaza' || a.variant === 'cornerPlaza') drawPlazaDressing(kit, a, b);
     }
     boundaryWalls(kit, kit.walls.get('boundary') ?? []);
     for (const w of kit.walls.get('lotEdge') ?? []) wallBox(kit, kit.solid, w, 0.4, 0.45, col(0x5a5c66));

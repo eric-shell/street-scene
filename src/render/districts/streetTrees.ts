@@ -18,14 +18,30 @@ import { palm, tree } from './trees';
 /** Share of a palm region's street trees that are palms; of the others that are conifers; a palm's height over the plan's (the fronds reach well past the crown radius). */
 const LOOK = { palm: { la: 0.7, miami: 0.9 }, conifer: 0.04, palmHeight: 1.25 } as const;
 
+/** A tree standing on a solid trunk: where, the trunk's radius (m), the crown's radius and the total height (m), and the foot's height (m). */
+export interface TreeAt {
+  x: number;
+  z: number;
+  y: number;
+  radius: number;
+  size: number;
+  height: number;
+}
+
+/** The neighbourhood lookup growStreetTree reads (architecture.ts regionAt). */
+export type RegionAt = ReturnType<typeof regionAt>;
+
+/** Grow one tree on a trunk the sim has: a palm in a palm neighbourhood (by the position's hash), else a broadleaf, now and then a conifer. Shared with the plazas' trees. */
+export function growStreetTree(kit: DistrictKit, region: RegionAt, t: TreeAt): void {
+  // The pick comes from a hash of the position (like tree()'s), so the menu city and a race agree.
+  const roll = new Rng((Math.imul(Math.round(t.x * 64), 40503) ^ Math.imul(Math.round(t.z * 64), 9973)) >>> 0).next();
+  const r = region(t.x, t.z);
+  if ((r === 'la' || r === 'miami') && roll < LOOK.palm[r]) palm(kit, t.x, t.z, t.height * LOOK.palmHeight, { y: t.y, trunk: t.radius });
+  else tree(kit, t.x, t.z, t.size, t.height, { y: t.y, trunk: t.radius, conifer: LOOK.conifer });
+}
+
 /** Plant a tree on every street tree trunk, standing on the sidewalk (the sim's foot height). */
 export function plantStreetTrees(kit: DistrictKit): void {
   const region = regionAt(kit.world);
-  for (const t of kit.world.blocks.trees) {
-    // The pick comes from a hash of the position (like tree()'s), so the menu city and a race agree.
-    const roll = new Rng((Math.imul(Math.round(t.x * 64), 40503) ^ Math.imul(Math.round(t.z * 64), 9973)) >>> 0).next();
-    const r = region(t.x, t.z);
-    if ((r === 'la' || r === 'miami') && roll < LOOK.palm[r]) palm(kit, t.x, t.z, t.height * LOOK.palmHeight, { y: t.y, trunk: t.radius });
-    else tree(kit, t.x, t.z, t.size, t.height, { y: t.y, trunk: t.radius, conifer: LOOK.conifer });
-  }
+  for (const t of kit.world.blocks.trees) growStreetTree(kit, region, t);
 }

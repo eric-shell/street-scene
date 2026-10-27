@@ -13,6 +13,8 @@
  */
 import type { World } from '../../city/world';
 import type { Prop } from '../../city/props';
+import { PLAZA } from '../../city/config';
+import { PLAZA_HINT } from '../../city/districts/plazaDressing';
 import { Rng, deriveSeed } from '../../sim/prng';
 import { BACK, FWD, groundY, makePlacer, thin } from './placer';
 
@@ -77,6 +79,12 @@ const MARKET_CLEAR = 6;
 const CURB_LANE = 1.2;
 /** Shop pairs keep this far from each other (m). */
 const PAIR_GAP = 6;
+
+/**
+ * A furnished plaza is where people sit and wait: its benches, cafe tables and lanterns are this likely to have
+ * company (the chances elsewhere are in planIdlers), and a standing group gathers at each centrepiece.
+ */
+const PLAZA_LIVELY = { bench: 0.3, cafeTable: 0.35, parkLamp: 0.4 } as const;
 
 const CURB_DIRS = [
   [1, 0],
@@ -157,6 +165,11 @@ export function planIdlers(world: World, opts: IdleOptions): IdlePlan {
     return [p.x + lx * c + lz * s, p.z - lx * s + lz * c];
   };
   const stands = (): IdlePose => (rng.chance(0.3) ? 'phone' : 'stand');
+  /** Does this prop stand in a plaza (an infill plaza or corner pocket, the monument plaza)? */
+  const inPlaza = (p: Prop): boolean => {
+    const a = p.area === undefined ? undefined : world.areas[p.area];
+    return !!a && (a.kind === 'monument' || (a.kind === 'infill' && (a.variant === 'plaza' || a.variant === 'cornerPlaza')) || (a.kind === 'roundabout' && a.variant === 'plaza'));
+  };
 
   for (const p of world.props) {
     if (covered.has(p.id)) continue;
@@ -184,7 +197,7 @@ export function planIdlers(world: World, opts: IdleOptions): IdlePlan {
         break;
       }
       case 'bench': {
-        const n = rng.chance(0.12 * liveliness * density) ? (rng.chance(0.4) ? 2 : 1) : 0;
+        const n = rng.chance((inPlaza(p) ? PLAZA_LIVELY.bench : 0.12) * liveliness * density) ? (rng.chance(0.4) ? 2 : 1) : 0;
         if (!n) break;
         if (n === 2) {
           // A pair turned a little toward each other.
@@ -199,7 +212,7 @@ export function planIdlers(world: World, opts: IdleOptions): IdlePlan {
         break;
       }
       case 'cafeTable': {
-        const n = rng.chance(0.22 * density) ? (rng.chance(0.5) ? 2 : 1) : 0;
+        const n = rng.chance((inPlaza(p) ? PLAZA_LIVELY.cafeTable : 0.22) * density) ? (rng.chance(0.5) ? 2 : 1) : 0;
         const first = rng.chance(0.5) ? -1 : 1;
         for (let i = 0; i < n; i++) {
           const side = i === 0 ? first : -first;
@@ -214,7 +227,7 @@ export function planIdlers(world: World, opts: IdleOptions): IdlePlan {
         break;
       }
       case 'parkLamp': {
-        if (!rng.chance(0.3 * liveliness * density)) break;
+        if (!rng.chance((inPlaza(p) ? PLAZA_LIVELY.parkLamp : 0.3) * liveliness * density)) break;
         // One metre off the lamp on the side away from the road, facing the lamp's way out.
         const [x, z] = at(p, rng.range(-0.3, 0.3), -1);
         push(x, z, p.yaw + rng.range(-0.4, 0.4), rng.chance(0.5) ? 'lean' : stands(), p.id, false);
@@ -223,6 +236,31 @@ export function planIdlers(world: World, opts: IdleOptions): IdlePlan {
       default:
         break;
     }
+  }
+
+  // Plaza groups: a loose circle of people talking by each centrepiece (plazaDressing.ts 'gather' hints), thinned
+  // evenly to PLAZA.gather.max so a city of many small plazas does not spend the cap on them.
+  const spots: { x: number; z: number; count: number; r: number }[] = [];
+  for (const a of world.areas) {
+    if (a.kind !== 'monument' && a.kind !== 'infill' && a.kind !== 'roundabout') continue;
+    for (const h of world.districts.builds[a.id]?.hints ?? []) if (h.kind === PLAZA_HINT.gather) spots.push({ x: h.points[0].x, z: h.points[0].z, count: h.values[0], r: h.values[1] });
+  }
+  const share = Math.min(1, PLAZA.gather.max / Math.max(1, spots.length));
+  for (const sp of spots) {
+    const go = rng.chance(share * (0.6 + 0.4 * liveliness) * density);
+    const base = rng.range(0, Math.PI * 2);
+    const first = out.length;
+    let placed = 0;
+    for (let i = 0; i < sp.count; i++) {
+      const ang = base + (i / sp.count) * Math.PI * 2;
+      // Drawn either way, so a skipped group shifts nothing.
+      const pose = stands();
+      const x = sp.x + Math.sin(ang) * sp.r;
+      const z = sp.z + Math.cos(ang) * sp.r;
+      if (go && push(x, z, Math.atan2(sp.x - x, sp.z - z) + rng.range(-0.3, 0.3), pose, -1, false)) placed++;
+    }
+    // A lone person is not a group.
+    if (placed === 1) out.length = first;
   }
 
   // Shop fronts: a standing pair under the awning.

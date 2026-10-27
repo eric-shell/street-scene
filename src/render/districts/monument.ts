@@ -26,6 +26,7 @@ import { Rng } from '../../sim/prng';
 import type { DistrictKit } from './kit';
 import { col, cylinder, drapeConvex, groundLine, prism } from './kit';
 import type { DistrictRenderer } from './kit';
+import { drawPlazaDressing } from './plazaDressing';
 import { Floodlit, fp, frameAt, statue, subFrame } from './monumentShapes';
 import type { Frame, Paint } from './monumentShapes';
 
@@ -170,6 +171,7 @@ export const monumentRenderer: DistrictRenderer = {
         if (h.kind !== 'lamps') continue;
         for (const p of h.points) cylinder(kit.glow, p.x, p.z, MONUMENT.lampR, kit.h(p.x, p.z) + lift + 0.02, kit.h(p.x, p.z) + lift + 0.08, 8, WARM.clone().multiplyScalar(MONUMENT.lampGlow));
       }
+      drawPlazaDressing(kit, a, b);
       if (a.variant === 'arch') archLandmark(kit, a.params, b.hints.filter((h) => h.kind === 'pier').map((h) => h.points), rng);
       else pedestalLandmark(kit, a.variant, a.params, rng);
     }

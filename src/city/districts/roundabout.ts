@@ -33,6 +33,7 @@ import type { DistrictModule } from './types';
 import { emptyBuild } from './types';
 import { circlePolygon, polyWalls, smooth01, type Smooth, solidWalls } from './geom';
 import { riverCenter } from './river';
+import { PLAZA_HINT } from './plazaDressing';
 
 /** Scratch for the terrain's smoothsteps (queried per wheel per substep, so nothing allocates). */
 const SMOOTH: Smooth = { v: 0, d: 0 };
@@ -185,11 +186,13 @@ export const roundaboutModule: DistrictModule = {
       b.props.push({ kind, x, z, yaw: heading, size: R, height, area: id });
     };
     /** Lantern posts in a ring, facing in. */
-    const lamps = (n: number, r: number, phase: number) => {
+    const lamps = (n: number, r: number, phase: number): Vec2[] => {
+      const stood: Vec2[] = [];
       for (let i = 0; i < n; i++) {
         const p = at(r, phase + (i / n) * Math.PI * 2);
-        clutter('parkLamp', p, inward(p), 0.6);
+        if (clutter('parkLamp', p, inward(p), 0.6)) stood.push(p);
       }
+      return stood;
     };
     /**
      * The fence: planter pots and bollards alternating round a ring, their edges CFG.fenceGap apart. A
@@ -217,7 +220,7 @@ export const roundaboutModule: DistrictModule = {
 
     // ---- lanterns just inside the rim first (the garden lights its path ends instead) ----
     const phase = rng.range(0, Math.PI * 2);
-    if (variant !== 'garden') lamps(CFG.lamps, island - CFG.lampInset, heading + Math.PI / CFG.lamps);
+    const posts = variant !== 'garden' ? lamps(CFG.lamps, island - CFG.lampInset, heading + Math.PI / CFG.lamps) : [];
 
     // ---- solid pieces, the fence and the clutter per variant ----
     if (variant === 'mound') {
@@ -264,6 +267,13 @@ export const roundaboutModule: DistrictModule = {
       }
       fence(r0 - 0.9, phase);
       benches(V.benches, R + 7.5, phase + Math.PI / tables);
+      // The plaza is lit for the evening: festoon strands round the rim between its lanterns (render/districts/plazaDressing.ts)
+      // and a group of people by the basin.
+      for (let i = 0; i < posts.length; i++) {
+        const q = posts[(i + 1) % posts.length];
+        if (posts.length > 2) b.hints.push({ kind: PLAZA_HINT.strand, points: [posts[i], q], values: [i % 2] });
+      }
+      b.hints.push({ kind: PLAZA_HINT.gather, points: [at(R + 1.9, phase + Math.PI / tables / 2)], values: [3, 0.9] });
       const carts = rng.int(V.carts[0], V.carts[1]);
       for (let i = 0; i < carts; i++) {
         const ang = phase + ((i + 0.5) / carts) * Math.PI * 2;
