@@ -23,6 +23,7 @@ import { Backdrop, buildBackdrop } from './sky/backdrop';
 import { CROWD_IMPOSTOR, CROWD_QUALITY, buildCrowds, Crowds } from './race/crowds';
 import { IDLE_QUALITY, buildIdlers, Idlers } from './people/idlers';
 import { planIdlers } from './people/idleSpots';
+import { buildWalkers, Walkers } from './people/walkers';
 import { buildStreetPolish } from './street/streetPolish';
 import { buildPlaceSigns } from './street/placeSigns';
 import { createWeather, Weather } from './sky/weather';
@@ -175,6 +176,8 @@ export interface NightScene {
   crowds: Crowds;
   /** Idle people around the city; feed it car poses every frame (idlers.update). */
   idlers: Idlers;
+  /** Pedestrians walking the sidewalks, their walk computed in the shader from the clock; feed it the same car poses (walkers.update). */
+  walkers: Walkers;
   /** The seed's weather mood: fog, sky, rain or mist (weather.ts). */
   weather: Weather;
   /** The news helicopter, its searchlight and the blimp (airTraffic.ts). */
@@ -320,6 +323,9 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   const idlePlan = planIdlers(world, { density: idleQ.density, cap: idleQ.cap, shopFronts: city.shopFronts, avoid: { gates, meets: meet, markets } });
   const idlers = buildIdlers(world, idlePlan.people, { quality: settings.quality, warmth: idlePlan.warmth });
   scene.add(idlers.group);
+  // Pedestrians on the sidewalks (people/walkers.ts): their walk is the shader's, so nothing but the clock and two cars is written per frame.
+  const walkers = buildWalkers(world, { quality: settings.quality, warmth: idlePlan.warmth, avoid: { gates, meets: meet, markets } });
+  scene.add(walkers.group);
   // Dev builds: `?walls` draws the sim's collision over the scene (wallOverlay.ts).
   const walls = import.meta.env.DEV && new URLSearchParams(location.search).has('walls') ? buildWallOverlay(world) : null;
   if (walls) scene.add(walls.group);
@@ -342,6 +348,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     props,
     crowds,
     idlers,
+    walkers,
     weather,
     air,
     backdrop,
@@ -374,6 +381,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
       props.dispose();
       crowds.dispose();
       idlers.dispose();
+      walkers.dispose();
       weather.dispose();
       air.dispose();
       walls?.dispose();
