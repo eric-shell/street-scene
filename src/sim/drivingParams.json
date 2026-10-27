@@ -11,7 +11,7 @@
   ],
   "base": {
     "mass": 1550,
-    "yawInertiaScale": 0.75,
+    "yawInertiaScale": 0.85,
     "cgHeight": 0.4,
     "drivetrain": {
       "_": "diffOpen and diffLock are the driven axles' differential (car.ts updateAxles), 0 and 0 for the stock axle; the Tune tab's Differential slider adds to them (setup.differential).",
@@ -111,7 +111,9 @@
       "highSpeedDeg": 4,
       "fadeSpeed": 42,
       "rateDegPerSec": 150,
-      "counterSteerAllowance": 1
+      "_counter": "Counter steer (steering into a slide) maps linearly onto counterLockDeg of lock, a drift angle kit, at any slide angle; counterSteerAllowance (lock growing with the slide) is 0, so nothing chases the slide for the driver.",
+      "counterSteerAllowance": 0,
+      "counterLockDeg": 45
     },
     "aero": {
       "drag": 0.4,
@@ -139,13 +141,12 @@
       "resetLoss": 1
     },
     "drift": {
-      "_": "The aids (docs/handling.md, Simcade): yawDamping is a stability layer for driving on the grip, faded to yawDampingSlide of itself as the body slides from tires.peakSlipDeg to fullSlideDeg of slip, so a drift's angle is the tires' and the driver's; the anti spin aid (assistTorque) only acts past maxSlipDeg, when the car is going round.",
+      "_": "The aids (docs/handling.md, Simcade): yawDamping is always on, the same in a slide as on the grip, so the car's rotation answers the same way at any angle; the anti spin aid (assistTorque) only acts past maxSlipDeg, when the car is going round.",
       "clutchKickTime": 0.45,
       "maxSlipDeg": 70,
       "assistTorque": 22750,
       "yawDamping": 3250,
-      "yawDampingLowSpeed": 4,
-      "yawDampingSlide": 0.2
+      "yawDampingLowSpeed": 4
     },
     "surface": {
       "sidewalkGrip": 1,
@@ -234,7 +235,7 @@
     "protoWagon": {
       "_name": "Proto Wagon (S2 Avant donor): front twin turbo 90 degree V6, all wheel drive split evenly (a Torsen centre differential). A flat biturbo torque plateau from 1,800 rpm and an AWD launch; the longest car, a little more yaw inertia.",
       "mass": 1550,
-      "yawInertiaScale": 0.85,
+      "yawInertiaScale": 0.95,
       "drivetrain": { "layout": "awd", "awdFrontShare": 0.5 },
       "engine": {
         "redline": 7000,

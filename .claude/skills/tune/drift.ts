@@ -9,7 +9,7 @@
  * those, one line: E peak lateral g, F a held drift, G a flick linking it into one the
  * other way. TUNE='{...}' trials an override without editing the JSON.
  */
-import { CarState, createCar, stepCar } from '../../../src/sim/car';
+import { CarState, counterSteerLock, createCar, stepCar } from '../../../src/sim/car';
 import { getBaseTuning } from '../../../src/sim/tuning';
 import type { World } from '../../../src/city/world';
 import { InputFrame } from '../../../src/sim/input';
@@ -100,9 +100,11 @@ run('D. launch', [
 const TARGET = 30 * DEG;
 
 /**
- * A drifter holding `TARGET`: counter steer toward the direction of travel and throttle on the slip error,
- * both leading on how fast the angle is changing (a driver catches a swing before it arrives), up to full
- * lock. Each scenario gets its own (it remembers the last tick's slip).
+ * A drifter holding `TARGET`: aims the front wheels along the direction of travel, plus more lock as the
+ * angle runs past the target (less under it), and throttle on the slip error, both leading on how fast the
+ * angle is changing (a driver catches a swing before it arrives). It steers by wheel angle, so it drives
+ * any counter steer mapping (counterSteerLock) as a driver who knows the car would. Each scenario gets its
+ * own (it remembers the last tick's slip).
  */
 function makeDrifter(): (c: CarState) => InputFrame {
   let last = 0;
@@ -111,7 +113,9 @@ function makeDrifter(): (c: CarState) => InputFrame {
     last = c.slipAngle;
     const ahead = c.slipAngle + 0.25 * rate;
     const err = TARGET - Math.abs(ahead);
-    return inp({ steer: Math.max(-1, Math.min(1, -ahead / (40 * DEG))), throttle: Math.max(0, Math.min(1, 0.65 + 4 * err)) });
+    const wheel = Math.max(0, Math.abs(ahead) - err);
+    const steer = (-Math.sign(ahead) * wheel) / counterSteerLock(t, c.speed, ahead || 1e-3);
+    return inp({ steer: Math.max(-1, Math.min(1, steer)), throttle: Math.max(0, Math.min(1, 0.65 + 4 * err)) });
   };
 }
 

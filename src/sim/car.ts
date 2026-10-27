@@ -268,6 +268,18 @@ export function steerLimit(t: CarTuning, speed: number): number {
 }
 
 /** Yaw inertia (kg m^2): the footprint's box approximation, scaled by yawInertiaScale. */
+/**
+ * Full lock steering into a slide (rad): counterLockDeg, a drift car's angle kit, the same for every slip
+ * angle once the car is sliding, so input to wheel angle stays linear and the driver sets the angle; and/or
+ * the allowance, which grows with the slip (a held key lands near the direction of travel by itself, a
+ * catch that chases the slide). Never less than the ordinary lock.
+ */
+export function counterSteerLock(t: CarTuning, speed: number, beta: number): number {
+  const limit = steerLimit(t, speed);
+  const kit = lerp(limit, Math.max(limit, t.steering.counterLockDeg * DEG), smoothstep(2 * DEG, 8 * DEG, abs(beta)));
+  return Math.max(limit + abs(beta) * t.steering.counterSteerAllowance, kit);
+}
+
 export function yawInertia(t: CarTuning): number {
   const L = t.geometry.halfLength * 2;
   const W = t.geometry.halfWidth * 2;
@@ -469,10 +481,7 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
   // ---- steering ----
   const limit = steerLimit(t, speed);
   let target = -inp.steer * limit;
-  if (speed > 5 && target !== 0 && sign(target) === sign(beta)) {
-    // steering into a slide (counter steer) gets extra lock
-    target = -inp.steer * (limit + abs(beta) * t.steering.counterSteerAllowance);
-  }
+  if (speed > 5 && target !== 0 && sign(target) === sign(beta)) target = -inp.steer * counterSteerLock(t, speed, beta);
   c.steerAngle = approach(c.steerAngle, target, t.steering.rateDegPerSec * DEG * dt);
 
   // ---- clutch kick ----
@@ -884,11 +893,7 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
 
   c.vx += (Fwx / m) * h;
   c.vz += (Fwz / m) * h;
-  // Yaw damping is a stability layer for driving on the grip (Standard steering's): it fades out as the body
-  // slides past the tires' peak slip angle toward the full slide, down to yawDampingSlide of itself, so a
-  // drift's rotation is the tires' and the driver's to hold.
-  const slide = speed > 3 ? smoothstep(t.tires.peakSlipDeg * DEG, t.tires.fullSlideDeg * DEG, abs(atan2(vLat, abs(vLong)))) : 0;
-  c.yawRate += ((torque - t.drift.yawDamping * lerp(1, t.drift.yawDampingSlide, slide) * c.yawRate) / Iz) * h;
+  c.yawRate += ((torque - t.drift.yawDamping * c.yawRate) / Iz) * h;
 
   // ---- drift aids ----
   const vLongN = c.vx * fx + c.vz * fz;

@@ -12,7 +12,7 @@ import { packInput, quantizeInput, unpackInput } from '../src/sim/input';
 import { applySavedTuning, importValues, tuningParams } from '../src/ui/panels/tuningPanel';
 import type { Contact, World } from '../src/city/world';
 import exported from './fixtures/s64-tuning-export.json';
-import { carSnapshot, flatWorld, input, raceConfig, replayLog, runAutopilot, baseTuning } from './helpers';
+import { carSnapshot, counterSteer, flatWorld, input, raceConfig, replayLog, runAutopilot, baseTuning } from './helpers';
 
 describe('input frames', () => {
   it('pack and unpack quantized frames losslessly', () => {
@@ -62,8 +62,8 @@ describe('car physics', () => {
     for (let i = 0; i < 90; i++) {
       const ahead = c.slipAngle + 0.25 * (c.slipAngle - last) * 60;
       last = c.slipAngle;
-      const counter = Math.max(-1, Math.min(1, -ahead / (40 * DEG)));
-      stepCar(c, t, input({ throttle: Math.max(0, Math.min(1, 0.65 + 4 * (30 * DEG - Math.abs(ahead)))), steer: counter }), { world });
+      const err = 30 * DEG - Math.abs(ahead);
+      stepCar(c, t, input({ throttle: Math.max(0, Math.min(1, 0.65 + 4 * err)), steer: counterSteer(t, c, ahead, -err) }), { world });
       if (c.drifting) drifting++;
       worst = Math.max(worst, Math.abs(c.slipAngle));
     }
@@ -296,8 +296,8 @@ describe('driving parameters file', () => {
     // Counter steer lock was later allowed to reach the direction of travel at any slip angle; the drift
     // aids and the handbrake were remodelled on real wheel speed (the fixture carries the surviving keys).
     // The grip pass (docs/handling.md) moved grip from the front axle to the rear with a rounded rise to
-    // the peak, and nitrous was made stronger. The second grip pass raised grip 15%, the sliding grip
-    // sideways (lengthways down, so a drift's rear still spins) and lightened the yaw inertia.
+    // the peak, and nitrous was made stronger. The second grip pass raised grip 15% and the sliding grip
+    // sideways (lengthways down, so a drift's rear still spins); counter steer became a fixed angle kit.
     const t = baseTuning();
     const expected = {
       ...exported.tuning,
@@ -305,8 +305,7 @@ describe('driving parameters file', () => {
       geometry: t.geometry,
       surface: { ...exported.tuning.surface, sidewalkGrip: 1 },
       brakes: { ...exported.tuning.brakes, force: 16250, frontBias: 0.68 },
-      steering: { ...exported.tuning.steering, counterSteerAllowance: 1 },
-      yawInertiaScale: 0.75,
+      steering: { ...exported.tuning.steering, counterSteerAllowance: 0, counterLockDeg: 45 },
       drift: { ...exported.tuning.drift, maxSlipDeg: 70 },
       tires: { ...exported.tuning.tires, gripFront: 1.82, gripRear: 1.54, slideGrip: 0.58, slideGripLong: 0.6 },
       nitrous: { ...exported.tuning.nitrous, capacity: 3.6, force: 5500, torqueMul: 1.35 },
@@ -493,11 +492,10 @@ describe('drifting and the handbrake', () => {
     let maxRatio = 0;
     let maxSpin = 0;
     let maxSlip = 0;
-    // Flat out, counter steering against the slide (with the aids out of a slide's way, a driver who does
-    // not counter steer spins).
-    const counter = () => Math.max(-1, Math.min(1, -c.slipAngle / (40 * DEG)));
+    // Flat out, counter steering against the slide a little short of the direction of travel so the angle
+    // holds (a driver who does not counter steer spins).
     for (let i = 0; i < 90; i++) {
-      stepCar(c, t, input({ throttle: 1, steer: counter() }), { world });
+      stepCar(c, t, input({ throttle: 1, steer: counterSteer(t, c, c.slipAngle, -10 * DEG) }), { world });
       maxRpm = Math.max(maxRpm, c.rpm);
       maxRatio = Math.max(maxRatio, c.wheelSpeedRear / Math.max(1, forwardSpeed(c)));
       maxSpin = Math.max(maxSpin, c.spinRear);
@@ -510,7 +508,7 @@ describe('drifting and the handbrake', () => {
     expect(maxSpin).toBe(1);
     expect(maxSlip).toBeGreaterThan(30 * DEG);
     // Lift: the tires pull the wheels back to road speed within 0.6 s, even against first gear's inertia.
-    for (let i = 0; i < 36; i++) stepCar(c, t, input({ steer: counter() }), { world });
+    for (let i = 0; i < 36; i++) stepCar(c, t, input({ steer: counterSteer(t, c, c.slipAngle) }), { world });
     expect(c.spinRear).toBe(0);
     expect(c.wheelSpeedRear / Math.max(1, forwardSpeed(c))).toBeLessThan(1.15);
     // Undriven front wheels never spin.

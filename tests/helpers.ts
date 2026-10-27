@@ -3,6 +3,7 @@ import { createRace, RaceConfig, RaceState, stepRace } from '../src/sim/race';
 import { createAi, autopilotInput } from '../src/sim/ai';
 import { stockPerformance, PerformanceBuild } from '../src/sim/build';
 import { InputFrame, unpackInput } from '../src/sim/input';
+import { counterSteerLock, type CarState } from '../src/sim/car';
 import { geometryFromManifest, type CarTuning } from '../src/sim/tuning';
 import params from '../src/sim/drivingParams.json';
 
@@ -69,5 +70,13 @@ export function replayLog(cfg: RaceConfig, log: number[]): RaceState {
 export function carSnapshot(r: RaceState): string {
   return JSON.stringify(r.cars.map((c) => ({ s: c.state, d: c.dist, lap: c.lap, f: c.finished, ft: c.finishTick, lt: c.lapTimes })));
 }
+
+/**
+ * The stick input that counter steers a slide of `angle` (rad) by wheel angle, as a driver who knows the car
+ * does: the front wheels along the direction of travel, plus `extra` rad of lock (less with a negative one),
+ * through whatever counter steer mapping the tuning has (counterSteerLock).
+ */
+export const counterSteer = (t: CarTuning, c: CarState, angle: number, extra = 0): number =>
+  Math.max(-1, Math.min(1, (-Math.sign(angle) * Math.max(0, Math.abs(angle) + extra)) / counterSteerLock(t, c.speed, angle || 1e-3)));
 
 export const input = (p: Partial<InputFrame>): InputFrame => ({ throttle: 0, brake: 0, steer: 0, handbrake: false, nitrous: false, shift: 0, reset: false, antilag: false, ...p });

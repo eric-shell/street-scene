@@ -181,6 +181,8 @@ export interface CarTuning {
     rateDegPerSec: number;
     /** Extra lock allowed when steering into a slide, as a fraction of body slip angle. */
     counterSteerAllowance: number;
+    /** Lock when steering into a slide (deg), whatever the slip angle: a drift angle kit; 0 = only the speed faded lock and the allowance. */
+    counterLockDeg: number;
   };
   aero: {
     drag: number;
@@ -234,8 +236,6 @@ export interface CarTuning {
     yawDamping: number;
     /** Extra yaw damping below 3 m/s (per m/s under it), so a car cannot pirouette at a crawl. */
     yawDampingLowSpeed: number;
-    /** Share of yawDamping left in a full slide (body slip past tires.fullSlideDeg), eased in from tires.peakSlipDeg; 1 = always full. */
-    yawDampingSlide: number;
   };
   surface: {
     sidewalkGrip: number;

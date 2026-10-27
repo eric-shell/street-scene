@@ -8,7 +8,7 @@ import type { World } from '../src/city/world';
 import { decodeShareCode, encodeShareCode } from '../src/garage/storage';
 import { validateCatalog } from '../scripts/validateParts';
 import { createRace } from '../src/sim/race';
-import { baseTuning, carSnapshot, flatWorld, input, raceConfig, runAutopilot } from './helpers';
+import { baseTuning, carSnapshot, counterSteer, flatWorld, input, raceConfig, runAutopilot } from './helpers';
 import { MAX_BEAD, beadForSize, detectProfile, remapWheel, sizeForBead } from '../src/render/car/wheelFit';
 import { BlipScript, RevModel } from '../src/garage/revModel';
 
@@ -322,8 +322,7 @@ describe('setup sliders', () => {
         // Leading on how fast the angle moves, as a driver catches a swing.
         const ahead = c.slipAngle + 0.25 * (c.slipAngle - last) * 60;
         last = c.slipAngle;
-        const counter = Math.max(-1, Math.min(1, -ahead / ((40 * Math.PI) / 180)));
-        stepCar(c, t, input({ steer: flick ? 1 : counter, handbrake: flick, throttle: flick ? 0.5 : 1 }), { world });
+        stepCar(c, t, input({ steer: flick ? 1 : counterSteer(t, c, ahead, (-4 * Math.PI) / 180), handbrake: flick, throttle: flick ? 0.5 : 1 }), { world });
         if (Math.abs(c.slipAngle) > (15 * Math.PI) / 180) held++;
       }
       return held / 60;
