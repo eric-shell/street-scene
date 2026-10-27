@@ -12,6 +12,7 @@ import { isBendNode, isRiverEdge } from '../../city/roadGraph';
 import { groundHeight } from '../../city/districts/carPark';
 import { Vec2 } from '../../sim/math';
 import { GeoBuilder } from '../geoBuilder';
+import { OCCLUSION, bakeOcclusion, occlusionFor, occlusionMaterial } from './bakedOcclusion';
 import { buildFinishLines, FinishLines } from '../race/finishLine';
 import { STREETLIGHT_ARM, STREETLIGHT_POLE_H } from './props';
 import { createPodiumOutput, makeFacadeKitTextures } from '../buildings/facadeKit';
@@ -122,25 +123,96 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
   // ---------- Roads ----------
   const asphalt = makeAsphalt(world.seed);
   const roadMat = track(
-    new THREE.MeshStandardMaterial({
-      map: track(asphalt.map),
-      roughnessMap: track(asphalt.roughness),
-      roughness: 1,
-      metalness: 0.0,
-      color: 0x9a9eaa,
-      envMapIntensity: 1.6,
-      emissive: ROAD_GLOW.color,
-      emissiveMap: asphalt.map,
-      emissiveIntensity: ROAD_GLOW.intensity,
-    }),
+    occlusionMaterial(
+      new THREE.MeshStandardMaterial({
+        map: track(asphalt.map),
+        roughnessMap: track(asphalt.roughness),
+        roughness: 1,
+        metalness: 0.0,
+        color: 0x9a9eaa,
+        envMapIntensity: 1.6,
+        emissive: ROAD_GLOW.color,
+        emissiveMap: asphalt.map,
+        emissiveIntensity: ROAD_GLOW.intensity,
+      }),
+      true,
+    ),
   );
-  const road = new GeoBuilder();
+  // Roads, cobbles, sidewalks and markings carry baked occlusion in their vertex colours (bakedOcclusion.ts).
+  const occ = occlusionFor(world);
+  const road = new GeoBuilder(true);
   const addGroundVertex = (gb: GeoBuilder, x: number, z: number, lift: number, uvScale: number) => {
     const [nx, ny, nz] = normalAt(x, z);
     return gb.vertex(x, h(x, z) + lift, z, nx, ny, nz, x / uvScale, z / uvScale);
   };
   const g = world.graph;
   const { sectors, mouths } = world.blocks;
+  // ---- Where a shadow edge needs vertices. A strip or fan with vertices only at its ends cannot show
+  // one, so rows are added across and along only where an overhead structure's soft edge crosses the
+  // piece (and one column near a wall that darkens the ground at it); everywhere else the mesh is as it was.
+  const OC = OCCLUSION;
+  const groundY = (x: number, z: number) => h(x, z) + ROAD_Y;
+  /** Whether any ground in the box lies under or near an overhead structure's shadow. */
+  const shadedBox = (x0: number, z0: number, x1: number, z1: number, pts: Vec2[]) => {
+    if (!occ.overheadNear(x0, z0, x1, z1)) return false;
+    return pts.some((p) => occ.overhead(p.x, p.z, groundY(p.x, p.z)) > 0.004);
+  };
+  /** Sample points along a segment about every `step` m (ends included). */
+  const along = (a: Vec2, b: Vec2, step: number, out: Vec2[]) => {
+    const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / step));
+    for (let i = 0; i <= n; i++) out.push({ x: a.x + ((b.x - a.x) * i) / n, z: a.z + ((b.z - a.z) * i) / n });
+  };
+  /**
+   * Stops (0..1, ends included) of the vertices across one row of a strip, from L to R: uniform ones where
+   * a deck's shadow varies across the row, one where a wall's contact shadow ends.
+   */
+  const rowStops = (lx: number, lz: number, rx: number, rz: number): number[] => {
+    const w = Math.hypot(rx - lx, rz - lz);
+    if (w < 1e-3) return [0, 1];
+    const extra: number[] = [];
+    if (occ.wall(lx, lz) > 0.002 && OC.wallReach / w < 0.5) extra.push(OC.wallReach / w);
+    if (occ.wall(rx, rz) > 0.002 && OC.wallReach / w < 0.5) extra.push(1 - OC.wallReach / w);
+    if (occ.overheadNear(Math.min(lx, rx), Math.min(lz, rz), Math.max(lx, rx), Math.max(lz, rz))) {
+      const n = Math.ceil(w / OC.crossStep);
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (let i = 0; i <= n; i++) {
+        const t = i / n;
+        const x = lx + (rx - lx) * t;
+        const z = lz + (rz - lz) * t;
+        const l = occ.overhead(x, z, groundY(x, z));
+        lo = Math.min(lo, l);
+        hi = Math.max(hi, l);
+      }
+      if (hi - lo > 0.01) for (let i = 1; i < n; i++) extra.push(i / n);
+    }
+    if (!extra.length) return [0, 1];
+    extra.sort((p, q) => p - q);
+    const out = [0];
+    for (const t of extra) if (t - out[out.length - 1] > 0.04 && t < 0.96) out.push(t);
+    out.push(1);
+    return out;
+  };
+  /** Triangles between two rows of vertices (stops ts), each row running the same way across; equal stops make quads. */
+  const zip = (gb: GeoBuilder, a: number[], ta: number[], b: number[], tb: number[]) => {
+    let i = 0;
+    let j = 0;
+    while (i < a.length - 1 || j < b.length - 1) {
+      const na = i < a.length - 1 ? ta[i + 1] : Infinity;
+      const nb = j < b.length - 1 ? tb[j + 1] : Infinity;
+      if (Math.abs(na - nb) < 1e-6) {
+        gb.quadFacing(a[i], a[i + 1], b[j + 1], b[j], 0, 1, 0);
+        i++;
+        j++;
+      } else if (na < nb) {
+        gb.triFacing(a[i], a[i + 1], b[j], 0, 1, 0);
+        i++;
+      } else {
+        gb.triFacing(a[i], b[j + 1], b[j], 0, 1, 0);
+        j++;
+      }
+    }
+  };
   // The river draws its channel floor and ramps itself (render/districts/river.ts): no asphalt, markings,
   // curbs or sidewalks on its edges, nor at the nodes that only join them. A loop mouth's dead end (the
   // foot of an expressway loop) has no junction either: the loop's road carries on from it.
@@ -152,8 +224,25 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     const c = addGroundVertex(road, n.x, n.z, ROAD_Y, 10);
     let reach = 0;
     for (const p of ring) reach = Math.max(reach, Math.hypot(p.x - n.x, p.z - n.z));
+    // Under or beside a deck's shadow the fan is cut finer, rings and arcs alike, so its edge shows.
+    const samples: Vec2[] = [];
+    if (occ.overheadNear(n.x - reach, n.z - reach, n.x + reach, n.z + reach)) {
+      for (let dx = -reach; dx <= reach; dx += 3) for (let dz = -reach; dz <= reach; dz += 3) if (dx * dx + dz * dz <= reach * reach) samples.push({ x: n.x + dx, z: n.z + dz });
+    }
+    const fine = samples.length > 0 && shadedBox(n.x - reach, n.z - reach, n.x + reach, n.z + reach, samples);
+    if (fine) {
+      const cut: Vec2[] = [];
+      for (let i = 0; i < ring.length; i++) {
+        const a = ring[i];
+        const b = ring[(i + 1) % ring.length];
+        const k = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / OC.rowStep));
+        for (let q = 0; q < k; q++) cut.push({ x: a.x + ((b.x - a.x) * q) / k, z: a.z + ((b.z - a.z) * q) / k });
+      }
+      ring.length = 0;
+      ring.push(...cut);
+    }
     // Concentric rings out to the curb (the last one is the curb ring itself), so a wide fan drapes.
-    const bands = Math.max(1, Math.ceil(reach / (n.ring ? FAN_STEP_RING : FAN_STEP)));
+    const bands = Math.max(1, Math.ceil(reach / (fine ? OC.rowStep : n.ring ? FAN_STEP_RING : FAN_STEP)));
     let inner: number[] = [];
     for (let j = 1; j <= bands; j++) {
       const t = j / bands;
@@ -173,24 +262,27 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
   const strip = (gb: GeoBuilder, l0: Vec2, l1: Vec2, r0: Vec2, r1: Vec2, liftL: number, liftR: number, uvScale: number, step = 6, count?: number) => {
     const len = Math.max(Math.hypot(l1.x - l0.x, l1.z - l0.z), Math.hypot(r1.x - r0.x, r1.z - r0.z));
     const steps = count ?? Math.max(1, Math.ceil(len / step));
-    let prevL = -1;
-    let prevR = -1;
+    let prev: number[] = [];
+    let prevT: number[] = [];
     for (let i = 0; i <= steps; i++) {
       const t = i / steps;
       const lx = l0.x + (l1.x - l0.x) * t;
       const lz = l0.z + (l1.z - l0.z) * t;
       const rx = r0.x + (r1.x - r0.x) * t;
       const rz = r0.z + (r1.z - r0.z) * t;
-      const vl = addGroundVertex(gb, lx, lz, liftL, uvScale);
-      const vr = addGroundVertex(gb, rx, rz, liftR, uvScale);
-      if (i > 0) gb.quadFacing(prevL, prevR, vr, vl, 0, 1, 0);
-      prevL = vl;
-      prevR = vr;
+      const ts = rowStops(lx, lz, rx, rz);
+      const ids = ts.map((q) => (q === 0 ? addGroundVertex(gb, lx, lz, liftL, uvScale) : q === 1 ? addGroundVertex(gb, rx, rz, liftR, uvScale) : addGroundVertex(gb, lx + (rx - lx) * q, lz + (rz - lz) * q, liftL + (liftR - liftL) * q, uvScale)));
+      if (i > 0) zip(gb, prev, prevT, ids, ts);
+      prev = ids;
+      prevT = ts;
     }
   };
   const stepOf = (ei: number) => (g.edges[ei].kind === 'backAlley' ? 1 : 6);
   /** Pieces along an edge: its longest curb or building line over its step. */
+  const stepsOf: number[] = [];
   const edgeSteps = (ei: number) => {
+    const cached = stepsOf[ei];
+    if (cached !== undefined) return cached;
     const m = mouths[ei];
     const len = Math.max(
       Math.hypot(m.bP.curb.x - m.aP.curb.x, m.bP.curb.z - m.aP.curb.z),
@@ -198,13 +290,27 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
       Math.hypot(m.bP.outer.x - m.aP.outer.x, m.bP.outer.z - m.aP.outer.z),
       Math.hypot(m.bN.outer.x - m.aN.outer.x, m.bN.outer.z - m.aN.outer.z),
     );
-    return Math.max(1, Math.ceil(len / stepOf(ei)));
+    let n = Math.max(1, Math.ceil(len / stepOf(ei)));
+    // A deck's shadow edge crossing the street needs rows close enough to draw it: the whole edge gets them
+    // (the road, both sidewalks and both curb faces share this count, so they stay joined).
+    const corners = [m.aP.curb, m.bP.curb, m.aN.curb, m.bN.curb, m.aP.outer, m.bP.outer, m.aN.outer, m.bN.outer];
+    const x0 = Math.min(...corners.map((p) => p.x));
+    const x1 = Math.max(...corners.map((p) => p.x));
+    const z0 = Math.min(...corners.map((p) => p.z));
+    const z1 = Math.max(...corners.map((p) => p.z));
+    if (occ.overheadNear(x0, z0, x1, z1)) {
+      const pts: Vec2[] = [];
+      for (const [a, b] of [[m.aP.curb, m.bP.curb], [m.aN.curb, m.bN.curb], [m.aP.outer, m.bP.outer], [m.aN.outer, m.bN.outer]] as [Vec2, Vec2][]) along(a, b, OC.rowStep, pts);
+      along({ x: (m.aP.curb.x + m.aN.curb.x) / 2, z: (m.aP.curb.z + m.aN.curb.z) / 2 }, { x: (m.bP.curb.x + m.bN.curb.x) / 2, z: (m.bP.curb.z + m.bN.curb.z) / 2 }, OC.rowStep, pts);
+      if (shadedBox(x0, z0, x1, z1, pts)) n = Math.max(n, Math.ceil(len / OC.rowStep));
+    }
+    return (stepsOf[ei] = n);
   };
   // Alleys (raceway alleys, back alleys, route shortcuts) are cobbled curb to curb between their
   // mouths, matching the sim's 'cobble' surface patches; the junction fans stay asphalt. Their UVs
   // run along and across the strip so the stones follow the alley.
   const cobbled = (ei: number) => g.edges[ei].kind === 'alley' || g.edges[ei].kind === 'backAlley';
-  const cobble = new GeoBuilder();
+  const cobble = new GeoBuilder(true);
   // Rows are stationed by distance along the alley, not by equal fractions of each curb line: a diagonal
   // mouth starts the two lines at different distances, and rows between unequal fractions tilt across
   // the alley, so over a kicker or a jump exit's ramp the cobbles would cut up through the steel deck
@@ -225,8 +331,8 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     const s1 = Math.max(sL1, sR1);
     const frac = (s: number, a: number, b: number) => (b - a > 1e-6 ? Math.max(0, Math.min(1, (s - a) / (b - a))) : 0);
     const across = Math.hypot(r0.x - l0.x, r0.z - l0.z) / uvScale;
-    let prevL = -1;
-    let prevR = -1;
+    let prev: number[] = [];
+    let prevT: number[] = [];
     for (let i = 0; i <= steps; i++) {
       const s = s0 + ((s1 - s0) * i) / steps;
       const u = (s - s0) / uvScale;
@@ -236,13 +342,17 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
       const lz = l0.z + (l1.z - l0.z) * tl;
       const rx = r0.x + (r1.x - r0.x) * tr;
       const rz = r0.z + (r1.z - r0.z) * tr;
-      const [lnx, lny, lnz] = normalAt(lx, lz);
-      const [rnx, rny, rnz] = normalAt(rx, rz);
-      const vl = gb.vertex(lx, h(lx, lz) + lift, lz, lnx, lny, lnz, u, 0);
-      const vr = gb.vertex(rx, h(rx, rz) + lift, rz, rnx, rny, rnz, u, across);
-      if (i > 0) gb.quadFacing(prevL, prevR, vr, vl, 0, 1, 0);
-      prevL = vl;
-      prevR = vr;
+      // Alley walls stand at both edges: a contact column beside each (rowStops).
+      const ts = rowStops(lx, lz, rx, rz);
+      const ids = ts.map((q) => {
+        const x = q === 1 ? rx : lx + (rx - lx) * q;
+        const z = q === 1 ? rz : lz + (rz - lz) * q;
+        const [nx, ny, nz] = normalAt(x, z);
+        return gb.vertex(x, h(x, z) + lift, z, nx, ny, nz, u, across * q);
+      });
+      if (i > 0) zip(gb, prev, prevT, ids, ts);
+      prev = ids;
+      prevT = ts;
     }
   };
   g.edges.forEach((e, ei) => {
@@ -261,24 +371,29 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     curbFace: (p, q, steps) => curbFace(p, q, steps),
   };
   for (const bay of bays) drawBayAsphalt(bay, road, bayDraw, ROAD_Y);
+  bakeOcclusion(road, occ);
   const roadMesh = new THREE.Mesh(track(road.build()), roadMat);
   roadMesh.name = 'roads';
   group.add(roadMesh);
   if (cobble.vertexCount) {
     const stones = makeCobble(world.seed);
     const cobbleMat = track(
-      new THREE.MeshStandardMaterial({
-        map: track(stones.map),
-        roughnessMap: track(stones.roughness),
-        roughness: 1,
-        metalness: 0,
-        color: 0xb0aea8,
-        envMapIntensity: 1.2,
-        emissive: ROAD_GLOW.color,
-        emissiveMap: stones.map,
-        emissiveIntensity: ROAD_GLOW.intensity,
-      }),
+      occlusionMaterial(
+        new THREE.MeshStandardMaterial({
+          map: track(stones.map),
+          roughnessMap: track(stones.roughness),
+          roughness: 1,
+          metalness: 0,
+          color: 0xb0aea8,
+          envMapIntensity: 1.2,
+          emissive: ROAD_GLOW.color,
+          emissiveMap: stones.map,
+          emissiveIntensity: ROAD_GLOW.intensity,
+        }),
+        true,
+      ),
     );
+    bakeOcclusion(cobble, occ);
     const cobbleMesh = new THREE.Mesh(track(cobble.build()), cobbleMat);
     cobbleMesh.name = 'cobbles';
     group.add(cobbleMesh);
@@ -365,13 +480,14 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     }
   });
   for (const bay of bays) drawBayPaint(bay, marks, bayDraw);
-  const markMat = track(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, emissive: 0x15161a }));
+  bakeOcclusion(marks, occ);
+  const markMat = track(occlusionMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, emissive: 0x15161a }), true));
   const markMesh = new THREE.Mesh(track(marks.build()), markMat);
   markMesh.name = 'markings';
   group.add(markMesh);
 
   // ---------- Sidewalks and curbs ----------
-  const walk = new GeoBuilder();
+  const walk = new GeoBuilder(true);
   const curbH = CITY.curbHeight;
   /**
    * Curb face from p to q in `steps` pieces, draped like the strips beside it (a single quad would
@@ -430,7 +546,8 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
       }
     }
   });
-  const walkMat = track(new THREE.MeshStandardMaterial({ map: track(makeSidewalk()), roughness: 0.75, color: 0x9da0ad, envMapIntensity: 0.4 }));
+  bakeOcclusion(walk, occ);
+  const walkMat = track(occlusionMaterial(new THREE.MeshStandardMaterial({ map: track(makeSidewalk()), roughness: 0.75, color: 0x9da0ad, envMapIntensity: 0.4 })));
   const walkMesh = new THREE.Mesh(track(walk.build()), walkMat);
   walkMesh.name = 'sidewalks';
   group.add(walkMesh);
