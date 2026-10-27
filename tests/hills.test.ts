@@ -123,8 +123,10 @@ describe('hills', () => {
     const cap = TER.step[1] / (CITY.spacing - 2 * TER.flat - TER.ease);
     let found = 0;
     let rolled = 0;
+    let tried = 0;
     for (let i = 0; i < 160 && found < 3; i++) {
       const seed = rng.int(0, 0x7fffffff);
+      tried++;
       if (!new Rng(deriveSeed(seed, 'district:hills:terraced')).chance(TER.chance)) continue;
       rolled++;
       const c = createCity(seed);
@@ -160,7 +162,9 @@ describe('hills', () => {
       for (const p of hillOutline(s, s.w * 1.8)) expect(at(s, p.x, p.z).h).toBe(0);
     }
     expect(found).toBeGreaterThanOrEqual(2);
-    expect(rolled).toBeGreaterThan(found);
+    // Now and then: the roll passes on some seeds only (a rolled seed may also fail to find room, but need not).
+    expect(rolled).toBeGreaterThanOrEqual(found);
+    expect(tried).toBeGreaterThan(rolled);
   });
 
   it('plans the same hills every time, clear of the river channel, roundabouts, the El and each other', () => {
@@ -208,8 +212,9 @@ describe('monument', () => {
       seen++;
       kinds.add(m.variant);
       const g = w.graph;
-      const cx0 = (g.bounds.minX + g.bounds.maxX) / 2;
-      const cz0 = (g.bounds.minZ + g.bounds.maxZ) / 2;
+      // The reach is measured from downtown's centre, wherever the seed's plan put it (not the grid's middle).
+      const cx0 = g.plan.downtown.x;
+      const cz0 = g.plan.downtown.z;
       // A Grand Tour puts the plaza on a block its routes pass, further out (monument.ts TOUR_REACH), and so does
       // a race pass, whose landmark stands at the middle of the pass's chord, off the block's middle.
       expect(Math.hypot(m.params.cx - cx0, m.params.cz - cz0)).toBeLessThanOrEqual(m.params.passes ? TOUR_REACH + 80 : (w.event.drawn === 'grandTour' ? TOUR_REACH : MON.reach) + 1);
@@ -301,7 +306,12 @@ describe('monument', () => {
     }
     expect(crossings).toBeGreaterThanOrEqual(4);
     expect(kinds.size).toBeGreaterThan(1);
-    // Corner passes and chicanes both occur (U cuts are rare: a route has to wrap the block).
+    // Corner passes and chicanes both occur (U cuts are rare: a route has to wrap the block). The first cities
+    // may not show both, so go on through more of them (plans only, no worlds) until each has.
+    for (let i = 0; i < 80 && !(shapes.has(0) && shapes.has(1)); i++) {
+      const m = createCity(rng.int(0, 0x7fffffff)).districts.areas.find((a) => a.kind === 'monument');
+      for (let k = 0; k < (m?.params.passes ?? 0); k++) shapes.add(m!.params[`p${k}shape`]);
+    }
     expect(shapes.has(0) && shapes.has(1)).toBe(true);
   });
 

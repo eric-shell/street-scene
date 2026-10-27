@@ -218,7 +218,12 @@ describe('night market', () => {
           expect((mid.x - r0.x) * rnx + (mid.z - r0.z) * rnz).toBeGreaterThan(0);
           // The building line behind the pen is walled end to end (the infill never opens it): facades or the market's back wall.
           const len = Math.hypot(o1.x - o0.x, o1.z - o0.z);
+          // Where the pen runs on round a bend node the building line kinks at its miter, just short of
+          // the pen's straight end: the last metre there is the next piece's frontage, checked with its pen.
+          const from = joined(r0) ? 1 : 0;
+          const to = joined(r1) ? len - 1 : len;
           for (let s = 0.25; s < len; s += 0.5) {
+            if (s < from || s > to) continue;
             const x = o0.x + ((o1.x - o0.x) * s) / len;
             const z = o0.z + ((o1.z - o0.z) * s) / len;
             expect(w.walls.some((q) => q.kind === 'wall' && q.look === 'marketFront' && distToSegment(x, z, q.ax, q.az, q.bx, q.bz) < 0.05), `${seed} frontage at ${s}`).toBe(true);

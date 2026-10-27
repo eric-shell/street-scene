@@ -75,7 +75,8 @@ describe('bus bays', () => {
   it('are road where the curb stepped back, with a curb the sim climbs like any other, and nothing stands in them', () => {
     for (const seed of SEEDS.slice(0, 2)) {
       const w = createWorld(seed, 'circuit');
-      for (const b of w.blocks.bays) {
+      // Bus bays only: a park path's mouth is a bay paved in the path's cobbles (districts/park.ts).
+      for (const b of w.blocks.bays.filter((b) => b.kind === 'bus')) {
         for (let s = b.s0 + 0.25; s < b.s1; s += 0.75) {
           const inset = bayInset(b, s);
           // Inside: road and flat (beyond the curb ramp's reach onto the road).

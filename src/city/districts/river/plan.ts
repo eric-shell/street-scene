@@ -263,7 +263,10 @@ export function planRiver(ctx: PlanContext): void {
           if (e === best) continue;
           const a = g.nodes[e.a];
           const b = g.nodes[e.b];
-          if (distToSegment(x, z, a.x, a.z, b.x, b.z) < e.width / 2 + e.sidewalk + reach) return null;
+          const near = e.width / 2 + e.sidewalk + reach;
+          // A point farther than `near` from the segment's bounds is farther than that from the segment.
+          if (x < Math.min(a.x, b.x) - near - 1e-6 || x > Math.max(a.x, b.x) + near + 1e-6 || z < Math.min(a.z, b.z) - near - 1e-6 || z > Math.max(a.z, b.z) + near + 1e-6) continue;
+          if (distToSegment(x, z, a.x, a.z, b.x, b.z) < near) return null;
         }
       }
       return { ford: false, x: xr, side, hw, body, topL: bestFront - 0.5, curbL: bestFront + best.sidewalk, edge: best.id, hit: bestHit };

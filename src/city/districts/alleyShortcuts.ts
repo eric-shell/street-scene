@@ -14,7 +14,7 @@ import { Rng } from '../../sim/prng';
 import { pointInPolygon } from './geom';
 import type { Area, PlanContext } from './types';
 import { alleyFlightReach, pathCum, chainBackwards, routeChains, chainNodes, corridor, RAD, unit } from './alleyPath';
-import { distToPath, distToPolygonEdge } from './geom';
+import { distToPath, distToPolygonEdge, polygonBounds } from './geom';
 
 /** A route shortcut's mouth due within MOUTH_SNAP (m) of a bend node of its street lands on the bend node. */
 const MOUTH_SNAP = 10;
@@ -381,7 +381,7 @@ export function hasShortcutSpot(ctx: PlanContext, r: CarveRoute, others: CarveRo
   // The same skip limit the carve applies, or a route can pass here and then carve nothing.
   const b = routeBounds(ctx.graph, r);
   const maxSkip = CITY.districts.backAlley.route.maxSkip * (r.closed ? b.total : b.hi - b.lo);
-  const fits = () => planner.candidates(r).some((c) => c.skip <= maxSkip);
+  const fits = () => planner.candidates(r, false, maxSkip).some((c) => c.skip <= maxSkip);
   if (fits()) return true;
   planner.allowProtected(true);
   return fits() || planner.chordCuts(r).length > 0;
@@ -426,6 +426,14 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
   // through them of cuts).
   const blocked = ctx.areas.filter((a) => a.kind !== 'subway' && a.kind !== 'downtown' && a.kind !== 'hills' && a.polygon.length >= 3);
 
+  // Outline bounds of the blocked areas, kept while the polygon array is the one measured.
+  const boundsCache = new Map<number, { poly: Vec2[]; n: number; bb: ReturnType<typeof polygonBounds> }>();
+  const blockedBounds = (a: Area) => {
+    let e = boundsCache.get(a.id);
+    if (!e || e.poly !== a.polygon || e.n !== a.polygon.length) boundsCache.set(a.id, (e = { poly: a.polygon, n: a.polygon.length, bb: polygonBounds(a.polygon) }));
+    return e.bb;
+  };
+
   let allowProtected = false;
   const edgeOk = (eid: number) => {
     if (eid < 0) return false;
@@ -455,9 +463,16 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
         if (distToSegment(x, z, p.x, p.z, q.x, q.z) < need) return false;
       }
     }
+    const cMinX = Math.min(A.x, B.x);
+    const cMaxX = Math.max(A.x, B.x);
+    const cMinZ = Math.min(A.z, B.z);
+    const cMaxZ = Math.max(A.z, B.z);
     for (const a of blocked) {
       // The expressway's ramps have their walls just outside their outlines: the whole cut keeps off them.
       const reach = a.kind === 'highway' ? hwAll + 1 : 0;
+      // A chord clear of the outline's bounds (and its reach) is outside it and farther from it than that.
+      const bb = blockedBounds(a);
+      if (cMaxX < bb.minX - reach - 1e-6 || cMinX > bb.maxX + reach + 1e-6 || cMaxZ < bb.minZ - reach - 1e-6 || cMinZ > bb.maxZ + reach + 1e-6) continue;
       for (let k = 0; k <= steps; k++) {
         const x = A.x + ((B.x - A.x) * k) / steps;
         const z = A.z + ((B.z - A.z) * k) / steps;
@@ -466,6 +481,8 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
     }
     // Sites held for a car park (its block, frontage, driveway and flight).
     for (const poly of ctx.keepOut ?? []) {
+      const bb = polygonBounds(poly);
+      if (cMaxX < bb.minX - 1e-6 || cMinX > bb.maxX + 1e-6 || cMaxZ < bb.minZ - 1e-6 || cMinZ > bb.maxZ + 1e-6) continue;
       for (let k = 0; k <= steps; k++) if (pointInPolygon(A.x + ((B.x - A.x) * k) / steps, A.z + ((B.z - A.z) * k) / steps, poly)) return false;
     }
     return true;
@@ -624,7 +641,8 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
   };
   /** The reverse of a direction (a mouth's street direction measured from the corner, back along the route). */
   const back = (u: Vec2): Vec2 => ({ x: -u.x, z: -u.z });
-  const candidates = (route: CarveRoute, jumps = false): Cut[] => {
+  // `enough`: stop planning as soon as a cut skipping at most this much (m) is found (hasShortcutSpot only asks whether one exists).
+  const candidates = (route: CarveRoute, jumps = false, enough = -Infinity): Cut[] => {
     // The route as junctions: its streets are chains of pieces through bend nodes (roadGraph.ts), and
     // a corner cut reaches along a whole street, so the cuts are planned on the junction view (a
     // sprint keeps its ends) and every leg is the run of pieces between two junctions.
@@ -699,6 +717,7 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
           const cut: Cut = { eA: e1, fromA: C, dA: mA.d, eB: e2, fromB: C, dB: mB.d, path: [A, B], length, skip, at: cum[i] - mA.d, score: cutScore(skip, length), uIn: back(mA.u), uOut: mB.u, minMouth: 34 * RAD, skipEdges: skip12, clear: cfg.clear, corners: [cornerC], away: awayFrom(A, B, Cn) };
           if (!mouthsClear(cut, cut.path)) continue;
           out.push(cut);
+          if (cut.skip <= enough) return out;
           break corner;
         }
       }
@@ -725,6 +744,7 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
             const cut: Cut = { eA: e1, fromA: C, dA: mA.d, eB: e2, fromB: C, dB: mB.d, path: jp.path, length, skip, at: cum[i] - mA.d, score: cutScore(skip, length), uIn: back(mA.u), uOut: mB.u, minMouth: 34 * RAD, skipEdges: skip12, clear: cfg.clear, corners: [cornerC], away: awayFrom(A, B, Cn), jump: jp.jump };
             if (!mouthsClear(cut, cut.path)) continue;
             out.push(cut);
+            if (cut.skip <= enough) return out;
             break jump;
           }
         }
@@ -769,6 +789,7 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
         const cut: Cut = { eA: e1, fromA: C, dA: mA.d, eB: e3, fromB: Q, dB: mB.d, path: [A, B], length, skip, at: cum[i] - mA.d, score: cutScore(skip, length) - 4, uIn: back(mA.u), uOut: mB.u, minMouth: 55 * RAD, skipEdges: skip13, clear: cfg.clear, corners: [cornerC, cornerQ], away: awayFrom(A, B, Cn) };
         if (!mouthsClear(cut, cut.path)) continue;
         out.push(cut);
+        if (cut.skip <= enough) return out;
         break;
       }
       if (jumps) {
@@ -793,6 +814,7 @@ function shortcutPlanner(ctx: PlanContext, routes: CarveRoute[]) {
             const cut: Cut = { eA: e1, fromA: C, dA: mA.d, eB: e3, fromB: Q, dB: mB.d, path: jp.path, length, skip, at: cum[i] - mA.d, score: cutScore(skip, length) - 4, uIn: back(mA.u), uOut: mB.u, minMouth: 55 * RAD, skipEdges: skip13, clear: cfg.clear, corners: [cornerC, cornerQ], away: awayFrom(A, B, Cn), jump: jp.jump };
             if (!mouthsClear(cut, cut.path)) continue;
             out.push(cut);
+            if (cut.skip <= enough) return out;
             break jumpU;
           }
         }

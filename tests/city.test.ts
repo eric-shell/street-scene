@@ -1197,9 +1197,10 @@ describe('route shortcuts', () => {
       const panel = w.props
         .filter((p) => p.area === area.id && p.kind === 'fencePanel' && pathFrame(sc.points, p).s < sc.length / 2)
         .sort((a, b) => Math.abs((a.x - sc.ax) * -uz + (a.z - sc.az) * ux) - Math.abs((b.x - sc.ax) * -uz + (b.z - sc.az) * ux))[0];
-      // A crawl at this throttle stalls on a hill's grade alone (hills often sit on the routes): test on the flat.
+      // A crawl at this throttle stalls on a hill's grade alone (hills often sit on the routes), and a 2-3%
+      // climb leaves it short of the bar in the time: test on the flat.
       const sl = w.slopeAt(panel.x, panel.z);
-      if (Math.abs(sl.gx * ux + sl.gz * uz) > 0.03) continue;
+      if (Math.abs(sl.gx * ux + sl.gz * uz) > 0.02) continue;
       const rc = r.cars[0];
       const c = rc.state;
       const back = rc.tuning.geometry.halfLength + panel.radius + 0.3;

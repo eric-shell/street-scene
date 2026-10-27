@@ -195,10 +195,34 @@ function fitSide(ctx: PlanContext, ring: readonly Vec2[], side: number, base: Te
   const cA = ends[0];
   const cB = ends[1];
 
+  // A wide street ending at the outer column rounds its sidewalk (a disc of half its width plus the sidewalk)
+  // past the outline: the coast clears that cap too, or it would show over the quay's concrete.
+  const caps: { u: number; v: number; r: number }[] = [];
+  for (const e of g.edges) {
+    for (const id of [e.a, e.b]) {
+      const n = g.nodes[id];
+      const u = frameU(f, n.x, n.z);
+      const v = frameV(f, n.x, n.z);
+      const r = e.width / 2 + e.sidewalk;
+      // Only streets ending inside the outline: nodes past it belong to other districts, which the blockers keep clear.
+      const ring = prof.at(Math.max(cA, Math.min(cB, u)));
+      if (u >= cA - r && u <= cB + r && v <= ring && v + r > ring) caps.push({ u, v, r });
+    }
+  }
+  const reachAt = (u: number): number => {
+    let best = prof.at(u);
+    if (best === -Infinity) return best;
+    for (const c of caps) {
+      const du = u - c.u;
+      if (Math.abs(du) < c.r) best = Math.max(best, c.v + sqrt(c.r * c.r - du * du));
+    }
+    return best;
+  };
+
   // The coast: the outline's furthest reach over ±dilate (within the side), box smoothed, quayWidth out.
   const K = Math.ceil((cB - cA) / COLUMN);
   const rv = new Float64Array(K + 1);
-  for (let k = 0; k <= K; k++) rv[k] = prof.at(cA + k * COLUMN);
+  for (let k = 0; k <= K; k++) rv[k] = reachAt(cA + k * COLUMN);
   const reach = Math.round(CFG.dilate / COLUMN);
   const env = new Float64Array(K + 1);
   for (let k = 0; k <= K; k++) {
@@ -236,7 +260,7 @@ function fitSide(ctx: PlanContext, ring: readonly Vec2[], side: number, base: Te
     const short = new Float64Array(cn);
     let worst = 0;
     for (let u = cA; u <= cB; u += 1) {
-      const d = prof.at(u) + CFG.quayWidth - coastV(coast, u);
+      const d = reachAt(u) + CFG.quayWidth - coastV(coast, u);
       if (d <= 0.2) continue;
       worst = Math.max(worst, d);
       const k = Math.round((u - cx0) / step);

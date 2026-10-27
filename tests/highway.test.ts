@@ -267,14 +267,17 @@ describe('elevated highway (levels)', () => {
       let checked = 0;
       for (const b of barriers) {
         if (b.solid) continue;
-        const cx = (b.ax + b.bx) / 2 + b.nx * 0.3;
-        const cz = (b.az + b.bz) / 2 + b.nz * 0.3;
-        const ground = w.heightAt(cx, cz);
-        // Over the street (not a block the deck crosses), out of reach of any wall below (and its 3 m band).
-        if (w.surfaceAt(cx, cz) === 'offroad' || w.wallClearance(cx, cz, 4, ground + 0.4) < 3.2) continue;
-        expect(w.collideCircle(cx, cz, 0.6, contacts, b.bottom! + 2)).toBeGreaterThan(0);
-        expect(w.collideCircle(cx, cz, 0.6, contacts, ground + 0.4)).toBe(0);
-        checked++;
+        // A quarter, half and three quarters along each piece.
+        for (const t of [0.25, 0.5, 0.75]) {
+          const cx = b.ax + (b.bx - b.ax) * t + b.nx * 0.3;
+          const cz = b.az + (b.bz - b.az) * t + b.nz * 0.3;
+          const ground = w.heightAt(cx, cz);
+          // Over the street (not a block the deck crosses), out of reach of any wall below (and its 3 m band).
+          if (w.surfaceAt(cx, cz) === 'offroad' || w.wallClearance(cx, cz, 4, ground + 0.4) < 3.2) continue;
+          expect(w.collideCircle(cx, cz, 0.6, contacts, b.bottom! + 2)).toBeGreaterThan(0);
+          expect(w.collideCircle(cx, cz, 0.6, contacts, ground + 0.4)).toBe(0);
+          checked++;
+        }
       }
       expect(checked).toBeGreaterThan(30);
     }
@@ -536,7 +539,8 @@ describe('river bridges beside the highway', () => {
   it('answer every two level query exactly as before the highway (fingerprint)', () => {
     // FNV-1a over heightAt, driveHeightAt, slopeAt, surfaceAt at three heights and twoLevels, sampled over every
     // bridge deck's span on three seeds (two with a highway), recorded on the commit before the highway's
-    // levels joined the river's (DeckSpan `upper`). A change to the river or the terrain moves it on purpose.
+    // levels joined the river's (DeckSpan `upper`), re-recorded for the per-seed city plans (all three seeds a
+    // river and a highway). A change to the river or the terrain moves it on purpose.
     let h = 2166136261;
     const mix = (v: number | string | boolean) => {
       const s = typeof v === 'number' ? v.toFixed(9) : String(v);
@@ -567,6 +571,6 @@ describe('river bridges beside the highway', () => {
         }
       }
     }
-    expect(h.toString(16)).toBe('25485c0d');
+    expect(h.toString(16)).toBe('c37e5388');
   });
 });

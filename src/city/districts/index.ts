@@ -303,16 +303,30 @@ export function planDistricts(seed: number, g: RoadGraph, hooks: PlanHooks = {})
       rrows = Math.ceil((g.bounds.maxZ + pad - rz0) / RASTER_CELL);
       raster = new Int16Array(rcols * rrows).fill(-1);
       const order = areas.filter((a) => a.polygon.length >= 3).sort((a, b) => AREA_PRIORITY[a.kind] - AREA_PRIORITY[b.kind] || a.id - b.id);
+      const crossings: number[] = [];
       for (const a of order) {
         const bb = polygonBounds(a.polygon);
         const i0 = Math.max(0, Math.floor((bb.minX - rx0) / RASTER_CELL));
         const i1 = Math.min(rcols - 1, Math.floor((bb.maxX - rx0) / RASTER_CELL));
         const j0 = Math.max(0, Math.floor((bb.minZ - rz0) / RASTER_CELL));
         const j1 = Math.min(rrows - 1, Math.floor((bb.maxZ - rz0) / RASTER_CELL));
+        // pointInPolygon's even-odd test, a row at a time: the edges that straddle the row's z give the same
+        // crossing x as the test computes, sorted once; a cell is inside when an odd number are right of its center.
+        const poly = a.polygon;
         for (let j = j0; j <= j1; j++) {
           const z = rz0 + (j + 0.5) * RASTER_CELL;
+          crossings.length = 0;
+          for (let k = 0, m = poly.length - 1; k < poly.length; m = k++) {
+            const p = poly[k];
+            const q = poly[m];
+            if (p.z > z !== q.z > z) crossings.push(((q.x - p.x) * (z - p.z)) / (q.z - p.z) + p.x);
+          }
+          crossings.sort((u, v) => u - v);
+          let next = 0;
           for (let i = i0; i <= i1; i++) {
-            if (pointInPolygon(rx0 + (i + 0.5) * RASTER_CELL, z, a.polygon)) raster[j * rcols + i] = a.id;
+            const x = rx0 + (i + 0.5) * RASTER_CELL;
+            while (next < crossings.length && !(x < crossings[next])) next++;
+            if ((crossings.length - next) & 1) raster[j * rcols + i] = a.id;
           }
         }
       }

@@ -246,7 +246,8 @@ describe('lake (city)', () => {
       const lake = lakeOf(plan.districts.areas)!;
       for (const kind of ['circuit', 'sprint'] as const) {
         const ns = plan.routeNodes[kind];
-        if (!pick && ns.some((n, i) => i > 0 && lake.nodes.includes(n) && lake.nodes.includes(ns[i - 1]))) pick = { seed, kind };
+        // Not at the very end of the route: a shore that is the finish's own approach ends the race before the field has come by.
+        if (!pick && ns.some((n, i) => i > 0 && i < ns.length - 5 && lake.nodes.includes(n) && lake.nodes.includes(ns[i - 1]))) pick = { seed, kind };
       }
       if (pick) break;
     }

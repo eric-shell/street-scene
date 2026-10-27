@@ -45,6 +45,9 @@ import type { Area, AreaBuild, BuildContext, DistrictModule, PlanContext } from 
 import { emptyBuild } from './types';
 import { rectPolygon, solidWalls } from './geom';
 
+/** How far (m) the area polygon reaches past the taper's end along the street. */
+const POLY_PAD = 1.5;
+
 export const ROADWORKS = {
   enabled: true,
   /** Closures on each route's own streets, then this many [min, max] more anywhere. */
@@ -227,8 +230,11 @@ export function planRoadworks(ctx: PlanContext, routes: readonly CarveRoute[]): 
     // A bend node is no junction: the closure may run right up to the piece's end there (its frame is
     // this piece's, so it never crosses onto the next; the racing line and the traffic lanes clamp
     // their lead-ins to the piece).
-    const lo = isBendNode(g, e.a) ? 0 : Math.max(along(m.aP.curb), along(m.aN.curb)) + C.mouthClear;
-    const hi = isBendNode(g, e.b) ? f.len : Math.min(along(m.bP.curb), along(m.bN.curb)) - C.mouthClear;
+    // A two-street corner's curb sits right at its node (even behind it on a skewed one) and the area polygon
+    // reaches POLY_PAD past the taper: the curb counts at least POLY_PAD from the node, so the polygon keeps
+    // mouthClear from the node itself too.
+    const lo = isBendNode(g, e.a) ? 0 : Math.max(POLY_PAD, along(m.aP.curb), along(m.aN.curb)) + C.mouthClear;
+    const hi = isBendNode(g, e.b) ? f.len : Math.min(f.len - POLY_PAD, along(m.bP.curb), along(m.bN.curb)) - C.mouthClear;
     return [lo, hi];
   };
   // Plain streets nobody claimed, long enough, never a closed side street of either route.
@@ -273,7 +279,7 @@ export function planRoadworks(ctx: PlanContext, routes: readonly CarveRoute[]): 
       const s = routeS(r, mid);
       if (r.closed ? Math.min(s, r.length - s) < C.lineClear : s < r.startS + C.lineClear || s > r.finishS - C.lineClear) return false;
     }
-    const pad = 1.5;
+    const pad = POLY_PAD;
     const polygon = [f.at(sA - taper - pad, -0.3), f.at(sB + taper + pad, -0.3), f.at(sB + taper + pad, 1), f.at(sB, close + 0.2), f.at(sA, close + 0.2), f.at(sA - taper - pad, 1)];
     // Right hand traffic: the N side (side -1) carries a -> b, so its oncoming end is at sA.
     const up = side === -1 ? 1 : -1;

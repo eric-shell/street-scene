@@ -56,10 +56,6 @@ describe('park passes', () => {
   it('keep the path clear: cobbles under the line, no tree or clutter on it, the walls half a path away', () => {
     let crossings = 0;
     for (let seed = 0; seed < 40 && crossings < 8; seed++) {
-      // Known issue: on this seed a corner rail of the circuit's (routeRails.ts, from the street's corner)
-      // stands 1.7 m off the park pass the circuit takes at (-430, -505); the same rail stood there before
-      // the expressway's interchanges moved parks off the seeds this test used to stop at.
-      if (seed === 17) continue;
       const city = createCity(seed);
       for (const a of city.districts.areas) {
         if (a.kind !== 'park' || !a.params.passes) continue;

@@ -177,8 +177,10 @@ describe('river channel racing', () => {
       // Between the two bank rows everywhere (the grid nodes nearest above and below), and the swing never larger than configured.
       for (let x = g.bounds.minX; x <= g.bounds.maxX; x += 25) {
         const z = riverCenter(p, x);
-        const above = g.nodes.filter((n) => n.gj >= 0 && Math.abs(n.x - x) < CITY.spacing * 0.6 && n.z > z).map((n) => n.z);
-        const below = g.nodes.filter((n) => n.gj >= 0 && Math.abs(n.x - x) < CITY.spacing * 0.6 && n.z < z).map((n) => n.z);
+        // The grid column nearest x (not a fixed x window: the plan's spacing varies and the warp shifts a column's nodes by up to a block).
+        const col = g.nodes.filter((n) => n.gj >= 0).reduce((best, n) => (Math.abs(n.x - x) < Math.abs(best.x - x) ? n : best)).gi;
+        const above = g.nodes.filter((n) => n.gj >= 0 && n.gi === col && n.z > z).map((n) => n.z);
+        const below = g.nodes.filter((n) => n.gj >= 0 && n.gi === col && n.z < z).map((n) => n.z);
         expect(above.length).toBeGreaterThan(0);
         expect(below.length).toBeGreaterThan(0);
         const mid = (Math.min(...above) + Math.max(...below)) / 2;
@@ -387,7 +389,10 @@ describe('river channel racing', () => {
         expect(w.collideCircle(edge.x, edge.z, 1.2, contacts, deckTop)).toBeGreaterThan(0);
         // Probed from a pier's face toward the floor (its other faces look at the parapet line or the next pier).
         const pier = near('pier').reduce((best, x) => (Math.abs(riverL(p, (x.ax + x.bx) / 2, (x.az + x.bz) / 2)) < Math.abs(riverL(p, (best.ax + best.bx) / 2, (best.az + best.bz) / 2)) ? x : best));
-        expect(w.collideCircle((pier.ax + pier.bx) / 2 + pier.nx * 0.8, (pier.az + pier.bz) / 2 + pier.nz * 0.8, 1, contacts, deckTop)).toBe(0);
+        // The deck rolls with the terrain, so the deck level is read at the probe, not at the bridge centre.
+        const probeX = (pier.ax + pier.bx) / 2 + pier.nx * 0.8;
+        const probeZ = (pier.az + pier.bz) / 2 + pier.nz * 0.8;
+        expect(w.collideCircle(probeX, probeZ, 1, contacts, w.heightAt(probeX, probeZ))).toBe(0);
         expect(w.collideCircle((pier.ax + pier.bx) / 2 + pier.nx * 0.8, (pier.az + pier.bz) / 2 + pier.nz * 0.8, 1, contacts, floor)).toBeGreaterThan(0);
       }
     }

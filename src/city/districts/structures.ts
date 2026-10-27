@@ -27,7 +27,7 @@ import type { Area, PlanContext } from './types';
 import { HillShape, plateauDistance, shapeOf } from './hills';
 import { riverCenter } from './river';
 import { bluffFootprint } from './bluff';
-import { distToPolygonEdge, pointInPolygon } from './geom';
+import { distToPolygonEdge, pointInPolygon, polygonBounds } from './geom';
 import { NodeHeap } from '../graphSearch';
 import { circuitStart, routeRuns } from '../route';
 
@@ -228,9 +228,20 @@ export function siteClear(hz: SiteHazards, x: number, z: number, margin: number)
   for (const s of hz.hills) if (plateauDistance(s, x, z).d < s.w + margin) return false;
   for (const n of hz.rings) if ((n.x - x) ** 2 + (n.z - z) ** 2 < (n.ring!.outer + CITY.sidewalk + margin) ** 2) return false;
   for (const t of hz.taken) if ((t.x - x) ** 2 + (t.z - z) ** 2 < (t.r + margin) ** 2) return false;
-  for (const p of hz.bluffs ?? []) if (pointInPolygon(x, z, p) || distToPolygonEdge(x, z, p) < margin) return false;
-  for (const p of hz.highway ?? []) if (pointInPolygon(x, z, p) || distToPolygonEdge(x, z, p) < margin) return false;
+  for (const p of hz.bluffs ?? []) if (nearPolygon(x, z, p, margin)) return false;
+  for (const p of hz.highway ?? []) if (nearPolygon(x, z, p, margin)) return false;
   return true;
+}
+
+/** Outline bounds of the hazard polygons (a hazard set keeps its outlines as they were taken). */
+const outlineBounds = new WeakMap<Vec2[], { minX: number; minZ: number; maxX: number; maxZ: number }>();
+
+/** Whether (x, z) is inside the polygon or within `margin` of its edge; a point beyond the bounds widened by the margin is neither. */
+function nearPolygon(x: number, z: number, p: Vec2[], margin: number): boolean {
+  let bb = outlineBounds.get(p);
+  if (!bb) outlineBounds.set(p, (bb = polygonBounds(p)));
+  if (x < bb.minX - margin - 1e-6 || x > bb.maxX + margin + 1e-6 || z < bb.minZ - margin - 1e-6 || z > bb.maxZ + margin + 1e-6) return false;
+  return pointInPolygon(x, z, p) || distToPolygonEdge(x, z, p) < margin;
 }
 
 /** The pieces of edge `eid`'s street (every edge of its chain through the bend nodes, roadGraph.ts), as a set: what a structure on that street skips when it checks the other streets. */
@@ -245,7 +256,12 @@ export function corridorGap(g: RoadGraph, x: number, z: number, skip: number | R
     if (typeof skip === 'number' ? e.id === skip : skip.has(e.id)) continue;
     const a = g.nodes[e.a];
     const b = g.nodes[e.b];
-    const d = distToSegment(x, z, a.x, a.z, b.x, b.z) - (e.width / 2 + e.sidewalk);
+    const w = e.width / 2 + e.sidewalk;
+    // The segment is at least as far as its bounds (Chebyshev under Euclid): too far to beat `best` is skipped.
+    const ddx = Math.max(Math.min(a.x, b.x) - x, x - Math.max(a.x, b.x), 0);
+    const ddz = Math.max(Math.min(a.z, b.z) - z, z - Math.max(a.z, b.z), 0);
+    if (Math.max(ddx, ddz) - w > best + 1e-6) continue;
+    const d = distToSegment(x, z, a.x, a.z, b.x, b.z) - w;
     if (d < best) best = d;
   }
   for (const n of g.nodes) {

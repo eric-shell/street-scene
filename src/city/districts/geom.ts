@@ -287,6 +287,8 @@ export function triangulate(poly: Vec2[]): [Vec2, Vec2, Vec2][] {
 export class PolygonIndex<T extends { polygon: Vec2[] }> {
   private grid: SpatialGrid;
   private scratch: number[] = [];
+  /** Each item's polygon bounds as minX, maxX, minZ, maxZ: a point outside them (by the radius asked) is outside the polygon. */
+  private boxes: number[] = [];
   readonly items: T[] = [];
 
   constructor(minX: number, minZ: number, maxX: number, maxZ: number, cell = 24) {
@@ -296,6 +298,7 @@ export class PolygonIndex<T extends { polygon: Vec2[] }> {
   add(item: T): void {
     const b = polygonBounds(item.polygon);
     this.grid.insertBox(this.items.length, b.minX, b.minZ, b.maxX, b.maxZ);
+    this.boxes.push(b.minX, b.maxX, b.minZ, b.maxZ);
     this.items.push(item);
   }
 
@@ -303,21 +306,25 @@ export class PolygonIndex<T extends { polygon: Vec2[] }> {
   at(x: number, z: number, out: T[]): T[] {
     out.length = 0;
     this.grid.query(x, z, x, z, this.scratch);
-    for (const id of this.scratch) if (pointInPolygon(x, z, this.items[id].polygon)) out.push(this.items[id]);
+    const bx = this.boxes;
+    for (const id of this.scratch) if (x >= bx[id * 4] && x <= bx[id * 4 + 1] && z >= bx[id * 4 + 2] && z <= bx[id * 4 + 3] && pointInPolygon(x, z, this.items[id].polygon)) out.push(this.items[id]);
     return out;
   }
 
   /** First item containing the point, or null. */
   first(x: number, z: number): T | null {
     this.grid.query(x, z, x, z, this.scratch);
-    for (const id of this.scratch) if (pointInPolygon(x, z, this.items[id].polygon)) return this.items[id];
+    const bx = this.boxes;
+    for (const id of this.scratch) if (x >= bx[id * 4] && x <= bx[id * 4 + 1] && z >= bx[id * 4 + 2] && z <= bx[id * 4 + 3] && pointInPolygon(x, z, this.items[id].polygon)) return this.items[id];
     return null;
   }
 
   /** Any item whose polygon comes within r of the point (inside or near its edge). */
   near(x: number, z: number, r: number): boolean {
     this.grid.query(x - r, z - r, x + r, z + r, this.scratch);
+    const bx = this.boxes;
     for (const id of this.scratch) {
+      if (x < bx[id * 4] - r || x > bx[id * 4 + 1] + r || z < bx[id * 4 + 2] - r || z > bx[id * 4 + 3] + r) continue;
       const p = this.items[id].polygon;
       if (pointInPolygon(x, z, p) || distToPolygonEdge(x, z, p) < r) return true;
     }

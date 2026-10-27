@@ -406,7 +406,8 @@ describe('waterfront (race)', () => {
 
   it('rivals racing along the quay never reach the water', () => {
     // The first harbor city (from a stream) whose sprint runs down the street along the quay (the harbor goes
-    // where the races run, CFG.raceBonus).
+    // where the races run, CFG.raceBonus). The route must pass well inside the bar the rivals are held to (30 m): a field's
+    // racing line sits a few metres off the route's own line.
     const rng = new Rng(1265);
     let found: { seed: number; w: ReturnType<typeof createWorld>; a: NonNullable<ReturnType<typeof harborOf>> } | null = null;
     const alongOf = (a: NonNullable<ReturnType<typeof harborOf>>) => (x: number, z: number) => {
@@ -420,7 +421,7 @@ describe('waterfront (race)', () => {
       if (!h) continue;
       const cand = createWorld(seed, 'sprint', city);
       const along = alongOf(h);
-      if (Math.min(...cand.route.points.map((q) => along(q.x, q.z))) < 30) found = { seed, w: cand, a: h };
+      if (Math.min(...cand.route.points.map((q) => along(q.x, q.z))) < 24) found = { seed, w: cand, a: h };
     }
     expect(found).not.toBeNull();
     const { seed, w, a } = found!;

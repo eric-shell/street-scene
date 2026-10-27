@@ -111,7 +111,7 @@ describe('corner rails', () => {
    * clear sidewalk to slide along: where the routes run changes with everything planned in the city.
    */
   function scrapeSeed(from: number): number {
-    for (let seed = from; seed < from + 40; seed++) if (scrapePiece(createWorld(seed, 'circuit')).ahead >= 11) return seed;
+    for (let seed = from; seed < from + 160; seed++) if (scrapePiece(createWorld(seed, 'circuit')).ahead >= 11) return seed;
     throw new Error('no seed with a long straight rail run');
   }
 

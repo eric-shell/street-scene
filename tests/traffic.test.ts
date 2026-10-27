@@ -38,9 +38,17 @@ const withTraffic = (cfg: RaceConfig): RaceConfig => ({ ...cfg, traffic: true })
 
 describe('traffic network', () => {
   it('keeps off the route, its shortcuts, closed side streets, alleys and the river in a race, and has no dead ends', () => {
-    // Cities whose roadworks have a lane bending round the plant (a closure can sit clear of every lane).
+    // Two cities, and the first whose roadworks have a lane bending round the plant (a closure can sit
+    // clear of every lane, and on most cities every one does).
+    const merges = (seed: number) => {
+      const ow = createWorld(seed, 'circuit', undefined, { openWorld: true });
+      const open = trafficNet(ow);
+      return ow.areas.some((a) => a.kind === 'roadworks' && open.paths.some((p) => p.lane && p.edge === a.params.edge && p.x.length > 2));
+    };
+    let mergeSeed = 1;
+    while (!merges(mergeSeed)) mergeSeed++;
     let merged = 0;
-    for (const seed of [20261019, 7]) {
+    for (const seed of [20261019, 7, mergeSeed]) {
       const city = createCity(seed);
       for (const kind of ['circuit', 'sprint'] as const) {
         const w = createWorld(seed, kind, city);

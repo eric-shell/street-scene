@@ -53,7 +53,7 @@ import { Rng, deriveSeed } from '../../sim/prng';
 import type { Area, DistrictModule, HeightSample, PlanContext } from './types';
 import { emptyBuild } from './types';
 import { pointInPolygon, polygonCentroid, smooth01, type Smooth } from './geom';
-import { riverCenter } from './river';
+import { rampAlong, rampPoint, rampsOf, riverCenter } from './river';
 import { bluffFootprint } from './bluff';
 
 /** Scratch for the terrain's smoothsteps (queried per wheel per substep, so nothing allocates). */
@@ -295,6 +295,50 @@ export function hillOutline(s: HillShape, dist: number): Vec2[] {
   return pts;
 }
 
+/** The frame a hill on `blocks` takes: along `seed`'s longest street side, centred on the blocks, with their half extents (m) and total area (m2). */
+function blockFrame(blocks: readonly BlockFace[], seed: BlockFace): { u: Vec2; cx: number; cz: number; eu: number; ev: number; total: number } {
+  const u = longestSide(seed);
+  let cx = 0;
+  let cz = 0;
+  let total = 0;
+  for (const f of blocks) {
+    const c = polygonCentroid(f.ring);
+    cx += c.x * f.area;
+    cz += c.z * f.area;
+    total += f.area;
+  }
+  cx /= total;
+  cz /= total;
+  let eu = 0;
+  let ev = 0;
+  for (const f of blocks) {
+    for (const p of f.ring) {
+      eu = Math.max(eu, Math.abs((p.x - cx) * u.x + (p.z - cz) * u.z));
+      ev = Math.max(ev, Math.abs(-(p.x - cx) * u.z + (p.z - cz) * u.x));
+    }
+  }
+  return { u, cx, cz, eu, ev, total };
+}
+
+/**
+ * Streets a Hill Climb's route can run along for a hill: every edge of a free block where the lowest, plainest hill
+ * (a dome at the minimum height on that block alone, the planner's own fallback) clears everything built level.
+ * The route finders (events.ts) ask before any hill exists, so the routes choose streets the hills can come to.
+ */
+export function hillSiteEdges(ctx: Pick<PlanContext, 'graph' | 'areas' | 'claims' | 'faces'>): Set<number> {
+  const g = ctx.graph;
+  const fits = hillFitter(ctx);
+  const out = new Set<number>();
+  for (const f of ctx.faces()) {
+    if (f.outer || ctx.claims.face.has(f.id) || f.edges.some((e) => g.edges[e].bridge) || f.corners.some((c) => g.nodes[c.node].ring)) continue;
+    const { u, cx, cz, eu, ev } = blockFrame([f], f);
+    const h = CFG.height[0];
+    const s: HillShape = { cx, cz, ux: u.x, uz: u.z, a: Math.max(25, eu - CFG.inset), b: Math.max(25, ev - CFG.inset), h, w: (1.5 * h) / CFG.maxGrade };
+    if (fits(s, [])) for (const e of f.edges) out.add(e);
+  }
+  return out;
+}
+
 /** Unit direction of the longest ring side that runs along a street. */
 function longestSide(f: BlockFace): Vec2 {
   let best = 0;
@@ -332,6 +376,80 @@ export function shapeOf(area: Area): HillShape {
 }
 
 
+/**
+ * Whether a hill's slopes keep clear of everything built level on this plan (river, El, highway, bluff, roundabouts,
+ * monument, car parks, lakes, alley jump runs) and of the hills already `made` (grades would add up). Shared by the
+ * planner and by the Hill Climb route preference (events.ts), so the routes favour streets a hill can really stand on.
+ */
+export function hillFitter(ctx: Pick<PlanContext, 'graph' | 'areas'>): (s: HillShape, made: readonly HillShape[]) => boolean {
+  const g = ctx.graph;
+  const rivers = ctx.areas.filter((a) => a.kind === 'river');
+  const subways = ctx.areas.filter((a) => a.kind === 'subway').map((a) => samplePath(a.path, 10));
+  // The elevated highway: its deck holds a smoothed level over the ground and its ramps climb a fixed
+  // height to it, so no slope under either (districts/highway/); outlines sampled, the deck's line too.
+  const highways = ctx.areas.filter((a) => a.kind === 'highway' && a.polygon.length >= 3).map((a) => samplePath([...a.polygon, a.polygon[0]], 10));
+  const monuments = ctx.areas.filter((a) => a.kind === 'monument');
+  // A bluff (bluff.ts) shapes its own ground: slopes keep off its outline and out of it.
+  const bluffs = ctx.areas
+    .filter((a) => a.kind === 'bluff')
+    .map((a) => {
+      const poly = bluffFootprint(a);
+      return { poly, rim: samplePath([...poly, poly[0]], 10) };
+    });
+  const carParks = ctx.areas.filter((a) => a.kind === 'carPark');
+  // A lake (lake.ts) stands level whatever the ground does: slopes keep off its block, promenade and all.
+  const lakes = ctx.areas.filter((a) => a.kind === 'lake').map((a) => samplePath([...a.polygon, a.polygon[0]], 10));
+  // A back alley's jump exit (alleyShortcuts.ts) is sized for level ground (its run-up speed and flight
+  // reach): its last leg and the landing past its mouth keep off the slopes, or a terrace's ramp under the
+  // run-up stalls the car short of the lip.
+  const jumpRuns = ctx.areas
+    .filter((a) => a.kind === 'backAlley' && a.params.jumpExit && a.path.length >= 2)
+    .map((a) => {
+      const P = a.path[a.path.length - 2];
+      const B = a.path[a.path.length - 1];
+      const len = sqrt((B.x - P.x) ** 2 + (B.z - P.z) ** 2) || 1;
+      const reach = a.params.landMax ?? 0;
+      return samplePath([P, { x: B.x + ((B.x - P.x) / len) * reach, z: B.z + ((B.z - P.z) / len) * reach }], 6);
+    });
+  // The channel's ramps climb a set profile out to a level lip at the street: a slope under one tilts the
+  // lip and the climb (sampled from the foot to past the top; the channel check covers only the bank).
+  const ramps = rivers.flatMap((r) => rampsOf(r).map((m) => samplePath([rampPoint(m, 0, 0), rampPoint(m, rampAlong(r.params, m, m.topL) + 6, 0)], 6)));
+  const rings = g.nodes.filter((n) => n.ring);
+
+  return (s, made) => {
+    const reach = s.w + CFG.clearance;
+    for (const r of rivers) {
+      for (let x = r.params.x0; x <= r.params.x1; x += 12) if (plateauDistance(s, x, riverCenter(r.params, x)).d < reach + r.params.top) return false;
+    }
+    for (const path of ramps) for (const p of path) if (plateauDistance(s, p.x, p.z).d < reach) return false;
+    for (const path of subways) for (const p of path) if (plateauDistance(s, p.x, p.z).d < reach) return false;
+    for (const path of highways) for (const p of path) if (plateauDistance(s, p.x, p.z).d < reach) return false;
+    for (const bl of bluffs) {
+      if (pointInPolygon(s.cx, s.cz, bl.poly)) return false;
+      for (const p of bl.rim) if (plateauDistance(s, p.x, p.z).d < reach) return false;
+    }
+    for (const n of rings) {
+      const q = plateauDistance(s, n.x, n.z);
+      const R = n.ring!.outer + CITY.sidewalk;
+      if (q.d > 0 ? q.d < reach + R : q.inner < R + CFG.clearance) return false;
+    }
+    for (const m of monuments) {
+      const q = plateauDistance(s, m.params.cx, m.params.cz);
+      if (q.d > 0 ? q.d < reach + 30 : q.inner < 40) return false;
+    }
+    // A car park's ramp climbs a fixed height to a roof at a fixed height over the ground: no slope under it.
+    for (const c of carParks) for (const p of c.polygon) if (plateauDistance(s, p.x, p.z).d < reach) return false;
+    for (const rim of lakes) for (const p of rim) if (plateauDistance(s, p.x, p.z).d < s.w + CITY.districts.lake.clearance) return false;
+    for (const path of jumpRuns) for (const p of path) if (plateauDistance(s, p.x, p.z).d < reach) return false;
+    for (const o of made) {
+      const apart = (1 - CFG.overlap) * (s.w + o.w);
+      for (const p of hillOutline(o, 0)) if (plateauDistance(s, p.x, p.z).d < apart) return false;
+      for (const p of hillOutline(s, 0)) if (plateauDistance(o, p.x, p.z).d < apart) return false;
+    }
+    return true;
+  };
+}
+
 export const hillsModule: DistrictModule = {
   kind: 'hills',
   phase: 'graph',
@@ -343,35 +461,6 @@ export const hillsModule: DistrictModule = {
     // A Hill Climb asks for the most hills (see the header).
     const count = ctx.event?.flavour === 'hillClimb' ? CFG.count[1] : drawn;
     const faces = ctx.faces();
-    const rivers = ctx.areas.filter((a) => a.kind === 'river');
-    const subways = ctx.areas.filter((a) => a.kind === 'subway').map((a) => samplePath(a.path, 10));
-    // The elevated highway: its deck holds a smoothed level over the ground and its ramps climb a fixed
-    // height to it, so no slope under either (districts/highway/); outlines sampled, the deck's line too.
-    const highways = ctx.areas.filter((a) => a.kind === 'highway' && a.polygon.length >= 3).map((a) => samplePath([...a.polygon, a.polygon[0]], 10));
-    const monuments = ctx.areas.filter((a) => a.kind === 'monument');
-    // A bluff (bluff.ts) shapes its own ground: slopes keep off its outline and out of it.
-    const bluffs = ctx.areas
-      .filter((a) => a.kind === 'bluff')
-      .map((a) => {
-        const poly = bluffFootprint(a);
-        return { poly, rim: samplePath([...poly, poly[0]], 10) };
-      });
-    const carParks = ctx.areas.filter((a) => a.kind === 'carPark');
-    // A lake (lake.ts) stands level whatever the ground does: slopes keep off its block, promenade and all.
-    const lakes = ctx.areas.filter((a) => a.kind === 'lake').map((a) => samplePath([...a.polygon, a.polygon[0]], 10));
-    // A back alley's jump exit (alleyShortcuts.ts) is sized for level ground (its run-up speed and flight
-    // reach): its last leg and the landing past its mouth keep off the slopes, or a terrace's ramp under the
-    // run-up stalls the car short of the lip.
-    const jumpRuns = ctx.areas
-      .filter((a) => a.kind === 'backAlley' && a.params.jumpExit && a.path.length >= 2)
-      .map((a) => {
-        const P = a.path[a.path.length - 2];
-        const B = a.path[a.path.length - 1];
-        const len = sqrt((B.x - P.x) ** 2 + (B.z - P.z) ** 2) || 1;
-        const reach = a.params.landMax ?? 0;
-        return samplePath([P, { x: B.x + ((B.x - P.x) / len) * reach, z: B.z + ((B.z - P.z) / len) * reach }], 6);
-      });
-    const rings = g.nodes.filter((n) => n.ring);
     const byEdge = new Map<number, number[]>();
     for (const f of faces) {
       if (f.outer) continue;
@@ -384,39 +473,8 @@ export const hillsModule: DistrictModule = {
     const taken = new Set<number>();
     const eligible = (f: BlockFace) => !f.outer && !ctx.claims.face.has(f.id) && !taken.has(f.id) && f.edges.every((e) => !g.edges[e].bridge) && f.corners.every((c) => !g.nodes[c.node].ring);
     const made: HillShape[] = [];
-
-    /** Slopes clear of everything built level, and of other slopes (grades would add up). */
-    const fits = (s: HillShape): boolean => {
-      const reach = s.w + CFG.clearance;
-      for (const r of rivers) {
-        for (let x = r.params.x0; x <= r.params.x1; x += 12) if (plateauDistance(s, x, riverCenter(r.params, x)).d < reach + r.params.top) return false;
-      }
-      for (const path of subways) for (const p of path) if (plateauDistance(s, p.x, p.z).d < reach) return false;
-      for (const path of highways) for (const p of path) if (plateauDistance(s, p.x, p.z).d < reach) return false;
-      for (const bl of bluffs) {
-        if (pointInPolygon(s.cx, s.cz, bl.poly)) return false;
-        for (const p of bl.rim) if (plateauDistance(s, p.x, p.z).d < reach) return false;
-      }
-      for (const n of rings) {
-        const q = plateauDistance(s, n.x, n.z);
-        const R = n.ring!.outer + CITY.sidewalk;
-        if (q.d > 0 ? q.d < reach + R : q.inner < R + CFG.clearance) return false;
-      }
-      for (const m of monuments) {
-        const q = plateauDistance(s, m.params.cx, m.params.cz);
-        if (q.d > 0 ? q.d < reach + 30 : q.inner < 40) return false;
-      }
-      // A car park's ramp climbs a fixed height to a roof at a fixed height over the ground: no slope under it.
-      for (const c of carParks) for (const p of c.polygon) if (plateauDistance(s, p.x, p.z).d < reach) return false;
-      for (const rim of lakes) for (const p of rim) if (plateauDistance(s, p.x, p.z).d < s.w + CITY.districts.lake.clearance) return false;
-      for (const path of jumpRuns) for (const p of path) if (plateauDistance(s, p.x, p.z).d < reach) return false;
-      for (const o of made) {
-        const apart = (1 - CFG.overlap) * (s.w + o.w);
-        for (const p of hillOutline(o, 0)) if (plateauDistance(s, p.x, p.z).d < apart) return false;
-        for (const p of hillOutline(s, 0)) if (plateauDistance(o, p.x, p.z).d < apart) return false;
-      }
-      return true;
-    };
+    const fitsMade = hillFitter(ctx);
+    const fits = (s: HillShape): boolean => fitsMade(s, made);
 
     // San Francisco now and then (see the header), first, so the others keep off it.
     const terraced = planTerraced(ctx, faces, eligible, fits);
@@ -472,26 +530,7 @@ export const hillsModule: DistrictModule = {
       // smaller plateau whose slopes reach less far): every route gets its climb.
       for (const blocks of routeEdges && cluster.length > 1 ? [cluster, [seed]] : [cluster]) {
         // Frame along the seed block's longest street side, centred on the cluster.
-        const u = longestSide(seed);
-        let cx = 0;
-        let cz = 0;
-        let total = 0;
-        for (const f of blocks) {
-          const c = polygonCentroid(f.ring);
-          cx += c.x * f.area;
-          cz += c.z * f.area;
-          total += f.area;
-        }
-        cx /= total;
-        cz /= total;
-        let eu = 0;
-        let ev = 0;
-        for (const f of blocks) {
-          for (const p of f.ring) {
-            eu = Math.max(eu, Math.abs((p.x - cx) * u.x + (p.z - cz) * u.z));
-            ev = Math.max(ev, Math.abs(-(p.x - cx) * u.z + (p.z - cz) * u.x));
-          }
-        }
+        const { u, cx, cz, eu, ev, total } = blockFrame(blocks, seed);
         const ridge = rng.chance(CFG.ridgeChance);
         const basin = rng.chance(CFG.basinChance);
         const a = Math.max(25, eu - CFG.inset);

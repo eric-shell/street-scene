@@ -42,7 +42,7 @@ import { edgeBetween, isBendNode } from './roadGraph';
 import { turnAngle } from './route';
 import type { RoutePreference } from './routeSearch';
 import type { Area, HeightSample, PlanContext } from './districts/types';
-import { hillAt, shapeOf } from './districts/hills';
+import { hillAt, hillSiteEdges, shapeOf } from './districts/hills';
 import { TOUR_REACH, monumentSites, plazaSides, plazaWraps } from './districts/monument';
 import { parkCorners } from './districts/park';
 import { riverCenter } from './districts/river';
@@ -218,7 +218,7 @@ export const EVENTS = {
    * picking routes (no hills yet) a Hill Climb wants route metres on open ground, where a hill's
    * slopes fit: nodes this far (m) from the channel's bank top, the El and any roundabout.
    */
-  hillClimb: { some: 5, long: 10, riverClear: 130, elClear: 100, ringClear: 140, openSome: 250, openLong: 600 },
+  hillClimb: { some: 5, long: 10, riverClear: 130, elClear: 100, ringClear: 140, openSome: 100, openLong: 300, bias: 0.6 },
   /** Share of the route on boulevards, avenues and diagonals that rates 1 / 2. */
   downtownDash: { some: 0.3, long: 0.45, bias: 0.85 },
   /** Hill sample spacing along a route (m). */
@@ -415,9 +415,20 @@ function wishOf(id: EventFlavourId, v: Venue): Wish {
       // Hills are planned after the routes and come to the race (hills.ts); the routes only make sure
       // there is open ground on the way, clear of everything a hill's slopes must keep away from.
       const open = openGround(v);
+      // A hill takes a whole block, not just the route's two junctions: where the planning context lists the
+      // blocks, a street counts when a hill really fits on a free block along it (hillSiteEdges: variable block
+      // spacing, the highway and the rest left far corners near what the slopes must keep off).
+      let edgeOpen = (e: number) => open[g.edges[e].a] && open[g.edges[e].b];
+      let anchors = g.nodes.filter((n) => open[n.id]).map((n) => n.id);
+      if (v.ctx) {
+        const sites = hillSiteEdges(v.ctx);
+        edgeOpen = (e) => sites.has(e);
+        anchors = [...new Set([...sites].flatMap((e) => [g.edges[e].a, g.edges[e].b]))].filter((n) => !g.nodes[n].ring).sort((a, b) => a - b);
+      }
       return {
-        rate: (edges) => tier(metres(g, edges, (e) => open[g.edges[e].a] && open[g.edges[e].b]), EVENTS.hillClimb.openSome, EVENTS.hillClimb.openLong),
-        anchors: g.nodes.filter((n) => open[n.id]).map((n) => n.id),
+        rate: (edges) => tier(metres(g, edges, edgeOpen), EVENTS.hillClimb.openSome, EVENTS.hillClimb.openLong),
+        anchors,
+        bias: (e) => (edgeOpen(e) ? EVENTS.hillClimb.bias : 1),
       };
     }
   }
@@ -496,6 +507,18 @@ export function eventRoutePreference(id: EventFlavourId, ctx: SiteContext, close
     via: cross ? [...via0, ...v.crossingNodes] : via0,
     bias,
   };
+}
+
+/**
+ * Ground a flavour's routes run for that the route shortcuts must not cut through while they are carved
+ * (PlanContext.keepOut, held by world.ts only while every route keeps a spot for a shortcut of its own).
+ * A Grand Tour's routes hug its target block, and the shortcuts are cut across the blocks beside a route:
+ * one through the target would take it from the monument (monumentSites wants no shortcut on its ring)
+ * and leave the routes passing nothing.
+ */
+export function eventKeepOut(id: EventFlavourId, ctx: SiteContext): Vec2[][] {
+  if (id !== 'grandTour' || !CITY.districts.monument.enabled) return [];
+  return monumentSites(ctx, TOUR_REACH).slice(0, EVENTS.grandTour.targets).map((p) => p.f.ring);
 }
 
 /** Rise along a route from the hills alone (m): the sum of every climb, the base terrain's roll left out. */

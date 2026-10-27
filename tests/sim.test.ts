@@ -197,7 +197,10 @@ describe('nitrous stages', () => {
     }
     expect(lossA).toBeGreaterThan(0);
     expect(lossB).toBeGreaterThan(0);
-    // Stopped where they are (still turning, they can swing into each other again), the next tick pays nothing.
+    // Pulled apart and stopped (left touching, a deep hit can pay again a tick later; still turning, they can
+    // swing into each other again), the next tick pays nothing.
+    a.x -= Math.cos(a.yaw) * 4 * side;
+    a.z += Math.sin(a.yaw) * 4 * side;
     a.vx = a.vz = b.vx = b.vz = 0;
     a.yawRate = b.yawRate = 0;
     stepRace(r, input({}));

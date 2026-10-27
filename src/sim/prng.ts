@@ -41,6 +41,15 @@ export class Rng {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   }
 
+  /**
+   * Advance the stream by n draws without computing them: the state steps by a constant per draw, so the
+   * stream after skip(n) is the one after n calls to next() (callers that may not need draws they must
+   * still account for take the state first and replay them from a copy of it).
+   */
+  skip(n: number): void {
+    this.state = (this.state + Math.imul(n, 0x6d2b79f5)) >>> 0;
+  }
+
   /** Float in [min, max). */
   range(min: number, max: number): number {
     return min + (max - min) * this.next();

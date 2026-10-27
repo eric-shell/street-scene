@@ -180,6 +180,29 @@ export function routeRails(g: RoadGraph, route: Route, blocks: CityBlocks): Rail
     const cityWalls: [Vec2, Vec2][] = cityWallList
       .filter((w) => Math.min(w.ax, w.bx) < P.x + 90 && Math.max(w.ax, w.bx) > P.x - 90 && Math.min(w.az, w.bz) < P.z + 90 && Math.max(w.az, w.bz) > P.z - 90)
       .map((w) => [{ x: w.ax, z: w.az }, { x: w.bx, z: w.bz }]);
+    // Bounds of every city wall, widened by the clearance, so a point or step far from a wall skips its exact tests
+    // (distance under the clearance and a proper crossing both imply overlapping bounds; EPS covers rounding).
+    const railClearR = ROUTE.railInset * 0.5;
+    const wallBox = new Float64Array(cityWalls.length * 4);
+    cityWalls.forEach(([a, b], i) => {
+      wallBox[i * 4] = Math.min(a.x, b.x) - railClearR - 1e-6;
+      wallBox[i * 4 + 1] = Math.max(a.x, b.x) + railClearR + 1e-6;
+      wallBox[i * 4 + 2] = Math.min(a.z, b.z) - railClearR - 1e-6;
+      wallBox[i * 4 + 3] = Math.max(a.z, b.z) + railClearR + 1e-6;
+    });
+    /** Whether the point p comes within the rail clearance of a city wall, or the step prev -> p crosses one. */
+    const touchesCityWall = (prev: Vec2 | null, p: Vec2): boolean => {
+      const sMinX = prev ? Math.min(prev.x, p.x) : p.x;
+      const sMaxX = prev ? Math.max(prev.x, p.x) : p.x;
+      const sMinZ = prev ? Math.min(prev.z, p.z) : p.z;
+      const sMaxZ = prev ? Math.max(prev.z, p.z) : p.z;
+      for (let i = 0; i < cityWalls.length; i++) {
+        if (sMaxX < wallBox[i * 4] || sMinX > wallBox[i * 4 + 1] || sMaxZ < wallBox[i * 4 + 2] || sMinZ > wallBox[i * 4 + 3]) continue;
+        const [a, b] = cityWalls[i];
+        if (distToSegment(p.x, p.z, a.x, a.z, b.x, b.z) < railClearR || (prev && segmentsCross(prev, p, a, b))) return true;
+      }
+      return false;
+    };
     const nearProps = props.filter((q) => abs(q.x - P.x) < 70 && abs(q.z - P.z) < 70);
     let best: { pts: Vec2[]; nrm: Vec2[]; score: number } | null = null;
     let grew = false;
@@ -278,14 +301,7 @@ export function routeRails(g: RoadGraph, route: Route, blocks: CityBlocks): Rail
       // Keep clear of the city walls around the corner (widen the fillet if it is not) and of
       // street furniture (tighten a junction fillet that sweeps over a corner traffic light).
       let ok = true;
-      for (let k = 0; k < pts.length && ok; k++) {
-        for (const [a, b] of cityWalls) {
-          if (distToSegment(pts[k].x, pts[k].z, a.x, a.z, b.x, b.z) < ROUTE.railInset * 0.5 || (k > 0 && segmentsCross(pts[k - 1], pts[k], a, b))) {
-            ok = false;
-            break;
-          }
-        }
-      }
+      for (let k = 0; k < pts.length && ok; k++) if (touchesCityWall(k > 0 ? pts[k - 1] : null, pts[k])) ok = false;
       // A bend must also stay inside the road corridor: on an alley's narrow sidewalk it would
       // otherwise push the rail past the building line.
       for (let k = 0; k < pts.length && ok; k++) if (shift[k] !== 0 && corridorClearance(g, edgeGrid, pts[k].x, pts[k].z, gridScratch) > ROUTE.railCorridorSlack) ok = false;
@@ -357,9 +373,7 @@ export function routeRails(g: RoadGraph, route: Route, blocks: CityBlocks): Rail
           });
           for (let k = 0; k < pts.length; k++) {
             if (bentPts[k] === pts[k]) continue;
-            for (const [a, b] of cityWalls) {
-              if (distToSegment(bentPts[k].x, bentPts[k].z, a.x, a.z, b.x, b.z) < ROUTE.railInset * 0.5 || (k > 0 && segmentsCross(bentPts[k - 1], bentPts[k], a, b))) return null;
-            }
+            if (touchesCityWall(k > 0 ? bentPts[k - 1] : null, bentPts[k])) return null;
           }
           return bentPts;
         };
@@ -375,7 +389,19 @@ export function routeRails(g: RoadGraph, route: Route, blocks: CityBlocks): Rail
     // A run that reaches a city wall further along the street (a river side ramp's trench end at a T
     // just past the corner, likely on the curved grid's skewed blocks) is cut short before it.
     {
-      const crossesCity = (k: number) => cityWalls.some(([a, b]) => segmentsCross(pts[k - 1], pts[k], a, b));
+      const crossesCity = (k: number) => {
+        const p = pts[k - 1];
+        const q = pts[k];
+        const sMinX = Math.min(p.x, q.x);
+        const sMaxX = Math.max(p.x, q.x);
+        const sMinZ = Math.min(p.z, q.z);
+        const sMaxZ = Math.max(p.z, q.z);
+        for (let i = 0; i < cityWalls.length; i++) {
+          if (sMaxX < wallBox[i * 4] || sMinX > wallBox[i * 4 + 1] || sMaxZ < wallBox[i * 4 + 2] || sMinZ > wallBox[i * 4 + 3]) continue;
+          if (segmentsCross(p, q, cityWalls[i][0], cityWalls[i][1])) return true;
+        }
+        return false;
+      };
       const mid = pts.length >> 1;
       let lo = 0;
       let hi = pts.length - 1;

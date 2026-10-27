@@ -25,6 +25,13 @@ function pathLength(g: RoadGraph, nodes: number[], closed: boolean): number {
   return len;
 }
 
+/** `bias` remembered per edge: it is pure for a graph and the finders ask it for every edge of every attempt. */
+function memoBias(edges: number, bias?: (edge: number) => number): ((edge: number) => number) | undefined {
+  if (!bias) return undefined;
+  const cache = new Float64Array(edges).fill(NaN);
+  return (i) => (cache[i] === cache[i] ? cache[i] : (cache[i] = bias(i)));
+}
+
 function randomWeights(g: RoadGraph, rng: Rng, bias?: (edge: number) => number): Float64Array {
   const w = new Float64Array(g.edges.length);
   g.edges.forEach((e, i) => {
@@ -97,17 +104,22 @@ export function findCircuitNodes(g: RoadGraph, seed: number, variant = 0, want?:
   const goal = want?.goal ?? 1;
   const anchors = want?.anchors ?? [];
   const via = want?.via ?? [];
+  const bias = memoBias(g.edges.length, want?.bias);
   const n = g.nodes.length;
   // Looking for a liked route takes more tries: two in three start from an anchor.
   const attempts = rate ? ROUTE.maxAttempts * 2 : ROUTE.maxAttempts;
   for (let attempt = 0; attempt < attempts; attempt++) {
-    const w = randomWeights(g, rng, want?.bias);
+    // The weights are the first draws of the attempt; most attempts are dropped on the pair's separation,
+    // so they are made (from a copy of the stream) only for the ones that go on.
+    const weightsAt = rng.getState();
+    rng.skip(g.edges.length);
     const a = anchors.length && attempt % 3 ? anchors[rng.int(0, anchors.length - 1)] : rng.int(0, n - 1);
     const b = via.length && attempt % 3 === 2 ? via[rng.int(0, via.length - 1)] : rng.int(0, n - 1);
     const A = g.nodes[a];
     const B = g.nodes[b];
     const sep = sqrt((A.x - B.x) ** 2 + (A.z - B.z) ** 2);
     if (sep < 290 || sep > 940) continue;
+    const w = randomWeights(g, new Rng(weightsAt), bias);
     const none = new Uint8Array(n);
     const p1 = dijkstra(g, a, b, w, none, new Uint8Array(g.edges.length));
     if (!p1 || p1.length < 3) continue;
@@ -150,9 +162,11 @@ export function findSprintNodes(g: RoadGraph, seed: number, variant = 0, want?: 
   const rate = rater(want);
   const goal = want?.goal ?? 1;
   const second = want?.via ?? [];
+  const bias = memoBias(g.edges.length, want?.bias);
   const attempts = rate ? ROUTE.maxAttempts * 2 : ROUTE.maxAttempts;
   for (let attempt = 0; attempt < attempts; attempt++) {
-    const w = randomWeights(g, rng, want?.bias);
+    const weightsAt = rng.getState();
+    rng.skip(g.edges.length);
     const a = junctions[rng.int(0, junctions.length - 1)];
     const b = junctions[rng.int(0, junctions.length - 1)];
     // Through a ramp foot: the leg in by the ramp forces the leg out along the channel, or vice versa.
@@ -164,6 +178,7 @@ export function findSprintNodes(g: RoadGraph, seed: number, variant = 0, want?: 
     // Sprints start and end on a street, not in a roundabout.
     if (A.ring || B.ring) continue;
     if (via === a || via === b) continue;
+    const w = randomWeights(g, new Rng(weightsAt), bias);
     // Go through a waypoint so sprints wind across town instead of beelining.
     const p1 = dijkstra(g, a, via, w, new Uint8Array(n), new Uint8Array(g.edges.length));
     if (!p1) continue;

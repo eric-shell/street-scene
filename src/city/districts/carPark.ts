@@ -111,7 +111,9 @@ export const carParkModule: DistrictModule = {
     for (const a of ctx.areas) {
       if (a.kind !== 'carPark' || a.faces.length) continue;
       const g = carParkGeo(a);
-      const p = polygonCentroid(g.deck);
+      // A point on the ramp (inside the deck by construction): a curved block's footprint is concave, and its
+      // centroid can lie outside it, in the block across the street.
+      const p = g.ramp.length ? polygonCentroid(g.ramp) : polygonCentroid(g.deck);
       const f = faces.find((x) => !x.outer && pointInPolygon(p.x, p.z, x.ring));
       if (!f || ctx.claims.face.has(f.id)) continue;
       a.faces = [f.id];

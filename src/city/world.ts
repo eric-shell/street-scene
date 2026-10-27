@@ -20,7 +20,7 @@ import { settleAlleyLips, shortcutJumpRails } from './districts/alleyDressing';
 import { carveRouteShortcuts, hasShortcutSpot, qualifiedCount } from './districts/alleyShortcuts';
 import { ROUTE_INDEX, carParkGates, carParkRails, carParkSites, planCarParks, railsClearOf, settleCarParks } from './districts/carPark';
 import { bayRoadDistance, baysByEdge } from './busBays';
-import { CityEvent, EventFlavourId, eventOffer, eventRoutePreference, pickEventFlavour, resolveEvent, routeEdges } from './events';
+import { CityEvent, EventFlavourId, eventKeepOut, eventOffer, eventRoutePreference, pickEventFlavour, resolveEvent, routeEdges } from './events';
 import type { GateSet } from '../sim/gates';
 import { LevelCrossing, addLevelCrossings } from './levelCrossings';
 import { highwayGates, settleHighway, settleHighwayWalls } from './districts/highway/settle';
@@ -117,6 +117,10 @@ export function planRoads(seed: number, forceFlavour?: EventFlavourId): { graph:
       // Car park sites are held while the alleys are carved (a corner cut would take their block), each
       // only while both routes keep a spot for an alley of their own.
       const keep: Vec2[][] = [];
+      // The flavour's own ground goes first (a Grand Tour's target block, so the monument still stands where the routes run).
+      const held = eventKeepOut(flavour, ctx);
+      ctx.keepOut = held;
+      if (held.length && hasShortcutSpot(ctx, circuit, [sprint]) && hasShortcutSpot(ctx, sprint, [circuit])) keep.push(...held);
       for (const site of carParkSites(ctx, [circuit, sprint])) {
         ctx.keepOut = keep.concat(site);
         if (hasShortcutSpot(ctx, circuit, [sprint]) && hasShortcutSpot(ctx, sprint, [circuit])) keep.push(...site);
@@ -260,10 +264,11 @@ function awayFromRoundabouts<T extends Wall>(graph: RoadGraph, rails: T[]): T[] 
 function railsOffRoute<T extends Wall>(route: Route, rails: T[]): T[] {
   const pts = route.points;
   const zones: Vec2[][] = [];
-  const half = 1.5;
   for (let i = 0; i + 1 < pts.length; i++) {
     const a = pts[i];
     const b = pts[i + 1];
+    // A pass's cobbles are wider than a car: keep the rail ends off all but a metre of them (a car's half width at least).
+    const half = Math.min(3.5, Math.max(1.5, route.segWidth[i] / 2 - 0.75));
     const minX = Math.min(a.x, b.x);
     const maxX = Math.max(a.x, b.x);
     const minZ = Math.min(a.z, b.z);
@@ -346,7 +351,7 @@ const POCKETS = new Set(['cornerPlaza', 'plaza', 'verge', 'lot', 'alleyBay']);
  * street carries on across it to the railing (sealToRailing).
  * A tie's end at a corner rail (routeBarriers.ts) already closes: it stays.
  */
-function sealBarriers(city: City, groups: BarrierGroup[], rails: readonly RailWall[]): void {
+function sealBarriers(city: City, groups: BarrierGroup[], rails: readonly RailWall[], gateWalls: readonly Wall[]): void {
   // The alleys under the expressway's lanes are pockets too, open to the street beneath all along. (A harbor's
   // quay is no pocket: a race closes its whole frontage, districts/waterfront.ts quayGates.)
   const pockets = city.districts.areas.filter((a) => (a.kind === 'infill' && POCKETS.has(a.variant)) || (a.kind === 'highway' && a.variant === 'alley') || a.kind === 'lake');
@@ -405,7 +410,7 @@ function sealBarriers(city: City, groups: BarrierGroup[], rails: readonly RailWa
         }
         if (reach <= 0 || reach > 40) continue;
         // Or the first city wall on the way (a fountain basin, a boundary wall), whichever comes first.
-        for (const c of city.blocks.walls) {
+        for (const c of city.blocks.walls.concat(gateWalls)) {
           if (Math.abs(c.ax - ex) > 45 || Math.abs(c.az - ez) > 45) continue;
           const sx = c.bx - c.ax;
           const sz = c.bz - c.az;
@@ -572,6 +577,8 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
   const openWorld = opts.openWorld === true;
   // A harbor's quay is closed off along its frontage for a race, so no closure is ever driven round across it.
   const quay = openWorld ? [] : quayGates(city.districts.areas, city.districts.builds);
+  // The highway alleys' gates are walls the closures must meet (not cross) too, so they exist before the barriers.
+  const alleyGates = openWorld ? [] : highwayGates(city.districts.areas, new Set(route.edges));
   // Corner rails, minus the pieces the flights off the route's car park and jump exits would cross, any across
   // the line, and any through the quay's gates (a corner by the quay: the gate closes that stretch itself).
   const quayZones = quay.map((w) => {
@@ -586,13 +593,13 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     ];
   });
   const rails = openWorld ? [] : railsClearOf(quayZones, railsOffRoute(route, carParkRails(city.districts.areas, ROUTE_INDEX[kind], shortcutJumpRails(route, city.districts.areas, awayFromRoundabouts(graph, routeRails(graph, route, blocks))))));
-  const barrierGroups = openWorld ? [] : routeBarrierGroups(graph, blocks.mouths, route, rails, city.districts.areas.find((a) => a.kind === 'river')?.params, blocks.walls);
-  sealBarriers(city, barrierGroups, rails);
+  const barrierGroups = openWorld ? [] : routeBarrierGroups(graph, blocks.mouths, route, rails, city.districts.areas.find((a) => a.kind === 'river')?.params, blocks.walls.concat(alleyGates));
+  sealBarriers(city, barrierGroups, rails, alleyGates);
   const closures = closureRails(barrierGroups, rails);
   // A car park that is the other route's shortcut has its ramp shuttered (open world: all open).
   // The highway's ramps are shut in a race (it is no part of any route), and its alleys where they open
   // onto a street the route does not take; all open in free roam.
-  const gates = openWorld ? [] : carParkGates(city.districts.areas, ROUTE_INDEX[kind]).concat(highwayGates(city.districts.areas, new Set(route.edges)), quay);
+  const gates = openWorld ? [] : carParkGates(city.districts.areas, ROUTE_INDEX[kind]).concat(alleyGates, quay);
   const walls = blocks.walls.concat(rails, closures, gates);
   const props = blocks.props;
   const propGrid = buildPropGrid(graph, props);
