@@ -151,6 +151,9 @@ const music = new MusicPlayer();
 const musicWidget = new MusicWidget(document.body, music);
 let garage: GarageState = loadGarage();
 let seedStr = initialSeed();
+// Dev builds: ?perf=<seed> is a fixed-seed measured race (game/perfRun.ts).
+const perfSeed = import.meta.env.DEV ? params.get('perf') : null;
+if (perfSeed) seedStr = perfSeed;
 let isDaily = !params.get('seed');
 
 let state: State = 'menu';
@@ -1085,7 +1088,7 @@ async function boot(): Promise<void> {
   applyAutoQuality();
   // Every control ticks under the pointer and clicks when pressed, on every screen.
   installUiSounds();
-  const direct = params.get('race');
+  const direct = params.get('race') ?? (perfSeed ? 'circuit' : null);
   const directMode = RACE_MODES.find((m) => m === direct);
   const deepLink = !!directMode || params.has('garage') || params.has('drone') || params.has('freeroam');
   // A normal start flashes the title in over the asset check and lands it on the
@@ -1123,6 +1126,7 @@ async function boot(): Promise<void> {
     history.replaceState(null, '', u);
   }
   if (directMode) startRace(directMode);
+  if (import.meta.env.DEV && perfSeed && directMode) void import('./game/perfRun').then((m) => m.runPerf(() => session, gr, params));
   else if (params.has('garage')) void openGarage(false);
   else if (params.has('drone')) startDrone();
   else if (params.has('freeroam')) startFreeRoam(seedStr);

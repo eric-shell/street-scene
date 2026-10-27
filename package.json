@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "assets": "tsx scripts/buildAssets.ts",
     "inspect": "tsx scripts/inspectAsset.ts",
+    "perf:scene": "tsx --import ./scripts/perf/register.mjs scripts/perf/sceneStats.ts",
     "validate": "tsx scripts/validateParts.ts",
     "audit": "tsx scripts/auditCar.ts",
     "music": "tsx scripts/importMusic.ts",

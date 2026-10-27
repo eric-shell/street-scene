@@ -16,6 +16,7 @@
 import * as THREE from 'three';
 import { createRace, RaceConfig, RaceState, raceTime, stepRace, teleportToStreet, ticksToSeconds } from '../sim/race';
 import { InputFrame, NEUTRAL_INPUT, unpackInput } from '../sim/input';
+import { autopilotInput, type AiState } from '../sim/ai';
 import { VisualBuild } from '../shared/carBuild';
 import { DT, TICK_HZ } from '../sim/constants';
 import { DEG } from '../sim/math';
@@ -238,6 +239,8 @@ export class RaceSession {
    * (carried tick to tick) and the last tick it drives, unless the player
    * touches a control first. Null once the player has the car.
    */
+  /** Dev builds only (game/perfRun.ts): the autopilot drives the player so a perf run covers the same road every time. */
+  devPilot?: AiState;
   private cruise: { drive: Cruise; s: number; untilTick: number } | null = null;
   /** The HUD card the drone shares (ui/hud/hudCard.ts), on top of the HUD's chips: free roam's or the race's. */
   private card: HudCard;
@@ -657,6 +660,7 @@ export class RaceSession {
     } else {
       frame = this.input.sample(DT);
       if (this.cruise) frame = this.cruiseHold(frame);
+      if (import.meta.env.DEV && this.devPilot) frame = autopilotInput(r, r.cars[0], this.devPilot);
     }
     this.prev = this.curr;
     const speedBefore = r.cars[0].state.speed;
