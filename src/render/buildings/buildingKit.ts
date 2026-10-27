@@ -31,6 +31,8 @@ export const BLD = {
   decoSteps: [0.56, 0.72, 0.85, 0.93],
   /** Billboard panel aspect (width / height) matches the 4:1 atlas cells. */
   billboardAspect: 4,
+  /** Share of billboards that carry their neighbourhood's own ad (textures/hoodBrands.ts) instead of a brand from the pool. */
+  hoodAdShare: 0.5,
   /** Aviation lights above this roof height (m above street). */
   aviationAbove: 78,
   /** Walls of overlapping buildings closer than this (m) share a plane and would z-fight. */
@@ -240,6 +242,10 @@ export interface Out {
   flick: FlickList;
   escapes: GeoBuilder;
   boards: GeoBuilder;
+  /** Rows of the billboard atlas (it grows by a cell per neighbourhood ad, textures/billboardAtlas.ts billboardRows). */
+  boardRows: number;
+  /** Atlas cell of the neighbourhood ad the building being built carries if it gets a billboard (-1: any brand), set per building. */
+  adCell: number;
   lights: { x: number; y: number; z: number; phase: number; steady: number }[];
   podium: PodiumOutput;
 }

@@ -9,7 +9,7 @@
  */
 import type { World } from '../world';
 import type { Area } from '../districts/types';
-import { hoodAt, hoodOf, type Neighbourhood } from './neighbourhoods';
+import { hoodAt, hoodOf, hoodPlan, type Neighbourhood } from './neighbourhoods';
 import { areaNames, isNamedPlace } from './placeNames';
 
 /** The city every seed is a night in (working title), as the full map's header names it. */
@@ -36,6 +36,12 @@ const KIND_NOUNS: Partial<Record<Area['kind'], string>> = {
   lake: 'Lake',
 };
 const INFILL_NOUNS: Record<string, string> = { lot: 'Parking lot', plaza: 'Plaza' };
+
+/** The neighbourhoods with their names drawn (the names come with the area names, so this asks for those first): what the signs in the world read. */
+export function hoodsOf(world: World): Neighbourhood[] {
+  areaNames(world);
+  return hoodPlan(world).hoods;
+}
 
 /** A named area's name; any other area goes by the neighbourhood it lies in. */
 export function placeName(world: World, a: Area): string {

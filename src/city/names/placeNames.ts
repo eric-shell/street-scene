@@ -49,8 +49,8 @@ const HOODS: Record<HoodCharacter, readonly string[]> = {
   ],
 };
 
-/** Stems for the area names: surnames, trees, birds and stones, any of which can name a park or an alley. */
-const STEMS = [
+/** Stems for the area names: surnames, trees, birds and stones, any of which can name a park or an alley (the streets, streetNames.ts, draw from the ones left). */
+export const STEMS = [
   'Halsey', 'Marlowe', 'Kessler', 'Thorne', 'Delancey', 'Ashby', 'Corbin', 'Vance', 'Pike', 'Mercer',
   'Hollis', 'Draper', 'Lowell', 'Fairbanks', 'Sutter', 'Kearny', 'Calloway', 'Brannan', 'Whitlock', 'Garrison',
   'Holloway', 'Prescott', 'Langley', 'Sterling', 'Bishop', 'Carver', 'Dalton', 'Ellery', 'Fenwick', 'Granger',

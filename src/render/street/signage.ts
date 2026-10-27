@@ -34,6 +34,8 @@ export const SIGNAGE = {
   flickerPodium: 0.06,
   flickerBlade: 0.06,
   flickerRoof: 0.04,
+  /** Share of the podium and blade name signs that name a shop after their neighbourhood (textures/hoodBrands.ts) instead of a name from the pool. */
+  hoodShopShare: 0.3,
   /** Of the flickering signs, the share that also drops out (dark for dropMin..dropMax s every dropPeriod s). */
   dropoutShare: 0.55,
   dropPeriod: 3.7,

@@ -24,7 +24,7 @@ export interface Band {
 }
 
 const STEEL_W = 512;
-const STEEL_H = 1024;
+const STEEL_H = 1280;
 /** Canvas rows (top, height) and repeat length per band of the structure atlas. */
 const STEEL_ROWS = {
   girder: [0, 192, 6],
@@ -34,13 +34,14 @@ const STEEL_ROWS = {
   roof: [576, 64, 3],
   /** Platform floor under the canopy lights: concrete with a soft glow in the emissive atlas. */
   lit: [640, 64, 4],
-  signs: [704, 320, 1],
+  signs: [704, 576, 1],
 } as const;
 export type SteelBandName = keyof typeof STEEL_ROWS;
 
-/** Station names on the boards (the last board is the street entrance's SUBWAY sign). */
-export const STATION_NAMES = ['NEON AV', 'CHROME ST', 'MIDNIGHT SQ', 'BAYSIDE JCT'] as const;
-const SIGN_TEXTS = [...STATION_NAMES, 'SUBWAY'];
+/** Station name boards in the atlas (city/names/stations.ts supplies the names); the board after them is the street entrance's SUBWAY sign. */
+export const STATION_SLOTS = 8;
+/** The board of the street entrance's SUBWAY sign. */
+export const SUBWAY_SIGN = STATION_SLOTS;
 const SIGN_ROWS = 64;
 
 /** UV band (with a 2 px gutter against mip bleeding) of a structure atlas band. */
@@ -49,13 +50,11 @@ export function steelBand(name: SteelBandName): Band {
   return { v0: 1 - (top + h - 2) / STEEL_H, v1: 1 - (top + 2) / STEEL_H, tile };
 }
 
-/** UV band of sign board k (0..3 station names, 4 the SUBWAY entrance sign). */
+/** UV band of sign board k (0..STATION_SLOTS-1 station names, SUBWAY_SIGN the SUBWAY entrance sign). */
 export function signBand(k: number): Band {
   const top = STEEL_ROWS.signs[0] + k * SIGN_ROWS;
   return { v0: 1 - (top + SIGN_ROWS - 3) / STEEL_H, v1: 1 - (top + 3) / STEEL_H, tile: 1 };
 }
-
-export const SUBWAY_SIGN = SIGN_TEXTS.length - 1;
 
 /** Tiny repeatable noise so every scene draws the same textures. */
 function rand(seed: number): () => number {
@@ -94,8 +93,8 @@ export interface SteelAtlas {
   emissive: THREE.CanvasTexture;
 }
 
-/** The structure atlas: girder, steel, concrete, station house, roof and sign boards. */
-export function makeSteelAtlas(): SteelAtlas {
+/** The structure atlas: girder, steel, concrete, station house, roof and sign boards (the first STATION_SLOTS of `stationNames` get a board each). */
+export function makeSteelAtlas(stationNames: readonly string[] = []): SteelAtlas {
   const rnd = rand(0x51ee1);
   const [cc, c] = canvas(STEEL_W, STEEL_H);
   const [ec, e] = canvas(STEEL_W, STEEL_H);
@@ -256,7 +255,7 @@ export function makeSteelAtlas(): SteelAtlas {
   }
 
   // ----- Sign boards: white lettering on black, lit.
-  SIGN_TEXTS.forEach((text, k) => {
+  [...stationNames.slice(0, STATION_SLOTS).map((n) => n.toUpperCase()), ...Array(Math.max(0, STATION_SLOTS - stationNames.length)).fill(''), 'SUBWAY'].forEach((text, k) => {
     const top = STEEL_ROWS.signs[0] + k * SIGN_ROWS;
     const subway = k === SUBWAY_SIGN;
     c.fillStyle = subway ? '#0d3b1f' : '#0a0a0c';

@@ -13,7 +13,7 @@ import { neonMood } from './cityMood';
 // belong to the modules named, so new code imports them from there.
 export { kelvin } from '../color';
 export { COBBLE_TILE, makeAsphalt, makeCobble, makeSidewalk } from './streetTextures';
-export { BLADE_SIGN_COLS, BLADE_SIGN_ROWS, BLADE_SLOTS, SIGN_ATLAS_COLS, SIGN_ATLAS_ROWS, SIGN_SLOTS, makeBladeSignAtlas, makeSignAtlas } from './signAtlases';
+export { BLADE_SIGN_COLS, BLADE_SIGN_ROWS, BLADE_SLOTS, SIGN_ATLAS_COLS, SIGN_ATLAS_ROWS, SIGN_SLOTS, makeBladeSignAtlas, makeSignAtlas, signAtlasRows } from './signAtlases';
 export { DECAL_ATLAS_SIZE, DECAL_CELLS, makeStreetDecalAtlas, type DecalKind } from './streetDecalAtlas';
 export { WALL_ATLAS, makeWallAtlas, wallCell, type WallKind } from './wallAtlas';
 export type { AtlasCell } from './canvasKit';

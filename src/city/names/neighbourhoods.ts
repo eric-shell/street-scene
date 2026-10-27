@@ -74,6 +74,17 @@ export function hoodPlan(world: World): HoodPlan {
   return p;
 }
 
+/** Trailing words a neighbourhood's stem drops ("Summit Heights" is Summit), as a shop or a street says where it is without the whole name. */
+const STEM_TAILS = new Set(['Heights', 'Row', 'Ward', 'Flats', 'Yards', 'Point', 'Quarter', 'Mile', 'Terrace', 'Center', 'City', 'Hollow', 'Landing', 'District']);
+
+/** The word a neighbourhood goes by on shop signs and billboards: its name without a leading The or Little and a generic tail ("Riverside", "Summit", "Lisbon"). */
+export function hoodStem(name: string): string {
+  let w = name.split(' ').filter(Boolean);
+  if (w.length > 1 && (w[0] === 'The' || w[0] === 'Little')) w = w.slice(1);
+  if (w.length > 1 && STEM_TAILS.has(w[w.length - 1])) w = w.slice(0, -1);
+  return w.join(' ');
+}
+
 /** The neighbourhood at a world point: the block's under it, else the nearest street's. */
 export function hoodAt(world: World, x: number, z: number, area: Area | null = world.areaAt(x, z)): Neighbourhood {
   const p = hoodPlan(world);
