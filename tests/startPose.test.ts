@@ -97,7 +97,8 @@ describe('start pose', () => {
     const start = { ...onPath(cruise, 120), speed: 15, tick: 60 };
     const r = createRace(roam(seed, start), world);
     const p = r.cars[0].state;
-    const near = r.traffic!.cars.filter((c) => c.mode !== 'gone' && Math.hypot(c.body.x - p.x, c.body.z - p.z) < 150);
+    // The moving fleet (the kerb's parked cars stand where they are parked).
+    const near = r.traffic!.cars.filter((c) => c.home < 0 && c.mode !== 'gone' && Math.hypot(c.body.x - p.x, c.body.z - p.z) < 150);
     expect(near).toEqual([]);
     expect(r.traffic!.cars.some((c) => c.mode !== 'gone')).toBe(true);
   });

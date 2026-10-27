@@ -8,10 +8,12 @@ import { placeCar } from '../src/sim/car';
 import { createAi, autopilotInput } from '../src/sim/ai';
 import { cos, distToSegment, sin } from '../src/sim/math';
 import { TRAFFIC_MODELS } from '../src/render/traffic/traffic';
+import { PARKING } from '../src/city/config';
+import { kerbStrip, planParking } from '../src/city/parking';
 import { carSnapshot, input, raceConfig, replayLog } from './helpers';
 
 /** Traffic state that must replay bit for bit: every car's plan, speed and body. */
-const trafficSnapshot = (r: RaceState) => JSON.stringify({ cars: r.traffic?.cars, rng: r.traffic?.rng });
+const trafficSnapshot = (r: RaceState) => JSON.stringify({ cars: r.traffic?.cars, rng: r.traffic?.rng, unparked: r.traffic?.unparked });
 
 /** Closest approach of two traffic cars' collision circles (three per car, as collision.ts), negative when they overlap. */
 function circleGap(a: TrafficCar, b: TrafficCar): number {
@@ -230,6 +232,93 @@ describe('ambient traffic', () => {
     const pilot = createAi(0.97);
     for (let i = 0; i < 60 * 10; i++) stepRace(r, autopilotInput(r, r.cars[0], pilot));
     expect(carSnapshot(replayLog({ ...cfg, traffic: false }, r.inputLog))).toBe(carSnapshot(r));
+  });
+
+  it('parks cars along the kerbs off the route, clear of every lane, and a struck one slides and replays identically', () => {
+    // The kinds parked fit the plan's strip and pitch.
+    for (const pk of PARKING.kinds) {
+      const k = TRAFFIC.kinds.find((kd) => kd.name === pk.name)!;
+      expect(k).toBeDefined();
+      expect(k.halfWidth).toBeLessThanOrEqual(PARKING.bodyHalfWidth);
+      expect(2 * k.halfLength + 0.4).toBeLessThanOrEqual(PARKING.pitch);
+    }
+    const maxHW = Math.max(...TRAFFIC.kinds.map((k) => k.halfWidth));
+    for (const seed of [20261019, 7]) {
+      const city = createCity(seed);
+      const w = createWorld(seed, 'circuit', city);
+      const plan = planParking(w);
+      expect(plan.cars.length).toBeGreaterThan(300);
+      expect(planParking(createWorld(seed, 'circuit', city))).toEqual(plan);
+      const routeNodes = new Set(w.route.nodes);
+      const net = trafficNet(w);
+      for (const c of plan.cars) {
+        const e = w.graph.edges[c.edge];
+        // Off the route, its closed side streets and their meets.
+        expect(routeNodes.has(e.a) || routeNodes.has(e.b)).toBe(false);
+        expect(kerbStrip(e)).toBeGreaterThan(0);
+        for (let i = 0; i + 1 < w.route.points.length; i++) {
+          const a = w.route.points[i];
+          const b = w.route.points[i + 1];
+          expect(distToSegment(c.x, c.z, a.x, a.z, b.x, b.z)).toBeGreaterThan(PARKING.routeClear);
+        }
+        // Clear of every lane's swept width (the widest car on it), the body's corners and sides.
+        const k = TRAFFIC.kinds.find((kd) => kd.name === c.kind)!;
+        const fx = sin(c.yaw);
+        const fz = cos(c.yaw);
+        const pts = [-1, 0, 1].flatMap((u) => [-1, 1].map((v) => [c.x + fx * u * k.halfLength + fz * v * k.halfWidth, c.z + fz * u * k.halfLength - fx * v * k.halfWidth]));
+        for (const id of net.lanes) {
+          const p = net.paths[id];
+          if (p.edge !== c.edge) continue;
+          for (let i = 0; i + 1 < p.x.length; i++) for (const [x, z] of pts) expect(distToSegment(x, z, p.x[i], p.z[i], p.x[i + 1], p.z[i + 1])).toBeGreaterThan(maxHW + 0.3);
+        }
+      }
+      // Every occupied slot is a parked body in a race with traffic, after the moving fleet.
+      const r = createRace(withTraffic(raceConfig(seed, 'circuit', 0)));
+      expect(r.traffic!.cars.filter((c) => c.mode === 'parked').length).toBe(plan.cars.length);
+      expect(r.traffic!.cars.filter((c) => c.home < 0).length).toBe(r.traffic!.fleet);
+    }
+    // Drive into a parked car: it is shoved loose and slides, the hit is a crash, and it all replays.
+    const scenario = () => {
+      const r = createRace({ ...withTraffic(raceConfig(20261019, 'circuit', 0)), openWorld: true });
+      const t = r.traffic!;
+      const target = t.cars.find((c) => c.mode === 'parked')!;
+      const b = target.body;
+      const x0 = b.x;
+      const z0 = b.z;
+      const fx = sin(b.yaw);
+      const fz = cos(b.yaw);
+      const pc = r.cars[0].state;
+      // From behind along the kerb, a little out from it: cutting in as a corner would.
+      const side = 0.6;
+      placeCar(pc, b.x - fx * 18 - fz * side, b.z - fz * 18 + fx * side, b.yaw, r.world);
+      pc.vx = fx * 20;
+      pc.vz = fz * 20;
+      // Coast into it, then brake once it is hit; the speed just before and just after the hit.
+      let before = 0;
+      let after = 0;
+      let hit = -1;
+      for (let i = 0; i < 60 * 6; i++) {
+        const v = Math.hypot(pc.vx, pc.vz);
+        stepRace(r, hit < 0 ? input({}) : input({ brake: 0.6 }));
+        if (hit < 0 && target.mode === 'loose') {
+          hit = i;
+          before = v;
+        }
+        if (hit >= 0 && i === hit + 3) after = Math.hypot(pc.vx, pc.vz);
+      }
+      return { r, target, moved: Math.hypot(target.body.x - x0, target.body.z - z0), before, after };
+    };
+    const a = scenario();
+    expect(a.r.events.some((e) => e.type === 'crash' && e.traffic === a.target.id && e.car === 0)).toBe(true);
+    expect(a.target.mode).toBe('loose');
+    expect(a.r.traffic!.unparked).toContain(a.target.id);
+    expect(a.moved).toBeGreaterThan(0.5);
+    // A real stop: the hit takes a good share of the speed off the car (a body of its own mass, not a cone).
+    expect(a.before).toBeGreaterThan(15);
+    expect(a.after).toBeLessThan(a.before * 0.8);
+    const b = scenario();
+    expect(trafficSnapshot(b.r)).toBe(trafficSnapshot(a.r));
+    expect(carSnapshot(b.r)).toBe(carSnapshot(a.r));
   });
 
   it('collides every kind at the size of its model', () => {

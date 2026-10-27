@@ -317,6 +317,10 @@
     "rejoinYawDeg": 50,
     "rejoinLength": 9,
     "yawInertiaScale": 1,
+    "parked": {
+      "_": "Kerb parked cars (src/city/parking.ts): bodies standing in their slots until struck, then loose like any traffic car but never driving off. Handbrake and park lock hold the wheels, so a shoved one skids to a stop along its heading at rollDecel (m/s^2) instead of rolling.",
+      "rollDecel": 6
+    },
     "_kinds": "Vehicle kinds: collision size (half length, half width: the body below the mirrors, measured from the models in src/assets/trafficModels.json, which tests hold these to) and mass; share is the spawn mix. The renderer draws each by name from public/traffic/traffic.glb (render/traffic/traffic.ts).",
     "kinds": [
       { "name": "sedan", "share": 0.15, "mass": 1450, "halfLength": 2.45, "halfWidth": 0.95 },

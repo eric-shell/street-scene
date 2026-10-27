@@ -23,6 +23,10 @@ export const TRAFFIC_LAYOUT = {
   minLaneLength: 8,
   /** Sharper turns than this (deg) are never taken (hairpins). */
   maxTurnDeg: 140,
+  /** Kerb parking (city/parking.ts): along a row the lane on that side moves in so the widest car keeps this clear (m) of the kerb strip. */
+  parkClear: 0.4,
+  /** Cell of the kerb slots' broadphase (m). */
+  parkCell: 32,
   /** Roadworks: a lane merges out to keep the widest car this clear (m) of the barriers' reach, over rampLength (m) each way, sampled rampSteps times. */
   closurePad: 0.4,
   rampLength: 14,
@@ -137,7 +141,11 @@ export interface TrafficNet {
   gateSpan: number[];
 }
 
-export type TrafficMode = 'drive' | 'loose' | 'gone';
+/**
+ * drive: on its path; loose: a struck passive body; gone: waiting to respawn (moving cars only);
+ * parked: standing in its kerb slot (city/parking.ts), a body until struck, never driving.
+ */
+export type TrafficMode = 'drive' | 'loose' | 'gone' | 'parked';
 
 export interface TrafficCar {
   /** Slot index (stable for the race). */
@@ -145,6 +153,8 @@ export interface TrafficCar {
   /** Index into TRAFFIC.kinds. */
   kind: number;
   mode: TrafficMode;
+  /** A parked car's slot (ParkingPlan.cars index), kept once it is struck loose; -1 for the moving fleet. */
+  home: number;
   /** The path driven now and the next two (TrafficNet.paths ids). */
   path: number;
   next: number;
@@ -176,7 +186,12 @@ export interface TrafficCar {
 
 export interface TrafficState {
   net: TrafficNet;
+  /** The moving fleet (ids 0 .. fleet - 1), then the kerb's parked cars (one per occupied slot, id fleet + slot). */
   cars: TrafficCar[];
+  /** Size of the moving fleet. */
+  fleet: number;
+  /** Ids of the parked cars struck out of their slots (loose), ascending: the per tick loops visit these and find the parked ones by place (parkedNear). */
+  unparked: number[];
   /** Spawn and turn choices stream (Rng state). */
   rng: number;
 }

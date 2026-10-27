@@ -166,7 +166,7 @@ export interface World extends City {
   barrierGroups: BarrierGroup[];
   /**
    * Open world (free roam, and the waypoint race's city): no route barriers,
-   * corner rails, parked cars or crowds; every street is drivable. The route
+   * corner rails, street meets (their parked cars and crowds); every street is drivable. The route
    * still exists for the grid (and the waypoint race's suggestion).
    */
   openWorld?: boolean;

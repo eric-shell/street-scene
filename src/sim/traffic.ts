@@ -61,6 +61,16 @@
  * spawnMax from the player and far from every race car, out of sight in the
  * night fog. Cost per tick is O(cars x race cars) with small constants.
  *
+ * Kerb parking (city/parking.ts): every occupied slot of the world's plan is
+ * a car in mode 'parked' after the moving fleet, standing at rest, never
+ * driving and never recycled. Drivers do not look at them (their rows moved
+ * the lanes clear); race cars and loose traffic meet them through the same
+ * contact as any traffic car, so one struck turns loose and slides, skidding
+ * on its locked wheels (traffic.parked.rollDecel). A struck parked car never
+ * rejoins a lane or respawns as moving traffic: once it has stopped, or the
+ * player has left it behind, and nobody sees either its spot or its slot, it
+ * is put back in its slot, so a long free roam does not empty the kerbs.
+ *
  * The parts live in traffic/: types (TRAFFIC_LAYOUT and the shared shapes), net (the network), fleet (the
  * cars: kinds, spawning, density). This module steps them each tick (stepTraffic) and answers what a driver
  * asks of them (trafficAhead), and is the public surface the rest of the sim imports.
@@ -75,7 +85,8 @@ import { GatePhase, gatePhase } from './gates';
 import { trainAt } from './levelCrossing';
 import { TRAFFIC_LAYOUT, type TrafficCar, type TrafficNet, type TrafficState } from './traffic/types';
 import { samplePath } from './traffic/net';
-import { choose, pose, rng, syncBody, trafficTuning, trySpawn } from './traffic/fleet';
+import { choose, parkHome, parkedNear, pose, rng, syncBody, trafficTuning, trySpawn, unparkCar } from './traffic/fleet';
+import { planParking } from '../city/parking';
 
 export { TRAFFIC_LAYOUT, type TrafficCar, type TrafficMode, type TrafficNet, type TrafficPath, type TrafficState } from './traffic/types';
 export { trafficNet } from './traffic/net';
@@ -92,6 +103,13 @@ const hw = (c: TrafficCar): number => P.kinds[c.kind].halfWidth;
 // ---------------------------------------------------------------------------
 // Stepping
 // ---------------------------------------------------------------------------
+
+/** Per-tick scratch: parked cars near a body, the loose cars of the contact pass, struck parked cars to check. */
+const nearParked: number[] = [];
+const looseIds: number[] = [];
+const unparkIds: number[] = [];
+/** Longest traffic half length (m): the reach the parked broadphase adds. */
+const MAX_HL = Math.max(...P.kinds.map((k) => k.halfLength));
 
 /** Per-tick scratch: driving cars bucketed by path (singly linked lists), junction requests. */
 let bucketFirst = new Int32Array(0);
@@ -129,13 +147,14 @@ function release(c: TrafficCar): void {
 }
 
 function turnLoose(t: TrafficState, c: TrafficCar): void {
+  if (c.home >= 0) unparkCar(t, c);
   release(c);
   c.mode = 'loose';
   c.still = 0;
   c.wait = 0;
   c.braking = true;
-  // Recovery rejoins the lane: a car hit inside a junction rejoins the lane it was leaving into.
-  if (!t.net.paths[c.path].lane) {
+  // Recovery rejoins the lane: a car hit inside a junction rejoins the lane it was leaving into (a parked car has none).
+  if (c.home < 0 && !t.net.paths[c.path].lane) {
     c.path = c.next;
     c.next = c.after;
     c.after = choose(t.net, c.next);
@@ -176,7 +195,9 @@ export function stepTraffic(r: RaceState): void {
   const net = t.net;
   const paths = net.paths;
   const cars = t.cars;
-  const n = cars.length;
+  // The moving fleet: the kerb's parked cars (after it) never drive, and are visited by place or as t.unparked.
+  const n = t.fleet;
+  const world = r.world;
   rng.setState(t.rng);
   if (bucketFirst.length < paths.length) bucketFirst = new Int32Array(paths.length);
   if (bucketNext.length < n) bucketNext = new Int32Array(n);
@@ -191,6 +212,8 @@ export function stepTraffic(r: RaceState): void {
     bucketFirst[c.path] = i;
   }
   foreign.reverse();
+  // Struck parked cars are foreign bodies too; the ones still in their slots stand clear of every lane.
+  for (const id of t.unparked) foreign.push(id);
 
   const gates = r.world.timedGates && r.world.timedGates.gates.length ? r.world.timedGates : null;
   // 1. Speed limits for every driving car, from the state at the start of the tick.
@@ -413,15 +436,18 @@ export function stepTraffic(r: RaceState): void {
     syncBody(net, c, prevYaw);
   }
 
-  // 4. Loose bodies slide to a stop against the walls, then try to drive on.
-  for (const c of cars) {
-    if (c.mode !== 'loose') continue;
+  // 4. Loose bodies slide to a stop against the walls, then try to drive on (struck parked cars stay put).
+  looseIds.length = 0;
+  for (let i = 0; i < n; i++) if (cars[i].mode === 'loose') looseIds.push(i);
+  for (const id of t.unparked) looseIds.push(id);
+  for (const id of looseIds) {
+    const c = cars[id];
     const bd = c.body;
     const fx = sin(bd.yaw);
     const fz = cos(bd.yaw);
     let vf = bd.vx * fx + bd.vz * fz;
     let vl = bd.vx * fz - bd.vz * fx;
-    vf = approach(vf, 0, P.rollDecel * DT);
+    vf = approach(vf, 0, (c.home >= 0 ? P.parked.rollDecel : P.rollDecel) * DT);
     vl = approach(vl, 0, P.slideDecel * DT);
     bd.vx = fx * vf + fz * vl;
     bd.vz = fz * vf - fx * vl;
@@ -430,41 +456,56 @@ export function stepTraffic(r: RaceState): void {
     bd.z += bd.vz * DT;
     bd.yaw = wrapAngle(bd.yaw + bd.yawRate * DT);
     // On the street level (traffic never drives the river channel): over a deck's piers, held by its parapets.
-    bd.y = r.world.heightAt(bd.x, bd.z);
-    collideCarWithWorld(bd, trafficTuning(c.kind), r.world, undefined, undefined, r.tick);
+    bd.y = world.heightAt(bd.x, bd.z);
+    collideCarWithWorld(bd, trafficTuning(c.kind), world, undefined, undefined, r.tick);
     bd.speed = sqrt(bd.vx * bd.vx + bd.vz * bd.vz);
     c.still = bd.speed < P.restSpeed && abs(bd.yawRate) < 0.15 ? c.still + DT : 0;
-    if (c.still >= P.recoverDelay) tryRejoin(t, c);
+    if (c.still >= P.recoverDelay && c.home < 0) tryRejoin(t, c);
   }
 
   // 5. Contact: race cars against traffic, then struck traffic against the rest.
+  // Each body meets the moving fleet, the struck parked cars, then the parked cars standing near it.
   for (const rc of r.cars) {
     // A car just reset passes through traffic (collision.resetPassThrough).
     if (rc.finished || rc.passThrough > 0) continue;
     const s = rc.state;
-    for (const c of cars) {
-      if (c.mode === 'gone') continue;
+    const meet = (c: TrafficCar) => {
+      if (c.mode === 'gone') return;
       const reach = rc.tuning.geometry.halfLength + hl(c) + 0.5;
-      if ((c.body.x - s.x) ** 2 + (c.body.z - s.z) ** 2 > reach * reach) continue;
+      if ((c.body.x - s.x) ** 2 + (c.body.z - s.z) ** 2 > reach * reach) return;
       // Its height on the street level: a race car on the channel floor under a bridge deck passes beneath it.
-      c.body.y = r.world.heightAt(c.body.x, c.body.z);
+      c.body.y = world.heightAt(c.body.x, c.body.z);
       contact(t, r, rc.index, s, rc.tuning, c);
-    }
+    };
+    for (let i = 0; i < n; i++) meet(cars[i]);
+    for (const id of t.unparked) meet(cars[id]);
+    for (const id of parkedNear(t, world, s.x, s.z, rc.tuning.geometry.halfLength + MAX_HL + 0.5, nearParked)) meet(cars[id]);
   }
-  for (const c of cars) {
-    if (c.mode !== 'loose') continue;
-    for (const o of cars) {
-      if (o === c || o.mode === 'gone' || (o.mode === 'loose' && o.id < c.id)) continue;
+  looseIds.length = 0;
+  for (let i = 0; i < n; i++) if (cars[i].mode === 'loose') looseIds.push(i);
+  for (const id of t.unparked) looseIds.push(id);
+  for (const ci of looseIds) {
+    const c = cars[ci];
+    const push = (o: TrafficCar) => {
+      if (o === c || o.mode === 'gone' || (o.mode === 'loose' && o.id < c.id)) return;
       const reach = hl(c) + hl(o) + 0.5;
-      if ((c.body.x - o.body.x) ** 2 + (c.body.z - o.body.z) ** 2 > reach * reach) continue;
+      if ((c.body.x - o.body.x) ** 2 + (c.body.z - o.body.z) ** 2 > reach * reach) return;
       contact(t, r, -1, c.body, trafficTuning(c.kind), o, c);
-    }
+    };
+    for (let i = 0; i < n; i++) push(cars[i]);
+    for (let k = 0; k < t.unparked.length; k++) push(cars[t.unparked[k]]);
+    for (const id of parkedNear(t, world, c.body.x, c.body.z, hl(c) + MAX_HL + 0.5, nearParked)) push(cars[id]);
   }
 
   // 6. Recycling: out of the bubble, or struck / stuck for good with nobody near, or met by a train; then respawns.
   const focus = r.cars[0]?.state;
   let spawns = 0;
-  for (const c of cars) {
+  // Struck parked cars go back to their slots, never into the fleet (parked ones stand off the tracks).
+  unparkIds.length = 0;
+  for (const id of t.unparked) unparkIds.push(id);
+  for (const id of unparkIds) unpark(t, r, cars[id], focus);
+  for (let i = 0; i < n; i++) {
+    const c = cars[i];
     // A car a train meets on a level crossing (struck there, say) goes too (sim/levelCrossing.ts).
     if (c.mode !== 'gone' && trainAt(r.world, r.tick, c.body.x, c.body.z, 1)) {
       release(c);
@@ -488,8 +529,34 @@ export function stepTraffic(r: RaceState): void {
 
 /** No race car within hideDistance: a car can vanish or appear without anyone seeing it. */
 function hidden(r: RaceState, c: TrafficCar): boolean {
-  for (const rc of r.cars) if ((rc.state.x - c.body.x) ** 2 + (rc.state.z - c.body.z) ** 2 < L.hideDistance * L.hideDistance) return false;
+  return hiddenAt(r, c.body.x, c.body.z);
+}
+
+function hiddenAt(r: RaceState, x: number, z: number): boolean {
+  for (const rc of r.cars) if ((rc.state.x - x) ** 2 + (rc.state.z - z) ** 2 < L.hideDistance * L.hideDistance) return false;
   return true;
+}
+
+/**
+ * A struck parked car (loose, `home` set) goes back to its slot once it is at
+ * rest or out of the player's bubble, unseen where it is and where it goes,
+ * with the slot clear; met by a train, at once. Never into the moving fleet.
+ */
+function unpark(t: TrafficState, r: RaceState, c: TrafficCar, focus: CarState | undefined): void {
+  const world = r.world;
+  if (trainAt(world, r.tick, c.body.x, c.body.z, 1)) {
+    parkHome(t, world, c, r.tick);
+    return;
+  }
+  const far = !!focus && (c.body.x - focus.x) ** 2 + (c.body.z - focus.z) ** 2 > L.bubble * L.bubble;
+  if (!far && c.still < P.recoverDelay) return;
+  const slot = planParking(world).cars[c.home];
+  if (!hidden(r, c) || !hiddenAt(r, slot.x, slot.z)) return;
+  // Nobody standing in the slot: a moving car or another struck one (the parked ones keep to their own).
+  const blocks = (o: TrafficCar) => o !== c && o.mode !== 'gone' && (o.body.x - slot.x) ** 2 + (o.body.z - slot.z) ** 2 < (hl(c) + hl(o)) ** 2;
+  for (let i = 0; i < t.fleet; i++) if (blocks(t.cars[i])) return;
+  for (const id of t.unparked) if (blocks(t.cars[id])) return;
+  parkHome(t, world, c, r.tick);
 }
 
 /**
@@ -505,7 +572,7 @@ function contact(t: TrafficState, r: RaceState, carIndex: number, a: CarState, t
   const imp = collideCars(a, ta, bd, trafficTuning(c.kind));
   const moved = bd.x !== x0 || bd.z !== z0 || bd.vx !== vx0 || bd.vz !== vz0;
   if (!moved) return;
-  if (c.mode === 'drive') turnLoose(t, c);
+  if (c.mode === 'drive' || c.mode === 'parked') turnLoose(t, c);
   c.still = 0;
   if (carIndex >= 0) {
     const rc = r.cars[carIndex];
@@ -544,7 +611,8 @@ function tryRejoin(t: TrafficState, c: TrafficCar): void {
   const off = sqrt((bd.x - px) ** 2 + (bd.z - pz) ** 2);
   const dyaw = wrapAngle(bd.yaw - pose.yaw);
   if (off > P.rejoinDistance || abs(dyaw) > P.rejoinYawDeg * DEG) return;
-  for (const o of t.cars) {
+  for (let j = 0; j < t.fleet; j++) {
+    const o = t.cars[j];
     if (o === c || o.mode !== 'drive' || o.path !== c.path) continue;
     // Room ahead for the standstill gap; a car right behind just waits until this one pulls away.
     if (o.s >= s ? o.s - s < hl(c) + hl(o) + P.standGap : s - o.s < hl(c) + hl(o)) return;
@@ -567,14 +635,27 @@ function tryRejoin(t: TrafficState, c: TrafficCar): void {
 export function trafficAhead(r: RaceState, x: number, z: number, fx: number, fz: number, reach: number, side: number): number {
   const t = r.traffic;
   if (!t) return 0;
-  for (const c of t.cars) {
-    if (c.mode === 'gone') continue;
+  const look = (c: TrafficCar): number => {
+    if (c.mode === 'gone') return 0;
     const dx = c.body.x - x;
     const dz = c.body.z - z;
     const ahead = dx * fx + dz * fz;
-    if (ahead <= 0 || ahead > reach) continue;
+    if (ahead <= 0 || ahead > reach) return 0;
     const lat = dx * fz - dz * fx;
-    if (abs(lat) < side + hw(c)) return lat >= 0 ? 1 : -1;
+    return abs(lat) < side + hw(c) ? (lat >= 0 ? 1 : -1) : 0;
+  };
+  // In id order: the moving fleet, then the kerb's cars (struck or standing near) merged by id.
+  for (let i = 0; i < t.fleet; i++) {
+    const v = look(t.cars[i]);
+    if (v) return v;
+  }
+  if (t.cars.length === t.fleet) return 0;
+  parkedNear(t, r.world, x, z, reach + MAX_HL, nearParked);
+  for (const id of t.unparked) nearParked.push(id);
+  nearParked.sort((a, b) => a - b);
+  for (const id of nearParked) {
+    const v = look(t.cars[id]);
+    if (v) return v;
   }
   return 0;
 }
