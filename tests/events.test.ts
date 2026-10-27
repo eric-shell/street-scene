@@ -66,7 +66,8 @@ describe('event flavours', () => {
     }
   });
 
-  it('names a varied event on every seed, and the routes really deliver it, across 200 seeds', () => {
+  // 200 worlds with solid trees and kerb parking take about 65 s alone and over 120 s under the suite's parallel load.
+  it('names a varied event on every seed, and the routes really deliver it, across 200 seeds', { timeout: 300000 }, () => {
     const counts: Record<string, number> = {};
     const titles = new Set<string>();
     let fallbacks = 0;

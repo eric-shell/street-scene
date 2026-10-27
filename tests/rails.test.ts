@@ -196,7 +196,8 @@ describe('corner rails', () => {
     return { speed: c.speed, state, maxGap, width: t.geometry.halfWidth * 2 };
   }
 
-  it('heavy pieces give a little when a car slides along them, and the joints stay closed', () => {
+  // A long slide against the rails; it passes alone and only times out under the suite's parallel load.
+  it('heavy pieces give a little when a car slides along them, and the joints stay closed', { timeout: 300000 }, () => {
     const seed = scrapeSeed(20261019);
     const fixed = scrape(seed, false);
     const moving = scrape(seed, true);

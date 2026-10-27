@@ -3,76 +3,81 @@
  "tier": "medium",
  "camera": "route",
  "totals": {
-  "tris": 857824,
-  "verts": 1372050,
-  "drawCalls": 160,
-  "materials": 82,
-  "transparent": 29,
+  "tris": 911713,
+  "verts": 1411457,
+  "drawCalls": 162,
+  "materials": 83,
+  "transparent": 30,
   "additive": 20
  },
  "max": {
-  "tris": 948093,
-  "verts": 1565753,
-  "drawCalls": 172
+  "tris": 1015855,
+  "verts": 1614808,
+  "drawCalls": 173
  },
  "samples": [
   {
    "s": 200,
    "totals": {
-    "tris": 704823,
-    "verts": 1058977,
-    "drawCalls": 151,
-    "materials": 74,
-    "transparent": 26,
+    "tris": 735753,
+    "verts": 1084887,
+    "drawCalls": 154,
+    "materials": 75,
+    "transparent": 27,
     "additive": 17
    }
   },
   {
    "s": 700,
    "totals": {
-    "tris": 920556,
-    "verts": 1491420,
-    "drawCalls": 172,
-    "materials": 89,
-    "transparent": 32,
+    "tris": 983530,
+    "verts": 1534677,
+    "drawCalls": 173,
+    "materials": 90,
+    "transparent": 33,
     "additive": 22
    }
   },
   {
    "s": 1200,
    "totals": {
-    "tris": 948093,
-    "verts": 1565753,
-    "drawCalls": 158,
-    "materials": 84,
-    "transparent": 29,
+    "tris": 1015855,
+    "verts": 1614808,
+    "drawCalls": 160,
+    "materials": 85,
+    "transparent": 30,
     "additive": 20
    }
   }
  ],
  "upper": {
   "totals": {
-   "tris": 10660233,
-   "verts": 12301265,
-   "drawCalls": 490,
-   "materials": 96,
-   "transparent": 33,
+   "tris": 10912595,
+   "verts": 12484165,
+   "drawCalls": 493,
+   "materials": 97,
+   "transparent": 34,
    "additive": 23
   },
   "groups": {
    "walkers": {
-    "tris": 6419472,
-    "verts": 6568945,
-    "draws": 228
+    "tris": 6435792,
+    "verts": 6585645,
+    "draws": 229
    },
    "crowds": {
-    "tris": 1660560,
-    "verts": 1699225,
-    "draws": 53
+    "tris": 1667088,
+    "verts": 1705905,
+    "draws": 54
    },
    "podiumTrim": {
     "tris": 386304,
     "verts": 772780,
+    "draws": 1
+   },
+   "districtTrees": {
+    "tris": 318616,
+    "verts": 222737,
     "draws": 1
    },
    "idlers": {
@@ -98,11 +103,6 @@
    "sidewalks": {
     "tris": 96090,
     "verts": 68668,
-    "draws": 1
-   },
-   "districtTrees": {
-    "tris": 89480,
-    "verts": 63973,
     "draws": 1
    },
    "roofs": {
@@ -176,8 +176,8 @@
     "draws": 1
    },
    "wallBoxes": {
-    "tris": 31790,
-    "verts": 63580,
+    "tris": 31930,
+    "verts": 63860,
     "draws": 1
    },
    "props:pallets0": {
@@ -266,8 +266,8 @@
     "draws": 1
    },
    "wallPaint": {
-    "tris": 11456,
-    "verts": 22912,
+    "tris": 11422,
+    "verts": 22844,
     "draws": 1
    },
    "props:crate0": {
@@ -625,6 +625,11 @@
     "verts": 576,
     "draws": 1
    },
+   "wallBanners": {
+    "tris": 272,
+    "verts": 544,
+    "draws": 1
+   },
    "harborFlashers": {
     "tris": 264,
     "verts": 528,
@@ -728,20 +733,25 @@
   "PointLight": 4
  },
  "groups": {
+  "districtTrees": {
+   "tris": 65867,
+   "verts": 46046,
+   "draws": 4.3
+  },
+  "walkers": {
+   "tris": 60112,
+   "verts": 61512,
+   "draws": 2
+  },
   "podiumTrim": {
    "tris": 59482,
    "verts": 118990,
    "draws": 4.3
   },
   "walkersFar": {
-   "tris": 57324,
-   "verts": 114648,
+   "tris": 57120,
+   "verts": 114240,
    "draws": 6
-  },
-  "walkers": {
-   "tris": 54400,
-   "verts": 55667,
-   "draws": 1.7
   },
   "roofs": {
    "tris": 42071,
@@ -793,11 +803,6 @@
    "verts": 9409,
    "draws": 1
   },
-  "districtTrees": {
-   "tris": 17818,
-   "verts": 12739,
-   "draws": 3.7
-  },
   "props:parkLamp0": {
    "tris": 16203,
    "verts": 21952,
@@ -839,8 +844,8 @@
    "draws": 1
   },
   "wallPaint": {
-   "tris": 11456,
-   "verts": 22912,
+   "tris": 11422,
+   "verts": 22844,
    "draws": 1
   },
   "roofNeon": {
@@ -909,8 +914,8 @@
    "draws": 1
   },
   "wallBoxes": {
-   "tris": 7623,
-   "verts": 15246,
+   "tris": 7716,
+   "verts": 15433,
    "draws": 2
   },
   "districtPaint": {
@@ -1263,6 +1268,11 @@
    "verts": 217,
    "draws": 0.7
   },
+  "wallBanners": {
+   "tris": 272,
+   "verts": 544,
+   "draws": 1
+  },
   "harborFlashers": {
    "tris": 264,
    "verts": 528,
@@ -1406,6 +1416,17 @@
  },
  "meshes": [
   {
+   "name": "districtTrees",
+   "group": "districtTrees",
+   "perInstance": 84170,
+   "instances": 1,
+   "draws": 4,
+   "tris": 84170,
+   "verts": 58841,
+   "transparent": false,
+   "additive": false
+  },
+  {
    "name": "podiumTrim",
    "group": "podiumTrim",
    "perInstance": 74927,
@@ -1450,6 +1471,17 @@
    "additive": false
   },
   {
+   "name": "walkers",
+   "group": "walkers",
+   "perInstance": 816,
+   "instances": 41,
+   "draws": 1,
+   "tris": 33456,
+   "verts": 34235,
+   "transparent": false,
+   "additive": false
+  },
+  {
    "name": "districtGlow",
    "group": "districtGlow",
    "perInstance": 28726,
@@ -1457,17 +1489,6 @@
    "draws": 2,
    "tris": 28726,
    "verts": 39303,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "walkers",
-   "group": "walkers",
-   "perInstance": 816,
-   "instances": 35,
-   "draws": 1,
-   "tris": 28560,
-   "verts": 29225,
    "transparent": false,
    "additive": false
   },
@@ -1512,17 +1533,6 @@
    "draws": 1,
    "tris": 22965,
    "verts": 45990,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "districtTrees",
-   "group": "districtTrees",
-   "perInstance": 21642,
-   "instances": 1,
-   "draws": 3,
-   "tris": 21642,
-   "verts": 15473,
    "transparent": false,
    "additive": false
   },
@@ -1716,11 +1726,11 @@
   {
    "name": "wallPaint",
    "group": "wallPaint",
-   "perInstance": 11456,
+   "perInstance": 11422,
    "instances": 1,
    "draws": 1,
-   "tris": 11456,
-   "verts": 22912,
+   "tris": 11422,
+   "verts": 22844,
    "transparent": true,
    "additive": false
   },

@@ -82,7 +82,8 @@ describe('city generation', () => {
     for (const n of c.graph.nodes) if (!n.edges.every((e) => c.graph.edges[e].kind === 'channel' || c.graph.edges[e].kind === 'mouth')) expect(n.edges.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('routes are connected, closed and edge-unique across 200 seeds', () => {
+  // 200 worlds with solid trees and kerb parking take about 65 s alone and over 120 s under the suite's parallel load.
+  it('routes are connected, closed and edge-unique across 200 seeds', { timeout: 300000 }, () => {
     const rng = new Rng(99);
     let meetsTargets = 0;
     for (let i = 0; i < 200; i++) {
