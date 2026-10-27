@@ -1125,9 +1125,10 @@ async function boot(): Promise<void> {
     u.searchParams.delete('beat');
     history.replaceState(null, '', u);
   }
-  if (directMode) startRace(directMode);
-  if (import.meta.env.DEV && perfSeed && directMode) void import('./game/perfRun').then((m) => m.runPerf(() => session, gr, params));
-  else if (params.has('garage')) void openGarage(false);
+  if (directMode) {
+    startRace(directMode);
+    if (import.meta.env.DEV && perfSeed) void import('./game/perfRun').then((m) => m.runPerf(() => session, gr, params));
+  } else if (params.has('garage')) void openGarage(false);
   else if (params.has('drone')) startDrone();
   else if (params.has('freeroam')) startFreeRoam(seedStr);
   else showMenu();
