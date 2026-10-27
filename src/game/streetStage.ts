@@ -380,6 +380,7 @@ export class StreetStage {
     this.carLight?.follow(p);
     this.night.lighting.update(opts.focus ?? this.focus.set(p.x, p.y, p.z));
     this.night.update(this.time);
+    this.night.envProbes.update(p.x, p.z, dt);
     // The same city bed as a race, on the stage clock (silent while lent to a free roam session, which has its own).
     if (!this.ambience && !this.ambienceTried) {
       this.ambience = CityAmbience.create(ambienceTraits(this.world.seed, this.night.weather.mood, this.world.areas, this.night.weather.timeline.turn?.to));

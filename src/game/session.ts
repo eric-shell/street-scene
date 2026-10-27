@@ -938,6 +938,7 @@ export class RaceSession {
     // The El's trains and level crossings at the interpolated sim time: the gates close for these trains.
     this.night.syncDistricts(Math.max(0, r.tick - 1 + (this.paused ? 1 : alpha)), !this.paused, r.brokenArms);
     this.night.update(this.time);
+    this.night.envProbes.update(focus.x, focus.z, dt);
     this.hazards.update(r);
     spitRailSparks(this.sparks, this.night, this.race, this.camPos, this.time, this.paused ? 0 : dt);
     // Corner rail pieces shoved by hits this race.

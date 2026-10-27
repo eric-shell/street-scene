@@ -38,6 +38,7 @@ import { damp } from '../shared/anim';
 import { buildWallOverlay } from './wallOverlay';
 import { CityChunks, chunkGrid, fogCutoff, type ChunkClass } from './cityChunks';
 import { FOG_HEIGHT, applyHeightFog } from './heightFog';
+import { bakeEnvProbes, type EnvProbes } from './envProbes';
 
 /** Retro mode's render height (px): the view is drawn this many pixels tall and scaled up. */
 const RETRO_HEIGHT = 240;
@@ -188,6 +189,8 @@ export interface NightScene {
   walkers: Walkers;
   /** The seed's weather mood: fog, sky, rain or mist (weather.ts). */
   weather: Weather;
+  /** Zone reflection probes baked at build (envProbes.ts); call update(x, z, dt) with the car's place each frame. */
+  envProbes: EnvProbes;
   /** The news helicopter, its searchlight and the blimp (airTraffic.ts). */
   air: AirTraffic;
   /** Mountains, masts and the sky sprites (backdrop.ts). */
@@ -349,6 +352,8 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   applyHeightFog(scene);
   // Last: stabilizeSmallEmitters reads each layer's material as a single one, and chunking wraps it in an array.
   chunks.addByName(scene, CHUNK_LAYERS);
+  // Last of all: the zone reflection probes are baked from the finished scene (Medium and High).
+  const envProbes = bakeEnvProbes(gr.renderer, scene, world, settings.quality, [weather.group, lighting.group]);
   return {
     scene,
     chunks,
@@ -362,6 +367,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     idlers,
     walkers,
     weather,
+    envProbes,
     air,
     backdrop,
     syncDistricts(tick, audible, brokenArms) {
@@ -400,6 +406,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
       idlers.dispose();
       walkers.dispose();
       weather.dispose();
+      envProbes.dispose();
       air.dispose();
       walls?.dispose();
     },
