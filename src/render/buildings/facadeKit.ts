@@ -7,7 +7,9 @@
  * that the architecture styles pick from; offices, karaoke bars and arched
  * windows on the mezzanine floors; plus 3D trim (cornice, pilasters, awnings,
  * canopies) and light spill on the sidewalk. Walls take the building's
- * palette as a vertex tint. Render only.
+ * palette as a vertex tint. On Medium and High the shop bays also carry an `aRoom`
+ * attribute and a glass mask for the interior mapping behind their windows
+ * (interiorAtlas.ts, podiumMaterial.ts). Render only.
  */
 import * as THREE from 'three';
 import { Rng } from '../../sim/prng';
@@ -15,6 +17,7 @@ import { GeoBuilder } from '../geoBuilder';
 import { kelvin } from '../textures/textures';
 import { DETAIL, type Detail } from './buildingKit';
 import type { ShopFront } from '../people/idleSpots';
+import { hasRoom, roomFor } from './interiorAtlas';
 
 /** Ground floor bay variants: the first eight in atlas row 0, the residential and regional ones in row 2. */
 export const GROUND_BAYS = ['shopWarm', 'shopCool', 'arch', 'lobby', 'shutter', 'restaurant', 'masonry', 'neonShop', 'stoop', 'garage', 'arcade', 'bodega', 'decoShop'] as const;
@@ -33,13 +36,18 @@ const ATLAS_H = CELL * 3;
 const GROUND_PX = Math.round((CELL * GROUND_H) / BAY_W);
 const FLOOR_PX = Math.round((CELL * PODIUM_FLOOR_H) / BAY_W);
 
+/** The bay atlas's layout, for the interior shader (podiumMaterial.ts) to find a bay's own cell: 8 columns, ground cells `groundPx` tall, row 0 and row 2 hold ground bays. */
+export const BAY_ATLAS = { cols: 8, cell: CELL, width: ATLAS_W, height: ATLAS_H, groundPx: GROUND_PX } as const;
+
 export interface FacadeKitTextures {
   map: THREE.CanvasTexture;
   emissive: THREE.CanvasTexture;
+  /** Where the glass of the shop bays is (white) against frames, mullions and things hung behind it (black), same layout as `map`; only with `withMask` (the interior mapping, Medium and High). */
+  glass: THREE.DataTexture | null;
 }
 
-/** Bake every bay variant into a color atlas and a matching emissive atlas. */
-export function makeFacadeKitTextures(seed: number): FacadeKitTextures {
+/** Bake every bay variant into a color atlas and a matching emissive atlas (and, for the interior mapping, a glass mask). */
+export function makeFacadeKitTextures(seed: number, withMask = false): FacadeKitTextures {
   const rng = new Rng(seed ^ 0xfacade);
   const color = document.createElement('canvas');
   const emit = document.createElement('canvas');
@@ -51,10 +59,25 @@ export function makeFacadeKitTextures(seed: number): FacadeKitTextures {
   e.fillRect(0, 0, ATLAS_W, ATLAS_H);
   c.fillStyle = '#2a2c34';
   c.fillRect(0, 0, ATLAS_W, ATLAS_H);
+  // The glass mask: painted next to the bays it describes, black by default.
+  const maskCanvas = withMask ? document.createElement('canvas') : null;
+  if (maskCanvas) maskCanvas.width = ATLAS_W, maskCanvas.height = ATLAS_H;
+  const m = maskCanvas ? maskCanvas.getContext('2d', { willReadFrequently: true })! : null;
+  if (m) {
+    m.fillStyle = '#000';
+    m.fillRect(0, 0, ATLAS_W, ATLAS_H);
+  }
+  /** Paint into the glass mask: white opens a window, black closes it again. */
+  const mk = (col: '#fff' | '#000', x: number, y: number, w: number, h: number) => {
+    if (!m) return;
+    m.fillStyle = col;
+    m.fillRect(x, y, w, h);
+  };
 
   const glass = (x: number, y: number, w: number, h: number, lit: string | null, alpha = 1) => {
     c.fillStyle = '#0d121c';
     c.fillRect(x, y, w, h);
+    mk('#fff', x, y, w, h);
     if (lit) {
       const g = e.createLinearGradient(0, y, 0, y + h);
       g.addColorStop(0, lit);
@@ -72,9 +95,11 @@ export function makeFacadeKitTextures(seed: number): FacadeKitTextures {
       const xx = x + (w * i) / n - 2;
       c.fillRect(xx, y, 4, h);
       e.fillRect(xx, y, 4, h);
+      mk('#000', xx - 1, y, 6, h);
     }
     c.fillRect(x, y - 2, w, 4);
     e.fillRect(x, y - 2, w, 4);
+    mk('#000', x, y - 3, w, 6);
   };
   const masonry = (x: number, y: number, w: number, h: number, base: string, joint: string, brick: boolean) => {
     c.fillStyle = base;
@@ -138,6 +163,7 @@ export function makeFacadeKitTextures(seed: number): FacadeKitTextures {
         glass(x + W - 66, y + 52, 50, H - 66, lit, 0.8);
         c.fillStyle = '#777';
         c.fillRect(x + W - 26, y + 52 + (H - 66) / 2, 4, 14);
+        mk('#000', x + W - 28, y + 52 + (H - 66) / 2 - 2, 8, 18);
         // display shelves silhouettes
         e.fillStyle = 'rgba(0,0,0,0.45)';
         for (let k = 0; k < 3; k++) e.fillRect(x + 20, y + 100 + k * 30, W - 104, 5);
@@ -177,6 +203,13 @@ export function makeFacadeKitTextures(seed: number): FacadeKitTextures {
         c.beginPath();
         c.arc(x + W / 2, y + H - 40, 24, Math.PI, 0);
         c.stroke();
+        if (m) {
+          m.strokeStyle = '#000';
+          m.lineWidth = 5;
+          m.beginPath();
+          m.arc(x + W / 2, y + H - 40, 24, Math.PI, 0);
+          m.stroke();
+        }
         break;
       }
       case 'shutter': {
@@ -201,10 +234,19 @@ export function makeFacadeKitTextures(seed: number): FacadeKitTextures {
           e.beginPath();
           e.ellipse(lx, y + 64, 12, 16, 0, 0, Math.PI * 2);
           e.fill();
+          if (m) {
+            m.fillStyle = '#000';
+            m.beginPath();
+            m.ellipse(lx, y + 64, 13, 17, 0, 0, Math.PI * 2);
+            m.fill();
+          }
         }
         // noren curtain
         c.fillStyle = '#7a1414';
-        for (let k = 0; k < 5; k++) c.fillRect(x + W / 2 - 50 + k * 21, y + 56, 18, 46);
+        for (let k = 0; k < 5; k++) {
+          c.fillRect(x + W / 2 - 50 + k * 21, y + 56, 18, 46);
+          mk('#000', x + W / 2 - 50 + k * 21, y + 56, 18, 46);
+        }
         break;
       }
       case 'masonry': {
@@ -225,6 +267,11 @@ export function makeFacadeKitTextures(seed: number): FacadeKitTextures {
         e.strokeStyle = '#22e6ff';
         e.lineWidth = 5;
         e.strokeRect(x + 24, y + 62, W - 48, H - 90);
+        if (m) {
+          m.strokeStyle = '#000';
+          m.lineWidth = 9;
+          m.strokeRect(x + 24, y + 62, W - 48, H - 90);
+        }
         break;
       }
       case 'stoop': {
@@ -323,6 +370,7 @@ export function makeFacadeKitTextures(seed: number): FacadeKitTextures {
         c.fillRect(x + 10, y + 52, 110, 60);
         e.fillStyle = '#000';
         e.fillRect(x + 10, y + 52, 110, 60);
+        mk('#000', x + 10, y + 52, 110, 60);
         c.fillStyle = 'rgba(0,0,0,0.35)';
         for (let yy = y + 54; yy < y + 112; yy += 6) c.fillRect(x + 10, yy, 110, 2);
         mullions(x + 10, y + 52, W - 20, H - 70, 2);
@@ -342,6 +390,12 @@ export function makeFacadeKitTextures(seed: number): FacadeKitTextures {
         e.roundRect(x + 26, y + 48, W - 52, H - 74, 22);
         e.fill();
         e.globalAlpha = 1;
+        if (m) {
+          m.fillStyle = '#fff';
+          m.beginPath();
+          m.roundRect(x + 24, y + 46, W - 48, H - 70, 24);
+          m.fill();
+        }
         const neon = rng.pick(['#ff4fd8', '#3ff0ff', '#b070ff', '#50ffb0']);
         e.strokeStyle = neon;
         e.lineWidth = 5;
@@ -423,7 +477,24 @@ export function makeFacadeKitTextures(seed: number): FacadeKitTextures {
   const emissive = new THREE.CanvasTexture(emit);
   emissive.colorSpace = THREE.SRGBColorSpace;
   emissive.anisotropy = 4;
-  return { map, emissive };
+  return { map, emissive, glass: m ? glassMaskTexture(m) : null };
+}
+
+/** The mask canvas as a one channel texture (rows flipped to the canvas textures' v up), linear and mipmapped. */
+function glassMaskTexture(m: CanvasRenderingContext2D): THREE.DataTexture {
+  const rgba = m.getImageData(0, 0, ATLAS_W, ATLAS_H).data;
+  const out = new Uint8Array(ATLAS_W * ATLAS_H);
+  for (let y = 0; y < ATLAS_H; y++) {
+    const dst = (ATLAS_H - 1 - y) * ATLAS_W;
+    const src = y * ATLAS_W * 4;
+    for (let x = 0; x < ATLAS_W; x++) out[dst + x] = rgba[src + x * 4];
+  }
+  const t = new THREE.DataTexture(out, ATLAS_W, ATLAS_H, THREE.RedFormat, THREE.UnsignedByteType);
+  t.magFilter = THREE.LinearFilter;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.generateMipmaps = true;
+  t.needsUpdate = true;
+  return t;
 }
 
 function cellUv(row: 0 | 1, variant: number): { u0: number; u1: number; v0: number; v1: number } {
@@ -470,10 +541,17 @@ export interface PodiumOutput {
   mullion: 'plate' | 'box';
   /** Lit ground bays (shops, restaurants, bodegas) with their outward normal: where the idle people stand (people/idleSpots.ts). */
   shopFronts: ShopFront[];
+  /**
+   * The `aRoom` vertex attribute of `walls` (4 floats per vertex, in step with it) for the interior mapping, or
+   * null on Low (no rooms, no attribute). Per quad: the bay's atlas variant (-1 when there is no room behind it),
+   * the room index plus the bay's light roll as a fraction, the quad's width in metres signed by which way its u
+   * axis runs against the facade (cross(up, normal)), and its height in metres. See podiumMaterial.ts.
+   */
+  room: number[] | null;
 }
 
 export function createPodiumOutput(detail: Detail = 'medium'): PodiumOutput {
-  return { walls: new GeoBuilder(true), trim: new GeoBuilder(true), awnings: new GeoBuilder(true), spill: new GeoBuilder(true), mullion: DETAIL[detail].mullion, shopFronts: [] };
+  return { walls: new GeoBuilder(true), trim: new GeoBuilder(true), awnings: new GeoBuilder(true), spill: new GeoBuilder(true), mullion: DETAIL[detail].mullion, shopFronts: [], room: detail === 'low' ? null : [] };
 }
 
 const AWNING_COLORS = [0x8a1c2b, 0x1c4a8a, 0x1f6b3a, 0x7a5a12, 0x5a1f7a, 0x222222].map((c) => new THREE.Color(c));
@@ -596,7 +674,8 @@ export function addPodiumFace(out: PodiumOutput, f: PodiumFace, floors: number, 
     bz: f.bz + uz * e + f.nz * e,
     len: baseLen + 2 * e,
   });
-  const quad = (gb: GeoBuilder, l: ReturnType<typeof lineFor>, s0: number, s1: number, y0: number, y1: number, uv: ReturnType<typeof cellUv>) => {
+  const NO_ROOM = [-1, 0, 0, 0] as const;
+  const quad = (gb: GeoBuilder, l: ReturnType<typeof lineFor>, s0: number, s1: number, y0: number, y1: number, uv: ReturnType<typeof cellUv>, room: readonly number[] = NO_ROOM) => {
     const p0 = { x: l.ax + ux * s0, z: l.az + uz * s0 };
     const p1 = { x: l.ax + ux * s1, z: l.az + uz * s1 };
     const a = gb.vertex(p0.x, y0, p0.z, f.nx, 0, f.nz, uv.u0, uv.v0, tint);
@@ -604,6 +683,16 @@ export function addPodiumFace(out: PodiumOutput, f: PodiumFace, floors: number, 
     const c = gb.vertex(p1.x, y1, p1.z, f.nx, 0, f.nz, uv.u1, uv.v1, tint);
     const d = gb.vertex(p0.x, y1, p0.z, f.nx, 0, f.nz, uv.u0, uv.v1, tint);
     gb.quadFacing(a, b, c, d, f.nx, 0, f.nz);
+    if (gb === out.walls && out.room) for (let k = 0; k < 4; k++) out.room.push(room[0], room[1], room[2], room[3]);
+  };
+  /** The room behind a ground bay's glass (interiorAtlas.ts): its attribute values, or none for a bay without glass. Placed by a hash of where the bay stands, so the facade stream is never touched. */
+  const roomOf = (variant: number, b: number, bayLen: number, y0: number, y1: number): readonly number[] => {
+    const name = GROUND_BAYS[variant];
+    if (!out.room || !f.front || !hasRoom(name)) return NO_ROOM;
+    const pick = roomFor(name, f.ax + ux * (b + 0.5) * bayLen, f.az + uz * (b + 0.5) * bayLen);
+    if (!pick) return NO_ROOM;
+    const hand = ux * f.nz - uz * f.nx < 0 ? -1 : 1;
+    return [variant, pick.room + pick.roll * 0.999, (bayLen - 0.02) * hand, y1 - y0];
   };
   /** Horizontal strip between offsets e0 and e1 at height y (a ledge or a soffit). */
   const ledge = (e0: number, e1: number, y: number, up: boolean) => {
@@ -641,10 +730,11 @@ export function addPodiumFace(out: PodiumOutput, f: PodiumFace, floors: number, 
     const y1 = level === 0 ? f.y0 + GROUND_H : y0 + PODIUM_FLOOR_H;
     for (let b = 0; b < bays; b++) {
       const uv = level === 0 ? cellUv(0, variants[b]) : cellUv(1, floorVariant);
+      const room = level === 0 ? roomOf(variants[b], b, bayLen, y0, y1) : NO_ROOM;
       if (level === 0 && bayExtra[b] > 0) {
         const x = bayExtra[b];
         const lb = { ...l, ax: l.ax + f.nx * x, az: l.az + f.nz * x, bx: l.bx + f.nx * x, bz: l.bz + f.nz * x };
-        quad(out.walls, lb, b * bayLen + 0.01, (b + 1) * bayLen - 0.01, y0, y1, uv);
+        quad(out.walls, lb, b * bayLen + 0.01, (b + 1) * bayLen - 0.01, y0, y1, uv, room);
         // cap on top of the protruding bay
         const p0 = { x: l.ax + ux * b * bayLen, z: l.az + uz * b * bayLen };
         const p1 = { x: l.ax + ux * (b + 1) * bayLen, z: l.az + uz * (b + 1) * bayLen };
@@ -656,7 +746,7 @@ export function addPodiumFace(out: PodiumOutput, f: PodiumFace, floors: number, 
         ].map(([px, pz]) => out.trim.vertex(px, y1, pz, 0, 1, 0, 0, 0, trimColor));
         out.trim.quadFacing(cap[0], cap[1], cap[2], cap[3], 0, 1, 0);
       } else {
-        quad(out.walls, l, b * bayLen + 0.01, (b + 1) * bayLen - 0.01, y0, y1, uv);
+        quad(out.walls, l, b * bayLen + 0.01, (b + 1) * bayLen - 0.01, y0, y1, uv, room);
       }
       if (level === 0) {
         // side walls where neighbouring bays protrude by different amounts
