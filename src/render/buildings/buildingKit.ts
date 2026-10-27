@@ -15,6 +15,8 @@ import { GeoBuilder } from '../geoBuilder';
 import { PodiumOutput } from './facadeKit';
 import { neonMood } from '../textures/cityMood';
 import { NEON_COLORS } from '../textures/textures';
+import { FLICK, SIGNAGE } from '../street/signage';
+import type { FlickList } from '../street/signage';
 
 export type Detail = 'low' | 'medium' | 'high';
 
@@ -234,6 +236,8 @@ export interface Out {
   roofs: GeoBuilder;
   trim: GeoBuilder;
   neon: GeoBuilder;
+  /** Flicker program of every `neon` vertex (signage.ts), filled ring by ring. */
+  flick: FlickList;
   escapes: GeoBuilder;
   boards: GeoBuilder;
   lights: { x: number; y: number; z: number; phase: number; steady: number }[];
@@ -420,6 +424,9 @@ export function shellFacet(o: Out, skin: Skin, pts: P3[], uv: [number, number][]
 /** Thin emissive band just outside a local outline (neon tubes, LED crowns). */
 export function neonRing(o: Out, F: Frame, pts: Vec2[], y0: number, y1: number, color: THREE.Color, out = 0.07, faces?: (i: number) => boolean): void {
   const n = pts.length;
+  o.flick.fill(o.neon.vertexCount, 0);
+  const fl = o.flick.roll(SIGNAGE.flickerRoof);
+  const dead = fl > 0 ? o.flick.deadQuad(n) : -1;
   for (let i = 0; i < n; i++) {
     if (faces && !faces(i)) continue;
     const p = pts[i];
@@ -436,6 +443,7 @@ export function neonRing(o: Out, F: Frame, pts: Vec2[], y0: number, y1: number, 
     const c = o.neon.vertex(bx, y1, bz, nx, 0, nz, 0, 0, color);
     const d = o.neon.vertex(ax, y1, az, nx, 0, nz, 0, 0, color);
     o.neon.quadFacing(a, b, c, d, nx, 0, nz);
+    o.flick.fill(o.neon.vertexCount, i === dead ? FLICK.dead : fl);
   }
 }
 

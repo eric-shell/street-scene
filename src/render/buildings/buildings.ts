@@ -42,6 +42,7 @@ import { BuildingPlan, STYLES, StyleDef, planArchitecture } from './architecture
 import { planBacklots } from './backlots';
 import { BLD, DETAIL, FLOOD, pastelNeon, neonColor, setNeonMood, LED, WHITE, NO_GLOW, wash, ShellGeo, Frame, edgeNormal, boxOutline, roundedOutline, lbox, cap, facet, walls, neonRing, neonPost, cornice, colorOf } from './buildingKit';
 import type { Skin, Out, Detail } from './buildingKit';
+import { FlickList, applyFlicker } from '../street/signage';
 import { waterTower, chimney, spire, pyramid, wedge, mansard, hipRoof, mast, light, roofLights, clutter, billboard } from './roofs';
 import { bayWindow, fireEscapes, balcony, eyebrow, fin } from './facadeDetails';
 
@@ -177,6 +178,7 @@ export function buildBuildings(world: World, podium: PodiumOutput, opts: { detai
     roofs: new GeoBuilder(true),
     trim: podium.trim,
     neon: new GeoBuilder(true),
+    flick: new FlickList(world, 'roof'),
     escapes: new GeoBuilder(),
     boards: new GeoBuilder(true),
     lights: [],
@@ -207,7 +209,10 @@ export function buildBuildings(world: World, podium: PodiumOutput, opts: { detai
   if (o.neon.vertexCount) {
     const neonMat = track(new THREE.MeshBasicMaterial({ vertexColors: true }));
     neonMat.color.setScalar(1.5);
-    const m = new THREE.Mesh(track(o.neon.build()), neonMat);
+    applyFlicker(neonMat);
+    const neonGeo = track(o.neon.build());
+    neonGeo.setAttribute('aFlick', o.flick.attribute(o.neon.vertexCount));
+    const m = new THREE.Mesh(neonGeo, neonMat);
     m.name = 'roofNeon';
     meshes.push(m);
   }

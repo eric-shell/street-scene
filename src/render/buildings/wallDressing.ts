@@ -29,6 +29,7 @@ import { FacadeProbe, ProbeHit } from './wallProbe';
 import { fadeSubPixel } from '../materialFx';
 import { AtlasCell, BLADE_SIGN_COLS, BLADE_SIGN_ROWS, BLADE_SLOTS, NEON_COLORS, WALL_ATLAS, WallKind, wallCell } from '../textures/textures';
 import { neonMood } from '../textures/cityMood';
+import { FlickList, SIGNAGE, applyFlicker } from '../street/signage';
 
 export interface WallDressingOptions {
   /** Share of candidate walls and faces that get dressed (graphics tier). */
@@ -83,6 +84,7 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
   const paint = new GeoBuilder(true);
   const boxes = new GeoBuilder(true);
   const blades = new GeoBuilder(true);
+  const bladeFlick = new FlickList(world, 'blade');
   const WHITE = new THREE.Color(1, 1, 1);
   const D = opts.density;
 
@@ -353,6 +355,7 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
         const oz = -wz;
         // Two single sided quads back to back, each reading the right way round: seen from the -t side
         // the viewer's right runs out from the wall, from the +t side it runs toward it.
+        const fl = bladeFlick.roll(SIGNAGE.flickerBlade);
         for (const side of [1, -1]) {
           const nx = tx * side;
           const nz = tz * side;
@@ -366,6 +369,7 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
           const d = blades.vertex(sx + ox * o0 + ex, y1, sz + oz * o0 + ez, nx, 0, nz, uNear, v1, col);
           blades.quadFacing(a, bb, c, d, nx, 0, nz);
         }
+        bladeFlick.fill(blades.vertexCount, fl);
         // Bracket: a dark bar from the wall into the panel's top edge.
         const bar = new THREE.Color(0x1a1a1f);
         orientedBox(boxes, sx - tx * 0.03, sz - tz * 0.03, sx + tx * 0.03, sz + tz * 0.03, ox * (o0 + 0.25), oz * (o0 + 0.25), y1 - 0.04, y1 + 0.02, bar);
@@ -476,7 +480,10 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
     const mat = new THREE.MeshBasicMaterial({ map: atlases.blades, vertexColors: true });
     mat.color.setScalar(2.4);
     fadeSubPixel(mat, 0.5, 0.25);
-    const m = new THREE.Mesh(blades.build(), mat);
+    applyFlicker(mat);
+    const bladeGeo = blades.build();
+    bladeGeo.setAttribute('aFlick', bladeFlick.attribute(blades.vertexCount));
+    const m = new THREE.Mesh(bladeGeo, mat);
     m.name = 'bladeSigns';
     meshes.push(m);
   }

@@ -18,6 +18,7 @@ import { createPodiumOutput, makeFacadeKitTextures } from '../buildings/facadeKi
 import type { ShopFront } from '../people/idleSpots';
 import { buildBuildings, Detail } from '../buildings/buildings';
 import { neonMood } from '../textures/cityMood';
+import { FlickList, SIGNAGE, applyFlicker, buildSignageMeshes, planSignage, setSignageTime } from './signage';
 import { ridgeLift } from '../districts/structureShapes';
 import { baysByEdge, sideBays } from '../../city/busBays';
 import { BAY_DASH, BayDraw, bayMouth, drawBayAsphalt, drawBayPaint, drawBaySidewalk } from './busBays';
@@ -482,9 +483,15 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
   const signLights: { pos: THREE.Vector3; color: THREE.Color }[] = [];
   {
     const sb = new GeoBuilder(true);
+    const flick = new FlickList(world, 'podium');
+    const plan = planSignage(world, detail);
     const cellW = 1 / SIGN_ATLAS_COLS;
     const cellH = 1 / SIGN_ATLAS_ROWS;
-    for (const s of world.blocks.signs) {
+    for (let si = 0; si < world.blocks.signs.length; si++) {
+      const s = world.blocks.signs[si];
+      const fl = flick.roll(s.blade ? SIGNAGE.flickerBlade : SIGNAGE.flickerPodium);
+      // A clock sign takes this sign's wall (signage.ts): no name sign under the panel.
+      if (plan.clocks.has(si)) continue;
       const idx = s.nameIndex % SIGN_SLOTS;
       const col = neon[mood.neon((s.colorIndex + 0.5) / 1024)];
       const u0 = (idx % SIGN_ATLAS_COLS) * cellW;
@@ -520,13 +527,21 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
           sb.quadFacing(a, b, c, d, ax * side, 0, az * side);
         }
       }
+      flick.fill(sb.vertexCount, fl);
       signLights.push({ pos: new THREE.Vector3(s.x + s.nx * (s.blade ? s.w / 2 : 0.3), s.y, s.z + s.nz * (s.blade ? s.w / 2 : 0.3)), color: col.clone() });
     }
     const signMat = track(new THREE.MeshBasicMaterial({ map: track(makeSignAtlas(world.seed)), vertexColors: true }));
     signMat.color.setScalar(2.6);
-    const signMesh = new THREE.Mesh(track(sb.build()), signMat);
+    applyFlicker(signMat);
+    const signGeo = track(sb.build());
+    signGeo.setAttribute('aFlick', flick.attribute(sb.vertexCount));
+    const signMesh = new THREE.Mesh(signGeo, signMat);
     signMesh.name = 'signs';
     group.add(signMesh);
+    // Bulbs, tickers and clocks: at most three draw calls for the whole city.
+    const extras = buildSignageMeshes(world, plan);
+    disposables.push(extras);
+    for (const m of extras.meshes) group.add(m);
   }
 
   // ---------- Hazard lamp material ----------
@@ -549,6 +564,7 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     barrierLampMaterial,
     finishLine,
     update(time) {
+      setSignageTime(time);
       buildings.update(time);
     },
     dispose() {
