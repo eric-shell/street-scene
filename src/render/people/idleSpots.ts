@@ -85,20 +85,11 @@ const CURB_DIRS = [
   [0, -1],
 ] as const;
 
-/** The idle people of a world. Deterministic for (world, options). */
-export function planIdlers(world: World, opts: IdleOptions): IdlePlan {
-  const rng = new Rng(deriveSeed(world.seed, 'idlers'));
-  const liveliness = rng.range(0.55, 1);
-  const warmth = rng.range(-1, 1);
-  const density = Math.max(0, Math.min(1, opts.density));
-  const route = world.route;
-  const L = route.length;
-  const placer = makePlacer(world);
-  const out: IdlePerson[] = [];
-  const gates = opts.avoid?.gates ?? [];
+/** The round places the sidewalks' people keep out of: each meet's crowd and each market pen, grown by its clearance (squared radius). */
+export function avoidCircles(avoid?: IdleAvoid): { x: number; z: number; r2: number }[] {
   const circles: { x: number; z: number; r2: number }[] = [];
-  for (const z of opts.avoid?.meets?.zones ?? []) circles.push({ x: z.x, z: z.z, r2: (z.radius + MEET_CLEAR) ** 2 });
-  for (const pen of opts.avoid?.markets ?? []) {
+  for (const z of avoid?.meets?.zones ?? []) circles.push({ x: z.x, z: z.z, r2: (z.radius + MEET_CLEAR) ** 2 });
+  for (const pen of avoid?.markets ?? []) {
     if (!pen.length) continue;
     let cx = 0;
     let cz = 0;
@@ -112,6 +103,21 @@ export function planIdlers(world: World, opts: IdleOptions): IdlePlan {
     for (const p of pen) r = Math.max(r, Math.hypot(p.x - cx, p.z - cz));
     circles.push({ x: cx, z: cz, r2: (r + MARKET_CLEAR) ** 2 });
   }
+  return circles;
+}
+
+/** The idle people of a world. Deterministic for (world, options). */
+export function planIdlers(world: World, opts: IdleOptions): IdlePlan {
+  const rng = new Rng(deriveSeed(world.seed, 'idlers'));
+  const liveliness = rng.range(0.55, 1);
+  const warmth = rng.range(-1, 1);
+  const density = Math.max(0, Math.min(1, opts.density));
+  const route = world.route;
+  const L = route.length;
+  const placer = makePlacer(world);
+  const out: IdlePerson[] = [];
+  const gates = opts.avoid?.gates ?? [];
+  const circles = avoidCircles(opts.avoid);
   const covered = new Set(world.coveredProps);
 
   const wrap = (d: number) => (route.closed ? ((((d + L / 2) % L) + L) % L) - L / 2 : d);

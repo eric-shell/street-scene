@@ -86,6 +86,7 @@ export class SessionAudio {
     }
     this.night.crowds.update(time, paused ? 0 : dt, cc, camera.position.x, camera.position.z);
     this.night.idlers.update(time, cc, camera.position.x, camera.position.z, this.race.brokenProps);
+    this.night.walkers.update(time, cc, camera.position.x, camera.position.z);
     this.sfx?.updateCrowds(this.night.crowds.spots, paused);
     // A section erupting as racers pass: a burst of cheering and applause from it (at most every few seconds).
     if (!paused) {

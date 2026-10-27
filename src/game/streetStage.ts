@@ -395,6 +395,7 @@ export class StreetStage {
     this.motions.forEach((m, i) => (ic[i] = { x: m.x, z: m.z, speed: Math.hypot(m.vx, m.vz) }));
     const f = opts.focus ?? this.focus;
     this.night.idlers.update(this.time, ic, f.x, f.z);
+    this.night.walkers.update(this.time, ic, f.x, f.z);
   }
 
   /** Knock down the props the cars touch this frame, and stand up the ones every car has left behind. */
