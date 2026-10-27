@@ -1,13 +1,726 @@
 {
  "seed": 20261019,
  "tier": "medium",
+ "camera": "route",
  "totals": {
-  "tris": 5287908,
-  "verts": 7220337,
-  "drawCalls": 174,
-  "materials": 89,
-  "transparent": 33,
-  "additive": 21
+  "tris": 857824,
+  "verts": 1372050,
+  "drawCalls": 160,
+  "materials": 82,
+  "transparent": 29,
+  "additive": 20
+ },
+ "max": {
+  "tris": 948093,
+  "verts": 1565753,
+  "drawCalls": 172
+ },
+ "samples": [
+  {
+   "s": 200,
+   "totals": {
+    "tris": 704823,
+    "verts": 1058977,
+    "drawCalls": 151,
+    "materials": 74,
+    "transparent": 26,
+    "additive": 17
+   }
+  },
+  {
+   "s": 700,
+   "totals": {
+    "tris": 920556,
+    "verts": 1491420,
+    "drawCalls": 172,
+    "materials": 89,
+    "transparent": 32,
+    "additive": 22
+   }
+  },
+  {
+   "s": 1200,
+   "totals": {
+    "tris": 948093,
+    "verts": 1565753,
+    "drawCalls": 158,
+    "materials": 84,
+    "transparent": 29,
+    "additive": 20
+   }
+  }
+ ],
+ "upper": {
+  "totals": {
+   "tris": 10660233,
+   "verts": 12301265,
+   "drawCalls": 490,
+   "materials": 96,
+   "transparent": 33,
+   "additive": 23
+  },
+  "groups": {
+   "walkers": {
+    "tris": 6419472,
+    "verts": 6568945,
+    "draws": 228
+   },
+   "crowds": {
+    "tris": 1660560,
+    "verts": 1699225,
+    "draws": 53
+   },
+   "podiumTrim": {
+    "tris": 386304,
+    "verts": 772780,
+    "draws": 1
+   },
+   "idlers": {
+    "tris": 293760,
+    "verts": 300600,
+    "draws": 63
+   },
+   "districtSolid": {
+    "tris": 206875,
+    "verts": 367175,
+    "draws": 1
+   },
+   "podiums": {
+    "tris": 108104,
+    "verts": 216208,
+    "draws": 1
+   },
+   "districtGround": {
+    "tris": 100851,
+    "verts": 219969,
+    "draws": 1
+   },
+   "sidewalks": {
+    "tris": 96090,
+    "verts": 68668,
+    "draws": 1
+   },
+   "districtTrees": {
+    "tris": 89480,
+    "verts": 63973,
+    "draws": 1
+   },
+   "roofs": {
+    "tris": 86286,
+    "verts": 167049,
+    "draws": 1
+   },
+   "districtGlow": {
+    "tris": 74290,
+    "verts": 101645,
+    "draws": 1
+   },
+   "elevatedSteel": {
+    "tris": 61662,
+    "verts": 122897,
+    "draws": 1
+   },
+   "props:garbageCans": {
+    "tris": 61600,
+    "verts": 69300,
+    "draws": 1
+   },
+   "props:bush0": {
+    "tris": 47880,
+    "verts": 54720,
+    "draws": 1
+   },
+   "areaLights": {
+    "tris": 47540,
+    "verts": 28721,
+    "draws": 1
+   },
+   "districtFoliage": {
+    "tris": 44694,
+    "verts": 51662,
+    "draws": 1
+   },
+   "props:benches": {
+    "tris": 43804,
+    "verts": 87608,
+    "draws": 1
+   },
+   "props:cafeTable0": {
+    "tris": 41344,
+    "verts": 63840,
+    "draws": 1
+   },
+   "props:parkLamp0": {
+    "tris": 39928,
+    "verts": 54096,
+    "draws": 1
+   },
+   "buildings": {
+    "tris": 39694,
+    "verts": 79492,
+    "draws": 1
+   },
+   "markings": {
+    "tris": 39096,
+    "verts": 78192,
+    "draws": 1
+   },
+   "props:trafficHeads": {
+    "tris": 38430,
+    "verts": 76860,
+    "draws": 1
+   },
+   "riverConcrete": {
+    "tris": 36992,
+    "verts": 37112,
+    "draws": 1
+   },
+   "wallBoxes": {
+    "tris": 31790,
+    "verts": 63580,
+    "draws": 1
+   },
+   "props:pallets0": {
+    "tris": 30160,
+    "verts": 60320,
+    "draws": 1
+   },
+   "props:planterPot0": {
+    "tris": 27473,
+    "verts": 31114,
+    "draws": 1
+   },
+   "props:barrel0": {
+    "tris": 26992,
+    "verts": 30366,
+    "draws": 1
+   },
+   "props:fencePanel0": {
+    "tris": 26676,
+    "verts": 53352,
+    "draws": 1
+   },
+   "roads": {
+    "tris": 24072,
+    "verts": 20150,
+    "draws": 1
+   },
+   "props:streetlightPoles:historic": {
+    "tris": 23788,
+    "verts": 38812,
+    "draws": 1
+   },
+   "roofNeon": {
+    "tris": 21756,
+    "verts": 43512,
+    "draws": 1
+   },
+   "props:hydrant0": {
+    "tris": 18876,
+    "verts": 25311,
+    "draws": 1
+   },
+   "ground": {
+    "tris": 18432,
+    "verts": 9409,
+    "draws": 1
+   },
+   "props:streetlightPoles:modern": {
+    "tris": 17670,
+    "verts": 35340,
+    "draws": 1
+   },
+   "props:trafficCone0": {
+    "tris": 16566,
+    "verts": 20833,
+    "draws": 1
+   },
+   "props:trafficLenses": {
+    "tris": 16470,
+    "verts": 18117,
+    "draws": 1
+   },
+   "props:marketStall1": {
+    "tris": 14208,
+    "verts": 21216,
+    "draws": 1
+   },
+   "roadDecals": {
+    "tris": 13724,
+    "verts": 27448,
+    "draws": 1
+   },
+   "lightSpill": {
+    "tris": 13302,
+    "verts": 26604,
+    "draws": 1
+   },
+   "props:vendingMachine1": {
+    "tris": 13000,
+    "verts": 26000,
+    "draws": 1
+   },
+   "props:trashBags0": {
+    "tris": 12330,
+    "verts": 14385,
+    "draws": 1
+   },
+   "wallPaint": {
+    "tris": 11456,
+    "verts": 22912,
+    "draws": 1
+   },
+   "props:crate0": {
+    "tris": 10700,
+    "verts": 21400,
+    "draws": 1
+   },
+   "fireEscapes": {
+    "tris": 10550,
+    "verts": 21100,
+    "draws": 1
+   },
+   "awnings": {
+    "tris": 10464,
+    "verts": 13952,
+    "draws": 1
+   },
+   "props:busStops": {
+    "tris": 8736,
+    "verts": 17472,
+    "draws": 1
+   },
+   "city": {
+    "tris": 8316,
+    "verts": 22130,
+    "draws": 16
+   },
+   "props:mailbox0": {
+    "tris": 8280,
+    "verts": 16560,
+    "draws": 1
+   },
+   "props:parkLamp1": {
+    "tris": 7728,
+    "verts": 8694,
+    "draws": 1
+   },
+   "districtPaint": {
+    "tris": 7594,
+    "verts": 15272,
+    "draws": 1
+   },
+   "props:streetlightLenses:historic": {
+    "tris": 7512,
+    "verts": 15024,
+    "draws": 1
+   },
+   "props:cafeTable1": {
+    "tris": 7296,
+    "verts": 8208,
+    "draws": 1
+   },
+   "props:phoneBooth0": {
+    "tris": 6390,
+    "verts": 12780,
+    "draws": 1
+   },
+   "props:parkingMeter0": {
+    "tris": 6336,
+    "verts": 9504,
+    "draws": 1
+   },
+   "props:streetlightPoles": {
+    "tris": 6132,
+    "verts": 10804,
+    "draws": 1
+   },
+   "elevatedPools": {
+    "tris": 6000,
+    "verts": 3700,
+    "draws": 1
+   },
+   "props:trafficPoles": {
+    "tris": 5673,
+    "verts": 8052,
+    "draws": 1
+   },
+   "props:sawhorse0": {
+    "tris": 5600,
+    "verts": 11200,
+    "draws": 1
+   },
+   "props:streetlightLenses:modern": {
+    "tris": 5580,
+    "verts": 11160,
+    "draws": 1
+   },
+   "props:marketStall3": {
+    "tris": 5184,
+    "verts": 6048,
+    "draws": 1
+   },
+   "streetStreaks": {
+    "tris": 5158,
+    "verts": 4,
+    "draws": 1
+   },
+   "props:dumpster0": {
+    "tris": 4704,
+    "verts": 6888,
+    "draws": 1
+   },
+   "cobbles": {
+    "tris": 3777,
+    "verts": 2893,
+    "draws": 1
+   },
+   "props:sandbags0": {
+    "tris": 3420,
+    "verts": 6840,
+    "draws": 1
+   },
+   "railFrames": {
+    "tris": 3306,
+    "verts": 6612,
+    "draws": 1
+   },
+   "props:newsBox0": {
+    "tris": 2970,
+    "verts": 5940,
+    "draws": 1
+   },
+   "props:fencePanel1": {
+    "tris": 2964,
+    "verts": 5928,
+    "draws": 1
+   },
+   "props:marketStall0": {
+    "tris": 2880,
+    "verts": 5760,
+    "draws": 1
+   },
+   "props:phoneBooth1": {
+    "tris": 2840,
+    "verts": 5680,
+    "draws": 1
+   },
+   "riverLightPools": {
+    "tris": 2712,
+    "verts": 2868,
+    "draws": 1
+   },
+   "tunnelWash": {
+    "tris": 2568,
+    "verts": 5136,
+    "draws": 1
+   },
+   "streetPools": {
+    "tris": 2474,
+    "verts": 4948,
+    "draws": 1
+   },
+   "stringLights": {
+    "tris": 2382,
+    "verts": 4764,
+    "draws": 1
+   },
+   "props:trafficArms": {
+    "tris": 2196,
+    "verts": 4392,
+    "draws": 1
+   },
+   "harborWater": {
+    "tris": 2008,
+    "verts": 1260,
+    "draws": 1
+   },
+   "props:vendingMachine0": {
+    "tris": 2000,
+    "verts": 4000,
+    "draws": 1
+   },
+   "skySprites": {
+    "tris": 1976,
+    "verts": 4,
+    "draws": 1
+   },
+   "props:busStopGlass": {
+    "tris": 1872,
+    "verts": 3744,
+    "draws": 1
+   },
+   "props:streetlightLenses": {
+    "tris": 1752,
+    "verts": 3504,
+    "draws": 1
+   },
+   "tunnelBore": {
+    "tris": 1728,
+    "verts": 3456,
+    "draws": 1
+   },
+   "props:fruitCrates0": {
+    "tris": 1710,
+    "verts": 3420,
+    "draws": 1
+   },
+   "elevatedTies": {
+    "tris": 1492,
+    "verts": 2984,
+    "draws": 1
+   },
+   "props:phoneBooth2": {
+    "tris": 1420,
+    "verts": 2840,
+    "draws": 1
+   },
+   "riverFence": {
+    "tris": 1352,
+    "verts": 2704,
+    "draws": 1
+   },
+   "bladeSigns": {
+    "tris": 1324,
+    "verts": 2648,
+    "draws": 1
+   },
+   "riverWater": {
+    "tris": 1260,
+    "verts": 1279,
+    "draws": 1
+   },
+   "props:waterBarrier0": {
+    "tris": 1188,
+    "verts": 1836,
+    "draws": 1
+   },
+   "props:marketStall2": {
+    "tris": 1152,
+    "verts": 2304,
+    "draws": 1
+   },
+   "lakeStreaks": {
+    "tris": 1092,
+    "verts": 936,
+    "draws": 1
+   },
+   "steam": {
+    "tris": 1032,
+    "verts": 4,
+    "draws": 1
+   },
+   "props:busStopLights": {
+    "tris": 936,
+    "verts": 1872,
+    "draws": 1
+   },
+   "streetBlades": {
+    "tris": 848,
+    "verts": 1696,
+    "draws": 1
+   },
+   "marketLight": {
+    "tris": 846,
+    "verts": 600,
+    "draws": 1
+   },
+   "backdrop": {
+    "tris": 770,
+    "verts": 824,
+    "draws": 3
+   },
+   "puddles": {
+    "tris": 720,
+    "verts": 1440,
+    "draws": 1
+   },
+   "aviationLights": {
+    "tris": 644,
+    "verts": 1288,
+    "draws": 1
+   },
+   "railPanels": {
+    "tris": 622,
+    "verts": 1244,
+    "draws": 1
+   },
+   "railLeds": {
+    "tris": 622,
+    "verts": 1244,
+    "draws": 1
+   },
+   "railGlow": {
+    "tris": 622,
+    "verts": 1244,
+    "draws": 1
+   },
+   "blimp": {
+    "tris": 548,
+    "verts": 536,
+    "draws": 1
+   },
+   "props:foodCart1": {
+    "tris": 480,
+    "verts": 816,
+    "draws": 1
+   },
+   "railBeacons": {
+    "tris": 450,
+    "verts": 900,
+    "draws": 1
+   },
+   "shortcutLightPools": {
+    "tris": 416,
+    "verts": 325,
+    "draws": 1
+   },
+   "billboards": {
+    "tris": 386,
+    "verts": 772,
+    "draws": 1
+   },
+   "policeHelicopter": {
+    "tris": 384,
+    "verts": 768,
+    "draws": 1
+   },
+   "districtHazard": {
+    "tris": 372,
+    "verts": 459,
+    "draws": 1
+   },
+   "props:sawhorse1": {
+    "tris": 336,
+    "verts": 672,
+    "draws": 1
+   },
+   "props:foodCart2": {
+    "tris": 336,
+    "verts": 672,
+    "draws": 1
+   },
+   "riverDecals": {
+    "tris": 316,
+    "verts": 352,
+    "draws": 1
+   },
+   "props:busStopAds": {
+    "tris": 312,
+    "verts": 624,
+    "draws": 1
+   },
+   "searchlight": {
+    "tris": 308,
+    "verts": 197,
+    "draws": 1
+   },
+   "gatewayBanners": {
+    "tris": 294,
+    "verts": 588,
+    "draws": 1
+   },
+   "helicopter": {
+    "tris": 288,
+    "verts": 576,
+    "draws": 1
+   },
+   "harborFlashers": {
+    "tris": 264,
+    "verts": 528,
+    "draws": 1
+   },
+   "signs": {
+    "tris": 256,
+    "verts": 512,
+    "draws": 1
+   },
+   "props:bollard0": {
+    "tris": 256,
+    "verts": 288,
+    "draws": 1
+   },
+   "driftZoneWash": {
+    "tris": 244,
+    "verts": 488,
+    "draws": 1
+   },
+   "roadworksLightPools": {
+    "tris": 216,
+    "verts": 147,
+    "draws": 1
+   },
+   "overpassWash": {
+    "tris": 128,
+    "verts": 256,
+    "draws": 1
+   },
+   "props:foodCart0": {
+    "tris": 128,
+    "verts": 256,
+    "draws": 1
+   },
+   "signBulbs": {
+    "tris": 108,
+    "verts": 216,
+    "draws": 1
+   },
+   "harborStreaks": {
+    "tris": 96,
+    "verts": 4,
+    "draws": 1
+   },
+   "props:bollard1": {
+    "tris": 96,
+    "verts": 108,
+    "draws": 1
+   },
+   "signClocks": {
+    "tris": 92,
+    "verts": 184,
+    "draws": 1
+   },
+   "roadworksLamps": {
+    "tris": 78,
+    "verts": 156,
+    "draws": 1
+   },
+   "lakeFountain": {
+    "tris": 72,
+    "verts": 65,
+    "draws": 1
+   },
+   "routeSigns": {
+    "tris": 30,
+    "verts": 60,
+    "draws": 1
+   },
+   "lakeWater0": {
+    "tris": 22,
+    "verts": 66,
+    "draws": 1
+   },
+   "tunnelSigns": {
+    "tris": 20,
+    "verts": 40,
+    "draws": 1
+   },
+   "signTickers": {
+    "tris": 8,
+    "verts": 16,
+    "draws": 1
+   },
+   "overpassSigns": {
+    "tris": 4,
+    "verts": 8,
+    "draws": 1
+   },
+   "startLine": {
+    "tris": 2,
+    "verts": 4,
+    "draws": 1
+   }
+  }
  },
  "lights": {
   "HemisphereLight": 1,
@@ -15,149 +728,64 @@
   "PointLight": 4
  },
  "groups": {
-  "crowds": {
-   "tris": 2557344,
-   "verts": 2616890,
-   "draws": 36
-  },
   "podiumTrim": {
-   "tris": 611326,
-   "verts": 1222792,
-   "draws": 1
+   "tris": 59482,
+   "verts": 118990,
+   "draws": 4.3
   },
-  "districtSolid": {
-   "tris": 274331,
-   "verts": 469968,
-   "draws": 1
+  "walkersFar": {
+   "tris": 57324,
+   "verts": 114648,
+   "draws": 6
   },
-  "districtGround": {
-   "tris": 109852,
-   "verts": 236039,
-   "draws": 1
-  },
-  "podiums": {
-   "tris": 105340,
-   "verts": 210680,
-   "draws": 1
+  "walkers": {
+   "tris": 54400,
+   "verts": 55667,
+   "draws": 1.7
   },
   "roofs": {
-   "tris": 90105,
-   "verts": 174112,
-   "draws": 1
+   "tris": 42071,
+   "verts": 81449,
+   "draws": 2.7
   },
-  "props:propStumps": {
-   "tris": 84720,
-   "verts": 142965,
-   "draws": 1
+  "crowds": {
+   "tris": 41548,
+   "verts": 59452,
+   "draws": 2.7
   },
-  "props:fencePanel0": {
-   "tris": 78650,
-   "verts": 157300,
-   "draws": 1
+  "districtSolid": {
+   "tris": 38215,
+   "verts": 67826,
+   "draws": 5
   },
-  "props:garbageCans": {
-   "tris": 78192,
-   "verts": 87966,
-   "draws": 1
-  },
-  "districtGlow": {
-   "tris": 76972,
-   "verts": 105671,
-   "draws": 1
-  },
-  "sidewalks": {
-   "tris": 70848,
-   "verts": 54276,
-   "draws": 1
-  },
-  "props:streetlightPoles": {
-   "tris": 62400,
-   "verts": 106080,
-   "draws": 1
-  },
-  "elevatedSteel": {
-   "tris": 62306,
-   "verts": 124213,
-   "draws": 1
-  },
-  "props:bush0": {
-   "tris": 59850,
-   "verts": 68400,
-   "draws": 1
-  },
-  "props:benches": {
-   "tris": 59280,
-   "verts": 118560,
-   "draws": 1
-  },
-  "props:parkLamp0": {
-   "tris": 51744,
-   "verts": 70224,
-   "draws": 1
-  },
-  "areaLights": {
-   "tris": 49026,
-   "verts": 29927,
-   "draws": 1
-  },
-  "props:cafeTable0": {
-   "tris": 45746,
-   "verts": 71446,
-   "draws": 1
-  },
-  "districtFoliage": {
-   "tris": 45283,
-   "verts": 52137,
-   "draws": 1
-  },
-  "props:planterPot0": {
-   "tris": 44268,
-   "verts": 49476,
-   "draws": 1
-  },
-  "riverConcrete": {
-   "tris": 41230,
-   "verts": 42998,
-   "draws": 1
-  },
-  "markings": {
-   "tris": 39658,
-   "verts": 79316,
-   "draws": 1
+  "podiums": {
+   "tris": 27219,
+   "verts": 54439,
+   "draws": 4.7
   },
   "buildings": {
-   "tris": 38208,
-   "verts": 76592,
-   "draws": 1
+   "tris": 23060,
+   "verts": 46180,
+   "draws": 1.7
+  },
+  "districtGlow": {
+   "tris": 21748,
+   "verts": 29756,
+   "draws": 3.3
+  },
+  "sidewalks": {
+   "tris": 19240,
+   "verts": 13749,
+   "draws": 4.3
+  },
+  "districtGround": {
+   "tris": 19113,
+   "verts": 41687,
+   "draws": 2.3
   },
   "props:trafficHeads": {
-   "tris": 38010,
-   "verts": 76020,
-   "draws": 1
-  },
-  "props:barrel0": {
-   "tris": 37260,
-   "verts": 40986,
-   "draws": 1
-  },
-  "districtTrees": {
-   "tris": 36760,
-   "verts": 27024,
-   "draws": 1
-  },
-  "wallBoxes": {
-   "tris": 31880,
-   "verts": 63760,
-   "draws": 1
-  },
-  "roofNeon": {
-   "tris": 23810,
-   "verts": 47620,
-   "draws": 1
-  },
-  "props:hydrant0": {
-   "tris": 21384,
-   "verts": 28674,
+   "tris": 18550,
+   "verts": 37100,
    "draws": 1
   },
   "ground": {
@@ -165,109 +793,139 @@
    "verts": 9409,
    "draws": 1
   },
-  "props:pallets0": {
-   "tris": 16820,
-   "verts": 33640,
+  "districtTrees": {
+   "tris": 17818,
+   "verts": 12739,
+   "draws": 3.7
+  },
+  "props:parkLamp0": {
+   "tris": 16203,
+   "verts": 21952,
    "draws": 1
   },
-  "props:trafficLenses": {
-   "tris": 16290,
-   "verts": 17919,
-   "draws": 1
-  },
-  "roads": {
-   "tris": 15923,
-   "verts": 15340,
-   "draws": 1
-  },
-  "props:trafficCone0": {
-   "tris": 15334,
-   "verts": 18887,
-   "draws": 1
-  },
-  "props:streetlightLenses": {
-   "tris": 14976,
-   "verts": 29952,
+  "props:cafeTable0": {
+   "tris": 14461,
+   "verts": 22330,
    "draws": 1
   },
   "roadDecals": {
-   "tris": 14036,
-   "verts": 28072,
+   "tris": 13724,
+   "verts": 27448,
    "draws": 1
   },
-  "props:trashBags0": {
-   "tris": 13284,
-   "verts": 15498,
+  "roads": {
+   "tris": 13460,
+   "verts": 11267,
    "draws": 1
   },
   "lightSpill": {
-   "tris": 13006,
-   "verts": 26012,
+   "tris": 13302,
+   "verts": 26604,
    "draws": 1
   },
-  "props:marketStall1": {
-   "tris": 12432,
-   "verts": 18564,
+  "props:garbageCans": {
+   "tris": 13123,
+   "verts": 14763,
    "draws": 1
   },
-  "props:crate0": {
-   "tris": 12150,
-   "verts": 24300,
+  "props:streetlightPoles:historic": {
+   "tris": 11742,
+   "verts": 19158,
    "draws": 1
   },
-  "props:vendingMachine1": {
-   "tris": 11960,
-   "verts": 23920,
+  "props:fencePanel0": {
+   "tris": 11484,
+   "verts": 22968,
    "draws": 1
   },
   "wallPaint": {
-   "tris": 11286,
-   "verts": 22572,
+   "tris": 11456,
+   "verts": 22912,
    "draws": 1
   },
-  "awnings": {
-   "tris": 10302,
-   "verts": 13736,
+  "roofNeon": {
+   "tris": 10826,
+   "verts": 21653,
+   "draws": 1
+  },
+  "areaLights": {
+   "tris": 10597,
+   "verts": 6402,
    "draws": 1
   },
   "fireEscapes": {
-   "tris": 8990,
-   "verts": 17980,
+   "tris": 10550,
+   "verts": 21100,
+   "draws": 1
+  },
+  "awnings": {
+   "tris": 10464,
+   "verts": 13952,
+   "draws": 1
+  },
+  "props:pallets0": {
+   "tris": 10440,
+   "verts": 20880,
+   "draws": 1
+  },
+  "props:bush0": {
+   "tris": 10290,
+   "verts": 11760,
+   "draws": 1
+  },
+  "markings": {
+   "tris": 10064,
+   "verts": 20129,
+   "draws": 2
+  },
+  "props:planterPot0": {
+   "tris": 9213,
+   "verts": 10434,
+   "draws": 1
+  },
+  "props:barrel0": {
+   "tris": 8848,
+   "verts": 9954,
+   "draws": 1
+  },
+  "districtFoliage": {
+   "tris": 8336,
+   "verts": 9635,
+   "draws": 1.7
+  },
+  "elevatedSteel": {
+   "tris": 8304,
+   "verts": 16550,
+   "draws": 0.7
+  },
+  "props:benches": {
+   "tris": 8241,
+   "verts": 16481,
+   "draws": 1
+  },
+  "props:trafficLenses": {
+   "tris": 7950,
+   "verts": 8745,
+   "draws": 1
+  },
+  "wallBoxes": {
+   "tris": 7623,
+   "verts": 15246,
+   "draws": 2
+  },
+  "districtPaint": {
+   "tris": 7594,
+   "verts": 15272,
    "draws": 1
   },
   "city": {
-   "tris": 8860,
-   "verts": 23738,
-   "draws": 16
+   "tris": 7312,
+   "verts": 20274,
+   "draws": 4
   },
-  "props:sawhorse0": {
-   "tris": 8400,
-   "verts": 16800,
-   "draws": 1
-  },
-  "props:parkLamp1": {
-   "tris": 8064,
-   "verts": 9072,
-   "draws": 1
-  },
-  "props:mailbox0": {
-   "tris": 6840,
-   "verts": 13680,
-   "draws": 1
-  },
-  "props:busStops": {
-   "tris": 6384,
-   "verts": 12768,
-   "draws": 1
-  },
-  "districtPaint": {
-   "tris": 6382,
-   "verts": 12764,
-   "draws": 1
-  },
-  "props:cafeTable1": {
-   "tris": 6168,
-   "verts": 6939,
+  "props:streetlightPoles:modern": {
+   "tris": 6726,
+   "verts": 13452,
    "draws": 1
   },
   "elevatedPools": {
@@ -275,129 +933,149 @@
    "verts": 3700,
    "draws": 1
   },
-  "props:trafficPoles": {
-   "tris": 5611,
-   "verts": 7964,
+  "riverConcrete": {
+   "tris": 5897,
+   "verts": 5916,
+   "draws": 0.7
+  },
+  "props:trafficCone0": {
+   "tris": 5082,
+   "verts": 6391,
    "draws": 1
   },
-  "railFrames": {
-   "tris": 5372,
-   "verts": 10744,
+  "props:marketStall1": {
+   "tris": 4736,
+   "verts": 7072,
+   "draws": 0.3
+  },
+  "idlers": {
+   "tris": 4624,
+   "verts": 4732,
+   "draws": 0.7
+  },
+  "props:vendingMachine1": {
+   "tris": 3987,
+   "verts": 7973,
    "draws": 1
   },
-  "props:phoneBooth0": {
-   "tris": 5310,
-   "verts": 10620,
-   "draws": 1
-  },
-  "props:dumpster0": {
-   "tris": 4704,
-   "verts": 6888,
-   "draws": 1
-  },
-  "props:marketStall3": {
-   "tris": 4536,
-   "verts": 5292,
-   "draws": 1
-  },
-  "props:parkingMeter0": {
-   "tris": 4104,
-   "verts": 6156,
-   "draws": 1
-  },
-  "props:fencePanel1": {
-   "tris": 3300,
-   "verts": 6600,
-   "draws": 1
-  },
-  "props:sandbags0": {
-   "tris": 3240,
-   "verts": 6480,
-   "draws": 1
-  },
-  "riverLightPools": {
-   "tris": 2904,
-   "verts": 3066,
-   "draws": 1
-  },
-  "rain": {
-   "tris": 2860,
-   "verts": 4,
-   "draws": 1
-  },
-  "props:waterBarrier0": {
-   "tris": 2772,
-   "verts": 4284,
-   "draws": 1
-  },
-  "streetStreaks": {
-   "tris": 2676,
-   "verts": 4,
-   "draws": 1
-  },
-  "props:newsBox0": {
-   "tris": 2520,
-   "verts": 5040,
-   "draws": 1
-  },
-  "props:marketStall0": {
-   "tris": 2520,
-   "verts": 5040,
-   "draws": 1
-  },
-  "streetPools": {
-   "tris": 2496,
-   "verts": 4992,
-   "draws": 1
-  },
-  "props:phoneBooth1": {
-   "tris": 2360,
-   "verts": 4720,
-   "draws": 1
-  },
-  "props:trafficArms": {
-   "tris": 2172,
-   "verts": 4344,
-   "draws": 1
-  },
-  "props:fruitCrates0": {
-   "tris": 2070,
-   "verts": 4140,
-   "draws": 1
-  },
-  "skySprites": {
-   "tris": 1974,
-   "verts": 4,
-   "draws": 1
-  },
-  "harborWater": {
-   "tris": 1896,
-   "verts": 1190,
+  "props:crate0": {
+   "tris": 3867,
+   "verts": 7733,
    "draws": 1
   },
   "cobbles": {
-   "tris": 1890,
-   "verts": 1936,
+   "tris": 3777,
+   "verts": 2893,
    "draws": 1
   },
-  "props:vendingMachine0": {
-   "tris": 1840,
-   "verts": 3680,
+  "props:streetlightLenses:historic": {
+   "tris": 3708,
+   "verts": 7416,
    "draws": 1
   },
-  "props:bollard0": {
-   "tris": 1800,
-   "verts": 1980,
+  "props:trashBags0": {
+   "tris": 3660,
+   "verts": 4270,
    "draws": 1
+  },
+  "props:streetlightPoles": {
+   "tris": 3626,
+   "verts": 6389,
+   "draws": 1
+  },
+  "props:hydrant0": {
+   "tris": 3608,
+   "verts": 4838,
+   "draws": 1
+  },
+  "props:busStops": {
+   "tris": 3584,
+   "verts": 7168,
+   "draws": 1
+  },
+  "railFrames": {
+   "tris": 3306,
+   "verts": 6612,
+   "draws": 1
+  },
+  "props:parkLamp1": {
+   "tris": 3136,
+   "verts": 3528,
+   "draws": 1
+  },
+  "idlersFar": {
+   "tris": 2924,
+   "verts": 5848,
+   "draws": 3
+  },
+  "props:trafficPoles": {
+   "tris": 2738,
+   "verts": 3887,
+   "draws": 1
+  },
+  "riverLightPools": {
+   "tris": 2712,
+   "verts": 2868,
+   "draws": 1
+  },
+  "props:cafeTable1": {
+   "tris": 2552,
+   "verts": 2871,
+   "draws": 1
+  },
+  "props:sawhorse0": {
+   "tris": 2533,
+   "verts": 5067,
+   "draws": 1
+  },
+  "stringLights": {
+   "tris": 2382,
+   "verts": 4764,
+   "draws": 1
+  },
+  "streetStreaks": {
+   "tris": 2333,
+   "verts": 4,
+   "draws": 1
+  },
+  "props:streetlightLenses:modern": {
+   "tris": 2124,
+   "verts": 4248,
+   "draws": 1
+  },
+  "harborWater": {
+   "tris": 2008,
+   "verts": 1260,
+   "draws": 1
+  },
+  "skySprites": {
+   "tris": 1976,
+   "verts": 4,
+   "draws": 1
+  },
+  "props:phoneBooth0": {
+   "tris": 1740,
+   "verts": 3480,
+   "draws": 1
+  },
+  "props:marketStall3": {
+   "tris": 1728,
+   "verts": 2016,
+   "draws": 0.3
   },
   "tunnelWash": {
-   "tris": 1656,
-   "verts": 3312,
-   "draws": 1
+   "tris": 1712,
+   "verts": 3424,
+   "draws": 0.7
   },
-  "riverFence": {
-   "tris": 1498,
-   "verts": 2996,
+  "props:parkingMeter0": {
+   "tris": 1656,
+   "verts": 2484,
+   "draws": 0.7
+  },
+  "props:mailbox0": {
+   "tris": 1650,
+   "verts": 3300,
    "draws": 1
   },
   "elevatedTies": {
@@ -405,134 +1083,164 @@
    "verts": 2984,
    "draws": 1
   },
-  "props:busStopGlass": {
-   "tris": 1368,
-   "verts": 2736,
+  "props:sandbags0": {
+   "tris": 1410,
+   "verts": 2820,
    "draws": 1
   },
-  "riverWater": {
-   "tris": 1348,
-   "verts": 1369,
+  "riverFence": {
+   "tris": 1352,
+   "verts": 2704,
    "draws": 1
   },
   "bladeSigns": {
+   "tris": 1324,
+   "verts": 2648,
+   "draws": 1
+  },
+  "props:fencePanel1": {
    "tris": 1276,
    "verts": 2552,
    "draws": 1
   },
+  "riverWater": {
+   "tris": 1260,
+   "verts": 1279,
+   "draws": 1
+  },
   "tunnelBore": {
-   "tris": 1180,
-   "verts": 2360,
-   "draws": 1
+   "tris": 1152,
+   "verts": 2304,
+   "draws": 0.7
   },
-  "props:phoneBooth2": {
-   "tris": 1180,
-   "verts": 2360,
-   "draws": 1
-  },
-  "steam": {
-   "tris": 1104,
-   "verts": 4,
+  "props:dumpster0": {
+   "tris": 1120,
+   "verts": 1640,
    "draws": 1
   },
   "lakeStreaks": {
-   "tris": 1064,
-   "verts": 912,
+   "tris": 1092,
+   "verts": 936,
    "draws": 1
   },
-  "props:marketStall2": {
-   "tris": 1008,
-   "verts": 2016,
+  "props:trafficArms": {
+   "tris": 1060,
+   "verts": 2120,
    "draws": 1
   },
-  "railPanels": {
-   "tris": 908,
-   "verts": 1816,
+  "streetPools": {
+   "tris": 1058,
+   "verts": 2116,
    "draws": 1
   },
-  "railLeds": {
-   "tris": 908,
-   "verts": 1816,
+  "props:streetlightLenses": {
+   "tris": 1036,
+   "verts": 2072,
    "draws": 1
   },
-  "railGlow": {
-   "tris": 908,
-   "verts": 1816,
+  "steam": {
+   "tris": 1032,
+   "verts": 4,
    "draws": 1
   },
-  "marketLight": {
-   "tris": 864,
-   "verts": 612,
+  "props:newsBox0": {
+   "tris": 1010,
+   "verts": 2020,
    "draws": 1
   },
-  "props:foodCart1": {
-   "tris": 840,
-   "verts": 1428,
+  "props:marketStall0": {
+   "tris": 960,
+   "verts": 1920,
+   "draws": 0.3
+  },
+  "streetBlades": {
+   "tris": 848,
+   "verts": 1696,
    "draws": 1
   },
-  "railBeacons": {
-   "tris": 830,
-   "verts": 1660,
+  "props:phoneBooth1": {
+   "tris": 773,
+   "verts": 1547,
    "draws": 1
   },
   "backdrop": {
-   "tris": 760,
-   "verts": 804,
+   "tris": 770,
+   "verts": 824,
    "draws": 3
   },
+  "props:busStopGlass": {
+   "tris": 768,
+   "verts": 1536,
+   "draws": 1
+  },
   "puddles": {
-   "tris": 748,
-   "verts": 1496,
-   "draws": 1
-  },
-  "districtHazard": {
-   "tris": 684,
-   "verts": 798,
-   "draws": 1
-  },
-  "props:busStopLights": {
-   "tris": 684,
-   "verts": 1368,
+   "tris": 720,
+   "verts": 1440,
    "draws": 1
   },
   "aviationLights": {
+   "tris": 644,
+   "verts": 1288,
+   "draws": 1
+  },
+  "railPanels": {
    "tris": 622,
    "verts": 1244,
    "draws": 1
   },
-  "props:bollard1": {
-   "tris": 600,
-   "verts": 660,
+  "railLeds": {
+   "tris": 622,
+   "verts": 1244,
    "draws": 1
   },
-  "props:foodCart2": {
-   "tris": 588,
-   "verts": 1176,
+  "railGlow": {
+   "tris": 622,
+   "verts": 1244,
    "draws": 1
   },
-  "blimp": {
-   "tris": 548,
-   "verts": 536,
+  "props:waterBarrier0": {
+   "tris": 616,
+   "verts": 952,
    "draws": 1
   },
-  "props:sawhorse1": {
-   "tris": 504,
-   "verts": 1008,
+  "props:vendingMachine0": {
+   "tris": 613,
+   "verts": 1227,
    "draws": 1
   },
-  "policeHelicopter": {
+  "props:fruitCrates0": {
+   "tris": 570,
+   "verts": 1140,
+   "draws": 0.3
+  },
+  "railBeacons": {
+   "tris": 450,
+   "verts": 900,
+   "draws": 1
+  },
+  "props:phoneBooth2": {
+   "tris": 387,
+   "verts": 773,
+   "draws": 1
+  },
+  "billboards": {
+   "tris": 386,
+   "verts": 772,
+   "draws": 1
+  },
+  "props:busStopLights": {
    "tris": 384,
    "verts": 768,
    "draws": 1
   },
-  "billboards": {
-   "tris": 374,
-   "verts": 748,
-   "draws": 1
+  "props:marketStall2": {
+   "tris": 384,
+   "verts": 768,
+   "draws": 0.3
   },
   "riverDecals": {
-   "tris": 308,
-   "verts": 364,
+   "tris": 316,
+   "verts": 352,
    "draws": 1
   },
   "searchlight": {
@@ -540,570 +1248,248 @@
    "verts": 197,
    "draws": 1
   },
-  "driftZoneWash": {
-   "tris": 296,
-   "verts": 592,
+  "gatewayBanners": {
+   "tris": 294,
+   "verts": 588,
    "draws": 1
   },
-  "helicopter": {
-   "tris": 288,
-   "verts": 576,
+  "marketLight": {
+   "tris": 282,
+   "verts": 200,
+   "draws": 0.3
+  },
+  "shortcutLightPools": {
+   "tris": 277,
+   "verts": 217,
+   "draws": 0.7
+  },
+  "harborFlashers": {
+   "tris": 264,
+   "verts": 528,
    "draws": 1
   },
   "signs": {
-   "tris": 272,
-   "verts": 544,
+   "tris": 256,
+   "verts": 512,
    "draws": 1
   },
-  "harborFlashers": {
-   "tris": 252,
-   "verts": 504,
+  "districtHazard": {
+   "tris": 248,
+   "verts": 306,
+   "draws": 0.7
+  },
+  "trainCars": {
+   "tris": 240,
+   "verts": 480,
    "draws": 1
   },
-  "props:busStopAds": {
-   "tris": 228,
-   "verts": 456,
+  "blimp": {
+   "tris": 183,
+   "verts": 179,
+   "draws": 0.3
+  },
+  "driftZoneWash": {
+   "tris": 163,
+   "verts": 325,
+   "draws": 0.7
+  },
+  "carMeetHazards": {
+   "tris": 160,
+   "verts": 320,
    "draws": 1
   },
-  "props:foodCart0": {
-   "tris": 224,
-   "verts": 448,
+  "props:sawhorse1": {
+   "tris": 152,
+   "verts": 304,
    "draws": 1
   },
   "roadworksLightPools": {
-   "tris": 216,
-   "verts": 147,
+   "tris": 144,
+   "verts": 98,
+   "draws": 0.7
+  },
+  "props:busStopAds": {
+   "tris": 128,
+   "verts": 256,
    "draws": 1
   },
-  "shortcutLightPools": {
-   "tris": 192,
-   "verts": 150,
+  "trainSparks": {
+   "tris": 108,
+   "verts": 216,
+   "draws": 1
+  },
+  "trainLights": {
+   "tris": 96,
+   "verts": 192,
    "draws": 1
   },
   "harborStreaks": {
-   "tris": 94,
+   "tris": 96,
    "verts": 4,
    "draws": 1
+  },
+  "signBulbs": {
+   "tris": 72,
+   "verts": 144,
+   "draws": 0.7
   },
   "roadworksLamps": {
-   "tris": 90,
-   "verts": 180,
-   "draws": 1
+   "tris": 52,
+   "verts": 104,
+   "draws": 0.7
   },
-  "lakeFountain": {
-   "tris": 72,
-   "verts": 65,
-   "draws": 1
+  "overpassWash": {
+   "tris": 43,
+   "verts": 85,
+   "draws": 0.3
+  },
+  "props:foodCart1": {
+   "tris": 40,
+   "verts": 68,
+   "draws": 0.3
+  },
+  "signClocks": {
+   "tris": 31,
+   "verts": 61,
+   "draws": 0.3
   },
   "routeSigns": {
-   "tris": 50,
-   "verts": 100,
+   "tris": 30,
+   "verts": 60,
    "draws": 1
   },
-  "lakeWater0": {
-   "tris": 27,
-   "verts": 81,
-   "draws": 1
+  "props:foodCart2": {
+   "tris": 28,
+   "verts": 56,
+   "draws": 0.3
   },
-  "splashes": {
-   "tris": 20,
-   "verts": 4,
-   "draws": 1
+  "lakeFountain": {
+   "tris": 24,
+   "verts": 22,
+   "draws": 0.3
   },
   "tunnelSigns": {
+   "tris": 13,
+   "verts": 27,
+   "draws": 0.7
+  },
+  "carMeetUnderglow": {
    "tris": 12,
    "verts": 24,
    "draws": 1
   },
-  "startLine": {
-   "tris": 2,
-   "verts": 4,
+  "props:foodCart0": {
+   "tris": 11,
+   "verts": 21,
+   "draws": 0.3
+  },
+  "trainWash": {
+   "tris": 10,
+   "verts": 20,
    "draws": 1
   },
-  "roadworksExcavators": {
-   "tris": 0,
-   "verts": 0,
-   "draws": 1
+  "lakeWater0": {
+   "tris": 7,
+   "verts": 22,
+   "draws": 0.3
+  },
+  "signTickers": {
+   "tris": 5,
+   "verts": 11,
+   "draws": 0.7
+  },
+  "overpassSigns": {
+   "tris": 1,
+   "verts": 3,
+   "draws": 0.3
   }
  },
  "meshes": [
   {
    "name": "podiumTrim",
    "group": "podiumTrim",
-   "perInstance": 611326,
+   "perInstance": 74927,
    "instances": 1,
-   "tris": 611326,
-   "verts": 1222792,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowd",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 349,
-   "tris": 284784,
-   "verts": 291415,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "districtSolid",
-   "group": "districtSolid",
-   "perInstance": 274331,
-   "instances": 1,
-   "tris": 274331,
-   "verts": 469968,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 199,
-   "tris": 162384,
-   "verts": 166165,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 172,
-   "tris": 140352,
-   "verts": 143620,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 150,
-   "tris": 122400,
-   "verts": 125250,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 150,
-   "tris": 122400,
-   "verts": 125250,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "districtGround",
-   "group": "districtGround",
-   "perInstance": 109852,
-   "instances": 1,
-   "tris": 109852,
-   "verts": 236039,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "podiums",
-   "group": "podiums",
-   "perInstance": 105340,
-   "instances": 1,
-   "tris": 105340,
-   "verts": 210680,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 123,
-   "tris": 100368,
-   "verts": 102705,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 123,
-   "tris": 100368,
-   "verts": 102705,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 122,
-   "tris": 99552,
-   "verts": 101870,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 111,
-   "tris": 90576,
-   "verts": 92685,
+   "draws": 3,
+   "tris": 74927,
+   "verts": 149887,
    "transparent": false,
    "additive": false
   },
   {
    "name": "roofs",
    "group": "roofs",
-   "perInstance": 90105,
+   "perInstance": 45980,
    "instances": 1,
-   "tris": 90105,
-   "verts": 174112,
+   "draws": 2,
+   "tris": 45980,
+   "verts": 89017,
    "transparent": false,
    "additive": false
   },
   {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 106,
-   "tris": 86496,
-   "verts": 88510,
+   "name": "podiums",
+   "group": "podiums",
+   "perInstance": 42168,
+   "instances": 1,
+   "draws": 4,
+   "tris": 42168,
+   "verts": 84336,
    "transparent": false,
    "additive": false
   },
   {
-   "name": "propStumps",
-   "group": "props:propStumps",
-   "perInstance": 48,
-   "instances": 1765,
-   "tris": 84720,
-   "verts": 142965,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 103,
-   "tris": 84048,
-   "verts": 86005,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 101,
-   "tris": 82416,
-   "verts": 84335,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 98,
-   "tris": 79968,
-   "verts": 81830,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "fencePanel0",
-   "group": "props:fencePanel0",
-   "perInstance": 286,
-   "instances": 275,
-   "tris": 78650,
-   "verts": 157300,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 96,
-   "tris": 78336,
-   "verts": 80160,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "garbageCans",
-   "group": "props:garbageCans",
-   "perInstance": 72,
-   "instances": 1086,
-   "tris": 78192,
-   "verts": 87966,
+   "name": "districtSolid",
+   "group": "districtSolid",
+   "perInstance": 41967,
+   "instances": 1,
+   "draws": 4,
+   "tris": 41967,
+   "verts": 74486,
    "transparent": false,
    "additive": false
   },
   {
    "name": "districtGlow",
    "group": "districtGlow",
-   "perInstance": 76972,
+   "perInstance": 28726,
    "instances": 1,
-   "tris": 76972,
-   "verts": 105671,
+   "draws": 2,
+   "tris": 28726,
+   "verts": 39303,
    "transparent": false,
    "additive": false
   },
   {
-   "name": "crowdSection",
-   "group": "crowds",
+   "name": "walkers",
+   "group": "walkers",
    "perInstance": 816,
-   "instances": 91,
-   "tris": 74256,
-   "verts": 75985,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 90,
-   "tris": 73440,
-   "verts": 75150,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 87,
-   "tris": 70992,
-   "verts": 72645,
+   "instances": 35,
+   "draws": 1,
+   "tris": 28560,
+   "verts": 29225,
    "transparent": false,
    "additive": false
   },
   {
    "name": "sidewalks",
    "group": "sidewalks",
-   "perInstance": 70848,
+   "perInstance": 27761,
    "instances": 1,
-   "tris": 70848,
-   "verts": 54276,
+   "draws": 4,
+   "tris": 27761,
+   "verts": 19839,
    "transparent": false,
    "additive": false
   },
   {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 85,
-   "tris": 69360,
-   "verts": 70975,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 83,
-   "tris": 67728,
-   "verts": 69305,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 82,
-   "tris": 66912,
-   "verts": 68470,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 77,
-   "tris": 62832,
-   "verts": 64295,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "streetlightPoles",
-   "group": "props:streetlightPoles",
-   "perInstance": 50,
-   "instances": 1248,
-   "tris": 62400,
-   "verts": 106080,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "elevatedSteel",
-   "group": "elevatedSteel",
-   "perInstance": 62306,
+   "name": "districtGround",
+   "group": "districtGround",
+   "perInstance": 26703,
    "instances": 1,
-   "tris": 62306,
-   "verts": 124213,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 74,
-   "tris": 60384,
-   "verts": 61790,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "bush0",
-   "group": "props:bush0",
-   "perInstance": 126,
-   "instances": 475,
-   "tris": 59850,
-   "verts": 68400,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "benches",
-   "group": "props:benches",
-   "perInstance": 120,
-   "instances": 494,
-   "tris": 59280,
-   "verts": 118560,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 64,
-   "tris": 52224,
-   "verts": 53440,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "parkLamp0",
-   "group": "props:parkLamp0",
-   "perInstance": 154,
-   "instances": 336,
-   "tris": 51744,
-   "verts": 70224,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "areaLights",
-   "group": "areaLights",
-   "perInstance": 49026,
-   "instances": 1,
-   "tris": 49026,
-   "verts": 29927,
-   "transparent": true,
-   "additive": true
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 59,
-   "tris": 48144,
-   "verts": 49265,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "cafeTable0",
-   "group": "props:cafeTable0",
-   "perInstance": 178,
-   "instances": 257,
-   "tris": 45746,
-   "verts": 71446,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "districtFoliage",
-   "group": "districtFoliage",
-   "perInstance": 45283,
-   "instances": 1,
-   "tris": 45283,
-   "verts": 52137,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "planterPot0",
-   "group": "props:planterPot0",
-   "perInstance": 102,
-   "instances": 434,
-   "tris": 44268,
-   "verts": 49476,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 52,
-   "tris": 42432,
-   "verts": 43420,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "riverConcrete",
-   "group": "riverConcrete",
-   "perInstance": 41230,
-   "instances": 1,
-   "tris": 41230,
-   "verts": 42998,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "markings",
-   "group": "markings",
-   "perInstance": 39658,
-   "instances": 1,
-   "tris": 39658,
-   "verts": 79316,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 47,
-   "tris": 38352,
-   "verts": 39245,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "buildings",
-   "group": "buildings",
-   "perInstance": 38208,
-   "instances": 1,
-   "tris": 38208,
-   "verts": 76592,
+   "draws": 1,
+   "tris": 26703,
+   "verts": 58243,
    "transparent": false,
    "additive": false
   },
@@ -1111,109 +1497,43 @@
    "name": "trafficHeads",
    "group": "props:trafficHeads",
    "perInstance": 70,
-   "instances": 543,
-   "tris": 38010,
-   "verts": 76020,
+   "instances": 336,
+   "draws": 1,
+   "tris": 23520,
+   "verts": 47040,
    "transparent": false,
    "additive": false
   },
   {
-   "name": "barrel0",
-   "group": "props:barrel0",
-   "perInstance": 180,
-   "instances": 207,
-   "tris": 37260,
-   "verts": 40986,
+   "name": "buildings",
+   "group": "buildings",
+   "perInstance": 22965,
+   "instances": 1,
+   "draws": 1,
+   "tris": 22965,
+   "verts": 45990,
    "transparent": false,
    "additive": false
   },
   {
    "name": "districtTrees",
    "group": "districtTrees",
-   "perInstance": 36760,
+   "perInstance": 21642,
    "instances": 1,
-   "tris": 36760,
-   "verts": 27024,
+   "draws": 3,
+   "tris": 21642,
+   "verts": 15473,
    "transparent": false,
    "additive": false
   },
   {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 44,
-   "tris": 35904,
-   "verts": 36740,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "wallBoxes",
-   "group": "wallBoxes",
-   "perInstance": 31880,
-   "instances": 1,
-   "tris": 31880,
-   "verts": 63760,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 35,
-   "tris": 28560,
-   "verts": 29225,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 34,
-   "tris": 27744,
-   "verts": 28390,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "roofNeon",
-   "group": "roofNeon",
-   "perInstance": 23810,
-   "instances": 1,
-   "tris": 23810,
-   "verts": 47620,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 28,
-   "tris": 22848,
-   "verts": 23380,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 28,
-   "tris": 22848,
-   "verts": 23380,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "hydrant0",
-   "group": "props:hydrant0",
-   "perInstance": 132,
-   "instances": 162,
-   "tris": 21384,
-   "verts": 28674,
+   "name": "parkLamp0",
+   "group": "props:parkLamp0",
+   "perInstance": 124,
+   "instances": 160,
+   "draws": 1,
+   "tris": 19840,
+   "verts": 26880,
    "transparent": false,
    "additive": false
   },
@@ -1222,8 +1542,152 @@
    "group": "ground",
    "perInstance": 18432,
    "instances": 1,
+   "draws": 1,
    "tris": 18432,
    "verts": 9409,
+   "transparent": false,
+   "additive": false
+  },
+  {
+   "name": "streetlightPoles:historic",
+   "group": "props:streetlightPoles:historic",
+   "perInstance": 38,
+   "instances": 406,
+   "draws": 1,
+   "tris": 15428,
+   "verts": 25172,
+   "transparent": false,
+   "additive": false
+  },
+  {
+   "name": "fencePanel0",
+   "group": "props:fencePanel0",
+   "perInstance": 108,
+   "instances": 137,
+   "draws": 1,
+   "tris": 14796,
+   "verts": 29592,
+   "transparent": false,
+   "additive": false
+  },
+  {
+   "name": "garbageCans",
+   "group": "props:garbageCans",
+   "perInstance": 56,
+   "instances": 250,
+   "draws": 1,
+   "tris": 14000,
+   "verts": 15750,
+   "transparent": false,
+   "additive": false
+  },
+  {
+   "name": "roadDecals",
+   "group": "roadDecals",
+   "perInstance": 13724,
+   "instances": 1,
+   "draws": 1,
+   "tris": 13724,
+   "verts": 27448,
+   "transparent": true,
+   "additive": false
+  },
+  {
+   "name": "lightSpill",
+   "group": "lightSpill",
+   "perInstance": 13302,
+   "instances": 1,
+   "draws": 1,
+   "tris": 13302,
+   "verts": 26604,
+   "transparent": true,
+   "additive": true
+  },
+  {
+   "name": "roads",
+   "group": "roads",
+   "perInstance": 12983,
+   "instances": 1,
+   "draws": 1,
+   "tris": 12983,
+   "verts": 10868,
+   "transparent": false,
+   "additive": false
+  },
+  {
+   "name": "elevatedSteel",
+   "group": "elevatedSteel",
+   "perInstance": 12692,
+   "instances": 1,
+   "draws": 1,
+   "tris": 12692,
+   "verts": 25296,
+   "transparent": false,
+   "additive": false
+  },
+  {
+   "name": "districtFoliage",
+   "group": "districtFoliage",
+   "perInstance": 12670,
+   "instances": 1,
+   "draws": 3,
+   "tris": 12670,
+   "verts": 14645,
+   "transparent": false,
+   "additive": false
+  },
+  {
+   "name": "walkersFar",
+   "group": "walkersFar",
+   "perInstance": 204,
+   "instances": 60,
+   "draws": 1,
+   "tris": 12240,
+   "verts": 24480,
+   "transparent": false,
+   "additive": false
+  },
+  {
+   "name": "walkers",
+   "group": "walkers",
+   "perInstance": 816,
+   "instances": 15,
+   "draws": 1,
+   "tris": 12240,
+   "verts": 12525,
+   "transparent": false,
+   "additive": false
+  },
+  {
+   "name": "walkersFar",
+   "group": "walkersFar",
+   "perInstance": 204,
+   "instances": 60,
+   "draws": 1,
+   "tris": 12240,
+   "verts": 24480,
+   "transparent": false,
+   "additive": false
+  },
+  {
+   "name": "walkersFar",
+   "group": "walkersFar",
+   "perInstance": 204,
+   "instances": 60,
+   "draws": 1,
+   "tris": 12240,
+   "verts": 24480,
+   "transparent": false,
+   "additive": false
+  },
+  {
+   "name": "walkersFar",
+   "group": "walkersFar",
+   "perInstance": 204,
+   "instances": 60,
+   "draws": 1,
+   "tris": 12240,
+   "verts": 24480,
    "transparent": false,
    "additive": false
   },
@@ -1231,19 +1695,98 @@
    "name": "pallets0",
    "group": "props:pallets0",
    "perInstance": 290,
-   "instances": 58,
-   "tris": 16820,
-   "verts": 33640,
+   "instances": 42,
+   "draws": 1,
+   "tris": 12180,
+   "verts": 24360,
    "transparent": false,
    "additive": false
   },
   {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 20,
-   "tris": 16320,
-   "verts": 16700,
+   "name": "walkersFar",
+   "group": "walkersFar",
+   "perInstance": 204,
+   "instances": 58,
+   "draws": 1,
+   "tris": 11832,
+   "verts": 23664,
+   "transparent": false,
+   "additive": false
+  },
+  {
+   "name": "wallPaint",
+   "group": "wallPaint",
+   "perInstance": 11456,
+   "instances": 1,
+   "draws": 1,
+   "tris": 11456,
+   "verts": 22912,
+   "transparent": true,
+   "additive": false
+  },
+  {
+   "name": "areaLights",
+   "group": "areaLights",
+   "perInstance": 10874,
+   "instances": 1,
+   "draws": 1,
+   "tris": 10874,
+   "verts": 6569,
+   "transparent": true,
+   "additive": true
+  },
+  {
+   "name": "bush0",
+   "group": "props:bush0",
+   "perInstance": 105,
+   "instances": 103,
+   "draws": 1,
+   "tris": 10815,
+   "verts": 12360,
+   "transparent": false,
+   "additive": false
+  },
+  {
+   "name": "fireEscapes",
+   "group": "fireEscapes",
+   "perInstance": 10550,
+   "instances": 1,
+   "draws": 1,
+   "tris": 10550,
+   "verts": 21100,
+   "transparent": false,
+   "additive": false
+  },
+  {
+   "name": "awnings",
+   "group": "awnings",
+   "perInstance": 10464,
+   "instances": 1,
+   "draws": 1,
+   "tris": 10464,
+   "verts": 13952,
+   "transparent": false,
+   "additive": false
+  },
+  {
+   "name": "cafeTable0",
+   "group": "props:cafeTable0",
+   "perInstance": 136,
+   "instances": 76,
+   "draws": 1,
+   "tris": 10336,
+   "verts": 15960,
+   "transparent": false,
+   "additive": false
+  },
+  {
+   "name": "planterPot0",
+   "group": "props:planterPot0",
+   "perInstance": 83,
+   "instances": 122,
+   "draws": 1,
+   "tris": 10126,
+   "verts": 11468,
    "transparent": false,
    "additive": false
   },
@@ -1251,1119 +1794,54 @@
    "name": "trafficLenses",
    "group": "props:trafficLenses",
    "perInstance": 30,
-   "instances": 543,
-   "tris": 16290,
-   "verts": 17919,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "roads",
-   "group": "roads",
-   "perInstance": 15923,
-   "instances": 1,
-   "tris": 15923,
-   "verts": 15340,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "trafficCone0",
-   "group": "props:trafficCone0",
-   "perInstance": 82,
-   "instances": 187,
-   "tris": 15334,
-   "verts": 18887,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "streetlightLenses",
-   "group": "props:streetlightLenses",
-   "perInstance": 12,
-   "instances": 1248,
-   "tris": 14976,
-   "verts": 29952,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "roadDecals",
-   "group": "roadDecals",
-   "perInstance": 14036,
-   "instances": 1,
-   "tris": 14036,
-   "verts": 28072,
-   "transparent": true,
-   "additive": false
-  },
-  {
-   "name": "trashBags0",
-   "group": "props:trashBags0",
-   "perInstance": 108,
-   "instances": 123,
-   "tris": 13284,
-   "verts": 15498,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 16,
-   "tris": 13056,
-   "verts": 13360,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "lightSpill",
-   "group": "lightSpill",
-   "perInstance": 13006,
-   "instances": 1,
-   "tris": 13006,
-   "verts": 26012,
-   "transparent": true,
-   "additive": true
-  },
-  {
-   "name": "marketStall1",
-   "group": "props:marketStall1",
-   "perInstance": 296,
-   "instances": 42,
-   "tris": 12432,
-   "verts": 18564,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crate0",
-   "group": "props:crate0",
-   "perInstance": 50,
-   "instances": 243,
-   "tris": 12150,
-   "verts": 24300,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "vendingMachine1",
-   "group": "props:vendingMachine1",
-   "perInstance": 260,
-   "instances": 46,
-   "tris": 11960,
-   "verts": 23920,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "wallPaint",
-   "group": "wallPaint",
-   "perInstance": 11286,
-   "instances": 1,
-   "tris": 11286,
-   "verts": 22572,
-   "transparent": true,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 13,
-   "tris": 10608,
-   "verts": 10855,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "crowdSection",
-   "group": "crowds",
-   "perInstance": 816,
-   "instances": 13,
-   "tris": 10608,
-   "verts": 10855,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "awnings",
-   "group": "awnings",
-   "perInstance": 10302,
-   "instances": 1,
-   "tris": 10302,
-   "verts": 13736,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "fireEscapes",
-   "group": "fireEscapes",
-   "perInstance": 8990,
-   "instances": 1,
-   "tris": 8990,
-   "verts": 17980,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "sawhorse0",
-   "group": "props:sawhorse0",
-   "perInstance": 200,
-   "instances": 42,
-   "tris": 8400,
-   "verts": 16800,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "parkLamp1",
-   "group": "props:parkLamp1",
-   "perInstance": 24,
    "instances": 336,
-   "tris": 8064,
-   "verts": 9072,
+   "draws": 1,
+   "tris": 10080,
+   "verts": 11088,
    "transparent": false,
    "additive": false
   },
   {
-   "name": "crowdSection",
+   "name": "crowdSectionFar",
    "group": "crowds",
-   "perInstance": 816,
-   "instances": 9,
-   "tris": 7344,
-   "verts": 7515,
+   "perInstance": 204,
+   "instances": 48,
+   "draws": 1,
+   "tris": 9792,
+   "verts": 19584,
    "transparent": false,
    "additive": false
   },
   {
-   "name": "(unnamed)",
-   "group": "city",
-   "perInstance": 20,
-   "instances": 352,
-   "tris": 7040,
-   "verts": 21120,
+   "name": "crowdSectionFar",
+   "group": "crowds",
+   "perInstance": 204,
+   "instances": 48,
+   "draws": 1,
+   "tris": 9792,
+   "verts": 19584,
    "transparent": false,
    "additive": false
   },
   {
-   "name": "mailbox0",
-   "group": "props:mailbox0",
-   "perInstance": 90,
-   "instances": 76,
-   "tris": 6840,
-   "verts": 13680,
+   "name": "crowdSectionFar",
+   "group": "crowds",
+   "perInstance": 204,
+   "instances": 48,
+   "draws": 1,
+   "tris": 9792,
+   "verts": 19584,
    "transparent": false,
    "additive": false
   },
   {
-   "name": "busStops",
-   "group": "props:busStops",
-   "perInstance": 112,
-   "instances": 57,
-   "tris": 6384,
-   "verts": 12768,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "districtPaint",
-   "group": "districtPaint",
-   "perInstance": 6382,
+   "name": "roofNeon",
+   "group": "roofNeon",
+   "perInstance": 9719,
    "instances": 1,
-   "tris": 6382,
-   "verts": 12764,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "cafeTable1",
-   "group": "props:cafeTable1",
-   "perInstance": 24,
-   "instances": 257,
-   "tris": 6168,
-   "verts": 6939,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "elevatedPools",
-   "group": "elevatedPools",
-   "perInstance": 6000,
-   "instances": 1,
-   "tris": 6000,
-   "verts": 3700,
-   "transparent": true,
-   "additive": true
-  },
-  {
-   "name": "trafficPoles",
-   "group": "props:trafficPoles",
-   "perInstance": 31,
-   "instances": 181,
-   "tris": 5611,
-   "verts": 7964,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "railFrames",
-   "group": "railFrames",
-   "perInstance": 5372,
-   "instances": 1,
-   "tris": 5372,
-   "verts": 10744,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "phoneBooth0",
-   "group": "props:phoneBooth0",
-   "perInstance": 90,
-   "instances": 59,
-   "tris": 5310,
-   "verts": 10620,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "dumpster0",
-   "group": "props:dumpster0",
-   "perInstance": 112,
-   "instances": 42,
-   "tris": 4704,
-   "verts": 6888,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "marketStall3",
-   "group": "props:marketStall3",
-   "perInstance": 108,
-   "instances": 42,
-   "tris": 4536,
-   "verts": 5292,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "parkingMeter0",
-   "group": "props:parkingMeter0",
-   "perInstance": 72,
-   "instances": 57,
-   "tris": 4104,
-   "verts": 6156,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "fencePanel1",
-   "group": "props:fencePanel1",
-   "perInstance": 12,
-   "instances": 275,
-   "tris": 3300,
-   "verts": 6600,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "sandbags0",
-   "group": "props:sandbags0",
-   "perInstance": 90,
-   "instances": 36,
-   "tris": 3240,
-   "verts": 6480,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "riverLightPools",
-   "group": "riverLightPools",
-   "perInstance": 2904,
-   "instances": 1,
-   "tris": 2904,
-   "verts": 3066,
-   "transparent": true,
-   "additive": true
-  },
-  {
-   "name": "rain",
-   "group": "rain",
-   "perInstance": 2,
-   "instances": 1430,
-   "tris": 2860,
-   "verts": 4,
-   "transparent": true,
-   "additive": false
-  },
-  {
-   "name": "waterBarrier0",
-   "group": "props:waterBarrier0",
-   "perInstance": 66,
-   "instances": 42,
-   "tris": 2772,
-   "verts": 4284,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "streetStreaks",
-   "group": "streetStreaks",
-   "perInstance": 2,
-   "instances": 1338,
-   "tris": 2676,
-   "verts": 4,
-   "transparent": true,
-   "additive": true
-  },
-  {
-   "name": "newsBox0",
-   "group": "props:newsBox0",
-   "perInstance": 30,
-   "instances": 84,
-   "tris": 2520,
-   "verts": 5040,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "marketStall0",
-   "group": "props:marketStall0",
-   "perInstance": 60,
-   "instances": 42,
-   "tris": 2520,
-   "verts": 5040,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "streetPools",
-   "group": "streetPools",
-   "perInstance": 2,
-   "instances": 1248,
-   "tris": 2496,
-   "verts": 4992,
-   "transparent": true,
-   "additive": true
-  },
-  {
-   "name": "phoneBooth1",
-   "group": "props:phoneBooth1",
-   "perInstance": 40,
-   "instances": 59,
-   "tris": 2360,
-   "verts": 4720,
-   "transparent": true,
-   "additive": false
-  },
-  {
-   "name": "trafficArms",
-   "group": "props:trafficArms",
-   "perInstance": 12,
-   "instances": 181,
-   "tris": 2172,
-   "verts": 4344,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "fruitCrates0",
-   "group": "props:fruitCrates0",
-   "perInstance": 90,
-   "instances": 23,
-   "tris": 2070,
-   "verts": 4140,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "skySprites",
-   "group": "skySprites",
-   "perInstance": 2,
-   "instances": 987,
-   "tris": 1974,
-   "verts": 4,
-   "transparent": true,
-   "additive": true
-  },
-  {
-   "name": "harborWater",
-   "group": "harborWater",
-   "perInstance": 1896,
-   "instances": 1,
-   "tris": 1896,
-   "verts": 1190,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "cobbles",
-   "group": "cobbles",
-   "perInstance": 1890,
-   "instances": 1,
-   "tris": 1890,
-   "verts": 1936,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "vendingMachine0",
-   "group": "props:vendingMachine0",
-   "perInstance": 40,
-   "instances": 46,
-   "tris": 1840,
-   "verts": 3680,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "bollard0",
-   "group": "props:bollard0",
-   "perInstance": 90,
-   "instances": 20,
-   "tris": 1800,
-   "verts": 1980,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "tunnelWash",
-   "group": "tunnelWash",
-   "perInstance": 1656,
-   "instances": 1,
-   "tris": 1656,
-   "verts": 3312,
-   "transparent": true,
-   "additive": true
-  },
-  {
-   "name": "riverFence",
-   "group": "riverFence",
-   "perInstance": 1498,
-   "instances": 1,
-   "tris": 1498,
-   "verts": 2996,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "elevatedTies",
-   "group": "elevatedTies",
-   "perInstance": 1492,
-   "instances": 1,
-   "tris": 1492,
-   "verts": 2984,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "busStopGlass",
-   "group": "props:busStopGlass",
-   "perInstance": 24,
-   "instances": 57,
-   "tris": 1368,
-   "verts": 2736,
-   "transparent": true,
-   "additive": false
-  },
-  {
-   "name": "riverWater",
-   "group": "riverWater",
-   "perInstance": 1348,
-   "instances": 1,
-   "tris": 1348,
-   "verts": 1369,
-   "transparent": true,
-   "additive": false
-  },
-  {
-   "name": "bladeSigns",
-   "group": "bladeSigns",
-   "perInstance": 1276,
-   "instances": 1,
-   "tris": 1276,
-   "verts": 2552,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "tunnelBore",
-   "group": "tunnelBore",
-   "perInstance": 1180,
-   "instances": 1,
-   "tris": 1180,
-   "verts": 2360,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "phoneBooth2",
-   "group": "props:phoneBooth2",
-   "perInstance": 20,
-   "instances": 59,
-   "tris": 1180,
-   "verts": 2360,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "steam",
-   "group": "steam",
-   "perInstance": 2,
-   "instances": 552,
-   "tris": 1104,
-   "verts": 4,
-   "transparent": true,
-   "additive": false
-  },
-  {
-   "name": "lakeStreaks",
-   "group": "lakeStreaks",
-   "perInstance": 1064,
-   "instances": 1,
-   "tris": 1064,
-   "verts": 912,
-   "transparent": true,
-   "additive": true
-  },
-  {
-   "name": "marketStall2",
-   "group": "props:marketStall2",
-   "perInstance": 24,
-   "instances": 42,
-   "tris": 1008,
-   "verts": 2016,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "railPanels",
-   "group": "railPanels",
-   "perInstance": 908,
-   "instances": 1,
-   "tris": 908,
-   "verts": 1816,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "railLeds",
-   "group": "railLeds",
-   "perInstance": 908,
-   "instances": 1,
-   "tris": 908,
-   "verts": 1816,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "railGlow",
-   "group": "railGlow",
-   "perInstance": 908,
-   "instances": 1,
-   "tris": 908,
-   "verts": 1816,
-   "transparent": true,
-   "additive": true
-  },
-  {
-   "name": "marketLight",
-   "group": "marketLight",
-   "perInstance": 864,
-   "instances": 1,
-   "tris": 864,
-   "verts": 612,
-   "transparent": true,
-   "additive": true
-  },
-  {
-   "name": "foodCart1",
-   "group": "props:foodCart1",
-   "perInstance": 120,
-   "instances": 7,
-   "tris": 840,
-   "verts": 1428,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "railBeacons",
-   "group": "railBeacons",
-   "perInstance": 830,
-   "instances": 1,
-   "tris": 830,
-   "verts": 1660,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "(unnamed)",
-   "group": "city",
-   "perInstance": 772,
-   "instances": 1,
-   "tris": 772,
-   "verts": 1408,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "puddles",
-   "group": "puddles",
-   "perInstance": 748,
-   "instances": 1,
-   "tris": 748,
-   "verts": 1496,
-   "transparent": true,
-   "additive": false
-  },
-  {
-   "name": "districtHazard",
-   "group": "districtHazard",
-   "perInstance": 684,
-   "instances": 1,
-   "tris": 684,
-   "verts": 798,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "busStopLights",
-   "group": "props:busStopLights",
-   "perInstance": 12,
-   "instances": 57,
-   "tris": 684,
-   "verts": 1368,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "aviationLights",
-   "group": "aviationLights",
-   "perInstance": 622,
-   "instances": 1,
-   "tris": 622,
-   "verts": 1244,
-   "transparent": true,
-   "additive": true
-  },
-  {
-   "name": "bollard1",
-   "group": "props:bollard1",
-   "perInstance": 30,
-   "instances": 20,
-   "tris": 600,
-   "verts": 660,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "foodCart2",
-   "group": "props:foodCart2",
-   "perInstance": 84,
-   "instances": 7,
-   "tris": 588,
-   "verts": 1176,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "blimp",
-   "group": "blimp",
-   "perInstance": 548,
-   "instances": 1,
-   "tris": 548,
-   "verts": 536,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "(unnamed)",
-   "group": "city",
-   "perInstance": 36,
-   "instances": 14,
-   "tris": 504,
-   "verts": 532,
-   "transparent": true,
-   "additive": true
-  },
-  {
-   "name": "sawhorse1",
-   "group": "props:sawhorse1",
-   "perInstance": 12,
-   "instances": 42,
-   "tris": 504,
-   "verts": 1008,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "policeHelicopter",
-   "group": "policeHelicopter",
-   "perInstance": 384,
-   "instances": 1,
-   "tris": 384,
-   "verts": 768,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "billboards",
-   "group": "billboards",
-   "perInstance": 374,
-   "instances": 1,
-   "tris": 374,
-   "verts": 748,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "(unnamed)",
-   "group": "backdrop",
-   "perInstance": 360,
-   "instances": 1,
-   "tris": 360,
-   "verts": 362,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "(unnamed)",
-   "group": "backdrop",
-   "perInstance": 360,
-   "instances": 1,
-   "tris": 360,
-   "verts": 362,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "riverDecals",
-   "group": "riverDecals",
-   "perInstance": 308,
-   "instances": 1,
-   "tris": 308,
-   "verts": 364,
-   "transparent": true,
-   "additive": false
-  },
-  {
-   "name": "searchlight",
-   "group": "searchlight",
-   "perInstance": 308,
-   "instances": 1,
-   "tris": 308,
-   "verts": 197,
-   "transparent": true,
-   "additive": true
-  },
-  {
-   "name": "driftZoneWash",
-   "group": "driftZoneWash",
-   "perInstance": 296,
-   "instances": 1,
-   "tris": 296,
-   "verts": 592,
-   "transparent": true,
-   "additive": true
-  },
-  {
-   "name": "helicopter",
-   "group": "helicopter",
-   "perInstance": 288,
-   "instances": 1,
-   "tris": 288,
-   "verts": 576,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "signs",
-   "group": "signs",
-   "perInstance": 272,
-   "instances": 1,
-   "tris": 272,
-   "verts": 544,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "harborFlashers",
-   "group": "harborFlashers",
-   "perInstance": 252,
-   "instances": 1,
-   "tris": 252,
-   "verts": 504,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "busStopAds",
-   "group": "props:busStopAds",
-   "perInstance": 4,
-   "instances": 57,
-   "tris": 228,
-   "verts": 456,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "foodCart0",
-   "group": "props:foodCart0",
-   "perInstance": 32,
-   "instances": 7,
-   "tris": 224,
-   "verts": 448,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "roadworksLightPools",
-   "group": "roadworksLightPools",
-   "perInstance": 216,
-   "instances": 1,
-   "tris": 216,
-   "verts": 147,
-   "transparent": true,
-   "additive": true
-  },
-  {
-   "name": "shortcutLightPools",
-   "group": "shortcutLightPools",
-   "perInstance": 192,
-   "instances": 1,
-   "tris": 192,
-   "verts": 150,
-   "transparent": true,
-   "additive": true
-  },
-  {
-   "name": "(unnamed)",
-   "group": "city",
-   "perInstance": 144,
-   "instances": 1,
-   "tris": 144,
-   "verts": 272,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "(unnamed)",
-   "group": "city",
-   "perInstance": 144,
-   "instances": 1,
-   "tris": 144,
-   "verts": 91,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "(unnamed)",
-   "group": "city",
-   "perInstance": 144,
-   "instances": 1,
-   "tris": 144,
-   "verts": 91,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "harborStreaks",
-   "group": "harborStreaks",
-   "perInstance": 2,
-   "instances": 47,
-   "tris": 94,
-   "verts": 4,
-   "transparent": true,
-   "additive": true
-  },
-  {
-   "name": "roadworksLamps",
-   "group": "roadworksLamps",
-   "perInstance": 90,
-   "instances": 1,
-   "tris": 90,
-   "verts": 180,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "lakeFountain",
-   "group": "lakeFountain",
-   "perInstance": 72,
-   "instances": 1,
-   "tris": 72,
-   "verts": 65,
-   "transparent": true,
-   "additive": true
-  },
-  {
-   "name": "routeSigns",
-   "group": "routeSigns",
-   "perInstance": 2,
-   "instances": 25,
-   "tris": 50,
-   "verts": 100,
-   "transparent": true,
-   "additive": false
-  },
-  {
-   "name": "(unnamed)",
-   "group": "city",
-   "perInstance": 48,
-   "instances": 1,
-   "tris": 48,
-   "verts": 96,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "(unnamed)",
-   "group": "city",
-   "perInstance": 48,
-   "instances": 1,
-   "tris": 48,
-   "verts": 96,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "(unnamed)",
-   "group": "backdrop",
-   "perInstance": 40,
-   "instances": 1,
-   "tris": 40,
-   "verts": 80,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "lakeWater0",
-   "group": "lakeWater0",
-   "perInstance": 27,
-   "instances": 1,
-   "tris": 27,
-   "verts": 81,
-   "transparent": true,
-   "additive": false
-  },
-  {
-   "name": "splashes",
-   "group": "splashes",
-   "perInstance": 2,
-   "instances": 10,
-   "tris": 20,
-   "verts": 4,
-   "transparent": true,
-   "additive": false
-  },
-  {
-   "name": "tunnelSigns",
-   "group": "tunnelSigns",
-   "perInstance": 12,
-   "instances": 1,
-   "tris": 12,
-   "verts": 24,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "startLine",
-   "group": "startLine",
-   "perInstance": 2,
-   "instances": 1,
-   "tris": 2,
-   "verts": 4,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "(unnamed)",
-   "group": "city",
-   "perInstance": 2,
-   "instances": 1,
-   "tris": 2,
-   "verts": 4,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "(unnamed)",
-   "group": "city",
-   "perInstance": 2,
-   "instances": 1,
-   "tris": 2,
-   "verts": 4,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "(unnamed)",
-   "group": "city",
-   "perInstance": 2,
-   "instances": 1,
-   "tris": 2,
-   "verts": 4,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "(unnamed)",
-   "group": "city",
-   "perInstance": 2,
-   "instances": 1,
-   "tris": 2,
-   "verts": 4,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "(unnamed)",
-   "group": "city",
-   "perInstance": 2,
-   "instances": 1,
-   "tris": 2,
-   "verts": 4,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "(unnamed)",
-   "group": "city",
-   "perInstance": 2,
-   "instances": 1,
-   "tris": 2,
-   "verts": 4,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "(unnamed)",
-   "group": "city",
-   "perInstance": 2,
-   "instances": 1,
-   "tris": 2,
-   "verts": 4,
-   "transparent": true,
-   "additive": true
-  },
-  {
-   "name": "(unnamed)",
-   "group": "city",
-   "perInstance": 2,
-   "instances": 1,
-   "tris": 2,
-   "verts": 4,
-   "transparent": true,
-   "additive": true
-  },
-  {
-   "name": "roadworksExcavators",
-   "group": "roadworksExcavators",
-   "perInstance": 0,
-   "instances": 3,
-   "tris": 0,
-   "verts": 0,
+   "draws": 1,
+   "tris": 9719,
+   "verts": 19438,
    "transparent": false,
    "additive": false
   }

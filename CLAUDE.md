@@ -14,7 +14,7 @@ Street Scene is a browser street racer (TypeScript, three.js, Vite, Vitest, SCSS
 | One file, one test | `npx vitest run tests/sim.test.ts -t "nitrous"` |
 | Browser tests, about 50 s per spec and 5+ min for all (Playwright, Chromium, software WebGL; starts the dev server if needed) | `npm run e2e -- e2e/raceMap.spec.ts` (`-g "music"` narrows further) |
 | Production build (typecheck + vite build) | `npm run build` |
-| Headless scene stats per group (tris, calls, materials; `--tier`, `--baseline scripts/perf/baseline.json --check`) | `npm run perf:scene -- --seed 20261019 --tier medium` |
+| Headless scene stats per group (tris, calls, materials; `--tier`; no `--camera` is an upper bound, `--camera route[:s]` counts what a route camera draws after the frame's culling hooks, which is the number to compare; `--baseline scripts/perf/baseline.json --check` follows the camera the baseline was recorded with) | `npm run perf:scene -- --seed 20261019 --tier medium --camera route` |
 | Validate the parts catalog against `public/` | `npm run validate` |
 | Screenshot the analytics dashboard against stubbed data at five widths (overflow, gutter, pager; writes nothing) | `npm run check:dashboard -- http://localhost:5175 <outDir>` |
 | Inspect a GLB (nodes, materials, triangles) | `npm run inspect -- public/cars/protoHatch.glb` |
