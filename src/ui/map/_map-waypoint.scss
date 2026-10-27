@@ -8,7 +8,8 @@
   position: absolute;
   left: 0;
   top: 0;
-  z-index: 3;
+  /* Over the pointer's card (_map-tip, 4), so its buttons stay pressable while the pointer is by the pin. */
+  z-index: 5;
   display: flex;
   flex-direction: column;
   pointer-events: none;

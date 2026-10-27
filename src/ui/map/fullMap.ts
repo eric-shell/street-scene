@@ -277,8 +277,7 @@ export class FullMap {
       ),
       h('i', { class: 'map-waypoint__stem' }),
     );
-    // Under the pointer's card, which can name the pin it stands on.
-    this.stage.insertBefore(this.wpCard, this.tip.el);
+    this.stage.append(this.wpCard);
     const side = h('aside', { class: 'map-side' }, h('div', { class: 'tabs map-side__tabs', role: 'tablist' }, this.legendTab, this.placesTab), this.legendPane, this.placesPane);
     // Header and footer.
     this.hereEl = h('b', { class: 'full-map__here' });
