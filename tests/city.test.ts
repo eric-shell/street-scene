@@ -582,8 +582,8 @@ describe('districts', () => {
         }
         if (a.kind === 'park') {
           parks++;
-          // Grass, or the cobbles of a race pass's path through the middle (districts/park.ts parkPasses).
-          expect(['grass', 'cobble']).toContain(w.surfaceAt(c.x, c.z));
+          // Grass, the cobbles of a race pass's path through the middle (districts/park.ts parkPasses), or a lakeside park's pond.
+          expect(['grass', 'cobble', 'water']).toContain(w.surfaceAt(c.x, c.z));
           expect(w.areaAt(c.x, c.z)?.kind).toBe('park');
           // No building in a park.
           expect(w.blocks.buildings.some((b) => pointInPolygon(b.x, b.z, a.polygon))).toBe(false);
