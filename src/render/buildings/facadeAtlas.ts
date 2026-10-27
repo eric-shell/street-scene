@@ -374,12 +374,8 @@ export interface FacadeAtlas {
   layers: THREE.DataArrayTexture;
   /** Black iron fire escape grating and rails (alpha cutout). */
   fireEscape: THREE.CanvasTexture;
-  /** Rooftop billboard ads, BILLBOARD_COLS x BILLBOARD_ROWS cells. */
-  billboards: THREE.CanvasTexture;
 }
 
-export const BILLBOARD_COLS = 2;
-export const BILLBOARD_ROWS = 5;
 
 let cached: FacadeAtlas | null = null;
 
@@ -431,7 +427,7 @@ export function facadeAtlas(): FacadeAtlas {
   layers.generateMipmaps = true;
   layers.anisotropy = 4;
   layers.needsUpdate = true;
-  cached = { layers, fireEscape: makeFireEscape(), billboards: makeBillboards() };
+  cached = { layers, fireEscape: makeFireEscape() };
   return cached;
 }
 
@@ -459,82 +455,6 @@ function makeFireEscape(): THREE.CanvasTexture {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = THREE.RepeatWrapping;
-  t.anisotropy = 4;
-  return t;
-}
-
-const ADS: { text: string; sub: string; bg: [string, string]; fg: string; accent: string }[] = [
-  { text: 'NITRO COLA', sub: 'TASTE THE BOOST', bg: ['#b3001b', '#ff3d3d'], fg: '#fff', accent: '#ffe14d' },
-  { text: 'MIDNIGHT FM', sub: '104.7  ALL NIGHT', bg: ['#1a0b3d', '#5a1fa8'], fg: '#ff4fd8', accent: '#22e6ff' },
-  { text: 'HYPERION', sub: 'PERFORMANCE TIRES', bg: ['#0b0b0f', '#30323c'], fg: '#ffd400', accent: '#ffffff' },
-  { text: 'VOLT', sub: 'ENERGY DRINK', bg: ['#003b2f', '#00b894'], fg: '#eaff00', accent: '#ffffff' },
-  { text: 'SUNSET MOTEL', sub: 'VACANCY  POOL  TV', bg: ['#ff7a18', '#af002d'], fg: '#fff3d6', accent: '#ffe14d' },
-  { text: 'APEX', sub: 'TUNING  DYNO  WRAPS', bg: ['#04243f', '#0a6bd6'], fg: '#ffffff', accent: '#19e6ff' },
-  { text: 'CHROME DINER', sub: 'OPEN 24 HOURS', bg: ['#e8e8ee', '#9aa0ad'], fg: '#c4002b', accent: '#111' },
-  { text: 'PALM BEACH', sub: 'FLY TONIGHT', bg: ['#00c6cf', '#ff6fb5'], fg: '#ffffff', accent: '#fff6a8' },
-  { text: 'LUCKY STAR', sub: 'CASINO & LOUNGE', bg: ['#2a0000', '#7a0010'], fg: '#ffcf3d', accent: '#ff3b6b' },
-  { text: 'ORBIT', sub: 'THE NEW PHONE', bg: ['#000000', '#1b1b2a'], fg: '#ffffff', accent: '#a66bff' },
-];
-
-/** Rooftop billboard ads (fake brands from this game's world), 4:1 cells. */
-function makeBillboards(): THREE.CanvasTexture {
-  const cw = 512;
-  const ch = 128;
-  const c = document.createElement('canvas');
-  c.width = cw * BILLBOARD_COLS;
-  c.height = ch * BILLBOARD_ROWS;
-  const g = c.getContext('2d')!;
-  ADS.forEach((ad, k) => {
-    const x = (k % BILLBOARD_COLS) * cw;
-    const y = Math.floor(k / BILLBOARD_COLS) * ch;
-    const grd = g.createLinearGradient(x, y, x + cw, y + ch);
-    grd.addColorStop(0, ad.bg[0]);
-    grd.addColorStop(1, ad.bg[1]);
-    g.fillStyle = grd;
-    g.fillRect(x, y, cw, ch);
-    // A bold shape for the eye at distance: a sweep, a disc or a stripe.
-    g.save();
-    g.beginPath();
-    g.rect(x, y, cw, ch);
-    g.clip();
-    g.fillStyle = ad.accent;
-    g.globalAlpha = 0.85;
-    if (k % 3 === 0) {
-      g.beginPath();
-      g.arc(x + cw - 70, y + ch / 2, 48, 0, Math.PI * 2);
-      g.fill();
-    } else if (k % 3 === 1) {
-      g.beginPath();
-      g.moveTo(x + cw - 170, y + ch);
-      g.lineTo(x + cw - 90, y);
-      g.lineTo(x + cw - 60, y);
-      g.lineTo(x + cw - 140, y + ch);
-      g.fill();
-    } else {
-      g.fillRect(x, y + ch - 18, cw, 8);
-    }
-    g.restore();
-    g.globalAlpha = 1;
-    g.fillStyle = ad.fg;
-    g.textAlign = 'left';
-    g.textBaseline = 'alphabetic';
-    let size = 64;
-    g.font = `900 ${size}px Impact, "Arial Black", sans-serif`;
-    while (g.measureText(ad.text).width > cw - 150 && size > 24) {
-      size -= 3;
-      g.font = `900 ${size}px Impact, "Arial Black", sans-serif`;
-    }
-    g.fillText(ad.text, x + 22, y + 78);
-    g.font = `700 22px "Arial Black", sans-serif`;
-    g.globalAlpha = 0.9;
-    g.fillText(ad.sub, x + 24, y + 108);
-    g.globalAlpha = 1;
-    g.strokeStyle = 'rgba(0,0,0,0.6)';
-    g.lineWidth = 6;
-    g.strokeRect(x + 3, y + 3, cw - 6, ch - 6);
-  });
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4;
   return t;
 }

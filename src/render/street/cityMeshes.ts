@@ -17,6 +17,7 @@ import { STREETLIGHT_ARM, STREETLIGHT_POLE_H } from './props';
 import { createPodiumOutput, makeFacadeKitTextures } from '../buildings/facadeKit';
 import type { ShopFront } from '../people/idleSpots';
 import { buildBuildings, Detail } from '../buildings/buildings';
+import { neonMood } from '../textures/cityMood';
 import { ridgeLift } from '../districts/structureShapes';
 import { baysByEdge, sideBays } from '../../city/busBays';
 import { BAY_DASH, BayDraw, bayMouth, drawBayAsphalt, drawBayPaint, drawBaySidewalk } from './busBays';
@@ -24,7 +25,7 @@ import {
   NEON_COLORS,
   SIGN_ATLAS_COLS,
   SIGN_ATLAS_ROWS,
-  SIGN_NAMES,
+  SIGN_SLOTS,
   COBBLE_TILE,
   makeAsphalt,
   makeCobble,
@@ -436,6 +437,7 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
   // ---------- Buildings ----------
   // Regional architecture (architecture.ts plans the styles, buildings.ts builds them) over facade kit podiums.
   const neon = NEON_COLORS.map((c) => new THREE.Color(c));
+  const mood = neonMood(world.seed);
   const detail = opts.detail ?? 'medium';
   const podium = createPodiumOutput(detail);
   const buildings = buildBuildings(world, podium, { detail });
@@ -483,8 +485,8 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     const cellW = 1 / SIGN_ATLAS_COLS;
     const cellH = 1 / SIGN_ATLAS_ROWS;
     for (const s of world.blocks.signs) {
-      const idx = s.nameIndex % SIGN_NAMES.length;
-      const col = neon[s.colorIndex % neon.length];
+      const idx = s.nameIndex % SIGN_SLOTS;
+      const col = neon[mood.neon((s.colorIndex + 0.5) / 1024)];
       const u0 = (idx % SIGN_ATLAS_COLS) * cellW;
       const v1 = 1 - Math.floor(idx / SIGN_ATLAS_COLS) * cellH;
       const v0 = v1 - cellH;
@@ -520,7 +522,7 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
       }
       signLights.push({ pos: new THREE.Vector3(s.x + s.nx * (s.blade ? s.w / 2 : 0.3), s.y, s.z + s.nz * (s.blade ? s.w / 2 : 0.3)), color: col.clone() });
     }
-    const signMat = track(new THREE.MeshBasicMaterial({ map: track(makeSignAtlas()), vertexColors: true }));
+    const signMat = track(new THREE.MeshBasicMaterial({ map: track(makeSignAtlas(world.seed)), vertexColors: true }));
     signMat.color.setScalar(2.6);
     const signMesh = new THREE.Mesh(track(sb.build()), signMat);
     signMesh.name = 'signs';

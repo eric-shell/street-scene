@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import { Vec2 } from '../../sim/math';
 import { Rng } from '../../sim/prng';
 import { GeoBuilder } from '../geoBuilder';
-import { BILLBOARD_COLS, BILLBOARD_ROWS } from './facadeAtlas';
+import { BILLBOARD_COLS, BILLBOARD_ROWS } from '../textures/billboardAtlas';
 import { BLD, DETAIL, NO_GLOW, wash, Frame, boxOutline, lbox, cap, facet, slopeHint, shellFacet, cornice, colorOf } from './buildingKit';
 import type { Detail, Skin, Out, P3 } from './buildingKit';
 

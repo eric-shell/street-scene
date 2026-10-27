@@ -27,7 +27,8 @@ import { GeoBuilder } from '../geoBuilder';
 import { orientedBox } from '../districts/kit';
 import { FacadeProbe, ProbeHit } from './wallProbe';
 import { fadeSubPixel } from '../materialFx';
-import { AtlasCell, BLADE_SIGN_COLS, BLADE_SIGN_ROWS, BLADE_SIGN_TEXTS, NEON_COLORS, WALL_ATLAS, WallKind, wallCell } from '../textures/textures';
+import { AtlasCell, BLADE_SIGN_COLS, BLADE_SIGN_ROWS, BLADE_SLOTS, NEON_COLORS, WALL_ATLAS, WallKind, wallCell } from '../textures/textures';
+import { neonMood } from '../textures/cityMood';
 
 export interface WallDressingOptions {
   /** Share of candidate walls and faces that get dressed (graphics tier). */
@@ -314,6 +315,7 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
 
   // ---------- blade signs over the sidewalks ----------
   const neon = NEON_COLORS.map((c) => new THREE.Color(c));
+  const mood = neonMood(world.seed);
   if (!probe.empty) {
     const cw = 1 / BLADE_SIGN_COLS;
     const ch = 1 / BLADE_SIGN_ROWS;
@@ -336,10 +338,10 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
         if (!hit || y + DRESS.bladeH / 2 + 0.1 > hit.y1) continue;
         const sx = px + wx * hit.d;
         const sz = pz + wz * hit.d;
-        const idx = rng.int(0, BLADE_SIGN_TEXTS.length - 1);
+        const idx = rng.int(0, BLADE_SLOTS - 1);
         const u0 = (idx % BLADE_SIGN_COLS) * cw;
         const v1 = 1 - Math.floor(idx / BLADE_SIGN_COLS) * ch;
-        const col = neon[rng.int(0, neon.length - 1)];
+        const col = neon[mood.neon(rng.next())];
         // Panel in the plane of the face normal: visible walking either way down the sidewalk.
         const o0 = DRESS.bladeOut[0];
         const o1 = DRESS.bladeOut[1];

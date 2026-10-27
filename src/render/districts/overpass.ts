@@ -93,7 +93,7 @@ export const overpassRenderer: DistrictRenderer = {
     };
     add(wash, 'overpassWash', washMaterial(), 1);
     if (signs.vertexCount) {
-      const map = kit.track(makeStructureSigns());
+      const map = kit.track(makeStructureSigns(kit.world.seed));
       add(signs, 'overpassSigns', new THREE.MeshBasicMaterial({ map, vertexColors: true }));
     }
   },

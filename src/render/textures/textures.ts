@@ -7,12 +7,13 @@
 import * as THREE from 'three';
 import { Rng } from '../../sim/prng';
 import { canvas, canvasTex } from './canvasKit';
+import { neonMood } from './cityMood';
 
 // The street and building builders still import these from here (render/street, render/buildings); they
 // belong to the modules named, so new code imports them from there.
 export { kelvin } from '../color';
 export { COBBLE_TILE, makeAsphalt, makeCobble, makeSidewalk } from './streetTextures';
-export { BLADE_SIGN_COLS, BLADE_SIGN_ROWS, BLADE_SIGN_TEXTS, SIGN_ATLAS_COLS, SIGN_ATLAS_ROWS, SIGN_NAMES, makeBladeSignAtlas, makeSignAtlas } from './signAtlases';
+export { BLADE_SIGN_COLS, BLADE_SIGN_ROWS, BLADE_SLOTS, SIGN_ATLAS_COLS, SIGN_ATLAS_ROWS, SIGN_SLOTS, makeBladeSignAtlas, makeSignAtlas } from './signAtlases';
 export { DECAL_ATLAS_SIZE, DECAL_CELLS, makeStreetDecalAtlas, type DecalKind } from './streetDecalAtlas';
 export { WALL_ATLAS, makeWallAtlas, wallCell, type WallKind } from './wallAtlas';
 export type { AtlasCell } from './canvasKit';
@@ -78,7 +79,7 @@ export function makeNightEnvironment(seed: number): HTMLCanvasElement {
   }
   // neon blobs
   for (let i = 0; i < 24; i++) {
-    const col = NEON_COLORS[Math.floor(rng.next() * NEON_COLORS.length)];
+    const col = NEON_COLORS[neonMood(seed).neon(rng.next())];
     const x = rng.range(0, W);
     const y = rng.range(H * 0.3, H * 0.5);
     const r = rng.range(8, 30);

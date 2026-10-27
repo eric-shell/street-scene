@@ -13,6 +13,8 @@ import { Vec2 } from '../../sim/math';
 import { Rng } from '../../sim/prng';
 import { GeoBuilder } from '../geoBuilder';
 import { PodiumOutput } from './facadeKit';
+import { neonMood } from '../textures/cityMood';
+import { NEON_COLORS } from '../textures/textures';
 
 export type Detail = 'low' | 'medium' | 'high';
 
@@ -44,6 +46,17 @@ export const DETAIL: Record<Detail, { escapes: number; brackets: boolean; rails:
 
 export const FLOOD = [0xfff1d6, 0xffd9a0, 0xffc870, 0x9fe8ff, 0xff9ad8, 0xc8b0ff].map((c) => new THREE.Color(c));
 export const PASTEL_NEON = [0xff5fc8, 0x3ff0ff, 0xb070ff, 0x50ffb0, 0xfff060, 0xff8a5c].map((c) => new THREE.Color(c));
+
+const NEON_PALETTE = NEON_COLORS.map((c) => new THREE.Color(c));
+let mood = neonMood(0);
+/** Set the city whose neon the buildings draw (buildBuildings calls it first; building is synchronous, one city at a time). */
+export function setNeonMood(seed: number): void {
+  mood = neonMood(seed);
+}
+/** A pastel neon colour for a uniform draw in [0, 1), leaning toward the city's mood (every colour stays possible). */
+export const pastelNeon = (r: number): THREE.Color => PASTEL_NEON[mood.pastel(r)];
+/** A full neon colour (textures.NEON_COLORS) for a uniform draw, leaning toward the city's mood. */
+export const neonColor = (r: number): THREE.Color => NEON_PALETTE[mood.neon(r)];
 // LED crowns and corner lines are long and close to the camera: dimmer than neon so bloom stays a halo.
 export const LED = [0xffffff, 0x9feaff, 0xff6fd8, 0xffcf70, 0x70ffd0].map((c) => new THREE.Color(c).multiplyScalar(0.45));
 

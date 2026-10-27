@@ -49,7 +49,7 @@ const cache: Atlases[] = [];
 function atlasesFor(seed: number): Atlases {
   const hit = cache.find((a) => a.seed === seed);
   if (hit) return hit;
-  const a: Atlases = { seed, decals: makeStreetDecalAtlas(seed), walls: makeWallAtlas(seed), blades: makeBladeSignAtlas(), puff: makeSteamPuff() };
+  const a: Atlases = { seed, decals: makeStreetDecalAtlas(seed), walls: makeWallAtlas(seed), blades: makeBladeSignAtlas(seed), puff: makeSteamPuff() };
   cache.push(a);
   while (cache.length > 2) {
     const old = cache.shift()!;

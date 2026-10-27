@@ -30,6 +30,7 @@ import * as THREE from 'three';
 import { CITY } from '../../city/config';
 import type { Area } from '../../city/districts/types';
 import { toWorld } from '../../city/districts/structures';
+import type { World } from '../../city/world';
 import { smooth01 } from '../../city/districts/geom';
 import { Rng } from '../../sim/prng';
 import { GeoBuilder } from '../geoBuilder';
@@ -130,11 +131,22 @@ export const tunnelRenderer: DistrictRenderer = {
     add(baked, 'tunnelBore', bakedMaterial(LIGHT.sodium.clone().multiplyScalar(0.9)));
     add(wash, 'tunnelWash', washMaterial(), 1);
     if (signs.vertexCount) {
-      const map = kit.track(makeStructureSigns());
+      const map = kit.track(makeStructureSigns(kit.world.seed, nameSlots(kit.world)));
       add(signs, 'tunnelSigns', new THREE.MeshBasicMaterial({ map, vertexColors: true }));
     }
   },
 };
+
+/** The distinct tunnel names (indices into TUNNEL_NAMES) this city uses, in the order the sign atlas draws them. */
+function nameSlots(world: World): number[] {
+  const out: number[] = [];
+  for (const a of world.areas) if (a.kind === 'tunnel' && !out.includes(a.params.name ?? 0)) out.push(a.params.name ?? 0);
+  return out;
+}
+/** The atlas slot of a tunnel name index (0 when the city has more names than slots). */
+function nameSlot(world: World, idx: number): number {
+  return Math.max(0, nameSlots(world).indexOf(idx));
+}
 
 /** Distance of the fixture rows from the centerline (m). */
 const rowOf = (t: TunnelShape) => Math.max(TUN.lampRowMin, t.road * TUN.lampRow);
@@ -438,7 +450,7 @@ function airRights(kit: DistrictKit, signs: GeoBuilder, a: Area, t: TunnelShape,
     for (const side of [1, -1]) frameBox(kit.glow, t, Math.min(u + out, u + out + end * 0.25), Math.max(u + out, u + out + end * 0.25), side * (t.front + 0.3) - 0.25, side * (t.front + 0.3) + 0.25, yc - 0.6, yc - 0.6, yc - 0.15, yc - 0.15, LIGHT.amber);
     const p = toWorld(t, u + out + end * 0.05, 0);
     signPanel(signs, p.x, yc + 0.65, p.z, end * U.x, end * U.z, 4.2, 1.05, CLEARANCE_CELL, col(0xffffff, 0.75));
-    signPanel(signs, p.x, yc + 2.4, p.z, end * U.x, end * U.z, 9, 2.25, nameCell(nameIdx), col(0xffffff, 1.15));
+    signPanel(signs, p.x, yc + 2.4, p.z, end * U.x, end * U.z, 9, 2.25, nameCell(nameSlot(kit.world, nameIdx)), col(0xffffff, 1.15));
   }
 }
 
@@ -569,7 +581,7 @@ function ridgeRock(kit: DistrictKit, bb: BakedBuilder, signs: GeoBuilder, a: Are
     }
     for (const side of [1, -1]) frameBox(kit.glow, t, Math.min(u, u + end * 0.25), Math.max(u, u + end * 0.25), side * (t.wall + 0.9) - 0.25, side * (t.wall + 0.9) + 0.25, y + 3.6, y + 3.6, y + 4.05, y + 4.05, LIGHT.amber);
     const p = toWorld(t, u + end * 0.06, 0);
-    signPanel(signs, p.x, y + TCFG.clearance + 1.75, p.z, nx, nz, 8, 2, nameCell(a.params.name ?? 0), col(0xffffff, 1.15));
+    signPanel(signs, p.x, y + TCFG.clearance + 1.75, p.z, nx, nz, 8, 2, nameCell(nameSlot(kit.world, a.params.name ?? 0)), col(0xffffff, 1.15));
   }
   // Trees on the gentler rock: anywhere over the bore, beside the cutting only back from its cliff.
   const area = 4 * reachU * reachV;

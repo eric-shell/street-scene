@@ -20,6 +20,7 @@ import * as THREE from 'three';
 import type { Frame } from '../../city/districts/structures';
 import { toWorld } from '../../city/districts/structures';
 import { TUNNEL_NAMES } from '../../city/districts/tunnel';
+import { pickSubset } from '../textures/cityMood';
 import { GeoBuilder } from '../geoBuilder';
 
 /** A GeoBuilder whose vertices also carry the baked light level `light` (0..1) current when they were added. */
@@ -187,15 +188,37 @@ export function beam(gb: GeoBuilder, a: P3, b: P3, hw: number, hh: number, color
 // ---------------------------------------------------------------------------
 // Sign atlas
 
-/** Direction signs on the gantries: text and arrow (deg, 0 = up, 90 = right; null for none). */
-export const GANTRY_SIGNS: readonly { text: string; sub: string; arrow: number }[] = [
+/** Direction signs on the gantries: text and arrow (deg, 0 = up, 90 = right). A seed draws GANTRY_SLOTS of these (makeStructureSigns), each with its own arrow. */
+export const GANTRY_POOL: readonly { text: string; sub: string; arrow: number }[] = [
   { text: 'DOWNTOWN', sub: 'CITY CENTER', arrow: 0 },
   { text: 'HARBOR', sub: 'DOCKS  BAYSIDE', arrow: -90 },
   { text: 'RIVERSIDE', sub: 'FLOOD CHANNEL', arrow: 90 },
   { text: 'AIRPORT', sub: 'EXPRESSWAY 9', arrow: 0 },
   { text: 'NEON AV', sub: 'MIDNIGHT SQ', arrow: -45 },
   { text: 'CHROME ST', sub: 'MARKET', arrow: 45 },
+  { text: 'OLD TOWN', sub: 'BRICKWORKS', arrow: -45 },
+  { text: 'STADIUM', sub: 'EXIT 12', arrow: 45 },
+  { text: 'UNIVERSITY', sub: 'CAMPUS  LIBRARY', arrow: 90 },
+  { text: 'FOUNDRY ROW', sub: 'WAREHOUSES', arrow: -90 },
+  { text: 'LAUNDRYTOWN', sub: 'SUDS  AND  DUDS', arrow: 0 },
+  { text: 'THE DOCKS', sub: 'FERRY  CRANES', arrow: -90 },
+  { text: 'NIGHT MARKET', sub: 'FRI  SAT  SUN', arrow: 45 },
+  { text: 'BAIL BONDS', sub: 'NEXT 3 BLOCKS', arrow: 0 },
+  { text: 'LITTLE TOKYO', sub: 'NOODLE ROW', arrow: 90 },
+  { text: 'SOUTH GATE', sub: 'TUNNEL  PIER', arrow: -45 },
+  { text: 'NORTH SIDE', sub: 'HILLS  PARK', arrow: 45 },
+  { text: 'CITY HALL', sub: 'COURTS', arrow: 0 },
+  { text: 'RAIL YARD', sub: 'EL STATION', arrow: 90 },
+  { text: 'MIDTOWN', sub: 'THEATER DISTRICT', arrow: 0 },
+  { text: 'SUGAR FLATS', sub: 'BAKERIES', arrow: -90 },
+  { text: 'LAST EXIT', sub: 'BEFORE THE BRIDGE', arrow: 45 },
+  { text: 'NOWHERE', sub: 'KEEP DRIVING', arrow: 0 },
+  { text: 'MOTEL ROW', sub: 'VACANCY', arrow: -45 },
+  { text: 'CAR PARK 9', sub: 'LEVELS 1  TO  6', arrow: 90 },
+  { text: 'CHEAP GAS', sub: 'EXIT 4  MAYBE', arrow: 45 },
 ];
+/** Gantry sign cells in the atlas. */
+export const GANTRY_SLOTS = 6;
 /** Message board texts (amber dot matrix). */
 export const BOARD_TEXTS = ['NO RACING', 'DRIVE SAFE'] as const;
 
@@ -216,7 +239,7 @@ function cellAt(col: number, row: number, wCells = 1, hCells = 1): Cell {
   return [x0 / SIGN_W, 1 - y1 / SIGN_H, x1 / SIGN_W, 1 - y0 / SIGN_H];
 }
 
-/** Name board of tunnel name i. */
+/** Name board in slot i: the i-th name a scene passes to makeStructureSigns (a slot, not the name's index). */
 export const nameCell = (i: number): Cell => cellAt(i % 2, Math.floor(i / 2));
 /** The CLEARANCE plate. */
 export const CLEARANCE_CELL: Cell = cellAt(0, 3);
@@ -234,7 +257,7 @@ export const WRONG_WAY_CELL: Cell = cellAt(0, 9);
 export const END_CELL: Cell = cellAt(1, 9);
 
 /** Draw the sign atlas (a few milliseconds, once per scene). */
-export function makeStructureSigns(): THREE.CanvasTexture {
+export function makeStructureSigns(seed: number, tunnelNames: readonly number[] = []): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = SIGN_W;
   c.height = SIGN_H;
@@ -252,7 +275,7 @@ export function makeStructureSigns(): THREE.CanvasTexture {
   g.textAlign = 'center';
   g.textBaseline = 'middle';
   // Tunnel name boards: white on deep blue with a pale border (backlit).
-  TUNNEL_NAMES.map((n) => n.toUpperCase()).forEach((name, i) => {
+  tunnelNames.slice(0, 6).map((n) => TUNNEL_NAMES[n % TUNNEL_NAMES.length].toUpperCase()).forEach((name, i) => {
     const x = (i % 2) * CELL_W;
     const y = Math.floor(i / 2) * CELL_H;
     g.fillStyle = '#0d2a5c';
@@ -302,7 +325,7 @@ export function makeStructureSigns(): THREE.CanvasTexture {
     g.fillText('ROAD CLOSED', x + CELL_W / 2, y + CELL_H / 2 + 2);
   }
   // Gantry direction signs: white on highway green, an arrow on the left.
-  GANTRY_SIGNS.forEach((s, i) => {
+  pickSubset(GANTRY_POOL, GANTRY_SLOTS, seed, 'gantrySigns').forEach((s, i) => {
     const x = (i % 2) * CELL_W;
     const y = (4 + Math.floor(i / 2)) * CELL_H;
     g.fillStyle = '#0b6b3a';

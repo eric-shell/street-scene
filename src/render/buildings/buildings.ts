@@ -36,11 +36,11 @@ import { SpatialGrid } from '../../city/spatial';
 import { GeoBuilder } from '../geoBuilder';
 import { GROUND_BAYS, GROUND_H, PODIUM_FLOOR_H, PodiumOutput, addPodiumFace, podiumExtrusions, podiumHeight } from './facadeKit';
 import { LAYER, MODULE, facadeAtlas } from './facadeAtlas';
+import { billboardAtlas } from '../textures/billboardAtlas';
 import { createFacadeMaterials, TRIM_COLORS } from './facadeMaterial';
 import { BuildingPlan, STYLES, StyleDef, planArchitecture } from './architecture';
 import { planBacklots } from './backlots';
-import { NEON_COLORS } from '../textures/textures';
-import { BLD, DETAIL, FLOOD, PASTEL_NEON, LED, WHITE, NO_GLOW, wash, ShellGeo, Frame, edgeNormal, boxOutline, roundedOutline, lbox, cap, facet, walls, neonRing, neonPost, cornice, colorOf } from './buildingKit';
+import { BLD, DETAIL, FLOOD, pastelNeon, neonColor, setNeonMood, LED, WHITE, NO_GLOW, wash, ShellGeo, Frame, edgeNormal, boxOutline, roundedOutline, lbox, cap, facet, walls, neonRing, neonPost, cornice, colorOf } from './buildingKit';
 import type { Skin, Out, Detail } from './buildingKit';
 import { waterTower, chimney, spire, pyramid, wedge, mansard, hipRoof, mast, light, roofLights, clutter, billboard } from './roofs';
 import { bayWindow, fireEscapes, balcony, eyebrow, fin } from './facadeDetails';
@@ -168,6 +168,7 @@ function recessPass(B: Building[], plans: readonly BuildingPlan[]): Building[] {
 
 export function buildBuildings(world: World, podium: PodiumOutput, opts: { detail: Detail }): BuildingMeshes {
   const det = DETAIL[opts.detail];
+  setNeonMood(world.seed);
   const atlas = facadeAtlas();
   const mats = createFacadeMaterials(atlas, { live: det.live });
   const plans = planArchitecture(world);
@@ -219,7 +220,7 @@ export function buildBuildings(world: World, podium: PodiumOutput, opts: { detai
     meshes.push(m);
   }
   if (o.boards.vertexCount) {
-    const mat = track(new THREE.MeshBasicMaterial({ map: atlas.billboards, vertexColors: true }));
+    const mat = track(new THREE.MeshBasicMaterial({ map: billboardAtlas(world.seed), vertexColors: true }));
     const m = new THREE.Mesh(track(o.boards.build()), mat);
     m.name = 'billboards';
     meshes.push(m);
@@ -511,7 +512,7 @@ function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[
   }
 
   if (style === 'condo') {
-    const glow = rng.chance(0.4) ? wash(PASTEL_NEON[rng.int(0, PASTEL_NEON.length - 1)], y0, 0.35, yTop, 0.05) : NO_GLOW;
+    const glow = rng.chance(0.4) ? wash(pastelNeon(rng.next()), y0, 0.35, yTop, 0.05) : NO_GLOW;
     walls(o, F, skin, base, null, y0, yTop, vRef, street, glow, rng, 'face');
     cap(o.roofs, F, base, yTop, colorOf(0x3a3c40));
     // Balconies on the street faces, every floor above the podium.
@@ -527,14 +528,14 @@ function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[
     }
     cornice(o, F, -hw, hw, -hd, hd, yTop + 1, 1, 0.3, slab, [true, true, true, true]);
     if (rng.chance(0.6)) neonRing(o, F, base, yTop + 0.35, yTop + 0.7, LED[rng.int(0, LED.length - 1)]);
-    if (rng.chance(0.35)) fin(o, F, hw, hd, yTop, rng.range(4, 9), slab, PASTEL_NEON[rng.int(0, PASTEL_NEON.length - 1)]);
+    if (rng.chance(0.35)) fin(o, F, hw, hd, yTop, rng.range(4, 9), slab, pastelNeon(rng.next()));
     if (tall > BLD.aviationAbove) roofLights(o, F, -hw, hw, -hd, hd, yTop + 1.1, rng);
     else clutter(o, F, -hw + 1.5, hw - 1.5, -hd + 1.5, hd - 1.5, yTop, rng, det, 'ac', skin.tint);
     return;
   }
 
   if (style === 'miamiDeco') {
-    const neon = PASTEL_NEON[rng.int(0, PASTEL_NEON.length - 1)];
+    const neon = pastelNeon(rng.next());
     const round = !plan.signed && rng.chance(0.65);
     const corners = [front[3] && front[0], front[0] && front[1], front[1] && front[2], front[2] && front[3]].map((c) => c || (round && rng.chance(0.25)));
     const ol = round ? roundedOutline(-hw, hw, -hd, hd, Math.min(3, Math.min(hw, hd) * 0.45), corners.map((c) => c && round)) : { pts: base, smooth: null };
@@ -546,7 +547,7 @@ function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[
     // Parapet band, neon tubes along the top and over the shop fronts.
     walls(o, F, { ...skin, lit: 0 }, ol.pts, ol.smooth, yTop, yTop + 0.5, vRef - 0.4, street, NO_GLOW, rng, round ? 'perimeter' : 'face');
     neonRing(o, F, ol.pts, yTop - 0.25, yTop - 0.05, neon);
-    neonRing(o, F, ol.pts, street + GROUND_H - 0.05, street + GROUND_H + 0.12, PASTEL_NEON[rng.int(0, PASTEL_NEON.length - 1)], 0.62, (i) => {
+    neonRing(o, F, ol.pts, street + GROUND_H - 0.05, street + GROUND_H + 0.12, pastelNeon(rng.next()), 0.62, (i) => {
       const p = ol.pts[i];
       const q = ol.pts[(i + 1) % ol.pts.length];
       const n = edgeNormal(p, q);
@@ -614,7 +615,7 @@ function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[
     lbox(o.trim, F, x0 - 0.9, x1 + 0.9, z0 - 0.9, z1 + 0.9, yTop, yTop + 0.3, colorOf(TRIM_COLORS[(skin.flags >> 1) & 15], 0.95));
     if (rng.chance(0.55)) billboard(o, F, x0, x1, z0, z1, yTop + 0.3, rng, front);
     else clutter(o, F, x0 + 1, x1 - 1, z0 + 1, z1 - 1, yTop + 0.3, rng, det, 'ac', skin.tint);
-    if (rng.chance(0.25)) neonRing(o, F, outline, yTop - 0.5, yTop - 0.05, new THREE.Color(NEON_COLORS[rng.int(0, NEON_COLORS.length - 1)]), 0.95);
+    if (rng.chance(0.25)) neonRing(o, F, outline, yTop - 0.5, yTop - 0.05, neonColor(rng.next()), 0.95);
     return;
   }
   // brownstone, prewar, and terrace styles that did not split (victorian / rowhouse on side streets).

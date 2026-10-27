@@ -28,6 +28,9 @@ export function wallCell(kind: WallKind, i: number): AtlasCell {
 
 /** Aged paper, light to dark: posters and flyers that have hung out in the weather a while. */
 const PAPER_TONES = ['#d4ccb8', '#c9bda0', '#bdb5a8', '#d9d3c6', '#3a3236'];
+/** Banner pools: the left cloth names the night, the right one the series; a seed draws one of each. */
+const BANNER_LEFT = ['STREET SCENE · AFTER DARK', 'NIGHT MARKET · OPEN LATE', 'DRIFT CLUB · TONIGHT', 'ALL NIGHT · ALL STREETS', 'LAST CALL · 4AM', 'CITY LIGHTS · LIVE', 'NO SLEEP · NO LIMITS', 'MIDNIGHT RUN · GO'];
+const BANNER_RIGHT = ['ROUND 3 · NIGHT SERIES', 'FINALS · SAT NIGHT', 'SEASON OPENER · FREE', 'TURBO CUP · ROUND 2', 'STREET KINGS · LIVE', 'UNDERPASS OPEN · GO', 'WINTER SERIES · 5', 'SPRINT WEEK · TODAY'];
 const POSTER_LINES = [
   ['DRIFT NIGHT', 'SAT 11PM', 'PIER 9'],
   ['LIVE', 'KAIJU KARAOKE', 'EVERY FRI'],
@@ -37,6 +40,36 @@ const POSTER_LINES = [
   ['DJ ORBIT', 'ROXY', 'DOORS 10'],
   ['BUY SELL', 'TRADE', 'VOLT MOTORS'],
   ['NO SLEEP', 'TIL', 'SUNRISE'],
+  ['LOST DOG', 'BIG AND DUMB', 'PLEASE CALL'],
+  ['ROOM FOR RENT', 'NO PETS', 'NO QUESTIONS'],
+  ['SKA NIGHT', 'FREE BEFORE 9', 'THE BLUE MOON'],
+  ['KARAOKE', 'EVERY TUES', 'KAIJU KARAOKE'],
+  ['BAIL BONDS', 'ANY HOUR', 'FAST BAIL'],
+  ['CASH 4 CARS', 'ANY CONDITION', 'CALL TONY'],
+  ['VINYL SALE', 'ALL RECORDS', 'HALF OFF'],
+  ['GUITAR LESSONS', 'CHEAP', 'LOUD'],
+  ['FREE COUCH', 'YOU CARRY IT', 'BY THE BIN'],
+  ['BAND WANTS', 'DRUMMER', 'MUST HAVE VAN'],
+  ['NIGHT MARKET', 'FRI SAT', 'BRING CASH'],
+  ['STREET RACE', 'IS A BAD IDEA', 'SEE YOU THERE'],
+  ['YARD SALE', 'EVERYTHING GOES', 'SUN 7AM'],
+  ['PSYCHIC', 'YOU KNOW WHY', 'YOU CAME'],
+  ['DUMPLINGS', 'AT 3AM', 'THE GOOD KIND'],
+  ['TOW ZONE', 'NO PARKING', 'MEAN IT'],
+  ['COMEDY NIGHT', 'FIVE BUCKS', 'TWO DRINKS'],
+  ['ROLLER DERBY', 'SAT NIGHT', 'BRING A HELMET'],
+  ['WANTED', 'BASS PLAYER', 'APPLY WITHIN'],
+  ['POETRY SLAM', 'WED 9PM', 'ROXY'],
+  ['TACO TUESDAY', 'IS EVERY DAY', 'TURBO TACO'],
+  ['MISSING', 'ONE SHOE', 'SIZE 11'],
+  ['NEON REPAIR', 'WHILE U WAIT', 'ASK INSIDE'],
+  ['LATE FEE', 'WAIVED', 'TONIGHT ONLY'],
+  ['LAUNDRY', 'WASH N FOLD', 'LOW PRICES'],
+  ['AUTO PARTS', 'USED', 'HONEST'],
+  ['WINTER COATS', 'DROP OFF', 'HERE'],
+  ['MEET UP', 'PIER 9', 'MIDNIGHT'],
+  ['DETECTIVE', 'NO CASE', 'TOO SMALL'],
+  ['LOUD MUSIC', 'AHEAD', 'YOU WERE WARNED'],
 ];
 
 /**
@@ -120,7 +153,7 @@ export function makeWallAtlas(seed: number): THREE.Texture {
   };
   for (let i = 0; i < WALL_CELLS.poster.n; i++) {
     inCell(wallCell('poster', i), (w, h) => {
-      const lines = POSTER_LINES[(i * 2 + rng.int(0, 1)) % POSTER_LINES.length];
+      const lines = POSTER_LINES[rng.int(0, POSTER_LINES.length - 1)];
       const tone = rng.pick(PAPER_TONES);
       const dark = tone === '#3a3236';
       const inkText = dark ? 'rgba(205,200,190,0.8)' : rng.chance(0.3) ? 'rgba(90,25,25,0.85)' : 'rgba(25,24,28,0.82)';
@@ -182,7 +215,7 @@ export function makeWallAtlas(seed: number): THREE.Texture {
       }
     });
   }
-  const BANNER_TEXT = ['STREET SCENE · AFTER DARK', 'ROUND 3 · NIGHT SERIES'];
+  const BANNER_TEXT = [rng.pick(BANNER_LEFT), rng.pick(BANNER_RIGHT)];
   for (let i = 0; i < WALL_CELLS.banner.n; i++) {
     inCell(wallCell('banner', i), (w, h) => {
       ctx.fillStyle = i ? '#1a1030' : '#2a0e1c';

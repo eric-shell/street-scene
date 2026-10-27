@@ -72,7 +72,7 @@ import { RAIL, RailCurve, curvePoint, projectOnCurve, sampleCurve } from '../../
 import { Rng } from '../../sim/prng';
 import type { Vec2 } from '../../sim/math';
 import type { Cell } from './structureFx';
-import { CLOSED_CELL, END_CELL, EXIT_CELL, GANTRY_SIGNS, RAMP_CELL, WRONG_WAY_CELL, beam, frameBox, gantryCell, makeStructureSigns, signGantry, signPanel } from './structureFx';
+import { CLOSED_CELL, END_CELL, EXIT_CELL, GANTRY_SLOTS, RAMP_CELL, WRONG_WAY_CELL, beam, frameBox, gantryCell, makeStructureSigns, signGantry, signPanel } from './structureFx';
 import { GeoBuilder } from '../geoBuilder';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { col, cylinder, drapeConvex, groundLine, orientedBox } from './kit';
@@ -289,7 +289,7 @@ export const highwayRenderer: DistrictRenderer = {
     const route = new Set(kit.world.route.edges);
     for (const a of areas) if (a.variant === 'alley') alley(kit, a, signs, route);
     if (signs.vertexCount) {
-      const map = kit.track(makeStructureSigns());
+      const map = kit.track(makeStructureSigns(kit.world.seed));
       const m = new THREE.Mesh(kit.track(signs.build()), kit.track(new THREE.MeshBasicMaterial({ map, vertexColors: true })));
       m.name = 'highwaySigns';
       kit.group.add(m);
@@ -727,7 +727,7 @@ function deck(kit: DistrictKit, area: Area, d: HighwayDeck, signs: GeoBuilder, w
     (Number.isFinite(d.sEl) && Math.abs(s - d.sEl) < 120);
   const lo = vStart(d, -1) + HW.gantryEnds;
   const hi = vStart(d, 1) - HW.gantryEnds;
-  let next = (area.params.seed ?? 0) % GANTRY_SIGNS.length;
+  let next = (area.params.seed ?? 0) % GANTRY_SLOTS;
   for (let s = lo + 120; s < hi; s += CFG.signEvery) {
     let sg = s;
     for (let tries = 0; tries < 6 && near(sg); tries++) sg += 30;
@@ -741,7 +741,7 @@ function deck(kit: DistrictKit, area: Area, d: HighwayDeck, signs: GeoBuilder, w
       road: HALF - 1,
       legBase: () => ty + HW.barrierH,
       y0: ty + HW.signY,
-      cell: (end, i) => gantryCell((first + (end > 0 ? 0 : 3) + i) % GANTRY_SIGNS.length),
+      cell: (end, i) => gantryCell((first + (end > 0 ? 0 : 3) + i) % GANTRY_SLOTS),
       count: 2,
       board: false,
     }, low);

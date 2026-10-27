@@ -29,6 +29,7 @@ import { HeliRotor } from '../../audio/sceneVoices';
 import { GeoBuilder } from '../geoBuilder';
 import { makeLedTextTexture } from '../sky/skyTextures';
 import { makeRadialGlow } from '../textures/textures';
+import { pickSubset } from '../textures/cityMood';
 import { ChaseTarget, POLICE, policeWaypoints } from './policeChase';
 
 export const AIR = {
@@ -63,7 +64,12 @@ export const AIR = {
     scroll: 0.045,
   },
   /** Words on the blimp's band; the first is the event. */
-  words: ['STREET SCENE', 'NIGHT RACE TONIGHT', 'DRIFT CLUB', 'APEX GARAGE', 'VOLT MOTORS', 'ZERO AUTO', 'STARLITE', 'TURBO TACO', 'HYPER MART', 'MIDNIGHT TUNE'],
+  words: [
+    'STREET SCENE', 'NIGHT RACE TONIGHT', 'DRIFT CLUB', 'APEX GARAGE', 'VOLT MOTORS', 'ZERO AUTO', 'STARLITE', 'TURBO TACO', 'HYPER MART', 'MIDNIGHT TUNE',
+    'BAIL BONDS 24H', 'NOODLE BAR', 'PAWN KING', 'TIRE BARN', 'BASS DEPOT', 'KARAOKE BOX', 'VINYL VAULT', 'DUMPLING HQ', 'RX 24 HOUR', 'CASH N GO',
+    'INK & IRON', 'CHECKS CASHED', 'SUDS & DUDS', 'DONUT HOLE', 'TAQUERIA LUNA', 'PET PALACE', 'SPINE TIME', 'NITRO COLA', 'MIDNIGHT FM', 'LUCKY STAR',
+    'SLEEP IS FOR LATER', 'OPEN ALL NIGHT', 'HONK IF LOST', 'EAT HERE NOW', 'GO FASTER', 'LAST CALL 4AM', 'SKYLINE LOFTS', 'CITY CAB', 'NEON REPAIR', 'JET FUEL COFFEE',
+  ],
   /** Rotor sound: silent beyond `hear` m, full within `near` m. */
   sound: { hear: 330, near: 55 },
 } as const;
@@ -1042,7 +1048,8 @@ export function buildAirTraffic(world: World, opts: { quality: Quality; fogDensi
   const seed = world.seed;
   const group = new THREE.Group();
   group.name = 'airTraffic';
-  const words = [opts.eventName ?? AIR.words[0], ...AIR.words.slice(1)];
+  // The event first, then a seed's nine of the sponsor pool (the strip fits about ten).
+  const words = [opts.eventName ?? AIR.words[0], ...pickSubset(AIR.words.slice(1), 9, seed, 'blimpWords')];
   const led = makeLedTextTexture(words, seed);
   const { material, uniforms } = airMaterial(led);
   const heliGeo = heliGeometry();
