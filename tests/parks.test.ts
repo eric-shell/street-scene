@@ -3,6 +3,7 @@ import { CITY } from '../src/city/config';
 import { createCity, createWorld } from '../src/city/world';
 import { buildRoute } from '../src/city/route';
 import { parkPasses } from '../src/city/districts/park';
+import { pondOf, pondPoint, pondRho } from '../src/city/districts/parkFeatures';
 import { MOUTH_REACH } from '../src/city/busBays';
 import { distToPolygonEdge, pointInPolygon } from '../src/city/districts/geom';
 import { distToSegment } from '../src/sim/math';
@@ -146,5 +147,137 @@ describe('park passes', () => {
     expect(ends).toBeGreaterThan(8);
     expect(cut).toBeGreaterThanOrEqual(ends * (2 / 3));
     expect(piers).toBeGreaterThanOrEqual(cut * 2 * 4);
+  });
+});
+
+const cities = new Map<number, ReturnType<typeof createCity>>();
+/** One city per seed for the whole file: building a city is the slow part. */
+const cityOf = (seed: number) => {
+  let c = cities.get(seed);
+  if (!c) cities.set(seed, (c = createCity(seed)));
+  return c;
+};
+
+/** Seeds (from 0) whose parks include `variant`, as many as `want`. */
+function seedsWith(variant: string, want: number): number[] {
+  const out: number[] = [];
+  for (let seed = 0; seed < 60 && out.length < want; seed++) if (cityOf(seed).districts.areas.some((a) => a.kind === 'park' && a.variant === variant)) out.push(seed);
+  return out;
+}
+
+/**
+ * Park variants (city/districts/parkFeatures.ts): woodland, a formal garden and a lakeside pond,
+ * drawn per park from its own stream and weighted so a city usually has two different ones.
+ */
+describe('park variants', () => {
+  it('all appear over 60 seeds, a city usually mixes two, and the same seed gives the same parks', { timeout: 300000 }, () => {
+    const tally: Record<string, number> = {};
+    let mixed = 0;
+    let cityCount = 0;
+    for (let seed = 0; seed < 60; seed++) {
+      const parks = cityOf(seed).districts.areas.filter((a) => a.kind === 'park');
+      if (!parks.length) continue;
+      cityCount++;
+      for (const a of parks) tally[a.variant] = (tally[a.variant] ?? 0) + 1;
+      if (new Set(parks.map((a) => a.variant)).size > 1) mixed++;
+    }
+    for (const v of ['woodland', 'formal', 'lakeside']) expect(tally[v] ?? 0, v).toBeGreaterThanOrEqual(10);
+    expect(Object.keys(tally).sort()).toEqual(['formal', 'lakeside', 'woodland']);
+    expect(mixed).toBeGreaterThanOrEqual(cityCount * 0.7);
+    for (const seed of [0, 1, 2, 7]) {
+      const a = cityOf(seed).districts.areas.filter((x) => x.kind === 'park');
+      const b = createCity(seed).districts.areas.filter((x) => x.kind === 'park');
+      expect(JSON.stringify(b.map((x) => [x.variant, x.params]))).toBe(JSON.stringify(a.map((x) => [x.variant, x.params])));
+    }
+  });
+
+  it('formal gardens: a fountain, hedged parterres and gravel axes, clear of the race passes and of every road', { timeout: 300000 }, () => {
+    let gardens = 0;
+    let hedges = 0;
+    let withBeds = 0;
+    for (const seed of seedsWith('formal', 6)) {
+      const city = cityOf(seed);
+      const w = createWorld(seed, 'circuit', city);
+      const again = createWorld(seed, 'circuit', city);
+      for (const a of w.areas) {
+        if (a.kind !== 'park' || a.variant !== 'formal') continue;
+        gardens++;
+        const mine = w.walls.filter((x) => x.area === a.id);
+        expect(JSON.stringify(mine)).toBe(JSON.stringify(again.walls.filter((x) => x.area === a.id)));
+        // The basin is a solid ring in the plaza; its hint says where.
+        const b = city.districts.builds[a.id];
+        expect(mine.some((x) => x.look === 'fountain'), `${seed} fountain`).toBe(true);
+        expect(b.hints.filter((h) => h.kind === 'walk').length, `${seed} axes`).toBeGreaterThanOrEqual(2);
+        if (b.hints.some((h) => h.kind === 'bed')) withBeds++;
+        // Tall hedges are solids on the lawn, inside the footpath loop.
+        for (const wall of mine.filter((x) => x.look === 'hedge')) {
+          hedges++;
+          const mx = (wall.ax + wall.bx) / 2;
+          const mz = (wall.az + wall.bz) / 2;
+          expect(pointInPolygon(mx, mz, a.polygon)).toBe(true);
+          expect(distToPolygonEdge(mx, mz, a.polygon), `${seed} hedge off the edge`).toBeGreaterThan(PARK.pathInset);
+          expect(w.surfaceAt(mx - wall.nx * 2, mz - wall.nz * 2)).toBe('grass');
+        }
+        // A low hedge is bushes (drive-through), many of them.
+        expect(w.props.filter((p) => p.area === a.id && p.kind === 'bush').length, `${seed} low hedges`).toBeGreaterThan(30);
+        // Nothing of the garden's walls on a pass's path.
+        for (const pass of parkPasses(w.graph, a)) {
+          for (const wall of mine) {
+            for (let i = 0; i + 1 < pass.points.length; i++) {
+              expect(distToSegment((wall.ax + wall.bx) / 2, (wall.az + wall.bz) / 2, pass.points[i].x, pass.points[i].z, pass.points[i + 1].x, pass.points[i + 1].z), `${seed} ${wall.look} on a pass`).toBeGreaterThan(PARK.pathWidth / 2);
+            }
+          }
+        }
+      }
+    }
+    expect(gardens).toBeGreaterThanOrEqual(4);
+    expect(hedges).toBeGreaterThan(0);
+    expect(withBeds).toBeGreaterThanOrEqual(2);
+  });
+
+  it('lakeside ponds: level water in a gentle bowl with exact slopes, a solid jetty, the passes and benches clear', { timeout: 300000 }, () => {
+    let ponds = 0;
+    for (const seed of seedsWith('lakeside', 5)) {
+      const city = cityOf(seed);
+      const w = createWorld(seed, 'circuit', city);
+      for (const a of w.areas) {
+        if (a.kind !== 'park' || a.variant !== 'lakeside') continue;
+        ponds++;
+        const p = pondOf(a.params)!;
+        // The water: a water surface, under the bank's crest by the freeboard, over the bed.
+        expect(p.water).toBeCloseTo(p.level - PARK.lakeside.freeboard, 9);
+        expect(w.surfaceAt(p.cx, p.cz), `${seed} water`).toBe('water');
+        expect(w.heightAt(p.cx, p.cz)).toBeCloseTo(p.level - PARK.lakeside.depth, 6);
+        // The crest ring is level, the waterline lies where the ground meets the water.
+        for (let k = 0; k < 12; k++) {
+          const q = pondPoint(p, p.crest, (k / 12) * Math.PI * 2);
+          expect(w.heightAt(q.x, q.z), `${seed} crest`).toBeCloseTo(p.level, 6);
+          const s = pondPoint(p, p.a, (k / 12) * Math.PI * 2);
+          expect(w.heightAt(s.x, s.z), `${seed} shore`).toBeCloseTo(p.water, 3);
+        }
+        // Exact gradient and a gentle grade everywhere over the bowl, bank and blend (the terrain launch rule).
+        let steepest = 0;
+        for (let x = p.cx - p.end; x <= p.cx + p.end; x += 3) {
+          for (let z = p.cz - p.end; z <= p.cz + p.end; z += 3) {
+            const g = w.slopeAt(x, z);
+            steepest = Math.max(steepest, Math.hypot(g.gx, g.gz));
+            const e = 0.05;
+            expect(g.gx, `${seed} gx`).toBeCloseTo((w.heightAt(x + e, z) - w.heightAt(x - e, z)) / (2 * e), 3);
+            expect(g.gz, `${seed} gz`).toBeCloseTo((w.heightAt(x, z + e) - w.heightAt(x, z - e)) / (2 * e), 3);
+          }
+        }
+        expect(steepest, `${seed} steepest`).toBeLessThan(0.11);
+        // The jetty is a solid in the water; the pond keeps off the passes and the furniture off the water.
+        const jetty = w.walls.filter((x) => x.area === a.id && x.look === 'jetty');
+        expect(jetty.length, `${seed} jetty`).toBe(4);
+        for (const pass of parkPasses(w.graph, a)) {
+          for (let i = 0; i + 1 < pass.points.length; i++) {
+            expect(distToSegment(p.cx, p.cz, pass.points[i].x, pass.points[i].z, pass.points[i + 1].x, pass.points[i + 1].z), `${seed} pond on a pass`).toBeGreaterThan(p.crest + PARK.pathWidth / 2);
+          }
+        }
+        for (const pr of w.props.filter((q) => q.area === a.id && (q.kind === 'bench' || q.kind === 'parkLamp'))) expect(pondRho(p, pr.x, pr.z), `${seed} ${pr.kind} in the water`).toBeGreaterThan(p.a);
+      }
+    }
+    expect(ponds).toBeGreaterThanOrEqual(3);
   });
 });

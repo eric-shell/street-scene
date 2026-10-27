@@ -86,6 +86,9 @@ const FORMS: Partial<Record<Area['kind'], readonly string[]>> = {
 };
 const VARIANT_FORMS: Record<string, readonly string[]> = {
   'waterfront:marina': ['{} Marina', '{} Yacht Basin', '{} Boat Harbor'],
+  'park:woodland': ['{} Park', '{} Green', '{} Commons', '{} Woods'],
+  'park:formal': ['{} Gardens', '{} Court', '{} Parterre'],
+  'park:lakeside': ['{} Pond', '{} Mere', '{} Lake Park'],
   'hills:ridge': ['{} Ridge', '{} Rise'],
   'hills:dome': ['{} Hill', 'Mount {}', '{} Knoll'],
   'hills:basin': ['{} Basin', '{} Hollow'],

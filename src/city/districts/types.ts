@@ -112,6 +112,8 @@ export const COBBLE_PRIORITY = 6;
  * carPark: a multi-storey car park's parapets, facades, chute and ramp walls, and the low face under its lip (carPark).
  * alleyLip: the face under a route shortcut's jump exit lip, toward the street (Wall.top: the launching car passes over it) (alley).
  * gatePier: a stone pier each side of a race path's opening at the park edge (park).
+ * hedge: a formal garden's tall hedge, a solid clipped box between its parterres (park, parkFeatures.ts).
+ * jetty: a lakeside pond's jetty, a solid plank deck over the water (park, parkFeatures.ts).
  * lakeRail: the railing on the coping between the lake's promenade and its water, the gate onto the jetty in it (lake).
  * quayRail / quayFence / warehouse: the railing along a harbor's sea wall, the fences closing its quay's ends,
  *   and a warehouse shed's walls where the quay passes a recess of the frontage (waterfront).
@@ -144,6 +146,8 @@ export type WallLook =
   | 'carPark'
   | 'alleyLip'
   | 'gatePier'
+  | 'hedge'
+  | 'jetty'
   | 'highway'
   | 'lakeRail'
   | 'quayRail'
@@ -151,7 +155,7 @@ export type WallLook =
   | 'warehouse'
   | 'quayGate';
 
-export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark', 'alleyLip', 'gatePier', 'highway', 'lakeRail', 'quayRail', 'quayFence', 'warehouse', 'quayGate'];
+export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark', 'alleyLip', 'gatePier', 'hedge', 'jetty', 'highway', 'lakeRail', 'quayRail', 'quayFence', 'warehouse', 'quayGate'];
 
 export interface Area {
   /** Index into CityDistricts.areas. */

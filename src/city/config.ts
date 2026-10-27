@@ -656,6 +656,42 @@ export const CITY = {
       gatePierBack: 0.7,
       gateLampOut: 2.2,
       gateBollardBack: 0.7,
+      /**
+       * Variants (park.ts, parkFeatures.ts), drawn per park from its own stream: weights of 'woodland'
+       * (the groves), 'formal' (a garden on a cross or a diagonal) and 'lakeside' (a pond), each divided
+       * by variantRepeat for every park of the city that already has it, so a city usually mixes two. A
+       * park too small or too steep for its variant falls back to woodland (a pond finds a level, hill-free
+       * spot in about a third of the parks drawn for it, hence its larger weight). Woodland packs its trees at
+       * woodlandSpacing (m) and plants woodlandGroves woods.
+       */
+      variants: { woodland: 0.3, formal: 0.3, lakeside: 0.4 },
+      variantRepeat: 3,
+      woodlandSpacing: 13.5,
+      woodlandGroves: 2,
+      /**
+       * Formal garden: the gravel axes (width m) leave a plaza (radius m, the fountain basin's radius and
+       * height in it) for the footpath loop, a low hedge of bushes (every hedgeStep m, hedgeOff m off the
+       * axis edge) down both sides. In each quadrant a parterre (flower bed) lies hedgeGap m off the
+       * axes, up to bedMax m on a side, at least bedMin, bedEdge m inside the park edge; its two outer
+       * sides are tall hedges (solid, hedgeThick m thick, hedgeHeight m tall, with a hedgeDoor m gap
+       * in the middle of each side). A pass keeps bedPassClear m off
+       * every bed. The park needs formalInradius m from its middle to its edge. Trees stand treeShare of
+       * the usual grid on the lawn outside the garden.
+       */
+      formal: { axisWidth: 4.5, plazaRadius: 7.5, basinRadius: 4.2, basinHeight: 0.55, hedgeStep: 2, hedgeOff: 1.3, hedgeGap: 3.4, bedMax: 24, bedMin: 11, bedEdge: 14, hedgeThick: 1.1, hedgeHeight: 1.9, hedgeDoor: 4.6, bedPassClear: 6, formalInradius: 30, treeShare: 0.45, potRing: 2.6 },
+      /**
+       * Lakeside pond: an ellipse (major semi-axis `radius` [min, max] m at the waterline, minor/major
+       * `aspect` [min, max]) levelled into the terrain. Out from its middle, in metres along the major
+       * axis: a flat bed, a smoothstep bowl `bowl` m wide up to the bank's crest (`depth` m deep, the
+       * waterline `freeboard` m under the crest), a level bank, then a blend back into the terrain over
+       * `blend` m, past which the park's hills (scaled by hillScale) fade in over hillFade m. The site is the
+       * flattest spot on a `siteStep` m grid whose terrain strays at most `maxRange` m from the crest level
+       * over the blend, `margin` m clear of the park edge and the race passes. The jetty is `jettyWidth` m
+       * wide and reaches `jettyReach` m into the water, its deck `deckRise` m over the water; `benches` sit on
+       * the bank facing the water, a gravel ring `ring` m out from the crest; reeds stand every `reedStep` m
+       * of the shore; treeShare of the usual grid is planted on the lawn.
+       */
+      lakeside: { radius: [10, 13], aspect: [0.8, 1], depth: 0.4, bowl: 10, blend: 20, freeboard: 0.12, hillScale: 0.35, hillFade: 28, maxRange: 0.8, siteStep: 4, margin: 5, jettyWidth: 2.2, jettyReach: 7.5, deckRise: 0.5, benches: 4, ring: 4, reedStep: 3.2, treeShare: 0.5 },
     },
     infill: {
       enabled: true,

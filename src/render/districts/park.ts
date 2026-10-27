@@ -9,8 +9,9 @@
  * pale stone threshold, path lights along the flared curbs, and a stone gate
  * pier with a lantern cap each side of the opening. Bushes, benches, bins
  * and lantern posts are destructible props drawn by render/street/props.ts;
- * the light on the lawn is render/street/areaLights.ts. Content to add:
- * hedges, a pond and grass shading.
+ * the light on the lawn is render/street/areaLights.ts. The formal garden
+ * and the lakeside pond are drawn by parkVariants.ts. Content to add: grass
+ * shading and a playground.
  */
 import * as THREE from 'three';
 import { distToPolygonEdge, pointInPolygon } from '../../city/districts/geom';
@@ -19,6 +20,7 @@ import { CITY } from '../../city/config';
 import type { Vec2 } from '../../sim/math';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { col, cylinder, drapeConvex, groundLine, groundVertex, prism } from './kit';
+import { parkVariants } from './parkVariants';
 import { tree } from './trees';
 
 /** Footpath strips are cut into pieces this long so they follow the hills (m). */
@@ -168,6 +170,7 @@ export const parkRenderer: DistrictRenderer = {
           mouths.push(h.points);
         } else if (h.kind === 'gate') gatePier(kit, h.points, h.values[0]);
       }
+      parkVariants(kit, b, a.params.seed);
       for (const h of b.hints) {
         if (h.kind === 'pass') {
           passPath(kit, h.points, h.values[0], a.polygon, mouths);

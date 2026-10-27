@@ -25,20 +25,26 @@
  * lantern post beyond it, a planter pot before each flare and bollards along
  * the flared curbs.
  *
- * Content to add (render/districts/park.ts): hedges, a pond or playground.
+ * Variants (Area.variant, parkFeatures.ts): 'woodland' is the park above with denser woods (two groves),
+ * 'formal' a garden on gravel axes round a fountain with hedged parterres, 'lakeside' a levelled pond with a
+ * jetty. Each park draws its own from a stream of its own, so the plan's draws are those of one variant.
+ *
+ * Content to add (render/districts/park.ts): a playground.
  */
 import { CITY } from '../config';
 import { MOUTH_REACH, bayHi, bayInset, bayLo, bayPoint, mouthBay } from '../busBays';
 import { edgeSides } from '../props';
 import { DEG, type Vec2, atan2, cos, distToSegment, sin, sqrt } from '../../sim/math';
-import { Rng } from '../../sim/prng';
+import { Rng, deriveSeed } from '../../sim/prng';
 import { type RoadGraph, isBendNode } from '../roadGraph';
 import { PASS_START_RUN, type RoutePass } from '../route';
-import type { Area, BuildContext, DistrictModule, PlanContext } from './types';
+import type { Area, BuildContext, Claims, DistrictModule, HeightMod, HeightSample, PlanContext } from './types';
+import { hillsModule } from './hills';
 import type { BlockFace } from '../blocks';
 import type { PropKind } from '../props';
 import { COBBLE_PRIORITY, emptyBuild } from './types';
 import { circlePolygon, clipConvex, distToPolygonEdge, pointInPolygon, polygonArea, polygonBounds, polygonCentroid, smooth01, type Smooth, solidWalls } from './geom';
+import { type ParkVariant, type Pond, formalFits, formalGarden, longestSideAngle, pickPond, pickVariant, pondFeatures, pondHeightMod, pondOf } from './parkFeatures';
 import { type PassClear, type PassCorner, type PlannedRoute, alongStreet, blockCorners, leaving, routeCorners, sharpestBend, streetEdges } from './passes';
 
 /** Scratch for the terrain's smoothsteps (queried per wheel per substep, so nothing allocates). */
@@ -385,6 +391,43 @@ export function parkCorners(ctx: Pick<PlanContext, 'graph' | 'areas' | 'claims' 
   return parkFaces(ctx).flatMap((f) => blockCorners(ctx.graph, f));
 }
 
+/** Scratch for the other slopes under a pond site (planning only). */
+const HILLS_AT: HeightSample = { h: 0, gx: 0, gz: 0 };
+
+/**
+ * The height modifiers of the hills the city will get, planned ahead on copies of the claims and the
+ * areas as the hills module (the next in the registry) will find them, from its own stream: lake.ts
+ * plans the river ahead the same way. The hills build from their params alone.
+ */
+function hillSlopes(ctx: PlanContext): HeightMod[] {
+  const areas = ctx.areas.slice();
+  const claims: Claims = { node: new Map(ctx.claims.node), edge: new Map(ctx.claims.edge), face: new Map(ctx.claims.face) };
+  const trial: PlanContext = {
+    seed: ctx.seed,
+    rng: new Rng(deriveSeed(ctx.seed, 'district:hills')),
+    graph: ctx.graph,
+    areas,
+    claims,
+    budget: { ...ctx.budget },
+    sectors: () => ctx.sectors(),
+    faces: () => ctx.faces(),
+    addArea(a, footprint = 0) {
+      const area: Area = { id: areas.length, ...a };
+      areas.push(area);
+      for (const n of area.nodes) claims.node.set(n, area.id);
+      for (const e of area.edges) claims.edge.set(e, area.id);
+      for (const f of area.faces) claims.face.set(f, area.id);
+      trial.budget.used += footprint;
+      return area;
+    },
+    graphChanged: () => {},
+    event: ctx.event,
+  };
+  hillsModule.plan(trial);
+  const bctx: BuildContext = { seed: ctx.seed, graph: ctx.graph, areas, faces: [], sectors: [], mouths: [] };
+  return areas.slice(ctx.areas.length).flatMap((a) => (a.kind === 'hills' ? hillsModule.build(bctx, a).heightMods : []));
+}
+
 export const parkModule: DistrictModule = {
   kind: 'park',
   phase: 'graph',
@@ -402,6 +445,8 @@ export const parkModule: DistrictModule = {
     const sites = faces.map((f) => ({ f, ...parkSite(g, f, routes) }));
     sites.sort((p, q) => q.served - p.served);
     let made = 0;
+    /** Parks drawn as lakeside, their pond sited once every park is down (the hills are planned right after them). */
+    const ponds: { area: Area; passPoints: Vec2[][]; vrng: Rng }[] = [];
     for (const { f, passes } of sites) {
       if (made >= count) break;
       if (ctx.budget.used + f.area > ctx.budget.total) continue;
@@ -416,11 +461,42 @@ export const parkModule: DistrictModule = {
         params[`p${i}b`] = p.b;
         params[`p${i}pull`] = p.pull;
       });
-      const area = ctx.addArea({ kind: 'park', variant: 'hills', polygon: f.ring, path: [], nodes: [], edges: [], faces: [f.id], params }, f.area);
+      // The variant, from a stream of the park's own (the plan's stream above is left as it was); a park
+      // that cannot hold its variant is woodland.
+      const vrng = new Rng(deriveSeed(params.seed, 'variant'));
+      let variant: ParkVariant = pickVariant(vrng, ctx.areas.filter((a) => a.kind === 'park').map((a) => a.variant));
+      const passPoints = passes.map((p) => pathLine(g, f.ring, p, p.a, p.b, p.pull) ?? []);
+      if (variant === 'formal') {
+        if (formalFits(f.ring, passPoints)) {
+          params.fplan = vrng.next() < 0.5 ? 0 : 1;
+          params.fang = longestSideAngle(f.ring);
+        } else variant = 'woodland';
+      }
+      const area = ctx.addArea({ kind: 'park', variant, polygon: f.ring, path: [], nodes: [], edges: [], faces: [f.id], params }, f.area);
+      if (variant === 'lakeside') ponds.push({ area, passPoints, vrng });
       // The streets the passes leave and rejoin are held so nothing planned later (an overpass's piers, a
       // tunnel, a lane closure) stands in their way. Held in the claims only: the area's own edges stay empty.
       for (const p of passes) for (const e of [...streetEdges(g, p.node, p.eA, p.a + CFG.passMouthClear), ...streetEdges(g, p.node, p.eB, p.b + CFG.passMouthClear)]) ctx.claims.edge.set(e, area.id);
       made++;
+    }
+    if (!ponds.length) return;
+    // The pond levels the base terrain, so it must lie where no other slope falls: the hills are planned
+    // right after the parks and may reach over one, so plan them once here, on copies, to see where.
+    const slopes = hillSlopes(ctx);
+    const clear = (x: number, z: number) => {
+      HILLS_AT.h = 0;
+      HILLS_AT.gx = 0;
+      HILLS_AT.gz = 0;
+      for (const m of slopes) if (x >= m.minX && x <= m.maxX && z >= m.minZ && z <= m.maxZ) m.add(x, z, HILLS_AT);
+      return Math.abs(HILLS_AT.h) < 0.02 && Math.abs(HILLS_AT.gx) < 0.003 && Math.abs(HILLS_AT.gz) < 0.003;
+    };
+    for (const { area, passPoints, vrng } of ponds) {
+      const pond = pickPond(ctx.seed, area.polygon, passPoints, vrng, clear);
+      if (!pond) {
+        area.variant = 'woodland';
+        continue;
+      }
+      Object.assign(area.params, { pcx: pond.cx, pcz: pond.cz, pa: pond.a, pb: pond.b, pphi: pond.phi, pL: pond.level, pjet: vrng.range(0, 6.28) });
     }
   },
 
@@ -514,30 +590,32 @@ export const parkModule: DistrictModule = {
       return { x: p.x, z: p.z, nx: (q.z - p.z) / l, nz: -(q.x - p.x) / l, len: l };
     });
     const bb = polygonBounds(ring);
-    b.heightMods.push({
-      ...bb,
-      add(x, z, out) {
-        let P = 1;
-        let sx = 0;
-        let sz = 0;
-        for (const s of sides) {
-          if (s.len < 0.5) continue;
-          const d = (x - s.x) * s.nx + (z - s.z) * s.nz;
-          const m = smooth01(0, CFG.hillEdge, d, SMOOTH);
-          if (m.v <= 0) return;
-          P *= m.v;
-          sx += (m.d / m.v) * s.nx;
-          sz += (m.d / m.v) * s.nz;
-        }
-        const bump = 0.55 + 0.45 * sin(x * kx + px) * cos(z * kz + pz);
-        const dbx = 0.45 * kx * cos(x * kx + px) * cos(z * kz + pz);
-        const dbz = -0.45 * kz * sin(x * kx + px) * sin(z * kz + pz);
-        out.h += hill * P * bump;
-        out.gx += hill * (P * sx * bump + P * dbx);
-        out.gz += hill * (P * sz * bump + P * dbz);
-      },
-    });
-    // Trees on a jittered grid, clear of the edge; one small wood packs them tighter.
+    const hillAdd = (x: number, z: number, out: HeightSample) => {
+      let P = 1;
+      let sx = 0;
+      let sz = 0;
+      for (const s of sides) {
+        if (s.len < 0.5) continue;
+        const d = (x - s.x) * s.nx + (z - s.z) * s.nz;
+        const m = smooth01(0, CFG.hillEdge, d, SMOOTH);
+        if (m.v <= 0) return;
+        P *= m.v;
+        sx += (m.d / m.v) * s.nx;
+        sz += (m.d / m.v) * s.nz;
+      }
+      const bump = 0.55 + 0.45 * sin(x * kx + px) * cos(z * kz + pz);
+      const dbx = 0.45 * kx * cos(x * kx + px) * cos(z * kz + pz);
+      const dbz = -0.45 * kz * sin(x * kx + px) * sin(z * kz + pz);
+      out.h += hill * P * bump;
+      out.gx += hill * (P * sx * bump + P * dbx);
+      out.gz += hill * (P * sz * bump + P * dbz);
+    };
+    // A pond levels its own ground and fades the hills in round it (parkFeatures.ts pondHeightMod).
+    const pond: Pond | null = pondOf(area.params);
+    b.heightMods.push(pond ? pondHeightMod(ctx.seed, pond, ring, hillAdd) : { ...bb, add: hillAdd });
+    // Trees on a jittered grid, clear of the edge; woods pack them tighter. The variant's own features
+    // (the formal garden, the pond) go down first and the trees, bushes and furniture keep off them.
+    const variant = area.variant as ParkVariant;
     const rng = new Rng(area.params.seed);
     const rnd = () => rng.next();
     const trees: { x: number; z: number }[] = [];
@@ -546,30 +624,38 @@ export const parkModule: DistrictModule = {
       b.walls.push(...solidWalls(circlePolygon(tx, tz, CFG.treeRadius, 6), 'tree', id));
       b.props.push({ kind: 'tree', x: tx, z: tz, yaw: rnd() * 6.28, size: 2.2 + rnd() * 1.6, height: 5 + rnd() * 4, area: id });
     };
-    // The wood: a random spot at least its radius inside the edge (none in a park too small for it).
-    let grove: { x: number; z: number; r: number } | null = null;
-    const gr = CFG.groveRadius[0] + rnd() * (CFG.groveRadius[1] - CFG.groveRadius[0]);
-    for (let k = 0; k < 24 && !grove; k++) {
-      const gx = bb.minX + rnd() * (bb.maxX - bb.minX);
-      const gz = bb.minZ + rnd() * (bb.maxZ - bb.minZ);
-      if (pointInPolygon(gx, gz, ring) && distToPolygonEdge(gx, gz, ring) > gr + 6) grove = { x: gx, z: gz, r: gr };
+    const clutter = (kind: PropKind, x: number, z: number, yaw: number) => b.destructibles.push({ kind, x, z, yaw, lift: 0, area: id });
+    let keep: (x: number, z: number, r: number) => boolean = () => false;
+    if (variant === 'formal') keep = formalGarden({ b, id, ring, onPath, clutter }, area.params.fplan, area.params.fang, rnd);
+    else if (pond) keep = pondFeatures({ b, id, ring, onPath, clutter, pond, jetty: area.params.pjet }, rnd);
+    // The woods: random spots at least their radius inside the edge and clear of one another (none in a park too small for them).
+    const groves: { x: number; z: number; r: number }[] = [];
+    for (let n = variant === 'woodland' ? CFG.woodlandGroves : pond ? 1 : 0; n > 0; n--) {
+      const gr = CFG.groveRadius[0] + rnd() * (CFG.groveRadius[1] - CFG.groveRadius[0]);
+      for (let k = 0, placed = false; k < 24 && !placed; k++) {
+        const gx = bb.minX + rnd() * (bb.maxX - bb.minX);
+        const gz = bb.minZ + rnd() * (bb.maxZ - bb.minZ);
+        if (!pointInPolygon(gx, gz, ring) || distToPolygonEdge(gx, gz, ring) <= gr + 6 || keep(gx, gz, gr) || groves.some((o) => (o.x - gx) ** 2 + (o.z - gz) ** 2 < (o.r + gr) ** 2)) continue;
+        groves.push({ x: gx, z: gz, r: gr });
+        placed = true;
+      }
     }
-    const inGrove = (x: number, z: number) => !!grove && (x - grove.x) ** 2 + (z - grove.z) ** 2 < grove.r * grove.r;
-    const step = CFG.treeSpacing;
+    const inGrove = (x: number, z: number) => groves.some((grove) => (x - grove.x) ** 2 + (z - grove.z) ** 2 < grove.r * grove.r);
+    const step = variant === 'woodland' ? CFG.woodlandSpacing : CFG.treeSpacing;
+    const skip = variant === 'formal' ? 1 - CFG.formal.treeShare : pond ? 1 - CFG.lakeside.treeShare : 0.35;
     for (let x = bb.minX + step / 2; x < bb.maxX; x += step) {
       for (let z = bb.minZ + step / 2; z < bb.maxZ; z += step) {
-        if (rnd() < 0.35) continue;
+        if (rnd() < skip) continue;
         const tx = x + (rnd() - 0.5) * step * 0.7;
         const tz = z + (rnd() - 0.5) * step * 0.7;
-        if (!pointInPolygon(tx, tz, ring) || distToPolygonEdge(tx, tz, ring) < 9 || inGrove(tx, tz) || onPath(tx, tz, CFG.treeRadius) || inDecor(tx, tz, CFG.treeRadius)) continue;
+        if (!pointInPolygon(tx, tz, ring) || distToPolygonEdge(tx, tz, ring) < 9 || inGrove(tx, tz) || onPath(tx, tz, CFG.treeRadius) || inDecor(tx, tz, CFG.treeRadius) || keep(tx, tz, CFG.treeRadius)) continue;
         addTree(tx, tz);
       }
     }
-    const clutter = (kind: PropKind, x: number, z: number, yaw: number) => b.destructibles.push({ kind, x, z, yaw, lift: 0, area: id });
-    /** Clear of tree trunks, of the park edge and of the race passes' path. */
+    /** Clear of tree trunks, of the park edge, of the race passes' path and of the variant's features. */
     const open = (x: number, z: number, r: number, edge: number) =>
-      pointInPolygon(x, z, ring) && distToPolygonEdge(x, z, ring) > edge && !onPath(x, z, r) && !inDecor(x, z, r) && trees.every((t) => (t.x - x) ** 2 + (t.z - z) ** 2 > (CFG.treeRadius + r + 0.6) ** 2);
-    if (grove) {
+      pointInPolygon(x, z, ring) && distToPolygonEdge(x, z, ring) > edge && !onPath(x, z, r) && !inDecor(x, z, r) && !keep(x, z, r) && trees.every((t) => (t.x - x) ** 2 + (t.z - z) ** 2 > (CFG.treeRadius + r + 0.6) ** 2);
+    for (const grove of groves) {
       const gs = CFG.groveSpacing;
       for (let x = grove.x - grove.r; x < grove.x + grove.r; x += gs) {
         for (let z = grove.z - grove.r; z < grove.z + grove.r; z += gs) {
@@ -589,7 +675,7 @@ export const parkModule: DistrictModule = {
       }
     }
     // Bush clusters on the open grass; a park whose path took too many spots tries a few more.
-    const clusters = Math.round(polygonArea(ring) / CFG.bushClusterArea);
+    const clusters = variant === 'formal' ? 0 : Math.round(polygonArea(ring) / CFG.bushClusterArea);
     let bushes = b.destructibles.filter((d) => d.kind === 'bush').length;
     const cluster = () => {
       const cx = bb.minX + rnd() * (bb.maxX - bb.minX);
