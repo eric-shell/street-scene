@@ -78,6 +78,26 @@ export const POST_TAPS: Record<Quality, number> = { low: 4, medium: 7, high: 11 
 /** Film grain per tier (a share of the grade's own grain): High only, it is a per pixel hash every frame for a look, not legibility. */
 export const POST_GRAIN: Record<Quality, number> = { low: 0, medium: 0, high: 1 };
 
+/**
+ * Rain on the lens per tier (lensRain in FxShader, bumper and hood cameras on wet nights): how many droplet grids
+ * (scales) the pixel evaluates, and the share of the drops that show (their density). Low runs one coarse grid, sparser; Medium and High run two. Every layer is a hash grid cell lookup, no extra texture sample.
+ */
+export const POST_LENS: Record<Quality, { layers: number; strength: number }> = {
+  low: { layers: 1, strength: 0.7 },
+  medium: { layers: 2, strength: 1 },
+  high: { layers: 2, strength: 1 },
+};
+
+/** Lens droplet look: grid cells across the screen per layer, UV refraction scale (about 0.01 of the frame at the biggest drop's rim) and rim brightness. */
+const LENS = {
+  cells: [3.5, 7],
+  refract: 0.09,
+  rim: 0.5,
+  /** Drop lifetime clock speed (cycles per second) at rest, and added per m/s of car speed. */
+  rate: 0.12,
+  rateSpeed: 0.006,
+} as const;
+
 /** A colour grade (cityIdentity.ts per home). Tints are sRGB hex; everything else works on linear light. */
 export interface GradeParams {
   /** Linear light added to the shadows per channel, fading out up the luminance key (a few thousandths: black stays black). */
@@ -146,6 +166,10 @@ const FxShader = {
     gSeed: { value: new THREE.Vector2() },
     gPivot: { value: GRADE.pivot },
     gProtect: { value: new THREE.Vector2(...GRADE.protect) },
+    lensRain: { value: 0 },
+    lensTime: { value: 0 },
+    lensAspect: { value: 16 / 9 },
+    lensLayers: { value: 2 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -178,10 +202,48 @@ const FxShader = {
     uniform vec2 gSeed;
     uniform float gPivot;
     uniform vec2 gProtect;
+    uniform float lensRain;
+    uniform float lensTime;
+    uniform float lensAspect;
+    uniform int lensLayers;
     varying vec2 vUv;
     const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
+    float hash21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    // One grid of lens drops: xy the UV refraction, z the rim. A cell holds at most one drop; it is born at a seeded
+    // phase, slides down the cell as its clock runs, and the cycle's hash against lensRain decides whether it shows.
+    vec3 lensLayer(vec2 uv, float cells, float seed) {
+      vec2 p = uv * vec2(cells, cells / lensAspect);
+      vec2 id = floor(p);
+      vec2 f = fract(p);
+      float h0 = hash21(id + seed);
+      float h1 = hash21(id + seed + 17.3);
+      float h2 = hash21(id + seed + 41.9);
+      float clock = lensTime + h0 * 8.0;
+      float cyc = floor(clock);
+      float t = clock - cyc;
+      if (hash21(id + seed + cyc * 3.7) > lensRain * 0.6) return vec3(0.0);
+      float r = (0.05 + 0.17 * h2 * h2) * smoothstep(0.0, 0.12, t) * (1.0 - smoothstep(0.85, 1.0, t));
+      vec2 c = vec2(0.3 + 0.4 * h1, mix(0.72, 0.28, t));
+      vec2 d = (f - c) / max(r, 1e-3);
+      float l = length(d);
+      if (l >= 1.0) return vec3(0.0);
+      // A lens: the image is flipped and magnified inside, strongest toward the rim.
+      vec2 off = -d * (0.35 + l * l) * r * ${LENS.refract.toFixed(3)} * 6.0 / cells;
+      float rim = smoothstep(0.88, 0.96, l) * (1.0 - smoothstep(0.96, 1.0, l));
+      return vec3(off, rim);
+    }
     void main() {
       vec2 uv = vUv;
+      float lensRim = 0.0;
+      if (lensRain > 0.0) {
+        vec3 a = lensLayer(vUv, ${LENS.cells[0].toFixed(1)}, 0.0);
+        if (lensLayers > 1) {
+          vec3 b = lensLayer(vUv, ${LENS.cells[1].toFixed(1)}, 31.0);
+          a = vec3(a.xy + b.xy, max(a.z, b.z));
+        }
+        uv += a.xy;
+        lensRim = a.z;
+      }
       vec2 dir0 = vUv - center;
       // Nitrous mask: 0 inside the middle 50% of the screen (an ellipse through
       // the half way marks), ramping to 1 at the frame edge.
@@ -235,6 +297,7 @@ const FxShader = {
         // A faint glow creeping in from the edges, in the stage's color.
         c.rgb += tint * edgeTint * warp * m * m;
       }
+      if (lensRim > 0.0) c.rgb = c.rgb * (1.0 + lensRim * ${LENS.rim.toFixed(2)}) + vec3(0.02 * lensRim);
       // Colour grade, on linear HDR (see the header for why before tone mapping).
       vec3 g = pow(max(c.rgb * gGain, vec3(1e-7)), gGamma);
       float gl = dot(g, LUMA);
@@ -447,6 +510,9 @@ export class PostFx {
   private grain = 0;
   private grainTier = 0;
   private grainFrame = 0;
+  /** Lens rain: the tier's layers and density share (POST_LENS), the session's amount and the car speed (m/s) that quickens the drops. */
+  private lensStrength = 1;
+  private lensSpeed = 0;
   private readonly gradeColor = new THREE.Color();
 
   constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {
@@ -474,9 +540,11 @@ export class PostFx {
   }
 
   /** Takes effect on the next setSize (GameRenderer always resizes after this). */
-  configure(opts: { bloom: boolean; bloomScale: number; bloomStrength: number; retro: boolean; msaa?: number; taps?: number; grain?: number }): void {
+  configure(opts: { lens?: { layers: number; strength: number }; bloom: boolean; bloomScale: number; bloomStrength: number; retro: boolean; msaa?: number; taps?: number; grain?: number }): void {
     this.fx.uniforms.uTaps.value = Math.max(1, Math.min(11, Math.round(opts.taps ?? 11)));
     this.grainTier = opts.grain ?? 0;
+    this.fx.uniforms.lensLayers.value = opts.lens?.layers ?? 2;
+    this.lensStrength = opts.lens?.strength ?? 1;
     this.fx.uniforms.gGrain.value = this.grain * this.grainTier;
     this.bloom.enabled = opts.bloom;
     this.bloom.scale = opts.bloomScale;
@@ -491,6 +559,7 @@ export class PostFx {
     this.composer.setPixelRatio(pixelRatio);
     this.composer.setSize(w, h);
     this.retro.uniforms.resolution.value.set(w * pixelRatio, h * pixelRatio);
+    this.fx.uniforms.lensAspect.value = w / Math.max(1, h);
   }
 
   /** The colour grade of the scene being rendered (GameRenderer sets it whenever the rendered scene changes). */
@@ -511,6 +580,12 @@ export class PostFx {
     const c = this.gradeColor.setHex(hex);
     const l = Math.max(1e-6, 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b);
     out.set(1 + (c.r / l - 1) * amount, 1 + (c.g / l - 1) * amount, 1 + (c.b / l - 1) * amount);
+  }
+
+  /** Rain on the lens: 0 off (the shader skips it), up to 1 for a downpour (drop density); `speed` (m/s) quickens the drops. Eased by the caller. */
+  setLensRain(amount: number, speed: number): void {
+    this.fx.uniforms.lensRain.value = Math.max(0, Math.min(1, amount * this.lensStrength));
+    this.lensSpeed = speed;
   }
 
   setSpeedBlur(amount: number): void {
@@ -537,6 +612,9 @@ export class PostFx {
   }
 
   render(dt: number): void {
+    const lens = this.fx.uniforms.lensRain;
+    // The drop clock only runs while the lens is wet; it carries on from where it was, so a camera switch never jumps it.
+    if (lens.value > 0) this.fx.uniforms.lensTime.value += dt * (LENS.rate + LENS.rateSpeed * this.lensSpeed);
     if (this.fx.uniforms.gGrain.value > 0) {
       // A new grain pattern each frame: a pixel offset that walks a large prime stride (no clock, no allocation).
       this.grainFrame = (this.grainFrame + 1) % 4096;
