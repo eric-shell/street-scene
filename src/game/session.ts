@@ -99,6 +99,9 @@ const PROP_SLOWDOWN_EXTRA = 1.6;
  */
 const WAYPOINT = { reach: 25, arm: 35 } as const;
 
+/** Rate (1/s) the lens rain eases in and out at: about 0.4 s to settle. */
+const LENS_RATE = 8;
+
 /** After a handoff with nobody at the wheel: the cruise brakes to a stop this gently (share of the brake), and lets go under this speed (m/s). */
 const CRUISE_RUNOUT = { target: 0, maxBrake: 0.12 } as const;
 const CRUISE_STOPPED = 0.3;
@@ -206,6 +209,8 @@ export class RaceSession {
   private areaNext = '';
   private areaFor = 0;
   private blur = 0;
+  /** Eased rain-on-the-lens amount (0..1, the rain's share when a first person camera is on). */
+  private lensRain = 0;
   private replayCam: ReplayCamMode = 'chase';
   /** Live sessions: a trackside or orbit view picked with the number keys (null: the follow camera). */
   private liveView: 'tv' | 'orbit' | null = null;
@@ -954,6 +959,11 @@ export class RaceSession {
     if (warpTarget === 0 && this.nitroFx < 0.002) this.nitroFx = 0;
     if (stage > 0) this.nitroTint += (stage - this.nitroTint) * (1 - Math.exp(-dt * NITRO_IN));
     this.gr.post.setNitroFx(this.nitroFx, this.time, this.nitroTint);
+    // Rain on the lens: only behind the bumper or hood glass on a drizzle or rain night (the rain's share is the density); fades over ~0.4 s.
+    const lensTarget = this.drone || this.paused || (this.cam.mode !== 'bumper' && this.cam.mode !== 'hood') ? 0 : this.night.weather.def.rain?.share ?? 0;
+    this.lensRain += (lensTarget - this.lensRain) * (1 - Math.exp(-dt * LENS_RATE));
+    if (lensTarget === 0 && this.lensRain < 0.002) this.lensRain = 0;
+    this.gr.post.setLensRain(this.lensRain, p.speed);
     // The music swells with the stage burning.
     const lift = stage > 0 ? 10 ** (MUSIC_LIFT.db[stage - 1] / 20) : 1;
     this.lift += (lift - this.lift) * (1 - Math.exp(-dt * (lift > this.lift ? MUSIC_LIFT.in : MUSIC_LIFT.out)));
@@ -1069,6 +1079,7 @@ export class RaceSession {
 
   dispose(): void {
     this.gr.post.setNitroFx(0, 0);
+    this.gr.post.setLensRain(0, 0);
     this.fullMap?.dispose();
     this.fullMap = null;
     this.drone?.dispose();
