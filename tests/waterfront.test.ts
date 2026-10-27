@@ -478,6 +478,7 @@ function makeKit(world: World, walls: Map<WallLook, Wall[]> = wallsByLook(world)
     foliage: new GeoBuilder(true),
     trees: new GeoBuilder(true),
     group: new THREE.Group(),
+    race: { solid: new GeoBuilder(true), glow: new GeoBuilder(true), group: new THREE.Group() },
     walls,
     builds: world.districts.builds,
     quality: 'high',

@@ -716,10 +716,10 @@ function buildOne(kit: DistrictKit, bb: BakedBuilder, signs: GeoBuilder, g: CarP
   const ay = kit.h(armBase.x, armBase.z);
   for (let k = 0; k < 6; k++) cylinder(kit.solid, armBase.x, armBase.z, 0.06, ay + 1 + k * 0.6, ay + 1.6 + k * 0.6, 4, k % 2 ? col(0xd92b2b) : col(0xeeeeee), false);
   if (!open) {
-    // Closed: a roller shutter across the ramp where the sim's gate stands.
+    // Closed: a roller shutter across the ramp where the sim's gate stands (carParkGates: a race only, so a race layer).
     const a = rampPoint(g, g.apron1 - 0.4, -g.rhw - t);
     const b = rampPoint(g, g.apron1 - 0.4, g.rhw + t);
-    wallRun(kit.solid, a, b, rampPoint(g, g.apron1 + 2, 0), t, (p) => deckY(p) - 0.2, (p) => deckY(p) + 3, col(0x8a8d94), 2);
+    wallRun(kit.race.solid, a, b, rampPoint(g, g.apron1 + 2, 0), t, (p) => deckY(p) - 0.2, (p) => deckY(p) + 3, col(0x8a8d94), 2);
   }
 }
 

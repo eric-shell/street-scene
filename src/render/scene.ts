@@ -204,6 +204,8 @@ export interface NightScene {
   update(time: number): void;
   /** Pose the sim-timed district parts (the El's trains, level crossing gates, RaceState.brokenArms) at a fractional sim tick; call before update. */
   syncDistricts(tick: number, audible: boolean, brokenArms?: Uint8Array): void;
+  /** Show or hide the districts' race-only pieces (gates, shutters: kit.race); hidden while the scene is lent to a free roam, whose world has no walls under them. */
+  showRaceOnly(visible: boolean): void;
   dispose(): void;
 }
 
@@ -386,6 +388,9 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     backdrop,
     syncDistricts(tick, audible, brokenArms) {
       districts.sync(tick, audible, brokenArms);
+    },
+    showRaceOnly(visible) {
+      districts.showRaceOnly(visible);
     },
     update(time) {
       city.update(time);
