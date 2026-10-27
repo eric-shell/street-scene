@@ -25,6 +25,7 @@
 import * as THREE from 'three';
 import type { World } from '../../city/world';
 import type { Prop } from '../../city/props';
+import type { Quality } from '../../ui/settings';
 import { FOG_DENSITY } from '../lighting';
 import { fadeSubPixel } from '../materialFx';
 import { D_BOX, D_CYL, D_GLASS, D_GLOW, Debris, DebrisType } from './debris';
@@ -55,6 +56,8 @@ export interface PropRenderer {
 }
 
 export interface PropRendererOptions {
+  /** Geometry tier (ring segments, merged slats, fewer clumps); placement and hashing never depend on it. Default medium. */
+  quality?: Quality;
   /**
    * A lamp switched off (broken) or back on: a streetlight's `light` index,
    * or streetlights.length + k for the k-th park lamp (parkLamps order).
@@ -147,6 +150,7 @@ interface TrafficFrame {
 const yawOf = (x: number, z: number) => Math.atan2(x, z);
 
 export function buildProps(world: World, opts: PropRendererOptions = {}): PropRenderer {
+  const q: Quality = opts.quality ?? 'medium';
   const group = new THREE.Group();
   group.name = 'props';
   const props: Prop[] = world.blocks.props ?? [];
@@ -182,7 +186,11 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
 
   const meshes: THREE.InstancedMesh[] = [];
   const parts: PartRef[][] = props.map(() => []);
-  const stumpOf = new Int32Array(props.length).fill(-1);
+  /** Index of each pole in `poles` (-1 for the rest): picks its stump matrix. */
+  const poleOf = new Int32Array(props.length).fill(-1);
+  /** Slot of each broken pole's stump among the drawn ones (-1: standing), and the prop id in each slot. */
+  const slotOf = new Int32Array(props.length).fill(-1);
+  const idOf: number[] = [];
   const addMesh = (name: string, geo: THREE.BufferGeometry, mat: THREE.Material, count: number): number => {
     const m = new THREE.InstancedMesh(track(geo), mat, Math.max(1, count));
     m.count = count;
@@ -207,7 +215,7 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
 
   // Streetlights.
   {
-    const geo = streetlightGeo();
+    const geo = streetlightGeo(q);
     const solid = addMesh('streetlightPoles', geo.solid, solidMat, lights.length);
     const lens = addMesh('streetlightLenses', geo.lens, lampLensMat, lights.length);
     lights.forEach((p, i) => {
@@ -221,7 +229,7 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
   const frames: TrafficFrame[] = traffic.map((p) => trafficFrame(world, p));
   const lensOffsets = new Float32Array(traffic.length * 3);
   {
-    const pole = addMesh('trafficPoles', trafficPoleGeo(), solidMat, traffic.length);
+    const pole = addMesh('trafficPoles', trafficPoleGeo(q), solidMat, traffic.length);
     const arm = addMesh('trafficArms', trafficArmGeo(), solidMat, traffic.length);
     const head = addMesh('trafficHeads', trafficHeadGeo(), solidMat, traffic.length * 3);
     const lens = addMesh('trafficLenses', trafficLensGeo(), lensMat, traffic.length * 3);
@@ -254,24 +262,26 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
     meshes[lens].frustumCulled = false;
   }
 
-  // Stumps left behind by broken poles (hidden until needed).
+  // Stumps left behind by broken poles: capacity for every pole, but only the broken ones are drawn (count grows
+  // with each break; a repair swaps the last stump into the freed slot). Never frustum culled: its bounds would
+  // be computed over an empty or changing set.
   const poles = [...lights, ...traffic, ...lanterns];
-  const stump = addMesh('propStumps', stumpGeo(), solidMat, poles.length);
-  poles.forEach((p, i) => {
-    stumpOf[p.id] = i;
-    meshes[stump].setMatrixAt(i, ZERO);
-  });
+  const stump = addMesh('propStumps', stumpGeo(q), solidMat, poles.length);
+  poles.forEach((p, i) => (poleOf[p.id] = i));
+  meshes[stump].count = 0;
+  meshes[stump].visible = false;
+  meshes[stump].frustumCulled = false;
 
   // Garbage cans, tinted per instance.
   {
-    const m = addMesh('garbageCans', canGeo(), solidMat, cans.length);
+    const m = addMesh('garbageCans', canGeo(q), solidMat, cans.length);
     cans.forEach((p, i) => {
       place(m, i, p, p.x, p.y, p.z, p.yaw + hash01(p.id) * 6.28);
       meshes[m].setColorAt(i, CAN_TINTS[(hash01(p.id * 31) * CAN_TINTS.length) | 0]);
     });
   }
   {
-    const m = addMesh('benches', benchGeo(), solidMat, benches.length);
+    const m = addMesh('benches', benchGeo(q), solidMat, benches.length);
     benches.forEach((p, i) => place(m, i, p, p.x, p.y, p.z, p.yaw));
   }
   const adTint: THREE.Color[] = [];
@@ -297,7 +307,7 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
     if (!list.length) continue;
     const def = PARTS[kind]!;
     const matOf = { matte: matteMat, canopy: canopyMat, solid: solidMat, glow: glowMat, lamp: lampLensMat, glass: glassMat } as const;
-    const ids = def.parts.map((part, k) => addMesh(`${kind}${k}`, part.geo(), matOf[part.mat], list.length));
+    const ids = def.parts.map((part, k) => addMesh(`${kind}${k}`, part.geo(q), matOf[part.mat], list.length));
     // Glass after the opaque pass, like the bus shelters'.
     def.parts.forEach((part, k) => part.mat === 'glass' && (meshes[ids[k]].renderOrder = 4));
     list.forEach((p, i) => {
@@ -336,11 +346,26 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
       else (m.instanceMatrix.array as Float32Array).set(intact[r.mesh].subarray(r.index * 16, r.index * 16 + 16), r.index * 16);
       m.instanceMatrix.needsUpdate = true;
     }
-    const s = stumpOf[p.id];
-    if (s >= 0) {
+    const pole = poleOf[p.id];
+    if (pole >= 0) {
       const m = meshes[stump];
-      if (broken) (m.instanceMatrix.array as Float32Array).set(stumpBase.subarray(s * 16, s * 16 + 16), s * 16);
-      else m.setMatrixAt(s, ZERO);
+      const arr = m.instanceMatrix.array as Float32Array;
+      if (broken && slotOf[p.id] < 0) {
+        const slot = m.count++;
+        arr.set(stumpBase.subarray(pole * 16, pole * 16 + 16), slot * 16);
+        slotOf[p.id] = slot;
+        idOf[slot] = p.id;
+      } else if (!broken && slotOf[p.id] >= 0) {
+        const slot = slotOf[p.id];
+        const last = --m.count;
+        if (slot !== last) {
+          arr.copyWithin(slot * 16, last * 16, last * 16 + 16);
+          idOf[slot] = idOf[last];
+          slotOf[idOf[slot]] = slot;
+        }
+        slotOf[p.id] = -1;
+      }
+      m.visible = m.count > 0;
       m.instanceMatrix.needsUpdate = true;
     }
     if (lightOf[p.id] >= 0) opts.onLamp?.(lightOf[p.id], !broken);

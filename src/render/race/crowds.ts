@@ -5,8 +5,8 @@
  * thinning back among the parked cars. Never on the route. They are the
  * game's people (render/people/person.ts) at the crowd level of detail, in
  * street clothes from the shared wardrobe, some with a phone, a flag or a
- * glowstick: one InstancedMesh per stand, plus the far level drawn instead
- * beyond LOD_NEAR; sections past the draw distance are not drawn at all, and
+ * glowstick: one InstancedMesh per batch of BATCH people along the stand (sorted along its axis, so each batch is a compact patch with its own frustum culling and level of detail), plus the far level drawn instead
+ * beyond the quality's lodNear; sections past the draw distance are not drawn at all, and
  * density and draw distance follow the graphics quality.
  *
  * Animation is all in the vertex shader: the person's pose is computed per
@@ -59,11 +59,11 @@ export interface CrowdSpot {
   kind: 'gate' | 'section';
 }
 
-/** Spectators per graphics quality: density scale and rows deep along the start and finish. */
-export const CROWD_QUALITY: Record<Quality, { density: number; rows: number }> = {
-  low: { density: 0.55, rows: 2 },
-  medium: { density: 0.8, rows: 2 },
-  high: { density: 1, rows: 3 },
+/** Spectators per graphics quality: density scale, rows deep along the start and finish, and the distance (m) inside which a batch draws the full person. */
+export const CROWD_QUALITY: Record<Quality, { density: number; rows: number; lodNear: number }> = {
+  low: { density: 0.55, rows: 2, lodNear: 25 },
+  medium: { density: 0.8, rows: 2, lodNear: 35 },
+  high: { density: 1, rows: 3, lodNear: 45 },
 };
 
 export interface CrowdOptions {
@@ -75,6 +75,8 @@ export interface CrowdOptions {
   meet?: MeetPlan;
   /** Sections further than this from the camera are not drawn (m). */
   drawDistance?: number;
+  /** A batch nearer than this to the camera (m, from its edge) draws the full person, further the far level. */
+  lodNear?: number;
   /** More sections that belong to the city rather than to a meet (the night market's pens, marketPlan.ts), drawn like a meet's. */
   sections?: readonly (readonly MeetPerson[])[];
 }
@@ -102,8 +104,10 @@ export interface Crowds {
  * only ones whose dodge anyone sees, and a longer uniform loop runs for every crowd vertex.
  */
 const MAX_CARS = 4;
-/** Stands further than this from the camera (m, from their edge) draw the far level instead. */
-const LOD_NEAR = 45;
+/** People per batch: a stand is cut into runs of this many along its axis, each culled and level-of-detailed on its own. */
+const BATCH = 48;
+/** A batch switches level only this far (m) past lodNear, so people do not pop at the line. */
+const LOD_HYST = 4;
 /** A meet with fewer people than this gets no stand. */
 const SECTION_MIN = 6;
 /** A racer this close excites people (m). */
@@ -358,13 +362,24 @@ function placeGate(world: World, gate: CrowdGate, rng: Rng, density: number, row
 
 // ---------------------------------------------------------------------------
 
+/** A run of a stand's people drawn as one InstancedMesh, with the far stand-in sharing its instance data. */
+interface Batch {
+  mesh: THREE.InstancedMesh;
+  lite: THREE.InstancedMesh;
+  excite: THREE.InstancedBufferAttribute;
+  cx: number;
+  cz: number;
+  radius: number;
+  /** Whether the full person was drawn last update (hysteresis). */
+  near: boolean;
+}
+
 interface Stand {
   /** The gate this stand cheers for, or null for a section (closure or corner). */
   gate: CrowdGate | null;
-  mesh: THREE.InstancedMesh;
-  /** The far stand-in, sharing the instance data. */
-  lite: THREE.InstancedMesh;
-  excite: THREE.InstancedBufferAttribute;
+  batches: Batch[];
+  /** Per-person excitement for the whole stand; each batch's attribute is a view of a run of it. */
+  excite: Float32Array;
   x: Float32Array;
   z: Float32Array;
   ds: Float32Array;
@@ -385,6 +400,7 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
   const density = opts.density ?? 1;
   const rows = opts.rows ?? 3;
   const drawDistance = opts.drawDistance ?? 260;
+  const lodNear = opts.lodNear ?? CROWD_QUALITY.high.lodNear;
   const rng = new Rng((world.seed ^ 0xc40d) >>> 0);
   const geo = personGeometry('crowd');
   const liteGeo = personGeometry('far');
@@ -396,19 +412,20 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
   const placer = makePlacer(world);
   let total = 0;
 
-  const addStand = (gate: CrowdGate | null, people: Spot[]) => {
-    const n = people.length;
-    // Instance attributes live on a per stand geometry that shares the person's vertex buffers.
-    const g = new THREE.BufferGeometry();
-    for (const name of Object.keys(geo.attributes)) g.setAttribute(name, geo.attributes[name]);
-    g.setIndex(geo.index);
-    g.boundingSphere = geo.boundingSphere!.clone();
+  const addStand = (gate: CrowdGate | null, input: Spot[]) => {
+    const n = input.length;
+    // Sort along the stand's axis (route distance for gates, the section's first to last direction) so every batch is a compact patch.
+    const ax = input[0].x;
+    const az = input[0].z;
+    const ux = input[n - 1].x - ax;
+    const uz = input[n - 1].z - az;
+    const along = (p: Spot) => (gate ? p.ds : (p.x - ax) * ux + (p.z - az) * uz);
+    const people = input.slice().sort((p, q) => along(p) - along(q));
     const lookA = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);
     const lookB = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);
     const data = new Float32Array(n * 4);
-    const excite = new THREE.InstancedBufferAttribute(new Float32Array(n), 1).setUsage(THREE.DynamicDrawUsage);
-    const mesh = new THREE.InstancedMesh(g, mat, n);
-    mesh.name = gate ? 'crowd' : 'crowdSection';
+    const matrices = new Float32Array(n * 16);
+    const excite = new Float32Array(n);
     const x = new Float32Array(n);
     const z = new Float32Array(n);
     const ds = new Float32Array(n);
@@ -418,17 +435,13 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
     // Audio stand ends: gates per side, along the route; sections along their first wall's direction.
     const sides = gate ? 2 : 1;
     const ends = Array.from({ length: sides }, () => ({ lo: Infinity, hi: -Infinity, a: [0, 0], b: [0, 0] }));
-    const ax = people[0].x;
-    const az = people[0].z;
-    const ux = people[n - 1].x - ax;
-    const uz = people[n - 1].z - az;
     people.forEach((p, i) => {
       dummy.position.set(p.x, p.y, p.z);
       dummy.rotation.set(0, p.yaw, 0);
       const s = rng.range(0.9, 1.08);
       dummy.scale.set(s * rng.range(0.92, 1.15), s, s);
       dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
+      dummy.matrix.toArray(matrices, i * 16);
       const look = streetLook(() => rng.next());
       const r = rng.next();
       // Items: about 22% phones, 10% flags, 10% glowsticks.
@@ -441,7 +454,7 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
       ds[i] = p.ds;
       spot[i] = p.side;
       const e = ends[p.side];
-      const t = gate ? p.ds : (p.x - ax) * ux + (p.z - az) * uz;
+      const t = along(p);
       if (t < e.lo) {
         e.lo = t;
         e.a = [p.x, p.z];
@@ -453,40 +466,68 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
       cx += p.x;
       cz += p.z;
     });
-    const iData = new THREE.InstancedBufferAttribute(data, 4);
-    g.setAttribute('lookA', lookA);
-    g.setAttribute('lookB', lookB);
-    g.setAttribute('iData', iData);
-    g.setAttribute('iExcite', excite);
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.computeBoundingSphere();
-    group.add(mesh);
-    // The stand-in shares the instance buffers, so excitement and placement stay in step.
-    const gl = new THREE.BufferGeometry();
-    for (const name of Object.keys(liteGeo.attributes)) gl.setAttribute(name, liteGeo.attributes[name]);
-    gl.setIndex(liteGeo.index);
-    gl.boundingSphere = liteGeo.boundingSphere!.clone();
-    gl.setAttribute('lookA', lookA);
-    gl.setAttribute('lookB', lookB);
-    gl.setAttribute('iData', iData);
-    gl.setAttribute('iExcite', excite);
-    const lite = new THREE.InstancedMesh(gl, mat, n);
-    lite.name = mesh.name + 'Far';
-    lite.instanceMatrix = mesh.instanceMatrix;
-    lite.boundingSphere = mesh.boundingSphere?.clone() ?? null;
-    lite.visible = false;
-    group.add(lite);
     cx /= n;
     cz /= n;
     let radius = 0;
     for (let i = 0; i < n; i++) radius = Math.max(radius, Math.hypot(x[i] - cx, z[i] - cz));
+    // Batches: each gets its own meshes whose instance attributes are views of the stand's arrays, so the update writes one array.
+    const batches: Batch[] = [];
+    for (let s0 = 0; s0 < n; s0 += BATCH) {
+      const m = Math.min(BATCH, n - s0);
+      const view = (arr: Float32Array, size: number) => new THREE.InstancedBufferAttribute(arr.subarray(s0 * size, (s0 + m) * size), size);
+      const bExcite = view(excite, 1).setUsage(THREE.DynamicDrawUsage);
+      const bA = view(lookA.array as Float32Array, 4);
+      const bB = view(lookB.array as Float32Array, 4);
+      const bData = view(data, 4);
+      // Instance attributes live on a per batch geometry that shares the person's vertex buffers.
+      const g = new THREE.BufferGeometry();
+      for (const name of Object.keys(geo.attributes)) g.setAttribute(name, geo.attributes[name]);
+      g.setIndex(geo.index);
+      g.boundingSphere = geo.boundingSphere!.clone();
+      g.setAttribute('lookA', bA);
+      g.setAttribute('lookB', bB);
+      g.setAttribute('iData', bData);
+      g.setAttribute('iExcite', bExcite);
+      const mesh = new THREE.InstancedMesh(g, mat, m);
+      mesh.name = gate ? 'crowd' : 'crowdSection';
+      mesh.instanceMatrix = view(matrices, 16);
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.computeBoundingSphere();
+      group.add(mesh);
+      // The stand-in shares the instance buffers, so excitement and placement stay in step.
+      const gl = new THREE.BufferGeometry();
+      for (const name of Object.keys(liteGeo.attributes)) gl.setAttribute(name, liteGeo.attributes[name]);
+      gl.setIndex(liteGeo.index);
+      gl.boundingSphere = liteGeo.boundingSphere!.clone();
+      gl.setAttribute('lookA', bA);
+      gl.setAttribute('lookB', bB);
+      gl.setAttribute('iData', bData);
+      gl.setAttribute('iExcite', bExcite);
+      const lite = new THREE.InstancedMesh(gl, mat, m);
+      lite.name = mesh.name + 'Far';
+      lite.instanceMatrix = mesh.instanceMatrix;
+      lite.boundingSphere = mesh.boundingSphere?.clone() ?? null;
+      lite.visible = false;
+      group.add(lite);
+      let bx = 0;
+      let bz = 0;
+      for (let i = s0; i < s0 + m; i++) {
+        bx += x[i];
+        bz += z[i];
+      }
+      bx /= m;
+      bz /= m;
+      let br = 0;
+      for (let i = s0; i < s0 + m; i++) br = Math.max(br, Math.hypot(x[i] - bx, z[i] - bz));
+      batches.push({ mesh, lite, excite: bExcite, cx: bx, cz: bz, radius: br, near: false });
+    }
     const spot0 = spots.length;
     for (const e of ends) {
       // A side without people still gets a (silent) spot so indices stay fixed.
       if (e.lo > e.hi) e.a = e.b = [cx, cz];
       spots.push({ ax: e.a[0], az: e.a[1], bx: e.b[0], bz: e.b[1], level: 0, kind: gate ? 'gate' : 'section' });
     }
-    stands.push({ gate, mesh, lite, excite, x, z, ds, spot, cx, cz, radius, waves: [], maxE: 0, spot0 });
+    stands.push({ gate, batches, excite, x, z, ds, spot, cx, cz, radius, waves: [], maxE: 0, spot0 });
     total += n;
   };
 
@@ -511,7 +552,7 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
   // The menu backdrop never calls update(): keep the idle animation going from the render clock.
   let externalAt = -1;
   if (stands.length) {
-    stands[0].mesh.onBeforeRender = stands[0].lite.onBeforeRender = () => {
+    stands[0].batches[0].mesh.onBeforeRender = stands[0].batches[0].lite.onBeforeRender = () => {
       if (externalAt < 0 || performance.now() - externalAt > 500) uniforms.uTime.value = performance.now() / 1000;
     };
   }
@@ -561,12 +602,15 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
     const r2 = CHEER_RADIUS * CHEER_RADIUS;
     for (const cr of stands) {
       // Sections far from the camera are not drawn (gates always are: the cinematics look at them);
-      // beyond LOD_NEAR the few-box stand-in is drawn instead.
+      // beyond lodNear the few-box stand-in is drawn instead, decided per batch with a little hysteresis.
       const camD = Math.hypot(lx - cr.cx, lz - cr.cz) - cr.radius;
-      const shown = !!cr.gate || camD < drawDistance;
-      const near = camD < LOD_NEAR;
-      cr.mesh.visible = shown && near;
-      cr.lite.visible = shown && !near;
+      for (const b of cr.batches) {
+        const bd = Math.hypot(lx - b.cx, lz - b.cz) - b.radius;
+        const shown = !!cr.gate || bd < drawDistance;
+        b.near = bd < lodNear + (b.near ? LOD_HYST : -LOD_HYST);
+        b.mesh.visible = shown && b.near;
+        b.lite.visible = shown && !b.near;
+      }
       // Drop finished waves.
       for (let w = cr.waves.length - 1; w >= 0; w--) {
         const wv = cr.waves[w];
@@ -578,7 +622,7 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
       const listenerNear = camD < 220;
       // Idle and nobody around: nothing to compute.
       if (!carNear && !cr.waves.length && cr.maxE < 0.005) continue;
-      const e = cr.excite.array as Float32Array;
+      const e = cr.excite;
       let maxE = 0;
       for (let i = 0; i < e.length; i++) {
         const px = cr.x[i];
@@ -616,7 +660,7 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
         }
       }
       cr.maxE = maxE;
-      cr.excite.needsUpdate = true;
+      for (const b of cr.batches) b.excite.needsUpdate = true;
     }
     for (let i = 0; i < spots.length; i++) spots[i].level = levelW[i] > 1e-6 ? levelSum[i] / levelW[i] : 0;
   }
@@ -641,10 +685,12 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
     update,
     dispose() {
       for (const c of stands) {
-        c.mesh.geometry.dispose();
-        c.mesh.dispose();
-        c.lite.geometry.dispose();
-        c.lite.dispose();
+        for (const b of c.batches) {
+          b.mesh.geometry.dispose();
+          b.mesh.dispose();
+          b.lite.geometry.dispose();
+          b.lite.dispose();
+        }
       }
       geo.dispose();
       liteGeo.dispose();

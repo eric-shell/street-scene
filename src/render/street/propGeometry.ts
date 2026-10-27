@@ -13,8 +13,14 @@
 import * as THREE from 'three';
 import type { DistrictPropKind, FurnitureKind, Prop } from '../../city/props';
 import { FURNITURE_KINDS } from '../../city/props';
+import type { Quality } from '../../ui/settings';
 import { GeoBuilder } from '../geoBuilder';
 import { FURNITURE_PARTS, PropPartsDef } from './streetFurniture';
+
+/** A parts table entry whose meshes depend on the quality tier (a zero argument builder fits too, as the furniture's do). */
+export interface QualityPartsDef extends Omit<PropPartsDef, 'parts'> {
+  parts: { geo: (q: Quality) => THREE.BufferGeometry; mat: PropPartsDef['parts'][number]['mat']; tint?: boolean }[];
+}
 
 /** Streetlight pole height and arm reach (lamp heads sit at the arm end). Matches cityMeshes lampPositions. */
 export const STREETLIGHT_POLE_H = 8.2;
@@ -30,7 +36,12 @@ export const TRAFFIC_ARM_Y = 5.25;
 // Low poly part builders (local space, vertex colored)
 // ---------------------------------------------------------------------------
 
-function box(gb: GeoBuilder, cx: number, cy: number, cz: number, sx: number, sy: number, sz: number, color: THREE.Color, skipBottom = true): void {
+/** Face bits for `boxFaces`: which sides of a box to emit. */
+const PX = 1, NX = 2, PZ = 4, NZ = 8, PY = 16, NY = 32;
+const ALL_FACES = PX | NX | PZ | NZ | PY | NY;
+
+/** Box from the faces named in `mask` (hidden faces cost triangles at thousands of instances, so builders drop them). */
+function boxFaces(gb: GeoBuilder, cx: number, cy: number, cz: number, sx: number, sy: number, sz: number, color: THREE.Color, mask: number): void {
   const x0 = cx - sx / 2, x1 = cx + sx / 2;
   const y0 = cy - sy / 2, y1 = cy + sy / 2;
   const z0 = cz - sz / 2, z1 = cz + sz / 2;
@@ -38,16 +49,34 @@ function box(gb: GeoBuilder, cx: number, cy: number, cz: number, sx: number, sy:
     const v = pts.map(([x, y, z]) => gb.vertex(x, y, z, n[0], n[1], n[2], 0, 0, color));
     gb.quadFacing(v[0], v[1], v[2], v[3], n[0], n[1], n[2]);
   };
-  face([1, 0, 0], [[x1, y0, z0], [x1, y0, z1], [x1, y1, z1], [x1, y1, z0]]);
-  face([-1, 0, 0], [[x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0]]);
-  face([0, 0, 1], [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]]);
-  face([0, 0, -1], [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0]]);
-  face([0, 1, 0], [[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]]);
-  if (!skipBottom) face([0, -1, 0], [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]]);
+  if (mask & PX) face([1, 0, 0], [[x1, y0, z0], [x1, y0, z1], [x1, y1, z1], [x1, y1, z0]]);
+  if (mask & NX) face([-1, 0, 0], [[x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0]]);
+  if (mask & PZ) face([0, 0, 1], [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]]);
+  if (mask & NZ) face([0, 0, -1], [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0]]);
+  if (mask & PY) face([0, 1, 0], [[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]]);
+  if (mask & NY) face([0, -1, 0], [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]]);
 }
 
-/** Vertical tapered cylinder from y0 to y1 with a top cap. */
-function cyl(gb: GeoBuilder, cx: number, cz: number, y0: number, y1: number, r0: number, r1: number, seg: number, color: THREE.Color): void {
+function box(gb: GeoBuilder, cx: number, cy: number, cz: number, sx: number, sy: number, sz: number, color: THREE.Color, skipBottom = true): void {
+  boxFaces(gb, cx, cy, cz, sx, sy, sz, color, skipBottom ? ALL_FACES & ~NY : ALL_FACES);
+}
+
+/**
+ * A 1-2 cm slab as two opposed quads (4 triangles instead of 10-12) through the box's middle, facing along its
+ * thinnest axis. Seen edge on it vanishes, which is invisible at the distances these props are read from.
+ */
+function plate(gb: GeoBuilder, cx: number, cy: number, cz: number, sx: number, sy: number, sz: number, color: THREE.Color): void {
+  if (sz <= sx && sz <= sy) boxFaces(gb, cx, cy, cz, sx, sy, 0, color, PZ | NZ);
+  else if (sx <= sy) boxFaces(gb, cx, cy, cz, 0, sy, sz, color, PX | NX);
+  else boxFaces(gb, cx, cy, cz, sx, 0, sz, color, PY | NY);
+}
+
+/** Ring segments of the round parts per quality tier (a cylinder never gets more than its own design count). */
+export const PROP_SEGMENTS: Record<Quality, number> = { low: 6, medium: 8, high: 10 };
+
+/** Vertical tapered cylinder from y0 to y1; `cap` adds the top cap (drop it where another part covers the top). */
+function cyl(gb: GeoBuilder, cx: number, cz: number, y0: number, y1: number, r0: number, r1: number, designSeg: number, color: THREE.Color, q: Quality, cap = true): void {
+  const seg = Math.min(designSeg, PROP_SEGMENTS[q]);
   const ring: number[] = [];
   for (let k = 0; k <= seg; k++) {
     const a = (k / seg) * Math.PI * 2;
@@ -59,6 +88,7 @@ function cyl(gb: GeoBuilder, cx: number, cz: number, y0: number, y1: number, r0:
     const a = (k / seg) * Math.PI * 2 + Math.PI / seg;
     gb.quadFacing(ring[k * 2], ring[k * 2 + 2], ring[k * 2 + 3], ring[k * 2 + 1], Math.cos(a), 0, Math.sin(a));
   }
+  if (!cap) return;
   const c = gb.vertex(cx, y1, cz, 0, 1, 0, 0, 0, color);
   const top: number[] = [];
   for (let k = 0; k < seg; k++) {
@@ -72,69 +102,70 @@ export const col = (hex: number, k = 1) => new THREE.Color(hex).multiplyScalar(k
 
 // ---------- District clutter ----------
 
-/** Rounded shrub from two stacked tapered rings (open bottom). */
-function shrub(gb: GeoBuilder, cx: number, cz: number, y0: number, h: number, r: number, color: THREE.Color, seg = 7): void {
-  cyl(gb, cx, cz, y0, y0 + h * 0.45, r * 0.62, r, seg, color);
-  cyl(gb, cx, cz, y0 + h * 0.45, y0 + h, r, r * 0.3, seg, color);
+/** Rounded shrub from two stacked tapered rings (open bottom, no hidden middle cap). */
+function shrub(gb: GeoBuilder, cx: number, cz: number, y0: number, h: number, r: number, color: THREE.Color, q: Quality, seg = 7): void {
+  cyl(gb, cx, cz, y0, y0 + h * 0.45, r * 0.62, r, seg, color, q, false); // the upper ring starts at the same radius and covers this cap
+  cyl(gb, cx, cz, y0 + h * 0.45, y0 + h, r, r * 0.3, seg, color, q);
 }
 
-function bushGeo(): THREE.BufferGeometry {
+function bushGeo(q: Quality): THREE.BufferGeometry {
   const s = new GeoBuilder(true);
-  shrub(s, 0, 0, 0, 1.1, 0.78, col(0x3d7436));
-  shrub(s, 0.32, -0.22, 0, 0.8, 0.5, col(0x335f2e));
-  shrub(s, -0.3, 0.25, 0, 0.7, 0.42, col(0x47823d));
+  shrub(s, 0, 0, 0, 1.1, 0.78, col(0x3d7436), q);
+  shrub(s, 0.32, -0.22, 0, 0.8, 0.5, col(0x335f2e), q);
+  // The third clump is the first to go at Low: the hedge keeps its two big masses.
+  if (q !== 'low') shrub(s, -0.3, 0.25, 0, 0.7, 0.42, col(0x47823d), q);
   return s.build();
 }
 
-function planterPotGeo(): THREE.BufferGeometry {
+function planterPotGeo(q: Quality): THREE.BufferGeometry {
   const s = new GeoBuilder(true);
-  cyl(s, 0, 0, 0, 0.62, 0.42, 0.53, 10, col(0x8a8c94));
-  cyl(s, 0, 0, 0.62, 0.635, 0.47, 0.47, 10, col(0x2a1d14));
-  shrub(s, 0, 0, 0.6, 0.9, 0.5, col(0x3a6e34));
+  cyl(s, 0, 0, 0, 0.62, 0.42, 0.53, 10, col(0x8a8c94), q);
+  cyl(s, 0, 0, 0.62, 0.635, 0.47, 0.47, 10, col(0x2a1d14), q);
+  shrub(s, 0, 0, 0.6, 0.9, 0.5, col(0x3a6e34), q);
   return s.build();
 }
 
 /** Steel bollard: collar, post and a domed cap; the reflective band is a separate glow part. */
-function bollardGeo(): THREE.BufferGeometry {
+function bollardGeo(q: Quality): THREE.BufferGeometry {
   const s = new GeoBuilder(true);
   const steel = col(0x3c4048);
-  cyl(s, 0, 0, 0, 0.1, 0.2, 0.2, 10, col(0x2a2c32));
-  cyl(s, 0, 0, 0.1, 0.9, 0.14, 0.14, 10, steel);
-  cyl(s, 0, 0, 0.9, 1.0, 0.14, 0.09, 10, steel);
+  cyl(s, 0, 0, 0, 0.1, 0.2, 0.2, 10, col(0x2a2c32), q);
+  cyl(s, 0, 0, 0.1, 0.9, 0.14, 0.14, 10, steel, q, false);
+  cyl(s, 0, 0, 0.9, 1.0, 0.14, 0.09, 10, steel, q);
   return s.build();
 }
 
-function bollardBandGeo(): THREE.BufferGeometry {
+function bollardBandGeo(q: Quality): THREE.BufferGeometry {
   const s = new GeoBuilder(true);
-  cyl(s, 0, 0, 0.7, 0.8, 0.145, 0.145, 10, col(0xfff0c0));
+  cyl(s, 0, 0, 0.7, 0.8, 0.145, 0.145, 10, col(0xfff0c0), q);
   return s.build();
 }
 
-function cafeFrameGeo(): THREE.BufferGeometry {
+function cafeFrameGeo(q: Quality): THREE.BufferGeometry {
   const s = new GeoBuilder(true);
   const alu = col(0xb4b8c0);
   const dark = col(0x2a2c32);
-  cyl(s, 0, 0, 0, 0.04, 0.25, 0.25, 8, dark);
-  cyl(s, 0, 0, 0, 0.72, 0.035, 0.035, 6, alu);
-  cyl(s, 0, 0, 0.72, 0.76, 0.38, 0.38, 10, col(0xe6e6e2));
-  cyl(s, 0, 0, 0.76, 2.25, 0.025, 0.025, 6, alu);
+  cyl(s, 0, 0, 0, 0.04, 0.25, 0.25, 8, dark, q);
+  cyl(s, 0, 0, 0, 0.72, 0.035, 0.035, 6, alu, q, false); // under the table top
+  cyl(s, 0, 0, 0.72, 0.76, 0.38, 0.38, 10, col(0xe6e6e2), q);
+  cyl(s, 0, 0, 0.76, 2.25, 0.025, 0.025, 6, alu, q, false); // inside the canopy
   // Bistro chairs: seat, back and two sled frames (one box each side instead of four legs).
   for (const side of [-1, 1]) {
     const x = side * 0.62;
     box(s, x, 0.45, 0, 0.42, 0.04, 0.42, alu, false);
-    for (const lz of [-0.19, 0.19]) box(s, x, 0.22, lz, 0.38, 0.44, 0.025, alu);
+    for (const lz of [-0.19, 0.19]) plate(s, x, 0.22, lz, 0.38, 0.44, 0.025, alu);
     box(s, x + side * 0.2, 0.72, 0, 0.03, 0.5, 0.4, alu, false);
   }
   return s.build();
 }
 
-function cafeCanopyGeo(): THREE.BufferGeometry {
+function cafeCanopyGeo(q: Quality): THREE.BufferGeometry {
   const s = new GeoBuilder(true);
-  cyl(s, 0, 0, 1.86, 2.3, 1.15, 0.06, 8, col(0xffffff));
+  cyl(s, 0, 0, 1.86, 2.3, 1.15, 0.06, 8, col(0xffffff), q);
   return s.build();
 }
 
-function barrelGeo(): THREE.BufferGeometry {
+function barrelGeo(q: Quality): THREE.BufferGeometry {
   const s = new GeoBuilder(true);
   const orange = col(0xff6a1a);
   const white = col(0xe8e8e8);
@@ -145,8 +176,9 @@ function barrelGeo(): THREE.BufferGeometry {
     [0.58, 0.7, white],
     [0.7, 0.93, orange],
   ];
-  for (const [y0, y1, c] of bands) cyl(s, 0, 0, y0, y1, 0.4 - y0 * 0.04, 0.4 - y1 * 0.04, 10, c);
-  cyl(s, 0, 0, 0.93, 0.98, 0.3, 0.28, 10, col(0x1c1d20));
+  // Each band's top is covered by the next band's base; only the last shows (a ring around the lid).
+  bands.forEach(([y0, y1, c], k) => cyl(s, 0, 0, y0, y1, 0.4 - y0 * 0.04, 0.4 - y1 * 0.04, 10, c, q, k === bands.length - 1));
+  cyl(s, 0, 0, 0.93, 0.98, 0.3, 0.28, 10, col(0x1c1d20), q);
   return s.build();
 }
 
@@ -161,14 +193,14 @@ function crateGeo(): THREE.BufferGeometry {
   return s.build();
 }
 
-function dumpsterGeo(): THREE.BufferGeometry {
+function dumpsterGeo(q: Quality): THREE.BufferGeometry {
   const s = new GeoBuilder(true);
   const body = col(0x2f6a46);
   const dark = col(0x1c2a22);
   box(s, 0, 0.72, 0, 1.9, 1.08, 1.15, body);
   box(s, 0, 1.3, -0.04, 1.96, 0.08, 1.22, dark);
   for (const x of [-0.7, 0.7]) box(s, x, 0.72, 0.6, 0.1, 0.9, 0.06, dark);
-  for (const x of [-0.8, 0.8]) for (const z of [-0.45, 0.45]) cyl(s, x, z, 0, 0.18, 0.09, 0.09, 6, col(0x111214));
+  for (const x of [-0.8, 0.8]) for (const z of [-0.45, 0.45]) cyl(s, x, z, 0, 0.18, 0.09, 0.09, 6, col(0x111214), q);
   return s.build();
 }
 
@@ -180,36 +212,42 @@ function newsBoxGeo(): THREE.BufferGeometry {
   return s.build();
 }
 
-function trashBagsGeo(): THREE.BufferGeometry {
+function trashBagsGeo(q: Quality): THREE.BufferGeometry {
   const s = new GeoBuilder(true);
   const bag = col(0x17191c);
-  shrub(s, 0, 0, 0, 0.62, 0.36, bag, 6);
-  shrub(s, 0.42, -0.12, 0, 0.5, 0.3, bag, 6);
-  shrub(s, -0.2, 0.36, 0, 0.45, 0.28, col(0x1f2a1f), 6);
+  shrub(s, 0, 0, 0, 0.62, 0.36, bag, q, 6);
+  shrub(s, 0.42, -0.12, 0, 0.5, 0.3, bag, q, 6);
+  shrub(s, -0.2, 0.36, 0, 0.45, 0.28, col(0x1f2a1f), q, 6);
   return s.build();
 }
 
 // ---------- Construction site pieces (route shortcuts) ----------
 
 /** Temporary fence panel, local +X along the fence: feet, galvanized frame and a chain link grid (banner separate). */
-function fenceFrameGeo(): THREE.BufferGeometry {
+function fenceFrameGeo(q: Quality): THREE.BufferGeometry {
   const s = new GeoBuilder(true);
   const steel = col(0x9aa0a8);
   const wire = col(0x6c727a);
   const foot = col(0x7e8086);
   for (const x of [-1.15, 1.15]) {
     box(s, x, 0.07, 0, 0.26, 0.14, 0.62, foot);
-    box(s, x, 1.08, 0, 0.05, 1.96, 0.05, steel);
+    boxFaces(s, x, 1.08, 0, 0.05, 1.96, 0.05, steel, PX | NX | PZ | NZ); // top and foot are out of sight
   }
-  for (const y of [0.16, 2.04]) box(s, 0, y, 0, 2.36, 0.05, 0.05, steel);
-  for (let k = 1; k < 8; k++) box(s, -1.15 + (2.3 * k) / 8, 1.1, 0, 0.012, 1.86, 0.012, wire);
-  for (let k = 1; k < 7; k++) box(s, 0, 0.16 + (1.88 * k) / 7, 0, 2.3, 0.012, 0.012, wire);
-  // Contractor's livery on the banner (white bands and a dark logo block, both faces), not tinted.
+  // The rails end inside the posts.
+  for (const y of [0.16, 2.04]) boxFaces(s, 0, y, 0, 2.36, 0.05, 0.05, steel, PZ | NZ | PY | NY);
+  // Chain link: single plates (both faces) at 1.2 cm; fewer strands per tier.
+  const vStep = q === 'low' ? 2 : 1;
+  const hStep = q === 'high' ? 1 : 2;
+  for (let k = vStep; k < 8; k += vStep) plate(s, -1.15 + (2.3 * k) / 8, 1.1, 0, 0.012, 1.86, 0.012, wire);
+  for (let k = hStep; k < 7; k += hStep) plate(s, 0, 0.16 + (1.88 * k) / 7, 0, 2.3, 0.012, 0.012, wire);
+  // Contractor's livery on the banner (white bands and a dark logo block, both faces), not tinted. The banner hides the
+  // inner side of each decal, so one outward quad per face does it.
   for (const z of [0.04, -0.04]) {
-    box(s, 0, 1.36, z, 2.24, 0.1, 0.012, col(0xf2f2ee), false);
-    box(s, 0, 0.62, z, 2.24, 0.06, 0.012, col(0xf2f2ee), false);
-    box(s, -0.55, 0.98, z, 0.62, 0.42, 0.012, col(0x1a1c22), false);
-    box(s, 0.38, 0.98, z, 0.9, 0.12, 0.012, col(0xf2f2ee), false);
+    const m = z > 0 ? PZ : NZ;
+    boxFaces(s, 0, 1.36, z, 2.24, 0.1, 0.012, col(0xf2f2ee), m);
+    boxFaces(s, 0, 0.62, z, 2.24, 0.06, 0.012, col(0xf2f2ee), m);
+    boxFaces(s, -0.55, 0.98, z, 0.62, 0.42, 0.012, col(0x1a1c22), m);
+    boxFaces(s, 0.38, 0.98, z, 0.9, 0.12, 0.012, col(0xf2f2ee), m);
   }
   return s.build();
 }
@@ -221,13 +259,13 @@ function fenceBannerGeo(): THREE.BufferGeometry {
   return s.build();
 }
 
-function trafficConeGeo(): THREE.BufferGeometry {
+function trafficConeGeo(q: Quality): THREE.BufferGeometry {
   const s = new GeoBuilder(true);
   const orange = col(0xff5a14);
   box(s, 0, 0.02, 0, 0.44, 0.04, 0.44, col(0x1c1d22));
-  cyl(s, 0, 0, 0.04, 0.36, 0.17, 0.115, 8, orange);
-  cyl(s, 0, 0, 0.36, 0.48, 0.118, 0.092, 8, col(0xf4f4f0));
-  cyl(s, 0, 0, 0.48, 0.74, 0.09, 0.03, 8, orange);
+  cyl(s, 0, 0, 0.04, 0.36, 0.17, 0.115, 8, orange, q, false);
+  cyl(s, 0, 0, 0.36, 0.48, 0.118, 0.092, 8, col(0xf4f4f0), q, false);
+  cyl(s, 0, 0, 0.48, 0.74, 0.09, 0.03, 8, orange, q);
   return s.build();
 }
 
@@ -250,13 +288,13 @@ function sawhorseLampGeo(): THREE.BufferGeometry {
 }
 
 /** Water filled plastic barrier, about 1.8 m long (tinted per instance). */
-function waterBarrierGeo(): THREE.BufferGeometry {
+function waterBarrierGeo(q: Quality): THREE.BufferGeometry {
   const s = new GeoBuilder(true);
   const body = col(0xf4f4f0);
   box(s, 0, 0.17, 0, 1.8, 0.34, 0.6, body);
   box(s, 0, 0.52, 0, 1.76, 0.36, 0.44, body);
   box(s, 0, 0.78, 0, 1.72, 0.16, 0.3, body);
-  for (const x of [-0.55, 0.55]) cyl(s, x, 0, 0.86, 0.9, 0.08, 0.08, 6, col(0x2a2c32));
+  for (const x of [-0.55, 0.55]) cyl(s, x, 0, 0.86, 0.9, 0.08, 0.08, 6, col(0x2a2c32), q);
   return s.build();
 }
 
@@ -286,27 +324,27 @@ function palletsGeo(): THREE.BufferGeometry {
 }
 
 /** Cast iron lantern post: plinth, fluted shaft, collar and a hipped cap over the lantern. */
-function parkLampGeo(): THREE.BufferGeometry {
+function parkLampGeo(q: Quality): THREE.BufferGeometry {
   const s = new GeoBuilder(true);
   const iron = col(0x22252b);
   const Y = PARK_LANTERN_Y;
-  cyl(s, 0, 0, 0, 0.55, 0.2, 0.15, 8, iron);
-  cyl(s, 0, 0, 0.55, Y - 0.42, 0.075, 0.055, 6, iron);
-  cyl(s, 0, 0, Y - 0.42, Y - 0.3, 0.13, 0.16, 8, iron);
+  cyl(s, 0, 0, 0, 0.55, 0.2, 0.15, 8, iron, q);
+  cyl(s, 0, 0, 0.55, Y - 0.42, 0.075, 0.055, 6, iron, q, false);
+  cyl(s, 0, 0, Y - 0.42, Y - 0.3, 0.13, 0.16, 8, iron, q, false); // under the lantern glass
   // Corner bars of the lantern and the cap.
   for (let k = 0; k < 4; k++) {
     const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
-    box(s, Math.cos(a) * 0.2, Y, Math.sin(a) * 0.2, 0.03, 0.62, 0.03, iron);
+    boxFaces(s, Math.cos(a) * 0.2, Y, Math.sin(a) * 0.2, 0.03, 0.62, 0.03, iron, PX | NX | PZ | NZ); // ends sit in the collar and the cap
   }
-  cyl(s, 0, 0, Y + 0.31, Y + 0.36, 0.3, 0.3, 8, iron);
-  cyl(s, 0, 0, Y + 0.36, PARK_LAMP_H, 0.3, 0.04, 8, iron);
+  cyl(s, 0, 0, Y + 0.31, Y + 0.36, 0.3, 0.3, 8, iron, q, false);
+  cyl(s, 0, 0, Y + 0.36, PARK_LAMP_H, 0.3, 0.04, 8, iron, q);
   return s.build();
 }
 
 /** The lantern's glass: a warm bright cylinder between the collar and the cap (blooms). */
-function parkLanternGeo(): THREE.BufferGeometry {
+function parkLanternGeo(q: Quality): THREE.BufferGeometry {
   const s = new GeoBuilder(true);
-  cyl(s, 0, 0, PARK_LANTERN_Y - 0.3, PARK_LANTERN_Y + 0.31, 0.17, 0.2, 8, col(0xffd6a0, 4));
+  cyl(s, 0, 0, PARK_LANTERN_Y - 0.3, PARK_LANTERN_Y + 0.31, 0.17, 0.2, 8, col(0xffd6a0, 4), q);
   return s.build();
 }
 
@@ -335,7 +373,7 @@ function stallFrameGeo(): THREE.BufferGeometry {
 }
 
 /** The goods: a table in a cloth skirt piled with baskets of fruit, crates and a shelf of jars behind. */
-function stallGoodsGeo(): THREE.BufferGeometry {
+function stallGoodsGeo(q: Quality): THREE.BufferGeometry {
   const s = new GeoBuilder(true);
   box(s, 0, 0.8, 0.42, 1.96, 0.06, 0.66, col(0x6a4a30));
   box(s, 0, 0.42, 0.76, 1.96, 0.74, 0.02, col(0x8a1f22), false);
@@ -344,8 +382,8 @@ function stallGoodsGeo(): THREE.BufferGeometry {
   for (let k = 0; k < 5; k++) {
     const x = -0.74 + k * 0.37;
     const z = 0.42 + (k % 2 ? 0.14 : -0.12);
-    cyl(s, x, z, 0.83, 0.93, 0.15, 0.18, 6, col(0x8a6436));
-    cyl(s, x, z, 0.93, 1.03, 0.16, 0.05, 6, col(fruit[k]));
+    cyl(s, x, z, 0.83, 0.93, 0.15, 0.18, 6, col(0x8a6436), q);
+    cyl(s, x, z, 0.93, 1.03, 0.16, 0.05, 6, col(fruit[k]), q);
   }
   box(s, -0.6, 0.25, -0.5, 0.55, 0.5, 0.45, col(0x9a7444));
   box(s, -0.55, 0.7, -0.52, 0.5, 0.4, 0.4, col(0xa88250));
@@ -377,13 +415,13 @@ function stallAwningGeo(): THREE.BufferGeometry {
 }
 
 /** Paper lanterns hung under the awning's front edge: warm and bright, so they bloom. */
-function stallLanternGeo(): THREE.BufferGeometry {
+function stallLanternGeo(q: Quality): THREE.BufferGeometry {
   const s = new GeoBuilder(true);
   const Y = STALL.lanternY;
   [-0.7, 0, 0.7].forEach((x, k) => {
     const c = col(k === 1 ? 0xffa040 : 0xff4a2a, k === 1 ? 3 : 3.4);
-    cyl(s, x, STALL.front + 0.22, Y - 0.16, Y, 0.09, 0.16, 6, c);
-    cyl(s, x, STALL.front + 0.22, Y, Y + 0.16, 0.16, 0.08, 6, c);
+    cyl(s, x, STALL.front + 0.22, Y - 0.16, Y, 0.09, 0.16, 6, c, q);
+    cyl(s, x, STALL.front + 0.22, Y, Y + 0.16, 0.16, 0.08, 6, c, q);
   });
   return s.build();
 }
@@ -416,14 +454,14 @@ function foodCartBodyGeo(): THREE.BufferGeometry {
 }
 
 /** The cart's wheels, steel counter, roof posts and a pot and bowls on the counter. */
-function foodCartDetailGeo(): THREE.BufferGeometry {
+function foodCartDetailGeo(q: Quality): THREE.BufferGeometry {
   const s = new GeoBuilder(true);
   const dark = col(0x17181c);
   for (const x of [-0.5, 0.5]) for (const z of [-0.43, 0.43]) box(s, x, 0.24, z, 0.44, 0.44, 0.06, dark, false);
   box(s, 0, 1.27, 0.12, 1.56, 0.04, 1.0, col(0xb4b8c0));
   for (const x of [-0.82, 0.82]) box(s, x, 1.7, -0.42, 0.05, 0.95, 0.05, col(0x9a9ea6));
-  cyl(s, -0.4, 0.05, 1.29, 1.5, 0.17, 0.17, 7, col(0x5a5c62));
-  cyl(s, 0.35, 0.2, 1.29, 1.38, 0.11, 0.14, 7, col(0xe8e4dc));
+  cyl(s, -0.4, 0.05, 1.29, 1.5, 0.17, 0.17, 7, col(0x5a5c62), q);
+  cyl(s, 0.35, 0.2, 1.29, 1.38, 0.11, 0.14, 7, col(0xe8e4dc), q);
   return s.build();
 }
 
@@ -436,7 +474,7 @@ function foodCartGlowGeo(): THREE.BufferGeometry {
 }
 
 /** Per kind: mesh parts (geometry, material slot, tinted per instance?) and the tints. */
-const CLUTTER: Record<DistrictPropKind, { parts: { geo: () => THREE.BufferGeometry; mat: 'matte' | 'solid' | 'canopy' | 'glow' | 'lamp'; tint?: boolean }[]; tints: number[]; spin: boolean }> = {
+const CLUTTER: Record<DistrictPropKind, { parts: { geo: (q: Quality) => THREE.BufferGeometry; mat: 'matte' | 'solid' | 'canopy' | 'glow' | 'lamp'; tint?: boolean }[]; tints: number[]; spin: boolean }> = {
   bush: { parts: [{ geo: bushGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xd8e8c8, 0xf0ffd8, 0xc8d8b0], spin: true },
   planterPot: { parts: [{ geo: planterPotGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xe8dcd0, 0xd0d8e0], spin: true },
   cafeTable: { parts: [{ geo: cafeFrameGeo, mat: 'solid' }, { geo: cafeCanopyGeo, mat: 'canopy', tint: true }], tints: [0xc81e2e, 0x1d55c4, 0xe8e8ea, 0x2a9d5a, 0xf2b81c, 0x15161a], spin: true },
@@ -468,39 +506,39 @@ const CLUTTER: Record<DistrictPropKind, { parts: { geo: () => THREE.BufferGeomet
   },
 };
 /** Every kind drawn from a parts table: district clutter and the neighbourhood furniture. */
-export const PARTS: Partial<Record<Prop['kind'], PropPartsDef>> = { ...CLUTTER, ...FURNITURE_PARTS };
+export const PARTS: Partial<Record<Prop['kind'], QualityPartsDef>> = { ...CLUTTER, ...FURNITURE_PARTS };
 export const PART_KINDS = Object.keys(PARTS) as Prop['kind'][];
 export const isFurniture = (k: Prop['kind']): k is FurnitureKind => (FURNITURE_KINDS as readonly string[]).includes(k);
 
-export function streetlightGeo(): { solid: THREE.BufferGeometry; lens: THREE.BufferGeometry } {
+export function streetlightGeo(q: Quality): { solid: THREE.BufferGeometry; lens: THREE.BufferGeometry } {
   const s = new GeoBuilder(true);
   const metal = col(0x2a2c33);
   const H = STREETLIGHT_POLE_H;
   const A = STREETLIGHT_ARM;
   box(s, 0, 0.2, 0, 0.34, 0.4, 0.34, col(0x1c1d22));
-  cyl(s, 0, 0, 0, H, 0.13, 0.09, 6, metal);
-  box(s, 0, H - 0.1, A / 2, 0.1, 0.1, A, metal);
+  cyl(s, 0, 0, 0, H, 0.13, 0.09, 6, metal, q, false); // a 9 cm stub top nobody sees from the road
+  boxFaces(s, 0, H - 0.1, A / 2, 0.1, 0.1, A, metal, PX | NX | PZ | PY); // the root end is inside the pole
   box(s, 0, H - 0.25, A, 0.45, 0.16, 0.9, metal, false);
   const l = new GeoBuilder(true);
   box(l, 0, H - 0.34, A, 0.36, 0.04, 0.75, col(0xffc27a, 4), false);
   return { solid: s.build(), lens: l.build() };
 }
 
-export function stumpGeo(): THREE.BufferGeometry {
+export function stumpGeo(q: Quality): THREE.BufferGeometry {
   const s = new GeoBuilder(true);
   box(s, 0, 0.2, 0, 0.34, 0.4, 0.34, col(0x1c1d22));
-  cyl(s, 0, 0, 0, STUMP_H, 0.14, 0.12, 6, col(0x2a2c33));
+  cyl(s, 0, 0, 0, STUMP_H, 0.14, 0.12, 6, col(0x2a2c33), q);
   // Torn top: a few bent shards.
   box(s, 0.05, STUMP_H + 0.06, 0.02, 0.05, 0.16, 0.08, col(0x3a3c44));
   box(s, -0.06, STUMP_H + 0.03, -0.04, 0.06, 0.1, 0.05, col(0x3a3c44));
   return s.build();
 }
 
-export function trafficPoleGeo(): THREE.BufferGeometry {
+export function trafficPoleGeo(q: Quality): THREE.BufferGeometry {
   const s = new GeoBuilder(true);
   const metal = col(0x3a3d44);
   box(s, 0, 0.2, 0, 0.4, 0.4, 0.4, col(0x1c1d22));
-  cyl(s, 0, 0, 0, TRAFFIC_POLE_H, 0.15, 0.11, 7, metal);
+  cyl(s, 0, 0, 0, TRAFFIC_POLE_H, 0.15, 0.11, 7, metal, q);
   return s.build();
 }
 
@@ -546,19 +584,21 @@ export function trafficLensGeo(): THREE.BufferGeometry {
   return g;
 }
 
-export function canGeo(): THREE.BufferGeometry {
+export function canGeo(q: Quality): THREE.BufferGeometry {
   const s = new GeoBuilder(true);
-  cyl(s, 0, 0, 0, 0.9, 0.27, 0.31, 8, col(0xa8b0b0));
-  cyl(s, 0, 0, 0.55, 0.62, 0.315, 0.315, 8, col(0x55595e));
-  cyl(s, 0, 0, 0.9, 0.97, 0.335, 0.3, 8, col(0x30343a));
+  cyl(s, 0, 0, 0, 0.9, 0.27, 0.31, 8, col(0xa8b0b0), q, false); // the lid sits over its top
+  cyl(s, 0, 0, 0.55, 0.62, 0.315, 0.315, 8, col(0x55595e), q, false);
+  cyl(s, 0, 0, 0.9, 0.97, 0.335, 0.3, 8, col(0x30343a), q);
   return s.build();
 }
 
-export function benchGeo(): THREE.BufferGeometry {
+export function benchGeo(q: Quality): THREE.BufferGeometry {
   const s = new GeoBuilder(true);
   const wood = col(0x7a5434);
   const iron = col(0x1a1b1f);
-  for (const z of [-0.14, 0, 0.14]) box(s, 0, 0.46, z, 1.8, 0.04, 0.12, wood, false);
+  // Three slats with 2 cm gaps read as one slab from the road: one box at Medium and Low.
+  if (q === 'high') for (const z of [-0.14, 0, 0.14]) box(s, 0, 0.46, z, 1.8, 0.04, 0.12, wood, false);
+  else box(s, 0, 0.46, 0, 1.8, 0.04, 0.4, wood);
   for (const y of [0.64, 0.82]) box(s, 0, y, -0.25, 1.8, 0.13, 0.04, wood, false);
   for (const x of [-0.75, 0.75]) {
     box(s, x, 0.22, 0, 0.06, 0.44, 0.44, iron);

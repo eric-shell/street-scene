@@ -21,12 +21,17 @@
  * Everything stands behind the sim's wall line (the side opposite its
  * normal): the wall face is the collision. Merged into the kit's solid and
  * glow builders, so the walls cost no draw calls. Low keeps the plain box.
+ *
+ * Bodies and copings are drawn per span, not per 1 m sample: consecutive samples of a run merge while
+ * they stay straight, short and level (WALL_SPAN, per quality), so a flat run is a few long boxes with
+ * no interior end faces, while a retaining wall on a slope still steps with the ground.
  */
 import * as THREE from 'three';
 import type { Wall } from '../../city/blocks';
 import { planArchitecture, type Region } from '../buildings/architecture';
 import type { DistrictKit } from './kit';
 import { col, cylinder, orientedBox, wallBox } from './kit';
+import type { Quality } from '../../ui/settings';
 
 type Finish = 'brick' | 'stucco' | 'painted' | 'retaining';
 
@@ -112,6 +117,90 @@ const LANTERN_FRAME = col(0x1a1b1f);
 /** The plain box Low keeps. */
 const PLAIN = col(0x4a4c55);
 
+/** How far consecutive 1 m samples of a run merge into one box: longest span (m) and the ground-height spread (m) it may cover, per quality. */
+const WALL_SPAN: Record<Quality, { span: number; tol: number }> = {
+  low: { span: 8, tol: 0.25 },
+  medium: { span: 6, tol: 0.12 },
+  high: { span: 4, tol: 0.06 },
+};
+
+/**
+ * Pier and lantern detail per quality: pier spacing as a multiple of the finish's (1 = the full rhythm) and
+ * piers per lantern (null = the finish's own rhythm). Lanterns thin out but never vanish: they are how the
+ * walls read at night, and the first pier of every run always carries one.
+ */
+const PIER_DETAIL: Record<Quality, { pierEvery: number; lanternEvery: number | null }> = {
+  low: { pierEvery: 2, lanternEvery: 4 },
+  medium: { pierEvery: 1.5, lanternEvery: 3 },
+  high: { pierEvery: 1, lanternEvery: null },
+};
+
+/**
+ * One pier as a single box (10 triangles): sides in the pier colour, the top face in the cap stone's, so
+ * the cap costs no second box. The cap's 5 cm overhang is dropped; it cannot be seen from the road.
+ */
+function pierBox(kit: DistrictKit, ax: number, az: number, bx: number, bz: number, ox: number, oz: number, y0: number, y1: number, side: THREE.Color, top: THREE.Color): void {
+  const gb = kit.solid;
+  const pts = [[ax, az], [bx, bz], [bx + ox, bz + oz], [ax + ox, az + oz]];
+  const mx = (ax + bx + ox) / 2;
+  const mz = (az + bz + oz) / 2;
+  for (let i = 0; i < 4; i++) {
+    const p = pts[i];
+    const q = pts[(i + 1) % 4];
+    let nx = q[1] - p[1];
+    let nz = -(q[0] - p[0]);
+    const l = Math.hypot(nx, nz) || 1;
+    nx /= l;
+    nz /= l;
+    if (((p[0] + q[0]) / 2 - mx) * nx + ((p[1] + q[1]) / 2 - mz) * nz < 0) {
+      nx = -nx;
+      nz = -nz;
+    }
+    const sl = Math.hypot(q[0] - p[0], q[1] - p[1]);
+    const a = gb.vertex(p[0], y0, p[1], nx, 0, nz, 0, 0, side);
+    const b = gb.vertex(q[0], y0, q[1], nx, 0, nz, sl / 4, 0, side);
+    const c = gb.vertex(q[0], y1, q[1], nx, 0, nz, sl / 4, (y1 - y0) / 4, side);
+    const d = gb.vertex(p[0], y1, p[1], nx, 0, nz, 0, (y1 - y0) / 4, side);
+    gb.quadFacing(a, b, c, d, nx, 0, nz);
+  }
+  const t = pts.map(([x, z]) => gb.vertex(x, y1, z, 0, 1, 0, x / 4, z / 4, top));
+  gb.quadFacing(t[0], t[1], t[2], t[3], 0, 1, 0);
+}
+
+/**
+ * A run cut into spans: consecutive samples merged while they stay straight (within a few degrees of the
+ * span's first direction), no longer than `span`, and level to within `tol` over every sample end. A span
+ * runs from its first sample's a to its last sample's b and carries the first sample's normal.
+ */
+function spans(kit: DistrictKit, run: readonly Wall[], span: number, tol: number): Wall[] {
+  const out: Wall[] = [];
+  let cur: Wall | null = null;
+  let lo = 0;
+  let hi = 0;
+  for (const w of run) {
+    if (cur) {
+      const cl = Math.hypot(cur.bx - cur.ax, cur.bz - cur.az) || 1;
+      const wl = Math.hypot(w.bx - w.ax, w.bz - w.az) || 1;
+      const cos = ((cur.bx - cur.ax) * (w.bx - w.ax) + (cur.bz - cur.az) * (w.bz - w.az)) / (cl * wl);
+      const h = kit.h(w.bx, w.bz);
+      if (cos > 0.997 && Math.hypot(w.bx - cur.ax, w.bz - cur.az) <= span && Math.max(hi, h) - Math.min(lo, h) < tol && Math.hypot(w.ax - cur.bx, w.az - cur.bz) < 0.05) {
+        cur.bx = w.bx;
+        cur.bz = w.bz;
+        lo = Math.min(lo, h);
+        hi = Math.max(hi, h);
+        continue;
+      }
+    }
+    cur = { ...w };
+    const h0 = kit.h(w.ax, w.az);
+    const h1 = kit.h(w.bx, w.bz);
+    lo = Math.min(h0, h1);
+    hi = Math.max(h0, h1);
+    out.push(cur);
+  }
+  return out;
+}
+
 /** A run's straight stretches: consecutive pieces heading the same way (within a few degrees) as one line. */
 function stretches(run: readonly Wall[]): { ax: number; az: number; bx: number; bz: number; nx: number; nz: number }[] {
   const out: { ax: number; az: number; bx: number; bz: number; nx: number; nz: number }[] = [];
@@ -191,8 +280,9 @@ function regionLookup(kit: DistrictKit): (x: number, z: number) => Region {
 }
 
 export function boundaryWalls(kit: DistrictKit, walls: readonly Wall[]): void {
+  const { span, tol } = WALL_SPAN[kit.quality];
   if (kit.quality === 'low') {
-    for (const w of walls) wallBox(kit, kit.solid, w, 0.35, 1.1, PLAIN);
+    for (const run of chains(walls)) for (const w of spans(kit, run, span, tol)) wallBox(kit, kit.solid, w, 0.35, 1.1, PLAIN);
     return;
   }
   const regionAt = regionLookup(kit);
@@ -218,8 +308,8 @@ export function boundaryWalls(kit: DistrictKit, walls: readonly Wall[]): void {
         stairWalk(kit, st.ax, st.az, (st.bx - st.ax) / len, (st.bz - st.az) / len, st.nx, st.nz, 1.5, len - 1.5);
       }
     }
-    // The body and the coping over it (overhanging both faces a little), segment by segment.
-    for (const w of run) {
+    // The body and the coping over it (overhanging both faces a little), span by span.
+    for (const w of spans(kit, run, span, tol)) {
       wallBox(kit, kit.solid, w, F.thick, F.height, F.body);
       const len = Math.hypot(w.bx - w.ax, w.bz - w.az);
       if (len < 0.05) continue;
@@ -238,7 +328,8 @@ export function boundaryWalls(kit: DistrictKit, walls: readonly Wall[]): void {
     const lens = run.map((w) => Math.hypot(w.bx - w.ax, w.bz - w.az));
     const total = lens.reduce((a, b) => a + b, 0);
     if (total < 0.5) continue;
-    const n = Math.max(1, Math.round(total / F.pierEvery));
+    const n = Math.max(1, Math.round(total / (F.pierEvery * PIER_DETAIL[kit.quality].pierEvery)));
+    const lampEvery = PIER_DETAIL[kit.quality].lanternEvery ?? F.lampEvery;
     for (let k = 0; k <= n; k++) {
       // Distance along the run, the ends pulled in by half a pier so it stays on the wall.
       const s = Math.min(total - F.pierW / 2, Math.max(F.pierW / 2, (total * k) / n));
@@ -260,16 +351,13 @@ export function boundaryWalls(kit: DistrictKit, walls: readonly Wall[]): void {
       const bx = px + tx * hw;
       const bz = pz + tz * hw;
       const deep = F.thick + 0.12;
-      orientedBox(kit.solid, ax, az, bx, bz, -w.nx * deep, -w.nz * deep, ground - 0.3, top, F.pier);
-      // Cap stone, a little wider along the run and behind.
-      orientedBox(kit.solid, ax - tx * 0.05, az - tz * 0.05, bx + tx * 0.05, bz + tz * 0.05, -w.nx * (deep + 0.06), -w.nz * (deep + 0.06), top, top + 0.1, cap);
-      if (k % F.lampEvery !== 0) continue;
-      // A lantern on the cap: dark frame, warm glass.
+      pierBox(kit, ax, az, bx, bz, -w.nx * deep, -w.nz * deep, ground - 0.3, top + 0.1, F.pier, cap);
+      if (k % lampEvery !== 0) continue;
+      // A lantern on the cap: warm glass in a 6-sided cylinder under a dark roof plate.
       const lx = px - w.nx * deep * 0.5;
       const lz = pz - w.nz * deep * 0.5;
-      cylinder(kit.solid, lx, lz, 0.13, top + 0.1, top + 0.16, 4, LANTERN_FRAME);
-      cylinder(kit.glow, lx, lz, 0.1, top + 0.16, top + 0.42, 4, LANTERN);
-      cylinder(kit.solid, lx, lz, 0.15, top + 0.42, top + 0.48, 4, LANTERN_FRAME, true, 0.04);
+      cylinder(kit.glow, lx, lz, 0.1, top + 0.1, top + 0.42, 6, LANTERN, false);
+      orientedBox(kit.solid, lx - tx * 0.14 + w.nx * 0.14, lz - tz * 0.14 + w.nz * 0.14, lx + tx * 0.14 + w.nx * 0.14, lz + tz * 0.14 + w.nz * 0.14, -w.nx * 0.28, -w.nz * 0.28, top + 0.42, top + 0.48, LANTERN_FRAME);
     }
   }
 }

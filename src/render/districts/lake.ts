@@ -508,8 +508,8 @@ function streaks(kit: DistrictKit, lights: readonly { x: number; z: number; k: n
         float camDist = length(toCam);
         vec2 dir = camDist > 0.01 ? toCam / camDist : vec2(0.0, 1.0);
         float reach = min(${LOOK.glintLen.toFixed(1)}, camDist * 0.6);
-        float half = ${LOOK.glintHalf.toFixed(2)} * (1.0 + uv.x * 0.6);
-        vec3 transformed = vec3(position.x + dir.x * uv.x * reach - dir.y * uv.y * half, position.y, position.z + dir.y * uv.x * reach + dir.x * uv.y * half);`,
+        float halfW = ${LOOK.glintHalf.toFixed(2)} * (1.0 + uv.x * 0.6);
+        vec3 transformed = vec3(position.x + dir.x * uv.x * reach - dir.y * uv.y * halfW, position.y, position.z + dir.y * uv.x * reach + dir.x * uv.y * halfW);`,
       )
       .replace(
         '#include <color_vertex>',
