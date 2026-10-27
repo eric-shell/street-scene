@@ -403,13 +403,17 @@ function blimpGeometry(): THREE.BufferGeometry {
       const ub = u0 + ((u1 - u0) * (i + 1)) / bandSegs;
       const pa = ring(ua * rings);
       const pb = ring(ub * rings);
-      const phiTop = Math.PI * 0.47;
-      const phiBot = Math.PI * 0.62;
+      // From the equator to the next lathe ring (a 16 sided envelope: 22.5 degrees), so the band lies flat on one
+      // facet; a wider span cut across the facet corner and sank the text into the hull.
+      const phiTop = Math.PI * 0.5;
+      const phiBot = Math.PI * 0.625;
       const at = (r: number, z: number, phi: number) => [side * r * Math.sin(phi) * 1.004, r * Math.cos(phi) * 1.004, z];
       const n = [side, 0, 0];
-      // Text runs nose to tail on both sides, so one side's u runs the other way.
-      const ta = side > 0 ? i / bandSegs : 1 - i / bandSegs;
-      const tb = side > 0 ? (i + 1) / bandSegs : 1 - (i + 1) / bandSegs;
+      // The text reads left to right on both flanks: a viewer on +x looks along -x, so their right is -z (tail
+      // first) and u runs against z; on -x their right is +z and u runs with it. One flank therefore reads nose to
+      // tail and the other tail to nose, which is what a painted band does.
+      const ta = side > 0 ? 1 - i / bandSegs : i / bandSegs;
+      const tb = side > 0 ? 1 - (i + 1) / bandSegs : (i + 1) / bandSegs;
       const A = at(pa.r, pa.z, phiBot);
       const B = at(pb.r, pb.z, phiBot);
       const C = at(pb.r, pb.z, phiTop);
