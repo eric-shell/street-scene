@@ -13,7 +13,8 @@
  *    multipliers balanced so the five homes together still draw roughly the base weights;
  *  - the fog and the sky's horizon glow lean toward the home's light pollution hue (luminance kept, so a mood's
  *    darkness is its own and moods still differ);
- *  - post.ts grades the frame with the home's lift, gamma, gain, split toning, saturation and grain.
+ *  - post.ts grades the frame with the home's lift, gamma, gain, split toning, saturation and grain;
+ *  - routeNearness.ts sets how hard the race route stands out as the main drag (denser, brighter dressing on it).
  * Art direction is "sodium and neon": the city warm, grimy and lived in, the race layer (cyan barriers, amber
  * hazards, neon) cold and electric. The grade protects saturated colour, so it falls on the city, not on them.
  *
@@ -45,6 +46,11 @@ export interface HomeProfile {
   tint: { hue: number; fog: number; glow: number };
   /** The colour grade (post.ts FxShader). */
   grade: GradeParams;
+  /**
+   * How loud the main drag reads against the side streets (street/routeNearness.ts): 1 applies the DRAG knobs as
+   * written, 0 would make every street alike. Miami and New York shout, San Francisco and Philadelphia only lean.
+   */
+  drag: number;
 }
 
 /**
@@ -71,6 +77,7 @@ export const HOME_PROFILES = {
       saturation: 0.92,
       grain: 0.06,
     },
+    drag: 1.2,
   },
   /** Warm white modern lamps, pastel magenta-cyan neon, clear or hazy; lifted violet shadows, warm highlights. */
   la: {
@@ -89,6 +96,7 @@ export const HOME_PROFILES = {
       saturation: 0.96,
       grain: 0.04,
     },
+    drag: 1,
   },
   /** Cool white historic lamps (an LED city when the twist goes city-wide), white-blue neon, mist; a cool grade. */
   sf: {
@@ -107,6 +115,7 @@ export const HOME_PROFILES = {
       saturation: 0.9,
       grain: 0.05,
     },
+    drag: 0.7,
   },
   /** Sodium historic lamps, amber-red neon, drizzle and rain; green-amber grit, the grainiest and least saturated. */
   philly: {
@@ -125,6 +134,7 @@ export const HOME_PROFILES = {
       saturation: 0.86,
       grain: 0.09,
     },
+    drag: 0.75,
   },
   /** Warm white modern lamps, pastel magenta-cyan neon, haze or clear; pink shadows, teal highlights, a touch more colour. */
   miami: {
@@ -143,6 +153,7 @@ export const HOME_PROFILES = {
       saturation: 1.04,
       grain: 0.03,
     },
+    drag: 1.3,
   },
 } as const satisfies Record<Region, HomeProfile>;
 
