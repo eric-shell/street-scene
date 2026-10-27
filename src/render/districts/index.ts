@@ -11,6 +11,7 @@ import type { Quality } from '../../ui/settings';
 import { TICK_HZ } from '../../sim/constants';
 import { GeoBuilder } from '../geoBuilder';
 import { fadeSubPixel } from '../materialFx';
+import { bakeOcclusion, occlusionFor, occlusionMaterial } from '../street/bakedOcclusion';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { treeMaterial } from './trees';
 import { alleyRenderer } from './alley';
@@ -124,7 +125,9 @@ export function buildDistrictMeshes(world: World, opts: DistrictMeshOpts = {}): 
     m.renderOrder = order;
     group.add(m);
   };
-  add(kit.ground, 'districtGround', new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, envMapIntensity: 0.5, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
+  // The ground under the El's deck (its yard through the blocks), the lots and plazas along facades: baked occlusion (street/bakedOcclusion.ts).
+  bakeOcclusion(kit.ground, occlusionFor(world));
+  add(kit.ground, 'districtGround', occlusionMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, envMapIntensity: 0.5, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })));
   add(kit.paint, 'districtPaint', new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, emissive: 0x111216, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
   add(kit.solid, 'districtSolid', new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, envMapIntensity: 0.5 }));
   add(kit.foliage, 'districtFoliage', new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, flatShading: true }));
