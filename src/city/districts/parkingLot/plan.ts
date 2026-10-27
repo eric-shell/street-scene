@@ -9,8 +9,9 @@
  * route edge and it keeps routeNodeClear from every route node and routeEdgeClear from the route's streets.
  * A route's closed side streets all start at route nodes and its barriers and street meets
  * (render/race/meetPlan.ts) stand in them, so a lot near a node could front a meet; the circuit and the
- * sprint are the planned routes (PlanContext.event), the drag strip stays off the streets the lots cut
- * (world.ts stripStreet), and the waypoint race is an open world with no barriers.
+ * sprint are the planned routes (PlanContext.event), the drag strip is the one the finished city will pick (picked
+ * here the same way, dragStrip.ts, from the districts planned so far; the lots move nothing it depends on), and the
+ * waypoint race is an open world with no barriers.
  * How many: one to three per seed by the weights in PARKING_LOT, picked among the sites by weight (the
  * edge of downtown, near a harbor, night market, monument or car park: the places people park to go to),
  * never two on blocks sharing a street.
@@ -27,19 +28,23 @@
  * busBays.ts mouthBay, each the sidewalk deep with flared returns), and up to PARKING_LOT.cut.extra of the
  * other long street sides one cut each: that is what makes a corner lot a way through a corner. All the
  * numbers are written into the area's params (see layout.ts for the names), so nothing needs the graph
- * again later. The cut streets are claimed, so no lane closure is planned on them.
+ * again later. The lots are planned last, after the lane closures, and claim nothing (no face, no edge): planning one never
+ * moves another module's draws, so a seed's other districts and its drag strip are the same with or without the lots; a cut
+ * never opens onto a street a closure is planned on.
  */
 import { PARKING_LOT as C } from '../../config';
 import type { BlockFace } from '../../blocks';
 import { computeMouths } from '../../blocks';
 import { edgeSides } from '../../props';
-import { isRiverEdge, downtownFactor } from '../../roadGraph';
+import { downtownFactor, edgeBetween, isRiverEdge } from '../../roadGraph';
 import { type Terrain, createTerrain } from '../../terrain';
+import { stripEdgeOk } from '../../dragStrip';
+import { findDragNodes } from '../../routeSearch';
 import { type Vec2, abs, distToSegment, exp, sqrt } from '../../../sim/math';
 import { Rng, deriveSeed } from '../../../sim/prng';
 import { clipConvex, distToPolygonEdge, pointInPolygon, polygonArea, polygonBounds, polygonCentroid } from '../geom';
 import { convexRing } from '../park';
-import type { Area, PlanContext } from '../types';
+import { AREA_PRIORITY, type Area, type PlanContext } from '../types';
 import { lotChord } from './layout';
 
 /** A lot shaped on a block: its polygon, the numbers planned into the area's params, the streets its cuts are on. */
@@ -76,8 +81,35 @@ export function planParkingLots(ctx: PlanContext): void {
     for (const n of r.nodes) route.nodes.add(n);
     for (const e of r.edges) route.edges.add(e);
   }
+  // The drag strip the finished city will pick (it is picked from the streets the districts leave, and the lots leave them as
+  // they are): kept off like a route, so a drag race never has a lot at its junctions.
+  const boxes = ctx.areas.filter((a) => a.polygon.length >= 3).map((a) => ({ a, bb: polygonBounds(a.polygon) }));
+  const areaAt = (x: number, z: number): Area | null => {
+    let best: Area | null = null;
+    for (const { a, bb } of boxes) {
+      if (x < bb.minX || x > bb.maxX || z < bb.minZ || z > bb.maxZ || !pointInPolygon(x, z, a.polygon)) continue;
+      if (!best || AREA_PRIORITY[a.kind] > AREA_PRIORITY[best.kind] || (AREA_PRIORITY[a.kind] === AREA_PRIORITY[best.kind] && a.id >= best.id)) best = a;
+    }
+    return best;
+  };
+  const okCache = new Map<number, boolean>();
+  try {
+    const strip = findDragNodes(g, ctx.seed, (e) => {
+      let ok = okCache.get(e);
+      if (ok === undefined) okCache.set(e, (ok = stripEdgeOk(g, e, ctx.areas, areaAt)));
+      return ok;
+    });
+    for (let i = 0; i < strip.length; i++) {
+      route.nodes.add(strip[i]);
+      if (i > 0) route.edges.add(edgeBetween(g, strip[i - 1], strip[i]));
+    }
+  } catch {
+    // No strip in this city: nothing to keep off.
+  }
   const terrain = createTerrain(ctx.seed);
   const near = ctx.areas.filter((a) => (C.nearKinds as readonly string[]).includes(a.kind) && a.polygon.length >= 3);
+  /** Streets a lane closure is planned on (roadworks.ts, planned before the lots): no cut opens onto one. */
+  const closed = new Set<number>(ctx.areas.filter((a) => a.kind === 'roadworks').map((a) => a.params.edge));
   const others = ctx.areas.filter((a) => a.kind !== 'downtown' && a.polygon.length >= 3);
 
   // Draws first, whatever the sites turn out to be: the stream does not depend on the city's other districts.
@@ -94,7 +126,7 @@ export function planParkingLots(ctx: PlanContext): void {
 
   const sites: { f: BlockFace; weight: number }[] = [];
   for (const f of ctx.faces()) {
-    if (f.outer || ctx.claims.face.has(f.id) || f.area < C.faceArea[0] || f.area > C.faceArea[1] || !convexRing(f.ring)) continue;
+    if (f.outer || (ctx.claims.face.has(f.id) && ctx.areas[ctx.claims.face.get(f.id)!].kind !== 'downtown') || f.area < C.faceArea[0] || f.area > C.faceArea[1] || !convexRing(f.ring)) continue;
     const c = polygonCentroid(f.ring);
     const df = downtownFactor(g.plan, c.x, c.z);
     let weight = C.baseWeight + C.edgeBoost * exp(-(((df - C.edgeAt) / C.edgeWidth) ** 2));
@@ -116,10 +148,9 @@ export function planParkingLots(ctx: PlanContext): void {
     }
     const f = sites[k].f;
     sites.splice(k, 1);
-    const shape = shapeLot(ctx, f, mouths, route, terrain, others);
+    const shape = shapeLot(ctx, f, mouths, route, terrain, others, closed);
     if (!shape) continue;
-    const a = ctx.addArea({ kind: 'parkingLot', variant: shape.strip ? 'strip' : 'block', polygon: shape.polygon, path: [], nodes: [], edges: [], faces: [], params: { ...shape.params, face: f.id } }, 0);
-    for (const e of shape.roads) ctx.claims.edge.set(e, a.id);
+    ctx.addArea({ kind: 'parkingLot', variant: shape.strip ? 'strip' : 'block', polygon: shape.polygon, path: [], nodes: [], edges: [], faces: [], params: { ...shape.params, face: f.id } }, 0);
     made++;
     // Never two lots on blocks that share a street.
     for (let i = sites.length - 1; i >= 0; i--) if (sites[i].f.edges.some((e) => f.edges.includes(e))) sites.splice(i, 1);
@@ -168,19 +199,19 @@ function frontRuns(f: BlockFace): Run[] {
 }
 
 /** Shape a lot on block `f`, or null when no layout of it works. */
-function shapeLot(ctx: PlanContext, f: BlockFace, mouths: ReturnType<typeof computeMouths>, route: RouteSets, terrain: Terrain, others: Area[]): LotShape | null {
+function shapeLot(ctx: PlanContext, f: BlockFace, mouths: ReturnType<typeof computeMouths>, route: RouteSets, terrain: Terrain, others: Area[], closed: ReadonlySet<number>): LotShape | null {
   const rng = new Rng(deriveSeed(ctx.seed, `parkingLot:${f.id}`));
   // Every draw up front, so a rejected front does not shift the next one's.
   const draws = Array.from({ length: 6 }, () => ({ shape: rng.next(), share: rng.next(), cut: rng.next(), extra: [rng.next(), rng.next()], seed: rng.int(1, 0x7ffffffe), occ: rng.range(C.occupancy[0], C.occupancy[1]) }));
   const runs = frontRuns(f);
   for (let k = 0; k < Math.min(runs.length, draws.length); k++) {
-    const shape = shapeOn(ctx, f, runs[k], draws[k], mouths, route, terrain, others);
+    const shape = shapeOn(ctx, f, runs[k], draws[k], mouths, route, terrain, others, closed);
     if (shape) return shape;
   }
   return null;
 }
 
-function shapeOn(ctx: PlanContext, f: BlockFace, run: Run, d: { shape: number; share: number; cut: number; extra: number[]; seed: number; occ: number }, mouths: ReturnType<typeof computeMouths>, route: RouteSets, terrain: Terrain, others: Area[]): LotShape | null {
+function shapeOn(ctx: PlanContext, f: BlockFace, run: Run, d: { shape: number; share: number; cut: number; extra: number[]; seed: number; occ: number }, mouths: ReturnType<typeof computeMouths>, route: RouteSets, terrain: Terrain, others: Area[], closed: ReadonlySet<number>): LotShape | null {
   const g = ctx.graph;
   const ring = f.ring;
   const n = ring.length;
@@ -320,7 +351,7 @@ function shapeOn(ctx: PlanContext, f: BlockFace, run: Run, d: { shape: number; s
     }
     if (seg < 0) return null;
     const road = f.segEdge[seg];
-    if (route.edges.has(road) || route.nodes.has(g.edges[road].a) || route.nodes.has(g.edges[road].b)) return null;
+    if (route.edges.has(road) || route.nodes.has(g.edges[road].a) || route.nodes.has(g.edges[road].b) || closed.has(road)) return null;
     const sd = edgeSides(g, mouths, road);
     const off2 = sd.map((s) => {
       const l = dist(s.from, s.to) || 1;

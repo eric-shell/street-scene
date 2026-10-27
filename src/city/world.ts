@@ -9,6 +9,7 @@ import { RoadGraph, generateRoadGraph, isRiverEdge } from './roadGraph';
 import { PlannedRouteKind, Route, RouteKind, buildRoute } from './route';
 import { BarrierGroup, routeBarrierGroups } from './routeBarriers';
 import { RailWall, routeRails } from './routeRails';
+import { stripEdgeOk } from './dragStrip';
 import { findCircuitNodes, findDragNodes, findSprintNodes, findWaypointNodes } from './routeSearch';
 import { Prop, buildPropGrid } from './props';
 import { SpatialGrid } from './spatial';
@@ -28,7 +29,6 @@ import { highwayGates, settleHighway, settleHighwayWalls } from './districts/hig
 /** Routes tried (the first pick, then alternatives) until one has room for a shortcut. */
 const ROUTE_TRIES = 12;
 import { pointInPolygon, polygonBounds } from './districts/geom';
-import { ROADWORKS } from './districts/roadworks';
 import { Area, DeckSpan, HeightSample, Surface } from './districts/types';
 
 export type { Surface, SurfacePhysics } from './districts/types';
@@ -516,46 +516,13 @@ function closureRails(groups: BarrierGroup[], cornerRails: RailWall[]): RailWall
 }
 
 /**
- * Districts a drag strip keeps off: whatever stands in the street, narrows it or takes it off grade.
- * The El (columns on the sidewalk) and tunnels (full width bores) may stand over a strip; roadworks
- * may close a curb lane beside it (stripStreet).
- */
-const OFF_STRIP = new Set<Area['kind']>(['market', 'river', 'roundabout', 'overpass', 'carPark', 'monument', 'bluff']);
-/** Room a drag car needs from the centerline out to a roadworks closure's barriers (m): its lane plus half a car and a margin. */
-const STRIP_CLEAR = ROUTE.dragLaneOffset + 1.5;
-
-/**
- * Whether a street can be part of the drag strip: no district on its
- * carriageway, sampled every 8 m along it. A street bridge over the river
- * stands in the river's area and is fine.
- */
-function stripStreet(city: City, edge: number): boolean {
-  const g = city.graph;
-  const e = g.edges[edge];
-  const A = g.nodes[e.a];
-  const B = g.nodes[e.b];
-  const steps = Math.max(1, Math.ceil(e.length / 8));
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const a = city.districts.areaAt(A.x + (B.x - A.x) * t, A.z + (B.z - A.z) * t);
-    if (a && OFF_STRIP.has(a.kind) && !(e.bridge && a.kind === 'river')) return false;
-  }
-  // A parking lot's block: its curb cuts open onto these streets, and the closures and meets of a race that turned at one of its
-  // corners would front it (the planned routes keep off it, parkingLot/plan.ts).
-  const lotFace = (a: Area) => city.blocks.faces[a.params.face];
-  if (city.districts.areas.some((a) => a.kind === 'parkingLot' && (lotFace(a).edges.includes(edge) || lotFace(a).corners.some((c) => c.node === e.a || c.node === e.b)))) return false;
-  // A lane closure is fine where its barriers stand clear of the drag lane on their side.
-  return !city.districts.areas.some((a) => a.kind === 'roadworks' && a.params.edge === edge && e.width / 2 - a.params.close - ROADWORKS.barrierReach < STRIP_CLEAR);
-}
-
-/**
  * A route of the city: the planned circuit and sprint as planRoads picked
  * them, the drag strip and the waypoint race picked from the finished city
  * (nothing was carved for them, so they changed no city).
  */
 export function createRoute(city: City, kind: RouteKind): Route {
   const g = city.graph;
-  if (kind === 'drag') return buildRoute(g, kind, findDragNodes(g, city.seed, (e) => stripStreet(city, e)));
+  if (kind === 'drag') return buildRoute(g, kind, findDragNodes(g, city.seed, (e) => stripEdgeOk(g, e, city.districts.areas, city.districts.areaAt)));
   // The districts' race passes (DistrictModule.passes: across the monument plaza, say): every route driving through one takes it.
   const passes = city.districts.areas.flatMap((a) => districtModule(a.kind).passes?.(g, a) ?? []);
   if (kind === 'waypoint') {

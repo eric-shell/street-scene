@@ -42,7 +42,7 @@ import { Rng, deriveSeed } from '../../sim/prng';
 import { PolygonIndex, pointInPolygon, polygonBounds } from './geom';
 import type { Vec2 } from '../../sim/math';
 import type { Area, AreaBuild, AreaKind, BuildContext, Claims, DistrictModule, HeightMod, LateContext, PlanContext, PlannedEvent, SurfacePatch } from './types';
-import { emptyBuild } from './types';
+import { AREA_PRIORITY, emptyBuild } from './types';
 import { riverModule } from './river';
 import { subwayModule } from './subway';
 import { bluffModule } from './bluff';
@@ -83,11 +83,12 @@ export const DISTRICT_MODULES: readonly DistrictModule[] = [
   tunnelModule,
   overpassModule,
   waterfrontModule,
-  // After every module that claims blocks, before downtown takes the rest: a lot is part of a block the others left.
-  parkingLotModule,
   downtownModule,
   infillModule,
   roadworksModule,
+  // Last: a lot is part of a block downtown holds (it claims no face) on streets the lane closures left, and claims no edge, so
+  // planning one never moves what the other modules planned (the closures, and so the drag strip, would shift with it).
+  parkingLotModule,
 ];
 
 export function districtModule(kind: AreaKind): DistrictModule {
@@ -95,30 +96,6 @@ export function districtModule(kind: AreaKind): DistrictModule {
   if (!m) throw new Error(`no district module for ${kind}`);
   return m;
 }
-
-/** areaAt priority: more specific kinds win where footprints overlap. */
-const AREA_PRIORITY: Record<AreaKind, number> = {
-  downtown: 1,
-  hills: 2,
-  park: 3,
-  subway: 4,
-  alley: 5,
-  backAlley: 6,
-  river: 7,
-  roundabout: 8,
-  infill: 9,
-  monument: 10,
-  tunnel: 11,
-  overpass: 4,
-  market: 11,
-  roadworks: 11,
-  bluff: 3,
-  carPark: 11,
-  parkingLot: 8,
-  highway: 4,
-  waterfront: 2,
-  lake: 2,
-};
 
 const RASTER_CELL = 4;
 
