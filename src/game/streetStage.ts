@@ -46,6 +46,7 @@ import type { Settings } from '../ui/settings';
 import type { CarMotion } from '../render/street/props';
 import { CRUISE, Cruise, newPathSample, type CruisePath } from './cruise';
 import { KeyLight } from './keyLight';
+import { LIGHT_RIG } from '../render/lighting';
 
 /**
  * The menu cars against the street's destructibles: a prop goes down when it
@@ -125,7 +126,8 @@ export class StreetStage {
   private readonly seatPoses: CarPose[] = [];
   private loading: Promise<void> = Promise.resolve();
   private loadToken = 0;
-  private readonly carLight = new KeyLight();
+  /** The key light over the player's car; null on a tier whose light rig has none (LIGHT_RIG). */
+  private readonly carLight: KeyLight | null;
   /** The scene is out on loan to a free roam session (lend). */
   private lent = false;
   private readonly sample = newPathSample();
@@ -142,6 +144,8 @@ export class StreetStage {
   private readonly down: number[] = [];
   /** Every car's motion this frame, which way a prop it hits comes apart. */
   private readonly motions: CarMotion[] = [];
+  /** The same cars for the idle people's heads (x, z, speed), rebuilt from the motions each frame. */
+  private readonly idleCars: { x: number; z: number; speed: number }[] = [];
   private readonly hits: number[] = [];
 
   constructor(
@@ -156,7 +160,8 @@ export class StreetStage {
     this.broken = new Uint8Array(world.props.length);
     for (const id of world.coveredProps ?? []) this.broken[id] = 2;
     this.s = this.path.wrap(this.path.nearest(...startPoint(world.route)) - CRUISE.startBack);
-    this.night.scene.add(this.carLight);
+    this.carLight = LIGHT_RIG[settings.quality].keyLight ? new KeyLight() : null;
+    if (this.carLight) this.night.scene.add(this.carLight);
     this.place(0);
   }
 
@@ -174,7 +179,7 @@ export class StreetStage {
     if (this.lead.view) this.lead.view.root.visible = false;
     // The drivers go with their cars: the stage stops placing them while lent, so they would sit where the convoy was.
     this.drivers.group.visible = false;
-    this.carLight.visible = false;
+    if (this.carLight) this.carLight.visible = false;
     const n = this.night;
     n.crowds.setEnabled(false);
     n.roadblocks.group.visible = false;
@@ -197,7 +202,7 @@ export class StreetStage {
     n.props.update(0, this.time, this.broken, []);
     if (this.lead.view) this.lead.view.root.visible = true;
     this.drivers.group.visible = true;
-    this.carLight.visible = true;
+    if (this.carLight) this.carLight.visible = true;
     this.place(0);
   }
 
@@ -364,12 +369,18 @@ export class StreetStage {
     this.place(dt);
     const p = this.pose;
     // The key light rides with the car, as in a race.
-    this.carLight.follow(p);
+    this.carLight?.follow(p);
     this.night.lighting.update(opts.focus ?? this.focus.set(p.x, p.y, p.z));
     this.night.update(this.time);
     // The street furniture's own clock: the traffic signals, the props the cars knock over, debris and spray.
     this.knockProps();
     this.night.props.update(dt, this.time, this.broken, this.motions);
+    // The idle people turn their heads for the passing cars and keep their level of detail around the car the camera follows.
+    const ic = this.idleCars;
+    ic.length = this.motions.length;
+    this.motions.forEach((m, i) => (ic[i] = { x: m.x, z: m.z, speed: Math.hypot(m.vx, m.vz) }));
+    const f = opts.focus ?? this.focus;
+    this.night.idlers.update(this.time, ic, f.x, f.z);
   }
 
   /** Knock down the props the cars touch this frame, and stand up the ones every car has left behind. */

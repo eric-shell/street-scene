@@ -14,6 +14,7 @@ import { Rng } from '../../sim/prng';
 import { GeoBuilder } from '../geoBuilder';
 import { kelvin } from '../textures/textures';
 import { DETAIL, type Detail } from './buildingKit';
+import type { ShopFront } from '../people/idleSpots';
 
 /** Ground floor bay variants: the first eight in atlas row 0, the residential and regional ones in row 2. */
 export const GROUND_BAYS = ['shopWarm', 'shopCool', 'arch', 'lobby', 'shutter', 'restaurant', 'masonry', 'neonShop', 'stoop', 'garage', 'arcade', 'bodega', 'decoShop'] as const;
@@ -467,10 +468,12 @@ export interface PodiumOutput {
   spill: GeoBuilder;
   /** Mullion form per graphics tier: a lone front plate or an open-backed box. */
   mullion: 'plate' | 'box';
+  /** Lit ground bays (shops, restaurants, bodegas) with their outward normal: where the idle people stand (people/idleSpots.ts). */
+  shopFronts: ShopFront[];
 }
 
 export function createPodiumOutput(detail: Detail = 'medium'): PodiumOutput {
-  return { walls: new GeoBuilder(true), trim: new GeoBuilder(true), awnings: new GeoBuilder(true), spill: new GeoBuilder(true), mullion: DETAIL[detail].mullion };
+  return { walls: new GeoBuilder(true), trim: new GeoBuilder(true), awnings: new GeoBuilder(true), spill: new GeoBuilder(true), mullion: DETAIL[detail].mullion, shopFronts: [] };
 }
 
 const AWNING_COLORS = [0x8a1c2b, 0x1c4a8a, 0x1f6b3a, 0x7a5a12, 0x5a1f7a, 0x222222].map((c) => new THREE.Color(c));
@@ -713,6 +716,7 @@ export function addPodiumFace(out: PodiumOutput, f: PodiumFace, floors: number, 
     const name = GROUND_BAYS[variants[b]];
     const mx = l0.ax + ux * (b + 0.5) * bayLen + f.nx * (0.02 + bayExtra[b]);
     const mz = l0.az + uz * (b + 0.5) * bayLen + f.nz * (0.02 + bayExtra[b]);
+    if (name === 'shopWarm' || name === 'shopCool' || name === 'restaurant' || name === 'neonShop' || name === 'bodega') out.shopFronts.push({ x: mx, z: mz, nx: f.nx, nz: f.nz, kind: name });
     if ((name === 'shopWarm' || name === 'restaurant' || name === 'shopCool' || name === 'neonShop') && rng.chance(0.65)) {
       const col = AWNING_COLORS[rng.int(0, AWNING_COLORS.length - 1)];
       const depth = 1.3;

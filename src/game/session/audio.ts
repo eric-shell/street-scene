@@ -73,6 +73,7 @@ export class SessionAudio {
       cc[i].speed = p.speed;
     }
     this.night.crowds.update(time, paused ? 0 : dt, cc, camera.position.x, camera.position.z);
+    this.night.idlers.update(time, cc, camera.position.x, camera.position.z, this.race.brokenProps);
     this.sfx?.updateCrowds(this.night.crowds.spots, paused);
     // A section erupting as racers pass: a burst of cheering and applause from it (at most every few seconds).
     if (!paused) {

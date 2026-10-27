@@ -26,10 +26,11 @@ import { CITY } from '../../city/config';
 import { Rng } from '../../sim/prng';
 import { routeSample } from '../../city/route';
 import { distToSegment } from '../../sim/math';
-import type { Contact } from '../../city/world';
 import type { Quality } from '../../ui/settings';
 import { WEAR, personGeometry, personMaterial, writeLook } from '../people/person';
 import { streetLook } from '../people/looks';
+import { BACK, FWD, groundY, makePlacer, nearestCars, thin } from '../people/placer';
+import type { Placer } from '../people/placer';
 
 /** The gate fields the crowd needs (structurally a FinishGate). */
 export interface CrowdGate {
@@ -114,9 +115,6 @@ const SECTION_MIN = 6;
 const CHEER_RADIUS = 17;
 /** Cheer waves travel along the stands at this speed (m/s). */
 const WAVE_SPEED = 26;
-/** Crowd extent around the line along the route (m): mostly on the approach. */
-const BACK = 58;
-const FWD = 38;
 
 // ---------------------------------------------------------------------------
 // The person's pose from excitement, in the shader
@@ -220,65 +218,6 @@ interface Spot {
   ds: number;
   /** Audio stand of the gate: 0 left of the road, 1 right (sections have one). */
   side: number;
-}
-
-/** Shared placement state for every stand: spacing between everyone placed so far, plus the world checks. */
-function makePlacer(world: World) {
-  const cell = 0.5;
-  const taken = new Map<number, number[]>();
-  const key = (ix: number, iz: number) => (ix + 32768) * 65536 + (iz + 32768);
-  const contacts: Contact[] = [];
-  const near: number[] = [];
-  const route = world.route;
-  return {
-    /** A free standing spot: off the route corridor, not inside a block, not on a prop, clear of everyone else. */
-    ok(x: number, z: number): boolean {
-      const rp = world.routeProgress(x, z);
-      const half = route.segWidth[rp.seg] / 2;
-      const beyondEnds = !route.closed && (rp.s < 0.5 || rp.s > route.length - 0.5);
-      if (Math.abs(rp.lateral) < half + 0.5 && !beyondEnds) return false;
-      const n = world.collideCircle(x, z, 0.3, contacts);
-      for (let i = 0; i < n; i++) {
-        const c = contacts[i];
-        if (c.kind === 'wall' && (x - c.px) * c.nx + (z - c.pz) * c.nz < -0.15) return false;
-      }
-      if (world.propGrid && world.props) {
-        world.propGrid.query(x - 2, z - 2, x + 2, z + 2, near);
-        for (const id of near) {
-          const p = world.props[id];
-          if (p && (p.x - x) ** 2 + (p.z - z) ** 2 < (p.radius * 1.15 + 0.4) ** 2) return false;
-        }
-      }
-      const ix = Math.floor(x / cell);
-      const iz = Math.floor(z / cell);
-      for (let a = -1; a <= 1; a++) {
-        for (let b = -1; b <= 1; b++) {
-          const list = taken.get(key(ix + a, iz + b));
-          if (!list) continue;
-          for (let k = 0; k < list.length; k += 2) if ((list[k] - x) ** 2 + (list[k + 1] - z) ** 2 < 0.42 * 0.42) return false;
-        }
-      }
-      return true;
-    },
-    take(x: number, z: number): void {
-      const k = key(Math.floor(x / cell), Math.floor(z / cell));
-      let list = taken.get(k);
-      if (!list) taken.set(k, (list = []));
-      list.push(x, z);
-    },
-  };
-}
-type Placer = ReturnType<typeof makePlacer>;
-
-const groundY = (world: World, x: number, z: number) => world.heightAt(x, z) + (world.surfaceAt(x, z) === 'road' ? 0 : CITY.curbHeight);
-
-/** Keep every step-th person so a stand stays under its cap. */
-function thin(out: Spot[], cap: number): Spot[] {
-  if (out.length <= cap) return out;
-  const keep: Spot[] = [];
-  const step = out.length / cap;
-  for (let i = 0; i < cap; i++) keep.push(out[Math.floor(i * step)]);
-  return keep;
 }
 
 /** The start / finish crowd: sidewalk rows along the route near the line (the meets stand behind its barriers). */
@@ -572,25 +511,7 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
     now = time;
     uniforms.uTime.value = time;
     const uc = uniforms.uCars.value;
-    // Nearest MAX_CARS to the camera by repeated selection (ten cars at most, no allocation).
-    let taken = 0;
-    for (let i = 0; i < MAX_CARS; i++) {
-      let best = -1;
-      let bestD = Infinity;
-      for (let k = 0; k < cars.length && k < 31; k++) {
-        if (taken & (1 << k)) continue;
-        const d = (cars[k].x - lx) ** 2 + (cars[k].z - lz) ** 2;
-        if (d < bestD) {
-          bestD = d;
-          best = k;
-        }
-      }
-      if (best >= 0) {
-        taken |= 1 << best;
-        const c = cars[best];
-        uc[i].set(c.x, c.z, c.speed, 0);
-      } else uc[i].set(1e6, 1e6, 0, 0);
-    }
+    nearestCars(cars, lx, lz, MAX_CARS, uc);
     levelSum.fill(0);
     levelW.fill(0);
     if (!enabled) {

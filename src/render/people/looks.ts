@@ -80,3 +80,31 @@ export function shopLook(rnd: () => number): PersonLook {
     wear: head(rnd(), 0.4, 0.2, 0) | (rnd() < 0.75 ? WEAR.stripe : 0) | (rnd() < 0.5 ? WEAR.gloves : 0),
   };
 }
+
+/** Warm and cool tints the idle people's tops drift toward on a warm or cool seed. */
+const WARM_TOP = 0xc8641c;
+const COOL_TOP = 0x2a5fa8;
+
+/** Halfway from a hex color to another (sRGB channels, as the wardrobe is written). */
+function tint(from: number, to: number, t: number): number {
+  const ch = (shift: number) => Math.round(((from >> shift) & 255) * (1 - t) + ((to >> shift) & 255) * t);
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+}
+
+/**
+ * Someone idling in the street: the street wardrobe with about 15% of tops shifted toward the seed's mood
+ * (`warmth` -1 cool .. 1 warm), so a seed's sidewalks read a touch warmer or cooler than the next. Always
+ * draws the same number of rolls.
+ */
+export function idleLook(rnd: () => number, warmth: number): PersonLook {
+  const look = streetLook(rnd);
+  const roll = rnd();
+  if (roll < 0.15) {
+    const to = warmth >= 0 ? WARM_TOP : COOL_TOP;
+    const t = 0.35 + 0.4 * Math.abs(warmth);
+    const same = look.sleeves === look.shirt;
+    look.shirt = tint(look.shirt, to, t);
+    look.sleeves = same ? look.shirt : tint(look.sleeves, to, t);
+  }
+  return look;
+}
