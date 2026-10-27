@@ -188,7 +188,7 @@ const CONTROLS: Record<'keyboard' | 'gamepad' | 'touch', [string, [string[], str
       'Launch',
       [
         [['W'], 'Two-step: hold at the line (Launch RPM)'],
-        [['W + S'], 'Line lock: burnout while standing'],
+        [['W + S', 'Shift + W'], 'Line lock: burnout while standing (let go of Shift to launch)'],
         [['Shift + W'], 'Rolling antilag: hold boost on the move (turbo)'],
       ],
     ],
@@ -233,7 +233,7 @@ const CONTROLS: Record<'keyboard' | 'gamepad' | 'touch', [string, [string[], str
       'Launch',
       [
         [['RT'], 'Two-step: hold at the line (Launch RPM)'],
-        [['RT + LT'], 'Line lock: burnout while standing'],
+        [['RT + LT', 'Left stick click + RT'], 'Line lock: burnout while standing'],
         [['Left stick click + RT'], 'Rolling antilag: hold boost on the move (turbo)'],
       ],
     ],

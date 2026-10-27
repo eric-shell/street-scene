@@ -11,7 +11,7 @@
   ],
   "base": {
     "mass": 1550,
-    "yawInertiaScale": 0.85,
+    "yawInertiaScale": 0.75,
     "cgHeight": 0.4,
     "drivetrain": {
       "_": "diffOpen and diffLock are the driven axles' differential (car.ts updateAxles), 0 and 0 for the stock axle; the Tune tab's Differential slider adds to them (setup.differential).",
@@ -53,15 +53,15 @@
     },
     "tires": {
       "_": "Grip in ordinary corners comes from the rise to the peak, the slides from past it (docs/handling.md). roundingRear above roundingFront makes the rear answer sooner, so the car is stable below the limit even with gripRear under gripFront; that lower rear peak still lets go first at the limit, which is where the drifts start.",
-      "gripFront": 1.58,
-      "gripRear": 1.34,
+      "gripFront": 1.82,
+      "gripRear": 1.54,
       "peakSlipDeg": 12,
       "roundingFront": 0.5,
       "roundingRear": 1,
       "peakSlipRatio": 0.12,
       "fullSlideDeg": 25,
-      "slideGrip": 0.53,
-      "slideGripLong": 0.7,
+      "slideGrip": 0.58,
+      "slideGripLong": 0.6,
       "minLateralShare": 0.74,
       "rollingResistance": 5.8,
       "loadCap": 2.2
@@ -75,13 +75,14 @@
       "tcMaxSlipDeg": 9
     },
     "launch": {
-      "_": "Launch control (car.ts): the two-step rev cut at the line, line lock burnouts (gas and brake standing) and rolling antilag (its own held button, with the gas, rolling). twoStepRpm is the build's Launch RPM (0 = off); applyBuild writes it, so leave it 0 here. defaultRpm is the car's stock pick, the Launch RPM a new garage build (or a saved one from before launch control) starts on; 0 = off. Set per car from what owners of its donor launch at. antilagRpm is the car's stock rolling antilag rpm, a separate setting from the two-step as on the ECUs that have both (Haltech's Rolling Anti-lag holds its own fixed limit): a build's Antilag RPM (the Tune tab, turbo cars only) replaces it, 0 = off. Hold it where the turbos are on full boost and the engine near its torque peak, so the release pulls at once.",
+      "_": "Launch control (car.ts): the two-step rev cut on the grid, line lock burnouts (gas and brake, or gas and the antilag button, standing) and rolling antilag (its own held button, with the gas, rolling; a press held on from a line lock stays a launch). twoStepRpm is the build's Launch RPM (0 = off); applyBuild writes it, so leave it 0 here. Off the line it is the launch clutch's slip rpm (with engine.launchRpm as the floor), so a launch never drops the revs it was held at and never meets the cut. lineLockRearShare is an arcade term: an AWD car sends that share of its front drive to the rear while line locked, so the front brakes hold it and the rear lights up (1 = all of it, 0 = its own split). defaultRpm is the car's stock pick, the Launch RPM a new garage build (or a saved one from before launch control) starts on; 0 = off. Set per car from what owners of its donor launch at. antilagRpm is the car's stock rolling antilag rpm, a separate setting from the two-step as on the ECUs that have both (Haltech's Rolling Anti-lag holds its own fixed limit): a build's Antilag RPM (the Tune tab, turbo cars only) replaces it, 0 = off. Hold it where the turbos are on full boost and the engine near its torque peak, so the release pulls at once.",
       "twoStepRpm": 0,
       "defaultRpm": 0,
       "twoStepDepth": 350,
       "twoStepCutTime": 0.06,
       "pedalThreshold": 0.5,
       "lineLockSpeed": 2,
+      "lineLockRearShare": 1,
       "antilagRpm": 4500,
       "antilagHold": 0.6,
       "spoolTime": 0.5,
@@ -190,7 +191,7 @@
         "ratios": [3.36, 2.09, 1.47, 1.1, 0.87, 0.73],
         "finalDrive": 4.4
       },
-      "tires": { "gripFront": 1.58, "gripRear": 1.41 },
+      "tires": { "gripFront": 1.82, "gripRear": 1.62 },
       "launch": {
         "_": "R32 owners launch near the VR6's torque peak (2,800 to 3,200 rpm); the DSG cars' launch control is reported at 2,500 to 3,500. An NA engine on an AWD grip launch wants the plateau, not more: the cut bounces it 3,150 to 3,500.",
         "defaultRpm": 3500
@@ -220,7 +221,7 @@
         "ratios": [3.483, 2.015, 1.391, 1.0, 0.88],
         "finalDrive": 4.3
       },
-      "tires": { "gripFront": 1.6, "gripRear": 1.35 },
+      "tires": { "gripFront": 1.84, "gripRear": 1.55 },
       "launch": {
         "_": "FD owners on the stock sequential twins report a weak, boostless launch around 4,000 rpm (the turbo handover) and better ones from about 5,000; past 7,500 is called abuse. 5,000 clears the handover without lighting up the rear tires of the lightest, RWD car.",
         "defaultRpm": 5000,
@@ -231,7 +232,7 @@
     "protoWagon": {
       "_name": "Proto Wagon (S2 Avant donor): front twin turbo 90 degree V6, all wheel drive split evenly (a Torsen centre differential). A flat biturbo torque plateau from 1,800 rpm and an AWD launch; the longest car, a little more yaw inertia.",
       "mass": 1550,
-      "yawInertiaScale": 0.95,
+      "yawInertiaScale": 0.85,
       "drivetrain": { "layout": "awd", "awdFrontShare": 0.5 },
       "engine": {
         "redline": 7000,
@@ -253,7 +254,7 @@
         "ratios": [3.5, 1.88, 1.32, 1.034, 0.857, 0.73],
         "finalDrive": 4.375
       },
-      "tires": { "gripFront": 1.56, "gripRear": 1.42 },
+      "tires": { "gripFront": 1.79, "gripRear": 1.63 },
       "aero": { "drag": 0.42 },
       "launch": {
         "_": "B5 S4 and RS4 2.7T owners launch at 3,000 to 4,000 rpm (bogs under 3,000, spins over 3,500 to 4,000 on a clutch dump); a two-step at 4,000 holds the twins on boost and the even AWD split takes the torque.",
@@ -282,11 +283,11 @@
     "differential": {
       "_": "Open (1) to Locked (5), added to the car's drivetrain.diffOpen and diffLock (car.ts updateAxles; 0 and 0 is the stock axle, which turns both wheels together like a well behaved limited slip). open: an open differential gives each wheel the same torque, so drive past twice what the lighter wheel holds breaks that wheel loose and the axle passes on only twice its sliding force; open is how far of the way there. Stable, but drive fades as a corner lifts the inside wheel and a powered slide dies. lock: the force pair a locked axle makes in a turn while it grips, as a share of the axle's grip at the peak slip: it resists the rotation (push on turn in, steadier and harder drive out of a turn) and uses up the inside wheel's grip, so once the axle lets go both wheels spin together and hold the slide as the stock axle does.",
       "open": [0.8, 0.4, 0, 0, 0],
-      "lock": [0, 0, 0, 0.3, 0.6]
+      "lock": [0, 0, 0, 0.3, 0.75]
     },
     "brakeBalance": {
       "_": "Rear (1) to Front (5): frontBiasAdd moves brakes.frontBias. Rear bias makes the rear tires do more of the stopping, which costs them side grip and rotates the car on the brakes (trail braking into a slide) but locks the lighter rear sooner (longer stops); front bias stops straight and stable on grippy tarmac.",
-      "frontBiasAdd": [-0.18, -0.09, 0, 0.06, 0.12]
+      "frontBiasAdd": [-0.22, -0.11, 0, 0.06, 0.12]
     }
   },
   "traffic": {

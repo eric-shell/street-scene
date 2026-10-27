@@ -15,6 +15,7 @@ Today's arcade terms:
 - **Steering help** (`steering.counterSteerAllowance`, `highSpeedDeg`, `fadeSpeed`): extra lock into a slide so full lock always reaches the direction of travel, and less lock at speed in place of a front slip angle assist.
 - **Brakes** (`brakes.assistDecel`, `tires.minLateralShare`): a deceleration on top of the tires that uses no cornering grip, and an ABS that never locks and always leaves some steering.
 - **Clutch tricks** (`traction.launchBoost`, `clutchKickSpeed`, `drift.clutchKickTime`): a clutch dump adds the flywheel's torque; a throttle stab after a lift while steering breaks the driven wheels loose. The handbrake drops the clutch on a car that drives the rear, as Forza does.
+- **Launch control** (`launch.*`): the two-step cuts only on the grid; off the line its rpm is the launch clutch's slip rpm (`engine.launchRpm` the floor), so no launch meets the cut or drops the revs it was held at. A line lock (gas with the brake or the antilag button, standing) revs the engine free to 85% of the redline and lets the clutch bite from there, the front brakes holding the car; `lineLockRearShare` sends an AWD car's drive to the rear for it (a drift mode's trick), so every car does a rear wheel burnout. The antilag button held on from a line lock into the launch stays a launch.
 - **Nitrous** (`nitrous.*`): a push along the car on top of extra engine torque, in three stages, refilled by style (drifts, near misses, slipstreams, wrecks). The push carries on past the limiter, so nitrous never dies on it. Two arcade terms ride on it, both neutral at 0: style past a full tank banks overdrive (`overdriveCap` stages, burning alongside the tank at `overdrivePower` times the stage's power), and a crash into a wall, barrier, rail or another racer costs up to `crashLoss` stages between `crashMinImpact` and `crashFullImpact` m/s of normal impact, overdrive first. Measured over AI races on four seeds, a rival loses at most 0.3 of a stage a race to crashes.
 - **Gearing torque bonus** (`setup.gearing.torqueBonus`, written to `gearbox.torqueBonus`): plus 6% of engine torque on Short gearing to minus 6% on Long, fading out between 140 and 200 km/h (Gearing).
 - **Forgiving limits** (`tires.loadCap`, `tires.slideGrip` and `slideGripLong`, `suspension.airLevel`, `collision.resetPassThrough`): grip that stops growing under a hard landing, sliding grip at the arcade end of dry tarmac, a body that levels out in the air, and a car that passes through the others for a moment after a reset.
@@ -97,6 +98,33 @@ Measured headless (flat world, stock builds), before → after:
 
 The coupe drifts as it did: handbrake, clutch kick, a trail-brake entry and power all rotate it. The AWD cars still drift on the handbrake as before, but a clutch kick or a braked entry rotates them less (those were 10 to 20 degree flicks that never held, and now the rear stays planted), which suits a Haldex hatch and a Torsen wagon. AI races (six seeds, circuit and sprint, hard, all three cars) all finish, about 1.5% quicker, with fewer wall hits (49 against 64).
 
+### Second pass: more grip, a stickier slide
+
+Players still found the cars icy and floaty and the drifts hard to link. Raising grip alone (both axles 15%) made the RWD coupe's held drift die early (1.87 to 1.18 s over 15°): the rear's sliding force grew with it and second gear could no longer keep it spinning. What shipped keeps the drift's spin and gives the slide more bite:
+
+- `gripFront` / `gripRear` 15% up on every car, each car's split kept (hatch 1.82 / 1.62, coupe 1.84 / 1.55, wagon 1.79 / 1.63).
+- `slideGrip` 0.53 to 0.58: a slide keeps more sideways grip (with the grip rise, 26% more sideways force sliding), so it arcs and scrubs speed instead of floating.
+- `slideGripLong` 0.7 to 0.6: the spinning rear's lengthways force stays where it was in newtons, so the throttle still holds a drift; it also lets a line lock break a mild car's rear loose.
+- `yawInertiaScale` 0.85 to 0.75 (wagon 0.95 to 0.85): a quicker swing from one drift into the next.
+- The Tune tab's ends moved with it: Rear brake balance -0.22 / -0.11 (was -0.18 / -0.09; grippier rears took the bias without stopping longer) and Locked differential 0.75 (was 0.6).
+
+Tried and dropped: `fullSlideDeg` 30 to 32 (a slower fall past the peak) shortened held drifts (coupe 1.88 to 1.25 s) and with `slideGrip` 0.6 the flick into the next drift no longer swung through; `yawDamping` 2600 or 4000 moved nothing that mattered.
+
+Measured headless with `drift.ts`'s closed loop (a driver holding 30° of slip; G is a lift and a flick of the wheel from a held drift, then power) and stock setups, before → after:
+
+| | Hatch (AWD) | Coupe (RWD) | Wagon (AWD) |
+|---|---|---|---|
+| Peak lateral, ramp steer at 100 km/h (E) | 1.45 → 1.69 g | 1.40 → 1.63 g | 1.44 → 1.68 g |
+| Garage grip stat | 1.51 → 1.74 g | 1.49 → 1.71 g | 1.50 → 1.73 g |
+| Body slip at 0.6 g, 80 km/h | 2.1 → 1.7° | 2.3 → 1.8° | 2.1 → 1.6° |
+| Held drift from a handbrake entry, time over 15° of 2 s (F) | 0.73 → 0.98 s | 1.87 → 1.92 s | 0.70 → 0.68 s |
+| Speed through it, from 72 km/h | 85 → 77 km/h | 82 → 78 km/h | 90 → 88 km/h |
+| Flick into the next drift: to 15° the other way, held (G) | never → never | 0.63 s, 1.60 s → 0.50 s, 1.73 s | never → never |
+| Lift at the limit, 100 km/h, steer 0.75: slip before → worst | 6 → 8° both | 20 → 22° → 22 → 31° | 7 → 8° both |
+| 0 to 100 (garage) | 6.35 → 6.30 s | 5.32 → 5.18 s | 6.02 → 6.00 s |
+
+The coupe lets go more on a lift at the limit (a lift-off drift entry, caught as before); the AWD cars still drift on the handbrake but their front drive pulls a held drift straight within a second, as before (the AWD drift aids below are still for later).
+
 ### What we left for later
 
 - **Load sensitivity and roll stiffness**: grip that grows less than the load, so lateral load transfer costs the axle that takes more of it, which is how Forza's anti-roll bars and springs tune the balance. Here the balance is set by grip and rounding per axle instead.
@@ -137,9 +165,11 @@ Long's drag top speed stays within 2.5% of stock: a taller top gear meets the dr
 | `tires.peakSlipRatio` | 0.12 | Michelin: peak grip at 5 to 15% slip; Magic Formula dry tarmac peaks near 0.18. |
 | `tires.peakSlipDeg` / `fullSlideDeg` | 12 / 25 | Unchanged lateral curve: the peak and the slide past it. |
 | `tires.roundingFront` / `roundingRear` | 0.5 / 1 | The rise to the peak: 1.5 and 2 times the straight line's stiffness at small slip. The steeper rear makes the cars understeer slightly below the limit (Grip and drift). |
-| `tires.gripFront` / `gripRear` | base 1.58 / 1.34; hatch 1.58 / 1.41, coupe 1.6 / 1.35, wagon 1.56 / 1.42 | Was 1.62 / 1.28 (hatch 1.62 / 1.36, coupe 1.64 / 1.3, wagon 1.6 / 1.38): the rear still peaks lower and lets go first at the limit, the average is the same. |
-| `tires.slideGrip` | 0.53 | Unchanged sideways sliding grip (arcade: slides grow and want catching). |
-| `tires.slideGripLong` | 0.7 | Lengthways sliding grip. Dry tarmac keeps 75 to 90% of peak when sliding; 0.7 is the arcade end of that, low enough that a stock car's second gear torque spins its rear in a drift, high enough for burnouts to still go. |
+| `tires.gripFront` / `gripRear` | base 1.82 / 1.54; hatch 1.82 / 1.62, coupe 1.84 / 1.55, wagon 1.79 / 1.63 | The second pass: 15% over 1.58 / 1.34 (hatch 1.58 / 1.41, coupe 1.6 / 1.35, wagon 1.56 / 1.42), which had moved grip rearward from 1.62 / 1.28. The rear still peaks lower and lets go first at the limit. |
+| `tires.slideGrip` | 0.58 | Sideways sliding grip, was 0.53: a slide bites more and floats less (arcade: slides still grow and want catching). |
+| `tires.slideGripLong` | 0.6 | Lengthways sliding grip, was 0.7. Dry tarmac keeps 75 to 90% of peak when sliding; this is under it, an arcade number: it holds the spinning rear's force in newtons where it was before the grip rise, so a stock car's second gear torque still spins its rear in a drift and a line lock breaks any car loose. |
+| `yawInertiaScale` | 0.75 (wagon 0.85) | Was 0.85 (0.95): the swing from one drift into the next. |
+| `launch.lineLockRearShare` | 1 | Arcade: an AWD car's line lock is a rear wheel burnout. |
 | `engine.inertia` | 0.15 | Flywheel, crank and clutch (kg m²), reflected through the gearing squared (first gear: about 30 kg m² at the wheels). In first the stock rear reaches the limiter in about 0.65 s and hooks back up in under 0.5 s; 0.2 made both a third slower. |
 | `traction.wheelInertia` | 1.2 | Wheel, tire, hub, disc and half shaft (kg m²). |
 | `brakes.handbrakeTorque` | 6000 | Above the rear tires' resistance (about 3100 Nm on base tuning), so it locks at once. |

@@ -105,13 +105,15 @@ export interface CarState {
   /**
    * Launch control (launch tuning). twoStepCut: seconds left of the current rev cut
    * (> 0 while the two-step or antilag has the spark off: the stutter the tach and the engine voice show).
-   * lineLock: throttle and brake together at a standstill, the brakes holding the undriven axle while the
-   * driven wheels spin (a burnout). antilag: the antilag button and the throttle rolling in a turbo
+   * lineLock: throttle and the brake or the antilag button at a standstill, the brakes holding the undriven
+   * axle while the driven wheels spin (a burnout; an AWD car drives the rear for it). antilag: the antilag button and the throttle rolling in a turbo
    * car, the engine held at its antilag rpm with boost pinned and no drive. boost: turbo spool, 0 (off boost) .. 1 (full), always 0 on a
    * naturally aspirated car. antilagHold: seconds boost stays pinned after the antilag button is let go.
    */
   twoStepCut: number;
   lineLock: boolean;
+  /** The antilag button has been held since the last line lock: the launch it lets go into is not antilag. */
+  lineLockHeld: boolean;
   antilag: boolean;
   boost: number;
   antilagHold: number;
@@ -186,6 +188,7 @@ export function createCar(x: number, z: number, yaw: number, y: number): CarStat
     clutchKick: 0,
     twoStepCut: 0,
     lineLock: false,
+    lineLockHeld: false,
     antilag: false,
     boost: 0,
     antilagHold: 0,
@@ -230,7 +233,7 @@ export function placeCar(c: CarState, x: number, z: number, yaw: number, world: 
   c.clutchKick = 0;
   c.twoStepCut = 0;
   c.antilagHold = 0;
-  c.lineLock = c.antilag = false;
+  c.lineLock = c.lineLockHeld = c.antilag = false;
   c.spinFront = c.spinRear = 0;
   c.wheelSpeedFront = c.wheelSpeedRear = 0;
   c.gear = 1;
@@ -244,6 +247,8 @@ export function placeCar(c: CarState, x: number, z: number, yaw: number, world: 
 const RPM_PER_RADS = 60 / TAU;
 /** How fast the free engine chases its target revs (rpm/s): the flywheel's response, not tuning. */
 const REV_RATE = 24000;
+/** Share of the redline a free revving engine chases with the throttle floored: the grid's rev, and a line lock's before the driven wheels let go. */
+const FREE_REV_FRAC = 0.85;
 /** Most the body pitches or rolls away from the ground's own angle (rad): suspension geometry, not tuning. */
 const BODY_LEAN = 0.15;
 /**
@@ -370,8 +375,21 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
   const ratio = gearRatio(t, c.gear);
   const gearing = ratio * t.gearbox.finalDrive;
   const lowGear = c.gear === 1 || c.gear === -1;
-  const clutchRpm = t.engine.idleRpm + drive * (t.engine.launchRpm - t.engine.idleRpm);
-  const split = driveSplit(t);
+  // Launch control (launch tuning). Throttle with the brake or the antilag button, standing, is a line lock
+  // (the brakes hold the undriven axle, the driven wheels spin: a burnout; an AWD car sends its drive to the
+  // rear for it, lineLockRearShare). The antilag button held with the throttle down, rolling in a turbo car,
+  // is rolling antilag (the clutch slips, the engine is held at its antilag rpm with boost pinned; off with
+  // no antilag rpm), a button of its own as on the ECUs that have it; a press carried over from a line lock
+  // into the launch stays a launch. The two-step's cut runs on the grid (gridRev); off the line its set
+  // point is the launch clutch's slip rpm, so the car leaves at the revs it was held at, and from a
+  // standstill too, with no cut in the way.
+  const L = t.launch;
+  const gas = c.gear > 0 && inp.throttle > L.pedalThreshold;
+  const standing = speed < L.lineLockSpeed;
+  c.lineLock = gas && standing && (inp.brake > L.pedalThreshold || inp.antilag);
+  c.lineLockHeld = c.lineLock || (c.lineLockHeld && inp.antilag);
+  const clutchRpm = t.engine.idleRpm + drive * (Math.max(t.engine.launchRpm, L.twoStepRpm) - t.engine.idleRpm);
+  const split = c.lineLock ? lineLockSplit(t) : driveSplit(t);
   // The handbrake locks the rear wheels, so a drivetrain that turns them drops the clutch (as Forza does):
   // the engine revs free and lets go with a bang on release. A front drive car keeps driving through it.
   const clutchIn = inp.handbrake && split.rear > 0;
@@ -383,23 +401,11 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
   let rpmTarget = Math.max(axleRpm, lowGear ? clutchRpm : t.engine.idleRpm);
   if (c.shiftTimer > 0) rpmTarget = Math.max(t.engine.idleRpm, axleRpm);
   if (clutchIn) rpmTarget = t.engine.idleRpm + drive * (t.engine.redline - t.engine.idleRpm);
-  // Launch control (launch tuning). Throttle and brake together standing is a line lock (the brakes hold
-  // the undriven axle, the driven wheels spin: a burnout). The antilag button held with the throttle down,
-  // rolling in a turbo car, is rolling antilag (the clutch slips, the engine is held at its antilag rpm with
-  // boost pinned; off with no antilag rpm), a button of its own as on the ECUs that have it. The two-step
-  // is armed at a standstill while a launch rpm is set: a hard cut that bounces the revs under it (the
-  // countdown's launch control, gridRev), so the car leaves the line from exactly those revs. Each holds
-  // its own set point, as an ECU's launch and rolling antilag limits do.
-  const L = t.launch;
-  const gas = c.gear > 0 && inp.throttle > L.pedalThreshold;
-  const standing = speed < L.lineLockSpeed;
-  c.lineLock = gas && inp.brake > L.pedalThreshold && standing;
-  c.antilag = gas && inp.antilag && !standing && t.engine.turbo && !clutchIn && L.antilagRpm > 0;
-  const holdRpm = c.antilag ? L.antilagRpm : L.twoStepRpm;
-  const armed = L.twoStepRpm > 0 && c.gear > 0 && standing && drive > L.pedalThreshold && !clutchIn;
-  if (c.antilag) rpmTarget = Math.max(axleRpm, holdRpm);
-  else if (armed) rpmTarget = Math.max(rpmTarget, holdRpm);
-  if (c.antilag || armed) rpmTarget = twoStep(c, holdRpm, L, dt, rpmTarget);
+  // A line lock revs the engine as on the grid and lets the clutch bite from there (the clutch dump's
+  // flywheel torque included), so even a mild car breaks its driven wheels loose for the burnout.
+  else if (c.lineLock) rpmTarget = Math.max(rpmTarget, t.engine.idleRpm + drive * (t.engine.redline * FREE_REV_FRAC - t.engine.idleRpm));
+  c.antilag = gas && inp.antilag && !standing && !c.lineLockHeld && t.engine.turbo && !clutchIn && L.antilagRpm > 0;
+  if (c.antilag) rpmTarget = twoStep(c, L.antilagRpm, L, dt, Math.max(axleRpm, L.antilagRpm));
   else c.twoStepCut = 0;
   c.rpm = approach(c.rpm, Math.min(rpmTarget, t.engine.redline + 150), REV_RATE * dt);
 
@@ -487,7 +493,9 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
     driveTorque *= Math.max(0.2, 1 - (abs(beta) - tcSlip) / (10 * DEG));
   }
 
-  // Line lock: the driven wheels' brakes come off so they can spin; the others, and the brake assist, hold the car.
+  // Line lock: the driven wheels' brakes come off so they can spin; the others, and the brake assist, hold the
+  // car, on the antilag button as fully as on the pedal.
+  if (c.lineLock) brake = 1;
   const brakeFront = c.lineLock && split.front > 0 ? 0 : brake;
   const brakeRear = c.lineLock && split.rear > 0 ? 0 : brake;
   const ctl: Controls = { driveTorque, brake, brakeFront, brakeRear, handbrake: inp.handbrake, clutchIn: clutchIn || c.shiftTimer > 0 || c.antilag, gearing, surfaceGrip, dragMul, drive, frontShare: split.front, boostForce: t.nitrous.force * boostPower };
@@ -511,6 +519,18 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
     w.spinRate = (i < 2 ? c.wheelSpeedFront : c.wheelSpeedRear) / r;
     w.spin = (w.spin + w.spinRate * dt) % TAU;
   }
+}
+
+/**
+ * The drive split during a line lock: an AWD car sends lineLockRearShare of its front's share to the rear
+ * (an arcade term, like a performance car's drift mode), so the front brakes hold and the rear lights up
+ * as on a rear drive car. Rear and front drive cars keep their own split.
+ */
+function lineLockSplit(t: CarTuning): { front: number; rear: number } {
+  const split = driveSplit(t);
+  if (t.drivetrain.layout !== 'awd') return split;
+  const front = split.front * (1 - t.launch.lineLockRearShare);
+  return { front, rear: 1 - front };
 }
 
 /**
@@ -556,23 +576,25 @@ function spoolTurbo(c: CarState, t: CarTuning, drive: number, dt: number): void 
  * The engine on the grid (race.ts, the countdown): the cars stand still and only rev. Free revving chases
  * the pedal to 85% of the redline, as it always has (old replays). With a launch rpm set, holding the
  * throttle past the pedal threshold arms the two-step and the revs bounce under it. Throttle and brake
- * together is a line lock burnout: the driven wheels spin up to the engine's tread speed in first (the
+ * (or the antilag button) together is a line lock burnout, revving free past the two-step: the driven wheels spin up to the engine's tread speed in first (the
  * spin telemetry and the wheels' skid follow, for the smoke and the marks) and the car leaves the line
  * already spinning. A turbo builds boost through all of it.
  */
 export function gridRev(c: CarState, t: CarTuning, inp: InputFrame, dt: number): void {
   const L = t.launch;
-  const armed = L.twoStepRpm > 0 && inp.throttle > L.pedalThreshold;
+  c.lineLock = inp.throttle > L.pedalThreshold && (inp.brake > L.pedalThreshold || inp.antilag);
+  c.lineLockHeld = c.lineLock || (c.lineLockHeld && inp.antilag);
+  // A line lock revs free past the two-step, as it does off the grid, so the burnout is not cut.
+  const armed = L.twoStepRpm > 0 && inp.throttle > L.pedalThreshold && !c.lineLock;
   if (armed) {
     c.rpm = approach(c.rpm, twoStep(c, L.twoStepRpm, L, dt, L.twoStepRpm), REV_RATE * dt);
   } else {
     c.twoStepCut = 0;
-    const target = t.engine.idleRpm + inp.throttle * (t.engine.redline * 0.85 - t.engine.idleRpm);
+    const target = t.engine.idleRpm + inp.throttle * (t.engine.redline * FREE_REV_FRAC - t.engine.idleRpm);
     c.rpm += (target - c.rpm) * 0.15;
   }
-  c.lineLock = inp.throttle > L.pedalThreshold && inp.brake > L.pedalThreshold;
   c.antilag = false;
-  const split = driveSplit(t);
+  const split = c.lineLock ? lineLockSplit(t) : driveSplit(t);
   // The driven wheels' tread speed with the engine in first gear, the limiter's cut included.
   const gearing = gearRatio(t, 1) * t.gearbox.finalDrive;
   const tread = c.lineLock && c.twoStepCut === 0 ? (c.rpm / RPM_PER_RADS / gearing) * t.geometry.wheelRadius : 0;

@@ -56,7 +56,7 @@ Useful URL parameters: `?seed=anything` (custom event), `?race=circuit|sprint|dr
 | Manual shift (when enabled) | Q / E | LB / RB | |
 | Reset to road | R | Y | RST |
 | Two-step launch: hold at the line and the revs wait at the build's Launch RPM | W | RT | GAS |
-| Line lock burnout (standing) | W + S | RT + LT | GAS + BRAKE |
+| Line lock burnout (standing): the front brakes hold, the rear wheels spin (AWD cars too); let go to launch | W + S or Shift + W | RT + LT or Left stick click + RT | GAS + BRAKE |
 | Rolling antilag, turbo cars (moving): revs held at the build's Antilag RPM, boost kept up | Shift + W | Left stick click + RT | |
 | Horn and headlight flash (hold for a long blast) | G | Right stick click | |
 | Hide the HUD (menu, drone, free roam, races); again to bring it back | H | | Eye button on the card |

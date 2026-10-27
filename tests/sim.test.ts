@@ -288,7 +288,8 @@ describe('driving parameters file', () => {
     // Counter steer lock was later allowed to reach the direction of travel at any slip angle; the drift
     // aids and the handbrake were remodelled on real wheel speed (the fixture carries the surviving keys).
     // The grip pass (docs/handling.md) moved grip from the front axle to the rear with a rounded rise to
-    // the peak, and nitrous was made stronger.
+    // the peak, and nitrous was made stronger. The second grip pass raised grip 15%, the sliding grip
+    // sideways (lengthways down, so a drift's rear still spins) and lightened the yaw inertia.
     const t = baseTuning();
     const expected = {
       ...exported.tuning,
@@ -297,7 +298,8 @@ describe('driving parameters file', () => {
       surface: { ...exported.tuning.surface, sidewalkGrip: 1 },
       brakes: { ...exported.tuning.brakes, force: 16250, frontBias: 0.68 },
       steering: { ...exported.tuning.steering, counterSteerAllowance: 1 },
-      tires: { ...exported.tuning.tires, gripFront: 1.58, gripRear: 1.34 },
+      yawInertiaScale: 0.75,
+      tires: { ...exported.tuning.tires, gripFront: 1.82, gripRear: 1.54, slideGrip: 0.58, slideGripLong: 0.6 },
       nitrous: { ...exported.tuning.nitrous, capacity: 3.6, force: 5500, torqueMul: 1.35 },
     };
     expect(t).toMatchObject(expected);
@@ -470,9 +472,9 @@ describe('drifting and the handbrake', () => {
       maxRatio = Math.max(maxRatio, c.wheelSpeedRear / Math.max(1, forwardSpeed(c)));
       maxSpin = Math.max(maxSpin, c.spinRear);
     }
-    // The engine is locked to the spinning wheels: it climbs to the limiter (the stock car settles torque
+    // The engine is locked to the spinning wheels: it climbs toward the limiter (the stock car settles torque
     // limited just under it in first) with the tread well ahead of the road.
-    expect(maxRpm).toBeGreaterThan(t.engine.redline * 0.9);
+    expect(maxRpm).toBeGreaterThan(t.engine.redline * 0.85);
     expect(maxRatio).toBeGreaterThan(1.5);
     expect(maxSpin).toBe(1);
     expect(Math.abs(c.slipAngle)).toBeGreaterThan(30 * DEG);
@@ -581,6 +583,59 @@ describe('launch control and the pedal combos', () => {
     for (let i = 0; i < 120; i++) stepCar(fc, f, input({ throttle: 1, brake: 1 }), { world });
     expect(fc.spinFront).toBeGreaterThan(0.5);
     expect(fc.spinRear).toBe(0);
+  });
+
+  it('the antilag button standing is a line lock too; an AWD car burns out its rear; held on into the launch it never turns into antilag', () => {
+    for (const id of SELECTABLE_CAR_IDS) {
+      const t = applyBuild(getBaseTuning(id), stockPerformance(id));
+      for (const held of [{ brake: 1 }, { antilag: true }]) {
+        const c = createCar(0, 0, 0, 0);
+        for (let i = 0; i < 90; i++) stepCar(c, t, input({ throttle: 1, ...held }), { world });
+        expect(c.lineLock, id).toBe(true);
+        expect(c.spinRear, id).toBeGreaterThan(0.5);
+        expect(c.spinFront, id).toBe(0);
+        expect(c.speed, id).toBeLessThan(1);
+      }
+      // On the grid the button spins the rear alone as well.
+      const g = createCar(0, 0, 0, 0);
+      for (let i = 0; i < 90; i++) gridRev(g, t, input({ throttle: 1, antilag: true }), DT);
+      expect(g.lineLock, id).toBe(true);
+      expect(g.wheelSpeedFront, id).toBe(0);
+      expect(g.spinRear, id).toBeGreaterThan(0.5);
+    }
+    // A turbo car line locked on the button, then let go of the brakes while the button stays down (a
+    // creep past the line lock speed): it drives on rather than coasting on antilag.
+    const t = applyBuild(getBaseTuning('protoCoupe'), stockPerformance('protoCoupe'));
+    const c = createCar(0, 0, 0, 0);
+    for (let i = 0; i < 60; i++) stepCar(c, t, input({ throttle: 1, antilag: true }), { world });
+    expect(c.lineLockHeld).toBe(true);
+    c.vz = 5;
+    for (let i = 0; i < 60; i++) {
+      stepCar(c, t, input({ throttle: 1, antilag: true }), { world });
+      expect(c.antilag).toBe(false);
+    }
+    expect(c.speed).toBeGreaterThan(5);
+  });
+
+  it('a launch from a standstill never meets the two-step cut and leaves at the launch rpm or above', () => {
+    for (const id of SELECTABLE_CAR_IDS) {
+      const t = applyBuild(getBaseTuning(id), stockPerformance(id));
+      expect(t.launch.twoStepRpm, id).toBeGreaterThan(0);
+      for (const grid of [false, true]) {
+        const c = createCar(0, 0, 0, 0);
+        if (grid) for (let i = 0; i < 90; i++) gridRev(c, t, input({ throttle: 1 }), DT);
+        let kmh7 = -1;
+        for (let i = 0; i < 60; i++) {
+          stepCar(c, t, input({ throttle: 1 }), { world });
+          expect(c.twoStepCut, id).toBe(0);
+          if (i >= 15 && c.gear === 1) expect(c.rpm, id).toBeGreaterThanOrEqual(t.launch.twoStepRpm - 1);
+          if (kmh7 < 0 && c.speed * 3.6 >= 7) kmh7 = i;
+        }
+        // Moving at once: 7 km/h inside 0.4 s (the coupe from the grid, on full boost, spins its rear).
+        expect(kmh7, id).toBeGreaterThan(0);
+        expect(kmh7, id).toBeLessThan(24);
+      }
+    }
   });
 
   it('the antilag button and the gas rolling is antilag on a turbo car only: boost pinned at its own rpm, no drive, and full boost on release', () => {

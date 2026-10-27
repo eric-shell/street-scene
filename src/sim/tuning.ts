@@ -54,7 +54,7 @@ export interface CarTuning {
   };
   /** Launch control (car.ts): the two-step at the line, line lock burnouts, rolling antilag, turbo spool. */
   launch: {
-    /** The build's launch rpm the two-step holds the engine at (rpm); 0 = off. applyBuild writes it from the garage's Tune tab. */
+    /** The build's launch rpm (rpm; 0 = off): the two-step holds the engine there on the grid, and the launch clutch slips there off the line. applyBuild writes it from the garage's Tune tab. */
     twoStepRpm: number;
     /** The car's stock Launch RPM (rpm; 0 = off): what a new garage build, or a saved one without the setting, starts on. */
     defaultRpm: number;
@@ -64,8 +64,10 @@ export interface CarTuning {
     twoStepCutTime: number;
     /** A pedal past this (0..1) counts as pressed for launch control: the two-step, line lock (throttle and brake) and antilag (throttle). */
     pedalThreshold: number;
-    /** Under this speed (m/s) throttle and brake is a line lock burnout and the two-step is armed; over it the antilag button works. */
+    /** Under this speed (m/s) throttle with the brake or the antilag button is a line lock burnout; over it the antilag button is antilag. */
     lineLockSpeed: number;
+    /** Arcade: share of an AWD car's front drive sent to the rear while line locked (0 = its own split, 1 = a rear wheel burnout). */
+    lineLockRearShare: number;
     /** Rolling antilag holds the engine here (rpm; 0 = off): the car's stock pick, replaced by a build's Antilag RPM (applyBuild). */
     antilagRpm: number;
     /** Boost stays pinned at full this long after the antilag button is let go (s). */

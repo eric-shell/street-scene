@@ -5,7 +5,9 @@
  * it mid corner in first, and a launch. Columns: speed, forward and sideways
  * velocity, body slip, yaw rate, rpm, gear, rear spin level, rear tread speed
  * against road speed, rear wheel rate. Run before and after a handling change
- * (docs/handling.md): npx tsx .claude/skills/tune/drift.ts [carId]
+ * (docs/handling.md): npx tsx .claude/skills/tune/drift.ts [carId]. Closed loop after
+ * those, one line: E peak lateral g, F a held drift, G a flick linking it into one the
+ * other way. TUNE='{...}' trials an override without editing the JSON.
  */
 import { CarState, createCar, stepCar } from '../../../src/sim/car';
 import { getBaseTuning } from '../../../src/sim/tuning';
@@ -22,6 +24,14 @@ const world = {
 const DEG = Math.PI / 180;
 const carId = process.argv[2] ?? 'protoHatch';
 const t = getBaseTuning(carId);
+/** TUNE='{"tires":{"slideGrip":0.6}}' lays a trial override over the car (merged key by key) without touching the JSON. */
+const merge = (into: Record<string, unknown>, over: Record<string, unknown>): void => {
+  for (const [k, v] of Object.entries(over)) {
+    if (v && typeof v === 'object' && !Array.isArray(v)) merge(into[k] as Record<string, unknown>, v as Record<string, unknown>);
+    else into[k] = v;
+  }
+};
+if (process.env.TUNE) merge(t as unknown as Record<string, unknown>, JSON.parse(process.env.TUNE));
 const inp = (p: Partial<InputFrame>): InputFrame => ({ throttle: 0, brake: 0, steer: 0, handbrake: false, nitrous: false, shift: 0, reset: false, ...p });
 
 function row(c: CarState, tick: number): string {
@@ -83,3 +93,71 @@ run('D. launch', [
   { ticks: 30, input: () => inp({}) },
   { ticks: 150, input: () => inp({ throttle: 1 }), log: true },
 ]);
+
+// ---- Closed loop: a driver that holds a slip angle, so drifts are judged as a player drives them ----
+
+/** Slip angle the driver aims for in a held drift. */
+const TARGET = 30 * DEG;
+
+/** Counter steer toward the direction of travel and throttle on the slip error: a drifter holding `TARGET`. */
+function drifter(c: CarState): InputFrame {
+  const err = TARGET - Math.abs(c.slipAngle);
+  return inp({ steer: counter(c), throttle: Math.max(0, Math.min(1, 0.65 + 4 * err)) });
+}
+
+/** Up to speed in a straight line. */
+function upTo(c: CarState, kmh: number): void {
+  for (let i = 0; i < 1800 && c.speed * 3.6 < kmh; i++) stepCar(c, t, inp({ throttle: 1 }), { world });
+}
+
+/** E: peak lateral g, the wheel ramped slowly at a held 100 km/h (grip, not a slide: body slip under 12°). */
+function peakLateral(): number {
+  const c = createCar(0, 0, 0, 0);
+  upTo(c, 100);
+  let peak = 0;
+  for (let i = 0; i < 300; i++) {
+    stepCar(c, t, inp({ throttle: c.speed < 27.8 ? 0.7 : 0.25, steer: -Math.min(1, i / 240) }), { world });
+    if (Math.abs(c.slipAngle) < 12 * DEG) peak = Math.max(peak, Math.abs(c.aLat) / 9.81);
+  }
+  return peak;
+}
+
+/** F and G: a handbrake entry at 80 km/h, the drift held 2 s, then a flick the other way (lift, opposite lock, then power) and that drift held (seconds over 15° in the 2.25 s from the flick). */
+function linkedDrifts(): string {
+  const c = createCar(0, 0, 0, 0);
+  upTo(c, 80);
+  for (let i = 0; i < 20; i++) stepCar(c, t, inp({ throttle: 0.6, steer: -1, handbrake: true }), { world });
+  let held1 = 0;
+  const v0 = c.speed;
+  for (let i = 0; i < 120; i++) {
+    stepCar(c, t, drifter(c), { world });
+    if (Math.abs(c.slipAngle) > 15 * DEG) held1 += DT_S;
+  }
+  const side = Math.sign(c.slipAngle);
+  const v1 = c.speed;
+  // The flick: off the throttle, full lock the new way, until the slip has swung through to the other side.
+  let tFlip = -1;
+  let worst = 0;
+  let held2 = 0;
+  // The flick: a lift with the lock thrown the new way (the entry turned at -1), then power with the lock
+  // held until the rear swings through past 15°, then the drifter holds it.
+  let swung = false;
+  for (let i = 0; i < 240; i++) {
+    const flicking = i < 12;
+    if (!swung && Math.sign(c.slipAngle) === -side && Math.abs(c.slipAngle) > 15 * DEG) swung = true;
+    stepCar(c, t, flicking ? inp({ steer: 1 }) : swung ? drifter(c) : inp({ steer: 1, throttle: 1 }), { world });
+    if (process.env.TRACE && i % 6 === 0) console.log(row(c, i));
+    const other = Math.sign(c.slipAngle) === -side;
+    if (tFlip < 0 && other && Math.abs(c.slipAngle) > 15 * DEG) tFlip = i * DT_S;
+    if (other) worst = Math.max(worst, Math.abs(c.slipAngle));
+    if (other && swung && i < 135 && Math.abs(c.slipAngle) > 15 * DEG) held2 += DT_S;
+  }
+  return [
+    `F held ${held1.toFixed(2)}s/2.0 over 15° (${(v0 * 3.6).toFixed(0)}→${(v1 * 3.6).toFixed(0)} km/h)`,
+    `G flick to 15° the other way ${tFlip < 0 ? 'never' : tFlip.toFixed(2) + 's'}, worst ${(worst / DEG).toFixed(0)}°${worst > 80 * DEG ? ' SPUN' : ''}, held ${held2.toFixed(2)}s/2.0`,
+  ].join(' | ');
+}
+
+const DT_S = 1 / 60;
+console.log(`\n=== E/F/G closed loop (${carId}) ===`);
+console.log(`E peak lateral ${peakLateral().toFixed(2)} g | ${linkedDrifts()}`);
