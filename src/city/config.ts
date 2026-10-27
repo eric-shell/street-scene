@@ -1436,3 +1436,51 @@ export const ROUTE = {
   /** Clearance (m) the rail keeps from street furniture (beyond the prop's radius). */
   railPropClear: 0.35,
 } as const;
+
+/**
+ * Kerb parking (parking.ts): rows of parked cars along one kerb of the plain
+ * streets off the route, sim bodies a car can hit (sim/traffic.ts, mode
+ * 'parked'). The kinds are names from drivingParams.json traffic.kinds
+ * (tests/traffic.test.ts holds bodyHalfWidth and pitch to their sizes).
+ */
+export const PARKING = {
+  /** Street kinds that may carry a row, when the kerb strip leaves every lane of that side clear (parking.ts kerbStrip). */
+  edgeKinds: ['street', 'avenue', 'diagonal', 'boulevard'] as const,
+  /** Passenger kinds parked at the kerb and their mix (shares, normalised). */
+  kinds: [
+    { name: 'sedan', share: 0.2 },
+    { name: 'wagon', share: 0.08 },
+    { name: 'hatch', share: 0.14 },
+    { name: 'compact', share: 0.12 },
+    { name: 'coupe', share: 0.07 },
+    { name: 'minivan', share: 0.08 },
+    { name: 'pickup', share: 0.08 },
+    { name: 'suv', share: 0.12 },
+    { name: 'offroad', share: 0.04 },
+    { name: 'taxi', share: 0.03 },
+  ],
+  /** Slot pitch along the kerb (m): the longest passenger kind (a pickup, 5.8 m) with room to pull out. */
+  pitch: 6.4,
+  /** Share of the slots taken, so the rows have gaps. */
+  occupancy: 0.55,
+  /** Share of the eligible streets that get a row at all (the rest keep both kerbs clear). */
+  streetShare: 0.85,
+  /** Gap from the kerb to a car's side (m), and the widest passenger kind's half width (m, a coupe): the kerb strip is the gap plus that car's width. */
+  kerbGap: 0.25,
+  bodyHalfWidth: 1.06,
+  /** Clear of a junction's curb corner (m along the street), and of a bend node's (a street's own kink). */
+  cornerClear: 14,
+  bendClear: 3,
+  /** Kept from a bus bay's or a path mouth's stretch (m) beyond the slot's half pitch. */
+  bayClear: 4,
+  /** A hydrant's front is kept this clear (m) of a car's end. */
+  hydrantClear: 2.5,
+  /** Kept from a level crossing's gate lines (m). */
+  crossingClear: 18,
+  /** Kept from the route's line (m) beyond the street's half width: off the route, its closures and their meets. */
+  routeClear: 12,
+  /** Walls and props must stay this clear (m) of a slot's footprint. */
+  probePad: 0.3,
+  /** District areas a slot never stands in (World.areaAt at its centre): the river's banks and ramps, a tunnel or viaduct, a market, roadworks. */
+  offAreas: ['river', 'tunnel', 'overpass', 'market', 'roadworks', 'roundabout'] as const,
+} as const;

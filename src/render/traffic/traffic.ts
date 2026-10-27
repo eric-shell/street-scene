@@ -27,6 +27,14 @@
  * the nearest `cars` of the rest are filled in, so the per frame cost is a
  * few dozen matrix composes and terrain samples. Triangles: 2.2k per
  * passenger car up to 3.4k per truck or bus, so about 60k at Medium.
+ *
+ * The kerb's parked cars (city/parking.ts, sim mode 'parked') are traffic
+ * cars too, so a struck one is drawn where the sim shoves it for free. They
+ * are picked apart from the moving ones, the nearest `parked` within
+ * `parkedDistance` (Low included: each is a body a car stops against), lamps
+ * off but for a few parking lights, paint dimmed like the yard cars'
+ * (parkedCars.ts), and a struck one blinks its hazards (an alarm). Their
+ * triangles: about 2.2k each, so 130k more at Medium with every pick filled.
  */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -43,14 +51,20 @@ import { floatGeometry } from '../gltfGeometry';
 import { ROAD_Y } from '../street/cityMeshes';
 import { maskVehicleMesh, underVehicles } from '../vehicleMask';
 
-/** Per tier: most cars drawn, draw distance (m), headlight pools on the road. */
-export const TRAFFIC_QUALITY: Record<Quality, { cars: number; drawDistance: number; beams: boolean }> = {
-  low: { cars: 14, drawDistance: 200, beams: false },
-  medium: { cars: 26, drawDistance: 280, beams: true },
-  high: { cars: 44, drawDistance: 360, beams: true },
+/**
+ * Per tier: most moving cars drawn, their draw distance (m), headlight pools on the road; most kerb parked
+ * cars drawn and theirs (m). Draw counts only: the sim's fleet and kerbs are the replayed config's.
+ */
+export const TRAFFIC_QUALITY: Record<Quality, { cars: number; drawDistance: number; beams: boolean; parked: number; parkedDistance: number }> = {
+  low: { cars: 14, drawDistance: 200, beams: false, parked: 24, parkedDistance: 110 },
+  medium: { cars: 26, drawDistance: 280, beams: true, parked: 60, parkedDistance: 180 },
+  high: { cars: 44, drawDistance: 360, beams: true, parked: 120, parkedDistance: 260 },
 };
 
-/** Snapshot layout per car: x, z, yaw, kind (-1 gone), born tick, flags (1 braking, 2 struck). */
+/** Instance slots a view needs at most: the largest tier's picks. */
+const MAX_DRAWN = Math.max(...Object.values(TRAFFIC_QUALITY).map((q) => q.cars + q.parked));
+
+/** Snapshot layout per car: x, z, yaw, kind (-1 gone), born tick, flags (1 braking, 2 struck, 4 kerb parked, struck or not). */
 export const TRAFFIC_SNAP = 6;
 
 /** Copy the traffic's poses into a snapshot buffer (TRAFFIC_SNAP floats per car). */
@@ -63,7 +77,7 @@ export function snapTraffic(t: TrafficState, out: Float32Array): void {
     out[o + 2] = c.body.yaw;
     out[o + 3] = c.mode === 'gone' ? -1 : c.kind;
     out[o + 4] = c.born;
-    out[o + 5] = (c.braking ? 1 : 0) | (c.mode === 'loose' ? 2 : 0);
+    out[o + 5] = (c.braking ? 1 : 0) | (c.mode === 'loose' ? 2 : 0) | (c.home >= 0 ? 4 : 0);
   }
 }
 
@@ -158,6 +172,17 @@ export function loadTrafficAssets(): Promise<TrafficAssets | null> {
   return loading;
 }
 
+/** How a parked car is dressed, at the kerb (here) and in the yards (parkedCars.ts); colours linear, HDR for the lamps that bloom. */
+export const PARKED_LOOK = {
+  /** Paint brightness against the traffic's: parked cars sit under the night's dust and shade. */
+  dim: [0.55, 0.9],
+  /** Lit lamp colours: a head lamp as a warm parking light, a tail lamp red. Under the bloom's threshold: a glint, not a flare. */
+  head: new THREE.Color(0xffb866).multiplyScalar(1.1),
+  tail: new THREE.Color(0xff2a30).multiplyScalar(0.9),
+  /** Share of the kerb's cars with their parking lights on. */
+  lit: 0.08,
+} as const;
+
 /** Muted street paint for the tinted cars (the atlas holds their paint as grey). */
 export const PAINTS = [0x9aa0a6, 0x3a3d42, 0x16171a, 0xd8d8d4, 0x1e2a44, 0x5a1a1f, 0x223a2c, 0x9c8b6e, 0x3f5468, 0xb8a98a, 0x6d7276, 0x2b2f3a, 0x7a2a22, 0x2f4a5a].map((c) => new THREE.Color(c));
 const WHITE = new THREE.Color(1, 1, 1);
@@ -216,6 +241,23 @@ const lerpAngle = (a: number, b: number, t: number) => {
   return a + d * t;
 };
 
+/** Insert car i at squared distance d2 into a nearest-first list of at most `max` (no allocation). */
+function nearest(list: number[], dist: number[], max: number, i: number, d2: number): void {
+  if (max <= 0 || (list.length >= max && d2 >= dist[list.length - 1])) return;
+  let k = Math.min(list.length, max - 1);
+  if (list.length < max) {
+    list.push(i);
+    dist.push(d2);
+  }
+  while (k > 0 && dist[k - 1] > d2) {
+    list[k] = list[k - 1];
+    dist[k] = dist[k - 1];
+    k--;
+  }
+  list[k] = i;
+  dist[k] = d2;
+}
+
 export class TrafficView {
   readonly group = new THREE.Group();
   /** Built once the models load; null until then (and when they are missing). */
@@ -228,9 +270,13 @@ export class TrafficView {
   private readonly beamMesh: THREE.InstancedMesh;
   private readonly disposables: { dispose(): void }[] = [];
   private disposed = false;
-  /** Per frame scratch: picked car indices and their squared distances, nearest first. */
+  /** Per frame scratch: picked car indices and their squared distances, nearest first (moving, then parked). */
   private readonly pick: number[] = [];
   private readonly pickD: number[] = [];
+  private readonly pickP: number[] = [];
+  private readonly pickPD: number[] = [];
+  /** Instance slots: every car up to the largest tier's picks. */
+  private readonly slots: number;
   private readonly m = new THREE.Matrix4();
   private readonly lm = new THREE.Matrix4();
   private readonly q = new THREE.Quaternion();
@@ -241,9 +287,10 @@ export class TrafficView {
 
   constructor(
     private readonly world: World,
-    private readonly count: number,
+    count: number,
   ) {
     this.group.name = 'traffic';
+    this.slots = Math.max(1, Math.min(count, MAX_DRAWN));
     const lampMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     // Tiny HDR emitters flicker in the distance without this (see lightFx.ts).
     fadeSubPixel(lampMat, 0.12, 0.3);
@@ -254,9 +301,9 @@ export class TrafficView {
     const beamGeo = new THREE.PlaneGeometry(7, 17).rotateX(-Math.PI / 2);
     this.disposables.push(lampMat, glowTex, beamMat, lampGeo, beamGeo);
     const maxLamps = Math.max(...this.lamps.map((l) => l.length));
-    this.lampMesh = new THREE.InstancedMesh(lampGeo, lampMat, Math.max(1, count * maxLamps));
+    this.lampMesh = new THREE.InstancedMesh(lampGeo, lampMat, this.slots * maxLamps);
     this.lampMesh.setColorAt(0, this.c.setRGB(1, 1, 1));
-    this.beamMesh = new THREE.InstancedMesh(beamGeo, beamMat, Math.max(1, count));
+    this.beamMesh = new THREE.InstancedMesh(beamGeo, beamMat, this.slots);
     this.beamMesh.renderOrder = 3;
     for (const mesh of [this.lampMesh, this.beamMesh]) {
       mesh.count = 0;
@@ -276,7 +323,7 @@ export class TrafficView {
     const sum = (gs: (THREE.BufferGeometry | null)[], f: (g: THREE.BufferGeometry) => number) => gs.reduce((n, g) => n + (g ? f(g) : 0), 0);
     const verts = (g: THREE.BufferGeometry) => g.getAttribute('position').count;
     const idx = (g: THREE.BufferGeometry) => g.getIndex()!.count;
-    const n = Math.max(1, this.count);
+    const n = this.slots;
     const bodyMat = bodyMaterial(a.atlas);
     const decalMat = new THREE.MeshStandardMaterial({ map: a.atlas, alphaTest: 0.5, metalness: 0.2, roughness: 0.5, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
     this.disposables.push(bodyMat, decalMat);
@@ -320,37 +367,32 @@ export class TrafficView {
     const cam = camera.position;
     const n = Math.floor(curr.length / TRAFFIC_SNAP);
     const maxD2 = q.drawDistance * q.drawDistance;
-    // Nearest `q.cars` within the draw distance, by insertion into a short sorted list.
+    const maxP2 = q.parkedDistance * q.parkedDistance;
+    // Nearest `q.cars` moving cars within the draw distance and nearest `q.parked` kerb cars within theirs.
     const pick = this.pick;
     const pickD = this.pickD;
+    const pickP = this.pickP;
+    const pickPD = this.pickPD;
     pick.length = 0;
     pickD.length = 0;
+    pickP.length = 0;
+    pickPD.length = 0;
     for (let i = 0; i < n; i++) {
       const o = i * TRAFFIC_SNAP;
       if (curr[o + 3] < 0) continue;
       const d2 = (curr[o] - cam.x) ** 2 + (curr[o + 1] - cam.z) ** 2;
-      if (d2 > maxD2) continue;
-      if (pick.length >= q.cars && d2 >= pickD[pick.length - 1]) continue;
-      let k = Math.min(pick.length, q.cars - 1);
-      if (pick.length < q.cars) {
-        pick.push(i);
-        pickD.push(d2);
-      }
-      while (k > 0 && pickD[k - 1] > d2) {
-        pick[k] = pick[k - 1];
-        pickD[k] = pickD[k - 1];
-        k--;
-      }
-      pick[k] = i;
-      pickD[k] = d2;
+      if (curr[o + 5] & 4) {
+        if (d2 <= maxP2) nearest(pickP, pickPD, q.parked, i, d2);
+      } else if (d2 <= maxD2) nearest(pick, pickD, q.cars, i, d2);
     }
+    for (const i of pickP) pick.push(i);
     let lamps = 0;
     let beams = 0;
     const blink = Math.sin(time * 6.5) > 0;
     const lampArr = this.lampMesh.instanceMatrix.array as Float32Array;
     const lampCol = this.lampMesh.instanceColor!.array as Float32Array;
     const beamArr = this.beamMesh.instanceMatrix.array as Float32Array;
-    const slots = Math.max(1, this.count);
+    const slots = this.slots;
     for (let slot = 0; slot < slots; slot++) {
       const i = slot < pick.length ? pick[slot] : -1;
       if (i < 0) {
@@ -378,9 +420,12 @@ export class TrafficView {
       bodies.setGeometryIdAt(slot, this.bodyIds[kind]);
       bodies.setMatrixAt(slot, this.m);
       bodies.setVisibleAt(slot, true);
+      const flags = curr[o + 5];
+      const parked = (flags & 4) !== 0;
       if (model.tinted) {
         const h = hash01(i, curr[o + 4]);
-        this.c.copy(PAINTS[Math.floor(h * PAINTS.length)]).multiplyScalar(0.85 + 0.3 * hash01(curr[o + 4], i));
+        const dim = parked ? PARKED_LOOK.dim[0] + (PARKED_LOOK.dim[1] - PARKED_LOOK.dim[0]) * hash01(curr[o + 4], i) : 0.85 + 0.3 * hash01(curr[o + 4], i);
+        this.c.copy(PAINTS[Math.floor(h * PAINTS.length)]).multiplyScalar(dim);
         bodies.setColorAt(slot, this.c);
       } else bodies.setColorAt(slot, WHITE);
       if (decals) {
@@ -392,10 +437,22 @@ export class TrafficView {
         decals.setVisibleAt(slot, id !== null);
       }
       // Lamps: fade in over the first second of a spawn; brake lights, hazards and beacons when struck.
-      const flags = curr[o + 5];
       const fade = Math.min(1, Math.max(0, (tick - curr[o + 4]) / 60));
       const struck = (flags & 2) !== 0;
+      // A parked car (its slot index is stable) shows no lamps but a few parking lights, and its hazards once struck.
+      const lit = parked && hash01(i, 0x5eed) < PARKED_LOOK.lit;
       for (const { m, lamp } of this.lamps[kind]) {
+        if (parked) {
+          // The hazards blink on the tail lamps; between flashes only a lit car's parking lights show.
+          const hazard = struck && lamp.role === 'tail' && blink;
+          if (!hazard && !(lit && (lamp.role === 'head' || lamp.role === 'tail'))) continue;
+          this.lm.multiplyMatrices(this.m, m);
+          this.lm.toArray(lampArr, lamps * 16);
+          this.c.copy(hazard ? HAZARD : lamp.role === 'head' ? PARKED_LOOK.head : PARKED_LOOK.tail);
+          this.c.toArray(lampCol, lamps * 3);
+          lamps++;
+          continue;
+        }
         this.lm.multiplyMatrices(this.m, m);
         this.lm.toArray(lampArr, lamps * 16);
         if (lamp.role === 'beacon') {
@@ -409,7 +466,7 @@ export class TrafficView {
         this.c.toArray(lampCol, lamps * 3);
         lamps++;
       }
-      if (q.beams && !struck) {
+      if (q.beams && !struck && !parked) {
         this.lm.makeRotationY(yaw).setPosition(x + fx * (model.halfLength + 8.2), (hf + hb) / 2 + 0.07, z + fz * (model.halfLength + 8.2));
         this.lm.toArray(beamArr, beams * 16);
         beams++;

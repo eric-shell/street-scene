@@ -160,7 +160,8 @@ export function raceHudData(r: RaceState, cars: HudCar[], ghost: boolean, aspira
 export function trafficDotCars(t: Float32Array, px: number, pz: number): HudCar[] {
   const out: HudCar[] = [];
   for (let o = 0; o < t.length; o += TRAFFIC_SNAP) {
-    if (t[o + 3] < 0 || (t[o] - px) ** 2 + (t[o + 1] - pz) ** 2 > TRAFFIC_DOT_RANGE ** 2) continue;
+    // Moving traffic only: the kerb's parked cars (flag 4) would line every street.
+    if (t[o + 3] < 0 || t[o + 5] & 4 || (t[o] - px) ** 2 + (t[o + 1] - pz) ** 2 > TRAFFIC_DOT_RANGE ** 2) continue;
     out.push({ x: t[o], z: t[o + 1], yaw: t[o + 2], isPlayer: false, isTraffic: true });
   }
   return out;

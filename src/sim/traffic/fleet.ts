@@ -3,8 +3,14 @@
  * and a turn, putting a car on a lane (place, syncBody) and the density that keeps a fixed number of them in a
  * bubble around the player (trySpawn, createTraffic). The stream (rng) and the pose scratch are shared with
  * traffic.ts, whose stepTraffic loads the stream from TrafficState, draws on it and saves it back.
+ *
+ * The kerb's parked cars (city/parking.ts) follow the moving fleet in TrafficState.cars, one per occupied
+ * slot of the world's plan, in mode 'parked' (parkHome). They draw nothing from the stream, so the moving
+ * fleet is the same with them as without, and they are never recycled into it.
  */
 import type { World } from '../../city/world';
+import { planParking } from '../../city/parking';
+import { SpatialGrid } from '../../city/spatial';
 import { createCar } from '../car';
 import { CarTuning, DEFAULT_CAR_ID, TRAFFIC, getBaseTuning } from '../tuning';
 import { CRASH_EVENT, DT } from '../constants';
@@ -130,7 +136,8 @@ export function trySpawn(t: TrafficState, world: World, c: TrafficCar, cars: rea
     }
     if (!ok) continue;
     for (const o of t.cars) {
-      if (o === c || o.mode === 'gone') continue;
+      // Parked cars stand clear of every lane (their rows moved it); one struck loose counts.
+      if (o === c || o.mode === 'gone' || o.mode === 'parked') continue;
       if ((o.body.x - pose.x) ** 2 + (o.body.z - pose.z) ** 2 < L.spawnClear * L.spawnClear) {
         ok = false;
         break;
@@ -152,14 +159,101 @@ export function createTraffic(world: World, cars: readonly RaceCar[], seed: numb
   const net = trafficNet(world);
   const count = openWorld ? L.count.openWorld : L.count.race;
   rng.setState(deriveSeed(seed, 'traffic'));
-  const t: TrafficState = { net, cars: [], rng: 0 };
+  const t: TrafficState = { net, cars: [], fleet: count, unparked: [], rng: 0 };
   const focus = cars[0]?.state;
   for (let i = 0; i < count; i++) {
     const body = createCar(0, 0, 0, 0);
-    const c: TrafficCar = { id: i, kind: 0, mode: 'gone', path: -1, next: -1, after: -1, s: 0, v: 0, cruise: 0, hold: -1, wait: 0, still: 0, ox: 0, oz: 0, oyaw: 0, born: 0, hitTick: -CRASH_EVENT.gap, braking: false, body };
+    const c: TrafficCar = { id: i, kind: 0, mode: 'gone', home: -1, path: -1, next: -1, after: -1, s: 0, v: 0, cruise: 0, hold: -1, wait: 0, still: 0, ox: 0, oz: 0, oyaw: 0, born: 0, hitTick: -CRASH_EVENT.gap, braking: false, body };
     t.cars.push(c);
     if (focus) trySpawn(t, world, c, cars, focus.x, focus.z, discreet ? L.spawnMin : 0, L.bubble * 0.9, L.startClear, 0, 60);
   }
+  // The kerb's parked cars, after the moving fleet (whose ids and draws they leave alone).
+  const parked = planParking(world).cars;
+  for (let h = 0; h < parked.length; h++) {
+    const kind = kindIndex(parked[h].kind);
+    const c: TrafficCar = { id: count + h, kind, mode: 'parked', home: h, path: -1, next: -1, after: -1, s: 0, v: 0, cruise: 0, hold: -1, wait: 0, still: 0, ox: 0, oz: 0, oyaw: 0, born: 0, hitTick: -CRASH_EVENT.gap, braking: false, body: createCar(0, 0, 0, 0) };
+    t.cars.push(c);
+    parkHome(t, world, c, 0);
+  }
   t.rng = rng.getState();
   return t;
+}
+
+const kindIndices = new Map<string, number>();
+
+/** Index into TRAFFIC.kinds of a kind name (city/parking.ts names its kinds; drivingParams.json must have them). */
+function kindIndex(name: string): number {
+  let k = kindIndices.get(name);
+  if (k === undefined) {
+    k = P.kinds.findIndex((kd) => kd.name === name);
+    if (k < 0) throw new Error(`PARKING kind "${name}" is not in drivingParams.json traffic.kinds`);
+    kindIndices.set(name, k);
+  }
+  return k;
+}
+
+/** Stand a parked car in its slot at rest (at creation, and back from loose), `tick` as its fresh spawn. */
+export function parkHome(t: TrafficState, world: World, c: TrafficCar, tick: number): void {
+  const slot = planParking(world).cars[c.home];
+  const k = t.unparked.indexOf(c.id);
+  if (k >= 0) t.unparked.splice(k, 1);
+  const b = c.body;
+  c.mode = 'parked';
+  c.v = 0;
+  c.still = 0;
+  c.braking = false;
+  c.born = tick;
+  b.x = slot.x;
+  b.z = slot.z;
+  b.yaw = slot.yaw;
+  b.y = world.heightAt(slot.x, slot.z);
+  b.vx = 0;
+  b.vz = 0;
+  b.yawRate = 0;
+  b.speed = 0;
+}
+
+/** Mark a parked car struck out of its slot (keeps TrafficState.unparked ascending). */
+export function unparkCar(t: TrafficState, c: TrafficCar): void {
+  const u = t.unparked;
+  if (u.includes(c.id)) return;
+  let k = u.length;
+  u.push(c.id);
+  while (k > 0 && u[k - 1] > c.id) {
+    u[k] = u[k - 1];
+    k--;
+  }
+  u[k] = c.id;
+}
+
+/** Broadphase over the kerb slots of a world (slot index per point), built once and cached. */
+const slotGrids = new WeakMap<World, SpatialGrid>();
+
+function slotGrid(world: World): SpatialGrid {
+  let g = slotGrids.get(world);
+  if (!g) {
+    const b = world.graph.bounds;
+    g = SpatialGrid.forBounds(b.minX - L.parkCell, b.minZ - L.parkCell, b.maxX + L.parkCell, b.maxZ + L.parkCell, L.parkCell);
+    planParking(world).cars.forEach((s, h) => g!.insertBox(h, s.x, s.z, s.x, s.z));
+    slotGrids.set(world, g);
+  }
+  return g;
+}
+
+const slotScratch: number[] = [];
+
+/**
+ * Car ids (ascending) of the parked cars still standing in their slots within
+ * `r` (m, a box) of (x, z): the per tick contact and lookahead loops ask this
+ * instead of walking every kerb in the city.
+ */
+export function parkedNear(t: TrafficState, world: World, x: number, z: number, r: number, out: number[]): number[] {
+  out.length = 0;
+  if (t.cars.length === t.fleet) return out;
+  slotGrid(world).query(x - r, z - r, x + r, z + r, slotScratch);
+  for (const h of slotScratch) {
+    const c = t.cars[t.fleet + h];
+    if (c.mode === 'parked') out.push(c.id);
+  }
+  return out;
 }

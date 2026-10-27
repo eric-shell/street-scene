@@ -535,7 +535,14 @@ export interface TrafficParams {
   rejoinLength: number;
   /** Multiplies the box approximation of yaw inertia (as CarTuning.yawInertiaScale). */
   yawInertiaScale: number;
+  /** Kerb parked cars (city/parking.ts) once struck. */
+  parked: TrafficParkedParams;
   kinds: TrafficKind[];
+}
+
+export interface TrafficParkedParams {
+  /** Deceleration along the heading of a shoved parked car (m/s^2): handbrake and park lock hold its wheels, so it skids rather than rolls. */
+  rollDecel: number;
 }
 
 const TRAFFIC_KIND_KEYS: Record<keyof TrafficKind, 'string' | 'number'> = { name: 'string', share: 'number', mass: 'number', halfLength: 'number', halfWidth: 'number' };
@@ -545,9 +552,13 @@ function validateTraffic(raw: unknown): TrafficParams {
   if (!isObj(raw)) throw new Error('drivingParams.json: "traffic" must be an object');
   const scalars: (keyof TrafficParams)[] = ['cruiseSpeed', 'cruiseJitter', 'accel', 'brake', 'hardBrake', 'turnLatAccel', 'minTurnSpeed', 'standGap', 'headway', 'slideDecel', 'rollDecel', 'spinDecel', 'restSpeed', 'recoverDelay', 'rejoinDistance', 'rejoinYawDeg', 'rejoinLength', 'yawInertiaScale'];
   for (const k of Object.keys(raw)) {
-    if (!k.startsWith('_') && k !== 'kinds' && !scalars.includes(k as keyof TrafficParams)) throw new Error(`drivingParams.json: unknown key "traffic.${k}"`);
+    if (!k.startsWith('_') && k !== 'kinds' && k !== 'parked' && !scalars.includes(k as keyof TrafficParams)) throw new Error(`drivingParams.json: unknown key "traffic.${k}"`);
   }
   for (const k of scalars) if (typeof raw[k] !== 'number') throw new Error(`drivingParams.json: "traffic.${k}" must be a number`);
+  const parked = raw.parked;
+  if (!isObj(parked)) throw new Error('drivingParams.json: "traffic.parked" must be an object');
+  for (const k of Object.keys(parked)) if (!k.startsWith('_') && k !== 'rollDecel') throw new Error(`drivingParams.json: unknown key "traffic.parked.${k}"`);
+  if (typeof parked.rollDecel !== 'number') throw new Error('drivingParams.json: "traffic.parked.rollDecel" must be a number');
   const kinds = raw.kinds;
   if (!Array.isArray(kinds) || !kinds.length) throw new Error('drivingParams.json: "traffic.kinds" must be a non-empty array');
   kinds.forEach((kind: unknown, i) => {

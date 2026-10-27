@@ -29,7 +29,7 @@ import { planYards, type YardCar } from '../districts/yards';
 import { fadeSubPixel } from '../materialFx';
 import { applyHeightFog } from '../heightFog';
 import { maskVehicleMesh } from '../vehicleMask';
-import { PAINTS, TRAFFIC_MODELS, bodyMaterial, loadTrafficAssets } from './traffic';
+import { PAINTS, PARKED_LOOK, TRAFFIC_MODELS, bodyMaterial, loadTrafficAssets } from './traffic';
 
 /** Per tier: how far (m) parked cars are drawn. Zero: none (Low). */
 export const PARKED_QUALITY: Record<Quality, { drawDistance: number }> = {
@@ -38,13 +38,9 @@ export const PARKED_QUALITY: Record<Quality, { drawDistance: number }> = {
   high: { drawDistance: 260 },
 };
 
-/** How a parked car is dressed (colours linear, HDR for the lamps that bloom). */
+/** How a parked car is dressed: the kerb's look (traffic.ts PARKED_LOOK, shared so both read as one city's cars). */
 const PARKED = {
-  /** Paint brightness against the traffic's: parked cars sit under the night's dust and shade. */
-  dim: [0.55, 0.9],
-  /** Lit lamp colours: a head lamp as a warm parking light, a tail lamp red. Under the bloom's threshold: a glint, not a flare. */
-  head: new THREE.Color(0xffb866).multiplyScalar(1.1),
-  tail: new THREE.Color(0xff2a30).multiplyScalar(0.9),
+  ...PARKED_LOOK,
   /** Lift above the ground (m): the tyres' flats sink a little. */
   lift: -0.02,
 } as const;

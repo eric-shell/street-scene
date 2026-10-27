@@ -2,12 +2,15 @@
  * The traffic network of a world: one lane per direction on every plain street, connectors through each
  * junction, the conflict table that makes crossing connectors take turns, and the timed-gate spans. Built once
  * per World (trafficNet caches it) as a pure function of it; lanes and connectors that would rub a wall or
- * leave the paving are dropped and dead ends pruned. samplePath reads a pose along any path.
+ * leave the paving are dropped and dead ends pruned. Along a kerb parking row (city/parking.ts, the same plan
+ * the parked cars stand in) the lane on that side moves in, as it merges round roadworks, so no driving car
+ * ever brushes a parked one. samplePath reads a pose along any path.
  */
 import type { World, Contact } from '../../city/world';
 import type { RoadKind } from '../../city/roadGraph';
 import { isBendNode } from '../../city/roadGraph';
 import { ROADWORKS, laneClosures } from '../../city/districts/roadworks';
+import { planParking, type ParkingRow } from '../../city/parking';
 import { CITY } from '../../city/config';
 import { TRAFFIC } from '../tuning';
 import { DEG, TAU, abs, atan2, cos, distToSegment, sin, smoothstep, sqrt, wrapAngle, yawOf } from '../math';
@@ -123,6 +126,14 @@ function buildNet(w: World): TrafficNet {
     else closuresOf.set(a.params.edge, [c]);
   });
 
+  // Kerb parking rows per edge (city/parking.ts): the lane on a row's side moves in clear of its strip.
+  const rowsOf = new Map<number, ParkingRow[]>();
+  for (const row of planParking(w).rows) {
+    const list = rowsOf.get(row.edge);
+    if (list) list.push(row);
+    else rowsOf.set(row.edge, [row]);
+  }
+
   // Night markets (districts/market.ts) close their street to traffic, in an open world too.
   const market = new Set((w.areas ?? []).filter((a) => a.kind === 'market').flatMap((a) => a.edges));
 
@@ -167,6 +178,16 @@ function buildNet(w: World): TrafficNet {
         const a = dir === 0 ? c.s0 - s0 : len - c.s1 - s0;
         const b = dir === 0 ? c.s1 - s0 : len - c.s0 - s0;
         squeeze.push({ a, b, shift: off - clear });
+      }
+      // Kerb parking on this side (the P side is right of a -> b): the widest car keeps parkClear off the strip.
+      // kerbStrip only admits a street with a full lane of carriageway beside the strip, so this never crosses the centreline.
+      for (const row of rowsOf.get(e.id) ?? []) {
+        if ((row.side === 1) !== (dir === 0)) continue;
+        const keep = e.width / 2 - row.strip - L.parkClear - maxHalfWidth();
+        if (keep >= off) continue;
+        const a = dir === 0 ? row.s0 - s0 : len - row.s1 - s0;
+        const b = dir === 0 ? row.s1 - s0 : len - row.s0 - s0;
+        squeeze.push({ a, b, shift: off - keep });
       }
       const { xs, zs, yaws } = lanePolyline(S.x + fx * s0, S.z + fz * s0, fx, fz, laneLen, off, squeeze);
       if (pathBlocked(w, xs, zs, probe, contacts)) continue;
