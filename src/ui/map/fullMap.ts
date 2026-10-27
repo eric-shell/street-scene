@@ -656,7 +656,7 @@ export class FullMap {
     return p;
   }
 
-  /** The seed's other courses: a thin line each in its type's color, a soft road under it while its legend row is hovered. */
+  /** The seed's other courses: a line each in its type's color on a dark casing, as strong as the featured course but without its marching dashes and flags. */
   private drawOtherCourses(c: CanvasRenderingContext2D, v: MapView): void {
     const dpr = this.dpr;
     c.setTransform(1, 0, 0, 1, 0, 0);
@@ -670,13 +670,15 @@ export class FullMap {
       c.beginPath();
       for (let i = 0; i < pts.length; i++) (i ? c.lineTo(mapX(v, pts[i].x), mapY(v, pts[i].z)) : c.moveTo(mapX(v, pts[i].x), mapY(v, pts[i].z)));
       if (o.route.closed) c.closePath();
-      if (lit > 0) {
-        c.strokeStyle = rgba(o.ink, 0.18 * lit);
-        c.lineWidth = 10 * dpr;
-        c.stroke();
-      }
-      c.strokeStyle = lit > 0 ? PALETTE[o.ink] : rgba(o.ink, 0.55);
-      c.lineWidth = (1.5 + 1.2 * lit) * dpr;
+      // A soft road as wide as the featured course's, then a dark casing, so a line reads over a district in its own color (the waypoint race's cyan on the river).
+      c.strokeStyle = rgba(o.ink, 0.16 + 0.12 * lit);
+      c.lineWidth = (7 + 5 * lit) * dpr;
+      c.stroke();
+      c.strokeStyle = INK.band;
+      c.lineWidth = (4.2 + 0.8 * lit) * dpr;
+      c.stroke();
+      c.strokeStyle = PALETTE[o.ink];
+      c.lineWidth = (2.2 + 0.8 * lit) * dpr;
       c.stroke();
     }
     c.globalAlpha = 1;
