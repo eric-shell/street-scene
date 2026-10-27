@@ -114,6 +114,15 @@ function passPath(kit: DistrictKit, pts: Vec2[], width: number, park: Vec2[], mo
   // strip along the park edge the path otherwise keeps off).
   const nearMouth = (p: Vec2) => mouths.some((m) => pointInPolygon(p.x, p.z, m) || distToPolygonEdge(p.x, p.z, m) < PASS.inset + 0.1);
   const on = (p: Vec2) => (pointInPolygon(p.x, p.z, park) && (distToPolygonEdge(p.x, p.z, park) > PASS.inset || nearMouth(p))) || mouths.some((m) => pointInPolygon(p.x, p.z, m));
+  // Asphalt wins over the path: a piece whose corners reach a street (the width of a path that skirts a flared curb) is left out, never drawn over the road.
+  const onStreet = (a: Vec2, b: Vec2, half: number) => {
+    const ux = b.x - a.x;
+    const uz = b.z - a.z;
+    const l = Math.hypot(ux, uz) || 1;
+    const nx = (-uz / l) * half;
+    const nz = (ux / l) * half;
+    return [a, b].some((p) => [-1, 0, 1].some((k) => kit.world.surfaceAt(p.x + nx * k, p.z + nz * k) === 'road'));
+  };
   let stud = 0;
   for (let i = 0; i + 1 < pts.length; i++) {
     const p = pts[i];
@@ -126,7 +135,7 @@ function passPath(kit: DistrictKit, pts: Vec2[], width: number, park: Vec2[], mo
     for (let k = 0; k < n; k++) {
       const a = { x: p.x + (q.x - p.x) * (k / n), z: p.z + (q.z - p.z) * (k / n) };
       const b = { x: p.x + (q.x - p.x) * ((k + 1) / n), z: p.z + (q.z - p.z) * ((k + 1) / n) };
-      if (!on(a) || !on(b)) continue;
+      if (!on(a) || !on(b) || onStreet(a, b, width / 2 + PASS.kerb)) continue;
       // In lanes across, each draped on its own, so a lawn rolling sideways never bulges up through the middle.
       for (let j = 0; j < PASS.lanes; j++) {
         const o = width * ((j + 0.5) / PASS.lanes - 0.5);

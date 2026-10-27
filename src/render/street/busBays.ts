@@ -83,14 +83,17 @@ function asphaltStations(bay: BusBay): number[] {
   return out.filter((s) => s >= bayLo(bay) && s <= bayHi(bay)).sort((p, q) => p - q);
 }
 
-/** The bay's asphalt: from just over the old curb line (it overlaps the road strip a little: no slit) back to the indented curb. */
+/** How far behind the old curb line a path mouth's asphalt reaches (m): just the sliver that closes the slit to the road strip; the park's cobbled apron (districts/park.ts mouthApron) takes over from there, so no asphalt lies under it. */
+export const MOUTH_ASPHALT_DEPTH = 0.02;
+
+/** The bay's asphalt: from just over the old curb line (it overlaps the road strip a little: no slit) back to the indented curb, or for a path mouth only to MOUTH_ASPHALT_DEPTH. */
 export function drawBayAsphalt(bay: BusBay, road: GeoBuilder, d: BayDraw, roadY: number): void {
   const st = asphaltStations(bay);
   let prevA = -1;
   let prevB = -1;
   for (let i = 0; i < st.length; i++) {
     const p = bayPoint(bay, st[i], -0.05);
-    const q = bayPoint(bay, st[i], bayInset(bay, st[i]) + 0.02);
+    const q = bayPoint(bay, st[i], bay.kind === 'mouth' ? MOUTH_ASPHALT_DEPTH : bayInset(bay, st[i]) + 0.02);
     const a = d.ground(road, p.x, p.z, roadY, 10);
     const b = d.ground(road, q.x, q.z, roadY, 10);
     if (i > 0) road.quadFacing(prevA, prevB, b, a, 0, 1, 0);
