@@ -18,7 +18,17 @@
  * cells within the fog cutoff of the camera's 100 m lattice square (VIEW_LATTICE:
  * radial, snapped, with hysteresis) and only when that set changes copies the
  * drawn runs to the front of the instance buffers and sets the instance count.
- * Pools and streaks are 'fog' class (lamps read from afar). Each emitter keeps
+ * Pools and streaks are 'fog' class (lamps read from afar). Both lie on the
+ * ground, which is rarely level (hills lift blocks 8-16 m, the highway's ramps,
+ * the bluff and the river's entrances climb at several percent), so each emitter
+ * carries a ground plane fitted at build (groundPlane.ts): a pool's instance
+ * matrix is sheared onto it, and a streak's vertex shader sets its height from
+ * the emitter's gradient (iGrad) along its length. A plane is zero extra
+ * triangles and zero per-frame cost, where tessellating the instanced quad would
+ * multiply them and could not vary per instance anyway; a pool where the ground
+ * curves too hard for one plane (a crest, a bridge end) shrinks until it fits.
+ * No depth tricks: a pool still hides behind whatever stands in front of it.
+ * Each emitter keeps
  * its own "on" state outside the GPU buffers, applied during compaction and
  * written straight into its slot when it flips while drawn, so a broken lamp
  * (setLampOn) or a smashed bus shelter (setEmitterOn) stays dark whichever cells
@@ -28,9 +38,33 @@ import * as THREE from 'three';
 import { VIEW_LATTICE, type ChunkGrid } from '../cityChunks';
 import { makeRadialGlow } from '../textures/textures';
 import { HEIGHT_FOG_GLSL, HEIGHT_FOG_UNIFORMS } from '../heightFog';
+import { fitGroundPlane, type HeightSampler } from './groundPlane';
 
 /** Width of the light pool under a streetlight (m). */
 const POOL_SIZE = 19;
+
+/**
+ * How the pools and streaks sit on sloped ground (groundPlane.ts). Lifts are over the fitted plane (m); the fit
+ * radii are fractions of the half width (pool) or of the streak's length (streak), where the light is still bright.
+ */
+const GRADE = {
+  /** A pool floats this high over its plane (m): the asphalt's 0.09 and the old flat quad's 0.11. */
+  poolLift: 0.2,
+  /** The ground may overshoot a pool's plane by this much (m) before the pool shrinks to a smaller one that fits. */
+  poolMaxOver: 0.2,
+  /** Fit radius of a pool as a fraction of its half width: the glow's tail past it is under 15 % bright. */
+  poolFit: 0.75,
+  /** The sizes a pool may shrink to, as fractions of POOL_SIZE, widest first. */
+  poolShrink: [1, 0.8, 0.62, 0.45],
+  /** A streak floats this high over its plane's foot (m), the same 9 cm over the asphalt as before. */
+  streakLift: 0.09,
+  /** Fit radius of a streak as a multiple of the emitter's height (m): 0.6 of the 2.4 times the shader stretches it. */
+  streakFit: 1.44,
+  /** Margin kept over the ground's overshoot (m). */
+  margin: 0.05,
+  /** Steepest gradient taken (m per m): beyond it the ground is a wall, not a street. */
+  maxGrade: 0.6,
+} as const;
 
 /**
  * The traffic signal's cycle, shared by the lens (props.ts) and its streak (this file's shader): green for the
@@ -117,11 +151,18 @@ export interface LightFx {
   dispose(): void;
 }
 
-/** The reflection streak's shaders (instanced: iPos at the reflecting surface, iColor, iSize = width and the light's height over it), shared with the harbor's water (render/districts/waterfront.ts). With SIGNAL defined, iPhase >= 0 follows a traffic lens. */
+/**
+ * The reflection streak's shaders (instanced: iPos at the reflecting surface, iColor, iSize = width and the light's height over it),
+ * shared with the harbor's water (render/districts/waterfront.ts, level, so no GRADE). With SIGNAL defined, iPhase >= 0 follows a
+ * traffic lens; with GRADE defined, iGrad is the ground's gradient at the foot and the streak follows that plane.
+ */
 export const streakVert = /* glsl */ `
   attribute vec3 iPos;
   attribute vec3 iColor;
   attribute vec2 iSize;
+  #ifdef GRADE
+  attribute vec2 iGrad;
+  #endif
   #ifdef SIGNAL
   attribute float iPhase;
   uniform float time;
@@ -138,7 +179,12 @@ export const streakVert = /* glsl */ `
     vec2 p = vec2(-d.y, d.x);
     float len = min(iSize.y * 2.4, dist * 0.75);
     vec2 xz = iPos.xz + p * position.x * iSize.x + d * position.y * len;
-    vec3 wp = vec3(xz.x, iPos.y, xz.y);
+    float gy = iPos.y;
+    #ifdef GRADE
+    // The ground plane under the foot (m per m along x and z): the streak lies on the slope instead of cutting into it.
+    gy += dot(iGrad, xz - iPos.xz);
+    #endif
+    vec3 wp = vec3(xz.x, gy, xz.y);
     vUv = position.xy;
     vColor = iColor;
     #ifdef SIGNAL
@@ -192,7 +238,7 @@ function sortByCell(cellOf: ArrayLike<number>, nCells: number): { order: Uint32A
 export function buildLightFx(
   lamps: THREE.Vector3[],
   signs: { pos: THREE.Vector3; color: THREE.Color }[],
-  heightAt: (x: number, z: number) => number,
+  heightAt: HeightSampler,
   fogDensity: number,
   looks: readonly LampLook[],
   opts: LightFxOptions,
@@ -212,6 +258,10 @@ export function buildLightFx(
   /** Streak colour with the class' strength folded in (linear). */
   const eColor = new Float32Array(n * 3);
   const eSize = new Float32Array(n * 2);
+  /** Ground gradient at each streak's foot (m per m along x and z). */
+  const eGrad = new Float32Array(n * 2);
+  /** Each lamp's pool: height at its middle (m), gradient along x and z, and width (m); the instance matrix is built from it. */
+  const ePool = new Float32Array(nLamps * 4);
   /** Signal phase (s), -1 for a steady light. */
   const ePhase = new Float32Array(n).fill(-1);
   const eCell = new Uint16Array(n);
@@ -219,18 +269,40 @@ export function buildLightFx(
   const on = new Uint8Array(n).fill(1);
   let minY = Infinity;
   let maxY = -Infinity;
+  const clampGrade = (g: number) => Math.max(-GRADE.maxGrade, Math.min(GRADE.maxGrade, g));
+  /** A lamp's pool: the plane over its ground, at the widest size whose plane the ground does not overshoot too far. */
+  const fitPool = (i: number, x: number, z: number, gy: number) => {
+    const fit = (f: number) => fitGroundPlane(heightAt, x, z, gy, (POOL_SIZE / 2) * GRADE.poolFit * f);
+    let scale: number = GRADE.poolShrink[0];
+    let plane = fit(scale);
+    for (const f of GRADE.poolShrink.slice(1)) {
+      if (plane.over <= GRADE.poolMaxOver) break;
+      scale = f;
+      plane = fit(f);
+    }
+    ePool[i * 4] = plane.y + Math.max(GRADE.poolLift, plane.over + GRADE.margin);
+    ePool[i * 4 + 1] = clampGrade(plane.gx);
+    ePool[i * 4 + 2] = clampGrade(plane.gz);
+    ePool[i * 4 + 3] = POOL_SIZE * scale;
+  };
   const addEmitter = (i: number, pos: THREE.Vector3, color: THREE.Color, cls: EmitterClass, width?: number, phase?: number) => {
     const c = STREAK_CLASSES[cls];
     const gy = heightAt(pos.x, pos.z);
+    const height = Math.max(c.minHeight, (pos.y - gy) * c.heightScale);
+    // The streak's plane over the stretch where it is still bright, lifted by what the ground overshoots it.
+    const sp = fitGroundPlane(heightAt, pos.x, pos.z, gy, height * GRADE.streakFit);
     ePos[i * 3] = pos.x;
-    ePos[i * 3 + 1] = gy + 0.09;
+    ePos[i * 3 + 1] = sp.y + Math.max(GRADE.streakLift, sp.over + GRADE.margin);
     ePos[i * 3 + 2] = pos.z;
+    eGrad[i * 2] = clampGrade(sp.gx);
+    eGrad[i * 2 + 1] = clampGrade(sp.gz);
+    if (i < nLamps) fitPool(i, pos.x, pos.z, gy);
     const k = c.strength;
     // A signal head's colour comes from the lens in the shader: only its brightness is stored.
     if (phase !== undefined) eColor.set([k, k, k], i * 3);
     else eColor.set([color.r * k, color.g * k, color.b * k], i * 3);
     eSize[i * 2] = width ?? c.width;
-    eSize[i * 2 + 1] = Math.max(c.minHeight, (pos.y - gy) * c.heightScale);
+    eSize[i * 2 + 1] = height;
     if (phase !== undefined) ePhase[i] = phase;
     eCell[i] = grid.cellOf(pos.x, pos.z);
     minY = Math.min(minY, gy);
@@ -273,14 +345,16 @@ export function buildLightFx(
   const iColor = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3);
   const iSize = new THREE.InstancedBufferAttribute(new Float32Array(n * 2), 2);
   const iPhase = new THREE.InstancedBufferAttribute(new Float32Array(n), 1);
+  const iGrad = new THREE.InstancedBufferAttribute(new Float32Array(n * 2), 2);
   geo.setAttribute('iPos', iPos);
+  geo.setAttribute('iGrad', iGrad);
   geo.setAttribute('iColor', iColor);
   geo.setAttribute('iSize', iSize);
   geo.setAttribute('iPhase', iPhase);
   const streakMat = new THREE.ShaderMaterial({
     vertexShader: streakVert,
     fragmentShader: streakFrag,
-    defines: { SIGNAL: '' },
+    defines: { SIGNAL: '', GRADE: '' },
     uniforms: { strength: { value: 0.9 }, fogDensity: { value: fogDensity }, time: { value: 0 }, ...HEIGHT_FOG_UNIFORMS },
     blending: THREE.AdditiveBlending,
     depthWrite: false,
@@ -310,19 +384,24 @@ export function buildLightFx(
   const poolMatrix = pools.instanceMatrix.array as Float32Array;
   const poolTint = pools.instanceColor!.array as Float32Array;
 
-  /** Write one pool's matrix (a flat quad at the lamp, or collapsed when the lamp is dark) at GPU slot k. */
+  /**
+   * Write one pool's matrix at GPU slot k: the unit quad scaled to the pool's width and sheared onto its ground plane
+   * (x maps to (1, gx, 0), z to (0, gz, 1)), collapsed when the lamp is dark.
+   */
   const writePool = (k: number, e: number) => {
     const o = k * 16;
-    const s = on[e] ? POOL_SIZE : 0;
+    const s = on[e] ? ePool[e * 4 + 3] : 0;
     poolMatrix[o] = s;
-    poolMatrix[o + 1] = poolMatrix[o + 2] = poolMatrix[o + 3] = 0;
+    poolMatrix[o + 1] = ePool[e * 4 + 1] * s;
+    poolMatrix[o + 2] = poolMatrix[o + 3] = 0;
     poolMatrix[o + 4] = 0;
     poolMatrix[o + 5] = 1;
-    poolMatrix[o + 6] = poolMatrix[o + 7] = poolMatrix[o + 8] = poolMatrix[o + 9] = 0;
+    poolMatrix[o + 6] = poolMatrix[o + 7] = poolMatrix[o + 8] = 0;
+    poolMatrix[o + 9] = ePool[e * 4 + 2] * s;
     poolMatrix[o + 10] = s;
     poolMatrix[o + 11] = 0;
     poolMatrix[o + 12] = ePos[e * 3];
-    poolMatrix[o + 13] = ePos[e * 3 + 1] + 0.11;
+    poolMatrix[o + 13] = ePool[e * 4];
     poolMatrix[o + 14] = ePos[e * 3 + 2];
     poolMatrix[o + 15] = 1;
   };
@@ -346,6 +425,7 @@ export function buildLightFx(
     const pos = iPos.array as Float32Array;
     const size = iSize.array as Float32Array;
     const phase = iPhase.array as Float32Array;
+    const grad = iGrad.array as Float32Array;
     const { order, start } = streakOrder;
     streakSlot.fill(-1);
     let k = 0;
@@ -359,6 +439,8 @@ export function buildLightFx(
         size[k * 2] = eSize[e * 2];
         size[k * 2 + 1] = eSize[e * 2 + 1];
         phase[k] = ePhase[e];
+        grad[k * 2] = eGrad[e * 2];
+        grad[k * 2 + 1] = eGrad[e * 2 + 1];
         writeStreakColor(k, e);
         streakSlot[j] = k;
       }
@@ -371,7 +453,8 @@ export function buildLightFx(
       iColor.addUpdateRange(0, k * 3);
       iSize.addUpdateRange(0, k * 2);
       iPhase.addUpdateRange(0, k);
-      iPos.needsUpdate = iColor.needsUpdate = iSize.needsUpdate = iPhase.needsUpdate = true;
+      iGrad.addUpdateRange(0, k * 2);
+      iPos.needsUpdate = iColor.needsUpdate = iSize.needsUpdate = iPhase.needsUpdate = iGrad.needsUpdate = true;
     }
   };
   const compactPools = (): void => {
@@ -466,7 +549,7 @@ export function buildLightFx(
       compactStreaks();
       compactPools();
       cullStats.compactions++;
-      cullStats.lastBytes = cullStats.streaks * 4 * 9 + cullStats.pools * 4 * 19;
+      cullStats.lastBytes = cullStats.streaks * 4 * 11 + cullStats.pools * 4 * 19;
     },
     dispose() {
       glow.dispose();

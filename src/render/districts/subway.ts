@@ -51,6 +51,7 @@ import { createTrains } from '../traffic/trains';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { col, cylinder, groundVertex } from './kit';
 import { washMaterial } from '../materialFx';
+import { drapedDisc, type DiscLook } from '../street/groundPlane';
 
 interface V3 {
   x: number;
@@ -536,29 +537,8 @@ function buildLine(kit: DistrictKit, area: Area, c: RailCurve, steel: GeoBuilder
   }
 
   /** An additive light pool on the ground under a lamp, draped ring by ring on `y` (the street has curbs, the bed its shoulders). */
-  function pool(x: number, z: number, y: (x: number, z: number) => number, P: { r: number; rings: number; segs: number; color: THREE.Color }): void {
-    const gb = pools!;
-    const tint = new THREE.Color();
-    const vertex = (px: number, pz: number, t: number) => {
-      const k = (1 - t * t) ** 2;
-      return gb.vertex(px, y(px, pz) + 0.08, pz, 0, 1, 0, 0, 0, tint.copy(P.color).multiplyScalar(k));
-    };
-    const mid = vertex(x, z, 0);
-    let prev: number[] = [];
-    for (let r = 1; r <= P.rings; r++) {
-      const t = r / P.rings;
-      const ring: number[] = [];
-      for (let i = 0; i < P.segs; i++) {
-        const a = (i / P.segs) * Math.PI * 2;
-        ring.push(vertex(x + Math.cos(a) * P.r * t, z + Math.sin(a) * P.r * t, t));
-      }
-      for (let i = 0; i < P.segs; i++) {
-        const j = (i + 1) % P.segs;
-        if (r === 1) gb.triFacing(mid, ring[i], ring[j], 0, 1, 0);
-        else gb.quadFacing(prev[i], prev[j], ring[j], ring[i], 0, 1, 0);
-      }
-      prev = ring;
-    }
+  function pool(x: number, z: number, y: (x: number, z: number) => number, P: DiscLook): void {
+    drapedDisc(pools!, x, z, y, P, 0.08);
   }
 
   /** A stretch at grade: a ballast bed with shoulders down (or up) to the ground, ties, rails, the fences either side. */
