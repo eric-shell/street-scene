@@ -435,6 +435,17 @@ export class CityLayers {
       line(grp.path, cp.path);
       this.oneWay.push({ pts: cp.path, width });
     }
+    // A harbor's quay lane: the open way along the water, end to end, in the shortcut ink (both ways).
+    for (const a of world.areas) {
+      if (a.kind !== 'waterfront') continue;
+      const lane = world.districts.builds[a.id]?.hints.find((h) => h.kind === 'quayLane');
+      if (!lane) continue;
+      const width = Math.round(CITY.districts.waterfront.yard.lane[1] - CITY.districts.waterfront.yard.lane[0]);
+      const key = `shortcut:${width}`;
+      let grp = groups.get(key);
+      if (!grp) groups.set(key, (grp = { ink: 'shortcut', width, path: new Path2D() }));
+      line(grp.path, lane.points);
+    }
     // Plain roads first, so the colored streets read on top where they meet.
     this.streets.push(...[...groups.values()].sort((a, b) => Number(a.ink !== 'road') - Number(b.ink !== 'road')));
     for (const a of world.areas) {

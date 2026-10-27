@@ -1,10 +1,11 @@
 /**
- * Drift zone markings (sim/driftZones.ts): the monument plaza and the lots
- * that pay a drift bonus are marked the way a drift meet marks its ground,
+ * Drift zone markings (sim/driftZones.ts): the monument plaza, the lots
+ * and a harbor's skid pad that pay a drift bonus are marked the way a drift meet marks its ground,
  * so they read at night without a sign or an arrow:
  *  - yellow paint: a zone box (corner brackets and a dashed edge just inside
  *    the outline), skid pad circles on the roomy lots, a slalom line down the
- *    long narrow ones, and on the plaza one big circle round the landmark;
+ *    long narrow ones, on the plaza one big circle round the landmark, and on
+ *    a harbor's dock apron its skid pad circle with a smaller one inside;
  *  - rubber: dark donut and slalom marks laid along those lines, seeded per
  *    area, as if the place had been used all night (Medium and up);
  *  - light: flush magenta studs (unlit, they bloom) along the circles and the
@@ -61,6 +62,8 @@ export const DRIFT_MARK = {
   /** Lifts over the drawn ground (m): lots lie on the asphalt, the plaza at curb height. */
   liftLot: 0.05,
   liftPlaza: CITY.curbHeight + 0.035,
+  /** A dock's skid pad: the inner circle's share of the pad's radius. */
+  padInner: 0.45,
 } as const;
 
 /** One drift zone's local frame: a lot's frontage axis u and depth axis w, or the plaza's centre. */
@@ -243,6 +246,20 @@ function plazaMarks(kit: DistrictKit, a: Area, rubberCount: number, paint: THREE
   studRing(kit, cx, cz, r, M.studGap, lift);
 }
 
+/** A harbor's skid pad (its build's 'skidPad' hint: centre and radius): the zone's dashed ring, the pad circle, an inner circle, studs and donuts. */
+function dockMarks(kit: DistrictKit, poly: Vec2[], cx: number, cz: number, r: number, seed: number, rubberCount: number, paint: THREE.Color, rubber: THREE.Color): void {
+  const M = DRIFT_MARK;
+  const lift = M.liftPlaza;
+  zoneBox(kit, poly, lift, paint);
+  const rng = new Rng((seed ^ 0x3d0c4) >>> 0 || 1);
+  donuts(kit, rng, cx, cz, r * 0.75, r * 0.25, Math.round(rubberCount * 1.5), lift - 0.004, rubber);
+  arc(kit, kit.paint, cx, cz, r, 0, Math.PI * 2, M.circleWidth * 1.3, lift, paint);
+  arc(kit, kit.paint, cx, cz, r * M.padInner, 0, Math.PI * 2, M.circleWidth, lift, paint);
+  studRing(kit, cx, cz, r, M.studGap, lift);
+  const y = kit.h(cx, cz) + lift;
+  cylinder(kit.glow, cx, cz, M.studR * 2, y - 0.01, y + 0.02, 10, M.stud);
+}
+
 /**
  * Soft light fading in from a convex outline's edge: a strip `width` wide
  * (mitred at the corners), bright at the edge and black inside, draped every
@@ -272,7 +289,7 @@ function edgeWash(kit: DistrictKit, gb: GeoBuilder, poly: Vec2[], width: number,
 }
 
 export const driftZoneRenderer: DistrictRenderer = {
-  kinds: ['infill', 'monument'],
+  kinds: ['infill', 'monument', 'waterfront'],
   build(kit) {
     const zones = driftZones(kit.world);
     if (!zones.length) return;
@@ -284,9 +301,13 @@ export const driftZoneRenderer: DistrictRenderer = {
     const wash = new GeoBuilder(true);
     for (const z of zones) {
       const a = kit.world.areas[z.area];
-      if (z.kind === 'plaza') plazaMarks(kit, a, rubberCount, paint, rubber);
+      const paved = z.kind !== 'lot';
+      if (z.kind === 'dock') {
+        const pad = kit.builds[a.id].hints.find((h) => h.kind === 'skidPad');
+        if (pad) dockMarks(kit, z.polygon, pad.values[0], pad.values[1], pad.values[2], a.params.seed ?? a.id, rubberCount, paint, rubber);
+      } else if (z.kind === 'plaza') plazaMarks(kit, a, rubberCount, paint, rubber);
       else lotMarks(kit, a, rubberCount, paint, rubber);
-      if (washOn) edgeWash(kit, wash, a.polygon, z.kind === 'plaza' ? M.washPlaza : M.washLot, (z.kind === 'plaza' ? M.liftPlaza : M.liftLot) + 0.02, M.wash);
+      if (washOn) edgeWash(kit, wash, z.polygon, paved ? M.washPlaza : M.washLot, (paved ? M.liftPlaza : M.liftLot) + 0.02, M.wash);
     }
     if (!wash.vertexCount) return;
     const mat = kit.track(

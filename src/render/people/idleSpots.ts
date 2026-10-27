@@ -3,7 +3,7 @@
  * three.js) from the seeded world, so the menu city and the race place the
  * same people and a replay sees the same street. They stay with their props
  * (a bus stop's riders, a bench's pair, the cafe table's diners, someone by a
- * park lamp) and in front of shops (a standing pair under the awning), and
+ * park lamp, a mooring bollard on a harbor's quay) and in front of shops (a standing pair under the awning), and
  * keep off everything the stands and meets own: the route corridor, the curb
  * lane, the gate stands, a meet's crowd and the night market's pens. The
  * seed's own mood scales how lively the street is (`liveliness`) and tints
@@ -119,6 +119,7 @@ export function planIdlers(world: World, opts: IdleOptions): IdlePlan {
   const gates = opts.avoid?.gates ?? [];
   const circles = avoidCircles(opts.avoid);
   const covered = new Set(world.coveredProps);
+  const harbors = new Set(world.areas.filter((a) => a.kind === 'waterfront').map((a) => a.id));
 
   const wrap = (d: number) => (route.closed ? ((((d + L / 2) % L) + L) % L) - L / 2 : d);
   /** The global rejections: the route corridor, the gate stands, meets and markets. */
@@ -218,6 +219,13 @@ export function planIdlers(world: World, opts: IdleOptions): IdlePlan {
         // One metre off the lamp on the side away from the road, facing the lamp's way out.
         const [x, z] = at(p, rng.range(-0.3, 0.3), -1);
         push(x, z, p.yaw + rng.range(-0.4, 0.4), rng.chance(0.5) ? 'lean' : stands(), p.id, false);
+        break;
+      }
+      case 'bollard': {
+        // On a harbor's quay: someone leaning on a mooring bollard, looking out over the water (the bollard faces it).
+        if (p.area === undefined || !harbors.has(p.area) || !rng.chance(0.07 * liveliness * density)) break;
+        const [x, z] = at(p, rng.chance(0.5) ? -0.45 : 0.45, -0.25);
+        push(x, z, p.yaw + rng.range(-0.5, 0.5), rng.chance(0.6) ? 'lean' : stands(), p.id, false);
         break;
       }
       default:

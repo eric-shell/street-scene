@@ -249,6 +249,9 @@ export interface CarTuning {
     /** Cobbled alleys: grip multiplier and the extra rolling drag of the stones (N, full above 1 m/s). */
     cobbleGrip: number;
     cobbleDrag: number;
+    /** A harbor's quay: dusty, oil stained dock concrete, a little short of a road's grip, and its small rolling drag (N, full above 1 m/s). */
+    quayGrip: number;
+    quayDrag: number;
     /** Water in the river trickle: hydrodynamic drag, N per (m/s)^2 of speed with all four wheels in it (scaled by the wheels that are). */
     waterDrag: number;
   };

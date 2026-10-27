@@ -1222,9 +1222,63 @@ export const CITY = {
       /** Quay lanterns (destructible park lamps) every `lampStep` m along the edge, this far in from it (m). */
       lampStep: 32,
       lampInset: 1.8,
-      /** Dock clutter (crates, barrels, pallets): chance of a cluster between two lamps, and pieces in one [min, max]. */
-      clutterChance: 0.4,
-      clutter: [2, 5],
+      /**
+       * The quay as a dock yard to drive (districts/waterfrontYard.ts), all distances in m and `d` measured in
+       * from the sea wall's edge:
+       *  - `lane`: the lane along the water from d lane[0] to lane[1], where nothing stands that can stop a car
+       *    (soft clutter only: pallets, crates, drums), the quay's through way end to end;
+       *  - mouths onto every street that meets the quay (a junction or a street's end within `mouthReach` of the
+       *    frontage past its own half width and sidewalk): at least `mouth` wide, or the street's width plus
+       *    `mouthPad`, cobbled `mouthDepth` onto the quay, between two steel gate posts (`post` square, solids)
+       *    carrying a string of bulbs; never in front of a warehouse;
+       *  - chain-link fence runs (fence panels) `fenceInset` onto the quay along the frontage, `fencePitch` apart,
+       *    runs of fenceRun [min, max] panels with fenceGap [min, max] between, starting at every gate post;
+       *  - loading ramps, ramps [min, max] of them `rampGap` apart: `rampHeight` high, rising and falling over
+       *    `rampRun` each way (a smoothstep: the steepest slope is 1.5 x height / run = 6%, the terrain rule)
+       *    with a `rampTop` flat top, the full quay deep where it is at least `rampDepth` (fading over `rampBack`
+       *    in from the frontage, so the sidewalk is never lifted);
+       *  - the skid pad, a drift zone on the deepest stretch: radius pad [min, max] from the lane's sea edge,
+       *    `padMargin` off the frontage, nothing standing within `padClear` of it;
+       *  - the container lane (working docks only): two staggered rows of maze [min, max] containers (`box`
+       *    long and wide) mazeGap [min, max] apart along the quay, the first row 1 m inside the lane, the
+       *    second `mazeCorridor` behind it, `mazeBack` off the frontage;
+       *  - forklifts [min, max] parked off the lane (`forklift` long and wide, solids);
+       *  - soft clutter clusters in the lane every clutterStep [min, max] along the quay, each within
+       *    `clutterBand` of one side of the lane (so a clean line weaves past), benches facing the water in
+       *    `benchChance` of the lamp gaps.
+       */
+      yard: {
+        lane: [2.6, 11],
+        mouth: 16,
+        mouthPad: 6,
+        mouthReach: 4,
+        mouthDepth: 5,
+        post: 0.36,
+        fenceInset: 1.4,
+        fencePitch: 2.5,
+        fenceRun: [3, 7],
+        fenceGap: [7, 16],
+        ramps: [1, 2],
+        rampHeight: 0.8,
+        rampRun: 20,
+        rampTop: 5,
+        rampDepth: 15,
+        rampBack: 6,
+        rampGap: 140,
+        pad: [9, 13],
+        padMargin: 3,
+        padClear: 1.5,
+        maze: [3, 5],
+        mazeGap: [6.5, 8.5],
+        mazeCorridor: 6,
+        mazeBack: 3,
+        box: [12.2, 2.44],
+        forklifts: [1, 2],
+        forklift: [2.6, 1.25],
+        clutterStep: [40, 70],
+        clutterBand: 3.8,
+        benchChance: 0.3,
+      },
       /**
        * Jetties (render only, behind the railing's closed gates) [min, max] per harbor, their length and
        * width [min, max] (m), at least `jettyGap` m apart along the coast.

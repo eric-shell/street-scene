@@ -1,5 +1,6 @@
 /**
- * Drift zones: the monument plaza and the bigger parking lots, open paving
+ * Drift zones: the monument plaza, the bigger parking lots and a harbor's
+ * skid pad on its dock apron (districts/waterfrontYard.ts), open paving
  * where a slide has room. Drifting inside one pays a bonus: drift points count
  * DRIFT_ZONES.scoreMul times (drift mode, RaceState.drift) and the nitrous a
  * drift refills comes refillMul times as fast (every mode and every car, AI
@@ -14,14 +15,14 @@
  * a bounce off the lot clutter does not end it; nothing is paid while out.
  *
  * Zones come from the city's district areas (pure, cached per area list, so
- * the World stays untouched); the per car visit state lives on
+ * the World stays untouched; the skid pad's outline is its build's 'skidPad' hint); the per car visit state lives on
  * RaceState.driftZones and is stepped once per tick after the regular
  * nitrous refill. Cost: a bounding box test per zone per car, and one point
  * in polygon test for the box that hits. The renderer
  * (render/districts/driftZones.ts) and the HUD read the same list and state.
  */
 import type { World } from '../city/world';
-import type { Area } from '../city/districts/types';
+import type { Area, AreaBuild } from '../city/districts/types';
 import { pointInPolygon, polygonBounds } from '../city/districts/geom';
 import type { Vec2 } from './math';
 import { driftRefillRate, fillNitrous } from './car';
@@ -29,7 +30,7 @@ import { DT, TICK_HZ } from './constants';
 import { DRIFT_ZONES } from './tuning';
 import type { RaceState } from './race';
 
-export type DriftZoneKind = 'plaza' | 'lot';
+export type DriftZoneKind = 'plaza' | 'lot' | 'dock';
 
 export interface DriftZone {
   /** Index in the zone list (driftZones()). */
@@ -69,9 +70,10 @@ export interface DriftZoneState {
   readyTick: number[];
 }
 
-/** What kind of zone an area is, or null: the monument plaza, and lots big enough to hold a slide. */
+/** What kind of zone an area is, or null: the monument plaza, lots big enough to hold a slide, and a harbor (its skid pad, when the yard has room for one). */
 export function driftZoneKind(a: Area): DriftZoneKind | null {
   if (a.kind === 'monument') return 'plaza';
+  if (a.kind === 'waterfront') return 'dock';
   if (a.kind !== 'infill' || a.variant !== 'lot') return null;
   const depth = a.params.depth ?? 0;
   const length = a.params.length ?? 0;
@@ -82,8 +84,11 @@ export function driftZoneKind(a: Area): DriftZoneKind | null {
 const cache = new WeakMap<Area[], DriftZone[]>();
 const NONE: DriftZone[] = [];
 
+/** What driftZones reads: the areas, and their builds for a harbor's pad (a world without them has no dock zone). */
+export type DriftZoneSource = Pick<World, 'areas'> & { districts?: { builds: readonly AreaBuild[] } };
+
 /** Every drift zone of a world's city, in area order (cached per city; worlds without districts have none). */
-export function driftZones(world: Pick<World, 'areas'>): DriftZone[] {
+export function driftZones(world: DriftZoneSource): DriftZone[] {
   const areas = world.areas;
   if (!areas) return NONE;
   let zones = cache.get(areas);
@@ -91,9 +96,11 @@ export function driftZones(world: Pick<World, 'areas'>): DriftZone[] {
   zones = [];
   for (const a of areas) {
     const kind = driftZoneKind(a);
-    if (!kind || a.polygon.length < 3) continue;
-    const bb = polygonBounds(a.polygon);
-    zones.push({ index: zones.length, area: a.id, kind, polygon: a.polygon, ...bb });
+    // A harbor's zone is its skid pad, not the whole quay.
+    const polygon = kind === 'dock' ? world.districts?.builds[a.id]?.hints.find((h) => h.kind === 'skidPad')?.points : a.polygon;
+    if (!kind || !polygon || polygon.length < 3) continue;
+    const bb = polygonBounds(polygon);
+    zones.push({ index: zones.length, area: a.id, kind, polygon, ...bb });
   }
   cache.set(areas, zones);
   return zones;
@@ -108,7 +115,7 @@ export function driftZoneAt(zones: DriftZone[], x: number, z: number): number {
   return -1;
 }
 
-export function createDriftZoneState(world: Pick<World, 'areas'>, carCount: number): DriftZoneState {
+export function createDriftZoneState(world: DriftZoneSource, carCount: number): DriftZoneState {
   const n = driftZones(world).length;
   return {
     cars: Array.from({ length: carCount }, () => ({ zone: -1, outside: 0, timeLeft: 0, refillLeft: 0, fresh: false, scoreMul: 1 })),

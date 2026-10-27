@@ -257,6 +257,8 @@ export class Sfx {
       waterBarrier: 0.75,
       sandbags: 0.5,
       pallets: 0.6,
+      drum: 0.7,
+      cableSpool: 0.75,
       marketStall: 0.7,
       fruitCrates: 0.55,
       foodCart: 0.8,

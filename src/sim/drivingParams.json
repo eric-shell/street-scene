@@ -157,6 +157,9 @@
       "offroadDrag": 900,
       "cobbleGrip": 0.92,
       "cobbleDrag": 120,
+      "_quay": "A harbor's quay (districts/waterfront.ts): dusty, oil stained dock concrete. A shade under the road's grip, so the yard and its skid pad slide a little earlier than the street beside it, and a small rolling drag from the grit, about a third of the cobbles'.",
+      "quayGrip": 0.9,
+      "quayDrag": 40,
       "waterDrag": 3.5
     },
     "collision": {

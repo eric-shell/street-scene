@@ -921,6 +921,22 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
         spawn(D_BOX, 0.05, 0.6, 0, yaw + rnd(-0.4, 0.4), 0.45, 0.18, 0.4, rnd(0.45, 0.75), rnd(2, 3.5) + speed * 0.08, 6, col(0x8a6a44).multiply(tint), rnd(5, 6.5), true);
         return;
       }
+      case 'drum':
+        // The drum folds and rolls off, the lid spins away and the oil splashes.
+        spawn(D_CYL, 0, 0.45, 0, yaw, 0.28, 0.42, 0.28, rnd(0.6, 0.9), 2.5 + speed * 0.12, 8, tint.clone(), rnd(5, 6.5), true);
+        spawn(D_CYL, 0, 0.9, 0, yaw, 0.28, 0.02, 0.28, rnd(0.6, 0.95), 3.5 + speed * 0.14, 12, col(0x2a2c30), rnd(4, 5.5));
+        for (let k = 0; k < 8; k++) spawn(D_GLASS, rnd(-0.3, 0.3), rnd(0.2, 0.6), rnd(-0.3, 0.3), rnd(0, 6.28), rnd(0.05, 0.1), rnd(0.05, 0.1), 0.01, rnd(0.3, 0.7), rnd(1.5, 3.5), 8, col(0x14110c), rnd(1.5, 2.5));
+        debris.burst(p.x, p.y + 0.4, p.z, dx, dz, speed * 0.15 + 1, 5);
+        return;
+      case 'cableSpool': {
+        // The flanges split off and roll, the cable unwinds in loops.
+        const wood = col(0xb08a58).multiply(tint);
+        for (const x of [-0.47, 0.47]) spawn(D_CYL, x, 0.75, 0, yaw + rnd(-0.4, 0.4), 0.72, 0.03, 0.72, rnd(0.4, 0.7), rnd(2, 4) + speed * 0.08, 6, wood, rnd(5, 6.5), true);
+        spawn(D_CYL, 0, 0.75, 0, yaw, 0.5, 0.42, 0.5, rnd(0.3, 0.5), 1.5 + speed * 0.06, 4, col(0x1c1d20), rnd(5.5, 6.5), true);
+        for (let k = 0; k < 6; k++) spawn(D_BOX, rnd(-0.6, 0.6), rnd(0.3, 1.2), rnd(-0.5, 0.5), rnd(0, 6.28), rnd(0.2, 0.4), 0.03, rnd(0.05, 0.08), rnd(0.45, 0.85), rnd(1.5, 3.5) + speed * 0.07, 9, wood.clone().multiplyScalar(rnd(0.7, 1.1)));
+        debris.burst(p.x, p.y + 0.5, p.z, dx, dz, speed * 0.2 + 1, 6);
+        return;
+      }
       case 'trashBags':
         for (let k = 0; k < 3; k++) spawn(D_BOX, rnd(-0.3, 0.3), 0.3, rnd(-0.3, 0.3), rnd(0, 6.28), rnd(0.22, 0.3), rnd(0.18, 0.25), rnd(0.22, 0.3), rnd(0.5, 0.9), rnd(1.5, 3.5) + speed * 0.06, 6, col(0x17191c), rnd(4, 5.5));
         for (let k = 0; k < 10; k++) {

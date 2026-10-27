@@ -40,7 +40,7 @@ const RUMBLE = {
   scrapePerMs: 0.04,
   scrapeMax: 0.6,
   /** Weak motor by surface, reached at roughSpeed (m/s) and scaled down below it. */
-  rough: { road: 0, concrete: 0, water: 0, sidewalk: 0.08, grass: 0.18, cobble: 0.22, offroad: 0.3 } satisfies Record<Surface, number>,
+  rough: { road: 0, concrete: 0, water: 0, sidewalk: 0.08, grass: 0.18, cobble: 0.22, offroad: 0.3, quay: 0.04 } satisfies Record<Surface, number>,
   roughSpeed: 20,
   /** Weak motor at full wheelspin. */
   wheelspin: 0.25,

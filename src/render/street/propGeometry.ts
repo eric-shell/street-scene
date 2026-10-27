@@ -5,7 +5,7 @@
  * mast arm, head and lens, garbage can, bench, bus shelter and its lit
  * poster), then the district clutter (bushes, planters, cafe tables, barrels,
  * crates, dumpsters, news boxes, bollards, the construction pieces, market
- * stalls and food carts) with the `CLUTTER` table that says which material
+ * stalls and food carts, the harbor's oil drums and cable spools) with the `CLUTTER` table that says which material
  * slot, tint list and spin each kind takes, merged with the neighbourhood
  * furniture of streetFurniture.ts into `PARTS`. Also the shared heights the
  * renderer places and breaks the poles by. Render only.
@@ -323,6 +323,58 @@ function palletsGeo(): THREE.BufferGeometry {
   return s.build();
 }
 
+// ---------- Dock clutter (districts/waterfrontYard.ts) ----------
+
+/** A 200 litre steel drum: the shell (tinted per drum), two rolling hoops and a dark lid with its bung. */
+function drumGeo(q: Quality): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const paint = col(0xffffff);
+  cyl(s, 0, 0, 0, 0.88, 0.29, 0.29, 10, paint, q, false);
+  for (const y of [0.29, 0.59]) cyl(s, 0, 0, y - 0.025, y + 0.025, 0.305, 0.305, 10, col(0xc8c8c8), q, false);
+  cyl(s, 0, 0, 0.86, 0.9, 0.3, 0.29, 10, col(0x2a2c30), q);
+  cyl(s, 0.14, 0.05, 0.9, 0.93, 0.04, 0.04, 6, col(0x8a8c90), q);
+  return s.build();
+}
+
+/** A horizontal cylinder along local X from x0 to x1 at height cy (both end caps): a spool's flanges and core. */
+function hcyl(gb: GeoBuilder, x0: number, x1: number, cy: number, r: number, designSeg: number, color: THREE.Color, q: Quality): void {
+  const seg = Math.min(designSeg, PROP_SEGMENTS[q] + 2);
+  const ring: number[] = [];
+  for (let k = 0; k <= seg; k++) {
+    const a = (k / seg) * Math.PI * 2;
+    const ny = Math.sin(a);
+    const nz = Math.cos(a);
+    ring.push(gb.vertex(x0, cy + ny * r, nz * r, 0, ny, nz, 0, 0, color), gb.vertex(x1, cy + ny * r, nz * r, 0, ny, nz, 0, 0, color));
+  }
+  for (let k = 0; k < seg; k++) {
+    const a = ((k + 0.5) / seg) * Math.PI * 2;
+    gb.quadFacing(ring[k * 2], ring[k * 2 + 2], ring[k * 2 + 3], ring[k * 2 + 1], 0, Math.sin(a), Math.cos(a));
+  }
+  for (const [x, nx] of [
+    [x0, -1],
+    [x1, 1],
+  ] as const) {
+    const c = gb.vertex(x, cy, 0, nx, 0, 0, 0, 0, color);
+    const rim: number[] = [];
+    for (let k = 0; k < seg; k++) {
+      const a = (k / seg) * Math.PI * 2;
+      rim.push(gb.vertex(x, cy + Math.sin(a) * r, Math.cos(a) * r, nx, 0, 0, 0, 0, color));
+    }
+    for (let k = 0; k < seg; k++) gb.triFacing(c, rim[k], rim[(k + 1) % seg], nx, 0, 0);
+  }
+}
+
+/** A wooden cable spool on its side: two plywood flanges, the black cable wound round the core between them. */
+function cableSpoolGeo(q: Quality): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const wood = col(0xb08a58);
+  for (const x of [-0.5, 0.44]) hcyl(s, x, x + 0.06, 0.75, 0.75, 12, wood, q);
+  hcyl(s, -0.44, 0.44, 0.75, 0.52, 12, col(0x1c1d20), q);
+  // A loose end of cable trailing to the ground.
+  box(s, 0.1, 0.12, 0.58, 0.07, 0.24, 0.07, col(0x1c1d20));
+  return s.build();
+}
+
 /** Cast iron lantern post: plinth, fluted shaft, collar and a hipped cap over the lantern. */
 function parkLampGeo(q: Quality): THREE.BufferGeometry {
   const s = new GeoBuilder(true);
@@ -492,6 +544,9 @@ const CLUTTER: Record<DistrictPropKind, { parts: { geo: (q: Quality) => THREE.Bu
   waterBarrier: { parts: [{ geo: waterBarrierGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xff6a1a, 0xe03030, 0xffffff, 0xff8a2a], spin: false },
   sandbags: { parts: [{ geo: sandbagsGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xe8dcc0, 0xc8b890], spin: false },
   pallets: { parts: [{ geo: palletsGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xd8c8b0, 0xb8a890], spin: true },
+  // Drums in the yard's colours: oil blue, fire red, black, safety yellow, rusty brown, green.
+  drum: { parts: [{ geo: drumGeo, mat: 'solid', tint: true }], tints: [0x1d4f9a, 0xb0201c, 0x1c1d22, 0xe0a81c, 0x7a3a1a, 0x2a6a3a], spin: true },
+  cableSpool: { parts: [{ geo: cableSpoolGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xe0d0b8, 0xc8b8a0], spin: true },
   // Market awnings in festival colours, food carts in enamel paint; stalls and carts square up with the curb.
   marketStall: {
     parts: [{ geo: stallFrameGeo, mat: 'solid' }, { geo: stallGoodsGeo, mat: 'matte' }, { geo: stallAwningGeo, mat: 'canopy', tint: true }, { geo: stallLanternGeo, mat: 'lamp' }],
