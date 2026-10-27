@@ -118,6 +118,7 @@ export const COBBLE_PRIORITY = 6;
  * quayRail / quayFence / warehouse: the railing along a harbor's sea wall, the fences closing its quay's ends,
  *   and a warehouse shed's walls where the quay passes a recess of the frontage (waterfront).
  * quayGate: race night barriers closing a harbor's quay off along its frontage, in a race only (waterfront quayGates).
+ * plaza: a plaza's centrepiece (a statue on its plinth, a clock column, a kiosk) (infill, plazaDressing.ts; drawn by render/districts/plazaDressing.ts).
  */
 export type WallLook =
   | 'building'
@@ -153,9 +154,10 @@ export type WallLook =
   | 'quayRail'
   | 'quayFence'
   | 'warehouse'
-  | 'quayGate';
+  | 'quayGate'
+  | 'plaza';
 
-export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark', 'alleyLip', 'gatePier', 'hedge', 'jetty', 'highway', 'lakeRail', 'quayRail', 'quayFence', 'warehouse', 'quayGate'];
+export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark', 'alleyLip', 'gatePier', 'hedge', 'jetty', 'highway', 'lakeRail', 'quayRail', 'quayFence', 'warehouse', 'quayGate', 'plaza'];
 
 export interface Area {
   /** Index into CityDistricts.areas. */

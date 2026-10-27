@@ -45,6 +45,7 @@ import type { DistrictPropKind } from '../props';
 import { PROP_DEFS } from '../props';
 import type { Area, AreaBuild, DistrictModule } from './types';
 import { emptyBuild } from './types';
+import { type PlazaLamp, type Taken, dressPlaza } from './plazaDressing';
 import { PolygonIndex, circlePolygon, distToPolygonEdge, distToPolyline, pointInPolygon, polyWalls, polygonBounds, rectPolygon, solidWalls } from './geom';
 
 const CFG = CITY.districts.infill;
@@ -226,7 +227,7 @@ export const infillModule: DistrictModule = {
             const t = Math.min(L1, L2) < SHALLOW ? theme([['garden', 3], ['market', 1]]) : theme([['cafe', 3], ['garden', 2], ['market', 2]]);
             // Frame: along street 1 (u1) and into the block along street 2 (u2), so a shallow side is the depth.
             const frame = L2 <= L1 ? frameParams(C, u1, u2, L1, L2) : frameParams(C, u2, u1, L2, L1);
-            add('cornerPlaza', poly, 2, run.face, c.node, { angle: c.angle, reach1: L1, reach2: L2, fountain: fountain ? fr : 0, fx: cx, fz: cz, theme: t, ...frame });
+            add('cornerPlaza', poly, 2, run.face, c.node, { mouth: mouth ? 1 : 0, angle: c.angle, reach1: L1, reach2: L2, fountain: fountain ? fr : 0, fx: cx, fz: cz, theme: t, ...frame });
             break;
           }
         }
@@ -326,7 +327,7 @@ export const infillModule: DistrictModule = {
     }
   },
 
-  build(_ctx, area: Area) {
+  build(ctx, area: Area) {
     const b = emptyBuild();
     const poly = area.polygon;
     const id = area.id;
@@ -379,8 +380,12 @@ export const infillModule: DistrictModule = {
         b.hints.push({ kind: 'bay', points: [a, { x: a.x - wx * bayDepth, z: a.z - wz * bayDepth }], values: [] });
       }
     }
-    if (area.variant === 'plaza' || area.variant === 'cornerPlaza' || area.variant === 'lot') lamps(b, area);
-    furnish(b, area);
+    const posts = area.variant === 'plaza' || area.variant === 'cornerPlaza' || area.variant === 'lot' ? lampSpots(area) : [];
+    // A plaza's dressing (plazaDressing.ts) goes first; the lanterns and the theme's clutter give way to it.
+    const dressed = area.variant === 'plaza' || area.variant === 'cornerPlaza' ? dressPlaza(b, area, ctx.seed, posts) : null;
+    const lift = area.variant === 'lot' ? 0 : CITY.curbHeight;
+    for (const l of posts) b.destructibles.push({ kind: 'parkLamp', x: l.x, z: l.z, yaw: l.yaw, lift, area: area.id });
+    furnish(b, area, dressed?.taken);
     return b;
   },
 };
@@ -394,9 +399,10 @@ export const infillModule: DistrictModule = {
  * a table, pot or barrel on the same spot is the one dropped. No rng draws,
  * so the lamps never shift the clutter's layout.
  */
-function lamps(b: AreaBuild, area: Area): void {
+function lampSpots(area: Area): PlazaLamp[] {
   const P = area.params;
-  if (P.lu === undefined) return;
+  const out: PlazaLamp[] = [];
+  if (P.lu === undefined) return out;
   const inset = CFG.lampInset;
   const lot = area.variant === 'lot';
   const v = P.lw < SHALLOW ? P.lw / 2 : P.lw - inset;
@@ -413,8 +419,9 @@ function lamps(b: AreaBuild, area: Area): void {
     const z = P.oz + P.uz * u + P.wz * v;
     if (!pointInPolygon(x, z, area.polygon) || distToPolygonEdge(x, z, area.polygon) < r + EDGE_CLEAR) continue;
     if (P.fountain > 0 && Math.hypot(x - P.fx, z - P.fz) < P.fountain + r + 0.8) continue;
-    b.destructibles.push({ kind: 'parkLamp', x, z, yaw: Math.atan2(-P.wx, -P.wz), lift: lot ? 0 : CITY.curbHeight, area: area.id });
+    out.push({ x, z, yaw: Math.atan2(-P.wx, -P.wz) });
   }
+  return out;
 }
 
 /**
@@ -422,7 +429,7 @@ function lamps(b: AreaBuild, area: Area): void {
  * parallelogram corners work too), clear of the sides and the fountain.
  * Shallow pockets get a single row of bushes and pots down the middle.
  */
-function furnish(b: AreaBuild, area: Area): void {
+function furnish(b: AreaBuild, area: Area, taken?: Taken): void {
   const P = area.params;
   if (P.theme === undefined || P.lu === undefined) return;
   const t = INFILL_THEMES[P.theme] ?? 'garden';
@@ -456,6 +463,7 @@ function furnish(b: AreaBuild, area: Area): void {
       const z = P.oz + P.uz * u + P.wz * v;
       if (!pointInPolygon(x, z, area.polygon) || distToPolygonEdge(x, z, area.polygon) < r + EDGE_CLEAR) continue;
       if (P.fountain > 0 && Math.hypot(x - P.fx, z - P.fz) < P.fountain + r + 0.8) continue;
+      if (taken && !taken.free(x, z, r, 0.25)) continue;
       b.destructibles.push({ kind, x, z, yaw: yaw + rng.range(-0.2, 0.2), lift, area: area.id });
       count++;
     }

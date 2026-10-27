@@ -12,6 +12,9 @@
  *    the park, infill and monument modules), draped over the ground point by
  *    point because park lawns roll: a flat disc would sink into a hill and
  *    float over a dip;
+ *  - a flood under every plaza centrepiece (a statue, clock, kiosk or fountain, the monument, a
+ *    roundabout's basin or sculpture): the same pool, wider and brighter, so the middle of the
+ *    square reads lit from below and people gather in it;
  *  - the same pools under the car park's street lamps (render only posts and
  *    bulkheads the car park renderer draws: nothing to break, so never
  *    switched off), so a racer sees its apron lit before turning in.
@@ -46,6 +49,8 @@ const AREA_LIGHT = {
    * a hot spot into the lawn and the light still reaches across the path.
    */
   lightY: 6.5,
+  /** Floods under centrepieces: the radius is `base` plus `perSize` times the piece's footprint (m), at most `max`; the color is added at the pool's middle. */
+  flood: { base: 4.5, perSize: 1.4, max: 14, color: new THREE.Color(0xffd8a8).multiplyScalar(0.5), kinds: new Set(['statue', 'clock', 'kiosk', 'fountain', 'obelisk', 'column', 'arch', 'basin', 'sculpture', 'urn']) },
   /**
    * Wash per area: color (linear, additive), how far in from the edge it fades
    * up (m) and the triangle size it drapes with (m). Corner pockets and small
@@ -174,9 +179,9 @@ export function buildAreaLights(world: World): AreaLights {
   }
 
   // ---------- Lantern pools ----------
-  const pool = (x: number, z: number) => {
+  const pool = (x: number, z: number, radius: number = A.poolR, color: THREE.Color = A.lamp) => {
     const at = (px: number, pz: number, t: number) => {
-      c.copy(A.lamp).multiplyScalar(poolFalloff(t));
+      c.copy(color).multiplyScalar(poolFalloff(t));
       if (world.surfaceAt(px, pz) === 'grass') c.multiply(A.grassTint);
       return gb.vertex(px, h(px, pz) + liftAt(px, pz), pz, 0, 1, 0, 0, 0, c);
     };
@@ -187,7 +192,7 @@ export function buildAreaLights(world: World): AreaLights {
       const ring: number[] = [];
       for (let k = 0; k < A.segs; k++) {
         const ang = (k / A.segs) * Math.PI * 2;
-        ring.push(at(x + Math.cos(ang) * A.poolR * t, z + Math.sin(ang) * A.poolR * t, t));
+        ring.push(at(x + Math.cos(ang) * radius * t, z + Math.sin(ang) * radius * t, t));
       }
       rings.push(ring);
     }
@@ -207,6 +212,8 @@ export function buildAreaLights(world: World): AreaLights {
   // Then the car parks' street lamps, never switched off.
   const fixed: Vec2[] = garages.flatMap((g) => carParkStreetLamps(g));
   for (const p of fixed) pool(p.x, p.z);
+  // And the floods under the plazas' centrepieces, which nothing switches off.
+  for (const b of world.districts.builds) for (const p of b.props) if (A.flood.kinds.has(p.kind)) pool(p.x, p.z, Math.min(A.flood.max, A.flood.base + A.flood.perSize * p.size), A.flood.color);
 
   const geo = gb.build();
   const colors = geo.getAttribute('color') as THREE.BufferAttribute;

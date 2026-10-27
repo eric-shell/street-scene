@@ -54,6 +54,7 @@ import { emptyBuild } from './types';
 import { circlePolygon, distToPolygonEdge, pointInPolygon, polyWalls, polygonCentroid, smooth01, type Smooth } from './geom';
 import { convexRing } from './park';
 import { riverCenter } from './river';
+import { type PlazaLamp, dressMonument } from './plazaDressing';
 
 /** Scratch for the terrain's smoothsteps (queried per wheel per substep, so nothing allocates). */
 const SMOOTH: Smooth = { v: 0, d: 0 };
@@ -916,6 +917,7 @@ export const monumentModule: DistrictModule = {
     }
     // Lantern posts just inside the plaza edge, an even count per side so none lands on the
     // midpoint where a news box may stand.
+    const lampSides: PlazaLamp[][] = [];
     for (let i = 0; i < ring.length; i++) {
       const p = ring[i];
       const q = ring[(i + 1) % ring.length];
@@ -927,13 +929,21 @@ export const monumentModule: DistrictModule = {
       const sgn = (c.x - p.x) * uz - (c.z - p.z) * ux > 0 ? 1 : -1;
       let n = Math.max(2, Math.round(len / CFG.lampSpacing));
       if (n % 2) n++;
+      const side: PlazaLamp[] = [];
       for (let k = 0; k < n; k++) {
         const s = ((k + 0.5) / n) * len;
         const l = { x: p.x + ux * s + uz * sgn * CFG.lampInset, z: p.z + uz * s - ux * sgn * CFG.lampInset };
-        if (inside(l, 1.5)) b.destructibles.push({ kind: 'parkLamp', x: l.x, z: l.z, yaw: atan2(c.x - l.x, c.z - l.z), lift, area: id });
+        if (!inside(l, 1.5)) continue;
+        const yaw = atan2(c.x - l.x, c.z - l.z);
+        b.destructibles.push({ kind: 'parkLamp', x: l.x, z: l.z, yaw, lift, area: id });
+        // A post a race pass takes out below is no tie for a strand either.
+        if (!inLane(l, 1)) side.push({ x: l.x, z: l.z, yaw });
       }
+      lampSides.push(side);
     }
     b.destructibles = b.destructibles.filter((d) => !inLane(d, 1));
+    // The plaza's furnishing (plazaDressing.ts): trees between the lanterns, strands of lights, people round the landmark.
+    dressMonument(b, area, ctx.seed, { c, clearR, ring, yaw: P.yaw, arch: area.variant === 'arch', inLane, inside: (p, m) => inside(p, m), sides: lampSides });
     return b;
   },
 };
