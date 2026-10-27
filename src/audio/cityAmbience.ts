@@ -7,7 +7,7 @@
  *    by the seed's mood (misty is muffled, rain adds a wet hiss);
  *  - wind on the hazy and misty nights, rising with the listener's height
  *    (the hills, the expressway deck);
- *  - sparse distant one-shots: a far siren sweeping past, a car horn, a dog,
+ *  - sparse distant one-shots: a far American siren going by (`siren.ts`), a car horn, a dog,
  *    a bottle, a shutter rattle, a train horn on seeds with an El, gulls on
  *    waterfront and lake seeds. Each comes from a random bearing (stereo pan)
  *    through a low pass that dulls with distance.
@@ -19,6 +19,7 @@
  */
 import { audioHub } from './engineAudio';
 import { TrainRumble } from './sceneVoices';
+import { playSiren } from './siren';
 import { Rng, deriveSeed } from '../sim/prng';
 import { clamp01, lerp } from '../sim/math';
 import type { MoodId } from '../render/sky/weather';
@@ -87,9 +88,6 @@ const STREET: ReadonlySet<ShotKind> = new Set(['horn', 'dog', 'bottle', 'shutter
 const SHOT_LEVEL: Record<ShotKind, number> = { siren: 0.5, horn: 0.5, dog: 0.7, bottle: 0.6, shutter: 0.8, trainHorn: 0.6, gull: 0.5 };
 
 type HubT = NonNullable<ReturnType<typeof audioHub>>;
-
-/** Smoothstep on 0..1. */
-const smooth = (u: number): number => u * u * (3 - 2 * u);
 
 export class CityAmbience {
   private readonly ctx: AudioContext;
@@ -292,34 +290,9 @@ export class CityAmbience {
     };
     switch (k) {
       case 'siren': {
-        // A wail (rise and fall) with a doppler bend as it passes: pitch up on approach, down on leaving, loudest at the pass.
-        const len = r.range(9, 14);
-        const base = r.range(650, 800);
-        const wailHz = r.range(0.22, 0.32);
-        const yelp = r.chance(0.4);
-        const n = 400;
-        const freq = new Float32Array(n);
-        const amp = new Float32Array(n);
-        for (let i = 0; i < n; i++) {
-          const u = i / (n - 1);
-          const wail = yelp ? Math.abs(((u * len * wailHz * 3) % 1) * 2 - 1) : 0.5 - 0.5 * Math.cos(u * len * wailHz * Math.PI * 2);
-          freq[i] = base * (1 + 0.85 * wail) * (1.07 - 0.14 * smooth(u));
-          amp[i] = Math.sin(Math.PI * u) ** 1.5;
-        }
-        const o = osc('sawtooth', base);
-        o.frequency.setValueCurveAtTime(freq, now, len);
-        const band = ctx.createBiquadFilter();
-        band.type = 'bandpass';
-        band.frequency.value = 1500;
-        band.Q.value = 0.8;
-        const g = ctx.createGain();
-        g.gain.setValueCurveAtTime(amp, now, len);
-        o.connect(band).connect(g).connect(lp);
-        // Passes from one side to the other.
-        const dir = r.chance(0.5) ? 1 : -1;
-        panner.pan.setValueAtTime(-0.8 * dir, now);
-        panner.pan.linearRampToValueAtTime(0.8 * dir, now + len);
-        start(o, now, now + len);
+        // A pass of an American electronic siren (wail, yelp at the intersection, sometimes an airhorn or a cutoff):
+        // the module draws the geometry and drives the pan, the gain and the doppler from it.
+        playSiren(ctx, lp, r, { at: now, closest: dist, near: d.near, far: d.far, pan: panner.pan, start });
         break;
       }
       case 'horn': {
