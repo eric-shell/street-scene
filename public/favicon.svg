@@ -1,45 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <!-- "SS" in the logo's colors: heavy, skewed past italic, tilted up to the right, the second S overlapping the first. Each letter has its own full keyline (k1/k2 are the spines stretched past their butt ends so the outline wraps the terminals too), so the second cuts a clean dark edge into the first; under both a plum extrusion drops down and right, and a lit edge runs along each stroke's upper left (the stroke masked by itself nudged down and right). The second S is its own path rather than a <use x>, which would restart the gradient. Paths, not text: a favicon cannot load the web font. -->
+  <!-- The game's mark: two of the logo's own S (Google Sans Flex at 900, slant -10, optical size 144, as outlines since a favicon cannot load the web font) overlapping, the second cutting a hairline out of the first; the logo's yellow, orange and red ink on its crisp drop shadow, the rule under them with its ends cut on the italic's slant, and the menu cards' chamfered plate with the accent hairline across the top. -->
   <defs>
-    <path id="s1" d="M9.2 4.4C8.2 2.8 6.9 2 5.4 2 3.4 2 2 3.3 2 5.2c0 4.2 7 3.4 7 7.6 0 2-1.4 3.2-3.4 3.2-1.6 0-2.9-.8-3.8-2.4"/>
-    <path id="s2" d="M19.2 4.4C18.2 2.8 16.9 2 15.4 2 13.4 2 12 3.3 12 5.2c0 4.2 7 3.4 7 7.6 0 2-1.4 3.2-3.4 3.2-1.6 0-2.9-.8-3.8-2.4"/>
-    <path id="k1" d="M9.84 5.42 9.2 4.4C8.2 2.8 6.9 2 5.4 2 3.4 2 2 3.3 2 5.2c0 4.2 7 3.4 7 7.6 0 2-1.4 3.2-3.4 3.2-1.6 0-2.9-.8-3.8-2.4L1.21 12.55"/>
-    <path id="k2" d="M19.84 5.42 19.2 4.4C18.2 2.8 16.9 2 15.4 2 13.4 2 12 3.3 12 5.2c0 4.2 7 3.4 7 7.6 0 2-1.4 3.2-3.4 3.2-1.6 0-2.9-.8-3.8-2.4L11.21 12.55"/>
-    <g id="kk" stroke-width="6.4"><use href="#k1"/><use href="#k2"/></g>
-    <linearGradient id="g" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="22" y2="4">
-      <stop offset=".05" stop-color="#ffd866"/>
-      <stop offset=".55" stop-color="#fc9867"/>
-      <stop offset="1" stop-color="#ff6188"/>
+    <linearGradient id="ink" gradientUnits="userSpaceOnUse" x1="2.11" y1="5.4" x2="32.89" y2="9.9">
+      <stop offset=".05" stop-color="#ffd866"/><stop offset=".55" stop-color="#fc9867"/><stop offset="1" stop-color="#ff6188"/>
     </linearGradient>
-    <linearGradient id="h" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="22" y2="4">
-      <stop offset="0" stop-color="#fffbe6"/>
-      <stop offset="1" stop-color="#ffd3de"/>
+    <linearGradient id="rule" gradientUnits="userSpaceOnUse" x1="2.11" y1="0" x2="29.89" y2="0">
+      <stop offset="0" stop-color="#ffd866"/><stop offset=".6" stop-color="#fc9867"/><stop offset="1" stop-color="#ff6188"/>
     </linearGradient>
-    <radialGradient id="glow" gradientUnits="userSpaceOnUse" cx="16" cy="17" r="15">
-      <stop offset="0" stop-color="#ff6188" stop-opacity=".28"/>
-      <stop offset="1" stop-color="#ff6188" stop-opacity="0"/>
-    </radialGradient>
-    <mask id="m1" maskUnits="userSpaceOnUse" x="-8" y="-8" width="48" height="40">
-      <use href="#s1" stroke="#fff" stroke-width="4.4"/>
-      <use href="#k1" stroke="#000" stroke-width="4.6" transform="translate(.55 .7)"/>
-    </mask>
-    <mask id="m2" maskUnits="userSpaceOnUse" x="-8" y="-8" width="48" height="40">
-      <use href="#s2" stroke="#fff" stroke-width="4.4"/>
-      <use href="#k2" stroke="#000" stroke-width="4.6" transform="translate(.55 .7)"/>
-    </mask>
+    <linearGradient id="bg" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="32">
+      <stop offset="0" stop-color="#232124"/><stop offset="1" stop-color="#19181a"/>
+    </linearGradient>
   </defs>
-  <rect width="32" height="32" rx="7" fill="#19181a"/>
-  <rect width="32" height="32" rx="7" fill="url(#glow)"/>
-  <g transform="translate(16 16) rotate(-9) skewX(-16) scale(1.18) translate(-10.5 -9)" fill="none" stroke-linejoin="round">
-    <use href="#kk" stroke="#3a1424" transform="translate(.6 1.6)"/>
-    <use href="#kk" stroke="#6b2340" transform="translate(.45 1.2)"/>
-    <use href="#kk" stroke="#6b2340" transform="translate(.3 .8)"/>
-    <use href="#kk" stroke="#6b2340" transform="translate(.15 .4)"/>
-    <use href="#k1" stroke="#19181a" stroke-width="6.4"/>
-    <use href="#s1" stroke="url(#g)" stroke-width="4.4"/>
-    <use href="#s1" stroke="url(#h)" stroke-width="4.4" stroke-opacity=".8" mask="url(#m1)"/>
-    <use href="#k2" stroke="#19181a" stroke-width="6.4"/>
-    <use href="#s2" stroke="url(#g)" stroke-width="4.4"/>
-    <use href="#s2" stroke="url(#h)" stroke-width="4.4" stroke-opacity=".8" mask="url(#m2)"/>
-  </g>
+  <path d="M0 0H26L32 6V32H6L0 26Z" fill="url(#bg)"/><path d="M0 .4H25.83" stroke="#fc9867" stroke-width=".8"/>
+  <path d="M9.32 21.9Q6.44 21.9 4.65 20.77Q2.87 19.65 2.11 17.46L6.93 15.88Q7.32 16.79 8.02 17.31Q8.72 17.83 9.78 17.83Q10.39 17.83 10.75 17.6Q11.12 17.38 11.2 16.96Q11.27 16.51 10.82 16.2Q10.38 15.89 8.87 15.45Q6.06 14.64 4.93 13.29Q3.79 11.94 4.14 9.92Q4.52 7.79 6.36 6.59Q8.2 5.4 11.2 5.4Q13.89 5.4 15.47 6.38Q17.06 7.36 17.81 9.3L13.11 10.89Q12.78 10.17 12.22 9.77Q11.65 9.37 10.91 9.37Q10.39 9.37 10.02 9.57Q9.66 9.76 9.59 10.12Q9.54 10.48 9.81 10.73Q10.09 10.99 11.83 11.49Q14.75 12.29 15.9 13.66Q17.06 15.03 16.67 17.19Q16.25 19.5 14.32 20.7Q12.38 21.9 9.32 21.9Z" fill="#000" fill-opacity=".55" transform="translate(0 0.9)"/>
+  <path d="M9.32 21.9Q6.44 21.9 4.65 20.77Q2.87 19.65 2.11 17.46L6.93 15.88Q7.32 16.79 8.02 17.31Q8.72 17.83 9.78 17.83Q10.39 17.83 10.75 17.6Q11.12 17.38 11.2 16.96Q11.27 16.51 10.82 16.2Q10.38 15.89 8.87 15.45Q6.06 14.64 4.93 13.29Q3.79 11.94 4.14 9.92Q4.52 7.79 6.36 6.59Q8.2 5.4 11.2 5.4Q13.89 5.4 15.47 6.38Q17.06 7.36 17.81 9.3L13.11 10.89Q12.78 10.17 12.22 9.77Q11.65 9.37 10.91 9.37Q10.39 9.37 10.02 9.57Q9.66 9.76 9.59 10.12Q9.54 10.48 9.81 10.73Q10.09 10.99 11.83 11.49Q14.75 12.29 15.9 13.66Q17.06 15.03 16.67 17.19Q16.25 19.5 14.32 20.7Q12.38 21.9 9.32 21.9Z" fill="url(#ink)"/>
+  <path d="M21.4 21.9Q18.52 21.9 16.74 20.77Q14.95 19.65 14.19 17.46L19.01 15.88Q19.4 16.79 20.11 17.31Q20.81 17.83 21.87 17.83Q22.47 17.83 22.84 17.6Q23.21 17.38 23.29 16.96Q23.35 16.51 22.91 16.2Q22.46 15.89 20.96 15.45Q18.14 14.64 17.01 13.29Q15.88 11.94 16.23 9.92Q16.6 7.79 18.45 6.59Q20.29 5.4 23.29 5.4Q25.98 5.4 27.56 6.38Q29.14 7.36 29.89 9.3L25.19 10.89Q24.87 10.17 24.3 9.77Q23.73 9.37 23 9.37Q22.47 9.37 22.11 9.57Q21.75 9.76 21.68 10.12Q21.62 10.48 21.9 10.73Q22.17 10.99 23.91 11.49Q26.83 12.29 27.99 13.66Q29.14 15.03 28.75 17.19Q28.34 19.5 26.41 20.7Q24.47 21.9 21.4 21.9Z" fill="none" stroke="url(#bg)" stroke-width="1.3" stroke-linejoin="round"/>
+  <path d="M21.4 21.9Q18.52 21.9 16.74 20.77Q14.95 19.65 14.19 17.46L19.01 15.88Q19.4 16.79 20.11 17.31Q20.81 17.83 21.87 17.83Q22.47 17.83 22.84 17.6Q23.21 17.38 23.29 16.96Q23.35 16.51 22.91 16.2Q22.46 15.89 20.96 15.45Q18.14 14.64 17.01 13.29Q15.88 11.94 16.23 9.92Q16.6 7.79 18.45 6.59Q20.29 5.4 23.29 5.4Q25.98 5.4 27.56 6.38Q29.14 7.36 29.89 9.3L25.19 10.89Q24.87 10.17 24.3 9.77Q23.73 9.37 23 9.37Q22.47 9.37 22.11 9.57Q21.75 9.76 21.68 10.12Q21.62 10.48 21.9 10.73Q22.17 10.99 23.91 11.49Q26.83 12.29 27.99 13.66Q29.14 15.03 28.75 17.19Q28.34 19.5 26.41 20.7Q24.47 21.9 21.4 21.9Z" fill="#000" fill-opacity=".55" transform="translate(0 0.9)"/>
+  <path d="M21.4 21.9Q18.52 21.9 16.74 20.77Q14.95 19.65 14.19 17.46L19.01 15.88Q19.4 16.79 20.11 17.31Q20.81 17.83 21.87 17.83Q22.47 17.83 22.84 17.6Q23.21 17.38 23.29 16.96Q23.35 16.51 22.91 16.2Q22.46 15.89 20.96 15.45Q18.14 14.64 17.01 13.29Q15.88 11.94 16.23 9.92Q16.6 7.79 18.45 6.59Q20.29 5.4 23.29 5.4Q25.98 5.4 27.56 6.38Q29.14 7.36 29.89 9.3L25.19 10.89Q24.87 10.17 24.3 9.77Q23.73 9.37 23 9.37Q22.47 9.37 22.11 9.57Q21.75 9.76 21.68 10.12Q21.62 10.48 21.9 10.73Q22.17 10.99 23.91 11.49Q26.83 12.29 27.99 13.66Q29.14 15.03 28.75 17.19Q28.34 19.5 26.41 20.7Q24.47 21.9 21.4 21.9Z" fill="url(#ink)"/>
+  <path d="M2.68 23.84H29.69L29.32 25.94H2.31Z" fill="url(#rule)"/>
 </svg>
