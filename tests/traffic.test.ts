@@ -251,7 +251,8 @@ describe('ambient traffic', () => {
       expect(planParking(createWorld(seed, 'circuit', city))).toEqual(plan);
       const routeNodes = new Set(w.route.nodes);
       const net = trafficNet(w);
-      for (const c of plan.cars) {
+      // (The parking lots' cars are in the plan too, after the kerb's: tests/parkingLots.test.ts holds them.)
+      for (const c of plan.cars.filter((p) => p.lot === undefined)) {
         const e = w.graph.edges[c.edge];
         // Off the route, its closed side streets and their meets.
         expect(routeNodes.has(e.a) || routeNodes.has(e.b)).toBe(false);

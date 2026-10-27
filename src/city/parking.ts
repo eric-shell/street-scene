@@ -20,6 +20,10 @@
  * own their street (PARKING.offAreas: the river's banks, a tunnel, a viaduct);
  * anything a district stands in the street is thereby never parked into.
  *
+ * Parking lots (districts/parkingLot.ts) add their cars after the kerb's: each lot's bays at its occupancy,
+ * poses from the lot's own layout (parkingLot/layout.ts), `edge` -1 and `lot` the lot's area id. They are in no
+ * row (a lot has no lane to move); the rest of the machinery treats them as any parked car.
+ *
  * Lanes keep clear by construction: the traffic network (sim/traffic/net.ts)
  * reads the same plan and, along each row (a run of contiguous valid slots,
  * taken or not), moves that side's lane in so the widest traffic car keeps
@@ -32,6 +36,7 @@ import type { RoadEdge } from './roadGraph';
 import { chainOf, isBendNode, isRiverEdge } from './roadGraph';
 import { CITY, PARKING } from './config';
 import { baysByEdge, bayHitsCircle } from './busBays';
+import { lotLayout } from './districts/parkingLot';
 import { Rng, deriveSeed } from '../sim/prng';
 import { cos, distToSegment, sin, yawOf } from '../sim/math';
 
@@ -59,6 +64,8 @@ export interface ParkedCar {
   side: 1 | -1;
   /** Along the edge from node a (m). */
   s: number;
+  /** A lot car: the parking lot's area id (the edge is then -1). Absent at the kerb. */
+  lot?: number;
 }
 
 export interface ParkingPlan {
@@ -223,6 +230,12 @@ function buildPlan(w: World): ParkingPlan {
       if (rng.next() < P.occupancy) plan.cars.push({ x, z, yaw, kind: pickKind(), edge: e.id, side, s });
     }
     close();
+  }
+  // The lots' cars, in area order.
+  for (const a of w.areas ?? []) {
+    if (a.kind !== 'parkingLot') continue;
+    for (const c of lotLayout(a).cars) plan.cars.push({ x: c.x, z: c.z, yaw: c.yaw, kind: c.kind, edge: -1, side: 1, s: 0, lot: a.id });
+    plan.slots += lotLayout(a).bays.length;
   }
   return plan;
 }

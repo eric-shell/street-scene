@@ -177,11 +177,11 @@ function donuts(kit: DistrictKit, rng: Rng, cx: number, cz: number, r: number, s
 }
 
 /** A lot: zone box, then skid pad circles if it is roomy, or a slalom down its middle if it is a long strip. */
-function lotMarks(kit: DistrictKit, a: Area, rubberCount: number, paint: THREE.Color, rubber: THREE.Color): void {
+function lotMarks(kit: DistrictKit, a: Area, outline: Vec2[], rubberCount: number, paint: THREE.Color, rubber: THREE.Color): void {
   const M = DRIFT_MARK;
   const f = lotFrame(a);
   const lift = M.liftLot;
-  zoneBox(kit, a.polygon, lift, paint);
+  zoneBox(kit, outline, lift, paint);
   if (!f) return;
   const rng = new Rng(((a.params.seed ?? a.id) ^ 0x5d1f7) >>> 0 || 1);
   const n = Math.max(1, Math.floor(f.lu / Math.max(1, f.lw)));
@@ -272,7 +272,7 @@ function edgeWash(kit: DistrictKit, gb: GeoBuilder, poly: Vec2[], width: number,
 }
 
 export const driftZoneRenderer: DistrictRenderer = {
-  kinds: ['infill', 'monument'],
+  kinds: ['infill', 'monument', 'parkingLot'],
   build(kit) {
     const zones = driftZones(kit.world);
     if (!zones.length) return;
@@ -285,8 +285,8 @@ export const driftZoneRenderer: DistrictRenderer = {
     for (const z of zones) {
       const a = kit.world.areas[z.area];
       if (z.kind === 'plaza') plazaMarks(kit, a, rubberCount, paint, rubber);
-      else lotMarks(kit, a, rubberCount, paint, rubber);
-      if (washOn) edgeWash(kit, wash, a.polygon, z.kind === 'plaza' ? M.washPlaza : M.washLot, (z.kind === 'plaza' ? M.liftPlaza : M.liftLot) + 0.02, M.wash);
+      else lotMarks(kit, a, z.polygon, rubberCount, paint, rubber);
+      if (washOn) edgeWash(kit, wash, z.polygon, z.kind === 'plaza' ? M.washPlaza : M.washLot, (z.kind === 'plaza' ? M.liftPlaza : M.liftLot) + 0.02, M.wash);
     }
     if (!wash.vertexCount) return;
     const mat = kit.track(

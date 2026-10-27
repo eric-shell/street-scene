@@ -116,7 +116,7 @@ export const LEGEND_SECTIONS: readonly { title: string; layers: readonly LegendL
       { key: 'monument', label: 'Monuments', kinds: ['monument'] },
       { key: 'market', label: 'Night markets', kinds: ['market'] },
       { key: 'carPark', label: 'Parking garages', kinds: ['carPark'] },
-      { key: 'infill', label: 'Plazas and lots', kinds: ['infill'] },
+      { key: 'infill', label: 'Plazas and lots', kinds: ['infill', 'parkingLot'] },
     ],
   },
   {

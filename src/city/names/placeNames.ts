@@ -76,6 +76,7 @@ const FORMS: Partial<Record<Area['kind'], readonly string[]>> = {
   waterfront: ['{} Harbor', 'Port {}', '{} Wharf', '{} Docks'],
   market: ['{} Night Market', '{} Bazaar', '{} Lantern Market', '{} Street Market'],
   carPark: ['{} Garage', '{} Parkade', '{} Deck'],
+  parkingLot: ['{} Lot', '{} Parking', '{} Motor Pool', '{} Auto Park'],
   bluff: ['{} Bluff', '{} Cliffs', '{} Scarp'],
   highway: ['{} Expressway', '{} Freeway', '{} Skyway'],
   alley: ['{} Run', '{} Cut', '{} Strip', '{} Chase'],

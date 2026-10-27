@@ -154,13 +154,13 @@ export function buildAreaLights(world: World): AreaLights {
       for (let i = 0; i < poly.length; i++) grid(mid, poly[i], poly[(i + 1) % poly.length], mid);
     }
   };
-  const washed = (a: Area) => a.kind === 'park' || a.kind === 'monument' || a.kind === 'roundabout' || (a.kind === 'infill' && (a.variant === 'plaza' || a.variant === 'cornerPlaza' || a.variant === 'lot'));
+  const washed = (a: Area) => a.kind === 'park' || a.kind === 'monument' || a.kind === 'roundabout' || a.kind === 'parkingLot' || (a.kind === 'infill' && (a.variant === 'plaza' || a.variant === 'cornerPlaza' || a.variant === 'lot'));
   for (const a of world.areas) {
     if (!washed(a)) continue;
     // A roundabout's area is the whole junction; its wash covers the island only.
     const poly = a.kind === 'roundabout' ? circlePolygon(a.params.x, a.params.z, a.params.island, 32) : a.polygon;
     const lawn = a.kind === 'park' || (a.kind === 'roundabout' && !a.params.paved);
-    const lot = a.kind === 'infill' && a.variant === 'lot';
+    const lot = a.kind === 'parkingLot' || (a.kind === 'infill' && a.variant === 'lot');
     const W = a.kind === 'park' || a.kind === 'monument' ? A.wash[a.kind] : a.kind === 'roundabout' ? (lawn ? A.wash.island : A.wash.plaza) : lot ? A.wash.lot : A.wash.plaza;
     // Islands are drawn at ground level, not at curb height like a plaza's paving; a lot is asphalt at road level.
     const lift = lawn ? A.liftGrass : a.kind === 'roundabout' ? A.liftGrass : lot ? A.liftRoad : A.liftPaved;
