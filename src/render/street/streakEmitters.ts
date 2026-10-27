@@ -5,7 +5,8 @@
  * the neon blade signs over the sidewalks, the traffic signal heads and bus
  * shelter lights (props.ts, which also tell which prop each belongs to so a
  * smashed one goes dark), and the route's amber beacons and cyan chevron boards
- * (race/routeArrows.ts). Roof neon is left out (too high to reflect), and so
+ * (race/routeArrows.ts), and the festoon strands over the main drag (stringLights.ts, one emitter each,
+ * Medium and up). Roof neon is left out (too high to reflect), and so
  * are the El stations' name boards and canopy tubes: they hang under a deck
  * 8 m up, inside the district renderer's merged geometry, with no list to
  * read. The order here is the index order of `LightFx.extraBase + i`. Render only.
@@ -16,6 +17,7 @@ import { marketLightPoints } from '../districts/marketPlan';
 import { routeEmitters, type BarrierInfo } from '../race/routeArrows';
 import type { LightEmitter } from './lightFx';
 import { PARK_LANTERN_Y, parkLamps, propEmitters } from './props';
+import { stringEmitters } from './stringLights';
 
 export interface StreakEmitters {
   list: LightEmitter[];
@@ -28,7 +30,7 @@ export interface StreakEmitters {
 const LANTERN = new THREE.Color(0xffc890);
 const MARKET = new THREE.Color(0xffc060);
 
-export function collectStreakEmitters(world: World, blades: readonly { pos: THREE.Vector3; color: THREE.Color }[], barriers: BarrierInfo[]): StreakEmitters {
+export function collectStreakEmitters(world: World, blades: readonly { pos: THREE.Vector3; color: THREE.Color }[], barriers: BarrierInfo[], detail: 'low' | 'medium' | 'high' = 'medium'): StreakEmitters {
   const list: LightEmitter[] = [];
   const ofProp = new Map<number, number[]>();
   const parkBase = list.length;
@@ -42,5 +44,6 @@ export function collectStreakEmitters(world: World, blades: readonly { pos: THRE
     list.push({ pos: new THREE.Vector3(e.x, e.y, e.z), color: e.color, cls: e.cls, phase: e.phase });
   }
   for (const e of routeEmitters(world, barriers)) list.push(e);
+  for (const e of stringEmitters(world, detail)) list.push(e);
   return { list, parkBase, ofProp };
 }

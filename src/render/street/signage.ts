@@ -9,9 +9,11 @@
  *    the vertex shader. It is a factor of at most 1, so a flickering sign never exceeds today's brightness
  *    and bloom only ever sees it dimmer. Program 4 marks a dead segment (one quad of a ring stuck dark).
  *  - Chasing marquee bulbs under about a third of the downtown name signs: one merged mesh, three phases
- *    chase along each row from the clock.
+ *    chase along each row from the clock. Podiums on the race route (routeNearness.ts) are credited as if a
+ *    little more downtown and roll the bulb odds higher, so the drag is where the marquees are.
  *  - LED tickers: a handful of downtown signs carry a scrolling dot-matrix strip, one mesh whose texture
- *    holds one phrase row per ticker; the shader scrolls and masks it into dots.
+ *    holds one phrase row per ticker; the shader scrolls and masks it into dots. They go to the route's
+ *    podiums first.
  *  - Clock signs: a 7-segment time and temperature panel whose digits the shader derives from the clock
  *    (the scene clock as a time of night, starting just before midnight), so nothing is redrawn.
  *
@@ -27,6 +29,7 @@ import { neonMood, pickSubset } from '../textures/cityMood';
 import { SIGN_NAMES } from '../textures/signAtlases';
 import { canvas, canvasTex } from '../textures/canvasKit';
 import { GeoBuilder } from '../geoBuilder';
+import { DRAG, routeNearness } from './routeNearness';
 
 /** Odds, speeds (s) and counts of the moving signage. */
 export const SIGNAGE = {
@@ -189,7 +192,10 @@ export function planSignage(world: World, detail: 'low' | 'medium' | 'high'): Si
   if (detail === 'low') return plan;
   const rng = new Rng(deriveSeed(deriveSeed(world.seed, 'signage'), 'plan'));
   const signs = world.blocks.signs;
-  const down = signs.map((s) => (s.blade ? 0 : downtownFactor(world.graph.plan, s.x, s.z)));
+  const near = routeNearness(world);
+  const nearOf = signs.map((s) => near.at(s.x, s.z));
+  // The drag counts as a little more downtown (a route podium outside the core still qualifies); strength sets how much.
+  const down = signs.map((s, i) => (s.blade ? 0 : downtownFactor(world.graph.plan, s.x, s.z) + nearOf[i] * DRAG.downtownCredit * Math.min(1.5, near.strength)));
   // Clocks: the highest downtown signs, spaced apart. The sign itself is replaced by the panel, so the
   // panel stays on a wall the sign planner already proved is there.
   const wantClocks = rng.int(SIGNAGE.clocks[0], SIGNAGE.clocks[1]);
@@ -203,14 +209,22 @@ export function planSignage(world: World, detail: 'low' | 'medium' | 'high'): Si
   // Tickers: wide downtown signs, in a seeded order.
   const wide = signs.map((_, i) => i).filter((i) => down[i] >= SIGNAGE.downtownMin && signs[i].w >= SIGNAGE.tickerMinW && !plan.clocks.has(i));
   rng.shuffle(wide);
+  // Route podiums first: a stable sort on a coarse nearness band keeps the seeded order inside each band.
+  wide.sort((a, b) => Math.round(nearOf[b] * 4) - Math.round(nearOf[a] * 4));
   const wantTickers = rng.int(SIGNAGE.tickers[0], SIGNAGE.tickers[1]);
   for (const i of wide.slice(0, wantTickers)) plan.tickers.add(i);
-  // Bulbs: a share of the rest.
+  // Bulbs: a share of the rest, the route's podiums first when the cap bites.
+  const lit: number[] = [];
+  // The eligible signs are downtown ones, not the city's buildings: normalise over them so the route's pull moves bulbs toward it without changing how many there are.
+  const raw = signs.map((s) => near.raw(DRAG.bulbs, s.x, s.z));
+  const pool = signs.map((_, i) => i).filter((i) => down[i] >= SIGNAGE.downtownMin);
+  const meanRaw = pool.length ? pool.reduce((t, i) => t + raw[i], 0) / pool.length : 1;
   for (let i = 0; i < signs.length; i++) {
-    const hit = rng.chance(SIGNAGE.bulbShare);
-    if (!hit || plan.bulbs.size >= SIGNAGE.maxBulbSigns) continue;
-    if (down[i] >= SIGNAGE.downtownMin && !plan.clocks.has(i) && !plan.tickers.has(i)) plan.bulbs.add(i);
+    const hit = rng.chance(Math.min(1, (SIGNAGE.bulbShare * raw[i]) / meanRaw));
+    if (hit && down[i] >= SIGNAGE.downtownMin && !plan.clocks.has(i) && !plan.tickers.has(i)) lit.push(i);
   }
+  lit.sort((a, b) => Math.round(nearOf[b] * 4) - Math.round(nearOf[a] * 4));
+  for (const i of lit.slice(0, SIGNAGE.maxBulbSigns)) plan.bulbs.add(i);
   return plan;
 }
 

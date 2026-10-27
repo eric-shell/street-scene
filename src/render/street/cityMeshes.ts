@@ -20,6 +20,8 @@ import type { ShopFront } from '../people/idleSpots';
 import { buildBuildings, Detail } from '../buildings/buildings';
 import { neonMood } from '../textures/cityMood';
 import { FlickList, SIGNAGE, applyFlicker, buildSignageMeshes, planSignage, setSignageTime } from './signage';
+import { DRAG, routeNearness } from './routeNearness';
+import { buildStringLights } from './stringLights';
 import { ridgeLift } from '../districts/structureShapes';
 import { baysByEdge, sideBays } from '../../city/busBays';
 import { BAY_DASH, BayDraw, bayMouth, drawBayAsphalt, drawBayPaint, drawBaySidewalk } from './busBays';
@@ -602,6 +604,7 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     const sb = new GeoBuilder(true);
     const flick = new FlickList(world, 'podium');
     const plan = planSignage(world, detail);
+    const near = routeNearness(world);
     const cellW = 1 / SIGN_ATLAS_COLS;
     const cellH = 1 / SIGN_ATLAS_ROWS;
     for (let si = 0; si < world.blocks.signs.length; si++) {
@@ -610,7 +613,8 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
       // A clock sign takes this sign's wall (signage.ts): no name sign under the panel.
       if (plan.clocks.has(si)) continue;
       const idx = s.nameIndex % SIGN_SLOTS;
-      const col = neon[mood.neon((s.colorIndex + 0.5) / 1024)];
+      // The drag's signs burn brighter, the side streets' dimmer (routeNearness.ts); flicker only ever takes this away.
+      const col = neon[mood.neon((s.colorIndex + 0.5) / 1024)].clone().multiplyScalar(near.scale(DRAG.signGain, s.x, s.z));
       const u0 = (idx % SIGN_ATLAS_COLS) * cellW;
       const v1 = 1 - Math.floor(idx / SIGN_ATLAS_COLS) * cellH;
       const v0 = v1 - cellH;
@@ -659,6 +663,14 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     const extras = buildSignageMeshes(world, plan);
     disposables.push(extras);
     for (const m of extras.meshes) group.add(m);
+  }
+
+  // ---------- String lights over the main drag ----------
+  // One additive draw call of festoon bulbs between the route street's lamp posts, Medium and up (stringLights.ts).
+  {
+    const strings = buildStringLights(world, detail);
+    disposables.push(strings);
+    if (strings.mesh) group.add(strings.mesh);
   }
 
   // ---------- Hazard lamp material ----------

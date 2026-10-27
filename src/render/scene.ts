@@ -229,7 +229,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   // One culling grid for the big merged layers, the props and the light streaks (200 m cells).
   const grid = chunkGrid(bounds);
   // Everything else that glows streaks on the wet street too, graded by class (lightFx.ts STREAK_CLASSES).
-  const emitters = collectStreakEmitters(world, polish.lights, barriers);
+  const emitters = collectStreakEmitters(world, polish.lights, barriers, settings.quality);
   const fx = buildLightFx(city.lampPositions, city.signLights, world.heightAt, fogDensity, lampTone.map((t) => ({ pool: toneColor(t.pool), streak: toneColor(t.streak) })), { grid, extra: emitters.list });
   fx.setStrength(0.42, 0.85);
   scene.add(fx.group);
@@ -407,6 +407,7 @@ const CHUNK_LAYERS: Record<string, ChunkClass> = {
   districtPaint: 'detail',
   elevatedTies: 'detail',
   wallBoxes: 'detail',
+  stringLights: 'fog',
   // Additive light: order independent, so splitting it into runs changes nothing on screen.
   lightSpill: 'fog',
   areaLights: 'fog',

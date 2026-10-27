@@ -15,6 +15,11 @@
  * the drawn podium geometry (wallProbe.ts); without that geometry only the
  * infill's low boundary walls, whose face is exact, get grimed. Three draw
  * calls: paint (one atlas), boxes, blade signs. Seeded, render only.
+ *
+ * The odds are not the same on every street: the race route is the city's main
+ * drag (street/routeNearness.ts), so blade signs, paper and banners lean toward
+ * it (about 1.6x on the route's street, 0.6x on a side street, softened by the
+ * home's drag strength) and the city total stays about where it was.
  */
 import * as THREE from 'three';
 import type { World } from '../../city/world';
@@ -30,6 +35,7 @@ import { fadeSubPixel } from '../materialFx';
 import { AtlasCell, BLADE_SIGN_COLS, BLADE_SIGN_ROWS, BLADE_SLOTS, NEON_COLORS, WALL_ATLAS, WallKind, wallCell } from '../textures/textures';
 import { neonMood } from '../textures/cityMood';
 import { FlickList, SIGNAGE, applyFlicker } from '../street/signage';
+import { DRAG, routeNearness } from '../street/routeNearness';
 
 export interface WallDressingOptions {
   /** Share of candidate walls and faces that get dressed (graphics tier). */
@@ -42,6 +48,8 @@ export interface WallDressing {
   meshes: THREE.Mesh[];
   /** The blade signs' glow: the centre of each panel (m, world) and its neon colour, for the wet street's reflection streaks (street/lightFx.ts). */
   lights: { pos: THREE.Vector3; color: THREE.Color }[];
+  /** What was placed, for the perf report and tests. */
+  counts: { blades: number; posters: number; flyers: number; banners: number };
   dispose(): void;
 }
 
@@ -90,6 +98,10 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
   const lights: { pos: THREE.Vector3; color: THREE.Color }[] = [];
   const WHITE = new THREE.Color(1, 1, 1);
   const D = opts.density;
+  const near = routeNearness(world);
+  const counts = { blades: 0, posters: 0, flyers: 0, banners: 0 };
+  /** Paper density at a spot: more on the drag, less down the side streets (never so low that a step runs away). */
+  const paperAt = (x: number, z: number) => Math.max(0.15, near.scale(DRAG.paper, x, z));
 
   /** A flat piece on a facade: centre (x, z) on the surface, tangent t (right), normal n (toward the viewer). */
   const piece = (kind: WallKind, i: number, x: number, z: number, tx: number, tz: number, nx: number, nz: number, w: number, y0: number, y1: number, color = WHITE, uu0 = 0, uu1 = 1) => {
@@ -122,15 +134,17 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
     piece(kind, i, x, z, hit.tx, hit.tz, hit.nx, hit.nz, w, y0, y1, color);
     return true;
   };
+  /** A fractional count rounded at random, so a 1.6x odds on a count of 2 gives 3 or 4 and the mean is exact. */
+  const stochastic = (n: number): number => Math.floor(n) + (rng.chance(n - Math.floor(n)) ? 1 : 0);
   /** A station on a wall: a poster or a sheet of flyers, or (most often) nothing, so the paper stays sparse. */
   const rollPaper = (px: number, pz: number, dx: number, dz: number, busy: number) => {
     const r = rng.next();
     if (r >= 0.74 * busy && r < 0.88 * busy) {
       const hh = rng.range(DRESS.posterH[0], DRESS.posterH[1]);
-      probedPiece('poster', rng.int(0, 3), px, pz, dx, dz, rng.range(1.3, 2.0), hh, hh * (256 / 192));
+      if (probedPiece('poster', rng.int(0, 3), px, pz, dx, dz, rng.range(1.3, 2.0), hh, hh * (256 / 192))) counts.posters++;
     } else if (r < busy) {
       const hh = rng.range(DRESS.flyersH[0], DRESS.flyersH[1]);
-      probedPiece('flyers', rng.int(0, 1), px, pz, dx, dz, rng.range(1.1, 1.8), hh, hh);
+      if (probedPiece('flyers', rng.int(0, 1), px, pz, dx, dz, rng.range(1.1, 1.8), hh, hh)) counts.flyers++;
     }
   };
   const grimeAlong = (ax: number, az: number, bx: number, bz: number, dx: number, dz: number, chance: number) => {
@@ -163,8 +177,11 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
           const dx = -uz * side;
           const dz = ux * side;
           grimeAlong(A.x + ux * 8 + dx * lat, A.z + uz * 8 + dz * lat, A.x + ux * (len - 8) + dx * lat, A.z + uz * (len - 8) + dz * lat, dx, dz, 0.85 * D);
-          for (let s = rng.range(8, 12); s < len - 8; s += rng.range(DRESS.alleyStep[0], DRESS.alleyStep[1]) / D) {
-            rollPaper(A.x + ux * s + dx * lat, A.z + uz * s + dz * lat, dx, dz, busy);
+          for (let s = rng.range(8, 12); s < len - 8; ) {
+            const px = A.x + ux * s + dx * lat;
+            const pz = A.z + uz * s + dz * lat;
+            rollPaper(px, pz, dx, dz, busy);
+            s += rng.range(DRESS.alleyStep[0], DRESS.alleyStep[1]) / (D * paperAt(px, pz));
           }
           // Pipes down the walls every so often.
           for (let s = rng.range(10, 30); s < len - 10; s += rng.range(22, 40) / D) {
@@ -260,7 +277,7 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
         const at = (s: number) => ({ x: p.x + tx * s + nx * 1.6, z: p.z + tz * s + nz * 1.6 });
         if (!street) {
           // A party wall facing a lot, pocket or park: some paper, grime, the services.
-          const pieces = rng.int(1, 3);
+          const pieces = stochastic(rng.int(1, 3) * paperAt(b.x, b.z));
           for (let k = 0; k < pieces; k++) {
             const a = at(rng.range(2, len - 2));
             rollPaper(a.x, a.z, dx, dz, 1);
@@ -277,7 +294,7 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
             const a = at(rng.chance(0.5) ? 0.6 : len - 0.6);
             drainpipe(a.x, a.z, dx, dz);
           }
-        } else if (rng.chance(0.35)) {
+        } else if (rng.chance(0.35 * paperAt(b.x, b.z))) {
           // A side street front: at most a poster near a corner.
           const a = at(rng.range(2, Math.min(len - 2, 9)));
           rollPaper(a.x, a.z, dx, dz, 0.6);
@@ -325,7 +342,7 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
     const cw = 1 / BLADE_SIGN_COLS;
     const ch = 1 / BLADE_SIGN_ROWS;
     for (const b of world.blocks.buildings) {
-      if (b.w < 8 || !rng.chance(DRESS.bladeChance * D)) continue;
+      if (b.w < 8 || !rng.chance(Math.min(1, DRESS.bladeChance * D * near.scale(DRAG.blades, b.x, b.z)))) continue;
       const ux = Math.cos(b.yaw);
       const uz = -Math.sin(b.yaw);
       const wx = Math.sin(b.yaw);
@@ -373,6 +390,7 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
           blades.quadFacing(a, bb, c, d, nx, 0, nz);
         }
         bladeFlick.fill(blades.vertexCount, fl);
+        counts.blades++;
         lights.push({ pos: new THREE.Vector3(sx + ox * ((o0 + o1) / 2), y, sz + oz * ((o0 + o1) / 2)), color: col });
         // Bracket: a dark bar from the wall into the panel's top edge.
         const bar = new THREE.Color(0x1a1a1f);
@@ -392,10 +410,21 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
     }
     stations.push(route.startS - 45, route.finishS - 60);
     rng.shuffle(stations);
+    // The drag carries more of them: a cap and a spacing that scale with the home's gradient, and a station
+    // every so often along the route once the closures and the start are used up.
+    const lift = near.onRoute(DRAG.banners);
+    const cap = Math.round(opts.banners * lift);
+    const gap = DRESS.bannerGap / lift;
+    if (lift > 1) {
+      const extra: number[] = [];
+      for (let s = rng.range(0, gap); s < route.length; s += gap) extra.push(s);
+      rng.shuffle(extra);
+      stations.push(...extra);
+    }
     const placed: number[] = [];
     for (const s of stations) {
-      if (placed.length >= opts.banners) break;
-      if (placed.some((p) => Math.abs(p - s) < DRESS.bannerGap)) continue;
+      if (placed.length >= cap) break;
+      if (placed.some((p) => Math.abs(p - s) < gap)) continue;
       const smp = routeSample(route, s);
       const half = route.segWidth[smp.seg] / 2;
       if (half < 5.5) continue;
@@ -409,6 +438,7 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
       if (!lHit || !R) continue;
       const rHit = { x: smp.x - lx * (lat + R.d), z: smp.z - lz * (lat + R.d) };
       banner(lHit.x, lHit.z, rHit.x, rHit.z, y, rng.int(0, 1));
+      counts.banners++;
       placed.push(s);
     }
   }
@@ -494,6 +524,7 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
   return {
     meshes,
     lights,
+    counts,
     dispose() {
       for (const m of meshes) {
         m.geometry.dispose();
