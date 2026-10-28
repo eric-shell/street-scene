@@ -211,12 +211,18 @@ export const PARKED_LOOK = {
 export const PAINTS = [0x9aa0a6, 0x3a3d42, 0x16171a, 0xd8d8d4, 0x1e2a44, 0x5a1a1f, 0x223a2c, 0x9c8b6e, 0x3f5468, 0xb8a98a, 0x6d7276, 0x2b2f3a, 0x7a2a22, 0x2f4a5a].map((c) => new THREE.Color(c));
 const WHITE = new THREE.Color(1, 1, 1);
 
-/** Lamp colours (HDR, for the bloom). Beacons glow dim, under the bloom, until a struck car flashes them. */
-const HEAD = new THREE.Color(kelvin(5200)).multiplyScalar(2.4);
-const TAIL = new THREE.Color(0xff1a24).multiplyScalar(1.1);
-const BRAKE = new THREE.Color(0xff1a24).multiplyScalar(2.8);
+/**
+ * Lamp colours (HDR, for the bloom). Head and brake lamps sit only a little past the bloom's 0.86 threshold so a
+ * street full of traffic glints rather than smears; a plain tail lamp stays under it. Beacons glow dim, under the
+ * bloom, until a struck car flashes them.
+ */
+const HEAD = new THREE.Color(kelvin(5200)).multiplyScalar(1.3);
+const TAIL = new THREE.Color(0xff1a24).multiplyScalar(0.8);
+const BRAKE = new THREE.Color(0xff1a24).multiplyScalar(1.5);
 /** A braking car's tail flares this much stronger than a plain tail's (BRAKE over TAIL). */
-const BRAKE_FLARE = 2.5;
+const BRAKE_FLARE = 1.8;
+/** The fleet's lamp flares (lampFlares.ts) at this share of a rival's, so oncoming traffic does not glare. */
+const FLARE = 0.55;
 const HAZARD = new THREE.Color(0xffa030).multiplyScalar(2.2);
 const SIGN = new THREE.Color(0xfff2c0).multiplyScalar(1.8);
 const BEACON: Record<NonNullable<TrafficLamp['color']>, THREE.Color> = {
@@ -676,8 +682,8 @@ export class TrafficView {
       // Each head and tail lamp offers a flare: the headlight along the car's forward, the tail lamp backwards (half strength inside).
       const brake = flags & 1 ? BRAKE_FLARE : 1;
       for (const lamp of model.lamps) {
-        if (lamp.role === 'head') flares.head(x + lamp.p[0] * fz + lamp.p[2] * fx, gy + lamp.p[1], z - lamp.p[0] * fx + lamp.p[2] * fz, fx, 0, fz, fade);
-        else if (lamp.role === 'tail') flares.tail(x + lamp.p[0] * fz + lamp.p[2] * fx, gy + lamp.p[1], z - lamp.p[0] * fx + lamp.p[2] * fz, -fx, 0, -fz, fade * brake);
+        if (lamp.role === 'head') flares.head(x + lamp.p[0] * fz + lamp.p[2] * fx, gy + lamp.p[1], z - lamp.p[0] * fx + lamp.p[2] * fz, fx, 0, fz, fade * FLARE);
+        else if (lamp.role === 'tail') flares.tail(x + lamp.p[0] * fz + lamp.p[2] * fx, gy + lamp.p[1], z - lamp.p[0] * fx + lamp.p[2] * fz, -fx, 0, -fz, fade * brake * FLARE);
       }
     }
     if (body) this.placeBody(kind, parked, struck, flags, lit, fade, blink);

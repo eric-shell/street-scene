@@ -127,11 +127,11 @@ export const EXHAUST_FX = {
     /** Cars this close to the camera (m) shimmer, fading out toward the edge. */
     range: 40,
     /** World radius of a blob (m), and where it sits: this far behind the tips along the exhaust and this far up. */
-    radius: 0.85,
-    behind: 0.8,
+    radius: 0.6,
+    behind: 0.6,
     up: 0.2,
-    /** Strength in screen heights of refraction at the blob's middle at full heat (a stage 3 nitrous pull). */
-    max: 0.0075,
+    /** Strength in screen heights of refraction at the blob's middle at full heat (a stage 3 nitrous pull): a faint shimmer, not a lens. */
+    max: 0.0028,
     /** Heat (0..1) a burning nitrous stage holds the pipes at, per stage 1..3. */
     nitro: [0.75, 0.88, 1],
     /** Heat each flame adds the moment it fires (summed, capped at 1): a shift flame at its largest (a smaller one half that up), a stage's bang, one crackle pop. */
