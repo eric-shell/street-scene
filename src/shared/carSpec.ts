@@ -71,10 +71,13 @@ export const VOICE_OPTIONS = {
   muffler: ['quiet', 'sport', 'straight'],
   /** One throttle on a plenum, or individual throttle bodies that honk when opened. */
   intake: ['plenum', 'itb'],
-  /** V8 crankshaft: cross-plane banks fire unevenly (the burble), flat-plane evenly (the scream). */
-  crank: ['cross', 'flat'],
-  /** Supercharger lobe passes per rotor turn, the whine's order: a twin screw's male rotor lobes (3 to 5), twice the lobes of one rotor on a Roots blower (4 or 6). */
-  blowerLobes: [3, 4, 5, 6],
+  /**
+   * Crankshaft: a V8's cross-plane banks fire unevenly (the burble), flat-plane evenly (the scream); `oddfire` is the
+   * 90 degree V10 on a 72 degree crank (the Viper), whose firings alternate 90 and 54 degrees. V10 only.
+   */
+  crank: ['cross', 'flat', 'oddfire'],
+  /** Supercharger lobe passes per rotor turn, the whine's order: a twin screw's male rotor lobes (3 to 5), twice the lobes of one rotor on a Roots blower (4, 6 or 8 for 2, 3 or 4 lobe rotors). */
+  blowerLobes: [3, 4, 5, 6, 8],
   /** Turbo only, what a lift at boost sounds like: a venting blow-off valve's sharp, hissy chuff, or a recirculating diverter valve's soft "pssh" with the turbine still spinning (stock Audis and Volkswagens). */
   diverter: ['vent', 'recirculating'],
 } as const;
@@ -89,6 +92,14 @@ export const VOICE_RANGES = {
   boost: [0, 35],
   /** Turbo only: the induction whoosh, a band of rushing air that rises with boost, as a multiple of the reference level (0 none, the default; 1 the K24 on a stock Audi S2). */
   whoosh: [0, 2],
+  /** Rpm where a variable valve lift system switches to its high-lift cam (VTEC and kin); absent means no switch. */
+  camRpm: [4000, 9000],
+  /** How hard that switch is heard (0 none, 1 a Honda VTEC; default 0.7 when `camRpm` is set). */
+  camStep: [0, 1],
+  /** Rotary only: the idle lope of port overlap, as a depth (0 none, the default; 1 the 13B-REW). */
+  idleLope: [0, 1],
+  /** Rotary only: the apex seal rasp, a noise burst per rotor face, as a multiple of the 13B-REW's (0 none, the default). */
+  apexRasp: [0, 2],
 } as const;
 
 export interface EngineVoiceSpec {
@@ -110,6 +121,14 @@ export interface EngineVoiceSpec {
   diverter?: (typeof VOICE_OPTIONS.diverter)[number];
   /** Turbo induction whoosh level (VOICE_RANGES); none when missing. */
   whoosh?: number;
+  /** Rpm of the high-lift cam switch (VOICE_RANGES); no switch when missing. */
+  camRpm?: number;
+  /** Strength of the cam switch (VOICE_RANGES). */
+  camStep?: number;
+  /** Rotary idle lope depth (VOICE_RANGES). */
+  idleLope?: number;
+  /** Rotary apex seal rasp level (VOICE_RANGES). */
+  apexRasp?: number;
 }
 
 /** The `engine` block of a car in carManifest.json. */
@@ -194,6 +213,12 @@ export function engineSpecErrors(spec: unknown): string[] {
         } else if (!allowed) errors.push(`engine.voice.${k} is not a known field (${[...Object.keys(VOICE_OPTIONS), ...Object.keys(VOICE_RANGES)].join(', ')})`);
         else if (!allowed.includes(value as string | number)) errors.push(`engine.voice.${k} ${JSON.stringify(value)} is not one of ${allowed.join(', ')}`);
       }
+      // Fields that only make sense for some engines.
+      const voice = v as Record<string, unknown>;
+      const layout = s.layout as EngineLayout;
+      if (voice.crank === 'oddfire' && layout !== 'V10') errors.push('engine.voice.crank "oddfire" is for a V10');
+      if ('camStep' in voice && !('camRpm' in voice)) errors.push('engine.voice.camStep needs camRpm');
+      for (const k of ['idleLope', 'apexRasp']) if (k in voice && !ENGINE_LAYOUTS[layout]?.rotary) errors.push(`engine.voice.${k} is for a rotary`);
     }
   }
   return errors;

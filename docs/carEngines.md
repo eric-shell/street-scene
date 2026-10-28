@@ -12,7 +12,7 @@ Per-car engine, intake, exhaust and drivetrain data, so each garage car's engine
 
 ## How the fields map to the synth
 
-`headers` equal/unequal (+ `headerSpread` m), `pipes` 1/2, `crossover` none/h/x, `muffler` quiet/sport/straight, `intake` plenum/itb, `crank` cross/flat (V8 only), `blowerLobes` 3-6, `blowerRatio` 1-5, `boost` psi. Layout, aspiration and position live in `engine.{layout,aspiration,position}`. Recommendations assume the stock exhaust unless a car is planned as a build.
+`headers` equal/unequal (+ `headerSpread` m), `pipes` 1/2, `crossover` none/h/x, `muffler` quiet/sport/straight, `intake` plenum/itb, `crank` cross/flat (V8) or oddfire (V10), `camRpm`/`camStep` (cam changeover), `idleLope`/`apexRasp` (rotary), `blowerLobes` 3-6 or 8, `blowerRatio` 1-5, `boost` psi. Layout, aspiration and position live in `engine.{layout,aspiration,position}`. Recommendations assume the stock exhaust unless a car is planned as a build.
 
 ---
 
@@ -36,7 +36,7 @@ Source status key: **sourced** = read on a fetched page (URL in Sources); **est.
 | 0-100 / top | **6.6 s (6.4 s DSG)** 0-100, quarter mile 14.1 s at 159.6 km/h (Wikipedia Mk4). Other: 6.5 s 0-100 (an Arabic spec page), 0-62 6.4-6.6 s (AM-online, Fleetnews). Top speed 248-249 km/h (CarExpert; 152-155 mph elsewhere), governed. |
 | Sound | Narrow-V growl, a throaty off-beat warble from the 15° stagger, rises to a hard 6,500 rpm. Deeper and more V8-like than an inline six. (Character, not a sourced figure.) |
 | Voice | `headers: unequal`, `headerSpread: 0.3`, `pipes: 1`, `crossover: none`, `muffler: sport`, `intake: plenum` (unchanged: nothing fetched contradicts it) |
-| Synth gaps | The VR stagger as a sub-bank timing offset (currently approximated by header spread); the intake manifold's two-stage change near 4,000-4,500 rpm; Haldex/driveline whine (none) |
+| Synth gaps | ~~The VR stagger as a sub-bank timing offset~~ done: the per-cylinder runner table `VR6_HEAD` (`docs/engineSound.md`, Wendt Strom; an estimate, the sources above give no runner length and engine-sim has no VR6); the intake manifold's two-stage change near 4,000-4,500 rpm; Haldex/driveline whine (none) |
 
 Shipped (`drivingParams.json` `wendtStrom`) vs sourced: mass 1,480 kg matches 1,477. Gearbox uses the **Mk5** R32 list 3.36 / 2.09 / 1.47 / (1.10) / 0.87 / 0.73 with final 4.4 because the Mk4 ratios were never found; peak torque 320 at 3,200 (sourced 2,800); redline 6,800 (est. 6,500).
 
@@ -61,7 +61,7 @@ Source status key: **sourced** = read on a fetched page (URL in Sources); **est.
 | 0-100 / top | Not in Wikipedia. Mazda's own claim 0-60 mph 4.9 s (AutoGuide); tests 5.0-6.0 s (Cars.com Car and Driver comparison 6.0 s as tested; 0-60specs 5.3 s). Top speed about 158 mph = 254 km/h manufacturer estimate (Cars.com); governor 250 km/h worldwide / 180 JDM (Wikipedia Supra page, same industry rule). |
 | Sound | Buzzy, high, non-piston "brap"; a bridge-port-less stock lope is mild. Turbo whistle is faint behind the engine. Overrun pops through the tubular exhaust. (Character, not sourced.) |
 | Voice | Rotary layout `R2`; `pipes: 1`, `muffler: quiet` stock, `sport` for a build; no header/crank fields apply (unchanged) |
-| Synth gaps | Sequential turbo handover (a boost step at about 4,000 rpm and a brief drop to about 8 psi at 4,500, sourced); apex-seal rasp; relief-valve flutter |
+| Synth gaps | Sequential turbo handover (a boost step at about 4,000 rpm and a brief drop to about 8 psi at 4,500, sourced); ~~apex-seal rasp~~ done (`apexRasp: 1`), with the port-overlap idle lope (`idleLope: 1`); relief-valve flutter |
 
 Shipped (`kazamaRotor`) vs sourced: redline 8,000 (est. 7,000 manual); gear ratios first four and final 4.300 match the sources, fifth 0.88 is a deliberate fit (donor 0.806, not 0.719 as the shipped comment says); torque peaks 314 at 5,500 (that is the 280 PS Series 8 figure, 314 N·m at 5,000); no handover dip in the shipped curve; mass 1,280 matches the Type RS.
 
@@ -192,7 +192,7 @@ Source status key: **sourced** = read on a fetched page; **est.** = not found.
 | 0-100 / top | NSX-R **0-60 mph 4.9 s, top 168 mph (270 km/h)** (Wikipedia). NA1 0-60: no sourced figure (the 3.2-litre 1997 cars are 4.5-5.0 s); the old "about 5.8 s" stays **est.** |
 | Sound | Smooth V6 turning to a hard metallic scream above the VTEC crossover; NSX-R adds intake and gear noise. (Character, not sourced.) |
 | Voice | V6 even fire, `pipes: 2`, `crossover: h` (est.), `muffler: sport`, `intake: plenum` (unchanged; crossover type unconfirmed) |
-| Synth gaps | VTEC changeover (a step at **5,800 rpm** sourced), plus the intake-shutter change at 4,800; gear whine (NSX-R) |
+| Synth gaps | ~~VTEC changeover~~ synth ready: `camRpm: 5800, camStep: 1` when the car is built; the intake-shutter change at 4,800; gear whine (NSX-R) |
 
 Sources fetched: https://en.wikipedia.org/wiki/Honda_C_engine , https://en.wikipedia.org/wiki/Honda_NSX_(first_generation) (first 100k chars) , https://acuranews.com/en-US/releases/1992-acura-nsx-specifications , https://global.honda/en/tech/engine/car/C30A_NSX_vtec_DOHC/ , https://www.honda.co.jp/sportscar/vtec_history/C30A/ , https://www.supercars.net/blog/1992%E2%86%921995-honda-nsx-r/ ; via search only: https://nsxprime.com/threads/special-gearing-on-a-5-speed-gearbox.24579 .
 
@@ -290,7 +290,7 @@ Sources fetched: https://en.wikipedia.org/wiki/Subaru_EJ_engine , https://en.wik
 | Drive / curb | FR, solid rear axle; curb not found, **est.** 1,700 kg | FR; **est.** 1,780 kg |
 | 0-100 / top | 4.5 s / 249 km/h (governed), **est.**; a 2011 car tested 0-60 in 4.2 s | 3.5 s / 320 km/h claimed, **est.** |
 
-Sound: a Roots whine from idle (rpm-locked, peaks near the redline), a cross-plane V8 burble underneath, a muted exhaust on the first car, much louder on the second. Voice: V8 `crank: cross`, `pipes: 2`, `crossover: x` (est.), `muffler: sport`, supercharged. **Lobe counts**: `blowerLobes` counts lobe passes per rotor turn (carSpec.ts: a twin screw's male rotor lobes, twice one rotor's lobes on a Roots blower; the Fiend's twin screw is 4). The M122H and TVS 2300 are both Roots-type, so the M122H's 3-lobe rotors give `blowerLobes: 6` and the TVS 2300's 4-lobe rotors give 8, outside the 3-6 range (a synth gap: widen `VOICE_OPTIONS.blowerLobes` before the 2013 car ships). M122: `blowerLobes: 6`, `blowerRatio: 2.5` (est.), `boost: 10` (was 8.5); TVS: `blowerLobes: 8` (out of range today), `blowerRatio: 2.4` (est.), `boost: 14`. Synth gaps: the TVS's 8 lobe passes; a bypass-valve whine drop-off is modelled as faint with the bypass open.
+Sound: a Roots whine from idle (rpm-locked, peaks near the redline), a cross-plane V8 burble underneath, a muted exhaust on the first car, much louder on the second. Voice: V8 `crank: cross`, `pipes: 2`, `crossover: x` (est.), `muffler: sport`, supercharged. **Lobe counts**: `blowerLobes` counts lobe passes per rotor turn (carSpec.ts: a twin screw's male rotor lobes, twice one rotor's lobes on a Roots blower; the Fiend's twin screw is 4). The M122H and TVS 2300 are both Roots-type, so the M122H's 3-lobe rotors give `blowerLobes: 6` and the TVS 2300's 4-lobe rotors give 8, outside the old 3-6 range (widened: `blowerLobes` takes 3, 4, 5, 6 or 8 now). M122: `blowerLobes: 6`, `blowerRatio: 2.5` (est.), `boost: 10` (was 8.5); TVS: `blowerLobes: 8` (in range now), `blowerRatio: 2.4` (est.), `boost: 14`. Synth gaps: ~~the TVS's 8 lobe passes~~ done; a bypass-valve whine drop-off is modelled as faint with the bypass open.
 
 Sources fetched: https://en.wikipedia.org/wiki/Ford_Modular_engine (read to 100,000 characters), https://www.streetmusclemag.com/?p=5225 , https://themustangsource.com/forums/f726/gt500-supercharger-question-515792/ (no lobe data). The Shelby Mustang Wikipedia page had no figures in the first 100,000 characters; dbusiness.com returned 403; enginelabs had no specs.
 
@@ -354,7 +354,7 @@ Verification pass (fetched): en.wikipedia.org/wiki/Honda_S2000, en.wikipedia.org
 | 0-100 / top | 0-60 about 5.4-5.8 s is **est.** (no fetched source gave it); about 240 km/h est. |
 | Sound | The VTEC crossover: a deep growl turns into a metallic wail near 6,000; high-pitched to 8,000+. |
 | Voice | `headers: equal`, `pipes: 1`, `muffler: sport`, `intake: plenum` |
-| Synth gaps | **VTEC cam changeover** (a step up in gain and harmonic content near 6,000 rpm); gear whine |
+| Synth gaps | ~~VTEC cam changeover~~ synth ready: `camRpm: 6000, camStep: 1` when the car is built; gear whine |
 
 Sources: https://en.wikipedia.org/wiki/Honda_S2000 , https://en.wikipedia.org/wiki/Honda_F20C_engine , https://hondanews.com/en-US/releases/release-5a35f67b82f245d1db31c6004c34c121-2006-honda-s2000-specifications , https://www.s2000.club/ap2v2specs.html .
 
@@ -377,7 +377,7 @@ Verification pass (fetched): en.wikipedia.org/wiki/Honda_B_engine. Search snippe
 | 0-100 / top | 0-60 about 7.0-7.2 s (Hagerty drive, Edmunds via fan wiki); about 217 km/h est. |
 | Sound | A relaxed, soft growl below 5,600, then a sharp hard wail to 8,000. |
 | Voice | `headers: equal`, `pipes: 1`, `muffler: sport`, `intake: plenum` |
-| Synth gaps | VTEC changeover (the same item as the S2000) |
+| Synth gaps | ~~VTEC changeover~~ synth ready: `camRpm: 5600, camStep: 1` when the car is built |
 
 Sources: https://en.wikipedia.org/wiki/Honda_B_engine , https://www.cars.com/research/honda-civic-1999 (snippet), https://www.hondata.mobi/forum/viewtopic.php?p=22885 (snippet).
 
@@ -441,7 +441,7 @@ Verification pass (fetched): en.wikipedia.org/wiki/Chrysler_Hemi_engine, en.wiki
 | Drive / curb | FR; **1,887 kg (4,160 lb)** (ultimatespecs, 392 auto) | FR; 1,887 kg | FR; **1,560 kg (3,440 lb)** (supercars.net; old 1,540) |
 | 0-100 / top | 0-60 about 4.8-5.0 s est. / 270 km/h est. | 0-60 4.5-4.9 s (sources disagree; Dodge claimed under 5 s) / top 273-290 km/h, estimates differ widely | 0-60 about 3.6 s / about 325 km/h (202 mph; supercars.net) |
 
-Sound: the Challenger's HEMI is a thick cross-plane burble with a light tick of the pushrod valvetrain; the Viper's V10 is deeper and rougher, with a lumpy idle that does not exist in any even-fire layout (the firing order above is the only sourced evidence for the unevenness). Voice: V8 `crank: cross`, `pipes: 2`, `crossover: h` (est.), `muffler: sport`; Viper V10 `crossover: none` (corrected from the old X-pipe guess) and it needs the odd-fire schedule listed under "V10" in `docs/engineSound.md` (`crank` vocabulary does not cover it). Synth gaps: V10 odd-fire interval pattern; MDS cylinder-deactivation burble applies only to automatic 392 cars, so it is not needed for a manual.
+Sound: the Challenger's HEMI is a thick cross-plane burble with a light tick of the pushrod valvetrain; the Viper's V10 is deeper and rougher, with a lumpy idle that does not exist in any even-fire layout (the firing order above is the only sourced evidence for the unevenness). Voice: V8 `crank: cross`, `pipes: 2`, `crossover: h` (est.), `muffler: sport`; Viper V10 `crossover: none` (corrected from the old X-pipe guess) and it takes `crank: 'oddfire'` (done; the intervals are derived in `docs/engineSound.md`, Odd-fire V10: 90° and 54° alternating, not the 72° / 108° this table's Firing row guessed). Synth gaps: ~~V10 odd-fire interval pattern~~ done; MDS cylinder-deactivation burble applies only to automatic 392 cars, so it is not needed for a manual.
 
 Sources: https://en.wikipedia.org/wiki/Chrysler_Hemi_engine , https://en.wikipedia.org/wiki/Viper_engine , https://en.wikipedia.org/wiki/Dodge_Viper , https://en.wikipedia.org/wiki/Tremec_TR-6060_transmission , https://www.supercars.net/blog/2008-dodge-viper-srt-10/ , https://www.ultimatespecs.com/car-specs/Dodge/133257/Dodge-Challenger-SRT8-2011-392-Auto.html , https://www.motorauthority.com/news/1052195_2011-dodge-challenger-srt8s-6-4-liter-hemi-dyno-tested , https://viperclub.org/vca/goto/post?id=3005069 , https://www.rerev.com/firing-orders/dodge/8-4l/ (snippet).
 
@@ -474,13 +474,13 @@ Sources: https://en.wikipedia.org/wiki/Chrysler_Hemi_engine , https://en.wikiped
 
 # Gaps across the fleet
 
-1. **VTEC / cam changeover** (NSX at 5,800, S2000 at about 6,000, Civic at 5,600; Varioram, VANOS and VVT-i as milder steps; the Evo IX's MIVEC is a continuous phaser with no audible step): a step in gain and harmonic content at a set rpm.
+1. ~~**VTEC / cam changeover**~~ done in the synth (`camRpm` / `camStep`, `docs/engineSound.md`; add to each car when it is built; the phasers are deliberately silent) (NSX at 5,800, S2000 at about 6,000, Civic at 5,600; Varioram, VANOS and VVT-i as milder steps; the Evo IX's MIVEC is a continuous phaser with no audible step): a step in gain and harmonic content at a set rpm.
 2. **Sequential turbo handover** (RX-7 13B-REW at about 4,000-4,500 rpm, Supra 2JZ-GTE at about 3,500-4,000): a boost step with a stumble and a surge.
 3. **Blow-off / diverter flutter and wastegate chatter** (S2, Skyline, Supra, MR2, STI, Evo, SR20DET, TT-RS): the turbo rebuild in `engineSound.md` feature 1.
-4. **Odd-fire V10** (Viper) and the **15° VR stagger** (Golf R32) as real firing patterns, not header spread.
-5. **Supercharger lobe count 8** (TVS 2300, 4-lobe Roots rotors) is outside `blowerLobes` 3-6; the M122H's 3-lobe rotors give 6, the edge of the range.
+4. ~~**Odd-fire V10** (Viper) and the **15° VR stagger** (Golf R32) as real firing patterns, not header spread.~~ Done: `crank: 'oddfire'` for the Viper (when built) and the Strom's `VR6_HEAD` runner table.
+5. ~~**Supercharger lobe count 8**~~ done: `blowerLobes` takes 8 (TVS 2300, 4-lobe Roots rotors); the M122H's 3-lobe rotors give 6.
 6. ~~Cylinder deactivation~~: the Challenger 392's MDS is automatic-only, so a manual car never deactivates.
 7. **Air-cooled fan whine** (993) and **gear whine** (NSX-R, straight-cut builds).
 8. **Active exhaust flaps** (TT-RS, Corvette Z51, GT500 2013): muffler `sport` toggled by load.
-9. **Rotor apex-seal rasp** for the 13B.
+9. ~~**Rotor apex-seal rasp** for the 13B.~~ Done (`apexRasp`), with the idle lope (`idleLope`), on the Kazama Rotor.
 10. **Data gaps**: torque curves here are all **est.** (no measured dyno chart); gearbox ratios and final drives flagged **verify** for the Golf R32, S2, MR2, NSX, 993, 240SX, TT-RS and Challenger/Viper; the turbo models, boost levels and blower drive ratios of several cars; crossover type on stock Corvette/GT500/M3/Challenger exhausts (the Viper's has none). The summary table above was refreshed from the verified sections on 2026-10-28; the sections are the source of truth.

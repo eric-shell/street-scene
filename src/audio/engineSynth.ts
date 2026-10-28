@@ -25,6 +25,9 @@
  * makes individual throttle bodies honk) and the body (the valvetrain tick
  * you hear at idle), a ragged limiter cut, and the overrun pops: a fourth
  * output, dry, since a backfire goes off at the tip, past the silencer.
+ * A few per car behaviours sit on top, each neutral unless the car's voice asks
+ * for it: a cam changeover (CAM: the VTEC step), an odd-fire crank (V10odd), a
+ * rotary's idle lope and apex seal rasp (LOPE, RASP).
  * Deterministic: all randomness comes from a seeded xorshift.
  */
 import type { EngineLayout, EngineSpec, EngineVoiceSpec } from '../shared/carSpec';
@@ -99,6 +102,12 @@ export interface EngineProgram {
   pops: number;
   /** Per-firing amplitude variance at idle (fraction); the lope. */
   rough: number;
+  /** High-lift cam changeover (CAM): the rpm it engages at and how hard the step is heard (0..1); null for a fixed cam. */
+  cam: { rpm: number; step: number } | null;
+  /** Rotary idle lope depth (LOPE), 0..1; 0 is none. */
+  lope: number;
+  /** Apex seal rasp level (RASP), a multiple of the 13B-REW's; 0 is none. */
+  rasp: number;
   ir: ImpulseSpec;
   /** Level trim that brings this program to LOUDNESS_REF through the chain model (estimateLoudness). */
   trim: number;
@@ -135,8 +144,8 @@ export type EngineMessage = 'stop' | { pop: { at: number; pipe: number; gain: nu
 // Programs: from a car's engine spec to the numbers above
 // ---------------------------------------------------------------------------
 
-/** One combustion event: [bank, position along the bank]; the list is in firing order and even fire. */
-type Firing = [number, number];
+/** One combustion event: [bank, position along the bank or head, optional cycle fraction]; the list is in firing order, even fire unless the third value says when. */
+type Firing = [number, number, number?];
 
 const inline = (order: number[], split = Infinity): Firing[] => order.map((c) => (c <= split ? [0, c - 1] : [1, c - split - 1]));
 
@@ -144,10 +153,21 @@ const inline = (order: number[], split = Infinity): Firing[] => order.map((c) =>
 const V12: Firing[] = [[0, 0], [1, 0], [0, 4], [1, 4], [0, 2], [1, 2], [0, 5], [1, 5], [0, 1], [1, 1], [0, 3], [1, 3]];
 
 /**
+ * The Dodge Viper's 90 degree V10 on a 72 degree crank (`crank: 'oddfire'`), firing order 1-10-9-4-3-6-5-8-7-2 with the
+ * odd cylinders on one bank and the even ones on the other. Derived, not looked up: the five crank pins sit 72 degrees
+ * apart and each carries one rod per bank, so a pin's two cylinders are the bank angle (90 degrees) apart in firing and
+ * the five pairs 720 / 5 = 144 degrees apart (the pairs of the firing order, 1-10, 9-4, 3-6, 5-8, 7-2, are each an odd
+ * and an even cylinder, which confirms the pairing). That is 90 and 54 degrees alternating, 90 + 54 = 144, so each
+ * bank on its own fires evenly every 144 degrees and the lump only appears where the two banks interleave.
+ * Cylinder c sits in bank 1 - c % 2 (odd on bank 0) at place (c - 1) / 2; times are crank degrees over 720.
+ */
+const V10_ODD: Firing[] = [1, 10, 9, 4, 3, 6, 5, 8, 7, 2].map((c, i) => [c % 2 ? 0 : 1, (c - 1) >> 1, (Math.floor(i / 2) * 144 + (i % 2) * 90) / 720] as Firing);
+
+/**
  * Firing schedules by layout, cylinders numbered the way the makers do.
  * Where a layout's sound depends on the crank the V8 has two entries.
  */
-const SCHEDULE: Record<Exclude<EngineLayout, 'V8'> | 'V8cross' | 'V8flat', Firing[]> = {
+const SCHEDULE: Record<Exclude<EngineLayout, 'V8'> | 'V8cross' | 'V8flat' | 'V10odd', Firing[]> = {
   I3: inline([1, 3, 2]),
   I4: inline([1, 3, 4, 2]),
   I5: inline([1, 2, 4, 5, 3]),
@@ -162,13 +182,15 @@ const SCHEDULE: Record<Exclude<EngineLayout, 'V8'> | 'V8cross' | 'V8flat', Firin
   // One head, one manifold, but a narrow V: odd cylinders on one side, so 1-5-3-6-2-4 fires three from one side
   // then three from the other. With that side's runners longer (unequal headers) the beat lands once a cycle:
   // the VR6's growl. Its runners are staggered within a side too (see stagger).
-  VR6: [1, 5, 3, 6, 2, 4].map((c) => (c % 2 ? [0, (c - 1) / 2] : [1, c / 2 - 1]) as Firing),
+  // The slot is the cylinder's place along the head, 0 to 5, so the runner table (VR6_HEAD) can follow the zigzag.
+  VR6: [1, 5, 3, 6, 2, 4].map((c) => [c % 2 ? 0 : 1, c - 1] as Firing),
   // Cross-plane 90° V8 1-8-7-2-6-5-4-3, odd cylinders left: a bank gets 180-270-180-90, the burble.
   V8cross: [[0, 0], [1, 3], [0, 3], [1, 0], [1, 2], [0, 2], [1, 1], [0, 1]],
   // Flat-plane 1-5-3-7-4-8-2-6, cylinders 1-4 on one bank: banks alternate like two inline fours.
   V8flat: [[0, 0], [1, 0], [0, 2], [1, 2], [0, 3], [1, 3], [0, 1], [1, 1]],
   // 72° V10 1-10-9-4-3-6-5-8-7-2, cylinders 1-5 on one bank.
   V10: [[0, 0], [1, 4], [1, 3], [0, 3], [0, 2], [1, 0], [0, 4], [1, 2], [1, 1], [0, 1]],
+  V10odd: V10_ODD,
   V12,
   W12: V12,
   W16: Array.from({ length: 16 }, (_, k) => [k % 4, Math.floor(k / 4)] as Firing),
@@ -187,7 +209,7 @@ interface LayoutVoice {
   jitter: number;
   rough: number;
   mech: number;
-  /** Extra path on every other cylinder (m): the VR6's staggered runners. */
+  /** Extra path on every other cylinder (m); none of the shipped layouts uses it now (the VR6 has a runner table). */
   stagger: number;
   /**
    * Extra primary length per cylinder position along the head (m), beyond the manifold's base, for a manifold whose
@@ -225,6 +247,17 @@ const FIVE_LOG = {
   levels: [1, 0.8, 1, 0.8, 1],
 } as const;
 
+/**
+ * The VR6's runners, one per cylinder 1..6 along the head (extra primary over the shortest, m). The 15 degree stagger
+ * puts odd cylinders in one row and even in the other, alternating down the head; the far row's extra reach round the
+ * narrow V is the car's `headerSpread` on top. Within a row the runners taper toward the collector in the middle of the
+ * head: 0.07 m longer at the ends, 0.035 at the next, none at the centre. Sources are thin (docs/carEngines.md, Wendt
+ * Strom: Wikipedia's VR6 article says port lengths differ between the banks and that cam overlap, lift and runner
+ * length compensate so both make similar power; no runner length is published; engine-sim ships no VR6), so the taper
+ * is our estimate and no `levels` are set: the same article is the reason not to favour either row.
+ */
+const VR6_HEAD = [0.07, 0.035, 0, 0, 0.035, 0.07] as const;
+
 /** The character each layout starts from before the car's own voice spec. */
 export const LAYOUT_VOICE: Record<EngineLayout, LayoutVoice> = {
   I3: { ...BASE, rough: 0.12, mech: 0.55 },
@@ -234,7 +267,7 @@ export const LAYOUT_VOICE: Record<EngineLayout, LayoutVoice> = {
   B4: { ...BASE, headers: 'unequal', edge: 0.8, air: 0.85, rough: 0.14, mech: 0.6 },
   B6: { ...BASE, pipes: 2, edge: 1.0, rough: 0.06, intakeHz: 650 },
   V6: { ...BASE, edge: 0.85, air: 0.8 },
-  VR6: { ...BASE, headers: 'unequal', headerSpread: 0.3, stagger: 0.07 },
+  VR6: { ...BASE, headers: 'unequal', headerSpread: 0.3, runners: VR6_HEAD },
   V8: { ...BASE, pipes: 2, edge: 0.7, air: 0.85, rough: 0.1, mech: 0.4, pulse: { rise: 0.012, decay: 0.08, dip: 0.35 } },
   V10: { ...BASE, pipes: 2, edge: 0.95, rough: 0.06, intakeHz: 700 },
   V12: TWELVE,
@@ -243,6 +276,59 @@ export const LAYOUT_VOICE: Record<EngineLayout, LayoutVoice> = {
   R2: ROTARY,
   R3: ROTARY,
 };
+
+/**
+ * The cam changeover (voice.camRpm / camStep), Honda's VTEC and its kin: above the switch rpm a second, high-lift cam
+ * takes over, the valves open wider and longer, the exhaust pulse rises sharper and the intake draws harder. In sound
+ * a step: the band limit and the derivative share open up (a brighter, sharper train), the voice gets louder after
+ * the leveler (which would otherwise flatten the step to nothing) and the intake honk swells. Numbers are at `step` 1
+ * (a VTEC); a car's step scales them. Switch rpm are sourced per car in docs/carEngines.md (NSX C30A 5,800, S2000
+ * F22C1 about 6,000, Civic B16A2 5,600). Continuous phasers (VANOS, VVT-i, MIVEC, Varioram) do not step and are left
+ * out on purpose: nothing about them is audible as an event.
+ * - hysteresis: rpm below the switch where it lets go again, so a rev hovering at the boundary does not chatter.
+ * - minLoad / offLoad: pedal to engage, and pedal below which it lets go (VTEC wants load, an idling or coasting
+ *   engine stays on the low cam whatever the rpm).
+ * - tau: time constant (s) of the step; the switch takes a few ms of oil pressure, not a click.
+ * - lowpass: extra band limit. rise / decay: how much shorter the blowdown rise and the exhaust stroke decay become (the
+ *   high-lift pulse is a second wavetable the first blends into). level: extra gain after the leveler. intake: extra honk.
+ */
+export const CAM = {
+  hysteresis: 150,
+  minLoad: 0.4,
+  offLoad: 0.1,
+  tau: 0.012,
+  defaultStep: 0.7,
+  lowpass: 0.6,
+  rise: 0.5,
+  decay: 0.8,
+  level: 0.3,
+  intake: 1.5,
+} as const;
+
+/**
+ * A rotary's idle lope (voice.idleLope): at idle the intake and exhaust ports overlap and burnt gas leaks back into the
+ * intake, so some strokes fire weak or not at all, in irregular groups, the slow uneven "brap" of a 13B-REW. Modelled
+ * as a chance that a firing is weak, which a slow pair of incommensurate waves (`hz`, groups of weak strokes a few
+ * times a second) pushes up and down, strongest at low rpm and low pedal and gone by 2,500 rpm.
+ * - fade: rpm where it starts to fade and where it is gone. loadCut: share removed at full pedal.
+ * - chance: probability of a weak stroke [at a lull of the waves, at their crest]. weak: level of a weak stroke at depth 1.
+ */
+export const LOPE = {
+  fade: [1200, 2500],
+  loadCut: 0.85,
+  hz: [2.3, 3.7],
+  chance: [0.15, 0.7],
+  weak: 0.3,
+} as const;
+
+/**
+ * The apex seal rasp (voice.apexRasp): the three seals of each rotor sweep the housing and chatter, a burst of noise
+ * at every rotor face's firing, so it is locked to rpm and sits at the firing rate, a metallic buzz that rises with revs
+ * and throttle. Goes out of the body output (the valvetrain's band, past the silencer), not rivals' lite voices.
+ * - len: burst length (s). gain: peak level at the redline, full pedal, a multiple of 1. power: how fast it rises with rpm.
+ * - floor: share still there with the pedal up.
+ */
+export const RASP = { len: 0.0012, gain: 0.35, power: 1.5, floor: 0.35 } as const;
 
 /**
  * Silencers: exhaust system length (m), band limit (Hz), how freely pops get through, and the response recipe:
@@ -282,14 +368,14 @@ export function buildProgram(spec: EngineSpec, opts: { seed?: number; lite?: boo
   const seed = (opts.seed ?? 1) | 0 || 1;
   const muffler = MUFFLER[v.muffler ?? (turbo ? 'quiet' : 'sport')];
   const crank = v.crank ?? 'cross';
-  const firings = spec.layout === 'V8' ? SCHEDULE[crank === 'flat' ? 'V8flat' : 'V8cross'] : SCHEDULE[spec.layout];
+  const firings = spec.layout === 'V8' ? SCHEDULE[crank === 'flat' ? 'V8flat' : 'V8cross'] : spec.layout === 'V10' && crank === 'oddfire' ? SCHEDULE.V10odd : SCHEDULE[spec.layout];
 
   // True duals are never quite equal: the second pipe runs a little further, so the two banks' trains never cancel when the ear sums them.
   const crossover = v.pipes === 2 ? CROSSOVER : 0;
   const primaries = firings.map(([bank, slot]) => primaryLength(v, turbo, bank, slot) + (bank % 2 === 1 ? crossover : 0));
   const shortest = Math.min(...primaries);
-  const cylinders: CylinderProgram[] = firings.map(([bank, slot], i) => ({
-    fire: i / firings.length,
+  const cylinders: CylinderProgram[] = firings.map(([bank, slot, at], i) => ({
+    fire: at ?? i / firings.length,
     // Every pulse also crosses the exhaust system, the same for all, so only the primaries set the arrival spread.
     delay: (primaries[i] - shortest) / SOUND,
     pipe: bank % v.pipes,
@@ -319,6 +405,9 @@ export function buildProgram(spec: EngineSpec, opts: { seed?: number; lite?: boo
     mech: opts.lite ? 0 : v.mech * 0.7,
     pops: muffler.pops * (turbo ? 0.6 : 1),
     rough: v.rough,
+    cam: v.camRpm ? { rpm: v.camRpm, step: v.camStep ?? CAM.defaultStep } : null,
+    lope: v.idleLope ?? 0,
+    rasp: opts.lite ? 0 : (v.apexRasp ?? 0),
     ir,
     trim: 1,
     seed,
@@ -438,6 +527,8 @@ export class EngineSynth {
   private readonly sr: number;
   private readonly exhaustTable: Float32Array;
   private readonly intakeTable: Float32Array;
+  /** The high-lift cam's sharper pulse (the exhaust table at step 1), blended in by the cam level; null without a cam. */
+  private readonly camTable: Float32Array | null;
   private readonly fire: Float64Array;
   private readonly delay: Float64Array;
   private readonly pipe: Int32Array;
@@ -482,6 +573,15 @@ export class EngineSynth {
   private ringPos = 0;
   private tickLeft = 0;
   private tickGain = 0;
+  /** The cam changeover: engaged (with its hysteresis) and the smoothed step 0..1 the sound follows. */
+  private camOn = false;
+  private camLevel = 0;
+  /** The idle lope's two slow waves (cycles) and the apex seal rasp burst in flight. */
+  private lopeA = 0;
+  private lopeB = 0;
+  private raspLeft = 0;
+  private raspGain = 0;
+  private readonly raspLen: number;
   private env = TARGET * TARGET;
   private agc = 1;
   private samples = 0;
@@ -492,6 +592,8 @@ export class EngineSynth {
     const n = program.cylinders.length;
     this.exhaustTable = pulseTable(program.pulse);
     this.intakeTable = pulseTable({ rise: 0.02, decay: 0.05, dip: 0.5 });
+    const cam = program.cam;
+    this.camTable = cam ? pulseTable({ rise: program.pulse.rise * (1 - (1 - CAM.rise) * cam.step), decay: program.pulse.decay * (1 - (1 - CAM.decay) * cam.step), dip: program.pulse.dip }) : null;
     this.fire = new Float64Array(program.cylinders.map((c) => c.fire));
     this.delay = new Float64Array(program.cylinders.map((c) => c.delay));
     this.pipe = new Int32Array(program.cylinders.map((c) => c.pipe));
@@ -513,6 +615,7 @@ export class EngineSynth {
     this.popDc = new Float64Array(p);
     this.twin = Math.round(TWIN_TIP * sampleRate);
     this.tickLen = Math.round(0.0015 * sampleRate);
+    this.raspLen = Math.max(1, Math.round(RASP.len * sampleRate));
     this.rng = { v: program.seed | 0 || 1 };
     this.dcCoef = 1 - Math.exp((-2 * Math.PI * 10) / sampleRate);
     this.airCoef = 1 - Math.exp((-2 * Math.PI * AIR_HZ) / sampleRate);
@@ -520,6 +623,11 @@ export class EngineSynth {
     this.popHp = 1 - Math.exp((-2 * Math.PI * POP.hp) / sampleRate);
     this.popTailCoef = 1 - Math.exp((-2 * Math.PI * POP.tail.hz) / sampleRate);
     this.derivK = (DERIV * sampleRate) / 44100;
+  }
+
+  /** Whether the high-lift cam is in, and how far the sound has followed it (0..1); for the tests. */
+  get cam(): { engaged: boolean; level: number } {
+    return { engaged: this.camOn, level: this.camLevel };
   }
 
   /**
@@ -562,14 +670,39 @@ export class EngineSynth {
     const cut = q.cut > 0.5;
     const limiter = q.limiter > 0.5;
     const nitro = q.nitro > 0.5;
-    const load = cut ? 0 : Math.max(0, Math.min(1, q.load));
+    const pedal = Math.max(0, Math.min(1, q.load));
+    const load = cut ? 0 : pedal;
+    // Cam changeover: engages above its rpm on the pedal, lets go a little below (hysteresis); the sound follows with a
+    // few ms of lag. Per block, which at 128 samples is far finer than the lag.
+    let camStep = 0;
+    if (P.cam) {
+      if (this.camOn) {
+        if (q.rpm < P.cam.rpm - CAM.hysteresis || pedal < CAM.offLoad) this.camOn = false;
+      } else if (q.rpm >= P.cam.rpm && pedal >= CAM.minLoad) this.camOn = true;
+      this.camLevel += ((this.camOn ? 1 : 0) - this.camLevel) * (1 - Math.exp(-n / (CAM.tau * sr)));
+      camStep = this.camLevel * P.cam.step;
+    }
+    const TC = this.camTable;
+    const camMix = this.camLevel;
+    // Idle lope: how likely a firing is weak, from the rpm, the pedal and the two slow waves' crest.
+    let lopeChance = 0;
+    if (P.lope > 0) {
+      this.lopeA = (this.lopeA + (LOPE.hz[0] * n) / sr) % 1;
+      this.lopeB = (this.lopeB + (LOPE.hz[1] * n) / sr) % 1;
+      const wave = Math.max(0, 0.5 * (Math.sin(2 * Math.PI * this.lopeA) + Math.sin(2 * Math.PI * this.lopeB)));
+      const fadeT = Math.max(0, Math.min(1, (rpm - LOPE.fade[0]) / (LOPE.fade[1] - LOPE.fade[0])));
+      const w = (1 - fadeT * fadeT * (3 - 2 * fadeT)) * (1 - LOPE.loadCut * pedal);
+      lopeChance = w * (LOPE.chance[0] + (LOPE.chance[1] - LOPE.chance[0]) * wave);
+    }
+    const raspLevel = P.rasp > 0 ? P.rasp * RASP.gain * r ** RASP.power * (RASP.floor + (1 - RASP.floor) * pedal) : 0;
     const amp = (0.12 + 0.88 * load ** 0.8) * (nitro ? 1.2 : 1);
-    const intakeAmp = (P.intake.gain * load ** 1.5 * (0.3 + 0.7 * Math.min(1, rpm / 6000))) / nc;
-    const lowpass = Math.min(sr * 0.45, P.lowpass * (nitro ? 1.3 : 1) * (0.85 + 0.15 * load));
+    const intakeAmp = ((P.intake.gain * load ** 1.5 * (0.3 + 0.7 * Math.min(1, rpm / 6000))) / nc) * (1 + CAM.intake * camStep);
+    const lowpass = Math.min(sr * 0.45, P.lowpass * (nitro ? 1.3 : 1) * (0.85 + 0.15 * load) * (1 + CAM.lowpass * camStep));
     const lpCoef = 1 - Math.exp((-2 * Math.PI * lowpass) / sr);
     const jitter = (P.jitter * sr) / 44100;
     const rough = P.rough * (0.3 + 0.7 * (1 - load));
     const edge = P.edge * this.derivK;
+    const camGain = 1 + CAM.level * camStep;
     const air = P.air;
     const envAtk = 1 - Math.exp(-1 / (0.01 * sr));
     const envRel = 1 - Math.exp(-1 / (0.25 * sr));
@@ -593,6 +726,15 @@ export class EngineSynth {
           // A new firing: combustion varies shot to shot, most at idle; the limiter drops some entirely.
           let g = amp * (1 + rough * (nextRand(this.rng) * 2 - 1));
           if (limiter && nextRand(this.rng) < 0.45) g = 0;
+          let weak = 1;
+          if (lopeChance > 0 && nextRand(this.rng) < lopeChance) {
+            weak = 1 - (1 - LOPE.weak) * P.lope;
+            g *= weak;
+          }
+          if (raspLevel > 0) {
+            this.raspLeft = this.raspLen;
+            this.raspGain = raspLevel * weak * (0.7 + 0.6 * nextRand(this.rng));
+          }
           this.fireGain[c] = g * this.cgain[c];
           // Valvetrain tick: audible at idle and on a closed throttle, never a hiss at speed (one burst per 25 ms at most, gone by three quarters of the redline).
           if (P.mech > 0 && r < 0.75 && this.samples - this.lastTick > tickGap) {
@@ -605,7 +747,9 @@ export class EngineSynth {
         const x = u * TABLE;
         const k = x | 0;
         const fr = x - k;
-        const pulse = (T[k] + (T[k + 1] - T[k]) * fr) * this.fireGain[c];
+        let shape = T[k] + (T[k + 1] - T[k]) * fr;
+        if (TC && camMix > 0.002) shape += (TC[k] + (TC[k + 1] - TC[k]) * fr - shape) * camMix;
+        const pulse = shape * this.fireGain[c];
         const cross = this.cross[c];
         this.pipeSum[this.pipe[c]] += pulse * (1 - cross);
         if (cross > 0) this.pipeSum[1 - this.pipe[c]] += pulse * cross;
@@ -685,11 +829,11 @@ export class EngineSynth {
       if (channels > 1) {
         for (let ch = 0; ch < channels; ch++) {
           const p = Math.min(ch, tips - 1);
-          const out = this.post[p] * this.agc;
+          const out = this.post[p] * this.agc * camGain;
           exhaust[ch][i] = out / (1 + Math.abs(out) * 0.5);
         }
       } else {
-        const out = sum * this.agc;
+        const out = sum * this.agc * camGain;
         exhaust[0][i] = out / (1 + Math.abs(out) * 0.5);
       }
       if (pops) {
@@ -701,11 +845,18 @@ export class EngineSynth {
         }
       }
       intake[i] = inSum * intakeAmp;
+      let b = 0;
       if (this.tickLeft > 0) {
         const e = this.tickLeft / this.tickLen;
-        body[i] = (nextRand(this.rng) * 2 - 1) * this.tickGain * e * e;
+        b = (nextRand(this.rng) * 2 - 1) * this.tickGain * e * e;
         this.tickLeft--;
-      } else body[i] = 0;
+      }
+      if (this.raspLeft > 0) {
+        const e = this.raspLeft / this.raspLen;
+        b += (nextRand(this.rng) * 2 - 1) * this.raspGain * e * e;
+        this.raspLeft--;
+      }
+      body[i] = b;
       this.samples++;
     }
   }

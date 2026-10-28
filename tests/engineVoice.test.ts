@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Biquad, CHAIN, LAYOUT_VOICE, TURBO, buildProgram, EngineSynth, kWeighting, renderImpulse, type EngineProgram } from '../src/audio/engineSynth';
+import { Biquad, CAM, CHAIN, LAYOUT_VOICE, LOPE, RASP, TURBO, buildProgram, EngineSynth, kWeighting, renderImpulse, type EngineProgram } from '../src/audio/engineSynth';
+import { powerSpectrum } from '../src/audio/dsp';
 import { ENGINE_LAYOUTS, engineSpecErrors, type EngineLayout, type EngineSpec } from '../src/shared/carSpec';
 import manifest from '../src/assets/carManifest.json';
 
@@ -8,13 +9,18 @@ const spec = (layout: EngineLayout, aspiration: EngineSpec['aspiration'] = 'na',
 
 /** Render `seconds` of exhaust at a steady rpm and load, in worklet sized blocks; `channels` 2 returns the left tailpipe. */
 function render(program: EngineProgram, rpm: number, load: number, seconds = 1, extra: Partial<{ cut: number; limiter: number; nitro: number }> = {}, channels = 1): Float32Array {
+  return renderAll(program, rpm, load, seconds, extra, channels).exhaust[0];
+}
+
+/** Like render, with the intake and the body too. */
+function renderAll(program: EngineProgram, rpm: number, load: number, seconds = 1, extra: Partial<{ cut: number; limiter: number; nitro: number }> = {}, channels = 1): { exhaust: Float32Array[]; intake: Float32Array; body: Float32Array } {
   const synth = new EngineSynth(program, SR);
   const n = Math.round(seconds * SR);
   const exhaust = Array.from({ length: channels }, () => new Float32Array(n));
   const intake = new Float32Array(n);
   const body = new Float32Array(n);
   for (let i = 0; i < n; i += 128) synth.render(exhaust.map((e) => e.subarray(i, i + 128)), intake.subarray(i, i + 128), body.subarray(i, i + 128), { rpm, redline: 7500, load, cut: 0, limiter: 0, nitro: 0, ...extra });
-  return exhaust[0];
+  return { exhaust, intake, body };
 }
 
 /** Amplitude at one frequency (Goertzel). */
@@ -58,6 +64,21 @@ function subOrders(program: EngineProgram, rpm: number, load = 1): number {
   let sub = 0;
   for (let k = 1; k < n; k++) sub += tone(x, k * cycleHz) ** 2;
   return 10 * Math.log10(sub / tone(x, n * cycleHz) ** 2);
+}
+
+const rms = (x: Float32Array) => Math.sqrt(x.reduce((a, v) => a + v * v, 0) / x.length);
+
+/** Share of the power between two frequencies (dB re the whole), from one FFT of the second half of the take. */
+function bandShare(x: Float32Array, lo: number, hi: number): number {
+  const size = 32768;
+  const p = powerSpectrum(x, x.length - size, size);
+  let band = 0;
+  let all = 0;
+  for (let k = 0; k <= size / 2; k++) {
+    all += p[k];
+    if ((k * SR) / size >= lo && (k * SR) / size < hi) band += p[k];
+  }
+  return 10 * Math.log10(band / all);
 }
 
 describe('engine programs', () => {
@@ -358,5 +379,194 @@ describe('impulse responses', () => {
       expect(Math.max(...Array.from(tail, Math.abs))).toBeLessThan(0.05);
     }
     expect(renderImpulse(buildProgram(spec('I4')).ir, SR)).toEqual(renderImpulse(buildProgram(spec('I4')).ir, SR));
+  });
+});
+
+describe('cam changeover', () => {
+  const vtec = buildProgram(spec('I4', 'na', { camRpm: 5800, camStep: 1 }));
+  const plain = buildProgram(spec('I4'));
+
+  it('is a step in brightness, level and intake honk above the switch, and nothing below it', () => {
+    // Below the switch the cam program is the plain program, sample for sample.
+    expect(Array.from(render(vtec, 5000, 1).subarray(0, 4096))).toEqual(Array.from(render(plain, 5000, 1).subarray(0, 4096)));
+    // Measured at 6,500 rpm with step 1: the 3 to 6 kHz share +8 dB, the exhaust RMS +1.5 dB, the intake 2.5 times.
+    const hi = renderAll(vtec, 6500, 1, 2);
+    const lo = renderAll(plain, 6500, 1, 2);
+    expect(bandShare(hi.exhaust[0], 3000, 6000)).toBeGreaterThan(bandShare(lo.exhaust[0], 3000, 6000) + 4);
+    expect(rms(hi.exhaust[0].subarray(SR / 2))).toBeGreaterThan(1.1 * rms(lo.exhaust[0].subarray(SR / 2)));
+    expect(rms(hi.intake.subarray(SR / 2))).toBeGreaterThan(1.8 * rms(lo.intake.subarray(SR / 2)));
+    // The step scales with the car's: a mild one is between.
+    const mild = buildProgram(spec('I4', 'na', { camRpm: 5800, camStep: 0.4 }));
+    const mid = bandShare(render(mild, 6500, 1, 2), 3000, 6000);
+    expect(mid).toBeGreaterThan(bandShare(lo.exhaust[0], 3000, 6000) + 0.5);
+    expect(mid).toBeLessThan(bandShare(hi.exhaust[0], 3000, 6000) - 1);
+  });
+
+  it('engages above its rpm on the pedal, follows in a few ms, and a rev hovering at the switch does not chatter', () => {
+    const synth = new EngineSynth(vtec, SR);
+    const out = [new Float32Array(128)];
+    const step = (rpm: number, load = 1) => synth.render(out, new Float32Array(128), new Float32Array(128), { rpm, redline: 8000, load, cut: 0, limiter: 0, nitro: 0 });
+    for (let i = 0; i < 100; i++) step(5700);
+    expect(synth.cam.engaged).toBe(false);
+    step(5900);
+    expect(synth.cam.engaged).toBe(true);
+    // 128 samples is 2.7 ms against a 12 ms lag: partway after one block, nearly there after 40 ms.
+    expect(synth.cam.level).toBeLessThan(0.4);
+    for (let i = 0; i < Math.ceil((0.04 * SR) / 128); i++) step(5900);
+    expect(synth.cam.level).toBeGreaterThan(0.9);
+    // Wobbling +-60 rpm round the switch: in once and staying in (it lets go 150 rpm below).
+    let flips = 0;
+    let was = synth.cam.engaged;
+    for (let i = 0; i < 400; i++) {
+      step(5800 + (i % 2 ? 60 : -60));
+      if (synth.cam.engaged !== was) flips++;
+      was = synth.cam.engaged;
+    }
+    expect(flips).toBe(0);
+    expect(CAM.hysteresis).toBeGreaterThanOrEqual(100);
+    // Off the pedal it drops out whatever the rpm, and needs real throttle to come back.
+    for (let i = 0; i < 4; i++) step(6500, 0);
+    expect(synth.cam.engaged).toBe(false);
+    step(6500, 0.2);
+    expect(synth.cam.engaged).toBe(false);
+    step(6500, 1);
+    expect(synth.cam.engaged).toBe(true);
+    for (let i = 0; i < 10; i++) step(5600);
+    expect(synth.cam.engaged).toBe(false);
+  });
+
+  it('is data: the field validates, rivals keep it, and none of the built cars has it yet', () => {
+    expect(engineSpecErrors({ ...spec('V6'), voice: { camRpm: 5800, camStep: 1 } })).toEqual([]);
+    expect(engineSpecErrors({ ...spec('V6'), voice: { camRpm: 300 } })).toEqual([expect.stringContaining('engine.voice.camRpm 300 is not a number from 4000 to 9000')]);
+    expect(engineSpecErrors({ ...spec('V6'), voice: { camStep: 1 } })).toEqual([expect.stringContaining('camStep needs camRpm')]);
+    expect(buildProgram(spec('V6', 'na', { camRpm: 5800 })).cam).toEqual({ rpm: 5800, step: CAM.defaultStep });
+    expect(plain.cam).toBeNull();
+    expect(buildProgram(spec('I4', 'na', { camRpm: 5600 }), { lite: true }).cam).not.toBeNull();
+    for (const c of manifest.cars as { id: string; engine: EngineSpec }[]) expect(c.engine.voice ?? {}, c.id).not.toHaveProperty('camRpm');
+  });
+});
+
+describe('odd-fire V10', () => {
+  const odd = buildProgram(spec('V10', 'na', { crank: 'oddfire', pipes: 2, crossover: 'none' }));
+  const even = buildProgram(spec('V10', 'na', { pipes: 2, crossover: 'none' }));
+
+  it('fires 1-10-9-4-3-6-5-8-7-2 at 90 and 54 degrees alternating, each bank evenly every 144', () => {
+    const deg = odd.cylinders.map((c) => Math.round(c.fire * 720));
+    expect(deg).toEqual([0, 90, 144, 234, 288, 378, 432, 522, 576, 666]);
+    const gaps = deg.map((d, i) => ((deg[(i + 1) % 10] - d + 720) % 720));
+    expect(gaps).toEqual([90, 54, 90, 54, 90, 54, 90, 54, 90, 54]);
+    // Odd cylinders on one pipe, even on the other: each pipe on its own is an even five.
+    for (const pipe of [0, 1]) {
+      const own = odd.cylinders.filter((c) => c.pipe === pipe).map((c) => Math.round(c.fire * 720));
+      expect(own.map((d, i) => (own[(i + 1) % 5] - d + 720) % 720)).toEqual([144, 144, 144, 144, 144]);
+    }
+    expect(even.cylinders.map((c) => Math.round(c.fire * 720))).toEqual([0, 72, 144, 216, 288, 360, 432, 504, 576, 648]);
+  });
+
+  it('is lumpy where the even V10 is smooth: the sub orders carry energy', () => {
+    // Measured, summed to one ear: unevenness +0.8 / +1.3 / +3.3 dB (1,000, 3,000, 6,000 rpm) against the even V10's
+    // -17.2 / -9.4 / -4.3; sub orders (cycle harmonics 1 to 9 over the 10th) -2.4 / -2.9 / -1.0 against -20.0 / -19.5 / -15.6.
+    for (const rpm of [1000, 3000, 6000]) {
+      expect(unevenness(odd, rpm), `unevenness ${rpm}`).toBeGreaterThan(unevenness(even, rpm) + 6);
+      expect(subOrders(odd, rpm), `sub ${rpm}`).toBeGreaterThan(subOrders(even, rpm) + 10);
+    }
+  });
+
+  it('is a V10 option only', () => {
+    expect(engineSpecErrors({ ...spec('V10'), voice: { crank: 'oddfire' } })).toEqual([]);
+    expect(engineSpecErrors({ ...spec('V8'), voice: { crank: 'oddfire' } })).toEqual([expect.stringContaining('"oddfire" is for a V10')]);
+    // A V8's cranks and the plain V10 are untouched.
+    expect(buildProgram(spec('V10')).cylinders.map((c) => c.fire)).toEqual(even.cylinders.map((c) => c.fire));
+  });
+});
+
+describe('VR6 runners', () => {
+  const car = (id: string) => buildProgram((manifest.cars as { id: string; engine: EngineSpec }[]).find((c) => c.id === id)!.engine);
+  const strom = car('wendtStrom');
+  const six = buildProgram(spec('I6'));
+
+  it('follow the zigzag down the head: a runner per cylinder, the far row late, outer runners long', () => {
+    expect(LAYOUT_VOICE.VR6.runners).toHaveLength(6);
+    expect(LAYOUT_VOICE.VR6.stagger).toBe(0);
+    // Firing order 1-5-3-6-2-4: the odd (near) row first, then the even (far) row, which reaches round the narrow V.
+    const [c1, c5, c3, c6, c2, c4] = strom.cylinders;
+    expect(c3.delay).toBe(0);
+    expect(c1.delay).toBeGreaterThan(c5.delay);
+    expect(c5.delay).toBeGreaterThan(c3.delay);
+    expect(c6.delay).toBeGreaterThan(c2.delay);
+    expect(c2.delay).toBeGreaterThan(c4.delay);
+    expect(c4.delay).toBeGreaterThan(c1.delay);
+    expect(Math.min(c6.gain, c2.gain, c4.gain)).toBeGreaterThan(0.5);
+    expect(Math.max(c6.gain, c2.gain, c4.gain)).toBeLessThan(0.75);
+  });
+
+  it('beat once a cycle under the even six, at every rpm', () => {
+    // Measured, sub orders (cycle harmonics 1 to 5 over the 6th): VR6 -13.3 / -8.8 / -2.3 dB (900, 3,000, 6,000 rpm)
+    // against the inline six's -16.9 / -22.4 / -21.9; before (alternating stagger) -12.1 / -8.4 / -0.2.
+    expect(subOrders(strom, 900, 0.1)).toBeGreaterThan(subOrders(six, 900, 0.1) + 2);
+    for (const rpm of [3000, 6000]) expect(subOrders(strom, rpm), `sub ${rpm}`).toBeGreaterThan(subOrders(six, rpm) + 10);
+  });
+});
+
+describe('rotary voice', () => {
+  const car = (manifest.cars as { id: string; engine: EngineSpec }[]).find((c) => c.id === 'kazamaRotor')!.engine;
+  const rotor = buildProgram(car, { seed: 3 });
+  const plain = buildProgram({ ...car, voice: { pipes: 1, muffler: 'sport' } }, { seed: 3 });
+
+  /** Spread of the level from one firing to the next (RMS per firing interval: standard deviation over mean). */
+  const firingSpread = (x: Float32Array, rpm: number): number => {
+    const len = Math.round(SR / ((rpm / 60) * 2));
+    const v: number[] = [];
+    for (let i = 0; i + len <= x.length; i += len) v.push(rms(x.subarray(i, i + len)));
+    const m = v.reduce((a, b) => a + b) / v.length;
+    return Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / v.length) / m;
+  };
+
+  it('the Kazama Rotor ships the idle lope and the rasp, nobody else does', () => {
+    expect(car.voice).toMatchObject({ idleLope: 1, apexRasp: 1 });
+    for (const c of manifest.cars as { id: string; engine: EngineSpec }[]) if (c.id !== 'kazamaRotor') expect(c.engine.voice ?? {}, c.id).not.toHaveProperty('idleLope');
+    expect(engineSpecErrors({ ...spec('I4'), voice: { idleLope: 1 } })).toEqual([expect.stringContaining('idleLope is for a rotary')]);
+    expect(engineSpecErrors({ ...spec('I4'), voice: { apexRasp: 1 } })).toEqual([expect.stringContaining('apexRasp is for a rotary')]);
+    expect(engineSpecErrors({ ...spec('R2'), voice: { idleLope: 1, apexRasp: 3 } })).toEqual([expect.stringContaining('apexRasp 3 is not a number from 0 to 2')]);
+    expect(buildProgram(spec('R2'), { lite: true }).rasp).toBe(0);
+    expect(buildProgram(car, { lite: true }).rasp).toBe(0);
+  });
+
+  it('lopes at idle and fades out by 2,500 rpm and with the pedal', () => {
+    // Measured, the spread of the level from firing to firing: 0.22 at 850 rpm and 0.35 at 1,500 against 0.09 and 0.10
+    // without; the same as without at 2,500 (0.12 vs 0.11), 3,000 and 6,500.
+    const at = (p: EngineProgram, rpm: number, load: number) => firingSpread(render(p, rpm, load, 4).subarray(SR), rpm);
+    expect(at(rotor, 850, 0.1)).toBeGreaterThan(2 * at(plain, 850, 0.1));
+    expect(at(rotor, 1500, 0.1)).toBeGreaterThan(1.8 * at(plain, 1500, 0.1));
+    expect(at(rotor, LOPE.fade[1], 0.1)).toBeLessThan(1.25 * at(plain, LOPE.fade[1], 0.1));
+    expect(at(rotor, 3000, 1)).toBeLessThan(1.15 * at(plain, 3000, 1));
+    expect(at(rotor, 850, 1)).toBeLessThan(1.8 * at(plain, 850, 1));
+    // Uneven in time as well as level: bursts of weak strokes a few times a second (4 s of idle varies in 0.25 s windows).
+    const x = render(rotor, 850, 0.1, 4).subarray(SR);
+    const win = SR / 4;
+    const windows = Array.from({ length: 12 }, (_, i) => rms(x.subarray(i * win, (i + 1) * win)));
+    expect(Math.max(...windows) / Math.min(...windows)).toBeGreaterThan(1.15);
+  });
+
+  it('rasps at the firing rate, rising with revs and throttle, and not at all without the field', () => {
+    // Measured, body output RMS: 0.008 at 3,000 rpm and 0.039 at 6,500 against 0.002 and 0 without (the valvetrain tick alone).
+    const body = (p: EngineProgram, rpm: number, load: number) => renderAll(p, rpm, load, 2).body.subarray(SR / 2);
+    expect(rms(body(rotor, 6500, 1))).toBeGreaterThan(10 * Math.max(1e-4, rms(body(plain, 6500, 1))));
+    expect(rms(body(rotor, 6500, 1))).toBeGreaterThan(3 * rms(body(rotor, 3000, 1)));
+    expect(rms(body(rotor, 6500, 1))).toBeGreaterThan(1.5 * rms(body(rotor, 6500, 0)));
+    // Locked to rpm: the burst envelope has its line at the firing rate and not at an unrelated one.
+    const env = Float32Array.from(body(rotor, 5000, 1), Math.abs);
+    const f = (5000 / 60) * 2;
+    expect(tone(env, f)).toBeGreaterThan(20 * tone(env, f * 1.37));
+    // The burst is short: gone well before the next face fires even at the redline.
+    expect(RASP.len).toBeLessThan(0.5 / ((7500 / 60) * 2));
+  });
+});
+
+describe('supercharger lobes', () => {
+  it('reach 8 passes per rotor turn (the TVS 2300 Roots), not 7', () => {
+    expect(engineSpecErrors({ ...spec('V8', 'supercharged'), voice: { blowerLobes: 8 } })).toEqual([]);
+    expect(engineSpecErrors({ ...spec('V8', 'supercharged'), voice: { blowerLobes: 6 } })).toEqual([]);
+    expect(engineSpecErrors({ ...spec('V8', 'supercharged'), voice: { blowerLobes: 7 } })).toEqual([expect.stringContaining('engine.voice.blowerLobes 7 is not one of 3, 4, 5, 6, 8')]);
   });
 });

@@ -120,7 +120,9 @@
         "position": "front",
         "voice": {
           "pipes": 1,
-          "muffler": "sport"
+          "muffler": "sport",
+          "idleLope": 1,
+          "apexRasp": 1
         }
       },
       "exhaustTips": [
