@@ -17,7 +17,7 @@ The numbers and rules are `docs/carDesign.md`; read it first, then this checklis
 
 ## 2. In Blender (through the MCP)
 
-Model edits go through the Blender MCP only (`/blender`): with no `blender` MCP tools in the session, ask the user to restart with `claude --mcp-config .claude/skills/blender/mcp.json` first.
+Model edits go through the Blender MCP only (`/blender`): with no `blender` MCP tools in the session (not even deferred), run `.claude/skills/blender/mcp.sh status` (`register` if it reports them missing) and ask the user to restart Claude Code first.
 
 Every call: `exec` carKit.py, then carRefs.py, then carFeatures.py (`/blender`, "Every MCP call"). Append the car's collections (`/blender`, "Edit an authored car live"); a new car starts from `protoCoupe.py` (loft from profiles) with its own `cid`.
 
