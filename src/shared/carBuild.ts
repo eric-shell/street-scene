@@ -146,48 +146,6 @@ export function defaultBuild(carId = DEFAULT_CAR_ID): CarBuild {
 
 const PART_ID = /^[A-Za-z0-9_\-.]{1,64}$/;
 
-/**
- * Cars under their old ids, so saved builds, share codes, replays, ghosts and bests made before a rename still
- * load. The gc14 and s64 were IceMaan FBX imports that became authored models (the s64's Proto Compact has since
- * been retired: its builds move to the default car); the proto* ids were renamed to fictional maker + model
- * ids (2026-10-28), and the gc14 chains on to its new id. Add a line here whenever a car id changes.
- */
-export const RENAMED_CARS: Record<string, string> = {
-  gc14: 'wendtFairway', s64: 'protoCompact',
-  protoHatch: 'wendtFairway', protoCoupe: 'kazamaRotor', protoWagon: 'brandtKombi', protoMuscle: 'ridgewayFiend',
-};
-
-/** A car id under its current name; an id that was never renamed (or is unknown) comes back as it is. */
-export function canonicalCarId(id: string): string {
-  return RENAMED_CARS[id] ?? id;
-}
-
-const RENAMED_CAR_PREFIX = new RegExp(`^(wheel_)?(${Object.keys(RENAMED_CARS).join('|')})_(.+)$`);
-
-/**
- * Wheels retired for the shared wheel set (docs/carWheels.md): the per car wheels of the IceMaan
- * cars, then the first donor set (Kiba ... Arashi), each mapped to the Work wheel nearest its
- * style, so a saved build keeps a wheel of the kind it showed.
- */
-const RENAMED_WHEELS: Record<string, string> = {
-  wheel_protoCompact_0: 'wheel_kumo', wheel_protoCompact_1: 'wheel_tsurugi', wheel_protoCompact_2: 'wheel_yari', wheel_protoCompact_3: 'wheel_hagane',
-  wheel_protoHatch_1: 'wheel_kaze', wheel_protoHatch_2: 'wheel_hari', wheel_protoHatch_3: 'wheel_kagero', wheel_protoHatch_4: 'wheel_shinobi',
-  wheel_wendtFairway_1: 'wheel_kaze', wheel_wendtFairway_2: 'wheel_hari', wheel_wendtFairway_3: 'wheel_kagero', wheel_wendtFairway_4: 'wheel_shinobi',
-  wheel_proto_5spoke: 'wheel_shinobi', wheel_proto_deepdish: 'wheel_yari',
-  wheel_kiba: 'wheel_kumo', wheel_hoshi: 'wheel_tsurugi', wheel_rensa: 'wheel_yari', wheel_tsuki: 'wheel_hagane',
-  wheel_ginga: 'wheel_kaze', wheel_hibana: 'wheel_hari', wheel_senko: 'wheel_kagero', wheel_arashi: 'wheel_shinobi',
-};
-
-/** A part id under its current name; null for whole-body kits that were split into bumpers and skirts. */
-function renamedPart(raw: string): string | null {
-  const id = RENAMED_WHEELS[raw] ?? raw;
-  const m = RENAMED_CAR_PREFIX.exec(id);
-  if (!m) return id;
-  if (m[3].startsWith('body_')) return null;
-  const renamed = `${m[1] ?? ''}${canonicalCarId(m[2])}_${m[3]}`;
-  return RENAMED_WHEELS[renamed] ?? renamed;
-}
-
 /** A paint from storage or a share code; anything missing or invalid takes the fallback's. */
 function validPaint(v: unknown, fallback: Paint): Paint {
   const o = obj(v);
@@ -212,8 +170,7 @@ export function validateVisual(v: unknown): VisualBuild {
     const val = partsIn[slot];
     if (val === null) parts[slot] = null;
     else if (typeof val === 'string' && PART_ID.test(val)) {
-      const id = renamedPart(val);
-      if (id) parts[slot] = id;
+      parts[slot] = val;
     }
   }
   const decals: DecalLayer[] = [];
@@ -247,7 +204,7 @@ export function validateVisual(v: unknown): VisualBuild {
   // The first set's mild and aggressive stretches are the stretched tire now; its meaty one, standard.
   const tireShape = (v: unknown, fallback: TireShape) => (v === 'meaty' ? 'standard' : oneOf(v === 'mildStretch' || v === 'aggressiveStretch' ? 'stretched' : v, TIRE_SHAPES, fallback));
   const tire = tireShape(wheels.tire, d.wheels.tire);
-  const rearPart = typeof wheels.rearPart === 'string' && PART_ID.test(wheels.rearPart) ? renamedPart(wheels.rearPart) : null;
+  const rearPart = typeof wheels.rearPart === 'string' && PART_ID.test(wheels.rearPart) ? wheels.rearPart : null;
   const L = STANCE_LIMITS;
   const legacySize = num(wheels.size, L.wheelSize[0], L.wheelSize[1], 1);
   const legacyOffset = num(stance.offset, L.offset[0], L.offset[1], 0);
@@ -287,7 +244,7 @@ export function validateVisual(v: unknown): VisualBuild {
 
 export function validateBuild(v: unknown): CarBuild {
   const o = obj(v);
-  const savedId = typeof o.carId === 'string' ? canonicalCarId(o.carId) : undefined;
+  const savedId = typeof o.carId === 'string' ? o.carId : undefined;
   const carId = savedId && SELECTABLE_CAR_IDS.includes(savedId) ? savedId : DEFAULT_CAR_ID;
   const name = typeof o.name === 'string' ? o.name.replace(/[<>]/g, '').slice(0, BUILD_NAME_MAX) || DEFAULT_BUILD_NAME : DEFAULT_BUILD_NAME;
   const visual = validateVisual(o.visual);

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyBuild, isStockSetup, stockPerformance, tuningForBuild, validatePerformance, PerformanceBuild } from '../src/sim/build';
-import { loadBest, loadGhost, type ReplayData } from '../src/replay/replay';
-import { canonicalCarId, defaultBuild, validateBuild } from '../src/shared/carBuild';
+import { loadGhost, type ReplayData } from '../src/replay/replay';
+import { defaultBuild, validateBuild } from '../src/shared/carBuild';
 import { CAR_IDS, CarTuning, DEFAULT_CAR_ID, SETUP, SETUP_POSITIONS, SETUP_SLIDERS, STOCK_POSITION, getBaseTuning, validateSetup, type SetupPosition, type SetupSlider } from '../src/sim/tuning';
 import { measureStats } from '../src/sim/stats';
 import { createCar, stepCar } from '../src/sim/car';
@@ -80,39 +80,23 @@ describe('build validation', () => {
     expect(await decodeShareCode('garbage!!')).toBeNull();
   });
 
-  it('moves builds of the renamed IceMaan cars to the authored ones, and retired cars to the default', () => {
-    // The s64 became the Proto Compact, since retired: the build moves to the default car and keeps
-    // only its wheels (the parts were the old car's).
-    const b = validateBuild({ carId: 's64', visual: { parts: { body: 's64_body_kit2', spoiler: 's64_spoiler_2', wheels: 'wheel_gc14_3' } } });
+  it('moves builds of unknown or retired cars to the default car, keeping only their wheels', () => {
+    const b = validateBuild({ carId: 'protoHatch', visual: { parts: { spoiler: 'protoHatch_spoiler_1', wheels: 'wheel_kumo' } } });
     expect(b.carId).toBe(DEFAULT_CAR_ID);
-    expect(b.visual.parts).toEqual({ wheels: 'wheel_kagero' });
-    expect(validateBuild({ carId: 'protoCompact', visual: { parts: { wheels: 'wheel_kiba' } } })).toMatchObject({ carId: DEFAULT_CAR_ID, visual: { parts: { wheels: 'wheel_kumo' } } });
-    expect(validateBuild({ carId: 'gc14' }).carId).toBe('wendtFairway');
+    expect(b.visual.parts).toEqual({ wheels: 'wheel_kumo' });
   });
 
-  it('maps the proto* car ids and their parts to the fictional maker ids', () => {
-    for (const [old, now] of [['protoHatch', 'wendtFairway'], ['protoCoupe', 'kazamaRotor'], ['protoWagon', 'brandtKombi'], ['protoMuscle', 'ridgewayFiend']]) {
-      expect(canonicalCarId(old)).toBe(now);
-      expect(canonicalCarId(now)).toBe(now);
-      expect(validateBuild({ carId: old }).carId).toBe(now);
-      expect(validateBuild({ carId: old, visual: { parts: { spoiler: `${old}_spoiler_1` } } }).visual.parts.spoiler).toBe(`${now}_spoiler_1`);
-    }
-    expect(canonicalCarId('gc14')).toBe('wendtFairway');
-    expect(validateBuild({ carId: 'gc14', visual: { parts: { wheels: 'wheel_gc14_3' } } }).visual.parts.wheels).toBe('wheel_kagero');
-  });
-
-  it('reads stored ghosts and bests recorded under the old car ids as the renamed cars', () => {
+  it('drops stored ghosts whose cars no longer exist', () => {
     const store = new Map<string, string>();
     const prev = (globalThis as { localStorage?: unknown }).localStorage;
     (globalThis as { localStorage?: unknown }).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) };
     try {
       const entrant = (carId: string) => ({ name: 'A', carId, performance: stockPerformance() });
-      const ghost = { v: 1, config: { player: entrant('protoCoupe'), opponents: [entrant('protoMuscle'), entrant('wendtFairway')] }, log: '', visuals: [], result: { time: 1, position: 1 }, date: '' };
-      store.set('nightrun.ghost.7.circuit', JSON.stringify(ghost));
-      store.set('nightrun.best.7.circuit', JSON.stringify({ time: 90, carId: 'protoWagon', date: '' }));
-      const g = loadGhost(7, 'circuit') as ReplayData;
-      expect([g.config.player.carId, ...g.config.opponents.map((e) => e.carId)]).toEqual(['kazamaRotor', 'ridgewayFiend', 'wendtFairway']);
-      expect(loadBest(7, 'circuit')?.carId).toBe('brandtKombi');
+      const ghost = (opp: string) => ({ v: 1, config: { player: entrant('kazamaRotor'), opponents: [entrant(opp)] }, log: '', visuals: [], result: { time: 1, position: 1 }, date: '' });
+      store.set('nightrun.ghost.7.circuit', JSON.stringify(ghost('protoMuscle')));
+      expect(loadGhost(7, 'circuit')).toBeNull();
+      store.set('nightrun.ghost.7.circuit', JSON.stringify(ghost('ridgewayFiend')));
+      expect((loadGhost(7, 'circuit') as ReplayData).config.opponents[0].carId).toBe('ridgewayFiend');
     } finally {
       (globalThis as { localStorage?: unknown }).localStorage = prev;
     }
@@ -133,7 +117,7 @@ describe('build validation', () => {
     expect(b.visual.wheels).toMatchObject({ rearPart: null, tire: 'standard', rearTire: 'standard' });
     // A rear tire of its own is kept; a missing one follows the front, an unknown one falls back.
     expect(validateBuild({ visual: { wheels: { tire: 'stretched' } } }).visual.wheels).toMatchObject({ tire: 'stretched', rearTire: 'stretched' });
-    expect(validateBuild({ visual: { wheels: { tire: 'stretched', rearTire: 'bald', rearPart: 'wheel_protoHatch_1' } } }).visual.wheels).toMatchObject({ tire: 'stretched', rearTire: 'stretched', rearPart: 'wheel_kaze' });
+    expect(validateBuild({ visual: { wheels: { tire: 'stretched', rearTire: 'bald', rearPart: 'wheel_kaze' } } }).visual.wheels).toMatchObject({ tire: 'stretched', rearTire: 'stretched', rearPart: 'wheel_kaze' });
     // The first set's shapes: both stretches are the stretched tire, the meaty one standard.
     expect(validateBuild({ visual: { wheels: { tire: 'aggressiveStretch', rearTire: 'meaty' } } }).visual.wheels).toMatchObject({ tire: 'stretched', rearTire: 'standard' });
     // New per axle values win over legacy ones and are clamped independently.
@@ -154,8 +138,8 @@ describe('build validation', () => {
     expect(b!.visual.stance.front).toEqual({ rideHeight: -0.03, camber: -6, offset: 0.04, wheelSize: 1.15 });
     expect(b!.visual.stance.rear).toEqual({ rideHeight: -0.03, camber: -8.5, offset: 0.04, wheelSize: 1.15 });
     expect(b!.visual.wheels).toEqual({ paint: { color: '#ffcc00', finish: 'metallic', match: false }, rearPaint: { color: '#ffcc00', finish: 'metallic', match: false }, rearPart: null, tire: 'standard', rearTire: 'standard' });
-    // Saved before the cars were renamed: the wheel id follows the rename.
-    expect(b!.visual.parts.wheels).toBe('wheel_yari');
+    // Its wheel id is from a retired car: kept as saved (the renderer falls back to a wheel the car offers).
+    expect(b!.visual.parts.wheels).toBe('wheel_s64_2');
     // Saved with the retired component upgrades (engine tier 2): it starts on the stock setup.
     expect(b!.performance).toMatchObject({ suspension: 3, gearing: 3, differential: 3, brakeBalance: 3 });
     expect(b!.performance).not.toHaveProperty('engine');

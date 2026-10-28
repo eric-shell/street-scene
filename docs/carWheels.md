@@ -71,7 +71,7 @@ Most wheels need none. The fields:
 1. Save a working copy (`bpy.ops.wm.save_as_mainfile(filepath=..., copy=True)`), then `saveCar.py` headless with `wheels` as the id, writing `assets/source/eshell/wheels/wheels.blend`. It keeps only the `wheels:Wheels` collection.
 2. Run `npm run assets`: the wheel set is exported by `exportCar.py` (wheels-only mode) and cataloged as universal wheels `wheel_<name>`.
 3. Set each car's `defaultWheel` in the manifest.
-4. A retired wheel id goes in `RENAMED_WHEELS` (`src/shared/carBuild.ts`), mapped to the new wheel nearest its style, so saved builds and share codes keep a wheel.
+4. A retired wheel id is not mapped: a saved build or share code with it falls back to the first wheel the car offers (`carView.ts`).
 
 ## 7. The sets
 
@@ -123,7 +123,7 @@ Open:
 | Seiryu | Vossen | Aoi (LC104T), Sora (LC109T), Hikari (VPS302), Kagami (VPS301), Seiun (ERA3), Getsuei (GNS-1), Kirameki (VPS 315T), Hisui (CG203) |
 | Suzaku | BBS | Hane (E52, `normals: 'geometry'`) |
 
-Names retired in `RENAMED_WHEELS` (`kiba`, `hoshi`, `rensa`, `tsuki`, `ginga`, `hibana`, `senko`, `arashi`) are never reused: a saved build with one would load the Work wheel it maps to. The one check that found a wheel the sheet hid: the mean shading normal of each wheel's front facing `Rim` faces along +X, 0.75 to 0.97 on a good wheel, 0.19 on the E52 before `normals: 'geometry'`.
+Retired names (`kiba`, `hoshi`, `rensa`, `tsuki`, `ginga`, `hibana`, `senko`, `arashi`) are never reused, so an old save never shows a different wheel under its name. The one check that found a wheel the sheet hid: the mean shading normal of each wheel's front facing `Rim` faces along +X, 0.75 to 0.97 on a good wheel, 0.19 on the E52 before `normals: 'geometry'`.
 
 ### Two new authors (2026-10-28)
 
