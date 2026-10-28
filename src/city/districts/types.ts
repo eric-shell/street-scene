@@ -367,6 +367,8 @@ export interface Claims {
  */
 export interface PlannedEvent {
   flavour: EventFlavourId;
+  /** A Harbor Run's quay as previewed while the routes were picked (harborShore.ts): hills keep their slopes off its frontage. */
+  harbor?: Area;
   /** Circuit then sprint: graph nodes in driving order and the edges between them. */
   routes: { nodes: number[]; edges: number[]; closed: boolean }[];
 }

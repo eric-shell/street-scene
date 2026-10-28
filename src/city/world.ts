@@ -22,6 +22,7 @@ import { settleAlleyLips, shortcutJumpRails } from './districts/alleyDressing';
 import { carveRouteShortcuts, hasShortcutSpot, qualifiedCount } from './districts/alleyShortcuts';
 import { ROUTE_INDEX, carParkGates, carParkRails, carParkSites, planCarParks, railsClearOf, settleCarParks } from './districts/carPark';
 import { bayRoadDistance, baysByEdge } from './busBays';
+import { previewHarbor, quayCuts } from './districts/harborShore';
 import { CityEvent, EventFlavourId, eventKeepOut, eventOffer, eventRoutePreference, pickEventFlavour, resolveEvent, routeEdges } from './events';
 import type { GateSet } from '../sim/gates';
 import { LevelCrossing, addLevelCrossings } from './levelCrossings';
@@ -117,9 +118,11 @@ export function planRoads(seed: number, forceFlavour?: EventFlavourId): { graph:
       // The seed's event flavour, drawn from what this city can deliver, says what the routes should
       // have (events.ts); every flavour but River Run also keeps the river dive as a second wish.
       const g = ctx.graph;
-      flavour = forceFlavour ?? pickEventFlavour(seed, eventOffer(g, ctx.areas));
-      const preferCircuit = eventRoutePreference(flavour, ctx, true);
-      const preferSprint = eventRoutePreference(flavour, ctx, false);
+      // The harbor is planned after the routes, so a Harbor Run's routes aim for its preview (harborShore.ts).
+      const harbor = previewHarbor(ctx);
+      flavour = forceFlavour ?? pickEventFlavour(seed, eventOffer(g, ctx.areas, harbor));
+      const preferCircuit = eventRoutePreference(flavour, ctx, true, harbor);
+      const preferSprint = eventRoutePreference(flavour, ctx, false, harbor);
       // The circuit is checked against the first sprint pick (whose start and finish it must keep clear).
       const firstSprint = { nodes: findSprintNodes(g, seed, 0, preferSprint), closed: false };
       const circuit = pick((v, p) => findCircuitNodes(g, seed, v, p ? preferCircuit : undefined), true, [firstSprint]);
@@ -155,7 +158,7 @@ export function planRoads(seed: number, forceFlavour?: EventFlavourId): { graph:
       planCarParks(ctx, [circuit2, sprint2]);
       routeNodes = { circuit: circuit2.nodes, sprint: sprint2.nodes };
       // Hills, the monument and the roadworks are planned after this: they read the routes to come to the race.
-      return { flavour, routes: [circuit2, sprint2].map((r) => ({ nodes: r.nodes, edges: routeEdges(g, r.nodes, r.closed), closed: r.closed })) };
+      return { flavour, harbor: flavour === 'harborRun' && harbor ? harbor : undefined, routes: [circuit2, sprint2].map((r) => ({ nodes: r.nodes, edges: routeEdges(g, r.nodes, r.closed), closed: r.closed })) };
     },
   });
   if (!routeNodes) throw new Error('routes were not planned');
@@ -323,6 +326,63 @@ function railsOffRoute<T extends Wall>(route: Route, rails: T[]): T[] {
     ]);
   }
   return railsClearOf(zones, rails);
+}
+
+/**
+ * No corner rail across a harbor quay's mouths (districts/waterfrontYard.ts): rails stand on the outside of
+ * the route's turns at its nodes, and a mouth sits right at a junction of the street along the quay, so a
+ * route turning there put a rail across it, a mouth shut in a race and open in free roam. A Harbor Run's
+ * routes turn at mouths all the time (a lap round a recess starts and ends at one). The pieces touching a
+ * mouth's posts (QUAY_MOUTH_SIDE m wider each way), from QUAY_MOUTH_BACK m inland of them to QUAY_MOUTH_AHEAD m seaward, come out, and so do
+ * those within QUAY_CUT_HALF of the first and last leg of a quay cut (route.ts quayCuts), the way in and
+ * out of its lane; the rest of each rail stays. No quay: a no-op.
+ */
+const QUAY_MOUTH_BACK = 14;
+const QUAY_MOUTH_AHEAD = 4;
+const QUAY_MOUTH_SIDE = 1.8;
+const QUAY_CUT_HALF = 4.5;
+function railsOffQuay<T extends Wall>(city: City, route: Route, rails: T[]): T[] {
+  const zones: Vec2[][] = [];
+  for (const a of city.districts.areas) {
+    if (a.kind !== 'waterfront') continue;
+    const vx = a.params.vx;
+    const vz = a.params.vz;
+    for (const h of city.districts.builds[a.id]?.hints ?? []) {
+      if (h.kind !== 'quayMouth' || h.points.length < 2) continue;
+      // A little wider than the posts: a car's width and the collision band reach past the mouth's edge.
+      const [p0, q0] = h.points;
+      const l = sqrt((q0.x - p0.x) ** 2 + (q0.z - p0.z) ** 2) || 1;
+      const tx = ((q0.x - p0.x) / l) * QUAY_MOUTH_SIDE;
+      const tz = ((q0.z - p0.z) / l) * QUAY_MOUTH_SIDE;
+      const p = { x: p0.x - tx, z: p0.z - tz };
+      const q = { x: q0.x + tx, z: q0.z + tz };
+      zones.push([
+        { x: p.x - vx * QUAY_MOUTH_BACK, z: p.z - vz * QUAY_MOUTH_BACK },
+        { x: q.x - vx * QUAY_MOUTH_BACK, z: q.z - vz * QUAY_MOUTH_BACK },
+        { x: q.x + vx * QUAY_MOUTH_AHEAD, z: q.z + vz * QUAY_MOUTH_AHEAD },
+        { x: p.x + vx * QUAY_MOUTH_AHEAD, z: p.z + vz * QUAY_MOUTH_AHEAD },
+      ]);
+    }
+  }
+  for (const sc of route.quayCuts) {
+    if (sc.points.length < 2) continue;
+    const n = sc.points.length;
+    for (const [a, b] of [
+      [sc.points[0], sc.points[1]],
+      [sc.points[n - 1], sc.points[n - 2]],
+    ]) {
+      const l = sqrt((b.x - a.x) ** 2 + (b.z - a.z) ** 2) || 1;
+      const nx = (-(b.z - a.z) / l) * QUAY_CUT_HALF;
+      const nz = ((b.x - a.x) / l) * QUAY_CUT_HALF;
+      zones.push([
+        { x: a.x + nx, z: a.z + nz },
+        { x: b.x + nx, z: b.z + nz },
+        { x: b.x - nx, z: b.z - nz },
+        { x: a.x - nx, z: a.z - nz },
+      ]);
+    }
+  }
+  return zones.length ? railsClearOf(zones, rails) : rails;
 }
 
 /** Whether segment a-b properly crosses wall w. */
@@ -577,7 +637,10 @@ export function createRoute(city: City, kind: RouteKind): Route {
     const { nodes, waypoints } = findWaypointNodes(g, city.seed, passes.length ? through : undefined);
     return buildRoute(g, kind, nodes, waypoints, passes, city.seed);
   }
-  return buildRoute(g, kind, city.routeNodes[kind], [], passes, city.seed);
+  // A harbor's lane across a quay recess is a shortcut of the routes that go round it by the streets.
+  const harbor = city.districts.areas.find((a) => a.kind === 'waterfront');
+  const lane = harbor ? city.districts.builds[harbor.id]?.hints.find((h) => h.kind === 'quayLane') : undefined;
+  return buildRoute(g, kind, city.routeNodes[kind], [], passes, city.seed, harbor && lane ? quayCuts(g, harbor, lane.points) : []);
 }
 
 export function createWorld(seed: number, kind: RouteKind, city: City = createCity(seed), opts: { openWorld?: boolean } = {}): World {
@@ -587,7 +650,7 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
   // The highway alleys' gates are walls the closures must meet (not cross) too, so they exist before the barriers.
   const alleyGates = openWorld ? [] : highwayGates(city.districts.areas, new Set(route.edges));
   // Corner rails, minus the pieces the flights off the route's car park and jump exits would cross, and any across the line.
-  const rails = openWorld ? [] : railsOffRoute(route, carParkRails(city.districts.areas, ROUTE_INDEX[kind], shortcutJumpRails(route, city.districts.areas, awayFromRoundabouts(graph, routeRails(graph, route, blocks)))));
+  const rails = openWorld ? [] : railsOffQuay(city, route, railsOffRoute(route, carParkRails(city.districts.areas, ROUTE_INDEX[kind], shortcutJumpRails(route, city.districts.areas, awayFromRoundabouts(graph, routeRails(graph, route, blocks))))));
   const barrierGroups = openWorld ? [] : routeBarrierGroups(graph, blocks.mouths, route, rails, city.districts.areas.find((a) => a.kind === 'river')?.params, blocks.walls.concat(alleyGates));
   sealBarriers(city, barrierGroups, rails, alleyGates);
   const closures = closureRails(barrierGroups, rails);

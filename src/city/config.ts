@@ -1319,7 +1319,7 @@ export const CITY = {
       boardwalkInset: 0.9,
       /**
        * The beach variant (districts/waterfrontBeach.ts): a waterfront that is sand and a boardwalk, not a dock
-       * yard. The chance a waterfront is one (its own stream) is `chance.miami` in a Miami home (shared/home.ts)
+       * yard. The chance a waterfront is one (its own stream) is `chance.miami` in a Miami home (regions.ts homeOf)
        * and `chance.other` elsewhere; a rolled beach still needs a stretch of a side at least `minLength` m long whose ground is
        * within `maxResidual` m of the sand's profile at the dune edge (the stretch is the longest such window of the free side,
        * its ends closed by breakwaters), and no warehouse in its frontage, else the waterfront is the harbor it would have been. All distances in m, `d` measured in from the waterline:

@@ -12,6 +12,7 @@ import { CITY, ROUTE } from './config';
 import { type RoadGraph, edgeBetween, isBendNode, isRiverEdge } from './roadGraph';
 import { chainBackwards, routeChains } from './districts/alleyPath';
 import { shortcutSpan } from './districts/alleyShortcuts';
+import type { QuayCut } from './districts/harborShore';
 import { DEG, type Vec2, abs, atan2, clamp, cos, distToSegment, segmentT, sin, sqrt, yawOf } from '../sim/math';
 import { distanceField } from './graphSearch';
 import { Rng, deriveSeed } from '../sim/prng';
@@ -55,6 +56,13 @@ export interface Route {
    * other shortcut edge at a route junction is closed off like a side street.
    */
   shortcuts: RouteShortcut[];
+  /**
+   * A harbor's quay cuts on this route (districts/harborShore.ts quayCuts): the lane across a quay recess the
+   * route goes round by the streets. Shaped like shortcuts (no graph edges: nothing to open or close) but kept
+   * apart, since the alleys' consumers (closures, meets, the carver's counts) are about streets; race
+   * progress (harborCut.ts) and the rivals' detours (sim/ai/driverLine.ts) read both.
+   */
+  quayCuts: RouteShortcut[];
   tightCorners: number;
   sweepers: number;
   /** Waypoint races: the waypoints in order, the finish line last (their s are the checkpoints). */
@@ -250,8 +258,10 @@ export function circuitStart(g: RoadGraph, nodes: number[]): { index: number; t:
  * `waypointNodes`: a waypoint race's waypoints (findWaypointNodes), all on `routeNodes`. `passes`:
  * the city's ways off the streets (RoutePass); the route takes each one it drives through. `seed`
  * draws, on its own stream, whether a circuit starts on a pass that allows it (ROUTE.passStartChance).
+ * `cuts`: the harbor quay's cuts across its recesses (quayCuts); each whose two junctions are on the
+ * route and which saves distance like an alley does becomes one of its quayCuts (no graph edges).
  */
-export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[], waypointNodes: readonly number[] = [], passes: readonly RoutePass[] = [], seed = 0): Route {
+export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[], waypointNodes: readonly number[] = [], passes: readonly RoutePass[] = [], seed = 0, cuts: readonly QuayCut[] = []): Route {
   const closed = kind === 'circuit';
   const drag = kind === 'drag';
   let nodes = routeNodes.slice();
@@ -354,6 +364,7 @@ export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[], 
     grid: [],
     closedStreets: [],
     shortcuts: [],
+    quayCuts: [],
     tightCorners: stats.tight,
     sweepers: stats.sweepers,
   };
@@ -438,6 +449,20 @@ export function buildRoute(g: RoadGraph, kind: RouteKind, routeNodes: number[], 
     const B = points[points.length - 1];
     route.shortcuts.push({ edges, points, ax: A.x, az: A.z, bx: B.x, bz: B.z, sIn: cum[span.aFirst ? ia : ib], sOut: cum[span.aFirst ? ib : ia], length: c.length });
     for (const id of edges) open.add(id);
+  }
+  // A harbor's quay cut joins two route junctions the street way round a warehouse's block: no graph edge, so nothing to open or close.
+  for (const cut of cuts) {
+    const ia = nodePoint.get(cut.a);
+    const ib = nodePoint.get(cut.b);
+    const na = nodeS.get(cut.a);
+    const nb = nodeS.get(cut.b);
+    if (ia === undefined || ib === undefined || na === undefined || nb === undefined) continue;
+    const span = shortcutSpan(na, nb, cut.length, nodeTotal, closed, closed ? 0 : startS, closed ? nodeTotal : nodeTotal - (length - finishS));
+    if (!span) continue;
+    const points = span.aFirst ? cut.points : cut.points.slice().reverse();
+    const A = points[0];
+    const B = points[points.length - 1];
+    route.quayCuts.push({ edges: [], points, ax: A.x, az: A.z, bx: B.x, bz: B.z, sIn: cum[span.aFirst ? ia : ib], sOut: cum[span.aFirst ? ib : ia], length: cut.length });
   }
   const onRoute = new Set(edges);
   const routeNodeSet = new Set(nodes);
