@@ -19,7 +19,8 @@ import { CITY } from './config';
 import { Chain, RoadGraph, RoadEdge, RoadNode, downtownFactor, isBendNode, isMouthEdge, isRiverEdge, otherNode, sectorAngle } from './roadGraph';
 import { SpatialGrid } from './spatial';
 import { Terrain } from './terrain';
-import { Prop, edgeSides, generateProps, lightStations } from './props';
+import { Prop, PoleContext, edgeSides, generateProps, lightStations } from './props';
+import { homeOf, regionMap } from './regions';
 import { BusBay, mouthBay, planBusBays } from './busBays';
 import { StreetTree, planStreetTrees } from './streetTrees';
 import { Rng, deriveSeed } from '../sim/prng';
@@ -974,12 +975,16 @@ export function generateBlocks(seed: number, g: RoadGraph, terrain: Terrain, dis
 
   // Destructible street furniture (streetlights first, ids aligned with `streetlights`), then district clutter.
   const clutter = [...districts.builds, ...lateBuilds].flatMap((b) => b.destructibles);
-  const props = generateProps(seed, g, sectors, mouths, streetlights, terrain, edgeGrid, reserved, clutter, bays);
-
-  // Sidewalk trees: solid trunks among the walls, on the streets no district claims and no lane closure shuts.
+  // The streets no district claims and no lane closure shuts: the only ones with sidewalk trees and power poles.
   const treeSkip = new Set<number>();
   for (const a of districts.areas ?? []) if (a.kind !== 'alley' && a.kind !== 'backAlley') for (const ei of a.edges) treeSkip.add(ei);
   for (const b of [...districts.builds, ...lateBuilds]) for (const h of b.hints) if (h.kind === 'roadworks') treeSkip.add(h.values[0]);
+  // Power poles stand in the la neighbourhoods (regions.ts, the same map the facades are drawn by).
+  const regions = regionMap(seed, g, districts.areas ?? [], (x, z) => terrain.heightAt(x, z));
+  const poles: PoleContext = { home: homeOf(seed), regionAt: regions.regionAt, skip: treeSkip };
+  const props = generateProps(seed, g, sectors, mouths, streetlights, terrain, edgeGrid, reserved, clutter, bays, poles);
+
+  // Sidewalk trees: solid trunks among the walls, on those streets.
   const treePlan = planStreetTrees({ seed, g, mouths, props, bays, reserved, walls, edgeGrid, terrain, skipEdges: treeSkip, keepClear: districts.keepClear?.() ?? [] });
   for (const w of treePlan.walls) walls.push(w);
 

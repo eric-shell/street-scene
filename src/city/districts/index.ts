@@ -23,7 +23,8 @@
  * module allowed to change the graph topology, so face ids stay stable), the
  * monument plaza (before the parks: it takes a block the routes turn round,
  * for its race passes), parks (claim faces), hills (claim clusters of faces and keep
- * their slopes clear of everything placed before them), tunnels and
+ * their slopes clear of everything placed before them), the cable car (sf homes:
+ * a street up a hill off both routes), tunnels and
  * overpasses (they keep clear of every slope and claim the blocks a ridge
  * stands in, so they come after the hills and before downtown), reserved
  * features, and downtown (claims every face left). The optional topology hook runs
@@ -51,6 +52,7 @@ import { alleyModule, backAlleyModule } from './alley';
 import { parkModule } from './park';
 import { monumentModule } from './monument';
 import { hillsModule } from './hills';
+import { cableCarModule } from './cableCar';
 import { tunnelModule } from './tunnel';
 import { overpassModule } from './overpass';
 import { highwayModule } from './highway/highway';
@@ -80,6 +82,8 @@ export const DISTRICT_MODULES: readonly DistrictModule[] = [
   monumentModule,
   parkModule,
   hillsModule,
+  // After the hills (it climbs one) and the routes (it keeps off them), before anything else claims a street.
+  cableCarModule,
   tunnelModule,
   overpassModule,
   waterfrontModule,

@@ -944,7 +944,7 @@ export class RaceSession {
     const chase = this.chaseCall;
     this.night.air.chase(chase.phase === 'chase' ? (poses[chase.car] ?? null) : null);
     // The El's trains and level crossings at the interpolated sim time: the gates close for these trains.
-    this.night.syncDistricts(Math.max(0, r.tick - 1 + (this.paused ? 1 : alpha)), !this.paused, r.brokenArms);
+    this.night.syncDistricts(Math.max(0, r.tick - 1 + (this.paused ? 1 : alpha)), !this.paused, r.brokenArms, r.cableCar?.bell);
     this.night.update(this.time);
     this.night.envProbes.update(focus.x, focus.z, dt);
     this.hazards.update(r);

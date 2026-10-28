@@ -36,6 +36,7 @@ import { roadworksRenderer } from './roadworks';
 import { driftZoneRenderer } from './driftZones';
 import { carParkRenderer } from './carPark';
 import { parkingLotRenderer } from './parkingLot';
+import { cableCarRenderer } from './cableCar';
 
 export const DISTRICT_RENDERERS: readonly DistrictRenderer[] = [
   downtownRenderer,
@@ -57,6 +58,7 @@ export const DISTRICT_RENDERERS: readonly DistrictRenderer[] = [
   lakeRenderer,
   marketRenderer,
   roadworksRenderer,
+  cableCarRenderer,
   // Markings over the lots and the plaza that pay a drift bonus (sim/driftZones.ts).
   driftZoneRenderer,
 ];
@@ -68,8 +70,11 @@ export interface DistrictMeshes {
   view(camera: THREE.Camera): void;
   /** Show or hide every race-only piece (kit.race): hidden while the scene is lent to a free roam, whose world has no walls under them. */
   showRaceOnly(visible: boolean): void;
-  /** Pose sim-timed parts (trains, level crossings) at a fractional sim tick from now on; `audible` lets bells ring; `brokenArms` is RaceState.brokenArms. */
-  sync(tick: number, audible: boolean, brokenArms?: Uint8Array): void;
+  /**
+   * Pose sim-timed parts (trains, level crossings, the cable car) at a fractional sim tick from now on; `audible` lets
+   * bells ring; `brokenArms` is RaceState.brokenArms, `cableBell` RaceState.cableCar.bell (NaN: none).
+   */
+  sync(tick: number, audible: boolean, brokenArms?: Uint8Array, cableBell?: number): void;
   dispose(): void;
 }
 
@@ -92,6 +97,7 @@ export function buildDistrictMeshes(world: World, opts: DistrictMeshOpts = {}): 
   let syncTick = NaN;
   let canHear = false;
   let arms: Uint8Array | undefined;
+  let bell = NaN;
   const walls = new Map<WallLook, Wall[]>();
   for (const w of world.walls) {
     if (w.kind !== 'wall' || !w.look) continue;
@@ -123,6 +129,7 @@ export function buildDistrictMeshes(world: World, opts: DistrictMeshOpts = {}): 
     simTick: (time) => (Number.isNaN(syncTick) ? time * TICK_HZ : syncTick),
     audible: () => canHear,
     armBroken: (i) => !!arms?.[i],
+    cableBell: () => bell,
   };
   for (const r of DISTRICT_RENDERERS) {
     const areas = world.areas.filter((a) => r.kinds.includes(a.kind));
@@ -172,10 +179,11 @@ export function buildDistrictMeshes(world: World, opts: DistrictMeshOpts = {}): 
     showRaceOnly(visible) {
       raceGroup.visible = visible;
     },
-    sync(tick, audible, brokenArms) {
+    sync(tick, audible, brokenArms, cableBell) {
       syncTick = tick;
       canHear = audible;
       arms = brokenArms;
+      bell = Number.isNaN(tick) ? NaN : (cableBell ?? NaN);
     },
     dispose() {
       for (const d of disposables) d.dispose();

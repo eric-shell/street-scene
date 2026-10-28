@@ -31,6 +31,24 @@ export const PARK_LANTERN_Y = 3.95;
 export const STUMP_H = 0.55;
 export const TRAFFIC_POLE_H = 5.6;
 export const TRAFFIC_ARM_Y = 5.25;
+/**
+ * A wooden power pole (city/props.ts 'utilityPole'): its height, the crossarm across the street (local +Z is toward
+ * the road) and the three insulators the wires hang from, as local offsets along the arm (m). The wires
+ * (utilityWires.ts) attach where the renderer's poles put them, from this one table.
+ */
+export const UTILITY_POLE = {
+  h: 10.4,
+  armY: 9.4,
+  armZ: [-0.55, 1.45] as const,
+  wireZ: [-0.35, 0.45, 1.25] as const,
+  /** Insulator top above the arm (m): where a wire hangs. */
+  wireLift: 0.22,
+  /** The transformer drum: centre height, its offset toward the building line, radius and height (m). */
+  drumY: 7.6,
+  drumZ: -0.42,
+  drumR: 0.3,
+  drumH: 1.0,
+} as const;
 
 // ---------------------------------------------------------------------------
 // Low poly part builders (local space, vertex colored)
@@ -615,6 +633,33 @@ export function streetlightGeo(q: Quality, design: LampDesign = 'cobra'): { soli
     box(l, 0, H - 0.34, A, 0.36, 0.04, 0.75, LENS_GLOW, false);
   }
   return { solid: s.build(), lens: l.build() };
+}
+
+/** A wooden power pole: the tapered shaft, its crossarm with two braces and three insulators (medium: about 60 triangles). */
+export function utilityPoleGeo(q: Quality): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const U = UTILITY_POLE;
+  const wood = col(0x5b4532);
+  const timber = col(0x4a3a2a);
+  cyl(s, 0, 0, 0, U.h, 0.16, 0.12, 7, wood, q);
+  const [z0, z1] = U.armZ;
+  box(s, 0, U.armY, (z0 + z1) / 2, 0.11, 0.11, z1 - z0, timber, false);
+  // Braces from the shaft up to the arm on both sides (thin slabs).
+  for (const z of [z0 * 0.7, z1 * 0.55]) plate(s, 0, U.armY - 0.35, z / 2, 0.02, 0.6, Math.abs(z), timber);
+  const glass = col(0x9cb8a8, 1.2);
+  for (const z of U.wireZ) cyl(s, 0, z, U.armY + 0.05, U.armY + U.wireLift, 0.05, 0.04, 6, glass, q);
+  return s.build();
+}
+
+/** The transformer drum on every fourth power pole, with its bracket (local, like the pole). */
+export function utilityTransformerGeo(q: Quality): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const U = UTILITY_POLE;
+  const steel = col(0x7c838c);
+  cyl(s, 0, U.drumZ, U.drumY - U.drumH / 2, U.drumY + U.drumH / 2, U.drumR, U.drumR, 8, steel, q);
+  cyl(s, 0, U.drumZ, U.drumY + U.drumH / 2, U.drumY + U.drumH / 2 + 0.08, U.drumR * 0.8, U.drumR * 0.55, 8, steel, q);
+  box(s, 0, U.drumY, U.drumZ / 2, 0.08, 0.5, Math.abs(U.drumZ), col(0x2a2c30), false);
+  return s.build();
 }
 
 export function stumpGeo(q: Quality): THREE.BufferGeometry {

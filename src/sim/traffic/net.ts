@@ -4,7 +4,9 @@
  * per World (trafficNet caches it) as a pure function of it; lanes and connectors that would rub a wall or
  * leave the paving are dropped and dead ends pruned. Along a kerb parking row (city/parking.ts, the same plan
  * the parked cars stand in) the lane on that side moves in, as it merges round roadworks, so no driving car
- * ever brushes a parked one. samplePath reads a pose along any path.
+ * ever brushes a parked one. On the cable car's street (districts/cableCar.ts) a lane that would come within
+ * reach of the track's strip moves out toward the kerb instead (none does: the line only takes streets with the
+ * room). samplePath reads a pose along any path.
  */
 import type { World, Contact } from '../../city/world';
 import type { RoadKind } from '../../city/roadGraph';
@@ -78,7 +80,11 @@ function lanePolyline(x0: number, z0: number, fx: number, fz: number, len: numbe
   const uniq = at.filter((v, i) => i === 0 || v - at[i - 1] > 1e-6);
   const offAt = (v: number) => {
     let o = off;
-    for (const q of squeeze) o = Math.min(o, off - q.shift * smoothstep(q.a - L.rampLength, q.a, v) * (1 - smoothstep(q.b, q.b + L.rampLength, v)));
+    // A positive shift moves the lane in toward the centre (roadworks, kerb parking), a negative one out toward the kerb (the cable car).
+    for (const q of squeeze) {
+      const at = off - q.shift * smoothstep(q.a - L.rampLength, q.a, v) * (1 - smoothstep(q.b, q.b + L.rampLength, v));
+      o = q.shift >= 0 ? Math.min(o, at) : Math.max(o, at);
+    }
     return o;
   };
   const xs = uniq.map((v) => x0 + fx * v - fz * offAt(v));
@@ -134,6 +140,9 @@ function buildNet(w: World): TrafficNet {
     else rowsOf.set(row.edge, [row]);
   }
 
+  // The cable car's line (districts/cableCar.ts): its edges' lanes keep the widest car parkClear off the track's strip.
+  const track = new Set((w.areas ?? []).filter((a) => a.kind === 'cableCar').flatMap((a) => a.edges));
+
   // Night markets (districts/market.ts) close their street to traffic, in an open world too.
   const market = new Set((w.areas ?? []).filter((a) => a.kind === 'market').flatMap((a) => a.edges));
 
@@ -188,6 +197,12 @@ function buildNet(w: World): TrafficNet {
         const a = dir === 0 ? row.s0 - s0 : len - row.s1 - s0;
         const b = dir === 0 ? row.s1 - s0 : len - row.s0 - s0;
         squeeze.push({ a, b, shift: off - keep });
+      }
+      // The cable car's strip down the middle: by construction the lane already clears it (districts/cableCar.ts
+      // only takes streets that leave room); if it ever did not, it moves out, toward the kerb.
+      if (track.has(e.id)) {
+        const need = CITY.districts.cableCar.stripHalf + L.parkClear + maxHalfWidth();
+        if (off < need) squeeze.push({ a: -L.rampLength, b: laneLen + L.rampLength, shift: off - need });
       }
       const { xs, zs, yaws } = lanePolyline(S.x + fx * s0, S.z + fz * s0, fx, fz, laneLen, off, squeeze);
       if (pathBlocked(w, xs, zs, probe, contacts)) continue;

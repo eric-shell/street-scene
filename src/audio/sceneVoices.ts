@@ -1,6 +1,7 @@
 /**
  * Standalone voices a scene owns rather than the race: the elevated train's
- * rumble, the news helicopter's rotors and the thunder of rain nights. Each
+ * rumble, the news helicopter's rotors, the thunder of rain nights and the
+ * San Francisco cable car's bell (struck, not fed: it plays its ring out). Each
  * is created only after a user gesture (browsers refuse audio before that),
  * plays on the effects bus and fades out by itself when it stops being fed.
  */
@@ -327,5 +328,98 @@ export class Thunder {
       }
     }
     this.live.clear();
+  }
+}
+
+/**
+ * Cable car bell mix: the strike's partials (ratios of the fundamental, levels, decays in s), the hammer click, the
+ * gripman's ring (strike offsets in s: "clang clang, clang-a-lang") and the output level.
+ */
+const CABLE_BELL = {
+  f0: 1180,
+  partials: [1, 2.02, 2.71, 4.13, 5.38],
+  levels: [1, 0.5, 0.42, 0.2, 0.1],
+  decays: [0.95, 0.6, 0.42, 0.24, 0.13],
+  click: 0.4,
+  seconds: 1.3,
+  ring: [0, 0.17, 0.46, 0.58, 0.7],
+  level: 0.5,
+} as const;
+
+/** One struck brass bell: inharmonic partials with exponential decays and a few ms of hammer noise. */
+export function renderCableBellStrike(sampleRate: number): Float32Array<ArrayBuffer> {
+  const B = CABLE_BELL;
+  const n = Math.round(sampleRate * B.seconds);
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const t = i / sampleRate;
+    let v = 0;
+    for (let k = 0; k < B.partials.length; k++) v += B.levels[k] * Math.exp(-t / B.decays[k]) * Math.sin(2 * Math.PI * B.f0 * B.partials[k] * t);
+    if (t < 0.003) v += B.click * (Math.random() * 2 - 1) * (1 - t / 0.003);
+    // A short fade at the end so a strike never clicks off.
+    out[i] = (v * Math.min(1, (n - i) / (0.02 * sampleRate))) / 2.2;
+  }
+  return out;
+}
+
+/**
+ * The San Francisco cable car's bell (render/traffic/cableCar.ts rings it at every departure and at a race car in
+ * the car's way): one strike rendered offline once, played as the gripman's rhythm of strikes, each a buffer source
+ * through the voice's gain and panner on the ambience bus, at the proximity and pan the caller gives for the ring
+ * (distance faded from the camera). Nothing loops, so a voice that is never rung costs nothing. Created only after
+ * a user gesture (browser policy); the cosmetic noise and the strikes' spread use Math.random.
+ */
+export class CableBell {
+  private ctx: AudioContext;
+  private out: GainNode;
+  private pan: StereoPannerNode;
+  private buf: AudioBuffer;
+
+  /** True while the browser still waits for the first user gesture. */
+  static blocked(): boolean {
+    return TrainRumble.blocked();
+  }
+
+  static create(): CableBell | null {
+    if (typeof window === 'undefined' || CableBell.blocked()) return null;
+    const h = audioHub();
+    if (!h) return null;
+    try {
+      return new CableBell(h);
+    } catch {
+      return null;
+    }
+  }
+
+  private constructor(h: NonNullable<ReturnType<typeof audioHub>>) {
+    const ctx = (this.ctx = h.ctx);
+    this.out = ctx.createGain();
+    this.out.gain.value = CABLE_BELL.level;
+    this.pan = ctx.createStereoPanner();
+    this.out.connect(this.pan).connect(h.ambienceBus);
+    const data = renderCableBellStrike(ctx.sampleRate);
+    this.buf = ctx.createBuffer(1, data.length, ctx.sampleRate);
+    this.buf.copyToChannel(data, 0);
+  }
+
+  /** One ring: proximity 0..1 (1 = beside it), pan -1..1. */
+  ring(proximity: number, pan: number): void {
+    const now = this.ctx.currentTime;
+    this.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan)) * 0.8, now, 0.02);
+    const g = clamp01(proximity);
+    for (const at of CABLE_BELL.ring) {
+      const src = this.ctx.createBufferSource();
+      src.buffer = this.buf;
+      src.playbackRate.value = rnd(0.985, 1.015);
+      const strike = this.ctx.createGain();
+      strike.gain.value = g * rnd(0.8, 1);
+      src.connect(strike).connect(this.out);
+      src.start(now + at + rnd(0, 0.02));
+      src.onended = () => strike.disconnect();
+    }
+  }
+
+  dispose(): void {
+    this.out.disconnect();
   }
 }

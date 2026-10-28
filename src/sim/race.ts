@@ -27,6 +27,7 @@ import { TrafficState, createTraffic, stepTraffic, trafficTuning } from './traff
 import { DriftZoneState, createDriftZoneState, stepDriftZones } from './driftZones';
 import { waitingAtGate } from './gates';
 import { stepLevelCrossings } from './levelCrossing';
+import { CableCarState, cableTuning, createCableCar, stepCableCar } from './cableCar';
 
 export type RaceMode = 'circuit' | 'sprint' | 'drift' | 'drag' | 'waypoint';
 
@@ -167,6 +168,8 @@ export interface RaceState {
   traffic: TrafficState | null;
   /** Drift zone visits per car (src/sim/driftZones.ts). Fresh per race. */
   driftZones: DriftZoneState;
+  /** The San Francisco cable car (src/sim/cableCar.ts), null on a world without its line. */
+  cableCar: CableCarState | null;
 }
 
 /** Wall hit events: the least impact speed that makes one (m/s); car crashes and the gap between events are CRASH_EVENT's. */
@@ -344,6 +347,7 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
     rails: createRailState(w),
     traffic,
     driftZones: createDriftZoneState(w, cars.length),
+    cableCar: createCableCar(w, cars.length, tick0),
   };
 }
 
@@ -569,6 +573,7 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
     // Grid: engines rev (the two-step and a line lock burnout included, car.ts gridRev), cars hold still.
     for (let i = 0; i < r.cars.length; i++) gridRev(r.cars[i].state, r.cars[i].tuning, inputs[i], DT);
     // The city keeps moving while the grid waits.
+    stepCableCar(r);
     stepTraffic(r);
     r.tick++;
     if (r.tick === r.countdownTicks) r.phase = r.phase === 'countdown' ? 'racing' : r.phase;
@@ -638,7 +643,8 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
       }
     }
   }
-  // Ambient traffic drives on, then meets the race cars where they are now.
+  // The cable car on its cable meets the race cars, then ambient traffic drives on (braking for it) and meets them where they are now.
+  stepCableCar(r);
   stepTraffic(r);
   for (const rc of r.cars) {
     rc.state.nearMiss = detectNearMiss(rc.state, rc.tuning, r.world);
@@ -658,10 +664,11 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
   r.tick++;
 }
 
-/** The reset car `rc` sits inside a racer still in the race or a traffic car. */
+/** The reset car `rc` sits inside a racer still in the race, a traffic car or the cable car. */
 function insideAnotherCar(r: RaceState, rc: RaceCar): boolean {
   for (const o of r.cars) if (o !== rc && !o.finished && carsOverlap(rc.state, rc.tuning, o.state, o.tuning)) return true;
   for (const c of r.traffic?.cars ?? []) if (c.mode !== 'gone' && carsOverlap(rc.state, rc.tuning, c.body, trafficTuning(c.kind))) return true;
+  if (r.cableCar && carsOverlap(rc.state, rc.tuning, r.cableCar.body, cableTuning())) return true;
   return false;
 }
 

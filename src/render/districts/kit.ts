@@ -78,6 +78,8 @@ export interface DistrictKit {
   audible(): boolean;
   /** Has a car snapped off level crossing arm `i` (RaceState.brokenArms: gate * 2 + half)? False outside a race. */
   armBroken(i: number): boolean;
+  /** The tick of the cable car's last bell in the race that syncs this scene (RaceState.cableCar.bell); NaN outside one. */
+  cableBell(): number;
 }
 
 /** What each district renderer module exports. */

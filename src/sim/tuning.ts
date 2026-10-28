@@ -575,6 +575,38 @@ function validateTraffic(raw: unknown): TrafficParams {
 /** Ambient traffic numbers (drivingParams.json `traffic`), validated at startup. */
 export const TRAFFIC: TrafficParams = validateTraffic((params as Record<string, unknown>).traffic);
 
+// ---------------------------------------------------------------------------
+// The cable car (src/sim/cableCar.ts): its body and how it moves on the cable.
+// ---------------------------------------------------------------------------
+
+export interface CableCarParams {
+  /** kg */
+  mass: number;
+  /** m */
+  halfLength: number;
+  /** m */
+  halfWidth: number;
+  /** Cable speed (m/s). */
+  speed: number;
+  /** Gripping and letting go (m/s^2). */
+  accel: number;
+  /** Yaw inertia scale of its body in contact (as traffic's). */
+  yawInertiaScale: number;
+}
+
+const CABLE_CAR_KEYS: readonly (keyof CableCarParams)[] = ['mass', 'halfLength', 'halfWidth', 'speed', 'accel', 'yawInertiaScale'];
+
+/** Type and key check of the `cableCar` block: unknown or missing keys and non-numbers throw. */
+function validateCableCar(raw: unknown): CableCarParams {
+  if (!isObj(raw)) throw new Error('drivingParams.json: "cableCar" must be an object');
+  for (const k of Object.keys(raw)) if (!k.startsWith('_') && !(CABLE_CAR_KEYS as readonly string[]).includes(k)) throw new Error(`drivingParams.json: unknown key "cableCar.${k}"`);
+  for (const k of CABLE_CAR_KEYS) if (typeof raw[k] !== 'number') throw new Error(`drivingParams.json: "cableCar.${k}" must be a number`);
+  return raw as unknown as CableCarParams;
+}
+
+/** The cable car's numbers (drivingParams.json `cableCar`), validated at startup. */
+export const CABLE_CAR_BODY: CableCarParams = validateCableCar((params as Record<string, unknown>).cableCar);
+
 export function setByPath(obj: unknown, path: string, value: number | string): void {
   const keys = path.split('.');
   let o = obj as Record<string, unknown>;

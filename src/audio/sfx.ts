@@ -237,6 +237,7 @@ export class Sfx {
   prop(kind: PropKind, speed: number, pos: SfxPos, key = 'prop'): void {
     const base: Record<PropKind, number> = {
       streetlight: 0.9,
+      utilityPole: 1,
       trafficLight: 0.85,
       garbageCan: 0.65,
       bench: 0.75,

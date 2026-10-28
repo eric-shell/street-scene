@@ -84,6 +84,8 @@ const FORMS: Partial<Record<Area['kind'], readonly string[]>> = {
   roundabout: ['{} Circle', '{} Circus', '{} Rotary'],
   overpass: ['{} Viaduct', '{} Overpass', '{} Flyover'],
   roadworks: ['Works on {} St', 'Works on {} Ave', '{} Street dig'],
+  // The San Francisco cable car's line, named the way the city's are (Powell, Hyde, California): for a stem.
+  cableCar: ['{} Line'],
 };
 const VARIANT_FORMS: Record<string, readonly string[]> = {
   'waterfront:marina': ['{} Marina', '{} Yacht Basin', '{} Boat Harbor'],

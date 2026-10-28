@@ -31,6 +31,11 @@
  * copies. Tall far-visible kinds (lamp and signal poles, bus stops) cut where
  * the fog closes, the rest at the quality's detailDistance.
  *
+ * Power poles (city/props.ts 'utilityPole', the la streets) are poles like the streetlights: a wooden shaft
+ * with its crossarm and, on every fourth, a transformer drum; struck, they snap at the base, leave a stump (tinted
+ * timber) and throw a burst of sparks off the crossarm, and the wires hung between them (utilityWires.ts, one
+ * merged line mesh built here) drop at that end.
+ *
  * Streetlights come in three post designs (cobra, historic, modern; lampStyle.ts picks one and a lamp colour per
  * neighbourhood). Each design is its own set of part meshes with its own cell runs, so the culling and the break
  * handling treat them like any other kind; the lens takes the lamp's colour as its instance colour.
@@ -50,7 +55,8 @@ import { shatterFurniture } from './streetFurniture';
 import { buildHydrantSpray } from './hydrantSpray';
 import { LAMP_TONES, planLamps, toneColor } from './lampStyle';
 import { SIGNAL, type EmitterClass } from './lightFx';
-import { STUMP_H, TRAFFIC_POLE_H, TRAFFIC_ARM_Y, STREETLIGHT_POLE_H, STREETLIGHT_ARM, PARK_LAMP_H, PARK_LANTERN_Y, LAMP_DESIGNS, LAMP_DIMS, type LampDesign, col, streetlightGeo, stumpGeo, trafficPoleGeo, trafficArmGeo, trafficHeadGeo, trafficLensGeo, canGeo, benchGeo, busStopGeo, adTexture, PARTS, PART_KINDS, isFurniture, STALL } from './propGeometry';
+import { buildUtilityWires } from './utilityWires';
+import { UTILITY_POLE, utilityPoleGeo, utilityTransformerGeo, STUMP_H, TRAFFIC_POLE_H, TRAFFIC_ARM_Y, STREETLIGHT_POLE_H, STREETLIGHT_ARM, PARK_LAMP_H, PARK_LANTERN_Y, LAMP_DESIGNS, LAMP_DIMS, type LampDesign, col, streetlightGeo, stumpGeo, trafficPoleGeo, trafficArmGeo, trafficHeadGeo, trafficLensGeo, canGeo, benchGeo, busStopGeo, adTexture, PARTS, PART_KINDS, isFurniture, STALL } from './propGeometry';
 import { HEIGHT_FOG_GLSL, HEIGHT_FOG_UNIFORMS } from '../heightFog';
 
 export { STREETLIGHT_POLE_H, STREETLIGHT_ARM, PARK_LAMP_H, PARK_LANTERN_Y };
@@ -97,6 +103,7 @@ export const PROP_CULL: Partial<Record<PropKind, PropCullClass>> = {
   trafficLight: 'fog',
   busStop: 'fog',
   parkLamp: 'fog',
+  utilityPole: 'fog',
 };
 
 /** The lattice and hysteresis the props pick their cells with (cityChunks.ts VIEW_LATTICE, shared with the light streaks). */
@@ -180,6 +187,9 @@ type SpawnFn = (
   life?: number,
   sparky?: boolean,
 ) => void;
+/** Stump tints per slot: the steel poles' as built, and a power pole's (the shared stump's dark steel lifted to weathered timber). */
+const STEEL_STUMP = new THREE.Color(1, 1, 1);
+const TIMBER_STUMP = new THREE.Color(2.3, 1.55, 0.95);
 const CAN_TINTS = [0x2f6a46, 0x2f6a46, 0x5a6068, 0x34507a, 0x7a3a2a].map((c) => new THREE.Color(c));
 const AD_TINTS = [0xff3df2, 0x19e6ff, 0xffb020, 0x7cff6a, 0xffffff, 0xff4060].map((c) => new THREE.Color(c).multiplyScalar(1.5));
 
@@ -288,6 +298,8 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
   const cans = byKind('garbageCan');
   const benches = byKind('bench');
   const stops = byKind('busStop');
+  const utility = byKind('utilityPole');
+  const drums = byKind('utilityPole', 'utilityPole:transformer', (p) => p.transformer === true);
   // Light order, not draw order: the park lamps' meshes draw their own sorted list.
   const lanterns = parkLamps(world);
   // Light index of every lamp prop (-1 for the rest): streetlights by `light`, park lamps after them.
@@ -365,11 +377,21 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
     meshes[lens].geometry.setAttribute('aOffset', new THREE.InstancedBufferAttribute(lensOffsets, 1));
   }
 
+  // Power poles, and the transformer drums on every fourth (a part of its pole: it goes when the pole does).
+  if (utility.length) {
+    const m = addMesh('utilityPoles', utilityPoleGeo(q), matteMat, utility.length, 'utilityPole');
+    utility.forEach((p, i) => place(m, i, p, p.x, p.y, p.z, p.yaw));
+    const d = addMesh('utilityTransformers', utilityTransformerGeo(q), solidMat, drums.length, 'utilityPole', 1, 'utilityPole:transformer');
+    drums.forEach((p, i) => place(d, i, p, p.x, p.y, p.z, p.yaw));
+  }
+
   // Stumps left behind by broken poles: capacity for every pole, but only the broken ones are drawn (count grows
   // with each break; a repair swaps the last stump into the freed slot). Never frustum culled: its bounds would
   // be computed over an empty or changing set.
-  const poles = [...lights, ...traffic, ...lanterns];
+  const poles = [...lights, ...traffic, ...lanterns, ...utility];
   const stump = addMesh('propStumps', stumpGeo(q), solidMat, poles.length, null);
+  // Per slot tint: steel stumps as built, a power pole's lifted to timber (the slots move, so the tint moves with them).
+  for (let i = 0; i < poles.length; i++) meshes[stump].setColorAt(i, STEEL_STUMP);
   poles.forEach((p, i) => (poleOf[p.id] = i));
   meshes[stump].count = 0;
   meshes[stump].visible = false;
@@ -580,6 +602,13 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
     mat4.toArray(stumpBase, i * 16);
   });
 
+  // The wires between the power poles: one merged line mesh for the city.
+  const wires = buildUtilityWires(props, q);
+  if (wires) {
+    group.add(wires.lines);
+    disposables.push(wires);
+  }
+
   const debris = new Debris(world.heightAt);
   const clutterYaw = (p: Prop) => p.yaw + (PARTS[p.kind]?.spin ? hash01(p.id * 7) * 6.28 : 0);
   group.add(debris.group);
@@ -600,6 +629,7 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
       if (broken && slotOf[p.id] < 0) {
         const slot = m.count++;
         arr.set(stumpBase.subarray(pole * 16, pole * 16 + 16), slot * 16);
+        m.setColorAt(slot, p.kind === 'utilityPole' ? TIMBER_STUMP : STEEL_STUMP);
         slotOf[p.id] = slot;
         idOf[slot] = p.id;
       } else if (!broken && slotOf[p.id] >= 0) {
@@ -607,6 +637,7 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
         const last = --m.count;
         if (slot !== last) {
           arr.copyWithin(slot * 16, last * 16, last * 16 + 16);
+          m.setColorAt(slot, props[idOf[last]].kind === 'utilityPole' ? TIMBER_STUMP : STEEL_STUMP);
           idOf[slot] = idOf[last];
           slotOf[idOf[slot]] = slot;
         }
@@ -614,7 +645,9 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
       }
       m.visible = m.count > 0;
       m.instanceMatrix.needsUpdate = true;
+      if (m.instanceColor) m.instanceColor.needsUpdate = true;
     }
+    if (p.kind === 'utilityPole') wires?.setBroken(p.id, broken);
     if (lightOf[p.id] >= 0) opts.onLamp?.(lightOf[p.id], !broken);
     opts.onBroken?.(p.id, broken);
   };
@@ -675,6 +708,32 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
         sparky,
         bounce: type === D_GLASS ? 0.12 : 0.25,
       });
+
+    if (p.kind === 'utilityPole') {
+      // The shaft snaps at its base and falls along the hit; the crossarm and any drum go with it, and the lines arc.
+      const U = UTILITY_POLE;
+      const len = U.h - STUMP_H;
+      const oy = p.y + STUMP_H + len / 2;
+      const vx = dx * speed * 0.16;
+      const vz = dz * speed * 0.16;
+      const vy = 0.4 + speed * 0.03;
+      const w = 0.22 + speed * 0.025;
+      const wood = col(0x5b4532);
+      debris.spawn({ type: D_CYL, x: p.x, y: oy, z: p.z, yaw: p.yaw, hx: 0.14, hy: len / 2, hz: 0.14, vx, vy, vz, wx: dz * w, wy: rnd(-0.3, 0.3), wz: -dx * w, color: wood, life: rnd(6, 7) });
+      const fx = Math.sin(p.yaw);
+      const fz = Math.cos(p.yaw);
+      const armMid = (U.armZ[0] + U.armZ[1]) / 2;
+      const ax = p.x + fx * armMid;
+      const az = p.z + fz * armMid;
+      debris.spawn({ type: D_BOX, x: ax, y: p.y + U.armY, z: az, yaw: p.yaw, hx: 0.06, hy: 0.06, hz: (U.armZ[1] - U.armZ[0]) / 2, vx: vx * 1.6, vy, vz: vz * 1.6, wx: rnd(-1.5, 1.5), wy: rnd(-1.5, 1.5), wz: rnd(-1.5, 1.5), color: col(0x4a3a2a), life: rnd(5.5, 6.5) });
+      if (p.transformer)
+        debris.spawn({ type: D_CYL, x: p.x + fx * U.drumZ, y: p.y + U.drumY, z: p.z + fz * U.drumZ, yaw: p.yaw, hx: U.drumR, hy: U.drumH / 2, hz: U.drumR, vx: vx * 1.3, vy, vz: vz * 1.3, wx: rnd(-1, 1), wy: rnd(-1, 1), wz: rnd(-1, 1), color: col(0x7c838c), life: rnd(5.5, 6.5), sparky: true });
+      // The lines short as they part: a shower of sparks off every insulator, a bigger one off a drum.
+      for (const z of U.wireZ) debris.burst(p.x + fx * z, p.y + U.armY + U.wireLift, p.z + fz * z, dx, dz, 5 + speed * 0.15, 18);
+      if (p.transformer) debris.burst(p.x + fx * U.drumZ, p.y + U.drumY, p.z + fz * U.drumZ, dx, dz, 7, 30);
+      debris.burst(p.x, p.y + 0.5, p.z, dx, dz, speed * 0.3 + 2, 10);
+      return;
+    }
 
     if (p.kind === 'streetlight' || p.kind === 'trafficLight' || p.kind === 'parkLamp') {
       const isLamp = p.kind === 'streetlight';
