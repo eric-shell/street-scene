@@ -25,6 +25,7 @@ import { makeRadialGlow } from '../textures/textures';
 import { CITY } from '../../city/config';
 import { routeSample } from '../../city/route';
 import type { DistrictRenderer, DistrictKit } from './kit';
+import { buildCranes } from './alleyCrane';
 import { SHORTCUT_BULBS, col, cylinder, groundVertex, orientedBox } from './kit';
 
 /** String lights: one string every STRING_STEP m along a raceway alley, a bulb every BULB_STEP m, sagging SAG m. */
@@ -381,6 +382,7 @@ export const alleyRenderer: DistrictRenderer = {
   build(kit, areas) {
     const g = kit.world.graph;
     const pools: Pool[] = [];
+    const craneSites: { points: { x: number; z: number }[]; sIn: number; sOut: number }[] = [];
     for (const a of areas) {
       if (a.kind === 'alley') {
         for (const eid of a.edges) {
@@ -394,6 +396,7 @@ export const alleyRenderer: DistrictRenderer = {
       // Route shortcuts: strung with lights all the way through, leg by leg round the bends.
       const sc = kit.world.route.shortcuts.find((x) => a.edges.includes(x.edges[0]));
       if (sc) {
+        craneSites.push(sc);
         const e = g.edges[sc.edges[0]];
         const half = e.width / 2 + e.sidewalk - 0.1;
         const pts = sc.points;
@@ -480,5 +483,6 @@ export const alleyRenderer: DistrictRenderer = {
       }
     }
     if (pools.length) lightPools(kit, pools);
+    buildCranes(kit, craneSites);
   },
 };

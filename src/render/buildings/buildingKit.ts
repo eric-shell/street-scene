@@ -8,6 +8,7 @@
  * neon rings, cornices, the facade walls) and `Out`, the set of merged
  * builders one building appends into. Render only; no building logic here.
  */
+import type { RoofLife } from './roofLife';
 import * as THREE from 'three';
 import { Vec2 } from '../../sim/math';
 import { Rng } from '../../sim/prng';
@@ -269,6 +270,8 @@ export interface Out {
   counts: BuildingCounts;
   lights: { x: number; y: number; z: number; phase: number; steady: number }[];
   podium: PodiumOutput;
+  /** Which roofs carry a helipad or a party, and the sprites they raise (roofLife.ts). */
+  life: RoofLife;
 }
 
 /**
