@@ -28,6 +28,7 @@ import { unmaskVehicle } from '../render/vehicleMask';
 import { applyHeightFog } from '../render/heightFog';
 import { LightTrails } from '../render/car/lightTrails';
 import { Sparks } from '../render/car/sparks';
+import { GlassShards } from '../render/street/glassShards';
 import { ExhaustFx } from '../render/car/exhaustFx';
 import { TireFx } from '../render/car/tireFx';
 import { Litter } from '../render/car/litter';
@@ -68,6 +69,7 @@ import { SessionAudio } from './session/audio';
 import { ExposureAdapt } from '../render/exposure';
 import { type Snap, snap, lerpSnap } from './session/snap';
 import { emitSparks, sparkBurst, crackRail, spitRailSparks } from './session/sparks';
+import { breakGlass } from './session/glass';
 import { createHudCard, helpSections, raceHudData, trafficDotCars } from './session/hud';
 import { REPLAY_CAMS, VIEW_KEYS, isFollowCam, bindOrbitDrag, TvCamera, type ReplayCamMode } from './session/camera';
 
@@ -236,6 +238,8 @@ export class RaceSession {
   private trails: LightTrails;
   /** Underbody and wall sparks for every car near the camera (render/car/sparks.ts). */
   private sparks: Sparks;
+  /** Shards of shop glass a car breaks (render/street/glassShards.ts, game/session/glass.ts); empty on Low. */
+  private glassShards: GlassShards;
   /** Upshift, overrun and nitrous flames at the tailpipes and the heat haze behind them (render/car/exhaustFx.ts). */
   private exhaust: ExhaustFx;
   /** Each car's redline (rpm), for the haze's engine load. */
@@ -340,6 +344,8 @@ export class RaceSession {
     this.unsub.push(() => window.removeEventListener('keydown', onTab));
     this.sparks = new Sparks(settings.quality);
     this.night.scene.add(this.sparks.mesh);
+    this.glassShards = new GlassShards(settings.quality);
+    this.night.scene.add(this.glassShards.mesh);
     this.tireFx = new TireFx(settings.quality, ROAD_Y);
     this.tireFx.meshes.forEach((m) => this.night.scene.add(m));
     this.tireFx.setWet(this.night.weather.def.wet, this.night.lampSprayTone);
@@ -844,6 +850,7 @@ export class RaceSession {
       this.rumble?.event(e);
       if (e.type === 'prop' && e.value !== undefined) this.brokenIds.push(e.value);
       if (e.type === 'wall') sparkBurst(this.sparks, this.race, this.camPos, this.time, e.car, e.value ?? 0);
+      if (e.type === 'wall') breakGlass(this.night.city.glass, this.glassShards, this.audio.sfx, r, this.prev, this.time, e, e.car === 0);
       if (e.type === 'wall' && e.kind === 'rail') crackRail(this.sparks, this.night, this.race, this.camPos, this.time, e.car, e.value ?? 0);
       // Rivals crossing the finish get a smaller cheer.
       if (e.type === 'finish' && e.car !== 0 && !this.openWorld) this.night.crowds.cheer('finish', 0.8);
@@ -917,6 +924,7 @@ export class RaceSession {
       const px = this.gr.renderer.domElement.clientHeight || window.innerHeight;
       this.sparks.update(this.time, (2 * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, px));
       this.pixel = (2 * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, px);
+      this.glassShards.update(this.time);
       this.tireFx.update(this.time);
       this.litter.update(this.time);
     }
@@ -1120,6 +1128,7 @@ export class RaceSession {
     this.ghostView?.dispose();
     this.trails.dispose();
     this.sparks.dispose();
+    this.glassShards.dispose();
     this.exhaust.dispose();
     this.tireFx.dispose();
     this.litter.dispose();

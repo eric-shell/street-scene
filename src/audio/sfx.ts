@@ -244,6 +244,12 @@ export class Sfx {
     this.play('thump', level, (joint ? 1.25 : 1) * rnd(0.94, 1.06) * (1.05 - 0.15 * k), pos, key, 0.05);
   }
 
+  /** A shop window broken by a car hitting it at `speed` m/s: a bright shatter and the tinkle of the shards, heard where the glass is. */
+  glassBreak(speed: number, pos: SfxPos, key = 'glass'): void {
+    const k = clamp01((speed - 4) / 18);
+    this.play('glass', 0.55 + 0.4 * k, rnd(0.94, 1.06) * (1.04 - 0.1 * k), pos, key, 0.12);
+  }
+
   /** A prop broken at the given car speed (m/s). */
   prop(kind: PropKind, speed: number, pos: SfxPos, key = 'prop'): void {
     const base: Record<PropKind, number> = {

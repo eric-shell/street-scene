@@ -21,6 +21,7 @@ import { STREETLIGHT_ARM, STREETLIGHT_POLE_H } from './props';
 import { createPodiumOutput, makeFacadeKitTextures } from '../buildings/facadeKit';
 import { FACE_PX, makeInteriorAtlas } from '../buildings/interiorAtlas';
 import { createPodiumMaterial } from '../buildings/podiumMaterial';
+import { GlassBays } from './glassBreak';
 import type { ShopFront } from '../people/idleSpots';
 import { buildBuildings, Detail } from '../buildings/buildings';
 import { neonMood } from '../textures/cityMood';
@@ -55,6 +56,8 @@ export interface CityMeshes {
   finishLine: FinishLines;
   /** Lit shop fronts from the podiums, for the idle people (people/idleSpots.ts). */
   shopFronts: readonly ShopFront[];
+  /** Break state of the podiums' glass bays (every tier; only Medium and High draw the broken look): find the bay a car hit and break it. */
+  glass: GlassBays | null;
   /** Animated building windows and aviation lights (s). */
   update(time: number): void;
   dispose(): void;
@@ -722,15 +725,18 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
   const buildings = buildBuildings(world, podium, { detail });
   disposables.push(buildings);
   for (const m of buildings.meshes) group.add(m);
+  let glassBays: GlassBays | null = null;
   {
     // Medium and High show a room behind the shop glass (interior mapping: interiorAtlas.ts, podiumMaterial.ts); Low is the flat bays.
     const roomed = detail !== 'low';
     const kit = makeFacadeKitTextures(world.seed, roomed);
     if (kit.glass) track(kit.glass);
     const rooms = roomed ? { atlas: track(makeInteriorAtlas(world.seed, detail)), px: FACE_PX[detail] } : null;
-    const podiumMat = track(createPodiumMaterial({ ...kit, map: track(kit.map), emissive: track(kit.emissive) }, rooms));
+    glassBays = track(new GlassBays(podium.glassBays));
+    const podiumMat = track(createPodiumMaterial({ ...kit, map: track(kit.map), emissive: track(kit.emissive) }, rooms, glassBays));
     const wallsGeo = track(podium.walls.build());
     if (podium.room) wallsGeo.setAttribute('aRoom', new THREE.Float32BufferAttribute(podium.room, 4));
+    if (podium.bayId) wallsGeo.setAttribute('aBay', new THREE.Float32BufferAttribute(podium.bayId, 1));
     const pm = new THREE.Mesh(wallsGeo, podiumMat);
     pm.name = 'podiums';
     group.add(pm);
@@ -860,6 +866,7 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     lampPositions,
     signLights,
     shopFronts: podium.shopFronts,
+    glass: glassBays,
     barrierLampMaterial,
     finishLine,
     update(time) {

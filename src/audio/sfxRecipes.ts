@@ -14,7 +14,7 @@ export type WallHitKind = 'wall' | 'barrier' | 'rail';
  * borrow the nearest material; a wooden power pole splinters like a crate).
  */
 type PropSound = Exclude<PropKind, 'newsBox' | 'parkLamp' | 'bollard' | ConstructionPropKind | MarketPropKind | DockPropKind | BeachPropKind | 'mailbox' | 'parkingMeter' | 'phoneBooth' | 'vendingMachine' | 'utilityPole'>;
-export type SfxBank = 'crash' | WallHitKind | PropSound | 'firework' | 'thump';
+export type SfxBank = 'crash' | WallHitKind | PropSound | 'firework' | 'thump' | 'glass';
 type Bank = SfxBank;
 export const PROP_SOUND: Record<PropKind, PropSound> = {
   streetlight: 'streetlight',
@@ -450,6 +450,19 @@ const RECIPES: Record<Bank, { seconds: number; make(t: Tape): void }> = {
         [rnd(150, 180), 0.12, 0.05],
         [rnd(300, 360), 0.07, 0.03],
       ]);
+    },
+  },
+  // A shop window going: a sharp crack and a bright burst of noise as the pane lets go, a small low knock of the frame,
+  // then the long tinkle of shards raining onto the pavement.
+  glass: {
+    seconds: 2.4,
+    make(t) {
+      t.thud(0, rnd(150, 190), 70, 0.03, 0.3, 0.05);
+      t.noise(0, 0.35, 0.9, 0.07, [['hp', 3200, 0.7]]);
+      t.noise(0, 0.15, 0.55, 0.025, [['bp', rnd(6000, 7500), 1.1]]);
+      t.glass(0, 1.9, 150, 0.9);
+      t.glass(0.12, 1.5, 70, 0.55);
+      t.grains(0.04, 1.2, 30, 0.15, 3500, 9000, 2.5, 0.004);
     },
   },
   // Trash bags: a soft thump, plastic rustle and a bottle or two.
