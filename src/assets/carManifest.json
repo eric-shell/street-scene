@@ -187,7 +187,9 @@
         "voice": {
           "headers": "equal",
           "pipes": 1,
-          "muffler": "quiet"
+          "muffler": "quiet",
+          "diverter": "recirculating",
+          "whoosh": 1
         }
       },
       "exhaustTips": [

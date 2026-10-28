@@ -20,7 +20,7 @@
  * Render side only; reads interpolated car state.
  */
 import type { EngineSpec } from '../shared/carSpec';
-import { CHAIN, ENGINE_PROCESSOR, SYNTH_PARAMS, buildProgram, firingHz, presenceHz, renderImpulse, type EngineMessage, type EngineProgram, type SynthParams } from './engineSynth';
+import { CHAIN, ENGINE_PROCESSOR, SYNTH_PARAMS, TURBO, buildProgram, firingHz, presenceHz, renderImpulse, type EngineMessage, type EngineProgram, type SynthParams } from './engineSynth';
 import workletUrl from './engineWorklet?worker&url';
 
 export interface EngineInput {
@@ -277,6 +277,12 @@ export class EngineVoice {
   private turbo: OscillatorNode | null = null;
   private gTurbo: GainNode | null = null;
   private bov: GainNode | null = null;
+  /** The lift sound's band (high pass for a vent, band pass for a recirculating valve) and the induction whoosh's band and level (null without the car's `whoosh`). */
+  private bovFilter: BiquadFilterNode | null = null;
+  private whoosh: { filter: BiquadFilterNode; gain: GainNode; level: number } | null = null;
+  private readonly recirculating: boolean;
+  /** The turbo's noise sources, which loop until stopped. */
+  private readonly turboSources: AudioScheduledSourceNode[] = [];
   private boost = 0;
   /** Supercharger whine: one oscillator per lobe harmonic, the air rush filter, the shared level, and every source to stop (null when not supercharged). */
   private blower: { partials: OscillatorNode[]; rush: BiquadFilterNode; gain: GainNode; sources: AudioScheduledSourceNode[]; hzPerRpm: number; level: number } | null = null;
@@ -300,6 +306,7 @@ export class EngineVoice {
     const h = audioHub()!;
     const ctx = (this.ctx = h.ctx);
     this.turbocharged = spec.aspiration === 'turbo';
+    this.recirculating = spec.voice?.diverter === 'recirculating';
     this.program = buildProgram(spec, { seed: 7919 * ++voiceCount, lite: opts.lite });
     this.out = ctx.createGain();
     this.out.gain.value = 0;
@@ -347,18 +354,37 @@ export class EngineVoice {
       this.gTurbo.gain.value = 0;
       this.turbo.connect(this.gTurbo).connect(this.out);
       this.turbo.start();
-      // Blow-off valve: a burst of high passed noise when lifting at boost.
+      // The lift sound: a vent's highpassed noise chuff, or a recirculating valve's softer band passed pssh.
       const bovSrc = ctx.createBufferSource();
       bovSrc.buffer = h.noise;
       bovSrc.loop = true;
       bovSrc.playbackRate.value = 1.3;
-      const hp = ctx.createBiquadFilter();
-      hp.type = 'highpass';
-      hp.frequency.value = 1800;
+      const filter = (this.bovFilter = ctx.createBiquadFilter());
+      filter.type = this.recirculating ? 'bandpass' : 'highpass';
+      filter.frequency.value = this.recirculating ? TURBO.recirculating.from : TURBO.vent.highpass;
+      if (this.recirculating) filter.Q.value = TURBO.recirculating.q;
       this.bov = ctx.createGain();
       this.bov.gain.value = 0;
-      bovSrc.connect(hp).connect(this.bov).connect(this.out);
+      bovSrc.connect(filter).connect(this.bov).connect(this.out);
       bovSrc.start();
+      this.turboSources.push(bovSrc);
+      // Induction whoosh: noise through a band that climbs with boost, silent until the car asks for it.
+      const level = spec.voice?.whoosh ?? 0;
+      if (level > 0 && !opts.lite) {
+        const src = ctx.createBufferSource();
+        src.buffer = h.noise;
+        src.loop = true;
+        const band = ctx.createBiquadFilter();
+        band.type = 'bandpass';
+        band.frequency.value = TURBO.whoosh.from;
+        band.Q.value = TURBO.whoosh.q;
+        const gain = ctx.createGain();
+        gain.gain.value = 0;
+        src.connect(band).connect(gain).connect(this.out);
+        src.start(0, Math.random());
+        this.turboSources.push(src);
+        this.whoosh = { filter: band, gain, level: level * TURBO.whoosh.level };
+      }
     }
     if (spec.aspiration === 'supercharged') this.blower = this.buildBlower(spec, h.noise, opts.lite === true);
     void h.worklet.then((ok) => this.attach(ok));
@@ -451,18 +477,38 @@ export class EngineVoice {
     this.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, e.pan)), t, 0.05);
     this.overrun(load, r, e.shifting === true, limiter, e.cut === true, Math.min(0.1, e.dt ?? 1 / 60));
 
-    if (this.turbo && this.gTurbo && this.bov) {
+    if (this.turbo && this.gTurbo && this.bov && this.bovFilter) {
       // Boost builds with load and rpm and spools up with lag.
+      const dt = Math.min(0.1, e.dt ?? 1 / 60);
       const target = load * Math.max(0, (r - 0.25) / 0.75);
-      this.boost += (target - this.boost) * (target > this.boost ? 0.04 : 0.12);
-      this.turbo.frequency.setTargetAtTime(1600 + this.boost * 5200, t, 0.08);
-      this.gTurbo.gain.setTargetAtTime(this.boost * 0.05 * e.proximity, t, 0.08);
+      this.boost += (target - this.boost) * (1 - Math.exp(-dt / (target > this.boost ? TURBO.spool : TURBO.fall)));
+      const W = TURBO.whistle;
+      this.turbo.frequency.setTargetAtTime(W.hz + this.boost * W.span, t, 0.08);
+      this.gTurbo.gain.setTargetAtTime(this.boost * W.gain * e.proximity, t, 0.08);
+      if (this.whoosh) {
+        const H = TURBO.whoosh;
+        this.whoosh.filter.frequency.setTargetAtTime(H.from + this.boost * (H.to - H.from), t, 0.08);
+        this.whoosh.gain.gain.setTargetAtTime(this.boost ** H.power * this.whoosh.level * e.proximity, t, 0.08);
+      }
       if (this.lastThrottle > 0.6 && load < 0.25 && this.boost > 0.35) {
         const g = this.bov.gain;
         g.cancelScheduledValues(t);
-        g.setValueAtTime(0.22 * this.boost * e.proximity, t);
-        g.exponentialRampToValueAtTime(0.0001, t + 0.38);
-        this.boost *= 0.3;
+        if (this.recirculating) {
+          // Soft attack, the band sweeping down as the charge air bleeds back; the turbine keeps spinning.
+          const D = TURBO.recirculating;
+          g.setValueAtTime(0.0001, t);
+          g.exponentialRampToValueAtTime(Math.max(0.0001, D.gain * this.boost * e.proximity), t + D.attack);
+          g.exponentialRampToValueAtTime(0.0001, t + D.attack + D.decay);
+          const f = this.bovFilter.frequency;
+          f.cancelScheduledValues(t);
+          f.setValueAtTime(D.from, t);
+          f.exponentialRampToValueAtTime(D.to, t + D.attack + D.decay);
+          this.boost *= D.spoolKeep;
+        } else {
+          g.setValueAtTime(TURBO.vent.gain * this.boost * e.proximity, t);
+          g.exponentialRampToValueAtTime(0.0001, t + TURBO.vent.decay);
+          this.boost *= TURBO.vent.spoolKeep;
+        }
       }
     }
     if (this.blower) {
@@ -555,6 +601,7 @@ export class EngineVoice {
     const t = this.ctx.currentTime;
     this.out.gain.setTargetAtTime(0, t, 0.03);
     this.turbo?.stop(t + 0.2);
+    for (const src of this.turboSources) src.stop(t + 0.2);
     for (const src of this.blower?.sources ?? []) src.stop(t + 0.2);
     const node = this.node;
     setTimeout(() => {

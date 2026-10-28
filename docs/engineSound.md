@@ -47,8 +47,10 @@ The manifest's `engine` block gained an optional `voice` (vocabulary in `src/sha
 | `muffler` | `quiet`, `sport`, `straight` | System length, band limit, pops per lift, and the impulse response (long low modes vs short bright ring). |
 | `intake` | `plenum`, `itb` | Throttle bodies: a loud resonant honk that follows the pedal. |
 | `crank` | `cross`, `flat` | V8 only: cross-plane banks fire 180-270-180-90 (burble), flat-plane 180-180-180-180 (scream). |
+| `diverter` | `vent`, `recirculating` | Turbo only, the sound of a lift at boost. `vent` (default): an atmospheric blow-off valve, a sharp highpassed chuff that kills the spool. `recirculating`: a stock VAG diverter valve, a softer band passed "pssh" (6 dB lighter, 20 ms attack, the band sweeping 4.2 to 1.8 kHz as the charge air bleeds back) with the turbine keeping most of its speed, so the whistle falls away instead of dropping. |
+| `whoosh` | 0 to 2 | Turbo only, the induction whoosh: noise through a band that climbs from 0.7 to 3.0 kHz with boost, growing as boost^1.5, at 0.12 of the reference level times this (0, the default, is none). 1 is the K24 on a stock Audi S2. Not on rivals' `lite` voices. |
 
-Defaults by layout are `LAYOUT_VOICE`; turbo engines default to the quiet silencer, the rest to sport.
+Defaults by layout are `LAYOUT_VOICE`; turbo engines default to the quiet silencer, the rest to sport. A layout can also carry a runner table (`runners`: extra primary length per cylinder position, `levels`: a pulse level per position), for a manifold whose runners the ramp and `stagger` cannot express; only the inline five has one (`FIVE_LOG`). The turbo voice's numbers (whistle, whoosh, vent and recirculating valves, the spool constants) are the `TURBO` table in `engineSynth.ts`, shared by the nodes and the tests' offline renders.
 
 Per-car donor data (engine, intake, exhaust, drivetrain, sound character and the voice fields to use): [carEngines.md](carEngines.md).
 
@@ -71,9 +73,27 @@ Per-car donor data (engine, intake, exhaust, drivetrain, sound character and the
 ### Brandt Kombi: Audi 2.2 20V turbo inline five (S2 Avant donor)
 
 - Reference: the 2,226 cc 20 valve turbocharged inline five of the 1992-95 Audi S2 (engine codes 3B, then ABY from October 1992: 230 PS / 169 kW at 5,900 rpm, 350 N·m from 1,950 to 3,000 rpm), one KKK K24 turbo on a short log manifold, firing order 1-2-4-5-3, quattro with a Torsen centre differential and the 01E six speed. Sources: Wikipedia's Audi S2 (the 2,226 cc five, codes 3B and ABY, 230 PS and 350 N·m with 380 N·m on overboost, 246 km/h) and a catalogue listing of the ABY at 230 PS / 5,900 rpm and 350 N·m / 1,950 rpm; the 01E ratios are the RS2's (CRB) 3.500 / 1.889 / 1.320 / 1.034 / 0.857 / 0.711 on the 4.111 final drive, the S2's CGR box being listed with the same (forum sources disagree on its fifth and sixth).
-- The sound: even 144° firing, but the five's runners are not alike (the short, position dependent log manifold feeding the turbine gives each cylinder its own path), so the pulses reach the pipe with a slow uneven pattern: the warble of an Audi five, rather than a header spread. The headers stay `equal`. One turbine smears the pulses, and the stock S2 has one exhaust system ending in twin tips, so the voice is one pipe (`pipes: 1`, two tips rendered from the one train) behind the quiet (turbo default) silencer.
-- Spec: `I5`, `turbo`, `voice: { headers: 'equal', pipes: 1, muffler: 'quiet' }`. The `I5` program (`SCHEDULE.I5` is 1-2-4-5-3 at 0.2 cycle steps, `LAYOUT_VOICE.I5` adds `rough` and the runner `stagger`) needed no change.
-- Still to add: tune `stagger` against a recording of an S2 or RS2, and the K24's whoosh band.
+- The sound: even 144° firing, so the base note is the 2.5 order (rpm / 60 × 2.5) and the warble is everything off it: the half orders (0.5, 1.0, 1.5, 2.0) and the sidebands at 3.5 and 4.0 that the cylinders' unequal paths to the turbine put around it. The headers stay `equal` (the log manifold is the runner table below). One turbine smears the pulses, and the stock S2 has one exhaust system ending in twin tips, so the voice is one pipe (`pipes: 1`, two tips rendered from the one train) behind the quiet (turbo default) silencer.
+- Runner data (`FIVE_LOG` in `engineSynth.ts`, a table per cylinder 1 to 5, replacing the old alternating `stagger` of 0.03 m, which was a guess). Two sources, and what they do not say:
+  - Layout: the 3B / AAN / ABY cast log manifold feeds the one turbo from the middle of the head; cylinders 2, 3 and 4 run straight into it while the runners of 1 and 5 "rise up to connect to the exhaust manifold just under the wastegate flange" (quattroworld.com forum, "OE 3B, AAN, ABY and ADU Exhaust Components: a consolidation of info", and the same thread on s2forum.com; the RS2 manifold drops those risers). No runner length is published, so the table is our estimate: extra primary over the middle runner of 0.18 m for 1 and 5, 0.045 m for 2 and 4, none for 3, on the 0.15 m turbo log base. That is 0.525 ms late at a pulse level of 0.75 for the outer pair, 0.131 ms at 0.74 for 2 and 4 (0.8 of engine-sim's level times the path loss), 1.0 for 3.
+  - Levels: AngeTheGreat's engine-sim five (`assets/engines/audi/i5.mr`, the same engine in `atg-video-1/07_audi_i5.mr`; MIT, fetched Oct 2026) fires 1-2-4-5-3 at 144° with cylinders 1-3-5 on one exhaust system at audio volume 1.0 and 2-4 on a second at 0.8, every primary 10 in (0.254 m), one impulse response, and a per cylinder piston blowby of 0.2 / 0.6 / 0.6 / 0.4 / 0.4. It has no runner lengths, so it gives the levels only (1.0 / 0.8 / 1.0 / 0.8 / 1.0, multiplied with the path loss above, so cylinder 3 is the one strong pulse of a cycle). The blowby is combustion leakage, not exhaust path, and is not used.
+- Measured (`unevenness()`: energy at the cycle harmonics off the firing grid over on it, dB; sub orders: harmonics 1 to 4 over the 2.5 order), headless at 48 kHz, full throttle except idle (900 rpm, 10 % throttle):
+
+  | | idle | 3,000 rpm | 6,000 rpm |
+  |---|---|---|---|
+  | Kombi before (stagger 0.03) | -10.4 | -7.6 | -2.1 |
+  | Kombi now | -10.7 | -7.0 | -2.0 |
+  | same engine as a turbo I6 on one pipe | -14.1 | -11.8 | -6.7 |
+  | turbo I4 | -10.4 | -11.7 | -6.8 |
+  | turbo boxer on unequal headers | -4.2 | +2.0 | +0.9 |
+  | sub orders: Kombi before / now | -18.7 / -11.6 | -15.8 / -14.4 | -13.0 / -13.6 |
+  | sub orders: turbo I6 | -18.8 | -18.6 | -15.6 |
+
+  The total did not move (the old guess was in the right range); what changed is where the energy is and why. The old alternating stagger put it on the 2.0, 3.0 and 4.5 orders and nothing on 1.0 and 1.5 above 3,000 rpm (-33 dB); the table puts it on the 0.5 to 1.5 orders (at idle the 1.5 order is -13 dB under the 2.5 order, the loudest warble line) and the 3.5 and 4.0 sidebands that grow with rpm (-14 dB at 3,000, -9 dB at 6,000: the timing error is fixed in time, so it is a larger phase at higher notes), while the 2.5 order stays the strongest line by 8 dB or more (the 4.0 order at 6,000 rpm is the closest). `tests/engineVoice.test.ts` asserts the five at least 2.5 dB over the turbo six (and the sub orders 1.5 dB over), at least 1.5 dB under the boxer, and the 2.5 order 2.2 times every other line below 4.5 orders.
+- Turbo (`diverter: 'recirculating'`, `whoosh: 1`): the K24's induction whoosh (band passed noise climbing with boost, in the 1.5 to 4.5 kHz band +3.3 dB at 6,000 rpm against the same pull without it, +0.7 dB RMS overall, runner table included) and the diverter valve's soft "pssh" on a lift (a vent's chuff is a sharp highpassed burst; the recirculating valve is a band that sweeps down, with a 20 ms attack, 6 dB lighter, the whistle falling gently). Per car: other turbo cars keep `vent` and no whoosh. The boost follower's spool and fall constants are now time constants (0.408 s and 0.13 s, the old 0.04 and 0.12 per update at 60 Hz), so 30 and 120 fps spool alike; at 60 fps nothing moved.
+- Cost: the runner table changes the program's numbers only, so the worklet is unchanged at about 7 ms of CPU per second of audio (6.8 ms vs 6.9 ms, measured). The whoosh is one more looping buffer source, band pass and gain on the main thread (native nodes, no JS per sample), three AudioParam updates a frame, plus five on a lift for the valve's sweep.
+- Levels: the program's trim moved 1.06 to 1.10 (+0.3 dB, set by the loudness model), the whoosh and the runner table add up to 0.7 dB at full boost; `e2e/audioMix.spec.ts` engine rows are unchanged (engineMid -18.3 dBFS, target -19; garageRev -17.3, streetRev -19.1).
+- Still to add: check `levels` and `runners` against a recording of an S2 or RS2 (no measured data exists yet); the K24's whistle is still the shared sine (no blade-pass harmonics); the RS2's flatter manifold would be a second table if that car is ever made.
 
 ## The plan for the rest
 
@@ -82,7 +102,7 @@ Each layout already has a schedule and a `LAYOUT_VOICE` entry so every car sound
 | Layout | Reference | What makes it | To do |
 |---|---|---|---|
 | I3 | Ford 1.0 EcoBoost, Toyota GR Yaris G16E | 240° even firing, thrummy, odd harmonics | Stronger `rough`, an intake growl band near 300 Hz |
-| I5 | Audi 2.5 TFSI (RS3), Volvo T5 | 1-2-4-5-3, 144° even; the warble is a 2.5 order from the long/short runner stagger | Tune `stagger` against a reference recording; engine-sim `assets/engines/audi/i5.mr` and `atg-video-1/07_audi_i5.mr` |
+| I5 | Audi 2.2 20v / 2.5 TFSI (RS3), Volvo T5 | 1-2-4-5-3, 144° even; the warble is the half orders and the 3.5 and 4.0 sidebands around the 2.5 order, from the runner table (`FIVE_LOG`: long risers on 1 and 5, engine-sim's 1.0 / 0.8 levels) | Done for the S2 (sources and numbers under Brandt Kombi); check against a recording, and give the TFSI and T5 their own tables (the TFSI has a different manifold) |
 | V6 even fire | Nissan VQ35, Honda J35 | Banks alternate; each bank an even three | Per bank primaries 3-into-1, `pipes: 2` default; a VQ "snarl" is intake plus a 1.2 kHz ring |
 | V6 odd fire | Buick 231 (90° V6 with a 60° crank gap) | 90-150 alternating intervals | Needs an uneven `fire` schedule (engine-sim `atg-video-2/05_odd_fire_v6.mr`); add `crank: 'odd'` to the vocabulary |
 | VR6 | VW VR6 2.8 / 3.2 (Golf R32) | One head, 15° stagger: runners alternate short and long | Tune `stagger` (0.07 m now) and a single large plenum intake |
@@ -97,7 +117,7 @@ Each layout already has a schedule and a `LAYOUT_VOICE` entry so every car sound
 
 Features that apply to every engine, roughly in order of what the ear notices:
 
-1. **Turbo and blow-off** rebuilt as a blade pass harmonic series with flutter, and a boost dependent induction whoosh; the whistle currently is one sine.
+1. **Turbo and blow-off** rebuilt as a blade pass harmonic series with flutter; the whistle currently is one sine. Done, per car (`TURBO`): the boost dependent induction whoosh (`whoosh`) and the recirculating diverter valve's soft release (`diverter`), on the Kombi only; the other turbo cars could take them with a manifest field each.
 2. **Exhaust modes** per car (a valved silencer: cruise vs sport), chosen in the garage like a part.
 3. **Space.** Rivals already pan and fall off with distance; add Doppler (pitch by closing speed), a short reflection when driving under the elevated railway or through a tunnel, and a low pass for the interior cameras (hood, bumper) against the chase camera.
 4. **Nitrous** backfire pops through the silencer when the shot ends, instead of the separate hiss only (the overrun pop path can carry it: a bang with fuel 1).

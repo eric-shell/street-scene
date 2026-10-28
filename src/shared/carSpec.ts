@@ -75,6 +75,8 @@ export const VOICE_OPTIONS = {
   crank: ['cross', 'flat'],
   /** Supercharger lobe passes per rotor turn, the whine's order: a twin screw's male rotor lobes (3 to 5), twice the lobes of one rotor on a Roots blower (4 or 6). */
   blowerLobes: [3, 4, 5, 6],
+  /** Turbo only, what a lift at boost sounds like: a venting blow-off valve's sharp, hissy chuff, or a recirculating diverter valve's soft "pssh" with the turbine still spinning (stock Audis and Volkswagens). */
+  diverter: ['vent', 'recirculating'],
 } as const;
 
 /** Numeric voice fields: [min, max]. */
@@ -85,6 +87,8 @@ export const VOICE_RANGES = {
   blowerRatio: [1, 5],
   /** Peak boost (psi): how hard the blower works at the top, so how loud its whine gets. */
   boost: [0, 35],
+  /** Turbo only: the induction whoosh, a band of rushing air that rises with boost, as a multiple of the reference level (0 none, the default; 1 the K24 on a stock Audi S2). */
+  whoosh: [0, 2],
 } as const;
 
 export interface EngineVoiceSpec {
@@ -102,6 +106,10 @@ export interface EngineVoiceSpec {
   blowerRatio?: number;
   /** Peak boost (psi, VOICE_RANGES). */
   boost?: number;
+  /** Turbo lift sound (VOICE_OPTIONS); vent when missing. */
+  diverter?: (typeof VOICE_OPTIONS.diverter)[number];
+  /** Turbo induction whoosh level (VOICE_RANGES); none when missing. */
+  whoosh?: number;
 }
 
 /** The `engine` block of a car in carManifest.json. */

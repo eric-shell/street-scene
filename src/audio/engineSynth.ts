@@ -187,8 +187,15 @@ interface LayoutVoice {
   jitter: number;
   rough: number;
   mech: number;
-  /** Extra path on every other cylinder (m): the VR6's staggered runners, an inline five's warble. */
+  /** Extra path on every other cylinder (m): the VR6's staggered runners. */
   stagger: number;
+  /**
+   * Extra primary length per cylinder position along the head (m), beyond the manifold's base, for a manifold whose
+   * runners follow no pattern the ramp and `stagger` can express (the Audi five's log: see FIVE_LOG). Replaces both.
+   */
+  runners?: readonly number[];
+  /** Pulse level per cylinder position (1 is the layout's shortest path), on top of the path loss: one cylinder group breathing harder than another. */
+  levels?: readonly number[];
   pulse: PulseShape;
   /** Intake trumpet resonance (Hz). */
   intakeHz: number;
@@ -198,11 +205,31 @@ const BASE: LayoutVoice = { pipes: 1, headers: 'equal', headerSpread: 0.5, cross
 const ROTARY: LayoutVoice = { ...BASE, edge: 1.1, air: 0.9, rough: 0.05, mech: 0.3, pulse: { rise: 0.03, decay: 0.12, dip: 0.3 }, intakeHz: 600 };
 const TWELVE: LayoutVoice = { ...BASE, pipes: 2, edge: 1.0, air: 0.65, rough: 0.04, intakeHz: 720 };
 
+/**
+ * The Audi 2.2 20v / 2.5 five's exhaust, as a runner table per cylinder position (1 to 5 along the head), the data
+ * behind the warble. Two sources, neither complete (docs/engineSound.md, Brandt Kombi):
+ *  - Layout. The 3B / AAN / ABY cast log manifold feeds one turbo from near the middle of the head: the runners of
+ *    cylinders 2, 3 and 4 run straight into it while 1 and 5 "rise up to connect just under the wastegate flange"
+ *    (quattroworld.com and s2forum.com's consolidation of the OE 3B / ABY exhaust components). So the outer pair run
+ *    long and the middle three short.
+ *  - Levels. Ange Yaghi's engine-sim five (assets/engines/audi/i5.mr, atg-video-1/07_audi_i5.mr) puts cylinders 1-3-5
+ *    on one exhaust system at audio volume 1.0 and 2-4 on a second at 0.8, with equal 10 in primaries; the firing order
+ *    1-2-4-5-3 then alternates the groups A B B A A, a once a cycle level pattern (the 0.5 and 1.0 orders) on top of
+ *    the even 2.5 order. Its per cylinder blowby (0.2 / 0.6 / 0.6 / 0.4 / 0.4) is combustion leakage, not path, so not used.
+ * The lengths are our estimate from the first source's layout: no published runner length for the 3B exists.
+ */
+const FIVE_LOG = {
+  /** Extra primary length (m) over the short middle runner, by cylinder 1..5. */
+  runners: [0.18, 0.045, 0, 0.045, 0.18],
+  /** Pulse level by cylinder 1..5: engine-sim's two exhaust systems, 1-3-5 at 1.0 and 2-4 at 0.8. */
+  levels: [1, 0.8, 1, 0.8, 1],
+} as const;
+
 /** The character each layout starts from before the car's own voice spec. */
 export const LAYOUT_VOICE: Record<EngineLayout, LayoutVoice> = {
   I3: { ...BASE, rough: 0.12, mech: 0.55 },
   I4: BASE,
-  I5: { ...BASE, rough: 0.1, stagger: 0.03, intakeHz: 560 },
+  I5: { ...BASE, rough: 0.1, ...FIVE_LOG, intakeHz: 560 },
   I6: { ...BASE, pipes: 2, edge: 1.0, air: 0.7, rough: 0.05, intakeHz: 620 },
   B4: { ...BASE, headers: 'unequal', edge: 0.8, air: 0.85, rough: 0.14, mech: 0.6 },
   B6: { ...BASE, pipes: 2, edge: 1.0, rough: 0.06, intakeHz: 650 },
@@ -234,7 +261,7 @@ function primaryLength(v: LayoutVoice & EngineVoiceSpec, turbo: boolean, bank: n
   const unequal = v.headers === 'unequal';
   const base = turbo && !unequal ? 0.15 : 0.55;
   const step = turbo && !unequal ? 0.05 : 0.015;
-  let len = base + step * slot + (slot % 2) * v.stagger;
+  let len = v.runners ? base + (v.runners[slot] ?? 0) : base + step * slot + (slot % 2) * v.stagger;
   // One bank's runners run further: the Subaru's left bank crosses under the engine to the right bank's
   // collector, the VR6's far side reaches round the narrow V.
   if (unequal && bank === 1) len += v.headerSpread;
@@ -261,14 +288,14 @@ export function buildProgram(spec: EngineSpec, opts: { seed?: number; lite?: boo
   const crossover = v.pipes === 2 ? CROSSOVER : 0;
   const primaries = firings.map(([bank, slot]) => primaryLength(v, turbo, bank, slot) + (bank % 2 === 1 ? crossover : 0));
   const shortest = Math.min(...primaries);
-  const cylinders: CylinderProgram[] = firings.map(([bank], i) => ({
+  const cylinders: CylinderProgram[] = firings.map(([bank, slot], i) => ({
     fire: i / firings.length,
     // Every pulse also crosses the exhaust system, the same for all, so only the primaries set the arrival spread.
     delay: (primaries[i] - shortest) / SOUND,
     pipe: bank % v.pipes,
     cross: v.pipes === 2 ? CROSSOVER_SHARE[v.crossover] : 0,
     // engine-sim scales a pulse by 1 / length²; a 1 m reference keeps header differences audible without the system length drowning them.
-    gain: ((shortest + 1) / (primaries[i] + 1)) ** 2,
+    gain: ((shortest + 1) / (primaries[i] + 1)) ** 2 * (v.levels?.[slot] ?? 1),
   }));
 
   // A turbine between the ports and the pipe smears every pulse and eats the top end.
@@ -707,6 +734,28 @@ export const CHAIN = {
   /** The valvetrain tick's band (Hz) and width: a tick, not a hiss. */
   bodyHz: 2200,
   bodyQ: 1.2,
+} as const;
+
+/**
+ * The turbo's voice, shared by the main thread nodes (engineAudio.ts) and the tests' offline renders so the two cannot
+ * drift apart. `boost` below is the voice's own 0..1 estimate (pedal times revs, spooled with lag), not a pressure.
+ * - whistle: one sine at the compressor's blade pass, rising with boost.
+ * - whoosh (the car's `voice.whoosh` scales `level`; absent means none): white noise through a band pass whose centre
+ *   climbs with boost, the compressor and the turbine's gas rush the K24 on an Audi S2 makes over its whistle, growing
+ *   faster than boost (`power`) so it is nothing at light load.
+ * - vent: the atmospheric blow-off valve, a sharp highpassed chuff that kills the boost (the spool is mostly lost).
+ * - recirculating: the diverter valve of a stock VAG car, a softer band passed "pssh" whose centre falls as the
+ *   charge air bleeds back to the intake, with a 20 ms attack instead of a bang, and the turbine keeps most of its speed
+ *   (`spoolKeep`) because it was never dead headed: the whistle falls away gently instead of dropping.
+ * Spool and fall are time constants (s), the old per update 0.04 and 0.12 at 60 Hz written so every frame rate matches.
+ */
+export const TURBO = {
+  whistle: { hz: 1600, span: 5200, gain: 0.05 },
+  spool: 0.408,
+  fall: 0.13,
+  whoosh: { from: 700, to: 3000, q: 0.8, level: 0.12, power: 1.5 },
+  vent: { highpass: 1800, gain: 0.22, decay: 0.38, spoolKeep: 0.3 },
+  recirculating: { from: 4200, to: 1800, q: 0.9, gain: 0.2, attack: 0.02, decay: 0.32, spoolKeep: 0.6 },
 } as const;
 
 /** The firing frequency (Hz) of a program at `rpm`: combustion events per second over every cylinder. */

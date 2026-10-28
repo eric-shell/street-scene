@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Biquad, CHAIN, LAYOUT_VOICE, buildProgram, EngineSynth, kWeighting, renderImpulse, type EngineProgram } from '../src/audio/engineSynth';
+import { Biquad, CHAIN, LAYOUT_VOICE, TURBO, buildProgram, EngineSynth, kWeighting, renderImpulse, type EngineProgram } from '../src/audio/engineSynth';
 import { ENGINE_LAYOUTS, engineSpecErrors, type EngineLayout, type EngineSpec } from '../src/shared/carSpec';
 import manifest from '../src/assets/carManifest.json';
 
@@ -50,6 +50,16 @@ function unevenness(program: EngineProgram, rpm: number, channels = 1): number {
   return 10 * Math.log10(odd / even);
 }
 
+/** Energy in the orders below the firing order (cycle harmonics 1 to n - 1: the half orders of a five) over the firing order itself, in dB. */
+function subOrders(program: EngineProgram, rpm: number, load = 1): number {
+  const x = render(program, rpm, load, 1.5).subarray(SR / 2);
+  const cycleHz = rpm / 60 / program.revsPerCycle;
+  const n = program.cylinders.length;
+  let sub = 0;
+  for (let k = 1; k < n; k++) sub += tone(x, k * cycleHz) ** 2;
+  return 10 * Math.log10(sub / tone(x, n * cycleHz) ** 2);
+}
+
 describe('engine programs', () => {
   it('cover every layout with a bounded, even fire schedule and one pipe per bank at most', () => {
     for (const layout of Object.keys(ENGINE_LAYOUTS) as EngineLayout[]) {
@@ -98,6 +108,20 @@ describe('engine programs', () => {
     expect(wagon.pipes).toBe(1);
     expect(new Set(wagon.cylinders.map((c) => c.pipe)).size).toBe(1);
     expect(wagon.cylinders.map((c) => c.fire)).toEqual([0, 0.2, 0.4, 0.6, 0.8]);
+    // Its runners are the 3B / ABY log manifold's (FIVE_LOG): cylinders 2, 3 and 4 run straight into the turbo, 1 and 5
+    // rise to the collector, so the outer pair arrive late and weaker. Firing order 1-2-4-5-3 puts them at 0, 1, 2, 3, 4.
+    const [c1, c2, c4, c5, c3] = wagon.cylinders;
+    expect(c3.delay).toBe(0);
+    expect(c1.delay).toBeCloseTo(c5.delay, 9);
+    expect(c2.delay).toBeCloseTo(c4.delay, 9);
+    expect(c1.delay).toBeGreaterThan(0.0004);
+    expect(c1.delay).toBeLessThan(0.0008);
+    expect(c2.delay).toBeGreaterThan(0);
+    expect(c2.delay).toBeLessThan(c1.delay / 2);
+    // engine-sim's i5.mr puts 2 and 4 on the quieter system (0.8): they are the weakest pulses, and 3 the loudest.
+    expect(c2.gain).toBeLessThan(c1.gain);
+    expect(c2.gain).toBeLessThan(0.8);
+    expect(c3.gain).toBe(1);
     // The spread is the car's to set, and a crossover hands a share of each bank to the other pipe.
     const wide = buildProgram({ ...spec('VR6'), voice: { headers: 'unequal', headerSpread: 0.6 } });
     expect(Math.max(...wide.cylinders.map((c) => c.delay))).toBeGreaterThan(Math.max(...hatch.cylinders.map((c) => c.delay)));
@@ -157,6 +181,33 @@ describe('engine synth', () => {
       // Heard from one tailpipe (the left channel), a cross-plane bank is lumpy and a flat-plane bank is even.
       expect(unevenness(cross, rpm, 2), `V8 ${rpm}`).toBeGreaterThan(unevenness(flat, rpm, 2) + 6);
       expect(unevenness(six, rpm, 2), `I6 ${rpm}`).toBeLessThan(-8);
+    }
+  });
+
+  it('an Audi five warbles: clearly more uneven than a six, less than a boxer, and the 2.5 order still leads', () => {
+    const car = (id: string) => buildProgram(manifest.cars.find((c) => c.id === id)!.engine as EngineSpec);
+    const five = car('brandtKombi');
+    const six = buildProgram(spec('I6', 'turbo', { pipes: 1, muffler: 'quiet' }));
+    const four = buildProgram(spec('I4', 'turbo', { pipes: 1, muffler: 'quiet' }));
+    const boxer = buildProgram(spec('B4', 'turbo', { headers: 'unequal', pipes: 1, muffler: 'quiet' }));
+    // Measured: the five -10.7 / -7.0 / -2.0 dB (idle, 3000, 6000 rpm), the same turbo six -14.1 / -11.8 / -6.7, the turbo
+    // four -10.4 / -11.7 / -6.8 and the boxer -4.2 / +2.0 / +0.9; below the firing order the five sits at -11.6 / -14.4 /
+    // -13.6 dB against the six's -18.8 / -18.6 / -15.6.
+    for (const [rpm, load] of [[900, 0.1], [3000, 1], [6000, 1]] as const) {
+      const f = unevenness(five, rpm);
+      expect(f, `five ${rpm}`).toBeGreaterThan(unevenness(six, rpm) + 2.5);
+      expect(f, `five ${rpm}`).toBeGreaterThan(unevenness(four, rpm) - 0.5);
+      expect(f, `five ${rpm}`).toBeLessThan(unevenness(boxer, rpm) - 1.5);
+      expect(subOrders(five, rpm, load), `five sub ${rpm}`).toBeGreaterThan(subOrders(six, rpm, load) + 1.5);
+    }
+    expect(unevenness(five, 3000)).toBeGreaterThan(-9);
+    expect(unevenness(five, 3000)).toBeLessThan(-5);
+    expect(unevenness(five, 6000)).toBeLessThan(-0.5);
+    // The even 144 degree fire keeps the 2.5 order the strongest line (the 4.0 order at 6000 rpm, 8 dB under it, is the closest).
+    for (const rpm of [900, 3000, 6000]) {
+      const x = render(five, rpm, rpm === 900 ? 0.1 : 1, 1.5).subarray(SR / 2);
+      const cyc = rpm / 120;
+      for (const k of [1, 2, 3, 4, 6, 7, 8]) expect(tone(x, 5 * cyc), `${rpm} rpm, order ${k / 2}`).toBeGreaterThan(2.2 * tone(x, k * cyc));
     }
   });
 
@@ -267,6 +318,28 @@ describe('loudness and width across the cars', () => {
     const spread = 20 * Math.log10(Math.max(...values) / Math.min(...values));
     expect(spread, JSON.stringify(results)).toBeLessThan(2);
     for (const r of results) expect(r.correlation, r.id).toBeLessThan(0.9);
+  });
+});
+
+describe('turbo voice', () => {
+  it('is per car: only the Kombi has the whoosh and the recirculating valve; the vocabulary validates', () => {
+    const voices = Object.fromEntries((manifest.cars as { id: string; engine: EngineSpec }[]).map((c) => [c.id, c.engine.voice ?? {}]));
+    expect(voices.brandtKombi).toMatchObject({ diverter: 'recirculating', whoosh: 1 });
+    for (const [id, v] of Object.entries(voices)) if (id !== 'brandtKombi') expect(v, id).not.toHaveProperty('whoosh');
+    for (const [id, v] of Object.entries(voices)) if (id !== 'brandtKombi') expect(v, id).not.toHaveProperty('diverter');
+    expect(engineSpecErrors({ ...spec('I5', 'turbo'), voice: { diverter: 'recirculating', whoosh: 1.5 } })).toEqual([]);
+    expect(engineSpecErrors({ ...spec('I5', 'turbo'), voice: { diverter: 'flutter' } })).toEqual([expect.stringContaining('engine.voice.diverter "flutter" is not one of vent, recirculating')]);
+    expect(engineSpecErrors({ ...spec('I5', 'turbo'), voice: { whoosh: 3 } })).toEqual([expect.stringContaining('engine.voice.whoosh 3 is not a number from 0 to 2')]);
+  });
+
+  it('the recirculating valve is softer and lower than the vent, and the turbine keeps its speed through it', () => {
+    expect(TURBO.recirculating.gain).toBeLessThan(TURBO.vent.gain);
+    expect(TURBO.recirculating.attack).toBeGreaterThan(0.01);
+    expect(TURBO.recirculating.to).toBeLessThan(TURBO.recirculating.from);
+    expect(TURBO.recirculating.spoolKeep).toBeGreaterThan(TURBO.vent.spoolKeep);
+    // The spool constants are the old per update 0.04 and 0.12 at 60 Hz as time constants.
+    expect(1 - Math.exp(-1 / 60 / TURBO.spool)).toBeCloseTo(0.04, 3);
+    expect(1 - Math.exp(-1 / 60 / TURBO.fall)).toBeCloseTo(0.12, 3);
   });
 });
 
