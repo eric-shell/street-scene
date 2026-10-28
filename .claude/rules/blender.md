@@ -6,7 +6,7 @@ paths:
 ---
 # Blender scripts and authored cars
 
-- Model edits (meshes, `.blend` files, donor imports) go through the Blender MCP, never headless scripts: with no `blender` MCP tools in the session, ask the user to restart with `claude --mcp-config .claude/skills/blender/mcp.json` before editing (`/blender`).
+- Model edits (meshes, `.blend` files, donor imports) go through the Blender MCP, never headless scripts: with no `blender` MCP tools in the session (not even deferred), run `.claude/skills/blender/mcp.sh status` (`register` if it reports them missing) and ask the user to restart Claude Code before editing (`/blender`).
 - Read `/blender` (`.claude/skills/blender/SKILL.md`) first: helpers live in `scripts/blender/carKit.py`, and the table of known traps lists the calls that crash Blender or corrupt exports.
 - `scripts/blender/exportCar.py` is the contract between an authored `.blend` and `npm run assets` (collections `Car`, `Parts`, `Wheels`, `Rig`; part objects `<slot>_<partId>`; the sidecar `car.json`). Change both sides together: `scripts/buildAssets.ts` reads that sidecar.
 - Authored cars are modelled in car space at the shared scale (`standardWheel` in `scripts/assetConfig.json`); the pipeline never rescales them, so a scale mistake ships as is. Check the wheel radius of the Rig empties and `arch_gap` before saving.

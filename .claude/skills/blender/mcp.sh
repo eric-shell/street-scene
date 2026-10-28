@@ -3,7 +3,8 @@
 # .claude/skills/blender/mcp.json holds the only pins: `mcp-for-blender@<version>` for `blender`, `@<commit>` in the git URL
 # for `blender-lab`. Server and add-on talk a versioned protocol, so they move together or not at all.
 #   status   (default) pins vs the latest releases, installed add-ons vs the pins, stray copies, ports
-#   install  installs both add-ons at the pinned versions (then restart Blender)
+#   install  installs both add-ons at the pinned versions and registers both servers (then restart Blender)
+#   register registers both servers with Claude Code at local scope from the pins, so every session in this repo has them
 #   upgrade  moves both pins to the latest releases, then installs
 # The runbook (first setup, upgrades, the traps behind each step) is .claude/skills/blender/mcp.md.
 set -euo pipefail
@@ -27,6 +28,15 @@ lab_port() { jq -r '.mcpServers["blender-lab"].env.BLENDER_MCP_PORT // "9876"' "
 community_port() { jq -r '.mcpServers.blender.env.BLENDER_PORT // "9876"' "$MCP_JSON"; }
 latest_community() { curl -fsS https://pypi.org/pypi/mcp-for-blender/json | jq -r .info.version; }
 latest_lab() { git ls-remote "$LAB_REPO" HEAD | cut -c1-40; }
+# Local scope lives in ~/.claude.json under this repo, not in git; tool search keeps the tools deferred until a prompt needs them.
+register() {
+  local name
+  for name in blender blender-lab; do
+    claude mcp remove "$name" --scope local >/dev/null 2>&1 || true
+    claude mcp add-json "$name" "$(jq -c --arg n "$name" '.mcpServers[$n]' "$MCP_JSON")" --scope local
+  done
+  echo "Next: restart Claude Code (it starts the servers per session)."
+}
 # The add-on file a given server release ships (install-addon copies exactly this).
 bundled_addon() { uvx --from "mcp-for-blender@$1" python -c 'from blender_mcp.addon_manager import get_bundled_addon_path as p; print(p())' 2>/dev/null; }
 
@@ -63,6 +73,12 @@ status() {
     || echo "  port $cport closed: Blender not running, or Start MCP Server in the viewport N panel > MCP for Blender"
   lsof -nP -iTCP:"$lport" -sTCP:LISTEN >/dev/null 2>&1 && echo "  port $lport listening (blender-lab)" \
     || echo "  port $lport closed: enable \"MCP\" in Add-ons with Port $lport and Auto Start, and System > Network > Allow Online Access"
+
+  local registered
+  registered=$(cd "$ROOT" && claude mcp list 2>/dev/null)
+  grep -q "mcp-for-blender@$cpin" <<<"$registered" && grep -q "@$lpin#" <<<"$registered" \
+    && echo "  Claude Code: both servers registered at the pins" \
+    || echo "  Claude Code: servers missing or off their pins (run register, then restart Claude Code)"
 }
 
 install() {
@@ -79,6 +95,7 @@ install() {
   rsync -a --delete --exclude __pycache__ "$tmp/addon/blender_mcp_addon/" "$LAB_DIR/"
   echo "$lpin" > "$LAB_DIR/$STAMP"
   echo "Installed the Lab add-on at ${lpin:0:7} to $LAB_DIR"
+  register
   echo "Next: restart Blender (both servers auto start), then run status."
 }
 
@@ -93,12 +110,13 @@ upgrade() {
     '.mcpServers.blender.args[0] = $c | .mcpServers["blender-lab"].args[1] = $l' "$MCP_JSON" > "$tmp"
   mv "$tmp" "$MCP_JSON"
   install
-  echo "Then restart Claude Code (it starts the servers per session) and check the tool names in mcp.md."
+  echo "Then check the tool names in mcp.md."
 }
 
 case "${1:-status}" in
   status) status ;;
   install) install ;;
   upgrade) upgrade ;;
-  *) echo "usage: $0 [status|install|upgrade]" >&2; exit 2 ;;
+  register) register ;;
+  *) echo "usage: $0 [status|install|upgrade|register]" >&2; exit 2 ;;
 esac
