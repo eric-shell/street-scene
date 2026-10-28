@@ -240,7 +240,7 @@ export interface SignageMeshes {
 }
 
 // Seven segments a..g as (centre x, centre y, horizontal) on a unit digit 0.6 wide, 1 tall.
-const SEGS: readonly (readonly [number, number, boolean])[] = [
+export const SEGS: readonly (readonly [number, number, boolean])[] = [
   [0, 0.46, true],
   [0.27, 0.23, false],
   [0.27, -0.23, false],

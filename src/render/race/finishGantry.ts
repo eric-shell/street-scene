@@ -15,6 +15,9 @@ import { Disposer } from '../disposer';
 import { LINE_Y, UP, THEMES, signGlow, signTexture, poolTexture } from './finishLook';
 import type { Theme, SignFace } from './finishLook';
 import type { GateKind, FinishGate } from './finishLine';
+import { createBand } from './gantryBand';
+import type { GantryBand } from './gantryBand';
+import { DIEGETIC } from './diegetic';
 
 const box = (w: number, h: number, d: number, x: number, y: number, z: number) => new THREE.BoxGeometry(w, h, d).translate(x, y, z);
 
@@ -72,6 +75,8 @@ export interface GateRuntime {
   tubes: [number, number][];
   /** Burst glow (1 = a full start burst), fading at 0.45 per second. */
   flash: number;
+  /** The dot-matrix band under the sign (live race text). */
+  band: GantryBand;
 }
 
 /** What the gantries share: the world, the group they hang in, the steel and fabric materials, the beam ramp and the light plan they add to. */
@@ -184,6 +189,13 @@ export function buildGantry(kit: GantryKit, s: number, kind: GateKind, gi: numbe
       ledScale.push(1.9);
     }
   }
+  // Dot-matrix band hung under the lower truss chord, below the light rig, facing the approaching cars.
+  const bandW = 2 * L - pw - 1.4;
+  const bandH = DIEGETIC.band.rows * DIEGETIC.band.pitch;
+  const bandTop = signY - DIEGETIC.band.hang;
+  const bandCy = bandTop - DIEGETIC.band.margin - bandH / 2;
+  dark.push(box(bandW + 0.3, bandH + 0.2, 0.2, 0, bandCy, -0.78));
+  for (const side of [-1, 1]) dark.push(box(0.07, signY - 0.48 - bandTop, 0.07, side * (bandW / 2 - 0.4), (signY - 0.48 + bandTop) / 2, -0.78));
   const sm = new THREE.Mesh(track(mergeGeometries(steel)), steelMat);
   const dm = new THREE.Mesh(track(mergeGeometries(dark)), darkMat);
   steel.forEach((g) => g.dispose());
@@ -202,6 +214,11 @@ export function buildGantry(kit: GantryKit, s: number, kind: GateKind, gi: numbe
   const back = new THREE.Mesh(signGeo, track(new THREE.MeshBasicMaterial({ map: track(signTexture(event ? event.name.toUpperCase() : 'STREET SCENE', '#2de2ff', event ? 'STREET SCENE' : '').texture), color: new THREE.Color(1.2, 1.2, 1.2) })));
   back.position.set(0, signY + signH / 2, 0.36);
   root.add(front, back);
+
+  const band = createBand(bandW, track, [{ text: event ? event.name.toUpperCase() : 'STREET SCENE', tone: 'amber' }]);
+  band.mesh.position.set(0, bandCy, -0.89);
+  band.mesh.rotation.y = Math.PI;
+  root.add(band.mesh);
 
   // ---------- Neon tubes ----------
   const neonA = track(new THREE.MeshBasicMaterial({ color: theme.neonA.clone() }));
@@ -331,7 +348,7 @@ export function buildGantry(kit: GantryKit, s: number, kind: GateKind, gi: numbe
     }
   }
 
-  return { gate, theme, full, flags, neonA, neonB, curtain, sign, tubes, flash: 0 };
+  return { gate, theme, full, flags, neonA, neonB, curtain, sign, tubes, flash: 0, band };
 }
 
 /** The instanced LEDs and beams of every gate and their animation: chases, strobes, equalizers, sweeps, all flaring on a burst. */

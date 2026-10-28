@@ -394,6 +394,13 @@ export class StreetStage {
     // The street furniture's own clock: the traffic signals, the props the cars knock over, debris and spray.
     this.knockProps();
     this.night.props.update(dt, this.time, this.broken, this.motions);
+    // The radar speed signs read the cruising convoy.
+    const radar = this.night.city.radar;
+    if (radar.mesh) {
+      radar.begin();
+      for (const m of this.motions) radar.feed(m.x, m.z, m.vx, m.vz);
+      radar.end(this.broken);
+    }
     // The idle people turn their heads for the passing cars and keep their level of detail around the car the camera follows.
     const ic = this.idleCars;
     while (ic.length < this.motions.length) ic.push({ x: 0, z: 0, yaw: 0, speed: 0 });

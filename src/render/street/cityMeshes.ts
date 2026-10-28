@@ -17,6 +17,7 @@ import { ROAD } from '../../sim/tuning';
 import { GeoBuilder } from '../geoBuilder';
 import { OCCLUSION, bakeOcclusion, occlusionFor, occlusionMaterial } from './bakedOcclusion';
 import { buildFinishLines, FinishLines } from '../race/finishLine';
+import { buildRadarSigns, type RadarSigns } from '../race/radarSigns';
 import { STREETLIGHT_ARM, STREETLIGHT_POLE_H } from './props';
 import { createPodiumOutput, makeFacadeKitTextures } from '../buildings/facadeKit';
 import { FACE_PX, makeInteriorAtlas } from '../buildings/interiorAtlas';
@@ -53,6 +54,8 @@ export interface CityMeshes {
   barrierLampMaterial: THREE.MeshBasicMaterial;
   /** Start / finish gantries: call update(time) per frame and burst() on the player's finish. */
   finishLine: FinishLines;
+  /** The "YOUR SPEED" radar signs on the route's straights: feed them the cars each frame (race/radarSigns.ts). */
+  radar: RadarSigns;
   /** Break state of the podiums' glass bays (every tier; only Medium and High draw the broken look): find the bay a car hit and break it. */
   glass: GlassBays | null;
   /** Animated building windows and aviation lights (s). */
@@ -858,6 +861,11 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
   disposables.push(finishLine);
   group.add(finishLine.group);
 
+  // ---------- Radar speed signs ----------
+  const radar = buildRadarSigns(world);
+  disposables.push(radar);
+  if (radar.mesh) group.add(radar.mesh);
+
   return {
     group,
     lampPositions,
@@ -865,6 +873,7 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     glass: glassBays,
     barrierLampMaterial,
     finishLine,
+    radar,
     update(time) {
       setSignageTime(time);
       buildings.update(time);
