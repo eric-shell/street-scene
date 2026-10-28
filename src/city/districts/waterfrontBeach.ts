@@ -200,7 +200,7 @@ export function buildBeach(ctx: BuildContext, site: YardSite, b: AreaBuild): voi
 
   // ----- Mouths onto the boardwalk from every street that meets it, the picket fences between them.
   const mouths = layMouths(ctx, site, geo, b, B.mouthSlack);
-  layFences(geo, rng, mouths, 'picketFence');
+  layFences(ctx, geo, rng, mouths, 'picketFence');
 
   // ----- The pier: out from the boardwalk over the sand, a solid to the waterline, drawn on over the water.
   let pierU: number | null = null;

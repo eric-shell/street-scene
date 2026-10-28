@@ -33,9 +33,9 @@
  * depth, height, run, top), 'quayLane' (points: the lane's middle end to end, for the maps).
  */
 import { CITY } from '../config';
-import { isBendNode } from '../roadGraph';
-import type { PropKind } from '../props';
-import { type Vec2, atan2, cos, sin, sqrt } from '../../sim/math';
+import { isBendNode, isRiverEdge } from '../roadGraph';
+import { PROP_DEFS, type PropKind } from '../props';
+import { type Vec2, atan2, cos, distToSegment, sin, sqrt } from '../../sim/math';
 import { Rng, deriveSeed } from '../../sim/prng';
 import type { Area, AreaBuild, BuildContext, HeightMod, HeightSample } from './types';
 import { circlePolygon, smooth01, solidWalls, type Smooth } from './geom';
@@ -43,6 +43,12 @@ import { type HarborFrame, coastSlope, coastV, framePoint, frameU, frameV } from
 
 const CFG = CITY.districts.waterfront;
 const Y = CFG.yard;
+
+/** How far back from the quay's edge a mouth opens the blocks' frontage (m): over the frontage sampler's probe (half a metre into the block) with room to spare. */
+const MOUTH_STRIP = 6;
+
+/** The room a fence panel keeps beyond its radius from a street's carriageway edge (m). */
+const FENCE_STREET_MARGIN = 0.1;
 
 /** What the waterfront build hands the yard: the area, its frame and the quay's outline as functions of u. */
 export interface YardSite {
@@ -212,6 +218,17 @@ export function layMouths(ctx: BuildContext, site: YardSite, geo: YardGeo, b: Ar
       inner.push(pt(u, depth(u) - Y.mouthDepth));
     }
     b.surfaces.push({ surface: 'cobble', polygon: [...outer, ...inner.reverse()], priority: 3, area: id });
+    // The frontage open across the mouth: the blocks' frontage walls are sampled half a metre into the block, so a
+    // short run of a face's ring that skirts the mouth (a street's end cap, a corner of the quay's stepped edge) probes
+    // outside the quay and would stand as a 1 m 'boundary' stub in the way in. The strip covers those probes and
+    // nothing else of the frontage: it is only as wide as the mouth and reaches MOUTH_STRIP m back from the quay's
+    // edge. Sampled every half metre, since the edge steps where a face's ring does and a coarse strip would cut the corner.
+    const strip: Vec2[] = [];
+    const steps = Math.ceil(m.w * 2);
+    const us = Array.from({ length: steps + 1 }, (_, k) => m.u - m.w / 2 + (m.w * k) / steps);
+    for (const u of us) strip.push(framePoint(f, u, Math.max(site.back(u - 0.5), site.back(u), site.back(u + 0.5)) + 0.5));
+    for (let k = us.length - 1; k >= 0; k--) strip.push(framePoint(f, us[k], Math.min(site.back(us[k] - 0.5), site.back(us[k]), site.back(us[k] + 0.5)) - MOUTH_STRIP));
+    b.openings.push(strip);
     // The sidewalk in front kept clear: no streetlight, hydrant, bin or street tree stands in a mouth.
     for (let u = m.u - m.w / 2; u <= m.u + m.w / 2 + 1e-6; u += 3) {
       const q = framePoint(f, u, site.back(u) - m.walk / 2);
@@ -224,10 +241,18 @@ export function layMouths(ctx: BuildContext, site: YardSite, geo: YardGeo, b: Ar
 
 /**
  * Fence runs along the frontage, from every gate post, broken by gaps; none before a warehouse. `kind` is the panel
- * (the yard's chain link, a beach's pickets).
+ * (the yard's chain link, a beach's pickets). A panel never stands on a street: where a wide street's end cap reaches
+ * past the frontage (the street meets the quay but gets no mouth, its end poking in further than a mouth allows) the
+ * panels within the street's edge and the panel's radius are left out, the same clearance street dressing keeps.
+ * The run's random draws do not depend on which panels are left out, so the rest of the layout stays where it was.
  */
-export function layFences(geo: YardGeo, rng: Rng, mouths: readonly Mouth[], kind: PropKind = 'fencePanel'): void {
+export function layFences(ctx: BuildContext, geo: YardGeo, rng: Rng, mouths: readonly Mouth[], kind: PropKind = 'fencePanel'): void {
   const { lo, hi, depth, pt, seaYaw, inShed, taken, prop } = geo;
+  const g = ctx.graph;
+  const reach = PROP_DEFS[kind].radius + FENCE_STREET_MARGIN;
+  /** Whether a panel at q would overlap a street (its carriageway plus the panel's radius and a margin). */
+  const onStreet = (q: Vec2): boolean =>
+    g.edges.some((e) => !isRiverEdge(e) && distToSegment(q.x, q.z, g.nodes[e.a].x, g.nodes[e.a].z, g.nodes[e.b].x, g.nodes[e.b].z) - e.width / 2 <= reach);
   const ends: number[] = [lo + 3];
   for (const m of mouths) if (taken.some((t) => t.what === 'mouth' && Math.abs((t.u0 + t.u1) / 2 - m.u) < 1e-6)) ends.push(m.u - m.w / 2 - Y.post, m.u + m.w / 2 + Y.post);
   ends.push(hi - 3);
@@ -239,7 +264,8 @@ export function layFences(geo: YardGeo, rng: Rng, mouths: readonly Mouth[], kind
       const run = rng.int(Y.fenceRun[0], Y.fenceRun[1]);
       for (let k = 0; k < run && u < c - Y.fencePitch / 2; k++, u += Y.fencePitch) {
         if (inShed(u, u)) continue;
-        prop(kind, pt(u, depth(u) - Y.fenceInset), seaYaw(u) + Math.PI);
+        const q = pt(u, depth(u) - Y.fenceInset);
+        if (!onStreet(q)) prop(kind, q, seaYaw(u) + Math.PI);
       }
       u += rng.range(Y.fenceGap[0], Y.fenceGap[1]);
     }
@@ -357,7 +383,7 @@ export function buildYard(ctx: BuildContext, site: YardSite, b: AreaBuild): void
 
 
   // ----- Chain-link fence runs along the frontage, from every gate post, broken by gaps; none before a warehouse.
-  layFences(geo, rng, mouths);
+  layFences(ctx, geo, rng, mouths);
 
   // ----- Mooring bollards along the edge, clear of the jetties' gates and the lanterns, facing the water.
   const gate = (u: number, pad: number) => site.gates.some((j) => Math.abs(j.u - u) < j.half + pad);
