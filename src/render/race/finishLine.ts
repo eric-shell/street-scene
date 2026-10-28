@@ -22,6 +22,7 @@
 import * as THREE from 'three';
 import type { World } from '../../city/world';
 import { routeSample } from '../../city/route';
+import { gateLines } from '../../city/people/gates';
 import { GeoBuilder } from '../geoBuilder';
 import { makeCheckerTexture } from '../textures/textures';
 import { Disposer } from '../disposer';
@@ -76,12 +77,7 @@ export function buildFinishLines(world: World): FinishLines {
   const res = new Disposer();
   const { track } = res;
 
-  const lines: { s: number; kind: GateKind }[] = route.closed
-    ? [{ s: route.startS, kind: 'startFinish' }]
-    : [
-        { s: route.startS, kind: 'start' },
-        { s: route.finishS, kind: 'finish' },
-      ];
+  const lines: { s: number; kind: GateKind }[] = gateLines(world);
 
   // ---------- Painted checkered lines ----------
   {

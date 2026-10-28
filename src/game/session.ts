@@ -848,6 +848,10 @@ export class RaceSession {
         const prop = r.world.props[e.value ?? -1];
         const def = prop ? PROP_DEFS[prop.kind] : null;
         if (def) this.cam.knock(Math.min(1, 0.35 + (def.mass * def.anchor) / 900));
+      } else if (e.type === 'person') {
+        // A pedestrian struck (sim/people.ts): a light knock, and the slowdown reads as a soft hit like a prop's.
+        this.propOnlyTick = true;
+        this.cam.knock(0.35);
       } else if (e.type === 'arm') {
         // A level crossing's gate arm snapping: a light knock, like a sawhorse.
         this.propOnlyTick = true;
@@ -979,7 +983,7 @@ export class RaceSession {
     if (lift === 1 && this.lift < 1.001) this.lift = 1;
     this.updateHud(dt);
     this.audio.updateEngines(poses, camera, dt, this.paused);
-    this.audio.updateSfx(poses, camera, dt, this.paused, this.time, !this.isReplay && !this.paused && this.input.hornHeld());
+    this.audio.updateSfx(poses, camera, dt, this.paused, this.time, !this.isReplay && !this.paused && this.input.hornHeld(), alpha);
     this.gr.render(this.night.scene, camera, dt);
   }
 

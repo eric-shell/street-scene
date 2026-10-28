@@ -1,5 +1,7 @@
 /**
- * Spectator crowds. At the start and finish: rows of people lining the
+ * Spectator crowds. At the start and finish: the shared people plan's gate stands
+ * (city/people/gateStands.ts, one canonical density at every graphics quality: the
+ * sim collides with these people, so every tier draws them all), rows lining the
  * sidewalks along the outer edge. Everywhere else on the route: the crowd of
  * every street meet (meetPlan.ts), packed against the cyan barrier and
  * thinning back among the parked cars. Never on the route. They are the
@@ -7,7 +9,7 @@
  * street clothes from the shared wardrobe, some with a phone, a flag or a
  * glowstick: one InstancedMesh per batch of BATCH people along the stand (sorted along its axis, so each batch is a compact patch with its own frustum culling and level of detail), plus the far level drawn instead
  * beyond the quality's lodNear; sections past the draw distance are not drawn at all, and
- * density and draw distance follow the graphics quality.
+ * the draw distance (and the meets' and market pens' density) follow the graphics quality.
  *
  * Far from the camera (CROWD_IMPOSTOR.distance, 40 to 90 m by quality) a person
  * is no longer a mesh but a camera-facing quad from a sprite sheet baked from
@@ -17,43 +19,49 @@
  * there is no renderer to bake with the stands keep the far level to the end.
  *
  * Animation is all in the vertex shader: the person's pose is computed per
- * instance from one float ("excitement") and a phase: idle sway, weight
- * shifting and a glance around, clapping as it rises, arms up waving and
- * jumping at the top, a phone held up filming or a flag waved overhead,
- * plus stepping back from cars that come too close. The CPU only updates
+ * instance from one float ("excitement"), a phase and a style: idle sway, weight
+ * shifting and a glance around (or arms crossed, hands in pockets or on hips,
+ * weight on one leg, a dance bob; talking pairs taking turns; the front row of
+ * a meet leaning on its rail), the head following the nearest car, clapping as
+ * it rises (or pointing at the road), arms up waving and
+ * jumping at the top, a phone held up filming or a flag waved overhead. Friends
+ * (the plan's group phase, or the people of one cell in a render-only section) share a phase, so the stands cheer in
+ * clusters. On top comes the shared dodge (people/motion.ts: the GLSL twin of the sim's `sidestep`, so a stand person
+ * steps out of a car's way by what the sim moves them by) and the ragdoll of a person a car hit (`iHit`).
+ * Hit people stay on the far level (never dithered into impostors) and the sprites discard them.
+ * Meet crowds and market pens are behind rails the cars cannot reach: they have no sim identity, so no dodge
+ * and no hits. The CPU only updates
  * that float: it rises when a racer passes close (speed weighted) and when a
  * cheer wave started at the gate (start, lap, finish) sweeps along the stands,
  * then decays. Everything is driven from car positions and race events, so
- * replays cheer exactly like the live race. Render only.
+ * replays cheer exactly like the live race. The clock is the people clock (the race's interpolated
+ * sim time), so the dodge and the falls agree with the sim. Vertex attributes: 12 of WebGL's 16 (the
+ * rig's, the instance matrix, iData, iExcite and iHit; iData.w packs `prefer` as its sign and `1 + backRoom`
+ * as its size, 0 = no dodge). Render only.
  */
 import * as THREE from 'three';
 import type { World } from '../../city/world';
 import type { MeetPerson, MeetPlan } from './meetPlan';
-import { CITY } from '../../city/config';
+import { peopleOf } from '../../city/people/people';
+import type { WorldPerson } from '../../city/people/people';
+import type { PeopleGate } from '../../city/people/gates';
 import { Rng } from '../../sim/prng';
-import { routeSample } from '../../city/route';
-import { distToSegment } from '../../sim/math';
+import type { PeopleState } from '../../sim/people';
 import type { Quality } from '../../ui/settings';
 import { WEAR, personGeometry, personMaterial, writeLook } from '../people/person';
 import { IMPOSTOR_DITHER_GLSL, bakeImpostors, impostorMaterial, impostorQuad, nearestImpostorLook } from '../people/impostors';
 import type { ImpostorPose, ImpostorSheet, ImpostorSpec } from '../people/impostors';
-import { streetLook } from '../people/looks';
-import { BACK, FWD, groundY, makePlacer, nearestCars, thin } from '../people/placer';
-import type { Placer } from '../people/placer';
-
-/** The gate fields the crowd needs (structurally a FinishGate). */
-export interface CrowdGate {
-  kind: 'start' | 'finish' | 'startFinish';
-  s: number;
-  position: { x: number; y: number; z: number };
-  yaw: number;
-  halfSpan: number;
-}
+import { raceLook } from '../people/looks';
+import { GESTURES_GLSL, talkCodes } from '../people/gestures';
+import { BACK } from '../../city/people/placer';
+import { FLING_MARGIN, PEOPLE_MAX_CARS, PEOPLE_MOTION_PARS, PeopleHits, carsNear, growBounds, hitSeed, makeCarsUniform, makeHitAttribute } from '../people/motion';
 
 /** A car as the crowd sees it (interpolated sim pose). */
 export interface CrowdCar {
   x: number;
   z: number;
+  /** Heading (three.js yaw, rad): forward is (sin, cos). */
+  yaw: number;
   speed: number;
 }
 
@@ -69,11 +77,15 @@ export interface CrowdSpot {
   kind: 'gate' | 'section';
 }
 
-/** Spectators per graphics quality: density scale, rows deep along the start and finish, and the distance (m) inside which a batch draws the full person. */
-export const CROWD_QUALITY: Record<Quality, { density: number; rows: number; lodNear: number }> = {
-  low: { density: 0.55, rows: 2, lodNear: 25 },
-  medium: { density: 0.8, rows: 2, lodNear: 35 },
-  high: { density: 1, rows: 3, lodNear: 45 },
+/**
+ * Spectators per graphics quality: the market pens' density scale (the meets' is MEET_QUALITY's) and the distance (m)
+ * inside which a batch draws the full person. The start / finish stands have no density or rows knob any more: they
+ * are the shared plan's, the same at every tier, because the sim collides with them.
+ */
+export const CROWD_QUALITY: Record<Quality, { density: number; lodNear: number }> = {
+  low: { density: 0.55, lodNear: 25 },
+  medium: { density: 0.8, lodNear: 35 },
+  high: { density: 1, lodNear: 45 },
 };
 
 /**
@@ -101,10 +113,6 @@ export const CROWD_IMPOSTOR_POSES: readonly ImpostorPose[] = [
 ];
 
 export interface CrowdOptions {
-  /** 0..1 people per meter scale (graphics quality). */
-  density?: number;
-  /** Rows on the sidewalk (1 to 3). */
-  rows?: number;
   /** The street meets whose crowds become the sections (none in an open world). */
   meet?: MeetPlan;
   /** Sections further than this from the camera are not drawn (m). */
@@ -136,21 +144,45 @@ export interface Crowds {
   setEnabled(on: boolean): void;
   /** Start a wave of excitement at a gate; strength 1 = cheer, 1.5 = finish frenzy. */
   cheer(at: 'start' | 'lap' | 'finish', strength?: number): void;
-  /** Per frame: time (s), frame dt, racer positions, and the listener (camera) for the audio levels. */
-  update(time: number, dt: number, cars: readonly CrowdCar[], listenerX: number, listenerZ: number): void;
+  /** Per frame: the people clock (s; the race's interpolated sim time), frame dt, racer poses, the listener (camera) for the audio levels, and in a race who the sim has hit. */
+  update(time: number, dt: number, cars: readonly CrowdCar[], listenerX: number, listenerZ: number, people?: PeopleState): void;
   dispose(): void;
 }
 
+/** Friends share a phase to within this much of a cycle, so a group claps and bobs together (the stands out of step with each other). */
+const GROUP_JITTER = 0.05;
+/** Render-only sections group the people standing in one cell this wide (m). */
+const GROUP_CELL = 2.2;
+/** A section person's group phase from its cell's id (a hash: no stream draws, so the looks stay as they were). */
+const cellPhase = (cell: number): number => {
+  const v = Math.sin(cell * 12.9898) * 43758.5453;
+  return v - Math.floor(v);
+};
+
 /**
- * Cars the shader steps away from. A full field is ten cars; the four nearest the camera are the
- * only ones whose dodge anyone sees, and a longer uniform loop runs for every crowd vertex.
+ * Who stands in the front row at a rail: nobody within 1.3 m ahead of them (along their facing) and 0.65 m either
+ * side. A section's people face the barrier or rail of their meet or pen, so the row nearest it leans on it.
  */
-const MAX_CARS = 4;
+function frontRow(people: readonly StandPerson[]): boolean[] {
+  return people.map((p, i) => {
+    const fx = Math.sin(p.yaw);
+    const fz = Math.cos(p.yaw);
+    for (let j = 0; j < people.length; j++) {
+      if (j === i) continue;
+      const dx = people[j].x - p.x;
+      const dz = people[j].z - p.z;
+      const ahead = dx * fx + dz * fz;
+      if (ahead > 0.2 && ahead < 1.3 && Math.abs(dx * fz - dz * fx) < 0.65) return false;
+    }
+    return true;
+  });
+}
+
 /** People per batch: a stand is cut into runs of this many along its axis, each culled and level-of-detailed on its own. */
 const BATCH = 48;
 /** A batch switches level only this far (m) past lodNear, so people do not pop at the line. */
 const LOD_HYST = 4;
-/** A person is a point plus its body and a push away from cars: the slack (m) added to a batch's bounds before skipping a level. */
+/** A person is a point plus its body and a step away from cars: the slack (m) added to a batch's bounds before skipping a level. */
 const IMPOSTOR_MARGIN = 3;
 /** A meet with fewer people than this gets no stand. */
 const SECTION_MIN = 6;
@@ -165,46 +197,144 @@ const WAVE_SPEED = 26;
 
 const CROWD_PARS = /* glsl */ `
 uniform float uTime;
-uniform vec4 uCars[${MAX_CARS}];
 attribute vec4 iData;
 attribute float iExcite;
 vec3 crowdHue(float h) { return clamp(abs(fract(h + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0, 0.0, 1.0); }
-`;
+${GESTURES_GLSL}`;
 
-/** Sets the pose's four vec4s (person.ts, PersonShader) from excitement, phase and what the hand holds. */
-const CROWD_POSE = /* glsl */ `
+/**
+ * Sets the pose's four vec4s (person.ts, PersonShader) from excitement, phase and what the hand holds, in four
+ * parts so the sprite bake can swap the two that read per instance state it has none of.
+ *
+ * Who does what is read off the instance. `iData.x` is the phase (the plan's group phase plus a small jitter, so a
+ * group of friends moves together); `iData.y` the style, cut into two independent bands: `cBand` picks the idle
+ * (plain sway, arms crossed, hands in pockets, hands on hips, weight on one leg with a hip pop, a dance bob to a
+ * 128 bpm beat; headphones always bob) and `cBand2` the phone's grip (one hand or two) and who points at the road
+ * instead of clapping; `iData.z` the talking code (a voice 1 or 2 of a group, the side of the nearest groupmate)
+ * and the rail bit (a meet's front row, leaning on the barrier). As excitement rises the idles fade into
+ * clapping (pointers point), then everyone cheers: arms up, jumping, flags, phones held high.
+ */
+const CROWD_HEAD = /* glsl */ `
   float cT = uTime;
   float cPh = iData.x * 6.2832;
   float cStyle = iData.y;
+  int cWorn = int(lookB.w + 0.5);
+`;
+
+/** The live per instance state: the talking code, the bands and whether the headphones play. */
+const CROWD_STATE = /* glsl */ `
+  int cCode = int(iData.z + 0.5);
+  float cBand = fract(cStyle * 5.37 + 0.11);
+  float cBand2 = fract(cStyle * 3.91 + 0.43);
+  bool cHeadphones = (cWorn & ${WEAR.headphones}) == ${WEAR.headphones};
+`;
+
+/** The nearest of the four cars: the head turns toward it within ~14 m (the idlers' maths, in the person's frame). */
+const CROWD_CARS = /* glsl */ `
+  vec2 cAt = instanceMatrix[3].xz;
+  vec2 cFwd = normalize(instanceMatrix[2].xz + vec2(1e-5));
+  vec2 cLeft = vec2(cFwd.y, -cFwd.x);
+  float cBestD = 1e9;
+  vec2 cTo = cFwd;
+  for (int i = 0; i < ${PEOPLE_MAX_CARS}; i++) {
+    vec2 d = uCars[i].xy - cAt;
+    float l = length(d);
+    if (l < cBestD) { cBestD = l; cTo = d; }
+  }
+  float cLook = 1.0 - smoothstep(9.0, 14.0, cBestD);
+  float cCarYaw = clamp(atan(dot(cTo, cLeft), dot(cTo, cFwd)), -1.2, 1.2);
+`;
+
+/** The bake's stand-ins: the plain idle, no talk, no rail, no headphones, no car. */
+const CROWD_STATE_BAKE = /* glsl */ `
+  int cCode = 0;
+  float cBand = 0.0;
+  float cBand2 = 0.0;
+  bool cHeadphones = false;
+`;
+const CROWD_CARS_BAKE = /* glsl */ `
+  float cLook = 0.0;
+  float cCarYaw = 0.0;
+`;
+
+const CROWD_BODY = /* glsl */ `
   float cE = clamp(iExcite, 0.0, 1.6);
   float cEx = smoothstep(0.08, 0.7, cE);
-  int cWorn = int(lookB.w + 0.5);
+  float cCalm = 1.0 - cEx;
+  int cRole = cCode & 3;
+  float cSide = (cCode & 4) != 0 ? 1.0 : -1.0;
+  bool cRail = (cCode & 8) != 0;
   bool cPhone = (cWorn & ${WEAR.phone}) != 0;
   bool cWaving = (cWorn & ${WEAR.flag | WEAR.glowstick}) != 0;
-  // Hips: a small idle bounce and sway; the excited jump.
+  bool cCup = (cWorn & ${WEAR.cup}) != 0;
+  bool cItem = cPhone || cWaving;
+  // The idle bands: plain below 0.3, then crossed arms, pockets, hands on hips, one leg, a dance.
+  float bX = step(0.3, cBand) - step(0.46, cBand);
+  float bP = step(0.46, cBand) - step(0.6, cBand);
+  float bH = step(0.6, cBand) - step(0.72, cBand);
+  float bL = step(0.72, cBand) - step(0.86, cBand);
+  float rail = cRail ? cCalm : 0.0;
+  float talk = cRole > 0 ? cCalm : 0.0;
+  float spk = gSpeak(cT, cPh, cRole);
+  float dance = (cHeadphones ? 1.0 : step(0.86, cBand)) * (cRole > 0 ? 0.0 : 1.0) * (1.0 - rail);
+  float danceW = dance * cCalm;
+  float legS = fract(cStyle * 9.1) > 0.5 ? 1.0 : -1.0;
+  float beat = cT * 13.404 + cPh;
+  float bob = 0.5 + 0.5 * cos(beat);
+  float groove = sin(beat * 0.5);
+  float pop = pow(max(0.0, sin(cT * 1.05 + cPh)), 8.0);
+  // Hips: a small idle bounce and sway, the dance's dip on every beat; the excited jump.
   float hop = (0.02 + 0.015 * cStyle) * abs(sin(cT * 2.0 + cPh)) * (1.0 - cEx)
     + 0.3 * smoothstep(0.45, 1.4, cE) * (0.6 + 0.6 * cStyle) * pow(max(0.0, sin(cT * 6.8 + cPh * 2.0)), 2.0);
-  float sway = 0.035 * sin(cT * 1.1 + cPh) + 0.09 * cEx * sin(cT * 4.6 + cPh);
-  float shift = sin(cT * 0.9 + cPh) * (1.0 - cEx);
-  float hipY = 0.965 + hop;
-  // Legs: weight shifting side to side when idle, knees tucked a little in the jump.
+  float sway = 0.035 * sin(cT * 1.1 + cPh) + 0.09 * cEx * sin(cT * 4.6 + cPh) + cCalm * (0.06 * groove * dance + 0.06 * legS * bL * (1.0 + pop));
+  float shift = sin(cT * 0.9 + cPh) * cCalm;
+  float hipY = 0.965 + hop - 0.04 * bob * danceW;
+  // Legs: weight shifting side to side when idle, one leg taking it (the other knee bent) in its band, a bounce on the beat, knees tucked a little in the jump.
   float kneeL = 0.1 + 0.06 * shift + hop * 0.9;
   float kneeR = 0.1 - 0.06 * shift + hop * 0.9;
-  // Arms: hanging with a little swing, clapping as the excitement rises, up and waving at the top.
+  kneeL = mix(kneeL, legS > 0.0 ? 0.42 : 0.04, bL * cCalm) + 0.2 * bob * danceW;
+  kneeR = mix(kneeR, legS > 0.0 ? 0.04 : 0.42, bL * cCalm) + 0.2 * bob * danceW;
+  // Arms at rest: hanging with a little swing, or a posture of the band; at the rail, forearms on it; a voice in a talking group gestures on its half of the cycle; dancers pump to the beat.
   float wave = sin(cT * (8.0 + 3.0 * cStyle) + cPh);
   float pump = cStyle > 0.6 ? 0.5 * max(0.0, sin(cT * 9.0 + cPh)) : 0.0;
+  vec3 iL = vec3(0.07 + 0.04 * sin(cT * 1.6 + cPh + 1.0), 0.1, 0.25);
+  vec3 iR = vec3(0.07 + 0.04 * sin(cT * 1.6 + cPh - 1.0), 0.1, 0.25);
+  iL = mix(iL, G_CROSS_L, bX);
+  iR = mix(iR, G_CROSS_R, bX);
+  iL = mix(iL, G_POCKET, bP);
+  iR = mix(iR, G_POCKET, bP);
+  iL = mix(iL, G_HIPS, bH);
+  iR = mix(iR, G_HIPS, bH);
+  iL = mix(iL, G_RAIL, rail);
+  iR = mix(iR, G_RAIL, rail);
+  iL = mix(iL, vec3(0.95 + 0.35 * sin(cT * 3.3 + cPh * 2.0), 0.3, 1.35 + 0.3 * sin(cT * 5.1 + cPh)), talk * spk);
+  iL = mix(iL, vec3(0.75 + 0.4 * groove, 0.25, 1.3), dance);
+  iR = mix(iR, vec3(0.75 - 0.4 * groove, 0.25, 1.3), dance);
+  // Clapping as the excitement rises, up and waving at the top.
   float clap = smoothstep(0.25, 0.55, cE) * (1.0 - smoothstep(0.7, 1.0, cE));
+  // A share of the crowd points at the road instead (one arm straight out and up, the other hand on the hip) until the cheer takes them.
+  float pointW = cItem ? 0.0 : step(0.72, cBand2) * smoothstep(0.2, 0.4, cE) * (1.0 - smoothstep(0.9, 1.15, cE));
   float clapIn = 0.08 + 0.3 * max(0.0, sin(cT * 9.0 + cPh));
-  vec3 aL = mix(mix(vec3(0.07 + 0.04 * sin(cT * 1.6 + cPh + 1.0), 0.1, 0.25), vec3(2.45 + 0.35 * sin(cT * (8.0 + 3.0 * cStyle) + cPh + 1.3) - pump, 0.35, 0.45), cEx), vec3(1.0, clapIn, 1.55), clap);
-  vec3 aR = mix(mix(vec3(0.07 + 0.04 * sin(cT * 1.6 + cPh - 1.0), 0.1, 0.25), vec3(2.45 + 0.35 * wave - pump, 0.35, 0.45), cEx), vec3(1.0, clapIn, 1.55), clap);
-  // A phone held up toward the road, filming; a flag or glowstick waved overhead the whole time.
-  if (cPhone) aR = vec3(mix(1.45, 1.9, cEx) + 0.12 * cEx * wave, 0.0, 1.05 - 0.3 * cEx);
+  vec3 aL = mix(mix(iL, vec3(2.45 + 0.35 * sin(cT * (8.0 + 3.0 * cStyle) + cPh + 1.3) - pump, 0.35, 0.45), cEx), vec3(1.0, clapIn, 1.55), clap * (1.0 - pointW));
+  vec3 aR = mix(mix(iR, vec3(2.45 + 0.35 * wave - pump, 0.35, 0.45), cEx), vec3(1.0, clapIn, 1.55), clap * (1.0 - pointW));
+  aL = mix(aL, G_HIPS, pointW);
+  aR = mix(aR, G_POINT + vec3(0.08 * sin(cT * 2.0 + cPh), 0.0, 0.0), pointW);
+  // A phone held up toward the road, filming, higher as the crowd rises: in one hand, or by its band in two (landscape). A flag or glowstick is waved overhead the whole time.
+  if (cPhone) {
+    float land = step(0.5, cBand2);
+    aR = vec3(mix(1.45 - 0.1 * land, 1.95 - 0.15 * land, cEx) + 0.12 * cEx * wave, 0.0, 1.05 - 0.3 * cEx - 0.25 * land);
+    aL = mix(aL, vec3(mix(1.3, 1.8, cEx), -0.12, 1.5), land);
+  }
   // Two fixed rates crossfaded by excitement: a rate scaled by it would multiply the absolute time, so every change in excitement would race the phase (flags whipping round).
   if (cWaving) aR = vec3(2.4 + (0.3 + 0.25 * cEx) * mix(sin(cT * 2.2 + cPh), sin(cT * 5.5 + cPh), cEx), 0.3, 0.2);
-  // A look around when idle, up at the arms when cheering.
-  float headYaw = 0.3 * sin(cT * 0.5 + cPh * 1.7) * (1.0 - cEx);
-  float headPitch = 0.04 - 0.14 * cEx;
-  vec4 p0 = vec4(hipY, 0.04 + 0.08 * cEx * sin(cT * 4.6 + cPh), sway, 0.0);
+  // A sip from the cup every ~9 s.
+  float sip = cCup && !cItem ? gPulse(cT, 9.0, cPh, 2.6, 0.9) * cCalm : 0.0;
+  aR = mix(aR, G_SIP, sip);
+  // The head: a look around when idle, toward the person they are talking to, down at a phone, a nod on the beat or at a word, at the road when pointing, up at the arms when cheering; then at the nearest car going by.
+  float headYaw = mix(0.3 * sin(cT * 0.5 + cPh * 1.7) * cCalm, cSide * (0.35 + 0.3 * spk), talk);
+  headYaw = mix(headYaw, cCarYaw, cLook);
+  float headPitch = 0.04 - 0.14 * cEx + 0.12 * sin(beat) * danceW + 0.06 * sin(cT * 2.3 + cPh) * talk * spk + 0.1 * rail - 0.2 * sip;
+  vec4 p0 = vec4(hipY, 0.04 + 0.08 * cEx * sin(cT * 4.6 + cPh) + 0.28 * rail + 0.05 * sin(beat) * danceW - 0.03 * bP * cCalm, sway, 0.1 * cSide * talk);
   vec4 p1 = vec4(headYaw, headPitch, aL.x, aL.y);
   vec4 p2 = vec4(aL.z, aR.x, aR.y, aR.z);
   vec4 p3 = vec4(kneeL * 0.5, kneeL, kneeR * 0.5, kneeR);
@@ -217,24 +347,46 @@ const CROWD_POSE = /* glsl */ `
   } else itemGlow = neon * (1.6 + 1.6 * cEx);
 `;
 
-/** After the pose: step back from cars that come too close (a world space push in the instance frame), and fade the tiny emitters with distance so they never sparkle in the bloom. */
-const CROWD_POST = /* glsl */ `
-  vec2 cAt = vec2(instanceMatrix[3].x, instanceMatrix[3].z);
-  vec2 push = vec2(0.0);
-  for (int i = 0; i < ${MAX_CARS}; i++) {
-    vec2 d = cAt - uCars[i].xy;
-    float l = length(d);
-    if (l < 2.8 && l > 1e-3) push += d / l * (2.8 - l) * 0.65;
+const CROWD_POSE = CROWD_HEAD + CROWD_STATE + CROWD_CARS + CROWD_BODY;
+
+/**
+ * After the pose (the scene's material only, the sprite bake has none): a hit person falls from where the sim hit them (`pmRagdoll`; `PeopleHits` has moved their translation there),
+ * a standing one with a dodge ahead of them steps by what the sim moves them by (`pmSidestep`, the wall behind is
+ * -facing, iData.w carries prefer and the room, 0 = a render-only person who does not dodge). `pRoot` is the placement in the instance frame.
+ */
+const CROWD_MOTION = /* glsl */ `
+  vec2 mAt = instanceMatrix[3].xz;
+  vec2 mFwd = normalize(instanceMatrix[2].xz + vec2(1e-5));
+  mat4 pRoot = mat4(1.0);
+  if (iHit.x >= 0.0 && cT >= iHit.x) {
+    vec2 mDisp;
+    mat4 mBody = pmRagdoll(cT - iHit.x, iHit.yz, iHit.w, p0.x, mDisp, p0, p1, p2, p3);
+    pRoot = rigT(pmLocal(instanceMatrix, vec3(mDisp.x, 0.0, mDisp.y))) * mBody;
+  } else if (iData.w != 0.0) {
+    vec2 mOff = pmSidestep(mAt, -mFwd, abs(iData.w) - 1.0, iData.w < 0.0 ? -1.0 : 1.0);
+    if (dot(mOff, mOff) > 0.0025) {
+      pRoot = rigT(pmLocal(instanceMatrix, vec3(mOff.x, 0.0, mOff.y)));
+      vec2 mLeft = vec2(mFwd.y, -mFwd.x);
+      float mBestD = 1e9;
+      vec2 mTo = mFwd;
+      for (int i = 0; i < ${PEOPLE_MAX_CARS}; i++) {
+        vec2 d = uCars[i].xy - mAt;
+        float l = length(d);
+        if (l < mBestD) { mBestD = l; mTo = d; }
+      }
+      pmStepPose(vec2(dot(mOff, mLeft), dot(mOff, mFwd)), clamp(atan(dot(mTo, mLeft), dot(mTo, mFwd)), -1.2, 1.2), p0, p1, p2, p3);
+    }
   }
-  mat3 cInst = mat3(instanceMatrix);
-  float cScale2 = max(dot(cInst[0], cInst[0]), 1e-4);
-  transformed += transpose(cInst) * vec3(push.x, 0.0, push.y) / cScale2;
+`;
+
+/** After the pose: fade the tiny emitters with distance so they never sparkle in the bloom. */
+const CROWD_POST = /* glsl */ `
   vec3 cWorld = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
   vPersonGlow *= clamp(28.0 / max(distance(cWorld, cameraPosition), 1.0), 0.15, 1.0);
 `;
 
-/** The crowd's pose with the clock read from the instance (iData.z) instead of the uniform: the sheet bakes one frame per instance. */
-const BAKE_POSE = CROWD_POSE.replace('float cT = uTime;', 'float cT = iData.z;');
+/** The crowd's pose with the clock read from the instance (iData.z) instead of the uniform, and the plain idle (no group, no rail, no car): the sheet bakes one frame per instance. */
+const BAKE_POSE = CROWD_HEAD.replace('float cT = uTime;', 'float cT = iData.z;') + CROWD_STATE_BAKE + CROWD_CARS_BAKE + CROWD_BODY;
 
 /** The far level that fades into impostors: the person's distance to the camera, as a 0..1 fade (the impostor's own, people/impostors.ts). */
 const LITE_PARS = /* glsl */ `
@@ -243,12 +395,14 @@ varying float vImpFade;
 `;
 const LITE_POST = /* glsl */ `
   float cImpDist = distance((modelMatrix * vec4(instanceMatrix[3].xyz, 1.0)).xyz, cameraPosition);
-  vImpFade = smoothstep(uImp.x - uImp.y, uImp.x + uImp.y, cImpDist);
+  // A hit person stays on this level whatever the distance: the sprites cannot fall.
+  vImpFade = iHit.x >= 0.0 ? 0.0 : smoothstep(uImp.x - uImp.y, uImp.x + uImp.y, cImpDist);
 `;
 
-/** The crowd's material; `fade` is the far level's, which dithers out where the impostors dither in (uImp: distance and half band, m). */
+/** A batch's material: the shared clock and the batch's own nearest cars (people/motion.ts says why per batch); `fade` is the far level's, which dithers out where the impostors dither in (uImp: distance and half band, m). */
 function crowdMaterial(uniforms: { uTime: { value: number }; uCars: { value: THREE.Vector4[] } }, fade?: { value: THREE.Vector2 }): THREE.MeshStandardMaterial {
-  const mat = personMaterial({ pars: fade ? CROWD_PARS + LITE_PARS : CROWD_PARS, pose: CROWD_POSE, post: fade ? CROWD_POST + LITE_POST : CROWD_POST, key: fade ? 'crowd-fade' : 'crowd' });
+  const pars = (fade ? CROWD_PARS + LITE_PARS : CROWD_PARS) + PEOPLE_MOTION_PARS();
+  const mat = personMaterial({ pars, pose: CROWD_POSE + CROWD_MOTION, post: fade ? CROWD_POST + LITE_POST : CROWD_POST, root: 'pRoot', key: fade ? 'crowd-fade' : 'crowd' });
   const compile = mat.onBeforeCompile;
   mat.onBeforeCompile = (shader, renderer) => {
     shader.uniforms.uTime = uniforms.uTime;
@@ -265,13 +419,11 @@ function crowdMaterial(uniforms: { uTime: { value: number }; uCars: { value: THR
 }
 
 // ---------------------------------------------------------------------------
-// Placement
+// Stands
 // ---------------------------------------------------------------------------
 
-/** Gate stands are thinned to this many people at density 1. */
-const GATE_CAP = 1100;
-
-interface Spot {
+/** One person of a stand: where, and for gate stands the plan's person (the dodge, the look and the hits come from it). */
+interface StandPerson {
   x: number;
   y: number;
   z: number;
@@ -281,88 +433,9 @@ interface Spot {
   ds: number;
   /** Audio stand of the gate: 0 left of the road, 1 right (sections have one). */
   side: number;
+  /** The plan's person; none for a section's (render-only people behind rails). */
+  plan?: WorldPerson;
 }
-
-/** The start / finish crowd: sidewalk rows along the route near the line (the meets stand behind its barriers). */
-function placeGate(world: World, gate: CrowdGate, rng: Rng, density: number, rows: number, placer: Placer): Spot[] {
-  const route = world.route;
-  const L = route.length;
-  const wrap = (d: number) => (route.closed ? ((((d + L / 2) % L) + L) % L) - L / 2 : d);
-  const cy = Math.cos(gate.yaw);
-  const sy = Math.sin(gate.yaw);
-  const out: Spot[] = [];
-  // Route distance, continued past the ends of a sprint route (routeProgress clamps there).
-  const p0 = route.points[0];
-  const p1 = route.points[route.points.length - 1];
-  const t0 = routeSample(route, 0);
-  const t1 = routeSample(route, L);
-  const routeS = (x: number, z: number, s: number) => {
-    if (route.closed) return s;
-    if (s < 0.5) return Math.min(s, (x - p0.x) * t0.tx + (z - p0.z) * t0.tz);
-    if (s > L - 0.5) return Math.max(s, L + (x - p1.x) * t1.tx + (z - p1.z) * t1.tz);
-    return s;
-  };
-
-  const tryPlace = (x: number, z: number, nx: number, nz: number, sidewalkRow: boolean) => {
-    const rp = world.routeProgress(x, z);
-    const ds = wrap(routeS(x, z, rp.s) - gate.s);
-    if (ds < -BACK || ds > FWD) return;
-    if (sidewalkRow && world.surfaceAt(x, z) !== 'sidewalk') return;
-    // Clear of the gantry pillars and the firework racks beside them.
-    const lx = (x - gate.position.x) * cy - (z - gate.position.z) * sy;
-    const lz = (x - gate.position.x) * sy + (z - gate.position.z) * cy;
-    if (Math.abs(lz) < 2.2 && Math.abs(lx) > gate.halfSpan - 1.4 && Math.abs(lx) < gate.halfSpan + 2.2) return;
-    if (!placer.ok(x, z)) return;
-    placer.take(x, z);
-    // Face the road, turned a little toward the line, with some personality.
-    const gx = gate.position.x - x;
-    const gz = gate.position.z - z;
-    const gl = Math.hypot(gx, gz) || 1;
-    const fx = nx + (gx / gl) * 0.35;
-    const fz = nz + (gz / gl) * 0.35;
-    const yaw = Math.atan2(fx, fz) + rng.range(-0.3, 0.3);
-    out.push({ x, y: groundY(world, x, z), z, yaw, ds, side: rp.lateral >= 0 ? 0 : 1 });
-  };
-
-  const spacing = 0.7 / Math.max(0.2, density);
-  const sidewalkRows = [0.38, 0.98, 1.58].slice(0, Math.max(1, Math.min(3, rows)));
-  for (const w of world.walls) {
-    if (distToSegment(gate.position.x, gate.position.z, w.ax, w.az, w.bx, w.bz) > BACK + 30) continue;
-    const mx = (w.ax + w.bx) / 2;
-    const mz = (w.az + w.bz) / 2;
-    const rp = world.routeProgress(mx, mz);
-    const ds = wrap(routeS(mx, mz, rp.s) - gate.s);
-    const len = Math.hypot(w.bx - w.ax, w.bz - w.az);
-    if (ds < -BACK - len || ds > FWD + len) continue;
-    const half = route.segWidth[rp.seg] / 2;
-    let depths: number[];
-    let sidewalk = false;
-    if (w.kind === 'wall') {
-      // The outer sidewalk line of the route's own road, facing it: people stand on the sidewalk in front of it.
-      if (Math.abs(Math.abs(rp.lateral) - (half + CITY.sidewalk)) > 1.3) continue;
-      const lside = rp.lateral >= 0 ? 1 : -1;
-      // Toward the road = minus the side's left vector.
-      if (-(w.nx * rp.tz - w.nz * rp.tx) * lside < 0.8) continue;
-      depths = sidewalkRows.map((d) => -d);
-      sidewalk = true;
-    } else continue; // Behind the barriers and rails near the line stands the street meet (meetPlan.ts).
-    const dx = (w.bx - w.ax) / (len || 1);
-    const dz = (w.bz - w.az) / (len || 1);
-    depths.forEach((depth, row) => {
-      for (let u = rng.range(0, spacing) + (row % 2) * spacing * 0.5; u < len; u += spacing * rng.range(0.85, 1.2)) {
-        // Small gaps between groups of friends.
-        if (rng.next() < 0.1) continue;
-        const along = u + rng.range(-0.1, 0.1);
-        const back = depth + rng.range(-0.08, 0.08);
-        tryPlace(w.ax + dx * along - w.nx * back, w.az + dz * along - w.nz * back, w.nx, w.nz, sidewalk);
-      }
-    });
-  }
-  // Keep phones happy on busy corners: thin evenly down to the cap.
-  return thin(out, Math.round(GATE_CAP * Math.max(0.2, density)));
-}
-
-// ---------------------------------------------------------------------------
 
 /** A run of a stand's people drawn as one InstancedMesh, with the far stand-in sharing its instance data. */
 interface Batch {
@@ -371,16 +444,20 @@ interface Batch {
   /** The sprite level past the impostor distance, or null without a sheet. */
   imp: THREE.InstancedMesh | null;
   excite: THREE.InstancedBufferAttribute;
+  /** This batch's own nearest cars (the uniform its materials read). */
+  cars: { value: THREE.Vector4[] };
   cx: number;
   cz: number;
   radius: number;
   /** Whether the full person was drawn last update (hysteresis). */
   near: boolean;
+  /** Whether any person of the batch is hit (they stay on the far level, and the bounds grow for the flung). */
+  hit: boolean;
 }
 
 interface Stand {
   /** The gate this stand cheers for, or null for a section (closure or corner). */
-  gate: CrowdGate | null;
+  gate: PeopleGate | null;
   batches: Batch[];
   /** Per-person excitement for the whole stand; each batch's attribute is a view of a run of it. */
   excite: Float32Array;
@@ -398,44 +475,59 @@ interface Stand {
   spot0: number;
 }
 
-export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: CrowdOptions = {}): Crowds {
+export function buildCrowds(world: World, opts: CrowdOptions = {}): Crowds {
   const group = new THREE.Group();
   group.name = 'crowds';
-  const density = opts.density ?? 1;
-  const rows = opts.rows ?? 3;
+  const plan = peopleOf(world);
   const drawDistance = opts.drawDistance ?? 260;
   const lodNear = opts.lodNear ?? CROWD_QUALITY.high.lodNear;
   const rng = new Rng((world.seed ^ 0xc40d) >>> 0);
   const geo = personGeometry('crowd');
   const liteGeo = personGeometry('far');
-  const uniforms = { uTime: { value: 0 }, uCars: { value: Array.from({ length: MAX_CARS }, () => new THREE.Vector4(1e6, 1e6, 0, 0)) } };
+  const clock = { uTime: { value: 0 } };
+  const hits = new PeopleHits();
   // The impostor sheet: baked once per page from the rig (or handed in); none keeps the far level to the draw distance.
   const spec = opts.impostor;
   const sheet = spec ? (opts.sheet !== undefined ? opts.sheet : opts.renderer ? bakeImpostors(opts.renderer, spec, CROWD_IMPOSTOR_POSES, { pars: CROWD_PARS, pose: BAKE_POSE, key: 'crowd' }) : null) : null;
   const band = { value: new THREE.Vector2(spec?.distance ?? 1e6, (spec?.fade ?? 0) / 2) };
-  const mat = crowdMaterial(uniforms);
-  const liteMat = sheet ? crowdMaterial(uniforms, band) : mat;
-  const impMat = sheet ? impostorMaterial(sheet, { uTime: uniforms.uTime, uImp: band }) : null;
+  const impMat = sheet ? impostorMaterial(sheet, { uTime: clock.uTime, uImp: band }) : null;
+  if (impMat) {
+    // The sprites cannot fall: a hit person's quad is clipped away (the far rig draws them), its own program key since the shader differs.
+    const compile = impMat.onBeforeCompile;
+    impMat.onBeforeCompile = (shader, renderer) => {
+      compile(shader, renderer);
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute vec4 iHit;')
+        .replace('#include <fog_vertex>', 'if (iHit.x >= 0.0) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);\n#include <fog_vertex>');
+    };
+    impMat.customProgramCacheKey = () => 'person-impostor-hit';
+  }
   const quad = sheet ? impostorQuad() : null;
   const stands: Stand[] = [];
   const spots: CrowdSpot[] = [];
   const dummy = new THREE.Object3D();
-  const placer = makePlacer(world);
+  const materials: THREE.Material[] = [];
   let total = 0;
 
-  const addStand = (gate: CrowdGate | null, input: Spot[]) => {
+  const addStand = (gate: PeopleGate | null, input: StandPerson[]) => {
     const n = input.length;
     // Sort along the stand's axis (route distance for gates, the section's first to last direction) so every batch is a compact patch.
     const ax = input[0].x;
     const az = input[0].z;
     const ux = input[n - 1].x - ax;
     const uz = input[n - 1].z - az;
-    const along = (p: Spot) => (gate ? p.ds : (p.x - ax) * ux + (p.z - az) * uz);
+    const along = (p: StandPerson) => (gate ? p.ds : (p.x - ax) * ux + (p.z - az) * uz);
     const people = input.slice().sort((p, q) => along(p) - along(q));
+    // Groups: the plan's friends share their group phase; a render-only section's people are grouped by the 2.2 m cell they stand in (with a phase hashed from it). The talking pairs and the front row at the rail come from the groups and the rows.
+    const cellOf = (p: StandPerson) => Math.floor(p.x / GROUP_CELL) * 4099 + Math.floor(p.z / GROUP_CELL);
+    const groupKey = (p: StandPerson) => (p.plan ? p.plan.groupPhase : cellOf(p));
+    const talk = talkCodes(people.map((p) => ({ key: groupKey(p), x: p.x, z: p.z, yaw: p.yaw })));
+    const front = gate ? null : frontRow(people);
     const lookA = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);
     const lookB = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);
     const lookIdx = new Float32Array(n);
     const data = new Float32Array(n * 4);
+    const hitAll = makeHitAttribute(people.map((p) => (p.plan ? hitSeed(p.plan.lookSeed) : 0.5)));
     const matrices = new Float32Array(n * 16);
     const excite = new Float32Array(n);
     const x = new Float32Array(n);
@@ -450,18 +542,24 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
     people.forEach((p, i) => {
       dummy.position.set(p.x, p.y, p.z);
       dummy.rotation.set(0, p.yaw, 0);
-      const s = rng.range(0.9, 1.08);
-      dummy.scale.set(s * rng.range(0.92, 1.15), s, s);
+      // Gate stands dress and scale from their plan person's own stream (the plan's scale is its first draw, skipped here); sections share the stand's.
+      const pr = p.plan ? new Rng(p.plan.lookSeed) : rng;
+      if (p.plan) pr.next();
+      const s = p.plan ? p.plan.scale : rng.range(0.9, 1.08);
+      dummy.scale.set(s * pr.range(0.92, 1.15), s, s);
       dummy.updateMatrix();
       dummy.matrix.toArray(matrices, i * 16);
-      const look = streetLook(() => rng.next());
-      const r = rng.next();
+      const look = raceLook(() => pr.next());
+      const r = pr.next();
       // Items: about 22% phones, 10% flags, 10% glowsticks.
       look.wear |= r < 0.22 ? WEAR.phone : r < 0.32 ? WEAR.flag : r < 0.42 ? WEAR.glowstick : 0;
       writeLook(lookA, lookB, i, look);
       if (sheet) lookIdx[i] = nearestImpostorLook(sheet.looks, look);
-      // Phase and style (how big a mover) for the shader's pose.
-      data.set([rng.next(), rng.next(), 0, 0], i * 4);
+      // Phase and style (how big a mover) for the shader's pose; w the dodge's prefer and room (0 = none).
+      // z: the talking code (voice 1 or 2, 4 = the nearest groupmate on the left) and 8 = the front row at a rail.
+      const code = talk[i] | (front?.[i] ? 8 : 0);
+      if (p.plan) data.set([(p.plan.groupPhase + GROUP_JITTER * pr.next()) % 1, pr.next(), code, p.plan.prefer * (1 + p.plan.backRoom)], i * 4);
+      else data.set([(cellPhase(cellOf(p)) + GROUP_JITTER * rng.next()) % 1, rng.next(), code, 0], i * 4);
       x[i] = p.x;
       z[i] = p.z;
       ds[i] = p.ds;
@@ -492,6 +590,13 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
       const bA = view(lookA.array as Float32Array, 4);
       const bB = view(lookB.array as Float32Array, 4);
       const bData = view(data, 4);
+      const bHit = view(hitAll.array as Float32Array, 4).setUsage(THREE.DynamicDrawUsage);
+      // This batch's own materials and cars: a uniform written per batch only reaches a draw when the material differs from the last draw's.
+      const cars = makeCarsUniform();
+      const bMat = crowdMaterial({ uTime: clock.uTime, uCars: cars }, undefined);
+      const bLite = sheet ? crowdMaterial({ uTime: clock.uTime, uCars: cars }, band) : bMat;
+      materials.push(bMat);
+      if (bLite !== bMat) materials.push(bLite);
       // Instance attributes live on a per batch geometry that shares the person's vertex buffers.
       const g = new THREE.BufferGeometry();
       for (const name of Object.keys(geo.attributes)) g.setAttribute(name, geo.attributes[name]);
@@ -501,7 +606,8 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
       g.setAttribute('lookB', bB);
       g.setAttribute('iData', bData);
       g.setAttribute('iExcite', bExcite);
-      const mesh = new THREE.InstancedMesh(g, mat, m);
+      g.setAttribute('iHit', bHit);
+      const mesh = new THREE.InstancedMesh(g, bMat, m);
       mesh.name = gate ? 'crowd' : 'crowdSection';
       mesh.instanceMatrix = view(matrices, 16);
       mesh.instanceMatrix.needsUpdate = true;
@@ -516,7 +622,8 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
       gl.setAttribute('lookB', bB);
       gl.setAttribute('iData', bData);
       gl.setAttribute('iExcite', bExcite);
-      const lite = new THREE.InstancedMesh(gl, liteMat, m);
+      gl.setAttribute('iHit', bHit);
+      const lite = new THREE.InstancedMesh(gl, bLite, m);
       lite.name = mesh.name + 'Far';
       lite.instanceMatrix = mesh.instanceMatrix;
       lite.boundingSphere = mesh.boundingSphere?.clone() ?? null;
@@ -531,6 +638,7 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
         gi.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 1.1, 0), 2.1);
         gi.setAttribute('iData', bData);
         gi.setAttribute('iExcite', bExcite);
+        gi.setAttribute('iHit', bHit);
         gi.setAttribute('iLook', view(lookIdx, 1));
         imp = new THREE.InstancedMesh(gi, impMat, m);
         imp.name = mesh.name + 'Impostor';
@@ -549,7 +657,23 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
       bz /= m;
       let br = 0;
       for (let i = s0; i < s0 + m; i++) br = Math.max(br, Math.hypot(x[i] - bx, z[i] - bz));
-      batches.push({ mesh, lite, imp, excite: bExcite, cx: bx, cz: bz, radius: br, near: false });
+      const batch: Batch = { mesh, lite, imp, excite: bExcite, cars, cx: bx, cz: bz, radius: br, near: false, hit: false };
+      batches.push(batch);
+      for (let i = s0; i < s0 + m; i++) {
+        const plan = people[i].plan;
+        if (!plan) continue;
+        hits.bind(
+          plan.id,
+          bHit,
+          i - s0,
+          (any) => {
+            if (any === batch.hit) return;
+            batch.hit = any;
+            growBounds(imp ? [mesh, lite, imp] : [mesh, lite], any ? FLING_MARGIN : -FLING_MARGIN);
+          },
+          { matrix: mesh.instanceMatrix },
+        );
+      }
     }
     const spot0 = spots.length;
     for (const e of ends) {
@@ -561,13 +685,13 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
     total += n;
   };
 
-  // The meets' crowds are planned already (meetPlan.ts): the gate stands keep clear of them.
-  const meetZones = world.openWorld ? [] : (opts.meet?.zones ?? []);
-  for (const zone of meetZones) for (const p of zone.people) placer.take(p.x, p.z);
-  for (const gate of gates) {
-    const people = placeGate(world, gate, rng, density, rows, placer);
+  // The gate stands are the shared plan's (one canonical density), one stand per gate; the meets' and the market pens' crowds are render-only.
+  plan.gates.forEach((gate, gi) => {
+    const people: StandPerson[] = [];
+    for (const p of plan.people) if (p.gate && p.gate.gate === gi) people.push({ x: p.x, y: p.y, z: p.z, yaw: p.yaw, ds: p.gate.ds, side: p.gate.side, plan: p });
     if (people.length) addStand(gate, people);
-  }
+  });
+  const meetZones = world.openWorld ? [] : (opts.meet?.zones ?? []);
   for (const zone of meetZones) {
     if (zone.people.length < SECTION_MIN) continue;
     addStand(
@@ -584,7 +708,7 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
   if (stands.length) {
     const first = stands[0].batches[0];
     first.mesh.onBeforeRender = first.lite.onBeforeRender = () => {
-      if (externalAt < 0 || performance.now() - externalAt > 500) uniforms.uTime.value = performance.now() / 1000;
+      if (externalAt < 0 || performance.now() - externalAt > 500) clock.uTime.value = performance.now() / 1000;
     };
     if (first.imp) first.imp.onBeforeRender = first.lite.onBeforeRender;
   }
@@ -599,14 +723,13 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
     return stands.find((c) => c.gate && (at === 'finish' ? c.gate.kind !== 'start' : c.gate.kind !== 'finish'));
   }
 
-  function update(time: number, dt: number, cars: readonly CrowdCar[], lx: number, lz: number): void {
+  function update(time: number, dt: number, cars: readonly CrowdCar[], lx: number, lz: number, state?: PeopleState): void {
     externalAt = performance.now();
     now = time;
-    uniforms.uTime.value = time;
+    clock.uTime.value = time;
+    hits.update(state);
     // The band is read from the table each update, so tuning it in a dev console takes effect at once.
     if (spec) band.value.set(spec.distance, spec.fade / 2);
-    const uc = uniforms.uCars.value;
-    nearestCars(cars, lx, lz, MAX_CARS, uc);
     levelSum.fill(0);
     levelW.fill(0);
     if (!enabled) {
@@ -624,11 +747,12 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
         const bd = Math.hypot(lx - b.cx, lz - b.cz) - b.radius;
         const shown = !!cr.gate || bd < drawDistance;
         b.near = bd < lodNear + (b.near ? LOD_HYST : -LOD_HYST);
+        if (shown) carsNear(cars, lx, lz, b.cx, b.cz, b.radius, b.cars.value);
         b.mesh.visible = shown && b.near;
         if (b.imp && spec) {
           // The far level fades out and the sprite in per person over distance +- fade / 2 (the shaders); a batch draws each only while some of its people can be inside its range, and the fade needs no hysteresis.
           const dc = bd + b.radius;
-          b.lite.visible = shown && !b.near && dc - b.radius - IMPOSTOR_MARGIN < spec.distance + spec.fade / 2;
+          b.lite.visible = shown && !b.near && (b.hit || dc - b.radius - IMPOSTOR_MARGIN < spec.distance + spec.fade / 2);
           b.imp.visible = shown && dc + b.radius + IMPOSTOR_MARGIN > spec.distance - spec.fade / 2;
         } else b.lite.visible = shown && !b.near;
       }
@@ -720,8 +844,7 @@ export function buildCrowds(world: World, gates: readonly CrowdGate[], opts: Cro
       }
       geo.dispose();
       liteGeo.dispose();
-      mat.dispose();
-      if (liteMat !== mat) liteMat.dispose();
+      for (const m of materials) m.dispose();
       impMat?.dispose();
       quad?.dispose();
       // The sheet's texture belongs to the page (people/impostors.ts caches it per renderer): later scenes reuse it.

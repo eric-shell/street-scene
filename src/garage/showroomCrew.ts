@@ -7,17 +7,21 @@
  * goes back to its wheel on a minute's cycle (liftHeight drives the lift to
  * match).
  *
- * They are the game's people (render/people/person.ts): one draw call for
- * the crew, one for their shadows and one each for the boxes and cylinders
- * they hold. Each script turns the showroom's clock into a pose (position,
- * heading and the person's 16 joint values), so the crew keeps no state of
- * its own. Render only.
+ * They are the game's people (render/people/person.ts) at the hero level,
+ * each an F&F garage character from the shop wardrobe (CREW): a work shirt
+ * with a name patch, coveralls tied off over a tank, a tank and tool belt,
+ * a hoodie and beanie, a tee and bandana, full coveralls, and the lift man.
+ * One draw call for the crew, one for their shadows and one each for the
+ * boxes and cylinders they hold. Each script turns the showroom's clock into
+ * a pose (position, heading and the person's 16 joint values), so the crew
+ * keeps no state of its own. Render only.
  */
 import * as THREE from 'three';
 import { clamp, lerp, smoothstep, wrapAngle } from '../sim/math';
-import { BODY, People, personFrame, plantFeet, standingPose } from '../render/people/person';
-import type { PersonPose } from '../render/people/person';
+import { BODY, People, WEAR, personFrame, plantFeet, standingPose, withHair, withHead } from '../render/people/person';
+import type { PersonLook, PersonPose } from '../render/people/person';
 import { shopLook } from '../render/people/looks';
+import type { ShopKind } from '../render/people/looks';
 import type { Disposable } from '../render/disposer';
 
 type V3 = [number, number, number];
@@ -73,6 +77,34 @@ const LIFT_CYCLE = { period: 60, upStart: 4, upEnd: 10, downStart: 31.5, downEnd
 
 /** Things held at once, across the crew. */
 const MAX_HOLDS = 12;
+
+/**
+ * Who the crew are, by script (bench, overhead, dyno, the two talkers, the carrier, the lift operator): the outfit,
+ * what is on the head and the hair, the extras they always have, and short (rolled) or long sleeves where the outfit
+ * leaves it to the roll. Colors and skin still come from the hash.
+ */
+const CREW: { kind: ShopKind; head: number; hair: number; extras: number; sleeves?: 'rolled' | 'down' }[] = [
+  { kind: 'workShirt', head: WEAR.backcap, hair: WEAR.hair, extras: WEAR.rag, sleeves: 'rolled' },
+  { kind: 'coveralls', head: 0, hair: WEAR.long, extras: WEAR.gloves },
+  { kind: 'toolBelt', head: 0, hair: 0, extras: WEAR.chain },
+  { kind: 'hoodie', head: WEAR.beanie, hair: WEAR.hair, extras: 0 },
+  { kind: 'tee', head: WEAR.bandana, hair: WEAR.long, extras: 0 },
+  { kind: 'jumpsuit', head: WEAR.cap, hair: WEAR.hair, extras: WEAR.gloves | WEAR.patch },
+  { kind: 'workShirt', head: 0, hair: WEAR.big, extras: WEAR.gloves | WEAR.rag, sleeves: 'down' },
+];
+/** The extras the roll may add that the crew decides for itself. */
+const CREW_DECIDES = WEAR.gloves | WEAR.rag | WEAR.stripe | WEAR.chain;
+
+/** Crew member i's look: the shop roll for their outfit, then their head, hair, extras and sleeves. */
+function crewLook(i: number): PersonLook {
+  const c = CREW[i % CREW.length];
+  let k = i * 31;
+  const look = shopLook(() => hash(k++), c.kind);
+  look.wear = withHair(withHead(look.wear & ~CREW_DECIDES, c.head), c.hair) | c.extras;
+  if (c.sleeves === 'rolled') look.sleeves = look.skin;
+  else if (c.sleeves === 'down') look.sleeves = look.shirt;
+  return look;
+}
 
 /** The hash the crew's clothes are drawn from, so the same crew turns up every visit. */
 const hash = (i: number) => {
@@ -189,10 +221,7 @@ export class Crew {
   ) {
     this.scripts = this.makeScripts();
     this.people = new People(this.scripts.length, track, shadowMap);
-    for (let i = 0; i < this.scripts.length; i++) {
-      let k = i * 31;
-      this.people.setLook(i, shopLook(() => hash(k++)));
-    }
+    for (let i = 0; i < this.scripts.length; i++) this.people.setLook(i, crewLook(i));
     const mat = track(new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.3 }));
     const held = (geo: THREE.BufferGeometry) => {
       const mesh = new THREE.InstancedMesh(track(geo), mat, MAX_HOLDS);

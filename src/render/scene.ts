@@ -23,8 +23,8 @@ import { buildProps, PropRenderer } from './street/props';
 import { buildDistrictMeshes } from './districts';
 import { Backdrop, buildBackdrop } from './sky/backdrop';
 import { CROWD_IMPOSTOR, CROWD_QUALITY, buildCrowds, Crowds } from './race/crowds';
-import { IDLE_QUALITY, buildIdlers, Idlers } from './people/idlers';
-import { planIdlers } from './people/idleSpots';
+import { buildIdlers, Idlers } from './people/idlers';
+import { peopleOf } from '../city/people/people';
 import { buildWalkers, Walkers } from './people/walkers';
 import { buildStreetPolish } from './street/streetPolish';
 import { buildPlaceSigns } from './street/placeSigns';
@@ -182,11 +182,11 @@ export interface NightScene {
   roadblocks: Roadblocks;
   /** Street furniture; feed it RaceState.brokenProps every frame (props.update). */
   props: PropRenderer;
-  /** Spectators at the start / finish (empty in open world); feed it car poses every frame (crowds.update). */
+  /** Spectators at the start / finish (empty in open world); feed it the people clock, car poses and the race's people every frame (crowds.update). */
   crowds: Crowds;
-  /** Idle people around the city; feed it car poses every frame (idlers.update). */
+  /** Idle people around the city; feed it the same (idlers.update). */
   idlers: Idlers;
-  /** Pedestrians walking the sidewalks, their walk computed in the shader from the clock; feed it the same car poses (walkers.update). */
+  /** Pedestrians walking the sidewalks, their walk computed in the shader from the people clock; feed it the same (walkers.update). */
   walkers: Walkers;
   /** The seed's weather mood: fog, sky, rain or mist (weather.ts). */
   weather: Weather;
@@ -342,17 +342,17 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   scene.add(props.group);
   // Spectators on the sidewalks by the start / finish gantries, and every meet's crowd (none in an open world).
   const crowdQ = CROWD_QUALITY[settings.quality];
-  const gates = world.openWorld ? [] : city.finishLine.gates;
+  // The people of the city are one plan (city/people/people.ts), the same at every quality: the sim collides with them,
+  // so quality only changes how far they are drawn. The stands, the idlers and the walkers all draw from it.
+  const people = peopleOf(world);
   const markets = planMarketCrowd(world, crowdQ.density);
-  const crowds = buildCrowds(world, gates, { ...crowdQ, drawDistance: meetQ.crowdDraw, meet, sections: markets, renderer: gr.renderer, impostor: CROWD_IMPOSTOR[settings.quality] });
+  const crowds = buildCrowds(world, { lodNear: crowdQ.lodNear, drawDistance: meetQ.crowdDraw, meet, sections: markets, renderer: gr.renderer, impostor: CROWD_IMPOSTOR[settings.quality] });
   scene.add(crowds.group);
-  // Idle people: waiting, sitting and chatting around the city, off the route and away from the stands (people/idleSpots.ts).
-  const idleQ = IDLE_QUALITY[settings.quality];
-  const idlePlan = planIdlers(world, { density: idleQ.density, cap: idleQ.cap, shopFronts: city.shopFronts, avoid: { gates, meets: meet, markets } });
-  const idlers = buildIdlers(world, idlePlan.people, { quality: settings.quality, warmth: idlePlan.warmth });
+  // Idle people: waiting, sitting and chatting around the city, off the route and away from the stands.
+  const idlers = buildIdlers(people, { quality: settings.quality });
   scene.add(idlers.group);
-  // Pedestrians on the sidewalks (people/walkers.ts): their walk is the shader's, so nothing but the clock and two cars is written per frame.
-  const walkers = buildWalkers(world, { quality: settings.quality, warmth: idlePlan.warmth, avoid: { gates, meets: meet, markets } });
+  // Pedestrians on the sidewalks (people/walkers.ts): their walk is the shader's, so nothing but the clock and each cell's four nearest cars is written per frame.
+  const walkers = buildWalkers(people, { quality: settings.quality });
   scene.add(walkers.group);
   // Dev builds: `?walls` draws the sim's collision over the scene (wallOverlay.ts).
   const walls = import.meta.env.DEV && new URLSearchParams(location.search).has('walls') ? buildWallOverlay(world) : null;

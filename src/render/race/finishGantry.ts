@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { World } from '../../city/world';
 import { routeSample } from '../../city/route';
+import { gateAt } from '../../city/people/gates';
 import { Disposer } from '../disposer';
 import { LINE_Y, UP, THEMES, signGlow, signTexture, poolTexture } from './finishLook';
 import type { Theme, SignFace } from './finishLook';
@@ -96,9 +97,11 @@ export function buildGantry(kit: GantryKit, s: number, kind: GateKind, gi: numbe
   const half = route.segWidth[p.seg] / 2;
   const full = kind !== 'start';
   const theme = THEMES[kind];
-  const yaw = Math.atan2(p.tx, p.tz);
-  const y0 = h(p.x, p.z);
-  const L = half + 1.7;
+  // The gate's own numbers come from the city's people plan (city/people/gates.ts), so the stands and the steel agree.
+  const g = gateAt(world, s, kind);
+  const yaw = g.yaw;
+  const y0 = g.position.y;
+  const L = g.halfSpan;
   const pw = full ? 1.25 : 0.9;
   const H = full ? 11.6 : 8.6;
   const signY = full ? 7.4 : 5.9;

@@ -359,5 +359,24 @@
     "minLotDepth": 8,
     "minLotLength": 12,
     "minLotArea": 240
+  },
+  "people": {
+    "_": "Pedestrians (src/sim/people.ts): the planned people of the city (src/city/people) as bodies a car hits. mass and radius (kg, m) set the momentum exchange like a prop with anchor 1; below breakSpeed (m/s, closing) a person holds like a short wall; a hit flings the person at flingShare of the car's velocity. sidestep is the stateless dodge every car asks of the people in its path, computed the same in the sim and the shaders.",
+    "mass": 80,
+    "radius": 0.3,
+    "breakSpeed": 1.0,
+    "flingShare": 0.9,
+    "sidestep": {
+      "_": "carHalfWidth and carHalfLength (m) are the car's box as people see it; margin (m) is the room they want beside it; max (m) the furthest a person steps; speed (m/s) how fast they step; lookAhead (m) how far ahead of the car they notice it; behind (m) how far behind its tail they still shy; softSign (m) the lateral distance over which the side chosen blends from one to the other; minSpeed (m/s) the slowest car that asks anyone to move.",
+      "carHalfWidth": 1.0,
+      "carHalfLength": 2.2,
+      "margin": 0.5,
+      "max": 1.4,
+      "speed": 2.0,
+      "lookAhead": 12,
+      "behind": 4,
+      "softSign": 0.35,
+      "minSpeed": 1.0
+    }
   }
 }

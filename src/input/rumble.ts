@@ -83,7 +83,7 @@ export class Rumble {
       const k = Math.min(1, (e.value ?? 0) / RUMBLE.hitFull);
       this.hit = Math.max(this.hit, k);
       this.knock = Math.max(this.knock, k * RUMBLE.hitWeak);
-    } else if (e.type === 'prop' || e.type === 'arm') {
+    } else if (e.type === 'prop' || e.type === 'arm' || e.type === 'person') {
       this.hit = Math.max(this.hit, RUMBLE.prop / 2);
       this.knock = Math.max(this.knock, RUMBLE.prop);
     }

@@ -587,3 +587,60 @@ export function getByPath(obj: unknown, path: string): number {
   for (const k of path.split('.')) o = o[k] as Record<string, unknown>;
   return o as unknown as number;
 }
+
+// ---------------------------------------------------------------------------
+// Pedestrians (src/sim/people.ts): the bodies a car hits and the dodge people make.
+// ---------------------------------------------------------------------------
+
+/** The stateless sidestep every car asks of the people in its path (sim and shaders compute it the same). */
+export interface PeopleSidestep {
+  /** The car's half width and half length as people see it (m). */
+  carHalfWidth: number;
+  carHalfLength: number;
+  /** Room a person wants beside the car's flank (m). */
+  margin: number;
+  /** Furthest a person steps (m) and how fast (m/s). */
+  max: number;
+  speed: number;
+  /** How far ahead of the nose people notice a car (m) and how far behind the tail they still shy (m). */
+  lookAhead: number;
+  behind: number;
+  /** Lateral distance over which the side chosen blends from one to the other (m). */
+  softSign: number;
+  /** The slowest car that asks anyone to move (m/s). */
+  minSpeed: number;
+}
+
+/** Pedestrian numbers (drivingParams.json `people`). */
+export interface PeopleParams {
+  /** Person mass (kg) and collision radius (m). */
+  mass: number;
+  radius: number;
+  /** Closing speed (m/s) below which a person holds like a short wall instead of going down. */
+  breakSpeed: number;
+  /** Share of the car's velocity at the contact a knocked down person is flung at. */
+  flingShare: number;
+  sidestep: PeopleSidestep;
+}
+
+const PEOPLE_KEYS: (keyof PeopleParams)[] = ['mass', 'radius', 'breakSpeed', 'flingShare'];
+const SIDESTEP_KEYS: (keyof PeopleSidestep)[] = ['carHalfWidth', 'carHalfLength', 'margin', 'max', 'speed', 'lookAhead', 'behind', 'softSign', 'minSpeed'];
+
+/** Type and key check of the `people` block: unknown or missing keys and non-numbers throw, like the car tuning. */
+function validatePeople(raw: unknown): PeopleParams {
+  if (!isObj(raw)) throw new Error('drivingParams.json: "people" must be an object');
+  for (const k of Object.keys(raw)) {
+    if (!k.startsWith('_') && k !== 'sidestep' && !PEOPLE_KEYS.includes(k as keyof PeopleParams)) throw new Error(`drivingParams.json: unknown key "people.${k}"`);
+  }
+  for (const k of PEOPLE_KEYS) if (typeof raw[k] !== 'number') throw new Error(`drivingParams.json: "people.${k}" must be a number`);
+  const side = raw.sidestep;
+  if (!isObj(side)) throw new Error('drivingParams.json: "people.sidestep" must be an object');
+  for (const k of Object.keys(side)) {
+    if (!k.startsWith('_') && !SIDESTEP_KEYS.includes(k as keyof PeopleSidestep)) throw new Error(`drivingParams.json: unknown key "people.sidestep.${k}"`);
+  }
+  for (const k of SIDESTEP_KEYS) if (typeof side[k] !== 'number') throw new Error(`drivingParams.json: "people.sidestep.${k}" must be a number`);
+  return raw as unknown as PeopleParams;
+}
+
+/** Pedestrian numbers (drivingParams.json `people`), validated at startup. */
+export const PEOPLE_PARAMS: PeopleParams = validatePeople((params as Record<string, unknown>).people);

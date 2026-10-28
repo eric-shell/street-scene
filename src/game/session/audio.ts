@@ -42,7 +42,7 @@ export class SessionAudio {
     private readonly views: CarView[],
     private readonly night: NightScene,
   ) {
-    this.crowdCars = race.cars.map(() => ({ x: 0, z: 0, speed: 0 }));
+    this.crowdCars = race.cars.map(() => ({ x: 0, z: 0, yaw: 0, speed: 0 }));
     // Engine sound: the player's car loud and centered, rivals by distance.
     const hub = audioHub();
     if (hub) {
@@ -61,7 +61,7 @@ export class SessionAudio {
   }
 
   /** Nitrous and scrape loops, the listener for one-shots, and the horn with its headlight flash. */
-  updateSfx(poses: Snap[], camera: THREE.PerspectiveCamera, dt: number, paused: boolean, time: number, horn: boolean): void {
+  updateSfx(poses: Snap[], camera: THREE.PerspectiveCamera, dt: number, paused: boolean, time: number, horn: boolean, alpha: number): void {
     const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
     this.sfx?.setListener(camera.position.x, camera.position.z, right.x, right.z);
     const cars = poses.map((p, i) => {
@@ -76,17 +76,22 @@ export class SessionAudio {
     }
     if (!paused) this.ambience?.update(time, dt, camera.position.y, poses[0].throttle, this.night.weather.live);
     this.sfx?.updateCars(cars, this.race.world, dt, paused);
-    // Crowds react to the racers' (sim) poses and are heard from the camera.
+    // Crowds react to the racers' (sim) poses and are heard from the camera. The people run on the sim's own time
+    // (the interpolated tick, as syncDistricts reads it) rather than the scene clock, so a walker is drawn where the sim
+    // has it and a person hit falls from the tick they were hit; a pause freezes them with the sim.
     const cc = this.crowdCars;
     for (let i = 0; i < cc.length; i++) {
       const p = poses[i];
       cc[i].x = p.x;
       cc[i].z = p.z;
+      cc[i].yaw = p.yaw;
       cc[i].speed = p.speed;
     }
-    this.night.crowds.update(time, paused ? 0 : dt, cc, camera.position.x, camera.position.z);
-    this.night.idlers.update(time, cc, camera.position.x, camera.position.z, this.race.brokenProps);
-    this.night.walkers.update(time, cc, camera.position.x, camera.position.z);
+    const peopleTime = Math.max(0, this.race.tick - 1 + (paused ? 1 : alpha)) / 60;
+    const people = this.race.people;
+    this.night.crowds.update(peopleTime, paused ? 0 : dt, cc, camera.position.x, camera.position.z, people);
+    this.night.idlers.update(peopleTime, cc, camera.position.x, camera.position.z, people);
+    this.night.walkers.update(peopleTime, cc, camera.position.x, camera.position.z, people);
     this.sfx?.updateCrowds(this.night.crowds.spots, paused);
     // A section erupting as racers pass: a burst of cheering and applause from it (at most every few seconds).
     if (!paused) {

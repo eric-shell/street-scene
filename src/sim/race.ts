@@ -22,6 +22,7 @@ import { DEG, PI, TAU, abs, atan2, clamp, cos, distToSegment, segmentT, sin, sqr
 import { AiState, Course, aiInput, buildRacingLine, createAi, driverDetours, driverLine, RacingLine, rollDrivers, sweepFrame } from './ai';
 import { Rng, deriveSeed } from './prng';
 import { stepProps } from './props';
+import { PeopleState, createPeopleState, stepPeople } from './people';
 import { RailState, createRailState } from './rails';
 import { TrafficState, createTraffic, stepTraffic, trafficTuning } from './traffic';
 import { DriftZoneState, createDriftZoneState, stepDriftZones } from './driftZones';
@@ -62,6 +63,8 @@ export interface RaceConfig {
   openWorld?: boolean;
   /** Ambient traffic on the streets the race does not use (src/sim/traffic.ts). Missing in old replays = off. */
   traffic?: boolean;
+  /** Pedestrians as bodies on the sidewalks (src/sim/people.ts). Missing in old replays = off, so recorded races replay as they were. */
+  people?: boolean;
   /**
    * Seed of the rivals' personalities (src/sim/ai.ts rollDrivers): rolled fresh
    * for every race start, so each race's field drives its own lines its own
@@ -167,6 +170,8 @@ export interface RaceState {
   traffic: TrafficState | null;
   /** Drift zone visits per car (src/sim/driftZones.ts). Fresh per race. */
   driftZones: DriftZoneState;
+  /** Pedestrians knocked down this race (src/sim/people.ts); empty when the config has people off. Fresh per race. */
+  people: PeopleState;
 }
 
 /** Wall hit events: the least impact speed that makes one (m/s); car crashes and the gap between events are CRASH_EVENT's. */
@@ -174,14 +179,14 @@ const WALL_EVENT_SPEED = 3;
 
 /**
  * Sim events, consumed by the session for HUD messages, sounds and effects.
- * 'prop': value = prop id broken. 'arm': value = level crossing arm snapped off (RaceState.brokenArms index). 'crash': value = impact speed (m/s), other = car index hit.
+ * 'prop': value = prop id broken. 'person': value = pedestrian id (peopleOf(world).people) knocked down. 'arm': value = level crossing arm snapped off (RaceState.brokenArms index). 'crash': value = impact speed (m/s), other = car index hit.
  * 'wall': value = impact speed (m/s), kind = wall kind hit.
  * A 'crash' with `traffic` set hit that traffic car (r.traffic.cars index); car is -1 when traffic hit traffic.
  * 'driftBank': value = points banked, other = of those, the drift zone bonus (when there was one).
  */
 export type RaceEvent = {
   tick: number;
-  type: 'lap' | 'checkpoint' | 'finish' | 'wrongWay' | 'reset' | 'driftBank' | 'prop' | 'arm' | 'crash' | 'wall';
+  type: 'lap' | 'checkpoint' | 'finish' | 'wrongWay' | 'reset' | 'driftBank' | 'prop' | 'person' | 'arm' | 'crash' | 'wall';
   car: number;
   value?: number;
   other?: number;
@@ -344,6 +349,7 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
     rails: createRailState(w),
     traffic,
     driftZones: createDriftZoneState(w, cars.length),
+    people: createPeopleState(w, config.people === true),
   };
 }
 
@@ -616,6 +622,8 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
   }
   // Destructible street furniture: knocks props down, slows cars, emits 'prop' events.
   stepProps(r);
+  // Pedestrians: the same for people (sim/people.ts), no nitrous; emits 'person' events.
+  stepPeople(r);
   // Level crossings (sim/levelCrossing.ts): arms snap under cars, a car left on the tracks when a train comes is towed off.
   stepLevelCrossings(r);
   for (let i = 0; i < r.cars.length; i++) {

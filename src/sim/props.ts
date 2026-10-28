@@ -20,9 +20,9 @@ import { fillNitrous, yawInertia } from './car';
 import { LEVEL_GAP } from './constants';
 
 /** Fraction of the off center angular impulse applied as yaw (a nudge, not a spin). */
-const YAW_NUDGE = 0.35;
+export const YAW_NUDGE = 0.35;
 /** Car impact (m/s, for camera shake and drift chains) per m/s of speed lost. */
-const IMPACT_PER_DV = 1.25;
+export const IMPACT_PER_DV = 1.25;
 /** Points sampled along a capsule prop's core (odd, so the middle is one): closer than its radius apart. */
 const CORE_SAMPLES = 5;
 

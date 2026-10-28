@@ -18,7 +18,6 @@ import { STREETLIGHT_ARM, STREETLIGHT_POLE_H } from './props';
 import { createPodiumOutput, makeFacadeKitTextures } from '../buildings/facadeKit';
 import { FACE_PX, makeInteriorAtlas } from '../buildings/interiorAtlas';
 import { createPodiumMaterial } from '../buildings/podiumMaterial';
-import type { ShopFront } from '../people/idleSpots';
 import { buildBuildings, Detail } from '../buildings/buildings';
 import { neonMood } from '../textures/cityMood';
 import { STEM_SHOPS_PER_HOOD, hoodBrands } from '../textures/hoodBrands';
@@ -50,8 +49,6 @@ export interface CityMeshes {
   barrierLampMaterial: THREE.MeshBasicMaterial;
   /** Start / finish gantries: call update(time) per frame and burst() on the player's finish. */
   finishLine: FinishLines;
-  /** Lit shop fronts from the podiums, for the idle people (people/idleSpots.ts). */
-  shopFronts: readonly ShopFront[];
   /** Animated building windows and aviation lights (s). */
   update(time: number): void;
   dispose(): void;
@@ -716,7 +713,6 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     group,
     lampPositions,
     signLights,
-    shopFronts: podium.shopFronts,
     barrierLampMaterial,
     finishLine,
     update(time) {

@@ -39,9 +39,9 @@
  */
 import * as THREE from 'three';
 import { Rng } from '../../sim/prng';
-import { WEAR, personGeometry, personMaterial } from './person';
+import { HAIR_STATE, HEAD_STATE, WEAR, hairState, headState, personGeometry, personMaterial } from './person';
 import type { PersonLook, PersonShader } from './person';
-import { streetLook } from './looks';
+import { raceLook } from './looks';
 
 /** What a sheet is cut into, and how it is cut. */
 export interface ImpostorSpec {
@@ -107,28 +107,49 @@ float impNoise(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056,
 /** The hex color's channels, 0..1 in sRGB. */
 const rgb = (c: number): [number, number, number] => [((c >> 16) & 255) / 255, ((c >> 8) & 255) / 255, (c & 255) / 255];
 const ITEMS = WEAR.phone | WEAR.flag | WEAR.glowstick;
-const HEADS = WEAR.cap | WEAR.beanie | WEAR.hair | WEAR.hood;
 
-/** How far apart two looks read at a distance: skin, shirt and trousers by color, and what is on the head by silhouette. */
+/** The colors a look shows at a distance, as the far level draws them: skin, the torso (mostly the jacket over the shirt), the upper arms, the trousers and the shins (skin in shorts). */
+function farColors(l: PersonLook): [number, number, number][] {
+  const jacket = (l.wear & WEAR.jacket) !== 0;
+  const s = rgb(l.shirt);
+  const v = rgb(l.sleeves);
+  const torso = jacket ? s.map((c, i) => c + (v[i] - c) * 0.65) as [number, number, number] : s;
+  const arms = jacket ? v : l.wear & WEAR.tank ? rgb(l.skin) : s;
+  return [rgb(l.skin), torso, arms, rgb(l.pants), l.wear & WEAR.shorts ? rgb(l.skin) : rgb(l.pants)];
+}
+/** Weights of farColors' entries in the distance. */
+const FAR_WEIGHTS = [1, 1.6, 0.4, 0.7, 0.4] as const;
+
+/** What changes a look's outline at a distance (the far level's extra boxes): a hat, a bucket brim, long hair, a backpack. */
+function outline(wear: number): [number, number, number, number] {
+  const head = headState(wear);
+  const hat = head !== HEAD_STATE.none && head !== HEAD_STATE.hood && head !== HEAD_STATE.headphones;
+  return [hat ? 1 : 0, head === HEAD_STATE.bucket ? 1 : 0, hairState(wear) === HAIR_STATE.long && head !== HEAD_STATE.hood ? 1 : 0, wear & WEAR.backpack ? 1 : 0];
+}
+
+/** How far apart two looks read at a distance: the colors the far level shows, and each outline change it draws. */
 function lookDistance(a: PersonLook, b: PersonLook): number {
+  const ca = farColors(a);
+  const cb = farColors(b);
   let d = 0;
-  for (const [key, w] of [['skin', 1], ['shirt', 1.6], ['pants', 0.7], ['sleeves', 0.4]] as const) {
-    const x = rgb(a[key]);
-    const y = rgb(b[key]);
-    d += w * ((x[0] - y[0]) ** 2 + (x[1] - y[1]) ** 2 + (x[2] - y[2]) ** 2);
-  }
-  return Math.sqrt(d) + ((a.wear & HEADS) === (b.wear & HEADS) ? 0 : 0.35);
+  ca.forEach((x, k) => {
+    const y = cb[k];
+    d += FAR_WEIGHTS[k] * ((x[0] - y[0]) ** 2 + (x[1] - y[1]) ** 2 + (x[2] - y[2]) ** 2);
+  });
+  const oa = outline(a.wear);
+  const ob = outline(b.wear);
+  return Math.sqrt(d) + oa.reduce((s, v, k) => s + (v === ob[k] ? 0 : 0.2), 0);
 }
 
 /**
- * The sheet's looks: a seeded pool of street looks thinned by farthest point (each pick the one furthest from
- * every pick so far), so a dozen cover the wardrobe's skin tones and outfit colors, then dealt out as plain
+ * The sheet's looks: a seeded pool of race-goers (the wardrobe the stands wear) thinned by farthest point (each pick the one furthest from
+ * every pick so far), so a dozen cover the wardrobe's skin tones, outfit colors and outlines, then dealt out as plain
  * ones first and the phone, flag and glowstick holders after. The same spec always gives the same looks.
  */
 export function pickImpostorLooks(spec: ImpostorSpec): ImpostorLook[] {
   const rng = new Rng(0x1a90be);
   const total = spec.plain + spec.phones + spec.flags + spec.sticks;
-  const pool = Array.from({ length: 480 }, () => streetLook(() => rng.next()));
+  const pool = Array.from({ length: 480 }, () => raceLook(() => rng.next()));
   const picked: PersonLook[] = [pool[0]];
   const gap = pool.map((p) => lookDistance(p, pool[0]));
   while (picked.length < total) {

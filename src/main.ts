@@ -532,6 +532,7 @@ function handoffToFreeRoam(): void {
     tractionControl: settings.tractionControl,
     openWorld: true,
     traffic: true,
+    people: true,
     start: { x: p.x, z: p.z, y: p.y, yaw: p.yaw, speed: st.speed, tick: Math.round(st.time * TICK_HZ) },
   };
   const shot = { position: showreel.camera.position.clone(), look: showreel.lookTarget.clone(), fov: showreel.camera.fov };
@@ -672,6 +673,7 @@ function startRace(mode: RaceMode): void {
     tractionControl: settings.tractionControl,
     // Ambient traffic on the side streets. Replays carry the flag.
     traffic: true,
+    people: true,
     aiSeed: rivalSeed(),
   };
   const ghostData = count === 0 ? loadGhost(seed, mode) : null;
@@ -700,6 +702,7 @@ function startFreeRoam(seedText: string): void {
     tractionControl: settings.tractionControl,
     openWorld: true,
     traffic: true,
+    people: true,
   };
   runSession(config, [build.visual], null, null, 'roam');
 }

@@ -152,8 +152,8 @@ export class StreetStage {
   private readonly down: number[] = [];
   /** Every car's motion this frame, which way a prop it hits comes apart. */
   private readonly motions: CarMotion[] = [];
-  /** The same cars for the idle people's heads (x, z, speed), rebuilt from the motions each frame. */
-  private readonly idleCars: { x: number; z: number; speed: number }[] = [];
+  /** The same cars for the idle people's heads and dodge (x, z, yaw, speed), refilled from the motions each frame. */
+  private readonly idleCars: { x: number; z: number; yaw: number; speed: number }[] = [];
   private readonly hits: number[] = [];
 
   constructor(
@@ -392,8 +392,16 @@ export class StreetStage {
     this.night.props.update(dt, this.time, this.broken, this.motions);
     // The idle people turn their heads for the passing cars and keep their level of detail around the car the camera follows.
     const ic = this.idleCars;
+    while (ic.length < this.motions.length) ic.push({ x: 0, z: 0, yaw: 0, speed: 0 });
     ic.length = this.motions.length;
-    this.motions.forEach((m, i) => (ic[i] = { x: m.x, z: m.z, speed: Math.hypot(m.vx, m.vz) }));
+    this.motions.forEach((m, i) => {
+      const c = ic[i];
+      c.x = m.x;
+      c.z = m.z;
+      c.speed = Math.hypot(m.vx, m.vz);
+      // The heading from the velocity; a stopped car keeps its last.
+      if (c.speed > 0.1) c.yaw = Math.atan2(m.vx, m.vz);
+    });
     const f = opts.focus ?? this.focus;
     this.night.idlers.update(this.time, ic, f.x, f.z);
     this.night.walkers.update(this.time, ic, f.x, f.z);

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createWorld } from '../src/city/world';
-import { planIdlers } from '../src/render/people/idleSpots';
-import { BACK, FWD } from '../src/render/people/placer';
-import { IDLE_QUALITY } from '../src/render/people/idlers';
+import { planIdlers } from '../src/city/people/idleSpots';
+import { BACK, FWD } from '../src/city/people/placer';
+import { CANON } from '../src/city/people/people';
 
 describe('idle people', () => {
   it('are placed deterministically, under the cap, off the route and the gate stands, beside their props', () => {
@@ -15,7 +15,8 @@ describe('idle people', () => {
         const p = route.points[s === 0 ? 0 : route.points.length - 1];
         return { s, position: { x: p.x, z: p.z } };
       });
-      for (const tier of Object.values(IDLE_QUALITY)) {
+      // One canonical density at every graphics quality (the sim collides with these people).
+      for (const tier of [CANON.idle]) {
         const opts = { density: tier.density, cap: tier.cap, avoid: { gates } };
         const plan = planIdlers(w, opts);
         expect(JSON.stringify(planIdlers(w, opts))).toBe(JSON.stringify(plan));
@@ -34,7 +35,7 @@ describe('idle people', () => {
             expect(w.coveredProps).not.toContain(p.anchorProp);
           }
         }
-        if (tier === IDLE_QUALITY.high) total += plan.people.length;
+        total += plan.people.length;
       }
     }
     expect(total).toBeGreaterThan(0);

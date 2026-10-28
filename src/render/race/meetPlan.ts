@@ -17,6 +17,7 @@ import type { Wall } from '../../city/blocks';
 import type { RailWall } from '../../city/routeRails';
 import type { Contact } from '../../city/world';
 import { CITY } from '../../city/config';
+import { peopleOf } from '../../city/people/people';
 import { Rng } from '../../sim/prng';
 import { distToSegment } from '../../sim/math';
 import { RAIL } from '../../sim/rails';
@@ -202,6 +203,8 @@ export function planMeets(world: World, opts: MeetOptions): MeetPlan {
   const taken = new Occupancy(6);
   // Street furniture and buildings are in the way of everything.
   for (const p of world.props ?? []) taken.add(p.x, p.z, p.radius + 0.25);
+  // The plan's gate and idle people stand where they stand (the sim collides with them): no meet person or car overlaps one. Walkers keep off meet ground by construction (city/people/avoid.ts).
+  for (const p of peopleOf(world).people) if (p.kind !== 'walk') taken.add(p.x, p.z, 0.45);
   const B = world.blocks.buildings;
   const bCell = 32;
   const bGrid = new Map<number, number[]>();

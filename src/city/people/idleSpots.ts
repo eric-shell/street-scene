@@ -1,22 +1,29 @@
 /**
  * Where the idle people of the city wait, sit and chat: a pure planner (no
  * three.js) from the seeded world, so the menu city and the race place the
- * same people and a replay sees the same street. They stay with their props
+ * same people and a replay sees the same street (and the sim knows where
+ * they stand: src/sim/people.ts). They stay with their props
  * (a bus stop's riders, a bench's pair, the cafe table's diners, someone by a
- * park lamp, a mooring bollard on a harbor's quay) and in front of shops (a standing pair under the awning), and
+ * park lamp, a mooring bollard on a harbor's quay) and along building
+ * frontages (a standing pair a step off the face, likelier downtown: chosen
+ * from the blocks' buildings and the sidewalk, not from the facade plan, which
+ * is render side), and
  * keep off everything the stands and meets own: the route corridor, the curb
  * lane, the gate stands, a meet's crowd and the night market's pens. The
  * seed's own mood scales how lively the street is (`liveliness`) and tints
- * the wardrobe warm or cool (`warmth`). Walks props in id order, then shop
- * fronts, then thins evenly to the cap (sitters to half of it, so the street
- * reads as people waiting and chatting). Render only (reads World).
+ * the wardrobe warm or cool (`warmth`). Walks props in id order, then
+ * frontages, then thins evenly to the cap (sitters to half of it, so the
+ * street reads as people waiting and chatting). Every person also carries the
+ * sim's sidestep inputs: a group phase and the room to step toward the wall
+ * behind them. Reads World.
  */
-import type { World } from '../../city/world';
-import type { Prop } from '../../city/props';
-import { PLAZA } from '../../city/config';
-import { PLAZA_HINT } from '../../city/districts/plazaDressing';
+import type { World } from '../world';
+import type { Prop } from '../props';
+import { PLAZA } from '../config';
+import { PLAZA_HINT } from '../districts/plazaDressing';
+import { downtownFactor, isMouthEdge, isRiverEdge } from '../roadGraph';
 import { Rng, deriveSeed } from '../../sim/prng';
-import { BACK, FWD, groundY, makePlacer, thin } from './placer';
+import { BACK, FWD, groundY, makePlacer, thin, wallBehind } from './placer';
 
 /** What an idler is doing: stands easy, sits, leans back a little, or holds a phone up. */
 export type IdlePose = 'stand' | 'sit' | 'lean' | 'phone';
@@ -33,15 +40,12 @@ export interface IdlePerson {
   anchorProp: number;
   /** Seeds the wardrobe and the animation phase. */
   lookSeed: number;
-}
-
-/** A shop's ground floor bay, pushed by the facade builder: the centre of the bay at the face and its outward (road side) normal. */
-export interface ShopFront {
-  x: number;
-  z: number;
-  nx: number;
-  nz: number;
-  kind: string;
+  /** 0..1, shared by a prop's people and a pair or plaza group. */
+  groupPhase: number;
+  /** Unit vector toward the wall behind (opposite the facing) and the room to step that way (m): where a sidestep is limited. */
+  backX: number;
+  backZ: number;
+  backRoom: number;
 }
 
 /** The pieces of the scene the idlers keep clear of, as the scene already has them. */
@@ -52,6 +56,8 @@ export interface IdleAvoid {
   meets?: { zones: readonly { x: number; z: number; radius: number }[] };
   /** The night market's pens (planMarketCrowd): the people of each. */
   markets?: readonly (readonly { x: number; z: number }[])[];
+  /** Any other ground to keep clear (the city side's stand-in for the meets, people/avoid.ts). */
+  blocked?: (x: number, z: number) => boolean;
 }
 
 export interface IdleOptions {
@@ -59,7 +65,6 @@ export interface IdleOptions {
   density: number;
   /** Most people returned. */
   cap: number;
-  shopFronts?: readonly ShopFront[];
   avoid?: IdleAvoid;
 }
 
@@ -77,8 +82,10 @@ const MEET_CLEAR = 10;
 const MARKET_CLEAR = 6;
 /** The curb lane nobody waits in, the width of the road edge a car can mount (m). */
 const CURB_LANE = 1.2;
-/** Shop pairs keep this far from each other (m). */
+/** Frontage pairs keep this far from each other (m). */
 const PAIR_GAP = 6;
+/** Frontage pairs: the chance a building has one (before liveliness and density) away from downtown and the extra chance at its centre, and the length of a face kept clear of the pair at each end (m). */
+const FRONTAGE = { base: 0.1, downtown: 0.35, endClear: 1.5 } as const;
 
 /**
  * A furnished plaza is where people sit and wait: its benches, cafe tables and lanterns are this likely to have
@@ -125,6 +132,7 @@ export function planIdlers(world: World, opts: IdleOptions): IdlePlan {
   const placer = makePlacer(world);
   const out: IdlePerson[] = [];
   const gates = opts.avoid?.gates ?? [];
+  const blockedAt = opts.avoid?.blocked;
   const circles = avoidCircles(opts.avoid);
   const covered = new Set(world.coveredProps);
   const harbors = new Set(world.areas.filter((a) => a.kind === 'waterfront').map((a) => a.id));
@@ -140,7 +148,7 @@ export function planIdlers(world: World, opts: IdleOptions): IdlePlan {
       if ((x - g.position.x) ** 2 + (z - g.position.z) ** 2 < GATE_CLEAR * GATE_CLEAR) return false;
     }
     for (const c of circles) if ((x - c.x) ** 2 + (z - c.z) ** 2 < c.r2) return false;
-    return true;
+    return !blockedAt || !blockedAt(x, z);
   };
   /** Nobody waits in the curb lane: no road within it. */
   const curbClear = (x: number, z: number): boolean => {
@@ -148,14 +156,16 @@ export function planIdlers(world: World, opts: IdleOptions): IdlePlan {
     return world.surfaceAt(x, z) !== 'road';
   };
 
-  const push = (x: number, z: number, yaw: number, pose: IdlePose, anchorProp: number, seated: boolean): boolean => {
+  const push = (x: number, z: number, yaw: number, pose: IdlePose, anchorProp: number, seated: boolean, groupPhase: number): boolean => {
     // Draw first so a rejection never shifts the stream.
     const lookSeed = rng.int(1, 0x3fffffff);
     if (!allowed(x, z)) return false;
     if (!seated && !curbClear(x, z)) return false;
     if (!placer.ok(x, z, anchorProp)) return false;
     placer.take(x, z);
-    out.push({ x, y: groundY(world, x, z), z, yaw, pose, anchorProp, lookSeed });
+    const person: IdlePerson = { x, y: groundY(world, x, z), z, yaw, pose, anchorProp, lookSeed, groupPhase, backX: 0, backZ: 0, backRoom: 0 };
+    wallBehind(world, x, z, yaw, person);
+    out.push(person);
     return true;
   };
 
@@ -174,6 +184,8 @@ export function planIdlers(world: World, opts: IdleOptions): IdlePlan {
 
   for (const p of world.props) {
     if (covered.has(p.id)) continue;
+    // One phase for whoever shares this prop (a shelter's riders, a bench's pair).
+    const gp = rng.next();
     switch (p.kind) {
       case 'busStop': {
         let n = 0;
@@ -187,12 +199,12 @@ export function planIdlers(world: World, opts: IdleOptions): IdlePlan {
           if (seatsFree.length && rng.chance(0.5)) {
             const sx = seatsFree.splice(rng.int(0, seatsFree.length - 1), 1)[0];
             const [x, z] = at(p, sx, -0.45);
-            push(x, z, p.yaw + rng.range(-0.15, 0.15), 'sit', p.id, true);
+            push(x, z, p.yaw + rng.range(-0.15, 0.15), 'sit', p.id, true, gp);
           } else {
             // Standing in the shelter's mouth, never past 0.35 toward the road.
             const [x, z] = at(p, rng.range(-1.2, 1.0), rng.range(-0.2, 0.3));
             // Under the shelter's roof (local z <= 0.35): a solid prop, no car stands there, so the curb lane does not apply.
-            push(x, z, p.yaw + rng.range(-0.5, 0.5), stands(), p.id, true);
+            push(x, z, p.yaw + rng.range(-0.5, 0.5), stands(), p.id, true, gp);
           }
         }
         break;
@@ -204,11 +216,11 @@ export function planIdlers(world: World, opts: IdleOptions): IdlePlan {
           // A pair turned a little toward each other.
           const [x0, z0] = at(p, -0.4, -0.02);
           const [x1, z1] = at(p, 0.4, -0.02);
-          push(x0, z0, p.yaw - 0.45, 'sit', p.id, true);
-          push(x1, z1, p.yaw + 0.45, 'sit', p.id, true);
+          push(x0, z0, p.yaw - 0.45, 'sit', p.id, true, gp);
+          push(x1, z1, p.yaw + 0.45, 'sit', p.id, true, gp);
         } else {
           const [x, z] = at(p, rng.chance(0.5) ? -0.4 : 0.4, -0.02);
-          push(x, z, p.yaw + rng.range(-0.2, 0.2), 'sit', p.id, true);
+          push(x, z, p.yaw + rng.range(-0.2, 0.2), 'sit', p.id, true, gp);
         }
         break;
       }
@@ -223,7 +235,7 @@ export function planIdlers(world: World, opts: IdleOptions): IdlePlan {
           const s = Math.sin(p.yaw);
           const fx = -side * c;
           const fz = side * s;
-          push(x, z, Math.atan2(fx, fz) + rng.range(-0.15, 0.15), 'sit', p.id, true);
+          push(x, z, Math.atan2(fx, fz) + rng.range(-0.15, 0.15), 'sit', p.id, true, gp);
         }
         break;
       }
@@ -231,14 +243,14 @@ export function planIdlers(world: World, opts: IdleOptions): IdlePlan {
         if (!rng.chance((inPlaza(p) ? PLAZA_LIVELY.parkLamp : 0.3) * liveliness * density)) break;
         // One metre off the lamp on the side away from the road, facing the lamp's way out.
         const [x, z] = at(p, rng.range(-0.3, 0.3), -1);
-        push(x, z, p.yaw + rng.range(-0.4, 0.4), rng.chance(0.5) ? 'lean' : stands(), p.id, false);
+        push(x, z, p.yaw + rng.range(-0.4, 0.4), rng.chance(0.5) ? 'lean' : stands(), p.id, false, gp);
         break;
       }
       case 'bollard': {
         // On a harbor's quay: someone leaning on a mooring bollard, looking out over the water (the bollard faces it).
         if (p.area === undefined || !harbors.has(p.area) || !rng.chance(0.07 * liveliness * density)) break;
         const [x, z] = at(p, rng.chance(0.5) ? -0.45 : 0.45, -0.25);
-        push(x, z, p.yaw + rng.range(-0.5, 0.5), rng.chance(0.6) ? 'lean' : stands(), p.id, false);
+        push(x, z, p.yaw + rng.range(-0.5, 0.5), rng.chance(0.6) ? 'lean' : stands(), p.id, false, gp);
         break;
       }
       default:
@@ -257,6 +269,7 @@ export function planIdlers(world: World, opts: IdleOptions): IdlePlan {
   for (const sp of spots) {
     const go = rng.chance(share * (0.6 + 0.4 * liveliness) * density);
     const base = rng.range(0, Math.PI * 2);
+    const groupPhase = rng.next();
     const first = out.length;
     let placed = 0;
     for (let i = 0; i < sp.count; i++) {
@@ -265,35 +278,50 @@ export function planIdlers(world: World, opts: IdleOptions): IdlePlan {
       const pose = stands();
       const x = sp.x + Math.sin(ang) * sp.r;
       const z = sp.z + Math.cos(ang) * sp.r;
-      if (go && push(x, z, Math.atan2(sp.x - x, sp.z - z) + rng.range(-0.3, 0.3), pose, -1, false)) placed++;
+      if (go && push(x, z, Math.atan2(sp.x - x, sp.z - z) + rng.range(-0.3, 0.3), pose, -1, false, groupPhase)) placed++;
     }
     // A lone person is not a group.
     if (placed === 1) out.length = first;
   }
 
-  // Shop fronts: a standing pair under the awning.
+  // Frontages: a standing pair a step off a building's street face, on the sidewalk, likelier downtown.
   const pairs: [number, number][] = [];
-  for (const f of opts.shopFronts ?? []) {
-    if (!rng.chance(0.25 * liveliness * density)) continue;
+  const edges = world.graph.edges;
+  for (const b of world.blocks.buildings) {
+    const e = edges[b.edge];
+    // Drawn first so a rejection never shifts the stream.
+    const roll = rng.next();
+    const along = rng.next();
     const d = rng.range(0.6, 1.3);
-    const cx = f.x + f.nx * d;
-    const cz = f.z + f.nz * d;
-    // Still sidewalk 1.2 m further toward the road.
-    if (world.surfaceAt(cx + f.nx * CURB_LANE, cz + f.nz * CURB_LANE) === 'road') continue;
-    if (pairs.some(([px, pz]) => (px - cx) ** 2 + (pz - cz) ** 2 < PAIR_GAP * PAIR_GAP)) continue;
-    const tx = -f.nz;
-    const tz = f.nx;
-    const a = out.length;
-    // Facing each other, drawn a little toward the road.
     const half = rng.range(0.4, 0.55);
-    const ax = cx - tx * half;
-    const az = cz - tz * half;
-    const bx = cx + tx * half;
-    const bz = cz + tz * half;
-    const yawA = Math.atan2(tx + f.nx * 0.3, tz + f.nz * 0.3);
-    const yawB = Math.atan2(-tx + f.nx * 0.3, -tz + f.nz * 0.3);
-    const okA = push(ax, az, yawA, stands(), -1, false);
-    const okB = push(bx, bz, yawB, stands(), -1, false);
+    const gp = rng.next();
+    if (!e || e.shortcut || e.bridge || isRiverEdge(e) || isMouthEdge(e)) continue;
+    if (roll >= (FRONTAGE.base + FRONTAGE.downtown * downtownFactor(world.graph.plan, b.x, b.z)) * liveliness * density) continue;
+    // Local +Z runs away from the street: the face looks toward -Z.
+    const fz = Math.cos(b.yaw);
+    const fx = Math.sin(b.yaw);
+    const nx = -fx;
+    const nz = -fz;
+    const tx0 = fz;
+    const tz0 = -fx;
+    const reach = Math.max(0, b.w / 2 - FRONTAGE.endClear);
+    const u = (along * 2 - 1) * reach;
+    const faceX = b.x + nx * (b.d / 2) + tx0 * u;
+    const faceZ = b.z + nz * (b.d / 2) + tz0 * u;
+    // The face must line a sidewalk, and the pair stands a step off it with the curb lane still beyond.
+    if (world.surfaceAt(faceX + nx * 0.5, faceZ + nz * 0.5) !== 'sidewalk') continue;
+    const cx = faceX + nx * d;
+    const cz = faceZ + nz * d;
+    if (world.surfaceAt(cx + nx * CURB_LANE, cz + nz * CURB_LANE) === 'road') continue;
+    if (pairs.some(([px, pz]) => (px - cx) ** 2 + (pz - cz) ** 2 < PAIR_GAP * PAIR_GAP)) continue;
+    // The pair stands along the face, turned toward each other and a little toward the road.
+    const tx = -nz;
+    const tz = nx;
+    const a = out.length;
+    const yawA = Math.atan2(tx + nx * 0.3, tz + nz * 0.3);
+    const yawB = Math.atan2(-tx + nx * 0.3, -tz + nz * 0.3);
+    const okA = push(cx - tx * half, cz - tz * half, yawA, stands(), -1, false, gp);
+    const okB = push(cx + tx * half, cz + tz * half, yawB, stands(), -1, false, gp);
     // A lone person is not a conversation.
     if (okA !== okB) out.length = a;
     if (okA && okB) pairs.push([cx, cz]);

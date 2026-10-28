@@ -6,13 +6,13 @@
  * default until measured). Each frame it is placed from the car body's
  * world matrix (so it rolls and pitches with the car),
  * the hands turn the wheel with the steer angle, the head looks into the
- * turn and the body leans against the roll. Drivers dress from the street
+ * turn and the body leans against the roll. Drivers dress from the race-goers'
  * wardrobe with a cap and gloves, the same per car index. Render only.
  */
 import * as THREE from 'three';
 import { BODY, People, WEAR, plantFeet, standingPose } from './person';
 import type { PersonArm, PersonPose } from './person';
-import { streetLook } from './looks';
+import { raceLook } from './looks';
 import type { CarPose, CarView } from '../car/carView';
 import type { Disposable } from '../disposer';
 import { clamp } from '../../sim/math';
@@ -93,15 +93,15 @@ function aimArm(arm: PersonArm, s: 1 | -1, tx: number, ty: number, tz: number): 
   arm.elbow = elbow;
 }
 
-/** Who drives car i: street clothes under a cap, gloves on, nothing in the hands. */
+/** Who drives car i: the race-goers' wardrobe under a cap, gloves on, nothing in the hands and nothing on the back (a backpack would sit in the seat). */
 function driverLook(i: number) {
   let k = i * 53 + 7;
   const rnd = () => {
     const x = Math.sin(k++ * 127.1 + 311.7) * 43758.5453;
     return x - Math.floor(x);
   };
-  const look = streetLook(rnd);
-  look.wear = (look.wear & ~(WEAR.hood | WEAR.beanie | WEAR.hair | WEAR.phone | WEAR.flag | WEAR.glowstick)) | WEAR.cap | WEAR.gloves;
+  const look = raceLook(rnd);
+  look.wear = (look.wear & ~(WEAR.hood | WEAR.beanie | WEAR.hair | WEAR.phone | WEAR.flag | WEAR.glowstick | WEAR.backpack | WEAR.cup)) | WEAR.cap | WEAR.gloves;
   return look;
 }
 
