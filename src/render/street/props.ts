@@ -52,6 +52,8 @@ import { LAMP_TONES, planLamps, toneColor } from './lampStyle';
 import { SIGNAL, type EmitterClass } from './lightFx';
 import { STUMP_H, TRAFFIC_POLE_H, TRAFFIC_ARM_Y, STREETLIGHT_POLE_H, STREETLIGHT_ARM, PARK_LAMP_H, PARK_LANTERN_Y, LAMP_DESIGNS, LAMP_DIMS, type LampDesign, col, streetlightGeo, stumpGeo, trafficPoleGeo, trafficArmGeo, trafficHeadGeo, trafficLensGeo, canGeo, benchGeo, busStopGeo, adTexture, PARTS, PART_KINDS, isFurniture, STALL } from './propGeometry';
 import { HEIGHT_FOG_GLSL, HEIGHT_FOG_UNIFORMS } from '../heightFog';
+import { regionAt } from '../buildings/architecture';
+import { signatureAt } from '../cityIdentity';
 
 export { STREETLIGHT_POLE_H, STREETLIGHT_ARM, PARK_LAMP_H, PARK_LANTERN_Y };
 
@@ -405,6 +407,7 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
 
   // District clutter and neighbourhood furniture, tinted per instance; most clutter gets a random spin so rows never look stamped.
   const tintOf: THREE.Color[] = [];
+  const regionOf = regionAt(world);
   for (const kind of PART_KINDS) {
     const list = byKind(kind);
     if (!list.length) continue;
@@ -415,7 +418,9 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
     def.parts.forEach((part, k) => part.mat === 'glass' && (meshes[ids[k]].renderOrder = 4));
     list.forEach((p, i) => {
       const yaw = p.yaw + (def.spin ? hash01(p.id * 7) * 6.28 : 0);
-      const tint = tmpTint.setHex(def.tints[(hash01(p.id * 17) * def.tints.length) | 0]).multiplyScalar(0.85 + 0.3 * hash01(p.id * 23));
+      // A New York home paints its hydrants red (cityIdentity.ts `hydrantRed`): the first tint of the kind, by a hash of the prop.
+      const red = kind === 'hydrant' && hash01(p.id * 29) < (signatureAt(world.seed, regionOf(p.x, p.z)).hydrantRed ?? 0);
+      const tint = tmpTint.setHex(def.tints[red ? 0 : (hash01(p.id * 17) * def.tints.length) | 0]).multiplyScalar(0.85 + 0.3 * hash01(p.id * 23));
       tintOf[p.id] = tint.clone();
       def.parts.forEach((part, k) => {
         place(ids[k], i, p, p.x, p.y, p.z, yaw);

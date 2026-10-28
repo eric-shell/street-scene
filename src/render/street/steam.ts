@@ -4,7 +4,9 @@
  * camera facing quad in one mesh; its whole life is a function of the scene
  * clock and a per puff phase, computed in the vertex shader, so the CPU only
  * sets one uniform per frame. Lit a sodium warm grey and fogged like the
- * scene. Medium and High only (streetPolish.ts). Render only.
+ * scene. Medium and High only (streetPolish.ts). A New York home's plumes
+ * rise and swell by `plume` (cityIdentity.ts signature), from many more
+ * manholes (streetDecals.ts). Render only.
  */
 import * as THREE from 'three';
 import { FOG_COLOR, FOG_DENSITY } from '../lighting';
@@ -80,7 +82,8 @@ const frag = /* glsl */ `
   }
 `;
 
-export function buildSteam(vents: readonly THREE.Vector3[], puff: THREE.Texture): Steam {
+/** `plume` scales the rise and the puff size (1 = the default plume). */
+export function buildSteam(vents: readonly THREE.Vector3[], puff: THREE.Texture, plume = 1): Steam {
   const n = vents.length * STEAM.puffs;
   const geo = new THREE.InstancedBufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0], 3));
@@ -109,8 +112,8 @@ export function buildSteam(vents: readonly THREE.Vector3[], puff: THREE.Texture)
       map: { value: puff },
       uTime: { value: 0 },
       uPeriod: { value: STEAM.period },
-      uRise: { value: STEAM.rise },
-      uSize: { value: new THREE.Vector2(STEAM.size[0], STEAM.size[1]) },
+      uRise: { value: STEAM.rise * plume },
+      uSize: { value: new THREE.Vector2(STEAM.size[0], STEAM.size[1] * plume) },
       uDrift: { value: STEAM.drift },
       uAlpha: { value: STEAM.alpha },
       uColor: { value: new THREE.Color(0x8c7f70) },

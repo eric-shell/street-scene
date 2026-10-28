@@ -233,6 +233,21 @@ export function roundedOutline(x0: number, x1: number, z0: number, z1: number, r
   return { pts, smooth };
 }
 
+/** Tallies of the signature objects placed (buildings.ts), over the whole city whatever the home. */
+export interface BuildingCounts {
+  waterTowers: number;
+  /** Fire escape columns. */
+  fireEscapes: number;
+  /** Roof and facade neon rings (a miamiDeco's crown ring, a condo's, the stripes below). */
+  neonRings: number;
+  /** Of those, the pastel stripes up a deco block's street faces. */
+  stripeRings: number;
+  bayWindows: number;
+  paintedLadies: number;
+  /** Strip mall rows under their shared parapet sign. */
+  stripMalls: number;
+}
+
 export interface Out {
   shell: ShellGeo;
   roofs: GeoBuilder;
@@ -246,6 +261,10 @@ export interface Out {
   boardRows: number;
   /** Atlas cell of the neighbourhood ad the building being built carries if it gets a billboard (-1: any brand), set per building. */
   adCell: number;
+  /** The world's seed: the home signature tables (cityIdentity.ts) are read through it. */
+  seed: number;
+  /** What the city got of the objects the home signatures raise, for the perf report and tests. */
+  counts: BuildingCounts;
   lights: { x: number; y: number; z: number; phase: number; steady: number }[];
   podium: PodiumOutput;
 }

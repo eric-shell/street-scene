@@ -42,7 +42,9 @@ export const DECAL_CELLS = {
   towAway: { x: 0, y: 768, w: 384, h: 128 },
   keepClear: { x: 384, y: 768, w: 384, h: 128 },
   fireLane: { x: 768, y: 768, w: 256, h: 128 },
-  // The bottom 128 px row is spare.
+  // Miami's terrazzo paving: one pale slab with pastel chips (laid on the downtown sidewalks, white tint).
+  terrazzo: { x: 0, y: 896, w: 128, h: 128 },
+  // The rest of the bottom 128 px row is spare.
 } as const satisfies Record<string, AtlasCell>;
 export type DecalKind = keyof typeof DECAL_CELLS;
 
@@ -388,6 +390,24 @@ export function makeStreetDecalAtlas(seed: number): { map: THREE.Texture; roughn
   stencil(DECAL_CELLS.towAway, 'TOW AWAY ZONE');
   stencil(DECAL_CELLS.keepClear, 'KEEP CLEAR');
   stencil(DECAL_CELLS.fireLane, 'FIRE LANE');
+  // Terrazzo: a pale pink slab speckled with mint, aqua, rose and grey chips, brass joints at its edges. Its own stream, drawn last, so no earlier cell moves.
+  inCell(DECAL_CELLS.terrazzo, (w, h) => {
+    const t = new Rng(seed ^ 0x7e22a);
+    ctx.fillStyle = '#e4d6cc';
+    ctx.fillRect(0, 0, w, h);
+    const chips = ['#f2a8c0', '#9edcc8', '#8fcfe0', '#d88aa6', '#a9a6b0', '#f6ecd8', '#c8b4e0'];
+    for (let k = 0; k < 520; k++) {
+      ctx.fillStyle = chips[t.int(0, chips.length - 1)];
+      ctx.globalAlpha = t.range(0.55, 0.95);
+      const s = t.range(1.5, 5);
+      ctx.fillRect(t.range(0, w), t.range(0, h), s, s * t.range(0.5, 1.2));
+    }
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#b79a5e';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(1.5, 1.5, w - 3, h - 3);
+  });
+  rough(DECAL_CELLS.terrazzo, 0.42);
   const map = canvasTex(c, { repeat: false });
   map.anisotropy = 8;
   const roughness = canvasTex(rc, { srgb: false, repeat: false });
