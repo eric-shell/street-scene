@@ -1,0 +1,19 @@
+{
+  "artist": "Kaito Shoma",
+  "artistUrl": "https://www.youtube.com/results?search_query=Kaito+Shoma",
+  "album": "Claymore (Single)",
+  "albumShort": "Claymore",
+  "albumUrl": "https://www.youtube.com/results?search_query=Kaito+Shoma+Claymore",
+  "source": "Kaito Shoma",
+  "sourceUrl": "https://www.youtube.com/results?search_query=Kaito+Shoma",
+  "license": "Used with permission",
+  "licenseUrl": "https://www.youtube.com/results?search_query=Kaito+Shoma",
+  "notes": "Used with the artist's permission. Transcoded to 128 kbps MP3 with loudness normalization for the web. No other changes.",
+  "tracks": [
+    {
+      "number": 1,
+      "title": "Claymore",
+      "url": "https://www.youtube.com/results?search_query=Kaito+Shoma+Claymore"
+    }
+  ]
+}

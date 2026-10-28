@@ -17,6 +17,7 @@ Current library:
 | Artist | Album | Source | License |
 |---|---|---|---|
 | [1000 Handz](https://freemusicarchive.org/music/1000-handz/) | [CC BY: FREE TO USE - Electronic/Gaming Instrumentals](https://freemusicarchive.org/music/1000-handz/cc-by-free-to-use-electronicgaming-instrumentals/) (42 tracks) | [Free Music Archive](https://freemusicarchive.org/) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
+| Kaito Shoma | Claymore (single, 1 track) | the artist | Used with permission |
 
 ## Adding an artist or album
 

@@ -115,6 +115,33 @@
           ]
         }
       ]
+    },
+    {
+      "id": "kaito-shoma",
+      "name": "Kaito Shoma",
+      "url": "https://www.youtube.com/results?search_query=Kaito+Shoma",
+      "albums": [
+        {
+          "id": "kaito-shoma/claymore",
+          "title": "Claymore (Single)",
+          "shortTitle": "Claymore",
+          "url": "https://www.youtube.com/results?search_query=Kaito+Shoma+Claymore",
+          "source": "Kaito Shoma",
+          "sourceUrl": "https://www.youtube.com/results?search_query=Kaito+Shoma",
+          "license": "Used with permission",
+          "licenseUrl": "https://www.youtube.com/results?search_query=Kaito+Shoma",
+          "tracks": [
+            {
+              "id": "kaito-shoma/claymore/1",
+              "title": "Claymore",
+              "number": 1,
+              "file": "music/kaito-shoma/claymore/01-claymore.mp3",
+              "duration": 161.7,
+              "url": "https://www.youtube.com/results?search_query=Kaito+Shoma+Claymore"
+            }
+          ]
+        }
+      ]
     }
   ]
 }
