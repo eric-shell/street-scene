@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { CITY, ROUTE } from '../src/city/config';
+import { CITY, ROAD_PHYSICS, ROUTE } from '../src/city/config';
+import { ROAD } from '../src/sim/tuning';
 import { createCity, createWorld } from '../src/city/world';
 import { raceConfig, runAutopilot } from './helpers';
 import { Rng, deriveSeed } from '../src/sim/prng';
@@ -78,7 +79,9 @@ describe('hills', () => {
       }
     }
     expect(short).toBeLessThanOrEqual(4);
-    expect(worst).toBeLessThan(HILLS.maxGrade + 0.056 + 0.005);
+    // ...and what a street's crown adds along its centreline as it eases in past a junction (the steepest part of the smoothstep is 1.5 x the rise over the ramp).
+    const crownFade = (1.5 * Math.max(ROAD.crownStreet, ROAD.crownAvenue, ROAD.crownDiagonal, ROAD.crownBoulevard) * CITY.width.boulevard) / 2 / ROAD_PHYSICS.crown.junctionRamp;
+    expect(worst).toBeLessThan(HILLS.maxGrade + 0.056 + 0.005 + crownFade);
     expect(steepest).toBeGreaterThan(0.08);
     expect(sizes.size).toBeGreaterThan(1);
     expect(variants.has('dome') || variants.has('ridge')).toBe(true);

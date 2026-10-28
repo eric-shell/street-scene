@@ -29,9 +29,9 @@
  */
 import { DT, SUBSTEPS } from './constants';
 import { InputFrame } from './input';
-import { CarTuning, GRAVITY, NITRO_STAGES, driveSplit } from './tuning';
+import { CarTuning, GRAVITY, NITRO_STAGES, ROAD, driveSplit } from './tuning';
 import { DEG, TAU, abs, approach, atan2, clamp, cos, lerp, sign, sin, smoothstep, sqrt, tan } from './math';
-import type { Surface, World } from '../city/world';
+import type { RoadBump, Surface, World } from '../city/world';
 import { SURFACE_PHYSICS } from '../city/districts/types';
 
 export interface WheelState {
@@ -138,6 +138,15 @@ export interface CarState {
    */
   bottomOut: number;
   bottomWheel: number;
+  /**
+   * Road bumps: per axle (front, rear), the fastest a wheel over a speed hump or an expansion joint compressed
+   * this tick (m/s, the damper's load spike), 0 when it did not start a new thump; thumpKind is what it hit
+   * (1 hump, 2 joint). thumpWait (s) is the quiet the axle owes before its next one (ROAD.thumpGap), which the
+   * sim reads; the race turns a thump into an event for the sound.
+   */
+  thump: [number, number];
+  thumpKind: [number, number];
+  thumpWait: [number, number];
   /** Sliding speed (m/s) along the deepest wall or rail contact of the tick, 0 when not touching. */
   scrape: number;
   /** That contact's point on the wall (m) and its unit normal into drivable space (0, 0 when not touching). */
@@ -206,6 +215,9 @@ export function createCar(x: number, z: number, yaw: number, y: number): CarStat
     impact: 0,
     bottomOut: 0,
     bottomWheel: 0,
+    thump: [0, 0],
+    thumpKind: [0, 0],
+    thumpWait: [0, 0],
     scrape: 0,
     scrapeX: 0,
     scrapeZ: 0,
@@ -527,7 +539,21 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
   const ctl: Controls = { driveTorque, brake, brakeFront, brakeRear, handbrake: inp.handbrake, clutchIn: clutchIn || c.shiftTimer > 0 || c.antilag, gearing, surfaceGrip, dragMul, drive, frontShare: split.front, boostForce: t.nitrous.force * boostPower };
   const h = dt / SUBSTEPS;
   c.bottomOut = 0;
+  bumpPeak[0] = 0;
+  bumpPeak[1] = 0;
   for (let s = 0; s < SUBSTEPS; s++) integrate(c, t, ctl, world, h);
+  // Road bumps: an axle thumps when a wheel over a hump or joint compressed faster than thumpMin, then owes thumpGap of quiet.
+  for (let a = 0; a < 2; a++) {
+    c.thump[a] = 0;
+    c.thumpWait[a] = Math.max(0, c.thumpWait[a] - dt);
+    if (bumpPeak[a] > 0) {
+      if (c.thumpWait[a] <= 0) {
+        c.thump[a] = bumpPeak[a];
+        c.thumpKind[a] = bumpKind[a];
+      }
+      c.thumpWait[a] = ROAD.thumpGap;
+    }
+  }
   c.wheelspin = c.spinFront > 0.2 || c.spinRear > 0.2;
 
   // ---- telemetry and wheel visuals ----
@@ -960,6 +986,11 @@ function integrate(c: CarState, t: CarTuning, ctl: Controls, world: World, h: nu
   heaveAndLean(c, t, world, sl, h, fx, fz, Ip, Ir);
 }
 
+/** The tick's fastest bump compression per axle and what it hit (suspension fills them, stepCar reads them). */
+const bumpPeak = [0, 0];
+const bumpKind = [0, 0];
+const bumpAt: RoadBump = { h: 0, kind: 'hump' };
+
 /**
  * The springs against the ground under each wheel: fills wLoad and springs (the forces they push the body
  * with, the torques those make about its pitch and roll axes, and how many wheels touch), and each wheel's
@@ -997,6 +1028,14 @@ function suspension(c: CarState, t: CarTuning, world: World, h: number, fx: numb
     const comp = ground - (c.y + wv * tRoll - wu * tPitch);
     const compVel = (comp - w.compression) / h;
     w.compression = comp;
+    // A hump or a joint under the wheel: the spring's damper takes the spike, which is what the thump sounds.
+    if (compVel > ROAD.thumpMin && world.roadBumpAt?.(wx, wz, c.y, bumpAt)) {
+      const a = i >> 1;
+      if (compVel > bumpPeak[a]) {
+        bumpPeak[a] = compVel;
+        bumpKind[a] = bumpAt.kind === 'hump' ? 1 : 2;
+      }
+    }
     let F = 0;
     if (comp + sag > 0) {
       // Rebound damped harder than bump: the spring cannot fling the body back up after a hit.

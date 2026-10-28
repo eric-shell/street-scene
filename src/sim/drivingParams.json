@@ -347,6 +347,22 @@
       { "name": "schoolBus", "share": 0.01, "mass": 8000, "halfLength": 4.13, "halfWidth": 1.17 }
     ]
   },
+  "road": {
+    "_readme": "Road physics (src/city/roadProfile.ts, read by the terrain and the car): the shape of the surface itself, not a car's tuning, so not in tuningHash. A crown raises a street's middle over its kerbs: the cross slope is the mean rise over run from kerb to centre (a parabola, flat at the middle, twice as steep at the kerb), so a lane's centre sits at about that grade and the car drifts toward the kerb on a straight and leans on the crown through a turn. Junction fans stay flat (layout in config.ts ROAD_PHYSICS). A speed hump is a cosine bump humpHeight high and humpLength long along the street, full height across the lanes and eased off over the outer share of the half width so it never meets the kerb as a step. An expansion joint is a raised cosine lip jointHeight high and jointWidth wide across a deck, every jointSpacing m along it. Metres, rise over run.",
+    "crownStreet": 0.01,
+    "crownAvenue": 0.02,
+    "crownDiagonal": 0.02,
+    "crownBoulevard": 0.02,
+    "humpLength": 3.6,
+    "humpHeight": 0.08,
+    "humpTaper": 0.4,
+    "jointHeight": 0.02,
+    "jointWidth": 0.5,
+    "jointSpacing": 20,
+    "_thump": "A wheel over a hump or a joint that compresses faster than thumpMin m/s makes the axle thump (a race event for the sound, value = that speed); the next one comes only after the axle has been quiet for thumpGap s.",
+    "thumpMin": 0.25,
+    "thumpGap": 0.12
+  },
   "driftZones": {
     "_readme": "Drift zones (src/sim/driftZones.ts): the monument plaza and the bigger parking lots. Drifting inside one counts drift points scoreMul times (drift mode) and refills nitrous refillMul times as fast (every mode, every car), for at most bonusTime s of drifting and refillCap of a nitrous stage per visit. A visit survives exitGrace s outside; once it ends the zone rests cooldown s before it pays that car again.",
     "scoreMul": 2,

@@ -376,6 +376,47 @@ function driftZoneTuning(raw: Record<string, unknown>): DriftZoneTuning {
 
 export const DRIFT_ZONES: DriftZoneTuning = driftZoneTuning(params.driftZones as unknown as Record<string, unknown>);
 
+// ---------------------------------------------------------------------------
+// Road physics (src/city/roadProfile.ts): the surface's own shape, not car tuning, so not in tuningHash.
+// ---------------------------------------------------------------------------
+export interface RoadTuning {
+  /** Cross slope of a crowned street by kind: the mean rise over run from kerb to centre (a parabola, so the kerb side is twice as steep). */
+  crownStreet: number;
+  crownAvenue: number;
+  crownDiagonal: number;
+  crownBoulevard: number;
+  /** A speed hump: length along the street (m) and height (m), a cosine bump. */
+  humpLength: number;
+  humpHeight: number;
+  /** The outer share of the half width (0..1) the hump eases off over toward the kerb, so it never ends in a step. */
+  humpTaper: number;
+  /** An expansion joint's raised lip: height (m), width along the deck (m) and spacing (m). */
+  jointHeight: number;
+  jointWidth: number;
+  jointSpacing: number;
+  /** An axle thumps when a wheel over a hump or joint compresses faster than this (m/s). */
+  thumpMin: number;
+  /** An axle that thumped stays quiet this long (s). */
+  thumpGap: number;
+}
+
+const ROAD_KEYS = ['crownStreet', 'crownAvenue', 'crownDiagonal', 'crownBoulevard', 'humpLength', 'humpHeight', 'humpTaper', 'jointHeight', 'jointWidth', 'jointSpacing', 'thumpMin', 'thumpGap'] as const satisfies readonly (keyof RoadTuning)[];
+
+/** The `road` section, checked like the car tuning: unknown or missing keys and non-numbers throw. */
+function roadTuning(raw: Record<string, unknown>): RoadTuning {
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (k.startsWith('_')) continue;
+    if (!(ROAD_KEYS as readonly string[]).includes(k)) throw new Error(`drivingParams.json: unknown key "road.${k}"`);
+    if (typeof v !== 'number') throw new Error(`drivingParams.json: "road.${k}" must be a number`);
+    out[k] = v;
+  }
+  for (const k of ROAD_KEYS) if (!(k in out)) throw new Error(`drivingParams.json: missing "road.${k}"`);
+  return out as unknown as RoadTuning;
+}
+
+export const ROAD: RoadTuning = roadTuning(params.road as unknown as Record<string, unknown>);
+
 interface ManifestCar {
   id: string;
   /** The engine spec (shared/carSpec.ts); only the aspiration reaches the tuning (engine.turbo). */

@@ -540,7 +540,8 @@ describe('river bridges beside the highway', () => {
     // FNV-1a over heightAt, driveHeightAt, slopeAt, surfaceAt at three heights and twoLevels, sampled over every
     // bridge deck's span on three seeds (two with a highway), recorded on the commit before the highway's
     // levels joined the river's (DeckSpan `upper`), re-recorded for the per-seed city plans (all three seeds a
-    // river and a highway). A change to the river or the terrain moves it on purpose.
+    // river and a highway), and again when the bridge decks gained their expansion joints (DeckSpan `joint`, a 2 cm lip every
+    // 20 m on the deck level only) and the streets their crown. A change to the river or the terrain moves it on purpose.
     let h = 2166136261;
     const mix = (v: number | string | boolean) => {
       const s = typeof v === 'number' ? v.toFixed(9) : String(v);
@@ -571,6 +572,6 @@ describe('river bridges beside the highway', () => {
         }
       }
     }
-    expect(h.toString(16)).toBe('c37e5388');
+    expect(h.toString(16)).toBe('48a14018');
   });
 });
