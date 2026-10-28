@@ -10,13 +10,15 @@
  * The sprites are one instanced mesh whose vertex shader does all the motion
  * and blinking from the scene clock, so a replay shows the same sky and the
  * CPU only schedules the next meteor. Mood (weather.ts) sets the haze colour
- * baked into the ridges, how many stars show and how the moon looks. Three
- * draw calls: the rings, the masts, the sprites.
+ * baked into the ridges, how many stars show and how the moon looks. A seed
+ * in four also has a lit stadium on the ring (stadium.ts). Three draw calls: the
+ * rings, the masts, the sprites (plus the stadium's two).
  */
 import * as THREE from 'three';
 import { Rng, deriveSeed } from '../../sim/prng';
 import { GeoBuilder } from '../geoBuilder';
 import { FOG_COLOR } from '../lighting';
+import { type Stadium, buildStadium, stadiumPlan, stadiumSpot } from './stadium';
 import { makeSkySpriteAtlas, SKY_TILES, SKY_TILE_COUNT } from './skyTextures';
 
 export interface BackdropOptions {
@@ -278,6 +280,11 @@ export function buildBackdrop(seed: number, opts: BackdropOptions = { fogColor: 
   nearMesh.frustumCulled = false;
   group.add(farMesh, nearMesh);
 
+  // A stadium on one seed in four, on a stretch where the near ridge leaves room (stadium.ts).
+  const stadiumSeed = stadiumPlan(seed);
+  const stadium: Stadium | null = stadiumSeed ? buildStadium(seed, stadiumSeed, stadiumSpot(stadiumSeed, near.heights)) : null;
+  if (stadium) group.add(stadium.group);
+
   // Radio masts on the highest near peaks: one merged mesh; their beacons are sky sprites.
   const peaks = near.heights
     .map((h, i) => ({ h, i }))
@@ -478,6 +485,7 @@ export function buildBackdrop(seed: number, opts: BackdropOptions = { fogColor: 
       const p = spriteMat.uniforms.uGroupPos.value as THREE.Vector3;
       p.y = 0;
       group.position.copy(p);
+      stadium?.view(camera);
       const cam = camera as THREE.PerspectiveCamera;
       const fov = cam.isPerspectiveCamera ? cam.fov : 60;
       spriteMat.uniforms.uPixel.value = (2 * Math.tan((fov * Math.PI) / 360)) / Math.max(1, viewportHeight);
@@ -485,6 +493,7 @@ export function buildBackdrop(seed: number, opts: BackdropOptions = { fogColor: 
     update(time) {
       spriteMat.uniforms.uTime.value = time;
       schedule(time);
+      stadium?.update(time);
     },
     setMood(m) {
       spriteMat.uniforms.uStars.value = m.stars;
@@ -498,6 +507,7 @@ export function buildBackdrop(seed: number, opts: BackdropOptions = { fogColor: 
       mat.color.b = Math.min(2, Math.max(0.5, mat.color.b));
     },
     dispose() {
+      stadium?.dispose();
       far.geo.dispose();
       near.geo.dispose();
       mat.dispose();

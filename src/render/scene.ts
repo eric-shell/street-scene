@@ -22,6 +22,7 @@ import { MEET_QUALITY, planMeets } from './race/meetPlan';
 import { buildProps, PropRenderer } from './street/props';
 import { buildDistrictMeshes } from './districts';
 import { Backdrop, buildBackdrop } from './sky/backdrop';
+import { buildFireworks } from './sky/fireworks';
 import { CROWD_IMPOSTOR, CROWD_QUALITY, buildCrowds, Crowds } from './race/crowds';
 import { IDLE_QUALITY, buildIdlers, Idlers } from './people/idlers';
 import { planIdlers } from './people/idleSpots';
@@ -238,6 +239,9 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     sea: harborSea(world) ?? undefined,
   });
   scene.add(backdrop.group);
+  // A fireworks display over the water on three seeds in ten (sky/fireworks.ts).
+  const fireworks = buildFireworks(world, { quality: settings.quality, flashes });
+  if (fireworks) scene.add(fireworks.group);
   // Street level polish: road decals, puddles, posters, blade signs, banners, steam (pasted onto the drawn podiums).
   const polish = buildStreetPolish(world, { quality: settings.quality, facades: (city.group.getObjectByName('podiums') as THREE.Mesh | undefined)?.geometry });
   scene.add(polish.group);
@@ -301,6 +305,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     const viewportHeight = r.domElement.clientHeight || window.innerHeight;
     roadblocks.update(camera);
     backdrop.follow(camera, viewportHeight);
+    fireworks?.view(camera, viewportHeight);
     weather.view(camera, viewportHeight);
     air.view(camera);
     districts.view(camera);
@@ -397,6 +402,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
       arrows.update(time);
       districts.update(time);
       backdrop.update(time);
+      fireworks?.update(time);
       polish.update(time);
       fx.update(time);
       weather.update(time);
@@ -413,6 +419,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
       city.dispose();
       districts.dispose();
       backdrop.dispose();
+      fireworks?.dispose();
       polish.dispose();
       placeSigns.dispose();
       fx.dispose();
