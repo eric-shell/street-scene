@@ -228,25 +228,123 @@ def cowl(cid, m):
 
 # ----- interior ----------------------------------------------------------------
 
+def _shell_tree(cid):
+    """BVH over the car's meshes without the cabin: the skin and glass a cabin must stay inside."""
+    verts, polys = [], []
+    for o in car_meshes(cid):
+        mw, me = o.matrix_world, o.data
+        base = len(verts)
+        verts += [mw @ v.co for v in me.vertices]
+        polys += [[base + i for i in p.vertices] for p in me.polygons
+                  if not me.materials or me.materials[p.material_index].name.split('.')[0] != 'Interior']
+    return BVHTree.FromPolygons(verts, polys)
+
+
+def _skin_limits(tree, v, belt):
+    """(|x| of the side skin at (y, z), z of the roof or glass above (x, y)), each None when the
+    ray finds nothing. Roof hits under the belt (a ray down an open side window to the sill)
+    do not count."""
+    sx = 1 if v.x >= 0 else -1
+    side = _side_x(tree, sx, v.y, v.z)
+    hit = tree.ray_cast(Vector((v.x, v.y, 5)), Vector((0, 0, -1)))
+    top = hit[0].z if hit[0] and hit[0].z > belt else None
+    return (abs(side) if side is not None else None), top
+
+
+def cabin_outside(cid, m, tol=0.015):
+    """Cabin vertices beyond the car's skin: [(how far, 'side' | 'top', (x, y, z))], worst first.
+    The ray comes from outside, so a vertex seen through an open window is not counted, only
+    one standing proud of a door, the glass or the roof (the R33's house block did, 9 cm)."""
+    tree = _shell_tree(cid)
+    out = []
+    for o in car_meshes(cid):
+        mw, me = o.matrix_world, o.data
+        ids = {i for p in me.polygons if me.materials and me.materials[p.material_index].name.split('.')[0] == 'Interior' for i in p.vertices}
+        for i in ids:
+            v = mw @ me.vertices[i].co
+            side, top = _skin_limits(tree, v, m['beltLine'])
+            if side is not None and abs(v.x) > side + tol:
+                out.append((abs(v.x) - side, 'side', tuple(v)))
+            elif top is not None and v.z > top + tol:
+                out.append((v.z - top, 'top', tuple(v)))
+    return sorted(out, key=lambda t: -t[0])
+
+
+def _cabin_faces(src):
+    """A garage car's own cabin: ([world verts], [[indices]]) of its Interior faces."""
+    verts, polys = [], []
+    for o in car_meshes(src):
+        mw, me = o.matrix_world, o.data
+        if not me.materials:
+            continue
+        remap = {}
+        for p in me.polygons:
+            if me.materials[p.material_index].name.split('.')[0] != 'Interior':
+                continue
+            for i in p.vertices:
+                if i not in remap:
+                    remap[i] = len(verts)
+                    verts.append(mw @ me.vertices[i].co)
+            polys.append([remap[i] for i in p.vertices])
+    return verts, polys
+
+
 def interior(cid, m):
-    """A dark block under the glass plus two seat backs at the B pillar, so the cabin does not read hollow."""
+    """A real cabin (seats, dash, floor, door cards, headliner) for a donor that has none,
+    transplanted from a garage car whose donor cabin ships (docs/carDesign.md, Interior): the
+    source by seating (`cabin.seats` in the car's spec), cropped behind its last seat back,
+    mapped station to station (cabin front to cabin front, crop to cabin rear, belt to belt,
+    roof to roof), mirrored for right hand drive, then every vertex beyond this car's skin
+    pulled in to `skinMargin` inside it and every vertex over an axle lifted clear of the wheel
+    well. The source car's collections must be in the file."""
     I = _house()['interior']
+    spec = load_specs()['cars'][cid].get('cabin', {})
+    S = I['sources'][spec.get('seats', 'fourSeat')]
+    src = S['car']
     body = car_part(cid, 'Body')
     for o in car_meshes(cid):
         delete_faces(o, lambda c, n, mat: mat == 'Interior')
-    belt = m['beltLine']
-    hw = m['width'] / 2 - 0.12
-    y0, y1 = -m['cabinFront'] + 0.05, -m['cabinRear'] - 0.1
-    # Above the arches: on a low belt with the cabin over the rear axle (a wagon), 0.25 m under
-    # the belt reaches into the wheel wells.
-    z0 = max(belt - 0.25, 2 * m['wheelRadius'] + _house()['arch']['gap'][1] + 0.02)
-    box(body, (-hw, y0, z0), (hw, y1, belt - I['topBelowBelt']), 'Interior')
-    if I.get('seatBacks'):
-        _, b_front = _b_pillar(m)
-        yb = -b_front
-        for sx in (1, -1):
-            box(body, (sx * 0.1, yb - 0.04, belt - 0.2), (sx * 0.6, yb + 0.04, belt + I['seatBackAboveBelt']), 'Interior')
-    print(f'{cid}: interior y {y0:.3f}..{y1:.3f}, top z {belt - I["topBelowBelt"]:.3f}')
+    ms = measure(src, quiet=True)
+    verts, polys = _cabin_faces(src)
+    crop = S.get('cropFwd')
+    if crop is not None:  # faces wholly behind the crop (a wagon's load floor) go
+        polys = [p for p in polys if any(-verts[i].y >= crop for i in p)]
+    rear_s = crop if crop is not None else ms['cabinRear']
+    ky = (m['cabinFront'] - m['cabinRear'] - S.get('rearInset', 0)) / (ms['cabinFront'] - rear_s)
+    kx = m['width'] / ms['width']
+    kz = (m['roof'] - m['beltLine']) / (ms['roof'] - ms['beltLine'])
+    mirror = -1 if spec.get('rhd') else 1
+
+    def mapped(v):
+        fwd = m['cabinFront'] + (-v.y - ms['cabinFront']) * ky
+        dz = v.z - ms['beltLine']
+        z = m['beltLine'] + (dz * kz if dz > 0 else dz)
+        return Vector((mirror * v.x * kx, -fwd, z))
+
+    used = sorted({i for p in polys for i in p})
+    at = {i: k for k, i in enumerate(used)}
+    pts = [mapped(verts[i]) for i in used]
+    tree = _shell_tree(cid)
+    margin = I['skinMargin']
+    axles = (m['wheelbase'] / 2, -m['wheelbase'] / 2)
+    well = m['wheelRadius'] + 0.1
+    floor = 2 * m['wheelRadius'] + _house()['arch']['gap'][1] + margin
+    pulled = 0
+    for k, v in enumerate(pts):
+        side, top = _skin_limits(tree, v, m['beltLine'])
+        if side is not None and abs(v.x) > side - margin:
+            v.x = math.copysign(max(side - margin, 0), v.x)
+            pulled += 1
+        if top is not None and v.z > top - margin:
+            v.z = top - margin
+            pulled += 1
+        if any(abs(-v.y - a) < well for a in axles) and v.z < floor:  # out of the wheel wells
+            v.z = floor
+            pulled += 1
+    inv = body.matrix_world.inverted()
+    faces = [[at[i] for i in (reversed(p) if mirror < 0 else p)] for p in polys]
+    add_geom(body, [inv @ v for v in pts], faces, 'Interior', outward='keep')
+    print(f'{cid}: cabin from {src} ({len(faces)} faces{", right hand drive" if mirror < 0 else ""}), {pulled} vertices pulled inside the skin')
 
 
 # ----- lamps -------------------------------------------------------------------

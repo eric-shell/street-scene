@@ -105,6 +105,7 @@ compare_donors([cid], OUT)         # side / front / rear PNGs to Read
   - holes;
   - lamps missing or on the wrong end;
   - leftover wipers, plates or antennas.
+- **Cabin:** the donor's own, or none in the source: then `interior(cid, m)` transplants a garage car's (`docs/carDesign.md`, Interior); never a block. `npm run audit` must show `cabin inside the skin` ok.
 - **Budget:** 16,000 triangles for the shell plus up to 2,500 of cabin; drift p95 under 1 mm. Drift only measures the kept vertices, so also read **lost** (the skin's vertices to the reduced surface): a high lost max is a part collapsed away, such as a mirror or a lip.
 - **Winding:** look with backface culling on (`shading.show_backface_culling` on the viewport). The game draws most car materials double sided but not `Rim` or `Tire`, and a car wound inside out shades dark; Blender's default viewport hides both faults.
 
@@ -142,7 +143,7 @@ Findings that drove the pipeline, now automatic:
 - **Weighted-normal sources** (the E30, partly the WRX) streak after reduction.
 - **Texture-only lamps** (the Punto) need recipe boxes or texture sampling.
 - **Cowl gaps** where a wiper mesh carried the cowl trim (the WRX).
-- **No cabin:** interiors are dropped and nothing fills them yet.
+- ~~**No cabin**~~: a donor without one gets a garage car's donor cabin transplanted and fitted inside its skin (`interior()`, `docs/carDesign.md`).
 
 ## 9. Ridgeway Fiend (2026-10-27, then called the Proto Muscle)
 
@@ -154,7 +155,7 @@ A fourth garage car from a 627,000 face widebody Challenger SRT Demon (SDC PERFO
 
 A fifth garage car, after a 1997 Skyline GT-R R33. The user's link downloaded as a 9,536 triangle game asset (`Bcnr33…` parts, 128 to 512 px textures holding the lamps, grille and badges; Sketchfab lists it at 254,184 faces), and the other CC BY R33s were no better: three uploads of one *Driver: San Francisco* mesh (284,9xx faces each, one says where it came from) and a BeamNG mod (`etkc_` parts, Russian material names). The donor is greddy295's own R33 GT-R (2014, Blender, 69,371 faces), which its author calls unfinished.
 
-Recipe: German material names, nose at -X off center (`turn`, then the automatic centering), the wheels and suspension dropped whole (their meshes share Metal, Black_Metal and Exhaust with the body), `debadge: False` (the badges are their own materials; the grille meshes are 2,400 flat cells the badge passes pressed into crumpled panels), the emblem's mounting plate as four `islands`. The unfinished part is the headlamps: an empty paint recess inside a black outline, recoloured to `HeadLight` (the hood's leading edge above it excluded by height and normal). Length -1.0 % of published, 16,000 triangles, drift p95 0.5 mm, lost max 11 mm. The donor has no cabin, so `interior()` (carFeatures.py) adds the house block (18 triangles). Arch gaps read 0.09 / 0.12 m against the liner; the stance looks right with wheels on.
+Recipe: German material names, nose at -X off center (`turn`, then the automatic centering), the wheels and suspension dropped whole (their meshes share Metal, Black_Metal and Exhaust with the body), `debadge: False` (the badges are their own materials; the grille meshes are 2,400 flat cells the badge passes pressed into crumpled panels), the emblem's mounting plate as four `islands`. The unfinished part is the headlamps: an empty paint recess inside a black outline, recoloured to `HeadLight` (the hood's leading edge above it excluded by height and normal). Length -1.0 % of published, 16,000 triangles, drift p95 0.5 mm, lost max 11 mm. The donor has no cabin. It first shipped with the house block (36 triangles, a box at the belt 0.12 m in from the widest point), which stood 9 cm out of the tumblehomed doors as flat slabs on both sides; it now carries the Brandt Kombi's donor cabin (`interior()`, `fourSeat`, right hand drive): 2,420 faces cropped behind the rear seat back, fitted inside the skin. Arch gaps read 0.09 / 0.12 m against the liner; the stance looks right with wheels on.
 
 ## Donor credits
 

@@ -186,6 +186,75 @@ function hitAbove(fs: Face[], x: number, z: number, yMin: number): number | null
   return best;
 }
 
+/**
+ * Interior vertices standing proud of the skin: how far the worst one sits outside (m) and how
+ * many do. Rays come from outside (along x at the vertex's height and station, down from above),
+ * so a seat seen through an open window is not counted, only cabin that pokes through a door,
+ * the glass or the roof. Roof hits under the belt (a ray down a side window onto the sill) do not
+ * count. Shell triangles are binned on a 0.1 m grid per ray direction to keep it quick.
+ */
+const CABIN_TOL = 0.015; // reduction moves a door card or seat back up to about 12 mm; a misplaced cabin sits 9 cm out
+
+function cabinOutside(fs: Face[], belt: number | null): { count: number; worst: number } {
+  const shell = fs.filter((f) => f.mat !== 'Interior');
+  const cabin = fs.filter((f) => f.mat === 'Interior');
+  const key = (a: number, b: number) => `${Math.floor(a / 0.1)},${Math.floor(b / 0.1)}`;
+  const grid = (ia: number, ib: number) => {
+    const g = new Map<string, Face[]>();
+    for (const f of shell) {
+      const as = f.v.map((p) => p[ia]);
+      const bs = f.v.map((p) => p[ib]);
+      for (let a = Math.floor(Math.min(...as) / 0.1); a <= Math.floor(Math.max(...as) / 0.1); a++) {
+        for (let b = Math.floor(Math.min(...bs) / 0.1); b <= Math.floor(Math.max(...bs) / 0.1); b++) {
+          const k = `${a},${b}`;
+          const l = g.get(k);
+          if (l) l.push(f);
+          else g.set(k, [f]);
+        }
+      }
+    }
+    return g;
+  };
+  // Coordinate along `axis` of every triangle crossing the line through (a, b) on the other two.
+  const hits = (cands: Face[] | undefined, axis: number, ia: number, ib: number, a: number, b: number) => {
+    const out: number[] = [];
+    for (const f of cands ?? []) {
+      const [p, q, r] = f.v;
+      const d = (q[ib] - r[ib]) * (p[ia] - r[ia]) + (r[ia] - q[ia]) * (p[ib] - r[ib]);
+      if (Math.abs(d) < 1e-12) continue;
+      const l1 = ((q[ib] - r[ib]) * (a - r[ia]) + (r[ia] - q[ia]) * (b - r[ib])) / d;
+      const l2 = ((r[ib] - p[ib]) * (a - r[ia]) + (p[ia] - r[ia]) * (b - r[ib])) / d;
+      const l3 = 1 - l1 - l2;
+      if (l1 < -1e-6 || l2 < -1e-6 || l3 < -1e-6) continue;
+      out.push(l1 * p[axis] + l2 * q[axis] + l3 * r[axis]);
+    }
+    return out;
+  };
+  const sideGrid = grid(1, 2);
+  const topGrid = grid(0, 2);
+  const seen = new Set<string>();
+  let count = 0;
+  let worst = 0;
+  for (const f of cabin) {
+    for (const v of f.v) {
+      const id = v.map((x) => x.toFixed(4)).join();
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const sx = v[0] >= 0 ? 1 : -1;
+      const xs = hits(sideGrid.get(key(v[1], v[2])), 0, 1, 2, v[1], v[2]).filter((x) => x * sx > 0);
+      const skin = xs.length ? Math.max(...xs.map((x) => x * sx)) : null;
+      const ys = hits(topGrid.get(key(v[0], v[2])), 1, 0, 2, v[0], v[2]).filter((y) => belt === null || y > belt);
+      const roof = ys.length ? Math.max(...ys) : null;
+      const out = Math.max(skin !== null ? Math.abs(v[0]) - skin : 0, roof !== null ? v[1] - roof : 0);
+      if (out > CABIN_TOL) {
+        count++;
+        worst = Math.max(worst, out);
+      }
+    }
+  }
+  return { count, worst };
+}
+
 // ----- measuring -------------------------------------------------------------
 
 export interface Lamp {
@@ -225,6 +294,8 @@ export interface Measure {
   cowl: boolean;
   indicator: boolean;
   interior: boolean;
+  /** Interior vertices outside the skin and the worst one's distance out (m). */
+  cabinOutside: { count: number; worst: number };
   head: Lamp | null;
   tail: Lamp | null;
   archGapFront: number | null;
@@ -324,6 +395,7 @@ export function measure(fs: Face[], car: ManifestCar): Measure {
     cowl,
     indicator: fs.some((f) => f.mat === 'Light'),
     interior: fs.some((f) => f.mat === 'Interior'),
+    cabinOutside: cabinOutside(fs, belt),
     head: lamp(fs.filter((f) => f.mat === 'HeadLight')),
     tail: lamp(fs.filter((f) => f.mat === 'TailLight')),
     archGapFront: gap(car.trackFront / 2, half),
@@ -431,7 +503,8 @@ export function checks(m: Measure, t: Targets, spec: CarSpec, house: House): Che
   feat('mirrors', m.mirrors === 2, `${m.mirrors} found`, 'expect 2 at the A pillar foot');
   feat('door handles', m.handles === spec.body.doors, `${m.handles} found`, `expect ${spec.body.doors}`);
   feat('cowl (Black, under the windshield)', m.cowl, m.cowl ? 'found' : 'missing');
-  feat('interior block', m.interior, m.interior ? 'found' : 'missing');
+  feat('interior (a donor cabin)', m.interior, m.interior ? 'found' : 'missing', 'the donor\'s own or one transplanted by carFeatures.py interior(), never a block');
+  feat('cabin inside the skin', m.cabinOutside.count === 0, m.cabinOutside.count ? `${m.cabinOutside.count} vertices out, worst ${m3(m.cabinOutside.worst)}` : 'all inside', 'no Interior vertex may stand proud of a door, the glass or the roof');
   const [g0, g1] = house.features.arch.gap;
   const gapRow = (label: string, g: number | null) => feat(label, g !== null && g >= g0 && g <= g1, m3(g), `house ${g0}..${g1}; negative means the tire pokes through`);
   gapRow('arch gap front', m.archGapFront);

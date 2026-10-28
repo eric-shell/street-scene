@@ -9,7 +9,7 @@ Authored cars: brandtKombi, hinodeHorizon, kazamaRotor, ridgewayFiend, wendtFair
 | Car | Size |
 |---|---|
 | brandtKombi | 264.8 KB |
-| hinodeHorizon | 184.5 KB |
+| hinodeHorizon | 231.4 KB |
 | kazamaRotor | 238.2 KB |
 | ridgewayFiend | 270.0 KB |
 | wendtFairway | 215.0 KB |
@@ -64,7 +64,7 @@ Source: `assets/source/eshell/brandtKombi/brandtKombi.blend` (authored in car sp
 
 Source: `assets/source/eshell/hinodeHorizon/hinodeHorizon.blend` (authored in car space, exported with scripts/blender/exportCar.py).
 
-- Base car `public/cars/hinodeHorizon.glb`: 184.5 KB, 16036 tris, nodes `Body`.
+- Base car `public/cars/hinodeHorizon.glb`: 231.4 KB, 18420 tris, nodes `Body`.
 - Parts: .
 - WARNING: wheel radius 0.324 m differs from the standard 0.28 m (assetConfig.json standardWheel). Every car shares one wheel size so scale reads the same.
 - Wheel radius 0.324 m, width 0.24 m, wheelbase 2.72 m, track 1.526 m.

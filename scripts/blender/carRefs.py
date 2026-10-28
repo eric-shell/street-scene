@@ -230,7 +230,7 @@ def targets(spec, house, wb):
                 wheelRadius=ratio('tireRadius') * wb, windshieldDeg=avg('windshieldDeg'), rearGlassDeg=avg('rearGlassDeg'))
 
 
-def checks(m, t, spec, house):
+def checks(m, t, spec, house, cid=None):
     """[(label, model, target, ok | None, note)], the audit's rows."""
     out = []
     tol = house['tolerance']
@@ -283,7 +283,10 @@ def checks(m, t, spec, house):
     feat('mirrors', m['mirrors'] == 2, f"{m['mirrors']} found", 'expect 2 at the A pillar foot')
     feat('door handles', m['handles'] == spec['body']['doors'], f"{m['handles']} found", f"expect {spec['body']['doors']}")
     feat('cowl (Black, under the windshield)', m['cowl'], 'found' if m['cowl'] else 'missing')
-    feat('interior block', m['interior'], 'found' if m['interior'] else 'missing')
+    feat('interior (a donor cabin)', m['interior'], 'found' if m['interior'] else 'missing', "the donor's own or one transplanted by interior(), never a block")
+    if cid and "cabin_outside" in globals():  # carFeatures.py is loaded
+        out = cabin_outside(cid, m)
+        feat('cabin inside the skin', not out, f'{len(out)} vertices out, worst {f3(out[0][0])}' if out else 'all inside', 'no Interior vertex may stand proud of a door, the glass or the roof')
     g0, g1 = house['features']['arch']['gap']
     for label, g in (('arch gap front', m['archGapFront']), ('arch gap rear', m['archGapRear'])):
         feat(label, g is not None and g0 <= g <= g1, f3(g), f'house {g0}..{g1}; negative means the tire pokes through')
@@ -296,7 +299,7 @@ def spec_check(cid):
     spec = specs['cars'][cid]
     m = measure(cid, quiet=True)
     t = targets(spec, specs['house'], m['wheelbase'])
-    rows = checks(m, t, spec, specs['house'])
+    rows = checks(m, t, spec, specs["house"], cid)
     print(f"{spec['displayName']} ({cid}): {spec['brief']}")
     print(f"{'check':34} {'model':40} {'target':8} {'':4} note")
     for label, model, target, ok, note in rows:

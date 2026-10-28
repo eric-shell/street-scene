@@ -506,7 +506,8 @@ def outline(o, axis, extreme, along, samples, band):
 
 def add_geom(o, verts, faces, name, outward=None):
     """Append polygons (local vertex indices) to o's mesh with material `name`. Closed shapes get
-    consistent outside normals; open patches pass `outward` (the side they are seen from)."""
+    consistent outside normals; open patches pass `outward` (the side they are seen from), and
+    `outward='keep'` keeps the winding as given (a transplanted cabin)."""
     i = mat_index(o, name)
     bm = bmesh.new()
     bm.from_mesh(o.data)
@@ -521,7 +522,7 @@ def add_geom(o, verts, faces, name, outward=None):
         made.append(nf)
     if outward is None:
         bmesh.ops.recalc_face_normals(bm, faces=made)
-    else:
+    elif outward != 'keep':
         for f in made:
             f.normal_update()
             if f.normal.dot(Vector(outward)) < 0:

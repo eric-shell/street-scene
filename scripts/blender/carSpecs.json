@@ -88,9 +88,17 @@
         "quarterGlass": "hatches only, behind the C pillar"
       },
       "interior": {
-        "topBelowBelt": 0.02,
-        "seatBacks": true,
-        "seatBackAboveBelt": 0.18
+        "_": "A donor without a cabin borrows one from a garage car whose donor cabin ships (carFeatures.py interior): never a block. sources: by seating, the car and the fwd station behind its last seat back to crop at; skinMargin: how far inside the skin every cabin vertex must sit.",
+        "sources": {
+          "twoSeat": {
+            "car": "kazamaRotor"
+          },
+          "fourSeat": {
+            "car": "brandtKombi",
+            "cropFwd": -1.3
+          }
+        },
+        "skinMargin": 0.02
       },
       "arch": {
         "clearance": 0.035,
@@ -495,6 +503,10 @@
           "source": "donor",
           "notes": "the GT-R's round twin tail lamps, kept from the donor model"
         }
+      },
+      "cabin": {
+        "seats": "fourSeat",
+        "rhd": true
       }
     }
   }

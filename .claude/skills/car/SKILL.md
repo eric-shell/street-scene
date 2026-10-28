@@ -25,7 +25,8 @@ Every call: `exec` carKit.py, then carRefs.py, then carFeatures.py (`/blender`, 
 6. **Shape** before details: proportions (length, width, overhangs, height), glass rakes, the belt line. Coupe: edit the `PROFILE` keyframes and rebuild. Kitbashed cars: `displace` fields pinned with `plane_seam`, or `bake` with a matrix for whole moves; apply the same field to every Car and Parts mesh so seams stay closed (flares, chops). Re-run `spec_check` after each change.
 7. **Features**: `apply_features(cid)` builds pillars, mirrors, handles, cowl, interior, lamps (front and rear by signature) and exhaust tips from the house numbers; or call the builders one by one. Try a signature with `lamps(cid, m, 'front', cover='slab')` before changing the spec. Each builder strips its old work, so iterate freely; if one misfires, fix the helper in `carFeatures.py`, not inline.
 8. **Kits**: a style in `tunerKits.py` per family, built from the stock pieces (`copy_part`, `displace`, `recolor`, `outline`, `slab`, `fin`), sized from the kit notes and the table in `docs/carDesign.md` section 4, anchored to the car's own edges. No typed coordinates, no boxes that do not touch the car.
-9. `measure(cid)` again: mirrors 2, handles = doors, cowl, interior, indicators, lamp heights in band, arch gaps 0.01 to 0.04. Then a last `ortho_sheet` and one `look(mode='angles')`.
+9. `measure(cid)` again: mirrors 2, handles = doors, cowl, interior, indicators, lamp heights in band, arch gaps 0.01 to 0.04.
+   **Cabin**: the donor's own, or `interior(cid, m)` transplanting a garage car's (set `cabin` `seats` and `rhd` in the car's spec, and append the source car's collections to the file); never a block. `spec_check` must show `cabin inside the skin` ok, then one look at the cabin alone and through the side glass (`docs/carDesign.md`, Interior). Then a last `ortho_sheet` and one `look(mode='angles')`.
 
 ## 3. Ship and verify
 
