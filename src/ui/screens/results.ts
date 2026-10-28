@@ -1,7 +1,7 @@
 /**
  * The results screen: a rail beside the finish shots (ui/rail/rail.ts) in the
  * pause screen's language: the card of how it went (the headline, place or
- * score, a new best, the standings) with Retry on it, the style score (the
+ * score, a new best, the standings) with Retry on it, the points (the
  * nitrous callouts' points, counted up from 0 with what paid them and what
  * crashes cost, beside the event's best) on a card of its own, and what next
  * as rows. Styled by _results-screen.scss and _results-card.scss.
@@ -13,7 +13,7 @@ import { navRow, railScreen } from '../rail/rail';
 import { Help } from '../panels/help';
 import { openSignInDialog, signInRow } from './signIn';
 import type { RaceMode } from '../../sim/race';
-import { styleTotal, type StyleSource, type StyleTally } from '../hud/boostCallouts';
+import { pointsTotal, type PointsSource, type PointsTally } from '../hud/boostCallouts';
 
 export interface ResultRow {
   name: string;
@@ -28,42 +28,50 @@ const MODE_LABEL: Record<RaceMode, string> = { circuit: 'Circuit', sprint: 'Spri
 /** The race type's icon, as the pause card and the menu's type tiles show it. */
 const TYPE_ICON: Record<RaceMode, IconNode> = { circuit: RotateCcw, sprint: Route, drag: ChevronsRight, waypoint: MapPinned, drift: Wind };
 
-/** The style score's lines, in this order (zero lines are left out); crashes count against it. */
-const STYLE_LINES: [StyleSource, string][] = [
+/** The points' lines, in this order (zero lines are left out); crashes count against it. */
+const POINTS_LINES: [PointsSource, string][] = [
   ['drift', 'Drifts'],
   ['nearMiss', 'Near misses'],
   ['draft', 'Slipstream'],
   ['wreck', 'Wrecks'],
   ['crash', 'Crashes'],
 ];
-/** How long the style total counts up (s), after the screen's own entrance. */
-const STYLE_COUNT = { delay: 0.45, time: 1.2 } as const;
+/** How long the points total counts up (s), after the screen's own entrance. */
+const POINTS_COUNT = { delay: 0.45, time: 1.2 } as const;
 
 const pts = (n: number) => Math.round(n).toLocaleString('en-US');
 
-/** The style score's card: the total counting up, its best or a new one, and a line per source that paid. */
-function styleBlock(tally: StyleTally, best: number, newBest: boolean): HTMLElement {
-  const total = styleTotal(tally);
-  const value = h('b', { class: 'results-style__total' }, pts(prefersReducedMotion() ? total : 0));
-  const list = h('ul', { class: 'results-style__list' });
-  for (const [k, label] of STYLE_LINES) {
+/**
+ * The points card: the run's total big and counting up, the lifetime total beneath it ("+1,240 · 18,560 total",
+ * shared/points.ts), a new best or the event's best beside the kicker, and a line per source that paid.
+ */
+function pointsBlock(tally: PointsTally, best: number, newBest: boolean, lifetime: { gained: number; total: number }): HTMLElement {
+  const total = pointsTotal(tally);
+  const value = h('b', { class: 'results-points__total' }, pts(prefersReducedMotion() ? total : 0));
+  const list = h('ul', { class: 'results-points__list' });
+  for (const [k, label] of POINTS_LINES) {
     if (Math.round(tally[k]) <= 0) continue;
-    list.append(h('li', { class: k === 'crash' ? 'results-style__item results-style__item--crash' : 'results-style__item' }, h('span', {}, label), h('b', {}, `${k === 'crash' ? '−' : '+'}${pts(tally[k])}`)));
+    list.append(h('li', { class: k === 'crash' ? 'results-points__item results-points__item--crash' : 'results-points__item' }, h('span', {}, label), h('b', {}, `${k === 'crash' ? '−' : '+'}${pts(tally[k])}`)));
   }
   if (!prefersReducedMotion() && total > 0) {
-    const start = performance.now() + STYLE_COUNT.delay * 1000;
+    const start = performance.now() + POINTS_COUNT.delay * 1000;
     const step = (now: number) => {
       if (!value.isConnected && now > start) return;
-      const k = Math.max(0, Math.min(1, (now - start) / (STYLE_COUNT.time * 1000)));
+      const k = Math.max(0, Math.min(1, (now - start) / (POINTS_COUNT.time * 1000)));
       value.textContent = pts(total * (1 - Math.pow(1 - k, 3)));
       if (k < 1) requestAnimationFrame(step);
     };
     requestAnimationFrame(step);
   }
+  const tag = newBest ? h('span', { class: 'results-screen__badge' }, icon(Sparkles, { size: 14 }), 'New best') : best > 0 && h('span', { class: 'results-points__best' }, `Best ${pts(best)}`);
+  // A tuned run adds nothing to the lifetime total, so only the total shows.
+  const life = lifetime.gained > 0 ? `+${pts(lifetime.gained)} · ${pts(lifetime.total)} total` : `${pts(lifetime.total)} total`;
   return h(
     'section',
-    { class: 'results-style', 'aria-label': 'Style' },
-    h('div', { class: 'results-style__head' }, h('span', { class: 'label label--kicker' }, icon(Sparkles, { size: 14 }), 'Style'), value, newBest ? h('span', { class: 'results-screen__badge' }, icon(Sparkles, { size: 14 }), 'Style best') : best > 0 && h('span', { class: 'results-style__best' }, `Best ${pts(best)}`)),
+    { class: 'results-points', 'aria-label': 'Points' },
+    h('div', { class: 'results-points__head' }, h('span', { class: 'label label--kicker' }, icon(Sparkles, { size: 14 }), 'Points'), tag),
+    value,
+    lifetime.total > 0 && h('p', { class: 'results-points__life' }, life),
     list,
   );
 }
@@ -72,8 +80,8 @@ function styleBlock(tally: StyleTally, best: number, newBest: boolean): HTMLElem
  * Results: a rail beside the finish shots in the pause screen's language (the menu's and the garage's): a
  * scrim, no column, the parts plates of their own, and no screen title (the card says it all). A card shaped
  * like the pause card says how it went (the race type as its kicker, the event's name, the place or score
- * with a new best on it, the standings) and ends in Retry, the screen's main action, which glints; the style
- * score is a card of its own under it, and the way on is rows in their hues like the pause screen's (replay
+ * with a new best on it, the standings) and ends in Retry, the screen's main action, which glints; the points
+ * are a card of its own under it, and the way on is rows in their hues like the pause screen's (replay
  * cyan, the garage orange as on the menu, the menu red like quit), after Sign in (yellow, signed out only:
  * the sign-in dialog over the results) while a good run is fresh.
  */
@@ -85,10 +93,12 @@ export function resultsScreen(o: {
   position: number;
   driftScore?: number;
   newBest: boolean;
-  /** The player's style score by source (points), the event's best before this run, and whether this run beat it. */
-  style: StyleTally;
-  styleBest: number;
-  newStyleBest: boolean;
+  /** The player's points by source, the event's best before this run, and whether this run beat it. */
+  points: PointsTally;
+  pointsBest: number;
+  newPointsBest: boolean;
+  /** What this run added to the lifetime points (0 for a tuned run) and the total after (shared/points.ts). */
+  lifetime: { gained: number; total: number };
   tuned: boolean;
   /** How this run stands against a challenge link's mark (main.ts challengeResult), or null off one. */
   challenge?: { beaten: boolean; text: string } | null;
@@ -142,7 +152,7 @@ export function resultsScreen(o: {
       'div',
       { class: 'rail__step' },
       card,
-      styleBlock(o.style, o.styleBest, o.newStyleBest),
+      pointsBlock(o.points, o.pointsBest, o.newPointsBest, o.lifetime),
       h(
         'nav',
         { class: 'nav-list', 'aria-label': 'What next' },

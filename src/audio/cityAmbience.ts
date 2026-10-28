@@ -89,7 +89,7 @@ const SHOT_KINDS = Object.keys(SHOT_GAPS) as ShotKind[];
 /** Street sounds that rain and mist make rarer. */
 const STREET: ReadonlySet<ShotKind> = new Set(['horn', 'dog', 'bottle', 'shutter', 'gull']);
 /** Each kind's own level at its nearest distance (before the bed's `shots`). */
-const SHOT_LEVEL: Record<ShotKind, number> = { siren: 0.5, horn: 0.5, dog: 0.7, bottle: 0.6, shutter: 0.8, trainHorn: 0.6, gull: 0.5 };
+const SHOT_LEVEL: Record<ShotKind, number> = { siren: 0.3, horn: 0.3, dog: 0.7, bottle: 0.6, shutter: 0.8, trainHorn: 0.6, gull: 0.5 };
 
 type HubT = NonNullable<ReturnType<typeof audioHub>>;
 
@@ -116,6 +116,8 @@ export class CityAmbience {
   /** The turn last pushed to the hum and hiss (-1: none yet). */
   private pushedTurn = -1;
   private lastTime = -1;
+  /** Whether the distant one-shots (siren, horn, dog ...) sound; the menu city keeps only the bed. */
+  oneShots = true;
   private duck = 0;
 
   static create(traits: AmbienceTraits): CityAmbience | null {
@@ -257,7 +259,7 @@ export class CityAmbience {
     for (const k of this.kinds) {
       if (time < this.nextAt[k]) continue;
       this.nextAt[k] = time + this.gap(k);
-      this.fire(k);
+      if (this.oneShots) this.fire(k);
     }
   }
 

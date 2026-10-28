@@ -37,6 +37,8 @@ export interface RaceFinishMeta {
   entrants: number;
   /** This time beat the stored best for the seed and mode. */
   personalBest: boolean;
+  /** The run's points (nitrous callouts' tally, never below 0), absent before it was tracked; what the lifetime total adds up. */
+  points?: number;
   /** Drift score, drift mode only. */
   score?: number;
 }

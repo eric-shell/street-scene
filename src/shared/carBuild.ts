@@ -64,6 +64,8 @@ export interface AxleStance {
   offset: number;
   /** Wheel diameter multiplier. The tire's outer diameter never changes (the wheel grows, sidewall gets thinner). */
   wheelSize: number;
+  /** Wheel and tire width multiplier along the axle. The outer face stays put (same poke); the extra width grows inward, toward the car. */
+  wheelWidth: number;
 }
 
 export const AXLES = ['front', 'rear'] as const;
@@ -75,6 +77,7 @@ export const STANCE_LIMITS = {
   camber: [-10, 2],
   offset: [-0.035, 0.09],
   wheelSize: [0.85, 1.25],
+  wheelWidth: [0.85, 1.35],
 } as const;
 
 export interface VisualBuild {
@@ -130,7 +133,7 @@ export function defaultVisual(): VisualBuild {
     wheels: { paint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPaint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPart: null, tire: 'standard', rearTire: 'standard' },
     calipers: { color: '#c41e3a', finish: 'gloss', match: false },
     decals: [],
-    stance: { front: { rideHeight: 0, camber: 0, offset: 0, wheelSize: 1 }, rear: { rideHeight: 0, camber: 0, offset: 0, wheelSize: 1 } },
+    stance: { front: { rideHeight: 0, camber: 0, offset: 0, wheelSize: 1, wheelWidth: 1 }, rear: { rideHeight: 0, camber: 0, offset: 0, wheelSize: 1, wheelWidth: 1 } },
     tint: { darkness: 0.55, color: '#101820' },
     underglow: { enabled: false, color: '#00e5ff', color2: '#ff3df2', pattern: 'steady', brightness: 1, speed: 1, size: 1 },
   };
@@ -216,6 +219,8 @@ export function validateVisual(v: unknown): VisualBuild {
       camber: num(a.camber, L.camber[0], L.camber[1], num(legacyCamber, L.camber[0], L.camber[1], 0)),
       offset: num(a.offset, L.offset[0], L.offset[1], legacyOffset),
       wheelSize: num(a.wheelSize, L.wheelSize[0], L.wheelSize[1], legacySize),
+      // Builds from before the width slider have the stock width.
+      wheelWidth: num(a.wheelWidth, L.wheelWidth[0], L.wheelWidth[1], 1),
     };
   };
   return {

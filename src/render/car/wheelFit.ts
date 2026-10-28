@@ -8,7 +8,9 @@
  *    wheel's size factor, so spokes, barrel, lip and caps grow together;
  *  - between the bead and the tread the sidewall is squeezed (or stretched)
  *    so the outer radius stays exactly where it was.
- * The axial (X) coordinate never changes, so wheel width and dish stay.
+ * The axial (X) coordinate only changes for the width control: it scales along
+ * the axle about the wheel's outer face, so the face keeps its poke and the
+ * extra width (or the lost width) is all on the barrel side.
  */
 
 export interface WheelProfile {
@@ -88,9 +90,10 @@ export function remapRadius(r: number, p: WheelProfile, bead2: number): [number,
  * `pos`/`nrm` are the original xyz arrays; results go to `outPos`/`outNrm`
  * (may be the same length arrays, not the same objects). Normals follow the
  * inverse transpose of the local Jacobian, so shading stays right on the
- * squeezed sidewall.
+ * squeezed sidewall. `width` stretches X about `anchorX` (the outer face, wheel
+ * space): positions scale by it, and the normals' X by its inverse.
  */
-export function remapWheel(pos: ArrayLike<number>, nrm: ArrayLike<number> | null, outPos: Float32Array, outNrm: Float32Array | null, p: WheelProfile, size: number): void {
+export function remapWheel(pos: ArrayLike<number>, nrm: ArrayLike<number> | null, outPos: Float32Array, outNrm: Float32Array | null, p: WheelProfile, size: number, width = 1, anchorX = 0): void {
   const bead2 = beadForSize(p, size);
   for (let i = 0; i < pos.length; i += 3) {
     const x = pos[i];
@@ -99,11 +102,11 @@ export function remapWheel(pos: ArrayLike<number>, nrm: ArrayLike<number> | null
     const r = Math.hypot(y, z);
     const [r2, dr] = remapRadius(r, p, bead2);
     const t = r > 1e-9 ? r2 / r : bead2 / p.bead;
-    outPos[i] = x;
+    outPos[i] = anchorX + (x - anchorX) * width;
     outPos[i + 1] = y * t;
     outPos[i + 2] = z * t;
     if (!nrm || !outNrm) continue;
-    const nx = nrm[i];
+    const nx = nrm[i] / width;
     let ny = nrm[i + 1];
     let nz = nrm[i + 2];
     if (r > 1e-9) {

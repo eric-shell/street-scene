@@ -38,7 +38,7 @@ export const ALARM = {
   /** Curve grid (Hz). */
   rate: 100,
   /** Level at the car, the distance (m) it falls to half at, and the range beyond which it is silent (m). */
-  level: 0.12,
+  level: 0.07,
   near: 22,
   range: 220,
   /** How fast level and pan follow the car (s). */

@@ -390,6 +390,8 @@ export class StreetStage {
       this.ambience = CityAmbience.create(ambienceTraits(this.world.seed, this.night.weather.mood, this.world.areas, this.night.weather.timeline.turn?.to));
       this.ambienceTried = this.ambience !== null || !TrainRumble.blocked();
     }
+    // The menu and the garage's Street view keep the bed only: no passing sirens, horns or dogs behind the menus.
+    if (this.ambience) this.ambience.oneShots = false;
     this.ambience?.update(this.time, dt, opts.focus?.y ?? this.pose.y, 0, this.night.weather.live);
     // The street furniture's own clock: the traffic signals, the props the cars knock over, debris and spray.
     this.knockProps();

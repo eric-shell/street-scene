@@ -66,6 +66,16 @@ Most wheels need none. The fields:
 - a lip profile with a kink (a leftover piece of hidden barrel: `drop` it);
 - a hub left open (the house cap should have filled it).
 
+## 5b. Facing and width
+
+**Convention.** A shipped wheel is in wheel space: axle along X, centered on its tire, the face (spokes, hub, the lip's outer edge) toward **+X**, the barrel running back toward -X. The left side mounts it as is (`+X` is the car's left); the right side mounts the same meshes with the holder's X scale at -1, which three.js draws with the winding corrected, so both sides show the face outboard. `Rim` is single sided, so every front surface must also be wound toward +X (section 7's winding lesson).
+
+**Check.** `npx tsx scripts/checkWheelFacing.ts [file.glb ...]` (headless, reads the GLBs through glTF Transform) casts rays down -X over the disc and reports, per wheel:
+- `front`: the share of first `Rim` hits that are front faces. This is the hard check; every wheel reads 0.8 to 1.00 and none is wound the wrong way. A wheel under 0.5 is, and the script exits 1.
+- `hub`, `mid`, `tips` and `depth`: where the first visible surface sits at those radii and how far the face is behind the lip edge (0 flush with the front, 1 flush with the back). This is a report only. Geometry cannot separate a deep concave design (the Rotiform set, `hari`'s 12 cm dish) from a wheel whose recipe `face` came out backwards, so a face past 0.85 (`ame`, `hane`, `uzu` at 2026-10-28) is printed `deep` for a look in the garage, never failed. If one is wrong, set `face: -1` (or `1`) in its `carWheels.py` recipe and rebuild it: the face direction is decided in Blender, and nothing at runtime mirrors a wheel.
+
+**Width.** `AxleStance.wheelWidth` (0.85 to 1.35, `STANCE_LIMITS`; 1 is stock, a missing value in an old save or share code reads 1; share key `ww`) stretches the wheel and its tire along the axle about the wheel's outer face (`faceX`, the largest X of any non-tire vertex), so the face keeps its poke and the extra width grows inward toward the car. It is `remapWheel`'s `width` argument: positions scale about `faceX` and the normals' X by the inverse; the tire's outer sidewall moves by under 6 mm. The brake is placed behind the spokes after the same stretch (`carView.applyStance`), so the rotor and caliper follow the barrel. Visual only: the sim never reads it. The Wheels tab's Size & tire view has the slider beside the size one, linked front to rear with the wheels' Link toggle.
+
 ## 6. Ship
 
 1. Save a working copy (`bpy.ops.wm.save_as_mainfile(filepath=..., copy=True)`), then `saveCar.py` headless with `wheels` as the id, writing `assets/source/eshell/wheels/wheels.blend`. It keeps only the `wheels:Wheels` collection.

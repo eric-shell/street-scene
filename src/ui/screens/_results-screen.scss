@@ -127,13 +127,14 @@ body:has(.results-screen) :is(.hud, .hud-card) {
     white-space: nowrap;
   }
 }
-/* The style score's card (results.ts styleBlock): the kicker, the total counting up in the overdrive gold and
-   its best on one line, then what paid it inline, crashes in red against it. */
-.results-style {
+/* The points card (results.ts pointsBlock): the kicker with the new best or the event's best on its right,
+   the run's total big in the overdrive gold, the lifetime line under it, then what paid it in a two column
+   grid, crashes in red against it. */
+.results-points {
   @include mixins.chamfer(12px);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
   padding: 12px 16px 14px;
   @include mixins.plate(
     (
@@ -148,16 +149,22 @@ body:has(.results-screen) :is(.hud, .hud-card) {
   &__head {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
+    justify-content: space-between;
     gap: 6px 12px;
-    > .label {
-      margin-right: auto;
-    }
   }
   &__total {
-    font: 900 28px / 1 var(--mono);
+    font: 900 44px / 1 var(--mono);
     font-variant-numeric: tabular-nums;
     color: var(--accent-2);
+    @media (max-width: 480px) {
+      font-size: 36px;
+    }
+  }
+  &__life {
+    margin: 0;
+    font: 600 13px var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
   }
   &__best {
     font: 700 13px var(--display);
@@ -166,18 +173,25 @@ body:has(.results-screen) :is(.hud, .hud-card) {
     color: var(--muted);
   }
   &__list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px 16px;
-    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px 20px;
+    margin: 8px 0 0;
     padding: 8px 0 0;
     border-top: 1px solid var(--line);
     list-style: none;
+    @media (max-width: 360px) {
+      grid-template-columns: 1fr;
+    }
+    &:empty {
+      display: none;
+    }
   }
   &__item {
     display: flex;
     align-items: baseline;
-    gap: 6px;
+    justify-content: space-between;
+    gap: 8px;
     font-size: 13px;
     color: var(--muted);
     > b {

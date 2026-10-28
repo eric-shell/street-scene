@@ -3,10 +3,11 @@
  * and the settings, as one small document (the `players.save` column). Replays, ghosts, bests, the music
  * player and the debug panels' tuning stay on the device; they are larger, or only make sense on it.
  */
+import { mergePoints, POINTS_KEY } from '../shared/points';
 import { loadText, onSaved, saveText } from '../shared/store';
 
 /** The store keys an account syncs. */
-const SYNCED: readonly string[] = ['garage.v1', 'garage.prefs.v1', 'settings.v1'];
+const SYNCED: readonly string[] = ['garage.v1', 'garage.prefs.v1', 'settings.v1', POINTS_KEY];
 /** Settings that describe this device rather than the player: kept when another device's settings arrive. */
 const DEVICE_SETTINGS = ['quality', 'autoQuality', 'showFps'] as const;
 
@@ -85,6 +86,20 @@ export function joinLocalBuilds(blob: SaveBlob): number {
   const joining = mine.filter((b) => !have.has(JSON.stringify(b))).slice(0, Math.max(0, MAX_SLOTS - cloud.slots.length));
   cloud.slots = [...cloud.slots, ...joining];
   return joining.length;
+}
+
+/**
+ * Folds this device's points into the downloaded save, keeping the larger of the total and the best (points
+ * only grow, so max never double counts). True when this device was ahead, so the caller uploads the result.
+ */
+export function mergeLocalPoints(blob: SaveBlob): boolean {
+  const local = parse(loadText(POINTS_KEY));
+  if (!local) return false;
+  const cloud = blob.keys?.[POINTS_KEY];
+  const merged = mergePoints(local, cloud);
+  const was = mergePoints(cloud, undefined);
+  blob.keys = { ...blob.keys, [POINTS_KEY]: merged };
+  return merged.total !== was.total || merged.best !== was.best;
 }
 
 /** Calls `fn` whenever the game writes one of the synced keys. */

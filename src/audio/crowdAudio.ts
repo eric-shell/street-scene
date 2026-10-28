@@ -61,8 +61,8 @@ const CROWD_TARGET_DB: Record<CrowdClip, number> = { cheer: -13, applause: -19 }
 /** The cheer's level ride: RMS window (s, gain updated every quarter window) and the most it lifts a quiet stretch. */
 const CROWD_RIDE = { window: 0.8, maxGain: 30 } as const;
 /** Crowd mix on top of that: stand loops and the cheer / applause one-shots. */
-const CROWD_LOOP_GAIN = 0.8;
-export const CROWD_SHOT_GAIN = 1.2;
+const CROWD_LOOP_GAIN = 1.13;
+export const CROWD_SHOT_GAIN = 1.7;
 
 /**
  * A copy of `buf` at the target RMS, peaks soft limited (tanh) below full

@@ -1,12 +1,13 @@
 /**
  * An American police siren going by, synthesized (no samples). The model is an electronic unit (a Federal Signal
  * PA300 or Whelen 295 class: a 100 W driver into a horn speaker behind the grille), not the European hi-lo:
- *  - the pitch: a wail sweeps roughly 700 to 1,600 Hz and back at a constant rate in cents (so it sounds even),
- *    one cycle every 4.4 to 5.2 s with a brief hold at the top; the yelp is the same sweep as a sawtooth
- *    (slow rise, fast drop) in 0.28 to 0.35 s; a rare phaser warbles 8 to 12 Hz over a narrower range;
- *  - the timbre: a harmonic-rich wave (1/n partials, the odd ones a little stronger) through a tanh soft clipper
- *    for the driver's overdrive, then the horn's formants (peaks near 1.2 and 2.4 kHz) between a high pass and
- *    a low pass. That is what makes it hard and nasal rather than a flute;
+ *  - the pitch: a wail sweeps roughly 600 to 1,400 Hz and back at a constant rate in cents (so it sounds even),
+ *    one cycle every 4 to 5 s, rising faster than it falls (about 40% of the cycle up, 60% down, no hold);
+ *    the yelp is the same range in a near-symmetric 0.28 to 0.33 s cycle; a rare phaser warbles 8 to 12 Hz over a narrower range;
+ *  - the timbre: a square-ish wave (odd partials at 1/n, the even ones mostly cancelled) through a hard tanh
+ *    clipper for the driver's overdrive, then the compression driver's horn: a high pass and a low pass that
+ *    band-limit it to about 500 Hz to 5 kHz and strong mid peaks near 1.5 and 2.8 kHz. That is what makes it
+ *    harsh and nasal rather than a flute;
  *  - the airhorn: a separate blast about 480 Hz with a strong second harmonic, two or three of them;
  *  - the pass: the car drives a straight line at 18 to 28 m/s past the listener, and the gain (inverse distance),
  *    the doppler shift (f * c / (c + v away), c = 343 m/s) and the stereo bearing are all computed from that
@@ -30,23 +31,23 @@ export const SIREN = {
   /** Seconds the graph lives on after the pass ends, for the echo to die away (s). */
   tail: 0.8,
   /** Overall level: the gain at the closest approach, set so a pass sits where the old siren did (docs/audioMix.md). */
-  level: 0.34,
+  level: 0.3,
   /** The pass: its length (s), the car's speed (m/s) and where in the pass the closest approach falls (fraction). */
   pass: { len: [12, 22], speed: [18, 28], at: [0.4, 0.6], bearing: 1.1, fadeIn: 2.5, fadeOut: 3, pan: 0.9 },
   /** Wail: the sweep's low and high pitch (Hz), its period (s), where the rise ends and the fall starts (cycle fraction). */
-  wail: { lo: 700, hi: 1600, period: [4.4, 5.2], riseEnd: 0.47, fallStart: 0.53, round: 0.35 },
+  wail: { lo: 600, hi: 1400, period: [4, 5], riseEnd: 0.4, fallStart: 0.4, round: 0.2 },
   /** Yelp: the period (s) and the fraction of the cycle spent rising; the range is the wail's. */
-  yelp: { period: [0.28, 0.35], rise: 0.8, length: [2, 4], before: [0.3, 0.6], phaser: 0.04 },
+  yelp: { period: [0.28, 0.33], rise: 0.6, length: [2, 4], before: [0.3, 0.6], phaser: 0.04 },
   /** Phaser: the warble rate (Hz) and its narrower range (Hz). */
-  phaser: { rate: [8, 12], lo: 900, hi: 1450 },
+  phaser: { rate: [8, 12], lo: 800, hi: 1300 },
   /** The cutoff: how likely it is (fraction of passes) and how long after the pass it comes (s). */
   cutoff: { chance: 0.25, after: [2.5, 5.5] },
-  /** The driver: harmonics in the periodic wave (amplitude 1 / n^rolloff, flatter than a sawtooth's 1/n because the driver is a pulse, not a ramp), the odd ones boosted, the clipper's drive and bias (tanh(drive * (x + bias)); the bias is the driver's asymmetry, which keeps the even harmonics a symmetric clip would cancel). */
-  driver: { partials: 14, rolloff: 0.6, oddBoost: 1.25, drive: 3, bias: 0.3 },
+  /** The driver: harmonics in the periodic wave (amplitude 1 / n, a square's), the even ones scaled by `evenLevel` (0 is a pure square), the clipper's drive and bias (tanh(drive * (x + bias)); the bias is the driver's asymmetry, a little of the even harmonics back). */
+  driver: { partials: 25, rolloff: 1, evenLevel: 0.15, drive: 5, bias: 0.12 },
   /** The horn: the high pass and low pass (Hz), and the two formant peaks (Hz, dB, Q). */
-  horn: { hp: 450, lp: 6000, low: { hz: 1200, db: 8, q: 2 }, high: { hz: 2450, db: 5, q: 3 } },
+  horn: { hp: 500, lp: 5000, low: { hz: 1500, db: 9, q: 1.5 }, high: { hz: 2800, db: 6, q: 2 } },
   /** Air absorption: the high formant's gain (dB) at the closest `near` range and at `far` beyond it. */
-  air: { nearDb: 5, farDb: -4 },
+  air: { nearDb: 6, farDb: -5 },
   /** Echo off the buildings: the two taps (s), feedback, its low pass (Hz) and the wet mix when far and at the pass. */
   echo: { taps: [0.061, 0.089], feedback: 0.35, lp: 2500, far: 0.25, near: 0.1 },
   /** Airhorn: how likely it is, the pitch (Hz), the partials' amplitudes, blasts (min, max), blast and gap lengths (s), level, and the gap before the pass (s). */
@@ -112,10 +113,10 @@ const kits = new WeakMap<BaseAudioContext, Kit>();
 function kitFor(ctx: BaseAudioContext): Kit {
   let kit = kits.get(ctx);
   if (kit) return kit;
-  const { partials, rolloff, oddBoost, drive, bias } = SIREN.driver;
+  const { partials, rolloff, evenLevel, drive, bias } = SIREN.driver;
   const re = new Float32Array(partials + 1);
   const im = new Float32Array(partials + 1);
-  for (let n = 1; n <= partials; n++) im[n] = (n & 1 ? oddBoost : 1) / n ** rolloff;
+  for (let n = 1; n <= partials; n++) im[n] = (n & 1 ? 1 : evenLevel) / n ** rolloff;
   const bre = new Float32Array(SIREN.blast.partials.length + 1);
   const bim = new Float32Array(bre.length);
   SIREN.blast.partials.forEach((a, i) => (bim[i + 1] = a));

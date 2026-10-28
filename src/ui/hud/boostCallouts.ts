@@ -7,7 +7,7 @@
  * a full overdrive and a chain refill are one shot calls; a wreck (a prop
  * knocked down) is live too, so a row of cans counts up as one call, and so is
  * a crash into a wall, barrier or rail, counting what it cost; a reset is a one
- * shot call of what it emptied (not held against the style score). Points are
+ * shot call of what it emptied (not held against the points). Points are
  * thousandths of a stage (+1,000 is a whole stage, one bar length; a full tank
  * is 3,000), colored by the stage they went into (4 is overdrive, the spill
  * past a full tank): big numbers read as a payout where hundredths read as a meter.
@@ -18,7 +18,7 @@
  *
  * Fed once per sim tick from the player's CarState telemetry (nitroGain,
  * nitroLoss, nitroReset, nitroChain, nitro, nitroOver), so a replay calls the same things
- * and tallies the same style score (`tally`, the results screen's); the timers
+ * and tallies the same points (`tally`, the results screen's); the timers
  * and the roll run on frame time. Cues (`onCue`) go to the session's sounds and
  * rumble. Plain DOM in the HUD's dial cluster (_boost-callouts.scss): one
  * element per callout, its text written only when the number changes.
@@ -59,8 +59,8 @@ export const OVERDRIVE_STAGE = NITRO_STAGES + 1;
 
 type LiveKind = 'drift' | 'nearMiss' | 'draft' | 'wreck' | 'crash';
 type Kind = LiveKind | 'chain' | 'stage' | 'overdrive' | 'reset';
-/** Where the style score's points came from: every live kind (crash counts against it). */
-export type StyleSource = LiveKind;
+/** Where the points's points came from: every live kind (crash counts against it). */
+export type PointsSource = LiveKind;
 
 const NAME: Record<LiveKind | 'chain' | 'reset', string> = { drift: 'Drift', nearMiss: 'Near miss', draft: 'Slipstream', wreck: 'Wreck', crash: 'Crash', chain: 'Chain boost', reset: 'Reset' };
 
@@ -72,11 +72,11 @@ const NAME: Record<LiveKind | 'chain' | 'reset', string> = { drift: 'Drift', nea
  */
 export type BoostCue = { kind: 'tick'; step: number } | { kind: 'chime'; thousands: number } | { kind: 'stage'; stage: number } | { kind: 'overdrive' } | { kind: 'crash' };
 
-/** The race's style score in points: what each source paid (drift includes the zones) and what crashes cost (positive). */
-export type StyleTally = Record<StyleSource, number>;
+/** The race's points: what each source paid (drift includes the zones) and what crashes cost (positive). */
+export type PointsTally = Record<PointsSource, number>;
 
-/** The style score: everything style paid less what crashes cost, never below 0. */
-export function styleTotal(t: StyleTally): number {
+/** The points: everything style paid less what crashes cost, never below 0. */
+export function pointsTotal(t: PointsTally): number {
   return Math.max(0, Math.round(t.drift + t.nearMiss + t.draft + t.wreck - t.crash));
 }
 
@@ -101,8 +101,8 @@ interface Callout {
 
 export class BoostCallouts {
   readonly el: HTMLDivElement;
-  /** This race's style score so far, by source (points). */
-  readonly tally: StyleTally = { drift: 0, nearMiss: 0, draft: 0, wreck: 0, crash: 0 };
+  /** This race's points so far, by source (points). */
+  readonly tally: PointsTally = { drift: 0, nearMiss: 0, draft: 0, wreck: 0, crash: 0 };
   /** Sounds and rumble for what the callouts call (the session's). */
   onCue: ((cue: BoostCue) => void) | null = null;
   private readonly items: Callout[] = [];

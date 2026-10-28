@@ -87,7 +87,7 @@ export const HORN = {
   /** The honk starts this long after the call (s). */
   delay: [0.05, 0.18],
   /** Level at the car and the distance (m) it falls to half at; set against the city bed's horn (docs/audioMix.md). */
-  level: 0.5,
+  level: 0.3,
   near: 14,
   /** Per voice class: the lower reed (Hz), reed ratio, low pass (Hz), beeps, a beep's length (s) and the gap (s). */
   car: { hz: [380, 470], ratio: 1.26, lp: 1800, beeps: 1, len: [0.3, 1.2], gap: 0.14 },

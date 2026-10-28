@@ -56,8 +56,9 @@ import { DEFAULT_CAR_ID, SELECTABLE_CAR_IDS, getBaseTuning } from './sim/tuning'
 import { specBadges } from './shared/carSpec';
 import { damp } from './shared/anim';
 import { GarageState, decodeShareCode, loadGarage, saveGarage } from './garage/storage';
-import { ReplayData, decodeLog, encodeLog, loadBest, loadGhost, loadLastReplay, loadStyleBest, saveGhost, saveLastReplay, submitBest, submitStyleBest } from './replay/replay';
-import { styleTotal } from './ui/hud/boostCallouts';
+import { ReplayData, decodeLog, encodeLog, loadBest, loadGhost, loadLastReplay, loadPointsBest, saveGhost, saveLastReplay, submitBest, submitPointsBest } from './replay/replay';
+import { addRunPoints, loadPoints } from './shared/points';
+import { pointsTotal } from './ui/hud/boostCallouts';
 import { accountReady } from './account/account';
 import { beginDrive, driveFrame, endDrive, setQualityReader } from './analytics/drive';
 import { initAnalytics, track } from './analytics/telemetry';
@@ -761,7 +762,7 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
     },
     () => (kind === 'roam' ? undefined : Math.max(0, Math.min(1, s.race.cars[0].dist / s.race.distance))),
   );
-  s.onFinish = ({ race, tuned, style }) => {
+  s.onFinish = ({ race, tuned, points }) => {
     if (s !== session) return;
     if (kind === 'roam') return wipeToMenu();
     syncMusicMode();
@@ -776,12 +777,20 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
       date: new Date().toISOString(),
     };
     let newBest = false;
-    const styleBest = loadStyleBest(race.config.seed, race.config.mode);
-    let newStyleBest = false;
+    const pointsBest = loadPointsBest(race.config.seed, race.config.mode);
+    let newPointsBest = false;
+    const runPoints = pointsTotal(points);
+    // The player's lifetime points (shared/points.ts, the source for unlocks): a live untuned run adds its points.
+    let lifetime = loadPoints().total;
+    let gained = 0;
     if (!replay) {
       if (FEATURES.replays) saveLastReplay(data);
       if (!tuned) {
-        newStyleBest = submitStyleBest(race.config.seed, race.config.mode, styleTotal(style));
+        newPointsBest = submitPointsBest(race.config.seed, race.config.mode, runPoints);
+        if (runPoints > 0) {
+          gained = runPoints;
+          lifetime = addRunPoints(runPoints).total;
+        }
         newBest = submitBest(race.config.seed, race.config.mode, { time: me.time, score: race.drift.total, carId: race.config.player.carId, date: data.date });
         if (newBest && race.config.opponents.length === 0) saveGhost(race.config.seed, race.config.mode, data);
       }
@@ -795,6 +804,7 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
         place: me.position,
         entrants: race.cars.length,
         personalBest: newBest,
+        points: runPoints,
         ...(race.config.mode === 'drift' ? { score: Math.round(race.drift.total) } : {}),
       });
     }
@@ -814,9 +824,10 @@ function runSession(config: RaceConfig, visuals: VisualBuild[], replay: ReplayDa
         position: me.position,
         driftScore: race.drift.total,
         newBest,
-        style,
-        styleBest,
-        newStyleBest,
+        points,
+        pointsBest,
+        newPointsBest,
+        lifetime: { gained, total: lifetime },
         tuned,
         challenge: replay ? null : challengeResult(race.config.seed, race.config.mode, me.time, race.drift.total),
         // A live, untuned run on the event's city can be sent on: the link opens the same race on the same streets.

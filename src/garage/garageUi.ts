@@ -42,7 +42,7 @@ import type { HelpKey } from '../ui/panels/help';
 import { uiWhoosh } from '../audio/uiSound';
 import { PART_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
 import { Axle, BUILD_NAME_MAX, CarBuild, DEFAULT_BUILD_NAME, VinylShape, validateBuild } from '../shared/carBuild';
-import { DEFAULT_CAR_ID, getBaseTuning } from '../sim/tuning';
+import { getBaseTuning } from '../sim/tuning';
 import { tuningForBuild } from '../sim/build';
 import { specBadges } from '../shared/carSpec';
 import { btn, chip, h, iconBtn, isTyping, scrollHint, segmented, sheen, specChip, toast } from '../ui/kit/dom';
@@ -51,7 +51,7 @@ import { openSignInDialog, onSignedIn, wantsSignIn } from '../ui/screens/signIn'
 import { Car, Check, ChevronRight, CircleUser, CloudOff, Copy, Download, Hammer, MousePointerClick, Paintbrush, Pencil, Plus, Save, Share2, Trash2, Undo2, Upload, Wrench, X, Route, Video, Warehouse, icon, IconNode } from '../ui/kit/icons';
 import { GarageScene } from './garageScene';
 import { track } from '../analytics/telemetry';
-import { GaragePrefs, GarageState, MAX_SLOTS, Presentation, addSlot, decodeShareCode, encodeShareCode, freshBuild, importBuild, loadGaragePrefs, saveGaragePrefs, shareUrl } from './storage';
+import { GaragePrefs, GarageState, MAX_SLOTS, Presentation, addSlot, decodeShareCode, encodeShareCode, importBuild, loadGaragePrefs, randomBuild, saveGaragePrefs, shareUrl } from './storage';
 import { section, statLines } from './garageWidgets';
 import type { Child } from './garageWidgets';
 import { AUTHORS, renderTabContent, TABS } from './garageTabs';
@@ -526,7 +526,7 @@ export class GarageScreen implements TabHost {
             h('span', { class: 'garage-item__sub muted' }, `${MAX_SLOTS - g.slots.length} free`),
             sheen(),
           );
-      tile.addEventListener('click', () => (s ? this.pickSlot(i) : this.addBuild(() => freshBuild(DEFAULT_CAR_ID, `Build ${g.slots.length + 1}`))));
+      tile.addEventListener('click', () => (s ? this.pickSlot(i) : this.addBuild(() => randomBuild(`Build ${g.slots.length + 1}`))));
       // The X sits beside the row's button, not in it: a button inside a button is not one a keyboard can reach.
       this.slotsEl.append(s && g.slots.length > 1 ? h('div', { class: 'garage-slot' }, tile, iconBtn(X, `Delete "${s.name}"`, () => this.confirmDelete(i), '--small --ghost garage-slot__delete')) : tile);
     }

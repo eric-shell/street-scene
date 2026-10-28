@@ -51,7 +51,7 @@ import { placeAt } from '../city/names/places';
 import { toast } from '../ui/kit/dom';
 import { MapPinned, Zap } from '../ui/kit/icons';
 import { HudCard } from '../ui/hud/hudCard';
-import type { StyleTally } from '../ui/hud/boostCallouts';
+import type { PointsTally } from '../ui/hud/boostCallouts';
 import { Help } from '../ui/panels/help';
 import type { Vec2 } from '../sim/math';
 import type { Aspiration } from '../shared/carSpec';
@@ -153,8 +153,8 @@ export interface SessionOptions {
 export interface FinishInfo {
   race: RaceState;
   tuned: boolean;
-  /** The player's style score by source, as the nitrous callouts tallied it (points). */
-  style: StyleTally;
+  /** The player's points by source, as the nitrous callouts tallied it (points). */
+  points: PointsTally;
 }
 
 export class RaceSession {
@@ -244,8 +244,6 @@ export class RaceSession {
   private glassShards: GlassShards;
   /** Upshift, overrun and nitrous flames at the tailpipes and the heat haze behind them (render/car/exhaustFx.ts). */
   private exhaust: ExhaustFx;
-  /** Each car's redline (rpm), for the haze's engine load. */
-  private readonly redlines: number[];
   /** Rubber on the road and tire smoke for every car losing traction (render/car/tireFx.ts). */
   private tireFx: TireFx;
   /** Paper, leaves and cups lifted by the cars' wake (render/car/litter.ts). */
@@ -384,7 +382,6 @@ export class RaceSession {
     });
     this.exhaust = new ExhaustFx(settings.quality, this.views);
     this.night.scene.add(this.exhaust.mesh);
-    this.redlines = this.race.cars.map((c) => c.tuning.engine.redline);
     this.drivers = new Drivers(this.race.cars.length);
     this.night.scene.add(this.drivers.group);
     if (opts.ghost) {
@@ -752,7 +749,7 @@ export class RaceSession {
       stepRace(this.ghostRace, gt < this.ghostLog.length ? unpackInput(this.ghostLog[gt]) : { ...NEUTRAL_INPUT, brake: 1 });
       this.ghostCurr = snap(this.ghostRace.cars[0]);
     }
-    // Callouts for the nitrous the player's style earned or a crash cost this tick (ui/hud/boostCallouts.ts), and the style score they tally, until the line.
+    // Callouts for the nitrous the player's style earned or a crash cost this tick (ui/hud/boostCallouts.ts), and the points they tally, until the line.
     if (!r.cars[0].finished) this.hud.callouts.tick(r.cars[0].state, r.cars[0].tuning.nitrous.overdriveCap);
     this.chaseCall = policeChaseCall(r);
     this.audio.sfx?.syncCountdown(r);
@@ -787,7 +784,7 @@ export class RaceSession {
     if (this.finishedAt >= 0 && !this.resultsShown && this.onFinish && (this.skipFinish || r.tick - this.finishedAt >= Math.round(delay / DT))) {
       this.resultsShown = true;
       this.cine.settle();
-      this.onFinish({ race: r, tuned: this.tuned, style: { ...this.hud.callouts.tally } });
+      this.onFinish({ race: r, tuned: this.tuned, points: { ...this.hud.callouts.tally } });
     }
   }
 
@@ -1000,7 +997,7 @@ export class RaceSession {
       camera = this.drone.camera;
     } else camera = this.updateCamera(p, dt);
     this.lastCamera = camera;
-    this.exhaust.haze(this.gr.post, camera, poses, this.redlines, this.time, dt, this.paused);
+    this.exhaust.haze(this.gr.post, camera, poses, this.time, dt, this.paused);
     this.trails.update(this.views[0].root, camera, this.paused ? 0 : p.nitroStage, dt);
     this.carLight?.follow(p);
     // The few real point lights follow the action, or the drone when it flies off.

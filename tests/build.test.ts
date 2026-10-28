@@ -70,7 +70,7 @@ describe('build validation', () => {
     b.visual.wheels = { paint: { color: '#ffcc00', finish: 'candy', match: false }, rearPaint: { color: '#1a1b1f', finish: 'matte', match: true }, rearPart: 'wheel_kumo', tire: 'standard', rearTire: 'stretched' };
     b.visual.calipers = { color: '#ffcc1f', finish: 'pearl', match: true };
     b.visual.underglow = { enabled: true, color: '#ff00aa', color2: '#00ffaa', pattern: 'chase', brightness: 1.4, speed: 2, size: 1.2 };
-    b.visual.stance = { front: { rideHeight: -0.045, camber: -3.5, offset: 0.015, wheelSize: 1.05 }, rear: { rideHeight: -0.02, camber: -7, offset: 0.05, wheelSize: 1.2 } };
+    b.visual.stance = { front: { rideHeight: -0.045, camber: -3.5, offset: 0.015, wheelSize: 1.05, wheelWidth: 1.1 }, rear: { rideHeight: -0.02, camber: -7, offset: 0.05, wheelSize: 1.2, wheelWidth: 1.3 } };
     b.performance = { suspension: 1, gearing: 5, differential: 4, brakeBalance: 2, launchRpm: 4500, antilagRpm: 5250 };
     const code = await encodeShareCode(b);
     expect(code.length).toBeLessThan(700);
@@ -105,8 +105,8 @@ describe('build validation', () => {
   it('migrates legacy stance from old saves', () => {
     const b = validateBuild({ carId: 'wendtStrom', visual: { wheels: { size: 1.1, color: '#ffffff' }, stance: { rideHeight: -0.02, camberFront: -4, camberRear: -6, offset: 0.02 } } });
     // One legacy ride height lowers both axles.
-    expect(b.visual.stance.front).toEqual({ rideHeight: -0.02, camber: -4, offset: 0.02, wheelSize: 1.1 });
-    expect(b.visual.stance.rear).toEqual({ rideHeight: -0.02, camber: -6, offset: 0.02, wheelSize: 1.1 });
+    expect(b.visual.stance.front).toEqual({ rideHeight: -0.02, camber: -4, offset: 0.02, wheelSize: 1.1, wheelWidth: 1 });
+    expect(b.visual.stance.rear).toEqual({ rideHeight: -0.02, camber: -6, offset: 0.02, wheelSize: 1.1, wheelWidth: 1 });
     // A legacy single wheel color paints both axles; a rear color of its own is kept. Both take the default finish.
     expect(b.visual.wheels).toMatchObject({ paint: { color: '#ffffff', finish: 'metallic' }, rearPaint: { color: '#ffffff', finish: 'metallic' } });
     expect(validateBuild({ visual: { wheels: { color: '#ffffff', rearColor: '#1a1b1f' } } }).visual.wheels).toMatchObject({ paint: { color: '#ffffff' }, rearPaint: { color: '#1a1b1f' } });
@@ -122,8 +122,10 @@ describe('build validation', () => {
     expect(validateBuild({ visual: { wheels: { tire: 'aggressiveStretch', rearTire: 'meaty' } } }).visual.wheels).toMatchObject({ tire: 'stretched', rearTire: 'standard' });
     // New per axle values win over legacy ones and are clamped independently.
     const n = validateBuild({ visual: { stance: { camberFront: -4, front: { camber: -2, offset: 0.5, wheelSize: 0.9 }, rear: { wheelSize: 2 } } } });
-    expect(n.visual.stance.front).toEqual({ rideHeight: 0, camber: -2, offset: 0.09, wheelSize: 0.9 });
-    expect(n.visual.stance.rear).toEqual({ rideHeight: 0, camber: 0, offset: 0, wheelSize: 1.25 });
+    expect(n.visual.stance.front).toEqual({ rideHeight: 0, camber: -2, offset: 0.09, wheelSize: 0.9, wheelWidth: 1 });
+    expect(n.visual.stance.rear).toEqual({ rideHeight: 0, camber: 0, offset: 0, wheelSize: 1.25, wheelWidth: 1 });
+    // The width slider is clamped on its own range.
+    expect(validateBuild({ visual: { stance: { front: { wheelWidth: 3 }, rear: { wheelWidth: 0.1 } } } }).visual.stance).toMatchObject({ front: { wheelWidth: 1.35 }, rear: { wheelWidth: 0.85 } });
   });
 
   it('old share codes (single axle stance) still load', async () => {
@@ -135,8 +137,8 @@ describe('build validation', () => {
     expect(b!.name).toBe('Old Stance');
     expect(b!.visual.stance.front.rideHeight).toBe(-0.03);
     expect(b!.visual.stance.rear.rideHeight).toBe(-0.03);
-    expect(b!.visual.stance.front).toEqual({ rideHeight: -0.03, camber: -6, offset: 0.04, wheelSize: 1.15 });
-    expect(b!.visual.stance.rear).toEqual({ rideHeight: -0.03, camber: -8.5, offset: 0.04, wheelSize: 1.15 });
+    expect(b!.visual.stance.front).toEqual({ rideHeight: -0.03, camber: -6, offset: 0.04, wheelSize: 1.15, wheelWidth: 1 });
+    expect(b!.visual.stance.rear).toEqual({ rideHeight: -0.03, camber: -8.5, offset: 0.04, wheelSize: 1.15, wheelWidth: 1 });
     expect(b!.visual.wheels).toEqual({ paint: { color: '#ffcc00', finish: 'metallic', match: false }, rearPaint: { color: '#ffcc00', finish: 'metallic', match: false }, rearPart: null, tire: 'standard', rearTire: 'standard' });
     // Its wheel id is from a retired car: kept as saved (the renderer falls back to a wheel the car offers).
     expect(b!.visual.parts.wheels).toBe('wheel_s64_2');

@@ -91,18 +91,19 @@ export function submitBest(seed: number, mode: RaceMode, rec: BestRecord): boole
   return better;
 }
 
-const styleKey = (seed: number, mode: RaceMode) => `style.${seed}.${mode}`;
+/** Stored under `style.` as the points were first called style; renaming the key would drop every saved best. */
+const pointsKey = (seed: number, mode: RaceMode) => `style.${seed}.${mode}`;
 
-/** The best style score (the nitrous callouts' points, boostCallouts.ts styleTotal) on this event, 0 when none. */
-export function loadStyleBest(seed: number, mode: RaceMode): number {
-  const n = Number(safeGet(styleKey(seed, mode)));
+/** The best points (the nitrous callouts' points, boostCallouts.ts pointsTotal) on this event, 0 when none. */
+export function loadPointsBest(seed: number, mode: RaceMode): number {
+  const n = Number(safeGet(pointsKey(seed, mode)));
   return Number.isFinite(n) ? n : 0;
 }
 
-/** Save a style score if it beats the best. Returns true when it is a new best. */
-export function submitStyleBest(seed: number, mode: RaceMode, score: number): boolean {
-  if (score <= 0 || score <= loadStyleBest(seed, mode)) return false;
-  safeSet(styleKey(seed, mode), String(Math.round(score)));
+/** Save a points total if it beats the best. Returns true when it is a new best. */
+export function submitPointsBest(seed: number, mode: RaceMode, score: number): boolean {
+  if (score <= 0 || score <= loadPointsBest(seed, mode)) return false;
+  safeSet(pointsKey(seed, mode), String(Math.round(score)));
   return true;
 }
 

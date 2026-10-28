@@ -116,6 +116,7 @@ export function renderTabContent(host: TabHost): void {
             return { label: 'Wheel size', min, max, step: 1, fmt: (x: number) => `${x} in`, toUi: (x: number) => Math.max(min, Math.min(max, Math.round(car.wheelInches(x, ax)))), fromUi: (x: number) => car.wheelSizeForInches(x, ax) };
           })()
         : { label: 'Wheel size', min: L[0], max: L[1], step: 0.01, fmt: percent, toUi: id, fromUi: id },
+      wheelWidth: { label: 'Wheel width', min: L[0], max: L[1], step: 0.01, fmt: percent, toUi: id, fromUi: id },
     }[key];
     const label = short ? spec.label : `${axle === 'front' ? 'Front' : 'Rear'}`;
     const el = slider(label, spec.toUi(v.stance[axle][key]), spec.min, spec.max, spec.step, spec.fmt, (ui) => {
@@ -272,6 +273,7 @@ export function renderTabContent(host: TabHost): void {
       } else if (host.wheelView === 'fit') {
         host.body.append(
           section(title('size'), axleSlider(axle, 'wheelSize', true, linked), h('div', { class: 'muted garage-note' }, 'Bigger wheels, thinner sidewalls.')),
+          section(title('width'), axleSlider(axle, 'wheelWidth', true, linked), h('div', { class: 'muted garage-note' }, 'Wider wheels grow inward; the face stays put.')),
           section(
             title('tire'),
             choiceList(
@@ -448,6 +450,7 @@ function wheelLinkToggle(host: TabHost): HTMLElement {
         w.rearTire = w.tire;
         w.rearPaint = { ...w.paint };
         host.build.visual.stance.rear.wheelSize = host.build.visual.stance.front.wheelSize;
+        host.build.visual.stance.rear.wheelWidth = host.build.visual.stance.front.wheelWidth;
         void host.changed().then(() => host.tab === 'wheels' && host.renderTab());
         toast('Rear wheels now match front', Link2);
       } else host.wheelAxle = 'front';

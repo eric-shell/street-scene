@@ -11,7 +11,7 @@
  */
 import { track } from '../analytics/telemetry';
 import { loadJson, saveJson } from '../shared/store';
-import { applySave, collectSave, joinLocalBuilds, watchSynced, type SaveBlob } from './cloudSave';
+import { applySave, collectSave, joinLocalBuilds, mergeLocalPoints, watchSynced, type SaveBlob } from './cloudSave';
 
 export interface Player {
   /** Google's account id. */
@@ -119,9 +119,10 @@ function reconcile(r: AccountReply): boolean {
   if (r.save && !(mine && meta.dirty)) {
     // A save that belonged to no account (this device's first sign-in) brings its builds along into the account's garage.
     const joined = meta.owner === null ? joinLocalBuilds(r.save) : 0;
+    const pointsAhead = mergeLocalPoints(r.save);
     const updated = applySave(r.save);
-    changed({ player: r.player, owner: r.player.id, savedAt: r.savedAt, dirty: joined > 0 }, joined ? 'saving' : 'synced');
-    if (joined) void push();
+    changed({ player: r.player, owner: r.player.id, savedAt: r.savedAt, dirty: joined > 0 || pointsAhead }, joined || pointsAhead ? 'saving' : 'synced');
+    if (joined || pointsAhead) void push();
     return updated;
   }
   // The account has no save yet (its first device), or this device holds its newest edits: upload them.

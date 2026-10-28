@@ -667,7 +667,7 @@ function liftBuilds(n: number, rnd: () => number = Math.random): { carId: string
     const camber = rnd() < 0.4 ? range(-7, -2) : range(-1.5, 0);
     const offset = range(0, 0.04);
     const size = range(1, 1.15);
-    for (const a of AXLES) v.stance[a] = { rideHeight: ride, camber: a === 'rear' ? camber * 0.7 : camber, offset, wheelSize: size };
+    for (const a of AXLES) v.stance[a] = { rideHeight: ride, camber: a === 'rear' ? camber * 0.7 : camber, offset, wheelSize: size, wheelWidth: 1 };
     return { carId, visual: v };
   });
 }
