@@ -21,7 +21,7 @@
  * Pure and seed-only (no World), so the menu city and the race of one seed agree, and render only: nothing
  * here reaches the sim, replays never notice.
  */
-import { Rng, deriveSeed } from '../sim/prng';
+import { homeOf } from '../shared/home';
 import type { Region } from './buildings/architecture';
 import type { LampTone } from './street/lampStyle';
 import type { LampDesign } from './street/propGeometry';
@@ -162,8 +162,6 @@ export const HOME_PROFILES = {
   },
 } as const satisfies Record<Region, HomeProfile>;
 
-const HOMES: readonly Region[] = ['nyc', 'la', 'sf', 'philly', 'miami'];
-
 export interface CityIdentity extends HomeProfile {
   /** The dominant neighbourhood: most of the buildings, the lamps everywhere it reaches, the neon, weather and grade. */
   home: Region;
@@ -175,7 +173,7 @@ const identities = new Map<number, CityIdentity>();
 export function cityIdentity(seed: number): CityIdentity {
   let id = identities.get(seed);
   if (!id) {
-    const home = new Rng(deriveSeed(seed, 'identity')).pick(HOMES);
+    const home = homeOf(seed);
     id = { home, ...HOME_PROFILES[home] };
     if (identities.size > 8) identities.clear();
     identities.set(seed, id);

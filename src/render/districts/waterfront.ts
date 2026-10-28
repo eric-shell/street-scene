@@ -27,6 +27,8 @@
  *    breakwater's rubble mole with a flashing beacon, channel buoys.
  * A marina (Area.variant 'marina', waterfrontMarina.ts) swaps the working jetties, cranes, stacks and ships for
  * pontoons with moored boats, a yacht club, a fuel dock, a boardwalk and string lights; everything else here is shared.
+ * A beach (Area.variant 'beach', waterfrontBeach.ts) takes the place of the yard, the pavers, the sea wall and the railing: sand, a
+ * boardwalk, palms, towers, a pier and animated surf on the same water, with the breakwaters and buoys shared.
  * The quay's lanterns and dock clutter are destructible props (render/street/props.ts,
  * their light render/street/areaLights.ts).
  *
@@ -48,12 +50,13 @@ import { GeoBuilder } from '../geoBuilder';
 import { streakFrag, streakVert } from '../street/lightFx';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { col, cylinder, groundLine, groundVertex, wallBox } from './kit';
+import { drawBeach } from './waterfrontBeach';
 import { drawMarina } from './waterfrontMarina';
 import { containerLiveries, drawYard, markQuad, marksMesh } from './waterfrontYard';
 import { HEIGHT_FOG_GLSL, HEIGHT_FOG_UNIFORMS } from '../heightFog';
 
 /** The wall looks this renderer draws (every wall the waterfront district builds carries one). */
-export const WATERFRONT_LOOKS = ['quayRail', 'quayFence', 'warehouse', 'container', 'forklift', 'quayPost'] as const;
+export const WATERFRONT_LOOKS = ['quayRail', 'quayFence', 'warehouse', 'container', 'forklift', 'quayPost', 'surf', 'lifeguard', 'pier', 'tree'] as const;
 
 const CFG = CITY.districts.waterfront;
 
@@ -183,6 +186,7 @@ function buildHarbor(kit: DistrictKit, a: Area): void {
   const reflects: Reflect[] = [];
   const low = kit.quality === 'low';
   const marina = a.variant === 'marina';
+  const beach = a.variant === 'beach';
   const jetties = b.hints.filter((h) => h.kind === 'jetty');
   /** The deck a prop stands on: a jetty's (over the water), else the quay's paving. */
   const deckY = (x: number, z: number): number => {
@@ -192,13 +196,13 @@ function buildHarbor(kit: DistrictKit, a: Area): void {
 
   // ----- The quay's pavers, column by column from the frontage to the wall (Area.polygon's back chain is the frontage).
   const back = a.polygon.slice(0, p.nBack);
-  pave(kit, f, back.map((q) => frameU(f, q.x, q.z)), (_u, i) => frameV(f, back[i].x, back[i].z), coast);
+  if (!beach) pave(kit, f, back.map((q) => frameU(f, q.x, q.z)), (_u, i) => frameV(f, back[i].x, back[i].z), coast);
   // Past an open end the quay runs on, render only: out to the fog, as deep as the warehouse line (never into the corner).
   for (const [open, u0, u1] of [
     [p.openA, p.pa - CFG.quayRun - LOOK.runOnPave, p.pa - 0.3],
     [p.openB, p.pb + 0.3, p.pb + CFG.quayRun + LOOK.runOnPave],
   ] as const) {
-    if (!open) continue;
+    if (!open || beach) continue;
     const us: number[] = [];
     for (let u = u0; u < u1; u += 4) us.push(u);
     us.push(u1);
@@ -207,7 +211,7 @@ function buildHarbor(kit: DistrictKit, a: Area): void {
   // A yellow safety line along the edge, inside the railing.
   const lineA = p.openA ? p.pa - CFG.quayRun - LOOK.runOnPave : p.pa;
   const lineB = p.openB ? p.pb + CFG.quayRun + LOOK.runOnPave : p.pb;
-  for (let u = lineA; u < lineB && !marina; u += 4) {
+  for (let u = lineA; u < lineB && !marina && !beach; u += 4) {
     const u1 = Math.min(lineB, u + 4);
     groundLine(kit, kit.paint, at(u, coast(u) - 1.15), at(u1, coast(u1) - 1.15), 0.14, curb + 0.012, LOOK.safety);
   }
@@ -218,7 +222,7 @@ function buildHarbor(kit: DistrictKit, a: Area): void {
   // A closed gate across the railing at every jetty's root; a marina's pontoons, fuel dock and yacht club have theirs.
   const gateHints = marina ? b.hints.filter((h) => h.kind === 'pontoon' || h.kind === 'fuel' || h.kind === 'clubhouse') : jetties;
   const gateAt = (u: number, pad: number) => gateHints.some((j) => Math.abs(frameU(f, j.points[0].x, j.points[0].z) - u) < j.values[0] / 2 + pad);
-  {
+  if (!beach) {
     let prev: [number, number] | null = null;
     for (let u = faceA; u <= faceB + 1e-6; u += 3) {
       const uu = Math.min(u, faceB);
@@ -294,7 +298,8 @@ function buildHarbor(kit: DistrictKit, a: Area): void {
   // ----- The dock yard on the quay, in the seed's container liveries (shared with the stacks and the ships).
   const liveries = containerLiveries(p.seed);
   const marks = new GeoBuilder();
-  drawYard(kit, a, b, { boxAt, beam, lamp }, liveries, marks);
+  if (beach) drawBeach(kit, a, b, { boxAt, beam, lamp, light: (x, y, z, c, w) => reflects.push({ x, y, z, c, w }) });
+  else drawYard(kit, a, b, { boxAt, beam, lamp }, liveries, marks);
 
   // ----- Jetties, cranes, containers, ships, breakwaters, buoys.
   for (const j of jetties) jetty(kit, a, j, reflects);

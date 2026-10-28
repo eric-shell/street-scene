@@ -944,6 +944,25 @@ export function buildProps(world: World, opts: PropRendererOptions = {}): PropRe
           spawn(D_BOX, rnd(-0.3, 0.3), rnd(0.2, 0.6), rnd(-0.3, 0.3), rnd(0, 6.28), s, s * rnd(0.3, 1), s, rnd(0.4, 0.9), rnd(1.5, 4) + speed * 0.05, 10, col([0xd8d4c8, 0x8a6a40, 0xc0302a, 0x3a7a4a][k % 4]), rnd(3, 4.5));
         }
         return;
+      case 'umbrella':
+        // The canopy lifts off whole and sails, the pole snaps and drops.
+        spawn(D_BOX, 0, 2.3, 0, p.yaw + rnd(-0.5, 0.5), 1.0, 0.03, 1.0, rnd(0.4, 0.7), rnd(3, 5) + speed * 0.1, 5, tint.clone(), rnd(4.5, 6));
+        spawn(D_CYL, 0, 1.2, 0, rnd(0, 6.28), 0.03, 1.2, 0.03, rnd(0.4, 0.8), rnd(1.5, 3.5), 7, col(0xd8d4c8), rnd(4, 5.5));
+        debris.burst(p.x, p.y + 0.3, p.z, dx, dz, speed * 0.15 + 1, 6);
+        return;
+      case 'lounger':
+        spawn(D_BOX, 0, 0.3, 0, p.yaw + rnd(-0.6, 0.6), 0.3, 0.03, 0.55, rnd(0.4, 0.8), rnd(1.5, 3) + speed * 0.07, 6, tint.clone(), rnd(4.5, 6));
+        for (const x of [-0.3, 0.3]) spawn(D_BOX, x, 0.2, 0, p.yaw + rnd(-0.8, 0.8), 0.025, 0.02, 0.9, rnd(0.4, 0.8), rnd(1.5, 3), 8, col(0xe8e8e0), rnd(4, 5.5));
+        return;
+      case 'volleyNet':
+        spawn(D_BOX, 0, 2.0, 0, p.yaw + rnd(-0.4, 0.4), 0.95, 0.37, 0.01, rnd(0.5, 0.8), rnd(2, 3.5) + speed * 0.07, 5, col(0x15161a), rnd(4, 5.5));
+        spawn(D_BOX, 0, 2.43, 0, p.yaw + rnd(-0.5, 0.5), 0.95, 0.04, 0.01, rnd(0.5, 0.8), rnd(2.5, 4), 6, col(0xf0f0ea), rnd(4, 5.5));
+        for (const x of [-0.94, 0.94]) spawn(D_CYL, x, 1.2, 0, rnd(0, 6.28), 0.035, 1.2, 0.035, rnd(0.3, 0.7), rnd(1, 2.5), 7, col(0x9aa0a8), rnd(4, 5.5));
+        return;
+      case 'picketFence':
+        for (let k = 0; k < 7; k++) spawn(D_BOX, rnd(-1, 1), rnd(0.3, 0.8), 0.04, rnd(0, 6.28), 0.05, 0.45, 0.013, rnd(0.5, 1), rnd(1.5, 3.5) + speed * 0.07, 9, col(0xd8d2c0, rnd(0.7, 1)), rnd(3.5, 5));
+        spawn(D_BOX, 0, 0.5, 0, p.yaw + rnd(-0.5, 0.5), 1.2, 0.03, 0.02, rnd(0.4, 0.7), rnd(1.5, 3), 5, col(0x8a7a60), rnd(4, 5.5));
+        return;
       case 'marketStall': {
         // The awning sails off over the car, the poles scatter, the goods go everywhere and the lanterns tumble, still lit.
         spawn(D_BOX, 0, 2.3, 0, p.yaw + rnd(-0.3, 0.3), 1.25, 0.02, 1.1, rnd(0.25, 0.45), rnd(3, 5) + speed * 0.1, 4, tint.clone(), rnd(4.5, 6));

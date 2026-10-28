@@ -98,7 +98,7 @@ const DRESS = {
 const SEED = 0x5a11;
 
 /** Surfaces a banner post may stand on: anywhere but the road itself and water. */
-const POST_GROUND: ReadonlySet<string> = new Set(['sidewalk', 'concrete', 'quay', 'cobble', 'grass', 'offroad']);
+const POST_GROUND: ReadonlySet<string> = new Set(['sidewalk', 'concrete', 'quay', 'boardwalk', 'sand', 'cobble', 'grass', 'offroad']);
 
 function uvOf(cell: AtlasCell, u0 = 0, u1 = 1): { u0: number; u1: number; v0: number; v1: number } {
   const W = WALL_ATLAS.w;

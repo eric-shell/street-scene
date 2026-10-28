@@ -66,12 +66,14 @@ export type AreaKind =
  * (parks, planter islands), water (the trickle in the river channel) and
  * cobble (the road strip of every alley, see districts/alley.ts) and quay
  * (a harbor's dock paving: dusty, oil stained concrete with a grip of its
- * own, districts/waterfront.ts).
+ * own, districts/waterfront.ts), sand (a beach's loose sand: low grip, heavy
+ * drag, its own tuning entry) and boardwalk (the beach's planks, which drive
+ * as cobbles, districts/waterfrontBeach.ts).
  */
-export type Surface = 'road' | 'sidewalk' | 'offroad' | 'concrete' | 'grass' | 'water' | 'cobble' | 'quay';
+export type Surface = 'road' | 'sidewalk' | 'offroad' | 'concrete' | 'grass' | 'water' | 'cobble' | 'quay' | 'sand' | 'boardwalk';
 
 /** Which tuning entry (drivingParams.json `surface`) a surface drives with. */
-export type SurfacePhysics = 'road' | 'sidewalk' | 'offroad' | 'cobble' | 'quay';
+export type SurfacePhysics = 'road' | 'sidewalk' | 'offroad' | 'cobble' | 'quay' | 'sand';
 export const SURFACE_PHYSICS: Record<Surface, SurfacePhysics> = {
   road: 'road',
   sidewalk: 'sidewalk',
@@ -81,6 +83,9 @@ export const SURFACE_PHYSICS: Record<Surface, SurfacePhysics> = {
   water: 'offroad',
   cobble: 'cobble',
   quay: 'quay',
+  sand: 'sand',
+  // A boardwalk's planks drive like the cobbles' stones: firm, a little short of a road's grip, a small rolling drag.
+  boardwalk: 'cobble',
 };
 
 /** Surface patch priority of an alley's cobbled road strip: above the plain street classification (road 5). */
@@ -127,6 +132,9 @@ export const COBBLE_PRIORITY = 6;
  * container / forklift / quayPost: the dock yard's solids on the quay: shipping containers (stacked up to
  *   three high) lining its container lane, parked forklifts, and the steel gate posts either side of a
  *   mouth onto the quay that carry its string lights (waterfront, waterfrontYard.ts).
+ * lifeguard / surf: a beach's lifeguard towers (solids on the sand) and the break along its waterline, the
+ *   one-sided wall that stops a car where the sand meets the sea (waterfront, waterfrontBeach.ts). Its pier
+ *   is a solid of look 'pier' (out from the boardwalk over the sand), and its palms 'tree' trunks.
  */
 export type WallLook =
   | 'building'
@@ -167,9 +175,11 @@ export type WallLook =
   | 'lotKiosk'
   | 'container'
   | 'forklift'
-  | 'quayPost';
+  | 'quayPost'
+  | 'lifeguard'
+  | 'surf';
 
-export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark', 'alleyLip', 'gatePier', 'hedge', 'jetty', 'highway', 'lakeRail', 'quayRail', 'quayFence', 'warehouse', 'plaza', 'lotFence', 'lotKiosk', 'container', 'forklift', 'quayPost'];
+export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark', 'alleyLip', 'gatePier', 'hedge', 'jetty', 'highway', 'lakeRail', 'quayRail', 'quayFence', 'warehouse', 'plaza', 'lotFence', 'lotKiosk', 'container', 'forklift', 'quayPost', 'lifeguard', 'surf'];
 
 export interface Area {
   /** Index into CityDistricts.areas. */

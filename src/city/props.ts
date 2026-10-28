@@ -41,11 +41,13 @@ export type ConstructionPropKind = 'fencePanel' | 'trafficCone' | 'sawhorse' | '
 export type MarketPropKind = 'marketStall' | 'fruitCrates' | 'foodCart';
 /** A harbor's dock clutter (districts/waterfrontYard.ts): steel oil drums in rows, wooden cable spools on their sides. */
 export type DockPropKind = 'drum' | 'cableSpool';
+/** A beach's furniture (districts/waterfrontBeach.ts): umbrellas and loungers on the sand, volleyball net panels, the boardwalk's low picket fence. */
+export type BeachPropKind = 'umbrella' | 'lounger' | 'volleyNet' | 'picketFence';
 /**
  * Clutter districts ask for (DistrictPropSpec): mostly soft, cheap to crash through. Park lamps light parks and
  * plazas (render/street/areaLights.ts); bollards fence the middle of a roundabout island (districts/roundabout.ts).
  */
-export type DistrictPropKind = 'bush' | 'planterPot' | 'cafeTable' | 'barrel' | 'crate' | 'dumpster' | 'newsBox' | 'trashBags' | 'parkLamp' | 'bollard' | ConstructionPropKind | MarketPropKind | DockPropKind;
+export type DistrictPropKind = 'bush' | 'planterPot' | 'cafeTable' | 'barrel' | 'crate' | 'dumpster' | 'newsBox' | 'trashBags' | 'parkLamp' | 'bollard' | ConstructionPropKind | MarketPropKind | DockPropKind | BeachPropKind;
 export type PropKind = StreetPropKind | DistrictPropKind;
 
 export interface Prop {
@@ -151,6 +153,12 @@ export const PROP_DEFS: Record<PropKind, PropDef> = {
   // about a tenth of the speed, and holds a car that only nudges it.
   drum: { radius: 0.32, mass: 70, height: 0.9, anchor: 1, breakSpeed: 0.7 },
   cableSpool: { radius: 0.8, mass: 150, height: 1.5, anchor: 1, breakSpeed: 1.2 },
+  // Beach furniture, all soft: a beach umbrella (a pole in the sand under a canopy) and a plastic lounger go down at any
+  // speed and cost a fast car about 1%; a net panel (two poles' worth of netting) and a picket panel a couple of percent.
+  umbrella: { radius: 1.0, mass: 16, height: 2.5, anchor: 1, breakSpeed: 0.04 },
+  lounger: { radius: 0.85, mass: 12, height: 0.45, anchor: 1, breakSpeed: 0.03 },
+  volleyNet: { radius: 0.95, mass: 22, height: 2.45, anchor: 1, breakSpeed: 0.05 },
+  picketFence: { radius: 0.85, mass: 18, height: 1.1, anchor: 1, breakSpeed: 0.04 },
   // Neighbourhood furniture. A cast iron hydrant is a stubby, bolted lump: it holds a crawling car
   // and costs a fast one about a seventh of its speed (then gushes, render/street/hydrantSpray.ts). Parking
   // meters and mailboxes are light knocks; a phone booth or a vending machine is a real hit.

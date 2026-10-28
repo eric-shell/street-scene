@@ -63,6 +63,7 @@ export function applyBuild(base: CarTuning, perf: PerformanceBuild): CarTuning {
   const rough = sus.roughGripMul[k] / sus.roadGripMul[k];
   t.surface.offroadGrip *= rough;
   t.surface.cobbleGrip *= rough;
+  t.surface.sandGrip *= rough;
   // Gear ratio: the final drive moves the top gear and its limiter; first gear moves by firstGearMul and the
   // gears between blend evenly (each step the same share closer or wider), a close-ratio box on Short and a
   // wide one on Long. Real gearing barely moves acceleration, so the arcade torque bonus does (car.ts fades it

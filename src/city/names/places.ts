@@ -54,6 +54,7 @@ export function placeKind(a: Area | null): string {
   if (!a || !isNamedPlace(a)) return 'Neighbourhood';
   if (a.kind === 'backAlley' && a.variant === 'routeShortcut') return a.params.jumpExit ? 'One-way shortcut' : 'Race shortcut';
   if (a.kind === 'infill') return INFILL_NOUNS[a.variant] ?? 'Plaza';
+  if (a.kind === 'waterfront' && a.variant === 'beach') return 'Beach';
   return KIND_NOUNS[a.kind] ?? '';
 }
 
