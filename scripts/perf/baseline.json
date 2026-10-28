@@ -3,61 +3,61 @@
  "tier": "medium",
  "camera": "route",
  "totals": {
-  "tris": 1119301,
-  "verts": 1775231,
-  "drawCalls": 201,
-  "materials": 122,
-  "transparent": 39,
-  "additive": 25
+  "tris": 1136790,
+  "verts": 1810324,
+  "drawCalls": 207,
+  "materials": 127,
+  "transparent": 40,
+  "additive": 27
  },
  "max": {
-  "tris": 1352129,
-  "verts": 2201094,
-  "drawCalls": 245
+  "tris": 1376224,
+  "verts": 2249141,
+  "drawCalls": 254
  },
  "samples": [
   {
    "s": 200,
    "totals": {
-    "tris": 1076277,
-    "verts": 1697086,
-    "drawCalls": 192,
-    "materials": 113,
-    "transparent": 36,
-    "additive": 23
+    "tris": 1090101,
+    "verts": 1724931,
+    "drawCalls": 196,
+    "materials": 116,
+    "transparent": 37,
+    "additive": 24
    }
   },
   {
    "s": 700,
    "totals": {
-    "tris": 929497,
-    "verts": 1427513,
-    "drawCalls": 167,
-    "materials": 107,
-    "transparent": 38,
-    "additive": 25
+    "tris": 944046,
+    "verts": 1456900,
+    "drawCalls": 171,
+    "materials": 110,
+    "transparent": 39,
+    "additive": 26
    }
   },
   {
    "s": 1200,
    "totals": {
-    "tris": 1352129,
-    "verts": 2201094,
-    "drawCalls": 245,
-    "materials": 146,
-    "transparent": 42,
-    "additive": 28
+    "tris": 1376224,
+    "verts": 2249141,
+    "drawCalls": 254,
+    "materials": 154,
+    "transparent": 44,
+    "additive": 30
    }
   }
  ],
  "upper": {
   "totals": {
-   "tris": 18187236,
-   "verts": 20309534,
-   "drawCalls": 556,
-   "materials": 500,
-   "transparent": 41,
-   "additive": 26
+   "tris": 18218790,
+   "verts": 20372634,
+   "drawCalls": 564,
+   "materials": 509,
+   "transparent": 43,
+   "additive": 28
   },
   "groups": {
    "walkers": {
@@ -71,8 +71,8 @@
     "draws": 109
    },
    "podiumTrim": {
-    "tris": 424982,
-    "verts": 850136,
+    "tris": 424958,
+    "verts": 850088,
     "draws": 1
    },
    "districtTrees": {
@@ -96,8 +96,8 @@
     "draws": 1
    },
    "districtGlow": {
-    "tris": 100388,
-    "verts": 133236,
+    "tris": 100406,
+    "verts": 133257,
     "draws": 1
    },
    "districtGround": {
@@ -116,8 +116,8 @@
     "draws": 1
    },
    "roofs": {
-    "tris": 88980,
-    "verts": 172254,
+    "tris": 93842,
+    "verts": 181980,
     "draws": 1
    },
    "areaLights": {
@@ -166,8 +166,8 @@
     "draws": 1
    },
    "buildings": {
-    "tris": 38496,
-    "verts": 77158,
+    "tris": 38488,
+    "verts": 77142,
     "draws": 1
    },
    "props:trafficHeads": {
@@ -188,6 +188,11 @@
    "wallBoxes": {
     "tris": 33840,
     "verts": 67680,
+    "draws": 1
+   },
+   "roofNeon": {
+    "tris": 30268,
+    "verts": 60832,
     "draws": 1
    },
    "districtPaint": {
@@ -225,14 +230,14 @@
     "verts": 44660,
     "draws": 1
    },
-   "roofNeon": {
-    "tris": 20568,
-    "verts": 41136,
-    "draws": 1
-   },
    "props:hydrant0": {
     "tris": 19536,
     "verts": 26196,
+    "draws": 1
+   },
+   "roadDecals": {
+    "tris": 19226,
+    "verts": 38452,
     "draws": 1
    },
    "ground": {
@@ -248,11 +253,6 @@
    "props:streetlightPoles:modern": {
     "tris": 14744,
     "verts": 29488,
-    "draws": 1
-   },
-   "roadDecals": {
-    "tris": 13522,
-    "verts": 27044,
     "draws": 1
    },
    "props:trafficCone0": {
@@ -296,8 +296,8 @@
     "draws": 1
    },
    "city": {
-    "tris": 10520,
-    "verts": 28658,
+    "tris": 10556,
+    "verts": 28730,
     "draws": 16
    },
    "awnings": {
@@ -313,6 +313,11 @@
    "props:crate0": {
     "tris": 9450,
     "verts": 18900,
+    "draws": 1
+   },
+   "tramRails": {
+    "tris": 8778,
+    "verts": 17556,
     "draws": 1
    },
    "props:streetlightLenses:historic": {
@@ -485,6 +490,11 @@
     "verts": 4,
     "draws": 1
    },
+   "districts": {
+    "tris": 1864,
+    "verts": 3728,
+    "draws": 2
+   },
    "harborWater": {
     "tris": 1864,
     "verts": 1170,
@@ -540,14 +550,14 @@
     "verts": 2352,
     "draws": 1
    },
-   "steam": {
-    "tris": 1128,
-    "verts": 4,
-    "draws": 1
-   },
    "lakeStreaks": {
     "tris": 1092,
     "verts": 936,
+    "draws": 1
+   },
+   "steam": {
+    "tris": 1080,
+    "verts": 4,
     "draws": 1
    },
    "riverWater": {
@@ -606,13 +616,13 @@
     "draws": 3
    },
    "puddles": {
-    "tris": 736,
-    "verts": 1472,
+    "tris": 744,
+    "verts": 1488,
     "draws": 1
    },
    "aviationLights": {
-    "tris": 676,
-    "verts": 1352,
+    "tris": 674,
+    "verts": 1348,
     "draws": 1
    },
    "driftZoneWash": {
@@ -656,8 +666,8 @@
     "draws": 1
    },
    "billboards": {
-    "tris": 356,
-    "verts": 712,
+    "tris": 354,
+    "verts": 708,
     "draws": 1
    },
    "riverDecals": {
@@ -673,6 +683,16 @@
    "props:utilityWires": {
     "tris": 304,
     "verts": 912,
+    "draws": 1
+   },
+   "radarSigns": {
+    "tris": 296,
+    "verts": 592,
+    "draws": 1
+   },
+   "videoWallLight": {
+    "tris": 288,
+    "verts": 189,
     "draws": 1
    },
    "roadworksLightPools": {
@@ -755,6 +775,11 @@
     "verts": 4,
     "draws": 1
    },
+   "roofGlow": {
+    "tris": 76,
+    "verts": 152,
+    "draws": 1
+   },
    "lakeFountain": {
     "tris": 72,
     "verts": 65,
@@ -810,6 +835,11 @@
     "verts": 16,
     "draws": 1
    },
+   "videoWalls": {
+    "tris": 6,
+    "verts": 12,
+    "draws": 1
+   },
    "signTickers": {
     "tris": 6,
     "verts": 12,
@@ -821,6 +851,11 @@
     "draws": 1
    },
    "startLine": {
+    "tris": 2,
+    "verts": 4,
+    "draws": 1
+   },
+   "gantryBand": {
     "tris": 2,
     "verts": 4,
     "draws": 1
@@ -869,8 +904,8 @@
    "draws": 5
   },
   "roofs": {
-   "tris": 42808,
-   "verts": 82871,
+   "tris": 44611,
+   "verts": 86511,
    "draws": 4
   },
   "carParkInterior": {
@@ -880,7 +915,7 @@
   },
   "districtGlow": {
    "tris": 29365,
-   "verts": 38974,
+   "verts": 38973,
    "draws": 4
   },
   "districtGround": {
@@ -889,8 +924,8 @@
    "draws": 3
   },
   "buildings": {
-   "tris": 24406,
-   "verts": 48918,
+   "tris": 24401,
+   "verts": 48907,
    "draws": 1.7
   },
   "props:parkLamp0": {
@@ -902,6 +937,11 @@
    "tris": 21936,
    "verts": 43871,
    "draws": 5
+  },
+  "roadDecals": {
+   "tris": 19226,
+   "verts": 38452,
+   "draws": 1
   },
   "sidewalks": {
    "tris": 19049,
@@ -938,11 +978,6 @@
    "verts": 13787,
    "draws": 1.3
   },
-  "roadDecals": {
-   "tris": 13522,
-   "verts": 27044,
-   "draws": 1
-  },
   "lightSpill": {
    "tris": 13128,
    "verts": 26256,
@@ -959,9 +994,9 @@
    "draws": 1
   },
   "roofNeon": {
-   "tris": 11542,
-   "verts": 23083,
-   "draws": 1
+   "tris": 11691,
+   "verts": 23496,
+   "draws": 2
   },
   "wallPaint": {
    "tris": 11396,
@@ -979,8 +1014,8 @@
    "draws": 1
   },
   "city": {
-   "tris": 9795,
-   "verts": 27309,
+   "tris": 9807,
+   "verts": 27333,
    "draws": 8
   },
   "props:benches": {
@@ -991,6 +1026,11 @@
   "props:streetlightPoles:historic": {
    "tris": 9500,
    "verts": 15500,
+   "draws": 1
+  },
+  "tramRails": {
+   "tris": 8778,
+   "verts": 17556,
    "draws": 1
   },
   "props:planterPot0": {
@@ -1218,14 +1258,14 @@
    "verts": 848,
    "draws": 0.7
   },
-  "steam": {
-   "tris": 1128,
-   "verts": 4,
-   "draws": 1
-  },
   "lakeStreaks": {
    "tris": 1092,
    "verts": 936,
+   "draws": 1
+  },
+  "steam": {
+   "tris": 1080,
+   "verts": 4,
    "draws": 1
   },
   "props:bollard1": {
@@ -1304,19 +1344,24 @@
    "draws": 3
   },
   "puddles": {
-   "tris": 736,
-   "verts": 1472,
+   "tris": 744,
+   "verts": 1488,
    "draws": 1
   },
   "aviationLights": {
-   "tris": 676,
-   "verts": 1352,
+   "tris": 674,
+   "verts": 1348,
    "draws": 1
   },
   "props:busStopGlass": {
    "tris": 624,
    "verts": 1248,
    "draws": 1
+  },
+  "districts": {
+   "tris": 621,
+   "verts": 1243,
+   "draws": 0.7
   },
   "driftZoneWash": {
    "tris": 602,
@@ -1369,8 +1414,8 @@
    "draws": 0.7
   },
   "billboards": {
-   "tris": 356,
-   "verts": 712,
+   "tris": 354,
+   "verts": 708,
    "draws": 1
   },
   "riverDecals": {
@@ -1391,6 +1436,11 @@
   "props:utilityWires": {
    "tris": 304,
    "verts": 912,
+   "draws": 1
+  },
+  "radarSigns": {
+   "tris": 296,
+   "verts": 592,
    "draws": 1
   },
   "roadworksLightPools": {
@@ -1478,6 +1528,11 @@
    "verts": 192,
    "draws": 1
   },
+  "videoWallLight": {
+   "tris": 96,
+   "verts": 63,
+   "draws": 0.3
+  },
   "ferryHull": {
    "tris": 93,
    "verts": 181,
@@ -1496,6 +1551,11 @@
   "props:sawhorse1": {
    "tris": 80,
    "verts": 160,
+   "draws": 1
+  },
+  "roofGlow": {
+   "tris": 76,
+   "verts": 152,
    "draws": 1
   },
   "routeSigns": {
@@ -1583,6 +1643,11 @@
    "verts": 5,
    "draws": 0.3
   },
+  "videoWalls": {
+   "tris": 2,
+   "verts": 4,
+   "draws": 0.3
+  },
   "signTickers": {
    "tris": 2,
    "verts": 4,
@@ -1594,6 +1659,11 @@
    "draws": 0.3
   },
   "startLine": {
+   "tris": 1,
+   "verts": 1,
+   "draws": 0.3
+  },
+  "gantryBand": {
    "tris": 1,
    "verts": 1,
    "draws": 0.3
@@ -1619,11 +1689,11 @@
   {
    "name": "roofs",
    "group": "roofs",
-   "perInstance": 76284,
+   "perInstance": 81146,
    "instances": 1,
    "draws": 3,
-   "tris": 76284,
-   "verts": 147676,
+   "tris": 81146,
+   "verts": 157360,
    "transparent": false,
    "additive": false
   },
@@ -1696,11 +1766,11 @@
   {
    "name": "buildings",
    "group": "buildings",
-   "perInstance": 37306,
+   "perInstance": 37298,
    "instances": 1,
    "draws": 1,
-   "tris": 37306,
-   "verts": 74773,
+   "tris": 37298,
+   "verts": 74757,
    "transparent": false,
    "additive": false
   },
@@ -1771,6 +1841,28 @@
    "additive": false
   },
   {
+   "name": "roofNeon",
+   "group": "roofNeon",
+   "perInstance": 19280,
+   "instances": 1,
+   "draws": 2,
+   "tris": 19280,
+   "verts": 38749,
+   "transparent": false,
+   "additive": false
+  },
+  {
+   "name": "roadDecals",
+   "group": "roadDecals",
+   "perInstance": 19226,
+   "instances": 1,
+   "draws": 1,
+   "tris": 19226,
+   "verts": 38452,
+   "transparent": true,
+   "additive": false
+  },
+  {
    "name": "walkersFar",
    "group": "walkersFar",
    "perInstance": 240,
@@ -1789,17 +1881,6 @@
    "draws": 1,
    "tris": 18432,
    "verts": 9409,
-   "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "roofNeon",
-   "group": "roofNeon",
-   "perInstance": 17045,
-   "instances": 1,
-   "draws": 1,
-   "tris": 17045,
-   "verts": 34090,
    "transparent": false,
    "additive": false
   },
@@ -1878,17 +1959,6 @@
    "tris": 13745,
    "verts": 28640,
    "transparent": false,
-   "additive": false
-  },
-  {
-   "name": "roadDecals",
-   "group": "roadDecals",
-   "perInstance": 13522,
-   "instances": 1,
-   "draws": 1,
-   "tris": 13522,
-   "verts": 27044,
-   "transparent": true,
    "additive": false
   },
   {
