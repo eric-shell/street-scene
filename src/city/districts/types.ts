@@ -58,7 +58,9 @@ export type AreaKind =
   | 'highway'
   // Water: one side of the map as a harbor, a lake of merged blocks.
   | 'waterfront'
-  | 'lake';
+  | 'lake'
+  // The San Francisco cable car's line down one street (sf homes).
+  | 'cableCar';
 
 /**
  * Ground surface under a point. 'road' / 'sidewalk' / 'offroad' are the
@@ -127,6 +129,7 @@ export const COBBLE_PRIORITY = 6;
  * container / forklift / quayPost: the dock yard's solids on the quay: shipping containers (stacked up to
  *   three high) lining its container lane, parked forklifts, and the steel gate posts either side of a
  *   mouth onto the quay that carry its string lights (waterfront, waterfrontYard.ts).
+ * cableCar: a cable car terminal's waiting shelter on the sidewalk beside the stop (cableCar).
  */
 export type WallLook =
   | 'building'
@@ -167,9 +170,10 @@ export type WallLook =
   | 'lotKiosk'
   | 'container'
   | 'forklift'
-  | 'quayPost';
+  | 'quayPost'
+  | 'cableCar';
 
-export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark', 'alleyLip', 'gatePier', 'hedge', 'jetty', 'highway', 'lakeRail', 'quayRail', 'quayFence', 'warehouse', 'plaza', 'lotFence', 'lotKiosk', 'container', 'forklift', 'quayPost'];
+export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark', 'alleyLip', 'gatePier', 'hedge', 'jetty', 'highway', 'lakeRail', 'quayRail', 'quayFence', 'warehouse', 'plaza', 'lotFence', 'lotKiosk', 'container', 'forklift', 'quayPost', 'cableCar'];
 
 export interface Area {
   /** Index into CityDistricts.areas. */
@@ -442,6 +446,8 @@ export const AREA_PRIORITY: Record<AreaKind, number> = {
   highway: 4,
   waterfront: 2,
   lake: 2,
+  // The line's carriageway: over a hill's rise, so the free roam chip names the line on it.
+  cableCar: 4,
 };
 
 /** Minimap look per kind (ui/hud/hud.ts). Colors are CSS strings, widths in meters. */
@@ -478,4 +484,6 @@ export const AREA_MAP_STYLE: Record<AreaKind, AreaMapStyle> = {
   highway: { stroke: 'rgba(252,252,250,0.32)', width: 9 },
   waterfront: { fill: 'rgba(120,220,232,0.14)' },
   lake: { fill: 'rgba(120,220,232,0.18)' },
+  // The cable car: a thin solid line down its street, the El's weight in a cable car red.
+  cableCar: { stroke: 'rgba(255,97,136,0.7)', width: 2.5 },
 };

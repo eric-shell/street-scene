@@ -11,9 +11,9 @@ export type WallHitKind = 'wall' | 'barrier' | 'rail';
 /**
  * Prop kinds with their own impact sound (news boxes sound like garbage cans, park lamps like
  * streetlights; construction pieces, most neighbourhood furniture and the night market's pieces
- * borrow the nearest material).
+ * borrow the nearest material; a wooden power pole splinters like a crate).
  */
-type PropSound = Exclude<PropKind, 'newsBox' | 'parkLamp' | 'bollard' | ConstructionPropKind | MarketPropKind | DockPropKind | 'mailbox' | 'parkingMeter' | 'phoneBooth' | 'vendingMachine'>;
+type PropSound = Exclude<PropKind, 'newsBox' | 'parkLamp' | 'bollard' | ConstructionPropKind | MarketPropKind | DockPropKind | 'mailbox' | 'parkingMeter' | 'phoneBooth' | 'vendingMachine' | 'utilityPole'>;
 export type SfxBank = 'crash' | WallHitKind | PropSound | 'firework' | 'thump';
 type Bank = SfxBank;
 export const PROP_SOUND: Record<PropKind, PropSound> = {
@@ -48,6 +48,8 @@ export const PROP_SOUND: Record<PropKind, PropSound> = {
   parkingMeter: 'trafficLight',
   mailbox: 'garbageCan',
   phoneBooth: 'busStop',
+  // A wooden power pole snapping at its base: a big splinter of timber.
+  utilityPole: 'crate',
   vendingMachine: 'dumpster',
 };
 

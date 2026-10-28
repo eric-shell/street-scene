@@ -488,6 +488,7 @@ function makeKit(world: World, walls: Map<WallLook, Wall[]> = wallsByLook(world)
     simTick: (t) => t * 60,
     audible: () => false,
     armBroken: () => false,
+    cableBell: () => NaN,
   };
 }
 

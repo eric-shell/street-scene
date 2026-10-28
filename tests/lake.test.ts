@@ -304,6 +304,7 @@ describe('lake (renderer)', () => {
         simTick: (t) => t * 60,
         audible: () => false,
         armBroken: () => false,
+        cableBell: () => NaN,
       };
       lakeRenderer.build(kit, [lake]);
       for (const gb of [kit.solid, kit.ground, kit.glow, kit.foliage]) expect(gb.vertexCount).toBeGreaterThan(0);

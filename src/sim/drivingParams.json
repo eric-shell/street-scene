@@ -363,6 +363,15 @@
     "thumpMin": 0.25,
     "thumpGap": 0.12
   },
+  "cableCar": {
+    "_": "The San Francisco cable car (src/sim/cableCar.ts) on sf home seeds: a kinematic body on its timetable that race cars and loose traffic meet through the traffic contact model (collision.ts collideCars) with this mass, so it barely gives and they are shoved. Body (m, kg): a double-ended California Street car, 8.3 m long and 2.6 m wide. It runs at speed (m/s, 15 km/h) on the cable, gripping and letting go at accel (m/s^2).",
+    "mass": 7000,
+    "halfLength": 4.15,
+    "halfWidth": 1.3,
+    "speed": 4.1667,
+    "accel": 0.6,
+    "yawInertiaScale": 1
+  },
   "driftZones": {
     "_readme": "Drift zones (src/sim/driftZones.ts): the monument plaza and the bigger parking lots. Drifting inside one counts drift points scoreMul times (drift mode) and refills nitrous refillMul times as fast (every mode, every car), for at most bonusTime s of drifting and refillCap of a nitrous stage per visit. A visit survives exitGrace s outside; once it ends the zone rests cooldown s before it pays that car again.",
     "scoreMul": 2,

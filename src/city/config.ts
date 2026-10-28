@@ -1362,6 +1362,33 @@ export const CITY = {
       /** Lakes this wide or more (m, the room around the middle) get a fountain jet. */
       fountainRoom: 45,
     },
+    /**
+     * The San Francisco cable car (districts/cableCar.ts, sim/cableCar.ts): on sf home seeds, one street
+     * between two junctions that neither route uses gets a line down its middle, a terminal at each end.
+     */
+    cableCar: {
+      enabled: true,
+      /** Road kinds the line may take (their lanes clear the track's strip, see stripHalf). */
+      kinds: ['street', 'avenue'] as const,
+      /** Street length range (m, junction to junction). */
+      length: [90, 420] as const,
+      /** A street climbing a hill (an end inside a hills area) must rise at least this much (m) to beat the steepest plain one. */
+      hillRise: 3,
+      /** Half width of the track's strip (m): the car's half width (drivingParams.json cableCar) and a margin. Traffic lanes keep clear of it. */
+      stripHalf: 1.45,
+      /** Carriageway each side must keep beyond the strip (m): the widest traffic car (2.7 m) with its clearances. */
+      laneRoom: 3.4,
+      /** Rail gauge (m, 3 ft 6 in) and the cable slot's width (m). */
+      gauge: 1.067,
+      slot: 0.05,
+      /** The car's near end stops this far (m) short of where the traffic lanes end at the junction, and the turntable's radius (m). */
+      terminalGap: 2,
+      turntable: 4.4,
+      /** A terminal's shelter on the sidewalk beside the stop: length along the curb, depth, back from the curb (m), and the room furniture keeps from it (m). */
+      shelter: { length: 4.2, depth: 1.5, back: 0.9, clear: 1.2 },
+      /** Sidewalk a shelter needs (m). */
+      minSidewalk: 3.2,
+    },
   },
 } as const;
 
@@ -1529,8 +1556,8 @@ export const PARKING = {
   routeClear: 12,
   /** Walls and props must stay this clear (m) of a slot's footprint. */
   probePad: 0.3,
-  /** District areas a slot never stands in (World.areaAt at its centre): the river's banks and ramps, a tunnel or viaduct, a market, roadworks. */
-  offAreas: ['river', 'tunnel', 'overpass', 'market', 'roadworks', 'roundabout'] as const,
+  /** District areas a slot never stands in (World.areaAt at its centre): the river's banks and ramps, a tunnel or viaduct, a market, roadworks, the cable car's street. */
+  offAreas: ['river', 'tunnel', 'overpass', 'market', 'roadworks', 'roundabout', 'cableCar'] as const,
 } as const;
 
 /**
@@ -1764,4 +1791,41 @@ export const ROAD_PHYSICS = {
     /** Streets shorter than this (m) are too short for one between their junctions. */
     minLength: 46,
   },
+} as const;
+
+/**
+ * Power poles (props.ts, kind 'utilityPole'): the wooden poles and their sagging wires that make a street read as
+ * Los Angeles. One run per street (a chain of pieces through bend nodes), on one seeded side, a pole every
+ * 35 to 45 m along the outer third of the sidewalk, clear of the corners, the streetlights and the furniture. In
+ * the la neighbourhoods (city/regions.ts) of an la home every plain street takes a run; anywhere else only the
+ * outer ring's (streetFurniture.ts FURNITURE.mid) la streets do, and a third of them. The wires between
+ * consecutive poles are render only, high over the sidewalk where no car reaches (render/street/utilityWires.ts).
+ */
+export const UTILITY_POLES = {
+  enabled: true,
+  /** Road kinds that take a run. */
+  kinds: ['street', 'avenue', 'diagonal', 'boulevard'] as const,
+  /** Share of the eligible streets that take a run: the home's own la streets, and la streets of the outer ring elsewhere. */
+  homeShare: 1,
+  awayShare: 1 / 3,
+  /** Spacing between poles along the curb (m): each gap drawn in this range. */
+  pitch: [35, 45] as const,
+  /** Distance the first and last pole keep from the street's curb corners, along the curb (m), plus a seeded lead of up to `lead`. */
+  cornerClear: 14,
+  lead: 5,
+  /** Planted this share of the way from the curb to the building line (the outer third). */
+  across: 0.68,
+  /** Narrowest sidewalk (m) that takes a pole. */
+  minSidewalk: 3,
+  /** Centre to centre distance kept from a streetlight or a signal pole (m), and from a hydrant (m). */
+  lightClear: 4,
+  hydrantClear: 2.5,
+  /** A station that does not fit slides along the curb by this much (m) up to `tries` times each way before it is dropped. */
+  slide: 1.5,
+  tries: 3,
+  /** Wires span only consecutive poles closer than this (m): a longer gap (a dropped station) breaks the run. */
+  maxSpan: 62,
+  /** Every this many poles carries a transformer drum, counted in placement order city-wide (runs are often only a block long), starting at the `transformerAt`th. */
+  transformerEvery: 4,
+  transformerAt: 2,
 } as const;
