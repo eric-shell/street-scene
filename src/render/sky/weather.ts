@@ -380,6 +380,8 @@ export interface LiveWeather {
   /** The current gust factor (1 steady, up to about 2) and the trees' lean multiplier (WIND.sway). */
   gust: number;
   sway: number;
+  /** The rain's share 0..1 of the blended mood (0 on a dry night), for the rings on standing water. */
+  rain: number;
 }
 
 /** The turn's second sky as a dome around the camera: the same equirectangular lookup as the background, faded in over it. */
@@ -501,6 +503,7 @@ export function createWeather(world: World, opts: { quality: Quality; flashes?: 
     overcast: def.sky.overcast,
     gust: 1,
     sway: WEATHER_TURN.wind[mood].sway,
+    rain: def.rain?.share ?? 0,
   };
   const rainNow: RainDef = { share: 0, fall: 0, wind: 0, alpha: 0, headlight: 0, splash: 0 };
   const rainRate: RainDef = { ...rainNow };
@@ -856,6 +859,8 @@ export function createWeather(world: World, opts: { quality: Quality; flashes?: 
       live.sway = lerp(WEATHER_TURN.wind[mood].sway, WEATHER_TURN.wind[toMood].sway, k) * gust;
       WIND.sway.value = live.sway;
       live.veil = moonVeil(seed, t, live.overcast);
+      blendRain(def.rain, defTo.rain, k, rainNow);
+      live.rain = rainNow.share;
       // Lightning only once the night is mostly rain (to is rain and past half way, or rain easing off before half way).
       const rainWeight = (mood === 'rain' ? 1 - k : 0) + (toMood === 'rain' && mood !== 'rain' ? k : 0);
       const flash = lightning ? lightning.update(t, rainWeight > 0.5) : 0;

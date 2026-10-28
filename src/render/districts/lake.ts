@@ -5,13 +5,13 @@
  * posts with lanterns where the jetty leaves), the bank falling from the
  * coping to the bed on the sim's own ground, reeds along the waterline, and
  * the water: one flat polygon at the lake's level in the river's dark mirror
- * material (render/districts/river.ts waterMaterial), stiller and a shade
+ * material (render/districts/water.ts waterMaterial), stiller and a shade
  * darker. On it, the lights: every lantern post and the jetty's lamp throws
  * a shimmering streak across the water toward the viewer (laid out per
  * vertex toward the camera, so it always reads as a reflection), and the
  * fountain jet (when the lake has room for one) rises from a ring of
  * underwater lights, swaying a little. The jetty is a plank deck on posts
- * off the middle of the longest straight shore with two rowboats moored at
+ * off the middle of the longest straight shore with two rowboats (a `BoatFleet`, boats.ts: they rock and swing on their lines) moored at
  * it, all behind the railing (nothing a car can reach). Trees on the
  * promenade are the shared trees (trees.ts) on the sim's trunks; lantern
  * posts and benches are destructible props (render/street/props.ts) lit by
@@ -34,7 +34,8 @@ import { Rng, deriveSeed } from '../../sim/prng';
 import { GeoBuilder } from '../geoBuilder';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { col, cylinder, groundVertex } from './kit';
-import { waterMaterial } from './river';
+import { BoatFleet, mooringPhase } from './boats';
+import { WATER, waterMaterial } from './water';
 import { tree } from './trees';
 import { heightFogShader } from '../heightFog';
 
@@ -146,14 +147,16 @@ function buildLake(kit: DistrictKit, a: Area): void {
     const ids = [p, q, r].map((v) => wet.vertex(v.x, W, v.z, 0, 1, 0, v.x / 8, v.z / 8, LOOK.water));
     wet.triFacing(ids[0], ids[1], ids[2], 0, 1, 0);
   }
-  const waterMat = kit.track(waterMaterial());
-  waterMat.roughness = LOOK.waterRoughness;
+  const waterMat = kit.track(waterMaterial(kit, { quality: kit.quality, calm: WATER.calm.lake, roughness: LOOK.waterRoughness }));
   addMesh(kit, wet, waterMat, `lakeWater${a.id}`, 1);
 
   // ----- Jetty, boats, its lamp.
   /** Where each light's reflection starts on the water (just off the shore below it) and how bright it is. */
   const lights: { x: number; z: number; k: number }[] = [];
-  if (jetty) jettyAt(kit, jetty.points[0], jetty.points[1], jetty.values[0], W, copingY, lights);
+  // The rowboats rock on the swell and swing on their lines (boats.ts).
+  const fleet = new BoatFleet();
+  if (jetty) jettyAt(kit, fleet, jetty.points[0], jetty.points[1], jetty.values[0], W, copingY, lights);
+  fleet.mount(kit, `lakeBoats${a.id}`);
 
   // ----- Reflections of the lantern posts (destructible props by the railing) and the jetty's lamp.
   for (const d of b.destructibles) {
@@ -377,7 +380,7 @@ function clump(gb: GeoBuilder, x: number, y: number, z: number, rng: Rng): void 
  * deck on posts just over the water, a lamp on a pole at the end (its reflection pushed to `lights`)
  * and two rowboats moored along it.
  */
-function jettyAt(kit: DistrictKit, root: Vec2, tip: Vec2, width: number, W: number, coping: (x: number, z: number) => number, lights: { x: number; z: number; k: number }[]): void {
+function jettyAt(kit: DistrictKit, fleet: BoatFleet, root: Vec2, tip: Vec2, width: number, W: number, coping: (x: number, z: number) => number, lights: { x: number; z: number; k: number }[]): void {
   const len = Math.hypot(tip.x - root.x, tip.z - root.z);
   const ux = (tip.x - root.x) / len;
   const uz = (tip.z - root.z) / len;
@@ -416,7 +419,9 @@ function jettyAt(kit: DistrictKit, root: Vec2, tip: Vec2, width: number, W: numb
     [len * 0.75, -1, 1],
   ] as const) {
     const c = at(s, sd * (half + 1.1));
-    boat(kit.solid, c.x, W, c.z, ux, uz, LOOK.boats[(k + Math.round(len)) % LOOK.boats.length]);
+    const mark = fleet.begin();
+    boat(fleet.solid, c.x, W, c.z, ux, uz, LOOK.boats[(k + Math.round(len)) % LOOK.boats.length]);
+    fleet.end(mark, { x: c.x, z: c.z, y: W, phase: mooringPhase(c.x, c.z), kind: 'rowboat' });
   }
 }
 

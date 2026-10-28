@@ -16,11 +16,15 @@
  *    forklifts ('forklift'), the mouths' gate posts ('quayPost') with their
  *    strings and setts, ramp hazard bands, wear, gulls; the jetties' stacks and
  *    the ships carry the seed's container liveries and shipping line marks;
- *  - the water: one opaque dark mirror (the river's water look) from the sea
- *    wall out past the far ridge of the backdrop (render/sky/backdrop.ts sinks
- *    its near ridge on this side, so the water meets a low far shore), and the
+ *  - the water: one opaque mirror in the shared water material (water.ts: wind
+ *    ripples, a Fresnel edge, the moon's glint, rain rings) from the sea wall
+ *    out past the far ridge of the backdrop (render/sky/backdrop.ts sinks its
+ *    near ridge on this side, so the water meets a low far shore), and the
  *    reflections of every light standing out on it as camera facing streaks
  *    (lightFx.ts's shader): crane floods, jetty masts, ships, buoys, beacons;
+ *  - the ferry (waterfrontFerry.ts): a lit two deck boat on a seeded timetable
+ *    of the scene clock, berthed at the sea wall or sailing a lane beyond the
+ *    breakwater, with a wake and a horn;
  *  - jetties on piles with their flood masts, gantry cranes astride their rails
  *    (red aircraft warning lights on the apex and boom tip), container stacks,
  *    moored ships (hull, deck cargo, a lit bridge house, running lights), the
@@ -50,7 +54,9 @@ import { GeoBuilder } from '../geoBuilder';
 import { streakFrag, streakVert } from '../street/lightFx';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { col, cylinder, groundLine, groundVertex, wallBox } from './kit';
+import { WATER, waterMaterial } from './water';
 import { drawBeach } from './waterfrontBeach';
+import { drawFerry } from './waterfrontFerry';
 import { drawMarina } from './waterfrontMarina';
 import { containerLiveries, drawYard, markQuad, marksMesh } from './waterfrontYard';
 import { HEIGHT_FOG_GLSL, HEIGHT_FOG_UNIFORMS } from '../heightFog';
@@ -288,8 +294,8 @@ function buildHarbor(kit: DistrictKit, a: Area): void {
       }),
     );
     for (let i = 0; i + 1 < us.length; i++) for (let k = 0; k + 1 < rows.length; k++) water.quadFacing(ids[i][k], ids[i + 1][k], ids[i + 1][k + 1], ids[i][k + 1], 0, 1, 0);
-    // The river's dark mirror, opaque here: there is nothing to see under it but the seabed.
-    const mesh = new THREE.Mesh(kit.track(water.build()), kit.track(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.08, metalness: 0.95, envMapIntensity: 2.4 })));
+    // The shared water material (water.ts), opaque here: there is nothing to see under it but the seabed.
+    const mesh = new THREE.Mesh(kit.track(water.build()), kit.track(waterMaterial(kit, { quality: kit.quality, opaque: true, calm: WATER.calm.harbor })));
     mesh.name = 'harborWater';
     mesh.frustumCulled = false;
     kit.group.add(mesh);
@@ -323,6 +329,9 @@ function buildHarbor(kit: DistrictKit, a: Area): void {
   }
 
   marksMesh(kit, marks);
+
+  // ----- The ferry: a timetable across the water (waterfrontFerry.ts), after everything else standing in it.
+  drawFerry(kit, a, b);
 
   // ----- The flashers: every warning light and buoy blinking on the scene clock, each at its own phase.
   if (flash.vertexCount) {
