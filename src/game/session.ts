@@ -244,8 +244,6 @@ export class RaceSession {
   private glassShards: GlassShards;
   /** Upshift, overrun and nitrous flames at the tailpipes and the heat haze behind them (render/car/exhaustFx.ts). */
   private exhaust: ExhaustFx;
-  /** Each car's redline (rpm), for the haze's engine load. */
-  private readonly redlines: number[];
   /** Rubber on the road and tire smoke for every car losing traction (render/car/tireFx.ts). */
   private tireFx: TireFx;
   /** Paper, leaves and cups lifted by the cars' wake (render/car/litter.ts). */
@@ -384,7 +382,6 @@ export class RaceSession {
     });
     this.exhaust = new ExhaustFx(settings.quality, this.views);
     this.night.scene.add(this.exhaust.mesh);
-    this.redlines = this.race.cars.map((c) => c.tuning.engine.redline);
     this.drivers = new Drivers(this.race.cars.length);
     this.night.scene.add(this.drivers.group);
     if (opts.ghost) {
@@ -979,7 +976,7 @@ export class RaceSession {
       camera = this.drone.camera;
     } else camera = this.updateCamera(p, dt);
     this.lastCamera = camera;
-    this.exhaust.haze(this.gr.post, camera, poses, this.redlines, this.time, dt, this.paused);
+    this.exhaust.haze(this.gr.post, camera, poses, this.time, dt, this.paused);
     this.trails.update(this.views[0].root, camera, this.paused ? 0 : p.nitroStage, dt);
     this.carLight?.follow(p);
     // The few real point lights follow the action, or the drone when it flies off.

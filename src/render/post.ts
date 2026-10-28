@@ -25,7 +25,7 @@
  * stage runs it harder and turns the edge glow from cold blue through violet
  * to hot pink, the HUD bar's stage colors. NITRO_FX holds the numbers.
  *
- * Heat haze (setHaze, `uHaze`): up to four screen space blobs behind the nearest hot exhausts bend the picture
+ * Heat haze (setHaze, `uHaze`): up to six screen space blobs behind the nearest hot exhausts and over hot brakes bend the picture
  * with two sines drifting up the blob, so the air reads as rising. exhaustFx.ts projects the tips and fills
  * `hazeBlobs` (x, y screen UV, radius in screen heights, strength); with no blob (`uHazeN` 0) the pass skips it.
  *
@@ -174,7 +174,7 @@ const FxShader = {
     lensTime: { value: 0 },
     lensAspect: { value: 16 / 9 },
     lensLayers: { value: 2 },
-    uHaze: { value: [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()] },
+    uHaze: { value: Array.from({ length: 6 }, () => new THREE.Vector4()) },
     uHazeN: { value: 0 },
     uHazeTime: { value: 0 },
   },
@@ -213,7 +213,7 @@ const FxShader = {
     uniform float lensTime;
     uniform float lensAspect;
     uniform int lensLayers;
-    uniform vec4 uHaze[4];
+    uniform vec4 uHaze[6];
     uniform int uHazeN;
     uniform float uHazeTime;
     varying vec2 vUv;
@@ -273,7 +273,7 @@ const FxShader = {
       if (uHazeN > 0) {
         // Heat haze behind the near exhausts: x, y the blob's centre, z its radius in screen heights, w how far it bends the picture.
         // The shimmer is a pair of sines drifting up the blob, so the air reads as rising.
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 6; i++) {
           if (i >= uHazeN) break;
           vec4 h = uHaze[i];
           vec2 d = (vUv - h.xy) * vec2(lensAspect, 1.0) / h.z;

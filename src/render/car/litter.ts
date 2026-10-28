@@ -38,7 +38,7 @@ export const LITTER = {
   /** Speed (m/s) where the rate reaches its full value. */
   fullSpeed: 45,
   /** Pieces per second per car at full speed on the most littered street, at Medium (scaled by the pool). */
-  perSecond: 6,
+  perSecond: 2.4,
   /** The least a street sheds, as a share of the most (side streets away from downtown and the route). */
   minLitter: 0.25,
   /** Share of each kind among the pieces (paper, leaf, cup, bag; sums to 1). */

@@ -18,16 +18,23 @@
  * instead of hanging in the air behind. The glow is a plain sprite on the bumper, never a real light.
  *
  * Haze: the nearest few cars with a hot exhaust get one blob each, projected to the screen here from the tips
- * (a point behind and above them) with a radius in screen heights and a strength that rises with rpm, pedal and
- * nitrous and eases with `damp`. Zero blobs when none is hot, which costs the post pass one uniform test.
+ * (a point behind and above them) with a radius in screen heights and a strength from the car's heat. Heat is not
+ * engine load (a car cruising at 6000 rpm does not shimmer). It is held up by the hot moments, read once per sim
+ * tick: a burning nitrous stage, the launch held on the line (two-step or the grid's rev, building over a couple
+ * of seconds), bouncing off the rev limiter, and a long flat out pull (only after a few seconds of it). Every
+ * flame (a shift's, a stage's bang, each crackle pop) adds a kick the moment it fires, and the heat cools slowly
+ * with `damp`, so the shimmer hangs behind the car after a pull or a crackle. Hard braking from speed heats the
+ * front brakes too: once the car slows, a smaller blob rises off each front wheel until they cool. Zero blobs
+ * when nothing is hot, which costs the post pass one uniform test.
  * Render only: reads snapshots and views, never writes into the sim.
  */
 import * as THREE from 'three';
 import type { RaceState } from '../../sim/race';
 import { clamp01 } from '../../sim/math';
+import { DT } from '../../sim/constants';
 import { damp } from '../../shared/anim';
 import type { PostFx } from '../post';
-import type { CarView } from './carView';
+import { WHEEL_KEYS, type CarView } from './carView';
 import type { Snap } from '../../game/session/snap';
 
 export type ExhaustQuality = 'low' | 'medium' | 'high';
@@ -113,26 +120,45 @@ export const EXHAUST_FX = {
   },
   /** The bumper glow's life (s) with a shift flame, and its color (linear HDR). */
   glow: { life: 0.16, color: [2.4, 0.8, 0.22] },
-  /** Heat haze: refraction blobs behind the nearest hot exhausts (post.ts `uHaze`). */
+  /** Heat haze: refraction blobs behind the nearest hot exhausts and over hot front brakes (post.ts `uHaze`). */
   haze: {
-    /** Blobs per quality (the uniform array holds 4). Low: none. */
-    blobs: { low: 0, medium: 3, high: 4 } as Record<ExhaustQuality, number>,
+    /** Blobs per quality (the uniform array holds 6; a car can take three, its exhaust and two front wheels). Low: none. */
+    blobs: { low: 0, medium: 4, high: 6 } as Record<ExhaustQuality, number>,
     /** Cars this close to the camera (m) shimmer, fading out toward the edge. */
     range: 40,
     /** World radius of a blob (m), and where it sits: this far behind the tips along the exhaust and this far up. */
     radius: 0.85,
     behind: 0.8,
     up: 0.2,
-    /** Strength in screen heights of refraction at the blob's middle: idle, and the most (a nitrous redline pull). */
-    min: 0.0006,
+    /** Strength in screen heights of refraction at the blob's middle at full heat (a stage 3 nitrous pull). */
     max: 0.0075,
-    /** Weights of rpm share (squared), the pedal and the nitrous stage burning in the heat, summing to 1. */
-    rpmWeight: 0.55,
-    pedalWeight: 0.2,
-    nitroWeight: 0.25,
-    /** How quickly the heat builds and cools (1/s). */
+    /** Heat (0..1) a burning nitrous stage holds the pipes at, per stage 1..3. */
+    nitro: [0.75, 0.88, 1],
+    /** Heat each flame adds the moment it fires (summed, capped at 1): a shift flame at its largest (a smaller one half that up), a stage's bang, one crackle pop. */
+    kick: { shift: 0.45, bang: 0.6, pop: 0.12 },
+    /** Holding the launch: under `maxSpeed` (m/s) with the pedal past `throttle` and the engine above `rpmFrac` of the redline, the heat it builds to over `build` s. */
+    launch: { heat: 0.6, build: 2.5, maxSpeed: 2, throttle: 0.5, rpmFrac: 0.45 },
+    /** Bouncing off the rev limiter (this share of the redline, pedal past `throttle`, in gear): the heat it holds. */
+    limiter: { heat: 0.5, rpmFrac: 0.98, throttle: 0.8 },
+    /** A long flat out pull: pedal past `throttle` above `rpmFrac` of the redline and `minSpeed` (m/s); it starts `after` s in and reaches `heat` `build` s later. A lift unwinds the clock twice as fast as it ran. */
+    pull: { heat: 0.35, throttle: 0.9, rpmFrac: 0.55, minSpeed: 5, after: 3, build: 4 },
+    /** How quickly the heat builds toward what holds it (1/s), and how slowly it cools once nothing does (1/s), so the shimmer lingers a few seconds. */
     rise: 3,
-    fall: 1.6,
+    fall: 0.75,
+    /** Hot front brakes: a blob over each front wheel after hard braking. */
+    brake: {
+      /** Heat a second of braking adds at `fullSpeed` (m/s; less in proportion below it), and how fast it cools (1/s). */
+      gain: 0.45,
+      fullSpeed: 40,
+      cool: 0.35,
+      /** Seen only past `show` heat and as the car slows: none at `fadeSpeed` (m/s) and above (the wind carries it off), all of it at a standstill. */
+      show: 0.15,
+      fadeSpeed: 20,
+      /** World radius of a blob (m), its height over the wheel's centre (m), and its strength at full heat (screen heights). */
+      radius: 0.5,
+      up: 0.45,
+      max: 0.005,
+    },
   },
 } as const;
 
@@ -271,8 +297,15 @@ export class ExhaustFx {
   private readonly pedalTick: Float64Array;
   /** Per car: nitrous jet spawns owed (fractions of one carry over frames). */
   private readonly jetOwed: Float32Array;
-  /** Per car: smoothed exhaust heat 0..1 (the haze). */
+  /** Per car: smoothed exhaust heat 0..1 (the haze), the heat the hot moments hold it at this tick, and the front brakes' heat 0..1. */
   private readonly heat: Float32Array;
+  private readonly hold: Float32Array;
+  private readonly brakeHeat: Float32Array;
+  /** Per car: seconds the launch has been held, and the flat out pull's clock (s). */
+  private readonly launchTime: Float32Array;
+  private readonly pullTime: Float32Array;
+  /** Haze sources already given a blob this frame: three per car (exhaust, front left, front right brake). */
+  private readonly taken: Uint8Array;
   /** Pending timed events (a ring of at most MAX_EVENTS): when (s), whose, kind, a size 0..1 / stage, and the tip (-1 all). */
   private evCount = 0;
   private readonly evAt = new Float64Array(MAX_EVENTS);
@@ -300,6 +333,11 @@ export class ExhaustFx {
     this.pedalTick = new Float64Array(n).fill(-1e9);
     this.jetOwed = new Float32Array(n);
     this.heat = new Float32Array(n);
+    this.hold = new Float32Array(n);
+    this.brakeHeat = new Float32Array(n);
+    this.launchTime = new Float32Array(n);
+    this.pullTime = new Float32Array(n);
+    this.taken = new Uint8Array(n * 3);
     this.tipPos = new Float32Array(n * MAX_TIPS * 3);
     this.tipDir = new Float32Array(n * 3);
     this.tipFrame = new Int32Array(n);
@@ -372,9 +410,14 @@ export class ExhaustFx {
     for (let i = 0; i < curr.length; i++) {
       const p = prev[i];
       const c = curr[i];
-      if (!p || !this.views[i] || !this.wants(i, c.x, c.z, cam)) continue;
+      if (!p || !this.views[i] || !this.wants(i, c.x, c.z, cam)) {
+        this.hold[i] = 0;
+        this.brakeHeat[i] = 0;
+        continue;
+      }
       const rc = race.cars[i];
       const frac = p.rpm / rc.tuning.engine.redline;
+      this.heatTick(i, c, c.rpm / rc.tuning.engine.redline);
       if (c.throttle >= O.throttle) this.pedalTick[i] = race.tick;
       // Upshift under power near the redline.
       if (c.gear > p.gear && p.gear >= 1 && p.throttle >= U.throttle && frac >= U.rpmFrac && time - this.lastShift[i] >= U.cooldown) {
@@ -400,6 +443,22 @@ export class ExhaustFx {
         }
       }
     }
+  }
+
+  /** One sim tick of car `i`'s hot moments (`frac`: rpm share of the redline): what holds its exhaust heat up, and its front brakes' heat. */
+  private heatTick(i: number, c: Snap, frac: number): void {
+    const H = EXHAUST_FX.haze;
+    const { launch: L, limiter: R, pull: P, brake: B } = H;
+    let hold = c.nitro ? H.nitro[Math.max(1, Math.min(3, c.nitroStage)) - 1] : 0;
+    this.launchTime[i] = c.speed < L.maxSpeed && c.throttle >= L.throttle && frac >= L.rpmFrac ? this.launchTime[i] + DT : 0;
+    hold = Math.max(hold, L.heat * clamp01(this.launchTime[i] / L.build));
+    if (c.gear > 0 && c.throttle >= R.throttle && frac >= R.rpmFrac) hold = Math.max(hold, R.heat);
+    const flat = c.gear > 0 && c.throttle >= P.throttle && frac >= P.rpmFrac && c.speed >= P.minSpeed;
+    this.pullTime[i] = flat ? this.pullTime[i] + DT : Math.max(0, this.pullTime[i] - 2 * DT);
+    hold = Math.max(hold, P.heat * clamp01((this.pullTime[i] - P.after) / P.build));
+    this.hold[i] = hold;
+    const b = this.brakeHeat[i] + (c.braking ? B.gain * clamp01(c.speed / B.fullSpeed) * DT : 0);
+    this.brakeHeat[i] = Math.min(1, b - b * damp(B.cool, DT));
   }
 
   /** The tips of car `i` and the exhaust direction in the world, from its body this frame (cached per frame). */
@@ -463,6 +522,11 @@ export class ExhaustFx {
     } else this.dirtyCount = Math.min(this.size, this.dirtyCount + 1);
   }
 
+  /** A flame's heat into car `i`'s haze, at once. */
+  private warm(i: number, by: number): void {
+    this.heat[i] = Math.min(1, this.heat[i] + by);
+  }
+
   /** Bumper glow at tip `k`: a round puff of light on the tail around the pipe (no real light). */
   private glow(time: number, i: number, k: number, pose: Snap, size: number, rgb: readonly number[], life: number): void {
     this.spawn(time, i, k, pose, life, size, 0, 0, rgb);
@@ -489,6 +553,7 @@ export class ExhaustFx {
     const O = EXHAUST_FX.overrun;
     const F = EXHAUST_FX.flutter;
     const G = EXHAUST_FX.glow;
+    const H = EXHAUST_FX.haze;
     for (let e = 0; e < this.evCount; ) {
       if (this.evAt[e] > time) {
         e++;
@@ -512,12 +577,14 @@ export class ExhaustFx {
         // A nitrous shift runs in the stage's color; otherwise the blue rooted orange tongue.
         const stage = pose.nitro ? Math.max(1, Math.min(3, pose.nitroStage)) - 1 : -1;
         const rgb = stage >= 0 ? STAGE_COLOR[stage] : U.color;
+        this.warm(i, H.kick.shift * (0.5 + 0.5 * size));
         for (let k = 0; k < n; k++) {
           this.spawn(time, i, k, pose, lerp(U.life, size), lerp(U.width, size), lerp(U.length, size) * (stage >= 0 ? 1.3 : 1), U.kick, rgb);
           this.glow(time, i, k, pose, 0.5 + 0.4 * size, stage >= 0 ? STAGE_COLOR[stage] : G.color, G.life);
         }
       } else if (kind === BANG) {
         const s = Math.round(size) - 1;
+        this.warm(i, H.kick.bang);
         for (let k = 0; k < n; k++) {
           this.spawn(time, i, k, pose, N.bangLife[s], N.bangWidth[s], N.bangLength[s], U.kick * 1.4, STAGE_COLOR[s], 1.2);
           this.glow(time, i, k, pose, N.glow[s], STAGE_COLOR[s], N.bangLife[s] * 0.6);
@@ -525,6 +592,7 @@ export class ExhaustFx {
       } else if (kind === POP) {
         // One pipe spits: a small tongue and a pinch of glow on the bumper.
         const k = n > 0 ? tipK % n : 0;
+        this.warm(i, H.kick.pop);
         if (n > 0) {
           this.spawn(time, i, k, pose, lerp(O.life, size), lerp(O.width, size), lerp(O.length, size), U.kick * 0.6, O.color);
           this.glow(time, i, k, pose, O.glow * (0.7 + 0.5 * size), G.color, G.life * 0.6);
@@ -581,53 +649,70 @@ export class ExhaustFx {
   }
 
   /**
-   * Heat haze for this frame: the hottest nearby exhausts become up to `blobs` refraction blobs on `post`
-   * (x, y in screen UV, radius in screen heights, strength). Call after the camera is placed for the frame.
+   * Heat haze for this frame: the nearest hot exhausts and front brakes become up to `blobs` refraction blobs on
+   * `post` (x, y in screen UV, radius in screen heights, strength). Call after the camera is placed for the frame.
    */
-  haze(post: PostFx, camera: THREE.PerspectiveCamera, poses: readonly Snap[], redlines: readonly number[], time: number, dt: number, paused: boolean): void {
+  haze(post: PostFx, camera: THREE.PerspectiveCamera, poses: readonly Snap[], time: number, dt: number, paused: boolean): void {
     const H = EXHAUST_FX.haze;
+    const B = H.brake;
     const maxBlobs = paused ? 0 : H.blobs[this.quality];
-    // Ease every car's heat toward what its engine and pedal say; a cold or far car cools to nothing.
+    // Ease every car's heat toward what its hot moments hold it at (nothing when none is on); the flames' kicks land in spawnEvents.
     for (let i = 0; i < poses.length; i++) {
-      const p = poses[i];
-      const rpm = clamp01(p.rpm / (redlines[i] || 7000));
-      const hot = H.rpmWeight * rpm * rpm + H.pedalWeight * p.throttle * rpm + H.nitroWeight * (p.nitro ? 1 : 0);
-      this.heat[i] += (hot - this.heat[i]) * damp(hot > this.heat[i] ? H.rise : H.fall, paused ? 0 : dt);
+      const hold = this.hold[i];
+      this.heat[i] += (hold - this.heat[i]) * damp(hold > this.heat[i] ? H.rise : H.fall, paused ? 0 : dt);
     }
     let count = 0;
     if (maxBlobs > 0) {
       camera.updateMatrixWorld();
       const tanHalf = Math.tan((camera.fov * Math.PI) / 360);
       const blobs = post.hazeBlobs;
-      // Nearest first: each pass picks the closest car not yet blobbed.
-      let taken = 0;
+      // Nearest first: each pass picks the closest source not yet blobbed (per car its exhaust, then each front brake).
+      this.taken.fill(0);
       for (; count < maxBlobs; count++) {
         let best = -1;
         let bestD = H.range * H.range;
         for (let i = 0; i < poses.length; i++) {
-          if (taken & (1 << i) || !this.views[i] || this.heat[i] < 0.01) continue;
+          if (!this.views[i]) continue;
           const dx = poses[i].x - camera.position.x;
           const dz = poses[i].z - camera.position.z;
           const d2 = dx * dx + dz * dz;
-          if (d2 < bestD) {
+          if (d2 >= bestD) continue;
+          for (let k = 0; k < 3; k++) {
+            if (this.taken[i * 3 + k] || this.sourceHeat(i, k, poses[i]) < 0.01) continue;
             bestD = d2;
-            best = i;
+            best = i * 3 + k;
+            break;
           }
         }
         if (best < 0) break;
-        taken |= 1 << best;
-        // The blob's middle: behind the tips' centre along the exhaust and a little up.
-        const n = this.tips(best);
-        let cx = 0;
-        let cy = 0;
-        let cz = 0;
-        for (let k = 0; k < n; k++) {
-          cx += this.tipPos[(best * MAX_TIPS + k) * 3];
-          cy += this.tipPos[(best * MAX_TIPS + k) * 3 + 1];
-          cz += this.tipPos[(best * MAX_TIPS + k) * 3 + 2];
+        this.taken[best] = 1;
+        const i = Math.floor(best / 3);
+        const k = best - i * 3;
+        let radius: number = H.radius;
+        let peak: number = H.max;
+        if (k === 0) {
+          // The exhaust blob's middle: behind the tips' centre along the exhaust and a little up.
+          const n = this.tips(i);
+          let cx = 0;
+          let cy = 0;
+          let cz = 0;
+          for (let t = 0; t < n; t++) {
+            cx += this.tipPos[(i * MAX_TIPS + t) * 3];
+            cy += this.tipPos[(i * MAX_TIPS + t) * 3 + 1];
+            cz += this.tipPos[(i * MAX_TIPS + t) * 3 + 2];
+          }
+          const inv = n > 0 ? 1 / n : 0;
+          V.set(cx * inv + this.tipDir[i * 3] * H.behind, cy * inv + this.tipDir[i * 3 + 1] * H.behind + H.up, cz * inv + this.tipDir[i * 3 + 2] * H.behind);
+        } else {
+          // A front brake's blob: over that wheel's centre, rising off the tire.
+          const view = this.views[i];
+          const w = view.car.wheels[WHEEL_KEYS[k - 1]];
+          view.root.updateWorldMatrix(true, false);
+          V.set(w[0], w[1], w[2]).applyMatrix4(view.root.matrixWorld);
+          V.y += B.up;
+          radius = B.radius;
+          peak = B.max;
         }
-        const inv = n > 0 ? 1 / n : 0;
-        V.set(cx * inv + this.tipDir[best * 3] * H.behind, cy * inv + this.tipDir[best * 3 + 1] * H.behind + H.up, cz * inv + this.tipDir[best * 3 + 2] * H.behind);
         NDC.copy(V).applyMatrix4(camera.matrixWorldInverse);
         const depth = -NDC.z;
         if (depth < 0.5) {
@@ -637,11 +722,18 @@ export class ExhaustFx {
         NDC.copy(V).project(camera);
         // Fade toward the range's edge, and strength from the heat.
         const near = 1 - Math.sqrt(bestD) / H.range;
-        const strength = (H.min + (H.max - H.min) * this.heat[best]) * near * near * 1.6;
-        blobs[count].set(NDC.x * 0.5 + 0.5, NDC.y * 0.5 + 0.5, H.radius / (depth * 2 * tanHalf), strength);
+        const strength = peak * this.sourceHeat(i, k, poses[i]) * near * near * 1.6;
+        blobs[count].set(NDC.x * 0.5 + 0.5, NDC.y * 0.5 + 0.5, radius / (depth * 2 * tanHalf), strength);
       }
     }
     post.setHaze(count, time);
+  }
+
+  /** How hot haze source `k` of car `i` shows (0..1): 0 its exhaust, 1 and 2 its front brakes (seen only past `show` and as the car slows). */
+  private sourceHeat(i: number, k: number, pose: Snap): number {
+    if (k === 0) return this.heat[i];
+    const B = EXHAUST_FX.haze.brake;
+    return clamp01((this.brakeHeat[i] - B.show) / (1 - B.show)) * clamp01(1 - pose.speed / B.fadeSpeed);
   }
 
   dispose(): void {
