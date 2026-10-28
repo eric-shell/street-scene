@@ -15,8 +15,12 @@ describe('music catalog', () => {
         expect(album.title).toBeTruthy();
         expect(album.source).toBeTruthy();
         expect(album.sourceUrl).toMatch(/^https:\/\//);
-        expect(album.license).toMatch(/^CC /);
-        expect(album.licenseUrl).toMatch(/^https:\/\/creativecommons\.org\/licenses\//);
+        // A Creative Commons licence with its deed, or a track the artist let us use directly.
+        if (album.license === 'Used with permission') expect(album.licenseUrl).toMatch(/^https:\/\//);
+        else {
+          expect(album.license).toMatch(/^CC /);
+          expect(album.licenseUrl).toMatch(/^https:\/\/creativecommons\.org\/licenses\//);
+        }
         for (const t of album.tracks) {
           tracks++;
           expect(t.title).toBeTruthy();
