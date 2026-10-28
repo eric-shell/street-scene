@@ -9,7 +9,7 @@
  * the axes, the planter pots and the lanterns are destructible props (render/street/props.ts).
  *
  * Lakeside pond: the water as the lake draws it (a flat polygon at the pond's level in the
- * river's dark mirror material, waterMaterial), a muddy band at the waterline, reed clumps
+ * shared water material, districts/water.ts), a muddy band at the waterline, reed clumps
  * round the shore, the jetty (the sim's 'jetty' solid: a plank deck with plank joints and a
  * lantern post at its tip) and, above the low tier, a shimmering reflection of each lantern
  * near the water. The lake's reflection shader is repeated here in brief: lake.ts keeps its
@@ -25,7 +25,7 @@ import type { Vec2 } from '../../sim/math';
 import { GeoBuilder } from '../geoBuilder';
 import type { DistrictKit } from './kit';
 import { col, cylinder, drapeConvex, fountainBasin, groundLine, groundVertex, prism } from './kit';
-import { waterMaterial } from './river';
+import { WATER, waterMaterial } from './water';
 import { heightFogShader } from '../heightFog';
 
 const POND = CITY.districts.park.lakeside;
@@ -168,8 +168,7 @@ function drawPond(kit: DistrictKit, b: AreaBuild, water: Vec2[], v: number[], se
     const ids = [p, q, r].map((pt) => wet.vertex(pt.x, W, pt.z, 0, 1, 0, pt.x / 8, pt.z / 8, LOOK.water));
     wet.triFacing(ids[0], ids[1], ids[2], 0, 1, 0);
   }
-  const mat = kit.track(waterMaterial());
-  mat.roughness = LOOK.waterRoughness;
+  const mat = kit.track(waterMaterial(kit, { quality: kit.quality, calm: WATER.calm.pond, roughness: LOOK.waterRoughness }));
   addMesh(kit, wet, mat, `pondWater`, 1);
 
   // A band of mud where the bank meets the water.

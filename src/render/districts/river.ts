@@ -38,6 +38,7 @@ import { GeoBuilder } from '../geoBuilder';
 import { RIVER_TEX, UvRect, riverTextures } from '../textures/riverTextures';
 import type { DistrictKit, DistrictRenderer } from './kit';
 import { col, cylinder, stringLights, wallBox } from './kit';
+import { WATER, waterMaterial } from './water';
 
 /** Layout of the dressing (m), lamp and tint choices. */
 const DRESS = {
@@ -123,14 +124,6 @@ const TINT = {
 } as const;
 
 
-/**
- * Water as the city draws it (the river's trickle and puddles, the lake): a dark mirror, vertex tinted,
- * that the sky and the city's lights reflect in, see-through enough to hint at the bed under it.
- */
-export function waterMaterial(): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.08, metalness: 0.95, transparent: true, opacity: 0.86, envMapIntensity: 2.4, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-}
-
 export const riverRenderer: DistrictRenderer = {
   kinds: ['river'],
   build(kit, areas) {
@@ -178,6 +171,8 @@ function buildChannel(kit: DistrictKit, a: Area): void {
   const decal = new GeoBuilder(true);
   const fence = new GeoBuilder(true);
   const wet = new GeoBuilder(true);
+  /** The standing water on the floor (puddles): the shared water material, ringed by rain; the trickle in `wet` keeps its own flat look. */
+  const puddles = new GeoBuilder(true);
   const pools = new GeoBuilder(true);
   const span = RIVER_TEX.concreteSpan;
 
@@ -677,7 +672,7 @@ function buildChannel(kit: DistrictKit, a: Area): void {
     const r0 = rng.range(DRESS.puddleRadius[0], DRESS.puddleRadius[1]);
     const l = rng.chance(0.65) ? -rng.range(3, F - r0 - 1) : rng.range(wo + wh + r0 + 0.5, F - r0 - 1);
     const czp = zc(x) + l;
-    const c = wet.vertex(x, hLow(x, czp) + 0.03, czp, 0, 1, 0, 0, 0, TINT.puddle);
+    const c = puddles.vertex(x, hLow(x, czp) + 0.03, czp, 0, 1, 0, 0, 0, TINT.puddle);
     const ring: number[] = [];
     const n = 12;
     for (let i = 0; i < n; i++) {
@@ -685,9 +680,9 @@ function buildChannel(kit: DistrictKit, a: Area): void {
       const rr = r0 * rng.range(0.7, 1.15);
       const px = x + Math.cos(ang) * rr * 1.6;
       const pz = czp + Math.sin(ang) * rr;
-      ring.push(wet.vertex(px, hLow(px, pz) + 0.03, pz, 0, 1, 0, 0, 0, TINT.puddle));
+      ring.push(puddles.vertex(px, hLow(px, pz) + 0.03, pz, 0, 1, 0, 0, 0, TINT.puddle));
     }
-    for (let i = 0; i < n; i++) wet.triFacing(c, ring[i], ring[(i + 1) % n], 0, 1, 0);
+    for (let i = 0; i < n; i++) puddles.triFacing(c, ring[i], ring[(i + 1) % n], 0, 1, 0);
   }
 
   // ----- A faded dashed line along each floor edge (shared paint builder, on the channel level).
@@ -709,6 +704,7 @@ function buildChannel(kit: DistrictKit, a: Area): void {
     kit.group.add(m);
     return m;
   };
+  const flatWater = waterMaterial(kit, { quality: kit.quality, flat: true });
   const concreteMat = new THREE.MeshStandardMaterial({ map: tex.concrete, vertexColors: true, roughness: 0.93, metalness: 0, envMapIntensity: 0.35 });
   add(concrete, 'riverConcrete', concreteMat);
   add(
@@ -718,7 +714,8 @@ function buildChannel(kit: DistrictKit, a: Area): void {
     1,
   );
   add(fence, 'riverFence', new THREE.MeshStandardMaterial({ map: tex.chainlink, alphaTest: 0.45, side: THREE.DoubleSide, vertexColors: true, roughness: 0.45, metalness: 0.75, envMapIntensity: 0.7 }));
-  add(wet, 'riverWater', waterMaterial(), 1);
+  add(wet, 'riverWater', flatWater, 1);
+  add(puddles, 'riverPuddles', waterMaterial(kit, { quality: kit.quality, calm: WATER.calm.puddle }), 1);
   add(pools, 'riverLightPools', new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }), 2);
 }
 

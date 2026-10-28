@@ -4,7 +4,7 @@
  * railing, water, breakwater and buoys) keeps one look per wall:
  *  - floating pontoons on guide piles, a gangway down from the quay, finger berths either side, dock lights;
  *  - moored sailboats (mast, furled sail, masthead light) and motor yachts (flybridge, lit saloon), hulls in a
- *    few colours, each a couple of hundred triangles in the kit's shared builders;
+ *    few colours, each a couple of hundred triangles, drawn into a `BoatFleet` (boats.ts) that rocks them on the swell;
  *  - the fuel dock (canopy, pumps, a lit sign), the yacht club on a deck over the water (lit windows, a terrace
  *    with tables and string lights, a flag) and the dinghies pulled up on its deck or tied off afloat;
  *  - the boardwalk, planking laid over the quay's edge (concrete underneath: it drives like the sidewalk it
@@ -20,6 +20,7 @@ import { coastNormal, coastV, framePoint, frameU, harborFrame, waterLevel } from
 import type { Vec2 } from '../../sim/math';
 import type { GeoBuilder } from '../geoBuilder';
 import type { DistrictKit } from './kit';
+import { BoatFleet, mooringPhase } from './boats';
 import { col, cylinder, groundLine, stringLights } from './kit';
 
 const CFG = CITY.districts.waterfront;
@@ -79,11 +80,14 @@ export function drawMarina(kit: DistrictKit, a: Area, b: AreaBuild, t: MarinaToo
     else if (h.kind === 'fuel') fuelDock(kit, a, h, t);
     else if (h.kind === 'clubhouse') clubhouse(kit, a, h, t);
   }
+  // The boats afloat go into their own fleet, which rocks on the swell (boats.ts); the dinghies on the club's deck stay in the kit.
+  const fleet = new BoatFleet();
   for (const pr of b.props) {
-    if (pr.kind === 'sailboat') sailboat(kit, a, pr, t);
-    else if (pr.kind === 'yacht') yacht(kit, a, pr, t);
-    else if (pr.kind === 'dinghy') dinghy(kit, a, pr, t);
+    if (pr.kind === 'sailboat') sailboat(fleet, a, pr, t);
+    else if (pr.kind === 'yacht') yacht(fleet, a, pr, t);
+    else if (pr.kind === 'dinghy') dinghy(kit, fleet, a, pr, t);
   }
+  fleet.mount(kit, 'marinaBoats');
 }
 
 /** Planking along the quay's edge inside the railing: three bands of boards, in a darker and a lighter wood. */
@@ -295,7 +299,7 @@ function outline(L: number, B: number): [number, number][] {
  * waterline, the topsides, the deck. Returns the placing function (s along the boat, o across), the
  * deck's height and the waterline.
  */
-function hull(kit: DistrictKit, a: Area, pr: AreaProp, freeboard: number, c: THREE.Color): { pt: (s: number, o: number) => Vec2; deck: number; W: number; fx: number; fz: number } {
+function hull(fl: BoatFleet, a: Area, pr: AreaProp, freeboard: number, c: THREE.Color): { pt: (s: number, o: number) => Vec2; deck: number; W: number; fx: number; fz: number } {
   const fx = Math.sin(pr.yaw);
   const fz = Math.cos(pr.yaw);
   const rx = fz;
@@ -321,83 +325,87 @@ function hull(kit: DistrictKit, a: Area, pr: AreaProp, freeboard: number, c: THR
         nx = -nx;
         nz = -nz;
       }
-      const v = [kit.solid.vertex(p0.x, y0, p0.z, nx, 0, nz, 0, 0, color), kit.solid.vertex(p1.x, y0, p1.z, nx, 0, nz, 1, 0, color), kit.solid.vertex(q1.x, y1, q1.z, nx, 0, nz, 1, 1, color), kit.solid.vertex(q0.x, y1, q0.z, nx, 0, nz, 0, 1, color)];
-      kit.solid.quadFacing(v[0], v[1], v[2], v[3], nx, 0, nz);
+      const v = [fl.solid.vertex(p0.x, y0, p0.z, nx, 0, nz, 0, 0, color), fl.solid.vertex(p1.x, y0, p1.z, nx, 0, nz, 1, 0, color), fl.solid.vertex(q1.x, y1, q1.z, nx, 0, nz, 1, 1, color), fl.solid.vertex(q0.x, y1, q0.z, nx, 0, nz, 0, 1, color)];
+      fl.solid.quadFacing(v[0], v[1], v[2], v[3], nx, 0, nz);
     }
   };
   band(W - 0.6, 0.78, W + 0.12, 0.96, M.boot);
   band(W + 0.12, 0.96, deck, 1, c);
-  const centre = kit.solid.vertex(pr.x, deck, pr.z, 0, 1, 0, 0, 0, M.decking);
+  const centre = fl.solid.vertex(pr.x, deck, pr.z, 0, 1, 0, 0, 0, M.decking);
   const deckRing = ring.map(([s, o]) => {
     const q = pt(s, o);
-    return kit.solid.vertex(q.x, deck, q.z, 0, 1, 0, 0, 0, M.decking);
+    return fl.solid.vertex(q.x, deck, q.z, 0, 1, 0, 0, 0, M.decking);
   });
-  for (let i = 0; i < deckRing.length; i++) kit.solid.triFacing(centre, deckRing[i], deckRing[(i + 1) % deckRing.length], 0, 1, 0);
+  for (let i = 0; i < deckRing.length; i++) fl.solid.triFacing(centre, deckRing[i], deckRing[(i + 1) % deckRing.length], 0, 1, 0);
   return { pt, deck, W, fx, fz };
 }
 
 /** A moored sailboat: hull, doghouse, a mast with a masthead light and furled sail on the boom, stays. */
-function sailboat(kit: DistrictKit, a: Area, pr: AreaProp, t: MarinaTools): void {
+function sailboat(fl: BoatFleet, a: Area, pr: AreaProp, t: MarinaTools): void {
   const k = hash(pr.x, pr.z);
   const L = pr.size;
   const B = pr.height;
-  const { pt, deck, fx, fz } = hull(kit, a, pr, 0.95, M.hullHigh[k % M.hullHigh.length]);
+  const mark = fl.begin();
+  const { pt, deck, fx, fz, W } = hull(fl, a, pr, 0.95, M.hullHigh[k % M.hullHigh.length]);
   const cab = pt(-L * 0.08, 0);
-  t.boxAt(kit.solid, cab.x, deck, cab.z, fx, fz, L * 0.17, B * 0.3, 0.55, M.cabin);
+  t.boxAt(fl.solid, cab.x, deck, cab.z, fx, fz, L * 0.17, B * 0.3, 0.55, M.cabin);
   const mast = pt(L * 0.12, 0);
   const H = L * 1.15;
-  cylinder(kit.solid, mast.x, mast.z, 0.07, deck, deck + H, 5, M.spar, false);
+  cylinder(fl.solid, mast.x, mast.z, 0.07, deck, deck + H, 5, M.spar, false);
   const aft = pt(-L * 0.42, 0);
-  t.beam(kit.solid, mast.x, deck + 1.5, mast.z, aft.x, deck + 1.5, aft.z, 0.06, M.spar);
-  t.beam(kit.solid, mast.x, deck + 1.62, mast.z, aft.x, deck + 1.62, aft.z, 0.13, M.white);
+  t.beam(fl.solid, mast.x, deck + 1.5, mast.z, aft.x, deck + 1.5, aft.z, 0.06, M.spar);
+  t.beam(fl.solid, mast.x, deck + 1.62, mast.z, aft.x, deck + 1.62, aft.z, 0.13, M.white);
   const bow = pt(L * 0.48, 0);
-  t.beam(kit.solid, mast.x, deck + H - 0.5, mast.z, bow.x, deck + 0.4, bow.z, 0.012, M.stay);
-  t.beam(kit.solid, mast.x, deck + H - 0.5, mast.z, aft.x, deck + 0.4, aft.z, 0.012, M.stay);
-  t.lamp(kit.glow, mast.x, deck + H + 0.15, mast.z, 0.2, M.masthead);
+  t.beam(fl.solid, mast.x, deck + H - 0.5, mast.z, bow.x, deck + 0.4, bow.z, 0.012, M.stay);
+  t.beam(fl.solid, mast.x, deck + H - 0.5, mast.z, aft.x, deck + 0.4, aft.z, 0.012, M.stay);
+  t.lamp(fl.glow, mast.x, deck + H + 0.15, mast.z, 0.2, M.masthead);
   if (k % 3 === 0) t.light(mast.x, deck + H, mast.z, M.masthead.clone().multiplyScalar(0.12), 0.8);
   // A lit cabin on about half of them, a stern light on most.
   if (k % 2) {
     for (const o of [-1, 1]) {
       const q = pt(-L * 0.08, o * B * 0.3);
-      t.solidBox(kit.glow, pt(-L * 0.08 - L * 0.1, o * B * 0.3), pt(-L * 0.08 + L * 0.1, o * B * 0.3), fz * o * 0.03, -fx * o * 0.03, deck + 0.18, deck + 0.42, M.glass);
+      t.solidBox(fl.glow, pt(-L * 0.08 - L * 0.1, o * B * 0.3), pt(-L * 0.08 + L * 0.1, o * B * 0.3), fz * o * 0.03, -fx * o * 0.03, deck + 0.18, deck + 0.42, M.glass);
       void q;
     }
   }
   const stern = pt(-L * 0.5 + 0.1, 0);
-  t.lamp(kit.glow, stern.x, deck + 0.9, stern.z, 0.14, M.masthead);
+  t.lamp(fl.glow, stern.x, deck + 0.9, stern.z, 0.14, M.masthead);
+  fl.end(mark, { x: pr.x, z: pr.z, y: W, phase: mooringPhase(pr.x, pr.z), kind: 'sailboat' });
 }
 
 /** A moored motor yacht: a tall hull, saloon and flybridge with lit windows, a radar mast and running lights. */
-function yacht(kit: DistrictKit, a: Area, pr: AreaProp, t: MarinaTools): void {
+function yacht(fl: BoatFleet, a: Area, pr: AreaProp, t: MarinaTools): void {
   const k = hash(pr.x, pr.z);
   const L = pr.size;
   const B = pr.height;
-  const { pt, deck, fx, fz } = hull(kit, a, pr, 1.35, M.hullHigh[(k + 2) % M.hullHigh.length]);
+  const mark = fl.begin();
+  const { pt, deck, fx, fz, W } = hull(fl, a, pr, 1.35, M.hullHigh[(k + 2) % M.hullHigh.length]);
   const sal = pt(-L * 0.08, 0);
-  t.boxAt(kit.solid, sal.x, deck, sal.z, fx, fz, L * 0.3, B * 0.38, 1.4, M.white);
-  t.boxAt(kit.solid, sal.x, deck + 1.4, sal.z, fx, fz, L * 0.32, B * 0.4, 0.12, M.cabin);
+  t.boxAt(fl.solid, sal.x, deck, sal.z, fx, fz, L * 0.3, B * 0.38, 1.4, M.white);
+  t.boxAt(fl.solid, sal.x, deck + 1.4, sal.z, fx, fz, L * 0.32, B * 0.4, 0.12, M.cabin);
   const fly = pt(-L * 0.12, 0);
-  t.boxAt(kit.solid, fly.x, deck + 1.52, fly.z, fx, fz, L * 0.15, B * 0.3, 1.0, M.white);
-  t.boxAt(kit.solid, fly.x, deck + 2.52, fly.z, fx, fz, L * 0.17, B * 0.33, 0.1, M.cabin);
+  t.boxAt(fl.solid, fly.x, deck + 1.52, fly.z, fx, fz, L * 0.15, B * 0.3, 1.0, M.white);
+  t.boxAt(fl.solid, fly.x, deck + 2.52, fly.z, fx, fz, L * 0.17, B * 0.33, 0.1, M.cabin);
   const lit = k % 4 !== 0;
   for (const o of [-1, 1]) {
-    t.solidBox(kit.glow, pt(-L * 0.08 - L * 0.24, o * B * 0.386), pt(-L * 0.08 + L * 0.2, o * B * 0.386), fz * o * 0.03, -fx * o * 0.03, deck + 0.4, deck + 1.1, lit ? M.glass : M.glassDim);
+    t.solidBox(fl.glow, pt(-L * 0.08 - L * 0.24, o * B * 0.386), pt(-L * 0.08 + L * 0.2, o * B * 0.386), fz * o * 0.03, -fx * o * 0.03, deck + 0.4, deck + 1.1, lit ? M.glass : M.glassDim);
   }
-  t.solidBox(kit.glow, pt(-L * 0.12 + L * 0.15 + 0.03, -B * 0.25), pt(-L * 0.12 + L * 0.15 + 0.03, B * 0.25), fx * 0.03, fz * 0.03, deck + 1.7, deck + 2.3, lit ? M.glass : M.glassDim);
+  t.solidBox(fl.glow, pt(-L * 0.12 + L * 0.15 + 0.03, -B * 0.25), pt(-L * 0.12 + L * 0.15 + 0.03, B * 0.25), fx * 0.03, fz * 0.03, deck + 1.7, deck + 2.3, lit ? M.glass : M.glassDim);
   const mast = pt(-L * 0.12, 0);
-  cylinder(kit.solid, mast.x, mast.z, 0.05, deck + 2.6, deck + 4.4, 5, M.spar, false);
-  t.lamp(kit.glow, mast.x, deck + 4.5, mast.z, 0.2, M.masthead);
+  cylinder(fl.solid, mast.x, mast.z, 0.05, deck + 2.6, deck + 4.4, 5, M.spar, false);
+  t.lamp(fl.glow, mast.x, deck + 4.5, mast.z, 0.2, M.masthead);
   const bow = pt(L * 0.34, 0);
-  t.lamp(kit.glow, bow.x, deck + 0.5, bow.z, 0.14, M.masthead);
+  t.lamp(fl.glow, bow.x, deck + 0.5, bow.z, 0.14, M.masthead);
   for (const o of [-1, 1]) {
     const q = pt(L * 0.22, o * B * 0.48);
-    t.lamp(kit.glow, q.x, deck + 0.35, q.z, 0.14, o < 0 ? M.navRed : M.navGreen);
+    t.lamp(fl.glow, q.x, deck + 0.35, q.z, 0.14, o < 0 ? M.navRed : M.navGreen);
   }
   if (k % 3 === 1) t.light(sal.x, deck + 1.2, sal.z, M.glass.clone().multiplyScalar(0.1), 2.4);
+  fl.end(mark, { x: pr.x, z: pr.z, y: W, phase: mooringPhase(pr.x, pr.z), kind: 'yacht' });
 }
 
 /** A dinghy (prop: centre, yaw, size length; height 1 afloat tied off, 0 pulled up bottom up on the club's deck). */
-function dinghy(kit: DistrictKit, a: Area, pr: AreaProp, t: MarinaTools): void {
+function dinghy(kit: DistrictKit, fl: BoatFleet, a: Area, pr: AreaProp, t: MarinaTools): void {
   const fx = Math.sin(pr.yaw);
   const fz = Math.cos(pr.yaw);
   const rx = fz;
@@ -406,6 +414,9 @@ function dinghy(kit: DistrictKit, a: Area, pr: AreaProp, t: MarinaTools): void {
   const B = L * 0.42;
   const c = M.dinghy[hash(pr.x, pr.z) % M.dinghy.length];
   const afloat = pr.height > 0.5;
+  // Afloat it rocks with the fleet; pulled up on the deck it stays in the kit's solid.
+  const gb = afloat ? fl.solid : kit.solid;
+  const mark = fl.begin();
   const base = afloat ? sea(a, pr.x, pr.z) - 0.15 : t.quayTop(frameU(harborFrame(a), pr.x, pr.z)) + 0.3;
   const pt = (s: number, o: number): Vec2 => ({ x: pr.x + fx * s + rx * o, z: pr.z + fz * s + rz * o });
   const ring: [number, number][] = [[-L / 2, -B * 0.45], [L * 0.1, -B / 2], [L / 2, 0], [L * 0.1, B / 2], [-L / 2, B * 0.45]];
@@ -422,22 +433,23 @@ function dinghy(kit: DistrictKit, a: Area, pr: AreaProp, t: MarinaTools): void {
       nx = -nx;
       nz = -nz;
     }
-    const v = [kit.solid.vertex(p0.x, base, p0.z, nx, 0, nz, 0, 0, c), kit.solid.vertex(p1.x, base, p1.z, nx, 0, nz, 1, 0, c), kit.solid.vertex(p1.x, base + h, p1.z, nx, 0, nz, 1, 1, c), kit.solid.vertex(p0.x, base + h, p0.z, nx, 0, nz, 0, 1, c)];
-    kit.solid.quadFacing(v[0], v[1], v[2], v[3], nx, 0, nz);
+    const v = [gb.vertex(p0.x, base, p0.z, nx, 0, nz, 0, 0, c), gb.vertex(p1.x, base, p1.z, nx, 0, nz, 1, 0, c), gb.vertex(p1.x, base + h, p1.z, nx, 0, nz, 1, 1, c), gb.vertex(p0.x, base + h, p0.z, nx, 0, nz, 0, 1, c)];
+    gb.quadFacing(v[0], v[1], v[2], v[3], nx, 0, nz);
   }
   // Afloat it is open (a thwart across); pulled up it is closed over, on two rack beams.
   if (afloat) {
-    t.boxAt(kit.solid, pr.x, base + 0.25, pr.z, rx, rz, B * 0.45, 0.04, 0.05, M.decking);
+    t.boxAt(gb, pr.x, base + 0.25, pr.z, rx, rz, B * 0.45, 0.04, 0.05, M.decking);
   } else {
-    const centre = kit.solid.vertex(pr.x, base + h, pr.z, 0, 1, 0, 0, 0, c);
+    const centre = gb.vertex(pr.x, base + h, pr.z, 0, 1, 0, 0, 0, c);
     const ids = ring.map(([s, o]) => {
       const q = pt(s, o);
-      return kit.solid.vertex(q.x, base + h, q.z, 0, 1, 0, 0, 0, c);
+      return gb.vertex(q.x, base + h, q.z, 0, 1, 0, 0, 0, c);
     });
-    for (let i = 0; i < ids.length; i++) kit.solid.triFacing(centre, ids[i], ids[(i + 1) % ids.length], 0, 1, 0);
+    for (let i = 0; i < ids.length; i++) gb.triFacing(centre, ids[i], ids[(i + 1) % ids.length], 0, 1, 0);
     for (const s of [-L * 0.28, L * 0.22]) {
       const q = pt(s, 0);
-      t.boxAt(kit.solid, q.x, base - 0.3, q.z, rx, rz, B / 2, 0.06, 0.3, M.pile);
+      t.boxAt(gb, q.x, base - 0.3, q.z, rx, rz, B / 2, 0.06, 0.3, M.pile);
     }
   }
+  if (afloat) fl.end(mark, { x: pr.x, z: pr.z, y: base + 0.15, phase: mooringPhase(pr.x, pr.z), kind: 'dinghy' });
 }

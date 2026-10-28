@@ -23,6 +23,7 @@ import { buildProps, PropRenderer } from './street/props';
 import { buildDistrictMeshes } from './districts';
 import { Backdrop, buildBackdrop } from './sky/backdrop';
 import { buildFireworks } from './sky/fireworks';
+import { driveWaterSky } from './sky/waterSky';
 import { CROWD_IMPOSTOR, CROWD_QUALITY, buildCrowds, Crowds } from './race/crowds';
 import { buildIdlers, Idlers } from './people/idlers';
 import { peopleOf } from '../city/people/people';
@@ -428,6 +429,8 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
       // The sky follows the weather (stars, moon, the cloud over it, the haze on the ridges), and wetter streets glow further.
       backdrop.setMood(weather.live);
       clouds?.update(time, scene);
+      // The water follows the sky: the moon's glint, the wind's ripples, the rain's rings (districts/water.ts).
+      driveWaterSky(weather, backdrop.moonDirection(), time);
       const wetter = 1 + FX_STRENGTH.perWet * (weather.live.wet - weather.def.wet);
       fx.setStrength(FX_STRENGTH.pool * wetter, FX_STRENGTH.streak * wetter);
       air.update(time);

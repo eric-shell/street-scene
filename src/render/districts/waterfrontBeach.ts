@@ -12,6 +12,7 @@
  *    edge and on the dune jumps' crests;
  *  - the pier ('pier' solid over the sand, drawn on out over the water): a plank deck on pile bents with a ramp up from
  *    the boardwalk, railings, lamps (reflected in the water) and a T head with a lit pavilion;
+ *  - two or three small boats at anchor out past the surf, riding the swell with their anchor lights (boats.ts);
  *  - the surf: a low bank of foam along the waterline (the sim's 'surf' wall) and animated foam, additive strips on the
  *    water scrolled on the scene clock: the swash running up the sand, an inner and an outer break (Medium and High), set
  *    by the wind's gusts (sky/wind.ts); and gulls perched on the pier, the towers and a flock over the water.
@@ -28,6 +29,7 @@ import { HEIGHT_FOG_GLSL, HEIGHT_FOG_UNIFORMS, heightFogShader } from '../height
 import { WIND } from '../sky/wind';
 import type { DistrictKit } from './kit';
 import { col, cylinder, groundLine, groundVertex, stringLights, wallBox } from './kit';
+import { BoatFleet, mooringPhase } from './boats';
 import { palm } from './trees';
 import { drawMouths, flock, gull, type YardTools } from './waterfrontYard';
 
@@ -131,9 +133,102 @@ export function drawBeach(kit: DistrictKit, a: Area, b: AreaBuild, t: BeachTools
   for (const w of kit.walls.get('surf') ?? []) if (w.area === a.id) wallBox(kit, kit.solid, w, LOOK.bank.thick, LOOK.bank.h, LOOK.foam, -0.4);
   surf(kit, a);
 
+  // ----- A few boats at anchor out past the surf, riding the swell (boats.ts).
+  anchoredBoats(kit, a, b, t, rng);
+
   // ----- Gulls: perched on the pier's rail and the towers' roofs, a flock over the water.
   for (const g of perches) gull(kit, t, g.x, g.y, g.z, g.yaw, false);
   if (!low) flock(kit, t, a, rng);
+}
+
+/** The boats at anchor: how many, how far past the coast line (m), the room each keeps from the others and the pier (m), and their palette. */
+const ANCHORED = {
+  count: [2, 3] as [number, number],
+  out: [58, 105] as [number, number],
+  room: 45,
+  pierRoom: 40,
+  length: [5.5, 8.5] as [number, number],
+  hull: [col(0xe8e6de), col(0x2f6aa8), col(0xd8d2b8), col(0x9a2a24)],
+  boot: col(0x16181c),
+  cabin: col(0xcfcbbd),
+  anchor: col(0xffffff, 1.8),
+  window: col(0xffd28a, 1.4),
+} as const;
+
+/**
+ * Two or three small boats at anchor beyond the surf's outer break, bows to the sea, each with a cabin, a lit window
+ * and an all round anchor light on a short mast (reflected in the water). They swing on their lines and ride the swell
+ * with the rest of the fleet (boats.ts). Placed from the area's stream along the beach, clear of the pier and each other.
+ */
+function anchoredBoats(kit: DistrictKit, a: Area, b: AreaBuild, t: BeachTools, rng: Rng): void {
+  const p = a.params;
+  const f = harborFrame(a);
+  const A = ANCHORED;
+  const fleet = new BoatFleet();
+  const piers = b.hints.filter((h) => h.kind === 'pier').map((h) => frameU(f, h.points[1].x, h.points[1].z));
+  const placed: number[] = [];
+  const want = kit.quality === 'low' ? A.count[0] : rng.int(A.count[0], A.count[1]);
+  for (let tries = 0; tries < 40 && placed.length < want; tries++) {
+    const u = rng.range(p.pa + 40, p.pb - 40);
+    const out = rng.range(A.out[0], A.out[1]);
+    const yaw = Math.atan2(f.vx, f.vz) + rng.range(-0.5, 0.5);
+    const L = rng.range(A.length[0], A.length[1]);
+    const color = A.hull[Math.floor(rng.range(0, A.hull.length))];
+    if (placed.some((q) => Math.abs(q - u) < A.room) || piers.some((q) => Math.abs(q - u) < A.pierRoom)) continue;
+    placed.push(u);
+    const c = framePoint(f, u, coastV(p, u) + out);
+    const W = waterLevel(p, u);
+    const fx = Math.sin(yaw);
+    const fz = Math.cos(yaw);
+    const rx = fz;
+    const rz = -fx;
+    const B = L * 0.36;
+    const pt = (s: number, o: number): Vec2 => ({ x: c.x + fx * s + rx * o, z: c.z + fz * s + rz * o });
+    const mark = fleet.begin();
+    // The hull: a boot stripe at the waterline, topsides to the gunwale, a deck over it.
+    const ring: [number, number][] = [[-L / 2, -B * 0.4], [L * 0.1, -B / 2], [L * 0.38, -B * 0.28], [L / 2, 0], [L * 0.38, B * 0.28], [L * 0.1, B / 2], [-L / 2, B * 0.4]];
+    const band = (y0: number, k0: number, y1: number, k1: number, col2: THREE.Color) => {
+      for (let i = 0; i < ring.length; i++) {
+        const [s0, o0] = ring[i];
+        const [s1, o1] = ring[(i + 1) % ring.length];
+        const p0 = pt(s0 * k0, o0 * k0);
+        const p1 = pt(s1 * k0, o1 * k0);
+        const q0 = pt(s0 * k1, o0 * k1);
+        const q1 = pt(s1 * k1, o1 * k1);
+        let nx = p1.z - p0.z;
+        let nz = -(p1.x - p0.x);
+        const l = Math.hypot(nx, nz) || 1;
+        nx /= l;
+        nz /= l;
+        if (((p0.x + p1.x) / 2 - c.x) * nx + ((p0.z + p1.z) / 2 - c.z) * nz < 0) {
+          nx = -nx;
+          nz = -nz;
+        }
+        const v = [fleet.solid.vertex(p0.x, y0, p0.z, nx, 0, nz, 0, 0, col2), fleet.solid.vertex(p1.x, y0, p1.z, nx, 0, nz, 1, 0, col2), fleet.solid.vertex(q1.x, y1, q1.z, nx, 0, nz, 1, 1, col2), fleet.solid.vertex(q0.x, y1, q0.z, nx, 0, nz, 0, 1, col2)];
+        fleet.solid.quadFacing(v[0], v[1], v[2], v[3], nx, 0, nz);
+      }
+    };
+    const deck = W + 0.85;
+    band(W - 0.5, 0.8, W + 0.1, 0.97, A.boot);
+    band(W + 0.1, 0.97, deck, 1, color);
+    const centre = fleet.solid.vertex(c.x, deck, c.z, 0, 1, 0, 0, 0, A.cabin);
+    const deckRing = ring.map(([s, o]) => {
+      const q = pt(s, o);
+      return fleet.solid.vertex(q.x, deck, q.z, 0, 1, 0, 0, 0, A.cabin);
+    });
+    for (let i = 0; i < deckRing.length; i++) fleet.solid.triFacing(centre, deckRing[i], deckRing[(i + 1) % deckRing.length], 0, 1, 0);
+    // The cabin forward of amidships, a lit window across its front, the mast with the anchor light.
+    const cab = pt(L * 0.1, 0);
+    t.boxAt(fleet.solid, cab.x, deck, cab.z, fx, fz, L * 0.17, B * 0.34, 1.05, A.cabin);
+    const win = pt(L * 0.1 + L * 0.17 + 0.02, 0);
+    t.boxAt(fleet.glow, win.x, deck + 0.4, win.z, rx, rz, B * 0.24, 0.02, 0.4, A.window);
+    const mast = pt(L * 0.1 - L * 0.05, 0);
+    t.beam(fleet.solid, mast.x, deck + 1.05, mast.z, mast.x, deck + 2.7, mast.z, 0.04, A.cabin);
+    t.lamp(fleet.glow, mast.x, deck + 2.8, mast.z, 0.2, A.anchor);
+    t.light(mast.x, deck + 2.8, mast.z, A.anchor.clone().multiplyScalar(0.12), 0.9);
+    fleet.end(mark, { x: c.x, z: c.z, y: W, phase: mooringPhase(c.x, c.z), kind: 'anchored' });
+  }
+  fleet.mount(kit, 'beachBoats');
 }
 
 /** Sand draped on the ground from the dune edge to the waterline over [u0, u1], columns `step` m apart. */

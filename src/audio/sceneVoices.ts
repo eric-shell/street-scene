@@ -1,7 +1,7 @@
 /**
  * Standalone voices a scene owns rather than the race: the elevated train's
- * rumble, the news helicopter's rotors, the thunder of rain nights, a fireworks display, a far stadium crowd and the
- * San Francisco cable car's bell (struck, not fed: it plays its ring out). Each
+ * rumble, the news helicopter's rotors, the thunder of rain nights, a fireworks display, a far stadium crowd, the
+ * San Francisco cable car's bell and the harbor ferry's horn (both struck, not fed: they play out). Each
  * is created only after a user gesture (browsers refuse audio before that),
  * plays on the effects bus and fades out by itself when it stops being fed.
  */
@@ -424,6 +424,60 @@ export class CableBell {
   }
 }
 
+/** The ferry's horn: two long blasts' worth of a ship's two tone chord, as an offline rendered buffer. Hz of the two fundamentals, harmonics summed, seconds, attack and release (s), level, and the farthest low pass (Hz). */
+export const FERRY_HORN = {
+  tones: [110, 138.6],
+  harmonics: 8,
+  seconds: 2.4,
+  attack: 0.14,
+  release: 0.65,
+  level: 0.5,
+  open: 4200,
+} as const;
+
+/** One blast of a ship's horn: two fundamentals with a falling harmonic series (a bright reed), a slow swell in and a long tail out. */
+export function renderFerryHorn(sampleRate: number): Float32Array<ArrayBuffer> {
+  const H = FERRY_HORN;
+  const n = Math.round(sampleRate * H.seconds);
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const t = i / sampleRate;
+    let v = 0;
+    for (let k = 0; k < H.tones.length; k++) {
+      // A touch of drift between the two reeds so the chord beats slowly.
+      const f0 = H.tones[k] * (1 + 0.0012 * Math.sin(2 * Math.PI * (0.31 + 0.07 * k) * t));
+      for (let h = 1; h <= H.harmonics; h++) v += (1 / h) * Math.sin(2 * Math.PI * f0 * h * t + h * k);
+    }
+    const env = Math.min(1, t / H.attack) ** 1.5 * Math.min(1, (H.seconds - t) / H.release) ** 2;
+    out[i] = (v * env) / 4.4;
+  }
+  return out;
+}
+
+/**
+ * The harbor ferry's horn (render/districts/waterfrontFerry.ts blows it at the departure and as the boat comes in to the
+ * quay): one blast rendered offline once, played through a low pass that closes with distance (far horns are mostly the
+ * low tones), the voice's gain and panner on the ambience bus. Nothing loops, so a horn never blown costs nothing. Created
+ * only after a user gesture (browser policy).
+ */
+export class FerryHorn {
+  private ctx: AudioContext;
+  private out: GainNode;
+  private pan: StereoPannerNode;
+  private buf: AudioBuffer;
+
+  /** True while the browser still waits for the first user gesture. */
+  static blocked(): boolean {
+    return TrainRumble.blocked();
+  }
+
+  static create(): FerryHorn | null {
+    if (typeof window === 'undefined' || FerryHorn.blocked()) return null;
+    const h = audioHub();
+    if (!h) return null;
+    try {
+      return new FerryHorn(h);
+
 /**
  * Firework mix (render/sky/fireworks.ts): the boom's level and low pass (Hz, near and far), the launch thump's
  * level, the crackle's level and band (Hz), the distance (m) a burst is still heard at full weight, and the least
@@ -455,6 +509,35 @@ export class FireworkVoice {
   }
 
   private constructor(h: NonNullable<ReturnType<typeof audioHub>>) {
+    const ctx = (this.ctx = h.ctx);
+    this.out = ctx.createGain();
+    this.out.gain.value = FERRY_HORN.level;
+    this.pan = ctx.createStereoPanner();
+    this.out.connect(this.pan).connect(h.ambienceBus);
+    const data = renderFerryHorn(ctx.sampleRate);
+    this.buf = ctx.createBuffer(1, data.length, ctx.sampleRate);
+    this.buf.copyToChannel(data, 0);
+  }
+
+  /** One blast: proximity 0..1 (1 = alongside), pan -1..1, the distance (m) that closes the low pass. */
+  blast(proximity: number, pan: number, distance: number): void {
+    const now = this.ctx.currentTime;
+    this.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan)) * 0.8, now, 0.02);
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.buf;
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = Math.max(380, FERRY_HORN.open / (1 + distance / 220));
+    const g = this.ctx.createGain();
+    g.gain.value = clamp01(proximity);
+    src.connect(lp).connect(g).connect(this.out);
+    src.start(now);
+    src.onended = () => g.disconnect();
+  }
+
+  dispose(): void {
+    this.out.disconnect();
+
     this.ctx = h.ctx;
     this.bus = h.ambienceBus;
     this.noise = h.noise;
