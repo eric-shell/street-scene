@@ -458,13 +458,15 @@ export function stepCar(c: CarState, t: CarTuning, inp: InputFrame, env: StepEnv
   if (!inp.nitrous) c.nitroRun = -1;
   else if (c.nitroRun < 0) c.nitroRun = nitroFullStages(c.nitro);
   c.nitroChain = 0;
-  c.nitroActive = inp.nitrous && c.nitro > 0 && c.gear > 0 && drive > 0.2;
+  // Past NITRO_EPS, as nitroTopStage counts: a sliver below it would burn at stage 0 and index stagePower[-1] (NaN).
+  c.nitroActive = inp.nitrous && c.nitro > NITRO_EPS && c.gear > 0 && drive > 0.2;
   c.nitroStage = c.nitroActive ? nitroTopStage(c.nitro) : 0;
   const overdrive = c.nitroActive && c.nitroOver > 0;
   if (c.nitroActive) {
     if (overdrive) c.nitroOver = Math.max(0, c.nitroOver - dt / t.nitrous.capacity);
     c.nitro -= dt / t.nitrous.capacity;
-    if (c.nitro <= 0) {
+    // Dry includes the float remainder a burn can leave (2 stages burned down end at about 1.7e-14, not 0).
+    if (c.nitro <= NITRO_EPS) {
       const refill = c.nitroRun > 0 ? t.nitrous.chainRefill[c.nitroRun - 1] : 0;
       c.nitro = refill;
       c.nitroChain = refill;

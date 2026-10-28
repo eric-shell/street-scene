@@ -110,6 +110,14 @@ describe('nitrous stages', () => {
     return { chains, boosted };
   }
 
+  it('a sliver of nitrous below a stage does not burn (no stage 0 boost, no NaN)', () => {
+    const c = rolling(1e-7);
+    const { boosted } = hold(c, 0.5);
+    expect(boosted).toBe(0);
+    expect(c.nitroStage).toBe(0);
+    for (const v of [c.x, c.z, c.vx, c.vz, c.speed, c.rpm]) expect(Number.isFinite(v)).toBe(true);
+  });
+
   it('style fills the stages in order up to a full tank, and says what paid', () => {
     const c = createCar(0, 0, 0, 0);
     c.nitro = 0;
@@ -261,6 +269,8 @@ describe('nitrous stages', () => {
       const stages = start + refills.reduce((a, b) => a + b, 0);
       expect(Math.abs(boosted - stages * t.nitrous.capacity * 60), `from ${start} stages`).toBeLessThan(2);
       expect(c.nitro).toBe(0);
+      // Burning a tank dry once left a float remainder that the next tick burned at stage 0: NaN everywhere.
+      expect(Number.isFinite(c.speed), `from ${start} stages`).toBe(true);
     }
   });
 

@@ -53,11 +53,13 @@ export class FixedStepLoop {
     this.last = -1;
     const frame = (now: number) => {
       if (!this.running) return;
+      // Asked for first, so an error thrown below costs this frame, not the game: it still reaches the window's error
+      // listener (analytics/errors.ts reports it once) and the next frame runs. stop() in a callback cancels this id.
+      this.rafId = requestAnimationFrame(frame);
       const dt = this.last < 0 ? 0 : (now - this.last) / 1000;
       this.last = now;
       const { alpha } = this.advance(dt);
       this.cb.render(alpha, dt);
-      this.rafId = requestAnimationFrame(frame);
     };
     this.rafId = requestAnimationFrame(frame);
   }
