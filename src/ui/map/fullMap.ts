@@ -51,7 +51,7 @@ import { routeSample, type Route as RaceRoute, type RouteSample } from '../../ci
 import { driftZones } from '../../sim/driftZones';
 import type { Vec2 } from '../../sim/math';
 import { CityLayers, KINDS, MAP_INK, areaUnder, layersOf, mapToWorld, mapX, mapY, nearestOnArea, nearestRoadNode, shownOnMap, type CityDrawOptions, type MapView } from './cityMap';
-import { btn, chip, h, iconBtn } from '../kit/dom';
+import { btn, chip, h, iconBtn, scrollHint } from '../kit/dom';
 import { Flag, Hash, Landmark, Layers, LocateFixed, MapIcon, MapPinOff, MapPinned, Maximize2, Route, X, Zap, ZoomIn, ZoomOut, icon } from '../kit/icons';
 import type { MapCar } from '../hud/minimap';
 import { PALETTE, rgba, type PaletteColor } from '../kit/palette';
@@ -118,6 +118,7 @@ export class FullMap {
   // Side panel.
   private readonly legendTab: HTMLButtonElement;
   private readonly placesTab: HTMLButtonElement;
+  /** The Legend and Places panes: each its scroller inside the kit's scroll hints, shown one at a time. */
   private readonly legendPane: HTMLElement;
   private readonly placesPane: HTMLElement;
   private readonly placesList: HTMLUListElement;
@@ -256,9 +257,10 @@ export class FullMap {
       },
     });
     this.rows = legend.rows;
-    this.legendPane = h('div', { class: 'map-side__pane', role: 'tabpanel' }, legend.el);
+    this.legendPane = scrollHint(h('div', { class: 'map-side__pane', role: 'tabpanel' }, legend.el), 'map-side__scroll');
     this.placesList = h('ul', { class: 'map-places' });
-    this.placesPane = h('div', { class: 'map-side__pane', role: 'tabpanel', hidden: true }, this.placesList);
+    this.placesPane = scrollHint(h('div', { class: 'map-side__pane', role: 'tabpanel' }, this.placesList), 'map-side__scroll');
+    this.placesPane.hidden = true;
     this.legendTab = h('button', { class: 'tabs__tab is-selected', type: 'button', role: 'tab', 'aria-selected': 'true' }, icon(Layers, { size: 15 }), 'Legend');
     this.placesTab = h('button', { class: 'tabs__tab', type: 'button', role: 'tab', 'aria-selected': 'false' }, icon(Landmark, { size: 15 }), 'Places');
     this.legendTab.addEventListener('click', () => this.showTab(false));

@@ -1,5 +1,5 @@
 /* The full map's side panel (fullMap.ts): the Legend and Places panes under the kit's tabs, each scrolling on its
-   own. The two lists (_map-legend, _map-places) share their list and row button look here: quiet until hovered
+   own with the kit's fades and chevrons (_scroll-hint.scss) at the edges that hold more. The two lists (_map-legend, _map-places) share their list and row button look here: quiet until hovered
    or focused, then a plate with an edge. Rows step in as the panel lands. Stacked under the map on narrow screens, slim beside it on a phone on its side. */
 @use '../styles/abstracts/mixins';
 @use 'map-media';
@@ -19,15 +19,19 @@
   &__tabs {
     flex: none;
   }
+  /* A pane's scroll hints (kit scrollHint) take the pane's place; the closed tab's leave the flow. */
+  &__scroll {
+    flex: 1;
+    &[hidden] {
+      display: none;
+    }
+  }
   &__pane {
     flex: 1;
     min-height: 0;
     @include mixins.scroll-y;
     margin-right: -6px;
     padding-right: 6px;
-    &[hidden] {
-      display: none;
-    }
   }
 }
 .map-legend__list,

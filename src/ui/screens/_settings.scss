@@ -5,7 +5,7 @@
    so they still fit across the column; wide screens let the card reach past the column (the pause rail
    widens to keep it on the rail) with the tabs in a list down its left, the open one a lit plate with the
    rule down its edge. Those columns do not scroll, so a long page (credits, controls) scrolls inside
-   the card. */
+   the card, with the kit's fades and chevrons (_scroll-hint.scss) at the edges that hold more. */
 @use '../styles/abstracts/media';
 @use '../styles/abstracts/mixins';
 .settings {
@@ -17,6 +17,10 @@
   &__tab {
     padding: 10px 8px 11px;
     gap: 6px;
+  }
+  /* The pane's scroll hints (kit scrollHint) take the pane's place: the card's column on wide screens. */
+  &__scroll {
+    min-width: 0;
   }
   &__pane {
     display: flex;
@@ -183,6 +187,12 @@
       &.is-selected::after {
         transform: none;
       }
+    }
+  }
+  /* The grid row is as tall as the tab list; the hints hug the pane rather than stretch to it. */
+  .settings__scroll {
+    @include media.wide {
+      align-self: start;
     }
   }
   .settings__pane {

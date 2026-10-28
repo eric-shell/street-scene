@@ -638,7 +638,7 @@ export function mainMenu(o: MenuOptions): MainMenu {
   /**
    * A step's cards between its header and its foot, in a box that scrolls when the screen is too short
    * for them, with the kit's fades and chevrons at the edges that hold more (scrollHint, as the garage's
-   * body): the header and the foot (Next, Start) stay on screen. Settings keeps its own scrolling pane.
+   * body): the header and the foot (Next, Start) stay on screen. Settings keeps its own scrolling pane, with the same hints.
    */
   const scrolling = (parts: HTMLElement[]): HTMLElement[] => {
     const head = parts[0]?.classList.contains('screen-head') ? 1 : 0;

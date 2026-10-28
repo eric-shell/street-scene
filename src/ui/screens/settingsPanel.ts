@@ -4,7 +4,7 @@
  * _settings.scss (the panel, its card on the menu's and pause rails) and
  * _setting-row.scss (rows, notes, the controls list).
  */
-import { h, keyCaps, link, segmented, selectTab, tab } from '../kit/dom';
+import { h, keyCaps, link, scrollHint, segmented, selectTab, tab } from '../kit/dom';
 import { CircleUser, Code, Gamepad2, Heart, Keyboard, Monitor, ShieldCheck, Smartphone, Volume2, type IconNode } from '../kit/icons';
 import type { Quality, Settings } from '../settings';
 import { MUSIC_CATALOG, type MusicPlayer } from '../../audio/musicPlayer';
@@ -30,7 +30,8 @@ let lastPage: string | null = null;
 /**
  * Settings: a row of tabs (account when the build has accounts, display, sound, controls, developer, privacy, credits) over
  * the open page, so nothing needs a long scroll and the panel fits the rail's
- * column. Race options (rivals, difficulty, gearbox, traction control) live on
+ * column; a page that still runs past the card (credits, controls) scrolls
+ * inside it with the kit's fades and chevrons (scrollHint). Race options (rivals, difficulty, gearbox, traction control) live on
  * the menu's race step instead. Used on the menu's settings step and on the
  * pause screen's. It opens on `page` when given (the menu's Sign in opens Account), else the last page seen, else the first.
  */
@@ -148,7 +149,7 @@ export function settingsPanel(s: Settings, onChange: (s: Settings) => void, musi
     pane.setAttribute('aria-label', p.label);
   };
   open(pages.find((p) => p.id === (page ?? lastPage)) ?? pages[0]);
-  return h('div', { class: 'settings' }, h('nav', { class: 'tabs settings__tabs', role: 'tablist', 'aria-label': 'Settings pages' }, ...tabs), pane);
+  return h('div', { class: 'settings' }, h('nav', { class: 'tabs settings__tabs', role: 'tablist', 'aria-label': 'Settings pages' }, ...tabs), scrollHint(pane, 'settings__scroll'));
 }
 
 /** One labelled setting: the name (and an optional hint under it) on the left, its control on the right. */
