@@ -5,7 +5,8 @@
  * reference bead radius and scaled to the axle's real bead, so a wheel size change only rescales
  * them, and placed along the axle behind the wheel's spokes, whose depth the car view measures
  * per axle (wheels differ in offset, and the front and rear may wear different wheels). The hat's
- * outboard face is at x = 0, so a mesh at the spoke back's x, less a clearance, clears the spokes.
+ * outboard face is at x = 0, but the caliper's housing stands 2 to 3 cm past it (`brakeReach`), so the
+ * car view puts the origin that far plus a clearance behind the spokes, scaled with the unit.
  * The rotor face is a small byte texture (brushed steel, the drilled holes in swept columns, the
  * hat and its lug nuts) used as color and bump map, so the holes cost no triangles. The
  * columns sweep with the wheel's forward spin (the outer hole leads); the right side's rotors
@@ -144,6 +145,15 @@ function scaleCapUv(geo: THREE.BufferGeometry, from: number, k: number): void {
 /** From the disc's center plane to the hat's outboard face (m). */
 function hatHeight(): number {
   return BRAKE.thickness / 2 + BRAKE.hatDepth;
+}
+
+/**
+ * How far the brake unit reaches outboard of its origin at the reference bead (m): the caliper's logo plate
+ * stands past the hat's face (x = 0) by its housing, so it is what the car view keeps behind the spokes.
+ */
+export function brakeReach(axle: 0 | 1): number {
+  const caliper = BRAKE.thickness / 2 + BRAKE.caliperHousing[axle] + BRAKE.caliperPlate.rise - hatHeight();
+  return Math.max(0, caliper);
 }
 
 /** One axle's rotor (disc plus hat) at the reference bead, as one geometry for one draw. */

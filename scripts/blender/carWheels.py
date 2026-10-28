@@ -90,20 +90,26 @@ WHEELS = {
               'bolts': 0},   # its rivets sit in pairs in the windows: the histogram read three bolts
     'nami': {'name': 'Rotiform ZMO', 'uid': '4193e4cd0fdc481688e3a437e4e5d130', 'maker': 'Rotiform', **_J},
     'shizuku': {'name': 'Rotiform Aerodisc', 'uid': 'ccaf76b4b4514d1e9b6351a628e75817', 'maker': 'Rotiform', **_J},
-    'uzu': {'name': 'Rotiform VCE', 'uid': '05783beda2a74aa8981fb374e9088b4f', 'maker': 'Rotiform', **_J},
-    'kawa': {'name': 'Rotiform SIX', 'uid': '35d0043f1c774ddfaa7c3983eb3bc8c0', 'maker': 'Rotiform', **_J},
+    'uzu': {'name': 'Rotiform VCE', 'uid': '05783beda2a74aa8981fb374e9088b4f', 'maker': 'Rotiform', **_J,
+            'face': -1},   # the normal vote showed the plain back of the fins
+    'kawa': {'name': 'Rotiform SIX', 'uid': '35d0043f1c774ddfaa7c3983eb3bc8c0', 'maker': 'Rotiform', **_J,
+             'face': -1},   # the normal vote showed the plain backs of the spokes
     'taki': {'name': 'Rotiform AVS', 'uid': 'cdb62e8166e64cf58fafed97348733b1', 'maker': 'Rotiform', **_J},
     'minato': {'name': 'Rotiform KB1', 'uid': 'c6c9212941fd4a3182566141ea2caa10', 'maker': 'Rotiform', **_J},
     'kiri': {'name': 'Rotiform USF', 'uid': 'af96ede3c79849e0967017c7af56e1c4', 'maker': 'Rotiform', **_J},
     'shio': {'name': 'Rotiform MLW', 'uid': '7dbcd9ba45dc4ff3b53b2eb3822ec5bc', 'maker': 'Rotiform', **_J},
-    'ame': {'name': 'Rotiform OZR', 'uid': '72e5ee8f6e6b46799c00f732f414d41f', 'maker': 'Rotiform', **_J},
-    'yuki': {'name': 'Rotiform BM1', 'uid': 'abb6a1de9bd54492baff6843cad8a429', 'maker': 'Rotiform', **_J},
+    'ame': {'name': 'Rotiform OZR', 'uid': '72e5ee8f6e6b46799c00f732f414d41f', 'maker': 'Rotiform', **_J,
+            'face': -1},   # its center nut and logo cap sit on this side; the normal vote showed the hub's back
+    'yuki': {'name': 'Rotiform BM1', 'uid': 'abb6a1de9bd54492baff6843cad8a429', 'maker': 'Rotiform', **_J,
+             'face': -1},   # the normal vote showed the barrel, the lip bolts at its far end
     'shigure': {'name': 'Rotiform WRO', 'uid': 'd64d8d4fab944a77a6fba680551a7e67', 'maker': 'Rotiform', **_J},
-    'umi': {'name': 'Rotiform CCV', 'uid': '827bfe4138d447c28888c6c22a47609b', 'maker': 'Rotiform', **_J},
+    'umi': {'name': 'Rotiform CCV', 'uid': '827bfe4138d447c28888c6c22a47609b', 'maker': 'Rotiform', **_J,
+            'face': -1},   # the normal vote showed the barrel, the lip bolts at its far end
     'hyo': {'name': 'Rotiform LHR', 'uid': '89a4f55b4d164153863a8f1350aa7786', 'maker': 'Rotiform', **_J},
     'tsuyu': {'name': 'Rotiform LSR', 'uid': '1fe207f311bb4b50b0cf4d3fbbe549b2', 'maker': 'Rotiform', **_J},
     'kori': {'name': 'Rotiform KLU', 'uid': '641a37e731194b3e8fdd18e6a9b1e6d9', 'maker': 'Rotiform', **_J},
-    'mio': {'name': 'Rotiform SNA', 'uid': '20dad53c5f1947cf92f113f3c2e7c2fe', 'maker': 'Rotiform', **_J},
+    'mio': {'name': 'Rotiform SNA', 'uid': '20dad53c5f1947cf92f113f3c2e7c2fe', 'maker': 'Rotiform', **_J,
+            'face': -1},   # the normal vote showed the plain backs of the spokes
     'fubuki': {'name': 'Rotiform KPS', 'uid': 'c3ffecfad22d4a3a808123bac5187479', 'maker': 'Rotiform', **_J},
     'seseragi': {'name': 'Rotiform PNT', 'uid': 'cee8b459137249e5bcfa8289d5c2759c', 'maker': 'Rotiform', **_J},
     'aoi': {'name': 'Vossen LC104T', 'uid': 'aa0f85f015d741a5958dc70fea79d863', 'maker': 'Vossen', **_J},
@@ -118,15 +124,19 @@ WHEELS = {
     'tsuchi': {'name': 'Fifteen52 Rally Sport', 'uid': '1ed9ad4cbe5644ae831fe95bae84a0fc', 'maker': 'Fifteen52', **_J},
     'homura': {'name': 'SSR Koenig', 'uid': '391ab57dc25a4aa69771fbb9114f3d40', 'maker': 'SSR', **_J},
     'hane': {'name': 'BBS E52', 'uid': '8168cc3dce114b19b617c17fea0ab364', 'maker': 'BBS', **_J,
-             'normals': 'geometry'},   # its mesh's authored normals lean sideways: the face shaded dark
-    'iwa': {'name': 'Volk Rays 21C', 'uid': 'd053af8f24bc4a5dbaf9d21f31ae25da', 'maker': 'Volk', **_J},
+             'normals': 'geometry',   # its mesh's authored normals lean sideways: the face shaded dark
+             'face': -1},   # the normal vote showed the hub's back, with its five stud holes
+    'iwa': {'name': 'Volk Rays 21C', 'uid': 'd053af8f24bc4a5dbaf9d21f31ae25da', 'maker': 'Volk', **_J,
+            'face': -1},   # the normal vote showed the plain backs of the spokes
     'kiseki': {'name': 'Enkei Nt03+m Wheels', 'uid': '6d31c56557b945a5abd4015884461dc4', 'maker': 'Enkei',
                'author': 'flathat3d', 'license': 'CC Attribution',
                'drop': r'CenterCaps|Nt03m_02',   # three stacked logo caps (the house cap fills the hub) and the lip lettering
-               'normals': 'geometry'},   # authored normals lean off the spokes: front normal 0.14
+               'normals': 'geometry',   # authored normals lean off the spokes: front normal 0.14
+               'face': -1},   # the dropped caps and lettering sat on this side; the normal vote showed the hub's back
     'hien': {'name': 'BBS CH-R + Goodyear Eagle F1 Supercar 3', 'uid': '2acc32fc79684a2c8b7df9faaa5a5c35', 'maker': 'BBS',
                 'author': 'MozzarellaARC', 'license': 'CC Attribution',
-                'dark': 0.25},   # its tire is welded to the wheel in one textured mesh: tire 0.10, wheel 0.45
+                'dark': 0.25,   # its tire is welded to the wheel in one textured mesh: tire 0.10, wheel 0.45
+                'face': -1},   # the normal vote showed the hub's back
 }
 
 
@@ -280,7 +290,14 @@ def _classify(bm, L, names, R):
 def _bolt_circles(isl):
     """The 'bolt' islands grouped into circles: islands sorted by their circle radius, split at
     gaps over 0.015 of the lip radius; a group of fewer than six is not a circle (its islands go
-    back to being face). Returns the groups, frontmost first."""
+    back to being face). Returns the groups, frontmost first.
+
+    A flange ring the bolts sit on has their radius too, so it joined their circle and went with
+    the donor's hardware (the ERA3's, 5,000 triangles, until 2026-10-28). An island that runs all
+    the way round is a flange, never a bolt: it goes back to being face first."""
+    for i in isl:
+        if i.kind == 'bolt' and len({int((math.atan2(c.z, c.y) + math.pi) / (2 * math.pi) * 36) % 36 for f in i.faces for c in [f.calc_center_median()]}) >= 32:
+            i.kind = 'face'
     bolts = sorted((i for i in isl if i.kind == 'bolt'), key=lambda i: (i.rmin + i.rmax) / 2)
     groups, cur = [], []
     for i in bolts:
@@ -326,13 +343,20 @@ def _bolt_circle(circ, L):
 
 
 def _hex_heads(bm, mat, circle):
-    """House bolts: a hex head (top and sides, 18 triangles) at each angle of the circle."""
+    """House bolts: a hex head (top and sides, 18 triangles) at each angle of the circle. Each
+    head's sides run down into the surface below it (the donor's bolt stood on a washer that went
+    with its hardware, or in a counterbore over its hole), so no head floats over the face: rays
+    down from the head's center and corners, the median of what they meet within 3.5 cm."""
     angles, r, h, base, top = circle
     own = bm.faces.layers.int.get('own_normals') or bm.faces.layers.int.new('own_normals')
+    tree = BVHTree.FromBMesh(bm) if bm.faces else None
     for a in angles:
         cy, cz = r * math.cos(a), r * math.sin(a)
+        hits = sorted(hit.x for hit in (tree.ray_cast(Vector((top + 0.005, cy + d * math.cos(a + 2 * math.pi * k / BOLT_SEG), cz + d * math.sin(a + 2 * math.pi * k / BOLT_SEG))), Vector((-1, 0, 0)), 0.035)[0]
+                                        for d, k in [(0, 0)] + [(0.95 * h, k) for k in range(BOLT_SEG)]) if hit is not None) if tree else []
+        b = min(base, hits[len(hits) // 2] - 0.002) if hits else base
         ring_t = [bm.verts.new((top, cy + h * math.cos(a + 2 * math.pi * k / BOLT_SEG), cz + h * math.sin(a + 2 * math.pi * k / BOLT_SEG))) for k in range(BOLT_SEG)]
-        ring_b = [bm.verts.new((base, cy + h * math.cos(a + 2 * math.pi * k / BOLT_SEG), cz + h * math.sin(a + 2 * math.pi * k / BOLT_SEG))) for k in range(BOLT_SEG)]
+        ring_b = [bm.verts.new((b, cy + h * math.cos(a + 2 * math.pi * k / BOLT_SEG), cz + h * math.sin(a + 2 * math.pi * k / BOLT_SEG))) for k in range(BOLT_SEG)]
         faces = [bm.faces.new(ring_t)]
         for k in range(BOLT_SEG):
             faces.append(bm.faces.new((ring_b[k], ring_b[(k + 1) % BOLT_SEG], ring_t[(k + 1) % BOLT_SEG], ring_t[k])))
@@ -348,23 +372,40 @@ def _hex_heads(bm, mat, circle):
                 f.normal_flip()
 
 
-def _dish_share(isl, L, sectors=36, band=0.02):
-    """Where a one-piece wheel stops being a full ring (lip and dish wall) and becomes its spoked
-    or slotted face, as a share of the lip radius: walking in from the lip, the first radial band
-    whose front-facing faces do not cover every angular sector."""
-    cover = {}
-    for i in isl:
-        if i.kind != 'face':
-            continue
-        for f in i.faces:
-            if f.normal.x < 0.3:
-                continue
-            c = f.calc_center_median()
-            cover.setdefault(int(_rad(c) / L / band), set()).add(int((math.atan2(c.z, c.y) + math.pi) / (2 * math.pi) * sectors) % sectors)
-    b = int(0.99 / band)
-    while b > int(0.5 / band) and len(cover.get(b - 1, ())) == sectors:
-        b -= 1
-    return max(0.5, min(0.95, b * band))
+def _turned_faces(isl, L, sectors=120, full=112, dx=0.002, dr=0.01):
+    """The faces of a one-piece wheel's face island that are its lip, dish wall and barrel: the
+    surfaces of revolution, told from the spokes by covering (nearly) every 3 degree sector around
+    the axle at their own (x, r) cell (2 mm by 1 % of the lip; a cell borrows its neighbours along
+    x, a sloped wall's faces straddle them), outside 0.6 of the lip radius (the hub is round too).
+    Spoke tips cover a third to a half of the sectors, so they stay face and keep reaching the lip
+    (at 10 degree sectors, twelve spokes of the Nt03 covered them all).
+
+    It used to split at a radius: walking in from the lip, the first band whose front facing faces
+    did not cover every angle. A step in the barrel behind the spokes covered the gaps between
+    them, so the split ran down past the spoke tips, the lathe turned them away and the spokes
+    ended centimeters short of the lip (2026-10-28)."""
+    def sector(co):
+        return int((math.atan2(co.z, co.y) + math.pi) / (2 * math.pi) * sectors) % sectors
+
+    def cell(co):
+        return (int(co.x // dx), int(_rad(co) / L // dr))
+
+    cover, faces = {}, [f for i in isl if i.kind == 'face' for f in i.faces]
+    for f in faces:
+        s = sorted({sector(v.co) for v in f.verts})
+        # The sectors the face spans: the circle less its largest gap between corners.
+        gaps = [(s[(k + 1) % len(s)] - s[k]) % sectors or sectors for k in range(len(s))]
+        k = max(range(len(s)), key=lambda k: gaps[k])
+        span = {(s[(k + 1) % len(s)] + d) % sectors for d in range(sectors - gaps[k] + 1)} if len(s) > 1 else set(s)
+        for co in [f.calc_center_median()] + [v.co for v in f.verts]:
+            cover.setdefault(cell(co), set()).update(span)
+    def turned(co):
+        i, j = cell(co)
+        return len(cover.get((i, j), set()) | cover.get((i - 1, j), set()) | cover.get((i + 1, j), set())) >= full
+
+    # Center and every corner: where a spoke's fillet runs into the lip it stays face (its edge
+    # overlaps the turned surface, which hides nothing), so the junction is not torn.
+    return {f for f in faces if _rad(f.calc_center_median()) > 0.6 * L and turned(f.calc_center_median()) and all(turned(v.co) for v in f.verts)}
 
 
 def _face_sign(isl, L):
@@ -416,12 +457,19 @@ def house_tire(bm, mat, seg=TIRE_SEG):
 
 def _house_cap(bm, mat, r, x):
     """A chrome disc over a hub nothing covers (the donor's cap was a logo decal): radius `r`, a
-    little past the bore, its face at `x`, just proud of the hub's front."""
+    little past the bore, its face at `x`, just proud of the hub's front. Its skirt is 4 mm deep,
+    or runs on down to the hub when the hub under its rim sits deeper than that (the front of
+    the hub `x` was measured on may have gone in the cull): a cap never floats over the hub."""
     seg = 24
     own = bm.faces.layers.int.get('own_normals') or bm.faces.layers.int.new('own_normals')
+    tree = BVHTree.FromBMesh(bm) if bm.faces else None
+    hits = sorted(hit.x for hit in (tree.ray_cast(Vector((x + 0.005, 0.95 * r * math.cos(a), 0.95 * r * math.sin(a))), Vector((-1, 0, 0)), 0.035)[0]
+                                    for a in (2 * math.pi * k / 8 for k in range(8))) if hit is not None) if tree else []
+    deep = x - hits[len(hits) // 2] if hits else 0
+    skirt = deep + 0.002 if deep > 0.004 else 0.004
     c = bm.verts.new((x, 0, 0))
     ring = [bm.verts.new((x, r * math.cos(2 * math.pi * k / seg), r * math.sin(2 * math.pi * k / seg))) for k in range(seg)]
-    back = [bm.verts.new((x - 0.004, r * math.cos(2 * math.pi * k / seg), r * math.sin(2 * math.pi * k / seg))) for k in range(seg)]
+    back = [bm.verts.new((x - skirt, r * math.cos(2 * math.pi * k / seg), r * math.sin(2 * math.pi * k / seg))) for k in range(seg)]
     for k in range(seg):
         for f in (bm.faces.new((c, ring[k], ring[(k + 1) % seg])), bm.faces.new((back[k], back[(k + 1) % seg], ring[(k + 1) % seg], ring[k]))):
             f.material_index = mat
@@ -433,38 +481,77 @@ def _house_cap(bm, mat, r, x):
                 f.normal_flip()
 
 
-def _ring_profile(o, L):
-    """The lip and barrel's visible surface as (x, r) points from the lip edge inward and back,
-    measured on the culled ring: every face center sorted by its angle from a viewpoint in front
-    of the wheel (what the front sees along one ray is one point of the profile, so the order is
-    the surface's own, steps and all), binned into RING_BANDS and area averaged. The outer barrel,
-    which the tire hides, is left out. The inner barrel behind the face stays and runs on to the
-    tire's back bead: it shows between the spokes and from behind, and a wheel cut off at its
-    face reads as a thin disc in a hollow tire."""
+def _ring_profile(o, L, planes=12, rays=480):
+    """The lip and barrel's visible surface as (x, r) points from the lip edge inward and back:
+    rays from a viewpoint in front of the wheel, swept in the plane through the axle from the lip
+    edge back to the barrel's far end, each one's first hit on the ring one point of the profile
+    (the median over `planes` planes around the axle, so lettering or a slot does not count), so
+    the order is the surface's own, steps and all. Measured on the ring before the cull, so the
+    dish wall and the barrel's flange run all the way down to where the face meets them; the face
+    is not in the ring, so the rays pass through it to the barrel behind. The points are thinned
+    to RING_BANDS where the profile bends most. The inner barrel behind the face stays and runs
+    on to the tire's back bead: it shows between the spokes and from behind, and a wheel cut off
+    at its face reads as a thin disc in a hollow tire.
+
+    It used to bin the culled ring's face centers by their angle from that viewpoint and average
+    each bin: a dish wall and the barrel step behind it lie along the same rays, so the average
+    pulled the profile off both and the face's outer edge floated centimeters in front of the
+    turned lip (2026-10-28)."""
     me = o.data
+    if len(me.polygons) < 4:
+        return None
+    tree = BVHTree.FromPolygons([v.co for v in me.vertices], [p.vertices[:] for p in me.polygons])
     P = Vector((0.25, 0.3 * L))
+    t0 = math.atan2(1.05 * L - P.y, X_LIP + 0.02 - P.x)
+    t1 = math.atan2(0.55 * L - P.y, X_BACK - 0.06 - P.x)
     pts = []
-    for p in me.polygons:
-        c = p.center
-        r = _rad(c)
-        radial = Vector((0, c.y, c.z)).normalized()
-        if r > 0.95 * L and p.normal.dot(radial) > 0.5 and c.x < X_LIP - 0.004:
-            continue   # the outer barrel: the tire hides it
-        q = Vector((c.x, r))
-        pts.append((math.atan2(q.y - P.y, q.x - P.x), p.area, q))
+    for k in range(rays + 1):
+        t = t0 + (t1 - t0) * k / rays
+        dx, dr = math.cos(t), math.sin(t)
+        hits = []
+        for j in range(planes):
+            ph = 2 * math.pi * (j + 0.5) / planes
+            c, s = math.cos(ph), math.sin(ph)
+            hit = tree.ray_cast(Vector((P.x, P.y * c, P.y * s)), Vector((dx, dr * c, dr * s)))[0]
+            if hit is not None:
+                hits.append(Vector((hit.x, _rad(hit))))
+        if len(hits) * 2 > planes:
+            hits.sort(key=lambda q: (q - P).length)
+            pts.append(hits[len(hits) // 2])
     if len(pts) < 4:
         return None
-    pts.sort(key=lambda t: t[0])
-    a0, a1 = pts[0][0], pts[-1][0]
-    bins = [[] for _ in range(RING_BANDS)]
-    for a, w, q in pts:
-        bins[min(RING_BANDS - 1, int((a - a0) / (a1 - a0 + 1e-9) * RING_BANDS))].append((w, q))
-    total = sum(w for _, w, _ in pts)
-    prof = []
-    for b in bins:
-        w = sum(x for x, _ in b)
-        if w > 0.002 * total:
-            prof.append(sum((q * x for x, q in b), Vector((0, 0))) / w)
+    # A flange the face is bolted to hides the barrel behind it from the front: from the last
+    # point the front saw, the barrel's inside is found from the axle outward, a station every 2 mm.
+    x = pts[-1].x - 0.002
+    while x > X_BACK - 0.01:
+        hits = []
+        for j in range(planes):
+            ph = 2 * math.pi * (j + 0.5) / planes
+            hit = tree.ray_cast(Vector((x, 0, 0)), Vector((0, math.cos(ph), math.sin(ph))))[0]
+            if hit is not None and _rad(hit) > 0.5 * L:
+                hits.append(_rad(hit))
+        if len(hits) * 2 > planes:
+            pts.append(Vector((x, sorted(hits)[len(hits) // 2])))
+        x -= 0.002
+    # Thin to RING_BANDS points: add the point farthest off the polyline so far, until the
+    # profile is within 0.3 mm everywhere or the budget is spent.
+    keep = {0, len(pts) - 1}
+    while len(keep) < RING_BANDS:
+        ks = sorted(keep)
+        far, at = 3e-4, None
+        for a, b in zip(ks, ks[1:]):
+            A, B = pts[a], pts[b]
+            AB = B - A
+            n = AB.length_squared or 1e-12
+            for i in range(a + 1, b):
+                u = max(0.0, min(1.0, (pts[i] - A).dot(AB) / n))
+                d = (pts[i] - (A + AB * u)).length
+                if d > far:
+                    far, at = d, i
+        if at is None:
+            break
+        keep.add(at)
+    prof = [pts[i] for i in sorted(keep)]
     edge = max(prof, key=lambda q: q.y)
     prof.insert(0, Vector((edge.x - 0.015, L)))
     # The cull leaves little of the barrel behind a dense face, so it is carried on at its last
@@ -477,18 +564,32 @@ def _ring_profile(o, L):
 
 def _lathe(bm, prof, mat, seg=RING_SEG):
     """A surface of revolution through the (x, r) profile about the axle, smooth, its normals in
-    `src_normal` (toward the viewpoint side of the profile). Returns the faces made."""
+    `src_normal` (toward the viewpoint side of the profile). Returns the faces made.
+
+    Each face is wound toward the viewpoint by its own segment, and a corner's smooth normal that
+    points across that segment (a step in the profile) takes the segment's: the profile is in the
+    order the viewpoint sees it, so that side is the seen one all along. Winding faces by the
+    smoothed corner normal turned the faces at a sharp step away from the front, and the game
+    draws `Rim` single sided (2026-10-28)."""
     sn = bm.loops.layers.float_vector.get('src_normal') or bm.loops.layers.float_vector.new('src_normal')
     P = len(prof)
+    eye = Vector((0.25, 0.3 * prof[0].y))
     n2 = []
     for k in range(P):
         a, b = prof[max(0, k - 1)], prof[min(P - 1, k + 1)]
         t = (b - a).normalized()
         n = Vector((t.y, -t.x))
         # Toward the front viewpoint: the side the dish is seen from.
-        if n.dot(Vector((0.25, 0.3 * prof[0].y)) - prof[k]) < 0:
+        if n.dot(eye - prof[k]) < 0:
             n = -n
         n2.append(n)
+    ns = []
+    for k in range(P - 1):
+        t = (prof[k + 1] - prof[k]).normalized()
+        n = Vector((t.y, -t.x))
+        if n.dot(eye - (prof[k] + prof[k + 1]) / 2) < 0:
+            n = -n
+        ns.append(n)
     rings = []
     for i in range(seg):
         a = 2 * math.pi * i / seg
@@ -498,18 +599,53 @@ def _lathe(bm, prof, mat, seg=RING_SEG):
         a, b = rings[i], rings[(i + 1) % seg]
         ca, sa = math.cos(2 * math.pi * i / seg), math.sin(2 * math.pi * i / seg)
         cb, sb = math.cos(2 * math.pi * (i + 1) / seg), math.sin(2 * math.pi * (i + 1) / seg)
+        cm, sm = math.cos(2 * math.pi * (i + 0.5) / seg), math.sin(2 * math.pi * (i + 0.5) / seg)
         for k in range(P - 1):
             f = bm.faces.new((a[k], a[k + 1], b[k + 1], b[k]))
             f.material_index = mat
             f.smooth = True
-            for l, (nk, c, s_) in zip(f.loops, ((n2[k], ca, sa), (n2[k + 1], ca, sa), (n2[k + 1], cb, sb), (n2[k], cb, sb))):
+            f.normal_update()
+            if f.normal.dot(Vector((ns[k].x, ns[k].y * cm, ns[k].y * sm))) < 0:
+                f.normal_flip()
+            for l in f.loops:
+                kk = k if l.vert in (a[k], b[k]) else k + 1
+                nk = n2[kk] if n2[kk].dot(ns[k]) > 0 else ns[k]
+                c, s_ = (ca, sa) if l.vert in (a[k], a[k + 1]) else (cb, sb)
                 l[sn] = Vector((nk.x, nk.y * c, nk.y * s_))
             made.append(f)
     bm.normal_update()
-    for f in made:
-        if f.normal.dot(f.loops[0][sn]) < 0:
-            f.normal_flip()
     return made
+
+
+def _drop_loose(bm, most=60, contact=0.003):
+    """Delete small islands of the donor's faces (`most` faces or fewer) that come no nearer than
+    `contact` to anything else: a lug seat or a spoke's sliver that the cull or the collapse cut
+    off floats in front of the hub. House parts (own normals) stay. Returns the faces deleted."""
+    own = bm.faces.layers.int.get('own_normals')
+    bm.faces.ensure_lookup_table()
+    bm.faces.index_update()
+    tree = BVHTree.FromBMesh(bm)
+    seen, gone = set(), []
+    for f in bm.faces:
+        if f in seen:
+            continue
+        stack, grp = [f], []
+        seen.add(f)
+        while stack:
+            g = stack.pop()
+            grp.append(g)
+            for e in g.edges:
+                for h in e.link_faces:
+                    if h not in seen:
+                        seen.add(h)
+                        stack.append(h)
+        if len(grp) > most or (own is not None and any(g[own] for g in grp)):
+            continue
+        idx = {g.index for g in grp}
+        if not any(hit[2] not in idx for g in grp for v in g.verts for hit in tree.find_nearest_range(v.co, contact)):
+            gone += grp
+    bmesh.ops.delete(bm, geom=gone, context='FACES')
+    return len(gone)
 
 
 def _reduce(o, budget):
@@ -651,13 +787,13 @@ def wheel(name, root):
     kl = bm.faces.layers.int['kind']
     one_piece = not any(i.kind == 'ring' for i in isl)
     lip = R0.get('lip', 'rim' if one_piece else 'chrome')   # multi-piece lips are polished, a monoblock is one finish
-    dish = _dish_share(isl, L) if one_piece else 1.0
+    turned = _turned_faces(isl, L) if one_piece else set()
     for i in isl:
         for f in i.faces:
             src = names[f.material_index] if f.material_index < len(names) else ''
             kind = i.kind
-            # A one-piece wheel's lip, dish and barrel are its face's own outer faces: turned like a ring.
-            if one_piece and kind == 'face' and all(_rad(v.co) > dish * L for v in f.verts):
+            # A one-piece wheel's lip, dish and barrel are its face's own round faces: turned like a ring.
+            if kind == 'face' and f in turned:
                 kind = 'ring'
             f.material_index = IDX['Black'] if re.search(r'(?i)black', src) and kind == 'face' else IDX['Chrome'] if kind == 'cap' or (kind == 'ring' and lip == 'chrome') else IDX['Rim']
             f[kl] = KIND.get(kind, -1)
@@ -670,6 +806,9 @@ def wheel(name, root):
     # from the authored normals the first collapse kept.
     parts = _kind_objects(bm, KIND, oname, mats, work)
     bm.free()
+    # The ring's profile from the whole ring, before anything is collapsed or culled: the flange
+    # and dish wall the face sits on are hidden behind the face's edge, and the cull takes them.
+    ring_prof = _ring_profile(parts['ring'], L) if 'ring' in parts else None
     for kind, o in parts.items():
         if tris(o) > 3 * BUDGETS[kind]:
             _reduce(o, 3 * BUDGETS[kind])
@@ -695,13 +834,10 @@ def wheel(name, root):
     parts = _kind_objects(wbm, KIND, oname, mats, work)
     wbm.free()
     obm = bmesh.new()
-    ring_prof = None
     for kind, o in parts.items():
-        if kind == 'ring':
-            ring_prof = _ring_profile(o, L)
-            if ring_prof:
-                bpy.data.objects.remove(o)
-                continue
+        if kind == 'ring' and ring_prof:
+            bpy.data.objects.remove(o)
+            continue
         # The shading skin is taken after the cull: it turned the faces only their back is seen
         # from and negated their authored normals with them, which rights a donor modelled inside
         # out (the Equip 40's face); a skin from before the cull would turn them back.
@@ -723,6 +859,10 @@ def wheel(name, root):
     if cap_r:
         _house_cap(obm, IDX['Chrome'], cap_r, cap_x)
     house_tire(obm, IDX['Tire'])
+    loose, n = 0, 1
+    while n:   # a sliver may only have touched another loose one
+        n = _drop_loose(obm)
+        loose += n
     out = bpy.data.meshes.new(oname)
     for m in mats:
         out.materials.append(m)
@@ -739,7 +879,7 @@ def wheel(name, root):
     o['group'] = GROUPS[R0['maker']]
     print(f'wheel_{name}: {R0["name"]} ({R0["author"]}); islands {kinds}; face {"+" if sign > 0 else "-"}X, scaled x{k:.3f}, '
           f'barrel squeezed x{squeeze:.2f}, lip {lip}' + (f' turned from {len(ring_prof)} points' if ring_prof else '') + ', ' + (f'{len(circle[0])} house bolts at r {circle[1]:.3f}' if circle else 'no bolt circle') +
-          (f', house cap r {cap_r:.3f}' if cap_r else '') + f'; {src_tris} -> {tris(o)} tris ({culled} hidden culled, {gone["bolt"]} of bolts and {gone["decal"]} of decals replaced)')
+          (f', house cap r {cap_r:.3f}' if cap_r else '') + f'; {src_tris} -> {tris(o)} tris ({culled} hidden culled, {loose} loose, {gone["bolt"]} of bolts and {gone["decal"]} of decals replaced)')
     return o
 
 

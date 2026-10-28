@@ -11,8 +11,8 @@ import { CarMaterialSet, applyVisualToMaterials, createCarMaterials, disposeCarM
 import { makeRadialGlow } from '../textures/textures';
 import { DecalLayerView } from './decals';
 import { FEATURES } from '../../shared/features';
-import { WheelProfile, beadForSize, detectProfile, remapWheel, sizeForBead } from './wheelFit';
-import { BRAKE, buildCaliperGeometry, buildRotorGeometry } from './brakes';
+import { WheelProfile, WidthFit, beadForSize, detectProfile, remapWheel, sizeForBead } from './wheelFit';
+import { BRAKE, brakeReach, buildCaliperGeometry, buildRotorGeometry } from './brakes';
 import { damp } from '../../shared/anim';
 import { latheTire, measureTire } from './tireShapes';
 import { PLATE, buildPlateGeometry, createPlateMaterial, drawPlate, plateTexture, seatPlate } from './plate';
@@ -213,10 +213,15 @@ export class CarView {
   /** Per axle, the size and width the meshes are remapped for (NaN until the first remap), so an unchanged slider costs nothing. */
   private axleSize = [NaN, NaN];
   private axleWidth = [NaN, NaN];
-  /** Per axle, the back of the wheel's spokes along the axle (baked wheel space, m; +X outboard): the brake sits behind it. */
-  private spokeBack = [0, 0];
-  /** Per axle, the wheel's outer face along the axle (baked wheel space, m): the width slider stretches the wheel about it. */
-  private faceX = [0, 0];
+  /**
+   * Per axle, where the wheel's depth lies along the axle (baked wheel space, m; +X outboard): the back of its
+   * spokes (the brake sits behind it, and the width slider only lengthens what is behind it), the barrel's back
+   * edge and the tire's extent.
+   */
+  private widthFit: WidthFit[] = [
+    { spokeBack: 0, back: 0, tireMin: 0, tireMax: 0 },
+    { spokeBack: 0, back: 0, tireMin: 0, tireMax: 0 },
+  ];
   /** Each axle's wheel profile: front and rear may wear different wheels. */
   private wheelProfiles: WheelProfile[] = [
     { outer: 1, bead: 0.75 },
@@ -627,6 +632,8 @@ export class CarView {
     const tireR: number[] = [];
     const otherR: number[] = [];
     const otherX: number[] = [];
+    let tireMin = Infinity;
+    let tireMax = -Infinity;
     model.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh || !visibleInTree(mesh, model)) return;
@@ -664,10 +671,15 @@ export class CarView {
       // Keep the unscaled shape; every size change remaps from it.
       geo.userData.basePos = Float32Array.from(pos.array as ArrayLike<number>);
       geo.userData.baseNrm = nrm ? Float32Array.from(nrm.array as ArrayLike<number>) : null;
+      geo.userData.isTire = isTire;
       const radii = isTire ? tireR : otherR;
       for (let k = 0; k < pos.count; k++) {
         radii.push(Math.hypot(pos.getY(k), pos.getZ(k)));
         if (!isTire) otherX.push(pos.getX(k));
+        else {
+          tireMin = Math.min(tireMin, pos.getX(k));
+          tireMax = Math.max(tireMax, pos.getX(k));
+        }
       }
       // The rear axle wears its own wheel material (wheel color); everything wears a clipped material.
       const own = axle === 1 ? this.rearWheelMat : this.wheelMat;
@@ -682,12 +694,15 @@ export class CarView {
     // The spokes' back: the innermost point of the spoke zone (between the center bore, which can run
     // deeper and sits inside the hat anyway, and the barrel with its lip).
     let back = Infinity;
+    // The barrel's back edge: the rearmost vertex out where the barrel and lip are (the hub bore reaches deeper).
+    let rearmost = Infinity;
     for (let k = 0; k < otherR.length; k++) {
       const r = otherR[k] / profile.bead;
       if (r > 0.3 && r < 0.75) back = Math.min(back, otherX[k]);
+      else if (r >= 0.75) rearmost = Math.min(rearmost, otherX[k]);
     }
-    this.spokeBack[axle] = Number.isFinite(back) ? back : 0;
-    this.faceX[axle] = otherX.length ? otherX.reduce((m, x) => Math.max(m, x), -Infinity) : 0;
+    const spokeBack = Number.isFinite(back) ? back : 0;
+    this.widthFit[axle] = { spokeBack, back: Math.min(spokeBack, Number.isFinite(rearmost) ? rearmost : spokeBack), tireMin: Number.isFinite(tireMin) ? tireMin : 0, tireMax: Number.isFinite(tireMax) ? tireMax : 0 };
     if (model.userData.ownGeometry) model.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
     this.axleMeshes[axle] = baked.children.filter((c): c is THREE.Mesh => (c as THREE.Mesh).isMesh);
     const baseScale = this.car.wheelRadius / (profile.outer || this.car.wheelRadius);
@@ -747,7 +762,7 @@ export class CarView {
   };
   private readonly rearWheelMat = (m: THREE.Material) => this.wheelMat(m === this.materials.Rim ? this.materials.RimRear : m);
 
-  /** Remap one axle's wheel meshes for a wheel size (tire outer diameter stays) and a width (outer face stays). */
+  /** Remap one axle's wheel meshes for a wheel size (tire outer diameter stays) and a width (only the barrel behind the spokes grows). */
   private applyWheelSize(axle: 0 | 1, size: number, width: number): void {
     if (this.axleSize[axle] === size && this.axleWidth[axle] === width) return;
     this.axleSize[axle] = size;
@@ -756,7 +771,7 @@ export class CarView {
       const geo = mesh.geometry;
       const pos = geo.getAttribute('position') as THREE.BufferAttribute;
       const nrm = geo.getAttribute('normal') as THREE.BufferAttribute | undefined;
-      remapWheel(geo.userData.basePos as Float32Array, (geo.userData.baseNrm as Float32Array | null) ?? null, pos.array as Float32Array, nrm ? (nrm.array as Float32Array) : null, this.wheelProfiles[axle], size, width, this.faceX[axle]);
+      remapWheel(geo.userData.basePos as Float32Array, (geo.userData.baseNrm as Float32Array | null) ?? null, pos.array as Float32Array, nrm ? (nrm.array as Float32Array) : null, this.wheelProfiles[axle], size, width, this.widthFit[axle], geo.userData.isTire === true);
       pos.needsUpdate = true;
       if (nrm) nrm.needsUpdate = true;
       geo.computeBoundingSphere();
@@ -817,10 +832,10 @@ export class CarView {
           // The brake follows the bead the wheel size slider moves, so it keeps filling the barrel.
           const ax = i < 2 ? 0 : 1;
           const k = (sc * beadForSize(this.wheelProfiles[ax], axle.wheelSize)) / BRAKE.refBead;
-          // Behind the spokes of this axle's wheel, whatever its offset or width (the spokes move with the width's
-          // stretch about the face; the holder's scale flips x on the right side).
-          const back = this.faceX[ax] + (this.spokeBack[ax] - this.faceX[ax]) * axle.wheelWidth;
-          const x = (sc * back - BRAKE.clearance) * (left ? 1 : -1);
+          // The unit's outboard-most point (the caliper's housing face, or the hat's) sits a clearance behind the
+          // spokes of this axle's wheel, whatever its offset or width (the width only lengthens the barrel behind
+          // the spokes); the holder's scale flips x on the right side.
+          const x = (sc * this.widthFit[ax].spokeBack - BRAKE.clearance - k * brakeReach(ax)) * (left ? 1 : -1);
           brake.rotor.scale.set(left ? k : -k, k, k);
           brake.caliper.scale.set(left ? k : -k, k, k);
           brake.rotor.position.x = x;

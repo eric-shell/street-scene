@@ -8,9 +8,11 @@
  *    wheel's size factor, so spokes, barrel, lip and caps grow together;
  *  - between the bead and the tread the sidewall is squeezed (or stretched)
  *    so the outer radius stays exactly where it was.
- * The axial (X) coordinate only changes for the width control: it scales along
- * the axle about the wheel's outer face, so the face keeps its poke and the
- * extra width (or the lost width) is all on the barrel side.
+ * The axial (X) coordinate only changes for the width control, and only behind
+ * the spokes: the face, lip and everything from the outer face back to the
+ * spokes' back keep their exact shape, the barrel behind them grows (or
+ * shortens) along the axle, and the tire's inner side shifts by as much as the
+ * barrel's back moved, so the barrel never pokes out of the tire.
  */
 
 export interface WheelProfile {
@@ -19,6 +21,23 @@ export interface WheelProfile {
   /** Radius where the tire meets the wheel. */
   bead: number;
 }
+
+/**
+ * Where a wheel's width change acts, in wheel space (X along the axle, +X outboard). Measured once per
+ * baked wheel from the original vertices.
+ */
+export interface WidthFit {
+  /** X of the spokes' back: everything behind it is barrel and stretches with the width. */
+  spokeBack: number;
+  /** X of the wheel's rearmost non-tire vertex (the barrel's back edge). */
+  back: number;
+  /** X range of the tire's vertices. */
+  tireMin: number;
+  tireMax: number;
+}
+
+/** Share of the tire's width, from each side, where its inner side shifts in full (below) and not at all (above the outer one). */
+const TIRE_SHIFT_BAND = 0.2;
 
 /** Largest bead allowed, as a fraction of the outer radius (keeps a visible sliver of sidewall). */
 export const MAX_BEAD = 0.93;
@@ -90,11 +109,25 @@ export function remapRadius(r: number, p: WheelProfile, bead2: number): [number,
  * `pos`/`nrm` are the original xyz arrays; results go to `outPos`/`outNrm`
  * (may be the same length arrays, not the same objects). Normals follow the
  * inverse transpose of the local Jacobian, so shading stays right on the
- * squeezed sidewall. `width` stretches X about `anchorX` (the outer face, wheel
- * space): positions scale by it, and the normals' X by its inverse.
+ * squeezed sidewall.
+ *
+ * `width` (with its `fit`) works along X only. A wheel vertex behind the
+ * spokes' back moves to spokeBack + (x - spokeBack) * width, so the barrel, a
+ * lathed tube, just gets longer or shorter and nothing in front of that plane
+ * changes. The tire (`tire` true) follows the barrel's back edge, which moved
+ * by `shift`: its inner side (the lowest share of its width) shifts by it as a
+ * whole, its outer side stays put, and the tread between is stretched to stay
+ * one continuous surface. Normals' X is divided by the local dx'/dx (1 for the
+ * parts that only shift).
  */
-export function remapWheel(pos: ArrayLike<number>, nrm: ArrayLike<number> | null, outPos: Float32Array, outNrm: Float32Array | null, p: WheelProfile, size: number, width = 1, anchorX = 0): void {
+export function remapWheel(pos: ArrayLike<number>, nrm: ArrayLike<number> | null, outPos: Float32Array, outNrm: Float32Array | null, p: WheelProfile, size: number, width = 1, fit: WidthFit | null = null, tire = false): void {
   const bead2 = beadForSize(p, size);
+  const axial = fit !== null && width !== 1;
+  // The tire's inner side moves as far as the barrel's back edge does.
+  const shift = axial ? (1 - width) * (fit.spokeBack - fit.back) : 0;
+  const tireSpan = axial ? fit.tireMax - fit.tireMin : 0;
+  const lo = axial ? fit.tireMin + TIRE_SHIFT_BAND * tireSpan : 0;
+  const hi = axial ? fit.tireMax - TIRE_SHIFT_BAND * tireSpan : 0;
   for (let i = 0; i < pos.length; i += 3) {
     const x = pos[i];
     const y = pos[i + 1];
@@ -102,11 +135,27 @@ export function remapWheel(pos: ArrayLike<number>, nrm: ArrayLike<number> | null
     const r = Math.hypot(y, z);
     const [r2, dr] = remapRadius(r, p, bead2);
     const t = r > 1e-9 ? r2 / r : bead2 / p.bead;
-    outPos[i] = anchorX + (x - anchorX) * width;
+    // New X and its slope dx'/dx.
+    let x2 = x;
+    let sx = 1;
+    if (axial) {
+      if (!tire) {
+        if (x < fit.spokeBack) {
+          x2 = fit.spokeBack + (x - fit.spokeBack) * width;
+          sx = width;
+        }
+      } else if (x <= lo) x2 = x + shift;
+      else if (x < hi) {
+        const u = (x - lo) / (hi - lo);
+        x2 = x + shift * (1 - u);
+        sx = 1 - shift / (hi - lo);
+      }
+    }
+    outPos[i] = x2;
     outPos[i + 1] = y * t;
     outPos[i + 2] = z * t;
     if (!nrm || !outNrm) continue;
-    const nx = nrm[i] / width;
+    const nx = nrm[i] / sx;
     let ny = nrm[i + 1];
     let nz = nrm[i + 2];
     if (r > 1e-9) {

@@ -273,7 +273,12 @@ export function renderTabContent(host: TabHost): void {
       } else if (host.wheelView === 'fit') {
         host.body.append(
           section(title('size'), axleSlider(axle, 'wheelSize', true, linked), h('div', { class: 'muted garage-note' }, 'Bigger wheels, thinner sidewalls.')),
-          section(title('width'), axleSlider(axle, 'wheelWidth', true, linked), h('div', { class: 'muted garage-note' }, 'Wider wheels grow inward; the face stays put.')),
+          // Width is always set per axle, linked or not (a staggered fitment is the point of it): linked, both sliders show.
+          section(
+            title('width'),
+            ...(linked ? [axleSlider('front', 'wheelWidth', false, false), axleSlider('rear', 'wheelWidth', false, false)] : [axleSlider(axle, 'wheelWidth', true, false)]),
+            h('div', { class: 'muted garage-note' }, 'Wider wheels grow inward; the face and spokes keep their shape.'),
+          ),
           section(
             title('tire'),
             choiceList(
@@ -423,7 +428,8 @@ function linkToggle(host: TabHost): HTMLElement {
       if (host.prefs.linkAxles) {
         // Linking starts from matching axles: the rear takes the front's settings.
         const s = host.build.visual.stance;
-        s.rear = { ...s.front };
+        // Wheel width stays per axle: a staggered fitment survives the link.
+        s.rear = { ...s.front, wheelWidth: s.rear.wheelWidth };
         host.changed();
         toast('Rear now matches front', Link2);
       }
@@ -450,7 +456,6 @@ function wheelLinkToggle(host: TabHost): HTMLElement {
         w.rearTire = w.tire;
         w.rearPaint = { ...w.paint };
         host.build.visual.stance.rear.wheelSize = host.build.visual.stance.front.wheelSize;
-        host.build.visual.stance.rear.wheelWidth = host.build.visual.stance.front.wheelWidth;
         void host.changed().then(() => host.tab === 'wheels' && host.renderTab());
         toast('Rear wheels now match front', Link2);
       } else host.wheelAxle = 'front';
