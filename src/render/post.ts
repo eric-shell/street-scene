@@ -25,6 +25,10 @@
  * stage runs it harder and turns the edge glow from cold blue through violet
  * to hot pink, the HUD bar's stage colors. NITRO_FX holds the numbers.
  *
+ * Heat haze (setHaze, `uHaze`): up to four screen space blobs behind the nearest hot exhausts bend the picture
+ * with two sines drifting up the blob, so the air reads as rising. exhaustFx.ts projects the tips and fills
+ * `hazeBlobs` (x, y screen UV, radius in screen heights, strength); with no blob (`uHazeN` 0) the pass skips it.
+ *
  * Bloom stability: the stock UnrealBloomPass extracts bright pixels with one
  * bilinear tap per texel of a buffer 2x-8x smaller than the scene, with a hard
  * threshold. Sub-pixel emitters (distant lamp lenses, window lights, neon
@@ -170,6 +174,9 @@ const FxShader = {
     lensTime: { value: 0 },
     lensAspect: { value: 16 / 9 },
     lensLayers: { value: 2 },
+    uHaze: { value: [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()] },
+    uHazeN: { value: 0 },
+    uHazeTime: { value: 0 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -206,6 +213,9 @@ const FxShader = {
     uniform float lensTime;
     uniform float lensAspect;
     uniform int lensLayers;
+    uniform vec4 uHaze[4];
+    uniform int uHazeN;
+    uniform float uHazeTime;
     varying vec2 vUv;
     const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
     float hash21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -259,6 +269,22 @@ const FxShader = {
         // Outward streaming in drifting bands (not rings), so it reads as flow.
         float stream = sin(dot(p, vec2(0.9, 1.4)) - time * 5.0 + q.x) * 0.5 + 0.5;
         uv += (q * 0.6 + normalize(dir0 + 1e-5) * stream) * flow * warp * m;
+      }
+      if (uHazeN > 0) {
+        // Heat haze behind the near exhausts: x, y the blob's centre, z its radius in screen heights, w how far it bends the picture.
+        // The shimmer is a pair of sines drifting up the blob, so the air reads as rising.
+        for (int i = 0; i < 4; i++) {
+          if (i >= uHazeN) break;
+          vec4 h = uHaze[i];
+          vec2 d = (vUv - h.xy) * vec2(lensAspect, 1.0) / h.z;
+          float l2 = dot(d, d);
+          if (l2 < 1.0) {
+            float fall = (1.0 - l2) * (1.0 - l2);
+            vec2 p = d * 3.5 - vec2(0.0, uHazeTime * 3.2);
+            vec2 w = vec2(sin(p.y * 4.0 + sin(p.x * 3.1 + uHazeTime * 1.7) * 1.4), cos(p.y * 3.3 + p.x * 2.3 - uHazeTime * 1.1));
+            uv += w * h.w * fall * vec2(1.0 / lensAspect, 1.0);
+          }
+        }
       }
       vec4 c = texture2D(tDiffuse, uv);
       float zoom = blur * (1.0 + blurEdge * warp * m);
@@ -524,6 +550,7 @@ export class PostFx {
     this.msaaSupported = renderer.capabilities.maxSamples > 0 && renderer.extensions.has('EXT_color_buffer_float');
     this.bloom = new StableBloomPass(new THREE.Vector2(size.x, size.y), 0.9, 0.4, 0.86);
     this.fx = new ShaderPass(FxShader);
+    this.hazeBlobs = this.fx.uniforms.uHaze.value as THREE.Vector4[];
     this.output = new OutputPass();
     this.retro = new ShaderPass(RetroShader);
     this.retro.enabled = false;
@@ -586,6 +613,15 @@ export class PostFx {
   setLensRain(amount: number, speed: number): void {
     this.fx.uniforms.lensRain.value = Math.max(0, Math.min(1, amount * this.lensStrength));
     this.lensSpeed = speed;
+  }
+
+  /** The heat haze blobs the session fills each frame (exhaustFx.ts `haze`): x, y screen UV, radius in screen heights, strength. */
+  readonly hazeBlobs: THREE.Vector4[];
+
+  /** Use the first `count` of `hazeBlobs` this frame (0: the shader skips the haze) on the clock `time` (s). */
+  setHaze(count: number, time: number): void {
+    this.fx.uniforms.uHazeN.value = count;
+    this.fx.uniforms.uHazeTime.value = time;
   }
 
   setSpeedBlur(amount: number): void {
