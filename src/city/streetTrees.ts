@@ -135,8 +135,6 @@ export function planStreetTrees(input: StreetTreeInput): StreetTreePlan {
       const len = sqrt(ax * ax + az * az);
       if (len < 1e-6) continue;
       const u = { x: ax / len, z: az / len };
-      const startClear = side.span.before > 1e-6 ? 0 : T.junctionClear;
-      const endClear = side.span.before + len < side.span.total - 1e-6 ? 0 : T.junctionClear;
       for (const row of rows) {
         // Stations in street coordinates: the first one at or past this piece's start.
         const k0 = Math.ceil((side.span.before - T.jitter) / pitch - 0.5 - side.phase - row.phase);
@@ -152,7 +150,10 @@ export function planStreetTrees(input: StreetTreeInput): StreetTreePlan {
           const reject = (why: TreeReject): void => {
             rejected[why]++;
           };
-          if (local < startClear || local > len - endClear) {
+          // Clear of the junctions at both ends of the whole street, in street coordinates: a short piece
+          // into a bend node (a roundabout's approach, say) leaves the next junction nearer than its own end.
+          const along = side.span.before + local;
+          if (along < T.junctionClear || along > side.span.total - T.junctionClear) {
             reject('junction');
             continue;
           }
