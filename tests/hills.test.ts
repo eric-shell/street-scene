@@ -324,7 +324,9 @@ describe('monument', () => {
     knob.passStartChance = 1;
     try {
       let starts = 0;
-      for (let seed = 0; seed < 120 && starts < 2; seed++) {
+      // About one seed in a hundred starts on one (seed 60 did until Harbor Run reshuffled the event draws; 145 and
+      // 191 do now): the first is checked, since a city costs half a second and the scan runs well past a hundred.
+      for (let seed = 0; seed < 240 && starts < 1; seed++) {
         const city = createCity(seed);
         const m = city.districts.areas.find((a) => a.kind === 'monument');
         if (!m?.params.passes) continue;
@@ -349,12 +351,12 @@ describe('monument', () => {
         for (const c of r.cars) expect(c.finished, `seed ${seed} ${c.name}`).toBe(true);
         expect(r.events.filter((e) => e.type === 'reset').length).toBeLessThanOrEqual(2);
       }
-      // About one circuit in sixty takes a pass straight enough (the routes vary with every city change).
+      // About one circuit in a hundred takes a pass straight enough (the routes vary with every city change).
       expect(starts).toBeGreaterThanOrEqual(1);
     } finally {
       knob.passStartChance = was;
     }
-  });
+  }, 300000);
 });
 
 describe('special districts share', () => {

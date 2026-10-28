@@ -298,8 +298,8 @@ function awayFromRoundabouts<T extends Wall>(graph: RoadGraph, rails: T[]): T[] 
 /**
  * No corner rail across the racing line itself: rails stand on the outside of the route's turns at its
  * nodes, but a race pass (a park's path or the monument plaza's, route.ts RoutePass) can rejoin the street
- * right before the next turn, from that turn's outside. The pieces the line crosses (and those within a
- * car's half width of the crossing) come out, the rest of each rail stays (railsClearOf). Elsewhere a no-op.
+ * right before the next turn, from that turn's outside. The pieces the line crosses or ends beside (and those
+ * within a car's half width of the line there) come out, the rest of each rail stays (railsClearOf). Elsewhere a no-op.
  */
 function railsOffRoute<T extends Wall>(route: Route, rails: T[]): T[] {
   const pts = route.points;
@@ -313,7 +313,13 @@ function railsOffRoute<T extends Wall>(route: Route, rails: T[]): T[] {
     const maxX = Math.max(a.x, b.x);
     const minZ = Math.min(a.z, b.z);
     const maxZ = Math.max(a.z, b.z);
-    const hit = rails.some((w) => Math.max(w.ax, w.bx) >= minX && Math.min(w.ax, w.bx) <= maxX && Math.max(w.az, w.bz) >= minZ && Math.min(w.az, w.bz) <= maxZ && segmentsCross(a, b, w));
+    // Crossed, or ended short of the line within the band (a rail that stops at the pass's mouth, a metre off the line).
+    const hit = rails.some(
+      (w) =>
+        (Math.max(w.ax, w.bx) >= minX && Math.min(w.ax, w.bx) <= maxX && Math.max(w.az, w.bz) >= minZ && Math.min(w.az, w.bz) <= maxZ && segmentsCross(a, b, w)) ||
+        distToSegment(w.ax, w.az, a.x, a.z, b.x, b.z) < half ||
+        distToSegment(w.bx, w.bz, a.x, a.z, b.x, b.z) < half,
+    );
     if (!hit) continue;
     const l = sqrt((b.x - a.x) ** 2 + (b.z - a.z) ** 2) || 1;
     const nx = (-(b.z - a.z) / l) * half;

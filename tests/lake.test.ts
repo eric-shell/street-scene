@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { CITY } from '../src/city/config';
 import { createCity, createWorld, planRoads } from '../src/city/world';
-import type { City } from '../src/city/world';
+import type { City, World } from '../src/city/world';
 import { graphIsConnected, isRiverEdge } from '../src/city/roadGraph';
 import { createTerrain } from '../src/city/terrain';
 import { distToPolygonEdge, pointInPolygon, polygonBounds } from '../src/city/districts/geom';
@@ -240,24 +240,27 @@ describe('lake (city)', () => {
   it('the AI field drives the shore road round it, never into the water', () => {
     // A route along a shore: the first lake city (from a stream) whose circuit or sprint drives a piece of
     // the shore road (two shore nodes in a row; one alone may only be a corner it crosses).
-    let pick: { seed: number; kind: 'circuit' | 'sprint' } | null = null;
+    // On the shore road: its center line is the street's half width and sidewalk plus the promenade from the railing.
+    const shoreRoad = CITY.width.avenue / 2 + CITY.sidewalk + CFG.promenade + 2;
+    let pick: { seed: number; kind: 'circuit' | 'sprint'; world: World; near: number } | null = null;
     for (const seed of lakeSeeds(41, 12)) {
       const plan = planRoads(seed);
       const lake = lakeOf(plan.districts.areas)!;
       for (const kind of ['circuit', 'sprint'] as const) {
         const ns = plan.routeNodes[kind];
-        // Not at the very end of the route: a shore that is the finish's own approach ends the race before the field has come by.
-        if (!pick && ns.some((n, i) => i > 0 && i < ns.length - 5 && lake.nodes.includes(n) && lake.nodes.includes(ns[i - 1]))) pick = { seed, kind };
+        if (pick || !ns.some((n, i) => i > 0 && i < ns.length - 5 && lake.nodes.includes(n) && lake.nodes.includes(ns[i - 1]))) continue;
+        // Before the finish line, a little: a sprint's shore past it, or the finish's own approach, ends the race
+        // before the field has come by (a sprint's finish stands well short of its last node).
+        const world = createWorld(seed, kind, createCity(seed));
+        const { rail } = lakeRings(lakeOf(world.areas)!);
+        const near = Math.min(...world.route.points.filter((_, i) => world.route.cum[i] < world.route.finishS - 60).map((p) => distToPolygonEdge(p.x, p.z, rail)));
+        if (near < shoreRoad) pick = { seed, kind, world, near };
       }
       if (pick) break;
     }
     expect(pick).not.toBeNull();
-    const { seed, kind } = pick!;
-    const world = createWorld(seed, kind, createCity(seed));
+    const { seed, kind, world, near } = pick!;
     const { rail } = lakeRings(lakeOf(world.areas)!);
-    const near = Math.min(...world.route.points.map((p) => distToPolygonEdge(p.x, p.z, rail)));
-    // On the shore road: its center line is the street's half width and sidewalk plus the promenade from the railing.
-    expect(near).toBeLessThan(CITY.width.avenue / 2 + CITY.sidewalk + CFG.promenade + 2);
     const r = createRace(raceConfig(seed, kind, 3), world);
     const pilot = createAi(0.97);
     // On round the route until every car has come by the lake (and a few seconds past it), or the race ends.

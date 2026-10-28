@@ -105,16 +105,22 @@ describe('traffic network', () => {
 describe('ambient traffic', () => {
   it('is deterministic and never disturbs a race on the route', () => {
     const cfg = raceConfig(20261019, 'circuit', 3);
+    let peak = 0;
     const run = (c: RaceConfig) => {
       const r = createRace(c);
       const pilot = createAi(0.97);
-      for (let i = 0; i < 60 * 35; i++) stepRace(r, autopilotInput(r, r.cars[0], pilot));
+      for (let i = 0; i < 60 * 35; i++) {
+        stepRace(r, autopilotInput(r, r.cars[0], pilot));
+        peak = Math.max(peak, r.traffic?.cars.filter((t) => t.mode === 'drive').length ?? 0);
+      }
       return r;
     };
     const a = run(withTraffic(cfg));
     const b = run(withTraffic(cfg));
     expect(a.traffic!.cars.length).toBeGreaterThan(10);
-    expect(a.traffic!.cars.filter((c) => c.mode === 'drive').length).toBeGreaterThan(10);
+    // Plenty of it driving while the race is in town (the seed is a Harbor Run: along the sea wall no street lies
+    // in the spawn ring, so the fleet thins out there until the route turns back in).
+    expect(peak).toBeGreaterThan(10);
     expect(trafficSnapshot(a)).toBe(trafficSnapshot(b));
     expect(carSnapshot(a)).toBe(carSnapshot(b));
     // The racers never meet it: the race is bit for bit the race without traffic.
@@ -187,9 +193,19 @@ describe('ambient traffic', () => {
     const scenario = () => {
       const r = createRace({ ...withTraffic(raceConfig(20261019, 'circuit', 0)), openWorld: true });
       const t = r.traffic!;
-      for (let i = 0; i < 120; i++) stepRace(r, input({}));
-      // Ram a car well inside a long lane from behind, a little off its center line.
-      const target = t.cars.find((c) => c.mode === 'drive' && t.net.paths[c.path].lane && t.net.paths[c.path].length - c.s > 70 && c.s > 30)!;
+      // Ram a car well inside a long lane from behind, a little off its center line. The streets round the grid are
+      // short (the seed is a Harbor Run, starting by the docks), so the player first waits on a lane about 200 m from
+      // the nearest long one, inside the ring where the fleet respawns, until a car is well into it.
+      const start = r.cars[0].state;
+      const lanes = t.net.lanes.map((id) => t.net.paths[id]);
+      const mid = (p: (typeof lanes)[number]) => ({ x: (p.x[0] + p.x[p.x.length - 1]) / 2, z: (p.z[0] + p.z[p.z.length - 1]) / 2 });
+      const long = lanes.filter((p) => p.length > 100).sort((p, q) => Math.hypot(mid(p).x - start.x, mid(p).z - start.z) - Math.hypot(mid(q).x - start.x, mid(q).z - start.z))[0];
+      const m = mid(long);
+      const wait = lanes.find((p) => Math.abs(Math.hypot(p.x[0] - m.x, p.z[0] - m.z) - 200) < 30 && p.length > 40)!;
+      placeCar(start, (wait.x[0] + wait.x[1]) / 2, (wait.z[0] + wait.z[1]) / 2, wait.yaw[0], r.world);
+      const ready = (c: TrafficCar) => c.mode === 'drive' && t.net.paths[c.path].lane && t.net.paths[c.path].length - c.s > 70 && c.s > 30;
+      for (let i = 0; i < 120 || (!t.cars.some(ready) && i < 60 * 60); i++) stepRace(r, input({}));
+      const target = t.cars.find(ready)!;
       const b = target.body;
       const fx = sin(b.yaw);
       const fz = cos(b.yaw);
