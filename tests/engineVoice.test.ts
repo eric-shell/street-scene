@@ -74,7 +74,7 @@ describe('engine programs', () => {
 
   it('read the manifest cars: single pipe VR6, turbo twin rotor, twin pipe turbo V6', () => {
     const car = (id: string) => buildProgram(manifest.cars.find((c) => c.id === id)!.engine as EngineSpec);
-    const hatch = car('wendtFairway');
+    const hatch = car('wendtStrom');
     const coupe = car('kazamaRotor');
     const wagon = car('brandtKombi');
     // The Hatch's VR6: six cylinders on one pipe. 1-5-3-6-2-4 fires three from the near side of the narrow V,

@@ -3,11 +3,11 @@
   "notes": "Car space: meters, Y up, origin on the ground midway between the axles, car faces +Z, +X is the car's left. Wheel positions are wheel centers. Cars marked provisional have estimated geometry until `npm run assets` measures the converted GLB. `engine` is the car's spec (layout, aspiration, position; vocabulary in src/shared/carSpec.ts); which wheels are driven comes from drivingParams.json.",
   "cars": [
     {
-      "id": "wendtFairway",
-      "displayName": "Wendt Fairway R6",
+      "id": "wendtStrom",
+      "displayName": "Wendt Strom R6",
       "source": "eshell",
       "provisional": false,
-      "file": "cars/wendtFairway.glb",
+      "file": "cars/wendtStrom.glb",
       "baseBodyNode": "Body",
       "wheelNodes": [],
       "wheelRadius": 0.309,

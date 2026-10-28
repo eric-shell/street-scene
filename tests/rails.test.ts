@@ -281,7 +281,7 @@ describe('corner rails', () => {
       expect(maxRailGap(s)).toBeLessThanOrEqual(RAIL.maxGap + 1e-9);
     }
     for (let p = 0; p < l.count; p++) expect(Math.hypot(s.dx[p], s.dz[p])).toBeLessThanOrEqual(RAIL.maxOffset + 1e-9);
-    expect(RAIL.maxGap).toBeLessThanOrEqual(Math.min(...['wendtFairway', 'kazamaRotor', 'brandtKombi', 'ridgewayFiend', 'hinodeHorizon'].map((id) => getBaseTuning(id).geometry.halfWidth * 2)) / 8);
+    expect(RAIL.maxGap).toBeLessThanOrEqual(Math.min(...['wendtStrom', 'kazamaRotor', 'brandtKombi', 'ridgewayFiend', 'hinodeHorizon'].map((id) => getBaseTuning(id).geometry.halfWidth * 2)) / 8);
   });
 
   it('a race that dents the rails replays identically', () => {

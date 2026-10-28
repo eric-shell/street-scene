@@ -272,7 +272,7 @@ const CC_BY = 'https://creativecommons.org/licenses/by/4.0/';
 /** The donor models (Sketchfab, CC BY 4.0) the garage cars and wheels are made from: each credit names
  * the model, its author and the licence, as CC BY asks (docs/carDonors.md, docs/carWheels.md). */
 const DONOR_CREDITS: { use: string; title: string; uid: string; author: string }[] = [
-  { use: 'Wendt Fairway R6', title: '2002_volkswagen_golf_r32_mk4', uid: '98e6828648084ae3b877ad69e8ad36dc', author: 'tangwang920' },
+  { use: 'Wendt Strom R6', title: '2002_volkswagen_golf_r32_mk4', uid: '98e6828648084ae3b877ad69e8ad36dc', author: 'tangwang920' },
   { use: 'Kazama Rotor', title: 'Mazda RX7 FD 1999', uid: '06986b70c65b44c5a7315ed467b621a6', author: 'niev' },
   { use: 'Brandt Kombi S', title: '1992 Audi S2 Avant', uid: '939dc6336dfe4fbd99fdb3608d58de56', author: 'tonielpro520' },
   { use: 'Ridgeway Fiend', title: 'Dodge Challenger SRT DEMON SDC', uid: '54d229c2c0ff4eac8bc872f50b25e36c', author: 'SDC PERFORMANCE' },

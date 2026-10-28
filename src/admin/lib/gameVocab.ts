@@ -44,7 +44,7 @@ export function modeLabel(mode: string): string {
 
 const CAR_NAMES = new Map(manifest.cars.map((c) => [c.id, c.displayName]));
 
-/** `wendtFairway` → `Wendt Fairway R6`; an unknown id stays as sent. */
+/** `wendtStrom` → `Wendt Strom R6`; an unknown id stays as sent. */
 export function carName(id: string): string {
   return CAR_NAMES.get(id) ?? id;
 }

@@ -2,7 +2,7 @@
   "_readme": "Reference specs for the authored cars (docs/carDesign.md). Each car blends two real donors: their dimensions in mm (sourced; `estimates` lists the keys read off side profiles rather than spec sheets), blend weights, what to take from each, and the lamp signatures. Nothing here is a game dimension: targets are derived as blend(donor value / donor wheelbase) x the car's manifest wheelbase x the `house` multiplier, so the proportions come from the donors and the stylization lives in one place. Readers: scripts/auditCar.ts (npm run audit, headless on the shipped GLB) and scripts/blender/carRefs.py (spec_check in Blender); scripts/blender/carFeatures.py builds the shared features from `house.features`. A calibrated side photo in assets/refs/<carId>/refs.json overrides the estimated keys.",
   "house": {
     "wheelRadius": 0.28,
-    "_scale": "Street Scene proportions on top of the blended donors: one 0.28 m wheel for every car, wider (flares) and lower (chopped roof) than real. Measured off the Wendt Fairway as shipped. Change here, re-audit every car, and say so: the manifest geometry feeds the sim.",
+    "_scale": "Street Scene proportions on top of the blended donors: one 0.28 m wheel for every car, wider (flares) and lower (chopped roof) than real. Measured off the Wendt Strom as shipped. Change here, re-audit every car, and say so: the manifest geometry feeds the sim.",
     "scale": {
       "length": 1,
       "width": 1.06,
@@ -116,8 +116,8 @@
     }
   },
   "cars": {
-    "wendtFairway": {
-      "displayName": "Wendt Fairway R6",
+    "wendtStrom": {
+      "displayName": "Wendt Strom R6",
       "brief": "Three door hot hatch: the Golf R32 Mk4 donor reduced whole at true size on its own tires, its own lamps (the lens covers recolored from glass), badges, antenna and wipers removed. Front naturally aspirated VR6, all wheel drive biased to the front.",
       "donors": [
         {

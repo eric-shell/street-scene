@@ -37,7 +37,7 @@ export function freshBuild(carId = DEFAULT_CAR_ID, name = DEFAULT_BUILD_NAME): C
  * wheel style is free and only the stance is per car.
  */
 const STREET_FITS: Record<string, Record<(typeof AXLES)[number], AxleStance>> = {
-  wendtFairway: {
+  wendtStrom: {
     front: { rideHeight: -0.08, camber: -3, offset: 0.035, wheelSize: 1.118 },
     rear: { rideHeight: -0.08, camber: -5, offset: 0.035, wheelSize: 1.118 },
   },

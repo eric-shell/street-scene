@@ -51,7 +51,7 @@ const WHEEL = { ahead: 0.38, up: 0.28, r: 0.17, tilt: 0.4 } as const;
  */
 const SEATS: Record<string, Seat> = {
   // The footwell floor (0.22) sits below the cabin floor under the seat (0.29); a pedal block stands at z 0.7.
-  wendtFairway: { x: 0.38, y: 0.48, z: -0.28, lean: -0.22, floor: 0.22, feet: 0.82 },
+  wendtStrom: { x: 0.38, y: 0.48, z: -0.28, lean: -0.22, floor: 0.22, feet: 0.82 },
   // The Coupe's wheel is low and well ahead of its seat (the RX-7's long cabin): the driver sits forward to it.
   // Leaning forward lifts the head, and the headliner is only 1.235 m up, so the hips sit low in the cushion
   // (its top is 0.41 m): the cap clears the headliner by 3.5 cm. The wheel stays put in the cabin (z 0.13, y 0.66).

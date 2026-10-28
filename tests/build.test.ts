@@ -20,7 +20,7 @@ const tuned = (car: string | CarTuning, slider: SetupSlider, p: SetupPosition) =
 /** The sliders are checked on the plain base tuning (RWD) and on the default car (AWD). */
 const SLIDER_CARS: [string, CarTuning][] = [
   ['base', baseTuning()],
-  ['wendtFairway', getBaseTuning('wendtFairway')],
+  ['wendtStrom', getBaseTuning('wendtStrom')],
 ];
 /** A build saved with the retired component upgrades (every tier at 2). */
 const LEGACY_TIERS = { engine: 2, turbo: 2, exhaust: 2, transmission: 2, tires: 2, suspension: 2, brakes: 2, weight: 2, nitrous: 2 };
@@ -39,7 +39,7 @@ describe('build validation', () => {
       },
       performance: { suspension: 9, gearing: -4, differential: 2.4, brakeBalance: 'x' },
     });
-    expect(b.carId).toBe('wendtFairway');
+    expect(b.carId).toBe('wendtStrom');
     expect(b.name.length).toBeLessThanOrEqual(24);
     expect(b.name).not.toContain('<');
     expect(b.visual.paint.color).toMatch(/^#[0-9a-f]{6}$/);
@@ -62,10 +62,10 @@ describe('build validation', () => {
   });
 
   it('share codes round trip to the same build', async () => {
-    const b = defaultBuild('wendtFairway');
+    const b = defaultBuild('wendtStrom');
     b.name = 'Midnight Club';
     b.visual.paint = { color: '#19e6ff', finish: 'pearl' };
-    b.visual.parts = { spoiler: 'wendtFairway_spoiler_1', frontBumper: 'wendtFairway_frontBumper_kurogane', wheels: 'wheel_yari' };
+    b.visual.parts = { spoiler: 'wendtStrom_spoiler_1', frontBumper: 'wendtStrom_frontBumper_kurogane', wheels: 'wheel_yari' };
     b.visual.decals.push({ shape: 'number', color: '#ff3df2', pos: [0.9, 0.6, 0.2], normal: [1, 0, 0], rotation: 12, scale: 0.7, mirror: true, text: '42' });
     b.visual.wheels = { paint: { color: '#ffcc00', finish: 'candy', match: false }, rearPaint: { color: '#1a1b1f', finish: 'matte', match: true }, rearPart: 'wheel_kumo', tire: 'standard', rearTire: 'stretched' };
     b.visual.calipers = { color: '#ffcc1f', finish: 'pearl', match: true };
@@ -103,7 +103,7 @@ describe('build validation', () => {
   });
 
   it('migrates legacy stance from old saves', () => {
-    const b = validateBuild({ carId: 'wendtFairway', visual: { wheels: { size: 1.1, color: '#ffffff' }, stance: { rideHeight: -0.02, camberFront: -4, camberRear: -6, offset: 0.02 } } });
+    const b = validateBuild({ carId: 'wendtStrom', visual: { wheels: { size: 1.1, color: '#ffffff' }, stance: { rideHeight: -0.02, camberFront: -4, camberRear: -6, offset: 0.02 } } });
     // One legacy ride height lowers both axles.
     expect(b.visual.stance.front).toEqual({ rideHeight: -0.02, camber: -4, offset: 0.02, wheelSize: 1.1 });
     expect(b.visual.stance.rear).toEqual({ rideHeight: -0.02, camber: -6, offset: 0.02, wheelSize: 1.1 });
@@ -146,9 +146,9 @@ describe('build validation', () => {
   });
 
   it('visual choices never change the tuning the sim uses', () => {
-    const a = defaultBuild('wendtFairway');
-    const b = defaultBuild('wendtFairway');
-    b.visual.parts = { spoiler: 'wendtFairway_spoiler_1', rearBumper: 'wendtFairway_rearBumper_hayate', sideSkirts: 'wendtFairway_sideSkirts_kurogane' };
+    const a = defaultBuild('wendtStrom');
+    const b = defaultBuild('wendtStrom');
+    b.visual.parts = { spoiler: 'wendtStrom_spoiler_1', rearBumper: 'wendtStrom_rearBumper_hayate', sideSkirts: 'wendtStrom_sideSkirts_kurogane' };
     b.visual.stance.front.rideHeight = -0.08;
     expect(applyBuild(getBaseTuning(a.carId), a.performance)).toEqual(applyBuild(getBaseTuning(b.carId), b.performance));
   });
@@ -261,7 +261,7 @@ describe('setup sliders', () => {
       }
       return { top, pull: (at280 - at200) / 60 };
     };
-    for (const id of ['wendtFairway', 'kazamaRotor', 'brandtKombi', 'ridgewayFiend', 'hinodeHorizon']) {
+    for (const id of ['wendtStrom', 'kazamaRotor', 'brandtKombi', 'ridgewayFiend', 'hinodeHorizon']) {
       const st = SETUP_POSITIONS.map((p) => measureStats(tuned(id, 'gearing', p)));
       // The garage's 0-60 slows one step at a time to the right (the torque bonus, with first gear where it was).
       for (let i = 1; i < st.length; i++) expect(st[i].zeroTo60, `${id} ${i + 1}`).toBeGreaterThan(st[i - 1].zeroTo60);
@@ -282,7 +282,7 @@ describe('setup sliders', () => {
   });
 
   it('the gearing torque bonus works out of corners and is gone by top speed', () => {
-    const t = getBaseTuning('wendtFairway');
+    const t = getBaseTuning('wendtStrom');
     const bonus = { ...t, gearbox: { ...t.gearbox, torqueBonus: 0.06 } };
     /** One tick on full throttle from a car rolling at `kmh` in its gear: the speed gained (m/s). */
     const gain = (tt: CarTuning, kmh: number) => {
@@ -323,7 +323,7 @@ describe('setup sliders', () => {
       for (let i = 0; i < 90; i++) stepCar(c, t, input({ steer: 0.55, throttle: 1 }), { world });
       return c.speed - v0;
     };
-    expect(exit(tuned('wendtFairway', 'differential', 1))).toBeLessThan(exit(tuned('wendtFairway', 'differential', 3)) * 0.85);
+    expect(exit(tuned('wendtStrom', 'differential', 1))).toBeLessThan(exit(tuned('wendtStrom', 'differential', 3)) * 0.85);
     // A handbrake flick into a powered slide (RWD), held flat out with counter steer: the open axle cannot
     // keep the rear spinning.
     const drift = (t: CarTuning) => {

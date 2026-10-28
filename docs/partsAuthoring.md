@@ -73,11 +73,11 @@ Keep it low poly. Flat shading with a few hundred triangles looks right next to 
 ## 5. File naming
 
 ```
-<carId>_<slot>_<partId>.glb      e.g.  wendtFairway_frontBumper_tsurugi.glb
+<carId>_<slot>_<partId>.glb      e.g.  wendtStrom_frontBumper_tsurugi.glb
 wheel_<name>.glb                  e.g.  wheel_mesh_classic.glb
 ```
 
-Car ids are in `src/assets/carManifest.json`: `wendtFairway`, `kazamaRotor`, `brandtKombi`, `ridgewayFiend`. Put the file in `public/parts/`.
+Car ids are in `src/assets/carManifest.json`: `wendtStrom`, `kazamaRotor`, `brandtKombi`, `ridgewayFiend`. Put the file in `public/parts/`.
 
 ## 6. Blender export settings (File > Export > glTF 2.0)
 
@@ -95,11 +95,11 @@ Add an object to `parts` in `src/assets/partsCatalog.json`:
 
 ```json
 {
-  "id": "wendtFairway_frontBumper_tsurugi",
+  "id": "wendtStrom_frontBumper_tsurugi",
   "displayName": "Tsurugi",
-  "carId": "wendtFairway",
+  "carId": "wendtStrom",
   "slot": "frontBumper",
-  "file": "parts/wendtFairway_frontBumper_tsurugi.glb",
+  "file": "parts/wendtStrom_frontBumper_tsurugi.glb",
   "hides": ["Bumper_Front"],
   "materialSlots": ["Paint", "Black"],
   "tris": 1840
@@ -139,7 +139,7 @@ Sizes that read at game distance, where each piece sits, the tuner families and 
 
 ## 10. Splitting a merged body kit
 
-FBX imports (IceMaan) ship each body kit as one merged mesh, so they're registered as `body` variants until split. The Proto Compact and Wendt Fairway (then the Proto Hatch) were split this way in Blender (the `/blender` project skill has the scripts and the gotchas):
+FBX imports (IceMaan) ship each body kit as one merged mesh, so they're registered as `body` variants until split. The Proto Compact and Wendt Strom (then the Proto Hatch) were split this way in Blender (the `/blender` project skill has the scripts and the gotchas):
 
 1. Bisect the body with axis planes so the seams are clean edges: the front bumper is everything ahead of the front arch line and below the headlights, the rear bumper everything behind the rear arch line and below the taillights, the skirts the sill strip between the arches outside the floor.
 2. Separate the faces on each side into `Bumper_Front`, `Bumper_Rear` and `Skirts`; the rest stays `Body`.

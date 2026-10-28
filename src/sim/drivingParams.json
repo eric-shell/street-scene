@@ -181,8 +181,8 @@
     }
   },
   "cars": {
-    "wendtFairway": {
-      "_name": "Wendt Fairway (Golf R32 Mk4 donor): front naturally aspirated VR6, all wheel drive biased to the front (a Haldex coupling sends the rear its share). No boost: torque builds to a broad plateau around 3,000 rpm and fades gently to a 6,800 rpm redline.",
+    "wendtStrom": {
+      "_name": "Wendt Strom (Golf R32 Mk4 donor): front naturally aspirated VR6, all wheel drive biased to the front (a Haldex coupling sends the rear its share). No boost: torque builds to a broad plateau around 3,000 rpm and fades gently to a 6,800 rpm redline.",
       "mass": 1480,
       "drivetrain": { "layout": "awd", "awdFrontShare": 0.6 },
       "engine": {

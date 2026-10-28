@@ -61,7 +61,7 @@ DONORS = {
                     and max(b - a) < 0.25,
                     lambda k, a, b, mats: set(mats) == {'Black'} and abs((a.x + b.x) / 2) < 0.03 and b.z > 1.45 and (b - a).x < 0.05],
     },
-    'wendtFairway': {
+    'wendtStrom': {
         'name': '2002 Volkswagen Golf R32 (Mk4)',
         'uid': '98e6828648084ae3b877ad69e8ad36dc',
         'author': 'tangwang920',

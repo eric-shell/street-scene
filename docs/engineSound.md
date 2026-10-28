@@ -52,7 +52,7 @@ Defaults by layout are `LAYOUT_VOICE`; turbo engines default to the quiet silenc
 
 ## The garage engines
 
-### Wendt Fairway: VW VR6, naturally aspirated (Golf R32 Mk4)
+### Wendt Strom: VW VR6, naturally aspirated (Golf R32 Mk4)
 
 - Reference: 3.2 l VR6 (BFH/BDB), 15° narrow V sharing one head, firing order 1-5-3-6-2-4, 84.0 x 95.9 mm, 24 valves with variable cam timing, 10.9 to 11.3:1, Bosch Motronic ME 7.1.1. One manifold per three cylinders but runners of two lengths, as the narrow V staggers them.
 - The sound: even 120° firing, but odd cylinders sit on one side of the narrow V, so 1-5-3-6-2-4 fires three from one side and then three from the other. The far side's runners reach round the V and run longer, so its three pulses arrive late and weaker: a beat once a cycle under the six's even note, the hollow, gravelly growl the VR6 is known for (the "Chewbacca" sound). The runners are also staggered within a side (`stagger`). No turbines, so the pulses stay sharp.

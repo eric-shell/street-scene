@@ -7,7 +7,7 @@
  * +X left); a Blender session gets the same table from carRefs.py spec_check().
  *
  *   npm run audit                      every car in the spec
- *   npm run audit -- wendtFairway        one car
+ *   npm run audit -- wendtStrom        one car
  *   npm run audit -- --json            machine readable (per car: measure, targets, checks)
  */
 import { readFileSync } from 'node:fs';

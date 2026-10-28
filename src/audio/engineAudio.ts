@@ -8,7 +8,7 @@
  * when you lift at boost, and for supercharged cars the blower's rpm locked
  * whine (BLOWER). What the voice is told comes from the car's
  * EngineSpec (layout, aspiration and the optional `voice` block), so the
- * Wendt Fairway burbles like a boxer on unequal headers, the Compact honks
+ * Wendt Strom burbles like a boxer on unequal headers, the Compact honks
  * through its throttle bodies and the Coupe whooshes through its turbo.
  *
  * Most of an engine's energy sits below 300 Hz, which laptop and phone
@@ -570,7 +570,7 @@ export class EngineVoice {
  * flywheel that chases the throttle, falls back to idle and bounces off the
  * rev limiter. Owns its EngineVoice (null when Web Audio is unavailable).
  *
- *   const eng = new FreeRevEngine(manifestCar('wendtFairway').engine, { idle: 900, redline: 6800 });
+ *   const eng = new FreeRevEngine(manifestCar('wendtStrom').engine, { idle: 900, redline: 6800 });
  *   // every frame: eng.update(throttle01, dt);   eng.rpm for a tach
  *   eng.dispose();
  */

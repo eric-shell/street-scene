@@ -79,7 +79,7 @@ const VIEWPORTS: [number, number, number, number][] = [
   [820, 1180, 1024, 1366],
 ];
 const MODES: RaceType[] = ['circuit', 'circuit', 'sprint', 'sprint', 'waypoint', 'drift', 'drag', 'roam', 'roam'];
-const CARS = ['wendtFairway', 'wendtFairway', 'kazamaRotor', 'brandtKombi'];
+const CARS = ['wendtStrom', 'wendtStrom', 'kazamaRotor', 'brandtKombi'];
 /** Some seeds are raced again and again (a favourite course), some once. */
 const SEEDS: [number, string | undefined][] = [
   [1337, 'neon'],

@@ -12,7 +12,7 @@ How a Street Scene car is made from one real car model: download a model with a 
 - **One whole car**, not a scene: a ground plane or backdrop is fine (it is dropped), but several cars in one file are not.
 - A source between 20k and 300k triangles reduces best. Under 10k leaves no detail to keep; over 1M is slow.
 - **Provenance.** A CC licence is only as good as the uploader's right to grant it. Pass over a model that is evidently someone else's: a game asset (part names in a game's own scheme, such as `Bcnr33…`; lamps and grilles only in a 128 to 512 px texture; a face count on the model page far above what downloads), the same mesh under several uploaders (identical face counts), a game mod (BeamNG's `etkc_` parts), or a description naming the game it came from. Flag weaker signs (a redistribution site in the object names, as on the Ridgeway Fiend) and let the user decide.
-- **Trademarks** are separate from the model's licence. A CC licence covers the 3D model, not the carmaker's name, badges or logo. The pipeline removes badges; cars ship under fictional maker and model names (Wendt Fairway, Kazama Rotor, Brandt Kombi, Ridgeway Fiend: no maker or model trademark, no sound-alike spelling, no chassis code), with ids to match (`<fictional maker><Model>`, e.g. `wendtFairway`).
+- **Trademarks** are separate from the model's licence. A CC licence covers the 3D model, not the carmaker's name, badges or logo. The pipeline removes badges; cars ship under fictional maker and model names (Wendt Strom, Kazama Rotor, Brandt Kombi, Ridgeway Fiend: no maker or model trademark, no sound-alike spelling, no chassis code), with ids to match (`<fictional maker><Model>`, e.g. `wendtStrom`).
 
 Record each donor in `DONORS` in `carDonors.py` with its name, Sketchfab uid, author, licence and published length and wheelbase in mm, and add the author to the README credits.
 
@@ -161,7 +161,7 @@ Recipe: German material names, nose at -X off center (`turn`, then the automatic
 
 | Car | Model | Author | Licence |
 |---|---|---|---|
-| Wendt Fairway R6 (was Proto Hatch) | 2002_volkswagen_golf_r32_mk4 (VW Golf R32 Mk4) | tangwang920 | CC BY 4.0 |
+| Wendt Strom R6 (was Proto Hatch) | 2002_volkswagen_golf_r32_mk4 (VW Golf R32 Mk4) | tangwang920 | CC BY 4.0 |
 | Kazama Rotor (was Proto Coupe) | Mazda RX7 FD 1999 | niev | CC BY 4.0 |
 | Brandt Kombi S (was Proto Wagon) | 1992 Audi S2 Avant | tonielpro520 | CC BY 4.0 |
 | Ridgeway Fiend (was Proto Muscle) | Dodge Challenger SRT DEMON SDC (2018 Challenger SRT Demon, widebody) | SDC PERFORMANCE (Lambo_SC04) | CC BY 4.0 |

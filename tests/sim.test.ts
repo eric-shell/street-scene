@@ -338,11 +338,11 @@ describe('driving parameters file', () => {
     }
     expect(CAR_IDS).not.toContain('cc96');
     expect(CAR_IDS).not.toContain('ar7');
-    expect(SELECTABLE_CAR_IDS.sort()).toEqual(['brandtKombi', 'hinodeHorizon', 'kazamaRotor', 'ridgewayFiend', 'wendtFairway']);
+    expect(SELECTABLE_CAR_IDS.sort()).toEqual(['brandtKombi', 'hinodeHorizon', 'kazamaRotor', 'ridgewayFiend', 'wendtStrom']);
   });
 
   it('keeps each car\'s character: a front biased AWD hatch, a light high revving RWD coupe, an even AWD wagon', () => {
-    const hatch = getBaseTuning('wendtFairway');
+    const hatch = getBaseTuning('wendtStrom');
     const coupe = getBaseTuning('kazamaRotor');
     const wagon = getBaseTuning('brandtKombi');
     expect(hatch.drivetrain.layout).toBe('awd');
@@ -363,19 +363,19 @@ describe('driving parameters file', () => {
   });
 
   it('the panel imports its own export format exactly', () => {
-    const t = getBaseTuning('wendtFairway');
-    applySavedTuning(t, importValues(exported, 'wendtFairway'));
-    expect(t).toMatchObject({ ...exported.tuning, carId: 'wendtFairway', geometry: getBaseTuning('wendtFairway').geometry });
+    const t = getBaseTuning('wendtStrom');
+    applySavedTuning(t, importValues(exported, 'wendtStrom'));
+    expect(t).toMatchObject({ ...exported.tuning, carId: 'wendtStrom', geometry: getBaseTuning('wendtStrom').geometry });
     // drivingParams.json style nested blocks work too.
     const u = baseTuning();
-    expect(applySavedTuning(u, importValues({ tires: { gripRear: 1.1 }, drivetrain: { layout: 'awd' } }, 'wendtFairway'))).toBe(2);
+    expect(applySavedTuning(u, importValues({ tires: { gripRear: 1.1 }, drivetrain: { layout: 'awd' } }, 'wendtStrom'))).toBe(2);
     expect(u.tires.gripRear).toBe(1.1);
     expect(u.drivetrain.layout).toBe('awd');
   });
 
   it('saved tuning panel values are fingerprinted per car', () => {
     expect(tuningHash('kazamaRotor')).toMatch(/^[0-9a-f]{8}$/);
-    expect(tuningHash('kazamaRotor')).not.toBe(tuningHash('wendtFairway'));
+    expect(tuningHash('kazamaRotor')).not.toBe(tuningHash('wendtStrom'));
     expect(tuningHash('kazamaRotor')).toBe(tuningHash('kazamaRotor'));
   });
 });
@@ -580,7 +580,7 @@ describe('launch control and the pedal combos', () => {
   const withLaunch = (carId: string, launchRpm: number) => applyBuild(getBaseTuning(carId), { ...stockPerformance(), launchRpm });
 
   it('the two-step bounces the engine under the launch rpm on the grid; off, the grid revs as it always has', () => {
-    const t = withLaunch('wendtFairway', 5000);
+    const t = withLaunch('wendtStrom', 5000);
     expect(t.launch.twoStepRpm).toBe(5000);
     const c = createCar(0, 0, 0, 0);
     let cuts = 0;
@@ -686,7 +686,7 @@ describe('launch control and the pedal combos', () => {
 
   it('the antilag button and the gas rolling is antilag on a turbo car only: boost pinned at its own rpm, no drive, and full boost on release', () => {
     expect(getBaseTuning('kazamaRotor').engine.turbo).toBe(true);
-    expect(getBaseTuning('wendtFairway').engine.turbo).toBe(false);
+    expect(getBaseTuning('wendtStrom').engine.turbo).toBe(false);
     const roll = (carId: string, held: Partial<Parameters<typeof input>[0]> = { antilag: true }, perf = stockPerformance()) => {
       const t = applyBuild(getBaseTuning(carId), perf);
       const c = createCar(0, 0, 0, 0);
@@ -720,7 +720,7 @@ describe('launch control and the pedal combos', () => {
     expect(turbo.c.antilag).toBe(false);
     expect(turbo.c.lineLock).toBe(true);
     expect(turbo.c.spinRear).toBeGreaterThan(0.5);
-    const na = roll('wendtFairway');
+    const na = roll('wendtStrom');
     expect(na.held).toBe(0);
     expect(na.c.boost).toBe(0);
   });
