@@ -14,10 +14,12 @@
  * drone is added after the HUD under it), and Escape closes an open panel
  * before anything else sees the key (capture), so it never also pauses,
  * backs out of a step or leaves the garage. A click anywhere else closes it.
- * Only one panel is open at a time. Helps are found through the page, so one
+ * Only one panel is open at a time. Opening moves focus into the panel (Tab
+ * walks the action rows, a pad's focus nav reaches them) and closing hands it
+ * back to the button when it was inside. Helps are found through the page, so one
  * on a screen that is simply removed (pause, results) is never held on to.
  */
-import { h, isTyping, keyCaps } from '../kit/dom';
+import { h, isTyping, keyCaps, sheen } from '../kit/dom';
 import { X, icon } from '../kit/icons';
 
 /** A key row: the caps (alternatives side by side) and what they do; with an action the row is a button that does it. */
@@ -58,8 +60,8 @@ export class Help {
   private open = false;
 
   constructor(private readonly o: HelpOptions) {
-    this.panel = h('div', { class: 'help__panel', role: 'dialog', 'aria-label': `${o.title}: keys and tips`, hidden: true });
-    this.btn = h('button', { class: 'help__button', type: 'button', title: 'Keys and tips (?)', 'aria-label': 'Keys and tips', 'aria-expanded': 'false', onclick: () => this.toggle() }, '?') as HTMLButtonElement;
+    this.panel = h('div', { class: 'help__panel', role: 'dialog', 'aria-label': `${o.title}: keys and tips`, tabindex: '-1', hidden: true });
+    this.btn = h('button', { class: 'help__button', type: 'button', title: 'Keys and tips (?)', 'aria-label': 'Keys and tips', 'aria-expanded': 'false', onclick: () => this.toggle() }, '?', sheen()) as HTMLButtonElement;
     this.el = h('div', { class: 'help' }, this.panel, this.btn);
     byEl.set(this.el, this);
   }
@@ -77,7 +79,7 @@ export class Help {
     if (this.open) return;
     openHelp?.close();
     this.panel.replaceChildren(
-      h('div', { class: 'help__head' }, h('b', { class: 'help__title' }, this.o.title), h('span', { class: 'help__subtitle' }, 'Keys and tips'), h('button', { class: 'help__close', type: 'button', title: 'Close (Esc)', 'aria-label': 'Close', onclick: () => this.close() }, icon(X, { size: 16 }))),
+      h('div', { class: 'help__head' }, h('div', { class: 'help__heading' }, h('span', { class: 'label label--kicker' }, 'Keys and tips'), h('b', { class: 'help__title' }, this.o.title)), h('button', { class: 'help__close', type: 'button', title: 'Close (Esc)', 'aria-label': 'Close', onclick: () => this.close() }, icon(X, { size: 16 }))),
       // The sections scroll inside the panel, so its chamfered edges stay put.
       h(
         'div',
@@ -99,15 +101,19 @@ export class Help {
     this.btn.classList.add('is-open');
     this.btn.setAttribute('aria-expanded', 'true');
     this.o.onToggle?.(true);
+    // Only a keyboard or pad user needs focus in the panel; a click on the button keeps it there.
+    if (this.btn.matches(':focus-visible') || document.activeElement === document.body) this.panel.focus({ preventScroll: true });
   }
 
   close(): void {
     if (!this.open) return;
+    const hadFocus = this.panel.contains(document.activeElement);
     this.panel.hidden = true;
     this.open = false;
     if (openHelp === this) openHelp = null;
     this.btn.classList.remove('is-open');
     this.btn.setAttribute('aria-expanded', 'false');
+    if (hadFocus) this.btn.focus({ preventScroll: true });
     this.o.onToggle?.(false);
   }
 

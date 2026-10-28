@@ -147,11 +147,16 @@ export interface AudioLevels {
  * effect. Targets at the defaults, at the destination: the player's engine
  * about -17 dBFS RMS at full throttle (9 dB over the music's -26), impacts
  * peaking near -8, ambience beds (crowds, trains, weather) 6 to 10 dB under
- * the engine, menu sounds under everything.
+ * the engine, menu sounds under everything. The three buses of the world
+ * (engine, effects, ambience) meet in one gate before the master, which closes
+ * on the home screen: the menu city behind it plays its bed and its trains, but
+ * the menu itself is music and menu sounds only (setWorldAudible).
  */
 const MIX = {
   calibration: { engine: 0.9, effects: 0.9, ambience: 0.9, interface: 0.9 },
   limiter: { threshold: -3, knee: 2, ratio: 20, attack: 0.002, release: 0.12 },
+  /** How fast the world's gate opens and closes (s, the time constant). */
+  worldFade: 0.25,
   defaults: { masterVolume: 0.7, engineVolume: 1, effectsVolume: 1, ambienceVolume: 1, interfaceVolume: 1 } as AudioLevels,
 } as const;
 
@@ -165,6 +170,8 @@ class AudioHub {
   readonly ambienceBus: GainNode;
   /** Menu sounds. */
   readonly uiBus: GainNode;
+  /** The gate the engine, effects and ambience buses share, closed on the home screen. */
+  readonly world: GainNode;
   readonly master: GainNode;
   readonly noise: AudioBuffer;
   /** True once the engine worklet is registered; false when the browser has none or the module failed, and voices stay silent. */
@@ -182,15 +189,18 @@ class AudioHub {
     limiter.attack.value = MIX.limiter.attack;
     limiter.release.value = MIX.limiter.release;
     this.master.connect(limiter).connect(this.ctx.destination);
-    const bus = () => {
+    this.world = this.ctx.createGain();
+    this.world.gain.value = worldAudible ? 1 : 0;
+    this.world.connect(this.master);
+    const bus = (out: AudioNode) => {
       const g = this.ctx.createGain();
-      g.connect(this.master);
+      g.connect(out);
       return g;
     };
-    this.engineBus = bus();
-    this.effectsBus = bus();
-    this.ambienceBus = bus();
-    this.uiBus = bus();
+    this.engineBus = bus(this.world);
+    this.effectsBus = bus(this.world);
+    this.ambienceBus = bus(this.world);
+    this.uiBus = bus(this.master);
     this.applyLevels(this.levels);
     this.noise = this.ctx.createBuffer(1, this.ctx.sampleRate * 2, this.ctx.sampleRate);
     const d = this.noise.getChannelData(0);
@@ -243,6 +253,19 @@ class AudioHub {
 }
 
 let hub: AudioHub | null = null;
+/** Whether the world's buses are open; kept here so a hub made later starts with it. */
+let worldAudible = true;
+
+/**
+ * Open or close the world's buses (engine, effects, ambience) with a short fade:
+ * closed on the home screen, open everywhere else. Never makes the hub itself,
+ * so calling it before the first gesture starts no audio context.
+ */
+export function setWorldAudible(on: boolean): void {
+  if (on === worldAudible) return;
+  worldAudible = on;
+  if (hub) hub.world.gain.setTargetAtTime(on ? 1 : 0, hub.ctx.currentTime, MIX.worldFade);
+}
 
 export function audioHub(): AudioHub | null {
   if (typeof window === 'undefined') return null;

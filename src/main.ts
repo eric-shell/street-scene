@@ -26,8 +26,8 @@ import { DroneMode } from './game/drone';
 import { TICK_HZ } from './sim/constants';
 import { StreetStage } from './game/streetStage';
 import { ShowreelCamera } from './game/streetCameras';
-import { MusicPlayer } from './audio/musicPlayer';
-import { audioHub } from './audio/engineAudio';
+import { bootMusic } from './audio/musicPlayer';
+import { audioHub, setWorldAudible } from './audio/engineAudio';
 import { MusicWidget } from './ui/panels/musicWidget';
 import { TuningPanel, applySavedTuning, loadSavedTuning } from './ui/panels/tuningPanel';
 import { CameraPanel, applySavedCameraParams } from './ui/panels/cameraPanel';
@@ -147,7 +147,7 @@ applySavedCameraParams();
 type SessionKind = 'race' | 'roam';
 let sessionKind: SessionKind = 'race';
 // One player for the whole app: music carries on across every screen.
-const music = new MusicPlayer();
+const music = bootMusic();
 const musicWidget = new MusicWidget(document.body, music);
 let garage: GarageState = loadGarage();
 let seedStr = initialSeed();
@@ -1088,6 +1088,8 @@ const loop = new FixedStepLoop({
     else stage?.step(dt);
     // The race's nitrous swells the music (eased by the session); everywhere else it sits at its slider.
     music.setLift(state === 'race' && session ? session.musicLift : 1);
+    // The home screen is music and menu sounds only: the city behind it plays on silently (a no-op unless it changes).
+    setWorldAudible(state !== 'menu');
     // Auto quality only measures real gameplay frames (not menus, pauses, results or loading).
     const playing = (state === 'race' && !!session && !session.paused && session.race.phase !== 'finished') || state === 'drone' || state === 'freefly';
     autoQ.frame(dt, settings.autoQuality && playing && !document.hidden);

@@ -53,20 +53,25 @@
       background: var(--accent);
       border-color: transparent;
     }
+    @include mixins.sheen-on-hover;
   }
 
   /* The panel: a card over the button's corner. Its body scrolls, so the chamfer's edges stay put. */
   &__panel {
     @include mixins.chamfer(12px);
     position: absolute;
-    right: 0;
     bottom: calc(100% + 8px);
-    width: min(340px, calc(100vw - 24px));
+    --help-w: min(340px, calc(100vw - 24px));
+    width: var(--help-w);
+    /* The button sits left of the music piece, so on a narrow screen a right-aligned panel would run off the
+       left edge: slide it right, under the piece, by what would overflow. */
+    right: calc(-1 * max(0px, 12px + var(--help-w) - (100vw - var(--help-right, 0px))));
     body.is-music-top & {
       top: calc(100% + 8px);
       bottom: auto;
     }
     max-height: min(66vh, 560px);
+    outline: none;
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -85,16 +90,19 @@
     align-items: center;
     gap: 8px;
   }
+  /* The menu cards' stack: the yellow kicker over the name in white-to-peach caps. */
+  &__heading {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
   &__title {
-    font: 900 16px var(--display);
+    @include mixins.gradient-text(var(--title-ink));
+    font: 900 17px var(--display);
     letter-spacing: 0.04em;
     text-transform: uppercase;
-  }
-  &__subtitle {
-    flex: 1;
-    font: 600 12px var(--font);
-    letter-spacing: 0.04em;
-    color: var(--muted);
   }
   &__close {
     display: grid;

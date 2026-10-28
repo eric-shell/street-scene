@@ -21,6 +21,8 @@ music (an <audio> element, its own volume)
 | master | the four above | Master |
 | music | the player | Music (in the player and here) |
 
+The engine, effects and ambience buses meet in one gate before the master (`AudioHub.world`), which `setWorldAudible` closes on the home screen with a 0.25 s fade: the menu is the music and the interface bus only, while the city behind it keeps its bed and its trains running silently. The garage (Street view included), the drone, free roam and races open it again.
+
 Nitrous swells the music by 2, 4 and 6 dB for the stage burning (`MUSIC_LIFT` in `src/game/session.ts`, through `MusicPlayer.setLift`), up to the element's full volume, and eases back over about a second: at stage 3 the default music sits level with the engine for the length of the boost. The measurements below are without it.
 
 A slider maps to gain by its square. Each bus also carries a fixed calibration (`MIX.calibration`) that sets where it sits with every slider at its default, so the defaults *are* the intended balance and a slider only moves away from it. The interface bus was once calibrated 6 dB under the rest, which left every menu sound buried under the menu music; it now sits with the others, and the menu sounds are set by peak against the music instead. The old single "Engine volume" slider, which scaled every synthesized sound, becomes the Master on first load after the change (the engine itself goes to full), so nobody's chosen loudness jumps.

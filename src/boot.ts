@@ -10,12 +10,18 @@
  * runs once the flash-in has played; the splash then holds on the title until the menu is ready, its street still
  * moving (drawn from a worker, splashFx.ts) and its rule pulsing (opacity, which the compositor runs alone). The
  * menu arrives no later for it: the intro no longer waits behind the game's boot. Deep links have no splash and
- * start the game at once.
+ * start the game at once. The music player starts here too (a small module and its catalog), so the opening track
+ * plays with the splash instead of waiting for the game's bundle.
  */
 import './ui/styles/main.scss';
 // Only the account starts now (a small graph): a signed-in player's save downloads during the intro instead of after it.
 import './account/account';
 import { startBootSplash } from './ui/splash/splash';
+import { bootMusic } from './audio/musicPlayer';
+
+// The opening track before anything else: it downloads and tries to start under the splash's flash-in, and a
+// click or key press during the intro unlocks it (main.ts picks up the same player).
+bootMusic();
 
 // Deep links go straight to their screen behind main.ts's loading card, never the splash. Any of these skips it
 // here; main.ts puts the splash up itself for one it does not take as a deep link (a ?race= that names no mode).

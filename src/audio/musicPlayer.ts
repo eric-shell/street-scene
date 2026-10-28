@@ -2,7 +2,9 @@
  * Persistent music player. One audio element for the whole app, so music
  * keeps playing across menu, garage, races and drone mode. Every session opens
  * with the same track (OPENING_TRACK_ID, "Astrology") from the top, under the
- * boot splash, and shuffles on from there; volume, mute, shuffle and the
+ * boot splash (boot.ts creates the player through bootMusic before the splash
+ * goes up, so the track downloads and tries to start during the flash-in rather
+ * than after the game's bundle loads), and shuffles on from there; volume, mute, shuffle and the
  * minimized state persist in localStorage. Render/UI side only: the simulation
  * never knows music exists.
  */
@@ -396,4 +398,11 @@ export class MusicPlayer {
     if (!t || !('mediaSession' in navigator) || typeof MediaMetadata === 'undefined') return;
     navigator.mediaSession.metadata = new MediaMetadata({ title: t.title, artist: t.artist, album: t.album });
   }
+}
+
+let booted: MusicPlayer | null = null;
+
+/** The app's one player, created on first call: boot.ts makes it before the splash, main.ts picks it up. */
+export function bootMusic(): MusicPlayer {
+  return (booted ??= new MusicPlayer());
 }
