@@ -71,6 +71,8 @@ import { type Snap, snap, lerpSnap } from './session/snap';
 import { emitSparks, sparkBurst, crackRail, spitRailSparks } from './session/sparks';
 import { breakGlass } from './session/glass';
 import { createHudCard, helpSections, raceHudData, trafficDotCars } from './session/hud';
+import { gantryPages } from './session/gantryText';
+import { DIEGETIC } from '../render/race/diegetic';
 import { REPLAY_CAMS, VIEW_KEYS, isFollowCam, bindOrbitDrag, TvCamera, type ReplayCamMode } from './session/camera';
 
 export type { ReplayCamMode };
@@ -282,6 +284,8 @@ export class RaceSession {
   private helpPaused = false;
   /** Text on the circuit gantry sign, and the tick a pending change is applied (-1 = none). */
   private signText = '';
+  /** Scene time of the last gantry band refresh (s). */
+  private bandAt = -1;
   private signAt = -1;
   /** Player lap whose line approach fireworks were launched. */
   private fireworksLap = -1;
@@ -809,6 +813,22 @@ export class RaceSession {
   }
 
   /**
+   * The in-world readouts: every car's speed to the radar signs (a few multiplies per sign, once per frame)
+   * and, at a few Hz, the gantry band's pages. Free roam keeps the band on the event's name.
+   */
+  private feedDiegetic(r: RaceState): void {
+    const radar = this.night.city.radar;
+    if (radar.mesh) {
+      radar.begin();
+      for (const c of r.cars) radar.feed(c.state.x, c.state.z, c.state.vx, c.state.vz);
+      radar.end(r.brokenProps);
+    }
+    if (this.openWorld || this.time - this.bandAt < 1 / DIEGETIC.band.refreshHz) return;
+    this.bandAt = this.time;
+    this.night.city.finishLine.setBand(gantryPages(r, r.world.event?.name ?? 'STREET SCENE'));
+  }
+
+  /**
    * Sim driven (so replays match): the circuit sign label (START, LAP n,
    * FINISH for the final lap) and the fireworks launched just before the
    * player reaches the line, so the shells burst ahead as they pass under.
@@ -980,6 +1000,7 @@ export class RaceSession {
     // Corner rail pieces shoved by hits this race.
     this.night.arrows.syncRails(r.rails);
     this.night.city.finishLine.update(this.time);
+    this.feedDiegetic(r);
     // Props mirror the sim's broken flags; fresh breaks come apart pushed by the nearest car.
     this.night.props.update(this.paused ? 0 : dt, this.time, r.brokenProps, this.curr, this.propsSynced ? this.brokenIds : undefined);
     this.propsSynced = true;

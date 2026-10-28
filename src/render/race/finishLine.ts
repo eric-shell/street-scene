@@ -1,6 +1,7 @@
 /**
  * Start and finish gantries: a lit steel arch over the road with a neon sign
- * (START, LAP n, FINISH; see setSign), chasing LED strips, LED equalizer bars,
+ * (START, LAP n, FINISH; see setSign), a dot-matrix band of live race text under it
+ * (gantryBand.ts, setBand), chasing LED strips, LED equalizer bars,
  * xenon strobes, neon tubes, waving checkered flags, sweeping beams from the
  * pillar caps, ground searchlights raking the sky, a moving head light rig
  * over the line, a light pool and light curtain, a checkered line on the
@@ -30,6 +31,7 @@ import { LINE_Y, signGlow, beamTexture, dotTexture } from './finishLook';
 import { buildGantry, createLightRig } from './finishGantry';
 import type { GateRuntime, LightPlan, GantryKit } from './finishGantry';
 import { createCelebration } from './finishCelebration';
+import type { BandPage } from './gantryBand';
 
 export type GateKind = 'start' | 'finish' | 'startFinish';
 
@@ -60,6 +62,11 @@ export interface FinishLines {
    * gate on circuits.
    */
   setSign(kind: GateKind, text: string, sub?: string): void;
+  /**
+   * Set the pages of the dot-matrix band under every gantry sign (the event's name until then). The pages cycle
+   * on the scene clock; the band's canvas is only redrawn when the page on show changes text.
+   */
+  setBand(pages: readonly BandPage[]): void;
   /** Launch fireworks from beside a gate: a small salvo for a lap, a show at the start, a big one at the finish. */
   fireworks(show: FireworkShow, strength?: number): void;
   /** Called when a shell bursts (world position and 0..1+ size), e.g. for the boom sound. */
@@ -141,6 +148,7 @@ export function buildFinishLines(world: World): FinishLines {
     const dt = last < 0 ? 0 : Math.min(0.1, Math.max(0, time - last));
     last = time;
     rig.update(time);
+    for (const rt of runtime) rt.band.update(time);
     for (const rt of runtime) {
       // Flags wave from the pole outward.
       for (const fl of rt.flags) {
@@ -188,6 +196,9 @@ export function buildFinishLines(world: World): FinishLines {
     update: (t) => update(t, true),
     burst,
     setSign,
+    setBand(pages) {
+      for (const rt of runtime) rt.band.set(pages);
+    },
     fireworks(show, strength) {
       const rt = gateFor(show);
       if (rt) fx.fireworks(rt, show, strength);
