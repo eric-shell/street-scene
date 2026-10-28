@@ -289,7 +289,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   const roadblocks = buildRoadblocks(world, meet, city.barrierLampMaterial, { drawDistance: meetQ.drawDistance });
   scene.add(roadblocks.group);
   // Cars parked in the yards behind the frontage walls, where no car can go (districts/yards.ts); Medium and up.
-  const parked = buildParkedCars(world, { quality: settings.quality, grid });
+  const parked = buildParkedCars(world, { quality: settings.quality, grid, renderer: gr.renderer });
   scene.add(parked.group);
   const arrows = buildRouteArrows(world, barriers, { beacon: city.barrierLampMaterial });
   scene.add(arrows.group);

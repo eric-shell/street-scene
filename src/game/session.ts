@@ -351,7 +351,7 @@ export class RaceSession {
     }
     const traffic = this.race.traffic;
     if (traffic) {
-      this.traffic = new TrafficView(this.race.world, traffic.cars.length);
+      this.traffic = new TrafficView(this.race.world, traffic.cars.length, { renderer: gr.renderer, tier: settings.quality });
       this.night.scene.add(this.traffic.group);
       this.trafficCurr = new Float32Array(traffic.cars.length * TRAFFIC_SNAP);
       snapTraffic(traffic, this.trafficCurr);
