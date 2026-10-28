@@ -19,7 +19,17 @@
  * Draw calls: shells, roofs, neon and the podium trim (which also takes the
  * cornices, slabs and balconies) as before, plus fire escapes, billboards and
  * aviation lights. Detail scales with the graphics tier (fire escapes, bay
- * brackets, balcony rails, clutter density, animated windows). Render only.
+ * brackets, balcony rails, clutter density, animated windows).
+ *
+ * The seed's home (cityIdentity.ts signature) dresses its own region harder,
+ * and only there: New York roofs carry water towers and its walk-ups a fire
+ * escape on nearly every street face, with lit price board bodegas; Philadelphia
+ * terraces take a stoop on nearly every house and a corner bar on the street
+ * corners; Miami's deco blocks take pastel stripe neon and richer tints; Los
+ * Angeles gets strip mall rows under a shared sign and drive-through bays; San
+ * Francisco's one mass victorians get bay windows and painted lady trim.
+ * Those extras draw from their own per building stream (`signatureRng`), so
+ * the building's main stream, and every other seed, is as it was. Render only.
  *
  * This module is the plan: the city pass (recessing coplanar walls), one
  * building's massing, the plinth and the terrace houses, and the meshes they
@@ -35,6 +45,9 @@ import { Rng } from '../../sim/prng';
 import { SpatialGrid } from '../../city/spatial';
 import { GeoBuilder } from '../geoBuilder';
 import { GROUND_BAYS, GROUND_H, PODIUM_FLOOR_H, PodiumOutput, addPodiumFace, podiumExtrusions, podiumHeight } from './facadeKit';
+import { signatureAt } from '../cityIdentity';
+import type { HomeSignature } from '../cityIdentity';
+import { downtownFactor } from '../../city/roadGraph';
 import { LAYER, MODULE, facadeAtlas } from './facadeAtlas';
 import { BILLBOARD_COLS, BILLBOARD_ROWS, billboardAtlas, billboardRows } from '../textures/billboardAtlas';
 import { hoodBrands } from '../textures/hoodBrands';
@@ -43,7 +56,7 @@ import { createFacadeMaterials, TRIM_COLORS } from './facadeMaterial';
 import { BuildingPlan, STYLES, StyleDef, planArchitecture } from './architecture';
 import { planBacklots } from './backlots';
 import { BLD, DETAIL, FLOOD, pastelNeon, neonColor, setNeonMood, LED, WHITE, NO_GLOW, wash, ShellGeo, Frame, edgeNormal, boxOutline, roundedOutline, lbox, cap, facet, walls, neonRing, neonPost, cornice, colorOf } from './buildingKit';
-import type { Skin, Out, Detail } from './buildingKit';
+import type { Skin, Out, Detail, BuildingCounts } from './buildingKit';
 import { FlickList, applyFlicker } from '../street/signage';
 import { DRAG, routeNearness } from '../street/routeNearness';
 import { waterTower, chimney, spire, pyramid, wedge, mansard, hipRoof, mast, light, roofLights, clutter, billboard } from './roofs';
@@ -53,6 +66,8 @@ export type { Detail };
 
 export interface BuildingMeshes {
   meshes: THREE.Object3D[];
+  /** What the city got of the signature objects (waterTowers, fireEscapes, neon rings...), for the perf report and tests. */
+  counts: BuildingCounts;
   /** Advance animated windows and aviation lights (s). */
   update(time: number): void;
   dispose(): void;
@@ -193,6 +208,8 @@ export function buildBuildings(world: World, podium: PodiumOutput, opts: { detai
     boards: new GeoBuilder(true),
     boardRows: billboardRows(brands.length),
     adCell: -1,
+    seed: world.seed,
+    counts: { waterTowers: 0, fireEscapes: 0, neonRings: 0, stripeRings: 0, bayWindows: 0, paintedLadies: 0, stripMalls: 0 },
     lights: [],
     podium,
   };
@@ -207,7 +224,7 @@ export function buildBuildings(world: World, podium: PodiumOutput, opts: { detai
   });
   for (let i = 0; i < B.length; i++) {
     o.adCell = adCell(i, B[i]);
-    buildOne(o, B[i], plans[i], det, (x, z) => corridorClearance(g, world.blocks.edgeGrid, x, z, scratch) < 2, world.heightAt, dragOf(B[i], true));
+    buildOne(o, B[i], plans[i], det, (x, z) => corridorClearance(g, world.blocks.edgeGrid, x, z, scratch) < 2, world.heightAt, dragOf(B[i], true), false, downtownFactor(g.plan, B[i].x, B[i].z) < OUTER_DOWNTOWN);
   }
   // The blocks' middles (backlots.ts), Medium and up: no street fronts, so no shops or stoops on them.
   if (opts.detail !== 'low') {
@@ -282,6 +299,7 @@ export function buildBuildings(world: World, podium: PodiumOutput, opts: { detai
   }
   return {
     meshes,
+    counts: o.counts,
     update(time) {
       mats.update(time);
     },
@@ -363,10 +381,58 @@ const FLAG_NEAR = 512;
 const FLAG_NEAR_MAX = 3;
 const FLAG_BASE = 4096;
 
+/** Below this downtown factor (city/roadGraph) a street counts as an outer street: where Los Angeles lays its strip malls. */
+const OUTER_DOWNTOWN = 0.35;
+
+/** A unit-interval hash of a seed and a salt: the signature extras' coin flips that must not touch any stream. */
+function hash01(seed: number, salt: number): number {
+  let h = Math.imul((seed >>> 0) ^ Math.imul(salt + 1, 0x9e3779b1), 0x85ebca6b);
+  h ^= h >>> 15;
+  h = Math.imul(h, 0xc2b2ae35);
+  h ^= h >>> 13;
+  return (h >>> 0) / 4294967296;
+}
+
+const BAY = {
+  bodega: GROUND_BAYS.indexOf('bodega'),
+  bodegaBoard: GROUND_BAYS.indexOf('bodegaBoard'),
+  stoop: GROUND_BAYS.indexOf('stoop'),
+  bar: GROUND_BAYS.indexOf('bar'),
+  restaurant: GROUND_BAYS.indexOf('restaurant'),
+  driveThru: GROUND_BAYS.indexOf('driveThru'),
+  shopWarm: GROUND_BAYS.indexOf('shopWarm'),
+  shopCool: GROUND_BAYS.indexOf('shopCool'),
+} as const;
+
+/** Salts of the signature coin flips (one per kind of extra, so they never correlate). */
+const SALT = { board: 1, stoop: 2, bar: 3, drive: 4, mall: 5 } as const;
+
+/**
+ * The ground bays a building's street faces pick from once the home signature has had its say: a New York bodega
+ * becomes the lit price board kind, a Philadelphia rowhouse takes its stoop and a street corner its bar, a Los
+ * Angeles front a drive-through or a strip mall row. `corner` is the building (or the house at the end of its
+ * terrace) standing on a street corner, `house` a terrace house whose style is stoop country, `row` a low wide
+ * shop building on an outer street, `drive` a low shop building with a street front. Pure hashes of the
+ * building's seed: no stream is touched.
+ */
+function signatureBays(bays: number[], sig: HomeSignature, seed: number, where: { corner: boolean; house: boolean; row: boolean; drive: boolean }): number[] {
+  if (sig.cornerBar !== undefined && where.corner && hash01(seed, SALT.bar) < sig.cornerBar) return [BAY.bar, BAY.bar, BAY.bar, BAY.restaurant];
+  if (sig.stoop !== undefined && where.house && hash01(seed, SALT.stoop) < sig.stoop) return [BAY.stoop];
+  if (sig.stripMall !== undefined) {
+    if (where.row && hash01(seed, SALT.mall) < sig.stripMall.row) return [BAY.shopWarm, BAY.shopCool, BAY.shopWarm];
+    if (where.drive && hash01(seed, SALT.drive) < sig.stripMall.driveThrough) return [BAY.driveThru, BAY.driveThru, BAY.shopWarm];
+  }
+  if (sig.bodegaBoard !== undefined && hash01(seed, SALT.board) < sig.bodegaBoard) return bays.map((v) => (v === BAY.bodega ? BAY.bodegaBoard : v));
+  return bays;
+}
+
 /** Everything for one building; a backlot (backlots.ts: no street, seen over walls and from above) has no podium, its shaft runs down to the ground. */
-function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[Detail], streetAt: (x: number, z: number) => boolean, groundAt: (x: number, z: number) => number, drag: DragLight, backlot = false): void {
+function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[Detail], streetAt: (x: number, z: number) => boolean, groundAt: (x: number, z: number) => number, drag: DragLight, backlot = false, outer = false): void {
   const S = STYLES[plan.style];
   const rng = new Rng((plan.seed ^ 0x6b1d5) >>> 0 || 1);
+  // The home's signature for this building (empty outside the home's region) and the stream its extras draw from.
+  const sig = signatureAt(o.seed, plan.region);
+  const signatureRng = new Rng((plan.seed ^ 0x51671) >>> 0 || 1);
   const F = new Frame(b.x, b.z, b.yaw);
   const hw = b.w / 2;
   const hd = b.d / 2;
@@ -400,28 +466,43 @@ function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[
     // The facade shader reads, above the office/trim/glass bits, how near the drag the building stands (so its lowest
     // floors burn brighter) and which module row the shaft starts on (so it can tell those floors).
     const baseRow = Math.max(0, Math.min(15, Math.round((y0 - vRef) / mm.floor)));
+    // The draws keep the order they had as an object literal's fields: seed, lit, tint.
+    const skinSeed = (seed01 + rng.next() * 0.37) % 1;
+    const lit = rng.range(S.lit[0], S.lit[1]) * litMul * drag.windows;
+    const tint = colorOf(tintHex, rng.range(0.88, 1.08));
+    // Miami's pastels are pushed further (cityIdentity.ts wallTint): more saturation, a little lighter.
+    if (sig.wallTint && plan.style === 'miamiDeco') {
+      const hsl = { h: 0, s: 0, l: 0 };
+      tint.getHSL(hsl);
+      tint.setHSL(hsl.h, Math.min(1, hsl.s * sig.wallTint.saturation), Math.min(0.95, hsl.l * sig.wallTint.lightness));
+    }
     return {
       layer: LAYER[layer],
-      seed: (seed01 + rng.next() * 0.37) % 1,
-      lit: rng.range(S.lit[0], S.lit[1]) * litMul * drag.windows,
+      seed: skinSeed,
+      lit,
       flags: office + 2 * trim + 32 * glass + FLAG_NEAR * drag.bucket + FLAG_BASE * baseRow,
-      tint: colorOf(tintHex, rng.range(0.88, 1.08)),
+      tint,
       bay: mm.bay,
       floor: mm.floor,
     };
   };
   const skin = makeSkin(rng.pick(S.palette));
   const trimColor = colorOf(TRIM_COLORS[(skin.flags >> 1) & 15], 0.85);
-  const bays = S.ground.map((name) => GROUND_BAYS.indexOf(name));
+  const baseBays = S.ground.map((name) => GROUND_BAYS.indexOf(name));
   const podTint = new THREE.Color(1, 1, 1).lerp(skin.tint, 0.5);
   const sideSkin = S.side ? { ...makeSkin(rng.pick(S.palette), S.side, 0.4), tint: skin.tint } : null;
 
   // Terrace styles on a street split into narrow houses (half the brownstones stay one walk-up).
   const split = !!S.units && front[0] && (plan.style === 'brownstone' ? b.w >= 14 && rng.chance(0.5) : b.w >= S.units[0] * 1.6);
   if (split) {
-    terrace(o, F, b, plan, S, rng, det, front, street, y0, nF, fh, vRef, flushFloor, makeSkin, bays);
+    terrace(o, F, b, plan, S, rng, det, front, street, y0, nF, fh, vRef, flushFloor, makeSkin, baseBays, sig, signatureRng);
     return;
   }
+  // The street faces' bays once the signature has had its say (a corner is a street on two adjacent faces).
+  const corner = (front[0] || front[2]) && (front[1] || front[3]);
+  const lowShop = (plan.style === 'midcentury' || plan.style === 'spanish') && front[0];
+  const lowRow = outer && plan.style === 'midcentury' && lowShop && b.w >= 14 && nF <= 3 && sig.stripMall !== undefined && hash01(plan.seed, SALT.mall) < sig.stripMall.row;
+  const bays = signatureBays(baseBays, sig, plan.seed, { corner, house: plan.style === 'rowhouse' || plan.style === 'brownstone', row: lowRow, drive: lowShop });
 
   // ----- Podium -----
   const ext = podiumExtrusions(rng, kit);
@@ -570,7 +651,10 @@ function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[
       }
     }
     cornice(o, F, -hw, hw, -hd, hd, yTop + 1, 1, 0.3, slab, [true, true, true, true]);
-    if (rng.chance(0.6)) neonRing(o, F, base, yTop + 0.35, yTop + 0.7, LED[rng.int(0, LED.length - 1)]);
+    if (rng.chance(sig.neon?.ring ?? 0.6)) {
+      neonRing(o, F, base, yTop + 0.35, yTop + 0.7, LED[rng.int(0, LED.length - 1)]);
+      o.counts.neonRings++;
+    }
     if (rng.chance(0.35)) fin(o, F, hw, hd, yTop, rng.range(4, 9), slab, pastelNeon(rng.next()));
     if (tall > BLD.aviationAbove) roofLights(o, F, -hw, hw, -hd, hd, yTop + 1.1, rng);
     else clutter(o, F, -hw + 1.5, hw - 1.5, -hd + 1.5, hd - 1.5, yTop, rng, det, 'ac', skin.tint);
@@ -590,12 +674,24 @@ function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[
     // Parapet band, neon tubes along the top and over the shop fronts.
     walls(o, F, { ...skin, lit: 0 }, ol.pts, ol.smooth, yTop, yTop + 0.5, vRef - 0.4, street, NO_GLOW, rng, round ? 'perimeter' : 'face');
     neonRing(o, F, ol.pts, yTop - 0.25, yTop - 0.05, neon);
-    neonRing(o, F, ol.pts, street + GROUND_H - 0.05, street + GROUND_H + 0.12, pastelNeon(rng.next()), 0.62, (i) => {
+    o.counts.neonRings++;
+    const streetFace = (i: number) => {
       const p = ol.pts[i];
       const q = ol.pts[(i + 1) % ol.pts.length];
       const n = edgeNormal(p, q);
       return (n.z < -0.5 && front[0]) || (n.x > 0.5 && front[1]) || (n.z > 0.5 && front[2]) || (n.x < -0.5 && front[3]);
-    });
+    };
+    neonRing(o, F, ol.pts, street + GROUND_H - 0.05, street + GROUND_H + 0.12, pastelNeon(rng.next()), 0.62, streetFace);
+    // A Miami home stripes every deco block: one or two thin pastel tubes up the street faces, in a colour of their own.
+    if (sig.neon && signatureRng.chance(sig.neon.stripes)) {
+      const stripe = pastelNeon(signatureRng.next());
+      const at = nF >= 4 ? [Math.round(nF / 3), Math.round((2 * nF) / 3)] : nF >= 2 ? [1] : [];
+      for (const k of at) {
+        neonRing(o, F, ol.pts, y0 + k * fh - 0.22, y0 + k * fh - 0.1, stripe, 0.09, streetFace);
+        o.counts.neonRings++;
+        o.counts.stripeRings++;
+      }
+    }
     // Eyebrow sun shades over every floor's windows on the street faces.
     const brow = colorOf(TRIM_COLORS[(skin.flags >> 1) & 15], 0.9);
     for (let i = 0; i < 4; i++) {
@@ -656,7 +752,11 @@ function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[
     cap(o.roofs, F, outline, yTop, colorOf(0x26272b));
     // Thin roof slab cantilevered past the walls.
     lbox(o.trim, F, x0 - 0.9, x1 + 0.9, z0 - 0.9, z1 + 0.9, yTop, yTop + 0.3, colorOf(TRIM_COLORS[(skin.flags >> 1) & 15], 0.95));
-    if (rng.chance(0.55)) billboard(o, F, x0, x1, z0, z1, yTop + 0.3, rng, front);
+    if (lowRow) {
+      parapetSign(o, F, x0, x1, z0, yTop + 0.3, neonColor(signatureRng.next()), signatureRng);
+      o.counts.stripMalls++;
+    }
+    else if (rng.chance(0.55)) billboard(o, F, x0, x1, z0, z1, yTop + 0.3, rng, front);
     else clutter(o, F, x0 + 1, x1 - 1, z0 + 1, z1 - 1, yTop + 0.3, rng, det, 'ac', skin.tint);
     if (rng.chance(0.25)) neonRing(o, F, outline, yTop - 0.5, yTop - 0.05, neonColor(rng.next()), 0.95);
     return;
@@ -665,20 +765,37 @@ function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[
   cap(o.roofs, F, outline, roofY, colorOf(0x16171c, rng.range(0.8, 1.4)));
   const heavy = style === 'brownstone' || style === 'prewar' || style === 'rowhouse' || style === 'victorian';
   if (heavy) cornice(o, F, x0, x1, z0, z1, roofY + 0.7, 0.75, 0.55, trimColor, [true, true, true, true]);
-  if ((style === 'brownstone' || style === 'prewar') && nF <= 9 && det.escapes > 0) {
+  // A San Francisco home's one mass victorians (side streets, wide lots) get the terraces' bay windows and a painted lady's trim too.
+  if (style === 'victorian' && sig.victorian && front[0] && signatureRng.chance(sig.victorian.bays)) {
+    const bayCount = b.w >= 12 ? 2 : 1;
+    const bw = Math.min(BLD.bayW, b.w / bayCount - 1.6);
+    if (bw > 1.2) {
+      for (let k = 0; k < bayCount; k++) bayWindow(o, F, skin, -hw + (b.w * (k + 0.5)) / bayCount, -hd, bw, BLD.bayD, y0, roofY - 0.05, vRef, street, trimColor);
+      o.counts.bayWindows += bayCount;
+    }
+    if (signatureRng.chance(sig.victorian.lady)) {
+      paintedLady(o, F, -hw, hw, -hd, y0, roofY, colorOf(S.palette[signatureRng.int(0, S.palette.length - 1)], 0.95));
+      o.counts.paintedLadies++;
+    }
+  }
+  const escapes = sig.fireEscape;
+  if ((style === 'brownstone' || style === 'prewar') && nF <= (escapes?.floors ?? 9) && det.escapes > 0) {
     for (let i = 0; i < 4; i++) {
-      if (!front[i] || (i !== 0 && det.escapes < 1)) continue;
-      if (!rng.chance(det.escapes * (i === 0 ? 0.85 : 0.4))) continue;
+      // A New York home puts them on the side faces at every tier, and at its own odds (the tier's thinning is the default's).
+      if (!front[i] || (i !== 0 && det.escapes < 1 && !escapes)) continue;
+      if (!rng.chance(escapes ? (i === 0 ? escapes.front : escapes.side) : det.escapes * (i === 0 ? 0.85 : 0.4))) continue;
       fireEscapes(o, F, i, hw, hd, y0, nF, fh, skin.bay, rng);
+      o.counts.fireEscapes++;
     }
   }
   const nycish = plan.region === 'nyc' || plan.region === 'philly';
-  if ((style === 'brownstone' || style === 'prewar') && rng.chance(nycish ? 0.6 : 0.28)) {
+  if ((style === 'brownstone' || style === 'prewar') && rng.chance(sig.waterTower?.block ?? (nycish ? 0.6 : 0.28))) {
     const r = 2.6;
     if (x1 - x0 > 2 * r + 2 && z1 - z0 > 2 * r + 2) {
       const lx = rng.range(x0 + r + 1, x1 - r - 1);
       const lz = rng.range(z0 + r + 1, z1 - r - 1);
       waterTower(o, F.X(lx, lz), F.Z(lx, lz), roofY + 0.7, rng);
+      o.counts.waterTowers++;
     }
   }
   if (style === 'brownstone' || style === 'prewar') {
@@ -686,6 +803,35 @@ function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[
     clutter(o, F, x0 + 1, x1 - 1, z0 + 1, z1 - 1, roofY, rng, det, 'bulkhead', skin.tint);
   } else chimney(o, F, rng.range(x0 + 1.2, x1 - 1.2), z1 - 1.5, roofY, colorOf(0x6a3a2c));
   if (tall > BLD.aviationAbove) roofLights(o, F, x0, x1, z0, z1, roofY + 1, rng);
+}
+
+/**
+ * A strip mall's shared parapet sign: a dark fascia standing on the roof edge of the front (local z = zf) with a
+ * neon frame and a row of block "letters" lit in one colour, the way one pylon-less sign names a whole row. Boxes
+ * into the trim and neon builders every roof already uses (no new draw call).
+ */
+function parapetSign(o: Out, F: Frame, x0: number, x1: number, zf: number, y: number, neon: THREE.Color, rng: Rng): void {
+  const h = 1.7;
+  lbox(o.trim, F, x0, x1, zf - 0.12, zf + 0.3, y, y + h, colorOf(0x1c1d22), false);
+  const z0 = zf - 0.18;
+  const z1 = zf - 0.12;
+  lbox(o.neon, F, x0 + 0.3, x1 - 0.3, z0, z1, y + h - 0.2, y + h - 0.1, neon, false);
+  lbox(o.neon, F, x0 + 0.3, x1 - 0.3, z0, z1, y + 0.1, y + 0.2, neon, false);
+  lbox(o.neon, F, x0 + 0.3, x0 + 0.4, z0, z1, y + 0.1, y + h - 0.1, neon, false);
+  lbox(o.neon, F, x1 - 0.4, x1 - 0.3, z0, z1, y + 0.1, y + h - 0.1, neon, false);
+  for (let x = x0 + 1.2; x < x1 - 1.6; ) {
+    const w = rng.range(0.4, 1.1);
+    lbox(o.neon, F, x, x + w, z0, z1, y + 0.45, y + h - 0.45, neon, false);
+    x += w + rng.range(0.35, 0.8);
+  }
+}
+
+/** A painted lady's trim on a house front (local z = zf, the street face) between x0 and x1: a contrasting sill band at the podium line, another under the cornice, and corner boards (four boxes into the trim builder every cornice already uses). */
+function paintedLady(o: Out, F: Frame, x0: number, x1: number, zf: number, y0: number, top: number, accent: THREE.Color): void {
+  lbox(o.trim, F, x0 + 0.05, x1 - 0.05, zf - 0.16, zf + 0.18, y0 - 0.12, y0 + 0.2, accent, false);
+  lbox(o.trim, F, x0 + 0.05, x1 - 0.05, zf - 0.12, zf + 0.18, top - 1.05, top - 0.8, accent, false);
+  lbox(o.trim, F, x0, x0 + 0.16, zf - 0.1, zf + 0.16, y0, top - 0.1, accent, false);
+  lbox(o.trim, F, x1 - 0.16, x1, zf - 0.1, zf + 0.16, y0, top - 0.1, accent, false);
 }
 
 /** Terrace of narrow houses (rowhouses, painted ladies, brownstone rows). */
@@ -706,6 +852,8 @@ function terrace(
   flushFloor: number,
   makeSkin: (tint: number, layer?: StyleDef['layer'], litMul?: number) => Skin,
   bays: number[],
+  sig: HomeSignature,
+  signatureRng: Rng,
 ): void {
   const hw = b.w / 2;
   const hd = b.d / 2;
@@ -714,11 +862,13 @@ function terrace(
   const style = plan.style;
   const tops: number[] = [];
   const skins: Skin[] = [];
+  const palette: number[] = [];
   let lastTint = -1;
   for (let k = 0; k < n; k++) {
     let ti = rng.int(0, S.palette.length - 1);
     if (ti === lastTint) ti = (ti + 1) % S.palette.length;
     lastTint = ti;
+    palette.push(ti);
     skins.push(makeSkin(S.palette[ti]));
     const df = rng.chance(0.25) ? rng.pick([-1, 1]) : 0;
     tops.push(y0 + Math.max(flushFloor, Math.max(1, nF + df)) * fh);
@@ -733,6 +883,8 @@ function terrace(
     const trim = colorOf(TRIM_COLORS[(s.flags >> 1) & 15], 0.9);
     // Podium: the house's ground floor on its exposed faces (no protrusions, so neighbours never overlap).
     const out = boxOutline(x0, x1, -hd, hd);
+    // The home's say in the house's street bay: every stoop country house its stoop, the end house on a street corner its bar (cityIdentity.ts).
+    const houseBays = signatureBays(bays, sig, (plan.seed + k * 7919) >>> 0, { corner: (k === 0 && front[3]) || (k === n - 1 && front[1]), house: style === 'rowhouse' || style === 'brownstone', row: false, drive: false });
     for (let i = 0; i < 4; i++) {
       if ((i === 1 && k < n - 1) || (i === 3 && k > 0)) continue;
       const p = out[i];
@@ -740,7 +892,7 @@ function terrace(
       const nn = edgeNormal(p, q);
       addPodiumFace(
         o.podium,
-        { ax: F.X(p.x, p.z), az: F.Z(p.x, p.z), bx: F.X(q.x, q.z), bz: F.Z(q.x, q.z), nx: F.NX(nn.x, nn.z), nz: F.NZ(nn.x, nn.z), y0: street, yBase: b.baseY, front: front[i], bays, tint },
+        { ax: F.X(p.x, p.z), az: F.Z(p.x, p.z), bx: F.X(q.x, q.z), bz: F.Z(q.x, q.z), nx: F.NX(nn.x, nn.z), nz: F.NZ(nn.x, nn.z), y0: street, yBase: b.baseY, front: front[i], bays: houseBays, tint },
         0,
         rng,
         [0],
@@ -757,12 +909,19 @@ function terrace(
     if (!gable) cap(o.roofs, F, out, top, colorOf(0x17181c, rng.range(0.8, 1.3)));
     // Cornice on the street face (and the back), brackets under it on high detail.
     cornice(o, F, x0, x1, -hd, hd, top + 0.6, 0.65, style === 'victorian' ? 0.6 : 0.45, trim, [true, k === n - 1, true, k === 0]);
-    if (det.brackets && style === 'victorian') {
+    // A painted lady (cityIdentity.ts): brackets under the cornice at every tier, and a contrasting accent on the trim.
+    const lady = style === 'victorian' && sig.victorian !== undefined && signatureRng.chance(sig.victorian.lady);
+    if (lady) {
+      paintedLady(o, F, x0, x1, -hd, y0, top, colorOf(S.palette[(palette[k] + 3 + (k % 3)) % S.palette.length], 0.95));
+      o.counts.paintedLadies++;
+    }
+    if ((det.brackets || lady) && style === 'victorian') {
       for (let x = x0 + 0.4; x < x1 - 0.2; x += 0.8) lbox(o.trim, F, x - 0.08, x + 0.08, -hd - 0.5, -hd, top - 0.35, top - 0.05, trim);
     }
     if (style === 'victorian' && uw >= 5) {
       const cx = x0 + uw * (k % 2 ? 0.62 : 0.38);
       bayWindow(o, F, s, cx, -hd, Math.min(BLD.bayW, uw - 1.6), BLD.bayD, y0, top - 0.05, vRef, street, trim);
+      o.counts.bayWindows++;
     }
     if (gable) {
       const gh = uw * 0.45;
@@ -788,8 +947,14 @@ function terrace(
       if (rng.chance(0.5)) chimney(o, F, rng.range(x0 + 0.8, x1 - 0.8), hd - 1.2, top, colorOf(0x6a3a2c));
     }
     if (style === 'brownstone') {
-      if (det.escapes > 0 && rng.chance(0.35 * det.escapes)) fireEscapes(o, F, 0, hw, hd, y0, Math.round((top - y0) / fh), fh, s.bay, rng, (x0 + x1) / 2);
-      if (rng.chance(0.25) && uw > 7) waterTower(o, F.X((x0 + x1) / 2, hd * 0.2), F.Z((x0 + x1) / 2, hd * 0.2), top + 0.6, rng);
+      if (det.escapes > 0 && rng.chance(sig.fireEscape?.terrace ?? 0.35 * det.escapes)) {
+        fireEscapes(o, F, 0, hw, hd, y0, Math.round((top - y0) / fh), fh, s.bay, rng, (x0 + x1) / 2);
+        o.counts.fireEscapes++;
+      }
+      if (rng.chance(sig.waterTower?.terrace ?? 0.25) && uw > (sig.waterTower ? 5.5 : 7)) {
+        waterTower(o, F.X((x0 + x1) / 2, hd * 0.2), F.Z((x0 + x1) / 2, hd * 0.2), top + 0.6, rng);
+        o.counts.waterTowers++;
+      }
     }
   }
 }

@@ -2,11 +2,13 @@
  * Sign atlases: the podiums' neon name signs (cityMeshes) and the hanging blade signs (wallDressing), white
  * glyphs on dark panels so each sign tints its own with vertex colors. The name pools are large and a seed
  * draws its own share of them for the atlas's fixed cells (cityMood.pickSubset), so the canvases keep their
- * size and build time while no two cities carry the same signs.
+ * size and build time while no two cities carry the same signs. A Miami home swaps some of those cells for
+ * hotel names (cityIdentity.ts `hotels`), so a fifth of its podium neon reads as the strip's hotels.
  */
 import type * as THREE from 'three';
 import { canvas, canvasTex, fitFont } from './canvasKit';
 import { pickSubset } from './cityMood';
+import { cityIdentity } from '../cityIdentity';
 
 /** The neon signs on the podiums (cityMeshes): the pool a seed draws SIGN_SLOTS names from. At most 16 characters so a 512 px cell stays readable. */
 export const SIGN_NAMES = [
@@ -29,6 +31,11 @@ export const SIGN_NAMES = [
   'FRY GUYS', 'ICE CREAM', 'LAUNDRY LOUNGE', 'DRY CLEAN 1 HR', 'TAILOR', 'SHOE REPAIR',
   'COPY CENTER', 'PHONE FIXED FAST', 'VIDEO RENTAL', 'COMIC CAVE', 'CAT CAFE', 'OPEN LATE',
 ];
+/** The deco hotels a Miami home names on its podium signs (at most 16 characters). */
+export const HOTEL_SIGN_NAMES = [
+  'HOTEL FLAMINGO', 'THE CARDOZA', 'HOTEL BREAKWATER', 'OCEAN HOTEL', 'HOTEL SOLEIL', 'THE PELICAN',
+  'CARLYLE HOTEL', 'HOTEL AZUL', 'THE COLONY', 'HOTEL LEONARD', 'THE ESSEX', 'PARK CENTRAL',
+];
 export const SIGN_ATLAS_COLS = 4;
 export const SIGN_ATLAS_ROWS = 6;
 /** Cells in the sign atlas: how many of the pool's names a city carries. */
@@ -47,7 +54,10 @@ export function makeSignAtlas(seed: number, extra: readonly string[] = []): THRE
   const cw = 512;
   const chh = 128;
   const [c, ctx] = canvas(cw * SIGN_ATLAS_COLS, chh * signAtlasRows(extra.length));
-  [...pickSubset(SIGN_NAMES, SIGN_SLOTS, seed, 'signNames'), ...extra].forEach((name, i) => {
+  const names = pickSubset(SIGN_NAMES, SIGN_SLOTS, seed, 'signNames');
+  const hotels = cityIdentity(seed).signature.hotels;
+  if (hotels) names.splice(0, hotels.signs, ...pickSubset(HOTEL_SIGN_NAMES, hotels.signs, seed, 'hotelSigns'));
+  [...names, ...extra].forEach((name, i) => {
     const x = (i % SIGN_ATLAS_COLS) * cw;
     const y = Math.floor(i / SIGN_ATLAS_COLS) * chh;
     ctx.fillStyle = '#0b0b10';

@@ -66,14 +66,14 @@ export interface InteriorDef {
 
 /** The rooms, in layer order. */
 export const INTERIORS = [
-  { id: 'bodega', lamp: 5200, bays: ['bodega', 'shopCool'] },
+  { id: 'bodega', lamp: 5200, bays: ['bodega', 'bodegaBoard', 'shopCool'] },
   { id: 'diner', lamp: 2700, bays: ['restaurant', 'shopWarm'] },
   { id: 'lobby', lamp: 4600, bays: ['lobby'] },
   { id: 'karaoke', lamp: 4000, bays: ['neonShop', 'decoShop'] },
   { id: 'garage', lamp: 5600, bays: ['shopCool'] },
   { id: 'clothes', lamp: 3000, bays: ['shopWarm', 'decoShop', 'neonShop'] },
   { id: 'laundromat', lamp: 6200, bays: ['shopCool', 'bodega'] },
-  { id: 'bar', lamp: 2400, bays: ['shopWarm', 'restaurant', 'neonShop', 'decoShop'] },
+  { id: 'bar', lamp: 2400, bays: ['shopWarm', 'restaurant', 'neonShop', 'decoShop', 'bar'] },
 ] as const satisfies readonly InteriorDef[];
 
 /** Rooms per bay kind, as indices into INTERIORS. */

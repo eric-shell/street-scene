@@ -11,6 +11,9 @@
  * while paint stays matte: one draw call for the decals, one for the puddles
  * (a mirror material of their own). Seeded from the world, render only.
  *
+ * A seed's home (cityIdentity.ts signature) dresses its own region: a New York home steams most of its
+ * downtown manholes (steam.ts draws the plumes), a Miami home lays terrazzo slabs along the downtown sidewalks.
+ *
  * The river's channel and ramp edges get nothing: the river renderer paints
  * its own floor, and a decal draped on the terrain under a bridge deck would
  * hang at deck level 4 m over the floor (the terrain there is the deck,
@@ -20,13 +23,15 @@
 import * as THREE from 'three';
 import type { World } from '../../city/world';
 import { CITY } from '../../city/config';
-import { Vec2 } from '../../sim/math';
-import { Rng } from '../../sim/prng';
+import { Vec2, lerp } from '../../sim/math';
+import { Rng, deriveSeed } from '../../sim/prng';
 import { GeoBuilder } from '../geoBuilder';
 import { DECAL_ATLAS_SIZE, DECAL_CELLS, DecalKind, AtlasCell } from '../textures/textures';
 import { baysByEdge } from '../../city/busBays';
 import { bayMouth } from './busBays';
-import { isBendNode, isRiverEdge } from '../../city/roadGraph';
+import { downtownFactor, isBendNode, isRiverEdge } from '../../city/roadGraph';
+import { regionAt } from '../buildings/architecture';
+import { signatureAt } from '../cityIdentity';
 
 export interface DecalOptions {
   /** Multiplies every density (graphics tier). */
@@ -80,6 +85,9 @@ const DECAL = {
   puddleEvery: 9,
   puddleRandom: 0.12,
   puddleMid: 0.25,
+  /** Terrazzo slab length along the sidewalk (m) and the downtown factor a street needs for it. */
+  terrazzoSlab: 3.2,
+  terrazzoDowntown: 0.3,
 } as const;
 
 const ASPHALT = new THREE.Color(0x23242a);
@@ -104,6 +112,8 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
   const gb = new GeoBuilder(true);
   const pb = new GeoBuilder(true);
   const vents: THREE.Vector3[] = [];
+  const regionOf = regionAt(world);
+  const terrazzoRng = new Rng(deriveSeed(world.seed, 'terrazzo'));
   const normalAt = (x: number, z: number): [number, number, number] => {
     const s = world.slopeAt(x, z);
     const l = Math.hypot(s.gx, 1, s.gz);
@@ -224,7 +234,10 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
       const yaw = rng.range(0, Math.PI * 2);
       if (rng.chance(0.3)) quad(gb, 'rust', p.x, p.z, yaw, DECAL.manhole * 1.9, DECAL.manhole * 1.9, WHITE, DECAL.lift - 0.004);
       quad(gb, rng.chance(0.5) ? 'manholeA' : 'manholeB', p.x, p.z, yaw, DECAL.manhole, DECAL.manhole, WHITE);
-      if (rng.chance(alley ? DECAL.alleySteam : DECAL.manholeSteam)) vents.push(new THREE.Vector3(p.x, h(p.x, p.z) + 0.05, p.z));
+      // The draw is always taken (the stream never shifts); a New York home steams most of its downtown covers (cityIdentity.ts steam).
+      const steam = alley ? undefined : signatureAt(world.seed, regionOf(p.x, p.z)).steam;
+      const steamChance = alley ? DECAL.alleySteam : steam ? lerp(steam.chance, steam.downtown, downtownFactor(g.plan, p.x, p.z)) : DECAL.manholeSteam;
+      if (rng.chance(steamChance)) vents.push(new THREE.Vector3(p.x, h(p.x, p.z) + 0.05, p.z));
     }
     if (alley) {
       // Alleys: cracks and tar, no paint, no drains.
@@ -249,6 +262,19 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
       for (const side of [1, -1]) {
         const p = at(s, side * (half - 0.5));
         quad(gb, 'drain', p.x, p.z, yawAB + (dir < 0 ? Math.PI : 0), DECAL.drainW, DECAL.drainH, WHITE);
+      }
+    }
+    // Miami terrazzo: pale slabs laid along the downtown sidewalks (its own stream, only a Miami home draws from it).
+    const mid = at(len / 2, 0);
+    const terrazzo = signatureAt(world.seed, regionOf(mid.x, mid.z)).hotels?.terrazzo;
+    if (terrazzo && downtownFactor(g.plan, mid.x, mid.z) >= DECAL.terrazzoDowntown) {
+      const slab = Math.min(DECAL.terrazzoSlab, e.sidewalk - 0.6);
+      for (const side of [1, -1]) {
+        for (let s = 9 + DECAL.terrazzoSlab / 2; s < len - 9; s += DECAL.terrazzoSlab) {
+          if (!terrazzoRng.chance(terrazzo)) continue;
+          const p = at(s, side * (half + e.sidewalk / 2));
+          quad(gb, 'terrazzo', p.x, p.z, yawAB, slab, DECAL.terrazzoSlab, WHITE, CITY.curbHeight + DECAL.lift - 0.01);
+        }
       }
     }
     // Cracks, tar seams, fresh patches, gutter grime.

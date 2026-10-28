@@ -17,13 +17,16 @@
  * condos, and glass towers everywhere downtown. Low rise terrace styles line
  * up along a block side at a shared cornice height and split into narrow
  * houses. Heights may move only where no neon sign would be left floating.
+ * A Philadelphia home leans harder on brick (cityIdentity.ts `brick`: fewer
+ * stone mansard blocks and deco towers, more rowhouse terraces); the rolls
+ * are the same, only their thresholds move, and only in the home's own region.
  */
 import type { World } from '../../city/world';
 import { pointInPolygon } from '../../city/districts/geom';
 import type { Building } from '../../city/blocks';
 import { Rng } from '../../sim/prng';
 import { downtownFactor } from '../../city/roadGraph';
-import { cityIdentity } from '../cityIdentity';
+import { cityIdentity, signatureAt } from '../cityIdentity';
 import type { FacadeLayer } from './facadeAtlas';
 import { MODULE } from './facadeAtlas';
 import type { GroundBay } from './facadeKit';
@@ -217,8 +220,8 @@ function pickWeighted(rng: Rng, weights: number[]): number {
   return weights.length - 1;
 }
 
-/** Style for a region and height (m). */
-export function styleFor(region: Region, h: number, rng: Rng): StyleId {
+/** Style for a region and height (m). `brick` (0..1, Philadelphia's signature) moves the stone and deco shares of the mid heights toward brick. */
+export function styleFor(region: Region, h: number, rng: Rng, brick = 0): StyleId {
   const r = rng.next();
   switch (region) {
     case 'nyc':
@@ -228,7 +231,7 @@ export function styleFor(region: Region, h: number, rng: Rng): StyleId {
     case 'sf':
       return h <= 18 ? 'victorian' : h <= 34 ? (r < 0.55 ? 'prewar' : 'glass') : r < 0.2 ? 'deco' : 'glass';
     case 'philly':
-      return h <= 14 ? 'rowhouse' : h <= 30 ? (r < 0.5 ? 'empire' : 'brownstone') : h <= 60 ? (r < 0.6 ? 'prewar' : 'deco') : 'glass';
+      return h <= 14 ? 'rowhouse' : h <= 30 ? (r < 0.5 * (1 - brick) ? 'empire' : 'brownstone') : h <= 60 ? (r < 0.6 + 0.4 * brick ? 'prewar' : 'deco') : 'glass';
     case 'miami':
       return h <= 22 ? 'miamiDeco' : h <= 36 ? (r < 0.4 ? 'miamiDeco' : 'condo') : r < 0.72 ? 'condo' : 'glass';
   }
@@ -393,10 +396,11 @@ function planOnce(world: World): BuildingPlan[] {
     else if (br.chance(ARCH.outlier)) region = REGIONS[br.int(0, REGIONS.length - 1)];
     let h = b.h;
     // Philly and SF neighbourhoods pull mid height buildings down into their terraces now and then.
-    if (region === 'philly' && h <= 18 && br.chance(0.55)) h = Math.min(h, TERRACE_CAP.rowhouse!);
+    const philly = signatureAt(world.seed, 'philly').brick;
+    if (region === 'philly' && h <= 18 && br.chance(philly?.terrace ?? 0.55)) h = Math.min(h, TERRACE_CAP.rowhouse!);
     if (region === 'sf' && h <= 24 && br.chance(0.5)) h = Math.min(h, TERRACE_CAP.victorian!);
     h = Math.max(h, flush[i]);
-    return { style: styleFor(region, h, br), region, h, flush: flush[i], signed: signed[i] === 1, landmark: false, seed: b.seed };
+    return { style: styleFor(region, h, br, region === 'philly' ? philly?.share : 0), region, h, flush: flush[i], signed: signed[i] === 1, landmark: false, seed: b.seed };
   });
 
   // Terraces: consecutive low rise buildings on one block side share a style and a cornice line.

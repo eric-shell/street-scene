@@ -4,7 +4,10 @@
  * office/apartment grid above: storefronts, lobbies, arched entries, shutters
  * and restaurants on the ground floor, plus the regional ones (rowhouse
  * stoops, San Francisco garages, Spanish arcades, bodegas, Miami deco shops)
- * that the architecture styles pick from; offices, karaoke bars and arched
+ * that the architecture styles pick from, and the home signatures' own (a
+ * Philadelphia corner bar with a neon beer sign, a New York bodega with a lit
+ * price board under a striped awning, a Los Angeles drive-through with a
+ * menu board; cityIdentity.ts); offices, karaoke bars and arched
  * windows on the mezzanine floors; plus 3D trim (cornice, pilasters, awnings,
  * canopies) and light spill on the sidewalk. Walls take the building's
  * palette as a vertex tint. On Medium and High the shop bays also carry an `aRoom`
@@ -19,8 +22,8 @@ import { DETAIL, type Detail } from './buildingKit';
 import type { ShopFront } from '../people/idleSpots';
 import { hasRoom, roomFor } from './interiorAtlas';
 
-/** Ground floor bay variants: the first eight in atlas row 0, the residential and regional ones in row 2. */
-export const GROUND_BAYS = ['shopWarm', 'shopCool', 'arch', 'lobby', 'shutter', 'restaurant', 'masonry', 'neonShop', 'stoop', 'garage', 'arcade', 'bodega', 'decoShop'] as const;
+/** Ground floor bay variants: the first eight in atlas row 0, the residential, regional and signature ones in row 2 (the last three cells of it are the signatures', painted without the stream so no other cell moves). */
+export const GROUND_BAYS = ['shopWarm', 'shopCool', 'arch', 'lobby', 'shutter', 'restaurant', 'masonry', 'neonShop', 'stoop', 'garage', 'arcade', 'bodega', 'decoShop', 'bar', 'driveThru', 'bodegaBoard'] as const;
 export type GroundBay = (typeof GROUND_BAYS)[number];
 /** Upper podium floor variants (atlas row 1). */
 export const PODIUM_FLOORS = ['office', 'archWindows', 'karaoke', 'brick'] as const;
@@ -416,6 +419,116 @@ export function makeFacadeKitTextures(seed: number, withMask = false): FacadeKit
     }
   });
 
+  // ----- The signature bays (row 2, last three cells): no rng draws, so the cells painted after them keep their stream -----
+  const neonText = (text: string, cx: number, cy: number, px: number, color: string) => {
+    e.save();
+    e.font = `bold ${px}px "Arial Black", Impact, sans-serif`;
+    e.textAlign = 'center';
+    e.textBaseline = 'middle';
+    e.shadowColor = color;
+    e.shadowBlur = 10;
+    e.fillStyle = color;
+    e.fillText(text, cx, cy);
+    e.restore();
+  };
+  GROUND_BAYS.forEach((variant, i) => {
+    const x = (i % 8) * CELL;
+    const y = i < 8 ? 0 : 2 * CELL;
+    const H = GROUND_PX;
+    const W = CELL;
+    if (variant !== 'bar' && variant !== 'driveThru' && variant !== 'bodegaBoard') return;
+    masonry(x, y, W, H, '#34363f', 'rgba(0,0,0,0.35)', false);
+    c.fillStyle = '#1d1e24';
+    c.fillRect(x, y + H - 14, W, 14);
+    switch (variant) {
+      case 'bar': {
+        // Philadelphia corner bar: dark brick and wood, an amber room behind the glass, a red neon BEER sign hung in the window.
+        masonry(x, y, W, H, '#4a2a22', 'rgba(0,0,0,0.35)', true);
+        c.fillStyle = '#1d1e24';
+        c.fillRect(x, y + H - 14, W, 14);
+        c.fillStyle = '#16100e';
+        c.fillRect(x + 10, y + 12, W - 20, 30);
+        neonText('TAPROOM', x + W / 2, y + 28, 22, '#ffb347');
+        glass(x + 14, y + 52, W - 90, H - 70, kelvin(2300), 0.9);
+        mullions(x + 14, y + 52, W - 90, H - 70, 2, '#3a2a20');
+        glass(x + W - 66, y + 52, 50, H - 66, kelvin(2300), 0.8);
+        c.fillStyle = '#9a8a6a';
+        c.fillRect(x + W - 26, y + 52 + (H - 66) / 2, 4, 14);
+        mk('#000', x + W - 28, y + 52 + (H - 66) / 2 - 2, 8, 18);
+        // The neon beer sign: a red tube frame, the word, a cyan arrow; the glass behind it is closed in the mask so the room never shows through the tubes.
+        e.save();
+        e.strokeStyle = '#ff3b3b';
+        e.shadowColor = '#ff3b3b';
+        e.shadowBlur = 10;
+        e.lineWidth = 4;
+        e.beginPath();
+        e.roundRect(x + 26, y + 66, 84, 46, 8);
+        e.stroke();
+        e.restore();
+        neonText('BEER', x + 68, y + 89, 24, '#ff5a4a');
+        neonText('OPEN', x + 154, y + 120, 16, '#3ff0ff');
+        mk('#000', x + 24, y + 64, 88, 50);
+        mk('#000', x + 124, y + 110, 60, 20);
+        break;
+      }
+      case 'driveThru': {
+        // Los Angeles drive-through: a lit canopy strip, a service window, a tall menu board beside the lane.
+        c.fillStyle = '#2b2d34';
+        c.fillRect(x, y, W, H - 14);
+        e.fillStyle = '#ffd23a';
+        e.globalAlpha = 0.9;
+        e.fillRect(x + 8, y + 14, W - 16, 10);
+        e.globalAlpha = 1;
+        c.fillStyle = '#0d121c';
+        c.fillRect(x + 128, y + 56, W - 142, 70);
+        e.fillStyle = kelvin(3800);
+        e.globalAlpha = 0.85;
+        e.fillRect(x + 132, y + 60, W - 150, 62);
+        e.globalAlpha = 1;
+        mk('#fff', x + 128, y + 56, W - 142, 70);
+        mk('#000', x + 128 + (W - 142) / 2 - 2, y + 56, 4, 70);
+        // The menu board: dark panel, a red header, rows of items and prices.
+        c.fillStyle = '#16171c';
+        c.fillRect(x + 14, y + 40, 96, H - 62);
+        e.fillStyle = '#ff3b3b';
+        e.fillRect(x + 20, y + 46, 84, 12);
+        const rows = ['#ffd23a', '#fff1d6', '#ffd23a', '#fff1d6', '#ffd23a'];
+        rows.forEach((col, k) => {
+          e.fillStyle = col;
+          e.globalAlpha = 0.9;
+          e.fillRect(x + 20, y + 66 + k * 14, 48, 6);
+          e.fillRect(x + 80, y + 66 + k * 14, 24, 6);
+        });
+        e.globalAlpha = 1;
+        neonText('MENU', x + 62, y + 52, 11, '#ffffff');
+        break;
+      }
+      case 'bodegaBoard': {
+        // New York bodega with a lit price board: the busy sign band, a black board of yellow items and white prices in the window, fluorescent light beyond.
+        c.fillStyle = '#26282e';
+        c.fillRect(x, y, W, H - 14);
+        c.fillStyle = '#0e1630';
+        c.fillRect(x + 6, y + 8, W - 12, 36);
+        neonText('DELI  GROCERY', x + W / 2, y + 27, 20, '#ffd400');
+        glass(x + 10, y + 52, W - 20, H - 70, kelvin(5200), 1);
+        c.fillStyle = '#0b0b0e';
+        c.fillRect(x + 16, y + 58, 104, 78);
+        e.fillStyle = '#000';
+        e.fillRect(x + 16, y + 58, 104, 78);
+        mk('#000', x + 14, y + 56, 108, 82);
+        for (let k = 0; k < 6; k++) {
+          e.fillStyle = k % 2 ? '#fff1d6' : '#ffd400';
+          e.globalAlpha = 0.95;
+          e.fillRect(x + 22, y + 64 + k * 12, 52, 6);
+          e.fillRect(x + 86, y + 64 + k * 12, 28, 6);
+        }
+        e.globalAlpha = 1;
+        mullions(x + 10, y + 52, W - 20, H - 70, 2);
+        break;
+      }
+    }
+  });
+
   // ----- Row 1: upper podium floors -----
   PODIUM_FLOORS.forEach((variant, i) => {
     const x = i * CELL;
@@ -565,7 +678,12 @@ const SPILL: Record<string, string> = {
   bodega: kelvin(5200),
   arcade: kelvin(2600),
   decoShop: kelvin(3800),
+  bar: kelvin(2300),
+  driveThru: kelvin(3800),
+  bodegaBoard: kelvin(5200),
 };
+/** The striped bodega's awning cloth: green, red, blue, mustard (picked by where the bay stands, never the stream). */
+const BODEGA_AWNINGS = [0x1f6b3a, 0x8a1c2b, 0x1c4a8a, 0xb88a14].map((c) => new THREE.Color(c));
 const ROW0: readonly number[] = [0, 1, 2, 3, 4, 5, 6, 7];
 const WHITE = new THREE.Color(1, 1, 1);
 
@@ -806,9 +924,11 @@ export function addPodiumFace(out: PodiumOutput, f: PodiumFace, floors: number, 
     const name = GROUND_BAYS[variants[b]];
     const mx = l0.ax + ux * (b + 0.5) * bayLen + f.nx * (0.02 + bayExtra[b]);
     const mz = l0.az + uz * (b + 0.5) * bayLen + f.nz * (0.02 + bayExtra[b]);
-    if (name === 'shopWarm' || name === 'shopCool' || name === 'restaurant' || name === 'neonShop' || name === 'bodega') out.shopFronts.push({ x: mx, z: mz, nx: f.nx, nz: f.nz, kind: name });
-    if ((name === 'shopWarm' || name === 'restaurant' || name === 'shopCool' || name === 'neonShop') && rng.chance(0.65)) {
-      const col = AWNING_COLORS[rng.int(0, AWNING_COLORS.length - 1)];
+    if (name === 'shopWarm' || name === 'shopCool' || name === 'restaurant' || name === 'neonShop' || name === 'bodega' || name === 'bodegaBoard' || name === 'bar') out.shopFronts.push({ x: mx, z: mz, nx: f.nx, nz: f.nz, kind: name });
+    // The price board bodega always has its awning (the pick is a hash of where it stands, so the stream is as it was for every other bay).
+    const board = name === 'bodegaBoard';
+    if (board || ((name === 'shopWarm' || name === 'restaurant' || name === 'shopCool' || name === 'neonShop') && rng.chance(0.65))) {
+      const col = board ? BODEGA_AWNINGS[(Math.imul(Math.round(mx * 8), 73856093) ^ Math.imul(Math.round(mz * 8), 19349663)) >>> 30] : AWNING_COLORS[rng.int(0, AWNING_COLORS.length - 1)];
       const depth = 1.3;
       const yTop = f.y0 + GROUND_H - 0.5;
       const yLow = yTop - 0.7;
