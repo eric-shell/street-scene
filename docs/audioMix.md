@@ -15,7 +15,7 @@ music (an <audio> element, its own volume)
 | Bus | What is on it | Setting |
 |---|---|---|
 | engine | every `EngineVoice` (player and rivals) | Engine |
-| effects | impacts (car, wall, barrier, rail, props), scrapes, nitrous, horn, countdown beeps, fireworks | Effects |
+| effects | impacts (car, wall, barrier, rail, props), scrapes, nitrous, horn, countdown beeps, fireworks, car alarms and the horns of traffic passed close | Effects |
 | ambience | crowd beds and cheers, train rumble, helicopters, thunder, the crossing bell, the cable car bell, the city bed (hum, wind, distant one-shots) | Ambience |
 | interface | menu ticks, presses, blips, whooshes, the wipe, the garage door | Interface |
 | master | the four above | Master |
@@ -51,6 +51,8 @@ Measured at the output with every level at its default, each source alone and ri
 | nitrous callout rewards (sfx.ts boostCue) | not measured | | | set by ear at `REWARD_LEVEL` 0.4, under the beeps; ticks at a third of that |
 | firework (close) | −21 | −15 | −14 | a distant crash |
 | horn | −24 | −18 | −18 | cuts through the engine |
+| car alarm (struck parked car, beside it, wail pattern) | not measured | −21.3 | −21 | about the city bed's siren at its pass (offline renders: the wail pass −17.3 dBFS RMS around the closest approach before the bus, the alarms −16.4 to −18.5 at `ALARM.level` 0.12 against it); gated patterns read lower than their on-level. `carAlarm.ts`; falls to half at 22 m and is silent past 220 m, at most 3 at once, nearest win |
+| traffic horn (beside the car) | not measured | −22.1 | −22 | the city bed's horn recipe (`carHorn.ts` `playHorn`) at `HORN.level` 0.5, the same level its distant one-shots start from (offline: −15.2 dBFS both); falls to half at 14 m; taxis twice, buses and trucks lower, police silent |
 | nitrous | −30 | −21 | −21 | just under the engine, it was buried |
 | crowd bed (adjacent stand, full) | −14 | −25 | −24 | it was louder than the engine; the recording is now ridden to a steady level, since a loop fell 15 dB into its fading tail |
 | crowd cheer (finish, beside you) | −12.5 (peak −1) | −20 | −21 | it drowned the finish |
@@ -60,7 +62,7 @@ Measured at the output with every level at its default, each source alone and ri
 | thunder, 1800 m | −13 | −25 | −25 | it was as loud as near; the distance curve now falls to a tenth at three times `near` |
 | crossing bell | −25 | −24 | −24 | |
 | cable car bell (beside the car) | not measured | | | a ring of five strikes, set by ear at `CABLE_BELL.level` 0.5 (`sceneVoices.ts`) to sit with the crossing bell; distance faded from the camera (half at 30 m, silent past 160 m) |
-| city bed (clear night, hum and mains rumble) | none | −33.5 | −34 | 15 dB under the engine and 10 under a crowd bed: you notice it only when it stops. The wind (hazy, misty), rain hiss and the one-shots are trimmed to the same neighbourhood; the one-shots (a far American siren pass (wail, yelp, sometimes an airhorn; `siren.ts`, measured to peak within 1.5 dB of the old one), horn, dog, bottle, shutter, El train horn, gulls) are far and dulled by distance, and the bed ducks 30% (3 dB) under the player's full throttle |
+| city bed (clear night, hum and mains rumble) | none | −33.5 | −34 | 15 dB under the engine and 10 under a crowd bed: you notice it only when it stops. The wind (hazy, misty), rain hiss and the one-shots are trimmed to the same neighbourhood; the one-shots (the horn is `carHorn.ts`'s `playHorn`, shared with the traffic horns, whose gain used to be cancelled so it only clicked at the end of the beep; a far American siren pass (wail, yelp, sometimes an airhorn; `siren.ts`, measured to peak within 1.5 dB of the old one), horn, dog, bottle, shutter, El train horn, gulls) are far and dulled by distance, and the bed ducks 30% (3 dB) under the player's full throttle |
 | menu press (peak) | −31 | −15 (RMS −32) | −32 | a click peaks over the music's −26; short sounds read low as RMS |
 | menu hover tick (peak) | −44 | −28 (RMS −48) | −48 | under the press, so sweeping a list is not a rattle |
 | menu step whoosh (peak) | −40 | −19 (RMS −32) | −32 | |

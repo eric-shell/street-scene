@@ -14,6 +14,8 @@ import type { Settings } from '../../ui/settings';
 import { TrainRumble } from '../../audio/sceneVoices';
 import { EngineVoice, audioHub } from '../../audio/engineAudio';
 import { Sfx } from '../../audio/sfx';
+import { CarAlarms } from '../../audio/carAlarm';
+import { CarHorns } from '../../audio/carHorn';
 import { CityAmbience, ambienceTraits } from '../../audio/cityAmbience';
 import { manifestCar } from '../../render/car/carAssets';
 import type { Snap } from './snap';
@@ -25,6 +27,9 @@ const SECTION_CHEER_GAP = 8;
 export class SessionAudio {
   readonly engines: EngineVoice[] = [];
   readonly sfx: Sfx | null = null;
+  /** Alarms of struck parked cars and the horns of traffic that was passed close (both read the sim's traffic state). */
+  private alarms: CarAlarms | null = null;
+  private horns: CarHorns | null = null;
   /** Racer poses for the crowd (reused every frame). */
   private readonly crowdCars: CrowdCar[];
   /** Last heard excitement and last cheer time (s) per crowd section spot. */
@@ -55,6 +60,8 @@ export class SessionAudio {
       });
       // Crashes, nitrous, scrapes, horn and countdown beeps (src/audio/sfx.ts).
       this.sfx = new Sfx();
+      this.alarms = new CarAlarms();
+      this.horns = new CarHorns();
       const sfx = this.sfx;
       night.city.finishLine.onFirework = (x, y, z, size) => sfx.firework(x, y, z, size);
     }
@@ -76,6 +83,9 @@ export class SessionAudio {
     }
     if (!paused) this.ambience?.update(time, dt, camera.position.y, poses[0].throttle, this.night.weather.live);
     this.sfx?.updateCars(cars, this.race.world, dt, paused);
+    const listener = { x: camera.position.x, z: camera.position.z, rx: right.x, rz: right.z };
+    this.alarms?.update(this.race, listener, paused);
+    this.horns?.update(this.race, listener, paused);
     // Crowds react to the racers' (sim) poses and are heard from the camera.
     const cc = this.crowdCars;
     for (let i = 0; i < cc.length; i++) {
@@ -132,6 +142,8 @@ export class SessionAudio {
     this.engines.forEach((e) => e.dispose());
     this.night.city.finishLine.onFirework = null;
     this.sfx?.dispose();
+    this.alarms?.dispose();
+    this.horns?.dispose();
     this.ambience?.dispose();
   }
 }

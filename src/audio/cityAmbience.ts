@@ -20,6 +20,7 @@
  */
 import { audioHub } from './engineAudio';
 import { TrainRumble } from './sceneVoices';
+import { playHorn } from './carHorn';
 import { playSiren } from './siren';
 import { Rng, deriveSeed } from '../sim/prng';
 import { clamp01, lerp } from '../sim/math';
@@ -331,25 +332,7 @@ export class CityAmbience {
         const f = r.range(380, 470);
         const beeps = r.chance(0.35) ? 2 : 1;
         const len = r.range(0.18, 0.5);
-        for (let b = 0; b < beeps; b++) {
-          const at = now + b * (len + 0.14);
-          const g = ctx.createGain();
-          env(g, at, 1, 0.012, 0.02);
-          g.gain.cancelScheduledValues(at + 0.012);
-          g.gain.setValueAtTime(1, at + len);
-          g.gain.setTargetAtTime(0, at + len, 0.015);
-          const filt = ctx.createBiquadFilter();
-          filt.type = 'lowpass';
-          filt.frequency.value = 1800;
-          g.connect(filt).connect(lp);
-          for (const m of [1, 1.26]) {
-            const o = osc('sawtooth', f * m);
-            const og = ctx.createGain();
-            og.gain.value = 0.5;
-            o.connect(og).connect(g);
-            start(o, at, at + len + 0.12);
-          }
-        }
+        playHorn(ctx, lp, { at: now, hz: f, beeps, len, gap: 0.14, start });
         break;
       }
       case 'dog': {
