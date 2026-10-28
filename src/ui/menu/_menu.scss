@@ -76,14 +76,18 @@
     }
   }
 }
-/* The menu's column ends above the corner's controls (the help and the music pill, --corner-h) and does not
-   scroll itself, so nothing is clipped at its edge, neither a halo nor a card sliding in between steps: the
-   step shrinks to fit, and its cards scroll between its header and foot (.menu-screen__body). The settings
-   pane scrolls inside its card instead. */
+/* The menu's column ends at the gutter and does not scroll itself, so nothing is clipped at its edge, neither
+   a halo nor a card sliding in between steps: the step shrinks to fit, and its cards scroll between its header
+   and foot (.menu-screen__body). The settings pane scrolls inside its card instead. On wide screens the corner's
+   controls (the help and the music pill) stand right of the column, so it runs down to the gutter; only a narrow
+   screen's full width rail ends above them (--corner-h), where they would cover its last card. */
 .menu.rail__col {
   --col-top: clamp(16px, 9vh, 96px);
-  max-height: calc(100% - var(--col-top) - #{mixins.safe(bottom, var(--gutter))} - var(--corner-h) - 12px);
+  max-height: calc(100% - var(--col-top) - #{mixins.safe(bottom, var(--gutter))});
   overflow: visible;
+  @include media.narrow {
+    max-height: calc(100% - var(--col-top) - #{mixins.safe(bottom, var(--gutter))} - var(--corner-h) - 12px);
+  }
   .rail__step {
     flex-shrink: 1;
     min-height: 0;
