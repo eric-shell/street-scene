@@ -246,6 +246,8 @@ export interface BuildingCounts {
   paintedLadies: number;
   /** Strip mall rows under their shared parapet sign. */
   stripMalls: number;
+  /** LED video walls placed (videoWalls.ts). */
+  videoWalls?: number;
 }
 
 export interface Out {

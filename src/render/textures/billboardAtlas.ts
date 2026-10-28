@@ -50,7 +50,7 @@ const BRANDS: readonly Brand[] = [
   { text: 'GLOW', sub: 'NEON REPAIR' }, { text: 'STATIC', sub: 'TV  RADIO  REPAIR' },
 ];
 
-interface Palette {
+export interface Palette {
   bg: [string, string];
   fg: string;
   accent: string;
@@ -216,6 +216,12 @@ function makeBillboards(seed: number, extra: readonly Brand[]): THREE.CanvasText
   }
   const t = canvasTex(c, { repeat: false });
   return t;
+}
+
+/** The seed's brands and palettes in the order the roof boards use them, for the video walls (buildings/videoWalls.ts) to draw the same ads. Same stream as `makeBillboards`, so it never disturbs it. */
+export function billboardPool(seed: number): { brands: Brand[]; palettes: Palette[] } {
+  const rng = new Rng(deriveSeed(seed, 'roofAds'));
+  return { brands: rng.shuffle(BRANDS.slice()), palettes: rng.shuffle(PALETTES.slice()) };
 }
 
 const cache: { key: string; tex: THREE.CanvasTexture }[] = [];
