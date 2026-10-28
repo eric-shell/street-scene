@@ -160,6 +160,9 @@
       "_quay": "A harbor's quay (districts/waterfront.ts): dusty, oil stained dock concrete. A shade under the road's grip, so the yard and its skid pad slide a little earlier than the street beside it, and a small rolling drag from the grit, about a third of the cobbles'.",
       "quayGrip": 0.9,
       "quayDrag": 40,
+      "_sand": "A beach's sand (districts/waterfrontBeach.ts): the off road section of the waterfront. Loose and slidey, a little better than dirt's grip (offroadGrip 0.49) and with less drag than it (offroadDrag 900): it bleeds speed hard enough that the boardwalk is the fast line and the sand a detour for the dune jumps and the drift strip, but a racer who commits to it is not stranded. The boardwalk's planks drive as cobbles (cobbleGrip, cobbleDrag).",
+      "sandGrip": 0.55,
+      "sandDrag": 560,
       "waterDrag": 3.5
     },
     "collision": {

@@ -252,6 +252,9 @@ export interface CarTuning {
     /** A harbor's quay: dusty, oil stained dock concrete, a little short of a road's grip, and its small rolling drag (N, full above 1 m/s). */
     quayGrip: number;
     quayDrag: number;
+    /** A beach's sand (districts/waterfrontBeach.ts): loose, so a good deal less grip than a road, and a heavy rolling drag (N, full above 1 m/s). */
+    sandGrip: number;
+    sandDrag: number;
     /** Water in the river trickle: hydrodynamic drag, N per (m/s)^2 of speed with all four wheels in it (scaled by the wheels that are). */
     waterDrag: number;
   };

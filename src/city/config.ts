@@ -1317,6 +1317,81 @@ export const CITY = {
       boardwalk: 3.4,
       bollardInset: 1.2,
       boardwalkInset: 0.9,
+      /**
+       * The beach variant (districts/waterfrontBeach.ts): a waterfront that is sand and a boardwalk, not a dock
+       * yard. The chance a waterfront is one (its own stream) is `chance.miami` in a Miami home (shared/home.ts)
+       * and `chance.other` elsewhere; a rolled beach still needs a stretch of a side at least `minLength` m long whose ground is
+       * within `maxResidual` m of the sand's profile at the dune edge (the stretch is the longest such window of the free side,
+       * its ends closed by breakwaters), and no warehouse in its frontage, else the waterfront is the harbor it would have been. All distances in m, `d` measured in from the waterline:
+       *  - the coast is pushed `quayWidth` out from the frontage (the narrowest the beach gets: `sand` of sand and a
+       *    boardwalk of at least the rest); a recess deeper than `maxDepth` would be a warehouse;
+       *  - the sand: `sand` wide, from the waterline to the dune edge, rising `slope` (2.5%) from the water's
+       *    surface, blended into the street's ground over `blend` m (the whole sand: the dune edge keeps the street's ground); past the waterline the seabed shelves
+       *    down to `CFG.depth` over `shelf` m. The surf wall ('surf') stands `surfInset` m up the sand;
+       *  - mouths as the yard's, a street ending up to `mouthSlack` m short of the frontage's depth counts;
+       *  - dunes [min, max]: ridges `duneHeight` high across the dune edge, crest `duneCrest` m seaward of it, rising
+       *    and falling over `duneRun` (a smoothstep: 1.5 x height / run = 6%, the terrain rule) with a flat top
+       *    `duneTop` wide across and `duneLength` long, `duneGap` apart: the freestyle jumps off the sand;
+       *  - the boardwalk: palms (solid trunks, crown and height ranges) every `palmStep` [min, max] at `palmInset`
+       *    in from the dune edge, lanterns every `lampStep` at `lampInset`, benches in `benchChance` of the gaps at
+       *    `benchInset`; string lights hang between the palms `stringHeight` up;
+       *  - lifeguard towers [min, max] (`tower` square solids) `towerGap` apart, `towerIn` m in from the waterline;
+       *  - umbrella clusters every `umbrellaStep` [min, max] along the sand `umbrellaBand` [min, max] in from the
+       *    waterline, with [min, max] loungers beside each; volleyball courts [min, max] (`court` long across the
+       *    beach and `net` wide along it, `courtGap` apart);
+       *  - the pier, one: `pier` wide, from `pierRoot` m inland of the dune edge `pierOver` m out past the
+       *    waterline, its deck `pierHeight` over the boardwalk, a lamp every `pierLamp` m;
+       *  - the drift strip, on the hard-packed sand: `zoneLength` [min, max] long, from `zoneIn` [min, max] in from the
+       *    waterline (m), nothing standing in it.
+       */
+      beach: {
+        chance: { miami: 0.8, other: 0.1 },
+        quayWidth: 36,
+        maxDepth: 80,
+        minLength: 360,
+        maxResidual: 0.8,
+        sand: 24,
+        slope: 0.025,
+        blend: 24,
+        shelf: 40,
+        surfInset: 0.4,
+        mouthSlack: 4,
+        dunes: [1, 2],
+        duneHeight: 0.5,
+        duneRun: 12.5,
+        duneTop: 3,
+        duneLength: 14,
+        duneCrest: 6,
+        duneGap: 150,
+        palmStep: [12, 17],
+        palmInset: 2.2,
+        palmHeight: [8.5, 12],
+        palmCrown: [2.4, 3.2],
+        palmTrunk: 0.4,
+        lampStep: 30,
+        lampInset: 0.9,
+        benchChance: 0.35,
+        benchInset: 3.8,
+        stringHeight: 5.4,
+        towers: [2, 4],
+        tower: 3.2,
+        towerGap: 90,
+        towerIn: 9,
+        umbrellaStep: [14, 30],
+        umbrellaBand: [10, 21],
+        loungers: [1, 2],
+        courts: [1, 2],
+        court: 16,
+        net: 9.5,
+        courtGap: 110,
+        pier: 5.6,
+        pierRoot: 2.5,
+        pierOver: 75,
+        pierHeight: 1.5,
+        pierLamp: 9,
+        zoneLength: [70, 110],
+        zoneIn: [2.5, 9.5],
+      },
     },
     /**
      * Lake: two to four adjacent blocks merged into one body of water by deleting the streets

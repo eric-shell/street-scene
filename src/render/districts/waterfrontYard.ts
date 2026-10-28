@@ -210,6 +210,27 @@ function solidsOf(kit: DistrictKit, a: Area, look: Parameters<DistrictKit['walls
   return out;
 }
 
+/** The gate posts at every mouth onto the quay, the string of bulbs between each pair and the setts across it (the yard's, and a beach's boardwalk's). */
+export function drawMouths(kit: DistrictKit, a: Area, b: AreaBuild, t: YardTools): void {
+  const L = YARD_LOOK;
+  const ground = (x: number, z: number) => kit.h(x, z) + CITY.curbHeight;
+  const posts = solidsOf(kit, a, 'quayPost');
+  for (const w of posts) {
+    const bx = boxOf(w);
+    const y = ground(bx.c.x, bx.c.z);
+    t.boxAt(kit.solid, bx.c.x, y - 0.1, bx.c.z, bx.f.x, bx.f.z, bx.hl, bx.hw, L.postHeight + 0.1, L.post);
+    for (let k = 0; k < 4; k++) t.boxAt(kit.solid, bx.c.x, y + k * 0.3, bx.c.z, bx.f.x, bx.f.z, bx.hl + 0.01, bx.hw + 0.01, 0.3, L.hazard[k % 2]);
+    t.boxAt(kit.solid, bx.c.x, y + L.postHeight, bx.c.z, bx.f.x, bx.f.z, bx.hl + 0.06, bx.hw + 0.06, 0.08, L.post);
+  }
+  for (const h of b.hints) {
+    if (h.kind !== 'quayMouth') continue;
+    const [pa, pb] = h.points;
+    stringLights(kit, pa, pb, { ya: ground(pa.x, pa.z) + L.postHeight - 0.25, yb: ground(pb.x, pb.z) + L.postHeight - 0.25, sag: L.stringSag });
+    setts(kit, a, h.values[0], h.values[1]);
+  }
+
+}
+
 /** The yard of one harbor area (its build `b`) into the kit; `marks` collects the shipping lines' marks. */
 export function drawYard(kit: DistrictKit, a: Area, b: AreaBuild, t: YardTools, liveries: { color: THREE.Color; mark: number }[], marks: GeoBuilder): void {
   const L = YARD_LOOK;
@@ -300,20 +321,7 @@ export function drawYard(kit: DistrictKit, a: Area, b: AreaBuild, t: YardTools, 
   }
 
   // ----- Gate posts and the strings between them; the mouths' setts.
-  const posts = solidsOf(kit, a, 'quayPost');
-  for (const w of posts) {
-    const bx = boxOf(w);
-    const y = ground(bx.c.x, bx.c.z);
-    t.boxAt(kit.solid, bx.c.x, y - 0.1, bx.c.z, bx.f.x, bx.f.z, bx.hl, bx.hw, L.postHeight + 0.1, L.post);
-    for (let k = 0; k < 4; k++) t.boxAt(kit.solid, bx.c.x, y + k * 0.3, bx.c.z, bx.f.x, bx.f.z, bx.hl + 0.01, bx.hw + 0.01, 0.3, L.hazard[k % 2]);
-    t.boxAt(kit.solid, bx.c.x, y + L.postHeight, bx.c.z, bx.f.x, bx.f.z, bx.hl + 0.06, bx.hw + 0.06, 0.08, L.post);
-  }
-  for (const h of b.hints) {
-    if (h.kind !== 'quayMouth') continue;
-    const [pa, pb] = h.points;
-    stringLights(kit, pa, pb, { ya: ground(pa.x, pa.z) + L.postHeight - 0.25, yb: ground(pb.x, pb.z) + L.postHeight - 0.25, sag: L.stringSag });
-    setts(kit, a, h.values[0], h.values[1]);
-  }
+  drawMouths(kit, a, b, t);
 
   // ----- Ramps: hazard bands across at the toes and the crest lines.
   for (const h of b.hints) {
@@ -422,7 +430,7 @@ function wear(kit: DistrictKit, a: Area, rng: Rng): void {
 }
 
 /** One gull: perched (wings folded) or flying (wings out), facing yaw, into the solid builder (or `gb`). */
-function gull(kit: DistrictKit, t: YardTools, x: number, y: number, z: number, yaw: number, flying: boolean, gb: GeoBuilder = kit.solid): void {
+export function gull(kit: DistrictKit, t: YardTools, x: number, y: number, z: number, yaw: number, flying: boolean, gb: GeoBuilder = kit.solid): void {
   const L = YARD_LOOK;
   const fx = Math.sin(yaw);
   const fz = Math.cos(yaw);
@@ -437,7 +445,7 @@ function gull(kit: DistrictKit, t: YardTools, x: number, y: number, z: number, y
 }
 
 /** A flock of gulls wheeling over the water off the quay's middle: one small mesh turned on the scene clock. */
-function flock(kit: DistrictKit, t: YardTools, a: Area, rng: Rng): void {
+export function flock(kit: DistrictKit, t: YardTools, a: Area, rng: Rng): void {
   const p = a.params;
   const um = p.pa + (p.pb - p.pa) * rng.range(0.3, 0.7);
   const n = coastNormal(p, um);

@@ -59,21 +59,44 @@ export interface YardSite {
 }
 
 /** A stretch of u the yard has given to something. */
-interface Taken {
+export interface Taken {
   u0: number;
   u1: number;
-  what: 'mouth' | 'pad' | 'maze' | 'forklift' | 'ramp';
+  what: 'mouth' | 'pad' | 'maze' | 'forklift' | 'ramp' | 'pier' | 'tower' | 'dune' | 'zone' | 'court';
 }
 
-/** Lay the yard out on the quay into `b`. */
-export function buildYard(ctx: BuildContext, site: YardSite, b: AreaBuild): void {
+/** The yard's coordinates and bookkeeping on a site: the frame's helpers every layout below places things with. */
+export interface YardGeo {
+  p: Record<string, number>;
+  id: number;
+  f: HarborFrame;
+  /** The quay's ends along the coast (u). */
+  lo: number;
+  hi: number;
+  coast(u: number): number;
+  /** The quay's depth at u: sea wall edge to back edge (m). */
+  depth(u: number): number;
+  /** The world point d m in from the sea wall's edge at u. */
+  pt(u: number, d: number): Vec2;
+  /** The coast's unit tangent (along +u) at u. */
+  tangent(u: number): Vec2;
+  /** The yaw (atan2(dx, dz)) that faces out to sea at u. */
+  seaYaw(u: number): number;
+  minDepth(u0: number, u1: number): number;
+  inShed(u0: number, u1: number): boolean;
+  taken: Taken[];
+  free(u0: number, u1: number, of?: readonly Taken['what'][]): boolean;
+  prop(kind: PropKind, q: Vec2, yaw: number): void;
+  box(u: number, d: number, len: number, wide: number, turn: number): { c: Vec2; yaw: number; poly: Vec2[] };
+}
+
+/** The helpers of a site: shared by the dock yard and by a beach's boardwalk (waterfrontBeach.ts), which lays its mouths and fences the same way. */
+export function yardGeo(site: YardSite, b: AreaBuild): YardGeo {
   const { area, f } = site;
   const p = area.params;
   const id = area.id;
   const lo = p.pa;
   const hi = p.pb;
-  const working = area.variant !== 'marina';
-  const rng = new Rng(deriveSeed(p.seed, 'yard'));
   const curb = CITY.curbHeight;
   const coast = (u: number) => coastV(p, u);
   /** The quay's depth at u: sea wall edge to back edge (m). */
@@ -118,8 +141,24 @@ export function buildYard(ctx: BuildContext, site: YardSite, b: AreaBuild): void
     ];
     return { c, yaw: atan2(t.x, t.z), poly };
   };
-  const [lane0, lane1] = Y.lane;
+  return { p, id, f, lo, hi, coast, depth, pt, tangent, seaYaw, minDepth, inShed, taken, free, prop, box };
+}
 
+/** A gap in the frontage's fence where a street meets the quay: its middle along the coast, its width and the sidewalk's width there (m). */
+export interface Mouth {
+  u: number;
+  w: number;
+  walk: number;
+}
+
+/**
+ * Mouths onto the quay: every street that meets it (a junction across the outer street, or a street ending at the frontage),
+ * each between two gate posts with a band of cobbles. Returns the mouths (merged where they would touch), the placed ones
+ * marked in `geo.taken`. A street whose end stops short of the frontage by less than its half width counts too, up to
+ * `slack` m (a beach's frontage, where the outline cuts close in front of the streets' caps).
+ */
+export function layMouths(ctx: BuildContext, site: YardSite, geo: YardGeo, b: AreaBuild, slack = 0): Mouth[] {
+  const { id, f, lo, hi, depth, pt, seaYaw, inShed, taken, prop, box } = geo;
   // ----- Mouths: every street that meets the quay (a junction across the outer street, or a street ending at the frontage).
   const g = ctx.graph;
   const found: { u: number; w: number; walk: number }[] = [];
@@ -134,7 +173,7 @@ export function buildYard(ctx: BuildContext, site: YardSite, b: AreaBuild): void
       walk = Math.max(walk, g.edges[e].sidewalk);
     }
     const gap = site.back(u) - frameV(f, n.x, n.z);
-    if (gap < half - 1 || gap > half + walk + Y.mouthReach) continue;
+    if (gap < half - 1 - slack || gap > half + walk + Y.mouthReach) continue;
     found.push({ u, w: Math.max(Y.mouth, 2 * half + Y.mouthPad), walk });
   }
   found.sort((x, y) => x.u - y.u);
@@ -179,6 +218,45 @@ export function buildYard(ctx: BuildContext, site: YardSite, b: AreaBuild): void
       b.reserved.push({ x: q.x, z: q.z, r: m.walk / 2 + 0.6 });
     }
   }
+
+  return mouths;
+}
+
+/**
+ * Fence runs along the frontage, from every gate post, broken by gaps; none before a warehouse. `kind` is the panel
+ * (the yard's chain link, a beach's pickets).
+ */
+export function layFences(geo: YardGeo, rng: Rng, mouths: readonly Mouth[], kind: PropKind = 'fencePanel'): void {
+  const { lo, hi, depth, pt, seaYaw, inShed, taken, prop } = geo;
+  const ends: number[] = [lo + 3];
+  for (const m of mouths) if (taken.some((t) => t.what === 'mouth' && Math.abs((t.u0 + t.u1) / 2 - m.u) < 1e-6)) ends.push(m.u - m.w / 2 - Y.post, m.u + m.w / 2 + Y.post);
+  ends.push(hi - 3);
+  for (let i = 0; i + 1 < ends.length; i += 2) {
+    const a = ends[i];
+    const c = ends[i + 1];
+    let u = a + Y.fencePitch / 2;
+    while (u < c - Y.fencePitch / 2) {
+      const run = rng.int(Y.fenceRun[0], Y.fenceRun[1]);
+      for (let k = 0; k < run && u < c - Y.fencePitch / 2; k++, u += Y.fencePitch) {
+        if (inShed(u, u)) continue;
+        prop(kind, pt(u, depth(u) - Y.fenceInset), seaYaw(u) + Math.PI);
+      }
+      u += rng.range(Y.fenceGap[0], Y.fenceGap[1]);
+    }
+  }
+}
+
+/** Lay the yard out on the quay into `b`. */
+export function buildYard(ctx: BuildContext, site: YardSite, b: AreaBuild): void {
+  const { area } = site;
+  const geo = yardGeo(site, b);
+  const { p, f, id, lo, hi, pt, tangent, seaYaw, minDepth, taken, free, prop, box } = geo;
+  const working = area.variant !== 'marina';
+  const rng = new Rng(deriveSeed(p.seed, 'yard'));
+  const [lane0, lane1] = Y.lane;
+
+  // ----- Mouths: every street that meets the quay (a junction across the outer street, or a street ending at the frontage).
+  const mouths = layMouths(ctx, site, geo, b);
 
   // ----- The skid pad on the deepest stretch: from the lane's sea edge, padMargin off the frontage.
   let pad: { u: number; r: number } | null = null;
@@ -277,25 +355,9 @@ export function buildYard(ctx: BuildContext, site: YardSite, b: AreaBuild): void
     for (let i = cands.length - 1; i >= 0; i--) if (Math.abs(cands[i] - u0) < S + Y.rampGap) cands.splice(i, 1);
   }
 
+
   // ----- Chain-link fence runs along the frontage, from every gate post, broken by gaps; none before a warehouse.
-  {
-    const ends: number[] = [lo + 3];
-    for (const m of mouths) if (taken.some((t) => t.what === 'mouth' && Math.abs((t.u0 + t.u1) / 2 - m.u) < 1e-6)) ends.push(m.u - m.w / 2 - Y.post, m.u + m.w / 2 + Y.post);
-    ends.push(hi - 3);
-    for (let i = 0; i + 1 < ends.length; i += 2) {
-      const a = ends[i];
-      const c = ends[i + 1];
-      let u = a + Y.fencePitch / 2;
-      while (u < c - Y.fencePitch / 2) {
-        const run = rng.int(Y.fenceRun[0], Y.fenceRun[1]);
-        for (let k = 0; k < run && u < c - Y.fencePitch / 2; k++, u += Y.fencePitch) {
-          if (inShed(u, u)) continue;
-          prop('fencePanel', pt(u, depth(u) - Y.fenceInset), seaYaw(u) + Math.PI);
-        }
-        u += rng.range(Y.fenceGap[0], Y.fenceGap[1]);
-      }
-    }
-  }
+  layFences(geo, rng, mouths);
 
   // ----- Mooring bollards along the edge, clear of the jetties' gates and the lanterns, facing the water.
   const gate = (u: number, pad: number) => site.gates.some((j) => Math.abs(j.u - u) < j.half + pad);

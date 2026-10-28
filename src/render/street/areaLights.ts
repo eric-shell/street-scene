@@ -111,7 +111,7 @@ export function buildAreaLights(world: World): AreaLights {
 
   const liftAt = (x: number, z: number): number => {
     const s = world.surfaceAt(x, z);
-    return s === 'road' ? A.liftRoad : s === 'cobble' ? A.liftCobble : s === 'sidewalk' || s === 'concrete' || s === 'quay' ? A.liftPaved : A.liftGrass;
+    return s === 'road' ? A.liftRoad : s === 'cobble' ? A.liftCobble : s === 'sidewalk' || s === 'concrete' || s === 'quay' || s === 'boardwalk' || s === 'sand' ? A.liftPaved : A.liftGrass;
   };
 
   // ---------- Washes ----------
