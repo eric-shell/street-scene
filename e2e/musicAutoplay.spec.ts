@@ -28,7 +28,10 @@ test('plays Astrology by itself under the splash', async ({ page }) => {
     }).observe(document, { childList: true, subtree: true });
   });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('.music-player__title')).toHaveText('Astrology');
-  await expect.poll(() => page.evaluate(() => (window as unknown as { __splashGone?: SplashGone }).__splashGone ?? null)).toEqual({ playing: true, hint: 0 });
+  // The game (and its music player) starts only once the splash's flash-in has played (boot.ts), the splash lands
+  // only once the menu car and the city's shaders are ready (main.ts), and the trace recorder slows that
+  // software-WebGL boot past the default 15 s.
+  await expect(page.locator('.music-player__title')).toHaveText('Astrology', { timeout: 40_000 });
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __splashGone?: SplashGone }).__splashGone ?? null), { timeout: 40_000 }).toEqual({ playing: true, hint: 0 });
   expect((await music(page)).playing).toBe(true);
 });

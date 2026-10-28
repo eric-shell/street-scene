@@ -5,7 +5,12 @@
  * musicAutoplay.spec.ts covers the returning visitor the browser trusts.
  */
 import { expect, test } from '@playwright/test';
-import { ignoreHeadlessPause, music, sampleSplash, splashLog } from './helpers';
+import { gameStarted, ignoreHeadlessPause, music, sampleSplash, splashLog } from './helpers';
+
+// The trace recorder's snapshots count as a user gesture, which would let the opening track autoplay in the music
+// tests: the game starts after DOMContentLoaded (boot.ts), once the recorder has touched the page. Worker-scoped,
+// so it is off for the whole file.
+test.use({ trace: 'off' });
 
 // The splash lives for a few seconds from the document being parsed, while the page's load event can
 // come much later (the music element and the car models keep loading), so every page load here waits
@@ -38,7 +43,9 @@ test.describe('music', () => {
 
   test('opens on Astrology and starts on the first interaction when autoplay is refused, without a prompt', async ({ page }) => {
     await sampleSplash(page);
+    const started = gameStarted(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await started;
     await expect(page.locator('.music-player__title')).toHaveText('Astrology');
     // Blocked by the browser: nothing plays until the player does anything at all, and the splash
     // never showed a "tap for sound" prompt.
@@ -54,10 +61,14 @@ test.describe('music', () => {
   });
 
   test('starts every session on Astrology from the top, not where the last one left off', async ({ page }) => {
+    let started = gameStarted(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await started;
     await page.keyboard.press(']'); // next track (also the first gesture)
     await expect(page.locator('.music-player__title')).not.toHaveText('Astrology');
+    started = gameStarted(page);
     await page.reload();
+    await started;
     await expect(page.locator('.music-player__title')).toHaveText('Astrology');
     await expect(page.locator('.music-player__time')).toHaveText(/^0:00/);
   });

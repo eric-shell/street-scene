@@ -16,16 +16,23 @@
  * Only a page load that lands on the menu shows it; deep links skip it. CSS
  * (_splash.scss: `.splash`, `.menu.is-pending`, `.menu.is-arriving`) does the flash-in, the impact flash and shake
  * and the hazard tape under the title; splashFx.ts draws the night road, traffic,
- * skyline, bokeh and rain behind it on a canvas and floors it into a warp as
+ * skyline, bokeh and rain behind it on a canvas (from a worker, so the game
+ * booting underneath never stops it) and floors it into a warp as
  * the title flies. This file times it all and computes the flight.
  */
 import { h } from '../kit/dom';
-import { SplashFx, startSplashFx } from './splashFx';
-import { TAGLINE, TITLE_WORDS, titleWords } from '../menu/menu';
+import { SplashFx, startSplashFx, warmSplashFx } from './splashFx';
+import { TAGLINE, TITLE_WORDS, titleWords } from '../menu/title';
 
 export interface Splash {
   /** Resolves once the flash-in has played and the minimum hold is over. */
   readonly intro: Promise<void>;
+  /**
+   * Resolves once the flash-in has played (fonts, then the CSS's one-shot animations). boot.ts runs the game only
+   * then: its boot holds the main thread for seconds, which would stall every flash-in animation the compositor
+   * cannot run on its own (the street's canvas draws from a worker and never stops).
+   */
+  readonly played: Promise<void>;
   /** Keep this menu invisible (but laid out) under the splash until `land`. */
   hold(menuRoot: HTMLElement | null): void;
   /** Fly the title onto the menu's title block, fade the black out and remove the splash. */
@@ -43,6 +50,8 @@ const TITLE = TITLE_WORDS.join(' ');
 const SPLASH = {
   /** Shortest time the splash stays up after the fonts arrive (s): the flash-in plus a beat of the night road. */
   hold: 3,
+  /** The flash-in, from the cue to the last one-shot animation's end (_splash.scss: the film grain, 0.1 s + 2.4 s) (s). */
+  flashIn: 2.5,
   /** Hold with reduced motion, where the flash-in is skipped (s). */
   reducedHold: 0.8,
   /** Flight from the center of the screen onto the menu (s). */
@@ -76,6 +85,19 @@ function fontsReady(): Promise<unknown> {
   return Promise.race([load, delay(SPLASH.fontWait * 1000)]);
 }
 
+/** The splash boot.ts put up before the game's bundle loaded, null on a deep link or until it runs. */
+let booted: Splash | null = null;
+
+/** Puts the splash up at once (boot.ts, the page's first script), so the title shows while the game is still loading. */
+export function startBootSplash(): Splash {
+  return (booted = showSplash(document.body));
+}
+
+/** The splash boot.ts put up, if any. */
+export function bootSplash(): Splash | null {
+  return booted;
+}
+
 /**
  * There is no "tap for sound" prompt: music and sound try to start at once and,
  * where the browser refuses audible autoplay, start on the first click, tap or
@@ -103,11 +125,15 @@ export function showSplash(parent: HTMLElement): Splash {
   const flash = h('div', { class: 'splash__flash', 'aria-hidden': 'true' });
   const root = h('div', { class: 'splash', role: 'presentation' }, bg, canvas, flash, block);
   parent.append(root);
+  // The street's worker loads while the fonts do.
+  if (!reduced) warmSplashFx();
   let fx: SplashFx | null = null;
   /** When the landing started (performance.now() ms), null before it or with reduced motion. */
   let landedAt: number | null = null;
 
   let from = '';
+  let markPlayed!: () => void;
+  const played = new Promise<void>((r) => (markPlayed = r));
   const intro = (async () => {
     await fontsReady();
     // Center the block, enlarged as far as the viewport allows.
@@ -117,7 +143,10 @@ export function showSplash(parent: HTMLElement): Splash {
     from = `translate(${(innerWidth - w * s) / 2}px, ${(innerHeight - hgt * s) / 2}px) scale(${s})`;
     block.style.transform = from;
     root.classList.add('is-playing');
-    if (reduced) return delay(SPLASH.reducedHold * 1000);
+    if (reduced) {
+      markPlayed();
+      return delay(SPLASH.reducedHold * 1000);
+    }
     // The night road's horizon sits just under the tagline, wherever the enlarged block ended up.
     fx = startSplashFx(canvas, {
       horizon: () => {
@@ -126,6 +155,7 @@ export function showSplash(parent: HTMLElement): Splash {
       },
       title: () => block.getBoundingClientRect(),
     });
+    void delay(SPLASH.flashIn * 1000).then(markPlayed);
     await delay(SPLASH.hold * 1000);
   })();
 
@@ -133,6 +163,7 @@ export function showSplash(parent: HTMLElement): Splash {
 
   return {
     intro,
+    played,
     hold(menuRoot) {
       menuOf(menuRoot)?.classList.add('is-pending');
     },

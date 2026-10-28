@@ -56,6 +56,16 @@ export async function splashLog(page: Page): Promise<SplashSample[]> {
 }
 
 /**
+ * Resolves once main.ts has run, seen from outside the page: the music player asks for its opening track as it
+ * starts. boot.ts puts the splash up first and the game follows after DOMContentLoaded, and Chromium counts every
+ * Playwright evaluate or locator poll as a user gesture, so a test that touches the page before the game starts
+ * unlocks autoplay itself, and a key it presses then reaches no handler. Call before goto (or reload).
+ */
+export function gameStarted(page: Page): Promise<unknown> {
+  return page.waitForRequest((r) => r.url().includes('/music/'));
+}
+
+/**
  * Headless Chromium has no audio focus to give a page: a second or two after
  * audio starts it sends the media session 'pause' action (a bare page with one
  * audio element gets it too), and the music player obeys it as it would a

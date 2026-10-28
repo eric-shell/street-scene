@@ -22,9 +22,40 @@
  * pre-rendered as sprites, no shadow blur), because the city's first frames
  * render underneath at the same time; it only runs while the splash is up.
  * Reduced motion never starts it.
+ *
+ * It draws from a worker (splashFxWorker.ts) into the canvas's OffscreenCanvas,
+ * because the game boots under the splash: the renderer, the city and its
+ * shaders hold the main thread for seconds, and a worker's frames reach the
+ * screen without it, so the street never stops. The drawing (`runSplashFx`)
+ * touches no DOM; the main thread measures the view and posts it. Browsers
+ * without OffscreenCanvas, or a worker that fails to load, draw it here.
  */
 
 import { NITRO_STAGE_COLORS, PALETTE, rgb } from '../kit/palette';
+
+/** What the street draws with: the splash canvas's context here, or its OffscreenCanvas's in the worker. */
+type Ctx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+
+/** The viewport and the title's place, measured on the main thread (a worker has no layout to ask). */
+export interface SplashFxView {
+  /** Viewport size (CSS px). */
+  width: number;
+  height: number;
+  /** Device pixels per CSS px, capped at 2. */
+  dpr: number;
+  /** Horizon height (CSS px from the top). */
+  horizon: number;
+  /** Where the title block is (CSS px), so a dark plate keeps it readable over the street. */
+  title: { left: number; top: number; width: number; height: number };
+}
+
+/** A running street: the splash's handle plus the new view on a resize. */
+export interface SplashFxRun extends SplashFx {
+  resize(view: SplashFxView): void;
+}
+
+/** What splash.ts posts to the worker. */
+export type SplashFxMessage = { type: 'start'; canvas: OffscreenCanvas; view: SplashFxView } | { type: 'resize'; view: SplashFxView } | { type: 'warp' };
 
 export interface SplashFx {
   /** Light the nitrous: speed everything up for the flight onto the menu. */
@@ -140,10 +171,17 @@ const hash = (n: number) => {
 };
 
 /** A soft round light, pre-rendered once per color (drawImage is far cheaper than live gradients). */
-function bokehSprite(color: string): HTMLCanvasElement {
-  const c = document.createElement('canvas');
-  c.width = c.height = 64;
-  const g = c.getContext('2d')!;
+function bokehSprite(color: string): HTMLCanvasElement | OffscreenCanvas {
+  let c: HTMLCanvasElement | OffscreenCanvas;
+  let g: Ctx2D;
+  if (typeof OffscreenCanvas === 'function') {
+    const o = new OffscreenCanvas(64, 64);
+    [c, g] = [o, o.getContext('2d')!];
+  } else {
+    const e = document.createElement('canvas');
+    e.width = e.height = 64;
+    [c, g] = [e, e.getContext('2d')!];
+  }
   const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
   grad.addColorStop(0, color);
   grad.addColorStop(0.55, color + '88');
@@ -277,27 +315,94 @@ export interface SplashFxLayout {
   title(): DOMRect;
 }
 
+/** How long to wait for the worker before drawing on the main thread instead (ms). */
+const WORKER_WAIT_MS = 1500;
+/** The worker warmSplashFx started, resolving to null where it cannot run. */
+let warming: Promise<Worker | null> | null = null;
+
+/** Starts the drawing worker loading as the splash goes up, so it is ready by the time the fonts are. */
+export function warmSplashFx(): void {
+  warming ??= spawnWorker();
+}
+
+function spawnWorker(): Promise<Worker | null> {
+  if (typeof Worker !== 'function' || typeof OffscreenCanvas !== 'function' || !('transferControlToOffscreen' in HTMLCanvasElement.prototype)) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    try {
+      const worker = new Worker(new URL('./splashFxWorker.ts', import.meta.url), { type: 'module' });
+      const fail = () => {
+        worker.terminate();
+        resolve(null);
+      };
+      const timer = setTimeout(fail, WORKER_WAIT_MS);
+      worker.addEventListener('message', () => (clearTimeout(timer), resolve(worker)), { once: true });
+      worker.addEventListener('error', () => (clearTimeout(timer), fail()), { once: true });
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+/** The street behind the title, drawn by the worker when it is up (the canvas is handed to it), else here. */
 export function startSplashFx(canvas: HTMLCanvasElement, layout: SplashFxLayout): SplashFx {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return { warp() {}, stop() {} };
+  const measure = (): SplashFxView => {
+    const r = layout.title();
+    return { width: innerWidth, height: innerHeight, dpr: Math.min(2, devicePixelRatio || 1), horizon: layout.horizon(), title: { left: r.left, top: r.top, width: r.width, height: r.height } };
+  };
+  let run: SplashFxRun | null = null;
+  let warped = false;
+  let stopped = false;
+  void (warming ?? spawnWorker()).then((worker) => {
+    warming = null;
+    if (stopped) return worker?.terminate();
+    if (worker) {
+      const post = (m: SplashFxMessage, transfer: Transferable[] = []) => worker.postMessage(m, transfer);
+      const off = canvas.transferControlToOffscreen();
+      post({ type: 'start', canvas: off, view: measure() }, [off]);
+      run = { warp: () => post({ type: 'warp' }), stop: () => worker.terminate(), resize: (view) => post({ type: 'resize', view }) };
+    } else {
+      const ctx = canvas.getContext('2d');
+      run = ctx ? runSplashFx(ctx, measure()) : null;
+    }
+    if (warped) run?.warp();
+  });
+  const resize = () => run?.resize(measure());
+  window.addEventListener('resize', resize);
+  return {
+    warp() {
+      warped = true;
+      run?.warp();
+    },
+    stop() {
+      stopped = true;
+      run?.stop();
+      window.removeEventListener('resize', resize);
+    },
+  };
+}
+
+/** Draws the street into `ctx` every frame until stopped; no DOM, so it runs in the worker or on the main thread alike. */
+export function runSplashFx(ctx: Ctx2D, view: SplashFxView): SplashFxRun {
   const sprites = NEON.map(bokehSprite);
   let W = 0;
   let H = 0;
   let horizon = 0;
   let dpr = 1;
-  let title = new DOMRect();
+  let title = view.title;
 
-  const resize = () => {
-    dpr = Math.min(2, window.devicePixelRatio || 1);
-    W = window.innerWidth;
-    H = window.innerHeight;
-    canvas.width = Math.round(W * dpr);
-    canvas.height = Math.round(H * dpr);
-    horizon = layout.horizon();
-    title = layout.title();
+  const resize = (v: SplashFxView) => {
+    dpr = v.dpr;
+    W = v.width;
+    H = v.height;
+    ctx.canvas.width = Math.round(W * dpr);
+    ctx.canvas.height = Math.round(H * dpr);
+    horizon = v.horizon;
+    title = v.title;
   };
-  resize();
-  window.addEventListener('resize', resize);
+  resize(view);
+  // Workers have requestAnimationFrame in current browsers; the timer covers the ones that do not.
+  const nextFrame = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (cb: FrameRequestCallback) => setTimeout(() => cb(performance.now()), 1000 / 60) as unknown as number;
+  const cancelFrame = typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame : clearTimeout;
 
   const sides = [street(), street()];
   const towers = skyline();
@@ -334,7 +439,7 @@ export function startSplashFx(canvas: HTMLCanvasElement, layout: SplashFxLayout)
   let raf = 0;
 
   /** A wall quad on the building line at `side`: z0..z1 along the street, y0..y1 up, added to the current path. */
-  const wallQuad = (g: CanvasRenderingContext2D, side: number, z0: number, z1: number, y0: number, y1: number) => {
+  const wallQuad = (g: Ctx2D, side: number, z0: number, z1: number, y0: number, y1: number) => {
     const x = side * FX.wall;
     g.moveTo(X(x, z0), Y(y0, z0));
     g.lineTo(X(x, z1), Y(y0, z1));
@@ -360,7 +465,7 @@ export function startSplashFx(canvas: HTMLCanvasElement, layout: SplashFxLayout)
   };
 
   const frame = (now: number) => {
-    raf = requestAnimationFrame(frame);
+    raf = nextFrame(frame);
     const t = (now - t0) / 1000;
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
@@ -977,7 +1082,7 @@ export function startSplashFx(canvas: HTMLCanvasElement, layout: SplashFxLayout)
       g.globalCompositeOperation = 'source-over';
     }
   };
-  raf = requestAnimationFrame(frame);
+  raf = nextFrame(frame);
 
   return {
     warp() {
@@ -985,8 +1090,8 @@ export function startSplashFx(canvas: HTMLCanvasElement, layout: SplashFxLayout)
       warpAt = (performance.now() - t0) / 1000;
     },
     stop() {
-      cancelAnimationFrame(raf);
-      window.removeEventListener('resize', resize);
+      cancelFrame(raf);
     },
+    resize,
   };
 }
