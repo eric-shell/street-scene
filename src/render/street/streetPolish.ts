@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import type { World } from '../../city/world';
 import type { Quality } from '../../ui/settings';
 import { buildStreetDecals } from './streetDecals';
+import type { StreetSpots } from './streetSpots';
 import { buildWallDressing } from '../buildings/wallDressing';
 import { buildSteam, Steam } from './steam';
 import { cityIdentity } from '../cityIdentity';
@@ -27,16 +28,18 @@ export interface StreetPolish {
   group: THREE.Group;
   /** The blade signs' glow, for the reflection streaks (buildings/wallDressing.ts). */
   lights: { pos: THREE.Vector3; color: THREE.Color }[];
+  /** The covers, grates and tram rails drawn (the wheels' clank and rail tick). */
+  spots: StreetSpots;
   update(time: number): void;
   dispose(): void;
 }
 
 /** What each graphics tier gets: densities are multipliers, banners a cap. */
 export const POLISH = {
-  low: { decals: 0.55, puddles: true, walls: 0.5, banners: 4, steam: false },
-  medium: { decals: 0.9, puddles: true, walls: 0.85, banners: 9, steam: true },
-  high: { decals: 1.1, puddles: true, walls: 1.1, banners: 14, steam: true },
-} as const satisfies Record<Quality, { decals: number; puddles: boolean; walls: number; banners: number; steam: boolean }>;
+  low: { decals: 0.55, puddles: true, walls: 0.5, banners: 4, steam: false, hatching: false },
+  medium: { decals: 0.9, puddles: true, walls: 0.85, banners: 9, steam: true, hatching: true },
+  high: { decals: 1.1, puddles: true, walls: 1.1, banners: 14, steam: true, hatching: true },
+} as const satisfies Record<Quality, { decals: number; puddles: boolean; walls: number; banners: number; steam: boolean; hatching: boolean }>;
 
 interface Atlases {
   seed: number;
@@ -70,7 +73,7 @@ export function buildStreetPolish(world: World, opts: StreetPolishOptions): Stre
   const atlases = atlasesFor(world.seed);
   const group = new THREE.Group();
   group.name = 'streetPolish';
-  const decals = buildStreetDecals(world, atlases.decals, { density: q.decals, puddles: q.puddles });
+  const decals = buildStreetDecals(world, atlases.decals, { density: q.decals, puddles: q.puddles, hatching: q.hatching });
   for (const m of decals.meshes) group.add(m);
   const probe = new FacadeProbe(opts.facades);
   const walls = buildWallDressing(world, probe, { walls: atlases.walls, blades: atlases.blades }, { density: q.walls, banners: q.banners });
@@ -83,6 +86,7 @@ export function buildStreetPolish(world: World, opts: StreetPolishOptions): Stre
   return {
     group,
     lights: walls.lights,
+    spots: decals.spots,
     update(time) {
       steam?.update(time);
     },

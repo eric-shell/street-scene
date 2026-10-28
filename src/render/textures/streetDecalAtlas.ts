@@ -44,6 +44,8 @@ export const DECAL_CELLS = {
   fireLane: { x: 768, y: 768, w: 256, h: 128 },
   // Miami's terrazzo paving: one pale slab with pastel chips (laid on the downtown sidewalks, white tint).
   terrazzo: { x: 0, y: 896, w: 128, h: 128 },
+  // Granite setts (tram track bands, cobbled crosswalks): 16 x 16 stones, tiling both ways, white tint.
+  setts: { x: 128, y: 896, w: 128, h: 128 },
   // The rest of the bottom 128 px row is spare.
 } as const satisfies Record<string, AtlasCell>;
 export type DecalKind = keyof typeof DECAL_CELLS;
@@ -101,7 +103,12 @@ export function makeStreetDecalAtlas(seed: number): { map: THREE.Texture; roughn
     inCell(cell, (w, h) => {
       const cx = w / 2;
       const cy = h / 2;
-      const r = w * 0.46;
+      const r = w * 0.43;
+      // The iron ring: a dark seat of the frame round the cover, so it reads at night (the cover alone blends into the asphalt).
+      ctx.fillStyle = '#08080a';
+      ctx.beginPath();
+      ctx.arc(cx, cy, w * 0.49, 0, Math.PI * 2);
+      ctx.fill();
       ctx.fillStyle = '#4a4c53';
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
@@ -155,6 +162,8 @@ export function makeStreetDecalAtlas(seed: number): { map: THREE.Texture; roughn
   }
   // Storm drain: a slotted grate in a frame.
   inCell(DECAL_CELLS.drain, (w, h) => {
+    ctx.fillStyle = '#08080a';
+    ctx.fillRect(0, 17, w, h - 34);
     ctx.fillStyle = '#2e3037';
     ctx.fillRect(4, 22, w - 8, h - 44);
     ctx.fillStyle = '#5e616b';
@@ -408,6 +417,37 @@ export function makeStreetDecalAtlas(seed: number): { map: THREE.Texture; roughn
     ctx.strokeRect(1.5, 1.5, w - 3, h - 3);
   });
   rough(DECAL_CELLS.terrazzo, 0.42);
+  // Setts: a running bond of rounded granite stones, each its own grey, in dark mortar; the bond wraps so the cell tiles along a band. Its own stream, after terrazzo.
+  inCell(DECAL_CELLS.setts, (w, h) => {
+    const t = new Rng(seed ^ 0x5e775);
+    const n = 16;
+    const sw = w / n;
+    const sh = h / n;
+    ctx.fillStyle = '#17161a';
+    ctx.fillRect(0, 0, w, h);
+    const cell = DECAL_CELLS.setts;
+    rctx.fillStyle = 'rgb(235,235,235)';
+    rctx.fillRect(cell.x / 2, cell.y / 2, cell.w / 2, cell.h / 2);
+    for (let j = 0; j < n; j++) {
+      const off = j % 2 ? sw / 2 : 0;
+      for (let i = 0; i < n; i++) {
+        const k = t.range(0.78, 1.22);
+        const warm = t.range(0.94, 1.06);
+        const x = i * sw + off + 0.6;
+        const y = j * sh + 0.6;
+        const gloss = Math.round(150 + t.range(-30, 30));
+        // A stone crossing the right edge is drawn again one cell to the left.
+        for (const dx of x + sw > w ? [0, -w] : [0]) {
+          ctx.fillStyle = `rgb(${Math.round(80 * k * warm)},${Math.round(77 * k)},${Math.round(74 * k / warm)})`;
+          ctx.fillRect(x + dx, y, sw - 1.2, sh - 1.2);
+          ctx.fillStyle = 'rgba(255,255,255,0.1)';
+          ctx.fillRect(x + dx + 1, y + 0.8, sw - 3.2, (sh - 1.2) * 0.4);
+          rctx.fillStyle = `rgb(${gloss},${gloss},${gloss})`;
+          rctx.fillRect((cell.x + x + dx) / 2, (cell.y + y) / 2, (sw - 1.2) / 2, (sh - 1.2) / 2);
+        }
+      }
+    }
+  });
   const map = canvasTex(c, { repeat: false });
   map.anisotropy = 8;
   const roughness = canvasTex(rc, { srgb: false, repeat: false });

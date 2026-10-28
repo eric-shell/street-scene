@@ -1013,6 +1013,11 @@ export class RaceSession {
     this.updateHud(dt);
     this.audio.updateEngines(poses, camera, dt, this.paused);
     this.audio.updateSfx(poses, camera, dt, this.paused, this.time, !this.isReplay && !this.paused && this.input.hornHeld(), alpha);
+    // A tyre over a manhole cover ticks the camera (light shake, like a prop knocked over).
+    if (this.audio.streetKnock > 0) {
+      this.cam.knock(this.audio.streetKnock);
+      this.audio.streetKnock = 0;
+    }
     this.gr.render(this.night.scene, camera, dt);
   }
 

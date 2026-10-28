@@ -3,7 +3,7 @@
  *  - impacts: car vs car crunch, wall/barrier thud, guard rail clang, and prop
  *    breaks by kind (pole clang + glass, hollow can bang, bench crunch, a hydrant's gush, big
  *    bus stop shatter, leafy bush swish, pot crack, cafe chair clatter, plastic
- *    barrel thunk, crate splinter, dumpster boom, trash bag thump), and the thump of an axle over a speed hump or an expansion joint (loud for a hump, light for a joint). Each is
+ *    barrel thunk, crate splinter, dumpster boom, trash bag thump), and the thump of an axle over a speed hump or an expansion joint (loud for a hump, light for a joint), the clank of a tyre over a manhole cover and the tick of one across a tram rail. Each is
  *    rendered once into a few AudioBuffer variants
  *    by the small DSP recipes below, then replayed with pitch and level from
  *    the impact speed, spatialized to the camera, rate limited and capped
@@ -242,6 +242,21 @@ export class Sfx {
     const k = clamp01(speed / 2.5);
     const level = (joint ? 0.12 : 0.34) + (joint ? 0.14 : 0.4) * k;
     this.play('thump', level, (joint ? 1.25 : 1) * rnd(0.94, 1.06) * (1.05 - 0.15 * k), pos, key, 0.05);
+  }
+
+  /**
+   * A tyre over an iron cover or grate (the street's drawn manholes and drains, game/session/audio.ts): a hollow
+   * clank, higher and brighter the faster the wheel, once per cover (the key) for a while.
+   */
+  manhole(speed: number, pos: SfxPos, key = 'manhole'): void {
+    const k = clamp01((speed - 4) / 30);
+    this.play('manhole', 0.28 + 0.4 * k, (0.88 + 0.3 * k) * rnd(0.95, 1.05), pos, key, 0.6);
+  }
+
+  /** A tyre crossing a tram rail at an angle: a faint steel tick, louder with speed, rate limited per wheel. */
+  tramRail(speed: number, pos: SfxPos, key = 'tramRail'): void {
+    const k = clamp01((speed - 4) / 35);
+    this.play('tramRail', 0.05 + 0.1 * k, (0.95 + 0.2 * k) * rnd(0.94, 1.06), pos, key, 0.07);
   }
 
   /** A shop window broken by a car hitting it at `speed` m/s: a bright shatter and the tinkle of the shards, heard where the glass is. */

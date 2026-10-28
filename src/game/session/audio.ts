@@ -19,6 +19,7 @@ import { CarHorns } from '../../audio/carHorn';
 import { CityAmbience, ambienceTraits } from '../../audio/cityAmbience';
 import { manifestCar } from '../../render/car/carAssets';
 import type { Snap } from './snap';
+import { StreetIron } from './streetIron';
 
 /** A crowd section's heard excitement crossing this cheers out loud, at most every SECTION_CHEER_GAP s. */
 const SECTION_CHEER_LEVEL = 0.7;
@@ -40,6 +41,9 @@ export class SessionAudio {
   private ambienceTried = false;
   /** Headlight flash level driven by the horn (render side only). */
   private flash = 0;
+  /** The player's wheels over the street's iron (covers, grates, tram rails); its camera knock waits here for the session. */
+  private readonly iron: StreetIron;
+  streetKnock = 0;
 
   constructor(
     settings: Settings,
@@ -47,6 +51,7 @@ export class SessionAudio {
     private readonly views: CarView[],
     private readonly night: NightScene,
   ) {
+    this.iron = new StreetIron(night.street, race.cars[0].tuning.geometry.wheels);
     this.crowdCars = race.cars.map(() => ({ x: 0, z: 0, yaw: 0, speed: 0 }));
     // Engine sound: the player's car loud and centered, rivals by distance.
     const hub = audioHub();
@@ -86,6 +91,9 @@ export class SessionAudio {
     const listener = { x: camera.position.x, z: camera.position.z, rx: right.x, rz: right.z };
     this.alarms?.update(this.race, listener, paused);
     this.horns?.update(this.race, listener, paused);
+    // The player's wheels over a cover, grate or tram rail (a pause only forgets where they were).
+    if (paused) this.iron.reset();
+    else this.streetKnock = Math.max(this.streetKnock, this.iron.update(poses[0].x, poses[0].z, poses[0].yaw, poses[0].speed, dt, this.sfx));
     // Crowds react to the racers' (sim) poses and are heard from the camera. The people run on the sim's own time
     // (the interpolated tick, as syncDistricts reads it) rather than the scene clock, so a walker is drawn where the sim
     // has it and a person hit falls from the tick they were hit; a pause freezes them with the sim.

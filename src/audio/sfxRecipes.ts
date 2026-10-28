@@ -14,7 +14,7 @@ export type WallHitKind = 'wall' | 'barrier' | 'rail';
  * borrow the nearest material; a wooden power pole splinters like a crate).
  */
 type PropSound = Exclude<PropKind, 'newsBox' | 'parkLamp' | 'bollard' | ConstructionPropKind | MarketPropKind | DockPropKind | BeachPropKind | 'mailbox' | 'parkingMeter' | 'phoneBooth' | 'vendingMachine' | 'utilityPole'>;
-export type SfxBank = 'crash' | WallHitKind | PropSound | 'firework' | 'thump' | 'glass';
+export type SfxBank = 'crash' | WallHitKind | PropSound | 'firework' | 'thump' | 'glass' | 'manhole' | 'tramRail';
 type Bank = SfxBank;
 export const PROP_SOUND: Record<PropKind, PropSound> = {
   streetlight: 'streetlight',
@@ -450,6 +450,33 @@ const RECIPES: Record<Bank, { seconds: number; make(t: Tape): void }> = {
         [rnd(150, 180), 0.12, 0.05],
         [rnd(300, 360), 0.07, 0.03],
       ]);
+    },
+  },
+  // A tyre over a loose iron cover or grate: the cover's hollow knock on its seat, a ring of cast iron and the rattle of the frame. Pitched up with speed by the caller.
+  manhole: {
+    seconds: 0.55,
+    make(t) {
+      t.thud(0, rnd(150, 175), 80, 0.02, 0.8, 0.045);
+      t.modes(0, [
+        [rnd(300, 340), 0.34, 0.11],
+        [rnd(520, 600), 0.26, 0.07],
+        [rnd(930, 1050), 0.17, 0.05],
+        [rnd(1650, 1800), 0.08, 0.03],
+      ]);
+      t.noise(0, 0.06, 0.5, 0.015, [['bp', rnd(1500, 1900), 0.9]]);
+      t.grains(0.05, 0.16, 7, 0.1, 900, 2600, 2, 0.006);
+    },
+  },
+  // A tyre across a rail at an angle: a short bright tick of steel and the little knock of the groove, nothing more.
+  tramRail: {
+    seconds: 0.16,
+    make(t) {
+      t.noise(0, 0.03, 0.55, 0.006, [['hp', 2600, 0.7]]);
+      t.modes(0, [
+        [rnd(2300, 2700), 0.2, 0.012],
+        [rnd(3700, 4300), 0.1, 0.008],
+      ]);
+      t.thud(0.002, rnd(110, 130), 70, 0.012, 0.22, 0.02);
     },
   },
   // A shop window going: a sharp crack and a bright burst of noise as the pane lets go, a small low knock of the frame,
