@@ -398,6 +398,61 @@
           -2.23
         ]
       ]
+    },
+    {
+      "id": "tachibanaRunabout",
+      "displayName": "Tachibana Runabout",
+      "source": "eshell",
+      "provisional": false,
+      "file": "cars/tachibanaRunabout.glb",
+      "baseBodyNode": "Body",
+      "wheelNodes": [],
+      "wheelRadius": 0.293,
+      "wheelWidth": 0.24,
+      "wheels": {
+        "FL": [
+          0.7019,
+          0.2925,
+          1.2
+        ],
+        "FR": [
+          -0.7019,
+          0.2925,
+          1.2
+        ],
+        "RL": [
+          0.7019,
+          0.2925,
+          -1.2
+        ],
+        "RR": [
+          -0.7019,
+          0.2925,
+          -1.2
+        ]
+      },
+      "wheelbase": 2.4,
+      "trackFront": 1.404,
+      "trackRear": 1.404,
+      "dimensions": {
+        "length": 4.09,
+        "width": 1.88,
+        "height": 1.08
+      },
+      "materialMap": {},
+      "defaultWheel": "wheel_hari",
+      "defaultPaint": "#17606b",
+      "selectable": true,
+      "engine": {
+        "layout": "I4",
+        "aspiration": "turbo",
+        "position": "mid",
+        "voice": {
+          "pipes": 1,
+          "muffler": "sport"
+        }
+      },
+      "exhaustTips": []
     }
   ]
 }

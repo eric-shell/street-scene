@@ -261,7 +261,7 @@ describe('setup sliders', () => {
       }
       return { top, pull: (at280 - at200) / 60 };
     };
-    for (const id of ['wendtStrom', 'kazamaRotor', 'brandtKombi', 'ridgewayFiend', 'hinodeHorizon', 'tachibanaZenith']) {
+    for (const id of ['wendtStrom', 'kazamaRotor', 'brandtKombi', 'ridgewayFiend', 'hinodeHorizon', 'tachibanaZenith', 'tachibanaRunabout']) {
       const st = SETUP_POSITIONS.map((p) => measureStats(tuned(id, 'gearing', p)));
       // The garage's 0-60 slows one step at a time to the right (the torque bonus, with first gear where it was).
       for (let i = 1; i < st.length; i++) expect(st[i].zeroTo60, `${id} ${i + 1}`).toBeGreaterThan(st[i - 1].zeroTo60);

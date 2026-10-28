@@ -185,7 +185,8 @@ def handles(cid, m):
     px, ln, hz = H['size']
     z = m['beltLine'] - H['belowBelt']
     _, b_front = _b_pillar(m)
-    stations = [b_front + 0.04 + ln / 2]
+    # `body.handleFwd` in the car's spec pins the first handle to a donor's own embossed one.
+    stations = [spec['body'].get('handleFwd', b_front + 0.04 + ln / 2)]
     if spec['body']['doors'] >= 4:
         stations.append(min(-m['wheelbase'] / 2 + 0.45, stations[0] - 0.4))
     for sx in (1, -1):

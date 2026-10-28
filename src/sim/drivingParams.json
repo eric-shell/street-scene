@@ -376,6 +376,40 @@
         "_antilag": "Rolling antilag at 4,500: past the twins' full boost, just over the torque peak.",
         "antilagRpm": 4500
       }
+    },
+    "tachibanaRunabout": {
+      "_name": "Tachibana Runabout (1996 Toyota MR2 SW20 donor): mid mounted turbo 2.0 L inline four (3S-GTE), rear wheel drive. 245 PS and 309 N·m at 3,200 rpm, a wide plateau to 5,500 and a 7,200 rpm limiter, a five speed manual, 1,270 kg. The engine sits behind the seats, so the mass is gathered about the middle: it turns in quickly, the rear carries more of the weight and lets go when it does, all at once.",
+      "mass": 1270,
+      "yawInertiaScale": 0.78,
+      "drivetrain": { "layout": "rwd" },
+      "engine": {
+        "redline": 7200,
+        "torqueCurve": [
+          [800, 115],
+          [1500, 160],
+          [2200, 225],
+          [3200, 309],
+          [4500, 308],
+          [5500, 300],
+          [6000, 287],
+          [6600, 255],
+          [7200, 215]
+        ],
+        "torqueMul": 0.84,
+        "launchRpm": 4500
+      },
+      "gearbox": {
+        "_": "The SW20 Turbo's E153 five speed, 3.230 / 1.913 / 1.258 / 0.918 first four gears, on a 4.600 final drive (the real 4.285: a little shorter, so the Short and Long gear settings move a corner exit by the same 5% as on the other cars). Fifth is 0.694 against the real 0.731, which keeps fifth's overall ratio within 2% of the real car's (3.19 against 3.13) and puts the limiter (249 km/h) 10% over the drag top speed (225), as on the other cars.",
+        "ratios": [3.23, 1.913, 1.258, 0.918, 0.694],
+        "finalDrive": 4.6
+      },
+      "tires": { "gripFront": 1.78, "gripRear": 1.66 },
+      "launch": {
+        "_": "SW20 Turbo owners launch around 4,000 to 5,000 rpm: the CT26 is on boost by 3,200, and the rear tires carry the engine's weight, so the mid engine hooks up better than a front engined RWD car would.",
+        "defaultRpm": 4500,
+        "_antilag": "Rolling antilag at 5,000: past the CT26's full boost, a little above the torque plateau's start.",
+        "antilagRpm": 5000
+      }
     }
   },
   "setup": {

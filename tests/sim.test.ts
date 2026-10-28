@@ -338,7 +338,7 @@ describe('driving parameters file', () => {
     }
     expect(CAR_IDS).not.toContain('cc96');
     expect(CAR_IDS).not.toContain('ar7');
-    expect(SELECTABLE_CAR_IDS.sort()).toEqual(['brandtKombi', 'hinodeHorizon', 'kazamaRotor', 'ridgewayFiend', 'tachibanaZenith', 'wendtStrom']);
+    expect(SELECTABLE_CAR_IDS.sort()).toEqual(['brandtKombi', 'hinodeHorizon', 'kazamaRotor', 'ridgewayFiend', 'tachibanaRunabout', 'tachibanaZenith', 'wendtStrom']);
   });
 
   it('keeps each car\'s character: a front biased AWD hatch, a light high revving RWD coupe, an even AWD wagon', () => {

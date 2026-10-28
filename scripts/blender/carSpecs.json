@@ -589,6 +589,88 @@
         "seats": "twoSeat",
         "rhd": false
       }
+    },
+    "tachibanaRunabout": {
+      "displayName": "Tachibana Runabout",
+      "brief": "Two door rear wheel drive mid engine two seat coupe: the MR2 donor reduced whole at true size on its own tires, with its closed pop-up headlamps, nose indicator strips and fog lamps, twin round tail lamps on a black panel, a cabin top air intake behind the doors and a tail wing; badges, wipers and the antenna removed. The model has no cabin, so the Kazama Rotor's is fitted inside its skin. Mid mounted turbo inline four, rear wheel drive.",
+      "donors": [
+        {
+          "name": "1996 Toyota MR2 W20",
+          "weight": 1.0,
+          "model": {
+            "source": "sketchfab",
+            "uid": "f66020ee62d741ebb0adc1ba351300db",
+            "author": "s0h1o9b",
+            "license": "CC Attribution",
+            "url": "https://sketchfab.com/3d-models/f66020ee62d741ebb0adc1ba351300db"
+          },
+          "mm": {
+            "length": 4170,
+            "width": 1695,
+            "height": 1235,
+            "wheelbase": 2400,
+            "trackFront": 1404,
+            "trackRear": 1404,
+            "overhangFront": 831,
+            "overhangRear": 859,
+            "beltLine": 780,
+            "tireRadius": 292,
+            "windshieldDeg": 20.2,
+            "rearGlassDeg": 4.9
+          },
+          "estimates": [],
+          "measured": [
+            "trackFront",
+            "trackRear",
+            "overhangFront",
+            "overhangRear",
+            "beltLine",
+            "tireRadius",
+            "windshieldDeg",
+            "rearGlassDeg"
+          ],
+          "sources": [
+            "https://en.wikipedia.org/wiki/Toyota_MR2"
+          ],
+          "take": [
+            "the whole body: reduced to the budget at true size on its own tires",
+            "its own lamps: closed pop-up headlamps in the hood, nose indicator strips, bumper fog lamps, twin round tail lamps on a black panel"
+          ]
+        }
+      ],
+      "body": {
+        "doors": 2,
+        "pillars": [
+          "A",
+          "B",
+          "C"
+        ],
+        "roofline": "short nose, long cabin set well forward, engine deck with twin intakes under a tail wing",
+        "handleFwd": -0.3,
+        "exhaust": "twin tips at the bumper corners"
+      },
+      "lights": {
+        "front": {
+          "cover": "slab",
+          "elements": "none",
+          "indicator": "outerBlock",
+          "source": "donor",
+          "notes": "the pop-up headlamps stay closed in the hood; the nose strips are the indicators and the bumper pockets the fog lamps, kept from the donor model"
+        },
+        "rear": {
+          "cover": "panel",
+          "elements": "none",
+          "indicator": "none",
+          "wrap": false,
+          "centerBar": false,
+          "source": "donor",
+          "notes": "the twin round tail lamps either side of the black tail panel, kept from the donor model"
+        }
+      },
+      "cabin": {
+        "seats": "twoSeat",
+        "rhd": false
+      }
     }
   }
 }

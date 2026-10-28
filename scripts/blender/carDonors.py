@@ -176,6 +176,35 @@ DONORS = {
         # The front fender markers (ahead of the axle, so read as headlamps) are the indicators.
         'recolor': [(lambda c, n, m: m == 'HeadLight' and abs(c.x) > 0.8 and -1.8 < c.y < -1.6, 'Light')],
     },
+    'tachibanaRunabout': {
+        'name': '1996 Toyota MR2 W20',
+        'uid': 'f66020ee62d741ebb0adc1ba351300db',
+        'author': 's0h1o9b',
+        'license': 'CC Attribution',
+        'mm': {'length': 4170, 'wheelbase': 2400},
+        # The import faces -X (nose at -X, tail at +X): turned a quarter to face -Y. Its size is the
+        # ground plane's, so the scale comes from the wheelbase.
+        'turn': (0, 0, 90),
+        'rawNames': True,
+        # Every material is `Material.0xx`, read from isolated renders: 016 the tire (the axles and
+        # the track come from it); wheel pieces are 005 (lip), 014 (spokes), 019 (lug nuts), 017
+        # (hubs and brake discs), so each wheel part's parent is dropped whole, with the ground plane.
+        'tires': r'^Material\.016(\.\d{3})?$',
+        'drop': [r'^(Plane\.00[4-9]_\d+|Plane\.01[0-2]_\d+|Cylinder\.00[1-4]_\d+)$'],
+        # 001 windows, 003 black trim and seals, 004 / 005 / 007 / 017 the lamp lenses and housings
+        # (by position), 010 chrome: logos (taken off as badges), exhaust tips and the diffuser
+        # slats (black below), 012 the wing's stays, 015 the tail panel, 018 the mirror glass; 002
+        # is the steering wheel and 006 four faces of nothing (the model has no cabin).
+        # The nose strips are the indicators (Light, amber); the fog lamps stay lamps. The rear
+        # diffuser's slats are `Material.010` chrome like the exhaust tips: black between the tips.
+        'recolor': [(lambda c, n, m: m == 'HeadLight' and c.z > 0.38, 'Light'),
+                    (lambda c, n, m: m == 'Chrome' and c.y > 1.5 and abs(c.x) < 0.335, 'Black')],
+        # Black behind the front intake, whose crossbar and wheel liners show the underside through it.
+        'backPanels': [(-0.62, 0.62, -1.88, 0.17, 0.42)],
+        'materials': {r'^Material\.001$': 'Glass', r'^Material\.002$': None, r'^Material\.003$': 'Black',
+                      r'^Material\.(004|005|007|017)$': 'Lamp', r'^Material\.006$': None, r'^Material\.010$': 'Chrome',
+                      r'^Material\.(012|015|018)$': 'Black'},
+    },
 }
 
 # Reproducibility test donors (CC Attribution): four body styles from four authors with four
@@ -248,8 +277,10 @@ TIRES = r'(?i)tire|tyre|llanta'
 
 def _classify(R, mat_name):
     """The shared material for an import material, 'drop', or KeyError when nothing matches. The
-    name is matched without Blender's `.001` suffix, which a second import in the session adds."""
-    mat_name = _base(mat_name)
+    name is matched without Blender's `.001` suffix, which a second import in the session adds,
+    unless the recipe sets `rawNames` (a donor whose materials are `Material.001`, `Material.002`:
+    the suffix is the name)."""
+    mat_name = mat_name if R.get('rawNames') else _base(mat_name)
     for pat, target in list(R.get('materials', {}).items()) + AUTO:
         if re.search(pat, mat_name):
             return 'drop' if target is None else target
@@ -1162,6 +1193,28 @@ def grille_surface(o, half_wb, step=0.03, uv_span=GRILLE_UV, material='Black', f
     return len(hit_faces), quads
 
 
+def back_panels(o, panels, material='Black'):
+    """Flat quads facing the nose, one per recipe `backPanels` entry `(x0, x1, y, z0, z1)`: a
+    black panel behind an opening the pipeline's own grille quads do not cover (a lower intake
+    with a bar in it, a fog lamp pocket), so nobody sees into the body."""
+    me = o.data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    own = bm.faces.layers.int.get('own_normals') or bm.faces.layers.int.new('own_normals')
+    mi = mat_index(o, material)
+    for x0, x1, y, z0, z1 in panels:
+        f = bm.faces.new([bm.verts.new(v) for v in ((x0, y, z0), (x1, y, z0), (x1, y, z1), (x0, y, z1))])
+        f.material_index = mi
+        f[own] = 1
+        f.smooth = False
+        f.normal_update()
+        if f.normal.y > 0:
+            f.normal_flip()
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+
+
 def _carry_custom_normals(o):
     """The object's custom normals written into its `src_normal` corner attribute, so a bmesh join
     keeps them; _set_custom_normals reads them back."""
@@ -1198,6 +1251,8 @@ def reduce_donor(cid, budget=BUDGET, mid=60000, interior=INTERIOR_BUDGET):
     delete_faces(cabin, lambda c, n, m: m != 'Interior')
     _collapse(low, budget)
     recolored, quads = grille_surface(low, full['wheelbase'] / 2)
+    if DONORS[cid].get('backPanels'):
+        back_panels(low, DONORS[cid]['backPanels'])
     turned = shade_from_source(low, skin)
     if cabin.data.polygons:
         _collapse(cabin, interior)
