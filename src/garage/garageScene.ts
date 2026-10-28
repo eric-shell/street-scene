@@ -220,7 +220,7 @@ export class GarageScene {
       await this.car.load(visual);
       return this.car;
     }
-    const view = new CarView(carId, this.assets, { underglowLight: true, envMap: this.showroom.envMap });
+    const view = new CarView(carId, this.assets, { underglowLight: true, envMap: this.showroom.envMap, tread: this.quality !== 'low' });
     view.setHeadlightsEnabled(false);
     this.car = view;
     await view.load(visual);

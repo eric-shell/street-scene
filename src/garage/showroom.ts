@@ -239,9 +239,12 @@ export class Showroom {
   private readonly offset = new THREE.Vector3();
   private disposed = false;
   private time = 0;
+  /** The tire tread texture on the cars (medium and up; low keeps plain rubber). */
+  private readonly tread: boolean;
 
   constructor(renderer: THREE.WebGLRenderer, quality: Quality, assets: CarAssetLibrary) {
     const q = SHOWROOM_QUALITY[quality];
+    this.tread = quality !== 'low';
     const { track } = this.owned;
     const s = this.scene;
     s.background = new THREE.Color(0x070709);
@@ -519,7 +522,7 @@ export class Showroom {
   /** Load a lift's car, dress it in its build and pose it once on the arms (wheels hanging). */
   /** Load a car view standing still at `at` (its ground and yaw), its wheels hung by `droop` (m), the front pair off for a brake job. */
   private async loadParkedCar(assets: CarAssetLibrary, carId: string, visual: VisualBuild, at: { x: number; y: number; z: number; yaw: number }, droop: number, wheelsOff = false, parent: THREE.Object3D = this.scene): Promise<void> {
-    const view = new CarView(carId, assets, { envMap: this.envMap });
+    const view = new CarView(carId, assets, { envMap: this.envMap, tread: this.tread });
     view.setHeadlightsEnabled(false);
     await view.load(visual);
     if (this.disposed) {

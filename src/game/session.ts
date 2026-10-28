@@ -374,7 +374,7 @@ export class RaceSession {
       // In the menu's scene the player's car carries no real lights, like the menu's car it replaces: a new light
       // count would recompile every lit shader in the city (seconds of freeze). The beam and underglow glows stay.
       const lit = i === 0 && !hand;
-      const view = new CarView(rc.carId, assets, { headlights: lit ? rig.headlightSpots : 0, underglowLight: lit && rig.underglowLight, envMap: gr.envMap, roadLift: ROAD_Y, brakes });
+      const view = new CarView(rc.carId, assets, { headlights: lit ? rig.headlightSpots : 0, underglowLight: lit && rig.underglowLight, envMap: gr.envMap, roadLift: ROAD_Y, brakes, tread: brakes });
       this.night.scene.add(view.root);
       this.views.push(view);
       // Rivals take the scene's height fog once their parts exist; the player's car sits too close for it to show.
@@ -387,7 +387,7 @@ export class RaceSession {
     if (opts.ghost) {
       this.ghostRace = createRace(opts.ghost.config, this.race.world);
       this.ghostLog = opts.ghost.log;
-      const gv = new CarView(opts.ghost.config.player.carId, assets, { envMap: gr.envMap, roadLift: ROAD_Y, brakes });
+      const gv = new CarView(opts.ghost.config.player.carId, assets, { envMap: gr.envMap, roadLift: ROAD_Y, brakes, tread: brakes });
       this.ghostView = gv;
       this.night.scene.add(gv.root);
       loads.push(

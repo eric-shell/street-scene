@@ -275,7 +275,7 @@ export class StreetStage {
    * and the key light above stay.
    */
   private newView(carId: string): CarView {
-    return new CarView(carId, this.assets, { envMap: this.night.scene.environment, roadLift: ROAD_Y });
+    return new CarView(carId, this.assets, { envMap: this.night.scene.environment, roadLift: ROAD_Y, tread: this.settings.quality !== 'low' });
   }
 
   /** The setup step's pick: drive to the slot's car in the convoy, or load it and add it behind the last car. */

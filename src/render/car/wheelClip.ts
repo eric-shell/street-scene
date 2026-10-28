@@ -209,7 +209,10 @@ export class WheelClip {
 
   /** Make a wheel material discard what is above the body (its own material: the body must not take the clip). */
   clipMaterial(mat: THREE.Material): void {
-    mat.onBeforeCompile = (shader) => {
+    // After whatever the material already patches in (the tire's tread shader).
+    const prior = mat.onBeforeCompile;
+    mat.onBeforeCompile = (shader, renderer) => {
+      prior.call(mat, shader, renderer);
       Object.assign(shader.uniforms, this.uniforms);
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', `#include <common>\n${VERT_HEAD}`)

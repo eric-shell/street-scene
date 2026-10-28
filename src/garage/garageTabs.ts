@@ -19,7 +19,6 @@ import { ArrowUpDown, Car, Disc3, Eye, Gauge, Hammer, Layers, Paintbrush, Sparkl
 import { GarageScene } from './garageScene';
 import { GaragePrefs, saveGaragePrefs } from './storage';
 import { capital, choiceList, cm, color, colorPicker, field, paintPicker, percent, PRESETS, section, slider, statLines, toggle } from './garageWidgets';
-import type { Choice } from './garageWidgets';
 import { renderVinyls } from './garageVinyls';
 import { setupSlider } from './setupSliders';
 import { wheelPicker } from './wheelPicker';
@@ -50,10 +49,11 @@ const WHEEL_VIEWS: { value: WheelView; label: string }[] = [
   { value: 'paint', label: 'Paint' },
 ];
 
-/** The tire shapes as the Wheels tab lists them (TIRE_SHAPES' order, render/car/tireShapes.ts draws them). */
-const TIRE_CHOICES: Choice<TireShape>[] = [
-  { value: 'standard', label: 'Standard', sub: 'Square sidewall' },
-  { value: 'stretched', label: 'Stretched', sub: 'Angled sidewall' },
+/** The tire stretch as the Wheels tab lists it (TIRE_SHAPES' order, render/car/tireShapes.ts draws them): none is the standard tire, full the stretched one. */
+const STRETCH_CHOICES: { value: TireShape; label: string }[] = [
+  { value: 'standard', label: 'None' },
+  { value: 'mild', label: 'Mild' },
+  { value: 'stretched', label: 'Full' },
 ];
 
 /**
@@ -280,20 +280,31 @@ export function renderTabContent(host: TabHost): void {
             h('div', { class: 'muted garage-note' }, 'Wider wheels grow inward; the face and spokes keep their shape.'),
           ),
           section(
-            title('tire'),
-            choiceList(
-              TIRE_CHOICES,
-              rear ? w.rearTire : w.tire,
-              (t) => {
-                if (rear) w.rearTire = t;
-                else {
-                  w.tire = t;
-                  if (linked) w.rearTire = t;
-                }
+            title('stretch'),
+            segmented(STRETCH_CHOICES, rear ? w.rearTire : w.tire, (t) => {
+              if (rear) w.rearTire = t;
+              else {
+                w.tire = t;
+                if (linked) w.rearTire = t;
+              }
+              host.changed();
+            }),
+          ),
+          // Per build, not per axle: the brand's raised lettering on every tire's outer sidewall.
+          section(
+            'Lettering',
+            segmented(
+              [
+                { value: 'off', label: 'Off' },
+                { value: 'on', label: 'On' },
+              ],
+              w.lettering ? 'on' : 'off',
+              (x) => {
+                w.lettering = x === 'on';
                 host.changed();
               },
-              true,
             ),
+            h('div', { class: 'muted garage-note' }, 'Raised brand lettering on the outer sidewalls.'),
           ),
         );
       } else {

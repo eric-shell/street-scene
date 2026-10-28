@@ -287,9 +287,9 @@ export class CarView {
      * The sim rests the tires on the ground; on the city's asphalt they would sink that far into it.
      * 0 (the garage floor) by default.
      */
-    opts: { headlights?: number; underglowLight?: boolean; envMap?: THREE.Texture | null; roadLift?: number; brakes?: boolean; plate?: string | null } = {},
+    opts: { headlights?: number; underglowLight?: boolean; envMap?: THREE.Texture | null; roadLift?: number; brakes?: boolean; plate?: string | null; tread?: boolean } = {},
   ) {
-    this.materials = createCarMaterials(opts.envMap ?? null);
+    this.materials = createCarMaterials(opts.envMap ?? null, opts.tread ?? true);
     this.car = manifestCar(carId);
     this.roadLift = opts.roadLift ?? 0;
     this.brakesOn = opts.brakes ?? true;
@@ -656,14 +656,16 @@ export class CarView {
       geo.applyMatrix4(new THREE.Matrix4().multiplyMatrices(toWheel, mesh.matrixWorld));
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       const isTire = mats.length > 0 && mats.every((m) => m === this.materials.Tire);
-      // Another tire shape: lathed where the wheel's own tire sat (not on the placeholder, whose tire has no sidewall).
-      const fit = isTire && tire !== 'standard' && !model.userData.ownGeometry ? measureTire(geo.getAttribute('position').array) : null;
-      if (fit && tire !== 'standard') {
+      // Every tire is lathed where the wheel's own sat (tireShapes.ts), the standard one too, so they share UVs and
+      // the tread texture; not on the placeholder, whose tire has no sidewall.
+      const fit = isTire && !model.userData.ownGeometry ? measureTire(geo.getAttribute('position').array) : null;
+      if (fit) {
         const t = latheTire(tire, fit);
         geo.dispose();
         geo = new THREE.BufferGeometry();
         geo.setAttribute('position', new THREE.BufferAttribute(t.position, 3));
         geo.setAttribute('normal', new THREE.BufferAttribute(t.normal, 3));
+        geo.setAttribute('uv', new THREE.BufferAttribute(t.uv, 2));
         geo.setIndex(new THREE.BufferAttribute(t.index, 1));
       }
       const pos = geo.getAttribute('position') as THREE.BufferAttribute;

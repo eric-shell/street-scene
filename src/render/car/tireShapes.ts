@@ -1,25 +1,63 @@
 /**
- * Tire shapes besides the house tire every wheel ships with (docs/carWheels.md):
- * for now a stretched one, lathed at runtime in place of the wheel's own tire so
- * any wheel can wear it; more shapes are another profile in the table. Pure math on vertex
- * arrays in wheel space (center at the origin, axle along X), no three.js.
+ * Tire shapes, lathed at runtime in place of the tire every wheel ships with (docs/carWheels.md) so any
+ * wheel can wear any of them and all of them share one UV layout (the tread texture, tireTread.ts): the
+ * standard tire (the house tire's own profile), a mild stretch and a full one; more shapes are another
+ * profile in the table. Pure math on vertex arrays in wheel space (center at the origin, axle along X), no
+ * three.js.
  *
- * A shape is a half profile in units of the tire it replaces: x is the distance
- * from the tire's center plane over the bead's (where the tire tucks under the
- * wheel's lip, so the bead never moves), v the height from the bead (0) to the
- * tread (1). The outer radius never changes, so the sim's wheel radius and the
- * wheel size slider (wheelFit.ts) work the same on every shape. For reference,
- * the house tire's sidewall bulges out to 1.24 and its tread is flat from 0.71.
+ * A shape is a half profile in units of the tire it replaces: x is the distance from the tire's center
+ * plane over the bead's (where the tire tucks under the wheel's lip, so the bead never moves), v the
+ * height from the bead (0) to the tread (1). The outer radius never changes, so the sim's wheel radius and
+ * the wheel size slider (wheelFit.ts) work the same on every shape. The profile has two runs: the `side`,
+ * from the face side's bead up to the tread's shoulder, and the `tread`, from the shoulder in to where the
+ * crown goes flat. The crown carries two circumferential grooves (`TREAD`), real geometry dipping a few
+ * millimetres in, placed along the tread's arc length so every shape gets the same layout.
+ *
+ * UVs: u runs once around the tire (the seam column is duplicated), v across the profile in three bands
+ * (`TREAD.band`): the face side's sidewall, the tread, and a plain strip the back sidewall is pinned to,
+ * so the texture spends its pixels where the lettering and the cuts are. The mapping is fixed to the
+ * geometry, so a spinning tire carries its pattern.
  */
 import type { TireShape } from '../../shared/carBuild';
 
-type Profile = readonly (readonly [x: number, v: number])[];
+interface ProfileDef {
+  /** The sidewall, bead to the point before the tread starts (x, v). */
+  side: readonly (readonly [x: number, v: number])[];
+  /** The tread, from the outer shoulder to where the crown goes flat (x, v); the last point has v = 1. */
+  tread: readonly (readonly [x: number, v: number])[];
+}
 
-/** Each shape's half profile, from the face side's bead up to the tread's center. */
-const PROFILES: Record<Exclude<TireShape, 'standard'>, Profile> = {
+/**
+ * Each shape's half profile, from the face side's bead to the end of the crown's flat. For reference the
+ * standard tire is the house tire (scripts/blender/carWheels.py house_tire): a sidewall bulging out to 1.24
+ * and a tread flat from 0.71.
+ */
+const PROFILES: Record<TireShape, ProfileDef> = {
+  standard: { side: [[1, 0], [1.19, 0.242], [1.238, 0.573], [1.167, 0.763]], tread: [[1, 0.963], [0.714, 1]] },
+  // Pulled a little tight: the bulge mostly gone, the shoulder tucked in, the tread a touch narrower.
+  mild: { side: [[1, 0], [1.05, 0.25], [1.02, 0.6], [0.92, 0.86]], tread: [[0.8, 0.97], [0.62, 1]] },
   // Pulled tight over a wide wheel: a straight, steep sidewall and a narrow tread, the lip standing proud.
-  stretched: [[1, 0], [0.98, 0.07], [0.89, 0.37], [0.78, 0.71], [0.7, 0.92], [0.63, 0.99], [0.48, 1], [0, 1]],
+  stretched: { side: [[1, 0], [0.78, 0.71]], tread: [[0.7, 0.92], [0.63, 0.99], [0.48, 1]] },
 };
+
+/**
+ * The tread's layout, shared with the texture (tireTread.ts). `t` runs across the tread from the face
+ * side's shoulder (0) to the back shoulder (1) by arc length, so one texture fits every shape.
+ */
+export const TREAD = {
+  /** Pitches of the tread pattern around the tire (the texture repeats this many times across its width). */
+  pitches: 32,
+  /** The texture's v bands: the face sidewall is 0 to `sidewall`, the tread `sidewall` to `tread`, and the plain strip past it. */
+  band: { sidewall: 0.42, tread: 0.88, plain: 0.94 },
+  /**
+   * The circumferential grooves: centre and half width as a share of the tread's arc, depth (m). The wide one
+   * sits toward the back (inner) shoulder, the narrow one toward the face side.
+   */
+  grooves: [
+    { at: 0.4, half: 0.017, depth: 0.004 },
+    { at: 0.68, half: 0.032, depth: 0.006 },
+  ],
+} as const;
 
 /** Segments around the tire, as the house tire's (scripts/blender/carWheels.py TIRE_SEG). */
 const SEGMENTS = 40;
@@ -53,41 +91,97 @@ export function measureTire(pos: ArrayLike<number>): TireFit | null {
   return beadX > 0 ? { inner, outer, beadX } : null;
 }
 
-/**
- * Lathe a tire of the given shape to fit where the old one sat: smooth normals
- * from the profile, faces wound outward. 40 x 15 vertices, 1,120 triangles
- * (the house tire has 960).
- */
-export function latheTire(shape: Exclude<TireShape, 'standard'>, fit: TireFit): { position: Float32Array; normal: Float32Array; index: Uint16Array } {
-  const half = PROFILES[shape];
+/** One point of the full profile: where it is (x along the axle, r from it, m) and where it samples the texture (v). */
+interface ProfilePoint {
+  x: number;
+  r: number;
+  v: number;
+}
+
+/** The full bead to bead profile of a shape on a tire of this fit: sidewall, grooved tread, back sidewall. */
+function fullProfile(shape: TireShape, fit: TireFit): ProfilePoint[] {
+  const def = PROFILES[shape];
   const h = fit.outer - fit.inner;
-  // The full profile: face side bead to tread center, then mirrored to the back bead.
-  const prof: [number, number][] = half.map(([x, v]) => [x * fit.beadX, fit.inner + v * h]);
-  for (let k = half.length - 2; k >= 0; k--) prof.push([-prof[k][0], prof[k][1]]);
+  const at = ([x, v]: readonly [number, number]): [number, number] => [x * fit.beadX, fit.inner + v * h];
+  const side = def.side.map(at);
+  const half = def.tread.map(at);
+  // The tread run, face side shoulder to back side shoulder, with its arc length.
+  const run: [number, number][] = [...half, ...[...half].reverse().map(([x, r]): [number, number] => [-x, r])];
+  const arc = [0];
+  for (let k = 1; k < run.length; k++) arc.push(arc[k - 1] + Math.hypot(run[k][0] - run[k - 1][0], run[k][1] - run[k - 1][1]));
+  const total = arc[arc.length - 1];
+  const along = (s: number): [number, number] => {
+    let k = 1;
+    while (k < arc.length - 1 && arc[k] < s) k++;
+    const f = (s - arc[k - 1]) / ((arc[k] - arc[k - 1]) || 1);
+    return [run[k - 1][0] + (run[k][0] - run[k - 1][0]) * f, run[k - 1][1] + (run[k][1] - run[k - 1][1]) * f];
+  };
+  // The tread's points by position along it (t), the grooves' walls replacing whatever run points they cover.
+  const tread: { t: number; x: number; r: number }[] = [];
+  for (let k = 0; k < run.length; k++) {
+    const t = arc[k] / total;
+    if (TREAD.grooves.some((g) => t > g.at - g.half - 1e-6 && t < g.at + g.half + 1e-6)) continue;
+    tread.push({ t, x: run[k][0], r: run[k][1] });
+  }
+  for (const g of TREAD.grooves) {
+    // Edge, wall foot, wall foot, edge: a trapezoid dipping radially.
+    for (const [f, dip] of [[-1, 0], [-0.7, g.depth], [0.7, g.depth], [1, 0]] as const) {
+      const t = g.at + f * g.half;
+      const [x, r] = along(t * total);
+      tread.push({ t, x, r: r - dip });
+    }
+  }
+  tread.sort((a, b) => a.t - b.t);
+  // The sidewall's arc length from the bead to the shoulder spreads the face sidewall band.
+  const sideArc = [0];
+  const shoulder = half[0];
+  const sidePts = [...side, shoulder];
+  for (let k = 1; k < sidePts.length; k++) sideArc.push(sideArc[k - 1] + Math.hypot(sidePts[k][0] - sidePts[k - 1][0], sidePts[k][1] - sidePts[k - 1][1]));
+  const out: ProfilePoint[] = side.map(([x, r], k) => ({ x, r, v: (TREAD.band.sidewall * sideArc[k]) / sideArc[sideArc.length - 1] }));
+  for (const p of tread) out.push({ x: p.x, r: p.r, v: TREAD.band.sidewall + p.t * (TREAD.band.tread - TREAD.band.sidewall) });
+  // The back sidewall is plain rubber: pinned to the plain strip.
+  for (let k = side.length - 1; k >= 0; k--) out.push({ x: -side[k][0], r: side[k][1], v: TREAD.band.plain });
+  return out;
+}
+
+/**
+ * Lathe a tire of the given shape to fit where the old one sat: smooth normals from the profile, faces
+ * wound outward, UVs as the module header says. 41 x 20 vertices (the seam column twice), 1,520 triangles
+ * (the house tire has 960, grooves not included).
+ */
+export function latheTire(shape: TireShape, fit: TireFit): { position: Float32Array; normal: Float32Array; uv: Float32Array; index: Uint16Array } {
+  const prof = fullProfile(shape, fit);
   const P = prof.length;
   // Each point's normal in the profile plane: its tangent (central difference) turned outward.
   const n2 = prof.map((_, k) => {
     const a = prof[Math.max(0, k - 1)];
     const b = prof[Math.min(P - 1, k + 1)];
-    const tx = b[0] - a[0];
-    const tr = b[1] - a[1];
+    const tx = b.x - a.x;
+    const tr = b.r - a.r;
     const len = Math.hypot(tx, tr) || 1;
     return [tr / len, -tx / len];
   });
-  const position = new Float32Array(SEGMENTS * P * 3);
-  const normal = new Float32Array(SEGMENTS * P * 3);
-  for (let i = 0; i < SEGMENTS; i++) {
+  const cols = SEGMENTS + 1;
+  const position = new Float32Array(cols * P * 3);
+  const normal = new Float32Array(cols * P * 3);
+  const uv = new Float32Array(cols * P * 2);
+  for (let i = 0; i < cols; i++) {
     const t = (2 * Math.PI * i) / SEGMENTS;
     const c = Math.cos(t);
     const s = Math.sin(t);
+    // u runs the way the face side's text reads (clockwise seen from outside, tops outward).
+    const u = 1 - i / SEGMENTS;
     for (let k = 0; k < P; k++) {
-      const o = (i * P + k) * 3;
-      position[o] = prof[k][0];
-      position[o + 1] = prof[k][1] * c;
-      position[o + 2] = prof[k][1] * s;
+      const n = i * P + k;
+      const o = n * 3;
+      position[o] = prof[k].x;
+      position[o + 1] = prof[k].r * c;
+      position[o + 2] = prof[k].r * s;
       normal[o] = n2[k][0];
       normal[o + 1] = n2[k][1] * c;
       normal[o + 2] = n2[k][1] * s;
+      uv[n * 2] = u;
+      uv[n * 2 + 1] = prof[k].v;
     }
   }
   // Wound so every face points out of the tire (the tread's +r, the sidewalls' ±x).
@@ -95,7 +189,7 @@ export function latheTire(shape: Exclude<TireShape, 'standard'>, fit: TireFit): 
   let n = 0;
   for (let i = 0; i < SEGMENTS; i++) {
     const a0 = i * P;
-    const b0 = ((i + 1) % SEGMENTS) * P;
+    const b0 = (i + 1) * P;
     for (let k = 0; k < P - 1; k++) {
       const a = a0 + k;
       const b = a0 + k + 1;
@@ -105,5 +199,5 @@ export function latheTire(shape: Exclude<TireShape, 'standard'>, fit: TireFit): 
       n += 6;
     }
   }
-  return { position, normal, index };
+  return { position, normal, uv, index };
 }

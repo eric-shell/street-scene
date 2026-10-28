@@ -34,7 +34,8 @@ export const GLOW_PATTERNS = ['steady', 'pulse', 'breathe', 'strobe', 'alternate
 export type GlowPattern = (typeof GLOW_PATTERNS)[number];
 
 /** Tire shapes (render/car/tireShapes.ts draws each). */
-export const TIRE_SHAPES = ['standard', 'stretched'] as const;
+/** Tire stretch, least to most: none ('standard'), mild, and full ('stretched', the first stretched tire, so old saves keep their look). */
+export const TIRE_SHAPES = ['standard', 'mild', 'stretched'] as const;
 export type TireShape = (typeof TIRE_SHAPES)[number];
 
 export const MAX_DECALS = 8;
@@ -96,6 +97,8 @@ export interface VisualBuild {
     tire: TireShape;
     /** Rear tire shape; matches the front unless the garage's wheels are unlinked. */
     rearTire: TireShape;
+    /** Raised brand lettering on the tires' outer sidewalls (both axles; render/car/tireTread.ts). Off by default; a missing value reads off. */
+    lettering: boolean;
   };
   /** Brake caliper paint, all four corners. */
   calipers: AccentPaint;
@@ -130,7 +133,7 @@ export function defaultVisual(): VisualBuild {
     paint: { color: '#d11f3f', finish: 'metallic' },
     trimColor: '#15161a',
     parts: {},
-    wheels: { paint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPaint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPart: null, tire: 'standard', rearTire: 'standard' },
+    wheels: { paint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPaint: { color: '#c9ced8', finish: 'metallic', match: false }, rearPart: null, tire: 'standard', rearTire: 'standard', lettering: false },
     calipers: { color: '#c41e3a', finish: 'gloss', match: false },
     decals: [],
     stance: { front: { rideHeight: 0, camber: 0, offset: 0, wheelSize: 1, wheelWidth: 1 }, rear: { rideHeight: 0, camber: 0, offset: 0, wheelSize: 1, wheelWidth: 1 } },
@@ -204,8 +207,8 @@ export function validateVisual(v: unknown): VisualBuild {
   const rearPaint = validAccent(wheels.rearPaint, { ...wheelPaint, color: hexColor(wheels.rearColor, wheelPaint.color) });
   // Stance per axle. Legacy builds (saves and share codes from before per axle stance) had
   // stance.camberFront / camberRear and one stance.rideHeight, stance.offset and wheels.size; they seed both axles.
-  // The first set's mild and aggressive stretches are the stretched tire now; its meaty one, standard.
-  const tireShape = (v: unknown, fallback: TireShape) => (v === 'meaty' ? 'standard' : oneOf(v === 'mildStretch' || v === 'aggressiveStretch' ? 'stretched' : v, TIRE_SHAPES, fallback));
+  // The first set's mild stretch is the mild tire and its aggressive one the stretched tire; its meaty one, standard.
+  const tireShape = (v: unknown, fallback: TireShape) => (v === 'meaty' ? 'standard' : oneOf(v === 'mildStretch' ? 'mild' : v === 'aggressiveStretch' ? 'stretched' : v, TIRE_SHAPES, fallback));
   const tire = tireShape(wheels.tire, d.wheels.tire);
   const rearPart = typeof wheels.rearPart === 'string' && PART_ID.test(wheels.rearPart) ? wheels.rearPart : null;
   const L = STANCE_LIMITS;
@@ -227,7 +230,7 @@ export function validateVisual(v: unknown): VisualBuild {
     paint: validPaint(o.paint, d.paint),
     trimColor: hexColor(o.trimColor, d.trimColor),
     parts,
-    wheels: { paint: wheelPaint, rearPaint, rearPart, tire, rearTire: tireShape(wheels.rearTire, tire) },
+    wheels: { paint: wheelPaint, rearPaint, rearPart, tire, rearTire: tireShape(wheels.rearTire, tire), lettering: wheels.lettering === true },
     calipers: validAccent(o.calipers, d.calipers),
     decals,
     stance: {

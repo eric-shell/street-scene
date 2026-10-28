@@ -55,7 +55,7 @@ const pick = <T>(list: readonly T[]): T => list[Math.floor(Math.random() * list.
 const between = (lo: number, hi: number) => Math.round((lo + Math.random() * (hi - lo)) * 100) / 100;
 
 /**
- * A random street build for a new player: one of the fitted cars on its fitment and stretched tires, then a
+ * A random street build for a new player: one of the fitted cars on its fitment and stretched tires (mostly mild), then a
  * random wheel, paints from the garage's swatches, tint and underglow. Visual only: the setup stays stock.
  */
 export function randomBuild(name = DEFAULT_BUILD_NAME): CarBuild {
@@ -65,7 +65,7 @@ export function randomBuild(name = DEFAULT_BUILD_NAME): CarBuild {
   const fit = STREET_FITS[carId];
   v.stance = { front: { ...fit.front }, rear: { ...fit.rear } };
   v.parts.wheels = pick(partsFor(carId, 'wheels')).id;
-  v.wheels.tire = v.wheels.rearTire = 'stretched';
+  v.wheels.tire = v.wheels.rearTire = Math.random() < 0.7 ? 'mild' : 'stretched';
   // Finishes repeat to weight the draw toward the common ones.
   v.paint = { color: pick(PRESETS.body), finish: pick<PaintFinish>(['gloss', 'metallic', 'metallic', 'pearl', 'candy', 'matte']) };
   v.wheels.paint = { color: pick(PRESETS.wheels), finish: pick<PaintFinish>(['metallic', 'gloss', 'matte']), match: false };
@@ -178,6 +178,7 @@ const SHORT: Record<string, string> = {
   rearPart: 'rp',
   tire: 'ty',
   rearTire: 'rt',
+  lettering: 'lt',
   size: 'sz',
   decals: 'dc',
   shape: 'sh',

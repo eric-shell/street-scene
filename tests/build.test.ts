@@ -67,7 +67,7 @@ describe('build validation', () => {
     b.visual.paint = { color: '#19e6ff', finish: 'pearl' };
     b.visual.parts = { spoiler: 'wendtStrom_spoiler_1', frontBumper: 'wendtStrom_frontBumper_kurogane', wheels: 'wheel_yari' };
     b.visual.decals.push({ shape: 'number', color: '#ff3df2', pos: [0.9, 0.6, 0.2], normal: [1, 0, 0], rotation: 12, scale: 0.7, mirror: true, text: '42' });
-    b.visual.wheels = { paint: { color: '#ffcc00', finish: 'candy', match: false }, rearPaint: { color: '#1a1b1f', finish: 'matte', match: true }, rearPart: 'wheel_kumo', tire: 'standard', rearTire: 'stretched' };
+    b.visual.wheels = { paint: { color: '#ffcc00', finish: 'candy', match: false }, rearPaint: { color: '#1a1b1f', finish: 'matte', match: true }, rearPart: 'wheel_kumo', tire: 'standard', rearTire: 'stretched', lettering: false };
     b.visual.calipers = { color: '#ffcc1f', finish: 'pearl', match: true };
     b.visual.underglow = { enabled: true, color: '#ff00aa', color2: '#00ffaa', pattern: 'chase', brightness: 1.4, speed: 2, size: 1.2 };
     b.visual.stance = { front: { rideHeight: -0.045, camber: -3.5, offset: 0.015, wheelSize: 1.05, wheelWidth: 1.1 }, rear: { rideHeight: -0.02, camber: -7, offset: 0.05, wheelSize: 1.2, wheelWidth: 1.3 } };
@@ -118,8 +118,11 @@ describe('build validation', () => {
     // A rear tire of its own is kept; a missing one follows the front, an unknown one falls back.
     expect(validateBuild({ visual: { wheels: { tire: 'stretched' } } }).visual.wheels).toMatchObject({ tire: 'stretched', rearTire: 'stretched' });
     expect(validateBuild({ visual: { wheels: { tire: 'stretched', rearTire: 'bald', rearPart: 'wheel_kaze' } } }).visual.wheels).toMatchObject({ tire: 'stretched', rearTire: 'stretched', rearPart: 'wheel_kaze' });
-    // The first set's shapes: both stretches are the stretched tire, the meaty one standard.
+    // The first set's shapes: the mild stretch is the mild tire, the aggressive one the stretched tire, the meaty one standard.
     expect(validateBuild({ visual: { wheels: { tire: 'aggressiveStretch', rearTire: 'meaty' } } }).visual.wheels).toMatchObject({ tire: 'stretched', rearTire: 'standard' });
+    expect(validateBuild({ visual: { wheels: { tire: 'mildStretch', lettering: true } } }).visual.wheels).toMatchObject({ tire: 'mild', rearTire: 'mild', lettering: true });
+    // The lettering is off unless a build says true.
+    expect(validateBuild({ visual: { wheels: { lettering: 'yes' } } }).visual.wheels.lettering).toBe(false);
     // New per axle values win over legacy ones and are clamped independently.
     const n = validateBuild({ visual: { stance: { camberFront: -4, front: { camber: -2, offset: 0.5, wheelSize: 0.9 }, rear: { wheelSize: 2 } } } });
     expect(n.visual.stance.front).toEqual({ rideHeight: 0, camber: -2, offset: 0.09, wheelSize: 0.9, wheelWidth: 1 });
@@ -139,7 +142,7 @@ describe('build validation', () => {
     expect(b!.visual.stance.rear.rideHeight).toBe(-0.03);
     expect(b!.visual.stance.front).toEqual({ rideHeight: -0.03, camber: -6, offset: 0.04, wheelSize: 1.15, wheelWidth: 1 });
     expect(b!.visual.stance.rear).toEqual({ rideHeight: -0.03, camber: -8.5, offset: 0.04, wheelSize: 1.15, wheelWidth: 1 });
-    expect(b!.visual.wheels).toEqual({ paint: { color: '#ffcc00', finish: 'metallic', match: false }, rearPaint: { color: '#ffcc00', finish: 'metallic', match: false }, rearPart: null, tire: 'standard', rearTire: 'standard' });
+    expect(b!.visual.wheels).toEqual({ paint: { color: '#ffcc00', finish: 'metallic', match: false }, rearPaint: { color: '#ffcc00', finish: 'metallic', match: false }, rearPart: null, tire: 'standard', rearTire: 'standard', lettering: false });
     // Its wheel id is from a retired car: kept as saved (the renderer falls back to a wheel the car offers).
     expect(b!.visual.parts.wheels).toBe('wheel_s64_2');
     // Saved with the retired component upgrades (engine tier 2): it starts on the stock setup.

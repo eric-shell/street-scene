@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { MATERIAL_NAMES, MaterialName } from '../../shared/parts';
 import type { AccentPaint, Paint, PaintFinish, VisualBuild } from '../../shared/carBuild';
 import { BRAKE, caliperLogoTexture, rotorTexture } from './brakes';
+import { TIRE_BUMP, acquireTireTexture, releaseTireTexture, tireShader } from './tireTread';
 
 /**
  * The shared runtime materials, plus the rear axle's own wheel material so front and rear wheel colors
@@ -72,7 +73,22 @@ function grilleTexture(pattern: GrillePattern): THREE.DataTexture {
   return tex;
 }
 
-export function createCarMaterials(envMap: THREE.Texture | null = null): CarMaterialSet {
+/**
+ * The tire's tread texture (tireTread.ts) on the material, plain or lettered: the same texture is its color
+ * (ink), bump and roughness. Changing variants swaps the texture only, so nothing recompiles. A tire made
+ * without a tread (low quality) stays plain rubber.
+ */
+export function setTireLettering(m: CarMaterialSet, lettering: boolean): void {
+  const tire = m.Tire as THREE.MeshStandardMaterial;
+  if (!tire.map || tire.userData.lettering === lettering) return;
+  tire.userData.lettering = lettering;
+  const tex = acquireTireTexture(lettering);
+  releaseTireTexture(tire.map);
+  tire.map = tire.bumpMap = tire.roughnessMap = tex;
+}
+
+/** `tread`: dress the tire in the tread texture (medium and up); low leaves it plain rubber. */
+export function createCarMaterials(envMap: THREE.Texture | null = null, tread = false): CarMaterialSet {
   const m = {} as CarMaterialSet;
   m.Paint = new THREE.MeshPhysicalMaterial({ name: 'Paint', color: 0xd11f3f, metalness: 0.7, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.05 });
   m.Trim = new THREE.MeshStandardMaterial({ name: 'Trim', color: 0x15161a, metalness: 0.3, roughness: 0.5 });
@@ -81,7 +97,16 @@ export function createCarMaterials(envMap: THREE.Texture | null = null): CarMate
   m.Glass = new THREE.MeshPhysicalMaterial({ name: 'Glass', color: 0x101820, metalness: 0, roughness: 0.04, transparent: true, opacity: 0.7, envMapIntensity: 1.4 });
   // Physical like the body so a wheel takes every paint finish (clearcoat, pearl, candy).
   m.Rim = new THREE.MeshPhysicalMaterial({ name: 'Rim', color: 0xc9ced8, metalness: 0.75, roughness: 0.32 });
-  m.Tire = new THREE.MeshStandardMaterial({ name: 'Tire', color: 0x141414, roughness: 0.92 });
+  // Both sides: where the arch clip cuts a tire, its inside shows as solid rubber, not a hole through to the wheel (tireShader).
+  m.Tire = new THREE.MeshStandardMaterial({ name: 'Tire', color: 0x141414, roughness: 0.92, side: THREE.DoubleSide });
+  m.Tire.onBeforeCompile = tireShader;
+  const treadTex = tread ? acquireTireTexture(false) : null;
+  if (treadTex) {
+    const tire = m.Tire as THREE.MeshStandardMaterial;
+    tire.map = tire.bumpMap = tire.roughnessMap = treadTex;
+    tire.bumpScale = TIRE_BUMP;
+    tire.userData.lettering = false;
+  }
   m.HeadLight = new THREE.MeshStandardMaterial({ name: 'HeadLight', color: 0xffffff, emissive: 0xeaf2ff, emissiveIntensity: 1.3 });
   m.TailLight = new THREE.MeshStandardMaterial({ name: 'TailLight', color: 0x330000, emissive: 0xff1a2a, emissiveIntensity: 1.4 });
   m.Light = new THREE.MeshStandardMaterial({ name: 'Light', color: 0x332200, emissive: 0xffa040, emissiveIntensity: 0.8 });
@@ -159,6 +184,7 @@ export function applyVisualToMaterials(m: CarMaterialSet, v: VisualBuild, brakin
   const glass = m.Glass as THREE.MeshPhysicalMaterial;
   glass.color.set(v.tint.color).lerp(new THREE.Color(0x8fa0b0), 1 - v.tint.darkness);
   glass.opacity = 0.35 + v.tint.darkness * 0.62;
+  setTireLettering(m, v.wheels.lettering === true);
   setBrake(m, braking);
 }
 
@@ -180,6 +206,7 @@ export function resolveMaterialName(name: string, map: Record<string, string> = 
 
 export function disposeCarMaterials(m: CarMaterialSet): void {
   (m.Grille as THREE.MeshStandardMaterial).map?.dispose();
+  releaseTireTexture((m.Tire as THREE.MeshStandardMaterial).map);
   for (const k of MATERIAL_NAMES) m[k].dispose();
   m.RimRear.dispose();
   (m.Rotor as THREE.MeshStandardMaterial).map?.dispose();
