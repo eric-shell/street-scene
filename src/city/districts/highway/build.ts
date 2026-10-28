@@ -31,6 +31,8 @@ import { circlePolygon, distToPolygonEdge, pointInPolygon, solidWalls } from '..
 import { riverCenter } from '../river';
 import { gridNode, streetChain } from '../subway';
 import { RAIL, projectOnCurve } from '../../railCurve';
+import { type Lip, lipSeries } from '../../roadProfile';
+import { ROAD } from '../../../sim/tuning';
 import { axisAt, axisPoint, projectAxis, rampHeight } from './rampAxis';
 import { BARRIER_IN, CLOSURE_GAP, GORE, HALF, HighwayDeck, MOUTH_TAPER, RAMP_WALL, barrierOpen, projectNear, deckExtent, deckPoint, highwayDeck, highwayRamp, laneRange, loopFootprint, medianGaps, mouthCut, rampFront, rampInnerSign, rampOuterAt, rampOutline, slipCut, vGoreAt, vStart } from './shape';
 import { SLIP_NOSE } from './rampPlan';
@@ -303,6 +305,8 @@ export function buildDeck(ctx: BuildContext, area: Area): AreaBuild {
   return b;
 }
 
+const lip: Lip = { h: 0, dh: 0 };
+
 /** One chunk of the deck between curve samples ka and kb: two levels, the deck's top linear along the chord. */
 function deckSpan(deck: HighwayDeck, polygon: Vec2[], c0: Vec2, c1: Vec2, ka: number, kb: number, area: number): DeckSpan {
   const lx = c1.x - c0.x;
@@ -311,10 +315,22 @@ function deckSpan(deck: HighwayDeck, polygon: Vec2[], c0: Vec2, c1: Vec2, ka: nu
   const ux = lx / len;
   const uz = lz / len;
   const top = deck.top;
+  // Expansion joints every road.jointSpacing along the deck's own axis, the first half a spacing in from its west end:
+  // the chunk's position along its chord, scaled to the arc the samples stand for.
+  const arc = (kb - ka) * RAIL.step;
+  const first = deck.sW + ROAD.jointSpacing / 2;
   return {
     polygon,
     area,
     depth: CFG.clearance + CFG.depth,
+    joint(x, z, out) {
+      const t = ((x - c0.x) * ux + (z - c0.z) * uz) / len;
+      lipSeries(ka * RAIL.step + t * arc, first, lip);
+      const k = (lip.dh * arc) / len;
+      out.h += lip.h;
+      out.gx += k * ux;
+      out.gz += k * uz;
+    },
     upper(x, z, out) {
       const y0 = top[ka];
       const y1 = top[kb];

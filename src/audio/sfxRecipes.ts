@@ -14,7 +14,7 @@ export type WallHitKind = 'wall' | 'barrier' | 'rail';
  * borrow the nearest material).
  */
 type PropSound = Exclude<PropKind, 'newsBox' | 'parkLamp' | 'bollard' | ConstructionPropKind | MarketPropKind | DockPropKind | 'mailbox' | 'parkingMeter' | 'phoneBooth' | 'vendingMachine'>;
-export type SfxBank = 'crash' | WallHitKind | PropSound | 'firework';
+export type SfxBank = 'crash' | WallHitKind | PropSound | 'firework' | 'thump';
 type Bank = SfxBank;
 export const PROP_SOUND: Record<PropKind, PropSound> = {
   streetlight: 'streetlight',
@@ -431,6 +431,18 @@ const RECIPES: Record<Bank, { seconds: number; make(t: Tape): void }> = {
       t.noise(0.04, 1.7, 0.55, 0.9, [['bp', rnd(1300, 1700), 0.45]], 0.06, 0.5);
       t.noise(0.04, 1.7, 0.3, 0.7, [['lp', 500, 0.7]], 0.08, 0.6);
       t.grains(0.1, 1.4, 40, 0.15, 2500, 6500, 1.5, 0.006);
+    },
+  },
+  // An axle over a speed hump or an expansion joint: the suspension's dull thump and a short rattle of the chassis. Played low for a joint, higher and softer for the second axle's.
+  thump: {
+    seconds: 0.4,
+    make(t) {
+      t.thud(0, rnd(78, 92), 42, 0.045, 0.85, 0.07);
+      t.noise(0, 0.1, 0.3, 0.035, [['lp', 420, 0.7]]);
+      t.modes(0, [
+        [rnd(150, 180), 0.12, 0.05],
+        [rnd(300, 360), 0.07, 0.03],
+      ]);
     },
   },
   // Trash bags: a soft thump, plastic rustle and a bottle or two.

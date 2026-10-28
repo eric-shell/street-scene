@@ -258,6 +258,12 @@ export interface DeckSpan {
   upper?(x: number, z: number, out: HeightSample): void;
   /** An `upper` span with nothing drivable beneath it: every body height drives the upper level. */
   solid?: boolean;
+  /**
+   * The deck's expansion joints (roadProfile.ts lipAt): add the lip's height and gradient at (x, z) into
+   * `out`. World.heightAt adds it to the deck level only (never the floor under a bridge); absent on spans
+   * with none (ramps, the sidewalk-level pieces).
+   */
+  joint?(x: number, z: number, out: HeightSample): void;
 }
 
 /** City frontage walls whose inside probe falls in `polygon` are drawn by this look instead. */

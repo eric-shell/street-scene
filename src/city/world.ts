@@ -14,6 +14,7 @@ import { findCircuitNodes, findDragNodes, findSprintNodes, findWaypointNodes } f
 import { Prop, buildPropGrid } from './props';
 import { SpatialGrid } from './spatial';
 import { Terrain, createTerrain } from './terrain';
+import { RoadProfile, createRoadProfile } from './roadProfile';
 import { Vec2, cos, distToSegment, segmentT, sin, sqrt } from '../sim/math';
 import { settleRiver } from './districts/river';
 import { CityDistricts, districtModule, planDistricts } from './districts';
@@ -44,6 +45,12 @@ export interface Contact {
   kind: Wall['kind'];
 }
 
+/** What World.roadBumpAt found: the feature's height (m) and its kind. */
+export interface RoadBump {
+  h: number;
+  kind: 'hump' | 'joint';
+}
+
 export interface RouteProgress {
   /** Distance along the route polyline. */
   s: number;
@@ -69,6 +76,10 @@ export interface City {
   routeNodes: Record<PlannedRouteKind, number[]>;
   /** The seed's named event (Hill Climb, River Run, ...; see events.ts), which the routes were picked to match. */
   event: CityEvent;
+  /** The road surface's crown and speed humps (roadProfile.ts), already folded into `terrain`. */
+  roadProfile: RoadProfile;
+  /** The drag strip's nodes, picked once the city is final (the humps keep off it); null when the city has no straight to race. */
+  dragNodes: number[] | null;
 }
 
 /**
@@ -198,6 +209,12 @@ export interface World extends City {
    */
   driveHeightAt(x: number, z: number, y?: number): number;
   slopeAt(x: number, z: number, y?: number): { gx: number; gz: number };
+  /**
+   * A speed hump or an expansion joint's lip under (x, z) for a body at height y: fills `out` with its height
+   * (m) and which kind it is, false off every one. The car reads it to tell the road's bumps (thumps) from
+   * kerbs and landings. Absent on hand-built test worlds.
+   */
+  roadBumpAt?(x: number, z: number, y: number, out: RoadBump): boolean;
   /** Surface under a point; `y` as for heightAt (the river's floor and trickle below a deck, the street on it). */
   surfaceAt(x: number, z: number, y?: number): Surface;
   /**
@@ -226,7 +243,10 @@ export interface World extends City {
 
 export function createCity(seed: number): City {
   const { graph, districts, routeNodes, event } = planRoads(seed);
-  const terrain = createTerrain(seed, districts.heightMods);
+  // Crown first, so the settled decks and walls below see the ground as it is; the humps wait for the final city.
+  const claimed = new Set<number>(districts.areas.flatMap((a) => a.edges));
+  const roadProfile = createRoadProfile(graph, claimed);
+  const terrain = createTerrain(seed, districts.heightMods.concat(roadProfile.mod));
   // The river's level walls (parapets, piers, abutments) take their heights from the finished terrain,
   // and so do the highway's deck, its ramps and their walls.
   settleRiver(graph, districts.areas, districts.builds, terrain);
@@ -237,7 +257,25 @@ export function createCity(seed: number): City {
   settleCarParks(districts.areas, districts.builds, terrain);
   settleAlleyLips(districts.areas, districts.builds, terrain);
   districts.finalize();
-  return { seed, graph, terrain, blocks, districts, routeNodes, event };
+  // Humps go on side streets no route drives: the circuit, the sprint and the drag strip (picked here, from the final city).
+  let dragNodes: number[] | null = null;
+  try {
+    dragNodes = findDragNodes(graph, seed, (e) => stripEdgeOk(graph, e, districts.areas, districts.areaAt));
+  } catch {
+    // A city with no straight to race has no drag strip (createRoute reports it when one is asked for).
+  }
+  const used = new Set<number>();
+  for (const [nodes, closed] of [[routeNodes.circuit, true], [routeNodes.sprint, false], [dragNodes ?? [], false]] as const) for (const e of routeEdges(graph, nodes, closed)) used.add(e);
+  roadProfile.placeHumps({
+    seed,
+    routeEdges: used,
+    claimed,
+    plainStreet(x, z) {
+      const a = districts.areaAt(x, z);
+      return a === null || a.kind === 'downtown';
+    },
+  });
+  return { seed, graph, terrain, blocks, districts, routeNodes, event, roadProfile, dragNodes };
 }
 
 /** Rails are planned around node centers; roundabouts get none (their ring has its own outer walls). */
@@ -522,7 +560,7 @@ function closureRails(groups: BarrierGroup[], cornerRails: RailWall[]): RailWall
  */
 export function createRoute(city: City, kind: RouteKind): Route {
   const g = city.graph;
-  if (kind === 'drag') return buildRoute(g, kind, findDragNodes(g, city.seed, (e) => stripEdgeOk(g, e, city.districts.areas, city.districts.areaAt)));
+  if (kind === 'drag') return buildRoute(g, kind, city.dragNodes ?? findDragNodes(g, city.seed, (e) => stripEdgeOk(g, e, city.districts.areas, city.districts.areaAt)));
   // The districts' race passes (DistrictModule.passes: across the monument plaza, say): every route driving through one takes it.
   const passes = city.districts.areas.flatMap((a) => districtModule(a.kind).passes?.(g, a) ?? []);
   if (kind === 'waypoint') {
@@ -785,26 +823,60 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     s.upper!(x, z, upperSample);
     return s.solid === true || 2 * y > h + upperSample.h;
   }
-  function lowerLevel(x: number, z: number, y: number | undefined, h: number): boolean {
-    if (y === undefined || !spans.length) return false;
-    const s = spanAt(x, z);
-    return s !== null && s.lower !== undefined && lowerOn(s, x, z, y, h);
+  const jointSample: HeightSample = { h: 0, gx: 0, gz: 0 };
+  /** The deck's joint lip at (x, z) into jointSample (zero without joints). */
+  function jointOf(s: DeckSpan, x: number, z: number): void {
+    jointSample.h = 0;
+    jointSample.gx = 0;
+    jointSample.gz = 0;
+    s.joint?.(x, z, jointSample);
   }
   function heightAt(x: number, z: number, y?: number): number {
     const h = terrain.heightAt(x, z);
     if (y === undefined || !spans.length) return h;
     const s = spanAt(x, z);
     if (s === null) return h;
-    if (s.lower) return lowerOn(s, x, z, y, h) ? h + levelSample.h : h;
-    return upperOn(s, x, z, y, h) ? upperSample.h : h;
+    if (s.lower) {
+      if (lowerOn(s, x, z, y, h)) return h + levelSample.h;
+      jointOf(s, x, z);
+      return h + jointSample.h;
+    }
+    if (!upperOn(s, x, z, y, h)) return h;
+    jointOf(s, x, z);
+    return upperSample.h + jointSample.h;
   }
   function slopeAt(x: number, z: number, y?: number): { gx: number; gz: number } {
     const s = terrain.slopeAt(x, z);
     if (y === undefined || !spans.length) return s;
     const sp = spanAt(x, z);
-    if (sp !== null && sp.upper) return upperOn(sp, x, z, y, terrain.heightAt(x, z)) ? { gx: upperSample.gx, gz: upperSample.gz } : s;
-    if (!lowerLevel(x, z, y, terrain.heightAt(x, z))) return s;
-    return { gx: s.gx + levelSample.gx, gz: s.gz + levelSample.gz };
+    const h = terrain.heightAt(x, z);
+    if (sp !== null && sp.upper) {
+      if (!upperOn(sp, x, z, y, h)) return s;
+      jointOf(sp, x, z);
+      return { gx: upperSample.gx + jointSample.gx, gz: upperSample.gz + jointSample.gz };
+    }
+    if (sp === null || sp.lower === undefined) return s;
+    if (lowerOn(sp, x, z, y, h)) return { gx: s.gx + levelSample.gx, gz: s.gz + levelSample.gz };
+    jointOf(sp, x, z);
+    return { gx: s.gx + jointSample.gx, gz: s.gz + jointSample.gz };
+  }
+  const humpSample: HeightSample = { h: 0, gx: 0, gz: 0 };
+  function roadBumpAt(x: number, z: number, y: number, out: RoadBump): boolean {
+    if (city.roadProfile.humpHeightAt(x, z, humpSample) > 0) {
+      out.h = humpSample.h;
+      out.kind = 'hump';
+      return true;
+    }
+    if (!spans.length) return false;
+    const s = spanAt(x, z);
+    if (s === null || !s.joint) return false;
+    const h = terrain.heightAt(x, z);
+    if (s.lower ? lowerOn(s, x, z, y, h) : !upperOn(s, x, z, y, h)) return false;
+    jointOf(s, x, z);
+    if (jointSample.h <= 0) return false;
+    out.h = jointSample.h;
+    out.kind = 'joint';
+    return true;
   }
   function twoLevels(x: number, z: number): boolean {
     if (!spans.length) return false;
@@ -925,10 +997,17 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     const h = terrain.heightAt(x, z);
     const found = spans.length ? spanAt(x, z) : null;
     // The highway's deck and ramps have no curbs (their barriers and walls stand on them).
-    if (found && found.upper && y !== undefined && upperOn(found, x, z, y, h)) return upperSample.h;
+    if (found && found.upper && y !== undefined && upperOn(found, x, z, y, h)) {
+      jointOf(found, x, z);
+      return upperSample.h + jointSample.h;
+    }
     const span = found && found.lower ? found : null;
     // The channel floor under a deck has no curbs: the deck's sidewalks are above it.
     if (span && y !== undefined && lowerOn(span, x, z, y, h)) return h + levelSample.h;
+    if (span && y !== undefined) {
+      jointOf(span, x, z);
+      return h + curbLift(x, z, span) + jointSample.h;
+    }
     return h + curbLift(x, z, span);
   }
 
@@ -998,6 +1077,7 @@ export function createWorld(seed: number, kind: RouteKind, city: City = createCi
     heightAt,
     driveHeightAt,
     slopeAt,
+    roadBumpAt,
     surfaceAt,
     twoLevels,
     upperLevel,

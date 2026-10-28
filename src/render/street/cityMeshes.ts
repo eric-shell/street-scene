@@ -8,9 +8,12 @@
 import * as THREE from 'three';
 import { CITY } from '../../city/config';
 import { World } from '../../city/world';
+import { type Hump, spreadJoints } from '../../city/roadProfile';
+import { bridgesOf } from '../../city/districts/river';
 import { isBendNode, isRiverEdge } from '../../city/roadGraph';
 import { groundHeight } from '../../city/districts/carPark';
 import { Vec2 } from '../../sim/math';
+import { ROAD } from '../../sim/tuning';
 import { GeoBuilder } from '../geoBuilder';
 import { OCCLUSION, bakeOcclusion, occlusionFor, occlusionMaterial } from './bakedOcclusion';
 import { buildFinishLines, FinishLines } from '../race/finishLine';
@@ -277,20 +280,42 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
   // 6 m; back alleys every 1 m so road and sidewalk follow their kicker humps). An edge passes one
   // step count (edgeSteps) to its road, both sidewalks and both curb faces, so they share vertices
   // along the curb lines and stay joined over crests and dips.
-  const strip = (gb: GeoBuilder, l0: Vec2, l1: Vec2, r0: Vec2, r1: Vec2, liftL: number, liftR: number, uvScale: number, step = 6, count?: number) => {
+  /** Union of two sorted stop lists (fractions across a row), stops closer than 1e-3 merged. */
+  const mergeStops = (a: number[], b: readonly number[]): number[] => {
+    const all = a.concat(b).sort((p, q) => p - q);
+    const out = [all[0]];
+    for (let i = 1; i < all.length; i++) if (all[i] - out[out.length - 1] > 1e-3) out.push(all[i]);
+    return out;
+  };
+  /** Extra rows and cross stops of a road strip that carries a crown or humps (see roadEdgeRows). */
+  interface StripRows {
+    /** Extra rows, as fractions (0..1) along the strip, on top of the even ones. */
+    stations: number[];
+    /** Cross stops of the row at fraction t, or undefined for the plain two. */
+    across(t: number): readonly number[] | undefined;
+  }
+  const strip = (gb: GeoBuilder, l0: Vec2, l1: Vec2, r0: Vec2, r1: Vec2, liftL: number, liftR: number, uvScale: number, step = 6, count?: number, extra?: StripRows) => {
     const len = Math.max(Math.hypot(l1.x - l0.x, l1.z - l0.z), Math.hypot(r1.x - r0.x, r1.z - r0.z));
     const steps = count ?? Math.max(1, Math.ceil(len / step));
     let prev: number[] = [];
     let prevT: number[] = [];
-    for (let i = 0; i <= steps; i++) {
-      const t = i / steps;
+    const rowsAt: number[] = [];
+    for (let i = 0; i <= steps; i++) rowsAt.push(i / steps);
+    if (extra) {
+      rowsAt.push(...extra.stations);
+      rowsAt.sort((p, q) => p - q);
+    }
+    for (let i = 0; i < rowsAt.length; i++) {
+      const t = rowsAt[i];
+      if (i > 0 && t - rowsAt[i - 1] < 1e-4) continue;
       const lx = l0.x + (l1.x - l0.x) * t;
       const lz = l0.z + (l1.z - l0.z) * t;
       const rx = r0.x + (r1.x - r0.x) * t;
       const rz = r0.z + (r1.z - r0.z) * t;
-      const ts = rowStops(lx, lz, rx, rz);
+      const cross = extra?.across(t);
+      const ts = cross ? mergeStops(rowStops(lx, lz, rx, rz), cross) : rowStops(lx, lz, rx, rz);
       const ids = ts.map((q) => (q === 0 ? addGroundVertex(gb, lx, lz, liftL, uvScale) : q === 1 ? addGroundVertex(gb, rx, rz, liftR, uvScale) : addGroundVertex(gb, lx + (rx - lx) * q, lz + (rz - lz) * q, liftL + (liftR - liftL) * q, uvScale)));
-      if (i > 0) zip(gb, prev, prevT, ids, ts);
+      if (prev.length) zip(gb, prev, prevT, ids, ts);
       prev = ids;
       prevT = ts;
     }
@@ -373,11 +398,43 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
       prevT = ts;
     }
   };
+  /**
+   * The rows a street's crown and speed humps need to show (roadProfile.ts): a crowned street gets cross stops at
+   * the quarter points, so its parabola drapes within a centimetre, and a hump gets a row every 0.6 m over its
+   * length with stops where its edges ease off, so its cosine drapes. Everything else keeps the plain strip.
+   */
+  const CROWN_ACROSS = [0, 0.25, 0.5, 0.75, 1];
+  const HUMP_ACROSS = [0, 0.1, 0.2, 0.35, 0.5, 0.65, 0.8, 0.9, 1];
+  const HUMP_ROW = 0.6;
+  const roadEdgeRows = (ei: number): StripRows | undefined => {
+    const crowned = world.roadProfile.hasCrown(ei);
+    const humps = world.roadProfile.humpsOn(ei);
+    if (!crowned && !humps.length) return undefined;
+    const e = g.edges[ei];
+    const m = mouths[ei];
+    const A = g.nodes[e.a];
+    const B = g.nodes[e.b];
+    const ux = (B.x - A.x) / e.length;
+    const uz = (B.z - A.z) / e.length;
+    const proj = (p: Vec2) => (p.x - A.x) * ux + (p.z - A.z) * uz;
+    const s0 = (proj(m.aP.curb) + proj(m.aN.curb)) / 2;
+    const s1 = (proj(m.bP.curb) + proj(m.bN.curb)) / 2;
+    const stations: number[] = [];
+    const rows = Math.round(ROAD.humpLength / HUMP_ROW / 2);
+    for (const hp of humps) {
+      for (let k = -rows; k <= rows; k++) {
+        const t = (hp.s + (k * ROAD.humpLength) / 2 / rows - s0) / (s1 - s0);
+        if (t > 0 && t < 1) stations.push(t);
+      }
+    }
+    const at = new Set(stations);
+    return { stations, across: (t) => (at.has(t) ? HUMP_ACROSS : crowned ? CROWN_ACROSS : undefined) };
+  };
   g.edges.forEach((e, ei) => {
     if (isRiverEdge(e)) return;
     const m = mouths[ei];
     if (cobbled(ei)) alignedStrip(cobble, m.aP.curb, m.bP.curb, m.aN.curb, m.bN.curb, ROAD_Y, COBBLE_TILE, edgeSteps(ei));
-    else strip(road, m.aP.curb, m.bP.curb, m.aN.curb, m.bN.curb, ROAD_Y, ROAD_Y, 10, 6, edgeSteps(ei));
+    else strip(road, m.aP.curb, m.bP.curb, m.aN.curb, m.bN.curb, ROAD_Y, ROAD_Y, 10, 6, edgeSteps(ei), roadEdgeRows(ei));
   });
   // Bus bays and path mouths (busBays.ts): asphalt where the curb steps back; their sidewalks and paint follow below.
   const bays = world.blocks.bays ?? [];
@@ -421,6 +478,9 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
   const marks = new GeoBuilder(true);
   const white = new THREE.Color(0xd8dce6);
   const yellow = new THREE.Color(0xf2b632);
+  /** The humps of the street being painted: paint across one is cut into short pieces so it rides over the bump instead of through it. */
+  let humpsNow: readonly Hump[] = [];
+  const HUMP_PIECE = 0.6;
   const addLine = (a: Vec2, b: Vec2, offset: number, width: number, dash: number, gap: number, color: THREE.Color) => {
     const len = Math.hypot(b.x - a.x, b.z - a.z);
     if (len < 1) return;
@@ -431,19 +491,74 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     const period = dash + gap;
     for (let s = gap > 0 ? gap / 2 : 0; s < len; s += gap > 0 ? period : 6) {
       const e = Math.min(len, s + (gap > 0 ? dash : 6));
-      const p0 = { x: a.x + dx * s + nx * offset, z: a.z + dz * s + nz * offset };
-      const p1 = { x: a.x + dx * e + nx * offset, z: a.z + dz * e + nz * offset };
-      const hw = width / 2;
-      const v = [
-        [p0.x + nx * hw, p0.z + nz * hw],
-        [p1.x + nx * hw, p1.z + nz * hw],
-        [p1.x - nx * hw, p1.z - nz * hw],
-        [p0.x - nx * hw, p0.z - nz * hw],
-      ].map(([x, z]) => {
-        const [qx, qy, qz] = normalAt(x, z);
-        return marks.vertex(x, h(x, z) + MARK_Y, z, qx, qy, qz, 0, 0, color);
-      });
-      marks.quadFacing(v[0], v[1], v[2], v[3], 0, 1, 0);
+      let pieces = 1;
+      for (const hp of humpsNow) {
+        const u0 = (a.x + dx * s - hp.x) * hp.ux + (a.z + dz * s - hp.z) * hp.uz;
+        const u1 = (a.x + dx * e - hp.x) * hp.ux + (a.z + dz * e - hp.z) * hp.uz;
+        if (Math.max(u0, u1) > -ROAD.humpLength / 2 - 0.3 && Math.min(u0, u1) < ROAD.humpLength / 2 + 0.3) pieces = Math.max(pieces, Math.ceil((e - s) / HUMP_PIECE));
+      }
+      for (let k = 0; k < pieces; k++) {
+        const sa = s + ((e - s) * k) / pieces;
+        const sb = s + ((e - s) * (k + 1)) / pieces;
+        const p0 = { x: a.x + dx * sa + nx * offset, z: a.z + dz * sa + nz * offset };
+        const p1 = { x: a.x + dx * sb + nx * offset, z: a.z + dz * sb + nz * offset };
+        const hw = width / 2;
+        const v = [
+          [p0.x + nx * hw, p0.z + nz * hw],
+          [p1.x + nx * hw, p1.z + nz * hw],
+          [p1.x - nx * hw, p1.z - nz * hw],
+          [p0.x - nx * hw, p0.z - nz * hw],
+        ].map(([x, z]) => {
+          const [qx, qy, qz] = normalAt(x, z);
+          return marks.vertex(x, h(x, z) + MARK_Y, z, qx, qy, qz, 0, 0, color);
+        });
+        marks.quadFacing(v[0], v[1], v[2], v[3], 0, 1, 0);
+      }
+    }
+  };
+  /**
+   * A speed hump's paint: a band of white chevrons on each flank, their points toward the driver coming at
+   * that flank (the markings a hump wears), `across` m apart over the lanes. Each arm is a short slanted
+   * strip draped on the hump.
+   */
+  const CHEVRON = { arm: 0.62, back: 0.34, width: 0.2, across: 2.6, flank: 1.15 } as const;
+  const addChevrons = (cx: number, cz: number, ux: number, uz: number, half: number) => {
+    const nx = -uz;
+    const nz = ux;
+    const count = Math.max(1, Math.floor((half * 1.2) / CHEVRON.across) + 1);
+    for (const dir of [-1, 1]) {
+      // dir -1: the flank a driver coming along +u meets first; its chevrons point back toward that driver.
+      for (let k = 0; k < count; k++) {
+        const v = (k - (count - 1) / 2) * CHEVRON.across;
+        const ax = cx + ux * dir * CHEVRON.flank + nx * v;
+        const az = cz + uz * dir * CHEVRON.flank + nz * v;
+        // The point, and the two tails behind it (away from the driver the chevron faces).
+        const px = ax + ux * dir * CHEVRON.back * 0.5;
+        const pz = az + uz * dir * CHEVRON.back * 0.5;
+        for (const side of [-1, 1]) {
+          const tx = ax - ux * dir * CHEVRON.back * 0.5 + nx * side * CHEVRON.arm;
+          const tz = az - uz * dir * CHEVRON.back * 0.5 + nz * side * CHEVRON.arm;
+          // The arm's thickness runs perpendicular to it.
+          const lx = px - tx;
+          const lz = pz - tz;
+          const ll = Math.hypot(lx, lz) || 1;
+          const wx = (-lz / ll) * (CHEVRON.width / 2);
+          const wz = (lx / ll) * (CHEVRON.width / 2);
+          const n = 3;
+          let prev: number[] | null = null;
+          for (let i = 0; i <= n; i++) {
+            const f = i / n;
+            const x = tx + lx * f;
+            const z = tz + lz * f;
+            const row = [[x + wx, z + wz], [x - wx, z - wz]].map(([qx, qz]) => {
+              const [a, b, c] = normalAt(qx, qz);
+              return marks.vertex(qx, h(qx, qz) + MARK_Y, qz, a, b, c, 0, 0, white);
+            });
+            if (prev) marks.quadFacing(prev[0], row[0], row[1], prev[1], 0, 1, 0);
+            prev = row;
+          }
+        }
+      }
     }
   };
   g.edges.forEach((e, ei) => {
@@ -464,6 +579,7 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
     const a2 = { x: a.x + dx * clearA, z: a.z + dz * clearA };
     const b2 = { x: b.x - dx * clearB, z: b.z - dz * clearB };
     const half = e.width / 2;
+    humpsNow = world.roadProfile.humpsOn(ei);
     if (e.lanes === 2) {
       addLine(a2, b2, 0, 0.16, 3, 5, white);
     } else {
@@ -497,6 +613,33 @@ export function buildCityMeshes(world: World, opts: CityMeshOptions = {}): CityM
       }
     }
   });
+  humpsNow = [];
+  // A bridge deck's expansion joints (the sim's lips, DeckSpan.joint): a dark strip across the roadway on each abutment line and between.
+  const jointDark = new THREE.Color(0x0c0c0f);
+  for (const a of world.areas) {
+    if (a.kind !== 'river') continue;
+    for (const br of bridgesOf(g, a)) {
+      const half = g.edges[br.edge].width / 2;
+      const nx = -br.dz;
+      const nz = br.dx;
+      for (const sj of spreadJoints(-a.params.top, a.params.top)) {
+        const cx = br.cx + br.dx * sj;
+        const cz = br.cz + br.dz * sj;
+        const w = 0.15;
+        const v = [
+          [cx + br.dx * w + nx * half, cz + br.dz * w + nz * half],
+          [cx + br.dx * w - nx * half, cz + br.dz * w - nz * half],
+          [cx - br.dx * w - nx * half, cz - br.dz * w - nz * half],
+          [cx - br.dx * w + nx * half, cz - br.dz * w + nz * half],
+        ].map(([x, z]) => {
+          const [qx, qy, qz] = normalAt(x, z);
+          return marks.vertex(x, h(x, z) + MARK_Y + 0.004, z, qx, qy, qz, 0, 0, jointDark);
+        });
+        marks.quadFacing(v[0], v[1], v[2], v[3], 0, 1, 0);
+      }
+    }
+  }
+  for (const hp of world.roadProfile.humps) addChevrons(hp.x, hp.z, hp.ux, hp.uz, hp.half);
   for (const bay of bays) drawBayPaint(bay, marks, bayDraw);
   bakeOcclusion(marks, occ);
   const markMat = track(occlusionMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, emissive: 0x15161a }), true));

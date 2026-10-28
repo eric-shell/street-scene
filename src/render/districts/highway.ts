@@ -70,6 +70,7 @@ import { axisAt, axisPoint, rampHeight } from '../../city/districts/highway/ramp
 import { clipConvex } from '../../city/districts/geom';
 import { RAIL, RailCurve, curvePoint, projectOnCurve, sampleCurve } from '../../city/railCurve';
 import { Rng } from '../../sim/prng';
+import { ROAD } from '../../sim/tuning';
 import type { Vec2 } from '../../sim/math';
 import type { Cell } from './structureFx';
 import { CLOSED_CELL, END_CELL, EXIT_CELL, GANTRY_SLOTS, RAMP_CELL, WRONG_WAY_CELL, beam, frameBox, gantryCell, makeStructureSigns, signGantry, signPanel } from './structureFx';
@@ -94,6 +95,8 @@ const HW = {
   barrierH: 1.0,
   medianH: 0.9,
   vBarrierW: 0.5,
+  /** An expansion joint's dark strip across the deck: its width along the deck (m). */
+  jointStrip: 0.3,
   /** Lane lines: width (m), the dashes' length and period (m). */
   line: 0.15,
   dash: 3,
@@ -175,6 +178,8 @@ const C = {
   grass: col(0x1d3a22),
   alley: col(0x2e2e33),
   alleyLine: col(0xd8dce6, 0.7),
+  /** An expansion joint's strip across the deck. */
+  joint: col(0x0c0c0f),
 } as const;
 
 const LAMP = {
@@ -597,6 +602,11 @@ function deck(kit: DistrictKit, area: Area, d: HighwayDeck, signs: GeoBuilder, w
       }
       if (extent(d, s + HW.dash / 2, sd) > HALF + 0.5) line(s, e, sd * outerLine, sd * outerLine, C.white);
     }
+  }
+  // Expansion joints: a dark strip across the whole deck every road.jointSpacing, the first half a spacing in from the
+  // west end, where the sim lifts a 2 cm lip (DeckSpan.joint, city/roadProfile.ts). Over the lane paint.
+  for (let s = d.sW + ROAD.jointSpacing / 2; s < d.sE; s += ROAD.jointSpacing) {
+    band(paint, c, s - HW.jointStrip / 2, s + HW.jointStrip / 2, -extent(d, s, -1), extent(d, s, 1), top(s) + 0.026, top(s) + 0.026, C.joint);
   }
   // Along a slip ramp's lane, a solid edge line inside its wall: at full width from the ramp's top, then
   // easing in over the taper to meet the deck's outer edge line where the lane ends.

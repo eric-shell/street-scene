@@ -68,6 +68,7 @@ import { polyWalls, smooth01, type Smooth, solidWalls } from './geom';
 import { type FeatureSample, featureHeight, featureSpan, featuresOf, medianBarrierXs } from './riverFeatures';
 import { riverCenter, riverL, riverSlope } from './river/centerline';
 import { type Ramp, footAlongs, mouthAlongs, rampAlong, rampHalf, rampOuter, rampPoint, rampProfile, rampsOf } from './river/ramps';
+import { type Lip, lipSpread } from '../roadProfile';
 import { bridgePoint, bridgesOf, deckBox, deckLine, distToBridge, pierOffsets } from './river/bridges';
 import { planRiver } from './river/plan';
 
@@ -104,6 +105,7 @@ export const riverModule: DistrictModule = {
     const features = featuresOf(p);
     const spans = features.map((f) => featureSpan(f, F));
     const feat: FeatureSample = { h: 0, hx: 0, hl: 0 };
+    const lip: Lip = { h: 0, dh: 0 };
     const zc = (x: number) => riverCenter(p, x);
     const at = (x: number, l: number): Vec2 => ({ x, z: zc(x) + l });
     const band = (xa: number, xb: number, la: number, lb: number, step = 16): Vec2[] => {
@@ -219,6 +221,13 @@ export const riverModule: DistrictModule = {
         polygon: deckBox(p, br, br.dk + body + 0.3, -(T + DECK_END + 0.5), T + DECK_END + 0.5),
         area: id,
         depth: D,
+        // Joints on both abutment lines and between, along the bridge's axis from the channel's centre.
+        joint(x, z, out) {
+          lipSpread((x - br.cx) * br.dx + (z - br.cz) * br.dz, -T, T, lip);
+          out.h += lip.h;
+          out.gx += lip.dh * br.dx;
+          out.gz += lip.dh * br.dz;
+        },
         lower(x, z, out) {
           scratch.h = 0;
           scratch.gx = 0;

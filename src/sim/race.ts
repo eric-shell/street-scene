@@ -178,14 +178,15 @@ const WALL_EVENT_SPEED = 3;
  * 'wall': value = impact speed (m/s), kind = wall kind hit.
  * A 'crash' with `traffic` set hit that traffic car (r.traffic.cars index); car is -1 when traffic hit traffic.
  * 'driftBank': value = points banked, other = of those, the drift zone bonus (when there was one).
+ * 'thump': an axle went over a speed hump or an expansion joint: value = how fast the wheel compressed (m/s), other = the axle (0 front, 1 rear), kind = what it was.
  */
 export type RaceEvent = {
   tick: number;
-  type: 'lap' | 'checkpoint' | 'finish' | 'wrongWay' | 'reset' | 'driftBank' | 'prop' | 'arm' | 'crash' | 'wall';
+  type: 'lap' | 'checkpoint' | 'finish' | 'wrongWay' | 'reset' | 'driftBank' | 'prop' | 'arm' | 'crash' | 'wall' | 'thump';
   car: number;
   value?: number;
   other?: number;
-  kind?: 'wall' | 'barrier' | 'rail';
+  kind?: 'wall' | 'barrier' | 'rail' | 'hump' | 'joint';
   traffic?: number;
 };
 
@@ -602,6 +603,9 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
     if (inp.reset && rc.resetCooldown <= 0) resetToRoad(r, rc);
     stepEnv.world = r.world;
     stepCar(rc.state, rc.tuning, inp, stepEnv);
+    for (let a = 0; a < 2; a++) {
+      if (rc.state.thump[a] > 0) r.events.push({ tick: r.tick, type: 'thump', car: rc.index, other: a, value: rc.state.thump[a], kind: rc.state.thumpKind[a] === 1 ? 'hump' : 'joint' });
+    }
   }
   const hit: WorldHit = { speed: 0, kind: 'wall' };
   for (const rc of r.cars) {

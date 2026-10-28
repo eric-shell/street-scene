@@ -1740,3 +1740,28 @@ export const PLAZA = {
    */
   monument: { inset: 4.4, lane: 2.4, clear: 1.8, ring: 3, groups: [2, 4], groupRing: 4 },
 } as const;
+
+/**
+ * Road physics layout (roadProfile.ts): which streets get a crown and where the humps and joints go. The shape
+ * numbers (cross slopes, hump and lip sizes, spacing) are drivingParams.json `road`.
+ */
+export const ROAD_PHYSICS = {
+  crown: {
+    /** Past a junction's reach (its widest road's half width plus this, m) the crown starts to rise. */
+    junctionMargin: 3,
+    /** ...and reaches full height this far on along the street (m): a smoothstep, so the fan stays flat and the crown eases in. */
+    junctionRamp: 14,
+    /** Streets shorter than this (m) stay flat: nothing is left of the crown between two fades. */
+    minLength: 30,
+  },
+  hump: {
+    /** Share of the eligible side street blocks that carry humps, drawn per edge from the seeded stream. */
+    share: 0.5,
+    /** Spacing of humps along a street (m), each block drawing its own between these. */
+    gap: [60, 120],
+    /** A hump keeps this far (m) clear of a junction's reach beyond its own half length, so cars are over it before the turn and the route barriers' ties are clear. */
+    junctionClear: 9,
+    /** Streets shorter than this (m) are too short for one between their junctions. */
+    minLength: 46,
+  },
+} as const;
