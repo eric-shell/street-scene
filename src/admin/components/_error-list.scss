@@ -49,7 +49,8 @@
     color: var(--red);
     background: #{palette.alpha(red, 0.12)};
     &--webgl,
-    &--context_lost {
+    &--context_lost,
+    &--bad_frame {
       color: var(--accent);
       background: var(--accent-soft);
     }

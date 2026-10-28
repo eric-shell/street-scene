@@ -387,13 +387,14 @@ export class ChaseCamera {
 
   /** Heavy shake: a crash into a wall, rail or car, or a sudden stop. amount 0..1 trauma (takes the larger, plus a little). */
   crash(amount: number): void {
-    if (amount <= 0) return;
+    // Written so NaN is refused too: trauma never decays out of NaN, and the camera would stay NaN for the race.
+    if (!(amount > 0)) return;
     this.heavy = Math.min(1, Math.max(this.heavy, amount) + amount * 0.15);
   }
 
   /** Light shake: knocking over street furniture. */
   knock(amount: number): void {
-    if (amount <= 0) return;
+    if (!(amount > 0)) return;
     this.light = Math.min(1, Math.max(this.light, amount) + amount * 0.2);
   }
 

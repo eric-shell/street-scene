@@ -25,7 +25,7 @@
  * stage runs it harder and turns the edge glow from cold blue through violet
  * to hot pink, the HUD bar's stage colors. NITRO_FX holds the numbers.
  *
- * Heat haze (setHaze, `uHaze`): up to six screen space blobs behind the nearest hot exhausts and over hot brakes bend the picture
+ * Heat haze (setHaze, `uHaze`): up to four screen space blobs behind the nearest hot exhausts bend the picture
  * with two sines drifting up the blob, so the air reads as rising. exhaustFx.ts projects the tips and fills
  * `hazeBlobs` (x, y screen UV, radius in screen heights, strength); with no blob (`uHazeN` 0) the pass skips it.
  *
@@ -37,6 +37,15 @@
  * that extraction with a prefilter that covers the whole footprint, weights
  * taps with a Karis average, clamps fireflies, drops NaN/Inf and uses a soft
  * knee, and keeps the bloom mip chain at exact halvings.
+ *
+ * NaN containment (FINITE_GLSL): one NaN pixel from any scene shader used to
+ * reach the bloom on Macs, because ANGLE's Metal backend may compile isnan()
+ * and isinf() with fast math and fold them to false. The blur spread it to
+ * every mip, the composite made the whole frame NaN, and the canvas (three.js
+ * always asks for an alpha channel) went see-through to the page behind it. The
+ * prefilter and every FX tap now test the bits, which no optimiser can fold, so
+ * a bad pixel stays a black pixel; the FX pass writes alpha 1 so the canvas is
+ * opaque whatever reaches it. frameWatch.ts finds where a NaN came from.
  */
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -91,6 +100,16 @@ export const POST_LENS: Record<Quality, { layers: number; strength: number }> = 
   medium: { layers: 2, strength: 1 },
   high: { layers: 2, strength: 1 },
 };
+
+/**
+ * NaN or Inf by the float's bits (exponent all ones): the test fast math cannot drop (see the header). `scrubRgb`
+ * turns a bad colour black. GLSL ES 3.00, which three.js compiles every shader as on WebGL2.
+ */
+export const FINITE_GLSL = /* glsl */ `
+  bool badRgb(vec3 c) { return any(greaterThanEqual(floatBitsToUint(c) & uvec3(0x7fffffffu), uvec3(0x7f800000u))); }
+  bool badRgba(vec4 c) { return any(greaterThanEqual(floatBitsToUint(c) & uvec4(0x7fffffffu), uvec4(0x7f800000u))); }
+  vec3 scrubRgb(vec3 c) { return badRgb(c) ? vec3(0.0) : c; }
+`;
 
 /** Lens droplet look: grid cells across the screen per layer, UV refraction scale (about 0.01 of the frame at the biggest drop's rim) and rim brightness. */
 const LENS = {
@@ -174,7 +193,7 @@ const FxShader = {
     lensTime: { value: 0 },
     lensAspect: { value: 16 / 9 },
     lensLayers: { value: 2 },
-    uHaze: { value: Array.from({ length: 6 }, () => new THREE.Vector4()) },
+    uHaze: { value: [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()] },
     uHazeN: { value: 0 },
     uHazeTime: { value: 0 },
   },
@@ -213,11 +232,12 @@ const FxShader = {
     uniform float lensTime;
     uniform float lensAspect;
     uniform int lensLayers;
-    uniform vec4 uHaze[6];
+    uniform vec4 uHaze[4];
     uniform int uHazeN;
     uniform float uHazeTime;
     varying vec2 vUv;
     const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
+    ${FINITE_GLSL}
     float hash21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
     // One grid of lens drops: xy the UV refraction, z the rim. A cell holds at most one drop; it is born at a seeded
     // phase, slides down the cell as its clock runs, and the cycle's hash against lensRain decides whether it shows.
@@ -273,7 +293,7 @@ const FxShader = {
       if (uHazeN > 0) {
         // Heat haze behind the near exhausts: x, y the blob's centre, z its radius in screen heights, w how far it bends the picture.
         // The shimmer is a pair of sines drifting up the blob, so the air reads as rising.
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < 4; i++) {
           if (i >= uHazeN) break;
           vec4 h = uHaze[i];
           vec2 d = (vUv - h.xy) * vec2(lensAspect, 1.0) / h.z;
@@ -286,7 +306,7 @@ const FxShader = {
           }
         }
       }
-      vec4 c = texture2D(tDiffuse, uv);
+      vec4 c = vec4(scrubRgb(texture2D(tDiffuse, uv).rgb), 1.0);
       float zoom = blur * (1.0 + blurEdge * warp * m);
       if (zoom > 0.001) {
         // Zoom blur from the vanishing point: zero in the middle, growing
@@ -299,23 +319,23 @@ const FxShader = {
         // The centre of the frame (w ~ 0) has nothing to streak: skip the taps there.
         if (w >= 0.02) {
           float jit = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) / float(uTaps);
-          vec4 acc = c;
+          vec3 acc = c.rgb;
           float total = 1.0;
           for (int i = 1; i < 12; i++) {
             if (i > uTaps) break;
             float k = (float(i) - jit) / float(uTaps);
             float wt = 1.0 - k * 0.5;
-            acc += texture2D(tDiffuse, uv - dir * zoom * w * k * 0.16) * wt;
+            acc += scrubRgb(texture2D(tDiffuse, uv - dir * zoom * w * k * 0.16).rgb) * wt;
             total += wt;
           }
-          c = acc / total;
+          c.rgb = acc / total;
         }
       }
       if (m > 0.0) {
         // Colour fringes split along the stretch.
         vec2 f = dir0 * fringe * warp * m;
-        c.r = mix(c.r, texture2D(tDiffuse, uv + f).r, m);
-        c.b = mix(c.b, texture2D(tDiffuse, uv - f).b, m);
+        c.r = mix(c.r, scrubRgb(texture2D(tDiffuse, uv + f).rgb).r, m);
+        c.b = mix(c.b, scrubRgb(texture2D(tDiffuse, uv - f).rgb).b, m);
         float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
         // Saturation and contrast ramp in from the middle 50% to the edges only.
         c.rgb = max(vec3(0.0), mix(vec3(l), c.rgb, 1.0 + (saturation - 1.0) * warp * m));
@@ -342,7 +362,8 @@ const FxShader = {
       c.rgb = g;
       vec2 q = vUv - 0.5;
       float v = 1.0 - vignette * smoothstep(0.25, 0.85, length(q * vec2(1.1, 1.0)) * 1.25);
-      gl_FragColor = vec4(c.rgb * v, c.a);
+      // Opaque whatever the scene's alpha did: the canvas has an alpha channel, and below 1 the page shows through.
+      gl_FragColor = vec4(c.rgb * v, 1.0);
     }
   `,
 };
@@ -390,6 +411,7 @@ const PrefilterShader = {
     uniform float knee;
     uniform float maxLuma;
     varying vec2 vUv;
+    ${FINITE_GLSL}
     void main() {
       vec3 acc = vec3(0.0);
       float wsum = 0.0;
@@ -403,8 +425,8 @@ const PrefilterShader = {
           vec2 o = (vec2(float(x), float(y)) + 0.5) * stepTx - footprint * 0.5;
           vec3 c = texture2D(tDiffuse, vUv + o * srcTexel).rgb;
           float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-          // NaN / Inf from any shader would smear across the whole blur.
-          if (isnan(l) || isinf(l) || l > 6.0e4) { c = vec3(0.0); l = 0.0; }
+          // NaN / Inf from any shader would smear across the whole blur (by the bits: isnan can be folded away).
+          if (badRgb(c) || l > 6.0e4) { c = vec3(0.0); l = 0.0; }
           c = max(c, vec3(0.0));
           l = max(l, 0.0);
           if (l > maxLuma) { c *= maxLuma / l; l = maxLuma; }
@@ -625,7 +647,7 @@ export class PostFx {
   }
 
   setSpeedBlur(amount: number): void {
-    this.fx.uniforms.blur.value = amount;
+    this.fx.uniforms.blur.value = Number.isFinite(amount) ? amount : 0;
   }
 
   /**
@@ -633,12 +655,13 @@ export class PostFx {
    * ripple runs on, and the stage 1..3 whose edge glow it takes (fractions blend; both eased by the caller).
    */
   setNitroFx(amount: number, time: number, stage = 1): void {
-    const a = Math.max(0, Math.min(NITRO_FX.stageWarp[2], amount));
+    // A NaN here would reach the bloom's strength, and through its composite every pixel: no warp instead.
+    const a = Number.isFinite(amount) ? Math.max(0, Math.min(NITRO_FX.stageWarp[2], amount)) : 0;
     this.nitro = a;
     const u = this.fx.uniforms;
     u.warp.value = a;
-    u.time.value = time;
-    const s = Math.max(0, Math.min(2, stage - 1));
+    u.time.value = Number.isFinite(time) ? time : 0;
+    const s = Number.isFinite(stage) ? Math.max(0, Math.min(2, stage - 1)) : 0;
     const i = Math.min(1, Math.floor(s));
     const lo = NITRO_FX.stageTint[i];
     const hi = NITRO_FX.stageTint[i + 1];

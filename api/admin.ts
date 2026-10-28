@@ -48,7 +48,7 @@ function iso(v: unknown): string {
   return Number.isNaN(d.valueOf()) ? new Date(0).toISOString() : d.toISOString();
 }
 
-const ERROR_KINDS: readonly ErrorRow['kind'][] = ['error', 'rejection', 'webgl', 'context_lost'];
+const ERROR_KINDS: readonly ErrorRow['kind'][] = ['error', 'rejection', 'webgl', 'context_lost', 'bad_frame'];
 const asErrorKind = (v: unknown): ErrorRow['kind'] => (ERROR_KINDS.includes(v as ErrorRow['kind']) ? (v as ErrorRow['kind']) : 'error');
 
 type Tier = 'low' | 'medium' | 'high';

@@ -31,7 +31,7 @@ export function ErrorList({ rows }: { rows: ErrorRow[] }) {
                 {formatLastSeen(r.lastSeen)}
               </span>
             </summary>
-            {r.stack ? <pre className="error-list__stack">{r.stack}</pre> : <p className="error-list__stack">No stack: {r.kind === 'webgl' || r.kind === 'context_lost' ? 'a browser report, not a thrown error' : 'the error carried none'}.</p>}
+            {r.stack ? <pre className="error-list__stack">{r.stack}</pre> : <p className="error-list__stack">No stack: {r.kind === 'webgl' || r.kind === 'context_lost' || r.kind === 'bad_frame' ? 'a browser report, not a thrown error' : 'the error carried none'}.</p>}
           </details>
         </li>
       ))}

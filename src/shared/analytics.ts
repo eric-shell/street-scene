@@ -120,10 +120,11 @@ export interface RaceShareMeta {
 
 /**
  * Something broke in the player's browser: an uncaught error or rejection (analytics/errors.ts), no WebGL at boot,
- * or the GPU dropping the context mid game. A handful per page at most, each message once.
+ * the GPU dropping the context mid game, or a frame the GPU spoiled (NaN pixels, see-through; render/frameWatch.ts).
+ * A handful per page at most, each message once.
  */
 export interface ErrorMeta {
-  kind: 'error' | 'rejection' | 'webgl' | 'context_lost';
+  kind: 'error' | 'rejection' | 'webgl' | 'context_lost' | 'bad_frame';
   /** The error's message, cut to 300 characters. */
   message: string;
   /** The top few stack frames with the page's origin stripped, cut to 600 characters. */

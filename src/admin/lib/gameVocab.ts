@@ -50,7 +50,7 @@ export function carName(id: string): string {
 }
 
 /** What broke, as the timeline and the Errors card name it (shared/analytics.ts ErrorMeta). */
-export const ERROR_KIND: Record<ErrorMeta['kind'], string> = { error: 'Error', rejection: 'Unhandled rejection', webgl: 'No WebGL', context_lost: 'Graphics reset' };
+export const ERROR_KIND: Record<ErrorMeta['kind'], string> = { error: 'Error', rejection: 'Unhandled rejection', webgl: 'No WebGL', context_lost: 'Graphics reset', bad_frame: 'Bad frame' };
 
 export type Tier = 'low' | 'medium' | 'high';
 export const TIERS: readonly Tier[] = ['low', 'medium', 'high'];

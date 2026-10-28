@@ -244,6 +244,8 @@ export class RaceSession {
   private glassShards: GlassShards;
   /** Upshift, overrun and nitrous flames at the tailpipes and the heat haze behind them (render/car/exhaustFx.ts). */
   private exhaust: ExhaustFx;
+  /** Each car's redline (rpm), for the haze's engine load. */
+  private readonly redlines: number[];
   /** Rubber on the road and tire smoke for every car losing traction (render/car/tireFx.ts). */
   private tireFx: TireFx;
   /** Paper, leaves and cups lifted by the cars' wake (render/car/litter.ts). */
@@ -382,6 +384,7 @@ export class RaceSession {
     });
     this.exhaust = new ExhaustFx(settings.quality, this.views);
     this.night.scene.add(this.exhaust.mesh);
+    this.redlines = this.race.cars.map((c) => c.tuning.engine.redline);
     this.drivers = new Drivers(this.race.cars.length);
     this.night.scene.add(this.drivers.group);
     if (opts.ghost) {
@@ -444,6 +447,27 @@ export class RaceSession {
     );
     // A mouse drag orbits the follow camera around the car at any time (touch keeps its steering).
     this.unsub.push(bindOrbitDrag(gr.canvas, this.cam, () => !!this.drone || (this.isReplay && this.replayCam === 'free')));
+    // A spoiled frame's report says what the race was doing (render/frameWatch.ts).
+    const context = () => {
+      const r = this.race;
+      const c = r.cars[0].state;
+      const cam = this.lastCamera ?? this.cam.camera;
+      return {
+        screen: this.openWorld ? 'free roam' : this.isReplay ? 'replay' : 'race',
+        seed: r.world.seed,
+        tick: r.tick,
+        cars: r.cars.length,
+        view: this.drone ? 'drone' : this.isReplay ? this.replayCam : (this.liveView ?? 'chase'),
+        cinematic: this.cine.active,
+        player: { x: +c.x.toFixed(1), z: +c.z.toFixed(1), mps: +c.speed.toFixed(1), nitroStage: c.nitroStage },
+        camera: cam.position.toArray().map((v) => +v.toFixed(2)),
+        fov: cam.fov,
+      };
+    };
+    gr.watch.context = context;
+    this.unsub.push(() => {
+      if (gr.watch.context === context) gr.watch.context = null;
+    });
     input.setTouchVisible(!this.isReplay);
     this.cineOn = !this.isReplay && opts.cinematics !== false;
     if (hand) {
@@ -976,7 +1000,7 @@ export class RaceSession {
       camera = this.drone.camera;
     } else camera = this.updateCamera(p, dt);
     this.lastCamera = camera;
-    this.exhaust.haze(this.gr.post, camera, poses, this.time, dt, this.paused);
+    this.exhaust.haze(this.gr.post, camera, poses, this.redlines, this.time, dt, this.paused);
     this.trails.update(this.views[0].root, camera, this.paused ? 0 : p.nitroStage, dt);
     this.carLight?.follow(p);
     // The few real point lights follow the action, or the drone when it flies off.

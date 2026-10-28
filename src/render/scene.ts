@@ -13,6 +13,7 @@ import { fitLampPositions, LAMP_TONES, planLamps, toneColor } from './street/lam
 import { fadeSubPixel } from './materialFx';
 import { NightLighting } from './lighting';
 import { NEUTRAL_GRADE, POST_GRAIN, POST_LENS, POST_TAPS, PostFx, type GradeParams } from './post';
+import { FrameWatch } from './frameWatch';
 import { cityIdentity } from './cityIdentity';
 import { makeNightEnvironment } from './textures/textures';
 import { buildRouteArrows, classifyBarriers, RouteArrows } from './race/routeArrows';
@@ -67,6 +68,8 @@ const sceneGrades = new WeakMap<THREE.Scene, GradeParams>();
 export class GameRenderer {
   readonly renderer: THREE.WebGLRenderer;
   readonly post: PostFx;
+  /** Spoiled frame detection (NaN, see-through): `window.__nr.gr.watch.reports`, `.hunt()`. */
+  readonly watch: FrameWatch;
   readonly envMap: THREE.Texture;
   private settings: Settings;
   private width = 1;
@@ -94,6 +97,7 @@ export class GameRenderer {
     envTex.dispose();
     pmrem.dispose();
     this.post = new PostFx(this.renderer, this.placeholderScene, this.placeholderCam);
+    this.watch = new FrameWatch(this.renderer, this.post.composer, { scene: this.post.renderPass, bloom: this.post.bloom, fx: this.post.fx }, () => this.post.bloom.strength);
     window.addEventListener('resize', () => this.resize());
     this.applySettings(settings);
   }
@@ -153,7 +157,8 @@ export class GameRenderer {
 
   /** Tone mapping exposure for the next render (the zone adaptation, render/exposure.ts). */
   setExposure(v: number): void {
-    this.renderer.toneMappingExposure = v;
+    // NaN exposure blacks the whole frame in the output pass.
+    if (Number.isFinite(v)) this.renderer.toneMappingExposure = v;
   }
 
   render(scene: THREE.Scene, camera: THREE.PerspectiveCamera, dt: number): void {
@@ -173,6 +178,7 @@ export class GameRenderer {
       this.post.setGrade(sceneGrades.get(scene) ?? NEUTRAL_GRADE);
     }
     this.post.setScene(scene, camera);
+    this.watch.frame(scene, camera, dt);
     this.post.render(dt);
   }
 }
