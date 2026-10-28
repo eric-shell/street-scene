@@ -8,6 +8,8 @@ import { cos, distToSegment, segmentT, sin } from '../src/sim/math';
 import type { Area } from '../src/city/districts/types';
 import { WALL_LOOKS } from '../src/city/districts/types';
 import { insideBuilding } from '../src/city/blocks';
+import { PROP_DEFS } from '../src/city/props';
+import { isRiverEdge } from '../src/city/roadGraph';
 import { pointInPolygon } from '../src/city/districts/geom';
 import { coastV, frameU, frameV, harborFrame, harborWater, waterLevel, waterSpan } from '../src/city/districts/waterfrontShape';
 import * as THREE from 'three';
@@ -1128,6 +1130,73 @@ describe('waterfront (beach)', () => {
       expect(ghosts.slice(0, 5), `${city.seed} drawn but drivable through`).toEqual([]);
     }
   });
+});
+
+/**
+ * Sweep: on many seeds of every variant (harbor, marina, beach) every quay mouth is clear of walls between its
+ * posts (a frontage stub or a fence run ending inside a mouth blocks the way in), and no yard prop or fence
+ * panel stands closer to a street than its radius (the furniture test's rule). Cities only (no worlds): the
+ * walls are the finished city's, which is what a world is made from.
+ */
+describe('waterfront (mouth sweep)', () => {
+  /** Waterfront cities over many seeds: any variant from one stream, beaches from another so all three are covered. */
+  const sweepSeeds = [...harborSeeds(777, 40), ...beachSeeds(778, 20)];
+  /** Each seed's city, built once for both tests. */
+  const built = new Map<number, City>();
+  const cityOfSeed = (seed: number): City => {
+    let c = built.get(seed);
+    if (!c) built.set(seed, (c = createCity(seed)));
+    return c;
+  };
+
+  /** Mouths whose span between the posts (across the quay and 3 m onto the sidewalk) has a wall within a car's reach, as text. */
+  function blocked(seed: number): string[] {
+    const city = cityOfSeed(seed);
+    const a = harborOf(city.districts.areas)!;
+    const p = a.params;
+    const f = harborFrame(a);
+    const out: string[] = [];
+    for (const h of city.districts.builds[a.id].hints.filter((x) => x.kind === 'quayMouth')) {
+      const [pa, pb] = h.points;
+      const span = Math.hypot(pb.x - pa.x, pb.z - pa.z);
+      for (let s = 1.5; s < span - 1.5; s += 1) {
+        for (const dv of [-3, 0, 3]) {
+          const x = pa.x + ((pb.x - pa.x) * s) / span + p.vx * dv;
+          const z = pa.z + ((pb.z - pa.z) * s) / span + p.vz * dv;
+          for (const w of city.blocks.walls) {
+            if (distToSegment(x, z, w.ax, w.az, w.bx, w.bz) >= 0.9) continue;
+            out.push(`${seed} ${a.variant} ${w.look} wall in the mouth at u ${frameU(f, x, z).toFixed(1)} v ${frameV(f, x, z).toFixed(1)}`);
+            break;
+          }
+        }
+      }
+    }
+    return out;
+  }
+
+  it('every mouth is clear of walls, in all variants, over many seeds', () => {
+    expect(sweepSeeds.length).toBeGreaterThanOrEqual(40);
+    const bad = sweepSeeds.flatMap((seed) => blocked(seed));
+    expect(bad.slice(0, 6)).toEqual([]);
+  }, 300000);
+
+  it('no yard prop stands within its radius of a street', () => {
+    const bad: string[] = [];
+    for (const seed of sweepSeeds) {
+      const city = cityOfSeed(seed);
+      const a = harborOf(city.districts.areas)!;
+      const g = city.graph;
+      for (const q of city.districts.builds[a.id].destructibles) {
+        const r = PROP_DEFS[q.kind].radius;
+        for (const e of g.edges) {
+          if (isRiverEdge(e)) continue;
+          const m = distToSegment(q.x, q.z, g.nodes[e.a].x, g.nodes[e.a].z, g.nodes[e.b].x, g.nodes[e.b].z) - e.width / 2 - r;
+          if (m <= 0) bad.push(`${seed} ${a.variant} ${q.kind} ${m.toFixed(2)} m into a street`);
+        }
+      }
+    }
+    expect(bad.slice(0, 6)).toEqual([]);
+  }, 300000);
 });
 
 type Vec3 = [number, number, number];
