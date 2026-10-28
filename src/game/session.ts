@@ -972,7 +972,12 @@ export class RaceSession {
     this.night.props.update(this.paused ? 0 : dt, this.time, r.brokenProps, this.curr, this.propsSynced ? this.brokenIds : undefined);
     this.propsSynced = true;
     this.brokenIds.length = 0;
-    this.traffic?.update(this.trafficPrev, this.trafficCurr, this.paused ? 1 : alpha, camera, this.time, this.settings.quality, r.tick);
+    // Lamp flares: the rivals' lenses and the fleet's lamps, the nearest few facing the camera (the player's own car is the camera's).
+    const flares = this.night.flares;
+    flares.begin(camera, (this.night.scene.fog as THREE.FogExp2 | null)?.density ?? 0);
+    for (let i = 1; i < this.views.length; i++) if (this.views[i].root.visible) this.views[i].feedFlares(flares);
+    this.traffic?.update(this.trafficPrev, this.trafficCurr, this.paused ? 1 : alpha, camera, this.time, this.settings.quality, r.tick, flares);
+    flares.end();
     // Progressive edge blur: grows with speed, much stronger while boosting (eased in and out).
     const target = this.settings.radialBlur && !this.paused ? Math.max(0, Math.min(1, (p.speed - 25) / 45)) * 0.4 + (p.nitro ? 1 : 0) : 0;
     this.blur += (target - this.blur) * (1 - Math.exp(-dt * (target > this.blur ? 6 : 3)));
