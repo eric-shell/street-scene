@@ -55,7 +55,8 @@ import { GaragePrefs, GarageState, MAX_SLOTS, Presentation, addSlot, decodeShare
 import { section, statLines } from './garageWidgets';
 import type { Child } from './garageWidgets';
 import { AUTHORS, renderTabContent, TABS } from './garageTabs';
-import type { Tab, TabHost } from './garageTabs';
+import type { Tab, TabHost, WheelView } from './garageTabs';
+import { WheelThumbs } from './wheelThumbs';
 import { placeDecal } from './garageVinyls';
 import { FEATURES } from '../shared/features';
 
@@ -99,7 +100,7 @@ const progress = (at: number, ...aside: Child[]) =>
   );
 
 /**
- * The garage screen. The members the tab builders reach (`scene`, `body`, `tab`, `bodySlot`, `wheelAxle`,
+ * The garage screen. The members the tab builders reach (`scene`, `body`, `tab`, `bodySlot`, `wheel*`,
  * `selectedDecal`, `placing`, `prefs`, `assets`, `availability`, `build`, `changed`, `renderTab`) are not
  * private: garageTabs.ts and garageVinyls.ts see the screen only through TabHost.
  */
@@ -118,6 +119,11 @@ export class GarageScreen implements TabHost {
   bodySlot: PartSlot = 'body';
   /** The axle the Wheels tab's wheel and tire picks dress while front and rear are unlinked. */
   wheelAxle: Axle = 'front';
+  /** The Wheels tab's view: the picker first, the size and paint a switch away. */
+  wheelView: WheelView = 'wheel';
+  /** The maker the wheel picker shows (null: all of them). */
+  wheelMaker: string | null = null;
+  readonly wheelThumbs: WheelThumbs;
   /** The current slot as last saved (JSON): the build differs from it while it has unsaved changes. */
   private savedJson: string;
   /** The Save button and the discard button beside it, under both steps. */
@@ -185,6 +191,7 @@ export class GarageScreen implements TabHost {
     stage: GarageStage,
   ) {
     this.scene = new GarageScene(gr, assets, stage.street, stage.quality);
+    this.wheelThumbs = new WheelThumbs(assets);
     this.tabBar = h('div', { class: 'garage__tabs', role: 'tablist', 'aria-label': 'Categories', style: `--tabs:${Math.ceil(TABS.length / 2)};--tab-count:${TABS.length}` });
     this.body = h('div', { class: 'garage__body' });
     this.bodyView = scrollHint(this.body, 'garage__scroll');
@@ -379,6 +386,7 @@ export class GarageScreen implements TabHost {
     const from = this.step;
     this.step = next;
     this.root.dataset.step = next;
+    if (next === 'builds') this.scene.frameWheels(false);
     this.configureEngine();
     this.placing = null;
     const fwd = next === 'build' && from === 'builds';
@@ -598,6 +606,8 @@ export class GarageScreen implements TabHost {
     });
     // The open tab's hue colors its picks, sliders and section hairlines (_garage.scss keys it on data-tab).
     this.root.dataset.tab = t;
+    // The Wheels tab brings the camera down to the front wheel; leaving it goes back to the three quarter view.
+    this.scene.frameWheels(this.step === 'build' && t === 'wheels');
     this.renderTab();
     if (!switched) return;
     this.body.scrollTop = 0;
@@ -942,6 +952,7 @@ export class GarageScreen implements TabHost {
     document.body.classList.remove('is-garage-open');
     this.help.dispose();
     this.root.remove();
+    this.wheelThumbs.dispose();
     this.scene.dispose();
   }
 }

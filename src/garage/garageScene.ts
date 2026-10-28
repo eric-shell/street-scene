@@ -36,6 +36,8 @@ const CAMERAS: { name: string; pos: [number, number, number]; target: [number, n
   { name: 'Rear', pos: [-3.5, 1.45, -4.6], target: [0, 0.65, 0] },
   { name: 'Front', pos: [0.6, 1.1, 5.4], target: [0, 0.6, 0] },
 ];
+/** The preset the Wheels tab frames. */
+const WHEEL_CAMERA = CAMERAS.findIndex((c) => c.name === 'Wheel');
 
 /** How fast the turntable turns (rad/s). */
 const SPIN = 0.22;
@@ -66,6 +68,8 @@ export class GarageScene {
   /** The car standing on the turntable now; `car` differs while a new one loads. */
   private mounted: CarView | null = null;
   spin = true;
+  /** Whether the camera sits on the Wheels tab's framing, untouched since (a drag or a new presentation lets it go). */
+  private wheelFramed = false;
   private time = 0;
   private readonly showroom: Showroom;
   private readonly follow = new FollowOrbit();
@@ -103,6 +107,7 @@ export class GarageScene {
     this.controls.enablePan = false;
     this.controls.addEventListener('start', () => {
       this.spin = false;
+      this.wheelFramed = false;
       this.camTween = null;
       this.lastInteraction = this.time;
     });
@@ -130,6 +135,7 @@ export class GarageScene {
 
   /** Each presentation opens on the three quarter view; the showroom spins again. */
   private homeCamera(): void {
+    this.wheelFramed = false;
     this.camTween = null;
     this.camIndex = 0;
     const c = CAMERAS[0];
@@ -165,6 +171,18 @@ export class GarageScene {
     const dx = v.x - p.x;
     const dz = v.z - p.z;
     return v.set(dx * c - dz * s, v.y - p.y, dx * s + dz * c);
+  }
+
+  /**
+   * The Wheels tab's framing: on, the turntable stops with the camera low on the front wheel; off, back to the
+   * three quarter view and the spin, unless the camera was moved meanwhile (then it stays where it was put).
+   * The Street view's camera follows the car and is left alone.
+   */
+  frameWheels(on: boolean): void {
+    if (this.mode === 'street' || on === this.wheelFramed) return;
+    this.setCamera(on ? WHEEL_CAMERA : 0);
+    this.spin = !on;
+    this.wheelFramed = on;
   }
 
   /** Cycle (or pick) a camera preset; returns its name. */

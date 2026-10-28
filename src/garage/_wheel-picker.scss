@@ -1,0 +1,156 @@
+/* The Wheels tab's wheel picker (wheelPicker.ts): the makers as a wrapping row of small caps filters, each with
+   its count (the picked one lit in the tab's hue, a yellow dot on the maker of the wheel fitted), over a grid of
+   wheel tiles: a chamfered plate holding the wheel's thumbnail on a faint hue spotlight, the name and the maker
+   in small caps under it.
+   A tile edges and washes in the hue on hover like a pick in a list; the wheel fitted is lit along its foot.
+   Until its thumbnail lands a tile shows an empty ring where the wheel will be. */
+@use '../ui/styles/abstracts/mixins';
+@use '../ui/styles/abstracts/media';
+.wheel-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  &__makers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  &__maker {
+    @include mixins.chamfer(5px);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px 4px 9px;
+    font: 700 11px var(--font);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--soft);
+    @include mixins.plate(var(--surface), var(--radius-sm));
+    cursor: pointer;
+    transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
+    &:hover,
+    &:focus-visible {
+      border-color: rgba(var(--hue-rgb), 0.6);
+      color: var(--text);
+      outline: none;
+    }
+    &:focus-visible {
+      box-shadow: var(--edge), var(--ring);
+    }
+    &.is-selected {
+      border-color: rgba(var(--hue-rgb), 0.75);
+      background: rgba(var(--hue-rgb), 0.2);
+      color: var(--text);
+    }
+    &.is-current::after {
+      content: '';
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--accent-2);
+    }
+  }
+  &__count {
+    font-weight: 600;
+    color: var(--muted);
+    .is-selected > & {
+      color: var(--hue);
+    }
+  }
+  &__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+    gap: 6px;
+    @include media.phone {
+      grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+    }
+  }
+  &__tile {
+    @include mixins.chamfer(8px);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    min-width: 0;
+    padding: 4px 4px 6px;
+    font: 600 13px var(--font);
+    color: var(--soft);
+    @include mixins.plate(var(--surface), var(--radius-sm));
+    cursor: pointer;
+    transition: background var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast), color var(--t-fast), transform var(--t-fast);
+    &:hover,
+    &:focus-visible {
+      border-color: rgba(var(--hue-rgb), 0.6);
+      background: linear-gradient(0deg, rgba(var(--hue-rgb), 0.12), transparent 70%), var(--surface-hover);
+      color: var(--text);
+      outline: none;
+    }
+    &:focus-visible {
+      box-shadow: var(--edge), var(--ring);
+    }
+    &.is-selected {
+      border-color: rgba(var(--hue-rgb), 0.75);
+      background: linear-gradient(0deg, rgba(var(--hue-rgb), 0.26), rgba(var(--hue-rgb), 0.05) 80%), var(--surface);
+      box-shadow: var(--edge), inset 0 -3px 0 var(--hue);
+      color: var(--text);
+      &:focus-visible {
+        box-shadow: var(--edge), inset 0 -3px 0 var(--hue), var(--ring);
+      }
+      .wheel-picker__name {
+        font-weight: 700;
+      }
+    }
+    &:active {
+      transform: translateY(1px);
+    }
+    @include mixins.sheen-on-hover;
+  }
+  &__frame {
+    position: relative;
+    display: block;
+    aspect-ratio: 1;
+    background: radial-gradient(closest-side, rgba(var(--hue-rgb), 0.16), transparent);
+    /* The empty ring where the wheel lands. */
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 18%;
+      border: 2px dashed var(--line);
+      border-radius: 50%;
+      transition: opacity var(--t-fast);
+    }
+    .is-loaded > &::before {
+      opacity: 0;
+    }
+  }
+  &__thumb {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    opacity: 0;
+    transition: opacity 0.25s var(--ease-out), transform var(--t-fast) var(--ease-out);
+    .is-loaded & {
+      opacity: 1;
+    }
+    .wheel-picker__tile:hover & {
+      transform: scale(1.06);
+    }
+  }
+  &__name,
+  &__maker-name {
+    @include mixins.ellipsis;
+    text-align: center;
+  }
+  &__maker-name {
+    margin-top: -2px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+}

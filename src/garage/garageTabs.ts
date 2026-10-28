@@ -9,7 +9,6 @@
 import { Link2, Link2Off } from 'lucide';
 import { CarAssetLibrary, MANIFEST, manifestCar, partsFor } from '../render/car/carAssets';
 import { BODY_PART_SLOTS, OPTIONAL_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
-import type { PartEntry } from '../shared/parts';
 import { AXLES, Axle, AxleStance, CarBuild, GLOW_PATTERNS, STANCE_LIMITS, TireShape, VinylShape } from '../shared/carBuild';
 import { SELECTABLE_CAR_IDS, SETUP_SLIDERS, getBaseTuning } from '../sim/tuning';
 import { LAUNCH_RPM, defaultAntilagRpm, defaultLaunchRpm, maxLaunchRpm, tuningForBuild } from '../sim/build';
@@ -23,6 +22,8 @@ import { capital, choiceList, cm, color, colorPicker, field, paintPicker, percen
 import type { Choice } from './garageWidgets';
 import { renderVinyls } from './garageVinyls';
 import { setupSlider } from './setupSliders';
+import { wheelPicker } from './wheelPicker';
+import type { WheelThumbs } from './wheelThumbs';
 
 export type Tab = 'model' | 'stance' | 'wheels' | 'body' | 'paint' | 'vinyl' | 'tint' | 'neon' | 'tune';
 
@@ -40,6 +41,14 @@ export const TABS: { id: Tab; label: string; icon: IconNode }[] = [
 
 /** Model author shown under a car's name, by manifest `source`. */
 export const AUTHORS: Record<string, string | undefined> = { icemaan: 'IceMaan', eshell: 'eshell' };
+
+/** The Wheels tab's views: the wheel itself, its size and tire, its paint and the calipers'. */
+export type WheelView = 'wheel' | 'fit' | 'paint';
+const WHEEL_VIEWS: { value: WheelView; label: string }[] = [
+  { value: 'wheel', label: 'Wheel' },
+  { value: 'fit', label: 'Size & tire' },
+  { value: 'paint', label: 'Paint' },
+];
 
 /** The tire shapes as the Wheels tab lists them (TIRE_SHAPES' order, render/car/tireShapes.ts draws them). */
 const TIRE_CHOICES: Choice<TireShape>[] = [
@@ -66,6 +75,12 @@ export interface TabHost {
   bodySlot: PartSlot;
   /** The axle the Wheels tab's picks dress while front and rear are unlinked. */
   wheelAxle: Axle;
+  /** The Wheels tab's view on show. */
+  wheelView: WheelView;
+  /** The wheel maker the Wheels tab's picker shows, or null for all of them. */
+  wheelMaker: string | null;
+  /** The wheel picker's thumbnails, drawn once per wheel. */
+  readonly wheelThumbs: WheelThumbs;
   /** The vinyl layer picked in the Vinyls tab (-1 for none). */
   selectedDecal: number;
   /** The vinyl being placed or moved on the car (index -1 for a new layer), until the next click on the body. */
@@ -194,7 +209,6 @@ export function renderTabContent(host: TabHost): void {
       break;
     }
     case 'wheels': {
-      const wheels = partsFor(b.carId, 'wheels');
       const w = v.wheels;
       // One axle switch scopes the tab: linked, every pick equips all four (the rear copies the front);
       // unlinked, the Front / Rear switch says which pair the wheel, size, tire and paint picks dress.
@@ -203,9 +217,15 @@ export function renderTabContent(host: TabHost): void {
       const axle: Axle = rear ? 'rear' : 'front';
       const front = v.parts.wheels ?? manifestCar(b.carId).defaultWheel;
       const title = (name: string) => (linked ? capital(name) : `${capital(axle)} ${name}`);
+      // The tab shows one view at a time (the wheel, its fitment, its paint), like the Body tab's slots, so the
+      // 44 wheels never push the size and paint out of reach.
       host.body.append(
         section(
-          'Axles',
+          'Wheels',
+          segmented(WHEEL_VIEWS, host.wheelView, (x) => {
+            host.wheelView = x;
+            host.renderTab();
+          }),
           h(
             'div',
             { class: 'row' },
@@ -222,60 +242,71 @@ export function renderTabContent(host: TabHost): void {
                 ),
           ),
         ),
-        section(
-          title('wheel'),
-          // One list per maker, makers and their wheels alphabetical: a neutral order, no ranking.
-          ...wheelGroups(wheels).flatMap(([group, list]) => [
-            h('div', { class: 'garage-section__subtitle' }, group),
-            choiceList(
-              list.map((p) => ({ value: p.id, label: p.displayName })),
-              rear ? (w.rearPart ?? front) : front,
-              (id) => {
+      );
+      if (host.wheelView === 'wheel') {
+        host.body.append(
+          section(
+            title('wheel'),
+            wheelPicker({
+              wheels: partsFor(b.carId, 'wheels'),
+              current: rear ? (w.rearPart ?? front) : front,
+              maker: host.wheelMaker,
+              thumbs: host.wheelThumbs,
+              onMaker: (m) => {
+                host.wheelMaker = m;
+                host.renderTab();
+              },
+              onPick: (id) => {
                 if (rear) w.rearPart = id;
                 else {
                   // Linked, the rear follows the front; unlinked, it keeps the wheel it wore.
                   w.rearPart = linked ? null : (w.rearPart ?? front);
                   v.parts.wheels = id;
                 }
-                // Each wheel model has its own profile: re-render so the inch range fits the new one.
-                void host.changed().then(() => host.tab === 'wheels' && host.renderTab());
+                // Each wheel model has its own profile: the Fit view's inch range follows the new one when it opens.
+                void host.changed();
+              },
+            }),
+          ),
+        );
+      } else if (host.wheelView === 'fit') {
+        host.body.append(
+          section(title('size'), axleSlider(axle, 'wheelSize', true, linked), h('div', { class: 'muted garage-note' }, 'Bigger wheels, thinner sidewalls.')),
+          section(
+            title('tire'),
+            choiceList(
+              TIRE_CHOICES,
+              rear ? w.rearTire : w.tire,
+              (t) => {
+                if (rear) w.rearTire = t;
+                else {
+                  w.tire = t;
+                  if (linked) w.rearTire = t;
+                }
+                host.changed();
               },
               true,
             ),
-          ]),
-        ),
-        section(title('size'), axleSlider(axle, 'wheelSize', true, linked), h('div', { class: 'muted garage-note' }, 'Bigger wheels, thinner sidewalls.')),
-        section(
-          title('tire'),
-          choiceList(
-            TIRE_CHOICES,
-            rear ? w.rearTire : w.tire,
-            (t) => {
-              if (rear) w.rearTire = t;
-              else {
-                w.tire = t;
-                if (linked) w.rearTire = t;
-              }
-              host.changed();
-            },
-            true,
           ),
-        ),
-        section(
-          title('paint'),
-          paintPicker(
-            rear ? w.rearPaint : w.paint,
-            PRESETS.wheels,
-            () => {
-              if (linked) w.rearPaint = { ...w.paint };
-              host.changed();
-            },
-            { body: v.paint },
+        );
+      } else {
+        host.body.append(
+          section(
+            title('paint'),
+            paintPicker(
+              rear ? w.rearPaint : w.paint,
+              PRESETS.wheels,
+              () => {
+                if (linked) w.rearPaint = { ...w.paint };
+                host.changed();
+              },
+              { body: v.paint },
+            ),
           ),
-        ),
-        // One caliper paint for all four corners, whatever the axle switch says.
-        section('Calipers', paintPicker(v.calipers, PRESETS.calipers, () => host.changed(), { body: v.paint })),
-      );
+          // One caliper paint for all four corners, whatever the axle switch says.
+          section('Calipers', paintPicker(v.calipers, PRESETS.calipers, () => host.changed(), { body: v.paint })),
+        );
+      }
       break;
     }
     case 'vinyl':
@@ -397,19 +428,6 @@ function linkToggle(host: TabHost): HTMLElement {
       host.renderTab();
     },
   );
-}
-
-/** The wheels by maker (`group`), makers and wheels in alphabetical order; a wheel without one goes under Other, last. */
-function wheelGroups(wheels: PartEntry[]): [string, PartEntry[]][] {
-  const groups = new Map<string, PartEntry[]>();
-  for (const p of wheels) {
-    const g = p.group ?? 'Other';
-    groups.set(g, [...(groups.get(g) ?? []), p]);
-  }
-  const rank = (g: string) => (g === 'Other' ? '￿' : g);
-  return [...groups]
-    .sort(([a], [b]) => rank(a).localeCompare(rank(b)))
-    .map(([g, list]) => [g, list.sort((a, b) => a.displayName.localeCompare(b.displayName))]);
 }
 
 /** The Wheels tab's link: linked, front and rear wear the same wheel, size, tire and paint; unlinked, each axle picks its own. */
