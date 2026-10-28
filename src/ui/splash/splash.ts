@@ -21,7 +21,7 @@
  */
 import { h } from '../kit/dom';
 import { SplashFx, startSplashFx } from './splashFx';
-import { TAGLINE, TITLE_WORDS, titleWords } from '../menu/menu';
+import { TAGLINE, TITLE_WORDS, titleWords } from '../menu/title';
 
 export interface Splash {
   /** Resolves once the flash-in has played and the minimum hold is over. */
@@ -74,6 +74,19 @@ function fontsReady(): Promise<unknown> {
   if (!fonts?.load) return Promise.resolve();
   const load = Promise.all([fonts.load('italic 900 16px "Google Sans Flex"'), fonts.load('900 16px "Google Sans Flex"'), fonts.load('600 16px "Google Sans Flex"')]).catch(() => undefined);
   return Promise.race([load, delay(SPLASH.fontWait * 1000)]);
+}
+
+/** The splash boot.ts put up before the game's bundle loaded, null on a deep link or until it runs. */
+let booted: Splash | null = null;
+
+/** Puts the splash up at once (boot.ts, the page's first script), so the title shows while the game is still loading. */
+export function startBootSplash(): void {
+  booted = showSplash(document.body);
+}
+
+/** The splash boot.ts put up, if any. */
+export function bootSplash(): Splash | null {
+  return booted;
 }
 
 /**

@@ -51,9 +51,39 @@ function reactForDashboard(): PluginOption[] {
   return (react({ include: /\/src\/admin\/.*\.tsx?$/ }) as Plugin[]).map(onlyDashboard);
 }
 
+/**
+ * The game's page enters through boot.ts (the splash), which imports main.ts dynamically, so Vite only fetches
+ * the game's chunks once boot.ts has run. Preloading them from the HTML starts that download with the page's own
+ * instead, a round trip or more sooner on a phone.
+ */
+function preloadGame(): Plugin {
+  return {
+    name: 'preload-game',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html, ctx) {
+        if (!ctx.bundle || !ctx.path.endsWith('/index.html')) return;
+        const chunks = Object.values(ctx.bundle).filter((c) => c.type === 'chunk');
+        const main = chunks.find((c) => c.facadeModuleId?.endsWith('/src/main.ts'));
+        if (!main) return;
+        const files = new Set<string>();
+        const visit = (file: string) => {
+          if (files.has(file)) return;
+          files.add(file);
+          const c = chunks.find((x) => x.fileName === file);
+          c?.imports.forEach(visit);
+        };
+        visit(main.fileName);
+        return [...files].filter((f) => !html.includes(f)).map((f) => ({ tag: 'link', attrs: { rel: 'modulepreload', crossorigin: true, href: `/${f}` }, injectTo: 'head' as const }));
+      },
+    },
+  };
+}
+
 export default defineConfig({
   // The account API (api/*.ts, Vercel functions) on the dev server too.
-  plugins: [apiDev(), dashboardRoute(), ...reactForDashboard()],
+  plugins: [apiDev(), dashboardRoute(), ...reactForDashboard(), preloadGame()],
   server: { host: true, port: 5175, strictPort: true },
   build: {
     target: 'es2022',

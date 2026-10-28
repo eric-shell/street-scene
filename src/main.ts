@@ -7,7 +7,6 @@
  * menu city and the car cruising it where it is, the camera swings from the
  * showreel's shot onto the chase camera while the menu slides away.
  */
-import './ui/styles/main.scss';
 import * as THREE from 'three';
 import { FixedStepLoop } from './loop';
 import { createCity, createWorld, type World } from './city/world';
@@ -38,7 +37,7 @@ import { resultsScreen } from './ui/screens/results';
 import { placeAt } from './city/names/places';
 import { railInset } from './ui/rail/rail';
 import { mainMenu, type MainMenu, type MenuStep } from './ui/menu/menu';
-import { showSplash } from './ui/splash/splash';
+import { bootSplash, showSplash } from './ui/splash/splash';
 import { toast } from './ui/kit/dom';
 import { Check, Info, Share2, Shuffle, Trophy } from './ui/kit/icons';
 import { formatTime } from './ui/kit/format';
@@ -1100,8 +1099,8 @@ async function boot(): Promise<void> {
   const deepLink = !!directMode || params.has('garage') || params.has('drone') || params.has('freeroam');
   // A normal start flashes the title in over the asset check and lands it on the
   // menu; deep links go straight to their screen behind a plain loading card.
-  // On document.body, not #ui: it has to cover the music widget, which lives there too.
-  const splash = deepLink ? null : showSplash(document.body);
+  // boot.ts put it up before this bundle loaded; on document.body, not #ui, so it covers the music widget too.
+  const splash = deepLink ? null : (bootSplash() ?? showSplash(document.body));
   const loading = splash ? null : loadingScreen();
   if (loading) uiRoot.append(loading);
   // Traffic models load beside the cars so no session draws its traffic late.
