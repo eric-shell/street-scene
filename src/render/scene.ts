@@ -29,6 +29,7 @@ import { buildIdlers, Idlers } from './people/idlers';
 import { peopleOf } from '../city/people/people';
 import { buildWalkers, Walkers } from './people/walkers';
 import { buildStreetPolish } from './street/streetPolish';
+import type { StreetSpots } from './street/streetSpots';
 import { buildPlaceSigns } from './street/placeSigns';
 import { createWeather, Weather } from './sky/weather';
 import { Clouds, buildClouds } from './sky/clouds';
@@ -208,6 +209,8 @@ export interface NightScene {
   flares: LampFlares;
   /** Per-cell culling inside the big merged city layers (cityChunks.ts). */
   chunks: CityChunks;
+  /** The road's manhole covers, grates and tram rails as drawn (the player's wheels clank and tick over them: game/session/audio.ts). */
+  street: StreetSpots;
   /** Animate time-based effects (barrier lamps, arrows). */
   update(time: number): void;
   /** Pose the sim-timed district parts (the El's trains, level crossing gates, RaceState.brokenArms) at a fractional sim tick; call before update. */
@@ -411,6 +414,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     backdrop,
     clouds,
     flares,
+    street: polish.spots,
     syncDistricts(tick, audible, brokenArms, cableBell) {
       districts.sync(tick, audible, brokenArms, cableBell);
     },

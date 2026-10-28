@@ -11,6 +11,14 @@
  * while paint stays matte: one draw call for the decals, one for the puddles
  * (a mirror material of their own). Seeded from the world, render only.
  *
+ * Four street details ride on the same two draw calls: tram tracks down the boulevards (tramTracks.ts: the setts
+ * band and the dark groove at each rail here, the steel as its own merged mesh), cobbled crosswalks (a band of setts
+ * instead of the worn stripes at a seeded share of the plain downtown junctions), yellow box hatching on the busiest
+ * downtown junctions (Medium and up), and a darker iron ring on the manholes and drains. The setts are paint on the
+ * sim's unchanged asphalt: real cobbles would grip differently and rewrite every replay, so the grip stays deliberately
+ * the asphalt's. Every manhole, drain and rail drawn is also recorded in `spots` (streetSpots.ts) so the player's
+ * wheels can clank over them (game/session/audio.ts).
+ *
  * A seed's home (cityIdentity.ts signature) dresses its own region: a New York home steams most of its
  * downtown manholes (steam.ts draws the plumes), a Miami home lays terrazzo slabs along the downtown sidewalks.
  *
@@ -32,18 +40,24 @@ import { bayMouth } from './busBays';
 import { downtownFactor, isBendNode, isRiverEdge } from '../../city/roadGraph';
 import { regionAt } from '../buildings/architecture';
 import { signatureAt } from '../cityIdentity';
+import { StreetSpots } from './streetSpots';
+import { TRAM, buildTramRails, planTram, resample } from './tramTracks';
 
 export interface DecalOptions {
   /** Multiplies every density (graphics tier). */
   density: number;
   /** Puddles on, off. */
   puddles: boolean;
+  /** Yellow box hatching on the busiest junctions (Medium and up). */
+  hatching: boolean;
 }
 
 export interface StreetDecals {
   meshes: THREE.Mesh[];
   /** Manholes that steam (steam.ts): position on the road. */
   vents: THREE.Vector3[];
+  /** The covers, grates and rails drawn, for the wheels' clank and the rail tick. */
+  spots: StreetSpots;
   dispose(): void;
 }
 
@@ -90,6 +104,33 @@ const DECAL = {
   terrazzoDowntown: 0.3,
 } as const;
 
+/** The cobbled crosswalk and the junction hatching: shares, depths and sizes (m). */
+const DETAIL = {
+  /** A plain street's junction cobbles its crosswalks when its node is at least this far downtown, at this seeded share. */
+  cobbleDowntown: 0.5,
+  cobbleShare: 0.5,
+  /** The band runs from the mouth over the painted stripes' span (cityMeshes: 1.2 to 4.2 m in), this wide of a margin to each curb. */
+  cobbleFrom: 1.15,
+  cobbleTo: 4.25,
+  cobbleMargin: 0.45,
+  /** Pale paving bars along the band's two long edges. */
+  cobbleBar: 0.2,
+  /** Hatching: a node needs this many roads and downtown factor; this many are painted; the box is this share of the narrowest road, clamped (m); bar width and spacing (m). */
+  hatchRoads: 4,
+  hatchDowntown: 0.55,
+  hatchCount: 3,
+  hatchShare: 0.8,
+  hatchSize: [8, 15],
+  hatchBar: 0.22,
+  hatchEvery: 1.7,
+  /** A cover or grate the wheels clank over: the radius a tyre must pass within (m). */
+  clankManhole: 0.4,
+  clankDrain: 0.42,
+} as const;
+
+const SETTS_PALE = new THREE.Color(0xb9b2a6);
+const GROOVE = new THREE.Color(0x070708);
+const HATCH_YELLOW = new THREE.Color(0xe8b81c);
 const ASPHALT = new THREE.Color(0x23242a);
 const WHITE = new THREE.Color(1, 1, 1);
 const PAINT_RED = new THREE.Color(0xc8302a);
@@ -112,6 +153,8 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
   const gb = new GeoBuilder(true);
   const pb = new GeoBuilder(true);
   const vents: THREE.Vector3[] = [];
+  const spots = new StreetSpots();
+  const tram = planTram(world);
   const regionOf = regionAt(world);
   const terrazzoRng = new Rng(deriveSeed(world.seed, 'terrazzo'));
   const normalAt = (x: number, z: number): [number, number, number] => {
@@ -191,6 +234,19 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
   const busStops = world.props.filter((p) => p.kind === 'busStop' && p.bay === undefined);
   const bayOf = baysByEdge(world.blocks.bays ?? [], g.edges.length);
 
+  /** Whether a plain street's crosswalks at this junction are cobbled: downtown, outside any district (a river bank, a market), every road a plain street or an alley, a seeded share (a hash of the node, so every street of the junction agrees). */
+  const cobbleMemo = new Map<number, boolean>();
+  const cobbleAt = (node: number): boolean => {
+    let hit = cobbleMemo.get(node);
+    if (hit === undefined) {
+      const n = g.nodes[node];
+      const plain = n.edges.every((id) => ['street', 'alley', 'backAlley'].includes(g.edges[id].kind));
+      hit = !n.ring && n.edges.length >= 3 && plain && !world.areaAt(n.x, n.z) && downtownFactor(g.plan, n.x, n.z) >= DETAIL.cobbleDowntown && new Rng(deriveSeed(world.seed, `cobblewalk:${node}`)).chance(DETAIL.cobbleShare);
+      cobbleMemo.set(node, hit);
+    }
+    return hit;
+  };
+
   // ---------- per edge ----------
   g.edges.forEach((e, ei) => {
     if (isRiverEdge(e)) return;
@@ -234,6 +290,7 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
       const yaw = rng.range(0, Math.PI * 2);
       if (rng.chance(0.3)) quad(gb, 'rust', p.x, p.z, yaw, DECAL.manhole * 1.9, DECAL.manhole * 1.9, WHITE, DECAL.lift - 0.004);
       quad(gb, rng.chance(0.5) ? 'manholeA' : 'manholeB', p.x, p.z, yaw, DECAL.manhole, DECAL.manhole, WHITE);
+      spots.addDisc(p.x, p.z, DETAIL.clankManhole, 'manhole');
       // The draw is always taken (the stream never shifts); a New York home steams most of its downtown covers (cityIdentity.ts steam).
       const steam = alley ? undefined : signatureAt(world.seed, regionOf(p.x, p.z)).steam;
       const steamChance = alley ? DECAL.alleySteam : steam ? lerp(steam.chance, steam.downtown, downtownFactor(g.plan, p.x, p.z)) : DECAL.manholeSteam;
@@ -262,6 +319,7 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
       for (const side of [1, -1]) {
         const p = at(s, side * (half - 0.5));
         quad(gb, 'drain', p.x, p.z, yawAB + (dir < 0 ? Math.PI : 0), DECAL.drainW, DECAL.drainH, WHITE);
+        spots.addDisc(p.x, p.z, DETAIL.clankDrain, 'drain');
       }
     }
     // Miami terrazzo: pale slabs laid along the downtown sidewalks (its own stream, only a Miami home draws from it).
@@ -305,7 +363,22 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
       [len, -1],
     ] as const) {
       if (dir > 0 ? bendA : bendB) continue;
+      if (e.kind === 'street' && cobbleAt(dir > 0 ? e.a : e.b)) {
+        // A cobbled crosswalk: setts over the painted stripes, between two pale bars.
+        const x0 = from + dir * DETAIL.cobbleFrom;
+        const x1 = from + dir * DETAIL.cobbleTo;
+        const across = half - DETAIL.cobbleMargin;
+        const cols = Math.max(2, Math.round((2 * across) / TRAM.bandPiece));
+        for (let k = 0; k < cols; k++) {
+          const p = at((x0 + x1) / 2, -across + ((k + 0.5) * 2 * across) / cols);
+          quad(gb, 'setts', p.x, p.z, yawAB, (2 * across) / cols, Math.abs(x1 - x0), WHITE, DECAL.lift + 0.002);
+        }
+        for (const edge of [x0, x1]) strip(gb, 'paint', at(edge, -across), at(edge, across), DETAIL.cobbleBar, SETTS_PALE, DECAL.lift + 0.004);
+        continue;
+      }
       for (const lane of lanes) {
+        // The tram owns the inner lanes' wheel tracks.
+        if (tram.edges.has(ei) && !lane.outer) continue;
         const p = at(from + dir * 2.7, lane.lat);
         quad(gb, 'wear', p.x, p.z, yawAB, DECAL.wearW, DECAL.wearL, ASPHALT);
       }
@@ -313,6 +386,7 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
     // Lane arrows before each junction (every 4 lane approach, some 2 lane ones).
     for (const lane of lanes) {
       const toB = Math.abs(lane.yaw - yawAB) < 1e-6;
+      if (tram.edges.has(ei) && !lane.outer) continue;
       if (e.lanes === 2 && !rng.chance(DECAL.arrow2Lane * D)) continue;
       if (toB ? bendB : bendA) continue;
       const s = toB ? len - DECAL.arrowBack : DECAL.arrowBack;
@@ -396,6 +470,60 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
     }
   });
 
+  // ---------- tram tracks: the setts band under each lane's pair of rails, a dark groove round each head ----------
+  const settsColor = new THREE.Color(0.92, 0.9, 0.88);
+  for (const band of tram.bands) {
+    const pts = resample(band, TRAM.bandPiece);
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const a = pts[i];
+      const b = pts[i + 1];
+      const l = Math.hypot(b.x - a.x, b.z - a.z);
+      quad(gb, 'setts', (a.x + b.x) / 2, (a.z + b.z) / 2, Math.atan2(b.x - a.x, b.z - a.z), TRAM.gauge + TRAM.bandMargin, l, settsColor, DECAL.lift - 0.008);
+    }
+  }
+  for (const rail of tram.rails) {
+    const pts = resample(rail, TRAM.step);
+    for (let i = 0; i + 1 < pts.length; i++) {
+      strip(gb, 'paint', pts[i], pts[i + 1], TRAM.groove, GROOVE, DECAL.lift - 0.004);
+      spots.addRail(pts[i].x, pts[i].z, pts[i + 1].x, pts[i + 1].z);
+    }
+  }
+
+  // ---------- junction hatching: yellow box lines on the busiest downtown junctions ----------
+  if (opts.hatching) {
+    const roads = (id: number) => g.nodes[id].edges.filter((eid) => !['alley', 'backAlley'].includes(g.edges[eid].kind));
+    const busy = g.nodes
+      .filter((n) => !n.ring && !world.areaAt(n.x, n.z) && !tram.nodes.has(n.id) && roads(n.id).length >= DETAIL.hatchRoads && roads(n.id).every((eid) => ['street', 'avenue', 'boulevard', 'diagonal'].includes(g.edges[eid].kind)) && downtownFactor(g.plan, n.x, n.z) >= DETAIL.hatchDowntown)
+      .sort((p, q) => roads(q.id).length - roads(p.id).length || downtownFactor(g.plan, q.x, q.z) - downtownFactor(g.plan, p.x, p.z) || p.id - q.id);
+    // A seeded few of the best candidates, so two seeds with the same busiest junction do not always paint the same one.
+    const hatchRng = new Rng(deriveSeed(world.seed, 'hatch'));
+    const pool = busy.slice(0, DETAIL.hatchCount * 3);
+    for (let k = 0; k < DETAIL.hatchCount && pool.length; k++) {
+      const n = pool.splice(hatchRng.int(0, pool.length - 1), 1)[0];
+      const widths = roads(n.id).map((eid) => g.edges[eid].width);
+      const side = Math.min(DETAIL.hatchSize[1], Math.max(DETAIL.hatchSize[0], Math.min(...widths) * DETAIL.hatchShare));
+      const first = g.edges[n.edges[0]];
+      const o = g.nodes[first.a === n.id ? first.b : first.a];
+      const yaw = Math.atan2(o.x - n.x, o.z - n.z);
+      const fx = Math.sin(yaw);
+      const fz = Math.cos(yaw);
+      /** A point of the box in its own frame: u across (right), v along the first road. */
+      const P = (u: number, v: number): Vec2 => ({ x: n.x - fz * u + fx * v, z: n.z + fx * u + fz * v });
+      const r = side / 2;
+      const line = (a: Vec2, b: Vec2) => strip(gb, 'paint', a, b, DETAIL.hatchBar, HATCH_YELLOW, DECAL.lift + 0.001);
+      line(P(-r, -r), P(r, -r));
+      line(P(r, -r), P(r, r));
+      line(P(r, r), P(-r, r));
+      line(P(-r, r), P(-r, -r));
+      // Diagonals u + v = c across the box, clipped to it.
+      for (let c = -side + DETAIL.hatchEvery; c < side - 0.01; c += DETAIL.hatchEvery) {
+        const u0 = Math.max(-r, c - r);
+        const u1 = Math.min(r, c + r);
+        if (u1 - u0 > 0.5) line(P(u0, c - u0), P(u1, c - u1));
+      }
+    }
+  }
+
   // ---------- junctions: oil where cars stop ----------
   g.nodes.forEach((n) => {
     if (n.edges.length < 3 || n.ring || !rng.chance(DECAL.oilChance * D)) return;
@@ -434,7 +562,9 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
   const decals = new THREE.Mesh(gb.build(), decalMat);
   decals.name = 'roadDecals';
   decals.renderOrder = 0;
-  const meshes = [decals];
+  const meshes: THREE.Mesh[] = [decals];
+  const rails = buildTramRails(world, tram);
+  if (rails) meshes.push(rails);
   if (pb.vertexCount) {
     const puddleMat = new THREE.MeshStandardMaterial({
       map: atlas.map,
@@ -457,6 +587,7 @@ export function buildStreetDecals(world: World, atlas: { map: THREE.Texture; rou
   return {
     meshes,
     vents,
+    spots,
     dispose() {
       for (const m of meshes) {
         m.geometry.dispose();
