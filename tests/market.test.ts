@@ -268,8 +268,9 @@ describe('night market', () => {
     const rc = r.cars[0];
     const c = rc.state;
     // The row may run on from the piece before, across a bend node: its head is the first stall
-    // with no other in the line just behind it.
-    const inLine = w.props.filter((p) => p.area === area.id && p.kind !== 'fruitCrates' && Math.abs((p.x - A.x) * -uz + (p.z - A.z) * ux - lat) < 0.6).map((p) => (p.x - A.x) * ux + (p.z - A.z) * uz);
+    // with no other in the line just behind it. In the line means within a car's half width: a food cart
+    // stands up to 0.65 m off the stalls' line, and a car started on one is shoved off the row.
+    const inLine = w.props.filter((p) => p.area === area.id && p.kind !== 'fruitCrates' && Math.abs((p.x - A.x) * -uz + (p.z - A.z) * ux - lat) < 1).map((p) => (p.x - A.x) * ux + (p.z - A.z) * uz);
     let first = h.values[4];
     for (let back = inLine.filter((a) => a < first && a > first - 6); back.length; back = inLine.filter((a) => a < first && a > first - 6)) first = Math.min(...back);
     // ... or from just past a streetlight or fence standing in the line at the row's head.
