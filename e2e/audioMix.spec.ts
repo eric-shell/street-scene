@@ -30,6 +30,8 @@ const TARGETS: Record<string, [rms: number, tolerance: number]> = {
   go: [-15, 3],
   firework: [-14, 3],
   horn: [-18, 3],
+  carAlarm: [-21, 3],
+  trafficHorn: [-22, 3],
   nitro: [-21, 3],
   crowdLoop: [-24, 3],
   crowdCheer: [-21, 3],
@@ -107,6 +109,13 @@ test('every sound sits where the mix puts it', async ({ page }) => {
     };
     for (const [name, fire] of Object.entries(shots)) { fire(); results[name] = await measure(900); await sleep(600); }
     sfx.horn(true); results.horn = await measure(800); sfx.horn(false); await sleep(500);
+    const alarmMod = await import('/src/audio/carAlarm.ts');
+    const hornMod = await import('/src/audio/carHorn.ts');
+    const alarm = new alarmMod.AlarmVoice(hub.ctx, hub.effectsBus, { pattern: 'wail', len: 5, base: 1100, stretch: 1 }, 0, 4, alarmMod.alarmPlace(0, 0, { x: 0, z: 0, rx: 1, rz: 0 }));
+    await sleep(300); results.carAlarm = await measure(900); alarm.stop(false); await sleep(800);
+    const hornOut = hub.ctx.createGain(); hornOut.gain.value = hornMod.HORN.level; hornOut.connect(hub.effectsBus);
+    hornMod.playHorn(hub.ctx, hornOut, { at: hub.ctx.currentTime + 0.05, hz: 425, beeps: 1, len: 0.9, gap: 0.14, start: (src, at, end) => { src.start(at); src.stop(end); } });
+    results.trafficHorn = await measure(800); await sleep(500);
     const car = { x: 0, z: 0, yaw: 0, vx: 0, vz: 30, nitro: true, halfLength: 2, halfWidth: 0.9 };
     let t = performance.now();
     const nitroRun = (async () => { const end = performance.now() + 2000; while (performance.now() < end) { const now = performance.now(); sfx.updateCars([car], null, (now - t) / 1000, false); t = now; await sleep(16); } car.nitro = false; sfx.updateCars([car], null, 0.016, false); })();
