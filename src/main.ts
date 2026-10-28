@@ -1038,6 +1038,8 @@ let photoDrone = false;
  * thread (on slow GPUs a street level frame of the city takes long).
  */
 let splashWarmup: number | null = null;
+/** Longest the splash waits for the menu car and the city's shaders before it lands anyway (ms). */
+const SPLASH_LAND_WAIT_MS = 4000;
 
 /** The music dips a little while the menu shifts to a new city (MusicPlayer.setDip): the gain, how fast it eases (1/s), and where it is now. */
 const MUSIC_DIP = { gain: 0.6, rate: 5 } as const;
@@ -1148,6 +1150,12 @@ async function boot(): Promise<void> {
     // The city's first (slow) frames compile its shaders unseen under the black (splashWarmup).
     splash.hold(overlay);
     await splash.intro;
+    // The car and every shader the menu city uses are ready before the title flies: a material's first draw
+    // compiles it on the main thread, which stalls the city revealed under the flight. compileAsync builds them
+    // all (the whole scene, not only what the camera sees now) without blocking. Capped, so a slow car model
+    // never holds the menu.
+    const st = stage;
+    if (st) await Promise.race([st.ready.then(() => gr.renderer.compileAsync(st.night.scene, showreel.camera)).catch(() => undefined), new Promise((r) => setTimeout(r, SPLASH_LAND_WAIT_MS))]);
     splashWarmup = null;
     arrival = splash;
     await splash.land(overlay);

@@ -16,11 +16,12 @@
  * Only a page load that lands on the menu shows it; deep links skip it. CSS
  * (_splash.scss: `.splash`, `.menu.is-pending`, `.menu.is-arriving`) does the flash-in, the impact flash and shake
  * and the hazard tape under the title; splashFx.ts draws the night road, traffic,
- * skyline, bokeh and rain behind it on a canvas and floors it into a warp as
+ * skyline, bokeh and rain behind it on a canvas (from a worker, so the game
+ * booting underneath never stops it) and floors it into a warp as
  * the title flies. This file times it all and computes the flight.
  */
 import { h } from '../kit/dom';
-import { SplashFx, startSplashFx } from './splashFx';
+import { SplashFx, startSplashFx, warmSplashFx } from './splashFx';
 import { TAGLINE, TITLE_WORDS, titleWords } from '../menu/title';
 
 export interface Splash {
@@ -28,8 +29,8 @@ export interface Splash {
   readonly intro: Promise<void>;
   /**
    * Resolves once the flash-in has played (fonts, then the CSS's one-shot animations). boot.ts runs the game only
-   * then: its boot holds the main thread for seconds, which would freeze the canvas and every animation the
-   * compositor cannot run on its own.
+   * then: its boot holds the main thread for seconds, which would stall every flash-in animation the compositor
+   * cannot run on its own (the street's canvas draws from a worker and never stops).
    */
   readonly played: Promise<void>;
   /** Keep this menu invisible (but laid out) under the splash until `land`. */
@@ -124,6 +125,8 @@ export function showSplash(parent: HTMLElement): Splash {
   const flash = h('div', { class: 'splash__flash', 'aria-hidden': 'true' });
   const root = h('div', { class: 'splash', role: 'presentation' }, bg, canvas, flash, block);
   parent.append(root);
+  // The street's worker loads while the fonts do.
+  if (!reduced) warmSplashFx();
   let fx: SplashFx | null = null;
   /** When the landing started (performance.now() ms), null before it or with reduced motion. */
   let landedAt: number | null = null;

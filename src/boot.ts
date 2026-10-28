@@ -5,11 +5,12 @@
  * module needs only the splash, so the title flashes in first; main.ts picks the splash up through `bootSplash()`
  * and lands it on the menu as before.
  *
- * The game's boot holds the main thread for seconds (the renderer, the city, its shaders), which would freeze the
- * splash's canvas and most of its animations mid flash-in. So the game downloads beside the intro (vite.config.ts
- * preloads its chunks) but only runs once the flash-in has played; the splash then holds on the title until the
- * menu is ready. That costs the menu the intro's length, which is the point: the intro is the first thing anyone
- * sees. Deep links have no splash and start the game at once.
+ * The game's boot holds the main thread for seconds (the renderer, the city, its shaders), which would stall most
+ * of the flash-in's animations. So the game downloads beside the intro (vite.config.ts preloads its chunks) but only
+ * runs once the flash-in has played; the splash then holds on the title until the menu is ready, its street still
+ * moving (drawn from a worker, splashFx.ts) and its rule pulsing (opacity, which the compositor runs alone). The
+ * menu arrives no later for it: the intro no longer waits behind the game's boot. Deep links have no splash and
+ * start the game at once.
  */
 import './ui/styles/main.scss';
 // Only the account starts now (a small graph): a signed-in player's save downloads during the intro instead of after it.
