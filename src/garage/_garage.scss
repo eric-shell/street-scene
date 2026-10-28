@@ -241,8 +241,8 @@ $step-rise: 0.58s, 0.45s, 0.32s;
 
   /* The garage opens behind the roller door: its parts hold on their first frame while the door is down
      (.is-held) and, once it starts rolling up (0.72 s, uncovering the screen from the bottom), rise in as it
-     clears them: the switch, Save and help first, then the slots, the card and the header as the door leaves
-     the top. `translate` rather than `transform`, so the switch keeps its centering. */
+     clears them: the switch and Save first, then the slots, the card, and the header and help (beside the music
+     player in the top right corner) as the door leaves the top. `translate` rather than `transform`, so the switch keeps its centering. */
   &.is-arriving {
     @include media.motion {
       :is(#{$arriving}) {
@@ -252,8 +252,11 @@ $step-rise: 0.58s, 0.45s, 0.32s;
         animation-play-state: paused;
       }
     }
-    :is(.garage-stage, .garage__foot, .help) {
+    :is(.garage-stage, .garage__foot) {
       --d: 0.14s;
+    }
+    .help {
+      --d: #{list.nth($step-rise, 1)};
     }
     @include mixins.stagger(1, 3, '.rail__step > ') using ($i) {
       --d: #{list.nth($step-rise, $i)};

@@ -307,11 +307,10 @@ function closeMenuMap(): void {
 // Overlays
 // ---------------------------------------------------------------------------
 function syncMusicMode(): void {
-  // The photo mode drone lays the screen out like the drone flyover (its buttons sit where the race's compact player would).
+  // Driving shows the compact chip; everywhere else (menus, garage, drone, photo mode, paused, results) the player, in the same corner.
   const photo = state === 'race' && !!session?.droneActive;
   const racing = state === 'race' && session && !session.paused && session.race.phase !== 'finished' && !photo;
-  const context = photo ? 'drone' : state === 'race' ? 'race' : state === 'garage' ? 'garage' : state === 'drone' || state === 'freefly' ? 'drone' : 'menu';
-  musicWidget.setMode(racing ? 'compact' : 'full', context);
+  musicWidget.setMode(racing ? 'compact' : 'full');
   music.setDuck(state === 'race' && session?.paused ? 0.55 : 1);
 }
 

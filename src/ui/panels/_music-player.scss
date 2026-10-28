@@ -1,73 +1,105 @@
-/* The music player (panels/musicWidget.ts), over the whole UI layer: the player card (menu, garage, drone),
-   minimized to a pill, or in a race a now-playing chip; a banner names each new track with its full credit.
-   The card is a card like the menu's (the accent hairline across its top); the credit's links are in the
-   accent. The banner is placed per screen so it never covers the HUD or a menu (data-context). */
+/* The music player (panels/musicWidget.ts), over the whole UI layer. It has one place on every screen, the top
+   right corner (the dock), so it never moves between the menu, the garage, a race, the drone, a pause or the
+   results: the player card, minimized to a pill, or in a race the now-playing chip, the pill's twin. A small
+   toast hangs under the pill or the chip with each new track's full credit, and a new track glints across the
+   piece on show. The card is a menu card: the accent hairline across its top, a yellow kicker over the title
+   in the event's white-to-peach caps, quiet ghost controls around one lit play button. The pieces stand on the
+   menu's plates; the dock casts their drop shadow, which the chamfers would clip. Links read as text and take
+   the accent when hovered. Touch screens drop the chip and its toast in a race, where the corner belongs to the
+   dials (the pause screen's card credits the track). */
 @use '../styles/abstracts/media';
 @use '../styles/abstracts/mixins';
+@use '../styles/abstracts/palette';
 .music-player {
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 40;
   a {
-    color: var(--accent);
+    color: inherit;
     text-decoration: none;
-    &:hover {
+    text-underline-offset: 2px;
+    transition: color var(--t-fast);
+    &:hover,
+    &:focus-visible {
+      color: var(--accent);
       text-decoration: underline;
+      outline: none;
     }
+  }
+
+  &__dock {
+    position: absolute;
+    top: mixins.safe(top, var(--gutter));
+    right: mixins.safe(right, var(--gutter));
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    filter: var(--plate-drop);
   }
 
   &__card {
     @include mixins.chamfer(12px);
-    position: absolute;
-    right: mixins.safe(right, var(--gutter));
-    bottom: mixins.safe(bottom, var(--gutter));
-    width: min(340px, calc(100vw - var(--gutter) * 2));
-    padding: 10px 12px;
+    width: min(320px, calc(100vw - var(--gutter) * 2));
+    padding: 8px 12px 10px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
     pointer-events: auto;
-    background: var(--card-top), var(--panel);
+    @include mixins.plate(
+      (
+        var(--card-top),
+        radial-gradient(90% 70% at 100% 0%, palette.alpha(orange, 0.09), transparent 65%),
+        var(--plate)
+      )
+    );
   }
-  &__head {
+  /* The kicker and the card's quiet actions, as on the menu's event card. */
+  &__top {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 8px;
+    margin-right: -6px;
+    .label {
+      font-size: 11px;
+    }
+  }
+  &__actions {
+    display: flex;
+    gap: 2px;
+    .btn {
+      padding: 5px;
+    }
   }
   &__disc {
-    color: var(--accent);
     display: flex;
-  }
-  &__disc.is-spinning svg,
-  &__pill svg.is-spinning,
-  &__chip svg.is-spinning {
-    animation: music-player-spin 2.4s linear infinite;
-  }
-  &__meta {
-    flex: 1;
-    min-width: 0;
+    color: var(--accent);
   }
   &__title {
-    font: 900 18px var(--display);
-    letter-spacing: 0.03em;
+    font: 900 18px/1.15 var(--display);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
     @include mixins.ellipsis;
+    @include mixins.gradient-text(var(--title-ink));
   }
   &__artist {
-    font-size: 13px;
-    color: var(--muted);
+    margin-top: 1px;
+    font: 600 13px var(--font);
+    color: var(--soft);
     @include mixins.ellipsis;
   }
   &__progress {
     display: flex;
     align-items: center;
     gap: 8px;
+    margin-top: 8px;
   }
   &__bar {
     flex: 1;
-    height: 6px;
+    height: 5px;
+    background: var(--well);
+    border: 1px solid var(--line);
     border-radius: var(--radius-sm);
-    background: var(--bg0);
     cursor: pointer;
     overflow: hidden;
   }
@@ -77,160 +109,150 @@
     background: linear-gradient(90deg, var(--accent), var(--accent-2));
   }
   &__time {
-    font-family: var(--mono);
-    font-size: 10px;
+    font: 600 11px var(--mono);
+    font-variant-numeric: tabular-nums;
     color: var(--muted);
     white-space: nowrap;
   }
   &__controls {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 2px;
+    margin: 6px -6px 0;
   }
   &__play {
+    padding: 7px 16px;
+    margin: 0 2px;
+  }
+  /* Shuffle on and muted: the glyph keeps the accent, as hover lights it. */
+  &__toggle.is-active > svg {
     color: var(--accent);
+  }
+  &__mix {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: 4px;
   }
   &__volume {
     flex: 1;
-    min-width: 50px;
+    min-width: 40px;
   }
-  &__credits,
-  &__credit {
+  &__source {
+    margin-top: 8px;
+    padding-top: 7px;
+    border-top: 1px solid var(--line);
     font-size: 11.5px;
-    line-height: 1.4;
+    line-height: 1.35;
     color: var(--muted);
   }
 
-  /* The minimized player, and its twin, a race's now-playing chip (controls via M, [ and ]) in the top right
-     corner: the same plate, size and spinning disc, so the reduced player reads the same on every screen.
-     Touch screens drop the chip to keep the corner clear. */
+  /* The minimized player and its twin, a race's chip: the same plate, size and spinning disc, so the reduced
+     player reads the same on every screen. The help button beside it is their square twin (_help.scss). */
   &__pill,
   &__chip {
     @include mixins.chamfer;
-    position: absolute;
-    right: mixins.safe(right, var(--gutter));
-    bottom: mixins.safe(bottom, var(--gutter));
     display: flex;
     align-items: center;
     gap: 8px;
     max-width: 220px;
     height: var(--corner-h);
     padding: 0 12px;
-    font: 600 13px var(--font);
+    font: 700 13px var(--font);
+    letter-spacing: 0.02em;
     color: var(--text);
-    cursor: pointer;
+    @include mixins.plate(var(--plate), var(--radius-sm));
     pointer-events: auto;
     svg {
+      flex: none;
       color: var(--accent);
+    }
+  }
+  &__pill {
+    cursor: pointer;
+    transition: background var(--t-fast), border-color var(--t-fast);
+    @include mixins.sheen-on-hover;
+    &:hover,
+    &:focus-visible {
+      background: var(--plate-hover);
+      border-color: var(--accent-line);
+      outline: none;
+    }
+    &:focus-visible {
+      box-shadow: var(--edge), var(--ring);
     }
   }
   &__pill-label {
     @include mixins.ellipsis;
   }
   &__chip {
-    top: mixins.safe(top, var(--gutter));
-    bottom: auto;
-    cursor: default;
     pointer-events: none;
   }
-  &[data-mode='compact'] .music-player__chip {
+  &[data-mode='compact'] &__chip,
+  &[data-mode='compact'] &__toast {
     @include media.touch {
       display: none;
     }
   }
 
-  &__banner {
-    @include mixins.chamfer(12px);
+  /* Now playing: a small card under the pill or the chip, right aligned with it. */
+  &__toast {
+    @include mixins.chamfer(10px);
     position: absolute;
-    left: 50%;
-    top: 56px;
-    bottom: auto;
-    transform: translate(-50%, -16px);
-    opacity: 0;
-    padding: 10px 16px;
-    text-align: center;
+    top: calc(100% + 8px);
+    right: 0;
     width: max-content;
-    max-width: min(520px, calc(100vw - 32px));
-    background: var(--card-top), var(--panel);
-    transition: opacity 0.35s, transform 0.35s;
+    max-width: min(300px, calc(100vw - var(--gutter) * 2));
+    padding: 6px 12px 8px;
+    display: flex;
+    flex-direction: column;
+    @include mixins.plate((var(--card-top), var(--plate)));
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s, visibility 0s linear 0.3s;
+    @include media.motion {
+      transform: translateY(-6px);
+      transition: opacity 0.3s, transform 0.3s var(--ease-out), visibility 0s linear 0.3s;
+    }
     &.is-visible {
       opacity: 1;
-      transform: translate(-50%, 0);
+      visibility: visible;
+      transform: none;
       pointer-events: auto;
+      transition: opacity 0.25s, transform 0.3s var(--ease-out);
     }
   }
-  &__banner-label {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    letter-spacing: 0.2em;
+  &__toast-label {
+    font-size: 10.5px;
+  }
+  &__toast-title {
+    font: 900 14px/1.2 var(--display);
+    letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: var(--accent-2);
+    @include mixins.ellipsis;
+    @include mixins.gradient-text(var(--title-ink));
   }
-  &__banner-title {
-    font: 900 24px var(--display);
-    letter-spacing: 0.03em;
-    margin-top: 2px;
-  }
-  &__banner-artist {
-    color: var(--accent);
-    font-weight: 600;
+  &__toast-credit {
+    margin-top: 1px;
+    font-size: 11.5px;
+    line-height: 1.35;
+    color: var(--muted);
   }
 
-  /* The menu and a paused or finished race keep the player (card or pill) in the top right corner, where a
-     race's chip stands, so the music and the help beside it (dock) stay in one spot from the menu through the
-     race. */
-  &[data-context='menu'],
-  &[data-context='race'] {
-    .music-player__card,
-    .music-player__pill {
-      top: mixins.safe(top, var(--gutter));
-      bottom: auto;
+  @include media.motion {
+    &__disc.is-spinning svg,
+    &__pill svg.is-spinning,
+    &__chip svg.is-spinning {
+      animation: music-player-spin 2.4s linear infinite;
     }
-  }
-
-  /* Banner placement per screen: low in the middle in the menu, a race and the drone (the player and the
-     HUD's top keep the top), and beside the rail in the top right corner of the garage's scene (its switch
-     and camera sit at the bottom of the view). */
-  &[data-context='menu'],
-  &[data-context='race'],
-  &[data-context='drone'] {
-    .music-player__banner {
-      top: auto;
-      bottom: calc(#{mixins.safe(bottom, var(--gutter))} + 36px);
-    }
-  }
-  &[data-context='garage'] {
-    .music-player__banner {
-      left: auto;
-      /* The same inset from the top as the player keeps from the bottom. */
-      top: mixins.safe(top, var(--gutter));
-      right: mixins.safe(right, var(--gutter));
-      max-width: min(460px, calc(100vw - 560px));
-      transform: translate(0, -16px);
-    }
-  }
-  /* A phone's garage keeps the bottom for its sheet (the Save button along its foot): the pill waits in the
-     top right corner of the view instead. */
-  &[data-context='garage'] .music-player__pill {
-    @include media.narrow {
-      top: mixins.safe(top, var(--gutter));
-      bottom: auto;
-    }
-  }
-  /* After that top: narrow screens center it under the top edge. */
-  &[data-context='garage'] {
-    .music-player__banner.is-visible {
-      transform: translate(0, 0);
-    }
-    .music-player__banner {
-      @include media.narrow {
-        left: 50%;
-        right: auto;
-        top: mixins.safe(top, var(--gutter));
-        transform: translate(-50%, 0);
+    /* A new track: one slow pass of light across the piece on show. */
+    &__card.is-fresh,
+    &__pill.is-fresh,
+    &__chip.is-fresh {
+      > .sheen::before {
+        animation: sheen 1.2s var(--ease-out) both;
       }
     }
   }

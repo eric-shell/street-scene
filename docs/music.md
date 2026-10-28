@@ -1,6 +1,6 @@
 # Music
 
-The game has one persistent music player. It keeps playing across the menu, garage, races and drone mode. Every visit opens with the same track ("Astrology", `OPENING_TRACK_ID` in `src/audio/musicPlayer.ts`) and shuffles on from there; volume, mute and shuffle are remembered between visits. Every track is credited in the player, in the "Now playing" banner, in the music library and on the credits screen with its **title, artist, album, source and license**.
+The game has one persistent music player. It keeps playing across the menu, garage, races and drone mode. Every visit opens with the same track ("Astrology", `OPENING_TRACK_ID` in `src/audio/musicPlayer.ts`) and shuffles on from there; volume, mute and shuffle are remembered between visits. Every track is credited in the player, in the "Now playing" toast, in the music library and on the credits screen with its **title, artist, album, source and license**.
 
 ## Library layout
 
@@ -37,7 +37,7 @@ Nothing else changes: the player, library and credits read the catalog.
 
 ## Controls
 
-The player card sits bottom-right in the menu, garage and drone mode. Use the minimize button to shrink it to a pill; phones start minimized. During a race it collapses to a "now playing" chip, and a banner with full credit appears whenever the track changes.
+The player stays in the top right corner on every screen (menu, garage, drone, photo mode, pause and results), with the help button beside it. Use the minimize button to shrink it to a pill; phones start minimized. While you drive it collapses to a "now playing" chip in the same spot. When the track changes, a glint runs across whichever piece is showing, and under the pill or chip a small "Now playing" toast gives the full credit for five seconds (the card already shows it). Touch screens hide the chip and toast during a race, because that corner belongs to the dials; the pause screen's card credits the track.
 
 | Key | Action |
 |---|---|

@@ -1,14 +1,20 @@
 /* The drift score in a drift race (hud.ts): the total in yellow over the drift being scored, its
-   multiplier and, in a drift zone, the zone's tag. */
+   multiplier and, in a drift zone, the zone's tag. It stands clear of the music chip in the top right corner
+   and the now-playing toast under it (panels/_music-player.scss), which touch screens leave out. */
+@use '../styles/abstracts/media';
 @use '../styles/abstracts/mixins';
 .drift-score {
   position: absolute;
-  top: 12%;
+  top: max(12%, calc(#{mixins.safe(top, var(--gutter))} + 150px));
   right: mixins.safe(right, var(--gutter));
   text-align: right;
   font-family: var(--mono);
   font-weight: 700;
   text-shadow: 0 2px 0 rgba(0, 0, 0, 0.6);
+  /* Touch screens show no chip or toast in a race. */
+  @include media.touch {
+    top: 12%;
+  }
   &__total {
     font-size: 34px;
     color: var(--accent-2);

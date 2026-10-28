@@ -78,14 +78,14 @@
   --radius-sm: 2px;
   --shadow: var(--edge), 0 1px 0 rgba(0, 0, 0, 0.5), 0 16px 40px rgba(0, 0, 0, 0.45);
   /* The one margin between the viewport's edges and everything that stands at them: the garage, the pause
-     and results rails, the HUD and the drone, the full map, the help, the music player and its banner, so
+     and results rails, the HUD and the drone, the full map, the help, the music player and its toast, so
      every plate sits the same distance in from its edge. Under mixins.safe where a notch can intrude. The
      main menu alone keeps a wider margin (ui/menu/_menu.scss): it is the primary screen, not one sharing
      the view with other plates. */
   --gutter: clamp(12px, 1.25vw, 24px);
   /* The main menu's column width, shared by the rail and the splash's copy of the title so both size the title alike. */
   --menu-w: min(480px, calc(100vw - 32px));
-  /* The height of the bottom right corner's controls side by side, the music pill and the help button, so the
+  /* The height of the top right corner's controls side by side, the music pill and the help button, so the
      two read as one row (ui/panels/_music-player.scss, _help.scss). */
   --corner-h: 38px;
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.08'/%3E%3C/svg%3E");
