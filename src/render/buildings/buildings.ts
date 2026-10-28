@@ -60,6 +60,7 @@ import type { Skin, Out, Detail, BuildingCounts } from './buildingKit';
 import { FlickList, applyFlicker } from '../street/signage';
 import { DRAG, routeNearness } from '../street/routeNearness';
 import { waterTower, chimney, spire, pyramid, wedge, mansard, hipRoof, mast, light, roofLights, clutter, billboard } from './roofs';
+import { RoofLife, roofLifeFor } from './roofLife';
 import { bayWindow, fireEscapes, balcony, eyebrow, fin } from './facadeDetails';
 
 export type { Detail };
@@ -212,10 +213,12 @@ export function buildBuildings(world: World, podium: PodiumOutput, opts: { detai
     counts: { waterTowers: 0, fireEscapes: 0, neonRings: 0, stripeRings: 0, bayWindows: 0, paintedLadies: 0, stripMalls: 0 },
     lights: [],
     podium,
+    life: undefined as unknown as RoofLife,
   };
   const g = world.graph;
   const scratch: number[] = [];
   const B = recessCoplanar(world.blocks.buildings, plans);
+  o.life = new RoofLife(world, B, plans, routeNearness(world));
   // The main drag burns brighter than the side streets (street/routeNearness.ts): a window density multiplier per building, plus a nearness bucket for the lowest floors.
   const near = routeNearness(world);
   const dragOf = (b: Building, lowFloors: boolean): DragLight => ({
@@ -224,6 +227,7 @@ export function buildBuildings(world: World, podium: PodiumOutput, opts: { detai
   });
   for (let i = 0; i < B.length; i++) {
     o.adCell = adCell(i, B[i]);
+    o.life.begin(i);
     buildOne(o, B[i], plans[i], det, (x, z) => corridorClearance(g, world.blocks.edgeGrid, x, z, scratch) < 2, world.heightAt, dragOf(B[i], true), false, downtownFactor(g.plan, B[i].x, B[i].z) < OUTER_DOWNTOWN);
   }
   // The blocks' middles (backlots.ts), Medium and up: no street fronts, so no shops or stoops on them.
@@ -231,6 +235,7 @@ export function buildBuildings(world: World, podium: PodiumOutput, opts: { detai
     const back = planBacklots(world, plans);
     for (let i = 0; i < back.buildings.length; i++) {
       o.adCell = adCell(i + B.length, back.buildings[i]);
+      o.life.begin(-1);
       buildOne(o, back.buildings[i], back.plans[i], det, () => false, world.heightAt, dragOf(back.buildings[i], false), true);
     }
   }
@@ -297,11 +302,14 @@ export function buildBuildings(world: World, podium: PodiumOutput, opts: { detai
     m.name = 'aviationLights';
     meshes.push(m);
   }
+  const glow = o.life.buildGlow(track);
+  if (glow) meshes.push(glow.mesh);
   return {
     meshes,
     counts: o.counts,
     update(time) {
       mats.update(time);
+      glow?.update(time);
     },
     dispose() {
       for (const d of disposables) d.dispose();
@@ -601,7 +609,9 @@ function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[
       }
       yb = yt;
     }
-    const crown = plan.landmark ? 'pyramid' : plan.region === 'sf' && nF > 12 && rng.chance(0.12) ? 'pyramid' : rng.pick(['band', 'band', 'slant', 'penthouse', 'flat'] as const);
+    const drawnCrown = plan.landmark ? 'pyramid' : plan.region === 'sf' && nF > 12 && rng.chance(0.12) ? 'pyramid' : rng.pick(['band', 'band', 'slant', 'penthouse', 'flat'] as const);
+    // A helipad needs the plain flat roof deck.
+    const crown = o.life.role === 'pad' && drawnCrown !== 'pyramid' ? 'flat' : drawnCrown;
     const ledColor = LED[rng.int(0, LED.length - 1)];
     walls(o, F, skin, boxOutline(x0, x1, z0, z1), null, yb, yTop, vRef, street, NO_GLOW, rng, 'face');
     const outline = boxOutline(x0, x1, z0, z1);
@@ -630,7 +640,7 @@ function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[
         mast(o, F, (x0 + x1) / 2 + ix * 0.6, (z0 + z1) / 2, yTop + ph, rng.range(5, 12), rng, tall > BLD.aviationAbove - 10);
       }
       if (tall > BLD.aviationAbove) roofLights(o, F, x0, x1, z0, z1, yTop + 1, rng);
-      if (crown === 'flat') clutter(o, F, x0 + 1, x1 - 1, z0 + 1, z1 - 1, yTop, rng, det, 'ac', skin.tint);
+      if (crown === 'flat' && !roofLifeFor(o, F, x0 + 1, x1 - 1, z0 + 1, z1 - 1, yTop)) clutter(o, F, x0 + 1, x1 - 1, z0 + 1, z1 - 1, yTop, rng, det, 'ac', skin.tint);
     }
     return;
   }
@@ -655,9 +665,10 @@ function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[
       neonRing(o, F, base, yTop + 0.35, yTop + 0.7, LED[rng.int(0, LED.length - 1)]);
       o.counts.neonRings++;
     }
-    if (rng.chance(0.35)) fin(o, F, hw, hd, yTop, rng.range(4, 9), slab, pastelNeon(rng.next()));
+    if (rng.chance(0.35) && !o.life.role) fin(o, F, hw, hd, yTop, rng.range(4, 9), slab, pastelNeon(rng.next()));
     if (tall > BLD.aviationAbove) roofLights(o, F, -hw, hw, -hd, hd, yTop + 1.1, rng);
-    else clutter(o, F, -hw + 1.5, hw - 1.5, -hd + 1.5, hd - 1.5, yTop, rng, det, 'ac', skin.tint);
+    if (roofLifeFor(o, F, -hw + 1.5, hw - 1.5, -hd + 1.5, hd - 1.5, yTop)) return;
+    if (tall <= BLD.aviationAbove) clutter(o, F, -hw + 1.5, hw - 1.5, -hd + 1.5, hd - 1.5, yTop, rng, det, 'ac', skin.tint);
     return;
   }
 
@@ -789,7 +800,8 @@ function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[
     }
   }
   const nycish = plan.region === 'nyc' || plan.region === 'philly';
-  if ((style === 'brownstone' || style === 'prewar') && rng.chance(sig.waterTower?.block ?? (nycish ? 0.6 : 0.28))) {
+  const partyRoof = o.life.role === 'party';
+  if ((style === 'brownstone' || style === 'prewar') && rng.chance(sig.waterTower?.block ?? (nycish ? 0.6 : 0.28)) && !partyRoof) {
     const r = 2.6;
     if (x1 - x0 > 2 * r + 2 && z1 - z0 > 2 * r + 2) {
       const lx = rng.range(x0 + r + 1, x1 - r - 1);
@@ -799,8 +811,8 @@ function buildOne(o: Out, b: Building, plan: BuildingPlan, det: (typeof DETAIL)[
     }
   }
   if (style === 'brownstone' || style === 'prewar') {
-    if (rng.chance(0.15) && plan.region !== 'philly') billboard(o, F, x0, x1, z0, z1, roofY + 0.7, rng, front);
-    clutter(o, F, x0 + 1, x1 - 1, z0 + 1, z1 - 1, roofY, rng, det, 'bulkhead', skin.tint);
+    if (rng.chance(0.15) && plan.region !== 'philly' && !partyRoof) billboard(o, F, x0, x1, z0, z1, roofY + 0.7, rng, front);
+    if (!roofLifeFor(o, F, x0 + 1, x1 - 1, z0 + 1, z1 - 1, roofY)) clutter(o, F, x0 + 1, x1 - 1, z0 + 1, z1 - 1, roofY, rng, det, 'bulkhead', skin.tint);
   } else chimney(o, F, rng.range(x0 + 1.2, x1 - 1.2), z1 - 1.5, roofY, colorOf(0x6a3a2c));
   if (tall > BLD.aviationAbove) roofLights(o, F, x0, x1, z0, z1, roofY + 1, rng);
 }

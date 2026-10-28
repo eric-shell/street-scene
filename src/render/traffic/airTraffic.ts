@@ -32,6 +32,8 @@ import { makeRadialGlow } from '../textures/textures';
 import { pickSubset } from '../textures/cityMood';
 import { ChaseTarget, POLICE, policeWaypoints } from './policeChase';
 import { HEIGHT_FOG_GLSL, HEIGHT_FOG_UNIFORMS } from '../heightFog';
+import { ROOF_LIFE, helipadsOf } from '../buildings/roofLife';
+import type { Helipad } from '../buildings/roofLife';
 
 export const AIR = {
   heli: {
@@ -210,6 +212,123 @@ export function heliPoseAt(loop: Loop, time: number, out: HeliPose, speed: numbe
   loopAt(loop, s + 12, scratchAhead, t2);
   const cross = out.fwd.x * t2.z - out.fwd.z * t2.x;
   out.bank = Math.max(-0.45, Math.min(0.45, cross * 6));
+  return out;
+}
+
+/** The news helicopter's pose with its landing state: the main rotor's angle (rad), its speed as a share of full, and the searchlight's share (0 down, 1 flying). */
+export interface NewsHeliPose extends HeliPose {
+  rotor: number;
+  spin: number;
+  light: number;
+}
+
+const smooth = (u: number): number => {
+  const t = Math.max(0, Math.min(1, u));
+  return t * t * t * (t * (t * 6 - 15) + 10);
+};
+
+/**
+ * Rotor revolutions lost to the winding down while it sits on a pad, by seconds since touchdown `g` (s): the
+ * rotor falls from full speed to idle over spinDown, idles, then spools back up over spinUp, so its angle is
+ * (clock - lost) turns of the cruise rate and stays a pure function of the clock.
+ */
+function rotorLost(g: number): number {
+  const Lg = ROOF_LIFE.landing;
+  const k = 1 - Lg.idle;
+  const up0 = Lg.ground - Lg.spinUp;
+  const x = Math.max(0, Math.min(g, Lg.ground));
+  if (x <= Lg.spinDown) return (k * x * x) / (2 * Lg.spinDown);
+  const down = (k * Lg.spinDown) / 2;
+  if (x <= up0) return down + k * (x - Lg.spinDown);
+  const hold = down + k * (up0 - Lg.spinDown);
+  const r = x - up0;
+  return hold + k * (r - (r * r) / (2 * Lg.spinUp));
+}
+
+const shortest = (a: number, b: number): number => a + Math.atan2(Math.sin(b - a), Math.cos(b - a));
+
+/**
+ * The news helicopter at `time` (s): its loop (heliPoseAt) except in the landing window of each
+ * ROOF_LIFE.landing cycle, when it leaves the loop for the next helipad (the pads in building order), comes in
+ * over `approach`, drops onto it, sits with its rotor winding down and up again, climbs and rejoins the loop at
+ * the point the loop has reached by then. Every blend is between the loop's own pose and the pad's, so nothing
+ * jumps. A pure function of the clock; with no pads it is exactly heliPoseAt.
+ */
+export function newsHeliAt(loop: Loop, pads: readonly Helipad[], time: number, out: NewsHeliPose, speed: number = AIR.heli.speed): NewsHeliPose {
+  const Lg = ROOF_LIFE.landing;
+  heliPoseAt(loop, time, out, speed);
+  const full = AIR.heli.rotorRps * Math.PI * 2;
+  out.spin = 1;
+  out.light = 1;
+  out.rotor = (time * full) % (Math.PI * 2);
+  if (!pads.length || time < Lg.first) return out;
+  const total = Lg.approach + Lg.descend + Lg.ground + Lg.climb + Lg.depart;
+  const cyc = Math.floor((time - Lg.first) / Lg.cycle);
+  const local = time - Lg.first - cyc * Lg.cycle;
+  const lostPer = rotorLost(Lg.ground);
+  const g = local - Lg.approach - Lg.descend;
+  const lost = cyc * lostPer + (local >= total ? lostPer : g > 0 ? rotorLost(g) : 0);
+  out.rotor = (((time - lost) * full) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+  if (local >= total) return out;
+  const pad = pads[cyc % pads.length];
+  const hoverY = pad.y + Lg.hover;
+  const touchY = pad.y + 1.3;
+  const loopYaw = Math.atan2(out.fwd.x, out.fwd.z);
+  let e: number; // 0: on the loop .. 1: over the pad
+  let y: number;
+  let yaw: number;
+  const tx = out.pos.x;
+  const tz = out.pos.z;
+  const ty = out.pos.y;
+  if (local < Lg.approach) {
+    e = smooth(local / Lg.approach);
+    out.pos.x = tx + (pad.x - tx) * e;
+    out.pos.z = tz + (pad.z - tz) * e;
+    y = ty + (hoverY - ty) * e;
+    yaw = shortest(loopYaw, pad.yaw);
+    yaw = loopYaw + (yaw - loopYaw) * e;
+    out.light = 1 - smooth((local - (Lg.approach - 6)) / 6);
+  } else if (local < Lg.approach + Lg.descend) {
+    e = 1;
+    const d = smooth((local - Lg.approach) / Lg.descend);
+    out.pos.x = pad.x;
+    out.pos.z = pad.z;
+    y = hoverY + (touchY - hoverY) * d;
+    yaw = pad.yaw;
+    out.light = 0;
+  } else if (g < Lg.ground) {
+    e = 1;
+    out.pos.x = pad.x;
+    out.pos.z = pad.z;
+    y = touchY;
+    yaw = pad.yaw;
+    out.light = 0;
+    const k = 1 - Lg.idle;
+    const up0 = Lg.ground - Lg.spinUp;
+    out.spin = g < Lg.spinDown ? 1 - (k * g) / Lg.spinDown : g < up0 ? Lg.idle : Lg.idle + (k * (g - up0)) / Lg.spinUp;
+  } else if (local < total - Lg.depart) {
+    e = 1;
+    const d = smooth((local - total + Lg.depart - Lg.climb) / Lg.climb);
+    out.pos.x = pad.x;
+    out.pos.z = pad.z;
+    y = touchY + (hoverY - touchY) * d;
+    yaw = pad.yaw;
+    out.light = 0;
+  } else {
+    const u = (local - (total - Lg.depart)) / Lg.depart;
+    e = 1 - smooth(u);
+    out.pos.x = tx + (pad.x - tx) * e;
+    out.pos.z = tz + (pad.z - tz) * e;
+    y = ty + (hoverY - ty) * e;
+    const to = shortest(loopYaw, pad.yaw);
+    yaw = loopYaw + (to - loopYaw) * e;
+    out.light = smooth((u - 0.7) / 0.3);
+  }
+  out.pos.y = y;
+  out.fwd.x = Math.sin(yaw);
+  out.fwd.z = Math.cos(yaw);
+  out.fwd.y *= 1 - e;
+  out.bank *= 1 - e;
   return out;
 }
 
@@ -1065,7 +1184,9 @@ export function buildAirTraffic(world: World, opts: { quality: Quality; fogDensi
   const { material, uniforms } = airMaterial(led);
   const heliGeo = heliGeometry();
   const blimpGeo = blimpGeometry();
-  const heli = new THREE.Mesh(heliGeo, material);
+  // The news helicopter has a material of its own: its rotor winds down on a pad while the police helicopter's turns on.
+  const news = airMaterial(led);
+  const heli = new THREE.Mesh(heliGeo, news.material);
   heli.name = 'helicopter';
   const blimp = new THREE.Mesh(blimpGeo, material);
   blimp.name = 'blimp';
@@ -1085,7 +1206,8 @@ export function buildAirTraffic(world: World, opts: { quality: Quality; fogDensi
   group.add(police.mesh);
 
   const loop = buildLoop(heliWaypoints(world, seed));
-  const pose: HeliPose = { pos: { x: 0, y: 0, z: 0 }, fwd: { x: 0, y: 0, z: 1 }, bank: 0 };
+  const pose: NewsHeliPose = { pos: { x: 0, y: 0, z: 0 }, fwd: { x: 0, y: 0, z: 1 }, bank: 0, rotor: 0, spin: 1, light: 1 };
+  const pads = helipadsOf(world);
   const bp = blimpParams(world, seed);
   const blimpPose = { pos: { x: 0, y: 0, z: 0 }, yaw: 0 };
   const route = world.route;
@@ -1097,7 +1219,9 @@ export function buildAirTraffic(world: World, opts: { quality: Quality; fogDensi
   const update = (time: number): void => {
     uniforms.uTime.value = time;
     uniforms.uRotor.value = (time * AIR.heli.rotorRps * Math.PI * 2) % (Math.PI * 2);
-    heliPoseAt(loop, time, pose);
+    newsHeliAt(loop, pads, time, pose);
+    news.uniforms.uTime.value = time;
+    news.uniforms.uRotor.value = pose.rotor;
     heli.position.set(pose.pos.x, pose.pos.y, pose.pos.z);
     const yaw = Math.atan2(pose.fwd.x, pose.fwd.z);
     const pitch = -Math.asin(Math.max(-1, Math.min(1, pose.fwd.y))) * 0.6;
@@ -1122,6 +1246,8 @@ export function buildAirTraffic(world: World, opts: { quality: Quality; fogDensi
     // The light lands on whatever is on top: the expressway's deck over the street it crosses.
     target.set(tx, world.heightAt(tx, tz, Infinity), tz);
     drapePool(beamGeo, world, target, spotR, Infinity);
+    beamMat.uniforms.uIntensity.value = AIR.heli.intensity * pose.light;
+    beam.visible = pose.light > 0.01;
     blimpPoseAt(bp, time, blimpPose);
     blimp.position.set(blimpPose.pos.x, blimpPose.pos.y, blimpPose.pos.z);
     blimp.quaternion.copy(q.setFromEuler(e.set(0, blimpPose.yaw, 0, 'YXZ')));
@@ -1138,7 +1264,7 @@ export function buildAirTraffic(world: World, opts: { quality: Quality; fogDensi
     police.view(camera);
     camera.getWorldPosition(camPos);
     const dist = Math.hypot(pose.pos.x - camPos.x, pose.pos.y - camPos.y, pose.pos.z - camPos.z);
-    const proximity = dist > AIR.sound.hear ? 0 : 1 / (1 + (dist / AIR.sound.near) ** 2);
+    const proximity = dist > AIR.sound.hear ? 0 : pose.spin / (1 + (dist / AIR.sound.near) ** 2);
     if (!rotor && !rotorTried && proximity > 0.02) {
       rotor = HeliRotor.create();
       rotorTried = rotor !== null || !HeliRotor.blocked();
@@ -1169,6 +1295,7 @@ export function buildAirTraffic(world: World, opts: { quality: Quality; fogDensi
       blimpGeo.dispose();
       beamGeo.dispose();
       material.dispose();
+      news.material.dispose();
       beamMat.dispose();
       led.dispose();
       glow.dispose();
