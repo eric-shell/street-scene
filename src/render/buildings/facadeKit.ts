@@ -658,10 +658,23 @@ export interface PodiumOutput {
    * axis runs against the facade (cross(up, normal)), and its height in metres. See podiumMaterial.ts.
    */
   room: number[] | null;
+  /** One float per vertex of `walls` (the `aBay` attribute): the index into `glassBays` of the glass bay the quad belongs to, or -1. Null on Low. */
+  bayId: number[] | null;
+  /** Every ground bay with glass behind it, in `aBay` order: where a car hit can break it (street/glassBreak.ts). */
+  glassBays: GlassBay[];
+}
+
+/** A glass ground bay: its centre at the face (m), outward normal and half width along the facade (m). */
+export interface GlassBay {
+  x: number;
+  z: number;
+  nx: number;
+  nz: number;
+  halfLen: number;
 }
 
 export function createPodiumOutput(detail: Detail = 'medium'): PodiumOutput {
-  return { walls: new GeoBuilder(true), trim: new GeoBuilder(true), awnings: new GeoBuilder(true), spill: new GeoBuilder(true), mullion: DETAIL[detail].mullion, room: detail === 'low' ? null : [] };
+  return { walls: new GeoBuilder(true), trim: new GeoBuilder(true), awnings: new GeoBuilder(true), spill: new GeoBuilder(true), mullion: DETAIL[detail].mullion, room: detail === 'low' ? null : [], bayId: detail === 'low' ? null : [], glassBays: [] };
 }
 
 const AWNING_COLORS = [0x8a1c2b, 0x1c4a8a, 0x1f6b3a, 0x7a5a12, 0x5a1f7a, 0x222222].map((c) => new THREE.Color(c));
@@ -790,6 +803,8 @@ export function addPodiumFace(out: PodiumOutput, f: PodiumFace, floors: number, 
     len: baseLen + 2 * e,
   });
   const NO_ROOM = [-1, 0, 0, 0] as const;
+  /** The glass bay the quads being built belong to (index into out.glassBays), -1 for none. */
+  let curBay = -1;
   const quad = (gb: GeoBuilder, l: ReturnType<typeof lineFor>, s0: number, s1: number, y0: number, y1: number, uv: ReturnType<typeof cellUv>, room: readonly number[] = NO_ROOM) => {
     const p0 = { x: l.ax + ux * s0, z: l.az + uz * s0 };
     const p1 = { x: l.ax + ux * s1, z: l.az + uz * s1 };
@@ -798,15 +813,22 @@ export function addPodiumFace(out: PodiumOutput, f: PodiumFace, floors: number, 
     const c = gb.vertex(p1.x, y1, p1.z, f.nx, 0, f.nz, uv.u1, uv.v1, tint);
     const d = gb.vertex(p0.x, y1, p0.z, f.nx, 0, f.nz, uv.u0, uv.v1, tint);
     gb.quadFacing(a, b, c, d, f.nx, 0, f.nz);
-    if (gb === out.walls && out.room) for (let k = 0; k < 4; k++) out.room.push(room[0], room[1], room[2], room[3]);
+    if (gb === out.walls && out.room) for (let k = 0; k < 4; k++) {
+      out.room.push(room[0], room[1], room[2], room[3]);
+      out.bayId?.push(room === NO_ROOM ? -1 : curBay);
+    }
   };
   /** The room behind a ground bay's glass (interiorAtlas.ts): its attribute values, or none for a bay without glass. Placed by a hash of where the bay stands, so the facade stream is never touched. */
   const roomOf = (variant: number, b: number, bayLen: number, y0: number, y1: number): readonly number[] => {
     const name = GROUND_BAYS[variant];
-    if (!out.room || !f.front || !hasRoom(name)) return NO_ROOM;
+    if (!f.front || !hasRoom(name)) return NO_ROOM;
     const pick = roomFor(name, f.ax + ux * (b + 0.5) * bayLen, f.az + uz * (b + 0.5) * bayLen);
     if (!pick) return NO_ROOM;
     const hand = ux * f.nz - uz * f.nx < 0 ? -1 : 1;
+    // Low has no room to draw, but its bays still break (the sound and the shards' bay list stay the same on every tier).
+    curBay = out.glassBays.length;
+    out.glassBays.push({ x: f.ax + ux * (b + 0.5) * bayLen + f.nx * bayExtra[b], z: f.az + uz * (b + 0.5) * bayLen + f.nz * bayExtra[b], nx: f.nx, nz: f.nz, halfLen: bayLen / 2 });
+    if (!out.room) return NO_ROOM;
     return [variant, pick.room + pick.roll * 0.999, (bayLen - 0.02) * hand, y1 - y0];
   };
   /** Horizontal strip between offsets e0 and e1 at height y (a ledge or a soffit). */

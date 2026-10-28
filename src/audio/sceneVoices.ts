@@ -477,32 +477,6 @@ export class FerryHorn {
     if (!h) return null;
     try {
       return new FerryHorn(h);
-
-/**
- * Firework mix (render/sky/fireworks.ts): the boom's level and low pass (Hz, near and far), the launch thump's
- * level, the crackle's level and band (Hz), the distance (m) a burst is still heard at full weight, and the least
- * share a far one keeps. Set against the thunder neighbourhood in docs/audioMix.md.
- */
-const FIREWORK = { boom: 0.5, boomNear: 700, boomFar: 260, thump: 0.2, crackle: 0.1, crackleHz: 4200, near: 900, floor: 0.05 } as const;
-
-/**
- * A fireworks display's sound, on the ambience bus like thunder: a thump when the shell leaves the barge, and a boom
- * with a crackle at the burst, each started once the sound has crossed the distance (the caller waits for it).
- * Louder for a bigger shell, duller and softer with distance, panned toward the water. A crackle shell's sizzle is
- * thirty-odd pulses of bright noise inside one gain envelope, so it costs one source.
- */
-export class FireworkVoice {
-  private ctx: AudioContext;
-  private bus: GainNode;
-  private noise: AudioBuffer;
-  private live = new Set<AudioScheduledSourceNode>();
-
-  static create(): FireworkVoice | null {
-    if (typeof window === 'undefined' || TrainRumble.blocked()) return null;
-    const h = audioHub();
-    if (!h) return null;
-    try {
-      return new FireworkVoice(h);
     } catch {
       return null;
     }
@@ -537,7 +511,40 @@ export class FireworkVoice {
 
   dispose(): void {
     this.out.disconnect();
+  }
+}
 
+/**
+ * Firework mix (render/sky/fireworks.ts): the boom's level and low pass (Hz, near and far), the launch thump's
+ * level, the crackle's level and band (Hz), the distance (m) a burst is still heard at full weight, and the least
+ * share a far one keeps. Set against the thunder neighbourhood in docs/audioMix.md.
+ */
+const FIREWORK = { boom: 0.5, boomNear: 700, boomFar: 260, thump: 0.2, crackle: 0.1, crackleHz: 4200, near: 900, floor: 0.05 } as const;
+
+/**
+ * A fireworks display's sound, on the ambience bus like thunder: a thump when the shell leaves the barge, and a boom
+ * with a crackle at the burst, each started once the sound has crossed the distance (the caller waits for it).
+ * Louder for a bigger shell, duller and softer with distance, panned toward the water. A crackle shell's sizzle is
+ * thirty-odd pulses of bright noise inside one gain envelope, so it costs one source.
+ */
+export class FireworkVoice {
+  private ctx: AudioContext;
+  private bus: GainNode;
+  private noise: AudioBuffer;
+  private live = new Set<AudioScheduledSourceNode>();
+
+  static create(): FireworkVoice | null {
+    if (typeof window === 'undefined' || TrainRumble.blocked()) return null;
+    const h = audioHub();
+    if (!h) return null;
+    try {
+      return new FireworkVoice(h);
+    } catch {
+      return null;
+    }
+  }
+
+  private constructor(h: NonNullable<ReturnType<typeof audioHub>>) {
     this.ctx = h.ctx;
     this.bus = h.ambienceBus;
     this.noise = h.noise;
