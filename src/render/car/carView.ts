@@ -278,8 +278,6 @@ export class CarView {
   private clipParts = '';
   /** The wheels' own copies of body materials they share (Chrome, Black...), so the clip never reaches the body. */
   private readonly wheelCopies = new Map<THREE.Material, THREE.Material>();
-  /** The wheel paints (face, lip and center cap, each axle's own) that the clip is already on, so a wheel mesh wears them as they are. */
-  private readonly paintedWheelMats: Set<THREE.Material>;
 
   constructor(
     carId: string,
@@ -292,8 +290,6 @@ export class CarView {
     opts: { headlights?: number; underglowLight?: boolean; envMap?: THREE.Texture | null; roadLift?: number; brakes?: boolean; plate?: string | null; tread?: boolean } = {},
   ) {
     this.materials = createCarMaterials(opts.envMap ?? null, opts.tread ?? true);
-    const m = this.materials;
-    this.paintedWheelMats = new Set([m.Rim, m.RimRear, m.RimLip, m.RimLipRear, m.RimCap, m.RimCapRear]);
     this.car = manifestCar(carId);
     this.roadLift = opts.roadLift ?? 0;
     this.brakesOn = opts.brakes ?? true;
@@ -316,7 +312,7 @@ export class CarView {
     const { track } = this.owned;
     this.clip = track(new WheelClip(this.car, this.body));
     // Tire and wheel paints are the wheels' alone; the clip goes straight on them.
-    for (const m of [this.materials.Tire, this.materials.Rim, this.materials.RimRear, this.materials.RimLip, this.materials.RimLipRear, this.materials.RimCap, this.materials.RimCapRear]) this.clip.clipMaterial(m);
+    for (const m of [this.materials.Tire, this.materials.Rim, this.materials.RimRear]) this.clip.clipMaterial(m);
     // Underglow: a shader glow on the road around the footprint, plus an optional real light.
     this.underglowMat = track(new THREE.ShaderMaterial({
       uniforms: {
@@ -492,9 +488,7 @@ export class CarView {
   /** Apply a visual build. Part swaps load asynchronously; everything else is instant. */
   async applyVisual(v: VisualBuild, token = ++this.loadToken): Promise<void> {
     this.visual = v;
-    const frontWheel0 = v.parts.wheels ?? this.car.defaultWheel;
-    const stockLip = (id: string): 'chrome' | 'rim' => (partById(id)?.lip === 'chrome' ? 'chrome' : 'rim');
-    applyVisualToMaterials(this.materials, v, [stockLip(frontWheel0), stockLip(v.wheels.rearPart ?? frontWheel0)]);
+    applyVisualToMaterials(this.materials, v);
     this.applyStance();
     this.applyUnderglow(0);
 
@@ -759,7 +753,7 @@ export class CarView {
 
   /** A wheel mesh's material: the tire and wheel paints as they are, a clipped copy of anything the body also wears. */
   private readonly wheelMat = (m: THREE.Material): THREE.Material => {
-    if (m === this.materials.Tire || this.paintedWheelMats.has(m)) return m;
+    if (m === this.materials.Tire || m === this.materials.Rim || m === this.materials.RimRear) return m;
     let copy = this.wheelCopies.get(m);
     if (!copy) {
       copy = this.owned.track(m.clone());
@@ -768,7 +762,7 @@ export class CarView {
     }
     return copy;
   };
-  private readonly rearWheelMat = (m: THREE.Material) => this.wheelMat(m === this.materials.Rim ? this.materials.RimRear : m === this.materials.RimLip ? this.materials.RimLipRear : m === this.materials.RimCap ? this.materials.RimCapRear : m);
+  private readonly rearWheelMat = (m: THREE.Material) => this.wheelMat(m === this.materials.Rim ? this.materials.RimRear : m);
 
   /** Remap one axle's wheel meshes for a wheel size (tire outer diameter stays) and a width (only the barrel behind the spokes grows). */
   private applyWheelSize(axle: 0 | 1, size: number, width: number): void {
