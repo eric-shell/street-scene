@@ -28,10 +28,20 @@ Object names may carry a `<carId>.` prefix (handy when several cars share
 one working file); it is stripped on export.
 """
 import json
+import math
 import os
 import sys
 
 import bpy
+
+# Shading is recomputed at export (shade): edges sharper than this are split, the rest smoothed
+# with face-area weights. The donor pipeline's authored normals did not survive the hand edits and
+# bmesh round trips that followed (bmesh drops custom normals), so the shipped bodies carried plain
+# smooth normals: on a 16,000 triangle car the hood's rear corners took the cowl fold's tilt, and
+# with corner normals 30 to 40 degrees off their faces the reflection of the garage swung across
+# the panel and went black at some angles. Area weighting lets the big panel faces own their
+# vertices; the sharp split keeps a fold from bleeding into the panel beside it.
+SHADE_ANGLE_DEG = 35
 
 # Which base node a part replaces by default, per slot.
 DEFAULT_HIDES = {
@@ -76,12 +86,32 @@ def show_all():
         o.hide_set(False)
 
 
-def export(objects, path):
+def shade(o):
+    """Replace the mesh's shading with sharp-by-angle plus area weighted normals (SHADE_ANGLE_DEG).
+    The custom normals are dropped by removing their attribute (no operator, so no selection
+    dance); the Weighted Normal modifier is left on the object for the exporter to apply."""
+    me = o.data
+    custom = me.attributes.get("custom_normal")
+    if custom is not None:
+        me.attributes.remove(custom)
+    for p in me.polygons:
+        p.use_smooth = True
+    me.set_sharp_from_angle(angle=math.radians(SHADE_ANGLE_DEG))
+    if not any(m.type == "WEIGHTED_NORMAL" for m in o.modifiers):
+        mod = o.modifiers.new("shade", "WEIGHTED_NORMAL")
+        mod.mode = "FACE_AREA"
+        mod.keep_sharp = True
+        mod.weight = 50
+
+
+def export(objects, path, reshade=True):
     bpy.ops.object.select_all(action="DESELECT")
     renamed = []
     for o in objects:
         o.hide_set(False)
         o.select_set(True)
+        if reshade and o.type == "MESH":
+            shade(o)
     if sorted(o.name for o in bpy.context.selected_objects) != sorted(o.name for o in objects):
         raise SystemExit(f"exportCar: could not select {[o.name for o in objects]} for {path}")
     for o in objects:
@@ -112,7 +142,8 @@ def export_wheels(wheels, out_dir, meta):
         if o.type != "MESH":
             continue
         n = short(o.name).replace("wheel_", "")
-        export([o], os.path.join(out_dir, "wheels", f"wheel_{n}.glb"))
+        # Wheels keep their own shading: lathed rings and hex heads were built with it.
+        export([o], os.path.join(out_dir, "wheels", f"wheel_{n}.glb"), reshade=False)
         meta["wheels"].append({"name": n, "displayName": o.get("displayName", ""), "tris": tris(o)})
 
 

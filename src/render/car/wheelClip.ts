@@ -3,16 +3,20 @@
  * steering lock move a wheel further than the arch was cut for, so at full compression the tire's
  * crown came up through the fender and at full lock its corners swung out through the arch's ends.
  *
- * Each car measures its body once per part change: over each wheel, a height field of the lowest body
- * surface above every spot (car space, from the ground up; the wheel well's liner where the models have
- * one, the floor or a bumper's underside beside it). The wheel materials discard any fragment above
- * that surface. Above it is either inside the shell, where the body hides the wheel anyway, or out
- * through the panel, which is exactly the poke-through. Outboard of the body the arch's lip height
- * carries on, so a tire pushed out past the fender (offset, camber, lock) is cut at the fender's line
- * too. The cut lands on the panel the tire passes through, so it reads as the wheel tucking under it.
+ * Each car measures its body once per part change: over each wheel, a height field of the body
+ * surface above every spot (car space, from the ground up). The wheel materials discard any fragment
+ * above that surface. Under the fender the field is the outer skin, the highest surface over the spot
+ * (fender top, hood): what a tire pokes through. The wheel well's liner below it is interior, so a
+ * lowered build's tire is left to pass into it and disappear, as a tucked tire does; cutting at the
+ * liner (the lowest surface, as this once did) carved the crown away a few centimetres under the
+ * fender and showed the liner, a flat black plane, through the arch in front of the wheel. At the
+ * fender's edge the field is the lowest surface instead, the arch lip's underside, and outboard of the
+ * body that lip height carries on, so a tire pushed out past the fender (offset, camber, lock) is cut
+ * at the fender's line and reads as the wheel tucking under it.
  *
  * Cost: four texel fetches per wheel fragment, no extra pass or draw call; measuring rasterizes the body's
- * triangles into four small grids (a few milliseconds, only when the body or its parts change).
+ * triangles into four small grids twice (lowest and highest surface; a few milliseconds, only when the
+ * body or its parts change).
  */
 import * as THREE from 'three';
 import type { ManifestCar } from './carAssets';
@@ -69,6 +73,8 @@ const BODY_INV = new THREE.Matrix4();
 
 export class WheelClip {
   private readonly data = new Float32Array(CLIP.nx * CLIP.nz * 4).fill(CLIP.open);
+  /** The highest body surface over each cell (the outer skin), gathered beside the lowest while measuring. */
+  private readonly high = new Float32Array(CLIP.nx * CLIP.nz * 4).fill(-CLIP.open);
   private readonly map = new THREE.DataTexture(this.data, CLIP.nx, CLIP.nz * 4, THREE.RedFormat, THREE.FloatType);
   /** Shared by every wheel material of this car; the world to body matrix is set as each wheel mesh draws. */
   private readonly uniforms = {
@@ -102,12 +108,14 @@ export class WheelClip {
   }
 
   /**
-   * Measure the body: the lowest surface over each cell of each wheel's field, from the meshes the
-   * filter keeps (the opaque body and its parts, in car space: the body group's own frame).
+   * Measure the body: the lowest and the highest surface over each cell of each wheel's field, from the
+   * meshes the filter keeps (the opaque body and its parts, in car space: the body group's own frame);
+   * settle then picks which one each cell clips against.
    */
   measure(keep: (mesh: THREE.Mesh) => boolean): void {
     const { nx, nz } = CLIP;
     this.data.fill(CLIP.open);
+    this.high.fill(-CLIP.open);
     this.body.updateWorldMatrix(true, true);
     BODY_INV.copy(this.body.matrixWorld).invert();
     const boxes = this.uniforms.uArchBox.value;
@@ -145,7 +153,9 @@ export class WheelClip {
               if (l1 < 0 || l2 < 0 || l3 < 0) continue;
               const y = l1 * a.y + l2 * b.y + l3 * c.y;
               const cell = (w * nz + j) * nx + i;
-              if (y > this.floor[w] && y < this.data[cell]) this.data[cell] = y;
+              if (y <= this.floor[w]) continue;
+              if (y < this.data[cell]) this.data[cell] = y;
+              if (y > this.high[cell]) this.high[cell] = y;
             }
           }
         }
@@ -156,22 +166,28 @@ export class WheelClip {
   }
 
   /**
-   * Two passes over one wheel's field once the body is in. Outboard of the body's edge the arch carries
-   * on at the height of its lip, so a tire pushed out by the offset, camber or steering lock tucks under
-   * the fender's line instead of standing beside it. Then each cell takes the lowest of itself and its
-   * neighbours: a cell holds the surface at its center, so on a steep lip half of it sat above the panel
-   * and the tire peeked through in steps; the lowest neighbour keeps the cut at or just under the panel.
+   * Two passes over one wheel's field once the body is in. Along each row, from the inboard side out:
+   * under the body the cell clips at the outer skin (the highest surface); the last two cells before the
+   * body's edge keep the lowest, the arch lip's underside; outboard of the edge that lip height carries
+   * on, so a tire pushed out by the offset, camber or steering lock tucks under the fender's line instead
+   * of standing beside it. Then each cell takes the lowest of itself and its neighbours: a cell holds
+   * the surface at its center, so on a steep lip half of it sat above the panel and the tire peeked
+   * through in steps; the lowest neighbour keeps the cut at or just under the panel.
    */
   private settle(w: number, out: 1 | -1): void {
     const { nx, nz } = CLIP;
     const base = w * nz * nx;
     const d = this.data;
+    const h = this.high;
     for (let j = 0; j < nz; j++) {
-      let lip: number = CLIP.open;
+      const row = base + j * nx;
+      const at = (k: number): number => row + (out > 0 ? k : nx - 1 - k);
+      let edge = -1;
+      for (let k = 0; k < nx; k++) if (d[at(k)] < CLIP.open) edge = k;
       for (let k = 0; k < nx; k++) {
-        const cell = base + j * nx + (out > 0 ? k : nx - 1 - k);
-        if (d[cell] < CLIP.open) lip = d[cell];
-        else d[cell] = lip;
+        const cell = at(k);
+        if (k < edge - 1) d[cell] = h[cell] > -CLIP.open ? h[cell] : CLIP.open;
+        else if (k > edge) d[cell] = edge < 0 ? CLIP.open : d[at(edge)];
       }
     }
     const src = d.slice(base, base + nz * nx);

@@ -872,7 +872,7 @@ export const CITY = {
        * Race passes (monument.ts plazaPasses): a route turning round a corner of the plaza block cuts
        * across the paving instead, round the obelisk's or column's steps (the landmark the apex of
        * the turn) or straight through the arch. The first pass places the landmark, at the middle of
-       * the chord between where it leaves and rejoins the streets. The racing line's width (m); how
+       * the chord between where it leaves and rejoins the streets or deeper (passCornerDeep). The racing line's width (m); how
        * far from the corner it leaves and rejoins the street [min, max], tried every passStep (m),
        * as far as the route runs along the block's side, less passJunctionClear (m) before a junction
        * the route runs straight across, passMouthClear before a shortcut's mouth and passTurnClear
@@ -890,27 +890,21 @@ export const CITY = {
       passMaxTurn: 72,
       passApproach: 11,
       passCornerMax: 60,
+      /** How much deeper than its chord's middle a corner pass's first landmark may stand, away from the corner (m): room off the plaza's edge for short streets. */
+      passCornerDeep: [0, 8, 16, 24],
       passSites: 40,
       /**
-       * A chicane along one street (a through pass) swings onto the paving over one of these runs (m)
-       * and runs straight at least passStraightMin (m) past the landmark. A second route's chicane or
-       * U cut must agree with the landmark the first placed: its line within passFitSlack (m) of where
-       * the landmark wants it, along the arch's axis within passFitDeg (deg).
+       * A second route's U cut must agree with the landmark the first placed: its line within
+       * passFitSlack (m) of where the landmark wants it, along the arch's axis within passFitDeg (deg).
        */
-      passEntry: [14, 20, 28],
-      passStraightMin: 24,
       passFitSlack: 2,
       passFitDeg: 8,
-      /** A chicane may leave its street this soon after the corner it came round (m: past the junction's closures). */
-      passThroughFrom: 18,
       /** A U cut turns off one street and onto the other about as squarely as the two corners it replaces: its own bend cap (deg). */
       passUcutMaxTurn: 96,
-      /** Added to a pass's sharpest bend when the shapes compete for a route (deg): a U cut crosses the whole plaza and wins over a chicane along one side. */
-      passShapeBias: { corner: -12, through: 0, ucut: -70 },
+      /** Added to a pass's sharpest bend when the shapes compete for a route (deg): a U cut crosses the whole plaza and wins over a corner pass. */
+      passShapeBias: { corner: -12, ucut: -70 },
       /** ... and a pass straight enough for a start grid on it (route.ts PASS_START_RUN) is worth this much (deg). */
       passStartBias: -15,
-      /** A chicane's depth off the street as fractions of the landmark's at the block's middle: shallower swings in more gently. */
-      passDepths: [1, 0.75, 0.55],
       /**
        * How candidate blocks rank for the plaza (plan): points per route served, for a U cut and for a
        * corner pass among their passes, less perMetre per metre from the city center.

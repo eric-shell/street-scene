@@ -1,7 +1,7 @@
 /**
  * The full map's side panel contents: the legend and the Places tab's rows.
- * The legend is the map's own marks (you, the waypoint, the course, the race
- * shortcuts), then this city's neighbourhoods by name (one lights up while
+ * The legend is the map's own marks (you, the waypoint, the course, the
+ * seed's other courses, the race shortcuts), then this city's neighbourhoods by name (one lights up while
  * hovered, a click flies to it, yours is marked), then its places and its
  * streets in sections, a row per layer with its swatch and count (water,
  * high ground and the like share a row); a layer row lights its kinds up on
@@ -39,7 +39,7 @@ export interface LegendHandlers {
 }
 
 /** The legend and its rows by key (the waypoint's row shows and hides with it; a neighbourhood's is its button, marked while you are in it). */
-export function buildLegend(world: World, course: { ink: string; label: string } | null, on: LegendHandlers): { el: HTMLElement; rows: Map<LegendKey, HTMLElement> } {
+export function buildLegend(world: World, course: { ink: string; label: string } | null, others: readonly { key: LegendKey; ink: string; label: string }[], on: LegendHandlers): { el: HTMLElement; rows: Map<LegendKey, HTMLElement> } {
   const counts = new Map<AreaKind, number>();
   let shortcuts = 0;
   // A shortcut driven one way only (a jump exit, a car park) carries chevrons on the map; the row's swatch shows one.
@@ -93,6 +93,7 @@ export function buildLegend(world: World, course: { ink: string; label: string }
   row('you', swatch('icon', PALETTE.text, undefined, Navigation), 'You', '', 'find');
   row('waypoint', swatch('icon', INK.pin, undefined, MapPin), 'Waypoint', '', 'fly');
   if (course) row('route', swatch('line', course.ink), course.label, '', 'toggle');
+  for (const o of others) row(o.key, swatch('line', o.ink), o.label, '', 'toggle');
   if (shortcuts) row('shortcut', swatch(oneWay ? 'arrow' : 'line', MAP_INK.shortcut), 'Race shortcuts', shortcuts > 1 ? String(shortcuts) : '', 'toggle', oneWay ? '. Chevrons point the only way through a one-way shortcut' : '');
 
   // The neighbourhoods: their borders as a layer, then each by name.

@@ -15,7 +15,9 @@ The numbers and rules are `docs/carDesign.md`; read it first, then this checklis
 3. For a kit: read `assets/refs/parts/<kit>/notes.md` and its photos. No notes file: ask for product pages or photos (they are cheap for the user and save a session), or write the notes first from what you know and say so.
 4. If the brief changed (new donors, weights, what to take, lamp signature), edit `scripts/blender/carSpecs.json`. Calibrate a side photo (`wheels_px`, `extent_px`, `roof_px`, `ground_px`) and run `spec_from_refs` in Blender later; estimates are marked in the spec and must not drive a 10 cm change on their own.
 
-## 2. In Blender (MCP or `blender -b`)
+## 2. In Blender (through the MCP)
+
+Model edits go through the Blender MCP only (`/blender`): with no `blender` MCP tools in the session, ask the user to restart with `claude --mcp-config .claude/skills/blender/mcp.json` first.
 
 Every call: `exec` carKit.py, then carRefs.py, then carFeatures.py (`/blender`, "Every MCP call"). Append the car's collections (`/blender`, "Edit an authored car live"); a new car starts from `protoCoupe.py` (loft from profiles) with its own `cid`.
 

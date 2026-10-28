@@ -59,6 +59,7 @@ A recipe adds only what that donor needs:
 | `patches` | boxes to remove (`flush=False`: a roof plate) or press flush into the panel (sunroof, fuel door) |
 | `recolor`, `cull` | face fixes after the join (a glass roof to `Paint`) |
 | `islands` | loose islands to delete after the join, `pred(faces, lo, hi, materials)`: what `cull`'s face boxes would cut too wide (wiper arms over a black cowl, an antenna) |
+| `bridges` | boxes `(lo, hi)` across a gap in the grille's bars: a `cull` or a badge mount cut them where it sat. The faces centered in the box go, then each bar end on the box's left face is lofted to its match on the right (same material, nearest z), so the bar runs across in one piece (the Golf's two bars, in front of the black panel behind them) |
 
 An unclassified material stops the run with its name, so nothing ships by accident. Look at the import's materials first: one listing with face counts and bounds per material says which is which.
 
@@ -81,6 +82,8 @@ compare_donors([cid], OUT)         # side / front / rear PNGs to Read
 - keeps the authored normals as an attribute; flat-shaded sources are smoothed at 30 degrees first;
 - assigns lamps by position: ahead of the axles `HeadLight`, behind them `TailLight`, between them `Light`, and well inboard between the axles (a dome or dash lamp) `Interior`;
 - removes badges on the nose and tail, thin decals anywhere on the body, wipers and antennas, and applies the recipe's patches;
+- presses the panel flush where each badge sat: the badge's bounds, grown 2 cm, that hold Paint faces (a hood's leading edge, a bumper's top lip) get `patch_out(flush=True)`, so no notch is left. A badge in a grille has no Paint under it and is left to the next step;
+- bridges the recipe's `bridges` (`bridge_bars`): the grille bars the badge cut are lofted across the gap, so the grille runs from lamp to lamp. Both steps log how many they did;
 - removes the hub hardware whose materials gave nothing away (the RX-7's lug nuts and calipers were plain black and chrome): loose islands inside the tires' cylinders, out at the track.
 
 `reduce_donor()` does this:
@@ -107,8 +110,8 @@ compare_donors([cid], OUT)         # side / front / rear PNGs to Read
 
 Copy `donor:<cid>.Low` into `<cid>:Car` as `<cid>.Body`. Drop the `src_normal` and `own_normals` attributes and run `remap_materials`. Put the Rig empties at the donor's own wheelbase, track and tire radius. Then:
 1. Save a working copy and run `saveCar.py` headless.
-2. Run `npm run assets` and `npm run validate`.
-3. Look at the car in the garage.
+2. Run `npm run assets` and `npm run validate`. `exportCar.py` reshades every car mesh as it exports (`SHADE_ANGLE_DEG`): edges sharper than 35 degrees split, the rest smoothed with face-area weights. The authored normals `shade_from_source` sets do not survive later hand edits (a bmesh round trip drops them), and plain smooth normals on a 16,000 triangle shell tilted the hood's corners 30 to 40 degrees off their faces: the panel's reflection swung across it and went black at some angles. Wheels keep their own shading.
+3. Look at the car in the garage, lowered all the way: the tire must tuck under the fender with no liner showing in front of it. The game clips a tire at the body's outer skin under the fender and at the lip's underside at its edge (`render/car/wheelClip.ts`), so a liner's height no longer matters to a lowered build; a liner on or through the tire still does (`lift_liners` in `carKit.py` clears it to the house arch gap).
 
 A new car also needs a manifest entry, its `drivingParams.json` block and the car-list tests.
 

@@ -17,16 +17,20 @@
  * The monument is planned after the routes and comes to the race: of the
  * candidate blocks nearest the center it takes the one whose race passes
  * grade best (plazaSite), and every route that drives by gets a pass
- * (plazaPasses, route.ts RoutePass) of one of three shapes: round a corner
+ * (plazaPasses, route.ts RoutePass) of one of two shapes: round a corner
  * the route turns at (the plaza inside the turn: off the street before the
  * corner, round the landmark's steps as the apex or straight through the
- * arch, back onto the next street); a chicane along one side the route runs
- * (off the street, straight across the paving past the landmark or through
- * the arch, back onto the same street further on: the common one); or a U
- * cut straight across the block between two corners the route turns at in
- * turn, skipping the side between (rare: the route has to wrap the block).
- * The first pass places the landmark on or beside its straight (the arch
- * turned along it), as near the block's middle as a gentle line allows; the
+ * arch, back onto the next street); or a U cut straight across the block
+ * between two corners the route turns at in turn, skipping the side between
+ * (rare: the route has to wrap the block). A pass always comes out on
+ * another street than the one it left: a cut off one street and back onto
+ * it (a chicane along one side) would be one a racer skips by driving
+ * straight on, so the routes are steered to turn at the plaza's corners
+ * instead (events.ts).
+ * The first pass places the landmark: the apex of a corner pass's turn
+ * (between the chord's middle and a little deeper, CFG.passCornerDeep), on
+ * or beside a U cut's straight (the arch turned along either), as near the
+ * block's middle as a gentle line allows; the
  * routes are steered toward such blocks while they are picked (events.ts, a
  * side wish of every flavour). A pass straight long enough for the grid may
  * very seldom carry a circuit's start line, under the arch or beside the
@@ -46,7 +50,7 @@ import { CITY, ROUTE } from '../config';
 import { DEG, Vec2, abs, atan2, cos, distToSegment, sin, sqrt } from '../../sim/math';
 import { Rng } from '../../sim/prng';
 import { type RoadGraph, isBendNode } from '../roadGraph';
-import { type PassClear, alongStreet, leaving, passRun, startEdges, streetEdges } from './passes';
+import { type PassClear, alongStreet, blockCorners, leaving, passRun, startEdges, streetEdges } from './passes';
 import { PASS_START_RUN, type RoutePass } from '../route';
 import type { Area, DistrictModule, PlanContext, PlannedEvent } from './types';
 import type { BlockFace } from '../blocks';
@@ -94,20 +98,18 @@ interface PassShape {
 }
 
 /**
- * The shapes a pass takes: round a corner the route turns at (the plaza inside the turn), a
- * chicane that leaves one street the route runs along and rejoins it further on (through), or a
- * U cut straight across the block between two corners the route wraps, skipping the side between.
+ * The shapes a pass takes: round a corner the route turns at (the plaza inside the turn), or a U
+ * cut straight across the block between two corners the route wraps, skipping the side between.
  */
-type PassShapeKind = 'corner' | 'through' | 'ucut';
-const PASS_SHAPES: readonly PassShapeKind[] = ['corner', 'through', 'ucut'];
+type PassShapeKind = 'corner' | 'ucut';
+const PASS_SHAPES: readonly PassShapeKind[] = ['corner', 'ucut'];
 
 /**
  * A place on a route where a pass of some shape could go at block f: the anchor junction `node`
  * with the edges the route arrives (`eA`) and leaves (`eB`) by, for a U cut the second corner
  * `node2` and the street `e2` the route leaves it by (-1 otherwise), and how far out (m) the
  * pass may leave and rejoin the streets (passRun): back along eA from the node (`maxA`) and on
- * along eB from the node, or e2 from node2 (`maxB`). A through pass measures both its ends on
- * along eB.
+ * along eB from the node, or e2 from node2 (`maxB`).
  */
 interface Place {
   shape: PassShapeKind;
@@ -120,16 +122,10 @@ interface Place {
   maxB: number;
 }
 
-/**
- * A pass picked for a place: the distances out (m: `a` back along eA, or on along eB for a
- * through pass; `b` on), a through pass's swing in run `e` and depth `d` off the street's
- * middle (m), and its sharpest bend (rad).
- */
+/** A pass picked for a place: the distances out (m: `a` back along eA, `b` on) and its sharpest bend (rad). */
 interface PassPick extends Place {
   a: number;
   b: number;
-  e: number;
-  d: number;
   turn: number;
 }
 
@@ -174,11 +170,10 @@ function sideNormal(ux: number, uz: number, from: Vec2, toward: Vec2): Vec2 {
 
 /**
  * A pass's street points: where it leaves and rejoins the streets as its shape measures them
- * (A then B in the route's driving order), with the street's direction there away from the
- * node (B's for a through pass, whose A is measured the same way).
+ * (A then B in the route's driving order), with the street's direction there away from the node.
  */
 function passEnds(g: RoadGraph, k: PassGeom): { A: { p: Vec2; u: Vec2 }; B: { p: Vec2; u: Vec2 } } | null {
-  const A = k.shape === 'through' ? alongStreet(g, k.node, k.eB, k.a) : alongStreet(g, k.node, k.eA, k.a);
+  const A = alongStreet(g, k.node, k.eA, k.a);
   const B = k.shape === 'ucut' ? alongStreet(g, k.node2, k.e2, k.b) : alongStreet(g, k.node, k.eB, k.b);
   return A && B ? { A, B } : null;
 }
@@ -187,23 +182,13 @@ function passEnds(g: RoadGraph, k: PassGeom): { A: { p: Vec2; u: Vec2 }; B: { p:
  * The racing line of a pass, side A's street point first, with the way the route runs at both
  * ends. Round a corner: leaving the street `a` m before it, round the steps (on the corner's
  * side of the landmark, the turn's apex) or straight through the arch along its axis, back onto
- * the street `b` m after it. Through: off the street `a` m along it, swinging `d` m onto the
- * paving over `e` m, straight past the landmark (or through the arch), back over `e` m to the
- * street `b` m along it. U cut: the straight chord from `a` m before the first corner to `b` m
+ * the street `b` m after it. U cut: the straight chord from `a` m before the first corner to `b` m
  * past the second. Null where the streets are too short or a corner no turn.
  */
 function passLine(g: RoadGraph, s: PassShape, k: PassGeom): PassLine | null {
   const ends = passEnds(g, k);
   if (!ends) return null;
   const { A, B } = ends;
-  if (k.shape === 'through') {
-    const u = A.u;
-    const n = sideNormal(u.x, u.z, A.p, polygonCentroid(s.ring));
-    const P1 = { x: A.p.x + u.x * k.e + n.x * k.d, z: A.p.z + u.z * k.e + n.z * k.d };
-    const P2 = { x: B.p.x - u.x * k.e + n.x * k.d, z: B.p.z - u.z * k.e + n.z * k.d };
-    if ((P2.x - P1.x) * u.x + (P2.z - P1.z) * u.z < CFG.passStraightMin) return null;
-    return { pts: [A.p, P1, P2, B.p], din: u, dout: B.u };
-  }
   const din = { x: -A.u.x, z: -A.u.z };
   const dout = B.u;
   if (k.shape === 'ucut') return { pts: [A.p, B.p], din, dout };
@@ -257,9 +242,8 @@ function samples(pts: Vec2[]): { x: number; z: number; s: number }[] {
  * A pass line's sharpest bend (rad, from the street before it to the street after), or null when
  * it will not do: a bend past CFG.passMaxTurn; a point on the paving without room for the line
  * (except right where it crosses the plaza's edge); a car that keeps to the streets left further
- * from the line than CFG.passCornerMax (the corner it cuts, a chicane's depth); or (the arch)
- * the line through a pier, or (an obelisk or column, whose line a chicane or U cut runs past)
- * through the steps.
+ * from the line than CFG.passCornerMax (the corner it cuts); or (the arch) the line through a
+ * pier, or (an obelisk or column, whose line a U cut runs past) through the steps.
  */
 function passTurn(g: RoadGraph, s: PassShape, k: PassGeom, line: PassLine): number | null {
   const half = CFG.passWidth / 2;
@@ -269,9 +253,7 @@ function passTurn(g: RoadGraph, s: PassShape, k: PassGeom, line: PassLine): numb
     for (let i = 0; i + 1 < pts.length; i++) near = Math.min(near, distToSegment(p.x, p.z, pts[i].x, pts[i].z, pts[i + 1].x, pts[i + 1].z));
     return near;
   };
-  if (k.shape === 'through' ? k.d > CFG.passCornerMax : far(g.nodes[k.node]) > CFG.passCornerMax || (k.shape === 'ucut' && far(g.nodes[k.node2]) > CFG.passCornerMax)) return null;
-  // A chicane's straight lies on the paving proper, not along the plaza's edge.
-  if (k.shape === 'through' && [pts[1], pts[2]].some((p) => !pointInPolygon(p.x, p.z, s.ring) || distToPolygonEdge(p.x, p.z, s.ring) < half)) return null;
+  if (far(g.nodes[k.node]) > CFG.passCornerMax || (k.shape === 'ucut' && far(g.nodes[k.node2]) > CFG.passCornerMax)) return null;
   // Inside the plaza the line keeps half its width off the edge, except within that of where it
   // crosses the edge coming in or going out.
   const sm = samples(pts);
@@ -316,7 +298,7 @@ function passTurn(g: RoadGraph, s: PassShape, k: PassGeom, line: PassLine): numb
  */
 function passStart(s: PassShape, k: PassGeom, pts: Vec2[]): { s: number; straight: number } | null {
   if (k.shape === 'corner' && s.kind !== 'arch') return null;
-  // The straight piece: a chicane's or corner arch pass's middle, the U cut's whole chord.
+  // The straight piece: a corner arch pass's middle, the U cut's whole chord.
   const i = pts.length === 2 ? 0 : 1;
   const P = pts[i];
   const Q = pts[i + 1];
@@ -343,33 +325,18 @@ function landmarkFits(f: BlockFace, kind: string, c: Vec2, yaw: number): boolean
   return pointInPolygon(c.x, c.z, f.ring) && distToPolygonEdge(c.x, c.z, f.ring) > CFG.base + CFG.steps + 3;
 }
 
-/**
- * Every pass geometry worth trying at place `k`: the distances out every CFG.passStep within the
- * place's reach (a through pass's ends both on along the street, its swing in runs from
- * CFG.passEntry, its depth `d` given by the caller from where it leaves the street).
- */
-function* geometries(g: RoadGraph, k: Place, depth: (A: Vec2, u: Vec2) => number[]): Generator<PassGeom> {
+/** Every pass geometry worth trying at place `k`: the distances out every CFG.passStep within the place's reach. */
+function* geometries(k: Place): Generator<PassGeom> {
   const base = { shape: k.shape, node: k.node, eA: k.eA, eB: k.eB, node2: k.node2, e2: k.e2 };
-  if (k.shape === 'through') {
-    for (let a = CFG.passThroughFrom; a <= Math.min(CFG.passReach[1], k.maxB); a += CFG.passStep) {
-      const A = alongStreet(g, k.node, k.eB, a);
-      if (!A) continue;
-      for (const d of depth(A.p, A.u)) {
-        if (d < CFG.passWidth) continue;
-        for (const e of CFG.passEntry) for (let b = a + 2 * e + CFG.passStraightMin; b <= k.maxB; b += CFG.passStep) yield { ...base, a, b, e, d };
-      }
-    }
-    return;
-  }
   for (let a = CFG.passReach[0]; a <= Math.min(CFG.passReach[1], k.maxA); a += CFG.passStep) {
-    for (let b = CFG.passReach[0]; b <= Math.min(CFG.passReach[1], k.maxB); b += CFG.passStep) yield { ...base, a, b, e: 0, d: 0 };
+    for (let b = CFG.passReach[0]; b <= Math.min(CFG.passReach[1], k.maxB); b += CFG.passStep) yield { ...base, a, b };
   }
 }
 
 /**
  * Where a pass's line puts the landmark: at the middle of a corner pass's chord (the arch along
- * it, the obelisk or column the apex the line turns round); at the middle of a chicane's or a U
- * cut's straight (the arch along it), set ROUND_R off it away from the street for an obelisk or
+ * it, the obelisk or column the apex the line turns round); at the middle of a U cut's straight
+ * (the arch along it), set ROUND_R off it away from the street for an obelisk or
  * column, so the line runs straight past the steps.
  */
 function landmarkFor(kind: string, k: PassGeom, line: PassLine, ring: Vec2[]): { c: Vec2; yaw: number } {
@@ -399,19 +366,15 @@ function passScore(shape: PassShapeKind, turn: number, c: Vec2, mid: Vec2, strai
 
 /**
  * The best pass at place `k` about a landmark already placed, or null. A corner pass bends round
- * it as it stands; a chicane or U cut has to run along the arch's axis through its middle, or
- * straight past the steps of an obelisk or column (its depth taken from the landmark), so a
- * second route only gets one where the geometry happens to agree.
+ * it as it stands; a U cut has to run along the arch's axis through its middle, or straight past
+ * the steps of an obelisk or column, so a second route only gets one where the geometry happens
+ * to agree.
  */
 function bestPass(g: RoadGraph, f: BlockFace, s: PassShape, k: Place): PassPick | null {
   const mid = polygonCentroid(f.ring);
   let best: PassPick | null = null;
   let bestScore = Infinity;
-  const depth = (A: Vec2, u: Vec2) => {
-    const n = sideNormal(u.x, u.z, A, mid);
-    return [(s.c.x - A.x) * n.x + (s.c.z - A.z) * n.z - (s.kind === 'arch' ? 0 : ROUND_R)];
-  };
-  for (const geom of geometries(g, k, depth)) {
+  for (const geom of geometries(k)) {
     const line = passLine(g, s, geom);
     if (!line) continue;
     if (k.shape !== 'corner') {
@@ -432,33 +395,29 @@ function bestPass(g: RoadGraph, f: BlockFace, s: PassShape, k: Place): PassPick 
 
 /**
  * The first pass of a plaza places its landmark (landmarkFor), standing inside the plaza with
- * room: of the geometries at place `k` that will do, the one passScore grades best. A chicane
- * runs at the depth that puts the landmark level with the block's middle.
+ * room: of the geometries at place `k` that will do, the one passScore grades best.
  */
 function placingPass(g: RoadGraph, f: BlockFace, kind: string, yaw0: number, k: Place): { pick: PassPick; c: Vec2; yaw: number } | null {
   const mid = polygonCentroid(f.ring);
   let best: { pick: PassPick; c: Vec2; yaw: number } | null = null;
   let bestScore = Infinity;
-  // ... or shallower (CFG.passDepths), for a gentler swing off the street at the cost of the landmark
-  // standing nearer it; never deeper than a car keeping to the street may stray from the line (passTurn).
-  const depth = (A: Vec2, u: Vec2) => {
-    const n = sideNormal(u.x, u.z, A, mid);
-    const full = Math.min(CFG.passCornerMax, (mid.x - A.x) * n.x + (mid.z - A.z) * n.z - (kind === 'arch' ? 0 : ROUND_R));
-    return CFG.passDepths.map((k) => full * k);
-  };
-  for (const geom of geometries(g, k, depth)) {
-    // A corner pass's line needs the landmark first (it bends round it, at its chord's middle); the others place it from the line.
+  for (const geom of geometries(k)) for (const deep of k.shape === 'corner' ? CFG.passCornerDeep : [0]) {
+    // A corner pass's line needs the landmark first (it bends round it: at its chord's middle, or deeper into
+    // the plaza away from the corner); the others place it from the line.
     let c = mid;
     let yaw = yaw0;
     if (k.shape === 'corner') {
       const ends = passEnds(g, geom);
       if (!ends) continue;
-      c = { x: (ends.A.p.x + ends.B.p.x) / 2, z: (ends.A.p.z + ends.B.p.z) / 2 };
+      const cm = { x: (ends.A.p.x + ends.B.p.x) / 2, z: (ends.A.p.z + ends.B.p.z) / 2 };
+      const N = g.nodes[k.node];
+      const l = sqrt((cm.x - N.x) ** 2 + (cm.z - N.z) ** 2) || 1;
+      c = { x: cm.x + ((cm.x - N.x) / l) * deep, z: cm.z + ((cm.z - N.z) / l) * deep };
       if (kind === 'arch') yaw = atan2(ends.B.p.x - ends.A.p.x, ends.B.p.z - ends.A.p.z);
     }
     const line = passLine(g, { kind, c, yaw, ring: f.ring }, geom);
     if (!line) continue;
-    const at = landmarkFor(kind, geom, line, f.ring);
+    const at = k.shape === 'corner' ? { c, yaw } : landmarkFor(kind, geom, line, f.ring);
     const s: PassShape = { kind, c: at.c, yaw: kind === 'arch' ? at.yaw : yaw0, ring: f.ring };
     if (!landmarkFits(f, kind, s.c, s.yaw)) continue;
     const turn = passTurn(g, s, geom, line);
@@ -492,10 +451,10 @@ function turnsAt(g: RoadGraph, r: PlannedEvent['routes'][number], i: number): bo
 /**
  * The places on route r where a pass could cross block f, with how far each may reach along the
  * streets: the junctions at the block's corners the route turns round (the block's two sides on
- * the route either side of it: corner passes); the corners where it comes onto one of the
- * block's sides, for a chicane along that side (through); and pairs of corners it turns at in
- * turn, wrapping the side between (U cut). Never a bend node, never running straight past a side
- * street. A sprint's first and last nodes are no places.
+ * the route either side of it: corner passes); and pairs of corners it turns at in turn,
+ * wrapping the side between (U cut). Never a bend node, never running straight past a side
+ * street, and never a route that only runs along a side: a pass off one street and back onto it
+ * is one a racer skips by driving straight on. A sprint's first and last nodes are no places.
  */
 function passPlaces(g: RoadGraph, f: BlockFace, r: PlannedEvent['routes'][number]): Place[] {
   const out: Place[] = [];
@@ -510,13 +469,7 @@ function passPlaces(g: RoadGraph, f: BlockFace, r: PlannedEvent['routes'][number
     if (isBendNode(g, node) || !corner.has(node)) continue;
     const eA = r.edges[(i - 1 + m) % m];
     const eB = r.edges[i % m];
-    if (eA === eB || !side.has(eB)) continue;
-    if (!side.has(eA)) {
-      // Coming onto a side: a chicane along it.
-      out.push({ shape: 'through', node, eA, eB, node2: -1, e2: -1, maxA: 0, maxB: passRun(g, r, i, 1, side, banned, CLEAR) });
-      continue;
-    }
-    if (!turnsAt(g, r, i)) continue;
+    if (eA === eB || !side.has(eA) || !side.has(eB) || !turnsAt(g, r, i)) continue;
     out.push({ shape: 'corner', node, eA, eB, node2: -1, e2: -1, maxA: passRun(g, r, i, -1, side, banned, CLEAR), maxB: passRun(g, r, i, 1, side, banned, CLEAR) });
     // The next junction on along eB's side, if the route turns there onto a third side: a U cut between.
     let j = i;
@@ -574,11 +527,11 @@ function plazaSite(g: RoadGraph, f: BlockFace, kind: string, routes: PlannedEven
     let pickScore = Infinity;
     for (const k of passPlaces(g, f, r)) {
       // Another route's pass through the same place, if this route runs as far along the streets (a corner pass either way round).
-      const shared = passes.find((p) => p.shape === k.shape && p.node === k.node && p.node2 === k.node2 && p.eB === k.eB && (k.shape === 'through' || p.eA === k.eA || (k.shape === 'corner' && p.eA === k.eB && p.eB === k.eA)));
+      const shared = passes.find((p) => p.shape === k.shape && p.node === k.node && p.node2 === k.node2 && p.eB === k.eB && (p.eA === k.eA || (k.shape === 'corner' && p.eA === k.eB && p.eB === k.eA)));
       if (shared) {
         const flipped = k.shape === 'corner' && shared.eA !== k.eA;
         const [ma, mb] = flipped ? [k.maxB, k.maxA] : [k.maxA, k.maxB];
-        if ((k.shape === 'through' || shared.a <= ma) && shared.b <= mb) {
+        if (shared.a <= ma && shared.b <= mb) {
           pick = shared;
           break;
         }
@@ -613,7 +566,7 @@ function plazaSite(g: RoadGraph, f: BlockFace, kind: string, routes: PlannedEven
 }
 
 /** The pass params an area carries, per pass i (plan writes them, plazaPasses reads them). */
-const PASS_PARAMS = ['shape', 'node', 'eA', 'eB', 'node2', 'e2', 'a', 'b', 'e', 'd'] as const;
+const PASS_PARAMS = ['shape', 'node', 'eA', 'eB', 'node2', 'e2', 'a', 'b'] as const;
 
 /** The race passes a monument area carries (its params p<i>...), as the routes take them (route.ts RoutePass). */
 export function plazaPasses(g: RoadGraph, area: Area): RoutePass[] {
@@ -622,10 +575,10 @@ export function plazaPasses(g: RoadGraph, area: Area): RoutePass[] {
   const s: PassShape = { kind: area.variant, c: { x: P.cx, z: P.cz }, yaw: P.yaw, ring: area.polygon };
   for (let i = 0; i < (P.passes ?? 0); i++) {
     const v = (key: (typeof PASS_PARAMS)[number]) => P[`p${i}${key}`];
-    const k: PassGeom = { shape: PASS_SHAPES[v('shape')], node: v('node'), eA: v('eA'), eB: v('eB'), node2: v('node2'), e2: v('e2'), a: v('a'), b: v('b'), e: v('e'), d: v('d') };
+    const k: PassGeom = { shape: PASS_SHAPES[v('shape')], node: v('node'), eA: v('eA'), eB: v('eB'), node2: v('node2'), e2: v('e2'), a: v('a'), b: v('b') };
     const line = passLine(g, s, k);
     if (!line) continue;
-    const pass: RoutePass = { node: k.node, edgeA: k.shape === 'through' ? -1 : k.eA, edgeB: k.eB, a: k.shape === 'through' ? -k.a : k.a, b: k.b, points: line.pts, width: CFG.passWidth };
+    const pass: RoutePass = { node: k.node, edgeA: k.eA, edgeB: k.eB, a: k.a, b: k.b, points: line.pts, width: CFG.passWidth };
     if (k.shape === 'ucut') {
       pass.node2 = k.node2;
       pass.edge2 = k.e2;
@@ -678,6 +631,14 @@ export function plazaSides(ctx: Pick<PlanContext, 'graph' | 'areas' | 'claims' |
   const out = new Set<number>();
   for (const { f } of monumentSites(ctx, reach)) for (const e of f.edges) out.add(e);
   return out;
+}
+
+/**
+ * The corners of the blocks that can hold the plaza with their two sides there, where they make a
+ * real turn (route planning, events.ts: a route turning between them gets a corner pass).
+ */
+export function plazaCorners(ctx: Pick<PlanContext, 'graph' | 'areas' | 'claims' | 'faces'>, reach: number): { node: number; eA: number; eB: number }[] {
+  return monumentSites(ctx, reach).flatMap((p) => blockCorners(ctx.graph, p.f));
 }
 
 /**
@@ -754,7 +715,7 @@ export const monumentModule: DistrictModule = {
     // the area's own edges stay empty.
     const g = ctx.graph;
     for (const p of passes) {
-      const held = p.shape === 'through' ? streetEdges(g, p.node, p.eB, p.b + CFG.passMouthClear) : [...streetEdges(g, p.node, p.eA, p.a + CFG.passMouthClear), ...streetEdges(g, p.shape === 'ucut' ? p.node2 : p.node, p.shape === 'ucut' ? p.e2 : p.eB, p.b + CFG.passMouthClear)];
+      const held = [...streetEdges(g, p.node, p.eA, p.a + CFG.passMouthClear), ...streetEdges(g, p.shape === 'ucut' ? p.node2 : p.node, p.shape === 'ucut' ? p.e2 : p.eB, p.b + CFG.passMouthClear)];
       if (p.shape === 'ucut') held.push(...streetEdges(g, p.node, p.eB, 1e9));
       for (const e of held) ctx.claims.edge.set(e, area.id);
     }

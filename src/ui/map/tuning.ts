@@ -6,6 +6,7 @@
  * compass rose.
  */
 import type { Area, AreaKind } from '../../city/districts/types';
+import type { RouteKind } from '../../city/route';
 import type { Vec2 } from '../../sim/math';
 import { KINDS, MAP_INK } from './cityMap';
 import { isNamedPlace } from '../../city/names/placeNames';
@@ -135,8 +136,8 @@ export const LEGEND_SECTIONS: readonly { title: string; layers: readonly LegendL
 ];
 const LAYERS = new Map<string, LegendLayer>(LEGEND_SECTIONS.flatMap((s) => s.layers.map((l) => [l.key, l] as const)));
 
-/** What a legend row stands for: a layer of district kinds, one neighbourhood (`hood:<id>`), all of their borders, or one of the map's own marks. */
-export type LegendKey = LayerKey | 'you' | 'route' | 'shortcut' | 'waypoint' | 'hoods' | `hood:${number}`;
+/** What a legend row stands for: a layer of district kinds, one neighbourhood (`hood:<id>`), all of their borders, one of the map's own marks, or one of the seed's other courses (`course:<kind>`). */
+export type LegendKey = LayerKey | 'you' | 'route' | 'shortcut' | 'waypoint' | 'hoods' | `hood:${number}` | `course:${RouteKind}`;
 
 /** The district kinds a legend row shows and hides (none for the map's own marks and the neighbourhoods). */
 export const kindsOf = (key: LegendKey | null): readonly AreaKind[] => (key && LAYERS.get(key)?.kinds) || [];

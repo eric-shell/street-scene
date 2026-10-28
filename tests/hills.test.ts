@@ -257,23 +257,26 @@ describe('monument', () => {
     expect(WALL_LOOKS).toContain('monument');
   });
 
-  it('races by the plaza cross it, round a corner or straight along a side: round the steps or through the arch, clear of the walls and the clutter', () => {
+  it('races by the plaza cross it, round a corner or across the block onto another street: round the steps or through the arch, clear of the walls and the clutter', () => {
     const rng = new Rng(5);
     let crossings = 0;
     const kinds = new Set<string>();
     const shapes = new Set<number>();
-    for (let i = 0; i < 40 && crossings < 8; i++) {
+    for (let i = 0; i < 90 && crossings < 8; i++) {
       const city = createCity(rng.int(0, 0x7fffffff));
       const m = city.districts.areas.find((a) => a.kind === 'monument');
       if (!m || !m.params.passes) continue;
       const passes = plazaPasses(city.graph, m);
       expect(passes.length).toBe(m.params.passes);
       for (let k = 0; k < m.params.passes; k++) shapes.add(m.params[`p${k}shape`]);
-      // A chicane (shape 1) or U cut (2) runs straight past the landmark or through the arch: its start point is on its straight.
       passes.forEach((p, k) => {
+        // Never off a street and back onto it, a cut a racer skips by driving straight on: it leaves one street and rejoins another.
+        expect(p.edgeA).toBeGreaterThanOrEqual(0);
+        expect(p.edgeA).not.toBe(p.edgeB);
+        // A U cut (shape 1) runs straight past the landmark or through the arch: its start point is on its straight.
         if (m.params[`p${k}shape`] === 0) return;
         expect(p.start).toBeDefined();
-        expect(p.start!.straight).toBeGreaterThan(MON.passStraightMin / 2 - 1);
+        expect(p.start!.straight).toBeGreaterThan(10);
       });
       for (const kind of ['circuit', 'sprint'] as const) {
         const w = createWorld(city.seed, kind, city);
@@ -306,13 +309,9 @@ describe('monument', () => {
     }
     expect(crossings).toBeGreaterThanOrEqual(4);
     expect(kinds.size).toBeGreaterThan(1);
-    // Corner passes and chicanes both occur (U cuts are rare: a route has to wrap the block). The first cities
-    // may not show both, so go on through more of them (plans only, no worlds) until each has.
-    for (let i = 0; i < 80 && !(shapes.has(0) && shapes.has(1)); i++) {
-      const m = createCity(rng.int(0, 0x7fffffff)).districts.areas.find((a) => a.kind === 'monument');
-      for (let k = 0; k < (m?.params.passes ?? 0); k++) shapes.add(m!.params[`p${k}shape`]);
-    }
-    expect(shapes.has(0) && shapes.has(1)).toBe(true);
+    // Corner passes occur, and nothing but corner passes and U cuts (rare: a route has to wrap the block).
+    expect(shapes.has(0)).toBe(true);
+    for (const sh of shapes) expect([0, 1]).toContain(sh);
   });
 
   it('a circuit may start on a pass: the line under the arch or beside the column, the grid on the paving clear of the walls, and the race runs', () => {

@@ -1,7 +1,6 @@
 /* The full map's side panel (fullMap.ts): the Legend and Places panes under the kit's tabs, each scrolling on its
-   own, and the waypoint card under either (_map-waypoint). The two lists (_map-legend, _map-places) share their
-   list and row button look here: quiet until hovered or focused, then a plate with an edge. Rows step in as the
-   panel lands. Stacked under the map on narrow screens, slim beside it on a phone on its side. */
+   own. The two lists (_map-legend, _map-places) share their list and row button look here: quiet until hovered
+   or focused, then a plate with an edge. Rows step in as the panel lands. Stacked under the map on narrow screens, slim beside it on a phone on its side. */
 @use '../styles/abstracts/mixins';
 @use 'map-media';
 .map-side {

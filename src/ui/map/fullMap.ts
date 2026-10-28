@@ -8,7 +8,7 @@
  * lists the notable places by distance and flies to them, and in free roam a
  * click drops a waypoint the HUD then points to (the chip and the minimap),
  * locked to the nearest road node so it always marks a place a car can reach,
- * and the waypoint's card (or T) teleports the car to it.
+ * and the waypoint's card, standing over its pin, (or T) teleports the car to it.
  *
  * Drawing. The city itself (the cityMap.ts layers, the same inks as every
  * other map) is rasterized into two cached bitmaps: the fitted whole city, and
@@ -16,8 +16,9 @@
  * bitmap is redrawn when the view settles, or while it moves once it no longer
  * covers the view or has drifted too far in zoom (at most every rasterGap s),
  * so a drag or a zoom never redraws the city per frame. Each frame the visible
- * canvas gets the blits, the grid, highlights, the route with dashes marching
- * in its driving direction, name tags (laid out per frame, more of them as you
+ * canvas gets the blits, the grid, highlights, the seed's other courses as
+ * thin lines in their own colors, the route with dashes marching in its
+ * driving direction over them, name tags (laid out per frame, more of them as you
  * zoom in), the start line, the waypoint pin, the player's arrow with its ping,
  * the grid's edge labels and the scale bar: a few hundred canvas calls, well
  * under a millisecond. The loop runs only while the map is open, and only
@@ -63,10 +64,10 @@ import { blit, cellName, covers, drawEdgeArrow, drawEdges, drawGrid, drawPlayer,
 import { buildLegend, buildPlaces, type PlaceRow } from './sidePanel';
 import { NameTags } from './tags';
 import { MapTip } from './tip';
-import type { FullMapOptions } from './course';
+import { COURSE_KINDS, courseStyle, seedCourses, type FullMapOptions } from './course';
 import { DROP_END, INK, NO_DASH, PASS_KEYS, PIN, PULSE_RINGS, ROSE_SVG, UI, bounceOut, clamp01, easeOut, hoodKey, inkOf, isShortcut, kindsOf, type LegendKey } from './tuning';
 
-export { courseFor } from './course';
+export { courseFor, seedCourses } from './course';
 export type { FullMapOptions, WaypointStore } from './course';
 
 const TMP: Vec2 = { x: 0, z: 0 };
@@ -123,6 +124,10 @@ export class FullMap {
   private readonly rows: Map<LegendKey, HTMLElement>;
   private readonly wpCard: HTMLElement;
   private readonly wpFar: HTMLElement;
+  /** The waypoint card's size (CSS px, 0: measure again), its last transform, and the box it covers (device px) that tags keep clear of. */
+  private wpSize = { w: 0, h: 0 };
+  private wpAt = '';
+  private readonly wpBox = new Float32Array(4);
   private places: PlaceRow[] | null = null;
   private placesOpen = false;
   // Map state.
@@ -139,6 +144,9 @@ export class FullMap {
   private readonly routeInk: PaletteColor;
   private readonly routeLabel: string;
   private readonly zonePaths: Path2D | null;
+  /** The seed's other courses, thinner under the featured one, each with its legend row. */
+  private readonly others: { key: LegendKey; route: RaceRoute; ink: PaletteColor; label: string }[];
+  private readonly hiddenCourses = new Set<LegendKey>();
   private readonly start: RouteSample | null;
   private readonly finish: RouteSample | null;
   private sprites: Sprites | null = null;
@@ -205,6 +213,8 @@ export class FullMap {
     this.routeLabel = course.label;
     this.start = route ? routeSample(route, route.startS) : null;
     this.finish = route && !route.closed ? routeSample(route, route.finishS) : null;
+    const all = seedCourses(world);
+    this.others = COURSE_KINDS.filter((k) => k !== route?.kind).map((k) => ({ key: `course:${k}` as const, route: all[k], ...courseStyle(k) }));
     // Drift: the zones where a slide pays, lit in the course's color (world meters, drawn through the view).
     let zones: Path2D | null = null;
     if (course.zones) {
@@ -235,7 +245,7 @@ export class FullMap {
       this.tip.el,
     );
     // Side panel: the legend and the places, under tabs.
-    const legend = buildLegend(world, route ? { ink: PALETTE[this.routeInk], label: this.routeLabel } : null, {
+    const legend = buildLegend(world, route ? { ink: PALETTE[this.routeInk], label: this.routeLabel } : null, this.others.map((o) => ({ key: o.key, ink: PALETTE[o.ink], label: o.label })), {
       find: () => this.findMe(),
       flyToWaypoint: () => this.flyToWaypoint(),
       flyToHood: (hd) => this.flyToSpan(hd.span, hd),
@@ -257,12 +267,18 @@ export class FullMap {
     this.wpCard = h(
       'div',
       { class: 'map-waypoint', hidden: true },
-      h('span', { class: 'map-waypoint__icon' }, icon(MapPinned, { size: 18 })),
-      h('span', { class: 'map-waypoint__text' }, h('b', { class: 'map-waypoint__title' }, 'Waypoint'), this.wpFar),
-      opts.teleport ? btn(Zap, 'Teleport', () => this.teleport(), '--small map-waypoint__teleport') : null,
-      btn(MapPinOff, 'Clear', () => this.setWaypoint(null), '--small map-waypoint__clear'),
+      h(
+        'div',
+        { class: 'map-waypoint__card' },
+        h('span', { class: 'map-waypoint__icon' }, icon(MapPinned, { size: 18 })),
+        h('span', { class: 'map-waypoint__text' }, h('b', { class: 'map-waypoint__title' }, 'Waypoint'), this.wpFar),
+        opts.teleport ? btn(Zap, 'Teleport', () => this.teleport(), '--small map-waypoint__teleport') : null,
+        btn(MapPinOff, 'Clear', () => this.setWaypoint(null), '--small map-waypoint__clear'),
+      ),
+      h('i', { class: 'map-waypoint__stem' }),
     );
-    const side = h('aside', { class: 'map-side' }, h('div', { class: 'tabs map-side__tabs', role: 'tablist' }, this.legendTab, this.placesTab), this.legendPane, this.placesPane, this.wpCard);
+    this.stage.append(this.wpCard);
+    const side = h('aside', { class: 'map-side' }, h('div', { class: 'tabs map-side__tabs', role: 'tablist' }, this.legendTab, this.placesTab), this.legendPane, this.placesPane);
     // Header and footer.
     this.hereEl = h('b', { class: 'full-map__here' });
     const chips: HTMLElement[] = [];
@@ -395,6 +411,7 @@ export class FullMap {
     this.bands = { top, left };
     if (!this.sprites || this.sprites.dpr !== dpr) this.sprites = makeSprites(dpr, PALETTE[this.routeInk], this.route?.closed === false, !!this.finish);
     this.tip.remeasure();
+    this.wpSize.w = 0;
     this.updateZoomUi();
     this.dirty = true;
   }
@@ -529,6 +546,7 @@ export class FullMap {
     this.drawCity(c, v);
     drawGrid(c, v, this.world.graph.bounds, this.dpr);
     this.drawHighlights(c, v);
+    this.drawOtherCourses(c, v);
     if (this.showRoute) this.drawRoute(c, v);
     this.drawTags(c, v, mx, my);
     if (this.showRoute) this.drawMarks(c, v);
@@ -650,6 +668,34 @@ export class FullMap {
     return p;
   }
 
+  /** The seed's other courses: a line each in its type's color on a dark casing, as strong as the featured course but without its marching dashes and flags. */
+  private drawOtherCourses(c: CanvasRenderingContext2D, v: MapView): void {
+    const dpr = this.dpr;
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.lineCap = 'round';
+    c.lineJoin = 'round';
+    for (const o of this.others) {
+      if (this.hiddenCourses.has(o.key)) continue;
+      const lit = this.legendShown === o.key ? this.legendAmt : 0;
+      c.globalAlpha = this.legendShown && !lit ? 1 - 0.7 * this.legendAmt : 1;
+      const pts = o.route.points;
+      c.beginPath();
+      for (let i = 0; i < pts.length; i++) (i ? c.lineTo(mapX(v, pts[i].x), mapY(v, pts[i].z)) : c.moveTo(mapX(v, pts[i].x), mapY(v, pts[i].z)));
+      if (o.route.closed) c.closePath();
+      // A soft road as wide as the featured course's, then a dark casing, so a line reads over a district in its own color (the waypoint race's cyan on the river).
+      c.strokeStyle = rgba(o.ink, 0.16 + 0.12 * lit);
+      c.lineWidth = (7 + 5 * lit) * dpr;
+      c.stroke();
+      c.strokeStyle = INK.band;
+      c.lineWidth = (4.2 + 0.8 * lit) * dpr;
+      c.stroke();
+      c.strokeStyle = PALETTE[o.ink];
+      c.lineWidth = (2.2 + 0.8 * lit) * dpr;
+      c.stroke();
+    }
+    c.globalAlpha = 1;
+  }
+
   /** The race route: a soft road, the line, and dashes marching in its driving direction. */
   private drawRoute(c: CanvasRenderingContext2D, v: MapView): void {
     const route = this.route;
@@ -737,7 +783,46 @@ export class FullMap {
     const hot = this.hover.kind === 'pin' || this.legendShown === 'waypoint' ? 1.18 : 1;
     const pw = sp.pin.width * hot;
     const ph = sp.pin.height * hot;
-    c.drawImage(sp.pin, x - pw / 2, y - fall - (PIN.tip / PIN.h) * ph, pw, ph);
+    const top = y - fall - (PIN.tip / PIN.h) * ph;
+    c.drawImage(sp.pin, x - pw / 2, top, pw, ph);
+    this.placeWaypointCard(v, x, top, y);
+  }
+
+  /**
+   * The waypoint's card stands over its pin (x, the pin's top and its tip in
+   * device px), centered on it with a stem down to the head and kept inside
+   * the map; with no room above it hangs under the pin instead, and it hides
+   * while the pin is off the view (the edge arrow points there). The DOM is
+   * only written when the card moves.
+   */
+  private placeWaypointCard(v: MapView, x: number, top: number, tip: number): void {
+    const el = this.wpCard;
+    const dpr = this.dpr;
+    const off = offView(v, x, tip, dpr);
+    el.classList.toggle('is-off', off);
+    if (off) {
+      this.wpBox.fill(0);
+      return;
+    }
+    const sz = this.wpSize;
+    if (!sz.w) {
+      sz.w = el.offsetWidth;
+      sz.h = el.offsetHeight;
+    }
+    const W = v.w / dpr;
+    const cx = x / dpr;
+    const left = Math.max(8, Math.min(W - 8 - sz.w, cx - sz.w / 2));
+    let y = top / dpr - sz.h;
+    const below = y < 8;
+    if (below) y = tip / dpr + 6;
+    const at = `translate3d(${Math.round(left)}px, ${Math.round(y)}px, 0)`;
+    if (at !== this.wpAt) {
+      this.wpAt = at;
+      el.style.transform = at;
+      el.style.setProperty('--stem-x', `${Math.round(Math.max(10, Math.min(sz.w - 10, cx - left)))}px`);
+      el.classList.toggle('is-below', below);
+    }
+    this.wpBox.set([left * dpr, y * dpr, (left + sz.w) * dpr, (y + sz.h) * dpr]);
   }
 
   // ---------- name tags ----------
@@ -763,6 +848,9 @@ export class FullMap {
     }
     const F = this.furniture;
     t.reserve(F[0], F[1], F[2], F[3]);
+    // The waypoint's card where it stood last frame (it follows the pin, drawn after the tags).
+    const B = this.wpBox;
+    if (this.wp && B[2] > B[0]) t.reserve(B[0], B[1], B[2], B[3]);
     t.reserve(F[4], F[5], F[6], F[7]);
     t.reserve(0, v.h - 44 * dpr, 150 * dpr, v.h);
     const fade = this.reduced ? 1 : 1 - Math.exp(-UI.tagFade * (this.time - this.tagTime));
@@ -1193,6 +1281,9 @@ export class FullMap {
     const row = this.rows.get('waypoint');
     if (row) row.hidden = !on;
     this.wpCard.hidden = !on;
+    this.wpSize.w = 0;
+    this.wpAt = '';
+    if (!on) this.wpBox.fill(0);
     this.syncWaypointText();
   }
 
@@ -1200,7 +1291,13 @@ export class FullMap {
     const w = this.wp;
     if (!w) return;
     const text = distanceLabel(w.x - this.me.x, w.z - this.me.z);
-    if (this.wpFar.textContent !== text) this.wpFar.textContent = text;
+    if (this.wpFar.textContent !== text) {
+      this.wpFar.textContent = text;
+      // A longer distance widens the card: measure it again and redraw so it stays centered.
+      this.wpSize.w = 0;
+      this.wpAt = '';
+      this.dirty = true;
+    }
     const num = this.rows.get('waypoint')?.querySelector('.map-legend__count');
     if (num && num.textContent !== text) num.textContent = text;
   }
@@ -1247,6 +1344,11 @@ export class FullMap {
   private toggleLayer(key: LegendKey, li: HTMLElement, b: HTMLButtonElement): void {
     let on: boolean;
     if (key === 'route') on = this.showRoute = !this.showRoute;
+    else if (key.startsWith('course:')) {
+      on = this.hiddenCourses.has(key);
+      if (on) this.hiddenCourses.delete(key);
+      else this.hiddenCourses.add(key);
+    }
     else if (key === 'shortcut') on = this.drawOpts.shortcuts = !this.drawOpts.shortcuts;
     else if (key === 'hoods') on = this.drawOpts.neighbourhoods = !this.drawOpts.neighbourhoods;
     else {
@@ -1260,7 +1362,7 @@ export class FullMap {
     }
     li.classList.toggle('is-off', !on);
     b.setAttribute('aria-pressed', String(on));
-    if (key !== 'route') this.overview.ok = this.detail.ok = false;
+    if (key !== 'route' && !key.startsWith('course:')) this.overview.ok = this.detail.ok = false;
     this.hoverDirty = true;
     this.dirty = true;
   }
