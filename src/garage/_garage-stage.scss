@@ -1,14 +1,14 @@
-/* The Garage / Street switch and the camera (garageUi.ts stageBar): one plate at the bottom center of the
+/* The Garage / Dyno / Street switch and the camera (garageUi.ts stageBar): one plate at the bottom center of the
    screen, on the gutter line like the Save button, where it stays on both steps and every tab. With the FPS
    meter on (body.is-fps, its line at the bottom center) it stands just above it. It never reaches over the
-   rail: on screens too narrow to center it beside the rail it keeps its half width clear of it. On a phone,
+   rail: on screens too narrow to center it beside the rail it keeps its half width (three options and the camera) clear of it. On a phone,
    above the sheet's right corner with icons only. Its pick takes the accent like every segmented control. */
 @use '../ui/styles/abstracts/media';
 @use '../ui/styles/abstracts/mixins';
 .garage-stage {
   @include mixins.chamfer(10px);
   position: absolute;
-  left: max(50%, calc(var(--rail-w) + 140px));
+  left: max(50%, calc(var(--rail-w) + 176px));
   bottom: mixins.safe(bottom, var(--gutter));
   transform: translateX(-50%);
   body.is-fps & {
@@ -25,7 +25,7 @@
   }
   .segmented__option {
     justify-content: center;
-    min-width: 96px;
+    min-width: 88px;
     font-size: 13px;
     font-weight: 700;
     padding: 7px 14px;

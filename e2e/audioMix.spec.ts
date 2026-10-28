@@ -41,11 +41,19 @@ const TARGETS: Record<string, [rms: number, tolerance: number]> = {
   thunderFar: [-25, 4],
   bell: [-24, 3],
   cityBed: [-34, 3],
+  garageBed: [-34, 3],
+  garageFan: [-37.5, 3],
+  garageCompressor: [-32.5, 3],
+  garagePull: [-32.5, 3],
+  garageWeld: [-45, 4],
   uiPress: [-32, 3],
   uiTick: [-48, 5],
   uiWhoosh: [-32, 3],
   uiDoorUp: [-32, 3],
 };
+
+/** One-shots of the workshop, measured at the room's centre: their peak (dBFS) stays under the ceiling, a few dB over the bed's -34. */
+const PEAK_CEILING: Record<string, number> = { garageGun: -29, garageRatchet: -29, garageStrike: -28 };
 
 interface Level {
   rms: number;
@@ -143,6 +151,44 @@ test('every sound sits where the mix puts it', async ({ page }) => {
     const bed = (await import('/src/audio/cityAmbience.ts')).CityAmbience.create({ seed: 20261019, mood: 'clear', el: false, water: false }); tap = bed.out; scale = MASTER * BUS;
     const bedRun = (async () => { const end = performance.now() + 2400; let t = 0; while (performance.now() < end) { t += 0.03; bed.update(t, 0.03, 0, 0); await sleep(30); } })();
     await sleep(900); results.cityBed = await measure(900); await bedRun; bed.dispose(); await sleep(500);
+    const gar = await import('/src/audio/garageAmbience.ts');
+    const shop = await import('/src/garage/shopSchedule.ts');
+    // The workshop's bed. Each source is heard alone (the others' layers disconnected from a fresh instance) at a frozen
+    // showroom clock chosen where the schedule is doing just that, so the number is the source and not the room.
+    const sched = shop.createShopState();
+    const find = (pred) => { for (let t = 5; t < 4000; t += 0.05) { shop.shopSchedule(t, sched); if (pred(sched)) return t; } throw new Error('the schedule never does that'); };
+    const clock = {
+      quiet: find((s) => s.compressor === 0 && s.release === 0 && s.gun < 0 && s.ratchet < 0 && s.weld === 0),
+      comp: find((s) => s.compressor === 1 && s.release === 0 && s.gun < 0 && s.ratchet < 0 && s.weld === 0),
+      gun: find((s) => s.gun >= 0 && s.gunAge > 0.1 && s.compressor === 0 && s.release === 0 && s.weld === 0),
+      weld: find((s) => s.weld === 1 && s.compressor === 0 && s.release === 0 && s.gun < 0 && s.ratchet < 0),
+      ratchet: find((s) => s.ratchet >= 0 && s.ratchetClick === 0 && s.ratchetPhase < 0.05 && s.compressor === 0 && s.release === 0 && s.weld === 0) - 0.5,
+    };
+    const spots = gar.SOUND_SPOTS;
+    const centre = { x: 0, z: 0, yaw: 0 };
+    const threeFrom = (p) => ({ x: p.x - 3, z: p.z, yaw: Math.PI / 2 });
+    const garage = async (only, at, listener, pull, ms, frozen) => {
+      const g = gar.GarageAmbience.create();
+      await g.out.context.resume();
+      tap = g.out; scale = MASTER * BUS;
+      if (only) {
+        for (const [k, l] of Object.entries(g.layers)) if (!only.includes(k)) l.node.disconnect();
+        for (const [k, n] of Object.entries(g.gates)) if (!only.includes(k)) n.disconnect();
+      }
+      let stop = false; const start = performance.now();
+      const loop = (async () => { let last = performance.now(); while (!stop) { const now = performance.now(); g.update((now - last) / 1000, { time: frozen ? at : at + (now - start) / 1000, listener, flicker: 1, dynoRpm: pull, active: true }); last = now; await sleep(16); } })();
+      await sleep(900);
+      const r = await measure(ms); stop = true; await loop; g.dispose(); await sleep(100);
+      return r;
+    };
+    results.garageBed = await garage(null, clock.comp, centre, 0.7, 900, true);
+    results.garageFan = await garage(['fan'], clock.quiet, centre, -1, 700, true);
+    results.garageCompressor = await garage(['motor', 'rattle'], clock.comp, threeFrom(spots.compressor), -1, 700, true);
+    results.garagePull = await garage(['dyno'], clock.quiet, threeFrom(spots.dyno), 0.8, 700, true);
+    results.garageWeld = await garage(['arc', 'crackle'], clock.weld, threeFrom(spots.welder), -1, 700, true);
+    results.garageGun = await garage(['gun', 'gunHiss'], clock.gun, centre, -1, 700, true);
+    results.garageRatchet = await garage(['click'], clock.ratchet, centre, -1, 2500, false);
+    results.garageStrike = await garage(['arc', 'crackle', 'strike'], clock.weld - 1.4, centre, -1, 2500, false);
     const voice = new audio.EngineVoice(manifest.cars.find((c) => c.id === 'wendtStrom').engine, 0.26);
     tap = voice.pan; scale = MASTER * BUS;
     const drive = async (rpm, load, ms) => { const end = performance.now() + ms; let last = performance.now(); while (performance.now() < end) { const now = performance.now(); voice.update({ rpm, redline: 7200, throttle: load, nitro: false, proximity: 1, pan: 0, dt: (now - last) / 1000 }); last = now; await sleep(16); } };
@@ -170,6 +216,9 @@ test('every sound sits where the mix puts it', async ({ page }) => {
     return { name, rms: +db(l.rms).toFixed(1), peak: +db(l.peak).toFixed(1), target, tol };
   });
   console.log(rows.map((r) => `${r.name.padEnd(12)} rms ${String(r.rms).padStart(6)}  peak ${String(r.peak).padStart(6)}  target ${r.target} ±${r.tol}`).join('\n'));
+  const peaks = Object.entries(PEAK_CEILING).map(([name, ceiling]) => ({ name, peak: +db(levels[name].peak).toFixed(1), ceiling }));
+  console.log(peaks.map((p) => `${p.name.padEnd(16)} peak ${String(p.peak).padStart(6)}  ceiling ${p.ceiling}`).join('\n'));
+  for (const p of peaks) expect(p.peak, `${p.name} peak ${p.peak} dBFS, ceiling ${p.ceiling}`).toBeLessThanOrEqual(p.ceiling);
   for (const r of rows) expect(Math.abs(r.rms - r.target), `${r.name} rms ${r.rms} dBFS, target ${r.target} ±${r.tol}`).toBeLessThanOrEqual(r.tol);
   // The relations that matter more than any one number.
   const rms = (n: string) => db(levels[n].rms);
@@ -182,6 +231,8 @@ test('every sound sits where the mix puts it', async ({ page }) => {
   expect(rms('beep'), 'the countdown is heard over an idling engine').toBeGreaterThan(rms('engineIdle') + 6);
   expect(rms('garageIdle'), 'the garage idles under the music').toBeLessThan(-26 - 8);
   expect(rms('streetCruise'), 'the Street view cruises under the music').toBeLessThan(-26 - 3);
+  expect(rms('garageBed'), 'the shop bed sits under the music').toBeLessThan(-26 - 6);
+  expect(rms('garageFan'), 'the fan is the loudest steady source of the room').toBeGreaterThan(rms('garageBed') - 6);
   expect(rms('streetRev') - rms('streetCruise'), 'a rev swells over the cruise').toBeGreaterThan(9);
   expect(errors).toEqual([]);
 });

@@ -130,10 +130,10 @@ export function importBuild(g: GarageState, b: CarBuild): void {
 // Garage presentation preferences (not part of a build)
 // ---------------------------------------------------------------------------
 
-export type Presentation = 'garage' | 'street';
+export type Presentation = 'garage' | 'dyno' | 'street';
 
 export interface GaragePrefs {
-  /** Turntable showroom or the car cruising through a tunnel. */
+  /** Turntable showroom, the car strapped to the workshop's dyno, or the car cruising the street. */
   presentation: Presentation;
   /** Front and rear stance sliders (ride height, camber, offset) move together. */
   linkAxles: boolean;
@@ -145,7 +145,7 @@ const PREFS_KEY = 'garage.prefs.v1';
 
 export function loadGaragePrefs(): GaragePrefs {
   const o = loadJson<Partial<GaragePrefs> | null>(PREFS_KEY, null) ?? {};
-  return { presentation: o.presentation === 'street' ? 'street' : 'garage', linkAxles: o.linkAxles !== false, linkWheels: o.linkWheels !== false };
+  return { presentation: o.presentation === 'street' || o.presentation === 'dyno' ? o.presentation : 'garage', linkAxles: o.linkAxles !== false, linkWheels: o.linkWheels !== false };
 }
 
 /** Private mode or a full store: the preferences just do not persist. */

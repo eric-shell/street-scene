@@ -87,6 +87,8 @@ export interface TabHost {
   placing: { shape: VinylShape; index: number } | null;
   changed(rerender?: boolean): Promise<unknown>;
   renderTab(): void;
+  /** Frame the open tab's shot again (the Body tab's slot changed). */
+  reframe(): void;
 }
 
 /** Fill the body with the open tab's groups, rebuilt from the build every time (a render empties it first). */
@@ -179,6 +181,7 @@ export function renderTabContent(host: TabHost): void {
         slot,
         (s) => {
           host.bodySlot = s;
+          host.reframe();
           host.renderTab();
         },
       );

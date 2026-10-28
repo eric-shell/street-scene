@@ -15,13 +15,24 @@
  * of the battens is dying, and the light is mostly what the work throws: cool
  * tubes, a warm lamp under a car, the neon's spill on grimy block walls.
  *
+ * The shop keeps its own time: the welder in the back corner arcs and throws
+ * sparks, the compressor and the customer's dyno pull run, on one pure schedule
+ * of the clock (garage/shopSchedule.ts) that the sound bed reads too, so what
+ * is heard matches what is shown. The lights go down for the Neon tab
+ * (setLightsDown): the battens and the room's lights to a floor, the neon, the
+ * LED ring and the lamp under the lifted car left on.
+ *
  * The room is merged primitives (one mesh per material, garage/showroomProps.ts)
  * and canvas textures (garage/showroomTextures.ts); the signs are
  * garage/neonSign.ts. The car paint reflects a stand-in of the same lights (a
  * PMREM built once per visit) and the floor a low resolution mirror pass
  * (Medium and High). The lift cars are ordinary car views, posed once. Render
  * only: the garage scene (garageScene.ts) owns the camera, the spin and the
- * player's car; this owns the room.
+ * player's car; this owns the room. The dyno presentation borrows the room's
+ * dyno cell: `mountDyno` takes the player's car onto the rollers (the customer's
+ * car and straps hide, straps cut for this car replace them), `dynoStand` gives
+ * its pose, `setFan` and `setRun` spool the fan and put the live pull on the wall
+ * screen.
  */
 import * as THREE from 'three';
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
@@ -43,6 +54,8 @@ import {
   banner,
   beerCooler,
   dyno,
+  dynoHalf,
+  dynoStraps,
   bayNumber,
   calendar,
   cleanup,
@@ -101,11 +114,16 @@ import {
   whiteboard,
   workbench,
 } from './showroomProps';
-import type { LiftFit } from './showroomProps';
+import type { LiftFit, StrapFit } from './showroomProps';
 import { MAIN_SIGN, NEON, NeonSign, OPEN_SIGN } from './neonSign';
 import { Crew, liftHeight } from './showroomCrew';
+import { createShopState, shopSchedule } from './shopSchedule';
+import type { ShopState } from './shopSchedule';
 import type { CrewLift } from './showroomCrew';
 import { Disposer } from '../render/disposer';
+import { damp } from '../shared/anim';
+import type { Mats } from './props/materials';
+import type { DynoRun } from './textures/effects';
 
 /**
  * Per quality tier: the floor's reflection pass (render scale of the screen,
@@ -154,6 +172,27 @@ const MOVING_LIFT = { index: 3, high: 1.75 } as const;
 
 /** The dyno cell in the front right quadrant, beside the way in: where the car on it stands (m) and faces (rad: into the room, its tail and exhaust toward the door, the giant fan at its nose). */
 const DYNO = { x: 8.0, z: 6.6, yaw: Math.PI, fanR: 0.75 } as const;
+
+/**
+ * The drum fan's blades (rad/s): spinning free while the customer's car is on the dyno, and with the player's
+ * on it, turning over at `idle` until a pull spools it to `full`, easing at `ease` (1/s).
+ */
+const FAN = { free: 14, idle: 3, full: 30, ease: 1.6 } as const;
+
+/**
+ * The room's lights going down (the Neon tab): what is left of the battens, the key, fill and bays lights and
+ * the sky fill at the bottom (share), and how fast they ease (1/s). The neon, the LED ring, the lamp under the
+ * lifted car and the exit sign stay, so the underglow and the neon carry the room.
+ */
+const LIGHTS_DOWN = { floor: 0.12, ease: 2.2 } as const;
+
+/**
+ * The welder by the back wall, arcing on the shop's schedule (shopSchedule.ts `weld`): where the arc burns
+ * (m), its light (blue-white, flickering at `flickerHz`, up to `light` over `range` m, one more point light in
+ * the room's shading on Medium and High) and the sparks it throws: `count` points living `life` s, thrown at
+ * up to `speed` m/s into the room and falling under `gravity` m/s².
+ */
+const WELD = { x: 2.95, y: 1.05, z: -11.0, light: 14, range: 7, flickerHz: 31, count: 48, life: 0.45, speed: 2.8, gravity: 9.8, size: 150 } as const;
 
 /** Body paints the customers' cars come in, each with its finish. */
 const LIFT_PAINTS: [string, PaintFinish][] = [
@@ -223,11 +262,40 @@ export class Showroom {
   private readonly reflector: Reflector | null = null;
   private readonly dust: THREE.Points | null = null;
   private readonly dustTime: { value: number } = { value: 0 };
+  /** What the shop is doing this frame (shopSchedule at the clock), read by the room's effects and the sound bed. */
+  readonly shop: ShopState = createShopState();
+  /** The dying batten's brightness this frame, 0..1 (the sound bed's buzz follows it). */
+  batten = 1;
+  /** The room's lights, 0 full to 1 down: where they are and where they are going (setLightsDown). */
+  private lightsDown = 0;
+  private lightsTarget = 0;
+  /** The lights that go down with the room, each with its full intensity. */
+  private readonly roomLights: { light: THREE.Light; base: number }[] = [];
+  /** The welder's arc and sparks (Medium and High), or null. */
+  private readonly weld: { light: THREE.PointLight; sparks: THREE.Points; pos: Float32Array; vel: Float32Array; life: Float32Array; alive: number } | null = null;
   private readonly signs: NeonSign[] = [];
   /** The drum fan's blades (spun in update) and the dyno screen on the wall (redrawn a few times a second). */
   private readonly fanBlades: THREE.Object3D;
   private readonly dyno: ReturnType<typeof dynoScreen>;
   private dynoWait = 0;
+  /** The fan's speed now (rad/s) and the pull it follows (0..1 of the revs' range; null while the customer's car is on the dyno). */
+  private fanRate: number = FAN.free;
+  private fanLoad: number | null = null;
+  /** The live pull the wall screen draws while the player's car is strapped on (null: the customer's fake one). */
+  private run: DynoRun | null = null;
+  /** The customer's car and straps on the dyno, hidden while the player's car takes their place. */
+  private dynoCar: CarView | null = null;
+  private readonly customerStraps = new THREE.Group();
+  /** Straps cut for the player's car, and what built them (freed when it leaves). */
+  private playerStraps: THREE.Group | null = null;
+  private readonly strapOwner = new Disposer();
+  /** The dyno's frame: the deck's height, the drum's z (the customer car's rear axle, in the dyno's z), the customer car's length, the car box the camera ignores while the player's car is on. */
+  private deckY = 0;
+  private drumZ = 0;
+  private dynoLength = 0;
+  private dynoObstacle: THREE.Box3 | null = null;
+  private occupied = false;
+  private mats!: Mats;
   /** The crew, and the moving lift's carriage, arms and car (raised to the crew's cycle); null on Low. */
   private readonly crew: Crew | null = null;
   private liftRig: THREE.Group | null = null;
@@ -254,6 +322,7 @@ export class Showroom {
     // ---------- walls, roof, battens ----------
     const m = createMaterials(track, track(wallTexture(ROOM.height, ROOM.band)));
     this.flickerMat = m.tubeFlicker;
+    this.mats = m;
     const k = new Kit(m);
     for (const [x, z, ry] of [
       [0, -H, 0],
@@ -313,8 +382,21 @@ export class Showroom {
       { length: dynoCar.dimensions.length, width: dynoCar.dimensions.width, rearZ: dynoCar.wheels.RL[2], frontZ: dynoCar.wheels.FL[2], track: 2 * Math.abs(dynoCar.wheels.RL[0]) },
       vent,
     );
-    this.obstacle(DYNO.x, DYNO.z, DYNO.yaw, 1.45, dynoCar.dimensions.length / 2 + 0.6, 1.6);
-    if (q.dynoCar) void this.loadParkedCar(assets, dynoBuild.carId, dynoBuild.visual, { x: DYNO.x, y: deck, z: DYNO.z, yaw: DYNO.yaw }, 0);
+    this.deckY = deck;
+    this.drumZ = dynoCar.wheels.RL[2];
+    this.dynoLength = dynoCar.dimensions.length;
+    this.dynoObstacle = this.obstacle(DYNO.x, DYNO.z, DYNO.yaw, 1.45, dynoCar.dimensions.length / 2 + 0.6, 1.6);
+    if (q.dynoCar) {
+      // The customer's car and its straps, a small group of their own so the player's car can swap them out.
+      const straps = new Kit(m);
+      dynoStraps(straps, DYNO.x, DYNO.z, DYNO.yaw, { length: dynoCar.dimensions.length, width: dynoCar.dimensions.width, z: 0 }, dynoHalf(dynoCar.dimensions.length));
+      straps.build(this.customerStraps, track);
+      s.add(this.customerStraps);
+      void this.loadParkedCar(assets, dynoBuild.carId, dynoBuild.visual, { x: DYNO.x, y: deck, z: DYNO.z, yaw: DYNO.yaw }, 0).then((v) => {
+        this.dynoCar = v;
+        if (v) v.root.visible = !this.occupied;
+      });
+    }
     const fanAt = { x: DYNO.x, z: DYNO.z - dynoCar.dimensions.length / 2 - 1.25, yaw: 0 };
     const hub = drumFan(k, fanAt.x, fanAt.z, fanAt.yaw, DYNO.fanR);
     this.obstacle(fanAt.x, fanAt.z, 0, DYNO.fanR + 0.2, 0.4, 2 * DYNO.fanR + 0.3);
@@ -422,7 +504,8 @@ export class Showroom {
         for (const v of this.liftCars) v.root.visible = false;
         if (this.crew) this.crew.group.visible = false;
         mirror(...args);
-        for (const v of this.liftCars) v.root.visible = true;
+        // Back on, except the customer's car while the player's stands on the dyno.
+        for (const v of this.liftCars) v.root.visible = !(this.occupied && v === this.dynoCar);
         if (this.crew) this.crew.group.visible = true;
       };
       s.add(r);
@@ -468,10 +551,17 @@ export class Showroom {
     // Low and moody: a dim sky fill, the battens over the car as one soft spot, rim lights in the
     // garage's two accents (the neon's orange and cyan), a fill from the front, a cool wash over the
     // left bays, the signs' own light.
-    s.add(new THREE.HemisphereLight(0x9aa2c0, 0x1a1714, 0.55));
-    const key = new THREE.SpotLight(0xe8eeff, 24, 14, 1.0, 1, 1.2);
+    const dims = (light: THREE.Light) => {
+      this.roomLights.push({ light, base: light.intensity });
+      return light;
+    };
+    s.add(dims(new THREE.HemisphereLight(0x9aa2c0, 0x1a1714, 0.55)));
+    // The battens over the turntable as one spot: strong enough to model the car, not so strong that a light
+    // paint's roof saturates under it (a lighter spot and a touch more fill read better from above).
+    // Held to what a light paint takes without saturating on the roof and hood (24 blew a white roof out).
+    const key = new THREE.SpotLight(0xe8eeff, 9, 14, 1.0, 1, 1.2);
     key.position.set(0, ROOM.battenY - 0.05, 0);
-    s.add(key, key.target);
+    s.add(dims(key), key.target);
     const spot = (color: THREE.ColorRepresentation, intensity: number, x: number, y: number, z: number) => {
       const l = new THREE.SpotLight(color, intensity, 26, 0.32, 0.8, 1.4);
       l.position.set(x, y, z);
@@ -479,20 +569,34 @@ export class Showroom {
     };
     spot(PALETTE.orange, 18, -6.5, 4.4, -6.5);
     spot(NEON.cyan, 10, 6.5, 4.4, -6.5);
-    const fill = new THREE.PointLight(0xc8d2ff, 7, 16, 1.2);
+    const fill = new THREE.PointLight(0xc8d2ff, 8, 16, 1.2);
     fill.position.set(1.5, 3.2, 8);
     const bays = new THREE.PointLight(0xdfe8ff, 10, 12, 1.3);
     bays.position.set(-8.2, 4.5, 1.5);
-    s.add(fill, bays);
+    s.add(dims(fill), dims(bays));
     if (q.workLights) {
-      // The batten over the second lift, the lamp hung under its car, the bench's strip.
+      // The batten over the second lift, the lamp hung under its car, the bench's strip, the dyno cell's batten
+      // (so a car on the rollers reads by more than its underglow). The lamp stays on when the lights go down.
       const liftLight = new THREE.PointLight(0xe8eeff, 6, 8, 1.4);
       liftLight.position.set(LIFTS[1].x, 5.4, -6.6);
       const lamp = new THREE.PointLight(0xffb36a, 4, 4.5, 1.6);
       lamp.position.set(LIFTS[1].x - 0.4, 0.75, LIFTS[1].z + 0.9);
       const bench = new THREE.PointLight(0xfff0dc, 6, 7, 1.5);
       bench.position.set(10.4, 4.1, -2.5);
-      s.add(liftLight, lamp, bench);
+      const dynoLight = new THREE.PointLight(0xe8eeff, 8, 9, 1.4);
+      dynoLight.position.set(DYNO.x, 4.7, DYNO.z);
+      s.add(dims(liftLight), lamp, dims(bench), dims(dynoLight));
+      // The welder: its light off until the schedule strikes an arc, its sparks a handful of points moved on
+      // the CPU only while it burns.
+      const arc = new THREE.PointLight(0x9fc4ff, 0, WELD.range, 2);
+      arc.position.set(WELD.x, WELD.y, WELD.z + 0.2);
+      const sparks = weldSparks();
+      track(sparks.geometry);
+      track(sparks.material as THREE.Material);
+      sparks.visible = false;
+      s.add(arc, sparks);
+      const n = WELD.count;
+      this.weld = { light: arc, sparks, pos: (sparks.geometry.getAttribute('position') as THREE.BufferAttribute).array as Float32Array, vel: new Float32Array(n * 3), life: (sparks.geometry.getAttribute('life') as THREE.BufferAttribute).array as Float32Array, alive: 0 };
     }
 
     // ---------- dust in the light ----------
@@ -511,23 +615,24 @@ export class Showroom {
   }
 
   /** A lift's room-space box (center, yaw, half extents across and along, height) for the camera to stay out of. */
-  private obstacle(x: number, z: number, yaw: number, across: number, along: number, height: number): void {
+  private obstacle(x: number, z: number, yaw: number, across: number, along: number, height: number): THREE.Box3 {
     const c = Math.abs(Math.cos(yaw));
     const s = Math.abs(Math.sin(yaw));
     const hx = across * c + along * s;
     const hz = across * s + along * c;
-    this.obstacles.push(new THREE.Box3(new THREE.Vector3(x - hx, 0, z - hz), new THREE.Vector3(x + hx, height, z + hz)));
+    const box = new THREE.Box3(new THREE.Vector3(x - hx, 0, z - hz), new THREE.Vector3(x + hx, height, z + hz));
+    this.obstacles.push(box);
+    return box;
   }
 
-  /** Load a lift's car, dress it in its build and pose it once on the arms (wheels hanging). */
   /** Load a car view standing still at `at` (its ground and yaw), its wheels hung by `droop` (m), the front pair off for a brake job. */
-  private async loadParkedCar(assets: CarAssetLibrary, carId: string, visual: VisualBuild, at: { x: number; y: number; z: number; yaw: number }, droop: number, wheelsOff = false, parent: THREE.Object3D = this.scene): Promise<void> {
+  private async loadParkedCar(assets: CarAssetLibrary, carId: string, visual: VisualBuild, at: { x: number; y: number; z: number; yaw: number }, droop: number, wheelsOff = false, parent: THREE.Object3D = this.scene): Promise<CarView | null> {
     const view = new CarView(carId, assets, { envMap: this.envMap, tread: this.tread });
     view.setHeadlightsEnabled(false);
     await view.load(visual);
     if (this.disposed) {
       view.dispose();
-      return;
+      return null;
     }
     if (wheelsOff) {
       view.setWheelVisible(0, false);
@@ -548,6 +653,7 @@ export class Showroom {
     }
     parent.add(view.root);
     this.liftCars.push(view);
+    return view;
   }
 
   /**
@@ -573,6 +679,8 @@ export class Showroom {
     if (Math.abs(cz) > lim) t = Math.min(t, (Math.sign(cz) * lim - target.z) / (cz - target.z));
     const len = o.length() || 1;
     for (const b of this.obstacles) {
+      // The player's car on the dyno takes the customer's place: the camera orbits it, not round it.
+      if (this.occupied && b === this.dynoObstacle) continue;
       const hit = rayBox(target, o, b);
       if (hit !== null) t = Math.min(t, hit - 0.25 / len);
     }
@@ -584,6 +692,82 @@ export class Showroom {
     this.turntable.add(view.root);
     const d = view.car.dimensions;
     this.shadow.scale.set(d.width * 1.32, 1, d.length * 1.16);
+  }
+
+  /**
+   * Where the player's car stands on the dyno (m, rad) so its driven axle sits over the drum: the drum is at the
+   * customer car's rear axle, so the car's origin lies that far along the dyno's z from the axle's own z in car
+   * space (`axleZ`). The deck is `y`.
+   */
+  dynoStand(axleZ: number, out: { x: number; y: number; z: number; yaw: number }): void {
+    const along = this.drumZ - axleZ;
+    out.x = DYNO.x + along * Math.sin(DYNO.yaw);
+    out.y = this.deckY;
+    out.z = DYNO.z + along * Math.cos(DYNO.yaw);
+    out.yaw = DYNO.yaw;
+  }
+
+  /**
+   * Strap the player's car to the dyno: it leaves the turntable (or the dyno it already stands on, for a new
+   * car) for the room's scene, the customer's car and straps hide, and straps cut for this car replace them.
+   * The caller poses it (`dynoStand`).
+   */
+  mountDyno(view: CarView, axleZ: number): void {
+    this.scene.add(view.root);
+    this.occupied = true;
+    this.shadow.visible = false;
+    if (this.dynoCar) this.dynoCar.root.visible = false;
+    this.customerStraps.visible = false;
+    this.clearPlayerStraps();
+    const d = view.car.dimensions;
+    const kit = new Kit(this.mats);
+    dynoStraps(kit, DYNO.x, DYNO.z, DYNO.yaw, { length: d.length, width: d.width, z: this.drumZ - axleZ } satisfies StrapFit, dynoHalf(this.dynoLength));
+    const group = new THREE.Group();
+    kit.build(group, this.strapOwner.track);
+    this.scene.add(group);
+    this.playerStraps = group;
+  }
+
+  /** Unstrap: the customer's car and straps are back, the player's car goes to the turntable. */
+  releaseDyno(view: CarView): void {
+    this.occupied = false;
+    this.shadow.visible = true;
+    if (this.dynoCar) this.dynoCar.root.visible = true;
+    this.customerStraps.visible = true;
+    this.clearPlayerStraps();
+    this.mount(view);
+  }
+
+  private clearPlayerStraps(): void {
+    this.playerStraps?.removeFromParent();
+    this.playerStraps = null;
+    this.strapOwner.dispose();
+  }
+
+  /** Hand the wall screen a live pull to draw (null: back to the customer's fake one). The object is read at each redraw, so the caller may keep updating it. */
+  setRun(run: DynoRun | null): void {
+    this.run = run;
+    this.dynoWait = 0;
+  }
+
+  /** The drum fan's pull: 0..1 of the revs' range while the player's car is on the dyno, null for the customer's car. */
+  setFan(load: number | null): void {
+    this.fanLoad = load;
+  }
+
+  /** Take the room's lights down (1) or bring them back (0); they ease over about a second (LIGHTS_DOWN). */
+  setLightsDown(down: number): void {
+    this.lightsTarget = Math.max(0, Math.min(1, down));
+  }
+
+  /** How far down the lights are this frame, 0..1 (the car's paint reflections follow it). */
+  get dimmed(): number {
+    return this.lightsDown;
+  }
+
+  /** The room's clock (s): what the shop's schedule, the batten's flicker and the crew run on. */
+  get clock(): number {
+    return this.time;
   }
 
   /** Keep the reflection pass at its share of the screen after a resize. */
@@ -601,11 +785,27 @@ export class Showroom {
     this.time += dt;
     const t = this.time;
     this.ringMat.color.copy(RING).multiplyScalar(1.45 + 0.3 * Math.sin(t * 1.6));
+    shopSchedule(t, this.shop);
+    // The lights going down: the real lights and the battens' tubes (and their faked pools) to the floor.
+    const target = this.lightsTarget;
+    if (this.lightsDown !== target) {
+      this.lightsDown += (target - this.lightsDown) * damp(LIGHTS_DOWN.ease, dt);
+      if (Math.abs(this.lightsDown - target) < 0.002) this.lightsDown = target;
+      const lit = 1 - (1 - LIGHTS_DOWN.floor) * this.lightsDown;
+      for (const l of this.roomLights) l.light.intensity = l.base * lit;
+      this.mats.tube.color.copy(GLOW.tube).multiplyScalar(lit);
+      this.mats.poolTube.opacity = lit;
+    }
+    const lit = 1 - (1 - LIGHTS_DOWN.floor) * this.lightsDown;
     const f = battenFlicker(t);
-    this.flickerMat.color.copy(GLOW.tube).multiplyScalar(f);
+    this.batten = f;
+    this.flickerMat.color.copy(GLOW.tube).multiplyScalar(f * lit);
     for (const sign of this.signs) sign.update(t);
     this.dustTime.value = t;
-    this.fanBlades.rotation.z -= dt * 14;
+    if (this.weld) this.updateWeld(dt, this.shop.weld);
+    const fanTarget = this.fanLoad === null ? FAN.free : FAN.idle + this.fanLoad * (FAN.full - FAN.idle);
+    this.fanRate += (fanTarget - this.fanRate) * damp(FAN.ease, dt);
+    this.fanBlades.rotation.z -= dt * this.fanRate;
     if (this.crew && this.liftRig && this.crewLift) {
       this.crew.update(t);
       this.liftRig.position.y = liftHeight(this.crewLift, t);
@@ -614,14 +814,59 @@ export class Showroom {
     this.dynoWait -= dt;
     if (this.dynoWait <= 0) {
       this.dynoWait = 1 / 12;
-      this.dyno.draw(t);
+      this.dyno.draw(t, this.run);
     }
+  }
+
+  /**
+   * The welder's arc: the light flickers hard while it burns, and the sparks fly from it, each point thrown
+   * into the room and up, falling under gravity and dying in under half a second; the dead respawn while the
+   * arc is on and the burst goes dark once the last one lands.
+   */
+  private updateWeld(dt: number, arc: number): void {
+    const w = this.weld!;
+    w.light.intensity = arc > 0 ? WELD.light * arc * (0.45 + 0.55 * noise(Math.floor(this.time * WELD.flickerHz))) : 0;
+    if (arc <= 0 && w.alive === 0) {
+      w.sparks.visible = false;
+      return;
+    }
+    const { pos, vel, life } = w;
+    const fade = dt / WELD.life;
+    let alive = 0;
+    for (let i = 0; i < WELD.count; i++) {
+      const j = i * 3;
+      if (life[i] > 0) {
+        life[i] -= fade;
+        vel[j + 1] -= WELD.gravity * dt;
+        pos[j] += vel[j] * dt;
+        pos[j + 1] += vel[j + 1] * dt;
+        pos[j + 2] += vel[j + 2] * dt;
+        if (pos[j + 1] < 0.01) life[i] = 0;
+      } else if (arc > 0 && Math.random() < 0.3) {
+        // Reborn at the arc: a fan of sparks out into the room and up (render only, so Math.random is fine).
+        const a = (Math.random() - 0.5) * 2.4;
+        const v = WELD.speed * (0.3 + 0.7 * Math.random());
+        life[i] = 0.6 + 0.4 * Math.random();
+        pos[j] = WELD.x;
+        pos[j + 1] = WELD.y;
+        pos[j + 2] = WELD.z;
+        vel[j] = Math.sin(a) * v;
+        vel[j + 1] = v * (0.4 + 0.8 * Math.random());
+        vel[j + 2] = Math.cos(a) * v * 0.8;
+      }
+      if (life[i] > 0) alive++;
+    }
+    w.alive = alive;
+    w.sparks.visible = true;
+    (w.sparks.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+    (w.sparks.geometry.getAttribute('life') as THREE.BufferAttribute).needsUpdate = true;
   }
 
   dispose(): void {
     this.disposed = true;
     this.reflector?.dispose();
     for (const v of this.liftCars) v.dispose();
+    this.strapOwner.dispose();
     for (const sign of this.signs) sign.dispose();
     this.owned.dispose();
   }
@@ -1029,6 +1274,45 @@ function studioEnvironment(renderer: THREE.WebGLRenderer): THREE.WebGLRenderTarg
   pmrem.dispose();
   owned.dispose();
   return rt;
+}
+
+/** The welder's sparks: a few points shaded as hot discs, white at birth cooling to orange as they die. */
+function weldSparks(): THREE.Points {
+  const n = WELD.count;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3).setUsage(THREE.DynamicDrawUsage));
+  g.setAttribute('life', new THREE.BufferAttribute(new Float32Array(n), 1).setUsage(THREE.DynamicDrawUsage));
+  // Never culled: the bounding sphere would be the arc's point until the first burst flies.
+  g.boundingSphere = new THREE.Sphere(new THREE.Vector3(WELD.x, WELD.y, WELD.z), 4);
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { size: { value: WELD.size } },
+    vertexShader: /* glsl */ `
+      attribute float life;
+      uniform float size;
+      varying float vLife;
+      void main() {
+        vLife = life;
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        gl_Position = projectionMatrix * mv;
+        gl_PointSize = life > 0.0 ? size * (0.006 + 0.01 * life) / -mv.z : 0.0;
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      varying float vLife;
+      void main() {
+        vec2 d = gl_PointCoord - 0.5;
+        float a = smoothstep(0.5, 0.1, length(d)) * vLife;
+        vec3 c = mix(vec3(1.0, 0.45, 0.1), vec3(1.0, 0.95, 0.85), vLife * vLife);
+        gl_FragColor = vec4(c * a * 2.0, 1.0);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const p = new THREE.Points(g, mat);
+  p.frustumCulled = false;
+  return p;
 }
 
 /** Dust drifting in the light round the car: points moved in the shader, so nothing per frame on the CPU. */

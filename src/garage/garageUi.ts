@@ -44,11 +44,12 @@ import { PART_SLOTS, PartSlot, SLOT_LABELS } from '../shared/parts';
 import { Axle, BUILD_NAME_MAX, CarBuild, DEFAULT_BUILD_NAME, VinylShape, validateBuild } from '../shared/carBuild';
 import { getBaseTuning } from '../sim/tuning';
 import { tuningForBuild } from '../sim/build';
+import { dynoSetup } from './dynoRun';
 import { specBadges } from '../shared/carSpec';
 import { btn, chip, h, iconBtn, isTyping, scrollHint, segmented, sheen, specChip, toast } from '../ui/kit/dom';
 import { door, transitioning } from '../ui/transitions/transitions';
 import { openSignInDialog, onSignedIn, wantsSignIn } from '../ui/screens/signIn';
-import { Car, Check, ChevronRight, CircleUser, CloudOff, Copy, Download, Hammer, MousePointerClick, Paintbrush, Pencil, Plus, Save, Share2, Trash2, Undo2, Upload, Wrench, X, Route, Video, Warehouse, icon, IconNode } from '../ui/kit/icons';
+import { Car, Check, ChevronRight, CircleUser, CloudOff, Copy, Download, Gauge, Hammer, MousePointerClick, Paintbrush, Pencil, Plus, Save, Share2, Trash2, Undo2, Upload, Wrench, X, Route, Video, Warehouse, icon, IconNode } from '../ui/kit/icons';
 import { GarageScene } from './garageScene';
 import { track } from '../analytics/telemetry';
 import { GaragePrefs, GarageState, MAX_SLOTS, Presentation, addSlot, decodeShareCode, encodeShareCode, importBuild, loadGaragePrefs, randomBuild, saveGaragePrefs, shareUrl } from './storage';
@@ -76,6 +77,8 @@ export interface GarageStage {
   quality: Quality;
 }
 
+/** What each presentation's roller door sign says while it runs. */
+const DOOR_SIGNS: Record<Presentation, string> = { garage: 'Garage', dyno: 'Dyno', street: 'Street' };
 /** Keys that hold the gas in the garage (W, Up or Space; the help lists them). */
 const GAS_KEYS = ['KeyW', 'ArrowUp', 'Space'];
 /** The race's steering keys turn the front wheels on the turntable. */
@@ -157,7 +160,7 @@ export class GarageScreen implements TabHost {
     sections: () => {
       const keys: HelpKey[] = [
         { keys: ['Drag'], label: 'Orbit the car' },
-        { keys: ['W', '↑', 'Space'], label: 'Hold to rev', action: () => this.scene.blip() },
+        { keys: ['W', '↑', 'Space'], label: this.prefs.presentation === 'dyno' ? 'Hold to run a pull on the dyno' : 'Hold to rev', action: () => this.scene.blip() },
         { keys: ['A', 'D', '←', '→'], label: 'Turn the front wheels' },
         { keys: ['C'], label: 'Next camera angle', action: () => this.nextCamera() },
         { keys: ['Ctrl S'], label: 'Save the build', action: () => this.save() },
@@ -172,7 +175,7 @@ export class GarageScreen implements TabHost {
           title: 'Tips',
           tips: builds
             ? ['Each slot holds a build: pick one, then Customize. The pencil renames it, share turns it into a code or link.', 'Changes show at once; Save keeps them in the build\'s slot.']
-            : ['Changes show at once; Save keeps them in the build\'s slot.', 'Garage / Street at the bottom shows the car on the turntable or out on the event street.'],
+            : ['Changes show at once; Save keeps them in the build\'s slot.', 'Garage / Dyno / Street at the bottom shows the car on the turntable, strapped to the dyno (hold the gas for a pull and read the build\'s power off the wall screen) or out on the event street.'],
         },
       ];
     },
@@ -219,6 +222,7 @@ export class GarageScreen implements TabHost {
     };
     frame();
     this.scene.setPresentation(this.prefs.presentation);
+    this.scene.onPull = (k) => toast(`Dyno · ${Math.round(k.hp)} hp · ${Math.round(k.lbft)} lb-ft`, Gauge);
     this.scene.setEngineVolume(cb.engineVolume?.() ?? 0.7);
     // A tile per category: its icon on a badge in the category's hue (_garage.scss keys the hue on data-tab).
     for (const t of TABS) {
@@ -258,6 +262,7 @@ export class GarageScreen implements TabHost {
           return;
         }
         if (isTyping(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+        this.scene.touch();
         if (e.key === 'Escape') {
           e.preventDefault();
           if (this.step === 'build') this.go('builds');
@@ -386,7 +391,8 @@ export class GarageScreen implements TabHost {
     const from = this.step;
     this.step = next;
     this.root.dataset.step = next;
-    if (next === 'builds') this.scene.frameWheels(false);
+    if (next === 'builds') this.scene.frame(null);
+    this.scene.tour(next === 'builds');
     this.configureEngine();
     this.placing = null;
     const fwd = next === 'build' && from === 'builds';
@@ -538,7 +544,7 @@ export class GarageScreen implements TabHost {
     toast(`Camera: ${this.scene.setCamera()}`, Video);
   }
 
-  /** Presentation toggle (the showroom's turntable or the street) and camera angles, at the bottom of the view. */
+  /** Presentation toggle (the showroom's turntable, the dyno or the street) and camera angles, at the bottom of the view. */
   private stageBar(): HTMLElement {
     return h(
       'div',
@@ -546,6 +552,7 @@ export class GarageScreen implements TabHost {
       segmented<Presentation>(
         [
           { value: 'garage', label: 'Garage', icon: Warehouse },
+          { value: 'dyno', label: 'Dyno', icon: Gauge },
           { value: 'street', label: 'Street', icon: Route },
         ],
         this.prefs.presentation,
@@ -567,7 +574,7 @@ export class GarageScreen implements TabHost {
   private applyPresentation(): void {
     if (this.switching || transitioning() || this.scene.presentation === this.prefs.presentation) return;
     this.switching = true;
-    void door(this.prefs.presentation === 'street' ? 'Street' : 'Garage', () => {
+    void door(DOOR_SIGNS[this.prefs.presentation], () => {
       this.scene.setPresentation(this.prefs.presentation);
       this.configureEngine();
     }).finally(() => {
@@ -584,7 +591,8 @@ export class GarageScreen implements TabHost {
 
   /**
    * Idle and redline of the current build feed the garage rev model, and on the Tune tab its launch rpm (the gas
-   * bounces off the two-step there, as at the line); its steering lock and rate the turntable's front wheels.
+   * bounces off the two-step there, as at the line); its steering lock and rate the turntable's front wheels; its
+   * power and torque curves, pull gear and driven axle the dyno (garage/dynoRun.ts, from the sim's own torque curve).
    */
   private configureEngine(): void {
     const t = tuningForBuild(this.build.carId, this.build.performance);
@@ -592,6 +600,7 @@ export class GarageScreen implements TabHost {
     const tune = this.step === 'build' && this.tab === 'tune' && L.twoStepRpm > 0;
     this.scene.setEngine(t.engine.idleRpm, t.engine.redline, tune ? { rpm: L.twoStepRpm, depth: L.twoStepDepth, cutTime: L.twoStepCutTime, pedal: L.pedalThreshold } : null);
     this.scene.setSteering(t.steering.maxDeg, t.steering.rateDegPerSec);
+    this.scene.setDyno(dynoSetup(t));
   }
 
   private setTab(t: Tab): void {
@@ -606,8 +615,8 @@ export class GarageScreen implements TabHost {
     });
     // The open tab's hue colors its picks, sliders and section hairlines (_garage.scss keys it on data-tab).
     this.root.dataset.tab = t;
-    // The Wheels tab brings the camera down to the front wheel; leaving it goes back to the three quarter view.
-    this.scene.frameWheels(this.step === 'build' && t === 'wheels');
+    // The room shows what the tab edits: the camera on its shot, the lights down for neon.
+    this.reframe();
     this.renderTab();
     if (!switched) return;
     this.body.scrollTop = 0;
@@ -617,6 +626,11 @@ export class GarageScreen implements TabHost {
     this.body.classList.add('is-switching');
     clearTimeout(this.tabInTimer);
     this.tabInTimer = window.setTimeout(() => this.body.classList.remove('is-switching'), 600);
+  }
+
+  /** Frame the open tab's shot (the Body tab's by the slot on show), or the Builds step's view. */
+  reframe(): void {
+    this.scene.frame(this.step === 'build' ? (this.tab === 'body' ? `body:${this.bodySlot}` : this.tab) : null);
   }
 
   /** Apply the current build to the preview and mark it unsaved. Resolves when the preview is up to date. */

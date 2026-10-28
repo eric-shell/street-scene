@@ -10,6 +10,11 @@
  *    set (the Tune tab's Launch RPM) the pedal past halfway meets that cut at
  *    the launch rpm instead, bouncing the revs its depth under it, as the
  *    sim's two-step does at the line.
+ *  - Under load (the garage's dyno: the engine turning the rollers' inertia in
+ *    a middle gear) the revs cannot leap: they climb no faster than the load
+ *    allows, so a full pull runs from idle to the redline in seconds, and they
+ *    run down slowly when the pedal lifts. The limiter still bounces the top.
+ *    With no load the free rev is untouched.
  *  - The crank's reaction torque rocks the body about its long axis (old
  *    muscle cars on a blip) through a soft, lightly damped spring, plus a
  *    slight squat. Wheels stay planted; the caller only rotates the body.
@@ -43,6 +48,17 @@ const REV = {
   squat: { hz: 2.2, damping: 0.4, gain: 0.005 },
 } as const;
 
+/** What the engine turns on a roller dyno: how fast the revs can climb under the pedal and how slowly they run down. */
+export interface RevLoad {
+  /** The fastest the revs climb at full pedal (rpm/s); less pedal climbs proportionally slower. */
+  climb: number;
+  /** The fastest they fall off the pedal (rpm/s) as the rollers coast. The limiter's cut still knocks them harder. */
+  coast: number;
+}
+
+/** The load stops holding the climb in the last share of the redline, so the limiter bounces as lively as in the showroom. */
+const LOAD_FREE_FROM = 0.97;
+
 export interface RevConfig {
   idle: number;
   redline: number;
@@ -50,6 +66,8 @@ export interface RevConfig {
   rest?: number;
   /** The two-step, as the build's launch tuning sets it; missing or null, free revs to the redline. */
   launch?: TwoStep | null;
+  /** The dyno's load; missing or null, the engine revs free. */
+  load?: RevLoad | null;
 }
 
 /** A two-step launch limiter (the sim's launch tuning): where it holds, how far each cut drops the revs and for how long. */
@@ -87,12 +105,14 @@ export class RevModel {
   redline: number;
   rest: number;
   launch: TwoStep | null;
+  load: RevLoad | null;
 
   constructor(cfg: RevConfig) {
     this.idle = cfg.idle;
     this.redline = cfg.redline;
     this.rest = cfg.rest ?? cfg.idle;
     this.launch = cfg.launch ?? null;
+    this.load = cfg.load ?? null;
     this.rpm = this.rest;
   }
 
@@ -101,6 +121,7 @@ export class RevModel {
     this.redline = cfg.redline;
     this.rest = cfg.rest ?? cfg.idle;
     this.launch = cfg.launch ?? null;
+    this.load = cfg.load ?? null;
   }
 
   /** Advance by dt seconds with the pedal at `input` (0..1). */
@@ -126,6 +147,12 @@ export class RevModel {
     this.rpmVel += (w * w * (target - this.rpm) - 2 * zeta * w * this.rpmVel) * dt;
     // A real crank cannot spin up or down arbitrarily fast.
     this.rpmVel = Math.max(REV.spinDown, Math.min(REV.spinUp, this.rpmVel));
+    const load = this.load;
+    if (load) {
+      // On the rollers: the pedal sets how hard the engine pulls, the drum's inertia how fast the revs can follow.
+      if (this.rpm < this.redline * LOAD_FREE_FROM) this.rpmVel = Math.min(this.rpmVel, load.climb * this.pedal);
+      if (!this.limiting) this.rpmVel = Math.max(this.rpmVel, -load.coast);
+    }
     this.rpm = Math.max(this.idle * REV.floor, this.rpm + this.rpmVel * dt);
     // Engine angular acceleration, smoothed: the torque the body reacts to.
     const a = (this.rpmVel - prevVel) / Math.max(dt, 1e-4);

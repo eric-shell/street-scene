@@ -12,7 +12,7 @@ import type { SpecBadge } from '../shared/carSpec';
 import { measureStats, statBars } from '../sim/stats';
 import type { CarStats } from '../sim/stats';
 import { btn, h, segmented, sheen, specChip } from '../ui/kit/dom';
-import { KMH_PER_MPH } from '../ui/kit/units';
+import { KMH_PER_MPH, horsepower } from '../ui/kit/units';
 import { Paintbrush, IconNode } from '../ui/kit/icons';
 
 /** A label from a lower case id: "metallic" reads "Metallic". */
@@ -33,6 +33,7 @@ const STATS: readonly { ink: string; bar: keyof ReturnType<typeof statBars>; nam
   { ink: 'accel', bar: 'acceleration', name: '0-60', value: (s) => `${s.zeroTo60.toFixed(2)} s` },
   { ink: 'grip', bar: 'handling', name: 'Grip', value: (s) => `${s.grip.toFixed(2)} g` },
   { ink: 'nitrous', bar: 'nitrous', name: 'Nitrous', value: (s) => `${s.nitrous.toFixed(1)} kN·s` },
+  { ink: 'power', bar: 'power', name: 'Power', value: (s) => `${Math.round(horsepower(s.power))} hp` },
 ];
 
 /** A build's measured stats: a line each, the measure, its bar in its ink and the value in yellow. */

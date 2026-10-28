@@ -23,5 +23,5 @@ export { toolBoard, wallCabinets, whiteboard, clipboard, ceilingReel } from './p
 export { partsWasher, benchGrinder, drillPress, hydraulicPress, sandblaster, acMachine, alignmentConsole, transmissionJack, underhoistStand, batteryCharger, brakeBleeder, laptopCart, smokeMachine } from './props/equipment';
 export { rollingStool, creeperSeat, trashCan, ragBin, wheelBoxes, coffeeCorner, flagshipCab, cellPlane } from './props/furnishings';
 export type { CabStyle } from './props/furnishings';
-export { lightPool, exitSign, bayNumber, banner, plateRow, wallClock, calendar, wallTv, floorDrain, cleanup, cones, spaceHeater, drumFan, beerCooler, dyno } from './props/atmosphere';
-export type { DynoFit } from './props/atmosphere';
+export { lightPool, exitSign, bayNumber, banner, plateRow, wallClock, calendar, wallTv, floorDrain, cleanup, cones, spaceHeater, drumFan, beerCooler, dyno, dynoStraps, dynoHalf, DYNO_DECK } from './props/atmosphere';
+export type { DynoFit, StrapFit } from './props/atmosphere';

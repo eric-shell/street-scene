@@ -1,6 +1,6 @@
 # The audio mix
 
-How every sound in the game is balanced against the others, what the player can set, and how the balance is kept as sounds are added. Code: `src/audio/engineAudio.ts` (`AudioHub`, the mixer: buses, calibration, levels, the limiter), `src/audio/sfx.ts` (the effects player; the drive's levels are at the top of `sfxVoices.ts`, the crowd clips' in `crowdAudio.ts`, the train, helicopter and thunder, firework and stadium roar voices' in `sceneVoices.ts`, the city bed's in `cityAmbience.ts`), `src/audio/uiSound.ts` (menu sounds), `src/audio/musicPlayer.ts` (music, on its own element). Guard: `e2e/audioMix.spec.ts`. The engine voices themselves are in [engineSound.md](engineSound.md).
+How every sound in the game is balanced against the others, what the player can set, and how the balance is kept as sounds are added. Code: `src/audio/engineAudio.ts` (`AudioHub`, the mixer: buses, calibration, levels, the limiter), `src/audio/sfx.ts` (the effects player; the drive's levels are at the top of `sfxVoices.ts`, the crowd clips' in `crowdAudio.ts`, the train, helicopter and thunder, firework and stadium roar voices' in `sceneVoices.ts`, the city bed's in `cityAmbience.ts`, the workshop's in `garageAmbience.ts`), `src/audio/uiSound.ts` (menu sounds), `src/audio/musicPlayer.ts` (music, on its own element). Guard: `e2e/audioMix.spec.ts`. The engine voices themselves are in [engineSound.md](engineSound.md).
 
 ## Buses and settings
 
@@ -16,7 +16,7 @@ music (an <audio> element, its own volume)
 |---|---|---|
 | engine | every `EngineVoice` (player and rivals) | Engine |
 | effects | impacts (car, wall, barrier, rail, props), scrapes, nitrous, horn, countdown beeps, fireworks, car alarms and the horns of traffic passed close | Effects |
-| ambience | crowd beds and cheers, train rumble, helicopters, thunder, the crossing bell, the cable car bell, the city bed (hum, wind, distant one-shots) | Ambience |
+| ambience | crowd beds and cheers, train rumble, helicopters, thunder, the crossing bell, the cable car bell, the city bed (hum, wind, distant one-shots), the garage's workshop bed (fan, compressor, impact gun, ratchet, the customer's dyno pull, the welder) | Ambience |
 | interface | menu ticks, presses, blips, whooshes, the wipe, the garage door | Interface |
 | master | the four above | Master |
 | music | the player | Music (in the player and here) |
@@ -67,12 +67,21 @@ Measured at the output with every level at its default, each source alone and ri
 | crossing bell | −25 | −24 | −24 | |
 | cable car bell (beside the car) | not measured | | | a ring of five strikes, set by ear at `CABLE_BELL.level` 0.5 (`sceneVoices.ts`) to sit with the crossing bell; distance faded from the camera (half at 30 m, silent past 160 m) |
 | city bed (clear night, hum and mains rumble) | none | −33.5 | −34 | 15 dB under the engine and 10 under a crowd bed: you notice it only when it stops. The wind (hazy, misty), rain hiss and the one-shots are trimmed to the same neighbourhood; the one-shots (the horn is `carHorn.ts`'s `playHorn`, shared with the traffic horns, whose gain used to be cancelled so it only clicked at the end of the beep; a far American siren pass (wail 600 to 1,400 Hz over 4 to 5 s, yelp, sometimes an airhorn; a square-ish wave clipped hard through a band-limited horn; `siren.ts`, level 0.3 and the siren and horn one-shots at 0.3, down from 0.5; the menu city and the Street view play the bed only, `CityAmbience.oneShots`; measured to peak within 1.5 dB of the old one), horn, dog, bottle, shutter, El train horn, gulls) are far and dulled by distance, and the bed ducks 30% (3 dB) under the player's full throttle |
+| garage bed (room centre, compressor running, a customer pull at 0.7) | none | −33.5 | −34 | the workshop heard from the turntable, 2 dB over the showroom idle and 8 under the music: it fills the silence without covering the engine, which swells 17 dB over it |
+| garage fan (room centre, alone) | none | −37.4 | −37.5 | the loudest steady source of the room, to the right and in front; the bed is it plus the pull and the compressor over the hum |
+| garage compressor (3 m, motor and rattle) | none | −32.5 | −32.5 | an induction motor you notice when it cuts in; the release hiss peaks at −23.5 at 3 m and falls to about −31 at the centre |
+| garage customer pull (3 m, at 0.8 of the pull) | none | −32.6 | −32.5 | a muffled four-cylinder climbing to the limiter, duller with distance; a harmonic wave at the firing frequency, not an `EngineVoice` |
+| garage weld (3 m, arc and sparks) | none | −45.4 (peak −24) | −45 | sparse crackle reads low as RMS, the peaks are what you hear |
+| garage impact gun (room centre, burst peak) | none | peak −31.8 | peak ≤ −29 | a burst peaks a couple of dB under the bed's own peaks at the centre and is a narrow rattle over its low hum: heard, never a bang |
+| garage ratchet click / weld strike (room centre, peak) | none | −33.1 / −29 | ≤ −29 / ≤ −28 | the weld's first strike is the hardest of the shop's one-shots |
 | menu press (peak) | −31 | −15 (RMS −32) | −32 | a click peaks over the music's −26; short sounds read low as RMS |
 | menu hover tick (peak) | −44 | −28 (RMS −48) | −48 | under the press, so sweeping a list is not a rattle |
 | menu step whoosh (peak) | −40 | −19 (RMS −32) | −32 | |
 | garage door up / down (peak) | −38 / −20 | −17 / −9 | −32 (up) | the rattle was 18 dB under the clunk and lost under the music |
 
 What was wrong before: the crowds and thunder were set hotter than the player's own engine, nitrous and the horn were set so low the engine covered them, the countdown beeps barely cleared an idle, and the shared compressor let whichever source was loudest duck the rest. Every number had been chosen on its own; none against the engine.
+
+The workshop has a bed of its own (`GarageAmbience`, `src/audio/garageAmbience.ts`): the ballasts' hum, the drum fan blowing at the dyno car, the dying batten's buzz (following its flicker), the compressor, the impact gun and ratchet at the bench, the customer's car pulling on the dyno and the welder, each placed in the room, falling to half at 6 m and panned by its bearing from the camera. What plays comes from `shopSchedule` (`src/garage/shopSchedule.ts`), a pure function of the showroom's clock, so the sound, the dyno's wall screen and the room agree and a replay of the clock hears the same shop; its events are irregular (every interval a hash of the event's ordinal) but bounded, and the gun and ratchet never overlap. The bed is on the ambience bus, silent on the Street view and off the garage (it fades out by itself within about 0.3 s when it is not fed), and silent at the dyno when the player's own car is on it. It is measured with each source alone: the spec disconnects the other layers from a fresh instance at a frozen clock where the schedule is doing just that.
 
 On the grid the table's lines meet: the player's idle reads about −22 in a race, and a waiting grid only stirs the start crowd to a murmur (−35 to −43), so the crowd builds through the countdown instead (`COUNTDOWN_CHEER` in `session.ts`, a wave at 3, 2 and 1), from about −30 to −26, before it erupts at GO.
 

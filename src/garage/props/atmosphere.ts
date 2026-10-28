@@ -2,7 +2,8 @@
  * The room's atmosphere and odds and ends: pools of faked light on the floor,
  * the exit sign, the bay numbers, the tuners' banners, number plates, clock,
  * calendar and wall TV, the floor drain, the cleanup corner, traffic cones,
- * space heater, drum fan, beer cooler, and the dyno with the car strapped to it.
+ * space heater, drum fan, beer cooler, and the dyno (the straps that hold its
+ * car are separate, so the garage can refit them to the player's car).
  * Render only.
  */
 import * as THREE from 'three';
@@ -226,6 +227,42 @@ export interface DynoFit {
   track: number;
 }
 
+/** The dyno deck (m): its height, its width and the length of the roller pit across it. */
+export const DYNO_DECK = { height: 0.22, width: 2.6, pit: 0.8 } as const;
+
+/** Half the deck's length (m) for a customer car of this length: the car's own plus a ramp's reach at each end. */
+export const dynoHalf = (carLength: number): number => carLength / 2 + 0.55;
+
+/** What the straps need of the car they hold (m, car space): its length and width, and where its origin sits along the dyno's z. */
+export interface StrapFit {
+  length: number;
+  width: number;
+  /** The car's origin along the dyno's z (m): 0 for the customer's car, the offset that puts the player's driven axle on the drum otherwise. */
+  z: number;
+}
+
+/**
+ * Four ratchet straps from the deck's corners to the car's tow points, each with
+ * its ratchet and an anchor plate, in the dyno frame at (x, z) turned by yaw.
+ * Apart from `dyno()` so the showroom builds them as a small group of their
+ * own and swaps in straps cut for the player's car while it sits there; the
+ * anchors stay on the deck (`half`, its half length), only the car end moves.
+ */
+export function dynoStraps(k: Kit, x: number, z: number, yaw: number, car: StrapFit, half: number): void {
+  const m = k.m;
+  const deck = DYNO_DECK.height;
+  const w = DYNO_DECK.width;
+  k.place(x, 0, z, yaw);
+  for (const s of [-1, 1])
+    for (const e of [-1, 1]) {
+      const a: Vec = [s * (w / 2 - 0.12), deck + 0.02, e * (half - 0.15)];
+      const b: Vec = [s * (car.width / 2 - 0.35), deck + 0.22, car.z + e * (car.length / 2 - 0.3)];
+      k.bar(m.yellow, a, b, 0.04, 0.006);
+      k.box(m.black, 0.05, 0.06, 0.09, (a[0] * 2 + b[0]) / 3, (a[1] * 2 + b[1]) / 3 + 0.02, (a[2] * 2 + b[2]) / 3);
+      k.box(m.steel, 0.08, 0.02, 0.08, a[0], deck + 0.005, a[2]);
+    }
+}
+
 /**
  * A roller dyno with the car's ground at its deck, the car along local +z:
  * the steel deck in two halves either side of the roller pit, the drum under
@@ -238,10 +275,10 @@ export interface DynoFit {
 export function dyno(k: Kit, x: number, z: number, yaw: number, car: DynoFit, vent: Vec): number {
   const m = k.m;
   k.place(x, 0, z, yaw);
-  const deck = 0.22;
-  const half = car.length / 2 + 0.55;
-  const w = 2.6;
-  const pit = 0.8;
+  const deck = DYNO_DECK.height;
+  const half = dynoHalf(car.length);
+  const w = DYNO_DECK.width;
+  const pit = DYNO_DECK.pit;
   const rz = car.rearZ;
   // The deck either side of the pit, its plate skin and yellow edges.
   for (const [z0, z1] of [
@@ -264,16 +301,8 @@ export function dyno(k: Kit, x: number, z: number, yaw: number, car: DynoFit, ve
   k.box(m.yellow, 0.2, 0.06, 0.006, w / 2 + 0.3, 0.12, rz + 0.378);
   // Ramps up onto it at the back.
   for (const s of [-1, 1]) k.box(m.gunmetal, 0.7, 0.03, 1.0, s * (car.track / 2), deck / 2, -half - 0.48, 0, -Math.atan2(deck, 1.0));
-  // Chocks at the front wheels, straps from the deck's corners to the car's tow points with their ratchets.
+  // Chocks at the front wheels (the straps are dynoStraps).
   for (const s of [-1, 1]) k.box(m.yellow, 0.28, 0.12, 0.18, s * (car.track / 2), deck + 0.06, car.frontZ + 0.45);
-  for (const s of [-1, 1])
-    for (const e of [-1, 1]) {
-      const a: Vec = [s * (w / 2 - 0.12), deck + 0.02, e * (half - 0.15)];
-      const b: Vec = [s * (car.width / 2 - 0.35), deck + 0.22, e * (car.length / 2 - 0.3)];
-      k.bar(m.yellow, a, b, 0.04, 0.006);
-      k.box(m.black, 0.05, 0.06, 0.09, (a[0] * 2 + b[0]) / 3, (a[1] * 2 + b[1]) / 3 + 0.02, (a[2] * 2 + b[2]) / 3);
-      k.box(m.steel, 0.08, 0.02, 0.08, a[0], deck + 0.005, a[2]);
-    }
   // The pendant on its stand at the back right, its cable to the absorber.
   k.box(m.steel, 0.3, 0.02, 0.3, w / 2 + 0.35, 0.01, -half + 0.4);
   k.cyl(m.galv, 0.02, 1.1, w / 2 + 0.35, 0.56, -half + 0.4, 'y', 8);

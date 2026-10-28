@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { BODY_PART_SLOTS, PartSlot } from '../../shared/parts';
 import { GLOW_PATTERNS, TireShape, VisualBuild, defaultVisual } from '../../shared/carBuild';
 import { CarAssetLibrary, ManifestCar, manifestCar, partById, partsFor } from './carAssets';
-import { CarMaterialSet, applyVisualToMaterials, createCarMaterials, disposeCarMaterials, resolveMaterialName, setBrake } from './carMaterials';
+import { CarMaterialSet, LAMP_GLOW, applyVisualToMaterials, createCarMaterials, disposeCarMaterials, resolveMaterialName, setBrake } from './carMaterials';
 import { makeRadialGlow } from '../textures/textures';
 import { DecalLayerView } from './decals';
 import { FEATURES } from '../../shared/features';
@@ -257,6 +257,10 @@ export class CarView {
   private lastTime = 0;
   /** Rotor heat, 0 cold to 1 glowing: builds under braking and fades quickly once off the brakes (BRAKE.heatUp / coolDown). */
   private rotorHeat = 0;
+  /** How lit the lamp lenses are (1 the night street's full glow; the garage parks the car lower). */
+  private lampLevel = 1;
+  /** The painted surfaces' environment reflections, 1 full (the garage turns them down with its lights). */
+  private envScale = 1;
   private beam: THREE.Mesh;
   /** The pool's colour before the wet road or the flash scale it. */
   private readonly beamBase = new THREE.Color();
@@ -488,7 +492,7 @@ export class CarView {
   /** Apply a visual build. Part swaps load asynchronously; everything else is instant. */
   async applyVisual(v: VisualBuild, token = ++this.loadToken): Promise<void> {
     this.visual = v;
-    applyVisualToMaterials(this.materials, v);
+    applyVisualToMaterials(this.materials, v, false, this.envScale);
     this.applyStance();
     this.applyUnderglow(0);
 
@@ -932,7 +936,7 @@ export class CarView {
     this.poseGroundFx(pose);
     const dt = Math.max(0, Math.min(0.1, time - this.lastTime));
     this.rotorHeat += ((pose.braking ? 1 : 0) - this.rotorHeat) * damp(pose.braking ? BRAKE.heatUp : BRAKE.coolDown, dt);
-    setBrake(this.materials, pose.braking, this.rotorHeat);
+    setBrake(this.materials, pose.braking, this.rotorHeat, this.lampLevel);
     this.applyUnderglow(time);
     const stage = Math.max(1, Math.min(3, pose.nitroStage ?? 1)) - 1;
     for (const f of this.flames) {
@@ -1069,6 +1073,32 @@ export class CarView {
   setHeadlightsEnabled(on: boolean): void {
     for (const h of this.headlights) h.visible = on;
     this.beam.visible = on;
+  }
+
+  /**
+   * Scale the paint's environment reflections (0..1 of the build's own): a room whose lights go down keeps
+   * the lit tubes in the paint's reflection map, so the garage turns them down with the lights. Re-dresses
+   * the painted materials, so call it on a change, not every frame.
+   */
+  setEnvScale(scale: number): void {
+    const k = Math.max(0, Math.min(1, scale));
+    if (Math.abs(k - this.envScale) < 0.004) return;
+    this.envScale = k;
+    applyVisualToMaterials(this.materials, this.visual, false, k);
+  }
+
+  /**
+   * How lit the lamp lenses are, 0 dark to 1 the night street's full glow: a parked car in a lit room keeps its
+   * lamps on but low, so they read as lenses rather than blooming into blobs. Survives reloads of the visual
+   * (the materials are the car's own); the brake lights keep following the pose through it.
+   */
+  setLampLevel(level: number): void {
+    const k = Math.max(0, Math.min(1, level));
+    this.lampLevel = k;
+    const head = this.materials.HeadLight as THREE.MeshStandardMaterial | undefined;
+    const marker = this.materials.Light as THREE.MeshStandardMaterial | undefined;
+    if (head) head.emissiveIntensity = LAMP_GLOW.head * k;
+    if (marker) marker.emissiveIntensity = LAMP_GLOW.marker * k;
   }
 
   /** Show or hide one wheel (0 FL, 1 FR, 2 RL, 3 RR), e.g. a car on a garage lift with its wheels off. Kept across reloads. */

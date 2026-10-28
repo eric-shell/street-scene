@@ -107,9 +107,9 @@ export function createCarMaterials(envMap: THREE.Texture | null = null, tread = 
     tire.bumpScale = TIRE_BUMP;
     tire.userData.lettering = false;
   }
-  m.HeadLight = new THREE.MeshStandardMaterial({ name: 'HeadLight', color: 0xffffff, emissive: 0xeaf2ff, emissiveIntensity: 1.3 });
-  m.TailLight = new THREE.MeshStandardMaterial({ name: 'TailLight', color: 0x330000, emissive: 0xff1a2a, emissiveIntensity: 1.4 });
-  m.Light = new THREE.MeshStandardMaterial({ name: 'Light', color: 0x332200, emissive: 0xffa040, emissiveIntensity: 0.8 });
+  m.HeadLight = new THREE.MeshStandardMaterial({ name: 'HeadLight', color: 0xffffff, emissive: 0xeaf2ff, emissiveIntensity: LAMP_GLOW.head });
+  m.TailLight = new THREE.MeshStandardMaterial({ name: 'TailLight', color: 0x330000, emissive: 0xff1a2a, emissiveIntensity: LAMP_GLOW.tail });
+  m.Light = new THREE.MeshStandardMaterial({ name: 'Light', color: 0x332200, emissive: 0xffa040, emissiveIntensity: LAMP_GLOW.marker });
   m.Interior = new THREE.MeshStandardMaterial({ name: 'Interior', color: 0x1a1a1e, roughness: 0.8 });
   const grille = grilleTexture(GRILLE_PATTERN);
   // Bright metal bars on dark holes: the map darkens the holes, the bump map raises the bars.
@@ -173,13 +173,17 @@ function applyPaint(mat: THREE.MeshPhysicalMaterial, p: Paint, env: number): voi
   mat.needsUpdate = true;
 }
 
-export function applyVisualToMaterials(m: CarMaterialSet, v: VisualBuild, braking = false): void {
+/**
+ * Dress the materials in a build. `envScale` scales the painted surfaces' environment reflections (1 the
+ * night street's; the garage turns it down with its lights, since the paint's own map still holds them lit).
+ */
+export function applyVisualToMaterials(m: CarMaterialSet, v: VisualBuild, braking = false, envScale = 1): void {
   // A matched accent wears the body's paint.
   const accent = (p: AccentPaint): Paint => (p.match ? v.paint : p);
-  applyPaint(m.Paint as THREE.MeshPhysicalMaterial, v.paint, PAINT_ENV.Paint);
-  applyPaint(m.Rim as THREE.MeshPhysicalMaterial, accent(v.wheels.paint), PAINT_ENV.Rim);
-  applyPaint(m.RimRear as THREE.MeshPhysicalMaterial, accent(v.wheels.rearPaint), PAINT_ENV.Rim);
-  applyPaint(m.Caliper as THREE.MeshPhysicalMaterial, accent(v.calipers), PAINT_ENV.Caliper);
+  applyPaint(m.Paint as THREE.MeshPhysicalMaterial, v.paint, PAINT_ENV.Paint * envScale);
+  applyPaint(m.Rim as THREE.MeshPhysicalMaterial, accent(v.wheels.paint), PAINT_ENV.Rim * envScale);
+  applyPaint(m.RimRear as THREE.MeshPhysicalMaterial, accent(v.wheels.rearPaint), PAINT_ENV.Rim * envScale);
+  applyPaint(m.Caliper as THREE.MeshPhysicalMaterial, accent(v.calipers), PAINT_ENV.Caliper * envScale);
   (m.Trim as THREE.MeshStandardMaterial).color.set(v.trimColor);
   const glass = m.Glass as THREE.MeshPhysicalMaterial;
   glass.color.set(v.tint.color).lerp(new THREE.Color(0x8fa0b0), 1 - v.tint.darkness);
@@ -188,10 +192,17 @@ export function applyVisualToMaterials(m: CarMaterialSet, v: VisualBuild, brakin
   setBrake(m, braking);
 }
 
-/** Brake lights follow the pedal; the rotors glow with their heat (0 cold to 1, the car view's rotorHeat). */
-export function setBrake(m: CarMaterialSet, braking: boolean, heat = braking ? 1 : 0): void {
+/**
+ * The lamp lenses' emissive at full (the night street): head, tail (lit, and under braking) and the side
+ * markers. A scene that shows the car parked (the garage) scales them with `lamps`, so the lenses read as lit
+ * without blooming into blobs under the room's lights.
+ */
+export const LAMP_GLOW = { head: 1.3, tail: 1.4, brake: 4.5, marker: 0.8 } as const;
+
+/** Brake lights follow the pedal; the rotors glow with their heat (0 cold to 1, the car view's rotorHeat); `lamps` scales the lenses (CarView.setLampLevel). */
+export function setBrake(m: CarMaterialSet, braking: boolean, heat = braking ? 1 : 0, lamps = 1): void {
   const tl = m.TailLight as THREE.MeshStandardMaterial;
-  tl.emissiveIntensity = braking ? 4.5 : 1.4;
+  tl.emissiveIntensity = (braking ? LAMP_GLOW.brake : LAMP_GLOW.tail) * lamps;
   (m.Rotor as THREE.MeshStandardMaterial).emissiveIntensity = BRAKE.glow * heat * heat;
 }
 

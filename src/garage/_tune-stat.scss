@@ -1,6 +1,6 @@
 /* Values and stats (garageWidgets.ts): a slider on one line (its name, the track, its value in yellow), the stat
    bars the build card and the Tune tab share, and the inks: each stat (speed orange, acceleration yellow, grip green, nitrous its own
-   cyan) and each spec tag (how it drives cyan, the engine yellow, forced induction red) sets --ink, which its
+   cyan, power red) and each spec tag (how it drives cyan, the engine yellow, forced induction red) sets --ink, which its
    bar, icon or chip (.chip--ink) reads. */
 @use '../ui/styles/abstracts/mixins';
 @use '../ui/styles/abstracts/palette';
@@ -12,6 +12,7 @@ $inks: (
   accel: var(--accent-2),
   grip: var(--green),
   nitrous: var(--cyan),
+  power: var(--red),
 );
 @each $name, $ink in $inks {
   .ink-#{$name} {
