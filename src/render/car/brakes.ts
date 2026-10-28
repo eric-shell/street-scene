@@ -156,6 +156,17 @@ export function brakeReach(axle: 0 | 1): number {
   return Math.max(0, caliper);
 }
 
+/**
+ * How far the brake unit reaches inboard of its origin at the reference bead (m): the rotor's back face, or
+ * the caliper's inboard housing face when that is further. The car view keeps the wheel's barrel at least
+ * this deep behind the unit (`barrelCover`), so a deep wheel's rotor and caliper never poke out of its back.
+ */
+export function brakeDepth(axle: 0 | 1): number {
+  const rotor = hatHeight() + BRAKE.thickness / 2;
+  const caliper = hatHeight() + BRAKE.thickness / 2 + BRAKE.caliperHousing[axle];
+  return Math.max(rotor, caliper);
+}
+
 /** One axle's rotor (disc plus hat) at the reference bead, as one geometry for one draw. */
 export function buildRotorGeometry(axle: 0 | 1): THREE.BufferGeometry {
   const R = BRAKE.refBead * BRAKE.rotor[axle];

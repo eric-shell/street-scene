@@ -11,8 +11,8 @@ import { CarMaterialSet, applyVisualToMaterials, createCarMaterials, disposeCarM
 import { makeRadialGlow } from '../textures/textures';
 import { DecalLayerView } from './decals';
 import { FEATURES } from '../../shared/features';
-import { WheelProfile, WidthFit, beadForSize, detectProfile, remapWheel, sizeForBead } from './wheelFit';
-import { BRAKE, brakeReach, buildCaliperGeometry, buildRotorGeometry } from './brakes';
+import { BARREL_MARGIN, WheelProfile, WidthFit, barrelCover, beadForSize, detectProfile, remapWheel, sizeForBead } from './wheelFit';
+import { BRAKE, brakeDepth, brakeReach, buildCaliperGeometry, buildRotorGeometry } from './brakes';
 import { damp } from '../../shared/anim';
 import { latheTire, measureTire } from './tireShapes';
 import { PLATE, buildPlateGeometry, createPlateMaterial, drawPlate, plateTexture, seatPlate } from './plate';
@@ -219,8 +219,8 @@ export class CarView {
    * edge and the tire's extent.
    */
   private widthFit: WidthFit[] = [
-    { spokeBack: 0, back: 0, tireMin: 0, tireMax: 0 },
-    { spokeBack: 0, back: 0, tireMin: 0, tireMax: 0 },
+    { spokeBack: 0, back: 0, tireMin: 0, tireMax: 0, cover: 1 },
+    { spokeBack: 0, back: 0, tireMin: 0, tireMax: 0, cover: 1 },
   ];
   /** Each axle's wheel profile: front and rear may wear different wheels. */
   private wheelProfiles: WheelProfile[] = [
@@ -704,7 +704,7 @@ export class CarView {
       else if (r >= 0.75) rearmost = Math.min(rearmost, otherX[k]);
     }
     const spokeBack = Number.isFinite(back) ? back : 0;
-    this.widthFit[axle] = { spokeBack, back: Math.min(spokeBack, Number.isFinite(rearmost) ? rearmost : spokeBack), tireMin: Number.isFinite(tireMin) ? tireMin : 0, tireMax: Number.isFinite(tireMax) ? tireMax : 0 };
+    this.widthFit[axle] = { spokeBack, back: Math.min(spokeBack, Number.isFinite(rearmost) ? rearmost : spokeBack), tireMin: Number.isFinite(tireMin) ? tireMin : 0, tireMax: Number.isFinite(tireMax) ? tireMax : 0, cover: 1 };
     if (model.userData.ownGeometry) model.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
     this.axleMeshes[axle] = baked.children.filter((c): c is THREE.Mesh => (c as THREE.Mesh).isMesh);
     const baseScale = this.car.wheelRadius / (profile.outer || this.car.wheelRadius);
@@ -769,6 +769,13 @@ export class CarView {
     if (this.axleSize[axle] === size && this.axleWidth[axle] === width) return;
     this.axleSize[axle] = size;
     this.axleWidth[axle] = width;
+    // The brake is fixed by the spokes and scales with the bead, so the barrel's minimum depth follows the size:
+    // its rearmost point (rotor back or caliper housing) plus a margin must stay inside the barrel.
+    const fit = this.widthFit[axle];
+    const profile = this.wheelProfiles[axle];
+    const sc = this.car.wheelRadius / (profile.outer || this.car.wheelRadius);
+    const k = (sc * beadForSize(profile, size)) / BRAKE.refBead;
+    fit.cover = barrelCover(fit.spokeBack, fit.back, (BRAKE.clearance + k * (brakeReach(axle) + brakeDepth(axle)) + BARREL_MARGIN) / sc);
     for (const mesh of this.axleMeshes[axle]) {
       const geo = mesh.geometry;
       const pos = geo.getAttribute('position') as THREE.BufferAttribute;

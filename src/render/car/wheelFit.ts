@@ -34,10 +34,37 @@ export interface WidthFit {
   /** X range of the tire's vertices. */
   tireMin: number;
   tireMax: number;
+  /**
+   * Least stretch the barrel behind the spokes needs so its back reaches past the brake unit (1 = none; see
+   * `barrelCover`). Set by the car view whenever the wheel size changes, since the brake scales with the bead.
+   */
+  cover: number;
 }
 
 /** Share of the tire's width, from each side, where its inner side shifts in full (below) and not at all (above the outer one). */
 const TIRE_SHIFT_BAND = 0.2;
+
+/** Air kept between the brake's rearmost point and the barrel's back (m). */
+export const BARREL_MARGIN = 0.008;
+
+/**
+ * The stretch that puts the barrel's back `depth` (m, behind the spokes' back) behind the spokes: 1 when it
+ * already reaches that far or has no barrel behind the spokes to stretch.
+ */
+export function barrelCover(spokeBack: number, back: number, depth: number): number {
+  const len = spokeBack - back;
+  return len > 1e-4 ? Math.max(1, depth / len) : 1;
+}
+
+/**
+ * The stretch the barrel gets for a width slider value. The slider acts on the stock barrel and the cover
+ * (the brake's minimum) is a floor under it: a shorter width never pulls the back in past the brake, and a
+ * longer one adds its share of the stock length on top of the cover, so the slider moves every wheel over its
+ * whole range (a wheel that needs 3x covers the brake at 0.85 and 1.0 alike, and 1.35 gives 3.35x).
+ */
+export function barrelStretch(width: number, cover: number): number {
+  return width <= 1 ? Math.max(width, cover) : cover + (width - 1);
+}
 
 /** Largest bead allowed, as a fraction of the outer radius (keeps a visible sliver of sidewall). */
 export const MAX_BEAD = 0.93;
@@ -122,6 +149,8 @@ export function remapRadius(r: number, p: WheelProfile, bead2: number): [number,
  */
 export function remapWheel(pos: ArrayLike<number>, nrm: ArrayLike<number> | null, outPos: Float32Array, outNrm: Float32Array | null, p: WheelProfile, size: number, width = 1, fit: WidthFit | null = null, tire = false): void {
   const bead2 = beadForSize(p, size);
+  // The barrel's stretch: the width slider, floored by what covers the brake (fit.cover).
+  if (fit !== null) width = barrelStretch(width, fit.cover);
   const axial = fit !== null && width !== 1;
   // The tire's inner side moves as far as the barrel's back edge does.
   const shift = axial ? (1 - width) * (fit.spokeBack - fit.back) : 0;
