@@ -10,6 +10,7 @@
 import { createCity, createWorld, World, City, RouteProgress } from '../city/world';
 import { GridSlot, Route, RouteKind, RouteWaypoint, routeSample } from '../city/route';
 import { carParkProgress, onCarPark } from '../city/districts/carPark';
+import { onQuayCut, quayCutProgress } from '../city/districts/harborCut';
 import { highwayResetPose } from '../city/districts/highway/settle';
 import { CarState, crashNitrous, createCar, gridRev, groundPitch, groundRoll, refillNitrous, steerLimit, stepCar, wheelRpm, type StepEnv } from './car';
 import { relocateCar, teleportCar } from './reset';
@@ -669,7 +670,8 @@ function updateProgress(r: RaceState, rc: RaceCar): void {
   const route = r.world.route;
   const c = rc.state;
   // Up in one of the route's car parks, progress follows the car park's own line (districts/carPark.ts).
-  const p = carParkProgress(r.world, c.x, c.z) ?? r.world.routeProgress(c.x, c.z, rc.seg);
+  // Across a harbor's quay cut: the lane's own line, mapped onto the stretch it skips (harborCut.ts); not in free roam, which has no race to credit.
+  const p = carParkProgress(r.world, c.x, c.z) ?? (r.config.openWorld ? null : quayCutProgress(route, c.x, c.z)) ?? r.world.routeProgress(c.x, c.z, rc.seg);
   let delta = p.s - rc.rawS;
   if (route.closed) {
     const L = route.length;
@@ -867,6 +869,11 @@ function updateLost(r: RaceState, rc: RaceCar, p: RouteProgress): void {
   const wasWrong = rc.wrongWay;
   rc.wrongWay = rc.wrongWayTime > 1.2;
   if (rc.wrongWay && !wasWrong) r.events.push({ tick: r.tick, type: 'wrongWay', car: rc.index });
+  // Along a quay cut's lane the route's streets are the long way round, a block or more off: the car is racing, not lost.
+  if (onQuayCut(route, c.x, c.z)) {
+    rc.stuckTime = Math.max(0, rc.stuckTime - DT);
+    return;
+  }
   // Lost: far outside the route corridor (beyond any corner cut, plaza, lot or
   // park crossing), or off every drivable surface (inside a block), for a while.
   // Racing lines over sidewalks, plazas and lots never trigger it.

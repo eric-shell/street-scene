@@ -336,7 +336,16 @@ describe('city generation', () => {
         if (p.area === undefined) {
           expect(isStreetProp(p.kind)).toBe(true);
           expect(w.surfaceAt(p.x, p.z)).toBe('sidewalk');
-        } else expect(pointInPolygon(p.x, p.z, w.areas[p.area].polygon) || (w.areas[p.area].kind === 'park' && w.surfaceAt(p.x, p.z) === 'sidewalk')).toBe(true);
+        } else {
+          const own = w.areas[p.area];
+          // A car park's shortcut street is claimed with it: its mouths are dressed along that street, off the block's polygon.
+          const onStreet = (): boolean =>
+            own.edges.some((e) => {
+              const ed = w.graph.edges[e];
+              return distToSegment(p.x, p.z, w.graph.nodes[ed.a].x, w.graph.nodes[ed.a].z, w.graph.nodes[ed.b].x, w.graph.nodes[ed.b].z) < ed.width / 2 + (ed.sidewalk ?? CITY.sidewalk) + 6;
+            });
+          expect(pointInPolygon(p.x, p.z, own.polygon) || (own.kind === 'park' && w.surfaceAt(p.x, p.z) === 'sidewalk') || (own.kind === 'carPark' && onStreet())).toBe(true);
+        }
         if (p.kind === 'trafficLight') expect(w.graph.nodes[p.node!].edges.length).toBeGreaterThanOrEqual(3);
       });
       // Lantern posts light every park, plaza and corner pocket and the monument plaza (render/street/areaLights.ts).
@@ -376,11 +385,12 @@ describe('city generation', () => {
       // overlap: the alley module keeps its clutter clear of the alley's ends only). Lane closures stand
       // in the curb lane on purpose (roadworks.ts; their own test keeps the rest of the street open), and
       // the night market's fruit crates spill off the curb onto the road edge (checked in market.test.ts).
+      // A car park's shortcut street is dressed like a back alley's (fence panels, cones and sawhorses at its mouths, on the street it claims).
       // A roundabout island's clutter stands where its spokes' edges run on to the node (the island test
       // keeps it off the ring road). The river's channel and ramp edges run beneath the bridge decks,
       // whose sidewalks carry the crossing streets' lights a level above them.
       for (const p of props) {
-        if (p.area !== undefined && ['backAlley', 'river', 'alley', 'roadworks', 'market', 'roundabout'].includes(w.areas[p.area].kind)) continue;
+        if (p.area !== undefined && ['backAlley', 'carPark', 'river', 'alley', 'roadworks', 'market', 'roundabout'].includes(w.areas[p.area].kind)) continue;
         for (const e of w.graph.edges) {
           if (isRiverEdge(e)) continue;
           const a = w.graph.nodes[e.a];

@@ -4,7 +4,7 @@
  * both the same model: the whole city tilted like a model on a table, turning
  * slowly, with the cruising car's live position on it (a heading arrow over a
  * radar ping) and the event's signature district breathing (the river for
- * River Run, the roundabouts for Ring Rush ...). Going from home to the race
+ * River Run, the quay for Harbor Run, the roundabouts for Ring Rush ...). Going from home to the race
  * step keeps the same city at the same angle; only the course arrives.
  *  - CityOverview: the home card's map, the table on its own. It says where
  *    tonight's event is without saying which race. A click opens the full map.
@@ -46,6 +46,7 @@ export interface MapPose {
 const SIGNATURE: Record<EventFlavourId, AreaKind | null> = {
   hillClimb: 'hills',
   riverRun: 'river',
+  harborRun: 'waterfront',
   alleySprint: 'alley',
   underTheEl: 'subway',
   ringRush: 'roundabout',
@@ -280,7 +281,7 @@ export class CityOverview {
     c.lineCap = 'round';
     c.lineJoin = 'round';
     const g = this.world.graph;
-    const ink = kind === 'river' || kind === 'subway' ? PALETTE.cyan : kind === 'alley' ? PALETTE.blue : kind === 'hills' ? PALETTE.soft : kind === 'monument' ? PALETTE.yellow : PALETTE.orange;
+    const ink = kind === 'river' || kind === 'subway' || kind === 'waterfront' ? PALETTE.cyan : kind === 'alley' ? PALETTE.blue : kind === 'hills' ? PALETTE.soft : kind === 'monument' ? PALETTE.yellow : PALETTE.orange;
     c.strokeStyle = ink;
     c.fillStyle = ink;
     for (const a of this.world.areas) {

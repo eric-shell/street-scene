@@ -1,10 +1,12 @@
 /**
  * Event flavours: every seed names its race event (Hill Climb, River Run,
- * Alley Sprint, Under the El, Ring Rush, Grand Tour, Downtown Dash) with a
+ * Alley Sprint, Under the El, Ring Rush, Grand Tour, Downtown Dash, and on a
+ * harbor's seeds Harbor Run) with a
  * one line tagline, so seeds feel different before the start. The flavour is
  * a weighted draw on its own stream (deriveSeed(seed, 'event')) among the
  * ones this city can deliver: no River Run without the river channel, no
- * Under the El without the El, no Ring Rush with fewer than two roundabouts.
+ * Under the El without the El, no Ring Rush with fewer than two roundabouts,
+ * no Harbor Run without a quay.
  *
  * The flavour shapes the race. planRoads (world.ts) hands both route finders
  * the flavour's RoutePreference: a graded rating of what it wants (metres in
@@ -20,6 +22,16 @@
  * the other way round: the hills and monument planners read the routes
  * through PlanContext.event and lift the blocks the routes run along, or set
  * the plaza on a block beside them.
+ *
+ * Harbor Run is the one flavour whose feature the routes also shape: the
+ * waterfront is planned after them and scores a side higher for the races that
+ * run along it. So the routes are picked for a preview of the quay
+ * (harborShore.ts previewHarbor runs the waterfront's own plan on a scratch
+ * context), hills keep their slopes off its frontage so the finished plan picks
+ * the same side, and the routes run along the streets beside the quay and the
+ * block ring behind it, a lap round a recess of the quay (a warehouse where the
+ * outer street is missing, a mouth either side) rated highest: there the lane
+ * across is a real cut, a shortcut of the route (route.ts, harborCut.ts).
  *
  * resolveEvent then checks, once everything is planned, that both routes
  * really deliver the flavour by its own measure; a seed whose routes do not
@@ -46,10 +58,11 @@ import { hillAt, hillSiteEdges, shapeOf } from './districts/hills';
 import { TOUR_REACH, monumentSites, plazaCorners, plazaSides, plazaWraps } from './districts/monument';
 import { parkCorners } from './districts/park';
 import { riverCenter } from './districts/river';
+import { type HarborShore, harborShore } from './districts/harborShore';
 import { Rng, deriveSeed } from '../sim/prng';
 import { DEG, type Vec2, abs, distToSegment, sqrt } from '../sim/math';
 
-export type EventFlavourId = 'hillClimb' | 'riverRun' | 'alleySprint' | 'underTheEl' | 'ringRush' | 'grandTour' | 'downtownDash';
+export type EventFlavourId = 'hillClimb' | 'riverRun' | 'harborRun' | 'alleySprint' | 'underTheEl' | 'ringRush' | 'grandTour' | 'downtownDash';
 
 export interface EventFlavour {
   /** The flavour's own name (docs, tests, debugging); players see a seed's title built from `nouns`. */
@@ -89,6 +102,23 @@ export const EVENT_FLAVOURS: Readonly<Record<EventFlavourId, EventFlavour>> = {
       'Floor it along the floodway before the tide turns',
     ],
     weight: 3,
+  },
+  /**
+   * Weighted well above the rest: only a harbor seed (about a third of them) offers it, and the quay is that
+   * city's whole identity, so about half of the harbors run along it.
+   */
+  harborRun: {
+    name: 'Harbor Run',
+    nouns: ['Harbor Run', 'Quay Run', 'Dockside', 'Tide Line', 'Waterfront', 'Seawall Run', 'Pier Run', 'Wharf Dash', 'Port Run', 'Longshore', 'Breakwater', 'Dock Run', 'Harbor Lights', 'Last Ferry'],
+    taglines: [
+      'Along the quay and through the dock gates',
+      'Sea wall on one side, warehouses on the other',
+      'Cut the corner through the container yard',
+      'The harbor never sleeps and neither do you',
+      'Salt air, sodium lamps and a drive along the water',
+      'Down to the docks and flat out past the cranes',
+    ],
+    weight: 14,
   },
   alleySprint: {
     name: 'Alley Sprint',
@@ -202,6 +232,12 @@ const ORDER = Object.keys(EVENT_FLAVOURS) as EventFlavourId[];
 export const EVENTS = {
   /** Channel floor on the route (m) that delivers / rates 2: a dive and a good stretch along the channel, which runs the whole map. */
   riverRun: { some: 160, long: 420, bias: 0.7 },
+  /**
+   * A route's metres on the streets along the quay that deliver / rate 2 (a rating of 2 also wants a run
+   * along the quay that starts and ends at a mouth, where the lane is an alternative to the street), the
+   * Dijkstra factor of those streets and of the block ring behind the quay (districts/harborShore.ts).
+   */
+  harborRun: { some: 160, long: 420, shoreBias: 0.5, ringBias: 0.72, wrapGain: 60, wrapMax: 600 },
   alleySprint: { long: 180, bias: 0.6 },
   underTheEl: { some: 100, long: 300, bias: 0.6 },
   /** Roundabouts on the route for a rating of 1 and 2; edges into a roundabout get the bias. */
@@ -270,6 +306,9 @@ interface Venue {
   rivers: Area[];
   elPaths: Vec2[][];
   rings: number[];
+  /** The harbor's quay (the waterfront area, or its preview while the routes are picked) and the streets along it. */
+  harbor: Area | null;
+  shore: HarborShore | null;
   /** The bluff's level crossing streets (districts/bluff.ts): every flavour wishes its routes over the tracks. */
   crossings: Set<number>;
   crossingNodes: number[];
@@ -280,7 +319,8 @@ interface Venue {
 /** What monumentSites needs of a PlanContext. */
 type SiteContext = Pick<PlanContext, 'graph' | 'areas' | 'claims' | 'faces'>;
 
-function venue(g: RoadGraph, areas: readonly Area[], ctx?: SiteContext): Venue {
+function venue(g: RoadGraph, areas: readonly Area[], ctx?: SiteContext, preview?: Area | null): Venue {
+  const harbor = preview ?? areas.find((a) => a.kind === 'waterfront') ?? null;
   const channel = g.edges.some((e) => e.kind === 'channel');
   const feet = (ford: boolean) => g.nodes.filter((nd) => nd.edges.some((e) => g.edges[e].kind === 'channel') && nd.edges.filter((e) => g.edges[e].kind === 'ramp').length === (ford ? 2 : 1)).map((nd) => nd.id);
   const alley = new Set<number>();
@@ -305,6 +345,8 @@ function venue(g: RoadGraph, areas: readonly Area[], ctx?: SiteContext): Venue {
     // The El's line, and the highway's (its deck and ramps keep hills off too, hills.ts).
     elPaths: areas.filter((a) => a.kind === 'subway' || (a.kind === 'highway' && a.variant === 'deck')).map((a) => a.path),
     rings: g.nodes.filter((n) => n.ring).map((n) => n.id),
+    harbor,
+    shore: harbor ? harborShore(g, harbor) : null,
     crossings: new Set(areas.filter((a) => a.kind === 'bluff').map((a) => a.params.crestEdge)),
     crossingNodes: areas.filter((a) => a.kind === 'bluff').flatMap((a) => [g.edges[a.params.crestEdge].a, g.edges[a.params.crestEdge].b]),
     cx: (g.bounds.minX + g.bounds.maxX) / 2,
@@ -312,12 +354,16 @@ function venue(g: RoadGraph, areas: readonly Area[], ctx?: SiteContext): Venue {
   };
 }
 
-/** Flavours this city can deliver, in draw order. */
-export function eventOffer(g: RoadGraph, areas: readonly Area[]): EventFlavourId[] {
-  const v = venue(g, areas);
+/**
+ * Flavours this city can deliver, in draw order. The harbor is planned after the routes, so while they
+ * are picked `harbor` is its preview (previewHarbor: null for none); of a finished city it is its area.
+ */
+export function eventOffer(g: RoadGraph, areas: readonly Area[], harbor?: Area | null): EventFlavourId[] {
+  const v = venue(g, areas, undefined, harbor);
   const can: Record<EventFlavourId, boolean> = {
     hillClimb: CITY.districts.hills.enabled,
     riverRun: v.channel && v.feet.length > 0,
+    harborRun: v.shore !== null && v.shore.mouths.size > 0,
     alleySprint: v.alleyNodes.length > 0,
     underTheEl: v.elEdges.size > 0,
     ringRush: v.rings.length >= 2,
@@ -356,11 +402,18 @@ interface Wish {
 }
 
 /** Ratings shared by route picking and the final check (the features exist by then). */
-function featureRate(id: EventFlavourId, v: Venue, edges: number[], nodes: number[]): number {
+function featureRate(id: EventFlavourId, v: Venue, edges: number[], nodes: number[], closed: boolean): number {
   const g = v.g;
   switch (id) {
     case 'riverRun':
       return tier(metres(g, edges, (e) => g.edges[e].kind === 'channel'), EVENTS.riverRun.some, EVENTS.riverRun.long);
+    case 'harborRun': {
+      const shore = v.shore;
+      if (!shore) return 0;
+      const r = tier(metres(g, edges, (e) => shore.shore.has(e)), EVENTS.harborRun.some, EVENTS.harborRun.long);
+      // Plenty also wants the cut-through: a lap round a warehouse's block where the lane crosses it, or, on a quay with no recess, a run that starts and ends at a mouth.
+      return r === 2 && !(shore.recesses.length ? recessWraps(g, shore, nodes, edges, closed) : laneRuns(g, shore, nodes, edges)) ? 1 : r;
+    }
     case 'alleySprint':
       return tier(metres(g, edges, (e) => g.edges[e].kind === 'alley'), 1e-9, EVENTS.alleySprint.long);
     case 'underTheEl':
@@ -380,13 +433,75 @@ function featureRate(id: EventFlavourId, v: Venue, edges: number[], nodes: numbe
   }
 }
 
-function wishOf(id: EventFlavourId, v: Venue): Wish {
+/**
+ * Whether a route goes round a recess of the quay: it visits both mouths either side of one by streets
+ * only (none along the frontage), a detour that the lane across the recess beats by at least
+ * EVENTS.harborRun.wrapGain m. A detour past wrapMax m is a lap the long way round, not a cut.
+ */
+function recessWraps(g: RoadGraph, shore: HarborShore, nodes: readonly number[], edges: readonly number[], closed: boolean): boolean {
+  const n = nodes.length;
+  const len = (from: number, to: number): number => {
+    let m = 0;
+    for (let i = from; i !== to; i = (i + 1) % n) {
+      if (edges[i] < 0 || shore.shore.has(edges[i])) return Infinity;
+      m += g.edges[edges[i]].length;
+    }
+    return m;
+  };
+  for (const [a, b] of shore.recesses) {
+    const ia = nodes.indexOf(a);
+    const ib = nodes.indexOf(b);
+    if (ia < 0 || ib < 0) continue;
+    const A = g.nodes[a];
+    const B = g.nodes[b];
+    const lane = sqrt((A.x - B.x) ** 2 + (A.z - B.z) ** 2);
+    const way = closed ? Math.min(len(ia, ib), len(ib, ia)) : ia < ib ? len(ia, ib) : len(ib, ia);
+    if (way >= lane + EVENTS.harborRun.wrapGain && way <= lane + EVENTS.harborRun.wrapMax) return true;
+  }
+  return false;
+}
+
+/**
+ * Runs of a route along the quay's street that start and end at a mouth (the quay's lane joins the
+ * street at both): where a Harbor Run has a cut-through to choose. `edges[i]` joins `nodes[i]` and the next node.
+ */
+function laneRuns(g: RoadGraph, shore: HarborShore, nodes: readonly number[], edges: readonly number[]): number {
+  const n = nodes.length;
+  let runs = 0;
+  for (let i = 0; i < edges.length; i++) {
+    if (edges[i] < 0 || !shore.shore.has(edges[i])) continue;
+    // The start of a run: the edge before is not on the quay's street (an open route's first edge starts one).
+    if (i > 0 && edges[i - 1] >= 0 && shore.shore.has(edges[i - 1])) continue;
+    let j = i;
+    while (j + 1 < edges.length && edges[j + 1] >= 0 && shore.shore.has(edges[j + 1])) j++;
+    // Over bends the run's end nodes are the junctions either side of them.
+    let a = i;
+    while (a < j && isBendNode(g, nodes[a])) a++;
+    let b = j + 1;
+    while (b > a && isBendNode(g, nodes[b % n])) b--;
+    if (b > a && shore.mouths.has(nodes[a]) && shore.mouths.has(nodes[b % n])) runs++;
+  }
+  return runs;
+}
+
+function wishOf(id: EventFlavourId, v: Venue, closed: boolean): Wish {
   const g = v.g;
-  const rate = (edges: number[], nodes: number[]) => featureRate(id, v, edges, nodes);
+  const rate = (edges: number[], nodes: number[]) => featureRate(id, v, edges, nodes, closed);
   const kindBias = (kinds: readonly string[], f: number) => (e: number) => (kinds.includes(g.edges[e].kind) ? f : 1);
   switch (id) {
     case 'riverRun':
       return { rate, anchors: v.feet, bias: kindBias(['channel'], EVENTS.riverRun.bias) };
+    case 'harborRun': {
+      // The quay is planned after the routes (previewHarbor); the routes run along the streets beside it,
+      // from one of its mouths, and the block ring behind it is drawn in a little.
+      const shore = v.shore;
+      const anchors = shore ? [...shore.mouths].filter((n) => !g.nodes[n].ring).sort((a, b) => a - b) : [];
+      return {
+        rate,
+        anchors,
+        bias: (e) => (shore ? (shore.shore.has(e) ? EVENTS.harborRun.shoreBias : shore.ring.has(e) ? EVENTS.harborRun.ringBias : 1) : 1),
+      };
+    }
     case 'alleySprint':
       return { rate, anchors: v.alleyNodes, bias: kindBias(['alley'], EVENTS.alleySprint.bias) };
     case 'underTheEl':
@@ -457,10 +572,10 @@ function openGround(v: Venue): boolean[] {
  * a pass off a street and back onto it is skipped by driving straight on), so a route with everything wins, then the flavour
  * alone, then the side wishes alone.
  */
-export function eventRoutePreference(id: EventFlavourId, ctx: SiteContext, closed: boolean): RoutePreference {
+export function eventRoutePreference(id: EventFlavourId, ctx: SiteContext, closed: boolean, harbor?: Area | null): RoutePreference {
   const g = ctx.graph;
-  const v = venue(g, ctx.areas, ctx);
-  const wish = wishOf(id, v);
+  const v = venue(g, ctx.areas, ctx, harbor);
+  const wish = wishOf(id, v, closed);
   const dive = v.channel && id !== 'riverRun';
   const dives = (edges: number[]) => edges.some((e) => e >= 0 && g.edges[e].kind === 'channel');
   const cross = v.crossings.size > 0;
@@ -579,8 +694,8 @@ export function eventRating(id: EventFlavourId, g: RoadGraph, areas: readonly Ar
     return d <= EVENTS.grandTour.pass / 2 ? 2 : d <= EVENTS.grandTour.pass ? 1 : 0;
   }
   // Downtown Dash is the fallback every city can run: it always delivers, plenty on the fast roads.
-  if (id === 'downtownDash') return Math.max(1, featureRate(id, venue(g, areas), routeEdges(g, route.nodes, route.closed), route.nodes));
-  return featureRate(id, venue(g, areas), routeEdges(g, route.nodes, route.closed), route.nodes);
+  if (id === 'downtownDash') return Math.max(1, featureRate(id, venue(g, areas), routeEdges(g, route.nodes, route.closed), route.nodes, route.closed));
+  return featureRate(id, venue(g, areas), routeEdges(g, route.nodes, route.closed), route.nodes, route.closed);
 }
 
 /** The event a fully planned city runs: the drawn flavour when every route delivers it, else Downtown Dash. */

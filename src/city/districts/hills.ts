@@ -55,6 +55,7 @@ import { emptyBuild } from './types';
 import { pointInPolygon, polygonCentroid, smooth01, type Smooth } from './geom';
 import { rampAlong, rampPoint, rampsOf, riverCenter } from './river';
 import { bluffFootprint } from './bluff';
+import { quayGuard } from './harborShore';
 
 /** Scratch for the terrain's smoothsteps (queried per wheel per substep, so nothing allocates). */
 const SMOOTH: Smooth = { v: 0, d: 0 };
@@ -381,7 +382,7 @@ export function shapeOf(area: Area): HillShape {
  * monument, car parks, lakes, alley jump runs) and of the hills already `made` (grades would add up). Shared by the
  * planner and by the Hill Climb route preference (events.ts), so the routes favour streets a hill can really stand on.
  */
-export function hillFitter(ctx: Pick<PlanContext, 'graph' | 'areas'>): (s: HillShape, made: readonly HillShape[]) => boolean {
+export function hillFitter(ctx: Pick<PlanContext, 'graph' | 'areas' | 'event'>): (s: HillShape, made: readonly HillShape[]) => boolean {
   const g = ctx.graph;
   const rivers = ctx.areas.filter((a) => a.kind === 'river');
   const subways = ctx.areas.filter((a) => a.kind === 'subway').map((a) => samplePath(a.path, 10));
@@ -415,6 +416,9 @@ export function hillFitter(ctx: Pick<PlanContext, 'graph' | 'areas'>): (s: HillS
   // lip and the climb (sampled from the foot to past the top; the channel check covers only the bank).
   const ramps = rivers.flatMap((r) => rampsOf(r).map((m) => samplePath([rampPoint(m, 0, 0), rampPoint(m, rampAlong(r.params, m, m.topL) + 6, 0)], 6)));
   const rings = g.nodes.filter((n) => n.ring);
+  // A Harbor Run's routes were picked for the quay that is planned after the hills (harborShore.ts): a slope
+  // over its frontage would take the stretch from it (waterfront.ts), so the slopes keep off the frontage too.
+  const quay = ctx.event?.harbor ? [quayGuard(ctx.event.harbor)] : [];
 
   return (s, made) => {
     const reach = s.w + CFG.clearance;
@@ -441,6 +445,7 @@ export function hillFitter(ctx: Pick<PlanContext, 'graph' | 'areas'>): (s: HillS
     for (const c of carParks) for (const p of c.polygon) if (plateauDistance(s, p.x, p.z).d < reach) return false;
     for (const rim of lakes) for (const p of rim) if (plateauDistance(s, p.x, p.z).d < s.w + CITY.districts.lake.clearance) return false;
     for (const path of jumpRuns) for (const p of path) if (plateauDistance(s, p.x, p.z).d < reach) return false;
+    for (const path of quay) for (const p of path) if (plateauDistance(s, p.x, p.z).d < reach) return false;
     for (const o of made) {
       const apart = (1 - CFG.overlap) * (s.w + o.w);
       for (const p of hillOutline(o, 0)) if (plateauDistance(s, p.x, p.z).d < apart) return false;
