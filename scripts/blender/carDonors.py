@@ -160,6 +160,22 @@ DONORS = {
         'islands': [lambda k, a, b, mats: set(mats) == {'Black'} and 40 < k < 400 and abs((a.x + b.x) / 2) < 0.05
                     and (a.y + b.y) / 2 < -2.1 and 0.59 < (a.z + b.z) / 2 < 0.66],
     },
+    'tachibanaZenith': {
+        'name': 'Toyota Supra MK IV (1994)',
+        'uid': 'eb9bb1eb41db431cb078088ae1ce45f8',
+        'author': 'TinoD2',
+        'license': 'CC Attribution',
+        'mm': {'length': 4520, 'wheelbase': 2550},
+        # Every material is TOYOTA_SUPRA_*. AUTO reads BRAKE_LIGHT as a brake (dropped), the lamp
+        # housings (`HEADLIGHT_BASE_*`) and the lamp covers (`LIGHT_GLASS`) by their first keyword
+        # (Lamp / Glass), and cannot read TEXTURES (the window seals, trim and exhaust pipe in one
+        # 2048 px atlas), so those are set here. The model has no cabin: `interior()` fits one.
+        'materials': {r'^TOYOTA_SUPRA_BRAKE_LIGHT$': 'TailLight', r'^TOYOTA_SUPRA_(LIGHT_GLASS|MAIN_LIGHT|TURNSIGNAL_LEFT|TURNSIGNAL_RIGHT)$': 'Lamp',
+                      r'^TOYOTA_SUPRA_HEADLIGHT_BASE_PLASTIC$': 'Black', r'^TOYOTA_SUPRA_HEADLIGHT_BASE_CHROME$': 'Chrome',
+                      r'^TOYOTA_SUPRA_TEXTURES$': 'Black'},
+        # The front fender markers (ahead of the axle, so read as headlamps) are the indicators.
+        'recolor': [(lambda c, n, m: m == 'HeadLight' and abs(c.x) > 0.8 and -1.8 < c.y < -1.6, 'Light')],
+    },
 }
 
 # Reproducibility test donors (CC Attribution): four body styles from four authors with four

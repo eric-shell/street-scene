@@ -157,6 +157,10 @@ A fifth garage car, after a 1997 Skyline GT-R R33. The user's link downloaded as
 
 Recipe: German material names, nose at -X off center (`turn`, then the automatic centering), the wheels and suspension dropped whole (their meshes share Metal, Black_Metal and Exhaust with the body), `debadge: False` (the badges are their own materials; the grille meshes are 2,400 flat cells the badge passes pressed into crumpled panels), the emblem's mounting plate as four `islands`. The unfinished part is the headlamps: an empty paint recess inside a black outline, recoloured to `HeadLight` (the hood's leading edge above it excluded by height and normal). Length -1.0 % of published, 16,000 triangles, drift p95 0.5 mm, lost max 11 mm. The donor has no cabin. It first shipped with the house block (36 triangles, a box at the belt 0.12 m in from the widest point), which stood 9 cm out of the tumblehomed doors as flat slabs on both sides; it now carries the Brandt Kombi's donor cabin (`interior()`, `fourSeat`, right hand drive): 2,420 faces cropped behind the rear seat back, fitted inside the skin. Arch gaps read 0.09 / 0.12 m against the liner; the stance looks right with wheels on.
 
+## 11. Tachibana Zenith (2026-10-28)
+
+A sixth garage car, after a 1994 Supra MK IV Turbo: TinoD2's "Toyota Supra MK IV (1994)" (CC BY 4.0, a Blender model by Martin Trafas, 261,968 faces listed, 254,000 in the file: not a game asset, its lamps are geometry). Published 4,520 x 1,810 x 1,275 mm on a 2,550 mm wheelbase (Wikipedia, Toyota Supra A80; the track is measured). Recipe: every material is `TOYOTA_SUPRA_*`, and AUTO misread four: `BRAKE_LIGHT` (dropped as a brake, now `TailLight`), `LIGHT_GLASS` and `HEADLIGHT_BASE_*` (the first keyword wins: glass, lamp), and `TEXTURES` (the window seals, trim and the exhaust pipe in one atlas, now `Black`); the turn signals are `Lamp`, and the front fender markers are recoloured `Light` so the audit finds indicators. Length +0.3 % of published, 16,005 triangles, drift p95 1.9 mm, lost max 16 mm. The donor has no cabin: it carries the Kazama Rotor's (`interior()`, `twoSeat`, left hand drive), 2,499 faces, all inside the skin. By hand after the reduction: the exhaust pipe and tip (black in the atlas) recoloured `Chrome`, a black panel 0.12 m behind the grille so the openings are not see-through (the pipeline's own quads cover only the lower slot and the fog lamp pockets), and the body raised 9 mm to open the arch gaps (0.011 / 0.019).
+
 ## Donor credits
 
 | Car | Model | Author | Licence |
@@ -166,5 +170,6 @@ Recipe: German material names, nose at -X off center (`turn`, then the automatic
 | Brandt Kombi S (was Proto Wagon) | 1992 Audi S2 Avant | tonielpro520 | CC BY 4.0 |
 | Ridgeway Fiend (was Proto Muscle) | Dodge Challenger SRT DEMON SDC (2018 Challenger SRT Demon, widebody) | SDC PERFORMANCE (Lambo_SC04) | CC BY 4.0 |
 | Hinode Horizon GT | Nissan Skyline R33 GT-R (1995 to 1998 R33 GT-R) | greddy295 | CC BY 4.0 |
+| Tachibana Zenith | Toyota Supra MK IV (1994) | TinoD2 | CC BY 4.0 |
 
 The first set (2026-10-21: an RS6 C8, a WRX STI hatch, an RSX Type-S and a Supra MK4) was replaced on 2026-10-22: three of its four licences were NonCommercial. The Proto Compact went with them.

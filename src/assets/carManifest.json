@@ -337,6 +337,67 @@
           -2.29
         ]
       ]
+    },
+    {
+      "id": "tachibanaZenith",
+      "displayName": "Tachibana Zenith",
+      "source": "eshell",
+      "provisional": false,
+      "file": "cars/tachibanaZenith.glb",
+      "baseBodyNode": "Body",
+      "wheelNodes": [],
+      "wheelRadius": 0.335,
+      "wheelWidth": 0.24,
+      "wheels": {
+        "FL": [
+          0.7479,
+          0.3353,
+          1.275
+        ],
+        "FR": [
+          -0.7479,
+          0.3353,
+          1.275
+        ],
+        "RL": [
+          0.7479,
+          0.3353,
+          -1.275
+        ],
+        "RR": [
+          -0.7479,
+          0.3353,
+          -1.275
+        ]
+      },
+      "wheelbase": 2.55,
+      "trackFront": 1.496,
+      "trackRear": 1.496,
+      "dimensions": {
+        "length": 4.53,
+        "width": 1.97,
+        "height": 1.12
+      },
+      "materialMap": {},
+      "defaultWheel": "wheel_hien",
+      "defaultPaint": "#e8e4dc",
+      "selectable": true,
+      "engine": {
+        "layout": "I6",
+        "aspiration": "turbo",
+        "position": "front",
+        "voice": {
+          "pipes": 1,
+          "muffler": "sport"
+        }
+      },
+      "exhaustTips": [
+        [
+          0.44,
+          0.27,
+          -2.23
+        ]
+      ]
     }
   ]
 }

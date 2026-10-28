@@ -343,6 +343,39 @@
         "_antilag": "Rolling antilag at 4,500: past the twins' full boost (about 4,000 rpm), near the torque peak.",
         "antilagRpm": 4500
       }
+    },
+    "tachibanaZenith": {
+      "_name": "Tachibana Zenith (1994 Toyota Supra MK IV Turbo donor): front sequential twin turbo 3.0 L inline six (2JZ-GTE), rear wheel drive. 280 PS and 431 N·m at 4,000 rpm, a flat torque curve from 2,500 to 5,000 rpm to a 7,000 rpm redline, a six speed manual, 1,510 kg. Everything is there from low revs, so it launches hard and the rear tires pay for it.",
+      "mass": 1510,
+      "drivetrain": { "layout": "rwd" },
+      "engine": {
+        "redline": 7000,
+        "torqueCurve": [
+          [800, 150],
+          [1500, 215],
+          [2200, 300],
+          [3000, 375],
+          [4000, 431],
+          [5000, 412],
+          [5800, 372],
+          [6500, 318],
+          [7000, 268]
+        ],
+        "torqueMul": 0.83,
+        "launchRpm": 4000
+      },
+      "gearbox": {
+        "_": "The JZA80's Getrag V160 six speed, 3.827 / 2.360 / 1.685 / 1.312 / 1.000 / 0.793, on a 3.800 final drive (the real 3.133 with the real tire is a taller car than this city's drag top speed of 241 km/h can use), with sixth at 0.876 instead of the real 0.793 overdrive: the real sixth redlines at 356 km/h, so sixth is shortened until its limiter (266 km/h) sits 10% over the drag top speed, as on the other cars. The final drive is as low as that allows, so the Short gear setting keeps the same number of shifts through a corner exit as stock.",
+        "ratios": [3.827, 2.36, 1.685, 1.312, 1.0, 0.876],
+        "finalDrive": 3.8
+      },
+      "tires": { "gripFront": 1.82, "gripRear": 1.62 },
+      "launch": {
+        "_": "2JZ-GTE owners launch at 3,500 to 4,500 rpm: the sequential twins are on boost by 2,500 and the torque is all there, so more revs only light up the rears.",
+        "defaultRpm": 4000,
+        "_antilag": "Rolling antilag at 4,500: past the twins' full boost, just over the torque peak.",
+        "antilagRpm": 4500
+      }
     }
   },
   "setup": {
