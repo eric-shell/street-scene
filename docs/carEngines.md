@@ -12,7 +12,7 @@ Per-car engine, intake, exhaust and drivetrain data, so each garage car's engine
 
 ## How the fields map to the synth
 
-`headers` equal/unequal (+ `headerSpread` m), `pipes` 1/2, `crossover` none/h/x, `muffler` quiet/sport/straight, `intake` plenum/itb, `crank` cross/flat (V8) or oddfire (V10), `camRpm`/`camStep` (cam changeover), `idleLope`/`apexRasp` (rotary), `blowerLobes` 3-6 or 8, `blowerRatio` 1-5, `boost` psi. Layout, aspiration and position live in `engine.{layout,aspiration,position}`. Recommendations assume the stock exhaust unless a car is planned as a build.
+`headers` equal/unequal (+ `headerSpread` m), `pipes` 1/2, `crossover` none/h/x, `muffler` quiet/sport/straight, `intake` plenum/itb, `crank` cross/flat (V8) or oddfire (V10), `camRpm`/`camStep` (cam changeover), `idleLope`/`apexRasp` (rotary), `blowerLobes` 3-6 or 8, `blowerRatio` 1-5, `boost` psi, and for turbo cars `diverter` vent/recirculating/flutter, `flutter`, `wastegate`, `handoverRpm`/`preboostRpm`/`spoolRpm`/`handoverDip` (sequential twin turbo); `flaps`, `fanRatio` and `gearWhine` for cars that have them (see `engineSound.md`, Turbo and accessory behaviours). Layout, aspiration and position live in `engine.{layout,aspiration,position}`. Recommendations assume the stock exhaust unless a car is planned as a build.
 
 ---
 
@@ -61,7 +61,7 @@ Source status key: **sourced** = read on a fetched page (URL in Sources); **est.
 | 0-100 / top | Not in Wikipedia. Mazda's own claim 0-60 mph 4.9 s (AutoGuide); tests 5.0-6.0 s (Cars.com Car and Driver comparison 6.0 s as tested; 0-60specs 5.3 s). Top speed about 158 mph = 254 km/h manufacturer estimate (Cars.com); governor 250 km/h worldwide / 180 JDM (Wikipedia Supra page, same industry rule). |
 | Sound | Buzzy, high, non-piston "brap"; a bridge-port-less stock lope is mild. Turbo whistle is faint behind the engine. Overrun pops through the tubular exhaust. (Character, not sourced.) |
 | Voice | Rotary layout `R2`; `pipes: 1`, `muffler: quiet` stock, `sport` for a build; no header/crank fields apply (unchanged) |
-| Synth gaps | Sequential turbo handover (a boost step at about 4,000 rpm and a brief drop to about 8 psi at 4,500, sourced); ~~apex-seal rasp~~ done (`apexRasp: 1`), with the port-overlap idle lope (`idleLope: 1`); relief-valve flutter |
+| Synth gaps | ~~Sequential turbo handover~~ done (`spoolRpm 1800`, `preboostRpm 4000`, `handoverRpm 4500`, `handoverDip 0.2`, sourced above); ~~apex-seal rasp~~ done (`apexRasp: 1`), with the port-overlap idle lope (`idleLope: 1`); ~~relief-valve flutter~~ done (`diverter: 'recirculating'`, `flutter: 0.3`, est.) |
 
 Shipped (`kazamaRotor`) vs sourced: redline 8,000 (est. 7,000 manual); gear ratios first four and final 4.300 match the sources, fifth 0.88 is a deliberate fit (donor 0.806, not 0.719 as the shipped comment says); torque peaks 314 at 5,500 (that is the 280 PS Series 8 figure, 314 N·m at 5,000); no handover dip in the shipped curve; mass 1,280 matches the Type RS.
 
@@ -113,7 +113,7 @@ Source status key: **sourced** = read on a fetched page; **est.** = not found.
 | 0-100 / top | No clean 0-100 km/h figure: monkeymotor lists 5.5 s, ultimatespecs 0-60 mph 5.0 s, lapmeta 5.4 s (all search snippets). Top speed: **180 km/h JDM limiter; UK-imported V-spec limited to 250 km/h** (Wikipedia GT-R). The doc's "250 governed" holds only for the UK cars. |
 | Sound | Smooth-then-ragged inline six, ITB intake induction rasp, twin-turbo flutter, 8,000 rpm top. (Character, not sourced.) |
 | Voice | `intake: itb` **confirmed** (six throttle bodies), `headers: equal`, `pipes: 2`, `crossover: none`, `muffler: quiet` (stock) / `sport` (unchanged) |
-| Synth gaps | Twin-turbine flutter from two separate turbines per bank; ITB honk is shared with N/A engines |
+| Synth gaps | Twin-turbine flutter from two separate turbines per bank (parallel, so no handover); ITB honk is shared with N/A engines. Done: stock `diverter: 'recirculating'`, wastegate chatter (`wastegate: 0.4`, the wastegates are sourced above) |
 
 Shipped (`hinodeHorizon`) vs sourced: the shipped curve peaks 368 at 4,400, which **matches the sourced R33 figure** (the old doc's 392 was the outlier); gears and 4.111 final match, fifth 0.893 is a deliberate fit (donor 0.752); mass 1,540 matches; redline 8,000 is est.
 
@@ -138,7 +138,7 @@ Source status key: **sourced** = read on a fetched page; **est.** = not found.
 | 0-100 / top | 0-60 mph **as low as 4.6 s** with the rollout subtracted (Car and Driver, Wikipedia Supra); the doc's "4.9 s" is not sourced. Tested top speed **160 mph (257 km/h)**; limiter 155 mph (250) worldwide, 112 mph (180) Japan. |
 | Sound | Smooth six whoosh, turbo spool-and-whistle, sharp blow-off at lift; relatively quiet stock. (Character, not sourced.) |
 | Voice | `headers: equal`, `pipes: 1`, `muffler: quiet`, `intake: plenum` (unchanged) |
-| Synth gaps | Sequential handover: pre-boost at 3,500, second turbine joins at 4,000 rpm (sourced); BOV flutter |
+| Synth gaps | ~~Sequential handover~~ done: `spoolRpm 1800`, `preboostRpm 3500`, `handoverRpm 4000` (sourced above; no dip is described, so none); ~~BOV flutter~~ done (`diverter: 'recirculating'`, `flutter: 0.4`, est.) |
 
 Shipped (`tachibanaZenith`) vs sourced: ratios 3.827 ... 1.000 match, sixth is deliberately 0.876; **final 3.800 is a fit, not a source** (sourced 3.266 or 4.235; the comment cites "the real 3.133", which no source supports); curve peak 431 at 4,000 (sourced 431-451 at 3,600); mass 1,510 matches the RZ.
 
@@ -163,7 +163,7 @@ Source status key: **sourced** = read on a fetched page; **est.** = not found.
 | 0-100 / top | US Turbo **0-60 mph 6.1 s**, quarter mile 14.7 s (Wikipedia MR2); mr2wiki 5.9-6.3 s. No 0-100 km/h and no top speed found (245 km/h stays **est.**). |
 | Sound | Raspy four-cylinder, wastegate "whoosh" and chatter, a flutter on lift. (Character, not sourced.) |
 | Voice | `headers: equal`, `pipes: 1`, `muffler: quiet`, `intake: plenum` (unchanged) |
-| Synth gaps | Wastegate chatter and compressor-surge flutter; mid-engine cabin-intake noise (position-dependent mix) |
+| Synth gaps | ~~Wastegate chatter and compressor-surge flutter~~ done (`wastegate: 0.6`, `flutter: 0.5`, `diverter: 'recirculating'`; est., the Sound row is character, not sourced); mid-engine cabin-intake noise (position-dependent mix) |
 
 Shipped (`tachibanaRunabout`) vs sourced: the shipped gearbox (3.230 / 1.913 / 1.258 / 0.918, fifth 0.694) is the **Camry E153** table, which no SW20-specific source confirms; the S54 set (3.285 / 1.960 / 1.322 / 1.028 / 0.820, final 4.176) is the nearest sourced MR2 set but is the non-turbo box. Torque 309 at 3,200 vs sourced 304 (4,000 for the 245 PS car); redline 7,200 is est.; mass 1,270 within the 1,250-1,310 sourced range.
 
@@ -192,7 +192,7 @@ Source status key: **sourced** = read on a fetched page; **est.** = not found.
 | 0-100 / top | NSX-R **0-60 mph 4.9 s, top 168 mph (270 km/h)** (Wikipedia). NA1 0-60: no sourced figure (the 3.2-litre 1997 cars are 4.5-5.0 s); the old "about 5.8 s" stays **est.** |
 | Sound | Smooth V6 turning to a hard metallic scream above the VTEC crossover; NSX-R adds intake and gear noise. (Character, not sourced.) |
 | Voice | V6 even fire, `pipes: 2`, `crossover: h` (est.), `muffler: sport`, `intake: plenum` (unchanged; crossover type unconfirmed) |
-| Synth gaps | ~~VTEC changeover~~ synth ready: `camRpm: 5800, camStep: 1` when the car is built; the intake-shutter change at 4,800; gear whine (NSX-R) |
+| Synth gaps | ~~VTEC changeover~~ synth ready: `camRpm: 5800, camStep: 1` when the car is built; the intake-shutter change at 4,800; ~~gear whine (NSX-R)~~ synth ready: `gearWhine` (about 1 for the R's straight cut feel, less for the stock box) |
 
 Sources fetched: https://en.wikipedia.org/wiki/Honda_C_engine , https://en.wikipedia.org/wiki/Honda_NSX_(first_generation) (first 100k chars) , https://acuranews.com/en-US/releases/1992-acura-nsx-specifications , https://global.honda/en/tech/engine/car/C30A_NSX_vtec_DOHC/ , https://www.honda.co.jp/sportscar/vtec_history/C30A/ , https://www.supercars.net/blog/1992%E2%86%921995-honda-nsx-r/ ; via search only: https://nsxprime.com/threads/special-gearing-on-a-5-speed-gearbox.24579 .
 
@@ -212,7 +212,7 @@ Sources fetched: https://en.wikipedia.org/wiki/Honda_C_engine , https://en.wikip
 | 0-100 / top | 5.2 s 0-100 km/h and 287 km/h (Sport Auto 11/94, via Wikipedia); 0-60 mph 4.7 s (stuttcars, Wikipedia), 0-100 mph 11.2 s, top 172 mph = 277 km/h (stuttcars). Both tops are given; the 287 km/h figure is a magazine test, 277 km/h the common claim |
 | Sound | Air-cooled "wail": fan whine from the cooling fan (rpm-locked), a clatter of cooling fins, intake roar from 5,000 up. |
 | Voice | Layout B6, `headers: equal`, `pipes: 2`, `crossover: none`, `muffler: sport`, `intake: plenum`. Nothing fetched contradicts these; the twin tailpipes after two cats support `pipes: 2` |
-| Synth gaps | Cooling-fan whine; Varioram valve change; air-cooled mechanical noise floor |
+| Synth gaps | ~~Cooling-fan whine~~ synth ready: `fanRatio: 1.8` when the car is built (the belt ratio and 11 blades are **estimates**: no source above or in the fetched pages gives either); Varioram valve change; air-cooled mechanical noise floor |
 
 Sources fetched: https://en.wikipedia.org/wiki/Porsche_993 , https://www.stuttcars.com/porsche-911-carrera-rs-3-8-1995-1996/ , https://rmsothebys.com/auctions/lf14/lots/r166-1996-porsche-911-carrera-rs-38/ , https://rennlist.com/forums/993-forum/11015-gear-ratios.html (no RS ratios). The Wikipedia M64 article returned 404. The Clubsport has no separate engine data in any source found (same 300 PS engine).
 
@@ -354,7 +354,7 @@ Verification pass (fetched): en.wikipedia.org/wiki/Honda_S2000, en.wikipedia.org
 | 0-100 / top | 0-60 about 5.4-5.8 s is **est.** (no fetched source gave it); about 240 km/h est. |
 | Sound | The VTEC crossover: a deep growl turns into a metallic wail near 6,000; high-pitched to 8,000+. |
 | Voice | `headers: equal`, `pipes: 1`, `muffler: sport`, `intake: plenum` |
-| Synth gaps | ~~VTEC cam changeover~~ synth ready: `camRpm: 6000, camStep: 1` when the car is built; gear whine |
+| Synth gaps | ~~VTEC cam changeover~~ synth ready: `camRpm: 6000, camStep: 1` when the car is built; ~~gear whine~~ synth ready: `gearWhine` |
 
 Sources: https://en.wikipedia.org/wiki/Honda_S2000 , https://en.wikipedia.org/wiki/Honda_F20C_engine , https://hondanews.com/en-US/releases/release-5a35f67b82f245d1db31c6004c34c121-2006-honda-s2000-specifications , https://www.s2000.club/ap2v2specs.html .
 
@@ -421,7 +421,7 @@ Verification pass (fetched): en.wikipedia.org/wiki/Audi_TT (TT RS section), ulti
 | 0-100 / top | **4.5 s coupe** (Wikipedia; auto-data and ultimatespecs 4.6); 250 km/h governed, 280 km/h option |
 | Sound | The classic five-cylinder warble at an almost muted tone with a bark under load; the turbo is subdued; pops on the overrun. |
 | Voice | I5 turbo, `headers: equal`, `pipes: 1`, `muffler: sport`, `intake: plenum` |
-| Synth gaps | I5 stagger tuning (planned); overrun pops; sound flap (8S only, probably not this car) |
+| Synth gaps | I5 stagger tuning (planned); overrun pops; ~~sound flap~~ synth ready (`flaps`), 8S only, probably not this car |
 
 Sources: https://en.wikipedia.org/wiki/Audi_TT , https://www.ultimatespecs.com/car-specs/Audi/63708/Audi-TT-(8J)-RS-25-TFSI-Quattro.html , https://www.auto-data.net/en/audi-tt-rs-coupe-8j-facelift-2010-2.5-tfsi-340hp-quattro-27284 , https://www.audi.com/en/audi-tt-rs-coupe-and-tt-rs-roadster-the-sporty-vanguard-of-the-model-series-6673/engine-6677 (8S).
 
@@ -475,12 +475,12 @@ Sources: https://en.wikipedia.org/wiki/Chrysler_Hemi_engine , https://en.wikiped
 # Gaps across the fleet
 
 1. ~~**VTEC / cam changeover**~~ done in the synth (`camRpm` / `camStep`, `docs/engineSound.md`; add to each car when it is built; the phasers are deliberately silent) (NSX at 5,800, S2000 at about 6,000, Civic at 5,600; Varioram, VANOS and VVT-i as milder steps; the Evo IX's MIVEC is a continuous phaser with no audible step): a step in gain and harmonic content at a set rpm.
-2. **Sequential turbo handover** (RX-7 13B-REW at about 4,000-4,500 rpm, Supra 2JZ-GTE at about 3,500-4,000): a boost step with a stumble and a surge.
-3. **Blow-off / diverter flutter and wastegate chatter** (S2, Skyline, Supra, MR2, STI, Evo, SR20DET, TT-RS): the turbo rebuild in `engineSound.md` feature 1.
+2. ~~**Sequential turbo handover**~~ done (`handoverRpm` and its siblings, `engineSound.md`): the Kazama Rotor (pre-boost 4,000, changeover 4,500 with a 20 % dip) and the Tachibana Zenith (pre-boost 3,500, join 4,000).
+3. ~~**Blow-off / diverter flutter and wastegate chatter**~~ done (`diverter: 'flutter'`, `flutter`, `wastegate`): the shipped turbo cars all take the stock recirculating valve, with surge flutter on the Runabout, Zenith and Kazama and wastegate chatter on the Runabout and Horizon; the planned STI, Evo, SR20DET and TT-RS take the fields when built.
 4. ~~**Odd-fire V10** (Viper) and the **15° VR stagger** (Golf R32) as real firing patterns, not header spread.~~ Done: `crank: 'oddfire'` for the Viper (when built) and the Strom's `VR6_HEAD` runner table.
 5. ~~**Supercharger lobe count 8**~~ done: `blowerLobes` takes 8 (TVS 2300, 4-lobe Roots rotors); the M122H's 3-lobe rotors give 6.
 6. ~~Cylinder deactivation~~: the Challenger 392's MDS is automatic-only, so a manual car never deactivates.
-7. **Air-cooled fan whine** (993) and **gear whine** (NSX-R, straight-cut builds).
-8. **Active exhaust flaps** (TT-RS, Corvette Z51, GT500 2013): muffler `sport` toggled by load.
+7. ~~**Air-cooled fan whine** (993) and **gear whine** (NSX-R, straight-cut builds)~~ done (`fanRatio`, `gearWhine`; the 993's ratio 1.8 and 11 blades are estimates; no shipped car sets either).
+8. ~~**Active exhaust flaps** (TT-RS, Corvette Z51, GT500 2013)~~ done (`flaps`: the silencer shut at cruise, open on load and revs); no shipped car sets it.
 9. ~~**Rotor apex-seal rasp** for the 13B.~~ Done (`apexRasp`), with the idle lope (`idleLope`), on the Kazama Rotor.
 10. **Data gaps**: torque curves here are all **est.** (no measured dyno chart); gearbox ratios and final drives flagged **verify** for the Golf R32, S2, MR2, NSX, 993, 240SX, TT-RS and Challenger/Viper; the turbo models, boost levels and blower drive ratios of several cars; crossover type on stock Corvette/GT500/M3/Challenger exhausts (the Viper's has none). The summary table above was refreshed from the verified sections on 2026-10-28; the sections are the source of truth.

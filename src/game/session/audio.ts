@@ -147,7 +147,9 @@ export class SessionAudio {
       const d = Math.hypot(dx, dz);
       const proximity = i === 0 ? 1 : 1 / (1 + (d / 14) ** 2);
       const pan = i === 0 ? 0 : (dx * right.x + dz * right.z) / Math.max(1, d);
-      voice.update({ rpm: p.rpm, redline: rc.tuning.engine.redline, throttle: p.throttle, nitro: p.nitro, proximity, pan: pan * 0.8, shifting: p.shifting, cut: p.cut, dt });
+      // The gearbox output shaft (wheel speed times the final drive, rev/min) for a car's gear whine, read from the pose.
+      const driveRpm = (p.speed / rc.tuning.geometry.wheelRadius) * rc.tuning.gearbox.finalDrive * (30 / Math.PI);
+      voice.update({ rpm: p.rpm, redline: rc.tuning.engine.redline, throttle: p.throttle, nitro: p.nitro, proximity, pan: pan * 0.8, shifting: p.shifting, cut: p.cut, dt, driveRpm });
     });
   }
 

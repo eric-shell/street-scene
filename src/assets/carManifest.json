@@ -122,7 +122,13 @@
           "pipes": 1,
           "muffler": "sport",
           "idleLope": 1,
-          "apexRasp": 1
+          "apexRasp": 1,
+          "diverter": "recirculating",
+          "flutter": 0.3,
+          "spoolRpm": 1800,
+          "preboostRpm": 4000,
+          "handoverRpm": 4500,
+          "handoverDip": 0.2
         }
       },
       "exhaustTips": [
@@ -327,7 +333,9 @@
         "position": "front",
         "voice": {
           "pipes": 2,
-          "muffler": "sport"
+          "muffler": "sport",
+          "diverter": "recirculating",
+          "wastegate": 0.4
         }
       },
       "exhaustTips": [
@@ -393,7 +401,12 @@
         "position": "front",
         "voice": {
           "pipes": 1,
-          "muffler": "sport"
+          "muffler": "sport",
+          "diverter": "recirculating",
+          "flutter": 0.4,
+          "spoolRpm": 1800,
+          "preboostRpm": 3500,
+          "handoverRpm": 4000
         }
       },
       "exhaustTips": [
@@ -454,7 +467,10 @@
         "position": "mid",
         "voice": {
           "pipes": 1,
-          "muffler": "sport"
+          "muffler": "sport",
+          "diverter": "recirculating",
+          "flutter": 0.5,
+          "wastegate": 0.6
         }
       },
       "exhaustTips": []

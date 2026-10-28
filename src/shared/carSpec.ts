@@ -78,8 +78,12 @@ export const VOICE_OPTIONS = {
   crank: ['cross', 'flat', 'oddfire'],
   /** Supercharger lobe passes per rotor turn, the whine's order: a twin screw's male rotor lobes (3 to 5), twice the lobes of one rotor on a Roots blower (4, 6 or 8 for 2, 3 or 4 lobe rotors). */
   blowerLobes: [3, 4, 5, 6, 8],
-  /** Turbo only, what a lift at boost sounds like: a venting blow-off valve's sharp, hissy chuff, or a recirculating diverter valve's soft "pssh" with the turbine still spinning (stock Audis and Volkswagens). */
-  diverter: ['vent', 'recirculating'],
+  /**
+   * Turbo only, what a lift at boost sounds like: a venting blow-off valve's sharp, hissy chuff, a recirculating
+   * diverter valve's soft "pssh" with the turbine still spinning (stock Audis, Volkswagens, Toyotas), or `flutter`,
+   * no valve at all: the compressor stalls against the closed throttle and chatters "stu-tu-tu" (a deleted valve).
+   */
+  diverter: ['vent', 'recirculating', 'flutter'],
 } as const;
 
 /** Numeric voice fields: [min, max]. */
@@ -100,6 +104,24 @@ export const VOICE_RANGES = {
   idleLope: [0, 1],
   /** Rotary only: the apex seal rasp, a noise burst per rotor face, as a multiple of the 13B-REW's (0 none, the default). */
   apexRasp: [0, 2],
+  /** Turbo only: compressor surge flutter added to a valve's release at a hard lift at high boost, as a share of the full "stu-tu-tu" (0 none, the default; `diverter: 'flutter'` is always 1). */
+  flutter: [0, 1],
+  /** Turbo only: wastegate chatter, the rattle of the gate opening on a lift at boost, as a multiple of the reference (0 none, the default). */
+  wastegate: [0, 2],
+  /** Sequential twin turbo (needs `handoverRpm`): the rpm where the primary turbo reaches full boost; 1,800 when missing. */
+  spoolRpm: [1000, 4000],
+  /** Sequential twin turbo (needs `handoverRpm`): the rpm where the second turbine starts spooling on the exhaust, still making no boost; 500 under the handover when missing. */
+  preboostRpm: [2000, 6000],
+  /** Sequential twin turbo: the rpm where the second turbo's output joins (the changeover); absent means one turbo or parallel twins. */
+  handoverRpm: [2500, 6500],
+  /** Sequential twin turbo: the boost lost at the changeover as a fraction (0.2 is 10 psi down to 8), followed by a smaller surge; 0 none, the default. */
+  handoverDip: [0, 0.5],
+  /** Active exhaust flaps: how much quieter and duller the silencer is with the flaps shut, 0 to 1 (0 none, the default; 1 is 9 dB down and rolled off at 1.4 kHz). They open on load and revs. */
+  flaps: [0, 1],
+  /** Air-cooled engine: the cooling fan's turns per crank turn (the belt ratio); the fan's blade pass whine is locked to it. Absent means a liquid cooled engine. */
+  fanRatio: [0.5, 3],
+  /** Gearbox whine level, as a multiple of the reference (0 none, the default; 1 a straight cut dog box), locked to the driven shaft's speed. */
+  gearWhine: [0, 2],
 } as const;
 
 export interface EngineVoiceSpec {
@@ -129,6 +151,24 @@ export interface EngineVoiceSpec {
   idleLope?: number;
   /** Rotary apex seal rasp level (VOICE_RANGES). */
   apexRasp?: number;
+  /** Surge flutter share on a valve car's hard lifts (VOICE_RANGES). */
+  flutter?: number;
+  /** Wastegate chatter level (VOICE_RANGES). */
+  wastegate?: number;
+  /** Sequential twin turbo: primary full boost rpm (VOICE_RANGES). */
+  spoolRpm?: number;
+  /** Sequential twin turbo: second turbine pre-spool rpm (VOICE_RANGES). */
+  preboostRpm?: number;
+  /** Sequential twin turbo: changeover rpm (VOICE_RANGES). */
+  handoverRpm?: number;
+  /** Sequential twin turbo: boost dip at the changeover, a fraction (VOICE_RANGES). */
+  handoverDip?: number;
+  /** Active exhaust flap depth (VOICE_RANGES). */
+  flaps?: number;
+  /** Air-cooled fan belt ratio (VOICE_RANGES). */
+  fanRatio?: number;
+  /** Gear whine level (VOICE_RANGES). */
+  gearWhine?: number;
 }
 
 /** The `engine` block of a car in carManifest.json. */
@@ -219,6 +259,14 @@ export function engineSpecErrors(spec: unknown): string[] {
       if (voice.crank === 'oddfire' && layout !== 'V10') errors.push('engine.voice.crank "oddfire" is for a V10');
       if ('camStep' in voice && !('camRpm' in voice)) errors.push('engine.voice.camStep needs camRpm');
       for (const k of ['idleLope', 'apexRasp']) if (k in voice && !ENGINE_LAYOUTS[layout]?.rotary) errors.push(`engine.voice.${k} is for a rotary`);
+      for (const k of ['flutter', 'wastegate', 'spoolRpm', 'preboostRpm', 'handoverRpm', 'handoverDip']) if (k in voice && s.aspiration !== 'turbo') errors.push(`engine.voice.${k} is for a turbo`);
+      if (voice.diverter === 'flutter' && s.aspiration !== 'turbo') errors.push('engine.voice.diverter "flutter" is for a turbo');
+      for (const k of ['spoolRpm', 'preboostRpm', 'handoverDip']) if (k in voice && !('handoverRpm' in voice)) errors.push(`engine.voice.${k} needs handoverRpm`);
+      if (typeof voice.handoverRpm === 'number') {
+        const spool = typeof voice.spoolRpm === 'number' ? voice.spoolRpm : 0;
+        const pre = typeof voice.preboostRpm === 'number' ? voice.preboostRpm : voice.handoverRpm;
+        if (!(spool < pre && pre <= voice.handoverRpm)) errors.push('engine.voice needs spoolRpm < preboostRpm <= handoverRpm');
+      }
     }
   }
   return errors;

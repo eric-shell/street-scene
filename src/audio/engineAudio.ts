@@ -6,7 +6,11 @@
  * impulse response; beside it the intake through its trumpet resonance, the
  * valvetrain tick, for turbo cars a spool whistle and a blow-off chuff
  * when you lift at boost, and for supercharged cars the blower's rpm locked
- * whine (BLOWER). What the voice is told comes from the car's
+ * whine (BLOWER). Per car extras sit on top, each neutral until the voice
+ * block asks (engineAccessories.ts): a sequential twin turbo's handover, the
+ * compressor surge flutter and wastegate chatter of a lift, active exhaust flaps
+ * in front of the silencer, an air-cooled engine's fan whine and the gearbox
+ * whine. What the voice is told comes from the car's
  * EngineSpec (layout, aspiration and the optional `voice` block), so the
  * Wendt Strom burbles like a boxer on unequal headers, the Compact honks
  * through its throttle bodies and the Coupe whooshes through its turbo.
@@ -20,6 +24,7 @@
  * Render side only; reads interpolated car state.
  */
 import type { EngineSpec } from '../shared/carSpec';
+import { CHATTER, FAN, FLUTTER, FlapGate, GEAR_WHINE, SEQUENTIAL, TurboModel, chatterClicks, fanHz, fanLevel, flapResponse, flutterPulses, gearWhineHz, gearWhineLevel, sequentialSpec, type Pulse } from './engineAccessories';
 import { CHAIN, ENGINE_PROCESSOR, SYNTH_PARAMS, TURBO, buildProgram, firingHz, presenceHz, renderImpulse, type EngineMessage, type EngineProgram, type SynthParams } from './engineSynth';
 import workletUrl from './engineWorklet?worker&url';
 
@@ -38,6 +43,8 @@ export interface EngineInput {
   cut?: boolean;
   /** Seconds since the last update, for the overrun model (a 60 Hz frame when missing). */
   dt?: number;
+  /** The gearbox output shaft's speed (rpm: wheel speed times the final drive), for a car's gear whine; none when missing (the garage's free revving engine has no gearbox). Read from the sim state, never written. */
+  driveRpm?: number;
 }
 
 /**
@@ -281,9 +288,26 @@ export class EngineVoice {
   private bovFilter: BiquadFilterNode | null = null;
   private whoosh: { filter: BiquadFilterNode; gain: GainNode; level: number } | null = null;
   private readonly recirculating: boolean;
+  /** No blow-off or diverter valve at all (`diverter: 'flutter'`): a lift makes only the compressor's surge flutter. */
+  private readonly valveless: boolean;
+  /** Surge flutter on a valve car's hard lifts (voice.flutter), 0..1. */
+  private readonly flutterShare: number;
   /** The turbo's noise sources, which loop until stopped. */
   private readonly turboSources: AudioScheduledSourceNode[] = [];
-  private boost = 0;
+  /** The boost model: charge pressure and turbine speed, with the sequential twin turbo's handover when the car has one. */
+  private readonly model: TurboModel;
+  /** The sequential twin turbo's second whistle (null without a handover, and on rivals). */
+  private turbo2: { osc: OscillatorNode; gain: GainNode } | null = null;
+  /** Compressor surge flutter: band, level (null for a valve car with no flutter share). */
+  private flutter: { filter: BiquadFilterNode; gain: GainNode } | null = null;
+  /** Wastegate chatter: the ticks' gain and the car's level (null without the field, and on rivals). */
+  private chatter: { gain: GainNode; level: number } | null = null;
+  /** Active exhaust flaps in front of the silencer: the gate, its depth and the gain and low pass it drives (null without the field). */
+  private flaps: { gate: FlapGate; depth: number; gain: GainNode; lp: BiquadFilterNode } | null = null;
+  /** Air-cooled fan whine: partials, level node, belt ratio. */
+  private fan: { partials: OscillatorNode[]; gain: GainNode; ratio: number } | null = null;
+  /** Gearbox whine: partials, level node, the car's level. */
+  private gear: { partials: OscillatorNode[]; gain: GainNode; level: number } | null = null;
   /** Supercharger whine: one oscillator per lobe harmonic, the air rush filter, the shared level, and every source to stop (null when not supercharged). */
   private blower: { partials: OscillatorNode[]; rush: BiquadFilterNode; gain: GainNode; sources: AudioScheduledSourceNode[]; hzPerRpm: number; level: number } | null = null;
   private blowerLoad = 0;
@@ -307,6 +331,9 @@ export class EngineVoice {
     const ctx = (this.ctx = h.ctx);
     this.turbocharged = spec.aspiration === 'turbo';
     this.recirculating = spec.voice?.diverter === 'recirculating';
+    this.valveless = spec.voice?.diverter === 'flutter';
+    this.flutterShare = this.valveless ? 1 : (spec.voice?.flutter ?? 0);
+    this.model = new TurboModel(spec.aspiration === 'turbo' ? sequentialSpec(spec.voice) : null);
     this.program = buildProgram(spec, { seed: 7919 * ++voiceCount, lite: opts.lite });
     this.out = ctx.createGain();
     this.out.gain.value = 0;
@@ -331,6 +358,19 @@ export class EngineVoice {
     buf.copyToChannel(ir, 0);
     this.exhaust.buffer = buf;
     this.exhaust.connect(this.presence);
+    // Active exhaust flaps: a gain and a low pass in front of the silencer, shut (quiet and dull) until load and revs open them.
+    const depth = spec.voice?.flaps ?? 0;
+    if (depth > 0 && !opts.lite) {
+      const gain = ctx.createGain();
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.Q.value = 0.7;
+      const shut = flapResponse(depth, 0);
+      gain.gain.value = shut.gain;
+      lp.frequency.value = shut.hz;
+      gain.connect(lp).connect(this.exhaust);
+      this.flaps = { gate: new FlapGate(), depth, gain, lp };
+    }
     // Intake through its trumpet resonance; the valvetrain tick in its own narrow band.
     this.intake = ctx.createBiquadFilter();
     this.intake.type = 'bandpass';
@@ -354,20 +394,66 @@ export class EngineVoice {
       this.gTurbo.gain.value = 0;
       this.turbo.connect(this.gTurbo).connect(this.out);
       this.turbo.start();
-      // The lift sound: a vent's highpassed noise chuff, or a recirculating valve's softer band passed pssh.
-      const bovSrc = ctx.createBufferSource();
-      bovSrc.buffer = h.noise;
-      bovSrc.loop = true;
-      bovSrc.playbackRate.value = 1.3;
-      const filter = (this.bovFilter = ctx.createBiquadFilter());
-      filter.type = this.recirculating ? 'bandpass' : 'highpass';
-      filter.frequency.value = this.recirculating ? TURBO.recirculating.from : TURBO.vent.highpass;
-      if (this.recirculating) filter.Q.value = TURBO.recirculating.q;
-      this.bov = ctx.createGain();
-      this.bov.gain.value = 0;
-      bovSrc.connect(filter).connect(this.bov).connect(this.out);
-      bovSrc.start();
-      this.turboSources.push(bovSrc);
+      // The lift sound: a vent's highpassed noise chuff, or a recirculating valve's softer band passed pssh; no valve, none.
+      if (!this.valveless) {
+        const bovSrc = ctx.createBufferSource();
+        bovSrc.buffer = h.noise;
+        bovSrc.loop = true;
+        bovSrc.playbackRate.value = 1.3;
+        const filter = (this.bovFilter = ctx.createBiquadFilter());
+        filter.type = this.recirculating ? 'bandpass' : 'highpass';
+        filter.frequency.value = this.recirculating ? TURBO.recirculating.from : TURBO.vent.highpass;
+        if (this.recirculating) filter.Q.value = TURBO.recirculating.q;
+        this.bov = ctx.createGain();
+        this.bov.gain.value = 0;
+        bovSrc.connect(filter).connect(this.bov).connect(this.out);
+        bovSrc.start();
+        this.turboSources.push(bovSrc);
+      }
+      // Compressor surge flutter: noise gated by a train of pulses (scheduled on a lift), its band sweeping down with the turbine.
+      if (this.flutterShare > 0) {
+        const src = ctx.createBufferSource();
+        src.buffer = h.noise;
+        src.loop = true;
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.value = FLUTTER.band.from;
+        filter.Q.value = FLUTTER.band.q;
+        const gain = ctx.createGain();
+        gain.gain.value = 0;
+        src.connect(filter).connect(gain).connect(this.out);
+        src.start(0, Math.random());
+        this.turboSources.push(src);
+        this.flutter = { filter, gain };
+      }
+      // Wastegate chatter: noise through a metallic band, gated by the lift's run of ticks.
+      const rattle = spec.voice?.wastegate ?? 0;
+      if (rattle > 0 && !opts.lite) {
+        const src = ctx.createBufferSource();
+        src.buffer = h.noise;
+        src.loop = true;
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.value = CHATTER.band.hz;
+        filter.Q.value = CHATTER.band.q;
+        const gain = ctx.createGain();
+        gain.gain.value = 0;
+        src.connect(filter).connect(gain).connect(this.out);
+        src.start(0, Math.random());
+        this.turboSources.push(src);
+        this.chatter = { gain, level: rattle };
+      }
+      // The sequential twin turbo's second whistle: silent until the second turbine pre-spools.
+      if (sequentialSpec(spec.voice) && !opts.lite) {
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        const gain = ctx.createGain();
+        gain.gain.value = 0;
+        osc.connect(gain).connect(this.out);
+        osc.start();
+        this.turboSources.push(osc);
+        this.turbo2 = { osc, gain };
+      }
       // Induction whoosh: noise through a band that climbs with boost, silent until the car asks for it.
       const level = spec.voice?.whoosh ?? 0;
       if (level > 0 && !opts.lite) {
@@ -387,7 +473,29 @@ export class EngineVoice {
       }
     }
     if (spec.aspiration === 'supercharged') this.blower = this.buildBlower(spec, h.noise, opts.lite === true);
+    // Accessory whines go straight to the output like the turbo and the blower: they come from the engine bay, not the tailpipe.
+    if (spec.voice?.fanRatio && !opts.lite) this.fan = { ...this.buildWhine(FAN.partials), ratio: spec.voice.fanRatio };
+    if (spec.voice?.gearWhine && !opts.lite) this.gear = { ...this.buildWhine(GEAR_WHINE.partials), level: spec.voice.gearWhine };
     void h.worklet.then((ok) => this.attach(ok));
+  }
+
+  /** A bank of sine partials into one gain on the output (silent until the first update); the oscillators stop with the voice. */
+  private buildWhine(amps: readonly number[]): { partials: OscillatorNode[]; gain: GainNode } {
+    const ctx = this.ctx;
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    gain.connect(this.out);
+    const partials = amps.map((amp) => {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      const g = ctx.createGain();
+      g.gain.value = amp;
+      osc.connect(g).connect(gain);
+      osc.start();
+      this.turboSources.push(osc);
+      return osc;
+    });
+    return { partials, gain };
   }
 
   /** The blower's whine partials and air rush (BLOWER), into one gain on the output. */
@@ -439,7 +547,8 @@ export class EngineVoice {
         outputChannelCount: [2, 1, 1, 2],
         processorOptions: { program: this.program },
       });
-      node.connect(this.exhaust, 0);
+      if (this.flaps) node.connect(this.flaps.gain, 0);
+      else node.connect(this.exhaust, 0);
       node.connect(this.intake, 1);
       node.connect(this.body, 2);
       node.connect(this.pops, 3);
@@ -477,39 +586,45 @@ export class EngineVoice {
     this.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, e.pan)), t, 0.05);
     this.overrun(load, r, e.shifting === true, limiter, e.cut === true, Math.min(0.1, e.dt ?? 1 / 60));
 
-    if (this.turbo && this.gTurbo && this.bov && this.bovFilter) {
-      // Boost builds with load and rpm and spools up with lag.
+    if (this.turbo && this.gTurbo) {
+      // Boost builds with load and rpm and spools up with lag; a sequential twin turbo's second turbine joins at its handover.
       const dt = Math.min(0.1, e.dt ?? 1 / 60);
-      const target = load * Math.max(0, (r - 0.25) / 0.75);
-      this.boost += (target - this.boost) * (1 - Math.exp(-dt / (target > this.boost ? TURBO.spool : TURBO.fall)));
+      const m = this.model;
+      m.step(rpm, e.redline, load, dt);
       const W = TURBO.whistle;
-      this.turbo.frequency.setTargetAtTime(W.hz + this.boost * W.span, t, 0.08);
-      this.gTurbo.gain.setTargetAtTime(this.boost * W.gain * e.proximity, t, 0.08);
+      const hz = W.hz + m.speed * W.span;
+      this.turbo.frequency.setTargetAtTime(hz * m.primaryPitch, t, 0.08);
+      this.gTurbo.gain.setTargetAtTime(m.boost * W.gain * m.primaryLevel * e.proximity, t, 0.08);
+      if (this.turbo2) {
+        this.turbo2.osc.frequency.setTargetAtTime(hz * SEQUENTIAL.secondaryPitch, t, 0.08);
+        this.turbo2.gain.gain.setTargetAtTime(m.boost * W.gain * SEQUENTIAL.secondaryGain * m.secondary * e.proximity, t, 0.08);
+      }
       if (this.whoosh) {
         const H = TURBO.whoosh;
-        this.whoosh.filter.frequency.setTargetAtTime(H.from + this.boost * (H.to - H.from), t, 0.08);
-        this.whoosh.gain.gain.setTargetAtTime(this.boost ** H.power * this.whoosh.level * e.proximity, t, 0.08);
+        this.whoosh.filter.frequency.setTargetAtTime(H.from + m.boost * (H.to - H.from), t, 0.08);
+        this.whoosh.gain.gain.setTargetAtTime(m.boost ** H.power * this.whoosh.level * e.proximity, t, 0.08);
       }
-      if (this.lastThrottle > 0.6 && load < 0.25 && this.boost > 0.35) {
-        const g = this.bov.gain;
-        g.cancelScheduledValues(t);
-        if (this.recirculating) {
-          // Soft attack, the band sweeping down as the charge air bleeds back; the turbine keeps spinning.
-          const D = TURBO.recirculating;
-          g.setValueAtTime(0.0001, t);
-          g.exponentialRampToValueAtTime(Math.max(0.0001, D.gain * this.boost * e.proximity), t + D.attack);
-          g.exponentialRampToValueAtTime(0.0001, t + D.attack + D.decay);
-          const f = this.bovFilter.frequency;
-          f.cancelScheduledValues(t);
-          f.setValueAtTime(D.from, t);
-          f.exponentialRampToValueAtTime(D.to, t + D.attack + D.decay);
-          this.boost *= D.spoolKeep;
-        } else {
-          g.setValueAtTime(TURBO.vent.gain * this.boost * e.proximity, t);
-          g.exponentialRampToValueAtTime(0.0001, t + TURBO.vent.decay);
-          this.boost *= TURBO.vent.spoolKeep;
-        }
-      }
+      if (this.lastThrottle > 0.6 && load < 0.25 && m.boost > 0.35) this.lift(t, e.proximity);
+    }
+    if (this.flaps) {
+      const f = this.flaps;
+      f.gate.step(load, r, Math.min(0.1, e.dt ?? 1 / 60));
+      const resp = flapResponse(f.depth, f.gate.open);
+      f.gain.gain.setTargetAtTime(resp.gain, t, tc);
+      f.lp.frequency.setTargetAtTime(resp.hz, t, tc);
+    }
+    if (this.fan) {
+      const hz = fanHz(this.fan.ratio, rpm);
+      const top = Math.min(FAN.maxHz, this.ctx.sampleRate / 2 - 100);
+      this.fan.partials.forEach((osc, i) => osc.frequency.setTargetAtTime(Math.min(top, hz * (i + 1)), t, tc));
+      this.fan.gain.gain.setTargetAtTime(fanLevel(rpm, e.redline) * e.proximity, t, tc);
+    }
+    if (this.gear) {
+      const drive = e.driveRpm ?? 0;
+      const hz = gearWhineHz(drive);
+      const top = Math.min(GEAR_WHINE.maxHz, this.ctx.sampleRate / 2 - 100);
+      this.gear.partials.forEach((osc, i) => osc.frequency.setTargetAtTime(Math.min(top, hz * (i + 1)), t, tc));
+      this.gear.gain.gain.setTargetAtTime(gearWhineLevel(this.gear.level, load, drive, e.shifting === true) * e.proximity, t, tc);
     }
     if (this.blower) {
       // No lag: the bypass closes as the pedal goes down, and boost then follows rpm.
@@ -526,6 +641,63 @@ export class EngineVoice {
       b.gain.gain.setTargetAtTime(b.level * work * (BLOWER.lowSpeed + (1 - BLOWER.lowSpeed) * Math.min(1, r)) * e.proximity, t, 0.03);
     }
     this.lastThrottle = load;
+  }
+
+  /**
+   * A lift at boost: the valve's release (vent chuff or recirculating pssh), the compressor's surge flutter on a
+   * valveless car or a hard lift, the wastegate's chatter, then the turbine's speed bleeds off by what the release
+   * keeps. Runs once per lift (the boost drops under its trigger), and its schedules are the only allocation.
+   */
+  private lift(t: number, proximity: number): void {
+    const m = this.model;
+    const boost = m.boost;
+    let keep = 1;
+    if (this.bov && this.bovFilter) {
+      const g = this.bov.gain;
+      g.cancelScheduledValues(t);
+      if (this.recirculating) {
+        // Soft attack, the band sweeping down as the charge air bleeds back; the turbine keeps spinning.
+        const D = TURBO.recirculating;
+        g.setValueAtTime(0.0001, t);
+        g.exponentialRampToValueAtTime(Math.max(0.0001, D.gain * boost * proximity), t + D.attack);
+        g.exponentialRampToValueAtTime(0.0001, t + D.attack + D.decay);
+        const f = this.bovFilter.frequency;
+        f.cancelScheduledValues(t);
+        f.setValueAtTime(D.from, t);
+        f.exponentialRampToValueAtTime(D.to, t + D.attack + D.decay);
+        keep = D.spoolKeep;
+      } else {
+        g.setValueAtTime(TURBO.vent.gain * boost * proximity, t);
+        g.exponentialRampToValueAtTime(0.0001, t + TURBO.vent.decay);
+        keep = TURBO.vent.spoolKeep;
+      }
+    }
+    // A valve car only flutters on a hard lift at high boost; with no valve every lift does.
+    const flutter = this.valveless || (this.lastThrottle > FLUTTER.hardThrottle && boost > FLUTTER.hardBoost) ? this.flutterShare : 0;
+    if (this.flutter && flutter > 0) {
+      const pulses = flutterPulses(boost, flutter * proximity);
+      this.schedule(this.flutter.gain.gain, t, pulses);
+      const end = pulses[pulses.length - 1];
+      const f = this.flutter.filter.frequency;
+      f.cancelScheduledValues(t);
+      f.setValueAtTime(FLUTTER.band.from, t);
+      f.exponentialRampToValueAtTime(FLUTTER.band.to, t + end.at + end.attack + end.decay);
+      keep = Math.min(keep, FLUTTER.spoolKeep);
+    }
+    if (this.chatter) this.schedule(this.chatter.gain.gain, t, chatterClicks(boost, this.chatter.level * proximity, Math.random));
+    m.release(keep);
+  }
+
+  /** Gate `param` with a pulse train starting at `t`: each pulse a linear attack then an exponential fall to silence. */
+  private schedule(param: AudioParam, t: number, pulses: readonly Pulse[]): void {
+    param.cancelScheduledValues(t);
+    param.setValueAtTime(0.0001, t);
+    for (const p of pulses) {
+      const at = t + p.at;
+      param.setValueAtTime(0.0001, at);
+      param.linearRampToValueAtTime(Math.max(0.0002, p.peak), at + p.attack);
+      param.exponentialRampToValueAtTime(0.0001, at + p.attack + p.decay);
+    }
   }
 
   /**

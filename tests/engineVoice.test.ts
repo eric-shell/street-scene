@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Biquad, CAM, CHAIN, LAYOUT_VOICE, LOPE, RASP, TURBO, buildProgram, EngineSynth, kWeighting, renderImpulse, type EngineProgram } from '../src/audio/engineSynth';
 import { powerSpectrum } from '../src/audio/dsp';
+import { CHATTER, FAN, FLAPS, FLUTTER, FlapGate, GEAR_WHINE, SEQUENTIAL, TurboModel, chatterClicks, fanHz, fanLevel, flapResponse, flutterPulses, gearWhineHz, gearWhineLevel, sequentialSpec, type Pulse } from '../src/audio/engineAccessories';
 import { ENGINE_LAYOUTS, engineSpecErrors, type EngineLayout, type EngineSpec } from '../src/shared/carSpec';
 import manifest from '../src/assets/carManifest.json';
 
@@ -343,13 +344,16 @@ describe('loudness and width across the cars', () => {
 });
 
 describe('turbo voice', () => {
-  it('is per car: only the Kombi has the whoosh and the recirculating valve; the vocabulary validates', () => {
+  it('is per car: only the Kombi has the whoosh; the turbo cars carry stock recirculating valves; the vocabulary validates', () => {
     const voices = Object.fromEntries((manifest.cars as { id: string; engine: EngineSpec }[]).map((c) => [c.id, c.engine.voice ?? {}]));
     expect(voices.brandtKombi).toMatchObject({ diverter: 'recirculating', whoosh: 1 });
     for (const [id, v] of Object.entries(voices)) if (id !== 'brandtKombi') expect(v, id).not.toHaveProperty('whoosh');
-    for (const [id, v] of Object.entries(voices)) if (id !== 'brandtKombi') expect(v, id).not.toHaveProperty('diverter');
+    for (const c of manifest.cars as { id: string; engine: EngineSpec }[]) {
+      if (c.engine.aspiration === 'turbo') expect(c.engine.voice, c.id).toMatchObject({ diverter: 'recirculating' });
+      else expect(c.engine.voice ?? {}, c.id).not.toHaveProperty('diverter');
+    }
     expect(engineSpecErrors({ ...spec('I5', 'turbo'), voice: { diverter: 'recirculating', whoosh: 1.5 } })).toEqual([]);
-    expect(engineSpecErrors({ ...spec('I5', 'turbo'), voice: { diverter: 'flutter' } })).toEqual([expect.stringContaining('engine.voice.diverter "flutter" is not one of vent, recirculating')]);
+    expect(engineSpecErrors({ ...spec('I5', 'turbo'), voice: { diverter: 'hiss' } })).toEqual([expect.stringContaining('engine.voice.diverter "hiss" is not one of vent, recirculating, flutter')]);
     expect(engineSpecErrors({ ...spec('I5', 'turbo'), voice: { whoosh: 3 } })).toEqual([expect.stringContaining('engine.voice.whoosh 3 is not a number from 0 to 2')]);
   });
 
@@ -568,5 +572,331 @@ describe('supercharger lobes', () => {
     expect(engineSpecErrors({ ...spec('V8', 'supercharged'), voice: { blowerLobes: 8 } })).toEqual([]);
     expect(engineSpecErrors({ ...spec('V8', 'supercharged'), voice: { blowerLobes: 6 } })).toEqual([]);
     expect(engineSpecErrors({ ...spec('V8', 'supercharged'), voice: { blowerLobes: 7 } })).toEqual([expect.stringContaining('engine.voice.blowerLobes 7 is not one of 3, 4, 5, 6, 8')]);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Turbo and accessory behaviours (engineAccessories.ts)
+// ---------------------------------------------------------------------------
+
+/** Step a boost model through an rpm ramp at the pedal `load`; returns the boost and the model's other states per frame. */
+function pull(seq: ReturnType<typeof sequentialSpec>, from: number, to: number, seconds: number, fps: number, load = 1, redline = 8000) {
+  const m = new TurboModel(seq);
+  // Settle at the start rpm first so the follower is at its plateau.
+  for (let i = 0; i < 4 * fps; i++) m.step(from, redline, load, 1 / fps);
+  const out: { t: number; rpm: number; boost: number; speed: number; secondary: number; join: number }[] = [];
+  const n = Math.round(seconds * fps);
+  for (let i = 0; i < n; i++) {
+    const rpm = from + ((to - from) * (i + 1)) / n;
+    m.step(rpm, redline, load, 1 / fps);
+    out.push({ t: (i + 1) / fps, rpm, boost: m.boost, speed: m.speed, secondary: m.secondary, join: m.join });
+  }
+  return out;
+}
+
+const KAZAMA = sequentialSpec({ spoolRpm: 1800, preboostRpm: 4000, handoverRpm: 4500, handoverDip: 0.2 });
+const ZENITH = sequentialSpec({ spoolRpm: 1800, preboostRpm: 3500, handoverRpm: 4000 });
+
+describe('sequential twin turbo', () => {
+  it('without the fields the model is the plain follower the voice always had, bit for bit', () => {
+    let legacy = 0;
+    const m = new TurboModel(null);
+    for (let i = 0; i < 600; i++) {
+      const rpm = 1000 + 6000 * Math.abs(Math.sin(i / 90));
+      const load = i % 240 < 150 ? 1 : 0.3;
+      const target = load * Math.max(0, (Math.min(1.05, rpm / 7500) - 0.25) / 0.75);
+      legacy += (target - legacy) * (1 - Math.exp(-1 / 60 / (target > legacy ? TURBO.spool : TURBO.fall)));
+      m.step(rpm, 7500, load, 1 / 60);
+      expect(m.boost).toBe(legacy);
+      expect(m.speed).toBe(legacy);
+    }
+    expect(m.secondary).toBe(0);
+    expect(m.primaryPitch).toBe(1);
+    expect(m.primaryLevel).toBe(1);
+    expect(sequentialSpec(undefined)).toBeNull();
+    expect(sequentialSpec({ pipes: 1 })).toBeNull();
+  });
+
+  it('is data: the 13B-REW and the 2JZ-GTE carry their sourced sequences, nobody else; the rules validate', () => {
+    const cars = manifest.cars as { id: string; engine: EngineSpec }[];
+    expect(cars.find((c) => c.id === 'kazamaRotor')!.engine.voice).toMatchObject({ spoolRpm: 1800, preboostRpm: 4000, handoverRpm: 4500, handoverDip: 0.2 });
+    expect(cars.find((c) => c.id === 'tachibanaZenith')!.engine.voice).toMatchObject({ spoolRpm: 1800, preboostRpm: 3500, handoverRpm: 4000 });
+    for (const c of cars) if (!['kazamaRotor', 'tachibanaZenith'].includes(c.id)) expect(c.engine.voice ?? {}, c.id).not.toHaveProperty('handoverRpm');
+    expect(sequentialSpec({ handoverRpm: 4500 })).toEqual({ spoolRpm: SEQUENTIAL.spoolRpm, preboostRpm: 4500 - SEQUENTIAL.preboostLead, handoverRpm: 4500, dip: 0 });
+    expect(engineSpecErrors({ ...spec('R2', 'turbo'), voice: { spoolRpm: 1800, preboostRpm: 4000, handoverRpm: 4500, handoverDip: 0.2 } })).toEqual([]);
+    expect(engineSpecErrors({ ...spec('I6', 'na'), voice: { handoverRpm: 4000 } })).toEqual([expect.stringContaining('handoverRpm is for a turbo')]);
+    expect(engineSpecErrors({ ...spec('I6', 'turbo'), voice: { preboostRpm: 3500 } })).toEqual([expect.stringContaining('preboostRpm needs handoverRpm')]);
+    expect(engineSpecErrors({ ...spec('I6', 'turbo'), voice: { handoverRpm: 4000, preboostRpm: 4500 } })).toEqual([expect.stringContaining('spoolRpm < preboostRpm <= handoverRpm')]);
+    expect(engineSpecErrors({ ...spec('I6', 'turbo'), voice: { handoverRpm: 4000, handoverDip: 0.9 } })).toEqual([expect.stringContaining('handoverDip 0.9 is not a number from 0 to 0.5')]);
+  });
+
+  it('makes full boost from the primary alone at 1,800 rpm, where the single turbo is still asleep', () => {
+    const early = (seq: ReturnType<typeof sequentialSpec>) => {
+      const m = new TurboModel(seq);
+      for (let i = 0; i < 300; i++) m.step(2000, 8000, 1, 1 / 60);
+      return m.boost;
+    };
+    expect(early(KAZAMA)).toBeGreaterThan(0.95);
+    expect(early(null)).toBeLessThan(0.3);
+  });
+
+  it('dips about 20 percent at the 13B-REW\'s changeover, then surges, and the second whistle joins', () => {
+    // A hard pull through 4,500 at 1,600 rpm per second.
+    const run = pull(KAZAMA, 3600, 6000, 1.5, 240);
+    const before = run.find((r) => r.rpm >= 4400)!.boost;
+    const crossing = run.findIndex((r) => r.rpm >= 4500);
+    const after = run.slice(crossing);
+    const low = Math.min(...after.map((r) => r.boost));
+    expect(before).toBeGreaterThan(0.95);
+    expect(1 - low / before).toBeGreaterThan(0.16);
+    expect(1 - low / before).toBeLessThan(0.24);
+    // The dip is brief (back to the plateau within half a second) and followed by a smaller surge over it.
+    const recovered = after.find((r) => r.t > run[crossing].t + SEQUENTIAL.fall + 0.01 && r.boost >= before * 0.99);
+    expect(recovered).toBeDefined();
+    expect(recovered!.t - run[crossing].t).toBeLessThan(SEQUENTIAL.fall + SEQUENTIAL.rise + 0.05);
+    const peak = Math.max(...run.slice(crossing).map((r) => r.boost));
+    expect(peak).toBeGreaterThan(before * 1.03);
+    expect(peak).toBeLessThan(before * (1 + 0.2 * SEQUENTIAL.surge + 0.03));
+    // The second turbine hums while it pre-spools (4,000 to 4,500, no boost of its own), then joins at full.
+    const hum = run.find((r) => r.rpm >= 4450)!.secondary;
+    expect(hum).toBeGreaterThan(0.05);
+    expect(hum).toBeLessThan(SEQUENTIAL.preGain + 0.01);
+    expect(run[run.length - 1].secondary).toBeGreaterThan(0.95);
+    expect(run.find((r) => r.rpm >= 3900)!.secondary).toBeLessThan(0.02);
+  });
+
+  it('has no dip for the Supra, whose second turbo joins at 4,000 after pre-boost from 3,500', () => {
+    const run = pull(ZENITH, 3000, 4800, 0.72, 240);
+    const steady = run.find((r) => r.rpm >= 3300)!.boost;
+    for (const r of run) expect(r.boost).toBeGreaterThan(steady * 0.99);
+    // Pre-boost: the second turbine is turning (a faint hum) from 3,500 but the gate has not opened.
+    const mid = run.find((r) => r.rpm >= 3900)!;
+    expect(mid.secondary).toBeGreaterThan(0.03);
+    expect(mid.secondary).toBeLessThan(SEQUENTIAL.preGain + 0.01);
+    expect(run.find((r) => r.rpm >= 3400)!.secondary).toBeLessThan(0.02);
+    expect(run[run.length - 1].join).toBeGreaterThan(0.95);
+  });
+
+  it('does not dip off the pedal, and re-arms below the handover without chattering at it', () => {
+    const lift = pull(KAZAMA, 3600, 5400, 0.72, 240, 0.1);
+    expect(Math.max(...lift.map((r) => r.boost))).toBeLessThan(0.2);
+    // Hovering across 4,500 rpm: one changeover, not one per crossing within the re-arm band.
+    const m = new TurboModel(KAZAMA);
+    for (let i = 0; i < 600; i++) m.step(4000, 8000, 1, 1 / 60);
+    let dips = 0;
+    let wasDipping = false;
+    for (let i = 0; i < 600; i++) {
+      m.step(4500 + 120 * Math.sin(i / 6), 8000, 1, 1 / 60);
+      const dipping = m.boost < 0.9;
+      if (dipping && !wasDipping) dips++;
+      wasDipping = dipping;
+    }
+    expect(dips).toBe(1);
+  });
+
+  it('is frame rate independent: the same dip at 30, 60 and 120 fps', () => {
+    const dip = (fps: number) => {
+      const run = pull(KAZAMA, 3600, 6000, 1.5, fps);
+      return Math.min(...run.slice(run.findIndex((r) => r.rpm >= 4500)).map((r) => r.boost));
+    };
+    expect(dip(30)).toBeCloseTo(dip(120), 1);
+    expect(dip(60)).toBeCloseTo(dip(120), 1);
+    expect(Math.abs(dip(30) - dip(120))).toBeLessThan(0.04);
+  });
+
+  it('sheds the primary whistle\'s pitch and level once the flow is shared', () => {
+    const run = pull(ZENITH, 3000, 5000, 1, 120);
+    const m = new TurboModel(ZENITH);
+    for (let i = 0; i < 400; i++) m.step(5000, 8000, 1, 1 / 120);
+    expect(m.primaryPitch).toBeCloseTo(SEQUENTIAL.primaryPitch, 2);
+    expect(m.primaryLevel).toBeCloseTo(SEQUENTIAL.primaryShare, 2);
+    expect(run[0].join).toBeLessThan(0.01);
+  });
+});
+
+/** Render a pulse train as an envelope at `rate` Hz the way the gain automation draws it: linear attack, exponential fall. */
+function envelope(pulses: readonly Pulse[], seconds: number, rate = 4000): Float32Array {
+  const out = new Float32Array(Math.round(seconds * rate)).fill(0.0001);
+  for (const p of pulses) {
+    for (let i = Math.round(p.at * rate); i < out.length; i++) {
+      const t = i / rate - p.at;
+      if (t > p.attack + p.decay) break;
+      out[i] = Math.max(out[i], t < p.attack ? 0.0001 + (p.peak - 0.0001) * (t / p.attack) : p.peak * (0.0001 / p.peak) ** ((t - p.attack) / p.decay));
+    }
+  }
+  return out;
+}
+
+/** The times (s) of the envelope's local peaks above half of its maximum. */
+function peaks(env: Float32Array, rate = 4000): number[] {
+  const max = Math.max(...env);
+  const out: number[] = [];
+  for (let i = 1; i < env.length - 1; i++) if (env[i] > env[i - 1] && env[i] >= env[i + 1] && env[i] > max * 0.15) out.push(i / rate);
+  return out;
+}
+
+describe('compressor surge flutter and wastegate chatter', () => {
+  it('flutters "stu-tu-tu": 3 to 9 pulses, about 14 a second at first slowing to about 6, quieter as it goes', () => {
+    const hard = flutterPulses(1, 1);
+    const soft = flutterPulses(0.5, 1);
+    expect(hard.length).toBe(FLUTTER.count[1]);
+    expect(soft.length).toBeLessThan(hard.length);
+    expect(soft.length).toBeGreaterThanOrEqual(FLUTTER.count[0]);
+    const times = peaks(envelope(hard, 1.5));
+    expect(times).toHaveLength(hard.length);
+    const gaps = times.slice(1).map((t, i) => t - times[i]);
+    expect(1 / gaps[0]).toBeGreaterThan(11);
+    expect(1 / gaps[0]).toBeLessThan(16);
+    expect(1 / gaps[gaps.length - 1]).toBeGreaterThan(5);
+    expect(1 / gaps[gaps.length - 1]).toBeLessThan(8);
+    for (let i = 1; i < gaps.length; i++) expect(gaps[i]).toBeGreaterThan(gaps[i - 1]);
+    for (let i = 1; i < hard.length; i++) expect(hard[i].peak).toBeLessThan(hard[i - 1].peak);
+    // The train scales with the car's share and with boost; none at no share.
+    expect(flutterPulses(1, 0.5)[0].peak).toBeCloseTo(hard[0].peak / 2, 6);
+    expect(flutterPulses(1, 0)[0].peak).toBe(0);
+  });
+
+  it('flutters on a hard lift only on a valve car, on every lift when there is no valve', () => {
+    const cars = manifest.cars as { id: string; engine: EngineSpec }[];
+    const voice = (id: string) => cars.find((c) => c.id === id)!.engine.voice!;
+    expect(voice('tachibanaRunabout')).toMatchObject({ diverter: 'recirculating', flutter: 0.5, wastegate: 0.6 });
+    expect(voice('tachibanaZenith')).toMatchObject({ flutter: 0.4 });
+    expect(voice('kazamaRotor')).toMatchObject({ flutter: 0.3 });
+    expect(voice('hinodeHorizon')).toMatchObject({ wastegate: 0.4 });
+    expect(voice('hinodeHorizon')).not.toHaveProperty('flutter');
+    expect(voice('brandtKombi')).not.toHaveProperty('flutter');
+    expect(engineSpecErrors({ ...spec('I4', 'turbo'), voice: { diverter: 'flutter' } })).toEqual([]);
+    expect(engineSpecErrors({ ...spec('I4', 'na'), voice: { diverter: 'flutter' } })).toEqual([expect.stringContaining('"flutter" is for a turbo')]);
+    expect(engineSpecErrors({ ...spec('I4', 'na'), voice: { flutter: 0.5, wastegate: 1 } })).toHaveLength(2);
+    expect(engineSpecErrors({ ...spec('I4', 'turbo'), voice: { flutter: 1.5 } })).toEqual([expect.stringContaining('engine.voice.flutter 1.5 is not a number from 0 to 1')]);
+  });
+
+  it('chatters: a run of 6 to 11 short metallic ticks 16 to 34 ms apart, fading, none without the field or boost', () => {
+    let seed = 1;
+    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const full = chatterClicks(1, 1, rand);
+    expect(full.length).toBe(CHATTER.count[1]);
+    expect(chatterClicks(0.6, 1, rand).length).toBeLessThan(full.length);
+    expect(chatterClicks(0.6, 1, rand).length).toBeGreaterThanOrEqual(CHATTER.count[0]);
+    const gaps = full.slice(1).map((c, i) => c.at - full[i].at);
+    for (const g of gaps) {
+      expect(g).toBeGreaterThan(CHATTER.gap[0] * (1 - CHATTER.jitter) - 1e-9);
+      expect(g).toBeLessThan(CHATTER.gap[1] * (1 + CHATTER.jitter) + 1e-9);
+    }
+    // A burst under a quarter second, each tick a few ms, quieter at the end than the start.
+    expect(full[full.length - 1].at + full[full.length - 1].decay).toBeLessThan(0.4);
+    expect(full[0].at).toBeCloseTo(CHATTER.lead, 3);
+    expect(full[full.length - 1].peak).toBeLessThan(full[0].peak * 0.7);
+    for (const c of full) expect(c.attack + c.decay).toBeLessThan(0.005);
+    // The envelope is the ticks: silence between them, a peak per tick.
+    expect(peaks(envelope(full, 0.5))).toHaveLength(full.length);
+    expect(chatterClicks(1, 0, rand)).toEqual([]);
+    expect(chatterClicks(0.2, 1, rand)).toEqual([]);
+    // Deterministic from its random source.
+    seed = 7;
+    const a = chatterClicks(1, 1, rand);
+    seed = 7;
+    expect(chatterClicks(1, 1, rand)).toEqual(a);
+  });
+});
+
+describe('active exhaust flaps', () => {
+  it('stay shut at cruise, open on load or revs, and hold between the thresholds', () => {
+    const g = new FlapGate();
+    const settle = (load: number, r: number) => {
+      for (let i = 0; i < 120; i++) g.step(load, r, 1 / 60);
+      return g.open;
+    };
+    expect(settle(0.2, 0.4)).toBeLessThan(0.01);
+    expect(settle(0.5, 0.65)).toBeLessThan(0.01);
+    expect(settle(0.7, 0.4)).toBeGreaterThan(0.99);
+    // Between the thresholds (load 0.45, revs 0.65) it holds what it was.
+    expect(settle(0.45, 0.65)).toBeGreaterThan(0.99);
+    expect(settle(0.2, 0.4)).toBeLessThan(0.01);
+    expect(settle(0.2, 0.75)).toBeGreaterThan(0.99);
+    expect(settle(0.1, 0.5)).toBeLessThan(0.01);
+    expect(settle(0.45, 0.65)).toBeLessThan(0.01);
+  });
+
+  it('are a 9 dB gain step and a roll-off at full depth, scaled by the car, and a rev hovering at the threshold does not chatter', () => {
+    const shut = flapResponse(1, 0);
+    expect(20 * Math.log10(shut.gain)).toBeCloseTo(20 * Math.log10(FLAPS.closedGain), 6);
+    expect(20 * Math.log10(shut.gain)).toBeLessThan(-8.5);
+    expect(shut.hz).toBeCloseTo(FLAPS.closedHz, 3);
+    expect(flapResponse(1, 1)).toEqual({ gain: 1, hz: FLAPS.openHz });
+    expect(flapResponse(0, 0)).toEqual({ gain: 1, hz: FLAPS.openHz });
+    expect(flapResponse(0.5, 0).gain).toBeGreaterThan(shut.gain);
+    expect(flapResponse(0.5, 0.5).gain).toBeGreaterThan(flapResponse(0.5, 0).gain);
+    // Revs wobbling 0.66 to 0.74 of the redline at light load: the latch opens once and stays.
+    const g = new FlapGate();
+    let flips = 0;
+    let last = false;
+    for (let i = 0; i < 600; i++) {
+      g.step(0.4, 0.7 + 0.04 * Math.sin(i / 5), 1 / 60);
+      if (g.target !== last) flips++;
+      last = g.target;
+    }
+    expect(flips).toBe(1);
+  });
+
+  it('smooth at any frame rate: the same travel after 0.2 s at 30, 60 and 120 fps', () => {
+    const travel = (fps: number) => {
+      const g = new FlapGate();
+      for (let i = 0; i < 0.2 * fps; i++) g.step(1, 0.5, 1 / fps);
+      return g.open;
+    };
+    expect(travel(30)).toBeCloseTo(travel(120), 6);
+    expect(travel(60)).toBeCloseTo(travel(120), 6);
+    expect(travel(60)).toBeCloseTo(1 - Math.exp(-0.2 / FLAPS.tau), 6);
+  });
+
+  it('are a field no shipped car sets yet', () => {
+    expect(engineSpecErrors({ ...spec('I5', 'turbo'), voice: { flaps: 1 } })).toEqual([]);
+    expect(engineSpecErrors({ ...spec('I5', 'turbo'), voice: { flaps: 2 } })).toEqual([expect.stringContaining('engine.voice.flaps 2 is not a number from 0 to 1')]);
+    for (const c of manifest.cars as { id: string; engine: EngineSpec }[]) expect(c.engine.voice ?? {}, c.id).not.toHaveProperty('flaps');
+  });
+});
+
+describe('fan and gear whine', () => {
+  it('locks the air-cooled fan whine to the crank by the belt ratio, and keeps it faint', () => {
+    const ratio = 1.8;
+    // Blade pass = rpm / 60 x ratio x blades, so doubling the revs doubles it, and the ratio scales it.
+    expect(fanHz(ratio, 3000)).toBeCloseTo((3000 / 60) * ratio * FAN.blades, 9);
+    expect(fanHz(ratio, 6000)).toBeCloseTo(2 * fanHz(ratio, 3000), 9);
+    expect(fanHz(2 * ratio, 3000)).toBeCloseTo(2 * fanHz(ratio, 3000), 9);
+    expect(fanHz(ratio, 6500)).toBeLessThan(FAN.maxHz);
+    // Faint: well under the whistle (0.05) even at the redline, present at idle, rising with revs.
+    expect(fanLevel(7100, 7100)).toBeLessThanOrEqual(FAN.level);
+    expect(fanLevel(7100, 7100)).toBeLessThan(0.05 / 3);
+    expect(fanLevel(900, 7100)).toBeGreaterThan(0.2 * FAN.level);
+    expect(fanLevel(900, 7100)).toBeLessThan(fanLevel(4000, 7100));
+    expect(fanLevel(4000, 7100)).toBeLessThan(fanLevel(7000, 7100));
+    expect(engineSpecErrors({ ...spec('B6'), voice: { fanRatio: 1.8 } })).toEqual([]);
+    expect(engineSpecErrors({ ...spec('B6'), voice: { fanRatio: 5 } })).toEqual([expect.stringContaining('engine.voice.fanRatio 5 is not a number from 0.5 to 3')]);
+    for (const c of manifest.cars as { id: string; engine: EngineSpec }[]) expect(c.engine.voice ?? {}, c.id).not.toHaveProperty('fanRatio');
+  });
+
+  it('locks the gear whine to the output shaft: the same pitch at the same road speed, none stopped, none during a shift, quieter off the pedal', () => {
+    // Wheel 0.33 m, final drive 4.1: 100 km/h is 27.8 m/s, 84 rad/s, 804 rpm at the wheel, 3,300 rpm at the shaft.
+    const shaft = (kph: number) => ((kph / 3.6 / 0.33) * 4.1 * 60) / (2 * Math.PI);
+    expect(shaft(100)).toBeCloseTo(3300, -2);
+    expect(gearWhineHz(shaft(100))).toBeCloseTo((shaft(100) / 60) * GEAR_WHINE.teeth, 9);
+    expect(gearWhineHz(shaft(200))).toBeCloseTo(2 * gearWhineHz(shaft(100)), 6);
+    expect(gearWhineHz(shaft(100))).toBeGreaterThan(1000);
+    expect(gearWhineHz(shaft(250))).toBeLessThan(GEAR_WHINE.maxHz);
+    expect(gearWhineLevel(1, 1, 0, false)).toBe(0);
+    expect(gearWhineLevel(1, 1, GEAR_WHINE.minRpm / 2, false)).toBe(0);
+    expect(gearWhineLevel(1, 1, shaft(100), false)).toBeCloseTo(GEAR_WHINE.level, 9);
+    expect(gearWhineLevel(1, 1, shaft(100), true)).toBe(0);
+    expect(gearWhineLevel(1, 0, shaft(100), false)).toBeCloseTo(GEAR_WHINE.level * GEAR_WHINE.coast, 9);
+    expect(gearWhineLevel(2, 1, shaft(100), false)).toBeCloseTo(2 * GEAR_WHINE.level, 9);
+    expect(gearWhineLevel(0, 1, shaft(100), false)).toBe(0);
+  });
+
+  it('is off by default: no shipped car sets gearWhine, and the level validates', () => {
+    expect(engineSpecErrors({ ...spec('V6'), voice: { gearWhine: 1 } })).toEqual([]);
+    expect(engineSpecErrors({ ...spec('V6'), voice: { gearWhine: 3 } })).toEqual([expect.stringContaining('engine.voice.gearWhine 3 is not a number from 0 to 2')]);
+    for (const c of manifest.cars as { id: string; engine: EngineSpec }[]) expect(c.engine.voice ?? {}, c.id).not.toHaveProperty('gearWhine');
   });
 });
