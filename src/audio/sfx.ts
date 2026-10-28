@@ -3,7 +3,7 @@
  *  - impacts: car vs car crunch, wall/barrier thud, guard rail clang, and prop
  *    breaks by kind (pole clang + glass, hollow can bang, bench crunch, a hydrant's gush, big
  *    bus stop shatter, leafy bush swish, pot crack, cafe chair clatter, plastic
- *    barrel thunk, crate splinter, dumpster boom, trash bag thump). Each is
+ *    barrel thunk, crate splinter, dumpster boom, trash bag thump), and the thump of an axle over a speed hump or an expansion joint (loud for a hump, light for a joint). Each is
  *    rendered once into a few AudioBuffer variants
  *    by the small DSP recipes below, then replayed with pitch and level from
  *    the impact speed, spatialized to the camera, rate limited and capped
@@ -233,10 +233,22 @@ export class Sfx {
     this.play(kind, level, (1.12 - 0.25 * k) * rnd(0.94, 1.06), pos, key, kind === 'rail' ? 0.16 : 0.1);
   }
 
+  /**
+   * An axle over a speed hump or an expansion joint (RaceEvent 'thump'): `speed` is how fast the wheel
+   * compressed (m/s). A hump is the louder, deeper knock; a joint is a light "ka" and "dunk" as the axles
+   * cross it, played low so a long deck's run of them stays under the engine.
+   */
+  thump(speed: number, joint: boolean, pos: SfxPos, key = 'thump'): void {
+    const k = clamp01(speed / 2.5);
+    const level = (joint ? 0.12 : 0.34) + (joint ? 0.14 : 0.4) * k;
+    this.play('thump', level, (joint ? 1.25 : 1) * rnd(0.94, 1.06) * (1.05 - 0.15 * k), pos, key, 0.05);
+  }
+
   /** A prop broken at the given car speed (m/s). */
   prop(kind: PropKind, speed: number, pos: SfxPos, key = 'prop'): void {
     const base: Record<PropKind, number> = {
       streetlight: 0.9,
+      utilityPole: 1,
       trafficLight: 0.85,
       garbageCan: 0.65,
       bench: 0.75,
@@ -259,6 +271,10 @@ export class Sfx {
       pallets: 0.6,
       drum: 0.7,
       cableSpool: 0.75,
+      umbrella: 0.45,
+      lounger: 0.4,
+      volleyNet: 0.5,
+      picketFence: 0.5,
       marketStall: 0.7,
       fruitCrates: 0.55,
       foodCart: 0.8,
@@ -376,7 +392,7 @@ export class Sfx {
    * call it from the tick that consumed the event.
    */
   raceEvent(e: RaceEvent, r: RaceState): void {
-    if (e.type !== 'crash' && e.type !== 'wall' && e.type !== 'prop' && e.type !== 'arm' && e.type !== 'person') return;
+    if (e.type !== 'crash' && e.type !== 'wall' && e.type !== 'prop' && e.type !== 'arm' && e.type !== 'person' && e.type !== 'thump') return;
     if (e.type === 'crash' && e.traffic !== undefined) {
       // A traffic car hit by a racer (or by a struck traffic car: car -1), heard where they met.
       const t = r.traffic?.cars[e.traffic]?.body;
@@ -388,7 +404,12 @@ export class Sfx {
     const car = r.cars[e.car]?.state;
     if (!car) return;
     const isPlayer = e.car === 0;
-    if (e.type === 'crash') {
+    if (e.type === 'thump') {
+      // The axle's own position: the front thumps ahead of the rear, which is the two-beat of a joint.
+      const g = r.cars[e.car].tuning.geometry;
+      const u = e.other === 1 ? -g.wheelbase / 2 : g.wheelbase / 2;
+      this.thump(e.value ?? 0, e.kind === 'joint', this.at(car.x + Math.sin(car.yaw) * u, car.z + Math.cos(car.yaw) * u, isPlayer), `thump:${e.car}:${e.other}`);
+    } else if (e.type === 'crash') {
       const o = e.other ?? -1;
       const other = r.cars[o]?.state;
       // Both cars may report the same contact: one key per pair, heard at the midpoint.
@@ -396,7 +417,7 @@ export class Sfx {
       const z = other ? (car.z + other.z) / 2 : car.z;
       this.crash(e.value ?? 0, this.at(x, z, isPlayer || o === 0), `crash:${Math.min(e.car, o)}-${Math.max(e.car, o)}`);
     } else if (e.type === 'wall') {
-      this.wall(e.value ?? 0, e.kind ?? 'wall', this.at(car.x, car.z, isPlayer), `wall:${e.car}`);
+      this.wall(e.value ?? 0, e.kind === 'barrier' || e.kind === 'rail' ? e.kind : 'wall', this.at(car.x, car.z, isPlayer), `wall:${e.car}`);
     } else if (e.type === 'person') {
       // A pedestrian struck (sim/people.ts): a soft thud until the people get a recipe of their own.
       this.prop('sandbags', car.speed, this.at(car.x, car.z, isPlayer), `person:${e.value}`);

@@ -31,6 +31,24 @@ export const PARK_LANTERN_Y = 3.95;
 export const STUMP_H = 0.55;
 export const TRAFFIC_POLE_H = 5.6;
 export const TRAFFIC_ARM_Y = 5.25;
+/**
+ * A wooden power pole (city/props.ts 'utilityPole'): its height, the crossarm across the street (local +Z is toward
+ * the road) and the three insulators the wires hang from, as local offsets along the arm (m). The wires
+ * (utilityWires.ts) attach where the renderer's poles put them, from this one table.
+ */
+export const UTILITY_POLE = {
+  h: 10.4,
+  armY: 9.4,
+  armZ: [-0.55, 1.45] as const,
+  wireZ: [-0.35, 0.45, 1.25] as const,
+  /** Insulator top above the arm (m): where a wire hangs. */
+  wireLift: 0.22,
+  /** The transformer drum: centre height, its offset toward the building line, radius and height (m). */
+  drumY: 7.6,
+  drumZ: -0.42,
+  drumR: 0.3,
+  drumH: 1.0,
+} as const;
 
 // ---------------------------------------------------------------------------
 // Low poly part builders (local space, vertex colored)
@@ -400,6 +418,89 @@ function parkLanternGeo(q: Quality): THREE.BufferGeometry {
   return s.build();
 }
 
+// ---------- Beach furniture (districts/waterfrontBeach.ts) ----------
+
+/** A beach umbrella: the pole in the sand and a flat eight sided canopy, tinted per instance, with a pale underside and a finial. */
+function umbrellaPoleGeo(q: Quality): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  cyl(s, 0, 0, 0, 2.35, 0.03, 0.025, 6, col(0xd8d4c8), q);
+  cyl(s, 0, 0, 2.3, 2.62, 0.02, 0.012, 6, col(0xd8d4c8), q);
+  return s.build();
+}
+
+/** The canopy: a shallow cone of eight panels in two alternating shades of the tint (white panels between). */
+function umbrellaCanopyGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const R = 1.0;
+  const rimY = 2.12;
+  const topY = 2.5;
+  const n = 8;
+  for (let k = 0; k < n; k++) {
+    const a0 = (k / n) * Math.PI * 2;
+    const a1 = ((k + 1) / n) * Math.PI * 2;
+    const am = (a0 + a1) / 2;
+    const shade = k % 2 ? col(0xffffff) : col(0xf0f0f0).multiplyScalar(0.55);
+    const ny = R / Math.hypot(R, topY - rimY);
+    const nr = (topY - rimY) / Math.hypot(R, topY - rimY);
+    const nx = Math.cos(am) * nr;
+    const nz = Math.sin(am) * nr;
+    const c = s.vertex(0, topY, 0, nx, ny, nz, 0, 0, shade);
+    const p0 = s.vertex(Math.cos(a0) * R, rimY, Math.sin(a0) * R, nx, ny, nz, 0, 0, shade);
+    const p1 = s.vertex(Math.cos(a1) * R, rimY, Math.sin(a1) * R, nx, ny, nz, 0, 0, shade);
+    s.triFacing(c, p1, p0, nx, ny, nz);
+    // The underside, a pale lining.
+    const u0 = s.vertex(Math.cos(a0) * R, rimY, Math.sin(a0) * R, 0, -1, 0, 0, 0, col(0xe8e0cc, 0.8));
+    const u1 = s.vertex(Math.cos(a1) * R, rimY, Math.sin(a1) * R, 0, -1, 0, 0, 0, col(0xe8e0cc, 0.8));
+    const uc = s.vertex(0, topY - 0.05, 0, 0, -1, 0, 0, 0, col(0xe8e0cc, 0.8));
+    s.triFacing(uc, u0, u1, 0, -1, 0);
+  }
+  return s.build();
+}
+
+/** A plastic sun lounger, head to local +Z's back: a frame, a slatted bed with a raised back, tinted per instance (towel colours). */
+function loungerGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const frame = col(0xe8e8e0);
+  for (const x of [-0.3, 0.3]) {
+    box(s, x, 0.12, 0.0, 0.05, 0.24, 0.05, frame);
+    box(s, x, 0.12, -0.8, 0.05, 0.24, 0.05, frame);
+    box(s, x, 0.2, 0.2, 0.05, 0.04, 1.9, frame);
+  }
+  // The bed (towel) and the back, raised toward the head end at +Z.
+  box(s, 0, 0.25, -0.25, 0.62, 0.05, 1.1, col(0xffffff));
+  const back = s.vertex(-0.31, 0.27, 0.32, 0, 0.7, -0.7, 0, 0, col(0xffffff));
+  const back2 = s.vertex(0.31, 0.27, 0.32, 0, 0.7, -0.7, 0, 0, col(0xffffff));
+  const back3 = s.vertex(0.31, 0.62, 0.78, 0, 0.7, -0.7, 0, 0, col(0xffffff));
+  const back4 = s.vertex(-0.31, 0.62, 0.78, 0, 0.7, -0.7, 0, 0, col(0xffffff));
+  s.quadFacing(back, back2, back3, back4, 0, 0.7, -0.7);
+  return s.build();
+}
+
+/** One panel of a volleyball net (1.9 m of it, posts at the court's ends are the end panels' own): a dark mesh with a white top tape and a pair of poles at the panel's ends. */
+function volleyNetGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const mesh = col(0x15161a);
+  for (let k = 0; k < 6; k++) box(s, 0, 1.62 + k * 0.1, 0, 1.9, 0.012, 0.012, mesh);
+  for (let k = 0; k <= 9; k++) box(s, -0.9 + k * 0.2, 1.97, 0, 0.012, 0.74, 0.012, mesh);
+  box(s, 0, 2.43, 0, 1.9, 0.07, 0.014, col(0xf0f0ea));
+  for (const x of [-0.94, 0.94]) cylPole(s, x);
+  return s.build();
+}
+
+function cylPole(s: GeoBuilder, x: number): void {
+  box(s, x, 1.2, 0, 0.07, 2.4, 0.07, col(0x9aa0a8));
+}
+
+/** A low picket fence panel: weathered pickets between two rails and posts, local +Z toward the street. */
+function picketFenceGeo(): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const white = col(0xd8d2c0);
+  for (const x of [-1.2, 1.2]) box(s, x, 0.5, 0, 0.1, 1.0, 0.1, col(0x8a7a60));
+  for (const y of [0.3, 0.75]) box(s, 0, y, 0, 2.4, 0.06, 0.04, col(0x8a7a60));
+  for (let k = 0; k < 11; k++) box(s, -1.1 + k * 0.22, 0.52, 0.04, 0.1, 0.9, 0.025, white.clone().multiplyScalar(0.85 + 0.15 * ((k * 7) % 3) / 2));
+  return s.build();
+}
+
 // ---------- Night market (districts/market.ts) ----------
 
 /** A flat quad from its four corners (perimeter order), facing along n. */
@@ -547,6 +648,11 @@ const CLUTTER: Record<DistrictPropKind, { parts: { geo: (q: Quality) => THREE.Bu
   // Drums in the yard's colours: oil blue, fire red, black, safety yellow, rusty brown, green.
   drum: { parts: [{ geo: drumGeo, mat: 'solid', tint: true }], tints: [0x1d4f9a, 0xb0201c, 0x1c1d22, 0xe0a81c, 0x7a3a1a, 0x2a6a3a], spin: true },
   cableSpool: { parts: [{ geo: cableSpoolGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xe0d0b8, 0xc8b8a0], spin: true },
+  // Beach furniture: umbrellas in resort colours, loungers with towels, plain net panels, weathered pickets.
+  umbrella: { parts: [{ geo: umbrellaPoleGeo, mat: 'solid' }, { geo: umbrellaCanopyGeo, mat: 'canopy', tint: true }], tints: [0xe8402e, 0x1d8ad8, 0xf2c81c, 0x1fb89a, 0xe8e8ea, 0xd83a8a, 0xf08a1a], spin: true },
+  lounger: { parts: [{ geo: loungerGeo, mat: 'matte', tint: true }], tints: [0xffffff, 0xf2d27a, 0x7ad0e8, 0xf29aa8, 0xa8e0a0], spin: false },
+  volleyNet: { parts: [{ geo: volleyNetGeo, mat: 'matte' }], tints: [0xffffff], spin: false },
+  picketFence: { parts: [{ geo: picketFenceGeo, mat: 'matte' }], tints: [0xffffff], spin: false },
   // Market awnings in festival colours, food carts in enamel paint; stalls and carts square up with the curb.
   marketStall: {
     parts: [{ geo: stallFrameGeo, mat: 'solid' }, { geo: stallGoodsGeo, mat: 'matte' }, { geo: stallAwningGeo, mat: 'canopy', tint: true }, { geo: stallLanternGeo, mat: 'lamp' }],
@@ -615,6 +721,33 @@ export function streetlightGeo(q: Quality, design: LampDesign = 'cobra'): { soli
     box(l, 0, H - 0.34, A, 0.36, 0.04, 0.75, LENS_GLOW, false);
   }
   return { solid: s.build(), lens: l.build() };
+}
+
+/** A wooden power pole: the tapered shaft, its crossarm with two braces and three insulators (medium: about 60 triangles). */
+export function utilityPoleGeo(q: Quality): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const U = UTILITY_POLE;
+  const wood = col(0x5b4532);
+  const timber = col(0x4a3a2a);
+  cyl(s, 0, 0, 0, U.h, 0.16, 0.12, 7, wood, q);
+  const [z0, z1] = U.armZ;
+  box(s, 0, U.armY, (z0 + z1) / 2, 0.11, 0.11, z1 - z0, timber, false);
+  // Braces from the shaft up to the arm on both sides (thin slabs).
+  for (const z of [z0 * 0.7, z1 * 0.55]) plate(s, 0, U.armY - 0.35, z / 2, 0.02, 0.6, Math.abs(z), timber);
+  const glass = col(0x9cb8a8, 1.2);
+  for (const z of U.wireZ) cyl(s, 0, z, U.armY + 0.05, U.armY + U.wireLift, 0.05, 0.04, 6, glass, q);
+  return s.build();
+}
+
+/** The transformer drum on every fourth power pole, with its bracket (local, like the pole). */
+export function utilityTransformerGeo(q: Quality): THREE.BufferGeometry {
+  const s = new GeoBuilder(true);
+  const U = UTILITY_POLE;
+  const steel = col(0x7c838c);
+  cyl(s, 0, U.drumZ, U.drumY - U.drumH / 2, U.drumY + U.drumH / 2, U.drumR, U.drumR, 8, steel, q);
+  cyl(s, 0, U.drumZ, U.drumY + U.drumH / 2, U.drumY + U.drumH / 2 + 0.08, U.drumR * 0.8, U.drumR * 0.55, 8, steel, q);
+  box(s, 0, U.drumY, U.drumZ / 2, 0.08, 0.5, Math.abs(U.drumZ), col(0x2a2c30), false);
+  return s.build();
 }
 
 export function stumpGeo(q: Quality): THREE.BufferGeometry {

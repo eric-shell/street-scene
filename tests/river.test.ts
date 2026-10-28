@@ -16,6 +16,7 @@ import type { RaceState } from '../src/sim/race';
 import { placeCar } from '../src/sim/car';
 import { autopilotInput, createAi } from '../src/sim/ai';
 import { TICK_HZ } from '../src/sim/constants';
+import { ROAD } from '../src/sim/tuning';
 import { carSnapshot, input, raceConfig, replayLog, runAutopilot } from './helpers';
 
 const CFG = CITY.districts.river;
@@ -330,8 +331,11 @@ describe('river channel racing', () => {
         // On the axis over the centerline: the deck at street level without a body height or with one
         // up on the deck, the floor with one down in the channel; a body half way down goes to the floor.
         expect(Math.abs(deckTop - base.heightAt(br.cx, br.cz))).toBeLessThan(0.05);
-        expect(w.heightAt(br.cx, br.cz, deckTop)).toBe(deckTop);
-        expect(w.heightAt(br.cx, br.cz, deckTop + 3)).toBe(deckTop);
+        // (An expansion joint can stand on the centreline: the deck level is then up to the lip higher.)
+        for (const y of [deckTop, deckTop + 3]) {
+          expect(w.heightAt(br.cx, br.cz, y)).toBeGreaterThanOrEqual(deckTop);
+          expect(w.heightAt(br.cx, br.cz, y)).toBeLessThanOrEqual(deckTop + ROAD.jointHeight);
+        }
         const floor = w.heightAt(br.cx, br.cz, -Infinity);
         expect(deckTop - floor).toBeGreaterThan(p.depth - 0.05);
         expect(w.heightAt(br.cx, br.cz, floor)).toBe(floor);

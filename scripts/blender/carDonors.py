@@ -20,12 +20,15 @@ material, None (drop those faces) or 'Lamp' (HeadLight ahead of the axles' midpo
 behind, Light between the axles: mirror repeaters); `drop` removes whole meshes whose name or
 any parent's name matches (the imports name parts on the empties above the meshes); `recolor`
 fixes faces after the join (a glass roof to Paint, lamp covers cut from the window glass);
-`cull` deletes stray faces after the join. Every material must be classified: an
+`cull` deletes stray faces after the join; `bridges` (boxes) lofts the grille bars across the gap a badge
+left (`bridge_bars`), and every removed badge's recess is pressed flush into its panel (`press_recesses`). Every material must be classified: an
 unknown one raises, so nothing ships by accident. Blender space: meters, Z up, car facing -Y
 (all four imports already do); the import is scaled to the car's published length, and the
 measured wheelbase against the published one is the scale check.
 """
 import re
+
+import numpy as np
 
 exec(open(os.path.join(REPO, 'scripts/blender/meshopt.py')).read())   # meshopt_reduce
 
@@ -71,9 +74,16 @@ DONORS = {
         # the nose, the tail lenses part of the rear glass at the corners below the hatch window.
         'recolor': [(lambda c, n, m: m == 'Glass' and c.y < -1.5, 'HeadLight'),
                     (lambda c, n, m: m == 'Glass' and c.y > 1.55 and c.z < 0.95 and abs(c.x) > 0.4, 'TailLight')],
-        # The paint disc behind the grille badge, and the roof antenna's stub.
-        'cull': [lambda c, n, m: m == 'Paint' and abs(c.x) < 0.075 and c.y < -1.98 and 0.57 < c.z < 0.7,
+        # The paint disc behind the grille badge, and the roof antenna's stub. The disc's box stops
+        # short of the bumper's top lip (z 0.57 to 0.585) and the hood's leading edge (from 0.685):
+        # at 0.57 to 0.70 it cut both, and the shipped file had them filled back in by hand.
+        'cull': [lambda c, n, m: m == 'Paint' and abs(c.x) < 0.075 and c.y < -1.98 and 0.59 < c.z < 0.68,
                  lambda c, n, m: m == 'Black' and abs(c.x) < 0.04 and 1.27 < c.y < 1.41 and c.z > 1.38],
+        # The cull above also cuts the two grille bars where they pass the badge (|x| < 0.075), so
+        # they end at x = 0.06 and a gap shows between them. This box (in front of the black panel
+        # behind the grille, at the bars' height) joins the two ends of each bar, as in the shipped
+        # file.
+        'bridges': [((-0.058, -2.07, 0.60), (0.058, -2.03, 0.67))],
     },
     'protoCoupe': {
         'name': '1999 Mazda RX-7 (FD3S)',
@@ -231,6 +241,26 @@ def patch_out(o, lo, hi, mats=None, flush=True, ring=0.12):
     return len(hit)
 
 
+def press_recesses(o, boxes, grow=0.02):
+    """Press the panel flush where a removed badge sat. `boxes` are the (min, max) bounds of the
+    deleted islands. A badge on a hood's leading edge or a bumper's top lip leaves a notch in the
+    Paint around it, so every box with Paint faces within `grow` (2 cm) gets patch_out(flush=True)
+    on its grown box. A badge in a grille has no Paint under it and is left to `bridges`. Returns
+    how many were pressed."""
+    names = [m.name.split('.')[0] for m in o.data.materials]
+    paint = [p.center for p in o.data.polygons if names[p.material_index] == 'Paint']
+    pressed = 0
+    for a, b in boxes:
+        lo, hi = a - Vector((grow,) * 3), b + Vector((grow,) * 3)
+        if not any(all(lo[i] <= c[i] <= hi[i] for i in range(3)) for c in paint):
+            continue
+        try:
+            pressed += patch_out(o, lo, hi, ('Paint',), flush=True) > 0
+        except (ValueError, np.linalg.LinAlgError) as err:
+            print(f'badge recess at {fmt(lo)} not pressed ({err})')
+    return pressed
+
+
 def strip_wipers(o, gap=0.08):
     """Delete the wipers: long (over 0.25 m), all-Black islands centered across the car with at
     least half their vertices within `gap` of the glass. Bounds alone cannot tell a blade lying
@@ -290,6 +320,162 @@ def strip_antennas(o):
         return (not set(mats) - {'Black', 'Chrome'} and k < 600 and b.z > roof - 0.1
                 and min((b - a).x, (b - a).y) < 0.1 and (b - a).length > 0.15)
     return delete_islands(o, antenna)
+
+
+def _loop_params(chain, closed):
+    """Arclength fraction (0..1) of each vertex along a chain; a closed ring wraps, so its last
+    vertex is short of 1."""
+    n = len(chain)
+    seg = [(chain[(i + 1) % n].co - chain[i].co).length for i in range(n if closed else n - 1)]
+    total = sum(seg) or 1.0
+    out, acc = [0.0], 0.0
+    for d in seg[:n - 1]:
+        acc += d
+        out.append(acc / total)
+    return out
+
+
+def _vertex_at(bm, chain, s, closed, snap=0.012):
+    """The chain's vertex at arclength fraction s: the existing one within `snap`, else a new vertex
+    split into the chain's edge there (chain is updated in place)."""
+    par = _loop_params(chain, closed)
+    for v, p in zip(chain, par):
+        if abs(p - s) < snap:
+            return v
+    n = len(chain)
+    for i in range(n if closed else n - 1):
+        j = (i + 1) % n
+        sa, sb = par[i], (par[j] if j else 1.0)
+        if sa <= s <= sb:
+            e = bm.edges.get((chain[i], chain[j]))
+            _, nv = bmesh.utils.edge_split(e, chain[i], (s - sa) / max(sb - sa, 1e-9))
+            chain.insert(i + 1, nv)
+            return nv
+    return chain[0]
+
+
+def _end_chains(bm, x0, ylim, zlim, tol):
+    """Ordered vertex chains (path or closed ring) of the open boundary edges lying on the plane
+    x = x0: the cut ends of bars. Each starts at its highest vertex."""
+    edges = [e for e in bm.edges if len(e.link_faces) == 1
+             and all(abs(v.co.x - x0) < tol and zlim[0] <= v.co.z <= zlim[1] and ylim[0] <= v.co.y <= ylim[1] for v in e.verts)]
+    adj = {}
+    for e in edges:
+        for v in e.verts:
+            adj.setdefault(v, []).append(e)
+    seen, out = set(), []
+    for e in edges:
+        if e in seen:
+            continue
+        comp, stack = set(), [e]
+        seen.add(e)
+        while stack:
+            g = stack.pop()
+            comp.add(g)
+            for v in g.verts:
+                for h in adj[v]:
+                    if h not in seen:
+                        seen.add(h)
+                        stack.append(h)
+        verts = {v for g in comp for v in g.verts}
+        ends = [v for v in verts if sum(h in comp for h in adj[v]) == 1]
+        closed = not ends
+        start = max(verts, key=lambda v: (round(v.co.z, 4), -v.co.y)) if closed else max(ends, key=lambda v: (round(v.co.z, 4), -v.co.y))
+        chain, prev, cur = [start], None, start
+        while True:
+            nxt = [h.other_vert(cur) for h in adj[cur] if h in comp and h.other_vert(cur) is not prev and h.other_vert(cur) not in chain]
+            if not nxt:
+                break
+            prev, cur = cur, nxt[0]
+            chain.append(cur)
+        if len(chain) >= 2:
+            out.append((chain, closed))
+    return out
+
+
+def bridge_bars(o, lo, hi, bow=0.002, steps=2, tol=0.015):
+    """Continue the bars of a grille across a gap a badge left. The faces centered in the box lo..hi
+    are deleted (a badge mount between the bar ends); then every bar end cut at the box's left face
+    (x = lo.x) is matched with the end on the right face (same materials, nearest z) and lofted to it
+    in `steps` bands of quads in the bar's own material, so the grille runs across in one piece with
+    no step and no open end. Ends are found as open boundary edges within `tol` of each face plane
+    and within the box's z (grown 1.5 cm) and y (grown 10 cm: a bar is deeper than the box, which
+    should stay in front of the panel behind the grille). Ends with different vertex counts are
+    split to match, so the seam stays watertight. `bow` pushes the middle toward the nose (-y) as a
+    parabola, the grille's own curve across the car. Returns (faces deleted, faces added, bridges)."""
+    lo, hi = Vector(lo), Vector(hi)
+    me = o.data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    sn = bm.loops.layers.float_vector.get('src_normal')
+    doomed = [f for f in bm.faces if all(lo[i] <= f.calc_center_median()[i] <= hi[i] for i in range(3))]
+    bmesh.ops.delete(bm, geom=doomed, context='FACES')
+    kept = len(bm.faces)
+    ylim, zlim = (lo.y - 0.1, hi.y + 0.1), (lo.z - 0.015, hi.z + 0.015)
+    left = _end_chains(bm, lo.x, ylim, zlim, tol)
+    right = _end_chains(bm, hi.x, ylim, zlim, tol)
+    mats = lambda ch: {f.material_index for a, b in zip(ch, ch[1:]) for e in [bm.edges.get((a, b))] if e for f in e.link_faces}
+    mean_z = lambda ch: sum(v.co.z for v in ch) / len(ch)
+    toward = Vector((0, -1, 0))
+    bridges = 0
+    for ca, closed in left:
+        cands = [(abs(mean_z(cb) - mean_z(ca)), i) for i, (cb, cl) in enumerate(right) if cl == closed and mats(cb) == mats(ca)]
+        if not cands:
+            continue
+        cb, _ = right.pop(min(cands)[1])
+        # Ends from the same side of the cut are walked the same way (from the highest vertex);
+        # mismatched counts are split to the union of both arclength fractions.
+        if len(ca) != len(cb):
+            fracs = sorted(set(_loop_params(ca, closed) + _loop_params(cb, closed)))
+            keep = []
+            for s in fracs:
+                if not keep or s - keep[-1] > 0.012:
+                    keep.append(s)
+            a, b = list(ca), list(cb)
+            ca, cb = [_vertex_at(bm, a, s, closed) for s in keep], [_vertex_at(bm, b, s, closed) for s in keep]
+        n = len(ca)
+        cols = [ca]
+        for k in range(1, steps):
+            t = k / steps
+            cols.append([bm.verts.new(a.co.lerp(b.co, t) + toward * bow * 4 * t * (1 - t)) for a, b in zip(ca, cb)])
+        cols.append(cb)
+        for i in range(n if closed else n - 1):
+            j = (i + 1) % n
+            e = bm.edges.get((ca[i], ca[j]))
+            ref = e.link_faces[0]
+            for k in range(steps):
+                f = bm.faces.new((cols[k][i], cols[k][j], cols[k + 1][j], cols[k + 1][i]))
+                f.material_index = ref.material_index
+                f.smooth = True
+                f.normal_update()
+                if f.normal.dot(ref.normal) < 0:
+                    f.normal_flip()
+                if sn is not None:
+                    for loop in f.loops:
+                        loop[sn] = f.normal
+        bridges += 1
+    for v in [v for v in bm.verts if not v.link_faces]:
+        bm.verts.remove(v)
+    bm.to_mesh(me)
+    added = len(bm.faces) - kept
+    bm.free()
+    me.update()
+    _smooth_new_loops(me, len(me.polygons) - added)
+    return len(doomed), added, bridges
+
+
+def _smooth_new_loops(me, first):
+    """Give the corners of polygons first.. their own face normal, for a mesh that carries custom
+    normals: a bmesh round trip leaves new corners with none, which shade black in the viewport.
+    (Blender averages custom normals within a smooth fan, so the old faces they touch shift a
+    little; the export recomputes shading anyway.)"""
+    if not me.has_custom_normals or first >= len(me.polygons):
+        return
+    cn = [Vector(c.vector) for c in me.corner_normals]
+    for p in me.polygons[first:]:
+        for li in p.loop_indices:
+            cn[li] = Vector(p.normal)
+    me.normals_split_custom_set(cn)
 
 
 def donor_axles(objs, tire_pat, obj_pat=None):
@@ -419,12 +605,27 @@ def donor(cid, root):
     # and tail, above exhaust tip height; a generic car carries none. A finely modelled logo runs
     # past a thousand faces (the Golf's are 900 and 1,168).
     ends = (ry - fy) / 2 + 0.25
-    badges = delete_islands(full, lambda k, a, b, mats: set(mats) <= {'Black', 'Chrome'} and max((b - a).x, (b - a).z) < 0.3
-                            and abs((a.y + b.y) / 2) > ends and (a.z + b.z) / 2 > 0.45 and k < 1500)
+    # The bounds of every badge island that goes, to press the panel it sat on flush below.
+    gone = []
+
+    def badge(pred):
+        def wrapped(k, a, b, mats):
+            hit = pred(k, a, b, mats)
+            if hit:
+                gone.append((a.copy(), b.copy()))
+            return hit
+        return wrapped
+    badges = delete_islands(full, badge(lambda k, a, b, mats: set(mats) <= {'Black', 'Chrome'} and max((b - a).x, (b - a).z) < 0.3
+                                        and abs((a.y + b.y) / 2) > ends and (a.z + b.z) / 2 > 0.45 and k < 1500))
     # Anywhere on the body: emblems, scripts and stickers are thin (under 12 mm) and small (under
     # 0.35 m) loose islands of any paint-free material, lying on a panel. Lamps and glass are not.
-    badges += delete_islands(full, lambda k, a, b, mats: k < 300 and not set(mats) & {'Glass', 'HeadLight', 'TailLight', 'Light', 'Paint'}
-                             and sorted(b - a)[0] < 0.012 and sorted(b - a)[2] < 0.35 and (a.z + b.z) / 2 > 0.2)
+    badges += delete_islands(full, badge(lambda k, a, b, mats: k < 300 and not set(mats) & {'Glass', 'HeadLight', 'TailLight', 'Light', 'Paint'}
+                                         and sorted(b - a)[0] < 0.012 and sorted(b - a)[2] < 0.35 and (a.z + b.z) / 2 > 0.2))
+    pressed = press_recesses(full, gone)
+    print(f'{cid}: pressed {pressed} badge recesses flush ({len(gone)} badge islands removed)')
+    for lo, hi in R.get('bridges', ()):
+        d, a, n = bridge_bars(full, lo, hi)
+        print(f'{cid}: bridged {n} grille bars across {fmt(Vector(lo))}..{fmt(Vector(hi))} ({d} faces removed, {a} added)')
     remap_materials(full)
     ln = (max(v.co.y for v in me.vertices) - min(v.co.y for v in me.vertices)) * 1000
     full['wheelbase'], full['tireRadius'] = ry - fy, r

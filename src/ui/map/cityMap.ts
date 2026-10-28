@@ -65,12 +65,16 @@ export const KINDS: Partial<Record<AreaKind, KindStyle>> = {
   carPark: { ink: rgba('red', 0.6), fill: rgba('soft', 0.24), width: 1.5, tag: true },
   hills: { ink: PALETTE.soft, fill: rgba('soft', 0.07), width: 1.5, dash: [6, 5], tag: true },
   subway: { ink: PALETTE.cyan, width: 4, dash: [9, 6], tag: true },
+  // The cable car: a thin solid line down its street in the market's red (no course wears it).
+  cableCar: { ink: PALETTE.red, width: 2, tag: true },
   // The elevated highway: a wide pale band along its deck line and up its ramps (solid where the El is dashed).
   highway: { ink: rgba('text', 0.55), width: 6, tag: true },
   // The terrace: its high ground filled, the foot of its slopes dashed; the crest is the cliff symbol (cliffPath).
   bluff: { ink: PALETTE.orange, fill: rgba('orange', 0.1), width: 1.2, dash: [3, 4], tag: true },
-  alley: { ink: PALETTE.purple, tag: true },
-  backAlley: { ink: rgba('soft', 0.55), tag: false },
+  // The alleys wear the two hues no course and no road does: blue for the raceway alleys, a dim pink for the back alleys
+  // (purple is the drag strip, cyan the waypoint race, grey the streets; the race shortcuts keep their stronger red).
+  alley: { ink: PALETTE.blue, tag: true },
+  backAlley: { ink: rgba('pink', 0.5), tag: false },
   roundabout: { ink: PALETTE.soft, tag: false },
   infill: { ink: PALETTE.soft, fill: rgba('soft', 0.2), tag: false },
   // The big open-air lots are places of their own (named, tagged), in the infill lots' grey.
@@ -356,6 +360,8 @@ export class CityLayers {
   /** The one-way shortcuts (jump exits, car parks), for the chevrons traced per draw. */
   readonly oneWay: OneWay[] = [];
   readonly el = new Path2D();
+  /** The cable car's line (districts/cableCar.ts). */
+  readonly cable = new Path2D();
   /** The elevated highway's deck line and its ramps' center lines. */
   readonly highway = new Path2D();
   /** Tunnel bores by street width, then the tunnels' and overpasses' dashed outlines. */
@@ -465,6 +471,7 @@ export class CityLayers {
         this.areaPaths.set(a.id, t.ground);
         this.bluffs.push(a);
       } else if (a.kind === 'subway' && a.path.length > 1) line(this.el, a.path);
+      else if (a.kind === 'cableCar' && a.path.length > 1) line(this.cable, a.path);
       else if (a.kind === 'highway') line(this.highway, highwayLine(a));
       else if (a.kind === 'tunnel' && a.path.length > 1) {
         const e = g.edges[a.params.edge];
@@ -573,7 +580,7 @@ export class CityLayers {
     const hideShortcuts = o.shortcuts === undefined ? hideBack : !o.shortcuts;
     for (const grp of this.streets) {
       c.strokeStyle =
-        grp.ink === 'alley' ? (hideAlleys ? ink.road : PALETTE.purple) : grp.ink === 'backAlley' ? (hideBack ? ink.road : KINDS.backAlley!.ink) : grp.ink === 'shortcut' && hideShortcuts ? ink.road : ink[grp.ink];
+        grp.ink === 'alley' ? (hideAlleys ? ink.road : KINDS.alley!.ink) : grp.ink === 'backAlley' ? (hideBack ? ink.road : KINDS.backAlley!.ink) : grp.ink === 'shortcut' && hideShortcuts ? ink.road : ink[grp.ink];
       c.lineWidth = Math.max(grp.width, minStreet);
       c.stroke(grp.path);
     }
@@ -621,6 +628,12 @@ export class CityLayers {
         c.setLineDash(el.dash!.map((d) => d * px));
         c.stroke(this.el);
         c.setLineDash([]);
+      }
+      if (!o.hidden?.has('cableCar')) {
+        const st = KINDS.cableCar!;
+        c.strokeStyle = st.ink;
+        c.lineWidth = st.width! * px;
+        c.stroke(this.cable);
       }
       if (!o.hidden?.has('highway')) {
         const st = KINDS.highway!;

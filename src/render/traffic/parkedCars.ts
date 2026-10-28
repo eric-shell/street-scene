@@ -14,6 +14,14 @@
  * when the models are missing) nothing is drawn. Medium and High only: Low
  * keeps its draw calls and triangles for the road.
  *
+ * Past the impostor switch (carImpostors.ts, 45 to 100 m) a yard car is a card
+ * from the traffic's sprite sheet. The cards are one static InstancedMesh of every
+ * yard car, clipped by distance in the vertex shader (nothing per frame on the CPU
+ * but a uniform), and reach out to the sheet's parked distance (400 m at Medium)
+ * where the bodies stopped at 160 to 260 m. The bodies are shown per car by exact
+ * distance (a compare per car per frame, writes only when one changes), and fade out
+ * across the band as the cards fade in.
+ *
  * Culling is the city chunk grid's (cityChunks.ts): each frame `view` snaps
  * the camera to the 100 m lattice and, only when that square (or the cutoff)
  * changes, marks the instances whose 200 m cell lies within the reach visible;
@@ -29,9 +37,10 @@ import { planYards, type YardCar } from '../districts/yards';
 import { fadeSubPixel } from '../materialFx';
 import { applyHeightFog } from '../heightFog';
 import { maskVehicleMesh } from '../vehicleMask';
-import { PAINTS, PARKED_LOOK, TRAFFIC_MODELS, bodyMaterial, loadTrafficAssets } from './traffic';
+import { PAINTS, PAINT_REF, PARKED_LOOK, TRAFFIC_MODELS, bodyMaterial, loadTrafficAssets } from './traffic';
+import { CAR_IMPOSTORS, CAR_SWITCH_MARGIN, CarImpostors, fadeOutBeyond, getCarSheet } from './carImpostors';
 
-/** Per tier: how far (m) parked cars are drawn. Zero: none (Low). */
+/** Per tier: how far (m) parked cars are drawn as bodies (cards reach further, CAR_IMPOSTORS parkedDistance). Zero: none (Low). */
 export const PARKED_QUALITY: Record<Quality, { drawDistance: number }> = {
   low: { drawDistance: 0 },
   medium: { drawDistance: 160 },
@@ -54,6 +63,8 @@ export interface ParkedCars {
 
 export interface ParkedOpts {
   quality: Quality;
+  /** The page's renderer, to bake the far cards with; none keeps bodies to the quality's distance. */
+  renderer?: THREE.WebGLRenderer;
   /** The scene's culling grid; the city's own when missing. */
   grid?: ChunkGrid;
 }
@@ -75,7 +86,7 @@ export function buildParkedCars(world: World, opts: ParkedOpts): ParkedCars {
       const grid = opts.grid ?? chunkGrid(world.graph.bounds);
       void loadTrafficAssets().then((a) => {
         if (!a || disposed) return;
-        drawn = build(world, cars, a, grid, reach, group, disposables);
+        drawn = build(world, cars, a, grid, reach, group, disposables, opts);
         applyHeightFog(group);
       });
     }
@@ -92,13 +103,16 @@ export function buildParkedCars(world: World, opts: ParkedOpts): ParkedCars {
 }
 
 /** Fill the batch with every car and return the per frame view function. */
-function build(world: World, cars: readonly YardCar[], a: NonNullable<Awaited<ReturnType<typeof loadTrafficAssets>>>, grid: ChunkGrid, reach: number, group: THREE.Group, disposables: { dispose(): void }[]): (camera: THREE.Camera, cutoff: number) => void {
+function build(world: World, cars: readonly YardCar[], a: NonNullable<Awaited<ReturnType<typeof loadTrafficAssets>>>, grid: ChunkGrid, reach: number, group: THREE.Group, disposables: { dispose(): void }[], opts: ParkedOpts): (camera: THREE.Camera, cutoff: number) => void {
   // Only the kinds in use go into the batch.
   const used = [...new Set(cars.map((c) => c.kind))].sort((p, q) => p - q);
   const geos = used.map((k) => a.body[k]);
   const verts = geos.reduce((n, g) => n + g.getAttribute('position').count, 0);
   const idx = geos.reduce((n, g) => n + g.getIndex()!.count, 0);
-  const mat = bodyMaterial(a.atlas);
+  // The far cards, when a sheet bakes: their band also fades the bodies and lit lamps out.
+  const sheet = opts.renderer ? getCarSheet(opts.renderer, opts.quality, TRAFFIC.kinds.map((_, k) => ({ geometry: a.body[k], lamps: TRAFFIC_MODELS.kinds[TRAFFIC.kinds[k].name].lamps })), a.atlas) : null;
+  const cards = sheet ? new CarImpostors(sheet, PAINT_REF, cars.length) : null;
+  const mat = bodyMaterial(a.atlas, cards?.band);
   const bodies = new THREE.BatchedMesh(cars.length, verts, idx, mat);
   const geoId = new Map(used.map((k, i) => [k, bodies.addGeometry(geos[i])]));
   // Static, so each car is culled on its own and nothing is sorted.
@@ -108,6 +122,15 @@ function build(world: World, cars: readonly YardCar[], a: NonNullable<Awaited<Re
   maskVehicleMesh(bodies);
   group.add(bodies);
   disposables.push(mat, bodies);
+  if (cards) {
+    maskVehicleMesh(cards.mesh);
+    group.add(cards.mesh);
+    disposables.push(cards);
+  }
+  /** Each car's ground point, for the exact distance test of the bodies. */
+  const carX = new Float32Array(cars.length);
+  const carY = new Float32Array(cars.length);
+  const carZ = new Float32Array(cars.length);
 
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
@@ -139,10 +162,16 @@ function build(world: World, cars: readonly YardCar[], a: NonNullable<Awaited<Re
     m.compose(p.set(car.x, (hf + hb + hL + hR) / 4 + PARKED.lift, car.z), q, one);
     const id = bodies.addInstance(geoId.get(car.kind)!);
     bodies.setMatrixAt(id, m);
+    carX[id] = car.x;
+    carY[id] = m.elements[13];
+    carZ[id] = car.z;
     // The muted street palette, dimmer; the unpainted models (the SUV) keep their atlas colours.
     if (model.tinted) c.copy(PAINTS[Math.min(PAINTS.length - 1, Math.floor(car.tint * PAINTS.length))]).multiplyScalar(PARKED.dim[0] + (PARKED.dim[1] - PARKED.dim[0]) * jitter(car.tint));
     else c.setRGB(1, 1, 1);
     bodies.setColorAt(id, c);
+    // The card of the same car: the same ground point, yaw and paint, and its one lit lamp.
+    const lampOf = car.light >= 0 ? model.lamps[car.light] : null;
+    cards?.add(car.x, m.elements[13], car.z, car.yaw, car.kind, false, c, lampOf?.role === 'head' ? PARKED.head : null, lampOf?.role === 'tail' ? PARKED.tail : null, null);
     const k = grid.cellOf(car.x, car.z);
     cell.push(k);
     if (car.light >= 0) {
@@ -157,6 +186,7 @@ function build(world: World, cars: readonly YardCar[], a: NonNullable<Awaited<Re
   // One instanced mesh for the lit lamps, compacted to the visible cells' on each change.
   const lampMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
   fadeSubPixel(lampMat, 0.12, 0.3);
+  if (cards) fadeOutBeyond(lampMat, cards.band, 'instance');
   const lampGeo = new THREE.BoxGeometry(1, 1, 1);
   const lamps = new THREE.InstancedMesh(lampGeo, lampMat, Math.max(1, lampCell.length));
   lamps.setColorAt(0, c.setRGB(1, 1, 1));
@@ -166,6 +196,15 @@ function build(world: World, cars: readonly YardCar[], a: NonNullable<Awaited<Re
   group.add(lamps);
   disposables.push(lampMat, lampGeo, lamps);
 
+  cards?.end();
+  // With cards the bodies are the cars within the switch (and the band's margin); the cards run to the sheet's reach.
+  const spec = sheet ? CAR_IMPOSTORS[opts.quality] : null;
+  const bodyEnd = spec ? spec.distance + spec.fade / 2 + CAR_SWITCH_MARGIN : reach;
+  const bodyEnd2 = bodyEnd * bodyEnd;
+  const cardStart = spec ? spec.distance - spec.fade / 2 - CAR_SWITCH_MARGIN : 0;
+  const cardReach = spec ? Math.max(reach, spec.parkedDistance) : 0;
+  /** Per car: 1 body shown, 0 hidden, 2 not yet written. */
+  const shown = new Uint8Array(cars.length).fill(2);
   const visible = new Uint8Array(grid.count);
   let lastX = NaN;
   let lastZ = NaN;
@@ -174,23 +213,42 @@ function build(world: World, cars: readonly YardCar[], a: NonNullable<Awaited<Re
     const L = VIEW_LATTICE.snap;
     const sx = grid.minX + (Math.floor((camera.position.x - grid.minX) / L) + 0.5) * L;
     const sz = grid.minZ + (Math.floor((camera.position.z - grid.minZ) / L) + 0.5) * L;
-    if (sx === lastX && sz === lastZ && cutoff === lastCut) return;
-    lastX = sx;
-    lastZ = sz;
-    lastCut = cutoff;
-    grid.cellsWithin(sx, sz, Math.min(reach, cutoff), visible, L / 2);
-    for (let i = 0; i < cell.length; i++) bodies.setVisibleAt(i, visible[cell[i]] === 1);
-    const arr = lamps.instanceMatrix.array as Float32Array;
-    const col = lamps.instanceColor!.array as Float32Array;
-    let n = 0;
-    for (let i = 0; i < lampCell.length; i++) {
-      if (!visible[lampCell[i]]) continue;
-      for (let j = 0; j < 16; j++) arr[n * 16 + j] = lampM[i * 16 + j];
-      for (let j = 0; j < 3; j++) col[n * 3 + j] = lampC[i * 3 + j];
-      n++;
+    if (sx !== lastX || sz !== lastZ || cutoff !== lastCut) {
+      lastX = sx;
+      lastZ = sz;
+      lastCut = cutoff;
+      grid.cellsWithin(sx, sz, Math.min(bodyEnd, cutoff), visible, L / 2);
+      if (!spec)
+        for (let i = 0; i < cell.length; i++) bodies.setVisibleAt(i, visible[cell[i]] === 1);
+      const arr = lamps.instanceMatrix.array as Float32Array;
+      const col = lamps.instanceColor!.array as Float32Array;
+      let n = 0;
+      for (let i = 0; i < lampCell.length; i++) {
+        if (!visible[lampCell[i]]) continue;
+        for (let j = 0; j < 16; j++) arr[n * 16 + j] = lampM[i * 16 + j];
+        for (let j = 0; j < 3; j++) col[n * 3 + j] = lampC[i * 3 + j];
+        n++;
+      }
+      lamps.count = n;
+      lamps.instanceMatrix.needsUpdate = true;
+      lamps.instanceColor!.needsUpdate = true;
     }
-    lamps.count = n;
-    lamps.instanceMatrix.needsUpdate = true;
-    lamps.instanceColor!.needsUpdate = true;
+    if (!spec || !cards) return;
+    // Bodies by exact 3D distance, as the shaders' fade measures it; the cards are clipped by their own range.
+    const cx = camera.position.x;
+    const cy = camera.position.y;
+    const cz = camera.position.z;
+    for (let i = 0; i < cell.length; i++) {
+      let want = 0;
+      if (visible[cell[i]]) {
+        const d2 = (carX[i] - cx) ** 2 + (carY[i] - cy) ** 2 + (carZ[i] - cz) ** 2;
+        want = d2 <= bodyEnd2 ? 1 : 0;
+      }
+      if (want !== shown[i]) {
+        bodies.setVisibleAt(i, want === 1);
+        shown[i] = want;
+      }
+    }
+    cards.range.value.set(cardStart, Math.min(cardReach, cutoff));
   };
 }

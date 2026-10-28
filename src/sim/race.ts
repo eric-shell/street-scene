@@ -10,6 +10,7 @@
 import { createCity, createWorld, World, City, RouteProgress } from '../city/world';
 import { GridSlot, Route, RouteKind, RouteWaypoint, routeSample } from '../city/route';
 import { carParkProgress, onCarPark } from '../city/districts/carPark';
+import { onQuayCut, quayCutProgress } from '../city/districts/harborCut';
 import { highwayResetPose } from '../city/districts/highway/settle';
 import { CarState, crashNitrous, createCar, gridRev, groundPitch, groundRoll, refillNitrous, steerLimit, stepCar, wheelRpm, type StepEnv } from './car';
 import { relocateCar, teleportCar } from './reset';
@@ -28,6 +29,7 @@ import { TrafficState, createTraffic, stepTraffic, trafficTuning } from './traff
 import { DriftZoneState, createDriftZoneState, stepDriftZones } from './driftZones';
 import { waitingAtGate } from './gates';
 import { stepLevelCrossings } from './levelCrossing';
+import { CableCarState, cableTuning, createCableCar, stepCableCar } from './cableCar';
 
 export type RaceMode = 'circuit' | 'sprint' | 'drift' | 'drag' | 'waypoint';
 
@@ -172,6 +174,8 @@ export interface RaceState {
   driftZones: DriftZoneState;
   /** Pedestrians knocked down this race (src/sim/people.ts); empty when the config has people off. Fresh per race. */
   people: PeopleState;
+  /** The San Francisco cable car (src/sim/cableCar.ts), null on a world without its line. */
+  cableCar: CableCarState | null;
 }
 
 /** Wall hit events: the least impact speed that makes one (m/s); car crashes and the gap between events are CRASH_EVENT's. */
@@ -183,14 +187,15 @@ const WALL_EVENT_SPEED = 3;
  * 'wall': value = impact speed (m/s), kind = wall kind hit.
  * A 'crash' with `traffic` set hit that traffic car (r.traffic.cars index); car is -1 when traffic hit traffic.
  * 'driftBank': value = points banked, other = of those, the drift zone bonus (when there was one).
+ * 'thump': an axle went over a speed hump or an expansion joint: value = how fast the wheel compressed (m/s), other = the axle (0 front, 1 rear), kind = what it was.
  */
 export type RaceEvent = {
   tick: number;
-  type: 'lap' | 'checkpoint' | 'finish' | 'wrongWay' | 'reset' | 'driftBank' | 'prop' | 'person' | 'arm' | 'crash' | 'wall';
+  type: 'lap' | 'checkpoint' | 'finish' | 'wrongWay' | 'reset' | 'driftBank' | 'prop' | 'person' | 'arm' | 'crash' | 'wall' | 'thump';
   car: number;
   value?: number;
   other?: number;
-  kind?: 'wall' | 'barrier' | 'rail';
+  kind?: 'wall' | 'barrier' | 'rail' | 'hump' | 'joint';
   traffic?: number;
 };
 
@@ -350,6 +355,7 @@ export function createRace(cfgIn: RaceConfig, world?: World): RaceState {
     traffic,
     driftZones: createDriftZoneState(w, cars.length),
     people: createPeopleState(w, config.people === true),
+    cableCar: createCableCar(w, cars.length, tick0),
   };
 }
 
@@ -575,6 +581,7 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
     // Grid: engines rev (the two-step and a line lock burnout included, car.ts gridRev), cars hold still.
     for (let i = 0; i < r.cars.length; i++) gridRev(r.cars[i].state, r.cars[i].tuning, inputs[i], DT);
     // The city keeps moving while the grid waits.
+    stepCableCar(r);
     stepTraffic(r);
     r.tick++;
     if (r.tick === r.countdownTicks) r.phase = r.phase === 'countdown' ? 'racing' : r.phase;
@@ -608,6 +615,9 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
     if (inp.reset && rc.resetCooldown <= 0) resetToRoad(r, rc);
     stepEnv.world = r.world;
     stepCar(rc.state, rc.tuning, inp, stepEnv);
+    for (let a = 0; a < 2; a++) {
+      if (rc.state.thump[a] > 0) r.events.push({ tick: r.tick, type: 'thump', car: rc.index, other: a, value: rc.state.thump[a], kind: rc.state.thumpKind[a] === 1 ? 'hump' : 'joint' });
+    }
   }
   const hit: WorldHit = { speed: 0, kind: 'wall' };
   for (const rc of r.cars) {
@@ -646,7 +656,8 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
       }
     }
   }
-  // Ambient traffic drives on, then meets the race cars where they are now.
+  // The cable car on its cable meets the race cars, then ambient traffic drives on (braking for it) and meets them where they are now.
+  stepCableCar(r);
   stepTraffic(r);
   for (const rc of r.cars) {
     rc.state.nearMiss = detectNearMiss(rc.state, rc.tuning, r.world);
@@ -666,10 +677,11 @@ export function stepRace(r: RaceState, rawInput: InputFrame): void {
   r.tick++;
 }
 
-/** The reset car `rc` sits inside a racer still in the race or a traffic car. */
+/** The reset car `rc` sits inside a racer still in the race, a traffic car or the cable car. */
 function insideAnotherCar(r: RaceState, rc: RaceCar): boolean {
   for (const o of r.cars) if (o !== rc && !o.finished && carsOverlap(rc.state, rc.tuning, o.state, o.tuning)) return true;
   for (const c of r.traffic?.cars ?? []) if (c.mode !== 'gone' && carsOverlap(rc.state, rc.tuning, c.body, trafficTuning(c.kind))) return true;
+  if (r.cableCar && carsOverlap(rc.state, rc.tuning, r.cableCar.body, cableTuning())) return true;
   return false;
 }
 
@@ -677,7 +689,8 @@ function updateProgress(r: RaceState, rc: RaceCar): void {
   const route = r.world.route;
   const c = rc.state;
   // Up in one of the route's car parks, progress follows the car park's own line (districts/carPark.ts).
-  const p = carParkProgress(r.world, c.x, c.z) ?? r.world.routeProgress(c.x, c.z, rc.seg);
+  // Across a harbor's quay cut: the lane's own line, mapped onto the stretch it skips (harborCut.ts); not in free roam, which has no race to credit.
+  const p = carParkProgress(r.world, c.x, c.z) ?? (r.config.openWorld ? null : quayCutProgress(route, c.x, c.z)) ?? r.world.routeProgress(c.x, c.z, rc.seg);
   let delta = p.s - rc.rawS;
   if (route.closed) {
     const L = route.length;
@@ -875,6 +888,11 @@ function updateLost(r: RaceState, rc: RaceCar, p: RouteProgress): void {
   const wasWrong = rc.wrongWay;
   rc.wrongWay = rc.wrongWayTime > 1.2;
   if (rc.wrongWay && !wasWrong) r.events.push({ tick: r.tick, type: 'wrongWay', car: rc.index });
+  // Along a quay cut's lane the route's streets are the long way round, a block or more off: the car is racing, not lost.
+  if (onQuayCut(route, c.x, c.z)) {
+    rc.stuckTime = Math.max(0, rc.stuckTime - DT);
+    return;
+  }
   // Lost: far outside the route corridor (beyond any corner cut, plaza, lot or
   // park crossing), or off every drivable surface (inside a block), for a while.
   // Racing lines over sidewalks, plazas and lots never trigger it.

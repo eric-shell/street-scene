@@ -6,6 +6,12 @@
  * camera hooks on the kit rather than keeping state in the renderer module,
  * so the menu backdrop and a race scene never share or steal each other's
  * trains.
+ *
+ * Race-only pieces (anything whose sim wall exists only in a race world: a gate
+ * the route shuts, a shutter across a car park) go to `kit.race`, never to the
+ * shared builders. The menu's street stage is built from the race world and lent
+ * to free roam, whose world has no such walls (game/streetStage.ts lend), so the
+ * race layers are the ones it hides: drawn beside the shared ones, hidden apart.
  */
 import * as THREE from 'three';
 import type { World } from '../../city/world';
@@ -14,6 +20,16 @@ import type { Area, AreaBuild, WallLook } from '../../city/districts/types';
 import type { Vec2 } from '../../sim/math';
 import type { Quality } from '../../ui/settings';
 import { GeoBuilder } from '../geoBuilder';
+
+/** The race-only layers of a kit: same materials as the shared builders, a layer apart so lending the scene to free roam can hide them (DistrictMeshes.showRaceOnly). */
+export interface RaceLayers {
+  /** Like `DistrictKit.solid`: barrier posts, shutters. */
+  solid: GeoBuilder;
+  /** Like `DistrictKit.glow`: barrier rails and lamps. */
+  glow: GeoBuilder;
+  /** Race-only objects with materials of their own (a sign mesh); hidden and shown with the builders. */
+  group: THREE.Group;
+}
 
 export interface DistrictKit {
   world: World;
@@ -39,6 +55,8 @@ export interface DistrictKit {
   trees: GeoBuilder;
   /** Extra objects (instanced meshes, animated parts). */
   group: THREE.Group;
+  /** Whatever stands only in a race (see the header); a free roam taken over from the menu's scene hides it. */
+  race: RaceLayers;
   /** City walls (kind 'wall') by look. */
   walls: Map<WallLook, Wall[]>;
   /** Builds by area id. */
@@ -60,6 +78,8 @@ export interface DistrictKit {
   audible(): boolean;
   /** Has a car snapped off level crossing arm `i` (RaceState.brokenArms: gate * 2 + half)? False outside a race. */
   armBroken(i: number): boolean;
+  /** The tick of the cable car's last bell in the race that syncs this scene (RaceState.cableCar.bell); NaN outside one. */
+  cableBell(): number;
 }
 
 /** What each district renderer module exports. */

@@ -1,6 +1,7 @@
 /**
  * Standalone voices a scene owns rather than the race: the elevated train's
- * rumble, the news helicopter's rotors and the thunder of rain nights. Each
+ * rumble, the news helicopter's rotors, the thunder of rain nights, a fireworks display, a far stadium crowd and the
+ * San Francisco cable car's bell (struck, not fed: it plays its ring out). Each
  * is created only after a user gesture (browsers refuse audio before that),
  * plays on the effects bus and fades out by itself when it stops being fed.
  */
@@ -318,6 +319,422 @@ export class Thunder {
   }
 
   /** Stop whatever is still rolling (the scene went away). */
+  dispose(): void {
+    for (const s of Array.from(this.live)) {
+      try {
+        s.stop();
+      } catch {
+        /* already stopped */
+      }
+    }
+    this.live.clear();
+  }
+}
+
+/**
+ * Cable car bell mix: the strike's partials (ratios of the fundamental, levels, decays in s), the hammer click, the
+ * gripman's ring (strike offsets in s: "clang clang, clang-a-lang") and the output level.
+ */
+const CABLE_BELL = {
+  f0: 1180,
+  partials: [1, 2.02, 2.71, 4.13, 5.38],
+  levels: [1, 0.5, 0.42, 0.2, 0.1],
+  decays: [0.95, 0.6, 0.42, 0.24, 0.13],
+  click: 0.4,
+  seconds: 1.3,
+  ring: [0, 0.17, 0.46, 0.58, 0.7],
+  level: 0.5,
+} as const;
+
+/** One struck brass bell: inharmonic partials with exponential decays and a few ms of hammer noise. */
+export function renderCableBellStrike(sampleRate: number): Float32Array<ArrayBuffer> {
+  const B = CABLE_BELL;
+  const n = Math.round(sampleRate * B.seconds);
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const t = i / sampleRate;
+    let v = 0;
+    for (let k = 0; k < B.partials.length; k++) v += B.levels[k] * Math.exp(-t / B.decays[k]) * Math.sin(2 * Math.PI * B.f0 * B.partials[k] * t);
+    if (t < 0.003) v += B.click * (Math.random() * 2 - 1) * (1 - t / 0.003);
+    // A short fade at the end so a strike never clicks off.
+    out[i] = (v * Math.min(1, (n - i) / (0.02 * sampleRate))) / 2.2;
+  }
+  return out;
+}
+
+/**
+ * The San Francisco cable car's bell (render/traffic/cableCar.ts rings it at every departure and at a race car in
+ * the car's way): one strike rendered offline once, played as the gripman's rhythm of strikes, each a buffer source
+ * through the voice's gain and panner on the ambience bus, at the proximity and pan the caller gives for the ring
+ * (distance faded from the camera). Nothing loops, so a voice that is never rung costs nothing. Created only after
+ * a user gesture (browser policy); the cosmetic noise and the strikes' spread use Math.random.
+ */
+export class CableBell {
+  private ctx: AudioContext;
+  private out: GainNode;
+  private pan: StereoPannerNode;
+  private buf: AudioBuffer;
+
+  /** True while the browser still waits for the first user gesture. */
+  static blocked(): boolean {
+    return TrainRumble.blocked();
+  }
+
+  static create(): CableBell | null {
+    if (typeof window === 'undefined' || CableBell.blocked()) return null;
+    const h = audioHub();
+    if (!h) return null;
+    try {
+      return new CableBell(h);
+    } catch {
+      return null;
+    }
+  }
+
+  private constructor(h: NonNullable<ReturnType<typeof audioHub>>) {
+    const ctx = (this.ctx = h.ctx);
+    this.out = ctx.createGain();
+    this.out.gain.value = CABLE_BELL.level;
+    this.pan = ctx.createStereoPanner();
+    this.out.connect(this.pan).connect(h.ambienceBus);
+    const data = renderCableBellStrike(ctx.sampleRate);
+    this.buf = ctx.createBuffer(1, data.length, ctx.sampleRate);
+    this.buf.copyToChannel(data, 0);
+  }
+
+  /** One ring: proximity 0..1 (1 = beside it), pan -1..1. */
+  ring(proximity: number, pan: number): void {
+    const now = this.ctx.currentTime;
+    this.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan)) * 0.8, now, 0.02);
+    const g = clamp01(proximity);
+    for (const at of CABLE_BELL.ring) {
+      const src = this.ctx.createBufferSource();
+      src.buffer = this.buf;
+      src.playbackRate.value = rnd(0.985, 1.015);
+      const strike = this.ctx.createGain();
+      strike.gain.value = g * rnd(0.8, 1);
+      src.connect(strike).connect(this.out);
+      src.start(now + at + rnd(0, 0.02));
+      src.onended = () => strike.disconnect();
+    }
+  }
+
+  dispose(): void {
+    this.out.disconnect();
+  }
+}
+
+/**
+ * Firework mix (render/sky/fireworks.ts): the boom's level and low pass (Hz, near and far), the launch thump's
+ * level, the crackle's level and band (Hz), the distance (m) a burst is still heard at full weight, and the least
+ * share a far one keeps. Set against the thunder neighbourhood in docs/audioMix.md.
+ */
+const FIREWORK = { boom: 0.5, boomNear: 700, boomFar: 260, thump: 0.2, crackle: 0.1, crackleHz: 4200, near: 900, floor: 0.05 } as const;
+
+/**
+ * A fireworks display's sound, on the ambience bus like thunder: a thump when the shell leaves the barge, and a boom
+ * with a crackle at the burst, each started once the sound has crossed the distance (the caller waits for it).
+ * Louder for a bigger shell, duller and softer with distance, panned toward the water. A crackle shell's sizzle is
+ * thirty-odd pulses of bright noise inside one gain envelope, so it costs one source.
+ */
+export class FireworkVoice {
+  private ctx: AudioContext;
+  private bus: GainNode;
+  private noise: AudioBuffer;
+  private live = new Set<AudioScheduledSourceNode>();
+
+  static create(): FireworkVoice | null {
+    if (typeof window === 'undefined' || TrainRumble.blocked()) return null;
+    const h = audioHub();
+    if (!h) return null;
+    try {
+      return new FireworkVoice(h);
+    } catch {
+      return null;
+    }
+  }
+
+  private constructor(h: NonNullable<ReturnType<typeof audioHub>>) {
+    this.ctx = h.ctx;
+    this.bus = h.ambienceBus;
+    this.noise = h.noise;
+  }
+
+  private fall(distance: number): number {
+    return FIREWORK.floor + (1 - FIREWORK.floor) / (1 + (distance / FIREWORK.near) ** 2);
+  }
+
+  private out(pan: number, end: number): { node: StereoPannerNode; track: (s: AudioScheduledSourceNode, stopAt: number) => void } {
+    const node = this.ctx.createStereoPanner();
+    node.pan.value = Math.max(-1, Math.min(1, pan)) * 0.7;
+    node.connect(this.bus);
+    let open = 0;
+    return {
+      node,
+      track: (src, stopAt) => {
+        this.live.add(src);
+        open++;
+        src.onended = () => {
+          this.live.delete(src);
+          src.disconnect();
+          if (--open === 0) node.disconnect();
+        };
+        src.stop(Math.max(stopAt, end));
+      },
+    };
+  }
+
+  /** The shell leaving the mortar, `distance` m away: a short low whump. */
+  launch(distance: number, pan: number, size: number): void {
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const level = FIREWORK.thump * size * this.fall(distance);
+    const { node, track } = this.out(pan, now + 0.5);
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    src.playbackRate.value = 0.6;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 260;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, now);
+    g.gain.linearRampToValueAtTime(level * 1.6, now + 0.02);
+    g.gain.setTargetAtTime(0, now + 0.04, 0.09);
+    src.connect(lp).connect(g).connect(node);
+    src.start(now, Math.random() * (this.noise.duration - 0.6));
+    track(src, now + 0.6);
+  }
+
+  /** A burst `distance` m away: boom and thump, a crackle after it for the crackle shell, a sizzle for the rest. */
+  burst(distance: number, pan: number, size: number, kind: string): void {
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const F = FIREWORK;
+    const far = Math.min(1, distance / 2400);
+    const level = F.boom * size * this.fall(distance);
+    const { node, track } = this.out(pan, now + 2.5);
+    // Boom: noise through a low pass that darkens with distance, a fast attack and a rolling decay.
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    src.loop = true;
+    src.playbackRate.value = rnd(0.5, 0.65);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = F.boomNear + (F.boomFar - F.boomNear) * far;
+    lp.Q.value = 0.7;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, now);
+    g.gain.linearRampToValueAtTime(level * 1.4, now + 0.012);
+    g.gain.setTargetAtTime(0, now + 0.03, 0.16 + 0.12 * far);
+    src.connect(lp).connect(g).connect(node);
+    src.start(now, Math.random() * (this.noise.duration - 1));
+    track(src, now + 1.8);
+    const thump = ctx.createOscillator();
+    thump.type = 'sine';
+    thump.frequency.setValueAtTime(75, now);
+    thump.frequency.exponentialRampToValueAtTime(34, now + 0.4);
+    const tg = ctx.createGain();
+    tg.gain.setValueAtTime(0, now);
+    tg.gain.linearRampToValueAtTime(level * 0.9, now + 0.015);
+    tg.gain.setTargetAtTime(0, now + 0.04, 0.12);
+    thump.connect(tg).connect(node);
+    thump.start(now);
+    track(thump, now + 1);
+    // Crackle: bright pulses scattered over the stars' fall, many for the crackle shell.
+    const pulses = kind === 'crackle' ? 34 : kind === 'chrysanthemum' ? 12 : 6;
+    const sizzle = ctx.createBufferSource();
+    sizzle.buffer = this.noise;
+    sizzle.loop = true;
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.value = F.crackleHz * (1 - 0.45 * far);
+    band.Q.value = 0.8;
+    const cg = ctx.createGain();
+    cg.gain.value = 0;
+    const span = kind === 'crackle' ? 2.1 : 1.2;
+    const start = kind === 'crackle' ? 0.9 : 0.15;
+    for (let i = 0; i < pulses; i++) {
+      const t = now + start + Math.random() * span;
+      cg.gain.setValueAtTime(0, t);
+      cg.gain.linearRampToValueAtTime(F.crackle * size * this.fall(distance) * rnd(0.3, 1), t + 0.002);
+      cg.gain.setTargetAtTime(0, t + 0.004, 0.012);
+    }
+    sizzle.connect(band).connect(cg).connect(node);
+    sizzle.start(now, Math.random() * this.noise.duration);
+    track(sizzle, now + start + span + 0.3);
+  }
+
+  /** Stop whatever is still sounding (the scene went away). */
+  dispose(): void {
+    for (const s of Array.from(this.live)) {
+      try {
+        s.stop();
+      } catch {
+        /* already stopped */
+      }
+    }
+    this.live.clear();
+  }
+}
+
+/**
+ * Stadium mix: the swell's level, the distance (m) it is heard at full weight and the share a far one keeps,
+ * the crowd body's band and low pass (Hz, the low pass falls with distance), the cheer layer's band (Hz), its
+ * chatter rate (Hz), and the PA horn's level and notes (Hz).
+ */
+const ROAR = { level: 0.11, near: 1500, floor: 0.3, bodyHz: 650, bodyLow: 2400, cheerHz: 1500, chatterHz: 6.5, horn: 0.05, notes: [233, 311] } as const;
+
+/**
+ * The roar of a far stadium crowd (render/sky/stadium.ts calls swell() when a goal's worth of sound has crossed the
+ * miles, and horn() for the odd PA blast): a body of band-passed noise that swells over a couple of seconds, surges
+ * a few times and dies away, with a pitched-down, chattering cheer layer riding it, all dulled by distance and
+ * panned toward the stadium. Synthesized from the hub's noise; nodes are made per swell (one every 40 s or more)
+ * and released when it ends.
+ */
+export class StadiumRoar {
+  private ctx: AudioContext;
+  private bus: GainNode;
+  private noise: AudioBuffer;
+  private live = new Set<AudioScheduledSourceNode>();
+
+  static create(): StadiumRoar | null {
+    if (typeof window === 'undefined' || TrainRumble.blocked()) return null;
+    const h = audioHub();
+    if (!h) return null;
+    try {
+      return new StadiumRoar(h);
+    } catch {
+      return null;
+    }
+  }
+
+  private constructor(h: NonNullable<ReturnType<typeof audioHub>>) {
+    this.ctx = h.ctx;
+    this.bus = h.ambienceBus;
+    this.noise = h.noise;
+  }
+
+  private fall(distance: number): number {
+    return ROAR.floor + (1 - ROAR.floor) / (1 + (distance / ROAR.near) ** 2);
+  }
+
+  /** A swell `seconds` long, power 0..1, from `distance` m away, pan -1..1. */
+  swell(distance: number, power: number, pan: number, seconds: number): void {
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const level = ROAR.level * power * this.fall(distance);
+    const far = Math.min(1, distance / 3000);
+    const out = ctx.createStereoPanner();
+    out.pan.value = Math.max(-1, Math.min(1, pan)) * 0.8;
+    out.connect(this.bus);
+    let open = 0;
+    const track = (src: AudioScheduledSourceNode, end: number) => {
+      this.live.add(src);
+      open++;
+      src.onended = () => {
+        this.live.delete(src);
+        src.disconnect();
+        if (--open === 0) out.disconnect();
+      };
+      src.stop(end);
+    };
+    const attack = Math.min(2.4, seconds * 0.25);
+    const end = now + seconds;
+    // Body: the crowd's roar, a wide band of noise.
+    const body = ctx.createBufferSource();
+    body.buffer = this.noise;
+    body.loop = true;
+    body.playbackRate.value = 0.85;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = ROAR.bodyHz;
+    bp.Q.value = 0.5;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = ROAR.bodyLow * (1 - 0.6 * far);
+    const bg = ctx.createGain();
+    bg.gain.setValueAtTime(0, now);
+    bg.gain.linearRampToValueAtTime(level * 2.2, now + attack);
+    let t = now + attack;
+    while (t < end - 2.5) {
+      t += rnd(0.8, 1.8);
+      bg.gain.setTargetAtTime(level * 2.2 * rnd(0.55, 1), t, 0.35);
+    }
+    bg.gain.setTargetAtTime(0, Math.max(t, end - 2.2), 0.7);
+    body.connect(bp).connect(lp).connect(bg).connect(out);
+    body.start(now, Math.random() * (this.noise.duration - 1));
+    track(body, end + 2);
+    // Cheer: the same noise pitched down, higher band, chattering as thousands of voices do.
+    const cheer = ctx.createBufferSource();
+    cheer.buffer = this.noise;
+    cheer.loop = true;
+    cheer.playbackRate.value = 0.7;
+    const cb = ctx.createBiquadFilter();
+    cb.type = 'bandpass';
+    cb.frequency.value = ROAR.cheerHz * (1 - 0.4 * far);
+    cb.Q.value = 1.1;
+    const cg = ctx.createGain();
+    cg.gain.value = 0;
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = ROAR.chatterHz * rnd(0.85, 1.2);
+    const depth = ctx.createGain();
+    depth.gain.value = level * 0.5;
+    lfo.connect(depth).connect(cg.gain);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0, now);
+    env.gain.linearRampToValueAtTime(1, now + attack * 1.3);
+    env.gain.setTargetAtTime(0, Math.max(now + attack * 1.3, end - 2.6), 0.6);
+    cheer.connect(cb).connect(cg).connect(env).connect(out);
+    cheer.start(now, Math.random() * (this.noise.duration - 1));
+    lfo.start(now);
+    track(cheer, end + 2);
+    track(lfo, end + 2);
+  }
+
+  /** The PA horn: two blasts of a minor third, `distance` m away. */
+  horn(distance: number, pan: number): void {
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    const level = ROAR.horn * this.fall(distance);
+    const out = ctx.createStereoPanner();
+    out.pan.value = Math.max(-1, Math.min(1, pan)) * 0.8;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 1100;
+    const g = ctx.createGain();
+    g.gain.value = 0;
+    lp.connect(g).connect(out);
+    out.connect(this.bus);
+    for (let b = 0; b < 2; b++) {
+      const t = now + b * 0.95;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(level, t + 0.04);
+      g.gain.setValueAtTime(level, t + 0.7);
+      g.gain.setTargetAtTime(0, t + 0.72, 0.06);
+    }
+    let open = 0;
+    for (const f of ROAR.notes) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.value = f;
+      osc.connect(lp);
+      this.live.add(osc);
+      open++;
+      osc.onended = () => {
+        this.live.delete(osc);
+        osc.disconnect();
+        if (--open === 0) {
+          lp.disconnect();
+          g.disconnect();
+          out.disconnect();
+        }
+      };
+      osc.start(now);
+      osc.stop(now + 2.2);
+    }
+  }
+
+  /** Stop whatever is still sounding (the scene went away). */
   dispose(): void {
     for (const s of Array.from(this.live)) {
       try {

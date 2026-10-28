@@ -13,6 +13,7 @@ import type { Quality } from '../../ui/settings';
 import { buildStreetDecals } from './streetDecals';
 import { buildWallDressing } from '../buildings/wallDressing';
 import { buildSteam, Steam } from './steam';
+import { cityIdentity } from '../cityIdentity';
 import { FacadeProbe } from '../buildings/wallProbe';
 import { makeBladeSignAtlas, makeSteamPuff, makeStreetDecalAtlas, makeWallAtlas } from '../textures/textures';
 
@@ -76,7 +77,7 @@ export function buildStreetPolish(world: World, opts: StreetPolishOptions): Stre
   for (const m of walls.meshes) group.add(m);
   let steam: Steam | null = null;
   if (q.steam && decals.vents.length) {
-    steam = buildSteam(decals.vents, atlases.puff);
+    steam = buildSteam(decals.vents, atlases.puff, cityIdentity(world.seed).signature.steam?.plume);
     group.add(steam.mesh);
   }
   return {

@@ -5,13 +5,15 @@
  * height are the sim's data; the neighbourhood only picks the species: palms
  * line the Los Angeles and Miami streets (the same shares as the yards'),
  * everywhere else a broadleaf, now and then a poplar or a conifer (tree()'s
- * own hash of the position). They go into the district tree layer, so they cost
+ * own hash of the position). A Miami home plants palms in 95% of its Miami
+ * streets (cityIdentity.ts `palm`). They go into the district tree layer, so they cost
  * no draw call and cull with the other trees in the city's chunks; every tier
  * draws all of them (a trunk that is drawn nowhere would still stop a car), the
  * Low detail ladder in trees.ts being their cheaper form.
  */
 import { Rng } from '../../sim/prng';
 import { regionAt } from '../buildings/architecture';
+import { signatureAt } from '../cityIdentity';
 import type { DistrictKit } from './kit';
 import { palm, tree } from './trees';
 
@@ -36,7 +38,8 @@ export function growStreetTree(kit: DistrictKit, region: RegionAt, t: TreeAt): v
   // The pick comes from a hash of the position (like tree()'s), so the menu city and a race agree.
   const roll = new Rng((Math.imul(Math.round(t.x * 64), 40503) ^ Math.imul(Math.round(t.z * 64), 9973)) >>> 0).next();
   const r = region(t.x, t.z);
-  if ((r === 'la' || r === 'miami') && roll < LOOK.palm[r]) palm(kit, t.x, t.z, t.height * LOOK.palmHeight, { y: t.y, trunk: t.radius });
+  const share = r === 'la' || r === 'miami' ? (signatureAt(kit.world.seed, r).palm ?? LOOK.palm[r]) : 0;
+  if (roll < share) palm(kit, t.x, t.z, t.height * LOOK.palmHeight, { y: t.y, trunk: t.radius });
   else tree(kit, t.x, t.z, t.size, t.height, { y: t.y, trunk: t.radius, conifer: LOOK.conifer });
 }
 

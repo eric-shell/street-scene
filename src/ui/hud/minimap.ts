@@ -193,7 +193,7 @@ export class Minimap {
         p.arc(a.params.x, a.params.z, a.params.outer, 0, Math.PI * 2);
         p.moveTo(a.params.x + a.params.island, a.params.z);
         p.arc(a.params.x, a.params.z, a.params.island, 0, Math.PI * 2);
-      } else if (a.kind === 'subway' || a.kind === 'highway' || a.kind === 'tunnel' || a.kind === 'overpass') {
+      } else if (a.kind === 'subway' || a.kind === 'cableCar' || a.kind === 'highway' || a.kind === 'tunnel' || a.kind === 'overpass') {
         // The expressway as the city map draws it: its deck between the end loops and its ramps' axes, none of its alleys.
         (a.kind === 'highway' ? highwayLine(a) : a.path).forEach((q, i) => (i ? p.lineTo(q.x, q.z) : p.moveTo(q.x, q.z)));
       } else if (a.kind === 'hills') {
@@ -211,7 +211,7 @@ export class Minimap {
     for (const [k, path] of fills) this.areaFills.push({ path, style: AREA_MAP_STYLE[k] });
     if (quays) this.areaFills.push({ path: quays, style: { fill: INK.quay } });
     // Order: alleys and shortcuts under the subway and roundabout outlines.
-    const order: AreaKind[] = ['hills', 'backAlley', 'alley', 'roundabout', 'subway', 'highway', 'overpass', 'tunnel'];
+    const order: AreaKind[] = ['hills', 'backAlley', 'alley', 'roundabout', 'subway', 'cableCar', 'highway', 'overpass', 'tunnel'];
     for (const k of order) {
       const path = lines.get(k);
       if (path) this.areaLines.push({ path, style: AREA_MAP_STYLE[k] });

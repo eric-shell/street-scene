@@ -1,6 +1,6 @@
 /**
  * Drift zone markings (sim/driftZones.ts): the monument plaza, the lots
- * and a harbor's skid pad that pay a drift bonus are marked the way a drift meet marks its ground,
+ * a harbor's skid pad and a beach's drift strip that pay a drift bonus are marked the way a drift meet marks its ground,
  * so they read at night without a sign or an arrow:
  *  - yellow paint: a zone box (corner brackets and a dashed edge just inside
  *    the outline), skid pad circles on the roomy lots, a slalom line down the
@@ -261,6 +261,52 @@ function dockMarks(kit: DistrictKit, poly: Vec2[], cx: number, cz: number, r: nu
 }
 
 /**
+ * A beach's drift strip (its build's 'beachZone' hint: the strip's four corners, the long sides first and last pairs): the zone box,
+ * studs down both long sides and the long swinging tracks of cars that have drifted it, a pair of tyre marks each.
+ */
+function beachMarks(kit: DistrictKit, poly: Vec2[], seed: number, rubberCount: number, paint: THREE.Color, rubber: THREE.Color): void {
+  const M = DRIFT_MARK;
+  const lift = M.liftPlaza;
+  zoneBox(kit, poly, lift, paint);
+  const [a, b, , d] = poly;
+  // Both long sides run from poly[0] to poly[1] and from poly[3] to poly[2].
+  const len = Math.hypot(b.x - a.x, b.z - a.z);
+  const ux = (b.x - a.x) / len;
+  const uz = (b.z - a.z) / len;
+  // Across the strip, from side 0-1 toward side 3-2.
+  const wx = d.x - a.x;
+  const wz = d.z - a.z;
+  const wide = Math.hypot(wx, wz);
+  const nx = wx / wide;
+  const nz = wz / wide;
+  for (const [o, s] of [[a, 0], [d, 1]] as const) {
+    for (let t = M.studGap; t < len - 1; t += M.studGap * 1.6) {
+      const x = o.x + ux * t + nx * (s ? -0.5 : 0.5);
+      const z = o.z + uz * t + nz * (s ? -0.5 : 0.5);
+      const y = kit.h(x, z) + lift;
+      cylinder(kit.glow, x, z, M.studR * 2, y - 0.01, y + 0.02, 10, M.stud);
+    }
+  }
+  const rng = new Rng((seed ^ 0x7be4c) >>> 0 || 1);
+  for (let k = 0; k < rubberCount; k++) {
+    const t0 = rng.range(0, len * 0.5);
+    const run = rng.range(len * 0.3, len * 0.5);
+    const amp = rng.range(0.9, Math.max(1, wide / 2 - 1.4));
+    const wave = rng.range(14, 26);
+    const mid = rng.range(wide * 0.35, wide * 0.65);
+    for (const side of [-0.75, 0.75]) {
+      let prev: Vec2 | null = null;
+      for (let t = 0; t <= run; t += 1.6) {
+        const o = mid + Math.sin((t / wave) * Math.PI * 2) * amp + side;
+        const q = { x: a.x + ux * (t0 + t) + nx * o, z: a.z + uz * (t0 + t) + nz * o };
+        if (prev) groundLine(kit, kit.paint, prev, q, M.trackWidth, lift - 0.004, rubber);
+        prev = q;
+      }
+    }
+  }
+}
+
+/**
  * Soft light fading in from a convex outline's edge: a strip `width` wide
  * (mitred at the corners), bright at the edge and black inside, draped every
  * few meters so it follows the ground.
@@ -305,7 +351,8 @@ export const driftZoneRenderer: DistrictRenderer = {
       if (z.kind === 'dock') {
         const pad = kit.builds[a.id].hints.find((h) => h.kind === 'skidPad');
         if (pad) dockMarks(kit, z.polygon, pad.values[0], pad.values[1], pad.values[2], a.params.seed ?? a.id, rubberCount, paint, rubber);
-      } else if (z.kind === 'plaza') plazaMarks(kit, a, rubberCount, paint, rubber);
+      } else if (z.kind === 'beach') beachMarks(kit, z.polygon, a.params.seed ?? a.id, rubberCount, paint, rubber);
+      else if (z.kind === 'plaza') plazaMarks(kit, a, rubberCount, paint, rubber);
       else lotMarks(kit, a, z.polygon, rubberCount, paint, rubber);
       if (washOn) edgeWash(kit, wash, z.polygon, paved ? M.washPlaza : M.washLot, (paved ? M.liftPlaza : M.liftLot) + 0.02, M.wash);
     }

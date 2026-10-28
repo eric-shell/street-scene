@@ -39,8 +39,9 @@ export interface AiState {
   passSide: number;
   stuckTime: number;
   nitroHold: number;
-  /** Progress watchdog: distance at the last checkpoint of the timer. */
+  /** Progress watchdog: distance at the last checkpoint of the timer, and the detour sample then (down a shortcut). */
   watchDist: number;
+  watchIdx: number;
   watchTime: number;
   /** Seconds spent pressing on without moving (nose in against a wall, car or barrier). */
   blocked: number;
@@ -64,7 +65,7 @@ export function createAi(pace: number, driver: Readonly<Driver> = NEUTRAL_DRIVER
   const laps = course?.laps ?? 1;
   const takes = new Uint8Array(detours.length * laps);
   for (let k = 0; k < takes.length; k++) takes[k] = rng.chance(driver.shortcuts) ? 1 : 0;
-  return { driver, line: course?.line ?? null, slips, detours, takes, laps, detour: -1, didx: -1, idx: -1, pace: pace * driver.skill, dodge: 0, passCar: -1, passSide: 0, stuckTime: 0, nitroHold: 0, watchDist: -1e9, watchTime: 0, blocked: 0, reverse: 0, reversed: 0, reverseSteer: 0 };
+  return { driver, line: course?.line ?? null, slips, detours, takes, laps, detour: -1, didx: -1, idx: -1, pace: pace * driver.skill, dodge: 0, passCar: -1, passSide: 0, stuckTime: 0, nitroHold: 0, watchDist: -1e9, watchIdx: -1, watchTime: 0, blocked: 0, reverse: 0, reversed: 0, reverseSteer: 0 };
 }
 
 /** Pace error where the car is in the race (consistency): one value per DRIVER.section, blended between. */

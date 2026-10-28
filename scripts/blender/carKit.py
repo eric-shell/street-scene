@@ -373,6 +373,56 @@ def displace(o, fn, on_seam, radius=0.12):
     o.data.update()
 
 
+LINER_LIFT = 0.03   # m of air between the tire's crown and the wheel well's liner: inside the house arch gap (docs/carDesign.md, 0.01 to 0.04)
+
+
+def lift_liners(o, wheels, r, lift=LINER_LIFT, reach=0.22):
+    """Raise wheel well liners that sit on or through the tire to clear it by `lift` (the Proto
+    Wagon's rear liners were 1 mm over the crown, an arch gap of -0.019). Every vertex of a liner
+    face (not Paint, Glass, Trim, Chrome or a lamp, facing the axle from above, within `reach` of
+    the wheel's centre plane) is moved straight up to the crown plus `lift`, stopping 1 cm under
+    whatever the body has above it (hood, fender top, floor), so the liner hugs the panel rather
+    than poke through it. Vertices the lip shares (any skin face) stay, so the arch opening keeps
+    its shape. A lowered stance no longer needs the room: the game clips the tire at the outer skin
+    under the fender, not at the liner (render/car/wheelClip.ts). `wheels`: (x, y) of each axle
+    end, `r` the tire radius; Blender space. Returns the number of vertices moved."""
+    me = o.data
+    names = [m.name.split('.')[0] for m in me.materials]
+    skin = {'Paint', 'Glass', 'HeadLight', 'TailLight', 'Light', 'Trim', 'Chrome'}
+    liner = set()
+    for p in me.polygons:
+        if names[p.material_index] in skin:
+            continue
+        c = p.center
+        for wx, wy in wheels:
+            if abs(c.x - wx) < reach and abs(c.y - wy) < r + 0.1 and c.z > r - 0.05 and p.normal.z < -0.2:
+                liner.add(p.index)
+                break
+    if not liner:
+        return 0
+    tree = BVHTree.FromPolygons([v.co for v in me.vertices], [list(p.vertices) for p in me.polygons if p.index not in liner])
+    pinned = {i for p in me.polygons if names[p.material_index] in skin for i in p.vertices}
+    moved = 0
+    for i in {i for pi in liner for i in me.polygons[pi].vertices} - pinned:
+        v = me.vertices[i]
+        for wx, wy in wheels:
+            if abs(v.co.x - wx) >= reach or abs(v.co.y - wy) >= r:
+                continue
+            crown = r + math.sqrt(max(0.0, r * r - (v.co.y - wy) ** 2))
+            want = crown + lift
+            if v.co.z >= want:
+                continue
+            hit = tree.ray_cast(v.co + Vector((0, 0, 0.002)), Vector((0, 0, 1)))
+            cap = hit[0].z - 0.01 if hit[0] else want
+            z = min(want, cap)
+            if z > v.co.z + 1e-4:
+                v.co.z = z
+                moved += 1
+            break
+    me.update()
+    return moved
+
+
 def shrink_arches(objs, axles, center_z, radius, by, reach=0.12, min_x=0.5):
     """Pull the wheel arches of a donor body in toward the wheel by `by` meters: outboard vertices
     (|x| > min_x) in the upper half of each arch move radially toward (axle_y, center_z), fully

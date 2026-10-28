@@ -279,7 +279,8 @@ export function driverDetours(line: RacingLine, route: Route, graph: RoadGraph, 
   const sample = (s: number): number => (closed ? wrap(Math.round(s / step)) : s < 0 || s > line.s[n - 1] ? -1 : Math.round(s / step));
   const J = CITY.districts.backAlley.route.jump;
   const out: Detour[] = [];
-  for (const sc of route.shortcuts) {
+  // The harbor's quay cuts after the alleys: a seed without one keeps its drivers' draws as they were.
+  for (const sc of route.shortcuts.concat(route.quayCuts)) {
     const from = sample(sc.sIn - DRIVER.detourLead);
     const turn = sample(sc.sIn - DRIVER.detourTurn);
     const back = sample(sc.sOut + DRIVER.detourTurn);

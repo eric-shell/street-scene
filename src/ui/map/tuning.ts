@@ -6,6 +6,7 @@
  * compass rose.
  */
 import type { Area, AreaKind } from '../../city/districts/types';
+import type { RouteKind } from '../../city/route';
 import type { Vec2 } from '../../sim/math';
 import { KINDS, MAP_INK } from './cityMap';
 import { isNamedPlace } from '../../city/names/placeNames';
@@ -103,7 +104,7 @@ export interface LegendLayer {
   label: string;
   kinds: readonly AreaKind[];
 }
-export type LayerKey = 'park' | 'water' | 'high' | 'monument' | 'market' | 'carPark' | 'infill' | 'subway' | 'highway' | 'alley' | 'backAlley' | 'tunnel' | 'overpass' | 'roundabout' | 'roadworks';
+export type LayerKey = 'park' | 'water' | 'high' | 'monument' | 'market' | 'carPark' | 'infill' | 'subway' | 'cableCar' | 'highway' | 'alley' | 'backAlley' | 'tunnel' | 'overpass' | 'roundabout' | 'roadworks';
 
 /** The legend's district sections in order; layers missing from the city are left out, and a section with none. */
 export const LEGEND_SECTIONS: readonly { title: string; layers: readonly LegendLayer[] }[] = [
@@ -123,6 +124,7 @@ export const LEGEND_SECTIONS: readonly { title: string; layers: readonly LegendL
     title: 'Streets',
     layers: [
       { key: 'subway', label: 'The El', kinds: ['subway'] },
+      { key: 'cableCar', label: 'Cable car', kinds: ['cableCar'] },
       { key: 'highway', label: 'Expressway', kinds: ['highway'] },
       { key: 'alley', label: 'Raceway alleys', kinds: ['alley'] },
       { key: 'backAlley', label: 'Back alleys', kinds: ['backAlley'] },
@@ -135,8 +137,8 @@ export const LEGEND_SECTIONS: readonly { title: string; layers: readonly LegendL
 ];
 const LAYERS = new Map<string, LegendLayer>(LEGEND_SECTIONS.flatMap((s) => s.layers.map((l) => [l.key, l] as const)));
 
-/** What a legend row stands for: a layer of district kinds, one neighbourhood (`hood:<id>`), all of their borders, or one of the map's own marks. */
-export type LegendKey = LayerKey | 'you' | 'route' | 'shortcut' | 'waypoint' | 'hoods' | `hood:${number}`;
+/** What a legend row stands for: a layer of district kinds, one neighbourhood (`hood:<id>`), all of their borders, one of the map's own marks, or one of the seed's other courses (`course:<kind>`). */
+export type LegendKey = LayerKey | 'you' | 'route' | 'shortcut' | 'waypoint' | 'hoods' | `hood:${number}` | `course:${RouteKind}`;
 
 /** The district kinds a legend row shows and hides (none for the map's own marks and the neighbourhoods). */
 export const kindsOf = (key: LegendKey | null): readonly AreaKind[] => (key && LAYERS.get(key)?.kinds) || [];

@@ -872,7 +872,7 @@ export const CITY = {
        * Race passes (monument.ts plazaPasses): a route turning round a corner of the plaza block cuts
        * across the paving instead, round the obelisk's or column's steps (the landmark the apex of
        * the turn) or straight through the arch. The first pass places the landmark, at the middle of
-       * the chord between where it leaves and rejoins the streets. The racing line's width (m); how
+       * the chord between where it leaves and rejoins the streets or deeper (passCornerDeep). The racing line's width (m); how
        * far from the corner it leaves and rejoins the street [min, max], tried every passStep (m),
        * as far as the route runs along the block's side, less passJunctionClear (m) before a junction
        * the route runs straight across, passMouthClear before a shortcut's mouth and passTurnClear
@@ -890,27 +890,21 @@ export const CITY = {
       passMaxTurn: 72,
       passApproach: 11,
       passCornerMax: 60,
+      /** How much deeper than its chord's middle a corner pass's first landmark may stand, away from the corner (m): room off the plaza's edge for short streets. */
+      passCornerDeep: [0, 8, 16, 24],
       passSites: 40,
       /**
-       * A chicane along one street (a through pass) swings onto the paving over one of these runs (m)
-       * and runs straight at least passStraightMin (m) past the landmark. A second route's chicane or
-       * U cut must agree with the landmark the first placed: its line within passFitSlack (m) of where
-       * the landmark wants it, along the arch's axis within passFitDeg (deg).
+       * A second route's U cut must agree with the landmark the first placed: its line within
+       * passFitSlack (m) of where the landmark wants it, along the arch's axis within passFitDeg (deg).
        */
-      passEntry: [14, 20, 28],
-      passStraightMin: 24,
       passFitSlack: 2,
       passFitDeg: 8,
-      /** A chicane may leave its street this soon after the corner it came round (m: past the junction's closures). */
-      passThroughFrom: 18,
       /** A U cut turns off one street and onto the other about as squarely as the two corners it replaces: its own bend cap (deg). */
       passUcutMaxTurn: 96,
-      /** Added to a pass's sharpest bend when the shapes compete for a route (deg): a U cut crosses the whole plaza and wins over a chicane along one side. */
-      passShapeBias: { corner: -12, through: 0, ucut: -70 },
+      /** Added to a pass's sharpest bend when the shapes compete for a route (deg): a U cut crosses the whole plaza and wins over a corner pass. */
+      passShapeBias: { corner: -12, ucut: -70 },
       /** ... and a pass straight enough for a start grid on it (route.ts PASS_START_RUN) is worth this much (deg). */
       passStartBias: -15,
-      /** A chicane's depth off the street as fractions of the landmark's at the block's middle: shallower swings in more gently. */
-      passDepths: [1, 0.75, 0.55],
       /**
        * How candidate blocks rank for the plaza (plan): points per route served, for a U cut and for a
        * corner pass among their passes, less perMetre per metre from the city center.
@@ -1323,6 +1317,81 @@ export const CITY = {
       boardwalk: 3.4,
       bollardInset: 1.2,
       boardwalkInset: 0.9,
+      /**
+       * The beach variant (districts/waterfrontBeach.ts): a waterfront that is sand and a boardwalk, not a dock
+       * yard. The chance a waterfront is one (its own stream) is `chance.miami` in a Miami home (regions.ts homeOf)
+       * and `chance.other` elsewhere; a rolled beach still needs a stretch of a side at least `minLength` m long whose ground is
+       * within `maxResidual` m of the sand's profile at the dune edge (the stretch is the longest such window of the free side,
+       * its ends closed by breakwaters), and no warehouse in its frontage, else the waterfront is the harbor it would have been. All distances in m, `d` measured in from the waterline:
+       *  - the coast is pushed `quayWidth` out from the frontage (the narrowest the beach gets: `sand` of sand and a
+       *    boardwalk of at least the rest); a recess deeper than `maxDepth` would be a warehouse;
+       *  - the sand: `sand` wide, from the waterline to the dune edge, rising `slope` (2.5%) from the water's
+       *    surface, blended into the street's ground over `blend` m (the whole sand: the dune edge keeps the street's ground); past the waterline the seabed shelves
+       *    down to `CFG.depth` over `shelf` m. The surf wall ('surf') stands `surfInset` m up the sand;
+       *  - mouths as the yard's, a street ending up to `mouthSlack` m short of the frontage's depth counts;
+       *  - dunes [min, max]: ridges `duneHeight` high across the dune edge, crest `duneCrest` m seaward of it, rising
+       *    and falling over `duneRun` (a smoothstep: 1.5 x height / run = 6%, the terrain rule) with a flat top
+       *    `duneTop` wide across and `duneLength` long, `duneGap` apart: the freestyle jumps off the sand;
+       *  - the boardwalk: palms (solid trunks, crown and height ranges) every `palmStep` [min, max] at `palmInset`
+       *    in from the dune edge, lanterns every `lampStep` at `lampInset`, benches in `benchChance` of the gaps at
+       *    `benchInset`; string lights hang between the palms `stringHeight` up;
+       *  - lifeguard towers [min, max] (`tower` square solids) `towerGap` apart, `towerIn` m in from the waterline;
+       *  - umbrella clusters every `umbrellaStep` [min, max] along the sand `umbrellaBand` [min, max] in from the
+       *    waterline, with [min, max] loungers beside each; volleyball courts [min, max] (`court` long across the
+       *    beach and `net` wide along it, `courtGap` apart);
+       *  - the pier, one: `pier` wide, from `pierRoot` m inland of the dune edge `pierOver` m out past the
+       *    waterline, its deck `pierHeight` over the boardwalk, a lamp every `pierLamp` m;
+       *  - the drift strip, on the hard-packed sand: `zoneLength` [min, max] long, from `zoneIn` [min, max] in from the
+       *    waterline (m), nothing standing in it.
+       */
+      beach: {
+        chance: { miami: 0.8, other: 0.1 },
+        quayWidth: 36,
+        maxDepth: 80,
+        minLength: 360,
+        maxResidual: 0.8,
+        sand: 24,
+        slope: 0.025,
+        blend: 24,
+        shelf: 40,
+        surfInset: 0.4,
+        mouthSlack: 4,
+        dunes: [1, 2],
+        duneHeight: 0.5,
+        duneRun: 12.5,
+        duneTop: 3,
+        duneLength: 14,
+        duneCrest: 6,
+        duneGap: 150,
+        palmStep: [12, 17],
+        palmInset: 2.2,
+        palmHeight: [8.5, 12],
+        palmCrown: [2.4, 3.2],
+        palmTrunk: 0.4,
+        lampStep: 30,
+        lampInset: 0.9,
+        benchChance: 0.35,
+        benchInset: 3.8,
+        stringHeight: 5.4,
+        towers: [2, 4],
+        tower: 3.2,
+        towerGap: 90,
+        towerIn: 9,
+        umbrellaStep: [14, 30],
+        umbrellaBand: [10, 21],
+        loungers: [1, 2],
+        courts: [1, 2],
+        court: 16,
+        net: 9.5,
+        courtGap: 110,
+        pier: 5.6,
+        pierRoot: 2.5,
+        pierOver: 75,
+        pierHeight: 1.5,
+        pierLamp: 9,
+        zoneLength: [70, 110],
+        zoneIn: [2.5, 9.5],
+      },
     },
     /**
      * Lake: two to four adjacent blocks merged into one body of water by deleting the streets
@@ -1367,6 +1436,33 @@ export const CITY = {
       jettyWidth: 2.6,
       /** Lakes this wide or more (m, the room around the middle) get a fountain jet. */
       fountainRoom: 45,
+    },
+    /**
+     * The San Francisco cable car (districts/cableCar.ts, sim/cableCar.ts): on sf home seeds, one street
+     * between two junctions that neither route uses gets a line down its middle, a terminal at each end.
+     */
+    cableCar: {
+      enabled: true,
+      /** Road kinds the line may take (their lanes clear the track's strip, see stripHalf). */
+      kinds: ['street', 'avenue'] as const,
+      /** Street length range (m, junction to junction). */
+      length: [90, 420] as const,
+      /** A street climbing a hill (an end inside a hills area) must rise at least this much (m) to beat the steepest plain one. */
+      hillRise: 3,
+      /** Half width of the track's strip (m): the car's half width (drivingParams.json cableCar) and a margin. Traffic lanes keep clear of it. */
+      stripHalf: 1.45,
+      /** Carriageway each side must keep beyond the strip (m): the widest traffic car (2.7 m) with its clearances. */
+      laneRoom: 3.4,
+      /** Rail gauge (m, 3 ft 6 in) and the cable slot's width (m). */
+      gauge: 1.067,
+      slot: 0.05,
+      /** The car's near end stops this far (m) short of where the traffic lanes end at the junction, and the turntable's radius (m). */
+      terminalGap: 2,
+      turntable: 4.4,
+      /** A terminal's shelter on the sidewalk beside the stop: length along the curb, depth, back from the curb (m), and the room furniture keeps from it (m). */
+      shelter: { length: 4.2, depth: 1.5, back: 0.9, clear: 1.2 },
+      /** Sidewalk a shelter needs (m). */
+      minSidewalk: 3.2,
     },
   },
 } as const;
@@ -1535,8 +1631,8 @@ export const PARKING = {
   routeClear: 12,
   /** Walls and props must stay this clear (m) of a slot's footprint. */
   probePad: 0.3,
-  /** District areas a slot never stands in (World.areaAt at its centre): the river's banks and ramps, a tunnel or viaduct, a market, roadworks. */
-  offAreas: ['river', 'tunnel', 'overpass', 'market', 'roadworks', 'roundabout'] as const,
+  /** District areas a slot never stands in (World.areaAt at its centre): the river's banks and ramps, a tunnel or viaduct, a market, roadworks, the cable car's street. */
+  offAreas: ['river', 'tunnel', 'overpass', 'market', 'roadworks', 'roundabout', 'cableCar'] as const,
 } as const;
 
 /**
@@ -1745,4 +1841,66 @@ export const PLAZA = {
    * `clear` from any prop and `ring` from the landmark's benches; people gather at `groups` spots round the landmark.
    */
   monument: { inset: 4.4, lane: 2.4, clear: 1.8, ring: 3, groups: [2, 4], groupRing: 4 },
+} as const;
+
+/**
+ * Road physics layout (roadProfile.ts): which streets get a crown and where the humps and joints go. The shape
+ * numbers (cross slopes, hump and lip sizes, spacing) are drivingParams.json `road`.
+ */
+export const ROAD_PHYSICS = {
+  crown: {
+    /** Past a junction's reach (its widest road's half width plus this, m) the crown starts to rise. */
+    junctionMargin: 3,
+    /** ...and reaches full height this far on along the street (m): a smoothstep, so the fan stays flat and the crown eases in. */
+    junctionRamp: 14,
+    /** Streets shorter than this (m) stay flat: nothing is left of the crown between two fades. */
+    minLength: 30,
+  },
+  hump: {
+    /** Share of the eligible side street blocks that carry humps, drawn per edge from the seeded stream. */
+    share: 0.5,
+    /** Spacing of humps along a street (m), each block drawing its own between these. */
+    gap: [60, 120],
+    /** A hump keeps this far (m) clear of a junction's reach beyond its own half length, so cars are over it before the turn and the route barriers' ties are clear. */
+    junctionClear: 9,
+    /** Streets shorter than this (m) are too short for one between their junctions. */
+    minLength: 46,
+  },
+} as const;
+
+/**
+ * Power poles (props.ts, kind 'utilityPole'): the wooden poles and their sagging wires that make a street read as
+ * Los Angeles. One run per street (a chain of pieces through bend nodes), on one seeded side, a pole every
+ * 35 to 45 m along the outer third of the sidewalk, clear of the corners, the streetlights and the furniture. In
+ * the la neighbourhoods (city/regions.ts) of an la home every plain street takes a run; anywhere else only the
+ * outer ring's (streetFurniture.ts FURNITURE.mid) la streets do, and a third of them. The wires between
+ * consecutive poles are render only, high over the sidewalk where no car reaches (render/street/utilityWires.ts).
+ */
+export const UTILITY_POLES = {
+  enabled: true,
+  /** Road kinds that take a run. */
+  kinds: ['street', 'avenue', 'diagonal', 'boulevard'] as const,
+  /** Share of the eligible streets that take a run: the home's own la streets, and la streets of the outer ring elsewhere. */
+  homeShare: 1,
+  awayShare: 1 / 3,
+  /** Spacing between poles along the curb (m): each gap drawn in this range. */
+  pitch: [35, 45] as const,
+  /** Distance the first and last pole keep from the street's curb corners, along the curb (m), plus a seeded lead of up to `lead`. */
+  cornerClear: 14,
+  lead: 5,
+  /** Planted this share of the way from the curb to the building line (the outer third). */
+  across: 0.68,
+  /** Narrowest sidewalk (m) that takes a pole. */
+  minSidewalk: 3,
+  /** Centre to centre distance kept from a streetlight or a signal pole (m), and from a hydrant (m). */
+  lightClear: 4,
+  hydrantClear: 2.5,
+  /** A station that does not fit slides along the curb by this much (m) up to `tries` times each way before it is dropped. */
+  slide: 1.5,
+  tries: 3,
+  /** Wires span only consecutive poles closer than this (m): a longer gap (a dropped station) breaks the run. */
+  maxSpan: 62,
+  /** Every this many poles carries a transformer drum, counted in placement order city-wide (runs are often only a block long), starting at the `transformerAt`th. */
+  transformerEvery: 4,
+  transformerAt: 2,
 } as const;

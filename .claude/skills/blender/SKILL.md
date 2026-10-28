@@ -1,11 +1,13 @@
 ---
 name: blender
-description: Model cars and parts in Blender, live through the Blender MCP server or headless with `blender -b` - load the carKit helpers, import shipped GLBs, split bodies into bumpers and skirts, build tuner kits from stock parts, restyle a body, check wheel arches, look at the result, save authored .blend cars and export them. Use for any Blender or MCP modelling task, including designing new bumpers, skirts or spoilers, and read it before the first Blender MCP call.
+description: Model cars and parts in Blender, live through the Blender MCP server (model edits always go through it; headless `blender -b` only for saving, exporting and read-only checks) - load the carKit helpers, import shipped GLBs, split bodies into bumpers and skirts, build tuner kits from stock parts, restyle a body, check wheel arches, look at the result, save authored .blend cars and export them. Use for any Blender or MCP modelling task, including designing new bumpers, skirts or spoilers, and read it before the first Blender MCP call.
 ---
 
 # Blender for car work
 
-Start a modelling session with `claude --mcp-config .claude/skills/blender/mcp.json`; a plain session has no Blender tools.
+Every session in the repo has the Blender tools, deferred: load the ones you need with ToolSearch (`select:mcp__blender__execute_blender_code,mcp__blender__look`, plus the `blender-lab` doc search) before the first call. If none are listed, run `.claude/skills/blender/mcp.sh status`; `register` adds them back, and they appear after a Claude Code restart.
+
+**Model edits go through the Blender MCP.** Any change to a mesh, a `.blend` or a donor import (reshaping, rebuilding openings, recolouring faces, kits, a re-import) is done live through the `blender` MCP server, so the user sees it in their Blender and a Sketchfab donor can be imported again when the shipped mesh is too reduced to repair. If the session has no `blender` MCP tools (not even deferred), stop before editing, run `.claude/skills/blender/mcp.sh status` (`register` if it reports them missing) and ask the user to restart Claude Code; do not fall back to `blender -b` scripts. Headless stays only for what the pipeline runs itself (`saveCar.py`, `npm run assets`) and for read-only checks (renders, measurements) of shipped files. A worker given modelling work must run in an MCP session too, and only one agent drives the live scene at a time.
 
 Authored cars are `assets/source/eshell/<carId>/<carId>.blend` (collections `Car`, `Parts`, `Wheels`, `Rig`; the contract is the docstring of `scripts/blender/exportCar.py` and README "Car assets"). `npm run assets` exports and catalogs them; you never export GLBs by hand for an authored car.
 

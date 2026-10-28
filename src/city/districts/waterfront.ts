@@ -40,6 +40,14 @@
  * quay's lowest point; the ground past the sea wall drops to CFG.depth below
  * it (waterfrontShape.ts harborLowering). The quay is the base terrain:
  * nothing inland changes height.
+ *
+ * A harbor is working docks (Area.variant 'harbor'), leisure moorings ('marina', its own stream) or, in a Miami home
+ * mostly and elsewhere now and then, a beach ('beach', waterfrontBeach.ts; beachRolled, a stream of its own, so a seed
+ * that does not roll or finds no flat enough stretch plans the harbor it always did). A beach pushes the coast
+ * BEACH.quayWidth out from the frontage, takes the longest stretch of the free side whose ground stays near the water's
+ * plane at the dune edge (its ends closed by breakwaters), and swaps the dock yard for sand, a boardwalk, a surf wall in
+ * place of the sea wall's railing, and the beachfront's dressing. Everything else (the coast, the water, moles, buoys,
+ * the frontage's openings) is the harbor's.
  */
 import { CITY } from '../config';
 import { createTerrain, type Terrain } from '../terrain';
@@ -50,9 +58,15 @@ import type { AreaBuild, DistrictModule, PlanContext } from './types';
 import { emptyBuild } from './types';
 import { polygonArea, polyWalls } from './geom';
 import { buildYard } from './waterfrontYard';
+import { beachGround, buildBeach } from './waterfrontBeach';
+import { homeOf } from '../regions';
 import { HARBOR_SIDES, type HarborFrame, coastNormal, coastSlope, coastV, framePoint, frameU, frameV, harborLowering, harborWater } from './waterfrontShape';
 
 const CFG = CITY.districts.waterfront;
+const BEACH = CFG.beach;
+
+/** The deepest the quay reaches back from the coast before a recess is a warehouse (m): a beach's coast carries its own in `md`. */
+const maxDepthOf = (p: Record<string, number>): number => p.md ?? CFG.maxDepth;
 
 /** Columns of the quay's outline every this many m along the coast (and at every vertex of the city's outline). */
 const COLUMN = 2;
@@ -136,12 +150,14 @@ interface SideFit {
   wu0: number;
   wu1: number;
   score: number;
+  /** A beach's fit: the most the ground at the dune edge strays from the water-plane's profile (m). */
+  resid: number;
 }
 
-/** The quay's back edge at u: the outline, or CFG.maxDepth in from the coast across a warehouse's recess. */
+/** The quay's back edge at u: the outline, or the max depth in from the coast across a warehouse's recess. */
 function innerAt(prof: RingProfile, p: Record<string, number>, sheds: readonly [number, number][], u: number): number {
   const r = prof.at(u);
-  const c = coastV(p, u) - CFG.maxDepth;
+  const c = coastV(p, u) - maxDepthOf(p);
   return r < c && sheds.some(([a, b]) => u > a && u < b) ? c : r;
 }
 
@@ -150,7 +166,7 @@ function innerAt(prof: RingProfile, p: Record<string, number>, sheds: readonly [
  * their ends where the outline crosses the line maxDepth in from the coast (to a centimetre).
  */
 function shedRuns(prof: RingProfile, p: Record<string, number>, pa: number, pb: number): [number, number][] {
-  const deep = (u: number) => prof.at(u) < coastV(p, u) - CFG.maxDepth;
+  const deep = (u: number) => prof.at(u) < coastV(p, u) - maxDepthOf(p);
   const edge = (lo: number, hi: number): number => {
     // lo is shallow, hi deep (or the other way): bisect to the crossing.
     const dLo = deep(lo);
@@ -178,14 +194,16 @@ function shedRuns(prof: RingProfile, p: Record<string, number>, pa: number, pb: 
   return runs.filter(([a, b]) => {
     if (b - a < CFG.shedMinWidth) return false;
     let most = 0;
-    for (let u = a; u <= b; u += 1) most = Math.max(most, coastV(p, u) - CFG.maxDepth - prof.at(u));
+    for (let u = a; u <= b; u += 1) most = Math.max(most, coastV(p, u) - maxDepthOf(p) - prof.at(u));
     return most >= CFG.shedMinDepth;
   });
 }
 
 /** Measure one side: its coast, the free stretch for a quay, the water level and how good a harbor it makes. */
-function fitSide(ctx: PlanContext, ring: readonly Vec2[], side: number, base: Terrain): SideFit | null {
+function fitSide(ctx: PlanContext, ring: readonly Vec2[], side: number, base: Terrain, beach = false): SideFit | null {
   const g = ctx.graph;
+  /** The narrowest the quay gets from the frontage to the water (m): a beach is deeper, for its sand and a boardwalk. */
+  const qw = beach ? BEACH.quayWidth : CFG.quayWidth;
   const f = HARBOR_SIDES[side];
   const prof = ringProfile(ring, f);
   const W = g.plan.gridW;
@@ -248,11 +266,12 @@ function fitSide(ctx: PlanContext, ring: readonly Vec2[], side: number, base: Te
   const cx0 = cA - CFG.runOn - CFG.fadeOut - 3 * step;
   const cn = Math.ceil((cB + CFG.runOn + CFG.fadeOut + 3 * step - cx0) / step) + 1;
   const cs = new Float64Array(cn);
-  for (let i = 0; i < cn; i++) cs[i] = smooth(Math.max(cA, Math.min(cB, cx0 + i * step))) + CFG.quayWidth;
+  for (let i = 0; i < cn; i++) cs[i] = smooth(Math.max(cA, Math.min(cB, cx0 + i * step))) + qw;
   // A fresh params object per change: the interpolation caches the samples per object.
   const record = (): Record<string, number> => {
     const o: Record<string, number> = { cx0, cdx: step, cn };
     for (let i = 0; i < cn; i++) o[`c${i}`] = cs[i];
+    if (beach) o.md = BEACH.maxDepth;
     return o;
   };
   let coast = record();
@@ -263,7 +282,7 @@ function fitSide(ctx: PlanContext, ring: readonly Vec2[], side: number, base: Te
     const short = new Float64Array(cn);
     let worst = 0;
     for (let u = cA; u <= cB; u += 1) {
-      const d = reachAt(u) + CFG.quayWidth - coastV(coast, u);
+      const d = reachAt(u) + qw - coastV(coast, u);
       if (d <= 0.2) continue;
       worst = Math.max(worst, d);
       const k = Math.round((u - cx0) / step);
@@ -281,7 +300,7 @@ function fitSide(ctx: PlanContext, ring: readonly Vec2[], side: number, base: Te
     const v = frameV(f, x, z);
     if (u < cx0 || u > cx0 + (cn - 1) * step) return;
     const inSide = u >= cA - 12 && u <= cB + 12;
-    const limit = inSide ? prof.at(Math.max(cA, Math.min(cB, u))) + 1 - extra : coastV(coast, u) - CFG.quayWidth - 40;
+    const limit = inSide ? prof.at(Math.max(cA, Math.min(cB, u))) + 1 - extra : coastV(coast, u) - qw - 40;
     if (v > limit) blocked.push([u - CFG.clearance, u + CFG.clearance]);
   };
   for (const a of ctx.areas) {
@@ -309,11 +328,12 @@ function fitSide(ctx: PlanContext, ring: readonly Vec2[], side: number, base: Te
       if (!best || u - run > best[1] - best[0]) best = [run, u];
     } else run = null;
   }
-  if (!best || best[1] - best[0] < CFG.minLength) return null;
+  const minLength = beach ? BEACH.minLength : CFG.minLength;
+  if (!best || best[1] - best[0] < minLength) return null;
   let [pa, pb] = best;
   // An end at the corner is open when nothing stands past it along the run on either.
-  const openA = pa <= cA + COLUMN && [...Array(Math.ceil((CFG.runOn + CFG.fadeOut) / 10))].every((_, k) => free(cA - k * 10));
-  const openB = pb >= cB - COLUMN && [...Array(Math.ceil((CFG.runOn + CFG.fadeOut) / 10))].every((_, k) => free(cB + k * 10));
+  let openA = pa <= cA + COLUMN && [...Array(Math.ceil((CFG.runOn + CFG.fadeOut) / 10))].every((_, k) => free(cA - k * 10));
+  let openB = pb >= cB - COLUMN && [...Array(Math.ceil((CFG.runOn + CFG.fadeOut) / 10))].every((_, k) => free(cB + k * 10));
   if (pa <= cA + COLUMN) pa = cA;
   if (pb >= cB - COLUMN) pb = cB;
   // A closed end leaves room for its breakwater inside the stretch.
@@ -324,7 +344,49 @@ function fitSide(ctx: PlanContext, ring: readonly Vec2[], side: number, base: Te
     if (a <= pa + 1e-6) pa = b + 1;
     if (b >= pb - 1e-6) pb = a - 1;
   }
-  if (pb - pa < CFG.minLength) return null;
+  if (pb - pa < minLength) return null;
+
+  // A beach takes the longest stretch whose ground stays within BEACH.maxResidual of its own water plane at the
+  // dune edge (the hills along a coast run several metres; sand blends only so much): windows from the full length
+  // down, the first that fits (the flattest of its length), its ends closed by a breakwater unless it keeps the stretch's.
+  if (beach) {
+    const stats = (a: number, b: number, oa: boolean, ob: boolean): number => {
+      const uu: number[] = [];
+      const hh: number[] = [];
+      for (let u = a - (oa ? CFG.quayRun : 0); u <= b + (ob ? CFG.quayRun : 0) + 1e-6; u += 8) {
+        const q = framePoint(f, u, coastV(coast, u) - BEACH.sand);
+        uu.push(u);
+        hh.push(base.heightAt(q.x, q.z));
+      }
+      const m0 = uu.reduce((t, u) => t + u, 0) / uu.length;
+      const m1 = hh.reduce((t, h) => t + h, 0) / hh.length;
+      let xy = 0;
+      let xx = 0;
+      for (let i = 0; i < uu.length; i++) {
+        xy += (uu[i] - m0) * (hh[i] - m1);
+        xx += (uu[i] - m0) ** 2;
+      }
+      const slope = Math.max(-CFG.maxTilt, Math.min(CFG.maxTilt, xx > 0 ? xy / xx : 0));
+      let r = 0;
+      for (let i = 0; i < uu.length; i++) if (uu[i] >= a && uu[i] <= b) r = Math.max(r, Math.abs(hh[i] - slope * uu[i] - (m1 - slope * m0)));
+      return r;
+    };
+    let pick: { a: number; b: number; oa: boolean; ob: boolean; r: number } | null = null;
+    for (let len = pb - pa; len >= minLength - 1e-6 && !pick; len -= 40) {
+      for (let a = pa; a + len <= pb + 1e-6; a += 40) {
+        const b = a + len;
+        const oa = openA && a <= pa + 1e-6;
+        const ob = openB && b >= pb - 1e-6;
+        const r = stats(a, b, oa, ob);
+        if (r <= BEACH.maxResidual && (!pick || r < pick.r)) pick = { a, b, oa, ob, r };
+      }
+    }
+    if (!pick) return null;
+    pa = pick.a;
+    pb = pick.b;
+    openA = pick.oa;
+    openB = pick.ob;
+  }
 
   // The water level: a fit of the quay's height along the coast (and the furnished run on past an open
   // end), its tilt capped, lowered until the quay stands freeboard over it everywhere.
@@ -333,7 +395,8 @@ function fitSide(ctx: PlanContext, ring: readonly Vec2[], side: number, base: Te
   const us: number[] = [];
   const hs: number[] = [];
   for (let u = fa; u <= fb + 1e-6; u += 8) {
-    const q = framePoint(f, u, coastV(coast, u) - 1);
+    // A beach reads the ground at its dune edge, where the sand's slope meets it; a harbor at the wall's edge.
+    const q = framePoint(f, u, coastV(coast, u) - (beach ? BEACH.sand : 1));
     us.push(u);
     hs.push(base.heightAt(q.x, q.z));
   }
@@ -352,7 +415,11 @@ function fitSide(ctx: PlanContext, ring: readonly Vec2[], side: number, base: Te
     lo = Math.min(lo, hs[i] - wt * us[i]);
     hi = Math.max(hi, hs[i] - wt * us[i]);
   }
-  const w0 = lo - CFG.freeboard;
+  // A harbor's water stands freeboard under its lowest quay; a beach's so that the sand's slope (rising from the waterline,
+  // under the curb's lift) meets the ground at the dune edge on average: the blend takes up what the ground strays from it.
+  const w0 = beach ? mh - wt * mu + CITY.curbHeight - BEACH.slope * BEACH.sand : lo - CFG.freeboard;
+  let resid = 0;
+  for (let i = 0; i < us.length; i++) if (us[i] >= pa && us[i] <= pb) resid = Math.max(resid, Math.abs(hs[i] - wt * us[i] - (mh - wt * mu)));
   // Longer quays, open ends (the water runs on to the horizon) and an even wall height make better harbors,
   // and one the races run along (route nodes on the street behind the quay) best of all.
   let raced = 0;
@@ -360,16 +427,81 @@ function fitSide(ctx: PlanContext, ring: readonly Vec2[], side: number, base: Te
     for (const id of r.nodes) {
       const n = g.nodes[id];
       const u = frameU(f, n.x, n.z);
-      if (u > pa && u < pb && frameV(f, n.x, n.z) > coastV(coast, u) - CFG.quayWidth - CFG.raceReach) raced++;
+      if (u > pa && u < pb && frameV(f, n.x, n.z) > coastV(coast, u) - qw - CFG.raceReach) raced++;
     }
   }
   const score = pb - pa + (openA ? 160 : 0) + (openB ? 160 : 0) - 30 * (hi - lo) + CFG.raceBonus * Math.min(raced, 12);
-  return { side, f, prof, cA, cB, coast, pa, pb, openA, openB, w0, wt, wu0: fa, wu1: fb, score };
+  return { side, f, prof, cA, cB, coast, pa, pb, openA, openB, w0, wt, wu0: fa, wu1: fb, score, resid };
 }
 
 /** Whether a seed rolls a harbor: the first draw of the module's own stream (the plan may still find no side free enough). */
 export function waterfrontRolled(seed: number): boolean {
   return CFG.enabled && new Rng(deriveSeed(seed, 'district:waterfront')).chance(CFG.chance);
+}
+
+/**
+ * Whether a seed's waterfront is a beach, from a stream of its own (so the draws that follow are the harbor's
+ * as they always were): BEACH.chance.miami in a Miami home, BEACH.chance.other elsewhere. The home is the
+ * renderer's city identity (city/regions.ts homeOf, a pure pick of the seed), which the city may read without the
+ * renderer. A rolled beach still needs a side whose ground sits near enough the water's profile (BEACH.maxResidual).
+ */
+export function beachRolled(seed: number): boolean {
+  const chance = homeOf(seed) === 'miami' ? BEACH.chance.miami : BEACH.chance.other;
+  return new Rng(deriveSeed(seed, 'waterfront:beach')).chance(chance);
+}
+
+/** The sides' fits for a harbor or a beach, best first; each side takes a little of `rng` so that equal sides vary by seed. */
+function rankSides(ctx: PlanContext, ring: readonly Vec2[], base: Terrain, rng: Rng, beach: boolean): SideFit[] {
+  const fits: SideFit[] = [];
+  for (let s = 0; s < HARBOR_SIDES.length; s++) {
+    const fit = fitSide(ctx, ring, s, base, beach);
+    const jitter = rng.range(0, 120);
+    if (fit) fits.push({ ...fit, score: fit.score + jitter });
+  }
+  fits.sort((a, b) => b.score - a.score || a.side - b.side);
+  return fits;
+}
+
+/** Lay the chosen side out as an area (false when the city's budget has no room for it). */
+function placeWaterfront(ctx: PlanContext, s: SideFit, rng: Rng, variant: string): boolean {
+  const beach = variant === 'beach';
+  const p: Record<string, number> = {
+    side: s.side,
+    ...s.f,
+    ...s.coast,
+    pa: s.pa,
+    pb: s.pb,
+    openA: s.openA ? 1 : 0,
+    openB: s.openB ? 1 : 0,
+    w0: s.w0,
+    wt: s.wt,
+    wu0: s.wu0,
+    wu1: s.wu1,
+    depth: CFG.depth,
+    fall: beach ? BEACH.shelf : CFG.wallFall,
+    seed: rng.int(1, 0x7ffffffe),
+  };
+  // A beach's sand: its width, slope and the blend into the street's ground (waterfrontBeach.ts beachGround).
+  if (beach) Object.assign(p, { beach: 1, sand: BEACH.sand, slope: BEACH.slope, blend: BEACH.blend });
+  // Where the lowering fades: past an open end the run on, at a closed one across the breakwater.
+  p.eA0 = s.openA ? s.pa - CFG.runOn - CFG.fadeOut : s.pa - CFG.mole;
+  p.eA1 = s.openA ? s.pa - CFG.runOn : s.pa;
+  p.eB0 = s.openB ? s.pb + CFG.runOn : s.pb;
+  p.eB1 = s.openB ? s.pb + CFG.runOn + CFG.fadeOut : s.pb + CFG.mole;
+  let vMax = -Infinity;
+  for (let u = p.eA0; u <= p.eB1; u += CFG.step) vMax = Math.max(vMax, coastV(p, u));
+  p.vf0 = vMax + CFG.reach - CFG.fadeOut;
+  p.vf1 = vMax + CFG.reach;
+  const sheds = shedRuns(s.prof, p, s.pa, s.pb);
+  const { polygon, nBack } = quayOutline(s.prof, p, sheds);
+  p.nBack = nBack;
+  const footprint = Math.abs(polygonArea(polygon));
+  if (ctx.budget.used + footprint > ctx.budget.total) return false;
+  // The path is the sea wall's edge along the quay (architecture.ts reads waterside buildings off it).
+  const path: Vec2[] = [];
+  for (let u = s.pa; u <= s.pb + 1e-6; u += 16) path.push(framePoint(s.f, u, coastV(p, u)));
+  ctx.addArea({ kind: 'waterfront', variant, polygon, path, nodes: [], edges: [], faces: [], params: p }, footprint);
+  return true;
 }
 
 export const waterfrontModule: DistrictModule = {
@@ -382,52 +514,19 @@ export const waterfrontModule: DistrictModule = {
     const outer = ctx.faces().find((x) => x.outer);
     if (!outer) return;
     const base = createTerrain(ctx.seed);
-    const fits: SideFit[] = [];
-    for (let s = 0; s < HARBOR_SIDES.length; s++) {
-      const fit = fitSide(ctx, outer.ring, s, base);
-      // A little of the stream per side, so which of two equal sides wins varies by seed.
-      const jitter = rng.range(0, 120);
-      if (fit) fits.push({ ...fit, score: fit.score + jitter });
+    // A beach first, from a stream of its own so that a seed that finds none plans the harbor it always did: the
+    // best side whose ground is near enough the sand's profile, with no warehouse in its frontage.
+    if (beachRolled(ctx.seed)) {
+      const brng = new Rng(deriveSeed(ctx.seed, 'waterfront:beach:side'));
+      const all = rankSides(ctx, outer.ring, base, brng, true);
+      const fit = all.find((x) => x.resid <= BEACH.maxResidual && !shedRuns(x.prof, x.coast, x.pa, x.pb).length);
+      if (fit && placeWaterfront(ctx, fit, brng, 'beach')) return;
     }
+    const fits = rankSides(ctx, outer.ring, base, rng, false);
     if (!fits.length) return;
-    fits.sort((a, b) => b.score - a.score || a.side - b.side);
-    const s = fits[0];
-    const p: Record<string, number> = {
-      side: s.side,
-      ...s.f,
-      ...s.coast,
-      pa: s.pa,
-      pb: s.pb,
-      openA: s.openA ? 1 : 0,
-      openB: s.openB ? 1 : 0,
-      w0: s.w0,
-      wt: s.wt,
-      wu0: s.wu0,
-      wu1: s.wu1,
-      depth: CFG.depth,
-      fall: CFG.wallFall,
-      seed: rng.int(1, 0x7ffffffe),
-    };
-    // Where the lowering fades: past an open end the run on, at a closed one across the breakwater.
-    p.eA0 = s.openA ? s.pa - CFG.runOn - CFG.fadeOut : s.pa - CFG.mole;
-    p.eA1 = s.openA ? s.pa - CFG.runOn : s.pa;
-    p.eB0 = s.openB ? s.pb + CFG.runOn : s.pb;
-    p.eB1 = s.openB ? s.pb + CFG.runOn + CFG.fadeOut : s.pb + CFG.mole;
-    let vMax = -Infinity;
-    for (let u = p.eA0; u <= p.eB1; u += CFG.step) vMax = Math.max(vMax, coastV(p, u));
-    p.vf0 = vMax + CFG.reach - CFG.fadeOut;
-    p.vf1 = vMax + CFG.reach;
-    const sheds = shedRuns(s.prof, p, s.pa, s.pb);
-    const { polygon, nBack } = quayOutline(s.prof, p, sheds);
-    p.nBack = nBack;
-    const footprint = Math.abs(polygonArea(polygon));
-    if (ctx.budget.used + footprint > ctx.budget.total) return;
-    // The path is the sea wall's edge along the quay (architecture.ts reads waterside buildings off it).
-    const path: Vec2[] = [];
-    for (let u = s.pa; u <= s.pb + 1e-6; u += 16) path.push(framePoint(s.f, u, coastV(p, u)));
     // Working docks or leisure moorings: its own stream, so a harbor seed plans and builds exactly as it did before the marina.
     const variant = new Rng(deriveSeed(ctx.seed, 'waterfront:variant')).chance(CFG.marinaChance) ? 'marina' : 'harbor';
-    ctx.addArea({ kind: 'waterfront', variant, polygon, path, nodes: [], edges: [], faces: [], params: p }, footprint);
+    placeWaterfront(ctx, fits[0], rng, variant);
   },
 
   build(ctx, area) {
@@ -447,12 +546,14 @@ export const waterfrontModule: DistrictModule = {
       return Array.from({ length: n + 1 }, (_, i) => u0 + ((u1 - u0) * i) / n);
     };
 
-    // The ground past the sea wall, lowered under the water.
-    b.heightMods.push(harborLowering(p, createTerrain(ctx.seed)));
+    // The ground past the sea wall, lowered under the water; a beach's sand shelves into it instead (waterfrontBeach.ts).
+    const beach = area.variant === 'beach';
+    b.heightMods.push(beach ? beachGround(p, createTerrain(ctx.seed)) : harborLowering(p, createTerrain(ctx.seed)));
 
-    // The quay: drivable dock paving at sidewalk level, open to the street all along its back.
+    // The quay: drivable dock paving at sidewalk level, open to the street all along its back. A beach's is the
+    // boardwalk, with the sand laid over its seaward part (buildBeach).
     const quay = area.polygon;
-    b.surfaces.push({ surface: 'quay', polygon: quay, priority: 2, area: id });
+    b.surfaces.push({ surface: beach ? 'boardwalk' : 'quay', polygon: quay, priority: 2, area: id });
     b.exclusions.push(quay);
     b.openings.push(quay);
     // The open water, and no building anywhere past the coast (the breakwaters' ground included).
@@ -460,14 +561,16 @@ export const waterfrontModule: DistrictModule = {
     b.surfaces.push({ surface: 'water', polygon: water, priority: 1, area: id });
     b.exclusions.push(harborWater(area, SURFACE_REACH, 8, [p.openA ? p.eA1 : p.pa - CFG.mole, p.openB ? p.eB0 : p.pb + CFG.mole]));
 
-    // The railing along the sea wall's edge (normals in onto the quay), end to end.
-    const rail = along(p.pa, p.pb, 4).map((u) => at(u, coast(u) - CFG.railInset));
-    b.walls.push(...polyWalls(rail, true, 'quayRail', id, false));
+    // The railing along the sea wall's edge (normals in onto the quay), end to end. A beach has no wall: the break
+    // at the waterline ('surf') is what stops a car where the sand meets the sea.
+    const edgeInset = beach ? BEACH.surfInset : CFG.railInset;
+    const rail = along(p.pa, p.pb, 4).map((u) => at(u, coast(u) - edgeInset));
+    b.walls.push(...polyWalls(rail, true, beach ? 'surf' : 'quayRail', id, false));
     // A fence at each end, from the frontage (a little onto the sidewalk, over the last frontage sample) to the railing.
     const endA = at(p.pa, innerAt(prof, p, sheds, p.pa) - 0.3);
     const endB = at(p.pb, innerAt(prof, p, sheds, p.pb) - 0.3);
-    b.walls.push(...polyWalls([endA, at(p.pa, coast(p.pa) - CFG.railInset)], true, 'quayFence', id, false));
-    b.walls.push(...polyWalls([at(p.pb, coast(p.pb) - CFG.railInset), endB], true, 'quayFence', id, false));
+    b.walls.push(...polyWalls([endA, at(p.pa, coast(p.pa) - edgeInset)], true, 'quayFence', id, false));
+    b.walls.push(...polyWalls([at(p.pb, coast(p.pb) - edgeInset), endB], true, 'quayFence', id, false));
     b.reserved.push({ x: endA.x, z: endA.z, r: 1.6 }, { x: endB.x, z: endB.z, r: 1.6 });
 
     // The open frontage, the quay's back where it meets the streets (not a shed's back wall).
@@ -495,7 +598,7 @@ export const waterfrontModule: DistrictModule = {
       const { polygon: shed, nInner } = shedOutline(prof, p, a, c);
       b.exclusions.push(shed);
       b.frontLooks.push({ polygon: shed, look: 'warehouse', area: id });
-      const back = along(a, c, 4).map((u) => at(u, coast(u) - CFG.maxDepth));
+      const back = along(a, c, 4).map((u) => at(u, coast(u) - maxDepthOf(p)));
       b.walls.push(...polyWalls(back, false, 'warehouse', id, false));
       b.hints.push({ kind: 'warehouse', points: shed, values: [rng.range(CFG.shedHeight[0], CFG.shedHeight[1]), nInner] });
     }
@@ -508,7 +611,7 @@ export const waterfrontModule: DistrictModule = {
     ] as const) {
       if (!open) continue;
       const us = along(u0, u1, 8);
-      b.exclusions.push([...us.map((u) => at(u, coast(u) - CFG.maxDepth - 1)), ...us.reverse().map((u) => at(u, coast(u) + 1))]);
+      b.exclusions.push([...us.map((u) => at(u, coast(u) - maxDepthOf(p) - 1)), ...us.reverse().map((u) => at(u, coast(u) + 1))]);
     }
 
     // Jetties along the coast (the quay's and the run on's), each behind a closed gate in the railing.
@@ -520,7 +623,7 @@ export const waterfrontModule: DistrictModule = {
       return { nx, nz, yaw: atan2(nx, nz) };
     };
     if (area.variant === 'marina') marinaDocks(b, p, id, jetties, new Rng(deriveSeed(p.seed, 'marina')), seaward, at, coast);
-    else {
+    else if (!beach) {
       const lo = p.openA ? p.pa - CFG.quayRun + 40 : p.pa + 50;
       const hi = p.openB ? p.pb + CFG.quayRun - 40 : p.pb - 50;
       const want = rng.int(CFG.jetties[0], CFG.jetties[1]);
@@ -603,6 +706,12 @@ export const waterfrontModule: DistrictModule = {
       prop('buoy', at(u, coast(u) + out), 0, k % 2 ? 1 : 0, rng.range(0, 1));
     }
 
+    // A beach is its own dressing: the boardwalk's mouths, fences, palms and lamps, the sand's towers, umbrellas, nets,
+    // dunes and drift strip, the pier (waterfrontBeach.ts).
+    if (beach) {
+      buildBeach(ctx, { area, f, back: (u) => innerAt(prof, p, sheds, u), sheds, gates: [], lamps: [] }, b);
+      return b;
+    }
     // Along the quay's edge: lanterns (destructible park lamps, lit by render/street/areaLights.ts), clear of
     // the jetties' gates and the end fences.
     const curb = CITY.curbHeight;
@@ -742,7 +851,7 @@ function quayOutline(prof: RingProfile, p: Record<string, number>, sheds: readon
 function shedOutline(prof: RingProfile, p: Record<string, number>, a: number, c: number): { polygon: Vec2[]; nInner: number } {
   const f: HarborFrame = { ux: p.ux, uz: p.uz, vx: p.vx, vz: p.vz };
   const us = columns(prof, a, c, []);
-  const edgeV = (u: number) => coastV(p, u) - CFG.maxDepth;
+  const edgeV = (u: number) => coastV(p, u) - maxDepthOf(p);
   const inner = us.map((u, i) => framePoint(f, u, i === 0 || i === us.length - 1 ? edgeV(u) : Math.min(prof.at(u), edgeV(u))));
   const n = Math.max(1, Math.ceil((c - a) / 4));
   const edge: Vec2[] = [];

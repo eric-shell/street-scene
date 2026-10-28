@@ -22,6 +22,7 @@ import { MEET_QUALITY, planMeets } from './race/meetPlan';
 import { buildProps, PropRenderer } from './street/props';
 import { buildDistrictMeshes } from './districts';
 import { Backdrop, buildBackdrop } from './sky/backdrop';
+import { buildFireworks } from './sky/fireworks';
 import { CROWD_IMPOSTOR, CROWD_QUALITY, buildCrowds, Crowds } from './race/crowds';
 import { buildIdlers, Idlers } from './people/idlers';
 import { peopleOf } from '../city/people/people';
@@ -29,6 +30,8 @@ import { buildWalkers, Walkers } from './people/walkers';
 import { buildStreetPolish } from './street/streetPolish';
 import { buildPlaceSigns } from './street/placeSigns';
 import { createWeather, Weather } from './sky/weather';
+import { Clouds, buildClouds } from './sky/clouds';
+import { LampFlares } from './car/lampFlares';
 import { AirTraffic, buildAirTraffic } from './traffic/airTraffic';
 import { buildAreaLights } from './street/areaLights';
 import { marketLightPoints, planMarketCrowd } from './districts/marketPlan';
@@ -198,12 +201,18 @@ export interface NightScene {
   air: AirTraffic;
   /** Mountains, masts and the sky sprites (backdrop.ts). */
   backdrop: Backdrop;
+  /** The lit low cloud layer (sky/clouds.ts); null at Low. */
+  clouds: Clouds | null;
+  /** Headlight and tail lamp flares (car/lampFlares.ts): the session begins a frame, feeds the fleet's and the rivals' lamps and ends it. */
+  flares: LampFlares;
   /** Per-cell culling inside the big merged city layers (cityChunks.ts). */
   chunks: CityChunks;
   /** Animate time-based effects (barrier lamps, arrows). */
   update(time: number): void;
   /** Pose the sim-timed district parts (the El's trains, level crossing gates, RaceState.brokenArms) at a fractional sim tick; call before update. */
-  syncDistricts(tick: number, audible: boolean, brokenArms?: Uint8Array): void;
+  syncDistricts(tick: number, audible: boolean, brokenArms?: Uint8Array, cableBell?: number): void;
+  /** Show or hide the districts' race-only pieces (gates, shutters: kit.race); hidden while the scene is lent to a free roam, whose world has no walls under them. */
+  showRaceOnly(visible: boolean): void;
   dispose(): void;
 }
 
@@ -236,6 +245,19 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     sea: harborSea(world) ?? undefined,
   });
   scene.add(backdrop.group);
+  // Low cloud over the city, lit from below by its glow (Medium and High).
+  const clouds = buildClouds(world.seed, {
+    quality: settings.quality,
+    weather,
+    center: { x: (bounds.minX + bounds.maxX) / 2, z: (bounds.minZ + bounds.maxZ) / 2 },
+    reach: Math.max(bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ) / 2,
+  });
+  if (clouds) scene.add(clouds.mesh);
+  const flares = new LampFlares(settings.quality);
+  scene.add(flares.mesh);
+  // A fireworks display over the water on three seeds in ten (sky/fireworks.ts).
+  const fireworks = buildFireworks(world, { quality: settings.quality, flashes });
+  if (fireworks) scene.add(fireworks.group);
   // Street level polish: road decals, puddles, posters, blade signs, banners, steam (pasted onto the drawn podiums).
   const polish = buildStreetPolish(world, { quality: settings.quality, facades: (city.group.getObjectByName('podiums') as THREE.Mesh | undefined)?.geometry });
   scene.add(polish.group);
@@ -287,7 +309,7 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
   const roadblocks = buildRoadblocks(world, meet, city.barrierLampMaterial, { drawDistance: meetQ.drawDistance });
   scene.add(roadblocks.group);
   // Cars parked in the yards behind the frontage walls, where no car can go (districts/yards.ts); Medium and up.
-  const parked = buildParkedCars(world, { quality: settings.quality, grid });
+  const parked = buildParkedCars(world, { quality: settings.quality, grid, renderer: gr.renderer });
   scene.add(parked.group);
   const arrows = buildRouteArrows(world, barriers, { beacon: city.barrierLampMaterial });
   scene.add(arrows.group);
@@ -299,6 +321,8 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     const viewportHeight = r.domElement.clientHeight || window.innerHeight;
     roadblocks.update(camera);
     backdrop.follow(camera, viewportHeight);
+    clouds?.view(camera);
+    fireworks?.view(camera, viewportHeight);
     weather.view(camera, viewportHeight);
     air.view(camera);
     districts.view(camera);
@@ -384,19 +408,26 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
     envProbes,
     air,
     backdrop,
-    syncDistricts(tick, audible, brokenArms) {
-      districts.sync(tick, audible, brokenArms);
+    clouds,
+    flares,
+    syncDistricts(tick, audible, brokenArms, cableBell) {
+      districts.sync(tick, audible, brokenArms, cableBell);
+    },
+    showRaceOnly(visible) {
+      districts.showRaceOnly(visible);
     },
     update(time) {
       city.update(time);
       arrows.update(time);
       districts.update(time);
       backdrop.update(time);
+      fireworks?.update(time);
       polish.update(time);
       fx.update(time);
       weather.update(time);
       // The sky follows the weather (stars, moon, the cloud over it, the haze on the ridges), and wetter streets glow further.
       backdrop.setMood(weather.live);
+      clouds?.update(time, scene);
       const wetter = 1 + FX_STRENGTH.perWet * (weather.live.wet - weather.def.wet);
       fx.setStrength(FX_STRENGTH.pool * wetter, FX_STRENGTH.streak * wetter);
       air.update(time);
@@ -408,6 +439,9 @@ export function createNightScene(world: World, gr: GameRenderer, settings: Setti
       city.dispose();
       districts.dispose();
       backdrop.dispose();
+      clouds?.dispose();
+      flares.dispose();
+      fireworks?.dispose();
       polish.dispose();
       placeSigns.dispose();
       fx.dispose();

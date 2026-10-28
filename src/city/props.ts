@@ -15,24 +15,28 @@
  *
  * Id layout: props[i] for i < blocks.streetlights.length is streetlights[i]
  * (same position, `light` = i), then traffic lights, then sidewalk furniture,
- * then district props in area order. Street furniture stands on a sidewalk,
+ * then the power poles (UTILITY_POLES: a run of wooden poles along one side
+ * of a street in the la neighbourhoods, each linked to the next by `wireTo`
+ * for the wires the renderer hangs between them), then district props in
+ * area order. Street furniture stands on a sidewalk,
  * never on the drivable road, and clear of intersection mouths (where route
  * barriers go); district props stand where their area put them (pockets,
  * parks, alleys). No prop overlaps another.
  */
-import { CITY } from './config';
+import { CITY, UTILITY_POLES } from './config';
 import type { EdgeMouths, Sector, Streetlight } from './blocks';
 import { BUS_BAY, BusBay, bayHitsCircle, baysByEdge, bayPoint } from './busBays';
-import { furnishStreets } from './streetFurniture';
+import { FURNITURE, furnishStreets } from './streetFurniture';
 import type { RoadGraph } from './roadGraph';
-import { chainOf, isRiverEdge } from './roadGraph';
+import { chainOf, chains, downtownFactor, isRiverEdge } from './roadGraph';
+import type { Region } from './regions';
 import { SpatialGrid } from './spatial';
 import type { Terrain } from './terrain';
 import { Rng, deriveSeed } from '../sim/prng';
 import { DEG, Vec2, atan2, distToSegment, sin, sqrt } from '../sim/math';
 
 /** Sidewalk furniture placed by generateProps itself. */
-export type StreetPropKind = 'streetlight' | 'trafficLight' | 'garbageCan' | 'bench' | 'busStop' | FurnitureKind;
+export type StreetPropKind = 'streetlight' | 'trafficLight' | 'garbageCan' | 'bench' | 'busStop' | 'utilityPole' | FurnitureKind;
 /** Neighbourhood street furniture (streetFurniture.ts): what makes one street read different from the next. */
 export type FurnitureKind = 'hydrant' | 'parkingMeter' | 'mailbox' | 'phoneBooth' | 'vendingMachine';
 /** Construction site pieces fencing off and filling route shortcuts (districts/alleyDressing.ts). */
@@ -41,11 +45,13 @@ export type ConstructionPropKind = 'fencePanel' | 'trafficCone' | 'sawhorse' | '
 export type MarketPropKind = 'marketStall' | 'fruitCrates' | 'foodCart';
 /** A harbor's dock clutter (districts/waterfrontYard.ts): steel oil drums in rows, wooden cable spools on their sides. */
 export type DockPropKind = 'drum' | 'cableSpool';
+/** A beach's furniture (districts/waterfrontBeach.ts): umbrellas and loungers on the sand, volleyball net panels, the boardwalk's low picket fence. */
+export type BeachPropKind = 'umbrella' | 'lounger' | 'volleyNet' | 'picketFence';
 /**
  * Clutter districts ask for (DistrictPropSpec): mostly soft, cheap to crash through. Park lamps light parks and
  * plazas (render/street/areaLights.ts); bollards fence the middle of a roundabout island (districts/roundabout.ts).
  */
-export type DistrictPropKind = 'bush' | 'planterPot' | 'cafeTable' | 'barrel' | 'crate' | 'dumpster' | 'newsBox' | 'trashBags' | 'parkLamp' | 'bollard' | ConstructionPropKind | MarketPropKind | DockPropKind;
+export type DistrictPropKind = 'bush' | 'planterPot' | 'cafeTable' | 'barrel' | 'crate' | 'dumpster' | 'newsBox' | 'trashBags' | 'parkLamp' | 'bollard' | ConstructionPropKind | MarketPropKind | DockPropKind | BeachPropKind;
 export type PropKind = StreetPropKind | DistrictPropKind;
 
 export interface Prop {
@@ -80,6 +86,20 @@ export interface Prop {
   depth?: number;
   /** A bus stop in a bus bay: index into CityBlocks.bays. */
   bay?: number;
+  /** A power pole: the id of the next pole along its run, which its wires span to (absent at a run's end). */
+  wireTo?: number;
+  /** A power pole carrying a transformer drum (every UTILITY_POLES.transformerEvery along a run). */
+  transformer?: boolean;
+}
+
+/** What the power poles need from the city beyond the graph (blocks.ts passes it). */
+export interface PoleContext {
+  /** The seed's home city (regions.ts homeOf). */
+  home: Region;
+  /** The neighbourhood region at a point (regions.ts regionMap). */
+  regionAt(x: number, z: number): Region;
+  /** Edges no run takes: a district's streets, lane closures. */
+  skip: ReadonlySet<number>;
 }
 
 /** A destructible a district module asks for (AreaBuild.destructibles); generateProps places it last. */
@@ -151,6 +171,12 @@ export const PROP_DEFS: Record<PropKind, PropDef> = {
   // about a tenth of the speed, and holds a car that only nudges it.
   drum: { radius: 0.32, mass: 70, height: 0.9, anchor: 1, breakSpeed: 0.7 },
   cableSpool: { radius: 0.8, mass: 150, height: 1.5, anchor: 1, breakSpeed: 1.2 },
+  // Beach furniture, all soft: a beach umbrella (a pole in the sand under a canopy) and a plastic lounger go down at any
+  // speed and cost a fast car about 1%; a net panel (two poles' worth of netting) and a picket panel a couple of percent.
+  umbrella: { radius: 1.0, mass: 16, height: 2.5, anchor: 1, breakSpeed: 0.04 },
+  lounger: { radius: 0.85, mass: 12, height: 0.45, anchor: 1, breakSpeed: 0.03 },
+  volleyNet: { radius: 0.95, mass: 22, height: 2.45, anchor: 1, breakSpeed: 0.05 },
+  picketFence: { radius: 0.85, mass: 18, height: 1.1, anchor: 1, breakSpeed: 0.04 },
   // Neighbourhood furniture. A cast iron hydrant is a stubby, bolted lump: it holds a crawling car
   // and costs a fast one about a seventh of its speed (then gushes, render/street/hydrantSpray.ts). Parking
   // meters and mailboxes are light knocks; a phone booth or a vending machine is a real hit.
@@ -159,13 +185,16 @@ export const PROP_DEFS: Record<PropKind, PropDef> = {
   mailbox: { radius: 0.36, mass: 85, height: 1.25, anchor: 1.2, breakSpeed: 1 },
   phoneBooth: { radius: 0.6, mass: 240, height: 2.4, anchor: 1.3, breakSpeed: 2.5 },
   vendingMachine: { radius: 0.52, mass: 330, height: 1.9, anchor: 1, breakSpeed: 3 },
+  // A 40 ft wooden power pole set 2 m into the ground: a little lighter than a steel streetlight but buried deeper, so it
+  // holds a crawling car and costs a fast one about as much; it snaps at its base like one (render/street/props.ts).
+  utilityPole: { radius: 0.2, mass: 300, height: 10.4, anchor: 2.4, breakSpeed: 3.5 },
 };
 
 /** Neighbourhood furniture kinds (streetFurniture.ts). */
 export const FURNITURE_KINDS: readonly FurnitureKind[] = ['hydrant', 'parkingMeter', 'mailbox', 'phoneBooth', 'vendingMachine'];
 
 /** Street furniture kinds (sidewalk only), in the order generateProps places them. */
-export const STREET_PROP_KINDS: readonly StreetPropKind[] = ['streetlight', 'trafficLight', 'garbageCan', 'bench', 'busStop', ...FURNITURE_KINDS];
+export const STREET_PROP_KINDS: readonly StreetPropKind[] = ['streetlight', 'trafficLight', 'garbageCan', 'bench', 'busStop', ...FURNITURE_KINDS, 'utilityPole'];
 export const isStreetProp = (k: PropKind): k is StreetPropKind => (STREET_PROP_KINDS as readonly PropKind[]).includes(k);
 
 /** Distance behind the curb line (into the sidewalk) of each kind's center. */
@@ -181,6 +210,8 @@ export const SETBACK: Record<StreetPropKind, number> = {
   mailbox: 0.75,
   phoneBooth: 1.1,
   vendingMachine: 3.38,
+  // Nominal: a power pole stands UTILITY_POLES.across of its own sidewalk's width back from the curb.
+  utilityPole: 2.7,
 };
 /** Furniture keeps this far (along the curb) from each end of an edge: crosswalks, barriers, corners. */
 export const MOUTH_CLEAR = 12;
@@ -296,6 +327,7 @@ export function generateProps(
   reserved: { x: number; z: number; r: number }[] = [],
   districtProps: readonly DistrictPropSpec[] = [],
   bays: readonly BusBay[] = [],
+  poles?: PoleContext,
 ): Prop[] {
   const rng = new Rng(deriveSeed(seed, 'props'));
   const props: Prop[] = [];
@@ -505,6 +537,23 @@ export function generateProps(
     return true;
   });
 
+  // 3c. Power poles along the la streets, on their own stream so everything above stays where it was.
+  if (poles && UTILITY_POLES.enabled) {
+    const fitsPole = (x: number, z: number): boolean => {
+      if (!fits(x, z, PROP_DEFS.utilityPole.radius)) return false;
+      const U = UTILITY_POLES;
+      const reach = Math.max(U.lightClear, U.hydrantClear);
+      grid.query(x - reach, z - reach, x + reach, z + reach, scratch);
+      for (const id of scratch) {
+        const p = props[id];
+        const min = p.kind === 'streetlight' || p.kind === 'trafficLight' || p.kind === 'utilityPole' ? U.lightClear : p.kind === 'hydrant' ? U.hydrantClear : 0;
+        if ((p.x - x) ** 2 + (p.z - z) ** 2 < min * min) return false;
+      }
+      return true;
+    };
+    placePoles(seed, g, mouths, poles, fitsPole, (x, z, yaw, edge) => push('utilityPole', x, z, yaw, edge));
+  }
+
   // 4. District clutter, in area order. A spec that would overlap anything already placed is dropped.
   for (const d of districtProps) {
     const r = PROP_DEFS[d.kind].radius;
@@ -525,6 +574,97 @@ export function generateProps(
   }
 
   return props;
+}
+
+/**
+ * The power pole runs (UTILITY_POLES): one per eligible street, a chain of pieces through bend nodes walked as one
+ * curb, so the rhythm and the wires go on through a street's kinks. Every chain draws its share roll, its side and
+ * its stations whether or not it takes a run or a station fits, so the stream never depends on what fits. A station
+ * that does not fit slides along the curb; one that never fits is dropped, and a gap longer than maxSpan breaks the
+ * run's wires.
+ */
+function placePoles(
+  seed: number,
+  g: RoadGraph,
+  mouths: EdgeMouths[],
+  ctx: PoleContext,
+  fits: (x: number, z: number) => boolean,
+  push: (x: number, z: number, yaw: number, edge: number) => Prop,
+): void {
+  const U = UTILITY_POLES;
+  const rng = new Rng(deriveSeed(seed, 'utilityPoles'));
+  const kinds = new Set<string>(U.kinds);
+  /** Poles placed so far, city-wide: every transformerEvery'th carries a drum, so short runs share them evenly. */
+  let count = 0;
+  for (const c of chains(g)) {
+    const roll = rng.next();
+    const right = rng.next() < 0.5;
+    const ok = c.edges.every((ei) => {
+      const e = g.edges[ei];
+      return kinds.has(e.kind) && !e.shortcut && !e.bridge && !isRiverEdge(e) && !ctx.skip.has(ei) && e.sidewalk >= U.minSidewalk;
+    });
+    const me = g.edges[c.edges[c.edges.length >> 1]];
+    const mx = (g.nodes[me.a].x + g.nodes[me.b].x) / 2;
+    const mz = (g.nodes[me.a].z + g.nodes[me.b].z) / 2;
+    const outer = downtownFactor(g.plan, mx, mz) <= FURNITURE.mid;
+    const share = ctx.regionAt(mx, mz) !== 'la' ? 0 : ctx.home === 'la' ? U.homeShare : outer ? U.awayShare : 0;
+    // The walk side's curb, piece by piece in walk order (the P side of a piece is right of its a -> b travel).
+    const segs = c.edges.map((id, k) => {
+      const e = g.edges[id];
+      const m = mouths[id];
+      const fwd = e.a === c.nodes[k];
+      const useP = right === fwd;
+      const A = g.nodes[e.a];
+      const B = g.nodes[e.b];
+      const dl = sqrt((B.x - A.x) ** 2 + (B.z - A.z) ** 2) || 1;
+      const dx = (B.x - A.x) / dl;
+      const dz = (B.z - A.z) / dl;
+      const p0 = useP ? m.aP.curb : m.aN.curb;
+      const p1 = useP ? m.bP.curb : m.bN.curb;
+      const from = fwd ? p0 : p1;
+      const to = fwd ? p1 : p0;
+      const len = sqrt((to.x - from.x) ** 2 + (to.z - from.z) ** 2);
+      // Toward the road from this side's curb (edgeSides' inward).
+      const inx = useP ? dz : -dz;
+      const inz = useP ? -dx : dx;
+      return { edge: id, from, len, ux: (to.x - from.x) / (len || 1), uz: (to.z - from.z) / (len || 1), inx, inz, back: U.across * e.sidewalk };
+    });
+    let total = 0;
+    for (const sg of segs) total += sg.len;
+    const stations: number[] = [];
+    for (let s = U.cornerClear + rng.range(0, U.lead); s <= total - U.cornerClear; s += rng.range(U.pitch[0], U.pitch[1])) stations.push(s);
+    if (!ok || roll >= share) continue;
+    /** The pole at curb distance s along the walk, or null where it does not fit. */
+    const at = (s: number): { x: number; z: number; yaw: number; edge: number } | null => {
+      if (s < U.cornerClear || s > total - U.cornerClear) return null;
+      let k = 0;
+      while (k < segs.length - 1 && s > segs[k].len) s -= segs[k++].len;
+      const sg = segs[k];
+      const t = Math.min(sg.len, Math.max(0, s));
+      const x = sg.from.x + sg.ux * t - sg.inx * sg.back;
+      const z = sg.from.z + sg.uz * t - sg.inz * sg.back;
+      return fits(x, z) ? { x, z, yaw: atan2(sg.inx, sg.inz), edge: sg.edge } : null;
+    };
+    let prev: Prop | null = null;
+    let prevS = 0;
+    let run = 0;
+    for (const s0 of stations) {
+      let spot: { x: number; z: number; yaw: number; edge: number } | null = null;
+      let s = s0;
+      for (let k = 0; k <= 2 * U.tries && !spot; k++) {
+        s = s0 + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * U.slide;
+        spot = at(s);
+      }
+      if (!spot) continue;
+      if (!prev || s - prevS > U.maxSpan) run = 0;
+      const p = push(spot.x, spot.z, spot.yaw, spot.edge);
+      if (count++ % U.transformerEvery === U.transformerAt) p.transformer = true;
+      if (prev && run > 0) prev.wireTo = p.id;
+      prev = p;
+      prevS = s;
+      run++;
+    }
+  }
 }
 
 function unitTo(p: Vec2, q: Vec2): Vec2 {

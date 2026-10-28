@@ -28,6 +28,7 @@ import { unmaskVehicle } from '../render/vehicleMask';
 import { applyHeightFog } from '../render/heightFog';
 import { LightTrails } from '../render/car/lightTrails';
 import { Sparks } from '../render/car/sparks';
+import { ExhaustFx } from '../render/car/exhaustFx';
 import { TireFx } from '../render/car/tireFx';
 import { Litter } from '../render/car/litter';
 import { WaypointBeacons } from '../render/race/waypointBeacons';
@@ -226,6 +227,8 @@ export class RaceSession {
   private readonly uiRoot: HTMLElement;
   /** The camera rendered last frame (the drone starts from it). */
   private lastCamera: THREE.PerspectiveCamera | null = null;
+  /** View height of one pixel at 1 m (2 tan(fov / 2) / height px): the sprites' minimum width. */
+  private pixel = 0.001;
   private freeCam: FreeFlyCamera | null = null;
   private tv = new TvCamera();
   private unsub: (() => void)[] = [];
@@ -233,6 +236,10 @@ export class RaceSession {
   private trails: LightTrails;
   /** Underbody and wall sparks for every car near the camera (render/car/sparks.ts). */
   private sparks: Sparks;
+  /** Upshift, overrun and nitrous flames at the tailpipes and the heat haze behind them (render/car/exhaustFx.ts). */
+  private exhaust: ExhaustFx;
+  /** Each car's redline (rpm), for the haze's engine load. */
+  private readonly redlines: number[];
   /** Rubber on the road and tire smoke for every car losing traction (render/car/tireFx.ts). */
   private tireFx: TireFx;
   /** Paper, leaves and cups lifted by the cars' wake (render/car/litter.ts). */
@@ -344,7 +351,7 @@ export class RaceSession {
     }
     const traffic = this.race.traffic;
     if (traffic) {
-      this.traffic = new TrafficView(this.race.world, traffic.cars.length);
+      this.traffic = new TrafficView(this.race.world, traffic.cars.length, { renderer: gr.renderer, tier: settings.quality });
       this.night.scene.add(this.traffic.group);
       this.trafficCurr = new Float32Array(traffic.cars.length * TRAFFIC_SNAP);
       snapTraffic(traffic, this.trafficCurr);
@@ -365,6 +372,9 @@ export class RaceSession {
       // Rivals take the scene's height fog once their parts exist; the player's car sits too close for it to show.
       loads.push(view.load(opts.visuals[i] ?? opts.visuals[0]).then(() => (i > 0 ? applyHeightFog(view.root) : undefined)));
     });
+    this.exhaust = new ExhaustFx(settings.quality, this.views);
+    this.night.scene.add(this.exhaust.mesh);
+    this.redlines = this.race.cars.map((c) => c.tuning.engine.redline);
     this.drivers = new Drivers(this.race.cars.length);
     this.night.scene.add(this.drivers.group);
     if (opts.ghost) {
@@ -698,6 +708,7 @@ export class RaceSession {
     this.hardHitTick = false;
     stepRace(r, frame);
     this.curr = r.cars.map((c) => snap(c));
+    this.exhaust.tick(r, this.prev, this.curr, this.time, this.camPos);
     if (r.traffic) {
       const t = this.trafficPrev;
       this.trafficPrev = this.trafficCurr;
@@ -909,6 +920,7 @@ export class RaceSession {
       const cam = this.lastCamera ?? this.cam.camera;
       const px = this.gr.renderer.domElement.clientHeight || window.innerHeight;
       this.sparks.update(this.time, (2 * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, px));
+      this.pixel = (2 * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, px);
       this.tireFx.update(this.time);
       this.litter.update(this.time);
     }
@@ -928,6 +940,9 @@ export class RaceSession {
       v.root.visible = poses[i].passThrough <= 0 || (poses[i].passThrough * RESET_BLINK_HZ + 0.5) % 1 < 0.5;
     });
     this.drivers.update(this.views, poses);
+    const wet = this.night.weather.live.wet;
+    for (const v of this.views) v.setWet(wet);
+    this.exhaust.update(this.time, dt, poses, this.camPos, this.paused, this.pixel);
     if (this.ghostView && this.ghostPrev && this.ghostCurr) this.ghostView.update(lerpSnap(this.ghostPrev, this.ghostCurr, alpha, (this.ghostPose ??= { ...this.ghostCurr, comp: [], spin: [] })), this.time);
     const p = poses[0];
     let camera: THREE.PerspectiveCamera;
@@ -936,6 +951,7 @@ export class RaceSession {
       camera = this.drone.camera;
     } else camera = this.updateCamera(p, dt);
     this.lastCamera = camera;
+    this.exhaust.haze(this.gr.post, camera, poses, this.redlines, this.time, dt, this.paused);
     this.trails.update(this.views[0].root, camera, this.paused ? 0 : p.nitroStage, dt);
     this.carLight?.follow(p);
     // The few real point lights follow the action, or the drone when it flies off.
@@ -948,7 +964,7 @@ export class RaceSession {
     const chase = this.chaseCall;
     this.night.air.chase(chase.phase === 'chase' ? (poses[chase.car] ?? null) : null);
     // The El's trains and level crossings at the interpolated sim time: the gates close for these trains.
-    this.night.syncDistricts(Math.max(0, r.tick - 1 + (this.paused ? 1 : alpha)), !this.paused, r.brokenArms);
+    this.night.syncDistricts(Math.max(0, r.tick - 1 + (this.paused ? 1 : alpha)), !this.paused, r.brokenArms, r.cableCar?.bell);
     this.night.update(this.time);
     this.night.envProbes.update(focus.x, focus.z, dt);
     this.hazards.update(r);
@@ -960,7 +976,12 @@ export class RaceSession {
     this.night.props.update(this.paused ? 0 : dt, this.time, r.brokenProps, this.curr, this.propsSynced ? this.brokenIds : undefined);
     this.propsSynced = true;
     this.brokenIds.length = 0;
-    this.traffic?.update(this.trafficPrev, this.trafficCurr, this.paused ? 1 : alpha, camera, this.time, this.settings.quality, r.tick);
+    // Lamp flares: the rivals' lenses and the fleet's lamps, the nearest few facing the camera (the player's own car is the camera's).
+    const flares = this.night.flares;
+    flares.begin(camera, (this.night.scene.fog as THREE.FogExp2 | null)?.density ?? 0);
+    for (let i = 1; i < this.views.length; i++) if (this.views[i].root.visible) this.views[i].feedFlares(flares);
+    this.traffic?.update(this.trafficPrev, this.trafficCurr, this.paused ? 1 : alpha, camera, this.time, this.settings.quality, r.tick, flares);
+    flares.end();
     // Progressive edge blur: grows with speed, much stronger while boosting (eased in and out).
     const target = this.settings.radialBlur && !this.paused ? Math.max(0, Math.min(1, (p.speed - 25) / 45)) * 0.4 + (p.nitro ? 1 : 0) : 0;
     this.blur += (target - this.blur) * (1 - Math.exp(-dt * (target > this.blur ? 6 : 3)));
@@ -1108,6 +1129,7 @@ export class RaceSession {
     this.ghostView?.dispose();
     this.trails.dispose();
     this.sparks.dispose();
+    this.exhaust.dispose();
     this.tireFx.dispose();
     this.litter.dispose();
     this.beacons?.dispose();

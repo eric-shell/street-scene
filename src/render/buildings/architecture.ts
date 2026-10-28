@@ -9,7 +9,8 @@
  * Francisco up the hills, Miami along the water, Los Angeles toward the
  * sprawl at the edges, Philadelphia in the ring between. The seed's home
  * (cityIdentity.ts) weighs most in every cell, so it covers most of the city
- * and the other four read as pockets. Buildings take their
+ * and the other four read as pockets. The cells are the city's own
+ * (city/regions.ts), since the power poles and the cable car are placed by them. Buildings take their
  * cell's region (the neighbour's near a border, the secondary now and then, a
  * rare outlier anywhere), then a style from the region and their height:
  * brownstones and deco towers, Spanish revival and mid-century strips,
@@ -17,19 +18,21 @@
  * condos, and glass towers everywhere downtown. Low rise terrace styles line
  * up along a block side at a shared cornice height and split into narrow
  * houses. Heights may move only where no neon sign would be left floating.
+ * A Philadelphia home leans harder on brick (cityIdentity.ts `brick`: fewer
+ * stone mansard blocks and deco towers, more rowhouse terraces); the rolls
+ * are the same, only their thresholds move, and only in the home's own region.
  */
 import type { World } from '../../city/world';
-import { pointInPolygon } from '../../city/districts/geom';
 import type { Building } from '../../city/blocks';
 import { Rng } from '../../sim/prng';
-import { downtownFactor } from '../../city/roadGraph';
-import { cityIdentity } from '../cityIdentity';
+import { signatureAt } from '../cityIdentity';
+import { REGIONS, regionMap, type Region } from '../../city/regions';
 import type { FacadeLayer } from './facadeAtlas';
 import { MODULE } from './facadeAtlas';
 import type { GroundBay } from './facadeKit';
 import { GROUND_H } from './facadeKit';
 
-export type Region = 'nyc' | 'la' | 'sf' | 'philly' | 'miami';
+export type { Region };
 export type StyleId = 'brownstone' | 'prewar' | 'deco' | 'glass' | 'spanish' | 'midcentury' | 'victorian' | 'rowhouse' | 'empire' | 'miamiDeco' | 'condo';
 
 export interface StyleDef {
@@ -188,37 +191,17 @@ export interface BuildingPlan {
 }
 
 export const ARCH = {
-  /** Neighbourhood cell size (m) and center jitter (fraction of a cell). */
-  cell: 210,
-  jitter: 0.75,
   /** Near a cell border (difference of the two nearest center distances, m) buildings may take the neighbour's region. */
   blend: 46,
   /** Chance to take the cell's secondary region, or any region at all. */
   secondary: 0.13,
   outlier: 0.03,
-  /** Water within this distance of a cell center favors Miami (m). */
-  waterReach: 260,
-  /** Cell weight multipliers for the seed's home region and for the other four (cityIdentity.ts). */
-  home: 2.5,
-  away: 0.6,
 } as const;
 
-const REGIONS: readonly Region[] = ['nyc', 'la', 'sf', 'philly', 'miami'];
-const BASE_WEIGHT: Record<Region, number> = { nyc: 1, la: 0.9, sf: 0.85, philly: 0.9, miami: 0.8 };
 
-function pickWeighted(rng: Rng, weights: number[]): number {
-  let total = 0;
-  for (const w of weights) total += w;
-  let r = rng.next() * total;
-  for (let i = 0; i < weights.length; i++) {
-    r -= weights[i];
-    if (r <= 0) return i;
-  }
-  return weights.length - 1;
-}
 
-/** Style for a region and height (m). */
-export function styleFor(region: Region, h: number, rng: Rng): StyleId {
+/** Style for a region and height (m). `brick` (0..1, Philadelphia's signature) moves the stone and deco shares of the mid heights toward brick. */
+export function styleFor(region: Region, h: number, rng: Rng, brick = 0): StyleId {
   const r = rng.next();
   switch (region) {
     case 'nyc':
@@ -228,7 +211,7 @@ export function styleFor(region: Region, h: number, rng: Rng): StyleId {
     case 'sf':
       return h <= 18 ? 'victorian' : h <= 34 ? (r < 0.55 ? 'prewar' : 'glass') : r < 0.2 ? 'deco' : 'glass';
     case 'philly':
-      return h <= 14 ? 'rowhouse' : h <= 30 ? (r < 0.5 ? 'empire' : 'brownstone') : h <= 60 ? (r < 0.6 ? 'prewar' : 'deco') : 'glass';
+      return h <= 14 ? 'rowhouse' : h <= 30 ? (r < 0.5 * (1 - brick) ? 'empire' : 'brownstone') : h <= 60 ? (r < 0.6 + 0.4 * brick ? 'prewar' : 'deco') : 'glass';
     case 'miami':
       return h <= 22 ? 'miamiDeco' : h <= 36 ? (r < 0.4 ? 'miamiDeco' : 'condo') : r < 0.72 ? 'condo' : 'glass';
   }
@@ -258,111 +241,9 @@ export function regionAt(world: World): (x: number, z: number) => Region {
 function planOnce(world: World): BuildingPlan[] {
   const B = world.blocks.buildings;
   const g = world.graph;
-  const rng = new Rng((world.seed ^ 0xa4c417) >>> 0 || 1);
-  const bx = g.bounds;
-  const downtown = (x: number, z: number) => downtownFactor(g.plan, x, z);
-  const home = cityIdentity(world.seed).home;
-
-  // Terrain range over the city, for "up the hill".
-  let hMin = Infinity;
-  let hMax = -Infinity;
-  for (let x = bx.minX; x <= bx.maxX; x += 70) {
-    for (let z = bx.minZ; z <= bx.maxZ; z += 70) {
-      const h = world.heightAt(x, z);
-      hMin = Math.min(hMin, h);
-      hMax = Math.max(hMax, h);
-    }
-  }
-  const hSpan = Math.max(1, hMax - hMin);
-  const water: { x: number; z: number }[] = [];
-  for (const a of world.areas) {
-    if (a.kind !== 'river' && a.kind !== 'lake' && a.kind !== 'waterfront') continue;
-    const pts = a.path.length ? a.path : a.polygon;
-    for (let i = 0; i < pts.length; i += Math.max(1, Math.floor(pts.length / 40))) water.push(pts[i]);
-  }
-  const nearWater = (x: number, z: number) => {
-    let best = Infinity;
-    for (const p of water) best = Math.min(best, Math.hypot(p.x - x, p.z - z));
-    return best < ARCH.waterReach ? 1 - best / ARCH.waterReach : 0;
-  };
-
-  // Jittered Voronoi neighbourhoods.
-  const C = ARCH.cell;
-  const ox = bx.minX - C;
-  const oz = bx.minZ - C;
-  const nx = Math.ceil((bx.maxX - bx.minX) / C) + 3;
-  const nz = Math.ceil((bx.maxZ - bx.minZ) / C) + 3;
-  const cells: { x: number; z: number; primary: Region; secondary: Region; w: number[] }[] = [];
-  for (let j = 0; j < nz; j++) {
-    for (let i = 0; i < nx; i++) {
-      const x = ox + (i + 0.5 + (rng.next() - 0.5) * ARCH.jitter) * C;
-      const z = oz + (j + 0.5 + (rng.next() - 0.5) * ARCH.jitter) * C;
-      const f = downtown(x, z);
-      // "Up the hill": the city's own rolling ground counts for a little, a hills district's dome or ridge for everything.
-      const onHill = world.areas.some((a) => a.kind === 'hills' && a.params.h > 0 && pointInPolygon(x, z, a.polygon));
-      const hill = onHill ? 1 : Math.max(0, Math.min(1, (world.heightAt(x, z) - hMin) / hSpan)) * 0.6;
-      const wet = nearWater(x, z);
-      const edge = 1 - f;
-      const w = REGIONS.map((r) => {
-        const b = BASE_WEIGHT[r] * (r === home ? ARCH.home : ARCH.away);
-        switch (r) {
-          case 'nyc':
-            return b * (0.55 + 2.2 * f);
-          case 'la':
-            return b * (0.35 + 1.3 * edge * edge);
-          case 'sf':
-            return b * (0.3 + 2.6 * hill ** 1.5) * (onHill ? 1.8 : 1);
-          case 'philly':
-            return b * (0.55 + 1.0 * Math.max(0, 1 - Math.abs(f - 0.35) * 2.6));
-          case 'miami':
-            return b * (0.35 + 2.6 * wet + 0.35 * edge);
-        }
-      });
-      const p = pickWeighted(rng, w);
-      const w2 = w.slice();
-      w2[p] = 0;
-      const s = pickWeighted(rng, w2);
-      cells.push({ x, z, primary: REGIONS[p], secondary: REGIONS[s], w });
-    }
-  }
-  // Every region shows up somewhere: give a missing one to its strongest cell among repeated regions.
-  for (let ri = 0; ri < REGIONS.length; ri++) {
-    const r = REGIONS[ri];
-    const inside = cells.filter((c) => c.x > bx.minX && c.x < bx.maxX && c.z > bx.minZ && c.z < bx.maxZ);
-    if (inside.some((c) => c.primary === r)) continue;
-    const counts = new Map<Region, number>();
-    for (const c of inside) counts.set(c.primary, (counts.get(c.primary) ?? 0) + 1);
-    let best: (typeof cells)[number] | null = null;
-    for (const c of inside) if ((counts.get(c.primary) ?? 0) > 1 && (!best || c.w[ri] > best.w[ri])) best = c;
-    if (best) best.primary = r;
-  }
-  const cellAt = (x: number, z: number) => {
-    const ci = Math.floor((x - ox) / C);
-    const cj = Math.floor((z - oz) / C);
-    let d1 = Infinity;
-    let d2 = Infinity;
-    let c1 = 0;
-    let c2 = 0;
-    for (let j = cj - 1; j <= cj + 1; j++) {
-      for (let i = ci - 1; i <= ci + 1; i++) {
-        if (i < 0 || j < 0 || i >= nx || j >= nz) continue;
-        const k = j * nx + i;
-        const d = Math.hypot(cells[k].x - x, cells[k].z - z);
-        if (d < d1) {
-          d2 = d1;
-          c2 = c1;
-          d1 = d;
-          c1 = k;
-        } else if (d < d2) {
-          d2 = d;
-          c2 = k;
-        }
-      }
-    }
-    return { a: cells[c1], b: cells[c2], gap: d2 - d1 };
-  };
-
-  regionLookups.set(world, (x, z) => cellAt(x, z).a.primary);
+  // The neighbourhood cells are the city's (city/regions.ts): the poles and the cable car are placed by the same map.
+  const { cellAt, regionAt: lookup } = regionMap(world.seed, g, world.areas, (x, z) => world.heightAt(x, z));
+  regionLookups.set(world, lookup);
 
   // Signs: the shaft stays flush up to their tops.
   const flush = new Float64Array(B.length);
@@ -393,10 +274,11 @@ function planOnce(world: World): BuildingPlan[] {
     else if (br.chance(ARCH.outlier)) region = REGIONS[br.int(0, REGIONS.length - 1)];
     let h = b.h;
     // Philly and SF neighbourhoods pull mid height buildings down into their terraces now and then.
-    if (region === 'philly' && h <= 18 && br.chance(0.55)) h = Math.min(h, TERRACE_CAP.rowhouse!);
+    const philly = signatureAt(world.seed, 'philly').brick;
+    if (region === 'philly' && h <= 18 && br.chance(philly?.terrace ?? 0.55)) h = Math.min(h, TERRACE_CAP.rowhouse!);
     if (region === 'sf' && h <= 24 && br.chance(0.5)) h = Math.min(h, TERRACE_CAP.victorian!);
     h = Math.max(h, flush[i]);
-    return { style: styleFor(region, h, br), region, h, flush: flush[i], signed: signed[i] === 1, landmark: false, seed: b.seed };
+    return { style: styleFor(region, h, br, region === 'philly' ? philly?.share : 0), region, h, flush: flush[i], signed: signed[i] === 1, landmark: false, seed: b.seed };
   });
 
   // Terraces: consecutive low rise buildings on one block side share a style and a cornice line.

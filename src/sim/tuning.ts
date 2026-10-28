@@ -252,6 +252,9 @@ export interface CarTuning {
     /** A harbor's quay: dusty, oil stained dock concrete, a little short of a road's grip, and its small rolling drag (N, full above 1 m/s). */
     quayGrip: number;
     quayDrag: number;
+    /** A beach's sand (districts/waterfrontBeach.ts): loose, so a good deal less grip than a road, and a heavy rolling drag (N, full above 1 m/s). */
+    sandGrip: number;
+    sandDrag: number;
     /** Water in the river trickle: hydrodynamic drag, N per (m/s)^2 of speed with all four wheels in it (scaled by the wheels that are). */
     waterDrag: number;
   };
@@ -375,6 +378,47 @@ function driftZoneTuning(raw: Record<string, unknown>): DriftZoneTuning {
 }
 
 export const DRIFT_ZONES: DriftZoneTuning = driftZoneTuning(params.driftZones as unknown as Record<string, unknown>);
+
+// ---------------------------------------------------------------------------
+// Road physics (src/city/roadProfile.ts): the surface's own shape, not car tuning, so not in tuningHash.
+// ---------------------------------------------------------------------------
+export interface RoadTuning {
+  /** Cross slope of a crowned street by kind: the mean rise over run from kerb to centre (a parabola, so the kerb side is twice as steep). */
+  crownStreet: number;
+  crownAvenue: number;
+  crownDiagonal: number;
+  crownBoulevard: number;
+  /** A speed hump: length along the street (m) and height (m), a cosine bump. */
+  humpLength: number;
+  humpHeight: number;
+  /** The outer share of the half width (0..1) the hump eases off over toward the kerb, so it never ends in a step. */
+  humpTaper: number;
+  /** An expansion joint's raised lip: height (m), width along the deck (m) and spacing (m). */
+  jointHeight: number;
+  jointWidth: number;
+  jointSpacing: number;
+  /** An axle thumps when a wheel over a hump or joint compresses faster than this (m/s). */
+  thumpMin: number;
+  /** An axle that thumped stays quiet this long (s). */
+  thumpGap: number;
+}
+
+const ROAD_KEYS = ['crownStreet', 'crownAvenue', 'crownDiagonal', 'crownBoulevard', 'humpLength', 'humpHeight', 'humpTaper', 'jointHeight', 'jointWidth', 'jointSpacing', 'thumpMin', 'thumpGap'] as const satisfies readonly (keyof RoadTuning)[];
+
+/** The `road` section, checked like the car tuning: unknown or missing keys and non-numbers throw. */
+function roadTuning(raw: Record<string, unknown>): RoadTuning {
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (k.startsWith('_')) continue;
+    if (!(ROAD_KEYS as readonly string[]).includes(k)) throw new Error(`drivingParams.json: unknown key "road.${k}"`);
+    if (typeof v !== 'number') throw new Error(`drivingParams.json: "road.${k}" must be a number`);
+    out[k] = v;
+  }
+  for (const k of ROAD_KEYS) if (!(k in out)) throw new Error(`drivingParams.json: missing "road.${k}"`);
+  return out as unknown as RoadTuning;
+}
+
+export const ROAD: RoadTuning = roadTuning(params.road as unknown as Record<string, unknown>);
 
 interface ManifestCar {
   id: string;
@@ -574,6 +618,38 @@ function validateTraffic(raw: unknown): TrafficParams {
 
 /** Ambient traffic numbers (drivingParams.json `traffic`), validated at startup. */
 export const TRAFFIC: TrafficParams = validateTraffic((params as Record<string, unknown>).traffic);
+
+// ---------------------------------------------------------------------------
+// The cable car (src/sim/cableCar.ts): its body and how it moves on the cable.
+// ---------------------------------------------------------------------------
+
+export interface CableCarParams {
+  /** kg */
+  mass: number;
+  /** m */
+  halfLength: number;
+  /** m */
+  halfWidth: number;
+  /** Cable speed (m/s). */
+  speed: number;
+  /** Gripping and letting go (m/s^2). */
+  accel: number;
+  /** Yaw inertia scale of its body in contact (as traffic's). */
+  yawInertiaScale: number;
+}
+
+const CABLE_CAR_KEYS: readonly (keyof CableCarParams)[] = ['mass', 'halfLength', 'halfWidth', 'speed', 'accel', 'yawInertiaScale'];
+
+/** Type and key check of the `cableCar` block: unknown or missing keys and non-numbers throw. */
+function validateCableCar(raw: unknown): CableCarParams {
+  if (!isObj(raw)) throw new Error('drivingParams.json: "cableCar" must be an object');
+  for (const k of Object.keys(raw)) if (!k.startsWith('_') && !(CABLE_CAR_KEYS as readonly string[]).includes(k)) throw new Error(`drivingParams.json: unknown key "cableCar.${k}"`);
+  for (const k of CABLE_CAR_KEYS) if (typeof raw[k] !== 'number') throw new Error(`drivingParams.json: "cableCar.${k}" must be a number`);
+  return raw as unknown as CableCarParams;
+}
+
+/** The cable car's numbers (drivingParams.json `cableCar`), validated at startup. */
+export const CABLE_CAR_BODY: CableCarParams = validateCableCar((params as Record<string, unknown>).cableCar);
 
 export function setByPath(obj: unknown, path: string, value: number | string): void {
   const keys = path.split('.');

@@ -70,6 +70,7 @@ import { axisAt, axisPoint, rampHeight } from '../../city/districts/highway/ramp
 import { clipConvex } from '../../city/districts/geom';
 import { RAIL, RailCurve, curvePoint, projectOnCurve, sampleCurve } from '../../city/railCurve';
 import { Rng } from '../../sim/prng';
+import { ROAD } from '../../sim/tuning';
 import type { Vec2 } from '../../sim/math';
 import type { Cell } from './structureFx';
 import { CLOSED_CELL, END_CELL, EXIT_CELL, GANTRY_SLOTS, RAMP_CELL, WRONG_WAY_CELL, beam, frameBox, gantryCell, makeStructureSigns, signGantry, signPanel } from './structureFx';
@@ -94,6 +95,8 @@ const HW = {
   barrierH: 1.0,
   medianH: 0.9,
   vBarrierW: 0.5,
+  /** An expansion joint's dark strip across the deck: its width along the deck (m). */
+  jointStrip: 0.3,
   /** Lane lines: width (m), the dashes' length and period (m). */
   line: 0.15,
   dash: 3,
@@ -175,6 +178,8 @@ const C = {
   grass: col(0x1d3a22),
   alley: col(0x2e2e33),
   alleyLine: col(0xd8dce6, 0.7),
+  /** An expansion joint's strip across the deck. */
+  joint: col(0x0c0c0f),
 } as const;
 
 const LAMP = {
@@ -268,13 +273,19 @@ export const highwayRenderer: DistrictRenderer = {
       deck(kit, a, d, signs, wash);
       for (const r of d.ramps) ramp(kit, d, r, signs, wash);
     }
+    // The alleys' ROAD CLOSED plates stand only in a race (settle.ts highwayGates): a mesh of their own, hidden when the scene is lent to free roam.
+    const gateSigns = new GeoBuilder(true);
     const route = new Set(kit.world.route.edges);
-    for (const a of areas) if (a.variant === 'alley') alley(kit, a, signs, route);
-    if (signs.vertexCount) {
+    for (const a of areas) if (a.variant === 'alley') alley(kit, a, gateSigns, route);
+    if (signs.vertexCount || gateSigns.vertexCount) {
       const map = kit.track(makeStructureSigns(kit.world.seed));
-      const m = new THREE.Mesh(kit.track(signs.build()), kit.track(new THREE.MeshBasicMaterial({ map, vertexColors: true })));
-      m.name = 'highwaySigns';
-      kit.group.add(m);
+      const mat = kit.track(new THREE.MeshBasicMaterial({ map, vertexColors: true }));
+      for (const [gb, name, into] of [[signs, 'highwaySigns', kit.group], [gateSigns, 'highwayGateSigns', kit.race.group]] as const) {
+        if (!gb.vertexCount) continue;
+        const m = new THREE.Mesh(kit.track(gb.build()), mat);
+        m.name = name;
+        into.add(m);
+      }
     }
     if (wash?.vertexCount) {
       const m = new THREE.Mesh(kit.track(wash.build()), kit.track(washMaterial()));
@@ -591,6 +602,11 @@ function deck(kit: DistrictKit, area: Area, d: HighwayDeck, signs: GeoBuilder, w
       }
       if (extent(d, s + HW.dash / 2, sd) > HALF + 0.5) line(s, e, sd * outerLine, sd * outerLine, C.white);
     }
+  }
+  // Expansion joints: a dark strip across the whole deck every road.jointSpacing, the first half a spacing in from the
+  // west end, where the sim lifts a 2 cm lip (DeckSpan.joint, city/roadProfile.ts). Over the lane paint.
+  for (let s = d.sW + ROAD.jointSpacing / 2; s < d.sE; s += ROAD.jointSpacing) {
+    band(paint, c, s - HW.jointStrip / 2, s + HW.jointStrip / 2, -extent(d, s, -1), extent(d, s, 1), top(s) + 0.026, top(s) + 0.026, C.joint);
   }
   // Along a slip ramp's lane, a solid edge line inside its wall: at full width from the ramp's top, then
   // easing in over the taper to meet the deck's outer edge line where the lane ends.
@@ -1091,7 +1107,7 @@ function infield(kit: DistrictKit, r: HighwayRamp): void {
  * wall short of the mouths, and in a race a gate across every mouth onto a street the route does not
  * take (settle.ts highwayGates). The back wall is the city's boundary wall (infill.ts draws it).
  */
-function alley(kit: DistrictKit, a: Area, signs: GeoBuilder, route: ReadonlySet<number>): void {
+function alley(kit: DistrictKit, a: Area, gateSigns: GeoBuilder, route: ReadonlySet<number>): void {
   for (const h of kit.builds[a.id].hints) if (h.kind === 'pave') drapeConvex(kit, kit.ground, h.points, 0.03, C.alley, 5);
   const c = deckCurve(kit.world.areas[a.params.deck]);
   const sd = a.params.side > 0 ? 1 : -1;
@@ -1115,7 +1131,7 @@ function alley(kit: DistrictKit, a: Area, signs: GeoBuilder, route: ReadonlySet<
     }
     const ya = kit.world.driveHeightAt(m.a.x, m.a.z);
     const yb = kit.world.driveHeightAt(m.b.x, m.b.z);
-    gateBarrier(kit, signs, { x: m.a.x, y: ya, z: m.a.z }, { x: m.b.x, y: yb, z: m.b.z }, nx, nz);
+    gateBarrier(kit, gateSigns, { x: m.a.x, y: ya, z: m.a.z }, { x: m.b.x, y: yb, z: m.b.z }, nx, nz);
   });
 }
 
@@ -1128,12 +1144,12 @@ function gateBarrier(kit: DistrictKit, signs: GeoBuilder, a: P3, b: P3, nx: numb
   for (const y of [0.45, 0.95]) {
     const ga = a.y + y;
     const gb = b.y + y;
-    orientedBox(kit.glow, a.x, a.z, b.x, b.z, -nx * 0.18, -nz * 0.18, Math.min(ga, gb), Math.max(ga, gb) + 0.12, LAMP.cyan);
+    orientedBox(kit.race.glow, a.x, a.z, b.x, b.z, -nx * 0.18, -nz * 0.18, Math.min(ga, gb), Math.max(ga, gb) + 0.12, LAMP.cyan);
   }
   for (let t = 0; t <= 1.0001; t += 0.25) {
     const x = a.x + (b.x - a.x) * t;
     const z = a.z + (b.z - a.z) * t;
-    cylinder(kit.solid, x, z, 0.07, Math.min(a.y, b.y) - 0.1, Math.max(a.y, b.y) + 1.15, 5, C.post, false);
+    cylinder(kit.race.solid, x, z, 0.07, Math.min(a.y, b.y) - 0.1, Math.max(a.y, b.y) + 1.15, 5, C.post, false);
   }
   signPanel(signs, (a.x + b.x) / 2 + nx * 0.2, (a.y + b.y) / 2 + 1.75, (a.z + b.z) / 2 + nz * 0.2, nx, nz, 3.6, 0.9, CLOSED_CELL, col(0xffffff, 0.85));
 }

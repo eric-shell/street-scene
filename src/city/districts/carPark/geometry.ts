@@ -263,7 +263,9 @@ export function carParkLift(g: CarParkGeo, x: number, z: number, out: HeightSamp
   const dz = z - g.oz;
   const u = dx * g.ux + dz * g.uz;
   const v = dx * g.vx + dz * g.vz;
-  if (u < g.kl && v >= -g.hc && v <= g.hc) {
+  // Only between the lip and the kicker's foot: a floor reaching behind the lip (a slanted footprint
+  // edge beside the exit lane) is flat deck, not the parabola carried on past its top.
+  if (u >= 0 && u < g.kl && v >= -g.hc && v <= g.hc) {
     const k = (g.kl - u) / g.kl;
     out.h += g.kh * k * k;
     const du = (-2 * g.kh * k) / g.kl;

@@ -12,9 +12,11 @@ import type { Area } from './districts/types';
 /**
  * Districts a drag strip keeps off: whatever stands in the street, narrows it or takes it off grade.
  * The El (columns on the sidewalk) and tunnels (full width bores) may stand over a strip; roadworks
- * may close a curb lane beside it (stripEdgeOk).
+ * may close a curb lane beside it (stripEdgeOk). The cable car's street is off it, and so is every street
+ * out of its terminal junctions: a strip through one would close the line's street off with a barrier and
+ * a street meet right where the car stands at its terminal.
  */
-const OFF_STRIP = new Set<Area['kind']>(['market', 'river', 'roundabout', 'overpass', 'carPark', 'monument', 'bluff']);
+const OFF_STRIP = new Set<Area['kind']>(['market', 'river', 'roundabout', 'overpass', 'carPark', 'monument', 'bluff', 'cableCar']);
 /** Room a drag car needs from the centerline out to a roadworks closure's barriers (m): its lane plus half a car and a margin. */
 const STRIP_CLEAR = ROUTE.dragLaneOffset + 1.5;
 
@@ -25,6 +27,7 @@ const STRIP_CLEAR = ROUTE.dragLaneOffset + 1.5;
  */
 export function stripEdgeOk(g: RoadGraph, edge: number, areas: readonly Area[], areaAt: (x: number, z: number) => Area | null): boolean {
   const e = g.edges[edge];
+  if (areas.some((a) => a.kind === 'cableCar' && (a.params.first === e.a || a.params.first === e.b || a.params.last === e.a || a.params.last === e.b))) return false;
   const A = g.nodes[e.a];
   const B = g.nodes[e.b];
   const steps = Math.max(1, Math.ceil(e.length / 8));

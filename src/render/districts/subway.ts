@@ -34,7 +34,9 @@
  * reads at night for no per frame cost, and the sodium lamps under the deck
  * throw an additive pool on the street. Quality trims detail: Low draws a
  * solid deck instead of open ties, fewer handrail posts and no sparks, pools
- * or light wash.
+ * or light wash. A Philadelphia home paints the El's steel its signature
+ * green (cityIdentity.ts `elSteel`, a tint on the girders, columns and
+ * canopy; the rails, ties and lamps keep their colours).
  */
 import * as THREE from 'three';
 import { CITY } from '../../city/config';
@@ -52,6 +54,7 @@ import type { DistrictKit, DistrictRenderer } from './kit';
 import { col, cylinder, groundVertex } from './kit';
 import { washMaterial } from '../materialFx';
 import { drapedDisc, type DiscLook } from '../street/groundPlane';
+import { signatureAt } from '../cityIdentity';
 
 interface V3 {
   x: number;
@@ -80,6 +83,11 @@ const TINT = {
   /** The gravel yard under the deck where it cuts through a block (the kit's plain lit ground). */
   yard: col(0x5a5446),
 } as const;
+
+/** The steel's unpainted tints: every build restores them before a Philadelphia home paints its own. */
+const STEEL_BASE = { steel: TINT.steel.clone(), dark: TINT.dark.clone() };
+/** How much brighter than the sRGB hex the El's green is multiplied in (the steel atlas is dark grey). */
+const EL_GREEN_GAIN = 1.5;
 
 /** Lamp colors (unlit glow builder). */
 const LAMP = {
@@ -323,6 +331,13 @@ export const subwayRenderer: DistrictRenderer = {
   kinds: ['subway'],
   build(kit, areas) {
     if (!areas.length) return;
+    TINT.steel.copy(STEEL_BASE.steel);
+    TINT.dark.copy(STEEL_BASE.dark);
+    const green = signatureAt(kit.world.seed, 'philly').elSteel;
+    if (green !== undefined) {
+      TINT.steel.multiply(col(green, EL_GREEN_GAIN));
+      TINT.dark.multiply(col(green, EL_GREEN_GAIN));
+    }
     // The curves first: the platform boards are lettered with the neighbourhood each station stands in (city/names/stations.ts).
     const curves = areas.map((a) => elCurve(a, kit.builds[a.id], kit.h));
     const boards: string[] = [];

@@ -160,6 +160,9 @@
       "_quay": "A harbor's quay (districts/waterfront.ts): dusty, oil stained dock concrete. A shade under the road's grip, so the yard and its skid pad slide a little earlier than the street beside it, and a small rolling drag from the grit, about a third of the cobbles'.",
       "quayGrip": 0.9,
       "quayDrag": 40,
+      "_sand": "A beach's sand (districts/waterfrontBeach.ts): the off road section of the waterfront. Loose and slidey, a little better than dirt's grip (offroadGrip 0.49) and with less drag than it (offroadDrag 900): it bleeds speed hard enough that the boardwalk is the fast line and the sand a detour for the dune jumps and the drift strip, but a racer who commits to it is not stranded. The boardwalk's planks drive as cobbles (cobbleGrip, cobbleDrag).",
+      "sandGrip": 0.55,
+      "sandDrag": 560,
       "waterDrag": 3.5
     },
     "collision": {
@@ -346,6 +349,31 @@
       { "name": "cityBus", "share": 0.022, "mass": 9000, "halfLength": 5.2, "halfWidth": 1.22 },
       { "name": "schoolBus", "share": 0.01, "mass": 8000, "halfLength": 4.13, "halfWidth": 1.17 }
     ]
+  },
+  "road": {
+    "_readme": "Road physics (src/city/roadProfile.ts, read by the terrain and the car): the shape of the surface itself, not a car's tuning, so not in tuningHash. A crown raises a street's middle over its kerbs: the cross slope is the mean rise over run from kerb to centre (a parabola, flat at the middle, twice as steep at the kerb), so a lane's centre sits at about that grade and the car drifts toward the kerb on a straight and leans on the crown through a turn. Junction fans stay flat (layout in config.ts ROAD_PHYSICS). A speed hump is a cosine bump humpHeight high and humpLength long along the street, full height across the lanes and eased off over the outer share of the half width so it never meets the kerb as a step. An expansion joint is a raised cosine lip jointHeight high and jointWidth wide across a deck, every jointSpacing m along it. Metres, rise over run.",
+    "crownStreet": 0.01,
+    "crownAvenue": 0.02,
+    "crownDiagonal": 0.02,
+    "crownBoulevard": 0.02,
+    "humpLength": 3.6,
+    "humpHeight": 0.08,
+    "humpTaper": 0.4,
+    "jointHeight": 0.02,
+    "jointWidth": 0.5,
+    "jointSpacing": 20,
+    "_thump": "A wheel over a hump or a joint that compresses faster than thumpMin m/s makes the axle thump (a race event for the sound, value = that speed); the next one comes only after the axle has been quiet for thumpGap s.",
+    "thumpMin": 0.25,
+    "thumpGap": 0.12
+  },
+  "cableCar": {
+    "_": "The San Francisco cable car (src/sim/cableCar.ts) on sf home seeds: a kinematic body on its timetable that race cars and loose traffic meet through the traffic contact model (collision.ts collideCars) with this mass, so it barely gives and they are shoved. Body (m, kg): a double-ended California Street car, 8.3 m long and 2.6 m wide. It runs at speed (m/s, 15 km/h) on the cable, gripping and letting go at accel (m/s^2).",
+    "mass": 7000,
+    "halfLength": 4.15,
+    "halfWidth": 1.3,
+    "speed": 4.1667,
+    "accel": 0.6,
+    "yawInertiaScale": 1
   },
   "driftZones": {
     "_readme": "Drift zones (src/sim/driftZones.ts): the monument plaza and the bigger parking lots. Drifting inside one counts drift points scoreMul times (drift mode) and refills nitrous refillMul times as fast (every mode, every car), for at most bonusTime s of drifting and refillCap of a nitrous stage per visit. A visit survives exitGrace s outside; once it ends the zone rests cooldown s before it pays that car again.",

@@ -294,6 +294,7 @@ describe('lake (renderer)', () => {
         foliage: new GeoBuilder(true),
         trees: new GeoBuilder(true),
         group: new THREE.Group(),
+        race: { solid: new GeoBuilder(true), glow: new GeoBuilder(true), group: new THREE.Group() },
         walls,
         builds: world.districts.builds,
         quality: 'high',
@@ -303,6 +304,7 @@ describe('lake (renderer)', () => {
         simTick: (t) => t * 60,
         audible: () => false,
         armBroken: () => false,
+        cableBell: () => NaN,
       };
       lakeRenderer.build(kit, [lake]);
       for (const gb of [kit.solid, kit.ground, kit.glow, kit.foliage]) expect(gb.vertexCount).toBeGreaterThan(0);

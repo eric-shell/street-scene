@@ -58,7 +58,9 @@ export type AreaKind =
   | 'highway'
   // Water: one side of the map as a harbor, a lake of merged blocks.
   | 'waterfront'
-  | 'lake';
+  | 'lake'
+  // The San Francisco cable car's line down one street (sf homes).
+  | 'cableCar';
 
 /**
  * Ground surface under a point. 'road' / 'sidewalk' / 'offroad' are the
@@ -66,12 +68,14 @@ export type AreaKind =
  * (parks, planter islands), water (the trickle in the river channel) and
  * cobble (the road strip of every alley, see districts/alley.ts) and quay
  * (a harbor's dock paving: dusty, oil stained concrete with a grip of its
- * own, districts/waterfront.ts).
+ * own, districts/waterfront.ts), sand (a beach's loose sand: low grip, heavy
+ * drag, its own tuning entry) and boardwalk (the beach's planks, which drive
+ * as cobbles, districts/waterfrontBeach.ts).
  */
-export type Surface = 'road' | 'sidewalk' | 'offroad' | 'concrete' | 'grass' | 'water' | 'cobble' | 'quay';
+export type Surface = 'road' | 'sidewalk' | 'offroad' | 'concrete' | 'grass' | 'water' | 'cobble' | 'quay' | 'sand' | 'boardwalk';
 
 /** Which tuning entry (drivingParams.json `surface`) a surface drives with. */
-export type SurfacePhysics = 'road' | 'sidewalk' | 'offroad' | 'cobble' | 'quay';
+export type SurfacePhysics = 'road' | 'sidewalk' | 'offroad' | 'cobble' | 'quay' | 'sand';
 export const SURFACE_PHYSICS: Record<Surface, SurfacePhysics> = {
   road: 'road',
   sidewalk: 'sidewalk',
@@ -81,6 +85,9 @@ export const SURFACE_PHYSICS: Record<Surface, SurfacePhysics> = {
   water: 'offroad',
   cobble: 'cobble',
   quay: 'quay',
+  sand: 'sand',
+  // A boardwalk's planks drive like the cobbles' stones: firm, a little short of a road's grip, a small rolling drag.
+  boardwalk: 'cobble',
 };
 
 /** Surface patch priority of an alley's cobbled road strip: above the plain street classification (road 5). */
@@ -127,6 +134,10 @@ export const COBBLE_PRIORITY = 6;
  * container / forklift / quayPost: the dock yard's solids on the quay: shipping containers (stacked up to
  *   three high) lining its container lane, parked forklifts, and the steel gate posts either side of a
  *   mouth onto the quay that carry its string lights (waterfront, waterfrontYard.ts).
+ * cableCar: a cable car terminal's waiting shelter on the sidewalk beside the stop (cableCar).
+ * lifeguard / surf: a beach's lifeguard towers (solids on the sand) and the break along its waterline, the
+ *   one-sided wall that stops a car where the sand meets the sea (waterfront, waterfrontBeach.ts). Its pier
+ *   is a solid of look 'pier' (out from the boardwalk over the sand), and its palms 'tree' trunks.
  */
 export type WallLook =
   | 'building'
@@ -167,9 +178,12 @@ export type WallLook =
   | 'lotKiosk'
   | 'container'
   | 'forklift'
-  | 'quayPost';
+  | 'quayPost'
+  | 'cableCar'
+  | 'lifeguard'
+  | 'surf';
 
-export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark', 'alleyLip', 'gatePier', 'hedge', 'jetty', 'highway', 'lakeRail', 'quayRail', 'quayFence', 'warehouse', 'plaza', 'lotFence', 'lotKiosk', 'container', 'forklift', 'quayPost'];
+export const WALL_LOOKS: readonly WallLook[] = ['building', 'boundary', 'lotEdge', 'planter', 'fountain', 'island', 'pillar', 'parapet', 'culvert', 'fence', 'trench', 'channelEnd', 'tree', 'monument', 'tunnel', 'rock', 'pier', 'marketRail', 'marketFront', 'gate', 'roadworks', 'bluff', 'railFence', 'carPark', 'alleyLip', 'gatePier', 'hedge', 'jetty', 'highway', 'lakeRail', 'quayRail', 'quayFence', 'warehouse', 'plaza', 'lotFence', 'lotKiosk', 'container', 'forklift', 'quayPost', 'cableCar', 'lifeguard', 'surf'];
 
 export interface Area {
   /** Index into CityDistricts.areas. */
@@ -258,6 +272,12 @@ export interface DeckSpan {
   upper?(x: number, z: number, out: HeightSample): void;
   /** An `upper` span with nothing drivable beneath it: every body height drives the upper level. */
   solid?: boolean;
+  /**
+   * The deck's expansion joints (roadProfile.ts lipAt): add the lip's height and gradient at (x, z) into
+   * `out`. World.heightAt adds it to the deck level only (never the floor under a bridge); absent on spans
+   * with none (ramps, the sidewalk-level pieces).
+   */
+  joint?(x: number, z: number, out: HeightSample): void;
 }
 
 /** City frontage walls whose inside probe falls in `polygon` are drawn by this look instead. */
@@ -347,6 +367,8 @@ export interface Claims {
  */
 export interface PlannedEvent {
   flavour: EventFlavourId;
+  /** A Harbor Run's quay as previewed while the routes were picked (harborShore.ts): hills keep their slopes off its frontage. */
+  harbor?: Area;
   /** Circuit then sprint: graph nodes in driving order and the edges between them. */
   routes: { nodes: number[]; edges: number[]; closed: boolean }[];
 }
@@ -436,6 +458,8 @@ export const AREA_PRIORITY: Record<AreaKind, number> = {
   highway: 4,
   waterfront: 2,
   lake: 2,
+  // The line's carriageway: over a hill's rise, so the free roam chip names the line on it.
+  cableCar: 4,
 };
 
 /** Minimap look per kind (ui/hud/hud.ts). Colors are CSS strings, widths in meters. */
@@ -449,8 +473,8 @@ export interface AreaMapStyle {
 export const AREA_MAP_STYLE: Record<AreaKind, AreaMapStyle> = {
   // Monokai Pro tints (ui/kit/palette.ts) that stay clear of the orange route and yellow roadblocks.
   downtown: {},
-  alley: { stroke: 'rgba(171,157,242,0.35)', width: 5 },
-  backAlley: { stroke: 'rgba(147,146,147,0.12)', width: 4 },
+  alley: { stroke: 'rgba(110,164,255,0.35)', width: 5 },
+  backAlley: { stroke: 'rgba(255,122,217,0.14)', width: 4 },
   park: { fill: 'rgba(169,220,118,0.2)' },
   subway: { stroke: 'rgba(120,220,232,0.45)', width: 4, dash: [14, 10] },
   river: { fill: 'rgba(120,220,232,0.16)' },
@@ -472,4 +496,6 @@ export const AREA_MAP_STYLE: Record<AreaKind, AreaMapStyle> = {
   highway: { stroke: 'rgba(252,252,250,0.32)', width: 9 },
   waterfront: { fill: 'rgba(120,220,232,0.14)' },
   lake: { fill: 'rgba(120,220,232,0.18)' },
+  // The cable car: a thin solid line down its street, the El's weight in a cable car red.
+  cableCar: { stroke: 'rgba(255,97,136,0.7)', width: 2.5 },
 };

@@ -48,6 +48,8 @@
  * so nobody is on the tracks when the train comes (and any car that still is,
  * after a crash say, is taken off them).
  *
+ * The cable car (sim/cableCar.ts, sf seeds) is a foreign body ahead to every driver, and struck traffic that slides
+ * into it meets it through the same contact (it is held to its cable).
  * Contact: race cars collide with traffic as solid bodies (collideCars), except
  * for a few seconds after a reset (collision.resetPassThrough). A
  * struck car turns loose: a passive body that slides, spins and scrapes off
@@ -87,6 +89,8 @@ import { TRAFFIC_LAYOUT, type TrafficCar, type TrafficNet, type TrafficState } f
 import { samplePath } from './traffic/net';
 import { choose, parkHome, parkedNear, pose, rng, syncBody, trafficTuning, trySpawn, unparkCar } from './traffic/fleet';
 import { planParking } from '../city/parking';
+import { cableCarAhead, cableTuning, holdCableCar } from './cableCar';
+import { CABLE_CAR_BODY } from './tuning';
 
 export { TRAFFIC_LAYOUT, type TrafficCar, type TrafficMode, type TrafficNet, type TrafficPath, type TrafficState } from './traffic/types';
 export { trafficNet } from './traffic/net';
@@ -216,6 +220,7 @@ export function stepTraffic(r: RaceState): void {
   for (const id of t.unparked) foreign.push(id);
 
   const gates = r.world.timedGates && r.world.timedGates.gates.length ? r.world.timedGates : null;
+  const cable = r.cableCar?.body ?? null;
   // 1. Speed limits for every driving car, from the state at the start of the tick.
   vAllow.length = n;
   advance.length = n;
@@ -299,6 +304,8 @@ export function stepTraffic(r: RaceState): void {
       const o = cars[j];
       obstacle(c, o.body.x, o.body.z, o.body.vx, o.body.vz, hl(o), hw(o));
     }
+    // The cable car (sim/cableCar.ts), where its street crosses this lane's way (its own lanes keep clear of it).
+    if (cable) obstacle(c, cable.x, cable.z, cable.vx, cable.vz, CABLE_CAR_BODY.halfLength, CABLE_CAR_BODY.halfWidth);
     va = seen.va;
     room = seen.room;
     // Timed gates on this path or the next two: stop short unless the bridge beyond stays open long enough.
@@ -496,6 +503,19 @@ export function stepTraffic(r: RaceState): void {
     for (let k = 0; k < t.unparked.length; k++) push(cars[t.unparked[k]]);
     for (const id of parkedNear(t, world, c.body.x, c.body.z, hl(c) + MAX_HL + 0.5, nearParked)) push(cars[id]);
   }
+  // The cable car meets whatever traffic comes against it (a struck car sliding in, mostly), and is held to its cable.
+  if (cable) {
+    const ct = cableTuning();
+    const meet = (o: TrafficCar) => {
+      if (o.mode === 'gone') return;
+      const reach = CABLE_CAR_BODY.halfLength + hl(o) + 0.5;
+      if ((cable.x - o.body.x) ** 2 + (cable.z - o.body.z) ** 2 > reach * reach) return;
+      contact(t, r, -1, cable, ct, o);
+      holdCableCar(r, o.body);
+    };
+    for (let i = 0; i < n; i++) meet(cars[i]);
+    for (let k = 0; k < t.unparked.length; k++) meet(cars[t.unparked[k]]);
+  }
 
   // 6. Recycling: out of the bubble, or struck / stuck for good with nobody near, or met by a train; then respawns.
   const focus = r.cars[0]?.state;
@@ -633,6 +653,9 @@ function tryRejoin(t: TrafficState, c: TrafficCar): void {
 
 /** Traffic cars ahead of a race car within `reach` (m) and `side` (m) of its heading: -1 / 1 for the side it is on (left positive), 0 for none. */
 export function trafficAhead(r: RaceState, x: number, z: number, fx: number, fz: number, reach: number, side: number): number {
+  // The cable car first: a racer dodges it like a slow truck.
+  const cc = cableCarAhead(r, x, z, fx, fz, reach, side);
+  if (cc) return cc;
   const t = r.traffic;
   if (!t) return 0;
   const look = (c: TrafficCar): number => {
