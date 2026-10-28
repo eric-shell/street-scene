@@ -12,9 +12,10 @@ import { drawnGhosts, type Ghost } from './helpers';
  * lend() does, and finds drawn upright geometry at car height that a car circle fits through in the open world
  * (tests/helpers.ts drawnGhosts), minus whatever the open world's own scene draws there (render-only dressing that
  * stands where cars never go, which is not this class). The seeds carry what races shut: the highway's alley gates
- * (11, 17, 18, 24, 26) and a car park the circuit does not take, whose ramp is shuttered (90, 146, 164).
+ * (11, 17, 18, 24, 26) and a car park the circuit does not take, whose ramp is shuttered (13, 55, 74, 164; 90 was
+ * one until Harbor Run reshuffled the event draws, and with them the routes the car parks are planned against).
  */
-const SEEDS = [11, 90, 164];
+const SEEDS = [11, 55, 164];
 
 /** Ghosts by district area kind and mesh, for a message. */
 function tally(gs: Iterable<Ghost>): Record<string, number> {
