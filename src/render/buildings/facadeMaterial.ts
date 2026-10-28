@@ -15,6 +15,12 @@
  * warm bounce from the street that fades with height, which is what makes
  * the architecture readable at night without real lights.
  *
+ * Bedtime: the city goes to sleep over the first minutes of a long night. Each window (an office's run of
+ * bays together) hashes a bedtime from the building seed and its index, inside the NIGHT window for its kind
+ * (homes earlier than offices); a fixed share never sleeps, a few leave a dim night light, and the party
+ * windows never go dark. A window still awake keeps its restless and TV logic. The dice cost a few hashes per
+ * fragment and one uniform (the scene clock), so every tier runs them.
+ *
  * Aviation lights: camera-facing additive dots on tall roofs and masts that
  * blink red on a slow cycle (a few burn steady), never smaller than a few
  * pixels so they do not shimmer.
@@ -33,6 +39,23 @@ export const GLASS_COLORS = [0x1a2230, 0x2a4a6a, 0x2a5a52, 0x5a4630, 0x6a7480, 0
 
 /** Interior light temperatures (K): homes, warm offices, cool offices, sodium, cold screens. */
 const LAMPS_K = [2700, 3400, 5200, 2150, 7200] as const;
+
+/**
+ * When the windows go to sleep. `bed` is the span (minutes of scene time) a window's bedtime is drawn from, `stay`
+ * the share that never goes dark, `nightLight` the share of the sleepers that keep a dim light (of `lightGain`
+ * brightness). `minStay` clamps the shares so at least this fraction of windows stay lit forever: the city never
+ * goes black however the table is tuned. Bars and shopfronts (the podium material) and the party windows never sleep.
+ */
+export const NIGHT = {
+  home: { bed: [2, 16] as [number, number], stay: 0.35, nightLight: 0.12 },
+  office: { bed: [6, 25] as [number, number], stay: 0.42, nightLight: 0.05 },
+  minStay: 0.35,
+  /** Seconds a window takes to dim after its bedtime. */
+  fade: 25,
+  lightGain: 0.16,
+} as const;
+const stayOf = (k: { stay: number }) => Math.max(NIGHT.minStay, k.stay);
+const f1 = (x: number) => x.toFixed(4);
 
 export interface FacadeOptions {
   /** Restless windows and TV flicker (animated); off on Low. */
@@ -172,10 +195,20 @@ export function createFacadeMaterials(atlas: FacadeAtlas, opts: FacadeOptions): 
           // A few apartments glow with colored LED strips: magenta through violet to cyan.
           float party = (1.0 - office) * lit * step(0.972, fHash(cell * 6.37 + sd));
           lampCol = mix(lampCol, mix(vec3(1.0, 0.18, 0.75), vec3(0.15, 0.8, 1.0), fHash(cell * 7.1 + sd)), party);
+          // Bedtime: the dice are per window (per run of bays in an office); the party windows keep their LED strips lit.
+          float bedMin = office > 0.5 ? mix(${f1(NIGHT.office.bed[0])}, ${f1(NIGHT.office.bed[1])}, fHash(unit * 0.83 + sd * 1.3 + 9.1)) : mix(${f1(NIGHT.home.bed[0])}, ${f1(NIGHT.home.bed[1])}, fHash(unit * 0.83 + sd * 1.3 + 9.1));
+          float stayDice = fHash(unit * 2.71 + sd * 0.97 + 5.3);
+          float sleepK = smoothstep(bedMin * 60.0, bedMin * 60.0 + ${f1(NIGHT.fade)}, uTime) * step(office > 0.5 ? ${f1(stayOf(NIGHT.office))} : ${f1(stayOf(NIGHT.home))}, stayDice) * (1.0 - party);
+          float nightLit = step(1.0 - (office > 0.5 ? ${f1(NIGHT.office.nightLight)} : ${f1(NIGHT.home.nightLight)}), fHash(unit * 1.19 + sd * 2.3 + 41.0));
+          lit *= 1.0 - sleepK * (1.0 - nightLit * ${f1(NIGHT.lightGain)});
           // A pixel spanning several windows shows their average instead of flickering between them.
           float far = smoothstep(0.3, 1.0, px);
           vec3 avgCol = office > 0.5 ? (uLamp[2] * 0.55 + uLamp[1] * 0.45) * 0.62 : uLamp[0] * 0.65 + uLamp[1] * 0.35;
           float avgLit = office > 0.5 ? density * 0.77 + 0.04 : density * 0.77;
+          // The average sleeps too: the expected share still awake at this clock, for the kind of building.
+          float ramp = clamp((uTime / 60.0 - (office > 0.5 ? ${f1(NIGHT.office.bed[0])} : ${f1(NIGHT.home.bed[0])})) / (office > 0.5 ? ${f1(NIGHT.office.bed[1] - NIGHT.office.bed[0])} : ${f1(NIGHT.home.bed[1] - NIGHT.home.bed[0])}), 0.0, 1.0);
+          float stayAvg = office > 0.5 ? ${f1(stayOf(NIGHT.office))} : ${f1(stayOf(NIGHT.home))};
+          avgLit *= stayAvg + (1.0 - stayAvg) * (1.0 - ramp * (1.0 - (office > 0.5 ? ${f1(NIGHT.office.nightLight * NIGHT.lightGain)} : ${f1(NIGHT.home.nightLight * NIGHT.lightGain)})));
           vec3 win = mix(lampCol * bright * filt * lit, avgCol * 0.82 * avgLit, far);
           vec3 albedo = diffuseColor.rgb;
           // Dark glass catches the night sky at grazing angles, so unlit towers keep their shape.
@@ -187,7 +220,7 @@ export function createFacadeMaterials(atlas: FacadeAtlas, opts: FacadeOptions): 
         }`,
       );
   };
-  facade.customProgramCacheKey = () => `facade:${opts.live ? 1 : 0}`;
+  facade.customProgramCacheKey = () => `facade:${opts.live ? 1 : 0}:night`;
 
   const aviation = new THREE.ShaderMaterial({
     uniforms: { uTime: uniforms.uTime, fogColor: { value: new THREE.Color(FOG_COLOR) }, fogDensity: { value: FOG_DENSITY }, ...HEIGHT_FOG_UNIFORMS },

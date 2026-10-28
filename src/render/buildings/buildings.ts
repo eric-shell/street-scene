@@ -60,6 +60,7 @@ import type { Skin, Out, Detail, BuildingCounts } from './buildingKit';
 import { FlickList, applyFlicker } from '../street/signage';
 import { DRAG, routeNearness } from '../street/routeNearness';
 import { waterTower, chimney, spire, pyramid, wedge, mansard, hipRoof, mast, light, roofLights, clutter, billboard } from './roofs';
+import { buildVideoWalls } from './videoWalls';
 import { bayWindow, fireEscapes, balcony, eyebrow, fin } from './facadeDetails';
 
 export type { Detail };
@@ -297,11 +298,16 @@ export function buildBuildings(world: World, podium: PodiumOutput, opts: { detai
     m.name = 'aviationLights';
     meshes.push(m);
   }
+  // Video walls on the tallest downtown faces (videoWalls.ts): animated on Medium and up, a static board on Low.
+  const walls = buildVideoWalls(world, B, plans, { animated: opts.detail !== 'low' });
+  disposables.push(walls);
+  meshes.push(...walls.meshes);
   return {
     meshes,
-    counts: o.counts,
+    counts: { ...o.counts, videoWalls: walls.count },
     update(time) {
       mats.update(time);
+      walls.update(time);
     },
     dispose() {
       for (const d of disposables) d.dispose();
