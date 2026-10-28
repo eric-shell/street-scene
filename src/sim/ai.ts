@@ -145,9 +145,16 @@ export function aiInput(r: RaceState, rc: RaceCar): InputFrame {
       // Away from it, unless that is into a wall: then it holds its line (and drops back if it is the one behind).
       const shift = plan.besideSide > 0 ? over : -over;
       const room = rc.tuning.geometry.halfWidth + DRIVER.wallClear;
-      if (r.world.wallClearance(tx - shift * fz, tz + shift * fx, room, c.y) >= room) {
-        tx -= shift * fz;
-        tz += shift * fx;
+      // The target keeps at least the steering lookahead ahead of the nose: in a tight corner the line's target
+      // sits level with the car, and sliding it sideways alone lands it on the car itself, where the steering
+      // is a coin toss (full lock the wrong way, into the corner's outside wall).
+      const along = (tx - c.x) * fx + (tz - c.z) * fz;
+      const push = Math.max(0, look - along);
+      const sx = tx - shift * fz + push * fx;
+      const sz = tz + shift * fx + push * fz;
+      if (r.world.wallClearance(sx, sz, room, c.y) >= room) {
+        tx = sx;
+        tz = sz;
       }
       const behind = plan.besideAhead > DRIVER.yieldLevel || (plan.besideAhead > -DRIVER.yieldLevel && o.index < rc.index);
       if (behind && o.state.speed > DRIVER.yieldMin && o.state.speed > speed - DRIVER.yieldLead) yieldCap = o.state.speed - DRIVER.yieldLead;
