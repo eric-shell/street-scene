@@ -22,6 +22,10 @@
  * drag (street/routeNearness.ts), so blade signs, paper and banners lean toward
  * it (about 1.6x on the route's street, 0.6x on a side street, softened by the
  * home's drag strength) and the city total stays about where it was.
+ *
+ * A New York home also leans a few news stands against the fronts of its corner buildings (cityIdentity.ts
+ * `newsStand`): a dark kiosk box with a red canopy and a rack of magazines, tucked into the sidewalk strip
+ * behind the collision wall, so no car can reach it. Its own stream; nothing else moves.
  */
 import * as THREE from 'three';
 import type { Contact, World } from '../../city/world';
@@ -29,7 +33,7 @@ import type { Building, Wall } from '../../city/blocks';
 import { corridorClearance, insideBuilding } from '../../city/blocks';
 import { CITY } from '../../city/config';
 import { routeSample } from '../../city/route';
-import { Rng } from '../../sim/prng';
+import { Rng, deriveSeed } from '../../sim/prng';
 import { GeoBuilder } from '../geoBuilder';
 import { orientedBox } from '../districts/kit';
 import { FacadeProbe, ProbeHit } from './wallProbe';
@@ -38,6 +42,8 @@ import { AtlasCell, BLADE_SIGN_COLS, BLADE_SIGN_ROWS, BLADE_SLOTS, NEON_COLORS, 
 import { neonMood } from '../textures/cityMood';
 import { FlickList, SIGNAGE, applyFlicker } from '../street/signage';
 import { DRAG, routeNearness } from '../street/routeNearness';
+import { signatureAt } from '../cityIdentity';
+import { regionAt } from './architecture';
 
 export interface WallDressingOptions {
   /** Share of candidate walls and faces that get dressed (graphics tier). */
@@ -51,9 +57,12 @@ export interface WallDressing {
   /** The blade signs' glow: the centre of each panel (m, world) and its neon colour, for the wet street's reflection streaks (street/lightFx.ts). */
   lights: { pos: THREE.Vector3; color: THREE.Color }[];
   /** What was placed, for the perf report and tests. */
-  counts: { blades: number; posters: number; flyers: number; banners: number };
+  counts: { blades: number; posters: number; flyers: number; banners: number; newsStands: number };
   dispose(): void;
 }
+
+/** News stands: footprint (width, depth) and height (m), the cap per city and how far in from the corner (m) they stand. */
+const NEWS = { w: 1.3, d: 0.5, h: 1.9, max: 24, inset: 1.6 } as const;
 
 const DRESS = {
   /** Paper down the alleys: spacing of the stations (m) and height (m) ranges by kind. */
@@ -130,7 +139,7 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
     }
     return true;
   };
-  const counts = { blades: 0, posters: 0, flyers: 0, banners: 0 };
+  const counts = { blades: 0, posters: 0, flyers: 0, banners: 0, newsStands: 0 };
   /** Paper density at a spot: more on the drag, less down the side streets (never so low that a step runs away). */
   const paperAt = (x: number, z: number) => Math.max(0.15, near.scale(DRAG.paper, x, z));
 
@@ -428,6 +437,47 @@ export function buildWallDressing(world: World, probe: FacadeProbe, atlases: { w
         orientedBox(boxes, sx - tx * 0.03, sz - tz * 0.03, sx + tx * 0.03, sz + tz * 0.03, ox * (o0 + 0.25), oz * (o0 + 0.25), y1 - 0.04, y1 + 0.02, bar);
         orientedBox(boxes, sx - tx * 0.03, sz - tz * 0.03, sx + tx * 0.03, sz + tz * 0.03, ox * (o0 + 0.25), oz * (o0 + 0.25), y0 - 0.02, y0 + 0.04, bar);
       }
+    }
+  }
+
+  // ---------- news stands on the corner fronts (a New York home) ----------
+  if (!probe.empty) {
+    const region = regionAt(world);
+    const news = new Rng(deriveSeed(world.seed, 'newsStands'));
+    const scratchNews: number[] = [];
+    for (const b of world.blocks.buildings) {
+      const odds = signatureAt(world.seed, region(b.x, b.z)).newsStand;
+      if (odds === undefined || counts.newsStands >= NEWS.max || b.w < 8) continue;
+      // The draws are taken for every building of the home, so one corner's fate never shifts another's.
+      const wanted = news.chance(odds * D);
+      const endSign = news.chance(0.5) ? 1 : -1;
+      if (!wanted) continue;
+      const ux = Math.cos(b.yaw);
+      const uz = -Math.sin(b.yaw);
+      const wx = Math.sin(b.yaw);
+      const wz = Math.cos(b.yaw);
+      // A corner: the street runs past the end of the front on the stand's side.
+      const endX = b.x + ux * (b.w / 2 + 1.6) * endSign - wx * (b.d / 2);
+      const endZ = b.z + uz * (b.w / 2 + 1.6) * endSign - wz * (b.d / 2);
+      if (corridorClearance(g, world.blocks.edgeGrid, endX, endZ, scratchNews) >= 1.5) continue;
+      const s = (b.w / 2 - NEWS.inset) * endSign;
+      const px = b.x + ux * s - wx * (b.d / 2 + 1.3);
+      const pz = b.z + uz * s - wz * (b.d / 2 + 1.3);
+      const ground = h(px, pz) + CITY.curbHeight;
+      const hit = probe.probe(px, pz, ground + 1, wx, wz, 1.6);
+      // Behind the collision wall line with room to spare, and a flat stretch wide enough for the kiosk.
+      if (!hit || hit.d < NEWS.d + 0.05 || Math.min(hit.left, hit.right) < NEWS.w / 2 + 0.2 || hit.y1 < ground + NEWS.h + 0.3) continue;
+      const x = px + wx * hit.d;
+      const z = pz + wz * hit.d;
+      const ox = -wx * NEWS.d;
+      const oz = -wz * NEWS.d;
+      const hw = NEWS.w / 2;
+      orientedBox(boxes, x - hit.tx * hw, z - hit.tz * hw, x + hit.tx * hw, z + hit.tz * hw, ox, oz, ground, ground + NEWS.h, new THREE.Color(0x24382c));
+      // The canopy: a red slab on top, a little wider and deeper than the box.
+      orientedBox(boxes, x - hit.tx * (hw + 0.1), z - hit.tz * (hw + 0.1), x + hit.tx * (hw + 0.1), z + hit.tz * (hw + 0.1), ox * 1.25, oz * 1.25, ground + NEWS.h, ground + NEWS.h + 0.12, new THREE.Color(0x9a2420));
+      // The rack: magazines and papers pasted on the front.
+      piece('flyers', news.int(0, 1), x + hit.nx * NEWS.d, z + hit.nz * NEWS.d, hit.tx, hit.tz, hit.nx, hit.nz, NEWS.w * 0.82, ground + 0.55, ground + 1.55);
+      counts.newsStands++;
     }
   }
 

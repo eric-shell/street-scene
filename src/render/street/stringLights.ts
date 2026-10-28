@@ -5,7 +5,8 @@
  * street has (routeNearness.ts covers the rest as odds), so the course reads as the place to be from a block
  * away. Planned from the world alone (`planStringLights`: the streetlights within the drag's core, in route
  * order, each paired with the next, a seeded share of the pairs strung, more in a home that shouts, fewer in
- * one that leans), then drawn as one merged additive mesh of soft glow bulbs
+ * one that leans; a Philadelphia home also strings the odd side street, a few strands across it between the
+ * poles on opposite sides: cityIdentity.ts `festoon`), then drawn as one merged additive mesh of soft glow bulbs
  * (three crossed quads each, so one draw call and no sorting), Medium and up. A strand hangs on its two poles
  * a little under the lamp heads so it never touches a pole top, sags like a catenary and ends at its poles.
  *
@@ -17,9 +18,12 @@
 import * as THREE from 'three';
 import type { World } from '../../city/world';
 import { CITY } from '../../city/config';
+import type { Streetlight } from '../../city/blocks';
 import { Rng, deriveSeed } from '../../sim/prng';
 import { GeoBuilder } from '../geoBuilder';
 import { heightFogShader } from '../heightFog';
+import { regionAt } from '../buildings/architecture';
+import { signatureAt } from '../cityIdentity';
 import { NEON_COLORS, makeRadialGlow } from '../textures/textures';
 import { neonMood } from '../textures/cityMood';
 import type { LightEmitter } from './lightFx';
@@ -97,11 +101,60 @@ function plan_(world: World): Strand[] {
     if (!strung || gap < STRINGS.span[0] || gap > STRINGS.span[1]) continue;
     out.push({ a, b, sag: STRINGS.sagBase + STRINGS.sagSpan * gap, color: accent ? accents[hue].clone() : new THREE.Color(STRINGS.warm) });
   }
+  festoonSideStreets(world, near, out);
   if (out.length > STRINGS.maxStrands) {
     rng.shuffle(out);
     out.length = STRINGS.maxStrands;
   }
   return out;
+}
+
+/**
+ * A Philadelphia home's side streets: a seeded share of the edges off the drag (and inside a Philadelphia
+ * region) get up to `perStreet` strands, each between two consecutive poles that stand on opposite sides, so
+ * the strand crosses the street. Its own stream, so a seed of another home plans exactly what it did.
+ */
+function festoonSideStreets(world: World, near: ReturnType<typeof routeNearness>, out: Strand[]): void {
+  const region = regionAt(world);
+  const byEdge = new Map<number, Streetlight[]>();
+  for (const l of world.blocks.streetlights) {
+    if (near.at(l.x, l.z) >= STRINGS.minNear) continue;
+    const list = byEdge.get(l.edge);
+    if (list) list.push(l);
+    else byEdge.set(l.edge, [l]);
+  }
+  const rng = new Rng(deriveSeed(world.seed, 'festoon'));
+  const accents = NEON_COLORS.map((c) => new THREE.Color(c));
+  const mood = neonMood(world.seed);
+  for (const ei of [...byEdge.keys()].sort((a, b) => a - b)) {
+    const lights = byEdge.get(ei)!;
+    const sig = signatureAt(world.seed, region(lights[0].x, lights[0].z)).festoon;
+    // The draws are taken for every edge, so one street's fate never shifts another's.
+    const strung = rng.chance(sig?.streets ?? 0);
+    const accent = rng.chance(STRINGS.accentShare);
+    const hue = mood.neon(rng.next());
+    if (!sig || !strung || lights.length < 2) continue;
+    const e = world.graph.edges[ei];
+    const A = world.graph.nodes[e.a];
+    const B = world.graph.nodes[e.b];
+    const len = Math.hypot(B.x - A.x, B.z - A.z) || 1;
+    const along = (l: Streetlight) => ((l.x - A.x) * (B.x - A.x) + (l.z - A.z) * (B.z - A.z)) / len;
+    lights.sort((p, q) => along(p) - along(q));
+    const tie = (p: Streetlight) => new THREE.Vector3(p.x + p.dx * STRINGS.reach, world.heightAt(p.x, p.z) + CITY.curbHeight + STREETLIGHT_POLE_H - STRINGS.below, p.z + p.dz * STRINGS.reach);
+    let made = 0;
+    for (let k = 0; k + 1 < lights.length && made < sig.perStreet; k++) {
+      const p = lights[k];
+      const q = lights[k + 1];
+      if (p.dx * q.dx + p.dz * q.dz > -0.5) continue;
+      const a = tie(p);
+      const b = tie(q);
+      const gap = a.distanceTo(b);
+      if (gap < STRINGS.span[0] || gap > STRINGS.span[1]) continue;
+      out.push({ a, b, sag: STRINGS.sagBase + STRINGS.sagSpan * gap, color: accent ? accents[hue].clone() : new THREE.Color(STRINGS.warm) });
+      made++;
+      k++;
+    }
+  }
 }
 
 /** The point on a strand at fraction t (0 at a, 1 at b): a parabola for the catenary, sagging at the middle. */
